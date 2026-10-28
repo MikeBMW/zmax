@@ -4,7 +4,7 @@
 
 口径与 GUI「训练」节点一致: dataset=图像+state 数据集 · policy=smolvla_lew ·
   input_features {image[3,480,480], state[39]} → action[4] · 从 v10 ckpt 继续。
-本次为**有界验证跑**(steps 可控, save_freq 高): 先证明训练链真能跑起来出 loss, 再谈长跑。
+本次为**有界验证跑**(steps 可控, save_freq 高): 先证明训练链真能启动出 loss, 再谈长跑。
 用法: gui-venv311/bin/python tools/mk_smolvla_sim_cfg.py --steps 300 --out configs/generated_train_configs/config_smolvla_lew_sim.yaml
 """
 from __future__ import annotations

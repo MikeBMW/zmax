@@ -16,7 +16,7 @@ L4 INTACT LoRA 训练产物 `checkpoints/intact_goal_optical_insert_v6lora_200/`
 [seed2 analytic] 同上逐位相同   …
 ```
 
-**假 A/B 指纹 (三合一)**: ① 各臂 done/steps/最小距逐位相同 ② `action_dim=4`(默认兜底) 而非 8
+**假 A/B 指纹 (三合一)**: ① 各臂 done/steps/最小距逐位相同 ② `action_dim=4`(默认保障) 而非 8
 ③ 日志只有 `trained=False`。见到任两条 → 先验权重加载, 再谈提升/回退。
 (反例: 在役权重同一 A/B 里是 `action_dim=8 · trained=True`, 且 `line_w0/applied=0` 与 `direct` 一致、`line_w1` 才有 `applied>0`。)
 

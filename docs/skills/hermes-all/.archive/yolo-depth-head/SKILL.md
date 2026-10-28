@@ -1,17 +1,17 @@
 ---
 name: yolo-depth-head
-description: 给 YOLO 加 depth head 恢复 z 深度, 替代写死深度平面。
+description: 给 YOLO 加 depth head 恢复 z 深度, 替代预先固定深度平面。
 ---
 
-# YOLO Depth Head — 单目深度估计恢复 z (替代写死深度平面)
+# YOLO Depth Head — 单目深度估计恢复 z (替代预先固定深度平面)
 
 ## 触发
-- YOLO 检测 2D 框要反投影 3D 时, 发现 z 是写死的 (如 `z_map={"hand":0.155,"peg":0.03,"hole":0.129}`), 导致 z 方向判断(抬起/插入深度)全盲
+- YOLO 检测 2D 框要反投影 3D 时, 发现 z 是固定不变的 (如 `z_map={"hand":0.155,"peg":0.03,"hole":0.129}`), 导致 z 方向判断(抬起/插入深度)全盲
 - 真机同构: 仿真里不能白给 z 真值, 要让感知模型自己估深度
 - 给现有检测 YOLO 加深度输出
 
-## 核心认知: 写死 z 平面 = z 方向盲 (2026-08-23 实测)
-- 用固定 z 平面反投影 2D 框 → 3D 的 z 恒等于写死值, 与物体真实高度无关。
+## 核心认知: 预先固定 z 平面 = z 方向盲 (2026-08-23 实测)
+- 用固定 z 平面反投影 2D 框 → 3D 的 z 恒等于预先固定值, 与物体真实高度无关。
 - 后果: 状态机 z 判据 (peg 抬起 `peg[2]-peg_z0>0.02`、插入 `d_ph<0.05`) 永远不触发 → 卡死在接近/抓取阶段, 成功率 0。
 - 真闭环 (状态机判断+动作调制吃 YOLO 解算 state, 不吃仿真器真值 `env.data.site_xpos`) 的前提是 z 必须来自深度估计。
 - 铁律: 状态机判断/动作调制若吃仿真器真值坐标 = 假同构 (真机拿不到真值)。
@@ -64,7 +64,7 @@ model.train(data=".../data.yaml", epochs=50, imgsz=480, batch=8, device="cpu")
   t = depth_m / cos_t if abs(cos_t) > 1e-4 else depth_m
   pt = cam_pos + t * dir_w
   ```
-  (旧写死 z 的做法是 `t=(plane_z-cam_pos[2])/dir_w[2]`, 两者只差在深度来源。)
+  (旧预先固定 z 的做法是 `t=(plane_z-cam_pos[2])/dir_w[2]`, 两者只差在深度来源。)
 
 ## 精度实测 (2 epoch 冒烟模型, 正式 50 epoch 会更好)
 - peg z 误差 **1.3~2.5cm** (抬起判断 >2cm 够用)

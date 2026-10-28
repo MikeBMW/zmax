@@ -7,7 +7,7 @@
 INTACT 是无条件动作头 (只吃 `[z, intent, z*intent, prev_act_emb]`), 本工程记忆层 = L2 原子技能,
 所以中间要一个显式契约。
 
-## 一、契约 (单一事实来源, 顺序写死=版本号)
+## 一、契约 (单一事实来源, 顺序预先固定=版本号)
 `skill_ctx` 24 维 = `[引擎相位 one-hot(13) | L2 势场技能软权重 w(8) | 到最近冠军轨迹管横向距离 d_perp |
 沿该管弧长 arc_frac | 夹爪指令 grip]`
 
@@ -16,7 +16,7 @@ INTACT 是无条件动作头 (只吃 `[z, intent, z*intent, prev_act_emb]`), 本
   - 数据采集: `tools/intact_insert_dataset_v5.py` (每帧 sink 里调)
   - 闭环推理: `tools/intact_sw_optical_bridge.py` (每帧 `_infer` 里调 → `node.step(..., skill_ctx=..)`
     → `info["skill_ctx"]` → npz → worker 自动进 info)
-  两套代码 = 训练/推理口径不一致 = 白训; 兜底回归 `tools/skill_ctx_consistency_check.py`
+  两套代码 = 训练/推理口径不一致 = 白训; 保障回归 `tools/skill_ctx_consistency_check.py`
   (重算已落盘 part 的该列, 要求逐位一致 + 非零占比够, 否则"给了模型一列常量"也算失败)。
 - 坐标口径: `x` 用**夹爪真实位置 obs[0:3]** (引擎 `self.x = o[0:3]`), 不是 `peg_head()`
   —— 实测同 seed 两者差 (0.017,0.054,0.176)m, 用错时 d_perp 恒 ~0.13m、场在自己坐标系外求梯度。
@@ -32,7 +32,7 @@ INTACT 是无条件动作头 (只吃 `[z, intent, z*intent, prev_act_emb]`), 本
    做完 3: 带 skill_ctx 跑 vs 老模型跑 = 最大差 **0.000e+00** (逐位等价)。
    实现位置: 训练脚本载入 ckpt 后 (配置开关 `init_zero_skill_branch: true`)。
 4. `get_action` 里: `skill_dim>0` 却没有 `skill_ctx` → **raise** ("refusing to silently degrade")。
-   副作用很好用: 闭环跑起来不报错 = 条件向量每帧都真送到了 (这是"共同运行"的最硬证据)。
+   副作用很好用: 闭环启动不报错 = 条件向量每帧都真送到了 (这是"共同运行"的最硬证据)。
 
 ## 三、"写了没接" 五道自检 (`INTACT-JEPA/tools/intact_skill_channel_check.py`)
 真权重 + 真数据窗口 (`pixels` 从 h5 读要 **HWC→[T,C,H,W] 转置**, 否则 `Expected 3 but got 224`):
@@ -43,7 +43,7 @@ INTACT 是无条件动作头 (只吃 `[z, intent, z*intent, prev_act_emb]`), 本
 - E 诊断 `skill_dim / skill_used / candidate_sequences==0` 如实报
 
 ## 四、判闸: 同权重同帧消融 (老倪 09-12 口径"有提升非仅不回退")
-同一 ckpt、同一批真帧, 只切条件: `--skill on` (真值) / `--skill zero` (全零消融) 各跑一遍:
+同一 ckpt、同一批真帧, 只切条件: `--skill on` (真值) / `--skill zero` (全零消融) 各执行一遍:
 - ① `MAE(on) < 常数基线` ② **`MAE(on) < MAE(zero)`** ③ 预测std/教师std ≥ 0.30 (不塌缩)
 - 只有 ① 通过 = "不回退"; ② 才叫"记忆层真的有用"。三条全过才是交付门槛。
 - 哨兵: `~/.hermes/scripts/v6_judge_watch.py` (no_agent cron 每 20 分钟; 无新 ckpt 静默;

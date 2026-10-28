@@ -9,7 +9,7 @@
    "generated_at": "2026-10-13 13:10:44",
    "generator": "tools/config_sheet.py",
    "git": "2039a67",
-   "真源": {
+   "唯一依据": {
     "任务配置": "config/tasks/tasks.json",
     "绑定": "config/ss_task_binding.json",
     "画布": "flows/state_space_obs.json",
@@ -159,7 +159,7 @@
       "state_space": true,
       "vlm_llm": true,
       "model": "deepseek-flash (DeepSeek-V4.1-Flash, Vision ✓, 本机 key 已配)",
-      "desc": "[L5 大模型主路] DeepSeek-V4-Flash (API · 支持 Vision): 场景判读/工序纠错 → 结构化落 data/scene/scene_state.json, 喂 L3 规划/技能编排与 L4 意图解码; 本地兜底 = smolvlm2-500m (HuggingFaceTB/SmolVLM2-500M, 权重在 ~/.cache/huggingface, GPU 单帧编码); 双路优先级 SS_VLM_PROVIDER > DeepSeek(flash) > 本地 worker",
+      "desc": "[L5 大模型主路] DeepSeek-V4-Flash (API · 支持 Vision): 场景判读/工序纠错 → 结构化落 data/scene/scene_state.json, 喂 L3 规划/技能编排与 L4 意图解码; 本地保障 = smolvlm2-500m (HuggingFaceTB/SmolVLM2-500M, 权重在 ~/.cache/huggingface, GPU 单帧编码); 双路优先级 SS_VLM_PROVIDER > DeepSeek(flash) > 本地 worker",
       "source": "src/lerobot/policies/left_right/state_space/scene_vlm.py",
       "source_symbol": "class SceneVLM (provider=deepseek)",
       "provider": "deepseek-v4-flash",
@@ -604,7 +604,7 @@
      "name": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
      "type": "model",
      "params": {
-      "desc": "[L4 → L3] INTACT 意图解码器 (src/lerobot/policies/intact/decoder.py): **两路输出**: ①→DiT 的 L3 条件 (未标定不注入) ②→流形专家预测器的意图 m_int (z_t 口径用; 活跃 z7 口径下当门控) · 把 INTACT 的意图/潜空间解码成 L3 能吃的条件 —— ① u_ff 先验 4D (量纲逆运算 act×K_ACT, K_ACT 现读引擎源码, 无需标定) ② L3 流形条件向量 (需标定 models/intact_l3_map.json, 未标定则**拒绝返回并计数**, 不写死映射 = 不假接入); 所在 L4 行 = 只在 L4 档执行, L3 档链路逐位不变\n\n🗂 代码落位 (v5.5.43 编排已下沉 policy 层): 编排 service.py (run_once) · 解码 decoder.py · 桥 runtime/model_adapter.py",
+      "desc": "[L4 → L3] INTACT 意图解码器 (src/lerobot/policies/intact/decoder.py): **两路输出**: ①→DiT 的 L3 条件 (未标定不注入) ②→流形专家预测器的意图 m_int (z_t 口径用; 活跃 z7 口径下当门控) · 把 INTACT 的意图/潜空间解码成 L3 能吃的条件 —— ① u_ff 先验 4D (量纲逆运算 act×K_ACT, K_ACT 现读引擎源码, 无需标定) ② L3 流形条件向量 (需标定 models/intact_l3_map.json, 未标定则**拒绝返回并计数**, 不预先固定映射 = 不假接入); 所在 L4 行 = 只在 L4 档执行, L3 档链路逐位不变\n\n🗂 代码落位 (v5.5.43 编排已下沉 policy 层): 编排 service.py (run_once) · 解码 decoder.py · 桥 runtime/model_adapter.py",
       "expert": true,
       "state_space": true,
       "decoder": true,
@@ -728,7 +728,7 @@
      "type": "hardware",
      "params": {
       "state_space": true,
-      "desc": "[基础·分段小模型·建图] 📡 融合定位建图 = 视觉与触觉融合: 视觉(YOLO目标检测→2D→3D 坐标) + 触觉感知(4D 力/接触) + 外观质量 → 统一状态空间 (43D obs, 供 L2/L3/L4/L5 消费); 新增建图能力: 专用实现 src/lerobot/manifold/localization_mapping.py (ORB 视觉前端 + 机器人位姿真源 tcp_pose + 关键帧/地图点/回环 + 自动加载 auto_start)",
+      "desc": "[基础·分段小模型·建图] 📡 融合定位建图 = 视觉与触觉融合: 视觉(YOLO目标检测→2D→3D 坐标) + 触觉感知(4D 力/接触) + 外观质量 → 统一状态空间 (43D obs, 供 L2/L3/L4/L5 消费); 新增建图能力: 专用实现 src/lerobot/manifold/localization_mapping.py (ORB 视觉前端 + 机器人位姿唯一依据 tcp_pose + 关键帧/地图点/回环 + 自动加载 auto_start)",
       "source": "src/lerobot/policies/left_right/state_space/perception.py",
       "source_symbol": "def fuse_sensors",
       "fuse": "视觉 ⊕ 触觉 ⊕ 外观质量"
@@ -1015,7 +1015,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1040,7 +1040,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1065,7 +1065,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1090,7 +1090,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1115,7 +1115,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1140,7 +1140,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1165,7 +1165,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1190,7 +1190,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1215,7 +1215,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1240,7 +1240,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1265,7 +1265,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1290,7 +1290,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "curated"
      },
      {
@@ -1315,7 +1315,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "curated"
      },
      {
@@ -1340,7 +1340,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1365,7 +1365,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1390,7 +1390,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1415,7 +1415,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1440,7 +1440,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1465,7 +1465,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1490,7 +1490,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "curated"
      },
      {
@@ -1515,7 +1515,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1540,7 +1540,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1565,7 +1565,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1590,7 +1590,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1615,7 +1615,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1640,7 +1640,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1665,7 +1665,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1690,7 +1690,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1715,7 +1715,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1740,7 +1740,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1765,7 +1765,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1790,7 +1790,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1815,7 +1815,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1840,7 +1840,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1865,7 +1865,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "curated"
      },
      {
@@ -1890,7 +1890,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1915,7 +1915,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1940,7 +1940,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -1965,7 +1965,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数"
+      "cat_cn": "标定/唯一依据参数"
      },
      {
       "param_id": "calib:metric.components[1]",
@@ -1989,7 +1989,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数"
+      "cat_cn": "标定/唯一依据参数"
      },
      {
       "param_id": "calib:metric.components[2]",
@@ -2013,7 +2013,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数"
+      "cat_cn": "标定/唯一依据参数"
      },
      {
       "param_id": "calib:metric.components[3]",
@@ -2037,7 +2037,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数"
+      "cat_cn": "标定/唯一依据参数"
      },
      {
       "param_id": "calib:metric.components[4]",
@@ -2061,7 +2061,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数"
+      "cat_cn": "标定/唯一依据参数"
      },
      {
       "param_id": "calib:metric.components[5]",
@@ -2085,7 +2085,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数"
+      "cat_cn": "标定/唯一依据参数"
      },
      {
       "param_id": "calib:metric.diag[0]",
@@ -2109,7 +2109,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数"
+      "cat_cn": "标定/唯一依据参数"
      },
      {
       "param_id": "calib:metric.diag[1]",
@@ -2133,7 +2133,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数"
+      "cat_cn": "标定/唯一依据参数"
      },
      {
       "param_id": "calib:metric.diag[2]",
@@ -2157,7 +2157,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数"
+      "cat_cn": "标定/唯一依据参数"
      },
      {
       "param_id": "calib:metric.dim",
@@ -2181,7 +2181,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数"
+      "cat_cn": "标定/唯一依据参数"
      },
      {
       "param_id": "calib:plane_z.value",
@@ -2205,7 +2205,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -2230,7 +2230,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -2255,7 +2255,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -2280,7 +2280,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -2305,7 +2305,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -2330,7 +2330,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      },
      {
@@ -2355,7 +2355,7 @@
       "fn_ref": null,
       "sys_hint": "",
       "color": "#ffc857",
-      "cat_cn": "标定/真源参数",
+      "cat_cn": "标定/唯一依据参数",
       "spec_code": "auto"
      }
     ],
@@ -18530,7 +18530,7 @@
     ]
    }
   },
-  "标定真源": [
+  "标定唯一依据": [
    {
     "file": "config/calib/zmax_calib.json",
     "sha256_16": "9e4edc6f5b87f6a2",
@@ -18587,7 +18587,7 @@
    "name": "📡 融合定位建图",
    "type": "hardware",
    "layer": null,
-   "desc": "[基础·分段小模型·建图] 📡 融合定位建图 = 视觉与触觉融合: 视觉(YOLO目标检测→2D→3D 坐标) + 触觉感知(4D 力/接触) + 外观质量 → 统一状态空间 (43D obs, 供 L2/L3/L4/L5 消费); 新增建图能力: 专用实现 src/lerobot/manifold/localization_mapping.py (ORB 视觉前端 + 机器人位姿真源 tcp_pose + 关键帧/地图点/回环 + 自动加载 auto_start)",
+   "desc": "[基础·分段小模型·建图] 📡 融合定位建图 = 视觉与触觉融合: 视觉(YOLO目标检测→2D→3D 坐标) + 触觉感知(4D 力/接触) + 外观质量 → 统一状态空间 (43D obs, 供 L2/L3/L4/L5 消费); 新增建图能力: 专用实现 src/lerobot/manifold/localization_mapping.py (ORB 视觉前端 + 机器人位姿唯一依据 tcp_pose + 关键帧/地图点/回环 + 自动加载 auto_start)",
    "source": "src/lerobot/policies/left_right/state_space/perception.py",
    "symbol": "def fuse_sensors",
    "in_topics": [
@@ -19560,7 +19560,7 @@
    "name": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
    "type": "model",
    "layer": null,
-   "desc": "[L4 → L3] INTACT 意图解码器 (src/lerobot/policies/intact/decoder.py): **两路输出**: ①→DiT 的 L3 条件 (未标定不注入) ②→流形专家预测器的意图 m_int (z_t 口径用; 活跃 z7 口径下当门控) · 把 INTACT 的意图/潜空间解码成 L3 能吃的条件 —— ① u_ff 先验 4D (量纲逆运算 act×K_ACT, K_ACT 现读引擎源码, 无需标定) ② L3 流形条件向量 (需标定 models/intact_l3_map.json, 未标定则**拒绝返回并计数**, 不写死映射 = 不假接入); 所在 L4 行 = 只在 L4 档执行, L3 档链路逐位不变\n\n🗂 代码落位 (v5.5.43 编排已下沉 policy 层): 编排 service.py (run_once) · 解码 decoder.py · 桥 runtime/model_adapter.py",
+   "desc": "[L4 → L3] INTACT 意图解码器 (src/lerobot/policies/intact/decoder.py): **两路输出**: ①→DiT 的 L3 条件 (未标定不注入) ②→流形专家预测器的意图 m_int (z_t 口径用; 活跃 z7 口径下当门控) · 把 INTACT 的意图/潜空间解码成 L3 能吃的条件 —— ① u_ff 先验 4D (量纲逆运算 act×K_ACT, K_ACT 现读引擎源码, 无需标定) ② L3 流形条件向量 (需标定 models/intact_l3_map.json, 未标定则**拒绝返回并计数**, 不预先固定映射 = 不假接入); 所在 L4 行 = 只在 L4 档执行, L3 档链路逐位不变\n\n🗂 代码落位 (v5.5.43 编排已下沉 policy 层): 编排 service.py (run_once) · 解码 decoder.py · 桥 runtime/model_adapter.py",
    "source": "src/lerobot/policies/intact/service.py",
    "symbol": "def run_once(",
    "in_topics": [
@@ -20110,7 +20110,7 @@
    "name": "🧿 DeepSeek-V4-Flash · 场景理解 (L5 大模型主路)",
    "type": "model",
    "layer": null,
-   "desc": "[L5 大模型主路] DeepSeek-V4-Flash (API · 支持 Vision): 场景判读/工序纠错 → 结构化落 data/scene/scene_state.json, 喂 L3 规划/技能编排与 L4 意图解码; 本地兜底 = smolvlm2-500m (HuggingFaceTB/SmolVLM2-500M, 权重在 ~/.cache/huggingface, GPU 单帧编码); 双路优先级 SS_VLM_PROVIDER > DeepSeek(flash) > 本地 worker",
+   "desc": "[L5 大模型主路] DeepSeek-V4-Flash (API · 支持 Vision): 场景判读/工序纠错 → 结构化落 data/scene/scene_state.json, 喂 L3 规划/技能编排与 L4 意图解码; 本地保障 = smolvlm2-500m (HuggingFaceTB/SmolVLM2-500M, 权重在 ~/.cache/huggingface, GPU 单帧编码); 双路优先级 SS_VLM_PROVIDER > DeepSeek(flash) > 本地 worker",
    "source": "src/lerobot/policies/left_right/state_space/scene_vlm.py",
    "symbol": "class SceneVLM (provider=deepseek)",
    "in_topics": [

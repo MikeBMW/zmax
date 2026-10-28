@@ -16,8 +16,8 @@
   ④ 右下角 全表总合力              → 力大小 + 实部            (2)
   ⑤ 表的标量伴生量: 参考速度 u_ref / 全表一致度 / 主力(层号·项序号)   (4)
 
-真源与算法**不在这里重写**: 直接 import 表自己的数据层 `tools/gui/gravity_table.py::GravityField`
-(与画布右侧栏那张表同一个类、同一拍同一批真源: meta_tasks/skill_latest/chunk_latest/engine_latest/
+唯一依据与算法**不在这里重写**: 直接 import 表自己的数据层 `tools/gui/gravity_table.py::GravityField`
+(与画布右侧栏那张表同一个类、同一拍同一批唯一依据: meta_tasks/skill_latest/chunk_latest/engine_latest/
  ss_traj_last + trace_live.json + ss_episode_latest.npz) ⇒ 信号分析窗口的数与表上屏幕上看到的数
 天然同源, 不会出现"表是 A、波形是 B"。
 
@@ -147,7 +147,7 @@ def main() -> int:
     if a.selftest:
         f = GT.GravityField()
         fr = build_frame(f, 1.25, True)
-        print("表真源: %s" % os.path.relpath(GT.SRC["meta"], ROOT))
+        print("表唯一依据: %s" % os.path.relpath(GT.SRC["meta"], ROOT))
         print("task_id = %r · 发布许可 = %s" % (f.task_id, str(f.task_id).startswith(TASK_OK)))
         print("阶段 = %r · u_ref = %.4f · 实跑 = %s" % (f.stage_now, f.u_ref, f.running))
         print("信号 %d 条 (表体 %d 格 ×2 + 行合力 %d×2 + 列合力 4×2 + 总合力 2 + 标量 4):"

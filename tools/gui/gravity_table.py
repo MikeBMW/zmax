@@ -8,17 +8,17 @@
   · 每一时刻有一个**主力**, 其余格子是赋能力; 主力高亮
   · 例: 插拔的时刻, 插拔技能 (L2) 是主力, L3 的规划 action 与 L4/L5 都是赋能力
 
-真源 (只读; 缺哪个就如实写「未算」并把缺的真源写进 tooltip, 绝不编造数字):
+唯一依据 (只读; 缺哪个就如实写「未算」并把缺的唯一依据写进 tooltip, 绝不编造数字):
   zmax_data/ss_live/meta_tasks.json   ← 当前配置的元任务 (task_id / 名称 / items / by_layer)
   zmax_data/ss_live/skill_latest.json ← 每个阶段的 L2 实际 (<s>_mps) 与 L5 意图请求 (<s>_请求_mps) / 可行 / 拍
   zmax_data/ss_live/chunk_latest.json ← L3 规划 chunk / L2 技能派发 skills[<s>] / L4 前馈 ff / 参考速度 u_norm0
   zmax_data/ss_live/engine_latest.json← 帧龄 / 工况 (阶段·拍) / 潜空间输出
   data/database/zmax/sources/canvas/ss_traj_last.json ← 真实执行轴 (u_exec_vec 逐帧 ⇒ 每个阶段的真实运动方向)
 
-四元数怎么来的 (每格一个, 全部由真源向量算, 不是摆上去的):
+四元数怎么来的 (每格一个, 全部由唯一依据向量算, 不是摆上去的):
   该层这一拍对该项的力 → 向量 v (方向 = 该项真实运动轴 or 该层自己的 action 方向)
                         → 指数映射 q = (cos(θ/2), sin(θ/2)·û),  θ = π·min(1, |v| / u_ref)
-  u_ref = chunk_latest.u_norm0 (本拍参考速度, 真源) ⇒ 满速 = 转 π (180°), 力越大转得越多;
+  u_ref = chunk_latest.u_norm0 (本拍参考速度, 唯一依据) ⇒ 满速 = 转 π (180°), 力越大转得越多;
   |F| 就是该层的真实幅值 (m/s 或 action 范数), 一并显示 ⇒ 「四元数 + 强度」两项都看得见。
   合力 = 主力 + Σ赋能力 (各层力**矢量相加** F_i=|F_i|·û_i), 一致度 = |ΣF| / Σ|F| —— 2026-10-16 老倪口径
   (旧的「四元数等权平均 Markley」已弃用: 那时 |F合| 恒为 0, 与老倪「主力和合力相差不大」矛盾)
@@ -43,7 +43,7 @@ from PyQt5.QtWidgets import (QTableWidget, QTableWidgetItem, QVBoxLayout, QWidge
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QColor, QFont
 
-# ── 真源路径 (相对工程根; 缺文件 = 该项如实「未算」) ──
+# ── 唯一依据路径 (相对工程根; 缺文件 = 该项如实「未算」) ──
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
@@ -71,12 +71,12 @@ _NPZ_CACHE = {"key": None, "z": None}
 
 # 🚦 实跑判定: 只有**真在跑工程**时表才跟实时 (老倪 2026-10-16: 「现在什么都没有运行, 为什么合力还在变化」)
 #    为什么需要: 3D 场景面板自己会**回放**录制的 episode, trace_live.json 一直在走 ⇒ 照它刷表面上看"实时",
-#    其实没有实跑。判据 = 引擎认知块 (engine_latest/chunk_latest) 是否在写 (实跑时它 ≤ 1s 一写)。
+#    实际没有实跑。判据 = 引擎认知块 (engine_latest/chunk_latest) 是否在写 (实跑时它 ≤ 1s 一写)。
 _RUN_FRESH_S = 30.0
 _RUN_OVERRIDE = None          # None=自动判定 (判据脚本用它跑"在跑/没跑"两分支)
 
 
-_L5_OVERRIDE = None          # 判据用: 强行规定"L5 闭环没在跑" (None = 读真源)
+_L5_OVERRIDE = None          # 判据用: 强行规定"L5 闭环没在跑" (None = 读唯一依据)
 
 
 def _l5_loop_running(max_age=900.0):
@@ -84,7 +84,7 @@ def _l5_loop_running(max_age=900.0):
 
     2026-10-19 老倪「运行 L5 还是没有力的显示」/「q合 一直在闪」的连带修复:
     控制台重启后 `ui_run.json` 里留着上一台控制台的 pid ⇒ 按 pid 判活会误判"没在跑",
-    而 L5 闭环其实还在 annotate。这里把"L5 闭环在跑"也算作在跑 (档位即 L5)。"""
+    而 L5 闭环实际还在 annotate。这里把"L5 闭环在跑"也算作在跑 (档位即 L5)。"""
     if _L5_OVERRIDE is not None:
         return bool(_L5_OVERRIDE)
     p = _p("zmax_data", "l5_loop", "state.json")
@@ -189,7 +189,7 @@ def _npz_cached(path):
     return z
 
 
-# 元任务链上的 8 个状态空间项 (顺序 = 执行顺序; 真源里 <项>_拍 给出拍序)
+# 元任务链上的 8 个状态空间项 (顺序 = 执行顺序; 唯一依据里 <项>_拍 给出拍序)
 STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
 
 LAYERS = [("L2", "L2 执行收口"), ("L3", "L3 调度规划"),
@@ -317,7 +317,7 @@ def _age_s(path):
         return None
 
 
-# ────────────────────────── 数据层: 从真源算全表 ──────────────────────────
+# ────────────────────────── 数据层: 从唯一依据算全表 ──────────────────────────
 class GravityField(object):
     """当前配置的元任务 → 每个状态空间项 × L2/L3/L4/L5 的力 (四元数) + 合力。"""
 
@@ -327,9 +327,9 @@ class GravityField(object):
         self.frozen_at = None
         self.reload()
 
-    # ---- 读真源 (全部只读; 任何一步失败都留痕, 不抛) ----
+    # ---- 读唯一依据 (全部只读; 任何一步失败都留痕, 不抛) ----
     def reload(self):
-        self._load_force_cfg()                                   # u_ff 权重 α / 箭头绝对尺度 (真源 json)
+        self._load_force_cfg()                                   # u_ff 权重 α / 箭头绝对尺度 (唯一依据 json)
         # 🧱 分层力 (老倪 2026-10-19 口径): 每层读**自己的**模型输出张量 → 加权三维力矢量。
         #   L2=前馈 u_ff · L3=动作头 chunk · L4=流形度量 M×(ff−chunk) · L5=VL 场景理解
         #   权重/换算系数在 config/calib/layer_forces.json; 取不到的层写"缺", 不拿别的层冒充。
@@ -353,7 +353,7 @@ class GravityField(object):
         self.age.update({("帧" + k): _age_s(p) for k, p in SRC_LIVE.items()})
         self.live = self._load_live()
 
-        self.u_ref = float(self.chunk.get("u_norm0") or 0.0) or 0.1417      # 参考速度 (真源: 本拍首个动作范数)
+        self.u_ref = float(self.chunk.get("u_norm0") or 0.0) or 0.1417      # 参考速度 (唯一依据: 本拍首个动作范数)
         self.stage_now = self.chunk.get("stage") or None
         # 🛰 活源优先: trace_live 的当前阶段 + 当前帧的参考速度 (u_fuse 的范数) —— 跑工程时这些秒级在动
         if self.live.get("stage"):
@@ -370,13 +370,13 @@ class GravityField(object):
         self.skills = self.chunk.get("skills") or {}
         self.chunk_steps = self.chunk.get("chunk") or []
         self.ff_steps = self.chunk.get("ff") or []
-        self.exec_axis = self._exec_axis()          # 每个阶段的真实运动方向 (真源 u_exec_vec)
+        self.exec_axis = self._exec_axis()          # 每个阶段的真实运动方向 (唯一依据 u_exec_vec)
         self.rows = self._build_rows()
         self._mark_run()                            # 🚦 实跑判定 (没在跑 ⇒ 表定格, 不跟 3D 回放走)
 
     # ---- 🛰 活源: trace_live (当前帧) + episode npz (逐帧四路动作) ----
     def _load_live(self):
-        """读当前帧。返回 {} = 拿不到 (表就退回标称口径, 并在格里写明真源出处)。"""
+        """读当前帧。返回 {} = 拿不到 (表就退回标称口径, 并在格里写明唯一依据出处)。"""
         out = {}
         tr = _read(SRC_LIVE["trace"]) or {}
         out["frame"] = tr.get("帧")
@@ -522,7 +522,7 @@ class GravityField(object):
         return out
 
     def _axis(self, s):
-        """该阶段的运动方向: 优先真源切段轴; 没有就退回该阶段 L2 派发 action 的方向。"""
+        """该阶段的运动方向: 优先唯一依据切段轴; 没有就退回该阶段 L2 派发 action 的方向。"""
         a = self.exec_axis.get(s)
         if a:
             return a, "ss_traj_last.u_exec_vec 切段均值"
@@ -560,7 +560,7 @@ class GravityField(object):
             else:
                 cells["L2"] = dict(mag=None, src="缺 skill_latest.%s_mps" % s)
 
-            # L3 调度规划: 该阶段被调度请求的速度 (真源 skill_latest; 技能闸门就是拿它跟 L2 实际比)
+            # L3 调度规划: 该阶段被调度请求的速度 (唯一依据 skill_latest; 技能闸门就是拿它跟 L2 实际比)
             if req is not None and axis:
                 cells["L3"] = dict(mag=abs(float(req)), vec=[float(axis[0]) * float(req),
                                                              float(axis[1]) * float(req),
@@ -570,7 +570,7 @@ class GravityField(object):
             else:
                 cells["L3"] = dict(mag=None, src="缺 skill_latest.%s_请求_mps" % s)
 
-            # L4 认知策略: 前馈项 ff (上层策略对本次执行的赋能, 真源: chunk_latest.ff)
+            # L4 认知策略: 前馈项 ff (上层策略对本次执行的赋能, 唯一依据: chunk_latest.ff)
             ff = self.ff_steps[0] if self.ff_steps else None
             if ff and s == self.stage_now:
                 n4 = math.sqrt(sum(float(x) ** 2 for x in ff[:3]))
@@ -578,14 +578,14 @@ class GravityField(object):
                                    src="chunk_latest.ff[0] (前馈 · %s)" % (self.chunk.get("ff_mode") or ""),
                                    gripper=(float(ff[3]) if len(ff) > 3 else None))
             else:
-                cells["L4"] = dict(mag=None, src="缺 chunk_latest.ff (前馈是单拍量, 只有当前阶段 %s 有真源)" % (self.stage_now or "?"))
+                cells["L4"] = dict(mag=None, src="缺 chunk_latest.ff (前馈是单拍量, 只有当前阶段 %s 有唯一依据)" % (self.stage_now or "?"))
 
-            # L5 意图规划: 意图只给条件, 强度 = 本拍参考速度 × 策略置信度 (真源: chunk_latest.u_norm0 × engine_latest.confidence)
+            # L5 意图规划: 意图只给条件, 强度 = 本拍参考速度 × 策略置信度 (唯一依据: chunk_latest.u_norm0 × engine_latest.confidence)
             conf = self.engine.get("confidence")
             if axis and conf is not None:
                 m5 = self.u_ref * float(conf)
                 cells["L5"] = dict(mag=m5, vec=[float(axis[0]) * m5, float(axis[1]) * m5, float(axis[2]) * m5],
-                                   src="意图条件强度 = u_norm0 %.4f × confidence %s (真源 chunk_latest/engine_latest) × %s"
+                                   src="意图条件强度 = u_norm0 %.4f × confidence %s (唯一依据 chunk_latest/engine_latest) × %s"
                                        % (self.u_ref, conf, axis_src),
                                    note="意图不抢主力: 上层只给意图/条件, 执行由 L2 收口")
             else:
@@ -604,13 +604,13 @@ class GravityField(object):
                 for _L in ("L2", "L3", "L4", "L5"):
                     _x = (self.lf or {}).get(_L) or {}
                     if _x.get("vec") is None:
-                        # 这层真源取不到 ⇒ 明确清空并写缺什么; 不许留着上一段的 npz 数冒充
+                        # 这层唯一依据取不到 ⇒ 明确清空并写缺什么; 不许留着上一段的 npz 数冒充
                         cells[_L] = dict(mag=None, vec=None, src=_x.get("src") or "缺",
                                          note=_x.get("note") or "")
                         continue
                     _o[_L] = dict(mag=_x["mag"], vec=list(_x["vec"]),
                                   # ⚡ 力场格子 → trace 话题 (老倪 2026-10-19「在力场上显示的力,
-                                  #   都做到 trace 的 topic」): 格子的真源描述末尾直接写出它对应的总线话题,
+                                  #   都做到 trace 的 topic」): 格子的唯一依据描述末尾直接写出它对应的总线话题,
                                   #   悬停即可核对"这一格 = 哪条 topic 的哪一拍"。
                                   src=(_x["src"] or "") + " → trace topic zmax/ss_force_%s" % _L.lower(),
                                   note=_x.get("note") or "")
@@ -687,7 +687,7 @@ class GravityField(object):
         return self.running
 
     def _load_layers_on(self):
-        """🎚 当前能力档位 (真源: 控制台 ▶运行时写进 `ui_run.json` 的 `cap_level`)。
+        """🎚 当前能力档位 (唯一依据: 控制台 ▶运行时写进 `ui_run.json` 的 `cap_level`)。
 
         档位是"跑到第几层": L2 只跑快速响应 MLP; L3 追加调度; L4 追加前馈/集合; L5 全链。
         **没被档位启用的层, 本次根本没有调用 ⇒ 不许有输出** (老倪 2026-10-19:
@@ -702,7 +702,7 @@ class GravityField(object):
             self.cap_level = ""
         # 🔴 2026-10-19 老倪「运行 L5 还是没有力的显示」: L5 闭环 (l5_loop) 是从别的入口起的,
         #   画布「能力档位」节点可能还停在 L4 ⇒ 发布出去的 cap_level=L4 ⇒ 表把 L5 判成"未调用"清空。
-        #   真源优先: **l5_loop/state.json 说在跑 L5, 这一轮就是 L5 全链**。
+        #   唯一依据优先: **l5_loop/state.json 说在跑 L5, 这一轮就是 L5 全链**。
         if _l5_loop_running():          # 统一走一个判断 (判据可 override 它)
             self.l5_running = True
             self.cap_level = "L5"
@@ -711,7 +711,7 @@ class GravityField(object):
                           if _cr is not None else {L: True for L in ("L2", "L3", "L4", "L5")})
 
     def _load_force_cfg(self):
-        """🔧 力场构造参数 (真源 `config/calib/force_field.json`, 改文件即生效, 不用重启动):
+        """🔧 力场构造参数 (唯一依据 `config/calib/force_field.json`, 改文件即生效, 不用重启动):
              u_ff_gain      —— 前馈项 (L4 = u_ff) 的权重 α; >1 ⇒ 前馈成为**主力** (老倪 2026-10-19)
              arrow_px_per_mps —— 太阳系力箭头的**绝对尺度** (px 每 m/s), 让箭头长度跨帧可比
              apply_to_tau   —— 是否把 α 也加到真机扭矩 τ = M·(−∇Φ + α·u_ff); 缺省 false (只改显示, 不动控制)
@@ -822,11 +822,11 @@ class GravityField(object):
         crit = [v for k, v in self.age.items() if k in ("skill", "chunk", "engine") and v is not None]
         if crit:
             mx = max(crit)
-            line += " · 真源帧龄 %.1fs%s" % (mx, "" if mx <= 60 else " ⚠️ 非本刻")
+            line += " · 唯一依据帧龄 %.1fs%s" % (mx, "" if mx <= 60 else " ⚠️ 非本刻")
         return line
 
     def age_line(self):
-        """逐真源帧龄 (老倪规矩: 实时数据必须标帧龄; 过期的要点名, 不能糊在一起)。"""
+        """逐唯一依据帧龄 (老倪规矩: 实时数据必须标帧龄; 过期的要点名, 不能糊在一起)。"""
         names = {"meta": "元任务", "skill": "技能", "chunk": "规划chunk", "engine": "引擎", "traj": "轨迹"}
         parts = []
         for k, v in self.age.items():
@@ -834,7 +834,7 @@ class GravityField(object):
                 parts.append("%s 缺" % names.get(k, k))
             else:
                 parts.append("%s %.1fs%s" % (names.get(k, k), v, "⚠️" if v > 60 else ""))
-        return "真源帧龄: " + " · ".join(parts)
+        return "唯一依据帧龄: " + " · ".join(parts)
 
 
 # ────────────────────────── 视图层 ──────────────────────────
@@ -929,7 +929,7 @@ class GravityTableWidget(QWidget):
         self.t.verticalHeader().setDefaultSectionSize(48)      # 🌍 字号放大后行高跟着 (原 42)
         # 2026-10-16 老倪: 「四元数不应该是 4 个数么?」—— 四元数写成一行四个数, 宽度不够就按 _pick_fmt 降小数位。
         #   实测: 右栏就是 682~1120px (由它自己的容器决定, 表给大最小宽只会把表格撑出视口 ⇒ 右边被裁、看着像省略号)。
-        #   ⇒ 表不许比视口宽: 最小宽只留一点点, 宽度不够交给 _pick_fmt 降精度 + 外层 QScrollArea 兜底。
+        #   ⇒ 表不许比视口宽: 最小宽只留一点点, 宽度不够交给 _pick_fmt 降精度 + 外层 QScrollArea 保障。
         self.t.setMinimumWidth(560)
         hh = self.t.horizontalHeader()
         hh.setSectionResizeMode(0, QHeaderView.Fixed)     # 首列只放 2~6 个字 ⇒ 固定 104px, 宽度让给数值列
@@ -975,7 +975,7 @@ class GravityTableWidget(QWidget):
         self.refresh()
         # ⏱ 2026-10-16 老倪: 「我现在运行插拔工程了, 这些四元数都不动, 这个是 bug, 要实时反映系统当前的合力」
         #   根因: 这张表原来只在「这一页被重建/切页」时才 refresh ⇒ 跑工程时一直显示切页那一拍的值。
-        #   ⇒ 自己挂 0.7s 心跳, 每次重读 5 个真源 (小文件, 只读) + 重绘; 页面不可见时 refresh_if_visible 直接返回 (零成本)。
+        #   ⇒ 自己挂 0.7s 心跳, 每次重读 5 个唯一依据 (小文件, 只读) + 重绘; 页面不可见时 refresh_if_visible 直接返回 (零成本)。
         self._tm = QTimer(self)
         self._tm.setInterval(700)
         self._tm.timeout.connect(self.refresh_if_visible)
@@ -1067,7 +1067,7 @@ class GravityTableWidget(QWidget):
         try:
             _new = GravityField()
         except Exception as e:                                               # noqa: BLE001
-            self.lbl_head.setText("万有引力: 真源读不到 (%s)" % e)
+            self.lbl_head.setText("万有引力: 唯一依据读不到 (%s)" % e)
             return
         # ⏸ 没在实跑 ⇒ **数据定格** (老倪: 「现在什么都没有运行, 为什么合力还在变化」)
         #   为什么: 3D 场景面板自己会**回放**录制的 episode, trace_live 一直在走; 照它刷会把"回放"当成"实时"。
@@ -1127,7 +1127,7 @@ class GravityTableWidget(QWidget):
                         fo.setPixelSize(self._fmt[1])
                         fo.setBold(True)
                         cell.setFont(fo)
-                cell.setToolTip("|F|=%.3f %s\n四元数 (w x y z) = %s\n真源: %s"
+                cell.setToolTip("|F|=%.3f %s\n四元数 (w x y z) = %s\n唯一依据: %s"
                                 % (c.get("mag") if c.get("mag") is not None else -1, c.get("note") or "",
                                    _fmt_q(c.get("q")), c.get("src", "")))
                 self.t.setItem(i, 1 + j, cell)
@@ -1204,7 +1204,7 @@ class GravityTableWidget(QWidget):
         fo = _big or QFont("Consolas")
         if _big is None:
             fo.setPixelSize(self._fmt[1])
-            fo.setBold(True)          # 2026-10-19: 兜底也要粗体 (判据 ⑭b: 右下角 ≥ 表体且加粗)
+            fo.setBold(True)          # 2026-10-19: 保障也要粗体 (判据 ⑭b: 右下角 ≥ 表体且加粗)
         tot.setFont(fo)
         tot.setBackground(QColor(187, 128, 9, 70))
         tot.setToolTip("归一四元数 q̂ = %s (各项平方和 = %.6f) · ‖q‖ = %.3f\n总合力(全表) = 所有格子的力矢量相加"
@@ -1239,12 +1239,12 @@ class GravityTableWidget(QWidget):
             "  归一后才是单位四元数 (各项平方和 = 1, 方向与合力同向, 力度丢在 ‖q‖ 里)\n"
             "★ = 本刻唯一主力 (正在跑的那一项 ⇒ 它的 L2 执行收口格), 其余格都是赋能力\n"
             "L2/L3/L4 = 该帧 动作调制器/安全边界/前馈加速器 m/s (3D 面板同一帧快照), L5 = 规划方向 × |前馈速度|\n"
-            "真源 (只读): trace_live / meta_tasks / skill_latest / engine_latest; 每 0.7s 重读\n"
+            "唯一依据 (只读): trace_live / meta_tasks / skill_latest / engine_latest; 每 0.7s 重读\n"
             "u_ref = %.4f (该阶段限速 = 满速基准)" % f.u_ref)
 
     def _map_line(self, f):
         """结构映射行: 黄道面↔S³ · 太阳↔流形中心 · 行星↔DiT · 地球↔MLP · 轨道↔测地线 · 引力↔度量 M · 周期↔节拍 · 自转↔微调。
-        M 的数值取真源 config/calib/zmax_manifold.json (读不到就写"未读", 不编)。"""
+        M 的数值取唯一依据 config/calib/zmax_manifold.json (读不到就写"未读", 不编)。"""
         _M = _DIM = _MODE = _EIG = None
         try:
             with open(os.path.join(_ROOT, "config", "calib", "zmax_manifold.json"), encoding="utf-8") as fh:
@@ -1254,7 +1254,7 @@ class GravityTableWidget(QWidget):
             _DIM, _MODE = _mt.get("dim"), _mt.get("mode")
         except Exception:                                                    # noqa: BLE001
             pass
-        try:                                     # 特征值取"在役这一帧"的真源 (torque_live), 别自己推
+        try:                                     # 特征值取"在役这一帧"的唯一依据 (torque_live), 别自己推
             with open(os.path.join(_ROOT, "zmax_data", "ss_live", "torque_live.json"), encoding="utf-8") as fh:
                 _t = json.load(fh)
             _a, _b = _t.get("metric_eig_min"), _t.get("metric_eig_max")

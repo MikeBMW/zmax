@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 sys.path.insert(0, os.path.join(ROOT, "src", "lerobot", "verification"))
 sys.path.insert(0, os.path.join(ROOT, "tools", "gui"))
 
-# 真源加载
+# 唯一依据加载
 _VL_P = os.path.join(ROOT, "src", "lerobot", "verification", "verification_layer.py")
 _spec = importlib.util.spec_from_file_location("lerobot.verification.verification_layer", _VL_P)
 _vl = importlib.util.module_from_spec(_spec)

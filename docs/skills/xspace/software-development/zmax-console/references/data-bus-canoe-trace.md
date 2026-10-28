@@ -41,7 +41,7 @@
 - 检查: 提取方法后 grep 旧代码块是否残留; `ast.parse` 过不等于没冗余。
 
 ## 卡死/进程诊断工具 (GUI 无响应定位)
-- 主线程卡在哪: `sudo gdb -p <PID> -batch -ex "info threads" -ex "thread 1" -ex "bt"`
+- 主线程阻塞点: `sudo gdb -p <PID> -batch -ex "info threads" -ex "thread 1" -ex "bt"`
   - `poll()` + `QEventDispatcherGlib::processEvents` = 正常空闲事件循环 (**没卡**, 是短暂假死已恢复)
   - `PyEval_EvalFrame` / Qt 渲染函数 = 卡在 Python/Qt 代码
   - ptrace 权限: 需 `sudo` (yama ptrace_scope), 免密 sudo 可直接用

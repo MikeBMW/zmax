@@ -44,7 +44,7 @@ rep('''        root.addWidget(self.lb_stages)
         except Exception:                                                      # noqa: BLE001
             pass
         self.lb_meta.setToolTip("元任务预测 = 🧾 元任务预测节点 (驱动扭矩 T_drive=M·(−∇Φ) → 逐元任务得分);\\n"
-                                "话题 zmax/ss_meta_pred (type zmax::SSMetaPred) · 真源 zmax_data/ss_live/meta_pred.json\\n"
+                                "话题 zmax/ss_meta_pred (type zmax::SSMetaPred) · 唯一依据 zmax_data/ss_live/meta_pred.json\\n"
                                 "生成: gui-venv311/bin/python tools/ss_meta_predict.py --scene SCN-01-FW --write")
         root.addWidget(self.lb_meta)
 

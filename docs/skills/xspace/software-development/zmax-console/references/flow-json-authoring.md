@@ -48,7 +48,7 @@ assert ok and len(m.nodes)==exp_n and len(m.links)==exp_l
 生成器脚本自身也要校验: 类型∈NODE_TYPES / 无悬空连线 / 背景名≤8 / x≥bg+160 / 不重叠
 
 ## 坑 (已踩)
-- 链条连线 label 列表长度 = 节点数-1, 少一个就 IndexError → 数清楚或加兜底
+- 链条连线 label 列表长度 = 节点数-1, 少一个就 IndexError → 数清楚或加保障
 - 生成器输出路径别落到 tools/flows/ → 仓库根 flows/ 与既有 JSON 同目录
 - node_logic 无需注册: 只用 NODE_TYPES 现有类型就不触发 add_node KeyError
 - 生成脚本可能被外部 (飞书端/web) 修改 → patch 前 re-read 全文件, 别基于旧视图 patch

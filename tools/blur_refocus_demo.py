@@ -7,7 +7,7 @@
     候选帧一律先过**有效帧闸** (无结构/黑帧直接淘汰并如实记录 — 现役 AOI 帧实测就是无效帧)
   · 离焦 = **合成物理模型** σ_px(z) = k·|z − z_focus| (相机在臂上 → 沿光轴移动即对焦移动)
     物理模型 + 真图; 真机 R2 需现场标定 (见方案 §7)
-  · 判据全部来自真实图像处理 (Laplacian/Tenengrad/FFT), 无写死 pass/fail
+  · 判据全部来自真实图像处理 (Laplacian/Tenengrad/FFT), 无预先固定 pass/fail
 
 用法: ./gui-venv311/bin/python tools/blur_refocus_demo.py
 """
@@ -223,7 +223,7 @@ def main():
         row.append(r)
     cv2.imwrite(OUT_PNG, cv2.cvtColor(cv2.hconcat(row), cv2.COLOR_RGB2BGR))
 
-    # ── 判据 (自动, 不写死) ──
+    # ── 判据 (自动, 不预先固定) ──
     checks = {
         "R0 σ 估计在有效域 (0.75~2px) MAE ≤0.3px": rep["R0_calibration"]["sigma_est_mae_px"] <= 0.3,
         "R1a 扫焦曲线峰值在对焦点 (±1mm)": abs(peak["dz_mm"]) <= 1.0,

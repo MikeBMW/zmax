@@ -4,12 +4,12 @@
 
 老倪原话: 「你要自动保存这种状态到 proj项目文件中, 下次我可以继续调试」
 
-存什么 (全部从真源取, 不手填):
+存什么 (全部从唯一依据取, 不手填):
   active_task (config/ss_task_binding.json) · src_state (画布 ssdata 📦 数据源节点 params)
-  · scene_id / scene_dir (src_state → data/scene/scenes/<ID>) · 画布真源 md5 · 任务三态快照 · 主参数 M · 版本/时间
+  · scene_id / scene_dir (src_state → data/scene/scenes/<ID>) · 画布唯一依据 md5 · 任务三态快照 · 主参数 M · 版本/时间
 写哪: 工程文件 (默认 reports/projects/SS_主工程_任务配置.zmaxproj) 的 **debug_state 段** ——
       原子写 + 自动备份 + 回读校验 (其他段逐字节不动); 文件不存在先用真生产者 tools/ss_task_bind.py --export 生成。
-恢复: restore() → 设 ZMAX_SCENE_DIR (场景真源) + 存档任务与当前绑定不一致时走 ss_task_bind --activate;
+恢复: restore() → 设 ZMAX_SCENE_DIR (场景唯一依据) + 存档任务与当前绑定不一致时走 ss_task_bind --activate;
       画布/标定由 project_file.load_project 负责, 本模块不重复写画布。
 自动: 数据源切换 / 活跃属性下拉 后各存一次; 打开工程文件后自动恢复。
 CLI: python tools/proj_state.py save|show|restore [--path P] [--reason R]
@@ -24,7 +24,7 @@ import sys
 import time
 
 ROOT = os.environ.get("ZMAX_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CANVAS = os.path.join(ROOT, "flows", "state_space_obs.json")          # 画布真源 (软链到 src/.../flows/…)
+CANVAS = os.path.join(ROOT, "flows", "state_space_obs.json")          # 画布唯一依据 (软链到 src/.../flows/…)
 BIND = os.path.join(ROOT, "config", "ss_task_binding.json")
 CALIB = os.path.join(ROOT, "config", "calib", "zmax_calib.json")
 VERSION = os.path.join(ROOT, "VERSION.md")
@@ -75,7 +75,7 @@ def _src_state():
 
 
 def capture():
-    """当前调试状态快照 (真源取)。"""
+    """当前调试状态快照 (唯一依据取)。"""
     bind = _j(BIND, {}) or {}
     src = _src_state()
     sid = SRC_SCENE_ID.get(src)
@@ -138,10 +138,10 @@ def save(path=None, reason=""):
 
 
 def restore(path=None, log=None, respect_newer_binding=False):
-    """打开工程文件后: 恢复场景真源 + 存档里的活跃任务 (画布由 load_project 负责)。
+    """打开工程文件后: 恢复场景唯一依据 + 存档里的活跃任务 (画布由 load_project 负责)。
 
     respect_newer_binding: 控制台**启动自恢复**传 True —— 操作员在控制台里显式激活的任务
-    (绑定真源比工程存档新) 不能被一份更老的存档顶掉。2026-10-13 实测: 激活摆盘 TASK-06-TRAY
+    (绑定唯一依据比工程存档新) 不能被一份更老的存档顶掉。2026-10-13 实测: 激活摆盘 TASK-06-TRAY
     后重启, 被存档里的 TASK-07-AOI 恢复回来 ⇒ 界面「末端工具」判成夹持、实时监控/信号分组的
     场景跟着错, 老倪要的"摆盘末端 x y z"整条链就串了。
     而"打开工程文件"是**显式用户动作** ⇒ 默认 False: 存谁的档就回谁的状态。
@@ -169,7 +169,7 @@ def restore(path=None, log=None, respect_newer_binding=False):
         out["applied"]["scene_dir"] = None
         out["scene_why"] = "场景目录不存在或存档没记: %s" % (d or "—")
     # 📌 2026-10-11 实测: 控制台重启时会把画布 src_state 写成默认「真机」(22:39:24 那次), 老倪选的摆盘就丢了
-    #   ⇒ 自恢复时按存档把 src_state 写回画布真源 —— 字节级只改这一个值, 其余排版/字节一字不动 (留 .bak)
+    #   ⇒ 自恢复时按存档把 src_state 写回画布唯一依据 —— 字节级只改这一个值, 其余排版/字节一字不动 (留 .bak)
     _want_src = ds.get("src_state")
     if _want_src:
         try:
@@ -199,8 +199,8 @@ def restore(path=None, log=None, respect_newer_binding=False):
     want = ds.get("active_task")
     cur = (_j(BIND, {}) or {}).get("active_task")
     out["applied"]["active_task_saved"], out["applied"]["active_task_now"] = want, cur
-    # 🔴 2026-10-13: 原来这里**无条件**用存档任务覆盖绑定真源 ⇒ 操作员刚激活的摆盘被更老的存档顶掉。
-    #   规则: 启动自恢复时, 绑定真源比工程存档新 ⇒ 听操作员的 (只记差异, 不动绑定)。
+    # 🔴 2026-10-13: 原来这里**无条件**用存档任务覆盖绑定唯一依据 ⇒ 操作员刚激活的摆盘被更老的存档顶掉。
+    #   规则: 启动自恢复时, 绑定唯一依据比工程存档新 ⇒ 听操作员的 (只记差异, 不动绑定)。
     _bnewer = False
     if respect_newer_binding and want and want != cur:
         try:
@@ -208,7 +208,7 @@ def restore(path=None, log=None, respect_newer_binding=False):
         except Exception:                                                       # noqa: BLE001
             _bnewer = False
     if _bnewer:
-        out["task_kept"] = ("保留当前 %s —— 绑定真源比工程存档新 (操作员显式激活过), 不回填存档任务 %s"
+        out["task_kept"] = ("保留当前 %s —— 绑定唯一依据比工程存档新 (操作员显式激活过), 不回填存档任务 %s"
                             % (cur, want))
         out["applied"]["task_kept"] = cur
         if log:

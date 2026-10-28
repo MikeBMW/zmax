@@ -182,7 +182,7 @@ finally:
 
 print("⑥ 可以保存为新的工程文件 (替你点文件框 → 真落盘)", flush=True)
 _tmp = os.path.join(ROOT, ".hermes_lib_sync_test_%s.json" % os.getpid())
-# export_flow 里是真 QFileDialog(...)+dlg.exec_() → 离屏会卡住, 所以把「对话框」这一层替身掉:
+# export_flow 里是真 QFileDialog(...)+dlg.exec_() → 离屏会阻塞, 所以把「对话框」这一层替身掉:
 #   exec_ 立刻返回 Accepted, selectedFiles 返回我们的临时路径 (保存逻辑本身一字不改, 真跑)
 _o_exec, _o_sel = QFileDialog.exec_, QFileDialog.selectedFiles
 QFileDialog.exec_ = lambda self: QFileDialog.Accepted

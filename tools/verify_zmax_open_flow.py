@@ -12,8 +12,8 @@
   ④ **安全门**: 这套流程里没有任何运动下发 (真机动作仍只从 8793 授权窗走)
   ⑤ 真起配置中心页: select_task_row 真选中该行 (currentRow 行首 == 任务ID)
   ⑥ 真点按钮(有回调): 回调收到 task/activate/page, 页面日志显示逐条结果
-  ⑦ 真点按钮(无回调): /tmp/zmax_nav_cmd 真的被写成 open_all (兜底通道)
-  ⑧ 驱动脚本真跑 status: 退出码 0 且真读到绑定真源
+  ⑦ 真点按钮(无回调): /tmp/zmax_nav_cmd 真的被写成 open_all (保障通道)
+  ⑧ 驱动脚本真跑 status: 退出码 0 且真读到绑定唯一依据
 用法: gui-venv311/bin/python tools/verify_zmax_open_flow.py
 """
 import os
@@ -64,10 +64,10 @@ def main():
     ck("命令通道认识 open_all", 'line == "open_all"' in s and "_open_all_cmd" in s)
     ck("导航时写控制台状态文件", "def _write_console_state" in s and 'self._write_console_state(page=names[idx]' in s)
     ck("配置中心页拿到 on_open_all 回调", "self.cfg_page.on_open_all = self._open_all_cmd" in s)
-    ck("执行体按绑定真源取任务 (不另算一套)", 'config", "ss_task_binding.json"' in s and "active_task" in s)
+    ck("执行体按绑定唯一依据取任务 (不另算一套)", 'config", "ss_task_binding.json"' in s and "active_task" in s)
     ck("执行体应用场景走 ss_scene_switch", "ss_scene_switch.py" in s and '"--task"' in s)
 
-    print("② 配置中心页 (三列 + 启动按钮 + 选中行 + 兜底通道)")
+    print("② 配置中心页 (三列 + 启动按钮 + 选中行 + 保障通道)")
     ck("启动按钮「🚀 启动工程 · 信号 · 场景」在位", "🚀 启动工程 · 信号 · 场景" in p)
     ck("按钮连到 _open_all_clicked", "_open_all_clicked()" in p and "def _open_all_clicked" in p)
     ck("select_task_row 按任务ID选中", "def select_task_row" in p and "setCurrentCell" in p)
@@ -75,11 +75,11 @@ def main():
     print("②b 任务表三列 (工程 / 实时监控 / 3D场景)")
     ck("表头含 工程 / 3D场景 / 实时监控",
        all(x in p for x in ('"工程"', '"3D场景"', '"实时监控"')), )
-    ck("三列各自真源函数在位 (_proj_cell/_scene_cell/_monitor_cell)",
+    ck("三列各自唯一依据函数在位 (_proj_cell/_scene_cell/_monitor_cell)",
        all(x in p for x in ("def _proj_cell", "def _scene_cell", "def _monitor_cell")))
     ck("工程列读总工程真路径 (project_file.space_path / 工程库 projects 表)",
                    "data/database/zmax" in p and "zmax_space.proj" in p, p[-160:])
-    ck("实时监控列读颜色真源 (scene_tags.json colors)", "topics\", \"scene_tags.json\"" in p or "scene_tags.json" in p)
+    ck("实时监控列读颜色唯一依据 (scene_tags.json colors)", "topics\", \"scene_tags.json\"" in p or "scene_tags.json" in p)
     ck("列序: 工程=2 · 3D场景=3 · 实时监控=4 (tooltip/上色同源)", "(2, _proj_tip())" in p and "for _c2 in (3, 4):" in p)
 
     print("③ 驱动脚本 tools/zmax_open.py")
@@ -132,7 +132,7 @@ def main():
     from PyQt5.QtGui import QBrush as _QB2                                                                  # noqa: E402
     _c3 = _tt.item(_r, 3).foreground().color().name() if _r >= 0 else ""
     _c4 = _tt.item(_r, 4).foreground().color().name() if _r >= 0 else ""
-    ck("3D场景列与实时监控列同色 (且=场景真源色)", _c3 == _c4 == "#2e8b57", "%s / %s" % (_c3, _c4))
+    ck("3D场景列与实时监控列同色 (且=场景唯一依据色)", _c3 == _c4 == "#2e8b57", "%s / %s" % (_c3, _c4))
 
     class _Stub:
         def __init__(self):
@@ -140,7 +140,7 @@ def main():
 
         def __call__(self, task="", activate=False, page=None):
             self.calls.append({"task": task, "activate": activate, "page": page})
-            return [("活跃任务 (绑定真源)", True, task or "(空)"),
+            return [("活跃任务 (绑定唯一依据)", True, task or "(空)"),
                     ("统一打开工程 (桩)", True, "回调已被真调用")]
 
     stub = _Stub()
@@ -213,7 +213,7 @@ def main():
                            cwd=ROOT)
         _o = (r.stdout or "") + (r.stderr or "")
         ck("status 退出码 0", r.returncode == 0, "rc=%d" % r.returncode)
-        ck("status 真读到绑定真源", "绑定真源" in _o and "active_task" in _o)
+        ck("status 真读到绑定唯一依据", "绑定唯一依据" in _o and "active_task" in _o)
         ck("status 真读窗口 (wmctrl)", "窗口" in _o)
     except Exception as e:                                                                        # noqa: BLE001
         ck("status 真跑", False, str(e)[:120])

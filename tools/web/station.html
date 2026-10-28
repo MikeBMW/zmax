@@ -88,7 +88,7 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 640px;gap:12px;padding:12p
 .ztrain .trk{position:relative;width:44px;height:6px;border-radius:4px;background:#4b3a1a;overflow:hidden;flex:0 0 auto}
 .ztrain .fil{position:absolute;left:0;top:0;bottom:0;width:0;background:#e3b341;border-radius:4px}
 .ztrain b{font-weight:700}
-/* 上次训练 (训练跑完时的空态兜底): 灰底 + 绿勾/红叉, 同样极少文字 */
+/* 上次训练 (训练跑完时的空态保障): 灰底 + 绿勾/红叉, 同样极少文字 */
 .zlast{display:flex;align-items:center;gap:4px;padding:1px 7px;border-radius:9px;
   border:1px solid #21262d;background:#11161d;color:#8b949e;max-width:100%;white-space:nowrap}
 .zlast i{font-style:normal;color:#6e7681;font-size:10.5px;flex:0 0 auto}
@@ -835,7 +835,7 @@ const B=(location.pathname.replace(/\/[^/]*$/,'')||'');
 const _u=(u)=>(typeof u==='string'&&u.charAt(0)==='/')?(B+u):u;
 let STEP_MM=1, STEP_DEG=5, STEP_J6=1;   // STEP_MM: 2026-09-30 老倪「增加平动 1mm 的按钮, 现在的最小分辨率 5mm 有点大」⇒ 默认 10→1mm
                                         // STEP_J6: 🔩 第 6 轴自转自己的步进档(默认 1° 起步, 首次用最稳)
-/* 🔐 ARMED 不再写死: 由**服务端授权状态**决定(默认 false=未授权), 见 applyAuth()。
+/* 🔐 ARMED 不再预先固定: 由**服务端授权状态**决定(默认 false=未授权), 见 applyAuth()。
    老倪 2026-09-27: 「页面的授权真动 / 现场安全 / 授权」 —— 默认必须是未授权, 真动要人显式两步确认。 */
 let ARMED=false, AUTH_LEFT=0, ARMWIN=600, AUTH_IP='', AUTH_PENDING=0;
 function seg(id,cb){document.querySelectorAll('#'+id+' button').forEach(b=>b.onclick=()=>{
@@ -1010,7 +1010,7 @@ async function move(btn,force){
   _lastMove={skill:skill,p:p,v:v};
   const real=ARMED;   // 🔐 只有已授权才真下发(服务端还会再拦一次); 未授权一律 dry-run 演练
   _btns(false); flash(btn);
-  const unlock=setTimeout(()=>_btns(true),15000);   // 兜底: 请求卡住也必须把按钮放开
+  const unlock=setTimeout(()=>_btns(true),15000);   // 保障: 请求阻塞也必须把按钮放开
   $('#msg').textContent='下发中… (最多等 15s)'; $('#msg').className='wa';
   $('#mq').style.display='none';
   try{
@@ -1060,7 +1060,7 @@ function _moveReason(j){
         if(/^[（(][^（()）]{0,48}[)）]$/.test(s)) continue;   // 纯括号备注不是原因
         return s.slice(0,220);
       }
-      return ln.replace(/^\[[\d:]+\]\s*/,'').slice(0,220);  // 兜底: 整行原文(总比空括号强)
+      return ln.replace(/^\[[\d:]+\]\s*/,'').slice(0,220);  // 保障: 整行原文(总比空括号强)
     }
     if(PASS.test(ln)) return '';                             // 最新一条是"通过/只提示不拦" ⇒ 没有原因
   }
@@ -1274,7 +1274,7 @@ async function gotoTeachPoint(btn,st,skill,label,msgSel,human){
     let _mm=null;
     const _m1=_txt.match(/allow_climb_mm=([0-9]+(?:[.][0-9]+)?)/);      // 服务端已明确给出放行量(首选)
     if(_m1){ _mm=parseFloat(_m1[1]); }
-    else { const _m2=_txt.match(/抬升[  ]*([0-9]+(?:[.][0-9]+)?)[  ]*mm[  ]*超/);  // 兜底: 从"抬升 NNNmm 超…"里取
+    else { const _m2=_txt.match(/抬升[  ]*([0-9]+(?:[.][0-9]+)?)[  ]*mm[  ]*超/);  // 保障: 从"抬升 NNNmm 超…"里取
            if(_m2){ _mm=parseFloat(_m2[1]); } }
     if(_mm!=null && real){
       const mm=Math.ceil(_mm)+2;      // 回执数字四舍五入过 ⇒ 留 2mm 余量, 免得刚好卡边界又被同一道闸拒一次
@@ -1338,7 +1338,7 @@ function trackTeachPoint(st,msgSel){
    2026-09-29 老倪: 「在手动控制台 增加 关闭夹抓 和 打开夹抓 两个技能」。
    与方向键/点1 **完全同一条路**: 白名单(L2.grip_close / L2.grip_open) → 授权真动 → 限流 → FIFO
    → 执行器 → 安全裁决。页面**只送技能 id**: 夹持力/行程等参数由技能定义(registry)决定, 页面改不了;
-   未授权时一律演练(只算目标不动作), 服务端还会再拦一次(403), 执行器最后兜底一次。
+   未授权时一律演练(只算目标不动作), 服务端还会再拦一次(403), 执行器最后保障一次。
    带安全闸时最终结果 45~190s(上限 300s)才落日志 ⇒ 回执先如实说"已收到·在等裁决", 再追日志到那一行。 */
 let _grip={t0:0,timer:null};
 async function gripAct(btn, skill, label){
@@ -1476,7 +1476,7 @@ async function poll(){
     if(!s) throw 0;
     const r=s.robot||{}, tp=s.tcp||{};
     try{ paintColl(s.collisions); }catch(_e){}
-    /* 🧭 一行动作状态(老倪 2026-10-01: 「你现在显示这些啥意思？太复杂，智能显示1行，简单明了」)
+    /* 🧭 一行动作状态(老倪 2026-10-01: 「你现在显示这些什么意思？太复杂，智能显示1行，简单明了」)
        原来 #robot(上电/报警) + #robot2(急停/碰撞/帧龄) + 执行器 三处各写一长串, 其中 #robot 与 #robot2
        都会打"⚠ 下面是旧值…" ⇒ 同一句话出现两遍。现在: 一行说清「能不能动 + 为什么」, 细节(帧龄秒数/
        技能数/pid)一律不显示; 数据旧≠不能动, 但必须让人知道这行是旧的。 */
@@ -1967,7 +1967,7 @@ async function recSpace(){
 
 /* 🔄 授权状态同步 (2026-10-01 老倪: 「我在飞书端远程点 立即撤销授权, 你怎么不同步呢? 要同步远程监控操作」)
    根因: 授权按钮是按**本地**变量 ARMED 渲染的 ⇒ 远端(手机/飞书)页面若状态旧, 点"撤销"实际会发 on:true ⇒ 反而授权 10 分钟。
-   现在每 4 秒从服务端真源(/station/status 的 ctl.motion_armed)对齐 ⇒ 任一端的操作, 其它端 4 秒内同步显示。 */
+   现在每 4 秒从服务端唯一依据(/station/status 的 ctl.motion_armed)对齐 ⇒ 任一端的操作, 其它端 4 秒内同步显示。 */
 async function authSync(){
   try{
     const d = await (await fetch('/station/status')).json();
@@ -2040,7 +2040,7 @@ async function gsMapPoll(){
         cap.innerHTML='🖼 参考渲染图 · 来自最新建图资产 <b>'+j.image_asset+'</b> · 渲染于 '+j.image_ts+'('+ht+')'+
           '<br>这是模型渲出的<b>留出视角</b>(手臂相机采的那轮建图), 不是实时画面 —— 实时画面看上面「🦾 臂相机」那格。';
       }
-      /* 🔴 2026-10-14 老倪「打开太卡, 卡住鼠标和其它窗口」: 这格在**同标签页**里, 和工位页的视频 UI
+      /* 🔴 2026-10-14 老倪「打开太卡, 阻塞鼠标和其它窗口」: 这格在**同标签页**里, 和工位页的视频 UI
          共用同一个主线程和同源连接池 ⇒ 自动去拉 86.7MB 全量 splat 会把整个浏览器拖卡(鼠标/别窗口都卡)。
          所以默认**不再自动加载 3D**: 那格先给 226KB 的参考渲染图(秒出, 零主线程负担)。
          要看 3D 得自己点:「🎥 实景查看器」= 页面内 + **轻量副本**(6 万高斯 ≈ 1.8MB, 不卡);
@@ -2138,7 +2138,7 @@ loadSpaces(); setInterval(loadSpaces,10000);
    口径与「🧭 空间1~7」逐条一致 —— 同一套服务端收口(不新开通道):
      ✏️标记模式: 点未记 = 记录当前 TCP 真值(零运动, 连采 6 帧判静止) · 点已记 = 8 秒内再点一次确认**清除**
      🚀运动模式(默认 = 原来的回点行为): 点已记 = 走原来的回点技能(需先🔓授权真动) · 点未记 = 明确说不动的理由
-   真源: /ctl/points(taught=示教点库) · 记/清走 /ctl/record_point · /ctl/clear_point(服务端白名单已放行这几个点名)。 */
+   唯一依据: /ctl/points(taught=示教点库) · 记/清走 /ctl/record_point · /ctl/clear_point(服务端白名单已放行这几个点名)。 */
 const TPT = {
   gold:{ bar:'#goldbar', seg:'#goldmode', hint:'#gold_mode_hint', msg:'#goldpt_msg', mode:'move',
          busy:false, over:0, map:{}, dyn:{},

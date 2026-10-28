@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 单任务冒烟: 证明 5 段链路真跑通 (小预算), 再上 7 任务全量
+# 单任务冒烟: 证明 5 段链路真验证通过 (小预算), 再上 7 任务全量
 set -o pipefail
 cd /home/ubuntu/zmax
 mkdir -p reports/fullflow7

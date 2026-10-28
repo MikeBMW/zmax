@@ -11,8 +11,8 @@
 - 流程: 改文件 → 面板里点文件看 diff → 在「消息」框写提交信息 → `Ctrl+Enter` 提交
 - 推送: 面板右上角「同步更改」= pull + push (配置 `postCommitCommand=none` ⇒ 提交后不自动推)
 - 分支: 窗口左下角状态栏点分支名 = 切换 / 新建
-- 设置真源: `/home/ubuntu/zmax/.vscode/settings.json` (git.* 21 条)。注意 `.vscode/` 被 `.gitignore` 忽略 ⇒ 只在本机生效、不进库
-- 身份/远端真源: `/home/ubuntu/zmax/.git/config` (user.name=MikeBMW · remote=github.com/MikeBMW/zmax)
+- 设置唯一依据: `/home/ubuntu/zmax/.vscode/settings.json` (git.* 21 条)。注意 `.vscode/` 被 `.gitignore` 忽略 ⇒ 只在本机生效、不进库
+- 身份/远端唯一依据: `/home/ubuntu/zmax/.git/config` (user.name=MikeBMW · remote=github.com/MikeBMW/zmax)
 
 ## 调试 (F5)
 - 配置: `.vscode/launch.json` 共 15 条; 常用「🚀 全新调试进程 (studio.py)」(`gui-venv311`) 与「🔌 Attach 现有控制台 (5678)」

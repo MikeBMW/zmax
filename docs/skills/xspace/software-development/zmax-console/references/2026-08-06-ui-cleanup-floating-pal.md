@@ -24,7 +24,7 @@ self._mdi.setActiveSubWindow(self._canvas_win)
 
 ## 🖥 画布窗口标题栏按钮"点击没用" (老倪反馈)
 QMdiSubWindow 的 最小化/最大化/关闭 按钮在 WSLg 下点击无效, 且关闭后画布消失难以恢复
-(WA_DeleteOnClose=False 只是隐藏) → 用户困惑"这按钮干啥的? 点击也没什么用"。
+(WA_DeleteOnClose=False 只是隐藏) → 用户困惑"这按钮做什么的? 点击也没什么用"。
 **处理**: 直接去掉这三个按钮 (windowFlags & ~...), 画布始终铺满不可误关 — 比"可恢复"
 更符合用户直觉。教训: WSLg 下 MDI 子窗口标题栏按钮不可靠, 别给核心画布留关闭口。
 
@@ -117,7 +117,7 @@ log_outer.addWidget(self.log_text)
 
 ## 🗑 删工具栏按钮: 连带删方法 + grep 运行时引用 (c2c17658/4401d6ae, 第三波清理)
 
-老倪连续逐个点工具栏按钮问"这干啥的? 没用删掉" — 规律是**逐个清理冗余按钮**:
+老倪连续逐个点工具栏按钮问"这做什么的? 没用删掉" — 规律是**逐个清理冗余按钮**:
 
 | 按钮 | 删除原因 | 连带删除 |
 |---|---|---|
@@ -130,7 +130,7 @@ log_outer.addWidget(self.log_text)
 删掉 sp_dt/sp_t_end 控件后, `start_sim` 里 `self._sim_dt = self.sp_dt.value()` 仍引用
 → 点 ▶运行 就 AttributeError。修复:
 ```python
-self._sim_dt = getattr(self, "_sim_dt", 0.02)      # 控件已删, 用内部默认值兜底
+self._sim_dt = getattr(self, "_sim_dt", 0.02)      # 控件已删, 用内部默认值保障
 self._sim_t_end = getattr(self, "_sim_t_end", 10.0)
 ```
 **删 UI 三步清单**: ① 删按钮/控件创建+addWidget ② 删回调方法 ③ `grep -n "名字"` 全文件

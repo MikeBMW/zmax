@@ -30,7 +30,7 @@ docker run -d --rm \
 - .dockerignore 排除 data/ outputs/ reports/ 大文件 (镜像只装代码, 数据运行时 -v 挂载)
 
 ## 构建与日志坑
-- **systemctl restart docker 会杀掉正在跑的 docker build** (buildkit 进程消失, log 卡住) — CTK 安装与 build 不能并行
+- **systemctl restart docker 会杀掉正在跑的 docker build** (buildkit 进程消失, log 阻塞) — CTK 安装与 build 不能并行
 - `docker build ... > /tmp/docker_build.log` 后 `&& echo DONE || echo FAIL` — 输出矛盾时以 `docker images --format '{{.Repository}}:{{.Tag}}'` 为准
 - `docker run -d ... > /tmp/remote_train.log` 重定向的是 **docker run 命令输出 (容器 ID)**, 训练日志在 `docker logs zmax_train` — 提交命令的日志路径是假日志!
 - 容器秒退 (--rm 删除) → 诊断要重跑不带 --rm 或用 docker ps -a + docker logs

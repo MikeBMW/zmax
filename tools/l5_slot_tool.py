@@ -83,7 +83,7 @@ def depth_online(max_age_s: float = DEPTH_DEAD_S) -> dict:
     实测坑(2026-09-29): 旧实现去 `docker ps` 找名字含 depth 的**容器**, 但深度实际是
     **ss-remote-tap 容器里的一个进程**(`python3 /repo/tools/ros_depth_stream.py --hz 5`),
     落的文件是 `/out/zmax_scene/depth_raw.npy` (= host `~/zmax/zmax_data/ss_live/zmax_scene/`)
-    ⇒ 旧判据永远 false(假离线), 会把"深度其实在流"误报成"深度未上线"。
+    ⇒ 旧判据永远 false(假离线), 会把"深度实际在流"误报成"深度未上线"。
     现在按源文件龄判: 新鲜就是在线(带上 age), 停写就如实说停写。
     """
     import subprocess                                                          # noqa: PLC0415
@@ -403,7 +403,7 @@ def cmd_build_dataset(include_pending: bool = False) -> int:
     """把已记录槽位 → YOLO 数据集 (14 类 = 14 槽位; 自动标注样本**只进 train, 绝不进 val**)
 
     ⚠️ 默认只收 status=已记录 的槽位; status=待确认 (VLM 复核不一致) 默认**不进数据集**,
-    要进必须显式 --include-pending 并在报告里如实标注 (仅用于跑通训练管线, 不当生产标签)。
+    要进必须显式 --include-pending 并在报告里如实标注 (仅用于验证通过训练管线, 不当生产标签)。
     """
     d = load_reg()
     names = ["slot_%02d" % i for i in range(1, N_SLOTS + 1)]
@@ -490,7 +490,7 @@ def cmd_build_dataset(include_pending: bool = False) -> int:
         print("❌ 0 框 ⇒ 退出码 1 (**不是崩溃**: 是本工具按判据拒绝, SystemExit: 1 就是这么来的)")
         for _l in _why:
             print("   %s" % _l)
-        print("   解法①(想把管线跑通, 产物仅供冒烟): --build-dataset --include-pending")
+        print("   解法①(想把管线验证通过, 产物仅供冒烟): --build-dataset --include-pending")
         print("   解法②(要真标签): 现场放好工件 → --record --slot N")
         print("          判据: 投影 ok + TCP 真值 ≤3s + VLM 复核一致 ⇒ 才写 '已记录'(退出码 0)")
     return 0 if n_box > 0 else 1
@@ -517,7 +517,7 @@ def main() -> int:
     ap.add_argument("--no-vlm", action="store_true", help="跳过 VLM 复核")
     ap.add_argument("--build-dataset", action="store_true", help="已记录槽位 → YOLO 14 类数据集")
     ap.add_argument("--include-pending", action="store_true",
-                    help="把 status=待确认 (VLM复核不一致) 的槽位也放进数据集 (仅供跑通管线, 报告会标出)")
+                    help="把 status=待确认 (VLM复核不一致) 的槽位也放进数据集 (仅供验证通过管线, 报告会标出)")
     a = ap.parse_args()
     os.makedirs(WORK, exist_ok=True)
     if a.init:
@@ -541,7 +541,7 @@ def _finish(rc: int) -> None:
     """🔻 交付退出码 —— **判据结论 ≠ 崩溃**。
 
     老倪 2026-10-14 实测: 调试器里跑本工具, 退出时弹「Exception has occurred: SystemExit 1」,
-    看着像代码报错; 其实 rc=1 是本工具按判据("不把没核实的框当标签")的**结论**, 上面已打印原因。
+    看着像代码报错; 实际 rc=1 是本工具按判据("不把没核实的框当标签")的**结论**, 上面已打印原因。
     用 `os._exit` 交付同一个退出码 (CI/脚本语义完全不变), 但不再抛 SystemExit ⇒ 调试器不再误报异常。
     ⚠️ `os._exit` 跳过缓冲刷新 ⇒ 先显式 flush。
     """

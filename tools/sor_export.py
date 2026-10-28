@@ -3,10 +3,10 @@
 """SOR 导出器 — 由「配置中心」的配置生成 Word 需求规格说明书 (2026-10-10)
 
 设计原则
-  · 数据全部取自**单一工程库** + 平台真源, 不在文档里写死数字 (要与配置一致, 不能第二份真相)
+  · 数据全部取自**单一工程库** + 平台唯一依据, 不在文档里预先固定数字 (要与配置一致, 不能第二份真相)
   · 配置里没有的项, 显式写「待确认」并汇总到附录 C —— 不编造
   · 性能参数 (第 5 章 + 附录 B) 与 功能配置 (第 4 章 + 附录 A) 是两张主表, 给供应商逐条报价/验收
-  · 附录 D 记录导出所用的真源路径与 sha256, 使文档可复现、可追责
+  · 附录 D 记录导出所用的唯一依据路径与 sha256, 使文档可复现、可追责
 
 用法:
   python3 tools/sor_export.py                 # 默认: System 1 / 摆盘任务
@@ -44,7 +44,7 @@ DOC_NO = "SOR-OM-ROBOT-" + time.strftime("%Y%m%d")
 def _dev_version(default: str = "5.50.5") -> str:
     """文档版本 = **开发工程版本** (老倪 2026-10-13: 「文档版本号为 5.50.5 与开发工程同版本」)。
 
-    不手写: 现读开发工程版本真源 tools/gui/update_checker.py::CURRENT_VERSION;
+    不手写: 现读开发工程版本唯一依据 tools/gui/update_checker.py::CURRENT_VERSION;
     读不到才退回字面量 —— 这样「同版本」这件事本身可复核 (改版本号只有一处)。
     """
     try:
@@ -96,7 +96,7 @@ VISION_REQ = [
     "识别料盘位置、料位位置、光模块姿态及缺料状态 (空/满/异常三态)。",
     "适应现场光照变化与堆叠遮挡; 极端情况回退预设轨迹与固定逻辑, 保证产线不中断。",
     "相机安装位置、光源类型及标定方式需在方案中明确。",
-    "视觉结果需与机器人坐标系完成标定 —— 盘面槽位几何为坐标类参数的唯一真源。",
+    "视觉结果需与机器人坐标系完成标定 —— 盘面槽位几何为坐标类参数的唯一依据。",
     "腕部相机工作距离 0.1–0.6m 内保证 ±1mm/±1°; 头部双目 @1m、胸部 @0.5m 为 ±5mm 级, 不得混用口径。",
 ]
 TRAY_REQ = [
@@ -412,7 +412,7 @@ def build(system="sys1", task_id="TASK-06-TRAY"):
     para(doc, "项目名称: %s" % PROJ, size=11)
     para(doc, "交付主体: 摆盘作业具身模型 (供应商研制) · 系统集成与收口 (我方)", size=11)
     para(doc, "适用对象: 供应商技术、质量、交付团队", size=11)
-    para(doc, "导出方式: 配置中心自动导出 (数据源 = 单一工程库 zmax_engineering.db + 平台真源)", size=11)
+    para(doc, "导出方式: 配置中心自动导出 (数据源 = 单一工程库 zmax_engineering.db + 平台唯一依据)", size=11)
     para(doc, "导出时间: %s" % time.strftime("%Y-%m-%d %H:%M:%S"), size=11)
     para(doc, "说明: 文中「待确认」项为配置中尚无真值的项, 已在附录 C 汇总。", size=10, italic=True)
 
@@ -482,10 +482,10 @@ def build(system="sys1", task_id="TASK-06-TRAY"):
     table(doc, ["指标", "目标值", "口径 / 判据", "来源条目", "处理"],
           [list(m) for m in METRICS],
           widths=[2.6, 4.0, 5.4, 2.3, 1.7])   # 指标列 2.6: 最长'二值柔性退出'估 2.01+边距
-    para(doc, "5.1 System 1 子系统指标 (配置真源)", bold=True)
+    para(doc, "5.1 System 1 子系统指标 (配置唯一依据)", bold=True)
     table(doc, ["指标", "值"], sorted(sys1.get("kpi", {}).items()), widths=[4.0, 12.0])
 
-    # 5.2~ 光模块精细操作性能指标体系 (真源 config/platform/zmax_perf_spec.json, 6 组)
+    # 5.2~ 光模块精细操作性能指标体系 (唯一依据 config/platform/zmax_perf_spec.json, 6 组)
     _ps = json.load(open(os.path.join(ROOT, "config/platform/zmax_perf_spec.json"), encoding="utf-8"))
     _n_ps = sum(len(g["metrics"]) for g in _ps["groups"])
     para(doc, "5.2 光模块精细操作性能指标体系 (6 组 · 机器人学口径 + 光模块工艺口径)", bold=True)
@@ -599,8 +599,8 @@ def build(system="sys1", task_id="TASK-06-TRAY"):
     table(doc, ["项", "值"], [
         ["导出工具", "tools/sor_export.py (配置中心 sys1 导出)"],
         ["数据源 (单一工程库)", os.path.relpath(DB, ROOT) + "  sha256=" + sha(DB)[:16] + "…"],
-        ["平台真源", "config/platform/zmax_platform.json"],
-        ["任务真源", "config/tasks/tasks.json (flows/scenes_5jobs.json → task_build.py)"],
+        ["平台唯一依据", "config/platform/zmax_platform.json"],
+        ["任务唯一依据", "config/tasks/tasks.json (flows/scenes_5jobs.json → task_build.py)"],
         ["子系统口径", "%s (%s)" % (sys1.get("name"), sys1.get("level"))],
         ["导出时间", time.strftime("%Y-%m-%d %H:%M:%S")],
     ], widths=[4.5, 11.5])
@@ -635,7 +635,7 @@ def build(system="sys1", task_id="TASK-06-TRAY"):
         _rows.append([(_m[3] or "-")[:16], _m[0][:30], "性能指标", "config/platform/zmax_perf_spec.json"])
     for _i, _s in enumerate((task or {}).get("steps") or [], 1):
         _rows.append(["%s#%d" % (task_id, _i), (_s.get("name") or "")[:30], "工艺步骤", "config/tasks/tasks.json"])
-    table(doc, ["配置 ID", "条目", "关联类别", "真源"], _rows, widths=[2.6, 5.8, 3.6, 4.0])
+    table(doc, ["配置 ID", "条目", "关联类别", "唯一依据"], _rows, widths=[2.6, 5.8, 3.6, 4.0])
 
     _ov = (task or {}).get("overrides") or {}
     para(doc, "E.4 本任务改写项 (任务级配置, 共 %d 项; 供应商须实现为可配置项而非硬编码)" % len(_ov), bold=True)
@@ -687,7 +687,7 @@ def build(system="sys1", task_id="TASK-06-TRAY"):
           center_cols={3, 4, 5, 6, 7})
     para(doc, "G.2 迁移不变量 (以下项在任何任务下都不变, 供应商据此做一次、各任务通用)", bold=True)
     table(doc, ["不变量", "值"], [
-        ["画布真源", "%s (节点 %s / 连线 %s)" % (_bp.get("canvas_file"), _bp.get("nodes"), _bp.get("links"))],
+        ["画布唯一依据", "%s (节点 %s / 连线 %s)" % (_bp.get("canvas_file"), _bp.get("nodes"), _bp.get("links"))],
         ["功能节点数", str(len(fns))],
         ["分层架构", "L5/L4/L3/L2 四层职责与接口契约 (附录 F) 不变"],
         ["供货边界", "SCOPE_IN / SCOPE_OUT (第 2.2 节) 不变"],
@@ -707,7 +707,7 @@ def build(system="sys1", task_id="TASK-06-TRAY"):
     # ───────── 附录 H/I/J: 性能配置与验收 (2026-10-13 老倪: 「要保证…成功率>99%、节拍<3.5s 的硬性要求 …
     #   主参数M要合理, 可被测量 … 要可操作, 可被验证」) ─────────
     # 数字来源 = docs/deliverables/摆盘性能对账_<VER>.json (由 tools/delivery/gen_tray_perf_report.py
-    # 从真源现取现算: 配置单 targets/overrides · 真跑产物 judges · 主参数M真源 · 扭矩判据报告)。
+    # 从唯一依据现取现算: 配置单 targets/overrides · 真跑产物 judges · 主参数M唯一依据 · 扭矩判据报告)。
     # ⚠️ 本文档**不手写性能数字**: 取不到就如实标缺, 不许拿概念值充数 (老倪铁律)。
     _pf = os.path.join(ROOT, "docs", "deliverables", "摆盘性能对账_%s.json" % _VER_STR)
     PERF = {}
@@ -767,27 +767,27 @@ def build(system="sys1", task_id="TASK-06-TRAY"):
     para(doc, "度量张量 g_ij(x) = M · G_ij(x), det G(x) = 1, M ∈ %s。M = 度量的**整体尺度**"
               "(物理类比 = 等效惯量尺度, a = F/M); G = 度量的**形状** (各向异性方向与状态相关性)。"
               "M 由流形结构导出 (非自由拟合), 现场以**单标量**标定。" % (_lv.get("range"),), size=10)
-    table(doc, ["项", "值", "真源 / 依据"], [
-        ["在役 M", str(_lv.get("M")), "config/calib/zmax_manifold.json (可写真源, 更新 %s)" % _lv.get("updated_at")],
+    table(doc, ["项", "值", "唯一依据 / 依据"], [
+        ["在役 M", str(_lv.get("M")), "config/calib/zmax_manifold.json (可写唯一依据, 更新 %s)" % _lv.get("updated_at")],
         ["在役 dim / mode", "%s / %s" % (_lv.get("dim"), _lv.get("mode")), "metric 段"],
         ["配置单映射算得 M", str(_mp.get("scale")), "tools/config_to_M.py 规则 R5 (能量标定)"],
         ["配置单映射 dim / mode", "%s / %s" % (_mp.get("dim"), _mp.get("mode")), "规则 R1 (工序自由度) / R2+R3 (公差与耦合)"],
         ["audit_sha", str(_mp.get("audit_sha"))[:32], "映射输入的可审计指纹 (现场复核用)"],
         ["判定", ("一致" if (_lv.get("M") == _mp.get("scale") and _lv.get("dim") == _mp.get("dim")) else
-                 "**不一致 ⇒ 配置单尚未落到在役主参数** (映射链已在, 真源未写)"),
+                 "**不一致 ⇒ 配置单尚未落到在役主参数** (映射链已在, 唯一依据未写)"),
          "判据: 在役 M 必须 == 配置单算出 M"],
     ], widths=[3.8, 6.0, 7.2])
     para(doc, "I.2 配置单 → M 的映射规则 (唯一实现: tools/config_to_M.py, 可审计)", bold=True)
     table(doc, ["规则", "目标分量", "映射", "来源依据"], [
-        ["R1", "dim (位姿自由度)", "工序含腕部姿态控制 ⇒ 6 轴; 否则 3 轴", "任务工序真源 config/tasks/tasks.json"],
-        ["R2", "mode (形状参数化)", "平移-姿态耦合 ⇒ full; 同类轴公差比 ≥1.25 ⇒ diag; 否则 isotropic", "性能指标真源 + 任务配置"],
-        ["R3", "diag / components (形状 G)", "各轴刚度 ∝ 1/公差_轴 (不许偏的轴更“贵”), 归一 det G = 1", "逐轴工艺公差真源"],
+        ["R1", "dim (位姿自由度)", "工序含腕部姿态控制 ⇒ 6 轴; 否则 3 轴", "任务工序唯一依据 config/tasks/tasks.json"],
+        ["R2", "mode (形状参数化)", "平移-姿态耦合 ⇒ full; 同类轴公差比 ≥1.25 ⇒ diag; 否则 isotropic", "性能指标唯一依据 + 任务配置"],
+        ["R3", "diag / components (形状 G)", "各轴刚度 ∝ 1/公差_轴 (不许偏的轴更“贵”), 归一 det G = 1", "逐轴工艺公差唯一依据"],
         ["R4", "gain (状态相关 G(x))", "动态交互场景才需现场辨识; 缺省 0 = 常度量 (零回归)", "MCD 设计 §6 可辨识性"],
-        ["R5", "scale = M", "M = 1 + (½·m_eff·v_peak² + m_eff·g·h) / E_ref, clamp [0, 8]", "能量标定真源 tools/master_param_m.py + 夹具/工件质量真源 + 工序速度"],
+        ["R5", "scale = M", "M = 1 + (½·m_eff·v_peak² + m_eff·g·h) / E_ref, clamp [0, 8]", "能量标定唯一依据 tools/master_param_m.py + 夹具/工件质量唯一依据 + 工序速度"],
     ], widths=[1.2, 3.4, 6.8, 5.6])
     para(doc, "I.3 测量方法 (M 可被测量, 现场照做, 两种互检)", bold=True)
     for _i, _s in enumerate([
-        "能量法: M = 1 + (½·m_eff·v_peak² + m_eff·g·h)/E_ref。输入: m_eff = 夹具/吸嘴 + 工件质量 (真源"
+        "能量法: M = 1 + (½·m_eff·v_peak² + m_eff·g·h)/E_ref。输入: m_eff = 夹具/吸嘴 + 工件质量 (唯一依据"
         " config/calib 或现场称重); v_peak = 轨迹实测峰值速度 (tcp_pose 50 Hz 差分); h = 升降行程 (结构参数);"
         " E_ref = 标定基准能量。",
         "动力学反解: M = F/a。施加已知力 F (力控/已知负载), 测等效加速度 a (位姿二阶差分), 与能量法结果互检。",
@@ -815,7 +815,7 @@ def build(system="sys1", task_id="TASK-06-TRAY"):
     para(doc, "J.3 不允许的验收口径 (红线)", bold=True)
     for _s in ["以单次/单 seed 的小样本结果宣称 ≥99% 成功率;",
                "以概念速度/理论节拍 (未实测) 代替实测 CT;",
-               "以「配置项存在」代替「配置项已落役生效」(如 M 映射算得出但未写入真源);",
+               "以「配置项存在」代替「配置项已落役生效」(如 M 映射算得出但未写入唯一依据);",
                "把真空建立超上限的现状 (425~538 ms vs 200 ms) 直接写成“达标”。"]:
         para(doc, "· %s" % _s, size=10)
     con.close()

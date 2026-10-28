@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""model_autoload.py — 重启自动加载 L2 YOLO / L3 SmolVLA / L4 INTACT 的**单一真源 + 真加载器**
+"""model_autoload.py — 重启自动加载 L2 YOLO / L3 SmolVLA / L4 INTACT 的**单一唯一依据 + 真加载器**
 
 老倪需求 (2026-09-28): 「下次重启，自动加载 L2 YOLO、L3 SmolVLA、L4 INTACT 等模型」
 
 设计 (与既有件一致, 不另造一套):
-  · 指针登记表 = `models/active_models.json` (唯一真源, 层级 → 在役指针/权重)
+  · 指针登记表 = `models/active_models.json` (唯一依据, 层级 → 在役指针/权重)
       - L2 = `models/yolo_peg_live.pt`        (在役软链指针; 换模型=换软链, 不覆盖文件)
       - L3 = `outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model`
              (与引擎 state_space_sim_real.py `SS_L3_CK` 默认值**同源**, 不写第二份)
@@ -45,11 +45,11 @@ INTACT_CACHE = os.environ.get("ZMAX_INTACT_CACHE", "/home/ubuntu/zmax/zmax_data/
 STREAM = os.environ.get("ZMAX_STREAM", "http://127.0.0.1:8791")
 
 
-# ─────────────────────────── 登记表 (单一真源) ───────────────────────────
+# ─────────────────────────── 登记表 (单一唯一依据) ───────────────────────────
 def default_registry() -> dict:
     return {
         "schema": "zmax-active-models/1",
-        "note": "各层在役模型指针 (重启自动加载的真源)。换模型 = 改这里的指针/软链, 不要覆盖权重文件。",
+        "note": "各层在役模型指针 (重启自动加载的唯一依据)。换模型 = 改这里的指针/软链, 不要覆盖权重文件。",
         "L2": {
             "kind": "yolo",
             "name": "L2 · YOLO 光模块检测 (真机域在役)",
@@ -348,7 +348,7 @@ def autoload(log=None, only=("L2", "L3", "L4"), deep=None, quiet=False) -> dict:
     ts = time.strftime("%Y%m%d_%H%M%S")
     rep = {"ts": time.strftime("%F %T"), "trigger": "startup_autoload",
            "registry": os.path.relpath(REG_PATH, ROOT), "deep": bool(deep), "layers": {}}
-    _say("🚀 模型重启自动加载 (真源 %s) — 逐层串行, 每层真加载并取证"
+    _say("🚀 模型重启自动加载 (唯一依据 %s) — 逐层串行, 每层真加载并取证"
          % os.path.relpath(REG_PATH, ROOT))
     for k in ("L2", "L3", "L4"):
         if k not in only:
@@ -417,7 +417,7 @@ def hook_status() -> dict:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="重启自动加载 L2/L3/L4 模型 (真源 + 真加载器)")
+    ap = argparse.ArgumentParser(description="重启自动加载 L2/L3/L4 模型 (唯一依据 + 真加载器)")
     ap.add_argument("--only", default="L2,L3,L4")
     ap.add_argument("--deep", action="store_true", help="L3 也真 from_pretrained (默认按 env ZMAX_AUTOLOAD_DEEP=1)")
     ap.add_argument("--light", action="store_true", help="L3 只验权重文件/头, 不真加载进显存")

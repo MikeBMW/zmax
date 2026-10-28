@@ -4,7 +4,7 @@
 编制: Z-MAX 工程组 · 日期: 2026-10-13 · 适用版本: 5.50.B（Z-MAX 优化配置版；对应开发版 5.50.2）
 工程: `/home/ubuntu/zmax` · 对外口径:「符合 5 个场景的具身方案技术协议」
 
-> 本索引汇总 5.50.B 交付文档包的全部文件、编号、适读对象与真源依据。所有数字取自工程真源并可复核；未实测项一律标注「待实测/待核」。
+> 本索引汇总 5.50.B 交付文档包的全部文件、编号、适读对象与唯一依据依据。所有数字取自工程唯一依据并可复核；未实测项一律标注「待实测/待核」。
 
 ---
 
@@ -30,7 +30,7 @@
 
 **2026-10-13 追加导出（配置中心现取 · 摆盘项目）**
 
-| # | 文档 | 文件 | 真源 | 备注 |
+| # | 文档 | 文件 | 唯一依据 | 备注 |
 |:--|:---|:---|:---|:---|
 | A | 全系统总配置清单（刷新） | `docs/deliverables/全系统配置清单_5.50.B.md` / `.json` | 在役系统扫描 + 单一工程库 | 新增「配置关联性」章（links 389 · param_links 1767 · 任务关联 7）；画布口径修正为被绑定方 89 节点/184 连线 |
 | B | 供应商外发 SOR · 摆盘 TASK-06-TRAY | `docs/deliverables/供应商SOR_摆盘_TASK-06-TRAY_5.50.B_20261013.md` / `.docx` / `.json` / `.manifest.json` | 单一工程库 + `config/tasks/tasks.json` + `config/platform/zmax_perf_spec.json` + 项目档案 PROJ-TH-TRAY | 章节 1–15 + 附录 A–G；新增 附录 E 配置表关联性（需求↔配置项追溯矩阵）· 附录 F 架构兼容性 · 附录 G 任务迁移。**md 为 Word 版原序渲染（同源同内容，自动同步）** |
@@ -41,9 +41,9 @@
 
 ---
 
-## 2. 每条文档的编号行与引用真源
+## 2. 每条文档的编号行与引用唯一依据
 
-| 文档 | 编号行 | 主要真源 |
+| 文档 | 编号行 | 主要唯一依据 |
 |:---|:---|:---|
 | 功能说明 | `ZMAX-FUNC-20261013 · 版本: v1.0` · 编制/日期/适用版本 | `config/ss_task_binding.json` · `config/calib/*.json` · `zmax_data/dataspace/busdb.json` · `tools/verify_*.py` |
 | 全系统配置清单 | `ZMAX-CFGL-20261013 · 版本: v1.0` · 编制/日期/适用版本 | `tools/delivery/gen_config_inventory.py` 扫描 + 各 config/键路径 |
@@ -84,9 +84,9 @@
 |:--|:---|:---|:---|:---|
 | 1 | 取放成功率 **≥99%** | **待现场实测** | SOR §5 · 功能说明 §6 · 立项 §6 | 现场连续作业逐件记录（`perf.success_rate.how`） |
 | 2 | 单颗节拍 **≤3.15s** | **待现场实测** | SOR §5 · 功能说明 §6 | `perf.cycle_s.how`（CT 起止：吸取离盘→下一位就位） |
-| 3 | 全部 58 条 `perf.*` | **待实测**（真源 `value` 空） | SOR §5 · 功能说明 §6 · 配置清单 §9 | `zmax_perf_spec.json` 逐条 `how` |
+| 3 | 全部 58 条 `perf.*` | **待实测**（唯一依据 `value` 空） | SOR §5 · 功能说明 §6 · 配置清单 §9 | `zmax_perf_spec.json` 逐条 `how` |
 | 4 | 目标值待定/待确认 10 项 | **待厂家/现场给定** | SOR §5 | `perf.contact_pressure`·`mate_life`·`coplanarity`·`conn_mate_force`·`opm_res`·`cleanliness`·`temp_hum`·`noise`·`mtbf`·`anomaly_recovery` |
-| 5 | 站点几何 `T_base_cam`/`plane_z`/`cell_geometry.points` | **未标定**（真源 null） | 全篇 | `config/calib/zmax_calib.json` + `_reason` 现场命令 |
+| 5 | 站点几何 `T_base_cam`/`plane_z`/`cell_geometry.points` | **未标定**（唯一依据 null） | 全篇 | `config/calib/zmax_calib.json` + `_reason` 现场命令 |
 | 6 | 「配置中心独立窗口」一致性 | **待核**（本批次代码，无独立判据） | 功能说明 §3.2/§6 | 画布工具栏点「🗂 配置中心」 |
 | 7 | 「元数据MOE门控路由」节点 | **待核**（判据待补） | 功能说明 §3.2 · 立项 §3.4 | `python3 tools/meta_moe_router.py report` |
 | 8 | 各层「模型是否真在回路」 | **待核** | 功能说明 §2 | `python3 tools/audit_full_chain.py` |
@@ -97,9 +97,9 @@
 
 ---
 
-## 5. 引用真源清单（跨文档汇总）
+## 5. 引用唯一依据清单（跨文档汇总）
 
-| 真源文件 | 用途 |
+| 唯一依据文件 | 用途 |
 |:---|:---|
 | `config/ss_task_binding.json` | 任务 ↔ 场景绑定（`active_task` · 89 节点/184 连线 · 覆盖度） |
 | `config/tasks/tasks.json` | 任务配置（7 任务 · 每任务 targets/工序） |
@@ -112,8 +112,8 @@
 | `config/calib/zmax_health.json` | 健康度 H 分级阈值 |
 | `data/database/zmax/zmax_space.proj` | 总工程文件 |
 | `data/database/zmax/zmax_engineering.db` | 单一工程库 |
-| `data/database/zmax/sources/canvas/state_space_obs.json` | 画布真源（89 节点 / 184 连线） |
-| `zmax_data/dataspace/busdb.json` | 数据总线 DBC 真源（节点/信号/报文） |
+| `data/database/zmax/sources/canvas/state_space_obs.json` | 画布唯一依据（89 节点 / 184 连线） |
+| `zmax_data/dataspace/busdb.json` | 数据总线 DBC 唯一依据（节点/信号/报文） |
 | `src/lerobot/manifold/{metric_field.py,health.py,engine_loop.py}` | 流形/健康度/引擎闭环实现 |
 | `src/lerobot/engineering/nodes/library.py` | 画布节点实现（配置导入/主参数 M） |
 | `src/lerobot/policies/left_right/state_space/{planner.py,safety.py}` | L5 规划/安全 |
@@ -141,4 +141,4 @@ gui-venv311/bin/python tools/delivery/gen_config_inventory.py --ver 5.50.B
 
 ---
 
-*本索引所引数字均来自工程真源与 2026-10-13 在役系统扫描；未实测/未核项一律标注，不作推测。*
+*本索引所引数字均来自工程唯一依据与 2026-10-13 在役系统扫描；未实测/未核项一律标注，不作推测。*

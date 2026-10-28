@@ -23,18 +23,18 @@ tail -c 300000 zmax_data/dataspace/trace.jsonl | grep -c ss_x
 
 ## 载荷 digest 的 400 字上限 (长数组型话题)
 
-`src/lerobot/dataspace/probe.py::_digest_for` 每话题给一行摘要; 通用兜底 `body[:180]`, 自定义分支常写 `[:400]`。
+`src/lerobot/dataspace/probe.py::_digest_for` 每话题给一行摘要; 通用保障 `body[:180]`, 自定义分支常写 `[:400]`。
 长数组话题 (动作块/姿态序列) 会正好被**切在 JSON 中间 ⇒ 非法 JSON ⇒ 下游连前面的数都抠不全** (页面靠正则逐对抠数才勉强有值)。
 对策: 这类话题放宽上限 (块用 760), 且**数值在前、名字串放最后**。
 
-## 数值字段别用 `or -1.0` 兜底
+## 数值字段别用 `or -1.0` 保障
 
 `x = float(d.get(k) or -1.0)` —— `0.0` 是**合法值** (块退化时转角=0), 会被 falsy 吃掉变成 "没值 -1.0", 界面上像坏了。
 改 `(-1.0 if d.get(k) is None else float(d[k]))`。
 
 ## 宿主源选择 (界面要极简)
 
-- 嵌套数组型真源直接当 `HOST_SOURCES` ⇒ 被展开成一大片生数 (`chunk.chunk.0.0/0.1/…` 48 行)。
+- 嵌套数组型唯一依据直接当 `HOST_SOURCES` ⇒ 被展开成一大片生数 (`chunk.chunk.0.0/0.1/…` 48 行)。
   改吃"平铺语义键": 让上游 (`ss_fw_trace_pub.py`) 把语义键搬进 `engine_trace.json` ⇒ 页面得到 `sseng.chunk.块步0_mps` 这种可读行。
 - 平铺快照 (如 `skill_latest.json`) 适合当宿主源: 一行一技能 (`skill.下降_mps` / `skill.下降_拍`)。
-- 文字行 (QLabel) 直接读真源文件, 每次刷新**比对文本再 setText** (老倪要看确切的名字/状态, 不是只有数字)。
+- 文字行 (QLabel) 直接读唯一依据文件, 每次刷新**比对文本再 setText** (老倪要看确切的名字/状态, 不是只有数字)。

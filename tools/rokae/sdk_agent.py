@@ -153,7 +153,7 @@ def _follow_dump():
 
 def follow_on(r, req):
     """🌊 流式跟随: 按 dir.json 的方向**连续追加** 2mm 小段 (moveAppend + 转角区),
-    走出平顺的慢速运动; 总行程被 band_mm 死死卡住 (老倪: 「不要走那么远, 先短距离」)。
+    走出平顺的慢速运动; 总行程被 band_mm 死死阻塞 (老倪: 「不要走那么远, 先短距离」)。
 
     硬化上限: 速度 ≤10mm/s · 带宽 ≤40mm · 单点 ≤5mm —— 改这里才能改, 不接受请求放大。
     安全: dir.json 里 armed=false / on=false / 时间戳旧 >1.5s ⇒ 立即 stop(); 报警/急停/碰撞 ⇒ 立即 stop()。
@@ -224,7 +224,7 @@ def follow_on(r, req):
                 tgt = [st["anchor"][i] + float(tgt_mm[i]) / 1000.0 for i in range(3)]
                 st["target"] = tgt
                 # 🎯 用**实测位姿**当起点 (不能用自己记的 commit: 控制器没执行时 commit 会跑飞,
-                #    表现成"以为到位了、其实臂没动" —— 2026-10-18 现场踩过)
+                #    表现成"以为到位了、实际臂没动" —— 2026-10-18 现场踩过)
                 try:
                     st["pose"] = list(C.read_pose(r)["tcp"])
                 except Exception:                                       # noqa: BLE001
@@ -232,7 +232,7 @@ def follow_on(r, req):
                 cur = st["pose"]
                 del_ = [tgt[i] - cur[i] for i in range(3)]
                 norm_mm = max(abs(x) * 1000.0 for x in del_)
-                # 🩺 卡住检测: 有目标但 1.2s 没动 ⇒ 补一次 moveStart (控制器队列没跑起来的那种)
+                # 🩺 阻塞检测: 有目标但 1.2s 没动 ⇒ 补一次 moveStart (控制器队列没启动的那种)
                 if st.get("last_norm") is not None and abs(norm_mm - st["last_norm"]) < 0.3:
                     st["still"] = int(st.get("still") or 0) + 1
                 else:
@@ -242,7 +242,7 @@ def follow_on(r, req):
                     ec3 = {}
                     r.moveStart(ec3)
                     st["restart_ec"] = dict(ec3)
-                    C.log("🩺 follow 卡住 ⇒ 补一次 moveStart ec=%s" % ec3)
+                    C.log("🩺 follow 阻塞 ⇒ 补一次 moveStart ec=%s" % ec3)
                     st["still"] = 0
                 if norm_mm < 0.6:                                  # 已到目标 ⇒ 不发新点, 等它变
                     st["why"] = "跟到位, 等仿真下一个点"

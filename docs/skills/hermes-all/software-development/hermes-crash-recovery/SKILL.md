@@ -184,13 +184,13 @@ writer 身份 = `pid:turn=…:<turn-nonce>:platform=`）; 抢不到就打印上�
 伴生现象: 若同一时刻在跑**上下文压缩**（`agent.log` 的 `context compression done: messages=A->B`）,
 回合会长得多、等待更明显 —— 那是正常重活, 不是卡死。
 
-### 「回得慢 / 只回一句兜底」= 会话撑爆后模型接口超时（不是机器卡死）
+### 「回得慢 / 只回一句保障」= 会话撑爆后模型接口超时（不是机器卡死）
 
 判据（两行日志就定案）:
 1. `~/.hermes/logs/errors.log` 里 `API call failed after 3 retries ... provider=<p> model=<m> msgs=<N> tokens=~<X>`
    —— `msgs` 到 400+ / tokens 到 20 万级时每轮都会 3/3 timeout, 重试无用（是上下文预算, 不是网络抖动）。
 2. `~/.hermes/logs/gateway.log` 的 `response ready: ... time=<秒> api_calls=<n> response=<字符>`
-   —— 实测 `time=3017.4s api_calls=34 / 259 chars` 这种就是"熬 50 分钟只吐一句兜底"。
+   —— 实测 `time=3017.4s api_calls=34 / 259 chars` 这种就是"熬 50 分钟只吐一句保障"。
 
 处置: 别继续往那个会话堆活 —— 压缩或换新会话（CLI 里 `/compact`）, 把结论搬过去继续;
 在网关里再发一轮只会再等一次超时。
@@ -276,7 +276,7 @@ grep -q GTK_IM_MODULE ~/.bashrc || echo -e '\nexport GTK_IM_MODULE=ibus\nexport 
 升级后顺手（官方建议，可重跑、不动会话内容）：`hermes sessions optimize-storage` —— 换新索引布局，
 实测可释放 state.db 约 60%（1.1GB → ~0.4GB）。**等 gateway 重启后再跑**，避免与运行中的 gateway 争 DB。
 
-### 镜像代理两个坑（升级卡住的头号原因）
+### 镜像代理两个坑（升级阻塞的头号原因）
 
 1. **镜像会死，先探活再断定「网络不通」**：仓库级 `url.<镜像>.insteadof` 会把 github.com 改写到镜像，
    镜像一旦 403/超时就报 `unable to access '<镜像>/...'`，看着像本地网络问题。30 秒探活（比 ls-remote 快）：
@@ -353,7 +353,7 @@ Read memory files via `read_file()`, save to Hermes memory:
 
 ### Step 4: Restore Credentials (Ask User)
 
-> **User preference (老倪/MikeNi): NEVER ask for credentials.** He stated it explicitly: "以后不要问我，密码是 x 你自己搞定" (don't ask me — handle it yourself). Restore creds from `~/.hermes/.env`, `~/.git-credentials`, and memory — project passwords (e.g. ECS) live in deploy.sh comments and memory. Only escalate if a credential genuinely cannot be located anywhere.
+> **User preference (老倪/MikeNi): NEVER ask for credentials.** He stated it explicitly: "以后不要问我，密码是 x 你自己完成" (don't ask me — handle it yourself). Restore creds from `~/.hermes/.env`, `~/.git-credentials`, and memory — project passwords (e.g. ECS) live in deploy.sh comments and memory. Only escalate if a credential genuinely cannot be located anywhere.
 
 Crash wipes `.env`. Request from user (only if not already in memory/env):
 

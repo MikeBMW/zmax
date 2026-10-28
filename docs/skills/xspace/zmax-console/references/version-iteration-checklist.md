@@ -77,21 +77,21 @@ python3 tools/bump_version.py --to 5.35.0 --summary-file /tmp/v53500_summary.md 
 * 提交前顺手查 `git check-ignore -v <路径>` 是否命中忽略规则, 且过了 `repo_guard`:
   数据快照目录里拷进来的 `.db`/归档件 (二进制 >300KB) 会被拦 ⇒ 只留 sha256 清单 + 重建命令进 README。
 
-## 5g. 🔴 发布前必查: 随包真源必须有「出厂骨架 + 读侧回落」(2026-10-15 实捉)
+## 5g. 🔴 发布前必查: 随包唯一依据必须有「出厂骨架 + 读侧回落」(2026-10-15 实捉)
 
-平台/实例解耦后 **实例真源 `config/**` 不进仓库** (data/ 被 gitignore) ⇒ 打出来的 Windows/macOS/Linux 包里
-**没有产品档真源** `config/platform/zmax_product.json` ⇒ 全新安装只能走"兜底=调试档全开", 三档 550A/550B/550C
+平台/实例解耦后 **实例唯一依据 `config/**` 不进仓库** (data/ 被 gitignore) ⇒ 打出来的 Windows/macOS/Linux 包里
+**没有产品档唯一依据** `config/platform/zmax_product.json` ⇒ 全新安装只能走"保障=调试档全开", 三档 550A/550B/550C
 **选不出来** ("产品同步发布"就成了空话)。画布早就用同一套规矩 (defaults/canvas 骨架), 产品档当时漏了。
 
 三处都要改, 少一处发出去就是残包:
   ① **出厂骨架** `defaults/config/platform/zmax_product.json` 进仓库 (三档 dev_profile 全带, active_product=550B);
-  ② **读侧回落** (实例真源 → 仓库 `defaults/` → 冻结包 `sys._MEIPASS/defaults/`): `tools/zmax_profile.py::product_json()`
+  ② **读侧回落** (实例唯一依据 → 仓库 `defaults/` → 冻结包 `sys._MEIPASS/defaults/`): `tools/zmax_profile.py::product_json()`
      与 `tools/gui/studio.py::_product_json_path()` —— 缓存键要含**实际路径**, 否则回落结果被上一次的 mtime 锁住;
   ③ **打包 job** 两个平台都 `--add-data "$GITHUB_WORKSPACE/defaults:defaults"` (Windows 用 `;`), 并在打包前
      `python -c "...assert set(('550A','550B','550C'))<=set(d['products'])"` 自检。
 
 判据 `tools/verify_product_release_factory.py` (20 条): 真回落验证 = **隔离目录只放 defaults、故意不建 config/**, 起子进程
-读三档 (550A=on/core/dds · 550B=debug/all/dds · 550C=off/none/shm); 并核现场仍读实例真源 (不被骨架顶掉)。
+读三档 (550A=on/core/dds · 550B=debug/all/dds · 550C=off/none/shm); 并核现场仍读实例唯一依据 (不被骨架顶掉)。
 
 ### 修完要重指 tag 时的顺序 (顺序错 = 旧产物覆盖新产物)
 
@@ -103,7 +103,7 @@ python3 tools/bump_version.py --to 5.35.0 --summary-file /tmp/v53500_summary.md 
 # ③ ls-remote 核 tag SHA == 本地 HEAD, 再等新 run
 ```
 
-## 5c. push zmax 的 ghproxy 变体 (skill 自带脚本写死了另一个仓库)
+## 5c. push zmax 的 ghproxy 变体 (skill 自带脚本预先固定了另一个仓库)
 `scripts/push_via_ghproxy.sh` 里 `REPO`/`URL` 是 lerobot-smolvla-lew ⇒ 推 zmax 要改
 `REPO=/home/ubuntu/zmax` + `URL=…/MikeBMW/zmax.git`, 且**推两样**: `HEAD:refs/heads/main` 与
 `refs/tags/<tag>`(tag 才触发 `.github/workflows/build-win-exe.yml` → Windows exe + macOS zip → Release)。
@@ -115,9 +115,9 @@ python3 tools/bump_version.py --to 5.35.0 --summary-file /tmp/v53500_summary.md 
 
 ## 5d. 🔴 解耦后的出包硬坑 (v5.35.0 首轮 CI 挂, 两轮才过 —— 实测)
 
-**坑一: 真源不在仓库里 ⇒ 打出来的包没有画布**。解耦后 `src/lerobot/engineering/flows/state_space_obs.json`
+**坑一: 唯一依据不在仓库里 ⇒ 打出来的包没有画布**。解耦后 `src/lerobot/engineering/flows/state_space_obs.json`
 是**软链→实例包**(data/ 被 gitignore); CI 上变成「文件不存在」⇒ `--add-data src/lerobot/engineering`
-里没画布, 资产核验 `画布真源: 0` → `::error::` exit 1 (run 2 分钟就挂, 比正常构建快很多 = 早期步骤挂)。
+里没画布, 资产核验 `画布唯一依据: 0` → `::error::` exit 1 (run 2 分钟就挂, 比正常构建快很多 = 早期步骤挂)。
 修法（双管齐下, 两处都要）:
   ① `paths.canvas_json()` 加**出厂骨架回落**: 包内 → 根 `flows/` → `defaults/canvas/<name>` → 包内路径;
      且 `defaults/canvas/state_space_obs.json` 必须真实存在于仓库 (空骨架, 0 节点) ⇒ 全新安装/无实例也能起。

@@ -17,7 +17,7 @@ SUMMARY = (
     "手/头=真机 tcp_pose, 目标/光模块点由 tools/ss_geom_calib.py 现场示教 (可在 4060 容器内跑, 不动 Orin); "
     "**几何未示教 → z7=null 拒算, 绝不编造**, 推理 input_map 逐条落盘 (现为 placeholder_v0, 示教后自动切 tcp_pose_v1)。"
     "④tools/ss_archive_remote_data.py 一致性快照+MANIFEST (条数/坏行/时间跨度/sha256/口径), 数据不进库。"
-    "⑤踩坑留档: /robot/force_torque 同名双类型 (WrenchStamped 建订阅报 invalid allocator → 只订 JointState)。"
+    "⑤遇到问题留档: /robot/force_torque 同名双类型 (WrenchStamped 建订阅报 invalid allocator → 只订 JointState)。"
 )
 
 # ── 1) studio.py: 三处版本号 + changelog 摘要 (先吃锚点再整体替换, 否则计数会被注释里的版本号污染)

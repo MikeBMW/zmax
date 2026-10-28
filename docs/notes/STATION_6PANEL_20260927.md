@@ -18,7 +18,7 @@
   · 总览页 **一格 MJPEG 都不用**: 6 格全走**串行单帧快照**(全局一次只发一条请求) ⇒ 常占 1 条;
   · 总览页挪到**自己的端口 8793**(`--station-port`), 主端口 `/station` 一律 **302** 过去 ⇒
     与其它本机页面(叠加页/画布)**各占各的 6 条名额**, 互不饿死;
-  · 按钮加 15s 兜底放开 + 请求超时(18s)后明写"请求没发出去/超时", 不再无声无息。
+  · 按钮加 15s 保障放开 + 请求超时(18s)后明写"请求没发出去/超时", 不再无声无息。
 
 **② 金手指 10082 "没有图像" = 工控机内存里当时没有照片**
 实测 `GET /picture?kind=origin` 在它闲着的时侯返
@@ -46,10 +46,10 @@ OPT 只在检测/拍照时留图, 我们只 GET 不拍照 ⇒ 取了个空。修
   · 自动取景分支: `tools/verify_aoi_autograb_branch.py`(假 404 → 断言补发 grab=1 且两路帧槽落地) **PASS**;
   · 桌面取证图: `/tmp/station_6panel_v3.png` (3840×2086, 5 格有内容 std 73~104, 第 6 格是那路无路由的面板)。
 
-**踩坑(已写进技能)**
+**遇到问题(已写进技能)**
   · `pkill -f cam_live_stream.py` 连**同一条命令行里出现的文件名**都会匹配到 ⇒ 把自己的命令 SIGTERM;
     改成**按端口找 pid**(`ss -tlnp | grep :8791`)再 kill。
-  · MJPEG 页面**永远不触发浏览器 load 事件**, 自动化浏览器 `navigate` 会超时(页面其实已加载)⇒
+  · MJPEG 页面**永远不触发浏览器 load 事件**, 自动化浏览器 `navigate` 会超时(页面实际已加载)⇒
     取证改成读 DOM。
 
 ---
@@ -219,7 +219,7 @@ v4 相对 v2 = **只加不减**: `POST /capture_detect` 回执逐字一致(`{"co
 - 做法: `tools/agent_hub.py` (4060:8794) + Windows 端 12 行 `agent_start_ascii.ps1` (纯 ASCII, 避开 PS5.1 中文乱码)。
   老倪在工控机贴一行 → 每 3s 来取命令、跑完把输出 POST 回来。命令队列**只有 4060 本机可写** (网络侧只能取不能投), 带 token, 关窗即断。
 - 通道实测: `CHANNEL OK -> {"ok": true, ...}` 后 15 条命令全部往返成功 (含真拍/检测/起停服务)。
-- **踩坑**: ①PS 5.1 的 `irm` 不带 `-UseBasicParsing` 会卡在代理/IE 初始化 (老倪第一遍就卡在这, 我这边看到 0 连接);
+- **遇到问题**: ①PS 5.1 的 `irm` 不带 `-UseBasicParsing` 会卡在代理/IE 初始化 (老倪第一遍就卡在这, 我这边看到 0 连接);
   ②`Write-Host` 的输出**不会**被 `2>&1|Out-String` 捕获 ⇒ 回传命令只用管道输出 (纯字符串/cmdlet)。
 
 **B. v5 部署到 10082/10083 (通道不变)**
@@ -264,7 +264,7 @@ v4 相对 v2 = **只加不减**: `POST /capture_detect` 回执逐字一致(`{"co
 ```
 - 验收项(缺一即失败): `/storage` 200 · `POST /capture_detect` 回执 `code=200` · `/last_result` 判决通道 · `grab=1` 出图字节>0 · **`grab=1` 前后 `files_total` 不增**(v5 不落盘口径)。
 - **实测(幂等重发 v5)**: 10:02 一轮 6 项 **两路全过** —— 10082 `ms≈1557` / 10083 `ms≈8.9s`, `grab=1` 389377B / 273297B, `files_total` 4→4 与 2→2 不增 ✓。
-- ⚠️ 踩坑: 第一版对 10083 只固定等 6s 就断言 `/last_result` 200 ⇒ **假失败并触发了回滚**(表面推理实测 ~8.9s)。
+- ⚠️ 遇到问题: 第一版对 10083 只固定等 6s 就断言 `/last_result` 200 ⇒ **假失败并触发了回滚**(表面推理实测 ~8.9s)。
   已改成轮询最多 45s, 且接受 `/last_result` 的**两种合法形态**(`200+verdict/count` ‖ `404+尚无检测结果`)。
 
 ## 1. 交付物
@@ -299,7 +299,7 @@ Orin 192.168.23.66
         └─ tools/ros_tcp_cache.py     → zmax_scene/tcp_pose.json + robot_status.json (20Hz 落盘)
         │  (宿主 /home/ubuntu/zmax/zmax_data/ss_live 挂的是容器 /out)
 宿主 4060
-  tools/depth_colorize.py          ← 彩色化口径**唯一真源**(容器/宿主共用, 不各写一份)
+  tools/depth_colorize.py          ← 彩色化口径**唯一依据**(容器/宿主共用, 不各写一份)
   tools/cam_live_stream.py (8791)
         ├─ _depth_worker       读 npy → 伪彩+真值带 → 帧槽 depth
         ├─ _aoi_worker(10082)  GET 取原图(不带 grab) → 去死白 → 帧槽 aoi_gold; 另读 /last_result

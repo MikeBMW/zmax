@@ -38,7 +38,7 @@ SECTIONS = [
         "平台方按约定参与收益分配。",
         "本协议采用组合签约方式: 《机器人硬件销售合同》(硬件交付) + 《数据平台使用与模型授权协议》(平台/数据/模型)。"
         "若只签一份主协议, 即本文件。",
-        "以下所有附件与正文同等效力; 附件中的数据分类、权属、导出范围以平台治理真源为唯一准据 (附件 C)。",
+        "以下所有附件与正文同等效力; 附件中的数据分类、权属、导出范围以平台治理唯一依据为唯一准据 (附件 C)。",
     ]),
     ("2. 平台使用范围", [
         "场景范围: %(scenarios)s。超出清单的场景须另行书面授权。",
@@ -114,8 +114,8 @@ SECTIONS = [
     ]),
     ("12. 附则", [
         "本协议自双方签字盖章之日起生效。",
-        "附件 A/B/C/D 与本协议正文同等效力; 与治理真源冲突时以真源为准。",
-        "任何影响数据权属、导出范围、模型转售、收益分配的变更, 须书面确认并同步更新治理真源后重新导出本协议。",
+        "附件 A/B/C/D 与本协议正文同等效力; 与治理唯一依据冲突时以唯一依据为准。",
+        "任何影响数据权属、导出范围、模型转售、收益分配的变更, 须书面确认并同步更新治理唯一依据后重新导出本协议。",
     ]),
 ]
 
@@ -134,10 +134,10 @@ def build():
     para(doc, "版本号: %s" % VERSION, size=11)
     para(doc, "签约方: %s  |  %s" % (g["parties"]["平台方"], g["parties"]["供应商"]), size=11)
     para(doc, "最终使用方: %s" % g["parties"]["生产用户"], size=11)
-    para(doc, "导出方式: 配置中心导出 (治理真源 %s, version %s)"
+    para(doc, "导出方式: 配置中心导出 (治理唯一依据 %s, version %s)"
          % (os.path.relpath(GOV, ROOT), g["version"]), size=11)
     para(doc, "导出时间: %s" % time.strftime("%Y-%m-%d %H:%M:%S"), size=11)
-    para(doc, "说明: 本协议的数据分类、权属与导出范围由平台治理真源驱动, 并由平台侧同步工具强制执行 (附件 C)。",
+    para(doc, "说明: 本协议的数据分类、权属与导出范围由平台治理唯一依据驱动, 并由平台侧同步工具强制执行 (附件 C)。",
          size=10, italic=True)
 
     fmt = {
@@ -161,7 +161,7 @@ def build():
 
     doc.add_page_break()
     h(doc, "附件 A. 数据分类与权属表", 1)
-    para(doc, "本表由治理真源生成; 平台同步工具按本表逐条强制 (可导出=false 的类别物理拒发)。", size=10)
+    para(doc, "本表由治理唯一依据生成; 平台同步工具按本表逐条强制 (可导出=false 的类别物理拒发)。", size=10)
     table(doc, ["类别", "名称", "权属", "可下发供应商", "脱敏要求", "保留期"],
           [[c["class_id"], c["name"], c["owner"], "是" if c["exportable_to_supplier"] else "否 (拒发)",
             "、".join(c["desensitize"]) or "无", c["retention"]] for c in g["data_classes"]],
@@ -203,7 +203,7 @@ def build():
         ["模型台账", "data/governance/model_ledger.json (模型/权属/训练数据指纹/权重哈希/授权范围/转售状态)"],
         ["数据清单", "data/governance/manifests/ (带权属标签与 sha256)"],
         ["留存期", cp["log_retention"]],
-        ["治理真源", "%s  version %s  sha256=%s…" % (os.path.relpath(GOV, ROOT), g["version"], sha(GOV)[:16])],
+        ["治理唯一依据", "%s  version %s  sha256=%s…" % (os.path.relpath(GOV, ROOT), g["version"], sha(GOV)[:16])],
         ["导出时间", time.strftime("%Y-%m-%d %H:%M:%S")],
     ], widths=[4.0, 12.0])
     return doc, g

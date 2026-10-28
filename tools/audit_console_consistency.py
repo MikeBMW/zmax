@@ -30,7 +30,7 @@ def truth():
         "参数": q("select count(*) from params"),
         "参数可写": q("select count(*) from params where writable=1"),
         "功能": q("select count(*) from functions"),
-        "画布节点": None,      # 下面从画布真源取 (89; DB 只存非背景带 74, 见 画布节点·DB非背景)
+        "画布节点": None,      # 下面从画布唯一依据取 (89; DB 只存非背景带 74, 见 画布节点·DB非背景)
         "画布连线": q("select count(*) from canvas_links"),
         "画布节点·DB非背景": q("select count(*) from canvas_nodes"),
         "参数链接": q("select count(*) from param_links"),

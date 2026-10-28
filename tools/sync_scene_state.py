@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""sync_scene_state.py — 把"当前场景理解"同步进全系统 (单一真源)
+"""sync_scene_state.py — 把"当前场景理解"同步进全系统 (单一唯一依据)
 
 老倪 2026-09-19: 「你把你看到的, 理解的场景, 同步到全系统, 并由 L4 功能负责安全, L3 功能负责流程,
 L2 功能负责操作」
 
 产出 (一次写三处, 全部读真实来源, 不造数):
-  ① data/scene/scene_state.json        单一真源: 帧(来源/帧龄) + 几何(YOLO 框/TCP/阶段) + VLM 判读 + 层责任
+  ① data/scene/scene_state.json        单一唯一依据: 帧(来源/帧龄) + 几何(YOLO 框/TCP/阶段) + VLM 判读 + 层责任
   ② data/memory/shared_memory.json meta.context   总装上下文 (任务规划器/异常推理器节点实时读它)
   ③ data/memory/macro_memory.json  scene          顶层宏观记忆的"当前场景"段 (追加式, 不碰其它键)
 

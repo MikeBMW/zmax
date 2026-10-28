@@ -181,7 +181,7 @@ def main():
     chk("⑧ /storage 仍 200", cli.get("/storage").status_code == 200)
 
     print("\n落盘清单: " + ", ".join(sorted(os.path.basename(p) for p in glob.glob(os.path.join(ROOT, "*.png")))))
-    print("\n" + ("✅ v9 全部通过: 只落判据图一张; 模型吃 960 同帧派生图(不落盘); 影子对照跑通" if ok else "❌ 有断言失败"))
+    print("\n" + ("✅ v9 全部通过: 只落判据图一张; 模型吃 960 同帧派生图(不落盘); 影子对照验证通过" if ok else "❌ 有断言失败"))
     return 0 if ok else 1
 
 

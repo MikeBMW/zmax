@@ -5,10 +5,10 @@
 
 ## 一、根因 (两条, 缺一不成现象)
 
-1. **入口参数写死**: `tools/gui/simulink_module.py` 右键菜单项 (a_input 分支)
+1. **入口参数预先固定**: `tools/gui/simulink_module.py` 右键菜单项 (a_input 分支)
    ```python
    from yolo_input_viewer import open_input_viewer
-   open_input_viewer(self, module=self.module, source="real")   # ← 写死真机
+   open_input_viewer(self, module=self.module, source="real")   # ← 预先固定真机
    ```
    画布状态 (`📦 数据源节点 params.src_state`) 压根没读。
 2. **单例窗口复用不比对状态**: `open_input_viewer` 里
@@ -67,8 +67,8 @@ if _w is not None and _w.isVisible():
 - 「**单例窗口 + 外部有状态开关**」组合必须做 (b') + (c): 只 `raise_()` 就是状态漂移
   (同族坑: 3D 视图复用窗口不换轨迹源、GL 窗口 close 后复用不重建 — 见 zmax-console 里
   「pyqtgraph GL 跨上下文 shader 失效」「3D 视图↔程序执行状态映射」两节)。
-- 「**从菜单/双击打开的功能**」的参数必须**打开时现读状态**, 一律不许在调用点写死
-  (同族: 画布档位 L2/L3/L4、数据源、图像尺寸/归一化口径)。写死 = 用户改了状态你却看不到, 老倪必然抓出。
+- 「**从菜单/双击打开的功能**」的参数必须**打开时现读状态**, 一律不许在调用点预先固定
+  (同族: 画布档位 L2/L3/L4、数据源、图像尺寸/归一化口径)。预先固定 = 用户改了状态你却看不到, 老倪必然抓出。
 
 ## 四、取证 (`tools/verify_input_source_follow.py`, 全绿)
 

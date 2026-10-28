@@ -8,7 +8,7 @@
   位姿要真值化: 相机装在臂上 ⇒ T_base2cam = T_base2tcp @ T_cam2tool(手眼), T_cam2world = inv。
   只拿 TCP 位姿当相机位姿, 建出来的图会整体偏 244mm 且方向错 (手眼模长就是那个 244.1mm)。
 
-  姿态来源: recorder 现在存 tcp_rpy (rad); 早期会话只有 xyz ⇒ 直接报错, 不静默兜底。
+  姿态来源: recorder 现在存 tcp_rpy (rad); 早期会话只有 xyz ⇒ 直接报错, 不静默保障。
 
 用法 (550C):
   python tools/map_build_3dgs_ds.py --session <session dir> --out /tmp/gs_ds --tar /tmp/gs_ds.tar.gz

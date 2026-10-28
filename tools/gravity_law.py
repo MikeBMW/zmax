@@ -96,7 +96,7 @@ def potential(M, m=None, r=None, G=None, c=None):
 def field(vecs, c=None):
     """把四层张量 → 引立场。
 
-    vecs: {"L2": [x,y,z] 或 None, ...}  (None = 该层没有真源)
+    vecs: {"L2": [x,y,z] 或 None, ...}  (None = 该层没有唯一依据)
     → {"comps":[{L, M, r, mag, vec, phi, unit}], "sum": [x,y,z], "phi_total": float,
        "main": "L2", "G":..., "m_earth":..., "r": {...}}
     """

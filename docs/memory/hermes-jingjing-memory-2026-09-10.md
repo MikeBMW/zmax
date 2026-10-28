@@ -28,9 +28,9 @@ smolvla: gui-venv311直跑lerobot_train; 数据每4步1帧→ts按(i//4)/25, 需
 §
 磁盘红线200G
 §
-3D网页/复刻: metaworld布局每进程漂移→几何读轨迹meta动态对齐禁写死; AOI=镜头伸出+模块在镜头下+绕长轴90°+光向下
+3D网页/复刻: metaworld布局每进程漂移→几何读轨迹meta动态对齐禁预先固定; AOI=镜头伸出+模块在镜头下+绕长轴90°+光向下
 §
-记忆分层+意图丛(09-10落地): 真源 src/lerobot/memory/{memory_store,memory_graph,mem_nodes,motor_hub,global_memory}.py→data/shared_memory.json(links/recall/技能词典Δz/意图直读); motor_hub=运动基元(4基元/14标杆/压缩9.21×)+条件动作商; global_memory=三层体检(L4物理/L3流程/L2肌肉)+二态意图语法; L4流形预测器v5旁路每帧真调不控动作; 设计docs/design/zmax_intent_bundle_3layer.md
+记忆分层+意图丛(09-10落地): 唯一依据 src/lerobot/memory/{memory_store,memory_graph,mem_nodes,motor_hub,global_memory}.py→data/shared_memory.json(links/recall/技能词典Δz/意图直读); motor_hub=运动基元(4基元/14标杆/压缩9.21×)+条件动作商; global_memory=三层体检(L4物理/L3流程/L2肌肉)+二态意图语法; L4流形预测器v5旁路每帧真调不控动作; 设计docs/design/zmax_intent_bundle_3layer.md
 §
 多会话抢GPU: 并行会话(飞书)曾kill本会话训练腾卡(先ps查进程); step/s快≠训练快(batch1×rds4=4样本/步 vs batch8×rds4=32, 吞吐同~7样本/s但总量差16倍); epoch=steps×batch÷总帧数(rds不增新数据); 训练必设save_freq=500(无ckpt一崩全丢09-10); 续训cp -rL且last须symlink; 报数先核口径
 §

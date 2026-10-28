@@ -5,16 +5,16 @@
 (2026-10-14 老倪原话; 当时模型引擎窗口 + 配置通道 + 大屏 dashboard.json 都是这种写法。)
 
 ## 铁律
-1. **真名真源(按优先级; 与配置通道用同一条规则 ⇒ 两处必然同值)**
+1. **真名唯一依据(按优先级; 与配置通道用同一条规则 ⇒ 两处必然同值)**
    - ① `http://127.0.0.1:8796/status/all` 里该层 `state=in_service` 的 `name` = 引擎**实际**加载的模型:
      - L2 `YOLO 检测 + 2D→3D 解算 (真机域在役)`
      - L3 `SmolVLA+LEW 长程规划 (在役运行时 ckpt)`
      - L4 `INTACT-JEPA 意图-动作 (在役稳定指针)`
      - L5 `DeepSeek 视觉规划 (L5 大模型主路)`
-   - ② 兜底 = `tools/model_inventory.py` 在役行名 —— 它自己读 `models/active_models.json` 的 `name`
-     (各层在役指针/软链的真源; 换模型=改这里), 别在代码里再写第二份。
+   - ② 保障 = `tools/model_inventory.py` 在役行名 —— 它自己读 `models/active_models.json` 的 `name`
+     (各层在役指针/软链的唯一依据; 换模型=改这里), 别在代码里再写第二份。
    - ③ 只有**产物自身元数据**能证明的身份才当真名: 如 L5 本地 merged 的 `config.json`
-     `architectures[0]=SmolVLMForConditionalGeneration` ⇒ 名 `SmolVLM`。读不到就写 `名称真源未登记`, **不许编模型名**。
+     `architectures[0]=SmolVLMForConditionalGeneration` ⇒ 名 `SmolVLM`。读不到就写 `名称唯一依据未登记`, **不许编模型名**。
 2. **名与权重路径必须指同一个东西**。引擎报的名与磁盘产物家族不同时(实测 L5: 引擎在役 = DeepSeek 云端 API 主路,
    磁盘另有本地 merged = SmolVLM), 列里保留引擎名, **tooltip 必须写明**磁盘上另有哪个模型 ——
    不许名字和路径各指一个东西还装作一致。
@@ -34,7 +34,7 @@
 `tools/verify_model_engine_unified.py`:
 - ⑮ 四层在役名含真实家族词(YOLO/SmolVLA/INTACT/DeepSeek|SmolVLM)
 - ⑮b 窗口「在役模型」与配置通道「在役模型」逐字同值(两处不许两套名)
-- ⑮c 旧硬写名字已从真源代码里消失(只查代码行, 忽略注释, 否则自己的注释会假报失败)
+- ⑮c 旧硬写名字已从唯一依据代码里消失(只查代码行, 忽略注释, 否则自己的注释会假报失败)
 - ⑮d 列里被收的完整真名 + 家族冲突说明都在 tooltip
 - 配套: `tools/verify_model_engine_same_render.py` 11/11(两处界面同一份渲染)
 

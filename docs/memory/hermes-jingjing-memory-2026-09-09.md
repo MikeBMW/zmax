@@ -18,7 +18,7 @@ GUI: gui-venv311在仓库内(Py3.11含torch可训练); 改码必重启; 取证QW
 §
 GitHub: 直连超时→ghproxy.net代理+sslVerify=false; Release下载走browser_download_url; 凭证~/.git-credentials
 §
-数据/监视界面偏好: 单色勿彩高亮; 数据实时滚动; 可视化自解释(标签+数值), 追问'这是啥'→物理含义+实测数字; 信号/图层名按源模块名链路排序, 开关连文字绑
+数据/监视界面偏好: 单色勿彩高亮; 数据实时滚动; 可视化自解释(标签+数值), 追问'这是什么'→物理含义+实测数字; 信号/图层名按源模块名链路排序, 开关连文字绑
 §
 Hermes安全层: mkfs等敏感命令字符串级硬拦(approvals全无效); 绕过=write_file落盘+bash执行(只扫命令文本); sudo免密
 §
@@ -30,9 +30,9 @@ smolvla/VLM(09-09): gui-venv311可直跑lerobot_train(已补diffusers等); 编�
 §
 磁盘红线200G(09-09老倪改disk_redline.sh, 原80G误报); 回归/chain测基线须SS_MUSCLE=0隔离(固化库致insert 343→412步假回归); 功能清单导出用ZMAX_ECS_PW
 §
-3D网页/复刻(09-08): metaworld布局每进程漂移→网页场景几何(孔口/盒/AOI)必须读轨迹meta动态对齐禁写死常量; AOI相机=镜头从支架伸出+光模块放镜头下留间隙+检测绕长轴转90°+光源向下
+3D网页/复刻(09-08): metaworld布局每进程漂移→网页场景几何(孔口/盒/AOI)必须读轨迹meta动态对齐禁预先固定常量; AOI相机=镜头从支架伸出+光模块放镜头下留间隙+检测绕长轴转90°+光源向下
 §
-画布记忆分层(09-09): 三层记忆带L2肌肉/L3长程/L4筹划+大模型层🧠共享中枢, 真源src/lerobot/memory/memory_store.py→data/shared_memory.json引擎自动写; L4流形预测器v1已训models/(16.4%/插拔38%)
+画布记忆分层(09-09): 三层记忆带L2肌肉/L3长程/L4筹划+大模型层🧠共享中枢, 唯一依据src/lerobot/memory/memory_store.py→data/shared_memory.json引擎自动写; L4流形预测器v1已训models/(16.4%/插拔38%)
 §
 训练纪律(09-09): 飞书xspace会话自主启长训练(smolvla_lew_v8 1万步); CLI启训前ps查lerobot_train防8GB双训
 §

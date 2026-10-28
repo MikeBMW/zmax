@@ -17,7 +17,7 @@ case "${1:-status}" in
     # 🔴 坑(2026-10-22 实测): 本服务是 ForkingMixIn(每请求 fork 一个子进程), 子进程会继承监听 fd。
     #   只 kill 一次 → 残留子进程仍占着 8797, 新进程 bind 失败(errno 98), 但脚本还 curl 到旧进程 200
     #   ⇒ 报"started"而实际跑的是**旧代码**('改了页面还是老内容' 就是这么来的)。
-    #   所以: 循环 kill + 兜底 SIGKILL, 直到连续两次扫描都为空。
+    #   所以: 循环 kill + 保障 SIGKILL, 直到连续两次扫描都为空。
     _empty=0
     for i in $(seq 1 40); do
       pids=$(_port_pids)

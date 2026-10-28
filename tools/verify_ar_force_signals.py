@@ -33,7 +33,7 @@ FAIL = []
 
 
 def sel_core():
-    """核心信号清单直接取自被测模块 (同一份真源, 不另抄一份)。"""
+    """核心信号清单直接取自被测模块 (同一份唯一依据, 不另抄一份)。"""
     try:
         import canoe_graphic as _CG
         return set(_CG.CORE_SIGNALS)
@@ -261,7 +261,7 @@ def main():
     w._scene_seen = "插拔场景"
     w._scene_poll_t = 0.0
     _orig_act = w._active_scene
-    w._active_scene = lambda: "AR场景"      # 模拟数据源真源变成 AR (不动作业画布)
+    w._active_scene = lambda: "AR场景"      # 模拟数据源唯一依据变成 AR (不动作业画布)
     w._tick()
     app.processEvents()
     chk(all(str(k).startswith("ar.") for k in w.selected) and len(w.selected) >= 3,

@@ -16,7 +16,7 @@ dataset_inventory.py — Z-MAX 只读「数据资产清单」工具
 * **只读**: 所有文件访问都是 os.scandir/stat/os.path.exists, 绝不 open(写)/绝不删除/绝不联网。
 * **实测目录**: 扫描根全部是脚本运行前用 ls 真实确认过的路径(见 ROOTS_* 常量),
   不靠猜; 路径不存在就记进 errors 并跳过, 不静默当有。
-* **数字来自真实扫盘**: 大小/文件数/最新 mtime 一律现场 stat 累计, 不写死。
+* **数字来自真实扫盘**: 大小/文件数/最新 mtime 一律现场 stat 累计, 不预先固定。
 * **性能**: 只扫定点目录(不递归全仓/不动 ~/zmax_data 根, 那里几十 GB+上万文件);
   递归限深、跳过 .git/node_modules/__pycache__/备份 zip 等无关重目录;
   大目录只 os.scandir 只统计文件名+size+mtime, 不读内容(实测单次 < 30s)。

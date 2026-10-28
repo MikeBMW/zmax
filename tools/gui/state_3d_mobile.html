@@ -131,7 +131,7 @@ const dirl2 = new THREE.DirectionalLight(0x88aaff, .6); dirl2.position.set(-0.5,
 function P(v){ return v ? new THREE.Vector3(v[0], v[2], v[1]) : null; }
 // 引擎几何常量 (与 state_space_sim.py 同源): 水平侧插, 插入轴 = 引擎 x
 // 🎯 2026-09-08: 仅作默认值 — 轨迹 meta (现场几何) 加载后 applyMeta() 动态对齐
-//   (metaworld 布局每进程漂移, 写死旧常量偏 3.8cm = 老倪目检"插口位置不对")
+//   (metaworld 布局每进程漂移, 预先固定旧常量偏 3.8cm = 老倪目检"插口位置不对")
 let GEOM = {
   goal:     [-0.2345, 0.4623, 0.1309],  // 孔底 (插入终点)
   hole_mouth: [-0.1685, 0.4623, 0.1309], // 孔口
@@ -554,7 +554,7 @@ function goto(i){
   }
 }
 
-// ── 本地重放 (兜底/空闲回放) ──
+// ── 本地重放 (保障/空闲回放) ──
 let autoJoin = true;   // 实况自动跟随开关 (用户拖拽/本地播放时暂停, 新运行/🎯恢复)
 function tick(){ if(playing && traj){ if(idx>=traj.n-1){ setPlaying(false);} else goto(idx+1);} }
 function setPlaying(on){

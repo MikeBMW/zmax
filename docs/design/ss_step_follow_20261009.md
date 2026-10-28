@@ -63,8 +63,8 @@ python3 tools/ss_node_impl_audit.py [--level L4] [--json] [--write] [--no-code]
 
 ## 5. 坑 (本轮踩到并记下)
 - 🔴 **`load_flow_file` 会给每个节点重新 `gen_id()`** ⇒ 文件里的 id (`sssensor`/`n_calib_mani`) 在 GUI 内存里查不到,
-  只有 `self.nodes` 里运行时生成的 id 有效。**任何"按 id 找画布节点"的代码都必须带名字兜底**
-  (GUI 里既有 `_ov_live_target_item` 就是这个写法)。`tools/ss_node_sync.py` 也补了"按语义标记兜底"。
+  只有 `self.nodes` 里运行时生成的 id 有效。**任何"按 id 找画布节点"的代码都必须带名字保障**
+  (GUI 里既有 `_ov_live_target_item` 就是这个写法)。`tools/ss_node_sync.py` 也补了"按语义标记保障"。
 - 一次单步走两条路进 `_follow_to`, 不做去重会连跳两次/刷两行终端。
 - `_follow_to` / `_highlight_node` 必须能接受 `node is None` (画布为空或名字没匹配时) —— 否则点一下就 Traceback。
 - 画布上**不铺任何状态文字** (老倪定稿): 位置/进度只进下面终端, 画布留给金框和状态色。

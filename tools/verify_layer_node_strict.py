@@ -52,7 +52,7 @@ META_SET = {nm for nm, lay in LAYER_OF.items() if lay not in ("L2", "L3", "L4", 
 chk("① 工程节点名一一对应 (单射)", len(NAMESET) == len(rows), f"{len(NAMESET)} 名 / {len(rows)} 节点")
 
 # ② 同一数据源
-chk("② attribution 节点表 == 工程库+命名真源", dict(A._load_nodes()) == {k: CLEAN[k] for k in CLEAN if CLEAN.get(k)},
+chk("② attribution 节点表 == 工程库+命名唯一依据", dict(A._load_nodes()) == {k: CLEAN[k] for k in CLEAN if CLEAN.get(k)},
     f"attribution {len(A._load_nodes())} 项")
 
 # ③~⑥ Trace 逐行

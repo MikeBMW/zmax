@@ -29,7 +29,7 @@ MODELS = os.path.join(ROOT, "zmax_data/models")
 REPORTS = os.path.join(ROOT, "reports")
 REQUIRED = ["目标可见", "目标是什么", "目标位置", "在夹爪上吗", "画面质量", "标定建议"]     # describe 任务
 REQUIRED_STATE = ["目标可见", "目标是什么", "在夹爪上吗", "画面质量", "下一步动作"]        # state 任务
-# ⚠️ 2026-10-08 踩坑: 训练集是 state 任务, 评测却按 describe 的字段表判 ⇒ 合法率恒 0 (自己把口径搞错)。
+# ⚠️ 2026-10-08 遇到问题: 训练集是 state 任务, 评测却按 describe 的字段表判 ⇒ 合法率恒 0 (自己把口径搞错)。
 #   判据字段必须**按每条样本的 task** 取, 与训练同源。
 FIELDS_BY_TASK = {"state": REQUIRED_STATE, "describe": REQUIRED}
 # 🔴 判据闸: val 帧少于这么多条 ⇒ 只报数不下结论 (12 帧差 2 条就"提升"是拿噪声当结论)

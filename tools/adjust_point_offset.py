@@ -128,7 +128,7 @@ def main(argv):
     json.dump(d, open(path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     back = json.load(open(path, encoding="utf-8"))["points"][name]["pos"]
     print("  已写盘并回读: pos=%s" % [round(v, 6) for v in back])
-    print("  真源: %s" % path)
+    print("  唯一依据: %s" % path)
     print("  备份: %s" % b)
     return 0
 

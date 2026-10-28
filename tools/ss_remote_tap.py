@@ -88,7 +88,7 @@ class RemoteTap(Node):
         #   纪律与 09-18 同名事故一致: **节拍一律用单调钟** → 改为由主循环按 monotonic 驱动
         #   (见 main(): n._tick_img() / n._count_pubs())。
         self._tick_dt = {"img": 0.0, "pub": 0.0}
-        # 📷 图像: RealSense 彩色 (现场期望的"实时 realsense 图像") 优先, FoundationPose 调试图兜底
+        # 📷 图像: RealSense 彩色 (现场期望的"实时 realsense 图像") 优先, FoundationPose 调试图保障
         self.cam_topics = ["/realsense/color/image_raw",
                            "/foundationpose/tray_reference/debug_image"]
         for _t in self.cam_topics:

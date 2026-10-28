@@ -1,11 +1,11 @@
-# 实时监控(信号分析)页: 一个信号的真源/topic/场景色 怎么定位
+# 实时监控(信号分析)页: 一个信号的唯一依据/topic/场景色 怎么定位
 
 老倪常问形式: 「X 场景, 实时监控页面, <节点> 的输出 topic 是哪个?」——他问的是**页里那一行叫什么** +
 **值从哪来**。答不了或答错方向 = 他不认。流程只有 5 步, 后两步最易漏。
 
 ## 5 步定位法
-1. **画布真源找节点**: `flows/state_space_obs.json` 里按 `name` 找节点 → 取 `id` 与
-   `params.source` / `source_symbol` (真源函数)。例: 「🧭 动作调制器」= id `sssched`,
+1. **画布唯一依据找节点**: `flows/state_space_obs.json` 里按 `name` 找节点 → 取 `id` 与
+   `params.source` / `source_symbol` (唯一依据函数)。例: 「🧭 动作调制器」= id `sssched`,
    `src/lerobot/policies/left_right/state_space/cognition.py :: def decide`。
    (画布节点只有 `out1` 这类端口名, 端口名**不是**页里的信号名, 别照抄。)
 2. **信号名 = 写入者代码里的键名**: `grep -rn '<键名>' --include='*.py' tools/ src/` 找写它的那一行。
@@ -16,7 +16,7 @@
    (AR/AOI, 单一写入器 `tools/ar_aoi_bus.py`) · `ds.` = 全局数据空间总线 · 真机 = Orin ROS2 采样器。
 4. **场景色**: `config/topics/scene_tags.json` 的 `signals`。`tools/sig_scene_tags.py --tag <名>` 是**只读**
    (只打印解析结果), 要新增/改写只能编辑 `overrides`(优先级最高) 再 `--build --from-runs`。
-5. **报答案必须带真源文件 + 帧龄**, 并说清是哪条路 (见下)。只报信号名不算答完。
+5. **报答案必须带唯一依据文件 + 帧龄**, 并说清是哪条路 (见下)。只报信号名不算答完。
 
 ## 两条路不可混 (报「实时值」前先确认来源)
 - **3D 回放路** `zmax_data/ss_live/trace_live.json`: 由 3D 面板/回放导出 (`ss_dreamview.publish_trace_live`,
@@ -31,7 +31,7 @@
 - 因此 `末端_x` · `动作调制_mps` · `安全边界_mps` 这类两场景**共用的量, 打标工具按设计留白**(未分类=白),
   **不是漏做**。要它绿: 写进 `overrides` 钉场景 (与已有 `ins_depth_m` 同一机制) 后 `--build --from-runs`,
   并在交付说明里如实讲「该量在另一场景同样出现」。
-- 场景真源只有三条: 插拔场景(绿 #2e8b57, SCN-01-FW) · 摆盘场景(蓝 #1f6feb, SCN-06-TRAY) ·
+- 场景唯一依据只有三条: 插拔场景(绿 #2e8b57, SCN-01-FW) · 摆盘场景(蓝 #1f6feb, SCN-06-TRAY) ·
   AR场景(紫 #8957e5, SCN-07-AOI); `config/topics/` 是**符号链接**(不在代码库内), 改了不出现在 `git status`。
 
 ## 已核实的一条样例 (口径要对齐)

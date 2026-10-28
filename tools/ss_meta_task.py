@@ -7,7 +7,7 @@
 
     任务(TASK-xx) ──enabled_nodes──> 画布节点(node_id) ──name──> 功能(module_ref) ──fn_id──> 元任务
 
-⇒ 内容只能由真源现算 (config_meta.json 74 功能 + ss_task_binding.json 任务×节点 + 画布节点/连线),
+⇒ 内容只能由唯一依据现算 (config_meta.json 74 功能 + ss_task_binding.json 任务×节点 + 画布节点/连线),
    **不能从意图直读** (🔮 意图直读/ss_intent_direct 是 Δz→技能 kNN, 输出的是**技能ID**, 没有功能登记/
    参数/验证/层)。意图/任务只决定**选哪一批**(哪个任务 → 哪些元任务)。
 
@@ -17,7 +17,7 @@
   · 复用 tools/export_meta_doc.py 的 build_meta_tasks() (文档与运行时**同一条映射链**, 不重写)
 
 CLI:
-    --task TASK-07-AOI   指定任务 (默认取真源 ss_task_binding.json 的 active_task)
+    --task TASK-07-AOI   指定任务 (默认取唯一依据 ss_task_binding.json 的 active_task)
     --json               打印 JSON (给守护/订阅器/脚本)
     --write              落盘 zmax_data/ss_live/meta_tasks.json
     --selftest           判据: 74/74 映射命中 + 各任务元任务数 == 该任务 enabled_nodes 数
@@ -59,12 +59,12 @@ def _read_binding() -> dict:
 
 
 def active_task() -> str:
-    """活跃任务真源: config/ss_task_binding.json → active_task (读不到就明说, 不猜)。"""
+    """活跃任务唯一依据: config/ss_task_binding.json → active_task (读不到就明说, 不猜)。"""
     return str(_read_binding().get("active_task") or "")
 
 
 def build(task_id: str | None = None, write: bool = False) -> dict:
-    """任务 → 元任务清单 (真源现算)。返回 dict; write=True 时同时落盘。"""
+    """任务 → 元任务清单 (唯一依据现算)。返回 dict; write=True 时同时落盘。"""
     import export_meta_doc as EM                                       # noqa: PLC0415  (同一条映射链)
 
     sb = _read_binding()
@@ -77,10 +77,10 @@ def build(task_id: str | None = None, write: bool = False) -> dict:
     MT, ctx = EM.build_meta_tasks()
     if not tid:
         items = MT
-        note = "未指定任务且真源没有 active_task ⇒ 给全量 %d 个 (如实标)" % len(MT)
+        note = "未指定任务且唯一依据没有 active_task ⇒ 给全量 %d 个 (如实标)" % len(MT)
     elif not tmeta:
         items = []
-        note = "任务 %s 不在真源 ss_task_binding.json 里 ⇒ 0 个 (不猜)" % tid
+        note = "任务 %s 不在唯一依据 ss_task_binding.json 里 ⇒ 0 个 (不猜)" % tid
     else:
         items = [m for m in MT if tid in (m.get("tasks") or [])]
         note = "按任务启用节点现算"
@@ -155,8 +155,8 @@ def selftest() -> int:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="任务 → 元任务 运行时派生器 (真源现算)")
-    ap.add_argument("--task", default=None, help="任务ID (默认取真源 active_task)")
+    ap = argparse.ArgumentParser(description="任务 → 元任务 运行时派生器 (唯一依据现算)")
+    ap.add_argument("--task", default=None, help="任务ID (默认取唯一依据 active_task)")
     ap.add_argument("--json", action="store_true", help="打印 JSON")
     ap.add_argument("--write", action="store_true", help="落盘 zmax_data/ss_live/meta_tasks.json")
     ap.add_argument("--selftest", action="store_true", help="判据 (74/74 + 各任务计数)")
@@ -167,12 +167,12 @@ def main() -> int:
     if a.json:
         print(json.dumps(d, ensure_ascii=False))
         return 0
-    print("🧾 元任务派生 (任务→功能→参数/依赖/验证/层) · 真源现算")
+    print("🧾 元任务派生 (任务→功能→参数/依赖/验证/层) · 唯一依据现算")
     print("   任务: %s %s · 场景 %s · 站点 %s"
           % (d["task_id"] or "—", d["task_name"] or "—", d["scene_ref"] or "—", d["site"] or "—"))
     print("   元任务 %d 个 (全量 %d · 任务启用节点 %s) · 层分布 %s · 优先级 %s"
           % (d["n"], d["n_all"], d["enabled_nodes"], d["by_layer"], d["by_prio"]))
-    print("   真源: config_meta.json %s · ss_task_binding.json %s · 画布 %s"
+    print("   唯一依据: config_meta.json %s · ss_task_binding.json %s · 画布 %s"
           % (d["sources"]["config_meta.json"], d["sources"]["ss_task_binding.json"],
              d["sources"]["state_space_obs.json"]))
     for m in d["items"][:12]:

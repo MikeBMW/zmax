@@ -30,7 +30,7 @@ python3 tools/register_surface_pt2_skill.py
  "point":"侧面点2","point_locked":true,"group":"AOI检测","guard":{"dz_down_limit_mm":20}}
 ```
 - `quat="taught"` 关键: 不回姿态的话会沿用当前姿态 ⇒ 视角不对(点位的意义就是那个视角)。
-- `point_locked`: 点位写死在定义里, 页面/接口只能送技能 id ⇒ 改不了点位。
+- `point_locked`: 点位硬编码在定义里, 页面/接口只能送技能 id ⇒ 改不了点位。
 
 ## 3-4. 白名单 + 页面
 

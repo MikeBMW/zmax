@@ -8,7 +8,7 @@
 
 真值来源 (**只读本机落盘, 零下行, 不碰 Orin**):
   $SS_OUT/state_YYYYMMDD.jsonl  原始感知流最后一行 (tcp/tcp_quat/jpos/jvel/ft) ← 首选
-  $SS_OUT/status.json           采集器实时快照 (tcp/发布者计数/几何状态)         ← 兜底
+  $SS_OUT/status.json           采集器实时快照 (tcp/发布者计数/几何状态)         ← 保障
 两者都是 4060 侧 Docker 只读订阅 Orin `/robot/tcp_pose`(≈50Hz 真值) 写出来的。
 
 metaworld 39D 段位口径 (权威 = src/lerobot/policies/yolo_3d/yolo_state_aligner.py:317-328):
@@ -77,7 +77,7 @@ def read_latest_state(out=None) -> dict:
 
 
 def read_status(out=None) -> dict:
-    """读采集器实时快照 status.json (兜底来源)"""
+    """读采集器实时快照 status.json (保障来源)"""
     p = os.path.join(_out(out), "status.json")
     try:
         with open(p, encoding="utf-8") as f:
@@ -92,11 +92,11 @@ def load_geom(path=None) -> tuple:
     """现场示教几何 (与采集器同一文件/同一口径) → ({'peg_head':[x,y,z], 'goal':[x,y,z]} | None, 说明)
 
     查找顺序: 显式 path / $SS_GEOM_PATH → 采集器输出 real_cell_geometry.json
-              → **全系统标定注册表** config/calib/zmax_calib.json 的 cell_geometry.points (单一真源)。
+              → **全系统标定注册表** config/calib/zmax_calib.json 的 cell_geometry.points (单一唯一依据)。
     """
     cands = [os.path.expanduser(path or os.environ.get("SS_GEOM_PATH", GEOM_DEFAULT))]
     last = "无示教几何 — 相关项拒填, 不编造"
-    try:                                                  # 单一真源兜底 (2026-09-22 统一参数接口)
+    try:                                                  # 单一唯一依据保障 (2026-09-22 统一参数接口)
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import zmax_params as _zp                          # noqa: PLC0415
         reg = _zp.calib()
@@ -153,7 +153,7 @@ def peg_tool_offset():
             return [float(t) for t in v], f"几何文件字段 @ {p}"
     except Exception:                                # noqa: BLE001
         pass
-    try:                                             # 单一真源兜底 (2026-09-22)
+    try:                                             # 单一唯一依据保障 (2026-09-22)
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import zmax_params as _zp                     # noqa: PLC0415
         pts = (_zp.calib().get("cell_geometry") or {}).get("points") or {}

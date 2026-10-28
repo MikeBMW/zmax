@@ -23,7 +23,7 @@ SECRETS_FILE = os.environ.get("ZMAX_SECRETS_FILE", "/home/ubuntu/zmax/zmax_data/
 def _resolve_token():
     """推送 token 真值来源: 环境变量 ZMAX_SS3D_TOKEN → 本机 secrets 文件 (600, 永不入库)。
 
-    2026-10-09 收口: 以前这里把明文 token 写死成 `os.environ.get("ZMAX_PUSH_TOKEN", <明文>)` 的默认值 ——
+    2026-10-09 收口: 以前这里把明文 token 预先固定成 `os.environ.get("ZMAX_PUSH_TOKEN", <明文>)` 的默认值 ——
     公开仓库等于把通道密钥贴出去。现在 **绝不允许回落到明文默认值**:
       · systemd 单元 `EnvironmentFile=zmax_data/secrets/zmax.env` ⇒ 正常态从环境变量取到。
       · 手动/无 env 起时退回读 secrets 文件这一条 (同一真值)。

@@ -7,7 +7,7 @@
 1. 3D 数据源: simulink_log.txt "🧭 3D 视图数据源: 程序执行轨迹 (sim.run() N 步)" =
    本次运行真实轨迹 (失败是真实的, 3D 忠实显示); "EPISODE 回放(预录)" = 播放 npz 存档。
 2. 运行日志尾 "⚠️ 未完成 · 残差峰值 0.5002 · 接触概率峰值 0.98" → 真实失败。
-3. **入口参数**: simulink_module.py `_start_real_sim` **写死 RealStateSpaceSim(seed=100,
+3. **入口参数**: simulink_module.py `_start_real_sim` **预先固定 RealStateSpaceSim(seed=100,
    vision=True, vision_every=1)** → GUI 真实化每次同一失败布局。命令行同 seed 复现确认
    (`gui-venv311/bin/python tools/gui/state_space_sim_real.py 8 --seed 100`)。
 4. 网页视频陈旧 ≠ 代码失败: curl -sI 看 content-length/Last-Modified; 曾停旧失败版而本地
@@ -34,4 +34,4 @@
 - 成功轮与失败轮锁存瞬间 gripper 轨迹几乎一致 (0.70→0.52), 差异在夹持之后: seed100
   抬起/转移中 peg 滑出夹爪 (gripper 终值 1.0 = 掉件) → 回退重抓 → 500 步不够。
 - 修复后 R0 10 轮 (seed100-109) = 5/10, 失败全为此类。抓取/夹持质量是抓取层面问题,
-  插入保护覆盖不了。GUI 演示立即可解 = 不写死 seed100 (轮换/随机)。
+  插入保护覆盖不了。GUI 演示立即可解 = 不预先固定 seed100 (轮换/随机)。

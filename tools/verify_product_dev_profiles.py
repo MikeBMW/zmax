@@ -9,7 +9,7 @@
    只需要远程旁路功能，能够远程运行和真机部署」
 
 判据分三层 (照 state-space-canvas-engineering 的验收层级):
-  ① 真源: config/platform/zmax_product.json 里 A/B/C 的 dev_profile 逐条对上老倪的原话;
+  ① 唯一依据: config/platform/zmax_product.json 里 A/B/C 的 dev_profile 逐条对上老倪的原话;
   ② 读取口: tools/zmax_profile.py 在 A/B/C 三档下给出的开关值正确 (含环境变量覆盖);
   ③ 已接线: 信号分析页 / 3D 场景 / VSCode 联调 / DDS 话题发布 四处**真的**调了 zmax_profile
      (配置写了但没人读 = 假接线, 这类"看着配好了实际没生效"是本工程踩过的坑)。
@@ -35,7 +35,7 @@ def ck(cond, msg):
 
 def main() -> int:
     print("=" * 96)
-    print("① 真源: config/platform/zmax_product.json 的 dev_profile 对上老倪三产品分工原话")
+    print("① 唯一依据: config/platform/zmax_product.json 的 dev_profile 对上老倪三产品分工原话")
     P = os.path.join(ROOT, "config", "platform", "zmax_product.json")
     d = json.load(open(P, encoding="utf-8"))
     prods = d.get("products", {})
@@ -51,7 +51,7 @@ def main() -> int:
     for k, want in spec.items():
         p = (prods.get(k) or {}).get("dev_profile")
         if not p:
-            ck(False, "%s 缺 dev_profile (真源没写)" % k)
+            ck(False, "%s 缺 dev_profile (依据未写明)" % k)
             continue
         bad = []
         for kk, vv in want.items():
@@ -70,7 +70,7 @@ def main() -> int:
             if not str(p.get("algorithm_gate", "")).count("硬关") and "off" == p.get("new_algorithms"):
                 pass
         ck(not bad, "%s %s | %s" % (k, p.get("role"), "；".join(bad) if bad else "逐条对上"))
-    ck(bool(d.get("dev_profile_schema")), "真源带 dev_profile_schema=%s" % d.get("dev_profile_schema"))
+    ck(bool(d.get("dev_profile_schema")), "唯一依据带 dev_profile_schema=%s" % d.get("dev_profile_schema"))
 
     print("\n② 读取口: tools/zmax_profile.py 在三档下给出的开关")
     import zmax_profile as zp
@@ -103,7 +103,7 @@ def main() -> int:
         src = open(f, encoding="utf-8").read()
         ck(bool(re.search(pat, src, re.S)), "%s ← %s" % (why, os.path.relpath(f, ROOT)))
 
-    print("\n④ 运行期实证: 真进程里按档位取值 (环境变量 ZMAX_PRODUCT 覆盖, 不碰真源)")
+    print("\n④ 运行期实证: 真进程里按档位取值 (环境变量 ZMAX_PRODUCT 覆盖, 不碰唯一依据)")
     for prod, topic, want in (("550B", "ss_stage", "True"), ("550C", "ss_stage", "False"),
                               ("550A", "ss_stage", "True")):
         code = ("import sys; sys.path.insert(0, %r); sys.path.insert(0, %r); "
@@ -117,7 +117,7 @@ def main() -> int:
     hw_want = {"550A": "4060", "550B": "4060", "550C": "intel"}
     for k, want in hw_want.items():
         hw = (prods.get(k) or {}).get("hardware") or {}
-        ck(str(hw.get("key")) == want, "%s 真源 hardware=%r (要 %s)" % (k, hw.get("key"), want))
+        ck(str(hw.get("key")) == want, "%s 唯一依据 hardware=%r (要 %s)" % (k, hw.get("key"), want))
     for k in hw_want:
         h = zp.hardware(k)
         ck(str(h.get("key")) == hw_want[k] and bool(h.get("label")),
@@ -139,7 +139,7 @@ def main() -> int:
     ck(got2.startswith("True"), "550C 在本机 4060 上不算缺口 (算力在远端 intel, 可达性看 compute_mode): %s" % got2)
 
     print("\n" + "=" * 96)
-    print("结论: %s" % ("✅ 全过 — 三产品分工已写进真源、有单一读取口、四处已接线、子进程实测按档取值"
+    print("结论: %s" % ("✅ 全过 — 三产品分工已写进唯一依据、有单一读取口、四处已接线、子进程实测按档取值"
                         if OK[0] else "❌ 未通过"))
     return 0 if OK[0] else 1
 

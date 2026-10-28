@@ -11,9 +11,9 @@
   ② 右键定位: 节点 params.source == src/lerobot/engineering/config_import.py
      + params.source_symbol 能在该文件里解析出行号 (GUI 同一规则: source 优先 + 符号动态定位)
      ⇒ 期望命令 `code -g <root>/src/lerobot/engineering/config_import.py:<行>`, 且**不含** node_logic.py
-  ③ 真运行: 真跑节点逻辑 → 配置导入 8 真源 + 工程库 OK
+  ③ 真运行: 真跑节点逻辑 → 配置导入 8 唯一依据 + 工程库 OK
   ④ 真写入: 跑完回读画布, 节点 params.cfg_loaded_at / cfg_files / cfg_snapshot 已更新
-  ⑤ 真源在位: 8 项配置文件 + 工程库 + 工单 全部存在 (缺什么就 FAIL 什么)
+  ⑤ 唯一依据在位: 8 项配置文件 + 工程库 + 工单 全部存在 (缺什么就 FAIL 什么)
 用法: QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/verify_node_cfg_import.py
 """
 import importlib
@@ -60,7 +60,7 @@ def sym_line(path, sym):
     return None
 
 
-print("═══ 判据: 主参数 M 节点 ← 配置中心配置数据 (真源导入) ═══")
+print("═══ 判据: 主参数 M 节点 ← 配置中心配置数据 (唯一依据导入) ═══")
 print("① 注册表匹配")
 from lerobot.engineering import registry                                              # noqa: E402
 key = registry.match_node(NODE_NAME)
@@ -85,13 +85,13 @@ if src and ln:
     ck("定位命令不含 GUI/node_logic.py", "node_logic.py" not in cmd and "tools/gui" not in cmd, cmd)
     ck("定位命令落到 config_import.py 的导入函数行", ("config_import.py:%d" % ln) in cmd, cmd)
 
-print("③ 真源在位 (节点运行时要加载的文件)")
+print("③ 唯一依据在位 (节点运行时要加载的文件)")
 ci = importlib.import_module("lerobot.engineering.config_import")
 res = ci.import_config_files(ROOT, verbose=False)
-ck("8 项配置真源全部在位", res["summary"]["files_ok"] == res["summary"]["files_total"],
+ck("8 项配置唯一依据全部在位", res["summary"]["files_ok"] == res["summary"]["files_total"],
    "%s/%s%s" % (res["summary"]["files_ok"], res["summary"]["files_total"],
                 (" 缺: " + ",".join(res["missing"])) if res["missing"] else ""))
-ck("工程库 (单一真源) 可读且登记了工程", res["summary"]["db_ok"] and bool(res["summary"]["project"]),
+ck("工程库 (单一唯一依据) 可读且登记了工程", res["summary"]["db_ok"] and bool(res["summary"]["project"]),
    "%s → %s" % (res["summary"]["project"], res["summary"]["project_path"]))
 ck("工单 BS_*.json 在位", res["summary"]["orders"] >= 5, "%d 个" % res["summary"]["orders"])
 

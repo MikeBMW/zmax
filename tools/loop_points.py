@@ -171,7 +171,7 @@ def main():
                 break
             p0 = pose()
             if p0 is None:
-                log("⛔ 位姿真源不新鲜(>2s) ⇒ 停")
+                log("⛔ 位姿唯一依据不新鲜(>2s) ⇒ 停")
                 break
             ang = quat_ang_deg([p0.get(k) for k in ("qx", "qy", "qz", "qw")], pts[tgt_name].get("quat") or [0, 0, 0, 0])
             d0 = dist_mm(p0, tgt)

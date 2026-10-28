@@ -196,7 +196,7 @@ class H(BaseHTTPRequestHandler):
             j = _load((q.get("id") or [""])[0])
             return self._json(j) if j else self._json({"error": "无此任务"}, 404)
         # 机械臂 TCP 真值 —— Intel 采集守护进程要配位姿, 但 Intel 上没有 ROS/没有 ROKAE SDK,
-        # 所以由 4060 读真源文件暴露成 HTTP (只读, 不碰下发链)
+        # 所以由 4060 读唯一依据文件暴露成 HTTP (只读, 不碰下发链)
         if p == "/pose":
             fp = os.path.expanduser("~/zmax/zmax_data/rokae_sdk/tcp_out/latest.json")
             try:
@@ -204,7 +204,7 @@ class H(BaseHTTPRequestHandler):
                     d = json.load(f)
                 # 🔴 不能用 d["ts"] 算 age: NTP 回拨 8h 导致位姿时间戳是"未来",
                 #    age 变负数, stale 永远为假 ⇒ 用到陈旧位姿还以为新鲜。
-                #    真源新鲜度只看文件 mtime。
+                #    唯一依据新鲜度只看文件 mtime。
                 age = time.time() - os.path.getmtime(fp)
                 d["age_s"] = round(age, 3)
                 d["stale"] = age > 3.0

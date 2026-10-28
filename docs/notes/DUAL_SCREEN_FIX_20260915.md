@@ -9,7 +9,7 @@
 ## 一、根因 (两条, 缺一不可)
 
 ### 1. dGPU 的 KMS 被关掉了 → 外接屏的内核接口根本不存在
-`/etc/modprobe.d/nvidia-graphics-drivers-kms.conf` 里 2026-08-25 写死 `options nvidia_drm modeset=0`
+`/etc/modprobe.d/nvidia-graphics-drivers-kms.conf` 里 2026-08-25 预先固定 `options nvidia_drm modeset=0`
 (当时的注释: 规避 nvidia_drm gem 报错导致 mutter 合成失败/显示器狂闪, "显示纯走 Intel i915 eDP-1")。
 mode 0 时 nvidia-drm 不注册任何 connector, 于是:
 

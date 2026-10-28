@@ -5,10 +5,10 @@
 - 要把 2D 掩膜接成可供下游规划的 base 系目标位姿时。
 - 掩膜算出的 3D 位置不对、或 "3D 看起来有了但抓不准" 时。
 
-## 代码路径 (单一真源, 别另写一份)
+## 代码路径 (单一唯一依据, 别另写一份)
 - 外参/内参/投影全部复用 `tools/scene_overlay.py` (`load_handeye` / `read_tcp` / `load_intrinsics`);
   掩膜→3D 的收口在 `src/lerobot/policies/<seg 模型>/geometry3d.py::mask_3d(mask, cam)`。
-- 该模块用 `_scene_overlay()` 惰性 import 共享真源 —— 为避免各写一份投影/手眼/TCP 读法。
+- 该模块用 `_scene_overlay()` 惰性 import 共享唯一依据 —— 为避免各写一份投影/手眼/TCP 读法。
 
 ## 链路数学
 ```

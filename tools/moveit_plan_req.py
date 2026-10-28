@@ -182,7 +182,7 @@ def main():
 
     st_name, st_src = _stage_of(a)
     def _resolve(st_name, st_src):
-        """🎯 2026-10-18 老倪: 「引擎跑起来发布 skill_gate.json → MoveIt 目标自动切技能口」
+        """🎯 2026-10-18 老倪: 「引擎启动发布 skill_gate.json → MoveIt 目标自动切技能口」
         --auto 每拍重解一次段; 解不出返回 None (保持上一拍目标, 不猜)."""
         if a.goal_xyz and a.goal_quat:
             goal, gq = [float(x) for x in a.goal_xyz], [float(x) for x in a.goal_quat]

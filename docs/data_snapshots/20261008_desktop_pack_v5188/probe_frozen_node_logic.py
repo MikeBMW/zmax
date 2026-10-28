@@ -22,7 +22,7 @@ try:
     if int(out["node_logic_keys"]) < 100:
         raise RuntimeError("节点逻辑注册数 <100: 工程包没进包/不完整")
     if not out["canvas_exists"]:
-        raise RuntimeError("画布真源 JSON 不在包内")
+        raise RuntimeError("画布唯一依据 JSON 不在包内")
     rc = 0
 except Exception as e:  # noqa: BLE001
     out["error"] = "%s: %s" % (type(e).__name__, e)

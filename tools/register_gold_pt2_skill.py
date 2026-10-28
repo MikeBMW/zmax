@@ -6,7 +6,7 @@
 
 与 L2.goto_gold_pt1 / L2.goto_surface_pt1/2 完全同规格(回点类技能铁律):
   · ros=line_abs + quat="taught"  → 位置**和姿态**都回示教点(不然姿态沿用当前, 视角不对)
-  · point_locked + point           → 目标点写死在定义里, 页面/接口都改不了点位
+  · point_locked + point           → 目标点硬编码在定义里, 页面/接口都改不了点位
   · guard.dz_down_limit_mm=20      → 相对当前位姿下降 >20mm 拒发(要下降得显式 allow_down_mm)
 点位真值在 data/skills/l2_atomic/taught_points.json 的『金手指点2』
 (2026-10-08 20:58:46 现场实录, tools/record_point_sdk.py, 6 帧极差 pos 2e-06m / quat 1e-06)。

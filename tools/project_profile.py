@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """project_profile.py — 项目档案: 「根据配置, 适配不同项目」(老倪 2026-10-10)
 
-一个项目 = 一份 overlay (`config/platform/projects/<PID>.json`), 叠在平台基线真源上:
+一个项目 = 一份 overlay (`config/platform/projects/<PID>.json`), 叠在平台基线唯一依据上:
     基线: config/platform/zmax_project_bom.json   (平台/BOM/人力/商务/ROI/市场 全量)
     覆盖: config/platform/projects/<PID>.json     (该项目改写的字段 + 该项目特有的项)
     合并: 逐键深合并 (dict 递归, list 整体替换), 输出**单一 bom 字典**给各导出器

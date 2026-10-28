@@ -190,7 +190,7 @@ def main():
         json.dump(rec, f, ensure_ascii=False, indent=1)
     os.replace(tmp, PLAN)
 
-    # 同时落一份"规划段表"到运动规划节点(n_moveit)读的那份真源, 画布节点上就能看到这条轨迹
+    # 同时落一份"规划段表"到运动规划节点(n_moveit)读的那份唯一依据, 画布节点上就能看到这条轨迹
     #   字段名沿用既有段表口径(pos/speed/dir/lin_mm), 不另造一套
     try:
         import datetime as _dt

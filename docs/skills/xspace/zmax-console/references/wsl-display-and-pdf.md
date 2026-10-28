@@ -16,7 +16,7 @@
   `powershell.exe -NoProfile -Command "Stop-Process -Name vcxsrv -Force; Start-Process 'C:\Program Files\VcXsrv\vcxsrv.exe' -ArgumentList ':0','-ac','-multiwindow','-clipboard','-wgl'"`
   (-ac 关访问控制,multiwindow 每个 X 窗口独立 Windows 窗口)
 
-## 3. 源码/文件打开 (WSL 路径 Windows 打不开)
+## 3. 源码/文件打开 (WSL 路径 Windows 无法打开)
 - `\\wsl$\` UNC 被拒 → 一律复制到 Windows 可见 C 盘再打开:
   - 源码目录: C:\zmax_src_view\ (右键节点"📂 打开源代码"用,排除 __pycache__)
   - 文档: C:\Users\Public\ZMAX_docs\ (帮助文档菜单用)

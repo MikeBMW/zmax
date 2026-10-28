@@ -12,7 +12,7 @@ L5 实时标注器 (l5_live_mark) — 臂上 D405 画面里的 ①光模块 ②1
   3. 槽位几何量测 → 上排 7 + 下排 7 = 14 个 (origin=l5live, label slot_01..slot_14)
   4. 只改 spec 里 origin==l5live 的框，其余键原样保留 → 服务每帧热读 ⇒ 页面实时跟随
 
-槽位几何量测 (无写死坐标, 逐帧实测; 相机挪动后自动重算):
+槽位几何量测 (无预先固定坐标, 逐帧实测; 相机挪动后自动重算):
   A. 水平长边能量 E(y)=|灰度-大核高斯| 在中央 x 窗的均值 → 5 条锚线:
      上边框 / 上排槽底沿 / 中分隔条 / 下排槽底沿 / 下边框   (下排槽底沿用上下排对称性约束)
   B. 两个行带内取列剖面 P(x) → 自相关求 pitch → 折叠求"槽内暗陷"相位与槽宽 w
@@ -55,7 +55,7 @@ _FR = {"md5": None, "since": 0.0}
 
 def fetch_frame(url: str, fallback: str, timeout: float = 2.0) -> tuple[np.ndarray | None, str, float, str]:
     """返回 (BGR 帧, 来源, 取图耗时, 备注)。
-    备注里带"画面静止"判定: 源端卡住时(帧字节长时间不变)如实标注 —— 因为页面上显示的也是
+    备注里带"画面静止"判定: 源端阻塞时(帧字节长时间不变)如实标注 —— 因为页面上显示的也是
     同一份帧, 此时框与画面仍是对齐的, 但那不是"新画面", 不能假装是实时新帧。"""
     note = ""
     for tag, u in (("orin", url), ("local", fallback)):
@@ -74,7 +74,7 @@ def fetch_frame(url: str, fallback: str, timeout: float = 2.0) -> tuple[np.ndarr
             if h != _FR["md5"]:
                 _FR["md5"], _FR["since"] = h, time.time()
             elif _FR["since"] and (time.time() - _FR["since"]) > 3.0:
-                note = "画面静止 %.0fs(源可能卡住/场景无变化)" % (time.time() - _FR["since"])
+                note = "画面静止 %.0fs(源可能阻塞/场景无变化)" % (time.time() - _FR["since"])
             return img, tag, time.time() - t0, note
         except Exception:
             continue

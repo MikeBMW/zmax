@@ -145,7 +145,7 @@ def main():
             nos = [(rows.item(r, 0).text() if rows.item(r, 0) else "") for r in range(rows.rowCount())]
             for no in ("T1", "T2", "T3"):
                 chk("② 工单表含 %s" % no, any(no in x for x in nos), [x for x in nos if no in x][:2])
-            chk("② 工单表行数 = 真源工单数", rows.rowCount() == len([f for f in os.listdir(os.path.join(ROOT, "config", "orders")) if f.startswith("BS_")]),
+            chk("② 工单表行数 = 唯一依据工单数", rows.rowCount() == len([f for f in os.listdir(os.path.join(ROOT, "config", "orders")) if f.startswith("BS_")]),
                 "%d 行" % rows.rowCount())
 
     # ── ③ ar3d 演练

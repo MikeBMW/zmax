@@ -519,7 +519,7 @@ class DatasetViewer(QDialog):
         self.current_episode = val
         self.ep_label.setText(str(val))
         n = None
-        if self.h5_path:                                        # 🧠 真实每回合帧数 (不再写死 300/100)
+        if self.h5_path:                                        # 🧠 真实每回合帧数 (不再预先固定 300/100)
             info = self._h5_info()
             lens = info.get("ep_len") or []
             if 0 <= val < len(lens):

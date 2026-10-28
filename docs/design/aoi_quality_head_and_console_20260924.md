@@ -21,13 +21,13 @@
 | 框选控件 | `tools/gui/yolo_label_widget.py` `YoloLabelWidget` | 直接复用 (拖框/移动/四角缩放/右键删/Ctrl+Z/1-9 类别) |
 | 标注数据层 | `tools/yolo_annot_dataset.py` | `root_for/default_classes_for/save_sample/build_dataset/check_dataset/add_class` |
 | 训练器 | `tools/yolo_annot_train.py` | `--root/--base auto/--epochs/--verify` 一条龙 (体检→微调→真推理验证) |
-| 启发式 AOI | `yolo_3d/quality_check.py` `AOIQualityChecker` | **缺陷初判 + 无权重兜底 + 与学习头同口径对照** |
-| 缺陷目标定义 | `flows/detection_targets.json` `DET-AOI-01~04` | 类别与判据的**真源** (金手指/端面/金线/外观) |
+| 启发式 AOI | `yolo_3d/quality_check.py` `AOIQualityChecker` | **缺陷初判 + 无权重保障 + 与学习头同口径对照** |
+| 缺陷目标定义 | `flows/detection_targets.json` `DET-AOI-01~04` | 类别与判据的**唯一依据** (金手指/端面/金线/外观) |
 | 在役权重 | `models/yolo_peg_live.pt` (软链) | 质量检测头基座 (域内已有特征) |
 
 ## 2. 质量检测任务头
 
-### 2.1 类别 schema (单一真源, 与 DET-AOI-01~04 对齐)
+### 2.1 类别 schema (单一唯一依据, 与 DET-AOI-01~04 对齐)
 | 组 | 类名 | 对应 | 用途 |
 |---|---|---|---|
 | **定位** loc | `module_body` | 光模块本体 | 外观 ROI |
@@ -51,7 +51,7 @@
 - **坐标口径**: 框一律存**原始帧像素坐标** (与现有标定层一致); ROI 拉伸只用于推理, 结果逆变换回原帧。
 - **超采样**: 金手指占画幅比例小 (实测 2448×2048 全帧, 金手指通常 <8%) → 直推 640 会丢小缺陷;
   拉伸到 640 并把阈值/最小框面积按放大倍率换算 (放大 k 倍 → 最小缺陷像素阈缩小 k²)。
-- **兜底**: 无权重/无检出 → 回落启发式 (`AOIQualityChecker`), 判决表标注 `source=heuristic` (不假装是模型)。
+- **保障**: 无权重/无检出 → 回落启发式 (`AOIQualityChecker`), 判决表标注 `source=heuristic` (不假装是模型)。
 
 ### 2.3 训练方案
 | 项 | 设定 | 依据 |
@@ -115,9 +115,9 @@
 ## 5. 落地路线 (判据)
 | 步 | 内容 | 判据 | 现状 |
 |---|---|---|---|
-| A0 | 任务头 schema + 级联推理 + 兜底 | 真图跑通: 定位框 + 拉伸 + 缺陷框 + 判决表 (无权重时启发式兜底并标注) | 本轮实现 |
+| A0 | 任务头 schema + 级联推理 + 保障 | 真图验证通过: 定位框 + 拉伸 + 缺陷框 + 判决表 (无权重时启发式保障并标注) | 本轮实现 |
 | A1 | 汇总终端窗口 + 右键入口 | 入口可达性断言 (恒常显/不截断) + 真桌面截图 | 本轮实现 |
-| A2 | 在线标定→增量训练链路 | 标定落盘 → 体检 0 错 → 真 GPU 微调跑通 → 日志回显 | 本轮 smoke |
+| A2 | 在线标定→增量训练链路 | 标定落盘 → 体检 0 错 → 真 GPU 微调验证通过 → 日志回显 | 本轮 smoke |
 | A3 | 精度与上线 | 现场标定 ≥100 张/类 → 逐类 mAP/召回达标 → 同口径对照不回退 → 软链 | ⏳ 需现场 (先修取图链路: 现役 AOI 帧是黑帧) |
 
 ## 6. 风险与红线

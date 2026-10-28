@@ -39,7 +39,7 @@ for p in glob.glob("/proc/[0-9]*"):
     # 启动脚本会套 nice/setsid/env → 不假设 argv[1], 只要任一段是解释器且任一段是 studio.py
     # 🔧 2026-10-01 修(老倪「重启」点不动): 原来按**字面路径**比 ⇒ 进程是 /home/ubuntu/zmax/...
     #   起的、脚本算出来是 /home/ubuntu/zmax/...(软链两种写法) ⇒ 永远报 "stopped",
-    #   stop/restart 都作用不到 → 老倪点了重启其实没动(实测 pid 一直不变)。
+    #   stop/restart 都作用不到 → 老倪点了重启实际没动(实测 pid 一直不变)。
     _tgt = os.path.realpath(target_dir + "/python")
     _ok_py = any((a == target_dir + "/python" or a.startswith(target_dir + "/python")
                   or os.path.realpath(a) == _tgt) for a in argv)

@@ -17,7 +17,7 @@ hb = QTimer(); hb.timeout.connect(beat); hb.start(10)
 # 跑 N 秒 (期间 app.processEvents()) → 报 max(gaps) / 中位 / >100ms 的次数
 ```
 
-再逐项拆"阻塞体到底卡在哪"——用 monkeypatch 记录每次外部调用耗时 (比读代码快):
+再逐项拆"阻塞体到底阻塞点"——用 monkeypatch 记录每次外部调用耗时 (比读代码快):
 
 ```python
 _orig_run = subprocess.run
@@ -117,7 +117,7 @@ def refresh(self):                            # GUI 线程, 零 I/O, 实测 <1ms
 
 ## 3. 度量脚本的两个坑
 
-- **别用 `| tail` 看 rc**: `python x.py | tail` 的退出码是 tail 的 → 脚本崩了也报 0 (同项目曾因此把"仿真链路已跑通"假报成功)。
+- **别用 `| tail` 看 rc**: `python x.py | tail` 的退出码是 tail 的 → 脚本崩了也报 0 (同项目曾因此把"仿真链路已验证通过"假报成功)。
 - **cyclonedds/子线程在解释器退出时 core dump**: offscreen 度量跑完直接 `sys.stdout.flush(); os._exit(0)`,
   不要走 Qt/DDS 的清理路径 (否则看到 "timeout: the monitored command dumped core" 误以为被测代码崩了)。
 

@@ -7,7 +7,7 @@
 本判据查 5 条 (每条都真跑真 trace, 不空转):
   ① **闭环完整性**: L5/L4/L3/L2 五层都真跑过 (计数>0) + 每步记录 H/κ/τ/动作/记忆齐 +
      L5 的指挥更新**真改变了**层增益 (对比 apply_updates on/off: on 变 / off 不动 ⇒ 反馈闭合)
-  ② **记忆上行与回写真发生**: L2→L3→L4→L5 上行计数=帧数 + 真源 muscle_memory 文件被写且固化
+  ② **记忆上行与回写真发生**: L2→L3→L4→L5 上行计数=帧数 + 唯一依据 muscle_memory 文件被写且固化
      (n_ok≥3 · champ_u 非空)
   ③ **L4 监督真拦过违规动作**: 真 trace 上 L4 否决>0 (真实力否决帧 + L4提案超力上限帧),
      且**被否动作没进执行** (否决帧 nav_applied=False 且执行在限内)
@@ -111,12 +111,12 @@ ck("记忆上行 L2→L3→L4→L5 计数 == 帧数", all(me[k] == nz for k in (
    str(me))
 ck("四级记忆总线都非空", all(len(v) > 0 for v in eng.memory.values()),
    str({k: len(v) for k, v in eng.memory.items()}))
-# 真源 muscle_memory 文件被写 + 固化
+# 唯一依据 muscle_memory 文件被写 + 固化
 mfile = os.path.isfile(muscle_tmp)
 doc = json.load(open(muscle_tmp, encoding="utf-8")) if mfile else {}
 any_champ = any(v.get("champ_u") for v in doc.values())
 max_nok = max([v.get("n_ok", 0) for v in doc.values()] or [0])
-ck("真源 muscle_memory 文件已写", mfile, muscle_tmp)
+ck("唯一依据 muscle_memory 文件已写", mfile, muscle_tmp)
 ck("记忆固化真发生 (n_ok≥3 且有 champ_u)", bool(any_champ and max_nok >= 3),
    f"n_ok_max={max_nok} · 桶={list(doc.keys())[:4]}")
 

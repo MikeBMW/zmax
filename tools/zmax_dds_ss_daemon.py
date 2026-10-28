@@ -13,7 +13,7 @@
    ss_state  ← 真机 tap `~/zmax/zmax_data/ss_live/state_*.jsonl` 最新行 (tcp / jpos / gripper / prod_stage / pubs)
    ss_action ← 真机 tap `~/zmax/zmax_data/ss_live/proposal_*.jsonl` 最新行 (action 6 维 / yaw / model_ms)
    ss_infer  ← 本机推理服务 `http://127.0.0.1:8790/health` (models / infer_count / last_ms / device)
-   ss_calib  ← 标定真源文件 (手眼 / 相机外参 / 对齐图 / 质量门) —— 有则实发, 无则 valid=0
+   ss_calib  ← 标定唯一依据文件 (手眼 / 相机外参 / 对齐图 / 质量门) —— 有则实发, 无则 valid=0
    ss_diag   ← 诊断: 各话题发布计数 / 源帧龄 / 推理延时 / 服务健康度 (systemctl 每 10s)
    ss_test   ← 最近一次取证结果 (reports/verify_*.json · sim2real_preflight · web agent 27/27)
 ③ **未测量 = -1.0** (不用 0 冒充) · 每条消息带 ts + 每话题 seq · 源帧过期 (>5s) 只发 diag 告警不发状态
@@ -75,7 +75,7 @@ def log(m):
         pass
 
 
-# ───────────────────────── 模式 (单一真源优先, 读不到则按同口径兜底) ─────────────────────────
+# ───────────────────────── 模式 (单一唯一依据优先, 读不到则按同口径保障) ─────────────────────────
 def mode():
     env = (os.environ.get("ZMAX_TELEMETRY") or "").strip().lower()
     if env in MODE_TOPICS:
@@ -154,7 +154,7 @@ def read_infer():
 
 
 def read_calibs():
-    """标定真源 (存在才发, 不发假值)
+    """标定唯一依据 (存在才发, 不发假值)
 
     ⚠️ 2026-09-26: 标定文件在 **main 线检出** (worktree /home/ubuntu/zmax/models) ——
     共享目录 /home/ubuntu/zmax 被切到别的分支后这些文件会"消失"
@@ -184,7 +184,7 @@ def read_calibs():
 
 
 def read_canvas_nodes():
-    """画布真源 (state_space_obs.json) → 节点清单 [{id,name,layer,type}]
+    """画布唯一依据 (state_space_obs.json) → 节点清单 [{id,name,layer,type}]
 
     层判定与画布一致: 按 y 行带读 params.layer / 行背景名; 取不到就留空 (不猜)。
     """
@@ -218,7 +218,7 @@ def read_canvas_nodes():
 
 
 def read_memory_layers():
-    """五层记忆真源 (data/memory/memory_layers.json)"""
+    """五层记忆唯一依据 (data/memory/memory_layers.json)"""
     for c in (os.path.join("/home/ubuntu/zmax", "data", "memory", "memory_layers.json"),
               os.path.join(REPO, "data", "memory", "memory_layers.json"),
               os.path.join(_FORK, "data", "memory", "memory_layers.json")):
@@ -455,7 +455,7 @@ class SSDaemon:
         return True
 
     def pub_canvas(self):
-        """ss_canvas ← 画布真源节点清单 (轮转发布: 每轮 5 个, 87 节点约 35s 扫完一遍)
+        """ss_canvas ← 画布唯一依据节点清单 (轮转发布: 每轮 5 个, 87 节点约 35s 扫完一遍)
 
         status/fps/counter 本机无真实计数源 → 一律 idle / -1.0 / -1 (诚实: 未测量不冒充 0)
         """
@@ -475,7 +475,7 @@ class SSDaemon:
         return True
 
     def pub_macro(self):
-        """ss_macro ← 五层记忆真源 (data/memory/memory_layers.json): 每层一条"""
+        """ss_macro ← 五层记忆唯一依据 (data/memory/memory_layers.json): 每层一条"""
         from ss_types import SSMacro                                    # noqa: PLC0415
         d, src = read_memory_layers()
         if not d:

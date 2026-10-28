@@ -23,6 +23,6 @@ GUI 模块库：simulink_module.py `("scene", "🏭 场景 (3)", [...])` 三个�
 ## JSON 结构（每场景字段）
 `id / name / category / description / scene_type / layout{workcell, robot, fixture, sensors, dimensions} / performance{operation_success_rate, cycle_time, ...} / process_steps[{step, name, desc, atoms}] / key_atoms / quality_gates` + `meta{version, author, industry, product, standard}`。
 
-## 踩坑
+## 遇到问题
 - **模块库 LIBRARY 场景节点 dict 语法**：`{"name":..., "params":{...}}` 外层 dict 必须 `}}` 闭合（params 内层 `}` + 外层 `}` + 逗号），写成 `},`（只有内层闭）会 `SyntaxError: closing parenthesis ']' does not match opening parenthesis '{'`（ast.parse 报 525 行但真凶在 521/523 行少一个 `}`）。改完 `ast.parse` 全文件验证。
 - **老倪对性能指标的口径**：成功率要写 `≥99.5%` 级别（行业标准是 >99%），节拍必须带单位（s/颗），检出率 ≥99.9%——光模块工厂是良率敏感行业，指标不达标会被当场打回。

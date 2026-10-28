@@ -4,7 +4,7 @@
 三块:
   ① 画布状态取值 _canvas_src_state(module)  —— 真代码, module 用桩
   ② open_input_viewer 复用窗口时的**源对齐** —— 真代码 (窗口对象用桩, 避免真开 GUI)
-  ③ 仿真源真出帧 —— 真 _SimGrabber 跑几秒, 确认拿到的就是 metaworld 渲染帧 (老倪要的"仿真视频")
+  ③ 仿唯一依据真出帧 —— 真 _SimGrabber 跑几秒, 确认拿到的就是 metaworld 渲染帧 (老倪要的"仿真视频")
 
 跑法: cd /home/ubuntu/zmax && gui-venv311/bin/python tools/verify_input_source_follow.py
 """
@@ -93,8 +93,8 @@ for have, want_src, want_idx, label in [
     print(f"  [{'PASS' if good else 'FAIL'}] {label}: idx {have}→{w.cb.i} (切换次数 {w.cb.switches})")
 yiv.YoloInputViewer._cur = None
 
-# ── ③ 仿真源真出帧 (metaworld 渲染) ─────────────────────────────────────
-print("\n── ③ 仿真源真出帧 (_SimGrabber → metaworld) ──")
+# ── ③ 仿唯一依据真出帧 (metaworld 渲染) ─────────────────────────────────────
+print("\n── ③ 仿唯一依据真出帧 (_SimGrabber → metaworld) ──")
 q = queue.Queue(maxsize=6)
 g = yiv._SimGrabber(q, False)
 g.start()

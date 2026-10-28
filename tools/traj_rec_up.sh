@@ -32,7 +32,7 @@ sudo docker exec "$C" bash -lc '
   fi'
 
 # 🔴 新录制纪元: 录制器一重启, 它自己的计数 n 就从 0 重来, 而"清除线"是按 n 记的 ⇒ 必须同步归 0。
-#    不归 0 的后果(实测): 上一纪元的清除线 26479 永远大于新 n(几十), 发布器走 raw[base:] 的兜底
+#    不归 0 的后果(实测): 上一纪元的清除线 26479 永远大于新 n(几十), 发布器走 raw[base:] 的保障
 #    只留最后一个点 ⇒ 画面上的轨迹被**永久夹成 1 个点**, 看起来就像"轨迹坏了"。
 /home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/traj_display.py baseline 0 >/dev/null 2>&1 || true
 

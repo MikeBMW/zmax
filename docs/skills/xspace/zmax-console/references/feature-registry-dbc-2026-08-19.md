@@ -36,10 +36,10 @@ CM_ STATE_SPACE: A1 A2 A3 ...                        // 模型能力组合
 - 帮助文档「Feature List」弹窗含模型能力区块 (当前模型高亮 ← 当前) + 导出 Excel 按钮
 - 第三方接入三步: BU_ 加节点 → CM_ 声明能力 → SG_ 信号契约适配 → 平台同流程运行
 
-## 踩坑
+## 遇到问题
 1. **% 格式化 vs CSS %**: Python `%` 格式化 HTML 字符串, CSS `width:100%` 和数据里的
    `≥99%` 是裸 % → "not enough arguments for format string"。用 `.replace` 链占位符
-   (%ACCENT% 等) 而非 % 格式化, 或全部 %% 转义。两次踩坑 (feature_list.py)
+   (%ACCENT% 等) 而非 % 格式化, 或全部 %% 转义。两次遇到问题 (feature_list.py)
 2. **make_item 单参语义**: 树构建辅助函数统一 `make_item(texts)` 单参返回 item +
    `parent.addChild(item)`; 双参调用 (make_item(parent, texts)) 与单参 lambda 不匹配 →
    TypeError 被 except 吞 → 整棵子树不显示且无报错。测试必须用与生产一致的单参 lambda

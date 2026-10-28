@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """verification_dialog.py — 🧩 验证层 Feature/Test 节点 UI (2026-09-04 老倪)
 
-三级结构 (节点 → 功能 → 用例): 真源 src/lerobot/verification/node_func_tree.py
+三级结构 (节点 → 功能 → 用例): 唯一依据 src/lerobot/verification/node_func_tree.py
   22 节点 × 5 功能 (名 5~10 字, 模块化) × 5 用例 (auto/semi/manual)
   纤维丛数学骨架: 功能分类 = 状态观测 / 工艺动作 / 闭环联络 / 质量截面
 

@@ -84,7 +84,7 @@ QTimer.singleShot(2000, _show_ready)
    主窗口 show 时无缝覆盖, 无黑条;
 2. **splash 必须提前到 `win = StudioMainWindow()` 构建之前创建** — 重量级 GUI 加载
    数秒, 放后面则加载期无占位; 闭包 _show_ready 延迟引用 win 没问题 (回调 2s 后才执行);
-3. 兜底 `_splash = None` + `if _splash is not None` 防 import 失败; finish 后 splash
+3. 保障 `_splash = None` + `if _splash is not None` 防 import 失败; finish 后 splash
    X 层窗口 IsUnMapped 残留无害 (Qt 延迟销毁)。
 
 **排查过程 (不重蹈)**: 先排除运行时闪 (连线动画已惰性化 08-15 / hover轮询有鼠标不动保护 /
@@ -140,7 +140,7 @@ ss = ss.replace("color:#f0f0f0", "color:#000000")
 
 ## 六版 (2026-08-16) — 文字全黑 + 按钮金属光泽
 
-老倪: "有的字是红色有的是黑色; 除了大字标题, 都变成黑色; 一些有特点的图标可以考虑红色; 其它的没啥特点的都是黑白; 按钮要有金属光泽"
+老倪: "有的字是红色有的是黑色; 除了大字标题, 都变成黑色; 一些有特点的图标可以考虑红色; 其它的没什么特点的都是黑白; 按钮要有金属光泽"
 
 ### 文字规则 (最终)
 - **普通文字全黑**: L_GREEN/L_RED 改回 #000000 (THEME_PAIRS 的 C_GREEN→L_GREEN 会覆盖 EXTRA 规则, 必须改常量本身); EXTRA 里 #3fb950/#f85149/#ff4444/#ff6b6b/#ff9f43/#f87171 → #000000
@@ -192,7 +192,7 @@ apply_ui_theme 和 apply_ui_font 两处都要。**THEME_PAIRS_BTN 自身末尾�
 try:
     from studio import C_BG, C_BG2, ...  # 浅色主题自动跟随
 except Exception:
-    C_BG = "#0d1117"; ...  # 兜底 (独立运行场景)
+    C_BG = "#0d1117"; ...  # 保障 (独立运行场景)
 ```
 node_logic_dialog 可修改区底纹 _GOLD_BG 改 #f0e8ec 浅朱红调, _GOLD_LINE #b70032。
 

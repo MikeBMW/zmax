@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# 保存数据 (切远程遥控前): config 真源 + 工程库 + 画布 + units + Intel 进化产物 ⇒ tar + 校验
+# 保存数据 (切远程遥控前): config 唯一依据 + 工程库 + 画布 + units + Intel 进化产物 ⇒ tar + 校验
 set -eu
 cd /home/ubuntu/zmax
 TS=$(date +%Y%m%d_%H%M)
 A="data/database/zmax/archive/state_${TS}_remote"
 rm -rf "$A"; mkdir -p "$A/config" "$A/units" "$A/intel"
 
-cp -rL config/. "$A/config/"                                    # 软链解引用: 参数真源
+cp -rL config/. "$A/config/"                                    # 软链解引用: 参数唯一依据
 cp -f data/database/zmax/zmax_engineering.db "$A/" 2>/dev/null || true
 cp -f data/database/zmax/zmax_space.proj "$A/" 2>/dev/null || true
 cp -f data/database/zmax/config_meta.json "$A/" 2>/dev/null || true

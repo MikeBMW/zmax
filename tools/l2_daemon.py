@@ -10,7 +10,7 @@
 import io, json, os, re, select, subprocess, sys, threading, time
 import urllib.request
 
-# 🔐 真动授权(8793 手动控制台)的单一真源 —— 所有运动下发的**唯一收口**(chan_send/服务调用/夹爪)
+# 🔐 真动授权(8793 手动控制台)的单一唯一依据 —— 所有运动下发的**唯一收口**(chan_send/服务调用/夹爪)
 #   2026-09-29 老倪: 「我都取消授权了，手臂怎么还在动；金手指检测的点1技能，也要服从手动控制台的授权」
 #   原来授权只活在 8793 进程内存里: ①GUI/脚本/自动流程直接写 FIFO 完全绕过它;
 #   ②本执行器下发前也不校验 ⇒ 撤销前排队的动作会在 VL 慢层等 300s 之后才真下发。
@@ -27,7 +27,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def _pick_orin_host() -> str:
     """选一条**当下真能通**的路去 Orin。
 
-    2026-10-25 教训: 4060 的有线口已不在机器人网段(192.168.23.x 全 ARP 不通), 而 `HOST` 写死成
+    2026-10-25 教训: 4060 的有线口已不在机器人网段(192.168.23.x 全 ARP 不通), 而 `HOST` 预先固定成
     `tashan@192.168.23.66` ⇒ 位姿流与所有下发全断(日志只报 "No route to host")。
     现口径: 直连 22 端口 2s 内握手成功就用直连; 否则退回 ssh 别名(经 ECS 跳板, ~/.ssh/config 的 `orin`)。
     测试点只探 TCP 22, 不下发任何指令。
@@ -83,13 +83,13 @@ def _pose_direct(timeout=10):
     """直读 /robot/tcp_pose (经本机 Docker tap 容器, 只读, 不下发任何指令)。
 
     2026-09-20 现场教训: 常驻状态流的缓存**会滞后**(实测整分钟级) → 算出的 Δ 是旧值、
-    到位被误判("未到位"中止, 而臂其实正在走到位)。所以守卫的 Δ 与"等到位"一律直读话题,
-    常驻缓存只当兜底 —— 这也是 memory 里那条"中转 state 流是缓存旧值须直读 topic"的代码化。
+    到位被误判("未到位"中止, 而臂实际正在走到位)。所以守卫的 Δ 与"等到位"一律直读话题,
+    常驻缓存只当保障 —— 这也是 memory 里那条"中转 state 流是缓存旧值须直读 topic"的代码化。
     """
     # 2026-09-28 现场修: /robot/tcp_pose 的 DDS 端点已死(机器人栈 2026-09-27 20:52 起的参与者
     # 在 06:22 时钟重同步后不再通告端点, 任何新订阅者 0 帧) ⇒ 执行器一直"位姿读不到"而拒发所有技能。
     # 现改为**优先读 ROKAE SDK 直采文件**(绕开 DDS, 5Hz, 口径 endInRef, 2026-09-21 实测与话题逐位一致),
-    # 话题直读作兜底。文件龄 >10s 视为失效(不拿旧值当实时位姿)。
+    # 话题直读作保障。文件龄 >10s 视为失效(不拿旧值当实时位姿)。
     try:
         import json as _json
         _fp = os.path.expanduser("~/zmax/zmax_data/rokae_sdk/tcp_out/latest.json")
@@ -251,7 +251,7 @@ def _exec_observe(msg):
         if msg.startswith(("拒绝", "🛡 阶段", "🛡 视觉门", "🛑", "⛔")) or ("被拦(" in msg) or ("拒发:" in msg):
             exec_state(phase="blocked", blocked_by=msg.strip()[:160])
         if msg.startswith("受理:"):
-            # ⚠️ 实测踩坑: 收尾那行也是 "受理: ✅ 全部 3 阶段完成" ⇒ 一律当 accepted 会把状态打回起点,
+            # ⚠️ 实测遇到问题: 收尾那行也是 "受理: ✅ 全部 3 阶段完成" ⇒ 一律当 accepted 会把状态打回起点,
             #    窗口上看着"动完了还是受理中"。这里把"全部完成"单独记成 done。
             if ("全部" in msg) and ("完成" in msg):
                 exec_state(phase="done")
@@ -973,7 +973,7 @@ _GRIP_SVC = {"name": None, "t": 0.0}
 
 def _gripper_svc_name():
     """实际夹爪服务名 —— 现场会变：2026-10-12 是 /gripper_driver，2026-10-18 实测是 /gripper_srv。
-    写死名字 ⇒ `ros2 service call` 永远卡在 "waiting for service to become available"（实测 25~30s 后
+    预先固定名字 ⇒ `ros2 service call` 永远卡在 "waiting for service to become available"（实测 25~30s 后
     报 rcl context invalid），现场表现就是"点关闭夹爪没反应"。⇒ 运行时探一次并缓存 60s。"""
     env = os.environ.get("ZMAX_GRIPPER_SRV")
     if env:
@@ -1277,8 +1277,8 @@ def wait_arrive(target, tol_mm=2.0, timeout_s=30.0, fail_check=None):
 
 
 def _stage_timeout(st, lin_mm, speed):
-    """等一阶段的**时间上限** —— 按距离和速度估, 不写死。
-    前情 (2026-09-20 21:09 现场): 阶段1 直线 448mm, 超时写死 60s → 60s 时臂还在半路(差 196.6mm)
+    """等一阶段的**时间上限** —— 按距离和速度估, 不预先固定。
+    前情 (2026-09-20 21:09 现场): 阶段1 直线 448mm, 超时预先固定 60s → 60s 时臂还在半路(差 196.6mm)
     被判"未到位"而中止; 但指令已发不会撤回, 臂自己走完停在正上方 → **误判成机械臂没回到位**。
     实测口径: rt_speed_ratio=0.05、speed=30 时约 2.8mm/s (155mm 走 56s) ⇒ 约 0.093 mm/s 每单位 speed。
     st.timeout_dynamic=false 时按 timeout_s 硬值(自检用)。
@@ -2013,7 +2013,7 @@ def _ar_scene_gate():
     """🎛 画布 🤖 机器人执行器 的 AR 开关 (2026-10-27 老倪: 「开了就是进 AR 场景控制左右臂」)
 
     AR=开 ⇒ 左右臂走 ar3d 仿真, **真机一律不动**; AR=关 ⇒ 才走真机通路(仍要过 ctl_auth)。
-    真源: 画布 params.ar_scene → 控制台写 zmax_data/ss_live/exec_switches.json。
+    唯一依据: 画布 params.ar_scene → 控制台写 zmax_data/ss_live/exec_switches.json。
     文件缺失或过期(>120s, 说明控制台没在发布) ⇒ 视为 AR=关, 不拦 —— 不能让画布失联把现场锁死。
     """
     try:
@@ -2038,7 +2038,7 @@ def _auth_guard(call: str, kind: str = "运动"):
     if _ar:
         return False, _ar
     if CA is None:
-        return False, "🛑 ctl_auth 不可用(单一真源缺失) ⇒ 拒发: 运动一律要过 8793 授权"
+        return False, "🛑 ctl_auth 不可用(单一唯一依据缺失) ⇒ 拒发: 运动一律要过 8793 授权"
     ok, why = CA.check(_CUR.get("epoch"))
     if not ok:
         return False, why                        # 只回原因; "🛑 被拦(层)" 前缀由 _note_block/调用方统一加
@@ -2477,14 +2477,14 @@ def _bridge_send(call, target=None, quat=None, speed=None, _no_split=False):
                 % (_sp, float(speed or 60.0)))
         except (TypeError, ValueError):
             _hint = None
-    if not _hint and _env_sp:                          # env 仅作兜底(留痕, 不静默改)
+    if not _hint and _env_sp:                          # env 仅作保障(留痕, 不静默改)
         try:
             _sp = float(_env_sp)
             log("🚚 bridge 腿: 速度按 ZMAX_L2_MM_S=%.0fmm/s 执行 (段内请求 %.0f)" % (_sp, float(speed or 60.0)))
         except ValueError:
             pass
     body = {"p": [float(v) for v in target], "q": [float(v) for v in quat], "speed": _sp, "dry": False}
-    # ⏳ 串行化: 上一条动作还在走时再发 moveStart 会被控制器拒(moveStart 报错, 但队列里其实已经收下) ——
+    # ⏳ 串行化: 上一条动作还在走时再发 moveStart 会被控制器拒(moveStart 报错, 但队列里实际已经收下) ——
     #    实测 4 段连续点击时出现 "moveStart 报错" 却仍动的情况, 判据不可信。这里先等臂停稳再发。
     _t_wait = time.time()
     while time.time() - _t_wait < 6.0:
@@ -2587,7 +2587,7 @@ def _bridge_send(call, target=None, quat=None, speed=None, _no_split=False):
         _why = _res.get("why") or _d.get("error") or "未知"
         log("🚚 bridge 腿拒发: %s" % str(_why)[:90])
         _LEG_FAIL.update(t=time.time(), why="bridge 腿拒发: %s" % str(_why)[:70])
-        # 2026-10-26: 拒发原因必须原样带到受理行 —— 否则界面读到兜底文案"命令通道不可用",
+        # 2026-10-26: 拒发原因必须原样带到受理行 —— 否则界面读到保障文案"命令通道不可用",
         #   把"控制器拒绝这段"误导成"通道死了", 白查半天。
         _note_block("bridge 腿", "控制器拒发: %s" % str(_why)[:60])
     return _ok
@@ -2704,7 +2704,7 @@ def _single_instance():
     try:
         fd = os.open(lf, os.O_RDWR | os.O_CREAT, 0o644)
     except Exception as e:
-        log("⚠️ 单实例锁打不开(%s) — 继续启动, 不阻塞生产" % e)
+        log("⚠️ 单实例锁无法打开(%s) — 继续启动, 不阻塞生产" % e)
         return
     try:
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -2778,13 +2778,13 @@ def main():
     # ⚙️ 2026-10-18 老倪: 「l2_daemon 也要做一个节点，我要看到」⇒ 5Hz 发布执行器状态供节点读取
     threading.Thread(target=_exec_pub_thread, daemon=True).start()
     exec_state(phase="idle", skill="")
-    # 🛡 安全层口径(启动时明示, 免得事后说不清谁关了什么): 慢层可停用, 快层永远强制
+    # 🛡 安全层口径(启动时明示, 免得事后难以说明谁关了什么): 慢层可停用, 快层永远强制
     log("🛡 安全层: %s · 快层(本地 5Hz 遮挡/糊化反射)=**强制**(任何开关都不越过它)" % _vl_slow_status())
     _fd = os.open(FIFO, os.O_RDWR | os.O_NONBLOCK)   # 常驻读端锚: 保证写端永远找得到 reader
     _buf = ""
     while True:
         reg = maybe_reload(reg)
-        # 📌 2026-10-20 老倪「操作机器人的指令被拒绝了 … FIFO 打不开(Errno 6)」的**第二个**根因:
+        # 📌 2026-10-20 老倪「操作机器人的指令被拒绝了 … FIFO 无法打开(Errno 6)」的**第二个**根因:
         #   原来是 `with open(FIFO)` 开-读-关循环 —— 关闭的那一瞬到下一次打开之间没有读端,
         #   写端 os.open(O_WRONLY|O_NONBLOCK) 就 ENXIO。更要命的是**指令执行期间**(走一路 20s 的动作)
         #   FIFO 全程是关的 ⇒ 这期间点的每一条都被拒。

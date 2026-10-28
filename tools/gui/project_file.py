@@ -9,20 +9,20 @@
 
 ```
 schema        "zmax.statespace.project/2"
-① canvas      画布模型: 真源全文 + md5 + 节点/连线数          ← flows.canvas_json() 的真源
+① canvas      画布模型: 唯一依据全文 + md5 + 节点/连线数          ← flows.canvas_json() 的唯一依据
 ② panel       右侧栏所有配置: 当前视图/页签 + 6 个运行开关 + 画布栈索引
 ③ calibration 标定: config/calib/*.json **全文快照** + 每文件 sha256/mtime + 未标定项 + 现场标定命令
 ④ master_param 主参数: M / inertia / 范围 / 单位 / 流形含义 + 画布 M 节点 7 段快照 + sha256
 ⑤ measure     测量: M 节点的 measure_view (9 测量量/源/判据/命令) + 数据总线配置(模式/固定格式映射)
 ⑥ tasks       任务/工单/绑定 (沿用 v1: config/ss_task_binding.json 全文)
-⑦ fingerprints 指纹表 (每个真源文件 sha256+mtime) —— **用来判定"存档与现场是否同源"**
+⑦ fingerprints 指纹表 (每个唯一依据文件 sha256+mtime) —— **用来判定"存档与现场是否同源"**
 ```
 
-## 🔴 真源唯一 (这是本格式的核心设计, 别改成"存档即真相")
+## 🔴 唯一依据唯一 (这是本格式的核心设计, 别改成"存档即真相")
 
-* 真源永远是这些文件: 画布 `flows/state_space_obs.json` · 标定 `config/calib/*.json` ·
+* 唯一依据永远是这些文件: 画布 `flows/state_space_obs.json` · 标定 `config/calib/*.json` ·
   任务绑定 `config/ss_task_binding.json`。存档只是**某时刻的快照 + 指纹**。
-* `load_project()` **默认只回填画布 + 面板态**; 标定/主参数**一律不覆盖真源**, 只回报"漂移报告"
+* `load_project()` **默认只回填画布 + 面板态**; 标定/主参数**一律不覆盖唯一依据**, 只回报"漂移报告"
   (哪一段、哪个键、存档值 vs 现场值)。
 * 要真的把标定/主参数按存档恢复, 必须走 `restore_calibration(yes=True)`: 逐文件 --备份→写→**回读
   比对 sha256** -- 这是老倪定的三段纪律; 面板上不提供这个按钮。
@@ -52,7 +52,7 @@ RUN_CHECKS = (
     ("chk_l2_compat", "🧩 L2 兼容 (前馈 MLP + YOLO)"),
 )
 
-# 存档要抓的真源文件 (相对仓库根)
+# 存档要抓的唯一依据文件 (相对仓库根)
 TRUTH_FILES = ("config/calib/zmax_calib.json", "config/calib/zmax_manifold.json",
                "config/ss_task_binding.json", "config/mcd/zmax_mcd.json")
 
@@ -209,7 +209,7 @@ def collect_calibration(with_content=True):
 
 
 def fix_cmds():
-    """未标定项的现场标定命令 (从面板类取, 取不到就用内置兜底)"""
+    """未标定项的现场标定命令 (从面板类取, 取不到就用内置保障)"""
     try:
         import model_tree as _mt
         return dict(getattr(_mt.CalibTruthView, "FIX", {}) or {})
@@ -221,7 +221,7 @@ def fix_cmds():
 
 # ══════════════ ④ 主参数 M ══════════════
 def find_m_node(canvas=None):
-    """画布上的「🧮 标定诊断测量 · 主参数 M」节点 (id 会因另存为重编, 故名字/语义兜底)"""
+    """画布上的「🧮 标定诊断测量 · 主参数 M」节点 (id 会因另存为重编, 故名字/语义保障)"""
     if canvas is None:
         canvas, _ = _flows().load_canvas()
     for n in (canvas or {}).get("nodes", []) or []:
@@ -263,7 +263,7 @@ def collect_measure(canvas=None, sim=None):
     p = (node or {}).get("params", {}) or {}
     out = {"measure_view": p.get("measure_view") or {},
            "diagnose_view": p.get("diagnose_view") or {},
-           "source": "画布 M 节点 (由 tools/ss_node_sync.py 从真源同步)"}
+           "source": "画布 M 节点 (由 tools/ss_node_sync.py 从唯一依据同步)"}
     bus = getattr(getattr(sim, "model_tree", None), "bus", None) if sim is not None else None
     if bus is not None:
         try:
@@ -343,7 +343,7 @@ def save_project(path, sim=None, page=None, note="", with_calib=True):
                                                               proj["master_param"]["inertia"]),
                          "measure": "%d 项测量量" % len((proj["measure"]["measure_view"] or {}).get("源") or []),
                          "tasks": "%d 任务" % len(((proj["tasks"].get("content") or {}).get("tasks") or {})),
-                         "fingerprints": "%d 个真源文件" % len(proj["fingerprints"])}}
+                         "fingerprints": "%d 个唯一依据文件" % len(proj["fingerprints"])}}
 
 
 def _read(path):
@@ -382,7 +382,7 @@ def read_summary(path):
 
 # ══════════════ 漂移报告 (核心: 存档 vs 现场) ══════════════
 VOLATILE_KEYS = ("_meta", "generated_at", "updated_at", "saved_at", "_generated_at")
-# 画布节点上"由工具从真源同步进来的配置快照"字段 (含 canvas_md5 等派生值, 会随写盘次数漂)
+# 画布节点上"由工具从唯一依据同步进来的配置快照"字段 (含 canvas_md5 等派生值, 会随写盘次数漂)
 CFG_SNAPSHOT_KEYS = ("cfg_role", "cfg_entries", "cfg_snapshot", "measure_view", "calib_view",
                      "diagnose_view", "task_layer")
 
@@ -426,7 +426,7 @@ def drift_report(proj):
             cn = {n.get("id"): n for n in cur.get("nodes", []) or []}
             added, gone = [k for k in cn if k not in sn], [k for k in sn if k not in cn]
             # 比结构/参数时**剔除 M 节点那类「配置快照派生字段」** (cfg_*/…_view/task_layer):
-            # 它们由工具从真源同步进来, 含 canvas_md5 等派生值, 会随写盘次数漂 —— 不算画布结构漂移。
+            # 它们由工具从唯一依据同步进来, 含 canvas_md5 等派生值, 会随写盘次数漂 —— 不算画布结构漂移。
             changed = [k for k in cn if k in sn and _strip_cfg(sn[k]) != _strip_cfg(cn[k])]
             snap_only = [k for k in cn if k in sn and _strip_cfg(sn[k]) == _strip_cfg(cn[k])
                          and json.dumps(sn[k], sort_keys=True, ensure_ascii=False)
@@ -561,7 +561,7 @@ def load_project(path, with_calib=False, yes=False):
            "calib_restored": None}
     if with_calib:
         out["calib_restored"] = restore_calibration(proj, yes=yes)
-    # 💾 2026-10-11 老倪: 「下次我可以继续调试」⇒ 打开工程文件时把存档的调试状态也恢复 (场景真源 + 活跃任务)
+    # 💾 2026-10-11 老倪: 「下次我可以继续调试」⇒ 打开工程文件时把存档的调试状态也恢复 (场景唯一依据 + 活跃任务)
     try:
         import importlib.util as _il7
         _s7 = _il7.spec_from_file_location("proj_state", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "proj_state.py"))
@@ -656,7 +656,7 @@ INTEGRATED_SECTIONS = ("canvas", "calibration", "master_param", "tasks", "panel"
 
 
 def space_path_legacy(root=None):
-    """旧的 .zmaxproj 总工程 (没迁名时兜底找到它)"""
+    """旧的 .zmaxproj 总工程 (没迁名时保障找到它)"""
     root = root or os.path.expanduser("~/zmax")
     return os.path.join(project_dir(root), "zmax_space.zmaxproj")
 
@@ -705,8 +705,8 @@ def save_space(path=None, sim=None, page=None, note=""):
 
 
 def _apply_tasks(proj, sim=None, force=False):
-    """集成式打开: 把总工程里的"活跃任务"写回绑定真源 (走 tools/ss_task_bind.py --activate)。
-    force=True 时**即使活跃任务没变也重写一遍** —— 绑定真源里带 `project.canvas_md5`,
+    """集成式打开: 把总工程里的"活跃任务"写回绑定唯一依据 (走 tools/ss_task_bind.py --activate)。
+    force=True 时**即使活跃任务没变也重写一遍** —— 绑定唯一依据里带 `project.canvas_md5`,
     画布刚被回填后必须重绑, 否则文件里记的还是打开前的画布 md5 (diff 会报 tasks 漂移)。"""
     tk = ((proj.get("tasks") or {}).get("content") or {})
     want = tk.get("active_task") or tk.get("active")
@@ -772,7 +772,7 @@ def integrated_apply(proj, sim=None, page=None, yes=False):
         steps.append({"what": "master_param", "ok": False, "detail": str(e)})
         lines.append("❌ 主参数回读失败: %s" % e)
 
-    # ② 任务 (活跃任务 → 绑定真源)
+    # ② 任务 (活跃任务 → 绑定唯一依据)
     tr = _apply_tasks(proj, sim)
     steps.append({"what": "tasks", "ok": bool(tr.get("ok")), "detail": str(tr.get("why"))})
     lines.append("%s 任务: %s" % ("✅" if tr.get("ok") else "❌", tr.get("why")))
@@ -785,7 +785,7 @@ def integrated_apply(proj, sim=None, page=None, yes=False):
                                           json.dumps(cv.get("stats") or {}, ensure_ascii=False),
                                           os.path.basename(cv.get("backup") or "-")))
 
-    # ③b 任务重绑定 (必须在画布落地之后): 绑定真源里带 `project.canvas_md5`,
+    # ③b 任务重绑定 (必须在画布落地之后): 绑定唯一依据里带 `project.canvas_md5`,
     #     若只在画布前绑定, 文件里记的是"打开前那块画布"的 md5 ⇒ 总工程 diff 报 tasks 漂移 (2026-10-09 判据集实测)。
     if cv.get("written"):
         tr2 = _apply_tasks(proj, sim, force=True)
@@ -809,7 +809,7 @@ def integrated_apply(proj, sim=None, page=None, yes=False):
 
 
 def _write_canvas(proj, sim=None, page=None):
-    """只写画布真源 (校验 + 备份), 返回 load_project 同款摘要 (不做标定)"""
+    """只写画布唯一依据 (校验 + 备份), 返回 load_project 同款摘要 (不做标定)"""
     flows = _flows()
     d = proj.get("canvas")
     if not isinstance(d, dict) or not d:
@@ -835,7 +835,7 @@ if __name__ == "__main__":                       # 命令行自检: python proje
     import sys
     print("schema=%s ext=%s 档位=%d 个" % (SCHEMA, EXT, len(RUN_CHECKS)))
     d, probs, md5, stats = canvas_status()
-    print("画布真源: %s" % _flows().canvas_path())
+    print("画布唯一依据: %s" % _flows().canvas_path())
     print("md5=%s · stats=%s · 校验问题=%s" % (md5, stats, probs or "无 ✅"))
     print("标定: %s" % collect_calibration(with_content=False)["files"].keys())
     print("主参数: %s" % {k: v for k, v in collect_master_param().items() if k in ("M", "inertia")})

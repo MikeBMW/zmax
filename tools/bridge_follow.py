@@ -16,7 +16,7 @@
 安全红线:
   · **绝不自己授权** —— 只读 _auth_info (8793 页面授权), 未授权一行都不发
   · 每步都过 8793 的既有闸门 (白名单/授权窗/限流/FIFO/执行器安全裁决), 不绕
-  · 单步 5mm、速度 10mm/s 写死在代码里; 要改必须改这里 (conste)
+  · 单步 5mm、速度 10mm/s 硬编码在代码里; 要改必须改这里 (conste)
 用法:
   ./gui-venv311/bin/python tools/bridge_follow.py --dry        # 只算不发 (看它会发什么)
   ./gui-venv311/bin/python tools/bridge_follow.py              # 真发 (需已授权)

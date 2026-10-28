@@ -62,7 +62,7 @@ _HIL_BRIDGE = {"mod": None, "tried": False}
 
 
 def _hil_token() -> str:
-    """读终端 token (L5 与 HIL API 同一个 secrets 文件); 没有 → 空 (走文件兜底)"""
+    """读终端 token (L5 与 HIL API 同一个 secrets 文件); 没有 → 空 (走文件保障)"""
     try:
         with open(HIL_TOKEN_FILE, encoding="utf-8") as f:
             return f.read().strip()
@@ -108,7 +108,7 @@ def register_hil_peer(name: str = "L5", kind: str = "scene_vlm", note: str = "")
             err = "%s: %s" % (type(e).__name__, str(e)[:80])
     else:
         err = "no token file (HIL API 未启动?)"
-    m = _hil_bridge_mod()                                     # 兜底: 直接写同一份 peers 文件
+    m = _hil_bridge_mod()                                     # 保障: 直接写同一份 peers 文件
     if m is not None:
         try:
             return {"ok": True, "via": "file", "peer": m.register_peer(name, kind, pid=pid, note=note),

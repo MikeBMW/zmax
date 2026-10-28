@@ -47,7 +47,7 @@ class ModelAdapter:
 
 - 自家训练/部署: safetensors (延续 Orin 热更新链路, 无 pickle RCE)
 - 第三方导入: ONNX 优先 (格式中立 + 无 pickle + Orin TensorRT 路径)
-  + .pth state_dict 兜底但必须 torch.load(weights_only=True)
+  + .pth state_dict 保障但必须 torch.load(weights_only=True)
 - 原因: state_dict 本质 pickle, 第三方不可信包 = 任意代码执行后门
 
 ## 实测验证 (2026-08-19)

@@ -12,7 +12,7 @@
   现在是否活着(live_now) · 证据(evidence, 指向能真实产出它的命令/文件)。
 
 三条硬规矩:
-  ① **真读** 现有真源: `src/lerobot/dataspace/topics.py::TOPICS/MODE_TOPICS` 与
+  ① **真读** 现有唯一依据: `src/lerobot/dataspace/topics.py::TOPICS/MODE_TOPICS` 与
      运行中守护 `tools/dds/ss_daemon.py::MODE_TOPICS` (以及未收口的旧副本), 标出
      哪些切面**已有话题**、哪些**缺**。
   ② **真跑**: 每个"数据源切面"都现场执行它的产出命令(或读它的产物文件), 把关键值
@@ -41,7 +41,7 @@ SRC = os.path.join(REPO, "src")
 if SRC not in sys.path:
     sys.path.insert(0, SRC)
 
-# ── ① 真源: 话题注册表 (单一真源) ──────────────────────────────────────────────
+# ── ① 唯一依据: 话题注册表 (单一唯一依据) ──────────────────────────────────────────────
 try:
     from lerobot.dataspace import topics as T                          # noqa: E402
     REG_OK, REG_ERR = True, ""
@@ -202,13 +202,13 @@ def collect_probes():
     en = _newest(os.path.join(REPO, "zmax_data", "ss_live", "energy_*.jsonl"))
     p["energy_tap"] = (bool(en and _age(en) is not None and _age(en) < 86400 * 30),
                        "%s 龄%.0fs" % (os.path.basename(en), _age(en) or -1) if en else "无 energy_*.jsonl")
-    # 画布真源
+    # 画布唯一依据
     cv = os.path.join(REPO, "flows", "state_space_obs.json")
     p["canvas_json"] = (os.path.isfile(cv), "flows/state_space_obs.json 在" if os.path.isfile(cv) else "缺")
     # MoveIt 规划 tap
     pl = os.path.join(os.path.expanduser("~"), "zmax_moveit_plan", "live_plan.jsonl")
     p["moveit_plan"] = (os.path.isfile(pl), "live_plan.jsonl 在" if os.path.isfile(pl) else "缺 ~/zmax_moveit_plan/live_plan.jsonl")
-    # 标定真源
+    # 标定唯一依据
     he = os.path.join(REPO, "models", "handeye_state.json")
     p["handeye"] = (os.path.isfile(he), "models/handeye_state.json 在" if os.path.isfile(he) else "缺")
     # 数据集 orin_6d
@@ -368,8 +368,8 @@ def build_slices(sources, probes, live, mode_topics_live):
     add("场景", "场景_MoveIt规划", "ss_plan", "zmax::SSPlan", "state",
         "MoveIt plan-only → live_plan.jsonl → ss_daemon", ["叠加层", "数据空间页"], TQ("ss_plan"),
         P("moveit_plan"), "~/zmax_moveit_plan/live_plan.jsonl " + ("在" if P("moveit_plan")[0] else "缺"))
-    add("场景", "场景_标定真源", "ss_calib", "zmax::SSCalib", "state",
-        "ss_daemon ← 标定真源文件", ["标定页/现场核对"], TQ("ss_calib"),
+    add("场景", "场景_标定唯一依据", "ss_calib", "zmax::SSCalib", "state",
+        "ss_daemon ← 标定唯一依据文件", ["标定页/现场核对"], TQ("ss_calib"),
         P("handeye"), "models/handeye_state.json " + ("在" if P("handeye")[0] else "缺"))
 
     # ═══════════════ D. 监控 (remote_monitor_aggregate) ═══════════════
@@ -440,7 +440,7 @@ def build_slices(sources, probes, live, mode_topics_live):
     add("架构", "架构_节点", "arch_graph", "json{nodes[]}", "state",
         "tools/arch_graph.py --json", ["架构图"], ["test"],
         (bool(ag), "nodes=%d" % len(ag.get("nodes") or [])),
-        "nodes=%d(0..11 层: 平台/产品/特征/子系统/功能/模块/代码/参数/能力/接口/验证/真源)" % len(ag.get("nodes") or []))
+        "nodes=%d(0..11 层: 平台/产品/特征/子系统/功能/模块/代码/参数/能力/接口/验证/唯一依据)" % len(ag.get("nodes") or []))
     add("架构", "架构_边", "arch_graph", "json{edges[]}", "state",
         "tools/arch_graph.py --json", ["架构图"], ["test"],
         (bool(ag), "edges=%d" % len(ag.get("edges") or [])),

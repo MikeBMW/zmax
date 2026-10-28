@@ -48,7 +48,7 @@ INTACT 从"一个孤立画布节点（无连线、手工挂载）"变成 **L4 �
 * **u_ff 先验**进入的是 L3 的 `ssdec → ssff` **同一个融合槽位**（引擎 `u_ff`），不新增控制通路。
 * **L3 条件向量**是"预备通道"：坐标系与 L3 的流形节点（`ssmani_c/ssmani_p`）**同源**，
   但必须先用真实配对数据标定出 `z_INTACT → 流形坐标` 的映射（`models/intact_l3_map.json`），
-  未标定则解码器**拒绝返回**（计数 + 记来源），绝不写死映射。
+  未标定则解码器**拒绝返回**（计数 + 记来源），绝不预先固定映射。
 
 ---
 
@@ -85,14 +85,14 @@ src/lerobot/manifold/intact_node/__init__.py    # 仅剩兼容转发 (旧引用�
 | **常驻子进程桥（本方案）** | ✅ 依赖隔离（worker 跑在 `INTACT-JEPA/.venv/bin/python`）；外部仓库只读不改（`RUNTIME_SHA256SUMS` 钉住的文件一字节未动）；协议只有 4 个命令 hello/act/reset/bye |
 
 桥的实现在 `runtime/model_adapter.py`（`IntactRuntime`），worker 是 `tools/intact_worker.py`（跑在 INTACT venv）。
-"原来的项目已经跑起来了" 是对的 —— **桥不是新东西，v5.5.40 之前就在跑**；本次（v5.5.43）做的是把
+"原来的项目已经启动了" 是对的 —— **桥不是新东西，v5.5.40 之前就在跑**；本次（v5.5.43）做的是把
 **编排**（建桥 + 接数据源 + 真推理 + 解码 + 证据落盘 + 日志文本）从 GUI 下沉到 policy 层：
 
 ```
 GUI  (tools/gui/node_logic.py)  ── 只剩瘦调用 ─┐
                                               ▼
 src/lerobot/policies/intact/service.py   IntactIntentService.run_once(stage, decode, log)
-   ├─ ensure_ready()   建桥 + 接数据源 (metaworld → l4_episode 兜底, 原因写 note, 不静默)
+   ├─ ensure_ready()   建桥 + 接数据源 (metaworld → l4_episode 保障, 原因写 note, 不静默)
    ├─ node.step()      runtime/node.py 真推理 (未就绪 raise, 绝不返回零动作冒称成功)
    ├─ decoder.decode() decoder.py u_ff 先验 + L3 条件 (未标定拒绝 + 计数)
    └─ write_evidence() reports/intact_l3_cond.json (字段只增不改 → 引擎/工具不用动)
@@ -153,7 +153,7 @@ src/lerobot/policies/intact/service.py   IntactIntentService.run_once(stage, dec
 ① 数据源 (metaworld 直连): MT1(peg-insert-side-v3) · camera corner2 · obs_mode=metaworld_render
    goal_frame=intact_goal_frame_optical.npy (解析链末帧 = 任务完成态) · state_dim=39
 ② 策略真推理: action chunk(8,8) · candidate_sequences=0 (零搜索) · 延迟 1396ms/步 (CPU)
-   动作维自动对齐 4 → 8 (以模型实测为准, 不写死)
+   动作维自动对齐 4 → 8 (以模型实测为准, 不预先固定)
 ③ 解码器: u_ff 先验 [-0.0458, 0.2683, 0.266, 1.0] ← intact(chunk×K_ACT=0.5)
    L3 条件: 拒绝(未标定) → 证据落盘 reports/intact_l3_cond.json
 ④ 迁移期发现并修掉的真 bug: 未设 STABLEWM_HOME 时桥退回 <repo>/.cache → 权重全部找不到
@@ -163,13 +163,13 @@ src/lerobot/policies/intact/service.py   IntactIntentService.run_once(stage, dec
 ### 7.1 A/B 首轮暴露的第二个真 bug（已修）：引擎直喂帧时没有 goal 帧
 
 首轮 `tools/l4_intact_ab.py` 影子臂实测 `calls=60 · reuse=0 · err="ValueError: goal_displacement
-模式需要 goal 帧"` —— 即 **60 次"真推理"其实全部失败**（只是计数在涨，`frame_std=55.92` 真图是真的，
+模式需要 goal 帧"` —— 即 **60 次"真推理"实际全部失败**（只是计数在涨，`frame_std=55.92` 真图是真的，
 但模型那一步根本没跑）。这正是技能 `cross-venv-model-canvas-node §8.6` 记过的坑：
 `goal_displacement` 意图必须给 goal 帧，而"引擎直喂帧"路径（`step(fr, obs_source=...)`）没人设 goal。
 
-修法（在迁移后的 `runtime/node.py`，对所有调用方生效）：新增 `ensure_goal()` 三级兜底
+修法（在迁移后的 `runtime/node.py`，对所有调用方生效）：新增 `ensure_goal()` 三级保障
 「已显式 set_goal > 数据源自报 goal（metaworld 源内置本域真实目标帧）> 默认目标帧文件」，
-`step()` 在 goal_displacement 且无 goal 时自动兜底，兜不到才**显式报错**（不静默出垃圾）。
+`step()` 在 goal_displacement 且无 goal 时自动保障，兜不到才**显式报错**（不静默出垃圾）。
 修后同条件实测：`calls=8 · reuse=52`（chunk=8 → 60 步恰好 8 次真推理）、
 `u_ff_src=intact(chunk×K_ACT=0.5)`、`goal_src=默认目标帧(intact_goal_frame_optical.npy)`、
 `err=null`，且影子臂 `dist_final=0.0362` 与修复前**逐位相同**（不接管 → 行为不变，符合预期）。

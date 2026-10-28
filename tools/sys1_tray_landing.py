@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""把「泰国摆盘项目 · System 1 配置」落进平台真源 (2026-10-10)
+"""把「泰国摆盘项目 · System 1 配置」落进平台唯一依据 (2026-10-10)
 
-只改两处人工真源, 全部走备份 → 写入 → 回读核验:
+只改两处人工唯一依据, 全部走备份 → 写入 → 回读核验:
   ① config/platform/zmax_platform.json
-     · subsystems[sys1]  : rows / kpi / axes(cfg,cal,dia) —— 子系统配置真源 (= 配置中心「功能/性能」域 axes 来源)
+     · subsystems[sys1]  : rows / kpi / axes(cfg,cal,dia) —— 子系统配置唯一依据 (= 配置中心「功能/性能」域 axes 来源)
      · product_features  : 追加 PF-Z100-09..13 摆盘功能清单 (供应链可逐条报价/验收)
   ② flows/scenes_5jobs.json + tools/task_build.py
      · 追加 SCN-06-TRAY 摆盘场景 + 任务计划 -> config/tasks/tasks.json
@@ -41,7 +41,7 @@ def backup(p):
 
 
 # ─────────────────────────────────────────────────────────────
-# ① 平台真源: System 1 配置 + 摆盘功能清单
+# ① 平台唯一依据: System 1 配置 + 摆盘功能清单
 # ─────────────────────────────────────────────────────────────
 SYS1_ROWS_ADD = [
     "🚀 L3 摆盘作业 (泰国项目) · 周转盘 → 上料 Tray 盘 取放循环",
@@ -63,12 +63,12 @@ SYS1_CFG_ADD = [
     "推理步频 (每 N 步真推理) — 节拍与精度的折衷旋钮",
 ]
 SYS1_CAL_ADD = [
-    "盘面槽位几何 (Tray 30 槽 / 周转盘槽位) — 现场一次标定, 盘面坐标类参数的唯一真源",
+    "盘面槽位几何 (Tray 30 槽 / 周转盘槽位) — 现场一次标定, 盘面坐标类参数的唯一依据",
     "放置面高度 plane_z 与盘面平行度",
     "腕部相机工作距离窗口 0.1–0.6m (±1mm/±1° 只在此区间成立; 头部/胸部相机为 ±5mm 级)",
 ]
 SYS1_DIA_ADD = [
-    "摆盘 CT 实测 (起止口径写死: 从吸取离盘到下一位就位)",
+    "摆盘 CT 实测 (起止口径预先固定: 从吸取离盘到下一位就位)",
     "取放精度实测 (单边 mm / 角度 °, 同一位姿连续 30 次往返)",
     "槽位映射一致性 (放料到位 ±1mm · 槽位对号 100%)",
     "型号识别/空满三态混淆矩阵 (每类 ≥300 样本; POC 各 ≥98%)",
@@ -144,7 +144,7 @@ def patch_platform():
           and all(r in s1b["rows"] for r in SYS1_ROWS_ADD)
           and all(it in s1b["axes"]["cfg"] for it in SYS1_CFG_ADD)
           and len(d2["product_features"]) == len(d["product_features"]))
-    print("  ① 平台真源: sys1 axes cfg/cal/dia = %d/%d/%d · 新增产品特征 %d 条 · 回读核验 %s"
+    print("  ① 平台唯一依据: sys1 axes cfg/cal/dia = %d/%d/%d · 新增产品特征 %d 条 · 回读核验 %s"
           % (len(s1b["axes"]["cfg"]), len(s1b["axes"]["cal"]), len(s1b["axes"]["dia"]),
              n_new, "✅" if ok else "❌"))
     return ok
@@ -222,7 +222,7 @@ def patch_scenes():
         added = False
     d2 = jload(SCENES)
     ok = SCENE["scene_id"] in [s["scene_id"] for s in d2["scenes"]]
-    print("  ② 场景真源: 现有 %d 场景 %s · 回读核验 %s"
+    print("  ② 场景唯一依据: 现有 %d 场景 %s · 回读核验 %s"
           % (len(d2["scenes"]), "(新增 SCN-06-TRAY)" if added else "(已存在)", "✅" if ok else "❌"))
     return ok
 

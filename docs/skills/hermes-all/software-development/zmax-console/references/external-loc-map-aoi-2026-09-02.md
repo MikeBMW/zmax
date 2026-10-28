@@ -44,7 +44,7 @@ print(f'--- 共 {len(loc)} 条, 错位 {bad} 条 ---')
 
 ### 铁律
 - 新增/修改 _EXTERNAL_LOC 三要素(绝对路径, 行号, 真实符号名)必须跑上述校验。
-- 符号名匹配是源码截取的关键(截取到下一个顶层 class/def/@ 为止), 行号只是 VSCode 兜底。
+- 符号名匹配是源码截取的关键(截取到下一个顶层 class/def/@ 为止), 行号只是 VSCode 保障。
 - 用户说"XX 节点源码应该是 YYY" = 要么行号错位、要么符号错、要么粒度不对, 先跑校验再改。
 
 ## 二、AOI 外观质量检测真实化 — quality_check.py 三件套
@@ -73,7 +73,7 @@ print(f'--- 共 {len(loc)} 条, 错位 {bad} 条 ---')
   `segs = lines[:, 0] if lines.ndim == 3 else lines`(否则 IndexError: too many indices)
 - **真实执行原则(老倪工程真实性)**: 仿真全景帧(480x480 metaworld corner2)含机械臂/孔结构
   边缘, 按产线金手指阈值测必然 FAIL(实测划痕 61 条 vs 判据 ≤6)— 这是物理事实, **诚实
-  呈现 FAIL + 日志标注"场景级基线; 金手指/端面 ROI 特写检测需真机显微帧"**, 不许写死 pass。
+  呈现 FAIL + 日志标注"场景级基线; 金手指/端面 ROI 特写检测需真机显微帧"**, 不得硬编码 pass。
   真机接 YOLO 框裁剪 ROI 后再跑就是真实缺陷判据。
 
 ## 三、node_ss_s2 估计分支只 predict 没 update(画布"自适应状态估计器"名不副实)

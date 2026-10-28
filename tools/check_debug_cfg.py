@@ -3,13 +3,13 @@
 """🔍 调试配置一致性自检 (老倪: "把调试配置先改好" 之后的回归闸)
 
 查四件事, 全过才算配置是好的:
-  ① 4 个 INTACT 调试配置都指向**稳定指针** `intact_l4_current` (不是写死的轮次/epoch)
+  ① 4 个 INTACT 调试配置都指向**稳定指针** `intact_l4_current` (不是固定不变的轮次/epoch)
      + runtime=root + device=cpu (不抢训练显存)
   ② `intact_l4_current/` 满足官方 `load_pretrained` 的**文件夹**格式要求:
      恰好一个 .pt + config.json  (多个 .pt 会 ValueError: Ambiguous checkpoint)
   ③ 指针能解析到真实文件 (软链没断) 且尺寸合理
   ④ **GUI 生成模板与 .vscode/launch.json 一致** (右键"打开 VSCode"会用模板重写 launch.json,
-     两边不一致 → 下次右键就把配置改回去了), 且模板里不再有写死轮次的权重默认值
+     两边不一致 → 下次右键就把配置改回去了), 且模板里不再有预先固定轮次的权重默认值
 
 用法: python3 tools/check_debug_cfg.py     (退出码 0 = PASS)
 """
@@ -85,9 +85,9 @@ chk(n_lj_args == n_tpl_args == 1,
     f"桥 --policy 参数一致 ({n_lj_args} 处)",
     f"桥 --policy 参数不一致: launch {n_lj_args} · 模板 {n_tpl_args}")
 stale_env = sorted({v for v in tpl_env + lj_env if v and v != PTR_NAME})
-chk(not stale_env, "无任何写死/过期的 INTACT_POLICY", f"仍写死: {stale_env}")
+chk(not stale_env, "无任何预先固定/过期的 INTACT_POLICY", f"仍预先固定: {stale_env}")
 stale_args = sorted({v for v in tpl_args if v != PTR_NAME})
-chk(not stale_args, "无写死 --policy", f"仍写死: {stale_args}")
+chk(not stale_args, "无预先固定 --policy", f"仍预先固定: {stale_args}")
 # 每个配置都必须显式 INTACT_RUNTIME=root —— 曾经漏过一处, 被 GUI 右键重写 launch.json 抹掉后才发现
 n_rt_tpl = tpl_code.count('"INTACT_RUNTIME": "root"')
 n_rt_lj = sum(1 for c in ints if (c.get("env") or {}).get("INTACT_RUNTIME") == "root")

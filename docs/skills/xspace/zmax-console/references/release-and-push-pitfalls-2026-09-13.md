@@ -37,7 +37,7 @@ git -c http.sslVerify=false -c http.extraHeader="Authorization: $AUTH" push "<mi
 ```
 
 **成功判据只能靠 ls-remote**: 被墙下 fetch 也失败 → 本地 `origin/main` 引用**永远是陈旧的**,
-`git status -sb` 显示 "ahead N" 不能当"没推上去"的证据 (本次实测: status 说 ahead 3, 远端其实已有其中 1 个提交)。
+`git status -sb` 显示 "ahead N" 不能当"没推上去"的证据 (本次实测: status 说 ahead 3, 远端实际已有其中 1 个提交)。
 ```bash
 git -c http.sslVerify=false ls-remote "<mirror-url>" refs/heads/main   # 远端 SHA
 git rev-parse HEAD                                                     # 本地 SHA; 相等才算成

@@ -30,7 +30,7 @@ src/lerobot/policies/left_right/state_space/
 └── analysis.py      # 📊 前馈PD对比 (run_compare/plot_compare) + L2增益/BIBO/谱半径
 ```
 
-## Block 基类契约 (踩坑记录)
+## Block 基类契约 (遇到问题记录)
 
 ```python
 class Block:
@@ -54,7 +54,7 @@ gui-venv (PyQt5 用) 没有 lerobot/huggingface_hub → `import lerobot...` 触�
 policies/__init__.py 全家桶失败。验证方法: 伪造最小包链 (types.ModuleType + sys.modules
 注册 lerobot 三级路径) 再 spec_from_file_location 加载 state_space 包; 或直接
 python -c 从 src/ 下用 importlib 按依赖序加载模块文件。模型闭环验证:
-单步 step() → run(5) contact 序列 → analysis.analyze_model() → run_compare() 应全部跑通。
+单步 step() → run(5) contact 序列 → analysis.analyze_model() → run_compare() 应全部验证通过。
 
 ## 主题铁律 (同会话老倪纠正)
 

@@ -34,7 +34,7 @@ def chk(cond, label, extra=""):
 
 spec = json.load(open(FLOW, encoding="utf-8"))
 print("═══ 🧩 SAM3 → 🧿DeepSeek-VL 画布连线 渲染判据 ═══")
-print("画布真源: %d 节点 / %d 连线" % (len(spec["nodes"]), len(spec["links"])))
+print("画布唯一依据: %d 节点 / %d 连线" % (len(spec["nodes"]), len(spec["links"])))
 
 m = SM.SimulinkModule()
 err = None

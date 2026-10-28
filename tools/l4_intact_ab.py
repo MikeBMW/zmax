@@ -83,7 +83,7 @@ def main() -> int:
         "真接入(真推理真融合)": f"C_on calls {c['l4_calls_mean']} · blend {c['blend_mean']} · "
                               f"src={c['u_ff_src']}",
         "L3条件通道": ("已标定 → 注入" if c["l3_cond_ready"] else
-                       "未标定 → 不注入 (拒绝 + 计数, 未写死映射)"),
+                       "未标定 → 不注入 (拒绝 + 计数, 未预先固定映射)"),
         "是否提升": ("C 臂 success 高于 A 臂 → 有提升 (需配对复验: 同 seed 净胜 ≥2)"
                     if (c["success"] > base["success"]) else
                     "C 臂未超过 A 臂 → **无提升证据** (只证明接入通路真在跑)")}

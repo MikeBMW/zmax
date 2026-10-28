@@ -5,27 +5,27 @@
   改一处两边同时生效，别只改一边。
 - 运行中的控制台实例 cwd 就是 `tools/gui`（`readlink -f /proc/<pid>/cwd`），改这个文件 = 改用户正在看的那份；
   改完**重启一次**才生效。
-- 平台/产品描述与计数走单一真源口 `tools/gui/zmax_platform_info.py`（数据来自 `config/platform/*.json` +
+- 平台/产品描述与计数走单一唯一依据口 `tools/gui/zmax_platform_info.py`（数据来自 `config/platform/*.json` +
   `zmax_engineering.db`），页面不许自己硬写数字。
 
 ## 1. 删"与主控制台重复"的块
 - 用户指着某块说"与主控制台左侧同源…删掉" = 删**配置中心这一份**，主控制台那份保留。整块删（连同它的
   构造/刷新方法），不留死代码；同页其它块（平台描述 + 产品特性清单）不动。
-- 判据必须同改：`tools/verify_config_center_seven_stars.py` 里原先那条是"页上文字 == 真源模块文字"，
+- 判据必须同改：`tools/verify_config_center_seven_stars.py` 里原先那条是"页上文字 == 唯一依据模块文字"，
   删块后翻成"页面不再有这个块 + 主控制台仍接线 + 保留块还在"；判据**条数不变**，别顺手删条目。
 
 ## 1b. 删「配置项整行 / 整字段」
 - 行通常由类级元组驱动（`_PROD_ROWS = ("产品", "版本段", …)`）。删一个键要同时清三处，否则 `KeyError` 或界面残留：
   ① 元组项；② 刷新函数里 `vals["键"].set_value(...)` 的取数与格式化（含日志行里拼的该值）；
-  ③ 只服务这一行的模块级 helper（如 `_cut_big` / `_vmark`）与「真源: … sha …」状态行 `setText`。
+  ③ 只服务这一行的模块级 helper（如 `_cut_big` / `_vmark`）与「唯一依据: … sha …」状态行 `setText`。
 - 判据会被删键卡死：`verify_product_ui.py` 这类按元组逐键取值、且把「📋/双击/右键复制」用例挂在某个被删字段上
   ⇒ 字段数改 `len(fields)`、复制用例换到一个**还在**的字段（没有截断字段时，判据从"显示是截断形式"改成"复制的 == full_value"），
-  并新增一条正面判据「已删的 N 个键真不在界面 + 说明行/真源行也不在」。
+  并新增一条正面判据「已删的 N 个键真不在界面 + 说明行/唯一依据行也不在」。
 - 不为"以后可能还要"留空控件或复活分支：用户要界面极简，死代码下次会被当活功能误读。
-- 交付时逐项对账「删了哪几处（行 / 说明行 / 真源行 / helper）」，比一句"删完了"有用。
+- 交付时逐项对账「删了哪几处（行 / 说明行 / 唯一依据行 / helper）」，比一句"删完了"有用。
 
-## 1c. 只改某条指标文案 = 改真源，不是改界面
-- 界面上的指标串（如「插入成功率 ≥99% · 头到孔底 <4mm」）不许在 GUI 硬写：真源是
+## 1c. 只改某条指标文案 = 改唯一依据，不是改界面
+- 界面上的指标串（如「插入成功率 ≥99% · 头到孔底 <4mm」）不许在 GUI 硬写：唯一依据是
   `config/platform/*.json` → 工程库 → 页面。改完必须 `engineering_db.py build` 并核 `product_features` 与 `params`
   两处（链路口径与验法见 `references/truth-to-db-sync.md`）。
 
@@ -43,7 +43,7 @@
   ```
 - 再装 **app 级 eventFilter**（`QApplication.installEventFilter(self)`，幂等）:
   `ev.type() == QEvent.Polish and isinstance(obj, QLabel) and self.isAncestorOf(obj)` → 同样 OR。
-  刷新/重读真源/换页时新建的标签自动带上，不靠逐个改。
+  刷新/重读唯一依据/换页时新建的标签自动带上，不靠逐个改。
 - 🔴 跳过条件写错 (`if f & (A|B): continue`) 会让"只开鼠标选中"的标签（本文件的 `_CopyLabel` 就只设
   `TextSelectableByMouse`）把键盘标志永远挡住 —— 鼠标能用，但要求 A+B 的判据全红。
 - 树/表格不是 QLabel：page 级 `QShortcut(QKeySequence.Copy, self)` + `Qt.WidgetWithChildrenShortcut`；

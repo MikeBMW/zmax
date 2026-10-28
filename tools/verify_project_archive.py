@@ -9,7 +9,7 @@
  ① 7 段真在: canvas/panel/calibration/master_param/measure/tasks/fingerprints, 内容与现场同源
  ② CLI 全链路: save → verify → inspect → explode(人看的文件) → diff
  ③ 漂移能被抓住: 改现场标定参数 → diff 报 calibration/master_param **漂移**并指出键
- ④ restore 默认**只回填画布+面板**, 标定真源 sha256 一个字节没变
+ ④ restore 默认**只回填画布+面板**, 标定唯一依据 sha256 一个字节没变
  ⑤ `--with-calib --yes` 才恢复标定 (备份→写→回读), 恢复后 sha256 == 存档 sha256
  ⑥ 控制台在时 panel 段真读到 6 个运行开关 + 当前视图; apply_run_cfg 能把开关拨回去
  ⑦ v1 老存档仍可读 + 可升级 v2
@@ -62,9 +62,9 @@ chk("控制台没打开" in ((proj["panel"].get("note") or "")), "② panel: 命
     % (proj["panel"].get("note") or "")[:40])
 cal = proj["calibration"]
 chk(set(os.path.basename(p) for p in cal["files"]) == {"zmax_calib.json", "zmax_manifold.json"},
-    "③ calibration: %d 个真源文件带全文 + sha256" % len(cal["files"]))
+    "③ calibration: %d 个唯一依据文件带全文 + sha256" % len(cal["files"]))
 chk(cal["uncalibrated"] == ["T_base_cam", "plane_z", "cell_geometry"],
-    "③ 未标定项 = %s (与真源一致)" % cal["uncalibrated"])
+    "③ 未标定项 = %s (与唯一依据一致)" % cal["uncalibrated"])
 chk(any("ss_geom_calib" in c for c in (cal.get("fix_cmds") or {}).values()), "③ 带现场标定命令")
 mp = proj["master_param"]
 chk(mp["M"] == 1.0 and mp["inertia"] is False, "④ master_param: M=%s inertia=%s" % (mp["M"], mp["inertia"]))
@@ -72,7 +72,7 @@ chk(bool(mp.get("node", {}).get("params")), "④ 带画布 M 节点 7 段快照 
     % len((mp.get("node") or {}).get("params") or {}))
 chk(bool((proj["measure"].get("measure_view") or {}).get("源")), "⑤ measure: measure_view 源 %d 条"
     % len((proj["measure"].get("measure_view") or {}).get("源") or []))
-# 🔴 2026-10-12: 原来写死 ==5 ⇒ 现场任务加到 7 个就报假失败。改成与**真源**比(缺一不可: 存档里
+# 🔴 2026-10-12: 原来预先固定 ==5 ⇒ 现场任务加到 7 个就报假失败。改成与**唯一依据**比(缺一不可: 存档里
 #   不能少于现场那份), 数目变化不再触发假失败。
 _tasks_arc = (proj["tasks"].get("content") or {}).get("tasks") or {}
 try:
@@ -81,9 +81,9 @@ try:
         _tasks_live = (_json2.load(_f2) or {}).get("tasks") or {}
 except Exception:                                                           # noqa: BLE001
     _tasks_live = {}
-chk(len(_tasks_arc) >= max(1, len(_tasks_live)), "⑥ tasks: 存档 %d / 真源 %d 个任务"
+chk(len(_tasks_arc) >= max(1, len(_tasks_live)), "⑥ tasks: 存档 %d / 唯一依据 %d 个任务"
     % (len(_tasks_arc), len(_tasks_live)))
-chk(len(proj["fingerprints"]) >= 4, "⑦ fingerprints: %d 个真源文件" % len(proj["fingerprints"]))
+chk(len(proj["fingerprints"]) >= 4, "⑦ fingerprints: %d 个唯一依据文件" % len(proj["fingerprints"]))
 
 print("\n② CLI: verify / inspect / explode / diff")
 r = run("verify", ARCH)
@@ -96,11 +96,11 @@ want = ["canvas.json", "panel.json", "master_param.json", "measure.json", "tasks
         "fingerprints.json", "MANIFEST.md", "calibration/zmax_calib.json", "calibration/zmax_manifold.json"]
 chk(all(os.path.exists(os.path.join(exp, w)) for w in want), "explode 出人能看的文件: %s" % want)
 man = open(os.path.join(exp, "MANIFEST.md"), encoding="utf-8").read()
-chk("真源永远是仓库里的文件" in man, "MANIFEST 写明真源唯一 (快照 ≠ 真相)")
+chk("唯一依据永远是仓库里的文件" in man, "MANIFEST 写明唯一依据唯一 (快照 ≠ 真相)")
 r = run("diff", ARCH)
 chk("逐段一致" in r.stdout, "diff: 存档 == 现场 ✅")
 
-print("\n③ 漂移能被抓住 (把真源 M 改成 1.5)")
+print("\n③ 漂移能被抓住 (把唯一依据 M 改成 1.5)")
 code = ("import sys; sys.path.insert(0, %r); import zmax_params as zp;"
         "print(zp.write_manifold_M(1.5, None))" % os.path.join(ROOT, "tools"))
 rr = subprocess.run([PY, "-c", code], capture_output=True, text=True, cwd=ROOT, timeout=120,
@@ -111,11 +111,11 @@ chk("⚠️ calibration: 漂移" in r.stdout, "diff 报 calibration 漂移")
 chk("master_param: 漂移" in r.stdout, "diff 报 master_param 漂移")
 chk("M: 存档 1.0 → 现场 1.5" in r.stdout, "diff 指出具体键: M 1.0 → 1.5")
 
-print("\n④ restore 默认只回填画布+面板 (标定真源不许动)")
+print("\n④ restore 默认只回填画布+面板 (标定唯一依据不许动)")
 h_before = PF.sha256_file(MANIFOLD)
 r = run("restore", ARCH)
 chk(r.returncode == 0 and "画布已写回" in r.stdout, "restore (无 --with-calib) 成功")
-chk(PF.sha256_file(MANIFOLD) == h_before, "标定真源 sha256 未变 (默认不覆盖标定 ✅)")
+chk(PF.sha256_file(MANIFOLD) == h_before, "标定唯一依据 sha256 未变 (默认不覆盖标定 ✅)")
 chk("标定/主参数未恢复" in r.stdout, "输出里明说标定/主参数未恢复")
 r = run("diff", ARCH)
 chk("calibration: 漂移" in r.stdout, "漂移仍在 (因为没恢复) —— 符合预期")
@@ -127,7 +127,7 @@ r = run("restore", ARCH, "--with-calib", "--yes")
 chk("all_ok=True" in r.stdout, "恢复输出 all_ok=True")
 chk(PF.sha256_file(MANIFOLD) == proj["calibration"]["files"]["config/calib/zmax_manifold.json"]["sha256"],
     "回读 sha256 == 存档 sha256 (三段纪律)")
-chk(json.load(open(MANIFOLD, encoding="utf-8"))["M"] == 1.0, "真源 M 回到存档值 1.0")
+chk(json.load(open(MANIFOLD, encoding="utf-8"))["M"] == 1.0, "唯一依据 M 回到存档值 1.0")
 baks = [f for f in os.listdir(os.path.join(ROOT, "config/calib")) if ".bak_" in f]
 chk(len(baks) >= 1, "恢复前留了备份: %s" % sorted(baks)[-1:])
 r = run("diff", ARCH)
@@ -243,12 +243,12 @@ chk(len(p2s["panel"]["run_switches"]) == 6 and p2s["panel"].get("view") == "mpar
 chk(bool((p2s.get("master_param") or {}).get("node", {}).get("params")), "总工程含画布 M 节点快照")
 chk(p2s["schema"] == PF.SCHEMA and PF.is_space(p2s), "总工程 schema/kind 正确")
 
-# 复原现场真源
+# 复原现场唯一依据
 open(MANIFOLD, "wb").write(_calib_bytes)
 open(CANVAS_J, "wb").write(_canvas_bytes)
-chk(open(CANVAS_J, "rb").read() == _canvas_bytes, "画布真源已复原到测试前 (bit 级)")
+chk(open(CANVAS_J, "rb").read() == _canvas_bytes, "画布唯一依据已复原到测试前 (bit 级)")
 chk(PF.sha256_file(MANIFOLD) == proj["calibration"]["files"]["config/calib/zmax_manifold.json"]["sha256"],
-    "现场真源已复原到存档状态 (bit 级)")
+    "现场唯一依据已复原到存档状态 (bit 级)")
 
 print("\n" + "═" * 64)
 print("❌ 失败 %d 项" % len(FAIL) if FAIL else "✅ 全部通过 — 7 段存档 / CLI 全链路 / 漂移可抓 / 默认不覆盖标定")

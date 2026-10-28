@@ -3,7 +3,7 @@
 """Z-MAX 光模块插拔/检测工位 · 市场分析 + 定价 + 三方分成 模型 (2026-10-27)
 
 口径铁律
-  1) 产能只用页面/planner 同一个真源: zmax_data/runtime/traj/sim_insert.json 的 loop 块
+  1) 产能只用页面/planner 同一个唯一依据: zmax_data/runtime/traj/sim_insert.json 的 loop 块
      (稳态 4 件 45.87s ⇒ 300 件/h 管理口径) —— 不另编 UPH。
   2) 市场数据全部带来源: LightCounting(转引)/上市公司年报/华源证券(CIOE 转引)/东方财富(光通信测试仪器)。
      没有公开数字的一律标 [估] 并在 assumptions 里写清推法。
@@ -18,7 +18,7 @@ REPO = "/home/ubuntu/zmax"
 OUT = os.path.join(REPO, "reports", "market_20261027")
 os.makedirs(OUT, exist_ok=True)
 
-# ── 真源: 节拍/产能 ──────────────────────────────────────────────────────
+# ── 唯一依据: 节拍/产能 ──────────────────────────────────────────────────────
 SI = json.load(open(os.path.join(REPO, "zmax_data/runtime/traj/sim_insert.json"), encoding="utf-8"))
 LOOP = SI["loop"]
 TACT_S = float(LOOP["tact_s"])                 # 11.47 s/件(稳态)
@@ -30,7 +30,7 @@ CAP_YEAR_OEE = CAP_YEAR * 0.75                 # 按 75% 稼动可承诺
 YIELD = 0.992
 NG = 0.008
 
-# ── 真源: 成本 ──────────────────────────────────────────────────────────
+# ── 唯一依据: 成本 ──────────────────────────────────────────────────────────
 CM = json.load(open(os.path.join(REPO, "config/platform/zmax_cost_model.json"), encoding="utf-8"))
 HW = {h["item"]: h["price"] for h in CM["hardware"]}
 HW_NOW = sum(HW.values())                      # 203,000

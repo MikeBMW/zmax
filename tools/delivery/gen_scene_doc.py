@@ -10,8 +10,8 @@
   · 文档明确目标: **成功率 99% · 节拍 3.5s**。
   · 摆盘与插拔 = 两份文档 (同一模板, 由配置模板定义)。
 
-真源 (全部现取, 不手写):
-  outputs/config_sheets/配置单_<task>_latest.json      任务/画布/参数注册表/标定真源/点位台账
+唯一依据 (全部现取, 不手写):
+  outputs/config_sheets/配置单_<task>_latest.json      任务/画布/参数注册表/标定唯一依据/点位台账
   reports/feature_io_test.json                         功能 topic 输入输出实测
   docs/deliverables/两场景验收报告_<ver>.json            性能实测与判定
   data/database/zmax/zmax_engineering.db               能力清单(31)/产品特征KPI/模块↔能力
@@ -116,7 +116,7 @@ def render(d):
     gen = time.strftime("%Y-%m-%d %H:%M:%S")
     A("# %s作业 交付文档 · %s · %s" % (name, task, ver))
     A("")
-    A("> 本文件由配置模板同源渲染 (真源: 配置单 / 功能 topic 实测 / 验收报告 / 工程库), **数字不手写**。")
+    A("> 本文件由配置模板同源渲染 (唯一依据: 配置单 / 功能 topic 实测 / 验收报告 / 工程库), **数字不手写**。")
     A("> 场景: %s · 站点: %s · 场景号: %s · 生成: %s" %
       (st.get("场景"), st.get("site"), st.get("SCN"), gen))
     A("")
@@ -152,7 +152,7 @@ def render(d):
         A("| 插入到位残差 | <2 mm (链内 `_insert_depth()<0.002m`) | %.4f mm | %s |" %
           (ins.get("depth_mm") or -1, "达标" if ins.get("depth_ok") else "未达标"))
         A("| 插入行程 (配置) | ins.depth | %s mm | — |" % ins.get("depth_cfg_target_mm"))
-        A("| episode 时长 | — | %.2f s (%s 步) | 任务真源未定义节拍目标 |" %
+        A("| episode 时长 | — | %.2f s (%s 步) | 任务唯一依据未定义节拍目标 |" %
           (ins.get("t_span_s") or 0, ins.get("steps")))
         A("| 终态 / success | 完成 | `%s` · %s | 达标 |" % (ins.get("stage_final"), ins.get("success")))
     A("")
@@ -168,7 +168,7 @@ def render(d):
     for s in d["scenes"]:
         A("| %s | %s | %s | `%s` %s |" % (s.get("task"), s.get("scene"), s.get("scn"), s.get("color"), s.get("label")))
     A("")
-    A("当前活跃任务: `%s` (真源 `config/ss_task_binding.json`) · 切换器 `tools/ss_scene_switch.py`" %
+    A("当前活跃任务: `%s` (唯一依据 `config/ss_task_binding.json`) · 切换器 `tools/ss_scene_switch.py`" %
       (sh_active := (_j(os.path.join(ROOT, "config", "ss_task_binding.json"), {}) or {}).get("active_task")))
     A("")
     A("### 2.2 空间点位 / 位置 / 角度")
@@ -178,8 +178,8 @@ def render(d):
     for x in (d["sheet"].get("点位台账") or []):
         A("| %s | `%s` | %s | `%s` | %s |" % (x.get("label"), x.get("file"), x.get("count"), x.get("sha256_16"), x.get("mtime")))
     A("")
-    A("标定真源: %s" % "; ".join("`%s` sha `%s`" % (x.get("file"), x.get("sha256_16"))
-                                for x in (d["sheet"].get("标定真源") or [])))
+    A("标定唯一依据: %s" % "; ".join("`%s` sha `%s`" % (x.get("file"), x.get("sha256_16"))
+                                for x in (d["sheet"].get("标定唯一依据") or [])))
     A("")
     blk = st.get("blocked_by_site") or []
     A("站位几何: %s" % ("**未标定** " + ", ".join("`%s`" % b for b in blk) + " ⇒ 坐标类参数标「不可信」"

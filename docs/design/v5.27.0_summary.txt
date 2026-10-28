@@ -32,7 +32,7 @@ v5.27.0 — 模块库 ↔ 画布: 全局同步 + 每个模块可拖进画布 / �
    纯文本拖拽不建节点) · 同步是活的 · 删除(curation+1/库−1/画布不变) · 真落盘 · 删除名单在册 → 全绿 0 失败
    tools/lib_sync.py check|dead|prune|restore|list|verify → verify rc=0 (89/89 缺 0 · 462 条 · 0 死条目 · 0 重名)
 
-⑦ 踩坑
+⑦ 遇到问题
    · QDropEvent 不接管 QMimeData 所有权 → 内联造 mime 被 GC = 段错误 (判据跑一半崩) → 先持引用再传
    · export_flow 里的 QFileDialog.exec_() 离屏会卡死 → 替 QFileDialog.exec_/selectedFiles, 不是 getSaveFileName
    · 判据口径: 「画布节点都得在库里」只认状态空间画布 (库不是所有 flow 的并集)

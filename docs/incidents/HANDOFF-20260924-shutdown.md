@@ -29,7 +29,7 @@
 **判定: 未证明提升 → 不切 `intact_l4_current` 指针**（在役权重原样保留）。
 原始数据: `reports/ab_l4_policy_ms_20260923_235000/`、`reports/ab_intent_line_closedloop_20260923_2351*.json`。
 
-## 3. 今日修掉的真问题（含踩坑链，供复现）
+## 3. 今日修掉的真问题（含遇到问题链，供复现）
 
 1. **tap 图像解码被时钟回拨冻死**（症状: 画布"摄像头连接失败"，而采集看似在跑）
    rclpy 定时器按墙钟调度 → NTP 回拨 7.14h 后其触发时刻落到未来 → 像素永不落盘。
@@ -44,7 +44,7 @@
    已挂进 `tools/fullpipe_chain.sh` ②b；判假 A/B 指纹 = **各臂逐位相同 + action_dim=4**。
 5. **飞书发送 99991663**: 凭据/网络都好（手动换 token+发消息 code=0），是 gateway 进程内 token 缓存过期。
    **需用户在自己终端跑一次 `hermes gateway restart`**（agent 被守卫禁止重启 gateway）。
-   兜底: `~/.hermes/scripts/feishu_notify.py` 直连开放平台（每次自换 token），哨兵用它推送 —— 已验证 code=0。
+   保障: `~/.hermes/scripts/feishu_notify.py` 直连开放平台（每次自换 token），哨兵用它推送 —— 已验证 code=0。
 
 ## 4. 未完成 / 下次接手第一件事
 

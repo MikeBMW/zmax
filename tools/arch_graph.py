@@ -5,7 +5,7 @@
 老倪: 「把单一工程库里的 平台 → 系统 → 功能 → 模块/代码 层级, 以及
        功能 ↔ 配置/标定/诊断(三轴) ↔ 参数数值 的关联, 导成结构化 JSON, 供控制台直接渲染。」
 
-本工具**只读** (sqlite uri `?mode=ro`), 不改任何真源/库。全部数字从库里现算, 不写死 —— 
+本工具**只读** (sqlite uri `?mode=ro`), 不改任何唯一依据/库。全部数字从库里现算, 不预先固定 —— 
 最终答复里每个计数都能用同一库复算。
 
 层级 (layer, 主链 0-7):
@@ -21,7 +21,7 @@
   8 能力 capability          (capability_dbc 表)
   9 接口 interface           (interfaces 表)
  10 验证 verification        (verification_features 表)
- 11 真源 source              (params.source 去重后的真源文件)
+ 11 唯一依据 source              (params.source 去重后的唯一依据文件)
 
 边 (edges) 全部带 evidence (链接来源表 + 关键字段), 可逐条回库复算。
 
@@ -42,13 +42,13 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_DEFAULT = os.path.join(ROOT, "data", "database", "zmax", "zmax_engineering.db")
-# 画布真源 (89 节点: 74 逻辑节点 + 15 row_bg 背景带 / 184 连线)
+# 画布唯一依据 (89 节点: 74 逻辑节点 + 15 row_bg 背景带 / 184 连线)
 CANVAS_DEFAULT = os.path.join(ROOT, "data", "database", "zmax", "sources", "canvas", "state_space_obs.json")
 
 # 主链 + 辅助层的层号与中文名 (控制台按 layer_name 分组, 不依赖数字顺序)
 LAYER_NAMES = {
     0: "平台", 1: "产品", 2: "产品特征", 3: "子系统", 4: "功能", 5: "模块",
-    6: "代码", 7: "参数", 8: "能力", 9: "接口", 10: "验证", 11: "真源",
+    6: "代码", 7: "参数", 8: "能力", 9: "接口", 10: "验证", 11: "唯一依据",
 }
 
 
@@ -62,7 +62,7 @@ def open_db(path=DB_DEFAULT):
 
 
 def _canvas_counts(path=CANVAS_DEFAULT):
-    """读画布真源, 报两种口径: JSON 全量节点 (含 row_bg) 与 逻辑节点 (不含 row_bg)。
+    """读画布唯一依据, 报两种口径: JSON 全量节点 (含 row_bg) 与 逻辑节点 (不含 row_bg)。
 
     为什么要两种: 库 canvas_nodes 只存 74 条逻辑节点 (与 functions 对齐);
     画布 JSON 另有 15 条 row_bg 背景带 ⇒ 89。两个口径都得能对上, 否则控制台画布
@@ -209,7 +209,7 @@ def build(con, canvas_path=CANVAS_DEFAULT):
         E("mod:" + str(r["module_name"]), cid, "实现",
           {"table": "module_code", "module_name": r["module_name"], "file": r["file"], "line": r["line"]})
 
-    # ── 7 参数 (params) + 真源文件节点 (params.source) ────────────────────
+    # ── 7 参数 (params) + 唯一依据文件节点 (params.source) ────────────────────
     param_rows = q("SELECT param_id, group_cn, cat, name, cn, value, default_val, min, max, unit, kind, "
                    "choices, source, ref, writable, status, color, sys_id, module_ref, impact FROM params")
     for r in param_rows:
@@ -221,7 +221,7 @@ def build(con, canvas_path=CANVAS_DEFAULT):
            "ref": r["ref"], "writable": r["writable"], "status": r["status"], "sys_id": r["sys_id"],
            "module_ref": r["module_ref"], "impact": r["impact"]})
         src_node(r["source"])
-        E(nid, "source:" + str(r["source"]), "真源",
+        E(nid, "source:" + str(r["source"]), "唯一依据",
           {"table": "params", "field": "source", "param_id": r["param_id"], "source": r["source"]})
 
     # ── 8 能力 (capability_dbc) ──────────────────────────────────────────
@@ -334,7 +334,7 @@ def phi(param_id):
 # 局部子图就退化成全图 —— focus 要的是"这一点从哪来、到哪去", 不是同层兄弟。
 _FOCUS_UP = {"系统功能", "归属", "产品特征", "平台产品"}
 # 系统功能 同时在下行集合: 以系统为中心时要能往下展开到它的功能 (功能为中心时该边是入边, 不受影响)
-_FOCUS_DOWN = {"系统功能", "对应模块", "实现", "功能参数", "性能指标", "真源", "用到", "能力引用", "接口"}
+_FOCUS_DOWN = {"系统功能", "对应模块", "实现", "功能参数", "性能指标", "唯一依据", "用到", "能力引用", "接口"}
 
 
 def subgraph(graph, key):
@@ -418,7 +418,7 @@ def summarize(graph, con, canvas_path=CANVAS_DEFAULT):
     print("Z-MAX 架构图数据 (只读)   库=%s   建库时间=%s" % (
         graph["meta"]["db"], n1("SELECT v FROM meta WHERE k='built_at'")))
     print("─" * 78)
-    print("【层级 · 每层条数】(真源: 库表 COUNT)")
+    print("【层级 · 每层条数】(唯一依据: 库表 COUNT)")
     tbl_for = {0: "platform", 1: "products", 2: "product_features", 3: "subsystems",
                4: "functions", 5: "modules", 6: "module_code", 7: "params",
                8: "capability_dbc", 9: "interfaces", 10: "verification_features"}
@@ -429,9 +429,9 @@ def summarize(graph, con, canvas_path=CANVAS_DEFAULT):
             n1("SELECT COUNT(*) FROM %s" % t) if layer != 11 else n1("SELECT COUNT(DISTINCT source) FROM params")))
     print("  ── 节点合计: %d" % len(nodes))
 
-    print("\n【边 · 交叉链接数】(真源: 逐边 evidence 可回库复算)")
+    print("\n【边 · 交叉链接数】(唯一依据: 逐边 evidence 可回库复算)")
     order = ["平台产品", "产品特征", "归属", "用到", "能力引用", "接口", "系统功能",
-             "对应模块", "实现", "性能指标", "功能参数", "真源", "验证分级"]
+             "对应模块", "实现", "性能指标", "功能参数", "唯一依据", "验证分级"]
     for k in order:
         if k in eby:
             print("  %-8s %5d" % (k, eby[k]))

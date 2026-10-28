@@ -3,21 +3,21 @@
 把分析/汇报内容做成**用户能自己改的 .pptx**，并让它在控制台（或网页）里能直接翻页看、
 同时原文件可下载可编辑。适用于“分析报告、竞品格局、验收汇报”这一类对外交付。
 
-## 1. 目录与单一真源
+## 1. 目录与单一唯一依据
 
 ```
 deliverables/<topic>_<ver>/
   X.pptx              # 主交付，可编辑
   X.pdf               # 只读快照，用于核对渲染
   preview/s-NN.png    # 逐页预览
-  roster.json         # 结构化数据 = 唯一真源
+  roster.json         # 结构化数据 = 唯一依据
   <topic>_roster.py   # 台账 → json + 统计
   <topic>_figs.py     # 出图
   make_pptx.py        # 出 deck
   README.md           # 改哪里、怎么重算、口径、控制台入口
 ```
 
-单向流动：**数据 → JSON → 统计 → 图 → 版面**。生成脚本里不写死数字，改一个值只改 JSON 再重跑，
+单向流动：**数据 → JSON → 统计 → 图 → 版面**。生成脚本里不预先固定数字，改一个值只改 JSON 再重跑，
 否则同一个数在表格、图、正文会各说一套。
 
 ## 2. 可编辑性（对方会打开 PowerPoint/WPS 改）
@@ -110,7 +110,7 @@ for i, s in enumerate(prs.slides, 1):
 - 面板：下拉列交付件（`QComboBox` 的 `itemData` 放整条 dict）+「在控制台查看 / 用本机程序打开 / 复制路径 / 重新扫描」。
 - “查看” = 独立窗口内嵌 `QWebEngineView` 指向 `<svc>/eval/ppt?f=<name>`；不可用时退回系统浏览器（不静默失败）。
   `QtWebEngineWidgets` 要在 `QApplication` 之前 import（宿主程序模块级已保证），窗口实例化时再 import 不会炸。
-- **预览只读，编辑走原文件**：`QDesktopServices.openUrl(QUrl.fromLocalFile(path))`，让对方改唯一真源，不是缓存页图。
+- **预览只读，编辑走原文件**：`QDesktopServices.openUrl(QUrl.fromLocalFile(path))`，让对方改唯一依据，不是缓存页图。
 - 失败把原因写进面板状态行（路径 + 报错），不显示假 0 页。
 
 ## 7. 视觉复检循环（每页都会被人看时）
@@ -220,5 +220,5 @@ if st is not None:
 
 顺序 `vision_analyze` 30 页比生成还贵。把页图区间切成三段，并行派三个**只读**子代理（不修文件），
 要求回 `页码｜位置｜缺陷｜严重度`，并强制干净页写 `OK`（只问“有什么问题”的子代理会凑问题）。
-任务文本里把七项检查写死：出框/裁切、元素重叠、豆腐块、孤字、表格压页脚、表头与内容语义错位、
+任务文本里把七项检查预先固定：出框/裁切、元素重叠、豆腐块、孤字、表格压页脚、表头与内容语义错位、
 同页数字自相矛盾。三路全回后一次性批量修。

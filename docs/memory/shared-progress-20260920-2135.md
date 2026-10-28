@@ -27,10 +27,10 @@
 ### 现场两个坑（已修 + 已写进 skill `real-arm-motion-control`）
 1. **`error_code=-18`**：`setPowerState(false before automatic mode): 该操作不允许在机器人当前运行状态下执行`
    = 还在**拖动模式**。表现是"点了技能没反应"。切自动(idle) 即可。
-2. **超时不能写死**：驱动限速下 ≈2.8mm/s（speed=30），448mm 斜线要走 ~160s；
-   写死 60s 会在半路判"未到位"中止，而指令已发不会撤回（臂自己走完，现场看着像"只走了一半"）。
+2. **超时不能预先固定**：驱动限速下 ≈2.8mm/s（speed=30），448mm 斜线要走 ~160s；
+   预先固定 60s 会在半路判"未到位"中止，而指令已发不会撤回（臂自己走完，现场看着像"只走了一半"）。
    现按 `15 + 直线/eff × 1.6` 估算；另驱动自身 `wait_until_idle` 只等 30s → 长转移会带
-   `ROBOT_IDLE_TIMEOUT/has_error=true`（动作其实已完成，别重发）。练习建议转移 ≤200~300mm。
+   `ROBOT_IDLE_TIMEOUT/has_error=true`（动作实际已完成，别重发）。练习建议转移 ≤200~300mm。
 
 ### 数据留档
 - `~/zmax_data/arm_slots_20260920/`：`points/`（taught_points + registry，19 个 L2 技能）·

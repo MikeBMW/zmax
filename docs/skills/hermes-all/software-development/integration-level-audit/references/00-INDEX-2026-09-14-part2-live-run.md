@@ -9,7 +9,7 @@
 
 - `references/live-run-triage-and-silent-degrade-2026-09-14.md`
   A) 「我现在正在运行呢, 断点无反应」现场判定 (GUI 起子进程 + pydevd `--multiprocess` 已接上)
-  B) 静默退化: `Model.__init__` 次数 = 步数 (ckpt `device_processor.device` 写死 cuda) 根因 + 修法 + 修后数字
+  B) 静默退化: `Model.__init__` 次数 = 步数 (ckpt `device_processor.device` 预先固定 cuda) 根因 + 修法 + 修后数字
   C) 相邻技巧: py-spy 活进程真栈 / `HF_HUB_OFFLINE=1` 解探针卡网络 / 打桩失败要打印
 
 ## 待并入 `SKILL.md` 的三节 (标题即建议小节名)

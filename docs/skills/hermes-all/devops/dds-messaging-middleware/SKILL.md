@@ -27,7 +27,7 @@ python3 -m venv ~/dds-venv
 ```
 > 放**独立 venv**，别污染训练/业务环境。
 
-## 话题与 QoS 设计（按用途分级，别一刀切）
+## 话题与 QoS 设计（按用途分级，别统一处理）
 | 话题用途 | QoS | 为什么 |
 |---|---|---|
 | 状态快照（硬件/进度）| RELIABLE · KEEP_LAST(1) · **TRANSIENT_LOCAL** | 新订阅者一上线**立刻**拿到最新值，不用等下一轮 |
@@ -54,13 +54,13 @@ export CYCLONEDDS_URI=file://$PWD/dds/cyclonedds_unicast.xml
 # 或脚本化: --cfg dds/cyclonedds_unicast.xml
 ```
 > 这同时是**跨公网**的必要条件（多播过不了公网/多数交换机）。若一开始就用单播配置，
-> 本机自测 + 内网 + 公网三种场景都不必改配置 → **把它设为默认**，别等踩坑再加。
+> 本机自测 + 内网 + 公网三种场景都不必改配置 → **把它设为默认**，别等遇到问题再加。
 
-## Cyclone DDS Python 绑定踩坑（11.0.1 实测）
+## Cyclone DDS Python 绑定遇到问题（11.0.1 实测）
 细节与可抄代码见 `references/cyclonedds-python-api-notes.md`。速览：
 1. `from cyclonedds.idl.types import string` **不存在** → IDL string 用 Python 内置 `str`
 2. `Policy` 各子类 API **不一致**：`Reliability.Reliable(n)` / `History.KeepLast(n)` 可调用，
-   但 `BestEffort` / `Durability.TransientLocal` **不可调用**（传类本身）→ 用 try/except 兜底
+   但 `BestEffort` / `Durability.TransientLocal` **不可调用**（传类本身）→ 用 try/except 保障
 3. 消息对象的 `__dict__` 含 DDS 的 `SampleInfo`（不是 IDL 字段）→ `json.dump` 报
    `Object of type SampleInfo is not JSON serializable` → **按话题白名单提取字段**
 4. XML 里 `<Interfaces><NetworkInterface name="auto"/>` 与 `<General><Ports>` 会让
@@ -90,7 +90,7 @@ UI 读 JSON。**两端互不污染，任一端可单独重启。**
 于是"真的没故障"和"根本没接上"长得一模一样。真告警要面向**物理量**:
 
 ```
-超上限 / 低于下限   声明量程 (signal meta → 参数中心); 无声明时按物理规律兜底
+超上限 / 低于下限   声明量程 (signal meta → 参数中心); 无声明时按物理规律保障
 物理规律           概率/比例∈[0,1] · 百分比≤100 · 质量/刚度/阻尼≥0 · 温度≥-273.15°C ·
                   压力≥0 · 角度|x|≤720 · 速度|x|≤1000
 数值有效性         NaN / inf / 非数值 —— **只对实测数值**; 占位/信封行与 "—" 属于"无实测",
@@ -126,9 +126,9 @@ UI 读 JSON。**两端互不污染，任一端可单独重启。**
 prod=空 · diag=[hw_state,heartbeat,ss_infer,train_prog,ss_diag] · calib=+ss_state,ss_action,ss_calib
 test/dev=全量 14 话题
 守护 `tools/dds/ss_daemon.py` (仓库根; 早期副本 `/home/ubuntu/zmax_dds_ss_daemon.py` 已不作为执行体)
-· service zmax-dds-ss.service (User=ubuntu) · 类型真源 `dds/ss_types.py` + `dds/zmax_node.py` (TOPICS+QoS)
+· service zmax-dds-ss.service (User=ubuntu) · 类型唯一依据 `dds/ss_types.py` + `dds/zmax_node.py` (TOPICS+QoS)
 取证 /home/ubuntu/zmax_dds_ss_verify.py  (四档 × 话题 × 真值, 16 条断言)
-真源 /home/ubuntu/zmax_dds/{ss_types.py 9 类型 · zmax_node.py TOPICS+QoS} · 仓库镜像 dds/
+唯一依据 /home/ubuntu/zmax_dds/{ss_types.py 9 类型 · zmax_node.py TOPICS+QoS} · 仓库镜像 dds/
 ```
 真实源映射 (全只读): ss_state←真机 tap `~/zmax_ss_remote/state_*.jsonl`(tcp/jpos/gripper/prod_stage) ·
 ss_action←`proposal_*.jsonl`(推理服务对真机帧的 6 关节输出) · ss_infer←`127.0.0.1:8790/health` ·
@@ -152,7 +152,7 @@ ss_test←最近 `reports/verify_*.json` 的 passed/total。
 1. `dds/ss_types.py` — `@dataclass class SSxxx(IdlStruct, typename="zmax::SSxxx")`; **字段只加不改成必填**, 字符串字段用内置 `str`
 2. `dds/zmax_node.py` — import 该类型 + `_SS_TOPICS["ss_xxx"] = SSxxx` + `QOS_CLASS["ss_xxx"]`
    (状态型/latch 选 `state`, 高频流选 `beat`; 状态型让新订阅者立刻拿到最新一份)
-3. `tools/dds/ss_daemon.py` — `MODE_TOPICS` **三档都要加** (diag/calib/test) + `read_xxx()` (只读真源, 不猜不编)
+3. `tools/dds/ss_daemon.py` — `MODE_TOPICS` **三档都要加** (diag/calib/test) + `read_xxx()` (只读唯一依据, 不猜不编)
    + `pub_xxx()` (字段写前先 `grep -n '^    [a-z_]* *:' ss_types.py` 核对) + tick/线程里调用
 4. `src/lerobot/dataspace/topics.py` — `TOPICS` 条目 (type/rate_hz/qos/producer/modes/key_fields/quality/provenance)
    + `MODE_TOPICS` + `PRODUCERS[守护]["publishes"]`
@@ -189,9 +189,9 @@ ss_test←最近 `reports/verify_*.json` 的 passed/total。
    (绝不拿过期库跑工程)。强制模式 `source=json|db` 保留给对照与 CI。
 3. 运行时不用拼, 用注册表: 总线挂一个 `topic_map {(node,port): topic}`, 发布/订阅都查它,
    查不到才回落派生式 —— 否则“只改库”永远不生效, 注册表就退化成缓存。
-4. 新表用 `CREATE TABLE IF NOT EXISTS` + 按 project 建索引; 抓快照/改副本要改临时文件, 别动真源。
+4. 新表用 `CREATE TABLE IF NOT EXISTS` + 按 project 建索引; 抓快照/改副本要改临时文件, 别动唯一依据。
 
-**判据 (缺一就不算真源)**
+**判据 (缺一就不算唯一依据)**
 - 改注册表里**一行**话题名 → 重新 load → 发布/订阅端立刻用新名; 改回 → 复原。
 - 源文件改过 → sha 变 → 判过期并自动回写; 再 load 直接认库。
 - 库读回的节点/端口 == 源文件解析结果 (逐节点比对), 两种 source 模式节点集合一致。
@@ -204,12 +204,12 @@ ss_test←最近 `reports/verify_*.json` 的 passed/total。
 (topic/ts/json 三字段), 与数据是什么毫无关系。老倪原话:「type 太随意…例如前馈加速器
 你的 topic 类型是 SSNodePort, 这根本看不出有什么含义」, 并要求「与主要发送 Tx 节点关联」。
 
-**真根因**: 类型字符串在**消费端写死** (本次是 busdb 生成报文处 + 数据空间表各一处), 与工程
+**真根因**: 类型字符串在**消费端预先固定** (本次是 busdb 生成报文处 + 数据空间表各一处), 与工程
 结构脱钩 ⇒ 所有话题自然长同一个名字。改 UI 文案没用, 必须把类型做成**从工程派生的注册表**。
 
 **做法** (可照抄)
 1. 生成器 `tools/gen_topic_types.py` 读画布 (节点/端口/连线) + 节点模块的 `PORT_LABELS`,
-   产出真源 `config/platform/dds_topic_types.json` (node → outs/ins → type/cn/consumers)。
+   产出唯一依据 `config/platform/dds_topic_types.json` (node → outs/ins → type/cn/consumers)。
 2. 命名口径: 出口 = 主 Tx 节点语义 (`ssff.out2 → zmax::FeedforwardAction`); 一个节点多出口
    → `Stem2/Stem3` (有 PORT_LABELS 用语义词); 入口 = **唯一上游出口的类型** (同一份数据不另起名),
    多上游 fan-in 才用 `<Stem>In` 并把生产者清单记进 JSON。
@@ -221,7 +221,7 @@ ss_test←最近 `reports/verify_*.json` 的 passed/total。
    否则会把已知类型降级成 `Unknown` (本次 44 条)。
 5. 🔴 **入口类型只能按连线解析**: 用 `db.links()` 的 `(f, f_port) → (t, t_port)` 取上游那一个
    **具体出口**的类型。只看节点级 `from` 列表 (丢失端口) 时, 多出口节点的下游会被判成"多上游语义不同"
-   ⇒ 生成器狂报 fan-in, 而现场其实是一条干净的直连。生成器与审计脚本必须走**同一条**解析路径,
+   ⇒ 生成器狂报 fan-in, 而现场实际是一条干净的直连。生成器与审计脚本必须走**同一条**解析路径,
    两套各自算就会互相判失败 (本次先出现一波假的 33 条 fan-in 报错)。
 6. 审计里比上游类型用 `w == u or w.startswith(u + ".")`: 只写前缀会漏掉"恰好等于"的情况,
    表现为"多上游 0 种"满屏报错; 只看前缀又把 `ss_a.out1` 与 `ss_a.out10` 混淆。
@@ -244,7 +244,7 @@ live.json 里有流量的那 24 个话题 ⇒ 看起来"信号很少"。
 ③ 端口标签/实现  画布 params._port_labels 的英文标识; 从实现文件抽 return 字典的字符串键
                 (单输出=端口级; 多输出归属不明 ⇒ 标 impl_node 节点级, 不假装精确)
 ④ 上游继承  入口 topic 按 mw_link (f,f_port)→(t,t_port) 继承上游出口信号, fan-in 取并集
-⑤ 信封兜底  仍无证据的节点端口列 DDS 信封真字段 topic/ts/json, 不硬造 payload 名字
+⑤ 信封保障  仍无证据的节点端口列 DDS 信封真字段 topic/ts/json, 不硬造 payload 名字
 ```
 UI 侧同时要改**话题集合**: Trace 不能只遍历 live.json, 必须并入工程库全部话题 (含入口),
 否则"没流量就等于不存在"。实测 273 话题 / 1768 信号行 / 填充 0.10s。
@@ -262,10 +262,10 @@ UI 侧同时要改**话题集合**: Trace 不能只遍历 live.json, 必须并�
 **做法(一处收口, 三个窗口同时生效)**
 1. `middleware/signal_en.py`: 加 `TYPE_SIGNAL_EN`(类型→短名: `MotionPlan→plan`、`PlanIn→plan_in`、
    `RobotActionIn→action_in`、`SceneUnderstanding→scene`、`OpticalInspection→aoi` …) +
-   `type_signal_name()`(表里没有则 CamelCase→snake_case 兜底) + `port_signal(field, mtype)`
+   `type_signal_name()`(表里没有则 CamelCase→snake_case 保障) + `port_signal(field, mtype)`
    (只对 `^(in|out)(\d+)$` 生效; 同一类型多条入口按序号区分 `plan_in` / `plan_in_2`, 不编随机后缀)。
-2. `en_of_key(prefix, field, mtype=None)` / `en_of(field, mtype=None)` 透传类型; 类型真源 = `mw_topic.type`
-   (`attribution.type_of_topic(topic)`), **topic 查不到时用行自带的 `type` 兜底**, 否则那几行仍是端口 id。
+2. `en_of_key(prefix, field, mtype=None)` / `en_of(field, mtype=None)` 透传类型; 类型唯一依据 = `mw_topic.type`
+   (`attribution.type_of_topic(topic)`), **topic 查不到时用行自带的 `type` 保障**, 否则那几行仍是端口 id。
 3. 渲染前**一次性**改名(数据空间/信号表/曲线名共用同一函数), 原始端口名留在 `raw`/tooltip 可追溯。
 4. 判据 `tools/verify_signal_names.py`: 全端口 0 条裸 `^(in|out)\d+$` · Trace 每行 Signal 都不是裸端口 ·
    抽查关键口 → 目标短名(实测 272 端口 0 裸名 · Trace 413 行 0 裸名)。
@@ -273,7 +273,7 @@ UI 侧同时要改**话题集合**: Trace 不能只遍历 live.json, 必须并�
 **坑**
 - 改名循环别复用外层 `for r, x in enumerate(rows)` 的 `x`: 内层 `for x in rows` 会把 x 覆盖成最后一行,
   整表每行渲染成同一行内容(实测 413 行全变 `out1`)。用独立变量名, 且放在渲染循环**之前**。
-- 端口正则必须两个捕获组 `^(in|out)(\d+)$`; 只写一个组会在取序号时抛异常并被兜底吞掉, 静默回落成原名。
+- 端口正则必须两个捕获组 `^(in|out)(\d+)$`; 只写一个组会在取序号时抛异常并被保障吞掉, 静默回落成原名。
 - 同一话题类型在多个入口重复出现是常态 ⇒ 序号后缀要可预测(第 1 个裸名, 其余 `_2/_3`)。
 
 ## 显示层"不动"先查 publisher 配对, 别先调刷新率
@@ -320,7 +320,7 @@ journalctl -u <bridge-unit> -n 20 | grep -E '0 条|发布端'
 3. **别复用 ECS 上老的 `dds_ws_gateway`**: 它是 `ZMAX_*` 话题 + 单字段 JSON payload + 每秒全量快照,
    加新话题要改它; 哑中继更省事且不把 CDR 塞进 web。
 
-**两个"看起来通了其实没通"的坑 (都实测踩过)**
+**两个"看起来通了实际没通"的坑 (都实测踩过)**
 | 症状 | 真因 | 修法 |
 |---|---|---|
 | 桥收到 `↓deploy_cmd:4` 但对方本地 DDS 订阅端 0 条 | 下行 writer 是**收到第一帧才建**的 VOLATILE 写者, 发现未完成前写的样本**不补发** | 启动时把 `--down` 话题的 writer **全部预建** + `wait_for_match(ch,1,10)` 再进主循环; 统计行要同时打 `写N` 才能区分"没收到"和"没落地" |
@@ -393,7 +393,7 @@ if _zp.topics_mode() == "none":
 ✗ 状态类话题不用 TRANSIENT_LOCAL → 订阅者后上线要干等下一个周期
 ✗ 把 DDS 装进业务 venv → 依赖互相绑架; 用独立 venv + JSON 桥解耦
 ✗ 显示不动就去调刷新 Timer → 真因多是 matched_pubs=0 / mode 允许 0 话题, 先查发布端
-✗ 占位/"—" 行喂给物理判据 → 一次刷出上千条假 fail, 真告警被淹没
+✗ 占位/"—" 行提供给物理判据 → 一次刷出上千条假 fail, 真告警被淹没
 ✗ 跨网段还去改 peers/端口 → 没有 UDP 路由, 改配置永远不通; 要么补路由, 要么走 wss 中继
 ✗ 下行话题不预建 writer → 中继明明收到了, 对方本地 DDS 还是 0 条
 ✗ 只改 ws_bridge 一侧的白名单 → 帧在中继就被滤掉, 发送端计数在涨、对面永远 0 条

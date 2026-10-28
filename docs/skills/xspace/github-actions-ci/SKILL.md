@@ -101,7 +101,7 @@ git commit -m "fix: remove Zone.Identifier ADS files"
 git tag -f vX.Y.Z && git push origin vX.Y.Z --force
 ```
 
-## Release 资产版本号（2026-08-26 发版实战踩坑）
+## Release 资产版本号（2026-08-26 发版实战遇到问题）
 
 PyInstaller 默认产物版本号是 **0.0.0**（macOS Info.plist 的 CFBundleShortVersionString、Windows exe 文件属性）。正式发版必须写真实版本：
 
@@ -110,7 +110,7 @@ PyInstaller 默认产物版本号是 **0.0.0**（macOS Info.plist 的 CFBundleSh
 cd tools/gui   # ⚠️ 必须 cd！workflow 每步是独立 shell，默认在仓库根
 VER="${TAG#v}"  # tag 如 v3.2.0 → 3.2.0
 # PyInstaller 默认 plist 有 CFBundleShortVersionString(0.0.0) 但【没有 CFBundleVersion】
-# → 一律 Add 优先、Set 兜底
+# → 一律 Add 优先、Set 保障
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VER" .../Info.plist 2>/dev/null \
   || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $VER" .../Info.plist
 /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $VER" .../Info.plist 2>/dev/null \
@@ -140,7 +140,7 @@ curl -sL -H "Authorization: token $TOKEN" -H "Accept: application/octet-stream" 
    `subprocess` 超时抛错，但**磁盘上留了一个 85MB 的半截 mac zip**（应 129MB）。下一次校验若只看"文件在不在"就会放行。
    正确下载器必须：`-C -`(续传) + `--retry 3 --retry-all-errors` + `--connect-timeout 20 --max-time 600`
    + **卡死判定 `--speed-limit 20000 --speed-time 45`**（<20KB/s 持续 45s 判死）+ 循环重试直至 `size == 远端 size`
-   + 直连连续失败后换 `https://ghproxy.net/<原url>` 兜底。判据永远是 **size + sha256 双核对**，不是"下下来了"。
+   + 直连连续失败后换 `https://ghproxy.net/<原url>` 保障。判据永远是 **size + sha256 双核对**，不是"下下来了"。
 2. **mac zip 里有 16 个 Info.plist，必须精确取主 app 的** —— 包内还有 PyQt5 各 framework、`Python.framework`、
    以及 MuJoCo 自带的 `MuJoCo_(mjpython).app` 的 plist。用 `endswith("Contents/Info.plist")` 取第一个会命中
    **mjpython 的 3.3.0**（MuJoCo 自己的版本），把好包误判成 ❌ 未同步版本。

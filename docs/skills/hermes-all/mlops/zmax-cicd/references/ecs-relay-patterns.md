@@ -24,14 +24,14 @@
 - 安全组未放行 39053 公网 → 必须走 443 反代；ECS 本机 curl 127.0.0.1 可通
 
 ## 端点模式
-- do_GET / do_POST 未知路径必须有 else 兜底 (404 JSON)，否则 nginx 无响应 502
+- do_GET / do_POST 未知路径必须有 else 保障 (404 JSON)，否则 nginx 无响应 502
 - Orin 心跳: `POST /orin/heartbeat` 存 ORIN_STATE (独立于弹栈队列，不占缓冲)，`GET /orin/status` 控制台轮询；心跳带 `sys` 字段 (CPU/GPU/内存/温度/ROS2节点/关节，由 orin_sys_status.py 采集)
 - 相机帧: `POST /cam/upload` (JPEG 字节) → cam/ 目录只留最新 3 帧 → `GET /cam/latest.jpg` + `/cam/status`；网页 2s 轮询 latest.jpg (加 ?t= 防缓存)
 
 ## WebSocket 模式 (ws_relay.py)
 - `websockets.serve(handler, "0.0.0.0", 8765)`；新客户端接入即推当前状态 (控制台打开即有数据)；Orin 推 heartbeat → broadcast 给所有订阅者
 - nginx `location /ws { proxy_pass http://127.0.0.1:8765; proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade"; }`
-- Orin 端双通道: WS 主心跳 (5s) + HTTP 兜底 (10s)，无 websockets 库自动降级 HTTP
+- Orin 端双通道: WS 主心跳 (5s) + HTTP 保障 (10s)，无 websockets 库自动降级 HTTP
 - 测试: 本地 venv 需 `uv pip install websockets`；wss://datadrive.world/ws 实测 Orin 推→ECS 广播→控制台收
 
 ## 压测要点 (tools/stress_test.py)

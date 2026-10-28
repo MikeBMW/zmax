@@ -1,6 +1,6 @@
 # YOLO 感知链 + State Adapter 节点 + 控制台启动 (2026-08-06)
 
-## 控制台启动 (实测踩坑)
+## 控制台启动 (实测遇到问题)
 - **必须 `/usr/bin/python3`** 启动 (`DISPLAY=:0 /usr/bin/python3 tools/gui/studio.py`) — 系统 python3 带 PyQt5; `.venv`/hermes venv 都没有 (`ModuleNotFoundError: PyQt5`)
 - `start.sh` 找 conda lerobot env (本机不存在) 再 fallback 系统 python3
 - **`ZMAX_AUTO_RUN=1` 自动演示**: 启动 2.5s 后自动切 Simulink 页 → `open_compare5()` → `start_sim()` 直接运行 (老倪"打开simulink运行"时用)

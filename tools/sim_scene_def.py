@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""sim_scene_def.py — 仿真场景真源 (画布 3D 视图里那条「插拔光模块」场景) (老倪 2026-10-10)
+"""sim_scene_def.py — 仿真场景唯一依据 (画布 3D 视图里那条「插拔光模块」场景) (老倪 2026-10-10)
 
 老倪: 「之前做好的 simulink 画布的 3D 视图的插拔光模块的场景，也需要在场景管理功能区，
        用户可以选择编辑并运行」
 
-为什么需要这个文件 (单一真源):
+为什么需要这个文件 (单一唯一依据):
   这条仿真场景的几何原本**散在三处**、靠人工同步 (技能 zmax-scene-engineering 已记此坑):
     ① tools/gen_l4_demo_video.py  的 TURNTABLE_XY / TURNTABLE_Z / COUPLER_XY / AOI_FOCUS
     ② tools/gen_l4_demo_scene.py  写进 XML 的 <body name="turntable" pos="..."> / coupler / cp_stage_b
     ③ metaworld 资产 XML 里的台面/光模块/夹具尺寸 (sawyer_peg_insertion_side.xml)
   改一处不同步 = 物理与视觉不一致 (老倪最恨的"实际怎么执行的")。
-  ⇒ 本文件把它们收成**一份 JSON 真源**, 两个生成器都从这里读; 场景管理功能区编辑 = 改这份真源。
+  ⇒ 本文件把它们收成**一份 JSON 唯一依据**, 两个生成器都从这里读; 场景管理功能区编辑 = 改这份唯一依据。
 
-真源文件: data/scene/sim/sim_scenes.json   (由 default() 首次落盘; 数值全部来自上面三处实测值)
+唯一依据文件: data/scene/sim/sim_scenes.json   (由 default() 首次落盘; 数值全部来自上面三处实测值)
 用法:
-  sim_scene_def.py --show              打印真源
-  sim_scene_def.py --check             校验: 真源 ↔ 两个生成器 ↔ metaworld XML 是否一致
+  sim_scene_def.py --show              打印唯一依据
+  sim_scene_def.py --check             校验: 唯一依据 ↔ 两个生成器 ↔ metaworld XML 是否一致
   sim_scene_def.py --set turntable.pos '[0.42,0.60,0.0255]'   改一项 (带备份)
 """
 from __future__ import annotations
@@ -40,11 +40,11 @@ GEN_SCENE = os.path.join(ROOT, "tools", "gen_l4_demo_scene.py")
 
 
 def default() -> dict:
-    """首次落盘的默认真源 — 每个数都有出处 (不编造)。"""
+    """首次落盘的默认唯一依据 — 每个数都有出处 (不编造)。"""
     return {
         "format": "zmax-sim-scenes", "version": "1.0",
         "coord": "世界系 m (metaworld sawyer_xyz; 台面顶 z=0, +Y 朝臂, +X 右)",
-        "note": "画布 3D 视图那条「插拔光模块」仿真场景的几何真源; 生成器与场景管理都读这里",
+        "note": "画布 3D 视图那条「插拔光模块」仿真场景的几何唯一依据; 生成器与场景管理都读这里",
         "scenes": {
             "SIM-PEG-L4": {
                 "name": "插拔光模块 · 仿真场景 (画布 3D 视图)",
@@ -124,7 +124,7 @@ def save_raw(d: dict) -> None:
 
 
 def get(d: dict, key: str):
-    """取真源项, 支持 'turntable.pos' 点路径 (在默认场景 SIM-PEG-L4 内)。"""
+    """取唯一依据项, 支持 'turntable.pos' 点路径 (在默认场景 SIM-PEG-L4 内)。"""
     sc = d["scenes"]["SIM-PEG-L4"]
     cur = sc
     for part in key.split("."):
@@ -138,7 +138,7 @@ def geometry() -> dict:
     """给生成器用的几何 —— **以 MuJoCo 真模型为准** (2026-10-10 老倪: 场景要对齐 metaworld 渲染)。
 
     取值口径: 转台/压电台/微动台从 MuJoCo 模型导出的 geom (转台盘面 tt_disc / 压电台基座 cp_base /
-    微动载物台面 cp_stage) 世界系中心与尺寸算出; 语义常量 (peg 坐盘面的 feed_z、插入深度) 仍走真源标量,
+    微动载物台面 cp_stage) 世界系中心与尺寸算出; 语义常量 (peg 坐盘面的 feed_z、插入深度) 仍走唯一依据标量,
     每个都带出处 —— 这样"生成器常量 == 真模型"由 check() 逐条核, 避免手写值与模型跑偏
     (实测曾把台面写 0.8×0.8 实为 1.4×0.8、光模块按方截面写成 40×40 实为 40×16)。
     """
@@ -160,7 +160,7 @@ def geometry() -> dict:
                       "pos": [float(v) for v in tt["center"]],
                       "r": float(tt["size"][0]) / 2.0,
                       "z_top": float(tt["center"][2]) + float(tt["size"][2]) / 2.0,
-                      # TURNTABLE_Z 语义 = peg 坐盘面 (生成器常量, 真源标量; 盘顶由 MuJoCo 真模型算)
+                      # TURNTABLE_Z 语义 = peg 坐盘面 (生成器常量, 唯一依据标量; 盘顶由 MuJoCo 真模型算)
                       "feed_z": float(sc.get("const", {}).get("feed_z", 0.0255))},
         "coupler": {"xy": [float(cp["center"][0]), float(cp["center"][1])],
                     "pos": [float(v) for v in cp["center"]],
@@ -305,7 +305,7 @@ def to_objects3d(scene_id: str = "SIM-PEG-L4") -> dict:
                 _d[_k] = o[_k]
         objs.append(_d)
     return {"format": "zmax-scene-objects3d", "version": "1.0", "scene_id": scene_id,
-            "coord": "世界系 m (metaworld sawyer_xyz)", "source": "data/scene/sim/sim_scenes.json (仿真场景真源)",
+            "coord": "世界系 m (metaworld sawyer_xyz)", "source": "data/scene/sim/sim_scenes.json (仿真场景唯一依据)",
             "scene_name": sc["name"], "sim": True, "env": sc.get("env"), "level": sc.get("level"),
             "objects": objs}
 
@@ -350,7 +350,7 @@ def to_overlay(scene_id: str = "SIM-PEG-L4") -> dict:
                    "waypoints": [[float(x) for x in w] for w in t["waypoints"]],
                    "derived_from": t.get("source", ""), "editable": True})
     return {"format": "zmax-scene-overlay-spec", "version": "1.0", "scene_id": "SIM-PEG-L4",
-            "source": "data/scene/sim/sim_scenes.json (仿真场景真源)", "sim": True,
+            "source": "data/scene/sim/sim_scenes.json (仿真场景唯一依据)", "sim": True,
             "run": sc.get("runner"), "markers": mk, "fences": fn, "trajectories": tj}
 
 
@@ -358,8 +358,8 @@ def to_overlay(scene_id: str = "SIM-PEG-L4") -> dict:
 def check() -> int:
     bad, g = [], geometry()
     if not os.path.exists(PATH):
-        return _rep(["真源文件不存在: %s" % PATH])
-    # ① gen_l4_demo_video.py 的常量是否与真源一致
+        return _rep(["唯一依据文件不存在: %s" % PATH])
+    # ① gen_l4_demo_video.py 的常量是否与唯一依据一致
     if os.path.exists(GEN_VIDEO):
         src = open(GEN_VIDEO, encoding="utf-8").read()
 
@@ -381,34 +381,34 @@ def check() -> int:
             if got is None:
                 bad.append("gen_l4_demo_video.py 找不到常量 %s" % nm)
             elif [round(float(x), 4) for x in got] != [round(float(x), 4) for x in want]:
-                # 已接真源 ⇒ 字面常量只是回退值, 运行时以真源为准 (编辑后必然会不同, 不算错)
+                # 已接唯一依据 ⇒ 字面常量只是回退值, 运行时以唯一依据为准 (编辑后必然会不同, 不算错)
                 (_notes if _wired else bad).append(
-                    "%s 字面=%s ≠ 真源=%s%s" % (nm, got, want, " (已接真源, 仅回退值)" if _wired else " (改一处没同步)"))
+                    "%s 字面=%s ≠ 唯一依据=%s%s" % (nm, got, want, " (已接唯一依据, 仅回退值)" if _wired else " (改一处没同步)"))
         for _n in _notes:
             print("   ℹ️  %s" % _n)
         if _wired:
             for _k in ("TURNTABLE_XY", "TURNTABLE_Z", "COUPLER_XY", "AOI_FOCUS", "INSERT_DEPTH"):
                 if not re.search(r"^%s = " % _k, src, re.M):
-                    bad.append("override 块未接管 %s (运行时读不到真源)" % _k)
-        # TURNTABLE_Z 的语义是"peg 坐盘面" (盘顶 z + peg 半厚) — 真源标量 const.feed_z
+                    bad.append("override 块未接管 %s (运行时读不到唯一依据)" % _k)
+        # TURNTABLE_Z 的语义是"peg 坐盘面" (盘顶 z + peg 半厚) — 唯一依据标量 const.feed_z
         _feed_z = float(g["turntable"]["feed_z"])
         if _ttz is not None and abs(float(_ttz) - _feed_z) > 1e-4:
-            bad.append("TURNTABLE_Z 生成器=%.4f ≠ 真源 const.feed_z=%.4f" % (float(_ttz), _feed_z))
-        # 真源接入证据: 生成器里必须有 override 块 (否则上面的常量与真源只是"恰好相等", 编辑不生效)
+            bad.append("TURNTABLE_Z 生成器=%.4f ≠ 唯一依据 const.feed_z=%.4f" % (float(_ttz), _feed_z))
+        # 唯一依据接入证据: 生成器里必须有 override 块 (否则上面的常量与唯一依据只是"恰好相等", 编辑不生效)
         if "import sim_scene_def as _SSD" not in src:
-            bad.append("gen_l4_demo_video.py 未接真源 (缺 import sim_scene_def override 块)")
+            bad.append("gen_l4_demo_video.py 未接唯一依据 (缺 import sim_scene_def override 块)")
     else:
         bad.append("缺 tools/gen_l4_demo_video.py")
-    # ② gen_l4_demo_scene.py 写进 XML 的坐标是否与真源一致
+    # ② gen_l4_demo_scene.py 写进 XML 的坐标是否与唯一依据一致
     if os.path.exists(GEN_SCENE):
         if "_sim_geom()" not in open(GEN_SCENE, encoding="utf-8").read():
-            bad.append("gen_l4_demo_scene.py 未接真源 (缺 _sim_geom 填充)")
-        # 直接看**实际会注入 XML 的字符串** (EXTRA 已由真源填好) —— 比读源码文本强
+            bad.append("gen_l4_demo_scene.py 未接唯一依据 (缺 _sim_geom 填充)")
+        # 直接看**实际会注入 XML 的字符串** (EXTRA 已由唯一依据填好) —— 比读源码文本强
         try:
             sys.path.insert(0, os.path.join(ROOT, "tools"))
             import importlib
             import gen_l4_demo_scene as _GS
-            _GS = importlib.reload(_GS)          # 真源可能刚被改过 ⇒ 必须重载 (否则用缓存旧 EXTRA)
+            _GS = importlib.reload(_GS)          # 唯一依据可能刚被改过 ⇒ 必须重载 (否则用缓存旧 EXTRA)
             ext = getattr(_GS, "EXTRA", "")
         except Exception as e:                                              # noqa: BLE001
             ext, bad = "", bad + ["导入 gen_l4_demo_scene 失败: %r" % (e,)]
@@ -421,9 +421,9 @@ def check() -> int:
             want = ([g[key]["xy"][0], g[key]["xy"][1], 0.0] if nm != "cp_stage_b"
                     else [g["coupler"]["xy"][0], g["coupler"]["xy"][1], g["coupler"]["stage_z"]])
             if [round(x, 4) for x in got] != [round(x, 4) for x in want]:
-                bad.append("XML 注入 %s pos=%s ≠ 真源 %s" % (nm, got, want))
+                bad.append("XML 注入 %s pos=%s ≠ 唯一依据 %s" % (nm, got, want))
     _check_episode(bad, _notes)
-    return _rep(bad, "✅ 仿真场景真源 ↔ 生成器 ↔ XML 注入 三处一致 (%s)"
+    return _rep(bad, "✅ 仿真场景唯一依据 ↔ 生成器 ↔ XML 注入 三处一致 (%s)"
                 % os.path.relpath(PATH, ROOT))
 
 
@@ -492,7 +492,7 @@ def _check_episode(bad, notes) -> None:
 
 def _rep(bad, ok_msg="") -> int:
     if bad:
-        print("⛔ 仿真场景真源不一致:")
+        print("⛔ 仿真场景唯一依据不一致:")
         for b in bad:
             print("  - %s" % b)
         return 1
@@ -501,7 +501,7 @@ def _rep(bad, ok_msg="") -> int:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="仿真场景真源 (画布 3D 视图的插拔光模块场景)")
+    ap = argparse.ArgumentParser(description="仿真场景唯一依据 (画布 3D 视图的插拔光模块场景)")
     ap.add_argument("--show", action="store_true")
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--set", nargs=2, metavar=("KEY", "JSON"))
@@ -540,7 +540,7 @@ def main() -> int:
     d = load()
     sc = d["scenes"]["SIM-PEG-L4"]
     print("🧭 %s  (%s / %s / env=%s)" % (sc["name"], sc["kind"], sc["level"], sc.get("env")))
-    print("   对象 %d · 标记 %d · 围栏 %d · 轨迹 %d   真源: %s"
+    print("   对象 %d · 标记 %d · 围栏 %d · 轨迹 %d   唯一依据: %s"
           % (len(sc["objects"]), len(sc["markers"]), len(sc["fences"]), len(sc["trajectories"]),
              os.path.relpath(PATH, ROOT)))
     for o in sc["objects"]:
@@ -552,7 +552,7 @@ def main() -> int:
 
 
 
-# ─────────────── 场景管理器的写路径: 改的就是这份真源 (不是只改产物目录) ───────────────
+# ─────────────── 场景管理器的写路径: 改的就是这份唯一依据 (不是只改产物目录) ───────────────
 _LIST = {"objects": "objects", "markers": "markers", "fences": "fences", "trajectories": "trajectories"}
 
 
@@ -564,7 +564,7 @@ def _find(sc: dict, kind: str, ident: str):
 
 
 def regen_scene_dir(scene_dir: str) -> None:
-    """用真源重写场景目录文件 (供场景管理/3D 视图读)。"""
+    """用唯一依据重写场景目录文件 (供场景管理/3D 视图读)。"""
     os.makedirs(scene_dir, exist_ok=True)
     sid = os.path.basename(os.path.normpath(scene_dir))
     for fn, obj in (("objects3d.json", to_objects3d(sid)), ("overlay_spec.json", to_overlay(sid))):
@@ -576,16 +576,16 @@ def regen_scene_dir(scene_dir: str) -> None:
 
 
 def apply_patch(kind: str, ident: str, patch: dict, scene_id: str = "SIM-PEG-L4") -> dict:
-    """把编辑器改动落到**真源**并重建场景目录。⇒ {"ok","msg","backup","entity"}"""
+    """把编辑器改动落到**唯一依据**并重建场景目录。⇒ {"ok","msg","backup","entity"}"""
     d = load()
     sc = d["scenes"].get(scene_id)
     if sc is None:
-        return {"ok": False, "msg": "真源里没有场景 %s" % scene_id}
+        return {"ok": False, "msg": "唯一依据里没有场景 %s" % scene_id}
     if kind not in _LIST:
         return {"ok": False, "msg": "不支持的类别 %r" % kind}
     i, it = _find(sc, kind, ident)
     if it is None:
-        return {"ok": False, "msg": "真源里找不到 %s[%s]" % (kind, ident)}
+        return {"ok": False, "msg": "唯一依据里找不到 %s[%s]" % (kind, ident)}
     for k, v in (patch or {}).items():
         if kind == "fences" and k == "shape":
             sh = dict(it.get("shape") or {})
@@ -603,7 +603,7 @@ def apply_patch(kind: str, ident: str, patch: dict, scene_id: str = "SIM-PEG-L4"
         sc["user_edited"] = True
         sc["user_edited_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
         save_raw(d)
-    return {"ok": True, "msg": "已写仿真场景真源 %s[%s]" % (kind, ident),
+    return {"ok": True, "msg": "已写仿真场景唯一依据 %s[%s]" % (kind, ident),
             "backup": os.path.relpath(BACKUP, ROOT), "entity": it}
 
 
@@ -611,10 +611,10 @@ def add_item(kind: str, data: dict, scene_id: str = "SIM-PEG-L4") -> dict:
     d = load()
     sc = d["scenes"].get(scene_id)
     if sc is None:
-        return {"ok": False, "msg": "真源里没有场景 %s" % scene_id}
+        return {"ok": False, "msg": "唯一依据里没有场景 %s" % scene_id}
     lst = sc.setdefault(_LIST[kind], [])
     if any(str(x.get("name")) == str(data.get("name")) for x in lst):
-        return {"ok": False, "msg": "真源里已有同名 %s" % data.get("name")}
+        return {"ok": False, "msg": "唯一依据里已有同名 %s" % data.get("name")}
     if kind == "fences":
         data = dict(data)
         c = data.pop("center", [0, 0, 0])
@@ -630,21 +630,21 @@ def add_item(kind: str, data: dict, scene_id: str = "SIM-PEG-L4") -> dict:
     lst.append(data)
     save_raw(d)
     regen_scene_dir(os.path.join(ROOT, "data", "scene", "scenes", scene_id))
-    return {"ok": True, "msg": "真源新增 %s[%s]" % (kind, data.get("name")), "entity": data}
+    return {"ok": True, "msg": "唯一依据新增 %s[%s]" % (kind, data.get("name")), "entity": data}
 
 
 def del_item(kind: str, ident: str, scene_id: str = "SIM-PEG-L4") -> dict:
     d = load()
     sc = d["scenes"].get(scene_id)
     if sc is None:
-        return {"ok": False, "msg": "真源里没有场景 %s" % scene_id}
+        return {"ok": False, "msg": "唯一依据里没有场景 %s" % scene_id}
     i, it = _find(sc, kind, ident)
     if it is None:
-        return {"ok": False, "msg": "真源里找不到 %s[%s]" % (kind, ident)}
+        return {"ok": False, "msg": "唯一依据里找不到 %s[%s]" % (kind, ident)}
     sc[_LIST[kind]].pop(i)
     save_raw(d)
     regen_scene_dir(os.path.join(ROOT, "data", "scene", "scenes", scene_id))
-    return {"ok": True, "msg": "真源删除 %s[%s]" % (kind, ident)}
+    return {"ok": True, "msg": "唯一依据删除 %s[%s]" % (kind, ident)}
 
 
 def is_sim_scene(scene_id) -> bool:
@@ -682,7 +682,7 @@ BLOCK_HALF = (0.095, 0.10, 0.10)
 
 
 def episode_scene_def() -> dict:
-    """SS-EPI-CORNER 的场景定义 (真源里的第二条; 几何 from episode)。"""
+    """SS-EPI-CORNER 的场景定义 (唯一依据里的第二条; 几何 from episode)。"""
     return {
         "name": "状态空间 3D 分层视图 · 与操作视频同源 (metaworld corner2 视角)",
         "kind": "episode",
@@ -712,7 +712,7 @@ def episode_scene_def() -> dict:
 
 
 def ensure_episode_scene() -> bool:
-    """把 SS-EPI-CORNER 补进真源 (幂等); ⇒ 是否新写入。"""
+    """把 SS-EPI-CORNER 补进唯一依据 (幂等); ⇒ 是否新写入。"""
     d = load()
     if EPI_SCENE in d["scenes"]:
         return False
@@ -1036,7 +1036,7 @@ def export_episode_truth(scene_id: str = EPI_SCENE, seed=None, write: bool = Tru
 
 
 def l4_xml_path() -> str:
-    """找到 L4 场景 XML (画布 ▶运行 用的同一份; 先按 metaworld 包位置找, 再兜底常见路径)。"""
+    """找到 L4 场景 XML (画布 ▶运行 用的同一份; 先按 metaworld 包位置找, 再保障常见路径)。"""
     cands = []
     try:
         import metaworld
@@ -1053,7 +1053,7 @@ def l4_xml_path() -> str:
 
 
 def export_mujoco_truth(scene_id: str = "SIM-PEG-L4", write: bool = True) -> dict:
-    """从 MuJoCo 真模型导出场景几何 → 真源 objects/markers; ⇒ dict(ok, xml, objects, markers, msg)。"""
+    """从 MuJoCo 真模型导出场景几何 → 唯一依据 objects/markers; ⇒ dict(ok, xml, objects, markers, msg)。"""
     xml = l4_xml_path()
     if not xml:
         return {"ok": False, "msg": "找不到 L4 场景 XML (先跑 tools/gen_l4_demo_scene.py 生成)"}

@@ -140,7 +140,7 @@ def main() -> int:
                        ("s_max", "s_max"), ("m_kg", "m"), ("f_max", "F")):
             if not eq(r.get(kf), L.get(lf)):
                 bad5.append("%s.%s(%s)≠limits_for.%s(%s)" % (code, kf, r.get(kf), lf, L.get(lf)))
-    chk(not bad5, "⑤ 包络同源: 每技能的 v_cap/a_max/jerk_max/s_step/s_max/m/F == 物理闸真源", "; ".join(bad5[:4]))
+    chk(not bad5, "⑤ 包络同源: 每技能的 v_cap/a_max/jerk_max/s_step/s_max/m/F == 物理闸唯一依据", "; ".join(bad5[:4]))
 
     # ── ⑥ 实测在物理包络内 ──
     bad6 = []

@@ -32,14 +32,14 @@ CM_ JOB_MODEL: A1 B1 C1 ...                        // 模型能力组合
 1. **校验拒绝**: manifest.json schema (format=zmax-model-v1, name/node/version/
    capabilities/interfaces/weights 必填) + **能力 ID 必须在能力库** + 权重存在
 2. **自动注册**: 校验过 → 自动写 feature.dbc (BU_ 加节点 + CM_ 加组合)
-3. **适配兜底**: adapter.py 可选; 缺省用平台默认适配器 (观测→动作直通)
+3. **适配保障**: adapter.py 可选; 缺省用平台默认适配器 (观测→动作直通)
 4. **冒烟回滚**: 自动跑一次推理出动作才算成功, 失败 unregister_model 回滚
 GUI 入口: 数据字典面板「导入」按钮 (QFileDialog 选 zip → 后台线程 + 信号)。
 
 ## 权重格式评估结论
 - 平台内模型: **safetensors** (延续 Orin 热更新链路, 安全标准)
 - 第三方导入: **ONNX 优先** (格式中立+无 pickle RCE+Orin TensorRT 路径),
-  .pth state_dict 仅兜底且必须 `torch.load(weights_only=True)`
+  .pth state_dict 仅保障且必须 `torch.load(weights_only=True)`
 - .pth 是 pickle → 反序列化任意代码执行风险, 第三方不可信包致命
 
 ## Excel 导出 + 上传

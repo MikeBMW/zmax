@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-"""取证: 仿真源(metaworld)也要能看画面 + 能标定 + 数据分开存
-① 仿真源真渲染帧 (480x480, 非纯色) 进窗口, 两窗都有
+"""取证: 仿唯一依据(metaworld)也要能看画面 + 能标定 + 数据分开存
+① 仿唯一依据真渲染帧 (480x480, 非纯色) 进窗口, 两窗都有
 ② 仿真模式下能进标定 → 拖框 → 保存: 落 **仿真数据根** (classes=peg/hole/hand, 会话带 sim, 设备标 mujoco)
 ③ 仿真数据根能构建/体检 (data.yaml nc=3, names=peg/hole/hand)
 ④ 真机数据根**零污染** (张数不变)
@@ -46,7 +46,7 @@ def pump(sec):
         time.sleep(0.02)
 
 
-print("① 仿真源: metaworld 渲染帧进窗口 + 两窗都有画面")
+print("① 仿唯一依据: metaworld 渲染帧进窗口 + 两窗都有画面")
 v = yiv.YoloInputViewer(None, module=None, source="sim")
 v.resize(1320, 760)
 v.show()
@@ -81,7 +81,7 @@ if rec:
     chk("会话名带 sim 标记", "sim" in rec["session"], f"| {rec['session']}")
     chk("记录里设备标为 mujoco 渲染 (不是真机相机)",
         any(k in str(rec.get("device", "")).lower() for k in ("mujoco", "渲染")), f"| device={rec.get('device')}")
-    chk("来源标为仿真源", "sim" in str(rec.get("src", "")), f"| src={rec.get('src')}")
+    chk("来源标为仿唯一依据", "sim" in str(rec.get("src", "")), f"| src={rec.get('src')}")
     lines = open(rec["label"]).read().strip().splitlines()
     chk("标签 2 行 + 类别 id 在表内", len(lines) == 2 and all(int(float(l.split()[0])) < 3 for l in lines),
         f"| {lines}")

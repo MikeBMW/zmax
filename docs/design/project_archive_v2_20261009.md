@@ -13,15 +13,15 @@
 
 一个**自包含 JSON**（拿走一个文件就能在别处复原这次调试），7 段 + 1 张指纹表：
 
-| 段 | 内容 | 来源 (真源) | 界面出处 |
+| 段 | 内容 | 来源 (唯一依据) | 界面出处 |
 |---|---|---|---|
 | ① `canvas` | 画布模型全文 (nodes/links/坐标) + md5 + 统计 | `flows/state_space_obs.json` | 状态空间画布 |
 | ② `panel` | 右侧栏所有配置：当前视图/页签 + 6 个运行开关勾选 + 画布栈索引 | 控制台实时读 (`ModelTreeDock` + `chk_*`) | 右侧侧边栏 |
-| ③ `calibration` | 标定真源**全文快照** + 每文件 sha256/mtime/字节数 + 未标定项 + 现场标定命令 | `config/calib/*.json` | 🎛 标定页 |
+| ③ `calibration` | 标定唯一依据**全文快照** + 每文件 sha256/mtime/字节数 + 未标定项 + 现场标定命令 | `config/calib/*.json` | 🎛 标定页 |
 | ④ `master_param` | 主参数 M / inertia / 范围 / 单位 / 流形含义 + 画布 M 节点 7 段快照 + sha256 | `config/calib/zmax_manifold.json` + 画布 M 节点 | 🧮 主参数 M 页 |
-| ⑤ `measure` | `measure_view`(测量量/源/判据/命令) + `diagnose_view` + 数据总线配置(模式/固定格式映射/行数) | 画布 M 节点 (由 `ss_node_sync.py` 从真源同步) | 📏 测量 / 诊断页 |
+| ⑤ `measure` | `measure_view`(测量量/源/判据/命令) + `diagnose_view` + 数据总线配置(模式/固定格式映射/行数) | 画布 M 节点 (由 `ss_node_sync.py` 从唯一依据同步) | 📏 测量 / 诊断页 |
 | ⑥ `tasks` | 任务/工单/段覆盖绑定全文 + 活跃任务 | `config/ss_task_binding.json` | 📋 任务配置页 |
-| ⑦ `fingerprints` | 每个真源文件的 sha256 + mtime + 字节数 | 5 个真源文件 | —— 用于**判定"存档与现场是否同源"** |
+| ⑦ `fingerprints` | 每个唯一依据文件的 sha256 + mtime + 字节数 | 5 个唯一依据文件 | —— 用于**判定"存档与现场是否同源"** |
 | 兼容键 | `run_cfg` / `ui` (v1 原样保留) | —— | 老代码不用改 |
 
 `explode` 可把存档拆成"人能直接看的相应文件"：
@@ -29,9 +29,9 @@
 `fingerprints.json` · `calibration/zmax_calib.json` · `calibration/zmax_manifold.json` · `MANIFEST.md`
 (每段 sha256 + 与现场的漂移)。
 
-## 2. 🔴 真源唯一（格式的核心设计，别改成"存档即真相"）
+## 2. 🔴 唯一依据唯一（格式的核心设计，别改成"存档即真相"）
 
-* 真源**永远**是仓库里的文件：画布 `flows/state_space_obs.json` · 标定 `config/calib/*.json` ·
+* 唯一依据**永远**是仓库里的文件：画布 `flows/state_space_obs.json` · 标定 `config/calib/*.json` ·
   任务绑定 `config/ss_task_binding.json`。存档只是**某时刻的快照 + 指纹**。
 * 写盘一律走各自工具自己的写口，不自己 `os.replace` 到软链：
   画布 → `flows.save_canvas()`（自带校验 + 备份到 `flows/_archive/`）；
@@ -72,10 +72,10 @@ python tools/project_archive.py upgrade <v1file> [--out]  # 老 v1 存档升 v2
 
 | 段 | 断到的事 |
 |---|---|
-| ① | 7 段都在且与真源同源：canvas 89 节点/184 连线 · calibration 2 文件带全文 + 未标定 3 项 · M=1.0 · measure_view 源 6 条 · tasks 5 个 · fingerprints 5 文件 |
-| ② | CLI 全链路：save → verify 自检 → inspect 逐段一致 → explode 9 个文件 + MANIFEST 写明"真源唯一" → diff 一致 |
+| ① | 7 段都在且与唯一依据同源：canvas 89 节点/184 连线 · calibration 2 文件带全文 + 未标定 3 项 · M=1.0 · measure_view 源 6 条 · tasks 5 个 · fingerprints 5 文件 |
+| ② | CLI 全链路：save → verify 自检 → inspect 逐段一致 → explode 9 个文件 + MANIFEST 写明"唯一依据唯一" → diff 一致 |
 | ③ | **漂移能抓**：现场 M 改 1.5 → diff 报 `calibration` 与 `master_param` 漂移，并指出 `M: 存档 1.0 → 现场 1.5` |
-| ④ | `restore` 默认只回填画布+面板：标定真源 sha256 **一个字节没变**，输出明说"标定/主参数未恢复" |
+| ④ | `restore` 默认只回填画布+面板：标定唯一依据 sha256 **一个字节没变**，输出明说"标定/主参数未恢复" |
 | ⑤ | `--with-calib --yes` 才恢复：不给 `--yes` 拒跑；恢复后回读 sha256 == 存档 sha256；留 `*.bak_<ts>` |
 | ⑥ | 控制台在时 `panel` 段真读到 6 个运行开关 + 当前视图；`apply_run_cfg` 能把开关拨回存档态 |
 | ⑦ | v1 老存档仍可读 + `upgrade` 升 v2 且**不动原画布内容** |
@@ -104,7 +104,7 @@ python tools/project_archive.py upgrade <v1file> [--out]  # 老 v1 存档升 v2
 **② 「点击 open 没反应? 应该打开 simulink 的画布啊」** — 真因 + 修法:
 * 真因: 打开后那行代码把存档里的 `canvas_stack_index` 当成"要切到哪一页"(`setCurrentIndex(idx)`),
   而那份总工程是 5 号页存的 ⇒ 打开后停在**第 5 页**, 画布 tab (10) 没被前置 —— 看着就像"没反应"
-  (其实真源全写好了, 备份也做了)。
+  (实际唯一依据全写好了, 备份也做了)。
 * 修法: 打开(集成式/普通加载)后**一律切到 Simulink 画布 tab** (`setCurrentWidget(sim)`), 存档里的
   页索引只当信息不再当指令; 画布是懒创建的 → `sim is None` 时直接 `_init_simulink()` 建出来再切
   (并给 `_init_simulink` 加幂等闸, 防插第二份画布); 状态栏 + 日志明写"已切到 🧮 Simulink 画布"。
@@ -132,7 +132,7 @@ def _msg(...): mb.setStandardButtons(Yes|No); mb.setDefaultButton(QMessageBox.No
 ```
 ⇒ 打开/加载工程的确认框 **默认按钮是「否」**, 且按钮写「是/否」(不是「打开/取消」)。
   回车 = 静默取消, 只剩状态栏 2.5s 一行「已取消: 未打开总工程」→ 用户看到的就是"点了没反应"。
-  实机验证: 文件框选好 `zmax_space.proj` → 确认框弹出 → 回车 → 画布真源 mtime **没变、备份也没新生成**
+  实机验证: 文件框选好 `zmax_space.proj` → 确认框弹出 → 回车 → 画布唯一依据 mtime **没变、备份也没新生成**
   ⇒ 确实是在确认框那一步被取消掉了 (整条写盘链一步都没走)。
 
 **修法 (v5.26.3)**

@@ -4,7 +4,7 @@
 
 ```
 /home/ubuntu/zmax/data/                 # 📦 数据根 (顶层只此 6 桶 + 本说明)
-├── README.md                           # 顶层说明 (每桶是什么/谁在用/真源在哪)
+├── README.md                           # 顶层说明 (每桶是什么/谁在用/唯一依据在哪)
 ├── database/                           # 🗄 产品数据根 (每产品一子目录)
 │   └── zmax/                           #   ← 标准产品数据路径 data/database/<产品>/
 │       ├── zmax_engineering.db         #   单一工程数据库 (SQLite, 生成物)
@@ -29,7 +29,7 @@
 | 工程库路径 | `tools/engineering_db.py::DB_DEFAULT` / `PROJ_DIR` → `data/database` |
 | 按名字动态找数据集 | **必须**走 `tools/gui/data_locate.py`: `data_dir(root, name)` / `datasets_root(root)` |
 
-**写死 `os.path.join(root, "data", "xxx")` 在分区后不报错、只是找不到** (`isdir` 为 False ⇒ 静默跳过)。
+**预先固定 `os.path.join(root, "data", "xxx")` 在分区后不报错、只是找不到** (`isdir` 为 False ⇒ 静默跳过)。
 所以凡"枚举数据集 / 候选表按名字拼路径"的地方一律用 `data_locate`。
 
 ## 迁移做法 (可复现)
@@ -39,7 +39,7 @@ python3 tools/data_layout.py --dry      # 先看: 命中多少行/哪些文件 +
 python3 tools/data_layout.py --apply    # tar 备份 → 改写代码 → 搬迁 (软链原样搬, payload 不动)
 ```
 
-- 迁移器纪律 (写死在脚本里):
+- 迁移器纪律 (硬编码在脚本里):
   1. 只改**可执行代码区** (`tools/ src/ config/ flows/` 顶层); `docs/ reports/ zmax_data/ external/` 与任何
      `_archive/` (历史快照 = 证据) 一律不动。
   2. 🔴 逐行排除 `lerobot-smolvla-lew/data/` —— 那是**另一个仓库**的 data 目录, 命中即错
@@ -56,7 +56,7 @@ python3 tools/data_layout.py --apply    # tar 备份 → 改写代码 → 搬迁
 |---|---|---|
 | 动态拼路径扫不到 | 枚举数据集/候选表还在拼 `"data", name` ⇒ 分区后**静默为空** | 统一走 `tools/gui/data_locate.py` (studio / data_space / simulink_module 三处已改) |
 | 别的仓库同名目录 | `external/lerobot-smolvla-lew/data/...` 被一起改写 | 逐行排除 `lerobot-smolvla-lew/data/` |
-| 画布真源被顺带改 | 画布 desc 里写着 `data/xxx` ⇒ 改了画布 ⇒ 绑定 `canvas_md5` 失配 | 改完画布必须 `python3 tools/ss_task_bind.py --activate <task>` 重绑定, 再 `--check` |
+| 画布唯一依据被顺带改 | 画布 desc 里写着 `data/xxx` ⇒ 改了画布 ⇒ 绑定 `canvas_md5` 失配 | 改完画布必须 `python3 tools/ss_task_bind.py --activate <task>` 重绑定, 再 `--check` |
 | 长跑进程揣着老字符串 | 代码改完但进程还是老路径(静默重建老目录) | 改前先确认哪些脚本被改写 (`DATA_LAYOUT_MANIFEST`), 命中在跑服务就按官方脚本重启 |
 | `data/` 整体被 .gitignore | `data/README.md` 进不了库 (父目录被排除时 `!` 无效) | 说明性文档放 `docs/notes/data_layout.md`; `data/README.md` 只当盘上指引 |
 

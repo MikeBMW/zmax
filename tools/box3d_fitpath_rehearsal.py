@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""box3d_fitpath_rehearsal.py — 现场动作前的**彩排**: 把 box3d_live_box 的自动拟合链路跑一遍
+"""box3d_fitpath_rehearsal.py — 现场动作前的**彩排**: 把 box3d_live_box 的自动拟合链路执行一遍
 
 为什么要彩排: 现场要靠"人拖着机器人走 10 个位姿"来标定 (60 秒一次性动作)。若 `try_fit` 的链路
 (拟合 → 前提自证 → 落盘 → 重载 → 出 3D 框) 有 bug, 那 60 秒就白费了。这里用真机内参 K

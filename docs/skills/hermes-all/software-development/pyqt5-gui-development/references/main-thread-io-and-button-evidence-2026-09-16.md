@@ -29,7 +29,7 @@ t0 = time.perf_counter(); hw._tower_cmd("green"); print(time.perf_counter() - t0
 
 塔灯「点红色不变红」根因 = 旧 `_tower_cmd` **只有一条通道** relay→Mac 守护→ssh Orin→ros2 topic pub;
 Mac 守护不在线时指令石沉大海, 界面却照样写「🟡 指令已下发」= 假成功。改成
-**直连优先 + 发完回读 status 当证据 + 中间件兜底**:
+**直连优先 + 发完回读 status 当证据 + 中间件保障**:
 
 ```bash
 ssh tashan@192.168.23.66 'export ROS_DOMAIN_ID=0; source /opt/ros/humble/setup.bash && \

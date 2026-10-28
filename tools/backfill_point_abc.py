@@ -8,7 +8,7 @@
 作用范围(只补缺的, 已有 abc 的记录一律不动):
   · data/skills/l2_atomic/space_points.json     (空间点1~8)
   · data/skills/l2_atomic/taught_points.json    (示教点/号位/侧面点/准备点/安全点)
-  · reports/aoi_points/<点名>.json              (AOI 台账 = 配置中心的真源)
+  · reports/aoi_points/<点名>.json              (AOI 台账 = 配置中心的唯一依据)
 
 用法:
   gui-venv311/bin/python tools/backfill_point_abc.py --dry     # 先看要改几个

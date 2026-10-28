@@ -65,7 +65,7 @@ _SNAP_A = "/*DASHBOARD_SNAPSHOT_START*/"
 _SNAP_B = "/*DASHBOARD_SNAPSHOT_END*/"
 
 
-# ─────────────────────────── 各源 → 关键字段 (都做 None 兜底) ───────────────────────────
+# ─────────────────────────── 各源 → 关键字段 (都做 None 保障) ───────────────────────────
 def _collect_screen(offline: bool = False) -> dict:
     """产品大屏数据流 (2026-10-11 老倪: 「将功能页的产品大屏, 完全同步原来的工位总览的服务, 完善数据流服务」).
 
@@ -149,7 +149,7 @@ def _collect_remote(offline: bool) -> dict:
 
 
 def _collect_fullflow() -> dict:
-    """🔁 7 任务全流程闭环: 直接复用 tools/fullflow_status.py 的只读采集 (它有全量异常兜底)。
+    """🔁 7 任务全流程闭环: 直接复用 tools/fullflow_status.py 的只读采集 (它有全量异常保障)。
 
     口径: 来自 reports/fullflow7/<最新 run>/state.json 的真跑证据 —— 任务数/仿真轨迹/训练每层 rc/GPU 峰值/
     元任务预测覆盖与**输入是否退化**/任务7 真机只读证据。取不到就返回 {"ok": False, "note": ...} 如实标注。

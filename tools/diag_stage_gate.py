@@ -6,7 +6,7 @@
 (direct vs direct_ins 数字完全一致, 已证)。真正要查的是: 哪个闸门没开。
 
 本脚本: 同 seed 跑 analytic / direct / line_w1 三臂, 逐帧记录阶段 + 侧向误差 d_xy +
-高度差 dh + 夹持/接触, 每 50 帧打一行 → 直接看"卡在哪个判据"。
+高度差 dh + 夹持/接触, 每 50 帧打一行 → 直接看"阻塞点个判据"。
 用法: MUJOCO_GL=egl gui-venv311/bin/python tools/diag_stage_gate.py --seed 0 --steps 600
 """
 from __future__ import annotations

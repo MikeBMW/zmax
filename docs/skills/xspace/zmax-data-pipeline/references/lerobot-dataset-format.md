@@ -1,4 +1,4 @@
-# LeRobot v3.0 本地数据集构建全要求（2026-08-02 六小时踩坑实测）
+# LeRobot v3.0 本地数据集构建全要求（2026-08-02 六小时遇到问题实测）
 
 场景：手头有 raw 采集 JSON（frames: state/action/label/camera_b64）或 metaworld npz，
 要构建 `LeRobotDataset` 能加载的本地数据集。下面每一条都是真踩过的坑。

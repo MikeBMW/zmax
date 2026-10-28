@@ -6,7 +6,7 @@
   左树从上到下 1.产品配置 2.任务配置 3.功能配置 4.模型配置 5.性能配置 6.工程配置 7.文档配置, 前面要显示序号;
   每个配置打开的主页面最上顶部要写该星的说明 (北斗七星阵 = 状态空间工程的完备结构)。
 
-判据 (全程离屏, 不动生产 GUI, 不写任何真源):
+判据 (全程离屏, 不动生产 GUI, 不写任何唯一依据):
   ① 左树顶层恰好 7 项, 次序与序号/星名一一对应 (1.产品配置·天枢 … 7.文档配置·瑶光)
   ② 每项序号在**最前面** (标 ✅/⛔ 之后紧跟 "N. ")
   ③ 七颗星齐全且无重复 (天枢/天璇/天玑/天权/玉衡/开阳/瑶光)
@@ -161,8 +161,8 @@ def main() -> int:
     checks.append(("⑩ 点左树七项各自跳到对应配置页 (含任务/工单/文档)",
                    not any(x.startswith("❌") for x in _jump), " ; ".join(_jump)))
 
-    # ⑪ 详细信息在配置页: 每颗星那页顶部都要有「本页真源: …」且非空
-    #    ⚠️ 例外 (老倪 2026-10-21): 「产品配置 本页真源: 当前 550B · 真源改于 10-19 15:36 · 三档 550A 原创版 /
+    # ⑪ 详细信息在配置页: 每颗星那页顶部都要有「本页唯一依据: …」且非空
+    #    ⚠️ 例外 (老倪 2026-10-21): 「产品配置 本页唯一依据: 当前 550B · 唯一依据改于 10-19 15:36 · 三档 550A 原创版 /
     #    550B 标定版 / 550C 量产版 这句话 删掉」⇒ 天枢 (prod) 页顶**必须没有**这行, 其余六页照旧必须有。
     #    判据跟着真实现走: 读取口是 veh6_config_page.BANNER_FACT_HIDDEN, 不在这里另抄一份档名。
     _hidden = tuple(getattr(V, "BANNER_FACT_HIDDEN", ()))
@@ -177,9 +177,9 @@ def main() -> int:
             if _f.strip():
                 _facts[-1] = "❌" + _facts[-1] + " 仍有:" + _f[:20]
             continue
-        if not _f.startswith("本页真源: ") or len(_f) <= 9:
+        if not _f.startswith("本页唯一依据: ") or len(_f) <= 9:
             _facts[-1] = "❌" + _facts[-1]
-    checks.append(("⑪ 每颗星的页顶都有「本页真源: …」(%s 页已删, 左树删掉的详细值落到其余页)"
+    checks.append(("⑪ 每颗星的页顶都有「本页唯一依据: …」(%s 页已删, 左树删掉的详细值落到其余页)"
                    % "/".join(S.BY_KEY[k]["star"] for k in _hidden),
                    not any(x.startswith("❌") for x in _facts), " ; ".join(_facts)))
 
@@ -229,7 +229,7 @@ def main() -> int:
 
     # ⑮ 老倪 2026-10-19: 「(与主控制台左侧同源: config/platform/zmax_platform.json) 在主配置中心，删掉」
     #    ⇒ 配置中心产品配置页 **不许** 再挂那块与主控制台左侧重复的 🏭 平台信息块;
-    #      主控制台左侧卡面照旧读单一真源 (zmax_platform_info), 产品配置页的「平台描述 + 产品特性」块保留。
+    #      主控制台左侧卡面照旧读单一唯一依据 (zmax_platform_info), 产品配置页的「平台描述 + 产品特性」块保留。
     try:
         from zmax_platform_info import zmax_platform_info as _zpi
         _pi_lines = (_zpi() or {}).get("lines") or []
@@ -240,7 +240,7 @@ def main() -> int:
     _no_card = (getattr(page, "plat_card", None) is None) and not hasattr(page, "plat_lines")
     _page_kept = getattr(page, "plat_page_block", None) is not None
     _ok15 = bool(_pi_lines) and _wired and _no_card and _page_kept
-    checks.append(("⑮ 配置中心已删 🏭 平台块 · 主控制台左侧仍单一真源 · 平台描述块保留",
+    checks.append(("⑮ 配置中心已删 🏭 平台块 · 主控制台左侧仍单一唯一依据 · 平台描述块保留",
                    _ok15, "模块 %d 行 | 主控制台卡面接线=%s | 配置中心无平台块=%s | 平台页块=%s"
                    % (len(_pi_lines), _wired, _no_card, _page_kept)))
 
@@ -277,7 +277,7 @@ def main() -> int:
              and _pt is not None and _pt.rowCount() == len(_pdata.get("features") or [])
              and _in_tab(_pt, "产品配置"))
     checks.append(("⑰ 功能配置页=系统2/1/0 全部功能+汇总 · 产品配置页=平台页描述+产品特性",
-                   _ok17, "功能表 %s 行 (真源 %d) · 汇总「%s」· 产品特性 %s 行 (真源 %d)"
+                   _ok17, "功能表 %s 行 (唯一依据 %d) · 汇总「%s」· 产品特性 %s 行 (唯一依据 %d)"
                    % (getattr(_ft, "rowCount", lambda: "—")(), len(_fns2), _smy["text"],
                       getattr(_pt, "rowCount", lambda: "—")(), len(_pdata.get("features") or []))))
 
@@ -356,8 +356,8 @@ def main() -> int:
     page.tabs.setCurrentIndex(_pi0)
     _app.processEvents()
     _back_ok = _marks()[_pi0][0].startswith("✅")
-    # 就绪状态没丢: tooltip 里仍有「真源就绪: ✅/⛔」
-    _tip_ok = all("真源就绪:" in str(page.tree.topLevelItem(i).toolTip(0)) for i in range(page.tree.topLevelItemCount()))
+    # 就绪状态没丢: tooltip 里仍有「唯一依据就绪: ✅/⛔」
+    _tip_ok = all("唯一依据就绪:" in str(page.tree.topLevelItem(i).toolTip(0)) for i in range(page.tree.topLevelItemCount()))
     checks.append(("⑳ 打开先落在「产品配置」· 左树 ✅ 只标当前页 (切换跟着走, ○ 标其余; 就绪符留 tooltip)",
                    _open_ok and _one0 and _move_ok and _back_ok and _tip_ok,
                    "首屏=%s (期望 %d) · 初始✅=%s · 切任务后✅=%s · 切回=%s · tooltip就绪=%s"

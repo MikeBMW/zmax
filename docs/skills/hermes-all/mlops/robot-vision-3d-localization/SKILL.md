@@ -9,7 +9,7 @@ description: Use when 视觉3D定位/抓取失败, 需分解2D-深度-公式误�
 - 视觉定位的工件坐标不准 → 抓取/插入失败、反复尝试、手追假目标
 - YOLO 2D 检测 + 深度模型反投影的 3D 定位系统性偏差
 - 机械臂(夹爪)接近工件后检测漂移/锁到机械臂上(幻影)
-- "视觉模式竟然能用模拟器真值兜底"的泄漏排查(红线)
+- "视觉模式竟然能用模拟器真值保障"的泄漏排查(红线)
 
 ## 误差分解三步法 (先分清 2D 框 / 深度 / 公式, 别猜)
 定位误差来自三个独立环节, 必须逐项钉死再修:
@@ -118,7 +118,7 @@ FK      : tools/robot_spec_sync.py 的 parse_urdf + serial_chain + fk_from_chain
          加工具偏置后的残差才是仓库记的 ~3.5mm; 差不到这个量级 = URDF/关节顺序读错, 别往下用
 ```
 - ⚠️ URDF 路径: worktree 里 `config/robot/xms5_*.urdf` **常常不在**(URDF 不进代码库) ⇒ 依次找
-  `config/moveit_xms5/urdf/…`、共享检出(`lerobot-smolvla-lew/config/robot/…`); 真源是 `/robot_description` 话题。
+  `config/moveit_xms5/urdf/…`、共享检出(`lerobot-smolvla-lew/config/robot/…`); 唯一依据是 `/robot_description` 话题。
   硬写模块里的 `URDF_DEFAULT` 会直接 `FileNotFoundError`。
 - 验收口径: 用**已知 base 坐标的点**投回该相机画面, 与图上实检位置比像素差(报中位 + 最大);
   近似外参必须在画面真值带里标明"未标定/近似"与残差, 不然用户会把画面当结果。
@@ -142,13 +142,13 @@ FK      : tools/robot_spec_sync.py 的 parse_urdf + serial_chain + fk_from_chain
   中文字体用 Noto CJK (`fc-list | grep -i cjk` 确认), 否则中文横幅变豆腐块。
 - 细节与可跑探针: `references/mask-to-3d-guidance.md` + `scripts/probe_mask3d_evidence.py`。
 
-## 深度不可用时: 视线与台面求交 (像素→base 的兜底口径)
+## 深度不可用时: 视线与台面求交 (像素→base 的保障口径)
 
 1. **先判深度到底有没有, 再决定能不能报毫米**: 容器里 `ros2 topic info <depth topic>` 看 **Publisher count**
    —— `0` = 只有订阅者在白等(实测 `/realsense/depth/image_rect_raw` 订阅 1 / 发布 0), 这时落盘 npy 会一直
    停在旧时间戳(本机 `/out/zmax_scene/depth_raw.npy`, 宿主对应 `zmax_data/ss_live/zmax_scene/`, 实测停 3 天)。
    **文件龄 + Publisher 0 = 通道死**, 别拿它算毫米级坐标; 只有彩色发布节点在跑, 不代表深度也在跑。
-2. **无深度时的两条兜底, 先验平面必须是对的那个平面**:
+2. **无深度时的两条保障, 先验平面必须是对的那个平面**:
    ① **视线与已知平面求交**: `p_base = 相机光心 + t·d_base`, t 由 `(z_plane − o_z)/d_z` 解出。
    🔴 `z_plane` 不能想当然取 `z=0`: 本机 base 系里 z=0 是底座安装面/台面上表面, 而**工位孔位在 z≈190mm**
    (`config/calib/zmax_calib.json` → `cell_geometry.points.hole` = (757.5, 227.9, 190.1) mm, 另有 `hole_retract`)。
@@ -176,9 +176,9 @@ FK      : tools/robot_spec_sync.py 的 parse_urdf + serial_chain + fk_from_chain
    认工件按**框 + 外观**核, 别按类名或"金色小方块"去找。
 
 ## Pitfalls
-- 🔴 **反投影链不要自造, 先搜真源实现**: `grep -rl 'bbox_base_mm\|depth_scale_mm_per_unit' --include='*.py' .`
+- 🔴 **反投影链不要自造, 先搜唯一依据实现**: `grep -rl 'bbox_base_mm\|depth_scale_mm_per_unit' --include='*.py' .`
   找到写这个 stats 的那份代码, 把 `DEPTH_SCALE` / **有效深度阈值** / 手眼方向 / 四元数顺序逐项对齐。
-  实测漏掉真源的 `z > 0.05`(米) 阈值、只写 `z > 0`, 近距飞点被反投影 ⇒ bbox 从
+  实测漏掉唯一依据的 `z > 0.05`(米) 阈值、只写 `z > 0`, 近距飞点被反投影 ⇒ bbox 从
   `Z[-1224,337]` 撑到 `Z[-3322,1158]mm`(代码「看着完全对」, 只有 bbox 离谱)。
   点云/建图类交付的完整细节(离群点剔除、栅格化、地图服务)见 `depth-cloud-map-service`。
 - 🔴 **手眼矩阵的**键名**不等于方向**: `handeye_result.json` 的 `T_base_cam` 平移值与 `stats.json` 的
@@ -187,7 +187,7 @@ FK      : tools/robot_spec_sync.py 的 parse_urdf + serial_chain + fk_from_chain
 - 反投影前不核手眼平移单位(米 vs 毫米) ⇒ 相机光心正好落在 TCP 上: 判据就是"光心==TCP"这一行自检。
 - `_overlay_info.<cam>.tcp_ok=false` 时该路框数静默为 0(看着像生成器没干活): 投影要实时位姿 ⇒
   先看 `tcp_ok`/`origins`/规格龄, 再怀疑生成器。
-- 拿派生路点(±20/30/50mm 偏移)当标定点 → 外参"看着很准"其实是自欺。
+- 拿派生路点(±20/30/50mm 偏移)当标定点 → 外参"看着很准"实际是自欺。
 - 用 2 个共线示教点拟合平面单应 → 欠定/退化, 投出来必然偏。
 - 深度分位扫描实验先去掉 NaN 再排序, np.percentile 遇全 NaN 报 IndexError。
 - YOLO 类名被覆写 (peg→光模块) 后, 按类名匹配检测结果会永远 False — 匹配业务名或类 id。

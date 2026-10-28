@@ -6,7 +6,7 @@
   ② 缩放后 fillRect 传 float 走 int 重载抛错 ⇒ 整帧静默不画 (透白底) —— 改 QRectF/QPointF
   ③ availableGeometry() 自身越界把状态带顶到屏外 ⇒ 按 屏幕物理几何 ∩ 可用区 夹回屏内
   ④ NPU/GPU 槽画"—" 根因 = orin 隧道单请求 2.9~3.6s 而取数只等 1.5s ⇒ 改后台线程刷 + 缓存
-  ⑤ 550 ABC 三处真源同步 (本机 / intel: product.json · zmax_profile.py · edge_service.py)
+  ⑤ 550 ABC 三处唯一依据同步 (本机 / intel: product.json · zmax_profile.py · edge_service.py)
 """
 import hashlib
 import io
@@ -60,23 +60,23 @@ MANIFEST = """# Z-MAX v{ver} 归档
 
 ## 主题
 底部硬件状态带放大 1.42 倍 (老倪: 「最下面的硬件指示的字体太小了」), 并排掉三处"看着像坏了"的假象:
-状态带整帧静默不画 / 状态带被顶到屏外 / 槽位画"—"。同时把 550 ABC 三处真源与本机·intel 两端对齐。
+状态带整帧静默不画 / 状态带被顶到屏外 / 槽位画"—"。同时把 550 ABC 三处唯一依据与本机·intel 两端对齐。
 
 ## 根因 (为什么改)
-- 状态带 paint 全是写死像素 (chip 88、槽宽、灯半径), 逐处改字号必然错位 ⇒ 引入单一 SCALE + `painter.scale`,
+- 状态带 paint 全是预先固定像素 (chip 88、槽宽、灯半径), 逐处改字号必然错位 ⇒ 引入单一 SCALE + `painter.scale`,
   逻辑坐标与版式比例都不动, 字体同比放大到 14/15.6px。
 - 缩放后 `w/h` 变 float, `QPainter.fillRect/drawLine` 的 int 重载抛错、异常被 paintEvent 吞掉 ⇒ **整帧什么都不画**,
   透出父控件白底 —— 截图看着像"状态带没了", selftest 却可能仍绿 (必须数像素)。
 - 这套 GNOME/Mutter 上 `availableGeometry()` 自己越界 (3068x1862@132,212, 底边 2074 > 主屏 2000),
   "按可用区夹回屏内"等于夹到屏外, 最底下那条带整条看不见。
 - 状态带 NPU/GPU 读 `/status/all.edge.pipeline.devices.*.duty_pct`; 经 orin 隧道单请求实测 2.9~3.6s,
-  而 `collect_edge` 只等 1.5s ⇒ 必然 TimeoutError ⇒ online=False ⇒ 界面只能画横杠 (intel 上其实 96% 满载)。
+  而 `collect_edge` 只等 1.5s ⇒ 必然 TimeoutError ⇒ online=False ⇒ 界面只能画横杠 (intel 上实际 96% 满载)。
 
 ## 改动清单
 ### ① 放大 (单一系数)
 - `status_panel.py`: `W,H=1080,40` 为逻辑画布, 新增 `SCALE=1.42` ⇒ 物理 1533x56; `_paint` 先 `p.scale(SCALE,SCALE)`,
   `w,h = width()/SCALE, height()/SCALE`。字号 10/11px → 14.2/15.6px, 版式同比 ⇒ 不重叠不截断。
-- selftest 判据跟着改成相对阈值 (`_Hp*0.35 ~ _Hp*0.98`), 不再写死 40px。
+- selftest 判据跟着改成相对阈值 (`_Hp*0.35 ~ _Hp*0.98`), 不再预先固定 40px。
 
 ### ② 缩放后整帧不画 (float 走 int 重载)
 - `fillRect(0,0,w,h)` → `fillRect(QRectF(...))`; `drawLine(0,0,w,0)` → `QPointF` 两端。
@@ -96,7 +96,7 @@ MANIFEST = """# Z-MAX v{ver} 归档
 
 ## 目录
 - `gui/` `tools/` `tools/edge/` — 本轮改动过的代码 (只拷改过的)
-- `data/` — 真源快照 (三档硬件绑定 / 安装默认 / config_meta)
+- `data/` — 唯一依据快照 (三档硬件绑定 / 安装默认 / config_meta)
 - `units/` — intel 并行调度 unit + 本机 GUI unit + frp 配方
 - `evidence/` — 实测数字
 - `docs/` — VERSION.md
@@ -130,7 +130,7 @@ OCR (真实窗口截图 reports/status_strip_bigfont_evidence.png):
 - 合计 2087~2107 fps, err=null, pkg 72°C, CPU 9~10%, 内存 7.2%, edge_service RSS 596MB
 - 30fps 生产节拍折算: NPU 25.5% / GPU 15.1% (现在 96% 是静态图跑分模式, 真实产线余量 70%+)
 
-## ④ 550 ABC 三处真源 (sha256 前 16 位)
+## ④ 550 ABC 三处唯一依据 (sha256 前 16 位)
 | 文件 | 本机 | intel |
 |---|---|---|
 | config/platform/zmax_product.json | 5276456ed3142efc | 5276456ed3142efc |

@@ -36,7 +36,7 @@
 - **真空建立**: 实测 425 / 537.5 / 525 ms vs 配置上限 200 ms ⇒ **3 颗全部不合格**。
 - **真空保持**: 实测 5.49 s vs 配置 5.0 s(超 9.7%), 直接吃掉节拍余量。
 - **连续盘数 ≥12 盘**: 未测。
-- **主参数 M 落役**: 配置单按 R1–R5 算得 **M=4.423(dim 6 / isotropic)**, 在役真源为 **M=3.283(dim 3 / full)**
+- **主参数 M 落役**: 配置单按 R1–R5 算得 **M=4.423(dim 6 / isotropic)**, 在役唯一依据为 **M=3.283(dim 3 / full)**
   ⇒ **不一致 = 摆盘配置单尚未落到在役主参数**(映射链与节点判据 23/23 已在, 差的是写盘与作业链消费)。
 - **数据空间部分话题**: `ss_state / ss_action / ss_link_value / ss_plan / ss_energy` 仍为黑(办公模式无机器人/状态空间引擎未跑, 无发布者);
   `ss_calib` 灯红 = 设计速率 0.2 Hz 与实测 19.84 Hz 相差约 99×(发布端每 tick 重发, 缺速率闸)。
@@ -56,7 +56,7 @@ gui-venv311/bin/python tools/verify_driving_torque_topic.py    # → reports/dri
 # 数据空间话题灯与字段
 python3 -c "import json;d=json.load(open('zmax_data/dataspace/live.json'));print(d['lamp_tally']);print(d['topics']['ss_torque'])"
 
-# 主参数 M: 配置单映射 vs 在役真源
+# 主参数 M: 配置单映射 vs 在役唯一依据
 python3 tools/config_to_M.py --task TASK-06-TRAY
 python3 tools/verify_metric_main_param.py
 
@@ -69,5 +69,5 @@ python3 tools/ss_task_bind.py --check && python3 tools/engineering_db.py check
 ## 口径说明(本包不做什么)
 
 - 不使用"白盒交付"表述; 对外统一为「符合 5 个场景的具身方案技术协议」。
-- 文档内所有数字由工具从真源现取现算; 未标定项一律标「待实测」, 不用概念值充数。
+- 文档内所有数字由工具从唯一依据现取现算; 未标定项一律标「待实测」, 不用概念值充数。
 - 性能数字**不手写**: 附录 H/I/J 的内容来自 `摆盘性能对账_5.50.5.json`(同一份生成器输出)。

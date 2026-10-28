@@ -10,8 +10,8 @@ data/ 顶层只留 6 个桶:
     calib/     标定 (handeye / selfcal / aoi_caliber_bench)
     datasets/  数据集 (yolo_* / ss_* / metaworld_* / smolvla_* / orin_* / *.npz / *.mp4)
 
-凡**按名字动态拼路径**的地方 (枚举/候选表) 一律走这里, 别写死 "data", name ——
-分区以后写死的会静默找不到 (目录不存在 = isdir False, 不报错)。
+凡**按名字动态拼路径**的地方 (枚举/候选表) 一律走这里, 别预先固定 "data", name ——
+分区以后固定不变的会静默找不到 (目录不存在 = isdir False, 不报错)。
 """
 import os
 

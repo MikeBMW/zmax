@@ -3,7 +3,7 @@
 """verify_points_consistency.py — 点位「全局一致」体检 (老倪 2026-10-12: 「要实时更新数据库, 全局数据要保持一致」)
 
 一个物理点在三处出现, 必须同值:
-  ① AOI 台账   reports/aoi_points/<点名>.json     ← 配置中心的真源(task_build 只读它)
+  ① AOI 台账   reports/aoi_points/<点名>.json     ← 配置中心的唯一依据(task_build 只读它)
   ② L2 技能库  data/skills/l2_atomic/taught_points.json   ← L2.goto_* 技能实际回的点
   ③ 空间点库   data/skills/l2_atomic/space_points.json    ← 8793 空间点1~8(独立库, 只比它自己)
   ④ 任务配置   config/tasks/tasks.json 的 TASK-07-AOI overrides.pt.<点名>  ← 配置中心显示的值

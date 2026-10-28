@@ -13,7 +13,7 @@ x=712mm 之后就直接压进设备里了。这不是"看起来碰到", 是真�
   ② 逐行扫描 (boustrophedon), 行距 --row-gap;
   ③ 每一行先算"这一 y 上、这一 z 高度上"被哪些盒子占掉, 从工作区里**减掉**
      (盒子按 --clear + 围栏外扩余量 inflated) ⇒ 只留最大的一段可用区间;
-  ④ 逐点再用 fence_store.check_point() 复核 (真源判定, 不是我估算), 任何一点命中就报错;
+  ④ 逐点再用 fence_store.check_point() 复核 (唯一依据判定, 不是我估算), 任何一点命中就报错;
   ⑤ 输出 base 系米制点列 + 航点 + 总长 + 每条围栏的最小净距。
 
 用法:
@@ -184,7 +184,7 @@ def main():
     if bad:
         print("⛔ 有 %d 个点落在围栏里(不该发生): %s" % (len(bad), bad[:3]))
         return 2
-    print("✅ 逐点 check_point 复核: 0 命中 (围栏判定用的是真源 fence_store)")
+    print("✅ 逐点 check_point 复核: 0 命中 (围栏判定用的是唯一依据 fence_store)")
 
     if a.dry_run:
         print("(dry-run: 没写 %s)" % OUT)

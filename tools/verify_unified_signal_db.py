@@ -201,7 +201,7 @@ time.sleep(1.5)
 LS._CACHE.update(t=0.0, data=None)
 poke()
 back = _num(trace_val(FIELD))
-chk("④ 守护恢复后 Trace 回到真值 (库仍是唯一真源)", back is not None and back != PROBE_V,
+chk("④ 守护恢复后 Trace 回到真值 (库仍是唯一依据)", back is not None and back != PROBE_V,
     f"现在 {back!r}")
 
 # ⑤ 降级路径

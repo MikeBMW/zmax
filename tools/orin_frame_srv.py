@@ -113,7 +113,7 @@ class Grabber:
             import cv2
             self.cap = cv2.VideoCapture(device, cv2.CAP_V4L2)
             if not self.cap.isOpened():
-                raise RuntimeError(f"/dev/video{device} 打不开 (被占用?)")
+                raise RuntimeError(f"/dev/video{device} 无法打开 (被占用?)")
             self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
@@ -277,7 +277,7 @@ def main():
                 print("[frame-srv] 从未被调用 120s → 退出 (临时进程不常驻)", flush=True)
                 os._exit(0)
             if time.time() - state["t0"] > a.max_seconds:
-                print(f"[frame-srv] 到达兜底时限 {a.max_seconds:.0f}s → 退出", flush=True)
+                print(f"[frame-srv] 到达保障时限 {a.max_seconds:.0f}s → 退出", flush=True)
                 os._exit(0)
 
     threading.Thread(target=_idle_watch, daemon=True).start()
@@ -311,7 +311,7 @@ def main():
                 print(f"[frame-srv] 无调用 {a.idle_seconds:.0f}s → 退出 (临时进程不常驻)", flush=True)
                 break
             if time.time() - state["t0"] > a.max_seconds:
-                print(f"[frame-srv] 到达兜底时限 {a.max_seconds:.0f}s → 退出", flush=True)
+                print(f"[frame-srv] 到达保障时限 {a.max_seconds:.0f}s → 退出", flush=True)
                 break
     except KeyboardInterrupt:
         pass

@@ -181,7 +181,7 @@ def run_batch(cams, push_overlay=False, send_w=SEND_W) -> dict:
         for r in recs:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
     try:
-        publish_scene_vec(recs, batch=stamp)      # L5 分层力的真源 (框 → 方向矢量)
+        publish_scene_vec(recs, batch=stamp)      # L5 分层力的唯一依据 (框 → 方向矢量)
     except Exception:                                                        # noqa: BLE001
         pass
     if push_overlay:
@@ -191,7 +191,7 @@ def run_batch(cams, push_overlay=False, send_w=SEND_W) -> dict:
 
 
 def publish_scene_vec(recs, batch=None):
-    """L5 分层的真源: 把本批**真实标注框**折成一个三维方向矢量, 写 ss_live/l5_scene_vec.json。
+    """L5 分层的唯一依据: 把本批**真实标注框**折成一个三维方向矢量, 写 ss_live/l5_scene_vec.json。
 
     口径 (与 tools/ar_l5_understand.py 同一套, 只做能追溯到画面的换算):
       选"面积×置信度"最大的那个框 (优先机械臂/工位相机) → 框心相对画面中心的归一偏移

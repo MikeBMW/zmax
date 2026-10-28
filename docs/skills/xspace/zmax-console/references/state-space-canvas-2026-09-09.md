@@ -29,7 +29,7 @@
 - paint 分支 (drawRoundedRect 后、通用标题前): 三档 radio (圆点+标签+当前档金色高亮+底部当前档说明), `return` 提前跳出通用绘制
 - 交互: 单击圆钮直选 (SimCanvas.mousePressEvent 左键节点分支, 按 paint 同款坐标公式算 radio 圆心 hit-test, 半径 ~14px) + 双击循环 (on_node_activated 分支 → module._toggle_cap)
 - **档位落两处**: node.params.cap_level (画布重绘/持久) + module._cap_level (▶运行消费); `_toggle_cap(node, level=None)` 统一入口, level=None=循环
-- ▶运行前从画布节点 params.cap_level 读档位优先 (重启 GUI 不丢档位), 兜底 module 内存值
+- ▶运行前从画布节点 params.cap_level 读档位优先 (重启 GUI 不丢档位), 保障 module 内存值
 - node_logic 右键执行也走 module._toggle_cap (找同名 node) — 三入口同一路径, 杜绝"切了内存档位画布不更新"
 
 **⚠️ 副作用开关节点必须排除出自动执行链** — 实锤: ⏭单步/▶播放遍历所有非 row_bg 节点逐个 execute_node_logic, 能力档位注册了 node_ss_cap (语义=切档) → **单步路过它就 L4→L2 自己切换** (用户:"我没有切换档位啊")。gate 家族 (train_gate/yolo_gate/mode_switch) 无 _reg 所以路过无害, 唯独 cap 有注册+副作用。修: 三处执行链构建 (`_ss_step_order`/`_ss_order` ×2) 统一排除 `params.cap_switch`。

@@ -7,7 +7,7 @@
 三源:
   ① 配置中心读的 AOI 台账  reports/aoi_points/<点名>.json   (8793 标记模式写, 经 record_point_sdk.py)
   ② L2 技能库              data/skills/l2_atomic/taught_points.json
-  ③ 我独立录的示教路径      zmax_data/aoi_teach/session_*.jsonl (20Hz, 位姿真源 xcoresdk endInRef 直采)
+  ③ 我独立录的示教路径      zmax_data/aoi_teach/session_*.jsonl (20Hz, 位姿唯一依据 xcoresdk endInRef 直采)
 
 判据: ①② 值一致 + 时间戳是本次(近 30 分钟内) + ③ 在同一时刻的位姿与①② 偏差 ≤1mm。
 任一条不满足 ⇒ 打印 ❌ 并给出原因(不臆断通过)。

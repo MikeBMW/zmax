@@ -7,18 +7,18 @@
    你来根据先有状态空间工程，设计专利申请的内容，要有层次，逻辑，要保证全局数据真实，可靠，能落地，形成专有知识产权」
 
 设计要点 (为什么这样做):
-  · **渠道预留**: 真源 `config/patents/patent_registry.json` 里每件专利带 `fn_ids`(主挂)/`fn_ids_related`(关联),
+  · **渠道预留**: 唯一依据 `config/patents/patent_registry.json` 里每件专利带 `fn_ids`(主挂)/`fn_ids_related`(关联),
     与单一工程库 `functions` 表逐条比对 —— 74 项功能必须**逐条**挂到至少一件专利上 (覆盖 74/74),
     未挂上的功能不隐藏、直接列出来 (渠道未闭合要看得见)。
   · **内容分层**: 每件专利 = 层次 (体系/数学/模型/执行/标定/视觉) + 逻辑 (技术问题→技术方案→有益效果→权利要求→实施例),
-    内容由编写稿 (`config/patents/drafts/*.json`) 定稿成真源 registry。
+    内容由编写稿 (`config/patents/drafts/*.json`) 定稿成唯一依据 registry。
   · **数据真实**: 文档里的统计数字**全部现算** (工程库 functions / product_features / canvas_nodes + 模型矩阵),
-    不写死; 每件专利再附它挂的功能条目与真源符号 (可直接点到代码), 保证"能落地"。
+    不预先固定; 每件专利再附它挂的功能条目与唯一依据符号 (可直接点到代码), 保证"能落地"。
   · **文档同级**: 输出的 md/docx 与 SOR/项目立项/合作协议同目录 (`docs/deliverables`)、同入口 (配置中心·文档配置页)。
 
 用法:
     ./gui-venv311/bin/python tools/patent_center.py --coverage          # 渠道覆盖核对 (74/74)
-    ./gui-venv311/bin/python tools/patent_center.py --build             # 编写稿 → 真源 registry
+    ./gui-venv311/bin/python tools/patent_center.py --build             # 编写稿 → 唯一依据 registry
     ./gui-venv311/bin/python tools/patent_center.py --export all        # 导出 md+docx 到 docs/patents
     ./gui-venv311/bin/python tools/patent_center.py --preview ZMP-2026-001
     ./gui-venv311/bin/python tools/patent_center.py --json              # 给 GUI 用
@@ -40,7 +40,7 @@ DELIV_DIR = os.path.join(ROOT, "docs", "deliverables")
 DB = os.path.join(ROOT, "data", "database", "zmax", "zmax_engineering.db")
 
 
-# ─────────────────────────────── 真源读取 ───────────────────────────────
+# ─────────────────────────────── 唯一依据读取 ───────────────────────────────
 def _j(p, default=None):
     try:
         with open(p, encoding="utf-8") as f:
@@ -62,7 +62,7 @@ def _rows(sql):
 
 
 def build_registry(write=True):
-    """编写稿 (config/patents/drafts/*.json) → 真源 registry (含派生字段)。"""
+    """编写稿 (config/patents/drafts/*.json) → 唯一依据 registry (含派生字段)。"""
     parts, pats = [], []
     if os.path.isdir(DRAFT_DIR):
         for fn in sorted(os.listdir(DRAFT_DIR)):
@@ -73,7 +73,7 @@ def build_registry(write=True):
     reg = {
         "schema": "zmax-patent-registry/1",
         "updated": time.strftime("%Y-%m-%d %H:%M:%S%z"),
-        "note": ("Z-MAX 专利申请渠道真源。每件专利挂 fn_ids(主)/fn_ids_related(关联); 覆盖核对见 tools/patent_center.py --coverage。"
+        "note": ("Z-MAX 专利申请渠道唯一依据。每件专利挂 fn_ids(主)/fn_ids_related(关联); 覆盖核对见 tools/patent_center.py --coverage。"
                  "编写稿在 config/patents/drafts/, 本文件由 --build 生成。"),
         "draft_parts": parts,
         "patents": pats,
@@ -94,7 +94,7 @@ def load_registry(auto_build=True):
 
 # ─────────────────────────────── 覆盖核对 ───────────────────────────────
 def fn_rows():
-    """工程库功能清单 (fn_id / 名称 / 系统 / 层 / 承载模块 / 真源符号)。"""
+    """工程库功能清单 (fn_id / 名称 / 系统 / 层 / 承载模块 / 唯一依据符号)。"""
     out = []
     for r in _rows("select fn_id, name, system_id, layer, kind, module_ref, params from functions"):
         sym = ""
@@ -133,7 +133,7 @@ def coverage():
             "src": os.path.relpath(REG_J, ROOT)}
 
 
-# ─────────────────────────────── 真源实时数据 ───────────────────────────────
+# ─────────────────────────────── 唯一依据实时数据 ───────────────────────────────
 def live_facts():
     """文档里要引用的统计数字 —— 全部现算 (不许手抄, 老倪: 全局数据真实)。"""
     f = {"generated_at": time.strftime("%Y-%m-%d %H:%M:%S%z")}
@@ -159,7 +159,7 @@ def live_facts():
 
 # ─────────────────────────────── 文档生成 ───────────────────────────────
 def draft_text(pat, cov=None, facts=None, with_facts=True):
-    """一件专利的申请文件正文 (markdown): 层次清楚 + 数据真源现算 + 可落地证据。"""
+    """一件专利的申请文件正文 (markdown): 层次清楚 + 数据唯一依据现算 + 可落地证据。"""
     cov = cov or coverage()
     facts = facts or live_facts()
     mine = [x for x in cov["per_fn"] if pat["pat_id"] in (x["pat_primary"] + x["pat_related"])]
@@ -217,7 +217,7 @@ def draft_text(pat, cov=None, facts=None, with_facts=True):
     A("")
     A("### 5.2 本专利挂载的功能条目 (专利申请渠道)")
     A("")
-    A("| 功能编号 | 功能名称 | 系统 | 层 | 挂载 | 真源符号 |")
+    A("| 功能编号 | 功能名称 | 系统 | 层 | 挂载 | 唯一依据符号 |")
     A("|---|---|---|---|---|---|")
     for x in mine:
         role = []
@@ -229,7 +229,7 @@ def draft_text(pat, cov=None, facts=None, with_facts=True):
                                                  "+".join(role), x["symbol"] or x["module"]))
     A("")
     if with_facts:
-        A("### 5.3 全工程真源数据 (生成时现算, 非手写)")
+        A("### 5.3 全工程唯一依据数据 (生成时现算, 非手写)")
         A("")
         A("生成时间: %s" % facts.get("generated_at", "—"))
         A("")
@@ -243,12 +243,12 @@ def draft_text(pat, cov=None, facts=None, with_facts=True):
         A("| 各层在役模型 (与主控台模型矩阵同源) | %s |" % " · ".join(
             "%s %s" % (k, v) for k, v in sorted((facts.get("matrix") or {}).items())))
         A("")
-        A("> 上述数字全部由 `tools/patent_center.py` 从单一真源现算: 工程库 `data/database/zmax/zmax_engineering.db`、"
-          "`models/active_models.json`、主控台模型矩阵 `tools/model_config_matrix.py`。真源变了, 文档重生成即变 —— 不存在手写漂移。")
+        A("> 上述数字全部由 `tools/patent_center.py` 从单一唯一依据现算: 工程库 `data/database/zmax/zmax_engineering.db`、"
+          "`models/active_models.json`、主控台模型矩阵 `tools/model_config_matrix.py`。唯一依据变了, 文档重生成即变 —— 不存在手写漂移。")
         A("")
     A("---")
     A("")
-    A("*本文件由 `tools/patent_center.py` 生成 (真源 `%s`), 供专利申请撰写与内部评审使用; 申请号/公开号/发明人按提交后回填。*"
+    A("*本文件由 `tools/patent_center.py` 生成 (唯一依据 `%s`), 供专利申请撰写与内部评审使用; 申请号/公开号/发明人按提交后回填。*"
       % cov.get("src", "config/patents/patent_registry.json"))
     return "\n".join(L)
 
@@ -293,11 +293,11 @@ def export(which="all", out_dir=None, fmt=("md",)):
             "", "| 专利 | 层次 | 主挂功能 | 关联功能 | 状态 |", "|---|---|---|---|---|"]
     for x in cov["per_patent"]:
         idx.append("| %s %s | %s | %d | %d | %s |" % (x["pat_id"], x["title"][:34], x["layer"], x["n_fn"], x["n_rel"], x["status"]))
-    idx += ["", "## 三、全工程真源数据 (现算)", "",
+    idx += ["", "## 三、全工程唯一依据数据 (现算)", "",
             "- 功能 %s 条 (按系统 %s; 按层 %s)" % (facts.get("fn_total"), facts.get("fn_by_sys"), facts.get("fn_by_layer")),
             "- 产品特征 %s 条 (%s 在役) · 画布节点 %s 个" % (facts.get("pf_total"), facts.get("pf_in_service"), facts.get("nodes")),
             "- 各层在役模型: %s" % facts.get("matrix"), "",
-            "> 数据真源: 工程库 functions/product_features/canvas_nodes + models/active_models.json + 主控台模型矩阵; 现算不手写。"]
+            "> 数据唯一依据: 工程库 functions/product_features/canvas_nodes + models/active_models.json + 主控台模型矩阵; 现算不手写。"]
     fp = os.path.join(out_dir, "00_专利申请渠道清单.md")
     with open(fp, "w", encoding="utf-8") as f:
         f.write("\n".join(idx) + "\n")
@@ -342,12 +342,12 @@ def preview(pat_id):
     for p in reg.get("patents", []):
         if p["pat_id"] == pat_id:
             return draft_text(p)
-    return "⛔ 未找到专利 %s (真源 %s)" % (pat_id, os.path.relpath(REG_J, ROOT))
+    return "⛔ 未找到专利 %s (唯一依据 %s)" % (pat_id, os.path.relpath(REG_J, ROOT))
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--build", action="store_true", help="编写稿 → 真源 registry")
+    ap.add_argument("--build", action="store_true", help="编写稿 → 唯一依据 registry")
     ap.add_argument("--coverage", action="store_true", help="渠道覆盖核对")
     ap.add_argument("--export", nargs="?", const="all", help="导出 all 或某件 pat_id")
     ap.add_argument("--preview", help="打印某件专利正文")
@@ -356,7 +356,7 @@ def main():
     a = ap.parse_args()
     if a.build:
         r = build_registry(True)
-        print("✅ 真源生成: %s (%d 件)" % (os.path.relpath(REG_J, ROOT), len(r["patents"])))
+        print("✅ 唯一依据生成: %s (%d 件)" % (os.path.relpath(REG_J, ROOT), len(r["patents"])))
     if a.coverage or a.json:
         cov = coverage()
         if a.json:

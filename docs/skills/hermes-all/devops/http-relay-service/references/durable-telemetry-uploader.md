@@ -8,7 +8,7 @@
 界面持续显示**「等待上报 / 等待上传」**，而你以为上报一直在跑。
 实测根因：上报进程早就停了，**日志最后一行停在几十分钟前**。
 
-## 三个死法（任何一个都足以让"我以为在跑"变成"其实停了"）
+## 三个死法（任何一个都足以让"我以为在跑"变成"实际停了"）
 1. **临时后台进程随 agent 会话 / 父 shell 一起消失**
    （`nohup … &`、`setsid … &` 都挡不住 agent 侧会话结束）
 2. **脚本放在 git 工作区里** → 你一切分支、或 `git stash -u`，文件就被切走/吞进 stash
@@ -42,7 +42,7 @@ WantedBy=multi-user.target
 ```bash
 sudo cp <name>.service /etc/systemd/system/ && sudo systemctl daemon-reload
 sudo systemctl enable --now <name>
-# ② 三连验证（缺一条都可能"以为在跑其实没跑"）
+# ② 三连验证（缺一条都可能"以为在跑实际没跑"）
 systemctl is-active  <name>    # active
 systemctl is-enabled <name>    # enabled（开机自启）
 tail -3 /var/log/<name>.log    # ★ 时间戳在推进才是真在跑

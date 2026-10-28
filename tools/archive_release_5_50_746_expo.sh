@@ -79,7 +79,7 @@ echo "=== ③ 证据 (实测数字) ==="
   echo "- 数学根因: 欧氏势的切空间梯度 ∝ −(g−c·p), 精确等于测地方向 ⇒ 「欧氏势+切投影」已是方向意义最优, 度规在此指标无提升空间"
   echo
   echo "## L2 光学质量检测节点 · 10083 表面旁路 (2026-10-19 老倪)"
-  echo "- 节点: ssaoi 🔍 光学质量检测 · layer 由空 → **L2** (模块真源 LAYER / DB mw_node / 画布 JSON params 三处一致)"
+  echo "- 节点: ssaoi 🔍 光学质量检测 · layer 由空 → **L2** (模块唯一依据 LAYER / DB mw_node / 画布 JSON params 三处一致)"
   echo "- 旁路: 跑在 **4060 本机**, 只读 GET 10083 /picture?kind=origin&grab=1, 不部署不改产线不抢独占"
   echo "- 实现: src/lerobot/policies/yolo_3d/surface_optical.py::SurfaceOpticalQuality"
   echo "        → tools/aoi_surface_rect.py::surface_judge (与交付判据图同一实现)"

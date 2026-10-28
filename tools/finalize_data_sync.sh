@@ -13,7 +13,7 @@ ARC_NEW="zmax_data/release_sync_20261011_v5.47.0"
 cp -f data/database/zmax/zmax_engineering.db "$NEW/zmax_engineering.db"
 ./venvs/lerobot-venv/bin/python tools/engineering_db.py check > "$NEW/engineering_db_check.txt" 2>&1
 echo "  工程库刷新: $(tail -1 "$NEW/engineering_db_check.txt" | cut -c1-60) · $(du -h "$NEW/zmax_engineering.db" | cut -f1)"
-# git 真源点刷新
+# git 唯一依据点刷新
 { echo "commit: $(git rev-parse --short HEAD)"; echo "tag: $(git describe --tags --abbrev=0 2>/dev/null)"; echo "branch: $(git rev-parse --abbrev-ref HEAD)"; } > "$NEW/git_ref.txt"
 cat > "$NEW/README.md" <<'EOF'
 # 数据快照 2026-10-11 · 状态同步 (当前版本 v5.47.0)

@@ -55,7 +55,7 @@
    兼容 `aoi_watch.sh`)。同一坑的变体: 工具里的 `OUT_DIR` 必须与 hub 一致, 否则"命令跑了但收不到回执"(假超时)。
 
 - 取回执一行命令: `./gui-venv311/bin/python tools/station_cmd.py "<PowerShell>"`;
-  回执里 `whoami` = `nt authority\system` ⇒ 计划任务真的跑起来了(不是用户会话里跑)。
+  回执里 `whoami` = `nt authority\system` ⇒ 计划任务真的启动了(不是用户会话里跑)。
 - 教训: **通道健康要用"它发来的请求"判**, 不能用日志行数/本机自检判(本机 curl 会把 beat 探活;
   看门狗脚本已特意排除本机来源, 但抓包最硬)。
 - 部署被卡时**别急着改程序**: 先确认通道, 再跑 `tools/aoi_remote_deploy.py`(它自己会核 SHA256/备份/验收/回滚)。
@@ -94,6 +94,6 @@
 - 经通道下发的**单条命令 ~3KB 就会被弄坏**(实测 base64 内嵌 3KB 脚本 ⇒ `$b64` 变空、文件写出 0 字节)。脚本超 1KB 一律走 hub 文件。
 - 本地 `write_file` 对"本会话没读过"的已存在文件会拒写(结果是静默没改) ⇒ 改已有文件先 `read_file`, 或直接换个新文件名。
 - 发到机器前先本地 `python3 -m py_compile` 过一遍: 文档字符串里的 `\x`、`\W` 这类转义会在机器上报 SyntaxError, 白跑一轮。
-- 想核对"模型到底看不看得见": 在机器上跑 `ab_check_defect_v2.py`(本 skill 同目录已随 hub 发布) —— 它对最新一帧的判据图/原图/960 送检图各跑一遍真模型, 不改文件、不占端口。
+- 想核对"模型到底看不看得见": 在机器上跑 `ab_check_defect_v2.py`(本 skill 同目录已随 hub 发布) —— 它对最新一帧的判据图/原图/960 送检图各执行一遍真模型, 不改文件、不占端口。
 - 停/起在役程序的正确姿势: 局部起法 = `$sh=New-Object -ComObject WScript.Shell; $sh.Run('cmd /c cd /d <dir> && venv\Scripts\python.exe <prog> > <log> 2>&1',0,$false)`(与 keepalive 一致)
   —— 直接 `Stop-Process` 掉在役 python 后, **keepalive 不一定 1 分钟内拉起来**(实测 75s 未回) ⇒ 手工起一把, 再 `iwr /storage` 验 200。

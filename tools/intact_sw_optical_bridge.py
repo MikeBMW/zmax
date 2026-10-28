@@ -227,7 +227,7 @@ def main():
     from state_space_sim_real import (RealStateSpaceSim, K_ACT as _KA,   # noqa: PLC0415
                                       GRIP_CLOSE as _GC, GRIP_OPEN as _GO)
     from lerobot.manifold.intact_node import IntactNode, IntactRuntime   # noqa: PLC0415
-    # 引擎常量为真值 (不写死副本): 标定/夹爪动作值改引擎一处即同步
+    # 引擎常量为真值 (不预先固定副本): 标定/夹爪动作值改引擎一处即同步
     global K_ACT, GRIP_CLOSE, GRIP_OPEN
     K_ACT, GRIP_CLOSE, GRIP_OPEN = float(_KA), float(_GC), float(_GO)
 

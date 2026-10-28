@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """test_surface_v4_offline.py — 离线验证 表面检测 v4 程序的 HTTP 契约 (不接真相机)
 
-做法: 用**桩模块**替掉 SciCam SDK 与 yolo_detector, 让 surface_10083_work_v4 在本机跑起来,
+做法: 用**桩模块**替掉 SciCam SDK 与 yolo_detector, 让 surface_10083_work_v4 在本机启动,
       再用 Flask test_client 打真实请求, 断言:
         ① POST /capture_detect → 200, 且落盘 "原图 + 规范图(1280 letterbox)"
         ② GET /picture?kind=crop → 200 image/png, 图尺寸 = 1280x1280 (保比例, 不变形)

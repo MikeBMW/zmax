@@ -7,11 +7,11 @@
 
 判读口径:
   · cycle 单调递增  ⇒ 回路**真在按周期跑** (停住/掉线立刻看出来)
-  · provider       ⇒ 状态源: traj(状态空间工程轨迹真源) / state_file(外部实时源)
+  · provider       ⇒ 状态源: traj(状态空间工程轨迹唯一依据) / state_file(外部实时源)
   · traj_idx/traj_n/replay ⇒ 吃到轨迹第几帧 (走完一圈标 replay=1)
   · calib          ⇒ 标定来源 (标定文件 / 现场拟合 / 未标定占位) —— 不夸大
   · hom_mode/gain/veto ⇒ 内稳态层当时的状态
-  · M/inertia      ⇒ 主参数 M 与是否二阶(有惯性)演化 (真源 config/calib/zmax_manifold.json)
+  · M/inertia      ⇒ 主参数 M 与是否二阶(有惯性)演化 (唯一依据 config/calib/zmax_manifold.json)
 
 用法:
   venvs/dds-venv/bin/python tools/dds_sub_ss_engine.py --seconds 6      # 看 ~50 帧 + 实测周期

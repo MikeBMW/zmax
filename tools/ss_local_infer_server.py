@@ -103,7 +103,7 @@ def build_model_inputs(state: dict):
        这些量依赖 TCP 笛卡尔位姿与现场几何 —— 现场目前不发布该位姿, 故这里用**真实可用量**按固定位置投影:
          d0..d2 = 关节速度前 3 维(缩放)      d3 = 夹爪(归一)      d4..d6 = 六维力前 3 维(缩放)
          a0..a3 = 0 (无上一条动作信息)        cand  = 0
-       只为把跨机链路跑通并给出真实前向结果; 标定完成后**只改这个函数**。
+       只为把跨机链路验证通过并给出真实前向结果; 标定完成后**只改这个函数**。
     """
     z7 = state.get("z7")
     if isinstance(z7, (list, tuple)) and len(z7) == 7:
@@ -113,7 +113,7 @@ def build_model_inputs(state: dict):
         a = [0.0, 0.0, 0.0, 0.0]
         return z + a, z + a + [0.0], "tcp_pose_v1"
     if STRICT:
-        raise ValueError("严格模式: 无真实 z7 (标定桥未就绪) → 拒绝用 placeholder 兜底")
+        raise ValueError("严格模式: 无真实 z7 (标定桥未就绪) → 拒绝用 placeholder 保障")
     jv = (state.get("jvel") or [0.0] * 6)[:6]
     jv = (jv + [0.0] * 6)[:6]
     ft = state.get("ft") or [0.0] * 6

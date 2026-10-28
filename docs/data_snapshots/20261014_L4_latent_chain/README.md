@@ -3,18 +3,18 @@
 > 主题: **L4 潜空间 (VLM 编码器 → 黎曼度规约束) + L4 后段链 (意图解码器 → INTACT LoRA 微调 → 流形专家预测器 → 接触/性能流形)**
 > 快照时间: 2026-10-14 20:42:10 · 触发: 老倪「保存数据，小版本迭代到 5.50.71」
 
-`data/` 与 `zmax_data/` 被 .gitignore 排除 ⇒ 真源/证据必须拷贝进本目录才能进版本库。
+`data/` 与 `zmax_data/` 被 .gitignore 排除 ⇒ 唯一依据/证据必须拷贝进本目录才能进版本库。
 
 ## 文件清单
 
 | 文件 | 来源 | 说明 | 大小 | sha256[:16] |
 |---|---|---|---|---|
-| state_space_obs.json | data/database/zmax/sources/canvas/state_space_obs.json | 画布真源 (LoRA 入链 + 元任务预测接 LoRA) | 112565 | f60e05a6077571a1 |
-| ss_task_binding.json | config/ss_task_binding.json | 任务↔节点绑定真源 | 32591 | cd08c796b6466aa0 |
-| zmax_manifold.json | config/calib/zmax_manifold.json | 主参数 M 真源 | 1232 | c1daa6fdf659d5ca |
+| state_space_obs.json | data/database/zmax/sources/canvas/state_space_obs.json | 画布唯一依据 (LoRA 入链 + 元任务预测接 LoRA) | 112565 | f60e05a6077571a1 |
+| ss_task_binding.json | config/ss_task_binding.json | 任务↔节点绑定唯一依据 | 32591 | cd08c796b6466aa0 |
+| zmax_manifold.json | config/calib/zmax_manifold.json | 主参数 M 唯一依据 | 1232 | c1daa6fdf659d5ca |
 | l4_latent_calib.json | models/l4_latent_calib.json | L4 潜空间标定 (μ/g_f/V/n 帧) | 311729 | fb3372e628d7d763 |
 | meta_tasks.json | zmax_data/ss_live/meta_tasks.json | 元任务派生件 | 25478 | 5731733905435ed9 |
-| meta_pred.json | zmax_data/ss_live/meta_pred.json | 元任务预测值 (LoRA 门控真源) | 3399 | a653ba7c3f3ebd62 |
+| meta_pred.json | zmax_data/ss_live/meta_pred.json | 元任务预测值 (LoRA 门控唯一依据) | 3399 | a653ba7c3f3ebd62 |
 | engine_loop_status.json | zmax_data/ss_live/engine_loop_status.json | 常驻回路状态 | 413 | f2a7dd4bd1ae2de9 |
 | engine_latest.json | zmax_data/ss_live/engine_latest.json | 常驻回路最新一帧 | 1582 | 9a154663522faa10 |
 | zmax_engineering.db | data/database/zmax/zmax_engineering.db | 工程库单文件 | 1400832 | ca30183196d348fd |

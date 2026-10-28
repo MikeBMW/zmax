@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 归档 v5.34.0 产物 → ~/zmax/zmax_data/release_5.34.0_YYYYMMDD
 #   本轮主题: 控制台界面定版 (产品/系统/功能 三级 + MCD 数据 + 侧栏极简) + 单一工程数据库 + 参数中心(数据库服务)
-#   约定沿用 archive_release_5_21_0.sh: 代码 + 真源快照 + 证据 + 文档 + 画布备份, 末尾 MANIFEST.md + sha256sums.txt
+#   约定沿用 archive_release_5_21_0.sh: 代码 + 唯一依据快照 + 证据 + 文档 + 画布备份, 末尾 MANIFEST.md + sha256sums.txt
 set -u
 REPO=/home/ubuntu/zmax
 DST=$HOME/zmax/zmax_data/release_5.34.0_$(date +%Y%m%d)
@@ -17,12 +17,12 @@ cp -f src/lerobot/engineering/flows/state_space_obs.json "$DST/src/" 2>/dev/null
 ls "$DST/tools" | wc -l | sed 's/^/  tools 文件: /'
 ls "$DST/gui" | wc -l | sed 's/^/  gui 文件: /'
 
-echo "=== ② 真源快照 (平台/参数/标定/画布) ==="
+echo "=== ② 唯一依据快照 (平台/参数/标定/画布) ==="
 mkdir -p "$DST/config/platform" "$DST/config/calib" "$DST/config/library"
 cp -f config/platform/zmax_platform.json config/platform/param_spec.json "$DST/config/platform/" 2>/dev/null
 cp -f config/calib/zmax_calib.json config/calib/zmax_manifold.json "$DST/config/calib/" 2>/dev/null
 cp -f config/library_curation.json config/ss_task_binding.json "$DST/config/" 2>/dev/null
-find "$DST/config" -type f | wc -l | sed 's/^/  配置真源文件: /'
+find "$DST/config" -type f | wc -l | sed 's/^/  配置唯一依据文件: /'
 
 echo "=== ③ 数据 (单一工程库 + 改数留痕) ==="
 cp -f data/database/zmax_engineering.db "$DST/data/" 2>/dev/null
@@ -30,7 +30,7 @@ cp -f data/database/param_events.jsonl "$DST/data/" 2>/dev/null
 cp -f data/database/README.md "$DST/data/" 2>/dev/null
 ls -l "$DST/data" | tail -n +2 | awk '{print "  ", $9, $5, "B"}'
 
-echo "=== ④ 画布真源 + 最近备份 ==="
+echo "=== ④ 画布唯一依据 + 最近备份 ==="
 ls -t src/lerobot/engineering/flows/_archive/*.json 2>/dev/null | head -1 | while read -r f; do
   cp -f "$f" "$DST/canvas/$(basename "$f")"
 done

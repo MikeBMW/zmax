@@ -6,16 +6,16 @@
 
 覆盖任务 (2): `TASK-01-FW` · `TASK-05-ATS` —— 均为「取件→对位→插入→校验/测试→拔出/回位」型作业, 共用同一状态空间工程与数据空间, 差异只在任务配置 (配方/参数覆盖/档位)。
 
-## 0. 配置单 (本 SOR 的配置真源, 先行生成 √)
+## 0. 配置单 (本 SOR 的配置唯一依据, 先行生成 √)
 
-本 SOR 的每条任务要求都来自对应配置单; 配置单由 `tools/config_sheet.py --task <任务>` 从**在役真源**扫描生成 (画布 / 参数注册表 / 标定真源 / 点位台账), 可回读复现。
+本 SOR 的每条任务要求都来自对应配置单; 配置单由 `tools/config_sheet.py --task <任务>` 从**在役唯一依据**扫描生成 (画布 / 参数注册表 / 标定唯一依据 / 点位台账), 可回读复现。
 
 | 任务 | 名称 | 配方 | 模式 | 配置单文件 | 参数注册表 | 画布 | sha256(16) |
 |---|---|---|---|---|---|---|---|
 | TASK-01-FW | FW Loading + EEPROM 写/读校验 | 插拔+固件校验 | insert | `配置单_TASK-01-FW_latest.md` | 723 项 | md5 `b02ddc7c16d916c25c41e06867b09293` · 89 节点/184 连线 · 启用 51 | `4b0a1787caaecd3b` |
 | TASK-05-ATS | ATS/线外检测插接 (核心挑战场景) | 检测插接 | insert | `配置单_TASK-05-ATS_latest.md` | 723 项 | md5 `b02ddc7c16d916c25c41e06867b09293` · 89 节点/184 连线 · 启用 51 | `2a3d2b8640cf7b99` |
 
-标定真源: config/calib/zmax_calib.json sha `9e4edc6f5b87f6a2`; config/calib/zmax_manifold.json sha `a56a3c3bf6a3988b` · 点位台账: 示教点位(号位) 61 条 sha `f88ac8cbde358466`; 空间点 1..8 8 条 sha `a8098b0e7a110a02`; AOI 示教点 10 条 sha `—`
+标定唯一依据: config/calib/zmax_calib.json sha `9e4edc6f5b87f6a2`; config/calib/zmax_manifold.json sha `a56a3c3bf6a3988b` · 点位台账: 示教点位(号位) 61 条 sha `f88ac8cbde358466`; 空间点 1..8 8 条 sha `a8098b0e7a110a02`; AOI 示教点 10 条 sha `—`
 
 ## 1. 项目与场景
 
@@ -68,7 +68,7 @@
 | 取放/插入精度 | 单边 ≤1mm · 角度 ≤1° (插拔: 头到孔底 <4mm) | 激光/视觉量测 + 日志 |
 | 过程能力 | 真空建立 ≤200ms · 真空保持按配方 | 真空压力曲线 (进带→锁) |
 
-**口径注 (逐项来源)**: 表中「硬指标 成功率 / 节拍」行是**项目级明确要求**(成功率 ≥99% · 节拍 ≤3.5s · 目标 3.15s, 用户 2026-10-13 明确), 对每个任务生效; 其余行为任务真源 (`config/tasks/tasks.json` + 任务配置的 targets/参数覆盖) 或插接类模板继承项。任务真源未定义的项 (如 ATS 的 `ins.depth` 为空) 一律记「待现场标定/采购附件确认」, **不代填数值**。
+**口径注 (逐项来源)**: 表中「硬指标 成功率 / 节拍」行是**项目级明确要求**(成功率 ≥99% · 节拍 ≤3.5s · 目标 3.15s, 用户 2026-10-13 明确), 对每个任务生效; 其余行为任务唯一依据 (`config/tasks/tasks.json` + 任务配置的 targets/参数覆盖) 或插接类模板继承项。任务唯一依据未定义的项 (如 ATS 的 `ins.depth` 为空) 一律记「待现场标定/采购附件确认」, **不代填数值**。
 
 ## 4. 场景作业要求
 
@@ -194,7 +194,7 @@
 | hw_state | HardwareState | 0.33 | state | zmax_dds_publisher.py --interval 3 (zmax-dds-pub.ser | ✅ 4 条 / 0.4 Hz |
 | link_value | LinkValue | 5.0 | beat | 画布连线总线(dds_link_bus) | ❌ 本刻无发布端 |
 | ss_action | SSAction | 10.0 | beat | zmax_dds_ss_daemon.py ← tap proposal_*.jsonl (本机推理 8 | ❌ 本刻无发布端 |
-| ss_calib | SSCalib | 0.2 | state | zmax_dds_ss_daemon.py ← 标定真源文件(calib.json/handeye/al | ✅ 66 条 / 6.6 Hz |
+| ss_calib | SSCalib | 0.2 | state | zmax_dds_ss_daemon.py ← 标定唯一依据文件(calib.json/handeye/al | ✅ 66 条 / 6.6 Hz |
 | ss_canvas | SSCanvasNode | 0.5 | state | 画布/引擎节点状态上报 | ❌ 本刻无发布端 |
 | ss_diag | SSDiag | 0.5 | beat | zmax_dds_ss_daemon.py(延时/帧龄/吞吐/健康度) | ✅ 66 条 / 6.6 Hz |
 | ss_energy | SSEnergy | 0.5 | state | 流形引擎能量探针 tools/manifold_energy_probe.py → tap zmax_d | ❌ 本刻无发布端 |
@@ -240,5 +240,5 @@
 | 档位 | {"chk_engine_demo": {"label": "⚡引擎快演", "checked": false}, "chk_l3_full": {"label": "🚀 L3 全链(插拔+AOI)", "checked": true}, "chk_mani_yaw": {"label": "🧠 流形 yaw 执行", "checked": true}, "chk_intact_exec": {"label": "🤖 L4 用 INTA | {"chk_engine_demo": {"label": "⚡引擎快演", "checked": false}, "chk_l3_full": {"label": "🚀 L3 全链(插拔+AOI)", "checked": true}, "chk_mani_yaw": {"label": "🧠 流形 yaw 执行", "checked": true}, "chk_intact_exec": {"label": "🤖 L4 用 INTA |
 | 适用段 | ["0 料源与来料状态", "1 取件", "2 姿态准备", "3 识别与工位对接", "4 放置/插入", "5 拔出/取回", "6 分拣与回位", "7 节拍与循环"] | ["0 料源与来料状态", "1 取件", "2 姿态准备", "3 识别与工位对接", "4 放置/插入", "5 拔出/取回", "6 分拣与回位", "7 节拍与循环"] |
 
-**迁移不变量 (同工程下换任务只改配置)**: ①画布与连线不变 (同一 `state_space_obs.json`); ②数据空间话题与 QoS 不变; ③安全链为站点级不可覆盖; ④末端工具/工装按任务更换但接口契约不变; ⑤标定真源 (`T_base_cam`/`plane_z`/`cell_geometry.points`) 未标定前, 一切坐标类要求记「待实测」。
+**迁移不变量 (同工程下换任务只改配置)**: ①画布与连线不变 (同一 `state_space_obs.json`); ②数据空间话题与 QoS 不变; ③安全链为站点级不可覆盖; ④末端工具/工装按任务更换但接口契约不变; ⑤标定唯一依据 (`T_base_cam`/`plane_z`/`cell_geometry.points`) 未标定前, 一切坐标类要求记「待实测」。
 

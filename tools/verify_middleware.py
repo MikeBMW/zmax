@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """中间件判据 (middleware) —— 逐层取证, 不信自述。
 
-① 工程加载: 节点数/连线数/拓扑序/模块就位数 与画布真源一致
+① 工程加载: 节点数/连线数/拓扑序/模块就位数 与画布唯一依据一致
 ② 节点模块: 每个节点 1 个模块文件, 端口 == 工程 JSON 由连线推出的端口 (逐节点)
 ③ 数据面: 真注入一个值 → 跑一拍 → 上游发到总线 → 下游从总线读到 (跨节点, 走总线不是传参)
 ④ 后端门控: 550B=DDS 开 · 550A/550C=DDS 关 · 详细原因可打印
@@ -37,7 +37,7 @@ def ck(name, ok, detail=""):
 
 def main():
     specs, links, meta = parse_canvas()
-    print("真源:", meta["canvas"])
+    print("唯一依据:", meta["canvas"])
 
     # ① 工程加载
     prj = load_project(bus=MemBus())

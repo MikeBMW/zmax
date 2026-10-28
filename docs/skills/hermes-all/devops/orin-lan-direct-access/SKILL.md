@@ -63,12 +63,12 @@ sudo nmcli device disconnect enx1ead2db2be1c                # 从错误设备上
 nmcli connection up netplan-enx00e04c0c32a0                 # 由 99-orin-lan.yaml 生成的、按接口名绑定的 profile
 ```
 关键: **必须在 profile 非激活状态下改 `connection.interface-name`**, 否则 nmcli 静默不生效
-(实测改完仍是 `--`), 且 NM 会把 netplan 当作权威源, 用 `netplan generate` 重生成比 nmcli 改更靠谱。
+(实测改完仍是 `--`), 且 NM 会把 netplan 当作权威源, 用 `netplan generate` 重生成比 nmcli 改更可靠。
 `nmcli connection up` 后 profile 仍会跑回错误设备 —— 所以真正要动的是那个 yaml 文件。
 验证: `.50` 只出现在真网卡上; `ip route get 192.168.23.66` 走 `enx00e04c0c32a0`; 默认路由仍走 WiFi
 (`10.163.147.254 dev wlp0s20f3`); 并确认 `~/.config/autostart` 与 `crontab` 里没有会改网卡的脚本。
 
-## ⚠️⚠️ 最大的坑: DDS 多播被默认路由(WiFi)抢走 → 跨机订阅「全 0」但链路其实是通的 (2026-09-20 实测)
+## ⚠️⚠️ 最大的坑: DDS 多播被默认路由(WiFi)抢走 → 跨机订阅「全 0」但链路实际是通的 (2026-09-20 实测)
 症状: 本机 Docker tap 容器 (`ss-remote-tap`, `--network host`, ROS_DOMAIN_ID=0) 跑得好好的,
 `status.json` 里 `外部队列发布者(Orin侧)` 却**全是 0**, `recv` 全 0, 落盘 `state_*.jsonl` 几十万行**全是 null**
 (tcp/jpos/ft/gripper 全 null), 而 Orin 侧 `ros2 topic hz /robot/tcp_pose` 明明 42-50Hz。
@@ -251,8 +251,8 @@ sudo docker rm -f ss-remote-tap && sudo docker run -d --rm --name ss-remote-tap 
 ① 真机帧: 上面那条 (tap 定时器) → cam_rs.png 冻住;
 ② 远端快照 `https://datadrive.world/api/snapshot/latest` **超时** (站点根也超时; 本机出网正常
    baidu=200/1.1.1.1 通) → ECS 侧问题, 非本机网络;
-③ 本地兜底全废: cam_rs.png 因 mtime 在**未来**(回拨前落盘) 被 `age<-1.0 → 拒用`;
+③ 本地保障全废: cam_rs.png 因 mtime 在**未来**(回拨前落盘) 被 `age<-1.0 → 拒用`;
    cam_local.png 是几天前旧帧(>10s); 本机 /dev/video0、video2 实拍**全黑**(mean 1.3/0.0)。
-GUI 逻辑 (`studio.py::_cam_connect/_cam_local_frame`): 远端失败→本地新鲜帧(≤10s)兜底→都没有才报
+GUI 逻辑 (`studio.py::_cam_connect/_cam_local_frame`): 远端失败→本地新鲜帧(≤10s)保障→都没有才报
 「❌ 连接失败」。所以修好 ① ③ 之后, 即使 ② 没恢复, 也应显示「🟡 已连接·本地回退 · 帧龄 x.xs」。
 

@@ -18,7 +18,7 @@ release(v5.15.7): 全局数据空间发布守护(6 类真实源→DDS, 受模式
    (tools/fix_services_to_main.sh), 复核 6/6 active, 真机只读帧龄 0s
 ④ 修 chain_health 巡检哨兵崩溃 (None.startswith)
 ⑤ 确认 DeepSeek: 账号可用 deepseek-flash = V4.1-Flash 最新版; 文本+视觉双路 200; 单次 ~122s → 异步旁路必留
-⑥ 版本同步 6 处真源 → v5.15.7 + VERSION.md 新行
+⑥ 版本同步 6 处唯一依据 → v5.15.7 + VERSION.md 新行
 EOF
 echo "commit rc=$?"
 git log --oneline -1 | cat

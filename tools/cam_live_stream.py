@@ -52,7 +52,7 @@ import time
 import urllib.error
 import urllib.parse
 
-# 🔐 真动授权的**单一真源**(文件 ctl_auth.py): 原来授权只活在本进程内存里 ⇒ ①GUI/脚本/自动流程
+# 🔐 真动授权的**单一唯一依据**(文件 ctl_auth.py): 原来授权只活在本进程内存里 ⇒ ①GUI/脚本/自动流程
 #   直接写 l2_cmd.fifo 完全绕过它 ②执行器下发前也不校验 ⇒ 撤销前排队的动作照样下发。
 #   老倪 2026-09-29: 「我都取消授权了，手臂怎么还在动；点1 技能也要服从手动控制台的授权」
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -139,7 +139,7 @@ def _hdr_age(headers) -> float | None:
 
     实测(2026-09-28): 工控机 10082 `GET /picture?kind=crop` 返回
       `X-Frame-Source: memory` + `X-Frame-Age-S: 418.018`
-    —— 那格画面其实取的是它内存里 418s 前那张图。原先页面只报本端"取回来的那一刻",
+    —— 那格画面实际取的是它内存里 418s 前那张图。原先页面只报本端"取回来的那一刻",
     显示成 0.87s, 完全是假的新鲜值。这里把源端口径原样带上来。
 
     ⚠️ 只认 X-Frame-Age-S / X-Frame-Age 这种**明确是帧龄**的头; 不碰标准 `Age`
@@ -375,7 +375,7 @@ def arm_http_worker(url: str, fps_cap: float) -> None:
 #     ⇒ 换源会一起改变安全层看到的全局画面; 页面上如实标注, 不藏着。
 _SRC_FILE = os.path.expanduser("~/zmax/zmax_data/cam_local_src.json")
 _SRC_LOCK = threading.Lock()
-_USBCFG = {"name": "USB2.0 Camera,RealSense", "dev": -1}   # USB 相机: 卡名匹配串(逗号=任一命中) + 可选写死号(-1=自动)
+_USBCFG = {"name": "USB2.0 Camera,RealSense", "dev": -1}   # USB 相机: 卡名匹配串(逗号=任一命中) + 可选预先固定号(-1=自动)
 _LOCAL_SRC = {"kind": "builtin", "dev": -1, "builtin_dev": -1, "gen": 0}
 
 
@@ -428,7 +428,7 @@ def _src_find(needle: str, exclude: int = -1) -> int:
         if color_fb < 0 and any(f in ("YUYV", "RGB3", "BGR3") for f in d["fmt"]):
             color_fb = d["dev"]                                  # 彩色但无 MJPG(RealSense 就是这种)
         if any_fb < 0 and d["fmt"]:
-            any_fb = d["dev"]                                    # 兜底(别拿它顶掉彩色节点)
+            any_fb = d["dev"]                                    # 保障(别拿它顶掉彩色节点)
     return color_fb if color_fb >= 0 else any_fb
 
 
@@ -453,7 +453,7 @@ def _src_dev(kind: str) -> int:
         return -1
     if kind == "usb":
         preset = int(_USBCFG.get("dev", -1))
-        if preset >= 0:                       # 命令行写死了号就以它为准(不在了如实报 -1)
+        if preset >= 0:                       # 命令行预先固定了号就以它为准(不在了如实报 -1)
             return preset if os.path.exists("/dev/video%d" % preset) else -1
         return _src_find(_USBCFG["name"], exclude=int(_LOCAL_SRC.get("builtin_dev", -1)))
     return int(_LOCAL_SRC.get("builtin_dev", -1))
@@ -532,10 +532,10 @@ def _src_wait_change(prev_gen: int, timeout: float) -> bool:
 
 
 # ── ② 本机 V4L2 相机：驱动直读 (笔记本内置 / USB / MAXHUB 电视顶摄 都是走这里) ────
-# 🔴 2026-10-22 老倪: 「笔记本的摄像头，打不开了，修好」—— 真因是**我们自己独占**了 /dev/video0:
+# 🔴 2026-10-22 老倪: 「笔记本的摄像头，无法打开了，修好」—— 真因是**我们自己独占**了 /dev/video0:
 #   tools/cam_live_stream.py(8791 工位总览本机那格) 从开机起一直握着设备, 微信视频通话
 #   也去开同一个节点, REQBUFS 直接 EBUSY(实测 微信 pid 有 /dev/video0 的 fd, 但取不到帧)
-#   ⇒ 用户看到「摄像头打不开/黑的」。相机硬件没坏: 我们把设备让出来后
+#   ⇒ 用户看到「摄像头无法打开/黑的」。相机硬件没坏: 我们把设备让出来后
 #   /dev/video0 立刻 640x480 mean=134.9 std=34.1 正常出图。
 #   ⇒ 规矩: 本机相机是**共享资源**, 常驻预览必须让位给视频通话类应用(微信/腾讯会议)。
 _DEV_YIELD_POLL = 1.0        # 每 1s 看一次「有没有别人在用这台相机」(单次全 /proc 扫描 ~21ms ⇒ 约 2% 单核)
@@ -589,12 +589,12 @@ def local_worker(dev_index: int, quality: int, width: int, height: int,
                  switchable: bool = False) -> None:
     """switchable=True (= 笔记本这一路) 时支持**运行时换源**:
     控制端 _src_apply() 抬 gen ⇒ 本线程 break 出读循环、release 旧设备、按新号重开。
-    先 release 再 open ⇒ 不会出现"两台一起占着/设备忙"。打不开时线程**不退出**, 每 3s 重试
+    先 release 再 open ⇒ 不会出现"两台一起占着/设备忙"。无法打开时线程**不退出**, 每 3s 重试
     (USB 可能刚插上), 这样用户点一次 [USB] 只要设备到位就一定能切过去。
 
     🎥 让位机制(2026-10-22): 检测到**别的进程**打开着同一个 /dev/videoN(微信视频通话等) 时,
     立刻 release 并挂起取帧, 对方松手后自动接回 —— 常驻预览不能把笔记本相机长期霸住,
-    否则用户那边的视频通话表现为「摄像头打不开/全黑」。
+    否则用户那边的视频通话表现为「摄像头无法打开/全黑」。
     """
     if switchable:
         gen, dev = _src_cur()          # dev<0 = 「关闭」档(把摄像头让给微信) 或设备不在位
@@ -622,7 +622,7 @@ def local_worker(dev_index: int, quality: int, width: int, height: int,
         cap = cv2.VideoCapture(dev)
         if not cap.isOpened():
             cap.release()
-            print(f"[{frame_name}] /dev/video{dev} 打不开（{_v4l_name(dev) or '无名'}）",
+            print(f"[{frame_name}] /dev/video{dev} 无法打开（{_v4l_name(dev) or '无名'}）",
                   flush=True)
             if switchable:
                 if _src_wait_change(gen, 3.0):
@@ -689,7 +689,7 @@ def url_cam_worker(url: str, fps_cap: float, frame_name: str = "local2",
     if url.lower().startswith(("rtsp://", "rtmp://")):
         cap = cv2.VideoCapture(url)
         if not cap.isOpened():
-            print(f"[{frame_name}] 打不开网络流 {url}", flush=True)
+            print(f"[{frame_name}] 无法打开网络流 {url}", flush=True)
             return
         try:
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
@@ -762,13 +762,13 @@ _JSON_WARNED = set()
 
 
 def _json_safe(o):
-    """json.dumps 兜底: numpy 标量/数组 → 原生类型。
+    """json.dumps 保障: numpy 标量/数组 → 原生类型。
 
     🐛 2026-09-28 现场: `/station/status`(页面**唯一**那条状态请求) 与 /ctl/status /aoi/status
        都在 json.dumps 里抛 `TypeError: Object of type ndarray is not JSON serializable`
        ⇒ HTTP 处理器整个崩掉(实测 curl 返回 **000 空回复**) ⇒ 控制台面板永远「读取中…」、
        位姿/三查/授权全部看不到(老倪:「金手指和表面检测怎么没有图像」那轮一起暴露的)。
-    这里兜底转换 **并且** 打一行带类型的告警(第一次遇到才打), 便于回头把源头改干净。
+    这里保障转换 **并且** 打一行带类型的告警(第一次遇到才打), 便于回头把源头改干净。
     """
     t = type(o).__name__
     try:
@@ -855,7 +855,7 @@ def _move_transport_info() -> dict:
 
 
 def _auth_info() -> dict:
-    """真动授权状态 —— 读**单一真源**(ctl_auth.py 的文件), 执行器/GUI/脚本共用同一份。"""
+    """真动授权状态 —— 读**单一唯一依据**(ctl_auth.py 的文件), 执行器/GUI/脚本共用同一份。"""
     if CA is None:
         return {"armed": False, "left_s": 0.0, "window_s": 0.0, "ip": "", "since": 0.0,
                 "epoch": 0, "events": [], "err": "ctl_auth 不可用"}
@@ -1100,7 +1100,7 @@ _AOI_POINT_NAMES = ("金手指点1", "金手指点2", "侧面点0", "侧面点1"
 
 
 def _is_aoi_point(name: str) -> bool:
-    """这个点是不是 AOI 任务在用的点(要用 AOI 台账那份真源)。"""
+    """这个点是不是 AOI 任务在用的点(要用 AOI 台账那份唯一依据)。"""
     _n = str(name or "")
     return (_n in _AOI_POINT_NAMES) or bool(re.fullmatch(r"安全点\d{1,2}", _n))
 
@@ -1127,7 +1127,7 @@ def _last_json_line(txt):
 
 
 def _config_sync(tag=""):
-    """🔁 真源变了 ⇒ 立刻重建任务配置(config/tasks/tasks.json), 让配置中心/画布读到的是新值。"""
+    """🔁 唯一依据变了 ⇒ 立刻重建任务配置(config/tasks/tasks.json), 让配置中心/画布读到的是新值。"""
     rc, txt = _run_py([os.path.join(_REPO_ROOT, "tools", "task_build.py")], timeout=120)
     ok = rc == 0
     print("[配置同步%s] task_build rc=%s%s" % (tag, rc, "" if ok else " · " + txt.strip()[-160:]), flush=True)
@@ -1136,14 +1136,14 @@ def _config_sync(tag=""):
 
 # 🔴 2026-10-12 老倪: 「空间点7的位置我更新了, 但是你的配置中心还是没更新; 其它点, 得实时更新, 必须实时」
 #   记录/清除接口只是**一条**写口(控制台示教/脚本/手改都绕得过) ⇒ 除了"写成功就同步",
-#   再加一个盯着真源的守护: 谁改都跟得上, 配置中心 2s 内自动刷新。
+#   再加一个盯着唯一依据的守护: 谁改都跟得上, 配置中心 2s 内自动刷新。
 _CONFIG_SOURCES = ("data/skills/l2_atomic/space_points.json",
                    "data/skills/l2_atomic/taught_points.json",
                    "reports/aoi_points")
 
 
 def _src_stamp():
-    """三个点位真源的指纹 (文件 mtime_ns+size / 目录里所有 .json 的指纹)。"""
+    """三个点位唯一依据的指纹 (文件 mtime_ns+size / 目录里所有 .json 的指纹)。"""
     out = []
     for _rel in _CONFIG_SOURCES:
         _p = os.path.join(_REPO_ROOT, _rel)
@@ -1162,7 +1162,7 @@ def _src_stamp():
 
 
 def _config_watch_worker(interval=1.5):
-    """🔁 盯住点位真源, 一变就重建配置 ⇒ 配置中心不用点按钮、不用重启就跟着变。"""
+    """🔁 盯住点位唯一依据, 一变就重建配置 ⇒ 配置中心不用点按钮、不用重启就跟着变。"""
     _last = _src_stamp()
     while True:
         time.sleep(max(0.5, float(interval)))
@@ -1173,7 +1173,7 @@ def _config_watch_worker(interval=1.5):
         if _cur != _last:
             _last = _cur
             try:
-                _config_sync("真源变更(守护)")
+                _config_sync("唯一依据变更(守护)")
             except Exception as _e:                                          # noqa: BLE001
                 print("[配置同步] 守护异常: %s" % str(_e)[:120], flush=True)
 
@@ -1218,7 +1218,7 @@ def _ctl_record_point(body: dict) -> dict:
         _ns = 6
     _note = str((body or {}).get("note") or "").strip()
     if (not dry) and _is_aoi_point(name):
-        # AOI 点: 一次写两库(L2 技能库 + AOI 台账) —— 配置中心的真源就是台账, 这样两边永远同值
+        # AOI 点: 一次写两库(L2 技能库 + AOI 台账) —— 配置中心的唯一依据就是台账, 这样两边永远同值
         cmd = [sys.executable or "python3", os.path.join(_REPO_ROOT, "tools", "record_point_sdk.py"),
                "--record", name, "--n", str(_ns), "--json"]
         if _note:
@@ -2070,7 +2070,7 @@ def _aoi_modelin_get(suffix: str = "", port: int = 10082):
 
     为什么需要: 页面上那格显示的是「判据图」(人看的), 而模型吃的是同帧派生的 960x960 方图
     (在工控机 %TEMP%, 检测完即删)。老倪问「实际输入给模型的图片长什么样」⇒ 这个口把
-    **喂给 detector.detect() 的同一份像素**无损取回来, 并且 /last_result.model_input_md5
+    **提供给 detector.detect() 的同一份像素**无损取回来, 并且 /last_result.model_input_md5
     与它的像素 md5 逐位对得上(同源硬证据, 不是"看起来像")。
     """
     url = "http://" + _AOI_HOST + ":%d/picture?kind=modelin%s" % (int(port), suffix)
@@ -2497,7 +2497,7 @@ def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0
                                                        bool(_lat.get("ok")))
                             _r1, _m1 = _gold_rectify(_pre, force_box=_inplace, lock_key=port)
                             _rj, _rm = (_r1, _m1) if _r1 else (_r0, _m0)
-                            if not _rj and _inplace:                     # 兜底: 自检不过但在位 ⇒ 只出几何
+                            if not _rj and _inplace:                     # 保障: 自检不过但在位 ⇒ 只出几何
                                 _r2, _m2 = _gold_rectify(_pre, skip_lattice=True)
                                 _rj, _rm = (_r2 or _r0), (_m2 or _m0)
                             _rm = dict(_rm or {})
@@ -2764,7 +2764,7 @@ def _ctl_move(req: dict) -> dict:
     #   实测基线: speed=60 → 腕部 10° 花 ~10s (~1°/s), 所以想快 5 倍就用 300。
     # 🔐 2026-10-01 修正(老倪: 「手机远程解除授权不好用」): 原来这里读 _CTL["motion"] —— 那个标志只在
     #   启动时按 --ctl-motion 设一次, **撤销后不会变** ⇒ 撤销只写进授权对象(执行器 epoch 会拦住),
-    #   页面与这里的判断却永远显示"已授权"。现在统一改读**真源** _auth_info()["armed"](窗口内 且 未撤销)。
+    #   页面与这里的判断却永远显示"已授权"。现在统一改读**唯一依据** _auth_info()["armed"](窗口内 且 未撤销)。
     want_real = bool(req.get("arm")) and bool(_auth_info().get("armed"))
     if want_real and not _auth_info()["armed"]:
         # 🔐 现场安全: 真动必须由人显式授权(且授权未过期)。拒绝时**明确告诉怎么授权**, 不给含糊的失败。
@@ -2825,7 +2825,7 @@ def _ctl_move(req: dict) -> dict:
     try:
         fd = os.open(_L2_FIFO, os.O_WRONLY | os.O_NONBLOCK)
     except OSError as e:
-        return {"ok": False, "msg": "执行器 FIFO 打不开(%s) —— L2 常驻执行器没在跑?" % e}
+        return {"ok": False, "msg": "执行器 FIFO 无法打开(%s) —— L2 常驻执行器没在跑?" % e}
     off = 0
     try:
         off = os.path.getsize(_L2_LOG)
@@ -3085,7 +3085,7 @@ def _ctl_status() -> dict:
     now = time.time()
     _d_dead, _d_dead_s = _depth_src_dead()
     return {
-        "motion_armed": bool(_auth_info().get("armed")),   # 🔐 真源(窗口内且未撤销), 不再用启动时的静态标志
+        "motion_armed": bool(_auth_info().get("armed")),   # 🔐 唯一依据(窗口内且未撤销), 不再用启动时的静态标志
         "robot": _robot_status(st, now),
         # 🚚 移动执行腿 (2026-10-07): 与 L2 执行器同一开关(env > 文件 > ros) —— 页面直接看得见
         "move_transport": _move_transport_info(),
@@ -3149,7 +3149,7 @@ def _exec_health() -> dict:
 
 
 def _robot_status(st: dict, now: float) -> dict:
-    """三查(上电/运行/报警) —— 优先走**直连活路**, 话题缓存只兜底。
+    """三查(上电/运行/报警) —— 优先走**直连活路**, 话题缓存只保障。
 
     2026-10-01 老倪: 「我在现场，怎么还是43小时的数据，赶快更新啊」。
     根因: 页面三查只读 Orin 的 /robot_status 话题缓存 (robot_status.json), 而该发布者 09-29 起不再
@@ -3191,7 +3191,7 @@ def _robot_status(st: dict, now: float) -> dict:
             "recent": ds.get("recent") or [],
             "age_s": now - dst,
         }
-    return {                                                          # 兜底: 旧话题缓存(会标旧值)
+    return {                                                          # 保障: 旧话题缓存(会标旧值)
         "ok": bool(st.get("success")), "src": "topic_cache(09-29 起停更)",
         "power": st.get("power_state", ""), "operation": st.get("operation_state", ""),
         "has_error": st.get("has_error"), "error_code": st.get("error_code", ""),
@@ -3373,7 +3373,7 @@ def _boxes_payload(cam: str = "arm") -> dict:
             _img0 = cv2.imdecode(np.frombuffer(_fj, np.uint8), cv2.IMREAD_COLOR)
         if _img0 is None:
             _img0 = np.zeros((480, 640, 3), np.uint8)
-        # 🧭 框清单也要用同一套"当前相机源"口径, 否则清单里会列出画面上其实没有的辅助线
+        # 🧭 框清单也要用同一套"当前相机源"口径, 否则清单里会列出画面上实际没有的辅助线
         _ex: dict = {}
         if cam == "local":
             try:
@@ -3653,7 +3653,7 @@ setInterval(tick,700);tick();
 
 # ══════════════════════════════════════════════════════════════
 # 📱 手机版场景叠加页 (Z-MAX APP 入口的跳转目标)
-#    真源 = 仓库 tools/web/scene-overlay.html —— 改完不用重启(按 mtime 重读)
+#    唯一依据 = 仓库 tools/web/scene-overlay.html —— 改完不用重启(按 mtime 重读)
 #    为什么由 4060 自己提供: 站点是 HTTPS, 页面里再取 http:// 的 MJPEG
 #    属"混合内容"会被浏览器拦死 ⇒ 页面必须跟视频流同源(都是 http, 同一个端口)
 # ══════════════════════════════════════════════════════════════
@@ -3703,7 +3703,7 @@ _SEG_SPEED = 200.0                                                    # 执行�
 _SEG_POS_TOL_MM = 5.0                                                 # 段残差容差(超 ⇒ 停手)
 _SEG_DEG_TOL = 3.0
 _PLAN_CACHE = {}                                                      # plan_id → 段表(进程内, 供 GET)
-# 🛰 plan 节点右侧 station 开关 (老倪 2026-10-25): 画布 params.station_link = 唯一真源
+# 🛰 plan 节点右侧 station 开关 (老倪 2026-10-25): 画布 params.station_link = 唯一依据
 #   · 缺省 True = 连接 (现状: station 本来就能规划)
 #   · 断开 ⇒ /station/plan 一律 403 (fail-closed, 不许静默放行)
 _STATION_LINK_CACHE = {}
@@ -3711,7 +3711,7 @@ _CANVAS_JSON_PATH = os.path.join(_REPO_ROOT, "flows", "state_space_obs.json")
 
 
 def _plan_node_station_link() -> bool:
-    """读 plan 节点的 station 开关。真源 = 画布 JSON (flows/ 是软链到工程真源); mtime 变了才重读。"""
+    """读 plan 节点的 station 开关。唯一依据 = 画布 JSON (flows/ 是软链到工程唯一依据); mtime 变了才重读。"""
     _p = os.environ.get("ZMAX_CANVAS_JSON") or _CANVAS_JSON_PATH
     try:
         _st = os.stat(_p)
@@ -4019,7 +4019,7 @@ def _station_ver() -> int:
 
 
 def _station_page() -> bytes:
-    """🛰 工位总览页真源 = `tools/web/station.html`(按 mtime 热读)。
+    """🛰 工位总览页唯一依据 = `tools/web/station.html`(按 mtime 热读)。
 
     2026-09-29: 原来页面是**本文件内嵌的 STATION_PAGE** ⇒ 改一个按钮就得重启推流服务,
     而重启会掐断现场正在看的 MJPEG 流(且授权真动随进程失效)。改成外部文件热读后,
@@ -4108,7 +4108,7 @@ def _ppt_mod():
 
 
 def _eval_ppt_page() -> bytes:
-    """评估分析 · 行业分析 PPT 页面(真源 tools/web/eval_ppt.html, 按 mtime 热读)。"""
+    """评估分析 · 行业分析 PPT 页面(唯一依据 tools/web/eval_ppt.html, 按 mtime 热读)。"""
     p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web", "eval_ppt.html")
     try:
         with open(p, "rb") as f:
@@ -4144,7 +4144,7 @@ def _gs_list_json() -> bytes:
 
 
 def _gs_display_splat(name: str, kmax: int = 60000):
-    """🪶 2026-10-14 老倪「打开太卡, 卡住鼠标和其它窗口」的收口:
+    """🪶 2026-10-14 老倪「打开太卡, 阻塞鼠标和其它窗口」的收口:
     页面原来直接拉**全量** splat(284 万高斯 / 86.7MB), 浏览器要整份下载 + 解析, 同源连接还被工位页
     那几路视频流占着 ⇒ 主线程卡死, 整个浏览器(鼠标/别的窗口)都跟着卡。
     这里在服务端预算出「最实的 kmax 个」做成轻量显示资产(60k ⇒ 约 1.9MB), 页面默认拉它 —— 下载量降 45 倍。
@@ -4214,7 +4214,7 @@ def _gs_splat_bytes(p: str):
 
 
 def _gsview_page() -> bytes:
-    """🧊 3DGS 场景查看页真源 = `tools/web/gs_view.html`(按 mtime 热读, 改页面不用重启)。
+    """🧊 3DGS 场景查看页唯一依据 = `tools/web/gs_view.html`(按 mtime 热读, 改页面不用重启)。
 
     资产走**同域** `/gs/latest.splat` ⇒ 本机 8793 与公网 `/st/` 反代都能看(手机可开),
     查看器 JS 放在同域 lib/splat/, 不依赖 CDN。老倪 2026-10-08: "要在 3DGS 窗口看到场景"。
@@ -4632,7 +4632,7 @@ const $=(s)=>document.querySelector(s);
 const B=(location.pathname.replace(/\/[^/]*$/,'')||'');
 const _u=(u)=>(typeof u==='string'&&u.charAt(0)==='/')?(B+u):u;
 let STEP_MM=10, STEP_DEG=5;
-/* 🔐 ARMED 不再写死: 由**服务端授权状态**决定(默认 false=未授权), 见 applyAuth()。
+/* 🔐 ARMED 不再预先固定: 由**服务端授权状态**决定(默认 false=未授权), 见 applyAuth()。
    老倪 2026-09-27: 「页面的授权真动 / 现场安全 / 授权」 —— 默认必须是未授权, 真动要人显式两步确认。 */
 let ARMED=false, AUTH_LEFT=0, ARMWIN=300, AUTH_IP='', AUTH_PENDING=0;
 function seg(id,cb){document.querySelectorAll('#'+id+' button').forEach(b=>b.onclick=()=>{
@@ -4720,7 +4720,7 @@ async function move(btn,force){
   _lastMove={skill:skill,p:p,v:v};
   const real=ARMED;   // 🔐 只有已授权才真下发(服务端还会再拦一次); 未授权一律 dry-run 演练
   _btns(false); flash(btn);
-  const unlock=setTimeout(()=>_btns(true),15000);   // 兜底: 请求卡住也必须把按钮放开
+  const unlock=setTimeout(()=>_btns(true),15000);   // 保障: 请求阻塞也必须把按钮放开
   $('#msg').textContent='下发中… (最多等 15s)'; $('#msg').className='wa';
   $('#mq').style.display='none';
   try{
@@ -5115,7 +5115,7 @@ class Handler(BaseHTTPRequestHandler):
                                _fh.read(), {"Content-Disposition": 'attachment; filename="%s"' % _f})
             return
         # 🖼 2026-10-08 老倪「3DGS窗口白屏」: /gs_render.png 原来放在 elif 链尾部,
-        #   被后面的通用兜底分支截走 ⇒ 一律返回 not found ⇒ 面板图永远加载不出(白屏)。
+        #   被后面的通用保障分支截走 ⇒ 一律返回 not found ⇒ 面板图永远加载不出(白屏)。
         #   这里提到链首优先处理; 且 _send 必须收 bytes(传 str 会 TypeError 崩)。
         if p in ("/gs_render.png", "/api/gs_render.png"):
             # 🔴 2026-10-14 老倪「参考渲染图是一个历史帧」: 这里原来自己 sorted(glob(…), key=mtime) 取最新,
@@ -5139,7 +5139,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, "text/html; charset=utf-8", body)
         elif p in ("/ar", "/ar.html", "/ar3d", "/ar3d.html"):
             # 🥽 2026-10-19 老倪「回到以前 http://10.163.146.78:8793/ar 的状态吧, 以前就不卡」:
-            #   他记的这个地址要能用。AR 页面/取帧/判据 API 的真源在 8797(同一台机, 同源 /api 与 /snap),
+            #   他记的这个地址要能用。AR 页面/取帧/判据 API 的唯一依据在 8797(同一台机, 同源 /api 与 /snap),
             #   所以这里**只做 302**, 不在 8793 上再挂一层代理 —— 相机流服务(8791/8793)是本机最重的常驻进程,
             #   让 AR 页面的 10Hz 取帧穿它一趟只会把视频流拖慢。
             #   🧭 /ar3d = 独立三维页(只有三维视图), 同样只做 302 到 8797 的同名路径。
@@ -5150,9 +5150,9 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         elif p in ("/overlay", "/overlay.html", "/scene", "/live"):
-            # 🧩 2026-09-27: 叠加/现场实况页 —— 真源 = tools/web/scene-overlay.html(按 mtime 热读)。
+            # 🧩 2026-09-27: 叠加/现场实况页 —— 唯一依据 = tools/web/scene-overlay.html(按 mtime 热读)。
             #   之前这里发的是本文件内嵌的 OVERLAY_PAGE 旧副本 ⇒ 改 html 不生效(内嵌副本只认 arm 那路)。
-            #   /app 原先也被 room.html 那条分支**抢先命中**(死代码), 现一并归位到同一份真源。
+            #   /app 原先也被 room.html 那条分支**抢先命中**(死代码), 现一并归位到同一份唯一依据。
             self._send(200, "text/html; charset=utf-8", _mobile_page())
         elif p.startswith("/dl/"):
             # 📦 2026-09-27 交付件下载(手机 APP 装包等): 只服务 tools/web/dl/ 这一个目录,
@@ -5198,14 +5198,14 @@ class Handler(BaseHTTPRequestHandler):
         elif p in ("/gs/live/health", "/gs/render/health"):
             self._send_gs_live_health()
         elif p in ("/gsview", "/gsview.html", "/3dgs", "/splat"):
-            # 🧊 3DGS 场景(高斯球)查看页 —— 真源 tools/web/gs_view.html 热读; 资产同域 /gs/*.splat
+            # 🧊 3DGS 场景(高斯球)查看页 —— 唯一依据 tools/web/gs_view.html 热读; 资产同域 /gs/*.splat
             self._send(200, "text/html; charset=utf-8", _gsview_page())
         elif p in ("/gs/list", "/api/gs/list"):
             # 资产清单(页面下拉用; 手机可 curl 取证)
             self._send(200, "application/json; charset=utf-8", _gs_list_json())
         elif p in ("/gs/latest_display.splat", "/api/gs/latest_display.splat") or p.endswith(".display60k.splat"):
             # 🪶 轻量显示副本(服务端预算 6 万高斯 ≈ 1.9MB): 页面默认走它。
-            #    全量 86.7MB 只在用户显式要「🐘 全量」时才拉(新窗口/明确点击), 避免一开页就卡住主线程。
+            #    全量 86.7MB 只在用户显式要「🐘 全量」时才拉(新窗口/明确点击), 避免一开页就阻塞主线程。
             _b = _gs_display_bytes(p)
             if _b is None:
                 self._send(404, "text/plain; charset=utf-8", b"display splat not available")
@@ -5911,7 +5911,7 @@ def main():
                                    args.height, args.fps, "local2"),
                              daemon=True, name="local2").start()
 
-    # ── 🔁 点位真源 → 配置实时跟随（老倪 2026-10-12: 「其它点, 得实时更新, 必须实时」）──
+    # ── 🔁 点位唯一依据 → 配置实时跟随（老倪 2026-10-12: 「其它点, 得实时更新, 必须实时」）──
     threading.Thread(target=_config_watch_worker, args=(1.5,), daemon=True,
                      name="cfg-watch").start()
     print("   🔁 配置实时跟随: 盯 %s ⇒ 一变就重建 config/tasks/tasks.json"

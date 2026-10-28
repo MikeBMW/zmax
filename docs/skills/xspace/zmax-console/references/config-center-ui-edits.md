@@ -6,17 +6,17 @@
 ## 三步走
 
 ### 1. 先找真渲染点，别只 grep 原句
-- 页顶阵图条的「本页真源: …」= `tools/gui/veh6_config_page.py::_star_facts()` 现算字典 → `_sync_star_banner()` → `ss_seven_stars.py::StarBanner.set_tab(facts=...)` 里拼 `"本页真源: " + _fact`。
-- 原句由 f-string 拼出（`"当前 %s · 真源改于 %s · 三档 %s"`）⇒ grep 整句通常只命中注释/文档/判据，改那些一律无效。
+- 页顶阵图条的「本页唯一依据: …」= `tools/gui/veh6_config_page.py::_star_facts()` 现算字典 → `_sync_star_banner()` → `ss_seven_stars.py::StarBanner.set_tab(facts=...)` 里拼 `"本页唯一依据: " + _fact`。
+- 原句由 f-string 拼出（`"当前 %s · 唯一依据改于 %s · 三档 %s"`）⇒ grep 整句通常只命中注释/文档/判据，改那些一律无效。
 - 同一份摘要还有两个消费者：底部信息窗 `_page_out_text()`、左树 hover tooltip。改页顶时把这两个算清楚。
 
 ### 2. 在**渲染入口**过滤，不动数据源
 - 加模块级名单，例：`BANNER_FACT_HIDDEN = ("prod",)`，在 `_sync_star_banner()` 传参时过滤：
   `facts={k: v for k, v in _star_facts().items() if k not in BANNER_FACT_HIDDEN}`
-- **不要删 `_star_facts()` 里的键**：tooltip、底部信息窗、判据里「真源改于 = 文件 mtime」这条证据都读它；删键会连带把判据弄红、把现场证据弄丢。
+- **不要删 `_star_facts()` 里的键**：tooltip、底部信息窗、判据里「唯一依据改于 = 文件 mtime」这条证据都读它；删键会连带把判据弄红、把现场证据弄丢。
 
 ### 3. 判据跟着真实现走（同一版内改完）
-- `tools/verify_config_center_seven_stars.py` ⑪ 原本断言“每颗星页顶都有「本页真源」”，删了就要改成“**该页必须没有** + 其余页仍必须有”，并在 ❌ 分支打印残余文案（防它悄悄回来）。
+- `tools/verify_config_center_seven_stars.py` ⑪ 原本断言“每颗星页顶都有「本页唯一依据」”，删了就要改成“**该页必须没有** + 其余页仍必须有”，并在 ❌ 分支打印残余文案（防它悄悄回来）。
 - 隐藏名单从实现模块读，不在判据里另抄一份页名：
   `_hidden = tuple(getattr(V, "BANNER_FACT_HIDDEN", ()))`
 - 判据不是“钉死某种呈现位置”，而是钉住**当前实现**：删/移/改名后不清算旧断言 = 交付一片红。
@@ -25,10 +25,10 @@
 ```bash
 cd ~/zmax
 QT_QPA_PLATFORM=offscreen ./gui-venv311/bin/python tools/verify_config_center_seven_stars.py    # 期望 20/20
-QT_QPA_PLATFORM=offscreen ./gui-venv311/bin/python tools/verify_config_page_product_sync.py     # 期望 8/8 (⑧ 靠 tooltip 仍带「真源改于」)
+QT_QPA_PLATFORM=offscreen ./gui-venv311/bin/python tools/verify_config_page_product_sync.py     # 期望 8/8 (⑧ 靠 tooltip 仍带「唯一依据改于」)
 QT_QPA_PLATFORM=offscreen ./gui-venv311/bin/python tools/verify_product_ui.py                   # 期望 47/47
 ```
-`verify_config_page_product_sync.py` ⑨ 会真写真源(550A → 写回原值)；跑完确认 `git status` 里 `config/platform/zmax_product.json` 无改动（它靠 sha 还原，mtime 会变是正常的）。
+`verify_config_page_product_sync.py` ⑨ 会真写唯一依据(550A → 写回原值)；跑完确认 `git status` 里 `config/platform/zmax_product.json` 无改动（它靠 sha 还原，mtime 会变是正常的）。
 
 ## 页缓存：改完在跑的控制台里看不到
 - `studio.py` 启动时 `build_config_center()` 只建一次，`self.cfg_page` 缓存进 shell；换页签/重进配置中心都**不会重建** ⇒ 在跑的窗口仍是旧控件。
@@ -52,11 +52,11 @@ systemctl --user start zmax-studio.service; systemctl --user is-active zmax-stud
 1. 导航：`printf 'config\n' > /tmp/zmax_nav_cmd` 把窗口带到配置中心（落点通常是功能配置页，不是产品页）。
 2. 截全屏：`DISPLAY=:0 scrot /tmp/cc.png`（机器上无 `import`；`scrot -u` 只截聚焦窗口，够用时更净）。
 3. 定位并点左树目标行：`tesseract /tmp/cc.png out -l chi_sim --psm 6 tsv` → awk 取文本列的 `left/top/width/height`（左树在 `left<520`，行距 ~85px），`xdotool mousemove X Y click 1`。
-4. 复核：再截一张，OCR 分别 grep **被删的那句**与**同族保留的句子**——本次即产品页无「本页真源」、功能配置页仍有「本页真源: 功能配置 1/3 就绪」，这才证明是「只删了这一页」。
+4. 复核：再截一张，OCR 分别 grep **被删的那句**与**同族保留的句子**——本次即产品页无「本页唯一依据」、功能配置页仍有「本页唯一依据: 功能配置 1/3 就绪」，这才证明是「只删了这一页」。
 5. 报告里给截图绝对路径（CLI 无附件通道），并如实写明：底部信息窗那句是否保留、跑判据改到的 mtime、以及日志里与本次无关的既有告警。
 
 ## 报告口径（老倪只要结果）
 一句话说清：删/加了什么 · 在哪一层动的（渲染口 vs 数据源）· 数据是否仍在 · 跑了哪几条判据 + 各自数字 · 是否需要重启才可见。不要贴代码 diff。
 
 ## 当前刻意保留的缺口（别当 bug 修回去）
-- 产品配置(天枢)页顶**不显示**「本页真源: 当前 550B · 真源改于 … · 三档 …」——按老倪要求删掉（产品页本身就是选三档的地方，重复）。数据仍在 `_star_facts()["prod"]`，左树 tooltip / 底部信息窗照旧显示。
+- 产品配置(天枢)页顶**不显示**「本页唯一依据: 当前 550B · 唯一依据改于 … · 三档 …」——按老倪要求删掉（产品页本身就是选三档的地方，重复）。数据仍在 `_star_facts()["prod"]`，左树 tooltip / 底部信息窗照旧显示。

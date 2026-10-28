@@ -27,7 +27,7 @@ import android.widget.Toast;
  * 「veh.5.010 状态空间的 HIL 人机在环节点, 接入我的手机 APP … 把工位总揽的所有摄像头推流到 APP,
  *   像开视频会议一样选任意视角/全看/远程操作机器人」→ 2026-10-01: 「远程控制app检查一下, 要实现手机远程操作」
  *
- * 地址口径(v1.2 起): **公网优先, 局域网兜底**
+ * 地址口径(v1.2 起): **公网优先, 局域网保障**
  *   ① https://datadrive.world/st/room?k=zmax-live —— 公网只读闸门上的手机控制页。
  *      这一版闸门开了 `--allow-ctl`, 只放行 /room 页 + POST /ctl/arm · /ctl/move · /ctl/gs_map;
  *      页面里所有接口都走**同源 https**(/st/...), 所以不会撞"https 页面拉 http MJPEG"的混合内容红线。
@@ -75,7 +75,7 @@ public class MainActivity extends Activity {
                 if (req != null && req.isForMainFrame()) {                        // 只报主框架失败, 别为素材刷屏
                     if (!nextCandidate()) {                                       // 公网不通 ⇒ 自动退产线网
                         Toast.makeText(MainActivity.this,
-                                "打不开 " + req.getUrl() + "\n" + err.getDescription()
+                                "无法打开 " + req.getUrl() + "\n" + err.getDescription()
                                         + "\n(长按屏幕可改地址)", Toast.LENGTH_LONG).show();
                     }
                 }
@@ -113,7 +113,7 @@ public class MainActivity extends Activity {
         setContentView(webView);
 
         String saved = sp.getString("url", DEFAULT_URL);
-        if (!VER.equals(sp.getString("v", ""))) {                                 // 装了新版 ⇒ 用新口径, 别被老地址卡住
+        if (!VER.equals(sp.getString("v", ""))) {                                 // 装了新版 ⇒ 用新口径, 别被老地址阻塞
             saved = DEFAULT_URL;
             sp.edit().putString("v", VER).putString("url", saved).apply();
         }
@@ -123,7 +123,7 @@ public class MainActivity extends Activity {
         webView.loadUrl(saved);
     }
 
-    /** 主框架打不开时按候选表顺着试下一个; 全试过返回 false。 */
+    /** 主框架无法打开时按候选表顺着试下一个; 全试过返回 false。 */
     private boolean nextCandidate() {
         for (int i = (candIdx < 0 ? 0 : candIdx + 1); i < CANDIDATES.length; i++) {
             if (i == candIdx) continue;

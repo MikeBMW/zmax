@@ -6,7 +6,7 @@
 
 设计:
   · 发送通道**自换 token** (tenant_access_token 每次现取) → 不依赖 gateway 进程内的 token 缓存
-    (gateway 报 99991663 Invalid access token 时本工具仍能发 — 见技能 feishu-gateway 的兜底口径)
+    (gateway 报 99991663 Invalid access token 时本工具仍能发 — 见技能 feishu-gateway 的保障口径)
   · 图片走 /open-apis/im/v1/images 上传拿 image_key → 再发 msg_type=image (文本工具只支持 text/media)
   · push_once(): 取工控机"最近一次拍照"的**裁减图** (?kind=topview) + 附带判决/裁减指标做说明文字
   · watch(): **轮询 /last_result 的文件名变化**判"有新拍照" → 有新图就推; **只读, 不触发拍照**

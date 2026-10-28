@@ -1,4 +1,4 @@
-# 触觉 49D 整合 + ACT RL 微调 (2026-08-10 完整踩坑实录)
+# 触觉 49D 整合 + ACT RL 微调 (2026-08-10 完整遇到问题实录)
 
 ## 背景
 老倪指令: "改变数据，将触觉信号加进结构条件，在39D信号中整合设计，重新训练"
@@ -53,7 +53,7 @@
 - 结构: 39D obs → MLP ActorCritic (Tanh×2 + policy_head + value_head), 奖励=接近(-dist×2)+抓起(+10)+插入(+50)+步数惩罚
 - **GAE bug**: `adv[t] = last_gae` 报 `TypeError: can't assign a numpy.float32 to a torch.cuda.FloatTensor`
   → 必须 `adv[t] = torch.tensor(last_gae, dtype=torch.float32, device=DEVICE)`
-- **结果**: 40 iter 奖励 -80~-90 卡住, 0/6 抓起 → RL 学稀疏插拔奖励是死穴 (与网络结构无关, 强化已有结论)
+- **结果**: 40 iter 奖励 -80~-90 阻塞, 0/6 抓起 → RL 学稀疏插拔奖励是死穴 (与网络结构无关, 强化已有结论)
 - 输出: `outputs/rl_act/act_rl_ft.pt` (插入>=3 才保存, 本次未触发)
 
 ## 数据集修复链 (49D 数据 Invalid key)

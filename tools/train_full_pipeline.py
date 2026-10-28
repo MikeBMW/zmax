@@ -129,7 +129,7 @@ def _build_aligner():
                             if os.path.isfile(os.path.join(ROOT, c))), None)
         env0 = make_env(0)  # corner2, 只读静态相机参数
         a = yolo_state_aligner.YoloStateAligner(w, env0, depth_weights=depth_w)
-        tag = f"深度感知: {os.path.basename(depth_w)}" if depth_w else "⚠️深度回退写死z"
+        tag = f"深度感知: {os.path.basename(depth_w)}" if depth_w else "⚠️深度回退预先固定z"
         print(f"🎯 YOLO 感知训练已启用: {os.path.basename(w)} ({tag})")
         return a
     except Exception as ex:
@@ -280,7 +280,7 @@ def main():
                 if peg[2] - peg_z0 > 0.02:
                     state = ST_LIFT; peg_lifted = True
             elif state == ST_LIFT:
-                if peg[2] > peg_z0 + 0.08: state = ST_TRANSFER  # 2026-08-10: 抬8cm避开台面, 防转移卡住
+                if peg[2] > peg_z0 + 0.08: state = ST_TRANSFER  # 2026-08-10: 抬8cm避开台面, 防转移阻塞
             elif state == ST_TRANSFER:
                 if abs(peg[0] - hole[0]) < 0.05 and abs(peg[1] - hole[1]) < 0.05: state = ST_INSERT  # 2026-08-10: 容差5cm (peg有导向)
             elif state == ST_INSERT:

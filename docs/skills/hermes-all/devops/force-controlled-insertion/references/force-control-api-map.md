@@ -1,6 +1,6 @@
 # xCoreSDK 力控原语地图 — 当产线 `/lissajous_force_search` 不在图上时的备选
 
-⚠️ **状态: 力控通道已在真机跑通（`fcInit → setControlType(1) → setCartesianStiffness → fcMonitor → fcStart → setCartesianDesiredForce` 全程 `ec=0`，能读出接触力）,
+⚠️ **状态: 力控通道已在真机验证通过（`fcInit → setControlType(1) → setCartesianStiffness → fcMonitor → fcStart → setCartesianDesiredForce` 全程 `ec=0`，能读出接触力）,
 但**插入本身仍未成功**（多轮均只前进 0.4~2.2mm 就顶住/超阈停手），不要当成"已验证配方"。**
 调到这条路的结论: 先校平工具 Z（见 SKILL.md §2）、`K_z` 不许给 0（见 SKILL.md §5）、力阈值在运动中判。
 
@@ -62,5 +62,5 @@ MoveSPCommand(target, r0, rStep, angle, dir, speed)   # 螺旋: 起始半径 r0,
 ## 产线侧对照(有服务时优先用服务, 别自己写环)
 
 `/lissajous_force_search`(笛卡尔力控 + 李萨如叠加搜索) · `/rokae_insertion_force_search`(搜索 + press 压入 + 终检)。
-参数真源 = 产线状态机配置 `resource/config/<项目>/state_machines/抓取放置/motion/尝试插入第一次.yaml`
+参数唯一依据 = 产线状态机配置 `resource/config/<项目>/state_machines/抓取放置/motion/尝试插入第一次.yaml`
 + 同一目录 `state_machine.yaml` 的 `fixture_insert_desired_force`。

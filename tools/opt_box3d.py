@@ -5,7 +5,7 @@
 所以距离用**已知件尺寸反解**(画面高度 ↔ 实物长度), 自洽但带 ~5% 误差;
 一旦深度恢复, 把 depth_mm 传进来即可切到实测深度, 上层接口不变。
 
-坐标链(全部真源, 不编造):
+坐标链(全部唯一依据, 不编造):
   T_base_tool ← 珞石 TCP 真值 (/pose: xyz + abc/四元数, 两者实测一致到 1e-4)
   T_cam2tool  ← models/handeye_state.json (残差 0.06mm / 0.0046°)
   K, dist     ← models/real_cam_calib.json (D405 出厂内参, /realsense/color/camera_info)
@@ -429,7 +429,7 @@ def build(img_bgr, tcp, depth_mm=None, h_mm=MOD_H_MM, t_mm=MOD_T_MM, conf=CONF_M
     _clipped0 = [k for k, v in _clip0.items() if v]
     # 🆕 2026-10-22 老倪: 「现在的光模块, 就一个小头, 边界框你得画出来啊」
     #   同一个"贴边 peg"既可能是误检(顶边圆角装置, conf≈0.44~0.48), 也可能是**只露小头的真模块**。
-    #   单靠类别一刀切会把真模块也挡掉 ⇒ 加置信度分界: ≥0.65 当真模块, 只框可见那段并标注"被裁"。
+    #   单靠类别统一处理会把真模块也挡掉 ⇒ 加置信度分界: ≥0.65 当真模块, 只框可见那段并标注"被裁"。
     _peg_clip_conf = float(os.environ.get("ZMAX_PEG_CLIP_MIN", "0.65"))
     _is_real_head = (_clipped0 and det.get("name") != "OPT_Gold"
                      and float(det.get("conf") or 0) >= _peg_clip_conf)

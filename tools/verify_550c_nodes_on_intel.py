@@ -55,7 +55,7 @@ echo "##PROCS"
 ps -eo pid,etimes,cmd --no-headers | grep -E 'python.*(ss_daemon|tcp_ar_server|dashboard_server|edge_service|live_trace|ss_fw_trace|ws_bridge|sam3|evolver|gravity)' | grep -v grep | cut -c1-140
 echo "##WEIGHTS"
 # 🔴 2026-10-26: 原来带 head -20 —— Intel 上 models/ 下有 36 项, sam3_hf 排第 23,
-#    于是审计一直报"Intel 无 sam3 权重", 而权重其实早就推进去了(3.44GB 实测)。
+#    于是审计一直报"Intel 无 sam3 权重", 而权重实际早就推进去了(3.44GB 实测)。
 #    这里不截断, 权重目录本身就不多。
 ls -d models/* 2>/dev/null
 """

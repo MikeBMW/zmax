@@ -2,7 +2,7 @@
 # 归档 v5.49.3 产物 → ~/zmax/zmax_data/release_5.49.3_YYYYMMDD
 #   本轮主题: 标准打开流程收口 —— 双击图标→配置中心 / 任务表三列(工程·实时监控·3D场景) / 右下角启动按钮 /
 #             3D 窗跟随场景(修真 bug) / 配置×任务×场景×信号实时监控 自动测试
-#   约定沿用 archive_release_5_41_0.sh: 代码 + 真源快照 + 证据 + 文档 + 画布备份, 末尾 MANIFEST.md + sha256sums.txt
+#   约定沿用 archive_release_5_41_0.sh: 代码 + 唯一依据快照 + 证据 + 文档 + 画布备份, 末尾 MANIFEST.md + sha256sums.txt
 set -u
 REPO=/home/ubuntu/zmax
 DST=$HOME/zmax/zmax_data/release_5.49.3_$(date +%Y%m%d)
@@ -16,7 +16,7 @@ cp -f tools/verify_zmax_open_flow.py tools/verify_task_scene_matrix.py tools/zma
       tools/archive_release_5_49_3.sh "$DST/tools/" 2>/dev/null
 ls "$DST/gui" | sed 's/^/  gui: /'; ls "$DST/tools" | sed 's/^/  tool: /'
 
-echo "=== ② 真源快照 (配置/场景/画布) ==="
+echo "=== ② 唯一依据快照 (配置/场景/画布) ==="
 cp -f config/ss_task_binding.json config/task_state.json config/task_state_manual.json \
       config/task_state_ledger.json "$DST/config/" 2>/dev/null
 mkdir -p "$DST/config/topics"; cp -f config/topics/scene_tags.json "$DST/config/topics/" 2>/dev/null

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""状态空间画布 → 矢量 PDF 全图导出 (不依赖 Qt/GUI 截图, 直接读真源 JSON 画)。
+"""状态空间画布 → 矢量 PDF 全图导出 (不依赖 Qt/GUI 截图, 直接读唯一依据 JSON 画)。
 
 用法:
   QT_QPA_PLATFORM=offscreen ./gui-venv311/bin/python tools/canvas_pdf_export.py \
@@ -423,7 +423,7 @@ class Painter:
         p.setFont(FONT, 11)
         p.setFillColor(Color(0.15, 0.17, 0.22))
         info = [
-            "真源: flows/state_space_obs.json   (realpath: %s)" % CP.source_json(),
+            "唯一依据: flows/state_space_obs.json   (realpath: %s)" % CP.source_json(),
             "节点 %d (其中背景行带 %d) · 连线 %d · md5 %s · 画布名: %s"
             % (st["nodes"], len(self.c.bands), st["links"], self.c.md5, self.c.j.get("name", "")[:70]),
             "本 PDF: 封面/图例 → 全图总览(1 页) → 分层详图(3 个行带组 × 自适应分列 = 共 %d 页); 全部矢量, 手机端可无限放大。" % self.det_hint,
@@ -486,7 +486,7 @@ class Painter:
                   "行带组③ 执行层 · 验证层 · 可视化层"]
 
     def rows_abs(self):
-        """3 个行带组的 y 切点 —— **从行带之间的空白自动推导**(不写死坐标, 未来画布改版也成立)。
+        """3 个行带组的 y 切点 —— **从行带之间的空白自动推导**(不预先固定坐标, 未来画布改版也成立)。
 
         候选切点 = 相邻行带之间的空档中点; 在其中选 2 个使 3 组节点数最均衡 (每组 ≥5 个节点)。
         """
@@ -526,7 +526,7 @@ class Painter:
         return inside or self.c.boxes
 
     def detail_plan(self):
-        """[(ri, (ry0,ry1), [(cx0,cx1), ...]), ...] —— 详图分页计划 (页数唯一真源)。"""
+        """[(ri, (ry0,ry1), [(cx0,cx1), ...]), ...] —— 详图分页计划 (页数唯一依据)。"""
         out = []
         for ri, (ry0, ry1) in enumerate(self.rows_abs()):
             out.append((ri, (ry0, ry1), self.plan_columns(self.row_boxes(ri))))

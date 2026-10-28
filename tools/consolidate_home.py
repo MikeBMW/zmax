@@ -8,7 +8,7 @@
 
 做法(照 Orin 那次 ~/.zmax 整理的同一套):
   1) 同盘 `os.rename` 搬(瞬间、不复制、不占额外空间), 并在**老路径留软链** => 过渡期零断链;
-  2) 搬完**就地修内部写死的绝对路径**(venv/conda: `bin/*` 的 shebang + `pyvenv.cfg` + `activate*`);
+  2) 搬完**就地修内部固定不变的绝对路径**(venv/conda: `bin/*` 的 shebang + `pyvenv.cfg` + `activate*`);
   3) 同步改**仓库外**引用: `/etc/systemd/system/*.service` + `~/.hermes/scripts/*`(改前 .bak);
   4) 逐项自验(目标在 / 大小对 / venv 能跑 / 服务 active / 端口 200);
   5) 落清单 `zmax_data/backups/HOME_CONSOLIDATE_MANIFEST.jsonl`(src→dst + 指纹 + 结果) + 回滚脚本。
@@ -170,7 +170,7 @@ def do_move(stage, name, rel, kind, note, apply_):
 
 
 def fix_env_paths(env_dir, kind):
-    """把 venv/conda 里写死的绝对路径改成新位置。返回修补的文件数。"""
+    """把 venv/conda 里固定不变的绝对路径改成新位置。返回修补的文件数。"""
     old, new = None, env_dir
     # 反推老前缀: .../venvs/<name> 或 .../<name>
     for m in sed_map():

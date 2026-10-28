@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 |---|---|
-| 实况页（局域网）| `http://192.168.23.50:8791/overlay`（真源 = `tools/web/scene-overlay.html`，改完**不用重启**服务）|
+| 实况页（局域网）| `http://192.168.23.50:8791/overlay`（唯一依据 = `tools/web/scene-overlay.html`，改完**不用重启**服务）|
 | 公网交付页 | `https://datadrive.world/zmax-live.html`（首页已挂「📱 现场实况」入口）|
 | APK（公网）| `https://datadrive.world/dl/ZMAX-Live.apk` |
 | APK（局域网）| `http://192.168.23.50:8791/dl/ZMAX-Live.apk`（页面内「📲 装 APP」也有入口）|
@@ -37,7 +37,7 @@ ZMAX_ECS_PW='<密码>' python tools/deploy_zmax_live.py     # 发布公网交付
    永不同时开多路 MJPEG（会把连接吃干、整页卡死，按钮也点不动）。
 2. **https 页面里嵌 http MJPEG 会被内核按页面源拦死**（页面能开、画面永远黑，`usesCleartextTraffic`
    也救不了）⇒ 页面必须由工位机自己 http 提供，App 顶层直接 loadUrl。
-3. **在线判据用源侧 fps**（`/stats` 的 `fps>0.1`），**不写死哪几路是活的**；掉线的路如实标「未上线、
+3. **在线判据用源侧 fps**（`/stats` 的 `fps>0.1`），**不预先固定哪几路是活的**；掉线的路如实标「未上线、
    不上屏」，掉线提示每次轮询都重绘（只在瓦片重建时写会被下一轮清空擦掉 —— 踩过）。
 4. 每格必须标 **帧龄 + 拍照时间**（拍照时间 = 本机时钟 − 帧龄），导出 CSV/JSON 也带这两列。
 5. **服务路由坑**：`/app` 曾被 room.html 那条分支抢先命中（死代码），`/overlay` 发的是 py 内嵌旧副本

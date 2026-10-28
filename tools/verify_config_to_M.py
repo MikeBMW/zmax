@@ -10,8 +10,8 @@
   ① 幂等: 同一配置单重复跑 → audit_sha 逐位相同 (3 组配置单 × 3 次)
   ② 映射依据齐全: 每条规则 (R1/R2+R3/R4/R5) 都有非空 规则文本 + 来源; 覆盖 dim/mode/scale/diag/gain;
      逐轴公差有来源; scale 每个输入有来源
-  ③ 非法配置被闸门拦住: 非正定形状 (diag 负分量 / full 奇异) 被拒写, 且**真源字节不变**
-  ④ 合法写盘回路: 写 M 真源 (经 zmax_params 闸门) → 回读 metric/M 与映射结果一致 (min_eig>0)
+  ③ 非法配置被闸门拦住: 非正定形状 (diag 负分量 / full 奇异) 被拒写, 且**唯一依据字节不变**
+  ④ 合法写盘回路: 写 M 唯一依据 (经 zmax_params 闸门) → 回读 metric/M 与映射结果一致 (min_eig>0)
   ⑤ 节点右键源码定位到映射函数行: 画布节点 n_calib_mani 的 m_source/m_source_symbol
      解析到 tools/config_to_M.py **def compute_M(** 那一行 (与 GUI 同一规则: source 优先 + 符号定位)
   ⑥ 真跑两端节点: 主参数 M 节点 (映射) 与 流形引擎节点 (用 M 算几何/健康 H/扭矩 τ) 均无异常 +
@@ -88,7 +88,7 @@ for tid in TASKS:
     ck("%s gain 状态 (待标定/不需要) 有交代" % tid, bool(tbl["R4"].get("status")), tbl["R4"]["status"])
 
 # ── ③ 非法配置被闸门拦住 ──────────────────────────────────────────────────────
-print("③ 非法配置被闸门拦住 (且真源字节不变)")
+print("③ 非法配置被闸门拦住 (且唯一依据字节不变)")
 sha0 = sha(MANIFOLD)
 bad_cases = [("diag 负分量", {"dim": 3, "mode": "diag", "diag": [1.0, 1.0, -2.0], "components": None, "scale": 2.0}),
              ("full 奇异 (det=0)", {"dim": 3, "mode": "full", "diag": None,
@@ -98,13 +98,13 @@ bad_cases = [("diag 负分量", {"dim": 3, "mode": "diag", "diag": [1.0, 1.0, -2
 for nm, bad in bad_cases:
     r = CM.write_master_param(bad)
     ck("非正定[%s] 被拒写" % nm, not r.get("ok"), str(r.get("gate"))[:70])
-ck("三次非法尝试后真源字节未变", sha(MANIFOLD) == sha0, "%s" % sha0[:16])
+ck("三次非法尝试后唯一依据字节未变", sha(MANIFOLD) == sha0, "%s" % sha0[:16])
 
 # ── ④ 合法写盘回路 ────────────────────────────────────────────────────────────
 print("④ 合法写盘回路 (经 zmax_params 闸门 → 回读一致)")
 act = CM.active_task_id(CM.load_bundle())
 w = CM.write_master_param(specs[act])
-ck("写 M 真源 [%s] 成功" % act, bool(w.get("ok")), str(w.get("dest")))
+ck("写 M 唯一依据 [%s] 成功" % act, bool(w.get("ok")), str(w.get("dest")))
 if w.get("ok"):
     rb = w["metric_readback"]
     ck("回读 metric 与映射一致 (dim/mode)",
@@ -113,7 +113,7 @@ if w.get("ok"):
     ck("回读 M 与映射 scale 一致", abs(float(rb.get("M")) - float(specs[act]["scale"])) < 1e-9,
        "回读 M=%s scale=%s" % (rb.get("M"), specs[act]["scale"]))
     ck("闸门 min_eig > 0 (正定)", float(w.get("min_eig", -1)) > 0, "min_eig=%.4g" % w.get("min_eig", -1))
-    print("     真源 sha: %s → %s (%s)" % (sha0[:16], sha(MANIFOLD)[:16], os.path.relpath(MANIFOLD, ROOT)))
+    print("     唯一依据 sha: %s → %s (%s)" % (sha0[:16], sha(MANIFOLD)[:16], os.path.relpath(MANIFOLD, ROOT)))
 
 # ── ⑤ 节点右键源码定位到映射函数行 ────────────────────────────────────────────
 print("⑤ 节点右键源码定位到映射函数行")

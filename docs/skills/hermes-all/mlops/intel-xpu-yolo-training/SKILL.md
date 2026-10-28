@@ -34,7 +34,7 @@ python -c "import torch; print(torch.__version__, torch.xpu.is_available(), torc
 # 2. torchvision 能 import? (NMS 靠它绕 IGC 崩溃)
 python -c "import torchvision; import torch; print(torchvision.__version__); print(torchvision.ops.nms(torch.tensor([[0.,0.,10.,10.],[1.,1.,9.,9.]]), torch.tensor([0.9,0.8]), 0.5))"
 
-# 3. 数据集是真文件还是坏链 —— 最高频的「训练卡住」真因
+# 3. 数据集是真文件还是坏链 —— 最高频的「训练阻塞」真因
 find ~/train_data/xxx/images/train -maxdepth 1 -type f | wc -l   # 真文件数
 find ~/train_data/xxx/images/train -maxdepth 1 -type l | wc -l   # 软链数
 ```

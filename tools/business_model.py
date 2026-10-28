@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""商业模式推导 (Z-MAX 唯一算法真源, 无 Qt 依赖)。
+"""商业模式推导 (Z-MAX 唯一算法唯一依据, 无 Qt 依赖)。
 
 为什么单独一个模块: 配置中心「🧩 商业模式」页、文档导出、以后的投标/立项材料
-必须**同一套公式与同一个真源**, 各写一份必然出现"页面 3 阶段价 42 万、文档 39 万"。
+必须**同一套公式与同一个唯一依据**, 各写一份必然出现"页面 3 阶段价 42 万、文档 39 万"。
 
-输入真源 (只存输入, 派生值一律不落盘):
+输入唯一依据 (只存输入, 派生值一律不落盘):
   config/platform/zmax_cost_model.json     ← 硬件/软件/人力/产线 (成本结构)
   config/platform/zmax_business_model.json ← 学习率/毛利率/回本年限/NRE/η 系数 (假设, 带标签)
 成本与回本由 tools/cost_model.py 现算, 本模块只在它的结果上做商业模式推理。
@@ -54,7 +54,7 @@ def load(path=None):
 
 
 def inputs(d=None, **over):
-    """把真源的 inputs{value,...} 摊平成 {k: value}; over 覆盖用于试算 (不写盘)。"""
+    """把唯一依据的 inputs{value,...} 摊平成 {k: value}; over 覆盖用于试算 (不写盘)。"""
     d = d if d is not None else load()
     out = {k: v.get("value") for k, v in (d.get("inputs") or {}).items()}
     meta = {k: {"label": v.get("label"), "source": v.get("source"), "unit": v.get("unit")}
@@ -158,7 +158,7 @@ def scale_threshold(cost, i, cap=500, ceiling=None):
 def breakeven_configs(cost, i, stations=(1, 2, 3, 4, 6, 8), shifts=(1, 2, 3), cap_stations=8):
     """「改配置不降价」的量化出口: 哪些 工位×班 组合能让 floor ≤ ceiling。
 
-    只用成本真源里的人力单价与每班人数, 换 heads 重算客户净年省与上限。
+    只用成本唯一依据里的人力单价与每班人数, 换 heads 重算客户净年省与上限。
     """
     labor = float(cost["labor_per_person_year"])
     persons = int(cost["persons_per_shift"])
@@ -378,7 +378,7 @@ def to_tsv(e):
 def to_markdown(e):
     lay, dr, th = e["layered"], e["deal"], e["threshold"]
     L = ["# Z-MAX 商业模式推导", "",
-         "生成 %s ｜ 真源 %s + %s" % (e["generated"],
+         "生成 %s ｜ 唯一依据 %s + %s" % (e["generated"],
                                      os.path.basename(e["truth"]["cost"]),
                                      os.path.basename(e["truth"]["business"])), "",
          "## 一、成本结构", "",
@@ -454,7 +454,7 @@ def save_inputs(**over):
     d = load()
     for k, v in keys.items():
         if k not in (d.get("inputs") or {}):
-            raise KeyError("真源无此假设键: %s" % k)
+            raise KeyError("唯一依据无此假设键: %s" % k)
         d["inputs"][k]["value"] = float(v) if isinstance(d["inputs"][k]["value"], float) else int(v)
     d["updated"] = time.strftime("%Y-%m-%d %H:%M")
 
@@ -508,7 +508,7 @@ def main():
         return 0
 
     lay, dr = e["layered"], e["deal"]
-    print("Z-MAX 商业模式推导   真源 %s @ %s" % (os.path.basename(TRUTH), e["truth"]["business_mtime"]))
+    print("Z-MAX 商业模式推导   唯一依据 %s @ %s" % (os.path.basename(TRUTH), e["truth"]["business_mtime"]))
     print("  人效 η %.3f ⇒ 客户真实回本 D 口径 %s 年 (A 上限 %.2f 年, 不得对外当承诺)"
           % (lay["eta"], lay["D_payback"], lay["A_payback"]))
     print("  成交区间 floor %s 万 ≤ ceiling %s 万 : %s"

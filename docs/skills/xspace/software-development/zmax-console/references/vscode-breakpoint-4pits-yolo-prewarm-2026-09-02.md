@@ -63,7 +63,7 @@
   `sudo env "PATH=$PATH" ~/lerobot-smolvla-lew/gui-venv311/bin/py-spy dump --pid <gui>`
   (py-spy 装在 gui-venv311, 本机 sudo 免密)。
   - 主线程栈 `do_wait_suspend(pydevd)` = 停在 VSCode 断点
-  - 栈 `_yolo_capture`/`node_ss_yolo` = YOLO 真实执行卡住(not responding 正常)
+  - 栈 `_yolo_capture`/`node_ss_yolo` = YOLO 真实执行阻塞(not responding 正常)
   - 栈 `_start_state_space_sim`/`_ss_tick` = 引擎/节点播放阶段
 - **/tmp/simulink_log.txt**: GUI `_log` 落盘, 配合 py-spy 可完整还原执行链
   (运行指令→数据源→引擎→播放→完成 每一步都有日志)。

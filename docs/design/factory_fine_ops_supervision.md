@@ -159,7 +159,7 @@ GET /api/action-log?robot=R3&date=today # 查询记录 (导出/追溯)
 
 **指标上报的模型侧实现** (P3): left_right `select_action` 已在逐阶段调制动作 —
 每个阶段结束时把实际量测 (d_hp/contact/peg_z/插入深度/力) 写入 `self.metrics` dict,
-推理循环每 N 帧经 API 上报 → 大屏实时监督。仿真先跑通 (metaworld 实测指标),
+推理循环每 N 帧经 API 上报 → 大屏实时监督。仿真先验证通过 (metaworld 实测指标),
 真机 (Z700/Z700F) 换力传感器读数。
 
 ---

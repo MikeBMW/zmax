@@ -1,6 +1,6 @@
 # 🧩 状态空间系统 Feature List & Test Cases (2026-09-03)
 
-验证层真源: `src/lerobot/verification/verification_layer.py`(全部断言在此,断点可进)
+验证层唯一依据: `src/lerobot/verification/verification_layer.py`(全部断言在此,断点可进)
 画布: 状态空间画布底部「🧩 验证层 · Feature/Test 质量门 (回路外元层)」
   - 🧩 Feature 功能清单   → 汇总本清单 (含手动项)
   - 🧪 Test 用例执行      → 跑自动套件 F-A01~F-F04 (34 项)
@@ -8,12 +8,12 @@ CLI: `gui-venv311/bin/python tools/ss_feature_tests.py [--list|--only F-A01|--sk
 单跑单用例: 环境变量 `ZMAX_VERIF_ONLY=F-A01` 后运行「🧪 Test 用例执行」节点。
 
 ## 通过判据总则 (老倪红线)
-真实执行 + 数值证据, 不接受写死/伪装; 每个 ✅ 都带实测数字可复核。
+真实执行 + 数值证据, 不接受预先固定/伪装; 每个 ✅ 都带实测数字可复核。
 
 ## A 引擎闭环 (StateSpaceSim 八阶段插拔仿真)
 | ID | Feature | 判据 | 实测 |
 |----|---------|------|------|
-| F-A01 | 八阶段完整跑通 接近→对位→下降→抓取→抬起→转移→插入→完成 | 顺序全出现, 末帧完成 | 305 步 |
+| F-A01 | 八阶段完整验证通过 接近→对位→下降→抓取→抬起→转移→插入→完成 | 顺序全出现, 末帧完成 | 305 步 |
 | F-A02 | 收敛精度 | 终态销头−孔底 <4mm (D_INSERT) | 3.08mm |
 | F-A03 | 轨迹契约 | 30 键齐全 + io_trace 帧数=引擎步数 | 305=305 |
 | F-A04 | 一阶速度伺服有界 | max‖v‖≤0.5 m/s (τ=0.08) | 0.211 |

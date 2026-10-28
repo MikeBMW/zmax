@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 装/重装「插拔场景空间智能链」两个系统单元 (真源 = 仓库 tools/systemd/)
+# 装/重装「插拔场景空间智能链」两个系统单元 (唯一依据 = 仓库 tools/systemd/)
 #   ① zmax-fw-render.service      渲染帧服务 8799
 #   ② zmax-ss-engine-loop.service 引擎回路 (VLM 编码 + 多层管线)
 # 注意: 必须先把散跑的裸进程停掉 (systemd Restart=always 会抢着重启成旧档)

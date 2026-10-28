@@ -35,7 +35,7 @@ def rep(old, new):
 # ① __init__: 建块流水线 (默认 H=8; ZMAX_CHUNK_H=1/0 关)
 rep('''    def __init__(self, hz: float, state_file: str | None, traj_path: str, inertia: bool,''',
     '''    def _chunk_stage(self) -> tuple[int, str]:
-        """当前八阶段 (真源 zmax_data/ss_live/trace_live.json = ss_stage 话题的同一份; 读不到就 0 + 如实标注)。"""
+        """当前八阶段 (唯一依据 zmax_data/ss_live/trace_live.json = ss_stage 话题的同一份; 读不到就 0 + 如实标注)。"""
         try:
             d = _j(os.path.join(LIVE_DIR, "trace_live.json"), None) or {}
             _n = str(d.get("阶段") or d.get("stage") or "")
@@ -51,7 +51,7 @@ rep('''    def __init__(self, hz: float, state_file: str | None, traj_path: str,
         return 0, ""
 
     def _meta_pred(self):
-        """🧾 元任务预测 (真源 meta_pred.json —— 与话题 zmax/ss_meta_pred 同源; 读不到返回 None)。"""
+        """🧾 元任务预测 (唯一依据 meta_pred.json —— 与话题 zmax/ss_meta_pred 同源; 读不到返回 None)。"""
         try:
             d = _j(os.path.join(LIVE_DIR, "meta_pred.json"), None) or {}
             _t = d.get("top") or []

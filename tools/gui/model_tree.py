@@ -106,12 +106,12 @@ class DataBusTrace(QWidget):
     _IN_C = QColor("#58a6ff")
     _OUT_C = QColor("#3fb950")
 
-    # ── 两种数据源的表头 / 灯色 / 真源路径 (2026-10-13) ─────────────────────
+    # ── 两种数据源的表头 / 灯色 / 唯一依据路径 (2026-10-13) ─────────────────────
     _HDR_ENGINE = ["⏱ 时间", "🔗 通道", "📋 接口", "⬅➡ 方向", "📊 数据"]
     _HDR_DS = ["⏱ 帧龄(s)", "🔗 灯", "📋 话题", "🔀 类型", "📊 数据 (实测/设计 Hz · 值)"]
-    # 灯色口径唯一真源 = src/lerobot/dataspace/lamps.py (这里只是渲染成中文+圆点)
+    # 灯色口径唯一依据 = src/lerobot/dataspace/lamps.py (这里只是渲染成中文+圆点)
     _LAMP = {"green": "🟢 正常", "yellow": "🟡 注意", "red": "🔴 异常", "black": "⚫ 无数据"}
-    # 数据空间探针真源 (与 tools/gui/dds_bus.py 同一份文件, ~2s 刷新)
+    # 数据空间探针唯一依据 (与 tools/gui/dds_bus.py 同一份文件, ~2s 刷新)
     DS_LIVE = os.environ.get(
         "ZMAX_DATASPACE_LIVE",
         os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
@@ -124,7 +124,7 @@ class DataBusTrace(QWidget):
             pass
 
     def _refresh_from_dataspace(self):
-        """降级源②: 数据空间探针 live.json (唯一真源) — 逐话题一行, 有真数据就出真数据。
+        """降级源②: 数据空间探针 live.json (唯一依据) — 逐话题一行, 有真数据就出真数据。
 
         返回 True = 已填充 (调用方不必再画空态)。读不到文件/文件里没话题 ⇒ False。
         🔴 纪律: 这一屏的数字**必须**带帧龄; 灯色只说数据源自己的判定, 不替它下结论。
@@ -215,7 +215,7 @@ class DataBusTrace(QWidget):
         (L5 造数据/标注 · 摆盘 episode 回放 · AOI 巡检 …) ⇒ 面板永远显示"暂无数据"。
         现改两段式, 保证"跑过就有数据", 且**来源与帧龄写在计数条上**:
           ① 有引擎轨迹 → 引擎视图 (时间顺序 / 固定格式, 原逻辑不变);
-          ② 没有 → **数据空间探针真源 live.json** (逐话题一行: 灯 / 实测与设计 Hz /
+          ② 没有 → **数据空间探针唯一依据 live.json** (逐话题一行: 灯 / 实测与设计 Hz /
              帧龄 / 值), 显式标来源 + 文件帧龄, 绝不冒充引擎轨迹。
         """
         tr = getattr(self.module, "_ss_tr", None)
@@ -673,7 +673,7 @@ class RunConfigWidget(QWidget):
 
     做法: **开关对象本身不换** (同一个 QCheckBox 被 re-parent 到本页) ⇒ 引擎与全部运行路径
     读 self.chk_* 一字不用改 (零回退); 本页只给每个开关配「作用 / 在引擎哪一行生效 /
-    实测代价 / 适用档位」, 让"这个勾到底改了啥"一眼可查、可复制。
+    实测代价 / 适用档位」, 让"这个勾到底改了什么"一眼可查、可复制。
     """
 
     # (属性名, 分组, 适用档位, 作用, 在引擎哪一行生效, 代价/边界, 是否风险)
@@ -690,7 +690,7 @@ class RunConfigWidget(QWidget):
          "档位 L3/L4 自动 full (勾选框不起作用) · 实测 20-40s/轮", False),
         ("chk_mani_yaw", "策略", "仅 L4 演示档",
          "勾 = L4 演示 ② 段「夹爪绕 z 转 90°」由**流形预测器**决策 (Arm B)\n"
-         "不勾 = 脚本开环写死 (Arm A, 作对照)",
+         "不勾 = 脚本开环预先固定 (Arm A, 作对照)",
          "simulink_module.py:13680 → 引擎 state_space_sim_real.py:407/2511 (mani_yaw=)",
          "用途就是拿它做 A/B, 看流形预测器与脚本开环差多少", False),
         ("chk_intact_exec", "模型接管", "仅 L4 档",
@@ -914,7 +914,7 @@ class RunConfigWidget(QWidget):
 
 # ══════════════ 🪐 侧栏「视图选择」落盘 (2026-10-16 老倪: 「主参数的太阳系, 不是你关机前的状态」) ══════════════
 #   根因: 「🧊 四面板 / 🪐 球心引力架构」这条下拉的选择**只活在内存里** ⇒ 控制台一重启就回到第 0 项,
-#   开机看到的是四面板, 关机前看的太阳系"不见了"(代码/真源没变, 只是没人记住选的是谁)。
+#   开机看到的是四面板, 关机前看的太阳系"不见了"(代码/唯一依据没变, 只是没人记住选的是谁)。
 #   落盘在 QSettings("ZMAX","studio") —— 与窗口宽度/折叠态同一个文件; 写后立刻 sync() (关机立刻断电也不丢)。
 #   写口只认**人点的**(combo.activated) 与**命令通道** (studio.py `echo orbital`):
 #   程序化 setCurrentIndex (开机回选 / 判据脚本 verify_*.py) **不写盘**, 否则跑一次判据就把偏好刷成四面板。
@@ -952,10 +952,10 @@ class MasterParamMView(QWidget):
     老倪 (2026-10-09): 「右边的侧边栏, 重点是 配置 和 标定, 以及主参数 M; 其它的功能要精简」。
 
     数据源 = **画布上的节点**「🧮 标定诊断测量 · 主参数 M」(id `n_calib_mani`) 的 params:
-      cfg_entries (9 条真源路径) · cfg_snapshot (就绪度/缺口/任务/断言/模型匹配) ·
+      cfg_entries (9 条唯一依据路径) · cfg_snapshot (就绪度/缺口/任务/断言/模型匹配) ·
       measure_view · calib_view · diagnose_view · task_layer
-    —— 这些是 `tools/ss_node_sync.py` 从真源文件同步进节点的**快照**, 文件仍是唯一真源;
-    所以本页跟状态空间工程是**真连接**(节点在画布上, 快照来自真源, 写 M 走
+    —— 这些是 `tools/ss_node_sync.py` 从唯一依据文件同步进节点的**快照**, 文件仍是唯一依据;
+    所以本页跟状态空间工程是**真连接**(节点在画布上, 快照来自唯一依据, 写 M 走
     `tools/zmax_params.py::write_manifold_M` = 范围校验 + 只改 manifold_engine 键, 不整表重合并)。
     """
     NODE_ID = "n_calib_mani"
@@ -963,7 +963,7 @@ class MasterParamMView(QWidget):
     def __init__(self, module=None, parent=None):
         super().__init__(parent)
         self.module = module
-        # 仓库根 = tools/gui/model_tree.py 往上三层 (少一层会把真源/工具路径拼错, 体检真踩到过)
+        # 仓库根 = tools/gui/model_tree.py 往上三层 (少一层会把唯一依据/工具路径拼错, 体检真踩到过)
         self._root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         # 2026-10-16 看图: 小窗口 (392×492) 下视图被裁到 ~150px ⇒ "标签可见、球一个都看不见"。
         # 正解: 整页套 QScrollArea (内部控件保住自己的 minimumHeight, 装不下就滚, 不再被裁)。
@@ -1032,14 +1032,14 @@ class MasterParamMView(QWidget):
         ml.addWidget(self.sp_M)
 
         # 🎚 2026-10-19 老倪「主参数窗口要可操作」: 拖动条 (0~8, 一格 0.01) 与微调框双向联动
-        #   —— 拖 = 看趋势 (立刻出物理读数), 精确值仍可键盘输入; 写入真源仍走「✏️ 写 M」一步, 防误改产线。
+        #   —— 拖 = 看趋势 (立刻出物理读数), 精确值仍可键盘输入; 写入唯一依据仍走「✏️ 写 M」一步, 防误改产线。
         self.sl_M = QSlider(Qt.Horizontal)
         self.sl_M.setRange(0, 800)
         self.sl_M.setSingleStep(1)
         self.sl_M.setPageStep(25)
         self.sl_M.setValue(100)
         self.sl_M.setMinimumWidth(120)
-        self.sl_M.setToolTip("拖动 = 连续调 M (0~8); 松手不自动写入 —— 写入真源要点「✏️ 写 M」")
+        self.sl_M.setToolTip("拖动 = 连续调 M (0~8); 松手不自动写入 —— 写入唯一依据要点「✏️ 写 M」")
         self.sl_M.setStyleSheet(
             "QSlider::groove:horizontal{height:5px;background:#21262d;border-radius:2px;}"
             "QSlider::handle:horizontal{width:12px;margin:-5px 0;border-radius:6px;background:#58a6ff;}"
@@ -1053,13 +1053,13 @@ class MasterParamMView(QWidget):
         self.chk_inertia.setStyleSheet("QCheckBox{color:#c9d1d9;font-size:13px;background:transparent;}")
         ml.addWidget(self.chk_inertia)
         self.btn_write_M = QPushButton("✏️ 写 M")
-        self.btn_write_M.setToolTip("写真源 config/calib/zmax_manifold.json (只改 manifold_engine 键, 范围校验, "
+        self.btn_write_M.setToolTip("写唯一依据 config/calib/zmax_manifold.json (只改 manifold_engine 键, 范围校验, "
                                     "不整表重合并) → 流形引擎/画布节点下次读到")
         self.btn_write_M.clicked.connect(self._write_M)
         ml.addWidget(self.btn_write_M)
         ml.addStretch(1)
-        self.btn_sync = QPushButton("📥 从真源同步到节点")
-        self.btn_sync.setToolTip("跑 tools/ss_node_sync.py: 把 9 条真源 (mcd/参数注册表/匹配矩阵/任务/绑定/工单/"
+        self.btn_sync = QPushButton("📥 从唯一依据同步到节点")
+        self.btn_sync.setToolTip("跑 tools/ss_node_sync.py: 把 9 条唯一依据 (mcd/参数注册表/匹配矩阵/任务/绑定/工单/"
                                  "工程文件/站点标定/流形标定) 的快照写进画布 M 节点")
         self.btn_sync.clicked.connect(self._sync_node)
         self.btn_refresh = QPushButton("🔁 刷新")
@@ -1076,7 +1076,7 @@ class MasterParamMView(QWidget):
                             "QPushButton:hover{background:#30363d;}")
         lay.addWidget(mbar)
 
-        # ── 🌍 2026-10-19 老倪「有信息连接 + 容易操作」: 引力档位 + 真源/在役/物理读数 ──
+        # ── 🌍 2026-10-19 老倪「有信息连接 + 容易操作」: 引力档位 + 唯一依据/在役/物理读数 ──
         #   档位数字 = tools/manifold_m_gravity.py **真跑引擎实测** (tools/…--export 落
         #   zmax_data/ss_live/mparam_gravity.json), 不是手填的漂亮话; 读不到就只显示档名, 不编拍数。
         mrow = QFrame()
@@ -1089,14 +1089,14 @@ class MasterParamMView(QWidget):
         for _gm, _gn in ((0.0, "无惯性"), (0.3, "轻灵"), (1.0, "标准"), (3.0, "重载"), (8.0, "极重")):
             _b = QPushButton("%g %s" % (_gm, _gn))
             _b.setFixedHeight(22)
-            _b.setToolTip("M=%g (%s) —— 点一下填入, 再点「✏️ 写 M」才落真源" % (_gm, _gn))
+            _b.setToolTip("M=%g (%s) —— 点一下填入, 再点「✏️ 写 M」才落唯一依据" % (_gm, _gn))
             _b.setStyleSheet("QPushButton{background:#161b22;color:#c9d1d9;border:1px solid #30363d;"
                              "border-radius:4px;padding:0 5px;font-size:11px;}"
                              "QPushButton:hover{background:#21262d;color:#e6edf3;}")
             _b.clicked.connect(lambda _=False, v=_gm: self.sp_M.setValue(v))
             mr.addWidget(_b)
             self._gear_btns.append(_b)
-        self.lbl_minfo = QLabel("M 真源/在役读数加载中…")
+        self.lbl_minfo = QLabel("M 唯一依据/在役读数加载中…")
         self.lbl_minfo.setStyleSheet("color:#8b949e;font-size:11px;font-family:Consolas,monospace;"
                                      "background:transparent;")
         self.lbl_minfo.setMinimumWidth(80)
@@ -1120,7 +1120,7 @@ class MasterParamMView(QWidget):
 
         # ── 🌐 流形引擎可视化 (老倪 2026-10-16: 「将这个可视化球面, 轨迹显示方式, 做到画布右侧的
         #    主参数 M 的侧面栏窗口」) —— S³ 立体投影球 / 切空间 / 度量场采样 / 时间序列 四面板,
-        #    共享同一时间轴。数据全来自真源 (engine_latest · ss_traj_last · zmax_manifold · sphere.py),
+        #    共享同一时间轴。数据全来自唯一依据 (engine_latest · ss_traj_last · zmax_manifold · sphere.py),
         #    缺源走空态不画假点; 渲染走 QPainter 2.5D (主窗口已有 GL 上下文, 不开第二 GL) ──
         try:
             try:
@@ -1185,7 +1185,7 @@ class MasterParamMView(QWidget):
         #   ⇒ 开机看到的是四面板, 他以为太阳系被删了。太阳系是他要盯的主视图 ⇒ 默认 1。
         _want = ui_state_get(MPARAM_VIZ_KEY, 1)
         if 0 <= _want < self.cmb_viz_view.count() and _want != self.cmb_viz_view.currentIndex():
-            self.cmb_viz_view.setCurrentIndex(_want)     # 走 _switch_viz_view: 切 stack + 重读真源
+            self.cmb_viz_view.setCurrentIndex(_want)     # 走 _switch_viz_view: 切 stack + 重读唯一依据
 
         # ── 🌍 万有引力 (老倪 2026-10-16: 「不要测量 标定 诊断 配置, 只要一个标签『万有引力』」) ──
         #   太阳系下面就是这一张表: 行 = 当前配置的元任务的状态空间项, 列 = L2/L3/L4/L5/合力,
@@ -1441,7 +1441,7 @@ class MasterParamMView(QWidget):
         return super().eventFilter(obj, ev)
 
     def _switch_viz_view(self, idx):
-        """🧊 几何四面板 ⟷ 🪐 球心引力架构 (同一页切换; 切到谁就把谁当真源重读一遍)。"""
+        """🧊 几何四面板 ⟷ 🪐 球心引力架构 (同一页切换; 切到谁就把谁当唯一依据重读一遍)。"""
         try:
             self.viz_stack.setCurrentIndex(int(idx))
             self._fit_heights()              # 换视图后重新分配高度 (表整块可见, 整页不滚)
@@ -1460,7 +1460,7 @@ class MasterParamMView(QWidget):
                 pass
 
     def _refresh_viz(self):
-        """重读可视化真源 (engine_latest / ss_traj_last / zmax_manifold / torque_live / skill_*) —— 只读, 不改任何真源。"""
+        """重读可视化唯一依据 (engine_latest / ss_traj_last / zmax_manifold / torque_live / skill_*) —— 只读, 不改任何唯一依据。"""
         try:
             if hasattr(self, "orbital") and hasattr(self.orbital, "refresh"):
                 self.orbital.refresh()
@@ -1472,7 +1472,7 @@ class MasterParamMView(QWidget):
         except Exception:
             pass
 
-    # ── 找画布上的 M 节点 (id 优先, 语义/名字兜底: 画布另存为会重编 id) ──
+    # ── 找画布上的 M 节点 (id 优先, 语义/名字保障: 画布另存为会重编 id) ──
     def _node(self):
         for n in (getattr(self.module, "nodes", None) or []):
             p = n.get("params", {}) or {}
@@ -1530,14 +1530,14 @@ class MasterParamMView(QWidget):
         if not isinstance(prj, dict):
             # 🐛 2026-10-15 实测: 有些同步版本把 cfg_snapshot.project 写成字符串 ⇒
             #   prj.get('nodes') 抛 AttributeError 直接 core dump 整页刷新。
-            #   这里兜底成"没有这项信息", 不假装有数 (页面上显示 '?')。
+            #   这里保障成"没有这项信息", 不假装有数 (页面上显示 '?')。
             prj = {}
         _at = str(snap.get("mcd_generated_at", "—"))
         _m_node = float(p.get("M", 1.0))
         # 🐛 2026-10-15 实测 (verify_mparam_page ④ 抓到的真缺陷): 本页原来只读**画布节点**的 M
-        #   (n_calib_mani.params.M 是画布默认 1.0), 而真源 config/calib/zmax_manifold.json 的 M 是
-        #   现场标定值 (实测 3.643) ⇒ 页面显示 1.0, 一按「✏️ 写 M」就把真源 3.643 覆盖成 1.0。
-        #   改法: 微调框**以真源为准** (真源没有才退回节点值), 两者不一致时在页头标出来。
+        #   (n_calib_mani.params.M 是画布默认 1.0), 而唯一依据 config/calib/zmax_manifold.json 的 M 是
+        #   现场标定值 (实测 3.643) ⇒ 页面显示 1.0, 一按「✏️ 写 M」就把唯一依据 3.643 覆盖成 1.0。
+        #   改法: 微调框**以唯一依据为准** (唯一依据没有才退回节点值), 两者不一致时在页头标出来。
         _m_src = None
         try:
             with open(os.path.join(self._root, "config", "calib", "zmax_manifold.json"), encoding="utf-8") as _f:
@@ -1550,10 +1550,10 @@ class MasterParamMView(QWidget):
                 f" · 回读 {snap.get('node_readback_at') or '✗'}")
         if _m_src is not None and abs(_m_src - _m_node) > 1e-9:
             # 行短 (≤115 字预算, verify_ui_slim 判据), 两个数放悬浮提示
-            _txt += " · ⚠真源 M≠节点"
-            self.lbl_node.setToolTip("真源 M = %.3f (config/calib/zmax_manifold.json)\n"
+            _txt += " · ⚠唯一依据 M≠节点"
+            self.lbl_node.setToolTip("唯一依据 M = %.3f (config/calib/zmax_manifold.json)\n"
                                      "画布节点快照 M = %.3f (n_calib_mani.params.M, 画布默认值)\n"
-                                     "✏️ 写 M 写的是**真源**那一份 (节点快照由 tools/ss_node_sync.py 同步)" %
+                                     "✏️ 写 M 写的是**唯一依据**那一份 (节点快照由 tools/ss_node_sync.py 同步)" %
                                      (_m_src, _m_node))
         self.lbl_node.setText(_txt)
         try:
@@ -1582,7 +1582,7 @@ class MasterParamMView(QWidget):
             ("M 含义", _cut(p.get("M_meaning", "—"), 46)),
             ("M 非自由", _cut(p.get("M_not_free", "—"), 46)),
             ("零回归", _cut(p.get("zero_regression", "—"), 46)),
-            ("真源", _cut(cv.get("真源", "—"), 46)),
+            ("唯一依据", _cut(cv.get("唯一依据", "—"), 46)),
             ("命令", cv.get("命令", "—")),
         ])
         self._fill(self.tbl["diag"], [
@@ -1601,18 +1601,18 @@ class MasterParamMView(QWidget):
             ("任务", f"{snap.get('tasks', tl.get('任务数', '—'))} 个 · 活跃 {snap.get('active_task', tl.get('活跃', '—'))} "
                      f"· 段覆盖 {tl.get('段覆盖', '—')} 节点"),
             ("工单", snap.get("orders", "—")),
-        ] + [("真源 " + k, v) for k, v in ent.items()])
-        # 🌍 万有引力表: 跟着这一页刷新一起重读真源 (老倪 2026-10-16: 主力/合力每拍都可能变)
+        ] + [("唯一依据 " + k, v) for k, v in ent.items()])
+        # 🌍 万有引力表: 跟着这一页刷新一起重读唯一依据 (老倪 2026-10-16: 主力/合力每拍都可能变)
         if getattr(self, "gravity", None) is not None:
             try:
                 self.gravity.refresh()
             except Exception:                                                       # noqa: BLE001
                 pass
-        # 🧹 2026-10-09 老倪「字数太多」: 命令行的 "python3 tools/" 前缀在**显示层**压掉 (节点/真源原串不动)
+        # 🧹 2026-10-09 老倪「字数太多」: 命令行的 "python3 tools/" 前缀在**显示层**压掉 (节点/唯一依据原串不动)
         self.lbl_cmd.setText(" · ".join(self._cmd_short(x) for x in (
             mv.get("命令"), cv.get("命令"), dv.get("命令"), tl.get("命令")) if x))
 
-    # ── ✏️ 写 M (真源 + 范围校验 + 只改 manifold_engine 键; 回来立刻回读) ──
+    # ── ✏️ 写 M (唯一依据 + 范围校验 + 只改 manifold_engine 键; 回来立刻回读) ──
     @staticmethod
     def _cmd_short(t):
         """命令行显示缩写: 去掉重复前缀 (数据本身一字不改)"""
@@ -1621,7 +1621,7 @@ class MasterParamMView(QWidget):
             s = s.replace(pre, "")
         return s.replace(" · ", " | ")
 
-    # ── 🎚🌍 主参数 M: 拖动条 ↔ 微调框 · 档位 → 真源/在役/物理读数 (2026-10-19 老倪「可操作 + 有信息连接」) ──
+    # ── 🎚🌍 主参数 M: 拖动条 ↔ 微调框 · 档位 → 唯一依据/在役/物理读数 (2026-10-19 老倪「可操作 + 有信息连接」) ──
     def _m_from_slider(self, v):
         try:
             self.sp_M.blockSignals(True)
@@ -1641,7 +1641,7 @@ class MasterParamMView(QWidget):
         self._mparam_tick()
 
     def _m_gear(self, M):
-        """档名 + 实测收敛拍 (真源 = zmax_data/ss_live/mparam_gravity.json; 读不到就只给档名)。
+        """档名 + 实测收敛拍 (唯一依据 = zmax_data/ss_live/mparam_gravity.json; 读不到就只给档名)。
 
         非档位值 (如现场标定 3.643) ⇒ 取**最近档**的实测拍并标 ≈, 让人知道"大概什么手感", 不冒充同档。
         """
@@ -1664,7 +1664,7 @@ class MasterParamMView(QWidget):
         return name, meas, approx
 
     def _mparam_tick(self):
-        """把 M 的**真源 / 在役引擎 / 物理读数**连到界面上 (缺源如实写缺, 不编数)。"""
+        """把 M 的**唯一依据 / 在役引擎 / 物理读数**连到界面上 (缺源如实写缺, 不编数)。"""
         if not hasattr(self, "lbl_minfo"):
             return
         try:
@@ -1705,9 +1705,9 @@ class MasterParamMView(QWidget):
             _a_txt = "—"
         bits = []
         if src_M is not None:
-            bits.append("真源 %.3f" % src_M)
+            bits.append("唯一依据 %.3f" % src_M)
         else:
-            bits.append("真源读不到")
+            bits.append("唯一依据读不到")
         if e_M is not None:
             _same = src_M is not None and abs(float(e_M) - src_M) < 1e-9
             bits.append("在役 %.3f%s" % (float(e_M), "✓" if _same else "⚠"))
@@ -1742,11 +1742,11 @@ class MasterParamMView(QWidget):
                              for r in _rows)
             self.lbl_minfo.setToolTip(
                 "主参数 M = 等效质量 (引擎二阶: a = ‖∇Φ‖/M)\n"
-                "真源 %s · 改于 %s\n在役引擎 %s · M=%s · inertia=%s · cycle=%s\n"
+                "唯一依据 %s · 改于 %s\n在役引擎 %s · M=%s · inertia=%s · cycle=%s\n"
                 "当前 Φ=%s ‖∇Φ‖=%s ⇒ a=%s /拍²\n"
                 "引力口径: 目标=引力源; M×4 ⇒ 耗时×2 (√M, 同开普勒周期直觉)\n"
                 "实测档位 (tools/manifold_m_gravity.py 真跑引擎, 起点夹角 %s°):\n%s\n"
-                "写入口: 选好 M → 「✏️ 写 M」→ 引擎按真源 mtime 自动重建 (无需重启)"
+                "写入口: 选好 M → 「✏️ 写 M」→ 引擎按唯一依据 mtime 自动重建 (无需重启)"
                 % (src_path, src_at or _mt, e_age, e_M, eng.get("inertia"), eng.get("cycle"),
                    phi, grad, _a_txt,
                    self._m_gravi.get("theta_deg", "?"), _tab or "  (未生成: 跑 tools/manifold_m_gravity.py --export)"))
@@ -1766,15 +1766,15 @@ class MasterParamMView(QWidget):
                                timeout=60, cwd=self._root)
             out = (r.stdout or "").strip().splitlines()[-1] if r.stdout else ""
             if r.returncode == 0 and out:
-                self._log(f"✏️ 主参数 M 已写入真源: {out}")
-                # 回读真源确认
+                self._log(f"✏️ 主参数 M 已写入唯一依据: {out}")
+                # 回读唯一依据确认
                 self._sync_node(silent=True)
             else:
                 self._log(f"❌ 写 M 失败 (exit={r.returncode}): {(r.stderr or '')[-300:]}")
         except Exception as ex:
             self._log(f"❌ 写 M 异常: {ex}")
 
-    # ── 📥 从真源同步到节点 (ss_node_sync) ──
+    # ── 📥 从唯一依据同步到节点 (ss_node_sync) ──
     def _sync_node(self, silent=False):
         import subprocess
         tool = os.path.join(self._root, "tools", "ss_node_sync.py")
@@ -1889,9 +1889,9 @@ def _fmt(x, n=4):
 
 
 class CalibTruthView(QWidget):
-    """🎛 标定 · 真源标定注册表 (只读) + 未标定项的**可执行**补救命令 (2026-10-09 老倪: 「增加一个标定类」)。
+    """🎛 标定 · 唯一依据标定注册表 (只读) + 未标定项的**可执行**补救命令 (2026-10-09 老倪: 「增加一个标定类」)。
 
-    真源 = `config/calib/zmax_calib.json` (由 `tools/zmax_params.py --sync` 合并生成; 所有层读它,
+    唯一依据 = `config/calib/zmax_calib.json` (由 `tools/zmax_params.py --sync` 合并生成; 所有层读它,
     禁止硬编码内外参)。本页与状态空间工程真连接: 引擎/视觉读的就是这些键, 而 `T_base_cam` /
     `plane_z` / `cell_geometry` 三项 **未标定** —— 正是阻塞 5 条工单与真机域模型的共同根因。
     本页**只读展示 + 给命令**; 唯一的写口 = 主参数 M (在「🧮 主参数 M」页, 走 write_manifold_M
@@ -1914,7 +1914,7 @@ class CalibTruthView(QWidget):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(6, 6, 6, 6)
         lay.setSpacing(6)
-        self.lbl_hd = QLabel("🎛 标定真源 (只读)")
+        self.lbl_hd = QLabel("🎛 标定唯一依据 (只读)")
         self.lbl_hd.setStyleSheet("color:#e6edf3;font-size:16px;font-weight:bold;background:transparent;")
         lay.addWidget(self.lbl_hd)
         self.lbl_src = QLabel("…")
@@ -1929,7 +1929,7 @@ class CalibTruthView(QWidget):
         self.btn_copy = QPushButton("📋 复制全部")
         self.btn_copy.setToolTip("把标定注册表逐行复制到剪贴板 (含未标定项与补救命令)")
         self.btn_copy.clicked.connect(self._copy)
-        self.btn_path = QPushButton("📂 复制真源路径")
+        self.btn_path = QPushButton("📂 复制唯一依据路径")
         self.btn_path.clicked.connect(lambda: self._clip(self.CALIB))
         for b in (self.btn_refresh, self.btn_copy, self.btn_path):
             b.setStyleSheet("QPushButton{background:#21262d;color:#e6edf3;border:1px solid #30363d;"
@@ -1939,7 +1939,7 @@ class CalibTruthView(QWidget):
         bar.addStretch(1)
         lay.addLayout(bar)
         self.tbl = QTableWidget(0, 4)
-        self.tbl.setHorizontalHeaderLabels(["参数", "值", "状态", "真源 / 补救"])
+        self.tbl.setHorizontalHeaderLabels(["参数", "值", "状态", "唯一依据 / 补救"])
         self.tbl.verticalHeader().setVisible(False)
         self.tbl.setWordWrap(True)
         self.tbl.setColumnWidth(0, 108)
@@ -1970,7 +1970,7 @@ class CalibTruthView(QWidget):
         try:
             d = json.load(open(self.CALIB, encoding="utf-8"))
         except Exception as ex:
-            return None, {}, f"⚠️ 读不到真源 {self.CALIB}: {ex}"
+            return None, {}, f"⚠️ 读不到唯一依据 {self.CALIB}: {ex}"
         rows = []
         for k, v in d.items():
             if k.startswith("_"):
@@ -1999,7 +1999,7 @@ class CalibTruthView(QWidget):
         miss = [r["k"] for r in rows if r["uncal"]]
         _rel = os.path.relpath(self.CALIB, self._root) if hasattr(self, "_root") else self.CALIB
         self.lbl_src.setText(
-            f"真源 {_rel} · {len(rows)} 段 · 未标定 {len(miss)}: {', '.join(miss) or '—'}\n"
+            f"唯一依据 {_rel} · {len(rows)} 段 · 未标定 {len(miss)}: {', '.join(miss) or '—'}\n"
             f"更新 {d.get('_generated_at', '—')} · 各层都读它 (禁硬编码); 写口只有「主参数 M」页")
         self.tbl.setRowCount(0)
         for r in rows:
@@ -2016,7 +2016,7 @@ class CalibTruthView(QWidget):
         self.tbl.resizeRowsToContents()
         cmds = "\n".join("· " + self.FIX[k] for k in miss if k in self.FIX)
         self.lbl_cmd.setText(("⚠️ 未标定 %d 项 → 现场命令:\n%s" % (len(miss), cmds))
-                             if cmds else "✅ 真源无未标定缺口")
+                             if cmds else "✅ 唯一依据无未标定缺口")
 
     def _text(self):
         out = [self.lbl_src.text(), ""]
@@ -2041,7 +2041,7 @@ class ParamCenterSideView(QWidget):
     老倪: 「画布右侧栏, 保留 主参数：对应流形引擎; 数据总线：对应数据空间的 Trace;
     参数中心：对应数据库服务的所有参数; 删除 运行开关。」
 
-    真源 = 工程库只读服务 ``http://127.0.0.1:8798/params`` (engineering_db.serve → load_params();
+    唯一依据 = 工程库只读服务 ``http://127.0.0.1:8798/params`` (engineering_db.serve → load_params();
     库 = data/database/zmax/zmax_engineering.db, 787 参数 / 9 类)。
     🔴 本页**只显示不写**: 改数的唯一入口是主界面「🎛 参数中心」页 (校验→影响链→备份→留痕),
        两条写路径必然打架。
@@ -2065,7 +2065,7 @@ class ParamCenterSideView(QWidget):
         self.lbl_title.setStyleSheet("color:#e6edf3; font-size:15px; font-weight:700; background:transparent;")
         v.addWidget(self.lbl_title)
 
-        self.lbl_src = QLabel("真源: 127.0.0.1:8798/params (工程库只读服务)")
+        self.lbl_src = QLabel("唯一依据: 127.0.0.1:8798/params (工程库只读服务)")
         self.lbl_src.setWordWrap(True)
         self.lbl_src.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.lbl_src.setStyleSheet("color:#9aa4b2; font-size:12px; background:transparent;")
@@ -2079,7 +2079,7 @@ class ParamCenterSideView(QWidget):
 
         bar = QHBoxLayout(); bar.setSpacing(4)
         self.ed = QLineEdit()
-        self.ed.setPlaceholderText("🔎 搜数字 (名字/真源路径)…")
+        self.ed.setPlaceholderText("🔎 搜数字 (名字/唯一依据路径)…")
         self.ed.setStyleSheet("QLineEdit{background:#161b22; color:#e6edf3; border:1px solid #30363d;"
                               " border-radius:4px; padding:4px; font-size:13px;}")
         self.ed.textChanged.connect(self._refill)
@@ -2132,7 +2132,7 @@ class ParamCenterSideView(QWidget):
         cnt = {}
         for x in self.rows:
             cnt[x.get("cat") or "?"] = cnt.get(x.get("cat") or "?", 0) + 1
-        self.lbl_src.setText("真源: 127.0.0.1:8798/params · 库 %s · 构建 %s"
+        self.lbl_src.setText("唯一依据: 127.0.0.1:8798/params · 库 %s · 构建 %s"
                              % ("data/database/zmax/zmax_engineering.db", self.built_at or "?"))
         self.lbl_cnt.setText("参数 %d 条 ｜ %s" % (len(self.rows), " · ".join(
             "%s %d" % (self.CAT_CN.get(k, k), v) for k, v in sorted(cnt.items(), key=lambda kv: -kv[1]))))
@@ -2152,14 +2152,14 @@ class ParamCenterSideView(QWidget):
                 if j == 2:
                     it.setForeground(QBrush(QColor("#7ee787" if x.get("writable") in (1, "1", True)
                                                    else "#9aa4b2")))
-                it.setToolTip("%s\n真源: %s\n类: %s · 状态: %s\n范围: %s ~ %s %s"
+                it.setToolTip("%s\n唯一依据: %s\n类: %s · 状态: %s\n范围: %s ~ %s %s"
                               % (x.get("param_id"), x.get("source"), x.get("cat"), x.get("status"),
                                  x.get("min"), x.get("max"), x.get("unit") or ""))
                 self.tbl.setItem(i, j, it)
         self.tbl.setColumnWidth(0, 62); self.tbl.setColumnWidth(1, 118)
         self.tbl.setColumnWidth(2, 86)
         if not str(self.lbl_hint.text()).startswith("🔎"):
-            self.lbl_hint.setText("显示 %d / %d 条 · 双击一行 = 看真源与范围; 改数请用主界面「🎛 参数中心」页"
+            self.lbl_hint.setText("显示 %d / %d 条 · 双击一行 = 看唯一依据与范围; 改数请用主界面「🎛 参数中心」页"
                                   % (len(rows), len(self.rows)))
 
     def _on_dbl(self, item):
@@ -2204,8 +2204,8 @@ class ModelTreeDock(QWidget):
         # 2026-10-16 老倪: 「四元数不应该是 4 个数么?」—— 右栏默认只有 ~682px, 四个数一行摆不下
         #   (M 页套在 QScrollArea 里, 里面表的宽度不会顶开外侧布局)。⇒ 直接把右栏最小宽提到 1080:
         #   每列可用 ~155px ⇒ 13px 字号一行摆 4 个数; 他自己往右拖还能更宽 (到 1520 就能显 2 位小数)。
-        # 🖱 2026-10-19 老倪「横向不动了」根因: 这里写死 1080 后, 右栏最小宽 = 1080,
-        #   加上画布最小宽 ⇒ 两者之和超过可用宽, QSplitter 两端都被顶死 ⇒ 拖不动 (看着"卡住")。
+        # 🖱 2026-10-19 老倪「横向不动了」根因: 这里预先固定 1080 后, 右栏最小宽 = 1080,
+        #   加上画布最小宽 ⇒ 两者之和超过可用宽, QSplitter 两端都被顶死 ⇒ 拖不动 (看着"阻塞")。
         #   现在: 最小可缩到 520 (够摆 2 个数/行, 再窄就横向滚动), 1080 只作为**默认**宽度
         #   (由 splitter 的 setSizes / 落盘值给), 想拖宽随时能拖。
         self.setMinimumWidth(580)            # 表的最小内容宽 560 + 边距 ⇒ 再窄就横向滚动
@@ -2226,7 +2226,7 @@ class ModelTreeDock(QWidget):
         # 🧭 2026-10-09 老倪: 「测量类只保留一行 + 增加一个标定类」→ 4 行, 全部真连接
         # 🧭 2026-10-15 老倪: 「画布右侧栏, 保留 主参数(流形引擎) · 数据总线(数据空间 Trace) ·
         #   参数中心(数据库服务的所有参数); 删除 运行开关」⇒ 下拉 3 行。
-        #   「🎛 标定真源」与「🔧 运行开关」两页**对象保留但不进下拉** (标定数字都在参数中心的 🟡calib 类里;
+        #   「🎛 标定唯一依据」与「🔧 运行开关」两页**对象保留但不进下拉** (标定数字都在参数中心的 🟡calib 类里;
         #   运行开关的 6 个 QCheckBox 对象仍被引擎读, 见 attach_run_switches) —— 一行可复活。
         self.cmb_view.addItems(["🧮 主参数 M",
                                 "📏 数据总线",
@@ -2322,7 +2322,7 @@ class ModelTreeDock(QWidget):
         self.mparam.setVisible(False)
         lay.addWidget(self.mparam, 1)
 
-        # 🎛 2026-10-09 老倪: 「增加一个标定类」→ 真源标定注册表 (config/calib/zmax_calib.json 只读)
+        # 🎛 2026-10-09 老倪: 「增加一个标定类」→ 唯一依据标定注册表 (config/calib/zmax_calib.json 只读)
         #   + 未标定项 (T_base_cam/plane_z/cell_geometry) 的可执行现场标定命令
         self.calib = CalibTruthView(module)
         self.calib.setVisible(False)
@@ -2499,14 +2499,14 @@ class ModelTreeDock(QWidget):
             return 0
 
     # 视图键顺序 = cmb_view 条目顺序 (🧭 2026-10-15 老倪: 主参数 · 数据总线 · 参数中心 ⇒ 3 行;
-    #   标定真源/运行开关两页撤出下拉, 对象保留: self.calib / self.run_cfg)
+    #   标定唯一依据/运行开关两页撤出下拉, 对象保留: self.calib / self.run_cfg)
     VIEW_KEYS = ("mparam", "bus", "param_center")
 
     def view_is(self, key):
         """当前侧栏视图 == key ?
 
         🔴 2026-10-13 (老倪: 「跑过了, 要有数据总线数据」) 根因之一: 下游 (simulink_module)
-        用**写死的索引**判"用户是否停在数据总线页" —— `cmb_view.currentIndex() == 9`。
+        用**固定不变的索引**判"用户是否停在数据总线页" —— `cmb_view.currentIndex() == 9`。
         侧栏在 v5.23/v5.24 重排成 4 项 (VIEW_KEYS 表) 后 "数据总线" 变成 **index 1**
         ⇒ 那三处判定全成死分支, 运行时不再往面板喂数据, 看起来"总线永远是空的"。
         这里给一个**表驱动**的判定口, 以后重排只改 VIEW_KEYS 一处, 不再有死分支。
@@ -2518,9 +2518,9 @@ class ModelTreeDock(QWidget):
                 return keys[i] == key
         except Exception:
             pass
-        try:                                    # 兜底: 按显示文案判定
+        try:                                    # 保障: 按显示文案判定
             _lbl = {"mparam": "主参数", "bus": "数据总线", "param_center": "参数中心",
-                    "calib": "标定真源", "run_cfg": "运行开关"}
+                    "calib": "标定唯一依据", "run_cfg": "运行开关"}
             return _lbl.get(key, key) in str(self.cmb_view.currentText() or "")
         except Exception:
             return False

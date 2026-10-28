@@ -193,7 +193,7 @@ def main():
                                         "train_steps_per_s": train_throughput(), "via": "DDS"}
                 elif be == "mps" or "mac" in name.lower():
                     machines["mac"] = dict(d, via="DDS")
-            # Mac 兜底: DDS 里没有 → 从 relay 读（标注为 relay-http，不冒充 DDS）
+            # Mac 保障: DDS 里没有 → 从 relay 读（标注为 relay-http，不冒充 DDS）
             if not any("mac" in k.lower() for k in machines):
                 try:
                     import urllib.request as _ur
@@ -230,7 +230,7 @@ def main():
                 _m4["gpu"] = _g4
                 _m4["via"] = "DDS+local"   # 本机项: 实测为准(已同时经 DDS 对外发布)
                 _m4["train_steps_per_s"] = train_throughput()
-            if not machines.get("4060"):        # DDS 没取回本机 → 用直采兜底（并标注）
+            if not machines.get("4060"):        # DDS 没取回本机 → 用直采保障（并标注）
                 machines["4060"] = dict(lh, train_steps_per_s=train_throughput(), via="local")
             payload = {"meta": {"source": "dds_aggregator", "type": "hw_metrics", "project": "zmax_hw",
                                 "role": "aggregate", "machines": list(machines.keys()),

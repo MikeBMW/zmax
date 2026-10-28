@@ -5,7 +5,7 @@ Arm A = 脚本开环 (② 段固定 ramp_yaw(+90°), 现状发布行为)
 Arm B = 流形预测器逐帧决策 (ManifoldYawActuator: 候选角打分取代价最小)
 
 口径: 同链路同 seed/重复数; 记 success/steps/② yaw 指令/插入深度/拔出/AOI/η/
-预测器前向次数。输出 JSON + 控制台表。**不做任何写死/回填, 失败如实记。**
+预测器前向次数。输出 JSON + 控制台表。**不做任何预先固定/回填, 失败如实记。**
 用法: gui-venv311/bin/python tools/ab_mani_yaw.py [--seeds 0,2,5] [--reps 2]
 """
 import argparse

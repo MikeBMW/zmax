@@ -3,14 +3,14 @@
 """🎯 判据: 原子技能「目标输出口」(SK0x.next_target / command) 是否真成立
 
 老倪 (2026-10-16): 「这些原子任务都有输出么? 最终的 MoveIt 是怎么选择实际的原子任务动作的」
-落地方向: 目标位姿的真源搬到技能类, 仿真 (engine/sim.py::_stage_target) 与真机
+落地方向: 目标位姿的唯一依据搬到技能类, 仿真 (engine/sim.py::_stage_target) 与真机
 (tools/l2_daemon.py::build_move) 两个消费者共用同一份规则。
 
 判据 (全部真跑):
   ① 8 段全覆盖: 插拔链 8 段每段都有技能类且都声明了 TARGET (没有"没目标的技能")
   ② 仿真逐位一致: SK0x.next_target(ctx) 与引擎旧公式 (含真夹持偏移) 严格相同 (<1e-12, 随机 300 组几何)
   ③ 常量同源: engine/sim.py 的 STAGE_APPROACH_H/ALIGN/DESCEND/LIFT == 技能类 params (不是两份数)
-  ④ 引擎真走技能口: 跑一遍引擎, 逐拍核对 _target_src 全部来自技能类 (没有一拍落到兜底公式)
+  ④ 引擎真走技能口: 执行一遍引擎, 逐拍核对 _target_src 全部来自技能类 (没有一拍落到保障公式)
   ⑤ 缺上下文不假数: 无 peg/hole 时 next_target → None (不返回 0 目标); 未知段 → None
   ⑥ 真机点位解析不变: 97 条在役技能 (无 atomic 字段) 的 build_move 结果与改动前口径一致;
      声明 atomic 的技能走技能口且位置 == 点库位置 (opt-in 才有变化)
@@ -89,7 +89,7 @@ def main() -> int:
         for st in stages:
             cls = SK.skill_for(st)
             got = cls.next_target(ctx=ctx)
-            # 旧公式 (sim.py 兜底分支的同一算式)
+            # 旧公式 (sim.py 保障分支的同一算式)
             if st == "接近":
                 exp = peg + np.array([0, 0, sim.STAGE_APPROACH_H])
             elif st == "对位":
@@ -119,7 +119,7 @@ def main() -> int:
         cv = float(getattr(SK, cls_n).params[pkey])
         if abs(mv - cv) > 1e-15:
             bad.append(f"{mod_c}={mv} vs {cls_n}.{pkey}={cv}")
-    ck("③引擎常量 == 技能类 params (单一真源)", not bad, "；".join(bad) or "4 个偏置全部相同")
+    ck("③引擎常量 == 技能类 params (单一唯一依据)", not bad, "；".join(bad) or "4 个偏置全部相同")
 
     # ── ④ 引擎真走技能口 (逐拍 target 来源) ──────────────────────────────
     os.environ.pop("ZMAX_SKILL_FF", None)

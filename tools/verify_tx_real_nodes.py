@@ -31,7 +31,7 @@ def chk(name, cond, extra=""):
 
 from lerobot.middleware import attribution as A                               # noqa: E402
 
-# 节点名真源 = 画布/工程库经 attribution 读出来的那份 (面板与 Trace 用的是同一个字典)
+# 节点名唯一依据 = 画布/工程库经 attribution 读出来的那份 (面板与 Trace 用的是同一个字典)
 NAMES = set(str(v) for v in (A._load_nodes() or {}).values() if v)
 chk("画布节点名读到", len(NAMES) > 50, f"{len(NAMES)} 个")
 

@@ -9,7 +9,7 @@
    (`models/manifold_engine.npz`: `mu(43) + W(43,16)`, n_fit=120 帧)。它没有视觉输入 —— 相机画面
    与引擎之间**一根线都没有**，画面里的信息进不了潜空间。
 2. **"预测"是空的**。`Encoder.lift`(丛映射) 在引擎里是声明未接的空壳；潜坐标不是被预测出来的。
-3. **意图解码缺输入**。INTACT 在画布上挂着 `ssintact_dec`，但引擎侧没有把潜坐标喂给它；
+3. **意图解码缺输入**。INTACT 在画布上挂着 `ssintact_dec`，但引擎侧没有把潜坐标提供给它；
    且 INTACT 自身的动作块(chunk)返回空/NaN ⇒ 它的 `z_pred` 也是 NaN (见 §5)。
 
 ## 2. 设计 (三段分工，每段都可单独验证)
@@ -43,7 +43,7 @@
 * 落点：`tools/ss_engine_loop.py --encoder l4` (默认 `pca`)。tap 每行带 `encoder` / `z_source` /
   `z_latent` —— 上下游能核出这一周期喝的是哪条编码链。
 
-## 4. 真源与标定
+## 4. 唯一依据与标定
 
 | 件 | 路径 | 说明 |
 |---|---|---|
@@ -97,7 +97,7 @@ u_int  ← INTACT 意图解码器 (冻结 W0)
 
 设计取舍 (为什么这么写):
 - **LoRA 只改 ΔW, 不碰 W0** ⇒ 与 `tools/lora_inject.py` 同口径 (112 层, r=8, α=16, scaling 2.00);
-  产物真源 = `zmax_data/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6lora_200/weights_epoch_1.pt`
+  产物唯一依据 = `zmax_data/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6lora_200/weights_epoch_1.pt`
   (含 lora_A/B)。**merged_* 一律排除** —— 那是已折叠 = 改了原权重, 与口径冲突。
 - **元任务预测 → LoRA 增益**: 元任务预测值 (meta_pred.json: top-k 元任务 + 层 + 得分) 里 L4/L5 层的
   焦点权重做 γ_eff ∈[0,1]; 预测 frozen(驱动扭矩恒定) 时如实标注"增益≈均匀"。
@@ -125,7 +125,7 @@ u_int  ← INTACT 意图解码器 (冻结 W0)
 
 ```
 ① 画布拓扑 (边全 + 旁路已删)     ② UI 顺序 x 递增 10016→10430→10872→11346→11666→12166
-③ 节点执行注册 73/74 (未命中 1 = ss_moe, 老账)   ④ 产物真源 112 组 r8/α16 scaling 2.00 (merged 已排除)
+③ 节点执行注册 73/74 (未命中 1 = ss_moe, 老账)   ④ 产物唯一依据 112 组 r8/α16 scaling 2.00 (merged 已排除)
 ⑤ 数学自检 9/9 (Δu 非零 · 限幅真生效 · 无产物恒等 · 锥投影 · 帕累托)
 ⑥ 真被消费: LoRA→专家预测器→接触流形→性能流形 四节点连跑, ⛓ 承接日志 4 条
 ⑦ 元任务预测门控 γ_eff=0.822 (10 候选/L4-L5 3 个, frozen 如实标) · 原权重冻结

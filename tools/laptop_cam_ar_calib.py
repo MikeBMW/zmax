@@ -256,7 +256,7 @@ def main() -> int:
         "at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "how": "臂上相机绿锚(深度+手眼)→base; 笔记本相机同一批绿锚→像素; 枚举配对 + LM 解 f/rvec/t; "
                "'TCP 投影落在运动手臂掩膜' 作独立验收",
-        "caveat": "绿锚近共面 ⇒ 沿视轴方向弱约束; 用运动掩膜命中率兜底; 帧龄/时刻随采样记录",
+        "caveat": "绿锚近共面 ⇒ 沿视轴方向弱约束; 用运动掩膜命中率保障; 帧龄/时刻随采样记录",
     }
     if passes:
         with open(OUT, "w", encoding="utf-8") as fh:

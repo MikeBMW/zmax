@@ -32,7 +32,7 @@ def cam_loop(dev: int, w: int, h: int, fps: float, quality: int) -> None:
         if not cap.isOpened():
             cap = cv2.VideoCapture(dev)
             with LOCK:
-                LATEST.update(ok=False, err="相机打不开 /dev/video%d" % dev)
+                LATEST.update(ok=False, err="相机无法打开 /dev/video%d" % dev)
             STOP.wait(2.0)
             continue
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)

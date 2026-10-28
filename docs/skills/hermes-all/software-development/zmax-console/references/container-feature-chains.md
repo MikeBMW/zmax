@@ -4,9 +4,9 @@
 
 新家容器 = 纯 Docker Desktop (192.168.65.x): **无 /mnt/c、无 explorer.exe、无 wsl.exe、
 无 WSL interop**。凡 GUI 功能依赖 Windows 通道 (explorer 打开 / 盘符路径 / cmd.exe) 的,
-在容器内**必挂**, 且用户表现为"功能点了没反应/打不开"。
+在容器内**必挂**, 且用户表现为"功能点了没反应/无法打开"。
 
-## 实例: 右键「打开源代码」打不开 (open_node_source)
+## 实例: 右键「打开源代码」无法打开 (open_node_source)
 
 - 症状: 状态空间画布右键任意节点 →「打开源代码」无反应。日志 `⚠️ 打开源码失败`。
 - 根因: 老链路 (2026-08-12 WSL 老家写的) = `shutil.copy2(path, "/mnt/c/zmax_src_view/...")`

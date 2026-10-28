@@ -4,7 +4,7 @@
 
 ## 1. "Could not parse stylesheet of object QPushButton(0x…)" 定位法
 
-症状: 终端反复刷同一批地址 (几秒十几条), 界面看不出任何异常, 用户只说"这是啥? 不要显示"。
+症状: 终端反复刷同一批地址 (几秒十几条), 界面看不出任何异常, 用户只说"这是什么? 不要显示"。
 
 1. `qInstallMessageHandler` 里用正则从消息抠地址:
    `re.search(r"QPushButton\((0x[0-9a-f]+)\)", msg)`。
@@ -14,7 +14,7 @@
    `background:...;border-radius:4px;padding:5px 12px;` (没有 `QPushButton{}` 包起来),
    后面又用 `b.styleSheet() + "QPushButton:checked{...}"` 拼接 ⇒ 裸声明直接跟选择器, 解析失败,
    每次 repolish 刷一条。修法: 把 base 包成 `QPushButton{...}` 规则块, 拼接就合法。
-4. 兜底: 主程序 `QApplication(...)` 之后装一层 handler, 只吞
+4. 保障: 主程序 `QApplication(...)` 之后装一层 handler, 只吞
    `Could not parse stylesheet` 与 `propagateSizeHints`, 其他 Qt 消息照打 (不要整类静音)。
 
 🔴 handler 里打印中文必须走字节口:

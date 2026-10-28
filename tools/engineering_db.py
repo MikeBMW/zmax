@@ -10,7 +10,7 @@
   2026-10-09 路径定版: 产品数据统一放 data/database/<产品>/ (本平台 = data/database/zmax/)。
 
 单一文件: data/database/zmax/zmax_engineering.db (SQLite)   ← 标准产品数据路径
-  真源 (人可编·进 git)                    →  表
+  唯一依据 (人可编·进 git)                    →  表
   ─────────────────────────────────────────────────────────────────────────
   config/platform/zmax_platform.json      →  platform / products / product_features / subsystems / subsystem_axes
   data/database/zmax/*.proj (7 段)       →  projects / project_sections
@@ -23,9 +23,9 @@
   关系图                                    →  links (pf→subsys, fn→module, pf→capability, module→code)
 
 用法:
-  engineering_db.py build [--project X.proj] [--db 路径]    # 重建库 (真源 → 单文件)
+  engineering_db.py build [--project X.proj] [--db 路径]    # 重建库 (唯一依据 → 单文件)
   engineering_db.py stats                                   # 各表行数
-  engineering_db.py check                                   # 同步判据 (真源↔库↔模块↔代码 一致)
+  engineering_db.py check                                   # 同步判据 (唯一依据↔库↔模块↔代码 一致)
   engineering_db.py query "product Z700" / "system sys2" / "fn FN-…" / "modules" / "sql SELECT …"
   engineering_db.py load --json out.json                    # 导出 (GUI 也可直接 import 本模块 load())
   engineering_db.py serve [--port 8798]                     # 只读 JSON 服务 (GUI/外部消费者)
@@ -110,7 +110,7 @@ def _read(p):
         return None
 
 
-# ── 真源读取 ──────────────────────────────────────────────────────────────
+# ── 唯一依据读取 ──────────────────────────────────────────────────────────────
 def load_platform():
     return json.loads(_read(PLATFORM_SRC) or "{}")
 
@@ -179,7 +179,7 @@ def parse_feature_dbc():
 
 
 def parse_verification_features():
-    """verification_layer.py 的 FEATURES 列表 (ast 静态解析, 不 import) → 验证/诊断项真源"""
+    """verification_layer.py 的 FEATURES 列表 (ast 静态解析, 不 import) → 验证/诊断项唯一依据"""
     src = _read(VERIF_SRC)
     if not src:
         return []
@@ -198,7 +198,7 @@ def parse_verification_features():
 
 
 def load_node_logic():
-    """引擎节点逻辑真源 → [(逻辑key, 匹配关键字, doc, 文件, 行号)] (模块↔代码 链接用)"""
+    """引擎节点逻辑唯一依据 → [(逻辑key, 匹配关键字, doc, 文件, 行号)] (模块↔代码 链接用)"""
     out = []
     try:
         sys.path.insert(0, os.path.join(ROOT, "src"))
@@ -282,7 +282,7 @@ def build(db=DB_DEFAULT, proj_path=None, quiet=False):
         }),
     }
     c.executemany("INSERT INTO meta(k,v) VALUES(?,?)", list(meta.items()))
-    # 自动同步: 附加真源 (params 表现算依赖) 的指纹 —— ensure_fresh 用它判断库是否落后
+    # 自动同步: 附加唯一依据 (params 表现算依赖) 的指纹 —— ensure_fresh 用它判断库是否落后
     try:
         c.execute("INSERT INTO meta(k,v) VALUES(?,?)",
                   ("src_extra", _j({os.path.relpath(_p, ROOT): _hash_file(_p)
@@ -380,8 +380,8 @@ def build(db=DB_DEFAULT, proj_path=None, quiet=False):
         return best if score >= 6 else None
 
     used_rows, unmatched = set(), []
-    # 🆕 2026-10-14 老倪: 「你来修改每个功能点的描述」⇒ 描述真源 = data/database/zmax/function_notes.json
-    #   (每个功能点 work 干什么活 / pain 卡在哪 / state 当前状态; 朴素工程化口径, 禁词与"须含真源事实"由
+    # 🆕 2026-10-14 老倪: 「你来修改每个功能点的描述」⇒ 描述唯一依据 = data/database/zmax/function_notes.json
+    #   (每个功能点 work 做什么 / pain 阻塞点 / state 当前状态; 朴素工程化口径, 禁词与"须含唯一依据事实"由
     #    tools/verify_function_notes.py 判据把住)。这里把描述并进 functions 表, 库/文档/GUI 一处取数。
     _notes_doc = {}
     try:
@@ -390,7 +390,7 @@ def build(db=DB_DEFAULT, proj_path=None, quiet=False):
         _notes_doc = {}
     # 🐛 2026-10-25: 画布插/删节点会让 FN-<SYS>-NN 的**位置编号整体平移** (实测插 1 个节点 ⇒ 27 个功能点
     #   的描述全部张冠李戴, 判据 ⑦b 反而"看起来满员")。⇒ 描述优先按**节点名**取 (notes_by_name),
-    #   编号键仅作历史兼容兜底。编号仍保留在 functions.fn_id 上 (对外引用/工单不改)。
+    #   编号键仅作历史兼容保障。编号仍保留在 functions.fn_id 上 (对外引用/工单不改)。
     _NOTES_BY_NAME = (_notes_doc.get("notes_by_name") or {}) if isinstance(_notes_doc, dict) else {}
     NOTES = (_notes_doc.get("notes") or {}) if isinstance(_notes_doc, dict) else {}
     fno = 0
@@ -477,7 +477,7 @@ def build(db=DB_DEFAULT, proj_path=None, quiet=False):
                 c.execute("INSERT INTO links VALUES(?,?,?,?,?)", ("capability", cap["bo_id"],
                                                                   "interface", "IF-%s-%s" % (cap["bo_id"], d), d))
 
-    # 验证/诊断项真源
+    # 验证/诊断项唯一依据
     for v in verifs:
         try:
             c.execute("INSERT OR REPLACE INTO verification_features VALUES(?,?,?,?,?,?,?)",
@@ -549,7 +549,7 @@ def build(db=DB_DEFAULT, proj_path=None, quiet=False):
         print("[engineering_db] 参数注册表摄取失败: %r" % (_e,))
 
     # ── 性能指标定义 (光模块精细操作: 机器人学口径 + 光模块工艺口径) ──
-    # 真源 config/platform/zmax_perf_spec.json。value = **目标值/规格** (不是实测值), 指标类记 kind='spec'。
+    # 唯一依据 config/platform/zmax_perf_spec.json。value = **目标值/规格** (不是实测值), 指标类记 kind='spec'。
     # 入库理由: ① 单一工程库要能看到「性能指标清单」(配置中心/功能清单页取同一份)
     #           ② 改指标 ⇒ 工程库 sha 变 ⇒ 文档 manifest 一致性判据能抓到 (否则会被漏掉)
     try:
@@ -637,7 +637,7 @@ def log_param_event(ev, db=DB_DEFAULT):
     """把一条改数事件写进唯一工程库的 param_events 表 (运行时唯一留痕处, 没有 jsonl)。
 
     ev: {param, cn, old, new, unit, cat, source, written, msg} —— 由 param_registry._log_event 调用。
-    返回 True/False (库不可写时不抛, 只报错 —— 改数本身已经落真源, 留痕失败不该让改数看起来失败)。
+    返回 True/False (库不可写时不抛, 只报错 —— 改数本身已经落唯一依据, 留痕失败不该让改数看起来失败)。
     """
     try:
         os.makedirs(os.path.dirname(db), exist_ok=True)
@@ -736,7 +736,7 @@ def check(db=DB_DEFAULT):
     if dupn:
         bad.append("dup fn %d" % dupn)
 
-    # ⑥ 数据库 ↔ 真源 哈希一致 (重建幂等)
+    # ⑥ 数据库 ↔ 唯一依据 哈希一致 (重建幂等)
     srcs = json.loads(q1("SELECT v FROM meta WHERE k='sources'"))
     drift = []
     for name, (path, h) in srcs.items():
@@ -745,11 +745,11 @@ def check(db=DB_DEFAULT):
         now = _sha(_read(path) or "")
         if h and now != h:
             drift.append(name)
-    print(("  ✅ " if not drift else "  ❌ ") + "⑥ 库与真源一致 (漂移 %s)" % (drift or "无"), flush=True)
+    print(("  ✅ " if not drift else "  ❌ ") + "⑥ 库与唯一依据一致 (漂移 %s)" % (drift or "无"), flush=True)
     if drift:
         bad.append("drift %s" % drift)
-    # ⑦b 功能点描述 (老倪 2026-10-14: 「你来修改每个功能点的描述」) —— 每条功能要有"干什么活/卡在哪/状态",
-    #     且不许出现宣传话术 (禁词表与真源事实要求由 tools/verify_function_notes.py 做细判)。
+    # ⑦b 功能点描述 (老倪 2026-10-14: 「你来修改每个功能点的描述」) —— 每条功能要有"做什么/阻塞点/状态",
+    #     且不许出现宣传话术 (禁词表与唯一依据事实要求由 tools/verify_function_notes.py 做细判)。
     try:
         n_note = q1("SELECT COUNT(*) FROM functions WHERE note_work IS NOT NULL AND note_work<>''")
         n_fn3 = q1("SELECT COUNT(*) FROM functions")
@@ -758,7 +758,7 @@ def check(db=DB_DEFAULT):
         _txt = " ".join((r[0] or "") + " " + (r[1] or "") + " " + (r[2] or "")
                         for r in con.execute("SELECT note_work,note_pain,note_state FROM functions"))
         _hit = [b for b in _ban if b in _txt]
-        print("  %s ⑦b 功能点描述 %d/%d 条 (干什么活/卡在哪/状态) · 禁词命中 %d" %
+        print("  %s ⑦b 功能点描述 %d/%d 条 (做什么/阻塞点/状态) · 禁词命中 %d" %
               ("✅" if n_note == n_fn3 and not _hit else "❌", n_note, n_fn3, len(_hit)), flush=True)
         if n_note != n_fn3 or _hit:
             bad.append("fn_notes %d/%d ban=%s" % (n_note, n_fn3, _hit))
@@ -768,7 +768,7 @@ def check(db=DB_DEFAULT):
     # ⑦ 模块→代码 链接非空
     nmod = q1("SELECT COUNT(*) FROM modules")
     ncode = q1("SELECT COUNT(DISTINCT module_name) FROM module_code")
-    print("  ✅ ⑦ 模块 %d 个, 其中 %d 个链到引擎代码真源 (%s)" %
+    print("  ✅ ⑦ 模块 %d 个, 其中 %d 个链到引擎代码唯一依据 (%s)" %
           (nmod, ncode, q1("SELECT COUNT(*) FROM module_code") and "nodes/library.py"), flush=True)
     # ⑧ 参数面: 全局可改数字 (系统 ↔ 功能 ↔ 代码 同步的数据面)
     try:
@@ -782,7 +782,7 @@ def check(db=DB_DEFAULT):
             bad.append("params<100")
         srcs_p = [r[0] for r in con.execute("SELECT DISTINCT source FROM params").fetchall()]
         miss_p = [s_ for s_ in srcs_p if not os.path.exists(os.path.join(ROOT, s_))]
-        print("  %s ⑧b 每个数字的真源都在盘上 (%d 个来源%s)" %
+        print("  %s ⑧b 每个数字的唯一依据都在盘上 (%d 个来源%s)" %
               ("✅" if not miss_p else "❌", len(srcs_p), "" if not miss_p else " 缺:" + str(miss_p)), flush=True)
         if miss_p:
             bad.append("param_src_missing %s" % miss_p)
@@ -1002,7 +1002,7 @@ def serve(port=8798, db=DB_DEFAULT):
                     body = payload("capabilities", D["capabilities"])
                 elif p == "/params":
                     # 🎛 2026-10-15 老倪: 「参数中心：对应数据库服务的所有参数」
-                    #   ⇒ 画布右侧栏「参数中心」读的就是这条端点 (一处真源; 侧栏只显示, 不另算)
+                    #   ⇒ 画布右侧栏「参数中心」读的就是这条端点 (一处唯一依据; 侧栏只显示, 不另算)
                     _ps = load_params(db)
                     body = payload("params", {"total": len(_ps), "by_cat": _by_cat(_ps), "params": _ps})
                 elif p.startswith("/param/"):
@@ -1042,7 +1042,7 @@ def serve(port=8798, db=DB_DEFAULT):
 
 
 def _meta_sources(db=DB_DEFAULT):
-    """build 时记下的真源 (路径 → sha256) —— 自动同步的判据。"""
+    """build 时记下的唯一依据 (路径 → sha256) —— 自动同步的判据。"""
     try:
         con = sqlite3.connect(db)
         row = con.execute("SELECT v FROM meta WHERE k='sources'").fetchone()
@@ -1052,7 +1052,7 @@ def _meta_sources(db=DB_DEFAULT):
         return {}
 
 
-# 也要算进「真源是否变了」的附加文件 (params 表由 param_registry 从这两份现算)
+# 也要算进「唯一依据是否变了」的附加文件 (params 表由 param_registry 从这两份现算)
 _EXTRA_SOURCES = (
     os.path.join(ROOT, "config", "platform", "param_spec.json"),
     os.path.join(ROOT, "config", "platform", "zmax_product.json"),
@@ -1061,12 +1061,12 @@ _EXTRA_SOURCES = (
 
 
 def is_stale(db=DB_DEFAULT):
-    """库是否落后于真源。返回 (stale: bool, why: str)。判据 = build 记下的 sha vs 盘上现状。"""
+    """库是否落后于唯一依据。返回 (stale: bool, why: str)。判据 = build 记下的 sha vs 盘上现状。"""
     if not os.path.exists(db):
         return True, "库文件不存在"
     srcs = _meta_sources(db)
     if not srcs:
-        return True, "库内没有真源指纹 (旧库)"
+        return True, "库内没有唯一依据指纹 (旧库)"
     _bad = []
     for _k, _v in srcs.items():
         try:
@@ -1099,14 +1099,14 @@ def is_stale(db=DB_DEFAULT):
 
 
 def ensure_fresh(db=DB_DEFAULT, quiet=False):
-    """真源变了就自动重建库 (自动同步; 真源没变则什么也不做)。返回 True = 本次重建过。"""
+    """唯一依据变了就自动重建库 (自动同步; 唯一依据没变则什么也不做)。返回 True = 本次重建过。"""
     stale, why = is_stale(db)
     if not stale:
         if not quiet:
-            print("✅ 工程库已是最新 (真源未变, 无需重建) → %s" % db)
+            print("✅ 工程库已是最新 (唯一依据未变, 无需重建) → %s" % db)
         return False
     if not quiet:
-        print("🔄 真源已变 (%s) ⇒ 自动重建工程库 …" % why)
+        print("🔄 唯一依据已变 (%s) ⇒ 自动重建工程库 …" % why)
     build(db, quiet=True)
     if not quiet:
         print("✅ 工程库已自动同步 → %s" % db)
@@ -1130,7 +1130,7 @@ def main():
         return 0
     if a.cmd == "stale":
         stale, why = is_stale(a.db)
-        print(("⚠ 库落后于真源: %s" % why) if stale else "✅ 库与真源一致")
+        print(("⚠ 库落后于唯一依据: %s" % why) if stale else "✅ 库与唯一依据一致")
         return 0 if not stale else 3
     if a.cmd == "check":
         return check(a.db)

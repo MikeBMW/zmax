@@ -25,9 +25,9 @@ import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-# ⚠️ 2026-09-29 踩坑: 运行态文件**不能再放 /tmp** —— 本机 ubuntu 用 CLI 入队/服务以 root 跑,
+# ⚠️ 2026-09-29 遇到问题: 运行态文件**不能再放 /tmp** —— 本机 ubuntu 用 CLI 入队/服务以 root 跑,
 #    root 去"重写"一个 ubuntu 属主的 /tmp 文件会被内核 `fs.protected_regular`(sticky 目录保护)拒掉:
-#    PermissionError: '/tmp/zmax_agent_cmd.jsonl' ⇒ 队列取不走, 通道**看着断着其实是权限**
+#    PermissionError: '/tmp/zmax_agent_cmd.jsonl' ⇒ 队列取不走, 通道**看着断着实际是权限**
 #    (现象: 客户端每 5s 来 GET /agent/cmd 都 403/报错, served 恒为 0)
 #    ⇒ 运行态统一放数据目录(非 sticky 目录, 两个属主都能写)。
 HUB_DATA = os.environ.get("ZMAX_AGENT_DATA", "/home/ubuntu/zmax/zmax_data/agent_hub")
@@ -100,7 +100,7 @@ class Handler(SimpleHTTPRequestHandler):
     def _ok_token(self, q) -> bool:
         """v2 (2026-09-29): 允许多个 token(逗号分隔)。
         起因: 工控机上那条轮询循环带的 token 与 agent 脚本里的写法不同(一个是轮询态、一个是固定串),
-        一直 403 ⇒ 通道"看着断着"其实客户端活着。多 token 兼容, 不让一个字的差异卡死整条链路。
+        一直 403 ⇒ 通道"看着断着"实际客户端活着。多 token 兼容, 不让一个字的差异卡死整条链路。
         ⚠️ 2026-09-30: token 真值不再写进代码/单元 —— 见 _resolve_token(), 从 env 或本机 secrets 读。"""
         v = (q.get("t", [""])[0] or "")
         return bool(v) and (v == STATE["token"] or v in (STATE.get("tokens") or set()))

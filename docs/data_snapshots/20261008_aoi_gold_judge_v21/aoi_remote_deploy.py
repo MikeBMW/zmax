@@ -82,7 +82,7 @@ def http_get(url, timeout=20):
         with urllib.request.urlopen(url, timeout=timeout) as r:
             return r.status, r.read()
     except urllib.error.HTTPError as e:
-        # ⚠️ 2026-09-30 踩坑: 4xx/5xx 也说明"服务活着"。原来走 except Exception 会丢状态码(st=0),
+        # ⚠️ 2026-09-30 遇到问题: 4xx/5xx 也说明"服务活着"。原来走 except Exception 会丢状态码(st=0),
         #    于是验收认不出 10082 那条**合法 404**("/last_result 尚无检测结果") ⇒ 首帧推理慢时假失败 ⇒ 误回滚。
         try:
             body = e.read()
@@ -118,7 +118,7 @@ def verify(port, test_capture=True):
         out.append(("✅ " if cond else "❌ ") + name + (" " + extra if extra else ""))
         return cond
 
-    # ⚠️ 2026-10-08 踩坑(第二次误回滚就是这样来的): 服务**冷启动到能应答实测 ~89s, 首抓还要更久**,
+    # ⚠️ 2026-10-08 遇到问题(第二次误回滚就是这样来的): 服务**冷启动到能应答实测 ~89s, 首抓还要更久**,
     #    而验收在重启命令后 ~25s 就来查 /storage ⇒ HTTP 0 ⇒ 假失败 ⇒ 误触发回滚。
     #    处置: readiness 轮询最多 200s, 拿到 200 再往下走(与 capture_detect 的容忍式重试同口径)。
     st, body = 0, b""
@@ -132,7 +132,7 @@ def verify(port, test_capture=True):
 
     def _stable_total(tries=8, gap=1.5):
         """等落盘稳定(连续两次读数相同)再取基准。
-        ⚠️ 2026-09-29 踩坑: 基准若在 capture_detect 的**异步 worker 还在落图**时取,
+        ⚠️ 2026-09-29 遇到问题: 基准若在 capture_detect 的**异步 worker 还在落图**时取,
         'grab 不落盘' 会假失败 ⇒ 假失败触发**自动回滚**(危险)。实测就是这么误判过一次。"""
         last = None
         for _ in range(tries):
@@ -144,7 +144,7 @@ def verify(port, test_capture=True):
         return last
 
     if test_capture:
-        # ⚠️ 2026-10-08 踩坑(v21 金手指部署就是被这条回滚的): 服务**冷启动后首抓必失败**
+        # ⚠️ 2026-10-08 遇到问题(v21 金手指部署就是被这条回滚的): 服务**冷启动后首抓必失败**
         #    (SciCam_Grab 冷启/空闲后首抓返回失败), 实测启动后 ~100s 内 POST /capture_detect
         #    回 500, 而同一时刻 /picture?grab=1 已能出图 ⇒ 单次断言 = **假失败 ⇒ 误触发自动回滚**。
         #    处置: 轮询重试最多 180s, 首次拿到 code=200 即判通过; 全程失败才算失败。
@@ -167,7 +167,7 @@ def verify(port, test_capture=True):
             if st == 200:
                 break
             time.sleep(3)
-        # ⚠️ 2026-09-30 踩坑: Flask jsonify 默认 ensure_ascii=True ⇒ 中文在 body 里是 \u5c1a\u65e0…,
+        # ⚠️ 2026-09-30 遇到问题: Flask jsonify 默认 ensure_ascii=True ⇒ 中文在 body 里是 \u5c1a\u65e0…,
         #    只比对 UTF-8 原文会漏判"合法 404" ⇒ 首帧推理慢(要加载模型)时假失败 ⇒ **误触发自动回滚**。
         #    这里把"还没出结果"的三种形态都当合法: 原始中文 / \u 转义 / 空 body(服务刚起来)。
         _esc = "".join("\\u%04x" % ord(c) for c in "尚无检测结果")
@@ -176,7 +176,7 @@ def verify(port, test_capture=True):
                   ("200 " if st == 200 else "404-尚无(在等/推理慢) ") + body[:60].decode("utf-8", "replace"))
     n_before = _stable_total()          # 取基准: 等检测线程落盘稳定(见 _stable_total 注释)
     st, img = 0, b""
-    for _try in range(5):      # 2026-09-30 踩坑: 服务刚重启/相机未热身时**首抓会返回错误体**(实测 46B)
+    for _try in range(5):      # 2026-09-30 遇到问题: 服务刚重启/相机未热身时**首抓会返回错误体**(实测 46B)
         st, img = http_get("http://%s:%d/picture?kind=origin&grab=1" % (ILO, port), timeout=60)
         if st == 200 and len(img) > 10000:
             break
@@ -238,7 +238,7 @@ def main():
         subprocess.run(["cp", "-f", src, dst], check=True)
         log("① 已发布 %s (%d B, %s…)" % (name, os.path.getsize(dst), sha256(dst)[:8]))
 
-    # ②备 备份现役 —— **必须在下载覆盖之前**(2026-09-30 踩坑: 原来备份放在下载之后 ⇒ .bak 记的是
+    # ②备 备份现役 —— **必须在下载覆盖之前**(2026-09-30 遇到问题: 原来备份放在下载之后 ⇒ .bak 记的是
     #   刚上线的新文件 ⇒ ⑥ 回滚=把新文件盖回自己(空操作) ⇒ "自动回滚"这条安全网一直是假的,
     #   而我会以为它兜住了。现在: 先备份、带时间戳(永不被后续覆盖)、回滚指定用这一份。
     _BK = time.strftime("%Y%m%d_%H%M%S")
@@ -283,7 +283,7 @@ def main():
     log("   " + start_pair().strip().replace("\n", " / "))
 
     # ⑤ 验收
-    # ⚠️ 2026-09-30 踩坑: 只该用**本轮真换了文件**的那一路当判据。原来两路都当判据 ⇒
+    # ⚠️ 2026-09-30 遇到问题: 只该用**本轮真换了文件**的那一路当判据。原来两路都当判据 ⇒
     #    另一台相机自己抽风(10083 grab 出 46 字节)会把本轮的修复误判成失败 ⇒ 触发回滚,
     #    而回滚会把**本轮新文件**换成本轮之前的内容(把刚修好的版本滚掉)。没换文件的那路只报状态。
     # 判据只看**命令行显式指定的那一路**(--only): ②的哈希是"传输完整性", 下载完必然一致,

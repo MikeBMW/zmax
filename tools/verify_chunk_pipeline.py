@@ -62,8 +62,8 @@ if msg is not None:
     chk("lam 段长度 = h", len(list(msg.lam)) == int(msg.h), len(list(msg.lam)))
     chk("阶段 + 块来源写明", bool(msg.stage) and bool(msg.chunk_src), "%s | %s" % (msg.stage, msg.chunk_src[:40]))
 
-# ── ②/③/⑤ 块真源 ───────────────────────────────────────────────────────────
-print("② 块真源: 多步逐步不同 + 平滑性 + 加权/调制生效")
+# ── ②/③/⑤ 块唯一依据 ───────────────────────────────────────────────────────────
+print("② 块唯一依据: 多步逐步不同 + 平滑性 + 加权/调制生效")
 try:
     with open(os.path.join(LIVE, "chunk_latest.json"), encoding="utf-8") as f:
         d = json.load(f)
@@ -89,7 +89,7 @@ try:
     chk("前馈序列长度 = H 且来源写明", len(_ff) == len(ch) and bool(d.get("ff_mode")),
         "%s (%.0f 字)" % (d.get("ff_mode"), len(_ff)))
 except Exception as e:                                                            # noqa: BLE001
-    chk("读块真源", False, e)
+    chk("读块唯一依据", False, e)
 
 # ── ⑥ 安全界 ────────────────────────────────────────────────────────────────
 print("③ 逐拍安全执行边界 (每拍都在界内)")
@@ -144,7 +144,7 @@ try:
         app.processEvents()
         time.sleep(0.1)
     _ks = sorted(w.store.keys())
-    # 块信号走两条真源: ① 常驻回路平铺的语义键 sseng.chunk.* ② DDS 话题 digest ds.zmax/ss_action_chunk.*
+    # 块信号走两条唯一依据: ① 常驻回路平铺的语义键 sseng.chunk.* ② DDS 话题 digest ds.zmax/ss_action_chunk.*
     ck = [k for k in _ks if ("chunk" in k)]
     sk = [k for k in _ks if k.startswith("skill.")]
     chk("页面建出块信号行 (语义键或话题键)", len(ck) >= 4, "%d 行 例:%s" % (len(ck), ck[:3]))

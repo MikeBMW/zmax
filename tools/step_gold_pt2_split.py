@@ -9,7 +9,7 @@
  3. 移动前先响警报: 确认 tools/motion_beep.py 常驻在跑(没跑就拉起 tools/motion_beep_start.sh)。
  4. 命令超时 CMD_TIMEOUT_S(30s); 超时/失败**绝不自动重发**(重发 = 叠加运动)。
     每条腿跑完必须回读真值位姿并与目标比残差; 残差超限立即停, 不进下一条腿。
- 5. 无自动循环; 参数写死在文件顶部 CONFIG, 便于审阅。--dry-run 默认开(只有显式 --go 才真发)。
+ 5. 无自动循环; 参数硬编码在文件顶部 CONFIG, 便于审阅。--dry-run 默认开(只有显式 --go 才真发)。
  6. 本脚本**不写** tools/l2_daemon.py(运动/安全代码一字不动); --go 只用**幂等注册器**写
     data/skills/l2_atomic/{registry.json, ctl_abs_skills.json}(runtime state, 与既有 register_*.py 同套)。
 ========================================================================================
@@ -56,7 +56,7 @@ N 段 1s 一条灌进控制器排队(现场=滞后/串味合成动作)。daemon 
   · 服务步**根本不进 `wait_arrive`** —— `run_stages` 对 `op=="service"` 只调 `_service_call`(:1142),
     而 `_service_call` 里的 `ros2 service call /move_pose ...` 是**同步阻塞**的(:617-618): 服务返回(即动作
     做完或到 `timeout N`)才继续 ⇒ **每步天然串行, 不依赖位置判据**。
-  · 步与步之间另有 `time.sleep(float(st.get("dwell_s", ...)))`(:1147) 兜底间隔。
+  · 步与步之间另有 `time.sleep(float(st.get("dwell_s", ...)))`(:1147) 保障间隔。
   · 段2 **位置在变**, 其"运动步"用 daemon 的 wait_arrive(位置)是**有效**判据 ⇒ 段2 保持多阶段运动步。
   · 脚本层再各留一道**姿态**残差终检 `_residual`(见下), 作为整段收尾的双轴核对。
 """
@@ -83,14 +83,14 @@ CTL_BASE = "http://127.0.0.1:8793"        # 可被 --ctl-base 覆盖(仅便于**
 MOVE_POSE_SRV = "/move_pose"
 MOVE_POSE_TYPE = "interfaces/srv/TargetPose"
 
-# -------------------------------- CONFIG (写死便于审阅) --------------------------------
+# -------------------------------- CONFIG (预先固定便于审阅) --------------------------------
 ROT_STEP_DEG = 10.0          # 段1 每步旋转上限 (2026-10-09 改: 30→10; 减小单条姿态指令的关节摆幅, 硬上限仍 30)
 TRANS_STEP_MM = 2.0          # 段2 每步平移上限 (2026-10-09 改: 20→2, 与事故先例(2mm)一致)
 SPEED = 8.0                  # 相对速度档 (先例 step1_rotb27.sh 用的也是 8)
 SPEED_MAX = 20.0             # 技能级封顶 (l2_daemon: speed_max, 收口在执行层)
 MAX_ROT_STEP_DEG = 30.0      # 硬校验: 每段旋转 <=30° (技能文档铁律)
 MAX_TRANS_STEP_MM = 20.0     # 硬校验: 每段平移 <=20mm (--trans-step-mm 覆盖时的上限)
-ROT_DWELL_S = 1.0            # 段1 服务步之间的停顿 (daemon _service_call 已同步阻塞, 这是兜底)
+ROT_DWELL_S = 1.0            # 段1 服务步之间的停顿 (daemon _service_call 已同步阻塞, 这是保障)
 MIN_ANG_DEG = 0.05           # 转角小于此值视为"已是目标姿态" => 段1 不发
 MIN_DIST_MM = 0.05           # 位移小于此值视为"已是目标位置" => 段2 不发
 RESID_TOL_MM = 5.0           # 每条腿跑完的位置残差上限

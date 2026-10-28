@@ -6,7 +6,7 @@ description: Use when 给流形引擎做能量层或挂 ss_energy 话题。
 # 流形引擎 · 能量层 (发动机类比)
 
 > 空间质数结构化理解能力 (理解层): 见 `references/prime-structure.md` —— 四规则口径、只读谱正则、
-> 版本质数指纹唯一性、550A/B/C 能力包含⇒整除、以及 6 条实测坑 (含质数域必须从真源生成)。
+> 版本质数指纹唯一性、550A/B/C 能力包含⇒整除、以及 6 条实测坑 (含质数域必须从唯一依据生成)。
 
 > 对称轨道预测（「预测 = 沿对称群轨道等距离推演」，含破缺判据 + 实测数字 + 4 条坑）:
 > 见 `references/orbit-predict.md`。
@@ -61,14 +61,14 @@ description: Use when 给流形引擎做能量层或挂 ss_energy 话题。
 L3 的 Tx 是 DiT, L2 的 Tx 是前馈加速器」。落地 = 一层一条 DDS 话题 `zmax/ss_force_l2..l5`。
 - **口径必须走到力场格子那一步**: `layer_forces()` 只给"加权张量", 力场格子画的是
   `gravity_law.field(vecs)` 之后的 `|F|=G·M/r²` ⇒ daemon 两段都调, 发后者; 只发前者 trace 与力场对数不上。
-- **tx 写死在一张表**: `FORCE_LAYERS=(L, topic, tx)` — L2 前馈加速器 / L3 DiT 动作头 /
+- **tx 硬编码在一张表**: `FORCE_LAYERS=(L, topic, tx)` — L2 前馈加速器 / L3 DiT 动作头 /
   L4 流形引擎 / L5 DeepSeek VL; 载荷与 topics.py 的 `tx` 字段、力场格子 tooltip 三处同一句。
 - **五处登记缺一即静默**: `dds/ss_types.py`(SSForceLayer) · `dds/zmax_node.py`(_SS_TOPICS+QOS_CLASS beat) ·
   `src/lerobot/dataspace/topics.py`(TOPICS+FORCE_TOPICS 进三档) · `tools/dds/ss_daemon.py`(MODE_TOPICS) ·
   `tools/zmax_profile.py`(core 集, 否则 A 档被过滤掉)。
 - **不要用 gravity_table 取数**: 它 import PyQt5, daemon 的 dds-venv 没有 ⇒ 用纯 stdlib 的
   `tools/layer_forces.py` + `tools/gravity_law.py` 复现同一拍 (逐位对账已验 56/56)。
-- **取不到的层不发** (不拿 0/别层顶替); 真源陈旧照发但 `fresh=0 + age_s`, 让人看出是定格。
+- **取不到的层不发** (不拿 0/别层顶替); 唯一依据陈旧照发但 `fresh=0 + age_s`, 让人看出是定格。
 - **判据**: `tools/verify_layer_force_topics.py [--live] --seconds 12` (逐位对 x/y/z/mag/raw_mag/w/k/
   tx/note 引力律口径)。自起发布端时 **--seconds 必须 ≥10s**: 四个新话题首轮各 `wait_for_match` 1.5s,
   5s 窗口内 L4/L5 根本发不出去 (实测只收到 L2/L3)。
@@ -100,7 +100,7 @@ L3 的 Tx 是 DiT, L2 的 Tx 是前馈加速器」。落地 = 一层一条 DDS �
 
 ## 常驻周期回路 (2026-10-14)
 老倪: 「常驻循环在周期性调，由状态空间工程调用，流形引擎是全系统的核心，怎么只是调用一次呢？改」
-⇒ step() 原来只有手跑一次性调用 ⇒ 见 `references/resident-engine-loop.md` (架构 / 三个必踩坑: goal_point 早退 /
+⇒ step() 原来只有手跑一次性调用 ⇒ 见 `references/resident-engine-loop.md` (架构 / 三个必遇到问题: goal_point 早退 /
 MODE_TOPICS 三份 / launch.json 单模板 / 单写入器锁 / 判据 verify_ss_engine_loop.py 16 项)。
 
 ## L4 潜空间: VLM 编码器 → 黎曼度规约束 → INTACT 意图解码 (2026-10-14)

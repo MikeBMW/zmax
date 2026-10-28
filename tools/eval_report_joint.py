@@ -241,7 +241,7 @@ def main():
                                     "✅ PASS" if c.get("ok") else "❌ FAIL",
                                     c.get("detail", "")))
         A("")
-        # 结论按实测动态生成, 不写死
+        # 结论按实测动态生成, 不预先固定
         c_arm = arms.get("C +切投影") or {}
         b_arm = arms.get("B +度规势") or {}
         a_arm = arms.get("A 基线(旧)") or {}

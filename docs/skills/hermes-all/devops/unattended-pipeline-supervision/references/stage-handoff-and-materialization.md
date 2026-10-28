@@ -18,7 +18,7 @@ FileNotFoundError: [Errno 2] Unable to synchronously open file (unable to open f
 - 归档是 **09-13 03:51** 才下完的 → 交接断档
 - 07:42 用户关机重启, 更没机会补
 
-下游所以报的是一句"文件不存在", 而盘上其实躺着 13GB 的答案。
+下游所以报的是一句"文件不存在", 而盘上实际躺着 13GB 的答案。
 
 ## 规则 (可直接搬进任何获取链)
 
@@ -28,7 +28,7 @@ FileNotFoundError: [Errno 2] Unable to synchronously open file (unable to open f
    (上面的病案里, 下载侧日志与流水线日志都是"成功"。)
 3. **每个 stage 要幂等**: 归档晚于流水线结束时, 需要再审一次 (能独立重跑的解压/校验入口),
    而不是假设"它会在"。
-4. **看门狗先判完成再判卡死**: 实测 `pgrep` 到 aria2 反复对**已下完**的归档报「卡住, 重启续传」
+4. **看门狗先判完成再判卡死**: 实测 `pgrep` 到 aria2 反复对**已下完**的归档报「阻塞, 重启续传」
    (每 6 分钟一条, 还留下 `.aria2` 残留)。卡死判定之前必须先做完成判定
    (`zstd -t <归档>` / aria2 账本 / size+sha256 双核); 已完整就 `exit 0`。
 5. **一发现"缺文件"先找归档, 不要重下**: `find <盘> -maxdepth 5 -name '*<task>*'` ——

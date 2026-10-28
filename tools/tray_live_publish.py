@@ -6,8 +6,8 @@
         摆盘场景，要有真正的动作输出，要完成摆盘动作」
 
 根因 (查出来的):
-  · 蓝色 = 摆盘场景(tools/ss_scene_switch.py 场景色真源)。信号要变蓝, 必须**被真源打上摆盘场景标签**:
-    真源 tools/sig_scene_tags.py `_run_signals()` 只扫 `zmax_data/task_runs/TASK-06-TRAY/**` 里的
+  · 蓝色 = 摆盘场景(tools/ss_scene_switch.py 场景色唯一依据)。信号要变蓝, 必须**被唯一依据打上摆盘场景标签**:
+    唯一依据 tools/sig_scene_tags.py `_run_signals()` 只扫 `zmax_data/task_runs/TASK-06-TRAY/**` 里的
     json/jsonl 键名 ⇒ **那个目录是空的** ⇒ 摆盘只剩 3 条历史夹具信号, 看着就是"一个真信号都没有"。
   · 实时监控窗的 `sstrace.*` 信号源 = `zmax_data/ss_live/trace_live.json` (只尾读)。
     摆盘链 (tools/gen_tray_place_video.py) 真跑完只落 npz/mp4, **没有把它写成 trace_live** ⇒ 窗里当然没值。
@@ -90,7 +90,7 @@ def publish():
                 "手到件_mm": round(_f(z["dist"], i) * 1000.0, 2),
                 # 🔤 2026-10-13: 通道沿用插拔底座旧名(gripper/grasped), 但物理是**真空吸盘** ——
                 #   gripper∈{0.0,0.9}, 0.9=吸附建立证据 ⇒ 摆盘只能叫「真空吸持/吸住」, 否则实时监控
-                #   蓝色组里挂着一条"夹爪"波形, 与现场看到的吸盘动作对不上。取名真源 scene_signal_names.py
+                #   蓝色组里挂着一条"夹爪"波形, 与现场看到的吸盘动作对不上。取名唯一依据 scene_signal_names.py
                 "真空吸持": round(_f(z["gripper"], i), 3),
                 "吸住": int(_f(z["grasped"], i)),
                 "工艺": "真空吸附",
@@ -129,7 +129,7 @@ def publish():
     print("✅ 运行产物: %s (%d 步) + %s" % (os.path.relpath(jl, ROOT), n,
                                             os.path.relpath(os.path.join(RUN_DIR, "run_summary.json"), ROOT)))
 
-    # ── ② 重生成场景标签真源 ──
+    # ── ② 重生成场景标签唯一依据 ──
     r = subprocess.run([PY, os.path.join(ROOT, "tools", "sig_scene_tags.py"), "--build", "--from-runs"],
                        capture_output=True, text=True, timeout=180, cwd=ROOT)
     out = ((r.stdout or "") + (r.stderr or "")).strip().splitlines()
@@ -199,7 +199,7 @@ def live(speed: float = 1.0, loop: bool = False):
             "时间_s": round(_f(z["t"], i), 4),
             "末端": [round(_f(z["x"][i], k), 5) for k in range(3)],
             # 🔴 2026-10-13 老倪「摆盘的机器人, 末端执行器的 x y z, 必须有」:
-            #   实时监控/信号分析按**扁平键名**订阅, 而真源注册表 config/topics/scene_tags.json
+            #   实时监控/信号分析按**扁平键名**订阅, 而唯一依据注册表 config/topics/scene_tags.json
             #   里摆盘场景注册的名字就是 `sstrace.末端_x/_y/_z` (与 episode jsonl 同源)。
             #   只给列表键 `末端` ⇒ 面板渲染成未注册的 `sstrace.末端.0/.1/.2` = **那几行永远空**。
             #   故: 列表键保留, 同时补标量别名 (名字逐字一致) + scene 标签 (防与插拔串台)。

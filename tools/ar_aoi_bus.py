@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""ar_aoi_bus.py — AR 场景 · 空间点位 + AOI 话题 信号总线 (单一点真源 → 信号分析)
+"""ar_aoi_bus.py — AR 场景 · 空间点位 + AOI 话题 信号总线 (单一点唯一依据 → 信号分析)
 
 老倪 2026-10-11: 「状态空间工程里 外观质量检测 节点改名成 光学质量检测, **发出 AOI 相关的所有 topic**,
 信号分析对应 **AR 场景下的所有空间点位置**」。
@@ -11,12 +11,12 @@
     `zmax_data/ar_live/ar_aoi_live.json`, 页面把它当第 N 个 HOST_SOURCE 读 (零协议改动)。
   · **不造假**: 每个信号的值都从**真实生产者**取 —— 机器人 TCP 真值 / 示教点位台账 /
     RealSense 服务(8797)实测 / 工控机 AOI(10082)判决。取不到的键**不写**(不是写 0), 并在 meta 里记原因。
-  · 写盘: 原子写 + `.bak_<ts>` 备份 + 回读校验; 与工具链里其它真源一致。
-  · 注册表 `config/topics/ar_aoi_signals.json` 由本模块 `spec` 生成/刷新 (信号含义/单位/真源)。
+  · 写盘: 原子写 + `.bak_<ts>` 备份 + 回读校验; 与工具链里其它唯一依据一致。
+  · 注册表 `config/topics/ar_aoi_signals.json` 由本模块 `spec` 生成/刷新 (信号含义/单位/唯一依据)。
 
 用法:
     gui-venv311/bin/python tools/ar_aoi_bus.py spec        # 刷新并打印注册表
-    gui-venv311/bin/python tools/ar_aoi_bus.py pull        # 从各真源抓一轮 → 写 live 文件
+    gui-venv311/bin/python tools/ar_aoi_bus.py pull        # 从各唯一依据抓一轮 → 写 live 文件
     gui-venv311/bin/python tools/ar_aoi_bus.py watch -i 2  # 常驻, 每 2s 抓一轮
     gui-venv311/bin/python tools/ar_aoi_bus.py show        # 看当前 live 值/帧龄
     gui-venv311/bin/python tools/ar_aoi_bus.py publish --json '{"光学质量检测.判决": 1}'
@@ -47,7 +47,7 @@ AOI_STATE = os.path.join(ROOT, "zmax_data", "ar_aoi_state.json")
 AOI_CONSOLE_STATE = os.path.join(ROOT, "reports", "aoi_console_state.json")
 AR_UP = "http://127.0.0.1:8797"
 
-# ── 注册表: 信号 → (组, 单位, 真源说明) ─────────────────────────────────────────────
+# ── 注册表: 信号 → (组, 单位, 唯一依据说明) ─────────────────────────────────────────────
 G_AR_PTS = "AR·空间点位 (基座系)"
 G_AR_CAM = "AR·相机 (RealSense D435 · 相机系)"
 G_AOI_GF = "AOI·金手指 (工控机 10082)"
@@ -70,7 +70,7 @@ SPEC = [
     ("侧面点3.x", G_AR_PTS, "m", "示教台账 reports/aoi_points/侧面点3.json"),
     ("准备点.x", G_AR_PTS, "m", "示教台账 reports/aoi_points/准备点.json"),
     ("安全点1.x", G_AR_PTS, "m", "示教台账 reports/aoi_points/安全点1.json"),
-    ("空间点1.x", G_AR_PTS, "m", "空间点真源 data/skills/l2_atomic/space_points.json (真机实测 7 点)"),
+    ("空间点1.x", G_AR_PTS, "m", "空间点唯一依据 data/skills/l2_atomic/space_points.json (真机实测 7 点)"),
     ("空间点7.x", G_AR_PTS, "m", "同上 (1~7 全套)"),
     ("叠加.点位数", G_AR_PTS, "个", "本轮实际载入的空间点数 (缺谁不补)"),
     # —— 插拔过程信号 (2026-10-20 老倪: 「把信号分析的 插拔的切向力、末端 x y z 速度, 加到信号波形上」) ——
@@ -398,7 +398,7 @@ def _tangential_force():
 def _real_force():
     """🦾 真机六维力 → 轴向力 / 侧向力 (基座系, 插入轴 = base +x)。
 
-    单一真源 = `zmax_data/rokae_sdk/ft_out/latest.json`, 由 `tools/rokae/ft_direct_sampler.py`
+    单一唯一依据 = `zmax_data/rokae_sdk/ft_out/latest.json`, 由 `tools/rokae/ft_direct_sampler.py`
     用珞石 xCoreSDK `forceControl().getEndTorque()` **只读**采样写出 (不发任何运动指令)。
     契约 (缺一项就整批不写, 绝不补 0):
       · frame ∈ {world, base, base_link}  —— 侧向力必须在基座系算, 工具系算出来是错量
@@ -455,7 +455,7 @@ _RS_MOD = None
 
 
 def _robot_state():
-    """🤖 机器人状态机 → 数值信号 + 一行文字 (真源唯一: tools/robot_state.py)。"""
+    """🤖 机器人状态机 → 数值信号 + 一行文字 (唯一依据唯一: tools/robot_state.py)。"""
     global _RS_MOD
     if _RS_MOD is None:
         import importlib.util
@@ -480,7 +480,7 @@ def _robot_state():
 
 
 def pull(publish_it=True, quiet=False):
-    """从各真源抓一轮 → 合并 → 写 live 文件 (取不到的键不写)。"""
+    """从各唯一依据抓一轮 → 合并 → 写 live 文件 (取不到的键不写)。"""
     sig: dict = {}
     meta: dict = {}
     prov: dict = {}
@@ -608,7 +608,7 @@ def publish(signals, meta=None, prov=None, quiet=False):
 
 
 def write_registry():
-    """把注册表落成真源 JSON (signal → 组/单位/真源/keys 全表)。
+    """把注册表落成唯一依据 JSON (signal → 组/单位/唯一依据/keys 全表)。
 
     台账里的点位是活的 (示教点/空间点会增删) ⇒ 除了 SPEC 里的核心信号, 再把**当前台账**
     真实存在的点位键一并登记 (按 group_of 归组) —— 注册表因此与现场一致, 又不靠手填。

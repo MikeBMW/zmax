@@ -10,22 +10,22 @@
     对应关系, 给出所有性能指标的物理值验证结果」
 
 一句话口径: 把「Phase 0→4 逐步实现主要性能指标」做成一件事 —— 每阶段 = 一组**主要性能指标**
-(从唯一真源现算) + 一组**元任务升级组合** (基线组合 vs 本阶段新增/升级, 从真源推导) + **逐步实现
-路径** (本阶段用这些元任务去推哪些指标、目标值多少, 目标值一律读真源); 再叠上**实测验证**与
+(从唯一依据现算) + 一组**元任务升级组合** (基线组合 vs 本阶段新增/升级, 从唯一依据推导) + **逐步实现
+路径** (本阶段用这些元任务去推哪些指标、目标值多少, 目标值一律读唯一依据); 再叠上**实测验证**与
 **对基线产品的对比分析**。全程零硬编: 指标名/目标值/归属/采集值全部现取现算。
 
-真源 (全部现读; 本文件不硬编任何指标名/目标值/数字):
-  · 指标定义唯一真源   = config/platform/zmax_perf_spec.json (58 条 / 6 组 A-F; 目标值+采集方法+标准)
-  · phase 归属唯一真源 = config/eval/phase_metric_map.json (58/58; map=归属, carrier=物理载体段/量)
+唯一依据 (全部现读; 本文件不硬编任何指标名/目标值/数字):
+  · 指标定义唯一依据   = config/platform/zmax_perf_spec.json (58 条 / 6 组 A-F; 目标值+采集方法+标准)
+  · phase 归属唯一依据 = config/eval/phase_metric_map.json (58/58; map=归属, carrier=物理载体段/量)
   · phase KPI 文案     = config/roadmap_phase_texts.json (各 phase title/time/dims/desc/kpi)
-  · 采集口径唯一真源   = tools/eval_probes.py::run_all()  (证据类 mode: 实测/标定·配置/推导/未测)
+  · 采集口径唯一依据   = tools/eval_probes.py::run_all()  (证据类 mode: 实测/标定·配置/推导/未测)
                          —— **直接 import 调 run_all(), 绝不另写采集逻辑**
-  · 判定/基线对比唯一真源 = tools/eval_analysis.py::verdicts() (阈值达标 + 基线对比; 样本不足不出判定)
+  · 判定/基线对比唯一依据 = tools/eval_analysis.py::verdicts() (阈值达标 + 基线对比; 样本不足不出判定)
   · 指标↔物理量↔元任务 = tools/meta_perf_matrix.py::build() (指标 links FN-* / 载体段→SKxx→元任务)
   · 元任务定义         = tools/export_meta_doc.py::build_meta_tasks() (config_meta.json 75 元任务; complete=配置是否齐)
   · 基线锁             = config/eval/baseline_v<版本>.json (冻结)
 
-元任务升级组合 (从真源推导, 定义见 _derive_combo):
+元任务升级组合 (从唯一依据推导, 定义见 _derive_combo):
   · baseline  = 本 phase 指标所挂元任务 ∩ 「配置已齐」(complete=True)      —— 基线产品已具备的组合
   · added     = 本 phase 指标所挂元任务 − 「配置已齐」                      —— 本阶段要新增/补齐的元任务
   · upgraded  = 本 phase 指标所挂元任务 ∩ 更早 phase 的组合并集              —— 跨阶段复用, 在本阶段被升级
@@ -96,7 +96,7 @@ def _atomic(path, obj):
 
 
 def _phases_ordered():
-    """phase 顺序 (从真源 key 排, 不硬编): 'Phase 0'..'Phase 4'"""
+    """phase 顺序 (从唯一依据 key 排, 不硬编): 'Phase 0'..'Phase 4'"""
     pm = _load(PHASE_MAP, {}) or {}
     keys = list((pm.get("phase_theme") or {}).keys()) or list(((pm.get("map") or {}) and
                  {v.get("phase") for v in pm["map"].values()}) or [])
@@ -123,11 +123,11 @@ def _basecmp_enum(v):
     return {"提升": "提升", "持平": "持平", "回退": "回退"}.get(str(v or ""), "未测")
 
 
-# ── 元任务升级组合 (从真源推导) ───────────────────────────────────────────────
+# ── 元任务升级组合 (从唯一依据推导) ───────────────────────────────────────────────
 def _derive_combo(combo_fns, fn_meta, prior_union):
     """按「配置是否齐 (complete) + 跨阶段复用」把本阶段元任务拆成 baseline/added/upgraded。
 
-    真源: fn_meta 来自 export_meta_doc.build_meta_tasks()['complete']; prior_union = 更早 phase 组合并集。
+    唯一依据: fn_meta 来自 export_meta_doc.build_meta_tasks()['complete']; prior_union = 更早 phase 组合并集。
     · baseline = 配置已齐 (complete=True)   —— 基线产品已具备
     · added    = 配置未齐 (complete=False)  —— 本阶段新增/补齐
     · upgraded = 命中更早阶段组合          —— 跨阶段复用, 本阶段升级 (与 baseline 可重叠, 语义: 强化)
@@ -315,7 +315,7 @@ def render_md(data):
     m = data["meta"]
     A("# 产品迭代路线 Phase 0→4 · 迭代验证与对比分析 (基线产品 v%s)" % m["baseline"])
     A("")
-    A("生成 `%s` · 由 `%s` 现算 · **零硬编**: 指标名/目标值/归属/采集值全部取真源。" % (m["ts_str"], m["generated_by"]))
+    A("生成 `%s` · 由 `%s` 现算 · **零硬编**: 指标名/目标值/归属/采集值全部取唯一依据。" % (m["ts_str"], m["generated_by"]))
     A("")
     cov = data["comparison"]["summary"]["per_phase_pass_rate"]
     A("- phase 数 **%d** · 指标 **%d** 条 · 各阶段达标率: %s" %
@@ -326,7 +326,7 @@ def render_md(data):
         v = p["verification"]
         A("## %s · %s (%s)" % (p["phase"], p["name"], p.get("time") or ""))
         A("")
-        A("- 阶段标题: %s ｜ 真源 KPI: %s" % (p.get("title") or "-", p.get("kpi") or "-"))
+        A("- 阶段标题: %s ｜ 唯一依据 KPI: %s" % (p.get("title") or "-", p.get("kpi") or "-"))
         A("- 主要性能指标 **%d** 条 ｜ 实测判定: 达标 %d · 未达标 %d · 样本不足 %d · 未测 %d"
           % (p["n_metrics"], v["pass"], v["fail"], v["insufficient"], v["unmeasured"]))
         cb, cv = p["vs_baseline"], p["entry"]

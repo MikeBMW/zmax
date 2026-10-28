@@ -3,18 +3,18 @@
 """verify_skill_physics_calib.py — 判据: 原子技能物理参数 v/a/s 真能标定吗? 上下限真拦得住吗?
 
 老倪 (2026-10-15): 「这些物理参数 速度 v、加速度 a、位移 s 需要可以标定, 比如上限下限、最大值最小值」
-本脚本**不只信真源文件写对了**, 而是端到端验: 标定 → 闸门 → 确实改变下发动作 / 越界确实被拦。
+本脚本**不只信唯一依据文件写对了**, 而是端到端验: 标定 → 闸门 → 确实改变下发动作 / 越界确实被拦。
 
 判据 (全绿才算通过):
- ① 真源完整   13 技能 × 9 物理量 全有 value/min/max/unit/src 且 min < value ≤ max
- ② 与引擎同源 真源 v/v_min 与 cognition.STAGE_V_CAP/STAGE_V_MIN 逐条一致 (不许两处打架)
- ③ CLI 拦越界 --set 一个超上限的值 ⇒ 非零退出 + 真源文件**一字节没变**
- ④ 标定生效   --set 合法值 ⇒ 回读真源是新值, 且闸门 limits_for() 立刻用新值 (端到端)
- ⑤ 闸门读真源 limits_for() 的 v/m/F/a/s/s_step 来自真源, calib_src_kind 标"真源"
- ⑥ 上下限兜底 篡改真源塞越界值 ⇒ 闸门运行期夹回 [min,max] 并留 clamps 取证 (不静默用坏值)
+ ① 唯一依据完整   13 技能 × 9 物理量 全有 value/min/max/unit/src 且 min < value ≤ max
+ ② 与引擎同源 唯一依据 v/v_min 与 cognition.STAGE_V_CAP/STAGE_V_MIN 逐条一致 (不许两处打架)
+ ③ CLI 拦越界 --set 一个超上限的值 ⇒ 非零退出 + 唯一依据文件**一字节没变**
+ ④ 标定生效   --set 合法值 ⇒ 回读唯一依据是新值, 且闸门 limits_for() 立刻用新值 (端到端)
+ ⑤ 闸门读唯一依据 limits_for() 的 v/m/F/a/s/s_step 来自唯一依据, calib_src_kind 标"唯一依据"
+ ⑥ 上下限保障 篡改唯一依据塞越界值 ⇒ 闸门运行期夹回 [min,max] 并留 clamps 取证 (不静默用坏值)
  ⑦ ⑤位移闸真咬 把 插入.s_step 收紧到 2mm (标定允许) ⇒ 下发动作被"位移"削, 且 ‖v‖·dt ≤ s_step
  ⑧ 偏差可回收 u + err == 请求 (削幅只削超物理部分, 不翻转方向)
- ⑨ 缺文件回退 删掉真源 ⇒ 闸门回退内置 PHYS 表, 不崩 (旧行为逐位保留)
+ ⑨ 缺文件回退 删掉唯一依据 ⇒ 闸门回退内置 PHYS 表, 不崩 (旧行为逐位保留)
 
 用法: gui-venv311/bin/python tools/verify_skill_physics_calib.py   (非零退出 = 有判据 FAIL)
 """
@@ -68,10 +68,10 @@ def main():
     shutil.copy2(CALIB, tmp_calib)
 
     print("═" * 92)
-    print("🧪 原子技能物理参数标定判据 — 真源 %s" % os.path.relpath(CALIB, ROOT))
+    print("🧪 原子技能物理参数标定判据 — 唯一依据 %s" % os.path.relpath(CALIB, ROOT))
     print("═" * 92)
 
-    # ① 真源完整
+    # ① 唯一依据完整
     miss, oob = [], []
     for st, ps in stages.items():
         for k in PARAMS:
@@ -84,7 +84,7 @@ def main():
                 miss.append("%s.%s 无上下限" % (st, k))
             elif not (lo <= v <= hi):
                 oob.append("%s.%s=%s ∉[%s,%s]" % (st, k, v, lo, hi))
-    chk("①", "真源完整 (每技能 %d 物理量, 含 min/max/unit/src)" % len(PARAMS),
+    chk("①", "唯一依据完整 (每技能 %d 物理量, 含 min/max/unit/src)" % len(PARAMS),
         not miss and not oob, "%d 技能 × %d 量 · 缺项 %d · 越界 %d" %
         (len(stages), len(PARAMS), len(miss), len(oob)) + (" " + ";".join((miss + oob)[:4]) if (miss or oob) else ""))
 
@@ -100,14 +100,14 @@ def main():
     diff = []
     for st, v in vcap.items():
         if abs(float(stages.get(st, {}).get("v", {}).get("value", -1)) - float(v)) > 1e-9:
-            diff.append("v:%s 真源%s≠引擎%s" % (st, stages.get(st, {}).get("v", {}).get("value"), v))
+            diff.append("v:%s 唯一依据%s≠引擎%s" % (st, stages.get(st, {}).get("v", {}).get("value"), v))
     for st, v in vmin.items():
         if abs(float(stages.get(st, {}).get("v_min", {}).get("value", -1)) - float(v)) > 1e-9:
-            diff.append("v_min:%s 真源%s≠引擎%s" % (st, stages.get(st, {}).get("v_min", {}).get("value"), v))
-    chk("②", "与引擎同源 (真源 v/v_min == cognition.STAGE_V_CAP/STAGE_V_MIN)", not diff,
+            diff.append("v_min:%s 唯一依据%s≠引擎%s" % (st, stages.get(st, {}).get("v_min", {}).get("value"), v))
+    chk("②", "与引擎同源 (唯一依据 v/v_min == cognition.STAGE_V_CAP/STAGE_V_MIN)", not diff,
         "比对 %d 段" % len(vcap) + (" · " + ";".join(diff[:3]) if diff else " · 一致"))
 
-    # ③ CLI 拦越界 (真源一字节没变)
+    # ③ CLI 拦越界 (唯一依据一字节没变)
     h0 = sha(tmp_calib)
     rc, out = run_cli(["--set", "接近", "v", "99.0"], {"ZMAX_SKILL_PHYS_JSON": tmp_calib})
     q = json.load(open(tmp_calib, encoding="utf-8"))["stages"]["接近"]["v"]["value"]
@@ -118,27 +118,27 @@ def main():
     # ④ 标定生效 (写 → 回读 → 闸门立刻用新值)
     rc, out = run_cli(["--set", "接近", "v", "0.34"], {"ZMAX_SKILL_PHYS_JSON": tmp_calib})
     back = json.load(open(tmp_calib, encoding="utf-8"))["stages"]["接近"]["v"]["value"]
-    os.environ["ZMAX_SKILL_PHYS_JSON"] = tmp_calib        # 让闸门读这份"标定后"的真源
+    os.environ["ZMAX_SKILL_PHYS_JSON"] = tmp_calib        # 让闸门读这份"标定后"的唯一依据
     PC._SKILL_PHYS_JSON = tmp_calib
     PC._CALIB_CACHE["key"] = None
     v_gate = float(PC.limits_for("接近")["v"])
     chk("④", "标定生效 (0.35→0.34 回读 + 闸门立刻用新值)", rc == 0 and abs(back - 0.34) < 1e-9
         and abs(v_gate - 0.34) < 1e-9, "回读 %s · 闸门 v=%s" % (back, v_gate))
 
-    # ⑤ 闸门读真源
+    # ⑤ 闸门读唯一依据
     q5 = PC.limits_for("插入")
-    chk("⑤", "闸门读真源 (v/m/F/a/s/s_step + calib_src 标真源)",
-        "真源" in str(q5.get("calib_src_kind")) and abs(float(q5["v"]) - 0.085) < 1e-9
+    chk("⑤", "闸门读唯一依据 (v/m/F/a/s/s_step + calib_src 标唯一依据)",
+        "唯一依据" in str(q5.get("calib_src_kind")) and abs(float(q5["v"]) - 0.085) < 1e-9
         and abs(float(q5["F"]) - 2.0) < 1e-9 and abs(float(q5["s_step"]) - 0.0085) < 1e-9,
         "v=%s F=%s a=%s s_step=%s src=%s" % (q5["v"], q5["F"], round(q5["a_max"], 3), q5["s_step"], q5.get("calib_src_kind")))
 
-    # ⑥ 上下限兜底: 塞一个越界值进真源 ⇒ 闸门夹回 + clamps 取证
+    # ⑥ 上下限保障: 塞一个越界值进唯一依据 ⇒ 闸门夹回 + clamps 取证
     d = json.load(open(tmp_calib, encoding="utf-8"))
     d["stages"]["接近"]["v"]["value"] = 9.9          # 故意越界 (绕过 CLI 手改)
     json.dump(d, open(tmp_calib, "w", encoding="utf-8"), ensure_ascii=False)
     PC._CALIB_CACHE["key"] = None
     q6 = PC.limits_for("接近")
-    chk("⑥", "上下限兜底 (真源被塞 9.9 ⇒ 运行期夹回上限并留 clamps)",
+    chk("⑥", "上下限保障 (唯一依据被塞 9.9 ⇒ 运行期夹回上限并留 clamps)",
         abs(float(q6["v"]) - 1.0) < 1e-9 and bool(q6.get("clamps")),
         "v=%s clamps=%s" % (q6["v"], (q6.get("clamps") or [])[:1]))
     d["stages"]["接近"]["v"]["value"] = 0.35         # 还原
@@ -180,8 +180,8 @@ def main():
         "回退" in str(q9.get("calib_src_kind")) and abs(float(q9["v"]) - 0.35) < 1e-9 and r9["big"] == 1,
         "v=%s src=%s 闸门仍削 1.2→%.4f" % (q9["v"], q9.get("calib_src_kind"), r9["u"][0]))
 
-    # ⑩ 每个技能类都能拿到**自己的**物理约束 (SK01-08/SK07Place 逐个比对真源)
-    #     (⑨ 把真源指针指向了不存在的文件, 这里先指回在役真源)
+    # ⑩ 每个技能类都能拿到**自己的**物理约束 (SK01-08/SK07Place 逐个比对唯一依据)
+    #     (⑨ 把唯一依据指针指向了不存在的文件, 这里先指回在役唯一依据)
     os.environ.pop("ZMAX_SKILL_PHYS_JSON", None)
     PC._SKILL_PHYS_JSON = CALIB
     PC._CALIB_CACHE["key"] = None
@@ -193,11 +193,11 @@ def main():
         q = cls.phys()
         exp = stages.get(cls.stage, {})
         if not exp:
-            bad10.append("%s 段名 %s 不在真源" % (cls.code, cls.stage))
+            bad10.append("%s 段名 %s 不在唯一依据" % (cls.code, cls.stage))
             continue
         for k, key in (("v", "v"), ("m", "m"), ("F", "F"), ("s_step", "s_step")):
             if abs(float(q[key]) - float(exp[k]["value"])) > 1e-9:
-                bad10.append("%s.%s 技能类 %s ≠ 真源 %s" % (cls.code, key, q[key], exp[k]["value"]))
+                bad10.append("%s.%s 技能类 %s ≠ 唯一依据 %s" % (cls.code, key, q[key], exp[k]["value"]))
         if not pc_["ok"]:
             bad10.append("%s phys_check: %s" % (cls.code, pc_["problems"]))
         # 方程必须真的在类里 (老倪: "打开 SK01 怎么没有物理方程?") —— 五式齐 + 带本段数字 + 有绑定说明
@@ -208,15 +208,15 @@ def main():
             bad10.append("%s 缺 phys_note (本段绑定说明)" % cls.code)
         if ("%.3f" % q["v"]) not in " ".join(md["方程"].values()):
             bad10.append("%s 方程里没填本段数字 (v=%.3f 找不到)" % (cls.code, q["v"]))
-        # dm/dt 必须与真源一致 (曾踩: 闸门字段叫 dmdt、报告叫 dmdt_max, 取错 → 方程里印出 0.00)
+        # dm/dt 必须与唯一依据一致 (曾踩: 闸门字段叫 dmdt、报告叫 dmdt_max, 取错 → 方程里印出 0.00)
         _dm = float(q.get("dmdt_max") or q.get("dmdt") or 0.0)
         if abs(_dm - float(exp["dmdt"]["value"])) > 1e-9:
-            bad10.append("%s 方程 dm/dt=%s ≠ 真源 %s" % (cls.code, _dm, exp["dmdt"]["value"]))
+            bad10.append("%s 方程 dm/dt=%s ≠ 唯一依据 %s" % (cls.code, _dm, exp["dmdt"]["value"]))
         if abs(float(md["数值"]["dmdt_max_kg_s"]) - float(exp["dmdt"]["value"])) > 1e-9:
             bad10.append("%s phys_model 的 dmdt 取错字段" % cls.code)
         rows.append("%s[%s] a_max=%.2f jerk=%.1f 单拍位移=%.4f" % (cls.code, cls.stage, q["a_max"],
                                                                    q["jerk_max"], q["s_step"]))
-    chk("⑩", "每个技能类拿到自己的物理约束 + **类里有五条方程** (EQ=5 · 方程带本段数字 · phys_note · phys() == 真源)",
+    chk("⑩", "每个技能类拿到自己的物理约束 + **类里有五条方程** (EQ=5 · 方程带本段数字 · phys_note · phys() == 唯一依据)",
         not bad10, "%d 个技能类 · %s" % (len(rows), " | ".join(rows[:3])) + (" | 问题 " + ";".join(bad10[:3]) if bad10 else " | 全部一致"))
 
     # ⑪ 未登记的段名不许静默套用别的段 (原来 unknown stage → 悄悄用「接近」的 m/F/v)

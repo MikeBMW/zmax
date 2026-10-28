@@ -15,7 +15,7 @@
   ① 总览: 各层模型状态（在役版本 / 最新产物 / 留出指标 / 归属）
   ② 训练控制: 启动/查询（L3+ 本机直接执行; L2 生成"待小芳执行"的处理单）
   ③ 部署控制: 晋级默认档 / 回滚（带审计记录 + 校验 sha256）
-  ④ 管道状态: 读 docs/PIPELINE_STATE.json（与画布/CICD 控制台同一真源）
+  ④ 管道状态: 读 docs/PIPELINE_STATE.json（与画布/CICD 控制台同一唯一依据）
 
 零依赖（标准库）+ 单文件 → 可复制、可运维。
 用法:
@@ -126,7 +126,7 @@ def status():
             out["deployed"] = json.load(open(DEFAULT_CKPT, encoding="utf-8"))
         except Exception:
             out["deployed"] = {}
-    # 管道状态（与画布/CICD 同一真源）
+    # 管道状态（与画布/CICD 同一唯一依据）
     if os.path.isfile(STATE):
         try:
             d = json.load(open(STATE, encoding="utf-8"))

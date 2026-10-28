@@ -146,7 +146,7 @@ def main() -> int:
         and lib0.split("\n")[0] in back and lib0.split("\n")[1] in back and mark not in back,
         "%s ｜ 卡上回到: %s" % (msg_clr, back.replace("\n", " ／ ")[:80]))
 
-    # ⑤ 判据不留痕: 现场快照 → 跑完原地还原 (判据不许把自己写的东西留在真源里)
+    # ⑤ 判据不留痕: 现场快照 → 跑完原地还原 (判据不许把自己写的东西留在唯一依据里)
     #    注意: 老倪自己会改卡(人工改写覆盖是他写的), 所以"不留痕"= 与跑前**逐字节一致**
     #    且 phases 集合与跑前完全相同 (不能多、也不能少) —— 不是"phases 必须为空"。
     _before_phases = set((json.loads(before).get("phases") or {})) if before else set()

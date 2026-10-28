@@ -28,11 +28,11 @@ self.setStatusBar(_QuietStatusBar(self))
 调用方一行不改, 行为确定 (也不会再有「右下角读数」这类控件悄悄挂上去)。
 验证靠 OCR: 截窗 → 裁底部 90px → `tesseract` 里不该再出现「Z-MAX 三层解耦架构 | Sys-0」。
 
-## 2. 删画布两个勾选框: 能力靠 getattr 兜底
+## 2. 删画布两个勾选框: 能力靠 getattr 保障
 
 `chk_follow_step` / `chk_core_center` 在 `simulink_module._build()` 里建 + `tl.addWidget()`。
 删对象前先确认**所有引用都是 `getattr(self, "chk_...", None)` 且 `is None` 走默认开** —— 现在三处
-(5630 兜底居中 / 6748 加载后居中 / 10879 跟随判定) 全是这个写法, 所以直接删对象 = 行为不变 (默认开)。
+(5630 保障居中 / 6748 加载后居中 / 10879 跟随判定) 全是这个写法, 所以直接删对象 = 行为不变 (默认开)。
 
 删完工具栏自然左对齐 (FlowBar 本来就是从左 10px 起排; 之前是两个勾选框占住最左两格把按钮推右)。
 离屏取证: `FlowBar.flow()` 第 1 项 `x=10 ▶ 运行` (改前 x≈290)。

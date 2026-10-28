@@ -32,7 +32,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.dirname(_HERE)
 sys.path.insert(0, _HERE)
 import scene_overlay as SO                                                      # noqa: E402
-import traj_display as TD                                                       # noqa: E402  (显示开关单一真源)
+import traj_display as TD                                                       # noqa: E402  (显示开关单一唯一依据)
 
 CONTAINER = os.environ.get("TRACE_CONTAINER", "ss-remote-tap")
 IN_CONTAINER = os.environ.get("TRACE_PATH", "/tmp/live_trace.json")

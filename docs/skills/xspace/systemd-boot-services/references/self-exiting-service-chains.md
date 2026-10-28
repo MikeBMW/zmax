@@ -32,7 +32,7 @@
 完整定式(服务端直接改规格落盘 + 反向按钮 + 页面写明作用域)见 `sim-real-scene-overlay`。
 
 ## 单元文件放仓库, 不要只活在 /etc
-`tools/systemd/*.service` 是仓库里的真源, 部署时 `sudo cp tools/systemd/<u>.service /etc/systemd/system/`
+`tools/systemd/*.service` 是仓库里的唯一依据, 部署时 `sudo cp tools/systemd/<u>.service /etc/systemd/system/`
 再 `daemon-reload`; 并在 `docs/skills/xspace/systemd-boot-services/references/local-units.md`
 补一行(单元 / 形态 / 干什么 / 核验点), 否则下一个人(或下一个我)不知道这台机器上有哪些常驻。
 

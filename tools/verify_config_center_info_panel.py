@@ -151,7 +151,7 @@ def main():
     page.tabs.setCurrentIndex(page._tab_index_by_title("功能配置"))
     app.processEvents()
     _fn = getattr(page, "fn_table", None)
-    chk("功能清单表 ≥ 300px 且行数 = 真源", _fn is not None and _fn.height() >= 300 and _fn.rowCount() >= 70,
+    chk("功能清单表 ≥ 300px 且行数 = 唯一依据", _fn is not None and _fn.height() >= 300 and _fn.rowCount() >= 70,
         "高=%s · 行=%s" % (getattr(_fn, "height", lambda: "—")(), getattr(_fn, "rowCount", lambda: "—")()))
     page.tabs.setCurrentIndex(page._tab_index_by_title("产品配置"))
     app.processEvents()
@@ -175,7 +175,7 @@ def main():
     _lt, _mt = getattr(page, "ml_layer_table", None), getattr(page, "ml_map_table", None)
 
     def _colidx(tb, want):
-        """按**表头名字**取列号 (判据不许写死列号 —— 加一列就红的那种错, v5.50.76 已经踩过一次)。"""
+        """按**表头名字**取列号 (判据不得硬编码列号 —— 加一列就红的那种错, v5.50.76 已经踩过一次)。"""
         for j in range(tb.columnCount()):
             _h = tb.horizontalHeaderItem(j)
             if _h and want in _h.text():
@@ -188,33 +188,33 @@ def main():
         _c_ly, _c_md = _colidx(_lt, "层"), _colidx(_lt, "在役主模型")
         _c_ver, _c_fn = _colidx(_lt, "版本"), _colidx(_lt, "承载功能")
     chk("四层 (L5/L4/L3/L2) 各一行 + PLAT 一行", _lt is not None and _lt.rowCount() == len(_sum["rows"]),
-        "行=%s (真源 %d)" % (getattr(_lt, "rowCount", lambda: "—")(), len(_sum["rows"])))
+        "行=%s (唯一依据 %d)" % (getattr(_lt, "rowCount", lambda: "—")(), len(_sum["rows"])))
     _got = [(_lt.item(i, _c_ly).text(), _lt.item(i, _c_md).text()) for i in range(_lt.rowCount())]
     _want = [(r["layer"], r["model"]) for r in _sum["rows"]]
-    chk("每层「在役主模型」= 真源同源 (不是手抄)", _got == _want, "页面=%s" % (_got[:2],) if _got != _want else "5/5 同源")
+    chk("每层「在役主模型」= 唯一依据同源 (不是手抄)", _got == _want, "页面=%s" % (_got[:2],) if _got != _want else "5/5 同源")
     # ★全局同步: 必须与**主控制台模型矩阵**同一条 (老倪: 「你来同步全局数据」)
     from zmax_platform_info import matrix_columns as _mxc, short_model_name as _smn3        # noqa: E402
     _mx = _mxc()
     _same = bool(_mx) and all(_lt.item(i, _c_md).text() == _smn3((_mx.get(_lt.item(i, _c_ly).text()) or {}).get("name"))
                               for i in range(_lt.rowCount()) if _lt.item(i, _c_ly).text() in _mx)
-    chk("与主控制台「模型配置矩阵」同名同版本 (同一个真源, 两边不许打架)", _same,
+    chk("与主控制台「模型配置矩阵」同名同版本 (同一个唯一依据, 两边不许打架)", _same,
         "矩阵四层: " + " | ".join("%s=%s" % (k, _smn3((v or {}).get("name"))) for k, v in sorted(_mx.items())) if _mx else "矩阵取不到")
     chk("每层「版本」也来自矩阵 (不是留空)",
         bool(_mx) and all((_lt.item(i, _c_ver).text() or "—") == ((_mx.get(_lt.item(i, _c_ly).text()) or {}).get("version") or "—")
                           for i in range(_lt.rowCount()) if _lt.item(i, _c_ly).text() in _mx),
         " / ".join("%s=%s" % (_lt.item(i, _c_ly).text(), _lt.item(i, _c_ver).text()) for i in range(_lt.rowCount())))
-    chk("每层「承载功能」数 = 真源现算",
+    chk("每层「承载功能」数 = 唯一依据现算",
         all(_lt.item(i, _c_fn).text() == "%d 条" % _sum["rows"][i]["fn_count"] for i in range(_lt.rowCount())),
         " / ".join(_lt.item(i, _c_fn).text() for i in range(_lt.rowCount())))
-    chk("映射表行数 = 功能真源全量 (一条不漏)", _mt is not None and _mt.rowCount() == _map["total"],
-        "表 %s 行 · 真源 %d 条" % (getattr(_mt, "rowCount", lambda: "—")(), _map["total"]))
+    chk("映射表行数 = 功能唯一依据全量 (一条不漏)", _mt is not None and _mt.rowCount() == _map["total"],
+        "表 %s 行 · 唯一依据 %d 条" % (getattr(_mt, "rowCount", lambda: "—")(), _map["total"]))
     _mc_md = _colidx(_mt, "承载模型") if _mt.columnCount() else -1
     _bad_row = []
     for i, r in enumerate(_map["rows"]):
         _cell = _mt.item(i, _mc_md).text() if _mt.item(i, _mc_md) else ""
         if _cell != r["model_text"]:
             _bad_row.append("第%d行 %s≠%s" % (i, _cell[:24], r["model_text"][:24]))
-    chk("逐行「承载模型」= 真源 join 结果", not _bad_row, " ; ".join(_bad_row[:3]) if _bad_row else "%d/%d 行一致" % (_map["total"], _map["total"]))
+    chk("逐行「承载模型」= 唯一依据 join 结果", not _bad_row, " ; ".join(_bad_row[:3]) if _bad_row else "%d/%d 行一致" % (_map["total"], _map["total"]))
     _comb = [r for r in _map["rows"] if len(r["layers"]) > 1 and "PLAT" not in r["layers"]]
     _ci = _map["rows"].index(_comb[0]) if _comb else -1
     chk("组合层 (如 L4/L5) 一行列**两条**模型, 不丢一条",
@@ -227,7 +227,7 @@ def main():
         "%d 条平台支撑" % len(_plat))
     chk("两张表都看得见 (层表 ≥160px · 映射表 ≥380px)",
         _lt.height() >= 160 and _mt.height() >= 380, "层表=%d 映射表=%d" % (_lt.height(), _mt.height()))
-    chk("模型配置页信息窗含映射口径 (真源 × 功能表)",
+    chk("模型配置页信息窗含映射口径 (唯一依据 × 功能表)",
         ("功能 ←→ 层模型" in page.out.toPlainText()) and ("functions 表" in page.out.toPlainText()),
         page.out.toPlainText().splitlines()[3][:60] if len(page.out.toPlainText().splitlines()) > 3 else "")
 

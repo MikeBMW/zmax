@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 """verify_web_agent_node.py — 🌐 L5「Web 智能体桥」离线+真通道取证 (2026-09-25)
 
-判据 (全部真断言, 不是"跑通即过"):
+判据 (全部真断言, 不是"验证通过即过"):
   ① 画布: 节点存在 · 在 DeepSeek 左侧 · 与 DeepSeek 同行带
   ② 画布: 与全图零重叠 (排除行带背景)
   ③ 画布: 两条连线存在且全前向 (工程记忆→桥→DeepSeek)
   ④ 节点声明: state_space/web_agent/readonly/source/source_symbol 齐 + 源码文件存在
-  ⑤ 运行时注册: match_node(画布名) → n_web_agent · _EXTERNAL_LOC 指向真源码
+  ⑤ 运行时注册: match_node(画布名) → n_web_agent · _EXTERNAL_LOC 指向唯一依据码
   ⑥ 离线派发(只读功能): 状态/画布/记忆/技能 四类提示词都返回**真数据**
   ⑦ 红线: 动作类提示词 → 拒答(refused) + 审计落盘, 且回执文字说明原因
   ⑧ **真通道端到端**: POST /agent/prompt → 本地 poll_once 拉到 → 派发 → POST /agent/reply → web 侧 GET 读到

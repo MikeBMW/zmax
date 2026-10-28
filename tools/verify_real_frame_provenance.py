@@ -80,7 +80,7 @@ def main():
     import cv2
     cap = cv2.VideoCapture(a.device, cv2.CAP_V4L2)
     if not cap.isOpened():
-        print(f"❌ /dev/video{a.device} 打不开 (被占用?)")
+        print(f"❌ /dev/video{a.device} 无法打开 (被占用?)")
         return 2
     cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)

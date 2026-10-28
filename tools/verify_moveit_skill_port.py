@@ -48,7 +48,7 @@ def main() -> int:
     ck("⓪ 技能库可被规划请求侧加载 (与引擎同一份文件)", SK is not None, mr.SKILLS_PY)
 
     pts_all = json.load(open(mr.TAUGHT, encoding="utf-8"))
-    pts = pts_all.get("points") or pts_all          # 真源结构: {version,points{name:{pos,quat}}}
+    pts = pts_all.get("points") or pts_all          # 唯一依据结构: {version,points{name:{pos,quat}}}
     nm = "slot1" if "slot1" in pts else next(iter(pts))
     base = pts[nm]["pos"]
     print("   示教点 %s = %s" % (nm, [round(float(v), 5) for v in base]))
@@ -74,7 +74,7 @@ def main() -> int:
             bad.append((st, "dz=%.3g dxy=%.3g" % (dz, dxy)))
     ck("①8 段技能口目标 == 示教点 + 声明偏置", not bad, f"{nm} · 不一致 {bad or '无'}")
 
-    # ② 端到端: 让 --stage 走一遍 (真机 tap 无数据时不许卡住 → 用假状态喂 real_state)
+    # ② 端到端: 让 --stage 走一遍 (真机 tap 无数据时不许阻塞 → 用假状态喂 real_state)
     _stub = {"jpos": [0.0] * 7, "tcp": [0.6488, 0.4983, 0.1104], "tcp_quat": [-0.7392, 0.0035, -0.6734, 0.0088],
              "t": time.time()}
     mr.real_state = lambda: _stub

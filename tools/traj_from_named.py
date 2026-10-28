@@ -123,7 +123,7 @@ def build(k: str, tol: float, force: bool, lead_in: bool = False, target: str | 
         raise SystemExit("⛔ 轨迹 %s 只有 %d 点, 不能规划" % (k, len(pts_m)))
     # 🔴 2026-10-26: 建图轨迹的数据源已换成 explore_traj_fenced.json ——
     #   那份是**按工程配置围栏扣减后重规划的真 base 坐标**(逐点过 fence_store.check_point),
-    #   不再是老的"2D 栅格平移到台面"的示意坐标。所以这里不能再用 k=='map' 一刀切拒:
+    #   不再是老的"2D 栅格平移到台面"的示意坐标。所以这里不能再用 k=='map' 统一处理拒:
     #   按 src 判, 指出是 fenced 版就放行(起点闸/净空预检照旧跑), 老的示意源继续拒。
     _src = str(d.get("src") or "")
     _fenced = ("explore_traj_fenced" in _src) or ("避让围栏" in _src)

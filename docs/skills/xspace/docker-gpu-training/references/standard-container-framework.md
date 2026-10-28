@@ -44,7 +44,7 @@ ENTRYPOINT ["zmax-train"]
 # 同理 AS infer (轻量) — infer.sh → zmax-infer
 ```
 
-## requirements.lock 基线（踩坑换来的稳定组合 — 勿动）
+## requirements.lock 基线（遇到问题换来的稳定组合 — 勿动）
 
 **最终统一基线 (2026-08-08, 全 7 模型可训)**:
 ```

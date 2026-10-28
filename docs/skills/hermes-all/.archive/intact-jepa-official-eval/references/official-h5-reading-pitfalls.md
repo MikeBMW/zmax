@@ -9,7 +9,7 @@
 | 2 | `AttributeError: 'Dataset' object has no attribute 'keys'` | 同一个键在不同数据集里可能是 **Dataset**(整块) 也可能是 **Group**(每 episode 一个 dataset) —— 换成按 Episode 写的实现后必踩 | 两分支都写: 有 `keys()` 走 Group, 否则整块索引 |
 | 3 | 读出来的形状全错 / 被压成 1 维 | 官方大数据是**扁平存储**: `pixels(N,224,224,3)` + `ep_offset`/`ep_len`, **不是** per-episode group | 按 `grp[ep_offset[ep] : +ep_len[ep]]` 切片 |
 | 4 | 存在性判断"明明有却走错分支" | `"ep_offset" in f.keys()` **会失效** (同一类问题: h5py 的 `in` 不保证给 bool) | `{"ep_offset","ep_len"} <= set(f.keys())` |
-| 5 | 喂编码器报 `expected 4 (channels), got 1` | 键选择器 `next(k for k in f if "obs" in k or "pixels" in k)` **先匹配到 `observation`**(28 维状态向量), 被当图像送进 ViT | 优先级写死: **先 pixel 后 obs** |
+| 5 | 喂编码器报 `expected 4 (channels), got 1` | 键选择器 `next(k for k in f if "obs" in k or "pixels" in k)` **先匹配到 `observation`**(28 维状态向量), 被当图像送进 ViT | 优先级预先固定: **先 pixel 后 obs** |
 
 配套两个环境点:
 - 读像素前 **`import hdf5plugin`** —— 官方数据用插件式压缩, 否则 `OSError: can't open directory (/usr/local/lib/plugin)`。

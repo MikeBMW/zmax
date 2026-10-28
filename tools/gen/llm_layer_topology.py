@@ -21,7 +21,7 @@
     ⑪ n_eng_mem → ss_mem_share   **工程记忆 (docs/memory + 技能库) → 总装**  ⚙(新节点)
     ⑫ ss_mem_l2/3/4 → n_mem_links 三层记忆 → 记忆图谱 (建链)                ✓
   意图/技能词典层 (原先全悬空)
-    ⑬ ssskill → n_skill_dict     新技能注册 → 技能词典                     ✓(代码真源 memory_graph)
+    ⑬ ssskill → n_skill_dict     新技能注册 → 技能词典                     ✓(代码唯一依据 memory_graph)
     ⑭ n_skill_dict → sssched     技能 kNN 直读 → 动作调制                  ◦
     ⑮ ssintact_dec → n_intent_direct  Δz → 意图直读                        ✓
     ⑯ n_intent_direct → sssched   技能直读 (无搜索) → 动作调制             ◦

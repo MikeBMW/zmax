@@ -10,7 +10,7 @@ metadata:
     related_skills: [zmax-real-closed-loop, rokae-direct-control, orin-lan-direct-access, zmax-policy-training-eval]
 ---
 
-# Z-MAX 全系统 采-训-推 闭环 + 真机模型/标定真源 + LoRA (2026-09-22 实跑)
+# Z-MAX 全系统 采-训-推 闭环 + 真机模型/标定唯一依据 + LoRA (2026-09-22 实跑)
 
 ## When to Use
 - 「同步真机数据/URDF/质量/惯性/自由度，全面更新状态空间仿真数据」
@@ -18,12 +18,12 @@ metadata:
 - 「标定参数接口」「sim to real 全系统数据闭环」；或要给某层做 LoRA 微调/合并部署
 - 前置: 真机只读 tap 在线 (否则采集体检环会 fail, 不编造)
 
-## 红线 (脚本里写死, 不是口号)
+## 红线 (脚本里预先固定, 不是口号)
 只读: 不调 `/move*` `/hmi/command` `/execute_external_task` `/gripper_driver` `/state_machine/*`
 不干扰生产: 训练前查 GPU 空闲; 不 kill 非本编排器进程; 不动 Orin
 不编造: 缺标定/缺数据/缺权重 → `null` + 原因 + 非零退出, 禁用默认值顶替
 
-## 一、机器人模型单一真源
+## 一、机器人模型单一唯一依据
 ```bash
 R=/home/ubuntu/lerobot-smolvla-lew; cd $R; P=gui-venv311/bin/python
 $P tools/robot_spec_sync.py          # URDF+真机只读实测 → config/robot/zmax_robot_spec.json
@@ -40,11 +40,11 @@ FK 对真机 tcp **3.52 mm**。
 ```bash
 $P tools/zmax_params.py --sync      # 合并各源 → config/calib/zmax_calib.json
 $P tools/zmax_params.py --check     # 就绪度; 有关键缺口 → 返回码 1
-$P tools/zmax_params.py --fk <q1..q6> --live   # 真源几何 FK 对照真机 tcp 真值
+$P tools/zmax_params.py --fk <q1..q6> --live   # 唯一依据几何 FK 对照真机 tcp 真值
 ```
 未标定项 (2026-09-22): `T_base_cam`(需零运动人工拖动 10+ 位姿, `tools/board_handeye_solve.py`) ·
 `plane_z`(现场量) · 示教几何(`tools/ss_geom_calib.py --record peg_head|goal|aoi`)。
-消费方一律 import 读真源: `tools/gui/yolo_perception.py`(台面高度) · `tools/real_truth.py`(示教几何/夹具偏移)。
+消费方一律 import 读唯一依据: `tools/gui/yolo_perception.py`(台面高度) · `tools/real_truth.py`(示教几何/夹具偏移)。
 仿↔真桥: `$P tools/sim2real_bridge.py` → `config/robot/zmax_sim2real.json`。
 
 ## 三、LoRA (自实现, 免依赖)

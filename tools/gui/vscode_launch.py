@@ -9,7 +9,7 @@
 
 口径 (为什么这么写):
   · **只对 550B 自动起**。550A(开发档)/550C(量产档) 不起 —— 省资源是硬要求, 不是"顺手都开"。
-    产品档唯一真源: config/platform/zmax_product.json → active_product (不手抄档位)。
+    产品档唯一依据: config/platform/zmax_product.json → active_product (不手抄档位)。
   · **省资源**四件事 (都能实测):
       ① `--reuse-window`: 已有窗口就复用, 不再开第二个 Electron 主进程 (原来一次一个新窗, 内存翻倍);
       ② `--disable-gpu`: 本机 Electron GPU 进程曾多次 SIGTRAP 崩 (见 studio 台账), 也省显存;
@@ -37,10 +37,10 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PRODUCT_JSON = os.path.join(ROOT, "config", "platform", "zmax_product.json")
 
-# 🅱 只有标定档 (550B) 自动起 VSCode。改这里 = 改规矩 (判据会核这条与真源 dev_profile 一致)。
+# 🅱 只有标定档 (550B) 自动起 VSCode。改这里 = 改规矩 (判据会核这条与唯一依据 dev_profile 一致)。
 AUTOSTART_PRODUCTS = ("550B",)
 
-# 单线程 debug 口径 —— 这一份是**唯一真源**: launch.json 里的同名配置、判据都按它对齐。
+# 单线程 debug 口径 —— 这一份是**唯一依据**: launch.json 里的同名配置、判据都按它对齐。
 SINGLE_THREAD_ENV = {
     "OMP_NUM_THREADS": "1",
     "MKL_NUM_THREADS": "1",
@@ -71,7 +71,7 @@ DISABLE_EXTENSIONS = (
     "ms-python.vscode-python-envs",
 )
 
-# ④ 欢迎页/发行说明/工作区信任/自动更新 这些没有 CLI 开关, 统一由工作区 settings 关掉 —— 唯一真源:
+# ④ 欢迎页/发行说明/工作区信任/自动更新 这些没有 CLI 开关, 统一由工作区 settings 关掉 —— 唯一依据:
 SETTINGS_KEYS = {
     "workbench.startupEditor": "none",
     "workbench.tips.enabled": False,
@@ -92,7 +92,7 @@ def _log(line: str) -> None:
 
 
 def active_product(root: str = None) -> str:
-    """当前产品档 (真源 active_product); 读不到返回 ""。"""
+    """当前产品档 (唯一依据 active_product); 读不到返回 ""。"""
     rel = os.path.join("config", "platform", "zmax_product.json")
     for p in ([os.path.join(root, rel)] if root else []) + [PRODUCT_JSON]:
         try:
@@ -147,7 +147,7 @@ def should_autostart(root: str = None) -> tuple:
     """(要不要起, 当前档, 一句话原因)"""
     prod = active_product(root)
     if not prod:
-        return False, prod, "读不到产品真源 (config/platform/zmax_product.json)"
+        return False, prod, "读不到产品唯一依据 (config/platform/zmax_product.json)"
     if prod not in AUTOSTART_PRODUCTS:
         return False, prod, "当前 %s 不是标定档 (只有 %s 自动起 VSCode · 省资源)" % (
             prod, "/".join(AUTOSTART_PRODUCTS))
@@ -192,7 +192,7 @@ def autostart(root: str = None, spawn=None, force_product: str = None, dry_run: 
             launched = bool(f(argv))
         if not launched and argv != cmd:
             try:
-                launched = bool(f(cmd, env))   # 兜底: systemd-run 不可用/失败时按老路开
+                launched = bool(f(cmd, env))   # 保障: systemd-run 不可用/失败时按老路开
             except TypeError:                  # 替身只收 argv
                 launched = bool(f(cmd))        # type: ignore[call-arg]
             out["isolated"] = False
@@ -213,7 +213,7 @@ def main(argv=None) -> int:
     import argparse
     ap = argparse.ArgumentParser(description="550B 标定版 · 打开工程后自动起 VSCode (低耗/单线程)")
     ap.add_argument("--dry-run", action="store_true", help="只打印命令行, 不真起")
-    ap.add_argument("--product", default=None, help="临时按这个档判断 (默认读真源)")
+    ap.add_argument("--product", default=None, help="临时按这个档判断 (默认读唯一依据)")
     ap.add_argument("--root", default=None)
     a = ap.parse_args(argv)
     r = autostart(root=a.root, force_product=a.product, dry_run=a.dry_run)

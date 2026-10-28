@@ -10,10 +10,10 @@
 八组判据 (全部真跑, 不假装):
   ① 任务配置: 7 条; 任务7 = TASK-07-AOI (场景 SCN-07-AOI · 类型 光学质量检测 · model_ref = L5 自主进化程序)
                且 任务1..6 与上一版 git 版逐字节一致
-  ② 场景真源: SCN-06-TRAY(摆盘) 补回 + SCN-07-AOI(ar_aoi) 新增; 场景名 == 任务名
+  ② 场景唯一依据: SCN-06-TRAY(摆盘) 补回 + SCN-07-AOI(ar_aoi) 新增; 场景名 == 任务名
   ③ 配置中心真渲染 (offscreen 起 ConfigCenterPage): 任务表 7 行, 有「场景」「模型」两列,
                任务7 那行 = 场景含 AR · 模型含 L5 自主进化程序 (tooltip 带全称)
-  ④ 节点改名全链: 画布真源 / 注册匹配 / 数据总线 MODULE_ORDER / simulink 映射 / 功能清单 / MCD / feature.dbc
+  ④ 节点改名全链: 画布唯一依据 / 注册匹配 / 数据总线 MODULE_ORDER / simulink 映射 / 功能清单 / MCD / feature.dbc
   ⑤ AOI 话题真发出: 真跑画布节点 🔍 光学质量检测 → 信号总线 live 出现 光学质量检测.* ≥8 个键 (值来自本轮真算)
   ⑥ AR 空间点位: 信号总线 ar. 键 ≥20 (示教点位台账 + 空间点 + TCP 真值 + RealSense 相机系)
   ⑦ 信号分析接线: HOST_SOURCES 含 ar 源; 显示名去前缀; 组名来自注册表
@@ -62,7 +62,7 @@ def main():
     tk = _j(os.path.join(ROOT, "config", "tasks", "tasks.json"))
     tasks = tk["tasks"]
     ids = [t["task_id"] for t in tasks]
-    ck("任务 ≥7 条 (2026-10 起真源 8 条: TASK-01..08)", len(tasks) >= 7, ids)
+    ck("任务 ≥7 条 (2026-10 起唯一依据 8 条: TASK-01..08)", len(tasks) >= 7, ids)
     aoi = next((t for t in tasks if t["task_id"] == "TASK-07-AOI"), None)
     ck("任务7 = TASK-07-AOI 存在", aoi is not None)
     if aoi:
@@ -83,7 +83,7 @@ def main():
     else:
         print("  ⏭ 跳过 git 对比 (HEAD 里没有该文件)")
 
-    print("=== ② 场景真源 (flows/scenes_5jobs.json) ===")
+    print("=== ② 场景唯一依据 (flows/scenes_5jobs.json) ===")
     sc = {s["scene_id"]: s for s in _j(os.path.join(ROOT, "flows", "scenes_5jobs.json"))["scenes"]}
     ck("SCN-06-TRAY 补回 (tray_filling)", sc.get("SCN-06-TRAY", {}).get("scene_type") == "tray_filling")
     ck("SCN-07-AOI 新增 (ar_aoi)", sc.get("SCN-07-AOI", {}).get("scene_type") == "ar_aoi")
@@ -100,7 +100,7 @@ def main():
         t = pg.tasks_table
         nrow, ncol = t.rowCount(), t.columnCount()
         head = [t.horizontalHeaderItem(c).text() for c in range(ncol)]
-        ck("任务表行数 = 真源任务数", nrow == len(tasks), "行=%d 真源=%d 列=%d %s" % (nrow, len(tasks), ncol, head))
+        ck("任务表行数 = 唯一依据任务数", nrow == len(tasks), "行=%d 唯一依据=%d 列=%d %s" % (nrow, len(tasks), ncol, head))
         # v5.49.3 起「场景」列改名「3D场景」⇒ 按真列名查 (老写法 "场景" in head 是列表精确匹配, 会假 FAIL)
         _scene_col = "3D场景" if "3D场景" in head else "场景"
         ck("表头含「场景」与「模型」", _scene_col in head and "模型" in head, head)
@@ -108,7 +108,7 @@ def main():
         r = next((r for r in range(nrow) if t.item(r, i) and t.item(r, i).text() == "TASK-07-AOI"), -1)
         ck("任务7 行在表内", r >= 0)
         # 🆕 2026-10-13: 活跃属性下拉必须落在「活跃」列 (10-12 加两列后列序右移, 下拉曾跑位到「启用节点」列),
-        #   且活跃列文字必须 == 真源推导 (曾只重算下拉、不重算文字 ⇒ 那格永远停在建表那一刻)
+        #   且活跃列文字必须 == 唯一依据推导 (曾只重算下拉、不重算文字 ⇒ 那格永远停在建表那一刻)
         _ac = head.index("活跃") if "活跃" in head else -1
         ck("活跃属性下拉都落在「活跃」列", _ac >= 0 and all(t.cellWidget(_rr, _ac) is not None for _rr in range(nrow)),
            "活跃列下标=%d" % _ac)
@@ -117,7 +117,7 @@ def main():
             _bact = (V._j(V.BIND_J, {}) or {}).get("active_task")
             _exp = _ts.cell("TASK-07-AOI", _bact)
             _got = t.item(r, _ac).text() if t.item(r, _ac) else None
-            ck("任务7 活跃列 == 真源推导", _got == _exp, "界面=%s 真源=%s (active_task=%s)" % (_got, _exp, _bact))
+            ck("任务7 活跃列 == 唯一依据推导", _got == _exp, "界面=%s 唯一依据=%s (active_task=%s)" % (_got, _exp, _bact))
         if r >= 0:
             scell = t.item(r, head.index(_scene_col))
             mcell = t.item(r, head.index("模型"))
@@ -137,7 +137,7 @@ def main():
     from lerobot.engineering import flows
     d, errs = flows.load_canvas()
     node = next((n for n in d["nodes"] if "质量检测" in (n.get("name") or "")), None)
-    ck("画布真源节点名 = 🔍 光学质量检测", node is not None and node["name"] == "🔍 光学质量检测",
+    ck("画布唯一依据节点名 = 🔍 光学质量检测", node is not None and node["name"] == "🔍 光学质量检测",
        node["name"] if node else None)
     # 2026-10-17: 画布已 90 节点 (新增 1); 这里判"没被删"而不是钉死数字, 钉死会天天假红
     ck("画布节点未被删 (≥89)", len(d["nodes"]) >= 89, f"现 {len(d['nodes'])} 个")

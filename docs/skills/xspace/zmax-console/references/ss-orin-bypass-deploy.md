@@ -51,7 +51,7 @@ kill <ss_infer_service pid>; bash ss_start.sh; curl -s localhost:8767/health
   非 dry 运行 → relay 回传 6 批 × 50 样本成功。
 - CLI: `--duration N`(自检) `--dry`(只本地落盘) —— dry 必须同时管住**定时回传**(本轮修过一次: 定时器忘了读 dry)。
 - 退出竞态坑: 先 `rclpy.shutdown()` 再 join spin 线程, 最后才 `destroy_node()`;
-  顺序反了会在 spin 线程抛 `handler.exception()`(看似崩溃, 其实是关闭竞态)。
+  顺序反了会在 spin 线程抛 `handler.exception()`(看似崩溃, 实际是关闭竞态)。
 
 ## 旁路"只读"怎么取证
 ```bash

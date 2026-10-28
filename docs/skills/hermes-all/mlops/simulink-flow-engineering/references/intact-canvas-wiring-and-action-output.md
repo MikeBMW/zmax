@@ -45,5 +45,5 @@ ssintact_dec --[L4 条件 → L3 DiT (未标定则不注入)]--> ssdec 的 in2
 `diag["ckpt_env"] / ["ckpt_realpath"] / ["ckpt_mtime"] / ["ckpt_bytes"]`。
 配套坑: 服务 root 解析曾多跳一层 (`"..",".."`) → 证据被写到 `/home/ubuntu/reports/` (工程外);
 **判据里要带路径**, 不能只看"有没有产出 json"。
-权重用**稳定指针**而非写死轮次: `checkpoints/<稳定名>/` = `config.json` + 恰好一个 `weights.pt` 软链
+权重用**稳定指针**而非预先固定轮次: `checkpoints/<稳定名>/` = `config.json` + 恰好一个 `weights.pt` 软链
 (官方 `load_pretrained` 的文件夹格式, 多个 `.pt` 会 `ValueError: Ambiguous checkpoint`), 换模型只换软链。

@@ -2,13 +2,13 @@
 
 > 老倪原话：「现在已经开始运行了，你要发布一个配置单，可以从配置清单导出。带出所有的配置参数。先给出当前插拔项目的所有配置参数。而且现在的实时监控，要能看出配置。之前说的，绿色topic是插拔任务，你怎么没有将topic设置成绿色的？」
 
-三件事，三处真源，逐条可复核。
+三件事，三处唯一依据，逐条可复核。
 
 ## ① 配置单（全参数导出）—— `tools/config_sheet.py` + `config_center.py sheet`
 
 从**配置清单**导出该任务在当前状态空间工程里的全套配置参数，8 段：
 
-| 段 | 内容 | 真源 |
+| 段 | 内容 | 唯一依据 |
 | --- | --- | --- |
 | ① 任务/场景/站点 | 任务ID/名称/配方类型/场景+色/站点/触发/循环/判据/安全/ss_mode/工单规则/适用段 | `config/ss_task_binding.json` + `config/tasks/tasks.json` |
 | ② 工艺步骤 | 9 步（名称/时长/描述/力） | 同上 |
@@ -16,8 +16,8 @@
 | ④ 六档位 | run_cfg 六路开关（label/checked） | 同上 |
 | ⑤ 参数覆盖 | overrides（该任务对工程默认值的覆盖） | 同上 |
 | ⑥ 画布 | 工程名/89 节点/184 连线/md5 + **该任务启用 52 节点的逐节点参数** | `flows/state_space_obs.json` |
-| ⑦ 参数注册表 | **710 项**（calib 45 · canvas 79 · code 25 · platform 24 · scene 48 · space 56 · switch 6 · teach 427），每项带 值/范围/单位/状态/真源 | `config/mcd/param_registry.json` |
-| ⑧ 标定真源 + 点位台账 | 标定文件 sha256/时间；示教点/空间点/AOI 点条数 | `config/calib/*.json` · `data/skills/l2_atomic/*.json` · `reports/aoi_points/` |
+| ⑦ 参数注册表 | **710 项**（calib 45 · canvas 79 · code 25 · platform 24 · scene 48 · space 56 · switch 6 · teach 427），每项带 值/范围/单位/状态/唯一依据 | `config/mcd/param_registry.json` |
+| ⑧ 标定唯一依据 + 点位台账 | 标定文件 sha256/时间；示教点/空间点/AOI 点条数 | `config/calib/*.json` · `data/skills/l2_atomic/*.json` · `reports/aoi_points/` |
 
 用法（GUI 按钮「📋 配置单(全参数导出)」= 同一条命令，选中任务那一行）：
 
@@ -38,10 +38,10 @@ gui-venv311/bin/python tools/config_center.py sheet TASK-01-FW
    `QTreeWidget::item{color:#c9d1d9}` 让 `setForeground(场景色)` 失效 —— 树里 34 行条目数据上是
    `#2e8b57`，**离屏全分辨率渲染绿色像素 = 0**（全灰）。修法：条目默认色交回 palette/条目数据，
    样式表只留 padding；改后同一渲染绿色像素 **2938 px**，负对照（贴回旧样式）**= 0 px**。
-2. **来源族没进标签层**：标签真源 `config/topics/scene_tags.json` 原来只认"运行产物里出现过的信号名"，
+2. **来源族没进标签层**：标签唯一依据 `config/topics/scene_tags.json` 原来只认"运行产物里出现过的信号名"，
    而引擎轨迹快照的键（`sstrace.估计值/末端/光模块头到孔_mm/接触概率/前馈速度/安全边界…`）不在其中。
    新增**来源族 → 场景**层（`tools/sig_scene_tags.py::_source_scenes`）：
-   * `sstrace.*`（3D 引擎轨迹快照）→ **画布数据源那一场场景**（真源 `tools/ss_scene_switch.now()['src_state']`）
+   * `sstrace.*`（3D 引擎轨迹快照）→ **画布数据源那一场场景**（唯一依据 `tools/ss_scene_switch.now()['src_state']`）
    * `ros./robot/force_torque.*` · `ros./gripper_pos.*`（力控插入/夹持专用）→ 插拔场景
    * `ros./robot/tcp_pose.*`（三场景共用的真机位姿）→ **留白**（要绿就写进 overrides）
 
@@ -49,12 +49,12 @@ gui-venv311/bin/python tools/config_center.py sheet TASK-01-FW
 
 ## ③ 实时监控"能看出配置" —— 顶部常显「当前配置」横幅
 
-`canoe_graphic.py` 树上方一行（5s 自刷新，真源 = 配置单 latest json）：
+`canoe_graphic.py` 树上方一行（5s 自刷新，唯一依据 = 配置单 latest json）：
 
 ```
 ⚙️ 当前配置 TASK-01-FW FW Loading + EEPROM 写/读校验 · 场景 插拔场景 · 配方 插拔+固件校验 ·
    工艺 9 步 · 启用节点 52 · 档位 6 · 参数覆盖 6 · 配置单 配置单_TASK-01-FW_latest.json ·
-   导出 2026-10-12 18:06:07 · 真源 任务/绑定/画布/参数注册表
+   导出 2026-10-12 18:06:07 · 唯一依据 任务/绑定/画布/参数注册表
 ```
 
 现场窗口 OCR 实读（`/tmp/ssv/left_top.png`）与该文本一致。
@@ -77,7 +77,7 @@ gui-venv311/bin/python tools/verify_scene_topic_colors.py     # 17/17 PASS (需 
 四处真因/修法：
 
 1. **信号目录按场景分组**（`SCENE_GROUPS`）：🟢 插拔场景 / 🔵 摆盘场景 / 🥽 AR 场景 / ⚪ 基础场景(白)。
-   组名直接写场景名 + 数据来源（不再叫「3D 场景实时数据」）；归组 = `sig_scene_tags.tag(key)` 打标真源，
+   组名直接写场景名 + 数据来源（不再叫「3D 场景实时数据」）；归组 = `sig_scene_tags.tag(key)` 打标唯一依据，
    没打标一律进「基础场景」白 ○。AR 组保留二级分组（AOI/相机/空间点位…），二级标题也用场景色。
    摆盘组此刻无数据 ⇒ 一行灰字说明「真空/吸盘/料盘/槽位话题未接」，数据到了自动变蓝。
 2. **折叠点了没反应** = 真因：`_fill_tree` 结尾硬编码 `setExpanded(True)`，用户一折叠，下一次重建（键集变化触发的）

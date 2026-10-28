@@ -6,12 +6,12 @@
 选取最新的动作执行, 实时执行。最后的技能, 应该通过一个循环服务, 快速流转到具体的技能。」
 
 做法 (60Hz 默认, 纯读块 + 写共享内存, 不下发任何真机指令):
-  ① 读块真源 zmax_data/ss_live/chunk_latest.json (常驻回路每周期写; 含 u[H,4] = 加权+调制+安全后的序列)
+  ① 读块唯一依据 zmax_data/ss_live/chunk_latest.json (常驻回路每周期写; 含 u[H,4] = 加权+调制+安全后的序列)
   ② 每个技能 (八阶段: 接近/对位/下降/抓取/抬起/转移/插入/完成) 认领块里属于自己的那一拍
      (块内第 i 拍 → 阶段 stage_idx+i); 没轮到的技能保持**上一次最新**的那一拍 (肌肉记忆: 用最近拿到的)
   ③ 队内推进: 按经过时间把每技能的"当前拍"往前推 (块 dt=0.1s), 推到底就停在最后一拍 (等下一块)
      ⇒ 技能拿到的是**最新可用**动作, 而不是一块里永远第一步
-  ④ 落两条真源:
+  ④ 落两条唯一依据:
      /dev/shm/zmax_ss_engine/skill_<idx>_<name>.json   每个技能的当前动作 (技能侧直接读, 微秒级)
      zmax_data/ss_live/skill_latest.json               平铺数值 (信号分析直接画: 每技能速度 + 派发帧龄/次数)
 """
@@ -30,7 +30,7 @@ if os.path.join(ROOT, "src") not in __import__("sys").path:
     __import__("sys").path.insert(0, os.path.join(ROOT, "src"))
 from lerobot.policies.left_right.state_space.physics_constraints import (InertiaLimiter,   # noqa: E402
                                                                        limits_for)
-# ⚖ 技能号 ↔ 阶段: 真源 = 技能库的类 (code/stage 类属性), 不在这里手写编号
+# ⚖ 技能号 ↔ 阶段: 唯一依据 = 技能库的类 (code/stage 类属性), 不在这里手写编号
 from lerobot.policies.left_right.state_space.skills.atomic_skills import (  # noqa: E402
     SKILLS, SKILLS_TRAY, bind_limiter, skill_for)
 CODE_BY_STAGE = {}
@@ -193,10 +193,10 @@ class Dispatcher:
         bind_limiter(self.lim)
         self._sk_cache = {}
         self.n_gate_skill = 0        # 走"技能对象自己的调用口"的拍数 (本段有技能类)
-        self.n_gate_stage = 0        # 走"同段真源闸"的拍数 (本段没有技能类: 拔出/AOI转移/AOI检测/回程)
+        self.n_gate_stage = 0        # 走"同段唯一依据闸"的拍数 (本段没有技能类: 拔出/AOI转移/AOI检测/回程)
         self.last_v = {s_: np.zeros(3) for s_ in STAGES}
         self.last_a = {s_: np.zeros(3) for s_ in STAGES}
-        # ⚖ 加速度真源: 块边界算一次并**保留到下一块** (老倪 2026-10-15「信号分析里要看到 a 加速度」)。
+        # ⚖ 加速度唯一依据: 块边界算一次并**保留到下一块** (老倪 2026-10-15「信号分析里要看到 a 加速度」)。
         #   为什么不能直接用 last_a: 它是 (本tick − 上一tick)/dt, 而块内同一步动作不变 ⇒ 只在换块那一拍
         #   出现一个 16ms 尖峰 (60Hz 里 1 拍), 信号分析按 ~50Hz 采样几乎永远采不到 ⇒ 现场看 a 恒为 0 (假信号)。
         #   改为: 换新块时算 ‖v_本块 − v_上一块‖ / Δt_块间 (mm/s²), 保留到下一块 ⇒ 稳定可读。
@@ -226,7 +226,7 @@ class Dispatcher:
 
         两路**都过闸**, 没有第三条路:
           · 本段有技能类 ⇒ 走**技能对象自己的调用口** `skill.clamp()` (真调用写在 atomic_skills 类体里, 打开就能看到);
-          · 本段没有技能类 (拔出/AOI转移/AOI检测/回程) ⇒ 走同段真源闸 `self.lim.limit()` (如实登记, 不假装有技能)。
+          · 本段没有技能类 (拔出/AOI转移/AOI检测/回程) ⇒ 走同段唯一依据闸 `self.lim.limit()` (如实登记, 不假装有技能)。
         """
         _sk = self._skill(st)
         if _sk is not None:
@@ -301,7 +301,7 @@ class Dispatcher:
             flat["%s_偏差_mps" % st] = (float(v.get("err_norm") or 0.0) if v else -1.0)     # ⚖ 物理不可行偏差
             flat["%s_可行" % st] = (0 if (v or {}).get("why") not in (None, "可行") else 1)  # 1=原样可行 0=被削
         _atomic_json(os.path.join(LIVE, "skill_latest.json"), flat)
-        # ⚖ 原子技能物理量真源 (老倪 2026-10-15「所有原子技能都要有 topic 输出, 信号分析里看到 x y z v a」):
+        # ⚖ 原子技能物理量唯一依据 (老倪 2026-10-15「所有原子技能都要有 topic 输出, 信号分析里看到 x y z v a」):
         #   每个技能一份 —— 数值/偏差/物理上限全部来自上面刚过的物理闸 (_p), 不另算一份;
         #   位置/姿态由 DDS 发布端从真机 tap 补 (这里不管位姿, 只管动作侧物理量)。
         _pose = _read_pose()          # 位姿: 该技能在职时当前末端位姿就是它这一拍的位置
@@ -312,9 +312,9 @@ class Dispatcher:
             _code = CODE_BY_STAGE.get(_st, "")
             if not _code:
                 continue
-            # ⚖ 包络一律取 **limits_for 真源** (在职/不在职都一样): 闸门导出到每拍结果里的 phys 是
+            # ⚖ 包络一律取 **limits_for 唯一依据** (在职/不在职都一样): 闸门导出到每拍结果里的 phys 是
             #   给报告看的**四舍五入摘要** (m 4位 / a_max 4位 / jerk_max 3位), 拿它当"物理模型"发布
-            #   就等于把 4.166667 变成 4.1667 —— 信号分析里对不上真源, 判据也过不了 1e-6。
+            #   就等于把 4.166667 变成 4.1667 —— 信号分析里对不上唯一依据, 判据也过不了 1e-6。
             _q = dict(limits_for(_st) or {}) or dict((_v or {}).get("phys") or {})
             # ⚠️ 两个来源的键名不同 (闸门 phys: v_cap/F_max; limits_for: v/F/jerk/s) —— 统一成正名,
             #    否则会把包络写成一串 -1 而在信号分析里显示"没有物理模型"(同一类坑: dmdt vs dmdt_max)。
@@ -354,7 +354,7 @@ class Dispatcher:
             }
         _ph["skills"]["_元"] = {"派发帧龄_s": 0.0, "块帧龄_s": flat["块帧龄_s"], "n": self.n}
         _atomic_json(os.path.join(LIVE, "skill_phys.json"), _ph)
-        # ⚖ 偏差真源: 小偏差 → 🧪 状态校正器 (修正误差); 大偏差 → 📡 融合定位 → 🧮 流形引擎 (顶层补偿)
+        # ⚖ 偏差唯一依据: 小偏差 → 🧪 状态校正器 (修正误差); 大偏差 → 📡 融合定位 → 🧮 流形引擎 (顶层补偿)
         #   每个技能各一份 (带物理上限与削因), 下游按 big 分流 —— 这是"误差反馈"的唯一出口, 不另开通道。
         _e = {"ts": now, "src": "physics_constraints.InertiaLimiter", "big_err": self.lim.big_err,
               "err": {st: v.get("err") for st, v in out.items()},
@@ -401,7 +401,7 @@ def main():
     if a.once:
         print(json.dumps(dp.cycle(), ensure_ascii=False, indent=1))
         return 0
-    print("🧩 技能派发循环服务: %.0fHz · 真源 %s · 出口 %s" % (a.hz, LIVE, SHM), flush=True)
+    print("🧩 技能派发循环服务: %.0fHz · 唯一依据 %s · 出口 %s" % (a.hz, LIVE, SHM), flush=True)
     dp.run(a.seconds)
     return 0
 

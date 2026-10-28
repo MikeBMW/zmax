@@ -10,7 +10,7 @@
      src/lerobot/policies/left_right/state_space/planner.py:TaskPlanner
      自然语言 → 技能 Token 序列 (只输出序列, 不进实时回路)。这一层的输出原样存进产物, 作为取证。
   ② 几何层 = 本文件
-     槽位真源读 zmax_data/ar_rs/fences.json 的「左槽1~14 / 槽1~14」实测盒,
+     槽位唯一依据读 zmax_data/ar_rs/fences.json 的「左槽1~14 / 槽1~14」实测盒,
      每搬运一个模块生成 6 段(接近→抓取下降→抬起→横移→放置下降→抬起),
      14 个模块依次循环。
 

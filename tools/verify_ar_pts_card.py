@@ -6,11 +6,11 @@
 
 判定 (真起窗口 + 真点按钮, 不看返回值):
   ① ⚙️ 工程配置 那一页里有专门的「🥽 AR 场景 · 工程配置数据」块
-  ② 表头 = 点位/X(m)/Y(m)/Z(m)/记录时间/更新/真源文件; 第一行就是 **金手指点1**
-  ③ 表里 金手指点1 的 x/y/z 与台账真源 reports/aoi_points/金手指点1.json **逐位相同**
-  ④ 该行有历史/来源 tooltip(记录时间 + 真源文件 + 更新次数)
+  ② 表头 = 点位/X(m)/Y(m)/Z(m)/记录时间/更新/唯一依据文件; 第一行就是 **金手指点1**
+  ③ 表里 金手指点1 的 x/y/z 与台账唯一依据 reports/aoi_points/金手指点1.json **逐位相同**
+  ④ 该行有历史/来源 tooltip(记录时间 + 唯一依据文件 + 更新次数)
   ⑤ 「📋 复制这张表」真点一下 → 剪贴板拿到的 TSV 里含金手指点1 的坐标
-  ⑥ 「📄 存 CSV」真点一下 → 文件真的写出来了且内容含金手指点1
+  ⑥ 「📄 存 CSV」真点一下 → 文件实际生成来了且内容含金手指点1
 """
 from __future__ import annotations
 
@@ -65,14 +65,14 @@ ck(len(tbs) == 1, "块里只有一张表", "%d 张" % len(tbs))
 tb = tbs[0] if tbs else None
 if tb is not None:
     hdr = [tb.horizontalHeaderItem(c).text() for c in range(tb.columnCount())]
-    # 2026-10-21: 表格已加 A/B/C 姿态三列 ⇒ 判据按**现在真实的列**验 (原来写死旧列, 一直红)
-    WANT_HDR = ["点位", "X (m)", "Y (m)", "Z (m)", "A (°)", "B (°)", "C (°)", "记录时间", "更新", "真源文件"]
+    # 2026-10-21: 表格已加 A/B/C 姿态三列 ⇒ 判据按**现在真实的列**验 (原来预先固定旧列, 一直红)
+    WANT_HDR = ["点位", "X (m)", "Y (m)", "Z (m)", "A (°)", "B (°)", "C (°)", "记录时间", "更新", "唯一依据文件"]
     ck(hdr == WANT_HDR, "表头齐", hdr)
     ck(tb.rowCount() >= 8, "点位行数 ≥8", tb.rowCount())
     r0 = [tb.item(0, c).text() for c in range(tb.columnCount())]
     ck(r0[0] == "金手指点1", "第一行就是金手指点1", r0)
 
-    print("\n=== ③ 与台账真源逐位相同 ===")
+    print("\n=== ③ 与台账唯一依据逐位相同 ===")
     with open(os.path.join(ROOT, "reports", "aoi_points", "金手指点1.json"), encoding="utf-8") as f:
         j = json.load(f)
     want = ["%.6f" % j["pos"][0], "%.6f" % j["pos"][1], "%.6f" % j["pos"][2]]
@@ -80,12 +80,12 @@ if tb is not None:
     ck(got == want, "x/y/z 与 reports/aoi_points/金手指点1.json 一致", "%s vs %s" % (got, want))
     _ci = {h: i for i, h in enumerate(hdr)}
     ck(j["recorded_at"] in r0[_ci["记录时间"]], "记录时间一致", r0[_ci["记录时间"]])
-    ck(r0[_ci["真源文件"]].endswith("金手指点1.json"), "真源文件名一致", r0[_ci["真源文件"]])
+    ck(r0[_ci["唯一依据文件"]].endswith("金手指点1.json"), "唯一依据文件名一致", r0[_ci["唯一依据文件"]])
 
     print("\n=== ④ 行 tooltip 带来源/历史 ===")
     tip = tb.item(0, 0).toolTip() or ""
     ck("金手指点1" in tip and "reports/aoi_points" in tip and "次更新" in tip,
-       "tooltip 有真源 + 更新记录", tip.replace("\n", " | ")[:110])
+       "tooltip 有唯一依据 + 更新记录", tip.replace("\n", " | ")[:110])
 
 print("\n=== ⑤ 真点「📋 复制这张表」 ===")
 btns = {b.text(): b for b in card.findChildren(__import__("PyQt5.QtWidgets", fromlist=["QPushButton"]).QPushButton)} if card is not None else {}

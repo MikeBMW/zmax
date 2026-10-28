@@ -5,7 +5,7 @@ ros_scene_depth_build.py — 真实场景深度建图 [容器 ss-remote-tap 内�
 ════════════════════════════════════════════════════════════════════
 老倪需求: 「利用L5层大模型的理解能力，你来建立深度地图」
 
-链路（全部实测参数，无写死几何）:
+链路（全部实测参数，无预先固定几何）:
     深度像素 (u,v) + z=深度值×0.1mm
       → p_cam  = ((u-cx)/fx·z, (v-cy)/fy·z, z)          [真 camera_info 内参]
       → p_tcp  = R_x·p_cam + t_x                         [手眼 X=T_cam2tcp]
@@ -17,7 +17,7 @@ ros_scene_depth_build.py — 真实场景深度建图 [容器 ss-remote-tap 内�
     depth_map/depth_vis.png      深度伪彩可视化（含遮挡/无效区）
     depth_map/topview.png        base 系 X-Y 占据栅格俯视图（含刀尖位置）
     depth_map/stats.json         深度统计（有效率/量程/平面高度）
-    zmax_scene/objects3d.json    语义物体 base 系 3D（喂给叠加引擎做仿真投影）
+    zmax_scene/objects3d.json    语义物体 base 系 3D（提供给叠加引擎做仿真投影）
 
 用法:
   sudo docker exec ss-remote-tap bash -lc 'source /opt/ros/humble/setup.bash && \

@@ -8,18 +8,18 @@
 本工具把**流形引擎的实测几何量**并进 `tools/ar_aoi_bus.py` 的同一 live 总线文件 (AR 8797 / AOI
 10082·10083 信号都走这条路), 使 AR/AOI 场景看到的不只是相机/AOI 信号, 还有引擎的度量与健康度。
 
-信号口径 (全部来自真源, 不造数):
+信号口径 (全部来自唯一依据, 不造数):
   · 引擎.健康度_H         H = (1/κ)·λ_min        (无量纲; 分级 >0.5 优秀 / 0.1~0.5 良好 / 0.01~0.1 警告 / ≤0.01 危险)
   · 引擎.条件数_κ         κ = λ_max/λ_min
   · 引擎.最小特征值_λmin / 引擎.最大特征值_λmax  (度量张量 g 的特征值)
   · 引擎.各向异性          std(λ)/mean(λ)
-  · 引擎.扭矩_τ           ‖g⁻¹F‖  (m/s², 引擎输出的"动力"预算; 力由工序真源给定, 缺省 1N 基准载荷)
+  · 引擎.扭矩_τ           ‖g⁻¹F‖  (m/s², 引擎输出的"动力"预算; 力由工序唯一依据给定, 缺省 1N 基准载荷)
   · 引擎.度量尺度_M       标量 M (等效惯量尺度)
   · 引擎.度量分量数       n(n+1)/2
   · 引擎.分级             0=危险 1=警告 2=良好 3=优秀 (数值化, 便于大屏判色)
 
 用法:
-  python3 tools/engine_bus_publish.py                 # 用真源配置 (config/calib/zmax_manifold.json) 发一次
+  python3 tools/engine_bus_publish.py                 # 用唯一依据配置 (config/calib/zmax_manifold.json) 发一次
   python3 tools/engine_bus_publish.py --task TASK-06-TRAY   # 先用配置单映射出 M 再发
   python3 tools/engine_bus_publish.py --dry-run       # 只算不发
 """
@@ -40,7 +40,7 @@ GRADE_NUM = {"critical": 0, "warning": 1, "good": 2, "excellent": 3}
 
 
 def _engine_state(task: str | None = None, force_n: float = 1.0) -> dict:
-    """从真源算出引擎的几何/健康量 (与流形引擎节点同一套口径)。"""
+    """从唯一依据算出引擎的几何/健康量 (与流形引擎节点同一套口径)。"""
     from lerobot.manifold.metric_field import MetricField
     from lerobot.manifold.health import health_from_metric                          # noqa: PLC0415
 
@@ -89,7 +89,7 @@ def signals(st: dict) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="流形引擎 → AR/AOI 集成信号总线")
-    ap.add_argument("--task", default="", help="先用配置单映射 M (如 TASK-06-TRAY), 缺省用真源配置")
+    ap.add_argument("--task", default="", help="先用配置单映射 M (如 TASK-06-TRAY), 缺省用唯一依据配置")
     ap.add_argument("--force", type=float, default=1.0, help="计算 τ 用的基准力 (N, 缺省 1)")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()

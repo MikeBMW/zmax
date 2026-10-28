@@ -3,23 +3,23 @@
 """verify_product_consistency.py — 「550A/B/C 三版本数据一致性」判据 (逐项 ✅/❌ + 证据 + 未验证项)。
 
 覆盖 (7 项必需 + 1 项附加, 每项含 文件:行号 或 实测数值 证据):
-  ① 产品配置真源自洽    用 prime_structure 重算 3 个 cap_signature + 6 个发布指纹, 与
+  ① 产品配置唯一依据自洽    用 prime_structure 重算 3 个 cap_signature + 6 个发布指纹, 与
                         config/platform/zmax_product.json 已写值逐个比对; read_fingerprint 反解自证。
   ② 唯一性              6 个指纹两两互不相等。
   ③ 协同(包含关系)      能力集合 550A⊆550B⊆550C 且导出的签名整除 A|B|C 全成立; 反向不成立也如实报。
   ④ 元数据覆盖面        每个产品能力集合 ⊆ 元数据基元 18 ∪ 阶段 8 全集; 统计每产品基元/阶段数。
   ⑤ 元数据→topic 一致性 用 meta_moe_router 的 topic 目录 + PS.signature 对每个 topic 的元数据组合算签名,
                         检查签名互不重复; 重复则列出冲突对 (如实报, 可能暴露真问题)。
-  ⑥ 跨窗口一致性(离屏)  QT_QPA_PLATFORM=offscreen 里构造 ConfigCenterPage, 断言其读到的产品真源与
+  ⑥ 跨窗口一致性(离屏)  QT_QPA_PLATFORM=offscreen 里构造 ConfigCenterPage, 断言其读到的产品唯一依据与
                         config/platform/zmax_product.json 一致 (无产品区 ⇒ 如实写「未实现(待接线)」+ 接线判据)。
   ⑦ 产品切换一致性      把 active_product 依次写成 550B/550C/550A, 每次断言 PS.active_product()+report() 同步,
                         跑完恢复原值 (自清理)。
-  ⑧ 理解记忆真源自洽    附加: zmax_data/manifold/prime_memory.json 的每条 seen/event 必须满足
+  ⑧ 理解记忆唯一依据自洽    附加: zmax_data/manifold/prime_memory.json 的每条 seen/event 必须满足
                         signature(items) == 存档签名 (算术基本定理不变量); 违反即记忆在**废弃域**下写入
                         ⇒ 如实报并修复 (可映射按现域重键, 引用已废弃基元的条目丢弃, 先备份)。
 
 硬约束: 只读为主 + 离屏; 不动在跑的控制台进程 (无 kill/restart); 幂等可复跑;
-       ⑦ 会短暂改真源 (字节快照原样还原); ⑧ 仅在发现不一致时才改写记忆真源 (先备份 + 并发保护)。
+       ⑦ 会短暂改唯一依据 (字节快照原样还原); ⑧ 仅在发现不一致时才改写记忆唯一依据 (先备份 + 并发保护)。
 探针文件写 /tmp 且带 pid, 跑完自清理。
 
 用法:
@@ -89,10 +89,10 @@ def _cut(n) -> str:
 
 
 # ══════════════════════════════════════════════════════════════════════════
-#  ① 产品配置真源自洽
+#  ① 产品配置唯一依据自洽
 # ══════════════════════════════════════════════════════════════════════════
 def item1_selfconsistent(d: dict) -> None:
-    print("\n【① 产品配置真源自洽 · %s】" % REL_PRODUCT)
+    print("\n【① 产品配置唯一依据自洽 · %s】" % REL_PRODUCT)
     prods = d.get("products") or {}
     file_sig = d.get("capability_signatures") or {}
 
@@ -121,7 +121,7 @@ def item1_selfconsistent(d: dict) -> None:
         if mism or not f:
             fbad.append(rel)
     chk("①", "%d 个发布指纹 (fingerprint/cap_signature/hex/iter_prime/product_prime) 重算 == 已写" % len(fp_file),
-        not fbad and len(fp_file) >= 6,   # 数量以 releases 真源为准(加发布不改判据)
+        not fbad and len(fp_file) >= 6,   # 数量以 releases 唯一依据为准(加发布不改判据)
         " · ".join(lines) + " (证据行 %s)" % (_lines(REL_PRODUCT, '"fingerprints"') or ["?"])[0])
     EXTRA["fp_recompute"] = {rel: PS.fingerprint(v["product"], v["iteration"]) for rel, v in rels.items()}
 
@@ -286,7 +286,7 @@ def _ensure_qapp():
 
 
 def item6_config_page(d: dict) -> None:
-    print("\n【⑥ 跨窗口一致性 · ConfigCenterPage (离屏) 读产品真源】")
+    print("\n【⑥ 跨窗口一致性 · ConfigCenterPage (离屏) 读产品唯一依据】")
     try:
         _ensure_qapp()
     except Exception as e:                                                       # noqa: BLE001
@@ -320,8 +320,8 @@ def item6_config_page(d: dict) -> None:
     line = (_lines("tools/gui/veh6_config_page.py", "_SRC_FILES = (") or ["?"])[0]
 
     if not (reads_product or has_pv):
-        chk("⑥", "ConfigCenterPage 已接线产品真源 (config/platform/zmax_product.json)", False,
-            "未实现(待接线): 页面 _SRC_FILES=%s (证据行 %s) 不含产品真源; 源码中无 550A/B/C、无 "
+        chk("⑥", "ConfigCenterPage 已接线产品唯一依据 (config/platform/zmax_product.json)", False,
+            "未实现(待接线): 页面 _SRC_FILES=%s (证据行 %s) 不含产品唯一依据; 源码中无 550A/B/C、无 "
             "zmax_product/active_product/prime_structure 引用 ⇒ 页面当前读不到产品配置。接线判据: "
             "① 把 \"%s\" 加入 ConfigCenterPage._SRC_FILES (证据行 %s) 使 source_fingerprint() 覆盖之; "
             "② 新增「产品版本」区, 值取自 prime_structure (PS.active_product() / PS.report()['products']); "
@@ -329,8 +329,8 @@ def item6_config_page(d: dict) -> None:
             % (src_files, line, REL_PRODUCT, line, REL_PRODUCT))
         return
 
-    chk("⑥", "ConfigCenterPage 已接线产品真源 (config/platform/zmax_product.json)", True,
-        "已接线: _SRC_FILES 含产品真源=%s · 源码引用 zmax_product/active_product=%s · 产品区(%s)=%s"
+    chk("⑥", "ConfigCenterPage 已接线产品唯一依据 (config/platform/zmax_product.json)", True,
+        "已接线: _SRC_FILES 含产品唯一依据=%s · 源码引用 zmax_product/active_product=%s · 产品区(%s)=%s"
         % (in_fp, ("zmax_product" in src or "active_product" in src), "_product_view", has_pv))
 
     pv, perr = None, ""
@@ -349,7 +349,7 @@ def item6_config_page(d: dict) -> None:
     exp_sig = PS.cap_signature_of(ap)
     ok_val = (str(pv.get("active")) == ap and str(pv.get("cap_signature")) == str(exp_sig)
               and sorted(pv.get("capabilities") or []) == sorted(d2["products"][ap]["capabilities"]))
-    chk("⑥", "页面回读 active/capabilities/cap_signature == 真源 ∧ == prime_structure 重算",
+    chk("⑥", "页面回读 active/capabilities/cap_signature == 唯一依据 ∧ == prime_structure 重算",
         ok_val,
         "页面 active=%s cap_sig=%s (PS 重算 %s) · 能力数 %s · 一致=%s"
         % (pv.get("active"), _cut(pv.get("cap_signature")), _cut(exp_sig), pv.get("n_caps"), ok_val))
@@ -363,16 +363,16 @@ def item6_config_page(d: dict) -> None:
            pv.get("uniq_verified"), div_v))
     import hashlib
     disk16 = hashlib.sha256(open(PRODUCT_J, "rb").read()).hexdigest()[:16]
-    chk("⑥", "页面显示的产品真源 sha256[:16] == 磁盘实测 (跨窗口同源)",
+    chk("⑥", "页面显示的产品唯一依据 sha256[:16] == 磁盘实测 (跨窗口同源)",
         str(pv.get("sha16")) == disk16,
         "页面 sha16=%s · 磁盘=%s" % (pv.get("sha16"), disk16))
     try:
         wok, wval, wwhy = (V._write_active_product(ap) if hasattr(V, "_write_active_product")
                            else (None, None, "无写回函数"))
         after = json.loads(open(PRODUCT_J, encoding="utf-8").read()).get("active_product")
-        chk("⑥", "产品切换写回路径可用且同值写幂等 (不产生半截文件/不改真源)",
+        chk("⑥", "产品切换写回路径可用且同值写幂等 (不产生半截文件/不改唯一依据)",
             bool(wok) and str(after) == ap,
-            "_write_active_product(%s) → ok=%s 回读=%s (%s) · 真源 active 仍=%s" % (ap, wok, wval, wwhy, after))
+            "_write_active_product(%s) → ok=%s 回读=%s (%s) · 唯一依据 active 仍=%s" % (ap, wok, wval, wwhy, after))
     except Exception as e:                                                       # noqa: BLE001
         chk("⑥", "产品切换写回路径可用且同值写幂等", False, "_write_active_product 异常: %r" % e)
 
@@ -412,7 +412,7 @@ def item7_active_switch(d: dict) -> None:
             os.remove(PROBE_TMP)                                                  # 自清理
         except Exception:                                                         # noqa: BLE001
             pass
-    chk("⑦", "active_product 依次写 550B/550C/550A, 每次 PS.active_product()+report() 与真源同步",
+    chk("⑦", "active_product 依次写 550B/550C/550A, 每次 PS.active_product()+report() 与唯一依据同步",
         ok_all, " · ".join(results))
     chk("⑦", "跑完原样恢复原值 (%s) 且探针自清理" % orig_active,
         restored and PS.active_product() == orig_active and not os.path.isfile(PROBE_TMP),
@@ -422,13 +422,13 @@ def item7_active_switch(d: dict) -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════════
-#  ⑧ 理解记忆真源自洽 (附加: 签名 ⇄ 原子结构 不变量)
+#  ⑧ 理解记忆唯一依据自洽 (附加: 签名 ⇄ 原子结构 不变量)
 # ══════════════════════════════════════════════════════════════════════════
 def item8_memory() -> None:
-    print("\n【⑧ 理解记忆真源自洽 · %s】" % REL_MEM)
+    print("\n【⑧ 理解记忆唯一依据自洽 · %s】" % REL_MEM)
     p = MEM_J
     if not os.path.isfile(p):
-        chk("⑧", "理解记忆真源存在", False, "文件不存在: %s" % REL_MEM)
+        chk("⑧", "理解记忆唯一依据存在", False, "文件不存在: %s" % REL_MEM)
         EXTRA["memory"] = {"exists": False}
         return
     dom = set(PS.CAP_PRIMES)
@@ -533,25 +533,25 @@ def item8_memory() -> None:
                dropped_e, fixinfo.get("backup")))
     EXTRA["memory"] = {"seen": len(seen), "events": len(events),
                        "stale_seen": len(stale_seen), "stale_events": len(stale_ev),
-                       "note": "记忆真源 = %s" % REL_MEM}
+                       "note": "记忆唯一依据 = %s" % REL_MEM}
 
 
 # ══════════════════════════════════════════════════════════════════════════
 #  报告输出
 # ══════════════════════════════════════════════════════════════════════════
-try:                    # 📌 发布数量以真源为准(以后加发布不必再改判据里写死的数字)
+try:                    # 📌 发布数量以唯一依据为准(以后加发布不必再改判据里固定不变的数字)
     with open(os.path.join(ROOT, REL_PRODUCT), encoding="utf-8") as _fh:
         _RELEASES_FOR_TITLE = list((json.load(_fh).get("releases") or {}).keys())
 except Exception:                                                             # noqa: BLE001
     _RELEASES_FOR_TITLE = ["5.50.A", "5.50.B", "5.50.C", "5.50.1", "5.50.2", "5.50.3"]
-TITLES = [("①", "产品配置真源自洽", "recompute vs config/platform/zmax_product.json + read_fingerprint 反解"),
+TITLES = [("①", "产品配置唯一依据自洽", "recompute vs config/platform/zmax_product.json + read_fingerprint 反解"),
           ("②", "唯一性", "%d 个指纹两两互异" % len(_RELEASES_FOR_TITLE)),
           ("③", "协同(包含关系)", "550A⊆550B⊆550C ⇒ 签名整除"),
           ("④", "元数据覆盖面", "能力集 ⊆ 基元 18 ∪ 阶段 8"),
           ("⑤", "元数据→topic 一致性", "topic 组合签名互不重复"),
-          ("⑥", "跨窗口一致性", "ConfigCenterPage 离屏读产品真源"),
+          ("⑥", "跨窗口一致性", "ConfigCenterPage 离屏读产品唯一依据"),
           ("⑦", "产品切换一致性", "active_product 切 550B/550C/550A 并恢复"),
-          ("⑧", "理解记忆真源自洽", "prime_memory 签名 ⇄ 原子结构 不变量 (附加)")]
+          ("⑧", "理解记忆唯一依据自洽", "prime_memory 签名 ⇄ 原子结构 不变量 (附加)")]
 
 FINDINGS: list[str] = []
 UNVERIFIED: list[str] = []
@@ -565,7 +565,7 @@ def build_notes(d: dict) -> None:
             "**真问题 (⑤ 暴露)**: topic 元数据组合签名**非单射** —— %d 个 topic 只落到 %d 个不同签名, "
             "%d 个 topic 处于 %d 个冲突组 (最大组: %d 个 topic 共用签名 %s, 例 %s)。"
             "根因: `tools/meta_moe_router.compose()` 对同层合成节点 (kind=node_out, 名无关键词) 只给 "
-            "`[m_node, m_topic]`, 对无命中规则的真源 topic 只给通用 `[m_topic, m_msg]` —— 组合规则不足以*区分实例*。"
+            "`[m_node, m_topic]`, 对无命中规则的唯一依据 topic 只给通用 `[m_topic, m_msg]` —— 组合规则不足以*区分实例*。"
             "语义上这是\"同一分子类型\"的多个 topic (如全部 node_out 输出), 属**结构性建模性质**, 非数值笔误: "
             "要按\"每 topic 唯一\"需给基元增补节点身份维或改签名方案 (会改 meta_moe_router 行为与其自判据/全息秩) "
             "⇒ 超出\"只修数据一致性\"范围, 如实报不作假。 "
@@ -580,8 +580,8 @@ def build_notes(d: dict) -> None:
     if cp.get("constructed") and not cp.get("reads_product"):
         FINDINGS.append(
             "**未接线 (⑥ 暴露)**: `tools/gui/veh6_config_page.py` 的 ConfigCenterPage **无产品配置区**, "
-            "`_SRC_FILES` 不含 `%s`, 源码无任何 550A/B/C / zmax_product / active_product 引用 ⇒ 配置中心页读不到产品真源。"
-            "但 `VERSION.md` / `studio.py` 的 5.50.3 变更说明宣称「配置中心可选产品并回写真源」⇒ **声明与实现不符**。"
+            "`_SRC_FILES` 不含 `%s`, 源码无任何 550A/B/C / zmax_product / active_product 引用 ⇒ 配置中心页读不到产品唯一依据。"
+            "但 `VERSION.md` / `studio.py` 的 5.50.3 变更说明宣称「配置中心可选产品并回写唯一依据」⇒ **声明与实现不符**。"
             "属 GUI 功能接线 (设计口径按未实现待接线处理, 已在 ⑥ 给出接线判据), 本次不改 GUI 行为。" % REL_PRODUCT)
     mf = EXTRA.get("memory_fix")
     import glob
@@ -595,14 +595,14 @@ def build_notes(d: dict) -> None:
                        mf["seen_dropped_unmappable"] or "无", mf["events_dropped_unmappable"],
                        mf["events_before"], mf["events_after"], bkp))
         else:
-            tail = ("本次运行记忆真源已自洽 (seen %d, events %d); 曾有废弃域修复, 备份见 `%s`。"
+            tail = ("本次运行记忆唯一依据已自洽 (seen %d, events %d); 曾有废弃域修复, 备份见 `%s`。"
                     % (EXTRA["memory"].get("seen"), EXTRA["memory"].get("events"), bkp))
         FINDINGS.append(
-            "**真问题 (⑧ 暴露并已修复)**: `%s` (理解记忆真源) 的条目曾在**废弃质数域**下写入 —— "
+            "**真问题 (⑧ 暴露并已修复)**: `%s` (理解记忆唯一依据) 的条目曾在**废弃质数域**下写入 —— "
             "存档签名与当前域 `signature(items)` 不符 (旧域 m_force=19 现为 m_health=19 ⇒ 2546 实为 m_pos·m_health·接近, "
             "而 record 记为 m_pos·m_force·接近; 另有 m_slot/m_defect 等已移除基元)。若不修, "
             "`understand()` 会把新域算出的签名误判为\"已知\"(假阳性), 漏报自主进化事件。%s "
-            "证据: 记忆真源在 `src/lerobot/manifold/prime_structure.py:53` (MEMORY_J) 被引用; "
+            "证据: 记忆唯一依据在 `src/lerobot/manifold/prime_structure.py:53` (MEMORY_J) 被引用; "
             "修复前全量保存在备份 `%s` (旧域条目行号例: `\"2546\"`→L375, `\"282\"`→L405, `\"315827\"`→L435)。 "
             "复现(对备份, 会打印不一致的 seen): `gui-venv311/bin/python -c \"import sys,json;sys.path.insert(0,'src');"
             "from lerobot.manifold import prime_structure as PS;d=json.load(open('%s'));"
@@ -612,7 +612,7 @@ def build_notes(d: dict) -> None:
     if tc:
         FINDINGS.append(
             "**陈旧声明 (轻微)**: studio.py 变更说明写「105/105 topic 覆盖 100%%」(证据 %s), 而 busdb 实有 "
-            "%d 个 topic (busdb 已增长) ⇒ 计数声明与真源不符 (仅历史文案, 不影响数据链路)。"
+            "%d 个 topic (busdb 已增长) ⇒ 计数声明与唯一依据不符 (仅历史文案, 不影响数据链路)。"
             % (tc, EXTRA.get("n_topics", 0)))
 
 
@@ -631,9 +631,9 @@ def write_reports(d: dict, n_ok: int, n_all: int, fails: list) -> None:
 
     md = ["# 550A/B/C 三版本数据一致性 · 判据报告", "",
           "- 生成时间: %s (pid=%d)" % (ts, PID),
-          "- 工具: `tools/verify_product_consistency.py` (只读 + 离屏; ⑦ 短暂改真源并原样还原; ⑧ 发现不一致才修记忆真源并先备份; 幂等可复跑)",
+          "- 工具: `tools/verify_product_consistency.py` (只读 + 离屏; ⑦ 短暂改唯一依据并原样还原; ⑧ 发现不一致才修记忆唯一依据并先备份; 幂等可复跑)",
           "- 运行: `QT_QPA_PLATFORM=offscreen /home/ubuntu/zmax/gui-venv311/bin/python tools/verify_product_consistency.py`",
-          "- 真源: `%s` · `%s` · `src/lerobot/manifold/prime_structure.py` · `tools/meta_moe_router.py` · `zmax_data/dataspace/busdb.json`"
+          "- 唯一依据: `%s` · `%s` · `src/lerobot/manifold/prime_structure.py` · `tools/meta_moe_router.py` · `zmax_data/dataspace/busdb.json`"
           % (REL_PRODUCT, REL_MEM),
           "- 判据: **%d/%d PASS**" % (n_ok, n_all), "",
           "## 一、总览表", "", "| 项 | 判据 | 依据 | 结论 |", "|---|---|---|---|"]
@@ -661,9 +661,9 @@ def write_reports(d: dict, n_ok: int, n_all: int, fails: list) -> None:
     md.append("")
 
     mf = EXTRA.get("memory_fix")
-    memline = ("记忆真源已修复 (seen %d→%d, events %d→%d, 备份 %s)"
+    memline = ("记忆唯一依据已修复 (seen %d→%d, events %d→%d, 备份 %s)"
                % (mf["seen_before"], mf["seen_after"], mf["events_before"], mf["events_after"], mf["backup"])) \
-        if mf and "error" not in mf else ("记忆真源自洽, 无需修复。" if not mf else "记忆修复未完成: %s" % mf.get("error"))
+        if mf and "error" not in mf else ("记忆唯一依据自洽, 无需修复。" if not mf else "记忆修复未完成: %s" % mf.get("error"))
     md += ["## 五、诚实结论", "",
            "- ①: 3 个 cap_signature + %d 个发布指纹 (5 字段) 由 prime_structure 独立重算并逐字段比对**一致**; "
            "%d/%d 指纹可 `read_fingerprint` 反解回 (产品, 迭代, 能力签名)。"
@@ -672,12 +672,12 @@ def write_reports(d: dict, n_ok: int, n_all: int, fails: list) -> None:
            "每产品能力集 ⊆ 元数据基元 18 ∪ 阶段 8, 550C 为全量覆盖 (18 基元 + 8 阶段)。",
            "- ⑤: %s" % ("topic 组合签名**非单射**, 已列出冲突组 (见「发现」); 属结构性共享, 非数值笔误。"
                         if EXTRA.get("topic_conflicts") else "topic 组合签名互不重复。"),
-           "- ⑥: %s" % ("ConfigCenterPage **未接线**产品真源 (未实现待接线), 已给出接线判据。"
+           "- ⑥: %s" % ("ConfigCenterPage **未接线**产品唯一依据 (未实现待接线), 已给出接线判据。"
                         if (EXTRA.get("cfg_page") or {}).get("constructed") and not (EXTRA.get("cfg_page") or {}).get("reads_product")
-                        else "ConfigCenterPage 读产品真源一致。"),
-           "- ⑦: active_product 依次切 550B/550C/550A, 每次 `PS.active_product()` 与 `PS.report()` 与真源同步, 跑完原样恢复。",
+                        else "ConfigCenterPage 读产品唯一依据一致。"),
+           "- ⑦: active_product 依次切 550B/550C/550A, 每次 `PS.active_product()` 与 `PS.report()` 与唯一依据同步, 跑完原样恢复。",
            "- ⑧: %s" % memline,
-           "- 本工具未 kill / restart 任何在跑进程; 只读文件 + 离屏建控件 + ⑦ 短时改真源 (字节级还原) + ⑧ 带备份修记忆真源。"]
+           "- 本工具未 kill / restart 任何在跑进程; 只读文件 + 离屏建控件 + ⑦ 短时改唯一依据 (字节级还原) + ⑧ 带备份修记忆唯一依据。"]
 
     with open(MD_OUT, "w", encoding="utf-8") as f:
         f.write("\n".join(md) + "\n")
@@ -711,14 +711,14 @@ def write_reports(d: dict, n_ok: int, n_all: int, fails: list) -> None:
 def main() -> int:
     t0 = time.time()
     print("═══ 550A/B/C 三版本数据一致性 判据 (pid=%d) ═══" % PID)
-    print("真源: %s · %s" % (REL_PRODUCT, REL_MEM))
+    print("唯一依据: %s · %s" % (REL_PRODUCT, REL_MEM))
     d = PS.load_products()
 
     UNVERIFIED.extend([
         "⑤ topic 组合**语义**是否正确 (规则命中是否合理) 未做人工逐条复核 —— 只机械核了\"签名可算 + 是否单射\"; "
         "冲突组清单见报告, 供人工判定组合规则是否需要细化。",
         "⑥ ConfigCenterPage 的产品区 **GUI 渲染像素/交互** 未离屏截图核验 —— 只核了其读函数 (`_product_view`) 回读值 "
-        "== 真源 == prime_structure 重算, 以及写回函数同值写幂等 (见 ⑥ 证据); 实际点选切换的界面行为未在控制台内操作。",
+        "== 唯一依据 == prime_structure 重算, 以及写回函数同值写幂等 (见 ⑥ 证据); 实际点选切换的界面行为未在控制台内操作。",
         "⑦ 期间若有人/进程并发写 %s, 可能覆盖本次切换 (本工具用字节快照还原原值, 检测到并发改动会如实报还原状态)。" % REL_PRODUCT,
         "⑧ 只核\"存档签名 == signature(items)\"; 记忆**历史语义** (哪条结构何时首见) 中引用了已废弃基元的条目无法在现域表示, "
         "已按丢弃处理 (先备份), 其原始含义不可恢复。",

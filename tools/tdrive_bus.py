@@ -9,11 +9,11 @@
     驱动扭矩 T  ↔  T_drive = M·(−∇Φ)      单位 N·m
 
 真实数据来源 (都不是造的):
-    M   ← 主参数真源 config/calib/zmax_manifold.json  (MetricField.from_config: g(x)=M·G(x), det G=1)
+    M   ← 主参数唯一依据 config/calib/zmax_manifold.json  (MetricField.from_config: g(x)=M·G(x), det G=1)
     ∇Φ  ← 真实势场解析梯度 src/lerobot/memory/potential_field.py::MemoryLayerBridge.grad_raw
           (L2 肌肉记忆技能场 + L3 流程场 + L4 障碍/世界项, 按逐层开关合成; 全关 ⇒ 零 ⇒ 不干预)
-    x   ← 真机 TCP 位置真源 zmax_data/rokae_sdk/tcp_out/latest.json (帧龄判定; 无新鲜值则用技能入口并如实标注)
-    H   ← 健康度 (health.py 阈值真源) ⇒ normal/warning/critical ⇒ 增益 1.0 / 0.5 / 0.0
+    x   ← 真机 TCP 位置唯一依据 zmax_data/rokae_sdk/tcp_out/latest.json (帧龄判定; 无新鲜值则用技能入口并如实标注)
+    H   ← 健康度 (health.py 阈值唯一依据) ⇒ normal/warning/critical ⇒ 增益 1.0 / 0.5 / 0.0
 
 为什么必须用 grad_raw: `grad()` 为"意图方向"服务, 逐层求和后**归一化成单位向量** ⇒ 拿它算扭矩只能得到
 ‖M·1‖ 这种尺度无关的假量。T_drive 需要真实量纲的梯度 (实测: 归一前 ‖∇Φ‖≈69.1, 归一后 =1.0)。
@@ -42,7 +42,7 @@ import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
-# 🔴 2026-10-13 老倪: 「torque_SCN-06-TRAY.jsonl 已 306.6 MB 这是啥？删掉，不要自己保存」
+# 🔴 2026-10-13 老倪: 「torque_SCN-06-TRAY.jsonl 已 306.6 MB 这是什么？删掉，不要自己保存」
 #   ⇒ tap (10Hz 逐帧流, ≈2.0 GB/天) 不再落盘: 默认写 **内存盘 /dev/shm**(重启即清), 并加**环形上限**
 #   (超 ZMAX_TORQUE_TAP_MAX_MB 就只保留尾部, 默认 32MB)。要落盘显式给
 #   ZMAX_TORQUE_TAP_DIR=<dir> (此时仍受同一上限约束), 判据脚本读同一环境变量解析。
@@ -70,10 +70,10 @@ def _trim_tap(path: str, cap_bytes: int) -> None:
 
 
 def _active_scene() -> str:
-    """🔴 当前场景真源 (2026-10-13): 原实现把 scene **写死成 SCN-07-AOI**(DEFAULT_SCENE) ⇒ 活跃任务
+    """🔴 当前场景唯一依据 (2026-10-13): 原实现把 scene **预先固定成 SCN-07-AOI**(DEFAULT_SCENE) ⇒ 活跃任务
     已切到摆盘(TASK-06-TRAY/SCN-06-TRAY)时, 扭矩 payload 仍标 SCN-07-AOI, tap 也写进
     torque_SCN-07-AOI.jsonl ⇒ **同一时刻两处口径不一致**(实测: 判据 ⑨ 首帧 scene=SCN-07-AOI,
-    而画布数据源/绑定文件都是摆盘)。口径: 场景跟随唯一真源 tools/ss_scene_switch.py,
+    而画布数据源/绑定文件都是摆盘)。口径: 场景跟随唯一依据 tools/ss_scene_switch.py,
     env ZMAX_TORQUE_SCENE 仅用于离线/单测指定。"""
     env = os.environ.get("ZMAX_TORQUE_SCENE")
     if env:
@@ -85,8 +85,8 @@ def _active_scene() -> str:
         scn = w.get("scn") or ""
         if not scn:
             # 🔴 2026-10-14 修: ss_scene_switch.now() 只回 **src_state(场景名) + node + color**, 根本没有 scn 字段
-            #   ⇒ 原代码一直走下面的兜底 "SCN-06-TRAY", 于是切到插拔后 tap 仍叫 torque_SCN-06-TRAY.jsonl、
-            #   payload 的 scene 也是摆盘 (同一类"写死旧场景"的坑, 换了个形式又踩一次)。改成按唯一映射表反查:
+            #   ⇒ 原代码一直走下面的保障 "SCN-06-TRAY", 于是切到插拔后 tap 仍叫 torque_SCN-06-TRAY.jsonl、
+            #   payload 的 scene 也是摆盘 (同一类"预先固定旧场景"的坑, 换了个形式又踩一次)。改成按唯一映射表反查:
             #   ① now().scn → ② src_state 场景名反查 TASK_SCENE → ③ 活跃任务 (config/ss_task_binding.json) 查表
             st = str(w.get("src_state") or "")
             for _m in (_s.TASK_SCENE or {}).values():
@@ -105,27 +105,27 @@ def _active_scene() -> str:
             return scn
     except Exception:                                                           # noqa: BLE001
         pass
-    return "SCN-未登记"           # 兜底不再谎报某个场景 (取不到就说取不到)
+    return "SCN-未登记"           # 保障不再谎报某个场景 (取不到就说取不到)
 
 
 DEFAULT_SCENE = _active_scene()
 # 驱动扭矩的"转动惯量↔度量张量"对应关系: 旋转 3 维 + 平移 3 维 = 6 维
 ROT_DIM, TRANS_DIM = 3, 3
-UNIT_NOTE = ("单位按规格记 N·m; 真源主参数 M 是归一化度量 (det G=1, M=3.283 标定口径), "
+UNIT_NOTE = ("单位按规格记 N·m; 唯一依据主参数 M 是归一化度量 (det G=1, M=3.283 标定口径), "
              "未做扭矩计量学标定 ⇒ 该数值是**系统内部一致的驱动量**, 不是计量院校准过的物理牛米。")
 # 规格 §五策略1: torque = clip(M·(−∇Φ), ±T_MAX); §五策略2: 再按健康度缩 (warning ×0.5 / critical ×0)
 T_MAX_DEFAULT = 30.0
 
 
 def load_t_max(cfg: dict) -> tuple:
-    """T_MAX 真源: 主参数 cfg 里的 t_max/T_MAX/limits.torque_nm; 没有 ⇒ 规格默认 30 (并标明来源)。"""
+    """T_MAX 唯一依据: 主参数 cfg 里的 t_max/T_MAX/limits.torque_nm; 没有 ⇒ 规格默认 30 (并标明来源)。"""
     for k in ("t_max", "T_MAX", "torque_max_nm"):
         if isinstance(cfg.get(k), (int, float)) and float(cfg[k]) > 0:
             return float(cfg[k]), "config/calib/zmax_manifold.json::%s" % k
     lim = cfg.get("limits") or {}
     if isinstance(lim.get("torque_nm"), (int, float)) and float(lim["torque_nm"]) > 0:
         return float(lim["torque_nm"]), "config/calib/zmax_manifold.json::limits.torque_nm"
-    return T_MAX_DEFAULT, "规格 §五 默认 30 N·m (真源未标定)"
+    return T_MAX_DEFAULT, "规格 §五 默认 30 N·m (依据未标注定)"
 
 
 def _tap_path(scene: str) -> str:
@@ -136,29 +136,29 @@ def _live_path(scene: str) -> str:
     return os.path.join(LIVE_DIR, "torque_live.json")
 
 
-# ─────────────────────── 真源读取 ───────────────────────
+# ─────────────────────── 唯一依据读取 ───────────────────────
 def load_metric():
-    """主参数真源 → MetricField (真源读不到就报错, 绝不套默认值造数)。"""
+    """主参数唯一依据 → MetricField (唯一依据读不到就报错, 绝不套默认值造数)。"""
     from lerobot.manifold.metric_field import MetricField, _load_manifold_cfg
     cfg = _load_manifold_cfg()
     if not cfg:
-        raise RuntimeError("主参数真源读不到: config/calib/zmax_manifold.json")
+        raise RuntimeError("主参数唯一依据读不到: config/calib/zmax_manifold.json")
     f = MetricField.from_config(cfg)
     return f, cfg
 
 
 def read_x(bridge):
-    """当前状态 x: 优先真机 TCP 位置真源; 无新鲜值 → 用激活技能入口 (如实标 source)。"""
+    """当前状态 x: 优先真机 TCP 位置唯一依据; 无新鲜值 → 用激活技能入口 (如实标 source)。"""
     try:
         from lerobot.manifold.localization_mapping import read_robot_pose
         p = read_robot_pose()
         if p.get("available"):
-            return np.asarray(p["xyz"], float)[:3], "robot_pose(tcp_out 真源, 帧龄 %.2fs)" % p["age_s"]
+            return np.asarray(p["xyz"], float)[:3], "robot_pose(tcp_out 唯一依据, 帧龄 %.2fs)" % p["age_s"]
     except Exception as e:                                                        # noqa: BLE001
         _ = e
     try:
         f0 = bridge.fields[0]
-        return np.asarray(f0.x_g, float)[:3], "技能入口 %s 谷底 (无新鲜位姿真源)" % f0.code
+        return np.asarray(f0.x_g, float)[:3], "技能入口 %s 谷底 (无新鲜位姿唯一依据)" % f0.code
     except Exception:                                                             # noqa: BLE001
         return np.zeros(3), "无来源 (全零)"
 
@@ -186,7 +186,7 @@ def status_gain(H: float, status: str) -> tuple:
 
 # ─────────────────────── 核心计算 ───────────────────────
 def _ff_cfg():
-    """力场构造参数 (与 UI/表同一份真源 `config/calib/force_field.json`)。"""
+    """力场构造参数 (与 UI/表同一份唯一依据 `config/calib/force_field.json`)。"""
     try:
         import json as _j
         with open(os.path.join(ROOT, "config/calib/force_field.json"), encoding="utf-8") as f:
@@ -197,13 +197,13 @@ def _ff_cfg():
 
 
 def _u_ff_vec():
-    """本拍前馈速度 (真源: trace_live.json 的 3D 面板快照 `前馈速度`); 拿不到返回 None。"""
+    """本拍前馈速度 (唯一依据: trace_live.json 的 3D 面板快照 `前馈速度`); 拿不到返回 None。"""
     try:
         import json as _j
         with open(os.path.join(ROOT, "zmax_data/ss_live/trace_live.json"), encoding="utf-8") as f:
             _d = _j.load(f)
         # 与万有引力表**同一批数**: trace_live 的 HUD 三速度 *_mps (m/s), 不是 nested snap
-        # 🔢 真源是 **_mms** (毫米/秒), 内部统一 m/s ⇒ 除以 1000 (别把 mm 当 m, 差 1000 倍)
+        # 🔢 唯一依据是 **_mms** (毫米/秒), 内部统一 m/s ⇒ 除以 1000 (别把 mm 当 m, 差 1000 倍)
         _xyz = [_d.get("前馈速度_x_mms"), _d.get("前馈速度_y_mms"), _d.get("前馈速度_z_mms")]
         if any(x is None for x in _xyz):
             return None
@@ -213,7 +213,7 @@ def _u_ff_vec():
 
 
 def compute(scene: str = DEFAULT_SCENE, x_override=None, bridge=None, ff_gain=None) -> dict:
-    """算一帧 T_drive = M·(−∇Φ)。全部数值来自真源; 算不出就抛, 不返回编的数。"""
+    """算一帧 T_drive = M·(−∇Φ)。全部数值来自唯一依据; 算不出就抛, 不返回编的数。"""
     from lerobot.memory.potential_field import MemoryLayerBridge
     from lerobot.manifold.health import health_from_field
     metric, cfg = load_metric()
@@ -221,13 +221,13 @@ def compute(scene: str = DEFAULT_SCENE, x_override=None, bridge=None, ff_gain=No
     x, x_src = (np.asarray(x_override, float)[:3], "显式给定") if x_override is not None else read_x(br)
     phi, contrib = br.compose(x, None)
     g_ = np.asarray(br.grad_raw(x, None), float)[:3]          # 原始 ∇Φ (未归一, 有真实量纲)
-    M = np.asarray(metric.g(x), float)                        # 真源度量张量 (dim×dim, 对称正定)
+    M = np.asarray(metric.g(x), float)                        # 唯一依据度量张量 (dim×dim, 对称正定)
     pd_ok, lmin, lmax = metric.is_positive_definite(x)
     neg = -g_
     # 6D: 前 3 维是转动分量, 后 3 维是平移分量。Φ 只定义在平移子空间 ⇒ 转动分量恒 0 (不是补零凑数)
     grad6 = np.concatenate([np.zeros(ROT_DIM), g_])
     neg6 = np.concatenate([np.zeros(ROT_DIM), neg])
-    # 🔴 主参数 M 的**维数必须与被打的向量一致**: dim=3 (位置) 或 dim=6 (位姿)。维数由真源决定 ——
+    # 🔴 主参数 M 的**维数必须与被打的向量一致**: dim=3 (位置) 或 dim=6 (位姿)。维数由唯一依据决定 ——
     #    「配置单 → 主参数 M」(tools/config_to_M.py): 插拔任务含腕部翻转 ⇒ dim=6。实测 2026-10-14 16:29
     #    切到插拔任务后 M 变 6×6, 而这里仍拿 3 维 neg 去乘 ⇒ 每帧 ValueError(matmul 3 vs 6), 10Hz 流静默断流
     #    (帧全失败、tap 不落新帧)。修法 = 同维相乘; dim=6 用 6D 向量 [旋转 0,0,0 | 平移 x,y,z] (与 grad6 同布局),
@@ -235,7 +235,7 @@ def compute(scene: str = DEFAULT_SCENE, x_override=None, bridge=None, ff_gain=No
     _dim = int(np.asarray(M).shape[0])
     neg_in = neg6 if _dim == 6 else neg
     # 🔧 u_ff 加权 (老倪 2026-10-19「改力场构造（给 u_ff 加权）」):
-    #   τ = M·(−∇Φ + α·u_ff)。α 与开关都在 config/calib/force_field.json, 与太阳系/表同一份真源。
+    #   τ = M·(−∇Φ + α·u_ff)。α 与开关都在 config/calib/force_field.json, 与太阳系/表同一份唯一依据。
     #   默认 apply_to_tau=false ⇒ 只改显示与表, 不动真机控制回路; 打开才进 τ (并写进 rep 供核对)。
     _ffg, _ffapply = _ff_cfg()
     if ff_gain is not None:
@@ -272,12 +272,12 @@ def compute(scene: str = DEFAULT_SCENE, x_override=None, bridge=None, ff_gain=No
     except Exception:                                                             # noqa: BLE001
         d_tr = None
     # 🏷 标识块 (老倪 2026-10-14): 一帧物理量必须自带"我在为谁干活" —— 任务/场景/产品质数/主参数。
-    #    真源现算 (tools/ss_identity.py), 取不到写"真源未登记", 绝不用默认值糊。
+    #    唯一依据现算 (tools/ss_identity.py), 取不到写"唯一依据未登记", 绝不用默认值糊。
     try:
         import ss_identity as _ident                                              # noqa: PLC0415
         _idb = _ident.identity(scene=scene, metric_cfg=cfg)
     except Exception as _e:                                                       # noqa: BLE001
-        _idb = {"task_id": "真源未登记", "error": "%s: %s" % (type(_e).__name__, _e)}
+        _idb = {"task_id": "唯一依据未登记", "error": "%s: %s" % (type(_e).__name__, _e)}
     return {
         "ts": time.time(), "node": "流形引擎", "scene": scene,
         "identity": _idb,

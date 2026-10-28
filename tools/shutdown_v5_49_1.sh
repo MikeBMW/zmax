@@ -48,7 +48,7 @@ cat > "$SNAP/README.md" <<'EOF'
 |---|---|
 | 版本 | v5.47.0 → **v5.49.1**（无功能改动，8 处版本位已同步，tag 已推） |
 | 工程库 | `engineering_db check` **判据全绿**（768 参数 / 1731 数字链接 / 184 连线 / 74 功能；本轮先实测到漂移 `['canvas','manifold']` 后 build 重建） |
-| 画布真源 | `state_space_obs.json` md5 4d3824c6d63d · 89 节点 / 184 连线 |
+| 画布唯一依据 | `state_space_obs.json` md5 4d3824c6d63d · 89 节点 / 184 连线 |
 | 真跑判据 | 插拔 TASK-01-FW 686 步 success=True · 摆盘 TASK-06-TRAY 3/3 合格（单边 ≤0.47mm） |
 | 飞书端场景叠加 | 公网 `/ov/overlay?k=zmax-live` 等 4 条 HTTP 200 · POST 403（只读闸门）· `/ov/live.json` 三相机拼图清单 |
 | 状态推公网 | `zmax_status.json` 推送成功（GPU/内存/磁盘/模型数/训练状态） |

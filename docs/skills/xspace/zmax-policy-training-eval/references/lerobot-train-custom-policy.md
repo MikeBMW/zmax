@@ -100,7 +100,7 @@ def make_<name>_pre_post_processors(config, dataset_stats=None):
 2. `_get_policy_cls_from_policy_name` 的 elif 分支 (或 make_policy)
 3. make_pre_post_processors 的 `elif isinstance(policy_cfg, LeftRightConfig)` 分支
 
-## 3. 兜底补丁 (可选, config 侧解析成 dict 时的保险)
+## 3. 保障补丁 (可选, config 侧解析成 dict 时的保险)
 
 `src/lerobot/optim/factory.py` make_optimizer_and_scheduler:
 ```python

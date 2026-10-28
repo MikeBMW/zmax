@@ -24,14 +24,14 @@ import sys
 import time
 
 REPO = os.environ.get("ZMAX_REPO") or "/home/ubuntu/zmax"
-# 🐛 2026-09-27 实测: 这里原来写死 /home/ubuntu/zmax —— 那是**共享检出**,
+# 🐛 2026-09-27 实测: 这里原来预先固定 /home/ubuntu/zmax —— 那是**共享检出**,
 #   会被切到别的分支 (当时在 mac-hw), 于是"改版本必同步"的 5 处改到了**另一棵树的另一个分支**上,
-#   而 main 线真源是 worktree /home/ubuntu/zmax ⇒ 版本号在真源里根本没变 (静默错改)。
-#   口径: 真源 = worktree; 需要改别的树就显式 --repo / ZMAX_REPO。
+#   而 main 线唯一依据是 worktree /home/ubuntu/zmax ⇒ 版本号在唯一依据里根本没变 (静默错改)。
+#   口径: 唯一依据 = worktree; 需要改别的树就显式 --repo / ZMAX_REPO。
 STUDIO = os.path.join(REPO, "tools/gui/studio.py")
 UPD = os.path.join(REPO, "tools/gui/update_checker.py")
 DOCS = os.path.join(REPO, "src/lerobot/ops/docs_sync.py")
-if not os.path.isfile(DOCS):                    # 归位兜底 (2026-10-17)
+if not os.path.isfile(DOCS):                    # 归位保障 (2026-10-17)
     DOCS = os.path.join(REPO, "tools/gui/docs_sync.py")
 VSYNC = os.path.join(REPO, "tools/gui/version_sync.py")
 VM = os.path.join(REPO, "VERSION.md")
@@ -92,8 +92,8 @@ def main() -> int:
     #    (老倪 2026-10-15: 「最上边框那行字改成 XSpace ZMAX 550A 或者按配置中心产品配置显示 550B/550C;
     #     左侧边栏保留 v5.50.730; 不用特意显示非调试模式」)
     #    ⇒ 标题已不是版本同步点 (版本仍在品牌 QLabel / 状态栏 / 关于框), 这里只做**断言**:
-    #      断言没被人改回「XSpace Studio — Z-MAX vX.Y.Z」的老写法; 标题↔产品真源的一致性
-    #      归 tools/verify_console_title_product.py 判 (它的口径是读真源 + 读真窗口)。
+    #      断言没被人改回「XSpace Studio — Z-MAX vX.Y.Z」的老写法; 标题↔产品唯一依据的一致性
+    #      归 tools/verify_console_title_product.py 判 (它的口径是读唯一依据 + 读真窗口)。
     _ti_stale = re.compile(r"XSpace Studio — Z-MAX v{1,2}\d+\.\d+\.\d+")
     chk.append(("studio.py 窗口标题(产品标识·无版本)", 1,
                 0 if _ti_stale.search(s2) else 1))
@@ -115,14 +115,14 @@ def main() -> int:
                             if not x.lstrip().startswith("#")
                             and re.search(r"Z-MAX v{1,2}%s" % re.escape(a.to), x)])))
     # 3) changelog 前缀 (插在旧版本注释行之前)
-    #   🐛 2026-09-27: 原锚点是死串 "# v5.15.13:" —— 但真源里的 changelog 行长这样
+    #   🐛 2026-09-27: 原锚点是死串 "# v5.15.13:" —— 但唯一依据里的 changelog 行长这样
     #     "# v5.15.13 (2026-09-27): **手眼标定 T_base_cam 首次解出…**"
-    #   带日期括号 ⇒ 死串永远匹配不到 (在真源上直接崩, 在别的树上则可能静默改错)。
+    #   带日期括号 ⇒ 死串永远匹配不到 (在唯一依据上直接崩, 在别的树上则可能静默改错)。
     #   改成"行首版本号"正则 = 认版本号不认记法。
     pat = re.compile(r"(?m)^([ \t]*)# v{1,2}%s\b.*$" % re.escape(old))
     mm = pat.search(s2)
     assert mm, "找不到 changelog 锚点 (# v[V]%s …) — 先确认 repo/分支: %s" % (old, REPO)
-    #   行首可能有缩进 (真源里就是 8 空格缩进的注释块) ⇒ 连带缩进一起还原
+    #   行首可能有缩进 (唯一依据里就是 8 空格缩进的注释块) ⇒ 连带缩进一起还原
     s2 = s2[:mm.start()] + "%s# %s: %s\n" % (mm.group(1), nv_brand, summ) + s2[mm.start():]
     chk.append(("studio.py changelog 行", 1, len(re.findall(r"# v{1,2}%s:" % re.escape(a.to), s2))))
 
@@ -164,7 +164,7 @@ def main() -> int:
                 len(re.findall(r'EXPECTED_VERSION = "v{1,2}%s"' % re.escape(a.to), ic2))))
 
     vm = _read(VM)
-    row = "| **%s** | %s | %s |\n" % (nv_brand, time.strftime("%m-%d"), summ)     # 🐛 日期原写死 09-22; 品牌位用 vv 记法
+    row = "| **%s** | %s | %s |\n" % (nv_brand, time.strftime("%m-%d"), summ)     # 🐛 日期原预先固定 09-22; 品牌位用 vv 记法
     lines = vm.splitlines(keepends=True)
     idx = next((i for i, l in enumerate(lines) if l.startswith("| **v")), None)
     if idx is None:

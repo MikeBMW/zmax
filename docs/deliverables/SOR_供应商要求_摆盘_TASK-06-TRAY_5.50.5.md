@@ -108,7 +108,7 @@
 | hw_state | HardwareState | 0.33 | state | zmax_dds_publisher.py --interval 3 (zmax-dds-pub.ser | ✅ 4 条 / 0.4 Hz |
 | link_value | LinkValue | 5.0 | beat | 画布连线总线(dds_link_bus) | ❌ 本刻无发布端 |
 | ss_action | SSAction | 10.0 | beat | zmax_dds_ss_daemon.py ← tap proposal_*.jsonl (本机推理 8 | ❌ 本刻无发布端 |
-| ss_calib | SSCalib | 0.2 | state | zmax_dds_ss_daemon.py ← 标定真源文件(calib.json/handeye/al | ✅ 66 条 / 6.6 Hz |
+| ss_calib | SSCalib | 0.2 | state | zmax_dds_ss_daemon.py ← 标定唯一依据文件(calib.json/handeye/al | ✅ 66 条 / 6.6 Hz |
 | ss_canvas | SSCanvasNode | 0.5 | state | 画布/引擎节点状态上报 | ❌ 本刻无发布端 |
 | ss_diag | SSDiag | 0.5 | beat | zmax_dds_ss_daemon.py(延时/帧龄/吞吐/健康度) | ✅ 66 条 / 6.6 Hz |
 | ss_energy | SSEnergy | 0.5 | state | 流形引擎能量探针 tools/manifold_energy_probe.py → tap zmax_d | ❌ 本刻无发布端 |

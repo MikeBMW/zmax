@@ -41,7 +41,7 @@ def _poll_nav_cmd(self):
         pass
 
 def _open_ss_canvas_cmd(self):
-    """（注：早期版会加载画布真源）"""
+    """（注：早期版会加载画布唯一依据）"""
 
 def _open_ss_3d_cmd(self):
     self.simulink.open_ss_3d(on_top=False)
@@ -68,7 +68,7 @@ echo l5_status / l5_interact / l5_diag > /tmp/zmax_nav_cmd
 1. **`ss_run` 前必须画布已加载** —— 新起/重启后的进程里 `simulink.nodes` 是**空**的,
    直接 `start_sim()` 只会写一行 `⚠️ 画布为空 — 点击「参考应用」…` 就返回(**静默失败**,
    看台面就是"我点了运行但没反应"). 正确顺序: `ss_canvas` → 等几秒 → `ss_run`.
-   已在 `studio._run_ss_cmd` 内置兜底(空画布先 `open_state_space()` 再跑; 下次重启生效)。
+   已在 `studio._run_ss_cmd` 内置保障(空画布先 `open_state_space()` 再跑; 下次重启生效)。
 2. **`ss_run` 失败的原因去 `/tmp/simulink_log.txt` 找, 不要猜** —— `SimulinkModule._log` 把
    每一行都落这个文件(带 `[HH:MM:SS]`), 运行/失败/相态全在里面(比截图 OCR 快且准)。
 3. **"信号分析会不会动"看 `zmax_data/ss_live/trace_live.json` 的帧龄**(≤2s 才算实况):

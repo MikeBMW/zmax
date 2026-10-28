@@ -61,7 +61,7 @@ class Cam:
     def __init__(self, dev: int, w: int, h: int, fps: float):
         self.cap = cv2.VideoCapture(dev, cv2.CAP_V4L2)
         if not self.cap.isOpened():
-            raise RuntimeError(f"/dev/video{dev} 打不开 (被占用?)")
+            raise RuntimeError(f"/dev/video{dev} 无法打开 (被占用?)")
         self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
@@ -151,7 +151,7 @@ def main():
     ap.add_argument("--width", type=int, default=640)
     ap.add_argument("--height", type=int, default=480)
     ap.add_argument("--fps", type=float, default=15.0)
-    ap.add_argument("--max-seconds", type=float, default=900.0, help="兜底自毁时间 (默认 900s)")
+    ap.add_argument("--max-seconds", type=float, default=900.0, help="保障自毁时间 (默认 900s)")
     ap.add_argument("--idle-seconds", type=float, default=15.0, help="无客户端多久后自动退出")
     a = ap.parse_args()
     ident = device_identity(a.device)
@@ -167,7 +167,7 @@ def main():
     t0 = time.time()
     while not STOP.is_set():
         if time.time() - t0 > a.max_seconds:
-            print(f"[orin-mjpeg] 到达兜底时限 {a.max_seconds:.0f}s → 退出", flush=True)
+            print(f"[orin-mjpeg] 到达保障时限 {a.max_seconds:.0f}s → 退出", flush=True)
             break
         if time.time() - LAST_CLIENT > a.idle_seconds:
             print(f"[orin-mjpeg] 无客户端 {a.idle_seconds:.0f}s → 退出 (临时进程不常驻)", flush=True)

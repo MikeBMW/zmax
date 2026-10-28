@@ -9,10 +9,10 @@
   ② cycle 单调递增 (2s 内涨 ≥ 8) ⇒ 回路**真在按周期调**
   ③ tap 最后一帧新鲜 (帧龄 < 3s) 且字段齐 (p/action/phi/M/provider/traj_n/task_id)
   ④ 每周期 step 耗时 > 0 且势场真生效 (Φ/‖∇Φ‖ 不全为 0 —— `goal_point` 设错时实测恒 0)
-  ⑤ 状态源是**真源** (轨迹文件在位 · obs 43 维 · src 写明来源; 无源时空转并明说)
+  ⑤ 状态源是**唯一依据** (轨迹文件在位 · obs 43 维 · src 写明来源; 无源时空转并明说)
   ⑥ 单写入器 (只有一个 ss_engine_loop 进程, 且与 pid 锁一致)
   ⑦ DDS topic zmax/ss_engine 真收到 (dds-venv 订阅 ≥2 条且 cycle 递增)
-  ⑧ 由**状态空间工程**驱动: 帧里的 project/task_id 与真源文件当前值一致
+  ⑧ 由**状态空间工程**驱动: 帧里的 project/task_id 与唯一依据文件当前值一致
 
 用法: gui-venv311/bin/python tools/verify_ss_engine_loop.py
 """
@@ -110,12 +110,12 @@ def main() -> int:
             pass
     chk("④-2 势场真生效 (Φ 非恒 0)", phi_any or gn > 1e-9, "Φ=%.6f ‖∇Φ‖=%.6f" % (phi, gn))
 
-    # ⑤ 状态源真源
+    # ⑤ 状态源唯一依据
     tr = _j(TRAJ, {}) or {}
     obs = tr.get("obs") or []
-    chk("⑤-1 轨迹真源在位", bool(obs), "%s · %d 帧" % (os.path.relpath(TRAJ, ROOT), len(obs)))
+    chk("⑤-1 轨迹唯一依据在位", bool(obs), "%s · %d 帧" % (os.path.relpath(TRAJ, ROOT), len(obs)))
     chk("⑤-2 obs 维数 = 43", bool(obs) and len(obs[0]) == 43, "dim=%s" % (len(obs[0]) if obs else "?"))
-    chk("⑤-3 真源写明来源", bool(tr.get("src")), str(tr.get("src"))[:90])
+    chk("⑤-3 唯一依据写明来源", bool(tr.get("src")), str(tr.get("src"))[:90])
 
     # ⑥ 单写入器 (自己读 /proc/*/cmdline 数进程 —— 用 `grep ss_engine_loop` 会把**检查命令自身**
     #    也算进去 ⇒ 实测误报「进程数=4」。)
@@ -155,15 +155,15 @@ def main() -> int:
     chk("⑦ cycle 在 DDS 上单调递增", len(cyc) >= 2 and all(cyc[i + 1] > cyc[i] for i in range(len(cyc) - 1)),
         "cycle %s" % (cyc[:4] or "无"))
 
-    # ⑧ 由状态空间工程驱动 (帧里的工程/任务 == 真源当前值)
+    # ⑧ 由状态空间工程驱动 (帧里的工程/任务 == 唯一依据当前值)
     b = _j(BINDING, {}) or {}
     p = _j(PROJ, {}) or {}
     want_task = str(b.get("active_task") or "")
     want_proj = str(p.get("name") or "")
-    chk("⑧ 帧内 task_id == 绑定真源", str((d or {}).get("task_id") or "") == want_task,
-        "帧=%s / 真源=%s" % ((d or {}).get("task_id"), want_task))
-    chk("⑧ 帧内 project == 工程真源", str((d or {}).get("project") or "") == want_proj,
-        "帧=%s / 真源=%s" % ((d or {}).get("project"), want_proj))
+    chk("⑧ 帧内 task_id == 绑定唯一依据", str((d or {}).get("task_id") or "") == want_task,
+        "帧=%s / 唯一依据=%s" % ((d or {}).get("task_id"), want_task))
+    chk("⑧ 帧内 project == 工程唯一依据", str((d or {}).get("project") or "") == want_proj,
+        "帧=%s / 唯一依据=%s" % ((d or {}).get("project"), want_proj))
 
     bad = [x for x in R if not x["ok"]]
     print("\n判据: %d/%d PASS%s" % (len(R) - len(bad), len(R),

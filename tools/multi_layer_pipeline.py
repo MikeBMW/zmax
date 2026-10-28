@@ -36,7 +36,7 @@ _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _default_live_weights() -> str:
-    """在役检测器权重 (光模块) — models/yolo_peg_live.pt 软链; 缺失则回 None (由 YoloPerception 兜底)。
+    """在役检测器权重 (光模块) — models/yolo_peg_live.pt 软链; 缺失则回 None (由 YoloPerception 保障)。
     L2 层默认必须用这个, 否则会静默退到通用 COCO yolov8s = 假件。"""
     p = os.path.join(_REPO, "models", "yolo_peg_live.pt")
     return p if os.path.exists(p) else None

@@ -6,8 +6,8 @@
 标定，测量，以及主参数，都要有相应的文件，你来设计一下工程存档文件」
 
 存档 = 自包含 JSON, 7 段: ①canvas 画布模型 ②panel 右侧栏配置 ③calibration 标定
-④master_param 主参数 M ⑤measure 测量 ⑥tasks 任务 ⑦fingerprints 真源指纹表。
-🔴 真源永远是文件本身 (画布/标定/任务绑定); 存档只是快照+指纹 ⇒
+④master_param 主参数 M ⑤measure 测量 ⑥tasks 任务 ⑦fingerprints 唯一依据指纹表。
+🔴 唯一依据永远是文件本身 (画布/标定/任务绑定); 存档只是快照+指纹 ⇒
    `restore` **默认只回填画布+面板**, 标定/主参数只比对不覆盖 (要覆盖得 --with-calib --yes)。
 
 用法:
@@ -55,7 +55,7 @@ def _sec_iter(proj):
         pn.get("view") or pn.get("view_label") or "?", len(rs),
         [v.get("label") for v in rs.values() if isinstance(v, dict) and v.get("checked")] or "无")
     cal = proj.get("calibration") or {}
-    yield "③ calibration", "标定", "%d 个真源文件 %s · 未标定 %s" % (
+    yield "③ calibration", "标定", "%d 个唯一依据文件 %s · 未标定 %s" % (
         len(cal.get("files") or {}), sorted((cal.get("files") or {}).keys()),
         cal.get("uncalibrated") or [])
     mp = proj.get("master_param") or {}
@@ -68,7 +68,7 @@ def _sec_iter(proj):
     tk = (proj.get("tasks") or {}).get("content") or {}
     yield "⑥ tasks", "任务/绑定", "%d 个任务 · 活跃 %s" % (
         len(tk.get("tasks") or {}), tk.get("active_task") or tk.get("active"))
-    yield "⑦ fingerprints", "真源指纹", "%d 个文件" % len(proj.get("fingerprints") or {})
+    yield "⑦ fingerprints", "唯一依据指纹", "%d 个文件" % len(proj.get("fingerprints") or {})
 
 
 # ─────────── save ───────────
@@ -88,7 +88,7 @@ def cmd_save(a):
     print("   版本 %s · 存于 %s · schema %s" % (r["version"], r["saved_at"], r["schema"]))
     for k, v in r["sections"].items():
         print("   · %-12s %s" % (k, v))
-    print("\n   🔴 真源没动: 存档只是快照+指纹。下次 restore 默认只回填画布+面板, 标定/主参数要显式 --with-calib --yes。")
+    print("\n   🔴 唯一依据没动: 存档只是快照+指纹。下次 restore 默认只回填画布+面板, 标定/主参数要显式 --with-calib --yes。")
     return 0
 
 
@@ -242,7 +242,7 @@ def cmd_explode(a):
     for rel, sz, h in wrote:
         lines.append("| `%s` | %.1f KB | %s |" % (rel, sz / 1024.0, h[:12]))
     lines += ["", "## 与当前现场的漂移", ""] + ["- " + x for x in PF.drift_lines(rep)]
-    lines += ["", "🔴 真源永远是仓库里的文件 (flows/state_space_obs.json · config/calib/*.json · "
+    lines += ["", "🔴 唯一依据永远是仓库里的文件 (flows/state_space_obs.json · config/calib/*.json · "
               "config/ss_task_binding.json); 本文件夹只是**某时刻的快照**, 改它不会影响现场。" ]
     with open(os.path.join(out, "MANIFEST.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
@@ -314,7 +314,7 @@ def cmd_list(a):
         try:
             proj = PF._read(p)
         except Exception as e:                                                   # noqa: BLE001
-            print("  ⚠️ %s 打不开 (%s)" % (os.path.basename(p), e))
+            print("  ⚠️ %s 无法打开 (%s)" % (os.path.basename(p), e))
             continue
         rep = PF.drift_report(proj)
         bad = [k for k, v in rep.items() if v.get("status") == "漂移"]

@@ -139,9 +139,9 @@
          点开先给可读的对照表(每行=一个工艺动作 → 它落在哪几张工艺卡/工位), 可复制、可存 CSV。
          口径: 动作 = 做什么(①~⑧), 工艺卡 = 在哪做/用什么机构做(1~9 工位); 一个动作可跨多个工位, 一个工位也可承担多个动作。 -->
     <button id="bMap" title="导出「工艺动作 ⇄ 工艺卡」对照表（可复制 / 存 CSV，Excel 直接打开）">📋 动作⇄工艺卡</button>
-    <!-- 📄 2026-10-22 老倪: 右上角「技术」按钮 → 打开真源 Word 版技术协议
+    <!-- 📄 2026-10-22 老倪: 右上角「技术」按钮 → 打开唯一依据 Word 版技术协议
          (文件放 /home/ubuntu/zmax/zmax_data/agreements/; 点按钮 = 在工位机桌面用 LibreOffice 打开) -->
-    <button id="bAgree" title="打开技术协议（Word 真源；文件放在 zmax_data/agreements/，点了在工位机桌面打开）">📄 技术协议</button>
+    <button id="bAgree" title="打开技术协议（Word 唯一依据；文件放在 zmax_data/agreements/，点了在工位机桌面打开）">📄 技术协议</button>
     <a class="lnk" id="aAgree" href="/agreement" target="_blank" title="下载 / 在线查看当前这份技术协议">⬇</a>
     <a class="lnk" href="/autoLight" target="_blank" title="打开工艺卡页(文字/Word 导出)">工艺卡</a>
   </div>
@@ -1131,7 +1131,7 @@ function openLight(url, cap, list){
   }catch(e){ console.warn('设备实照加载失败', e); }
 })();
 
-/* ===================== 📄 技术协议（Word 真源 → 工位机桌面打开） ===================== */
+/* ===================== 📄 技术协议（Word 唯一依据 → 工位机桌面打开） ===================== */
 $('bAgree').onclick=async()=>{
   const b=$('bAgree'), o=b.textContent;
   b.disabled=true; b.textContent='打开中…';

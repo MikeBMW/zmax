@@ -8,13 +8,13 @@
 - 不自己编译 VSCode (每次升版重编重签, 不划算), 除非将来要内网离线分发。
 - 解耦: 宿主 `sudo apt-get install --only-upgrade code` 升级; 扩展随自己仓库发版 (版本号跟主工程走, 不自主升级)。
 
-## 定位红线 (写死)
-- 扩展 = **又一个前端**, 业务逻辑一行不重写; 只做"取真源 + 展示 + 触发" (否则双源漂移)。
+## 定位红线 (预先固定)
+- 扩展 = **又一个前端**, 业务逻辑一行不重写; 只做"取唯一依据 + 展示 + 触发" (否则双源漂移)。
 - 所有写操作 (真机动作/切档/训练) 走 8793 授权闸: 默认未授权 + 两步确认 + 窗口内失效; 不新增旁路。
 - 任何标"当前"的值必须带帧龄/时间戳 (直接显示 `age_s`)。
 - Webview 不许内嵌整页网站 (否则又是"另一个 GUI"); 只放数据 + 小控件。
 
-## 真源 (无需新造后端)
+## 唯一依据 (无需新造后端)
 - `http://127.0.0.1:8793/station/status` → 200 / ~11.5KB: `stats` 六路相机 (online/fps/kb_per_frame/compress_x/age_s) · `ctl.tcp`(xyz/abc/age_s) · `ctl.auth`(armed/left_s/ip) · `ctl.robot` · `ctl.motion` · `ctl.exec`(pid/skills/log_age_s) · `ctl.collisions` · `ctl.gate` · `aoi{10082,10083}`。
 - 其他: 8797 AR (`/api/cams`, `/snap/<k>.jpg`) · 8791 相机 · 8798 工程库 (仅本机)。
 - `.vscode/launch.json`(F5 三配置) + `tasks.json` 已在 ⇒ 调试/任务集成有现成地基。

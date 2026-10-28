@@ -36,7 +36,7 @@
   ls -l $(grep ExecStart /etc/systemd/system/<svc>.service | cut -d= -f2 | awk '{print $1}')
   #   ↑ 复查服务引用脚本在"当前检出"里是否存在 —— 进程活着不代表文件还在
   ```
-- 细节配方(6 处版本真源漂移 / VERSION.md 被文档迁移删掉 / push 抢推 rebase / 归档别塞大快照):
+- 细节配方(6 处版本唯一依据漂移 / VERSION.md 被文档迁移删掉 / push 抢推 rebase / 归档别塞大快照):
   `zmax-console/references/release-and-version-sync-under-parallel-lines.md`。
 
 ## 相关

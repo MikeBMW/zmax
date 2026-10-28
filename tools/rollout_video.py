@@ -37,7 +37,7 @@ def _load_preprocessor_stats(pm: str):
                         "observation.state.std": np.array(d["observation.state"]["std"], dtype=np.float32)}
             except Exception:
                 pass
-    # 兜底: preprocessor
+    # 保障: preprocessor
     import glob as _g
     try:
         from safetensors.torch import load_file
@@ -57,7 +57,7 @@ def load_policy(policy: str):
     ckpt_base = json.load(open(curve_path, encoding="utf-8")).get("ckpt", "")
     # 🐛 2026-08-06 修复: on_train 的 ts_dir 与 train_vla_touch/train_awe_zflow 内部
     # 生成的 ts 可能差几秒 → 记录路径不存在 → rollout 失败 (自动交付卡在这)
-    # 兜底: glob 找最新同前缀目录
+    # 保障: glob 找最新同前缀目录
     base_dir = os.path.join(ROOT, ckpt_base)
     # 🐛 2026-08-07: expert_mlp 是 .pt 文件 (distill 保存) 非目录 → 特判
     if policy == "expert_mlp" and os.path.isfile(base_dir):
@@ -110,7 +110,7 @@ def load_policy(policy: str):
     elif policy in ("state_space", "left_right"):
         # 🐛 2026-09-25: 原来这一支落到 else → 用 SmolVLALewPolicy 装载 left_right 权重 →
         #   LeftRightConfig.validate_features() 缺参 TypeError (仿真 rollout 一直跑不起来)。
-        #   Z-MAX 状态空间/双脑 ckpt 的真源类 = LeftRightPolicy (config.type=left_right)。
+        #   Z-MAX 状态空间/双脑 ckpt 的唯一依据类 = LeftRightPolicy (config.type=left_right)。
         from lerobot.policies.left_right.modeling_left_right import LeftRightPolicy
         pol = LeftRightPolicy.from_pretrained(pm, local_files_only=True)
         _st = _load_preprocessor_stats(pm)
@@ -173,7 +173,7 @@ def run_rollout(policy, steps: int, out_dir: str, seed: int = 0, task_name: str 
     act_hist = None  # AWE 自回归动作历史
     t0 = time.time()
     for i in range(steps):
-        # 取 RGB 帧: 优先 obs 里的真渲染图 (V3 observation.image = 相机视图), 兜底 env.render()
+        # 取 RGB 帧: 优先 obs 里的真渲染图 (V3 observation.image = 相机视图), 保障 env.render()
         rgb = None
         try:
             oimg = obs.get("observation.image") if isinstance(obs, dict) else None

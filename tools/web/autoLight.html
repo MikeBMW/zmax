@@ -78,8 +78,8 @@
     <!-- 🧊 2026-10-22 老倪: 「/ar 的三维视角，需要重新开一个新页面，在光纤的场景」
          = 九步场景的独立大窗口三维视角(一页一个大 3D + 九步切换)；同端口 8797 热读 -->
     <button id="b3d" onclick="window.open('/autoLight3d','_blank')" title="在新页面打开九步三维视角（大窗口 · 可切九步 · 拖拽旋转）">🧊 三维视角</button>
-    <!-- 📄 2026-10-22: 技术协议 Word 真源 —— 文件放 zmax_data/agreements/, 点了在工位机桌面打开 -->
-    <button id="bAgree" onclick="openAgreement(this)" title="打开技术协议（Word 真源；文件放在 zmax_data/agreements/）">📄 技术协议</button>
+    <!-- 📄 2026-10-22: 技术协议 Word 唯一依据 —— 文件放 zmax_data/agreements/, 点了在工位机桌面打开 -->
+    <button id="bAgree" onclick="openAgreement(this)" title="打开技术协议（Word 唯一依据；文件放在 zmax_data/agreements/）">📄 技术协议</button>
     <button id="bSpin" class="on">视图自转</button>
     <button id="bPlay" class="on">动画</button>
     <button id="bLbl" class="on">标注</button>
@@ -849,7 +849,7 @@ window.addEventListener('resize',()=>{ views.forEach(v=>{ v.resize(); v.fit(v.fo
 requestAnimationFrame(loop);
 
 /* ---------- 导出 Word（一键） ---------- */
-// 内容真源就是这个页面的 CARDS：把卡片文字 + 当前视角的 canvas 截图 POST 给 8797,
+// 内容唯一依据就是这个页面的 CARDS：把卡片文字 + 当前视角的 canvas 截图 POST 给 8797,
 // 服务端 tools/autolight_docx.py 用 python-docx 排版返回 .docx
 const bDoc=document.getElementById('bDoc'), TIP=document.getElementById('tip');
 const TIP0=TIP.textContent;
@@ -924,7 +924,7 @@ window.__AL={
 };
 </script>
 <script>
-/* 📄 技术协议: 点击 → 让**工位机桌面**把 Word 真源打开(文件在 zmax_data/agreements/) */
+/* 📄 技术协议: 点击 → 让**工位机桌面**把 Word 唯一依据打开(文件在 zmax_data/agreements/) */
 async function openAgreement(btn){
   const o=btn?btn.textContent:'';
   if(btn){ btn.disabled=true; btn.textContent='打开中…'; }

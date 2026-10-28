@@ -55,7 +55,7 @@ parts = (r.stdout or "").split()
 chk("import 两条路同一对象", parts[:2] == ["True", "True"], (r.stdout or r.stderr).strip()[:80])
 chk("_repo_root() 解析正确", len(parts) > 2 and os.path.abspath(parts[2]) == ROOT)
 
-# ⑤ 仓库级资源定位 (归位后写死 dirname×3 会失效的正是这类)
+# ⑤ 仓库级资源定位 (归位后预先固定 dirname×3 会失效的正是这类)
 probe2 = (
     "import sys; sys.path[:0]=['tools/gui','src']\n"
     "import state_space_sim_real as A\n"

@@ -53,7 +53,7 @@ SHARED = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax/zmax_data/ss_li
 LIVE_JPG = os.path.join(SHARED, "live_frame.jpg")
 LIVE_META = os.path.join(SHARED, "live_frame.json")
 # 🩹 2026-09-18 老倪: 「运行L2功能, 怎么输入图像没有了?」—— 真机源原来**只认 srv 落盘 live_frame.jpg**
-#   (Orin /zmax/live_frame → Docker 客户端), 该服务不可达时窗口就"永远无画面"; 而真机图像其实一直在流:
+#   (Orin /zmax/live_frame → Docker 客户端), 该服务不可达时窗口就"永远无画面"; 而真机图像实际一直在流:
 #   Docker tap 只读订阅落盘的 cam_rs.png 一直新鲜, **L2 侧吃的就是这条** (ss_yolo_on_real CAND)。
 #   → 加候选链回退 (同一帧口径, 与 L2 同源), 仍守"只上新鲜帧、旧图不冒充"纪律。
 REAL_FILE_CANDS = (
@@ -64,7 +64,7 @@ REAL_FILE_CANDS = (
     ("srv_cam.jpg", "srv 落盘 JPEG"),
     # 🩹 2026-09-20 老倪: 「状态空间工程的 YOLO目标检测节点, 我还是看不到输入图像」——
     #   根因: Orin 重启后产线相机节点未跑 → cam_rs/cam_fp/cam_latest 全缺 → 无候选可上屏;
-    #   而 L2 (ss_yolo_on_real CAND) 此时吃的是本机工位相机兜底帧 cam_local.png (source_kind=bench_cam)。
+    #   而 L2 (ss_yolo_on_real CAND) 此时吃的是本机工位相机保障帧 cam_local.png (source_kind=bench_cam)。
     #   → 面板候选链补上同一条 (与 L2 严格同源), 并**自报家门**「本机工位相机(备用·非产线视角)」,
     #     绝不冒充产线 RealSense; 产线帧一回来即被上面的 cam_rs/cam_fp 优先选中。
     ("cam_local.png", "本机工位相机 (备用·非产线视角 · 与 L2 同源)"),
@@ -238,7 +238,7 @@ def _engine_live_frame(max_age=2.0):
     """▶运行 中, 引擎当前步的实况帧 (同进程共享槽, 见 state_space_sim_real.SS_LIVE_FRAME)
 
     → (rgb, step, age_s) | None。引擎没在跑 (或帧太旧) → None, 窗口回退到静态渲染并**如实标注**。
-    🎥 2026-09-17 老倪: 「点了运行, 仿真图像不动」根因 —— 原来这个仿真源渲染的是
+    🎥 2026-09-17 老倪: 「点了运行, 仿真图像不动」根因 —— 原来这个仿唯一依据渲染的是
     node_logic._YOLO_ALIGNER.env (只 reset 过一次、从没 step 过) → 永远同一帧, 与运行无关。
     """
     try:
@@ -397,7 +397,7 @@ class _CamGrabber(threading.Thread):
         return cap
 
     def _file_frame(self, max_age: float = 10.0):
-        """📄 文件同源兜底: 读取图小进程落盘的 cam_local.png (与直读是同一台本机相机)。
+        """📄 文件同源保障: 读取图小进程落盘的 cam_local.png (与直读是同一台本机相机)。
 
         用途: 设备被其它进程占用 (常见: tools/local_cam_feed.py 常驻取图, 供 L2/面板共享) 时,
               「💻 本机摄像头」这一路不再空转报错, 而是读同一路落盘帧。
@@ -453,7 +453,7 @@ class _CamGrabber(threading.Thread):
                         if dt > 0:
                             time.sleep(dt)
                         continue
-                    self.q.put({"err": f"打不开摄像头 {self.dev} (被占用? 另一路摄像头源/其它程序正在读; "
+                    self.q.put({"err": f"无法打开摄像头 {self.dev} (被占用? 另一路摄像头源/其它程序正在读; "
                                        f"或设备号不对 → 可改 ZMAX_USBCAM_DEV=/dev/videoN)"})
                     time.sleep(1.0)
                     continue
@@ -538,7 +538,7 @@ class YoloInputViewer(QtWidgets.QDialog):
         self.btn_percept.setCheckable(True)
         self.btn_percept.setToolTip("在当前输入图像上叠加**感知结果** (目标检测 bounding box)\n"
                                     "· 真机源 → models/yolo_peg_live.pt (与 L2 管线同一权重)\n"
-                                    "· 仿真源 → 仿真域权重 (域不混, 只用于对照)\n"
+                                    "· 仿唯一依据 → 仿真域权重 (域不混, 只用于对照)\n"
                                     "· 只叠加显示: 标定存档仍用原始像素, 框不会烧进训练图")
         self.btn_percept.toggled.connect(self._on_percept)
         top.addWidget(self.btn_percept)
@@ -843,7 +843,7 @@ class YoloInputViewer(QtWidgets.QDialog):
             ], tag="waiting-usbcam")
         else:
             self._show_placeholder([
-                "🧪 仿真源 · 等 metaworld 渲染帧 …",
+                "🧪 仿唯一依据 · 等 metaworld 渲染帧 …",
                 "点 ▶运行 后本窗口自动跟随引擎实况帧 (与 detect_3d 同一帧)",
                 "引擎没在跑时给的是静止初始帧, 状态栏会如实标注 (不假动)",
             ], tag="waiting-sim")
@@ -854,8 +854,8 @@ class YoloInputViewer(QtWidgets.QDialog):
 
     def _start_source(self):
         # ⚠️ 幂等: 先收掉可能在跑/被孤立的采集线程。
-        #   实测踩坑: __init__ 的 singleShot(200ms) 与用户手切下拉可能各触发一次 _start_source
-        #   → 旧 _CamGrabber 被覆盖成孤儿, 线程不停 → **UVC 设备被永久占用**, 之后任何一路都"打不开摄像头"。
+        #   实测遇到问题: __init__ 的 singleShot(200ms) 与用户手切下拉可能各触发一次 _start_source
+        #   → 旧 _CamGrabber 被覆盖成孤儿, 线程不停 → **UVC 设备被永久占用**, 之后任何一路都"无法打开摄像头"。
         if self._sim is not None:
             self._sim.stop_flag = True
             self._sim = None
@@ -885,7 +885,7 @@ class YoloInputViewer(QtWidgets.QDialog):
             self._sim = _SimGrabber(self._q, self.chk.isChecked())
             self._sim.start()
             _engine_viewer_wants(True)      # 🎥 告诉引擎"有窗口在看实况" (非视觉档也节流渲染)
-            self._log_line("仿真源已启动 (metaworld corner2; ▶运行 中自动跟随引擎实况帧)")
+            self._log_line("仿唯一依据已启动 (metaworld corner2; ▶运行 中自动跟随引擎实况帧)")
         else:
             # 💻 本机内置摄像头 (UVC 直读) — 无 Orin/Docker 也能出真像素, 用于标定/YOLO 域适应
             self.source = "usbcam"
@@ -924,7 +924,7 @@ class YoloInputViewer(QtWidgets.QDialog):
             _ct = self._cam
             self._cam = None
             try:
-                _ct.join(timeout=1.5)      # 等它把设备 release 掉 (UVC 独占: 不等会导致切回时"打不开")
+                _ct.join(timeout=1.5)      # 等它把设备 release 掉 (UVC 独占: 不等会导致切回时"无法打开")
             except Exception:                                            # noqa: BLE001
                 pass
         try:
@@ -1156,7 +1156,7 @@ class YoloInputViewer(QtWidgets.QDialog):
 
     # ── 刷新 ────────────────────────────────────────────────────────────
     def _tick(self):
-        # 🛡 2026-09-18 槽体总兜底 (同 studio.py「点一下就崩」通式: Qt 定时器/槽里未捕获异常
+        # 🛡 2026-09-18 槽体总保障 (同 studio.py「点一下就崩」通式: Qt 定时器/槽里未捕获异常
         #   → qFatal → 整个控制台进程中止, 且无弹窗)。刷新异常只记日志, 绝不冒泡。
         try:
             self._tick_inner()
@@ -1176,7 +1176,7 @@ class YoloInputViewer(QtWidgets.QDialog):
             self._tick_cam()                        # 💻 本机摄像头 (队列帧)
         else:
             self._tick_sim()
-        # 🎯 感知模式看门狗 (冻结帧/静止场景兜底; 实时性由"新帧即推理"那条路保证, 见各 _tick_*)
+        # 🎯 感知模式看门狗 (冻结帧/静止场景保障; 实时性由"新帧即推理"那条路保证, 见各 _tick_*)
         #   ⚠️ 两个纪律: ①叠加在 paint 阶段 (换帧/冻结/标定都不会丢框) ②新帧到达时**先推理再画** (框与帧同拍)
         self._percept_refresh()
         # 📺 实时预览列: 冻结(标定)作业时持续显示现场; 未冻结时主画面本身就是实时 → 该列显式置空 (不摆旧图)
@@ -1329,7 +1329,7 @@ class YoloInputViewer(QtWidgets.QDialog):
             return self._live_real_frame()
         if self._pending is not None:
             return self._pending, ("metaworld 引擎实况帧" if self.source == "sim" else "本机摄像头 UVC"), 0.0
-        return None, ("仿真源暂无新帧 (引擎/采集线程未产出)" if self.source == "sim"
+        return None, ("仿唯一依据暂无新帧 (引擎/采集线程未产出)" if self.source == "sim"
                       else "本机摄像头暂无新帧"), None
 
     def _pip_rot_deg(self) -> int:
@@ -1440,7 +1440,7 @@ class YoloInputViewer(QtWidgets.QDialog):
             else:
                 status.append(f"{name}: ⚠️ 旧帧 {age:.0f}s")
         self._real_cand_status = status
-        # 🩹 2026-09-20: 兜底源不得抢源 —— 只要产线(RealSense/FoundationPose)帧新鲜, 就用它;
+        # 🩹 2026-09-20: 保障源不得抢源 —— 只要产线(RealSense/FoundationPose)帧新鲜, 就用它;
         #   本机工位相机帧写入更频, 若按"最新鲜"取会让画面在两路之间来回跳。
         pool = [c for c in fresh if c[3] != "cam_local.png"] or fresh
         if not pool:
@@ -1640,7 +1640,7 @@ class YoloInputViewer(QtWidgets.QDialog):
                    "📂 数据目录", "＋新类别", "🗑 丢弃当前帧", "🗑 清空本会话")
 
     def _set_annot_visible(self, on):
-        """⚠️ 血泪: 最初把「✏️ 标定模式」勾选框**自己也藏了** → 用户永远打不开标定, 界面上找不到任何标定按钮
+        """⚠️ 血泪: 最初把「✏️ 标定模式」勾选框**自己也藏了** → 用户永远无法打开标定, 界面上找不到任何标定按钮
         (我 offscreen 取证时是程序化 setChecked(True), 所以没暴露)。**入口控件必须常显** —— 隐的是它的下级控件。"""
         self.chk_annot.setVisible(True)
         for w in (self.lbl_cls, self.cb_cls, self.btn_newcls, self.ed_who, self.lbl_data):
@@ -1794,7 +1794,7 @@ class YoloInputViewer(QtWidgets.QDialog):
                 _save_rgb = self._rgb
             # 🐛 2026-09-18 修: 仿真帧的 _frame_meta 无 device → 记录里 device 为空,
             #   导致"仿真/真机"数据混在同一根时无法区分来源 (F08 用例抓到的真 bug)。
-            #   兜底: 按数据源填默认, 真机=D405, 仿真=mujoco 渲染。
+            #   保障: 按数据源填默认, 真机=D405, 仿真=mujoco 渲染。
             _dev = fm.get("device") or ("RealSense D405 (真机相机)" if self.source == "real"
                                         else "mujoco 渲染 (引擎仿真, 非真机相机)")
             rec = yad.save_sample(self.annot_root, _save_rgb, boxes,
@@ -1826,7 +1826,7 @@ class YoloInputViewer(QtWidgets.QDialog):
         self._save_annot(next_frame=True)
 
     def _truth_snapshot(self):
-        """📌 真机位姿真值快照 (仿真源 → None)。保存样本与面板显示**共用这一个入口** —
+        """📌 真机位姿真值快照 (仿唯一依据 → None)。保存样本与面板显示**共用这一个入口** —
         真值只有一个来源 (Orin /robot/tcp_pose → 采集容器落盘 → tools/real_truth.py), 不许各写一套。"""
         if self.source != "real":
             return None
@@ -1841,7 +1841,7 @@ class YoloInputViewer(QtWidgets.QDialog):
         自解释: 每个数都带物理含义与坐标系; 拿不到的一律显示"— + 原因", 不拿旧值/默认值冒充 (老倪红线)。"""
         if self.source != "real":
             self.lbl_truth.setText("📌 真值: 当前是 "
-                                   + ("💻 本机摄像头源" if self.source == "usbcam" else "仿真源")
+                                   + ("💻 本机摄像头源" if self.source == "usbcam" else "仿唯一依据")
                                    + " — 切到「🎥 真机 RealSense」才会读 Orin 位姿真值")
             return
         t = self._truth_snapshot()

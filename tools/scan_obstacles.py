@@ -50,7 +50,7 @@ def main():
     cb = json.load(open(osp.join(MODELS, "real_cam_calib.json"), encoding="utf-8"))
     X = np.array(hd["T_cam2tool"], float)
     K = np.array(cb["K"], float).reshape(3, 3)
-    # 位姿真源优先 Orin 桥 /status (6 维 + 50Hz, 单位 m/rad); latest.json 只在桥不可达时兜底
+    # 位姿唯一依据优先 Orin 桥 /status (6 维 + 50Hz, 单位 m/rad); latest.json 只在桥不可达时保障
     t, rpy = None, None
     try:
         import urllib.request
@@ -64,7 +64,7 @@ def main():
         tcp = json.load(open(TCP_JSON, encoding="utf-8"))
         t = np.array([float(tcp["x"]), float(tcp["y"]), float(tcp["z"])], float)
         rpy = [float(tcp.get(k) or 0.0) for k in ("rx", "ry", "rz")]
-        print("[位姿] latest.json 兜底 (桥不可达: %s)" % _ex)
+        print("[位姿] latest.json 保障 (桥不可达: %s)" % _ex)
     T_base2tcp = np.eye(4)
     T_base2tcp[:3, :3], T_base2tcp[:3, 3] = rpy_to_R(*rpy), t
     T_base2cam = T_base2tcp @ X

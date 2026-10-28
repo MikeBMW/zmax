@@ -6,14 +6,14 @@
 
 口径 (速度反馈延迟 = 速度指令到达 → 速度反馈可见, 三段腿分开量, 不混成一个数):
   腿① 引擎→块    : chunk_latest.json 相邻 ts 之差 (= 回路块周期; hz_target 10Hz ⇒ 100ms 标称)
-  腿② 块→派发    : 技能派发服务认领新块的时间差 —— 真源 skill_latest.json 的「块帧龄_s」(服务自报, 现测)
+  腿② 块→派发    : 技能派发服务认领新块的时间差 —— 唯一依据 skill_latest.json 的「块帧龄_s」(服务自报, 现测)
   腿③ 派发→反馈  : skill_phys.json 里该技能 v_mms **首次反映新指令值**时的 ts − 那块的 chunk.ts
   (物理腿)       : skill_phys.json 每技能 pose_age_s = 真机位姿反馈帧龄; 停更 ⇒ 记「不可测」并给原因
 
   主指标 = 腿② + 腿③ = 「指令进块 → 该技能速度反馈落地」的端到端延迟 (逐技能, 同机同钟 time.time())。
 
 做法 (纯读, 不下发任何真机指令, 不改任何服务):
-  · 高频采样两个真源文件 (默认 200Hz), 逐技能检测「指令值变化」与「反馈值变化」并配对算 Δt;
+  · 高频采样两个唯一依据文件 (默认 200Hz), 逐技能检测「指令值变化」与「反馈值变化」并配对算 Δt;
   · 指令值来源与派发服务**同一映射** (STAGES + atomic_skills 的 CODE_BY_STAGE, 不手写编号);
   · 配对窗口内没有反馈变化 ⇒ 计一次「未配对」(report 里单列, 不当作 0)。
 
@@ -44,14 +44,14 @@ OUT_DEF = os.path.join(ROOT, "zmax_data", "eval", "l2_speed_fb_latency.json")
 
 STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
 
-# 口径常数 (写死并标注, 免得"多小算变化/多大算跟上"两处打架):
+# 口径常数 (预先固定并标注, 免得"多小算变化/多大算跟上"两处打架):
 CMD_EPS_MMS = 1.0     # 指令或反馈的**速度变化** ≥ 1 mm/s 才算一次真实事件 (滤掉浮点噪声)
 RESP_TOL_MMS = 0.5    # 反馈与新指令之差 ≤ 0.5 mm/s ⇒ 判「已跟上」(未被闸削)
 EXPIRE_S = 3.0        # 指令后 3s 内反馈没动静 ⇒ 记「未响应/陈旧」, 不计入延迟
 
 
 def _codes():
-    """技能号↔阶段 真源 (与派发服务同源, 不手写)。取不到就退回 SK01..SK08 顺序号并标注降级。"""
+    """技能号↔阶段 唯一依据 (与派发服务同源, 不手写)。取不到就退回 SK01..SK08 顺序号并标注降级。"""
     try:
         from lerobot.policies.left_right.state_space.skills.atomic_skills import (  # noqa: E402
             SKILLS, SKILLS_TRAY)
@@ -240,7 +240,7 @@ def probe(seconds: float, hz: float, code_by_stage, quiet=False) -> dict:
 
 
 def probe_shm(seconds: float, hz: float, quiet: bool = False) -> dict:
-    """逐技能腿: 读派发服务给**每个技能**留的共享内存真源 (60Hz 每拍刷) —— 8 个技能一次全测。
+    """逐技能腿: 读派发服务给**每个技能**留的共享内存唯一依据 (60Hz 每拍刷) —— 8 个技能一次全测。
 
     /dev/shm/zmax_ss_engine/skill_<i>_<stage>.json 里: action(过闸后可执行速度)/step/ts/
     age_s(距认领当前动作的时间 = 该技能速度反馈的迟滞)/block_ts(给它这一拍的块)/big+why(削因)。
@@ -310,19 +310,19 @@ def main():
     ap.add_argument("--seconds", type=float, default=240.0)
     ap.add_argument("--hz", type=float, default=200.0)
     ap.add_argument("--out", default=OUT_DEF)
-    ap.add_argument("--smoke", action="store_true", help="只跑一遍打印, 不落盘")
+    ap.add_argument("--smoke", action="store_true", help="只执行一遍打印, 不落盘")
     ap.add_argument("--shm", action="store_true", default=True, help="同时跑逐技能腿 (共享内存, 默认开)")
     ap.add_argument("--no-shm", dest="shm", action="store_false")
     a = ap.parse_args()
     code_by_stage, src_note = _codes()
     print("🎯 L2 原子技能「速度反馈延迟」只读实测 (不下发任何指令)")
-    print("   技能号↔阶段真源: %s" % src_note)
-    print("   采样 %.0fHz × %.0fs · 真源 %s + %s" % (a.hz, a.seconds,
+    print("   技能号↔阶段唯一依据: %s" % src_note)
+    print("   采样 %.0fHz × %.0fs · 唯一依据 %s + %s" % (a.hz, a.seconds,
                                                   os.path.relpath(CHUNK, ROOT), os.path.relpath(PHYS, ROOT)), flush=True)
     r = probe(a.seconds, a.hz, code_by_stage)
-    r["技能号真源"] = src_note
+    r["技能号唯一依据"] = src_note
     if a.shm:
-        print("\n🗂  逐技能腿 (共享内存真源 /dev/shm/zmax_ss_engine/skill_*.json, 60Hz 每拍刷)")
+        print("\n🗂  逐技能腿 (共享内存唯一依据 /dev/shm/zmax_ss_engine/skill_*.json, 60Hz 每拍刷)")
         sh = probe_shm(a.seconds, a.hz)
         r["逐技能腿_共享内存"] = sh
         if sh.get("ok"):

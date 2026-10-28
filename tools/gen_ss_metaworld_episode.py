@@ -131,7 +131,7 @@ def run_episode(seed=0, want_video=True, log=print, analytic=False):
     # ⚠️ 2026-09-06 实测: align_th 收紧到 0.008 会破坏前段推进 (教师 97%→0/6, 疑与
     #   状态机耦合) — 保持默认 0.02, 插入对准问题改由转移段预对准子状态解决
     sched = ss.cognition.ActionModulator(grasp_th=GRASP_TH)
-    # 🧠🛡 L4/L5 进控制逻辑: 真源=配置中心 (档位/公差/力上限/节拍)
+    # 🧠🛡 L4/L5 进控制逻辑: 唯一依据=配置中心 (档位/公差/力上限/节拍)
     l45 = TaskL45("TASK-01-FW", ss=ss, limit=A_LIMIT, z_floor=None,
                   binding=os.environ.get("ZMAX_L45_BINDING") or BINDING)   # A/B: 可用副本配置
     log(l45.describe())
@@ -266,7 +266,7 @@ def run_episode(seed=0, want_video=True, log=print, analytic=False):
         r_scalar = float(np.linalg.norm(residual))
         contact_p = float(ss.cognition.contact_probability(r_scalar, gain=8.0))
         # 🧠 右脑 contact 融合 (2026-09-06 重训 acc 1.00, 与引擎 run 同构): 训练 WM
-        #   判断闭爪时机作证据, 与经验残差公式取 max — 域外返回 None → 公式兜底 (n_wm 可查)
+        #   判断闭爪时机作证据, 与经验残差公式取 max — 域外返回 None → 公式保障 (n_wm 可查)
         _cw = ss.dyn.contact_of(obs43[:39], act4)
         if _cw is not None:
             contact_p = max(contact_p, _cw)

@@ -29,7 +29,7 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
 - **定位手法（比读代码快）**: `qInstallMessageHandler` 抓消息里的 `(0x…)` 地址 → 遍历 `findChildren(QPushButton)`
   用 `int(sip.unwrapinstance(b))` 比对 → 直接打 `b.text()` + `b.styleSheet()` 就是罪魁; 再用
   monkeypatch 包 `QWidget.setStyleSheet` 记录“调用期间是否出告警”可定位到行。
-- **兜底**: 主程序 `main()` 里装消息过滤器只吞这两类（`Could not parse stylesheet` / `Unknown property *` /
+- **保障**: 主程序 `main()` 里装消息过滤器只吞这两类（`Could not parse stylesheet` / `Unknown property *` /
   `propagateSizeHints`）, 其他 Qt 消息照常打印; 中文消息写 `sys.stderr.buffer.write(msg.encode("utf-8","replace"))`,
   否则 GUI 的 ascii stderr 会抛 UnicodeEncodeError。
 
@@ -58,7 +58,7 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
 - 排查"悬停不生效": 先 grep item 类是否有 setAcceptHoverEvents + hover 事件(本会话 SimNodeItem 完全没有 hover 事件, 只有连线类 SimLinkItem 有 — _hover 恒 False), 再查 view 是否 setMouseTracking; 两处都补才生效
 - **VcXsrv 下 hover 事件流仍迟钝 → 终版: view 的 mouseMoveEvent 里 `itemAt(e.pos())` 直接驱动** (2026-08-12 用户报"ID就第一次显示,感觉反应很迟钝"): 每次鼠标移动算 itemAt, 目标 item 设 `_hover=True+update()`, 移出(或移到其他 item/空白)对旧 hover item 设 `_hover=False+update()`; 用 `self._hover_items` 集合跟踪当前 hover 项 — 鼠标位置即状态, 移出即消失, 完全绕开 hover 事件分发; 适合悬停提示(显示 ID/tooltip)类需求
 - offscreen 验证 hover 渲染用**像素 diff**(_hover False vs True 两图差异像素>15), 别用绝对颜色计数(节点固有元素会误命中); 模拟 mouseMove 驱动: 构造 QMouseEvent(MouseMove, viewport 坐标) 调 view.mouseMoveEvent, viewport 坐标用 `view.mapFromScene(item.scenePos()+offset)`
-- **VcXsrv 下无按键 mouseMove 事件根本不达画布** (2026-08-12 终版, 老倪"你怎么非得用鼠标点击一下呢,改成悬停显示" — 点击按下才有 mouseMove): mouseMove 驱动仍会"头两次显示然后不显示" → **终版 = QCursor 轮询兜底**: `_hover_timer = QTimer(self)` 150ms + `_poll_hover()`: `QCursor.pos()` 与 `_last_hover_pos` 相同则直接 return(**鼠标不动不重绘, 防狂闪** — 初版 80ms 轮询无守卫导致"屏幕狂闪"被否), `isVisible()/underMouse()` 检查 + `mapFromGlobal` → `_update_hover_at`; `_clear_hover()/_update_hover_at` 遍历 `_hover_items` 必须 `it.scene() is not None` 才 update(**删节点后旧 item 引用 update() 会崩溃闪退**), 全部 try/except 兜底; mouseMove 即时 + 轮询兜底共用 `_update_hover_at(vp_pos)`
+- **VcXsrv 下无按键 mouseMove 事件根本不达画布** (2026-08-12 终版, 老倪"你怎么非得用鼠标点击一下呢,改成悬停显示" — 点击按下才有 mouseMove): mouseMove 驱动仍会"头两次显示然后不显示" → **终版 = QCursor 轮询保障**: `_hover_timer = QTimer(self)` 150ms + `_poll_hover()`: `QCursor.pos()` 与 `_last_hover_pos` 相同则直接 return(**鼠标不动不重绘, 防狂闪** — 初版 80ms 轮询无守卫导致"屏幕狂闪"被否), `isVisible()/underMouse()` 检查 + `mapFromGlobal` → `_update_hover_at`; `_clear_hover()/_update_hover_at` 遍历 `_hover_items` 必须 `it.scene() is not None` 才 update(**删节点后旧 item 引用 update() 会崩溃闪退**), 全部 try/except 保障; mouseMove 即时 + 轮询保障共用 `_update_hover_at(vp_pos)`
 - **悬停提示类 UI 的用户偏好 (2026-08-12 老倪多轮纠正, 最终形态)**: 仅悬停显示(常显被否)、白色粗体 9px(`#e6edf3`, 蓝色被否)、放节点**右下角**(右上角与标题重叠被否、上方浮动被否)、不遮挡节点内容、背景行(row_bg)不显示 ID; 改 UI 视觉前先确认最终形态, 别按中间猜测迭代 6 轮
 
 ### 10. VcXsrv 崩溃/守护 + 窗口验证 (2026-08-12 实测)
@@ -70,7 +70,7 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
 
 ### 11. 启动卡顿/闪烁: 延迟创建重量级组件 (2026-08-12 实测)
 - 症状: "打开前屏幕使劲闪 + 卡死好几秒" — 主线程构造里同步建重量级组件(200+ 按钮的模块库面板/画布) → VcXsrv 每次窗口映射全屏合成一次 → 闪 + 卡
-- `win.hide() + QTimer.singleShot(80, win.show)` **无效且加重**(更闪+卡死, 已 revert) → **正解: 构造期不建重量级组件, `QTimer.singleShot(400, self._init_heavy)` 后置创建**(记录 `self._stack_index = stack.count()` + 完成后 `insertWidget(index, widget)` 插回原 tab 位, try/except 兜底 statusBar 提示); 实测启动 27s→8s
+- `win.hide() + QTimer.singleShot(80, win.show)` **无效且加重**(更闪+卡死, 已 revert) → **正解: 构造期不建重量级组件, `QTimer.singleShot(400, self._init_heavy)` 后置创建**(记录 `self._stack_index = stack.count()` + 完成后 `insertWidget(index, widget)` 插回原 tab 位, try/except 保障 statusBar 提示); 实测启动 27s→8s
 - 规律: 启动慢 = 主线程同步构造重组件; **延迟创建(QTimer 后置)比 show 时机 hack 有效**; 延迟回调里访问延迟组件时它已就绪(400ms < 2.5s 等); Pyright 对 `self.attr = None` 后访问报 OptionalMemberAccess 是静态误报
 - 🔴 **一次 `singleShot` 只把"卡"推迟, 多个重组件用固定节拍逐个建 = "窗口出来了但动不了"**:
   每页 0.02~2.5s, 全在主线程 ⇒ 用户看到窗口已显示却十几秒不能拖/不能滚, 先说是"界面坏了"。
@@ -160,7 +160,7 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
 ## node_logic 节点逻辑面板源码映射 (2026-08-12 实测)
 「📖 查看/编辑节点逻辑」面板显示代码的机制与坑 (node_logic.py + node_logic_dialog.py):
 - 流程: `NodeLogicDialog._key = node_logic.match_node(node_name)`(最长关键字匹配) → `get_external_source(key)`(_EXTERNAL_LOC 映射外部真实源码) → 无则显示自身注册函数源码
-- **_EXTERNAL_LOC 映射 = (绝对路径, 行号, 符号名)**: 定位用**符号名搜索**(`ln.strip() == sym or startswith(sym + "(")`), 行号仅兜底 — 行号错位时(映射写 59 实际 60)源码截取从空行开始 → 面板只有"源码结束"标记行(用户报"没有字")
+- **_EXTERNAL_LOC 映射 = (绝对路径, 行号, 符号名)**: 定位用**符号名搜索**(`ln.strip() == sym or startswith(sym + "(")`), 行号仅保障 — 行号错位时(映射写 59 实际 60)源码截取从空行开始 → 面板只有"源码结束"标记行(用户报"没有字")
 - **sym 必须是真实符号名** (`class RightBrainWM` / `def pixel_to_ray`): 描述文字("grasp 阈值参数")定位失败 → 空白
 - **无独立实现的融合/参数节点(State Adapter)不挂 _EXTERNAL_LOC** → 显示自身注册函数(可编辑区); 误指到别的源码(如指向 YoloStateAligner)会被用户发现"两个节点代码一样"
 - **逻辑函数开头必须 `log = ctx["log"]`**: execute_node_logic 把 `module._log` 注入 ctx, 函数内是局部变量不是全局 — 新注册函数漏了这行 → 双击执行 NameError; 批量补插时用正则 `(def fn\(ctx\):.*?\n)(    )` 插入, **heredoc 里 `ctx[\"log\"]` 的反斜杠转义会写坏文件**(`\\"` 残留在代码里 → SyntaxError), 用 python 脚本处理时避免字符串里写反斜杠字面
@@ -174,7 +174,7 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
 
 ### 13. 「断点进不去」先分两半: 进程里没调试器 / 追踪器被自己代码顶掉
 - **进程侧**: 很多控制台把调试端口做成 env 开关(如只在 `ZMAX_DEBUG=1` 时 `debugpy.listen(("127.0.0.1",5678))` —— 默认不开是因为无 attach 时 listen 会阻塞 Qt 主线程 map 窗口)。
-  于是直接跑起来的实例**根本没有调试器**, 编辑器里的断点只是"画"在那儿。判据: `ss -ltnp | grep 5678` 无监听 + 窗口标题/状态栏应有"非调试模式"提示。
+  于是直接启动的实例**根本没有调试器**, 编辑器里的断点只是"画"在那儿。判据: `ss -ltnp | grep 5678` 无监听 + 窗口标题/状态栏应有"非调试模式"提示。
   解法: F5 launch 一个带调试器的新实例(justMyCode=false), 或让实例带 `ZMAX_DEBUG=1` 起再 attach 到该端口。
 - **代码侧**: 应用自己的"逐行执行/变量数值变化"功能常用 `sys.settrace()` 实现 ⇒ 它会**覆盖 debugpy 的 tracer**, 断点静默不命中。
   这类代码多半在 `finally: sys.settrace(None)` 清理 ⇒ **函数返回后再读 `sys.gettrace()` 永远是 None**(最易把排查带偏)。
@@ -200,7 +200,7 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
 - **收到别人传进来的 layout 必须按类型自适应**: builder 拿到的可能是 `QFormLayout`/`QVBoxLayout`/`QHBoxLayout` 任一 —— `QFormLayout` **没有 `addLayout`/`addWidget`, 只有 `addRow`** ⇒ 误用抛 AttributeError(建页即崩, 且崩在启动期不好定位)。写法: 控件包一层 QWidget 后 `if hasattr(layout, "addRow"): layout.addRow(w) else: layout.addWidget(w)`。
 - **同一个坑在 `QProcess` 上以另一副面孔出现: 把 QProcess 挂 `parent=控件`**(`QProcess(self)`)—— 换页/关窗时父控件先析构, 而子进程还在跑 ⇒ `QProcess: Destroyed while process is still running` ⇒ **abort / core dump (控制台整体消失)**。它只在"离屏验证脚本跑完析构"或"用户换页/关窗"时触发, 平时看不出来 ⇒ 必须显式测: 起采集后立刻 `w.close(); w.deleteLater()`, 不断言到无崩溃就别算完。
   - 正确写法(实测): ① **不挂 parent** —— `p = QProcess()` 并把引用存成 `self._proc`(谁持有谁负责); ② 槽里用 `self.sender()` 取回对象, 不要 `lambda: self._on(p)` 闭包捕获(闭包持的是已删 C++ 包装对象, 报 `wrapped C/C++ object of type QProcess has been deleted`); ③ 槽内 `readAllStandardOutput()` 用 try/except RuntimeError 兜; ④ 提供 `stop()`: disconnect → 未停则 `kill()+waitForFinished(300)` → `deleteLater()`, 并在 `closeEvent` 里调它 + 停掉自己那个刷新 QTimer; ⑤ 收到 `finished` 后 `deleteLater()` 并清 `self._proc = None`(防重入叠进程)。
-- **用 QProcess 定时跑只读工具取实时数据是可行模式**(数据条/明细表): 子进程跑 `工具 --json` → 主线程解析 → 贴到 QLabel/表。纪律: 显示**采集时间**(没有时间戳的数字等于没说) · 工具失败显红字并保留上一次的值(绝不假装正常) · 上一轮没回不叠新进程 · 按真源 mtime 或定时器缓存。
+- **用 QProcess 定时跑只读工具取实时数据是可行模式**(数据条/明细表): 子进程跑 `工具 --json` → 主线程解析 → 贴到 QLabel/表。纪律: 显示**采集时间**(没有时间戳的数字等于没说) · 工具失败显红字并保留上一次的值(绝不假装正常) · 上一轮没回不叠新进程 · 按唯一依据 mtime 或定时器缓存。
 - 取证口径: faulthandler 全线程栈 · 有没收到过信号(没信号也会出现同一签名, 别默认归因 kill/关机) · 谁把进程拉回来的(桌面图标的 `GIO_LAUNCHED_DESKTOP_FILE` / user unit 的 Restart 策略) ——
   清单见 zmax-console `references/gui-debug-and-crash-forensics.md`。dump 只给各线程**当前**状态, 不记录是哪个点击触发 ⇒ 不要凭"崩溃前点过什么"归因, 要归因就加崩溃记录器(faulthandler 全栈 + 最近 N 条界面操作落 `~/zmax_data/*_crash_*.log`)。
 
@@ -220,7 +220,7 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
   **零重叠**(off 屏断言 `panel.top() >= sidebar.bottom() and panel.top() >= stack.bottom()`),
   也不吃 QStatusBar 的坑; 收起侧栏时面板还在。
 - 面板控件自身 `setFixedSize(420, 68)` + 独立文件 (`tools/gui/status_panel.py`),
-  `studio.py` 里只留 10 行挂载 + try/except 兜底(导入失败不影响控制台启动)。
+  `studio.py` 里只留 10 行挂载 + try/except 保障(导入失败不影响控制台启动)。
 - 验收要**真机重启后看**: `kill -9 <显式PID>` → `bash tools/gui/launch_studio.sh`(自带防重复实例) →
   `xdotool search --name "XSpace Studio"` 取几何 → `scrot` 全屏 → 按窗口几何裁左下角 → 放大 3~4 倍读字。
 
@@ -240,7 +240,7 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
      `setMinimumHeight(够看高度)` 才是有确定性初值的做法**; 要补算就在 `showEvent` 同步算一次 + 挂 tab
      `currentChanged` 幂等补算 (隐藏页里算不出 ⇒ 别"算一次就置 flag")。
 - 可隐藏: 用自己记的 flag (`_on`) + `setVisible()`; **不能拿 `isVisible()` 当判据** (离屏/父未显示时恒 False)。
-- 内容"选哪个面显哪个" : 每面给[当前面名 + 该面真源摘要 + 真源在哪] 一行, 挂 tab `currentChanged`; 页面内动作(导出/复制)之后再覆盖它。
+- 内容"选哪个面显哪个" : 每面给[当前面名 + 该面唯一依据摘要 + 唯一依据在哪] 一行, 挂 tab `currentChanged`; 页面内动作(导出/复制)之后再覆盖它。
 - 验收判据: 切到该页量 `table.height()` (行数对但高度被压**不算过**) + 窗口压矮后仍 ≥ 各自最小高 + 每个页签确实是 QScrollArea + 内容超视口时 scrollBar().maximum()>0。
 - **"能不能看见"按行数说, 不按像素说**: 判据 = `(表高 − 表头高) / 行高` ⇒ 可见行数; 再加**表内 `scrollBar().maximum()==0`**
   (内容真的全在表里) 与**页面 `verticalScrollBar().maximum()`** (超出视口就得页滚 ⇒ 把 px 数写进汇报)。三样齐了才算量清。
@@ -250,7 +250,7 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
   起完读 `xdotool getwindowgeometry --shell <wid>`: 若 `X+WIDTH > 屏宽` 或 `Y+HEIGHT > 屏高`, 手工夹:
   `wmctrl -i -r <wid> -b remove,maximized_vert,maximized_horz` → `wmctrl -i -r <wid> -e 0,x,y,w,h`。
   **WM 会坚持自己算的 x/y** (只认 w/h), 所以要**迭代改 w/h** 直到右边界/下边界进屏, 每次都 `xdotool getwindowgeometry` 复核;
-  实测一次给 3060x1900 仍越界 98px, 收到 3020x1740 才全在屏内。别只看 `wmctrl` 返回码就宣布搞定。
+  实测一次给 3060x1900 仍越界 98px, 收到 3020x1740 才全在屏内。别只看 `wmctrl` 返回码就宣布完成。
 - **两张表同处一个 QVBoxLayout、谁都没边界 ⇒ 用户"想多看也拉不动"**: 这是结构缺陷, 补一条竖直 `QSplitter`
   (`setChildrenCollapsible(False)` + `setHandleWidth(9)` + 连 `splitterMoved` 记 `_user_sized`) 才算修好 —— 不是把高度调大就完事。
 - 🚫 **一个 QLayout 只能有一个父布局**: `l.addLayout(row)` 之后又把同一个 `row` `addLayout` 到新容器,
@@ -278,7 +278,7 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
   尺寸仍是默认 `(0,0,640,480)` ⇒ 640 宽能 fit 进任何窗口, "按钮不挤不截断"这类判据**永远通过**。
   量之前必须 `tabs.setCurrentIndex(目标页)` + `processEvents()`, 并断言
   `w.width() > 0 and w.isVisibleTo(page)` 作为前提; 否则量出来的是假数(这类假绿会在你改布局后突然"变红",
-  看起来像回归, 其实是判据第一次真的开始工作)。
+  看起来像回归, 实际是判据第一次真的开始工作)。
 
 - 🔴 **`QSplitter` 整条拖不动 = 两端 `minimumWidth` 之和已 ≥ 可用宽**, 不是手柄失效/事件没接:
   `setMinimumWidth(1080)` 这类硬最小值会**覆盖** `minimumSizeHint`, 再叠加另一侧的最小宽 ⇒ 分隔条被顶死,
@@ -294,7 +294,7 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
   并怀疑是画坏了。
 - 机制: `for name, item in data.items(): draw(slot_i)` 用 `enumerate` 排位 ⇒ 没数据的项连**容器**(圆/格/标签)
   都不画, 后面所有项跟着重新排位。数据缺一层, 看起来就像那一格被吞了。
-- 规则: **槽位固定** —— 先写死槽位名单 (`self._slots = ["合","L5","L4","L3","L2"]`), 再按名字填数据;
+- 规则: **槽位固定** —— 先预先固定槽位名单 (`self._slots = ["合","L5","L4","L3","L2"]`), 再按名字填数据;
   缺数据的槽位照画虚线空盘 + 层名 + 灰字「缺」, 位置永不跳。名单同时存成属性供判据断言「槽位数与顺序齐全」,
   判据别只断"画了墨"(四个盘也有墨)。
 - 好处: 用户看到的是"它在, 但它这刻没数", 而不是"界面少了一块" —— 也是把"为什么没数"摊在界面上的唯一做法。
@@ -361,7 +361,7 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
 - **删行后顺手清只服务它的模块级 helper**: 例 `_cut_big()/_vmark()` 的唯一调用点就在被删的 setter 里 ⇒ 连 helper 一起删;
   删前先在**整个仓库** (`grep -rn "_cut_big\\|_vmark" --include=*.py`) 确认零消费者 —— 工具/判据脚本也会 import 它们,
   只删确实没人用的, 否则界面干净了、别的脚本 ImportError。
-- **用户指着 A 说"删掉"因为它与 B 重复时, 删副本、留单一真源**: 删之前先 `grep` 那段文案/路径确认它是
+- **用户指着 A 说"删掉"因为它与 B 重复时, 删副本、留单一唯一依据**: 删之前先 `grep` 那段文案/路径确认它是
   B 的同源副本 (同一 provider 函数), 删完 B 仍要能独立工作; 副本的构造函数/刷新方法/判据断言一起下架, 别只移出布局。
 - 🔴 未上布局又没 `setParent` 的控件会变成**漂浮的顶层窗口**; 探针用
   `[x for x in QApplication.topLevelWidgets() if x is not w and x.isVisible()]` 确认干净。
@@ -371,7 +371,7 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
 ### 22. 断点已停住, Call Stack 还在不断变化 = 别的线程在抢焦点
 - 机制: 命中断点只冻结**命中那个线程**; VSCode 的 Call Stack 面板显示"当前选中线程", 别的线程再命中断点/线程内未捕获异常都会发 stopped 事件 ⇒ 编辑器自动切线程, 面板里整套帧换掉, 看着像"栈一直在变"。
 - 先量再改: `ls /proc/<pid>/task | wc -l` + `cat /proc/<pid>/task/*/comm` —— 控制台类 GUI 常态 20~60+ 线程 (Qt 事件队列/QDBus/缓存/每个 2s 轮询器各占几个)。
-- 修法三件(应用侧做, 已实测): ① **调试期不启动后台轮询线程** —— `debugpy.is_client_connected()` 或 `sys.gettrace() is not None` 判定, 另留 `ZMAX_DEBUG_QUIET=1` 强制; ② `threading.excepthook` 改成写日志文件、不抛回解释器; ③ 用户侧兜底: 断点右键 → Edit Breakpoint → `Hit Count=1` 或条件表达式, 只停一拍。
+- 修法三件(应用侧做, 已实测): ① **调试期不启动后台轮询线程** —— `debugpy.is_client_connected()` 或 `sys.gettrace() is not None` 判定, 另留 `ZMAX_DEBUG_QUIET=1` 强制; ② `threading.excepthook` 改成写日志文件、不抛回解释器; ③ 用户侧保障: 断点右键 → Edit Breakpoint → `Hit Count=1` 或条件表达式, 只停一拍。
 - 实测: 同一 GUI 正常 24 线程 → 静默 16 线程, 断点处 Call Stack 定住。
 - 反向判据: 代码里周期打印的"真身执行 #N"一行不出现 ⇒ 是路径没走/被替换(见 §13), 不是断点绑定问题。
 - 三成因清单 + 逐条取证命令: `references/gui-not-responding-popup-and-debug-blocks.md` §4/§5。
@@ -399,7 +399,7 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
   (I 形光标是"这里能选"的唯一可视信号)。
 - **必须两段, 只扫一遍不够**: ① 建页末尾 `for lb in page.findChildren(QLabel)` 全量扫一遍; ② 再装 **app 级
   `installEventFilter(self)`**, 在 `eventFilter` 里认 `ev.type() == QEvent.Polish and isinstance(obj, QLabel) and
-  self.isAncestorOf(obj)` 开 flags。刷新/重读真源/换页之后**新建**的标签只有 ② 兜得住 —— 只做 ① 时判据会报
+  self.isAncestorOf(obj)` 开 flags。刷新/重读唯一依据/换页之后**新建**的标签只有 ② 兜得住 —— 只做 ① 时判据会报
   「52 个标签里 11 个不可选」, 而且这 11 个正是用户盯着的那页。
 - 🔴 跳过条件写错等于没改: `if f & (Mouse|Keyboard): continue` 会放过"只有 Mouse 没有 Keyboard"的标签
   (自定义可复制标签常只设 `TextSelectableByMouse`) ⇒ 判据若同时要求两个 flag 就红, 现象像"改了没生效"。
@@ -435,7 +435,7 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
   建窗口放构造期会拖启动, 放 3s 后等于零成本, 第一次点 AR 只剩 show。
 - **装依赖前先 `pip freeze | grep -i pyqt`**: PyQtWebEngine-Qt5 与已有的 PyQt5-Qt5 必须同版本线 —— 两者装进同一个
   `PyQt5/Qt5/lib` 目录, 装错版本会覆盖核心 Qt 库, 把正在用的 GUI 一起搞崩。纪律: 先在临时 venv 里装好、
-  跑通 QWebEngineView 再动生产 venv, 并先 `pip freeze > before.txt` 留底。
+  验证通过 QWebEngineView 再动生产 venv, 并先 `pip freeze > before.txt` 留底。
 - 探针脚本两个坑: ① `QApplication` 默认 `quitOnLastWindowClosed=True` —— 探针里 `close()` 掉唯一窗口会让事件循环
   直接退出, 表现为"脚本无声结束/退出码 2", **不是崩溃** ⇒ 探针里先 `app.setQuitOnLastWindowClosed(False)`;
   ② 证明页面真活着用 `page().runJavaScript("performance.getEntriesByType('resource')…")` 数请求, 别只信 loadFinished;
@@ -446,7 +446,7 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
   跑完才释放 ⇒ 此后几十秒内用户点几次都是静默 no-op, 主观就是"点了没反应"。spawn 一返回就放开, 后处理再慢也挡不住下一次点击。
 - 🔴 **页面字号"小得看不见"不是页面写小了, 是高 DPI 屏上 DPR 仍为 1.0**: 3200x2000 / 236 物理 DPI 的屏,
   `devicePixelRatio()` 可能还是 1.0 ⇒ CSS 12px 只占 12 个物理像素 ≈ 3.6pt。内嵌页面**默认缩放按屏算**,
-  别写死 1.0: `clamp(physicalDotsPerInch()/96*0.85, 1.0, 2.6)` (236 DPI ⇒ 2.1; 96 DPI 自动回 1.0)。
+  别预先固定 1.0: `clamp(physicalDotsPerInch()/96*0.85, 1.0, 2.6)` (236 DPI ⇒ 2.1; 96 DPI 自动回 1.0)。
 - **用户调过的视图状态(网页缩放/分隔条/面板宽)必须存盘回读**, 不许每次打开重置 —— `zmax_data/<视图>_zoom.json` +
   原子写(`.tmp` + `os.replace`); 验收判据 = 调一次 → 关窗 → **新进程**读到同一档(用户原话就是"默认能记住上次的状态么")。
   三种调法都要落到同一个值上: 工具栏 ±、Ctrl+滚轮、Ctrl+=/-/0。
@@ -468,7 +468,7 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
   （`awk '{print $14+$15}' /proc/<pid>/stat`）再除以采样秒数。
 - `py-spy record --format raw` 每行末尾是**采样计数**，统计必须按计数加权；按行数平均会把少量深栈算成热点。
 - 🔴 **窗口在后台时 Qt 不重绘** ⇒ 前台/后台两组 CPU 数不可比。A/B 汇报必须写清采样条件
-  （"3D 面板在前台/后台"），否则"214% → 23%"其实是页面被切走了。
+  （"3D 面板在前台/后台"），否则"214% → 23%"实际是页面被切走了。
 - 内存段差分（smaps 前后差）若 Δ 出现 **RSS→0** 且速率离谱 ⇒ 目标 pid 已被重启换掉，是假数；
   开工前记 `ps -o lstart= -p <pid>`，跑完再核一次，变了就重测（本类实例很容易被自己的重启脚本换掉）。
 - 新增段全是 **64MB 级 anon rw-p** ⇒ glibc malloc arena 签名（每线程一套、只增不还）;
@@ -492,7 +492,7 @@ PyQt5 桌面控制台/画布类 GUI 的开发和调试通用指南。覆盖 WSLg
    它可能已经不再分发任何用户/退出事件了（本次实测：主线程 idle，但 WM_DELETE / Ctrl+Q / SIGTERM 全部无反应，只有 SIGKILL 能收）。
 2. **closeEvent 到底被调用了没有**：在 `closeEvent` 开头写一行带时间戳的日志（临时文件即可），
    然后看这行日志的 mtime。**mtime 不更新 = 事件根本没进 closeEvent**，问题在事件投递层，不在清理逻辑。
-   这一步能把「清理链卡住」和「事件没到」彻底分开 —— 本次 90% 的时间都耗在没做这一步上。
+   这一步能把「清理链阻塞」和「事件没到」彻底分开 —— 本次 90% 的时间都耗在没做这一步上。
 3. **三层关闭手段逐个发**：`xdotool windowclose <wid>`（发 WM_DELETE，等价点 ✕）→ `xdotool key --window <wid> ctrl+q`
    → `kill -TERM <pid>`。全不动 = 事件循环已死；只有 `-9` 能收 = 同样结论。
 4. **窗口 id 是不是你要找的那个**：`xdotool search` 的返回值可能是 **mutter 的 frame 窗口**或**已死进程残留的僵尸 id**

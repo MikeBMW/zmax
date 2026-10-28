@@ -33,7 +33,7 @@ import numpy as np
 # ════════════════════════════════════════════════════════════════
 # 📡 状态空间实况快照 (2026-10-11 老倪: 「3D 场景左下角这些实时变化的数据 topic 是什么?
 #    对应实时监控哪些波形? 当前状态空间工程的所有数据要同步, 要保持一致」)
-#    ── 引擎轨迹 tr = 唯一真源: 3D 面板画面上的每个数字 = 实时监控的每条曲线 = 这里的字段,
+#    ── 引擎轨迹 tr = 唯一依据: 3D 面板画面上的每个数字 = 实时监控的每条曲线 = 这里的字段,
 #       同帧同值。原来这些数只在内存里滚, 外部/波形页看不到 ⇒ 两处不一致。
 #    ── 落盘走原子替换 (tmp + os.replace), 读方永远拿不到半截文件。
 # ════════════════════════════════════════════════════════════════
@@ -62,7 +62,7 @@ _PLAN_VFF = {"scene": None, "i_prev": -1, "p": None, "path": [], "t_pub": 0.0}
 
 # 🌉 2026-10-18 老倪: 「在 plan 这个 node 节点上, 设计一个桥接开关, 连接插拔场景的 v_ff 与机器人的位姿。
 #   但是真正输出的速度, 你要控制, 不能用仿真的速度直接输出。你要慢, 只要根据 v_ff 的方向, 慢速动作即可」
-#   口径: 开关真源 = 画布 plan 节点 (n_moveit) 的 params.bridge_vff; 输出速度 = min(|v_ff|, cap) 且带死区;
+#   口径: 开关唯一依据 = 画布 plan 节点 (n_moveit) 的 params.bridge_vff; 输出速度 = min(|v_ff|, cap) 且带死区;
 #         关掉时仍照原样显示积分位姿 (只显示, 不慢动)。
 SS_CANVAS = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
@@ -74,7 +74,7 @@ _BRIDGE = {"mtime": 0.0, "on": False, "cap": BRIDGE_CAP_HARD_MMS, "dead": 3.0}
 
 
 def bridge_cfg():
-    """读 plan 节点上的桥接开关 (唯一真源 = 画布 JSON; 文件改了才重读)。"""
+    """读 plan 节点上的桥接开关 (唯一依据 = 画布 JSON; 文件改了才重读)。"""
     st = _BRIDGE
     try:
         mt = os.path.getmtime(SS_CANVAS)
@@ -132,7 +132,7 @@ def publish_plan_from_vff(scene, i, t, x_truth, u_ff, min_interval=0.10):
     """
     try:
         i = int(i)
-        # 🔴 numpy 数组不能用 `or` 兜底 (真值数组 ⇒ "truth value of an array is ambiguous"),
+        # 🔴 numpy 数组不能用 `or` 保障 (真值数组 ⇒ "truth value of an array is ambiguous"),
         #   首帧就抛异常被下面的 except 吃掉 ⇒ 文件永远不生成。必须显式判 None。
         x_truth = [float(v) for v in (x_truth if x_truth is not None else [])][:3]
         u = [float(v) for v in (u_ff if u_ff is not None else [])][:3]
@@ -216,7 +216,7 @@ _STAGE_MAPS = None
 
 
 def _stage_maps():
-    """八阶段状态机 (ActionModulator) 的常量表 —— 直接取真源常量, 不另抄一份。
+    """八阶段状态机 (ActionModulator) 的常量表 —— 直接取唯一依据常量, 不另抄一份。
 
     老倪 2026-10-15: 「动作调制器 还有 八阶段状态机, 在哪里?」
       · 状态机 = src/lerobot/policies/left_right/state_space/cognition.py:31 `class ActionModulator`
@@ -329,10 +329,10 @@ EPISODE_NPZ = os.path.join(
 
 
 def scene_episode_path(scene_id):
-    """🧩 场景 → 该场景自己的 episode 真源 (2026-10-12 老倪)。
+    """🧩 场景 → 该场景自己的 episode 唯一依据 (2026-10-12 老倪)。
 
     老倪: 「摆盘的场景，为什么还残留着插拔场景的轨迹线？」
-    根因: `_switch_scene` 只重建了几何 (`_build_scene`), **没有换 episode 真源** ——
+    根因: `_switch_scene` 只重建了几何 (`_build_scene`), **没有换 episode 唯一依据** ——
       `self.tr` 永远是构造时从 `reports/ss_episode_latest.npz`(插拔) 读进来的那份,
       所以摆盘场景里那条「末端实测轨迹」还是插拔的。修法 = 每个场景认自己的 episode。
     """
@@ -346,7 +346,7 @@ def load_scene_episode(scene_id):
     """取该场景 episode → (tr, meta, 说明); 没配/文件缺返回 (None, None, 原因)。"""
     ent = scene_episode_path(scene_id)
     if not ent:
-        return None, None, "该场景没配 episode 真源"
+        return None, None, "该场景没配 episode 唯一依据"
     path, lab = ent
     if not os.path.isfile(path):
         return None, None, "%s episode 不存在: %s" % (lab, os.path.basename(path))
@@ -360,7 +360,7 @@ _BTN_SCENE_TASK = {"SS-EPI-CORNER": "TASK-01-FW", "SS-TRAY-PLACE": "TASK-06-TRAY
 
 
 def write_canvas_scene(scene_id):
-    """🧩 3D 窗场景按钮 → **同步画布数据源** (单一真源), 再切窗口。
+    """🧩 3D 窗场景按钮 → **同步画布数据源** (单一唯一依据), 再切窗口。
 
     2026-10-12 老倪: 「点击插拔, 却自动跳到了摆盘场景」—— 真因: 按钮只切了窗口, 画布 `ssdata.src_state`
     还停在旧场景; 我加的"跟随画布"看门狗 2s 后就把窗口扳回去了 ⇒ 按钮像失灵。修法 = 按钮两件事一起做
@@ -574,7 +574,7 @@ _CAM_DIST = 1.05
 #    类似防静电经典桌面; 摆盘的桌面是办公桌的乳白色」 ⇒ 桌面颜色按场景取, 不再全局一个色。
 _TABLE_COLOR_GREEN = (0.20, 0.52, 0.30, 1.0)      # 防静电胶皮桌面 (绿, 老倪 10-10 口径)
 _TABLE_COLOR_CREAM = (0.96, 0.94, 0.90, 1.0)      # 办公桌乳白
-_TABLE_COLOR_PLAIN = (0.16, 0.18, 0.22, 1.0)      # 兜底深灰 (未知场景)
+_TABLE_COLOR_PLAIN = (0.16, 0.18, 0.22, 1.0)      # 保障深灰 (未知场景)
 
 
 SRC_STATE_SCENE = {"摆盘场景": "SS-TRAY-PLACE", "插拔场景": "SS-EPI-CORNER", "仿真": "SS-EPI-CORNER",
@@ -585,7 +585,7 @@ def canvas_src_scene_id():
     """📌 画布数据源 → 场景 id (state_space_obs.json 里 ssdata 节点的 src_state) —— 开机自恢复用。
 
     2026-10-11 老倪「你要自动保存这种状态到 proj 项目文件中, 下次我可以继续调试」:
-    场景真源原来只活在进程 env (ZMAX_SCENE_DIR), 控制台一重启就回默认 (=插拔场景), 画布上写着「摆盘场景」也没用
+    场景唯一依据原来只活在进程 env (ZMAX_SCENE_DIR), 控制台一重启就回默认 (=插拔场景), 画布上写着「摆盘场景」也没用
     ⇒ 画布 src_state 是存盘的, 开机按它恢复; .proj 里的 debug_state 记同一件事, 两条路同源。
     """
     try:
@@ -608,7 +608,7 @@ if not os.environ.get("ZMAX_SCENE_DIR"):
         os.environ["ZMAX_SCENE_DIR"] = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
             "data", "scene", "scenes", _sid0)
-        print("📌 场景真源按画布数据源自恢复: ZMAX_SCENE_DIR → .../%s" % _sid0)
+        print("📌 场景唯一依据按画布数据源自恢复: ZMAX_SCENE_DIR → .../%s" % _sid0)
 
 
 def scene_mode(scene_id=None):
@@ -631,14 +631,14 @@ def table_color(scene_id=None):
 
 
 def scene_table_truth(scene_id=None):
-    """当前场景真源里的**台面**几何 (米) —— 高亮框与渲染必须同源 (老倪 2026-10-10)。
+    """当前场景唯一依据里的**台面**几何 (米) —— 高亮框与渲染必须同源 (老倪 2026-10-10)。
 
     为什么需要: 高亮框一直读 `data/scene/scenes/<ID>/objects3d.json` (metaworld/MuJoCo 实测),
     而 3D 视图的桌面是**遗留硬编码** `_TABLE_SIZE=(0.92,0.62,0.024)` (当年为插拔场景手搓)
-    ⇒ 仿真场景真源台面 1.4×0.8 时, 高亮框比实际画出来的绿桌**宽 52%/深 29%**,
+    ⇒ 仿真场景唯一依据台面 1.4×0.8 时, 高亮框比实际画出来的绿桌**宽 52%/深 29%**,
     肉眼看就是"选工作台面, 黄框比桌子大一圈"。
 
-    只对**米制**场景返回 (SIM-PEG-L4 / SS-EPI-CORNER / SS-TRAY-PLACE 等真源导出场景);
+    只对**米制**场景返回 (SIM-PEG-L4 / SS-EPI-CORNER / SS-TRAY-PLACE 等唯一依据导出场景);
     老 SCN-* 现场机位场景的台面是**毫米**深度数据且与真实机位投影对齐 ⇒ 返回 None, 视图沿用原常量。
     返回 (center(3,) ndarray, size(tuple)) 或 None。
     """
@@ -1274,11 +1274,11 @@ class CollapsibleSide(QFrame):
 # ───────────────── 🥽 AR 场景按钮的实现件 (2026-10-12) ─────────────────
 #   老倪: 「在 3D场景中点击 AR按钮, 直接打开 http://127.0.0.1:8797/ar 这个页面」
 #        实测反馈: 「怎么没有打开服务呢? 场景也没有切换啊」 ⇒ 按钮要做三件事, 每件都如实回报:
-#        ① 平台切到 AR 数据源(画布 ssdata.src_state, 真源 ss_scene_switch.py — 与配置中心激活同一条路)
+#        ① 平台切到 AR 数据源(画布 ssdata.src_state, 唯一依据 ss_scene_switch.py — 与配置中心激活同一条路)
 #        ② AR 服务(8797)没起就起 ③ 打开页面(webbrowser → Qt → xdg-open → firefox, 逐条回落)
 _REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # 2026-10-12 现场: 回环(127.0.0.1)连 8797 实测**一律超时**(accept 队列满 6, 主线程卡 futex),
-#   而 LAN 地址那条路是好的 ⇒ 用**本机 LAN IP** 开页面(可用 ZMAX_AR_URL 覆盖), 回环只当兜底。
+#   而 LAN 地址那条路是好的 ⇒ 用**本机 LAN IP** 开页面(可用 ZMAX_AR_URL 覆盖), 回环只当保障。
 def _lan_ip():
     import socket as _s
     try:
@@ -1289,16 +1289,16 @@ def _lan_ip():
         return "10.163.146.78"
 
 _LAN = _lan_ip()
-# 🔴 2026-10-12 现场实测(老倪「3D场景的 AR服务还是打不开」): 控制台 08:58 启动时默认路由是产线网(192.168.x),
+# 🔴 2026-10-12 现场实测(老倪「3D场景的 AR服务还是无法打开」): 控制台 08:58 启动时默认路由是产线网(192.168.x),
 #   之后网线/网段一变, 模块级冻结的 AR_SERVICE_URL 就指向一个**已经不通的 IP** ⇒ 探测 12s 全超时,
 #   日志写「服务启动后 12s 仍无响应」, 于是整个 AR 按钮判失败 —— 而 8797 明明在听(同机回环一直通)。
 #   修法: ① 服务探测**回环优先**(控制台与 AR 服务同一台机器), LAN 只当备选;
 #         ② 地址在**点击时现算**, 不再吃启动那一刻的网络。
 AR_PAGE_URL_LOOPBACK = "http://127.0.0.1:8793/ar"
 # 🥽 2026-10-19 老倪: 「画布的 AR 按钮, 也要换成 http://10.163.146.78:8793/ar」
-#   8793 上的 /ar 是 302 → 8797/ar(同一台机的 AR 真源)。
-# 🔴 2026-10-26 修: 这里原来**写死了旧 WiFi IP 10.163.146.78**, IP 一变(改连热点 Mike)
-#   按钮就点到一个不存在的地址 ⇒ 日志里「⚠️ 页面地址: http://10.163.146.78:8793/ar」而页面打不开。
+#   8793 上的 /ar 是 302 → 8797/ar(同一台机的 AR 唯一依据)。
+# 🔴 2026-10-26 修: 这里原来**预先固定了旧 WiFi IP 10.163.146.78**, IP 一变(改连热点 Mike)
+#   按钮就点到一个不存在的地址 ⇒ 日志里「⚠️ 页面地址: http://10.163.146.78:8793/ar」而页面无法打开。
 #   现在改成**点击时按当前默认路由网卡现算**(ZMAX_AR_URL 仍可覆盖), 换网/换热点不用改代码。
 def ar_page_url():
     """8793/ar 入口(302→8797/ar); 主机在调用时现算, 不吃启动那一刻的网络。"""
@@ -1454,18 +1454,18 @@ def ar_open_url(url: str = "", dry: bool = False, verify: bool = True,
                 timeout: float = 6.0) -> str:
     """打开 AR 页面 —— 逐条候选**真拉起 + 验窗口**; 返回「用了哪条」的说明(空串=六条都没出窗口)。
 
-    2026-10-12 老倪实测反馈「AR 按钮打不开」: 日志里 webbrowser.open() 返回 True、却没有任何浏览器进程
+    2026-10-12 老倪实测反馈「AR 按钮无法打开」: 日志里 webbrowser.open() 返回 True、却没有任何浏览器进程
     ⇒ 只认「窗口真的出现在窗口表里」, 不认返回值。顺序: 具体浏览器(chromium/firefox/chrome) → xdg-open/gio
     → webbrowser/Qt。成功即置顶(避免窗口开在别的桌面被他当成「没打开」)。
     """
-    url = url or ar_page_url()          # 空=按当前网卡现算(写死旧 IP 会让页面打不开)
+    url = url or ar_page_url()          # 空=按当前网卡现算(预先固定旧 IP 会让页面无法打开)
     import subprocess as _sp
     import shutil as _sh
     _cands = []
     for _b in ("chromium", "firefox", "google-chrome", "chromium-browser"):
         if _sh.which(_b):
             # 2026-10-12 现场: 不加 --new-window, chromium 会在**已开着的窗口**里开新标签页
-            # ⇒ 顶层窗口标题不变 ⇒ 旧的"验窗口"判据判"没出现"(其实页面已打开)。加参数 + 换判据(ar_wait_loaded)。
+            # ⇒ 顶层窗口标题不变 ⇒ 旧的"验窗口"判据判"没出现"(实际页面已打开)。加参数 + 换判据(ar_wait_loaded)。
             _cands.append([_b, "--new-window", url])
     if _sh.which("xdg-open"):
         _cands.append(["xdg-open", url])
@@ -1509,7 +1509,7 @@ def ar_open_url(url: str = "", dry: bool = False, verify: bool = True,
 
 
 def ar_switch_scene(task: str = "TASK-07-AOI", timeout: int = 90) -> dict:
-    """把平台数据源切到该任务对应的场景(真源 ss_scene_switch.py ⇒ 画布 src_state)。"""
+    """把平台数据源切到该任务对应的场景(唯一依据 ss_scene_switch.py ⇒ 画布 src_state)。"""
     import subprocess as _sp
     _py = os.path.join(_REPO, "gui-venv311", "bin", "python")
     _py = _py if os.path.exists(_py) else sys.executable
@@ -1522,7 +1522,7 @@ def ar_switch_scene(task: str = "TASK-07-AOI", timeout: int = 90) -> dict:
 def _artrace(msg: str) -> None:
     """AR 打开链路的**时间线日志**(老倪 2026-10-19: 「点了没反应, 得等好长时间」)。
 
-    只写一行一条, 用来回答"卡在哪一步": 点按钮 → spawn → 窗口出现 → 置前。
+    只写一行一条, 用来回答"阻塞点一步": 点按钮 → spawn → 窗口出现 → 置前。
     没有这个日志时, 浏览器为什么没出窗全靠猜(F12 也没有, 因为进程是 DEVNULL)。
     """
     try:
@@ -1551,7 +1551,7 @@ def ar_pid_is_chrome(pid: int) -> bool:
 def ar_clean_profile_locks(prof: str) -> list:
     """清掉 profile 里**失效的**单例锁。
 
-    2026-10-20 现场(老倪「AR 按钮打不开」): 5 次点击 spawn 都成功, 但 chromium 既不出窗、
+    2026-10-20 现场(老倪「AR 按钮无法打开」): 5 次点击 spawn 都成功, 但 chromium 既不出窗、
     History 里也没有一次页面访问 —— 就是卡的这一层: SingletonLock 指向的 pid 早死了/被别的进程复用,
     chromium 以为"已有实例", 把 URL 转发给一个不存在的实例后**静默退出**(exit 0, 无窗口, 无报错)。
     活着且真是浏览器的锁一律不动(否则会把用户正开着的窗口搞坏)。返回清掉的文件名。
@@ -1588,7 +1588,7 @@ def ar_spawn_browser(url: str = "", isolated: bool = False, profile: str = "",
       · `isolated=False`(默认, 快): 走用户那个已在跑的 chromium —— 实测出窗 **0.38s**。
         代价: 命令是"转发给已在跑的实例", 那边忙/单例套接字不畅时窗口就是不出来
         (实测 studio 子进程 execve 成功、线程起来了、30s 无窗)。
-      · `isolated=True`(兜底, 稳): 独立 profile(`zmax_data/ar_browser`), 窗口由这个进程自己建,
+      · `isolated=True`(保障, 稳): 独立 profile(`zmax_data/ar_browser`), 窗口由这个进程自己建,
         不看日常浏览器脸色; 冷启实测 **0.85s**。ar_launch 在"快路径 1.2s 没出窗"时自动走这一级。
         `profile=<自定义目录>` 可指定一个全新目录(ar_launch 最后一招: 全新 profile 必出窗)。
 
@@ -1867,14 +1867,14 @@ def ar_launch(status_cb=None, switch_scene: bool = True) -> bool:
                 #    (原来 busy 要等整条流程跑完才放, 最长 6+20+3+4s ⇒ 期间点几次都"没反应")
                 _AR_RUNNING["busy"] = False
                 _win = ar_wait_new_window(_snap0, 1.5)
-                if not _win:      # 快路径(共享实例)没出窗 ⇒ 独立 profile 兜底, 亲眼确认窗口出来才算完
-                    _artrace("快路径 1.5s 无窗 ⇒ 走独立 profile 兜底")
+                if not _win:      # 快路径(共享实例)没出窗 ⇒ 独立 profile 保障, 亲眼确认窗口出来才算完
+                    _artrace("快路径 1.5s 无窗 ⇒ 走独立 profile 保障")
                     _snap1 = ar_window_ids()
                     _how2 = ar_spawn_browser(ar_page_url(), isolated=True, tag="iso")
                     _how = (_how + " → " + _how2) if _how2 else _how
                     _win = ar_wait_new_window(_snap1, 5.0)
                 if not _win:      # 最后一招: 全新 profile(带时间戳 ⇒ 必无单例锁) —— 窗口一定要开出来
-                    _artrace("独立 profile 也没出窗 ⇒ 全新 profile 兜底")
+                    _artrace("独立 profile 也没出窗 ⇒ 全新 profile 保障")
                     _snap2 = ar_window_ids()
                     _fresh = "%s_%s" % (AR_PROFILE_DIR, time.strftime("%m%d_%H%M%S"))
                     _how3 = ar_spawn_browser(ar_page_url(), profile=_fresh, tag="fresh")
@@ -1952,7 +1952,7 @@ class DreamView3D(QWidget):
         self._gl_items = {}       # layer -> GL item(s)
         self._layer_on = {}       # layer -> bool
         # 场景锚点 (默认 = metaworld seed0 典型值; 同源 trace 里有 meta 就按 meta 覆盖 —
-        #  metaworld 每个 seed 的光模块/孔位是随机化的, 写死会和视频对不上)
+        #  metaworld 每个 seed 的光模块/孔位是随机化的, 预先固定会和视频对不上)
         self._hole = _HOLE.copy()
         self._mouth = _HOLE_MOUTH.copy()
         self._box_c = _BOX_CENTER.copy()
@@ -2067,7 +2067,7 @@ class DreamView3D(QWidget):
         #   点哪个开哪个 (各自独立窗口, 与 DreamView3D 同款交互: 时间轴/图层开关/拖帧看信号)
         _row_lv = QHBoxLayout()
         _row_lv.setSpacing(4)
-        # 🧩 2026-10-10 老倪: 「L2 DreamView / L3 DreamView 这两个按钮干啥的？没啥用。改成切换按钮」
+        # 🧩 2026-10-10 老倪: 「L2 DreamView / L3 DreamView 这两个按钮做什么的？没什么用。改成切换按钮」
         #   ⇒ 三个**场景切换**按钮: 插拔 (当前场景) / 摆盘 (复制自当前场景, 可切换) / 力控 (保持当前波形)
         for _sid, _txt, _tip, _col in (
             ("SS-EPI-CORNER", "🧩 插拔", "切到插拔场景 (= 当前打开的那条, 虚拟现实)", "#2e8b57"),
@@ -2224,7 +2224,7 @@ class DreamView3D(QWidget):
         self._user_cam = False        # v3.4.8: 用户手动转视角标记 (resize 自动取景判定)
         self._last_win = (0, 0)
 
-        # 📟 实时数值面板 (2026-08-25 老倪: "不知道啥意思" → 画面旁边直接给数字)
+        # 📟 实时数值面板 (2026-08-25 老倪: "不知道什么意思" → 画面旁边直接给数字)
         self.lbl_num = QLabel("—")
         self.lbl_num.setStyleSheet(
             "color:#c9d1d9; font-size:12px; font-family:Consolas,monospace; "
@@ -2328,7 +2328,7 @@ class DreamView3D(QWidget):
         #   根因之二: 3D 窗只在按「🚀 启动工程·信号·场景」(`studio._ss3d_push_scene`) 时被推场景;
         #   **单独切场景 (画布 ssdata.src_state 变) 时窗口根本不跟** ⇒ 画面留的是上一个场景的
         #   几何 + 轨迹线(插拔)。修法 = 看门狗: 2s 比一次画布数据源, 变了就 `_switch_scene`
-        #   (trait 里已按场景换 episode 真源 + 重建几何/轨迹)。
+        #   (trait 里已按场景换 episode 唯一依据 + 重建几何/轨迹)。
         self._scene_watch = QTimer(self)
         self._scene_watch.timeout.connect(self._watch_canvas_scene)
         self._scene_watch.start(2000)
@@ -2346,7 +2346,7 @@ class DreamView3D(QWidget):
         return self._switch_scene(scene_id)
 
     def _watch_canvas_scene(self):
-        """画布数据源变了 → 3D 窗自动跟场景 (含换该场景自己的 episode 真源)。"""
+        """画布数据源变了 → 3D 窗自动跟场景 (含换该场景自己的 episode 唯一依据)。"""
         try:
             import time as _t
             if _t.time() - float(getattr(self, "_manual_scene_ts", 0.0)) < 8.0:
@@ -2400,7 +2400,7 @@ class DreamView3D(QWidget):
         if n > 0:
             self._update_frame(0)
             self.lbl_frame.setText(f"0 / {n - 1}")
-            # 🐛 2026-09-02 老倪「3D视图打不开/要看到实际的动作渲染视频」:
+            # 🐛 2026-09-02 老倪「3D视图无法打开/要看到实际的动作渲染视频」:
             #   原默认停在静态第 0 帧, 必须手动点「▶ 播放」才有动画 → 加载即自动播放
             if not self._timer.isActive():
                 self._playing = True
@@ -2466,9 +2466,9 @@ class DreamView3D(QWidget):
         except Exception as e:
             print(f"⚠️ 同源 trace meta 应用失败, 退回默认视角: {e}")
 
-    # ── 取景 (2026-08-25 老倪: "还是一堆点, 不知道啥意思") ──
+    # ── 取景 (2026-08-25 老倪: "还是一堆点, 不知道什么意思") ──
     #   实测: 严格 1:1 复刻视频机位时 (距离 1.735m/竖直fov60), 926x766 画布上
-    #   96.8% 是空背景, 光模块只有 51px、轨迹 3px → 每个东西都成了"小点", 看不懂。
+    #   96.8% 是空背景, 光模块只有 51px、轨迹 3px → 每个东西都成了"小点", 不易理解。
     #   → 默认改「自动取景」: **朝向保持与视频完全一致**, 只把 center/distance 收紧到
     #     刚好装下 (末端轨迹 ∪ 光模块轨迹 ∪ 孔口 ∪ 台面) 的包围盒 + 12% 余量。
     #     要逐像素对比视频时用「视频同框」档切回去。
@@ -2805,7 +2805,7 @@ class DreamView3D(QWidget):
                 import sim_scene_def as _SSD2
                 self._peg_size = (float(_SSD2._TRAY_MW), float(_SSD2._TRAY_MD), float(_SSD2._TRAY_MH))
             except Exception as _e:                                             # noqa: BLE001
-                print("摆盘光模块尺寸取真源失败:", _e)
+                print("摆盘光模块尺寸取唯一依据失败:", _e)
         scene = []
         # 工作台面板
         # 🎯 2026-09-09 L4 演示: 桌面加宽 (注入设备在右前 0.55,0.42, 原渲染台 x 右缘 0.46 放不下)
@@ -2815,9 +2815,9 @@ class DreamView3D(QWidget):
             _tc = np.array([0.10, 0.58, -0.012])
         else:
             # 🔴 2026-10-10 老倪: 「选了工作台面, 高亮的方框比实际的绿色桌子大很多」
-            #   根因: 高亮框读场景真源 (objects3d.json = metaworld/MuJoCo 实测台面 1.4×0.8×0.054),
+            #   根因: 高亮框读场景唯一依据 (objects3d.json = metaworld/MuJoCo 实测台面 1.4×0.8×0.054),
             #   而这里画的是**遗留硬编码** _TABLE_SIZE (0.92×0.62×0.024) ⇒ 框比桌子大一圈 (宽+52%/深+29%)。
-            #   收成单源: 真源有米制台面 ⇒ 就用它画 (高亮框与渲染从此同一个数)。
+            #   收成单源: 唯一依据有米制台面 ⇒ 就用它画 (高亮框与渲染从此同一个数)。
             _truth = scene_table_truth(getattr(self, "scene_id", None))
             if _truth is not None:
                 _tc, _tw = _truth
@@ -2831,8 +2831,8 @@ class DreamView3D(QWidget):
         scene.append(table)
         if scene_mode(getattr(self, "scene_id", None)) == "tray":
             # 🧩 摆盘场景 (老倪 2026-10-10): 插孔(带孔盒)+孔口+AOI 相机 全不要;
-            #    料盘 (装 3 个光模块的黑塑料托盘) + tray盘 (3 个固定槽位) 按**场景真源**画成实体
-            #    (sim_scene_def._tray_layout 是唯一真源, 这里只渲不定义) — 平涂无光照, 颜色一眼可辨。
+            #    料盘 (装 3 个光模块的黑塑料托盘) + tray盘 (3 个固定槽位) 按**场景唯一依据**画成实体
+            #    (sim_scene_def._tray_layout 是唯一依据, 这里只渲不定义) — 平涂无光照, 颜色一眼可辨。
             try:
                 import sim_scene_def as _SSD
                 for _o in _SSD._tray_layout()["objects"]:
@@ -3062,7 +3062,7 @@ class DreamView3D(QWidget):
         if scene_mode(getattr(self, "scene_id", None)) == "tray":
             # 🔴 2026-10-12 老倪: 「摆盘的光模块本来很短小, 拿起来后就变长了, 而且是透明长方体」
             #   查证: 摆盘里臂上那件曾被整件隐藏, 而"看见的"是被拿起的那件必须按**摆盘件尺寸**
-            #   (52×20×12mm, 真源 sim_scene_def._tray_layout) 画 —— 尺寸已在上面按场景取好。
+            #   (52×20×12mm, 唯一依据 sim_scene_def._tray_layout) 画 —— 尺寸已在上面按场景取好。
             #   ⇒ 摆盘也要显示臂上件 (尺寸正确), 而不是隐藏 (隐藏会变成"拿起来就没了/露出旧的 200mm")。
             arm[8].setVisible(True)
 
@@ -3371,7 +3371,7 @@ class DreamView3D(QWidget):
     }
 
     def _tool_kind(self):
-        """🧲 末端工具判定: 'vacuum' (真空吸盘) / 'gripper' (两指夹爪) —— 按真源, 不手填。
+        """🧲 末端工具判定: 'vacuum' (真空吸盘) / 'gripper' (两指夹爪) —— 按唯一依据, 不手填。
 
         ① 场景是摆盘 (scene_mode == 'tray') ⇒ 真空吸附摆放;
         ② 活跃任务配置 (config/ss_task_binding.json 的 tasks[active_task]) 里出现 真空/吸附/吸盘/vacuum ⇒ 真空;
@@ -3383,7 +3383,7 @@ class DreamView3D(QWidget):
             _sm = scene_mode(getattr(self, "scene_id", None))
         except Exception:                                                       # noqa: BLE001
             pass
-        # 场景优先: 现场由数据源决定 —— 摆盘=真空吸盘 / 插拔=两指夹爪; 场景说不清才看任务工艺
+        # 场景优先: 现场由数据源决定 —— 摆盘=真空吸盘 / 插拔=两指夹爪; 场景难以说明才看任务工艺
         _scene_vac = (True if _sm == "tray" else False)   # scene_mode 只返回 tray / plug
         if _sm == "tray":
             reasons.append("摆盘场景")
@@ -3406,7 +3406,7 @@ class DreamView3D(QWidget):
         return "vacuum" if _vac else "gripper"
 
     def _switch_scene(self, scene_id: str):
-        """🧩 场景切换 (插拔 / 摆盘): 把当前 3D 视图切到该场景真源 (同一个视图, 不新开窗口)。
+        """🧩 场景切换 (插拔 / 摆盘): 把当前 3D 视图切到该场景唯一依据 (同一个视图, 不新开窗口)。
 
         老倪 2026-10-10: 「改成切换按钮。第一个是插拔, 就是当前打开的场景；第二个是摆盘，
         你先复制当前的场景，可以切换」⇒ 只换数据源 (ZMAX_SCENE_DIR) + 重建对象叠加层。
@@ -3447,7 +3447,7 @@ class DreamView3D(QWidget):
                 except Exception as _e:                                         # noqa: BLE001
                     print("⚠️ [3D场景] 关图层 %s 失败: %r" % (_lk, _e), flush=True)
         # 🧩 2026-10-12 老倪: 「摆盘的场景, 为什么还残留着插拔场景的轨迹线?」
-        #   根因 = 切场景只重建几何 (_build_scene), **`self.tr` (episode 真源) 没换** ⇒
+        #   根因 = 切场景只重建几何 (_build_scene), **`self.tr` (episode 唯一依据) 没换** ⇒
         #   轨迹层 ("📡 末端实测轨迹") 重建出来还是插拔那份。修法 = 先换 episode 再重建。
         try:
             _tr, _meta, _why = load_scene_episode(scene_id)
@@ -3647,7 +3647,7 @@ class DreamView3D(QWidget):
             pass
 
     def _toggle_bridge(self, checked):
-        """🌉 桥接开关: 写回 plan 节点参数 (唯一真源), 并在面板上显示当前限速口径。"""
+        """🌉 桥接开关: 写回 plan 节点参数 (唯一依据), 并在面板上显示当前限速口径。"""
         ok = bridge_set(bool(checked))
         try:
             c = bridge_cfg()
@@ -4259,7 +4259,7 @@ class DreamView3D(QWidget):
         u_fu_m = float(np.linalg.norm(np.asarray(tr["u_fuse_vec"][i], dtype=float)[:3]))
         u_li_m = float(np.linalg.norm(np.asarray(tr["u_limit_vec"][i], dtype=float)[:3]))
         # 🎛 八阶段状态机 (老倪 2026-10-15: 「动作调制器 还有 八阶段状态机, 在哪里?」)
-        #   真源 = src/lerobot/policies/left_right/state_space/cognition.py:31 `class ActionModulator`
+        #   唯一依据 = src/lerobot/policies/left_right/state_space/cognition.py:31 `class ActionModulator`
         #     · STAGES(13 段) = 接近/对位/下降/抓取/抬起/转移/插入/拔出/AOI转移/AOI检测/回程/放下/完成
         #     · 插拔链"八阶段" = 接近→对位→下降→抓取→抬起→转移→插入→完成 (本文件按这 8 段给 0..7)
         #     · STAGE_V_CAP = 每阶段限速 m/s —— 动作调制器就是按它给 u 限幅(所以调制的单位是 m/s)
@@ -4273,7 +4273,7 @@ class DreamView3D(QWidget):
         # 🔤 场景感知命名 (2026-10-13 老倪: 「摆盘场景的实时监控信号, 蓝色信号, 还有夹爪? 不是吸盘么」)
         #   取证: 摆盘 episode 跑 sawyer_tray_place.xml, 通道名沿用插拔底座(gripper), 但物理是**真空吸盘**
         #   —— 通道 gripper ∈ {0.0, 0.9}, 0.9 = 吸附建立证据 (gen_tray_place_video: grip_ev=0.9 if vac)。
-        #   取名唯一真源 = tools/scene_signal_names.py (只改显示名, 不动通道/数值/口径)。
+        #   取名唯一依据 = tools/scene_signal_names.py (只改显示名, 不动通道/数值/口径)。
         try:
             import sys as _sys2
             _td2 = os.path.join(_REPO, "tools")
@@ -4316,7 +4316,7 @@ class DreamView3D(QWidget):
                                   np.asarray(tr["u_ff_vec"][i], dtype=float)[:3])
         except Exception as _epv:                                            # noqa: BLE001
             print("[plan/vff] 积分位姿发布失败:", type(_epv).__name__, _epv)
-        # 📡 同一帧数值落快照 ⇒ 实时监控波形页 / 外部核对读的就是屏幕上这些数 (单一真源)
+        # 📡 同一帧数值落快照 ⇒ 实时监控波形页 / 外部核对读的就是屏幕上这些数 (单一唯一依据)
         _ri = getattr(self, "_res_info", (0, 0, 0))
         publish_trace_live({
             "ts": getattr(self, "_frame_ts", None) or time.time(),   # == HUD 上那个时刻
@@ -4324,13 +4324,13 @@ class DreamView3D(QWidget):
             "帧": int(i), "总帧": int(self._n - 1),
             "阶段": str(stage), "时间_s": round(float(t), 3),
             # 🎛 2026-10-15 老倪: 「八个 stage, 除了序号, 还应该有文字表示」——
-            #   把**八段文字名**(真源 ActionModulator.STAGES, 不另抄)随快照一起发,
+            #   把**八段文字名**(唯一依据 ActionModulator.STAGES, 不另抄)随快照一起发,
             #   信号页据此在窗口里把八段铺开写文字、并高亮当前那一段 (只有序号看不出是哪个阶段)。
             "八阶段表": _stage_maps()[2],
             "工艺": _TOOL,        # 场景语义 (真空吸附/夹持) ⇒ 快照自证这根通道是吸盘还是夹爪, 不用猜
             "末端": [float(x[0]), float(x[1]), float(x[2])],
             # 🔴 2026-10-13 老倪「摆盘的机器人, 末端执行器的 x y z 必须有」——
-            #   实时监控/信号分析是按**扁平键名**订阅的, 而真源注册表
+            #   实时监控/信号分析是按**扁平键名**订阅的, 而唯一依据注册表
             #   config/topics/scene_tags.json 里摆盘场景注册的名字就是 `sstrace.末端_x/_y/_z`
             #   (与 episode jsonl 同源)。只发列表键 `末端` 会被渲染成 `sstrace.末端.0/.1/.2`
             #   —— **未注册的名字** ⇒ 面板上「末端 x y z」那几行永远是空的。
@@ -4360,7 +4360,7 @@ class DreamView3D(QWidget):
             "安全边界_mms": round(float(u_li_m) * 1000.0, 2),
             # 🔴 2026-10-15 老倪: 「动作调制器的输出这个 mps 怎么理解? 要变成 action, 至少有 x y z a b c,
             #   怎么就一个 mps?」—— mps 只是**模长** ‖u[:3]‖(合速度大小), 不是动作本身。
-            #   真源里动作是 **4 维**: u = [vx, vy, vz 速度(m/s), 夹爪 0/1]
+            #   唯一依据里动作是 **4 维**: u = [vx, vy, vz 速度(m/s), 夹爪 0/1]
             #   (state_space_sim_real.py: u_fuse_vec / u_limit_vec / u_prev = np.zeros(4),
             #    2876 行 `u_ff = np.concatenate([_m3, [u_ff[3]]])` 也是 3 平移 + 1 夹爪)。
             #   这里把分量拆开发 ⇒ 面板上能看到完整动作向量, 而不是只有一个模长。
@@ -4370,7 +4370,7 @@ class DreamView3D(QWidget):
             **{"动作调制_%s_mms" % _ax: round(float(np.asarray(tr["u_fuse_vec"][i], dtype=float)[_j]) * 1000.0, 2)
                for _ax, _j in (("x", 0), ("y", 1), ("z", 2))},
             "动作调制_夹爪": round(float(np.asarray(tr["u_fuse_vec"][i], dtype=float)[3]), 4),
-            # 🎛 八阶段状态机 (数值通道, 让状态机在波形上看得到; 真源见 _stage_maps())
+            # 🎛 八阶段状态机 (数值通道, 让状态机在波形上看得到; 唯一依据见 _stage_maps())
             "阶段序号": float(_sidx),
             "八阶段序号": float(_p8idx),
             "阶段限速_mms": (round(float(_cap_d[_stg_key]) * 1000.0, 1) if _stg_key in _cap_d else None),

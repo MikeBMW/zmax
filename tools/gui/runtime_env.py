@@ -8,7 +8,7 @@
 方案: frozen 环境下不返回 sys.executable, 而是找一个**真正的解释器**:
       1) PATH 里的 python3 / python
       2) macOS/Linux 常见绝对路径
-      3) 兜底返回 "python3" (让系统报清晰的 not found, 而不是静默重启 app)
+      3) 保障返回 "python3" (让系统报清晰的 not found, 而不是静默重启 app)
      源码环境 (未打包) 行为不变: 返回 sys.executable。
 """
 import os
@@ -32,7 +32,7 @@ def resolve_python() -> str:
         p = shutil.which(name) if not name.startswith("/") else (name if os.path.exists(name) else None)
         if p:
             return p
-    # 兜底: app 同目录下可能有 bundled python (未来扩展)
+    # 保障: app 同目录下可能有 bundled python (未来扩展)
     exe_dir = os.path.dirname(sys.executable)
     for name in ("python3", "python"):
         p = os.path.join(exe_dir, name)

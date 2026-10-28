@@ -4,10 +4,10 @@
 老倪口径: 「系统进入自主进化模式, 进入系统后, 你自动加载自动建图功能, 启动建图程序」。
 
 做法 (真实执行, 不是描述):
-  start  → 读真源 config/platform/zmax_mapping.json; auto_load=false 则拒绝启动; 否则把建图循环
-           **脱离终端**跑起来 (nohup + setsid), 逐帧抓真图 (8797/snap, 按 interval 节流) → ORB 前端 →
+  start  → 读唯一依据 config/platform/zmax_mapping.json; auto_load=false 则拒绝启动; 否则把建图循环
+           **脱离终端**启动 (nohup + setsid), 逐帧抓真图 (8797/snap, 按 interval 节流) → ORB 前端 →
            关键帧/地图点/回环 → 持续写 zmax_data/mapping/mapping_live.json (带帧龄); pid 落 zmax_data/mapping/autostart.pid
-  status → pid 存活 + live 真源帧龄 + 建图摘要 (帧/kf/地图点/回环/尺度来源)
+  status → pid 存活 + live 唯一依据帧龄 + 建图摘要 (帧/kf/地图点/回环/尺度来源)
   stop   → **按 pid 文件**停 (禁 ps|grep 按名匹配 —— 命令行含名会自杀)
   once   → 只跑一轮并退出 (取证用)
 
@@ -63,7 +63,7 @@ def start(n: int, interval: float, cam: str, scene: str) -> int:
     from lerobot.manifold import localization_mapping as LM
     cfg = LM.load_config()
     if not cfg.get("auto_load", True):
-        print(json.dumps({"started": False, "reason": "真源 auto_load=false (进系统自动加载被关)"}, ensure_ascii=False))
+        print(json.dumps({"started": False, "reason": "唯一依据 auto_load=false (进系统自动加载被关)"}, ensure_ascii=False))
         return 1
     p = _read_pid()
     if p and _alive(p):

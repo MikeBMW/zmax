@@ -28,7 +28,7 @@ GUI: gui-venv311(Py3.11); 推理/训练=~/lerobot-venv(uv建无pip→uv pip inst
 §
 GitHub(08-28): 直连已通不走代理(ghproxy证书失效/ghfast作废); Release下载走browser_download_url(asset API带token返400); 凭证~/.git-credentials; 视频/权重不进库
 §
-数据/监视界面偏好: 单色勿彩高亮; 数据实时滚动; 可视化自解释(标签+数值面板), 追问'这是啥'→给物理含义+实测数字; 信号/图层名用源模块名按链路排序, 开关连文字绑
+数据/监视界面偏好: 单色勿彩高亮; 数据实时滚动; 可视化自解释(标签+数值面板), 追问'这是什么'→给物理含义+实测数字; 信号/图层名用源模块名按链路排序, 开关连文字绑
 §
 GUI数据总线=DataBusTrace 14模块51接口
 §

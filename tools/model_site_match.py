@@ -7,12 +7,12 @@
     · 匹配   = 契约求交: 模型 declare 的 requires ∩ 站点 available ⇒ OK / 缺项 / 不适用
     · 结果   = 兼容矩阵 + 组配建议; 组配(binding) 才是"一次运行到底用哪套"的落盘单元
 
-真源 (只读):
-    src/lerobot/engineering/models_manifest.json   模型版本真源 (在役/候选/未训)
-    models/active_models.json                      在役指针真源 (L2/L3/L4)
+唯一依据 (只读):
+    src/lerobot/engineering/models_manifest.json   模型版本唯一依据 (在役/候选/未训)
+    models/active_models.json                      在役指针唯一依据 (L2/L3/L4)
     config/calib/zmax_calib.json                   站点工程配置真值
     feature.dbc                                    能力 ID 合法性 (capabilities 必须存在)
-    docs/third_party_model_spec.md                 模型包 manifest v1 (理想真源: 每个模型包自带)
+    docs/third_party_model_spec.md                 模型包 manifest v1 (理想唯一依据: 每个模型包自带)
 
 输出:
     config/mcd/match_matrix.json                   兼容矩阵 (机器可读)
@@ -175,7 +175,7 @@ def main():
     usable = [r for r in rows if r["usable_now"]]
 
     out = {"_meta": {"schema": "zmax-model-site-match/1.0", "generated_at": time.strftime("%F %T"),
-                     "doc": "模型 × 站点工程配置 兼容矩阵 (契约求交)。只读真源, 不改任何配置值。",
+                     "doc": "模型 × 站点工程配置 兼容矩阵 (契约求交)。只读唯一依据, 不改任何配置值。",
                      "sources": {"models_manifest": os.path.relpath(MANIFEST, ROOT),
                                  "active_models": os.path.relpath(ACTIVE, ROOT),
                                  "site_calib": os.path.relpath(CALIB, ROOT),

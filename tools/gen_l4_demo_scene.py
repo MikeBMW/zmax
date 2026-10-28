@@ -41,7 +41,7 @@ def _mw_assets_dir():
 
 
 MW_ASSETS = _mw_assets_dir()
-# 🎯 2026-10-10 单真源: 注入坐标从 data/scene/sim/sim_scenes.json 取 (读不到回退老值 0.42 0.60 / 0.55 0.42)
+# 🎯 2026-10-10 单唯一依据: 注入坐标从 data/scene/sim/sim_scenes.json 取 (读不到回退老值 0.42 0.60 / 0.55 0.42)
 def _sim_geom():
     try:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -104,7 +104,7 @@ EXTRA = """
   </body>
 """
 
-# 🎯 2026-10-10: 用真源数值填上占位符 (读不到时 _sim_geom() 已回退老值 ⇒ 物理不变)
+# 🎯 2026-10-10: 用唯一依据数值填上占位符 (读不到时 _sim_geom() 已回退老值 ⇒ 物理不变)
 _TT_S, _CP_S, _STZ_S = _sim_geom()
 EXTRA = (EXTRA.replace("__TT_XY__", _TT_S).replace("__CP_XY__", _CP_S)
               .replace("__STAGE_Z__", _STZ_S))

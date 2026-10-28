@@ -9,7 +9,7 @@
 | 「APP」「在 APP 上显示」「APP 的训练控制界面」 | **桌面 APP**（PyQt5 `studio.py` / 已发布的 `Z-MAX_Console.exe`）| `tools/gui/studio.py` |
 | 「Web 控制平台」「网页上看」 | **Web 控制台**（标准库 http.server 那个）| `tools/train_deploy_console.py` |
 
-**实际踩坑**：用户连续 3 次要"4060 硬件参数显示在 APP 上"，我三次都做在 **Web 控制台**里
+**实际遇到问题**：用户连续 3 次要"4060 硬件参数显示在 APP 上"，我三次都做在 **Web 控制台**里
 （还反复用 curl/Node 复现渲染、贴出"Web 上确实有"的证据），用户第 4 次说
 「app 还是没有 4060 硬件参数」——因为**他打开的是桌面 APP**。
 
@@ -49,7 +49,7 @@ CI 状态与产物查询走 **api.github.com 直连**：
 
 `studio.py` 这类巨型单文件有**不成文的局部约定**，照常识写代码必踩：
 
-| 必查 | 实测踩坑 | 正确做法 |
+| 必查 | 实测遇到问题 | 正确做法 |
 |---|---|---|
 | **颜色常量是否真的存在** | 我按常识写了 `C_TEXT`/`C_SUB` → 文件里**只有** `C_WHITE`/`C_GRAY`（`C_TEXT` 零处）→ 运行时 NameError | 用之前 `grep -nE '^C_\w+\s*='` 列出**实际**存在的常量名，照抄 |
 | **模块是否只在方法内局部导入** | `shutil` 在 `studio.py` **只在方法里 `import shutil`**，模块级没有 → 我的类里 `shutil.disk_usage` 抛 NameError，被 `try/except` 吞掉 → 该行永远显示"—" | 新增的类/方法**自己 import** 用到的模块（与该文件既有风格一致） |

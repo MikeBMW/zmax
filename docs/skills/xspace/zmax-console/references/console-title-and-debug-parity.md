@@ -7,14 +7,14 @@
 ## 标题
 
 * **标题 = `XSpace ZMAX <产品号>`**, 产品号 ∈ {550A, 550B, 550C}。
-* **产品号真源 = 配置中心「产品配置」同一份** `config/platform/zmax_product.json` 的 `active_product`
+* **产品号唯一依据 = 配置中心「产品配置」同一份** `config/platform/zmax_product.json` 的 `active_product`
   (同文件还有 `products` 字典 + 各产品参数)。切产品写的就是这一份 ⇒ 标题与配置中心天然同源, 不是两处各写一份。
 * **标题不含版本号**, 也不含 `[W-01]` 机位号与「非调试模式」。
 * **版本号只留侧栏品牌位** `QLabel("Z-MAX vX.Y.Z")` (+ 状态栏 / 关于框)。改标题时**不许**顺手删侧栏版本
   (老倪明确「左侧边栏 保留 v5.50.730的版本显示」)。
 * **单一出处**: 标题只经 `_console_title()` / `_active_product_id()`; 任何地方 `setWindowTitle("XSpace ZMAX 550B")`
-  写死都是错的 (产品号一改, 那处就成了假显示)。真源读不到 → 先明报一行再退回 `550A` (不静默)。
-* **标题跟随真源**: `_title_watch` QTimer 每 3s 探一次真源 mtime, 只在变了才 setWindowTitle ⇒
+  预先固定都是错的 (产品号一改, 那处就成了假显示)。唯一依据读不到 → 先明报一行再退回 `550A` (不静默)。
+* **标题跟随唯一依据**: `_title_watch` QTimer 每 3s 探一次唯一依据 mtime, 只在变了才 setWindowTitle ⇒
   在配置中心切产品**不必重启控制台** (实测 0.5s 跟到)。
 
 ## 窗口匹配串 (改格式的最大陷阱)
@@ -35,7 +35,7 @@
 老倪硬要求: 「用 vscode debug 调试时, 打开的也是同一个版本」。
 
 * **判据 (可证伪)**: 本实例的 `studio.py` 与 `.vscode/launch.json` 里 F5「🚀 全新调试进程」的 `program`,
-  **md5 必须相等** ⇒ 调试开的和眼前看的是同一份文件、同一个版本 (版本号/产品号都从同一份真源读)。
+  **md5 必须相等** ⇒ 调试开的和眼前看的是同一份文件、同一个版本 (版本号/产品号都从同一份唯一依据读)。
 * 一致 ⇒ **一个字的提示都不打**。旧版做法是把「⚠️ 非调试模式 — 断点不会生效」写进窗口标题 + 状态栏,
   老倪要求「不用特意显示 非调试模式」⇒ 已下线 (提示改为只放进侧栏版本 QLabel 的 tooltip)。
 * 不一致 ⇒ 状态栏 + stdout **明报**两边的路径与 md5 (那才是真会调试到另一个版本)。
@@ -50,21 +50,21 @@
 cd /home/ubuntu/zmax && ./gui-venv311/bin/python tools/verify_console_title_product.py --follow
 ```
 
-9 条 (全部读真源/读真窗口, 不读代码印象):
+9 条 (全部读唯一依据/读真窗口, 不读代码印象):
 
-1. 产品真源可读且合法 (`active_product` ∈ 550A/550B/550C)
+1. 产品唯一依据可读且合法 (`active_product` ∈ 550A/550B/550C)
 2. 标题单一出处 `_console_title()`, 无硬写字面量, 老标题硬串 0 处
-3. 标题模板读真源而非写死产品号
+3. 标题模板读唯一依据而非预先固定产品号
 4. 侧栏品牌版本在位且与 `update_checker.CURRENT_VERSION` 同号
 5. **F5 调试目标 == 在役 studio.py (md5) ⇒ 调试同一版本**
 6. 全仓无第二条指向别的 `studio.py` 的调试配置
 7. 实机窗口标题 == `XSpace ZMAX <active_product>` (wmctrl/xdotool 读真窗口)
-8. `--follow`: 真源切 550A → ≤8s 标题跟过去
-9. `--follow`: 真源还原 + 回读 + 标题跟回 (带字节备份, 测完必还原)
+8. `--follow`: 唯一依据切 550A → ≤8s 标题跟过去
+9. `--follow`: 唯一依据还原 + 回读 + 标题跟回 (带字节备份, 测完必还原)
 
 ## bump 版本时
 
 * `tools/bump_version.py` 对标题**只做断言** (断言不许回退成「XSpace Studio — Z-MAX vX.Y.Z」的老写法), 不再替换 —— 标题里没有版本号可替换。
 * `tools/verify_version_sync.py` 的「窗口标题」两处同步点已下线; 版本号同步点剩: 侧栏品牌 QLabel · changelog 前缀 ·
-  `update_checker.CURRENT_VERSION` · 状态栏/关于框字面量。标题↔产品真源归 `verify_console_title_product.py` 判。
+  `update_checker.CURRENT_VERSION` · 状态栏/关于框字面量。标题↔产品唯一依据归 `verify_console_title_product.py` 判。
 * 窗口标题相关改动**不**触发版本号变更 (老倪: 版本号不自主升级, 只按他指定)。

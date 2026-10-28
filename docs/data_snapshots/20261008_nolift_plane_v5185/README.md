@@ -14,7 +14,7 @@
 转移高度余量删到 0 仍不够 ⇒ 这次把「自动抬升」这件事从代码里删掉。
 
 ## 文件
-- `space_points.json`：7 点真源（同平面 z=0.1727，updated_at 2026-10-08 11:34:19）
+- `space_points.json`：7 点唯一依据（同平面 z=0.1727，updated_at 2026-10-08 11:34:19）
 - `registry.json`：`goto_space1~7` 三段单轴 + `speed_max 2000`
 - `collision_points.json` / `estop_events.jsonl`：今天的碰撞点与急停流水
 - `backups/`：改动前的原文（l2_daemon.py / l2_transport_sdk.py / registry.json）

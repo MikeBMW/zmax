@@ -5,19 +5,19 @@
 老倪原话: 「在评估分析页的迭代路线图面板里加上「插拔/摆盘 场景 × Phase 0→4 全流程迭代元任务组合」视图
           (组合迭代 / 迭代验证 / 对比分析), 读 zmax_data/eval/scene_phase_iteration.json, 离屏截图取证」
 
-判据 (每条都能自己复核, 不看印象; 真起控件 + 真读真源比对):
+判据 (每条都能自己复核, 不看印象; 真起控件 + 真读唯一依据比对):
   ① 真内嵌: 真起 studio.EvalModule → 评估分析页里真有 IterationRoadmapPanel, 且第 4 个标签页 = ScenePhaseIterationView
   ② 默认场景 = 当前激活任务对应场景 (config/ss_task_binding.json 的 active_task), 且两个场景按钮互斥选中态一致
-  ③ 场景切换真生效: 切 TRAY ⇒ 表内容 == TRAY 真源 (逐阶段逐字段); 切回 FW 同理
-  ④ 三子视图读数 == 真源 JSON 逐条核对 (combo / 配置核验 / 实测判定 / 矩阵 / 达标率 / 组合增量 / 与基线)
-  ⑤ 颜色语义: 达标=绿 · 未达标=红 · 未测=灰 (抽样真源里出现的判定)
-  ⑥ 缺失真源 ⇒ 三个子视图都显「尚未生成」且 0 行, 不崩 (绝不假 0)
-  ⑦ 坏真源 (非法 JSON) ⇒ 显真实读取错误, 不崩
+  ③ 场景切换真生效: 切 TRAY ⇒ 表内容 == TRAY 唯一依据 (逐阶段逐字段); 切回 FW 同理
+  ④ 三子视图读数 == 唯一依据 JSON 逐条核对 (combo / 配置核验 / 实测判定 / 矩阵 / 达标率 / 组合增量 / 与基线)
+  ⑤ 颜色语义: 达标=绿 · 未达标=红 · 未测=灰 (抽样唯一依据里出现的判定)
+  ⑥ 缺失唯一依据 ⇒ 三个子视图都显「尚未生成」且 0 行, 不崩 (绝不假 0)
+  ⑦ 坏唯一依据 (非法 JSON) ⇒ 显真实读取错误, 不崩
   ⑧ 折叠行真交互: expand_all ⇒ 明细行可见 & 行高够高; 再点收回 ⇒ 隐藏
   ⑨ 重跑按钮: 真 subprocess 调 tools/scene_phase_iteration.py, 界面状态 == **真实退出码**
   ⑩ 重跑失败路径: 工具不存在 ⇒ 界面显「工具不存在」真实原因 (不静默)
   ⑪ 复制 / 导出: 当前视图文本 / Markdown (含场景迭代段) / CSV (tab3 出 scene_phase_iteration_*.csv)
-  ⑫ 不留痕: 判据自己不改真源 (除 ⑨ 由工具重新生成真源; 前后**语义字段**必须一致)
+  ⑫ 不留痕: 判据自己不改唯一依据 (除 ⑨ 由工具重新生成唯一依据; 前后**语义字段**必须一致)
 
 用法: cd /home/ubuntu/zmax && ./gui-venv311/bin/python tools/verify_scene_phase_iteration_panel.py
       [--shot-dir docs/data_snapshots/<dir>]   # 顺手出离屏真渲染截图
@@ -88,7 +88,7 @@ def main(argv) -> int:
     import studio
     import iteration_roadmap_panel as irm
 
-    if not chk("⓪ 真源存在", os.path.exists(JSON), "真源 %s" % os.path.relpath(JSON, ROOT)):
+    if not chk("⓪ 唯一依据存在", os.path.exists(JSON), "唯一依据 %s" % os.path.relpath(JSON, ROOT)):
         return 1
     src = jload(JSON)
     sha0, sem0 = sha(JSON), sem(src)
@@ -119,11 +119,11 @@ def main(argv) -> int:
         all(b.isChecked() == (k == got) for k, b in sv.btns.items()),
         "选中: %s" % [k for k, b in sv.btns.items() if b.isChecked()])
 
-    # ── ③④ 两个场景 × 三子视图 逐条对真源 ──
+    # ── ③④ 两个场景 × 三子视图 逐条对唯一依据 ──
     for key in ("FW", "TRAY"):
         s = scen.get(key)
         if not s:
-            chk("③ 场景 %s 在真源里" % key, False, "真源 scenes 里没有 %s" % key)
+            chk("③ 场景 %s 在唯一依据里" % key, False, "唯一依据 scenes 里没有 %s" % key)
             continue
         sv.set_scene(key)
         app.processEvents()
@@ -131,7 +131,7 @@ def main(argv) -> int:
         # (a) 组合迭代
         nrow = sv.ctab.rowCount()
         chk("④%s(a) 组合迭代 行数 = 阶段数×2 (主行+折叠明细)" % key, nrow == len(phs) * 2,
-            "界面 %d 行 · 真源 %d 阶段" % (nrow, len(phs)))
+            "界面 %d 行 · 唯一依据 %d 阶段" % (nrow, len(phs)))
         bad = []
         prev = None
         for i, p in enumerate(phs):
@@ -143,14 +143,14 @@ def main(argv) -> int:
                    str(tot), ("— (首阶段)" if prev is None else (delta or "尚未生成"))]
             g = [cell(sv.ctab, r, c) for c in (0, 1, 2, 4, 5)]
             if g[:2] != exp[:2] or g[3] != exp[3] or g[4] != exp[4]:
-                bad.append("%s: 界面 %s ≠ 真源 %s" % (p.get("phase"), g, exp))
+                bad.append("%s: 界面 %s ≠ 唯一依据 %s" % (p.get("phase"), g, exp))
             if isinstance(tot, (int, float)):
                 prev = tot
-        chk("④%s(b) 组合迭代 阶段/主题/总数量/增量 == 真源" % key, not bad, bad[0] if bad else
+        chk("④%s(b) 组合迭代 阶段/主题/总数量/增量 == 唯一依据" % key, not bad, bad[0] if bad else
             "5 阶段逐行一致 (carried/added/upgraded 由 _combo_short 现算)")
         # (b) 迭代验证
         nk = sv.ktab.rowCount()
-        chk("④%s(c) 配置核验行数 = 阶段数" % key, nk == len(phs), "界面 %d · 真源 %d" % (nk, len(phs)))
+        chk("④%s(c) 配置核验行数 = 阶段数" % key, nk == len(phs), "界面 %d · 唯一依据 %d" % (nk, len(phs)))
         bad2 = []
         for i, p in enumerate(phs):
             cc = p.get("config_check") or {}
@@ -163,11 +163,11 @@ def main(argv) -> int:
                 bad2.append("%s: run.mode 格缺 %s" % (p.get("phase"), run.get("mode")))
             if ("可作改配置依据" in cell(sv.ktab, i, 6)) == (cc.get("pass") is not True):
                 bad2.append("%s: 可作改配置依据口径与 pass=%s 不符" % (p.get("phase"), cc.get("pass")))
-        chk("④%s(d) 配置核验 (启用节点/组合映射/coverage/run.mode/能否作依据) == 真源" % key, not bad2,
+        chk("④%s(d) 配置核验 (启用节点/组合映射/coverage/run.mode/能否作依据) == 唯一依据" % key, not bad2,
             bad2[0] if bad2 else "5 阶段逐行一致")
         mets = [m for p in phs for m in ((p.get("verification") or {}).get("metrics") or [])]
-        chk("④%s(e) 迭代验证行数 == 真源指标条数" % key, sv.vtab2.rowCount() == len(mets),
-            "界面 %d · 真源 %d" % (sv.vtab2.rowCount(), len(mets)))
+        chk("④%s(e) 迭代验证行数 == 唯一依据指标条数" % key, sv.vtab2.rowCount() == len(mets),
+            "界面 %d · 唯一依据 %d" % (sv.vtab2.rowCount(), len(mets)))
         cnt_src = {"达标": 0, "未达标": 0, "未测": 0, "样本不足": 0}
         for m in mets:
             if m.get("verdict") in cnt_src:
@@ -177,16 +177,16 @@ def main(argv) -> int:
             v = cell(sv.vtab2, r, 5)
             if v in cnt_ui:
                 cnt_ui[v] += 1
-        chk("④%s(f) 判定计数 界面 == 真源" % key, cnt_src == cnt_ui, "真源 %s · 界面 %s" % (cnt_src, cnt_ui))
+        chk("④%s(f) 判定计数 界面 == 唯一依据" % key, cnt_src == cnt_ui, "唯一依据 %s · 界面 %s" % (cnt_src, cnt_ui))
         # (c) 对比分析
         cm = src.get("comparison") or {}
-        chk("④%s(g) 场景×阶段矩阵行数 == 真源" % key, sv.mtab.rowCount() == len(cm.get("matrix") or []),
-            "界面 %d · 真源 %d" % (sv.mtab.rowCount(), len(cm.get("matrix") or [])))
+        chk("④%s(g) 场景×阶段矩阵行数 == 唯一依据" % key, sv.mtab.rowCount() == len(cm.get("matrix") or []),
+            "界面 %d · 唯一依据 %d" % (sv.mtab.rowCount(), len(cm.get("matrix") or [])))
         m0 = (cm.get("matrix") or [{}])[0]
         g0 = [cell(sv.mtab, 0, 0), cell(sv.mtab, 0, 4), cell(sv.mtab, 0, 9), cell(sv.mtab, 0, 13)]
         e0 = [m0.get("name"), str(irm._fnum((m0.get("FW") or {}).get("p1"))),
               str(irm._fnum((m0.get("TRAY") or {}).get("p1"))), m0.get("verdict")]
-        chk("④%s(h) 矩阵首行 FW p1/TRAY p1/判定 == 真源" % key, g0 == e0, "界面 %s · 真源 %s" % (g0, e0))
+        chk("④%s(h) 矩阵首行 FW p1/TRAY p1/判定 == 唯一依据" % key, g0 == e0, "界面 %s · 唯一依据 %s" % (g0, e0))
         pr = (cm.get("pass_rate") or {}).get(key) or []
         bad3 = []
         for i in range(sv.ptab.rowCount()):
@@ -194,19 +194,19 @@ def main(argv) -> int:
                 break
             if cell(sv.ptab, i, 0) != pr[i].get("phase"):
                 bad3.append("第%d行阶段 %s ≠ %s" % (i, cell(sv.ptab, i, 0), pr[i].get("phase")))
-        chk("④%s(i) 逐阶段达标率阶段列 == 真源" % key, not bad3, bad3[0] if bad3 else
+        chk("④%s(i) 逐阶段达标率阶段列 == 唯一依据" % key, not bad3, bad3[0] if bad3 else
             "界面 %d 行 (达标/总数/达标率由 pass·total 现算)" % sv.ptab.rowCount())
         cd = (cm.get("combo_delta") or {}).get(key) or {}
         rr = {"FW": 0, "TRAY": 1}[key]
-        chk("④%s(j) 组合增量 (added/upgraded) == 真源" % key,
+        chk("④%s(j) 组合增量 (added/upgraded) == 唯一依据" % key,
             cell(sv.dtab, rr, 1) == str(cd.get("added")) and cell(sv.dtab, rr, 2) == str(cd.get("upgraded")),
-            "界面 added=%s upgraded=%s · 真源 %s/%s"
+            "界面 added=%s upgraded=%s · 唯一依据 %s/%s"
             % (cell(sv.dtab, rr, 1), cell(sv.dtab, rr, 2), cd.get("added"), cd.get("upgraded")))
         vb = (cm.get("vs_baseline") or {}).get(key) or {}
-        chk("④%s(k) 与基线 (提升/持平/回退) == 真源" % key,
+        chk("④%s(k) 与基线 (提升/持平/回退) == 唯一依据" % key,
             [cell(sv.btab2, rr, c) for c in (1, 2, 3)] == [str(vb.get("improved")), str(vb.get("flat")),
                                                            str(vb.get("regressed"))],
-            "界面 %s · 真源 %s" % ([cell(sv.btab2, rr, c) for c in (1, 2, 3)],
+            "界面 %s · 唯一依据 %s" % ([cell(sv.btab2, rr, c) for c in (1, 2, 3)],
                                    [vb.get("improved"), vb.get("flat"), vb.get("regressed")]))
         chk("④%s(l) 头部标了生成时间 + 基线版本" % key,
             irm._ts_str((src.get("meta") or {}).get("ts")) in sv.lb_scene.text()
@@ -252,7 +252,7 @@ def main(argv) -> int:
     first = open(csvf, encoding="utf-8").readline().strip()
     chk("⑪c tab3 导出 CSV = 场景迭代表头", os.path.basename(csvf).startswith("scene_phase_iteration")
         and first.startswith("场景,阶段"), "%s ｜ %s" % (os.path.basename(csvf), first[:90]))
-    # ── ⑥ 缺失真源 ──
+    # ── ⑥ 缺失唯一依据 ──
     keep = sv.JSON
     sv.JSON = os.path.join(ROOT, "zmax_data", "eval", "__no_such_scene_iter__.json")
     sv.reload()
@@ -260,9 +260,9 @@ def main(argv) -> int:
     ok6 = (sv.data is None and sv.read_err == "尚未生成" and "尚未生成" in sv.lb_status.text()
            and sv.ctab.rowCount() == 0 and sv.ktab.rowCount() == 0 and sv.vtab2.rowCount() == 0
            and sv.mtab.rowCount() == 0 and "尚未生成" in sv.lb_combo_hint.text())
-    chk("⑥ 缺失真源 ⇒ 尚未生成 + 0 行, 不崩", ok6, "read_err=%s ｜ 横幅: %s" % (sv.read_err, sv.lb_status.text()[:110]))
+    chk("⑥ 缺失唯一依据 ⇒ 尚未生成 + 0 行, 不崩", ok6, "read_err=%s ｜ 横幅: %s" % (sv.read_err, sv.lb_status.text()[:110]))
 
-    # ── ⑦ 坏真源 ──
+    # ── ⑦ 坏唯一依据 ──
     badp = os.path.join(ROOT, "zmax_data", "eval", "__bad_scene_iter__.json")
     try:
         with open(badp, "w", encoding="utf-8") as fh:
@@ -270,7 +270,7 @@ def main(argv) -> int:
         sv.JSON = badp
         sv.reload()
         app.processEvents()
-        chk("⑦ 坏真源 ⇒ 显真实读取错误, 不崩", "读取失败" in sv.read_err and sv.data is None,
+        chk("⑦ 坏唯一依据 ⇒ 显真实读取错误, 不崩", "读取失败" in sv.read_err and sv.data is None,
             "read_err=%s ｜ 横幅: %s" % (sv.read_err[:80], sv.lb_status.text()[:110]))
     finally:
         try:
@@ -345,13 +345,13 @@ def main(argv) -> int:
             p = os.path.join(d, "%s.png" % name)
             w.grab().save(p)
             print("  📷 %s" % os.path.relpath(p, ROOT))
-        # 缺失真源用例也留一张
+        # 缺失唯一依据用例也留一张
         sv.JSON = os.path.join(ROOT, "zmax_data", "eval", "__no_such_scene_iter__.json")
         sv.reload()
         sv.sub.setCurrentIndex(1)
         sv._render_sub()
         app.processEvents()
-        p = os.path.join(d, "08_真源缺失_尚未生成.png")
+        p = os.path.join(d, "08_唯一依据缺失_尚未生成.png")
         sv.grab().save(p)
         print("  📷 %s" % os.path.relpath(p, ROOT))
         sv.JSON = keep

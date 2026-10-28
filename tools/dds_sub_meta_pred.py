@@ -4,11 +4,11 @@
 
 老倪 2026-10-14: 「流形引擎要预测每个元任务，将元任务预测的topic，放到信号分析」
 
-载荷 (真源 = zmax_data/ss_live/meta_pred.json, 由 tools/ss_meta_predict.py 现算):
+载荷 (唯一依据 = zmax_data/ss_live/meta_pred.json, 由 tools/ss_meta_predict.py 现算):
   ts_pred/scene      预测生成时刻 · 场景
   n_meta/n_cand      参与打分元任务数 / 候选总数
   top_ids/top_scores top-k 功能ID 与得分 (一一对应)
-  input_src/ok/age   输入真源 (驱动扭矩 tap) · 是否新鲜 · 帧龄
+  input_src/ok/age   输入唯一依据 (驱动扭矩 tap) · 是否新鲜 · 帧龄
   trained/frozen     是否已训练头 / 是否恒定输入降级 (如实标注, 不假装有预测力)
 
 用法:

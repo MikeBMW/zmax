@@ -7,18 +7,18 @@
 
 判据 (每条都真跑, 不空转):
   ① 产品配置区存在      ConfigCenterPage 里找到「产品配置」卡片 + 页签 + 左树条目 (现有区未被拆)
-  ② 三个产品项          550A/550B/550C 三个单选, 名字与真源 products.<id>.name 同名
-  ③ 选中即写回真源      点 550B → 真源 active_product 真变 550B; 原子写 (无 .tmp 残留); 且**只改那一行**
-  ④ 显示 == 真源回读    3 个字段 (产品/版本号/能力数) 逐个与真源回读值比对;
+  ② 三个产品项          550A/550B/550C 三个单选, 名字与唯一依据 products.<id>.name 同名
+  ③ 选中即写回唯一依据      点 550B → 唯一依据 active_product 真变 550B; 原子写 (无 .tmp 残留); 且**只改那一行**
+  ④ 显示 == 唯一依据回读    3 个字段 (产品/版本号/能力数) 逐个与唯一依据回读值比对;
      🏷 2026-10-21 老倪: 「版本段 改成 版本号 … A B C 只是产品的配置标识, 版本号全系统统一
      (都跟系统总版本号同步)」⇒ 「版本号」= 系统总版本 update_checker.CURRENT_VERSION, 不是 5.50.A/B/C;
-                        2026-10-19 老倪删掉 产品质数 / 当前发布指纹 / 质数结构自检 / 能力质数签名 四行与说明行、真源行
-  ⑤ 恢复原值            跑完真源**字节级**还原, active_product 回到原值, 探针临时文件自清理
-  ⑥ 节点随真源          流形引擎节点 node_ss_mani_eng 的返回字典 product_id 随真源变化 (550C/550A 各真跑一次)
+                        2026-10-19 老倪删掉 产品质数 / 当前发布指纹 / 质数结构自检 / 能力质数签名 四行与说明行、唯一依据行
+  ⑤ 恢复原值            跑完唯一依据**字节级**还原, active_product 回到原值, 探针临时文件自清理
+  ⑥ 节点随唯一依据          流形引擎节点 node_ss_mani_eng 的返回字典 product_id 随唯一依据变化 (550C/550A 各真跑一次)
   ⑦ 窄窗 1280 不截断    1280×800 离屏渲染: 每个标签 width ≥ 最小需求 (不挤); 非换行标签 width ≥ sizeHint (不截断)
   ⑧ 可复制              📋 按钮 / 双击 / 右键菜单 三条路都把**完整值**放进剪贴板
-  ⑨ 门禁: 画布不回归    89 节点 / 184 连线不变 (画布真源一字未改); 既有页签全在
-  ⑩ 不碰在跑的控制台    探针无 kill/restart, 不写画布; 只 ③⑥ 短暂改真源并字节级还原; /tmp 探针带 pid 自清理
+  ⑨ 门禁: 画布不回归    89 节点 / 184 连线不变 (画布唯一依据一字未改); 既有页签全在
+  ⑩ 不碰在跑的控制台    探针无 kill/restart, 不写画布; 只 ③⑥ 短暂改唯一依据并字节级还原; /tmp 探针带 pid 自清理
 
 用法: QT_QPA_PLATFORM=offscreen /home/ubuntu/zmax/gui-venv311/bin/python tools/verify_product_ui.py
 退出码: 0 = 全过; 2 = 有 ❌。
@@ -147,7 +147,7 @@ def main() -> int:
     last_before = open(LAST_TAB, "rb").read() if os.path.isfile(LAST_TAB) else None
     tmps_before = [f for f in os.listdir(os.path.dirname(PRODUCT_J)) if ".tmp" in f]
     console_before = _console_pids()                 # ⑩: 控制台进程快照 (跑完必须一致)
-    canvas_mt, bind_mt = _mt(CANVAS), _mt(BIND_J)    # ⑩: 画布/绑定真源 mtime 快照
+    canvas_mt, bind_mt = _mt(CANVAS), _mt(BIND_J)    # ⑩: 画布/绑定唯一依据 mtime 快照
 
     import veh6_config_page as V
     pg = V.ConfigCenterPage(model_page=None)
@@ -171,20 +171,20 @@ def main() -> int:
         "顶层项数 %d" % pg.tree.topLevelItemCount())
     chk("①", "产品配置区只读回读字段齐 + 每行一个 📋 (老倪 2026-10-19 删后 3 行)", all(k in (pg._prod_val or {}) for k in fields)
         and len(pg._prod_val) == len(fields), "字段=%s" % " · ".join(fields))
-    # 🗑 2026-10-19 老倪: 「真源行 / 选一个产品 = 原子写回真源 说明 / 产品质数 / 当前发布指纹 / 质数结构自检 / 能力质数签名 全删掉」
+    # 🗑 2026-10-19 老倪: 「唯一依据行 / 选一个产品 = 原子写回唯一依据 说明 / 产品质数 / 当前发布指纹 / 质数结构自检 / 能力质数签名 全删掉」
     _gone_keys = [k for k in ("产品质数", "当前发布指纹", "质数结构自检", "能力质数签名") if k in (pg._prod_val or {})]
     _card_txt = "\n".join(lb.text() for lb in pg._prod_card.findChildren(type(pg._prod_val["产品"])))
     _card_txt += "\n".join(lb.text() for lb in pg._prod_card.findChildren(QLabel))
     chk("①", "已删的四行真不在界面 (产品质数/当前发布指纹/质数结构自检/能力质数签名)",
         not _gone_keys, "残留=%s · 现有=%s" % (_gone_keys, " · ".join(fields)))
-    chk("①", "已删的说明行/真源行真不在界面 (「原子写回真源 …」「prime_structure 交叉回算 …」)",
-        ("原子写回真源" not in _card_txt) and ("prime_structure 交叉回算" not in _card_txt)
+    chk("①", "已删的说明行/唯一依据行真不在界面 (「原子写回唯一依据 …」「prime_structure 交叉回算 …」)",
+        ("原子写回唯一依据" not in _card_txt) and ("prime_structure 交叉回算" not in _card_txt)
         and not hasattr(pg, "_prod_src"),
-        "命中 原子写回真源=%s · prime_structure=%s · _prod_src 属性=%s"
-        % ("原子写回真源" in _card_txt, "prime_structure 交叉回算" in _card_txt, hasattr(pg, "_prod_src")))
-    chk("①", "真源已进 source_fingerprint (跨窗口一致性判据)", V.REL_PRODUCT in V.ConfigCenterPage._SRC_FILES
+        "命中 原子写回唯一依据=%s · prime_structure=%s · _prod_src 属性=%s"
+        % ("原子写回唯一依据" in _card_txt, "prime_structure 交叉回算" in _card_txt, hasattr(pg, "_prod_src")))
+    chk("①", "唯一依据已进 source_fingerprint (跨窗口一致性判据)", V.REL_PRODUCT in V.ConfigCenterPage._SRC_FILES
         and V.REL_PRODUCT in pg.source_fingerprint(),
-        "指纹键含产品真源=%s · 证据行 %s" % (V.REL_PRODUCT in pg.source_fingerprint(),
+        "指纹键含产品唯一依据=%s · 证据行 %s" % (V.REL_PRODUCT in pg.source_fingerprint(),
                                           (_lines("tools/gui/veh6_config_page.py", 'zmax_product.json"') or ["?"])[0]))
 
     # ── ② 三个产品项 ─────────────────────────────────────────────────────────────
@@ -197,16 +197,16 @@ def main() -> int:
     chk("②", "三个单选**互斥** (同一组, 单选)", pg._prod_group.exclusive() and
         len({b.objectName() for b in btns.values()}) == 3, "exclusive=%s" % pg._prod_group.exclusive())
     same = all(btns[p].text() == str(names.get(p)) for p in btns)
-    chk("②", "单选上显示的名字 == 真源 products.<id>.name (回读, 非界面自写)", same,
+    chk("②", "单选上显示的名字 == 唯一依据 products.<id>.name (回读, 非界面自写)", same,
         " · ".join("%s=%s" % (p, btns[p].text()) for p in sorted(btns)) + " · 证据行 %s"
         % (_lines(REL, '"name"') or ["?"])[0])
-    chk("②", "当前勾选项 == 真源 active_product", [p for p in btns if btns[p].isChecked()] == [orig_active],
-        "勾选=%s · 真源=%s" % ([p for p in btns if btns[p].isChecked()], orig_active))
+    chk("②", "当前勾选项 == 唯一依据 active_product", [p for p in btns if btns[p].isChecked()] == [orig_active],
+        "勾选=%s · 唯一依据=%s" % ([p for p in btns if btns[p].isChecked()], orig_active))
 
-    # ── ⑧ 可复制 (先验, 不改真源) ───────────────────────────────────────────────
+    # ── ⑧ 可复制 (先验, 不改唯一依据) ───────────────────────────────────────────────
     print("\n【⑧ 可复制 (📋 / 双击 / 右键)】")
     clip = app.clipboard()
-    tgt = list(V.ConfigCenterPage._PROD_ROWS)[1]        # 「版本号」这一行 (标签改了, 不写死名字)
+    tgt = list(V.ConfigCenterPage._PROD_ROWS)[1]        # 「版本号」这一行 (标签改了, 不预先固定名字)
     lb = pg._prod_val[tgt]
     full = str(lb.full_value)
 
@@ -231,13 +231,13 @@ def main() -> int:
     chk("⑧", "标签可选中 (鼠标可拖选, 便于人工复制)", int(lb.textInteractionFlags()) != 0,
         "flags=%s" % int(lb.textInteractionFlags()))
 
-    # ── ③ 选中即写回真源 (点 550B) ───────────────────────────────────────────────
-    print("\n【③ 选中 550B → 写回真源 (原子写)】")
+    # ── ③ 选中即写回唯一依据 (点 550B) ───────────────────────────────────────────────
+    print("\n【③ 选中 550B → 写回唯一依据 (原子写)】")
     btns["550B"].click()                                # 真点一下 (走 toggled → _on_product_pick)
     app.processEvents()
     back = json.loads(open(PRODUCT_J, encoding="utf-8").read())
     new_txt = open(PRODUCT_J, encoding="utf-8").read()
-    chk("③", "真源文件里 active_product 真变 550B", back.get("active_product") == "550B",
+    chk("③", "唯一依据文件里 active_product 真变 550B", back.get("active_product") == "550B",
         "回读 active_product=%s · 文件 %s" % (back.get("active_product"), REL))
     chk("③", "原子写: 目录里无 .tmp 半截文件残留",
         [f for f in os.listdir(os.path.dirname(PRODUCT_J)) if ".tmp" in f] == tmps_before,
@@ -258,11 +258,11 @@ def main() -> int:
         {k: v for k, v in json.loads(orig_txt).items() if k != "active_product"},
         "schema=%s · 产品数=%d · 指纹数=%d" % (back.get("schema"), len(back.get("products") or {}),
                                              len(back.get("fingerprints") or {})))
-    chk("③", "界面勾选跟着真源走到 550B (写完回读)", btns["550B"].isChecked() and pg._prod_shown_active == "550B",
+    chk("③", "界面勾选跟着唯一依据走到 550B (写完回读)", btns["550B"].isChecked() and pg._prod_shown_active == "550B",
         "勾选=%s · 界面记录 active=%s" % (btns["550B"].isChecked(), pg._prod_shown_active))
 
-    # ── ④ 显示值 == 真源回读 (+ prime_structure 独立回算) ────────────────────────
-    print("\n【④ 界面显示值 == 真源回读 / prime_structure 回算】")
+    # ── ④ 显示值 == 唯一依据回读 (+ prime_structure 独立回算) ────────────────────────
+    print("\n【④ 界面显示值 == 唯一依据回读 / prime_structure 回算】")
 
     def check_rows(where: str) -> bool:
         dd = json.loads(open(PRODUCT_J, encoding="utf-8").read())
@@ -286,7 +286,7 @@ def main() -> int:
             okv = okv and good
             if not good:
                 print("        ✗ %s: 显示=%r full=%r 期望=%r" % (k, lbk.text(), lbk.full_value, v))
-        chk("④", "[%s] 3 个字段与真源回读值逐一相同 (已删的四行不参与)" % where, okv,
+        chk("④", "[%s] 3 个字段与唯一依据回读值逐一相同 (已删的四行不参与)" % where, okv,
             " · ".join("%s=%s" % (k, pg._prod_val[k].full_value[:26]) for k in exp))
         return okv
 
@@ -294,8 +294,8 @@ def main() -> int:
     pg.reload_from_source()
     check_rows("reload_from_source 后")
 
-    # ── ⑥ 节点输出随真源变化 (真跑流形引擎节点) ──────────────────────────────────
-    print("\n【⑥ 流形引擎节点 product_id 随真源变化 (真跑)】")
+    # ── ⑥ 节点输出随唯一依据变化 (真跑流形引擎节点) ──────────────────────────────────
+    print("\n【⑥ 流形引擎节点 product_id 随唯一依据变化 (真跑)】")
     from lerobot.engineering.nodes import library as L
 
     def run_node() -> dict:
@@ -312,17 +312,17 @@ def main() -> int:
             "symmetry", "anchor_density", "sample_rate")
     chk("⑥", "节点返回 dict 含 14 个要求键", all(k in r_b for k in need),
         "缺=%s" % [k for k in need if k not in r_b])
-    chk("⑥", "节点 product_id == 真源 active_product (550B)", r_b.get("product_id") == "550B",
-        "节点=%s · 真源=%s" % (r_b.get("product_id"), "550B"))
+    chk("⑥", "节点 product_id == 唯一依据 active_product (550B)", r_b.get("product_id") == "550B",
+        "节点=%s · 唯一依据=%s" % (r_b.get("product_id"), "550B"))
     chk("⑥", "节点 cap_signature == prime_structure 回读值",
         str(r_b.get("cap_signature")) == str(PS.cap_signature_of("550B")),
         "节点=%s · PS=%s" % (r_b.get("cap_signature"), PS.cap_signature_of("550B")))
     fp_node = str(r_b.get("fingerprint"))
     rels = json.loads(open(PRODUCT_J, encoding="utf-8").read())
     rk = max(rels["releases"], key=lambda k: rels["releases"][k]["iteration"])
-    chk("⑥", "节点 fingerprint == 真源当前发布指纹 (回读, 不写死)",
+    chk("⑥", "节点 fingerprint == 唯一依据当前发布指纹 (回读, 不预先固定)",
         fp_node == str(rels["fingerprints"][rk]["fingerprint"]),
-        "节点=%s · 真源 %s=%s" % (fp_node, rk, rels["fingerprints"][rk]["fingerprint"]))
+        "节点=%s · 唯一依据 %s=%s" % (fp_node, rk, rels["fingerprints"][rk]["fingerprint"]))
     u = r_b.get("understand") or {}
     chk("⑥", "节点结构理解 5 键齐 (signature/known/seen_structures/novel_events/evolution_input)",
         all(k in u for k in ("signature", "known", "seen_structures", "novel_events", "evolution_input")),
@@ -335,17 +335,17 @@ def main() -> int:
         and any("结构理解" in l for l in r_b["_log"]),
         (next((l for l in r_b["_log"] if l.startswith("🏷")), ""))[:110])
 
-    # 切到 550C 再真跑 → product_id 必须跟着变 (证明读真源, 不是写死)
+    # 切到 550C 再真跑 → product_id 必须跟着变 (证明读唯一依据, 不是预先固定)
     V._write_active_product("550C")
     r_c = run_node()
-    chk("⑥", "真源切 550C → 节点 product_id 变 550C (读真源, 非写死)",
+    chk("⑥", "唯一依据切 550C → 节点 product_id 变 550C (读唯一依据, 非预先固定)",
         r_c.get("product_id") == "550C" and r_c.get("version_segment") == "5.50.C"
         and str(r_c.get("cap_signature")) == str(PS.cap_signature_of("550C")),
         "节点=%s · 版本段=%s · 能力数=%s · 签名词=%s 位" % (r_c.get("product_id"), r_c.get("version_segment"),
                                                         r_c.get("n_capabilities"), len(str(r_c.get("cap_signature")))))
     V._write_active_product(orig_active)
     r_a = run_node()
-    chk("⑥", "真源切回 %s → 节点 product_id 同步回到 %s" % (orig_active, orig_active),
+    chk("⑥", "唯一依据切回 %s → 节点 product_id 同步回到 %s" % (orig_active, orig_active),
         r_a.get("product_id") == orig_active, "节点=%s" % r_a.get("product_id"))
 
     # ── ⑦ 窄窗 1280 不截断/不挤 ─────────────────────────────────────────────────
@@ -398,9 +398,9 @@ def main() -> int:
     pg.hide()
 
     # ── ⑨ 门禁: 画布不回归 ──────────────────────────────────────────────────────
-    print("\n【⑨ 门禁: 画布真源一字未改 + 既有区在册】")
+    print("\n【⑨ 门禁: 画布唯一依据一字未改 + 既有区在册】")
     cv = json.load(open(CANVAS, encoding="utf-8"))
-    # 2026-10-15 基线刷新: 画布连线随状态空间工程增长 184→190 (真源 + 工程库两边同源核对, 不是拍脑袋改数)
+    # 2026-10-15 基线刷新: 画布连线随状态空间工程增长 184→190 (唯一依据 + 工程库两边同源核对, 不是拍脑袋改数)
     import sqlite3 as _sq3
     try:
         _db_links = _sq3.connect("file:%s?mode=ro" % os.path.join(
@@ -408,11 +408,11 @@ def main() -> int:
             .execute("select count(*) from canvas_links").fetchone()[0]
     except Exception:                                                           # noqa: BLE001
         _db_links = -1
-    # 🐛 2026-10-17: 原来把 89/190 写死在图里 ⇒ 画布真源一增删连线判据就误报 (实测 2026-10-17
-    #   真源 90 节点 / 201 连线, 删掉 ssff.out2→ssintact.in3 后为 201)。口径改成「真源 ↔ 工程库 ↔
-    #   渲染 三方同源」, 数量以真源自报, 判的是同源而不是某个常数。
+    # 🐛 2026-10-17: 原来把 89/190 硬编码在图里 ⇒ 画布唯一依据一增删连线判据就误报 (实测 2026-10-17
+    #   唯一依据 90 节点 / 201 连线, 删掉 ssff.out2→ssintact.in3 后为 201)。口径改成「唯一依据 ↔ 工程库 ↔
+    #   渲染 三方同源」, 数量以唯一依据自报, 判的是同源而不是某个常数。
     _n_nodes, _n_links = len(cv["nodes"]), len(cv.get("links") or [])
-    chk("⑨", "画布节点/连线数 真源 ↔ 工程库同源 (=%d / %d)" % (_n_nodes, _n_links),
+    chk("⑨", "画布节点/连线数 唯一依据 ↔ 工程库同源 (=%d / %d)" % (_n_nodes, _n_links),
         _db_links == _n_links,
         "%d 节点 / %d 连线 · 工程库 canvas_links=%d · md5 未参与本次改动" % (_n_nodes, _n_links, _db_links))
     node = next((n for n in cv["nodes"] if n.get("id") == "ss_mani_eng"), {})
@@ -420,7 +420,7 @@ def main() -> int:
         bool((node.get("params") or {}).get("core")) and node.get("params", {}).get("core_color") == "#FFC53D",
         "core=%s · core_color=%s" % ((node.get("params") or {}).get("core"),
                                      (node.get("params") or {}).get("core_color")))
-    chk("⑨", "未改画布真源文件 (ss_task_bind --check 可过的前提)", True,
+    chk("⑨", "未改画布唯一依据文件 (ss_task_bind --check 可过的前提)", True,
         "本探针无任何画布写操作 (只 json.load 读)")
 
     # ── ⑤ 恢复原值 + 自清理 ─────────────────────────────────────────────────────
@@ -439,7 +439,7 @@ def main() -> int:
         os.remove(PROBE_TMP)
     except Exception:                                                            # noqa: BLE001
         pass
-    chk("⑤", "真源还原 (active_product=%s · updated 戳记除外逐键一致)" % orig_active,
+    chk("⑤", "唯一依据还原 (active_product=%s · updated 戳记除外逐键一致)" % orig_active,
         same_sem and _now_j.get("active_product") == orig_active and PS.active_product() == orig_active,
         "字节一致=%s (updated 会变) · 语义一致=%s · active_product=%s"
         % (restored, same_sem, PS.active_product()))
@@ -452,7 +452,7 @@ def main() -> int:
     chk("⑩", "在跑的控制台进程 (cmdline 含 studio.py) 前后一致 — 未重启/未 kill",
         console_before == _console_pids(),
         "前=%s · 后=%s" % (console_before or "无", _console_pids() or "无"))
-    chk("⑩", "画布真源与绑定真源 mtime 未变 (本次没写画布)", canvas_mt == _mt(CANVAS) and bind_mt == _mt(BIND_J),
+    chk("⑩", "画布唯一依据与绑定唯一依据 mtime 未变 (本次没写画布)", canvas_mt == _mt(CANVAS) and bind_mt == _mt(BIND_J),
         "canvas mtime %s→%s · binding mtime %s→%s" % (canvas_mt, _mt(CANVAS), bind_mt, _mt(BIND_J)))
     _src = open(os.path.join(ROOT, "tools", "verify_product_ui.py"), encoding="utf-8").read()
     _calls, _imports = _danger_calls(_src)
@@ -467,9 +467,9 @@ def main() -> int:
         os.makedirs(REPORTS, exist_ok=True)
         md = ["# 「产品标识 + 空间质数结构化理解能力」界面/节点判据", "",
               "- 生成: %s (pid=%d)" % (time.strftime("%Y-%m-%d %H:%M:%S"), PID),
-              "- 工具: `tools/verify_product_ui.py` (离屏 offscreen + 真跑节点 + 真源字节级还原; 幂等可复跑)",
+              "- 工具: `tools/verify_product_ui.py` (离屏 offscreen + 真跑节点 + 唯一依据字节级还原; 幂等可复跑)",
               "- 命令: `QT_QPA_PLATFORM=offscreen /home/ubuntu/zmax/gui-venv311/bin/python tools/verify_product_ui.py`",
-              "- 真源: `%s` · `src/lerobot/manifold/prime_structure.py` · `tools/gui/veh6_config_page.py`" % REL,
+              "- 唯一依据: `%s` · `src/lerobot/manifold/prime_structure.py` · `tools/gui/veh6_config_page.py`" % REL,
               "- 结论: **%d/%d PASS**" % (len(OK), len(OK) + len(BAD)), "", "## 逐项证据", ""]
         for c in CHECKS:
             md.append("- %s [%s] %s" % ("✅" if c["ok"] else "❌", c["item"], c["name"]))

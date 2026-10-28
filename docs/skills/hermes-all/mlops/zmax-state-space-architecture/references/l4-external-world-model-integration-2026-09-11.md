@@ -1,7 +1,7 @@
 # L4 接入外部世界模型 (INTACT-JEPA) — 会话实录 2026-09-11
 
 老倪任务: 参考 github.com/zju3dv/INTACT-JEPA, 在状态空间 L4 层加 INTACT 节点, 输出直接接
-机器人硬件接口; "输入可以再下载新数据集"; 跑起来后研究如何适配 L4。
+机器人硬件接口; "输入可以再下载新数据集"; 启动后研究如何适配 L4。
 
 ## 1. INTACT 是什么 (jepa.py / module.py / direct_solver.py)
 - **免搜索** intent→action 世界模型。Direct 控制器直接输出动作, 无 CEM 采样 (每步仅 5 次前向)。
@@ -12,7 +12,7 @@
   `five_slot` = 5 段; 旧 grammar = **3 段 (576)**。
 - 论文成绩: Goal-displacement INTACT 89.39% macro SR; PushT 单域 80.22%。
 
-## 2. 环境搭建 (踩坑顺序)
+## 2. 环境搭建 (遇到问题顺序)
 ```bash
 sudo apt-get install -y libegl1 libgl1 libglfw3 libglew2.2 libosmesa6
 export PATH="/home/ubuntu/.hermes/bin:$PATH"      # ★ uv 不在 PATH → install.sh 直接报
@@ -60,7 +60,7 @@ bash scripts/install.sh cu124                     #   "Python 3.10 or uv is requ
 - **实测结果**: 官方 direct / pusht / 20 episodes = **70.0%** (论文 80.22%), 0.104 s/step,
   forward_calls 5/step; 两次独立运行 70.0% / 70.0% 一致。
 
-## 4. 官方跑通视频取证
+## 4. 官方验证通过视频取证
 - `sitecustomize.py` 注入 (`PYTHONPATH=/tmp/intact_patch`) patch
   `swm.policy.WorldModelPolicy.get_action` → 记录 `info_dict["pixels"]` 末帧, atexit 存 npz。
 - imageio 缺编码器 → 帧导出 PNG 序列 + `ffmpeg -framerate 8 -i f%04d.png -c:v libx264`。

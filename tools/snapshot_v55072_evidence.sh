@@ -23,7 +23,7 @@ gui-venv311/bin/python tools/yolo_threshold_response.py --img http://127.0.0.1:8
 gui-venv311/bin/python tools/yolo_threshold_response.py --dir zmax_data/eval_frames/live_1014_230655 --limit 4 \
   > "$DST/yolo_threshold_evalframes.txt" 2>&1
 
-# ③ 大屏 fullflow 段 (7 任务闭环结果真源)
+# ③ 大屏 fullflow 段 (7 任务闭环结果唯一依据)
 gui-venv311/bin/python - <<'PY' > "$DST/dashboard_fullflow.json" 2>&1
 import json
 d = json.load(open('zmax_data/datapush/dashboard.json'))
@@ -31,7 +31,7 @@ print(json.dumps({"schema": d.get("schema"), "generated_at": d.get("generated_at
                   "version": d.get("version"), "fullflow": d.get("fullflow")}, ensure_ascii=False, indent=1))
 PY
 
-# ④ 元任务预测 topic 真源 (信号分析可见性)
+# ④ 元任务预测 topic 唯一依据 (信号分析可见性)
 gui-venv311/bin/python - <<'PY' > "$DST/signal_analysis_meta_pred.json" 2>&1
 import json, time
 live = json.load(open('zmax_data/dataspace/live.json'))

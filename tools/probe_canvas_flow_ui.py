@@ -38,7 +38,7 @@ want = {n["id"]: (int(n["x"]), int(n["y"]), int(n.get("w", 280)), int(n.get("h",
 geo = {}
 for k, it in (getattr(m, "_items", {}) or {}).items():
     nd = getattr(it, "node", None) or {}
-    # 🔴 GUI 的 load_flow_file 会**重编节点 id** ⇒ 只能用**名字**对上真源
+    # 🔴 GUI 的 load_flow_file 会**重编节点 id** ⇒ 只能用**名字**对上唯一依据
     nid = str(nd.get("name") or nd.get("id") or k)
     try:
         p = it.pos()
@@ -47,13 +47,13 @@ for k, it in (getattr(m, "_items", {}) or {}).items():
     except Exception:                                                   # noqa: BLE001
         continue
 
-print("界面节点 %d 个 (真源 %d)" % (len(geo), len(want)))
+print("界面节点 %d 个 (唯一依据 %d)" % (len(geo), len(want)))
 ok = True
 if len(geo) < 50:
     print("❌ 界面没加载出画布 (几何拿不到)"); sys.exit(1)
 
 
-# 界面几何按名字取; 真源同名字的 (x,y,w,h)
+# 界面几何按名字取; 唯一依据同名字的 (x,y,w,h)
 JNAME = {n["id"]: str(n.get("name", "")) for n in d["nodes"]}
 JWH = {str(n.get("name", "")): (int(n.get("w", 280)), int(n.get("h", 110)))
        for n in d["nodes"] if n.get("type") not in ("bg", "row_bg")}

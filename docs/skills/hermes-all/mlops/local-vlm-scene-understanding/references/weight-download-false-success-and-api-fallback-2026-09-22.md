@@ -47,7 +47,7 @@ find $M -name '*.incomplete' | wc -l      # ③ 残片数 (0 且①>0 才算完�
    ⇒ `SceneVLM.status()` 走 `deepseek-flash` (支持 Vision) ⇒ **零下载零显存即用**。
    详见 `local-vlm-scene-understanding`
    → `references/l5-route-cloud-api-and-thinking-latency-2026-09-22.md`。
-2. **更小的等价权重**是否已下好？(smolvlm2-500m 完整在位 ⇒ 可做本地兜底)
+2. **更小的等价权重**是否已下好？(smolvlm2-500m 完整在位 ⇒ 可做本地保障)
 3. 都不行再换渠道 (内网镜像/网盘/其它 endpoint) —— **让用户给渠道**比自己硬重试快。
 
 ## 4. 同类历史 (说明这是**反复出现**的形态)
@@ -58,7 +58,7 @@ reacher.tar.zst (23.75G): 多次断流, 后由另一会话补齐
 qwen2.5-vl-3b (~6G)     : 两次尝试, 只有配置到, 0 safetensors
 ```
 
-⇒ **大文件 (>1G 级) 是该渠道的稳定薄弱点**。**一开始就留退路** (先确认云 API / 小模型兜底
+⇒ **大文件 (>1G 级) 是该渠道的稳定薄弱点**。**一开始就留退路** (先确认云 API / 小模型保障
 是否够用), 别等重试两轮才回头找替代。
 
 ## 5. 报告口径

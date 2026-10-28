@@ -70,11 +70,11 @@
   容器退出→自动诊断(查 docker logs 尾)→自动重跑; 步数停滞 N 轮→强制重启; 2000/2000→退出。
 - 跑法: `terminal(background=True, notify_on_complete=True)` 起 `/tmp/watch_remote_train.py`。
 
-## 10. f-string→shell→awk 三层转义铁律 (多次踩坑)
+## 10. f-string→shell→awk 三层转义铁律 (多次遇到问题)
 - 文件源码 `\\$3` (2 反斜杠) → f-string 渲染 `\$3` → shell 双引号内 → awk 收到 `$3` ✓
 - 文件源码 `\\\\$3` (4 反斜杠) → awk 收到 `\\$3` → `awk: unexpected character '\'` ✗
 - **验证法**: 对该行 `eval()` 看渲染结果, 不要看 repr (终端双重转义误导); 再真实执行整条 ssh 命令。
-- 复杂转义行用 patch 会再踩坑 → 用 execute_code 按行索引重建 (chr(92) 拼反斜杠) 或直接避免 awk: 远程命令输出整行 `df -h / | tail -1`, Python splitlines 解析。
+- 复杂转义行用 patch 会再遇到问题 → 用 execute_code 按行索引重建 (chr(92) 拼反斜杠) 或直接避免 awk: 远程命令输出整行 `df -h / | tail -1`, Python splitlines 解析。
 - simulink_module.py 与 studio.py 各有独立提交路径, **两处都要改** (grep 'docker run' 找全)。
 
 ## 11. 容器无头渲染 (mujoco/glfw) — rollout 视频生成三坑
@@ -97,7 +97,7 @@
 - 拉回代码 `_pull_remote_model` 写 curve 时用 `os.path.join("outputs","train",name_ts,"checkpoints")`。验证法: 容器内跑 `os.path.isdir(base+'/last/pretrained_model')`。
 
 ## 13. 飞书发文件 (mp4/media + Content-Length) — 400 与 230055
-- 飞书上传 `POST /im/v1/files` (multipart) 后发消息, 两个必踩坑:
+- 飞书上传 `POST /im/v1/files` (multipart) 后发消息, 两个必遇到问题:
   - **mp4 必须用 `msg_type: "media"` (视频消息)**, 用 "file" → 230055 "The type of file upload does not match the type of message being sent"。pdf 等其他类型用 "file"。
   - **multipart 与 JSON post 都要显式 `Content-Length` 头**, 否则 urllib 发 → HTTP 400 (python3.14 urllib 不自动算)。加 `"Content-Length": str(len(body))` 即通。
 - 上传成功标志 `r2["data"]["file_key"]`; 消息发送 `POST /im/v1/messages?receive_id_type=chat_id` with `{"receive_id": chat_id, "msg_type": msg_type, "content": json.dumps({"file_key": fkey})}`。

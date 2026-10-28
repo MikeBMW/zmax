@@ -6,7 +6,7 @@
 项目: 光模块工厂精细操作 · 对外口径:「符合 5 个场景的具身方案技术协议」
 
 > 本文件面向供应商与整机厂，约定 Z-MAX 平台在光模块精细操作场景下的**范围、交付物、接口、验收标准、里程碑**。
-> 所有验收数字引工程真源（`config/platform/zmax_perf_spec.json` 等），标注指标 id；**凡真源 `value` 为空者一律标注「待实测」**并给出实测入口，不提供未经验证的数值。
+> 所有验收数字引工程唯一依据（`config/platform/zmax_perf_spec.json` 等），标注指标 id；**凡唯一依据 `value` 为空者一律标注「待实测」**并给出实测入口，不提供未经验证的数值。
 
 ---
 
@@ -16,7 +16,7 @@
 
 本项目技术交付内容为「**符合 5 个场景的具身方案技术协议**」，即围绕以下五个场景约定功能、性能、接口与验收：
 
-| 编号 | 场景 | 说明 | 核心任务真源 |
+| 编号 | 场景 | 说明 | 核心任务唯一依据 |
 |:--|:---|:---|:---|
 | 1 | 插拔 | 电口金手指精细插装与拔出（含 FW/EEPROM 校验） | `TASK-01-FW` · `TASK-03-BI` · `TASK-04-THERMAL` · `TASK-05-ATS` |
 | 2 | 摆盘 | 周转盘 → 上料 Tray 盘（30 槽）逐颗取放 | `TASK-06-TRAY` |
@@ -24,13 +24,13 @@
 | 4 | AR 标定叠加 | 多路相机底图 + 3D 位姿叠加 + L5 视觉理解 | `TASK-07-AOI`（AR 服务 `:8797`） |
 | 5 | 数据闭环（CICD） | 边缘采集 → 中转 → 训练 → 部署 | 平台级 |
 
-> 任务配置真源：`config/tasks/tasks.json`（7 任务）。任务 ↔ 场景映射：`tools/ss_scene_switch.py`；色标：`config/topics/scene_tags.json`。
+> 任务配置唯一依据：`config/tasks/tasks.json`（7 任务）。任务 ↔ 场景映射：`tools/ss_scene_switch.py`；色标：`config/topics/scene_tags.json`。
 
 ### 1.2 本版（5.50.B 优化配置版）范围侧重
 
 5.50.B 的重点是**可配置、可标定、可诊断、可复核**，具体在本版体现为：
 
-| 项 | 内容 | 真源/判据 |
+| 项 | 内容 | 唯一依据/判据 |
 |:---|:---|:---|
 | 主参数 M（度量张量） | 把系统特性做成可标定几何量 g_ij(x)=M·G_ij(x) | `src/lerobot/manifold/metric_field.py` · 判据 23/23 |
 | 健康度 H + 引擎闭环 | 每帧标量健康度与五层闭环监督 | `src/lerobot/manifold/health.py` · 判据 20/20 |
@@ -57,7 +57,7 @@
 - 不供安全红线（急停/限速/禁区）——只读消费，不产生否决权。
 - 不供 L2 底层力控/伺服回路。
 
-> 供货边界真源：`tools/sys1_delivery.py` `SCOPE_IN`/`SCOPE_OUT`。
+> 供货边界唯一依据：`tools/sys1_delivery.py` `SCOPE_IN`/`SCOPE_OUT`。
 
 ---
 
@@ -71,10 +71,10 @@
 | 4 | 项目立项文档（5.50.B） | `docs/deliverables/立项文档_Z-MAX_5.50.B_20261013.md` | 已交付 |
 | 5 | 版本策略 | `docs/deliverables/版本策略_5.50.A_B_C.md` | 已交付 |
 | 6 | 交付文档包汇总索引 | `docs/deliverables/INDEX_5.50.B.md` | 已交付 |
-| 7 | 性能指标体系 | 真源 `config/platform/zmax_perf_spec.json`（6 组 58 条 + 8 标准） | 真源在册 |
-| 8 | 主参数 M 与健康度配置 | 真源 `config/calib/zmax_manifold.json` · `config/calib/zmax_health.json` | 真源在册 |
+| 7 | 性能指标体系 | 唯一依据 `config/platform/zmax_perf_spec.json`（6 组 58 条 + 8 标准） | 唯一依据在册 |
+| 8 | 主参数 M 与健康度配置 | 唯一依据 `config/calib/zmax_manifold.json` · `config/calib/zmax_health.json` | 唯一依据在册 |
 | 9 | 判据脚本集 | `tools/verify_{metric_main_param,engine_loop,config_to_M,node_cfg_import,ss_bus_topics}.py` | 已真跑（23/20/51/15/14 PASS） |
-| 10 | 接口契约 | 真源 `tools/sys1_delivery.py` `CONTRACT` 段 | 真源在册 |
+| 10 | 接口契约 | 唯一依据 `tools/sys1_delivery.py` `CONTRACT` 段 | 唯一依据在册 |
 
 ---
 
@@ -106,25 +106,25 @@
 | 表面检测 | 10083 | 同口径；曝光 `GET /exposure`（只读）/ `POST /exposure?us=&gain=`（写） |
 | AR 底图服务 | 8797 | `GET /api/cams` · `GET /snap/<cam>.jpg` · `GET /api/tcp` |
 
-> 端口与调用口径真源：`tools/aoi_link.py`（`PORTS={"gf":10082,"housing":10083}`）· `tools/tcp_ar_server.py`。
+> 端口与调用口径唯一依据：`tools/aoi_link.py`（`PORTS={"gf":10082,"housing":10083}`）· `tools/tcp_ar_server.py`。
 
 ### 3.4 节拍/时延接口口径
 
 | 项 | 目标值 | 说明 |
 |:---|:---|:---|
-| 单颗 CT（PVT） | ≤3.15s | 起止口径写死：从吸取离盘到下一位就位 |
+| 单颗 CT（PVT） | ≤3.15s | 起止口径预先固定：从吸取离盘到下一位就位 |
 | 动作块下发 | ≥10Hz | **待实测标定**（缺口：未纳入诊断断言，需补） |
 | 型号识别单帧 | ≤100ms | 统一取子项口径 |
 
-> 接口契约真源：`tools/sys1_delivery.py` `CONTRACT`。
+> 接口契约唯一依据：`tools/sys1_delivery.py` `CONTRACT`。
 
 ---
 
 ## 4. 验收标准
 
-### 4.1 主验收判据（真源）
+### 4.1 主验收判据（唯一依据）
 
-| 指标 | 判据 | 真源 id | 阶段 |
+| 指标 | 判据 | 唯一依据 id | 阶段 |
 |:---|:---|:---|:---|
 | 取放成功率 | **≥99%**（人工干预即记不完整成功） | `perf.success_rate` | PVT |
 | 单颗节拍 CT | **≤3.15s**（五段预算合计 ≤3.15s） | `perf.cycle_s` / `perf.cycle_split` | PVT |
@@ -136,7 +136,7 @@
 
 ### 4.2 全量指标验收
 
-以真源 `config/platform/zmax_perf_spec.json` **全部 58 条 `perf.*`** 为验收基准，分 **EVT / DVT / PVT** 三阶段，判据方法取各指标 `how` 字段。
+以唯一依据 `config/platform/zmax_perf_spec.json` **全部 58 条 `perf.*`** 为验收基准，分 **EVT / DVT / PVT** 三阶段，判据方法取各指标 `how` 字段。
 
 | 组 | 名称 | 条数 |
 |:--|:---|--:|
@@ -163,38 +163,38 @@
 
 ### 4.4 引用标准
 
-ISO 9283 · ISO 230-2 · ISO 9787 · IEC 61300-3-35 · IEC 61753 / GR-326 · ANSI/ESD S20.20 · ISO 14644-1 · ISO 13849-1（真源 `zmax_perf_spec.json#standards`，共 8 项）。
+ISO 9283 · ISO 230-2 · ISO 9787 · IEC 61300-3-35 · IEC 61753 / GR-326 · ANSI/ESD S20.20 · ISO 14644-1 · ISO 13849-1（唯一依据 `zmax_perf_spec.json#standards`，共 8 项）。
 
 ---
 
 ## 5. 待实测清单（强制知会 · 诚实列出）
 
-下列项在工程真源中**尚无实测值**，供应商报价与承诺须以「目标值 + 实测入口」为依据，不得引用未经验证的实测数据：
+下列项在工程唯一依据中**尚无实测值**，供应商报价与承诺须以「目标值 + 实测入口」为依据，不得引用未经验证的实测数据：
 
 | # | 项 | 现状 | 实测入口 |
 |:--|:---|:---|:---|
-| 1 | **取放成功率 ≥99%** | **待现场实测** — 真源 `perf.success_rate` 为 PVT 目标，无实测值；需现场连续作业逐件记录成功/干预 | SOR §4.1 判据 + `perf.success_rate.how` |
-| 2 | **单颗节拍 ≤3.15s** | **待现场实测** — 真源 `perf.cycle_s` 为 PVT 目标；SIL 阶段实测摆盘已超口径 | `perf.cycle_s.how`（CT 起止：吸取离盘→下一位就位） |
-| 3 | 全部 58 条 `perf.*` | **待实测**（真源 `value` 为空） | 逐条 `how` 字段 |
+| 1 | **取放成功率 ≥99%** | **待现场实测** — 唯一依据 `perf.success_rate` 为 PVT 目标，无实测值；需现场连续作业逐件记录成功/干预 | SOR §4.1 判据 + `perf.success_rate.how` |
+| 2 | **单颗节拍 ≤3.15s** | **待现场实测** — 唯一依据 `perf.cycle_s` 为 PVT 目标；SIL 阶段实测摆盘已超口径 | `perf.cycle_s.how`（CT 起止：吸取离盘→下一位就位） |
+| 3 | 全部 58 条 `perf.*` | **待实测**（唯一依据 `value` 为空） | 逐条 `how` 字段 |
 | 4 | 目标值本身待定/待确认 | `perf.contact_pressure` · `perf.mate_life` · `perf.coplanarity` · `perf.conn_mate_force` · `perf.opm_res`(采样率口径) · `perf.cleanliness` · `perf.temp_hum` · `perf.noise` · `perf.mtbf` · `perf.anomaly_recovery` | 需端子/连接器厂家或现场条件给定 |
-| 5 | 站点几何 | `T_base_cam` / `plane_z` / `cell_geometry.points` 未标定（真源 null） | `config/calib/zmax_calib.json` 对应键 + `_reason` 中的现场标定命令 |
+| 5 | 站点几何 | `T_base_cam` / `plane_z` / `cell_geometry.points` 未标定（唯一依据 null） | `config/calib/zmax_calib.json` 对应键 + `_reason` 中的现场标定命令 |
 | 6 | 动作块下发频率 ≥10Hz | 未纳入诊断断言 | 需补断言并实测标定 |
 | 7 | 深度通道帧率 | 扫描值 0 fps / 卡死 | `curl -s http://127.0.0.1:8791/api/cams` |
 
-> 缺口真源：`tools/sys1_delivery.py` `GAPS`；环境项 `perf.*` F 组真源 `value` 为空。
+> 缺口唯一依据：`tools/sys1_delivery.py` `GAPS`；环境项 `perf.*` F 组唯一依据 `value` 为空。
 
 ---
 
 ## 6. 里程碑（EVT / DVT / PVT）
 
-| 阶段 | 名称 | 目标指标（真源口径） | 计划节点 |
+| 阶段 | 名称 | 目标指标（唯一依据口径） | 计划节点 |
 |:---|:---|:---|:---|
 | EVT | 对内 Demo | 取放成功率 ≥90% · 单颗 20–25s | 2026-10-30 |
 | DVT | 对外 POC 功能测试 | 成功率 ≥95% · 单颗 ≤8s · 连续 ≥6 盘无干预 | 2026-12-20 |
 | — | 技术协议/商务备忘签订 | — | 2026-12-25 |
 | PVT | 达到对外交付指标 | CT ≤3.15s · 成功率 ≥99% · 连续 ≥12 盘 | 2027-04-15 |
 
-> 里程碑真源：`config/platform/zmax_project_bom.json` `project.milestones`。
+> 里程碑唯一依据：`config/platform/zmax_project_bom.json` `project.milestones`。
 
 ---
 
@@ -213,4 +213,4 @@ ISO 9283 · ISO 230-2 · ISO 9787 · IEC 61300-3-35 · IEC 61753 / GR-326 · ANS
 
 ---
 
-*本文件所引验收数字均来自工程真源 `config/platform/zmax_perf_spec.json` 等；未实测项一律标注「待实测」并给出入口。*
+*本文件所引验收数字均来自工程唯一依据 `config/platform/zmax_perf_spec.json` 等；未实测项一律标注「待实测」并给出入口。*

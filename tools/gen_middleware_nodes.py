@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """生成状态空间的**每个节点的模块** → src/lerobot/middleware/nodes/<n_id>.py
 
-为什么是生成物: 节点/端口/连线以工程 JSON 为唯一真源。JSON 变了(加节点、改接线),
+为什么是生成物: 节点/端口/连线以工程 JSON 为唯一依据。JSON 变了(加节点、改接线),
 跑一次本工具就把模块补齐/更新, 手写 75 个文件必然漂移。
 
 生成物里**看得见的东西**(右键打开就是它):
@@ -33,7 +33,7 @@ if SRC not in sys.path:
 HEADER = '''# -*- coding: utf-8 -*-
 """%NAME%  ·  节点 %ID%%LAYER%
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
 %WIRING%
 
 输出 / 输入代码:

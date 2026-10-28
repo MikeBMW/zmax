@@ -94,7 +94,7 @@ def main():
 
     print("④ 单调性归几何算子, provider 只判响应")
     # 🔴 别指望未训练网络让"预测vs实际"单调: d_se3 里 0.109 的常数来自随机 ξ,
-    #    输入偏移 0~0.05 根本撼不动它 (同一个错犯过两次, 这里写死判据分工)。
+    #    输入偏移 0~0.05 根本撼不动它 (同一个错犯过两次, 这里预先固定判据分工)。
     from lerobot.manifold.manifold_layer import ContactManifold
     _c = ContactManifold()
     _I = np.eye(4)

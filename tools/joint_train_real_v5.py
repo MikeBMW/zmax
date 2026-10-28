@@ -242,7 +242,7 @@ def main() -> int:
         n = torch.from_numpy(np.stack(nobs)).float().to(dev)
         ac = torch.from_numpy(np.stack(act)).float().to(dev)
         px = torch.rand(len(o), 3, 224, 224, device=dev)
-        # ★ 口径对齐: 引擎语义 act = clip(u/K_ACT) → 喂给 action_encoder 的 8 维
+        # ★ 口径对齐: 引擎语义 act = clip(u/K_ACT) → 提供给 action_encoder 的 8 维
         sem = torch.clamp(ac[:, :3] / K_ACT, -1, 1)
         act8 = F.pad(sem, (0, 5))                          # 3 → 8 维 (语义正确)
         return px, act8, o, n, ac, mem_vec.unsqueeze(0).repeat(len(o), 1).to(dev)

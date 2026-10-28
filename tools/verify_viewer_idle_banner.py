@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """验证: 引擎未运行时的"静态初始帧"必须被压上横幅提示 (老倪两次误读成"光模块没插进槽")
 
-① 无引擎 + 仿真源 → 落到 idle 渲染帧, 画面顶部要有横幅 (压暗 + 橙字), info.engine=False
+① 无引擎 + 仿唯一依据 → 落到 idle 渲染帧, 画面顶部要有横幅 (压暗 + 橙字), info.engine=False
 ② 有引擎实况帧 → 原样显示, **不许**加横幅, info.engine=True
 跑法: gui-venv311/bin/python tools/verify_viewer_idle_banner.py
 """

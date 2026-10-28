@@ -4,7 +4,7 @@
 
 判据:
   ① 画布: n_hil 存在 · 在 L5 行带 · DeepSeek 右侧 · 零重叠 · 1 入线 1 出线且全前向
-  ② 接线: node_logic 注册命中 + _EXTERNAL_LOC 指向真源码且文件在
+  ② 接线: node_logic 注册命中 + _EXTERNAL_LOC 指向唯一依据码且文件在
   ③ 上行: build_snapshot() 全真值 (obs7/帧龄/6 事件/4 分层/画布含 hil_node) → POST relay ok → 云端回读一致
   ④ 下行: 发 from=hil_web 指示 → 处理 → 云端回执 from='hil_bridge' 可见
   ⑤ 红线: 动作类指示 → refused_motion + 落审计 reports/hil_instructions.jsonl
@@ -71,7 +71,7 @@ reg2 = NL.match_node("人机在环") if hasattr(NL, "match_node") else None
 chk("_reg 注册命中 (搜索'HIL'/'人机在环')", bool(reg) and bool(reg2), "命中=%s" % (reg or reg2))
 loc = NL.get_node_external_symbol("n_hil") if hasattr(NL, "get_node_external_symbol") else None
 src = os.path.join(ROOT, "src/lerobot/policies/left_right/state_space/hil_bridge.py")
-chk("_EXTERNAL_LOC 指向真源码且在盘", bool(loc) and os.path.isfile(src), "symbol=%s · 文件%s" % (loc, "在" if os.path.isfile(src) else "缺"))
+chk("_EXTERNAL_LOC 指向唯一依据码且在盘", bool(loc) and os.path.isfile(src), "symbol=%s · 文件%s" % (loc, "在" if os.path.isfile(src) else "缺"))
 
 print("③ 上行 (状态真实 + 云端回读)")
 import hil_bridge as HB                                                   # noqa: E402

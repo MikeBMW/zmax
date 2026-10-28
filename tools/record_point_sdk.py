@@ -29,7 +29,7 @@ try:                                            # 姿态 a b c 的唯一口径 (
     _sys_pp.path.insert(0, _os_pp.path.dirname(_os_pp.path.abspath(__file__)))
     from pt_pose import abc_deg as _abc_deg
 except Exception:                               # noqa: BLE001
-    def _abc_deg(_q):                           # 兜底: 读不到就留空, 绝不编数
+    def _abc_deg(_q):                           # 保障: 读不到就留空, 绝不编数
         return None
 import statistics
 import sys

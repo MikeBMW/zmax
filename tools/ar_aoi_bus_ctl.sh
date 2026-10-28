@@ -2,7 +2,7 @@
 # ar_aoi_bus_ctl.sh — AR/AOI 信号总线 (ar_aoi_bus.py) 常驻拉取器 起/停/看
 #
 # 为什么要有它: 「信号分析对应 AR 场景下的所有空间点位」要**活着** —— 点位/TCP 真值/RealSense 相机系
-# 是外部真源, 得有人周期性地读进总线文件 (zmax_data/ar_live/ar_aoi_live.json), 信号分析页才有实时值。
+# 是外部唯一依据, 得有人周期性地读进总线文件 (zmax_data/ar_live/ar_aoi_live.json), 信号分析页才有实时值。
 # 画布节点「🔍 光学质量检测」自己发的话题是节点执行时**顺带**并进同一个文件的 (publish 合并, 不互相覆盖)。
 #
 # 用法: tools/ar_aoi_bus_ctl.sh start|stop|status|once   (once = 拉一次就退, 调试用)

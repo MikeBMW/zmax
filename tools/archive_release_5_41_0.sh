@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # 归档 v5.41.0 产物 → ~/zmax/zmax_data/release_5.41.0_YYYYMMDD
-#   本轮主题: 3D 场景页可用性 — 台面几何与场景真源同源 / 两个侧栏向左折叠 / 八阶段面板折叠成一行
+#   本轮主题: 3D 场景页可用性 — 台面几何与场景唯一依据同源 / 两个侧栏向左折叠 / 八阶段面板折叠成一行
 #             / 删两处说明文字 / 修「点插拔看着跟摆盘一样」(切场景原来不重建几何)
-#   约定沿用 archive_release_5_34_0.sh: 代码 + 真源快照 + 证据 + 文档 + 画布备份, 末尾 MANIFEST.md + sha256sums.txt
+#   约定沿用 archive_release_5_34_0.sh: 代码 + 唯一依据快照 + 证据 + 文档 + 画布备份, 末尾 MANIFEST.md + sha256sums.txt
 set -u
 REPO=/home/ubuntu/zmax
 DST=$HOME/zmax/zmax_data/release_5.41.0_$(date +%Y%m%d)
@@ -18,7 +18,7 @@ cp -f VERSION.md docs/design/v5.41.0_summary.txt "$DST/docs/" 2>/dev/null
 ls "$DST/gui" | sed 's/^/  gui: /'
 ls "$DST/tools/tests" | sed 's/^/  tests: /'
 
-echo "=== ② 生成物真源 (场景库 + 仿真真源 + 配置) ==="
+echo "=== ② 生成物唯一依据 (场景库 + 仿真唯一依据 + 配置) ==="
 mkdir -p "$DST/config/scenes" "$DST/config/mcd" "$DST/config/calib" "$DST/config/orders"
 cp -f data/scene/scenes/index.json "$DST/config/scenes/" 2>/dev/null
 for s in SS-EPI-CORNER SS-TRAY-PLACE SIM-PEG-L4 SCN-07-UP SCN-01-PEG; do
@@ -33,9 +33,9 @@ cp -f config/mcd/*.json "$DST/config/mcd/" 2>/dev/null
 cp -f config/calib/*.json "$DST/config/calib/" 2>/dev/null
 cp -f config/orders/*.json "$DST/config/orders/" 2>/dev/null
 cp -f config/library_curation.json "$DST/config/" 2>/dev/null
-find "$DST/config" -type f | wc -l | sed 's/^/  配置真源文件: /'
+find "$DST/config" -type f | wc -l | sed 's/^/  配置唯一依据文件: /'
 
-echo "=== ③ 画布真源 + 改动前备份 (回滚面) ==="
+echo "=== ③ 画布唯一依据 + 改动前备份 (回滚面) ==="
 cp -fL src/lerobot/engineering/flows/state_space_obs.json "$DST/canvas/" 2>/dev/null
 ls -t src/lerobot/engineering/flows/_archive/*.json 2>/dev/null | head -1 | while read -r f; do
   cp -f "$f" "$DST/canvas/$(basename "$f")"
@@ -63,7 +63,7 @@ mkdir -p "$DST/evidence/scripts"; cp -f "$A"/scripts/*.py "$DST/evidence/scripts
   for f in test_scene_pick_link test_sim_real_3d_scene_view; do
     echo "### $f"; tail -2 "$A/$f.log" 2>/dev/null; echo
   done
-  echo "## 版本/真源判据"
+  echo "## 版本/唯一依据判据"
   tail -1 "$A/integrity_check.log" 2>/dev/null
   tail -1 "$A/scene_registry_check.log" 2>/dev/null
   tail -1 "$A/sim_scene_def_check.log" 2>/dev/null
@@ -81,7 +81,7 @@ cd "$DST" || exit 1
   echo "# v5.41.0 归档 MANIFEST ($(date '+%F %T %Z'))"
   echo
   echo "- 仓库: MikeBMW/zmax @ $(cd "$REPO" && git rev-parse --short HEAD) (main) · tag v5.41.0"
-  echo "- 主题: 3D 场景页可用性 — 台面几何与场景真源同源 / 侧栏左折叠 / 八阶段面板折叠 / 切场景真重建几何"
+  echo "- 主题: 3D 场景页可用性 — 台面几何与场景唯一依据同源 / 侧栏左折叠 / 八阶段面板折叠 / 切场景真重建几何"
   echo "- 判据: 折叠 20 项 · 切场景 13 项 · 点选联动 26 项 · Sim&Real 页 92 项 · integrity 五处一致 · 场景库全绿"
   echo "- 场景快照: zmax_data/snapshots/scene_20261010_171513.tar.gz (43 文件, 自校验过)"
   echo "- 桌面版: tag 触发 build-win-exe.yml 双平台出包"

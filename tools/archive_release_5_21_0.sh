@@ -6,7 +6,7 @@
 #   ⑤ 任务×状态空间工程绑定 (段→节点机械推导 / 6 档位 / 一个工程多任务)
 #   ⑥ 配置落到画布节点「标定诊断测量·主参数M」(改名 + 7 段挂载)  ⑦ 结构指纹修死循环
 #   ⑧ GUI: VEH.6 新页 + 返回主窗口 + 任务表列 + 节点写入按钮    ⑨ 操作面 CLI
-# 约定沿用 archive_release_5_15_36.sh: 代码 + 真源快照 + 证据 + 文档 + 画布备份, 末尾 MANIFEST.md + sha256sums.txt
+# 约定沿用 archive_release_5_15_36.sh: 代码 + 唯一依据快照 + 证据 + 文档 + 画布备份, 末尾 MANIFEST.md + sha256sums.txt
 set -u
 REPO=/home/ubuntu/zmax
 DST=$HOME/zmax/zmax_data/release_5.21.0_$(date +%Y%m%d)
@@ -24,16 +24,16 @@ cp -f src/lerobot/engineering/nodes/library.py "$DST/src/" 2>/dev/null
 ls "$DST/tools" | wc -l | sed 's/^/  tools 文件: /'
 ls "$DST/gui" | wc -l | sed 's/^/  gui 文件: /'
 
-echo "=== ② 配置真源快照 (生成物是真源, 必须带) ==="
+echo "=== ② 配置唯一依据快照 (生成物是唯一依据, 必须带) ==="
 mkdir -p "$DST/config/mcd" "$DST/config/tasks" "$DST/config/orders" "$DST/config/calib"
 cp -f config/mcd/zmax_mcd.json config/mcd/param_registry.json config/mcd/match_matrix.json "$DST/config/mcd/" 2>/dev/null
 cp -f config/tasks/tasks.json "$DST/config/tasks/" 2>/dev/null
 cp -f config/orders/BS_*.json "$DST/config/orders/" 2>/dev/null
 cp -f config/ss_task_binding.json "$DST/config/" 2>/dev/null
 cp -f config/calib/zmax_manifold.json config/calib/zmax_calib.json "$DST/config/calib/" 2>/dev/null
-find "$DST/config" -type f | wc -l | sed 's/^/  配置真源文件: /'
+find "$DST/config" -type f | wc -l | sed 's/^/  配置唯一依据文件: /'
 
-echo "=== ③ 画布真源 + 最近备份 (改名的回滚面) ==="
+echo "=== ③ 画布唯一依据 + 最近备份 (改名的回滚面) ==="
 cp -f src/lerobot/engineering/flows/state_space_obs.json "$DST/canvas/" 2>/dev/null
 ls -t src/lerobot/engineering/flows/_archive/*cfg_node_sync*.json 2>/dev/null | head -1 | while read -r f; do
   cp -f "$f" "$DST/canvas/$(basename "$f")"

@@ -44,7 +44,7 @@ def chk(cond, label, extra=""):
 
 
 print("═══ ⏭ 单步跟随 (高亮 + 画布跳转) 验证 ═══")
-print("画布真源: %d 节点 / %d 连线" % (len(spec["nodes"]), len(spec["links"])))
+print("画布唯一依据: %d 节点 / %d 连线" % (len(spec["nodes"]), len(spec["links"])))
 m = SM.SimulinkModule()
 err = None
 try:

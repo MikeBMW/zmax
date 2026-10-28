@@ -67,7 +67,7 @@ sim._l3_forward = _wrapped
 原文: `⚠️ L3 推理失败: Failed to instantiate processor step 'device_processor' with config:
 {'device': 'cuda', 'float_dtype': None}`。
 
-根因: ckpt 里保存的预处理器 pipeline 的 `device_processor.device` 写死 `cuda` →
+根因: ckpt 里保存的预处理器 pipeline 的 `device_processor.device` 预先固定 `cuda` →
 `make_pre_post_processors(policy_cfg, pretrained_path=ckpt)` 在**无可见 CUDA 的环境实例化就失败** →
 整段加载中断 → `return None` 静默退解析链; 且**类级缓存赋值语句排在失败语句之后** ⇒ 每帧重试整段加载
 (625M × 每帧)。
@@ -103,4 +103,4 @@ pre, post = make_pre_post_processors(
 - **探针打桩要打印失败原因**: 目标类/函数名按实现核对 (`IntactIntentService` 不是 `IntactPolicyService`;
   `build_skill_ctx` 是模块级函数不是类方法), 打桩失败写进报告 (`打桩失败: [...]`) 而不是静默跳过。
 - **改探针脚本后回读验证**: 用 python 字符串替换改脚本会**静默 no-op**; 改完 `grep -c "<新标记>"` 确认,
-  否则报告里的"已打印项"其实是空的。
+  否则报告里的"已打印项"实际是空的。

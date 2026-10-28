@@ -4,7 +4,7 @@ NTP回拨8h(勿动RTC)→用monotonic; 判活判'未来时间戳'; cron ticker�
 §
 分层: L5造数据/L4认知/L3调度/L2检测; SigLIP768d+四头; from-scratch崩
 §
-交付前自跑通; 改文件必回读
+交付前自验证通过; 改文件必回读
 §
 L5=DeepSeek视觉:短提示+小JSON; timeout≥300
 §
@@ -26,7 +26,7 @@ YOLO在役=软链yolo_peg_live.pt; 瓶颈=数据; 相机独占⇒检测同进程
 §
 记忆五层: L2/L3/L4+总装Qwen(SS_MACRO); 势场喂obs[0:3]
 §
-真源calib.json→zmax_params.py; 训练=joint_train_all.py --only L4,L3,L2
+唯一依据calib.json→zmax_params.py; 训练=joint_train_all.py --only L4,L3,L2
 §
 L5规划器/safety=left_right/state_space/{planner,safety}.py; INTACT须常驻
 §
@@ -42,15 +42,15 @@ GPU掉载主因=每步CPU>计算→静音日志+workers↑
 §
 控制台禁反复重启GUI; 改码攒批(含字体)
 §
-工程库=zmax_engineering.db(单文件=一套工程; build|check; 8798); 真源=zmax/sources/; 改画布后: ss_task_bind→space-save→db build→两check
+工程库=zmax_engineering.db(单文件=一套工程; build|check; 8798); 唯一依据=zmax/sources/; 改画布后: ss_task_bind→space-save→db build→两check
 §
 我=主节点(工控机+Orin); AOI.23.23=10082/10083(禁84/85); 更新=aoi_remote_deploy.py
 §
 动作授权只从8793; 代发前先授权
 §
-位姿真源=tcp_out/latest.json(全0=陈旧)
+位姿唯一依据=tcp_out/latest.json(全0=陈旧)
 §
-运动安全: 速度口径mm/s 1~1000(4处收口含技能speed_max); 前置须idle+automatic; 真源web/station.html; 腿上限须重启容器; 清8793授权; 新点位老倪先做; 台账INCIDENT-INDEX.md; '要碰撞'先agent_all_stop.py
+运动安全: 速度口径mm/s 1~1000(4处收口含技能speed_max); 前置须idle+automatic; 唯一依据web/station.html; 腿上限须重启容器; 清8793授权; 新点位老倪先做; 台账INCIDENT-INDEX.md; '要碰撞'先agent_all_stop.py
 §
 AR=8797: 底图4相机=8791(arm/gold/surface)+本机D435; /api/cams·/snap/<k>.jpg; L5=ar_l5_understand.py桥; 3D「🥽AR」?cam=arm
 §
@@ -70,4 +70,4 @@ AR=8797: 底图4相机=8791(arm/gold/surface)+本机D435; /api/cams·/snap/<k>.j
 §
 版本号不自主升级(只按老倪指定); 当前5.50.730代号「北斗七星版」(Release同署)
 §
-专利12件·功能渠道74/74; 真源config/patents/patent_registry.json; patent_center.py --coverage/--export; 文档docs/patents
+专利12件·功能渠道74/74; 唯一依据config/patents/patent_registry.json; patent_center.py --coverage/--export; 文档docs/patents

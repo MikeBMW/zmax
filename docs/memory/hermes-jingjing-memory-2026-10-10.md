@@ -4,7 +4,7 @@ NTP回拨8h(勿动RTC)→节拍用monotonic,负帧龄拒用
 §
 分层: L5定方向造数据/L4认知/L3调度/L2检测; 主干=SigLIP768d+四头; from-scratch崩
 §
-交付前自跑通; GPU不空转; 改文件必回读核验; 新脚本须真导入真跑
+交付前自验证通过; GPU不空转; 改文件必回读核验; 新脚本须真导入真跑
 §
 长命令/杀进程一律写脚本(内联会杀自己shell); sudo免密
 §
@@ -32,7 +32,7 @@ YOLO在役=软链yolo_peg_live.pt; 瓶颈是数据
 §
 记忆五层: L2/L3/L4+总装Qwen(SS_MACRO); 势场喂obs[0:3]
 §
-真源calib.json→zmax_params.py; 全系统训练=joint_train_all.py --only L4,L3,L2; LoRA=lora_inject.py
+唯一依据calib.json→zmax_params.py; 全系统训练=joint_train_all.py --only L4,L3,L2; LoRA=lora_inject.py
 §
 L5规划器/safety=left_right/state_space/{planner,safety}.py; INTACT须常驻
 §
@@ -52,13 +52,13 @@ GPU掉载主因=每步CPU开销>计算(非数据/显存)→静音日志+workers�
 §
 场景叠加: overlay_spec按origin存框; 手眼TSAI闭环1.74mm
 §
-工程库=data/database/zmax/zmax_engineering.db(单文件=一套工程; engineering_db.py build|check; 8798; GUI只认.db); 真源=zmax/sources/(config/feature.dbc/画布=符号链接)
+工程库=data/database/zmax/zmax_engineering.db(单文件=一套工程; engineering_db.py build|check; 8798; GUI只认.db); 唯一依据=zmax/sources/(config/feature.dbc/画布=符号链接)
 §
 我=主节点: 工控机+Orin全归我; AOI(.23.23)=10082/10083(禁10084/85); 更新=aoi_remote_deploy.py; 通道=agent_hub+station_cmd.py
 §
 动作授权只从8793; 代发前先授权
 §
-位姿真源=zmax_data/rokae_sdk/tcp_out/latest.json(全0=陈旧⇒restart容器); 8793页=tools/web/station.html
+位姿唯一依据=zmax_data/rokae_sdk/tcp_out/latest.json(全0=陈旧⇒restart容器); 8793页=tools/web/station.html
 §
 运动安全: 抬升闸已放开(10-09口授;仍需慢速+警报在先); 点1~7同平面z=0.1727; 腿速实际≈名义/10(要快给1000); 危险/新点位老倪先做; 台账INCIDENT-INDEX.md; 听'要碰撞'先agent_all_stop.py
 §

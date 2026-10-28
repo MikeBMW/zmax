@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 桌面快捷方式安装/核验 — 真源入库, 一键把 ~/Desktop 与应用菜单恢复成正确内容
+# 桌面快捷方式安装/核验 — 唯一依据入库, 一键把 ~/Desktop 与应用菜单恢复成正确内容
 #
 # 用法:
 #   bash tools/desktop/install_launchers.sh          # 安装/修复 + 核验
@@ -7,7 +7,7 @@
 #
 # 为什么要有这个脚本(2026-10-08 事故): 家目录整合把仓库从 zmax_rel/ 收进 zmax/ 后,
 #   ~/Desktop/XSpace-Studio.desktop 里 Exec 还写着 /home/ubuntu/zmax_rel/... (已不存在)
-#   ⇒ 双击零反应(不报错、不弹窗)。快捷方式真源入库 + 这个脚本, 以后改路径不会再丢。
+#   ⇒ 双击零反应(不报错、不弹窗)。快捷方式唯一依据入库 + 这个脚本, 以后改路径不会再丢。
 set -u
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHECK=0; [ "${1:-}" = "--check" ] && CHECK=1
@@ -50,7 +50,7 @@ if [ "$CHECK" = 1 ]; then
     echo "  (--check: 未改动)"; exit $fail
 fi
 
-echo "════ ② 按真源安装/修复 ════"
+echo "════ ② 按唯一依据安装/修复 ════"
 mkdir -p "$DESK" "$APPS"
 install -m755 "$SRC_DIR/XSpace-Studio.desktop" "$DESK/XSpace-Studio.desktop"
 install -m755 "$SRC_DIR/XSpace-Studio.desktop" "$APPS/XSpace-Studio.desktop"

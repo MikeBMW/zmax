@@ -14,7 +14,7 @@ ROS2 程序不方便」+「同时兼容现有 ROS2 SRV 框架」。
   GET  /status                     → 关节/速度/力矩/TCP(endInRef)/模式/电源 (只读)
   POST /reset                      → moveReset (SDK 接管前置; 技能坑 #1)
   POST /move_pose  {p,q,speed,dry} → dry 默认 true (只算不下发); dry=false 才真发 (moveAppend+moveStart)
-  POST /stop                       → stopMove 兜底
+  POST /stop                       → stopMove 保障
 安全: 默认 dry; 真下发前由 **4060 侧统一安全闸**(Δ守卫/限幅/现场闸门)判定; 本桥只做 SDK 收口。
 资源: CPUQuota=20% · MemoryMax=300M · Nice=10 (不打搅产线)
 """

@@ -9,7 +9,7 @@
   ② 接口就绪: 引擎侧场景理解模块 (src/.../state_space/scene_vlm.py) 可导入 + 用到哪一路后端
   ③ 凭据就绪: DeepSeek API key (本机唯一可用云端大模型) 是否配置 (只报有无, 不打印密钥)
   ④ 显存预算: 3B 级 VLM 上卡需要多少空闲显存 (提示与训练错峰, 不抢训练 GPU)
-  ⑤ 配置来源: config/robot/zmax_robot_spec.json + calib 注册表 → 大模型层提示词/几何上下文来源单一真源
+  ⑤ 配置来源: config/robot/zmax_robot_spec.json + calib 注册表 → 大模型层提示词/几何上下文来源单一唯一依据
 
 输出 JSON 供编排器取证; 有缺项时退出码 1 (诚实报缺, 不编造)。
 """
@@ -118,7 +118,7 @@ def check() -> dict:
     except Exception as e:                                                  # noqa: BLE001
         out["gpu"] = {"error": f"{type(e).__name__}: {e}"}
 
-    # ⑤ 单一真源 (大模型层提示词里的几何/参数不许另写一份)
+    # ⑤ 单一唯一依据 (大模型层提示词里的几何/参数不许另写一份)
     spec = os.path.join(ROOT, "config/robot/zmax_robot_spec.json")
     calib = os.path.join(ROOT, "config/calib/zmax_calib.json")
     out["single_source"] = {"robot_spec": os.path.relpath(spec, ROOT) if os.path.exists(spec) else None,
@@ -127,8 +127,8 @@ def check() -> dict:
     # 判定: HF 缓存里只认"要从网上下的" (Qwen VL / SmolVLM 参考权重);
     #      L4/L3/L2 只看**本机在役权重**是否在位 (它们在 stable-wm-cache / models / outputs, 不在 HF 缓存)
     gaps = []
-    # 🛠 2026-09-23 老倪: 全量 pipeline 跑通优先 —— qwen2.5-vl-3b 按**既定口径不启用**
-    #   (L5 场景理解走 DeepSeek Vision API, 本地兜底 = smolvlm2-500m; 3B VL 需 8GB 显存, 8G 卡勿试),
+    # 🛠 2026-09-23 老倪: 全量 pipeline 验证通过优先 —— qwen2.5-vl-3b 按**既定口径不启用**
+    #   (L5 场景理解走 DeepSeek Vision API, 本地保障 = smolvlm2-500m; 3B VL 需 8GB 显存, 8G 卡勿试),
     #   所以它只是 informational, **不算缺口** (原先把 gap 计成失败 → LLM 阶段 rc=1 拖垮整链)。
     for k in ("smolvlm2-500m",):
         v = (out.get("weights") or {}).get(k) or {}
@@ -164,7 +164,7 @@ def main() -> int:
     g = r["gpu"]
     if "error" not in g:
         print(f"  显存: 空闲 {g['free_mb']} MB / 3B VL 级约需 {g['qwen3b_needs_mb']} MB → {g['verdict']}")
-    print(f"  单一真源: robot_spec={r['single_source']['robot_spec']} calib={r['single_source']['calib']}")
+    print(f"  单一唯一依据: robot_spec={r['single_source']['robot_spec']} calib={r['single_source']['calib']}")
     print("─" * 76)
     print("✅ 无缺口" if not r["gaps"] else "⚠️ 缺口: " + "; ".join(r["gaps"]))
     print(json.dumps(r, ensure_ascii=False))

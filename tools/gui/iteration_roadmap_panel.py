@@ -5,7 +5,7 @@
 老倪原话: 「按照控制台的产品迭代 roadmap phase 0开始 到phase 4 通过元任务的升级组合, 逐步实现每个阶段的
 主要性能指标。我要你的迭代路线图, 在评估分析功能区, 迭代验证, 对比分析」
 
-本控件**只显示不计算** (与 studio.EvalModule 同一条纪律: 一处真源, 多处显示), 真源就一个文件:
+本控件**只显示不计算** (与 studio.EvalModule 同一条纪律: 一处唯一依据, 多处显示), 唯一依据就一个文件:
   zmax_data/eval/iteration_roadmap.json   (由 tools/iteration_roadmap.py 生成 — 本控件只读它)
 
 三条硬纪律 (与全站一致):
@@ -20,7 +20,7 @@
   (a) 组合迭代   Phase 0→4 逐阶段一行: 阶段/主题/指标数/元任务组合(carried·added·upgraded, 点击行折叠展开)/总数量/上阶段增量/准入门
   (b) 迭代验证   逐阶段 实测 vs 目标 + **配置完备性核验** (coverage N/N · missing/extra 明细 · 能否作改配置依据) + run.mode(实跑/未跑+原因)
   (c) 对比分析   ① 场景×阶段矩阵 (并列 / 只看 FW / 只看 TRAY) ② 两场景逐阶段达标率 ③ 组合增量对比 ④ 与基线 5.50.735 对比(提升/持平/回退)
-  真源: zmax_data/eval/scene_phase_iteration.json (tools/scene_phase_iteration.py 产出) · 独立『🔄 重跑场景迭代』按钮
+  唯一依据: zmax_data/eval/scene_phase_iteration.json (tools/scene_phase_iteration.py 产出) · 独立『🔄 重跑场景迭代』按钮
   ⇒ 缺失/未测一律显「尚未生成 / 未测」,**绝不显示假 0**。
 
 自检 / 截图 (任一可用):
@@ -123,7 +123,7 @@ class IterationRoadmapPanel(QGroupBox):
         # 头部: 元信息 (版本/基线/生成时间/生成者) + 动作按钮
         head = QHBoxLayout()
         head.setSpacing(10)
-        self.lb_meta = QLabel("真源: —")
+        self.lb_meta = QLabel("唯一依据: —")
         self.lb_meta.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.lb_meta.setWordWrap(True)
         self.lb_meta.setStyleSheet(f"color:{C_GRAY}; font-size:14px; border:none;")
@@ -216,7 +216,7 @@ class IterationRoadmapPanel(QGroupBox):
         v.addWidget(self.vtab, 1)
         return w
 
-    VCOLS = ["阶段", "性能指标", "实测值", "单位", "目标", "判定", "证据类", "样本量", "帧龄(s)", "真源/备注"]
+    VCOLS = ["阶段", "性能指标", "实测值", "单位", "目标", "判定", "证据类", "样本量", "帧龄(s)", "唯一依据/备注"]
 
     # ─────────────────────────── 子视图 ③: 对比分析 ───────────────────────────
     def _build_compare_tab(self):
@@ -290,7 +290,7 @@ class IterationRoadmapPanel(QGroupBox):
             it.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
         return it
 
-    # ─────────────────────────── 读取真源 ───────────────────────────
+    # ─────────────────────────── 读取唯一依据 ───────────────────────────
     def reload(self):
         self.read_err = ""
         self.data = None
@@ -308,7 +308,7 @@ class IterationRoadmapPanel(QGroupBox):
                 self.read_err = "读取失败: %s" % e
         self._render_all()
         if getattr(self, "scene_view", None) is not None:
-            self.scene_view.reload()        # 🔌🧩 场景迭代真源是另一个文件 ⇒ 一起刷新 (缺失也不崩)
+            self.scene_view.reload()        # 🔌🧩 场景迭代唯一依据是另一个文件 ⇒ 一起刷新 (缺失也不崩)
 
     def _phases(self):
         ph = (self.data or {}).get("phases") or []
@@ -319,19 +319,19 @@ class IterationRoadmapPanel(QGroupBox):
         d = self.data
         meta = (d or {}).get("meta") or {}
         if d is None:
-            self.lb_meta.setText("真源: %s ｜ 版本 — ｜ 基线 — ｜ 生成时间 —"
+            self.lb_meta.setText("唯一依据: %s ｜ 版本 — ｜ 基线 — ｜ 生成时间 —"
                                  % os.path.relpath(self.JSON, ROOT))
             if self.read_err and self.read_err != "尚未生成":
-                self.lb_status.setText("⛔ 真源读取失败 — %s ｜ 点『🔄 重跑迭代验证』重新生成  (真源: %s)"
+                self.lb_status.setText("⛔ 唯一依据读取失败 — %s ｜ 点『🔄 重跑迭代验证』重新生成  (唯一依据: %s)"
                                        % (self.read_err, os.path.relpath(self.JSON, ROOT)))
             else:
-                self.lb_status.setText("⛔ 尚未生成 — 点『🔄 重跑迭代验证』生成  (真源: %s)"
+                self.lb_status.setText("⛔ 尚未生成 — 点『🔄 重跑迭代验证』生成  (唯一依据: %s)"
                                        % os.path.relpath(self.JSON, ROOT))
             self.lb_status.setStyleSheet(f"color:{C_ORANGE}; font-size:15px; font-weight:700; border:none;")
             self.lb_status.setVisible(True)
         else:
             self.lb_meta.setText(
-                "真源: %s ｜ 版本 %s ｜ 基线 %s ｜ 生成时间 %s ｜ 生成者 %s"
+                "唯一依据: %s ｜ 版本 %s ｜ 基线 %s ｜ 生成时间 %s ｜ 生成者 %s"
                 % (os.path.relpath(self.JSON, ROOT), meta.get("version") or "—",
                    meta.get("baseline") or "—", _ts_str(meta.get("ts")),
                    meta.get("generated_by") or "—"))
@@ -342,7 +342,7 @@ class IterationRoadmapPanel(QGroupBox):
         self._render_compare()
 
     def _render_tabs(self):
-        # 切页时重渲染当前页 (内容随真源更新)
+        # 切页时重渲染当前页 (内容随唯一依据更新)
         idx = self.tabs.currentIndex()
         if idx == 3:                                                            # 🔌🧩 场景迭代
             sv = getattr(self, "scene_view", None)
@@ -531,7 +531,7 @@ class IterationRoadmapPanel(QGroupBox):
                                 right=(j in (2, 7, 8)))
                 if j in (2, 5) and v in ("未测", "样本不足"):
                     it.setForeground(QColor(C_GRAY))
-                it.setToolTip("%s ｜ 判定 %s ｜ 证据类 %s ｜ 样本量 %s ｜ 帧龄 %s\n目标: %s\n真源: %s\n备注: %s"
+                it.setToolTip("%s ｜ 判定 %s ｜ 证据类 %s ｜ 样本量 %s ｜ 帧龄 %s\n目标: %s\n唯一依据: %s\n备注: %s"
                               % (m.get("name") or m.get("id"), v, m.get("mode"), n, age,
                                  m.get("target"), m.get("src"), m.get("note")))
                 self.vtab.setItem(i, j, it)
@@ -640,7 +640,7 @@ class IterationRoadmapPanel(QGroupBox):
             self.lb_status.setText("✅ 重跑完成 (退出码 0) · 界面已刷新")
             self.lb_status.setStyleSheet(f"color:{C_GREEN}; font-size:15px; font-weight:700; border:none;")
         else:
-            self.lb_status.setText("⛔ 重跑失败 — 退出码 %s｜%s  (真源: %s)"
+            self.lb_status.setText("⛔ 重跑失败 — 退出码 %s｜%s  (唯一依据: %s)"
                                    % (rc, err or "见下方日志", os.path.relpath(self.JSON, ROOT)))
             self.lb_status.setStyleSheet(f"color:{C_RED}; font-size:15px; font-weight:700; border:none;")
         self.lb_status.setVisible(True)
@@ -651,9 +651,9 @@ class IterationRoadmapPanel(QGroupBox):
         L = ["# 🗺 迭代路线图 · Phase 0→4 (Z-MAX 评估分析)", ""]
         d = self.data
         if d is None:
-            L.append("> ⛔ 尚未生成 — 点『🔄 重跑迭代验证』生成 (真源: %s)"
+            L.append("> ⛔ 尚未生成 — 点『🔄 重跑迭代验证』生成 (唯一依据: %s)"
                      % os.path.relpath(self.JSON, ROOT))
-            sv = getattr(self, "scene_view", None)                # 🔌🧩 场景迭代 (独立真源) 一起导出
+            sv = getattr(self, "scene_view", None)                # 🔌🧩 场景迭代 (独立唯一依据) 一起导出
             if sv is not None:
                 L.append(sv._md_section())
             return "\n".join(L)
@@ -661,7 +661,7 @@ class IterationRoadmapPanel(QGroupBox):
         L.append("- 版本: %s ｜ 基线: %s ｜ 生成时间: %s ｜ 生成者: %s"
                  % (meta.get("version") or "—", meta.get("baseline") or "—",
                     _ts_str(meta.get("ts")), meta.get("generated_by") or "—"))
-        L.append("- 真源: `%s`" % os.path.relpath(self.JSON, ROOT))
+        L.append("- 唯一依据: `%s`" % os.path.relpath(self.JSON, ROOT))
         for p in self._phases():
             L += ["", "## %s %s" % (p.get("phase"), p.get("name") or "")]
             L.append("| 主要指标 | 单位 | 目标 |")
@@ -706,13 +706,13 @@ class IterationRoadmapPanel(QGroupBox):
                     L.append("| %s | %s | %s | %s | %s | %s |"
                              % (p.get("phase"), it.get("name") or it.get("id"), _fnum(it.get("baseline")),
                                 _fnum(it.get("current")), it.get("delta"), it.get("verdict")))
-        sv = getattr(self, "scene_view", None)                    # 🔌🧩 场景迭代 (独立真源) 一起导出
+        sv = getattr(self, "scene_view", None)                    # 🔌🧩 场景迭代 (独立唯一依据) 一起导出
         if sv is not None:
             L.append(sv._md_section())
         return "\n".join(L)
 
     def _csv(self):
-        L = ["阶段,性能指标,实测值,单位,目标,判定,证据类,样本量,帧龄(s),真源/备注"]
+        L = ["阶段,性能指标,实测值,单位,目标,判定,证据类,样本量,帧龄(s),唯一依据/备注"]
         for p in self._phases():
             for m in ((p.get("verification") or {}).get("metrics") or []):
                 if isinstance(m, dict):
@@ -796,7 +796,7 @@ class IterationRoadmapPanel(QGroupBox):
 # 🔌🧩 场景迭代 (插拔 / 摆盘 × Phase 0→4 全流程元任务组合) — 老倪 2026-10-15
 #   老倪原话: 「用插拔 摆盘场景, phase0到phase4全流程迭代元任务组合」
 #             (评估分析功能区: 迭代路线图 · 迭代验证 · 对比分析)
-#   真源只有一个: zmax_data/eval/scene_phase_iteration.json (tools/scene_phase_iteration.py 生成)
+#   唯一依据只有一个: zmax_data/eval/scene_phase_iteration.json (tools/scene_phase_iteration.py 生成)
 #   三条硬纪律同上: 缺失/未测一律如实标注 (绝不假 0) · 重跑显真实退出码+stderr · 颜色语义与全站一致。
 # ══════════════════════════════════════════════════════════════════════════════════════════
 SCENE_JSON_PATH = os.path.join(ROOT, "zmax_data", "eval", "scene_phase_iteration.json")
@@ -815,7 +815,7 @@ def _rel(p):
 
 
 def _active_task_id():
-    """当前激活任务 = 绑定真源 config/ss_task_binding.json 的 active_task (与 studio 同一口径, 界面不另算)。"""
+    """当前激活任务 = 绑定唯一依据 config/ss_task_binding.json 的 active_task (与 studio 同一口径, 界面不另算)。"""
     try:
         with open(BIND_JSON, encoding="utf-8") as fh:
             d = json.load(fh)
@@ -832,7 +832,7 @@ def _esc(s):
 class ScenePhaseIterationView(QWidget):
     """🔌🧩 场景 × Phase 0→4 全流程迭代 (组合迭代 / 迭代验证 / 对比分析) — **只显示不计算**。
 
-    真源: zmax_data/eval/scene_phase_iteration.json (另一个 agent 的 tools/scene_phase_iteration.py 产出)。
+    唯一依据: zmax_data/eval/scene_phase_iteration.json (另一个 agent 的 tools/scene_phase_iteration.py 产出)。
     本控件只读它 + 可重跑 (subprocess 带超时, 失败显真实退出码/stderr, 绝不静默) + 可复制/导出。
     文件不在 / 字段缺失 ⇒ 「尚未生成 / 未测」,**绝不显示假 0**。
     """
@@ -841,7 +841,7 @@ class ScenePhaseIterationView(QWidget):
              "总数量", "相对上阶段增量", "准入门"]
     KCOLS = ["阶段", "启用节点", "组合映射", "覆盖 coverage", "missing", "extra",
              "可作改配置依据", "run.mode", "证据 / 命令", "备注"]
-    VCOLS = ["阶段", "性能指标", "实测值", "单位", "目标", "判定", "证据类", "样本量", "帧龄(s)", "真源/备注"]
+    VCOLS = ["阶段", "性能指标", "实测值", "单位", "目标", "判定", "证据类", "样本量", "帧龄(s)", "唯一依据/备注"]
     MCOLS = ["性能指标", "单位", "目标", "FW p0", "FW p1", "FW p2", "FW p3", "FW p4",
              "TRAY p0", "TRAY p1", "TRAY p2", "TRAY p3", "TRAY p4", "判定"]
     PCOLS = ["阶段", "FW 达标", "FW 总数", "FW 达标率", "TRAY 达标", "TRAY 总数", "TRAY 达标率"]
@@ -1054,7 +1054,7 @@ class ScenePhaseIterationView(QWidget):
         self.ktab.verticalHeader().setDefaultSectionSize(66)   # 备注 3 行也放得下 (行高在渲染时随行数再定表高)
         v.addWidget(self.ktab)
 
-        v.addWidget(self._sect("② 迭代验证 · 实测 vs 目标 (每指标: 实测/单位/目标/判定/证据类/样本/帧龄/真源)"))
+        v.addWidget(self._sect("② 迭代验证 · 实测 vs 目标 (每指标: 实测/单位/目标/判定/证据类/样本/帧龄/唯一依据)"))
         self.vtab2 = QTableWidget(0, len(self.VCOLS))
         self.vtab2.setHorizontalHeaderLabels(self.VCOLS)
         self._style(self.vtab2, 460)
@@ -1140,7 +1140,7 @@ class ScenePhaseIterationView(QWidget):
         scroll.setWidget(host)
         return scroll
 
-    # ─────────────────────────── 数据 (只读真源) ───────────────────────────
+    # ─────────────────────────── 数据 (只读唯一依据) ───────────────────────────
     def reload(self):
         self.read_err = ""
         self.data = None
@@ -1177,7 +1177,7 @@ class ScenePhaseIterationView(QWidget):
                        key=lambda p: _phase_key(p.get("phase", ""))) if isinstance(ph, list) else [])
 
     def _pick_scene(self):
-        """默认场景 = 当前激活任务对应的场景 (绑定真源 active_task ⇒ scene.task)。"""
+        """默认场景 = 当前激活任务对应的场景 (绑定唯一依据 active_task ⇒ scene.task)。"""
         keys = [str(s.get("scene") or "") for s in self._scenes() if s.get("scene")]
         if self.scene not in keys:
             act = _active_task_id()
@@ -1186,7 +1186,7 @@ class ScenePhaseIterationView(QWidget):
                 if act and str(s.get("task") or "").strip() == act:
                     pick = str(s.get("scene") or "")
                     break
-            if not pick:                                    # 兜底: 按 FW → TRAY 顺序取有数据的场景
+            if not pick:                                    # 保障: 按 FW → TRAY 顺序取有数据的场景
                 for key, _t in SCENE_BTNS:
                     for s in self._scenes():
                         if str(s.get("scene") or "").upper() == key:
@@ -1230,18 +1230,18 @@ class ScenePhaseIterationView(QWidget):
         act = _active_task_id()
         star = "  ★当前激活任务" if (act and act == str(task).strip()) else ""
         if self.data is None:
-            self.lb_scene.setText("真源: %s ｜ 场景 %s %s ｜ 任务 %s%s ｜ 版本 — ｜ 基线 — ｜ 生成时间 —"
+            self.lb_scene.setText("唯一依据: %s ｜ 场景 %s %s ｜ 任务 %s%s ｜ 版本 — ｜ 基线 — ｜ 生成时间 —"
                                   % (rel, key, nm, task, star))
             if self.read_err and self.read_err != "尚未生成":
-                self.lb_status.setText("⛔ 真源读取失败 — %s ｜ 点『🔄 重跑场景迭代』重新生成  (真源: %s)"
+                self.lb_status.setText("⛔ 唯一依据读取失败 — %s ｜ 点『🔄 重跑场景迭代』重新生成  (唯一依据: %s)"
                                        % (self.read_err, rel))
             else:
-                self.lb_status.setText("⛔ 尚未生成 — 点『🔄 重跑场景迭代』生成  (真源: %s)" % rel)
+                self.lb_status.setText("⛔ 尚未生成 — 点『🔄 重跑场景迭代』生成  (唯一依据: %s)" % rel)
             self.lb_status.setStyleSheet(f"color:{C_ORANGE}; font-size:14px; font-weight:700; border:none;")
             self.lb_status.setVisible(True)
         else:
             self.lb_scene.setText(
-                "真源: %s ｜ 场景 %s %s ｜ 任务 %s%s ｜ 版本 %s ｜ 基线 %s ｜ 生成时间 %s ｜ 生成者 %s"
+                "唯一依据: %s ｜ 场景 %s %s ｜ 任务 %s%s ｜ 版本 %s ｜ 基线 %s ｜ 生成时间 %s ｜ 生成者 %s"
                 % (rel, key, nm, task, star, meta.get("version") or "—", meta.get("baseline") or "—",
                    _ts_str(meta.get("ts")), meta.get("generated_by") or "—"))
             self.lb_status.setVisible(False)
@@ -1536,7 +1536,7 @@ class ScenePhaseIterationView(QWidget):
                 it = self._it(t, color=(col if j == 5 else None), bold=(j == 5), right=(j in (2, 7, 8)))
                 if j in (2, 5) and v in ("未测", "样本不足"):
                     it.setForeground(QColor(C_GRAY))
-                it.setToolTip("%s ｜ 判定 %s ｜ 证据类 %s ｜ 样本量 %s ｜ 帧龄 %s\n目标: %s\n真源: %s\n备注: %s"
+                it.setToolTip("%s ｜ 判定 %s ｜ 证据类 %s ｜ 样本量 %s ｜ 帧龄 %s\n目标: %s\n唯一依据: %s\n备注: %s"
                               % (m.get("name") or m.get("id"), v, m.get("mode"), n, age,
                                  m.get("target"), m.get("src"), m.get("note")))
                 self.vtab2.setItem(i, j, it)
@@ -1664,8 +1664,8 @@ class ScenePhaseIterationView(QWidget):
                   % (_rel(py), _rel(SCENE_TOOL)))
         rc, err = None, ""
         if not os.path.exists(SCENE_TOOL):
-            self._log("   ⛔ 真源工具不存在: %s" % _rel(SCENE_TOOL))
-            self.lb_status.setText("⛔ 重跑场景迭代失败 — 工具不存在: %s  (真源: %s)"
+            self._log("   ⛔ 唯一依据工具不存在: %s" % _rel(SCENE_TOOL))
+            self.lb_status.setText("⛔ 重跑场景迭代失败 — 工具不存在: %s  (唯一依据: %s)"
                                    % (_rel(SCENE_TOOL), _rel(self.JSON)))
             self.lb_status.setStyleSheet(f"color:{C_RED}; font-size:14px; font-weight:700; border:none;")
             self.lb_status.setVisible(True)
@@ -1691,10 +1691,10 @@ class ScenePhaseIterationView(QWidget):
             self._log("   ⛔ 启动失败: %r" % e)
         self.reload()
         if rc == 0:
-            self.lb_status.setText("✅ 重跑场景迭代完成 (退出码 0) · 界面已刷新  (真源: %s)" % _rel(self.JSON))
+            self.lb_status.setText("✅ 重跑场景迭代完成 (退出码 0) · 界面已刷新  (唯一依据: %s)" % _rel(self.JSON))
             self.lb_status.setStyleSheet(f"color:{C_GREEN}; font-size:14px; font-weight:700; border:none;")
         else:
-            self.lb_status.setText("⛔ 重跑场景迭代失败 — 退出码 %s｜%s  (真源: %s)"
+            self.lb_status.setText("⛔ 重跑场景迭代失败 — 退出码 %s｜%s  (唯一依据: %s)"
                                    % (rc, err or "见日志", _rel(self.JSON)))
             self.lb_status.setStyleSheet(f"color:{C_RED}; font-size:14px; font-weight:700; border:none;")
         self.lb_status.setVisible(True)
@@ -1749,9 +1749,9 @@ class ScenePhaseIterationView(QWidget):
         L = ["", "## 🔌🧩 场景迭代 · 插拔 / 摆盘 × Phase 0→4", ""]
         meta = (self.data or {}).get("meta") or {}
         if self.data is None:
-            L.append("> ⛔ 尚未生成 — 点『🔄 重跑场景迭代』生成 (真源: `%s`)" % rel)
+            L.append("> ⛔ 尚未生成 — 点『🔄 重跑场景迭代』生成 (唯一依据: `%s`)" % rel)
             return "\n".join(L)
-        L.append("- 真源: `%s` ｜ 版本: %s ｜ 基线: %s ｜ 生成时间: %s"
+        L.append("- 唯一依据: `%s` ｜ 版本: %s ｜ 基线: %s ｜ 生成时间: %s"
                  % (rel, meta.get("version") or "—", meta.get("baseline") or "—", _ts_str(meta.get("ts"))))
         for key, _t in SCENE_BTNS:
             phs = self._sphases(key)
@@ -1789,7 +1789,7 @@ class ScenePhaseIterationView(QWidget):
                             ("✅ 可" if cc.get("pass") is True else ("⛔ 不可" if cc.get("pass") is False else "尚未生成")),
                             run.get("mode") or "未测", run.get("note") or ""))
             L += ["", "#### 迭代验证 (实测 vs 目标)",
-                  "| 阶段 | 指标 | 实测 | 单位 | 目标 | 判定 | 证据类 | 样本 | 帧龄(s) | 真源 |",
+                  "| 阶段 | 指标 | 实测 | 单位 | 目标 | 判定 | 证据类 | 样本 | 帧龄(s) | 唯一依据 |",
                   "|---|---|---|---|---|---|---|---|---|---|"]
             for p in phs:
                 for m in (p.get("verification") or {}).get("metrics") or []:
@@ -1851,7 +1851,7 @@ class ScenePhaseIterationView(QWidget):
                     prev = tot
             return "\n".join(L)
         if i == 1:
-            L = ["场景,阶段,性能指标,实测值,单位,目标,判定,证据类,样本量,帧龄(s),真源/备注"]
+            L = ["场景,阶段,性能指标,实测值,单位,目标,判定,证据类,样本量,帧龄(s),唯一依据/备注"]
             for p in self._sphases():
                 for m in (p.get("verification") or {}).get("metrics") or []:
                     if isinstance(m, dict):
@@ -1888,7 +1888,7 @@ def _selftest(args):
         panel.resize(1500, 1000)
     panel.show()
     app.processEvents()
-    # 🔌🧩 场景迭代: 可指定另一个真源 (fixture / 缺失用例) + 选场景 + 选子视图
+    # 🔌🧩 场景迭代: 可指定另一个唯一依据 (fixture / 缺失用例) + 选场景 + 选子视图
     sv = panel.scene_view
     if getattr(args, "scene_json", None):
         sv.JSON = args.scene_json
@@ -1928,7 +1928,7 @@ def _selftest(args):
     print("scene_json: %s" % sv.JSON)
     print("scene_selected: %s" % sv.scene)
     print("scene_meta: %s" % sv.lb_scene.text())
-    print("scene_status: %s" % (sv.lb_status.text() if sv.lb_status.isVisible() else "(无横幅 · 真源正常)"))
+    print("scene_status: %s" % (sv.lb_status.text() if sv.lb_status.isVisible() else "(无横幅 · 唯一依据正常)"))
     print("scene_read_err: %s" % (sv.read_err or "(无)"))
     print("combo_rows: %d  (含折叠明细行)" % sv.ctab.rowCount())
     print("combo_sum: %s" % sv.lb_combo_sum.text())

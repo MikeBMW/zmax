@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""gen_dev_profiles.py — 把老倪 2026-10-15 定的「三产品开发分工」写进产品真源。
+"""gen_dev_profiles.py — 把老倪 2026-10-15 定的「三产品开发分工」写进产品唯一依据。
 
 老倪: 「以后同步开发 550A 550B 550C 产品，A产品负责新技能、新算法、逻辑最多；B产品开通所有 TOPIC
 最大化 debug，允许 vscode 联调；C产品稳定性优先，未经验证的算法都关闭，通讯以效率优先，不用发出
 序列化 topic，只要在共享内存中快速传递信号，不用开启信号分析，不用开启 3D 场景，只需要远程旁路功能，
 能够远程运行和真机部署」
 
-只写 config/platform/zmax_product.json 的 products[*].dev_profile (人可编·进 git 的真源)；
+只写 config/platform/zmax_product.json 的 products[*].dev_profile (人可编·进 git 的唯一依据)；
 不动 capabilities / releases / fingerprints / invariants / checks。
 """
 from __future__ import annotations
@@ -28,7 +28,7 @@ PROFILES = {
         ("role", "开发版 · 新技能 / 新算法 / 最新逻辑都在这档"),
         ("chief_concern", "功能最全: 新技能、新算法、逻辑最多 (允许不稳定)"),
         ("new_algorithms", "on"),
-        ("algorithm_gate", "先验不拦 (只看能不能跑通)"),
+        ("algorithm_gate", "先验不拦 (只看能不能验证通过)"),
         ("logic_depth", "max"),
         ("topics", "core"),
         ("comm", "dds"),

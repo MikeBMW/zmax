@@ -9,10 +9,10 @@
 |---|---|---|
 | 代码 | `cam_finger_10082_work_v36…py`(在役, 工控机 `D:\xspace\ultralytics_AOI\`) | `src/lerobot/policies/yolo_3d/quality_check.py::AOIQualityChecker.check()` |
 | 实现 | **ultralytics YOLO 检测器**（`gf: bestgf05088.pt.enc`, `imgsz=960`） | **纯 numpy/cv2 几何阈值体检**（无训练权重） |
-| 吃什么图 | **同帧派生的 960×960 方图**（`%TEMP%\zmax_main_960_*.png`, 检测完即删） | 画布当前帧（AR/仿真源） |
+| 吃什么图 | **同帧派生的 960×960 方图**（`%TEMP%\zmax_main_960_*.png`, 检测完即删） | 画布当前帧（AR/仿唯一依据） |
 | 出什么 | 判决 PASS/FAIL + 缺陷数 + 矩形/倾角/侧边修正 | 判决 + 划伤数 + 污点数 + 清晰度 + 灰度偏差 + 边缘占比 + **取像体检** |
 | 怎么取 | `POST /capture_detect` → `GET /last_result` | 节点运行时真调 `check()`; 经 `tools/ar_aoi_bus.py publish` 发话题 |
-| 定位 | 产线级缺陷判决（对得上 HMI/PLC 口径） | **取像健康 + 本机同口径体检** + 汇总工控机判决（外部真源 `pull()`） |
+| 定位 | 产线级缺陷判决（对得上 HMI/PLC 口径） | **取像健康 + 本机同口径体检** + 汇总工控机判决（外部唯一依据 `pull()`） |
 
 ⇒ **画布节点不是"另一个 YOLO"**：它不含训练权重, 做的是取像健康度与几何体检;
 真正的缺陷判决与模型都在**工控机**那条链上。信号分析页/AR 上同时能看到两组（`AOI.*` = 工控机真值, `光学质量检测.*` = 节点自算）。
@@ -63,7 +63,7 @@
 8793 页面标记/清除 → /ctl/record_point | /ctl/clear_point
    ├─ AOI 点(金手指点1/2 · 侧面点0~3 · 准备点 · 安全点N) → tools/record_point_sdk.py
    │     ├─ L2 技能库   data/skills/l2_atomic/taught_points.json   (L2.goto_* 回的点)
-   │     └─ AOI 台账    reports/aoi_points/<点名>.json (+.history.jsonl)  ← 配置中心的真源
+   │     └─ AOI 台账    reports/aoi_points/<点名>.json (+.history.jsonl)  ← 配置中心的唯一依据
    └─ 空间点 spaceN → tools/record_l2_point.py --store space → data/skills/l2_atomic/space_points.json
 之后立刻重跑 tools/task_build.py → config/tasks/tasks.json 的 overrides.pt.*
    → 配置中心点位表(QTimer 2s 盯 mtime, 一变就静默刷新, 不用点按钮/不用重启)

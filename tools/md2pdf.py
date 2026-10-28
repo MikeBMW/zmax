@@ -2,7 +2,7 @@
 """Markdown → PDF（A4 中文文档版式）
 
 链路：md → HTML(自带 style) → odt → pdf（LibreOffice）
-- 中文字体交给系统字体族（WenQuanYi Zen Hei / Noto Sans CJK SC），不写死 ttf 路径
+- 中文字体交给系统字体族（WenQuanYi Zen Hei / Noto Sans CJK SC），不预先固定 ttf 路径
 - 每次转换用独立临时 profile，避免并发 soffice 抢同一个 profile 静默失败
 - 出稿自检：pdftotext 抠回文字，断言中文成串 + 无 markdown 标记残留
 

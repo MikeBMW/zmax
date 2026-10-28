@@ -101,7 +101,7 @@ def main() -> int:
         print(f"  杆轴倾角   : 均值 {tilt.mean():.2f}° 最大 {tilt.max():.2f}° 末 {tilt[-1]:.2f}°")
         if f.size:
             print(f"  接触力    : 峰值 {f.max():.2f} 末 {f[-1]:.2f}")
-        # 卡住点(深度最小处)的细节
+        # 阻塞点(深度最小处)的细节
         j = int(np.nanargmin(dep))
         print(f"  最深点 帧{ins[j]}: depth={dep[j]*1000:.1f}mm d_perp={dperp[j]*1000:.2f}mm "
               f"dz={dz[j]*1000:.2f}mm 倾角={tilt[j]:.2f}° 力={f[j] if f.size else float('nan'):.2f}")

@@ -30,7 +30,7 @@
 | 3 | 点「去空间7」原地升 106.5mm | 三段配方横移余量写 +40mm | 余量压到 +5mm |
 
 ## 文件
-- `space_points.json` / `registry.json` — 点位与配方**真源原件**（运行态 `data/` 不入库，故存快照）
+- `space_points.json` / `registry.json` — 点位与配方**唯一依据原件**（运行态 `data/` 不入库，故存快照）
 - `collision_points.json` / `estop_events.jsonl` — 碰撞库 + 急停 append-only
 - `l2_daemon_recent.log` — 执行器日志尾 4000 行（含三次事故行）
 - `engine_state.json` — 天花板/各点 z/各技能阶段数与 speed_max（离线可核）

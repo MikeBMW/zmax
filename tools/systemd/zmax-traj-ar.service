@@ -1,5 +1,5 @@
 [Unit]
-Description=Z-MAX TCP 轨迹 AR/VR 台 (8797, /overlay 页面「轨迹」按钮的唯一真源)
+Description=Z-MAX TCP 轨迹 AR/VR 台 (8797, /overlay 页面「轨迹」按钮的唯一依据)
 Documentation=file:/home/ubuntu/zmax/tools/tcp_ar_server.py
 After=network-online.target zmax-hil-bridge.service
 Wants=network-online.target

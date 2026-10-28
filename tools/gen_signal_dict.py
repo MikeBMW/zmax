@@ -87,7 +87,7 @@ def impl_keys(path, symbol=""):
                     if isinstance(m, ast.Assign) and any(
                             isinstance(tg, ast.Name) and tg.id == nm for tg in m.targets):
                         dict_keys(m.value)
-    if not keys:                                    # 兜底: 惯用返回变量
+    if not keys:                                    # 保障: 惯用返回变量
         for n in ast.walk(body):
             if isinstance(n, ast.Assign) and any(
                     isinstance(tg, ast.Name) and tg.id in ("out", "result", "res", "payload", "ret")

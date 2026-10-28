@@ -1,10 +1,10 @@
-# VcXsrv 渲染坑 — 2026-08-19 复现与新兜底 (补充 vcxsrv-render-bugs.md)
+# VcXsrv 渲染坑 — 2026-08-19 复现与新保障 (补充 vcxsrv-render-bugs.md)
 
-## 1. XCopyArea 半移复现 → 分块 repaint 兜底 (新技巧)
+## 1. XCopyArea 半移复现 → 分块 repaint 保障 (新技巧)
 ⚠️ **XCopyArea 位块移动不是永远可靠**! 08-18 时正常, 08-19 VcXsrv 会话状态变化后搬运也坏:
 滚动时上半部(露出重绘)正常、下半部(搬运区)残留不动 → 用户报"屏幕又变成上动下不动"。
 - 判定: 滚动后残留区 = 搬运区, 露出区正常 → XCopyArea 坏, 不是 Qt 逻辑问题
-- ✅ 兜底修复 (SimCanvas.scrollContentsBy 重写):
+- ✅ 保障修复 (SimCanvas.scrollContentsBy 重写):
   ```python
   def scrollContentsBy(self, dx, dy):
       super().scrollContentsBy(dx, dy)

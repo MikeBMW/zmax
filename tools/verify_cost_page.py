@@ -14,11 +14,11 @@
   ⑤ 改人力成本          labor 9→10 万: 年节省 20.0 万, 回本 1.82 年
   ⑥ 替代臂             单套 31.8 万 ⇒ 回本 1.77 年 (默认口径下)
   ⑦ 同源               页面结果 == tools/cost_model.py 对同一组输入的计算 (逐字段)
-  ⑧ BOM                 表行数 == 真源硬件项数+1, 合计行 = 203,000
-  ⑨ 写回真源+回读       改 stations=2 → 写入 → 真源 line.stations==2 且回读 ok; 备份生成; 之后字节级还原
+  ⑧ BOM                 表行数 == 唯一依据硬件项数+1, 合计行 = 203,000
+  ⑨ 写回唯一依据+回读       改 stations=2 → 写入 → 唯一依据 line.stations==2 且回读 ok; 备份生成; 之后字节级还原
   ⑩ 导出 JSON           zmax_data/cost/cost_estimate_*.json 生成, total_first 与页面一致; 导出物自清理
   ⑪ 复制                剪贴板拿到 TSV, 含「单套合计」
-  ⑫ 零回归              其余页签仍在 / 画布真源 mtime 不变 / 真源跑完与原字节一致
+  ⑫ 零回归              其余页签仍在 / 画布唯一依据 mtime 不变 / 唯一依据跑完与原字节一致
 
 用法: QT_QPA_PLATFORM=offscreen /home/ubuntu/zmax/gui-venv311/bin/python tools/verify_cost_page.py
 退出码: 0 = 全过; 2 = 有 ❌。
@@ -134,7 +134,7 @@ def main():
     chk("⑦a", "7 个关键字段逐位相同", same,
         " / ".join("%s=%s" % (k, pg._cost_e[k]) for k in ("total_first", "annual_save", "payback_years")))
 
-    print("\n【⑧ BOM 表 = 真源逐项】")
+    print("\n【⑧ BOM 表 = 唯一依据逐项】")
     d = CM.load()
     n_hw = len(d.get("hardware") or [])
     chk("⑧a", "行数 = 硬件项数 + 合计行", pg._cost_bom.rowCount() == n_hw + 1,
@@ -142,22 +142,22 @@ def main():
     chk("⑧b", "合计行 = 203,000", pg._cost_bom.item(n_hw, 2).text() == "203,000",
         pg._cost_bom.item(n_hw, 2).text())
 
-    print("\n【⑨ 写回真源 + 回读 + 还原】")
+    print("\n【⑨ 写回唯一依据 + 回读 + 还原】")
     before_baks = set(glob.glob(TRUTH + ".bak_*"))
     pg._cost_in["stations"].setValue(2)
     pg._cost_save()
     back = json.load(open(TRUTH, encoding="utf-8"))
     new_baks = set(glob.glob(TRUTH + ".bak_*")) - before_baks
-    chk("⑨a", "真源 line.stations 真变 2", back["line"]["stations"] == 2, back["line"])
+    chk("⑨a", "唯一依据 line.stations 真变 2", back["line"]["stations"] == 2, back["line"])
     chk("⑨b", "日志明写回读校验通过", "回读校验通过" in pg._cost_log.text(), pg._cost_log.text()[:90])
     chk("⑨c", "生成了备份", len(new_baks) == 1, list(new_baks))
-    chk("⑨d", "派生值不落盘 (真源里没有 total/payback 键)",
+    chk("⑨d", "派生值不落盘 (唯一依据里没有 total/payback 键)",
         not any(k in back for k in ("total", "payback_years", "annual_save")),
         sorted(back.keys()))
     open(TRUTH, "wb").write(orig_bytes)                      # 字节级还原
     for b in new_baks:
         os.remove(b)
-    chk("⑨e", "真源已字节级还原", open(TRUTH, "rb").read() == orig_bytes)
+    chk("⑨e", "唯一依据已字节级还原", open(TRUTH, "rb").read() == orig_bytes)
 
     print("\n【⑩ 导出 JSON】")
     pg._cost_refresh()
@@ -180,10 +180,10 @@ def main():
     chk("⑪a", "剪贴板是 TSV 且含单套合计", "单套合计" in cb and "\t" in cb, cb.splitlines()[:3])
 
     print("\n【⑫ 零回归】")
-    chk("⑫a", "画布真源未被碰 (mtime 不变)", os.path.getmtime(CANVAS) == canvas_mt,
+    chk("⑫a", "画布唯一依据未被碰 (mtime 不变)", os.path.getmtime(CANVAS) == canvas_mt,
         os.path.getmtime(CANVAS))
     chk("⑫b", "页签恰好 7 个 (= 北斗七星; 成本/报价 已并入文档配置)", len(titles) == 7, titles)
-    chk("⑫c", "真源已还原 (== 测试前字节)", open(TRUTH, "rb").read() == orig_bytes)
+    chk("⑫c", "唯一依据已还原 (== 测试前字节)", open(TRUTH, "rb").read() == orig_bytes)
 
     print("\n" + "=" * 68)
     print("结果: PASS %d / FAIL %d" % (len(OK), len(BAD)))

@@ -10,7 +10,7 @@ matplotlib.rcParams["font.sans-serif"] = ["Noto Sans CJK SC", "WenQuanYi Zen Hei
 matplotlib.rcParams["axes.unicode_minus"] = False
 
 rows = json.load(open("/tmp/shots/switch_l45_evidence.json", encoding="utf-8"))
-hd = ["轮", "任务", "active_task\n(真源回读)", "cfg sha\n(变=真切换)", "L5 阶段链", "L5 力上限",
+hd = ["轮", "任务", "active_task\n(唯一依据回读)", "cfg sha\n(变=真切换)", "L5 阶段链", "L5 力上限",
       "L4 帧", "L4 限速", "L4 力否决", "L4 平滑", "L4 精炼", "档位(开)", "结果"]
 body = []
 for r in rows:
@@ -42,7 +42,7 @@ for (r, c), cell in tb.get_celld().items():
             ok = body[r - 1][12] == "通过"
             cell.set_text_props(color=("#1b7f3b" if ok else "#c0392b"), weight="bold")
 
-checks = ("① 真源 active_task 每轮回读都对 + 文件 sha 每轮都变 = 配置真切换; "
+checks = ("① 唯一依据 active_task 每轮回读都对 + 文件 sha 每轮都变 = 配置真切换; "
           "② 报告 chain/mode 跟着换 = 功能真换;  ③ L4/L5 每轮帧数与逐层计数都在 = 四层同跑;  "
           "④ 两任务 L5 阶段链 13 段 vs 8 段 = 层间行为随配置变")
 fig.text(0.02, 0.035, checks, fontsize=9.3, color="#333", va="bottom")

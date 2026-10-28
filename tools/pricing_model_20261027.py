@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Z-MAX 光模块插拔工位 · 量产成本 / 定价 / 三方分成 模型 (2026-10-27)
 
-真源:
+唯一依据:
   config/platform/zmax_cost_model.json   单套硬件逐项(给定) + 人工 + 产线口径
   zmax_data/runtime/traj/sim_insert.json (4 孔轮转: 先插满 → 拔一对·AOI·插同一对, 不插等待)
   右臂末端速度 = 左臂同口径: 左臂每循环 3.0s / 等效位移 1877mm ⇒ 626 mm/s
@@ -36,7 +36,7 @@ LABOR = cm["labor"]["cost_per_person_year"]
 HEADS = cm["line"]["stations"] * cm["line"]["shifts"] * cm["line"]["persons_per_shift"]
 ANNUAL_SAVE = LABOR * HEADS
 MAINT_RATE, SW_FEE, ETA = 0.03, 20000, 0.85
-# 节拍真源 = /api/sim_insert (4 孔交替 + 60s 驻留): 稳态 30.0 s/个
+# 节拍唯一依据 = /api/sim_insert (4 孔交替 + 60s 驻留): 稳态 30.0 s/个
 _SI = json.load(open(os.path.join(REPO, "zmax_data/runtime/traj/sim_insert.json"), encoding="utf-8"))
 TACT_TARGET = _SI["tact_steady_s"]                    # 目标口径(老倪: 跟左臂一样 3.00 s/个)
 TACT_S = _SI.get("tact_reach_s") or TACT_TARGET       # 产能一律按「真机可达档」报, 不按目标档

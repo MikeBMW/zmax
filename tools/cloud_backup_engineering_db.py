@@ -3,7 +3,7 @@
 """
 工程数据库云端备份(压缩)工具  cloud_backup_engineering_db.py
 ==========================================================
-把工程数据库**真源** data/database/zmax/ (含 zmax_space.proj / zmax_engineering.db / sources/)
+把工程数据库**唯一依据** data/database/zmax/ (含 zmax_space.proj / zmax_engineering.db / sources/)
 压缩成单个归档, 生成 .sha256 与 manifest.md, 上传 ECS 并在**远端回读 sha256 比对**后才算成功,
 最后落一份报告 reports/cloud_backup_<date>.md + .json。
 
@@ -85,7 +85,7 @@ def human(nbytes: int) -> str:
 
 # ----------------------------------------------------------------------------
 def detect_version() -> tuple[str, str]:
-    """返回 (版本, 来源)。真源优先: zmax_space.proj 的 zmax_version, 再 git describe, 再 unknown。"""
+    """返回 (版本, 来源)。唯一依据优先: zmax_space.proj 的 zmax_version, 再 git describe, 再 unknown。"""
     proj = DEFAULT_SRC / "zmax_space.proj"
     if proj.exists():
         try:
@@ -207,7 +207,7 @@ def build_manifest(src: Path, archive: Path, sha: str, comp: str, version: str,
         f"- 版本: **{version}**",
         f"- 日期: {date}",
         f"- 生成时间: {m['generated_at']}",
-        f"- 真源目录: `{src}`",
+        f"- 唯一依据目录: `{src}`",
         f"- 归档文件: `{archive.name}` ({human(arch_bytes)})",
         f"- 归档 SHA-256: `{sha}`",
         f"- 压缩器: {comp}",
@@ -233,7 +233,7 @@ def build_manifest(src: Path, archive: Path, sha: str, comp: str, version: str,
 
 
 ROLE_MAP = {
-    "zmax_space.proj": "状态空间工程(真源)",
+    "zmax_space.proj": "状态空间工程(唯一依据)",
     "zmax_engineering.db": "工程数据库(生成物)",
     "config_meta.json": "配置元数据",
     "feature.dbc": "特征能力库",
@@ -246,7 +246,7 @@ def classify(rel: str) -> str:
     if base in ROLE_MAP:
         return ROLE_MAP[base]
     if rel.startswith("sources/"):
-        return "真源文件"
+        return "唯一依据文件"
     if rel.startswith("archive/"):
         return "历史快照(留档)"
     return "其他"
@@ -306,7 +306,7 @@ def main():
     outdir = Path(args.outdir).resolve()
     reportdir = Path(args.reportdir).resolve()
     if not src.is_dir():
-        die(f"真源目录不存在: {src}")
+        die(f"唯一依据目录不存在: {src}")
     outdir.mkdir(parents=True, exist_ok=True)
     reportdir.mkdir(parents=True, exist_ok=True)
 
@@ -318,7 +318,7 @@ def main():
     sha_path = archive.with_suffix(archive.suffix + ".sha256")
     log(f"════════════════════════════════════════════════════════")
     log(f"📦 工程数据库云端备份")
-    log(f"   真源   : {src}")
+    log(f"   唯一依据   : {src}")
     log(f"   版本   : {version}  (来源 {v_src})")
     log(f"   归档   : {archive}")
     log(f"   压缩器 : {comp}")
@@ -445,7 +445,7 @@ def main():
         f"- 状态: **{status}**",
         f"- 生成时间: {_dt.datetime.now().isoformat(timespec='seconds')}",
         f"- 版本: {version} ({v_src})",
-        f"- 真源: `{src}` · {len(file_recs)} 文件 · {human(src_bytes)}",
+        f"- 唯一依据: `{src}` · {len(file_recs)} 文件 · {human(src_bytes)}",
         "",
         "## 归档",
         "",

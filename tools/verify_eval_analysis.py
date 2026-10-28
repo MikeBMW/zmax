@@ -6,17 +6,17 @@
 评估分析后, 有性能提升才能升级; 在配置中心, 所有的性能指标, 都要科学的与基线版本做对比…要保证全局数据一致性。」
 
 判据 (每条能自己复核):
-  ① 指标全集 = 配置中心真源 58 条 + 评测补充 4 条; 每条都有采集口径 (有采集器 或 明确写"未测+采集条件")
+  ① 指标全集 = 配置中心唯一依据 58 条 + 评测补充 4 条; 每条都有采集口径 (有采集器 或 明确写"未测+采集条件")
   ② 基线锁: 存在 / 版本 == v5.50.735 / 条数 == 指标全集 / **冻结** (无理由不许覆盖)
   ③ 判定枚举合法: 达标 ∈ {达标,不达标,未测,样本不足,无阈值 (待现场定)}; 基线对比 ∈ {提升,持平,回退,未测,无基线,样本不足}
   ④ **未测不许冒充 0**: 未测项 value 必须是 None 且带采集条件文字
   ⑤ 样本不足不出判定: 样本量 < 判定所需 ⇒ 达标 == 样本不足 (3 次插入算不出 3σ)
   ⑥ 升级准入三闸自洽: upgrade_allowed == 三条件全过
-  ⑦ 全局一致性**真跑**: 把 L2 包络与标定真源改得不一致 (沙箱) ⇒ 冲突数 > 0; 复原 ⇒ 0
+  ⑦ 全局一致性**真跑**: 把 L2 包络与标定唯一依据改得不一致 (沙箱) ⇒ 冲突数 > 0; 复原 ⇒ 0
   ⑧ 阈值判定正确性: 喂假数验 verdicts (越小越好 / 越大越好 两个方向)
   ⑨ 回退必拦: 造一版有回退的报告 ⇒ upgrade_allowed == False
-  ⑩ 页面渲染 (离屏真窗口): 表行数 == 报告指标数; 准入文案与报告一致; 5 张证据卡都有真源 + 帧龄; 未测行"当前"列显示 —(不是 0)
-  ⑪ 证据面板真源文件都在盘上 (路径可解析)
+  ⑩ 页面渲染 (离屏真窗口): 表行数 == 报告指标数; 准入文案与报告一致; 5 张证据卡都有唯一依据 + 帧龄; 未测行"当前"列显示 —(不是 0)
+  ⑪ 证据面板唯一依据文件都在盘上 (路径可解析)
   ⑫ 判据不留痕: 跑完基线锁文件字节级不变
 
 用法: cd /home/ubuntu/zmax && QT_QPA_PLATFORM=offscreen ./gui-venv311/bin/python tools/verify_eval_analysis.py
@@ -53,8 +53,8 @@ def main() -> int:
     # ① 指标全集
     n_spec, n_extra = len(idx), len(EP.EXTRA)
     missing = [m["id"] for m in EP.EXTRA if m["id"] in idx]
-    chk("① 指标全集 = 真源 58 + 补充 4", n_spec == 58 and n_extra == 4 and not missing,
-        "真源 %d 条 + 补充 %d 条 = %d ｜ 与真源撞号的补充指标 %s" % (n_spec, n_extra, n_spec + n_extra, missing or "无"))
+    chk("① 指标全集 = 唯一依据 58 + 补充 4", n_spec == 58 and n_extra == 4 and not missing,
+        "唯一依据 %d 条 + 补充 %d 条 = %d ｜ 与唯一依据撞号的补充指标 %s" % (n_spec, n_extra, n_spec + n_extra, missing or "无"))
 
     res = EP.run_all()
     two_none = [k for k, v in res.items() if v.get("value") is None and not (v.get("note") or "").strip()]
@@ -122,7 +122,7 @@ def main() -> int:
     try:
         for c, r in (sp.get("skills") or {}).items():
             if r.get("在职") and isinstance(r.get("v_cap"), (int, float)):
-                r["v_cap"] = float(r["v_cap"]) + 99.0                       # 故意与标定真源不一致
+                r["v_cap"] = float(r["v_cap"]) + 99.0                       # 故意与标定唯一依据不一致
         io.open(EP.SKILL_PHYS, "w", encoding="utf-8").write(json.dumps(sp, ensure_ascii=False))
         c2 = EP.p_sys_consistency()
         n_bad = len((c2.get("extra") or {}).get("冲突") or [])
@@ -167,7 +167,7 @@ def main() -> int:
     ev_ok, ev_bad = 0, []
     for name, (body, fresh) in m.ev_cards.items():
         t = body.text() + fresh.text()
-        if ("真源" in t) and ("帧龄" in t) and ("—" not in fresh.text()):
+        if ("唯一依据" in t) and ("帧龄" in t) and ("—" not in fresh.text()):
             ev_ok += 1
         else:
             ev_bad.append("%s:%s" % (name, t.replace("\n", " ")[:40]))
@@ -185,11 +185,11 @@ def main() -> int:
         (n_tab, len(rep["metrics"]), txt_gate, ev_ok, ev_bad or "", zero_shown))
     m.grab().save(os.path.join(ROOT, "reports", "ui_shots", "eval_analysis_page.png"))
 
-    # ⑪ 证据真源都在盘上
+    # ⑪ 证据唯一依据都在盘上
     ev_missing = [k for k, v in (rep.get("evidence") or {}).items()
-                  if not os.path.exists(os.path.join(ROOT, v.get("真源", "")))]
-    chk("⑪ 证据面板真源文件都在盘上", not ev_missing,
-        "5 张证据卡真源: %s ｜ 缺 %s" % (", ".join("%s=%s" % (k, v["真源"].split("/")[-1])
+                  if not os.path.exists(os.path.join(ROOT, v.get("唯一依据", "")))]
+    chk("⑪ 证据面板唯一依据文件都在盘上", not ev_missing,
+        "5 张证据卡唯一依据: %s ｜ 缺 %s" % (", ".join("%s=%s" % (k, v["唯一依据"].split("/")[-1])
                                                 for k, v in rep["evidence"].items()), ev_missing or "无"))
 
     # ⑬ 设计声明 (BOM/厂商) 一律不许算成达标 —— 声明≠实测

@@ -14,7 +14,7 @@ for r, row in enumerate(layout):
         if nm: pos.setdefault(nm, []).append((base_x + c*200, base_y + r*230))
 used = set()
 for i, (ntype, nm, params) in enumerate(node_specs):   # ← id 按 specs 顺序!
-    xy = next((p for p in pos.get(nm, []) if p not in used), None)  # 无位置 → 兜底
+    xy = next((p for p in pos.get(nm, []) if p not in used), None)  # 无位置 → 保障
     n = self.add_node(ntype, nm, xy[0], xy[1], params)  # add_node 用 gen_id() 递增
 ```
 - **id = specs 顺序**, layout 只是摆放 (按名字找坐标)

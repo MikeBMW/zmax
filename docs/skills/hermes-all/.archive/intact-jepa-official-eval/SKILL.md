@@ -47,7 +47,7 @@ cd $ROOT/paper_runtime && python eval.py --config-name=pusht solver=prior_only \
    **官方口径 = 100 局 × eval seed 0/1/42**, 出均值±样本std 才算数。
    eval.py 结果文件是 **append 模式** → 复跑务必用 `output.filename=` 另开新名, 别把旧证据混在一起。
 
-## 日志逐行读法 (被问"我都干啥了"时直接照这个讲)
+## 日志逐行读法 (被问"我都做什么了"时直接照这个讲)
 | 日志 | 含义 |
 |---|---|
 | `Cached 'action'/'proprio'/'state' from '.../<task>.h5'` | 数据集**真的读到了**; 只用于算归一化统计 (dataset.stats), 不训练 |

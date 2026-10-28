@@ -77,7 +77,7 @@
 **同轮 · YOLO 权重归位**（老倪追问「怎么还有 yolo 模型呢?」）：顶层 `yolov8s.pt` 是**软链**（真身在数据盘），但它同时是代码的**默认权重路径**，所以还活着 —— 根因是 `yolo_perception.py` 按 `__file__` 上溯四级硬拼 `/home/ubuntu/yolov8s.pt`，且 `simulink_module.py` 双击 YOLO 节点时取仓库根那份 **22.5MB 重复实物**。
 - 代码修：新增 `tools/gui/yolo_perception.py:default_weights_path()`（解析顺序 = 环境变量 → `$ZMAX_DATA/models/weights/yolov8s.pt` → 仓库根 → 家目录旧路径），类默认与 GUI 双击节点都改用它。
 - 文件清：删顶层软链 + 仓库根重复实物；仓库根 `yolov8n.pt` / `yolo26n.pt`（各 6.5M/5.5M，仅 CLI 默认名字，ultralytics 会自己解析）一并移到 `zmax_data/models/weights/`。现在 **YOLO 权重只在数据盘一处**，家目录/仓库根 **0 个裸 `.pt`**。
-- 在役检测权重不是它：`zmax/models/yolo_peg_live.pt` →（软链）`lerobot-smolvla-lew/runs/detect/outputs/yolo_annot/annot_0919_1814/weights/best.pt`（真机域微调）；`yolov8s.pt` 只是没指定 weights 时的 COCO 80 类兜底。
+- 在役检测权重不是它：`zmax/models/yolo_peg_live.pt` →（软链）`lerobot-smolvla-lew/runs/detect/outputs/yolo_annot/annot_0919_1814/weights/best.pt`（真机域微调）；`yolov8s.pt` 只是没指定 weights 时的 COCO 80 类保障。
 - 实测：改后 `YoloPerception()` 与 GUI 口径都从数据盘加载 `yolov8s.pt (80 类)`；基线自检 15/15（可采纳项归 0，说明已全部落在约定路径）。
 
 ## 六、仍待老倪一句话的

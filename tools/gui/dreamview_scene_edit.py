@@ -143,7 +143,7 @@ def _unit_scale(view):
     """对象尺寸量纲自动判定: 该文件最大尺寸 >10 → mm (÷1000), 否则按米。
 
     2026-10-10 实测: 仿真/派生场景 (SS-EPI-CORNER/SS-TRAY-PLACE/SIM-PEG-L4) 是**米**,
-    老的 SCN-* 是**毫米** —— 写死一种单位会让米制场景的对象缩 1000 倍 (画面上什么都看不到)。
+    老的 SCN-* 是**毫米** —— 预先固定一种单位会让米制场景的对象缩 1000 倍 (画面上什么都看不到)。
     """
     dims = [abs(float(v)) for o in (view.get("objects") or [])
             for v in (o.get("size") or []) if isinstance(v, (int, float))]
@@ -227,7 +227,7 @@ class SceneEditAttacher(QObject):
         v.addLayout(row1)
         row2 = QHBoxLayout(); row2.setSpacing(4)
         row2.addWidget(_b("➕ 新增", "新增场景对象", self.add_object, "#00d4aa"))
-        row2.addWidget(_b("🔄 刷新", "重读真源 + 重建叠加层", self.reload, "#9aa7b4"))
+        row2.addWidget(_b("🔄 刷新", "重读唯一依据 + 重建叠加层", self.reload, "#9aa7b4"))
         v.addLayout(row2)
         v.addWidget(_b("🔁 重建 3D 视图", "调 DreamView3D 原生重建钩子 (若提供)", self.rebuild_view, "#9aa7b4"))
 
@@ -279,7 +279,7 @@ class SceneEditAttacher(QObject):
                 if self.lst.item(i).data(Qt.UserRole) == keep:
                     self.lst.setCurrentRow(i)
                     break
-        self._set_status("对象 %d 个 (隐藏 %d) · 真源 %s"
+        self._set_status("对象 %d 个 (隐藏 %d) · 唯一依据 %s"
                          % (len(objs), sum(1 for o in objs if _is_hidden(o.get("name"), deleted)),
                             OBJECTS3D))
 
@@ -435,7 +435,7 @@ class SceneEditAttacher(QObject):
             self._set_status("✓ 已刷新 3D 叠加层: %s 位置/大小已更新 (%d 盒)\n"
                              "   %s" % (obj_name, n, rebuild))
             return {"refreshed": True, "in_view": True, "n_boxes": n}
-        self._set_status("⚠ 已写入真源; 但 %s 未出现在 3D 叠加层 "
+        self._set_status("⚠ 已写入唯一依据; 但 %s 未出现在 3D 叠加层 "
                          "(对象表无有效 center/size) — 需重开视图" % obj_name)
         return {"refreshed": False, "in_view": False, "n_boxes": n}
 
@@ -451,7 +451,7 @@ class SceneEditAttacher(QObject):
             return
         cur = next((o for o in _objects() if o.get("name") == name), None)
         if cur is None:
-            _warn(self.panel, "找不到对象", "真源里找不到 %s" % name)
+            _warn(self.panel, "找不到对象", "唯一依据里找不到 %s" % name)
             return
         from sim_real_page import _EditDialog          # 复用 (不另起表单)
         dlg = _EditDialog("objects", cur, self.panel)
@@ -509,7 +509,7 @@ class SceneEditAttacher(QObject):
         if ok:
             if refresh is None and name is not None:
                 refresh = self.refresh_after_write(name) if not refresh_only else None
-            msg = "已写入真源 (备份+原子写+回读核对)。"
+            msg = "已写入唯一依据 (备份+原子写+回读核对)。"
             if isinstance(refresh, dict):
                 msg += "\n3D 叠加层: %s" % ("✓ 该对象位置/大小已刷新" if refresh.get("in_view")
                                             else "⚠ 未刷新, 需重开视图")
@@ -597,7 +597,7 @@ class SceneEditAttacher(QObject):
         return ((float(ndc[0]) + 1.0) * 0.5 * w, (1.0 - float(ndc[1])) * 0.5 * h, float(p[3]))
 
     def _obj_boxes(self):
-        """按当前场景真源列出 (名字, 中心, 尺寸m) —— 供点选/高亮共用。"""
+        """按当前场景唯一依据列出 (名字, 中心, 尺寸m) —— 供点选/高亮共用。"""
         view = _list_view()
         k = _unit_scale(view)
         out = []
@@ -764,7 +764,7 @@ class SceneEditAttacher(QObject):
             a.setChecked(name == sel)
             menu[a] = name
         m.addSeparator()
-        act_refresh = m.addAction("🔄 刷新 (重读真源 + 重建叠加层)")
+        act_refresh = m.addAction("🔄 刷新 (重读唯一依据 + 重建叠加层)")
         act_add = m.addAction("➕ 新增对象")
         gp = ev.globalPos()
         chosen = m.exec_(gp)
@@ -864,7 +864,7 @@ def build_embedded(parent=None, scene_id="SS-EPI-CORNER"):
         att._set_status("已拎出为独立窗口 (同一个视图实例)")
 
     bar.addWidget(_mk("🗗 独立窗口", "把这块 3D 视图拎成独立窗口 (同一个实例)", _detach))
-    bar.addWidget(_mk("🔄 刷新", "重读真源 + 重建对象叠加层", lambda: (att.refresh_list(),
+    bar.addWidget(_mk("🔄 刷新", "重读唯一依据 + 重建对象叠加层", lambda: (att.refresh_list(),
                                                                       att.refresh_overlay()), "#9aa7b4"))
     bar.addWidget(_mk("🔁 重建 3D", "调 DreamView3D 原生重建 (场景变体/图元变了时用)", lambda: att.rebuild_view(),
                       "#9aa7b4"))

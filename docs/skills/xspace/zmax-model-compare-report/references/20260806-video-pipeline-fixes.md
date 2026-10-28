@@ -1,7 +1,7 @@
 # 视频对比管道修复实录 (2026-08-06)
 
 五模型 rollout 视频对比 GUI (InferenceVideoDialog) + rollout 推理的两轮关键修复。
-适用: 老倪看「🎥 推理效果对比」窗口报"视频不动/第二个看不到/不知道啥时候生成的"。
+适用: 老倪看「🎥 推理效果对比」窗口报"视频不动/第二个看不到/不知道什么时候生成的"。
 
 ## 1. VLA-Touch rollout x0 用上帧动作 (Interpolant 采样起点) — 动作幅度小根因
 
@@ -39,7 +39,7 @@ std 0.24), 60 帧才覆盖"抓取/抬起" (std 0.46)。阈值断言必须用 60 
 - 窗口 min 尺寸: n≤3 → 1280x640; n=5 → 1500x700
 - 需要 `from PyQt5.QtWidgets import QGridLayout` (容易漏)
 
-## 3. 视频窗口元信息 — "不知道啥时候生成的"
+## 3. 视频窗口元信息 — "不知道什么时候生成的"
 
 老倪要求每个视频框副标题显示**生成时间 + 动作幅度** (对比有依据):
 - 生成时间 = 第一帧 `os.path.getmtime(frames[0])`, 格式 `%m-%d %H:%M`
@@ -70,7 +70,7 @@ on_infer_video 改为: 画布有五模型节点 → 无论双击哪个视频节�
 
 ## 6. 训练步数统一 (50→10) 的联动修改清单
 
-老倪: "改成训练10步吧, 先跑通流程"。**只改一处会混用** (有的模板 50 有的 10):
+老倪: "改成训练10步吧, 先验证通过流程"。**只改一处会混用** (有的模板 50 有的 10):
 - simulink_module.py: 模板 `"steps": 50` ×17 处 + 对话框 `p.get("steps", 50)` + tooltip
 - node_logic.py: 右键源码 `p.get("steps", 50)`
 - train_vla_touch.py / train_awe_zflow.py: `--steps 50` docstring + `default=50`

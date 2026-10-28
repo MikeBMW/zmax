@@ -6,14 +6,14 @@
     「你现在将状态空间的工程中, 所有任务进行分析, 将每个功能清单中的功能, 叠加上配置参数,
       转化成 元任务。…… 这些元任务, 要由配置中心可以在任务配置里可以导出 word 和 pdf 文档。」
 
-口径（全部从工程真源实读派生，不人工编造）:
+口径（全部从工程唯一依据实读派生，不人工编造）:
     元任务 = 一个功能 (FN-SYSx-N) + 该功能的全部配置参数 + 依赖 + 验证方法 + 归属层
-    真源: data/database/zmax/config_meta.json          (74 个功能的字段/范围/单位/依赖/验证)
+    唯一依据: data/database/zmax/config_meta.json          (74 个功能的字段/范围/单位/依赖/验证)
           data/database/zmax/sources/config/tasks/tasks.json          (7 个任务的工艺/覆盖/周期)
           data/database/zmax/sources/config/ss_task_binding.json      (任务 × 节点 × 配方段)
           src/lerobot/engineering/flows/state_space_obs.json          (画布 89 节点 / 184 连线)
 
-生成链: 真源 → Markdown → HTML → LibreOffice(soffice) → docx + pdf
+生成链: 唯一依据 → Markdown → HTML → LibreOffice(soffice) → docx + pdf
         (LibreOffice 不能直接吃 .md，所以中间必须过一层 HTML；从 HTML 导出 docx 需先转 odt
          —— HTML 会被当成 Writer/Web 文档，没有 docx 导出过滤器，实测踩过。)
 
@@ -50,7 +50,7 @@ TASK_ORDER = ["TASK-06-TRAY", "TASK-01-FW", "TASK-02-HANDLE", "TASK-03-BI",
 
 
 def task_order(tasks):
-    """任务展示序: 老的固定序优先, **新加的任务自动追加在后面** (2026-10 起真源 8 条: 多了 TASK-08-AL1;
+    """任务展示序: 老的固定序优先, **新加的任务自动追加在后面** (2026-10 起唯一依据 8 条: 多了 TASK-08-AL1;
     原来 TASK_ORDER 硬编码 7 个 ⇒ 文档/校验里第 8 个任务被静默漏掉)。"""
     ids = [t["task_id"] for t in tasks]
     out = [x for x in TASK_ORDER if x in ids]
@@ -101,8 +101,8 @@ def build_meta_tasks():
     byname = {n["name"]: n["id"] for n in nodes}
     sb = _j(os.path.join(SRC, "ss_task_binding.json"))
     tasks = sb["tasks"]
-    # 🆕 2026-10-14 老倪: 「你来修改每个功能点的描述」—— 描述真源 = function_notes.json
-    #   (每个功能点: work 干什么活 / pain 卡在哪 / state 当前状态)。GUI/文档/工程库/交底书 一处取数。
+    # 🆕 2026-10-14 老倪: 「你来修改每个功能点的描述」—— 描述唯一依据 = function_notes.json
+    #   (每个功能点: work 做什么 / pain 阻塞点 / state 当前状态)。GUI/文档/工程库/交底书 一处取数。
     _nf = _j(os.path.join(DB, "function_notes.json")) or {}
     NOTES = (_nf.get("notes") or {}) if isinstance(_nf, dict) else {}
 
@@ -245,8 +245,8 @@ def render_md(MT, ctx):
     A("在 2026-10 ~ 2027-12 内完成全部元任务的开发、接入与验收，并保证工程数据一致性。\n")
     A("### 1.2 元任务定义")
     A("> **元任务 = 一个功能（FN-SYSx-N）+ 该功能的全部配置参数 + 依赖 + 验证方法 + 归属层**\n")
-    A("数据真源（全部实读，不人工编造）：\n")
-    A("| 真源 | 路径 | 内容 |")
+    A("数据唯一依据（全部实读，不人工编造）：\n")
+    A("| 唯一依据 | 路径 | 内容 |")
     A("|---|---|---|")
     A("| 功能元数据 | `data/database/zmax/config_meta.json` | %d 个功能的字段/范围/单位/默认值/依赖/验证 |" % len(MT))
     A("| 参数注册表 | `sources/config/mcd/param_registry.json` | 每个参数的当前值/默认/min/max/单位/档位 |")
@@ -333,7 +333,7 @@ def render_md(MT, ctx):
     A("### 4.4 里程碑\n")
     A("| 里程碑 | 时间 | 判据 |")
     A("|---|---|---|")
-    A("| **M0 基线冻结** | 2026-10 | 工程真源哈希冻结；元任务清单发布（本文件） |")
+    A("| **M0 基线冻结** | 2026-10 | 工程唯一依据哈希冻结；元任务清单发布（本文件） |")
     A("| **M1 L2 底座就绪** | 2026-12 | L2 层元任务完成：感知(YOLO/2D→3D/触觉/板坐标系)、"
       "控制(调制/估计/预测/校正/前馈)、执行(原子技能)、安全(饱和限幅) |")
     A(f"| **M2 P0 核心完成** | 2027-03 | {c0} 个全任务共用元任务全部完成 |")
@@ -386,13 +386,13 @@ def render_md(MT, ctx):
     A(f"| 元数据完整性 | 逐条登记 | 完整 {comp} / 不完整 {len(MT) - comp}（缺失维度已逐条列出） | ⚠️ 已登记 |")
     A("")
     A("### 6.3 固化约束（防漂移）")
-    A("1. **单一真源**：元任务清单由 `config_meta.json` + `tasks.json` + `ss_task_binding.json` + 画布**派生**，不另存一份；")
-    A("2. **哈希冻结**：真源哈希随本文件发布，任何一方变更即触发一致性重校验；")
+    A("1. **单一唯一依据**：元任务清单由 `config_meta.json` + `tasks.json` + `ss_task_binding.json` + 画布**派生**，不另存一份；")
+    A("2. **哈希冻结**：唯一依据哈希随本文件发布，任何一方变更即触发一致性重校验；")
     A("3. **生成物勿手改**：`ss_task_binding.json` 已标“生成物, 勿手改”，重新生成后元任务清单需同步重建；")
     A(f"4. **{len(MT) - comp} 个不完整元任务**：缺口维度明确（specific_params / deps），"
       "在对应元任务开发时补齐，补不齐不许进默认档。\n")
-    A("### 6.4 真源哈希\n")
-    A("| 真源文件 | sha256(前16) |")
+    A("### 6.4 唯一依据哈希\n")
+    A("| 唯一依据文件 | sha256(前16) |")
     A("|---|---|")
     for k, p in (("功能元数据 config_meta.json", os.path.join(DB, "config_meta.json")),
                  ("任务配置 tasks.json", os.path.join(SRC, "tasks/tasks.json")),
@@ -408,17 +408,17 @@ def render_md(MT, ctx):
     A("### 7.2 落点\n")
     A("| 项 | 内容 |")
     A("|---|---|")
-    A("| 配置中心入口 | `sources/config/tasks/tasks.json`（任务配置真源） |")
+    A("| 配置中心入口 | `sources/config/tasks/tasks.json`（任务配置唯一依据） |")
     A("| 元数据面 | `data/database/zmax/config_meta.json` |")
     A("| 导出产物 | `元任务开发计划_<日期>.md` / `.docx` / `.pdf` |")
-    A("| 生成链 | 真源 → Markdown → HTML → LibreOffice(soffice) → docx/pdf |")
+    A("| 生成链 | 唯一依据 → Markdown → HTML → LibreOffice(soffice) → docx/pdf |")
     A("| 实现脚本 | `tools/export_meta_doc.py` |")
     A("| GUI 入口 | 「配置中心 → 📋 任务配置 → 📄 元任务计划 (Word/PDF)」 |")
     A("")
     A("### 7.3 配置中心两项拆分（任务配置 / 工单实例·在文档配置内）\n")
     A("> 老倪 2026-10-14：「将元任务，这些信息，体现在配置中心的 任务配置；"
       "将原来的工艺工单任务，拆解成 任务配置 和 工单配置 两项」\n")
-    A("| 项 | 左树/页签 | 粒度 | 真源 | 内容 |")
+    A("| 项 | 左树/页签 | 粒度 | 唯一依据 | 内容 |")
     A("|---|---|---|---|---|")
     A("| **任务配置** | 📋 任务配置 | **元任务**（功能 + 配置参数） | `config_meta.json` + "
       "画布连线 + `tasks.json` + `ss_task_binding.json` | 元任务清单（标准模板七字段：功能名称/输入/输出/"
@@ -443,7 +443,7 @@ def render_md(MT, ctx):
       "在对应元任务开发窗口内补齐 specific_params / deps，完成后重跑完整性校验 |")
     A(f"| {c2} 个 P2 元任务未被任何任务启用 | 可能成为“登记了但没接入”的空白 | "
       "阶段二逐个判定：接入或明确标注“本阶段不接入”，不许留模糊 |")
-    A("| 真源漂移（任务/参数被改） | 元任务清单过期 | 6.4 哈希冻结 + 每次变更重跑一致性校验 |")
+    A("| 唯一依据漂移（任务/参数被改） | 元任务清单过期 | 6.4 哈希冻结 + 每次变更重跑一致性校验 |")
     A("| 相机/外设故障（本计划已发生 D405 段错误崩溃） | 数据采集与验收中断 | "
       "采集前先验相机活性（抓两帧比 md5），而非只看 fps/age（会假活） |")
     A("| 单点设备依赖 | 进度受阻 | 标定参数与配置外置（config/calib），换机可迁移 |")
@@ -451,23 +451,23 @@ def render_md(MT, ctx):
     A("---\n")
     A("## 九、验收标准\n")
     A("1. **元任务级**：每个元任务完成 = ① 功能在真实链路每帧被调用 ② 配置参数可在配置中心修改并生效 "
-      "③ 验证方法（诊断轴）实跑通过；")
+      "③ 验证方法（诊断轴）实验证通过过；")
     A("2. **任务级**：%d 个任务各自全链闭环，按 4.5 顺序验收；" % len(tasks))
     A(f"3. **工程级**：{len(MT)}/{len(MT)} 元任务完成，数据一致性校验全绿，配置中心可导出 Word/PDF；")
     A("4. **证据级**：所有验收以**视频 / 数据实证**为准，不以“已实现”声明为准。\n")
     A("---\n")
     A("## 附录 A · 元任务标准模板（示例，前 8 个）\n")
-    A("每个元任务按《元任务标准模板》登记七个字段（全部实读真源，不人工编造）：")
+    A("每个元任务按《元任务标准模板》登记七个字段（全部实读唯一依据，不人工编造）：")
     A("功能名称 / 输入 / 输出 / 配置参数 / 依赖关系 / 验证方法 / 承载场景。\n")
     for m in MT[:8]:
         A(f"### {m['mt_id']} {m['name']}（{m['fn_id']} · {m['layer']}）")
         A(f"- 功能名称：{m['name']}")
         if m.get("note"):
-            A(f"- 干什么活：{m['note'].get('work') or '—'}")
-            A(f"- 卡在哪：{m['note'].get('pain') or '—'}")
+            A(f"- 做什么：{m['note'].get('work') or '—'}")
+            A(f"- 阻塞点：{m['note'].get('pain') or '—'}")
             A(f"- 现在什么状态：{m['note'].get('state') or '—'}")
-        A(f"- 输入：{' / '.join(m['inputs']) or '—（真源未登记）'}")
-        A(f"- 输出：{' / '.join(m['outputs']) or '—（真源未登记）'}")
+        A(f"- 输入：{' / '.join(m['inputs']) or '—（唯一依据未登记）'}")
+        A(f"- 输出：{' / '.join(m['outputs']) or '—（唯一依据未登记）'}")
         A(f"- 配置参数：{m['n_params']} 条（专属 {m['n_specific']}）——"
           f"{'；'.join(m['params_head']) or '—'}")
         A(f"- 依赖关系：{' / '.join(m['deps_up']) or '—（画布无上游）'}"
@@ -477,7 +477,7 @@ def render_md(MT, ctx):
         A(f"- 归属层 · 画布节点 · 代码：{m['layer']} · `{m['node_id']}` · `{m['code_file'] or '—'}`")
         A("")
     A("---\n")
-    A("**编制**：AI 助手（Hermes）　**依据**：工程真源实读　**日期**：2026-10-14\n")
+    A("**编制**：AI 助手（Hermes）　**依据**：工程唯一依据实读　**日期**：2026-10-14\n")
     return "\n".join(L), ok
 
 

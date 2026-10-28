@@ -195,7 +195,7 @@ def policy_service(node=None, root: str | None = None, log=None):
         import sys as _sys                                    # noqa: PLC0415
         # 🐛 2026-09-14 实测: 这里原来写成往上跳**两级** → root 解析成 /home/ubuntu,
         #   证据被写到 /home/ubuntu/reports/ (不在工程里)。改为"tools 的上一级 = 工程根",
-        #   并用 src/ 存在性兜底, 防 __file__ 位置变化。
+        #   并用 src/ 存在性保障, 防 __file__ 位置变化。
         _here = os.path.dirname(os.path.abspath(__file__))
         _root = os.path.abspath(root or os.path.join(_here, ".."))
         if not os.path.isdir(os.path.join(_root, "src")):
@@ -538,7 +538,7 @@ def direct_rollout(seed, mode, max_steps, goal224, node, a_mean, a_std, unz,
            "u_ff_src": state.get("u_ff_source"), "l3_cond_ready": state.get("l3_cond_ready"),
            "l3_cond_src": state.get("l3_cond_source"), "evidence": state.get("evidence"),
            "u_ff": state.get("u_ff"),
-           # 🧠 skill_ctx 喂给模型的现场凭据 (维度/非零数/L2 是否真就绪)
+           # 🧠 skill_ctx 提供给模型的现场凭据 (维度/非零数/L2 是否真就绪)
            "skill_ctx_dim": state.get("skill_ctx_dim"),
            "skill_ctx_nonzero": state.get("skill_ctx_nonzero"),
            "l2_ready": state.get("l2_ready"), "l2_err": state.get("l2_err"),

@@ -5,7 +5,7 @@
 老倪 2026-10-19: 「在配置中心，要有商业模式，你看看怎么从前面的配置，导出商业模式」。
 口径来源: 商业模式三规律 (成本结构定定价空间/价值分配定利益格局/风险承担定推进速度)
           + 三阶段定价 (S1 不收费 → S2 解决方案费 → S3 批量按台)。
-真源: config/platform/zmax_cost_model.json + config/platform/zmax_business_model.json
+唯一依据: config/platform/zmax_cost_model.json + config/platform/zmax_business_model.json
 算法: tools/business_model.py (页面/CLI/导出同一个函数)
 
 判据:
@@ -17,8 +17,8 @@
   ⑥ 模式推荐        5 个模式; 区间不成立 ⇒ 推荐「软件授权」; 推荐行带 ★
   ⑦ 同源            页面结果 == business_model.derive() 逐字段
   ⑧ 改假设现算      毛利率 40→30% floor 降; 客户目标回本 2.5→5 年 ⇒ 区间转成立
-  ⑨ 派生值不落盘     真源里只有 inputs, 无 total/price/floor/payback 键
-  ⑩ 写回+回读+还原   改一个假设 → 真源真变 + 备份 + 字节级还原
+  ⑨ 派生值不落盘     唯一依据里只有 inputs, 无 total/price/floor/payback 键
+  ⑩ 写回+回读+还原   改一个假设 → 唯一依据真变 + 备份 + 字节级还原
   ⑪ 导出            business_model_*.{json,md} 生成, floor 一致, MD 含三阶段表, 测试后清理
   ⑫ 复制            剪贴板 TSV 含「底价 floor」「推荐模式」
   ⑬ 零回归          成本页仍出 36.3 万/2.02 年; 页签 = 原 9 + 1 = 10; 画布 mtime 不变
@@ -176,7 +176,7 @@ def main():
     d = json.load(open(TRUTH, encoding="utf-8"))
     bad_keys = [k for k in ("total", "price", "floor", "ceiling", "payback", "margin", "phases")
                 if k in d]
-    chk("⑨a", "真源顶层无派生键", not bad_keys, sorted(d.keys()))
+    chk("⑨a", "唯一依据顶层无派生键", not bad_keys, sorted(d.keys()))
     bad_in = [k for k in d["inputs"] if k in ("total", "price", "floor", "ceiling", "margin")]
     chk("⑨b", "inputs 里也只有输入 (每个都带 value/label/source)",
         not bad_in and all(isinstance(v, dict) and "value" in v and "label" in v
@@ -194,14 +194,14 @@ def main():
     pg._biz_save()
     back = json.load(open(TRUTH, encoding="utf-8"))
     new_baks = set(glob.glob(TRUTH + ".bak_*")) - before_baks
-    chk("⑩a", "真源 eta_struct 真变 0.80", abs(back["inputs"]["eta_struct"]["value"] - 0.80) < 1e-9,
+    chk("⑩a", "唯一依据 eta_struct 真变 0.80", abs(back["inputs"]["eta_struct"]["value"] - 0.80) < 1e-9,
         back["inputs"]["eta_struct"]["value"])
     chk("⑩b", "日志明写回读校验通过", "回读校验通过" in pg._biz_log.text(), pg._biz_log.text()[:90])
     chk("⑩c", "生成备份", len(new_baks) == 1, [os.path.basename(x) for x in new_baks])
     open(TRUTH, "wb").write(orig_bytes)
     for b in new_baks:
         os.remove(b)
-    chk("⑩d", "真源已字节级还原", open(TRUTH, "rb").read() == orig_bytes)
+    chk("⑩d", "唯一依据已字节级还原", open(TRUTH, "rb").read() == orig_bytes)
 
     print("\n【⑪ 导出 JSON + 提案 MD】")
     pg._biz_in["eta_struct"].setValue(0.92)
@@ -234,8 +234,8 @@ def main():
         abs(ce["total_first"] - 363000) < 1e-6 and ce["payback_years"] == 2.02,
         "%.0f / %s" % (ce["total_first"], ce["payback_years"]))
     chk("⑬b", "页签恰好 7 个 (= 北斗七星; 商业模式 已并入文档配置)", len(titles) == 7, len(titles))
-    chk("⑬c", "画布真源未被碰 (mtime 不变)", os.path.getmtime(CANVAS) == canvas_mt)
-    chk("⑬d", "真源已还原 (== 测试前字节)", open(TRUTH, "rb").read() == orig_bytes)
+    chk("⑬c", "画布唯一依据未被碰 (mtime 不变)", os.path.getmtime(CANVAS) == canvas_mt)
+    chk("⑬d", "唯一依据已还原 (== 测试前字节)", open(TRUTH, "rb").read() == orig_bytes)
 
     print("\n" + "=" * 68)
     print("结果: PASS %d / FAIL %d" % (len(OK), len(BAD)))

@@ -30,7 +30,7 @@ metadata:
    别用 `'vX.Y.*'` 加 `| tail` 验收: ls-remote 输出按**字典序**排, `v5.50.746` 排在 `v5.50.78`/`v5.50.79` 之前,
    tail 只看得到别人的 tag ⇒ 会误判"没推上去"、白推一遍。
 4. **`config/` 是软链, 不进 git。** `config -> data/database/zmax/sources/config`, 本轮改过的标定/权重 json
-   (`config/calib/*.json`) 必须显式 `cp` 进归档 `data/` —— 否则"保存数据"恰好漏掉唯一的参数真源。
+   (`config/calib/*.json`) 必须显式 `cp` 进归档 `data/` —— 否则"保存数据"恰好漏掉唯一的参数唯一依据。
 5. **证据只写数字。** 归档里的 evidence 放实测值(延迟/幅度/前后对照), 不写过程叙述。
 ## 步骤
 
@@ -140,7 +140,7 @@ git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这
    - **归档里要引用的远端产物先探活**: 另一台机器(如 intel)上的质量 json / 地图 png 先 `ping`+`ssh` 一次再 `scp`;
      对端已掉线就把该项标成"在远端磁盘, 未取回", **绝不静默略过** —— 否则清单看起来齐全, 实际少件。
 3. **工程库重建并核对**: `./gui-venv311/bin/python tools/engineering_db.py build` 然后 `... check`,
-   必须看到"判据全绿"。改了 config/产品真源不重建 = 下次 check 报漂移。
+   必须看到"判据全绿"。改了 config/产品唯一依据不重建 = 下次 check 报漂移。
 4. **开机自启清单**: 逐个 `systemctl is-active/is-enabled` (含 `systemctl --user` 的 GUI 服务),
    把 enabled 的服务列给他 —— 并且要真的 **enabled**, 本次手工 `setsid nohup` 起的服务要补 unit
    (否则重启就没了, 而他会以为还在)。
@@ -167,7 +167,7 @@ git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这
    看清哪边是哪边的超集再决定 `cp` 方向 —— 别凭“仓库一定是最新”直接覆盖。
 3. 同步后回读两侧 sha 作证据，再跑档位门：本机 `tools/verify_product_dev_profiles.py`；
    intel 侧 `zmax_profile.product()/hardware()/host_hardware()/hardware_ok()` 应得 `550C / intel / intel / True`。
-4. 产品真源三份都要在：`config/platform/zmax_product.json`（软链真源）、`defaults/config/platform/...`、
+4. 产品唯一依据三份都要在：`config/platform/zmax_product.json`（软链唯一依据）、`defaults/config/platform/...`、
    `/home/intel/zmax/config/platform/...`；只改一处就会出现“界面报 550C、机器按旧档跑”。
 
 隧道不稳时不要下结论“机器挂了”: `sshpass ... -J <jump> ssh -o ConnectTimeout=25` 报
@@ -189,7 +189,7 @@ git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这
 |---|---|---|
 | 只 push HEAD | 本地有 tag, 远端没有 ⇒ CI/发布看着"没触发" | 单独 `git push origin vX.Y.Z` + `ls-remote` 回读 |
 | 想用 commit 保存数据 | `zmax_data` 被 .gitignore, add 不进或直接 fatal | 走归档目录 + sha256; 真要入库的是文档/说明, 放 `docs/data_snapshots/` |
-| 归档漏掉参数真源 | 归档里没有 `layer_forces.json`/`force_field.json` 之类 | `config/` 是软链且不在 git, 逐份 `cp config/calib/<本轮改过的>.json` 进 `data/`, MANIFEST 里点名 |
+| 归档漏掉参数唯一依据 | 归档里没有 `layer_forces.json`/`force_field.json` 之类 | `config/` 是软链且不在 git, 逐份 `cp config/calib/<本轮改过的>.json` 进 `data/`, MANIFEST 里点名 |
 | 归档脚本照抄上一版没改路径/版本 | 产物堆到旧版本目录, MANIFEST 写错号 | 复制后只改 `DST` 前缀 + MANIFEST 主题, 跑完用 `search_files(target='files')` 核对目录名 |
 | changelog 写成过程叙述 | 下一版读的人不知道改了什么、根因在哪 | 一行: "做了什么 + 为什么(根因)", 不写排查过程 |
 | 版本号自选 | 与用户口径冲突 | 只按用户给的数字; 没给就只改内容 |

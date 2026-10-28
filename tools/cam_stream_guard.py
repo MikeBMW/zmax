@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 """🛰 工位总览推流守护 —— ①没跑就拉起 ②跑着但**相机映射错了**就按解析结果重启 ③正常静默
 
-为什么需要 (2026-09-28 现场): 控制台按钮拉流时设备号写死过 `--local-dev 2 --local2-dev 0` ⇒
+为什么需要 (2026-09-28 现场): 控制台按钮拉流时设备号预先固定过 `--local-dev 2 --local2-dev 0` ⇒
   · /dev/video2 = 笔记本相机的 GREY(IR) 那一路 → 那一格近全黑(实测 mean=3.7 / 95.8% 像素近黑);
   · /dev/video0 = 笔记本**彩色**那一路, 却被当成 MAXHUB → 两格串线(实测两格 label 都是 Integrated RGB Camera)。
 老倪原话:「笔记本内置摄像头太黑了, 而且 MAXHUB 的摄像头显示的不对, 跟笔记本摄像头串线了」。
    代码侧已改(控制台两个按钮 + tools/start_station_stream.sh 都走 tools/cam_dev_resolve.py 实测解析);
-   本守护是**兜底**: 不管谁用错参数拉起的流, 5 分钟内都会被按实测判据纠正。
+   本守护是**保障**: 不管谁用错参数拉起的流, 5 分钟内都会被按实测判据纠正。
 
 判据(全部可核, 不猜):
   A. 8791 不可达                              → 用 tools/start_station_stream.sh 拉起
@@ -79,7 +79,7 @@ TCP_CONTAINER = os.environ.get("ZMAX_TCP_CONTAINER", "rokae_tcp_sampler")
 
 
 def resolve_devs():
-    """按卡名+能力解析本机两路相机 (与 tools/start_station_stream.sh / 控制台按钮同一个真源)
+    """按卡名+能力解析本机两路相机 (与 tools/start_station_stream.sh / 控制台按钮同一个唯一依据)
     → (LOCAL, LOCAL2, USB) 或 None (USB 未插到时报 -1, 这里照样带出来)"""
     try:
         # ⚠️ 必须用 venv python: 系统 python3 没有 cv2 ⇒ 每个候选都 "探测异常 ModuleNotFoundError"
@@ -208,7 +208,7 @@ def restart(reason):
     # 2026-10-25 修: 权威实例必须是 systemd 管的那个。原来直接跑 start_station_stream.sh
     #   会拉起一个**不受 systemd 管**的副本抢住 8791/8793, 于是 unit 永远 bind 失败
     #   (实测 restart counter 67 · "Address already in use"), 而副本还带着 --local-dev 1
-    #   的错配置(V4L2:/dev/video1 打不开) —— 页面表面能用, 后台其实一直崩。
+    #   的错配置(V4L2:/dev/video1 无法打开) —— 页面表面能用, 后台实际一直崩。
     r = subprocess.run(["systemctl", "restart", "zmax-cam-live-stream"],
                        capture_output=True, text=True, timeout=120)
     if r.returncode != 0:
@@ -401,7 +401,7 @@ def main():
     elif tcp_state == "absent" and a.dry_run:
         notes.append("🦾 TCP 真值(dry-run): 容器 %s 不在位 — 环境缺失, 跳过" % TCP_CONTAINER)
 
-    # 🛰 推流兜底 —— 无论上面两项什么状态都必须走到这里
+    # 🛰 推流保障 —— 无论上面两项什么状态都必须走到这里
     if not ok:
         if a.dry_run:
             notes.append("🛰 工位推流守护(dry-run): %s — 需要重启纠正" % why)

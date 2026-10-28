@@ -10,13 +10,13 @@
     第一步  `zmax_open.py step1`  : ①确认控制台在跑 (没跑就起) ②等工程状态自恢复 (场景/数据源/活跃任务)
                                    ③把配置中心弹到前台 (老倪第二步的"弹出配置中心的窗口")
                                    ④打印当前配置摘要 (活跃任务/场景/配方/工艺步数/启用节点/档位)
-    第二步  `zmax_open.py step2`  : ①按绑定真源确定任务 (可选 --activate 真激活) ②应用场景到画布 (ss_scene_switch)
+    第二步  `zmax_open.py step2`  : ①按绑定唯一依据确定任务 (可选 --activate 真激活) ②应用场景到画布 (ss_scene_switch)
                                    ③统一打开工程 = 状态空间画布 + 3D 场景 + 信号分析
                                    ④回到配置中心并选中该任务行 ⑤逐条报结果 (真值来自控制台状态文件)
     一步到底 `zmax_open.py auto`  : step1 + step2 (开机/无人值守走这条)
     只看现状 `zmax_open.py status`
 
-真源口径 (不另算一套)
+唯一依据口径 (不另算一套)
     · 活跃任务/场景 → config/ss_task_binding.json active_task  (tools/ss_task_bind.py 是生产者)
     · 配置参数      → outputs/config_sheets/配置单_<TASK>_latest.json (tools/config_sheet.py 是生产者)
     · 控制台状态    → /tmp/zmax_console_state.json (控制台自己写的当前页/上一步动作, 带时间戳)
@@ -106,7 +106,7 @@ def _binding():
 
 
 def _sheet(task):
-    """配置单摘要 (真源 = config_sheet.py 产物)。"""
+    """配置单摘要 (唯一依据 = config_sheet.py 产物)。"""
     if not task:
         return {}
     p = os.path.join(SHEET_DIR, "配置单_%s_latest.json" % task)
@@ -128,14 +128,14 @@ def _dig(d, *path, default=None):
 
 
 def _summary(task):
-    """人话摘要 (真源 = config_sheet.py 产出的配置单; 缺就如实标缺, 不编数字)。"""
+    """人话摘要 (唯一依据 = config_sheet.py 产出的配置单; 缺就如实标缺, 不编数字)。"""
     s = _sheet(task)
     b = _binding()
     rows = []
     rows.append(("活跃任务", task or _dig(b, "active_task", default="?")))
-    rows.append(("参数真源", ("配置单 %s" % os.path.relpath(
+    rows.append(("参数唯一依据", ("配置单 %s" % os.path.relpath(
         os.path.join(SHEET_DIR, "配置单_%s_latest.json" % task), ROOT)) if s
-        else "绑定真源 config/ss_task_binding.json (还没导出配置单)"))
+        else "绑定唯一依据 config/ss_task_binding.json (还没导出配置单)"))
     if not s:
         return rows
     t = s.get("任务") or {}
@@ -163,7 +163,7 @@ def _summary(task):
         rows.append(("参数注册表", "%s 项 (%s)" % (pr.get("总数"),
                                                  " · ".join("%s%d" % (k, v) for k, v in
                                                             (pr.get("分组计数") or {}).items())[:90])))
-    for lab, key in (("标定真源", "标定真源"), ("点位台账", "点位台账")):
+    for lab, key in (("标定唯一依据", "标定唯一依据"), ("点位台账", "点位台账")):
         v = s.get(key)
         if isinstance(v, list):
             rows.append((lab, "%d 项" % len(v)))
@@ -268,13 +268,13 @@ def step2(args):
         return 1
     task = (args.task or _dig(_binding(), "active_task", default="") or "").strip()
     if not task:
-        _log("  ❌ 绑定真源里没有 active_task, 也没给 --task")
+        _log("  ❌ 绑定唯一依据里没有 active_task, 也没给 --task")
         return 1
     if args.activate:
         rc, out = _run([sys.executable, os.path.join(ROOT, "tools", "ss_task_bind.py"), "--activate", task])
         _log("  %s 激活任务 %s: %s" % ("✅" if rc == 0 else "❌", task, out.strip().splitlines()[-1][:120] if out.strip() else ""))
     else:
-        _log("  ·  任务 (绑定真源 active_task): %s" % task)
+        _log("  ·  任务 (绑定唯一依据 active_task): %s" % task)
     rc, out = _run([sys.executable, SCENE_SWITCH, "--task", task])
     _last = (out.strip().splitlines() or [""])[-1][:140]
     _log("  %s 应用场景: %s" % ("✅" if rc == 0 else "⚠️", _last))
@@ -335,7 +335,7 @@ def status(args):
         _log("  窗口 %-10s %s" % (lab, ("%s (%dx%d @ %d,%d)" % (ws[0][0], ws[0][3], ws[0][4], ws[0][1], ws[0][2]))
                                  if ws else "❌ 不在"))
     b = _binding()
-    _log("  绑定真源: active_task=%s (canvas %s 节点)" % (_dig(b, "active_task", default="?"),
+    _log("  绑定唯一依据: active_task=%s (canvas %s 节点)" % (_dig(b, "active_task", default="?"),
                                                         _dig(b, "project", "nodes", default="?")))
     for k, v in _summary(_dig(b, "active_task", default="")):
         _log("     %-10s %s" % (k, v))
@@ -345,8 +345,8 @@ def status(args):
 def main():
     ap = argparse.ArgumentParser(description="Z-MAX 标准打开流程 (第一步 加载工程+弹配置中心 / 第二步 确定配置+统一打开工程)")
     ap.add_argument("cmd", choices=["step1", "step2", "auto", "status"], help="要执行的步骤")
-    ap.add_argument("--task", default="", help="任务ID (默认 = 绑定真源 active_task)")
-    ap.add_argument("--activate", action="store_true", help="真激活该任务 (写绑定真源 + 台账; 默认只读)")
+    ap.add_argument("--task", default="", help="任务ID (默认 = 绑定唯一依据 active_task)")
+    ap.add_argument("--activate", action="store_true", help="真激活该任务 (写绑定唯一依据 + 台账; 默认只读)")
     ap.add_argument("--no-start", action="store_true", help="控制台没在跑时不要自动拉起")
     ap.add_argument("--wait", type=int, default=600, help="等控制台就绪的上限秒数 (默认 600)")
     ap.add_argument("--wait-page", type=int, default=25, help="等配置中心上前的秒数")

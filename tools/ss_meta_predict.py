@@ -5,17 +5,17 @@
 老倪 2026-10-14: 「元任务可以被预测出来，将意图直读节点改名为元任务预测，输出元任务的预测值。
                    输入为流形引擎的驱动扭矩」
 
-链路 (与真源一致, 不造数):
+链路 (与唯一依据一致, 不造数):
     驱动扭矩 T_drive = M·(−∇Φ)  ← tools/tdrive_bus.py (10Hz) → tap /dev/shm/zmax_torque/torque_<scene>.jsonl
                               → 话题 zmax/ss_torque
     本模块: tap 末 W 帧 → 真算特征 (6 通道扭矩统计 + Φ/‖∇Φ‖/M/能量占比) → 逐元任务得分 → top-k 预测值
-    候选集: 真源派生的当前任务元任务集 (tools/ss_meta_task.py, 可选 --all 全量 74)
+    候选集: 唯一依据派生的当前任务元任务集 (tools/ss_meta_task.py, 可选 --all 全量 74)
 
 口径 (必须如实, 老倪零容忍):
-  · 预测器 = **结构先验原型 + 真算特征** (`trained=false`): 原型由真源量构成 —— 画布入度 (真源 links)、
-    层响应通道 (L2 执行通道 3..5 / L3 时序 / L4,L5 全局量 / PLAT 资源), 参数规模 (真源 config_meta)。
+  · 预测器 = **结构先验原型 + 真算特征** (`trained=false`): 原型由唯一依据量构成 —— 画布入度 (唯一依据 links)、
+    层响应通道 (L2 执行通道 3..5 / L3 时序 / L4,L5 全局量 / PLAT 资源), 参数规模 (唯一依据 config_meta)。
     系数 α/β/γ 是声明常数, **不是拟合出来的**; 用 `--fit <labels.json>` 才能变成学习式 (需带标签数据)。
-  · **输入信息量如实报**: 驱动扭矩若恒定 (std=0, 当前真源就是这样: 发布器跑在固定状态上), 则任何
+  · **输入信息量如实报**: 驱动扭矩若恒定 (std=0, 当前唯一依据就是这样: 发布器跑在固定状态上), 则任何
     预测器都无区分度 ⇒ 输出 `frozen=true` + `degraded=true`, 并在 note 里点明"要真预测需时变驱动扭矩"。
 
 CLI:
@@ -24,7 +24,7 @@ CLI:
     --scene SCN-07-AOI  指定 tap 场景 (默认取 mtime 最新)
     --write           落盘 zmax_data/ss_live/meta_pred.json
     --fit LABELS.json 用带标签数据拟合系数 (格式见 --fit-help), 报告留出准确率
-    --selftest        判据 (输入真读 / 分数归一 / 信息量如实 / 与真源集对照)
+    --selftest        判据 (输入真读 / 分数归一 / 信息量如实 / 与唯一依据集对照)
 """
 from __future__ import annotations
 
@@ -64,7 +64,7 @@ def _newest_tap(scene: str | None = None) -> str:
 
 
 def read_torque(scene: str | None = None, w: int = W) -> dict:
-    """读驱动扭矩真源末 w 帧 (只读; 帧龄如实算)。"""
+    """读驱动扭矩唯一依据末 w 帧 (只读; 帧龄如实算)。"""
     p = _newest_tap(scene)
     if not p or not os.path.isfile(p):
         return {"ok": False, "src": p, "reason": "tap 不存在 (驱动扭矩发布器没在跑?)", "frames": []}
@@ -119,7 +119,7 @@ def _vec9(f: dict) -> list:
 
 
 def _candidates(all_meta: bool = False) -> tuple:
-    """候选元任务集 + 结构真源量 (画布入度 / 参数数)。真源现算, 取不到就明说。"""
+    """候选元任务集 + 结构唯一依据量 (画布入度 / 参数数)。唯一依据现算, 取不到就明说。"""
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     import ss_meta_task as SM                                          # noqa: PLC0415
     d = SM.build()
@@ -129,7 +129,7 @@ def _candidates(all_meta: bool = False) -> tuple:
         import export_meta_doc as EM                                   # noqa: PLC0415
         MT, _ = EM.build_meta_tasks()
         items, n_all = MT, len(MT)
-    # 画布入度 (真源 links)
+    # 画布入度 (唯一依据 links)
     canvas = json.load(open(os.path.join(ROOT, "src", "lerobot", "engineering", "flows",
                                          "state_space_obs.json"), encoding="utf-8"))
     ind = {}
@@ -162,9 +162,9 @@ def predict(scene: str | None = None, all_meta: bool = False, write: bool = Fals
         sel = LAYER_SEL.get(layer, DEFAULT_SEL)
         # ① 特征与层响应选择向量的投影 (方向一致性)
         proj = sum(v9[i] * sel[i] for i in range(9)) / (sum(sel) or 1.0)
-        # ② 画布入度 (真源): 上游越多的功能越靠汇聚/决策侧
+        # ② 画布入度 (唯一依据): 上游越多的功能越靠汇聚/决策侧
         w_in = float(ind.get(m.get("node_id") or "", 0)) / inmax
-        # ③ 参数规模 (真源 config_meta): 参数多的功能通常被高频驱动
+        # ③ 参数规模 (唯一依据 config_meta): 参数多的功能通常被高频驱动
         nparams = float(m.get("n_params") or 0)
         npmax = max([float(x.get("n_params") or 0) for x in items] or [1.0]) or 1.0
         logits.append(ALPHA * proj + BETA * w_in + GAMMA * (nparams / npmax))
@@ -204,7 +204,7 @@ def _save(out: dict) -> None:
     os.replace(tmp, LIVE)
 
 
-FIT_HELP = """--fit 的标签格式 (拟合式预测器, 现在真源里没有这种带标签数据):
+FIT_HELP = """--fit 的标签格式 (拟合式预测器, 现在唯一依据里没有这种带标签数据):
 {"rows": [{"tau": [6 个数], "phi": 0.7, "grad": 17.8, "M": 3.6,
            "meta": ["FN-SYS0-37", "FN-SYS0-40"]},  ...  每行 = 一帧 + 该帧真正在跑的元任务]
 }   # 来源应是: 真机跑任务时的驱动扭矩 + 当时实际执行的元任务 (阶段/技能真值)"""
@@ -249,7 +249,7 @@ def selftest() -> int:
     tset = {m.get("fn_id") for m in (meta.get("items") or [])}
     top = [t["fn_id"] for t in (p.get("top") or [])]
     hit = len([x for x in top if x in tset])
-    print("④ 与真源任务集对照: top%d 命中真源集 %d 个 (候选集=真源集 ⇒ 先验注入, 百分百命中不算预测力)"
+    print("④ 与唯一依据任务集对照: top%d 命中唯一依据集 %d 个 (候选集=唯一依据集 ⇒ 先验注入, 百分百命中不算预测力)"
           % (len(top), hit))
     ok.append(hit > 0)
     print("判据 %d/4 %s" % (sum(ok), "PASS" if all(ok) else "FAIL"))

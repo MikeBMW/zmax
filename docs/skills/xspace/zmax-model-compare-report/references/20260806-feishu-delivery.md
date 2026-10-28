@@ -1,9 +1,9 @@
-# 飞书自动交付: 视频/PDF 发 dataworld 群 (2026-08-06 实测跑通)
+# 飞书自动交付: 视频/PDF 发 dataworld 群 (2026-08-06 实测验证通过)
 
 ## 凭据与 chat_id
 - App 凭据从 `~/.hermes/.env` 读: `FEISHU_APP_ID` / `FEISHU_APP_SECRET` (机器人 xspace = cli_a87851ffe46b500d)
 - 群 chat_id 发现: `GET https://open.feishu.cn/open-apis/im/v1/chats?page_size=50` (Bearer tenant_access_token) → 找 `name=="dataworld"` 的 `chat_id` (实测 `oc_c0b4048546145c5c581ddd1a9e8f565d`)
-- 代码里可写死 chat_id 兜底, 但优先 `env.get("FEISHU_REPORT_CHAT_ID", <chat_id>)` 允许覆盖
+- 代码里可预先固定 chat_id 保障, 但优先 `env.get("FEISHU_REPORT_CHAT_ID", <chat_id>)` 允许覆盖
 
 ## 三步发送流程 (urllib 即可, 无需 requests)
 ```python
@@ -44,7 +44,7 @@ ffmpeg -y -i a.mp4 -i b.mp4 -i c.mp4 -i d.mp4 -i e.mp4 \
 - 0 字节输出 = ffmpeg 失败但文件已创建: `ls -la` 看大小, 别只看文件存在
 
 ## rollout checkpoint 路径 ts 不匹配 (vla_touch/awe_zflow)
-- **症状**: `FileNotFoundError: checkpoint 不存在: outputs/train/vla_touch_<ts>/checkpoints` — 但目录其实存在 (差几秒的另一个 ts)
+- **症状**: `FileNotFoundError: checkpoint 不存在: outputs/train/vla_touch_<ts>/checkpoints` — 但目录实际存在 (差几秒的另一个 ts)
 - **根因**: on_train 的 `ts_dir` (训练开始时间) 与 train_vla_touch.py/train_awe_zflow.py **脚本内部生成的 ts 差几秒** → train_curve json 记的 ckpt 路径指向不存在目录
 - **修复 (rollout_video.py load_policy)**: ckpt 路径不存在时 glob 找最新同前缀目录:
 ```python
@@ -73,6 +73,6 @@ def _safe_log(self, msg):
     QMetaObject.invokeMethod(self.log_box, "append", Qt.QueuedConnection, Q_ARG(str, msg))
 ```
    (scrollbar setValue 同样队列化; 三个后台方法内所有 `self._log(` 替换为 `self._safe_log(`)
-2. **worker 终止竞态 → 队列卡死 (五模型 VLA-Touch 不启动)**: `_done`(主线程, QueuedConnection) 触发 `_flow_next` 时, 上一个 QThread worker 刚 emit 完还在收尾, `isRunning()` 短暂 True → 防重入误拦截后续任务 → 队列静默卡住 (训练曲线停在某个模型, 无任何进程)。**修复**: 防重入检查 `if w.isRunning() and not w.wait(300):` 拦截 — wait(300) 给正常收尾放行, 真卡死才拦 (4 处: _start_canvas_flow/_start_worker/_run_full_flow/_run_node_stage)
+2. **worker 终止竞态 → 队列卡死 (五模型 VLA-Touch 不启动)**: `_done`(主线程, QueuedConnection) 触发 `_flow_next` 时, 上一个 QThread worker 刚 emit 完还在收尾, `isRunning()` 短暂 True → 防重入误拦截后续任务 → 队列静默阻塞 (训练曲线停在某个模型, 无任何进程)。**修复**: 防重入检查 `if w.isRunning() and not w.wait(300):` 拦截 — wait(300) 给正常收尾放行, 真卡死才拦 (4 处: _start_canvas_flow/_start_worker/_run_full_flow/_run_node_stage)
 3. **WSLg 标题栏 emoji 乱码**: QMdiSubWindow 标题 `"🖥 画布 · Simulink 模型"` 的 emoji (U+1F5A5) 在 Windows 标题栏渲染成十六进制乱码 (如 "01F 5A5"); MDI 子窗口激活时 Qt 把子标题附加到主标题 → 乱码进窗口标题栏。**修复**: 窗口标题一律纯文本 (emoji 只留在按钮/正文), 用 PowerShell `Get-Process msrdc | select MainWindowTitle` 可复现
 4. **WSLg 模态弹窗不可见 → "第一次点击没反应"**: exec_() 模态 QMessageBox 在 WSLg 下弹窗不可见但阻塞主线程 → 用户重复点击/按键才解除, 表现为"视频要双击两次才打开"。**修复**: 提示一律非模态 (气泡 _show_bubble / 对话框自带状态行), 不用 exec_

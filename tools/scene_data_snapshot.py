@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""场景数据快照 —— 把 data/scene (场景树 + 仿真真源) 存成带清单的归档, 落到数据盘。
+"""场景数据快照 —— 把 data/scene (场景树 + 仿真唯一依据) 存成带清单的归档, 落到数据盘。
 
 老倪 2026-10-10: 「小版本迭代，保存数据，推代码」。
-  - data/ 不入代码库 (设计如此: 真源可再由 tools/sim_scene_def.py 重建), 但现场编辑过的场景
+  - data/ 不入代码库 (设计如此: 唯一依据可再由 tools/sim_scene_def.py 重建), 但现场编辑过的场景
     必须落一份可校验的存档, 否则丢了没处找。
   - 归档落 zmax_data/snapshots/scene_<时间戳>.tar.gz, 同目录写 MANIFEST.json (逐文件 sha256 前 16 位)。
 

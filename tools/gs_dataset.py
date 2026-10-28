@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """gs_dataset.py — 把 gs_capture 采集会话做成 3DGS 数据集 (位姿已知, 不用 COLMAP/SfM)
 
-链路(每一环都有真源, 不猜):
+链路(每一环都有唯一依据, 不猜):
   图像  = 臂上 D405 的 Orin 高速 JPEG 通道 (640x480 bgr8)
   内参  = models/real_cam_calib.json (ROS camera_info 出厂内参 K + 5 参畸变; 去畸变用 getOptimalNewCameraMatrix(alpha=0))
   外参  = T_base_cam = T_base_tcp · T_cam2tool

@@ -157,7 +157,7 @@
 ### Z-MAX 核心技能
 | 技能 | 用途 |
 |------|------|
-| `zmax-gui-development` | GUI开发+训练+推理面板+WSL踩坑 |
+| `zmax-gui-development` | GUI开发+训练+推理面板+WSL遇到问题 |
 | `zmax-training-workflow` | SmolVLA/LeRobot训练流程 (MLP-1024方案) |
 | `zmax-website-deploy` | datadrive.world部署+WordPress更新 |
 | `zmax-product-version-management` | L1/L2/L3三层版本管理 |
@@ -179,7 +179,7 @@
 ### 软件工程
 | 技能 | 用途 |
 |------|------|
-| `pyqt5-dark-theme` | PyQt5暗色主题防踩坑 |
+| `pyqt5-dark-theme` | PyQt5暗色主题防遇到问题 |
 | `pyqt-subprocess-integration` | PyQt5子进程管理 |
 | `lerobot-gui-training-integration` | LeRobot训练CLI→GUI集成 |
 | `hardware-toolbox-gui` | 硬件仿真/发现/数据回放面板 |
@@ -193,7 +193,7 @@
 | `mac-gateway-deployment` | Mac分身部署 (LaunchAgent+隧道) |
 | `feishu-gateway-config` | 飞书网关配置 |
 | `feishu-gateway` | 飞书机器人搭建 |
-| `wsl-development` | WSL开发环境+踩坑 |
+| `wsl-development` | WSL开发环境+遇到问题 |
 | `wsl-document-open` | WSL→Windows文件打开 |
 | `wsl-windows-interop` | WSL-Windows互操作 |
 

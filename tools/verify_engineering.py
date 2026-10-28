@@ -5,7 +5,7 @@
 判据 (任何一条不过 = 架构被改坏了):
   ① 包可导入, 注册表 key 数与画布节点名映射可用
   ② **逻辑住在包里**: 每个 key 的源码文件都在 src/lerobot/engineering 下 (GUI 只显示)
-  ③ 画布 JSON 真源在包内 (flows/), 校验无错, 孤立节点 0
+  ③ 画布 JSON 唯一依据在包内 (flows/), 校验无错, 孤立节点 0
   ④ L2/L3/L4/L5 档位契约: 每档节点都能落到已注册逻辑 (levels.check)
   ⑤ GUI 兼容壳: tools/gui/node_logic.py 导入的 NODE_LOGIC 与包里逐 key 一致
   ⑥ 画布渲染: node items / link items 与文件数一致 (调 tools/verify_canvas_render.py 的数字)
@@ -43,7 +43,7 @@ def main():
     n_keys = len(E.NODE_ORDER)
     chk(n_keys >= 140, "注册 key 数", "%d 个" % n_keys)
     chk(E.paths.REPO_ROOT == REPO, "仓库根解析", E.paths.REPO_ROOT)
-    chk(E.paths.LOGIC_FILE.endswith("engineering/nodes/library.py"), "逻辑真源在包内", E.paths.LOGIC_FILE.replace(REPO + "/", ""))
+    chk(E.paths.LOGIC_FILE.endswith("engineering/nodes/library.py"), "逻辑唯一依据在包内", E.paths.LOGIC_FILE.replace(REPO + "/", ""))
 
     print("=== ② 逻辑住包里 (GUI 只显示) ===")
     homes = {}
@@ -56,10 +56,10 @@ def main():
         for f, c in sorted(outside.items())[:6]:
             print("        ⚠ 仍在外部: %s (%d 个 key) — 属 _EXTERNAL_LOC 显式指向的真实实现, 允许" % (f.replace(REPO + "/", ""), c))
 
-    print("=== ③ 画布 JSON 真源 ===")
+    print("=== ③ 画布 JSON 唯一依据 ===")
     d, errs = E.flows.load_canvas()
     st = E.flows.stats(d)
-    chk(os.path.dirname(E.paths.canvas_json()) == E.paths.FLOWS_DIR, "真源在包内 flows/", E.paths.canvas_json().replace(REPO + "/", ""))
+    chk(os.path.dirname(E.paths.canvas_json()) == E.paths.FLOWS_DIR, "唯一依据在包内 flows/", E.paths.canvas_json().replace(REPO + "/", ""))
     chk(not errs, "画布校验", "nodes=%d links=%d" % (st["nodes"], st["links"]))
     chk(not E.flows.orphans(d), "孤立节点", "0")
 

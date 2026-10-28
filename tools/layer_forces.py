@@ -8,7 +8,7 @@
     L5 = DeepSeek VL 的场景理解 (方向/条件项)
 
 设计原则 (不许编):
-  · 每层只读**它自己的真源文件**, 取不到就返回 None + `src` 写明缺哪个,
+  · 每层只读**它自己的唯一依据文件**, 取不到就返回 None + `src` 写明缺哪个,
     绝不拿上一层/上一轮的数顶替 (老倪工程真实性零容忍)。
   · 每层的来源文件与字段名都写进 `src`, 表/悬停卡直接显示 ⇒ 可逐项对账。
   · 加权在**矢量层**做 (v = w·k·v_raw), 再做四元数/合力 —— 与老倪「给 u_ff 加权」同一处,
@@ -33,7 +33,7 @@ DEFAULTS = {
     "k": {"L2": 1.0, "L3": 1.0, "L4": 1.0, "L5": 1.0},
     "m_ref": 3.643,          # 度量参考 (流形主参数 M 的标定值)
     "dt_s": 0.1,             # 一拍 (H8 = 0.8s 的一块 = 0.1s/步)
-    "max_age_s": 5.0,        # 真源超过这个帧龄 ⇒ 该层标"陈旧", 数值仍给 (页脚有帧龄)
+    "max_age_s": 5.0,        # 唯一依据超过这个帧龄 ⇒ 该层标"陈旧", 数值仍给 (页脚有帧龄)
 }
 
 
@@ -53,7 +53,7 @@ def _load_cfg():
 
 
 def _j(name):
-    """读 ss_live 下的一份真源 (含 mtime 帧龄); 读不到返回 (None, None)。"""
+    """读 ss_live 下的一份唯一依据 (含 mtime 帧龄); 读不到返回 (None, None)。"""
     p = os.path.join(_SS, name)
     try:
         with open(p, encoding="utf-8") as f:
@@ -81,7 +81,7 @@ def _mag(v):
 def layer_forces():
     """→ dict: {L2/L3/L4/L5: {vec, mag, raw, w, src, note, fresh}}  (+ "meta")
 
-    每层独立取真源; 取不到的层 `vec=None` 且 `src` 写明缺什么 —— 调用方据此清空,
+    每层独立取唯一依据; 取不到的层 `vec=None` 且 `src` 写明缺什么 —— 调用方据此清空,
     绝不用别的层的数冒充。
     """
     c = _load_cfg()
@@ -114,7 +114,7 @@ def layer_forces():
             note3 = "动作头输出 (m/s 当量)"
 
     # ── L4 流形引擎: 度量张量 M 作用在(规划 − 前馈)的执行差上 ───────────────
-    #    F = M̂ · Δu ,  M̂ = M/M_ref (标量度量, 真源 torque_live.metric_M / engine_latest.M)
+    #    F = M̂ · Δu ,  M̂ = M/M_ref (标量度量, 唯一依据 torque_live.metric_M / engine_latest.M)
     v4, src4, note4 = None, "缺 L4: 无 engine/torque 度量或 Δu", ""
     _M = None
     for _d in (tor or {}, eng or {}):
@@ -133,7 +133,7 @@ def layer_forces():
         note4 = "流形引擎度量张量作用在前馈上 (F=M̂·u_ff)"
 
     # ── L5 DeepSeek VL 场景理解 ────────────────────────────────────────────
-    v5, src5, note5 = None, "缺 L5: VL 只按需出 2D boxes, 没有持续的场景矢量真源", ""
+    v5, src5, note5 = None, "缺 L5: VL 只按需出 2D boxes, 没有持续的场景矢量唯一依据", ""
     for _nm in ("l5_scene_vec.json", "l5_understand_latest.json"):
         d5, a5 = _j(_nm)
         if d5:
@@ -157,7 +157,7 @@ def layer_forces():
 
 
 def main_force(d):
-    """主力层 = 加权后模长最大的那层 (老倪: L2 前馈默认最重; 谁真大谁当主力, 不写死)."""
+    """主力层 = 加权后模长最大的那层 (老倪: L2 前馈默认最重; 谁真大谁当主力, 不预先固定)."""
     best, bm = None, -1.0
     for L in ("L2", "L3", "L4", "L5"):
         x = d.get(L) or {}

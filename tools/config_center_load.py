@@ -5,13 +5,13 @@
 老倪原话: 「你要把配置中心的所有配置文件, 加载到 状态空间工程的 标定诊断测量 主参数M 节点,
           这个节点的代码, 要加载配置中心的数据库文件, json文件, yaml文件等, 直接指导模型工作」
 
-装什么 (真源, 一个不落):
+装什么 (唯一依据, 一个不落):
   · config/**/*.json          (calib/mcd/orders/tasks/platform/robot/state_machines/... + 任务绑定)
   · config/**/*.yaml|*.yml    (机器人/驱动配置)
   · config/*.db + data/database/zmax/*.db  (工程库 SQLite: 24 表 → 行数 + 关键表样本)
   · *.bak* 只登记不解析 (历史备份, 不参与引导)
 导出「模型指导参数」guide (节点执行时直接喂模型):
-  M / inertia (主参数, 标定真源同源) · dt (控制周期) · limits (活跃任务 safety/公差/力/速度, 原样键值)
+  M / inertia (主参数, 标定唯一依据同源) · dt (控制周期) · limits (活跃任务 safety/公差/力/速度, 原样键值)
   · task (活跃任务 · 档位开 · 启用/禁用节点) · geometry (K/手眼/plane_z) · mcd (参数就绪/缺口)
   · orders / tasks 计数 · platform · robot
 产物: config/cc_snapshot.json (可审计: 每文件 md5/字节/条目 + 解析失败原因)
@@ -128,7 +128,7 @@ TXT_LIM = re.compile(r"(F[xyz]|力|速度|扭矩)\s*[>≥<=]{0,2}\s*(\d+(?:\.\d+
 
 
 def _text_limits(task):
-    """safety 之类的**文本**里写死的限值 (如「力阈值 Fz>5N」) → 摘出来, 标 source=文本 (不造)。"""
+    """safety 之类的**文本**里固定不变的限值 (如「力阈值 Fz>5N」) → 摘出来, 标 source=文本 (不造)。"""
     out = {}
     for sec in ("safety", "notes", "note", "循环", "loop"):
         s = (task or {}).get(sec)

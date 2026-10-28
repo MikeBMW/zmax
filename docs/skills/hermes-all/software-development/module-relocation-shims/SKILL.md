@@ -72,7 +72,7 @@ shim 模板见 `templates/shim.py`。四个要点缺一不可:
 4. **模块名解析要用完整路径**: 生成 shim 的脚本里, `from <pkg> import <mod>` 的落点必须解析成 `<mod>` 的
    文件路径; 图省事取 `pkg.__file__` 会给出一批“假别名”。
    **重新生成时不要以已有 shim 的 import 行为输入** —— 上一次生成的坏 shim 会被原样再生成一遍
-   (`from <pkg> import <mod>` 被当成包 `pkg.mod`), 看着“修过了”其实没变。真源只有一个: 登记表里的**真身文件路径**
+   (`from <pkg> import <mod>` 被当成包 `pkg.mod`), 看着“修过了”实际没变。唯一依据只有一个: 登记表里的**真身文件路径**
    → 反推模块全名 (`src/a/b/c.py` → `a.b.c`)。
 5. **跨平台打包**: 新包要在 Windows/macOS/Linux 的 `--add-data` 里都列上, shim 的路径探测要能走 `_MEIPASS`;
    否则源码树里全绿、冻结包里 import 不到。

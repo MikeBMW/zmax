@@ -89,7 +89,7 @@ def main() -> int:
         "tag 总数": len(_tags),
     }
 
-    # ② 在役服务与端口 (真源 = ss -ltn + systemd)
+    # ② 在役服务与端口 (唯一依据 = ss -ltn + systemd)
     ports = {}
     for ln in sh("ss -ltnp").splitlines()[1:]:
         mm = re.search(r":(\d+)\s", ln)
@@ -103,7 +103,7 @@ def main() -> int:
         "crontab": sh("crontab -l 2>/dev/null | grep -v '^#' | grep -v '^$'").strip().split("\n")[:12],
     }
 
-    # ③ 配置真源文件 (逐个 sha256 ⇒ 交付可校验)
+    # ③ 配置唯一依据文件 (逐个 sha256 ⇒ 交付可校验)
     cfgs = []
     for pat in ("config/ss_task_binding.json", "config/topics/*.json", "config/mcd/*.json",
                 "config/version.json", "config/aoi/*.json", "config/*.json"):
@@ -115,7 +115,7 @@ def main() -> int:
         if c["file"] not in seen:
             seen.add(c["file"])
             uniq.append(c)
-    inv["sections"]["配置真源"] = {"files": uniq, "count": len(uniq)}
+    inv["sections"]["配置唯一依据"] = {"files": uniq, "count": len(uniq)}
 
     # ④ 任务/场景绑定
     b = jload(os.path.join(R, "config/ss_task_binding.json"))
@@ -158,7 +158,7 @@ def main() -> int:
         aoi[str(port)] = r.strip()[:260]
     inv["sections"]["相机与AOI"] = {"流服务通道": chans, "AOI端口(工控机 192.168.23.23)": aoi}
 
-    # ⑦ 数据空间 (DDS) 话题注册表 —— 口径 = 真源模块里**实际注册**的条目数 (不靠正则数文本行)
+    # ⑦ 数据空间 (DDS) 话题注册表 —— 口径 = 唯一依据模块里**实际注册**的条目数 (不靠正则数文本行)
     _tp = sh("%s/gui-venv311/bin/python -c \"import sys;sys.path.insert(0,'src');"
              "from lerobot.dataspace import topics as T;"
              "print(len(T.TOPICS), len(getattr(T,'CLOSED_LOOP',{}) or {}), T.VERSION, T.UPDATED)\"" % R).split()
@@ -167,7 +167,7 @@ def main() -> int:
         "注册 topic 数": _nt,
         "闭环环节数": _nl,
         "注册表版本": " ".join(_tp[2:4]) if len(_tp) > 2 else "-",
-        "registry": "src/lerobot/dataspace/topics.py (TOPICS / CLOSED_LOOP 单一真源)",
+        "registry": "src/lerobot/dataspace/topics.py (TOPICS / CLOSED_LOOP 单一唯一依据)",
         "live": "zmax_data/dataspace/live.json" if os.path.exists(os.path.join(R, "zmax_data/dataspace/live.json")) else "-",
         "AR/AOI 信号组": (len((jload(os.path.join(R, "config/topics/ar_aoi_signals.json")).get("groups") or {})) or 0),
     }
@@ -182,7 +182,7 @@ def main() -> int:
     _db = os.path.join(R, "data/database/zmax/zmax_engineering.db")
     _cpath = os.path.join(R, _cf)
     inv["sections"]["状态空间工程"] = {
-        "画布真源 (被任务绑定方)": _cf,
+        "画布唯一依据 (被任务绑定方)": _cf,
         "节点数": _cn, "连线数": _cl, "画布 md5": _bp.get("canvas_md5"),
         "画布文件 sha256_12": sha8(os.path.realpath(_cpath)) if os.path.exists(_cpath) else "-",
         "工程库": (os.path.relpath(_db, R) + " (%s)" % size_mb(_db)) if os.path.exists(_db) else "-",
@@ -212,7 +212,7 @@ def main() -> int:
     }
 
     # ⑪ 配置关联性 —— 配置不是一堆独立数字: 功能↔模块代码↔参数↔能力↔验收 全链可追;
-    #    任务↔场景↔节点(启用/禁用)↔档位 决定同一套画布跑出不同作业 (真源 = 单一工程库 + 绑定文件)
+    #    任务↔场景↔节点(启用/禁用)↔档位 决定同一套画布跑出不同作业 (唯一依据 = 单一工程库 + 绑定文件)
     trace: dict = {"说明": "本节列出「配置项之间的关联」, 每条关系的条数都从单一工程库/绑定文件现取, 可回读复现。表结构 = src↔dst 关系。"}
     try:
         con = sqlite3.connect(_db)

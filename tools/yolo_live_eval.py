@@ -56,8 +56,8 @@ def capture_frames(n: int, out_dir: str, src: str, interval: float = 0.5,
                    min_gap: float = 1.0, max_wait_s: float = 0.0) -> list:
     """采 n 张**内容互不相同**的新鲜帧(落 out_dir, 永久目录, 不复用 /tmp)。
 
-    2026-09-30 踩坑: 原来按 (mtime,size) 去重 + interval 0.12s ⇒ 源头(Orin tap)以固定/微变 mtime
-    重写**同一张**图时, 会采到 16 张"看着不同、其实逐像素相同"的帧 ⇒ 对照评测无统计意义; 且默认
+    2026-09-30 遇到问题: 原来按 (mtime,size) 去重 + interval 0.12s ⇒ 源头(Orin tap)以固定/微变 mtime
+    重写**同一张**图时, 会采到 16 张"看着不同、实际逐像素相同"的帧 ⇒ 对照评测无统计意义; 且默认
     落 /tmp ⇒ 事后不可复现。⇒ 现在: ①按**内容指纹**去重 ②两次采帧至少间隔 min_gap 秒
     ③新帧落盘时打印与上一帧的差异, 让人一眼看出是不是同一张。
     """

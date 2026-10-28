@@ -4,7 +4,7 @@
 
 产出两处:
   docs/data_snapshots/<date>_状态同步_v5.50.740_<主题>/   判据实跑输出 + git ref + 变更说明
-  zmax_data/release_5.50.740_<date>/                     代码/真源/证据 + MANIFEST.md + sha256sums.txt
+  zmax_data/release_5.50.740_<date>/                     代码/唯一依据/证据 + MANIFEST.md + sha256sums.txt
 """
 import hashlib
 import json
@@ -98,7 +98,7 @@ g = subprocess.run(["git", "describe", "--tags", "--always"], cwd=ROOT, capture_
 h = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
 open(os.path.join(SNAP, "git_ref.txt"), "w", encoding="utf-8").write(f"version: {VER}\ntag/describe: {g}\nHEAD: {h}\n")
 
-# ③ 代码 + 真源
+# ③ 代码 + 唯一依据
 n_code = sum(1 for f in CODE if cp(f, REL))
 n_truth = sum(1 for f in TRUTH if cp(f, os.path.join(REL, "truth")))
 cp("VERSION.md", REL)
@@ -109,7 +109,7 @@ note = f"""# {VER} · {TOPIC}
 
 - 版本: {VER} ({"判据全否见 judge_*.txt"})
 - git: {h[:12]} · {g}
-- 三产品: 550A/550B/550C 随包发布 · 真源 updated={prod.get("updated")} · 现役 active={prod.get("active_product")}
+- 三产品: 550A/550B/550C 随包发布 · 唯一依据 updated={prod.get("updated")} · 现役 active={prod.get("active_product")}
 
 ## 本轮改了什么
 1. 核心归位: RealStateSpaceSim(4240 行) + 22 个零 Qt 模块迁入 src/lerobot/{{engine,ops,serving,features,skills,perception,middleware}}
@@ -119,7 +119,7 @@ note = f"""# {VER} · {TOPIC}
 4. pyqtgraph 加固: setData(skipFiniteCheck=True) + refresh 重入闸 + Y 量程去级联
 5. 跨平台: 23 个 shim 路径探测兼容 _MEIPASS; Windows/macOS 打包 job 补 engine/ops/serving/features/skills/
    perception/middleware + tools/gen
-6. 判据修正: verify_product_ui ⑨ 改「真源↔工程库同源」不再写死 89/190; verify_config_page_product_sync
+6. 判据修正: verify_product_ui ⑨ 改「唯一依据↔工程库同源」不再预先固定 89/190; verify_config_page_product_sync
    改读 _star_facts 摘要 (「当前 X」已不在左树文本)
 
 ## 判据
@@ -133,7 +133,7 @@ open(os.path.join(SNAP, "NOTE.md"), "w", encoding="utf-8").write(note)
 open(os.path.join(REL, "MANIFEST.md"), "w", encoding="utf-8").write(note + f"""
 
 ## 归档内容
-- 代码 {n_code} 个 · 真源 {n_truth} 个 (truth/) · 判据输出 evidence/criteria_output.txt
+- 代码 {n_code} 个 · 唯一依据 {n_truth} 个 (truth/) · 判据输出 evidence/criteria_output.txt
 """)
 
 # ⑤ sha256sums
@@ -147,4 +147,4 @@ for dp, _, fns in os.walk(REL):
 open(os.path.join(REL, "sha256sums.txt"), "w", encoding="utf-8").write("\n".join(rows) + "\n")
 
 print(f"\n快照: {SNAP}")
-print(f"归档: {REL} · 代码 {n_code} · 真源 {n_truth} · sha256 行 {len(rows)}")
+print(f"归档: {REL} · 代码 {n_code} · 唯一依据 {n_truth} · sha256 行 {len(rows)}")

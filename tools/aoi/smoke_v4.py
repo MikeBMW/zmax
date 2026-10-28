@@ -1,5 +1,5 @@
 """v4 程序离线冒烟测试 (不接真相机):
-用桩模块替掉 SciCam SDK / flask / yolo_detector, 用**真图**跑通 v4 的完整取图→规整裁剪→落盘链路,
+用桩模块替掉 SciCam SDK / flask / yolo_detector, 用**真图**验证通过 v4 的完整取图→规整裁剪→落盘链路,
 逐张打印规整度指标, 并校验产物文件。相机 SDK 本身无法离线验证(需现场), 这点如实标注。
 """
 import os
@@ -213,6 +213,6 @@ ok2 = all(r[2].get("method") == "template" for r in rows)
 slopes = [abs(r[2]["quality"]["stripe_slope_px_per_1000"]) for r in rows if r[2].get("quality", {}).get("stripe_slope_px_per_1000") is not None]
 ok3 = all(s < 2.0 for s in slopes)
 print(f"① 每张都产出 原图+规整裁剪图: {ok1}")
-print(f"② 全部走 template 路径(非兜底): {ok2}")
+print(f"② 全部走 template 路径(非保障): {ok2}")
 print(f"③ 残余倾角全部 <2px/1000: {ok3} (实测 {[round(s,2) for s in slopes]})")
 print("RESULT:" + ("PASS" if (ok1 and ok2 and ok3) else "FAIL"))

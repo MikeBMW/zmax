@@ -5,12 +5,12 @@
 老倪 2026-10-14 原话:
 > 「改变模型配置，L2~L5 在模型引擎窗口，要能方便的查看控制所有模型的训练状态，执行任务工程」
 
-本窗口做三件事 (全部走真源, 不编数):
+本窗口做三件事 (全部走唯一依据, 不编数):
   ① 看   : 一屏列出 L2/L3/L4/L5 —— 在役模型 · 版本 · 本层产物数 · 推理中 · 训练中(进度) · 最近训练 · 权重路径
-            数据真源: tools/model_inventory.py --json (nvidia-smi + 四层清单 + 训练进程)
+            数据唯一依据: tools/model_inventory.py --json (nvidia-smi + 四层清单 + 训练进程)
                       http://127.0.0.1:8796/status/all (在役/候选/推理中标记)
   ② 控   : 选中一层 → ▶ 训练本层 / ■ 停止 / 📄 训练日志 / 📂 权重目录
-            命令真源: config/mcd/param_registry.json 的 model.train_entry (与配置中心「模型配置」逐字一致)
+            命令唯一依据: config/mcd/param_registry.json 的 model.train_entry (与配置中心「模型配置」逐字一致)
   ③ 执行 : 🚀 执行任务工程 = tools/zmax_open.py step2 --activate --task <当前任务>
             (与主窗口右下角「🚀 启动工程」同一执行体)
 
@@ -46,7 +46,7 @@ from PyQt5.QtWidgets import (QAbstractItemView, QApplication, QDialog, QHBoxLayo
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PY = os.path.join(ROOT, "gui-venv311", "bin", "python")
 sys.path.insert(0, os.path.join(ROOT, "tools"))
-try:                                     # 候选行真源 = 与配置中心「模型配置」/配置通道同一份
+try:                                     # 候选行唯一依据 = 与配置中心「模型配置」/配置通道同一份
     from model_config_matrix import candidate_rows as _candidate_rows
 except Exception:                                                            # noqa: BLE001
     def _candidate_rows(models, st_models=(), layers=None):
@@ -75,7 +75,7 @@ def _short_path(p, keep=64):
     return "…" + t
 
 def _pid_alive(pid):
-    """pid 是否还在 (真源 inventory 会留陈旧训练行 ⇒ 不判活就会写出"训练中"骗人)。"""
+    """pid 是否还在 (唯一依据 inventory 会留陈旧训练行 ⇒ 不判活就会写出"训练中"骗人)。"""
     try:
         os.kill(int(pid), 0)
         return True
@@ -86,9 +86,9 @@ def _pid_alive(pid):
 
 
 def _train_cell(t):
-    """训练状态一格: 真源 inventory.training[] 的进度在 **progress 子字典** 里
+    """训练状态一格: 唯一依据 inventory.training[] 的进度在 **progress 子字典** 里
     (progress={found,raw,step,total}), 也不一定有顶层 pct ⇒ 先看 progress 再回退顶层, 都缺才写"进度未报"
-    (不能写出 "None% (None/None)" —— 那是"看着像有数据其实是坏数据")。"""
+    (不能写出 "None% (None/None)" —— 那是"看着像有数据实际是坏数据")。"""
     if not t:
         return "否"
     p = t.get("progress") or {}
@@ -102,7 +102,7 @@ def _train_cell(t):
             pct = None
     if pct is None:
         # 有些训练器 (如 YOLO 的 yolo_annot_train) 不产出 inventory 能解析的进度行 ⇒ 退到"已跑多久"
-        # (真源 elapsed_s), 再不行才写"进度未报"。**不编百分比**。
+        # (唯一依据 elapsed_s), 再不行才写"进度未报"。**不编百分比**。
         el = t.get("elapsed_s")
         return ("训练中 · 已 %ds" % int(el)) if el else "训练中 · 进度未报"
     return "▶ %s%% (%s/%s)" % (pct, step, total)
@@ -150,9 +150,9 @@ def _fit_cell(s, budget):
 def _inservice_name(ly, a, sm, mine):
     """在役行的「模型名」= **真名** (老倪 2026-10-14: 「要改成真实模型的名字, 例如 L2 YOLO」)。
 
-    真源优先级(与主界面「配置通道」model_config_matrix 完全同一条规则 ⇒ 两处同值):
+    唯一依据优先级(与主界面「配置通道」model_config_matrix 完全同一条规则 ⇒ 两处同值):
       ① 8796 /status/all 里该层**引擎实际加载**的在役模型名 (L5 = "DeepSeek 视觉规划 (L5 大模型主路)")
-      ② tools/model_inventory.py 在役行名 (原 ① 为空的兜底; 它自己也是读 models/active_models.json 真名)
+      ② tools/model_inventory.py 在役行名 (原 ① 为空的保障; 它自己也是读 models/active_models.json 真名)
     返回 (显示串, 完整串) —— 显示串按列宽像素预算收, 完整串只进 tooltip。
     """
     full = ""
@@ -208,7 +208,7 @@ BTN = (f"QPushButton{{background:{C_BG2};color:{C_WHITE};border:1px solid {C_BOR
 
 
 def _train_entries():
-    """逐层训练命令 —— 真源 = 配置中心「模型配置」的 model.train_entry (不另写一份)。"""
+    """逐层训练命令 —— 唯一依据 = 配置中心「模型配置」的 model.train_entry (不另写一份)。"""
     try:
         with open(REG_JSON, encoding="utf-8") as f:
             reg = json.load(f)
@@ -221,7 +221,7 @@ def _train_entries():
 
 
 def _active_task():
-    """当前任务 = 绑定真源 config/ss_task_binding.json 的 active_task (取不到返回空)。"""
+    """当前任务 = 绑定唯一依据 config/ss_task_binding.json 的 active_task (取不到返回空)。"""
     for p in ("config/ss_task_binding.json", "config/tasks/active.json"):
         fp = os.path.join(ROOT, p)
         try:
@@ -276,7 +276,7 @@ class _Fetcher(threading.Thread):
             self._stop.wait(self.interval)
 
     def _runtime(self, inv=None):
-        """运行位置/权重/转换工具/推理-训练 的真源 (60s 一次: 里面要 hash 权重, 不能每 tick 都做)。"""
+        """运行位置/权重/转换工具/推理-训练 的唯一依据 (60s 一次: 里面要 hash 权重, 不能每 tick 都做)。"""
         try:
             if time.time() - getattr(self, "_rt_ts", 0) < 60 and getattr(self, "_rt_d", None):
                 return self._rt_d
@@ -313,7 +313,7 @@ class ModelEnginePanel(QWidget):
         self._q = queue.Queue()
         self._log_q = queue.Queue()
         self._inv, self._st, self._age = {}, {}, None
-        self._rt = {}                     # 运行位置/运行权重/转换工具 真源 (model_runtime_map)
+        self._rt = {}                     # 运行位置/运行权重/转换工具 唯一依据 (model_runtime_map)
         self._logdir = os.path.join(ROOT, "reports")
         self._build()
         if poll:
@@ -347,7 +347,7 @@ class ModelEnginePanel(QWidget):
 
         # 2026-10-21 老倪: 「在模型引擎, 增加 每个模型在哪里运行, 运行的是哪个权重, 对应的转换工具,
         #   是正在推理, 还是在训练」。⇒ 插三列 (运行位置/运行权重/转换工具), "推理" 升为 "状态" (推理中/训练中/空闲),
-        #   真源 = config/platform/model_runtime_map.json (tools/model_runtime_map.py 现算, 界面不自己猜设备)。
+        #   唯一依据 = config/platform/model_runtime_map.json (tools/model_runtime_map.py 现算, 界面不自己猜设备)。
         cols = ("层", "在役模型", "在役版本", "运行位置", "运行权重", "转换工具",
                 "本层产物", "状态", "训练中", "最近训练", "在役权重路径")
         self.tb = QTableWidget(len(LAYERS), len(cols))
@@ -377,8 +377,8 @@ class ModelEnginePanel(QWidget):
         self.tb.setWordWrap(False)
         self.tb.itemSelectionChanged.connect(lambda: self._sync_btns())
         self.tb.itemDoubleClicked.connect(self._copy_cell)
-        # 表格高度 = 表头 + 4 行 (2026-10-14 读屏实测: 写死 168/210 时页面里只显示得下 2 行, L4/L5 被挤出视口;
-        #   而写死更大值在独立窗口里留一大片空行) ⇒ 改成按内容自适应, 在 _render 里按真实行高算。
+        # 表格高度 = 表头 + 4 行 (2026-10-14 读屏实测: 预先固定 168/210 时页面里只显示得下 2 行, L4/L5 被挤出视口;
+        #   而预先固定更大值在独立窗口里留一大片空行) ⇒ 改成按内容自适应, 在 _render 里按真实行高算。
         v.addWidget(self.tb, 0)
         # 2026-10-14 老倪: 「单独打开的模型引擎窗口 与 功能区模型引擎标签打开的界面 要保持一致」。
         #   末列(权重路径)是 Stretch ⇒ 表宽跟随父容器 ⇒ 两个界面**被裁的位置不同**。实测三种情形:
@@ -496,7 +496,7 @@ class ModelEnginePanel(QWidget):
                 st = json.loads(r.read(262144).decode("utf-8", "replace"))
         except Exception:                                                                 # noqa: BLE001
             st = {}
-        try:                                     # 运行位置/权重/转换工具 (与界面同一真源)
+        try:                                     # 运行位置/权重/转换工具 (与界面同一唯一依据)
             sys.path.insert(0, os.path.join(ROOT, "tools"))
             import model_runtime_map as mrm                                            # noqa: PLC0415
             rt = mrm.build(inv)
@@ -506,12 +506,12 @@ class ModelEnginePanel(QWidget):
 
     # ─────────────────────────── 渲染 ───────────────────────────
     def _rows(self):
-        """四层一行: 真源 model_inventory.models[] (+ 8796 的在役/推理标记 + training[] 进度)。"""
+        """四层一行: 唯一依据 model_inventory.models[] (+ 8796 的在役/推理标记 + training[] 进度)。"""
         inv = self._inv or {}
         models = [m for m in (inv.get("models") or []) if isinstance(m, dict)]
         st = self._st or {}
         st_models = [m for m in (st.get("models") or []) if isinstance(m, dict)]
-        # 训练进程: 真源 inventory.training[]。实测它有 3 类脏数据 ⇒ 这里一次收口:
+        # 训练进程: 唯一依据 inventory.training[]。实测它有 3 类脏数据 ⇒ 这里一次收口:
         #   ① 同一层多行 (L3 一个训练会带出 10+ 个同 config 的 pid 行) ② 层名有 "JOINT(L2)" 这种包裹
         #   ③ 有的行 progress.found=False (只有 pid, 没进度) —— 不能让它盖掉有进度的行。
         tr, tr_cnt = {}, {}
@@ -563,7 +563,7 @@ class ModelEnginePanel(QWidget):
             nm_disk = _dk if (_dk and _fam(_dk) and _fam(_dk) != _fam(nm_full)) else ""
             out.append({
                 "layer": ly,
-                "name": nm_cell,                       # 真名 (8796 引擎在役 > inventory 真源), 按列宽收
+                "name": nm_cell,                       # 真名 (8796 引擎在役 > inventory 唯一依据), 按列宽收
                 "name_full": nm_full,                  # 完整名 → tooltip (不丢信息)
                 "name_disk": nm_disk,                  # 磁盘产物名 (家族不同才填; 见 tooltip)
                 "ver": ver or "—",
@@ -579,7 +579,7 @@ class ModelEnginePanel(QWidget):
                 "layer_key": ly,
             })
         # 🧩 2026-10-14 老倪: 「每层模型都服役」—— extra_in_service 的条目 = **在役扩展行** (LoRA 适配层 /
-        #   SAM3 感知原语 / L5 本地技能包), 与基座行并列显示, 不再是"灰 = 未切在役"。真源同 active_models.json。
+        #   SAM3 感知原语 / L5 本地技能包), 与基座行并列显示, 不再是"灰 = 未切在役"。唯一依据同 active_models.json。
         for ly in LAYERS:
             mine = [m for m in models if str(m.get("layer")) == ly]
             act = [m for m in mine if m.get("active")]
@@ -614,7 +614,7 @@ class ModelEnginePanel(QWidget):
             pass
         # ── 运行位置 / 运行权重 / 转换工具 / 状态 ────────────────────────────────────────
         # 老倪 2026-10-21: 「每个模型在哪里运行, 运行的是哪个权重, 对应的转换工具, 是正在推理, 还是在训练」
-        #   真源 = config/platform/model_runtime_map.json (tools/model_runtime_map.py 现算: Intel /models 的 sha16 +
+        #   唯一依据 = config/platform/model_runtime_map.json (tools/model_runtime_map.py 现算: Intel /models 的 sha16 +
         #   /pipeline 的设备归属 + 本机在役 ckpt + 转换脚本)。界面**不自己猜**设备, 采集失败就写 "未加载"。
         by_ly = {}
         for it in ((getattr(self, "_rt", {}) or {}).get("items") or []):
@@ -716,7 +716,7 @@ class ModelEnginePanel(QWidget):
                 it.setForeground(QColor(fg))
                 if r.get("ext"):                             # 在役扩展行: 说清凭什么在役
                     tip = ("✅ 在役扩展 (%s) — %s\n"
-                           "在役真源: models/active_models.json#extra_in_service[%s] · 与基座行并列服役\n"
+                           "在役唯一依据: models/active_models.json#extra_in_service[%s] · 与基座行并列服役\n"
                            "%s\n完整路径 (双击复制):\n%s\n%s"
                            % (r.get("ver") or "在役扩展", r.get("name_full") or r.get("name") or "",
                               r.get("layer_key"), (r.get("ext_role") or ""),
@@ -729,7 +729,7 @@ class ModelEnginePanel(QWidget):
                               r["path"], r["n"], r["last"]))
                 else:
                     tip = ("层 %s · 在役模型 (真名): %s\n"
-                           "名字真源: 8796 /status/all 在役模型名 → models/active_models.json (与配置通道同一规则)\n"
+                           "名字唯一依据: 8796 /status/all 在役模型名 → models/active_models.json (与配置通道同一规则)\n"
                            "运行位置: %s\n运行权重: %s\n转换工具: %s\n"
                            "在役权重完整路径 (双击复制):\n%s\n最近训练 %s\n本层产物 %d 个\n训练进程: %s%s"
                            % (r["layer"], r.get("name_full") or r["name"], r.get("where") or "—",
@@ -779,7 +779,7 @@ class ModelEnginePanel(QWidget):
         try:
             # ⚠️ 2026-10-14 实测修: 原来这里写 HF_HOME=~/zmax_data/hf_cache (展开 = /home/ubuntu/zmax_data/hf_cache,
             #   少 /zmax/ 一段, 目录不存在) ⇒ 点 ▶ 训练 L3 会因加载 SmolVLM2 基座去连网而 rc=1。
-            #   统一从 tools/zmax_hf_env.py 取 (与 drill / joint_train_all 同一真源), 不再各写一份。
+            #   统一从 tools/zmax_hf_env.py 取 (与 drill / joint_train_all 同一唯一依据), 不再各写一份。
             try:
                 sys.path.insert(0, os.path.join(ROOT, "tools"))
                 from zmax_hf_env import hf_env                                       # noqa: PLC0415
@@ -872,7 +872,7 @@ class ModelEnginePanel(QWidget):
             L.append("%s | 在役 %s | 版本 %s | 本层产物 %d | %s | 训练中 %s | 最近训练 %s" % (
                 r["layer"], r["name"], r["ver"], r["n"], "推理中" if r["infer"] else "空闲", r["train"], r["last"]))
             L.append("     权重: %s" % r["path"])
-        L += ["", "训练入口(真源 model.train_entry):"]
+        L += ["", "训练入口(唯一依据 model.train_entry):"]
         for k, v in _train_entries().items():
             L.append("   %s → %s" % (k, v))
         txt = "\n".join(L)
@@ -1005,14 +1005,14 @@ def _selftest(shot=None):
         and w.tb.horizontalHeaderItem(0).text() == "层"
         and "权重" in w.tb.horizontalHeaderItem(7).text())
     ent = _train_entries()
-    chk("训练入口取自配置中心真源 (model.train_entry)", set(ent) == set(LAYERS), list(ent))
+    chk("训练入口取自配置中心唯一依据 (model.train_entry)", set(ent) == set(LAYERS), list(ent))
     chk("入口命令都指向真实存在的脚本",
         all(os.path.exists(os.path.join(ROOT, v.split()[0])) for v in ent.values()), list(ent.values()))
     chk("未跑任务时 ▶ 可点 / ■ 停 变灰", w.btn_train.isEnabled() and not w.btn_stop.isEnabled())
     # 2026-10-14 老倪「两处界面要一致」: 窗口高度改成**按内容自适应** (按钮行紧贴表格下方,
     #   不留 160px 空档) ⇒ 判据也随之改口径: 宽必须够 1900 (防截断), 高只需放得下内容
     # 🖥 2026-10-14 老倪: 窗口必须可拖宽 + 能最大化 ⇒ 判据改成"没有把尺寸钉死"
-    chk("窗口可调宽/可最大化 (无固定宽 · 有最大化按钮 · 有最小宽兜底)",
+    chk("窗口可调宽/可最大化 (无固定宽 · 有最大化按钮 · 有最小宽保障)",
         w.maximumWidth() > 4000 and w.minimumWidth() < 1200 and w.width() >= 900 and w.height() >= 460
         and bool(w.windowFlags() & Qt.WindowMaximizeButtonHint),
         "%dx%d · minW=%d maxW=%d · 最大化按钮=%s"
@@ -1034,7 +1034,7 @@ def _selftest(shot=None):
             if fm.horizontalAdvance(t) + 20 > w.tb.columnWidth(c):
                 bad.append("r%d c%d %r" % (r, c, t[:28]))
     chk("Fixed 列文字不被省略号截断 (且版本列余量≥24px 防 ElideNone 硬切)", not bad and slack >= 24, "余量 %dpx" % slack)
-    # 2026-10-14: 真源 training[] 实测有脏数据 (同层多行 / "JOINT(L2)" 包裹 / 只有 pid 没进度)
+    # 2026-10-14: 唯一依据 training[] 实测有脏数据 (同层多行 / "JOINT(L2)" 包裹 / 只有 pid 没进度)
     #   ⇒ 必须收口到"有进度的那行", 且进度取自 progress 子字典 (不是顶层 pct)
     fake = dict(inv)
     _me = os.getpid()                                                                     # 拿一个确定活着的 pid
@@ -1069,7 +1069,7 @@ def _selftest(shot=None):
                   and (w.tb.item(r, 7).data(Qt.UserRole) in (w.tb.item(r, 7).toolTip() or ""))
                   for r in range(w.tb.rowCount()))
     chk("完整路径在 tooltip/双击可复制 (省略号不丢信息)", full_ok)
-    # 2026-10-14 读屏实测: 表格写死高度 ⇒ 页面里只显示得下 2 行 (L4/L5 被挤到滚动区外) ⇒ 必须"四行全在视口内"
+    # 2026-10-14 读屏实测: 表格预先固定高度 ⇒ 页面里只显示得下 2 行 (L4/L5 被挤到滚动区外) ⇒ 必须"四行全在视口内"
     chk("四行全在视口内 (竖向滚动条不需要)", w.tb.verticalScrollBar().maximum() == 0,
         "scroll_max=%d 表高=%d 行高合计=%d" % (w.tb.verticalScrollBar().maximum(), w.tb.height(),
                                             sum(w.tb.rowHeight(i) for i in range(w.tb.rowCount()))))

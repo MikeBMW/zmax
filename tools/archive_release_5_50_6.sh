@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 归档 v5.50.6 产物 → ~/zmax/zmax_data/release_5.50.6_YYYYMMDD
 #   本轮主题: 功能级 topic 输入输出实测 + 两场景(摆盘/插拔)交付文档(配置模板) + 供应商SOR×2 + 合作协议
-#   约定沿用 archive_release_5.49.3.sh: 代码 + 真源快照 + 证据 + 文档, 末尾 MANIFEST.md + sha256sums.txt
+#   约定沿用 archive_release_5.49.3.sh: 代码 + 唯一依据快照 + 证据 + 文档, 末尾 MANIFEST.md + sha256sums.txt
 set -u
 REPO=/home/ubuntu/zmax
 DST=$HOME/zmax/zmax_data/release_5.50.6_$(date +%Y%m%d)
@@ -16,7 +16,7 @@ for f in tools/verify_feature_io.py tools/delivery/gen_scene_doc.py tools/delive
   [ -f "$f" ] && { mkdir -p "$DST/$(dirname "$f")"; cp "$f" "$DST/$f"; echo "  + $f"; }
 done
 
-echo "=== ② 真源快照 (配置/画布/绑定) ==="
+echo "=== ② 唯一依据快照 (配置/画布/绑定) ==="
 for f in config/calib/zmax_calib.json config/calib/zmax_manifold.json feature.dbc \
          config/ss_task_binding.json config/topics/scene_tags.json config/platform/zmax_perf_spec.json \
          data/database/zmax/zmax_engineering.db; do
@@ -49,7 +49,7 @@ for f in docs/deliverables/交付文档_摆盘_TASK-06-TRAY_* docs/deliverables/
          docs/deliverables/功能topic_输入输出测试报告_* docs/deliverables/全系统配置清单_* ; do
   [ -f "$f" ] && { cp "$f" "$DST/docs/"; }
 done
-# 配置单 (第二份 SOR 的配置真源): 每任务只留最新一批 (md+json), 避免多批时间戳堆叠
+# 配置单 (第二份 SOR 的配置唯一依据): 每任务只留最新一批 (md+json), 避免多批时间戳堆叠
 for t in TASK-01-FW TASK-05-ATS; do
   for ext in md json; do
     f=$(ls -1t outputs/config_sheets/配置单_${t}_*.${ext} 2>/dev/null | head -1)
@@ -68,7 +68,7 @@ cd "$DST" || exit 1
   echo "- 开发版: 5.50.6 (tools/gui/update_checker.py::CURRENT_VERSION)"
   echo "- 交付版: 5.50.C (量产交付版; 见 docs/deliverables/版本策略_5.50.A_B_C.md)"
   echo "- 本轮主题: 功能级 topic 输入输出实测 + 两场景交付文档(配置模板) + 供应商 SOR×2 + 合作协议"
-  echo "- 目录: tools/(本轮代码) · config/(真源快照) · canvas/(画布) · evidence/(判据输出) · reports/(真跑证据) · docs/(交付文档)"
+  echo "- 目录: tools/(本轮代码) · config/(唯一依据快照) · canvas/(画布) · evidence/(判据输出) · reports/(真跑证据) · docs/(交付文档)"
   echo ""
   echo "## 文件清单 (sha256)"
   echo '```'

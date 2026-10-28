@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""depth_colorize.py — 深度浮点数组 → 伪彩 JPEG + 真值带 (口径唯一真源)
+"""depth_colorize.py — 深度浮点数组 → 伪彩 JPEG + 真值带 (口径唯一依据)
 
 为什么要单独一个文件: 同一份彩色化口径**两边都要用** ——
   · 容器侧 `ros_depth_stream.py`(可能没装 cv2, 有就用它上色)

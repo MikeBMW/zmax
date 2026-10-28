@@ -1,6 +1,6 @@
 # UI 布局与主题坑 (2026-08-22, v2.5.2)
 
-96DPI 高分屏 (33寸 3200x2000, GNOME X11) 下画布 UI 重构的三条坑, 均为实际踩坑 + 根因 + 修复。
+96DPI 高分屏 (33寸 3200x2000, GNOME X11) 下画布 UI 重构的三条坑, 均为实际遇到问题 + 根因 + 修复。
 
 ## 1. QSplitter 固定宽度面板仍会画可拖手柄竖线
 
@@ -27,7 +27,7 @@ body_lay.addWidget(split, 1)          # 画布+数据字典占满
 
 **现象**: 用户报"模块库的样式，背景怎么变白了？换成暗夜风格"。模块库是唯一白底, 其余全暗。
 
-**根因**: `switch_theme` 遍历 `[self]+findChildren(QWidget)` 逐个把浅色值 replace 成深色值。上一轮把 `body_lay.addWidget(self.library)` 放在了 switch_theme **之后** (等 model_tree 也加进 split 才统一组装 body), 导致 switch_theme 执行时 library 还是"孤儿" (没 parent 加入树), findChildren 遍历不到 → 写死的 `background:#f6f8fa` 没被替换成 `#0d1117` → 白底残留。
+**根因**: `switch_theme` 遍历 `[self]+findChildren(QWidget)` 逐个把浅色值 replace 成深色值。上一轮把 `body_lay.addWidget(self.library)` 放在了 switch_theme **之后** (等 model_tree 也加进 split 才统一组装 body), 导致 switch_theme 执行时 library 还是"孤儿" (没 parent 加入树), findChildren 遍历不到 → 固定不变的 `background:#f6f8fa` 没被替换成 `#0d1117` → 白底残留。
 
 **修复**: 把 library 加入 body_lay 的动作**提前到 switch_theme 之前** (在 split.addWidget(mdi) 之后立即组装)。split 可以先只含 mdi 就放进 body_lay, model_tree 后加进 split 会自动出现, 不影响。
 

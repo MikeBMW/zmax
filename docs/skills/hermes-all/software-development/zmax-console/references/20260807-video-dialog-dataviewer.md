@@ -18,7 +18,7 @@
   修复: 尺寸有效才 scaled, 否则先 setPixmap 原图 (QLabel 自适应)。
 
 ## 数据集管理/查看器 (DatasetManager studio.py + DatasetViewer dataset_viewer.py)
-- **"50 任务数"是 HF 云端声明, 不是本地实际**: DATASETS 条目 tasks 写死; 本地实际
+- **"50 任务数"是 HF 云端声明, 不是本地实际**: DATASETS 条目 tasks 预先固定; 本地实际
   用 `local_tasks` 字段 + 表格显示 "50 · 本地1"。信息弹窗加 "📁 本地实际数据" 块
   (实际 episodes/帧数/任务, 从本地 parquet 读, 勿信 meta/info.json)。
 - **"本地状态: 未下载" 错误**: `_is_cached` 只查 HF 缓存目录; metaworld 实际数据在项目

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """3D 分层视图(DreamView3D) 画出来的"光模块 vs 插槽" 与 物理真值 差多少 (老倪: 横向有偏差)
 
-背景: 3D 视图的场景几何有一套**写死常量** (ss_dreamview.py:146-166 当年探针测的一组布局):
+背景: 3D 视图的场景几何有一套**预先固定常量** (ss_dreamview.py:146-166 当年探针测的一组布局):
   _HOLE_MOUTH=[-0.1685,0.4623,0.1309]  _HOLE=[-0.2345,0.4623,0.1309]  _BOX_CENTER=[-0.2645,0.4623,0.095]
   _PEG_CENTER_OFF=[-0.030,0,-0.010]    _PEG_SIZE=(0.20,0.03,0.03)
 引擎侧: 孔口/终点/盒中心通过 tr["_meta"] 覆盖 (hole_mouth/goal/box_center) ✓,
@@ -67,7 +67,7 @@ for nm, v, t in (("孔口 mouth", mouth_v, true_mouth), ("终点 goal", hole_v, 
 print(f"  盒中心:  视图 {np.round(box_v, 4)}  真值 {np.round(np.asarray(sim.geom.get('box_center'), float), 4)}")
 
 print("\n──────── ② 光模块 (绘制位置/尺寸): 视图 vs 真值 ────────")
-print(f"  meta 里有 peg_head_off 吗: {'peg_head_off' in meta}  (没有→走写死默认 [-0.13,0,-0.01])")
+print(f"  meta 里有 peg_head_off 吗: {'peg_head_off' in meta}  (没有→走预先固定默认 [-0.13,0,-0.01])")
 print(f"  视图 _peg_center_off = {np.round(center_off, 4)}  (ss_dreamview 常量 {np.round(sdv._PEG_CENTER_OFF, 4)})")
 print(f"  tr['peg'][-1] (obs peg_pos) = {np.round(peg_traj, 4)}")
 print(f"  真值 光模块几何中心        = {np.round(true_center, 4)}")

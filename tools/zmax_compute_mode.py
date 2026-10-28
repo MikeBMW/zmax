@@ -16,7 +16,7 @@
 
 口径:
   550C 推理=intel (不可达则**明说**回退 4060, 不冒充); 本机线程=2 (只做桥)
-  550B 推理=intel 优先, 无 intel 自动回 4060; 线程=1 (单线程 debug, 单线程口径真源=vscode_launch.SINGLE_THREAD_ENV)
+  550B 推理=intel 优先, 无 intel 自动回 4060; 线程=1 (单线程 debug, 单线程口径唯一依据=vscode_launch.SINGLE_THREAD_ENV)
   550A 训练=4060 全模型 (L4,L3,L2) 吃满 GPU+全部 CPU 核; 推理挪 intel 以免和训练抢卡
 """
 from __future__ import annotations
@@ -247,7 +247,7 @@ def ensure_tunnel():
 
 
 def active_product():
-    """读真源当前的 active_product (只读, 不依赖 lerobot)。"""
+    """读唯一依据当前的 active_product (只读, 不依赖 lerobot)。"""
     try:
         with open(os.path.join(ROOT, "config", "platform", "zmax_product.json"), encoding="utf-8") as f:
             return str(json.load(f).get("active_product") or "")
@@ -259,13 +259,13 @@ def set_product(product):
     """写档位 —— 一律走唯一写路径 status_hub.set_profile (备份 + 原子写 + 回读 + 切换日志)。"""
     p = str(product or "").strip().upper()
     if active_product() == p:
-        return {"ok": True, "unchanged": True, "why": "真源已经是 %s, 不重复写" % p}
+        return {"ok": True, "unchanged": True, "why": "唯一依据已经是 %s, 不重复写" % p}
     sys.path.insert(0, os.path.join(ROOT, "src"))
     try:
         from lerobot.engineering import status_hub                   # noqa: PLC0415
         return dict(status_hub.set_profile(p), unchanged=False)
     except Exception as e:                                            # noqa: BLE001
-        return {"ok": False, "why": "写不进真源 (%s: %s)" % (type(e).__name__, str(e)[:110])}
+        return {"ok": False, "why": "写不进唯一依据 (%s: %s)" % (type(e).__name__, str(e)[:110])}
 
 
 def apply(product, do=("product", "state", "tunnel", "vscode", "train"), dry=False, steps=None):
@@ -276,7 +276,7 @@ def apply(product, do=("product", "state", "tunnel", "vscode", "train"), dry=Fal
     if "product" in do and not dry:
         s = set_product(p)
         acts.append({"act": "product", "ok": bool(s.get("ok")),
-                     "why": s.get("why") or ("真源已写 %s (重启控制台后界面/话题准入全生效)" % p)})
+                     "why": s.get("why") or ("唯一依据已写 %s (重启控制台后界面/话题准入全生效)" % p)})
 
     if "tunnel" in do and p == "550C" and not dry:
         t = ensure_tunnel()

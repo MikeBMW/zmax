@@ -37,7 +37,7 @@ chk("② 弹窗内容就是 ModelEnginePanel (不是另一套布局)",
     isinstance(getattr(win, "panel", None), cls_panel),
     type(getattr(win, "panel", None)).__name__)
 _inv = MEW._load_inventory() if hasattr(MEW, "_load_inventory") else None
-if _inv is None:                    # 面板自己那份真源 (model_inventory --json)
+if _inv is None:                    # 面板自己那份唯一依据 (model_inventory --json)
     import json as _json
     _inv = _json.loads(subprocess.run(MEW.INV_CMD, cwd=MEW.ROOT, capture_output=True, text=True,
                                       timeout=180).stdout)
@@ -67,8 +67,8 @@ btns2 = [b.text() for b in p2.findChildren(QPushButton)]
 chk("⑦ 两处界面逐字一致 (列名 + 按钮)", cols == cols2 and btns == btns2, "%d 列 / %d 按钮" % (len(cols2), len(btns2)))
 
 # ⑧~⑪ 2026-10-14 老倪: 「配置通道都是之前的模型配置了, 要与状态空间工程实际数据一致」
-#   ⇒ 判据把「配置通道必须真源现算 + 表高按内容定(末行不许被裁)」钉住, 防回归。
-chk("⑧ 配置通道已改真源现算 (studio 调 model_config_matrix.py)",
+#   ⇒ 判据把「配置通道必须唯一依据现算 + 表高按内容定(末行不许被裁)」钉住, 防回归。
+chk("⑧ 配置通道已改唯一依据现算 (studio 调 model_config_matrix.py)",
     "model_config_matrix.py" in src and "_build_config_matrix" in src and "ZOO_SPEC" not in src)
 chk("⑨ 表高按内容定 (防末行被裁: setFixedHeight(_need))", "tbl.setFixedHeight(int(_need))" in src)
 chk("⑩ 列头不再硬切 (短名按词边界 + 截断带 …)",
@@ -76,7 +76,7 @@ chk("⑩ 列头不再硬切 (短名按词边界 + 截断带 …)",
 r = subprocess.run(["/home/ubuntu/zmax/gui-venv311/bin/python",
                     "/home/ubuntu/zmax/tools/model_config_matrix.py", "--check"],
                    capture_output=True, text=True, timeout=300, cwd="/home/ubuntu/zmax")
-chk("⑪ 模型配置矩阵真源判据 PASS", r.returncode == 0, (r.stdout or "").strip().splitlines()[-1][:80])
+chk("⑪ 模型配置矩阵唯一依据判据 PASS", r.returncode == 0, (r.stdout or "").strip().splitlines()[-1][:80])
 
 # ⑬ 2026-10-14 老倪: 「在模型引擎里, 要增加 SAM3, 我看你设计的位置是 L2对不？你来设计UI显示」
 #    ⇒ 模型引擎表里 L2 下面必须有一行候选, 且**显 SAM3 + 未切在役判据 + 候选权重真路径**;
@@ -106,7 +106,7 @@ for _r in range(win.panel.tb.rowCount()):
             _ov.append("r%d c%d %r" % (_r, _c, _t[:26]))
 chk("⑬d 真状态喂入后候选行也不越列宽 (不硬切)", not _ov, ("溢出 %s" % _ov[:3]) if _ov else "无溢出")
 
-# ⑭ 同源核对: 窗口候选路径 == 配置通道「候选权重路径」单元格值 (同一真源, 不许两套数)
+# ⑭ 同源核对: 窗口候选路径 == 配置通道「候选权重路径」单元格值 (同一唯一依据, 不许两套数)
 _mx = subprocess.run(["/home/ubuntu/zmax/gui-venv311/bin/python", "-c",
                       "import sys,json;sys.path.insert(0,'/home/ubuntu/zmax/tools');"
                       "import model_config_matrix as M;"
@@ -159,7 +159,7 @@ _src = "\n".join(l for l in open("/home/ubuntu/zmax/tools/model_inventory.py", e
                  .read().splitlines() if not l.lstrip().startswith("#"))     # 只看代码, 不看注释
 _hard = [s for s in ('"L2 在役 (指针)"', '"L3 在役 (运行时 ckpt)"', '"L4 在役 (稳定指针)"',
                      '"L5 最新 merged (可部署)"') if s in _src]
-chk("⑮c 旧硬写名字已从真源代码里消失 (改走 models/active_models.json 真名)", not _hard,
+chk("⑮c 旧硬写名字已从唯一依据代码里消失 (改走 models/active_models.json 真名)", not _hard,
     "残留 %s" % _hard if _hard else "0 处残留; 真名源: models/active_models.json + ckpt 自身 config.json")
 
 # ⑮d 列里放不下的**完整真名**必须留在 tooltip (按像素预算收显示串, 但不许丢信息);

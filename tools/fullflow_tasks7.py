@@ -134,7 +134,7 @@ def stage_sim_data(task, ev, logdir, target, mode):
               "--out", outd, "--mode", mode, "--max-seeds", str(max(40, target * 3))],
              int(os.environ.get("SIM_TIMEOUT_S", "900")), os.path.join(logdir, "sim_data.log"), "sim_data")
     # ⚠️ 收集器 --target 计的是**成功轨迹**数 (失败 seed 每个空跑 ~20s) ⇒ 实测 target 24 只出 8 条成功、
-    #    其余全 "未完成, 跳过"(磨了 4 分钟)。target 10 收敛快; 墙钟上限兜底防拖死循环。
+    #    其余全 "未完成, 跳过"(磨了 4 分钟)。target 10 收敛快; 墙钟上限保障防拖死循环。
     # 轨迹/帧数取**收集器自己的真报数** ("✅ 完成: 6 轨迹 / 2896 帧 → 路径") + LeRobot 数据集落盘核验
     m = re.search(r"完成:\s*(\d+)\s*轨迹\s*/\s*(\d+)\s*帧", r["out"])
     n_epi = int(m.group(1)) if m else 0

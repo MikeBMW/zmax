@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""aoi_task_landing.py — 配置中心「任务7 = AOI」落库 (场景真源 + 配方计划 + 任务配置)
+"""aoi_task_landing.py — 配置中心「任务7 = AOI」落库 (场景唯一依据 + 配方计划 + 任务配置)
 
 老倪 2026-10-11 指令 (逐字):
     「在配置中心，增加任务7,对应 AOI 任务，场景就对应 AR, 模型对应 Automated Optical Inspection
       自动光学检测 的 L5 自主进化程序」
 
-链路 (与 tools/task_build.py 同源, 不另造一份真源):
+链路 (与 tools/task_build.py 同源, 不另造一份唯一依据):
     flows/scenes_5jobs.json  ← 新增场景 SCN-07-AOI (scene_type=ar_aoi, 场景=AR)
                              ← 同时**补回** SCN-06-TRAY (2026-08 被 SCN-07-UP 顶掉, 而 tasks.json 里
-                                一直是任务6 ⇒ 「生成器与真源不一致」的根因; 不补, 一重生成任务6就消失)
+                                一直是任务6 ⇒ 「生成器与唯一依据不一致」的根因; 不补, 一重生成任务6就消失)
     tools/task_build.py      ← 新增 PLAN["ar_aoi"] (任务类型/适用段/覆盖参数/model_ref = L5 自主进化程序)
                              ← 无配方计划(PLAN)的场景**不再静默套 ATS 配方**, 改为跳过并打印提示
     config/tasks/tasks.json  ← 由 task_build 真生成器重写: 任务1..6 逐字节不变 + 任务7 = TASK-07-AOI
@@ -32,7 +32,7 @@ SCENES = os.path.join(ROOT, "flows", "scenes_5jobs.json")
 TASKS = os.path.join(ROOT, "config", "tasks", "tasks.json")
 TASK_BUILD = os.path.join(ROOT, "tools", "task_build.py")
 
-# ─────────────────────────── 场景 6: 光模块摆盘 (补回, 真源 = 现 tasks.json 任务6 + data/scene/SS-TRAY-PLACE) ───
+# ─────────────────────────── 场景 6: 光模块摆盘 (补回, 唯一依据 = 现 tasks.json 任务6 + data/scene/SS-TRAY-PLACE) ───
 TRAY_SCENE = {
     "scene_id": "SCN-06-TRAY",
     "scene_type": "tray_filling",
@@ -68,7 +68,7 @@ TRAY_SCENE = {
 }
 
 # ─────────────────────────── 场景 7: AR 光学质量检测 (新, 老倪 2026-10-11) ───
-# 坐标全部取自真源: 示教点位 reports/aoi_points/*.json (ROKAE SDK 直读); 相机/深度/判决 = AR 服务 :8797 实测
+# 坐标全部取自唯一依据: 示教点位 reports/aoi_points/*.json (ROKAE SDK 直读); 相机/深度/判决 = AR 服务 :8797 实测
 AR_SCENE = {
     "scene_id": "SCN-07-AOI",
     "scene_type": "ar_aoi",
@@ -88,11 +88,11 @@ AR_SCENE = {
         {"name": "光模块单颗", "pos": None, "size_mm": [18, 9, 4],
          "role": "物料单颗·AR 实拍视野内 (基座系位置待标定; RealSense 工作区距离实测 1.000m · 有效深度 93.7%)"},
         {"name": "金手指点1 (示教位姿)", "pos": [0.489774, 0.1473783, 0.4054162], "size_mm": None,
-         "role": "示教点位·金手指 (真源 reports/aoi_points/金手指点1.json · ROKAE SDK 直读 endInRef)"},
+         "role": "示教点位·金手指 (唯一依据 reports/aoi_points/金手指点1.json · ROKAE SDK 直读 endInRef)"},
         {"name": "侧面点0 (表面检测观察位)", "pos": [0.3897588, -0.4181877, 0.4869425], "size_mm": None,
-         "role": "示教点位·侧面观察位 (真源 reports/aoi_points/侧面点0.json)"},
+         "role": "示教点位·侧面观察位 (唯一依据 reports/aoi_points/侧面点0.json)"},
         {"name": "安全点1", "pos": [0.377606, 0.0423738, 0.3621157], "size_mm": None,
-         "role": "示教点位·安全 (真源 reports/aoi_points/安全点1.json · 距金手指点1 159.6mm)"},
+         "role": "示教点位·安全 (唯一依据 reports/aoi_points/安全点1.json · 距金手指点1 159.6mm)"},
     ],
     "steps": [
         {"t": 0.0, "dur": 0.5, "name": "AR 取像",
@@ -166,7 +166,7 @@ def patch_task_build(check=False):
     p = PLAN.get(scene["scene_type"])
     if p is None:
         # 🚫 无配方计划(PLAN)的场景**不再静默套 ATS 配方** —— 那会造出一条"类型/段/覆盖全错"的任务。
-        #    场景照旧留在 scenes_5jobs.json (只读真源), 只是不入任务清单; 要建任务 = 在 PLAN 里加一条。
+        #    场景照旧留在 scenes_5jobs.json (只读唯一依据), 只是不入任务清单; 要建任务 = 在 PLAN 里加一条。
         return None'''
     if old_build in src:
         src = src.replace(old_build, new_build, 1)
@@ -218,9 +218,9 @@ def main():
     doc = _load(SCENES)
     scenes = doc["scenes"]
     ids = [s["scene_id"] for s in scenes]
-    print("场景真源: %s (%d 个) → %s" % (os.path.relpath(SCENES, ROOT), len(scenes), ", ".join(ids)))
+    print("场景唯一依据: %s (%d 个) → %s" % (os.path.relpath(SCENES, ROOT), len(scenes), ", ".join(ids)))
 
-    # 1) 场景 6 摆盘补回 (真源被 SCN-07-UP 顶掉 ⇒ 任务6 一重生成就丢)
+    # 1) 场景 6 摆盘补回 (唯一依据被 SCN-07-UP 顶掉 ⇒ 任务6 一重生成就丢)
     if "SCN-06-TRAY" not in ids:
         scenes.insert(5, TRAY_SCENE)
         print("  + 补回场景 SCN-06-TRAY (光模块摆盘) @ index 5")

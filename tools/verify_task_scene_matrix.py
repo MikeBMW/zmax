@@ -5,8 +5,8 @@
 老倪 2026-10-12: 「你来自动测试, 不同的配置, 打开不同的任务, 对应不同的场景, 以及信号实时监控」
 
 对三个已绑场景的任务各跑一轮 (真激活 → 应用场景 → 统一打开工程), 每轮核 6 项真值:
-  ① 绑定真源 config/ss_task_binding.json 的 active_task == 该任务
-  ② 画布真源 ssdata.params.src_state == 该任务的场景名 (插拔场景/摆盘场景/AR场景)
+  ① 绑定唯一依据 config/ss_task_binding.json 的 active_task == 该任务
+  ② 画布唯一依据 ssdata.params.src_state == 该任务的场景名 (插拔场景/摆盘场景/AR场景)
   ③ 控制台状态文件 /tmp/zmax_console_state.json 的 task/scene (open_all 回执, 必须是本轮写入)
   ④ 3D 场景窗口真在 (wmctrl) 且标题带场景标签, 且三轮标题互不相同 (证明真切场景不是假动作)
   ⑤ 信号分析窗口真在, 且窗口内**该场景的颜色像素 > 0** (绿/蓝/紫, 截图逐像素数)
@@ -39,7 +39,7 @@ TAGS = os.path.join(ROOT, "config", "topics", "scene_tags.json")
 SHOTS = os.path.join(ROOT, "reports", "shots")
 PY = sys.executable
 
-# 任务 → 期望场景/颜色/SCN (真源 tools/ss_scene_switch.py TASK_SCENE; 这里只做断言目标)
+# 任务 → 期望场景/颜色/SCN (唯一依据 tools/ss_scene_switch.py TASK_SCENE; 这里只做断言目标)
 WANT = {
     "TASK-01-FW":   {"scene": "插拔场景", "color": "#2e8b57", "scn": "SCN-01-FW",   "win3d": "插拔场景"},
     "TASK-06-TRAY": {"scene": "摆盘场景", "color": "#1f6feb", "scn": "SCN-06-TRAY", "win3d": "摆盘场景"},
@@ -130,7 +130,7 @@ def shot_win(w, path, tries=4):
     """把窗口提到最前**并确认它就是当前活动窗**再抓整屏裁剪。
 
     实测: 只 windowactivate 有时会被刚开的窗口抢走焦点 (open_all 里 3D/信号窗是延迟开的) ⇒ 抓到的像素
-    其实是压在上面的配置中心 (三色像素数与配置中心表格一模一样, 看着"绿蓝紫都在"但根本不是信号窗)。
+    实际是压在上面的配置中心 (三色像素数与配置中心表格一模一样, 看着"绿蓝紫都在"但根本不是信号窗)。
     所以这里核 `xdotool getactivewindow == 窗 id`, 不对就重来; 返回 (图, 是否真抓到该窗)。
     """
     try:
@@ -200,7 +200,7 @@ def shot_sig_window(w, path, tries=5):
 
     实测踩过两次坑:
       ① 只 `windowactivate` 再抓全屏裁剪 ⇒ 控制台在它上面 (open_all 会延迟开窗/抢焦点), 量到的是**配置中心**
-         的像素; 而配置中心任务表本身就有绿/蓝/紫格子 ⇒ "三色都在场"看着像通过, 其实是假绿。
+         的像素; 而配置中心任务表本身就有绿/蓝/紫格子 ⇒ "三色都在场"看着像通过, 实际是假绿。
       ② 按 wmctrl 几何裁全屏同样被上层窗口污染 ⇒ 必须抓**窗自己的 drawable** (`scrot -u`)。
     自证: 抓到图的尺寸必须 == 该窗尺寸 (是别的窗就对不上), 且顶部 OCR 读得到信号窗工具条。
     返回 (图, OCR 文本, 是否自证成功)。
@@ -266,7 +266,7 @@ def one_round(task, want):
     ck("① 真激活 %s" % task, rc == 0, (out.splitlines() or [""])[-1][:100])
     run = {"task": task, "want": want}
     run["active_task"] = bind_active()
-    ck("① 绑定真源 active_task 回读 == %s" % task, run["active_task"] == task, run["active_task"])
+    ck("① 绑定唯一依据 active_task 回读 == %s" % task, run["active_task"] == task, run["active_task"])
 
     rc, out = sh([PY, os.path.join(ROOT, "tools", "ss_scene_switch.py"), "--task", task])
     run["src_state"] = canvas_src()
@@ -364,7 +364,7 @@ def main():
             sh([PY, os.path.join(ROOT, "tools", "ss_task_bind.py"), "--activate", _keep_task])
         if _keep_src:
             sh([PY, os.path.join(ROOT, "tools", "ss_scene_switch.py"), "--task", _keep_task or "TASK-01-FW"])
-            if canvas_src() != _keep_src:                       # 兜底: 原数据源与任务映射不一致时直接✍回
+            if canvas_src() != _keep_src:                       # 保障: 原数据源与任务映射不一致时直接✍回
                 try:
                     sys.path.insert(0, os.path.join(ROOT, "src"))
                     from lerobot.engineering import flows as _f                        # noqa: PLC0415
@@ -373,9 +373,9 @@ def main():
                         if "src_state" in (_n.get("params") or {}):
                             _n["params"]["src_state"] = _keep_src
                     _f.save_canvas(_d)
-                    print("   兜底写回数据源: %s" % canvas_src())
+                    print("   保障写回数据源: %s" % canvas_src())
                 except Exception as _e:                                                # noqa: BLE001
-                    print("   ⚠ 兜底写回失败: %r" % (_e,))
+                    print("   ⚠ 保障写回失败: %r" % (_e,))
         send_nav("open_all")
         time.sleep(12)
         print("   还原后回读: 活跃任务 %s · 数据源 %s" % (bind_active(), canvas_src()))

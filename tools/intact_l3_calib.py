@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""🧮 第①步: 出 L4→L3 条件标定文件 models/intact_l3_map.json (真数据拟合, 不写死)
+"""🧮 第①步: 出 L4→L3 条件标定文件 models/intact_l3_map.json (真数据拟合, 不预先固定)
 
 数据: reports/intact_pair_*.npz (每帧同源: INTACT 潜空间 z_t(192) + 引擎流形真值 6 维 mani6)
 方法 (沿用 tools/intact_fit_maps.py 的判据, 不另立标准):

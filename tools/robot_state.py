@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""robot_state.py — 机器人状态机 (单一真源 → 信号分析 / AR 页面 / 任何要"现在机器人什么状态"的地方)
+"""robot_state.py — 机器人状态机 (单一唯一依据 → 信号分析 / AR 页面 / 任何要"现在机器人什么状态"的地方)
 
 老倪 2026-10-20: 「AR 场景, 是需要接上机器人的, 你把机器人的状态机接上, 可以直接看到**是否在插拔**」
 
-真源 (全部只读, 一个都不新造):
+唯一依据 (全部只读, 一个都不新造):
   · 控制器三查 + 位姿  `zmax_data/rokae_sdk/tcp_out/state.json` / `latest.json`
       (tools/rokae/tcp_direct_sampler.py 直连珞石 xCoreSDK 落的; 帧龄 >CONN_MAX_S 判"未连接")
   · 当前阶段           `zmax_data/ss_live/skill_dispatch.json` (stage, chunk_pipeline 每拍写)

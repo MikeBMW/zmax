@@ -12,7 +12,7 @@ done
 [ -n "$VENV_PY" ] || { echo "找不到 gui-venv311 解释器"; exit 1; }
 LOG="/tmp/studio_launch.log"
 
-# 本机 Xorg 显示 (桌面会话一般已设, 兜底 :0)
+# 本机 Xorg 显示 (桌面会话一般已设, 保障 :0)
 export DISPLAY="${DISPLAY:-:0}"
 
 # 🔴 2026-10-09 老倪: 「重启后控制台不见了」——真根因: agent 在同一个 shell 里跑过
@@ -48,7 +48,7 @@ export ZMAX_BOOT_PAGE="${ZMAX_BOOT_PAGE:-home}"
 STUDIO_RE='^[^ ]*gui-venv311/bin/python studio\.py$'
 # 🔔 2026-10-16 老倪「第一次总是没反应」: studio.py 从进程起来到**主窗口 map 出来**要 ≈50s
 #    (2026-10-19 提速后实测 3.1s: 只先建首页+配置中心, 其余页在窗口出来后按需/后台建)
-#   (启动期预读配置真源 + 自动加载 L2 YOLO 2.4s / L3 SmolVLA 18.5s · 1289MB / L4 INTACT 5.9s),
+#   (启动期预读配置唯一依据 + 自动加载 L2 YOLO 2.4s / L3 SmolVLA 18.5s · 1289MB / L4 INTACT 5.9s),
 #   这段时间桌面**一点反馈都没有** ⇒ 人会以为没点到、再双击一次。这里补两条可见反馈:
 #   · 新实例: 立刻弹一条"正在启动"通知 (告诉他大概要等多久, 别急着再点)
 #   · 已有实例但窗口还没出来: 也弹一条 —— 原来这里是静默 exit 0, 正是"第二次点了也没反应"的由来

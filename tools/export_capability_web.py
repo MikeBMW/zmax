@@ -68,7 +68,7 @@ tr:nth-child(even) td {{ background:#161b22; }}
 <p class="meta">具身智能机器人平台 · 面向光模块工厂精细操作 (Z700=L4 全自主 / Z700F=Fix L2) ·
 更新 {time.strftime('%Y-%m-%d %H:%M')} · 自动断言合计 {n_total} 个</p>
 
-<div class="chain">任务链 (L2 分段执行层真实跑通, mode=full):
+<div class="chain">任务链 (L2 分段执行层真实验证通过, mode=full):
 <b>接近 → 对位 → 下降 → 抓取 → 抬起 → 转移 → 插入 → 拔出 → AOI转移 → AOI检测 → 回程 → 放下 → 完成</b>
 <br><span class="meta">R0 (无视觉) 4/4 seed 闭环 · R1 视觉 (每帧 YOLO) 877 步闭环 · AOI 报告 = 真实过程指标 (插深/力峰/回抓) · 3D 视频可见完整后续动作</span></div>
 

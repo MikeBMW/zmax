@@ -13,13 +13,13 @@
   七/八、综合  四面板 + 共享时间轴同步更新; 看到的是**投影后的球面** = 单位球 (正是 S³ 赤道 {p₄=0} 的像),
                球面上有运动的状态点、状态点处有切标架与椭球、球面上有大圆测地线。
 
-真源 (一处取, 不硬编; 缺了就空态, 绝不画假点):
+唯一依据 (一处取, 不硬编; 缺了就空态, 绝不画假点):
   · 实时状态      `zmax_data/ss_live/engine_latest.json`     (p 四元数 · M · phi · ts/帧龄 · manifold 类型)
   · 真实轨迹      `data/database/zmax/sources/canvas/ss_traj_last.json` (· 控制台 `_ss_tr` 落盘)
                   obs[i][3:7] = 单位四元数状态, t[i] = 时间, u_exec_vec[i] = 执行动作
-  · 标定真源      `config/calib/zmax_manifold.json`          (M=3.643 · 度量 diag · dim)
+  · 标定唯一依据      `config/calib/zmax_manifold.json`          (M=3.643 · 度量 diag · dim)
   · 画布节点      `…/sources/canvas/state_space_obs.json` → n_calib_mani.params (m_dim/m_diag/m_metric)
-  · 几何算子      `src/lerobot/manifold/sphere.py`           (**单真源**: 立体投影/测地线/平行移动/黎曼梯度)
+  · 几何算子      `src/lerobot/manifold/sphere.py`           (**单唯一依据**: 立体投影/测地线/平行移动/黎曼梯度)
 
 渲染: QPainter 2.5D 正交投影自绘 (球面预渲染 QPixmap + 动态元素叠加), **零 GL 依赖** ——
       画布主窗口已有 GL 上下文, 第二/多 GL 控件会踩 pyqtgraph shader 跨上下文崩
@@ -40,7 +40,7 @@ from PyQt5.QtGui import QPainter, QColor, QPen, QFont, QPixmap, QBrush, QPolygon
 from PyQt5.QtWidgets import (QWidget, QFrame, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
                              QPushButton, QSlider, QSizePolicy)
 
-# ── 几何算子单真源 (仓库铁律: 不许第二份公式) ────────────────────────────────
+# ── 几何算子单唯一依据 (仓库铁律: 不许第二份公式) ────────────────────────────────
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(os.path.dirname(_HERE))
 for _p in (_ROOT, os.path.join(_ROOT, "src")):
@@ -52,8 +52,8 @@ def _load_by_path(modname, relpath, label):
     🐛 2026-10-16 实测踩到的真坑: 控制台里 `lerobot` 可能先解析到 fork
     (`external/lerobot-smolvla-lew/src/lerobot`), 而 fork 的 `manifold/` **没有 sphere.py**
     ⇒ `from lerobot.manifold import sphere` 抛 ImportError ⇒ 面板全变空态 (页面上只有橙色空态字,
-    球/轨迹一个都不画)。可视化要的是**工程自己的真源算子**, 所以按绝对路径显式加载 ——
-    仍然是同一份源码 (单真源), 不是复制公式。
+    球/轨迹一个都不画)。可视化要的是**工程自己的唯一依据算子**, 所以按绝对路径显式加载 ——
+    仍然是同一份源码 (单唯一依据), 不是复制公式。
     """
     import importlib.util
     fpath = os.path.join(_ROOT, relpath)
@@ -110,9 +110,9 @@ def _time_color(u):
     return QColor(_int(63 + k * (210 - 63)), _int(197 + k * (153 - 197)), _int(207 + k * (34 - 207)))
 
 
-# ═══════════════════════════ 数据层 (真源只读) ═══════════════════════════
+# ═══════════════════════════ 数据层 (唯一依据只读) ═══════════════════════════
 class ManifoldData:
-    """流形可视化数据: 读真源 + 算几何 (全部用 sphere.py 的真公式)。缺文件 = 空态, 不造数。"""
+    """流形可视化数据: 读唯一依据 + 算几何 (全部用 sphere.py 的真公式)。缺文件 = 空态, 不造数。"""
 
     def __init__(self, root=None):
         self.root = root or _ROOT
@@ -147,7 +147,7 @@ class ManifoldData:
         self.traj_src = ""
         self.n = 0
 
-    # ── 真源读取 ──
+    # ── 唯一依据读取 ──
     def _j(self, *rel):
         p = os.path.join(self.root, *rel)
         try:
@@ -168,20 +168,20 @@ class ManifoldData:
                 self.node = nd.get("params") or {}
                 break
 
-        # ── M: 标定真源优先 (画布节点快照只作对照) ──
+        # ── M: 标定唯一依据优先 (画布节点快照只作对照) ──
         try:
             if self.mani.get("M") is not None:
                 self.M = float(self.mani["M"])
-                self.M_src = "config/calib/zmax_manifold.json (标定真源)"
+                self.M_src = "config/calib/zmax_manifold.json (标定唯一依据)"
             elif self.node.get("M") is not None:
                 self.M = float(self.node["M"])
-                self.M_src = "画布节点 n_calib_mani.params.M (真源缺)"
+                self.M_src = "画布节点 n_calib_mani.params.M (唯一依据缺)"
         except Exception as e:
             self.err.append("M: %s" % e)
         self.M_node = self.node.get("M")
         self.inertia = bool(self.mani.get("inertia", self.node.get("inertia", False)))
 
-        # ── 度量 (标定真源; 画布节点同源备份) ──
+        # ── 度量 (标定唯一依据; 画布节点同源备份) ──
         mm = self.mani.get("metric") or {}
         self.metric = {"dim": int(mm.get("dim") or self.node.get("m_dim") or 0),
                        "mode": mm.get("mode") or "diag",
@@ -221,9 +221,9 @@ class ManifoldData:
                 except Exception as e:
                     self.err.append("encode_obs43: %s" % e)
                     q = None
-            if q is None:                                        # ② 退回: obs[3:7] 四元数 (同一真源里的位姿四元数)
+            if q is None:                                        # ② 退回: obs[3:7] 四元数 (同一唯一依据里的位姿四元数)
                 q = np.asarray(o[3:7], float)
-                self.state_src = "obs[3:7] (轨迹真源里的位姿四元数)"
+                self.state_src = "obs[3:7] (轨迹唯一依据里的位姿四元数)"
             nq = float(np.linalg.norm(q))
             if nq < 1e-9:
                 continue
@@ -405,7 +405,7 @@ class PanelBall(QWidget):
             p.end()
             return
         # ── 轨迹 (时间着色) ──
-        xs, ds = SP.stereographic_project(self.d.Q)              # 真•立体投影 (sphere.py 单真源)
+        xs, ds = SP.stereographic_project(self.d.Q)              # 真•立体投影 (sphere.py 单唯一依据)
         xy, dep = self.cam.project(xs, cx, cy, r)
         pen = QPen(QColor(CYAN), 1)
         p.setPen(pen)
@@ -539,7 +539,7 @@ class PanelTangent(QWidget):
             _tx = max(2, min(_int(tip[0][0] + 3), _int(w - 4 - _tw)))
             p.drawText(_int(_tx), _int(tip[0][1] - 3), lab)
 
-        # ── 度量椭球 (标定真源 diag): 主轴 ∝ 1/√g (度量越大 ⇒ 该方向越短 ⇒ 刚度大) ──
+        # ── 度量椭球 (标定唯一依据 diag): 主轴 ∝ 1/√g (度量越大 ⇒ 该方向越短 ⇒ 刚度大) ──
         diag = [float(x) for x in (self.d.metric.get("diag") or [])]
         if len(diag) >= 3:
             g3 = np.sort(np.asarray(diag, float))[::-1][:3]
@@ -561,7 +561,7 @@ class PanelTangent(QWidget):
             p.setPen(QColor(DIM))
             p.drawText(8, _int(h - 25), _fit(p, "作用空间 = 任务空间 (xyz+rpy); S³ 固有度规见 ③", w - 16))
 
-        # ── 三个真向量 (全部从真源/实测轨迹算, 非示意) ──
+        # ── 三个真向量 (全部从唯一依据/实测轨迹算, 非示意) ──
         v3 = norm3(coeff(self.d.v[i]), 0.9)
         tip, _ = self.cam.project(v3, cx, cy, r)
         p.setPen(QPen(QColor(GREEN), 2))
@@ -725,7 +725,7 @@ class PanelSeries(QWidget):
             p.setPen(QPen(QColor(ORANGE), 1, Qt.DashLine))
             p.drawLine(QPointF(L, yy), QPointF(L + pw, yy))
             p.setPen(QColor(ORANGE))
-            p.drawText(_int(L + 4), _int(yy - 4), _fit(p, "M=%.3f (真源) · 惯性 %s" %
+            p.drawText(_int(L + 4), _int(yy - 4), _fit(p, "M=%.3f (唯一依据) · 惯性 %s" %
                                                        (M, "开" if d.inertia else "关(零回归)"), pw - 8))
         i = max(0, min(n - 1, self.i))
         xx = px(tt[i])
@@ -778,7 +778,7 @@ class ManifoldViz(QWidget):
         bl.addWidget(self.sld, 1)
         self.btn_refresh = QPushButton("🔁")
         self.btn_refresh.setFixedWidth(30)
-        self.btn_refresh.setToolTip("重读真源 (engine_latest / ss_traj_last / zmax_manifold)")
+        self.btn_refresh.setToolTip("重读唯一依据 (engine_latest / ss_traj_last / zmax_manifold)")
         self.btn_refresh.clicked.connect(self.reload)
         bl.addWidget(self.btn_refresh)
         lay.addWidget(bar)
@@ -853,13 +853,13 @@ class ManifoldViz(QWidget):
         age = s["live_age"]
         age_s = ("—" if age is None else ("%.1fs" % age))
         fresh = (age is not None and age < 5.0)
-        short = ("真源: engine_latest (帧龄 %s%s) · ss_traj_last (%d 帧 · su2 同源) · "
+        short = ("唯一依据: engine_latest (帧龄 %s%s) · ss_traj_last (%d 帧 · su2 同源) · "
                  "zmax_manifold M=%s · sphere.py"
                  % (age_s, "" if fresh else " ⚠陈旧", s["n"], s["M"]))
         detail = ("实时状态: zmax_data/ss_live/engine_latest.json (帧龄 %s)\n"
                   "轨迹: data/database/zmax/sources/canvas/ss_traj_last.json (%d 帧 · 状态映射 %s · 落盘 %s)\n"
                   "标定: config/calib/zmax_manifold.json  M=%s  (%s)  度量 dim=%s mode=%s diag=%s\n"
-                  "几何算子(单真源): src/lerobot/manifold/sphere.py%s\n"
+                  "几何算子(单唯一依据): src/lerobot/manifold/sphere.py%s\n"
                   "轨迹源: %s"  % (age_s, s["n"], s.get("state_src") or "—", s["traj_saved_at"] or "—",
                                   s["M"], s["M_src"], s["metric"].get("dim"), s["metric"].get("mode"),
                                   s["metric"].get("diag"), "" if SP is not None else "  ⚠不可用: " + _SP_ERR,

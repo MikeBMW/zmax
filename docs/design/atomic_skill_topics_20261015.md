@@ -4,7 +4,7 @@
 你来给出所有场景的原子技能 topic, 我要在信号分析窗口看到实际的物理模型, x y z v a 等距离、速度、角度等物理值;
 要实际发出来; 所有原子技能, 而且 vscode 要有对应代码。」
 
-**本文件是生成物**: `./gui-venv311/bin/python tools/topics_list_skill.py --md` 从唯一真源
+**本文件是生成物**: `./gui-venv311/bin/python tools/topics_list_skill.py --md` 从唯一依据
 `src/lerobot/dataspace/topics.py`(话题) + `.../skills/atomic_skills.py`(技能号↔阶段) 渲染 —— 别手改, 改了会被覆盖。
 
 ## 一、已上线: 真发布 + 有实测值 + 信号分析可见 (8 个原子技能)
@@ -30,7 +30,7 @@
 | 实测 | s | mm | 本段累计行程 (物理闸 InertiaLimiter.travel) |
 | 实测 | angle | deg | 末端姿态角 (真机 tap 四元数 2·acos|w|) |
 | 实测 | err | mm/s | 被物理闸削出来的偏差 ‖u_req − u‖ |
-| 包络 | v_cap | m/s | 限速 (标定真源) |
+| 包络 | v_cap | m/s | 限速 (标定唯一依据) |
 | 包络 | a_max | m/s² | 加速度上限 = F/m |
 | 包络 | jerk_max | m/s³ | 加加速度上限 |
 | 包络 | s_step | m | 单拍位移上限 |
@@ -53,28 +53,28 @@
 ## 四、已登记但**没有生产者**的 5 段 (诚实标注, 不假装有数)
 
 引擎 13 段 (cognition.STAGES) 里这 5 段在技能库里**没有类** ⇒ 目前没有实测产出;
-v/a/s 包络在标定真源里是齐的, 补生产者的做法 = 与 SK01..08 同一条链接进派发服务。
+v/a/s 包络在标定唯一依据里是齐的, 补生产者的做法 = 与 SK01..08 同一条链接进派发服务。
 
 | topic | 段 | 场景 | 状态 |
 |---|---|---|---|
-| `zmax/stage_pullout` | 拔出 | 插拔场景(绿) | 已登记 · 待接生产者 (技能库 atomic_skills.py 无对应类 ⇒ 目前没有实测产出; v/a/s 包络在标定真源里是齐的) |
-| `zmax/stage_aoi_move` | AOI转移 | AR场景(紫) | 已登记 · 待接生产者 (技能库 atomic_skills.py 无对应类 ⇒ 目前没有实测产出; v/a/s 包络在标定真源里是齐的) |
-| `zmax/stage_aoi_inspect` | AOI检测 | AR场景(紫) | 已登记 · 待接生产者 (技能库 atomic_skills.py 无对应类 ⇒ 目前没有实测产出; v/a/s 包络在标定真源里是齐的) |
-| `zmax/stage_return` | 回程 | AR场景(紫) | 已登记 · 待接生产者 (技能库 atomic_skills.py 无对应类 ⇒ 目前没有实测产出; v/a/s 包络在标定真源里是齐的) |
-| `zmax/stage_place` | 放下 | 摆盘场景(蓝) | 已登记 · 待接生产者 (技能库 atomic_skills.py 无对应类 ⇒ 目前没有实测产出; v/a/s 包络在标定真源里是齐的) |
+| `zmax/stage_pullout` | 拔出 | 插拔场景(绿) | 已登记 · 待接生产者 (技能库 atomic_skills.py 无对应类 ⇒ 目前没有实测产出; v/a/s 包络在标定唯一依据里是齐的) |
+| `zmax/stage_aoi_move` | AOI转移 | AR场景(紫) | 已登记 · 待接生产者 (技能库 atomic_skills.py 无对应类 ⇒ 目前没有实测产出; v/a/s 包络在标定唯一依据里是齐的) |
+| `zmax/stage_aoi_inspect` | AOI检测 | AR场景(紫) | 已登记 · 待接生产者 (技能库 atomic_skills.py 无对应类 ⇒ 目前没有实测产出; v/a/s 包络在标定唯一依据里是齐的) |
+| `zmax/stage_return` | 回程 | AR场景(紫) | 已登记 · 待接生产者 (技能库 atomic_skills.py 无对应类 ⇒ 目前没有实测产出; v/a/s 包络在标定唯一依据里是齐的) |
+| `zmax/stage_place` | 放下 | 摆盘场景(蓝) | 已登记 · 待接生产者 (技能库 atomic_skills.py 无对应类 ⇒ 目前没有实测产出; v/a/s 包络在标定唯一依据里是齐的) |
 
 ## 五、代码位置 (VSCode 直接打开; 绝对路径见下)
 
 | 作用 | 仓库相对路径 |
 |---|---|
-| 话题登记 (唯一真源) | `src/lerobot/dataspace/topics.py` |
+| 话题登记 (唯一依据) | `src/lerobot/dataspace/topics.py` |
 | DDS 消息类型 | `dds/ss_types.py → class SSSkillPhys` |
 | 类型/QoS 注册 | `dds/zmax_node.py → _SS_TOPICS / QOS_CLASS` |
 | 实测值生产 (每拍过物理闸) | `tools/ss_skill_dispatch.py → cycle() → zmax_data/ss_live/skill_phys.json` |
 | 真发布 (DDS) | `tools/dds/ss_daemon.py → pub_skills()` |
 | 信号分析窗口取信号 | `tools/gui/canoe_graphic.py → HOST_SOURCES + HostJsonSource.run` |
 | 场景色标 | `tools/sig_scene_tags.py → tag()` |
-| 物理包络真源 (改数用 CLI) | `config/calib/zmax_skill_physics.json ← tools/skill_physics_calib.py` |
+| 物理包络唯一依据 (改数用 CLI) | `config/calib/zmax_skill_physics.json ← tools/skill_physics_calib.py` |
 | 判据 (26 条全链) | `tools/verify_skill_topics.py` |
 
 仓库根 = `/home/ubuntu/zmax` (e.g. `/home/ubuntu/zmax/tools/dds/ss_daemon.py`)。

@@ -17,7 +17,7 @@ tr["stage"].append(stage if self.sched.stage() in stage else f"阶段 {self.sche
 # 实测值是 "阶段 接近" / "阶段 对位" ...
 ```
 ⇒ `"阶段 接近" in ["接近","对位",...]` **永远 False** ⇒ 每帧都取 0 ⇒ 全数据集同一个 one-hot。
-另一层: 引擎真源是 **8 阶段**(含"完成"), 生成器的 `STAGES` 只有 7 个 ⇒ 即便没前缀, "完成" 也会落到 0。
+另一层: 引擎唯一依据是 **8 阶段**(含"完成"), 生成器的 `STAGES` 只有 7 个 ⇒ 即便没前缀, "完成" 也会落到 0。
 
 **与 MoE 门控是同一反模式**(见 `mixture-of-experts-architectures`
 `references/stage-coverage-silent-swallowing.md`): 未识别的枚举 → 静默降级成索引 0。
@@ -26,7 +26,7 @@ tr["stage"].append(stage if self.sched.stage() in stage else f"阶段 {self.sche
 ## 2. 修法 (归一化 + 显式未知槽)
 
 ```python
-STAGES8 = STAGES + ["完成"]                       # 引擎真源 8 阶段
+STAGES8 = STAGES + ["完成"]                       # 引擎唯一依据 8 阶段
 STAGE_UNKNOWN_SLOT = len(STAGES8)                 # 独立槽 (13+8=21, 24 维里留得下)
 
 def stage_index(stg):

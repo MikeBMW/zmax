@@ -24,7 +24,7 @@
   - **下载按钮语义 (老倪: "orin应该在cicd.html下载")**: 本地 orin 行 → 按钮 "📥 CICD" 点击
     `QDesktopServices.openUrl(QUrl("https://datadrive.world/cicd.html"))` (网页采集下载, 不走 HF);
     本地 metaworld 行 → "本地" 禁用 (无需下载); HF 云端行才走 `_mk_download_func` (HF 下载)。
-    ⚠️ connect 只在分支里挂一次 — 旧的兜底 connect 行要删, 否则本地行同时触发网页+HF下载报错。
+    ⚠️ connect 只在分支里挂一次 — 旧的保障 connect 行要删, 否则本地行同时触发网页+HF下载报错。
 - **orin 数据格式知识 (cicd.html 上传的数据在哪)**:
   - `data/orin_live/` = **114 个 json 采集包** (auto_*.json, meta: source=orin/relay=ECS/frames 150/n_joint 6/n_action 6) —
     CICD 链路 Orin 采集 → ECS 中转 → 拉回本地。查看器 `_load_json_package()` 显示包 meta + 帧 state/action 文本
@@ -40,7 +40,7 @@
   config_*.yaml** 的 root 字段探测 (即最近训练用的数据) + 类型判定 (路径含 "peg" = 插销绿标,
   否则 nut-on-peg 套环黄标) + 帧数/eps/state 维。🔄 按钮刷新。
 - **坑**: config 的 root 行是**缩进的** (`  root: data/...`) — regex 必须 `^\s*root:\s*(data/\S+)`
-  (漏 `\s*` 会探测失败回退兜底路径, 显示旧数据)。
+  (漏 `\s*` 会探测失败回退保障路径, 显示旧数据)。
 - **坑**: HF 条目 `_is_cached` 查本地数据要**递归 glob** (`data/**/*.parquet` recursive=True) —
   parquet 在 chunk-000/ 子目录, 非递归匹配不到 → 缓存列错显 "—" (老倪 "缓存也没显示有")。
 
@@ -75,7 +75,7 @@
   日志文案同步 (data/metaworld_act 不存在 → peg_lerobot)。
 - **metaworld_act (套环) 数据删除 + 引用全清**: `rm -rf data/metaworld_act` 后必须清代码引用:
   数据集管理 cands、simulink 功能块数据集组 (`_dset_cands`)、数据源切换候选
-  (`_show_source_info` cands)、`_current_dataset_html` 兜底路径、`_on_view_dataset` 的
+  (`_show_source_info` cands)、`_current_dataset_html` 保障路径、`_on_view_dataset` 的
   metaworld_mt50 特判 (local_npz)、closed_loop json 采集统计 (1510 行)、orin 候选。
   **验证**: `grep -rn "metaworld_act" tools/gui/` 应只剩注释。
 - **data/ 清理终态 (老倪 "没用的都删掉" + 手动删 orin/closed_loop 后检查)**: 只剩

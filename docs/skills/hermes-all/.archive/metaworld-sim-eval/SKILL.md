@@ -24,11 +24,11 @@ env.reset(seed=seed)
 rgb = env.render()  # 真渲染: (480,480,3) var≈4375 unique=256
 ```
 - 渲染验证: `np.asarray(img).var() > 1000` 且 `len(np.unique(img)) > 50` 才是真图; var≈0 即黑屏
-- **⚠️ obs 结构随环境/版本而异, 别写死 (2026-08-07 实测修正本节的旧结论)**: 旧结论"obs 是 numpy 数组不是 dict (V3 无 observation.image)" **在本项目 (peg-insert-side-v3, 本项目 metaworld 版本) 是错的** — 实测 `env.reset()` 返回 **dict** (`observation.state` 39D + `observation.image` 相机图)。**rollout 侧必须双兼容**:
+- **⚠️ obs 结构随环境/版本而异, 别预先固定 (2026-08-07 实测修正本节的旧结论)**: 旧结论"obs 是 numpy 数组不是 dict (V3 无 observation.image)" **在本项目 (peg-insert-side-v3, 本项目 metaworld 版本) 是错的** — 实测 `env.reset()` 返回 **dict** (`observation.state` 39D + `observation.image` 相机图)。**rollout 侧必须双兼容**:
 ```python
 if isinstance(obs, dict):
     _st_raw = np.asarray(obs.get("observation.state", np.zeros(st_dim, dtype=np.float32)), dtype=np.float32)
-    # 帧图可优先取 obs["observation.image"] (真渲染), 兜底 env.render()
+    # 帧图可优先取 obs["observation.image"] (真渲染), 保障 env.render()
 else:
     _st_raw = np.asarray(obs, dtype=np.float32)
 ```
@@ -48,7 +48,7 @@ else:
 - 5 模型并排对比: 每帧 canvas = 5 列 (每模型 256x256) + 顶部模型名标签
 - **⚠️ ffmpeg xstack 拼接 0 字节 (2026-08-25 实测, simulink_module._auto_finalize_work)**: 多模型对比视频 (Model Zoo_rollout_*.mp4 / 五模型对比_rollout_*.mp4) 全是 0 字节 = xstack layout 变量名写错 — `w_0_0`/`0_h_0`/`w_0+w_1_0` 应为 `w0_0`/`0_h0`/`w0+w1_0` (xstack 变量名是 w0/h0/w1 **无下划线**, 多写下划线 → ffmpeg `Failed to configure output pad` + `Nothing was written into output file` → 0 字节空文件)。自 08-06 引入, 所有对比视频一直空。正确: `xstack=inputs=3:layout=0_0|w0_0|w0+w1_0`。修复实测: 5 模型拼接 960x480@3s 113KB 正常 (旧 0 字节)。**验证: ffprobe 看 width/height/duration/size 非 0, 或 stat -c%s > 0**
 - **7 模型对比 = 4×2 网格 + 每格底部距离趋势 (2026-08-09 老倪"应该是七个视频的对比"实测)**: 5 模型只是 Scope 图表范围——老倪要的对比视频是**全部 7 模型** (5 视觉 + MLP 蒸馏 + 官方专家)。`tools/gen_compare7_video.py` 模式: `COLS,ROWS=4,2`, 每格 `CW,CH=360,240` (画面 360×200 + 底部 40px 距离趋势带), 每格左上角叠 `模型名 (抓起 x/N)` 标签; 循环 `for i,(label,color,frames,dists) in enumerate(clips): r,c = i//COLS, i%COLS`。**坑: EVAL 结果字典必须用 label 做 key 且直接 `EVAL[label]` 查**——写 `EVAL[dict(MODELS)[label]]` 会在 `dict(MODELS)` 上抛 `ValueError: dictionary update sequence element #0 has length 3; 2 is required` (MODELS 是 (key,label,color) 三元组, dict() 只吃二元组)。**规则: 对比视频的标注数据字典按显示名 label 为 key, 别从模型元组反查**。官方专家 rollout 用 `SawyerPegInsertionSideV3Policy` + `env._get_obs()` 走 get_action (与评估同款), 100 帧能见 0.152→0.019m 插入成功——7 模型视频里专家是"能成"的对照锚点
-- 10 步快速验证模型动作均值≈0 (未学会), 视频画面不动属正常 — 对比要"会动"需正式训练 (2000步; 2026-08-06 老倪: 链路验证默认 10 步, 跑通后再加)
+- 10 步快速验证模型动作均值≈0 (未学会), 视频画面不动属正常 — 对比要"会动"需正式训练 (2000步; 2026-08-06 老倪: 链路验证默认 10 步, 验证通过后再加)
 - 单独视频: `ffmpeg -framerate 12 -i frame_%04d.png ... rollout_<policy>.mp4` (老倪要分开的, 不是只有并排)
 - **单独视频必须加水印标记模型名** (老倪要求"分清哪个模型对应哪个视频"): `tools/watermark_video.py <in.mp4> <模型名>` 或 ffmpeg drawtext (fontsize 32, 左上角, box 黑底半透明)
 - **换场景**: `rollout_video.py --policy X --task peg-insert-side-v3 --out reports/rollout_peg_X` (--task 参数支持任意 MT1 任务)
@@ -69,7 +69,7 @@ else:
 | 动作均值 0.0 + 视频静止 | **推理异常被 except 吞掉** | 排查时在 except 里 print 异常 (不要静默 pass!) |
 | `can't convert cuda:0 tensor to numpy` | pred 是 CUDA tensor | `pred.detach().cpu()` 再 `np.asarray` |
 | 缺 `observation.state` 输入 | 只喂了 image, ACT/SmolVLA 需要 state | `batch = {"observation.image":..., "observation.state": torch.from_numpy(st).unsqueeze(0).to(dev)}` |
-| state 维度错 | ACT state=2D (pusht 模板), 别写死 4 | `policy.config.input_features["observation.state"].shape[0]` |
+| state 维度错 | ACT state=2D (pusht 模板), 别预先固定 4 | `policy.config.input_features["observation.state"].shape[0]` |
 | `'InterpolantPolicy' object has no attribute 'config'` | vla_touch/awe 无 config | 从 model.pt cfg 推断: `pol.state_dim = int(cfg["state_dim"])` 挂属性 |
 | `mat1 and mat2 shapes cannot be multiplied` | 精简模型 st_dim 推断错 | 默认 2 (pusht), 不是 4; vla_touch `_cond` 拼 state+tactile |
 
@@ -142,7 +142,7 @@ LeRobotDataset 解码返回 **0-1 归一化 float32**, `img.numpy().var()` ≈ *
 真机感知前端: 相机图像 → YOLO 检测 hand/peg/hole → 2D→3D → 39D state → 策略。
 **零人工标注**: `tools/gen_yolo_data.py` 用 metaworld 渲染图 + 模拟器 3D 位置针孔投影到 2D 自动生成 YOLO 标注 (3 类: hand/peg/hole); `tools/train_yolo.py` 训 YOLOv8s → **mAP50 0.994 / 42ms 推理**。
 **关键坑**: ①`env.set_task(mt.train_tasks[0])` 必须 (train_tasks 是 **list** 不是 dict, `["name"]` 索引报 TypeError) ②`env.seeded_rand_vec` 是 **bool** 不是位置向量, 相机自动跟随场景别手动改 cam_pos ③ultralytics 输出自动加 `runs/detect/` 前缀 (实际在 `runs/detect/outputs/yolo_peg/<name>/`) ④verbose=False 时看 `results.csv` 每 epoch 一行监控进度。
-**⚠️⚠️ 小训练集 mAP 虚高 + 未见过场景检测 0 (2026-08-07 实测, 老倪踩坑)**: 3 episodes (450张) 训出 mAP50 0.994, 但对**训练集外的 seed 场景** `model.predict(env.render(), conf=0.2)` 检测 **0 个目标** (训练图能检出 0.96, 未见过场景 0) — mAP 高只说明训练分布内拟合好, **不保证泛化**。检测目标检测到 0 → 2D→3D 反投影空 → state 对齐失败。**修复: 数据扩到 30 episodes (4500张) 重训**, 覆盖多 seed 初始化。
+**⚠️⚠️ 小训练集 mAP 虚高 + 未见过场景检测 0 (2026-08-07 实测, 老倪遇到问题)**: 3 episodes (450张) 训出 mAP50 0.994, 但对**训练集外的 seed 场景** `model.predict(env.render(), conf=0.2)` 检测 **0 个目标** (训练图能检出 0.96, 未见过场景 0) — mAP 高只说明训练分布内拟合好, **不保证泛化**。检测目标检测到 0 → 2D→3D 反投影空 → state 对齐失败。**修复: 数据扩到 30 episodes (4500张) 重训**, 覆盖多 seed 初始化。
 **⚠️ env.render() 数组 vs 文件路径检测差异 — 真根因是 RGB/BGR (2026-08-07 实测推翻 PIL 方案)**: 同一帧存成 PNG 文件 `model.predict(path)` 检出 3 目标, 但 `model.predict(env.render() 数组)` 检出 0。**中间的"PIL 转换 RGB 数组再 predict"方案也无效** (实测 `PIL数组方式: []` 仍 0)。**唯一有效: 转 BGR 数组** — ultralytics 内部用 BGR:
 ```python
 import cv2
@@ -158,7 +158,7 @@ res = model.predict(img_bgr, conf=0.4, verbose=False)[0]
 - **39D 观测结构** (`env._get_obs()`): `[0:3]=hand 位置, [18:21]=peg 位置, [36:39]=hole/goal 位置` (实测 seed0: hand [0.005,0.601,0.195], peg 同 hand, hole [-0.274,0.587,0.13])
 - **2D→3D 反投影**: `cam_quat` 转 Rotation 矩阵 → `cam_forward=-R[:,2]`, `cam_right=R[:,0]`, `cam_up=R[:,1]`; 像素偏移 `ndc_x=(u-W/2)/f, ndc_y=(H/2-v)/f` (f=(H/2)/tan(fovy/2)); 光线 `dir = fwd + ndc_x*right + ndc_y*up` 归一化; 与水平面求交 `t=(plane_z-cam_pos[2])/dir[2]`
 - **⚠️ 高度假设**: hole 在桌面 z≈0.03; hand/peg 悬空 z≈0.25 是**近似** — 实测反投影 hand [0.401,-0.462,0.25] vs 真实 [0.004,0.601,0.155] 误差大 (hand 真实 z=0.155 非 0.25)。**要精确: 生成训练数据时把真实 z 也记进标注/元数据, 反投影用真实高度** (YOLO 只给 2D 框, 3D 需要深度先验 — 仿真里可用模拟器真实 z 做先验, 真机用深度相机/标定)
-- **2D→3D 精度分布 (2026-08-07 标定实测)**: 画面中心区准 (peg X 偏移仅 0.039, YOLO [0.205,0.521,0.03] vs 真实 [0.166,0.568,0.03]), **画面边缘误差大** (hole X 偏移 1.269 — 针孔近似在边缘失真)。**插拔任务 peg 是关键目标且居中 → 定位已够用 (±4cm); hole 边缘误差大可用 peg 插入点间接推断**。修正系数按标定写死 (`pt[0]-0.04`), 别用之前 -2.98 的旧值 (BGR 检测框位置与文件方式不同, 系数会变)
+- **2D→3D 精度分布 (2026-08-07 标定实测)**: 画面中心区准 (peg X 偏移仅 0.039, YOLO [0.205,0.521,0.03] vs 真实 [0.166,0.568,0.03]), **画面边缘误差大** (hole X 偏移 1.269 — 针孔近似在边缘失真)。**插拔任务 peg 是关键目标且居中 → 定位已够用 (±4cm); hole 边缘误差大可用 peg 插入点间接推断**。修正系数按标定预先固定 (`pt[0]-0.04`), 别用之前 -2.98 的旧值 (BGR 检测框位置与文件方式不同, 系数会变)
 - 对齐函数: `aligned = obs39.copy(); aligned[0:3]=det3d["hand"]; aligned[18:21]=det3d["peg"]; aligned[36:39]=det3d["hole"]`
 - **⚠️ 生成器 --yolo 模式: YOLO 检测必须用 480 原图, 不能用 ep_imgs 的 128×128 resize 帧** (检测精度骤降/失败)。gen_metaworld_data.py 里 `yolo_img = img` (env.render() 原图) 单独存, 别复用 `ep_imgs[-1]`; 视频合成仍用 128 帧
 - **--yolo 生成速度**: 每帧 1 次 YOLO 检测 (~42ms 推理 + 预处理), 8 episodes×200 帧 ≈ 5-8 分钟, 可接受; 若用临时文件方式则 1.12s/帧 不可行 (见 BGR 修复)
@@ -246,7 +246,7 @@ d["ckpt"] = "outputs/train/<policy>_final/checkpoints"
 
 ### ExpertMLP (distill 蒸馏模型) 加载链 — 3 个坑 (2026-08-07 实测, rollout 动作 0.0 排查)
 `expert_mlp` 是 `tools/distill_expert.py` 产出的 **.pt 文件** (非 lerobot checkpoint 目录), load_policy/rollout 需特判:
-1. **ckpt 是 .pt 文件不是目录**: `train_curve_expert_mlp.json` 的 ckpt=`outputs/rl_peg/expert_mlp.pt` → `os.path.isdir(base_dir)` False → 兜底 glob 也找不到 → `FileNotFoundError`。修: load_policy 开头 `if policy == "expert_mlp" and os.path.isfile(base_dir):` 特判 (importlib 加载 distill_expert 模块 → `mod.ExpertMLP(data["obs_dim"], data["act_dim"])` → `load_state_dict(data["model"])` — **dict 键是 `"model"` 不是 `"state_dict"`** (distill 保存 `torch.save({"model":..., "obs_dim":..., "act_dim":...})`)
+1. **ckpt 是 .pt 文件不是目录**: `train_curve_expert_mlp.json` 的 ckpt=`outputs/rl_peg/expert_mlp.pt` → `os.path.isdir(base_dir)` False → 保障 glob 也找不到 → `FileNotFoundError`。修: load_policy 开头 `if policy == "expert_mlp" and os.path.isfile(base_dir):` 特判 (importlib 加载 distill_expert 模块 → `mod.ExpertMLP(data["obs_dim"], data["act_dim"])` → `load_state_dict(data["model"])` — **dict 键是 `"model"` 不是 `"state_dict"`** (distill 保存 `torch.save({"model":..., "obs_dim":..., "act_dim":...})`)
 2. **无 select_action → forward 分支**: ExpertMLP 只有 `forward(x)` (39D→4D)。rollout 推理加 `elif hasattr(policy, "obs_dim") and not hasattr(policy, "model"): pred = policy(batch["observation.state"])`; rollout_peg_check 同理 (`elif hasattr(pol, "forward") and hasattr(pol, "obs_dim")`)。不加 → 走到 awe 分支 (4 参数调用) 或直接 break → 循环 0 次/动作 0.0
 3. **⚠️ state_dim 默认 2 陷阱**: st_dim 推断 `getattr(policy, "state_dim", 2) or 2` — ExpertMLP 只挂 `obs_dim` 不挂 `state_dim` → st_dim=2 → `zeros(2)` → forward `mat1 (1x2) and mat2 (39x512)` 失败 → 动作 0.0。**修: 加载后必须 `pol.state_dim = pol.obs_dim` (39)**。症状: rollout 报 `RuntimeError: mat1 and mat2 shapes cannot be multiplied (1x2 and 39x512)` 或动作均值 0.0 但插入检测 (rollout_peg_check) 正常 — 两处加载/推理都要同步
 4. argparse `--policy choices` 必须含 `expert_mlp`/`expert_policy` (原只列 5 模型 → `invalid choice`)
@@ -287,7 +287,7 @@ d["ckpt"] = "outputs/train/<policy>_final/checkpoints"
 1. **官方专家路径的 `continue` 跳过循环开头 break**: gen_metaworld_data.py 里官方专家分支 (use_official) append 后 `continue` → 循环开头 `if ... break` 永远执行不到。**修: continue 前再检查一次 `if stop_after_grab and grabbed_frames >= 30: break`** (两处检查: 循环开头 + continue 前)
 2. **锁存逻辑 `grabbed_frames = max(grabbed_frames, 1)` 在 peg 持续升高时永不增长**: 官方专家抓住 peg 后保持升高 → 每帧都走 `peg_z > 阈值` 分支 `max(1,1)=1`, 只有回落才 `+=1` → 永不达 30。**修: 锁存后每帧无条件 `if grabbed_frames >= 1: grabbed_frames += 1`** (不依赖 peg 是否保持)
 3. **阈值 0.04 太高**: 实测抓起瞬间 peg_z 只升到 0.065 (+0.035), `peg_z0(0.03) + 0.04 = 0.07` 差一点不触发 (第 80 步 0.065 未触发, 第 100 步 0.130 才触发)。**修: 阈值 0.03**
-4. **截断后 meta 三处不同步 → IndexError/KeyError**: ①`all_eps.append({"length": args.steps})` 写死 300 — 截断后实际帧数 <300 → `IndexError: Invalid key: 1800 out of bounds for size 1015`。**修: length 用实际帧数 `len([f for f in all_frames if f["episode_index"]==ep])`** ②info.json `total_frames` 改了但 **`splits: {"train": "0:1888"}` 没改** → 同款越界 (grep 1800 查 meta 文件) ③手动重建 episodes parquet 缺标准列 → `KeyError: 'videos/observation.image/chunk_index'` → 需要 `chunk_index` + `chunk-000/index` + `chunk-000/from_frame` + `file_index` 等全套字段 (对照生成器 312-327 行格式)。**教训: 截断/过滤后元数据 (episodes parquet length + info.json total_frames/splits + 数据 episode_index 重编号) 必须三处同步, 别只改一处**
+4. **截断后 meta 三处不同步 → IndexError/KeyError**: ①`all_eps.append({"length": args.steps})` 预先固定 300 — 截断后实际帧数 <300 → `IndexError: Invalid key: 1800 out of bounds for size 1015`。**修: length 用实际帧数 `len([f for f in all_frames if f["episode_index"]==ep])`** ②info.json `total_frames` 改了但 **`splits: {"train": "0:1888"}` 没改** → 同款越界 (grep 1800 查 meta 文件) ③手动重建 episodes parquet 缺标准列 → `KeyError: 'videos/observation.image/chunk_index'` → 需要 `chunk_index` + `chunk-000/index` + `chunk-000/from_frame` + `file_index` 等全套字段 (对照生成器 312-327 行格式)。**教训: 截断/过滤后元数据 (episodes parquet length + info.json total_frames/splits + 数据 episode_index 重编号) 必须三处同步, 别只改一处**
 5. **判定数据是否截断成功**: `df.groupby("episode_index").size()` 应 < 300 (实测 93/104/84 帧); 轨迹恒 300 = 截断没生效, 先查上面 4 坑
 6. **生成器主 env 必须 corner2**: `env_cls(render_mode="rgb_array", camera_name="corner2")` — 主 env 没 corner2 时官方专家动作时序乱 (85% 配方, 见官方专家节)
 
@@ -297,7 +297,7 @@ d["ckpt"] = "outputs/train/<policy>_final/checkpoints"
 **修复**: 归一化 `if "s_mean" in policy.stats: _sm=policy.stats["s_mean"][:st_dim]`; 反归一化 **_cond 分支 AND else 分支都要加** `act = act*_std + _mean` (键名 `a_mean/a_std/s_mean/s_std`, 非 action.mean/std)。细节+代码: `references/20260808-longtraj-eval-normalization.md`
 **夹爪辅助 (grip_assist) 反而破坏纯模型评估**: MLP 纯模型 抓起 6/10 → 加启发式强制闭合后 0/10 (覆盖模型输出致整体错乱) — MLP 自己学会了夹爪时机, 评估用纯模型输出 + clip [-1,1]。
 **MLP 插拔成功视频先扫 seed**: 15 seeds 里 seed1/5/10/14 插入成功 (seed14 距孔 0.004m) — 出"成功演示"先扫 seed 找成功帧, 别硬跑 seed0。
-**训练/评估进程卡死排查**: ①grep 管道缓冲吞日志 → 重定向文件 (`python -u > /tmp/x.log`) ②importlib.reload 破坏模块状态 (reload 后 load_policy 返回 None) ③HF 大权重下载不稳 → `hf_hub_download` 单文件断点续传, **别 rm -rf *.incomplete** (误删已下载 blobs, 2.4G→245M); AWE SigLIP 缓存完整 (768M) 离线模式 (HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1) 直接成功。④**"Creating dataset" 卡住 (0% CPU 但进程活着) = `rm -rf ~/.cache/huggingface/datasets` 后 HF datasets 缓存重建** (3600 帧视频解码 + mmap, 首次要几分钟; 之后秒开) — 别训练前随手删 datasets 缓存, 只有 2D 污染 (坑19) 才删。⑤**HF 权重下载卡死的完整处理模式 (2026-08-08 SmolVLM2 实测)**: snapshot_download 卡 0% 留下 27-35 个 `.incomplete` 时, ①后台长跑重试循环: `for i in $(seq 1 30); do timeout 500 python -c "snapshot_download(..., max_workers=16)" && break; sleep 30; done >> /tmp/dl.log 2>&1` (notify_on_complete=true) ②`hf_hub_download` 单文件断点续传 (比 snapshot 稳, 大分片 500M/976M/1080M 逐个续) ③**权重完整性判定**: `find ... -name '*.incomplete' | wc -l` = 0 才算完整; 离线加载报 "does not appear to have model.safetensors" = 缓存不完整 (blobs 有 .incomplete), 需补全而非清缓存重下 (清 = 2.4G 归零重来)。**AWE 训练 max_frames 默认 200 太少**: load_data 只取 200 帧 (3600 帧数据用 5.6%) — 加 `--max-frames` 参数 (默认 2000), 全量传 3600。
+**训练/评估进程卡死排查**: ①grep 管道缓冲吞日志 → 重定向文件 (`python -u > /tmp/x.log`) ②importlib.reload 破坏模块状态 (reload 后 load_policy 返回 None) ③HF 大权重下载不稳 → `hf_hub_download` 单文件断点续传, **别 rm -rf *.incomplete** (误删已下载 blobs, 2.4G→245M); AWE SigLIP 缓存完整 (768M) 离线模式 (HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1) 直接成功。④**"Creating dataset" 阻塞 (0% CPU 但进程活着) = `rm -rf ~/.cache/huggingface/datasets` 后 HF datasets 缓存重建** (3600 帧视频解码 + mmap, 首次要几分钟; 之后秒开) — 别训练前随手删 datasets 缓存, 只有 2D 污染 (坑19) 才删。⑤**HF 权重下载卡死的完整处理模式 (2026-08-08 SmolVLM2 实测)**: snapshot_download 卡 0% 留下 27-35 个 `.incomplete` 时, ①后台长跑重试循环: `for i in $(seq 1 30); do timeout 500 python -c "snapshot_download(..., max_workers=16)" && break; sleep 30; done >> /tmp/dl.log 2>&1` (notify_on_complete=true) ②`hf_hub_download` 单文件断点续传 (比 snapshot 稳, 大分片 500M/976M/1080M 逐个续) ③**权重完整性判定**: `find ... -name '*.incomplete' | wc -l` = 0 才算完整; 离线加载报 "does not appear to have model.safetensors" = 缓存不完整 (blobs 有 .incomplete), 需补全而非清缓存重下 (清 = 2.4G 归零重来)。**AWE 训练 max_frames 默认 200 太少**: load_data 只取 200 帧 (3600 帧数据用 5.6%) — 加 `--max-frames` 参数 (默认 2000), 全量传 3600。
 
 ## 训练配置要点 (Z-MAX 三阶段)
 - S1: lr1e-4 / backbone冻结 / kl10 / chunk100 / n_action50
@@ -307,12 +307,12 @@ d["ckpt"] = "outputs/train/<policy>_final/checkpoints"
 
 ## ⚠️ 垃圾 checkpoint 覆盖有效 checkpoint — 视频"没学到"的隐藏根因 (2026-08-07 实测)
 **症状**: 某模型视频不动/动作≈0，但该模型明明训练收敛过（loss 低）。**评分与视频脱节**（评分最高但视频没动）。
-**根因**: rollout/评估按 `train_curve_<policy>.json` 的 `ckpt` 兜底 glob **最新 mtime 目录**——**被中断的训练**（如 50-150 步被杀）目录 mtime 更新 → 加载垃圾权重。典型: 15:0x 多轮中断训练（act 150 步/vla 50 步/awe 50 步）比 14:15 的 1000 步有效训练"新" → 全加载垃圾。
+**根因**: rollout/评估按 `train_curve_<policy>.json` 的 `ckpt` 保障 glob **最新 mtime 目录**——**被中断的训练**（如 50-150 步被杀）目录 mtime 更新 → 加载垃圾权重。典型: 15:0x 多轮中断训练（act 150 步/vla 50 步/awe 50 步）比 14:15 的 1000 步有效训练"新" → 全加载垃圾。
 **修复**:
 1. 中断训练目录立即删: `rm -rf outputs/train/<policy>_<中断时间戳>`（保留有效训练目录）
 2. `train_curve_<p>.json` 的 `ckpt` 字段**显式指向有效目录**（别依赖 glob 最新）: `d["ckpt"]="outputs/train/<policy>_<ts>/checkpoints"`
 3. 辨别有效/垃圾: 目录名时间戳 + checkpoint 保存时间 vs 训练时长（1000 步训练应 ~5-40 分钟，50 步=几分钟内被杀）
-4. **⚠️ 注意: vla_touch/awe 的 `checkpoints/000050/pretrained_model` 目录名恒为 000050**（保存逻辑写死）——目录名≠步数，看**文件 mtime** 与训练时长判断，别见 000050 就删
+4. **⚠️ 注意: vla_touch/awe 的 `checkpoints/000050/pretrained_model` 目录名恒为 000050**（保存逻辑预先固定）——目录名≠步数，看**文件 mtime** 与训练时长判断，别见 000050 就删
 5. 重新 rollout 验证动作均值 >0.05（见上"关键验证"）
 - 磁盘清理规则: 保留命名目录（act_peg_v7 等被 GUI/曲线引用）+ 有效时间戳目录；删旧实验（v6/v3/final/metaworld 前缀）+ 每目录只留最后 ckpt（`sorted(ckpts)[-1]` + last 软链重建）——smolvla_peg_v7 19G→1.4G
 
@@ -380,7 +380,7 @@ json.dump({"policy": "vla_touch", "ts": time.strftime("%Y%m%d_%H%M%S"), "curve":
 | 视频全黑 | render_mode=None | `env_cls(render_mode="rgb_array")` |
 | rollout 视频不动 | 欠训练 (2026-08-06 起默认10步链路验证) 或 推理异常被吞 | 正式训练加 steps (2000) + except 里 print 异常 |
 | 动作均值 0.0 但训练正常 | CUDA tensor 转 numpy / 缺 state 输入 | `pred.detach().cpu()` + 补 observation.state |
-| **动作均值 0.0 + mat1/mat2 broadcast 异常 (2026-08-07 元凶)** | **obs 是 dict (observation.state/image), `np.asarray(dict)` → state 全零** | **`if isinstance(obs, dict): st = np.asarray(obs.get("observation.state", zeros))` 解包; 别写死 obs 是向量** |
+| **动作均值 0.0 + mat1/mat2 broadcast 异常 (2026-08-07 元凶)** | **obs 是 dict (observation.state/image), `np.asarray(dict)` → state 全零** | **`if isinstance(obs, dict): st = np.asarray(obs.get("observation.state", zeros))` 解包; 别预先固定 obs 是向量** |
 | 视频在动但用旧模型 | train_curve ckpt 未更新 | 重训后手动更新曲线文件 ckpt |
 | 误判 var=0.066 黑屏 | 归一化域 var 本来就小 | var×255² 还原, 或 unique>50 即真图 |
 | invalid choice | argparse 没列全 | choices 加 vla_touch/awe_zflow |
@@ -407,7 +407,7 @@ json.dump({"policy": "vla_touch", "ts": time.strftime("%Y%m%d_%H%M%S"), "curve":
 | **曲线尾点 step=1 异常** | lerobot 日志 `step:1K` (1000步) 被正则匹配成 step:1 | `re.sub(r"step:(\d+)K\b", r"step:\1"+"000", log)` 展开后再解析 |
 | **45D state 改动后 CastError/broadcast 错 (2026-08-08)** | state 39→45 只改了一处 | **4 处同步**: config state_dim + info.json features.shape + eval_insert 评估补 rel_vec (`if st_dim==45 and st_raw.size==39` 现场算) + _load_stats 候选目录 (VLA/AWE 无 preprocessor → 直接用数据 stats.json) |
 | **训练 0% 即崩 `OfflineModeIsEnabled` (2026-08-08)** | HF_HUB_OFFLINE=1 阻止数据集解析 (新数据集 HF 无 refs) | 新数据集训练用 `HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=1` (关 hub 离线, 留 transformers 离线) |
-| **截断数据 `IndexError: Invalid key: 1800 out of bounds for 1015`** | episodes parquet length 写死 300 (截断后实际 90-107) + info.json splits 未同步 | 截断后 meta 三处同步: episodes length 用实际帧数 + total_frames + splits (`0:1015`), 见 stop_after_grab 4 坑节 |
+| **截断数据 `IndexError: Invalid key: 1800 out of bounds for 1015`** | episodes parquet length 预先固定 300 (截断后实际 90-107) + info.json splits 未同步 | 截断后 meta 三处同步: episodes length 用实际帧数 + total_frames + splits (`0:1015`), 见 stop_after_grab 4 坑节 |
 
 ## 视频对比对话框 (InferenceVideoDialog / FlowScopeDialog) 坑 (2026-08-07 全实测, simulink_scope.py)
 - **白屏 = lab.size()==0 → scaled(0,0)**: 对话框未显示时 QTimer 已启动 (`_tick` 100ms), `lab.setPixmap(pm.scaled(lab.size(), ...))` 缩放到 0×0 → 白屏。修: 尺寸有效才 scaled, 否则 `setPixmap(pm)` 原图 (QLabel 自适应)
@@ -434,16 +434,16 @@ json.dump({"policy": "vla_touch", "ts": time.strftime("%Y%m%d_%H%M%S"), "curve":
 PipelinePanel (数据闭环 CICD 控制台) 新增「🤖 模型」区: QComboBox 列全部已训模型 (名字+训练时间) + 属性显示 (ckpt/步数/尾loss) + Sim-to-Real (S2)/Stage 3 按钮 → 写 PIPELINE_STATE.json。实现+验证细节: `references/20260807-pipeline-model-picker.md`
 
 ## 数据集管理 GUI 坑 (studio.py DatasetManager + dataset_viewer.py, 2026-08-07 老倪"点击查看没看到图片")
-- **"50 任务数"是写死的 HF 云端条目声明** (DATASETS 里 `lerobot/metaworld_mt50` tasks:50), 与本地实际无关 — 显示 `50 · 本地1` (ds 加 `local_tasks` 字段); 信息弹窗加"📁 本地实际数据"块 (读本地 parquet 统计真实 episodes/帧数/任务)
+- **"50 任务数"是固定不变的 HF 云端条目声明** (DATASETS 里 `lerobot/metaworld_mt50` tasks:50), 与本地实际无关 — 显示 `50 · 本地1` (ds 加 `local_tasks` 字段); 信息弹窗加"📁 本地实际数据"块 (读本地 parquet 统计真实 episodes/帧数/任务)
 - **"本地状态: 未下载"错误**: `_is_cached` 只查 HF 缓存目录 (~/.cache/huggingface/hub), 本地项目数据在 `data/` → metaworld_mt50 特判 `data/metaworld_mt50/data/*.parquet`
 - **查看器 exec_ 模态 WSLg 弹不出** (记忆: 弹窗零容忍) → `viewer.show()` 非模态
 - **系统 python3 无 pandas/pyarrow** (GUI 必须用系统 python3 有 PyQt5) → parquet 内嵌图像读不了 → **npz 读取路径**: `local_npz=data/metaworld_act/train.npz`, numpy 直读 `observations[frame].transpose(1,2,0)*255` → QImage; np.load 结果缓存 `self._npz_cache` (28MB 拖动滑块不重复读)
 - **GUI 环境依赖一次装齐 (2026-08-07 老倪"怎么不提前装")**: 系统 python3 只有 PyQt5/numpy/PIL, 缺 cv2 → 数据集查看器 mp4 解码 / capture_cam 摄像头采集崩。**提前装**: `python3 -m pip install opencv-python --break-system-packages` (PEP 668 需 --break-system-packages; .venv 另有 cv2 5.0.0)。改动涉及新 import 前先 `python3 -c "import X"` 检查两个环境 (系统 python3 + .venv)
 - **滑块翻帧不换图**: `_on_frame_changed` 只改 label 不加载 → 触发 `_load_video_frame()` (内部路由 mp4→parquet→npz)
 - metaworld npz 的 episode slider 无意义 (npz 无 episode 概念, current_episode 不参与读取)
-- **\&quot;当前训练数据集\&quot;卡片 + 本地数据集并入表格 (2026-08-07 老倪\&quot;simulink训练的数据怎么不在数据集管理显示, 控制台应该全管\&quot;)**: ①顶部卡片 `_current_dataset_html()` 扫描最近训练 config (`config_*.yaml` 按 mtime 倒序) 的 `root:` 行 — **坑: yaml 里是 `  root:` (2 空格缩进), 正则必须 `^\\s*root:\\s*(data/\\S+)` 否则全匹配失败兜底到 metaworld_act**; 显示路径+类型(插销绿/套环黄)+帧数 ②表格 `_local_datasets()` 探测 `data/` 下候选 → `local_rows + DATASETS` 合并填充, 本地行 repo_id=`local://xxx`、缓存列恒 `✅ 本地`、查看按钮传 `ds.get(\\\"local_root\\\")/ds.get(\\\"local_npz\\\")` (通用化, 不再 metaworld 特判)、信息按钮 `ds.get(\\\"local\\\")` 分支不查 HF 直接 `_msg_ok` 显示本地路径
+- **\&quot;当前训练数据集\&quot;卡片 + 本地数据集并入表格 (2026-08-07 老倪\&quot;simulink训练的数据怎么不在数据集管理显示, 控制台应该全管\&quot;)**: ①顶部卡片 `_current_dataset_html()` 扫描最近训练 config (`config_*.yaml` 按 mtime 倒序) 的 `root:` 行 — **坑: yaml 里是 `  root:` (2 空格缩进), 正则必须 `^\\s*root:\\s*(data/\\S+)` 否则全匹配失败保障到 metaworld_act**; 显示路径+类型(插销绿/套环黄)+帧数 ②表格 `_local_datasets()` 探测 `data/` 下候选 → `local_rows + DATASETS` 合并填充, 本地行 repo_id=`local://xxx`、缓存列恒 `✅ 本地`、查看按钮传 `ds.get(\\\"local_root\\\")/ds.get(\\\"local_npz\\\")` (通用化, 不再 metaworld 特判)、信息按钮 `ds.get(\\\"local\\\")` 分支不查 HF 直接 `_msg_ok` 显示本地路径
 - **npz 查看器性能坑 — NpzFile 数组访问是 lazy 解压 (2026-08-07 老倪\&quot;点下一帧为什么这么慢\&quot;, 1.5s/帧 → 1ms/帧)**: `np.load()` 压缩 npz 返回 NpzFile, **每次 `d[\&quot;observations\&quot;]` 都从磁盘重新解压整个数组** — 缓存 NpzFile 不够! 首次 load 时**提取到内存 ndarray**: `self._npz_obs = np.array(d[\&quot;observations\&quot;])` (states/actions 同理), 后续翻帧只索引内存数组。首次 943MB 解压 ~2s 可接受 (一次), 之后 0-1ms/帧
-- **AV1 编码 mp4 → cv2 解码失败 (2026-08-07\&quot;0帧超出范围\&quot;)**: metaworld_act 的 `videos/` 有 AV1 mp4, cv2 5.0.0 不支持 AV1 硬件解码 → `_load_video_frame` 走视频分支失败。**修: 有 local_npz 时 npz 优先于视频**: `if self.local_npz and os.path.exists(self.local_npz): self._load_npz_frame(); return` (numpy 路径最可靠, 视频/parquet 兜底)
+- **AV1 编码 mp4 → cv2 解码失败 (2026-08-07\&quot;0帧超出范围\&quot;)**: metaworld_act 的 `videos/` 有 AV1 mp4, cv2 5.0.0 不支持 AV1 硬件解码 → `_load_video_frame` 走视频分支失败。**修: 有 local_npz 时 npz 优先于视频**: `if self.local_npz and os.path.exists(self.local_npz): self._load_npz_frame(); return` (numpy 路径最可靠, 视频/parquet 保障)
 - **frame_slider maximum=0 → \&quot;下一帧点不了\&quot;**: slider 初始 maximum=0, 只有点\&quot;加载帧\&quot;才更新 → 老倪直接点下一帧没反应。修: viewer `__init__` 末尾 `QTimer.singleShot(0, self._load_video_frame)` 打开即自动加载第一帧 (maximum 就位 + 不用手动点加载帧)
 - **图像 180° 旋转按数据集条件 (2026-08-07 老倪\&quot;metaworld_act 图像反了要旋转180\&quot;)**: 插销数据 (peg_v2/peg_lerobot) 与视频同源 (corner2 采集) 需 `np.rot90(rgb, k=2)`; **metaworld_act 是 MT50 官方数据 (方向本来正确) → 无条件旋转会把它转反**。`if \&quot;peg\&quot; in (self.local_npz or \&quot;\&quot;): rgb = np.rot90(rgb, k=2)`
 - **本地行任务数列误填帧数 (4800/696\&quot;任务数\&quot;)**: 本地数据集是单一任务演示集 (无\&quot;任务数\&quot;概念), `tasks` 字段应填 `\&quot;—\&quot;` (帧数/eps 在描述列); HF 云端条目 (MT50) 才填真任务数 50

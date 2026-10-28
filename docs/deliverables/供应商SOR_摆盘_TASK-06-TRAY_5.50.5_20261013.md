@@ -13,7 +13,7 @@
 
 适用对象: 供应商技术、质量、交付团队
 
-导出方式: 配置中心自动导出 (数据源 = 单一工程库 zmax_engineering.db + 平台真源)
+导出方式: 配置中心自动导出 (数据源 = 单一工程库 zmax_engineering.db + 平台唯一依据)
 
 导出时间: 2026-10-13 11:59:06
 
@@ -147,7 +147,7 @@
 | 连续作业 | ≥12 盘周转盘 (硬下限 ≥6) · 单日 ≥20h · 月 ≥28 天 | 两个数并列是矛盾: 验收取 ≥12 盘, ≥6 盘仅作为早期阶段下限 | SA01-05 | 消歧 |
 | 损伤 | 载具与产品损伤 = 0 | 零容忍项, 逐条单列, 不与百分比指标混排 | SA01-04 / sOPE-06 | 修正混排 |
 
-5.1 System 1 子系统指标 (配置真源)
+5.1 System 1 子系统指标 (配置唯一依据)
 
 | 指标 | 值 |
 |---|---|
@@ -392,7 +392,7 @@
 
 · 相机安装位置、光源类型及标定方式需在方案中明确。
 
-· 视觉结果需与机器人坐标系完成标定 —— 盘面槽位几何为坐标类参数的唯一真源。
+· 视觉结果需与机器人坐标系完成标定 —— 盘面槽位几何为坐标类参数的唯一依据。
 
 · 腕部相机工作距离 0.1–0.6m 内保证 ±1mm/±1°; 头部双目 @1m、胸部 @0.5m 为 ±5mm 级, 不得混用口径。
 
@@ -564,7 +564,7 @@ A.2 标定项 (cal) — 6 项 (每节点各持一份)
 
 4. 坐标系: T_base_cam (未标定 ⇒ 走板坐标系口径)
 
-5. 盘面槽位几何 (Tray 30 槽 / 周转盘槽位) — 现场一次标定, 盘面坐标类参数的唯一真源
+5. 盘面槽位几何 (Tray 30 槽 / 周转盘槽位) — 现场一次标定, 盘面坐标类参数的唯一依据
 
 6. 腕部相机工作距离窗口 0.1–0.6m (±1mm/±1° 只在此区间成立; 头部/胸部相机为 ±5mm 级)
 
@@ -578,7 +578,7 @@ A.3 诊断项 (dia) — 9 项 (每节点各持一份)
 
 4. 策略 rollout 成功率 (同源口径)
 
-5. 摆盘 CT 实测 (起止口径写死: 从吸取离盘到下一位就位)
+5. 摆盘 CT 实测 (起止口径预先固定: 从吸取离盘到下一位就位)
 
 6. 槽位映射一致性 (放料到位 ±1mm · 槽位对号 100%)
 
@@ -687,7 +687,7 @@ A.5 节点实现参数 (引擎侧, 仅供追溯 — 不属于供应商配置项)
 
 | 系统 | 层 | 名称 | 角色 | 硬件 |
 |---|---|---|---|---|
-| sys2 | L4/L5 | System 2 认知决策 | L4 大脑: 云端智能体·任务拆解与调度; 世界模型预判/恢复; 记忆筹划 | 云端 4090 (RTX 4060 本地兜底) |
+| sys2 | L4/L5 | System 2 认知决策 | L4 大脑: 云端智能体·任务拆解与调度; 世界模型预判/恢复; 记忆筹划 | 云端 4090 (RTX 4060 本地保障) |
 | sys1 | L3 | System 1 动作执行 | L3 动作系统: VLA-T 动作 (SmolVLA 500M) + Z-Flow 引导 (LeWorldModel 1 | 本地 GPU / 边缘推理 |
 | sys0 | L2 | System 0 基石执行 | L2 基石: 安全层 + HAL 驱动层 + EtherCAT + 运动学正逆解 + 原子技能 + 分段感知/控制小模型 | 工控机 + 珞石 Z-MAX 机械臂 (6 DOF) + D405/D435 相机 + 力传感 |
 | plat | PLAT | 平台支撑 (跨子系统) | 数据源供给 · Feature/Test 质量门 · 观察器/可视化 — 不归单一层次, 由 Z-MAX 平台统一治理 | 仿真 metaworld + 真机信号旁路 + 3DGS 场景资产 |
@@ -697,7 +697,7 @@ A.5 节点实现参数 (引擎侧, 仅供追溯 — 不属于供应商配置项)
 | 项 | 现状 | 处置 |
 |---|---|---|
 | 站点几何 | T_base_cam / plane_z / cell_geometry.points 未标定 ⇒ 坐标类参数与工单全部阻塞 | 现场标定后重跑 config_center check |
-| 性能真源 | perf.D_INSERT_mm / perf.cycle_s 未落地到 verif 真源 (摆盘以 CT 为主, 插入深度不适用) | 摆盘任务改挂 cyc.takt 判据, 不再引用 ins.* |
+| 性能唯一依据 | perf.D_INSERT_mm / perf.cycle_s 未落地到 verif 唯一依据 (摆盘以 CT 为主, 插入深度不适用) | 摆盘任务改挂 cyc.takt 判据, 不再引用 ins.* |
 | 档位契约 | feature.cap_level / feature.dbc_version 未定义 ⇒ 档位级验收无口径 | 补 feature.dbc 版本与能力档位 |
 | 能力库 | 摆盘能力暂挂 C1/C4/B1/B2 平台级能力, 未新增项目级能力条目 | 如需供应链逐条报价, 再评估是否加 I 组能力 |
 | 模型在役 | model.ckpt_l3 (VLA-T/Z-Flow 权重) 未登记在役哈希 | 登记权重路径 + sha256 |
@@ -710,8 +710,8 @@ A.5 节点实现参数 (引擎侧, 仅供追溯 — 不属于供应商配置项)
 |---|---|
 | 导出工具 | tools/sor_export.py (配置中心 sys1 导出) |
 | 数据源 (单一工程库) | data/database/zmax/zmax_engineering.db  sha256=191a6f0d6ff16f19… |
-| 平台真源 | config/platform/zmax_platform.json |
-| 任务真源 | config/tasks/tasks.json (flows/scenes_5jobs.json → task_build.py) |
+| 平台唯一依据 | config/platform/zmax_platform.json |
+| 任务唯一依据 | config/tasks/tasks.json (flows/scenes_5jobs.json → task_build.py) |
 | 子系统口径 | System 1 动作执行 (L3) |
 | 导出时间 | 2026-10-13 11:59:07 |
 
@@ -745,7 +745,7 @@ E.2 参数关联明细 (工程库 param_links 共 1767 条: 每个可改数字�
 
 E.3 需求条目 → 配置项 追溯
 
-| 配置 ID | 条目 | 关联类别 | 真源 |
+| 配置 ID | 条目 | 关联类别 | 唯一依据 |
 |---|---|---|---|
 | 需求 1 | L3 动作执行: 把 Sys-2 给出的意图/条件, 转成可执行的动作序列 (VLA | 供货边界 | tools/sys1_delivery.py |
 | 需求 2 | 摆盘取放循环的策略与序列规划 (取件 → 转运对位 → 放入 → 判态循环) | 供货边界 | tools/sys1_delivery.py |
@@ -868,7 +868,7 @@ G.2 迁移不变量 (以下项在任何任务下都不变, 供应商据此做一
 
 | 不变量 | 值 |
 |---|---|
-| 画布真源 | src/lerobot/engineering/flows/state_space_obs.json (节点 89 / 连线 184) |
+| 画布唯一依据 | src/lerobot/engineering/flows/state_space_obs.json (节点 89 / 连线 184) |
 | 功能节点数 | 4 |
 | 分层架构 | L5/L4/L3/L2 四层职责与接口契约 (附录 F) 不变 |
 | 供货边界 | SCOPE_IN / SCOPE_OUT (第 2.2 节) 不变 |
@@ -902,7 +902,7 @@ H.1 指标对账表
 | 6 | 真空建立时长 | ≤200.0 ms (配方上限) | 425.0 ; 537.5 ; 525.0 ms | **全部不合格** (超上限 2.1~2.7 倍) | python3 -c "import numpy as np;print([j['vac_ok'] for j in np.load('reports/tray_place_latest.npz',allow_pickle=True)['meta'].item()['judges']])" |
 | 7 | 真空保持时长 | 配置 5.0 s | 5.49 ; 5.49 ; 5.49 s | 超标 9.7% (实际保持 > 配置) | 同上 (judges[].hold_s / hold_s_cfg) |
 | 8 | 连续周转盘数 | ≥12 盘 (PVT) | 未测 (单盘 3 颗) | 未验证 | python3 tools/gen_tray_place_video.py --modules 3 --seed <N> (连续 ≥12 盘不中断报数) |
-| 9 | 主参数 M (配置单→M 映射落役) | 配置单算出的 M 必须 == 在役真源 | 在役 M=3.283 (dim=3/full) vs 配置单映射 M=4.423 (dim=6/isotropic) | **不一致 ⇒ 映射未落役** | python3 tools/config_to_M.py --task TASK-06-TRAY   # 落役: 加 --write (改在役真源前须评审) |
+| 9 | 主参数 M (配置单→M 映射落役) | 配置单算出的 M 必须 == 在役唯一依据 | 在役 M=3.283 (dim=3/full) vs 配置单映射 M=4.423 (dim=6/isotropic) | **不一致 ⇒ 映射未落役** | python3 tools/config_to_M.py --task TASK-06-TRAY   # 落役: 加 --write (改在役唯一依据前须评审) |
 | 10 | 驱动扭矩话题 ss_torque | 10Hz 常驻 · 与 tap 逐位一致 · 场景=活跃场景 | 判据 30 项 · 通过 29 · 未过 1 (未过: ['⑫d verify_localization_mapping.py 仍 23/23']) | 扭矩链本身全过; 唯一未过项是真录像依赖 (办公模式无相机源, 非扭矩缺陷) | gui-venv311/bin/python tools/verify_driving_torque_topic.py |
 | 11 | 数据空间话题灯 (10 个允许话题) | 全部绿 (真数据) | 见 zmax_data/dataspace/live.json 的 lamp_tally | 部分黑/红 (办公模式无机器人 ⇒ ss_state/ss_action/ss_plan 无源; ss_calib 设计 0.2Hz vs 实测 19.84Hz 灯红) | python3 -c "import json;print(json.load(open('zmax_data/dataspace/live.json'))['lamp_tally'])" |
 
@@ -949,28 +949,28 @@ I.1 定义与数学口径
 
 度量张量 g_ij(x) = M · G_ij(x), det G(x) = 1, M ∈ [0.0, 8.0]。M = 度量的**整体尺度**(物理类比 = 等效惯量尺度, a = F/M); G = 度量的**形状** (各向异性方向与状态相关性)。M 由流形结构导出 (非自由拟合), 现场以**单标量**标定。
 
-| 项 | 值 | 真源 / 依据 |
+| 项 | 值 | 唯一依据 / 依据 |
 |---|---|---|
-| 在役 M | 3.283 | config/calib/zmax_manifold.json (可写真源, 更新 2026-10-13 11:56:46) |
+| 在役 M | 3.283 | config/calib/zmax_manifold.json (可写唯一依据, 更新 2026-10-13 11:56:46) |
 | 在役 dim / mode | 3 / full | metric 段 |
 | 配置单映射算得 M | 4.423 | tools/config_to_M.py 规则 R5 (能量标定) |
 | 配置单映射 dim / mode | 6 / isotropic | 规则 R1 (工序自由度) / R2+R3 (公差与耦合) |
 | audit_sha | d7584d4d4621173130954aacbd89f618 | 映射输入的可审计指纹 (现场复核用) |
-| 判定 | **不一致 ⇒ 配置单尚未落到在役主参数** (映射链已在, 真源未写) | 判据: 在役 M 必须 == 配置单算出 M |
+| 判定 | **不一致 ⇒ 配置单尚未落到在役主参数** (映射链已在, 唯一依据未写) | 判据: 在役 M 必须 == 配置单算出 M |
 
 I.2 配置单 → M 的映射规则 (唯一实现: tools/config_to_M.py, 可审计)
 
 | 规则 | 目标分量 | 映射 | 来源依据 |
 |---|---|---|---|
-| R1 | dim (位姿自由度) | 工序含腕部姿态控制 ⇒ 6 轴; 否则 3 轴 | 任务工序真源 config/tasks/tasks.json |
-| R2 | mode (形状参数化) | 平移-姿态耦合 ⇒ full; 同类轴公差比 ≥1.25 ⇒ diag; 否则 isotropic | 性能指标真源 + 任务配置 |
-| R3 | diag / components (形状 G) | 各轴刚度 ∝ 1/公差_轴 (不许偏的轴更“贵”), 归一 det G = 1 | 逐轴工艺公差真源 |
+| R1 | dim (位姿自由度) | 工序含腕部姿态控制 ⇒ 6 轴; 否则 3 轴 | 任务工序唯一依据 config/tasks/tasks.json |
+| R2 | mode (形状参数化) | 平移-姿态耦合 ⇒ full; 同类轴公差比 ≥1.25 ⇒ diag; 否则 isotropic | 性能指标唯一依据 + 任务配置 |
+| R3 | diag / components (形状 G) | 各轴刚度 ∝ 1/公差_轴 (不许偏的轴更“贵”), 归一 det G = 1 | 逐轴工艺公差唯一依据 |
 | R4 | gain (状态相关 G(x)) | 动态交互场景才需现场辨识; 缺省 0 = 常度量 (零回归) | MCD 设计 §6 可辨识性 |
-| R5 | scale = M | M = 1 + (½·m_eff·v_peak² + m_eff·g·h) / E_ref, clamp [0, 8] | 能量标定真源 tools/master_param_m.py + 夹具/工件质量真源 + 工序速度 |
+| R5 | scale = M | M = 1 + (½·m_eff·v_peak² + m_eff·g·h) / E_ref, clamp [0, 8] | 能量标定唯一依据 tools/master_param_m.py + 夹具/工件质量唯一依据 + 工序速度 |
 
 I.3 测量方法 (M 可被测量, 现场照做, 两种互检)
 
-1) 能量法: M = 1 + (½·m_eff·v_peak² + m_eff·g·h)/E_ref。输入: m_eff = 夹具/吸嘴 + 工件质量 (真源 config/calib 或现场称重); v_peak = 轨迹实测峰值速度 (tcp_pose 50 Hz 差分); h = 升降行程 (结构参数); E_ref = 标定基准能量。
+1) 能量法: M = 1 + (½·m_eff·v_peak² + m_eff·g·h)/E_ref。输入: m_eff = 夹具/吸嘴 + 工件质量 (唯一依据 config/calib 或现场称重); v_peak = 轨迹实测峰值速度 (tcp_pose 50 Hz 差分); h = 升降行程 (结构参数); E_ref = 标定基准能量。
 
 2) 动力学反解: M = F/a。施加已知力 F (力控/已知负载), 测等效加速度 a (位姿二阶差分), 与能量法结果互检。
 
@@ -1002,7 +1002,7 @@ J.3 不允许的验收口径 (红线)
 
 · 以概念速度/理论节拍 (未实测) 代替实测 CT;
 
-· 以「配置项存在」代替「配置项已落役生效」(如 M 映射算得出但未写入真源);
+· 以「配置项存在」代替「配置项已落役生效」(如 M 映射算得出但未写入唯一依据);
 
 · 把真空建立超上限的现状 (425~538 ms vs 200 ms) 直接写成“达标”。
 

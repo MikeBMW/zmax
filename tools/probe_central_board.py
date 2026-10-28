@@ -6,7 +6,7 @@
   · 棋盘格 (findChessboardCornersSB + 经典) 多尺寸遍历
   · 圆点阵列 (findCirclesGrid, 对称/非对称)
   · ArUco / ChArUco 字典遍历
-  · 兜底: 高亮四边形状 —— 只作为"疑似板"线索, 不当作检出
+  · 保障: 高亮四边形状 —— 只作为"疑似板"线索, 不当作检出
 用法: python probe_central_board.py <jpg> [--json out.json]
 """
 from __future__ import annotations
@@ -95,7 +95,7 @@ def main() -> int:
         except Exception:                                                  # noqa: BLE001
             pass
 
-    # ④ 兜底: 高亮(近白)区域 —— 只是"疑似板面"线索
+    # ④ 保障: 高亮(近白)区域 —— 只是"疑似板面"线索
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
     Lc = lab[:, :, 0]
     bright = (Lc > 200).astype(np.uint8) * 255

@@ -7,7 +7,7 @@
 - [x] 入库前闸：`repo_guard.py --staged` + `secret_scan.py --staged`（凭据一律不入库）
 
 ## 2) 数据（已落盘、可复核）
-- [x] 画布真源快照：`canvas_state_space_obs.json`（md5 `e53e6f4c53b19373f662d79b480435d9`）
+- [x] 画布唯一依据快照：`canvas_state_space_obs.json`（md5 `e53e6f4c53b19373f662d79b480435d9`）
 - [x] 产品大屏数据源：`dashboard_v5.47.2.json`（含 `screen` 段 = 工位总览 :8793 在役状态）
 - [x] 工程库判据原文 / 版本同源原文 / 5 套判据结果（本目录）
 - [x] 真机视频/截图证据（本机 `/tmp/gw_pin_shot.png`、`/tmp/gw_final_shot.png`、`~/.hermes/cache/scratch/flicker/f0*.png`）—— 大文件不入库
@@ -22,7 +22,7 @@
 ## 4) 下电动作
 1. 关掉 GUI：控制台 + 实时监控窗（本轮我起的只读服务 `dashboard_server :8799` 随之结束）
 2. 在役推流服务 `cam_live_stream`（8791/8793）随系统关机自行停止，无需手工
-3. 关机前确认真源无写入中（画布真源 md5 与本快照一致 = `e53e6f4c…`）
+3. 关机前确认唯一依据无写入中（画布唯一依据 md5 与本快照一致 = `e53e6f4c…`）
 4. 断电
 
 ## 5) 下次开机第一件事

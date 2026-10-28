@@ -9,7 +9,7 @@
 - 今天实例：01:37 "静静"(181条) → 02:47 "静静 #2"(92条) → 06:42 "静静 #3"(869条) → 23:11 "静静 #4"(当前)。
 - 记忆/技能跨会话共享，编号不影响身份。回答口径：直接说"同一个我，记忆共用"，别展开技术细节。
 
-## 2. "agent 又退出了"排查（进程其实没死）
+## 2. "agent 又退出了"排查（进程实际没死）
 
 按序 4 步（<1min）：
 
@@ -36,7 +36,7 @@ cat ~/.hermes/processes.json                 # 后台任务（gateway/studio.py�
 根因：`hermes_cli/config.py` 的 `warn_deprecated_cwd_env_vars()`（约 2181-2225 行）：
 - 条件 = 环境变量里有 `TERMINAL_CWD`（或 `MESSAGING_CWD`）**且** config.yaml 的 `terminal.cwd` 非显式路径。
 - 非显式集合：`{"."、 "auto"、"cwd"、""}`。config.yaml 里 `cwd: .` 时必现。
-- TERMINAL_CWD=/root 其实来自 Hermes 自身 config bridge（TERMINAL_CONFIG_ENV_MAP 把 terminal.cwd 转成 TERMINAL_CWD 注入环境），是误报。
+- TERMINAL_CWD=/root 实际来自 Hermes 自身 config bridge（TERMINAL_CONFIG_ENV_MAP 把 terminal.cwd 转成 TERMINAL_CWD 注入环境），是误报。
 
 修复：cwd 写成显式绝对路径（行为不变，消除误报）：
 

@@ -5,7 +5,7 @@
 `import node_logic` / `from node_logic import execute_node_logic, match_node, NODE_LOGIC ...`
 这些历史写法继续可用 (控制台 studio.py / simulink_module.py / 各 tools 脚本)。
 
-    · 逻辑真源   : src/lerobot/engineering/nodes/library.py   (141 条节点逻辑, 147 个注册 key)
+    · 逻辑唯一依据   : src/lerobot/engineering/nodes/library.py   (141 条节点逻辑, 147 个注册 key)
     · 注册表     : src/lerobot/engineering/registry.py        (key ↔ 节点名关键字 ↔ 函数 ↔ 文件)
     · 执行派发   : src/lerobot/engineering/runtime.py         (execute_node_logic / trace / 演示)
     · 源码定位   : src/lerobot/engineering/sourceview.py      (查看/改逻辑/恢复默认)
@@ -39,7 +39,7 @@ def _src_candidates():
     else:
         cands.append(os.path.abspath(os.path.join(here, "..", "..", "src")))
     env = os.environ.get("ZMAX_SRC_DIR")
-    if env:                                                        # 现场兜底: 手动指定工程根
+    if env:                                                        # 现场保障: 手动指定工程根
         cands.insert(0, env)
     return cands
 
@@ -59,7 +59,7 @@ try:
     import lerobot.engineering as _E  # noqa: E402
 except ModuleNotFoundError as _e:
     raise ModuleNotFoundError(
-        "控制台缺少工程包 lerobot.engineering (141 条节点逻辑 + 画布真源都在里面)。\n"
+        "控制台缺少工程包 lerobot.engineering (141 条节点逻辑 + 画布唯一依据都在里面)。\n"
         f"  尝试过的工程根: {_src_candidates()}\n"
         "  · 源码运行: 确认仓库内存在 src/lerobot/engineering/\n"
         "  · 打包版 (exe/.app): 当前包是用**旧打包配置**构建的 (未随包附带 src/lerobot/engineering)\n"
@@ -71,6 +71,6 @@ for _n in dir(_E):
     if not _n.startswith("__"):
         globals()[_n] = getattr(_E, _n)
 
-LOGIC_HOME = _E.paths.LOGIC_FILE          # 逻辑真源路径 (提示/VSCode 打开用)
-CANVAS_JSON = _E.paths.canvas_json()      # 画布 JSON 真源
+LOGIC_HOME = _E.paths.LOGIC_FILE          # 逻辑唯一依据路径 (提示/VSCode 打开用)
+CANVAS_JSON = _E.paths.canvas_json()      # 画布 JSON 唯一依据
 __all__ = [n for n in dir(_E) if not n.startswith("_")]

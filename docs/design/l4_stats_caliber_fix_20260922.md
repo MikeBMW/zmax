@@ -75,6 +75,6 @@ KPI-4  (下游) 仿真插入成功率 + 3D 视图可见"插拔成功"
 
 - `u_ff_source = intact(chunk×K_ACT=0.5)`: L4→意图解码器的 u_ff 先验**可用**(不需要标定), 有据可查
   (证据文件 `reports/intact_l3_cond.json`)。
-- `models/intact_l3_map.json` 缺 → **L3 条件向量通道**未标定, 但**有计数不写死**(诚实纪律)。
+- `models/intact_l3_map.json` 缺 → **L3 条件向量通道**未标定, 但**有计数不预先固定**(诚实纪律)。
 - 纤维丛层已标定 (contact r²_loso 0.471 · z7 丛 r²_loso 0.607, n=582, 真实引擎样本)。
 - 引擎里 L3 SmolVLA 能真执行接入 (ckpt `outputs/train/smolvla_lew_v10_1h/checkpoints/004000`)。

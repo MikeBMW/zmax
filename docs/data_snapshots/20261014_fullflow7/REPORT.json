@@ -107,7 +107,7 @@
      "l4_intent_models": {
       "rc": 0,
       "pass": [
-       "L4 意图模型 10/10 全部跑通 (任务 TASK-01-FW)"
+       "L4 意图模型 10/10 全部验证通过 (任务 TASK-01-FW)"
       ]
      },
      "meta_predict": {
@@ -233,7 +233,7 @@
      "l4_intent_models": {
       "rc": 0,
       "pass": [
-       "L4 意图模型 10/10 全部跑通 (任务 TASK-02-HANDLE)"
+       "L4 意图模型 10/10 全部验证通过 (任务 TASK-02-HANDLE)"
       ]
      },
      "meta_predict": {
@@ -365,7 +365,7 @@
      "l4_intent_models": {
       "rc": 0,
       "pass": [
-       "L4 意图模型 10/10 全部跑通 (任务 TASK-03-BI)"
+       "L4 意图模型 10/10 全部验证通过 (任务 TASK-03-BI)"
       ]
      },
      "meta_predict": {
@@ -497,7 +497,7 @@
      "l4_intent_models": {
       "rc": 0,
       "pass": [
-       "L4 意图模型 10/10 全部跑通 (任务 TASK-04-THERMAL)"
+       "L4 意图模型 10/10 全部验证通过 (任务 TASK-04-THERMAL)"
       ]
      },
      "meta_predict": {
@@ -629,7 +629,7 @@
      "l4_intent_models": {
       "rc": 0,
       "pass": [
-       "L4 意图模型 10/10 全部跑通 (任务 TASK-05-ATS)"
+       "L4 意图模型 10/10 全部验证通过 (任务 TASK-05-ATS)"
       ]
      },
      "meta_predict": {
@@ -761,7 +761,7 @@
      "l4_intent_models": {
       "rc": 0,
       "pass": [
-       "L4 意图模型 10/10 全部跑通 (任务 TASK-06-TRAY)"
+       "L4 意图模型 10/10 全部验证通过 (任务 TASK-06-TRAY)"
       ]
      },
      "meta_predict": {
@@ -887,7 +887,7 @@
      "l4_intent_models": {
       "rc": 0,
       "pass": [
-       "L4 意图模型 10/10 全部跑通 (任务 TASK-07-AOI)"
+       "L4 意图模型 10/10 全部验证通过 (任务 TASK-07-AOI)"
       ]
      },
      "meta_predict": {

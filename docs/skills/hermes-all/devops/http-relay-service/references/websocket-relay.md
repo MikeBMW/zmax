@@ -9,9 +9,9 @@
 - 启动: `bash /root/zmax-relay/start_ws.sh` (setsid nohup，模板同 relay start.sh)。
 - nginx `/ws` location 早已存在 (proxy_pass 127.0.0.1:8765 + Upgrade 头) — 无需新配置，`wss://datadrive.world/ws` 直接可用。
 
-## Orin 端 orin_infer_service.py (WS 主 + HTTP 兜底)
+## Orin 端 orin_infer_service.py (WS 主 + HTTP 保障)
 - `heartbeat_loop()`: asyncio 里 `websockets.connect(WS_URL)`，连接后每 5s send heartbeat JSON；断开/异常 sleep 5 重连。
-- `http_fallback()`: 独立线程每 10s POST `/api/relay/orin/heartbeat` (WS 不可用时兜底)。
+- `http_fallback()`: 独立线程每 10s POST `/api/relay/orin/heartbeat` (WS 不可用时保障)。
 - 启动时 `try: import websockets` → 有则起 WS 线程，无则打印 "降级 HTTP 心跳" — 双保险不阻塞。
 - 本地/Orin 无 websockets 库时自动降级，不影响链路。
 

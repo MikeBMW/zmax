@@ -4,7 +4,7 @@
 Z-MAX 仓库 (lerobot-smolvla-lew) 常有多个会话并行工作 (CLI + 飞书 gateway)。
 2026-09-10 实测: CLI 侧查 `git tag | tail` 看到 v5.5.6, 于是发 v5.5.7 (含 3D 修复);
 几乎同时飞书侧会话把 studio.py 版本号改到 v5.5.8 → v5.5.9 并推了 tag。
-后果: Release 资产按 tag 分裂, 用户拿到哪版说不清。
+后果: Release 资产按 tag 分裂, 用户拿到哪版难以说明。
 
 **发版前必做** (防撞号):
 ```bash

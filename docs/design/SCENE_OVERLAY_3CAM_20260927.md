@@ -23,7 +23,7 @@ tools/cam_live_stream.py --port 8791 --quality 72 --fps 30 \
 ```
 
 - **相机身份不再靠参数名猜**：服务读 `/sys/class/video4linux/videoN/name`，随 `/stats` 下发 `label`，
-  页面与画布直接显示真实相机名。（之前 `--local-dev 0` 映的其实是 MAXHUB，页面上却写“笔记本相机”。）
+  页面与画布直接显示真实相机名。（之前 `--local-dev 0` 映的实际是 MAXHUB，页面上却写“笔记本相机”。）
 - MAXHUB 那路既能 USB 直读，也能换成网络流：`--local2-url rtsp://…` 或 `http://…/video`（`http(s)` JPEG/MJPEG 直转，不重压）。
 - **真几何投影只对臂上相机成立**（只有它有手眼标定）；笔记本内置 / MAXHUB 两路没有手眼，
   生成“仿真/场景”框时**如实拒绝**，只有纯 2D 来源（YOLO 检测 / 大模型理解）三路都能跑。

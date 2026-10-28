@@ -3,7 +3,7 @@
 
 覆盖: 规则1 锚点稀疏 / 规则2 唯一分解(可逆) / 规则3 谱对称正则(**只读性**——不许改写度量张量) /
       规则4 质数计数课程 / 版本唯一性(质数指纹互异+反解) / 产品协同(包含⇒整除) /
-      真源自洽(config/platform/zmax_product.json 回读比对) / 与元数据根服务同源(18 基元逐项相等) /
+      唯一依据自洽(config/platform/zmax_product.json 回读比对) / 与元数据根服务同源(18 基元逐项相等) /
       引擎集成(ManifoldEngineLoop.step 真出 product_id+签名, 干跑不写记忆库) / 零回归(engine_loop 自检)。
 幂等: 只读 + /tmp 探针带 pid 自清理; 不碰在跑的控制台进程。
 用法: QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/verify_prime_structure.py
@@ -85,7 +85,7 @@ def main() -> int:
 
     # ── 规则3: 谱条款 —— 只读性 + 数学可达性 (诚实版) ─────────────────────────────
     print("\n[规则3] 黎曼猜想条款 — 按诚实版落实: 只读谱偏离量正则, 绝不改写度量张量")
-    g = np.diag([10.0, 10.0, 50.0, 10.0, 10.0, 10.0])                  # 在役真源形状
+    g = np.diag([10.0, 10.0, 50.0, 10.0, 10.0, 10.0])                  # 在役唯一依据形状
     g0 = g.copy()
     r = PS.spectral_symmetry(g)
     chk("调用后度量张量逐位不变 (只读)", np.array_equal(g, g0),
@@ -105,7 +105,7 @@ def main() -> int:
     iso = PS.spectral_symmetry(np.diag([5.0] * 6))
     chk("各向同性 (区间退化) 按约定质心 0.5", abs(iso["centroid"] - 0.5) < 1e-12,
         "各向同性 centroid=%.4f ⇒ 偏离 %.4f" % (iso["centroid"], iso["centroid_asymmetry"]))
-    chk("诚实标注: 在役真源度量谱向单方向偏 (正则项的用武之地)", r["centroid_asymmetry"] > 0,
+    chk("诚实标注: 在役唯一依据度量谱向单方向偏 (正则项的用武之地)", r["centroid_asymmetry"] > 0,
         "在役 centroid=%.4f · 偏离 %.4f" % (r["centroid"], r["centroid_asymmetry"]))
 
     # ── 规则4: 质数计数采样课程 ──────────────────────────────────────────────────
@@ -125,14 +125,14 @@ def main() -> int:
     rt = all(PS.read_fingerprint(v["fingerprint"])["product"] == v["product"]
              and PS.read_fingerprint(v["fingerprint"])["iteration"] == v["iteration"] for v in fps.values())
     chk("指纹可反解回 (产品, 迭代, 能力集)", rt, "6/6 反解自证")
-    chk("5.50.3 指纹 = 真源注册值", d["fingerprints"]["5.50.3"]["fingerprint"] == fps["5.50.3"]["fingerprint"],
+    chk("5.50.3 指纹 = 唯一依据注册值", d["fingerprints"]["5.50.3"]["fingerprint"] == fps["5.50.3"]["fingerprint"],
         "5.50.3 = %d (hex %s)" % (fps["5.50.3"]["fingerprint"], fps["5.50.3"]["hex"][:12]))
     sigs = {k: PS.cap_signature_of(k) for k in ("550A", "550B", "550C")}
     chk("能力包含 550A⊆550B⊆550C", set(PS.caps("550A")) <= set(PS.caps("550B")) <= set(PS.caps("550C")),
         "能力数 %d/%d/%d" % tuple(len(PS.caps(k)) for k in ("550A", "550B", "550C")))
     chk("包含 ⇒ 签名整除 (协同不变量)", sigs["550B"] % sigs["550A"] == 0 and sigs["550C"] % sigs["550B"] == 0,
         "A|B: %s · B|C: %s" % (sigs["550B"] % sigs["550A"] == 0, sigs["550C"] % sigs["550B"] == 0))
-    chk("真源回读: capability_signatures 与我重算一致",
+    chk("唯一依据回读: capability_signatures 与我重算一致",
         all(d["capability_signatures"][k] == sigs[k] for k in sigs), "3/3 一致")
 
     # ── 与元数据根服务同源 (全系统数据一致性的地基) ──────────────────────────────
@@ -161,7 +161,7 @@ def main() -> int:
     u0 = recs[0]["understand"]
     chk("每 tick 有结构化理解输出", all("understand" in r and r["understand"].get("signature", 0) > 0 for r in recs),
         "3 tick 签名 %s" % [r["understand"]["signature"] for r in recs])
-    chk("产品标识随真源 (550A/B/C 之一)", u0.get("product_id") in PS.PRODUCT_PRIMES,
+    chk("产品标识随唯一依据 (550A/B/C 之一)", u0.get("product_id") in PS.PRODUCT_PRIMES,
         "product_id=%s" % u0.get("product_id"))
     chk("结构随真实载荷变化 (力/速度非零才计入)",
         recs[0]["understand"]["caps"] != recs[1]["understand"]["caps"],

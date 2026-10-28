@@ -104,7 +104,7 @@ pusht 79.3%。数据集未就位时 (reacher/pusht 需下载) 只能跑 cube/two
 ## 5. 大采集 → 训练数据流水线 (防 OOM / 防假数据)
 
 - **十几万帧一次性 `np.concatenate` ≈ 22GB → 被 OOM 杀掉且一帧不落盘** (实测: 采集循环跑完 300 回合
-  151,364 帧, 落盘时进程被 kill, 目录里啥都没有)。
+  151,364 帧, 落盘时进程被 kill, 目录里什么都没有)。
   修: **分块落 part npz** (内存闸按累计帧数 ~2 万帧/块) + **流式合并 h5** (h5py 可扩展 dataset,
   逐 part `resize` + 写; 每 part 自包含 `ep_len/ep_offset`, 合并时全局重编号 `ep_idx/step_idx`)。
 - **合并工具 `--validate` 抛异常会提前 return → 中间 part 不删** (实测残留 7GB)。验证失败只

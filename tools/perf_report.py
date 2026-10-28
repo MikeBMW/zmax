@@ -185,7 +185,7 @@ def cat_a(r: Rep, runs: int = 3):
               "", "PASS" if os.path.exists(os.path.join(ROOT, "models/yolo_peg_live.pt")) else "FAIL",
               "必须是在役 peg 权重", "models/yolo_peg_live.pt 软链", 1)
     except Exception as e:                                                            # noqa: BLE001
-        r.add(cat, "层推理测量", "err", "", "FAIL", "必须真跑通", "%s: %s" % (type(e).__name__, str(e)[:90]), 1)
+        r.add(cat, "层推理测量", "err", "", "FAIL", "必须真验证通过", "%s: %s" % (type(e).__name__, str(e)[:90]), 1)
 
 
 # ─────────────────────────── B 引擎回路 ───────────────────────────
@@ -197,7 +197,7 @@ def cat_b(r: Rep, cycles: int = 40):
     r.add(cat, "目标频率", st.get("hz_target"), "Hz", "PASS" if (st.get("hz_target") or 0) >= 10 else "WARN",
           "≥10Hz", "同上", 1)
     r.add(cat, "空转周期数", st.get("idle_cycles"), "个", "PASS" if (st.get("idle_cycles") or 0) == 0 else "WARN",
-          "=0 (有无状态真源)", "同上", 1)
+          "=0 (有无状态唯一依据)", "同上", 1)
     tap = st.get("tap") or "/dev/shm/zmax_ss_engine/engine_default.jsonl"
     recs = tail_jsonl(tap, 400)
     if len(recs) >= 5:
@@ -496,7 +496,7 @@ def cat_j(r: Rep):
           "veto=True 时动作被拦", "同上", 1)
     r.add(cat, "异常度 anomaly", d.get("anomaly"), "", "PASS" if (d.get("anomaly") or 0) < 0.5 else "WARN",
           "<0.5 正常", "同上", 1)
-    r.add(cat, "位姿真源新鲜度", round(time.time() - os.path.getmtime(
+    r.add(cat, "位姿唯一依据新鲜度", round(time.time() - os.path.getmtime(
         os.path.join(ROOT, "zmax_data/rokae_sdk/tcp_out/latest.json")), 1) if os.path.exists(
         os.path.join(ROOT, "zmax_data/rokae_sdk/tcp_out/latest.json")) else "缺", "s",
         "PASS" if os.path.exists(os.path.join(ROOT, "zmax_data/rokae_sdk/tcp_out/latest.json"))

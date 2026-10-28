@@ -5,11 +5,11 @@
 老倪 2026-10-12: 「你要发布一个配置单，可以从配置清单导出。带出所有的配置参数。
                   先给出当前插拔项目的所有配置参数。」
 
-一次导全 8 段 (每段都标真源, 可复核):
+一次导全 8 段 (每段都标唯一依据, 可复核):
   ① 任务/场景/站点 ② 工艺步骤 ③ 适用段/不适用段 ④ 六档位(run_cfg)
   ⑤ 参数覆盖(overrides) ⑥ 画布(工程/节点/连线/md5 + 该任务启用节点的节点参数)
   ⑦ 全量参数注册表(162: 标定/画布/代码/平台/档位, 每个带 值/范围/单位/状态)
-  ⑧ 标定真源 + 点位台账 (sha256/mtime)
+  ⑧ 标定唯一依据 + 点位台账 (sha256/mtime)
 
 用法:
   gui-venv311/bin/python tools/config_sheet.py                      # 活跃任务
@@ -136,7 +136,7 @@ def collect(task_id: str = "") -> dict:
             "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
             "generator": "tools/config_sheet.py",
             "git": _git_rev(),
-            "真源": {"任务配置": "config/tasks/tasks.json", "绑定": "config/ss_task_binding.json",
+            "唯一依据": {"任务配置": "config/tasks/tasks.json", "绑定": "config/ss_task_binding.json",
                      "画布": "flows/state_space_obs.json", "参数注册表": "tools/param_registry.py",
                      "场景/色": "tools/ss_scene_switch.py"},
         },
@@ -162,7 +162,7 @@ def collect(task_id: str = "") -> dict:
         "参数注册表": {"总数": len(params),
                        "分组计数": {k: len(v) for k, v in sorted(by_group.items())},
                        "分组": by_group},
-        "标定真源": calib,
+        "标定唯一依据": calib,
         "点位台账": points,
         "活跃任务": doc.get("active_task"),
     }
@@ -181,7 +181,7 @@ def to_md(d: dict) -> str:
     m, t = d["_meta"], d["任务"]
     L.append("# 配置单 · %s — %s" % (t["task_id"], t.get("name") or ""))
     L.append("")
-    L.append("> 生成 %s · by `%s` @ `%s` · 真源: 任务配置/绑定/画布/参数注册表/场景映射 (见 JSON `_meta.真源`)"
+    L.append("> 生成 %s · by `%s` @ `%s` · 唯一依据: 任务配置/绑定/画布/参数注册表/场景映射 (见 JSON `_meta.唯一依据`)"
              % (m["generated_at"], m["generator"], m["git"]))
     L.append("")
     L.append("## ① 任务 / 场景 / 站点")
@@ -253,7 +253,7 @@ def to_md(d: dict) -> str:
     for g, items in p["分组"].items():
         L.append("### %s (%d)" % (g, len(items)))
         L.append("")
-        L.append("| 参数 ID | 名称 | 值 | 范围 | 单位 | 状态 | 真源 |")
+        L.append("| 参数 ID | 名称 | 值 | 范围 | 单位 | 状态 | 唯一依据 |")
         L.append("| --- | --- | --- | --- | --- | --- | --- |")
         for it in items:
             rng = "—"
@@ -263,11 +263,11 @@ def to_md(d: dict) -> str:
                 it.get("param_id"), it.get("cn") or it.get("name"), _fmt_val(it.get("value")),
                 rng, it.get("unit", "—"), it.get("status", "—"), it.get("source", "—")))
         L.append("")
-    L.append("## ⑧ 标定真源 + 点位台账")
+    L.append("## ⑧ 标定唯一依据 + 点位台账")
     L.append("")
     L.append("| 标定文件 | sha256(16) | 修改时间 | 字节 |")
     L.append("| --- | --- | --- | --- |")
-    for x in d["标定真源"]:
+    for x in d["标定唯一依据"]:
         L.append("| `%s` | `%s` | %s | %s |" % (x["file"], x["sha256_16"], x["mtime"], x["bytes"]))
     L.append("")
     L.append("| 点位台账 | 文件 | 条数 | sha256(16) | 修改时间 |")
@@ -316,7 +316,7 @@ def main() -> int:
         print("   参数注册表 %d 项 (%s)" % (d["参数注册表"]["总数"],
                                        " · ".join("%s %d" % (k, v)
                                                   for k, v in d["参数注册表"]["分组计数"].items())))
-        print("   标定 %d 文件 · 点位台账 %d 份" % (len(d["标定真源"]), len(d["点位台账"])))
+        print("   标定 %d 文件 · 点位台账 %d 份" % (len(d["标定唯一依据"]), len(d["点位台账"])))
         for p in out:
             print("   → %s (%d B)" % (p, os.path.getsize(p)))
     return 0

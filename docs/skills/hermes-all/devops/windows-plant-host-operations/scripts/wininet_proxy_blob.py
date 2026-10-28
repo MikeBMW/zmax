@@ -30,7 +30,7 @@ blob 结构(小端):
     python3 wininet_proxy_blob.py --proxy 192.168.23.50:8889 \
         --bypass '192.168.23.*;127.*;localhost;<local>' --total 124
 
-输出一行 hex, 直接喂给:
+输出一行 hex, 直接提供给:
 
     reg add "HKU\\<SID>\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings\\Connections" \\
         /v DefaultConnectionSettings /t REG_BINARY /d <hex> /f

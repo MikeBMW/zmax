@@ -4,7 +4,7 @@
 
 用离屏真渲染 (不碰现场正在用的窗口), 出图:
   1_左树文档配置_预览SOR.png      —— 左树展开「📄 文档配置」, 内置窗口显示 SOR 的实际内容
-  2_一致性核对.png                —— 三份文档 × 当前真源 逐条比对
+  2_一致性核对.png                —— 三份文档 × 当前唯一依据 逐条比对
 用法: QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/shots_config_docs.py
 """
 import os

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """verify_fw_manifold_chain.py — 插拔场景「流形引擎空间智能链」判据 (老倪 2026-10-15 的十条要求逐条取证)
 
-判据口径: 只认**真源文件 + 真 tap + 真台账**; 缺就报 ⚠/❌ 并指出开关, 不许编。
+判据口径: 只认**唯一依据文件 + 真 tap + 真台账**; 缺就报 ⚠/❌ 并指出开关, 不许编。
   ① 链上真值齐全且新鲜 (引擎/扭矩/内稳态/元任务 帧龄 + 非退化)
   ② 空间智能: 度规(尺子) + 潜表示(编码器是谁)
   ③ 预测的结构: 势能 φ 分层分解 + 梯度 + 谷底距离 + 阶段/技能
@@ -61,7 +61,7 @@ def num(x, d=0.0):
 
 def main():
     print("=" * 78)
-    print("插拔场景 · 流形引擎空间智能链 判据  (真源=zmax_data/ss_live + tap + config/topics)")
+    print("插拔场景 · 流形引擎空间智能链 判据  (唯一依据=zmax_data/ss_live + tap + config/topics)")
     print("=" * 78)
 
     eng, ae = _j("engine_latest.json")
@@ -127,7 +127,7 @@ def main():
         last = led[-1]
         ck(last.get("ids_sha1_16") == cur, "末条台账哈希 %s == 当前元任务哈希 %s (口径一致)" % (last.get("ids_sha1_16"), cur),
            "末条台账哈希 %s ≠ 当前 %s (口径不一致)" % (last.get("ids_sha1_16"), cur))
-        ck(num(last.get("src_age_s")) <= STALE * 3, "台账源帧龄 %.1fs (跟随真源, 非陈旧快照)" % num(last.get("src_age_s")),
+        ck(num(last.get("src_age_s")) <= STALE * 3, "台账源帧龄 %.1fs (跟随唯一依据, 非陈旧快照)" % num(last.get("src_age_s")),
            "台账源帧龄 %.1fs 陈" % num(last.get("src_age_s")))
         ck(len(led) >= 2, "台账在增长 (%d 条, 最新 %s)" % (len(led), last.get("ts_str")), "台账仅 1 条")
 
@@ -159,11 +159,11 @@ def main():
         print("   ⚠ L3 未在规划: l3_live_status 帧龄 %.0fs, 管线 L3 ok=%s ⇒ 引擎回路未带 --pipeline" % (al3, _l3ok))
 
     int_ok = False
-    print("\n⑦ L2 前馈加速预测 + INTACT 驱动 (读联调实例真源: engine_latest_<实例>.json + layer_calls.jsonl)")
+    print("\n⑦ L2 前馈加速预测 + INTACT 驱动 (读联调实例唯一依据: engine_latest_<实例>.json + layer_calls.jsonl)")
     inst = sorted(glob.glob(os.path.join(LIVE, "engine_latest_*.json")), key=os.path.getmtime, reverse=True)
     inst = [p for p in inst if not p.endswith("engine_latest.json")]
     main_p = os.path.join(LIVE, "engine_latest.json")
-    # 常驻回路已带链上开关时, 直接读主实例真源 (联调实例只在它还新鲜时优先, 免得报旧档)
+    # 常驻回路已带链上开关时, 直接读主实例唯一依据 (联调实例只在它还新鲜时优先, 免得报旧档)
     if inst and (time.time() - os.path.getmtime(inst[0])) > 300:
         inst = []
     if not inst and os.path.isfile(main_p):
@@ -199,7 +199,7 @@ def main():
            warn=str(ie.get("encoder")) != "l4")
         int_ok = bool(ie.get("pipe_on"))
     else:
-        print("   ⚠ 未找到联调实例真源 — 先跑: SS_L4_INTACT=1 python tools/ss_engine_loop.py run "
+        print("   ⚠ 未找到联调实例唯一依据 — 先跑: SS_L4_INTACT=1 python tools/ss_engine_loop.py run "
               "--instance fwchain --encoder l4 --l4-frame-url http://127.0.0.1:8799/frame.png "
               "--pipeline --pipe-img http://127.0.0.1:8799/frame.png")
     if ly:

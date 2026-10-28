@@ -23,7 +23,7 @@
     "open_all_ok": true,
     "steps": [
      {
-      "name": "活跃任务 (绑定真源)",
+      "name": "活跃任务 (绑定唯一依据)",
       "ok": true
      },
      {
@@ -98,7 +98,7 @@
     "open_all_ok": true,
     "steps": [
      {
-      "name": "活跃任务 (绑定真源)",
+      "name": "活跃任务 (绑定唯一依据)",
       "ok": true
      },
      {
@@ -173,7 +173,7 @@
     "open_all_ok": true,
     "steps": [
      {
-      "name": "活跃任务 (绑定真源)",
+      "name": "活跃任务 (绑定唯一依据)",
       "ok": true
      },
      {

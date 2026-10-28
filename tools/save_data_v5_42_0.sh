@@ -9,7 +9,7 @@ mkdir -p "$SNAP" "$ARC"
 
 echo "═══ ① 快照目录: ${SNAP#$REPO/} ═══"
 
-# ── 工程库 (单一真源) + 判据 ──
+# ── 工程库 (单一唯一依据) + 判据 ──
 if [ -f data/database/zmax/zmax_engineering.db ]; then
   cp -f data/database/zmax/zmax_engineering.db "$SNAP/zmax_engineering.db"
   ./venvs/lerobot-venv/bin/python tools/engineering_db.py check > "$SNAP/engineering_db_check.txt" 2>&1
@@ -17,7 +17,7 @@ if [ -f data/database/zmax/zmax_engineering.db ]; then
 fi
 # ── 改数留痕 ──
 [ -f data/database/zmax/param_events.jsonl ] && tail -200 data/database/zmax/param_events.jsonl > "$SNAP/param_events_tail.jsonl"
-# ── 画布真源 ──
+# ── 画布唯一依据 ──
 cp -f src/lerobot/engineering/flows/state_space_obs.json "$SNAP/canvas_state_space_obs.json" 2>/dev/null \
   && echo "  画布: $(md5sum "$SNAP/canvas_state_space_obs.json" | cut -c1-12) ($(python3 -c "import json;d=json.load(open('$SNAP/canvas_state_space_obs.json'));print(len(d['nodes']),'节点',len(d.get('links') or []),'连线')"))"
 # ── 本轮两次真跑的判据报告 ──
@@ -42,7 +42,7 @@ d=json.load(sys.stdin); out={'runs':[{'branch':r['head_branch'],'status':r['stat
 json.dump(out, open('/tmp/_ci.json','w'), ensure_ascii=False, indent=1)
 " && cp -f /tmp/_ci.json "$SNAP/release_status.json"
 echo "  CI: $(./venvs/lerobot-venv/bin/python -c "import json;d=json.load(open('$SNAP/release_status.json'));print(', '.join(f\"{r['branch']}={r['status']}/{r['conclusion']}\" for r in d['runs']))")"
-# ── git 真源点 ──
+# ── git 唯一依据点 ──
 { echo "commit: $(git rev-parse --short HEAD)"; echo "tag: $(git describe --tags --abbrev=0 2>/dev/null)"; echo "branch: $(git rev-parse --abbrev-ref HEAD)"; } > "$SNAP/git_ref.txt"
 cat "$SNAP/git_ref.txt" | sed 's/^/  /'
 

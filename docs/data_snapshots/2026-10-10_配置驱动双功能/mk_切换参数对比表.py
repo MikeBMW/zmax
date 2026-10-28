@@ -47,7 +47,7 @@ rows = [
 fig, ax = plt.subplots(figsize=(15.5, 12.4), dpi=130)
 ax.axis("off")
 ax.set_title("Z-MAX 插拔 / 摆盘 —— 配置切换到底切了哪些参数\n"
-             "真源 config/ss_task_binding.json (配置中心) · ★ = 直接决定跑哪条链的功能开关",
+             "唯一依据 config/ss_task_binding.json (配置中心) · ★ = 直接决定跑哪条链的功能开关",
              fontsize=14, pad=18)
 data = [[k, a, b] for k, a, b in rows]
 tb = ax.table(cellText=data, colLabels=["配置项", "TASK-01-FW 插拔", "TASK-06-TRAY 摆盘"],

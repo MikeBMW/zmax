@@ -10,7 +10,7 @@
 ## 真机链路 (一次抓取的真实数据流)
 ```
 真机帧(Orin tap) ──► LLM: DeepSeek VL 场景理解 ─┐
-                                              ├─► scene_state.json (单一真源)
+                                              ├─► scene_state.json (单一唯一依据)
 YOLO(在役权重) 2D ──► 板坐标系/视觉常数 3D ────┘
         │
         ▼

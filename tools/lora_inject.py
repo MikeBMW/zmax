@@ -8,7 +8,7 @@
   · L4 INTACT 是自研 JEPA (jepa.py/module.py), 不是 HF transformers 模型 — peft 的
     target_modules 约定与它的命名 (model.net.*, intent_actor.net.*, predictor.*) 不适配;
   · 本机 INTACT-JEPA venv **没有 peft** (实测), 而 gui-venv311 有 — 自实现可让两套环境
-    用同一份代码, 避免"训练环境装不上依赖"卡住。
+    用同一份代码, 避免"训练环境装不上依赖"阻塞。
   · 只有 ~120 行, 行为可审计 (老倪要"实际怎么执行的"证据)。
 
 设计 (零回退默认):
@@ -210,7 +210,7 @@ def _selftest() -> int:
     info = inject_lora(model, targets=["0", "2"], r=4, alpha=8)
     y0 = model(x)
     d0 = float((y0 - base_out).abs().max())
-    # ⚠️ 只断言"逐位等价"会漏掉"其实一层都没注入"(注入 0 层当然等价) —— 2026-09-22 实测踩到,
+    # ⚠️ 只断言"逐位等价"会漏掉"实际一层都没注入"(注入 0 层当然等价) —— 2026-09-22 实测踩到,
     #   故把"确实注入了预期层数"并入断言 ①。
     ok1 = (d0 == 0.0) and info["injected"] == 2
     print(f"① 注入 {info['injected']} 层且注入瞬间逐位等价 (B 零初始化): max|Δ| = {d0:.3e}  → {'✅' if ok1 else '❌'}")

@@ -14,7 +14,7 @@
 | 本机 SSH | 无任何密钥 (`~/.ssh` 只有 known_hosts) | ed25519 + 公钥进 Orin `tashan` authorized_keys | GUI 全部 ssh 路径都靠**免密**, 没密钥一律连不上 |
 | TCP bridge 探测 | `pgrep orin_forwarder` | `pgrep 'orin_gateway\|orin_forwarder'` | 现役网关是 `orin_gateway.py`, 旧名匹配不到 |
 
-**铁律: 配置层(账号/域/端口/免密)修好后必须重走完整链路** — 修完账号第一次真跑通"发现硬件",
+**铁律: 配置层(账号/域/端口/免密)修好后必须重走完整链路** — 修完账号第一次真验证通过"发现硬件",
 立刻撞上潜伏的 `list.get()` 崩溃 (下面第二节)。别假定配置修好后面就没坑。
 
 ## 二、点一下整个控制台消失 = Qt 槽未捕获异常 → qFatal
@@ -62,7 +62,7 @@ journal 里也**没有** Python traceback (只有 `Consumed ... CPU time` 一行
 ## 四、塔灯「点红色不变红」= 单通道中间件 + 静默失败
 
 旧 `_tower_cmd` 只走 `ECS relay /command → Mac 守护 → ssh Orin → ros2 topic pub`; Mac 守护不在线时
-指令石沉大海, 界面还照写「🟡 指令已下发」。直连可用后应改**直连优先 + 回读验证 + 中间件兜底**:
+指令石沉大海, 界面还照写「🟡 指令已下发」。直连可用后应改**直连优先 + 回读验证 + 中间件保障**:
 
 ```bash
 ssh tashan@192.168.23.66 'export ROS_DOMAIN_ID=0; source /opt/ros/humble/setup.bash && \

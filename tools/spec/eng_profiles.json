@@ -152,7 +152,7 @@
      "need": "orin",
      "cmd": "python3 -c \"import json,time,datetime as D;d=json.load(open('zmax_data/rokae_sdk/tcp_out/latest.json'));t=D.datetime.strptime(d['ts'],'%Y-%m-%d %H:%M:%S.%f');print('帧龄s',round(time.time()-t.timestamp(),1))\"",
      "expect": "帧龄s 0~2",
-     "fail": "帧龄大 ⇒ 采样器崩/链路断: 在 dobot/Orin 侧重启采样, 或 zmax-pose-relay 兜底; 全 0 也视为陈旧"
+     "fail": "帧龄大 ⇒ 采样器崩/链路断: 在 dobot/Orin 侧重启采样, 或 zmax-pose-relay 保障; 全 0 也视为陈旧"
     },
     {
      "id": "A6",
@@ -184,7 +184,7 @@
      "need": "local",
      "cmd": "python3 tools/verify_config_active_task.py > /tmp/v.log 2>&1; tail -1 /tmp/v.log",
      "expect": "0 FAIL",
-     "fail": "有 FAIL ⇒ 按 FAIL 行给出的真源路径逐条修, 不要跳过"
+     "fail": "有 FAIL ⇒ 按 FAIL 行给出的唯一依据路径逐条修, 不要跳过"
     }
    ],
    "acceptance": [
@@ -409,7 +409,7 @@
     "A/B 档全部安全项",
     "目标安全等级 PL d (ISO 13849): 当前未认证 ⇒ 不得对外宣称达标",
     "认证前必须完成: 急停链验证 / 安全门互锁 / 危险动作授权 / 异常演练各 1 次并留证",
-    "危险动作前 agent_all_stop 兜底; 台账写 docs/incidents/INCIDENT-INDEX.md"
+    "危险动作前 agent_all_stop 保障; 台账写 docs/incidents/INCIDENT-INDEX.md"
    ],
    "wi": [
     {

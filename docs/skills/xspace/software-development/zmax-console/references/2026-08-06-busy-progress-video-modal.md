@@ -10,7 +10,7 @@ WSLg 下模态弹窗不可见 → 主线程阻塞在 exec_ → 用户以为没�
 才被解除 → 后续 `dlg.show()` 才执行 → 看起来"第二次双击才打开"。
 修复：无帧时改 `self._show_bubble(self.rect().center(), "...", 5000)` 气泡非模态提示；
 对话框自身 lbl_note 已显示"无帧/生成中"，不再阻塞主线程，首次双击立即弹窗。
-**通用教训**：任何 `_qmsg_*`/QMessageBox.exec_() 在 WSLg 下都会"卡住没反应"，排查
+**通用教训**：任何 `_qmsg_*`/QMessageBox.exec_() 在 WSLg 下都会"阻塞没反应"，排查
 "点了没反应/要点两次"类问题先搜 exec_ 调用。
 
 ## 2. 防重入提示升级：训练实时进度 + 剩余队列具体任务名（c7f913b5）
@@ -29,7 +29,7 @@ WSLg 下模态弹窗不可见 → 主线程阻塞在 exec_ → 用户以为没�
 - **剩余队列具体任务名**：`_start_canvas_flow` 构建队列时同步
   `self._flow_names = [n["name"] for n, m, k in stages]`，`_flow_next` pop 队列时同步
   `self._flow_names.pop(0)`；提示取 `list(flow_names)[1:]`（第 0 个是正在跑的）。
-- 兜底：无 busy_info 时返回 "worker 运行中"。
+- 保障：无 busy_info 时返回 "worker 运行中"。
 - 注意：`"name": busy_msg.split("(")[0]` 会带出"正在准备 X 训练"这种前缀——这是 on_train
   传的 busy_msg 本身，可接受；若嫌长可只取 policy 段。
 

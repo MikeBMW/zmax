@@ -74,7 +74,7 @@ def main():
 
     # ② 模型 (原项目论文权重)
     model = swm.policy.AutoCostModel(r["ckpt"]) if hasattr(swm.policy, "AutoCostModel") else None
-    if model is None:                      # 兜底: 走仓库自己的加载器
+    if model is None:                      # 保障: 走仓库自己的加载器
         from utils import load_model_from_folder      # paper_runtime/utils.py
         model = load_model_from_folder(r["ckpt"])
     if hasattr(model, "to"):

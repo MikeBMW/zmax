@@ -47,7 +47,7 @@ REPO = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 import laptop_cam_solve as LS                                                    # noqa: E402
 import traj_display as TD
-import fence_store as FS     # 🧱 3D 围栏(长方体/直线) 真源 + 碰撞判定
+import fence_store as FS     # 🧱 3D 围栏(长方体/直线) 唯一依据 + 碰撞判定
 import opt_box3d as OB3      # 🔍 光模块 3D 框 (2D 检测 → 相机系立方体 → 基座系 + 像素投影)                       # noqa: E402                                                        # noqa: E402
 
 try:                                      # 🔍 工控机 AOI 客户端 (10082 金手指 / 10083 表面)
@@ -62,7 +62,7 @@ PAGE = os.path.join(REPO, "tools", "web", "tcp-ar.html")
 
 # 📄 2026-10-22 老倪: 「右上角增加一个 技术 按钮，可以打开技术协议；你来规划一个文件夹路径，
 #   我把真正的 word 版本的技术协议放到这里，你负责打开这个 word」
-#   规约: 目录只放**真源文件**(Word/PDF), 不进 git(大件不进库, 见 git 精简纪律);
+#   规约: 目录只放**唯一依据文件**(Word/PDF), 不进 git(大件不进库, 见 git 精简纪律);
 #   选哪份 = ZMAX_AGREEMENT_FILE 指定 > 文件名含「技术协议」且最新的 > 目录里最新的。
 AGREE_DIR = os.environ.get("ZMAX_AGREEMENT_DIR") or os.path.join(REPO, "zmax_data", "agreements")
 AGREE_EXTS = (".docx", ".doc", ".pdf")
@@ -289,7 +289,7 @@ def _ar_points():
     #   (space1..space8, 含 pos/quat/abc, mtime 就是刚改的时刻);
     #   而本接口原来**只读** ar_aoi_live.json(工程配置台账, 停在 10-20) ⇒ 页面上还是旧点位,
     #   station 改了、AR 页面不变 —— 两边各说各话。
-    #   口径: **标记模式是示教点真源**, 它写到的 spaceN 覆盖台账里同义的「空间点N」;
+    #   口径: **标记模式是示教点唯一依据**, 它写到的 spaceN 覆盖台账里同义的「空间点N」;
     #   台账里有、示教里没有的点照旧保留(它们来自工程配置, 不是示教出来的)。
     sp = os.path.join(REPO, "data", "skills", "l2_atomic", "space_points.json")
     _ov = {}
@@ -348,7 +348,7 @@ def _ar_points():
 # 🥽 2026-10-12 老倪: 「AR 场景背景的真实图像, 应该是**状态空间工程的视频数据源**; 现在有 USB 相机(RealSense)、
 #   机器人手臂的 RealSense、金手指检测相机、表面检测相机 —— 这 4 个相机都照射着同一个场景, L5 层 deepseek VL 能理解它」
 #   ⇒ AR 底图来源分两类, 一律**登记真实分辨率**(标定点是像素量纲, 混用必错):
-#     ① src="sstate": 状态空间工程的视频数据源 —— 单一真源 = tools/cam_live_stream.py @8791(工位总览 8793 同源),
+#     ① src="sstate": 状态空间工程的视频数据源 —— 单一唯一依据 = tools/cam_live_stream.py @8791(工位总览 8793 同源),
 #        这里只**订阅**, 不另起相机: 🦾 手臂 RealSense D405 / 🔍 金手指检测(10082) / 🧪 表面检测(10083) / 💻 USB 内置 / 📺 MAXHUB
 #     ② src="usb": 本机 USB RealSense D435(AR 服务自持 pipeline, 有深度+出厂内参 ⇒ 可反投影/3D 叠加)
 #   实测(2026-10-12 逐路拉快照): arm 640×480 · gold 900×332 · gold_raw 1400×1171 · surface 1280×1280 · local 640×480 · local2 1280×720
@@ -388,7 +388,7 @@ def _get(path: str, timeout: float = 10.0):
 #   ① /api/aoi/gold.jpg 取不到本机那张时会**回退到工控机 kind=crop**(=程序画上去的那张, 没拍到金手指
 #      也照样画一排) ⇒ AR 页与工位总览页显示的不是同一张 ⇒ 现场一眼就看出"不一样"。
 #   ② 本机那路的取帧会偶尔慢(工控机送检帧节奏), 一旦超过超时, 页面就空/慢, 越看越像两个服务在给不同的图。
-#   定式: 只用**本机裁切的实拍区域**这一个口径 + 记住**上一次成功那一张**兜底(宁可给略旧的一帧, 也不换口径)。
+#   定式: 只用**本机裁切的实拍区域**这一个口径 + 记住**上一次成功那一张**保障(宁可给略旧的一帧, 也不换口径)。
 _SNAP_CACHE = {}          # path -> (bytes, ts); 只在成功时更新
 
 
@@ -421,7 +421,7 @@ TOOL01_XYZ = (-0.01588615307905028, 0.018348498948158043, 0.2586775713451509)  #
 def _box_covers_xy(it, p, margin=0.02):
     """盒子在 x/y 平面是否真的盖住这个点(含 margin)。
 
-    🔴 2026-10-26 老倪「去7号位，要先到7号位的正上方」实测踩坑: 接近高度 z=307.7 被判成
+    🔴 2026-10-26 老倪「去7号位，要先到7号位的正上方」实测遇到问题: 接近高度 z=307.7 被判成
       "落进 检测设备(x 711~844 / y -91~302 / z 0~340) 的 z 区间" ⇒ 压到盒底 -20mm,
       可 7号位在 x=647, x 根本不在盒子里 —— 只判 z 不判 x/y 就会把高度压到地下。
       避让必须三维真重叠才算重叠。
@@ -438,7 +438,7 @@ def _min_clear_mm(path_pts):
     """一条路径到所有启用围栏(长方体/直线)的最小净空 mm; 负值=穿进围栏内部。
 
     2026-10-26 老倪:「走直线是最近的」⇒ 直线要能自证安全, 不能只说"应该没问题"。
-    只读 FS 真源(_load), 轨迹点(type=points)不参与判定(否则自己的路把自己堵死)。
+    只读 FS 唯一依据(_load), 轨迹点(type=points)不参与判定(否则自己的路把自己堵死)。
     """
     d = FS._load()
     best_d, best_nm = 9e9, ""
@@ -748,7 +748,7 @@ def _rs_pose(use_last_detect=True, roi=None):
 
 
 def _rs_detect(conf=0.25, imgsz=640):
-    """🥽 光模块检测(AR 相机帧): 在**本进程**跑在役 YOLO —— 相机被本服务独占, 别的进程打不开设备。
+    """🥽 光模块检测(AR 相机帧): 在**本进程**跑在役 YOLO —— 相机被本服务独占, 别的进程无法打开设备。
 
     返回 bbox/conf + 深度相机系 3D; 标注图落 zmax_data/ar_rs/rs_detect_last.png (AR 页面可直接看)。
     conf/imgsz 可调: 归因"没东西 vs 权重不认视角"时, 用低 conf / 高分辨率各跑一次对比。
@@ -782,7 +782,7 @@ def _rs_jpeg(quality: int = 82) -> bytes:
 
     ⚠ 本进程是 ForkingMixIn: 在这类子进程里 import realsense_source 只会拿到 fork 前那份空壳
       (frames=0, snap()=None) ⇒ 原来这里直接调 RS.snap() 永远回空图, 正是"USB RealSense 不好使"的表象。
-      真源只有一个: tools/rs_service.py(单进程独占 D435)。取不到就回空字节, 不拿旧帧冒充。
+      唯一依据只有一个: tools/rs_service.py(单进程独占 D435)。取不到就回空字节, 不拿旧帧冒充。
     """
     try:
         import urllib.request
@@ -844,7 +844,7 @@ def save_calib(cam, obj):
 
 # ───────────────────────── 🥽 AR 底图来源 / L5 理解 (2026-10-12) ─────────────────────────
 def _ss_stats(timeout: float = 3.0) -> dict:
-    """状态空间工程视频源的每路实况(在线/fps/帧龄/上游 label) —— 真源在 8791, 这里只转发, 不重算。"""
+    """状态空间工程视频源的每路实况(在线/fps/帧龄/上游 label) —— 唯一依据在 8791, 这里只转发, 不重算。"""
     try:
         with urllib.request.urlopen(UP + "/stats", timeout=timeout) as r:
             return json.loads(r.read().decode("utf-8", "ignore"))
@@ -872,24 +872,24 @@ def _rs_online_fast(timeout: float = 2.5):
     except Exception:                                                       # noqa: BLE001
         return False, "抓帧超时(设备在但没帧 ⇒ 疑似掉线)"
     finally:
-        _ex.shutdown(wait=False)                                            # 不等卡住的线程
+        _ex.shutdown(wait=False)                                            # 不等阻塞的线程
 
 
 AR_SW_FRESH_S = 1800.0          # 开关状态有效期: 控制台只在"点开关"那一刻写盘, 120s 太短(2min后页面自己退出 AR 模式)
 AR_CMD_FRESH_S = 3.0            # 🥽 状态空间→AR 指令新鲜度: 超时页面回落到自己的播放逻辑(不卡死)
 
-# 元任务 → 手臂归属 (真源 = 元任务里的 hand 字段; 这个表只是老 schema(无 hand) 的兜底)
+# 元任务 → 手臂归属 (唯一依据 = 元任务里的 hand 字段; 这个表只是老 schema(无 hand) 的保障)
 _MT_ARM = {"MT-01": "right", "MT-02": "right", "MT-03": "right", "MT-04": "right",
            "MT-05": "right", "MT-06": "left", "MT-07": "both"}
 _HAND_ARM = {"L": "left", "R": "right", "BOTH": "both"}
 
 
-# ── 💰 成本/产量/三方分成 (真源: tools/spec/cost_model.json → tools/cost_model.build_tiers()) ──
+# ── 💰 成本/产量/三方分成 (唯一依据: tools/spec/cost_model.json → tools/cost_model.build_tiers()) ──
 _COST_CACHE = {"t": 0.0, "d": None, "mt": 0.0}
 
 
 def _cost_payload():
-    """三档成本 + 三张工单 + 市场预期。缓存 60s 或真源 mtime 变化即重算。"""
+    """三档成本 + 三张工单 + 市场预期。缓存 60s 或唯一依据 mtime 变化即重算。"""
     import importlib.util
     spec = os.path.join(REPO, "tools", "spec", "cost_model.json")
     mt = os.path.getmtime(spec) if os.path.exists(spec) else 0
@@ -938,7 +938,7 @@ def _cost_payload():
 def _ar_vision_payload():
     """🎯 产品愿景 (老倪 2026-10-28: 「这个愿景, 一个在 AR 场景体现」)。
 
-    真源 tools/spec/vision.json; 只有计数是现算: 动作单元 = 元任务段数, 件数/回流由前端时钟给。
+    唯一依据 tools/spec/vision.json; 只有计数是现算: 动作单元 = 元任务段数, 件数/回流由前端时钟给。
     """
     import json as _j
     p = os.path.join(HERE, "..", "tools", "spec", "vision.json")
@@ -962,7 +962,7 @@ def _ar_vision_payload():
 
 
 def _ar_meta_payload() -> dict:
-    """🧩 AR 场景元任务组合 (真源: 配置中心 TASK-07-AOI 的 ar_meta_tasks.json)
+    """🧩 AR 场景元任务组合 (唯一依据: 配置中心 TASK-07-AOI 的 ar_meta_tasks.json)
 
     给 /ar3d 右侧边栏「🧩 元任务」区用: 5 个元任务 + 长程节拍 + 当前执行到哪一个。
     只读, 不下发 (真机零指令)。
@@ -1009,7 +1009,7 @@ def _ar_meta_payload() -> dict:
 def _ar_cmd_payload() -> dict:
     """🥽 状态空间 → AR 场景 的机器人驱动指令 (只用于**渲染虚拟臂**, 永不产生真机下发)
 
-    真源: zmax_data/ss_live/ar_cmd.json (状态空间侧 plan/执行器节点按拍写)
+    唯一依据: zmax_data/ss_live/ar_cmd.json (状态空间侧 plan/执行器节点按拍写)
     口径: 页面只在 AR 开关=开 且本条新鲜(<=AR_CMD_FRESH_S)时才用它驱动虚拟臂;
           过期或没有 ⇒ 页面回落到原来的播放逻辑。真机通路与本文件无关(真机由 ctl_auth+l2_daemon 管)。
     """
@@ -1044,7 +1044,7 @@ def _ar_cmd_payload() -> dict:
 def _ar_mode_payload() -> dict:
     """🥽 AR 开关状态 —— 画布 🤖 机器人执行器(ssact) 的 AR / 真机 两个开关, 经控制台发布到这里。
 
-    真源: zmax_data/ss_live/exec_switches.json (控制台 on_toggle_ar/on_toggle_real 写)
+    唯一依据: zmax_data/ss_live/exec_switches.json (控制台 on_toggle_ar/on_toggle_real 写)
     口径: AR=开 ⇒ 本页进 AR 场景(右臂用仿真臂, 真机右臂不参与), 且 l2_daemon 对该帧之后的一律拒发;
           文件过期(>120s, 控制台没在发布) ⇒ 视为 AR=关, 不能让控制台失联把页面锁在 AR 模式。
     """
@@ -1134,7 +1134,7 @@ def l5_understand(cam: str = None, hint: str = "") -> dict:
         jpg, src = frame_bytes(cam)
     except Exception as e:                                                        # noqa: BLE001
         return {"ok": False, "cam": cam, "err": "取帧失败: %s: %s" % (type(e).__name__, e)}
-    if not jpg or jpg[:2] != b"\xff\xd8":       # 必须是真 JPEG: 上游报错时别把错误页当图喂给模型
+    if not jpg or jpg[:2] != b"\xff\xd8":       # 必须是真 JPEG: 上游报错时别把错误页当图提供给模型
         return {"ok": False, "cam": cam, "err": "该路这一帧不是有效 JPEG(相机没出图/上游报错)",
                 "frame_bytes": len(jpg or b"")}
     if not os.path.isfile(L5_BRIDGE):
@@ -1275,7 +1275,7 @@ def toolframe_px(length_mm=80.0, align_box=True, tip_inset_px=None):
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "zmax-tcp-ar/1.0"
-    # 2026-10-12 现场实测(AR 按钮打不开): 客户端断链后处理线程**永久卡死**(连接堆成 CLOSE-WAIT,
+    # 2026-10-12 现场实测(AR 按钮无法打开): 客户端断链后处理线程**永久卡死**(连接堆成 CLOSE-WAIT,
     #   accept 队列满 6 ⇒ 新连接一律超时; 进程活着、老连接还能答, 换成别的端口也一样复现)。
     #   根因=处理线程没有读超时 ⇒ 这里给每条连接一个硬超时(读/写超时即收尾放行), 免得线程泄漏把服务憋死。
     timeout = 20
@@ -1325,7 +1325,7 @@ class H(BaseHTTPRequestHandler):
         cam = qs.get("cam") or qs.get("c") or "local"
         # 🔌 2026-10-20: RealSense 的**所有**端点一律转给独占小服务 (本进程是 ForkingMixIn,
         #   fork 出来的子进程里 pyrealsense 只剩空壳 ⇒ frames=0 / 0 字节 / 抢设备 EBUSY)。
-        #   真源: tools/rs_service.py (单进程独占 D435)
+        #   唯一依据: tools/rs_service.py (单进程独占 D435)
         if p in ("/rs.mjpg", "/snap/rs.jpg", "/snapshot/rs.jpg") or p.startswith("/api/rs_"):
             self._rs_proxy()
             return
@@ -1429,7 +1429,7 @@ class H(BaseHTTPRequestHandler):
             elif p == "/api/tcp":
                 self._json(read_tcp())
             elif p == "/api/robot_state":        # 🤖 机器人状态机 (是否在插拔 ⇒ 页面顶部一眼看到)
-                #   真源 = tools/robot_state.py (控制器三查 + 位姿 + 阶段文件), 本服务只做只读代发。
+                #   唯一依据 = tools/robot_state.py (控制器三查 + 位姿 + 阶段文件), 本服务只做只读代发。
                 try:
                     import importlib.util as _ilu
                     _sp = _ilu.spec_from_file_location(
@@ -1489,7 +1489,7 @@ class H(BaseHTTPRequestHandler):
                 self._json(_lst)
             elif p == "/api/points":           # 📍 工程配置的全部点位台账 (配置中心 → ar_aoi_live.json)
                 # 老倪 2026-10-26: 「也要显示 工程配置的所有点, 向下罗列显示出来」
-                # 真源: zmax_data/ar_live/ar_aoi_live.json 的 s{} + groups{} (ar_aoi_bus 推的台账)。
+                # 唯一依据: zmax_data/ar_live/ar_aoi_live.json 的 s{} + groups{} (ar_aoi_bus 推的台账)。
                 # 只认 <点名>.x/.y/.z 三件齐全的组 —— AOI/相机/机器人这种非坐标组不列。
                 self._json(_ar_points())
             elif p == "/api/sim_transport":    # 🚚 左臂仿真搬运路径 (老倪 2026-10-27)
@@ -1526,7 +1526,7 @@ class H(BaseHTTPRequestHandler):
                 self._json(self._traj())
             elif p == "/api/traj/named":        # 🧭 命名轨迹 (轨迹1小红/2正方/3建图/4安全/5实时)
                 # 老倪 2026-10-25: 「三维视图窗口下面操作按钮区加五个按钮」
-                # 轨迹点全从配置中心工程配置读真源, 空数据返回 ok=False + 原因, 不假造点。
+                # 轨迹点全从配置中心工程配置读唯一依据, 空数据返回 ok=False + 原因, 不假造点。
                 # ⚠️ 本服务的 query 是手工 split 出来的, **不做 percent 解码** —— 点名是中文
                 #   ("金手指点1"), 页面 encodeURIComponent 过来必须在这里 unquote 一次,
                 #   否则台账里永远找不到这个点(实测: target=%e9%87%91... 查不到)。
@@ -1666,7 +1666,7 @@ class H(BaseHTTPRequestHandler):
                 _b, _src = frame_bytes(_cam)
                 if not _b:
                     # 🔴 2026-10-20 老倪「USB 相机还是没有图像」: 原来这里对**空帧**照样回 200 + 0 字节,
-                    #   页面的 onload 拿到 0×0 的图什么也不画 ⇒ 屏幕停在上一帧, 看着像"没变/卡住"。
+                    #   页面的 onload 拿到 0×0 的图什么也不画 ⇒ 屏幕停在上一帧, 看着像"没变/阻塞"。
                     #   空帧必须如实 503 + 说清是哪一路、源在哪、怎么查。
                     self._json({"ok": False, "cam": _cam, "src": _src,
                                 "err": "这一路相机此刻取不到帧(源返回 0 字节): " + str(_src),
@@ -1685,7 +1685,7 @@ class H(BaseHTTPRequestHandler):
     def _proxy_stream(self, p):
         """MJPEG 透传: 不断开、边读边写(不要 copyfile — 它是无限的)。
 
-        🔴 2026-10-19 实测事故 (老倪: 「怎么卡住了? 电脑怎么这么慢」):
+        🔴 2026-10-19 实测事故 (老倪: 「怎么阻塞了? 电脑怎么这么慢」):
           客户端(AR 页面/内嵌窗口刷新或关闭)断开后, 服务端这条连接停在 CLOSE-WAIT,
           而 `wfile.write` 在 socket 缓冲写满之前**不会报错** ⇒ 子进程继续 read/write 空转。
           实测两个这样的僵尸流子进程各 38% CPU、白烧 7 分钟, 又各占一个 max_children 名额,
@@ -1824,7 +1824,7 @@ class H(BaseHTTPRequestHandler):
     # ═══ 命名轨迹 (老倪 2026-10-25: 「三维视图窗口下面操作按钮区加五个按钮:
     #     轨迹1 小红 / 轨迹2 正方 / 轨迹3 建图 / 轨迹4 安全 / 轨迹5 实时」) ═══
     #
-    # 轨迹点一律从**配置中心的工程配置**读真源, 前端不写死坐标:
+    # 轨迹点一律从**配置中心的工程配置**读唯一依据, 前端不预先固定坐标:
     #   小红  → fence_store 的直线元素 (工程配置「3D 元素」里那条叫"小红"的线)
     #   正方  → 工程配置里没有正方形元素, 由小红的两个端点推出边长**构造**,
     #           响应里 note 明确标 "构造", 不冒充已有元素
@@ -1914,7 +1914,7 @@ class H(BaseHTTPRequestHandler):
                     _pl = json.load(open(pp, encoding="utf-8"))
                 if not _pl or len(_pl.get("pts_mm") or []) < 4:
                     # 550C 上没有 planned_traj.json(规划在 550B 做的) ⇒ 退回它自己收到的那份段表
-                    #   plan_latest.json(段表真源, 每段带 abs_mm), 拼成同样的闭环点列。
+                    #   plan_latest.json(段表唯一依据, 每段带 abs_mm), 拼成同样的闭环点列。
                     lp = os.path.join(REPO, "zmax_data", "runtime", "plan", "plan_latest.json")
                     if os.path.exists(lp):
                         _lb = json.load(open(lp, encoding="utf-8"))
@@ -2037,7 +2037,7 @@ class H(BaseHTTPRequestHandler):
                 tname = (str(target or "").strip() or "安全点1")
                 tgt_p, names = None, []
                 # 🔴 2026-10-26 老倪「我已经更新 空间点7 了，刚在 station 的标记模式改的…数据要保持一致」
-                #   实测: 标记模式写 data/skills/l2_atomic/space_points.json(space1..8) 是**示教真源**,
+                #   实测: 标记模式写 data/skills/l2_atomic/space_points.json(space1..8) 是**示教唯一依据**,
                 #   而这段原来只查工程配置台账 ar_aoi_live.json(停在 10-20) ⇒
                 #   station 明明改了空间点7(522,-116,274), 这里规划还用旧值(679,-38,360), 差 195mm。
                 #   ⇒ 先按「空间点N ↔ spaceN」查 space_points, 命中就用它压过台账; 未命中才回落台账。
@@ -2055,7 +2055,7 @@ class H(BaseHTTPRequestHandler):
                 # 📍 号位 1~7 (2026-10-26 老倪「号位1～7 也要在 ar3d 显示」+「现在目标是7号位, 怎么不规划了」)
                 #   号位坐标在 data/skills/l2_atomic/taught_points.json 的 slot1..slot7 —— 8793 号位按钮
                 #   读的就是它, 但这段目标点解析原来只认台账 + space_points ⇒ 选「7号位」直接报
-                #   "点位台账里没有目标点", 页面上就是"不规划了"。这里同样按示教真源优先。
+                #   "点位台账里没有目标点", 页面上就是"不规划了"。这里同样按示教唯一依据优先。
                 _slm = {}
                 try:
                     _tpf = os.path.join(REPO, "data", "skills", "l2_atomic", "taught_points.json")
@@ -2077,11 +2077,11 @@ class H(BaseHTTPRequestHandler):
                         tgt_p = [float(x) for x in v]
                 except Exception:                                                  # noqa: BLE001
                     tgt_p = None
-                if tname in _spm:                                                  # 示教真源优先
+                if tname in _spm:                                                  # 示教唯一依据优先
                     tgt_p = list(_spm[tname])
                     if tname not in names:
                         names = sorted(set(names) | set(_spm.keys()))
-                if tname in _slm:                                                  # 号位: 示教真源优先
+                if tname in _slm:                                                  # 号位: 示教唯一依据优先
                     tgt_p = list(_slm[tname])
                     if tname not in names:
                         names = sorted(set(names) | set(_slm.keys()))
@@ -2202,7 +2202,7 @@ class H(BaseHTTPRequestHandler):
                                    time.time() - os.path.getmtime(rp)))
         except Exception as e:                                                  # noqa: BLE001
             out["ok"] = False
-            out["note"] = "读真源失败 %s: %s" % (type(e).__name__, e)
+            out["note"] = "读唯一依据失败 %s: %s" % (type(e).__name__, e)
         out["n"] = len(out["pts"])
         return out
 
@@ -2346,7 +2346,7 @@ class H(BaseHTTPRequestHandler):
     TRAJ_DIR = os.path.join(REPO, "zmax_data", "runtime", "traj")
     TRAJ_MAX_AGE = 1800.0
 
-    # ── 光模块外形(长方体) 规格: 真源一个文件, 页面只读 ───────────────────────
+    # ── 光模块外形(长方体) 规格: 唯一依据一个文件, 页面只读 ───────────────────────
     MODSPEC = os.path.join(REPO, "zmax_data", "ar_state", "module_spec.json")
     MOD_DEFAULT = {"L_mm": 56.5, "W_mm": 13.4, "T_mm": 8.5,
                    "src": "SFP 类标称(长 56.5 / 宽 13.4 / 厚 8.5), 与臂相机实测宽高比 27/122px 吻合"}
@@ -2480,7 +2480,7 @@ class H(BaseHTTPRequestHandler):
     def _traj_plan_from_named(self, k, target=None):
         """把页面高亮的命名轨迹转成执行段表 (tools/traj_from_named.py)。
 
-        全流程真源仍是那个脚本: 起点闸/预检/写 planned_traj.json + plan_latest.json 都在它里面,
+        全流程唯一依据仍是那个脚本: 起点闸/预检/写 planned_traj.json + plan_latest.json 都在它里面,
         这里只负责跑它并把**失败原因原样带回页面** (不能笼统报"失败", 人要知道是起点不一致还是净空不够)。
         """
         exe = [sys.executable, os.path.join(HERE, "traj_from_named.py"), "--k", str(k)]
@@ -2530,7 +2530,7 @@ class H(BaseHTTPRequestHandler):
             if _left <= 0:
                 return {"ok": False, "msg": "授权窗已过期 %.0f 分钟 ⇒ 先在 8793 页面点现场授权, 再点执行轨迹" % (-_left / 60.0)}
         except Exception as e:                                                   # noqa: BLE001
-            return {"ok": False, "msg": "读不到授权真源(ctl_auth.json): %s" % str(e)[:60]}
+            return {"ok": False, "msg": "读不到授权唯一依据(ctl_auth.json): %s" % str(e)[:60]}
         st = self._traj_exec_state()
         if st.get("phase") == "running" and float(st.get("age_s") or 99) < 3:
             return {"ok": False, "msg": "轨迹正在执行中(第 %s 段)" % st.get("seg")}
@@ -2606,7 +2606,7 @@ class H(BaseHTTPRequestHandler):
         except Exception:                                                         # noqa: BLE001
             body = {}
         if p == "/api/autolight/docx":          # 📄 工艺卡 → Word(.docx) 一键导出
-            # 真源是页面 CARDS（tools/web/autoLight.html）：前端把卡片文字 + canvas 截图传上来,
+            # 唯一依据是页面 CARDS（tools/web/autoLight.html）：前端把卡片文字 + canvas 截图传上来,
             # 这里只排版（python-docx）。不要在服务端复制一份工艺文字, 否则改页面会与导出不一致。
             try:
                 from autolight_docx import build_docx
@@ -2685,7 +2685,7 @@ class H(BaseHTTPRequestHandler):
         elif p == "/api/auth":
             # 🔴 2026-10-26 老倪「轨迹2执行，你怎么不动？」——
             #    真因是授权窗过期(10.5 小时前), 服务端在发段表之前就拒了, 一行小字他没看见。
-            #    这里只读授权真源, 给页面做**顶部横幅**: 过期=红条, 有授权=绿条, 不让人猜。
+            #    这里只读授权唯一依据, 给页面做**顶部横幅**: 过期=红条, 有授权=绿条, 不让人猜。
             try:
                 _d = json.load(open(os.path.join(REPO, "zmax_data", "ctl_auth.json"), encoding="utf-8"))
             except Exception as e:                                               # noqa: BLE001
@@ -2743,11 +2743,11 @@ class H(BaseHTTPRequestHandler):
             # 🔴 2026-09-29 现场「删除轨迹删不掉」的真根因: 这条路**只改了清除线**, 真正把折线从叠加规格里
             #    挪走的是发布器(live_trace_publisher); 而发布器要读录制器(容器内)落的 /tmp/live_trace.json,
             #    录制器一停它只打一行"还没有轨迹数据"就退出 ⇒ 画面上那条历史折线永远在, 按钮点了没反应。
-            #    兜底: 直接改叠加规格(挪进可恢复缓存), 不依赖录制器/发布器任何一环。
+            #    保障: 直接改叠加规格(挪进可恢复缓存), 不依赖录制器/发布器任何一环。
             strip = None
             try:
                 _tn = int(((TD.paths_in_spec() or {}).get("trace") or {}).get("n_pts") or 0)
-                # 🔴 只在"发布器这一轮没拿到数据"时兜底(录制器死了) —— 不能无条件 strip:
+                # 🔴 只在"发布器这一轮没拿到数据"时保障(录制器死了) —— 不能无条件 strip:
                 #    链健康时发布器会把清除线之后**新走过**的点重画上去, 那时候删它反而是错的。
                 # 只要画面上还有 trace 折线, 就把它挪走 —— 老倪要的是"点了就消失", 不能再去猜
                 # 发布器/录制器这一轮有没有干活(实测: 录制器死了但主机上还留着旧副本时, 发布器照样
@@ -2759,14 +2759,14 @@ class H(BaseHTTPRequestHandler):
                 strip = {"err": str(e)[:120]}
             _m = "🧹 已清除画面上走过的轨迹(清除线=%d); 之后新走的会重新画. 录制历史未动" % rec
             if isinstance(strip, dict) and strip.get("moved"):
-                _m += " · 兜底直连: 已从叠加层挪走 %d 条折线(可恢复)" % strip["moved"]
+                _m += " · 保障直连: 已从叠加层挪走 %d 条折线(可恢复)" % strip["moved"]
             self._json({"ok": True, "baseline_n": rec, "publish": pub, "strip": strip, "msg": _m})
         elif p == "/api/traj/baseline":                 # 直接设"清除线": 0 = 画全部历史
             n = body.get("n")
             n = 0 if n is None else max(0, int(n))
             TD.set_state(baseline_n=n)
             pub = self._publish_once(True) if TD.get_state()["show"] else None
-            # 同上的兜底(反向): 录制器不在时, "全部历史"靠缓存里的折线放回去, 不能只依赖发布器
+            # 同上的保障(反向): 录制器不在时, "全部历史"靠缓存里的折线放回去, 不能只依赖发布器
             rest = None
             try:
                 _tn = int(((TD.paths_in_spec() or {}).get("trace") or {}).get("n_pts") or 0)
@@ -2777,7 +2777,7 @@ class H(BaseHTTPRequestHandler):
                 rest = {"err": str(e)[:120]}
             _m = ("📜 清除线已归 0 ⇒ 画**全部已走过**的轨迹" if n == 0 else "清除线=%d" % n)
             if isinstance(rest, dict) and rest.get("restored"):
-                _m += " · 兜底直连: 已放回 %d 条折线" % rest["restored"]
+                _m += " · 保障直连: 已放回 %d 条折线" % rest["restored"]
             self._json({"ok": True, "baseline_n": n, "publish": pub, "restore": rest, "msg": _m})
         else:
             self._json({"ok": False, "err": "no route %s" % p}, 404)
@@ -2962,7 +2962,7 @@ def main():
     # 🧵 2026-10-26 (老倪: 「按照你的建议来」) —— 进程模型: fork-per-connection → **单进程多线程**
     #   旧模型现场实测的代价(ForkingMixIn, max_children=24): 多开几个 AR 页后 24 个子进程、
     #     RSS 合计 12.3GB、LISTEN backlog=5 且 Recv-Q 已满 6 ⇒ 新连接排队,
-    #     `curl -L 8793/ar` 走那条 302 要 **175.8s** 才通(直连也 30s 超时) ⇒ AR 按钮"打不开"(窗口空白)。
+    #     `curl -L 8793/ar` 走那条 302 要 **175.8s** 才通(直连也 30s 超时) ⇒ AR 按钮"无法打开"(窗口空白)。
     #   为什么以前线程模型会憋死(74 线程 / 16 CLOSE-WAIT / 主线程卡 futex): 那时**没有读超时、
     #     也没有线程上限**, 断链的连接把线程永久挂住。现在两个都补齐:
     #       · H.timeout = 20 秒(读/写超时即收尾) · 线程数上限 + 信号量(满了直接关连接, 不排长队)

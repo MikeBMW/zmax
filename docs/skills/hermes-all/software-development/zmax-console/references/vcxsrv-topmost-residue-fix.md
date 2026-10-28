@@ -29,5 +29,5 @@ class _FLTextBrowser(QTextBrowser):
 ## 4. 判据纪律 (别凭用户描述直接改内容代码)
 先 `xwininfo -root -tree` 确认窗口并存/遮挡/隐藏 (IsUnMapped 窗口不算数)；
 再 xwd 截图 → ffmpeg 转 png → tesseract OCR 验证内容是否真的渲染正常。
-本会话靠这套流程证明 FeatureListDialog 内容其实一直正常，问题是窗口遮挡+残留。
+本会话靠这套流程证明 FeatureListDialog 内容实际一直正常，问题是窗口遮挡+残留。
 工具: `apt-get install -y x11-apps tesseract-ocr tesseract-ocr-chi-sim` (xwd + OCR)。

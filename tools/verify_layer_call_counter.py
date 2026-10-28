@@ -85,7 +85,7 @@ def main() -> int:
     chk("① 计数文件初始结构 (逐层 count/last_ts)", isinstance(d0.get("L2", {}), dict)
         or d0 == {}, "内容: %s" % lc.summary())
 
-    # ② 真跑 L3 节点 (挑能跑通的第一个) —— 计数必须增长
+    # ② 真跑 L3 节点 (挑能验证通过的第一个) —— 计数必须增长
     ran = ""
     for k in l3:
         # 画布显示名: 用 key 反查节点 id 再取名 (取不到就用 key 名试)
@@ -111,7 +111,7 @@ def main() -> int:
                 break
         if ran:
             break
-    chk("② 真跑 L3 节点 ⇒ L3 计数增长", bool(ran), ran or "没有任何 L3 节点跑通 (见上日志)")
+    chk("② 真跑 L3 节点 ⇒ L3 计数增长", bool(ran), ran or "没有任何 L3 节点验证通过 (见上日志)")
 
     # ③ 窗口口径: 两次采样间计数增长 ⇒ inferring=True
     st1 = status_all()

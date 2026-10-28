@@ -2,7 +2,7 @@
 # 归档 v5.50.741 产物 → ~/zmax/zmax_data/release_5.50.741_YYYYMMDD
 #   本轮主题: AR 三维视图看得到真机实际走过的轨迹(橙色) / 视图上下颠倒修正 / 清除轨迹真清
 #             / 桥接改"整轮一条多点路径"(平顺) + 严格串行不叠队 + 模板防衰减 + 越界自动重锚定
-#   沿用 archive_release_5_41_0.sh 口径: 代码 + 真源快照 + 数据 + 证据 + 文档, 末尾 MANIFEST.md + sha256sums.txt
+#   沿用 archive_release_5_41_0.sh 口径: 代码 + 唯一依据快照 + 数据 + 证据 + 文档, 末尾 MANIFEST.md + sha256sums.txt
 set -u
 REPO=/home/ubuntu/zmax
 DST=$HOME/zmax/zmax_data/release_5.50.741_$(date +%Y%m%d)

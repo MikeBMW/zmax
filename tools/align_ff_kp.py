@@ -4,10 +4,10 @@
 对齐对象:
   A) 真模型: 状态空间场景 (ss_insert_lerobot 39D, [0:3]=hand [36:39]=hole) 训练的左脑 MLP
      产物: outputs/train/state_space_*/checkpoints/003000/pretrained_model/model.pt 的 "left"
-     推理链路 (与 ss_verify_trained.py 一致, 该脚本已验证它能替换解析加速器跑通插拔仿真):
+     推理链路 (与 ss_verify_trained.py 一致, 该脚本已验证它能替换解析加速器验证通过插拔仿真):
        norm 从 parquet 重算 (model.pt 未存): sm/ss = obs mean/std, am/astd = act mean/std
        u_true = left((obs − sm) / ss) · astd + am          # 4D 物理域建议动作
-  B) 解析替身: parallel.py:21 FeedforwardAccelerator (Kp=1.2 写死, 0 参数)
+  B) 解析替身: parallel.py:21 FeedforwardAccelerator (Kp=1.2 预先固定, 0 参数)
        u_ff = clip(Kp·(hole−hand), ±0.5)  [+ 水平距<0.03 时叠加 0.03 最小趋近推力]
 
    ⚠️ 不适用的靶子: outputs/rl_peg/full_pipeline.pt — metaworld 抓取+转移+插入全流程场景,
@@ -16,7 +16,7 @@
 
 方法: 同一批真实 obs 帧 (parquet) 上, 以真模型物理域输出为基准,
       过原点最小二乘反推 Kp_hat = argmin Σ‖u_true − Kp·e‖², e = hole−hand,
-      按水平距离分层 (远/中/近) 校验写死值 1.2 是否成立, 输出建议。
+      按水平距离分层 (远/中/近) 校验预先固定值 1.2 是否成立, 输出建议。
 
 用法:
   ~/zmax/venvs/lerobot-venv/bin/python tools/align_ff_kp.py                        # 自动选最新 state_space 产物
@@ -34,7 +34,7 @@ import torch
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
-KP_WRITTEN = 1.2          # parallel.py:35 写死的比例增益
+KP_WRITTEN = 1.2          # parallel.py:35 固定不变的比例增益
 CLIP = 0.5                # parallel.py:36/40 限幅
 D_NEAR = 0.03             # parallel.py:38 近距阈值 (最小趋近推力 + 夹爪闭合判据)
 THRUST = 0.03             # parallel.py:40 最小趋近推力
@@ -92,7 +92,7 @@ def ols_kp(e3, u3):
 
 
 def layer_report(name, e3, u3):
-    """单层: 样本数 / 拟合 Kp / 相关 / MAE(写死 vs 拟合)"""
+    """单层: 样本数 / 拟合 Kp / 相关 / MAE(预先固定 vs 拟合)"""
     n = len(e3)
     if n == 0:
         print(f"  {name:<8} n=0")
@@ -169,7 +169,7 @@ def main():
 
     print(f"\n═══ 1) 全局拟合 (3D 合并, 过原点) ═══")
     kp_all = ols_kp(e3, u_true[:, :3])
-    print(f"  Kp_hat(全样本) = {kp_all:.4f}   写死 Kp = {KP_WRITTEN}")
+    print(f"  Kp_hat(全样本) = {kp_all:.4f}   预先固定 Kp = {KP_WRITTEN}")
     print(f"  数据覆盖: d_xy min={d_xy.min():.4f} med={np.median(d_xy):.4f} p90={np.percentile(d_xy,90):.4f} max={d_xy.max():.4f}")
 
     print(f"\n═══ 2) 分层校验 (远/中/近, 近=解析版 0.03 推力段) ═══")
@@ -181,7 +181,7 @@ def main():
     r_near = layer_report("近<3cm", e3[near], u_true[near, :3])
 
     print(f"\n═══ 3) 完整解析律复刻对比 (含 clip ±0.5 + 0.03 近距推力 + 夹爪开关) ═══")
-    for kp_name, kp in [("Kp=1.2(写死)", KP_WRITTEN), (f"Kp={kp_all:.3f}(拟合)", kp_all)]:
+    for kp_name, kp in [("Kp=1.2(预先固定)", KP_WRITTEN), (f"Kp={kp_all:.3f}(拟合)", kp_all)]:
         u_par = parse_analytic(S, kp)
         mae = float(np.mean(np.abs(u_par[:, :3] - u_true[:, :3])))
         print(f"  {kp_name:<18}: 解析律 vs 真模型 3D MAE = {mae:.4f}")
@@ -201,8 +201,8 @@ def main():
     if kps:
         kmin, kmax = min(kps), max(kps)
         inside = kmin <= KP_WRITTEN <= kmax
-        verdict = "✅ 写死 Kp=1.2 落在分层拟合区间内 → 等效值校验通过, 可维持" if inside else \
-                  f"⚠️ 写死 1.2 超出分层区间 [{kmin:.2f}, {kmax:.2f}] → 建议改 {np.mean(kps):.2f}"
+        verdict = "✅ 预先固定 Kp=1.2 落在分层拟合区间内 → 等效值校验通过, 可维持" if inside else \
+                  f"⚠️ 预先固定 1.2 超出分层区间 [{kmin:.2f}, {kmax:.2f}] → 建议改 {np.mean(kps):.2f}"
         print(f"  分层 Kp_hat 范围: [{kmin:.2f}, {kmax:.2f}] (各层均值 {np.mean(kps):.2f})")
         print(f"  {verdict}")
         print(f"  注: Kp 拟合是线性近似, corr/MAE 反映解析替身与 547K 模型的真实差距;"

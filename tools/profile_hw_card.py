@@ -3,7 +3,7 @@
 """profile_hw_card.py — 量「硬件资源卡」每次刷新在 GUI 线程里阻塞多久 (卡顿根因定量)
 
 做法: offscreen 真实例化 HardwareCard, 3 次 refresh(), 并 monkeypatch subprocess/urllib
-      记录每次外部调用的耗时 → 找出真正卡住主线程的那几步。
+      记录每次外部调用的耗时 → 找出真正阻塞主线程的那几步。
 """
 import os
 import subprocess

@@ -27,7 +27,7 @@ KeyError: 'local'
 Fatal Python error: Aborted
 ```
 `modes = ["sim","local","real"]` 而 `Z700_ROS2_NODES` 只有 `sim` / `real` 两个键 → 下拉第 2 项直接打死整个控制台。
-**通用修法**: 槽体整体 `try/except` 兜底 (异常只记日志, 绝不冒泡) + 未知/越界键退回安全默认值 + 如实打一行日志。
+**通用修法**: 槽体整体 `try/except` 保障 (异常只记日志, 绝不冒泡) + 未知/越界键退回安全默认值 + 如实打一行日志。
 同类历史: 2026-09-14 `Z700_ROS2_NODES["real"]` 被当 dict 调 `.get()` (它是 list) → AttributeError → 同样整进程中止。
 
 ## 2. 原生 SIGSEGV: 先开 core, 再 gdb

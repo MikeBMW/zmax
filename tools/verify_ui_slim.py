@@ -109,7 +109,7 @@ def walk(w, out):
     return out
 
 
-# 🧭 2026-10-15 老倪: 右侧栏 4 → 3 行 (主参数/数据总线/参数中心), 标定真源与运行开关两页撤下。
+# 🧭 2026-10-15 老倪: 右侧栏 4 → 3 行 (主参数/数据总线/参数中心), 标定唯一依据与运行开关两页撤下。
 #   口径也改对: **UI 文案字数 (QLabel/按钮/勾选框/组框)** 才是"字数太多"的度量; 表里是数据, 单列。
 UP = (("mparam", dock.mparam), ("bus", dock.bus), ("param_center", dock.pc_side))
 LAB_BUDGET = {"mparam": 400, "bus": 400, "param_center": 400, "calib": 400, "run_cfg": 800}
@@ -139,7 +139,7 @@ for key, page in (("calib", dock.calib), ("run_cfg", dock.run_cfg)):   # 撤下�
     chk(sum(lab) <= LAB_BUDGET[key], f"{key}(已撤下) UI 文案 {sum(lab)} 字 ≤ 预算 {LAB_BUDGET[key]}")
 # 数据不许为了好看被删
 _n_mparam = sum(ROWS.get("mparam", {}).values())
-chk(_n_mparam >= 14, f"M 页数据行仍 {_n_mparam} 行 (含真源路径; 只瘦文案不删数据)")
+chk(_n_mparam >= 14, f"M 页数据行仍 {_n_mparam} 行 (含唯一依据路径; 只瘦文案不删数据)")
 dock.cmb_view.setCurrentIndex(list(dock.VIEW_KEYS).index("bus")); app.processEvents()
 _hdr = dock.bus.lbl_cnt.text() if hasattr(dock.bus, "lbl_cnt") else ""
 chk(("帧龄" in _hdr) or ("话题" in _hdr) or dock.bus.table.rowCount() > 0,
@@ -152,7 +152,7 @@ _cmd = dock.mparam.lbl_cmd.text()
 chk(len(_cmd) <= 115 and "python3 tools/" not in _cmd,
     f"M 页命令行 {len(_cmd)} 字 (原 151: 显示层压掉 python3 tools/ 前缀)")
 _cal = dock.calib.lbl_src.text()
-chk("/home/ubuntu" not in _cal, f"标定页真源改相对路径 (不再贴绝对路径): {_cal.splitlines()[0][:60]}")
+chk("/home/ubuntu" not in _cal, f"标定页唯一依据改相对路径 (不再贴绝对路径): {_cal.splitlines()[0][:60]}")
 _st = dock.run_cfg.lbl_state
 _cards = [len(l.text()) for l in dock.run_cfg.findChildren(QLabel) if l is not _st]
 chk(max(_cards, default=0) <= 66, f"运行开关卡面单行最长 {max(_cards, default=0)} 字 (原 139: 全文挪 tooltip)")
@@ -165,7 +165,7 @@ _n_sec = len([k for k in json.load(open(os.path.join(ROOT, "config/calib/zmax_ca
 import json as _json
 _n_sec = len([k for k in _json.load(open(os.path.join(ROOT, "config", "calib", "zmax_calib.json"), encoding="utf-8"))
               if not k.startswith("_")])
-chk(tb.rowCount() == _n_sec, f"标定真源页仍 {tb.rowCount()} 行 == 真源 {_n_sec} 段 (一行不少)")
+chk(tb.rowCount() == _n_sec, f"标定唯一依据页仍 {tb.rowCount()} 行 == 唯一依据 {_n_sec} 段 (一行不少)")
 dock.cmb_view.setCurrentIndex(3)
 app.processEvents()
 chk(len(getattr(dock, "_run_rows", None) or dock.run_cfg._cks) == COUNT_BEFORE["run_cfg"],
@@ -174,7 +174,7 @@ dock.cmb_view.setCurrentIndex(0)
 app.processEvents()
 tb = [t for t in dock.mparam.findChildren(QTableWidget)]
 rows = max([t.rowCount() for t in tb] or [0])
-chk(rows >= COUNT_BEFORE["mparam"] - 1, f"M 页仍 {rows} 行数据 (含 9 条真源路径 + 说明)")
+chk(rows >= COUNT_BEFORE["mparam"] - 1, f"M 页仍 {rows} 行数据 (含 9 条唯一依据路径 + 说明)")
 
 print("\n" + ("🎉 全部通过: %d 项" % len(ok_all) if not fails else "❌ 失败 %d 项" % len(fails)))
 for f in fails:

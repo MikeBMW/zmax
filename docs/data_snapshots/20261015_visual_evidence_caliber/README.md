@@ -19,7 +19,7 @@
 
 在役链路口径：`tools/ss_yolo_on_real.py` → `SS_YOLO_IMGSZ=640` · `SS_YOLO_CONF=0.4`；
 新预测器 `tools/ss_meta_task_predict.py:123` → `conf=0.25`。
-⇒ **0.219 的真检出被 0.4 / 0.25 一刀切光**，于是报「无检出」。这不是"画面里没目标"。
+⇒ **0.219 的真检出被 0.4 / 0.25 统一处理光**，于是报「无检出」。这不是"画面里没目标"。
 
 ## 二、曝光 vs 现场灯（用同刻另一路相机判别）
 
@@ -52,7 +52,7 @@ ping `192.168.23.23`(AOI) 与 `192.168.23.66`(Orin) 100% 丢包 · AOI TCP 10082
 | `yolo_threshold_local2.txt` | 现取活帧 · imgsz 1280 · 阈值响应表 |
 | `yolo_threshold_evalframes.txt` | 训练用真机评测帧 · imgsz 1280 · 阈值响应表 |
 | `dashboard_fullflow.json` | 大屏数据源的 `fullflow` 段（7 任务闭环结果） |
-| `signal_analysis_meta_pred.json` | 信号分析真源 live.json 的话题数 + `ss_meta_pred` 现值 |
+| `signal_analysis_meta_pred.json` | 信号分析唯一依据 live.json 的话题数 + `ss_meta_pred` 现值 |
 
 ## 五、关联
 

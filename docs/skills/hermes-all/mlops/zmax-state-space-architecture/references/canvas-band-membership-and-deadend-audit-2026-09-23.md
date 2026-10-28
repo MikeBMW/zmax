@@ -15,7 +15,7 @@ QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/canvas_node_audit.py \
 ```
 
 ## 2. 「画布位置 ≠ 权威归属」——别自己挪节点
-- 归属真源 = `src/lerobot/verification/capability_levels.py`:
+- 归属唯一依据 = `src/lerobot/verification/capability_levels.py`:
   L3-B02「任务规划: 任务指令→技能序列(任务规划器/技能编排, 规则+LLM 可插拔)」= **L3 档**;
   L2-A08 原子技能 = L2 档。
 - 画布那条 `🧠 大模型层 · 任务/编排/记忆中枢 (回路外慢决策)` 是按**功能**分组(把 L3 规划器/编排器

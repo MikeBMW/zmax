@@ -71,8 +71,8 @@
   }
  },
  "drv": {
-  "src": "M ← config/calib/zmax_manifold.json (diag, dim=6, M=3.6430) · −∇Φ ← potential_field 解析梯度 (L2=1 L3=1 L4=1 assembly=1) · x ← 技能入口 SK01 谷底 (无新鲜位姿真源)",
-  "x_source": "技能入口 SK01 谷底 (无新鲜位姿真源)",
+  "src": "M ← config/calib/zmax_manifold.json (diag, dim=6, M=3.6430) · −∇Φ ← potential_field 解析梯度 (L2=1 L3=1 L4=1 assembly=1) · x ← 技能入口 SK01 谷底 (无新鲜位姿唯一依据)",
+  "x_source": "技能入口 SK01 谷底 (无新鲜位姿唯一依据)",
   "clip": true,
   "T": 43.617708411202784,
   "T_max": 30.0,

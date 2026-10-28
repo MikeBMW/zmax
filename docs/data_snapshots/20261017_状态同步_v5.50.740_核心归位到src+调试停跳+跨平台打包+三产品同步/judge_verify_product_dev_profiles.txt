@@ -1,9 +1,9 @@
 ================================================================================================
-① 真源: config/platform/zmax_product.json 的 dev_profile 对上老倪三产品分工原话
+① 唯一依据: config/platform/zmax_product.json 的 dev_profile 对上老倪三产品分工原话
    ✅ 550A 开发版 · 新技能 / 新算法 / 最新逻辑都在这档 | 逐条对上
    ✅ 550B 调试版 · 最大化 debug (看得到、能联调) | 逐条对上
    ✅ 550C 量产版 · 稳定性优先 | 逐条对上
-   ✅ 真源带 dev_profile_schema=zmax.product.dev_profile.v1
+   ✅ 唯一依据带 dev_profile_schema=zmax.product.dev_profile.v1
 
 ② 读取口: tools/zmax_profile.py 在三档下给出的开关
    · 550A 开发版 · 新技能 / 新算法 / 最新逻辑都在这档 | topics=core comm=dds 信号分析=True 3D场景=True VSCode=True 远程旁路=True 算法=on
@@ -22,10 +22,10 @@
    ✅ VSCode 联调开关 ← tools/gui/simulink_module.py
    ✅ DDS 序列化话题发布闸 ← tools/dds/ss_daemon.py
 
-④ 运行期实证: 真进程里按档位取值 (环境变量 ZMAX_PRODUCT 覆盖, 不碰真源)
+④ 运行期实证: 真进程里按档位取值 (环境变量 ZMAX_PRODUCT 覆盖, 不碰唯一依据)
    ✅ 550B → 子进程读取: all True
    ✅ 550C → 子进程读取: none False
    ✅ 550A → 子进程读取: core True
 
 ================================================================================================
-结论: ✅ 全过 — 三产品分工已写进真源、有单一读取口、四处已接线、子进程实测按档取值
+结论: ✅ 全过 — 三产品分工已写进唯一依据、有单一读取口、四处已接线、子进程实测按档取值

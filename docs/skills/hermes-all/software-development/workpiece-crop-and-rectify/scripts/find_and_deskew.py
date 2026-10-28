@@ -35,7 +35,7 @@ def find_rect(img: np.ndarray):
     g = cv2.GaussianBlur(g, (5, 5), 0)
     t, _ = cv2.threshold(g, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     m = (g > t).astype(np.uint8) * 255
-    if m.mean() / 255.0 > 0.6:                       # 前景过大 ⇒ Otsu 失效, 改用分位兜底
+    if m.mean() / 255.0 > 0.6:                       # 前景过大 ⇒ Otsu 失效, 改用分位保障
         m = (g > float(np.percentile(g, 80))).astype(np.uint8) * 255
     m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((15, 15), np.uint8))
     m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((25, 25), np.uint8))

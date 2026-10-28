@@ -21,7 +21,7 @@ say() { printf '%s %s\n' "$(date '+%F %T')" "$*" | tee -a "$LOG" ; }
 
 say "=== 开机网络优化开始 (tput=$([ $NO_TPUT = 0 ] && echo on || echo off)) ==="
 
-# ── ① 内核旋钮 (真源: /etc/sysctl.d/99-zmax-net.conf, 这里只复核生效值) ──
+# ── ① 内核旋钮 (唯一依据: /etc/sysctl.d/99-zmax-net.conf, 这里只复核生效值) ──
 APPLIED=""
 for kv in "net.core.rmem_max=33554432" "net.core.wmem_max=16777216" \
           "net.ipv4.tcp_slow_start_after_idle=0" "net.ipv4.tcp_fastopen=3" \

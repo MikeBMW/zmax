@@ -13,7 +13,7 @@
   ④ 落状态 zmax_data/ss_live/l3_live_status.json + 追加 zmax_data/ss_live/l3_live.jsonl
 
 为什么要这条回路: 模型引擎那一列的「推理中」= 该层最近窗口内**有没有真跑节点**
-(真源 = runtime.execute_node_logic → layer_calls.touch → zmax_data/ss_live/layer_calls.json,
+(唯一依据 = runtime.execute_node_logic → layer_calls.touch → zmax_data/ss_live/layer_calls.json,
 manifest 里 L3 探针 = json_counter#L3.count, 窗口 60s)。所以「让 L3 显示运行」的正确做法是**真跑 L3**,
 不是改显示。L2 另有在役回路 (ss_yolo_on_real.py --auto --loop, 它写 ss_bypass/yolo_detections.json,
 L2 探针 = 该文件 10s 新鲜度) —— 本回路不重复起 L2 推理。
@@ -111,7 +111,7 @@ def cycle(ctx: _Ctx, tr: dict, idx: int, cam_url: str) -> dict:
     ctx._ss_round = idx
     ctx._vlm_cache = {}          # 每周期清缓存 ⇒ 每周期都是**真前向** (不清则同 stage 命中缓存, 只第一次真算)
     trr = dict(tr)
-    if arr is not None:                                                      # 真帧喂给需要图像 token 的节点
+    if arr is not None:                                                      # 真帧提供给需要图像 token 的节点
         trr["key_frames"] = {stage: arr, "局部": arr, "local": arr}
     ctx._ss_tr = trr
     out = {"ts": time.strftime("%H:%M:%S"), "idx": idx, "stage": stage,
@@ -168,7 +168,7 @@ def main() -> int:
     print("   纯结构/产物节点 (只登记, 不算推理): %s" % " · ".join(k for k, _ in STRUCT_ONLY))
     tr = _load_tr()
     print("   轨迹: %d 帧 · 键 %s" % (len(tr.get("t") or []), ",".join(sorted(tr)[:9])))
-    # 预加载 L3 视觉塔 (离线本地缓存实测 1.0s) —— 不预加载则前几轮只打印"加载中", 看着在跑其实没 encode
+    # 预加载 L3 视觉塔 (离线本地缓存实测 1.0s) —— 不预加载则前几轮只打印"加载中", 看着在跑实际没 encode
     try:
         from lerobot.policies.smolvla_lew.vlm_encoder import get_encoder
         _e = get_encoder()

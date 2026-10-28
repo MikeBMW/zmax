@@ -5,7 +5,7 @@
 为什么另写一个 (老倪 2026-10-26「你在550C中是自动记录图像和轨迹, 用于建图么?」):
   550C 上确实有 zmax-gs-ros-bridge(8811)/autotrain/gs-train/map-intel 这条链,
   但实测 8811 的 img_age/pose_age 都是 43257s、fps=0 —— 两路输入是死的, 跑一趟什么都没记。
-  这个采集器不依赖 ROS topic, 直连两个 HTTP 真源, 谁能用就用谁:
+  这个采集器不依赖 ROS topic, 直连两个 HTTP 唯一依据, 谁能用就用谁:
     · 图像: Orin D405 hub  http://192.168.23.66:8792/frame.jpg   (640x480 JPEG)
     · 位姿: Orin 桥        http://192.168.23.66:39061/status     (endInRef, 米)
   落盘: <out>/sessions/<YYYYmmdd-HHMMSS>/{frames/*.jpg, poses.jsonl, summary.json}

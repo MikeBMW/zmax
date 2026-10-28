@@ -35,7 +35,7 @@ done
 say() { echo "[$(date '+%F %T')] $*" | tee -a "$LOG"; }
 
 # 结果文件名 (各任务不同! 来源: paper_runtime/config/eval/<task>.yaml 的 output.filename)
-#   实测踩坑: 用 <task>_results.txt 猜 → reacher 实际写 dmc_results.txt, 导致"未产出结果"误报
+#   实测遇到问题: 用 <task>_results.txt 猜 → reacher 实际写 dmc_results.txt, 导致"未产出结果"误报
 result_file() {
   case "$1" in
     pusht)   echo "pusht_results.txt";;
@@ -87,7 +87,7 @@ for T in $TASKS; do
   POLICY=${R4%%|*}; ETASK=${R4#*|}
 
   # 已全部 seed 完毕 → 只补数据, 不重跑评测
-  #   ★ 踩坑: 曾经在这里直接 continue → 结果齐时想用 --seeds 0 补数据集, 结果连数据也没下
+  #   ★ 遇到问题: 曾经在这里直接 continue → 结果齐时想用 --seeds 0 补数据集, 结果连数据也没下
   DONE=1; for S in $SEEDS; do [ -f "$OUT/${T}_seed${S}.json" ] || DONE=0; done
   [ "$DONE" = "1" ] && say "  ℹ️ $T 评测结果已齐 → 仅做数据就位 (不重跑评测)"
   say "══════ 任务 $T (repo=$REPO file=$FILE) ══════"

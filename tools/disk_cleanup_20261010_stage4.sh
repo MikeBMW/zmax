@@ -43,7 +43,7 @@ else
 fi
 
 echo
-echo "── 4d. HF 重复缓存 (~/.cache 里的副本; 训练真源是 zmax_data/hf_cache) ──"
+echo "── 4d. HF 重复缓存 (~/.cache 里的副本; 训练唯一依据是 zmax_data/hf_cache) ──"
 for d in /home/ubuntu/.cache/huggingface/hub/models--HuggingFaceTB--SmolVLM2-500M-Video-Instruct; do
   [ -d "$d" ] || continue
   same=$( [ -d "$ROOT/zmax_data/hf_cache/hub/$(basename "$d")" ] && echo yes || echo no )

@@ -598,7 +598,7 @@ class AoiInspectConsole(QtWidgets.QDialog):
         r4.addWidget(self.btn_expjson); r4.addWidget(self.btn_expcsv)
         v.addLayout(r4)
 
-        self.log(f"🔍 质量检测汇总终端 · 权重 {os.path.basename(self.head.weights) if self.head.weights else '无(启发式兜底)'}")
+        self.log(f"🔍 质量检测汇总终端 · 权重 {os.path.basename(self.head.weights) if self.head.weights else '无(启发式保障)'}")
         self.log(f"   类别 {len(AOI_CLASSES)}: " + " ".join(AOI_CLASSES))
         if self.head._load_err:
             self.log(f"   ⚠️ {self.head._load_err}")
@@ -1069,7 +1069,7 @@ class AoiInspectConsole(QtWidgets.QDialog):
         self.run_skill(self._cur_skill, quiet=True)
 
     def _roi_detect(self):
-        """🎯 识别金手指并自动框: 用算法定位金手指条 → 设为拉伸区 (人圈不准时的一键兜底)"""
+        """🎯 识别金手指并自动框: 用算法定位金手指条 → 设为拉伸区 (人圈不准时的一键保障)"""
         if self._orig_rgb is None:
             self.log("⚠️ 还没有原始图 (先选 📷 10082 并取图)")
             return

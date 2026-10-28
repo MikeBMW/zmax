@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """📤 飞书发文件到 dataworld 群 — 可复用模板 (2026-08-09 实测通过)
 
-要点 (踩坑记录见 zmax-console references/remote-training-debugging.md 第13节):
+要点 (遇到问题记录见 zmax-console references/remote-training-debugging.md 第13节):
 - mp4 必须 msg_type="media" (视频消息), 用 "file" → 230055 类型不匹配
 - multipart 与 JSON post 都要显式 Content-Length, 否则 urllib HTTP 400
 - 上传成功标志 r2["data"]["file_key"]

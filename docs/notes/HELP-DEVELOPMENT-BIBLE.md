@@ -426,7 +426,7 @@ bridge = CvBridge()
 
 ### 8.10 文档路径 — 经典 Bug
 
-**问题**: 所有帮助文档打不开，路径多了一层 `tools/`
+**问题**: 所有帮助文档无法打开，路径多了一层 `tools/`
 
 **原因**: `studio.py` 在 `tools/gui/` 下，`os.path.dirname` 需要 3 层才到项目根目录，不是 2 层。
 
@@ -576,7 +576,7 @@ L2 基线版 ──OTA──→ L3 增强版 ──OTA──→ L4 旗舰版
 **Q: 启动报错 qt.qpa.xcb?**
 A: WSL里需要 X Server。运行 `export DISPLAY=:0` 或使用 `start.sh` 启动。
 
-**Q: Rerun 打不开?**
+**Q: Rerun 无法打开?**
 A: 确保 rerun CLI 已安装。运行 `which rerun` 确认。
 
 **Q: 实时数据无显示?**

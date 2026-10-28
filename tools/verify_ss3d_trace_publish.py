@@ -80,7 +80,7 @@ def main():
 
     src = open(os.path.join(ROOT, "tools", "gui", "simulink_module.py"), encoding="utf-8").read()
 
-    # ① 真源同一份: 3D 发布者写的路径 == 信号分析读的路径
+    # ① 唯一依据同一份: 3D 发布者写的路径 == 信号分析读的路径
     ck("① 发布者与信号分析读同一个 trace_live.json",
        DV.SS_TRACE_LIVE.replace("\\", "/").endswith("zmax_data/ss_live/trace_live.json")
        and "zmax_data/ss_live/trace_live.json" in src,

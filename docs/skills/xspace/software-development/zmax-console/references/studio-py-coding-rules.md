@@ -1,6 +1,6 @@
 # studio.py 编码规则与部署行布局 (2026-08-09 会话沉淀)
 
-## 1. 仓库根路径 = 3 层 dirname (tools/gui/studio.py 特有, 反复踩坑)
+## 1. 仓库根路径 = 3 层 dirname (tools/gui/studio.py 特有, 反复遇到问题)
 - studio.py 在 `tools/gui/` 下, 仓库根 = `os.path.dirname` **3 次**:
   ```python
   root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

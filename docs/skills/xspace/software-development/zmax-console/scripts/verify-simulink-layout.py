@@ -3,9 +3,9 @@
 背景行 row_bg 必须与网格对齐。
 
 背景 (2026-08-07):
-1) node_specs 里名字不在 layout 网格中的节点会静默兜底单行 x = base_x + i*200
+1) node_specs 里名字不在 layout 网格中的节点会静默保障单行 x = base_x + i*200
    (i = specs 索引) → 五模型对比的 Interpolant(idx25)/交叉注意力(idx30)
-   曾跑到 x=6620/7920 显示区右侧外。改布局后必须断言零兜底。
+   曾跑到 x=6620/7920 显示区右侧外。改布局后必须断言零保障。
 2) 背景行 _draw_model_rows 从首行按 row_names 排, 参数 col_w/n_cols 必须与
    layout 网格一致; 往网格加首行(如感知链)时 row_names/palette 必须同步加,
    否则背景带与模型行错位一行 (ACT 背景盖感知行、末行无背景)。
@@ -184,17 +184,17 @@ def main() -> int:
             maxy = max(maxy, xy[1])
         if fallback:
             fail += 1
-            print(f"  [FAIL] {name}: {len(specs)}节点 {len(rows)}行 兜底={len(fallback)} maxX={maxx} maxY={maxy}")
+            print(f"  [FAIL] {name}: {len(specs)}节点 {len(rows)}行 保障={len(fallback)} maxX={maxx} maxY={maxy}")
             for nm, xy in fallback:
-                print(f"        ❌ 兜底: {nm} → {xy}")
+                print(f"        ❌ 保障: {nm} → {xy}")
         else:
-            print(f"  [OK  ] {name}: {len(specs)}节点 {len(rows)}行 兜底=0 maxX={maxx} maxY={maxy}")
+            print(f"  [OK  ] {name}: {len(specs)}节点 {len(rows)}行 保障=0 maxX={maxx} maxY={maxy}")
 
     bg_fail = check_bg_rows(tree)
 
     print()
     if fail or bg_fail:
-        print(f"✗ {fail} 个模板存在兜底节点 + {bg_fail} 个背景行问题 — 需修 layout/背景行")
+        print(f"✗ {fail} 个模板存在保障节点 + {bg_fail} 个背景行问题 — 需修 layout/背景行")
         return 1
     print("✓ 所有网格模板: specs 全部有 layout 位置, 背景行对齐且覆盖, 无跑飞")
     return 0

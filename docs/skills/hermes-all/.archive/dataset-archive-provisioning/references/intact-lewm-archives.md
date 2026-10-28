@@ -51,7 +51,7 @@ bash ~/l4_ab/run_paper_direct.sh pusht recovery_delta_full_pusht_s3072 42 100
   `Cached 'action' from '.../dmc/reacher_random.h5'` 才确认的, 不能凭名字推断。
 - **稀疏半成品副本**: `dl_intact/reacher.tar.zst` apparent 23G / **实占 9.0G** + `.aria2` 残留 =
   同一文件的半成品；`datasets/reacher.tar.zst` 才是完整那份。看门狗因此每 6 分钟报
-  「卡住 (13136247974B) 重启续传」(实为 pusht 那份早已下完)。
+  「阻塞 (13136247974B) 重启续传」(实为 pusht 那份早已下完)。
 
 ## 回收记录 (本次)
 | 删除 | 实占回收 | 依据 |

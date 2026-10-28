@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""按 **设备名 + 能力** 解析出该用哪个 /dev/videoN —— 别再写死索引。
+"""按 **设备名 + 能力** 解析出该用哪个 /dev/videoN —— 别再预先固定索引。
 
-现场根因 (2026-09-28): `tools/boot_restore.sh` 里写死 `--local-dev 2 --local2-dev 0`,
+现场根因 (2026-09-28): `tools/boot_restore.sh` 里预先固定 `--local-dev 2 --local2-dev 0`,
 而本机 video2 是笔记本相机的 **GREY 640x360 (IR/灰度) 那一路** —— 没有红外照明时整幅近黑
 (实测 mean=6.0 / median=0 / 96% 像素 <20); 而 VL 安全闸把 "local" 当**笔记本相机(全局视角)**:
 快反射层判『遮挡/糊化』⇒ 所有运动类原子技能一律拒发 (老倪: 「原子技能又不好使了」)。
@@ -61,7 +61,7 @@ def _alive(dev: str):
         import cv2
         cap = cv2.VideoCapture(int(str(dev).replace("video", "")), cv2.CAP_V4L2)
         if not cap.isOpened():
-            return False, "打不开(被占用/无权限)"
+            return False, "无法打开(被占用/无权限)"
         ok, f = False, None
         for _ in range(3):
             ok, f = cap.read()

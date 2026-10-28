@@ -3,7 +3,7 @@
 """🧹 画布结构重构 (2026-09-24, 老倪指令) —— 幂等可复跑
 
 老倪原话: 「L4 光模块插拔链 环境渲染这一层, 位置不合理, 这层删掉, 渲染功能放到最下面的可视化层,
-其它必要的功能精简合并到 L4 层, 如果这层的功能没啥用就删掉。L5 的大模型, deepseek flash, 再次检查画布,
+其它必要的功能精简合并到 L4 层, 如果这层的功能没什么用就删掉。L5 的大模型, deepseek flash, 再次检查画布,
 不要出现孤立节点, L2 层的功能不要越层升到 L4 层。节点要是进不了系统则删掉该节点, 要保证节点的完备性。
 待办任务也要面向节点功能, 例如 MOE 架构这样的改造, 也要显示在状态空间的整个工程里, 作为一个功能节点;
 MOE 是不是放在大模型层更合理? L4 和 L3 层的 LoRA 微调节点需要显示在画布上。」
@@ -12,8 +12,8 @@ MOE 是不是放在大模型层更合理? L4 和 L3 层的 LoRA 微调节点需�
   ① 删「🌍 L4 · 光模块插拔链」行带 (4 个节点拆解安置, 见 ②)
   ② swds/swvideo → 🔭 可视化层 (渲染功能归可视化); swintact/swworld → 🏆 L4 专家自主功能 (必要功能并入 L4)
   ③ 💪 L2 肌肉记忆技能库 (n_l2_muscle) 从 L4 记忆行 → 🔧 L2 记忆行 (老倪: L2 功能不许越层升到 L4)
-  ④ 🧿 n_dsvl 更名/补注为 DeepSeek-V4-Flash (L5 大模型主路) + smolvlm2-500m 本地兜底
-  ⑤ 新增 3 个真功能节点: 🧬 阶段专家 MOE / 🎛 L4 LoRA 微调 / 🎛 L3 LoRA 微调 (node_logic 已注册 + 真源码映射)
+  ④ 🧿 n_dsvl 更名/补注为 DeepSeek-V4-Flash (L5 大模型主路) + smolvlm2-500m 本地保障
+  ⑤ 新增 3 个真功能节点: 🧬 阶段专家 MOE / 🎛 L4 LoRA 微调 / 🎛 L3 LoRA 微调 (node_logic 已注册 + 唯一依据码映射)
   ⑥ 修全部断头/悬空 (任务指令/意图丛/技能词典/跨层连接/意图直读/环境渲染源 + SK02-08 + 肌肉记忆技能库)
   ⑦ 去重边 (3 对完全重复) + 修端口冲突 (ssworld→swds in2 被两源占用)
   ⑧ 硬断言: 孤岛 0 · 断头/悬空 只剩合法终端与数据源 · 无节点落在行带外 · L2 功能不在 L4 带 · 端点/端口合法
@@ -162,7 +162,7 @@ def main():
         nd["name"] = "🧿 DeepSeek-V4-Flash · 场景理解 (L5 大模型主路)"
         pr = nd.setdefault("params", {})
         pr["desc"] = ("[L5 大模型主路] DeepSeek-V4-Flash (API · 支持 Vision): 场景判读/工序纠错 → 结构化落 "
-                      "data/scene/scene_state.json, 喂 L3 规划/技能编排与 L4 意图解码; 本地兜底 = smolvlm2-500m "
+                      "data/scene/scene_state.json, 喂 L3 规划/技能编排与 L4 意图解码; 本地保障 = smolvlm2-500m "
                       "(HuggingFaceTB/SmolVLM2-500M, 权重在 ~/.cache/huggingface, GPU 单帧编码); "
                       "双路优先级 SS_VLM_PROVIDER > DeepSeek(flash) > 本地 worker")
         pr["provider"] = "deepseek-v4-flash"

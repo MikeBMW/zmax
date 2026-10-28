@@ -7,7 +7,7 @@
   而硬件/模型版本/训练/3DGS 状态只在本机 127.0.0.1:8796/status/all 上 ⇒ 手机够不着。
   本脚本用既有纯 HTTP 推送端点 ss3d_push.php(白名单只加不改)把那份 JSON 落到站点根, 页面直接 fetch。
 
-训练「空态」兜底 (2026-10-01 老倪「手机还是看不到训练模型的状态」):
+训练「空态」保障 (2026-10-01 老倪「手机还是看不到训练模型的状态」):
   训练跑完时 /status/all 的 training.active=False、step=0/0 ⇒ 页面那一条就空了, 但他
   随时打开都该看到"上次训练了什么"。本脚本另采最新一轮 reports/joint_train_<ts>/summary.json,
   **只增一个可选顶层字段** last_training(不改 /status/all 的服务端契约, 它由另一路维护)。
@@ -41,7 +41,7 @@ SECRETS_FILE = os.environ.get("ZMAX_SECRETS_FILE", "/home/ubuntu/zmax/zmax_data/
 def _resolve_token():
     """推送 token 真值来源: 环境变量 ZMAX_SS3D_TOKEN → 本机 secrets 文件 (600, 永不入库)。
 
-    2026-10-09 收口: 以前这里把明文 token 写死成 `os.environ.get("SS3D_TOKEN", <明文>)` 的默认值 ——
+    2026-10-09 收口: 以前这里把明文 token 预先固定成 `os.environ.get("SS3D_TOKEN", <明文>)` 的默认值 ——
     公开仓库等于把通道密钥贴出去。现在 **绝不允许回落到明文默认值**:
       · 本脚本由 cron 每分钟拉起, 进程环境里没有该变量 ⇒ 走 secrets 文件这一条 (不是纯 os.environ)。
       · 两处都取不到 ⇒ 返回 None; main() 在真正推送前 fail-closed(报错退出), 绝不用空值去打端点。

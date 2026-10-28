@@ -61,5 +61,5 @@ page = V.ConfigCenterPage()          # 无参构造即可
 | 从 HTML 直接 `--convert-to docx` | `no export filter for <x>.docx found` | HTML 被当 **Writer/Web** 文档 ⇒ 先 `.odt` 再 `.odt`→docx |
 | 并发调 soffice 不带私有 profile | 第二次调用静默失败/挂住 | 每次都带 `-env:UserInstallation=file://<临时目录>` |
 | 导出脚本只 print 结果、不 print 路径 | 用户点了看不到产物在哪 | stdout 固定三段：结论行 + `md/docx/pdf` 各一路绝对路径 |
-| 一致性校验放在文档生成之后 | 真源漂了还照出文档 | 生成前先跑校验，`--check` 只校验；不一致就 exit 非 0 |
+| 一致性校验放在文档生成之后 | 唯一依据漂了还照出文档 | 生成前先跑校验，`--check` 只校验；不一致就 exit 非 0 |
 | 产物落在 `outputs/`（软链目录） | `git add` 报 `beyond a symbolic link` | 交付件按稳定名落 `docs/deliverables/` |

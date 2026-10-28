@@ -20,7 +20,7 @@
       → 无提升按纪律不上默认档, 只留产物 + 判定落盘
   环3 人工介入 (控制台「输入图像」窗口): 人工标注/修正 → annotator=human → 进 val 与门槛裁决集
 
-═══ 红线 (写死在代码里) ═══
+═══ 红线 (硬编码在代码里) ═══
   · 自动标注样本**绝不进 val** (build 时强制 train; stats 里 auto_in_val 必须为 0)
   · 只读真机 (Orin 零自启/零下行); 不拿旧帧冒充实时 (负帧龄/超龄一律拒用)
   · 未证明提升不得进默认档 (判定数字来自真推理, 不看训练内 mAP)
@@ -331,7 +331,7 @@ def collect_once(*, force=False, seq=None, session=None, ignore_motion_gate=Fals
     else:
         boxes, pmeta, preason = autolabel_pseudo(rgb)
         label_src = "pseudo" if boxes else "none"
-    # ⚠️ 2026-09-18 质量红线: **无标签帧不当背景负样本** —— 在役权重低置信度漏检时帧里其实有目标,
+    # ⚠️ 2026-09-18 质量红线: **无标签帧不当背景负样本** —— 在役权重低置信度漏检时帧里实际有目标,
     #   若当"背景"进训练集会教模型"光模块=背景"(反向伤害)。因此无标签的帧进 **待标注池**
     #   (annotator=auto:pending), 数据集构建时**排除**, 等人工标注 (控制台「输入图像」窗口) 或
     #   几何标定就绪后补标才进训练集。

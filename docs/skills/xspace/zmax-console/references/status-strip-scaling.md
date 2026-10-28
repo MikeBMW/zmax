@@ -23,7 +23,7 @@
 
 ## 放大字号：用单一 SCALE，别逐个调 font-size
 
-`StatusPanel` 的 paint 全是写死像素（chip 宽 88、槽宽、灯半径、坐标 11/37/47/60）。
+`StatusPanel` 的 paint 全是预先固定像素（chip 宽 88、槽宽、灯半径、坐标 11/37/47/60）。
 逐处改字号必然错位。做法：
 
 ```python
@@ -38,7 +38,7 @@ p.scale(SCALE, SCALE); w, h = self.width()/SCALE, self.height()/SCALE
 
 ## 高度：只改 `H`，别改 y 坐标（所有 y 都挂在中线 `cy = h/2`）
 
-`_paint` 里没有写死的绝对 y：文字行用 `QRectF(x, 0, w, h)` + `AlignVCenter`，灯/环/进度条全部 `cy ± k`。
+`_paint` 里没有固定不变的绝对 y：文字行用 `QRectF(x, 0, w, h)` + `AlignVCenter`，灯/环/进度条全部 `cy ± k`。
 所以“太高、很空旷”只需改逻辑高度 `H`，内容自动重新居中：
 
 | H (逻辑) | 物理高 @SCALE 1.45 | 现场 |
@@ -62,7 +62,7 @@ im = p.grab(); a = np.asarray(im.convert('RGB'))
 print(a.mean(axis=(0,1)))      # 深色带 mean 应 ~[27,33,40]；[239,239,239] = 没画
 ```
 
-selftest 里的「行带高度」判据要跟着 SCALE 改（`_Hp*0.35 ~ _Hp*0.98`），别写死 40px。
+selftest 里的「行带高度」判据要跟着 SCALE 改（`_Hp*0.35 ~ _Hp*0.98`），别预先固定 40px。
 
 ## 坑 2：availableGeometry() 本身可能越界 ⇒ 状态带被顶到屏外
 
@@ -83,7 +83,7 @@ _g = scr.geometry(); ag = QRect(max(ag.x(),_g.x()), max(ag.y(),_g.y()),
 
 状态带 NPU/GPU 槽读 `/status/all.edge.pipeline.devices.*.duty_pct`。
 `status_hub.collect_edge()` 原来的 timeout=1.5s，而经 orin 隧道的单请求实测 **2.9~3.6s** ⇒
-必然 TimeoutError ⇒ `online=False` ⇒ 界面只能画横杠（intel 上其实 96% 满载）。
+必然 TimeoutError ⇒ `online=False` ⇒ 界面只能画横杠（intel 上实际 96% 满载）。
 修法：后台线程刷 + 缓存（ttl 8s，timeout 8s），请求路径永不阻塞，返回带 `cache_age_s`/`stale`。
 判别命令：`curl -s 127.0.0.1:18800/pipeline/stats` 有值 + `/status/all.edge.online=false` ⇒ 就是这个坑。
 

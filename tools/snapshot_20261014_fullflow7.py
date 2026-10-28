@@ -97,7 +97,7 @@ def main() -> int:
     rd.append("- 训练产物 (L4/L3/L2/L5 权重) 见 `outputs/train/*` 与 `reports/joint_train_*/`")
     rd.append("\n## 四、判据回放 (任意时刻可复跑)\n")
     rd.append("- 大屏/卡片数据源: `python3 tools/fullflow_status.py` (只读 state.json)")
-    rd.append("- 元任务预测 topic: `tools/dds_sub_meta_pred.py`; 信号分析真源 `zmax_data/dataspace/live.json`")
+    rd.append("- 元任务预测 topic: `tools/dds_sub_meta_pred.py`; 信号分析唯一依据 `zmax_data/dataspace/live.json`")
     rd.append("- 报告重生成: `python3 -c \"import sys,json;sys.path.insert(0,'tools');import fullflow_tasks7 as F;"
               "F.stage_report('%s', json.load(open('%s/state.json')), '%s', send=False)\"`" % (run, run, run))
     with open(os.path.join(DST, "README.md"), "w", encoding="utf-8") as f:

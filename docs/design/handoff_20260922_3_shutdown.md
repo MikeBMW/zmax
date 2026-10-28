@@ -7,7 +7,7 @@
 | # | 事项 | 证据 |
 |---|---|---|
 | 1 | **统一迭代 v5.12.1 已发布**（tag 已推，含飞书端并行成果） | commit `fde46a43` + tag `v5.12.1`；版本 6 处同步点 + VERSION.md |
-| 2 | **机器人模型单一真源**（DOF/质量/惯量/限位/产线 TCP 反解） | `config/robot/zmax_robot_spec.json` · `tools/robot_spec_sync.py`；FK 与真机 tcp 差 **3.52mm** |
+| 2 | **机器人模型单一唯一依据**（DOF/质量/惯量/限位/产线 TCP 反解） | `config/robot/zmax_robot_spec.json` · `tools/robot_spec_sync.py`；FK 与真机 tcp 差 **3.52mm** |
 | 3 | **统一标定参数接口**（缺口诚实报） | `tools/zmax_params.py` + `config/calib/zmax_calib.json`（`--check` 有缺口返回码 1） |
 | 4 | **仿真↔真机参数桥** | `config/robot/zmax_sim2real.json` · `tools/sim2real_bridge.py` |
 | 5 | **LoRA 三层落地（自研引擎，免 peft）** | `tools/lora_inject.py`（5 条断言）· 合并 `tools/lora_merge_ckpt.py` |
@@ -19,7 +19,7 @@
 
 ## 二、关键事实（下次开机直接用）
 
-### 参数/标定真源（一律读这个，禁硬编码）
+### 参数/标定唯一依据（一律读这个，禁硬编码）
 ```bash
 R=/home/ubuntu/zmax; cd $R; P=gui-venv311/bin/python
 $P tools/robot_spec_sync.py            # 重新同步真机模型参数 (URDF+只读实测)

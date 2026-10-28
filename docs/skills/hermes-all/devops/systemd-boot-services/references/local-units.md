@@ -15,7 +15,7 @@
 
 ## 相关但**不是** systemd 的常驻
 - `tools/l2_daemon.py` + `~/zmax_data/l2_cmd.fifo` — L2 收口命令通道(fifo 写入即执行, 见 `zmax-console` / 真机类技能)。
-- `tools/auto_loop.py` — 群/网页轮询兜底(WS 断时靠它)。
+- `tools/auto_loop.py` — 群/网页轮询保障(WS 断时靠它)。
 
 ## 公网出口链 (经 ECS 反代, 全部 enabled)
 

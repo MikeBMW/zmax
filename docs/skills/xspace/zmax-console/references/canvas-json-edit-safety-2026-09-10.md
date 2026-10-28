@@ -60,13 +60,13 @@ json.dump(d, open(P, "w"))                  # d["links"] 仍是旧列表 → 删
    反馈允许反向, 但必须一眼可辨是反馈而不是乱连; 上行输入线标 `⬆`。
 7. 行背景宽度: 节点右移到 x≈5500 后 row_bg `w` 同步加宽(3000→6100), 否则末段节点在背景外。
 
-## 四、新增画布节点三件套 (真源在 src, 老倪红线)
+## 四、新增画布节点三件套 (唯一依据在 src, 老倪红线)
 
-1. **src 真源**: 节点实现写进 `src/lerobot/memory/mem_nodes.py`(记忆族)等框架层文件,
+1. **src 唯一依据**: 节点实现写进 `src/lerobot/memory/mem_nodes.py`(记忆族)等框架层文件,
    GUI 只薄注册转发; 函数签名 `fn(ctx)`(`ctx["log"]` / `ctx["module"]`), 真实读数据,
    无数据时返回 False + 明确 reason, 不伪造。
 2. **node_logic 注册**: `_reg("<key>", ["<节点名关键词>"], "<一句话说明>", fn)` +
-   在 `from lerobot.memory.mem_nodes import (...)` 里加导入 + except 兜底 lambda。
+   在 `from lerobot.memory.mem_nodes import (...)` 里加导入 + except 保障 lambda。
    关键词是 name 的子串匹配 → 节点名写全("🧠 意图丛 · 四槽语法" ← "意图丛")。
 3. **画布 JSON 节点**: `{"id": "n_xxx", "type": "model", "name": "...", "x":…, "y":…,
    "w": 270, "h": 68, "icon": "🧠", "color": "#a371f7",
@@ -76,5 +76,5 @@ json.dump(d, open(P, "w"))                  # d["links"] 仍是旧列表 → 删
 4. 验证: ①`NODE_LOGIC` 里 key 数/新 key 存在 ②每个新 fn 用假 ctx(`{"log": print}`)真跑一次
    看输出 ③画布 JSON 合法 + 无悬空 link(端点 id 必须都在 nodes 里)。
 5. 记忆类新节点实例(2026-09-10 落地): 🧠 意图丛·四槽语法 / 🧬 技能词典·L2 动作基 /
-   🔗 跨层连接·记忆图谱 / 🔮 意图直读·Direct — 真源 memory_graph.py(links / recall /
+   🔗 跨层连接·记忆图谱 / 🔮 意图直读·Direct — 唯一依据 memory_graph.py(links / recall /
    skill_dict / intent_direct)。

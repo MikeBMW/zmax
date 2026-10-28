@@ -1,6 +1,6 @@
 # 官方 E1 权重 bring-up（config.json 合成 · 根运行时 · swm.World 出视频）
 
-场景: 拿 HF `INTACT-JEPA/INTACT` 的官方权重在本机真实跑起来（eval 出分 / 出视频证据），
+场景: 拿 HF `INTACT-JEPA/INTACT` 的官方权重在本机真实启动（eval 出分 / 出视频证据），
 **不是**我们微调过的 `recovery_delta_full_<task>_s3072` 那条链路（那条见 SKILL.md 正文 + paper-runtime-eval-runbook）。
 本文件全部为 2026-09 实测，含 6 处「照着报错走会走进沟里」的坑。
 
@@ -13,7 +13,7 @@
 
 - 权重 revision 用 `--revision paper-e5-goal-v1` 拉 paper 那套；E1 那套在默认 revision 的 `INTACT-no-previous-action/`。
 - **不要**为了让权重 load 上去就随手改 `module.py` —— 官方数字要匹配的运行时+权重组合。
-  改代码只用于"先跑通看画面"，并且必须 `INTACT_SKIP_PREFLIGHT=1`（否则 code-integrity 检查 FAIL）。
+  改代码只用于"先验证通过看画面"，并且必须 `INTACT_SKIP_PREFLIGHT=1`（否则 code-integrity 检查 FAIL）。
 
 ## 1. 坑①：checkpoint 目录缺 `config.json`（E1 tar 包只含 .pt）
 ```
@@ -56,7 +56,7 @@ sd["intent_actor.net.0.weight"].shape              # (1024, slots*192 + action_e
 - `module.py`: `latent_slots = 4 if feature_layout == "five_slot" else 3`，且 `actor_features` 是
   `cat([z, intent, z*intent, prev_act_emb])` ⇒ `four_slot`=768、`five_slot`=960。**576 不属于现有任何布局** ⇒
   E1 权重是 **3 槽（legacy grammar）**；要跑就得给 `module.py` 加 `three_slot` 分支（配套 `VALID_FEATURE_LAYOUTS` 加名）。
-  这是"跑通优先"的权宜；要官方数字请用匹配的运行时/权重。
+  这是"验证通过优先"的权宜；要官方数字请用匹配的运行时/权重。
 
 ## 3. 坑③：`eval_official.sh` 的 policy 参数 = **绝对路径** 指向**目录**
 ```
@@ -85,7 +85,7 @@ bash scripts/eval_official.sh <solver=direct> <task=cube> \
   `str(ep) in grp` 会得到 `ValueError: truth value of an array ... is ambiguous`。
 - **键名优先级坑（静默喂错数据）**: 通用选择器
   `next(k for k in f.keys() if "obs" in k.lower() or "pixel" in k.lower())` 命中 **`observation`** →
-  把 `(9,28)` 的**状态向量**当像素喂给 ViT → `ValueError: not enough values to unpack (expected 4, got 1)`。
+  把 `(9,28)` 的**状态向量**当像素提供给 ViT → `ValueError: not enough values to unpack (expected 4, got 1)`。
   **必须显式优先 `"pixel"`**。
 - 官方数据用 HDF5 **插件压缩** → 读之前 `import hdf5plugin`（否则
   `OSError: Can't synchronously read data (can't open directory (/usr/local/lib/plugin))`）。

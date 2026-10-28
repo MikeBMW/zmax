@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 重启控制台 → 待就绪 → 统一打开 → **单独切场景**(插拔↔摆盘) → 核 3D 窗是否跟随 + 是否换 episode 真源
+# 重启控制台 → 待就绪 → 统一打开 → **单独切场景**(插拔↔摆盘) → 核 3D 窗是否跟随 + 是否换 episode 唯一依据
 cd /home/ubuntu/zmax || exit 1
 export DISPLAY=:0
 PY=gui-venv311/bin/python

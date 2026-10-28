@@ -70,7 +70,7 @@ HTML = """
     <div class="mK"><b id="mkUnit">—</b><span>客户单件成本 (元)</span></div>
   </div>
   <div class="mRow">
-    <div class="mK mWide" style="flex:1 1 58%"><b id="mkExpect">市场预期加载中…</b><span>预测口径: 实测节拍 × 档位工时 × OEE (与《性能配置》《成本分析》同一真源)</span></div>
+    <div class="mK mWide" style="flex:1 1 58%"><b id="mkExpect">市场预期加载中…</b><span>预测口径: 实测节拍 × 档位工时 × OEE (与《性能配置》《成本分析》同一唯一依据)</span></div>
     <div class="mK mWide" style="flex:1 1 42%"><b id="mkSplit">三方分成 加载中…</b><span>机器人本体硬件 / 模型软件 / 运营数据</span></div>
   </div>
 </div>

@@ -31,7 +31,7 @@ metadata:
 <repo>/tools/<名>.sh                # 真逻辑: 应用 + 断言生效值 + 体检 + 落台账; 支持 --quick 等开关
 /etc/systemd/system/<名>.service    # 薄壳: 只 ExecStart 调脚本, 不写业务逻辑
 ```
-- **单一真源**: `ExecStart` 指向**仓库里的脚本**(git 可追溯)。不要再拷一份到 `/usr/local/bin` —— 两份副本必然漂移; 真要部署副本, 就在技能里写明"改完要重跑安装器"。
+- **单一唯一依据**: `ExecStart` 指向**仓库里的脚本**(git 可追溯)。不要再拷一份到 `/usr/local/bin` —— 两份副本必然漂移; 真要部署副本, 就在技能里写明"改完要重跑安装器"。
 - 安装器做成脚本(可重复跑): `install -m644` / `install -m755` → `systemctl daemon-reload` → `enable --now` → **语法预检 `bash -n`** → 打印 `is-enabled/is-active`。
 - 回滚一条命令写进 SKILL.md 交付说明: `systemctl disable --now X && rm /etc/sysctl.d/99-X.conf && sysctl --system`。
 
@@ -57,14 +57,14 @@ ls -lt <repo>/reports/<名>_*.jsonl       # 真产物: 每跑一次追加一行�
 | 失败拖死开机 | 机器卡在启动 | oneshot 脚本只做"尽力而为"(`|| true` + 单项超时), 用 `SuccessExitStatus=0 1` 兜住非致命退出 |
 | GUI 被"自动重启"骚扰 | 关掉窗口 5s 又弹回来 | GUI unit 一律 `Restart=no` (用户 2026-09-17 定档: 控制台只人工启动) |
 | 改完 sysctl 不核验 | 以为生效 | 脚本里改完立刻 `sysctl -n` 打印真值, 并写进台账 |
-| 目标路径写死机器名/临时目录 | 换机器就崩 | 路径全部绝对且来自仓库根 |
+| 目标路径预先固定机器名/临时目录 | 换机器就崩 | 路径全部绝对且来自仓库根 |
 | **常驻守护的真逻辑放 `/tmp`** | 重启/清理后脚本与进程一起没了, 下游数据**静默冻结**很久才被发现 | 常驻逻辑一律进**仓库 + unit**(`ExecStart` 指仓库路径); `/tmp` 只准放一次性临时脚本, 且仓库留档一份 |
-| **unit 里写死了命令行开关** | 改了脚本默认值, 重启后行为**没变** | `ExecStart` 的参数**覆盖**脚本默认值 ⇒ 改前先 `grep` 单元里那个开关, 改**单元** + `daemon-reload` + `restart`; 只改代码默认值等于没改。**同类但更隐蔽的一种: 单元带 `Restart=always`** ⇒ 杀掉那个散跑的裸进程**不会换档**, systemd 立刻按 `ExecStart` 把旧档拉回来(观感=「改完开关重启后行为没变」, `ps` 里新进程 ppid=1 像什么都没发生)。换档唯一路径 = 改单元文件 → `daemon-reload` → `restart`；仓库模板 `<repo>/tools/systemd/<unit>` 与已安装的 `/etc/systemd/system/<unit>` 是**两份**, 先 `diff -q` 再一起改, 否则改了模板而真正生效的是旧安装件。**`Environment=` 里的变量值是同一个病**: 只改文件 + `restart` 不生效 —— `Restart=always` 会拿**内存里的旧 Environment** 把进程拉回来, 现象与"改了没生效"一模一样。判据必须读 `/proc/<pid>/environ` 里那一项的值(`tr '\0' '\n' < /proc/<pid>/environ | grep '^KEY='`), **不是看 unit 文件**; 对不上就是漏了 `daemon-reload`。同理, 下游脚本自己的 `export` 优先级可能高于单元 —— 三处(启动脚本 / unit / 代码缺省)同口径才对 |
+| **unit 里预先固定了命令行开关** | 改了脚本默认值, 重启后行为**没变** | `ExecStart` 的参数**覆盖**脚本默认值 ⇒ 改前先 `grep` 单元里那个开关, 改**单元** + `daemon-reload` + `restart`; 只改代码默认值等于没改。**同类但更隐蔽的一种: 单元带 `Restart=always`** ⇒ 杀掉那个散跑的裸进程**不会换档**, systemd 立刻按 `ExecStart` 把旧档拉回来(观感=「改完开关重启后行为没变」, `ps` 里新进程 ppid=1 像什么都没发生)。换档唯一路径 = 改单元文件 → `daemon-reload` → `restart`；仓库模板 `<repo>/tools/systemd/<unit>` 与已安装的 `/etc/systemd/system/<unit>` 是**两份**, 先 `diff -q` 再一起改, 否则改了模板而真正生效的是旧安装件。**`Environment=` 里的变量值是同一个病**: 只改文件 + `restart` 不生效 —— `Restart=always` 会拿**内存里的旧 Environment** 把进程拉回来, 现象与"改了没生效"一模一样。判据必须读 `/proc/<pid>/environ` 里那一项的值(`tr '\0' '\n' < /proc/<pid>/environ | grep '^KEY='`), **不是看 unit 文件**; 对不上就是漏了 `daemon-reload`。同理, 下游脚本自己的 `export` 优先级可能高于单元 —— 三处(启动脚本 / unit / 代码缺省)同口径才对 |
 | **依赖写成 `Requires=`** | 重启被依赖方会**连带重启**依赖方 | `Requires=` 是双向生命线(停/重启都传播)。若依赖方的"身份"是**启动时才生成**的(内网穿透的公网 URL、会话级地址/端口、一次性 token), 硬依赖会把它换掉 ⇒ 已发出去的链接、已烧进客户端的地址**全部失效**。定式: 用 `Wants=`(软依赖), 只有确实要"被依赖方死了我也停"时才用 `Requires=`。排查症状: 服务全 `active`、本地直连正常、而**经中间那条链路稳定失败** |
 | **停掉一个被守护驱动的负载时只调了它自己的 API** | 停完几秒它自己又回来了(`on=true`、fps 恢复), 看上去"停不掉/自己重启" | 那类负载常由**另一个 unit 定期 `POST /start` 拉起**。定式 = `systemctl stop+disable <驱动 unit>` → 再停进程内的任务 → **间隔 ≥3s 连查 3 次**状态都是停的才算停; 只看一次 stop 的返回体就报"已停"必翻车(先 `systemctl list-units | grep -i <关键字>` 把驱动找出来) |
 | 用 `ps -o pcpu` 判断"谁在抢 CPU" | 早已空转的进程仍显示 130%+, 结论整个反过来 | `ps` 的 `%CPU` 是**进程生命周期均值**, 不是瞬时值 ⇒ 换成 `uptime` 的 load、`top -bn1 | head`、或服务自己 `/health` 的 duty/fps; 报告里别拿均值当"现在在吃" |
 | 只测一条链路就下结论 | 本地 ok / 经代理失败 | 本地与服务状态都绿时, **先查中间层自己的状态**(隧道日志里的当前 URL、代理日志里的拒绝原因)——中间层会自己换地址/自己拒绝, 不是被服务的错 |
-| **见到 `failed (Result: timeout)` 就赶紧重启** | 其实活已经干完了, 重启白折腾还把在跑的东西拆掉; 或反过来把 failed 当成"服务挂了"报给用户 | 超时判 failed ≠ 没干成: 长链 oneshot(起容器 + `docker exec` 拉常驻进程 + `systemctl restart` 别的单元)最容易在**最后一步**撞 start 超时被 TERM, 而前面几步的产物全在。先取证真实产物 `docker ps` + `docker exec <容器> ps -eo pid,etime,cmd \| grep <目标进程>`, 在跑 ⇒ 只 `sudo systemctl reset-failed <unit>` 清状态即可(**reset-failed 不重启任何东西**)。报"单元全绿/没有故障"之前也要跑这一步, 否则会把清理态当故障、或把 failed 当成已修 |
+| **见到 `failed (Result: timeout)` 就赶紧重启** | 实际活已经干完了, 重启白折腾还把在跑的东西拆掉; 或反过来把 failed 当成"服务挂了"报给用户 | 超时判 failed ≠ 没干成: 长链 oneshot(起容器 + `docker exec` 拉常驻进程 + `systemctl restart` 别的单元)最容易在**最后一步**撞 start 超时被 TERM, 而前面几步的产物全在。先取证真实产物 `docker ps` + `docker exec <容器> ps -eo pid,etime,cmd \| grep <目标进程>`, 在跑 ⇒ 只 `sudo systemctl reset-failed <unit>` 清状态即可(**reset-failed 不重启任何东西**)。报"单元全绿/没有故障"之前也要跑这一步, 否则会把清理态当故障、或把 failed 当成已修 |
 
 ## 4b. 在别人的设备上装 unit: 本体放项目隐藏目录, `/etc` 只放软链
 
@@ -101,7 +101,7 @@ ls -l /etc/systemd/system/<svc>.service                        # 确认是 → .
   `sudo: a terminal is required to read the password`；若它排在 `;`/`&&` 链中间，**文件根本没写成，而后面那句
   `printf pw | sudo -S systemctl restart` 照样成功** ⇒ 服务拿**旧配置**重启了，现象与“改了没生效”一模一样。
   判据: 重启后**回读落盘文件**(`cat` 那个 drop-in) + 看进程真实生效值(`systemctl show -p Environment` 或
-  `/proc/<pid>/environ`)；更快的旁证 = **服务自己的报错文案里还是旧参数**(实测仍报打不开 `/dev/video2`，而目标是 video3)。
+  `/proc/<pid>/environ`)；更快的旁证 = **服务自己的报错文案里还是旧参数**(实测仍报无法打开 `/dev/video2`，而目标是 video3)。
   另: drop-in 目录 `…service.d/` 不存在时 `tee` 同样失败 ⇒ 先 `mkdir -p` 再用 `sudo -S` 写。
 - **自愈要当场验**, 不要只写 `Restart=always`: `pkill -f '<脚本>'` → `sleep 6` → `systemctl is-active` +
   端口 `curl` 回 200 + 新 pid 存活 = 真自愈。不能重启整机验开机时, 用 `is-enabled` + `wants/` 链接存在作开机证据。
@@ -118,7 +118,7 @@ ls -l /etc/systemd/system/<svc>.service                        # 确认是 → .
 
 | 退出码 | 真因 | 修法 |
 |---|---|---|
-| `209/STDOUT` | systemd **打不开 `StandardOutput=append:<路径>`** (父目录不存在/无权限) | 先 `mkdir -p` 那个日志目录再 `restart`。注意: 这时日志文件里**一个字都没有**, 应用自己的报错根本不会出现 —— 别去代码里找 bug |
+| `209/STDOUT` | systemd **无法打开 `StandardOutput=append:<路径>`** (父目录不存在/无权限) | 先 `mkdir -p` 那个日志目录再 `restart`。注意: 这时日志文件里**一个字都没有**, 应用自己的报错根本不会出现 —— 别去代码里找 bug |
 | `1/FAILURE` + 日志只有一行 fail-closed 提示 | 脚本自己拒跑: 常见是**secrets 文件在这台机上压根不存在**(新迁过来的机器只同步了 unit, 没同步 `zmax_data/secrets/`), 而 unit 的 `Environment=` 只带了间隔/token 以外的参数 | `mkdir -p <repo>/zmax_data/secrets && umask 077` 写文件 → `chmod 600` → `restart`; token 值从原机 secrets 里取, **不要写进 unit 正文**(会漏进日志与 git) |
 | `1/FAILURE` + 日志尾部 `OSError: [Errno 98] Address already in use` | **两个 unit 的 `ExecStart` 一模一样**，先起的那个已占端口 ⇒ 后起的永远绑不上，`NRestarts` 能涨到几千。现象不仅是“服务挂了”：依赖它的页面/按钮**也一起没响应**（请求落在刚起/刚死的进程上） | `systemctl cat A B \| grep ExecStart` 对比 + `ss -ltnp \| grep :<port>` 看是哪个 unit 在听 ⇒ `systemctl disable --now` 掉重复的那个。journal 里只有 `Started …` / `status=1/FAILURE`，**真因只在 unit 自己 `StandardOutput=append:` 那个文件尾部** |
 | `203/EXEC` | 脚本无可执行位 / 路径不存在 | `chmod 755`, 或看 unit 里路径是否指向旧 checkout |
@@ -191,7 +191,7 @@ pip download --only-binary :all: --python-version 3.12 --implementation cp --abi
 `ServerAliveInterval=20 ServerAliveCountMax=3`(不掉长连接)、`ExitOnForwardFailure=yes`(端口被占就别假装成功)、
 `Restart=always` + `RestartSec=10`。
 
-🔴 **隧道 unit 的 `ExecStart` 写死远端地址 ⇒ 改 ssh 别名救不了它**:
+🔴 **隧道 unit 的 `ExecStart` 预先固定远端地址 ⇒ 改 ssh 别名救不了它**:
 症状: `ssh <别名>` 手测通、unit `is-active` 绿, 但**本地转发端口 closed**; `journalctl` 里是
 `Timeout, server <旧IP> not responding` → `status=255` + Restart 循环。
 根因: unit 里写的是 `-p <旧端口> user@<旧网关IP>`, 与 `~/.ssh/config` 的别名是**两条独立路径**。
@@ -202,7 +202,7 @@ pip download --only-binary :all: --python-version 3.12 --implementation cp --abi
 2. 换链路时先 `systemctl cat <unit>` 看 ExecStart 到底指向谁 —— 别假设它跟着 ssh config 走。
 3. **验收用端口不听服务**: `for p in 19061 8792 8816; do (echo > /dev/tcp/127.0.0.1/$p) 2>/dev/null && echo "$p open" || echo "$p closed"; done`。
    一条链路常摊成 3~4 个隧道 unit(位姿/相机/推流各一个), 逐个验; **`is-active` 全绿而端口全 closed 是常态**。
-4. 公网跳板只做**兜底别名**(`Host <名字>-ecs` 指向公网 IP+端口), 主别名叫直连内网 IP ⇒ 中间层挂掉不拖垮内网链路。
+4. 公网跳板只做**保障别名**(`Host <名字>-ecs` 指向公网 IP+端口), 主别名叫直连内网 IP ⇒ 中间层挂掉不拖垮内网链路。
 
 🔴 **手测成功≠unit 会成功**: 三者环境不同(HOME / agent / PATH)。失败先看 `journalctl -u <unit> -n 20` 里
 究竟是 `Permission denied`(密钥) 还是 `9/KILL`(进程模型), 两种错治法完全不同 —— 别一上来就改密钥。

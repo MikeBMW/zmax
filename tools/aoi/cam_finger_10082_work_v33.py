@@ -37,7 +37,7 @@ v4 变更 (2026-09-20, 静静):
      **960x960 方图**(与 config.yaml imgsz=960 对齐), 另存一份"原比例"版供目检
   ★ 新增 /crop_info: 最近一次裁剪的完整质量指标 (JSON), 便于外部取证
   ★ 保留旧几何开关: GF_CROP_MODE="legacy" 时退回 v3 的固定窗 warp (可一键回滚, 不用换文件)
-  ★ 兜底链: 模板匹配失败/分数低 → HSV 条带兜底(仍是规整仿射) → 中心窗兜底(明确标记, 不装正常)
+  ★ 保障链: 模板匹配失败/分数低 → HSV 条带保障(仍是规整仿射) → 中心窗保障(明确标记, 不装正常)
 
 依赖: gf_crop.py / gf_metric.py / templates/gf_strip_template.png(.json) 与本文件同目录; yolo_detector 保持不变
 """
@@ -90,7 +90,7 @@ CANONICAL_W = int(os.environ.get("GF_CANONICAL", "960"))   # 960 / 640 / 1280
 CANONICAL_H = CANONICAL_W
 KEEP_ASPECT = os.environ.get("GF_KEEP_ASPECT", "0") == "1"  # 1=保比例(只做对照/复核用)
 MARGIN_X, MARGIN_Y = 0.02, 0.03   # 金手指条在画布内留的边距(2%/3%)
-MIN_SCORE = 0.55              # 模板匹配分下限, 低于则告警(并用兜底结果)
+MIN_SCORE = 0.55              # 模板匹配分下限, 低于则告警(并用保障结果)
 SAVE_LEGACY_TOPVIEW = True    # 是否同时存一份 v3 几何的 topview (对照/回滚用)
 
 # 金手指检测相机SN
@@ -125,7 +125,7 @@ _LAST_PIC = {"origin": None, "topview": None, "t": 0.0}
 _LAST_MODELIN = ""          # v10: 本轮送检的模型输入文件(960x960 同帧派生图, 在 %TEMP%, 检测完即删)
 _LAST_SHADOW = ""           # v10: 本轮影子对照的临时图(判据图压 960x960; 空=不跑)
 # 🆕 v11 (老倪: 「哪里是调用 YOLO 模型, 我看看实际输入给模型的图片, 和 YOLO 的返回值」):
-#   把**喂给 detector.detect() 的同一份像素**留在内存 + 一个无损坏的 PNG 取图口, 供现场/自检核对:
+#   把**提供给 detector.detect() 的同一份像素**留在内存 + 一个无损坏的 PNG 取图口, 供现场/自检核对:
 #   GET /picture?kind=modelin  (= 模型实际吃的那张, 逐位相同; ?meta=1 给 md5/尺寸/来源)
 _LAST_MODELIN_IMG = None
 _LAST_MODELIN_META = {}
@@ -917,7 +917,7 @@ _V25_REF_P50 = 63.0
 _V25_GAIN_LIM = (0.70, 1.50)     # 增益夹紧: 只修现场实测那点光照漂移(±25% 量级), 不重映射陌生场景
 _V25_GAIN_DEAD = 0.03            # 死区: 正常状态增益=1 ⇒ 与 v24 逐位一致(观感零变化)
 
-# 🆕 v25b (2026-10-08 现场实测第二层病灶): 端部认领是"一刀切", 对帧间 ±1px 噪声敏感 ——
+# 🆕 v25b (2026-10-08 现场实测第二层病灶): 端部认领是"统一处理", 对帧间 ±1px 噪声敏感 ——
 #   左端那块 ~78px 金属边块的宽度在"单键窗(<=1.60×中键宽)"与"拒收窗(<1.35×节距)"之间摇摆,
 #   于是同一姿态下根数在 16(少认 3 格)/19/22(多认 2 格)之间跳(8 张真帧实测: 裁剪端点恒 497、
 #   姿态恒定 p50 恒 63, 只有这一刀在跳)。
@@ -956,7 +956,7 @@ def _v25_view_key(med_gap):
 def _v25_norm_luma(g):
     """逐帧对比度归一化(仅供几何分析): 2%/99% 分位拉到 0~255。
 
-    目的不是"看得更清", 而是让下游那些**写死的绝对阈值**(裁剪边缘门 2.5、亮度下限、
+    目的不是"看得更清", 而是让下游那些**固定不变的绝对阈值**(裁剪边缘门 2.5、亮度下限、
     亮列门限)变成相对量 —— 现场画面亮度在几个档之间漂时, 判据几何(尤其两端认领跨度)不再跟着漂。
     渲染不走这条路: 出图仍用原像素, 观感与 v24 一致。
     """
@@ -1174,7 +1174,7 @@ def _v21_uniformize(segs, cf=None, cx0=0):
 
     v29 (2026-10-09 层③): 认领多键段前先做**形状校验**(cf=列剖面, cx0=剖面起点列)——
     只在段内沿栅格"槽间中点明显比槽心暗"时才算真·两键粘连; 平顶块(如连接器左端的
-    整块金属边条)没有内部凹陷 ⇒ 一律不认领, 不再靠宽度窗口的一刀切。"""
+    整块金属边条)没有内部凹陷 ⇒ 一律不认领, 不再靠宽度窗口的统一处理。"""
     info = {"raw_segs": [[int(a), int(b)] for a, b in segs]}
     if not segs:
         return [], info
@@ -2091,7 +2091,7 @@ def GrabAndSaveImage(save: bool = True):
             #   · 落盘/对外展示的 **topview = 判据图口径**(过曝切除+只留金手指条+列裁+短边×2+反倾角+定尺900x332)
             # 🆕 v8 (2026-09-30 老倪「Finger_ModelIn_…就不要了; 模型用的是这个图片; 确认模型使用的是不是 topview」):
             #   · **只落一张图** = Finger_TopView_*(判据图); Finger_ModelIn_* 不再写盘(老文件按上限自动清掉)
-            #   · 影子对照: 同帧老口径 960 方图也跑一遍, 临时图 %TEMP% 跑完即删, 结果进 /last_result
+            #   · 影子对照: 同帧老口径 960 方图也执行一遍, 临时图 %TEMP% 跑完即删, 结果进 /last_result
             # 🆕 v9 (2026-09-30 现场实测修正): v8 让模型**直接吃 900x332 判据图** ——
             #      在工控机 app 里**卡死**(同一张图: app 进程 CPU 空转 3 分钟不返回、incoming 不再落图、
             #      %TEMP% 里堆了 ~90 张没删的临时图; 换 venv 解释器单独跑同一张只要 0.7s)
@@ -2106,7 +2106,7 @@ def GrabAndSaveImage(save: bool = True):
             model_in = crop                    # 主口径 960x960(金手指条带拉伸, 与 v6/v7 逐位同口径)
             if judge is None:
                 # 🆕 v22 (2026-10-08 晚): 老代码把 topview 静默回退成旧的 960x960 拉伸图 ⇒
-                #   现场看到"右侧有方块区域, 不是金手指"(其实是**旧口径**那张, 不是判据图)。
+                #   现场看到"右侧有方块区域, 不是金手指"(实际是**旧口径**那张, 不是判据图)。
                 #   现在: 保留**上一张好判据图** + 红条标注(帧龄/原因); 一张好图都没有才退回 960 并如实标注。
                 print("  ⚠️ 判据图渲染失败(%s) ⇒ 保留上一张好判据图 + 红条标注(不再端旧 960x960 口径)"
                       % jmeta.get("err"))
@@ -2124,7 +2124,7 @@ def GrabAndSaveImage(save: bool = True):
             top_path = os.path.join(SAVE_ROOT_DIR, top_name)
             _iw(top_path, judge)               # ✅ 唯一落盘的一张 = 判据图(不再写 Finger_ModelIn_*)
             # 主口径输入(960x960): 临时图, 检测完即删 ⇒ 目录里不留第二张
-            # ⚠️ 2026-09-30 踩坑(v9⇒v10): 这两段临时图代码在 GrabAndSaveImage 里, 而"只看一眼"的
+            # ⚠️ 2026-09-30 遇到问题(v9⇒v10): 这两段临时图代码在 GrabAndSaveImage 里, 而"只看一眼"的
             #    grab(页面 0.5s 一次)也走这个函数 ⇒ 每次 grab 写 2 张临时图却没人删 ⇒ 实测 9 分钟
             #    在 %TEMP% 堆了 2180 张。现在**只有 save=True(真检测, 会入队)才写**, 并且每次真检测
             #    先做一次 _sweep_temp() 清残留(只碰我们自己的三个前缀, 只删 60s 以上的)。
@@ -2172,7 +2172,7 @@ def GrabAndSaveImage(save: bool = True):
                   f"切过曝行={jmeta.get('dropped_sat_rows')}({jmeta.get('dropped_pct')}%) "
                   f"列裁={(jmeta.get('x_trim') or {}).get('x_span')} 倾角={jmeta.get('deskew_deg')}° "
                   f"定尺={jmeta.get('fix_hw')} 饱和={jmeta.get('sat_after')} 耗时={dt_j:.0f}ms")
-            # ⚠️ 这里不能直接用 detect_type(那是路由/worker 的局部变量) —— 用与本函数同一真源解析
+            # ⚠️ 这里不能直接用 detect_type(那是路由/worker 的局部变量) —— 用与本函数同一唯一依据解析
             _dt, _ = _resolve_detect_type_by_channel()
             print("  【送检】模型吃 %s (%sx%s, 存在=%s) —— detector.detect(这张, detect_type=%s)" % (
                 os.path.basename(mi_path or "(未写盘!)"),
@@ -2181,7 +2181,7 @@ def GrabAndSaveImage(save: bool = True):
                 bool(mi_path and os.path.exists(mi_path)), _dt))
             print("  【落盘】只留判据图 -> %s (%dx%d)" % (top_name, judge.shape[1], judge.shape[0]))
             if sh_path:
-                print("  【影子对照】判据图压 960 也跑一遍(临时图, 跑完删) 剩余 %d 张" % (shadow_left - 1))
+                print("  【影子对照】判据图压 960 也执行一遍(临时图, 跑完删) 剩余 %d 张" % (shadow_left - 1))
             print(f"  【金手指截取】{info.get('method')} 模式={GF_CROP_MODE} 尺寸={crop.shape[1]}x{crop.shape[0]} "
                   f"score={info.get('score')} 角度={info.get('angle')}° "
                   f"残余倾角={q.get('stripe_slope_px_per_1000')}px/1000 线残差={q.get('stripe_line_resid_px')}px "
@@ -2269,7 +2269,7 @@ def _detect_worker_loop():
         topview_path, origin_path, detect_type, judge_path, shadow_path = (list(item) + [None] * 5)[:5]
         try:
             if not topview_path or not os.path.exists(topview_path):
-                print("  ⚠️ 跳过一项: 模型输入图已不在(%s) —— 不把不存在的路径喂给检测器" % topview_path)
+                print("  ⚠️ 跳过一项: 模型输入图已不在(%s) —— 不把不存在的路径提供给检测器" % topview_path)
                 continue
             t0 = time.time()
             result = detector.detect(topview_path, detect_type=detect_type)
@@ -2291,7 +2291,7 @@ def _detect_worker_loop():
                 print(f"    [{i+1}] {cls} conf={conf:.2f} bbox={bbox}")
             if result.get("saved_incoming"):
                 print(f"  存档: {result['saved_incoming']}")
-            # ── v8 影子对照: 同帧再跑一遍老口径 960 方图(临时图, 跑完删) ──
+            # ── v8 影子对照: 同帧再执行一遍老口径 960 方图(临时图, 跑完删) ──
             sh = None
             global _AB_DONE
             if shadow_path and os.path.exists(shadow_path):
@@ -2553,7 +2553,7 @@ def cam_param():
     applied = {}
     # 🔴 2026-10-08 实测教训(务必读):
     #   ① 这台 OPT 相机在**采集过程中**写 ExposureTime/Gain **必失败**(SDK 返回非 0) —— 所以"改了曝光"
-    #      其实一个字都没写进去(扫 10000/8000/6000 三档, 图逐位相同, 就是这么来的)。
+    #      实际一个字都没写进去(扫 10000/8000/6000 三档, 图逐位相同, 就是这么来的)。
     #   ② 想绕过 ① 去"StopGrabbing → 写 → StartGrabbing" **会把相机卡死**: 实测 StartGrabbing 不返回,
     #      此后所有抓图 40s 超时, 整路 10082 只能停服务重开相机(现场就发生过一次)。
     #   ⇒ 本路由**永不**停采集。只尝试直接写: 写不进就如实回报 ok=false, 并指向唯一可靠路径 ——

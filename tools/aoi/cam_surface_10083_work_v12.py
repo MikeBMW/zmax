@@ -440,7 +440,7 @@ def _detect_worker_loop():
         topview_path, origin_path, detect_type = (list(item) + [None] * 3)[:3]
         try:
             if not topview_path or not os.path.exists(topview_path):
-                print("  ⚠️ 跳过一项: 模型输入图已不在(%s) —— 不把不存在的路径喂给检测器" % topview_path)
+                print("  ⚠️ 跳过一项: 模型输入图已不在(%s) —— 不把不存在的路径提供给检测器" % topview_path)
                 continue
             t0 = time.time()
             result = detector.detect(topview_path, detect_type=detect_type)

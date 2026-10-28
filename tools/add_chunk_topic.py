@@ -5,7 +5,7 @@
 老倪 2026-10-15: 「Flow Matching Action Head 的输出, 是个 chunk action, 预测 [a_t,…,a_{t+H-1}] …
 应该有输出 topic, 在信号分析里显示」
 
-载荷 = 真源 zmax_data/ss_live/chunk_latest.json (由常驻回路每周期经 tools/ss_chunk_pipeline.py 落盘):
+载荷 = 唯一依据 zmax_data/ss_live/chunk_latest.json (由常驻回路每周期经 tools/ss_chunk_pipeline.py 落盘):
   chunk[H,4] 引擎规划的动作块 / ff[H,4] 前馈序列 / u[H,4] 加权+逐拍调制+逐拍安全后的执行序列 /
   lam[H] 块权重 / 平滑性 (转角·步间差·二阶差分) / 阶段 / 块耗时。
 三段都发 ⇒ 话题上能直接看出"块 → 前馈序列 → 加权 → 调制/安全 → 技能"这条链的每一环。
@@ -33,7 +33,7 @@ class SSActionChunk(IdlStruct, typename="zmax::SSActionChunk"):
       ff[H,4]     前馈加速器 (训练左脑 MLP 真权重) 的 H 步序列 (逐拍 或 hold, ff_mode 写明)
       u[H,4]      加权后的序列 (u = (1-λ)·ff + λ·chunk) → 逐拍过动作调制器 → 逐拍过安全执行边界
       lam[H]      块权重 (近步小、远步大, 单调; 可查)
-    真源: tools/ss_chunk_pipeline.py 落的 zmax_data/ss_live/chunk_latest.json (常驻回路每周期写);
+    唯一依据: tools/ss_chunk_pipeline.py 落的 zmax_data/ss_live/chunk_latest.json (常驻回路每周期写);
           守护读它发布 (过期/缺块只发告警, 不拿旧块当现在)。
     H 上限 16 (载荷按 16 预留, 实际块长看 h 字段)。
     """
@@ -73,7 +73,7 @@ HOOK = '''    def pub_meta_pred(self):'''
 d = d.replace(HOOK, '''    def pub_action_chunk(self):
         """🧩 **动作块** → zmax/ss_action_chunk (老倪 2026-10-15)。
 
-        真源 = 常驻回路经 tools/ss_chunk_pipeline.py 落的 zmax_data/ss_live/chunk_latest.json。
+        唯一依据 = 常驻回路经 tools/ss_chunk_pipeline.py 落的 zmax_data/ss_live/chunk_latest.json。
         纪律: 帧龄 > CHUNK_STALE_S 就明说陈旧; 块不 ok (引擎无目标点等) 就发空块 + note 写原因, 不编块。
         """
         from ss_types import SSActionChunk                                    # noqa: PLC0415
@@ -84,7 +84,7 @@ d = d.replace(HOOK, '''    def pub_action_chunk(self):
                 d = json.load(f)
         except Exception as e:                                               # noqa: BLE001
             self.publish("ss_action_chunk", SSActionChunk(ts=time.time(),
-                                                          note="读不到块真源 %s (%s)" % (os.path.basename(p),
+                                                          note="读不到块唯一依据 %s (%s)" % (os.path.basename(p),
                                                                                           type(e).__name__)))
             return False
         age = time.time() - float(d.get("ts") or 0.0)

@@ -15,7 +15,7 @@
                  → 达标/未达标/未测/样本不足 + 证据类 + 样本量 + 帧龄; 并标明「实跑 / 未跑+原因」
   ④ 对比分析   = 场景×阶段矩阵 · 两场景逐阶段达标率 · 组合增量 · 与基线 5.50.735 对比
 
-真源 (全部现读现算; 本文件不硬编任何数字/指标名/目标值):
+唯一依据 (全部现读现算; 本文件不硬编任何数字/指标名/目标值):
   · 指标定义       = config/platform/zmax_perf_spec.json (58 条)
   · phase 归属     = config/eval/phase_metric_map.json (map=归属 / carrier=物理载体段·量)
   · 元任务定义     = tools/export_meta_doc.py::build_meta_tasks() (75 元任务, complete=配置是否齐)
@@ -29,8 +29,8 @@
 
 场景作用域 (本工具口径, 记在 meta/note):
   eval_probes.run_all() 是**全局**采集口径 (它把 TASK-01-FW 的流形帧与 TASK-06-TRAY 的整链 run
-  分开读)。要区分两场景, 采集结果的证据真源 (src) 若明确属于**另一个任务**的产物 ⇒ 判该场景"未测"
-  (本场景那条链没采过), 属全局真源 (标定/规格/BOM/指标定义) 的则两场景共用。判据 = src 路径里的
+  分开读)。要区分两场景, 采集结果的证据唯一依据 (src) 若明确属于**另一个任务**的产物 ⇒ 判该场景"未测"
+  (本场景那条链没采过), 属全局唯一依据 (标定/规格/BOM/指标定义) 的则两场景共用。判据 = src 路径里的
   TASK-xx 标记, 不给数字、不猜。
 
 判定口径 (硬规矩, 与 eval_probes/eval_analysis 一致):
@@ -79,7 +79,7 @@ OUT_JSON = os.path.join(ROOT, "zmax_data/eval/scene_phase_iteration.json")
 OUT_MD = os.path.join(ROOT, "zmax_data/eval/scene_phase_iteration.md")
 
 GENERATED_BY = "tools/scene_phase_iteration.py"
-# 老倪点名的两个场景任务 (范围由需求给定, 不是指标/目标 ⇒ 不算硬编); 场景名从 ss_scene_switch 真源取
+# 老倪点名的两个场景任务 (范围由需求给定, 不是指标/目标 ⇒ 不算硬编); 场景名从 ss_scene_switch 唯一依据取
 SCENE_TASKS = sorted(t for t in EM.PRIORITY_TASKS if t in SSS.TASK_SCENE)
 TASK_RE = re.compile(r"(TASK-[0-9A-Za-z]+(?:-[0-9A-Za-z]+)*)")
 
@@ -102,7 +102,7 @@ def _atomic(path, obj):
 
 
 def _phases_ordered():
-    """phase 顺序 (从真源 phase_theme 的 key 排, 不硬编): 'Phase 0'..'Phase 4'"""
+    """phase 顺序 (从唯一依据 phase_theme 的 key 排, 不硬编): 'Phase 0'..'Phase 4'"""
     pm = _load(PHASE_MAP, {}) or {}
     keys = list((pm.get("phase_theme") or {}).keys())
     if not keys:
@@ -144,7 +144,7 @@ def _task_of_src(src):
     return m.group(1) if m else ""
 
 
-# ── 组合推导 (从真源现算) ──────────────────────────────────────────────────
+# ── 组合推导 (从唯一依据现算) ──────────────────────────────────────────────────
 def _fn_why(fn, rows, pmap, fn_name, prior_phases=None):
     """为什么这个元任务进本阶段组合: 从「本阶段指标 ← 物理量」推 (逐字现算, 不编)。"""
     ids, phys, stages = [], [], []
@@ -274,7 +274,7 @@ def build(scene=None):
                             ev_srcs.append(src)
                 else:
                     verdict, mode, value = "未测", "未测", None
-                    note = ("证据真源属 %s (非本场景 %s) ⇒ 本场景未采; 采集条件: %s"
+                    note = ("证据唯一依据属 %s (非本场景 %s) ⇒ 本场景未采; 采集条件: %s"
                             % (src_task, task, d.get("how") or "未给"))
                     vd = {"达标": "未测", "基线对比": "未测", "说明": note}
                     src, n_val, age_val = "", 0, None
@@ -304,7 +304,7 @@ def build(scene=None):
                 "evidence": "; ".join(os.path.relpath(s, ROOT) if os.path.isabs(s) else s for s in ev_srcs),
                 "cmd": "tools/eval_probes.py::run_all() (in-process; 唯一采集口径)",
                 "note": ("本阶段 %d 项指标中 %d 项在采集里拿到真值 (证据类 实测/标定·配置/推导); 其余未测 "
-                         "(本机无采集条件 或 证据真源属他场景)。真机动作类需 8793 授权且产线/Orin 不可达 ⇒ 未跑。"
+                         "(本机无采集条件 或 证据唯一依据属他场景)。真机动作类需 8793 授权且产线/Orin 不可达 ⇒ 未跑。"
                          % (len(rows), sum(1 for x in vrows if x["mode"] in ("实测", "标定·配置", "推导")))),
             }
 
@@ -403,10 +403,10 @@ def _comparison(data, spec_idx, spec_order, phase_order):
         "combo_delta": combo_delta,
         "vs_baseline": vs_base,
         "note": ("matrix 每行一个指标 (共 %d 条)。FW/TRAY 两列 = 该指标在其归属 phase 的采集值 "
-                 "(非归属 phase 一律 null)。采集口径 run_all() 为全局口径: 证据真源属他场景的记 null/未测 "
+                 "(非归属 phase 一律 null)。采集口径 run_all() 为全局口径: 证据唯一依据属他场景的记 null/未测 "
                  "(场景作用域见本文件 docstring)。verdict 列给出两场景各自判定。"
                  "注: 两场景的任务元任务集合同源 (ss_task_binding 两任务同 enabled_nodes 口径) ⇒ 组合/组合增量"
-                 "两场景一致; 场景差异体现在「迭代验证」的采集值 (证据真源属哪个任务) 与达标率。" % len(matrix)),
+                 "两场景一致; 场景差异体现在「迭代验证」的采集值 (证据唯一依据属哪个任务) 与达标率。" % len(matrix)),
     }
 
 
@@ -438,7 +438,7 @@ def render_md(data):
     m = data["meta"]
     A("# 场景 × Phase 0→4 元任务组合逐阶段迭代 (插拔 / 摆盘 · 基线产品 v%s)" % m["baseline"])
     A("")
-    A("生成 `%s` · 由 `%s` 现算 · **零硬编**: 指标名/目标值/归属/采集值全部取真源。"
+    A("生成 `%s` · 由 `%s` 现算 · **零硬编**: 指标名/目标值/归属/采集值全部取唯一依据。"
       % (time.strftime("%F %T", time.localtime(m["ts"])), m["generated_by"]))
     A("")
     for so in data["scenes"]:
@@ -501,7 +501,7 @@ def render_md(data):
         A("| `%s` | %s | %s | %s | %s | %s | %s |"
           % (row["id"], row["name"], row["unit"] or "", str(row["target"])[:22], fw, tr, row["verdict"]))
     A("")
-    A("> 未测 = 本机无采集条件 或 证据真源属他场景 (非实测); 样本不足 = 只报值不判定。逐条原因见 JSON `note`。")
+    A("> 未测 = 本机无采集条件 或 证据唯一依据属他场景 (非实测); 样本不足 = 只报值不判定。逐条原因见 JSON `note`。")
     A("")
     return "\n".join(L) + "\n"
 

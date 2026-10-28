@@ -15,9 +15,9 @@
   ss_diag      ← 推理延时 + relay/APP 数据龄 + GPU 利用率 + 健康度
   ss_state     ← 状态空间/流形快照 JSON (docs/manifold_view.json 等)
   ss_canvas    ← 画布节点状态 (docs/PIPELINE_STATE.json)
-  ss_calib     ← 标定真源 (zmax_robot_spec/calib.json)
+  ss_calib     ← 标定唯一依据 (zmax_robot_spec/calib.json)
   ss_test      ← 测试/自检结果 JSON (若有)
-  hw_state     ← nvidia-smi + /proc（硬件, 已有发布端; 这里兜底补一条）
+  hw_state     ← nvidia-smi + /proc（硬件, 已有发布端; 这里保障补一条）
   heartbeat    ← 存活
 
 用法: python3 tools/ss_telemetry_daemon.py            # 按当前模式跑; prod 自动退出
@@ -154,7 +154,7 @@ def src_ss_canvas():
 
 
 def src_ss_calib():
-    """标定真源: zmax_robot_spec/calib.json → 手眼/台面"""
+    """标定唯一依据: zmax_robot_spec/calib.json → 手眼/台面"""
     out = []
     for cand in ("zmax_robot_spec/calib.json", "configs/calib.json", "calib.json"):
         p = os.path.join(REPO, cand)
@@ -203,7 +203,7 @@ def src_ss_test():
 
 
 def src_hw():
-    """硬件（兜底补一条, 主发布端另有服务）"""
+    """硬件（保障补一条, 主发布端另有服务）"""
     o = sh("nvidia-smi --query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw "
            "--format=csv,noheader,nounits")
     if not (o and "," in o):

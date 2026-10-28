@@ -39,22 +39,22 @@ chk((post.get("task_binding") or {}).get("active_task") == "TASK-06-TRAY",
     "② 工程文件里任务绑定段也带对了活跃任务: task_binding.active_task = %s"
     % (post.get("task_binding") or {}).get("active_task"))
 
-# 模拟「下次打开」: 清场景真源 + 把任务改回 TASK-01-FW, 再用工程文件恢复
+# 模拟「下次打开」: 清场景唯一依据 + 把任务改回 TASK-01-FW, 再用工程文件恢复
 os.environ.pop("ZMAX_SCENE_DIR", None)
 ok_sw, why_sw, _ = ts.set_state("TASK-01-FW", "★ 活跃")
-print("  (模拟走开: 清掉场景真源 + 任务切回 TASK-01-FW → %s)" % why_sw[:60])
+print("  (模拟走开: 清掉场景唯一依据 + 任务切回 TASK-01-FW → %s)" % why_sw[:60])
 chk(ok_sw and json.load(open(BIND, encoding="utf-8"))["active_task"] == "TASK-01-FW", "③ 模拟现场已改变 (TASK-01-FW 活跃, 无 ZMAX_SCENE_DIR)")
 rr = ps.restore(PROJ)
 print("  restore:", json.dumps(rr.get("applied"), ensure_ascii=False))
 chk(rr.get("ok") and os.environ.get("ZMAX_SCENE_DIR", "").rstrip("/").endswith("SS-TRAY-PLACE"),
-    "④ 恢复场景真源: ZMAX_SCENE_DIR → %s" % os.path.basename(os.environ.get("ZMAX_SCENE_DIR") or ""))
+    "④ 恢复场景唯一依据: ZMAX_SCENE_DIR → %s" % os.path.basename(os.environ.get("ZMAX_SCENE_DIR") or ""))
 chk(json.load(open(BIND, encoding="utf-8"))["active_task"] == "TASK-06-TRAY", "④ 恢复活跃任务: 存档里的 TASK-06-TRAY")
 
 src = {p: open(ROOT + p, encoding="utf-8").read() for p in
        ("/tools/gui/simulink_module.py", "/tools/gui/veh6_config_page.py", "/tools/gui/project_file.py")}
 chk(all("proj_state" in v for v in src.values()), "⑤ 三处自动钩子都接了 (数据源切换 / 活跃属性下拉 / 打开工程文件)")
 
-for p, b in snap.items():                       # 收尾: 真源字节还原 (保持老倪现在的配置)
+for p, b in snap.items():                       # 收尾: 唯一依据字节还原 (保持老倪现在的配置)
     if b is None:
         if os.path.exists(p):
             os.remove(p)

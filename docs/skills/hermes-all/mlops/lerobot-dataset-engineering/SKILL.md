@@ -3,7 +3,7 @@ name: lerobot-dataset-engineering
 description: LeRobot 数据集构建坑 — timestamp相对/索引重编号/视频对齐/hub覆盖。训练数据出错时用。
 ---
 
-# LeRobot 数据集构建 (踩坑全记录)
+# LeRobot 数据集构建 (遇到问题全记录)
 
 > 参考: `references/zmax-orin6d-debug-20260802.md` — Z-MAX 真机数据构建完整错误链实录
 > (hub覆盖→cast失败→IndexError 1388→Invalid key 22→str/str→并发锁→IDLE过滤)
@@ -62,7 +62,7 @@ pa.field("episode_index", pa.int64())  # 所有索引列 int64
 `ckpts = sorted(glob.glob(...))` 返回 str 列表, 直接 `ckpts[-1] / "pretrained_model"`
 报 `unsupported operand str/str` → **训练成功但后续环节静默失败**。必须 `Path(c)` 转换。
 
-### 10. gen_metaworld_data.py 生成器标准列 (2026-08-06, peg 场景踩坑)
+### 10. gen_metaworld_data.py 生成器标准列 (2026-08-06, peg 场景遇到问题)
 数据生成器必须写全 LeRobot 标准文件, 缺一个就加载失败:
 - **tasks.parquet** (`meta/tasks.parquet`): `{"task_index": [0], "task": [task_name]}` — 缺失报 DatasetGenerationError
 - **episodes 列** (补在 eps_df 上): `dataset_from_index`/`dataset_to_index` (全局帧区间)、
@@ -201,7 +201,7 @@ env = mt.train_classes["peg-insert-side-v3"](render_mode="rgb_array", camera_nam
 **坑1 — 系统 python3 无 pandas/pyarrow**: GUI 用 `/usr/bin/python3` (有 PyQt5/numpy/PIL, 无 pandas/pyarrow) — 查看器读 parquet 内嵌图像 (`observation.image` = dict `{"bytes": PNG, "path": str}`) 会 `No module named 'pandas'`。**修: 加 npz 路径** (numpy 直读 `data/metaworld_act/train.npz` 的 `observations` (N,3,128,128) float32): `rgb=(arr.transpose(1,2,0)*255).astype(uint8)` → QImage; 悬停 tooltip 带 task/state/action。parquet 路径保留给有 pandas 的环境, npz 优先。
 **坑2 — 查看器用 exec_ 模态 (WSLg 弹窗零容忍)**: `viewer.exec_()` 在 WSLg 下窗口不显示/假死 → 老倪\"没看到图片\"。改 `viewer.show()` 非模态 (记忆铁律: exec_ 模态假死非模态也禁小窗口不许弹)。
 **坑3 — _is_cached 只查 HF 缓存 → 本地数据\"未下载\"**: 本地实际数据在项目 `data/metaworld_mt50/data/*.parquet` (不是 `~/.cache/huggingface/hub`) → 缓存列/信息弹窗误报\"未下载\"。修: metaworld_mt50 特判查项目目录; 信息弹窗加\"📁 本地实际数据\"块 (实际 episodes/帧数/任务数, pandas 读 parquet 数行), 与 HF 云端声明 (2500/204806/50 任务) 明确区分 — **老倪要看到\"实际\" vs \"声明\"的差异**。DatasetViewer 加 `local_root`/`local_npz` 参数 (repo_id==metaworld_mt50 时 studio 传入)。
-**通用认知**: GUI 数据集管理面板的\"任务数\"列是写死的 HF 条目声明 (DATASETS 里 tasks: 50), 不是本地实际 — 显示 `50 · 本地1` (加 local_tasks 字段)。
+**通用认知**: GUI 数据集管理面板的\"任务数\"列是固定不变的 HF 条目声明 (DATASETS 里 tasks: 50), 不是本地实际 — 显示 `50 · 本地1` (加 local_tasks 字段)。
 
 **坑4 — npz 翻帧慢 1.5s/帧 = NpzFile 数组访问 lazy 解压 (2026-08-07 老倪\"点击下一帧,为什么这么慢\")**: `np.load()` 压缩 npz 返回 NpzFile, **每次 `d[\"observations\"]` 都从磁盘重新解压该数组** (165MB 压缩 npz ≈ 943MB 原始) → 每帧 1.5s。缓存 NpzFile 不够。**修: 首次 load 时把数组提取到内存 ndarray 一次**:
 ```python
@@ -229,7 +229,7 @@ if \"peg\" in (self.local_npz or \"\"):
 ```
 **教训: 数据集来源不同 (自采 corner2 vs 官方下载) 方向基准不同 — 旋转/方向处理先确认数据源, 别假设全局一致。**
 
-**坑8 — 数据集管理重复行删减原则 (2026-08-07 老倪连删)**: ①同一批数据两种格式 (peg_v2 npz 源 / peg_lerobot lerobot 训练格式) 显示两行 → 老倪\"这俩有啥区别\" → **只留训练用的那行** (peg_lerobot), npz 中间产物不显示 ②本地 metaworld_mt50 行与 HF 云端条目重复 → 删本地行留 HF ③4 个 orin 子目录 (同一台 Orin 分阶段) → 老倪\"就一个orin,不都一样么\" → **合并一行** ④数据集管理\"任务数\"列误填帧数 (4800/696) → 本地单任务数据任务数列填 \"—\"。**原则: 一数据源/一任务只显示一行, 中间产物/旧版本不显示; 名称两行 = 中文名(上)+官方任务名(下)** (如 `📁 插销插拔\\npeg-insert-side-v3`)。
+**坑8 — 数据集管理重复行删减原则 (2026-08-07 老倪连删)**: ①同一批数据两种格式 (peg_v2 npz 源 / peg_lerobot lerobot 训练格式) 显示两行 → 老倪\"这俩有什么区别\" → **只留训练用的那行** (peg_lerobot), npz 中间产物不显示 ②本地 metaworld_mt50 行与 HF 云端条目重复 → 删本地行留 HF ③4 个 orin 子目录 (同一台 Orin 分阶段) → 老倪\"就一个orin,不都一样么\" → **合并一行** ④数据集管理\"任务数\"列误填帧数 (4800/696) → 本地单任务数据任务数列填 \"—\"。**原则: 一数据源/一任务只显示一行, 中间产物/旧版本不显示; 名称两行 = 中文名(上)+官方任务名(下)** (如 `📁 插销插拔\\npeg-insert-side-v3`)。
 
 ### 26. --tactile/--rel-vec 生成路径: 丢轨迹后三处元数据不重编号 (2026-08-09 触觉49D数据 Invalid key: 44 out of 44)
 **症状**: `gen_metaworld_data.py --eps 50 --tactile` 生成"4500帧/30轨迹"后, VLA-Touch/AWE 训练
@@ -237,7 +237,7 @@ if \"peg\" in (self.local_npz or \"\"):
 **根因** (三处错位叠加, 单视频合并 + 丢失败轨迹路径特有):
 1. **data parquet 的 episode_index 没随丢轨迹重编号**: 50 条尝试 → 44 条成功, 但 parquet 的
    `episode_index` 仍到 49 (有跳号), 而 episodes meta 只列 0-43 → reader 位置索引错位。
-2. **episodes meta 的 `dataset_from_index` 全为 0-179** (生成器写死 `episode_index*steps` 未按
+2. **episodes meta 的 `dataset_from_index` 全为 0-179** (生成器预先固定 `episode_index*steps` 未按
    实际成功轨迹累加) → 每 ep 帧区间全指同一段。
 3. **info.json `total_frames` 用 50×180=9000, 实际 parquet 7920 行** (44×180) → `len(ds)` 按 meta
    9000, hf 表 7920, 采样索引 ≥7920 越界 (与 #17 同族但根因是 meta 没同步)。
@@ -345,7 +345,7 @@ datasets 库按 parquet 内容 hash 缓存 schema, 数据重建后旧缓存会�
 ### 23. 截断数据 (--stop-after-grab) 三处元数据必须同步 (2026-08-08 连踩 4 次 IndexError)
 **症状**: 生成器 "完成" 但训练 `Invalid key: 1800 out of bounds for size 1015`。
 **根因**: 截断后实际帧数 < 300, 但三处元数据仍是旧值 → reader 按 300 定位超界:
-1. **meta/episodes/.../file-000.parquet** 的 `length` 列 — 生成器写死 `args.steps`; 修复:
+1. **meta/episodes/.../file-000.parquet** 的 `length` 列 — 生成器预先固定 `args.steps`; 修复:
    `actual_len = len([f for f in all_frames if f["episode_index"]==ep])` 再 append。
 2. **meta/info.json** 的 `total_frames`/`total_episodes`/`splits` (train: 0:N) —
    生成器不更新 → 手动 `pd.read_parquet` 数实际行数改写。
@@ -382,10 +382,10 @@ datasets 库按 parquet 内容 hash 缓存 schema, 数据重建后旧缓存会�
 1. **分段数据**: 只保留"接近+抓取"段 (官方专家 + `--stop-after-grab` 抓起后 30 帧即停),
    方向一致 → 模型学到明确方向。
 2. **相对向量 (目标条件化)**: state 加 6D = [peg-hand, hole-peg] (45D), 模型每步知道目标
-   相对位置 — 这是 MLP 成功的关键, 喂给视觉大模型补足图像 3D 定位不足。
+   相对位置 — 这是 MLP 成功的关键, 提供给视觉大模型补足图像 3D 定位不足。
 3. **夹爪辅助 grip_assist**: 评估/推理时接近 <8cm 规则闭合夹爪 (位置 RL 学, 夹爪规则触发)。
    夹爪是离散决策 (只有 -1/0.6 两档), 回归学不会 → 真实机器人就是"位置伺服+力控夹爪"混合。
-**教训**: 纯 RL (PPO) 学稀疏抓取也失败 (奖励 -9.9 卡住, warm-start 后仍 0) — 稀疏离散奖励
+**教训**: 纯 RL (PPO) 学稀疏抓取也失败 (奖励 -9.9 阻塞, warm-start 后仍 0) — 稀疏离散奖励
 是 RL 的死穴, 规则夹爪 + 连续位置 RL 才是出路。视频方向: 用户确认原版不旋转; 若用户说
 "反了" → `ffmpeg -vf "transpose=2,transpose=2"` 整体转 180 (画面+框一起)。
 

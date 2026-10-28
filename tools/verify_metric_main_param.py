@@ -11,7 +11,7 @@
  ③ **零回归**: 各向同性 (G=I) ⇒ Γ ≡ 0、测地线 = 欧氏直线、a = F/M (与旧标量语义逐字一致)
  ④ 解析对照: 2D 度量 g = diag(1, h(x¹)) 的 Γ²₁₂ = h'/(2h) (数值 vs 解析)
  ⑤ 真曲率: 常度量 ⇒ ‖R‖=0; 弯曲度量 ⇒ ‖R‖>0 (够区分)
- ⑥ 配置真源: config/calib/zmax_manifold.json 的 metric 段可读、可写、写后回读一致 (且非正定被拒写)
+ ⑥ 配置唯一依据: config/calib/zmax_manifold.json 的 metric 段可读、可写、写后回读一致 (且非正定被拒写)
  ⑦ 真跑节点: 「标定诊断测量 · 主参数 M」节点运行会报出度量口径 (dim/mode/独立分量/正定性/测地线偏离)
 
 用法: QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/verify_metric_main_param.py
@@ -107,7 +107,7 @@ ck("常度量 ‖R‖ = 0 (平直)", float(c_flat["‖R‖_F"]) < 1e-6, "%.2e" %
 c_curv = fc.curvature_report(np.array([x1, 0.0]))
 ck("弯曲度量 ‖R‖ > 0 (真曲率)", float(c_curv["‖R‖_F"]) > 1e-3, "‖R‖=%.4g" % float(c_curv["‖R‖_F"]))
 
-print("⑥ 配置真源 (config/calib/zmax_manifold.json 的 metric 段)")
+print("⑥ 配置唯一依据 (config/calib/zmax_manifold.json 的 metric 段)")
 import tools.zmax_params as ZP                                                          # noqa: E402
 mp = ZP.manifold_metric()
 ck("metric 段可读 (dim/mode/独立分量)", mp["dim"] >= 3 and mp["mode"] in ("isotropic", "diag", "full"),
@@ -117,7 +117,7 @@ ck("同值回写可回读", bool(w.get("ok")), str({k: w.get("metric", {}).get(k
 cnt_p = os.path.join(ROOT, "config/calib/zmax_manifold.json")
 _before = json.load(open(cnt_p, encoding="utf-8"))
 bad = ZP.write_manifold_metric(mode="full", dim=3, comps=[1.0, 0.0, 0.0, -5.0, 0.0, 0.0])   # 非正定组合
-ck("非正定形状被拒写 (不污染真源)", not bad.get("ok"),
+ck("非正定形状被拒写 (不污染唯一依据)", not bad.get("ok"),
    str(bad.get("why") or bad.get("metric")))
 json.dump(_before, open(cnt_p, "w", encoding="utf-8"), ensure_ascii=False, indent=1)      # 还原
 

@@ -12,7 +12,7 @@
 #   · nginx 用宝塔二进制 (/www/server/nginx/sbin/nginx), 不是 systemd
 #   · 站点配置: /www/server/panel/vhost/nginx/datadrive.world.conf
 #   · 改完必须 nginx -t 验证 + reload, 否则整站挂掉
-#   · 本机(4060) IP 会自动取当前公网出口, 防写死过期
+#   · 本机(4060) IP 会自动取当前公网出口, 防预先固定过期
 set -euo pipefail
 
 ECS_HOST="${ECS_HOST:-47.93.88.143}"

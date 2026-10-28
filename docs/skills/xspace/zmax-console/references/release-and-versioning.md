@@ -1,13 +1,13 @@
 # Z-MAX Console — 发版 / 版本号 / CI 取证 (2026-09-22 实证)
 
 老倪常说的「小版本迭代, 发布 windows 和 mac 版本」= **改齐版本号 → 提交 → 打 tag → 推 tag**。
-真源: `VERSION.md`(版本管理规范) + `.github/workflows/build-win-exe.yml`(双平台构建)。
+唯一依据: `VERSION.md`(版本管理规范) + `.github/workflows/build-win-exe.yml`(双平台构建)。
 
 ## ⚠️ 最容易踩的坑: 只提交、不打 tag ⇒ CI 永远不构建
 
 实测(v5.11.4 发版时发现): `release v5.11.2` / `v5.11.3` 两个提交都在仓库里,
 但 **`git tag -l 'v5.11*'` 只有 v5.11.1** —— 两次迭代从未打 tag, 所以
-「Build Desktop (Windows .exe + macOS .app)」**一次都没跑过**, 用户以为发了版其实没有包。
+「Build Desktop (Windows .exe + macOS .app)」**一次都没跑过**, 用户以为发了版实际没有包。
 
 判据(发版前先查):
 ```bash
@@ -53,7 +53,7 @@ for r in api("/repos/MikeBMW/lerobot-smolvla-lew/actions/runs?per_page=5")["work
 - 一次 tag 会同时触发: **Desktop(Win .exe + macOS .app)** · Simulink 模型验证 CI · Docker 镜像构建;
   `Create Release and Publish to PyPI` 是上游 HF 专属 job, `skipped` 属正常, 不是失败。
 
-## 打包版行为差异要记住 (历史踩坑)
+## 打包版行为差异要记住 (历史遇到问题)
 
 - 打包版**只有内置素材**, 拉外部演示视频失败不该卡整次发版(`::warning::` + 占位放行);
   mac job 曾因 `ls | head` 遇 `pipefail` 报 Broken pipe 而全挂 → 那条要 `|| true`。

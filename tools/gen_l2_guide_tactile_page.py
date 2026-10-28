@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """🧪 gen_l2_guide_tactile_page.py — 生成并部署「L2 3D视觉引导 / 触觉反馈闭环」功能+用例页
 
-单一真源 (不手抄数字):
+单一唯一依据 (不手抄数字):
   · 功能定义   ← src/lerobot/verification/capability_levels.py  (L2-A12 / L2-A13)
   · 测试用例   ← src/lerobot/verification/verification_layer.py (FEATURES + FEATURE_META, F-B12 / F-B13)
   · 分层功能树 ← src/lerobot/verification/node_func_tree.py     (FN2d06 / FNtac06)
@@ -150,7 +150,7 @@ def render_html(d: dict, res: dict) -> str:
     html = HEAD.replace("__TITLE__", "L2 3D 视觉引导 · 触觉反馈闭环 — 功能与测试用例")
     html += f"""
 <h1>🔧 L2 · 3D 视觉引导 &amp; 触觉反馈闭环<span class="meta"> — 功能定义 + 测试用例 (实测)</span></h1>
-<p class="meta">生成 {d['ts']} · 单一真源: capability_levels.py / verification_layer.py / node_func_tree.py
+<p class="meta">生成 {d['ts']} · 单一唯一依据: capability_levels.py / verification_layer.py / node_func_tree.py
 · 实测引擎: state_space_sim_real.py (metaworld 真物理, seed104, 400 步) · 页面 <code>{SITE}/{FNAME_HTML}</code></p>
 
 <div class="tools">
@@ -167,7 +167,7 @@ def render_html(d: dict, res: dict) -> str:
 </table>
 
 <h2>二、测试用例与**本次实测**结果</h2>
-<table><tr><th>用例</th><th>断言内容</th><th>域</th><th>方式</th><th>结果</th><th>真源方法</th></tr>{''.join(rows)}</table>
+<table><tr><th>用例</th><th>断言内容</th><th>域</th><th>方式</th><th>结果</th><th>唯一依据方法</th></tr>{''.join(rows)}</table>
 {'<h3>实测明细 (现场真跑)</h3><table><tr><th>用例</th><th>实测明细</th><th>耗时</th></tr>' + ''.join(detail) + '</table>' if detail else ''}
 
 <h2>三、关键实测数字 (真物理引擎, 非估计)</h2>
@@ -218,7 +218,7 @@ def render_md(d: dict, res: dict) -> str:
     L = [f"# L2 · 3D 视觉引导 & 触觉反馈闭环 — 功能定义 + 测试用例 (实测)",
          "",
          f"- 生成时间: {d['ts']}",
-         f"- 单一真源: `capability_levels.py` (功能) · `verification_layer.py` (用例) · `node_func_tree.py` (功能树)",
+         f"- 单一唯一依据: `capability_levels.py` (功能) · `verification_layer.py` (用例) · `node_func_tree.py` (功能树)",
          f"- 实测引擎: `state_space_sim_real.py` (metaworld 真物理, seed104, 400 步)",
          f"- 在线页面: {SITE}/{FNAME_HTML}",
          "", "## 一、功能定义 (L2 基础辅助功能)", "",
@@ -226,7 +226,7 @@ def render_md(d: dict, res: dict) -> str:
          f"| {f12['fid']} | {f12['name']} | {f12['desc']} | {' / '.join(f12.get('groups', []))} |",
          f"| {f13['fid']} | {f13['name']} | {f13['desc']} | {' / '.join(f13.get('groups', []))} |",
          "", "## 二、测试用例与实测结果", "",
-         "| 用例 | 断言内容 | 域 | 方式 | 结果 | 真源方法 |", "|---|---|---|---|---|---|"]
+         "| 用例 | 断言内容 | 域 | 方式 | 结果 | 唯一依据方法 |", "|---|---|---|---|---|---|"]
     for fid in ("F-B12", "F-B13"):
         tst = d["tests"][fid]
         r = res.get(fid)
@@ -301,7 +301,7 @@ def main() -> int:
     ap.add_argument("--html-only", action="store_true", help="只生成, 不部署")
     a = ap.parse_args()
     d = collect()
-    print(f"真源: 功能 {len(d['features'])} 条 · 用例 {len(d['tests'])} 条 · 功能树 {len(d['funcs'])} 条")
+    print(f"唯一依据: 功能 {len(d['features'])} 条 · 用例 {len(d['tests'])} 条 · 功能树 {len(d['funcs'])} 条")
     print("现场真跑两条用例:")
     res = run_tests(not a.no_run)
     d["measured"] = measured()

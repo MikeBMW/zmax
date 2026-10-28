@@ -3,7 +3,7 @@
 """任务 × 状态空间工程 —— 绑定层 (老倪: 「这些任务，都用一个状态空间这一个工程」)
 
 一个工程, 多任务: **同一个状态空间工程** 承载全部任务, 任务只是工程里的一份"配置清单"。
-    · 工程   = 画布真源 src/lerobot/engineering/flows/state_space_obs.json (89 节点 / 184 连线)
+    · 工程   = 画布唯一依据 src/lerobot/engineering/flows/state_space_obs.json (89 节点 / 184 连线)
     · 任务   = 工程内的一份配置: 适用配方段 + 参数覆盖 + 档位 + 触发/循环 + 验收判据
     · 绑定   = 把任务清单挂到**这一个**工程上, 记下画布指纹(md5+节点/连线数); 画布变了 ⇒ 指纹不符, 提示重绑
     · 切换   = 只改 active_task, **不换工程文件**; 导出的 .zmaxproj 一个文件带全部任务
@@ -15,8 +15,8 @@
   ③ 六档位由段机械推出: 含段 4/5 ⇒ L3全链/流形yaw/L4 INTACT/L4→DiT 开; 含段 1/3 ⇒ L2 兼容开;
      不含段 4/5 (纯搬运) ⇒ ⚡引擎快演 开
 
-真源(只读): config/tasks/tasks.json · 画布真源 · config/calib/zmax_calib.json
-输出: config/ss_task_binding.json (绑定真源, 生成物)
+唯一依据(只读): config/tasks/tasks.json · 画布唯一依据 · config/calib/zmax_calib.json
+输出: config/ss_task_binding.json (绑定唯一依据, 生成物)
 用法:
     python3 tools/ss_task_bind.py [--check] [--json] [--task TASK-01-FW] [--activate TASK-01-FW]
 """
@@ -68,7 +68,7 @@ def _sha16(p):
 
 
 def canvas():
-    """读画布真源 (只读)。返回 (data, errors, path)"""
+    """读画布唯一依据 (只读)。返回 (data, errors, path)"""
     from lerobot.engineering import flows
     d, probs = flows.load_canvas()
     return d, list(probs or []), flows.canvas_path()
@@ -186,7 +186,7 @@ def build(activate=None):
             "run_cfg": derive_run_cfg(t["applies_segments"], derive_ss_mode(t)),
             "ss_mode": derive_ss_mode(t),          # 功能模式: insert | tray (由任务工艺推出)
         })
-    # 活跃任务的持久化真源: ① 命令行 --activate ② 已有绑定文件里的 active_task ③ tasks.json ④ 第一条
+    # 活跃任务的持久化唯一依据: ① 命令行 --activate ② 已有绑定文件里的 active_task ③ tasks.json ④ 第一条
     persisted = (_j(OUT, {}) or {}).get("active_task")
     default_active = activate or persisted or tk.get("active_task") or task_ids[0]
     if default_active not in task_ids:
@@ -299,7 +299,7 @@ def main():
         else:
             same = False
         print(f"  {'✅' if same else '❌'} config/ss_task_binding.json "
-              f"({'内容一致 (时间戳除外)' if same else '不一致 — 真源变了, 需重绑定'})")
+              f"({'内容一致 (时间戳除外)' if same else '不一致 — 唯一依据变了, 需重绑定'})")
         return 0 if same else 2
     if a.json:
         print(txt); return 0
@@ -313,7 +313,7 @@ def main():
             pass
         print(f"✅ 已激活 {doc['active_task']} (写盘 config/ss_task_binding.json)")
         # 🥽 2026-10-12 老倪: 「切换 任务1 FW-对应插拔场景; 任务6 TRAY 对应摆盘场景; 任务7 AOI 对应 AR场景」
-        #   ⇒ 活跃配置一变, **数据源/场景跟着变**(映射单一真源 = tools/ss_scene_switch.py)。
+        #   ⇒ 活跃配置一变, **数据源/场景跟着变**(映射单一唯一依据 = tools/ss_scene_switch.py)。
         #   切不动只提示, 不拦激活(激活本身已成功), 免得把配置中心卡死。
         try:
             import ss_scene_switch as _ssw

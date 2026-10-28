@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""把一个模块在所有扫描图上跑一遍, 记录 (path, md5, n, v26b, err) → json。
+"""把一个模块在所有扫描图上执行一遍, 记录 (path, md5, n, v26b, err) → json。
 用法: python ab_all.py <mod> <out.json>"""
 import sys, os, glob, json, hashlib
 import numpy as np, cv2

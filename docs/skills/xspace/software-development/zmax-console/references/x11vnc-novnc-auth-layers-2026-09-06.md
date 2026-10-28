@@ -25,7 +25,7 @@ command not found (被 `2>/dev/null` 掩盖) → f 是空文件 → `cmp` 空 vs
 
 ```bash
 python3 scripts/rfb_auth_test.py zmax2026     # 期望 PASS (exit 0)
-python3 scripts/rfb_auth_test.py wrongpass    # 负对照, 期望 FAIL (exit 2) — 证明测试不是啥都放行
+python3 scripts/rfb_auth_test.py wrongpass    # 负对照, 期望 FAIL (exit 2) — 证明测试不是什么都放行
 ```
 (脚本: RFB 3.8 握手 + VNC Auth DES 挑战应答, 依赖 pycryptodome; 支持
 `<pw> [host] [port]`, 默认 127.0.0.1:5900 — 隧道入口在 ECS 时连 ECS 侧端口同法验证全链路。)

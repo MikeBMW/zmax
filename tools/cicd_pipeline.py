@@ -11,7 +11,7 @@ Z-MAX ACT 三阶段渐进式训练管线 (老倪策略 2026-08-02)
   python3 tools/cicd_pipeline.py run    --steps1 300 --steps3 300   # 全流程自动 1→2→3
   python3 tools/cicd_pipeline.py stage 1 --steps 300                # 只跑单阶段
   python3 tools/cicd_pipeline.py status                             # 查看状态
-  python3 tools/cicd_pipeline.py test --steps1 20 --steps3 20       # 最少迭代跑通链路
+  python3 tools/cicd_pipeline.py test --steps1 20 --steps3 20       # 最少迭代验证通过链路
 
 状态文件: docs/PIPELINE_STATE.json — GUI 三阶段面板读取显示
 """
@@ -322,7 +322,7 @@ if __name__ == "__main__":
     p_stage.add_argument("stage", type=int, choices=[1, 2, 3])
     p_stage.add_argument("--steps", type=int, default=300)
     sub.add_parser("status")
-    p_test = sub.add_parser("test", help="最少迭代跑通链路")
+    p_test = sub.add_parser("test", help="最少迭代验证通过链路")
     p_test.add_argument("--steps1", type=int, default=20)
     p_test.add_argument("--steps3", type=int, default=20)
     args = ap.parse_args()

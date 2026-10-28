@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """gen_contract_pack.py — 出**供应商要求 SOR (摆盘/插拔 各一份)** + **合作协议** (机器人数据平台提供/销售 ·
-解决方案采购)。同一真源渲染 md + docx, 内容块结构唯一 (md 不是第二份真相)。
+解决方案采购)。同一唯一依据渲染 md + docx, 内容块结构唯一 (md 不是第二份真相)。
 
-真源: outputs/config_sheets/配置单_<task>_latest.json · reports/feature_io_test.json ·
+唯一依据: outputs/config_sheets/配置单_<task>_latest.json · reports/feature_io_test.json ·
       docs/deliverables/两场景验收报告_<ver>.json · engineering_db(capability_dbc/product_features) ·
       config/topics/scene_tags.json · src/lerobot/dataspace/topics.py
 

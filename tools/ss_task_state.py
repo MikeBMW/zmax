@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""ss_task_state.py — 🚦 任务配置状态真源 (三态: ★ 活跃 / ○ 未激活 / — 无配置)  2026-10-11
+"""ss_task_state.py — 🚦 任务配置状态唯一依据 (三态: ★ 活跃 / ○ 未激活 / — 无配置)  2026-10-11
 
 老倪原话: 「在配置中心, 在工艺/工单/任务的配置界面, 有个 活跃属性, 当前 TASK-01-FW 的配置正在显示 活跃,
           其它的任务状态, 都要标记出来; 例如 TASK-06, 你已经完成了任务配置切换后, 马上就可以工作, 对不?
           TASK-06-TRAY 的活跃状态, 应该是 未激活; 其它的任务, 应该是无配置, 因为还没开始」
 
-口径 (**全部从真源/证据推导, 不手填任务清单**):
-  ★ 活跃   : 该任务 == config/ss_task_binding.json 的 active_task (绑定真源, 唯一)
+口径 (**全部从唯一依据/证据推导, 不手填任务清单**):
+  ★ 活跃   : 该任务 == config/ss_task_binding.json 的 active_task (绑定唯一依据, 唯一)
   ○ 未激活 : 该任务**配置切换过 或 跑过验证** ⇒ 配置已就绪, 切过去就能干活
              证据 = ① 激活台账 config/task_state_ledger.json 有记录
                     ② 该任务的运行报告 (docs/data_snapshots/*/任务运行报告_<TASK>*.json 等)
@@ -55,7 +55,7 @@ def _j(p, d=None):
 
 
 def tasks():
-    """任务清单 (真源 config/ss_task_binding.json.tasks)。"""
+    """任务清单 (唯一依据 config/ss_task_binding.json.tasks)。"""
     d = _j(BIND, {}) or {}
     return [t for t in (d.get("tasks") or []) if isinstance(t, dict) and t.get("task_id")], d.get("active_task")
 
@@ -83,7 +83,7 @@ def manual():
 
 
 def set_state(tid, state, by="配置中心 UI"):
-    """🆕 2026-10-11 老倪: 配置中心活跃属性**用户自选** (下拉) → 落到真源/台账, 不装样子。
+    """🆕 2026-10-11 老倪: 配置中心活跃属性**用户自选** (下拉) → 落到唯一依据/台账, 不装样子。
 
     ★ 活跃   : 真激活 —— 走 tools/ss_task_bind.py --activate <tid> (写 config/ss_task_binding.json + 台账), 回读校验
     ○ 未激活 : 被手标的「配置就绪但不激活」→ 记 manual (当前活跃任务不能标未激活 ⇒ 拒绝并说原因)
@@ -102,9 +102,9 @@ def set_state(tid, state, by="配置中心 UI"):
         _t2, act2 = tasks()
         ok = r.returncode == 0 and act2 == tid
         if ok:
-            m = manual(); m.pop(tid, None)                 # 活跃由绑定真源说了算 ⇒ 清掉手标
+            m = manual(); m.pop(tid, None)                 # 活跃由绑定唯一依据说了算 ⇒ 清掉手标
             _write_manual(m)
-        why = ("已真激活 %s (绑定真源 active_task=%s)" % (tid, act2)) if ok else \
+        why = ("已真激活 %s (绑定唯一依据 active_task=%s)" % (tid, act2)) if ok else \
               ("激活失败: %s" % ((r.stderr or r.stdout or "")[-200:]))
         return ok, why, {"active_task": act2}
     if st == STATE_INACTIVE and tid == act:
@@ -138,13 +138,13 @@ def _write_manual(m):
 def state_of(tid, active=None):
     """→ (state, why, evidence[])
 
-    优先级: ① 绑定真源 active_task ⇒ ★ 活跃 (唯一) ② 用户手选 (manual) ③ 证据推导 ④ 无配置
+    优先级: ① 绑定唯一依据 active_task ⇒ ★ 活跃 (唯一) ② 用户手选 (manual) ③ 证据推导 ④ 无配置
     """
     if active is None:
         _t, active = tasks()
     ev = evidence(tid)
     if tid == active:
-        return STATE_ACTIVE, "绑定真源 active_task = %s" % active, ev
+        return STATE_ACTIVE, "绑定唯一依据 active_task = %s" % active, ev
     mn = (manual().get(tid) or {}).get("state")
     if mn in (STATE_INACTIVE, STATE_NONE):
         why = "用户在配置中心手选 %s" % mn
@@ -189,7 +189,7 @@ def build(write=True):
                      "evidence": ev[:4], "n_evidence": len(ev),
                      "recipe_type": t.get("recipe_type", ""), "scene_ref": t.get("scene_ref", "")})
     n = {k: sum(1 for r in rows if r["state"] == k) for k in (STATE_ACTIVE, STATE_INACTIVE, STATE_NONE)}
-    doc = {"_meta": {"note": "任务配置状态 (推导物: 活跃=绑定真源; 未激活=有激活台账/运行证据; 无配置=还没开始)",
+    doc = {"_meta": {"note": "任务配置状态 (推导物: 活跃=绑定唯一依据; 未激活=有激活台账/运行证据; 无配置=还没开始)",
                      "built": time.strftime("%Y-%m-%d %H:%M:%S"), "source": "tools/ss_task_state.py build"},
            "active_task": act, "counts": {"活跃": n[STATE_ACTIVE], "未激活": n[STATE_INACTIVE], "无配置": n[STATE_NONE]},
  "manual": manual(),

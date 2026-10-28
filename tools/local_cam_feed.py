@@ -3,7 +3,7 @@
 
 背景: 产线 RealSense 未出帧时 (Orin 相机节点未跑), L2 YOLO 节点无输入图 → 面板空。
      本进程把本机 USB 相机 (video0) 的最新帧原子落盘为 `cam_local.png` + `cam_local.json`,
-     由 ss_yolo_on_real.py 作为**明确标注的兜底源** (source_kind=bench_cam) 读取。
+     由 ss_yolo_on_real.py 作为**明确标注的保障源** (source_kind=bench_cam) 读取。
 
 诚实纪律 (老倪: 面板禁假值 / 画面自身要标状态):
   · 落盘 JSON 写明 source/ts/res/mean/std, 供面板显示"来源 + 帧龄";
@@ -38,7 +38,7 @@ def main() -> int:
     os.makedirs(OUT, exist_ok=True)
     cap = cv2.VideoCapture(a.index, cv2.CAP_V4L2)
     if not cap.isOpened():
-        print(f"❌ 打不开相机 video{a.index}", flush=True)
+        print(f"❌ 无法打开相机 video{a.index}", flush=True)
         return 2
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, a.w)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, a.h)

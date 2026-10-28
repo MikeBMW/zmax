@@ -55,7 +55,7 @@ grep -oE 'QFont\("[^"]*", [0-9]+[^)]*\)' simulink_module.py | sort | uniq -c
    系统 python3 有 PIL 不算数（子进程不用它）。报错 `No module named 'PIL'`。
 2. **中文字体** — 脚本原硬编码 `wqy-microhei.ttc`，但 U 盘 live 上没有（只有 NotoSansCJK）。
    已改为**候选列表自动探测**（`next(f for f in CANDIDATES if os.path.isfile(f))`），
-   兜底 `NotoSansCJK-Regular.ttc`。`ImageFont.load_default()` 不支持中文会渲染成方块。
+   保障 `NotoSansCJK-Regular.ttc`。`ImageFont.load_default()` 不支持中文会渲染成方块。
 3. **ffmpeg** — `sudo apt-get install -y ffmpeg`，合成 mp4 必需，报错在最后一步才暴露。
 
 ### 上传链路 (sshpass + scp → ECS)

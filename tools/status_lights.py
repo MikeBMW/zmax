@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""🚦 控制台右上角三色状态灯 —— 真源与判据
+"""🚦 控制台右上角三色状态灯 —— 唯一依据与判据
 
 2026-10-23 老倪定口径 (覆盖 10-15 的旧口径):
 「如果连上了 550C, 右上角的绿色指示灯应该亮; 如果没连上, 红灯应该亮;
   如果本地的 GPU 在训练, 黄色指示灯应该亮」
 
   绿 实心常亮 = 已连上 550C (Intel 端侧 Nodka-PTL-Demo)
-      真源 = Intel 边缘机 GET /health (本机不在产线网时走隧道 127.0.0.1:18800,
+      唯一依据 = Intel 边缘机 GET /health (本机不在产线网时走隧道 127.0.0.1:18800,
       zmax-orin-intel-fwd.service; 产线网直连 192.168.23.70:8800 作候选)。
       取到 200 + JSON ⇒ 亮; 灯面写设备名/温度/NPU/推理是否在跑。绝不因为"隧道在听"就冒充连上。
   红 实心常亮 = **没连上 550C** (绿/红互斥, 任一时刻恰好一个亮)
@@ -43,7 +43,7 @@ AUTH_SRC = os.path.expanduser(os.environ.get("ZMAX_CTL_AUTH", "~/zmax/zmax_data/
 GPU_RING = os.path.join(ROOT, "zmax_data", "status_lights_gpu.jsonl")
 INFER_HEALTH = "http://127.0.0.1:8790/health"
 
-# 🖥 550C = Intel 端侧 (Nodka-PTL-Demo): 真源 /health。隧道优先(不在产线网时也能看), 产线网直连作候选。
+# 🖥 550C = Intel 端侧 (Nodka-PTL-Demo): 唯一依据 /health。隧道优先(不在产线网时也能看), 产线网直连作候选。
 #   注意: 隧道端口在听 ≠ 550C 连上 —— 必须真拿到 /health 的 JSON 才算连上。
 EDGE_HEALTH_URLS = [u for u in (os.environ.get("ZMAX_EDGE_URL"),
                                 "http://127.0.0.1:18800/health",
@@ -144,7 +144,7 @@ def check_func():
         reg = json.load(open(ACTIVE_MODELS, encoding="utf-8"))
     except Exception as e:                                                      # noqa: BLE001
         reg = {}
-        items.append({"name": "在役模型真源", "ok": False, "ev": "%s: %s" % (e.__class__.__name__, e)})
+        items.append({"name": "在役模型唯一依据", "ok": False, "ev": "%s: %s" % (e.__class__.__name__, e)})
     if reg:
         ptrs = []
         for lv in ("L2", "L3", "L4"):
@@ -251,7 +251,7 @@ def check_yellow():
 
 def _pose_auth():
     """10-15 旧口径: 真机联调(位姿帧龄≤2s) + 真动授权 armed —— 现在只作红灯 tooltip 的证据明细。"""
-    pose_age, pose_ok, pose_ev = None, False, "缺位姿真源"
+    pose_age, pose_ok, pose_ev = None, False, "缺位姿唯一依据"
     try:
         d = json.load(open(POSE_SRC, encoding="utf-8"))
         t_src = float(d.get("ts") or os.path.getmtime(POSE_SRC))
@@ -262,8 +262,8 @@ def _pose_auth():
         pose_ev = "位姿帧龄 %.1fs %s · %s" % (pose_age, "(≤2s)" if pose_age <= POSE_FRESH_S else "(陈旧!)",
                                             "值非全0" if nonzero else "全0 陈旧值")
     except Exception as e:                                                      # noqa: BLE001
-        pose_ev = "位姿真源读不到: %s: %s" % (e.__class__.__name__, e)
-    armed, until, auth_ev = False, None, "授权真源读不到"
+        pose_ev = "位姿唯一依据读不到: %s: %s" % (e.__class__.__name__, e)
+    armed, until, auth_ev = False, None, "授权唯一依据读不到"
     try:
         a = json.load(open(AUTH_SRC, encoding="utf-8"))
         until = float(a.get("until") or 0)
@@ -273,7 +273,7 @@ def _pose_auth():
             time.strftime("%H:%M:%S", time.localtime(until)) if until else "—",
             max(0.0, until - time.time()))
     except Exception as e:                                                      # noqa: BLE001
-        auth_ev = "授权真源读不到: %s: %s" % (e.__class__.__name__, e)
+        auth_ev = "授权唯一依据读不到: %s: %s" % (e.__class__.__name__, e)
     blink = pose_ok and armed
     if blink:
         why = "真机联调中且可操作: %s · %s" % (pose_ev, auth_ev)

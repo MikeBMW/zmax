@@ -111,12 +111,12 @@ def main() -> int:
         mod = SM.SimulinkModule()
         # 真工程文件由测试显式加载 (SimulinkModule() 构造不自动开工程)
         loaded = mod.load_flow_file(FLOW, confirm=False)
-        for _ in range(8):                     # 让 load 钩子里 QTimer.singleShot(0) 真跑起来
+        for _ in range(8):                     # 让 load 钩子里 QTimer.singleShot(0) 真启动
             app.processEvents()
         check("真工程文件加载成功", bool(loaded), f"load_flow_file → {loaded}")
         cid = mod.core_node_id()
         # ⚠️ 实测: load_flow_file 会给节点**重新生成 id** (本地真项目里的 id 是 'n<ts>...'),
-        #   所以判据不能写死 id, 要判"它指的确实是有 core/manifold_engine 标记的那个节点"。
+        #   所以判据不能预先固定 id, 要判"它指的确实是有 core/manifold_engine 标记的那个节点"。
         _node = next((n for n in (mod.nodes or []) if n.get("id") == cid), None)
         _is_core = bool(_node) and bool((_node.get("params") or {}).get("core")
                                         or (_node.get("params") or {}).get("manifold_engine"))

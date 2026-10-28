@@ -3,8 +3,8 @@
 """把 Release 正文里的「本版 (...)：…」块换成 VERSION.md 里当前版本的摘要。
 
 为什么需要它: `svenstaro/upload-release-action@v2` 只吃静态 `body:` 文本，
-  旧 workflow 把摘要写死成 v5.50.737 的一段 —— 之后每个 Release 的正文都挂 737 的内容
-  (标题是新的、内容是旧的)。这里改成发布后回填: 摘要唯一真源 = VERSION.md 表首行。
+  旧 workflow 把摘要预先固定成 v5.50.737 的一段 —— 之后每个 Release 的正文都挂 737 的内容
+  (标题是新的、内容是旧的)。这里改成发布后回填: 摘要唯一依据 = VERSION.md 表首行。
 
 用法:
   release_notes.py --tag v5.50.758                 # 读 GITHUB_TOKEN / GH_TOKEN, 直接 PATCH

@@ -92,7 +92,7 @@ MANIFEST = """# Z-MAX v{ver} 归档
 
 ## 目录
 - `src/` `tools/` `gui/` — 本轮改动过的代码（只拷改过的）
-- `data/` — 真源快照（产品档位 / 安装默认 / config_meta）
+- `data/` — 唯一依据快照（产品档位 / 安装默认 / config_meta）
 - `units/` — 流形引擎常驻 unit + orbit drop-in + 远程桌面两 unit
 - `evidence/` — 实测数字
 - `docs/` — VERSION.md

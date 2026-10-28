@@ -8,7 +8,7 @@
 | 模型 | 真权重文件 | 接入点 | 状态 |
 |---|---|---|---|
 | 🎯 YOLO 2D | outputs(或runs/detect)/yolo_peg/peg_v1/weights/best.pt | state_space_sim_real.py:153 `_yolo_sense` → aligner.detect_3d | R1 真主执行 |
-| 🎯 YOLO depth head | outputs/yolo_peg_depth/peg_depth_v1-2/weights/best.pt (v1 兜底) | yolo_state_aligner.py:53 depth_model → 反投影 z | R1 真主执行 (文件在=真深度, 不在才写死z回退) |
+| 🎯 YOLO depth head | outputs/yolo_peg_depth/peg_depth_v1-2/weights/best.pt (v1 保障) | yolo_state_aligner.py:53 depth_model → 反投影 z | R1 真主执行 (文件在=真深度, 不在才预先固定z回退) |
 | 🧠 左脑 MLP | models/ss_left_brain.npz (547K, 4层Linear, 09-04) | parallel.py mlp_ff_forward; 引擎 308 行 accel.forward(obs) | 引擎=主执行 / **R0=强制解析降级** |
 | 🧠 右脑 WM | models/ss_right_brain.npz (345KB, 09-06 重训) | dynamics.py rb_ff_forward → contact_of; 引擎 332-334 contact_p=max(公式, wm) | **contact 通道主执行** / 位置先验=实测否决 |
 | 🌀 流形 | 无 (纯几何计算件, 非学习模型) | manifold_layer.py decompose/evaluate; 引擎 443-451 每步实算入 tr | 真实计算, **只读仪表不反哺控制** |
@@ -52,5 +52,5 @@
 - progress 单调收敛 0.074→0 (通道走完); risk 下降/插入段真实出现; V 0.0027→0 能量归零。
 - **η 0→1.0 对比旧记录 0.57→0.77**: 两段式插入修复 (5de91cec) 让 peg 真插到底 —
   流形数字直接佐证修复效果 (η=exp(−V_p/σ²), σ=0.004, 插到底 δ→0 才到 1.0)。
-- 回答模板: "progress/risk/η/V 是引擎逐帧真实几何计算的只读展示, 非写死非装饰,
+- 回答模板: "progress/risk/η/V 是引擎逐帧真实几何计算的只读展示, 非预先固定非装饰,
   数值随阶段有物理意义变化" — 附上表即铁证。

@@ -4,11 +4,11 @@ NTP回拨8h(勿动RTC)→节拍用monotonic, 负帧龄拒用
 §
 分层(老倪): L5定方向造数据/L4认知预测/L3状态调度/L2检测反馈; 主干=SigLIP768d+四头; from-scratch主干必崩
 §
-交付前先自跑通; GPU不许空转; 改配置/文件必回读核验(替换锚点会静默no-op→我曾假报成功)
+交付前先自验证通过; GPU不许空转; 改配置/文件必回读核验(替换锚点会静默no-op→我曾假报成功)
 §
 Hermes: 长命令拆多段; sudo免密; 开机网络优化=zmax-net-optimize
 §
-ssh pkill -f自杀→锚定^python3; L5=DeepSeek Vision(deepseek-flash=账号最新flash即V4.1, 文本+视觉可但单次~122s→异步旁路+smolvlm2-500m兜底)
+ssh pkill -f自杀→锚定^python3; L5=DeepSeek Vision(deepseek-flash=账号最新flash即V4.1, 文本+视觉可但单次~122s→异步旁路+smolvlm2-500m保障)
 §
 飞书99991663=token缓存过期→重启gateway;长文≥1.5k字须拆条
 §
@@ -40,7 +40,7 @@ L2.lissa_insert=力控插入(6N,沿工具Z退60mm→推进→lissajous)
 §
 记忆五层: L2/L3/L4+总装Qwen(SS_MACRO); 势场喂obs[0:3]
 §
-真源: zmax_robot_spec/calib.json→zmax_params.py; 全系统训练=joint_train_all.py --only L4,L3,L2(dry-run先); LoRA=lora_inject.py
+唯一依据: zmax_robot_spec/calib.json→zmax_params.py; 全系统训练=joint_train_all.py --only L4,L3,L2(dry-run先); LoRA=lora_inject.py
 §
 L5规划器/safety=left_right/state_space/{planner,safety}.py; INTACT稳态101ms冷6.7s→须常驻
 §
@@ -58,4 +58,4 @@ ECS relay: upload/latest/status + /agent/{prompt,reply}(提示词↔web agent); 
 §
 GPU掉载主因=每步CPU开销>计算(非数据/显存)→静音逐步日志+workers↑;负载用窗口平均判
 §
-main线真源=worktree /home/ubuntu/zmax_rel (共享检出lerobot-smolvla-lew 会被切到mac-hw分支→main脚本全缺); 服务一律指worktree+软链venv
+main线唯一依据=worktree /home/ubuntu/zmax_rel (共享检出lerobot-smolvla-lew 会被切到mac-hw分支→main脚本全缺); 服务一律指worktree+软链venv

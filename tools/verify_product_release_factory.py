@@ -6,10 +6,10 @@
 产品 550A 550B 550C 同步发布。」
 
 为什么要有这条判据 (实捉的缺口):
-  平台/实例解耦后 **实例真源 `config/platform/` 不进仓库** (data/ 被 gitignore) ⇒ 打出来的 Windows/macOS/Linux 包
-  里**没有产品档真源** ⇒ 全新安装只能走"兜底=调试档全开", 三档 550A/B/C 根本选不出来 —— "同步发布"就成了空话。
+  平台/实例解耦后 **实例唯一依据 `config/platform/` 不进仓库** (data/ 被 gitignore) ⇒ 打出来的 Windows/macOS/Linux 包
+  里**没有产品档唯一依据** ⇒ 全新安装只能走"保障=调试档全开", 三档 550A/B/C 根本选不出来 —— "同步发布"就成了空话。
   修法: ① 出厂骨架 `defaults/config/platform/zmax_product.json` (三档 dev_profile 全带) 进仓库;
-        ② 读侧按 canvas 同一套规矩回落 (实例真源 → 仓库 defaults → 冻结包 _MEIPASS);
+        ② 读侧按 canvas 同一套规矩回落 (实例唯一依据 → 仓库 defaults → 冻结包 _MEIPASS);
         ③ 打包 job 带 `defaults` 并断言三档在。
 
 判据:
@@ -18,7 +18,7 @@
   ③ **真回落**: 隔离目录 (只有 defaults, 没有 config/) 起子进程读产品档, 三档都读得到且 dev_profile 正确
   ④ studio 标题读侧也回落 (静态核 + 冻结包 _MEIPASS 候选在)
   ⑤ 打包 job 真带骨架 (Windows + macOS 两个 job 都有 --add-data defaults 且 Windows 断言三档)
-  ⑥ 现役档位不被骨架顶掉 (实例真源优先 ⇒ 现场还是 550B)
+  ⑥ 现役档位不被骨架顶掉 (实例唯一依据优先 ⇒ 现场还是 550B)
   ⑦ 三产品开发分工判据本体仍过 (config/ss_task_binding 等既有判据不回归)
 """
 from __future__ import annotations
@@ -88,7 +88,7 @@ try:
              " ('new_algorithms','topics','comm','vscode_debug','role')} for p in ('550A','550B','550C')}},"
              " ensure_ascii=False))" % _tmp)
     r = subprocess.run([sys.executable, "-c", _code], capture_output=True, text=True, cwd=_tmp)
-    chk("子进程 (无 config/) 能读到产品真源", r.returncode == 0, (r.stderr or "")[-160:])
+    chk("子进程 (无 config/) 能读到产品唯一依据", r.returncode == 0, (r.stderr or "")[-160:])
     if r.returncode == 0:
         j = json.loads(r.stdout.strip().splitlines()[-1])
         chk("回落路径 = 出厂骨架", j["path"].endswith("defaults/config/platform/zmax_product.json"), j["path"])
@@ -104,7 +104,7 @@ finally:
 print("④ studio 标题读侧也回落")
 _s = open(os.path.join(ROOT, "tools", "gui", "studio.py"), encoding="utf-8").read()
 chk("studio 有 _product_json_path() 回落函数", "_product_json_path" in _s)
-chk("studio 读产品真源走回落路径", 'open(_product_json_path(), "r", encoding="utf-8")' in _s)
+chk("studio 读产品唯一依据走回落路径", 'open(_product_json_path(), "r", encoding="utf-8")' in _s)
 chk("studio 候选含冻结包 _MEIPASS/defaults", '_MEIPASS' in _s and 'defaults", "config", "platform' in _s)
 
 print("⑤ 打包 job 真带骨架")
@@ -113,10 +113,10 @@ chk("Windows job 带 --add-data defaults", "--add-data \"$env:GITHUB_WORKSPACE\\
 chk("macOS job 带 --add-data defaults", '--add-data "$GITHUB_WORKSPACE/defaults:defaults"' in _w)
 chk("打包前断言三档在 (骨架自检)", "factory products:" in _w and "550A" in _w)
 
-print("⑥ 现役档位不被骨架顶掉 (实例真源优先)")
+print("⑥ 现役档位不被骨架顶掉 (实例唯一依据优先)")
 sys.path.insert(0, ROOT)
 from tools import zmax_profile as Z2                                                # noqa: E402
-chk("现场仍读实例真源", Z2.product_json() == INST, Z2.product_json())
+chk("现场仍读实例唯一依据", Z2.product_json() == INST, Z2.product_json())
 chk("现场在役档 = 550B (与配置中心同源)", Z2.product() == "550B", Z2.product())
 
 print("⑦ 三产品开发分工判据本体")

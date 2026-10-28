@@ -69,7 +69,7 @@ assy   disturb  3  0/3      610.8 (std 60.2)         1.00    3000   0.1
 
 ## 4. 两个根因 (都定位到代码行)
 
-### 4.1 场权写死太低 (记忆层"在场但不使劲")
+### 4.1 场权预先固定太低 (记忆层"在场但不使劲")
 `src/lerobot/memory/potential_field.py::blend_action` 旧式 `w = w_max·max(conf, w_floor)`,
 桥调用 `w_max=0.5, w_floor=0.2`, 现场 `conf ≡ 0` (离最近轨迹管 207mm) ⇒ **w̄ 恒 0.1**。
 

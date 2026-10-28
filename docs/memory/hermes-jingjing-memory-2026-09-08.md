@@ -18,7 +18,7 @@ GUI: gui-venv311在仓库内(Py3.11无torch); 训练=~/lerobot-venv; 改码必�
 §
 GitHub: 直连超时→ghproxy.net代理+sslVerify=false; Release下载走browser_download_url; 凭证~/.git-credentials
 §
-数据/监视界面偏好: 单色勿彩高亮; 数据实时滚动; 可视化自解释(标签+数值), 追问'这是啥'→物理含义+实测数字; 信号/图层名按源模块名链路排序, 开关连文字绑
+数据/监视界面偏好: 单色勿彩高亮; 数据实时滚动; 可视化自解释(标签+数值), 追问'这是什么'→物理含义+实测数字; 信号/图层名按源模块名链路排序, 开关连文字绑
 §
 引擎假卡死→py-spy查do_wait_suspend; debugpy僵尸5678用F5 preLaunchTask清
 §

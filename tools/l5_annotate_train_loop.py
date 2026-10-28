@@ -23,7 +23,7 @@ L2 是全量训练 YOLO; L3 和 L4 是通过 LoRA 适配训练。」
   ④ 取证 (evidence)   每阶段: 子进程 pid + `ps -o lstart` + 日志前几行 + 产物路径/大小 + 判据;
                       全过程状态落  ~/zmax/zmax_data/l5_loop/state.json (GUI 徽章/双击读它)
 
-红线 (写死在代码里):
+红线 (硬编码在代码里):
   · 8GB 卡同刻只跑一个模型进程 → 全部阶段**串行**; 每阶段前查 GPU 空闲并记录
   · 自动标注样本**绝不进 val** (复用 yad.build_dataset 的 auto 会话规则; stats 里 auto_in_val 必须 0)
   · 未证明提升**不切在役指针** (只落 candidates; 上线由 model_autoload.py --promote 显式执行)
@@ -554,7 +554,7 @@ def stage_supervision(st: dict, batch_dir: str) -> dict:
         if not d.get("scene") and tgt.get("scene"):
             d["scene"] = tgt.get("scene")
         recs.append(d)
-    if not recs:            # 兜底: 从追加流水里按 _batch 字段挑 (老记录无该字段 → 不强取)
+    if not recs:            # 保障: 从追加流水里按 _batch 字段挑 (老记录无该字段 → 不强取)
         jl = os.path.join(ANNOT_ROOT, "annotations.jsonl")
         if os.path.isfile(jl):
             for ln in open(jl, encoding="utf-8", errors="replace"):
@@ -693,7 +693,7 @@ def _ensure_val_split(data: str) -> dict:
     """val 拆分为空时补上 val —— ultralytics 硬要求, 且不破「自动标注样本绝不进 val」红线。
 
     ① 优先: 既有**真机人工留出集** data/datasets/yolo_annot/dataset/{images,labels}/val → 软链过来
-       (单一真源; 样本是人工标注, 不是 L5 自动样本 ⇒ 红线不破、指标口径诚实)
+       (单一唯一依据; 样本是人工标注, 不是 L5 自动样本 ⇒ 红线不破、指标口径诚实)
     ② 都没有: 退化为 val=train, 并**如实标注"指标偏乐观"** (不静默假报)
     """
     img_val = os.path.join(data, "images", "val")
@@ -756,7 +756,7 @@ def _ensure_val_split(data: str) -> dict:
             except OSError:
                 shutil.copy2(lp, lt)
     return {"need": True, "n_img": n2, "source": "train (无独立留出集)",
-            "honest": "⚠️ val=train → 指标偏乐观, 仅用于跑通链路, 不可作为泛化判据"}
+            "honest": "⚠️ val=train → 指标偏乐观, 仅用于验证通过链路, 不可作为泛化判据"}
 
 
 def stage_L2(st: dict, sup: dict, epochs: int, ts: str) -> dict:
@@ -781,7 +781,7 @@ def stage_L2(st: dict, sup: dict, epochs: int, ts: str) -> dict:
     #   `AssertionError: val: No images found` → L2 全量训练起不来 (实测 l5vlm 集 val=0 张:
     #   红线要求自动标注样本**绝不进 val**, 所以新集天然没有 val 拆分)。
     #   正解: 训练用 L5 自动标注集, **val 用既有真机留出集**(data/datasets/yolo_annot/dataset/images/val,
-    #   人工标注、非自动样本) —— 红线不破且指标口径诚实。软链而非拷贝 (单一真源)。
+    #   人工标注、非自动样本) —— 红线不破且指标口径诚实。软链而非拷贝 (单一唯一依据)。
     #   若真机留出集也不存在 → 退化为 val=train 并**如实标注指标偏乐观** (不静默)。
     #   ⚠️ 必须在下面的 labels_assert 之前做: 断言/日志要报**补完之后**的真实拆分。
     _vs = _ensure_val_split(data)
@@ -812,7 +812,7 @@ def stage_L2(st: dict, sup: dict, epochs: int, ts: str) -> dict:
     r["val_split"] = _vs
     # 🔎 best.pt 落地位置不止一处: yolo_annot_train 的 project 会挂到 RUNS_DIR(runs/detect) 下
     #   → 原只查 ROOT/outputs/... 会假阴性 (2026-09-28 实测: 训练真跑完 rc=0/8轮, 却报 best.pt 不在位)。
-    #   口径: 解析日志里的「权重路径」行 + 多根 glob 兜底, 命中即真产物。
+    #   口径: 解析日志里的「权重路径」行 + 多根 glob 保障, 命中即真产物。
     name = "l5full_%s" % ts
     cands = [os.path.join(ROOT, "outputs", "yolo_annot_l5", name, "weights", "best.pt"),
              os.path.join(ROOT, "runs", "detect", "outputs", "yolo_annot_l5", name, "weights", "best.pt")]
@@ -847,7 +847,7 @@ def stage_L2(st: dict, sup: dict, epochs: int, ts: str) -> dict:
                            "权重不可用 (明确标注, 不上在役); 需要更多标注样本 (当前 labels %s)"
                            % json.dumps(_lab, ensure_ascii=False))
             # 🐛 2026-09-29 (编排"模型拉不通"的第四个卡点): 上面这条是**数据量**问题, 不是链路问题
-            #   —— 训练本身机械跑通 (rc=0 + best.pt 落地)。原逻辑一律 break ⇒ L3/L4 LoRA 与
+            #   —— 训练本身机械验证通过 (rc=0 + best.pt 落地)。原逻辑一律 break ⇒ L3/L4 LoRA 与
             #   merge 也不启动, 后面两个模型同样"拉不通"。现标 non_fatal: 主循环告警继续
             #   (权重仍是"未过闸、不可上在役"的诚实状态, 绝不悄悄上线)。
             r["non_fatal"] = True
@@ -1077,7 +1077,7 @@ def main() -> int:
             return 3
     todo = planned(a)
     print("🧿 L5 标注→训练闭环 · 阶段 %s" % ",".join(todo))
-    print("   真源: 标注 tools/auto_annotate.py · 训练 tools/joint_train_all.py/yolo_annot_train.py"
+    print("   唯一依据: 标注 tools/auto_annotate.py · 训练 tools/joint_train_all.py/yolo_annot_train.py"
           " · merge tools/merge_lora_ckpt.py")
     print("   红线: 串行(8GB 单模型) · 自动标注不进 val · 未证明提升不切在役指针 · LoRA 必 merge")
     print("   GPU 空闲 %s MB" % gpu_free())
@@ -1149,7 +1149,7 @@ def main() -> int:
                 _say("⛔ 阶段 %s 未过 → 停止后续 (设 ZMAX_L5_CONTINUE_ON_FAIL=1 可强跑)" % s)
                 break
         # 终态口径: 有致命阶段未过 = failed; 只有 non_fatal 缺口 (如"尚未演示槽位"/"L2 零检出")
-        # = done_with_gaps —— 链路本身跑通, 缺口如实记录 (不因缺口把整链报成"失败", 也不掩盖)。
+        # = done_with_gaps —— 链路本身验证通过, 缺口如实记录 (不因缺口把整链报成"失败", 也不掩盖)。
         _gaps = [k for k in todo if not (res.get(k) or {}).get("ok")]
         st["gaps"] = _gaps
         st["status"] = ("done" if not _gaps
@@ -1171,7 +1171,7 @@ def _finish(rc: int) -> None:
     """🔻 交付退出码 —— **判据结论 ≠ 崩溃**。
 
     老倪 2026-10-14 实测: 调试器里跑本工具, 退出时弹「Exception has occurred: SystemExit 1」,
-    看着像代码报错; 其实 rc=1 是本工具按判据("不把没核实的框当标签")的**结论**, 上面已打印原因。
+    看着像代码报错; 实际 rc=1 是本工具按判据("不把没核实的框当标签")的**结论**, 上面已打印原因。
     用 `os._exit` 交付同一个退出码 (CI/脚本语义完全不变), 但不再抛 SystemExit ⇒ 调试器不再误报异常。
     ⚠️ `os._exit` 跳过缓冲刷新 ⇒ 先显式 flush。
     """

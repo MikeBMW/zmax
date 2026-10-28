@@ -1,7 +1,7 @@
 # Z-MAX WS 事件驱动闭环 · 实现细节 (2026-08-03 实测)
 
 老倪场景: 静静(笔记本)总关机 / ECS(服务器)常驻 / 小芳(Mac+Orin)有时关机 / 演示要零等待。
-结论: **WS 用于事件(data_arrived), HTTP 轮询用于状态(队列空? latest?)** — 事件型低延迟走 WS, 状态型自愈走轮询兜底。
+结论: **WS 用于事件(data_arrived), HTTP 轮询用于状态(队列空? latest?)** — 事件型低延迟走 WS, 状态型自愈走轮询保障。
 
 ## 三端架构
 
@@ -15,7 +15,7 @@
                                             │  广播 data_arrived
                                             ▼
                         静静 auto_loop.py v2 (WS订阅 → 立即训练)
-                        (60s HTTP 轮询兜底 + 启动时拉一次全量)
+                        (60s HTTP 轮询保障 + 启动时拉一次全量)
 ```
 
 ## 1. ECS ws_relay.py v2 (:8765 hub + :8766 本地通知口)
@@ -38,7 +38,7 @@
 
 ⚠️ **远程补丁吞函数头坑**: 用 `def enforce_buf_limit():` (含 docstring) 作锚点插入新函数时, 若 new_string 只含 def 行不含 docstring, 旧 docstring+函数体悬挂在新函数内 → `enforce_buf_limit` UNDEFINED → /upload 400 `name 'enforce_buf_limit' is not defined`。规则: 锚点必须含完整 def 行; patch 后 `ast.parse` + 真实端点测试 (小 JSON 上传), 不只语法检查; 先 `cp app.py app.py.bak_$(date +%s)`。
 
-## 3. 笔记本 auto_loop.py v2 (WS 事件驱动 + 轮询兜底)
+## 3. 笔记本 auto_loop.py v2 (WS 事件驱动 + 轮询保障)
 
 依赖: `pip3 install --break-system-packages websocket-client` (1.9.0)。
 
@@ -61,7 +61,7 @@ def ws_on_message(raw):
 def main():
     threading.Thread(target=ws_listener, daemon=True).start()
     while True:
-        process_new_data()    # 轮询兜底 (WS 错过事件补拉)
+        process_new_data()    # 轮询保障 (WS 错过事件补拉)
         time.sleep(60)
 ```
 

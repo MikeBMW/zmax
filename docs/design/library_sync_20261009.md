@@ -29,13 +29,13 @@
 
 这批是 **2026-08 的老 C/A/S/H/M 编号体系** (现在画布用 VEH.5.xxx), 老倪说「没有联系的都删掉」。
 判定「有关联」= 命中任一条: ① 同名节点在任一画布 flow ② REFERENCE_APPS 模板 ③ 原子技能注册表
-④ `match_node()` 命中引擎逻辑真源 ⑤ 条目自带 flow/模板/场景/原子闸。只有全不命中的才删。
+④ `match_node()` 命中引擎逻辑唯一依据 ⑤ 条目自带 flow/模板/场景/原子闸。只有全不命中的才删。
 
 ## 二、改完的形态
 
 ```
 模块库 = LIBRARY_STATIC(手写组) + 原子技能组(注册表 flows/atomic_skill_tokens.json)
-                        + 状态空间组(画布节点: 内存优先, JSON 兜底)
+                        + 状态空间组(画布节点: 内存优先, JSON 保障)
                         − curation 删除名单(config/library_curation.json)
 ```
 

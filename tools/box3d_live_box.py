@@ -251,7 +251,7 @@ def main():
                                 "quat": [round(v, 5) for v in quat],
                                 "scope": "readonly · 只用 YOLO 框 + 机器人自身位姿 (无深度/无手眼/无仿真真值)",
                                 "solver": slv.status()})
-                    # 攒数据 (前提: 模块被夹持 → 由拟合的前提自证兜底)
+                    # 攒数据 (前提: 模块被夹持 → 由拟合的前提自证保障)
                     if args.collect and (held is not False):
                         a = slv.add(box, tcp, quat, meta={"frame": os.path.basename(fp), "conf": conf,
                                                           "src": "box3d_live_box", "t": line.get("t")})

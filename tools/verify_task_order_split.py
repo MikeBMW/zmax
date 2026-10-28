@@ -6,12 +6,12 @@
     「将元任务, 这些信息, 体现在配置中心的 任务配置;
       将原来的工艺工单任务, 拆解成 任务配置 和 工单配置 两项」
 
-判据 (每条都真跑真源/真界面, 不看声明):
+判据 (每条都真跑唯一依据/真界面, 不看声明):
   ① 左树拆成两项: 有「📋 任务配置」「🧾 工单配置」两个顶层项, **不再**有「工艺·工单」
   ② 页签同拆: 有「📋 任务配置」「🧾 工单配置」, 不再有「🎯 工单」; 既有 7 个区一个没丢
-  ③ 任务配置页的元任务表: 列 == 《元任务标准模板》七字段 + 编号/层/优先; 行数 == 真源功能数
+  ③ 任务配置页的元任务表: 列 == 《元任务标准模板》七字段 + 编号/层/优先; 行数 == 唯一依据功能数
   ④ 元任务数值可回读: 抽查元任务的 fn_id/名称 与 config_meta.json 逐条一致
-  ⑤ 两表联动: 点任务表某任务 ⇒ 元任务表只剩该任务的元任务, 条数 == 真源该任务 enabled_nodes 数
+  ⑤ 两表联动: 点任务表某任务 ⇒ 元任务表只剩该任务的元任务, 条数 == 唯一依据该任务 enabled_nodes 数
   ⑥ 工单配置页: 原 6 列逐字保留 + 新维度追加在后 (增列不换列); 行数 == config/orders/BS_*.json 份数
   ⑦ 点左树工单号 ⇒ 切到工单配置页 + 底部面板摊开该工单完整配置面 (工单号/场景/配方)
   ⑧ CLI 同源: config_center.py overview 打印「任务配置」「工单配置」两行, 不再有「工艺·工单」
@@ -75,16 +75,16 @@ def main():
     chk("左树七项都**没有子项** (老倪 2026-10-15 精简)", all(
         pg.tree.topLevelItem(i).childCount() == 0 for i in range(pg.tree.topLevelItemCount())),
         "子项数=%s" % [pg.tree.topLevelItem(i).childCount() for i in range(pg.tree.topLevelItemCount())])
-    # 明细挪到配置页: 任务配置页的任务表行数 = 真源任务数 (2026-10 起 8 条); 工单表行数 = 真源工单数
+    # 明细挪到配置页: 任务配置页的任务表行数 = 唯一依据任务数 (2026-10 起 8 条); 工单表行数 = 唯一依据工单数
     _tt = getattr(pg, "tasks_table", None)
     _ot = getattr(pg, "order_table", None)
     _tk_n = len((_j(os.path.join(ROOT, "config", "tasks", "tasks.json")) or {}).get("tasks") or [])
     _ord_n = len([f for f in os.listdir(os.path.join(ROOT, "config", "orders")) if f.endswith(".json")]) \
         if os.path.isdir(os.path.join(ROOT, "config", "orders")) else -1
-    chk("任务明细在配置页: 任务表 %d 行 (真源任务数)" % _tk_n,
+    chk("任务明细在配置页: 任务表 %d 行 (唯一依据任务数)" % _tk_n,
         _tt is not None and _tt.rowCount() == _tk_n,
-        "行数=%s 真源=%d" % (getattr(_tt, "rowCount", lambda: "—")(), _tk_n))
-    chk("工单明细在配置页: 工单表 %d 行 (真源工单数)" % _ord_n,
+        "行数=%s 唯一依据=%d" % (getattr(_tt, "rowCount", lambda: "—")(), _tk_n))
+    chk("工单明细在配置页: 工单表 %d 行 (唯一依据工单数)" % _ord_n,
         _ot is not None and _ot.rowCount() == _ord_n,
         "行数=%s" % (getattr(_ot, "rowCount", lambda: "—")()))
 
@@ -110,12 +110,12 @@ def main():
     cols = [t.horizontalHeaderItem(c).text() for c in range(t.columnCount())] if t else []
     need = ["功能名称", "输入", "输出", "配置参数", "依赖关系", "验证方法", "承载场景"]
     chk("列含《元任务标准模板》七字段", all(x in cols for x in need), " / ".join(cols))
-    chk("元任务行数 == 真源功能数 %d" % n_fn, bool(t) and t.rowCount() == n_fn,
+    chk("元任务行数 == 唯一依据功能数 %d" % n_fn, bool(t) and t.rowCount() == n_fn,
         "表行数 %s" % (t.rowCount() if t else "—"))
     tip = (t.item(0, 0).toolTip() if t and t.item(0, 0) else "")
     chk("每格 tooltip 是完整标准模板 (七字段齐)", all(x in tip for x in need), tip.replace("\n", " | ")[:90])
 
-    print("\n═══ ④ 元任务数值回读真源 ═══")
+    print("\n═══ ④ 元任务数值回读唯一依据 ═══")
     mt = vp._meta_tasks()
     bad = [m for m in mt if (mt_src["functions"].get(m["fn_id"]) or {}).get("name") != m["name"]]
     chk("逐条: 元任务名 == config_meta.json 功能名", not bad, "不一致 %d 条" % len(bad))
@@ -134,7 +134,7 @@ def main():
     tid = pg._task_rows[r0]
     vis = sum(1 for r in range(t.rowCount()) if not t.isRowHidden(r))
     exp = len((bmap.get(tid) or {}).get("enabled_nodes") or [])
-    chk("点 %s ⇒ 元任务可见数 == 真源 enabled_nodes 数" % tid, vis == exp, "可见 %d / 期望 %d" % (vis, exp))
+    chk("点 %s ⇒ 元任务可见数 == 唯一依据 enabled_nodes 数" % tid, vis == exp, "可见 %d / 期望 %d" % (vis, exp))
     chk("表头写明当前口径", tid in pg.meta_head.text(), pg.meta_head.text()[:70])
     pg._filter_meta_tasks(None)
     app.processEvents()
@@ -148,11 +148,11 @@ def main():
     chk("原 6 列逐字保留 (增列不换列)", cols4[:6] == old6, " / ".join(cols4))
     chk("新维度追加在后 (配方/参数/变体/目标/选项)", all(k in cols4[6:] for k in ("配方", "参数")), " / ".join(cols4[6:]))
     n_bs = len([f for f in os.listdir(os.path.join(ROOT, "config/orders")) if f.startswith("BS_")])
-    chk("工单行数 == 真源份数 %d" % n_bs, bool(t4) and t4.rowCount() == n_bs, "行 %s" % (t4.rowCount() if t4 else "—"))
+    chk("工单行数 == 唯一依据份数 %d" % n_bs, bool(t4) and t4.rowCount() == n_bs, "行 %s" % (t4.rowCount() if t4 else "—"))
 
     print("\n═══ ⑦ 定位到具体工单 ⇒ 完整配置面 ═══")
     # 2026-10-15: 左树不再有工单号子项 ⇒ 走与"点工单号"同一条处理函数 (_show_orders(工单号))
-    _bs_list = vp._orders_list()                              # 真源: config/orders/BS_*.json
+    _bs_list = vp._orders_list()                              # 唯一依据: config/orders/BS_*.json
     _bs_no = str(((_bs_list[0].get("identity") or {}).get("order_no")) or "BS-")
     pg._show_orders(_bs_no)
     app.processEvents()

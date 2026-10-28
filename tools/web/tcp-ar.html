@@ -105,7 +105,7 @@
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
   <span class="tag" id="tTcp">TCP —</span>
-  <span class="tag" id="tRob" title="机器人状态机: 状态 · 当前阶段 · 是否在插拔 (真源 tools/robot_state.py)">🤖 机器人 —</span>
+  <span class="tag" id="tRob" title="机器人状态机: 状态 · 当前阶段 · 是否在插拔 (唯一依据 tools/robot_state.py)">🤖 机器人 —</span>
   <span id="camPick" style="display:flex;gap:6px;flex-wrap:wrap"></span>
   <span class="tag" id="tCal">标定: 未标定</span>
   <span class="tag" id="tShow">轨迹: 关(默认)</span>
@@ -270,7 +270,7 @@
       <button id="tFit" class="sm" title="把视角对准当前显示的轨迹(只有点这个按钮才会动相机; 点轨迹按钮不会跳)">🎯 对准</button>
     </div>
     <!-- 🧱 第四行: 围栏盒子(长方体/上横梁/检测设备/前方相机) · 第五行: 直线(小红/小兰/小青)
-         按钮由 paintFenceBtns() 按 /api/fence 的真源动态生成, 点击=启用/停用该元素
+         按钮由 paintFenceBtns() 按 /api/fence 的唯一依据动态生成, 点击=启用/停用该元素
          (停用后三维视图和 AR 叠加都不画, 但配置里还在, 再点一下就回来) -->
     <div class="row" style="margin-top:6px" id="rowBoxes"></div>
     <div class="row" style="margin-top:6px" id="rowLines"></div>
@@ -279,7 +279,7 @@
     <pre id="pNamed" style="white-space:pre-wrap;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px;font-size:12px;margin:6px 0 0;max-height:110px;overflow:auto">五条轨迹都关着 —— 点按钮(变蓝)就在三维视图显示, 再点一下隐藏</pre>
     <pre id="pVr">—</pre>
     <!-- 📍 2026-10-26 老倪: 「也要显示 工程配置的所有点, 向下罗列显示出来; 点大一些, 方便用眼睛观察」
-         真源 = /api/points (配置中心点位台账 ar_aoi_live.json); 点一下 = 显示/隐藏, 默认全开 -->
+         唯一依据 = /api/points (配置中心点位台账 ar_aoi_live.json); 点一下 = 显示/隐藏, 默认全开 -->
     <div id="cardCfgPts">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin:8px 0 4px">
         <span style="font:700 12.5px system-ui,sans-serif;color:#c9d1d9">📍 工程配置点位
@@ -318,7 +318,7 @@
       </div>
       <!-- 🧭 2026-10-25 老倪: 「三维视图窗口下面操作按钮区加五个按钮」
            轨迹点全从配置中心工程配置读 (fence_store / 点位台账 / 探索产物 / 实测录制),
-           不写死坐标; 取不到就明说为什么, 不画假线。 -->
+           不预先固定坐标; 取不到就明说为什么, 不画假线。 -->
       <!-- 🧭 2026-10-26: 五个轨迹按钮已搬去「三维视图正下方」那一行 (开页即见, 不用滚动)。
            这里保留指路, 不再重复渲染同一组 id。 -->
       <div class="row" style="margin-top:8px">
@@ -422,7 +422,7 @@
 // 🔴 2026-10-26 老倪「我点击轨迹按钮 你怎么不高亮变成蓝色显示呢？」
 //   真因: 这一页会被两个端口同时使用 —— 8797(tcp_ar_server, 页面的家) 和 8793(工位总览, 反向代理来的静态页)。
 //   8793 那边**只转发了页面, 没有转发 /api/*** —— 实测 curl 8793/api/traj/named ⇒ 404 not found,
-//   于是 fetch 抛错, 按钮永远不变蓝。这里在脚本最前面装一次 fetch 兜底:
+//   于是 fetch 抛错, 按钮永远不变蓝。这里在脚本最前面装一次 fetch 保障:
 //   页面不是从 8797 打开的, 就把所有 /api/* 打到同一台机器的 8797 上
 //   (8797 已带 Access-Control-Allow-Origin: *, 跨端口直取没问题)。
 const __ZMAX_APIBASE = (location.port === '8797') ? '' : (location.protocol + '//' + location.hostname + ':8797');
@@ -517,7 +517,7 @@ let PREV={on:false, M:null, q:null, err_mm:null, target:null};
 let FENCES=[], FMARGIN=10, FPICK=false, FEDIT=null, FTYPE='box', VIEW=null, FDRAG=null;
 let FSEL=null, FDR=null;      // 选中的围栏 / 正在拖拽的状态
 let CALIB=null, TRAJ={trace:[],plan:[]}, TCP=null, CAL_MODE=false, CAL_PTS=[], SHOW=false,
-// 🧭 命名轨迹 (轨迹1小红/2正方/3建图/4安全/5实时): 点从服务端 /api/traj/named 读工程配置真源
+// 🧭 命名轨迹 (轨迹1小红/2正方/3建图/4安全/5实时): 点从服务端 /api/traj/named 读工程配置唯一依据
     NAMED={}, NAMED_SEL=null, NAMED_INFO={},
     NAMED_ON={},        // 🧭 2026-10-26: 「按钮怎么不切换, 显示与不显示呢」⇒ 每个按钮独立开关;
                         //    蓝色=显示中, 黑色=已隐藏。NAMED_SEL 只记"最后打开的那条"给『执行』用。
@@ -527,7 +527,7 @@ let MODSPEC={L_mm:56.5,W_mm:13.4,T_mm:8.5,src:'默认'};
 fetch('/api/module_spec').then(r=>r.json()).then(d=>{ if(d&&d.L_mm){ MODSPEC=d; drawVR(); } }).catch(()=>{});
 
 // ── 图像实际渲染矩形(= object-fit:contain 后画面占的位置), 叠加层必须贴这个矩形 ──
-// 🔴 踩坑(2026-09-29 屏幕闪烁): Safari/部分浏览器对 multipart/x-mixed-replace 的 <img> **每帧都触发 load**,
+// 🔴 遇到问题(2026-09-29 屏幕闪烁): Safari/部分浏览器对 multipart/x-mixed-replace 的 <img> **每帧都触发 load**,
 //    而 load 里做布局会重设 canvas.width —— 即便给它**同一个值**也会清空画布(实测 alpha 255→0)。
 //    ⇒ 每次 load 清一次画布, 叠加层/VR 面板就"一直闪"。定式: 布局**必须带尺寸签名**,
 //      尺寸没变就直接 return; canvas 只在宽高真变化时才重设。
@@ -672,7 +672,7 @@ function drawTube(g, pts, opt){
   return {n:seg.length, zmin, zmax};
 }
 // ═══ 🧭 命名轨迹 (老倪 2026-10-25) ═══
-// 轨迹点一律来自服务端 /api/traj/named (读的是配置中心工程配置真源), 前端不写死坐标。
+// 轨迹点一律来自服务端 /api/traj/named (读的是配置中心工程配置唯一依据), 前端不预先固定坐标。
 // 取不到 ⇒ 明确写出为什么取不到, 绝不画一条假线糊弄。
 const NAMED_COL = {xiaohong:'#ff4444', square:'#a855f7', map:'#22d3ee',
                    safe:'#4ade80', real:'#ff9f1c'};
@@ -854,7 +854,7 @@ function _drawNamedVR1(g, pr, key){
   }
   // 🔴 2026-10-26 老倪「轨迹点没看到」: 原来每 8 个点才画一个 3px 小圆, 41/54 点的轨迹
   //   只露出 6~7 个点, 看着就像没有轨迹点。现在**每个点都画**, 并每 10 个点标序号,
-  //   点数与序号都由服务端返回的真实点列算出来, 不写死。
+  //   点数与序号都由服务端返回的真实点列算出来, 不预先固定。
   const _dotR = pts.length > 200 ? 1.8 : (pts.length > 60 ? 2.2 : 2.8);
   for(let i=0;i<P.length;i++){
     const q=P[i]; if(!q) continue;
@@ -1061,7 +1061,7 @@ function drawOv(){
   if(!SHOW){ $('hint').textContent='轨迹已隐藏(默认不显示) —— 点『显示轨迹』'; return; }
   let n1=0,n2=0;
   // 🔴 2026-10-26 老倪:「我也没有点击任何轨迹, 你却显示的一个粉红色的轨迹…不点击, 不要显示轨迹」
-  //    真源: 规划航路(TRAJ.plan)以前是无条件画的, 与按钮无关 ⇒ 没点按钮也有一条洋红线。
+  //    唯一依据: 规划航路(TRAJ.plan)以前是无条件画的, 与按钮无关 ⇒ 没点按钮也有一条洋红线。
   if(namedAnyOn()&&TRAJ.plan&&TRAJ.plan.length) n1=drawTube(g,TRAJ.plan,{baseW:5,ref:0.9,alpha:0.28,ring:16,
        color:(p,f)=>`rgba(88,166,255,${0.35+0.45*f})`, ringColor:'rgba(88,166,255,.5)'}).n||0;
   if(TRAJ.trace&&TRAJ.trace.length){
@@ -1081,7 +1081,7 @@ function drawOv(){
 }
 
 // ── VR 三维视图: 软件渲染(不依赖任何 CDN) ──
-// 🔴 自动对焦(2026-09-29 老倪"看不到 VR 轨迹"): 原来相机位置写死, 轨迹只占画面中间 ≈50px 的一小坨,
+// 🔴 自动对焦(2026-09-29 老倪"看不到 VR 轨迹"): 原来相机位置预先固定, 轨迹只占画面中间 ≈50px 的一小坨,
 //    看着就像"没有"。定式: 用**数据包围盒**自动定目标点和距离, 让通道铺满画面 ~70%。
 function vrFitBox(){
   // 🖱 刚用中键平移过 ⇒ 1.5s 内谁叫都不重新取景(否则松手那一下会被别处的 refit 拉回去)
@@ -1248,7 +1248,7 @@ function drawUrdf(g,pr,M0,X){
 //  🧱 3D 围栏: 长方体/正方体/直线 (base 世界系, mm 输入) —— 机器人不能碰撞
 //     老倪 2026-10-18: 「画 3D 对象(长方体/正方体: 输入对角线两点; 直线: 可编辑起终点),
 //     坐标在 base 世界系; 这些东西是你的地图围栏, 不能碰撞」
-//     真源: 服务端 tools/fence_store.py → zmax_data/ar_rs/fences.json
+//     唯一依据: 服务端 tools/fence_store.py → zmax_data/ar_rs/fences.json
 // ══════════════════════════════════════════════════════════════════════════
 // (状态声明挪到脚本最前面的 URDF 那行旁边 —— drawVR 在初始化阶段就会被调用, 这里声明会踩 TDZ)
 function _mm(v){ return (Number(v)||0)/1000.0; }
@@ -1283,7 +1283,7 @@ async function loadFences(){
     renderFenceList(); paintFenceBtns(); drawVR();
   }catch(e){ $('pFence').textContent='围栏读失败: '+e; }
 }
-// 🧱 第四行(围栏盒) / 第五行(直线): 按 /api/fence 真源生成按钮, 点一下=启用/停用
+// 🧱 第四行(围栏盒) / 第五行(直线): 按 /api/fence 唯一依据生成按钮, 点一下=启用/停用
 function paintFenceBtns(){
   const mk=(host,label,items)=>{
     if(!host) return;
@@ -1680,7 +1680,7 @@ function fenceBind(){
 // ══════════════════════════════════════════════════════════════════════════
 //  📍 工程配置点位台账 (2026-10-26 老倪: 「也要显示 工程配置的所有点, 向下罗列显示出来;
 //     工程配置里的点, 要注意 UI 显示, 点大一些, 方便用眼睛观察」)
-//  真源 = /api/points → 配置中心推的 ar_aoi_live.json(<点名>.x/.y/.z, 米)
+//  唯一依据 = /api/points → 配置中心推的 ar_aoi_live.json(<点名>.x/.y/.z, 米)
 //  口径: 左栏按分组向下罗列(点名 + mm 坐标), 点一下=显示/隐藏, 默认全开;
 //        三维里画成大圆点(半径 8~11px, 近大远小) + 白描边 + 点名标签, 好认不糊。
 // ══════════════════════════════════════════════════════════════════════════
@@ -1719,7 +1719,7 @@ function paintCfgPts(){
              : a>=3600  ? ' · 台账 '+(a/3600).toFixed(1)+' h 前'
              : a>=60    ? ' · 台账 '+Math.round(a/60)+' min 前' : ' · 台账 '+Math.round(a)+' s 前';
     }
-    // 🔴 2026-10-26 老倪「数据要保持一致」: 空间点1~8 的真源是 **8793 标记模式**写的
+    // 🔴 2026-10-26 老倪「数据要保持一致」: 空间点1~8 的唯一依据是 **8793 标记模式**写的
     //   data/skills/l2_atomic/space_points.json, 不是配置中心台账(可能落后好几天)。
     //   之前这里一律显示"台账 5.8 天前" ⇒ 明明刚改的点位, 看着像 6 天前的旧数据, 会误导人。
     //   现在: 有点位来自示教(带 src=space_points) ⇒ 标"示教实时", 台账年龄只作参考。
@@ -1734,7 +1734,7 @@ function paintCfgPts(){
       ageTxt = ' · 示教实时 '+_bits.join(' + ')+'（标记模式写入）' + (ageTxt? ' · 台账参考'+ageTxt.replace(' · 台账',''):'');
     }
     t.textContent=CFG_PTS.length+' 个'+ageTxt;
-    t.title='真源: /api/points ← 号位1~7 取 taught_points.json(slot1~slot7); 空间点1~8 取 8793 标记模式(space_points.json, 实时); 其余点位取配置中心台账 ar_aoi_live.json';
+    t.title='唯一依据: /api/points ← 号位1~7 取 taught_points.json(slot1~slot7); 空间点1~8 取 8793 标记模式(space_points.json, 实时); 其余点位取配置中心台账 ar_aoi_live.json';
   }
   // 🎯 目标点横幅: 现在要去哪一个 (单选), 以及它跟轨迹5的关系
   const tb=document.createElement('div');
@@ -1946,7 +1946,7 @@ function drawVR(){
     if(VR.urdf && VR.real!==false) drawUrdf(g,pr);              // 真机右臂(静止)
     // 🦾 AR 模式下真机臂让位(VR.real=false)、而仿真臂要等 PREV.on 才画 ⇒ 画面一条臂都没有,
     //    但「右臂_仿真」按钮却是亮的 —— 老倪 2026-10-28: 「右臂_仿真 是看不到的, 但是按钮是蓝色高亮的, 显示没有对应上」
-    //    兜底: 没有仿真臂可画时, 用当前正运动学(LINKM, 来自 TCP 关节角)画一条静止臂, 让按钮态与画面一致
+    //    保障: 没有仿真臂可画时, 用当前正运动学(LINKM, 来自 TCP 关节角)画一条静止臂, 让按钮态与画面一致
     else if(VR.urdf && VR.simArm!==false && !(PREV.on && PREV.M && PREV.ssOn)) drawUrdf(g,pr);
   }
   // 👻 预览动作: 紫色幽灵右臂 —— 与真实右臂同屏, 末端对着轨迹终点; 真机不动, 这条只是画上去的
@@ -2261,7 +2261,7 @@ spdPaint();
 //  执行到目标点, 再点一次预览的臂消失; 真机不动, 用眼睛能同时看到两条臂, 末端位姿不同」)
 //  做法: 浏览器内做**位置逆解** (阻尼最小二乘 DLS, 雅可比由 urdfFK 有限差分算),
 //        不依赖服务端 IK、不下发任何指令 ⇒ 真机绝对不会动。
-//        解出的 6 个关节角只喂给 drawUrdf 画一条紫色半透明幽灵臂。
+//        解出的 6 个关节角只提供给 drawUrdf 画一条紫色半透明幽灵臂。
 //  判据: 末端残差 < 2mm 才算解成; 不收敛就如实说"不可达", 不画假姿势糊人。
 // ══════════════════════════════════════════════════════════════════════════
 const PREV_TARGET=[0.647,0.206,0.168];    // 轨迹终点 = 7号位上方 50mm (base 系, 米)
@@ -2431,7 +2431,7 @@ if($('bUndo')) $('bUndo').addEventListener('click', doUndo);
 
 // 🚚 仿真搬运 (2026-10-27 老倪): 「用状态空间工程的 规划 plan 节点, 规划运送光模块的路径,
 //    由左臂仿真从左侧料盘抓起, 横移, 放下到右侧料盘, 全程都在 ar3d 里执行, 不需要动真正的右臂」
-// 路径真源: zmax_data/runtime/traj/sim_transport.json (tools/sim_transport_plan.py 生成,
+// 路径唯一依据: zmax_data/runtime/traj/sim_transport.json (tools/sim_transport_plan.py 生成,
 //   任务层=state_space/planner.py 的 plan 节点, 几何层=左槽1~14 / 槽1~14 实测盒)
 // 播放: 每段两端点各解一次 IK(左臂自身坐标系 = 世界点 − LARM.off), 段内关节角线性插值
 var TRANS={playing:false, data:null, frames:[], fi:0, raf:null, carry:false, curK:0, curY:null};
@@ -3068,7 +3068,7 @@ $('bFit').addEventListener('click',async ()=>{
       body:JSON.stringify(Object.assign(sel?{k:NAMED_SEL, target:(NAMED_SEL==='real'?(CFG_TARGET||null):null)}:{},{speed_mm_s:SPD_MM_S}))})).json();
     msg.style.color = r.ok ? '#3fb950' : '#e05252';
     msg.textContent = r.msg || (r.ok?'已下发':'失败');
-    // 🔴 2026-10-26 「点击执行没反应」: 服务端其实回了原因(例如"起点已变 100mm"), 但只写在按钮旁边
+    // 🔴 2026-10-26 「点击执行没反应」: 服务端实际回了原因(例如"起点已变 100mm"), 但只写在按钮旁边
     //    一行小字里, 一闪就被别的轮询覆盖 ⇒ 现在**同时**弹一条 6 秒的横幅, 成功绿色/失败红色。
     showToast((r.ok?'✅ ':'⛔ ')+(r.msg||(r.ok?'已下发':'失败')), r.ok);
   }catch(e){ msg.style.color='#e05252'; msg.textContent='下发失败: '+e; }
@@ -3355,8 +3355,8 @@ function drawFloor(g,pr){
   }
 }
 // ── 🧪 实验桌(工作台): 摆在箱体前面 +X; 桌面顶 z=0 = 箱体顶板 = 两臂安装面 ⇒ 750 平齐 ──
-// 📐 上横梁(真源 = 围栏台账里名字带"横梁"的 box, 缺省 0.4..0.6 / -0.8..0.8 / 0.682..0.70):
-//   框架立柱就顶到它的底面, 支撑梁垫在它下面 —— 不写死坐标, 台账一改框架自动跟着走
+// 📐 上横梁(唯一依据 = 围栏台账里名字带"横梁"的 box, 缺省 0.4..0.6 / -0.8..0.8 / 0.682..0.70):
+//   框架立柱就顶到它的底面, 支撑梁垫在它下面 —— 不预先固定坐标, 台账一改框架自动跟着走
 function beamBox(){
   const fs=(typeof FENCES!=='undefined' && FENCES) ? FENCES : [];
   const f=fs.find(it=>it && it.type==='box' && /横梁/.test(it.name||''));
@@ -3491,7 +3491,7 @@ $('bUrdf').addEventListener('click',()=>vrKeepCam(()=>{
 
 // ═════ 🥽 AR 开关 (画布 🤖 机器人执行器 ssact) → 本页进 AR 场景 ═════
 //  2026-10-27 老倪: 「AR 开了就是进 AR 场景控制左右臂, AR 关了就是直接控制机器人」
-//  真源: 控制台 on_toggle_ar → zmax_data/ss_live/exec_switches.json → /api/ar/mode
+//  唯一依据: 控制台 on_toggle_ar → zmax_data/ss_live/exec_switches.json → /api/ar/mode
 //  只在状态**变化**时应用一次, 不每 2s 抢用户手动切的 VR.real / VR.simArm
 var ARMODE={on:false,real_auth:false,age:null};
 function arModeApply(d){
@@ -3686,7 +3686,7 @@ async function refreshAuthBadge(){
   try{
     // 服务端这个端点挂在 POST 分支(与 /api/traj/exec 同一处), GET 会 404 ⇒ 这里显式 POST
     const d=await (await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json();
-    if(!d.ok){ el.style.background='#3d1d1d'; el.style.color='#f87171'; el.textContent='授权: 读不到真源'; return; }
+    if(!d.ok){ el.style.background='#3d1d1d'; el.style.color='#f87171'; el.textContent='授权: 读不到唯一依据'; return; }
     if(d.armed){
       el.style.background='#12331f'; el.style.color='#3fb950'; el.style.borderColor='#238636';
       el.textContent='🟢 授权有效 · 剩 '+d.left_min+' 分钟 (epoch='+d.epoch+')';
@@ -3700,7 +3700,7 @@ async function refreshAuthBadge(){
 }
 refreshAuthBadge(); setInterval(refreshAuthBadge, 3000);
 // 🧭 命名轨迹 5 个按钮 (老倪 2026-10-25: 「三维视图窗口下面操作按钮区加五个按钮」)
-// 每个按钮 = 一次 /api/traj/named 请求, 点从配置中心工程配置读, 不写死坐标。
+// 每个按钮 = 一次 /api/traj/named 请求, 点从配置中心工程配置读, 不预先固定坐标。
 [['t1','xiaohong'],['t2','square'],['t3','map'],['t4','safe'],['t5','real']]
   .forEach(([id,k])=>{ const el=$(id); if(el) el.addEventListener('click',()=>loadNamed(k)); });
 // 🧭 2026-10-26: 顶部工具条那一份 (tA1..tA5) —— 开页即见, 与上面同一批动作
@@ -3875,7 +3875,7 @@ function drawTrayModules(g, pr){
 // 🔩 光模块长方体 @ tool1 —— 老倪 2026-10-25 定的口径:
 //    tool1 原点 = **模块头中心**(长方体沿 Z 的一端);  X = 上表面法向 ⇒ 厚度 T 沿 X;
 //    Y = 侧面法向 ⇒ 宽度 W 沿 Y;  Z = 上表面中轴线 ⇒ 长度 L 沿 Z。
-//    本体从模块头朝**法兰**那边长(sign 由 tool0−tool1 与 Z 的点积定, 不写死)。
+//    本体从模块头朝**法兰**那边长(sign 由 tool0−tool1 与 Z 的点积定, 不预先固定)。
 function drawModuleBox(g, pr){
   const F1=TCP.frames.tool1, F0=TCP.frames.tool0||{};
   const L=(MODSPEC.L_mm||56.5)/1000, W=(MODSPEC.W_mm||13.4)/1000, T=(MODSPEC.T_mm||8.5)/1000;
@@ -3944,7 +3944,7 @@ function autoZoomPlan(){
 
 async function refresh(){
   // 隐藏(预载/最小化)时不轮询 —— 但**降到 3s 一次保活**, 不能直接 return:
-  //   切回可见时若 platform/Qt 不发 visibilitychange, 面板会永久停在旧数 (帧龄会露馅但体验是"卡住")。
+  //   切回可见时若 platform/Qt 不发 visibilitychange, 面板会永久停在旧数 (帧龄会露馅但体验是"阻塞")。
   if(document.hidden){
     const _n=performance.now();
     if(_n-(refresh._hid||0) < 3000) return;
@@ -4074,7 +4074,7 @@ async function robotTick(){
     if(!R){ el.textContent = '🤖 状态: 读不到'; el.title = (r && r.err) || ''; return; }
     const ins = (R.inserting === true) ? '插拔中' : (R.inserting === false ? '非插拔' : '插拔未知');
     el.textContent = '🤖 ' + R.state + ' · 阶段 ' + (R.stage || '—') + ' · ' + ins;
-    el.title = (R.text || '') + '\n真源: state.json + latest.json + ss_live/skill_dispatch.json';
+    el.title = (R.text || '') + '\n唯一依据: state.json + latest.json + ss_live/skill_dispatch.json';
     el.style.background = (R.inserting === true) ? 'rgba(63,185,80,.30)'
                         : (R.code === 1 ? 'rgba(248,81,73,.30)' : '');
     el.style.fontWeight = (R.inserting === true) ? '700' : '';
@@ -4089,7 +4089,7 @@ async function robotTick(){
   await aoiState();
   setInterval(refresh,1500); setInterval(aoiState,5000);
   // 🤖 机器人状态机 (老倪 2026-10-20: 「AR 场景需要接上机器人, 直接看到是否在插拔」)
-  //   真源 /api/robot_state → tools/robot_state.py; 每秒刷一次, 插拔中置绿、急停报警置红。
+  //   唯一依据 /api/robot_state → tools/robot_state.py; 每秒刷一次, 插拔中置绿、急停报警置红。
   robotTick(); setInterval(robotTick,1000);
   // 🥽 2026-10-26 老倪:「你现在没变啊？还得刷新？」—— 轨迹5「实时」依赖 live 当前 TCP + 页面上选的
   //   目标点, 所以点亮之后服务端一改(或是臂动了), 页面必须**自己跟着重算**, 不能靠用户按 F5。
@@ -4446,7 +4446,7 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
 
   var panel = document.getElementById('tactPanel');
 
-  // ═══ 🧩 元任务区 (真源: 配置中心 TASK-07-AOI 的 ar_meta_tasks.json → /api/ar/meta) ═══
+  // ═══ 🧩 元任务区 (唯一依据: 配置中心 TASK-07-AOI 的 ar_meta_tasks.json → /api/ar/meta) ═══
   //  老倪(2026-10-28):「元任务的配置, AR场景, 也写到 ar3d 右侧面栏, 我能看到每个任务的依次执行」
   //  只读展示: 5 个元任务 + 当前执行到哪个(高亮) + 进度 x/n + 手臂归属; 真机零指令。
   var MT = null, mtLastKey = '';
@@ -4460,7 +4460,7 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
       .catch(function () { });
   }
   // 🧵 双臂并行轨道 (老倪 2026-10-28:「左右臂的任务, 应该是并行的, 同一时间应该是左手任务和右手任务同时显示」)
-  //   真源 = /api/ar/meta 的 lanes (由 tools/ss_meta_task_ar.py 从 392 段表 + TASK-06-TRAY.steps 实取,
+  //   唯一依据 = /api/ar/meta 的 lanes (由 tools/ss_meta_task_ar.py 从 392 段表 + TASK-06-TRAY.steps 实取,
   //   件周期 11.40s = 右臂稳态单件; 左臂 4.70s 供料后空闲等右臂取)。两条 lane 共用一条时间轴 + 同一条游标,
   //   所以画面里同一时刻必然同时有"左手在做什么"和"右手在做什么"。只读, 真机零指令。
   var MT_SHORT = { 'MT-01': '取+插', 'MT-02': '拔出', 'MT-03': 'AOI', 'MT-04': '放盘',
@@ -4889,7 +4889,7 @@ body{padding-bottom:196px}
     <div class="mK"><b id="mkUnit">—</b><span>客户单件成本 (元)</span></div>
   </div>
   <div class="mRow">
-    <div class="mK mWide" style="flex:1 1 58%"><b id="mkExpect">市场预期加载中…</b><span>预测口径: 实测节拍 × 档位工时 × OEE (与《性能配置》《成本分析》同一真源)</span></div>
+    <div class="mK mWide" style="flex:1 1 58%"><b id="mkExpect">市场预期加载中…</b><span>预测口径: 实测节拍 × 档位工时 × OEE (与《性能配置》《成本分析》同一唯一依据)</span></div>
     <div class="mK mWide" style="flex:1 1 42%"><b id="mkSplit">三方分成 加载中…</b><span>机器人本体硬件 / 模型软件 / 运营数据</span></div>
   </div>
 </div>

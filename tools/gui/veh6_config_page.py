@@ -6,9 +6,9 @@
                   将原来的工艺工单任务, 拆解成 任务配置 和 工单配置 两项」
   ⇒ 左树原「工艺·工单」一项拆成两项, 各有一页 (拆的是**粒度**, 不是换列):
      · 📋 任务配置 = **元任务粒度**: 一个功能 (FN-SYSx-N) + 该功能全部配置参数 + 依赖 + 验证方法 + 承载场景
-       (列 = 《元任务标准模板》七个字段; 真源 config_meta.json + 画布连线 + tasks.json)
+       (列 = 《元任务标准模板》七个字段; 唯一依据 config_meta.json + 画布连线 + tasks.json)
      · 🧾 工单配置 = **工单实例粒度**: 一份工单 (order_no) 的身份 + 配方 + 变体 + 选项 + 目标 + 站点就绪
-       (真源 config/orders/BS_*.json)
+       (唯一依据 config/orders/BS_*.json)
 
 老倪 2026-10-19: 「将 工单配置，替换成 工程配置；将工单，放到文档配置选项卡，将成本/报价 商业模式的内容，
                   都迁移到 文档配置里；整体上调整原来的 北斗七星的 开阳的描述」
@@ -51,7 +51,7 @@ MCD_J = os.path.join(ROOT, "config", "mcd", "zmax_mcd.json")
 MATCH_J = os.path.join(ROOT, "config", "mcd", "match_matrix.json")
 ORDERS_D = os.path.join(ROOT, "config", "orders")
 BIND_J = os.path.join(ROOT, "config", "ss_task_binding.json")
-# 🏷 产品配置真源 (老倪 2026-10-13: 550A 原创版 / 550B 标定版 / 550C 量产版)
+# 🏷 产品配置唯一依据 (老倪 2026-10-13: 550A 原创版 / 550B 标定版 / 550C 量产版)
 PRODUCT_J = os.path.join(ROOT, "config", "platform", "zmax_product.json")
 REL_PRODUCT = "config/platform/zmax_product.json"
 PRODUCT_IDS = ("550A", "550B", "550C")
@@ -73,7 +73,7 @@ _GUI_DIR = os.path.dirname(os.path.abspath(__file__))
 if _GUI_DIR not in sys.path:
     sys.path.insert(0, _GUI_DIR)
 import ss_seven_stars as _ss  # noqa: E402
-try:                                     # 🏭 平台描述单一真源 (与主控制台左侧卡面同源, 老倪 2026-10-15)
+try:                                     # 🏭 平台描述单一唯一依据 (与主控制台左侧卡面同源, 老倪 2026-10-15)
     from zmax_platform_info import zmax_platform_info as _zmax_platform_info
 except Exception:                        # noqa: BLE001
     _zmax_platform_info = None
@@ -116,17 +116,17 @@ def _run(fn, **kw):
 #                   将原来的工艺工单任务, 拆解成 任务配置 和 工单配置 两项」
 #   任务配置 = **元任务粒度**: 一个功能 (FN-SYSx-N) + 该功能全部配置参数 + 依赖 + 验证方法 + 承载场景;
 #   工单配置 = **工单实例粒度**: 一份工单 (order_no) 的身份 + 配方 + 变体 + 选项 + 目标 + 站点就绪。
-# 两份都是真源派生 (config_meta.json / tasks.json / ss_task_binding.json / 画布 / config/orders/BS_*.json),
+# 两份都是唯一依据派生 (config_meta.json / tasks.json / ss_task_binding.json / 画布 / config/orders/BS_*.json),
 # **不在 GUI 里写第二套构建逻辑** —— 直接调导出器那一份 (一份逻辑两处用)。
 _MT_SRC = (os.path.join(ROOT, "data/database/zmax/config_meta.json"),
            TASKS_J, BIND_J,
            os.path.join(ROOT, "src/lerobot/engineering/flows/state_space_obs.json"))
-_MT_CACHE_SIG = None            # 真源 (mtime,size) 指纹
-_MT_CACHE_MT = None             # 元任务清单缓存 (真源变了才重建)
+_MT_CACHE_SIG = None            # 唯一依据 (mtime,size) 指纹
+_MT_CACHE_MT = None             # 元任务清单缓存 (唯一依据变了才重建)
 
 
 def _meta_tasks():
-    """元任务清单 (与 Word/PDF 导出器同源同口径)。真源 mtime/size 变了才重建。"""
+    """元任务清单 (与 Word/PDF 导出器同源同口径)。唯一依据 mtime/size 变了才重建。"""
     global _MT_CACHE_SIG, _MT_CACHE_MT
     import export_meta_doc as E
     try:
@@ -152,7 +152,7 @@ def _meta_task_count():
 
 
 def _task_obj(tid):
-    """tasks.json 里的一条任务 (真源); 没有就 None。"""
+    """tasks.json 里的一条任务 (唯一依据); 没有就 None。"""
     return next((x for x in (_j(TASKS_J, {}) or {}).get("tasks", []) if x.get("task_id") == tid), None)
 
 
@@ -164,7 +164,7 @@ HAND_COLOR = {"R": "#4a90e0", "L": "#3fbf7f", "BOTH": "#b58cf0"}
 
 
 def _hand_of(text):
-    """从一句中文描述里判手别 (真源里 左臂/右臂 是写明的); 判不出就 ''(未知), 不猜。"""
+    """从一句中文描述里判手别 (唯一依据里 左臂/右臂 是写明的); 判不出就 ''(未知), 不猜。"""
     t = text or ""
     l = "左臂" in t or "左手" in t
     r = "右臂" in t or "右手" in t
@@ -178,7 +178,7 @@ def _hand_of(text):
 
 
 def _task_level_meta(tid):
-    """该任务**自己的**元任务 (任务级元任务 = 它跑起来的那几个执行元任务), 带手别 + 时空 + 段级明细。
+    """该任务**自己的**元任务 (任务级元任务 = 它启动的那几个执行元任务), 带手别 + 时空 + 段级明细。
 
     老倪 2026-10-28 两轮:
       ① 「TASK-07-AOI 任务的元任务, 要有对应关系, 点击 TASK0-7 下面的元任务要对应变化」
@@ -186,7 +186,7 @@ def _task_level_meta(tid):
          元任务要有一列标识 左手/右手/左右, 要有时空对应关系」
     ⇒ 每条元任务给: 手别 (L/R/BOTH) · 层 · 段数 · 时空窗 (一轮里 t 起→止) · 目标对象 (槽k/孔k/金手指点/侧面点N/下料盘/废料盘)
       · 段级明细 (seq/动作/目标/手别/时长/累计, 可直接对到 AR 场景的具体操作)。
-      真源 = tasks.json 的 meta_tasks (TASK-07-AOI: 7 条, 由 ss_meta_task_ar.py 从 392 段归纳);
+      唯一依据 = tasks.json 的 meta_tasks (TASK-07-AOI: 7 条, 由 ss_meta_task_ar.py 从 392 段归纳);
       没登记 meta_tasks 的任务 ⇒ 用它自己的 steps 派生 (手别从 desc 里的 左臂/右臂 读, 判不出就留空)。
     返回 (items, note, src); items = [dict(id,name,hand,layer,n_seg,t_win,targets,segs,actions)]。
     """
@@ -211,7 +211,7 @@ def _task_level_meta(tid):
         hs = {"R": sum(1 for x in items if x["hand"] == "R"),
               "L": sum(1 for x in items if x["hand"] == "L"),
               "BOTH": sum(1 for x in items if x["hand"] == "BOTH")}
-        note = ("%s 的任务级元任务 %d 条 (右手 %d / 左手 %d / 双手 %d) · 真源 tasks.json(%s.meta_tasks)"
+        note = ("%s 的任务级元任务 %d 条 (右手 %d / 左手 %d / 双手 %d) · 唯一依据 tasks.json(%s.meta_tasks)"
                 " · 长程: 目标 %s UPH · 一轮 %s 段 / %s s · %s 种轮模板 · 元任务执行 %s 次/轮"
                 % (tid, len(items), hs["R"], hs["L"], hs["BOTH"], tid,
                    lh.get("uph_target") or "—", lh.get("segments_total") or "—",
@@ -245,7 +245,7 @@ def _task_level_meta(tid):
 
 
 def _n_tasks():
-    """真源任务数 (tasks.json) —— 归属口径要用它, 不写死 8。"""
+    """唯一依据任务数 (tasks.json) —— 归属口径要用它, 不预先固定 8。"""
     try:
         return len((_j(TASKS_J, {}) or {}).get("tasks") or [])
     except Exception:                                                           # noqa: BLE001
@@ -267,14 +267,14 @@ def _owner_text(m):
 # 🎯 当前活跃任务 → 该任务的功能配置 (元任务编排驱动) —— 老倪 2026-10-28
 #   「根据元任务的编排, 继续完成 功能配置 模型配置 性能配置; 当前激活的是 任务7, 功能上要将任务7的任务都对应上;
 #    在功能配置页面, 要提示 当前的活跃任务, 随即显示当前活跃任务的功能配置」
-#   真源 (三份, 都不猜):
+#   唯一依据 (三份, 都不猜):
 #     config/ss_task_binding.json  → active_task / enabled_nodes / applies_segments / segment_node_map
 #     config/tasks/tasks.json      → 该任务的 meta_tasks(任务级元任务 7 条) + steps
 #     tools/export_meta_doc.build_meta_tasks() → 77 条功能级元任务 (含 tasks 归属/参数/验证)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _active_bind():
-    """(tid, 任务对象, 该任务在绑定真源里的条目, 绑定整份) —— 活跃任务只认 active_task, 不猜。"""
+    """(tid, 任务对象, 该任务在绑定唯一依据里的条目, 绑定整份) —— 活跃任务只认 active_task, 不猜。"""
     b = _j(BIND_J, {}) or {}
     tid = (b.get("active_task") or "").strip()
     tk = _task_obj(tid) or {}
@@ -294,7 +294,7 @@ def _node_segments(smap):
 def _task_funcs(tid=None):
     """该任务的功能级元任务 —— 77 条 FN 里 `tasks` 命中它的那些 (TASK-07-AOI 实测 33 条)。
 
-    每条附三样**派生**信息, 全部来自绑定真源, 不猜:
+    每条附三样**派生**信息, 全部来自绑定唯一依据, 不猜:
       node    该功能对应的画布节点 (功能清单 node_id)
       enabled 该节点在本任务里是 启用 / 禁用 (enabled_nodes / disabled_nodes)
       segs    该节点落在哪些工艺段 (segment_node_map 反查)
@@ -343,9 +343,9 @@ def _task_seg_cover(tid=None):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 功能定义 · 真源装配 (老倪 2026-10-28: 「功能, 应该有 功能名称, 输入, 输出, 描述, 这些信息, 对应着元任务;
+# 功能定义 · 唯一依据装配 (老倪 2026-10-28: 「功能, 应该有 功能名称, 输入, 输出, 描述, 这些信息, 对应着元任务;
 #   可以是 1 个功能, 也可以由功能组成子系统。重写功能配置, 每个功能要有 function 这样的逻辑实现」)
-#   四个字段各自的真源 (逐条标明来源, 别混):
+#   四个字段各自的唯一依据 (逐条标明来源, 别混):
 #     名称/子系统/层/描述 ← zmax_engineering.db: functions(name, system_id, layer, row_name, note_work)
 #     输入/输出           ← functions 所属产品特征 → capability_dbc(inputs/outputs)  ← 派生, 粒度=能力接口
 #     逻辑实现 function   ← links(kind='对应模块') function→canvas节点  →  links(kind='实现') 节点→library.py:LINE
@@ -490,7 +490,7 @@ def _fn_detail(fn_id):
     ins = [x for x in (cfl.get("inputs") or []) if x]
     outs = [x for x in (cfl.get("outputs") or []) if x]
     pf_used = list((cm.get("deps") or {}).get("product_features") or [])
-    # ── 真源没有 I/O 的: 用作者补写种子 (tools/spec/fn_io_seed.json), 标来源, 不冒充真源
+    # ── 唯一依据没有 I/O 的: 用作者补写种子 (tools/spec/fn_io_seed.json), 标来源, 不冒充唯一依据
     seed = (_fn_io_seed().get("items") or {}).get(fn_id) or {}
     io_ref = ("派生(参考): 产品特征能力接口 " + " / ".join(pf_used)) if (ins or outs) else ""
     io_src = ""
@@ -515,8 +515,8 @@ def _fn_detail(fn_id):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 模型真源 (老倪 2026-10-28: 「继续 模型配置, 如何对应功能配置, 要用实际的模型」)
-#   模型侧真源 = models/active_models.json: L2/L3/L4/L5 在役指针 + extra_in_service (多地/原语/LoRA/技能包)
+# 模型唯一依据 (老倪 2026-10-28: 「继续 模型配置, 如何对应功能配置, 要用实际的模型」)
+#   模型侧唯一依据 = models/active_models.json: L2/L3/L4/L5 在役指针 + extra_in_service (多地/原语/LoRA/技能包)
 #              + ar:* (AR 场景登记条目, 带 used_by 场景与功能)
 #   功能侧 = function_layer_map 的 models 名称 → tools/spec/model_links.json 对齐到条目
 #   所有权重/大小/时间/是否存在 全部现场 stat, 不抄不猜。
@@ -665,7 +665,7 @@ def _fn_load_items(fn_id):
     依据优先级 (先具体后笼统, 谁登记得细用谁):
       a. 模块 params: model (权重名) / skill (技能库 json) / llm / expert+decoder
       b. models/active_models.json 里 used_by 点名该功能的条目 (场景登记, 如 AR 的 AOI 端点)
-      c. 兜底: function_layer_map 的层模型名 (粗粒度, 明确标「层模型(粗)」)
+      c. 保障: function_layer_map 的层模型名 (粗粒度, 明确标「层模型(粗)」)
     路径/大小/时间/是否存在 = 现场 stat。
     """
     from zmax_platform_info import function_layer_map as _flm
@@ -792,7 +792,7 @@ def _mt_funcs(tid=None):
 
 
 def _orders_list():
-    """工单实例真源: config/orders/BS_*.json (Build Sheet) —— 读不到的文件跳过, 不编数。"""
+    """工单实例唯一依据: config/orders/BS_*.json (Build Sheet) —— 读不到的文件跳过, 不编数。"""
     out = []
     for f in sorted(glob.glob(os.path.join(ORDERS_D, "BS_*.json"))):
         d = _j(f, {}) or {}
@@ -815,7 +815,7 @@ def _short(v, n=3, sep=" / ", w=26):
     return head if len(head) <= w else head[:w - 1] + "…"
 
 
-# ── 三份交付文档 (2026-10-10): 与 config_center.py 同一份真源, 点了必出结果 ──
+# ── 三份交付文档 (2026-10-10): 与 config_center.py 同一份唯一依据, 点了必出结果 ──
 DOC_SCRIPTS = {
     "bundle":    ("三件套导出 (立项文档 + SOR + 协议)", "docs_bundle.py", []),
     "project":   ("项目立项文档 (Word)", "project_doc_export.py", []),
@@ -824,12 +824,12 @@ DOC_SCRIPTS = {
     "bom":       ("BOM / 成本 / ROI 算账 (不出文档)", "project_doc_export.py", ["--check"]),
     # 🆕 2026-10-14 老倪: 「这些元任务, 要由配置中心可以在任务配置里可以导出 word 和 pdf 文档」
     #   元任务 = 一个功能(FN-SYSx-N) + 该功能全部配置参数 + 依赖 + 验证 + 归属层
-    #   真源(config_meta.json 74 功能 / tasks.json 7 任务 / ss_task_binding.json / 画布 89 节点) →
+    #   唯一依据(config_meta.json 74 功能 / tasks.json 7 任务 / ss_task_binding.json / 画布 89 节点) →
     #   md → HTML → LibreOffice → docx + pdf; 一致性校验 4/4 内建在脚本里 (--check)
     "metaplan":  ("元任务开发计划 · 项目立项书 (Word + PDF)", "export_meta_doc.py", []),
     # 🆕 2026-10-14 老倪: 「以后每个功能, 需要独立成一个研究成果, 都可以申请专利,
     #   所以你要预留专利申请一键导出的功能」—— 一个功能点 = 一份交底书 (74 份),
-    #   内容全部实读真源并标出处 (config_meta + function_notes + 画布 + 代码文件), 出 md+docx+pdf。
+    #   内容全部实读唯一依据并标出处 (config_meta + function_notes + 画布 + 代码文件), 出 md+docx+pdf。
     "patent":    ("专利交底书 · 一键导出 (每功能一份 · Word + PDF)", "export_patent_draft.py", ["--all"]),
 }
 DOC_DIRS = ["outputs/docs_bundle", "outputs/project_docs", "outputs/sor", "outputs/agreements",
@@ -842,16 +842,16 @@ DOCS = {
     "project":   {"name": "项目立项文档", "script": "project_doc_export.py", "rel": "outputs/project_docs"},
     "agreement": {"name": "合作协议", "script": "agreement_export.py", "rel": "outputs/agreements"},
 }
-# 文档 manifest 里记录过的真源 (键名来自各导出器); 有的用 source_db, 有的用 engineering_db
+# 文档 manifest 里记录过的唯一依据 (键名来自各导出器); 有的用 source_db, 有的用 engineering_db
 SRC_DEFS = [
-    ("source_db",      "工程库 (单一真源)",       ["data/database/zmax/zmax_engineering.db"]),
-    ("engineering_db", "工程库 (单一真源)",       ["data/database/zmax/zmax_engineering.db"]),
-    ("bom",            "BOM/成本/ROI 真源",       ["config/platform/zmax_project_bom.json"]),
+    ("source_db",      "工程库 (单一唯一依据)",       ["data/database/zmax/zmax_engineering.db"]),
+    ("engineering_db", "工程库 (单一唯一依据)",       ["data/database/zmax/zmax_engineering.db"]),
+    ("bom",            "BOM/成本/ROI 唯一依据",       ["config/platform/zmax_project_bom.json"]),
     ("feature_dbc",    "功能能力清单 feature.dbc", ["data/database/zmax/sources/feature.dbc", "feature.dbc"]),
-    ("governance",     "数据治理真源",             ["config/platform/zmax_data_governance.json"]),
-    ("perf_spec",      "性能指标真源",             ["config/platform/zmax_perf_spec.json"]),
+    ("governance",     "数据治理唯一依据",             ["config/platform/zmax_data_governance.json"]),
+    ("perf_spec",      "性能指标唯一依据",             ["config/platform/zmax_perf_spec.json"]),
 ]
-PLATFORM_SRC = ("平台配置真源", "config/platform/zmax_platform.json")   # manifest 未记录 ⇒ 用时间戳兜底
+PLATFORM_SRC = ("平台配置唯一依据", "config/platform/zmax_platform.json")   # manifest 未记录 ⇒ 用时间戳保障
 
 
 def _sha256(p):
@@ -901,7 +901,7 @@ def _latest_doc(kind):
 
 
 def _doc_state(kind):
-    """文档 × 真源一致性: 逐条比对 manifest 记录的 sha 与当前真源实际 sha (对不上=过期, 不能当交付件)。"""
+    """文档 × 唯一依据一致性: 逐条比对 manifest 记录的 sha 与当前唯一依据实际 sha (对不上=过期, 不能当交付件)。"""
     st = _latest_doc(kind)
     info = {"kind": kind, "name": DOCS[kind]["name"], "doc": st, "rows": []}
     if not st:
@@ -928,7 +928,7 @@ def _doc_state(kind):
                              time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(fp))), "⚠️"))
         bad.append(PLATFORM_SRC[0])
     info["stale"] = bool(bad)
-    info["why"] = ("真源已变: " + ", ".join(bad)) if bad else "与当前真源一致"
+    info["why"] = ("唯一依据已变: " + ", ".join(bad)) if bad else "与当前唯一依据一致"
     return info
 
 
@@ -948,7 +948,7 @@ def _render_docx(path, limit=300000):
     try:
         d = Document(path)
     except Exception as e:  # noqa: BLE001
-        return f"⛔ 打不开 {path}: {e}"
+        return f"⛔ 无法打开 {path}: {e}"
     out = []
     for child in d.element.body.iterchildren():
         tag = child.tag.split("}")[-1]
@@ -985,7 +985,7 @@ def _render_doc_html(path):
     try:
         d = Document(path)
     except Exception as e:  # noqa: BLE001
-        return "<p>⛔ 打不开 %s: %s</p>" % (_esc(path), _esc(e))
+        return "<p>⛔ 无法打开 %s: %s</p>" % (_esc(path), _esc(e))
 
     out = []
     for child in d.element.body.iterchildren():
@@ -1078,7 +1078,7 @@ def _doc_inventory():
 _STATE_ITEMS = ("★ 活跃", "○ 未激活", "— 无配置")
 # 活跃属性所在列 (建表列序见 _build_tasks: 0任务ID 1类型 2工程 3=3D场景 4=实时监控 5工艺步骤
 #   6适用段 7粒度 8启用节点 9禁用节点 10档位(开) 11模型 12活跃 13状态)
-# 🐛 2026-10-13: 10-12 加「3D场景」「实时监控」两列后列序右移, 下拉仍写死在第 8 列(启用节点) ⇒ 下拉跑到
+# 🐛 2026-10-13: 10-12 加「3D场景」「实时监控」两列后列序右移, 下拉仍硬编码在第 8 列(启用节点) ⇒ 下拉跑到
 #   「启用节点」列、真正的活跃列只剩文字(而且重算时只更新下拉不更新文字 ⇒ 那格永远停建表那一刻)。
 _ACT_COL = 12
 
@@ -1086,7 +1086,7 @@ _ACT_COL = 12
 def _task_state_cell(tid, act=None):
     """🆕 2026-10-11 老倪: 任务「活跃属性」三态 —— ★ 活跃 / ○ 未激活 / — 无配置。
 
-    口径真源 = tools/ss_task_state.py (不手填): 活跃 = 绑定真源 active_task;
+    口径唯一依据 = tools/ss_task_state.py (不手填): 活跃 = 绑定唯一依据 active_task;
     未激活 = 该任务配置切换过或跑过验证 (激活台账 / 运行报告); 无配置 = 还没开始。
     """
     try:
@@ -1106,7 +1106,7 @@ _SCENE_SHORT = {"ar_aoi": "AR", "fw_loading": "FW Loading", "handle": "上下料
 
 
 def _scenes_index():
-    """场景真源 flows/scenes_5jobs.json → {scene_id: 场景对象} (读不到就空, 不猜)。"""
+    """场景唯一依据 flows/scenes_5jobs.json → {scene_id: 场景对象} (读不到就空, 不猜)。"""
     p = os.path.join(ROOT, "flows", "scenes_5jobs.json")
     try:
         mt = os.path.getmtime(p)
@@ -1129,8 +1129,8 @@ def _scene_cell(t):
 
     🆕 2026-10-11 老倪: 「任务7 …场景就对应 AR」—— 任务表新增场景列 (短标签 · 场景ID)。
     🥽 2026-10-12 老倪: 「信号分析也用 绿色/蓝色/紫色 代表对应不同的场景」⇒ 配置中心这一列**同色**,
-    颜色/映射单一真源 = tools/ss_scene_switch.py(插拔#2e8b57 绿 · 摆盘#1f6feb 蓝 · AR#8957e5 紫), 一致到像素。
-    🚀 2026-10-12 二次: 单元格改显示**场景名字**(插拔场景/摆盘场景/AR场景, 真源 config/topics/scene_tags.json)
+    颜色/映射单一唯一依据 = tools/ss_scene_switch.py(插拔#2e8b57 绿 · 摆盘#1f6feb 蓝 · AR#8957e5 紫), 一致到像素。
+    🚀 2026-10-12 二次: 单元格改显示**场景名字**(插拔场景/摆盘场景/AR场景, 唯一依据 config/topics/scene_tags.json)
     + 场景ID —— 与 3D 场景按钮 / 信号分析窗口的叫法一致; 没绑场景的就标未绑定, 不猜。
     """
     sid = t.get("scene_ref") or "—"
@@ -1160,16 +1160,16 @@ _SCENE_COLOR_CACHE = {}
 
 def _scene_tip(t):
     sc = _scenes_index().get(t.get("scene_ref")) or {}
-    return "场景真源 flows/scenes_5jobs.json\nscene_id: %s\nscene_type: %s\nname: %s\n%s" % (
+    return "场景唯一依据 flows/scenes_5jobs.json\nscene_id: %s\nscene_type: %s\nname: %s\n%s" % (
         t.get("scene_ref"), sc.get("scene_type"), sc.get("name"), sc.get("desc") or "")
 
 
 def _proj_paths():
     """🚀 2026-10-12 老倪: 「增加工程列, 可看到 zmax 相关的名字和项目启动文件的实际名字和路径」。
 
-    真源: 绑定真源 config/ss_task_binding.json 的 project 段 (工程名/画布/节点) +
+    唯一依据: 绑定唯一依据 config/ss_task_binding.json 的 project 段 (工程名/画布/节点) +
           项目启动文件 = 工程文件 .zmaxproj (控制台启动第一步就按它的 debug_state 回填场景/数据源/活跃任务;
-          默认路径真源 tools/proj_state.py)。缺就如实标缺, 不编路径。
+          默认路径唯一依据 tools/proj_state.py)。缺就如实标缺, 不编路径。
     """
     b = _j(BIND_J, {}) or {}
     pr = b.get("project") or {}
@@ -1181,8 +1181,8 @@ def _proj_paths():
     # 🔴 2026-10-12 老倪(现场纠正): 「配置中心 状态空间的主工程, 路径不是 reports/, 一个都不对」
     #   「/home/ubuntu/zmax/data/database/zmax 主工程路径是这」—— 工程 / 工程库 / 总工程文件都在这里:
     #     data/database/zmax/zmax_space.proj      (总工程文件, 其余 9 个工具同源: tools/gui/project_file.space_path)
-    #     data/database/zmax/zmax_engineering.db  (工程库, 单一真源: 库内 projects 表 = 工程名/路径)
-    #   ⇒ 只认真源, 不再拿旧的 reports/projects/SS_主工程_任务配置.zmaxproj 顶替(那是 5.21 的老导出件)。
+    #     data/database/zmax/zmax_engineering.db  (工程库, 单一唯一依据: 库内 projects 表 = 工程名/路径)
+    #   ⇒ 只认唯一依据, 不再拿旧的 reports/projects/SS_主工程_任务配置.zmaxproj 顶替(那是 5.21 的老导出件)。
     cand = []
     try:
         import project_file as _pf                                                   # noqa: PLC0415
@@ -1196,7 +1196,7 @@ def _proj_paths():
             _cn = _sq.connect(out["db"])
             for _r in _cn.execute("select path from projects"):
                 if _r and _r[0]:
-                    cand.append(str(_r[0]))     # 工程库登记的工程文件路径 (单一真源)
+                    cand.append(str(_r[0]))     # 工程库登记的工程文件路径 (单一唯一依据)
             _cn.close()
     except Exception:                                                                # noqa: BLE001
         pass
@@ -1239,13 +1239,13 @@ def _steps_cell(t):
 
 
 def _steps_tip(t):
-    """工艺步骤列的 tooltip: 完整序列 (与 config/tasks/tasks.json 真源逐条一致)。"""
+    """工艺步骤列的 tooltip: 完整序列 (与 config/tasks/tasks.json 唯一依据逐条一致)。"""
     names = [str(s.get("name") or "") for s in (t.get("steps") or [])]
     if not names:
-        return "工艺步骤: (该任务在真源里没有 steps)"
+        return "工艺步骤: (该任务在唯一依据里没有 steps)"
     return ("工艺步骤 · 完整序列 (共 %d 段)\n" % len(names)
             + "\n".join("  %2d. %s" % (i + 1, n) for i, n in enumerate(names))
-            + "\n真源: config/tasks/tasks.json (由 tools/task_build.py 生成)")
+            + "\n唯一依据: config/tasks/tasks.json (由 tools/task_build.py 生成)")
 
 
 def _proj_cell():
@@ -1262,15 +1262,15 @@ def _proj_tip():
         "启动文件绝对路径: %s" % (p["proj_abs"] or "(缺)"),
         "启动文件时间: %s" % (p["proj_mtime"] or "(缺)"),
         "工程目录: %s" % (p.get("proj_dir") or "(缺)"),
-        "工程库 (单一真源): %s" % (p.get("db") or "(缺)"),
-        "画布真源: %s" % (p["canvas"] or "(缺)"),
+        "工程库 (单一唯一依据): %s" % (p.get("db") or "(缺)"),
+        "画布唯一依据: %s" % (p["canvas"] or "(缺)"),
         "画布: %s 节点 / %s 连线 · md5 %s" % (p["nodes"], p["links"], str(p["md5"] or "")[:12]),
-        "口径: 控制台启动第一步按该工程文件的 debug_state 回填 场景/数据源/活跃任务 (真源 tools/proj_state.py)",
+        "口径: 控制台启动第一步按该工程文件的 debug_state 回填 场景/数据源/活跃任务 (唯一依据 tools/proj_state.py)",
     ])
 
 
 def _tag_index():
-    """信号打标真源 config/topics/scene_tags.json → (全文, {任务: 场景条目}, {场景: 信号条数})。"""
+    """信号打标唯一依据 config/topics/scene_tags.json → (全文, {任务: 场景条目}, {场景: 信号条数})。"""
     d = _j(os.path.join(ROOT, "config", "topics", "scene_tags.json"), {}) or {}
     by_task = {str(x.get("task")): x for x in (d.get("scenes") or []) if isinstance(x, dict)}
     cnt = {}
@@ -1282,7 +1282,7 @@ def _tag_index():
 
 
 def _monitor_cell(t):
-    """实时监控列: 该任务会加载的信号**颜色** + 条数 (颜色与信号分析窗口 / 3D 场景按钮同一套, 真源 scene_tags.json)。"""
+    """实时监控列: 该任务会加载的信号**颜色** + 条数 (颜色与信号分析窗口 / 3D 场景按钮同一套, 唯一依据 scene_tags.json)。"""
     _d, by_task, cnt = _tag_index()
     x = by_task.get(str(t.get("task_id")))
     if not x:
@@ -1299,7 +1299,7 @@ def _monitor_tip(t):
     sc = str(x.get("scene") or "")
     names = [k for k, v in ((_d.get("signals") or {}) if isinstance(_d.get("signals"), dict) else {}).items()
              if str(v) == sc]
-    rows = ["颜色真源: config/topics/scene_tags.json (与信号分析窗口 / 3D 场景按钮同一套色)",
+    rows = ["颜色唯一依据: config/topics/scene_tags.json (与信号分析窗口 / 3D 场景按钮同一套色)",
             "该任务场景: %s · 颜色 %s · 注册信号 %d 条" % (sc or "(无)", x.get("color") or "-", cnt.get(sc, 0)),
             "未分类/基础信号: 白 #ffffff (三场景共用/没打标的一律白)"]
     if names:
@@ -1336,7 +1336,7 @@ def _pt_entries(t):
 
     口径: 点位数据**已经写进任务配置**(config/tasks/tasks.json 的 overrides, 由 tools/task_build.py
     从台账 reports/aoi_points/*.json + *.history.jsonl 生成), 配置中心里能直接查到:
-        pt.<点名>     = x/y/z + 记录时间 + 真源文件
+        pt.<点名>     = x/y/z + 记录时间 + 唯一依据文件
         pthist.<点名> = 更新次数 + 最近一次 old→new
     """
     ov = (t or {}).get("overrides") or {}
@@ -1351,7 +1351,7 @@ def _points_tip(t):
     if not pts:
         return ""
     ov = (t or {}).get("overrides") or {}
-    ls = ["🥽 示教点位 (来自任务配置 overrides · 真源 %s)" % (ov.get("pt.dir") or "reports/aoi_points")]
+    ls = ["🥽 示教点位 (来自任务配置 overrides · 唯一依据 %s)" % (ov.get("pt.dir") or "reports/aoi_points")]
     for k in sorted(pts):
         ls.append("  · %s   %s" % (k, pts[k]))
     for k in sorted(hist):
@@ -1371,7 +1371,7 @@ def _points_block():
         if not pts:
             continue
         rows.append("")
-        rows.append("🥽 %s · %s —— 示教点位 (配置里可查 · 真源 %s)"
+        rows.append("🥽 %s · %s —— 示教点位 (配置里可查 · 唯一依据 %s)"
                     % (t.get("task_id"), t.get("task_type") or "",
                        (t.get("overrides") or {}).get("pt.dir") or "reports/aoi_points"))
         for k in sorted(pts):
@@ -1386,12 +1386,12 @@ def _pt_parse(t):
 
     老倪 2026-10-12: 「我已经在配置中心的 TASK-07 激活的 AOI 任务, 现在要立刻看到 金手指点1 的实际位置数据,
     应该在工程配置里, 用户能立刻找到」⇒ 数据取自任务配置(TASK-07-AOI.overrides 的 pt.* / pthist.*,
-    由 tools/task_build.py 从台账 reports/aoi_points 只读生成), 这里只做展示, 不另立真源。
+    由 tools/task_build.py 从台账 reports/aoi_points 只读生成), 这里只做展示, 不另立唯一依据。
     """
     import re
     ov = (t or {}).get("overrides") or {}
     hist = {k[7:]: v for k, v in ov.items() if k.startswith("pthist.")}
-    # 位置 x y z + 姿态 a b c(度) + 记录时间 + 真源; abc 段**可选**(旧配置串没这段也能解析)
+    # 位置 x y z + 姿态 a b c(度) + 记录时间 + 唯一依据; abc 段**可选**(旧配置串没这段也能解析)
     pat = re.compile(r"x=(-?[\d.]+)\s+y=(-?[\d.]+)\s+z=(-?[\d.]+)\s*m"
                      r"(?:\s*·\s*a=(-?[\d.]+)\s+b=(-?[\d.]+)\s+c=(-?[\d.]+)\s*°)?"
                      r"\s*·\s*记录\s*([^·]+?)\s*·\s*(\S+)")
@@ -1439,7 +1439,7 @@ def _pt_rank(name):
 
 def _pt_tsv(rows):
     """复制/导出用的 TSV(粘进 Excel/飞书表格即成型)。"""
-    out = ["点位\tX(m)\tY(m)\tZ(m)\tA(°)\tB(°)\tC(°)\t记录时间\t更新次数\t真源文件"]
+    out = ["点位\tX(m)\tY(m)\tZ(m)\tA(°)\tB(°)\tC(°)\t记录时间\t更新次数\t唯一依据文件"]
     for r in rows:
         out.append("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s" %
                    (r["name"], r["x"], r["y"], r["z"], r.get("a", "—"), r.get("b", "—"),
@@ -1508,9 +1508,9 @@ def _btn(text, theme):
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 🏷 产品配置 (老倪 2026-10-13) —— 产品标识 + 空间质数结构化理解能力
-#   真源: config/platform/zmax_product.json (active_product / products / capability_signatures /
+#   唯一依据: config/platform/zmax_product.json (active_product / products / capability_signatures /
 #         releases / fingerprints / checks / capability_divisibility)
-#   纪律: 界面上每个值都是**从真源回读**的 (不在这里自算副本); 选中产品 = **原子写回** active_product;
+#   纪律: 界面上每个值都是**从唯一依据回读**的 (不在这里自算副本); 选中产品 = **原子写回** active_product;
 #         prime_structure 只用来把同一批值独立回算一次做交叉核对 (对不上如实标 ❌, 不掩盖)。
 # ══════════════════════════════════════════════════════════════════════════════
 def _sha16(path):
@@ -1522,7 +1522,7 @@ def _sha16(path):
 
 
 def _ps_module():
-    """prime_structure 模块 (产品真源解读的唯一入口); 取不到返回 None (页面如实降级显示)。"""
+    """prime_structure 模块 (产品唯一依据解读的唯一入口); 取不到返回 None (页面如实降级显示)。"""
     try:
         _src = os.path.join(ROOT, "src")
         if _src not in sys.path:
@@ -1539,7 +1539,7 @@ def _system_version():
     """全系统总版本号 (全系统一份, 三档共用) —— 单源: tools/gui/update_checker.CURRENT_VERSION。
 
     老倪 2026-10-21: 「A B C 只是产品的配置标识, 版本号全系统统一 … 都与系统总版本号
-    保持同步更新」⇒ 界面**不手抄**版本号, 直接读版本真源; 读不到就如实写"取不到", 不退回旧号。
+    保持同步更新」⇒ 界面**不手抄**版本号, 直接读版本唯一依据; 读不到就如实写"取不到", 不退回旧号。
     """
     for _m in ("update_checker",):
         try:
@@ -1553,11 +1553,11 @@ def _system_version():
 
 
 def _product_view():
-    """产品配置区要显示的**回读值** —— 全部从真源 config/platform/zmax_product.json 读 (不吃内存副本)。"""
+    """产品配置区要显示的**回读值** —— 全部从唯一依据 config/platform/zmax_product.json 读 (不吃内存副本)。"""
     out = {"src": REL_PRODUCT, "error": None, "ps": False}
     d = _j(PRODUCT_J, None)
     if not isinstance(d, dict):
-        out["error"] = "真源读不出: %s" % PRODUCT_J
+        out["error"] = "唯一依据读不出: %s" % PRODUCT_J
         return out
     prods = d.get("products") or {}
     pid = str(d.get("active_product") or "")
@@ -1577,7 +1577,7 @@ def _product_view():
         "segments": {k: ((v or {}).get("version_segment") or "") for k, v in prods.items()},
         "roles": {k: str((((v or {}).get("dev_profile") or {}).get("role") or "")).split("·")[0].strip()
                   for k, v in prods.items()},
-        # 🖥 运行时域 (A=本地 · B=VSCode标定 · C=Intel 端侧量产全模型), 全部读真源, 界面不推断
+        # 🖥 运行时域 (A=本地 · B=VSCode标定 · C=Intel 端侧量产全模型), 全部读唯一依据, 界面不推断
         "runtime": dict(p.get("runtime") or {}),
         "runtimes": {k: dict((v or {}).get("runtime") or {}) for k, v in prods.items()},
         "cap_signature": (d.get("capability_signatures") or {}).get(pid),
@@ -1589,7 +1589,7 @@ def _product_view():
         "cont": dict(d.get("capability_containment") or {}),
         "sha16": _sha16(PRODUCT_J),
     })
-    # 交叉核对: 用 prime_structure 把同一批值独立回算 (页面显示的仍是真源写下的值)
+    # 交叉核对: 用 prime_structure 把同一批值独立回算 (页面显示的仍是唯一依据写下的值)
     PS = _ps_module()
     if PS is not None:
         out["ps"] = True
@@ -1624,30 +1624,30 @@ def _ss_star_tip(label):
 
 
 def _mt_str(p):
-    """文件 mtime → "MM-DD HH:MM" (取不到返回 "取不到"); 显示"真源何时改的"用文件时间, 不信内部字段。"""
+    """文件 mtime → "MM-DD HH:MM" (取不到返回 "取不到"); 显示"唯一依据何时改的"用文件时间, 不信内部字段。"""
     try:
         return time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(p)))
     except OSError:
         return "取不到"
 
 
-# 🗑 2026-10-21 老倪: 「产品配置 本页真源: 当前 550B · 真源改于 10-19 15:36 · 三档 550A 原创版 / 550B 标定版 /
+# 🗑 2026-10-21 老倪: 「产品配置 本页唯一依据: 当前 550B · 唯一依据改于 10-19 15:36 · 三档 550A 原创版 / 550B 标定版 /
 #   550C 量产版」这句话删掉 —— 只删**页顶阵图条那句** (产品页本身就是选三档的地方, 再念一遍当前档+三档名单是重复)。
-#   数据仍在 _star_facts()["prod"]: 左树 hover tooltip / 底部信息窗 / 判据 ⑧ 照旧读得到, "真源改于" 这条证据不丢。
+#   数据仍在 _star_facts()["prod"]: 左树 hover tooltip / 底部信息窗 / 判据 ⑧ 照旧读得到, "唯一依据改于" 这条证据不丢。
 BANNER_FACT_HIDDEN = ("prod",)
 
 
 def _star_facts():
-    """七颗星各自的**真源摘要一行** (老倪 2026-10-15: 「左侧不用显示那么多 …… 详细信息要在配置页面显示」)。
+    """七颗星各自的**唯一依据摘要一行** (老倪 2026-10-15: 「左侧不用显示那么多 …… 详细信息要在配置页面显示」)。
 
     左树只留 7 行星名; 每页顶部的阵图条 + 左树 tooltip 用这里的摘要。
-    全部**现读真源**(不缓存); 读不出就写"取不到 (原因)", 不退回旧值。
+    全部**现读唯一依据**(不缓存); 读不出就写"取不到 (原因)", 不退回旧值。
     """
     f = {}
     # 1 · 天枢 产品配置
     try:
         pv = _product_view()
-        f["prod"] = "当前 %s · 真源改于 %s · 三档 %s" % (
+        f["prod"] = "当前 %s · 唯一依据改于 %s · 三档 %s" % (
             pv.get("active") or "取不到", _mt_str(PRODUCT_J),
             " / ".join(str((pv.get("names") or {}).get(p, p)) for p in PRODUCT_IDS))
     except Exception as e:                                                      # noqa: BLE001
@@ -1656,7 +1656,7 @@ def _star_facts():
     try:
         _tk = _j(TASKS_J, {}) or {}
         _bd = _j(BIND_J, {}) or {}
-        f["task"] = "任务 %d 条 · 元任务 %d · 活跃 %s · 绑定真源改于 %s" % (
+        f["task"] = "任务 %d 条 · 元任务 %d · 活跃 %s · 绑定唯一依据改于 %s" % (
             len(_tk.get("tasks", [])), _meta_task_count(), _bd.get("active_task") or "—", _mt_str(BIND_J))
     except Exception as e:                                                      # noqa: BLE001
         f["task"] = "取不到 (%s)" % type(e).__name__
@@ -1670,12 +1670,12 @@ def _star_facts():
         for _k in ("func", "model", "perf"):
             f.setdefault(_k, "取不到 (%s)" % type(e).__name__)
     # 6 · 开阳 工程配置 (2026-10-19: 由「工单配置」改为「工程配置·定落地」)
-    #   真源三件: 特征库工程域 (参数注册表) · 工程-模型匹配 (九类站点能力) · AR 场景示教点位
+    #   唯一依据三件: 特征库工程域 (参数注册表) · 工程-模型匹配 (九类站点能力) · AR 场景示教点位
     try:
         _cs = (_j(MCD_J, {}) or {}).get("CHARACTERISTIC", [])
         _eng = [c for c in _cs if c.get("domain") == "工程配置"]
         _mt = _j(MATCH_J, {}) or {}
-        f["eng"] = "工程域 %d/%d 就绪 · 工程-模型匹配 %d 模型 · 真源改于 %s" % (
+        f["eng"] = "工程域 %d/%d 就绪 · 工程-模型匹配 %d 模型 · 唯一依据改于 %s" % (
             sum(1 for c in _eng if c.get("ready")), len(_eng),
             len(_mt.get("MODELS", [])), _mt_str(MCD_J))
     except Exception as e:                                                      # noqa: BLE001
@@ -1693,9 +1693,9 @@ def _star_facts():
 
 
 def _current_version():
-    """当前版本号真源: tools/gui/update_checker.py 的 CURRENT_VERSION → VERSION.md 首行 → ""。
+    """当前版本号唯一依据: tools/gui/update_checker.py 的 CURRENT_VERSION → VERSION.md 首行 → ""。
 
-    为什么要: 写回 active_product 时要把 `updated` 盖成 "日期 (版本)", 版本必须现取, 不能写死。
+    为什么要: 写回 active_product 时要把 `updated` 盖成 "日期 (版本)", 版本必须现取, 不能预先固定。
     """
     try:
         with io.open(os.path.join(ROOT, "tools", "gui", "update_checker.py"), encoding="utf-8") as f:
@@ -1715,9 +1715,9 @@ def _current_version():
 
 
 def _write_active_product(pid):
-    """把 active_product **原子写回**真源 (临时文件 + os.replace, 不留半截文件) → 回读确认。
+    """把 active_product **原子写回**唯一依据 (临时文件 + os.replace, 不留半截文件) → 回读确认。
 
-    返回 (ok, 回读值, 错误说明)。除 active_product 一个键外, 真源其它内容逐字节保持 (读改写)。
+    返回 (ok, 回读值, 错误说明)。除 active_product 一个键外, 唯一依据其它内容逐字节保持 (读改写)。
     """
     if pid not in PRODUCT_IDS:
         return False, None, "产品号 %r 不在 %s" % (pid, list(PRODUCT_IDS))
@@ -1725,14 +1725,14 @@ def _write_active_product(pid):
         with io.open(PRODUCT_J, encoding="utf-8") as f:
             d = json.load(f)
     except Exception as e:                                                      # noqa: BLE001
-        return False, None, "真源读不出: %r" % (e,)
+        return False, None, "唯一依据读不出: %r" % (e,)
     if (d.get("products") or {}) and pid not in (d.get("products") or {}):
-        return False, None, "真源 products 里没有 %s" % pid
+        return False, None, "唯一依据 products 里没有 %s" % pid
     if str(d.get("active_product")) == pid:
         return True, pid, "已是当前产品 (无需改写)"
     d["active_product"] = pid
-    # 🕒 2026-10-15 实测坑: 真源里 `updated` 停在 "2026-10-13 (5.50.3)" —— 别的写入口只改了
-    #    active_product 没盖时间戳 ⇒ 界面/报告显示"真源 2026-10-13"而文件其实是今天 06:30 改的。
+    # 🕒 2026-10-15 实测坑: 唯一依据里 `updated` 停在 "2026-10-13 (5.50.3)" —— 别的写入口只改了
+    #    active_product 没盖时间戳 ⇒ 界面/报告显示"唯一依据 2026-10-13"而文件实际是今天 06:30 改的。
     #    这里写回时**同一把锁内**盖上真实时间 + 版本, 让"最后改动"可核。
     try:
         d["updated"] = "%s (%s)" % (time.strftime("%Y-%m-%d"), _current_version())
@@ -1741,7 +1741,7 @@ def _write_active_product(pid):
     tmp = "%s.tmp.%d" % (PRODUCT_J, os.getpid())
     try:
         with io.open(tmp, "w", encoding="utf-8") as f:
-            json.dump(d, f, ensure_ascii=False, indent=2)      # 与真源既有格式一致 (无多余改动, 便于 diff)
+            json.dump(d, f, ensure_ascii=False, indent=2)      # 与唯一依据既有格式一致 (无多余改动, 便于 diff)
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, PRODUCT_J)                    # 原子替换: 要么旧文件, 要么新文件, 无半截
@@ -1765,7 +1765,7 @@ class _ProductCard(QRadioButton):
       ⇒ 档名 21pt → 16pt, 卡片 240×116 → 252×104 (字变小、卡变宽 ⇒ 一行排得下, 不再挤/遮);
         主色降到低饱和 (muted indigo/teal/green), 选中卡不再是"亮卡", 改成**深色卡 + 素白字**,
         只靠 1.8px 冷光描边 + 深色底上的浅色「✓ 当前」小标区分; 未选卡更暗一档。
-    **判据不受影响**: 仍是 QRadioButton 子类, text() = 真源 products.<id>.name, isChecked()/setChecked() 照旧。
+    **判据不受影响**: 仍是 QRadioButton 子类, text() = 唯一依据 products.<id>.name, isChecked()/setChecked() 照旧。
     ⚠ 版式常量 (W/H/BAND_*/PILL_*) 是判据 verify_product_card_ui 的唯一来源 —— 改这里, 判据跟着变, 别在两处抄数字。
     """
 
@@ -1783,7 +1783,7 @@ class _ProductCard(QRadioButton):
         self._accent, self._glow = QColor(accent), QColor(glow)
         self._hover = False
         self._sub = ""
-        self.setText(self._pid)             # 真名由 _refresh_product_view 回填 (判据与真源 name 比对)
+        self.setText(self._pid)             # 真名由 _refresh_product_view 回填 (判据与唯一依据 name 比对)
         self.setCursor(Qt.PointingHandCursor)
         self.setMinimumSize(self.W, self.H)
         self.setMaximumHeight(self.H)
@@ -1792,7 +1792,7 @@ class _ProductCard(QRadioButton):
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self._menu)
         self.toggled.connect(lambda *_: self.update())
-        self.setToolTip("%s · %s\n点这张卡 = 切成这一档 (写回真源 active_product)" % (code, pid))
+        self.setToolTip("%s · %s\n点这张卡 = 切成这一档 (写回唯一依据 active_product)" % (code, pid))
 
     # ── 外部接口 (与 QRadioButton 兼容) ──
     def setText(self, t):                   # 名字变了要重画
@@ -1800,9 +1800,9 @@ class _ProductCard(QRadioButton):
         self.update()
 
     def set_sub(self, text):
-        """底行副标题: 版本段 + 定位 (由真源回读, 界面不自算)。"""
+        """底行副标题: 版本段 + 定位 (由唯一依据回读, 界面不自算)。"""
         self._sub = str(text or "")
-        self.setToolTip("%s · %s\n%s\n点这张卡 = 切成这一档 (写回真源 active_product)"
+        self.setToolTip("%s · %s\n%s\n点这张卡 = 切成这一档 (写回唯一依据 active_product)"
                         % (self._code, super().text(), self._sub))
         self.update()
 
@@ -1953,7 +1953,7 @@ class _CopyLabel(QLabel):
     """产品配置区的**可复制**值标签: 双击 / 右键菜单复制; 自动换行 ⇒ 窄窗不截断。
 
     · 显示文本 (text) 可以是大整数截断形式, 但 **完整值** 存在 .full_value (复制的是完整值);
-    · 判据可直接读 .full_value 与真源/prime_structure 回读值比对。
+    · 判据可直接读 .full_value 与唯一依据/prime_structure 回读值比对。
     """
 
     def __init__(self, text="", parent=None):
@@ -2001,9 +2001,9 @@ class _CopyLabel(QLabel):
 
 
 def _src_check(src):
-    """现场核对真源引用: path:line / path#key#key / path —— 存在且行号在界内/键取得到才算 ✅"""
+    """现场核对唯一依据引用: path:line / path#key#key / path —— 存在且行号在界内/键取得到才算 ✅"""
     if not src:
-        return "⛔ 无真源"
+        return "⛔ 无唯一依据"
     pth = src.split("#")[0].split(" (")[0].strip()
     line = None
     if ":" in pth and not pth.endswith(":"):
@@ -2090,7 +2090,7 @@ class ConfigCenterPage(QWidget):
         self.tree.setStyleSheet(f"QTreeWidget{{color:{th['C_WHITE']};background:{th['C_CARD']};"
                                 f"border:1px solid {th['C_BORDER']};}}")
         self._fill_tree(d, tk)
-        # 🏷 左树「产品配置 当前 X」跟真源: 首刷一次 + 每 2s 检查 mtime (只在可见时读, 不空转)
+        # 🏷 左树「产品配置 当前 X」跟唯一依据: 首刷一次 + 每 2s 检查 mtime (只在可见时读, 不空转)
         self._prod_mt_seen = None
         self._sync_tree_product(force=True)
         _ptmr = QTimer(self)
@@ -2148,7 +2148,7 @@ class ConfigCenterPage(QWidget):
         # 2026-10-15 老倪: 「显示区太小, 且不能用鼠标拖动调整大小, 要可以隐藏; 选择相应的配置面时信息没有对应上」
         #   ⇒ ① 改成**竖直 QSplitter**(工作区 / 信息窗): 分隔条 8px 可拖, 拖过之后不再被自动覆盖;
         #     ② 头部一行按钮: 「↕ 自适应高度」「📋 复制」「▾ 收起/▴ 展开」(可隐藏);
-        #     ③ 内容随**当前配置面**自动对应 (_sync_out_for/_page_out_text, 真源现算)。
+        #     ③ 内容随**当前配置面**自动对应 (_sync_out_for/_page_out_text, 唯一依据现算)。
         self.out = QTextEdit()
         self.out.setReadOnly(True)
         self.out.setMinimumHeight(56)             # 最小值给小 ⇒ 能拖到很矮; 上限交给分隔条
@@ -2196,9 +2196,9 @@ class ConfigCenterPage(QWidget):
         QTimer.singleShot(0, self._fit_out)      # 首次布局完成后给一次合适高度 (之后以拖动为准)
 
         # 📋 2026-10-19 老倪: 「配置中心…应该所有文字都可以被选中, 复制。你全都改一下」
-        #   真因: QLabel 默认 NoTextInteraction ⇒ 文字只能看不能框选 (例如「选一个产品 = 原子写回真源 …」那行)。
+        #   真因: QLabel 默认 NoTextInteraction ⇒ 文字只能看不能框选 (例如「选一个产品 = 原子写回唯一依据 …」那行)。
         #   做法两段: ① 建页后全量扫一遍, 现存 QLabel 全开「鼠标+键盘可选中」
-        #             ② 装 app 级 eventFilter —— 之后动态新建的 QLabel (刷新/重读真源/换页加的行) 在 polish 时自动带上,
+        #             ② 装 app 级 eventFilter —— 之后动态新建的 QLabel (刷新/重读唯一依据/换页加的行) 在 polish 时自动带上,
         #                不用逐个改; 独立窗口 (simulink「🗂 配置中心」) 复用同一个页面类, 一并生效。
         self._install_text_copy_all()
         self._enable_text_copy(self)
@@ -2384,7 +2384,7 @@ class ConfigCenterPage(QWidget):
         return n
 
     def _bind_sig(self):
-        """绑定真源指纹 (mtime_ns:size) —— 用来判断「界面建好之后真源有没有被动过」。"""
+        """绑定唯一依据指纹 (mtime_ns:size) —— 用来判断「界面建好之后唯一依据有没有被动过」。"""
         try:
             _s = os.stat(BIND_J)
             return "%d:%d" % (_s.st_mtime_ns, _s.st_size)
@@ -2395,7 +2395,7 @@ class ConfigCenterPage(QWidget):
         """每次显示时再扫一遍(有的页内容是后填的, 构造时还不宽)。"""
         super().showEvent(ev)
         try:
-            self._sync_tree_product(force=True)      # 🏷 打开就按真源现算左树「产品配置 当前 X」
+            self._sync_tree_product(force=True)      # 🏷 打开就按唯一依据现算左树「产品配置 当前 X」
         except Exception:                                                         # noqa: BLE001
             pass
         try:
@@ -2403,8 +2403,8 @@ class ConfigCenterPage(QWidget):
         except Exception:                                                       # noqa: BLE001
             pass
         try:
-            # 🐛 2026-10-13: 显示时若绑定真源变了(开机自恢复/别的窗口激活了任务)就自对齐 ——
-            #   否则界面停在建表那一刻, 真源说活跃、屏幕上写未激活。
+            # 🐛 2026-10-13: 显示时若绑定唯一依据变了(开机自恢复/别的窗口激活了任务)就自对齐 ——
+            #   否则界面停在建表那一刻, 唯一依据说活跃、屏幕上写未激活。
             _sig = self._bind_sig()
             if _sig and _sig != getattr(self, "_bind_sig_seen", None):
                 self._bind_sig_seen = _sig
@@ -2413,14 +2413,14 @@ class ConfigCenterPage(QWidget):
             pass
 
     def _sync_tree_product(self, force=False):
-        """🏷 左树「产品配置  当前 X」**真源现算** —— 别的窗口/客户端改了 active_product 必须自动跟上。
+        """🏷 左树「产品配置  当前 X」**唯一依据现算** —— 别的窗口/客户端改了 active_product 必须自动跟上。
 
-        实测 bug (2026-10-15 老倪): 控制台 06:27 启动时真源是 550A; 06:30 在**别处**把 active_product 写成
-        550B 后, 左树仍写「当前 550A」⇒ 界面与真源不一致。根因: 左树文本只在 `_fill_tree()` 建树那一刻取一次,
+        实测 bug (2026-10-15 老倪): 控制台 06:27 启动时唯一依据是 550A; 06:30 在**别处**把 active_product 写成
+        550B 后, 左树仍写「当前 550A」⇒ 界面与唯一依据不一致。根因: 左树文本只在 `_fill_tree()` 建树那一刻取一次,
         之后再没人重读 (右侧「产品配置」页有 _refresh_product_view, 左树没有)。
 
         口径: ① mtime 变了才重解析(每 2s 检查一次, 代价≈一次 stat) ② 读到什么写什么, 读不出写「取不到」并标 ⛔,
-        不退回旧值 (真源纪律) ③ 值变了才刷新右侧页, 防止读—写回环。
+        不退回旧值 (唯一依据纪律) ③ 值变了才刷新右侧页, 防止读—写回环。
         """
         if getattr(self, "_prod_syncing", False):
             return
@@ -2437,7 +2437,7 @@ class ConfigCenterPage(QWidget):
             err = pv.get("error")
             act = pv.get("active") or ""
             mark = "⛔" if err else "✅"
-            # 「真源改于」用**文件 mtime**(改了就变, 别的写入口也瞒不过); 若真源内部 `updated` 字段与
+            # 「唯一依据改于」用**文件 mtime**(改了就变, 别的写入口也瞒不过); 若唯一依据内部 `updated` 字段与
             # mtime 不是同一天 ⇒ 如实标注它没同步 (实测坑: 06:30 改了 550B 而 updated 还写 2026-10-13)。
             _mt = _mt_day = ""
             _upd = str(pv.get("updated") or "")
@@ -2448,8 +2448,8 @@ class ConfigCenterPage(QWidget):
             except OSError:
                 pass
             _stale = bool(_mt_day and _upd[:10] and _mt_day != _upd[:10])
-            tail = "  取不到 (真源读不出, 不退回旧值)" if err else (
-                ("  · 真源改于 %s%s" % (_mt, " ⚠️内部 updated=%s 未同步" % _upd if _stale else ""))
+            tail = "  取不到 (唯一依据读不出, 不退回旧值)" if err else (
+                ("  · 唯一依据改于 %s%s" % (_mt, " ⚠️内部 updated=%s 未同步" % _upd if _stale else ""))
                 if _mt else "")
             # 左树只留星名 (计数/当前值进 tooltip 与配置页) —— 2026-10-15 老倪口径
             # 🎯 2026-10-17 「太宽」: 行里只显示「序号+名称」, 星名进 data/tooltip (与 _fill_tree 一致)
@@ -2461,7 +2461,7 @@ class ConfigCenterPage(QWidget):
                     it.setText(0, txt)
                     it.setData(0, Qt.UserRole, "prod")
                     it.setData(0, Qt.UserRole + 1, _txt_full)
-                    it.setToolTip(0, "%s\n\n真源 %s (%s)\n 每次读文件现算 (mtime 变了才重解析); "
+                    it.setToolTip(0, "%s\n\n唯一依据 %s (%s)\n 每次读文件现算 (mtime 变了才重解析); "
                                      "任何窗口/客户端改了 active_product 都会自动跟上。"
                                      % (_ss_star_tip(_ss.star_line("prod")), REL_PRODUCT, REL_PRODUCT))
                     break
@@ -2478,7 +2478,7 @@ class ConfigCenterPage(QWidget):
     def _tree_need_width(self):
         """按**内容实测**算左侧栏需求宽度: 最长条目文本 + 层级缩进 + 图标/边距/滚动条余量。
 
-        为什么要算而不是写死: 条目文本会变(任务 ID/参数 ID/文档名), 写死一个数总会在某天把字截掉;
+        为什么要算而不是预先固定: 条目文本会变(任务 ID/参数 ID/文档名), 预先固定一个数总会在某天把字截掉;
         而只设初始值不设最小宽度时, 窗口一窄 splitter 就把这一栏压到 70 多像素(实测)。
         """
         fm = self.tree.fontMetrics()
@@ -2513,7 +2513,7 @@ class ConfigCenterPage(QWidget):
         """🎯 用户自己改的数: config/platform/zmax_ui_layout.json 的 config_center_left_width。
 
         ★ 老倪 2026-10-17: 「我自己改配置中心的左侧栏宽度, 数值在哪里, 我自己改」
-          ⇒ 真源落成**一个可编辑的 JSON 数值** (不是代码常量), 打开配置中心即读, 不用重启。
+          ⇒ 唯一依据落成**一个可编辑的 JSON 数值** (不是代码常量), 打开配置中心即读, 不用重启。
         返回 0 = 没配/配 0 ⇒ 表示"按内容自适应"。
         """
         try:
@@ -2635,10 +2635,10 @@ class ConfigCenterPage(QWidget):
         # 文档配置 (2026-10-10): 三份外发/立项文档 + 一致性核对
         dm = [_doc_mark(k) for k in ("sor", "project", "agreement")]
         # 计数是"文档份数", 第 4 项是一致性核对视图 ⇒ 提示里写清, 免得看成"子项数对不上"
-        self._doc_group_tip = ("文档 3/3 = 三份文档 (供应商外发 SOR / 项目立项文档 / 合作协议) 全部就绪且与当前真源一致;\n"
+        self._doc_group_tip = ("文档 3/3 = 三份文档 (供应商外发 SOR / 项目立项文档 / 合作协议) 全部就绪且与当前唯一依据一致;\n"
                                "第 4 项『一致性核对』是核对视图, 不计入份数。")
         self._doc_group_tip_on = True
-        # 🏷 产品配置真源 (次序第 1, 现读)
+        # 🏷 产品配置唯一依据 (次序第 1, 现读)
         _pv, _nm, _pact, _perr = {}, {}, "—", False
         try:
             _pv = _product_view()
@@ -2680,7 +2680,7 @@ class ConfigCenterPage(QWidget):
         #   记 (2026-10-13 老倪): 产品标识 550A 原创版 / 550B 标定版 / 550C 量产版 + 空间质数结构化理解能力。
         # 🧹 2026-10-15 老倪: 「左侧不用显示那么多, 只显示 1..7; 详细信息要在配置页面显示」
         #   ⇒ 顶层 7 行只写「序号 + 名称 · 星名」(+ 一个 ✅/⛔ 就绪符), **不带计数/当前值/子项**;
-        #     计数与真源时间进 ①每页顶部阵图条「本页真源: …」 ②左树 hover tooltip (可复制原文)。
+        #     计数与唯一依据时间进 ①每页顶部阵图条「本页唯一依据: …」 ②左树 hover tooltip (可复制原文)。
         _facts = _star_facts()
         self.tree.clear()
         for label, mark, kids in doms:
@@ -2691,8 +2691,8 @@ class ConfigCenterPage(QWidget):
             # 行文: 去掉「· 天枢/天璇/…」星名段 (及其后内容); 星名仍在阵图条与 tooltip
             _row = re.sub(r"\s*·\s*(天枢|天璇|天玑|天权|玉衡|开阳|瑶光).*$", "", _short)
             # 🆕 2026-10-21 老倪: 「左边栏的小对号, 应该打开哪个配置页面, 小对号就对应显示相应的配置」
-            #   ⇒ 行首标记不再表示「真源就绪」, 而是「当前打开的是这一页」:
-            #      ✅ = 当前页 · ○ = 其它页; 真源就绪状态挪进 tooltip (仍现算, 信息不丢)。
+            #   ⇒ 行首标记不再表示「唯一依据就绪」, 而是「当前打开的是这一页」:
+            #      ✅ = 当前页 · ○ = 其它页; 唯一依据就绪状态挪进 tooltip (仍现算, 信息不丢)。
             it = QTreeWidgetItem([f"○ {_row}"])
             _k0 = _ss.key_for_label(label)
             it.setData(0, Qt.UserRole, _k0)
@@ -2701,13 +2701,13 @@ class ConfigCenterPage(QWidget):
             _k = _ss.key_for_label(label)
             _det = ""
             if _facts.get(_k):
-                _det += "\n\n本页真源: " + _facts[_k]
+                _det += "\n\n本页唯一依据: " + _facts[_k]
             if kids:
                 _det += "\n明细 (%d): %s%s" % (len(kids), " · ".join(str(x) for x in kids[:24]),
                                               " …" if len(kids) > 24 else "")
             if "文档配置" in label and getattr(self, "_doc_group_tip_on", False):
                 _det += "\n\n" + self._doc_group_tip
-            it.setToolTip(0, ("真源就绪: %s\n" % mark + _tip + _det).strip())     # 就绪符挪进 tooltip
+            it.setToolTip(0, ("唯一依据就绪: %s\n" % mark + _tip + _det).strip())     # 就绪符挪进 tooltip
             self.tree.addTopLevelItem(it)
 
         self._mark_tree_current()          # 行首 ✅ 跟着「当前打开的是哪一页」走 (2026-10-21 老倪)
@@ -2715,7 +2715,7 @@ class ConfigCenterPage(QWidget):
     def _mark_tree_current(self, *_a):
         """左树行首标记 = **当前打开的配置页** (老倪 2026-10-21: 「打开哪个配置页面, 小对号就对应显示」)。
 
-        ✅ = 当前页 (并加粗), ○ = 其它页; 真源就绪 (✅/⛔) 不再占行首, 挪到条目 tooltip。
+        ✅ = 当前页 (并加粗), ○ = 其它页; 唯一依据就绪 (✅/⛔) 不再占行首, 挪到条目 tooltip。
         目的: 一眼知道"我现在在哪一页", 而不是把 ⛔ 误读成"这页不能用"。
         """
         try:
@@ -2736,8 +2736,8 @@ class ConfigCenterPage(QWidget):
             # 就绪符始终留在 tooltip (别的刷新路径会重写 tooltip ⇒ 这里可重入地补一次, 不叠加)
             _ready = _full[:1] if _full[:1] in ("✅", "⛔") else "—"
             _tip_now = str(it.toolTip(0) or "")
-            if not _tip_now.startswith("真源就绪:"):
-                it.setToolTip(0, ("真源就绪: %s\n%s" % (_ready, _tip_now)).strip())
+            if not _tip_now.startswith("唯一依据就绪:"):
+                it.setToolTip(0, ("唯一依据就绪: %s\n%s" % (_ready, _tip_now)).strip())
             try:
                 _f = it.font(0)
                 _f.setBold(bool(_on))
@@ -2765,7 +2765,7 @@ class ConfigCenterPage(QWidget):
                     "QComboBox{background:#0d1117;color:#e6edf3;border:1px solid #30363d;"
                     "border-radius:4px;padding:2px 6px;} QComboBox QAbstractItemView{background:#0d1117;"
                     "color:#e6edf3;selection-background-color:#1f6feb;}")
-                cb.setToolTip("选择该任务的活跃属性:\n★ 活跃 = 真激活 (写绑定真源 + 台账, 活跃唯一)\n"
+                cb.setToolTip("选择该任务的活跃属性:\n★ 活跃 = 真激活 (写绑定唯一依据 + 台账, 活跃唯一)\n"
                               "○ 未激活 = 配置就绪但不激活\n— 无配置 = 还没开始")
                 cb.currentTextChanged.connect(lambda s, _t=tid: self._on_task_state_changed(_t, s))
                 t.setCellWidget(r, _ACT_COL, cb)
@@ -2778,7 +2778,7 @@ class ConfigCenterPage(QWidget):
             cb.blockSignals(False)
 
     def _on_task_state_changed(self, tid, label):
-        """用户在下拉里改了活跃属性 → 落真源/台账 → 重算全表 + 计数 + 日志。"""
+        """用户在下拉里改了活跃属性 → 落唯一依据/台账 → 重算全表 + 计数 + 日志。"""
         try:
             _t = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             if _t not in sys.path:
@@ -2809,15 +2809,15 @@ class ConfigCenterPage(QWidget):
             pass
 
     # 🗂 2026-10-13 老倪: 「所有这些独立打开的窗口, 要保证与全系统的数据一致性。数据源来源于全局数据空间」
-    #   口径: 独立窗口**每次打开/每次轮询都重读磁盘真源**, 不吃构造时的内存副本; 指纹用于跨窗口核验。
+    #   口径: 独立窗口**每次打开/每次轮询都重读磁盘唯一依据**, 不吃构造时的内存副本; 指纹用于跨窗口核验。
     _SRC_FILES = ("config/tasks/tasks.json", "config/ss_task_binding.json", "config/topics/scene_tags.json",
                   "config/platform/zmax_perf_spec.json", "config/mcd/zmax_mcd.json",
                   "config/platform/zmax_product.json",
-                  "data/database/zmax/config_meta.json",      # 🆕 2026-10-14 元任务真源 (任务配置页的元任务表)
+                  "data/database/zmax/config_meta.json",      # 🆕 2026-10-14 元任务唯一依据 (任务配置页的元任务表)
                   "data/database/zmax/zmax_engineering.db")
 
     def source_fingerprint(self):
-        """真源指纹 (sha256 前 16 位): 独立窗口与主控制台应是同一份 ⇒ 指纹必须相同。"""
+        """唯一依据指纹 (sha256 前 16 位): 独立窗口与主控制台应是同一份 ⇒ 指纹必须相同。"""
         import hashlib
         out = {}
         for rel in self._SRC_FILES:
@@ -2829,25 +2829,25 @@ class ConfigCenterPage(QWidget):
         return out
 
     def reload_from_source(self):
-        """从磁盘真源重读并刷新本页 (独立窗口调用: 主控制台改了配置, 这里自动跟上)。"""
+        """从磁盘唯一依据重读并刷新本页 (独立窗口调用: 主控制台改了配置, 这里自动跟上)。"""
         self._task_cache = None if getattr(self, "_task_cache", None) else None   # 明确不吃旧副本
         try:
             self._reload_task_states()
         except Exception as e:                                                   # noqa: BLE001
-            self._log_cc("   ⚠ 重读真源时任务表刷新失败: %r" % (e,))
+            self._log_cc("   ⚠ 重读唯一依据时任务表刷新失败: %r" % (e,))
         try:
-            self._refresh_product_view(silent=True)     # 🏷 产品配置区跟着真源走 (回读, 不自算)
+            self._refresh_product_view(silent=True)     # 🏷 产品配置区跟着唯一依据走 (回读, 不自算)
         except Exception as e:                                                   # noqa: BLE001
-            self._log_cc("   ⚠ 重读真源时产品配置区刷新失败: %r" % (e,))
+            self._log_cc("   ⚠ 重读唯一依据时产品配置区刷新失败: %r" % (e,))
         fp = self.source_fingerprint()
-        self._log_cc("   🔗 已与真源对齐: " + " · ".join("%s=%s" % (k.split("/")[-1], v[:8]) for k, v in fp.items()))
+        self._log_cc("   🔗 已与唯一依据对齐: " + " · ".join("%s=%s" % (k.split("/")[-1], v[:8]) for k, v in fp.items()))
         return fp
 
     def _reload_task_states(self):
         """重算全表活跃列 + 表头计数 (改一个状态, 全表跟着动: 旧活跃会自动变未激活)。
 
         🐛 2026-10-13 修: 原来只写下拉格、不写活跃列的文字格 ⇒ 那格永远停在**建表那一刻**
-        (实测: 开机自恢复把活跃任务改成 TASK-07-AOI 后, 任务7 那格还写 ○ 未激活 —— 与真源相反,
+        (实测: 开机自恢复把活跃任务改成 TASK-07-AOI 后, 任务7 那格还写 ○ 未激活 —— 与唯一依据相反,
         任务6 那格反倒写 ★ 活跃)。下拉格和文字格必须同一个函数一起写, 否则界面又出现第二套口径。
         """
         import ss_task_state as _ts
@@ -2879,7 +2879,7 @@ class ConfigCenterPage(QWidget):
         except Exception:                                                        # noqa: BLE001
             pass
         st = _ts.build(write=True)
-        self._log_cc("   ↻ 全表已重算: 活跃 %d / 未激活 %d / 无配置 %d · 绑定真源 active_task=%s"
+        self._log_cc("   ↻ 全表已重算: 活跃 %d / 未激活 %d / 无配置 %d · 绑定唯一依据 active_task=%s"
                      % (st["counts"]["活跃"], st["counts"]["未激活"], st["counts"]["无配置"], self._act_now))
 
     def _log_cc(self, msg):
@@ -2911,7 +2911,7 @@ class ConfigCenterPage(QWidget):
     def _sync_star_banner(self, *_a):
         """按当前页签刷阵图条: 七星页显示**当前这一颗**星的说明, 非七星页显示阵法总览 + 如实说明。
 
-        「本页真源: …」只对没在阵图条上重复的页显示 —— 见 BANNER_FACT_HIDDEN。
+        「本页唯一依据: …」只对没在阵图条上重复的页显示 —— 见 BANNER_FACT_HIDDEN。
         """
         try:
             self.star_banner.set_tab(self.tabs.tabText(self.tabs.currentIndex()),
@@ -3013,7 +3013,7 @@ class ConfigCenterPage(QWidget):
     def _filter_fpm(self, dom=None, param=None, view=None):
         """特征库三域: dom=None 显示全部; 否则只留该域; param 再精确定位到行。
 
-        2026-10-15: 页签名改成配置名后, **功能配置 / 性能配置 各有一页** (同一真源、默认域不同):
+        2026-10-15: 页签名改成配置名后, **功能配置 / 性能配置 各有一页** (同一唯一依据、默认域不同):
           dom ∈ {功能配置, 性能配置} → 切到对应那一页筛那一域; 其它域 → 落「功能配置」那张三域总表。
         """
         if view is None:
@@ -3070,11 +3070,11 @@ class ConfigCenterPage(QWidget):
             n_one = sum(1 for m in vis if len(m.get("tasks") or []) <= 1)
             return ("功能级元任务 (一个功能 + 该功能全部配置参数) · 承载任务 %s (%s)\n"
                     "   ▸ 该任务启用 %d 条: 仅本任务 %d · 全 %d 任务共用底座 %d · 其余多任务共用 %d"
-                    "   (真源 config_meta.json + 画布连线 + tasks.json)"
+                    "   (唯一依据 config_meta.json + 画布连线 + tasks.json)"
                     % (tid, (t.get("name") or "—")[:22], len(vis) if shown is None else shown,
                        n_one, _tot, n_all, max(0, len(vis) - n_all - n_one)))
         return ("功能级元任务 (一个功能 + 该功能全部配置参数) · 全部 %d 条 "
-                "· 真源 config_meta.json + 画布连线 + tasks.json" % len(mt))
+                "· 唯一依据 config_meta.json + 画布连线 + tasks.json" % len(mt))
 
     def _filter_meta_tasks(self, tid=None):
         """元任务表按**承载任务**过滤 (tid=None = 全部)。返回可见条数; 表头同步口径。
@@ -3105,7 +3105,7 @@ class ConfigCenterPage(QWidget):
         return shown
 
     def _fill_task_level(self, tid=None):
-        """把「任务级元任务」表刷成 tid 的 (tid=None ⇒ 用绑定真源里的活跃任务)。返回条数。"""
+        """把「任务级元任务」表刷成 tid 的 (tid=None ⇒ 用绑定唯一依据里的活跃任务)。返回条数。"""
         t = getattr(self, "tl_table", None)
         if t is None:
             return 0
@@ -3121,7 +3121,7 @@ class ConfigCenterPage(QWidget):
             tg = " / ".join(m.get("targets") or []) or "—"
             acts = m.get("actions") or []
             cells = [m.get("id") or "—", m.get("name") or "—",
-                     HAND_CN.get(m.get("hand") or "", "—(真源未标)"),
+                     HAND_CN.get(m.get("hand") or "", "—(依据未标注)"),
                      m.get("layer") or "—",
                      ("%d" % m["n_seg"]) if m.get("n_seg") else "0(协同)",
                      twin_s, tg, (acts[0] if acts else "—")]
@@ -3151,7 +3151,7 @@ class ConfigCenterPage(QWidget):
                                  "  ← 点上面任一任务行换任务; 点本表某行 ⇒ 下方摊开它的段级动作"
                                  % (note if tid else "未选中任务"))
         if getattr(self, "tl_src", None) is not None:
-            self.tl_src.setText("   真源: %s" % src)
+            self.tl_src.setText("   唯一依据: %s" % src)
         # 段级明细: 默认摊第一条 (老倪要"能对应 AR 场景的具体操作")
         try:
             t.itemSelectionChanged.disconnect()
@@ -3260,17 +3260,17 @@ class ConfigCenterPage(QWidget):
         """一个元任务的**完整**标准模板文本 (老倪文档《元任务标准模板》七个字段 + 朴素工程化描述)。"""
         nt = m.get("note") or {}
         return ("元任务 %s · %s\n"
-                "  干什么活 : %s\n  卡在哪   : %s\n  当前状态 : %s\n"
+                "  做什么 : %s\n  阻塞点   : %s\n  当前状态 : %s\n"
                 "  功能名称 : %s\n  输入     : %s\n  输出     : %s\n  配置参数 : %s\n"
                 "  依赖关系 : %s\n  验证方法 : %s\n  承载场景 : %s\n  归属     : %s\n"
                 "  画布节点 : %s · 层 %s · 优先级 %s · 计划 %s"
                 % (m.get("mt_id") or "—", m.get("fn_id") or "—",
-                   nt.get("work") or "—(真源未登记)",
-                   nt.get("pain") or "—(真源未登记)",
-                   nt.get("state") or "—(真源未登记)",
+                   nt.get("work") or "—(唯一依据未登记)",
+                   nt.get("pain") or "—(唯一依据未登记)",
+                   nt.get("state") or "—(唯一依据未登记)",
                    m.get("name") or "—",
-                   " / ".join(m.get("inputs") or []) or "—(真源未登记)",
-                   " / ".join(m.get("outputs") or []) or "—(真源未登记)",
+                   " / ".join(m.get("inputs") or []) or "—(唯一依据未登记)",
+                   " / ".join(m.get("outputs") or []) or "—(唯一依据未登记)",
                    "%d 条: %s" % (m.get("n_params", 0),
                                  " · ".join(m.get("params_head") or []) or "—"),
                    " / ".join(m.get("deps_up") or []) or "—(画布无上游)",
@@ -3300,7 +3300,7 @@ class ConfigCenterPage(QWidget):
                  _short(m.get("deps_up")), _short(m.get("verification")), _short(m.get("scenes")),
                  _owner_text(m), m.get("prio") or "—"] for m in mt]
         # ── 🎯 任务级元任务 (该任务自己的执行元任务) —— 老倪 2026-10-28 ─────────────────────
-        #   这一张才是"任务 ↔ 元任务"的对应关系: 真源 tasks.json 的 meta_tasks (TASK-07-AOI 5 条),
+        #   这一张才是"任务 ↔ 元任务"的对应关系: 唯一依据 tasks.json 的 meta_tasks (TASK-07-AOI 5 条),
         #   没登记的用该任务 steps 派生并标明, 点哪个任务行就换成哪个任务的 (与下面功能级表同一触发)。
         self.tl_head = QLabel("🎯 任务级元任务 · 正在加载…")
         self.tl_head.setFont(QFont("Consolas", 10))
@@ -3338,7 +3338,7 @@ class ConfigCenterPage(QWidget):
         except Exception:                                                       # noqa: BLE001
             pass
         layout.addWidget(self.seg_table)
-        self.tl_src = QLabel("   真源: —")
+        self.tl_src = QLabel("   唯一依据: —")
         self.tl_src.setFont(QFont("Consolas", 9))
         self.tl_src.setStyleSheet("color:%s;background:transparent;" % th["C_GRAY"])
         self.tl_src.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
@@ -3414,11 +3414,11 @@ class ConfigCenterPage(QWidget):
         return True
 
     def _show_order_detail(self, order_no):
-        """一份工单 (Build Sheet) 的配置面 → 底部面板 (全部读真源 config/orders/BS_*.json, 可复制)。"""
+        """一份工单 (Build Sheet) 的配置面 → 底部面板 (全部读唯一依据 config/orders/BS_*.json, 可复制)。"""
         bs = next((b for b in _orders_list()
                    if str((b.get("identity") or {}).get("order_no", "")).startswith(order_no)), None)
         if not bs:
-            self.out.setPlainText("⛔ 真源里没有工单 %s (config/orders/BS_*.json)" % order_no)
+            self.out.setPlainText("⛔ 唯一依据里没有工单 %s (config/orders/BS_*.json)" % order_no)
             self._fit_out()
             return False
         i, rd = bs.get("identity") or {}, bs.get("readiness") or {}
@@ -3435,7 +3435,7 @@ class ConfigCenterPage(QWidget):
             "   站点就绪   : %s/9%s" % (rd.get("site_ok", "?"),
                                       ("  ⛔ 缺 " + ", ".join(rd.get("site_missing") or [])) if rd.get("site_missing") else ""),
             "   被站点拦   : %s" % _short(rd.get("blocked_by_site"), n=8, sep=", ", w=80),
-            "   真源       : %s" % bs.get("_file", "—"),
+            "   唯一依据       : %s" % bs.get("_file", "—"),
         ]))
         self._fit_out()
         return True
@@ -3464,7 +3464,7 @@ class ConfigCenterPage(QWidget):
             pass
         # ⭐ 北斗七星阵顶层项 (2026-10-15): 先按**星名**分派到各自配置页。
         #   为什么必须放最前 —— 实测 bug: 序号 "2." 里有一个点, 下面的「参数 ID 分支」把
-        #   「⛔ 2. 任务配置 · 天璇」当成参数 ID, 真源里查不到就只打印一行"配置中心里没有参数…",
+        #   「⛔ 2. 任务配置 · 天璇」当成参数 ID, 唯一依据里查不到就只打印一行"配置中心里没有参数…",
         #   **页面完全不动** (老倪报: 产品配置能跳, 任务配置不跳; 工单配置同理)。
         if re.search(r"·\s*(天枢|天璇|天玑|天权|玉衡|开阳|瑶光)", txt):
             _k = _ss.key_for_label(txt)
@@ -3475,7 +3475,7 @@ class ConfigCenterPage(QWidget):
                     # 不能落到本页默认星(天玑) —— 老倪 2026-10-15 实测报的。
                     self._star_focus = _k or None
                     if _k in ("func", "perf"):
-                        # 点哪颗星 → 切到那一页并按下该域按钮 (单一真源: 星 → 页 → 域)
+                        # 点哪颗星 → 切到那一页并按下该域按钮 (单一唯一依据: 星 → 页 → 域)
                         self._filter_fpm({"func": "功能配置", "perf": "性能配置"}[_k])
                     self._sync_star_banner()
                     return
@@ -3492,7 +3492,7 @@ class ConfigCenterPage(QWidget):
             if _i >= 0:
                 self.tabs.setCurrentIndex(_i)
             return
-        # 🏷 产品配置 (2026-10-13): 点左树 → 切到「产品配置」页 (只切页/只读, 不写真源 —— 写盘只在单选按钮上)
+        # 🏷 产品配置 (2026-10-13): 点左树 → 切到「产品配置」页 (只切页/只读, 不写唯一依据 —— 写盘只在单选按钮上)
         if "产品配置" in txt or re.search(r"550[ABC]", txt):
             _i = self._tab_index_by_title("产品配置")
             if _i >= 0:
@@ -3500,8 +3500,8 @@ class ConfigCenterPage(QWidget):
             if re.search(r"550[ABC]", txt):
                 self.out.setPlainText(
                     "🏷 产品配置: %s\n"
-                    "   切产品请在「🏷 产品配置」页的**单选按钮**上点选 (点选即原子写回真源 %s 的 active_product, "
-                    "写完回读确认)。\n   本页右侧的值全部是从真源回读的, 双击/右键/📋 可复制完整值。"
+                    "   切产品请在「🏷 产品配置」页的**单选按钮**上点选 (点选即原子写回唯一依据 %s 的 active_product, "
+                    "写完回读确认)。\n   本页右侧的值全部是从唯一依据回读的, 双击/右键/📋 可复制完整值。"
                     % (txt.strip(), REL_PRODUCT))
                 self._fit_out()
             return
@@ -3531,7 +3531,7 @@ class ConfigCenterPage(QWidget):
                 if self.fpm_rows[r][1] == pid:
                     self._show_domain(self.fpm_rows[r][0], pid)
                     return
-            self.out.setPlainText("⛔ 配置中心里没有参数 %s (真源里没这一项)" % pid)
+            self.out.setPlainText("⛔ 配置中心里没有参数 %s (唯一依据里没这一项)" % pid)
             self._fit_out()
             return
         # 🆕 2026-10-14 老倪: 左树拆两项 ⇒ 点「任务配置」进**元任务粒度**页, 点「工单配置」进**工单实例粒度**页
@@ -3545,23 +3545,23 @@ class ConfigCenterPage(QWidget):
 
     # ── 🏷 产品配置区 (老倪 2026-10-13: 产品标识 + 空间质数结构化理解能力) ──────────────
     # 🗑 2026-10-19 老倪: 「…这些全删掉」——产品质数 / 当前发布指纹 / 质数结构自检 / 能力质数签名 四行
-    #   + 说明行 + 真源行全部下架, 只留 产品 / 版本号 / 能力数 (值仍全部从真源回读)。
+    #   + 说明行 + 唯一依据行全部下架, 只留 产品 / 版本号 / 能力数 (值仍全部从唯一依据回读)。
     # 🏷 2026-10-21 老倪: 「版本段 改成 版本号 … 都与系统总版本号保持同步更新,
     #   即 A B C 只是产品的配置标识, 版本号全系统统一」⇒ 这一行不再是每档的 5.50.A/B/C,
     #   而是**系统总版本** (读 update_checker.CURRENT_VERSION, 全系统一份, 三档同一个号)。
     # 🏷 2026-10-21 老倪定三档运行位置: 「550A 在本地运行, 550B 用于 vscode, 550C 用于量产,
     #   直接部署在 intel 上, 550C 包括所有模型, 可以远程端侧实时运行」
-    #   ⇒ 真源 products.<id>.runtime 新增运行时域 (location/label/host/host_ip/models/realtime),
+    #   ⇒ 唯一依据 products.<id>.runtime 新增运行时域 (location/label/host/host_ip/models/realtime),
     #     界面加一行「运行位置」, 卡片底行 = 系统总版本号 · 运行位置。
     _PROD_ROWS = ("产品", "版本号", "运行位置", "能力数")
 
     def _product_card(self, th):
-        """🏷 产品配置区 —— 三个产品**单选** + 右侧**真源回读**值 (可复制)。
+        """🏷 产品配置区 —— 三个产品**单选** + 右侧**唯一依据回读**值 (可复制)。
 
         老倪 2026-10-13: 「流形引擎节点要一眼认出是系统核心 —— 给它加产品标识 (550A/550B/550C)
         与空间质数结构化理解能力的输出」⇒ 配置中心这边给产品配置区:
-          · 选中即**原子写回**真源 config/platform/zmax_product.json 的 active_product (临时文件 + os.replace);
-          · 右边显示 版本段 / 能力数 —— 每个值都**从真源回读**, 不是界面自算的副本;
+          · 选中即**原子写回**唯一依据 config/platform/zmax_product.json 的 active_product (临时文件 + os.replace);
+          · 右边显示 版本段 / 能力数 —— 每个值都**从唯一依据回读**, 不是界面自算的副本;
           · 显示可复制 (双击 / 右键菜单 / 📋 按钮, 复制的是**完整值**);
           · 窄窗 1280 完整可见: 值标签自动换行 (不截断), 每个字段一行 + 一个 📋 按钮。
         """
@@ -3572,13 +3572,13 @@ class ConfigCenterPage(QWidget):
         cv.setContentsMargins(10, 8, 10, 8)
         cv.setSpacing(6)
 
-        ttl = QLabel("产品配置 —— 产品档 · 点卡片切换 (写回真源)")
+        ttl = QLabel("产品配置 —— 产品档 · 点卡片切换 (写回唯一依据)")
         ttl.setFont(QFont("Consolas", 11, QFont.Bold))
         ttl.setWordWrap(True)
         ttl.setStyleSheet(f"color:{th['C_WHITE']};background:transparent;border:none;")
         cv.addWidget(ttl)
 
-        # ① 三档卡片 (VEH.6.01/02/03) —— 选中 → 写回真源 active_product
+        # ① 三档卡片 (VEH.6.01/02/03) —— 选中 → 写回唯一依据 active_product
         #    老倪 2026-10-21: 「只是一个小白点来选择配置, 不好看 … 更加绚丽 … 要明显, 好看一些」
         #    卡片是 QRadioButton 子类 (_ProductCard), 单选语义/判据不变; 外观全部自绘。
         row = QHBoxLayout()
@@ -3599,8 +3599,8 @@ class ConfigCenterPage(QWidget):
             self._prod_btns[pid] = rb
             row.addWidget(rb)
         row.addStretch()
-        b_rl = _btn("🔄 重新读取真源", th)
-        b_rl.setToolTip("不写盘, 只把下面的只读值按真源重读一遍")
+        b_rl = _btn("🔄 重新读取唯一依据", th)
+        b_rl.setToolTip("不写盘, 只把下面的只读值按唯一依据重读一遍")
         b_rl.clicked.connect(lambda: self._refresh_product_view(silent=False))
         row.addWidget(b_rl)
         cv.addLayout(row)
@@ -3632,11 +3632,11 @@ class ConfigCenterPage(QWidget):
         cv.addStretch()
         self._prod_card = card
         self._prod_shown_active = None
-        self._refresh_product_view(silent=True)          # 构造即回读真源 (不显示空壳)
+        self._refresh_product_view(silent=True)          # 构造即回读唯一依据 (不显示空壳)
         return card
 
     def _refresh_product_view(self, silent=True):
-        """按真源重读产品配置并刷新界面 (只读, 不改真源)。返回本次读到的那份 (判据/日志可查)。"""
+        """按唯一依据重读产品配置并刷新界面 (只读, 不改唯一依据)。返回本次读到的那份 (判据/日志可查)。"""
         self._sync_tree_product()      # 🏷 左树那行必须与右侧同源 (本 UI 写回 / 别处改动都覆盖)
         v = _product_view()
         self._prod_last = v
@@ -3653,7 +3653,7 @@ class ConfigCenterPage(QWidget):
                 # 2026-10-21 老倪: A=本地运行 / B=用于 VSCode / C=量产部署在 Intel(全模型·远程端侧实时)
                 _rt = (v.get("runtimes") or {}).get(pid) or {}
                 _where = str(_rt.get("label") or "").strip()
-                if not _where:                        # 真源缺 runtime 就退回旧口径 (定位), 不编造
+                if not _where:                        # 唯一依据缺 runtime 就退回旧口径 (定位), 不编造
                     _role = str(roles.get(pid) or "").strip()
                     _suf = str(nm).split(" ", 1)[1].strip() if " " in str(nm) else ""
                     _where = "" if (_role and _role == _suf) else _role
@@ -3668,7 +3668,7 @@ class ConfigCenterPage(QWidget):
         if v.get("error"):
             for k in self._PROD_ROWS:
                 vals[k].set_value("⛔ " + str(v["error"]))
-            self._log_cc("⛔ 产品真源读不出 (%s): %s — 不造数, 界面如实报缺"
+            self._log_cc("⛔ 产品唯一依据读不出 (%s): %s — 不造数, 界面如实报缺"
                          % (v.get("src") or REL_PRODUCT, v["error"]))
             return v
         vals["产品"].set_value("%s — %s" % (v.get("active"), v.get("product_name")))
@@ -3683,29 +3683,29 @@ class ConfigCenterPage(QWidget):
                                        ("模型: " + _mdl) if _mdl else "",
                                        ("实时: " + _rtl) if _rtl else "") if x])
         vals["运行位置"].set_value(_full)
-        vals["运行位置"].setToolTip("真源 %s → products.%s.runtime" % (v.get("src") or REL_PRODUCT, v.get("active")))
+        vals["运行位置"].setToolTip("唯一依据 %s → products.%s.runtime" % (v.get("src") or REL_PRODUCT, v.get("active")))
         n_prim, n_stage = v.get("n_prim"), v.get("n_stage")
         vals["能力数"].set_value("%s 项%s" % (v.get("n_caps"),
                                             (" (元数据基元 %s + 阶段 %s)" % (n_prim, n_stage))
                                             if n_prim is not None else ""))
         if not silent:
-            self._log_cc("🏷 产品配置已按真源重读: active=%s · 能力 %s 项"
+            self._log_cc("🏷 产品配置已按唯一依据重读: active=%s · 能力 %s 项"
                          % (v.get("active"), v.get("n_caps")))
         return v
 
     def _on_product_pick(self, pid, checked):
-        """勾选产品 → **原子写回**真源 active_product → 回读确认 → 刷新只读值 (失败如实报)。"""
+        """勾选产品 → **原子写回**唯一依据 active_product → 回读确认 → 刷新只读值 (失败如实报)。"""
         if not checked or pid == getattr(self, "_prod_shown_active", None):
             return
         ok, back, err = _write_active_product(pid)
         if ok:
-            self._log_cc("🏷 产品已切到 %s — 真源 %s 回读 active_product=%s" % (pid, REL_PRODUCT, back))
+            self._log_cc("🏷 产品已切到 %s — 唯一依据 %s 回读 active_product=%s" % (pid, REL_PRODUCT, back))
         else:
-            self._log_cc("⛔ 产品切换失败 (真源未改): %s" % (err or "未知原因"))
+            self._log_cc("⛔ 产品切换失败 (唯一依据未改): %s" % (err or "未知原因"))
         self._refresh_product_view(silent=True)
         try:
-            self.out.append("%s 产品配置: 选中 %s → %s (真源回读 active_product=%s)"
-                            % ("✅" if ok else "⛔", pid, "已写回真源" if ok else ("未写: %s" % (err or "")), back))
+            self.out.append("%s 产品配置: 选中 %s → %s (唯一依据回读 active_product=%s)"
+                            % ("✅" if ok else "⛔", pid, "已写回唯一依据" if ok else ("未写: %s" % (err or "")), back))
         except Exception:                                                       # noqa: BLE001
             pass
 
@@ -3726,7 +3726,7 @@ class ConfigCenterPage(QWidget):
     # ══════════════════════════════════════════════════════════════════════════
     # ⚙️ 工程配置 · 按性能等级 A/B/C (老倪 2026-10-28: 「根据性能等级, 进行工程配置,
     #    要有操作手册 working instruction, 保证能够工程实现」)
-    #    真源: tools/spec/eng_profiles.json —— 与 docs/deliverables/工程操作手册_三档_A_B_C.md 同源
+    #    唯一依据: tools/spec/eng_profiles.json —— 与 docs/deliverables/工程操作手册_三档_A_B_C.md 同源
     # ══════════════════════════════════════════════════════════════════════════
     def _eng_profile_block(self, th):
         import subprocess as _sp
@@ -3786,7 +3786,7 @@ class ConfigCenterPage(QWidget):
 
         t_hw = _mk_table(["#", "设备", "规格", "数量", "为什么"], [], th)
         t_sw = _mk_table(["服务/资产", "端口", "起法/位置"], [], th)
-        t_cb = _mk_table(["标定项", "真源", "容差/判据"], [], th)
+        t_cb = _mk_table(["标定项", "唯一依据", "容差/判据"], [], th)
         t_wi = _mk_table(["步骤", "做什么", "在哪做", "命令 / 操作", "期望", "状态", ""], [], th)
         t_wi.verticalHeader().setDefaultSectionSize(28)
         for _c, _w2 in ((0, 48), (1, 150), (2, 92), (5, 120), (6, 54)):
@@ -3897,7 +3897,7 @@ class ConfigCenterPage(QWidget):
 
         老倪 2026-10-12: 「我已经在配置中心的 TASK-07 激活的 AOI 任务, 现在要看到 金手指点1 的实际位置数据,
         应该在工程配置里, 用户能立刻找到 —— 搞一个专门对应 AR场景的 工程配置数据」
-        ⇒ 点位表(金手指点1 置顶) + 复制/导出按钮; 数据来自任务配置, 真源是 reports/aoi_points 台账。
+        ⇒ 点位表(金手指点1 置顶) + 复制/导出按钮; 数据来自任务配置, 唯一依据是 reports/aoi_points 台账。
         """
         t = next((x for x in (tk.get("tasks") or []) if str(x.get("task_id")) == "TASK-07-AOI"), {})
         rows = _pt_parse(t)
@@ -3914,13 +3914,13 @@ class ConfigCenterPage(QWidget):
         head.addStretch()
         _sdir = (t.get("overrides") or {}).get("pt.space_dir") or "data/skills/l2_atomic/space_points.json"
         sub = QLabel("任务 TASK-07-AOI(光学质量检测) · 场景 SCN-07-AOI(AR) · 单位 m(基座系) · "
-                     "真源 reports/aoi_points(示教点) + %s(空间点1~8) —— 由 tools/task_build.py 只读生成" % _sdir)
+                     "唯一依据 reports/aoi_points(示教点) + %s(空间点1~8) —— 由 tools/task_build.py 只读生成" % _sdir)
         sub.setFont(QFont("Consolas", 9))
         sub.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;border:none;")
         cv.addWidget(ttl)
         cv.addWidget(sub)
         # 🔴 老倪 2026-10-12: 「配置中心的点, 除了位置, 还得有 a b c, 6 个数字都要记录」
-        tb = _mk_table(["点位", "X (m)", "Y (m)", "Z (m)", "A (°)", "B (°)", "C (°)", "记录时间", "更新", "真源文件"],
+        tb = _mk_table(["点位", "X (m)", "Y (m)", "Z (m)", "A (°)", "B (°)", "C (°)", "记录时间", "更新", "唯一依据文件"],
                        [[r["name"], r["x"], r["y"], r["z"], r["a"], r["b"], r["c"],
                          r["t"], r["n"], r["src"]] for r in rows], th)
         # 2026-10-15: 原来按全表给最小高度 (可到 510px) ⇒ 把整页顶高、信息窗被压到 98px。
@@ -3929,7 +3929,7 @@ class ConfigCenterPage(QWidget):
         tb.setMaximumHeight(30 * (len(rows) + 2) + 10)
         # 金手指点1 行高亮 + tooltip 统一由 _fill() 写 (建卡与 2s 静默刷新同一处, 不会刷掉)
         cv.addWidget(tb)
-        _sync = QLabel("真源同步: —")
+        _sync = QLabel("唯一依据同步: —")
         _sync.setFont(QFont("Consolas", 9))
         _sync.setStyleSheet(f"color:{th['C_GRAY']};background:transparent;border:none;")
         cv.addWidget(_sync)
@@ -3962,8 +3962,8 @@ class ConfigCenterPage(QWidget):
                 self.out.setPlainText("⛔ 导出失败: %s" % repr(e)[:120])
 
         def _fill(r2, silent=False):
-            # 🔴 2026-10-12: 列数要和表头一致(点位+X+Y+Z+A+B+C+时间+更新+真源)。
-            #   原来这里只写 7 列(旧的"只要位置"口径) ⇒ 刷新一次就把 A/B/C 三列冲成时间/更新/真源,
+            # 🔴 2026-10-12: 列数要和表头一致(点位+X+Y+Z+A+B+C+时间+更新+唯一依据)。
+            #   原来这里只写 7 列(旧的"只要位置"口径) ⇒ 刷新一次就把 A/B/C 三列冲成时间/更新/唯一依据,
             #   表格看起来"6 个数字缺 3 个"。真跑判据当场抓到(离屏真建卡回读单元格)。
             tb.setRowCount(len(r2))
             for i, r in enumerate(r2):
@@ -3974,11 +3974,11 @@ class ConfigCenterPage(QWidget):
             try:
                 from PyQt5.QtGui import QColor as _QC2
                 # 2026-10-21: tooltip 必须在这里写 —— 原来只写在建卡那一遍, 2s 静默刷新重建单元格后
-                #   就没了 (判据当场抓到"tooltip 有真源 + 更新记录"红)。行 0 = 金手指点1, 高亮 + 全信息。
+                #   就没了 (判据当场抓到"tooltip 有唯一依据 + 更新记录"红)。行 0 = 金手指点1, 高亮 + 全信息。
                 _tip0 = None
                 if r2:
                     _r0 = r2[0]
-                    _tip0 = ("★ %s —— 位姿 x=%s y=%s z=%s m · a=%s° b=%s° c=%s° · 记录 %s\n   真源 %s\n   %s"
+                    _tip0 = ("★ %s —— 位姿 x=%s y=%s z=%s m · a=%s° b=%s° c=%s° · 记录 %s\n   唯一依据 %s\n   %s"
                              % (_r0.get("name", "金手指点1"), _r0["x"], _r0["y"], _r0["z"],
                                 _r0.get("a", "—"), _r0.get("b", "—"), _r0.get("c", "—"),
                                 _r0["t"], _r0["src"], _r0.get("hist") or ""))
@@ -3991,7 +3991,7 @@ class ConfigCenterPage(QWidget):
             except Exception:                                                   # noqa: BLE001
                 pass
             _h = os.path.getmtime(TASKS_J) if os.path.exists(TASKS_J) else 0
-            _sync.setText("真源同步: %s · %d 个点位(点位一改就自动跟上, 无需点按钮)"
+            _sync.setText("唯一依据同步: %s · %d 个点位(点位一改就自动跟上, 无需点按钮)"
                           % (time.strftime("%H:%M:%S", time.localtime(_h)) if _h else "—", len(r2)))
             if not silent:
                 self.out.setPlainText("🔄 已重新读取任务配置(%s) —— %d 个点位\n%s"
@@ -4003,7 +4003,7 @@ class ConfigCenterPage(QWidget):
             _fill(_pt_parse(t2))
 
         # 🔁 2026-10-12 老倪: 「标注模式更新了金手指点1, 配置中心还是没更新; 要实时更新, 全局数据一致」
-        #   ⇒ 表自己盯真源 mtime(任务配置由 task_build 从 AOI 台账重建), 变了就**静默刷新**:
+        #   ⇒ 表自己盯唯一依据 mtime(任务配置由 task_build 从 AOI 台账重建), 变了就**静默刷新**:
         #   不用重启控制台、不用点按钮, 点位的记录/清除立刻反映到这里。
         _watch = {"m": (os.path.getmtime(TASKS_J) if os.path.exists(TASKS_J) else 0)}
 
@@ -4089,7 +4089,7 @@ class ConfigCenterPage(QWidget):
             pass
         # 🆕 2026-10-11 老倪: 「配置中心的活跃属性列, 增加新功能, 用户可以自主调整 活跃/未激活 等状态, 用下拉菜单」
         #   设计: 活跃列每行一个下拉 (★ 活跃 / ○ 未激活 / — 无配置) —— 选「★ 活跃」= 真激活该任务 (走 ss_task_bind --activate,
-        #   写绑定真源 + 台账, 回读校验); 选「未激活/无配置」= 记手选台账 (当前活跃任务不许直接取消; 有运行证据的不许降级)。
+        #   写绑定唯一依据 + 台账, 回读校验); 选「未激活/无配置」= 记手选台账 (当前活跃任务不许直接取消; 有运行证据的不许降级)。
         #   改完立刻重算全表 + 表头计数, 动作与结果都写进下方日志 (失败照实说, 不假成功)。
         # 🆕 场景/模型列的完整说明放 tooltip (单元格只放短标签, 完整口径不截断)
         try:
@@ -4175,8 +4175,8 @@ class ConfigCenterPage(QWidget):
         row2.addStretch()
         row2.addWidget(_hint)
         _b_all = _btn("🚀 启动工程 · 信号 · 场景", th)
-        _b_all.setToolTip("同时启动三样 (同一份真源, 顺序: 工程 → 场景 → 信号):\n"
-                          "· 工程 = 状态空间画布 (按工程文件/绑定真源加载)\n"
+        _b_all.setToolTip("同时启动三样 (同一份唯一依据, 顺序: 工程 → 场景 → 信号):\n"
+                          "· 工程 = 状态空间画布 (按工程文件/绑定唯一依据加载)\n"
                           "· 场景 = 3D 场景视图 (与画布同源)\n"
                           "· 信号 = 📈 实时监控 · Graphic 信号分析\n"
                           "按选中任务确定配置 (可选真激活) → 应用场景 → 统一打开。只打开/定位, 不下发任何运动指令")
@@ -4187,7 +4187,7 @@ class ConfigCenterPage(QWidget):
         #    两边都 addLayout 会让 Qt 只认第一个父布局 ⇒ 按钮被挤到 0 高度看不见 (实测踩过)。
         # 🆕 2026-10-14 老倪: 「将元任务, 这些信息, 体现在配置中心的 任务配置」——
         #   任务表之下再给一张**元任务表** (每个元任务 = 一个功能 + 该功能全部配置参数),
-        #   列 = 元任务标准模板; 真源同 Word/PDF 导出器 (同一份构建函数)。
+        #   列 = 元任务标准模板; 唯一依据同 Word/PDF 导出器 (同一份构建函数)。
         #   ⚠️ 上面任务表的列一列没动 (只增一张表, 不换列)。
         # ── 任务表 ↔ 元任务表: 一条**可拖的竖直分隔条** (老倪 2026-10-15「元任务窗口太矮了, 调高适配」) ──
         #   实测根因(离屏 1700×1700): 两张表同在一个 QVBoxLayout 里, 谁都没有边界 ⇒ 元任务表只拿到 463px,
@@ -4263,7 +4263,7 @@ class ConfigCenterPage(QWidget):
 
         # 2) 工程配置 (参数表三列)
         cs = [c for c in d.get("CHARACTERISTIC", []) if c.get("domain") == "工程配置"]
-        t2 = _mk_table(["参数", "级", "权限", "真源", "测量: 当前值", "诊断: 判据"],
+        t2 = _mk_table(["参数", "级", "权限", "唯一依据", "测量: 当前值", "诊断: 判据"],
                        [[c["id"], c["grade"], c["perm"], str(c["src"]).split("#")[0],
                          ("缺失 ⛔" if c.get("value") is None else str(c.get("value"))[:22]),
                          str(c["judge"])[:60]] for c in cs], th)
@@ -4297,7 +4297,7 @@ class ConfigCenterPage(QWidget):
 
         # 3) 功能配置 (天玑) + 5) 性能配置 (玉衡) —— 老倪 2026-10-15: 「功能 性能 模型 标签, 改成功能配置,
         #    即标签页的名字, 对应 1~7 配置名称」⇒ 页签名就叫配置名, 所以这里建**两个页** (同一构造器、默认域不同):
-        #    🧩 功能配置 默认只筛功能域 · ⚡ 性能配置 默认只筛性能域。数据同一真源 (特征库), 不复制真相。
+        #    🧩 功能配置 默认只筛功能域 · ⚡ 性能配置 默认只筛性能域。数据同一唯一依据 (特征库), 不复制真相。
         self.fpm_views = {}
         self.tab3_domains = ["功能配置", "性能配置", "模型配置"]
         # 🎯 2026-10-28 老倪: 「当前激活的是 任务7, 功能上要将任务7的任务都对应上; 功能配置的UI 你再设计一下;
@@ -4324,7 +4324,7 @@ class ConfigCenterPage(QWidget):
 
         # 4) 🧾 工单配置 (2026-10-14 老倪: 「将原来的工艺工单任务, 拆解成 任务配置 和 工单配置 两项」)
         #   这一页 = **工单实例粒度** (一份工单 = 一次执行): 身份 + 配方 + 变体 + 选项 + 目标 + 站点就绪。
-        #   真有据: 真源 config/orders/BS_*.json; 点工单号 (表格行/左树子项) ⇒ 底部面板摊开完整配置面。
+        #   真有据: 唯一依据 config/orders/BS_*.json; 点工单号 (表格行/左树子项) ⇒ 底部面板摊开完整配置面。
         #   ⚠️ 原有 6 列一列没动, 新维度**追加在后面**; 页签名由「🎯 工单」改成「🧾 工单配置」(与左树同名)。
         _ords = _orders_list()
         rows4 = []
@@ -4348,7 +4348,7 @@ class ConfigCenterPage(QWidget):
         except Exception:                                                       # noqa: BLE001
             pass
         w4 = QWidget(); l4 = QVBoxLayout(w4); l4.setContentsMargins(6, 6, 6, 6)
-        _h4 = QLabel("工单实例 = 一次执行 (身份/配方/变体/选项/目标/站点就绪) · 真源 %s"
+        _h4 = QLabel("工单实例 = 一次执行 (身份/配方/变体/选项/目标/站点就绪) · 唯一依据 %s"
                      " · 点一行看完整配置面" % os.path.relpath(ORDERS_D, ROOT))
         _h4.setFont(QFont("Consolas", 10))
         _h4.setStyleSheet("color:%s;background:transparent;" % th["C_GRAY"])
@@ -4395,7 +4395,7 @@ class ConfigCenterPage(QWidget):
             self._ml_filter_row, self._ml_filter_label = _mrow, _mlab
 
             def _ml_filter(only_task):
-                """只筛显示行, 不动表内容; 条数一律按**表里真实有多少**报, 不写死 77/33。"""
+                """只筛显示行, 不动表内容; 条数一律按**表里真实有多少**报, 不预先固定 77/33。"""
                 _t2, _tk2, _bt2, _ = _active_bind()
                 _fn = {f["fn"] for f in _task_funcs(_t2)}
                 t = getattr(self, "ml_map_table", None)
@@ -4416,7 +4416,7 @@ class ConfigCenterPage(QWidget):
                 _mlab.setText("显示 %d / %d 条 · %s%s"
                               % (n_on, n_all,
                                  ("仅活跃任务 %s 的功能" % _t2) if only_task else "全部功能",
-                                 (" · ⚠ 本任务 %d 个功能里 %d 个在层模型映射表没有条目: %s (真源缺口)"
+                                 (" · ⚠ 本任务 %d 个功能里 %d 个在层模型映射表没有条目: %s (依据缺失)"
                                   % (len(_fn), len(_miss), "/".join(_miss))) if _miss else ""))
 
             _b_task.clicked.connect(lambda: _ml_filter(True))
@@ -4426,7 +4426,7 @@ class ConfigCenterPage(QWidget):
         except Exception as _em:                                                # noqa: BLE001
             l6.addWidget(QLabel("⛔ 模型配置活跃任务横幅构建失败: %r" % (_em,)))
         # 🧠 **本页主要信息** (老倪 2026-10-15: 「模型配置, 要映射功能配置和 L2 L3 L4 L5层模型, 这是主要信息」)
-        #    —— 放在模型配置页最上面: 四层在役一行一层 + 功能↔层模型全量映射 (两个真源现算)。
+        #    —— 放在模型配置页最上面: 四层在役一行一层 + 功能↔层模型全量映射 (两个唯一依据现算)。
         try:
             self.ml_block = self._model_layer_block(th)
             l6.addWidget(self.ml_block, 4)
@@ -4453,7 +4453,7 @@ class ConfigCenterPage(QWidget):
         w7 = QWidget()
         l7 = QVBoxLayout(w7)
         l7.setContentsMargins(6, 6, 6, 6)
-        src = QLabel("三份交付文档同一数据源: 工程库 data/database/zmax/zmax_engineering.db + 平台真源 config/platform/*.json"
+        src = QLabel("三份交付文档同一数据源: 工程库 data/database/zmax/zmax_engineering.db + 平台唯一依据 config/platform/*.json"
                      "   ·   BOM 每项挂功能/能力   ·   成本按阶段自动核算   ·   ROI 由性能指标(节拍/成功率/人效比)算出")
         src.setWordWrap(True)
         src.setFont(QFont("Consolas", 10))
@@ -4501,11 +4501,11 @@ class ConfigCenterPage(QWidget):
             return _s
 
         l7.addWidget(_sec("🧾 工单实例（原「🧾 工单配置」页）",
-                          "工单 = 一次执行 (Build Sheet) · 真源 config/orders/BS_*.json · 点行看完整配置面"))
+                          "工单 = 一次执行 (Build Sheet) · 唯一依据 config/orders/BS_*.json · 点行看完整配置面"))
         l7.addWidget(getattr(self, "_w4_orders", QWidget()), 2)
         try:
             l7.addWidget(_sec("第 7 步 · 成本组成（三档目标成本 · 建议报价区间 · 建议利润空间）",
-                              "唯一真源 tools/cost_model.build_tiers() ← tools/spec/cost_model.json (单价 + 售价上限)"))
+                              "唯一依据 tools/cost_model.build_tiers() ← tools/spec/cost_model.json (单价 + 售价上限)"))
             l7.addWidget(self._target_cost_block(th))
         except Exception as _e7t:                                               # noqa: BLE001
             _lb7t = QLabel("⛔ 成本组成块构造失败: %r" % (_e7t,))
@@ -4529,7 +4529,7 @@ class ConfigCenterPage(QWidget):
             l7.addWidget(_lb8r)
         try:
             l7.addWidget(_sec("💰 成本/报价",
-                              "算法真源 tools/cost_model.py · 参数真源 config/platform/zmax_cost_model.json"))
+                              "算法唯一依据 tools/cost_model.py · 参数唯一依据 config/platform/zmax_cost_model.json"))
             l7.addWidget(self._cost_page(th))
         except Exception as _e10b:                                              # noqa: BLE001
             _lb10b = QLabel("⛔ 成本/报价块构造失败: %r" % (_e10b,))
@@ -4537,7 +4537,7 @@ class ConfigCenterPage(QWidget):
             l7.addWidget(_lb10b)
         try:
             l7.addWidget(_sec("🧩 商业模式",
-                              "算法真源 tools/business_model.py (输入 = 成本真源 + 商业模式假设真源)"))
+                              "算法唯一依据 tools/business_model.py (输入 = 成本唯一依据 + 商业模式假设唯一依据)"))
             l7.addWidget(self._biz_page(th))
         except Exception as _e11b:                                              # noqa: BLE001
             _lb11b = QLabel("⛔ 商业模式块构造失败: %r" % (_e11b,))
@@ -4569,11 +4569,11 @@ class ConfigCenterPage(QWidget):
             b8.clicked.connect(lambda _, k=key: self._show_doc(k))
             row8.addWidget(b8)
         b_con8 = _btn("🔍 一致性核对", th)
-        b_con8.setToolTip("三份文档记录的 工程库/BOM/能力清单/治理 真源 sha 与当前真源逐一比对")
+        b_con8.setToolTip("三份文档记录的 工程库/BOM/能力清单/治理 唯一依据 sha 与当前唯一依据逐一比对")
         b_con8.clicked.connect(self._show_consistency)
         row8.addWidget(b_con8)
         b_re8 = _btn("♻️ 重新生成并预览", th)
-        b_re8.setToolTip("真源改过之后必须重新生成 —— 过期文档不能当交付件")
+        b_re8.setToolTip("唯一依据改过之后必须重新生成 —— 过期文档不能当交付件")
         b_re8.clicked.connect(lambda: self._show_doc(getattr(self, "_pv_kind", "sor"), force=True))
         row8.addWidget(b_re8)
         row8.addStretch()
@@ -4595,7 +4595,7 @@ class ConfigCenterPage(QWidget):
         self.preview.setStyleSheet(f"background:{th['C_BG2']};color:{th['C_WHITE']};"
                                    f"border:1px solid {th['C_BORDER']};")
         self.preview.setPlainText(
-            "判据: 文档 manifest 里记录的 工程库/BOM/能力清单/治理 真源 sha 与当前真源**逐一比对** ——\n"
+            "判据: 文档 manifest 里记录的 工程库/BOM/能力清单/治理 唯一依据 sha 与当前唯一依据**逐一比对** ——\n"
             "  对不上 = ⛔ 已过期 (老倪口径: 过期文档不能当交付件), 顶部会红字告警, 点「♻️ 重新生成并预览」。\n"
             "  三份文档同源: 都读 data/database/zmax/zmax_engineering.db + config/platform/*.json, 不手抄数字。")
         l8.addWidget(self.preview, 1)
@@ -4607,7 +4607,7 @@ class ConfigCenterPage(QWidget):
         l9.setContentsMargins(6, 6, 6, 6)
         try:
             # 🗑 2026-10-19 老倪: 「(与主控制台左侧同源: config/platform/zmax_platform.json) 在主配置中心，删掉」
-            #    这个 🏭 平台块与主控制台左侧卡面完全重复 ⇒ 配置中心不再挂它 (主控制台左侧照旧, 单一真源未动)。
+            #    这个 🏭 平台块与主控制台左侧卡面完全重复 ⇒ 配置中心不再挂它 (主控制台左侧照旧, 单一唯一依据未动)。
             l9.addWidget(self._product_card(th))
             try:                   # 🏭 复用「Z-MAX 平台」页描述 + 产品特性清单 (老倪 2026-10-15)
                 self.plat_page_block = self._zmax_platform_page_block(th)
@@ -4665,8 +4665,8 @@ class ConfigCenterPage(QWidget):
         """🧮 功能清单 (系统 2 / 系统 1 / 系统 0 + 平台支撑 的全部功能) + 汇总。
 
         老倪 2026-10-15: 「功能配置, 要包括 系统1 系统2 系统0 的所有功能, 还有功能清单的汇总」。
-        真源 = 单一工程库 functions 表 (与人可编真源 config/platform/zmax_platform.json 同源);
-        汇总口径: 各系统条数 + 合计, 一个字都不写死。
+        唯一依据 = 单一工程库 functions 表 (与人可编唯一依据 config/platform/zmax_platform.json 同源);
+        汇总口径: 各系统条数 + 合计, 一个字都不预先固定。
         """
         try:
             from zmax_platform_info import platform_page_data as _ppd, function_summary as _fs
@@ -4679,7 +4679,7 @@ class ConfigCenterPage(QWidget):
         lay = QVBoxLayout(w)
         lay.setContentsMargins(0, 6, 0, 0)
         lay.setSpacing(4)
-        _hd = QLabel("🧮 功能清单汇总: %s  (真源: 单一工程库 functions 表 · 与主控制台「🏭 Z-MAX 平台」页同源)"
+        _hd = QLabel("🧮 功能清单汇总: %s  (唯一依据: 单一工程库 functions 表 · 与主控制台「🏭 Z-MAX 平台」页同源)"
                      % (_sm["text"] if _fns else "取不到"))
         _hd.setWordWrap(True)
         _hd.setFont(QFont("Consolas", 10))
@@ -4714,7 +4714,7 @@ class ConfigCenterPage(QWidget):
         _bp1.setToolTip("选中功能清单里的一行 → 打开它主挂专利的申请文件正文 (说明书/权利要求书/实施例)")
         _bp1.clicked.connect(self._show_function_patent)
         _bp2 = _btn("📋 复制功能↔专利渠道清单", th)
-        _bp2.setToolTip("全量 74 条功能的专利渠道 (主挂/关联/真源符号) 复制到剪贴板")
+        _bp2.setToolTip("全量 74 条功能的专利渠道 (主挂/关联/唯一依据符号) 复制到剪贴板")
         _bp2.clicked.connect(self._copy_patent_channels)
         _bp3 = _btn("📤 导出全部专利 (md+docx)", th)
         _bp3.setToolTip("12 件专利申请文件全部导出到 docs/patents/ (与 SOR/立项/协议同一交付目录体系)")
@@ -4729,7 +4729,7 @@ class ConfigCenterPage(QWidget):
     # 📜 专利 (老倪 2026-10-15: 「预留所有功能的专利申请渠道; 文档配置 增加专利 导出和预览功能,
     #     同 SOR 项目立项 等文档同级别; 根据现有状态空间工程, 设计专利申请的内容, 要有层次, 逻辑,
     #     要保证全局数据真实, 可靠, 能落地, 形成专有知识产权」)
-    #   真源 config/patents/patent_registry.json (每件专利挂 fn_ids/fn_ids_related);
+    #   唯一依据 config/patents/patent_registry.json (每件专利挂 fn_ids/fn_ids_related);
     #   覆盖核对 = 与工程库 functions 表逐条比 (74/74); 文档 = tools/patent_center.py 生成 md+docx。
     # ══════════════════════════════════════════════════════════════════════════
     def _pc(self):
@@ -4766,12 +4766,12 @@ class ConfigCenterPage(QWidget):
             cov = m.coverage()
             reg = m.load_registry()
         except Exception as _e:                                                        # noqa: BLE001
-            lay.addWidget(QLabel("⛔ 读专利真源失败: %r" % (_e,)))
+            lay.addWidget(QLabel("⛔ 读专利唯一依据失败: %r" % (_e,)))
             self.pat_table = None
             return w
         _ch = 100.0 * cov["covered"] / max(1, cov["total_fn"])
         self.pat_cov = cov
-        lay.addWidget(_hd("📜 专利文档 (与 SOR / 项目立项 / 合作协议 **同一级别**) —— 真源 %s" % cov["src"]))
+        lay.addWidget(_hd("📜 专利文档 (与 SOR / 项目立项 / 合作协议 **同一级别**) —— 唯一依据 %s" % cov["src"]))
         lay.addWidget(_hd("   渠道预留: 功能清单 %d 条 → 已挂专利 %d 条 (%.1f%%)%s | 专利 %d 件 (按层次: %s)"
                          % (cov["total_fn"], cov["covered"], _ch,
                             "" if not cov["uncovered"] else " · ⛔ 未挂 %d 条: %s"
@@ -4799,7 +4799,7 @@ class ConfigCenterPage(QWidget):
         lay.addWidget(self.pat_table)
         _row = QHBoxLayout()
         _b1 = _btn("📄 预览选中专利", th)
-        _b1.setToolTip("读真源生成正文 (说明书摘要/权利要求书/说明书/实施例/挂载功能/真源数据) 显示在下方预览窗")
+        _b1.setToolTip("读唯一依据生成正文 (说明书摘要/权利要求书/说明书/实施例/挂载功能/唯一依据数据) 显示在下方预览窗")
         _b1.clicked.connect(lambda: self._show_patent(force=False))
         _b2 = _btn("📤 导出选中 (md+docx)", th)
         _b2.clicked.connect(lambda: self._export_patent(single=True))
@@ -4809,7 +4809,7 @@ class ConfigCenterPage(QWidget):
         _b4 = _btn("📋 复制功能↔专利渠道清单", th)
         _b4.setToolTip("74 条功能逐条的专利渠道 (主挂/关联) 复制到剪贴板 → 可直接粘进 Excel/评审表")
         _b4.clicked.connect(self._copy_patent_channels)
-        _b5 = _btn("♻️ 重读真源", th)
+        _b5 = _btn("♻️ 重读唯一依据", th)
         _b5.setToolTip("改完 config/patents/patent_registry.json 后重读 (不用重启控制台)")
         _b5.clicked.connect(self._reload_patent_block)
         for _b in (_b1, _b2, _b3, _b4, _b5):
@@ -4832,7 +4832,7 @@ class ConfigCenterPage(QWidget):
             x = (getattr(self, "fn_pat_map", {}) or {}).get(fid) or {}
             _ps = (x.get("pat_primary") or []) + (x.get("pat_related") or [])
             if not _ps:
-                self.out.setPlainText("⛔ %s 的专利渠道未闭合 (真源 config/patents/patent_registry.json 里没有挂它)"
+                self.out.setPlainText("⛔ %s 的专利渠道未闭合 (唯一依据 config/patents/patent_registry.json 里没有挂它)"
                                       " —— 渠道预留要逐条挂上, 不许留空。" % fid)
                 return
             self.out.setPlainText("📜 %s (%s) → 专利 %s (主挂 %s · 关联 %s)"
@@ -4869,7 +4869,7 @@ class ConfigCenterPage(QWidget):
             return
         pid = pat_id or self._pat_selected()
         if not pid:
-            self.out.setPlainText("⛔ 没有专利可预览 (真源里 0 件)")
+            self.out.setPlainText("⛔ 没有专利可预览 (唯一依据里 0 件)")
             return
         try:
             self._pv_kind = "patent"
@@ -4880,13 +4880,13 @@ class ConfigCenterPage(QWidget):
                 QApplication.processEvents()
             fs = self._pat_files(pid)
             if not fs["md"]:
-                txt = m.preview(pid)        # 导出失败也要能看正文 (直接由真源现算)
-                self.pv_head.setText("📜 专利 %s · ⛔ 文件未落地, 下面是真源现算正文" % pid)
+                txt = m.preview(pid)        # 导出失败也要能看正文 (直接由唯一依据现算)
+                self.pv_head.setText("📜 专利 %s · ⛔ 文件未落地, 下面是唯一依据现算正文" % pid)
             else:
                 txt = open(fs["md"], encoding="utf-8").read()
                 cov = getattr(self, "pat_cov", None) or m.coverage()
                 self.pv_head.setText(
-                    "📜 专利 %s · %s\n文件 %s (生成 %s) · 渠道覆盖 %d/%d 条功能 · 真源 %s"
+                    "📜 专利 %s · %s\n文件 %s (生成 %s) · 渠道覆盖 %d/%d 条功能 · 唯一依据 %s"
                     % (pid, os.path.basename(fs["md"]), fs["md"],
                        time.strftime("%m-%d %H:%M", time.localtime(fs["mtime"])),
                        cov["covered"], cov["total_fn"], cov["src"]))
@@ -4934,7 +4934,7 @@ class ConfigCenterPage(QWidget):
         m = self._pc()
         try:
             cov = m.coverage()
-            hdr = ["功能编号", "功能名称", "系统", "层", "主挂专利", "关联专利", "真源符号"]
+            hdr = ["功能编号", "功能名称", "系统", "层", "主挂专利", "关联专利", "唯一依据符号"]
             lines = ["\t".join(hdr)]
             for x in cov["per_fn"]:
                 lines.append("\t".join([x["fn_id"], x["name"], x["sys"], x["layer"],
@@ -4947,7 +4947,7 @@ class ConfigCenterPage(QWidget):
             self.out.setPlainText("⛔ 复制专利渠道失败: %r" % (_e,))
 
     def _reload_patent_block(self, reload_only=False):
-        """♻️ 重读专利真源: 重建专利块 (表 + 统计)。"""
+        """♻️ 重读专利唯一依据: 重建专利块 (表 + 统计)。"""
         try:
             _i = self._tab_index_by_title("文档配置")
             _host = self.tabs.widget(_i)
@@ -4962,7 +4962,7 @@ class ConfigCenterPage(QWidget):
             elif _lay is not None:
                 _lay.insertWidget(max(0, _lay.count() - 2), _new)
             if not reload_only:
-                self.out.setPlainText("♻️ 已重读专利真源: %d 件 · 渠道 %d/%d"
+                self.out.setPlainText("♻️ 已重读专利唯一依据: %d 件 · 渠道 %d/%d"
                                       % (self.pat_cov["n_patent"], self.pat_cov["covered"], self.pat_cov["total_fn"]))
         except Exception as _e:                                                        # noqa: BLE001
             self.out.setPlainText("⛔ 重读专利块失败: %r" % (_e,))
@@ -5001,7 +5001,7 @@ class ConfigCenterPage(QWidget):
             lmap[f["fn"]] = its
             node = f.get("node") or "—"
             seen = set()
-            # (a) 层模型真源声明的模型 (function_layer_map → model_links)
+            # (a) 层模型唯一依据声明的模型 (function_layer_map → model_links)
             for nm in ((fl.get(f["fn"]) or {}).get("models") or []):
                 for kk in ((_model_links().get("links") or {}).get(nm) or []):
                     e = (_models_registry().get("ent") or {}).get(kk)
@@ -5010,7 +5010,7 @@ class ConfigCenterPage(QWidget):
                     seen.add(kk)
                     ok, desc, sz, mt = _model_disk(e)
                     act = next((x for x in its if x.get("name") == (e.get("name") or kk)), None)
-                    _src_basis = ("层模型 + " + (act or {}).get("basis", "")[:18]) if act else "层模型 (真源声明)"
+                    _src_basis = ("层模型 + " + (act or {}).get("basis", "")[:18]) if act else "层模型 (唯一依据声明)"
                     if not act and its:
                         _first = next((x["name"] for x in its if x.get("kind") != "规则/数据源"), None)
                         _src_basis += (" ⚠ 与本功能实际加载(%s)不一致" % (_first or "代码/规则"))[:38]
@@ -5066,7 +5066,7 @@ class ConfigCenterPage(QWidget):
                 _src = self.ml_real_table.item(_r2, 5).text() if self.ml_real_table.item(_r2, 5) else ""
                 _show = True
                 if mode == "act":
-                    _show = "层模型 (真源声明)" != _src.strip()
+                    _show = "层模型 (唯一依据声明)" != _src.strip()
                 elif mode == "layer":
                     _show = _src.startswith("层模型")
                 self.ml_real_table.setRowHidden(_r2, not _show)
@@ -5108,7 +5108,7 @@ class ConfigCenterPage(QWidget):
             elif isinstance(ep, dict) and ep:
                 loc = "端点 " + " , ".join("%s=%s" % (kk, vv) for kk, vv in ep.items())
             elif a["kind"] in ("api", "LLM", "llm"):
-                loc = "— 未配置 (走本地兜底/规则)"
+                loc = "— 未配置 (走本地保障/规则)"
             else:
                 loc = "—"
             if a["ok"] and isinstance(ep, dict):
@@ -5133,7 +5133,7 @@ class ConfigCenterPage(QWidget):
                           % _n_code))
         lay.addWidget(self.ml_ledger_table)
 
-        # 登记了但没挂到任何功能的条目 (真源缺口, 明说)
+        # 登记了但没挂到任何功能的条目 (依据缺失, 明说)
         _used, _usedp = set(), set()
         for _its in lmap.values():
             for _x in _its:
@@ -5175,9 +5175,9 @@ class ConfigCenterPage(QWidget):
         """🧠 功能配置 ←→ L2/L3/L4/L5 层模型 映射 —— **模型配置页的主要信息**。
 
         老倪 2026-10-15: 「模型配置, 要映射功能配置和 L2 L3 L4 L5层模型, 这是主要信息。你来同步全局数据」
-        真源两处 (都不手抄): ① `models/active_models.json` 各层在役指针 (L5 主指针缺 → 由
+        唯一依据两处 (都不手抄): ① `models/active_models.json` 各层在役指针 (L5 主指针缺 → 由
         `tools/model_inventory.py --json` 兜, 与「模型引擎」窗口同一命令) ② 工程库 `functions` 表的 layer 字段。
-        两个真源改任一处, 本页与模型引擎窗口同时变 (同一函数 zmax_platform_info)。
+        两个唯一依据改任一处, 本页与模型引擎窗口同时变 (同一函数 zmax_platform_info)。
         """
         from zmax_platform_info import layer_summary as _ls, function_layer_map as _flm, short_model_name as _smn
         ls = _ls()
@@ -5196,9 +5196,9 @@ class ConfigCenterPage(QWidget):
 
         lay.addWidget(self._active_banner(th, "模型配置"))
         lay.addWidget(self._model_real_blocks(th))
-        lay.addWidget(_hd("🧠 功能配置 ←→ L2/L3/L4/L5 层模型 —— 层视图 (改模型只改真源 %s)" % ls["src"]))
+        lay.addWidget(_hd("🧠 功能配置 ←→ L2/L3/L4/L5 层模型 —— 层视图 (改模型只改唯一依据 %s)" % ls["src"]))
         _miss = ls.get("missing") or []
-        lay.addWidget(_hd("   功能清单 %d 条 (真源 %s, layer 字段) · 层模型 %s · %s"
+        lay.addWidget(_hd("   功能清单 %d 条 (唯一依据 %s, layer 字段) · 层模型 %s · %s"
                           % (ls["total_fn"], fl["src_functions"], ls["src"],
                              ("主指针未登记层: %s (已用 model_inventory 兜, 见下表「模型来源」列)" % "/".join(_miss)) if _miss else "四层主指针齐全"),
                           th["C_GRAY"], 9))
@@ -5212,10 +5212,10 @@ class ConfigCenterPage(QWidget):
                                          "附加在役 (适配层/原语/技能包)", "承载功能", "模型来源"], _L, th)
         self.ml_layer_table.setMinimumHeight(min(240, 34 * (len(_L) + 2) + 8))
         for _i, _r in enumerate(ls["rows"]):
-            self.ml_layer_table.setToolTip("层模型真源: %s · 主模型全名: %s · 权重: %s\n职责: %s"
+            self.ml_layer_table.setToolTip("层模型唯一依据: %s · 主模型全名: %s · 权重: %s\n职责: %s"
                                            % (ls["src"], _r.get("model_full") or _r["model"], _r.get("path", ""), _r.get("role_full", "")))
             self.ml_layer_table.item(_i, 2).setToolTip(str(_r.get("model_full") or _r["model"]))
-            self.ml_layer_table.item(_i, 3).setToolTip("版本 %s (真源 %s)" % (_r.get("version") or "取不到", _r.get("src") or "取不到"))
+            self.ml_layer_table.item(_i, 3).setToolTip("版本 %s (唯一依据 %s)" % (_r.get("version") or "取不到", _r.get("src") or "取不到"))
             self.ml_layer_table.item(_i, 5).setToolTip("\n".join(_r["extra"]) or "—")
         lay.addWidget(_hd("   ① 四层在役 (一行一层): 主模型 = 指针/引擎清单读到的真名 · 附加 = 基座之外的适配层/原语/技能包", th["C_YELLOW"], 9))
         lay.addWidget(self.ml_layer_table)
@@ -5247,7 +5247,7 @@ class ConfigCenterPage(QWidget):
                                      str(r.get("version") or ""), str(r.get("state") or ""),
                                      str(r.get("path") or ""), " / ".join(r["extra"]), str(r["fn_count"]),
                                      str(r.get("src") or "")]) for r in ls["rows"])))
-        _b3 = _btn("♻️ 重读真源", th)
+        _b3 = _btn("♻️ 重读唯一依据", th)
         _b3.setToolTip("重新读 %s 与工程库 (改完指针/层标签不用重启)" % ls["src"])
         _b3.clicked.connect(lambda: (_reload_model_block(), None)[1])
         for _b in (_b1, _b2, _b3):
@@ -5257,7 +5257,7 @@ class ConfigCenterPage(QWidget):
         return w
 
     def _reload_model_block(self):
-        """♻️ 重读真源: 重建层映射块 (写回同一位置, 不动其它页)。"""
+        """♻️ 重读唯一依据: 重建层映射块 (写回同一位置, 不动其它页)。"""
         try:
             _i = self._tab_index_by_title("模型配置")
             _host = self.tabs.widget(_i)
@@ -5279,7 +5279,7 @@ class ConfigCenterPage(QWidget):
         """🏭 「Z-MAX 平台」页那两块表: 平台产品 + **产品特征清单(产品特性)**。
 
         老倪 2026-10-15: 「产品配置页面, 要复用 Z-MAX 平台的页面描述, 里面有产品特性」
-        ⇒ 与 tools/gui/platform_spec.py 的「🏭 Z-MAX 平台」页读同一批真源 (工程库 platform/products/
+        ⇒ 与 tools/gui/platform_spec.py 的「🏭 Z-MAX 平台」页读同一批唯一依据 (工程库 platform/products/
         product_features), 列也对齐, 不手抄。
         """
         try:
@@ -5348,7 +5348,7 @@ class ConfigCenterPage(QWidget):
     # ⚡ 性能配置 · 唯一一张表 (老倪 2026-10-28: 「性能指标太多了, 就要一张表,
     #    保留 性能指标/值/对应的模型/对应的功能层级; 要为产品成本组成提供参考,
     #    要能看出来 基本性能、精细操作的性能、专业性能」)
-    #    真源: tools/spec/perf_bands.json —— 三档 (基本A/L2 · 精细B/L2+L3 · 专业C/L2+L3+L4含L5)
+    #    唯一依据: tools/spec/perf_bands.json —— 三档 (基本A/L2 · 精细B/L2+L3 · 专业C/L2+L3+L4含L5)
     # ══════════════════════════════════════════════════════════════════════════
     def _perf_one_table(self, th):
         PJ = os.path.join(ROOT, "tools", "spec", "perf_bands.json")
@@ -5381,8 +5381,8 @@ class ConfigCenterPage(QWidget):
                              r.get("v") or "—", r.get("tool") or "—", r.get("basis") or "—",
                              ("≤%d TOPS" % tops) if tops else "—",
                              r.get("layer") or "—", _src_check(r.get("src"))])
-        t = _mk_table(["性能档次", "性能指标 (符号)", "物理可测值", "测量工具 / 方法", "依据 (标准/真源)",
-                       "算力预算", "层级", "真源校验"], rows, th)
+        t = _mk_table(["性能档次", "性能指标 (符号)", "物理可测值", "测量工具 / 方法", "依据 (标准/唯一依据)",
+                       "算力预算", "层级", "唯一依据校验"], rows, th)
         t.setWordWrap(True)
         t.verticalHeader().setDefaultSectionSize(30)
         for _c, _w2 in ((0, 108), (1, 150), (5, 82), (6, 62), (7, 78)):
@@ -5451,8 +5451,8 @@ class ConfigCenterPage(QWidget):
             "<b style='color:#d2a8ff'>%d</b> 条 · 工艺段 <b>%d/%d</b> 启用 · 功能 "
             "<b style='color:#3fb950'>%d</b> / 全部 77（启用节点 %d · 禁用 %d）· 场景 %s · 站点 %s%s</div>"
             "<div style='color:#6e7681;font-size:10px;margin-top:2px'>"
-            "真源 config/ss_task_binding.json → active_task（换任务 = 任务配置页点该行 ★）"
-            " · 功能真源 tools/export_meta_doc.build_meta_tasks()</div>"
+            "唯一依据 config/ss_task_binding.json → active_task（换任务 = 任务配置页点该行 ★）"
+            " · 功能唯一依据 tools/export_meta_doc.build_meta_tasks()</div>"
             % (tid or "—", tk.get("name") or "—", scope, len(_task_level_meta(tid)[0]),
                n_app, len(segg), len(funcs), n_en, n_dis,
                tk.get("scene_ref") or bt.get("scene_ref") or "—",
@@ -5648,7 +5648,7 @@ class ConfigCenterPage(QWidget):
             _it4 = t2.item(r, 0)
             if _it4 is not None and m["n_fn"] == 0:
                 _it4.setForeground(QColor(th["C_RED"]))
-                _it4.setToolTip("工艺段「%s」在 段→节点 映射里没有落成本任务功能的节点 ⇒ 该元任务目前没有功能承载(真源缺口)"
+                _it4.setToolTip("工艺段「%s」在 段→节点 映射里没有落成本任务功能的节点 ⇒ 该元任务目前没有功能承载(依据缺失)"
                                 % " / ".join(m.get("seg8") or []))
         # 反向: 功能 → 承载元任务
         fn_mts = {}
@@ -5666,7 +5666,7 @@ class ConfigCenterPage(QWidget):
             pass
         t2.setMinimumHeight(24 * max(3, min(len(r2), 8)) + 46)
         lay.addWidget(t2)
-        lay.addWidget(QLabel("<span style='color:%s;font-size:10px'>%s · 真源 %s</span>"
+        lay.addWidget(QLabel("<span style='color:%s;font-size:10px'>%s · 唯一依据 %s</span>"
                              % (th["C_GRAY"], mt_note.replace("<", "&lt;"), mt_src)))
 
         # ③ 工艺段 → 功能 覆盖
@@ -5915,8 +5915,8 @@ class ConfigCenterPage(QWidget):
         # ⑤ 参数明细 (特征库 · 功能域) —— 保留原表与选中定位口径 (点参数名直接定位到行)
         cs = [c for c in d.get("CHARACTERISTIC", []) if c.get("domain") == "功能配置"]
         lay.addWidget(_sec("⚙️ 参数明细 · 特征库 功能域 %d 条" % len(cs),
-                           "工程共用参数 (所有任务读同一份真源); 点左侧具体参数名会定位到这一行"))
-        t5 = _mk_table(["域", "参数", "级", "权限", "真源", "值", "判据"],
+                           "工程共用参数 (所有任务读同一份唯一依据); 点左侧具体参数名会定位到这一行"))
+        t5 = _mk_table(["域", "参数", "级", "权限", "唯一依据", "值", "判据"],
                        [[c["domain"], c["id"], c["grade"], c["perm"], str(c["src"]).split("#")[0],
                          ("缺失 ⛔" if c.get("value") is None else str(c.get("value"))[:20]),
                          str(c["judge"])[:48]] for c in cs], th)
@@ -5934,14 +5934,14 @@ class ConfigCenterPage(QWidget):
         return view
 
     def _build_fpm_view(self, th, d, domains, default_dom, tab_title):
-        """建一张「特征库三域」页 (功能配置 / 性能配置 各一张, 同一真源)。
+        """建一张「特征库三域」页 (功能配置 / 性能配置 各一张, 同一唯一依据)。
 
         老倪 2026-10-15: 「功能 性能 模型 标签, 改成功能配置, 即标签页的名字, 对应 1~7 配置名称」
-        ⇒ 页签名就叫配置名, 所以功能配置与性能配置各要一个页签。两页读的是**同一份特征库真源**,
+        ⇒ 页签名就叫配置名, 所以功能配置与性能配置各要一个页签。两页读的是**同一份特征库唯一依据**,
         只是默认筛的域不同 (页内可按别的域按钮, 也可由左树点星/顶部星图改)。
         """
         cs = [c for c in d.get("CHARACTERISTIC", []) if c.get("domain") in domains]
-        t = _mk_table(["域", "参数", "级", "权限", "真源", "值", "判据"],
+        t = _mk_table(["域", "参数", "级", "权限", "唯一依据", "值", "判据"],
                       [[c["domain"], c["id"], c["grade"], c["perm"], str(c["src"]).split("#")[0],
                         ("缺失 ⛔" if c.get("value") is None else str(c.get("value"))[:20]),
                         str(c["judge"])[:48]] for c in cs], th)
@@ -5981,7 +5981,7 @@ class ConfigCenterPage(QWidget):
 
     # ══════════════════════════════════════════════════════════════════
     # 🎯 愿景带 (老倪 2026-10-28: 「根据产品愿景, 整体优化配置中心 … 达到全局愿景统一」)
-    #   真源 tools/spec/vision.json —— 配置中心 / ar3d / 市场分成 PPT 三处同一套话术。
+    #   唯一依据 tools/spec/vision.json —— 配置中心 / ar3d / 市场分成 PPT 三处同一套话术。
     #   做法: 不重建任何页面, 只往每个页签的页面顶部插一条 56px 的带子 ——
     #    左: 愿景一句话; 中: 八步脊柱 (当前页高亮); 右: 本页回答的那一问。
     #   为什么插在 top: 老倪要的是「一眼看出这一页在整体里的位置」, 不是再开一页讲愿景。
@@ -6104,8 +6104,8 @@ class ConfigCenterPage(QWidget):
     # ══════════════════════════════════════════════════════════════════
     # ══════════════════════════════════════════════════════════════════
     # 第 7 步 · 成本组成 / 第 8 步 · 市场分成 (老倪 2026-10-28 愿景链的最后两环)
-    #   数字唯一真源 = tools/cost_model.build_tiers() (读 tools/spec/cost_model.json 的单价与售价上限)。
-    #   页面上不写死任何一个结论数字; 改售价上限只改 json, 这里自动变。
+    #   数字唯一依据 = tools/cost_model.build_tiers() (读 tools/spec/cost_model.json 的单价与售价上限)。
+    #   页面上不预先固定任何一个结论数字; 改售价上限只改 json, 这里自动变。
     # ══════════════════════════════════════════════════════════════════
     def _tier_data(self):
         if getattr(self, "_tier_d", None):
@@ -6176,7 +6176,7 @@ class ConfigCenterPage(QWidget):
             lay.addWidget(lb)
             return w
         lay.addWidget(QLabel("三档目标成本由老倪定死（基础 硬件 15 万单臂 + 软件 5 万；精细 硬件 20 万双臂 + 软件 10 万；"
-                             "专业 硬件 22 万双臂高算力 + 软件 15 万）。这里只给建议利润空间，不写死售价。"))
+                             "专业 硬件 22 万双臂高算力 + 软件 15 万）。这里只给建议利润空间，不预先固定售价。"))
         rows = []
         for t in r["tiers"]:
             rows.append([
@@ -6411,7 +6411,7 @@ class ConfigCenterPage(QWidget):
         try:
             self._cost_d = _cm.load()
         except Exception as _e:                                                 # noqa: BLE001
-            _lb = QLabel("⛔ 成本真源读不到 (config/platform/zmax_cost_model.json): %r" % (_e,))
+            _lb = QLabel("⛔ 成本唯一依据读不到 (config/platform/zmax_cost_model.json): %r" % (_e,))
             _lb.setWordWrap(True)
             _lay.addWidget(_lb)
             _lay.addStretch()
@@ -6430,17 +6430,17 @@ class ConfigCenterPage(QWidget):
         self._cost_l_src.setStyleSheet("color:%s;background:transparent;" % _gray)
         _lay.addWidget(self._cost_l_src)
 
-        # ── BOM (逐项真源, 只读) ──
+        # ── BOM (逐项唯一依据, 只读) ──
         _rows = [[str(it.get("item", "")), str(it.get("model", "")),
                   "{:,}".format(int(it.get("price") or 0)), str(it.get("status", ""))]
                  for it in (_d.get("hardware") or [])]
         _rows.append(["硬件合计", "—", "{:,}".format(int(_cm.hardware_total(_d))), "现算"])
         self._cost_bom = _mk_table(["部件", "型号", "单价 (元)", "状态"], _rows, th,
                                    widths=[150, 190, 110, 80])
-        self._cost_bom.setToolTip("真源 config/platform/zmax_cost_model.json 的 hardware[]; 改价只改 price, 其余现值")
+        self._cost_bom.setToolTip("唯一依据 config/platform/zmax_cost_model.json 的 hardware[]; 改价只改 price, 其余现值")
         _lay.addWidget(self._cost_bom)
 
-        # ── 假设 (可改, 写回真源才生效) ──
+        # ── 假设 (可改, 写回唯一依据才生效) ──
         _row = QHBoxLayout()
         _lab = QLabel("产线假设:")
         _lab.setStyleSheet("color:%s;background:transparent;" % _gray)
@@ -6506,7 +6506,7 @@ class ConfigCenterPage(QWidget):
         _b_calc = _btn("🧮 重新估算", th)
         _b_calc.clicked.connect(lambda: self._cost_refresh(verbose=True))
         _row2.addWidget(_b_calc)
-        _b_save = _btn("💾 写入真源", th)
+        _b_save = _btn("💾 写入唯一依据", th)
         _b_save.setToolTip("把上面 6 个假设写回 config/platform/zmax_cost_model.json (自动备份 + 回读校验; 派生值不落盘)")
         _b_save.clicked.connect(self._cost_save)
         _row2.addWidget(_b_save)
@@ -6549,9 +6549,9 @@ class ConfigCenterPage(QWidget):
             return None
         self._cost_e = e
         self._cost_l_src.setText(
-            "真源 %s @ %s ｜ 算法 %s ｜ %s" % (
+            "唯一依据 %s @ %s ｜ 算法 %s ｜ %s" % (
                 e["truth"], e["truth_mtime"], "tools/cost_model.py",
-                "改假设后点「🧮 重新估算」; 想长期生效点「💾 写入真源」"))
+                "改假设后点「🧮 重新估算」; 想长期生效点「💾 写入唯一依据」"))
         self._cost_l_total.setText("单套投入 %.1f 万  (硬件 %.1f + 软件 %.1f)" % (
             e["total_first"] / 1e4, e["hardware"] / 1e4, e["software"] / 1e4))
         self._cost_l_annual.setText(
@@ -6576,18 +6576,18 @@ class ConfigCenterPage(QWidget):
         try:
             r = self._cost_m.save_line(**self._cost_inputs())
         except Exception as _e:                                             # noqa: BLE001
-            self._cost_log.setText("⛔ 写回真源失败: %r" % (_e,))
+            self._cost_log.setText("⛔ 写回唯一依据失败: %r" % (_e,))
             self._log_cc("⛔ 成本假设写回失败: %r" % (_e,))
             return
         if r.get("ok"):
-            self._cost_d = self._cost_m.load()      # 写后重读, 页面与真源同步
+            self._cost_d = self._cost_m.load()      # 写后重读, 页面与唯一依据同步
             self._cost_refresh()
-            self._cost_log.setText("✅ 已写回真源 (备份 %s) · 回读校验通过: %s"
+            self._cost_log.setText("✅ 已写回唯一依据 (备份 %s) · 回读校验通过: %s"
                                    % (os.path.basename(r["backup"]), r["line"]))
             self._log_cc("💰 成本假设已写回 config/platform/zmax_cost_model.json "
                          "line=%s labor=%s" % (r["line"], r["labor"]))
         else:
-            self._cost_log.setText("⚠ 已写盘但回读不一致 —— 别按这个数报价, 先看真源: %s" % r["path"])
+            self._cost_log.setText("⚠ 已写盘但回读不一致 —— 别按这个数报价, 先看唯一依据: %s" % r["path"])
             self._log_cc("⚠ 成本假设回读不一致: %s" % (r["path"],))
 
     def _cost_text(self):
@@ -6638,7 +6638,7 @@ class ConfigCenterPage(QWidget):
 
     # ══════════════════════════════════════════════════════════════════
     # 🧩 商业模式 (2026-10-19 老倪: 「在配置中心，要有商业模式，从配置导出商业模式」)
-    #   算法: tools/business_model.py (唯一公式) · 输入: 成本真源 + 商业模式假设真源
+    #   算法: tools/business_model.py (唯一公式) · 输入: 成本唯一依据 + 商业模式假设唯一依据
     #   页面只做 改假设 → 现算 → 复制/导出; 派生值 (回本/floor/毛利/阶段价) 一律不落盘
     # ══════════════════════════════════════════════════════════════════
     def _biz_page(self, th):
@@ -6657,7 +6657,7 @@ class ConfigCenterPage(QWidget):
         try:
             self._biz_d = _bm.load()
         except Exception as _e:                                                 # noqa: BLE001
-            _lb = QLabel("⛔ 商业模式真源读不到 (config/platform/zmax_business_model.json): %r" % (_e,))
+            _lb = QLabel("⛔ 商业模式唯一依据读不到 (config/platform/zmax_business_model.json): %r" % (_e,))
             _lb.setWordWrap(True)
             _lay.addWidget(_lb)
             _lay.addStretch()
@@ -6696,7 +6696,7 @@ class ConfigCenterPage(QWidget):
         self._biz_l_deal.setStyleSheet("background:transparent;")
         _lay.addWidget(self._biz_l_deal)
 
-        # ── 业务假设 (改了就现算; 写入真源才长期生效) ──
+        # ── 业务假设 (改了就现算; 写入唯一依据才长期生效) ──
         _row = QHBoxLayout()
         _lab = QLabel("业务假设:")
         _lab.setStyleSheet("color:%s;background:transparent;" % _gray)
@@ -6762,7 +6762,7 @@ class ConfigCenterPage(QWidget):
         _b_calc = _btn("🧮 重新推导", th)
         _b_calc.clicked.connect(lambda: self._biz_refresh(verbose=True))
         _row2.addWidget(_b_calc)
-        _b_save = _btn("💾 写入假设真源", th)
+        _b_save = _btn("💾 写入假设唯一依据", th)
         _b_save.setToolTip("只写 4 个业务假设 (自动备份 + 回读校验; 派生值不落盘)")
         _b_save.clicked.connect(self._biz_save)
         _row2.addWidget(_b_save)
@@ -6807,7 +6807,7 @@ class ConfigCenterPage(QWidget):
         cs = e["cost_structure"]
 
         self._biz_l_src.setText(
-            "真源 %s @ %s ＋ %s ｜ 算法 tools/business_model.py ｜ 打开即现算, 派生值不落盘"
+            "唯一依据 %s @ %s ＋ %s ｜ 算法 tools/business_model.py ｜ 打开即现算, 派生值不落盘"
             % (os.path.basename(e["truth"]["cost"]), e["truth"]["business_mtime"],
                os.path.basename(e["truth"]["business"])))
 
@@ -6904,7 +6904,7 @@ class ConfigCenterPage(QWidget):
         try:
             r = self._biz_m.save_inputs(**self._biz_inputs())
         except Exception as _e:                                             # noqa: BLE001
-            self._biz_log.setText("⛔ 写回假设真源失败: %r" % (_e,))
+            self._biz_log.setText("⛔ 写回假设唯一依据失败: %r" % (_e,))
             self._log_cc("⛔ 商业模式假设写回失败: %r" % (_e,))
             return
         if r.get("ok"):
@@ -6916,7 +6916,7 @@ class ConfigCenterPage(QWidget):
             self._log_cc("🧩 商业模式假设已写回 config/platform/zmax_business_model.json: %s"
                          % ", ".join(r["changed"]))
         else:
-            self._biz_log.setText("⚠ 已写盘但回读不一致 —— 别按这个数报价, 先看真源: %s" % r["path"])
+            self._biz_log.setText("⚠ 已写盘但回读不一致 —— 别按这个数报价, 先看唯一依据: %s" % r["path"])
             self._log_cc("⚠ 商业模式假设回读不一致: %s" % r["path"])
 
     def _biz_copy(self):
@@ -6947,7 +6947,7 @@ class ConfigCenterPage(QWidget):
 
     def _pv_tab_index(self):
         """文档预览所在页 —— 2026-10-15 老倪: 「取消文档预览页面, 合并到 文档配置页面」
-        ⇒ 预览控件现在就在「📄 文档配置」页里 (兼容旧名兜底)。"""
+        ⇒ 预览控件现在就在「📄 文档配置」页里 (兼容旧名保障)。"""
         i = self._tab_index_by_title("文档配置")
         if i >= 0:
             return i
@@ -6957,7 +6957,7 @@ class ConfigCenterPage(QWidget):
         return -1
 
     def _show_doc_config(self):
-        """7 · 瑶光·文档配置 → 切到「📄 文档交付」页 + 底部写一句真源摘要 (不去抢别的页)。"""
+        """7 · 瑶光·文档配置 → 切到「📄 文档交付」页 + 底部写一句唯一依据摘要 (不去抢别的页)。"""
         _i = self._tab_index_by_title("文档配置")
         if _i >= 0:
             self.tabs.setCurrentIndex(_i)
@@ -6980,7 +6980,7 @@ class ConfigCenterPage(QWidget):
         if i >= 0:
             self.tabs.setCurrentIndex(i)
         if force or not _latest_doc(kind):
-            self.out.setPlainText(f"▶ 生成 {DOCS[kind]['name']} … (数据源: 工程库 + 平台真源)")
+            self.out.setPlainText(f"▶ 生成 {DOCS[kind]['name']} … (数据源: 工程库 + 平台唯一依据)")
             QApplication.processEvents()
             self.out.setPlainText(_run_script(DOCS[kind]["script"]))
             QApplication.processEvents()
@@ -6989,7 +6989,7 @@ class ConfigCenterPage(QWidget):
             self.pv_head.setText(f"⛔ {st['name']}: 取不到产物 ({st['why']})")
             self.preview.setPlainText("生成失败 —— 看底部结果面板的日志 (退出码非 0 时那里有真原因)。")
             return
-        mark = "⛔ 已过期" if st["stale"] else "✅ 与当前真源一致"
+        mark = "⛔ 已过期" if st["stale"] else "✅ 与当前唯一依据一致"
         self.pv_head.setText(
             f"{st['name']} · {os.path.basename(st['doc']['docx'])}"
             f" · 生成 {time.strftime('%m-%d %H:%M', time.localtime(st['doc']['mtime']))} · {mark} · {st['why']}\n"
@@ -6998,18 +6998,18 @@ class ConfigCenterPage(QWidget):
         html = _render_doc_html(st["doc"]["docx"])
         if st["stale"]:
             html = ('<p style="color:#ff8a8a;font-size:11pt;font-weight:700;margin:6px 0;">'
-                    '⛔ 一致性告警: %s —— 这份文档是用旧真源生成的, 不能当交付件, 点「♻️ 重新生成并预览」</p>'
+                    '⛔ 一致性告警: %s —— 这份文档是用旧唯一依据生成的, 不能当交付件, 点「♻️ 重新生成并预览」</p>'
                     '<hr style="border:1px solid #7a2b2b;">' % _esc(st["why"])) + html
         self.preview.setHtml(html)
 
     def _show_consistency(self):
-        """三份文档 × 当前真源 一致性核对 (数据统一/一致性的判据视图)。"""
+        """三份文档 × 当前唯一依据 一致性核对 (数据统一/一致性的判据视图)。"""
         i = self._pv_tab_index()
         if i >= 0:
             self.tabs.setCurrentIndex(i)
         dbp = os.path.join(ROOT, "data", "database", "zmax", "zmax_engineering.db")
-        L = ["═══ 三份交付文档 × 真源 一致性核对 ═══",
-             f"真源: 工程库 data/database/zmax/zmax_engineering.db  (当前 sha256 {_sha256(dbp)[:16] or '?'})", ""]
+        L = ["═══ 三份交付文档 × 唯一依据 一致性核对 ═══",
+             f"唯一依据: 工程库 data/database/zmax/zmax_engineering.db  (当前 sha256 {_sha256(dbp)[:16] or '?'})", ""]
         for kind in ("project", "sor", "agreement"):
             st = _doc_state(kind)
             ok = st["doc"] and not st["stale"]
@@ -7019,7 +7019,7 @@ class ConfigCenterPage(QWidget):
                 for l, r, c, v in st["rows"]:
                     L.append(f"      {v} {l}: 文档记录 {r} · 当前 {c}")
             L.append("")
-        L.append("── 当前真源文件 (时间 · sha256 前12 · 路径) ──")
+        L.append("── 当前唯一依据文件 (时间 · sha256 前12 · 路径) ──")
         for key, label, cands in SRC_DEFS:
             rel, fp = _find_src(cands)
             if fp:
@@ -7029,9 +7029,9 @@ class ConfigCenterPage(QWidget):
         if fp:
             L.append(f"  {time.strftime('%m-%d %H:%M', time.localtime(os.path.getmtime(fp)))}  "
                      f"{_sha256(fp)[:12]}  {rel}   ({PLATFORM_SRC[0]} · manifest 未记录, 按时间戳判)")
-        L += ["", "判据: 三份文档 manifest 记录的 sha 必须 = 当前真源 sha; 任一不符即 ⛔ 过期,",
+        L += ["", "判据: 三份文档 manifest 记录的 sha 必须 = 当前唯一依据 sha; 任一不符即 ⛔ 过期,",
               "      重新生成后三份的 工程库 sha 必然相同 (同源) —— 这就是『数据统一』的可验证口径。"]
-        self.pv_head.setText("一致性核对: 三份文档记录的 sha vs 当前真源 (对不上 = 过期, 需重新生成)")
+        self.pv_head.setText("一致性核对: 三份文档记录的 sha vs 当前唯一依据 (对不上 = 过期, 需重新生成)")
         self.preview.setPlainText("\n".join(L))
 
     # ── 文档交付 (2026-10-10) ──
@@ -7050,7 +7050,7 @@ class ConfigCenterPage(QWidget):
         args = ["--fn", fn] if fn else ["--all"]
         self.out.setPlainText("▶ 专利交底书导出%s …\n"
                               "   一个功能 = 一份交底书 (技术问题/技术方案/有益效果/实施例/证据清单/检索词)\n"
-                              "   真源: config_meta.json + function_notes.json + 画布连线 + 代码文件行\n"
+                              "   唯一依据: config_meta.json + function_notes.json + 画布连线 + 代码文件行\n"
                               "   产物: reports/patents/<功能号>_<名称>_专利交底书.md / .docx / .pdf"
                               % ("（%s）" % fn if fn else "（全部 74 个功能）"))
         QApplication.processEvents()
@@ -7075,7 +7075,7 @@ class ConfigCenterPage(QWidget):
         """点按钮必出结果: 真跑导出器, 面板给日志, 右侧列出可复制的绝对路径。"""
         from PyQt5.QtWidgets import QApplication
         label, script, args = DOC_SCRIPTS[key]
-        self.out.setPlainText(f"▶ {label} 运行中… (数据源: 工程库 + 平台真源)")
+        self.out.setPlainText(f"▶ {label} 运行中… (数据源: 工程库 + 平台唯一依据)")
         QApplication.processEvents()
         self.out.setPlainText(_run_script(script, args))
         self._fit_out()
@@ -7102,7 +7102,7 @@ class ConfigCenterPage(QWidget):
             subprocess.Popen(["xdg-open", d])
             self.out.setPlainText(f"📂 已打开: {d}")
         except Exception as e:  # noqa: BLE001
-            self.out.setPlainText(f"⛔ 打不开文件管理器: {e}\n路径 (可复制): {d}")
+            self.out.setPlainText(f"⛔ 无法打开文件管理器: {e}\n路径 (可复制): {d}")
 
     # ── 结果面板 ──
     def _back_home(self):
@@ -7156,7 +7156,7 @@ class ConfigCenterPage(QWidget):
         _tid = (self._selected_task() or "").strip()
         _cb = getattr(self, "on_open_all", None)
         if callable(_cb):
-            self.out.setPlainText("🚀 统一打开工程… 任务 = %s (真源: 绑定真源 config/ss_task_binding.json)"
+            self.out.setPlainText("🚀 统一打开工程… 任务 = %s (唯一依据: 绑定唯一依据 config/ss_task_binding.json)"
                                   % (_tid or "当前活跃任务"))
             _QA.processEvents()
             try:
@@ -7168,7 +7168,7 @@ class ConfigCenterPage(QWidget):
                 self.out.setPlainText("⛔ 统一打开工程失败: %s" % _e)
             self._fit_out()
             return
-        try:      # 兜底: 控制台命令通道 (控制台内部同源 _open_all_cmd)
+        try:      # 保障: 控制台命令通道 (控制台内部同源 _open_all_cmd)
             with open("/tmp/zmax_nav_cmd", "w", encoding="utf-8") as _f:
                 _f.write("open_all\n")
             self.out.setPlainText("🚀 已把「统一打开工程」写进控制台命令通道 (/tmp/zmax_nav_cmd: open_all)\n"
@@ -7190,7 +7190,7 @@ class ConfigCenterPage(QWidget):
     # ───────── 🎛 按任务ID 激活 (与用户手点「活跃属性」下拉/「激活选中任务」完全同一条路径) ─────────
     def activate_task(self, tid):
         """给命令通道用: 选中该任务的活跃属性下拉 → 置「★ 活跃」⇒ 触发 _on_task_state_changed
-        (落绑定真源 + 台账 + 自动存档), 不经任何旁路。返回 (ok, msg)。"""
+        (落绑定唯一依据 + 台账 + 自动存档), 不经任何旁路。返回 (ok, msg)。"""
         tid = str(tid or "").strip()
         if not tid:
             return False, "用法: cfg_task <TASK-ID>"
@@ -7309,7 +7309,7 @@ class ConfigCenterPage(QWidget):
     def _page_out_text(self, tab_title=""):
         """**当前配置面**该显示的信息 (老倪 2026-10-15: 「选择相应的配置面时, 信息没有对应上」)。
 
-        每一面一行: 是哪颗星 · 这一面是什么 · 本页真源摘要 (现算); 再补 1~2 行"真源在哪/怎么改"。
+        每一面一行: 是哪颗星 · 这一面是什么 · 本页唯一依据摘要 (现算); 再补 1~2 行"唯一依据在哪/怎么改"。
         读不到就写「取不到」, 不退回上一页的旧内容。
         """
         t = (tab_title or self.tabs.tabText(self.tabs.currentIndex())).strip()
@@ -7325,24 +7325,24 @@ class ConfigCenterPage(QWidget):
             if "产品配置" in t:
                 _i = _zmax_platform_info() or {}
                 L.append("   平台: " + " · ".join((_i.get("lines") or ["取不到"])[1:]))
-                L.append("   真源: %s —— 单选即**原子写回** active_product (质数不动); 下面两张表 = 「🏭 Z-MAX 平台」页同源"
+                L.append("   唯一依据: %s —— 单选即**原子写回** active_product (质数不动); 下面两张表 = 「🏭 Z-MAX 平台」页同源"
                          % (_i.get("src") or "取不到"))
             elif "任务配置" in t:
                 _tk = _j(TASKS_J, {}) or {}
                 _bd = _j(BIND_J, {}) or {}
                 _ts = _tk.get("tasks", []) or []
                 L.append("   任务(%d): %s" % (len(_ts), " · ".join(str(x.get("id", "?")) for x in _ts[:9])))
-                L.append("   绑定真源 %s · active_task=%s"
+                L.append("   绑定唯一依据 %s · active_task=%s"
                          % (os.path.relpath(BIND_J, ROOT), _bd.get("active_task") or "—"))
             elif "功能配置" in t:
                 from zmax_platform_info import platform_page_data as _ppd, function_summary as _fs
                 _f = _ppd().get("functions") or []
                 L.append("   功能清单汇总: %s" % (_fs(_f)["text"] if _f else "取不到"))
-                L.append("   真源: 单一工程库 functions 表 (系统 2/1/0 + 平台支撑); 本页功能表 %d 行" % len(_f))
+                L.append("   唯一依据: 单一工程库 functions 表 (系统 2/1/0 + 平台支撑); 本页功能表 %d 行" % len(_f))
                 try:                                    # 专利渠道 (老倪: 预留所有功能的专利申请渠道)
                     import patent_center as _pcm                                        # noqa: PLC0415
                     _c = _pcm.coverage()
-                    L.append("   专利渠道: %d/%d 条功能已挂 (专利 %d 件) · 真源 %s"
+                    L.append("   专利渠道: %d/%d 条功能已挂 (专利 %d 件) · 唯一依据 %s"
                              % (_c["covered"], _c["total_fn"], _c["n_patent"], _c["src"]))
                     L.append("   「📜 该功能专利申请草稿」= 选中一行功能后打开它主挂专利的申请文件正文")
                 except Exception:                                                       # noqa: BLE001
@@ -7350,7 +7350,7 @@ class ConfigCenterPage(QWidget):
             elif "模型配置" in t:
                 from zmax_platform_info import layer_summary as _ls2, function_layer_map as _flm2
                 _l2, _f2 = _ls2(), _flm2()
-                L.append("   功能 ←→ 层模型 映射: 全量 %d 条 (真源 %s × %s)"
+                L.append("   功能 ←→ 层模型 映射: 全量 %d 条 (唯一依据 %s × %s)"
                          % (_f2["total"], _l2["src"], _f2["src_functions"]))
                 L.append("   四层在役: " + " | ".join(
                     "%s=%s%s" % (r["layer"], r["model"], ("(+%d 附加)" % len(r["extra"])) if r["extra"] else "")
@@ -7359,7 +7359,7 @@ class ConfigCenterPage(QWidget):
                 L.append("   本页还含 模型配置参数表 + 模型 ↔ 工程配置 9 项匹配表 (%s 行)"
                          % getattr(_mt, "rowCount", lambda: "—")())
                 _cs = [c for c in (_j(MCD_J, {}) or {}).get("CHARACTERISTIC", []) if c.get("domain") == "模型配置"]
-                L.append("   模型配置参数 %d 条 · 就绪 %d · 未就绪 %d · 真源 %s"
+                L.append("   模型配置参数 %d 条 · 就绪 %d · 未就绪 %d · 唯一依据 %s"
                          % (len(_cs), sum(1 for c in _cs if c.get("ready")),
                             sum(1 for c in _cs if not c.get("ready")), os.path.relpath(MCD_J, ROOT)))
             elif "性能配置" in t:
@@ -7367,14 +7367,14 @@ class ConfigCenterPage(QWidget):
                 L.append("   性能配置参数 %d 条 · 就绪 %d · 未就绪 %d"
                          % (len(_cs), sum(1 for c in _cs if c.get("ready")),
                             sum(1 for c in _cs if not c.get("ready"))))
-                L.append("   真源: %s" % os.path.relpath(MCD_J, ROOT))
+                L.append("   唯一依据: %s" % os.path.relpath(MCD_J, ROOT))
             elif "文档配置" in t:
                 try:                                    # 专利与 SOR/立项/合作协议 同级 (老倪 2026-10-15)
                     import patent_center as _pcm2                                       # noqa: PLC0415
                     _c2 = _pcm2.coverage()
                     L.append("   四类文档同页同级: SOR / 项目立项 / 合作协议 / **专利 (%d 件)** —— 导出+预览同一通道"
                              % _c2["n_patent"])
-                    L.append("   专利渠道: %d/%d 条功能已挂 · 真源 %s · 产物 docs/patents/"
+                    L.append("   专利渠道: %d/%d 条功能已挂 · 唯一依据 %s · 产物 docs/patents/"
                              % (_c2["covered"], _c2["total_fn"], _c2["src"]))
                 except Exception:                                                       # noqa: BLE001
                     pass
@@ -7384,15 +7384,15 @@ class ConfigCenterPage(QWidget):
                 L.append("   本页 = 导出按钮 + 产物清单 + **正文预览** (原「文档预览」页已并入)")
                 # 2026-10-19: 工单 / 成本报价 / 商业模式 三块迁入本页 (都在"记录与导出"这一阵)
                 _bs2 = _orders_list()
-                L.append("   + 工单实例 %d 份 (原「🧾 工单配置」页, 点工单号看完整配置面) · 真源 config/orders/BS_*.json"
+                L.append("   + 工单实例 %d 份 (原「🧾 工单配置」页, 点工单号看完整配置面) · 唯一依据 config/orders/BS_*.json"
                          % len(_bs2))
                 L.append("   + 成本/报价 (tools/cost_model.py 现算) · 商业模式 (tools/business_model.py 现算) —— 均不落盘派生值")
             elif "工程配置" in t:
                 _cs = [c for c in (_j(MCD_J, {}) or {}).get("CHARACTERISTIC", []) if c.get("domain") == "工程配置"]
                 L.append("   第六阵 开阳·工程配置 (定落地): 工程库 / 参数注册表 / 工程-模型匹配 / AR 示教点位")
-                L.append("   工程域参数 %d 条 · 真源 %s" % (len(_cs), os.path.relpath(MCD_J, ROOT)))
+                L.append("   工程域参数 %d 条 · 唯一依据 %s" % (len(_cs), os.path.relpath(MCD_J, ROOT)))
                 _mt2 = _j(MATCH_J, {}) or {}
-                L.append("   工程-模型匹配 %d 个模型 (九类站点能力) · 真源 %s"
+                L.append("   工程-模型匹配 %d 个模型 (九类站点能力) · 唯一依据 %s"
                          % (len(_mt2.get("MODELS", [])), os.path.relpath(MATCH_J, ROOT)))
                 L.append("   工单实例已移出本阵 ⇒ 见「📄 文档配置」(第七阵 瑶光·定记录)")
                 L.append("   本页还带 AR 场景示教点位表 (可复制 / 导出 TSV)")
@@ -7416,5 +7416,5 @@ class ConfigCenterPage(QWidget):
 
 
 def build_config_center(model_page=None, theme=None):
-    """studio.py 调用入口: 返回配置中心新页 (失败时抛异常, 由 studio 兜底回退)。"""
+    """studio.py 调用入口: 返回配置中心新页 (失败时抛异常, 由 studio 保障回退)。"""
     return ConfigCenterPage(model_page=model_page, theme=theme)

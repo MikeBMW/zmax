@@ -6,7 +6,7 @@
 背景: 09-08 predictor 真实接入流形(引擎每帧真调 predict_manifold), 但画布节点 ssmani_exp 入0出0、node_logic/simulink_module grep **零匹配**、引擎 io_trace 无其 channel → 播放/单步永远"没输出"。
 
 - **flow JSON 节点存在 ≠ GUI 有任何逻辑**: `grep -n "ssmani_exp" node_logic.py simulink_module.py` → 0 匹配 = 纯摆设节点。
-- **执行却"通"的假象**: 节点名 "🧠 流形专家预测器..." 含注册关键词 "流形专家"(挂在 ss_pred, _EXTERNAL_LOC → predictor_layer.py class WorldModelPredictor)→ match_node 最长匹配兜底 → 双击/右键能执行 node_ss_pred。逻辑在, 但画布没接线、数据总线没数据。
+- **执行却"通"的假象**: 节点名 "🧠 流形专家预测器..." 含注册关键词 "流形专家"(挂在 ss_pred, _EXTERNAL_LOC → predictor_layer.py class WorldModelPredictor)→ match_node 最长匹配保障 → 双击/右键能执行 node_ss_pred。逻辑在, 但画布没接线、数据总线没数据。
 - **修复四件套**: ①flow links 接线(入: ssvlm 潜空间 z / ss2d3d 几何 z R7; 出: →ssmani_c / →ssmani_p "预测流形 (JEPA)"); ②引擎 `_io_snapshot` 加同名 channel (key=画布节点名前缀, 与 data_world.module() 前缀匹配对齐; 数据从现成 dict 取——_mani_out['pred'] 的 manifold 6D, 需在 predict 调用处把 z7/a4/pred 存进 _mani_out); ③布局按用户语义重排 (L4 行 x: exp=40 / c=410 / p=690, 预测器在接触/性能流形**前面**); ④引擎每帧真算的旁路结果只存 tr['mani_pred'] 不够——不进 io_trace 则 DataWorld 无帧数据, 播放节点仍空。
 - **校验器 FAIL 先对照备份**: 重复线 (sworld→ssvideo 两条) 在改动前备份同样 FAIL = 历史遗留, 顺手删旧留新 (label 详的一条) → ALL PASS。
 - 证据口径: predict 每帧真调 = tr['mani_pred'] 帧数 == 步数 (80/80 帧非零)。
@@ -16,7 +16,7 @@
 - flow: x 560→600、y -409→-1450、name 精简 "🧭 能力档位"、params {cap_switch:True, cap_level:"L2"}。**type 保持 model**——加新 type 要 NODE_TYPES 三处同步 (simulink_module/validate_flow/simulink_ci), 用 params 标记 + paint 分支最省。
 - paint (SimNodeItem.paint, drawRoundedRect 之后): `params.get("cap_switch")` → 自绘顶部标题 + 三档 radio 圆钮 (L2/L3/L4, 当前档 #ffd700 实心圆+实心点) + 每档小字 + 底部当前档 desc → return (跳过通用标题/徽章)。
 - 交互三路统一走 `module._toggle_cap(node, level=None)`: ①**单击圆钮直选** = SimCanvas.mousePressEvent 左键节点分支内 hit-test (圆心 = scenePos + (12+i*cw+8, 37), ±14px) → `_toggle_cap(n.node, k)`; ②**双击循环** = on_node_activated 分支 `params.cap_switch → _toggle_cap(node)` (放 yolo_gate 分支后); ③右键"运行节点" → node_ss_cap 也先找同名 node 调 `mod._toggle_cap`, 防只切内存不重绘。
-- **档位持久**: _toggle_cap 写 node.params.cap_level (画布重绘+保存不丢) + self._cap_level (▶运行消费); _start_real_sim 读档位**先扫画布 nodes** (params.cap_switch → cap_level), 兜底内存值 (重启 GUI 后 flow 里的档位仍生效)。
+- **档位持久**: _toggle_cap 写 node.params.cap_level (画布重绘+保存不丢) + self._cap_level (▶运行消费); _start_real_sim 读档位**先扫画布 nodes** (params.cap_switch → cap_level), 保障内存值 (重启 GUI 后 flow 里的档位仍生效)。
 
 ## 3. ⏭单步/▶播放"执行"开关节点 = 切档副作用 bug (L4 自动跳 L2 实锤)
 - `_ss_order` / `_ss_step_order` 三处构建全是 `[n for n in self.nodes if n.get("type") != "row_bg"]` → 开关节点也在列; 单步 execute_node_logic → match_node("能力档位")→ ss_cap → node_ss_cap → 循环切档。

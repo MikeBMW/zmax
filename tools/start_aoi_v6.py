@@ -8,7 +8,7 @@
 
 ⚠ 2026-10-13 修: 原先硬编码 `..._work_v6.py`。2026-10-12 已上线 v20, v6 文件在工控机上已删
   ⇒ 本脚本会"成功启动"两个不存在的文件(日志里才看出来)。现改为**直接取
-  tools/aoi_remote_deploy.py 里的 FILENAME_10082/FILENAME_10083**(部署与启动同一真源),
+  tools/aoi_remote_deploy.py 里的 FILENAME_10082/FILENAME_10083**(部署与启动同一唯一依据),
   以后升版本只改那一处, 这里不会再悄悄过期。
 
 通道状况: 反向通道是活的(2026-10-13 核: /agent/beat 新鲜 + echo awake 有回执)。

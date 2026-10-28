@@ -12,7 +12,7 @@
     ⑤ GET /picture?grab=1&save=1 才写盘(显式要存)
 
   做法: 桩掉 SciCam SDK 的**底层**(Grab/GetAttribute/ConvertImage) + ensure_camera,
-        让**真的 GrabAndSaveImage** 跑起来(这样才能验到 v5 的内存/落盘开关本身)。
+        让**真的 GrabAndSaveImage** 启动(这样才能验到 v5 的内存/落盘开关本身)。
 用法: .venv-test/bin/python test_v5_offline.py
 """
 import glob

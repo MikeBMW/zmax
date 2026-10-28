@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""判据: 🤖 机器人执行器 的 AR / 真机 两个开关 (画布真源 + 绘制 + 事件级命中 + ctl_auth 联动)
+"""判据: 🤖 机器人执行器 的 AR / 真机 两个开关 (画布唯一依据 + 绘制 + 事件级命中 + ctl_auth 联动)
 
 四层, 缺一层就是"看起来有开关":
-  ① 真源  画布 ssact.params 有 ar_real_sw / ar_scene / real_auth, 且两个开关默认 False
+  ① 唯一依据  画布 ssact.params 有 ar_real_sw / ar_scene / real_auth, 且两个开关默认 False
   ② 绘制  SimNodeItem 能渲染出两个开关条 (离屏渲图, 数红/绿像素)
   ③ 事件  真 sendEvent 到 viewport: 点左开关 → on_toggle_ar 1 次; 点右 → on_toggle_real 1 次; 点标题区 → 0 次
   ④ 消费  真连点 3 次断言 True→False→True; on_toggle_real 真写 ctl_auth (armed 跟着变), 结束时恢复关
@@ -28,7 +28,7 @@ def ck(ok, name, detail=""):
         fails.append(name)
 
 
-# ── ① 真源
+# ── ① 唯一依据
 from lerobot.engineering import flows  # noqa: E402
 d, errs = flows.load_canvas()
 n = next((x for x in d["nodes"] if x.get("id") == "ssact"), None)

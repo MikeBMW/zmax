@@ -1,6 +1,6 @@
 # 工程操作手册 (Working Instruction) —— 按性能等级 A / B / C
 
-> 真源 `tools/spec/eng_profiles.json` · 版本 `zmax-eng-profiles/1.0` · 生成工具 `tools/export_wi_doc.py`
+> 唯一依据 `tools/spec/eng_profiles.json` · 版本 `zmax-eng-profiles/1.0` · 生成工具 `tools/export_wi_doc.py`
 
 > 三档与《性能配置》一一对应: **A 基本性能 (L2) / B 精细操作性能 (L2+L3) / C 专业性能 (L2+L3+L4 含 L5)**。档位只加不换: B 含 A 的全部, C 含 B 的全部。
 
@@ -11,7 +11,7 @@
 |---|---|
 | 工作目录 | `/home/ubuntu/zmax` (所有命令都在这里执行) |
 | 命令 = 判据 | 每条命令都能直接粘, 期望输出写在同一行; 对不上就是没做完 |
-| 不做假动作 | 参数/权重/标定只能来自真源文件, 界面看不到的东西不许手填 |
+| 不做假动作 | 参数/权重/标定只能来自唯一依据文件, 界面看不到的东西不许手填 |
 | 失败先停 | 任何一步 FAIL 都停下来按「失败处理」修, 不许带着问题往下走 |
 | 凭据 | 手册只核对凭据**键名**, 任何步骤都不打印密钥值 |
 
@@ -46,7 +46,7 @@
 
 ### A.3 标定项 (不达标就停)
 
-| 标定项 | 真源 | 容差/判据 |
+| 标定项 | 唯一依据 | 容差/判据 |
 |---|---|---|
 | 相机内参 K | `config/calib/zmax_calib.json#camera` | fx 394.06 / fy 393.47 / cx 318.44 / cy 238.66 (±2%) |
 | 手眼 T_base_cam | `config/calib/zmax_calib.json#T_base_cam` | 平移 <2mm · 旋转 <1° |
@@ -68,11 +68,11 @@
 | **A2** | AR 页面可用 | 本机 (可直接跑) | `curl -s -m 3 -o /dev/null -w '%{http_code}' http://127.0.0.1:8797/ar3d` | `200` | 非 200 ⇒ 看 8797 日志 (tools/restart_traj_ar.sh 重启) |
 | **A3** | 相机内参在位 | 本机 (可直接跑) | `python3 -c "import json;c=json.load(open('config/calib/zmax_calib.json'))['camera'];print(round(c['fx'],2),round(c['fy'],2))"` | `394.06 393.47` | 缺内参 ⇒ 先跑标定靶标流程, 不要手填 |
 | **A4** | 台面 plane_z 标定 (当前未标定 ⇒ 必做) | 现场 (需设备/产线) | `python3 -c "import json;print(json.load(open('config/calib/zmax_calib.json'))['plane_z'])"` | `'value': None` | 看到 None ⇒ 用夹爪尖轻触台面读 tcp z, 三次取均值写入 calib (写入后本步期望值变为数值) |
-| **A5** | 位姿真值新鲜 (帧龄 <2s) | Orin/执行腿可达 | `python3 -c "import json,time,datetime as D;d=json.load(open('zmax_data/rokae_sdk/tcp_out/latest.json'));t=D.datetime.strptime(d['ts'],'%Y-%m-%d %H:%M:%S.%f');print('帧龄s',round(time.time()-t.timestamp(),1))"` | `帧龄s 0~2` | 帧龄大 ⇒ 采样器崩/链路断: 在 dobot/Orin 侧重启采样, 或 zmax-pose-relay 兜底; 全 0 也视为陈旧 |
+| **A5** | 位姿真值新鲜 (帧龄 <2s) | Orin/执行腿可达 | `python3 -c "import json,time,datetime as D;d=json.load(open('zmax_data/rokae_sdk/tcp_out/latest.json'));t=D.datetime.strptime(d['ts'],'%Y-%m-%d %H:%M:%S.%f');print('帧龄s',round(time.time()-t.timestamp(),1))"` | `帧龄s 0~2` | 帧龄大 ⇒ 采样器崩/链路断: 在 dobot/Orin 侧重启采样, 或 zmax-pose-relay 保障; 全 0 也视为陈旧 |
 | **A6** | L2 技能库在位 | 本机 (可直接跑) | `test -f data/skills/l2_muscle/光模块_抓放循环_v1.json && echo SKILL_OK` | `SKILL_OK` | 缺 ⇒ 用示教流程重新生成标杆 (human-in-the-loop 示教), 不要手写 JSON |
 | **A7** | AOI 服务连通 | 现场 (需设备/产线) | `curl -s -m 3 -o /dev/null -w '%{http_code}' http://192.168.23.23:10082/` | `200/404 都算通 (端口有响应)` | 000 ⇒ 检查产线网卡是否插上 (本机当前未插), AOI 主机是否起服务 |
 | **A8** | 单件试跑 (节拍验收) | 现场 (需设备/产线) | `在 8793 页面点 1 件 → 记录 start/end 时间戳` | `单件 ≤11.42s, 无急停/无越限日志` | 超节拍 ⇒ 查段表 abs_mm 与速度档; 撞到围栏 ⇒ 先 agent_all_stop 再查围栏 |
-| **A9** | 配置一致性验收 | 本机 (可直接跑) | `python3 tools/verify_config_active_task.py > /tmp/v.log 2>&1; tail -1 /tmp/v.log` | `0 FAIL` | 有 FAIL ⇒ 按 FAIL 行给出的真源路径逐条修, 不要跳过 |
+| **A9** | 配置一致性验收 | 本机 (可直接跑) | `python3 tools/verify_config_active_task.py > /tmp/v.log 2>&1; tail -1 /tmp/v.log` | `0 FAIL` | 有 FAIL ⇒ 按 FAIL 行给出的唯一依据路径逐条修, 不要跳过 |
 
 ### A.6 交付验收 (全过才算实现)
 
@@ -107,7 +107,7 @@
 
 ### B.3 标定项 (不达标就停)
 
-| 标定项 | 真源 | 容差/判据 |
+| 标定项 | 唯一依据 | 容差/判据 |
 |---|---|---|
 | A 档全部标定 | `config/calib/zmax_calib.json` | 同 A |
 | 动作空间映射 (action 4 维) | `ckpt config.json#output_features` | dx/dy/dz/gripper 顺序必须与训练一致 |
@@ -166,7 +166,7 @@
 
 ### C.3 标定项 (不达标就停)
 
-| 标定项 | 真源 | 容差/判据 |
+| 标定项 | 唯一依据 | 容差/判据 |
 |---|---|---|
 | A/B 档全部标定 | `config/calib/zmax_calib.json` | 同 A/B |
 | skill 24 维映射 | `intact config.json#intent_actor` | 技能表顺序必须与训练一致 |
@@ -177,7 +177,7 @@
 - A/B 档全部安全项
 - 目标安全等级 PL d (ISO 13849): 当前未认证 ⇒ 不得对外宣称达标
 - 认证前必须完成: 急停链验证 / 安全门互锁 / 危险动作授权 / 异常演练各 1 次并留证
-- 危险动作前 agent_all_stop 兜底; 台账写 docs/incidents/INCIDENT-INDEX.md
+- 危险动作前 agent_all_stop 保障; 台账写 docs/incidents/INCIDENT-INDEX.md
 
 ### C.5 操作步骤 (Working Instruction)
 

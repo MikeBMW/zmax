@@ -91,7 +91,7 @@
 | `unattended-job-orchestration` | mlops | 7 | Use when 长跑多阶段任务(下载/解压/训练/评测)要无人值守出结果 — 接力脚本 + 哨兵 cron 只报一次。 |
 | `weights-and-biases` | mlops | 4 | W&B: log ML experiments, sweeps, model registry, dashboards. |
 | `yolo-3d-perception-chain` | mlops | 1 | YOLO 2D→3D→state 感知链, 含 ultralytics BGR 坑与同构评估原则。 |
-| `yolo-depth-head` | mlops | 2 | 给 YOLO 加 depth head 恢复 z 深度, 替代写死深度平面。 |
+| `yolo-depth-head` | mlops | 2 | 给 YOLO 加 depth head 恢复 z 深度, 替代预先固定深度平面。 |
 | `zmax-cicd` | mlops | 5 | Use when Z-MAX 数据闭环/CICD (Orin采集→ECS中转→4060训练ACT→部署Orin). |
 | `zmax-cicd-pipeline` | mlops | 5 | Z-MAX robot policy train/deploy/iterate loop (ACT→ECS→Orin). |
 | `zmax-data-closed-loop` | mlops | 1 | Z-MAX 边学边练闭环 — Orin采集→ECS→4060训练→静态URL部署→推理循环。机器人采集时用。 |

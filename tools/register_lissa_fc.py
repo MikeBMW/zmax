@@ -5,12 +5,12 @@
 为什么要注册这一条(而不是沿用 L2.lissa_insert):
   L2.lissa_insert 走产线 ROS 服务 /lissajous_force_search —— 2026-10-20 现场实测该服务**不在图上**
   (Orin 只有 44 个服务, 无 /lissajous_force_search, robot_driver 未跑), 调用必然 `waiting for service...`。
-  现在真正跑通的是 xCoreSDK 直连脚本 `tools/rokae/insert_sdk_fc.py`(位置空间李萨如 + 六维力被动看门狗),
+  现在真正验证通过的是 xCoreSDK 直连脚本 `tools/rokae/insert_sdk_fc.py`(位置空间李萨如 + 六维力被动看门狗),
   由 `tools/lissa_fc.py` 封装成"本地脚本 + 参数"的形态 ⇒ 与 L2.aoi_gold_align 同一种 script 型节点。
 
 注册内容:
   · L2.lissa_fc   🔌 里萨如力控插拔(SDK直连)  —— travel_mm 正=插 / 负=拔, 单节点跑完一段
-  · L2.seat_fc    ⬇️ 一步直插到位点(SDK直连)  —— 给示教点就驻点直插, 力看门狗兜底
+  · L2.seat_fc    ⬇️ 一步直插到位点(SDK直连)  —— 给示教点就驻点直插, 力看门狗保障
 参数与脚本一一对应, 名字与 insert_sdk_fc.py 的 CLI 同名(改参数不用改代码)。
 
 安全口径(写进 note, 节点本身不放宽):

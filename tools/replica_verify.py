@@ -50,7 +50,7 @@ def main():
         p = it["path"]
         cands = [p] if os.path.isabs(p) else [
             os.path.join(a.root, p),
-            os.path.join(a.root, "lerobot-smolvla-lew", p),   # 包内布局兜底
+            os.path.join(a.root, "lerobot-smolvla-lew", p),   # 包内布局保障
         ]
         p = next((c for c in cands if os.path.exists(c)), cands[0])
         if not os.path.exists(p):

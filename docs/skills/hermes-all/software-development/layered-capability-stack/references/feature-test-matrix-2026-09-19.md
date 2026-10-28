@@ -3,7 +3,7 @@
 老倪原话: **"功能清单和测试用例都要对应"**。分层能力栈做完, 证明"每层能力都有对应用例"
 比再堆十个探针更重要 —— 否则会有"写了功能没测"的盲区。
 
-工具: `tools/feature_test_matrix.py`(仓库内)。本文件记它的表结构、踩坑、以及一轮 25 个
+工具: `tools/feature_test_matrix.py`(仓库内)。本文件记它的表结构、遇到问题、以及一轮 25 个
 verify 脚本 10 个 FAIL 的**逐项根因表**(可直接当"验证脚本脱节"排查清单复用)。
 
 ---
@@ -78,7 +78,7 @@ for n,c in [('ContactManifold',ML.ContactManifold), ('SharedIntentEncoder',IP.Sh
   数据在 `decompose()` 返回的 dict 里 (`progress/risk/V/Vdot/e/e_par/e_perp/axis/state/risk_th`)。
 - 多传参数: `behavior_align_loss(head, z, m_a, m_b)` 我传了 5 个。
 
-补法: 用例里写**兜底探测** + 失败时打印真实原因, 别硬写死:
+补法: 用例里写**保障探测** + 失败时打印真实原因, 别硬预先固定:
 ```python
 for fn in ("project", "clamp", "shrink", "__call__", "step"):
     if hasattr(cs, fn):
@@ -93,7 +93,7 @@ raise RuntimeError("无投影入口")
 | 脚本 | 表面 FAIL | 真根因 | 修法 |
 |---|---|---|---|
 | verify_annot_sim | 真机根类别不是 `optical_module` | **代码改对了** (`DEFAULT_CLASSES` 已改 `peg`, 注释: 旧名在 CLASS_MAP 无条目 → 真机权重接不进感知链, 光模块那路恒空) | 脚本期望对齐 `peg`, 注释留依据 |
-| verify_annot_sim | 渲染帧判据不过 | 判据写死 `(480,480)`, 实际 `(480,640)` 宽屏 (对齐真机 D405 分辨率) | 判据改 `(480,640)` |
+| verify_annot_sim | 渲染帧判据不过 | 判据预先固定 `(480,480)`, 实际 `(480,640)` 宽屏 (对齐真机 D405 分辨率) | 判据改 `(480,640)` |
 | verify_src_switch | 连线数不等于上版 −1 | **版本快照式脆弱断言** (`len(links) == len(lk0) - 1`) | 改稳健判据 `>= len(lk0) - 1` |
 | verify_real_frame_provenance | PermissionError | 脚本**专为 Orin 写**的 (`ROOT="/home/tashan/..."`) | 路径自适应 |
 | verify_fiber_zero_regression | `exit=124` | 正对照场景自身 >1000s (625M 模型 CPU bf16) | 加如实标注的跳过开关 |

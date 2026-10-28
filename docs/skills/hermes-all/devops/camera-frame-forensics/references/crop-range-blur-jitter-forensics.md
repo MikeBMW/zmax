@@ -68,7 +68,7 @@ sx = 内容宽 / 条带宽 ; sy = 内容高 / 条带高       # 内容区 = 画�
 - 存 **PNG**, 放静态目录, URL `http://<host>:8799/dl/<file>.png`。无头屏时也可直接给绝对路径。
 
 ## 7. 为什么 URL 要给 .png (静态服的 CT 表)
-本机 `tools/dashboard_server.py`(8799) 的 `/dl/<file>` 只服务 `tools/web/dl/`, 响应类型走写死的表:
+本机 `tools/dashboard_server.py`(8799) 的 `/dl/<file>` 只服务 `tools/web/dl/`, 响应类型走固定不变的表:
 `.html/.json/.apk/.png/.js/.css` —— **没有 `.jpg`** ⇒ JPEG 回 `application/octet-stream`,
 浏览器**下载而不是内嵌显示**。要用户"点开就能看"就存 PNG; 要改的话把 `.jpg/.jpeg` 加进 CT 表(需重启该服务)。
 判据: `curl -s -o /dev/null -w '%{http_code} %{content_type}\n' <url>` 应为 `200 image/png`。

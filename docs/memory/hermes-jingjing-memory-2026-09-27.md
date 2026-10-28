@@ -4,7 +4,7 @@ NTP回拨8h(勿动RTC)→节拍用monotonic, 负帧龄拒用
 §
 分层(老倪): L5定方向造数据/L4认知预测/L3状态调度/L2检测反馈; 主干=SigLIP768d+四头; from-scratch主干必崩
 §
-交付前先自跑通; GPU不许空转; 改文件必回读核验; 新增接线/脚本须真导入真跑(语法过≠导入过, 字段先查存在)
+交付前先自验证通过; GPU不许空转; 改文件必回读核验; 新增接线/脚本须真导入真跑(语法过≠导入过, 字段先查存在)
 §
 Hermes: 长命令写/tmp/*.sh(巨型内联被拦); sudo免密; 网络优化=zmax-net-optimize
 §
@@ -36,11 +36,11 @@ YOLO在役=软链yolo_peg_live.pt; 瓶颈是数据
 §
 记忆五层: L2/L3/L4+总装Qwen(SS_MACRO); 势场喂obs[0:3]
 §
-真源: zmax_robot_spec/calib.json→zmax_params.py; 全系统训练=joint_train_all.py --only L4,L3,L2(dry-run先); LoRA=lora_inject.py
+唯一依据: zmax_robot_spec/calib.json→zmax_params.py; 全系统训练=joint_train_all.py --only L4,L3,L2(dry-run先); LoRA=lora_inject.py
 §
 L5规划器/safety=left_right/state_space/{planner,safety}.py; INTACT稳态101ms冷6.7s→须常驻
 §
-阶段MOE: 门控必硬先验路由; 枚举不匹配会静默降级索引0吞阶段(引擎8阶段vs专家7→覆盖表+显式兜底); 判据=单射性
+阶段MOE: 门控必硬先验路由; 枚举不匹配会静默降级索引0吞阶段(引擎8阶段vs专家7→覆盖表+显式保障); 判据=单射性
 §
 LoRA需merge(否则零动作伪装'没提升'): merge_lora_ckpt.py; 判假A/B=逐位同
 §
@@ -54,7 +54,7 @@ ECS relay: upload/latest/status + /agent/{prompt,reply} + /hil/state + /orin/sta
 §
 GPU掉载主因=每步CPU开销>计算(非数据/显存)→静音逐步日志+workers↑;负载用窗口平均判
 §
-main线真源=worktree /home/ubuntu/zmax_rel (共享检出lerobot-smolvla-lew 会被切到mac-hw分支→main脚本全缺); 服务一律指worktree+软链venv
+main线唯一依据=worktree /home/ubuntu/zmax_rel (共享检出lerobot-smolvla-lew 会被切到mac-hw分支→main脚本全缺); 服务一律指worktree+软链venv
 §
 控制台字体: 老倪嫌小会连提两次→一次给到位(≈2×; 硬件卡标题34/数值28px)
 §

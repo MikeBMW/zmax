@@ -100,7 +100,7 @@ def _clamp_to_screen(self, silent=True):           # 旧实现(有 bug)
   该 TypeError 被被测代码的 `except Exception: pass` 吞掉 → 函数直接 `return False`
   → "不许动"的 case 全部假 PASS。**排查口诀: 一个本该 MOVE 的 case (窗口飞到屏外) 如果也 `moved=False`,
   说明异常被吞了, 不是逻辑对**。
-- 诊断被吞异常最快的办法: 临时把那个 `except Exception: pass` 换 `traceback.print_exc()` 再跑一遍诊断脚本,
+- 诊断被吞异常最快的办法: 临时把那个 `except Exception: pass` 换 `traceback.print_exc()` 再执行一遍诊断脚本,
   定位后还原 (别在正式代码里留 print) —— 与"静默失败陷阱"同款套路。
 
 ## 老倪口径

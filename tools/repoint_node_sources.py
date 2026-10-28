@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""🔧 把"source 指向 GUI 文件、真实现其实在 src/"的画布节点重指向真源码
+"""🔧 把"source 指向 GUI 文件、真实现实际在 src/"的画布节点重指向唯一依据码
 
 依据 (不是猜): `src/lerobot/policies/left_right/state_space/skills/atomic_skills.py` 自己的文档写着
 "本文件 = 原子技能模板的**权威定义源** (SK01-08); 画布 SK01-08 节点右键源码指向本文件的技能类",

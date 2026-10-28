@@ -10,15 +10,15 @@
 |----|------|------------------------------|
 | 🟢 绿 | 实心常亮 | ① 8790/health==200 (随时可推理) ② models/active_models.json 的 L2/L3/L4+extra 指针全部解析得到真实文件 ③ 闭环全流程入口在位: 采集台账 zmax_data/stable-wm-cache/datasets/zmax_datasets.json 有条目 · 训练 tools/joint_train_all.py · 部署 tools/model_autoload.py |
 | 🟡 黄 | **1s 周期闪** (0.5s 亮/0.5s 灭)，否则空心不闪(默认保持现状) | ① 训练进程在场: 口径同 tools/gpu_load_guard.py `/proc/*/cmdline` 匹配 `lerobot[_-]train|joint_train_all|yolo_annot_train|train_*.py|auto_loop` ② GPU 利用率**滑窗平均**>50% (zmax_data/status_lights_gpu.jsonl 近 20s, ≥3 样本; 单点不算平均) |
-| 🔴 红 | 同上 1s 周期闪，否则空心不闪 | ① 真机联调中: 位姿真源 zmax_data/rokae_sdk/tcp_out/latest.json 帧龄 ≤2s 且非全 0 ② 随时可操作: zmax_data/ctl_auth.json `until` > now (真动授权 armed) |
+| 🔴 红 | 同上 1s 周期闪，否则空心不闪 | ① 真机联调中: 位姿唯一依据 zmax_data/rokae_sdk/tcp_out/latest.json 帧龄 ≤2s 且非全 0 ② 随时可操作: zmax_data/ctl_auth.json `until` > now (真动授权 armed) |
 
-- **真源单一出处**: `tools/status_lights.py` (CLI 自证: `./gui-venv311/bin/python tools/status_lights.py`，`--json` 给 GUI)。
+- **唯一依据单一出处**: `tools/status_lights.py` (CLI 自证: `./gui-venv311/bin/python tools/status_lights.py`，`--json` 给 GUI)。
   改灯语义只改这一个文件 + studio.py 的 tooltip 文案，别在两处各写一份判据。
 - GUI 接线: `_StatusLightFetcher`(QThread, 2s 采样 `status_lights.py --json`) → `_on_light_state` 只存数据；
   `_render_lights`(250ms QTimer) 只算相位贴样式。阻塞 I/O 全在后台线程，GUI 线程不冻结。
 - 取不到数据必须**明标失效**，不许当现状: tooltip 首行 `⚠ 状态源已静止 Ns`，绿灯同时灭。
   (老倪的显示诚实性铁律: 任何标"当前"的量都要过源新鲜度判据。)
-- 判据: `tools/verify_status_lights.py` — 14/14，含**真源交叉核对**(8790 直连 / nvidia-smi 直读 / 两位姿+授权真源直读)
+- 判据: `tools/verify_status_lights.py` — 14/14，含**唯一依据交叉核对**(8790 直连 / nvidia-smi 直读 / 两位姿+授权唯一依据直读)
   与**真类闪烁两相位真跑**(桩 self + 覆盖 `time.monotonic` 到 0.0s/0.6s 看样式由实心转透明)。
 
 ## 2. 控制台重启: 绝不能用 `systemctl --user restart`

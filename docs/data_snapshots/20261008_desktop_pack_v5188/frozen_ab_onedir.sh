@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 冻结 A/B 取证 (本地, onedir 最小探针 —— 与 CI onefile 同口径的"冻结语义":
 #   sys.frozen=True / sys._MEIPASS=<包内> / --add-data 落在 _MEIPASS/src/...)。
-#   A) 带 src/lerobot/engineering → 探针 rc=0 (工程包可达, 151 条节点逻辑 + 画布真源在位)
+#   A) 带 src/lerobot/engineering → 探针 rc=0 (工程包可达, 151 条节点逻辑 + 画布唯一依据在位)
 #   B) 不带 (= 老倪手上那个坏包)  → rc=1 且错误与现场同源 "No module named 'lerobot'"
 # 说明: 本机 gui-venv311 带 torch/ultralytics, onefile 会超 4GB 上限 → 用 onedir 验证导入机制;
 #       真 exe/app 的端到端由 CI 的冻结核验 (--engine-selftest 已扩到 GUI 导入链) 判。

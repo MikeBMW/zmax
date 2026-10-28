@@ -27,14 +27,14 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# ⚠ 仓库根 flows/state_space_obs.json 是**软链** → 真源在 src/lerobot/engineering/flows/。
-#   原子写必须落**真源路径** (对软链做 os.replace 会把软链本身换成普通文件, 破坏工程结构)。
+# ⚠ 仓库根 flows/state_space_obs.json 是**软链** → 唯一依据在 src/lerobot/engineering/flows/。
+#   原子写必须落**唯一依据路径** (对软链做 os.replace 会把软链本身换成普通文件, 破坏工程结构)。
 FLOW = os.path.realpath(os.path.join(ROOT, "flows", "state_space_obs.json"))
 
 NID = "n_calib_mani"
 NAME = "🧮 标定诊断测量 · 主参数 M (状态空间结构参数 · 等效惯量)"
 X, Y, W, H = 6000, 1546, 340, 130          # L4 行带内; 落在 ss_moe(5020) 与 ss_mani_eng(7500) 之间的最大空档
-INPUTS = [("sscalib", "标定层单一真源 → M 注册口 (引力/斥力/潜空间三域)"),
+INPUTS = [("sscalib", "标定层单一唯一依据 → M 注册口 (引力/斥力/潜空间三域)"),
           ("sslat", "潜空间几何 → 曲率/维度尺度 (M 的结构来源)")]
 OUTPUTS = [("ss_mani_eng", "M = 状态空间结构参数 (等效惯量) → 流形引擎主核"),
            ("ssmani_c", "M → 接触流形势能 Φ_c 的惯性尺度"),

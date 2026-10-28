@@ -5,7 +5,7 @@
 
 ## TC08 阶段截图: xwd → QWidget.grab() 修复 (8 阶段全成功)
 - **症状**: auto_test_suite.py TC08 用 `_xwd_shot` 截 3D 窗口 → 本机 xwd (x11-apps) 未装 → FileNotFoundError → 全阶段 `@0KB` 假成功。日志 "xwd 截图失败"。
-- **修法**: 改 `_shot_widget(w3, f"{nm}.png")` (QWidget.grab / viewport().grab 兜底)。3D GL 窗口 grab **照常出真实渲染** (241-257KB/张) — TC07 早就证明 (265KB), 旧注释 "GL 窗口 grab 截不到 → xwd" 是**错的**。
+- **修法**: 改 `_shot_widget(w3, f"{nm}.png")` (QWidget.grab / viewport().grab 保障)。3D GL 窗口 grab **照常出真实渲染** (241-257KB/张) — TC07 早就证明 (265KB), 旧注释 "GL 窗口 grab 截不到 → xwd" 是**错的**。
 - **阶段遍历逻辑**: `tr["stage"]` 每阶段取首个下标 → `w3.set_frame(i)` (或 `_idx=i; _update_frame(i)`) → processEvents + sleep 0.5 → grab。实测 8 阶段 (接近/对位/下降/抓取/抬起/转移/插入/完成) 各 241-257KB 全 PASS。
 
 ## TC09-TC12: 按状态空间功能块顺序的用例 (老倪: "按照状态空间的功能块, 按顺序测试")

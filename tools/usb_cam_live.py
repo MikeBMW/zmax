@@ -11,7 +11,7 @@
   · 深度 /dev/video6   Z16  640x480      (raw 深度; 不是 millimeter —— 换算要靠 librealsense 标定,
                                           这里只做**可视化**(近亮远暗), 不当尺度用)
   · 红外 /dev/video8   GREY
-取流用 ffmpeg 管道(rawvideo): 实测 v4l2-ctl/ffmpeg 都能出流, 而 OpenCV 按 index 打不开这两个节点。
+取流用 ffmpeg 管道(rawvideo): 实测 v4l2-ctl/ffmpeg 都能出流, 而 OpenCV 按 index 无法打开这两个节点。
 
 页面: http://<本机IP>:8788/  · 端点: /color.jpg /depth.jpg /color.mjpg /depth.mjpg /health /snap
 用法: python3 tools/usb_cam_live.py [--port 8788] [--color /dev/video10] [--depth /dev/video6] [--no-depth]

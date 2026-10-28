@@ -94,8 +94,8 @@ WebSettings: `setJavaScriptEnabled(true)`, `setDomStorageEnabled(true)`, `setMed
 - 定式: **另开一个入口, 顶层直接加载那个 http 页**(页面与数据同源) —— 这次就是这条路:
   新工程用**新包名**(com.zmax.room) + **同一个 keystore**(⇒ 与现有 App **并存**, 用户不用先卸载,
   也不会把旧入口打坏) + activity 竖屏/全屏/常亮 + `loadUrl("http://<工位机IP>:8791/room")`。
-- **地址别写死死 —— 多网段要自动切换, 而不是只写一个 IP**。同一台机器常有两个网口
-  (WiFi 10.163.x / 产线 192.168.x), 壳里写死其中一个 ⇒ 手机在另一个网段打开就是**空白页**,
+- **地址别预先固定死 —— 多网段要自动切换, 而不是只写一个 IP**。同一台机器常有两个网口
+  (WiFi 10.163.x / 产线 192.168.x), 壳里预先固定其中一个 ⇒ 手机在另一个网段打开就是**空白页**,
   用户只会说「这 app 用不了」, 而包体检五道全过 —— **别再从包上找**。
   定式: `CANDIDATES[]` 依次试(上次成功的口 → WiFi 口 → 产线口); 成功时把该 URL 存
   SharedPreferences, 下次先用它; 全不通才 Toast 提示 + 长按弹 AlertDialog 手改。
@@ -103,7 +103,7 @@ WebSettings: `setJavaScriptEnabled(true)`, `setDomStorageEnabled(true)`, `setMed
   `onPageFinished`, 在那里直接置 `landed=true` 会把错误页当成功 ⇒ **自动换口静默失效**。
   记一个 `lastErrUrl`, 在 `onPageFinished(url)` 里 `if (url.equals(lastErrUrl)) return;`。
   ⚠️ **每个候选口都要实测能通**(`curl -s -o /dev/null -w '%{http_code}' <口>`): 一个打不通的「备用」
-  比没有备用更糟 —— 用户以为有兜底。
+  比没有备用更糟 —— 用户以为有保障。
   ⚠️ **易失地址不能当唯一地址**：内网穿透的公网 URL 每次重连都会变（免费档），烧进包里 ⇒ 隧道一重启 App 就是空白页，
   而且**查包查不出问题**（地址确实在包里、签名也对）。定式（优先级）：**固定清单发现 > 稳定域名 > 内网口 > 易失地址**。
   · **固定清单发现（唯一能免重打包的做法）**：让 App 先读对方**固定域名**下的一个小清单（如 `/live.json`），
@@ -113,7 +113,7 @@ WebSettings: `setJavaScriptEnabled(true)`, `setDomStorageEnabled(true)`, `setMed
   · 手机在蜂窝网时页面要落到**窄带档位**（多格同开要上百 KB/s，窄隧道上只会看起来像静态图）——
     带宽预算与档位选择见 `low-latency-camera-streaming` 的铁律 4。
   ⚠️ **构建脚本自己的断言要覆盖所有协议**：只 grep `http://[0-9.]*:<端口>` 的检查**看不见 https 候选**
-  （实测报「候选口 2（期望 2）」而包里其实有 3 个地址）⇒ 漏烧地址它也报正常。改成逐条校验**已知主机名**，
+  （实测报「候选口 2（期望 2）」而包里实际有 3 个地址）⇒ 漏烧地址它也报正常。改成逐条校验**已知主机名**，
   或统一用 `grep -oE 'https?://[^"]*(<端口>|overlay)'`。
   ⚠️ **叠加页自身的四个生成按钮在公网侧会被 403 是故意的**：它们会真触发拍照/大模型调用，
   只读闸门永久拒绝；交付时要把这条告诉用户（否则他会以为 App 坏了）。

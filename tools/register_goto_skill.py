@@ -5,7 +5,7 @@
 2026-10-01: 老倪连加 侧面点1/2/3 ⇒ 把「改一个 id/点名」这件事从复制脚本变成传参。
 
 回点类技能的铁律四件套(见 real-arm-motion-control 技能):
-  ros=line_abs + quat="taught"(位置**和**姿态都回点) + point_locked+point(点位写死) + guard.dz_down_limit_mm=20
+  ros=line_abs + quat="taught"(位置**和**姿态都回点) + point_locked+point(点位预先固定) + guard.dz_down_limit_mm=20
 
 用法:
   python3 tools/register_goto_skill.py --point 侧面点3 --skill-id L2.goto_surface_pt3 --name "🎯 回到侧面点3"

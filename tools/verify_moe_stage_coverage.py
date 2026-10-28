@@ -3,11 +3,11 @@
 """verify_moe_stage_coverage.py — ①-2 取证: 引擎 8 阶段全覆盖 + 零回退 + 不再静默吞阶段
 
 判据:
-  ① **修前对照**: 用"均匀 1/7 兜底"的老逻辑喂"完成"阶段 one-hot → hard 路由落 **E0** (= 老倪报的 E0 吞阶段)
+  ① **修前对照**: 用"均匀 1/7 保障"的老逻辑喂"完成"阶段 one-hot → hard 路由落 **E0** (= 老倪报的 E0 吞阶段)
   ② **修后**: 8 个引擎阶段 one-hot 逐个喂真模型 → argmax 全部等于覆盖表指定专家 (8/8 覆盖)
   ③ **零回退**: 7 维 one-hot 路径与"纯归一化"结果**逐位相同** (老 ckpt/老数据不受影响)
-  ④ **未识别阶段不再静默**: 全零 stage_p → 显式兜底专家 (默认 E6) + unrouted 计数 +1 (不再伪装成 E0)
-  ⑤ 真实 ckpt 上跑一遍: 路由统计无 NaN、8 阶段全覆盖
+  ④ **未识别阶段不再静默**: 全零 stage_p → 显式保障专家 (默认 E6) + unrouted 计数 +1 (不再伪装成 E0)
+  ⑤ 真实 ckpt 上执行一遍: 路由统计无 NaN、8 阶段全覆盖
 用法: gui-venv311/bin/python tools/verify_moe_stage_coverage.py
 """
 from __future__ import annotations
@@ -78,12 +78,12 @@ with torch.no_grad():
     else:
         chk("7 维全部 7 个阶段逐位同 (老 ckpt/老数据零影响)", True, "atol=1e-7")
 
-print("④ 未识别阶段: 显式兜底 + 计数 (不再静默变 E0) [SS_MOE_ROUTE_STATS=1]")
+print("④ 未识别阶段: 显式保障 + 计数 (不再静默变 E0) [SS_MOE_ROUTE_STATS=1]")
 before = net.route_stats["unrouted"]
 with torch.no_grad():
     out = net(px, obs, obs, mem, torch.zeros(1, 8, device=dev), hard=True, route="prior")
 idx = int(out["gate"].argmax(1).item())
-chk("全零 stage_p → 兜底专家 E%d" % net.default_expert, idx == net.default_expert, "实际 E%d" % idx)
+chk("全零 stage_p → 保障专家 E%d" % net.default_expert, idx == net.default_expert, "实际 E%d" % idx)
 chk("unrouted 计数 +1", net.route_stats["unrouted"] >= before + 1, "%d → %d" % (before, net.route_stats["unrouted"]))
 
 print("⑤ 真实 ckpt 路由统计")

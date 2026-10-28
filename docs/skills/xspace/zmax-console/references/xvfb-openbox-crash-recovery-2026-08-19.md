@@ -14,7 +14,7 @@
   同样是 `QObject::killTimer: Timers cannot be stopped from another thread`。
 - 结论: 代码层仍有漏网的子线程 QTimer/信号路径, VcXsrv 只是放大了频率。
 - 静态审查 4 层修复都在 (_tq PreciseTimer+parent / _oneshot 桥 / worker append 防 GC /
-  WS 线程零 Qt) → 剩余是偶发竞态, 靠 watchdog 自动恢复兜底 + faulthandler 攒规律。
+  WS 线程零 Qt) → 剩余是偶发竞态, 靠 watchdog 自动恢复保障 + faulthandler 攒规律。
 
 ## 3. MLPRolloutDialog 抽帧线程悬垂信号 (视频窗口崩溃修复)
 - 症状: 用户开视频窗口 → 播放 → 关闭 → 之后崩溃 (killTimer/SIGSEGV)。
@@ -39,7 +39,7 @@
 - 守护脚本 (~/.hermes/scripts/watchdog_studio.sh): 每 8s pgrep studio, 崩了
   `setsid env DISPLAY=:99 nice -n 10 ... studio.py &` 拉起, 日志 /tmp/studio_watchdog.log,
   崩溃栈 /tmp/studio_run.log。
-- ⚠️ **有守护时不要手动再拉起实例** (实测踩坑): 手动拉起与守护拉起的实例撞车 →
+- ⚠️ **有守护时不要手动再拉起实例** (实测遇到问题): 手动拉起与守护拉起的实例撞车 →
   双实例 8 窗口重叠。要手动操作必须先停守护 (process kill watchdog)。
 - 守护拉起的实例不在 Hermes 管理下 (无 watch), 靠守护日志判断。
 - pkill -f "studio.py" 会误杀 Hermes 包装 bash (命令行含同串) → 用精确 kill PID。

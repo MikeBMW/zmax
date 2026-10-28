@@ -4,7 +4,7 @@
 
 口径:
   · **不动真机**: 任何下发动作的调用一律不发起; 真机侧只**读** (ROS 订阅/HTTP GET/文件)
-  · 仿真侧要**真跑通**: 引擎(metaworld 真物理) / 造数据管线(带渲染) / 流形内核 / 多层 pipeline / 通用策略 rollout
+  · 仿真侧要**真验证通过**: 引擎(metaworld 真物理) / 造数据管线(带渲染) / 流形内核 / 多层 pipeline / 通用策略 rollout
     各出一条**真证据** (真 rc + 真输出; ⚠️ 绝不把管道 tail 的 rc 当被测程序的 rc — 踩过: FileNotFoundError 被掩盖成 rc=0)
   · 输出功能矩阵: 每项标 sim_ok(仿真可跑) / real_readonly(真机只读可用) / needs_site(需现场人/授权)
 

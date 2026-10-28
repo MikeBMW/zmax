@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 归档 v5.50.756 本轮产物 (3DGS 自主进化修复 + 竞品PPT图表原生可编辑)
 #   产物: ~/zmax_data/release_sync_<YYYYMMDD>_v5.50.756
-#   口径沿用 archive_release_5_50_750_arstate.sh: 只拷本轮改动过的代码 + 真源快照 + 证据 + MANIFEST + sha256
+#   口径沿用 archive_release_5_50_750_arstate.sh: 只拷本轮改动过的代码 + 唯一依据快照 + 证据 + MANIFEST + sha256
 set -u
 REPO=/home/ubuntu/zmax
 VER=5.50.756
@@ -18,7 +18,7 @@ cp -f tools/archive_release_5_50_756.sh "$DST/tools/" 2>/dev/null
 cp -f VERSION.md "$DST/docs/"
 cp -f ~/zmax_data/deliverables/robotics_landscape_2026-10-23/{data_v5.py,make_pptx_v5.py,verify_v5.py,README_v5.md} "$DST/ppt/" 2>/dev/null
 
-echo "=== ② 真源快照 (config 是软链, 必须显式拷) ==="
+echo "=== ② 唯一依据快照 (config 是软链, 必须显式拷) ==="
 mkdir -p "$DST/data/config"
 cp -a config/calib "$DST/data/config/" 2>/dev/null
 cp -a config/platform "$DST/data/config/" 2>/dev/null
@@ -91,7 +91,7 @@ cat > "$DST/MANIFEST.md" <<'EOM'
 | 目录 | 内容 |
 |---|---|
 | tools/ gui/ src/ | 本轮改动的代码 |
-| data/ | 真源快照（config/calib + config/platform + handeye_state + real_cam_calib + 工程库 + space.proj） |
+| data/ | 唯一依据快照（config/calib + config/platform + handeye_state + real_cam_calib + 工程库 + space.proj） |
 | evidence/ | 竞品 PPT 定版 + measured_20261024.md（全部实测数字） |
 | logs/ | 取证脚本（位姿分析 / Intel 探测） |
 | ppt/ | PPT 生成链 |

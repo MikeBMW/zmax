@@ -54,7 +54,7 @@ links.extend(add)                       # 再接线
 → `NameError` 阻塞整个 GUI 导入 → **控制台起不来**（`ast.parse` 完全看不出）。
 修法：对照既有条目（如 `_YOLO_DIR`）先 grep 确认常量存在；路径用
 `os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src", ...)`；
-行号要与真源码一致（`grep -n "class X"` 复核）。改完**重启控制台并确认 `Traceback=0`**。
+行号要与唯一依据码一致（`grep -n "class X"` 复核）。改完**重启控制台并确认 `Traceback=0`**。
 
 ## 6. 一次性验证脚本（都留在 tools/）
 ```
@@ -90,7 +90,7 @@ tools/verify_seg_dsvl_canvas_link.py 渲染链: 按节点名在 SimLinkItem 里�
 
 坑:
 - `flows.load_canvas()` 返回 **(data, errors) 二元组**(validate 默认 True) ⇒ 直接 `d['nodes']` 会 `TypeError`。
-- 改画布**前先 `studio_ctl.sh stop`** (GUI 退出/另存为会把内存画布写回真源, 覆盖你的改动), 写完再 `restart --force`;
+- 改画布**前先 `studio_ctl.sh stop`** (GUI 退出/另存为会把内存画布写回唯一依据, 覆盖你的改动), 写完再 `restart --force`;
   控制台日志里 `已加载工作流: ... (89节点 185连线)` 是"新画布真读进来了"的唯一凭证。
 
 ## 全图重排 — 用户说"接线要像左上→右下"时怎么做 (2026-10-15 实测定式)
@@ -141,8 +141,8 @@ tools/verify_seg_dsvl_canvas_link.py 渲染链: 按节点名在 SimLinkItem 里�
 m = SM.SimulinkModule(); m.open_state_space(); ...
 for k, it in (getattr(m, "_items", {}) or {}).items():
     nm = str((getattr(it, "node", None) or {}).get("name") or k)   # 只能按**名字**对位
-    p, br = it.pos(), it.boundingRect()                            # 场景坐标 == 真源 x/y
+    p, br = it.pos(), it.boundingRect()                            # 场景坐标 == 唯一依据 x/y
 ```
-重叠判定要**排除 bg/row_bg**并用**真源 w/h** (界面 boundingRect 会带上选中/光晕余量, 直接比会报一堆假重叠)。
+重叠判定要**排除 bg/row_bg**并用**唯一依据 w/h** (界面 boundingRect 会带上选中/光晕余量, 直接比会报一堆假重叠)。
 
 

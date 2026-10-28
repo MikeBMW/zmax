@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""报价/ROI 边界矩阵 —— 只读真源, 不写盘。
+"""报价/ROI 边界矩阵 —— 只读唯一依据, 不写盘。
 
 用法:
-  python3 quote_matrix.py                       # 用默认真源 + 内置假设
+  python3 quote_matrix.py                       # 用默认唯一依据 + 内置假设
   python3 quote_matrix.py --labor 9,12,15 --margin 0.30 --manual-ct 9
   python3 quote_matrix.py --json                # 给页面/文档吃
 
@@ -64,7 +64,7 @@ PERF = {
     "PVT": (3.15, 0.99, 0.96),
 }
 
-# 模型配置: 档位 -> (域控价, 软件价, 复训万/年)。档位系数未入真源前按假设处理。
+# 模型配置: 档位 -> (域控价, 软件价, 复训万/年)。档位系数未入唯一依据前按假设处理。
 MODEL = {
     "550A": (35000, 120000, 2.0),
     "550B": (55000, 160000, 3.0),
@@ -116,7 +116,7 @@ def estimate(cost_model, bom, model, task, perf, manual_ct, labor, margin, targe
 
 
 def main():
-    ap = argparse.ArgumentParser(description="报价/ROI 边界矩阵 (只读真源)")
+    ap = argparse.ArgumentParser(description="报价/ROI 边界矩阵 (只读唯一依据)")
     ap.add_argument("--cost-model", default=None)
     ap.add_argument("--bom", default=None)
     ap.add_argument("--manual-ct", type=float, default=9.0, help="人工单颗 CT (假设)")
@@ -132,7 +132,7 @@ def main():
     cost_path = args.cost_model or cost_path
     bom_path = args.bom or bom_path
     if not cost_path or not bom_path:
-        print("⛔ 找不到真源, 用 --cost-model/--bom 指定", file=sys.stderr)
+        print("⛔ 找不到唯一依据, 用 --cost-model/--bom 指定", file=sys.stderr)
         return 2
 
     cost_model = json.load(open(cost_path, encoding="utf-8"))
@@ -150,7 +150,7 @@ def main():
                          ensure_ascii=False, indent=1))
         return 0
 
-    print("真源: %s" % cost_path)
+    print("唯一依据: %s" % cost_path)
     print("      %s" % bom_path)
     print("假设: 人工CT %.1fs · 结构人效 %s · NRE %.0f万+%.0f万/型号 · 软件摊销 %.0f万 · 毛利 %.0f%% · 客户目标 %.0f年"
           % (args.manual_ct, "/".join("%.2f" % TASKS[k][4] for k in TASKS),

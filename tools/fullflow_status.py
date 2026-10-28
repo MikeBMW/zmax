@@ -93,7 +93,7 @@ def collect(run: str | None = None) -> dict:
         layers[t] = {k: (v or {}).get("rc") for k, v in sts.items()}
         if sts and all((v or {}).get("rc") == 0 for v in sts.values()):
             train_ok += 1
-        _gp = tr.get("gpu_peak") or {}          # 真源键: train.gpu_peak={util,mem}
+        _gp = tr.get("gpu_peak") or {}          # 唯一依据键: train.gpu_peak={util,mem}
         gpu_u = max(gpu_u, int(_gp.get("util") or 0))
         gpu_m = max(gpu_m, int(_gp.get("mem") or 0))
         for k, src in (("disk_free_min_gb", tr.get("disk_free_gb_after")),

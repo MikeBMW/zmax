@@ -1,8 +1,8 @@
 # ▶运行实时探针桥 + 真实双击链路 + 一键测试 GUI 演示 (2026-09-05 尾段)
 
 承接 viz-layer-nodes-gui-autotest-2026-09-05.md (可视化层/取证/0.5mm 验收已覆盖)。
-本文件 = 该会话最后三轮的增量: 老倪"点运行后直方图没内容 / 其它窗口打不开 /
-双击无法打开新窗口 / 一键自动测试要自动操作窗口显示波形真实跑一遍"。
+本文件 = 该会话最后三轮的增量: 老倪"点运行后直方图没内容 / 其它窗口无法打开 /
+双击无法打开新窗口 / 一键自动测试要自动操作窗口显示波形真实执行一遍"。
 
 ## ▶运行 后窗口实时数据 = probe 桥 (直方图"没内容"根因)
 - 直方图数据源 = 引擎 sim 的 `accel.probe`。▶运行 两条路径 (`_start_state_space_sim`
@@ -29,7 +29,7 @@
 - ⚠️ 画布节点 **id 加载时被重生成** ("节点 id 加载时被重生成, name 稳定") —
   验证/定位节点用 name (含子串匹配), 别用 json 里的 ssff_hist 等 id。
 - 顶层窗口按类名找: FFHistView/FFAttribView/StateSpaceScopeDialog/DreamView3D/
-  MLPRolloutDialog。老倪"都打不开"最常见 = **旧进程** (改 node_logic/simulink_module/
+  MLPRolloutDialog。老倪"都无法打开"最常见 = **旧进程** (改 node_logic/simulink_module/
   json 后没重启 studio.py) — 先确认进程再谈代码; 本会话实测代码修复后 5 窗全开 +
   引擎跑完直方图自动有内容 (桥 seq=330)。
 
@@ -43,5 +43,5 @@
   起 worker 跑全量用例 + 报告 PDF/Excel + scp 上传。
 - 铁律: GUI 演示/取证必须在**主线程** (QTimer/信号链) — worker 线程禁 QObject
   (崩溃铁律); 子进程 (gen_verif_auto_report) 里的窗口一闪而过用户看不见,
-  不满足"真实的跑一遍"。
+  不满足"真实的执行一遍"。
 - 主线程 QTimer 回调里 time.sleep(≤1.5s) + processEvents 可接受 (单窗停留)。

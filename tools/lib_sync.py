@@ -11,7 +11,7 @@
   ① 同名节点存在于任一 flows/*.json 画布 (画布构件, 含 row_bg 行背景)
   ② 名字在 REFERENCE_APPS 模板应用里 (总系统 SYS 系列)
   ③ 名字在原子技能注册表 flows/atomic_skill_tokens.json (点 = 打开原子技能流程)
-  ④ match_node(名字) 命中引擎节点逻辑真源 src/lerobot/engineering/nodes/library.py
+  ④ match_node(名字) 命中引擎节点逻辑唯一依据 src/lerobot/engineering/nodes/library.py
   ⑤ 条目自带 flow / template / params.scene_id / params.atomic_gate (点了会打开流程/场景/闸)
 只有①~⑤全不命中的, 才算「没有联系/没有关联」→ prune 删掉。
 
@@ -31,7 +31,7 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(ROOT, "src"))          # 引擎节点逻辑真源 (lerobot.engineering)
+sys.path.insert(0, os.path.join(ROOT, "src"))          # 引擎节点逻辑唯一依据 (lerobot.engineering)
 sys.path.insert(0, os.path.join(ROOT, "tools", "gui"))
 
 
@@ -81,7 +81,7 @@ def reference_names():
 
 
 def engine_hits(name):
-    """match_node(名字) — 命中引擎节点逻辑真源?"""
+    """match_node(名字) — 命中引擎节点逻辑唯一依据?"""
     try:
         from lerobot.engineering.registry import match_node
         return bool(match_node(name))

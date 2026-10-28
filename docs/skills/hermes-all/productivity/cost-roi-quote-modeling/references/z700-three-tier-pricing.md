@@ -46,6 +46,6 @@
 
 ## 生成与验收
 
-目录约定：`data.json`（唯一真源）+ `make_figs.py` + `make_deck.py` + `verify_deck.py` + `figs/` + pptx/pdf/逐页 png + `MANIFEST.md` + `sha256sums.txt`。
+目录约定：`data.json`（唯一依据）+ `make_figs.py` + `make_deck.py` + `verify_deck.py` + `figs/` + pptx/pdf/逐页 png + `MANIFEST.md` + `sha256sums.txt`。
 版式验收用 powerpoint 技能的 `references/deck-layout-verification.md`（文字溢出/图片压字/表格撑高/边缘留白/OCR 防豆腐）。
 参考实现：`/home/ubuntu/zmax_data/deliverables/z700_pricing_2026-10-26/`。

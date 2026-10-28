@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""跑通 L4 层**所有意图模型** (老倪 2026-10-14: 「配置任务 摆盘任务，跑通 L4层 所有 意图模型」)
+"""验证通过 L4 层**所有意图模型** (老倪 2026-10-14: 「配置任务 摆盘任务，验证通过 L4层 所有 意图模型」)
 
 跑的是哪些 (L4 层的意图链, 与画布节点一一对应):
   ① 🧾 元任务预测 (n_intent_direct, 输入=驱动扭矩)      → ss_meta_predict
@@ -21,7 +21,7 @@ import time
 
 ROOT = "/home/ubuntu/zmax"
 PY = os.path.join(ROOT, "gui-venv311/bin/python")
-# 任务/场景真源 = 当前 active_task (7 任务循环里每任务都会被重绑; 不再硬编码 TASK-06-TRAY —— 实测过
+# 任务/场景唯一依据 = 当前 active_task (7 任务循环里每任务都会被重绑; 不再硬编码 TASK-06-TRAY —— 实测过
 #   :run_l4_intent_models 硬编码托盘任务, 换成 TASK-01-FW 后 ④⑦ 两条判据因任务不匹配报 ❌)
 TASK = os.environ.get("ZMAX_L4_TASK") or ""
 SCENE = os.environ.get("ZMAX_L4_SCENE") or ""
@@ -55,7 +55,7 @@ def run(args, timeout=600, tail=0):
 def main() -> int:
     print("══ 任务: %s (%s) · 时刻 %s ══" % (TASK, SCENE, time.strftime("%H:%M:%S")))
 
-    # ① 元任务派生 (任务 → 元任务清单, 真源现算)
+    # ① 元任务派生 (任务 → 元任务清单, 唯一依据现算)
     rc, out, _ = run(["tools/ss_meta_task.py", "--task", TASK, "--write", "--json"], timeout=300)
     try:
         j = json.loads(out[out.index("{"):out.rindex("}") + 1])
@@ -96,11 +96,11 @@ def main() -> int:
     chk("③ 🎯 INTACT 意图解码器", bool(j.get("ok")) and j.get("z_t") and j.get("delta"),
         "z_t/z_goal/delta 有限 (dim=%s) · z_pred %s" % (j.get("dim"), "有限" if j.get("z_pred") else "= NaN (上游动作块空, 如实)"))
 
-    # ④ 摆盘轨迹真源 (seed) + 常驻回路 (L4 潜空间 encoder)
+    # ④ 摆盘轨迹唯一依据 (seed) + 常驻回路 (L4 潜空间 encoder)
     rc, out, _ = run(["tools/ss_engine_loop.py", "seed", "--episode", "reports/ss_episode_latest.npz"], timeout=300)
     traj = json.load(open(os.path.join(ROOT, "data/database/zmax/sources/canvas/ss_traj_last.json"), encoding="utf-8"))
     n_obs = int(traj.get("n") or len(traj.get("obs") or []))
-    chk("④ 摆盘轨迹真源 (任务标记)", n_obs > 0 and traj.get("task_id") == TASK,
+    chk("④ 摆盘轨迹唯一依据 (任务标记)", n_obs > 0 and traj.get("task_id") == TASK,
         "%d 帧 × obs%d · 任务 %s · t 轴 %d (t 由画布播放填) · 源 %s"
         % (n_obs, int(traj.get("obs_dim") or 0), traj.get("task_id"), len(traj.get("t") or []),
            str(traj.get("src"))[:60]))
@@ -164,7 +164,7 @@ print('RESULT_WRITTEN')
     print("══ 节点实测日志 (节选) ══")
     for l in logs[-12:]:
         print("   " + str(l)[:170])
-    print("L4 意图模型 %d/%d %s (任务 %s)" % (sum(ok_all), len(ok_all), "全部跑通" if all(ok_all) else "有失败", TASK))
+    print("L4 意图模型 %d/%d %s (任务 %s)" % (sum(ok_all), len(ok_all), "全部验证通过" if all(ok_all) else "有失败", TASK))
     return 0 if all(ok_all) else 1
 
 

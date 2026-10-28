@@ -87,7 +87,7 @@ def main() -> int:
     t0 = time.time()
     out = {"ok": False, "via": "engine:SceneVLM", "cam": a.cam}
     try:
-        from lerobot.policies.left_right.state_space.scene_vlm import SceneVLM   # 引擎 L5(单一真源)
+        from lerobot.policies.left_right.state_space.scene_vlm import SceneVLM   # 引擎 L5(单一唯一依据)
     except Exception as e:                                                       # noqa: BLE001
         out["err"] = "引擎不可用(import 失败): %s: %s" % (type(e).__name__, e)
         print(json.dumps(out, ensure_ascii=False))
@@ -124,7 +124,7 @@ def main() -> int:
             except Exception:                                                     # noqa: BLE001
                 boxes = []
         try:
-            _publish_scene_vec(boxes, a.w, a.h, (out.get("model") or ""))   # L5 分层力的真源
+            _publish_scene_vec(boxes, a.w, a.h, (out.get("model") or ""))   # L5 分层力的唯一依据
         except Exception:                                                        # noqa: BLE001
             pass
         out.update({"ok": True, "text": txt, "boxes": boxes, "n_boxes": len(boxes),

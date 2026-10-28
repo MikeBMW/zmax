@@ -55,7 +55,7 @@ class Ring(QWidget):
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
     def set_caption(self, caption, unit=None):
-        """环下标题可换 (550C 档第 1 环是 NPU、第 4 环是内存/磁盘, 不能写死) —— 与底部状态带同源"""
+        """环下标题可换 (550C 档第 1 环是 NPU、第 4 环是内存/磁盘, 不能预先固定) —— 与底部状态带同源"""
         self.caption = caption or ""
         if unit is not None:
             self.unit = unit

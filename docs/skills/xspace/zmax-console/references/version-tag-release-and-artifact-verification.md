@@ -15,7 +15,7 @@ git log --oneline -6 | cat   # 找到 "release v5.11.2 / v5.11.3" 的提交
 
 ### A2. tag 打得又对又推上去了, 却**一个 run 都没起** (2026-10-01 实测, 最容易空等)
 `git tag -l` 有 tag、远端也有 tag, **不等于** CI 跑过 —— **GitHub 只执行"被推 ref 那一棵树里"的 workflow**。
-真源仓库 `.gitignore` 封了 `.github/` ⇒ tag 指向的那棵树里**没有 workflow 文件** ⇒ 静默零 run。
+唯一依据仓库 `.gitignore` 封了 `.github/` ⇒ tag 指向的那棵树里**没有 workflow 文件** ⇒ 静默零 run。
 ```bash
 git ls-tree -r --name-only <tag> | grep .github/workflows   # 空 = 这个 tag 永远不会出包
 ```
@@ -70,7 +70,7 @@ head -c 2 /tmp/_t | xxd -p     # exe → 4d5a ("MZ" PE) · zip → 504b ("PK")
 
 ## E. 两个仓库级坑
 - **`*.log` 被 .gitignore 忽略** (`reports/*.log` 等) ⇒ 取证日志要复制成 `.txt` (或放到 tracked 目录) 才能进仓; 否则
-  `git add reports/xxx.log` 静默不生效, 你以为提交了其实没有。
+  `git add reports/xxx.log` 静默不生效, 你以为提交了实际没有。
 - CI 里 `Create Release and Publish to PyPI` **skipped 是正常的** (上游 huggingface/lerobot 专属, 与本仓库无关);
   另外两个 workflow (`Simulink 模型验证 CI` / `Build & Push Console Docker Image`) 会同时起, 别被吓到。
 

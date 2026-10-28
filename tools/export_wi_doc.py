@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 """导出「工程操作手册 (Working Instruction)」—— 三档性能等级 A/B/C。
 
-真源: tools/spec/eng_profiles.json (与配置中心「工程配置」页同一份数据, 不复制真相)
+唯一依据: tools/spec/eng_profiles.json (与配置中心「工程配置」页同一份数据, 不复制真相)
 产出: docs/deliverables/工程操作手册_三档_A_B_C.md
 
 用法:
     python3 tools/export_wi_doc.py            # 生成/覆盖
-    python3 tools/export_wi_doc.py --check    # 只校验 (不写文件), 文档步骤数必须与真源一致
+    python3 tools/export_wi_doc.py --check    # 只校验 (不写文件), 文档步骤数必须与唯一依据一致
 """
 import json
 import os
@@ -30,7 +30,7 @@ def render(d):
     L = []
     md = d.get("_meta") or {}
     L.append("# 工程操作手册 (Working Instruction) —— 按性能等级 A / B / C\n")
-    L.append("> 真源 `%s` · 版本 `%s` · 生成工具 `tools/export_wi_doc.py`\n"
+    L.append("> 唯一依据 `%s` · 版本 `%s` · 生成工具 `tools/export_wi_doc.py`\n"
              % (os.path.relpath(SPEC, ROOT), md.get("schema", "-")))
     L.append("> 三档与《性能配置》一一对应: **A 基本性能 (L2) / B 精细操作性能 (L2+L3) / "
              "C 专业性能 (L2+L3+L4 含 L5)**。档位只加不换: B 含 A 的全部, C 含 B 的全部。\n")
@@ -39,7 +39,7 @@ def render(d):
     L.append("|---|---|")
     L.append("| 工作目录 | `%s` (所有命令都在这里执行) |" % md.get("root", "/home/ubuntu/zmax"))
     L.append("| 命令 = 判据 | 每条命令都能直接粘, 期望输出写在同一行; 对不上就是没做完 |")
-    L.append("| 不做假动作 | 参数/权重/标定只能来自真源文件, 界面看不到的东西不许手填 |")
+    L.append("| 不做假动作 | 参数/权重/标定只能来自唯一依据文件, 界面看不到的东西不许手填 |")
     L.append("| 失败先停 | 任何一步 FAIL 都停下来按「失败处理」修, 不许带着问题往下走 |")
     L.append("| 凭据 | 手册只核对凭据**键名**, 任何步骤都不打印密钥值 |")
     for p in d.get("profiles") or []:
@@ -57,7 +57,7 @@ def render(d):
         for s in p.get("software") or []:
             L.append("| %s | %s | `%s` |" % (s.get("svc"), s.get("port") or "—", s.get("how")))
         L.append("\n### %s.3 标定项 (不达标就停)\n" % p.get("id"))
-        L.append("| 标定项 | 真源 | 容差/判据 |")
+        L.append("| 标定项 | 唯一依据 | 容差/判据 |")
         L.append("|---|---|---|")
         for c in p.get("calib") or []:
             L.append("| %s | `%s` | %s |" % (c.get("item"), c.get("src"), c.get("tol")))
@@ -177,7 +177,7 @@ def main():
                     ok = False
         n_wi = sum(len(p.get("wi") or []) for p in d.get("profiles") or [])
         n_doc = cur.count("| **")
-        print("[%s] 步骤数 真源 %d / 文档 %d" % ("PASS" if n_wi == n_doc else "FAIL", n_wi, n_doc))
+        print("[%s] 步骤数 唯一依据 %d / 文档 %d" % ("PASS" if n_wi == n_doc else "FAIL", n_wi, n_doc))
         ok = ok and (n_wi == n_doc)
         print("[%s] 三档标题 %s" % ("PASS" if all(("%s 档" % p.get("id")) in cur for p in d.get("profiles") or []) else "FAIL",
                                   [p.get("id") for p in d.get("profiles") or []]))

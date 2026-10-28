@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """摆盘场景 XML 生成器 (2026-10-10 老倪: 「配置中心配摆盘任务 → 仿真把 3 个光模块从料盘拿到 tray 盘」)
 
-真源 = `tools/sim_scene_def._tray_layout()` (与页内 3D 视图同一份几何: 料盘 / tray 盘 / 3 个光模块 / 3 个槽位)
+唯一依据 = `tools/sim_scene_def._tray_layout()` (与页内 3D 视图同一份几何: 料盘 / tray 盘 / 3 个光模块 / 3 个槽位)
 产出 = <metaworld assets>/sawyer_xyz/sawyer_tray_place.xml
 
 与插拔场景 `sawyer_peg_insertion_side.xml` 的差别 (其余整段 include 不动 —— 机器人/夹爪/台面/相机同源):
@@ -14,7 +14,7 @@
 
 用法:
   gui-venv311/bin/python tools/gen_tray_place_scene.py            # 生成
-  gui-venv311/bin/python tools/gen_tray_place_scene.py --check     # 只校验 (body/site/几何 vs 真源)
+  gui-venv311/bin/python tools/gen_tray_place_scene.py --check     # 只校验 (body/site/几何 vs 唯一依据)
 """
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ TABLETOP_Z = 0.0          # 台面顶 (metaworld sawyer 工作台面)
 
 
 def layout():
-    """从真源取摆盘几何: 料盘/托盘实体 + 3 个模块位 + 3 个槽位 (全是米)"""
+    """从唯一依据取摆盘几何: 料盘/托盘实体 + 3 个模块位 + 3 个槽位 (全是米)"""
     d = SSD._tray_layout()
     src, tray, mods, slots = [], [], [], []
     for o in d["objects"]:
@@ -94,7 +94,7 @@ def build(xml_src: str):
     """插拔场景 XML → 摆盘场景 XML (文本外科: 只换 peg body 与 box body, 其余原样)"""
     src, tray, mods, slots = layout()
     if len(mods) != 3 or len(slots) != 3:
-        raise SystemExit("⛔ 真源几何不对: 模块 %d 个 / 槽位 %d 个 (要 3/3)" % (len(mods), len(slots)))
+        raise SystemExit("⛔ 唯一依据几何不对: 模块 %d 个 / 槽位 %d 个 (要 3/3)" % (len(mods), len(slots)))
     half = [s / 2.0 for s in mods[0]["size"]]                 # 模块半尺寸
     inner_top = max((o["center"][2] + o["size"][2] / 2.0) for o in src if "内底" in o["name"])
     rest_z = inner_top + half[2]                              # 模块在盘里的落座高度 (底面贴内底)
@@ -120,7 +120,7 @@ def build(xml_src: str):
                half[0], sfx, half[0] * 0.55, half[2] * 1.1, body))
     peg_block = "".join(peg)
 
-    # ② 料盘 + tray 盘 (静态几何, 直接从真源坐标落地) + 3 个槽位 site
+    # ② 料盘 + tray 盘 (静态几何, 直接从唯一依据坐标落地) + 3 个槽位 site
     static = ['        <body name="src_tray" pos="0 0 0">\n']
     for i, it in enumerate(src):
         static.append(_geom(it, "src_%d" % i))
@@ -179,7 +179,7 @@ def build(xml_src: str):
 
 
 def check():
-    """判据: XML 能载入 + 3 模块/2 盘/3 槽位 site 都在 + 槽位 site 与真源一致"""
+    """判据: XML 能载入 + 3 模块/2 盘/3 槽位 site 都在 + 槽位 site 与唯一依据一致"""
     import mujoco
     m = mujoco.MjModel.from_xml_path(DST)
     d = mujoco.MjData(m)
@@ -205,7 +205,7 @@ def check():
         sid = m.site(SLOT_SITE[i]).id
         p = d.site_xpos[sid]
         err = abs(p[0] - s["pos"][0]) + abs(p[1] - s["pos"][1])
-        chk(err < 1e-6, "%s 位置 == 真源 (%.4f,%.4f,%.4f) err=%.2e"
+        chk(err < 1e-6, "%s 位置 == 唯一依据 (%.4f,%.4f,%.4f) err=%.2e"
             % (SLOT_SITE[i], s["pos"][0], s["pos"][1], _rz + half, err))
     for i, b in enumerate(MODULE_NAMES):
         bid = m.body(b).id
@@ -229,7 +229,7 @@ def main():
           % (meta["rest_z"], meta["inner_top"], meta["half"][2]))
     print("   tray 盘 3 个槽位 site: " + ", ".join(
         "%s(%.4f,%.4f)" % (SLOT_SITE[i], s["pos"][0], s["pos"][1]) for i, s in enumerate(meta["slots"])))
-    print("   料盘 %d 块几何 · tray 盘 %d 块几何 (真源 tools/sim_scene_def._tray_layout)"
+    print("   料盘 %d 块几何 · tray 盘 %d 块几何 (唯一依据 tools/sim_scene_def._tray_layout)"
           % (len(meta["src"]), len(meta["tray"])))
     sys.exit(check())
 

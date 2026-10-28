@@ -21,12 +21,12 @@ metadata:
 - 「信号分析里的信号属于哪个场景, 要标记出来」/「按 绿/蓝/紫/白 排序, 白=全部显示」。
 
 ## 1. 底图源 = **已有视频源, 不要另起相机**
-Z-MAX 的「视频数据源」单一真源是 `tools/cam_live_stream.py`(8791 推流 / 8793 工位总览同源)，
+Z-MAX 的「视频数据源」单一唯一依据是 `tools/cam_live_stream.py`(8791 推流 / 8793 工位总览同源)，
 AR 服务 `tools/tcp_ar_server.py`(8797) 只**订阅**: `CAMS[key] = {w,h,label,mjpg:'/<name>.mjpg',src:'sstate'|'usb',stats_key}`。
 - 每台必须登记**实际分辨率**(标定点是像素量纲, 混用必错); AOI 路在 8791 `/stats` 里的键是 `aoi_*` ⇒ 用 `stats_key` 映射。
 - 端点: `GET /api/cams`(来源/分辨率/在线/帧龄/fps/标定) · `GET /api/ss_stats` · `GET /snap/<key>.jpg`(rs 走本机 pipeline, 其余走 8791 快照) · `/cam.mjpg?c=<key>`(MJPEG 透传)。
-- 帧龄/在线**只从真源读**(8791 `/stats`), 不在 AR 侧重算; 哪路停就照实显示(实测遇过 USB 内置相机停 10h)。
-- 3D 场景「🥽 AR」按钮开 `?cam=<default>`, 别写死某一台; 开关前先探 `/api/cams` 并报「在线 N/M」。
+- 帧龄/在线**只从唯一依据读**(8791 `/stats`), 不在 AR 侧重算; 哪路停就照实显示(实测遇过 USB 内置相机停 10h)。
+- 3D 场景「🥽 AR」按钮开 `?cam=<default>`, 别预先固定某一台; 开关前先探 `/api/cams` 并报「在线 N/M」。
 
 ### 1.1 AR 入口必须**非阻塞**, 且画布工具栏直接给入口 (2026-10-19 实测)
 老倪: 「3D场景里点 AR, 半天没反应 —— 把 AR 做到画布上边的按钮直接打开」。
@@ -56,8 +56,8 @@ AR 服务 `tools/tcp_ar_server.py`(8797) 只**订阅**: `CAMS[key] = {w,h,label,
 - 别信 spawn 的返回码：`ar_window_seen()` 查真窗口表才算数；抬完再查一次位置写入判据。
 - 判断环境别用 `\$DISPLAY` 猜：判据要用 `DISPLAY=:0` 真跑 `xrandr`/`wmctrl`，否则 RPAREN。
 
-### 1.3 「AR 按钮打不开」= 浏览器**静默退出**, 不是服务/页面坏 (2026-10-20 实测)
-老倪: 「ar按钮 打不开 http://10.163.146.78:8797/ar」。取证顺序(照这个顺序查, 一步都不能少):
+### 1.3 「AR 按钮无法打开」= 浏览器**静默退出**, 不是服务/页面坏 (2026-10-20 实测)
+老倪: 「ar按钮 无法打开 http://10.163.146.78:8797/ar」。取证顺序(照这个顺序查, 一步都不能少):
 - 先证服务与页面是好的: `ss -ltnp | grep 8797` + `curl -o /dev/null -w '%{http_code}' :8797/ar` (200) +
   `:8793/ar` (302→8797)。**页面 97KB 正常返回 ⇒ 别再动服务**。
 - 再查 `zmax_data/logs/ar_launch.log`: 若 `spawn pid=…` 有、后面 `窗口 没出现`, 就是**浏览器层**问题。
@@ -72,10 +72,10 @@ AR 服务 `tools/tcp_ar_server.py`(8797) 只**订阅**: `CAMS[key] = {w,h,label,
 2. **只按窗口标题判"没出现"会漏**: 页面还在加载时标题就是 URL, 标题里没有「TCP 轨迹/AR/VR」⇒ 判失败。
    修法 `ar_window_ids()` 取 spawn **前后快照** + `ar_wait_new_window(before, t)`: 先认标题, 再退一步认
    "任何新窗口(标题含 chrom/8797/8793)"。
-- 兜底三级(顺序不能变): 快路径(共享实例, 0.38s) → 独立 profile(`zmax_data/ar_browser`) →
+- 保障三级(顺序不能变): 快路径(共享实例, 0.38s) → 独立 profile(`zmax_data/ar_browser`) →
   **全新带时间戳 profile**(`ar_browser_MMDD_HHMMSS`, 必无锁) —— 最后一级保证窗口一定开出来。
 - chromium stderr 必须落 `zmax_data/logs/ar_browser.log`(原来 DEVNULL ⇒ "为什么没出窗"全靠猜)。
-- 打不开之后别急着重启服务: 服务侧 200 就与它无关; 真改的是控制台进程里的代码 ⇒ **控制台要重启一次**才生效
+- 无法打开之后别急着重启服务: 服务侧 200 就与它无关; 真改的是控制台进程里的代码 ⇒ **控制台要重启一次**才生效
   (`tools/restart_studio.sh`, 单次, 别反复重启)。
 - 判据脚本 `tools/verify_ar_button.py` 里那条页面地址断言要跟 `AR_PAGE_URL` 同步(现为 8793/ar 或 127.0.0.1:8797/ar),
   否则改了地址就假失败。
@@ -109,7 +109,7 @@ AR 服务是常驻轻进程 ⇒ 进程内 import 会顶内存红线(本机同刻
 
 ## 3. 信号 → 场景 标签(色标 + 排序)
 - 颜色/任务映射**只能有一份**: `tools/ss_scene_switch.py`(插拔 `#2e8b57` / 摆盘 `#1f6feb` / AR `#8957e5`), 3D 按钮、配置中心场景列、信号分析全从它取。
-- 标签真源 `tools/sig_scene_tags.py` → `config/topics/scene_tags.json`; 打标证据: AR/AOI 注册表 + **任务启用节点的名字前缀**(信号名约定 `节点名.字段`, 节点名要剥 emoji/括号)+ 运行产物 + 人工 overrides。
+- 标签唯一依据 `tools/sig_scene_tags.py` → `config/topics/scene_tags.json`; 打标证据: AR/AOI 注册表 + **任务启用节点的名字前缀**(信号名约定 `节点名.字段`, 节点名要剥 emoji/括号)+ 运行产物 + 人工 overrides。
 - UI(`tools/gui/canoe_graphic.py`): 目录项加 `● `(场景色)/`○ `(未分类白); 排序行四钮 ⚪全部/🟢/🔵/🟣, 选色=该色置顶(其余压暗仍显示), 白=不排序全显示; 标题行报当前数据源场景 + 各色计数。
 - **没证据的分类就不要编**: 宁可留在白色(未分类)并在标题行报数, 也别猜。
 - 统计实时 store 时要 `list(bufs.keys())` 快照 —— 源线程同时在加键, 直接迭代会 `RuntimeError: dictionary changed size during iteration`。
@@ -118,7 +118,7 @@ AR 服务是常驻轻进程 ⇒ 进程内 import 会顶内存红线(本机同刻
 - **整组信号看不到**: 信号目录里某一段被套在 `if not only3d:` 里, 而窗口默认「数据范围」=3D 场景实时数据
   ⇒ 那一整组(AOI/AR 176 条)被挡在门外。用户只会说「那些信号也没有啊」。
   教训: 用户点名的信号组 **不要与“数据范围”开关耦合** —— 一律列出。加组前先问: 默认开关下他能不能看到?
-- **颜色不生效**: 标签真源里只打上了一部分场景(AR 176 条, 插拔/摆盘 0 条), 其余 UI 再对也是白。
+- **颜色不生效**: 标签唯一依据里只打上了一部分场景(AR 176 条, 插拔/摆盘 0 条), 其余 UI 再对也是白。
   开工前先 `SST.summary()` 看各场景条数, 0 条就说明“分类依据”还没拿到。
 - **`_walk_keys(obj, acc, ...)` 收的是 dict(`acc.setdefault`), 传 set 会被 except 吞掉**
   ⇒ universe 静默为空, 打标 0 条却看不到任何报错。收集键时用 `dict` 再 `set(acc)`。
@@ -177,9 +177,9 @@ AR 服务是常驻轻进程 ⇒ 进程内 import 会顶内存红线(本机同刻
 
 ### 3.2f 机器人状态机接进 AR 场景 + 「是否在插拔」判定 (2026-10-20 实测)
 老倪: 「AR 场景, 是需要接上机器人的, 你把机器人的状态机接上, 可以直接看到是否在插拔」
-- 单一真源 `tools/robot_state.py`(可 `--text`/`--json`/`--watch`), 三个消费方共用: 信号总线(机器人.* 硬组)、
+- 单一唯一依据 `tools/robot_state.py`(可 `--text`/`--json`/`--watch`), 三个消费方共用: 信号总线(机器人.* 硬组)、
   AR 页面 `/api/robot_state`(顶部 chip, 1s 刷, 插拔中置绿/急停置红)、任何要“机器人现在什么状态”的脚本。
-- 真源表(一个不新造): 控制器三查+位姿 `tcp_out/state.json|latest.json`(>5s 陈旧⇒未连接); 当前阶段
+- 唯一依据表(一个不新造): 控制器三查+位姿 `tcp_out/state.json|latest.json`(>5s 陈旧⇒未连接); 当前阶段
   `ss_live/skill_dispatch.json`(chunk_pipeline 每拍写, >3s 陈旧⇒阶段未知, 备路 `skill_gate.json`);
   执行技能 `ss_live/exec_state.json`; 任务 `ss_live/engine_latest.json`(task_id/task_name)。
 - 状态码: 0 未连接 / 1 急停报警 / 2 未上电 / 3 手动 / 4 自动待机 / 5 自动运行。**改含义要同步改 unit 说明**。
@@ -198,7 +198,7 @@ AR 服务是常驻轻进程 ⇒ 进程内 import 会顶内存红线(本机同刻
   信号分析里叫 `ds.*` 组, 数据空间叫报文/信号树。
 - 不同源的是**文件通道**: 本机真值(tcp_out) / AR 总线(ar_aoi_live.json) / sstrace / ROS 影子 只进信号分析;
   AR 的 `末端.*`、`机器人.*` 不在 DDS 上 ⇒ 数据空间原本根本看不到 (老倪会当成“两个窗口在骗人”)。
-- 修法(不发新 DDS 话题, 不造第二真源): `dds_canoe.BusView` 里加 `_fill_ar_group()` / `_update_ar_group()`,
+- 修法(不发新 DDS 话题, 不造第二唯一依据): `dds_canoe.BusView` 里加 `_fill_ar_group()` / `_update_ar_group()`,
   在报文树尾挂一个顶层组「🥽 AR 场景 · 文件通道 N 条」+ 三行汇总(位姿/力/状态机), 值取 `ar_aoi_live.json`。
   hook 点在 `reload()`: `_fill_tree()` 后面挂组、`_update_values()` 后面刷值 (树被 clear 时要重挂)。
 - 判据 `tools/verify_sig_space_sync.py`: 真起 BusView + CanoeGraphicWidget, 核 ①数据空间有 AR 组
@@ -221,10 +221,10 @@ AR 服务是常驻轻进程 ⇒ 进程内 import 会顶内存红线(本机同刻
   是插拔专属(孔), 一否决就被错留白。
 - 共用词清单要小且明确; 宁可白也不要错色(老倪零容忍)。
 - UI 键常带来源前缀(`ar.`/`sstrace.`/`host.`) ⇒ `tag()` 要**逐层剥前缀**再查表。
-- 表建好后 `--build` 生成真源, 并把各场景条数打印出来(「插拔 4 / 摆盘 3 / AR 176」这种数字就是交付证据)。
+- 表建好后 `--build` 生成唯一依据, 并把各场景条数打印出来(「插拔 4 / 摆盘 3 / AR 176」这种数字就是交付证据)。
 
 ## 4. 活跃配置 → 场景/数据源 联动
-- 真源 `tools/ss_scene_switch.py`: 写画布数据源节点(`ssdata`).`params.src_state`(经 `flows.load_canvas/save_canvas`, 不手改 .db), 并回读校验。
+- 唯一依据 `tools/ss_scene_switch.py`: 写画布数据源节点(`ssdata`).`params.src_state`(经 `flows.load_canvas/save_canvas`, 不手改 .db), 并回读校验。
 - 新增一态(如「AR场景」)必须同时: `SRC_CYCLE/SRC_DESC/SRC_SCENE_ID` + `_src_norm` + **把所有 `== "真机"` 收口到一个判据**(如 `_src_is_real()`), 否则新态会悄悄走仿真算路。
 - 挂钩点选**唯一激活路径**(`tools/ss_task_bind.py --activate`)并用 try/except 包住: 切场景失败只提示, 不能拦激活。
 - 改画布后的顺序: `ss_task_bind` → `project_archive space-save` → `engineering_db build` → 两 check(顺序反了会报 drift)。

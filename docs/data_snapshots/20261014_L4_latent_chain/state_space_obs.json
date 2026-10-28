@@ -255,7 +255,7 @@
    "h": 110,
    "params": {
     "state_space": true,
-    "desc": "[基础·分段小模型·建图] 📡 融合定位建图 = 视觉与触觉融合: 视觉(YOLO目标检测→2D→3D 坐标) + 触觉感知(4D 力/接触) + 外观质量 → 统一状态空间 (43D obs, 供 L2/L3/L4/L5 消费); 新增建图能力: 专用实现 src/lerobot/manifold/localization_mapping.py (ORB 视觉前端 + 机器人位姿真源 tcp_pose + 关键帧/地图点/回环 + 自动加载 auto_start)",
+    "desc": "[基础·分段小模型·建图] 📡 融合定位建图 = 视觉与触觉融合: 视觉(YOLO目标检测→2D→3D 坐标) + 触觉感知(4D 力/接触) + 外观质量 → 统一状态空间 (43D obs, 供 L2/L3/L4/L5 消费); 新增建图能力: 专用实现 src/lerobot/manifold/localization_mapping.py (ORB 视觉前端 + 机器人位姿唯一依据 tcp_pose + 关键帧/地图点/回环 + 自动加载 auto_start)",
     "source": "src/lerobot/policies/left_right/state_space/perception.py",
     "source_symbol": "def fuse_sensors",
     "fuse": "视觉 ⊕ 触觉 ⊕ 外观质量"
@@ -1472,7 +1472,7 @@
    "icon": "🎯",
    "color": "#1f6feb",
    "params": {
-    "desc": "[L4 → L3] INTACT 意图解码器 (src/lerobot/policies/intact/decoder.py): **两路输出**: ①→DiT 的 L3 条件 (未标定不注入) ②→流形专家预测器的意图 m_int (z_t 口径用; 活跃 z7 口径下当门控) · 把 INTACT 的意图/潜空间解码成 L3 能吃的条件 —— ① u_ff 先验 4D (量纲逆运算 act×K_ACT, K_ACT 现读引擎源码, 无需标定) ② L3 流形条件向量 (需标定 models/intact_l3_map.json, 未标定则**拒绝返回并计数**, 不写死映射 = 不假接入); 所在 L4 行 = 只在 L4 档执行, L3 档链路逐位不变\n\n🗂 代码落位 (v5.5.43 编排已下沉 policy 层): 编排 service.py (run_once) · 解码 decoder.py · 桥 runtime/model_adapter.py",
+    "desc": "[L4 → L3] INTACT 意图解码器 (src/lerobot/policies/intact/decoder.py): **两路输出**: ①→DiT 的 L3 条件 (未标定不注入) ②→流形专家预测器的意图 m_int (z_t 口径用; 活跃 z7 口径下当门控) · 把 INTACT 的意图/潜空间解码成 L3 能吃的条件 —— ① u_ff 先验 4D (量纲逆运算 act×K_ACT, K_ACT 现读引擎源码, 无需标定) ② L3 流形条件向量 (需标定 models/intact_l3_map.json, 未标定则**拒绝返回并计数**, 不预先固定映射 = 不假接入); 所在 L4 行 = 只在 L4 档执行, L3 档链路逐位不变\n\n🗂 代码落位 (v5.5.43 编排已下沉 policy 层): 编排 service.py (run_once) · 解码 decoder.py · 桥 runtime/model_adapter.py",
     "expert": true,
     "state_space": true,
     "decoder": true,
@@ -1844,7 +1844,7 @@
     "state_space": true,
     "vlm_llm": true,
     "model": "deepseek-flash (DeepSeek-V4.1-Flash, Vision ✓, 本机 key 已配)",
-    "desc": "[L5 大模型主路] DeepSeek-V4-Flash (API · 支持 Vision): 场景判读/工序纠错 → 结构化落 data/scene/scene_state.json, 喂 L3 规划/技能编排与 L4 意图解码; 本地兜底 = smolvlm2-500m (HuggingFaceTB/SmolVLM2-500M, 权重在 ~/.cache/huggingface, GPU 单帧编码); 双路优先级 SS_VLM_PROVIDER > DeepSeek(flash) > 本地 worker",
+    "desc": "[L5 大模型主路] DeepSeek-V4-Flash (API · 支持 Vision): 场景判读/工序纠错 → 结构化落 data/scene/scene_state.json, 喂 L3 规划/技能编排与 L4 意图解码; 本地保障 = smolvlm2-500m (HuggingFaceTB/SmolVLM2-500M, 权重在 ~/.cache/huggingface, GPU 单帧编码); 双路优先级 SS_VLM_PROVIDER > DeepSeek(flash) > 本地 worker",
     "source": "src/lerobot/policies/left_right/state_space/scene_vlm.py",
     "source_symbol": "class SceneVLM (provider=deepseek)",
     "provider": "deepseek-v4-flash",
@@ -2216,7 +2216,7 @@
      "参数注册表": "config/mcd/param_registry.json",
      "模型×工程匹配": "config/mcd/match_matrix.json",
      "主参数M能量标定": "config/calib/zmax_manifold.json#_energy_derivation",
-     "性能指标真源": "config/platform/zmax_perf_spec.json",
+     "性能指标唯一依据": "config/platform/zmax_perf_spec.json",
      "工单": "config/orders/BS_*.json",
      "工程库": "data/database/zmax/zmax_engineering.db"
     },
@@ -2248,7 +2248,7 @@
       "io_trace",
       "energy_manifold"
      ],
-     "判据": "帧龄 <2s · 真源在且值非空",
+     "判据": "帧龄 <2s · 唯一依据在且值非空",
      "命令": "python3 tools/config_center.py list 工程配置"
     },
     "calib_view": {
@@ -2258,7 +2258,7 @@
      "M当前值": 1.0,
      "M能级": null,
      "M标定": "python3 tools/master_param_m.py --project PROJ-TH-TRAY --write (能量标定: M=1+E_task/E_ref)",
-     "真源": "config/calib/zmax_manifold.json → tools/zmax_params.py::write_manifold_M()",
+     "唯一依据": "config/calib/zmax_manifold.json → tools/zmax_params.py::write_manifold_M()",
      "命令": "python3 tools/config_center.py show M"
     },
     "diagnose_view": {
@@ -2331,7 +2331,7 @@
       "exists": true
      },
      {
-      "name": "性能指标真源",
+      "name": "性能指标唯一依据",
       "rel": "config/platform/zmax_perf_spec.json",
       "sha256": "1bb010da5a848cc0",
       "exists": true
@@ -2383,7 +2383,7 @@
       "target": "dim",
       "value": 6,
       "rule": "工序含腕部姿态控制(旋转/翻转/姿态/腕部) ⇒ dim=6 (位姿 6 轴); 否则 dim=3 (位置 3 轴)",
-      "source": "config/tasks/tasks.json 工序真源 + metric_field 口径 (位置 3 轴 / 位姿 6 轴)",
+      "source": "config/tasks/tasks.json 工序唯一依据 + metric_field 口径 (位置 3 轴 / 位姿 6 轴)",
       "evidence": "工序要求腕部姿态控制 ⇒ 位姿 6 轴",
       "hits": [
        "step[翻转]: 命中'旋转' ← 腕部旋转180°(150°/s), 模块标签面朝下, 金手指面朝上"
@@ -2463,7 +2463,7 @@
       "target": "scale",
       "value": 3.643,
       "rule": "M = 1 + (½·m_eff·v_peak² + m_eff·g·h) / E_ref   →  clamp[0,8]",
-      "source": "tools/master_param_m.py 能量标定真源 + config/calib/zmax_calib.json#tool_payload.mass_kg + config/tasks/tasks.json 工序速度",
+      "source": "tools/master_param_m.py 能量标定唯一依据 + config/calib/zmax_calib.json#tool_payload.mass_kg + config/tasks/tasks.json 工序速度",
       "project": "PROJ-LOAD-UNLOAD",
       "project_name": "上下料 (料仓/料盘 → 夹具 上料 → 卸料 → 回收)",
       "m_eff_kg": 1.535,
@@ -2475,8 +2475,8 @@
       },
       "input_sources": {
        "夹具/吸嘴": "config/calib/zmax_calib.json#tool_payload.mass_kg",
-       "工件": "真源: 光模块 QSFP 级 ≈25g (master_param_m 注释)",
-       "峰值速度": "工序真源 step[分拣] 命中'1.0m/s' (tasks.json)",
+       "工件": "唯一依据: 光模块 QSFP 级 ≈25g (master_param_m 注释)",
+       "峰值速度": "工序唯一依据 step[分拣] 命中'1.0m/s' (tasks.json)",
        "行程": "假设(可标定): 上下料工位升降 ≈300mm (待现场确认)"
       },
       "E_kin_J": 0.7675,
@@ -3911,7 +3911,7 @@
    "t": "n_calib_mani",
    "f_port": "out3",
    "t_port": "in1",
-   "label": "标定层单一真源 → M 注册口 (引力/斥力/潜空间三域)"
+   "label": "标定层单一唯一依据 → M 注册口 (引力/斥力/潜空间三域)"
   },
   {
    "id": "lk0929_sslat_n_calib_mani",

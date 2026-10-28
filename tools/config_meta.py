@@ -6,22 +6,22 @@
   「左侧栏的配置中心, 我可以定义元数据; 所有功能, 要通过功能模块的 配置中心 修改, 要可以配置所有的功能」
   「系统架构要根据实际情况同步修改 … 你要表现出系统层即, 功能配置, 参数数值的关系」
 
-本模块 = 功能的**元数据真源**: 把工程库里 74 个功能 (functions 表, FN-SYSx-N) 各配一份元数据,
+本模块 = 功能的**元数据唯一依据**: 把工程库里 74 个功能 (functions 表, FN-SYSx-N) 各配一份元数据,
 说清每个功能的: 字段(输入/输出/参数清单) · 枚举/取值范围/单位/默认值 · 归属子系统与层(L2~L5) ·
 依赖的功能/参数 · 验证方法。它是 GUI「配置中心」页面 (tools/gui/config_meta_panel.py) 的数据面,
 与 param_registry.py (数字面) 互补: 数字面答「这个数改成多少」, 元数据面答「这个功能有哪些字段、能配什么」。
 
-数据落点 (二选一, 本模块选 **JSON 真源**):
-  ─ data/database/zmax/config_meta.json   ← 本模块 build 的产物 (人可编真源)
+数据落点 (二选一, 本模块选 **JSON 唯一依据**):
+  ─ data/database/zmax/config_meta.json   ← 本模块 build 的产物 (人可编唯一依据)
   理由 (为何不用工程库新表 config_meta):
-    ① 元数据是**人工定义/可编的真源** (老倪原话「我可以定义元数据」), 与既有的参数元数据真源
-       config/platform/param_spec.json 同类; param_registry 也是把『真源留 JSON, 库表是快照』——
-       照此规矩, 元数据真源就该是 JSON, 而不是塞进库里当又一张表。
-    ② engineering_db.py 被冻结 (本轮红线): 它的 build 用固定 SCHEMA 重建库、check 比对真源哈希。
+    ① 元数据是**人工定义/可编的唯一依据** (老倪原话「我可以定义元数据」), 与既有的参数元数据唯一依据
+       config/platform/param_spec.json 同类; param_registry 也是把『唯一依据留 JSON, 库表是快照』——
+       照此规矩, 元数据唯一依据就该是 JSON, 而不是塞进库里当又一张表。
+    ② engineering_db.py 被冻结 (本轮红线): 它的 build 用固定 SCHEMA 重建库、check 比对唯一依据哈希。
        只在库外新加一张表, build/check 都不认它 ⇒ 一次全新 build 就可能让该表静默消失、且没有判据看住它
-       (那就是一条「说已存在其实会丢」的谎)。JSON 真源跨 build 稳定、可 git diff、随 data/database/zmax
+       (那就是一条「说已存在实际会丢」的谎)。JSON 唯一依据跨 build 稳定、可 git diff、随 data/database/zmax
        数据包一起迁移 (老倪「迁移我的工程数据」的 tar 口径), 对 18 条 check 判据零风险。
-    ③ 结论: 元数据 = JSON 真源 (可人编) + 每次可重建 (从工程库 + param_registry 派生), 不引入库内孤儿表。
+    ③ 结论: 元数据 = JSON 唯一依据 (可人编) + 每次可重建 (从工程库 + param_registry 派生), 不引入库内孤儿表。
 
 真值来源 (全部真读, 不猜):
   · 工程库 functions / fn_axes(配置 cfg·标定 cal·诊断 dia 三轴) / params / param_links / product_features /
@@ -73,7 +73,7 @@ SCHEMA_TAG = "zmax-config-meta/1.0"
 # 留空 = 完全自动派生。示例 (可自行增删):
 SEED = {
     # "FN-SYS0-37": {"inputs": ["相机 RGB-D 帧"], "outputs": ["检测框 peg/hole/hand + 置信度"],
-    #                "notes": "conf 不得写死 0.99 (老倪红线: 未检出诚实标 None)"},
+    #                "notes": "conf 不得预先固定 0.99 (老倪红线: 未检出诚实标 None)"},
 }
 
 

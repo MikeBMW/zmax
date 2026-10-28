@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""🧭 Z-MAX 全系统参数与标定统一接口 (单一真源读取器)
+"""🧭 Z-MAX 全系统参数与标定统一接口 (单一唯一依据读取器)
 
 老倪 (09-22): 「包括标定参数接口」「模块化」「不要发出真机控制指令，但是你可以采集真机的数据」
 
 设计原则
 --------
-1. **一份真源, 多处读取**: 所有层 (L4/L3/L2, 状态空间引擎, 3D 视图, 感知反投影, 训练配置)
+1. **一份唯一依据, 多处读取**: 所有层 (L4/L3/L2, 状态空间引擎, 3D 视图, 感知反投影, 训练配置)
    通过本模块拿参数 —— 禁止再各自硬编码几何/限位/质量/内外参。
    · 机器人模型 → `config/robot/zmax_robot_spec.json`  (tools/robot_spec_sync.py 从 URDF+真机实测生成)
    · 标定参数   → `config/calib/zmax_calib.json`       (tools/zmax_params.py --sync 合并各源)
@@ -20,7 +20,7 @@
   gui-venv311/bin/python tools/zmax_params.py --check          # 只报缺口 (非零退出=有关键缺口)
   gui-venv311/bin/python tools/zmax_params.py --sync           # 从各源合并 → config/calib/zmax_calib.json
   gui-venv311/bin/python tools/zmax_params.py --fk 0.16 -0.06 -2.54 1.45 0.44 -0.70
-                                                               # 用真源几何算 FK (对照真机 tcp)
+                                                               # 用唯一依据几何算 FK (对照真机 tcp)
   gui-venv311/bin/python tools/zmax_params.py --m 2.0 --inertia on
                                                                # 🧮 写流形引擎主标定参数 M (状态空间结构参数)
   gui-venv311/bin/python tools/zmax_params.py --json
@@ -39,7 +39,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SPEC = os.path.join(ROOT, "config", "robot", "zmax_robot_spec.json")
 CALIB = os.path.join(ROOT, "config", "calib", "zmax_calib.json")
 REAL_CAM_CALIB = os.path.join(ROOT, "models", "real_cam_calib.json")
-# 🧮 流形引擎主标定参数 M 的**可写真源** (config/calib/zmax_manifold.json → 合并进 calib.json)
+# 🧮 流形引擎主标定参数 M 的**可写唯一依据** (config/calib/zmax_manifold.json → 合并进 calib.json)
 MANIFOLD_P = os.path.join(ROOT, "config", "calib", "zmax_manifold.json")
 CALIB_REPORT_GLOB = os.path.expanduser("~/zmax/zmax_data/calib_report_*.json")
 GEOM_CANDIDATES = [
@@ -50,7 +50,7 @@ GEOM_CANDIDATES = [
 _LIVE_TAP = os.path.expanduser("~/zmax/zmax_data/real_tap_*/state_*.jsonl")
 
 
-# ───────────────────────── 机器人模型 (单一真源) ─────────────────────────
+# ───────────────────────── 机器人模型 (单一唯一依据) ─────────────────────────
 def robot_spec(path: str = SPEC) -> dict:
     with open(path, encoding="utf-8") as f:
         return json.load(f)
@@ -85,7 +85,7 @@ def tool(spec: dict | None = None) -> dict:
             "tcp_frame": spec.get("control_tcp", {}).get("frame")}
 
 
-# ───────────────────────── FK (只用真源, 不依赖 URDF 文件) ─────────────────────────
+# ───────────────────────── FK (只用唯一依据, 不依赖 URDF 文件) ─────────────────────────
 def _rx(a):
     c, s = math.cos(a), math.sin(a)
     return [[1, 0, 0], [0, c, -s], [0, s, c]]
@@ -155,9 +155,9 @@ def _load_json(p):
         return None
 
 
-# ───────── 🧮 流形引擎主标定参数 M (真源: src/lerobot/manifold/manifold_engine.py) ─────────
+# ───────── 🧮 流形引擎主标定参数 M (唯一依据: src/lerobot/manifold/manifold_engine.py) ─────────
 def _manifold_consts():
-    """从流形引擎模块取 M 的常量 (单一真源, 不重复硬编码); 失败则回退字面量。"""
+    """从流形引擎模块取 M 的常量 (单一唯一依据, 不重复硬编码); 失败则回退字面量。"""
     try:
         import importlib.util as _ilu
         _p = os.path.join(ROOT, "src", "lerobot", "manifold", "manifold_engine.py")
@@ -247,7 +247,7 @@ def sync_calib(write: bool = True) -> dict:
         "_reason": ("无示教几何: 需现场零运动示教 — gui-venv311/bin/python tools/ss_geom_calib.py "
                     "--record peg_head|goal|aoi (人工拖到位置后确认, 无运动指令)")}
 
-    # ⑥ 机器人真源 & 负载/TCP
+    # ⑥ 机器人唯一依据 & 负载/TCP
     spec = robot_spec() if os.path.exists(SPEC) else {}
     reg["robot"] = {"spec": os.path.relpath(SPEC, ROOT),
                     "dof": spec.get("robot", {}).get("dof"),
@@ -261,14 +261,14 @@ def sync_calib(write: bool = True) -> dict:
                           else "无真机帧可反解 (需真机只读采集在线)"}
 
     # ⑦ 🧮 流形引擎主标定参数 M (状态空间的结构参数/等效惯量) —— 2026-09-29 老倪
-    #   为何放这里: calib.json 是本项目已确立的**单一真源**口径; M 是流形引擎(L4 核心)向标定层
+    #   为何放这里: calib.json 是本项目已确立的**单一唯一依据**口径; M 是流形引擎(L4 核心)向标定层
     #   暴露的唯一主标定标量, 与内参/几何/TCP 同属"标定参数" → 与其并肩 (不再新开一处硬编码)。
-    #   可写真源 = config/calib/zmax_manifold.json (现场标定单标量); 缺省值/范围/单位来自引擎模块。
+    #   可写唯一依据 = config/calib/zmax_manifold.json (现场标定单标量); 缺省值/范围/单位来自引擎模块。
     reg["manifold_engine"] = _manifold_section()
 
     # ⑧ ⚖ 原子技能物理参数 (v/a/s + 物理上下限) —— 2026-10-15 老倪: 「速度/加速度/位移要可以标定,
-    #   比如上限下限、最大值最小值」。真源 = config/calib/zmax_skill_physics.json (每项 {value,min,max})。
-    #   ★ 本处只放**指针 + 摘要**, 不复制数值 —— 数值的唯一真源仍是那个文件 (避免两处打架)。
+    #   比如上限下限、最大值最小值」。唯一依据 = config/calib/zmax_skill_physics.json (每项 {value,min,max})。
+    #   ★ 本处只放**指针 + 摘要**, 不复制数值 —— 数值的唯一依据仍是那个文件 (避免两处打架)。
     reg["skill_physics"] = _skill_physics_section()
 
     if write:
@@ -284,11 +284,11 @@ SKILL_PHYS_P = os.path.join(ROOT, "config", "calib", "zmax_skill_physics.json")
 
 
 def _skill_physics_section(path: str = SKILL_PHYS_P) -> dict:
-    """⚖ 原子技能物理参数摘要 (v/a/s + 物理上下限) — 只做指针, 数值真源仍是那个文件。"""
+    """⚖ 原子技能物理参数摘要 (v/a/s + 物理上下限) — 只做指针, 数值唯一依据仍是那个文件。"""
     d = _load_json(path) or {}
     st = d.get("stages") or {}
     return {
-        "真源": os.path.relpath(path, ROOT),
+        "唯一依据": os.path.relpath(path, ROOT),
         "技能数": len(st),
         "物理量": ["v", "v_min", "a", "s", "s_step", "jerk", "m", "F", "dmdt"],
         "单位": {"v": "m/s", "v_min": "m/s", "a": "m/s^2", "s": "m", "s_step": "m",
@@ -296,7 +296,7 @@ def _skill_physics_section(path: str = SKILL_PHYS_P) -> dict:
         "上下限口径": d.get("bounds_src") or {},
         "标定工具": "tools/skill_physics_calib.py (--table/--set/--check) · 判据 tools/verify_skill_physics_calib.py",
         "读取方": "src/lerobot/policies/left_right/state_space/physics_constraints.py::limits_for (缺文件回退内置 PHYS 表)",
-        "说明": "★ 数值不在本注册表复制, 避免两处打架; 要看值/改值用标定工具或直接读真源文件。",
+        "说明": "★ 数值不在本注册表复制, 避免两处打架; 要看值/改值用标定工具或直接读唯一依据文件。",
         "_src": os.path.relpath(path, ROOT) if os.path.isfile(path) else "未生成 (跑 tools/skill_physics_calib.py --init-from-sources)",
     }
 
@@ -337,7 +337,7 @@ def manifold_inertia(path: str = CALIB) -> bool:
 
 
 def manifold_metric(path: str = MANIFOLD_P) -> dict:
-    """主参数 M 的**度量张量**口径 (真源 config/calib/zmax_manifold.json 的 metric 段)。
+    """主参数 M 的**度量张量**口径 (唯一依据 config/calib/zmax_manifold.json 的 metric 段)。
 
     返回 {dim, mode, scale(M), diag, components, 独立分量数, 测地线…}; 缺 metric 段 ⇒ 各向同性 (零回归)。
     """
@@ -398,7 +398,7 @@ def manifold_spec(path: str = CALIB) -> dict:
 def write_manifold_M(value: float, inertia: bool | None = None, path: str = MANIFOLD_P) -> dict:
     """写流形引擎主标定参数 M (**可写口**)。
 
-    落 config/calib/zmax_manifold.json (可写真源) 并重合并 calib.json; 带范围校验 (越界夹取并标注)。
+    落 config/calib/zmax_manifold.json (可写唯一依据) 并重合并 calib.json; 带范围校验 (越界夹取并标注)。
     返回 {M, inertia, clamped, range, dest} — 现场标定后即可被流形引擎/画布节点 n_calib_mani 读到。
     """
     lo, hi = MANIFOLD_M_RANGE
@@ -406,7 +406,7 @@ def write_manifold_M(value: float, inertia: bool | None = None, path: str = MANI
     clamped = not (lo <= v <= hi)
     v = min(max(v, lo), hi)
     d = _load_json(path) or {}
-    d["_doc"] = ("流形引擎主标定参数 M (状态空间的结构参数/等效惯量) — 标定层单一真源。"
+    d["_doc"] = ("流形引擎主标定参数 M (状态空间的结构参数/等效惯量) — 标定层单一唯一依据。"
                  "物理: a=F/M ⇒ Δx=F·dt²/M; 信息: 把信息代价梯度换成状态加速度的曲率尺度;"
                  " M 从流形结构导出 (非自由拟合), 现场以单标量标定。inertia=false ⇒ 零回归。")
     d["M"] = v

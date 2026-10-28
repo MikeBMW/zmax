@@ -31,5 +31,5 @@ run 目录: `/home/ubuntu/zmax/reports/fullflow7/20261014_215744`
 ## 四、判据回放 (任意时刻可复跑)
 
 - 大屏/卡片数据源: `python3 tools/fullflow_status.py` (只读 state.json)
-- 元任务预测 topic: `tools/dds_sub_meta_pred.py`; 信号分析真源 `zmax_data/dataspace/live.json`
+- 元任务预测 topic: `tools/dds_sub_meta_pred.py`; 信号分析唯一依据 `zmax_data/dataspace/live.json`
 - 报告重生成: `python3 -c "import sys,json;sys.path.insert(0,'tools');import fullflow_tasks7 as F;F.stage_report('/home/ubuntu/zmax/reports/fullflow7/20261014_215744', json.load(open('/home/ubuntu/zmax/reports/fullflow7/20261014_215744/state.json')), '/home/ubuntu/zmax/reports/fullflow7/20261014_215744', send=False)"`

@@ -16,9 +16,9 @@
 
 ## gen_insert_video.py 模型加载 4 连坑 (视频生成"慢又不生成")
 
-视频生成脚本(tools/gen_insert_video.py)从**写死旧模型**改为加载**最新双脑 checkpoint**:
+视频生成脚本(tools/gen_insert_video.py)从**预先固定旧模型**改为加载**最新双脑 checkpoint**:
 
-1. **模型源选择**: 原写死 `outputs/rl_peg/full_pipeline.pt`(旧 RL 管线, 8/10)
+1. **模型源选择**: 原预先固定 `outputs/rl_peg/full_pipeline.pt`(旧 RL 管线, 8/10)
    → 改 `_load_brain()` 遍历 `outputs/train/left_right_*/checkpoints/last/pretrained_model/model.pt`
    - ⚠️ 排序必须**按 mtime**(字母序 reverse 会把 `left_right_std` 排最前 → 加载错模型)
 2. **归一化参数**: 新 checkpoint 的 model.pt 只有 `{left, right, obs_dim, act_dim}`,
@@ -62,5 +62,5 @@
   用户 19:59 训练完点 ▶ 视频 → \"已存在直接打开\"弹旧视频 → 误以为生成错 → 检查 mp4 mtime 与训练时间是否匹配
 - **训练完自动生成(force)没触发** = 训练时 GUI 实例跑的是旧代码(自动生成是后加的) — 手动 `.venv/bin/python tools/gen_insert_video.py` 补生成即可
 - **新模型插拔失败(seed 0/1 卡在抓取)**: 快速诊断用状态机全流程试跑(不是只跑 ST_APPROACH —
-  单阶段测试永远卡住误判模型坏): 主循环按 right 的 contact 推进状态机(ST_APPROACH→GRASP→LIFT→TRANSFER→INSERT→DONE),
+  单阶段测试永远阻塞误判模型坏): 主循环按 right 的 contact 推进状态机(ST_APPROACH→GRASP→LIFT→TRANSFER→INSERT→DONE),
   300 步内 done 算成功; 4 seeds 成功率对比新旧模型定位"训练退化"vs"环境问题"

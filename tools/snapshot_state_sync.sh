@@ -17,8 +17,8 @@ set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 ROOT=$(pwd)
 DATE="${SNAP_DATE:-20261016}"
-# 2026-10-16: 原先默认写死 v5.50.735 (版本升到 5.50.736 后快照目录名就报错版本)。改为从真源读。
-#   真源 = tools/gui/update_checker.py::CURRENT_VERSION (与 VERSION.md 历史表同步)。
+# 2026-10-16: 原先默认预先固定 v5.50.735 (版本升到 5.50.736 后快照目录名就报错版本)。改为从唯一依据读。
+#   唯一依据 = tools/gui/update_checker.py::CURRENT_VERSION (与 VERSION.md 历史表同步)。
 if [ -z "${SNAP_VER:-}" ]; then
   SNAP_VER="$(sed -n 's/^CURRENT_VERSION = "\(.*\)"/\1/p' tools/gui/update_checker.py | head -1)"
 fi
@@ -91,7 +91,7 @@ echo "  工程库: $(tail -1 "$SNAP/engineering_db_check.txt")"
 curl -s --max-time 25 "https://datadrive.world/zmax_status.json" -o "$SNAP/zmax_status_public.json"
 echo "  公网状态: HTTP $(curl -s -o /dev/null -w '%{http_code}' --max-time 20 https://datadrive.world/zmax_status.json) $(stat -c%s "$SNAP/zmax_status_public.json")B"
 
-# ── ⑥ git 真源点 + 台账
+# ── ⑥ git 唯一依据点 + 台账
 { echo "commit: $(git rev-parse --short HEAD)"; echo "tag: $(git describe --tags --abbrev=0 2>/dev/null)"; echo "branch: $(git rev-parse --abbrev-ref HEAD)"; echo "at: $(date '+%F %T')"; } > "$SNAP/git_ref.txt"
 cp -f docs/eval/元任务性能物理值全链验证_v5.50.735.md "$SNAP/" 2>/dev/null
 cp -f docs/eval/Phase0_L2速度反馈延迟_全测_v5.50.735.md "$SNAP/" 2>/dev/null

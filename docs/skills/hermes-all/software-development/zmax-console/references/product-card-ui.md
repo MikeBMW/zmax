@@ -26,18 +26,18 @@
   **三档同一个号** —— 550A/B/C 只是产品配置标识, 不是版本号。bump 版本后界面自动跟。
 - 底行第二段是 **运行位置** `products.<id>.runtime.label` (不是 `dev_profile.role`):
   `v5.50.751 · 本地运行` / `· VSCode 标定` / `· Intel 端侧`。
-  真源 `runtime` = `{location, label, host, host_ip, models, realtime}`; 三档语义:
+  唯一依据 `runtime` = `{location, label, host, host_ip, models, realtime}`; 三档语义:
   A=本地运行(本机) / B=VSCode 标定(本机) / C=量产·部署在 Intel 边缘机·全部模型·远程端侧实时。
   `dev_profile.deploy` 是同一件事的人话版, 两处要一起改。
 - 旧口径不再用 role 做底行: role 与档名后缀同词时 (550C「量产版」) 会重复; 切到 runtime.label 后
   这个撞车自然消失, 但 ⑥b2 那条判据留着盯同类问题。
 - 产品页只读值多一行「运行位置」(拼 `label · host (host_ip) · 模型 · 实时`, 可复制, tooltip 指回
-  `products.<id>.runtime`)。**界面不许拿档位自己推主机/IP** —— 真源没写就显示缺。
+  `products.<id>.runtime`)。**界面不许拿档位自己推主机/IP** —— 依据未写明就显示缺。
 
 ## 铁律 (踩过)
 1. **必须仍是 `QRadioButton` 子类**: `verify_product_ui` 读 `_prod_btns[pid].text()/isChecked()/objectName()`
    和 `_prod_group.exclusive()`; 换 QPushButton 会一片红。
-2. **判据/取证里 `setChecked` 会真写真源**: `toggled → _on_product_pick → 原子写 active_product`。
+2. **判据/取证里 `setChecked` 会真写唯一依据**: `toggled → _on_product_pick → 原子写 active_product`。
    批量 setChecked 前对每张卡 `blockSignals(True)`, 跑完还原视觉状态再 `blockSignals(False)`,
    并断言跑前跑后 `zmax_product.json` sha256 不变。
 3. 互斥组不能 `setChecked(False)`: 量"未选"外观就换另一张卡 setChecked(True) 当基线。
@@ -45,7 +45,7 @@
    参考块必须与目标块在**同一条横带** (渐变让左上/右下天然差 60)。
 5. 选中/未选只能**同卡对比** (三色绝对亮度不可比): 阈值按内敛口径 ≥40%, 实测 +48%。
 6. 排版用同口径常量复算: 断言底行与档名留白 ≥4px、每段文字右界在卡内 (卡宽 - 内边距)。
-7. 卡固定 252×104 ⇒ 1280/1600/3200 窗宽都不裁不重叠; 三卡 + 「🔄 重新读取真源」一行 ≈800px。
+7. 卡固定 252×104 ⇒ 1280/1600/3200 窗宽都不裁不重叠; 三卡 + 「🔄 重新读取唯一依据」一行 ≈800px。
 
 ## 判据取证坑 (通用 Qt, 全都会造成"假红/假绿")
 1. **没切过去的那一页根本没有布局**: 产品配置不是首屏时, 卡停在默认 640 宽 (只有 maxHeight 生效),
@@ -57,9 +57,9 @@
 4. **周期刷新会重建单元格**: 只在建卡那遍设置的 tooltip/高亮, 第一次静默刷新就全丢 ——
    这类装饰必须写在 `_fill()` 里 (建卡和刷新同一入口)。
 5. 判据读表要按**列名**取值, 不按列序号: 表格加了列 (如 A/B/C 姿态) 后旧判据 index 全错,
-   表现为"功能坏了", 其实只是判据过期。
+   表现为"功能坏了", 实际只是判据过期。
 6. 离屏图 OCR 读不全**不等于**字被裁: 先裁剪 + 3x 放大再 OCR (9pt 小字在 2x 图上会整行漏读),
-   并靠"右界 ≤ 卡内宽"的字体度量断言兜底。
+   并靠"右界 ≤ 卡内宽"的字体度量断言保障。
 
 ## 判据命令
 ```bash
@@ -71,7 +71,7 @@ QT_QPA_PLATFORM=offscreen ./gui-venv311/bin/python tools/verify_config_page_prod
 ```
 `verify_product_card_ui.py` 14 项: ①自绘类/尺寸/编号 ②不重叠 ③文字不截断+底行留白 ④同卡明暗差≥40%
 ⑤浅色"✓当前"只选中卡有 ⑥a 档名同源 ⑥b 底行=版本号+runtime.label ⑥b2 底行不重复档名后缀
-⑥c 三档版本号同一个且 == CURRENT_VERSION ⑥d 三档运行位置==真源(.50/.50/.70, C 必须 edge+全部模型)
+⑥c 三档版本号同一个且 == CURRENT_VERSION ⑥d 三档运行位置==唯一依据(.50/.50/.70, C 必须 edge+全部模型)
 ⑦选中卡文字对比度≥4.5:1 ⑧只读不写盘。
 供复审的实渲图: `/home/ubuntu/.hermes/cache/scratch/render_cards.py` → `/tmp/prod_cards_now.png` (2x)。
 

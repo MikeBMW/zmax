@@ -7,11 +7,11 @@
 判据 (逐条可复核; 源码用 AST 看**真语句**, 运行期真跑派发链):
   ① 每个技能类体内都有一条**真调用**(`def clamp` → 调 `apply_physics`), 不是注释/文档字符串;
   ② 基类 `apply_physics` 真的落到闸门 `InertiaLimiter.limit` (AST 看调用表达式);
-  ③ 运行期真削: 给 SK05Lift 灌 5 m/s (远超 v_cap) → 可选动作 ≤ 真源包络, `why` 写明哪条约束, `err`>0;
+  ③ 运行期真削: 给 SK05Lift 灌 5 m/s (远超 v_cap) → 可选动作 ≤ 唯一依据包络, `why` 写明哪条约束, `err`>0;
      合法小动作**不许被削** (why == 可行) —— 只削该削的, 不然就是把物理量当噪声削;
   ④ 派发链每拍都过闸: 合成 chunk 跑 N 拍 ⇒ 过闸次数(技能口+段闸口) == 派发拍数, 没有一拍绕过;
   ⑤ 派发链走的是**技能对象自己的调用口** (有技能类的段) —— 计数里面技能口 > 0;
-  ⑥ 没有技能类的段 (引擎里有、技能库没有的段) **如实登记**走同段真源闸, 不假装有技能类;
+  ⑥ 没有技能类的段 (引擎里有、技能库没有的段) **如实登记**走同段唯一依据闸, 不假装有技能类;
   ⑦ 闸实例是**同一个** (段累计行程/上拍速度/削因不两处各记一半): 派发链 travel 有累计 ⇒ 信号分析的 s_mm 不是 0;
   ⑧ 计数落盘可观察 (`skill_latest.json` 里有「过闸_技能拍/过闸_段闸拍/闸_削因」)。
 
@@ -78,7 +78,7 @@ _sk = A.SK05Lift()
 _q = limits_for(_sk.stage)
 _r_bad = _sk.clamp([5.0, 0.0, 0.0, 1.0])
 _v_bad = float(np.linalg.norm(np.asarray(_r_bad["u"], float)[:3]))
-chk("③a 超限请求真被削 (5.000 → %.4f m/s ≤ 真源 v_cap %.3f)" % (_v_bad, _q["v"]),
+chk("③a 超限请求真被削 (5.000 → %.4f m/s ≤ 唯一依据 v_cap %.3f)" % (_v_bad, _q["v"]),
     _v_bad <= float(_q["v"]) + 1e-9 and _v_bad < 5.0,
     "why=%s · err=%.4f" % (_r_bad["why"], _r_bad["err_norm"]))
 chk("③b 削的原因指名道姓 (哪条约束)", _r_bad["why"] not in ("", None, "可行"),
@@ -86,7 +86,7 @@ chk("③b 削的原因指名道姓 (哪条约束)", _r_bad["why"] not in ("", No
 A.bind_limiter(InertiaLimiter(dt=0.1))          # 干净状态: 只测"合法动作不该被削"
 _DT = 0.1
 _ok_q = limits_for("对位")
-# 合法值**从真源算**, 不拍脑袋: 从静止起步这一拍同时受 ①v_cap ②a_max·dt ③jerk_max·dt² ⑤s_step/dt 约束
+# 合法值**从唯一依据算**, 不拍脑袋: 从静止起步这一拍同时受 ①v_cap ②a_max·dt ③jerk_max·dt² ⑤s_step/dt 约束
 _v_legal = 0.9 * min(float(_ok_q["v"]), float(_ok_q["a_max"]) * _DT,
                      float(_ok_q["jerk_max"]) * _DT * _DT, float(_ok_q["s_step"]) / _DT)
 _sk2 = A.SK02Align()
@@ -131,7 +131,7 @@ chk("⑦b 削因计数在派发链上真的有 (注入 9 m/s 被削)", bool(_har
 STAGES8 = list(DPmod.STAGES)
 _no_sk = [s for s in STAGES8 if A.skill_for(s) is None]
 _with = [s for s in STAGES8 if A.skill_for(s) is not None]
-chk("⑥ 无技能类的段如实登记 (走同段真源闸, 不假装有技能)",
+chk("⑥ 无技能类的段如实登记 (走同段唯一依据闸, 不假装有技能)",
     True, "派发 8 段里 %d 段有技能类 (%s) · %d 段无 (%s → 段闸口)"
           % (len(_with), "、".join(_with), len(_no_sk), "、".join(_no_sk) or "无"))
 chk("⑥b stage→技能类 映射来自类属性 (不自己编号)",

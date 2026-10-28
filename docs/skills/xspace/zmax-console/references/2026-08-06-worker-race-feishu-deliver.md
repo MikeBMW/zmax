@@ -39,7 +39,7 @@
 - token: `POST .../auth/v3/tenant_access_token/internal` {app_id, app_secret} → tenant_access_token。
 - 发送后跟一条 text 消息说明文件名（群成员可读）。
 
-## 4. rollout_video.py load_policy: ckpt ts 目录不一致 → glob 兜底
+## 4. rollout_video.py load_policy: ckpt ts 目录不一致 → glob 保障
 
 - 症状: vla_touch/awe_zflow rollout 失败 `FileNotFoundError: checkpoint 不存在: outputs/train/vla_touch_<ts>/checkpoints`。
 - 根因: on_train 的 ts_dir 与 train_vla_touch/train_awe_zflow 脚本内部生成的 ts 差几秒 → 曲线 json 记的 ckpt 路径不存在。
@@ -71,7 +71,7 @@
 
 ## 7. 训练步数档位 (2026-08-06 演变)
 
-3 步=通路验证 → 10 步=流程跑通 → 500/1000 步=正式对比。老倪验收链路: 先 3 步看通路(群里收到视频+PDF), 再 1000 步看插拔成功。改步数: `"steps": N` 在 simulink_module.py 模板训练节点 (17 处) + node_logic.py `steps = p.get("steps", N)` + TrainConfigDialog 默认。
+3 步=通路验证 → 10 步=流程验证通过 → 500/1000 步=正式对比。老倪验收链路: 先 3 步看通路(群里收到视频+PDF), 再 1000 步看插拔成功。改步数: `"steps": N` 在 simulink_module.py 模板训练节点 (17 处) + node_logic.py `steps = p.get("steps", N)` + TrainConfigDialog 默认。
 
 ## 8. 外部命令行训练日志 → GUI 终端区显示 (_poll_ext_log)
 

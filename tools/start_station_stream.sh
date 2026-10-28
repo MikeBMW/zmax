@@ -1,7 +1,7 @@
 #!/bin/bash
 # 🛰 工位总览/叠加 推流服务 —— 稳定启动器 (2026-09-28)
 #
-# 为什么需要它: 控制台两个按钮(🛰工位总览 / 🧩场景叠加)起来的那条命令**设备号写死**过
+# 为什么需要它: 控制台两个按钮(🛰工位总览 / 🧩场景叠加)起来的那条命令**设备号预先固定**过
 #   (--local-dev 2 --local2-dev 0), 现场后果实测:
 #     · /dev/video2 = 笔记本相机的 GREY(IR) 路 ⇒ 画面近黑(mean≈6/255) —— 老倪:「笔记本内置摄像头太黑了」
 #     · /dev/video0 = 笔记本**彩色**路, 却被当成 MAXHUB ⇒ 两格串线 —— 老倪:「MAXHUB 的跟笔记本串线了」
@@ -36,7 +36,7 @@ ORIN_HOST="${ZMAX_ORIN_HOST:-tashan@192.168.23.66}"; ORIN_HOST="${ORIN_HOST##*@}
 _ld=$("$PY" "$ROOT/tools/cam_dev_resolve.py" 2>/dev/null | sed -n 's/^LOCAL=//p');  [ -n "$_ld" ] || _ld=0
 _l2=$("$PY" "$ROOT/tools/cam_dev_resolve.py" 2>/dev/null | sed -n 's/^LOCAL2=//p'); [ -n "$_l2" ] || _l2=-1
 _lu=$("$PY" "$ROOT/tools/cam_dev_resolve.py" 2>/dev/null | sed -n 's/^USB=//p');   [ -n "$_lu" ] || _lu=-1
-[ "$_l2" = "$_ld" ] && _l2=-1        # 绝不把两路指到同一台设备(独占会打不开)
+[ "$_l2" = "$_ld" ] && _l2=-1        # 绝不把两路指到同一台设备(独占会无法打开)
 
 # ── 🎥 2026-10-17: 笔记本那一路的开关 —— 由页面落盘的 cam_local_src.json 决定 ─────────
 #   kind=off ⇒ **完全不打开笔记本摄像头**（老倪要用内置摄像头开微信; Z-MAX 不能再独占 /dev/video0）。
@@ -56,7 +56,7 @@ if [ "$_l2" -lt 0 ] && [ "$_src_kind" != "off" ]; then
     LOCAL_ARGS=(--local-dev "$_ld" --local2-url "$CENTRAL_URL" --local2-label "🎥 中央相机" --local2-fps 10)
     echo "  · 中央相机: 走 550C 隧道 $CENTRAL_URL"
   elif curl -s -m 3 -o /dev/null "$RELAY_CAM/central" 2>/dev/null; then
-    # ② 兜底: ECS 中转里 Orin 推到 central 的帧
+    # ② 保障: ECS 中转里 Orin 推到 central 的帧
     LOCAL_ARGS=(--local-dev "$_ld" --local2-url "$RELAY_CAM/central" --local2-label "🎥 中央相机" --local2-fps 10)
     echo "  · 中央相机: 550C 隧道不通 → 吃 ECS 中转 $RELAY_CAM/central"
   else
@@ -107,7 +107,7 @@ if ! curl -s -m 2 -o /dev/null "http://$ORIN_HOST:8792/frame.jpg" 2>/dev/null; t
     ARM_URL="http://127.0.0.1:18792/frame.jpg"
     echo "  · 手臂源: 产线网 $ORIN_HOST:8792 不通 → 改走 ECS 隧道 127.0.0.1:18792"
   else
-    # 🌐 远程兜底: 产线与隧道都不通 ⇒ 吃 Orin 推到 ECS 中转的臂相机帧
+    # 🌐 远程保障: 产线与隧道都不通 ⇒ 吃 Orin 推到 ECS 中转的臂相机帧
     #   (Orin 跑 tools/orin_cam_uplink.py → POST /api/relay/cam/push?cam=arm)
     if curl -s -m 3 -o /dev/null "$RELAY_CAM/arm" 2>/dev/null; then
       ARM_URL="http://127.0.0.1:18792/frame.jpg,$RELAY_CAM/arm"

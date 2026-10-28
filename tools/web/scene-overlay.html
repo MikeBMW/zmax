@@ -258,7 +258,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-// ★ 顶层兜底: 任何未捕获异常写到页面上 —— 否则脚本中途抛错会静默死, 表现为"面板永远停检测中"而画面正常
+// ★ 顶层保障: 任何未捕获异常写到页面上 —— 否则脚本中途抛错会静默死, 表现为"面板永远停检测中"而画面正常
 window.addEventListener('error', function(e){
   var el = document.getElementById('tWarn');
   if (el) el.innerHTML = '<div class="warn">⚠ 脚本异常: ' + (e.message || e.type)
@@ -729,7 +729,7 @@ $('jumpStation').href = stationUrl();
 $('jumpStation2').href = stationUrl();
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  轨迹显示开关 / 清除  —— 单一真源是 AR 轨迹台服务(:8797), 本页只当遥控器
+//  轨迹显示开关 / 清除  —— 单一唯一依据是 AR 轨迹台服务(:8797), 本页只当遥控器
 //  为什么跨端口调: 轨迹的"隐藏/清除"要同时作用在 臂上D405叠加画面 和 笔记本相机AR 上,
 //  只能由一处统一决策(tools/traj_display.py + live_trace_publisher 执行), 各页各写一套必然对不上。
 //  ⚠️ 跨端口 = 跨源 → AR 服务已放开 CORS, 否则浏览器直接把请求拦掉(表现为"点了没反应")。

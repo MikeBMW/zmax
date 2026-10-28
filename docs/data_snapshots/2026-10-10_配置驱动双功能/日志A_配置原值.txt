@@ -1,6 +1,6 @@
 🎯 摆盘 episode · 状态空间六层直接驱动 metaworld (mode=tray)
    场景 sawyer_tray_place.xml · 料盘 3 颗 → tray 盘 3 槽 · 落座 z=0.0160
-   判据真源: TASK-06-TRAY · 取放精度 单边 ≤1.000mm / ≤1.00° · Δz ≤4.0mm · 真空建立 ≤200ms · 保持 5.0s · 单颗CT ≤3.15s
+   判据唯一依据: TASK-06-TRAY · 取放精度 单边 ≤1.000mm / ≤1.00° · Δz ≤4.0mm · 真空建立 ≤200ms · 保持 5.0s · 单颗CT ≤3.15s
   ── 第 1 颗 (peg) ──
 🧠 前馈加速器: MLP 真身执行 #1 (域内 0 · 守卫 0) · loaded=True
 🧠 前馈加速器: MLP 真身执行 #101 (域内 0 · 守卫 100) · loaded=True
@@ -64,6 +64,6 @@
       完成: 放回初始位完成 (peg 触台 → 开爪)
 
 📊 摆盘汇总: 3/3 颗合格 · 合计 2708 步 · 1.6s
-   判据真源 TASK-06-TRAY · 目标: 成功率 ≥99% (PVT) / 取放精度 单边 ≤1mm / ≤1° / 单颗CT ≤3.15s (PVT)
+   判据唯一依据 TASK-06-TRAY · 目标: 成功率 ≥99% (PVT) / 取放精度 单边 ≤1mm / ≤1° / 单颗CT ≤3.15s (PVT)
    实测: 单颗CT max 11.62s (目标 ≤3.15s) · 真空(进带→锁) max 538ms (配方上限 200ms, 仿真口径含下降末段)
 ✅ trace: /home/ubuntu/zmax/reports/tray_place_20261010_191259.npz (2708 步)

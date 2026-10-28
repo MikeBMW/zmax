@@ -6,11 +6,11 @@
 将这个可视化球面, 轨迹显示方式, 做到画布右侧的主参数M的侧面栏窗口」+「四个面板共享同一时间轴, 同步更新」。
 
 判据分五组 (全部只读, 离屏):
-  A 几何真源 (sphere.py 立体投影: 极点/往返/批量/不返回 inf)
-  B 数据真源 (engine_latest · ss_traj_last · zmax_manifold · su2 引擎同源映射; 只读不改)
+  A 几何唯一依据 (sphere.py 立体投影: 极点/往返/批量/不返回 inf)
+  B 数据唯一依据 (engine_latest · ss_traj_last · zmax_manifold · su2 引擎同源映射; 只读不改)
   C 几何量正确性 (单位范数 / 测地距离交叉核对 / 大圆端点与弧长 / 切空间性)
   D 控件契约 (四面板 · 共享时间轴 · 播放暂停 · 空态诚实 · 帧龄标注)
-  E 接线与取证 (画布右侧 M 页真接线 · 四面板真出图 · 单真源无重复公式)
+  E 接线与取证 (画布右侧 M 页真接线 · 四面板真出图 · 单唯一依据无重复公式)
 用法: QT_QPA_PLATFORM=offscreen python3 tools/verify_manifold_viz.py
 """
 from __future__ import annotations
@@ -54,7 +54,7 @@ def main():
     import manifold_viz as MV
     MV_SRC = io.open(os.path.join(ROOT, "tools", "gui", "manifold_viz.py"), encoding="utf-8").read()
 
-    # ─────────── A 几何真源: 立体投影 ───────────
+    # ─────────── A 几何唯一依据: 立体投影 ───────────
     south = np.array([0.0, 0.0, 0.0, -1.0])
     x, m = SP.stereographic_project(south)
     chk("A1", "S³ 南极点 → R³ 原点 (老倪: 南极点投到原点)", list(np.round(x, 12)), bool(np.allclose(x, 0)),
@@ -87,7 +87,7 @@ def main():
     chk("A6", "pole='north' 与 'south' 是镜像语义 (换哪一极投到原点)",
         "%.3e" % float(np.max(np.abs(xp - xpn))), float(np.max(np.abs(xp - xpn))) < 1e-12, "<1e-12")
 
-    # ─────────── B 数据真源 (只读) ───────────
+    # ─────────── B 数据唯一依据 (只读) ───────────
     files = [os.path.join(ROOT, "zmax_data", "ss_live", "engine_latest.json"),
              os.path.join(ROOT, "data", "database", "zmax", "sources", "canvas", "ss_traj_last.json"),
              os.path.join(ROOT, "config", "calib", "zmax_manifold.json")]
@@ -95,19 +95,19 @@ def main():
 
     d = MV.ManifoldData(ROOT)
     s = d.summary()
-    chk("B1", "实时状态真源 engine_latest.json 的 p 是单位四元数 (‖p‖=1)",
+    chk("B1", "实时状态唯一依据 engine_latest.json 的 p 是单位四元数 (‖p‖=1)",
         "‖p‖=%.9f" % float(np.linalg.norm(d.live_p)) if d.live_p is not None else "无",
         d.live_p is not None and abs(float(np.linalg.norm(d.live_p)) - 1.0) < 1e-6, "1.0")
-    chk("B2", "轨迹真源 ss_traj_last.json 帧数 > 0 且时间单调",
+    chk("B2", "轨迹唯一依据 ss_traj_last.json 帧数 > 0 且时间单调",
         {"n": d.n, "t0": round(float(d.t[0]), 3), "t1": round(float(d.t[-1]), 3)},
         d.n > 0 and bool(np.all(np.diff(d.t) >= 0)), "n>0, t 单调不减")
     chk("B3", "状态映射与引擎同源 (su2.encode_obs43, L2 执行层 obs43→SU(2))",
         s.get("state_src", ""), "encode_obs43" in (s.get("state_src") or ""), "su2.encode_obs43 ...")
     M_true = json.load(open(files[2], encoding="utf-8")).get("M")
-    chk("B4", "主参数 M 取**标定真源**(不是画布节点默认值)",
+    chk("B4", "主参数 M 取**标定唯一依据**(不是画布节点默认值)",
         {"M": d.M, "src": d.M_src, "节点 M": d.M_node}, abs(float(d.M) - float(M_true)) < 1e-12,
         "= config/calib/zmax_manifold.json::M", "画布节点 M=%s (快照, 不作准)" % d.M_node)
-    chk("B5", "度量 (dim/mode/diag) 取自标定真源",
+    chk("B5", "度量 (dim/mode/diag) 取自标定唯一依据",
         d.metric, int(d.metric.get("dim") or 0) == 6 and d.metric.get("mode") == "diag"
         and len(d.metric.get("diag") or []) == 6, "dim=6, mode=diag, 6 个对角分量")
     # ═══ G 文字不越框 (老倪红线: 不许挤/不许截断) ═══
@@ -126,7 +126,7 @@ def main():
     # G2 动态: 把四个面板各缩到 300x380 (比在役侧栏更窄) 真渲染, 记录每一次省略:
     #    每一条都必须满足「原文宽 ≤ 预算 或 已省略 (…)」 ⇒ 文字永不超面板宽
     _rec = []
-    _d = MV.ManifoldData(root=ROOT)          # 真源数据 (与在役可视化同一个 data 类)
+    _d = MV.ManifoldData(root=ROOT)          # 唯一依据数据 (与在役可视化同一个 data 类)
     _orig_fit = MV._fit
 
     def _rec_fit(painter, text, width):
@@ -234,7 +234,7 @@ def main():
         not _clash, "重叠对 = 0")
 
     # B7 恶劣环境回归: sys.path 前面塞一个「有 lerobot.manifold 但没 sphere.py」的假包 (复现控制台 fork 遮蔽),
-    #    可视化必须仍加载**工程真源**算子 (按路径加载), 不许退化成空态。
+    #    可视化必须仍加载**工程唯一依据**算子 (按路径加载), 不许退化成空态。
     import importlib
     with tempfile.TemporaryDirectory() as _td:
         _fake = os.path.join(_td, "lerobot", "manifold")
@@ -255,7 +255,7 @@ def main():
             sys.path.remove(_td)
             sys.modules.update(_mods)
             importlib.reload(MV)
-        chk("B7", "恶劣 sys.path (fork 的 lerobot 在前, 无 sphere.py) 仍加载工程真源算子 —— 按路径加载, 不退回空态",
+        chk("B7", "恶劣 sys.path (fork 的 lerobot 在前, 无 sphere.py) 仍加载工程唯一依据算子 —— 按路径加载, 不退回空态",
             _got7, _ok7, "SP=src/lerobot/manifold/sphere.py · 有 stereographic_project · SU2 有 encode_obs43")
 
     # E5 命令通道直达 (2026-10-16 老倪「找不到」定式): 控制台里 `echo mparam > /tmp/zmax_nav_cmd`
@@ -292,14 +292,14 @@ def main():
             "跑 echo mparam_shot > /tmp/zmax_nav_cmd 后重现此判据")
 
     after = {f: sha(f) for f in files}
-    # 静态: 可视化源码里没有任何写操作的语句 (真源只读 = 代码里就不能有写口)
+    # 静态: 可视化源码里没有任何写操作的语句 (唯一依据只读 = 代码里就不能有写口)
     vizsrc = open(os.path.join(ROOT, "tools", "gui", "manifold_viz.py"), encoding="utf-8").read()
     wr = [t for t in ('"w"', "'w'", "np.save", "json.dump(", "os.replace", "shutil") if t in vizsrc]
-    # 运行时: 静态真源 (轨迹/标定) 前后 sha 逐位不变; 实时文件由 10Hz 引擎在写 (帧龄即证据)
+    # 运行时: 静态唯一依据 (轨迹/标定) 前后 sha 逐位不变; 实时文件由 10Hz 引擎在写 (帧龄即证据)
     stat = [f for f in files if "engine_latest" not in os.path.basename(f)]
-    chk("B6", "真源只读: 源码无写口 + 静态真源 sha 逐位不变 (实时文件由 10Hz 引擎写, 非本工具)",
+    chk("B6", "唯一依据只读: 源码无写口 + 静态唯一依据 sha 逐位不变 (实时文件由 10Hz 引擎写, 非本工具)",
         {"源码写操作": wr,
-         "静态真源 sha": {os.path.basename(f): (before[f] == after[f]) for f in stat},
+         "静态唯一依据 sha": {os.path.basename(f): (before[f] == after[f]) for f in stat},
          "engine_latest 外部更新": before[files[0]] != after[files[0]],
          "帧龄(s)": round(float(d.live_age), 2) if d.live_age is not None else None},
         (not wr) and all(before[f] == after[f] for f in stat), "无写口 + 轨迹/标定不变",
@@ -327,7 +327,7 @@ def main():
     tang = [float(np.dot(d.v[k], d.Q[k])) for k in range(0, d.n, 40)]
     chk("C5", "速度向量真在切空间 (⟨v,p⟩=0)",
         "max|⟨v,p⟩|=%.3e" % float(np.max(np.abs(tang))), float(np.max(np.abs(tang))) < 1e-9, "<1e-9")
-    chk("C6", "力 = M·a 用标定 M (真源 3.643), 不是 1.0",
+    chk("C6", "力 = M·a 用标定 M (唯一依据 3.643), 不是 1.0",
         {"M": d.M, "‖F‖max": round(float(np.max(d.force)), 6)},
         abs(float(d.M) - 3.643) < 1e-9, "M=3.643")
 
@@ -369,7 +369,7 @@ def main():
         ("帧龄" in txt) and ("engine_latest" in txt) and ("ss_traj_last" in txt)
         and ("engine_latest.json" in tip) and ("ss_traj_last.json" in tip) and ("zmax_manifold.json" in tip),
         "可见含 帧龄/源名; 提示含完整路径")
-    # 空态: 临时 root (无真源) ⇒ 不崩 + 面板不画假点
+    # 空态: 临时 root (无唯一依据) ⇒ 不崩 + 面板不画假点
     with tempfile.TemporaryDirectory() as td:
         d0 = MV.ManifoldData(td)
         viz0 = MV.ManifoldViz(td)
@@ -382,7 +382,7 @@ def main():
                 w.grab()
         except Exception as e:
             ok_paint = str(e)
-        chk("D6", "真源缺失 ⇒ 空态 (n=0 且如实报错, 面板不崩、不画假点)",
+        chk("D6", "唯一依据缺失 ⇒ 空态 (n=0 且如实报错, 面板不崩、不画假点)",
             {"n": d0.n, "err": d0.err[:2], "paint": ok_paint},
             d0.n == 0 and bool(d0.err) and ok_paint is True, "n=0, err 非空, 出图不抛异常")
 
@@ -426,8 +426,8 @@ def main():
     need_ops = ("stereographic_project", "stereographic_inverse", "log_map", "distance",
                 "great_circle_path", "parallel_transport", "tangent_project")
     used_ops = [o for o in need_ops if ("SP.%s" % o) in vizpy]
-    chk("E4", "几何公式单真源: 可视化里**没有**重写球面算子, 关键算子全调 sphere.py",
-        {"重复定义": dup, "调用的真源算子": used_ops},
+    chk("E4", "几何公式单唯一依据: 可视化里**没有**重写球面算子, 关键算子全调 sphere.py",
+        {"重复定义": dup, "调用的唯一依据算子": used_ops},
         (not dup) and len(used_ops) == len(need_ops), "无重复定义 + 7 个算子全走 SP.*")
 
     ok = sum(1 for r in R if r["ok"])

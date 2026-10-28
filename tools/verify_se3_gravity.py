@@ -5,7 +5,7 @@
 判据 (每条要数值):
   ① 未接 provider ⇒ rec 里没有 se3_gravity 键 (零回归)
   ② 接入 ⇒ u 6维 / V / V̇ / ξ_e 结构完整, V̇ ≤ 0
-  ③ **关键**: 把 phi_fn 喂给 engine.gradient_flow(potential_fn=...),
+  ③ **关键**: 把 phi_fn 提供给 engine.gradient_flow(potential_fn=...),
      沿梯度流走 Φ 必须**单调降**且真的到 0 (这是"引力学"成立与否的硬判据)
   ④ 轴向/侧向各向异性在引擎里也成立 (同 2cm 误差, 轴向力 > 侧向)
   ⑤ dV 与 V̇ 同号 (势能与变化率同源, 不同源就是 bug)

@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-"""MCD 描述生成器 (第一版, B1) —— 流形引擎标定·主参数 M 节点的描述文件真源。
+"""MCD 描述生成器 (第一版, B1) —— 流形引擎标定·主参数 M 节点的描述文件唯一依据。
 
 把散在各处的"可测/可标/可诊断"的量, 收成一份机器可读的 MCD 描述 (对标 ASAM MCD-2MC / A2L)：
     config/mcd/zmax_mcd.json      四段: MEASUREMENT / CHARACTERISTIC / COMPU_METHOD / GROUPS (+DIAGNOSTICS)
     config/mcd/param_registry.json 参数注册表 (扁平, 带就绪度)
 
-真源全部只读 —— 本脚本**不写任何标定值**(不调用 sync_calib(write=True), 不碰 calib.json 的在役读值)：
+唯一依据全部只读 —— 本脚本**不写任何标定值**(不调用 sync_calib(write=True), 不碰 calib.json 的在役读值)：
     config/calib/zmax_calib.json      工程配置 (相机内参/几何/TCP/负载/机器人)
     config/calib/zmax_manifold.json   流形引擎主参数 M / inertia
     feature.dbc                       功能配置 (能力 BO_ / 信号 SG_ / 节点 BU_ / 组合 CM_)
@@ -151,7 +151,7 @@ PERF_SPEC = os.path.join(ROOT, "config/platform/zmax_perf_spec.json")
 def read_perf_spec():
     """光模块精细操作性能指标体系 (机器人学口径 + 光模块工艺口径) —— 指标**定义**行。
 
-    语义: value = **目标值/规格** (来自真源文件, 不是实测值); 实测值待标定/验收阶段写入。
+    语义: value = **目标值/规格** (来自唯一依据文件, 不是实测值); 实测值待标定/验收阶段写入。
     组/口径/阶段/测量方法/关联功能全带上, 配置中心里能直接看清单与判据。
     """
     d = _jload(PERF_SPEC)
@@ -266,7 +266,7 @@ PARAM_SPEC = [
          src="feature.dbc#VERSION", read=None, unit="-", rng=None, dflt="1.0",
          perm="version", affects=["全模型"], feature=["G1"], judge="入库 git, 演进可追溯"),
     # ── 模型配置: 见 cfg_spec (六类标准参数) + 在役权重 (2026-10-14 老倪「改变模型配置, L2~L5 …」)──
-    #   2026-10-14 起在役权重不再是"未接线": 真源 = tools/model_inventory.py --json (四层 在役/最新 产物
+    #   2026-10-14 起在役权重不再是"未接线": 唯一依据 = tools/model_inventory.py --json (四层 在役/最新 产物
     #   + 训练进程), 由 _cur(kind="model") 逐层取**真实路径**; 每层另有**真训练入口**(引擎窗口的按钮用它)。
     dict(id="model.arch_mode", cn="架构模式 (Sys-11 / Sys-11+12)", domain="模型配置", grade="G2",
          src="tools/gui/studio.py#ConfigModule.mode_group", read=None,
@@ -311,10 +311,10 @@ PARAM_SPEC = [
 
 # 🧩 2026-10-14 老倪: 「最开始配置中心的模型配置，就是配置模型的。也没对应上啊」
 #   ⇒ 把**四层真实模型**逐层做成一等参数 (在役模型 / 最近训练 / 状态空间节点 / 输出话题),
-#     真源 = reports/model_config_matrix.json (与主界面「配置通道」和模型引擎窗口**同一份**现算数据)。
+#     唯一依据 = reports/model_config_matrix.json (与主界面「配置通道」和模型引擎窗口**同一份**现算数据)。
 #     这样"配置中心的模型配置"就是"配置模型", 且与状态空间工程实际数据逐字对应。
 # ① L2 候选 · SAM3 开放词汇分割 (老倪 2026-10-14:「还有个 SAM3 呢, 怎么搞?」)
-#    真源 = 磁盘 (官方基座 + annot_v1 适配器) + 8796 /status/all (state=candidate / note_short)
+#    唯一依据 = 磁盘 (官方基座 + annot_v1 适配器) + 8796 /status/all (state=candidate / note_short)
 SAM3_BASE = "zmax_data/models/sam3_hf/model.safetensors"
 SAM3_ADAPTER = "outputs/sam3_finetune/annot_v1/lora_adapter/adapter_model.safetensors"
 PARAM_SPEC += [
@@ -333,7 +333,7 @@ PARAM_SPEC += [
 for _ly in ("L2", "L3", "L4", "L5"):
     _LY = _ly.lower()
     PARAM_SPEC += [
-        dict(id="model.candidate_%s" % _LY, cn="%s 候选产物 (未在役, 真源现算)" % _ly, domain="模型配置", grade="G4",
+        dict(id="model.candidate_%s" % _LY, cn="%s 候选产物 (未在役, 唯一依据现算)" % _ly, domain="模型配置", grade="G4",
              src="tools/model_inventory.py#%s 非在役条目" % _ly, read=("matrix", "%s|候选模型" % _ly),
              unit="-", rng=None, dflt=None, perm="readonly", affects=["模型引擎窗口"], feature=["G1"],
              judge="逐个来自磁盘真产物; 无候选写'无' (不编)"),
@@ -345,7 +345,7 @@ for _ly in ("L2", "L3", "L4", "L5"):
 for _ly in ("L2", "L3", "L4", "L5"):
     _LY = _ly.lower()
     PARAM_SPEC += [
-        dict(id="model.in_service_%s" % _LY, cn="%s 在役模型 (真源现算)" % _ly, domain="模型配置", grade="G2",
+        dict(id="model.in_service_%s" % _LY, cn="%s 在役模型 (唯一依据现算)" % _ly, domain="模型配置", grade="G2",
              src="tools/model_config_matrix.py#%s|在役模型" % _ly, read=("matrix", "%s|在役模型" % _ly),
              unit="-", rng=None, dflt=None, perm="readonly", affects=["🧠 模型引擎窗口", "🖥 模型引擎页"],
              feature=["G1"], judge="与 8796 /status/all 的 layer==%s 且 state=in_service 一致" % _ly),
@@ -393,7 +393,7 @@ COMPU = [
 
 
 def _model_inventory():
-    """📊 模型配置的真源: tools/model_inventory.py --json (L2~L5 在役/最新产物 + 训练进程)。
+    """📊 模型配置的唯一依据: tools/model_inventory.py --json (L2~L5 在役/最新产物 + 训练进程)。
     读不到就返回 {} (调用方按"未接线"处理, 不编数据)。"""
     import subprocess
     py = os.path.join(ROOT, "gui-venv311", "bin", "python")
@@ -416,7 +416,7 @@ MODEL_ENTRY = {
 
 
 def _model_matrix():
-    """🧩 模型配置矩阵真源 (与主界面「配置通道」/模型引擎窗口同一份):
+    """🧩 模型配置矩阵唯一依据 (与主界面「配置通道」/模型引擎窗口同一份):
     reports/model_config_matrix.json ← tools/model_config_matrix.py (在役模型/架构/体积/训练/状态空间节点)。
     缓存不在就现场生成一次; 生成也失败 ⇒ 返回 {} (调用方按"未接线"处理, 不编)。"""
     p = os.path.join(ROOT, "reports", "model_config_matrix.json")
@@ -436,7 +436,7 @@ def _model_matrix():
             for row in (g.get("rows") or []):
                 for ly, v in (row.get("vals") or {}).items():
                     flat["%s|%s" % (ly, row.get("name"))] = v
-        for k, v in (m.get("extras") or {}).items():         # L2 候选 SAM3 等单项真源
+        for k, v in (m.get("extras") or {}).items():         # L2 候选 SAM3 等单项唯一依据
             flat[k] = v
         return flat
     except Exception:                                                            # noqa: BLE001
@@ -444,7 +444,7 @@ def _model_matrix():
 
 
 def _cur(src_kind, key, sources):
-    """取当前值 (只读真源)。"""
+    """取当前值 (只读唯一依据)。"""
     kind, k = src_kind
     if kind == "calib":
         v = _dig(sources.get("calib") or {}, k)
@@ -476,7 +476,7 @@ def _cur_model(k, inv):
                 return p or None
         return None
 
-    if k == "L2":                                    # 真源是软链 ⇒ 取软链真实目标
+    if k == "L2":                                    # 唯一依据是软链 ⇒ 取软链真实目标
         p = os.path.join(ROOT, "models", "yolo_peg_live.pt")
         return os.path.realpath(p) if os.path.exists(p) else _active("L2")
     if k in ("L3", "L4", "L5"):
@@ -529,8 +529,8 @@ def build():
         if cur is None:
             rec["reason"] = ("目标值待定 (需按工件/工艺规格确认)" if spec.get("kind") == "spec"
                              else "现场未标定/未示教" if spec["grade"] == "G3"
-                             else "真源非文件 (在役源码常量或权重) — 未做文件级描述"
-                             if spec["perm"] == "readonly" else "未接线 (本项需实现期补真源)")
+                             else "唯一依据非文件 (在役源码常量或权重) — 未做文件级描述"
+                             if spec["perm"] == "readonly" else "未接线 (本项需实现期补唯一依据)")
             gaps.append(spec["id"])
         grades[spec["grade"]] = grades.get(spec["grade"], 0) + 1
         perms[spec["perm"]] = perms.get(spec["perm"], 0) + 1
@@ -567,7 +567,7 @@ def build():
             "assertions_auto": sum(1 for f in feats if f["auto"]),
             "by_level": {lv: sum(1 for f in feats if f["level"] == lv) for lv in ("L2", "L3", "L4")},
             "codes": [
-                {"code": "MCD-E01", "cn": "真源陈旧 (帧龄超阈)", "src": "frame_age"},
+                {"code": "MCD-E01", "cn": "唯一依据陈旧 (帧龄超阈)", "src": "frame_age"},
                 {"code": "MCD-E02", "cn": "参数越界 (超出 range)", "src": "CHARACTERISTIC.range"},
                 {"code": "MCD-E03", "cn": "能力组合冲突 (同一参数被两条能力要求不同)", "src": "feature.combo"},
                 {"code": "MCD-E04", "cn": "断言失败 (features 红项)", "src": "verification_layer"},
@@ -578,7 +578,7 @@ def build():
     }
     reg = {
         "_meta": {"schema": "zmax-param-registry/1.0", "generated_at": mcd["_meta"]["generated_at"],
-                  "doc": "参数注册表 (扁平): 域×级×权限×就绪度。真源只读, 本表由 tools/mcd_build.py 生成。"},
+                  "doc": "参数注册表 (扁平): 域×级×权限×就绪度。唯一依据只读, 本表由 tools/mcd_build.py 生成。"},
         "params": chars,
         "summary": {"by_domain": {k: len(v) for k, v in groups.items()},
                     "by_grade": grades, "by_perm": perms,
@@ -623,7 +623,7 @@ def main():
             same = (old is not None and _norm(old) == _norm(txt))
             ok &= same
             print(f"  {'✅' if same else '❌'} {os.path.relpath(p, ROOT)} "
-                  f"({'内容一致 (时间戳除外)' if same else '内容不一致 — 真源变了, 需重生成'})")
+                  f"({'内容一致 (时间戳除外)' if same else '内容不一致 — 唯一依据变了, 需重生成'})")
         print(f"MCD 就绪度: {c['ready']}/{c['CHARACTERISTIC']} · 缺口 {c['gaps']}")
         return 0 if ok else 2
 

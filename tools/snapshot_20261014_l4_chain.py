@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """现场数据快照 (小版本迭代第①步: data/ 被 gitignore, 必须拷进 docs/data_snapshots/)
 
-老倪口径: 「保存数据，小版本迭代」⇒ 把本轮真源/证据拷进 docs/data_snapshots/<日期>_<主题>/,
+老倪口径: 「保存数据，小版本迭代」⇒ 把本轮唯一依据/证据拷进 docs/data_snapshots/<日期>_<主题>/,
 生成 README + sha256, 之后才改版本号/提交。
 """
 from __future__ import annotations
@@ -19,12 +19,12 @@ TOPIC = "20261014_L4_latent_chain"
 DST = os.path.join(ROOT, "docs", "data_snapshots", TOPIC)
 
 ITEMS = [
-    ("data/database/zmax/sources/canvas/state_space_obs.json", "画布真源 (LoRA 入链 + 元任务预测接 LoRA)"),
-    ("config/ss_task_binding.json", "任务↔节点绑定真源"),
-    ("config/calib/zmax_manifold.json", "主参数 M 真源"),
+    ("data/database/zmax/sources/canvas/state_space_obs.json", "画布唯一依据 (LoRA 入链 + 元任务预测接 LoRA)"),
+    ("config/ss_task_binding.json", "任务↔节点绑定唯一依据"),
+    ("config/calib/zmax_manifold.json", "主参数 M 唯一依据"),
     ("models/l4_latent_calib.json", "L4 潜空间标定 (μ/g_f/V/n 帧)"),
     ("zmax_data/ss_live/meta_tasks.json", "元任务派生件"),
-    ("zmax_data/ss_live/meta_pred.json", "元任务预测值 (LoRA 门控真源)"),
+    ("zmax_data/ss_live/meta_pred.json", "元任务预测值 (LoRA 门控唯一依据)"),
     ("zmax_data/ss_live/engine_loop_status.json", "常驻回路状态"),
     ("zmax_data/ss_live/engine_latest.json", "常驻回路最新一帧"),
     ("data/database/zmax/zmax_engineering.db", "工程库单文件"),
@@ -76,7 +76,7 @@ def main() -> int:
     readme = ["# 现场数据快照 — %s" % TOPIC, "",
               "> 主题: **L4 潜空间 (VLM 编码器 → 黎曼度规约束) + L4 后段链 (意图解码器 → INTACT LoRA 微调 → 流形专家预测器 → 接触/性能流形)**",
               "> 快照时间: %s · 触发: 老倪「保存数据，小版本迭代到 5.50.71」" % time.strftime("%Y-%m-%d %H:%M:%S"), "",
-              "`data/` 与 `zmax_data/` 被 .gitignore 排除 ⇒ 真源/证据必须拷贝进本目录才能进版本库。", "",
+              "`data/` 与 `zmax_data/` 被 .gitignore 排除 ⇒ 唯一依据/证据必须拷贝进本目录才能进版本库。", "",
               "## 文件清单", "", "| 文件 | 来源 | 说明 | 大小 | sha256[:16] |", "|---|---|---|---|---|"]
     for rel, why, st, size, h in rows:
         readme.append("| %s | %s | %s | %s | %s |" % (os.path.basename(rel), rel, why + (" [" + st + "]" if st != "已存" else ""), size, h))

@@ -6,17 +6,17 @@
   「以后每个功能, 需要独立成一个研究成果, 都可以申请专利, 所以你要预留专利申请一键导出的功能。」
 
 口径 (三条, 逐条落到实现):
-  1. **一个功能点 = 一份交底书**: 交底书内容**全部取自工程真源**, 每条都写明出处 (文件 + 行号/字段),
-     真源里没有的 (比如"现场痛点") 就写「真源未登记」, 不许编 —— 交底书进专利代理前要能逐条对回真源。
+  1. **一个功能点 = 一份交底书**: 交底书内容**全部取自工程唯一依据**, 每条都写明出处 (文件 + 行号/字段),
+     唯一依据里没有的 (比如"现场痛点") 就写「唯一依据未登记」, 不许编 —— 交底书进专利代理前要能逐条对回唯一依据。
   2. **文字不AI化**: 面向问题与痛点, 车间口径; 禁词表会被判据查 (赋能/闭环生态/抓手/…)。
   3. **可检索性**: 每份自动给"检索关键词建议" (来自功能名/参数名/输入输出词), 便于代理所检索对比文件。
 
 章节 (中国发明专利交底书常用结构 + 工程证据清单):
   一 发明名称 / 二 技术领域 / 三 背景技术 (现存问题) / 四 要解决的技术问题 / 五 技术方案
-  六 有益效果 (只用真源里的验证方法/指标) / 七 具体实施方式 (哪些任务启用 + 参数取值)
-  八 附图说明 (证据图片路径) / 九 证据清单 (真源文件·字段·代码文件·判据) / 十 检索关键词建议
+  六 有益效果 (只用唯一依据里的验证方法/指标) / 七 具体实施方式 (哪些任务启用 + 参数取值)
+  八 附图说明 (证据图片路径) / 九 证据清单 (唯一依据文件·字段·代码文件·判据) / 十 检索关键词建议
 
-真源:
+唯一依据:
   data/database/zmax/config_meta.json          功能 (输入/输出/参数/验证/枚举/范围)
   data/database/zmax/function_notes.json       每个功能的 work/pain/state (朴素工程化描述)
   src/lerobot/engineering/flows/state_space_obs.json   画布节点/连线 (依赖关系)
@@ -56,7 +56,7 @@ def _safe(name, n=24):
 
 
 def _enrich(m):
-    """补全参数/枚举真源 (MT 里只有 params_head, 交底书要逐条参数与枚举约束)。"""
+    """补全参数/枚举唯一依据 (MT 里只有 params_head, 交底书要逐条参数与枚举约束)。"""
     try:
         with open(E.DB + "/config_meta.json", encoding="utf-8") as f:
             v = (json.load(f).get("functions") or {}).get(m["fn_id"]) or {}
@@ -81,7 +81,7 @@ def _notes():
 
 
 def _kw(m):
-    """检索关键词建议 —— 只取真源里出现过的词 (功能名/参数名/输入输出), 不造词。"""
+    """检索关键词建议 —— 只取唯一依据里出现过的词 (功能名/参数名/输入输出), 不造词。"""
     ws = set()
     for s in [m.get("name") or ""] + list(m.get("inputs") or []) + list(m.get("outputs") or []):
         for w in re.split(r"[/、,，;；()（）\s]+", str(s)):
@@ -113,15 +113,15 @@ def build_patent(m, notes, drills):
     A = L.append
     A("# 专利交底书（草稿）：%s" % m["name"])
     A("")
-    A("> 本交底书由 `tools/export_patent_draft.py` 从工程真源自动生成，**每条内容都标注出处**；")
-    A("> 真源未登记的项直接写「真源未登记」，未做任何推测性表述。文字为车间工程口径。")
+    A("> 本交底书由 `tools/export_patent_draft.py` 从工程唯一依据自动生成，**每条内容都标注出处**；")
+    A("> 唯一依据未登记的项直接写「唯一依据未登记」，未做任何推测性表述。文字为车间工程口径。")
     A("")
     A("| 项 | 值 |")
     A("|---|---|")
     A("| 功能编号 | %s |" % fid)
     A("| 归属层 | %s |" % (m.get("layer") or "—"))
     A("| 画布节点 | `%s` |" % (m.get("node_id") or "—"))
-    A("| 代码真源 | `%s` |" % (m.get("code_file") or "—"))
+    A("| 代码唯一依据 | `%s` |" % (m.get("code_file") or "—"))
     A("| 元任务编号 (计划) | %s |" % (m.get("mt_id") or "—"))
     A("| 生成时间 | %s |" % time.strftime("%Y-%m-%d %H:%M:%S"))
     A("")
@@ -141,11 +141,11 @@ def build_patent(m, notes, drills):
     if nt.get("pain"):
         A("现场问题：%s" % nt["pain"])
     else:
-        A("现场问题：真源未登记（需现场补充：这个功能替代了原来哪一步人工/旧办法，卡在哪）。")
+        A("现场问题：唯一依据未登记（需现场补充：这个功能替代了原来哪一步人工/旧办法，阻塞点）。")
     A("")
     A("现有做法的问题（可复核项）：")
-    A("- 输入未登记或未定值：%s" % ("有" if m.get("inputs") else "**真源里没有登记输入**"))
-    A("- 输出未登记或未定值：%s" % ("有" if m.get("outputs") else "**真源里没有登记输出**"))
+    A("- 输入未登记或未定值：%s" % ("有" if m.get("inputs") else "**唯一依据里没有登记输入**"))
+    A("- 输出未登记或未定值：%s" % ("有" if m.get("outputs") else "**唯一依据里没有登记输出**"))
     A("- 参数未定值：%s" % ("、".join([p for p in (m.get("params_head") or []) if "None" in p or "null" in p])
                         or "无（参数均有取值或范围）"))
     A("- 上游依赖缺失：%s" % ("、".join(m.get("deps_up") or []) or "**画布上没有上游依赖**"))
@@ -154,15 +154,15 @@ def build_patent(m, notes, drills):
     A("")
     A("1. %s" % (nt.get("work") or "把 %s 这一步从人工/旧流程改成工程可配置、可复现的执行。" % m["name"]))
     A("2. 让该步的参数可配、可回读、可验证（配置中心统一管理，改参数不改代码）。")
-    A("3. 真源可追溯：功能 ↔ 画布节点 ↔ 模块代码 ↔ 参数 ↔ 验证方法 一条链查得到。")
+    A("3. 唯一依据可追溯：功能 ↔ 画布节点 ↔ 模块代码 ↔ 参数 ↔ 验证方法 一条链查得到。")
     A("")
     A("## 五、技术方案")
     A("")
-    A("输入：%s" % ("；".join(m.get("inputs") or []) or "真源未登记"))
+    A("输入：%s" % ("；".join(m.get("inputs") or []) or "唯一依据未登记"))
     A("")
-    A("输出：%s" % ("；".join(m.get("outputs") or []) or "真源未登记"))
+    A("输出：%s" % ("；".join(m.get("outputs") or []) or "唯一依据未登记"))
     A("")
-    A("执行步骤（按真源登记）：")
+    A("执行步骤（按唯一依据登记）：")
     A("1. 从画布该节点取配置参数（%d 条，节选：%s）。" % (m.get("n_params", 0),
                                             "；".join(m.get("params_head") or []) or "—"))
     A("2. 依赖上游节点：%s。" % ("、".join(m.get("deps_up") or []) or "无（画布无上游连线）"))
@@ -170,10 +170,10 @@ def build_patent(m, notes, drills):
       % (m.get("code_file") or "—"))
     A("4. 输出经数据总线以节点输出话题 `ss/%s/out` 序列化（单步调试模式真序列化）。"
       % (m.get("node_id") or "?"))
-    A("5. 验证：%s。" % ("；".join(m.get("verification") or []) or "真源未登记"))
+    A("5. 验证：%s。" % ("；".join(m.get("verification") or []) or "唯一依据未登记"))
     if m.get("enums"):
         A("")
-        A("枚举约束（真源登记）：%s" % "；".join(m["enums"]))
+        A("枚举约束（唯一依据登记）：%s" % "；".join(m["enums"]))
     A("")
     A("## 六、有益效果")
     A("")
@@ -181,19 +181,19 @@ def build_patent(m, notes, drills):
         for v in m["verification"]:
             A("- 按登记验证方法可复验：%s" % v)
     else:
-        A("- 真源未登记验证方法 ⇒ **本项不能作为有益效果的证据**，须补测。")
-    A("- 参数改动只在配置中心生效，不需要改代码（可热更新，来源：配置中心真源）。")
+        A("- 唯一依据未登记验证方法 ⇒ **本项不能作为有益效果的证据**，须补测。")
+    A("- 参数改动只在配置中心生效，不需要改代码（可热更新，来源：配置中心唯一依据）。")
     A("")
     A("## 七、具体实施方式（实施例）")
     A("")
     if tasks:
-        A("该功能已在以下任务里被启用（配置中心「任务配置」真源）：")
+        A("该功能已在以下任务里被启用（配置中心「任务配置」唯一依据）：")
         for t in tasks:
             A("- %s（元任务 %s）" % (t, "、".join(scen) or "—"))
     else:
         A("**该功能当前没有任何任务启用**（未接入执行链）⇒ 实施例须现场补充。")
     A("")
-    A("参数取值（真源实读，节选）：")
+    A("参数取值（唯一依据实读，节选）：")
     for p in (m.get("params") or [])[:8]:
         A("- `%s` %s = %s %s" % (p.get("id"), p.get("cn"), p.get("value"), p.get("unit") or ""))
     A("")
@@ -211,7 +211,7 @@ def build_patent(m, notes, drills):
     A("| 证据 | 出处 |")
     A("|---|---|")
     A("| 功能登记（输入/输出/参数/验证） | `data/database/zmax/config_meta.json` → functions.%s |" % fid)
-    A("| 朴素工程化描述（干什么/卡在哪/状态） | `%s` → %s |" % (NOTES_J, fid))
+    A("| 朴素工程化描述（干什么/阻塞点/状态） | `%s` → %s |" % (NOTES_J, fid))
     A("| 画布节点与依赖连线 | `src/lerobot/engineering/flows/state_space_obs.json` 节点 `%s` |"
       % (m.get("node_id") or "—"))
     A("| 承载任务与启用节点 | `config/tasks/tasks.json` · `config/ss_task_binding.json` |")
@@ -221,7 +221,7 @@ def build_patent(m, notes, drills):
     A("")
     A("## 十、检索关键词建议")
     A("")
-    A("、".join(_kw(m)) or "真源不足，建议人工补充关键词")
+    A("、".join(_kw(m)) or "唯一依据不足，建议人工补充关键词")
     A("")
     A("---")
     A("")
@@ -248,7 +248,7 @@ def main():
     if a.fn:
         MT = [m for m in MT if m["fn_id"] == a.fn or m.get("mt_id") == a.fn]
         if not MT:
-            print("⛔ 真源里没有功能 %s" % a.fn)
+            print("⛔ 唯一依据里没有功能 %s" % a.fn)
             return 2
     os.makedirs(a.out, exist_ok=True)
     made, banned = [], []

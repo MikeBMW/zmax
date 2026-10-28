@@ -82,7 +82,7 @@ VSCode `launch.json` 里把这三项写进 `env`，`"justMyCode": false`，`prog
 ```bash
 tail -f <服务日志>
 curl -s 'http://127.0.0.1:<port>/<回执端点>'      # 服务自己的原始回执
-py-spy dump --pid <pid>                            # 卡住时看栈，不暂停
+py-spy dump --pid <pid>                            # 阻塞时看栈，不暂停
 ```
 
 ## 断点该下在哪: 先认分支
@@ -102,7 +102,7 @@ ros=j6_rot      → run_j6_rot()                     (J6 自转)
 取证顺序: ①入口解析 ②`dispatch()` ③算目标（`build_move`/`plan_stage`）④闸门 ⑤最终下发（`_send_via_sdk`
 → `_T.exec_call`）⑥等到位（`wait_arrive`）。
 
-## 🚫 指令被拒 `FIFO 打不开([Errno 6] No such device or address)` = 两个根因, 别只查一个
+## 🚫 指令被拒 `FIFO 无法打开([Errno 6] No such device or address)` = 两个根因, 别只查一个
 
 `Errno 6 / ENXIO` 在 FIFO 写端(`os.open(path, O_WRONLY|O_NONBLOCK)`)只有一个含义: **此刻没有读端**。
 FIFO 文件存在、权限对、mtime 正常 —— 全都不代表有人读。实测两处(2026-10-20 老倪「操作机器人的指令被拒」):
@@ -130,7 +130,7 @@ FIFO 文件存在、权限对、mtime 正常 —— 全都不代表有人读。�
 
 - **FIFO 没人读, 先查"保活是不是被人关了"**: `crontab -l | grep -i keepalive` 可能看到
   `# [关机暂停 <日期>] */5 * * * * …` —— 关机前手工注释掉、开机后**没人恢复**, 于是执行器从此没人拉起,
-  现场表现就是「点了没反应 / 被拒: FIFO 打不开(Errno 6)」。修: 按原样取消注释 `crontab /tmp/ct_after.txt`, 再
+  现场表现就是「点了没反应 / 被拒: FIFO 无法打开(Errno 6)」。修: 按原样取消注释 `crontab /tmp/ct_after.txt`, 再
   用手册脚本(cron 里那个 keepalive, **不是**简单 start)拉起 —— keepalive 会带上 `ZMAX_VL_INTENT_WAIT_S=600`
   这类裁决等待环境变量, 少了它们慢层重试轮次必然超时 ⇒ 落"未给裁决⇒从严不安全" ⇒ 所有动作被拒。
   起完三个判据一起看: ①`/proc/<pid>/fd` 挂着 FIFO ②`tr '\0' '\n' < /proc/<pid>/environ | grep ZMAX_VL` 有 600Σ
@@ -141,7 +141,7 @@ FIFO 文件存在、权限对、mtime 正常 —— 全都不代表有人读。�
   于是每次启动都判"已有实例"→ 直接退出。实测症状 = `systemctl show -p NRestarts` 六百多次、
   服务 `active` 但产物文件几小时不更新, 而 `journalctl -u` 里**没有 traceback**(只有 `status=1`)。
   诊断: `cat <pid文件>` → `ps -p <pid>` 看不见但 `os.kill(pid,0)` 不抛 ⇒ 读 `/proc/<pid>/cmdline`
-  看它其实是谁(实测是另一个常驻件 pull 到了同一个号)。
+  看它实际是谁(实测是另一个常驻件 pull 到了同一个号)。
   修法: 存活检查 + **cmdline 校验**双条件 —— `"<自己的模块名>" not in /proc/<pid>/cmdline` 就当陈旧锁接管并打日志。
   只判存活必然复发。
 - **`journalctl -u` 只有 `Main process exited, code=exited, status=1` 时, 真错误在别处**: 看 unit 的

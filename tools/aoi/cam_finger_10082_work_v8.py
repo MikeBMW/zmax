@@ -22,7 +22,7 @@ v4 变更 (2026-09-20, 静静):
      **960x960 方图**(与 config.yaml imgsz=960 对齐), 另存一份"原比例"版供目检
   ★ 新增 /crop_info: 最近一次裁剪的完整质量指标 (JSON), 便于外部取证
   ★ 保留旧几何开关: GF_CROP_MODE="legacy" 时退回 v3 的固定窗 warp (可一键回滚, 不用换文件)
-  ★ 兜底链: 模板匹配失败/分数低 → HSV 条带兜底(仍是规整仿射) → 中心窗兜底(明确标记, 不装正常)
+  ★ 保障链: 模板匹配失败/分数低 → HSV 条带保障(仍是规整仿射) → 中心窗保障(明确标记, 不装正常)
 
 依赖: gf_crop.py / gf_metric.py / templates/gf_strip_template.png(.json) 与本文件同目录; yolo_detector 保持不变
 """
@@ -74,7 +74,7 @@ CANONICAL_W = int(os.environ.get("GF_CANONICAL", "960"))   # 960 / 640 / 1280
 CANONICAL_H = CANONICAL_W
 KEEP_ASPECT = os.environ.get("GF_KEEP_ASPECT", "0") == "1"  # 1=保比例(只做对照/复核用)
 MARGIN_X, MARGIN_Y = 0.02, 0.03   # 金手指条在画布内留的边距(2%/3%)
-MIN_SCORE = 0.55              # 模板匹配分下限, 低于则告警(并用兜底结果)
+MIN_SCORE = 0.55              # 模板匹配分下限, 低于则告警(并用保障结果)
 SAVE_LEGACY_TOPVIEW = True    # 是否同时存一份 v3 几何的 topview (对照/回滚用)
 
 # 金手指检测相机SN
@@ -653,7 +653,7 @@ def GrabAndSaveImage(save: bool = True):
             #   · **只落一张图** = Finger_TopView_*(判据图); Finger_ModelIn_* 不再写盘(老文件按上限自动清掉);
             #   · **模型直接吃判据图**给 YOLO(`detector.detect(top_path)`), /last_result.model_input 就是这张,
             #     谁看谁吃是同一张, 不再有第二张"模型输入"图;
-            #   · 影子对照(默认前 N 张, AOI_AB_PAIRS 控制): 同帧另跑一遍**老口径 960 方图**,
+            #   · 影子对照(默认前 N 张, AOI_AB_PAIRS 控制): 同帧另执行一遍**老口径 960 方图**,
             #     临时图写 %TEMP% 且检测完即删(不污染 goldfinger_images), 两个结果都进 /last_result;
             #     判决取并集(任一 NG 即 NG ⇒ 不漏判), 攒够对照数据再定终局口径。
             t_j = time.time()
@@ -691,7 +691,7 @@ def GrabAndSaveImage(save: bool = True):
                   f"定尺={jmeta.get('fix_hw')} 饱和={jmeta.get('sat_after')} 耗时={dt_j:.0f}ms")
             print("  【送检】模型直接吃判据图 -> %s (%dx%d)" % (top_name, judge.shape[1], judge.shape[0]))
             if sh_path:
-                print("  【影子对照】同帧老口径 960 方图也跑一遍(临时图, 跑完删) 剩余 %d 张" %
+                print("  【影子对照】同帧老口径 960 方图也执行一遍(临时图, 跑完删) 剩余 %d 张" %
                       (shadow_left - 1))
             print(f"  【金手指截取】{info.get('method')} 模式={GF_CROP_MODE} 尺寸={crop.shape[1]}x{crop.shape[0]} "
                   f"score={info.get('score')} 角度={info.get('angle')}° "
@@ -776,7 +776,7 @@ def _detect_worker_loop():
                 print(f"    [{i+1}] {cls} conf={conf:.2f} bbox={bbox}")
             if result.get("saved_incoming"):
                 print(f"  存档: {result['saved_incoming']}")
-            # ── v8 影子对照: 同帧再跑一遍老口径 960 方图(临时图, 跑完删) ──
+            # ── v8 影子对照: 同帧再执行一遍老口径 960 方图(临时图, 跑完删) ──
             sh = None
             global _AB_DONE
             if shadow_path and os.path.exists(shadow_path):

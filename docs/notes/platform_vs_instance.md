@@ -13,14 +13,14 @@
 
 /home/ubuntu/zmax/data/                   ② 实例数据根 —— 你的, 可迁移
 ├── database/zmax/                        ★ 实例数据包 (一个产品一个目录)
-│   ├── zmax_engineering.db               工程库 (由真源 build)
+│   ├── zmax_engineering.db               工程库 (由唯一依据 build)
 │   ├── zmax_space.proj                   总工程 (GUI「打开总工程」)
 │   ├── README.md                         产品/数据手册
 │   ├── archive/                          历史工程快照
-│   └── sources/                          ★★ 真源 (可编辑/可标定)
+│   └── sources/                          ★★ 唯一依据 (可编辑/可标定)
 │       ├── config/                       标定 · 平台定义 · 任务 · 订单 · 机器人 · 状态机 · MCD
 │       ├── feature.dbc                   能力库
-│       └── canvas/state_space_obs.json   状态空间画布真源
+│       └── canvas/state_space_obs.json   状态空间画布唯一依据
 ├── datasets/  memory/  scene/  calib/  skills/   (其余实例数据桶)
 
 /home/ubuntu/zmax/ (本机环境, 不入库)      ③ 环境与大件
@@ -51,7 +51,7 @@ python3 tools/instance_init.py --check                       # 边界体检
 
 | 层 | 做法 |
 |---|---|
-| 真源落位 | `config/` `feature.dbc` `src/.../flows/state_space_obs.json` 移入 `data/database/<产品>/sources/` |
+| 唯一依据落位 | `config/` `feature.dbc` `src/.../flows/state_space_obs.json` 移入 `data/database/<产品>/sources/` |
 | 兼容 | 仓库内原位放**相对符号链接**，110 个文件里的 `config/xx` 字面路径零改动仍可用 |
 | 原子写 | `flows.save_canvas` 写前 `realpath`，保证写的是真身、不顶掉符号链接 |
 | 出厂默认 | `defaults/` 提供结构同构的空骨架；`instance_init.py --new` 一键铺开 |
@@ -62,7 +62,7 @@ python3 tools/instance_init.py --check                       # 边界体检
 
 `python3 tools/instance_init.py --check`（四段）：
 
-1. **真源指向**：`config`/`feature.dbc`/画布 是符号链接且落在实例包内；
+1. **唯一依据指向**：`config`/`feature.dbc`/画布 是符号链接且落在实例包内；
 2. **实例包完整性**：库 + 总工程 + 手册 + `sources/{config,feature.dbc,canvas}`；
 3. **公开仓库干净**：三者均未被 git 跟踪；
 4. **出厂骨架在**：`defaults/` 非空。

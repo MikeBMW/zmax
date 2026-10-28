@@ -29,7 +29,7 @@
 - `tools/web/station.html` — ① 已记录点悬停卡片（覆盖 20 个点 = 号位7 + 空间7 + 示教点6），**只出 x y z(a b c) + 📋复制**，
   摘掉原生 `title` 防遮挡（老倪：「显示位姿，就不要显示其它文字了…这些文字互相遮挡」）；
   ② 夹爪「打开/关闭」按钮摘掉长提示（老倪：「不要显示那么多文字，没有用」）
-- `tools/start_station_8793.sh`（新增）— 8793/8791 标准启动（唯一真源；防裸启动丢 `--overlay/--ctl-motion/--local2-dev 6`，
+- `tools/start_station_8793.sh`（新增）— 8793/8791 标准启动（唯一依据；防裸启动丢 `--overlay/--ctl-motion/--local2-dev 6`，
   裸启动曾导致叠加三路 503 + MAXHUB 无帧 + 手动控制退化成仅演练）
 - 数据: `data/skills/l2_atomic/space_points.json` 加 `space8`（老倪现场授权，零运动记录）
 

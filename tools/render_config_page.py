@@ -6,7 +6,7 @@
   gui-venv311/bin/python tools/render_config_page.py [宽 高 输出png]
 默认 1600x900 → /tmp/cc_after_1600x900.png
 判据: 每个窗口尺寸下 ①左栏宽度 ≥ 内容需求宽度(最长条目不被截) ②右栏仍 ≥ 400px
-只读: 建页 → 快照 → 退出; 不连网络、不写工程真源。
+只读: 建页 → 快照 → 退出; 不连网络、不写工程唯一依据。
 """
 import os
 import sys

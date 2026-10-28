@@ -1,5 +1,5 @@
 #!/bin/bash
-# 清掉可能卡住的轨迹执行进程与锁 (2026-10-25: traj_exec 卡住时会一直占着 flock,
+# 清掉可能阻塞的轨迹执行进程与锁 (2026-10-25: traj_exec 阻塞时会一直占着 flock,
 # 后续点击全被"已有另一个 traj_exec 正在执行"拒掉, 表现就是"点了没反应")
 cd /home/ubuntu/zmax || exit 1
 for p in $(pgrep -f "tools/traj_exec"); do

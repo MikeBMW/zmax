@@ -110,12 +110,12 @@ def cam_observe(tag):
         with urllib.request.urlopen(CAM + "/picture?kind=origin", timeout=40) as r:
             img = cv2.imdecode(np.frombuffer(r.read(), np.uint8), cv2.IMREAD_COLOR)
         ip = os.path.join(OUT, "img_%s.png" % tag)
-        cv2.imwrite(ip, img)                      # ★ 无论自裁成败都存图 (否则看不到现场到底拍了啥)
+        cv2.imwrite(ip, img)                      # ★ 无论自裁成败都存图 (否则看不到现场到底拍了什么)
         import aoi_exposure_fix as FX
         clean, meta = FX.clean_judge_frame(img, out=960, return_natural=True)
         g_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         if clean is None:
-            # 兜底观测 (鲁棒): 行/列边缘能量峰 → 结构化条带的位置与尺寸 (与自裁口径同源, 只是规则更松)
+            # 保障观测 (鲁棒): 行/列边缘能量峰 → 结构化条带的位置与尺寸 (与自裁口径同源, 只是规则更松)
             gf = g_gray.astype(np.float32)
             re_ = np.abs(np.diff(gf, axis=1)).mean(axis=1)          # 每行边缘能量
             thr = np.percentile(re_, 92)
@@ -127,10 +127,10 @@ def cam_observe(tag):
                 xs = np.where(ce >= np.percentile(ce, 90))[0]
                 x0, x1 = (int(xs.min()), int(xs.max())) if xs.size else (0, img.shape[1] - 1)
                 return {"obs": [(x0 + x1) / 2.0, (y0 + y1) / 2.0, x1 - x0, y1 - y0],
-                        "note": "兜底(边缘能量带): box中心+宽高", "img": os.path.basename(ip),
+                        "note": "保障(边缘能量带): box中心+宽高", "img": os.path.basename(ip),
                         "fallback": True, "mean": round(float(g_gray.mean()), 1),
                         "sat": round(float((g_gray >= 250).mean() * 100), 1)}
-            return {"obs": None, "note": "自裁+兜底都未找到条带", "img": os.path.basename(ip),
+            return {"obs": None, "note": "自裁+保障都未找到条带", "img": os.path.basename(ip),
                     "mean": round(float(g_gray.mean()), 1), "std": round(float(g_gray.std()), 1),
                     "sat": round(float((g_gray >= 250).mean() * 100), 1)}
         kr = meta.get("kept_rows") or [None, None]

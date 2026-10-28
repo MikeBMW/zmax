@@ -168,7 +168,7 @@ def _build_aligner():
         if not w:
             print("⚠️ YOLO 权重未找到, 操作视频回退真值感知")
             return None
-        # 🎯 深度模型权重 (YOLO depth head) — 用真实深度反投影替代写死 z_map
+        # 🎯 深度模型权重 (YOLO depth head) — 用真实深度反投影替代预先固定 z_map
         #   DEPTH_CKPT 环境变量可指定 (避免与训练写 best.pt 冲突时用快照)
         depth_w = os.environ.get("DEPTH_CKPT")
         if depth_w:
@@ -178,7 +178,7 @@ def _build_aligner():
                             if os.path.isfile(os.path.join(ROOT, c))), None)
         env0 = make_env(0)  # corner2, 只读静态相机参数 cam_pos/cam_mat0/cam_fovy
         a = yolo_state_aligner.YoloStateAligner(w, env0, depth_weights=depth_w)
-        tag = f"深度感知: {os.path.basename(depth_w)}" if depth_w else "⚠️深度回退写死z"
+        tag = f"深度感知: {os.path.basename(depth_w)}" if depth_w else "⚠️深度回退预先固定z"
         print(f"🎯 YOLO 感知已启用: {os.path.basename(w)} ({tag})")
         return a
     except Exception as ex:
@@ -204,7 +204,7 @@ def main():
             except Exception:
                 pass
         # 🎯 真闭环 (2026-08-23 老倪): 状态机判断/动作调制不再吃 env.data.site_xpos 真值,
-        #   改吃 o_model (YOLO 解算 state)。peg_z0 取 YOLO 光模块 段 z (写死平面, 非真值)
+        #   改吃 o_model (YOLO 解算 state)。peg_z0 取 YOLO 光模块 段 z (预先固定平面, 非真值)
         peg_z0 = float(o_model[6])
         state = ST_APPROACH
         done_at = -1          # 🎥 2026-08-27: 成功后保持画面 (ST_DONE 再录 90 步≈2.7s, 避免视频过短)

@@ -7,7 +7,7 @@ DST=$HOME/zmax/zmax_data/release_5.13.1_$(date +%Y%m%d)
 mkdir -p "$DST"/{canvas,canvas/backups_older,tools,reports,docs,src}
 cd "$REPO" || exit 1
 
-# ① 画布真源 + 改前/改后快照
+# ① 画布唯一依据 + 改前/改后快照
 cp -f flows/state_space_obs.json "$DST/canvas/"
 cp -f flows/state_space_obs.json.bak_pre_fusionloc_* "$DST/canvas/" 2>/dev/null
 cp -f flows/state_space_obs.json.bak_post_fusionloc_* "$DST/canvas/" 2>/dev/null
@@ -36,7 +36,7 @@ cd "$DST" || exit 1
   echo
   echo "- 仓库: MikeBMW/lerobot-smolvla-lew @ $(cd "$REPO" && git rev-parse --short HEAD)"
   echo "- 生成: $(date '+%F %T %Z')"
-  echo "- 内容: 画布真源(融合定位重构) + 9 处运行时映射 + 档位级审计证据 + 版本文件"
+  echo "- 内容: 画布唯一依据(融合定位重构) + 9 处运行时映射 + 档位级审计证据 + 版本文件"
   echo
   echo "| 文件 | 字节 | sha256(前16) |"
   echo "|---|---|---|"

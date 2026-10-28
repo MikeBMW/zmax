@@ -11,7 +11,7 @@
              字段同名: pos/quat/desc/recorded_at/source/n_samples/spread_*)
              + `reports/aoi_points/<name>.json` 存 **AOI 上下文** (判据图裁切框 ROI / 框内指标 / 判据图快照路径 / 操作员)
   · 回位:     **走 L2 收口** —— ① FIFO `~/zmax/zmax_data/l2_cmd.fifo` 写 {"skill":"L2.goto_point","point":<name>}
-             (由常驻 l2_daemon 执行: 自带闸门/限幅/日志) ② 直发 `ros2 service call /move_line …` (lite 兜底)
+             (由常驻 l2_daemon 执行: 自带闸门/限幅/日志) ② 直发 `ros2 service call /move_line …` (lite 保障)
              ⚠️ 默认 **dry-run** (只算 Δ位置 mm + Δ姿态 角 + 打印将下发的命令), 真动必须显式 authorize=True
   · 判完成:   回读 /robot/tcp_pose 与目标比 (位置 mm / 姿态 deg) + operation_state, 不凭 service 返回码
 

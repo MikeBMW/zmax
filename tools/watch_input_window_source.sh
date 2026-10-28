@@ -36,9 +36,9 @@ else
 fi
 echo
 if [ "$MUJOCO" -gt 0 ] && [ "$SSH_ORIN" -eq 0 ] && [ "$CLI" -eq 0 ]; then
-  echo "判定: ✅ 仿真源 (metaworld 渲染在 GUI 进程内跑, 没有任何 Orin/真机链路)"
+  echo "判定: ✅ 仿唯一依据 (metaworld 渲染在 GUI 进程内跑, 没有任何 Orin/真机链路)"
 elif [ "$SSH_ORIN" -gt 0 ] || [ "$CLI" -gt 0 ]; then
   echo "判定: ❌ 真机源 (Orin/Docker 链路在跑)"
 else
-  echo "判定: ⚠️ 两路都没跑起来 (链路可能还在启动, 再等几秒)"
+  echo "判定: ⚠️ 两路都没启动 (链路可能还在启动, 再等几秒)"
 fi

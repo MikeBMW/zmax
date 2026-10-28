@@ -17,7 +17,7 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # ⚠️ 压测会触发模式开关持久化写回 (a72bb04 起) → 污染画布 JSON
-# 启动时全量备份 flows/, atexit 恢复 (崩溃时由调用方 git checkout 兜底)
+# 启动时全量备份 flows/, atexit 恢复 (崩溃时由调用方 git checkout 保障)
 import atexit, shutil, tempfile
 _flows_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "flows")
 _flow_backup = tempfile.mkdtemp(prefix="flow_backup_")

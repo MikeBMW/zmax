@@ -265,7 +265,7 @@ def spectral_norm_analysis(left):
 def gru_gate_analysis(right):
     """🧮 谱收缩分析模块: 右脑 WorldModel 权重谱半径 → 收缩性/Lipschitz 上界
     (2026-08-12 老倪; 2026-09-06 叙事修正: 右脑为前向 MLP 无 GRU 门控 — 原"重置门/更新门"
-    公式不适用, 兜底分支 (全网络谱半径乘积) 即实际分析; 若未来换真 GRU 递归估计器,
+    公式不适用, 保障分支 (全网络谱半径乘积) 即实际分析; 若未来换真 GRU 递归估计器,
     再启用 更新门权重谱 ρ(W_hz)<1 → 潜状态指数收敛 (防爆炸))"""
     gates = {}
     for name, m in right.named_modules():
@@ -277,7 +277,7 @@ def gru_gate_analysis(right):
                     gates[g] = {"rho": float(s.max()), "sigma_min": float(s.min()),
                                 "contractive": bool(s.max() < 1.0)}
     if not gates:
-        # 无 GRU: 用全网络权重谱半径兜底
+        # 无 GRU: 用全网络权重谱半径保障
         prod = 1.0
         for mm in right.modules():
             if hasattr(mm, "weight") and mm.weight is not None and mm.weight.dim() >= 2:

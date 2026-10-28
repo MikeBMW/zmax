@@ -3,7 +3,7 @@
 #   🔴 现场: 8797/ar 与 8793/station 里「机器人相机」那格没有画面。
 #      根因: 服务是用 --arm-http http://192.168.23.66:8792/frame.jpg 起的, 而本机只有 WiFi
 #      10.163.146.78/23, **没有 192.168.23.0/24 路由** ⇒ 直连必 No route to host ⇒ arm 那一路 0 帧;
-#      Orin 侧相机其实是活的 (ssh 转发口 127.0.0.1:18792 自报 age≈0.1s, 累计百万帧)。
+#      Orin 侧相机实际是活的 (ssh 转发口 127.0.0.1:18792 自报 age≈0.1s, 累计百万帧)。
 #   ⇒ 本次重启: 保留直连地址作首选, 再加 ZMAX_ARM_HTTP_FALLBACK=127.0.0.1:18792 自动切换。
 #   用法: bash tools/restart_cam_stream.sh [--dry]
 set -u

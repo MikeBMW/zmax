@@ -46,7 +46,7 @@ asyncio.run(main())
 - 部署用 systemd (`Restart=always`) 或 ECS 上 setsid, 别裸 nohup (ssh 断开杀进程)
 
 ## nginx 配置: 静态文件 vs WebSocket 端点必须分离
-- **坑: `/novnc/` 全部代理给纯 WS 桥 → 普通 GET vnc.html 返回 426 Upgrade Required** (页面都打不开)
+- **坑: `/novnc/` 全部代理给纯 WS 桥 → 普通 GET vnc.html 返回 426 Upgrade Required** (页面都无法打开)
 - 正确: `location ^~ /novnc/` 静态 alias 到 noVNC 目录 + 内嵌 `location /novnc/websockify` 走桥
 - **noVNC 页面默认连 `/websockify` (根路径, 不是 `/novnc/websockify`)** — 裸 URL 打开页面但 WS 连根路径 → 404 "连不上"; 加 `location = /websockify` 或 URL 带 `?path=novnc/websockify`
 - 响应头 `www-authenticate: Basic realm="..."` = nginx auth_basic; 密码文件权限要 644 (600 root 时 nginx www 用户读不了 → 500)

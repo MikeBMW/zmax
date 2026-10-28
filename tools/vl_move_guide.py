@@ -82,7 +82,7 @@ def ask(img_path, view="arm", timeout=300):
             j = json.loads(m.group(0))
         except Exception:
             j = None
-    if j is None:                       # 输出被截断时按字段兜底抓(模型偶发把 see 写超长)
+    if j is None:                       # 输出被截断时按字段保障抓(模型偶发把 see 写超长)
         j = {}
         for k in ("see", "subject", "where", "distance", "move", "why"):
             mm2 = re.search(r'"%s"\s*:\s*"([^"]*)"' % k, txt)

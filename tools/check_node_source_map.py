@@ -4,7 +4,7 @@
 
 老倪: "DiT 的右键怎么没有进入源代码呢?" —— 右键定位有**三条路**, 任何一条断都会表现为"没跳进源码":
   ① 节点 `params.source` (+ 可选 `params.source_symbol`) —— 相对路径按**仓库根**解析;
-  ② 兜底: `match_node(节点名)` → 语义 key → `_EXTERNAL_LOC[key]` (真实外部源码) 或 NODE_LOGIC 自身 (node_logic.py);
+  ② 保障: `match_node(节点名)` → 语义 key → `_EXTERNAL_LOC[key]` (真实外部源码) 或 NODE_LOGIC 自身 (node_logic.py);
   ③ 都没有 → 只能打开工程根 → 用户观感 = "没进源码"。
 
 本脚本逐节点报: 走哪条路 · 定位到哪个文件哪一行 · 该文件/符号是否真实存在,

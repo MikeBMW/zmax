@@ -1,5 +1,5 @@
 #!/bin/bash
-# 🐶 大文件下载看门狗: 卡住(5 分钟字节数不变)就重启 aria2c -c 续传; 一直盯到下完
+# 🐶 大文件下载看门狗: 阻塞(5 分钟字节数不变)就重启 aria2c -c 续传; 一直盯到下完
 #   背景: HF 直连/hf-mirror 大文件现在基本不动 (30s 0 字节), 只有常驻 aria2 能吃到 ~300KB/s;
 #   两个数据集的下载必须能自愈, 否则过夜白等。
 set -u
@@ -27,7 +27,7 @@ while :; do
     if [ "$S2" -le "$S1" ]; then
       # 只在没有 aria2 在跑这个文件时才重启 (避免双写损坏)
       if ! pgrep -f "aria2c .*$name" >/dev/null; then
-        echo "$(date '+%F %T') $name 卡住 (${S1}B), 重启续传"
+        echo "$(date '+%F %T') $name 阻塞 (${S1}B), 重启续传"
         nohup aria2c -x 16 -s 16 -k 1M -c --file-allocation=none --max-tries=0 --retry-wait=10 \
           --console-log-level=warn --summary-interval=60 -d "$(dirname "$path")" -o "$(basename "$path")" \
           "$url" >>/tmp/dl_aria_single.log 2>&1 &

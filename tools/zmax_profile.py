@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """zmax_profile.py — 三产品 (550A/550B/550C) **开发分工**的单一读取口。
 
-真源: `config/platform/zmax_product.json` → `products[<档>].dev_profile`
+唯一依据: `config/platform/zmax_product.json` → `products[<档>].dev_profile`
       (老倪 2026-10-15: 「以后同步开发 550A 550B 550C 产品，A产品负责新技能、新算法，逻辑最多；
         B产品开通所有 TOPIC 最大化 debug，允许 vscode 联调；C产品稳定性优先，未经验证的算法都关闭，
         通讯以效率优先，不用发出序列化 topic，只要在共享内存中快速传递信号，不用开启信号分析，
@@ -21,7 +21,7 @@
     algo_policy()            # 'on' | 'debug' | 'off'  (C 档 off = 未验证算法全关)
     algo_allowed('新算法名')  # C 档只放 verified_algorithms 里的
 
-产品档从 `active_product` 取; 也可用环境变量 `ZMAX_PRODUCT` 覆盖 (做 A/B/C 差异验证时不必改真源)。
+产品档从 `active_product` 取; 也可用环境变量 `ZMAX_PRODUCT` 覆盖 (做 A/B/C 差异验证时不必改唯一依据)。
 """
 from __future__ import annotations
 
@@ -33,8 +33,8 @@ import subprocess
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PRODUCT_J = os.path.join(ROOT, "config", "platform", "zmax_product.json")
 # 🏭 出厂骨架回落 (老倪 2026-10-15「产品 550A 550B 550C 同步发布」):
-#   平台/实例解耦后, 实例真源 config/platform/ 不在仓库里 ⇒ 全新安装 (含 Windows/macOS 安装包) 读不到产品档
-#   ⇒ 三档 550A/550B/550C 就选不出来。这里按 canvas 同一套规矩回落: 实例真源 → 仓库 defaults/ → 冻结包 _MEIPASS。
+#   平台/实例解耦后, 实例唯一依据 config/platform/ 不在仓库里 ⇒ 全新安装 (含 Windows/macOS 安装包) 读不到产品档
+#   ⇒ 三档 550A/550B/550C 就选不出来。这里按 canvas 同一套规矩回落: 实例唯一依据 → 仓库 defaults/ → 冻结包 _MEIPASS。
 def _product_candidates():
     _c = [PRODUCT_J, os.path.join(ROOT, "defaults", "config", "platform", "zmax_product.json")]
     _mp = getattr(__import__("sys"), "_MEIPASS", None)
@@ -45,15 +45,15 @@ def _product_candidates():
 
 
 def product_json():
-    """返回第一个存在且可读的产品真源路径 (找不到返回实例路径, 便于报错时指出该放哪)。"""
+    """返回第一个存在且可读的产品唯一依据路径 (找不到返回实例路径, 便于报错时指出该放哪)。"""
     for _p in _product_candidates():
         if os.path.isfile(_p):
             return _p
     return PRODUCT_J
 
-# 读不到 dev_profile 时的兜底 (按"调试档"= 全开, 宁可看得到也别把现场功能悄悄关掉)
+# 读不到 dev_profile 时的保障 (按"调试档"= 全开, 宁可看得到也别把现场功能悄悄关掉)
 _DEFAULT = {
-    "role": "未配置 (兜底=调试档全开)",
+    "role": "未配置 (保障=调试档全开)",
     "new_algorithms": "debug",
     "topics": "all",
     "comm": "dds",
@@ -86,7 +86,7 @@ def product():
 
 
 def dev_profile(prod=None):
-    """返回该档的 dev_profile dict (含兜底键; 真源改了自动重读)。"""
+    """返回该档的 dev_profile dict (含保障键; 唯一依据改了自动重读)。"""
     p = prod or product()
     key = (_mtime(product_json()), p)
     if _CACHE["key"] == key and _CACHE["v"] is not None:
@@ -154,12 +154,12 @@ _HW_FALLBACK = {
 
 
 def hardware(prod=None):
-    """该档对应的**算力载体** (真源 products[<档>].hardware)。
+    """该档对应的**算力载体** (唯一依据 products[<档>].hardware)。
 
     老倪 2026-10-21: 「550C 的硬件对应 intel, 550A 对应 4060, 550B 对应 vscode;
     550B 是桥梁, 是状态空间工程、各种 tool 的总配置模式; 550A 是 4060 计算资源的核心载体;
     550C 是运行在 intel 上的部署」。
-    ⇒ 档位与硬件是**绑定关系**, 所以载体写进真源, 不许只在界面里硬编码。
+    ⇒ 档位与硬件是**绑定关系**, 所以载体写进唯一依据, 不许只在界面里硬编码。
     """
     p = prod or product()
     hw = {}

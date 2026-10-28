@@ -5,13 +5,13 @@
 老倪原话: 「太阳系窗口，就是观察L2~L5模型的主要窗口，你来设计如何UI交互，让太阳系，行星，
 地球，月球，卫星，能反映当前模型的实际状态」
 
-本判据只核一件事: **界面上的状态必须来自真源、且会随真源变化**（不是画个好看的灯）。
-  ① 每个天体都有 st (k/txt/age)，age 与它自己真源文件的 mtime 独立复算一致
+本判据只核一件事: **界面上的状态必须来自唯一依据、且会随唯一依据变化**（不是画个好看的灯）。
+  ① 每个天体都有 st (k/txt/age)，age 与它自己唯一依据文件的 mtime 独立复算一致
   ② 帧龄阈值: ≤2.5s=live · ≤60s=stale · 否则 off (三条边界都造一遍)
   ③ L2~L5 层状态取自 layer_calls.jsonl **末行** (ok/ms/帧龄), 末行改成旧 ts ⇒ 整条带变 stale/off
-  ④ 视图每 500ms 重读真源 (build() 里 reload 真被调用; 不是 __init__ 一次性快照)
+  ④ 视图每 500ms 重读唯一依据 (build() 里 reload 真被调用; 不是 __init__ 一次性快照)
   ⑤ 驱动扭矩口径必须写在界面上: 模型张量没进 τ 时, 标签必须出现"未接模型张量"
-  ⑥ 悬停读数卡给出名/真源/状态/帧龄 (鼠标交互不是装饰)
+  ⑥ 悬停读数卡给出名/唯一依据/状态/帧龄 (鼠标交互不是装饰)
 
 跑法: QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/verify_orbital_state.py
 """
@@ -88,7 +88,7 @@ def _cap_exit(old):
 
 
 def _mkroot(tmp):
-    """造一个最小真源目录 (只放判据要用的几份), 用来造边界。"""
+    """造一个最小唯一依据目录 (只放判据要用的几份), 用来造边界。"""
     for rel in ("zmax_data/ss_live", "config/calib", "data/database/zmax/sources/canvas"):
         os.makedirs(os.path.join(tmp, rel), exist_ok=True)
     now = time.time()
@@ -97,7 +97,7 @@ def _mkroot(tmp):
         "zmax_data/ss_live/torque_live.json": {"ts": now, "stage": "下降", "torque_norm": 12.0, "t_max": 30.0,
                                                "clipped": False, "metric_M": 3.643,
                                                "source": "M ← calib · −∇Φ ← potential_field 解析梯度",
-                                               "x_source": "技能入口 SK01 谷底 (无新鲜位姿真源)"},
+                                               "x_source": "技能入口 SK01 谷底 (无新鲜位姿唯一依据)"},
         "zmax_data/ss_live/skill_latest.json": {"ts": now},
         "zmax_data/ss_live/skill_error.json": {"ts": now},
         "zmax_data/ss_live/skill_phys.json": {"skills": {}},
@@ -146,7 +146,7 @@ def check_infer_pulse(app):
     def _snap(live_earth, ph):
         v._live_s = {k: 0.0 for k in ("sun", "mercury", "earth", "moon", "mars", "jupiter")}
         v._live_s["earth"] = 1.0 if live_earth else 0.0
-        # 其它天体一律置"离线": 否则 paint/_tick 会按各自真源重新把活跃度拉起来
+        # 其它天体一律置"离线": 否则 paint/_tick 会按各自唯一依据重新把活跃度拉起来
         # (L3 现在接的是动作头 chunk_latest, 每拍都新鲜 ⇒ 火星真的在亮, 不是假动画)
         _off = {"k": "off", "txt": "离线", "age": 99.0}
         for _b in ("sun", "mercury", "moon", "mars", "jupiter"):
@@ -186,7 +186,7 @@ def check_infer_pulse(app):
     v.data.body["earth"]["st"] = {"k": "live", "txt": "在跑", "age": 0.1}
     for _i in range(8):
         v._tick()
-    chk("P4", "活跃度由**真源帧龄**决定 (live→1 · off→0), 且经低通", v._live_s.get("earth", 0) > 0.8,
+    chk("P4", "活跃度由**唯一依据帧龄**决定 (live→1 · off→0), 且经低通", v._live_s.get("earth", 0) > 0.8,
         "_live_s 地球=%.2f" % v._live_s.get("earth", 0))
     try:
         v.close()
@@ -220,7 +220,7 @@ def check_quat(app):
         if not got:
             _bad.append((L, "缺失"))
             continue
-        # 同一份真源、但两次采样可能差一拍 (chunk_latest 10Hz, 表 500ms 重载) ⇒ 逐位容差 0.06。
+        # 同一份唯一依据、但两次采样可能差一拍 (chunk_latest 10Hz, 表 500ms 重载) ⇒ 逐位容差 0.06。
         #   不是放宽标准: 方向余弦差 0.06 ≈ 角度差 ≤7°, 足以判定"同一个矢量", 又能容忍跨拍。
         if max(abs(a - b) for a, b in zip(got, u)) > 0.06:
             _bad.append((L, "数值不符(>0.06)", got, u))
@@ -317,11 +317,11 @@ def check_earth_force(app):
            float(row.get("mag_res") or 0) if row else -1, float(row.get("dev") or 0) if row else -1))
     _ks = [a["kind"] for a in _c]
     _main = [a for a in _c if a.get("main")]
-    # L2~L5 分力: 有真源的层必须画出; L5(VL) 没真源时必须**标缺**而不是拿别的层冒充。
+    # L2~L5 分力: 有唯一依据的层必须画出; L5(VL) 没唯一依据时必须**标缺**而不是拿别的层冒充。
     #   所以判据要求: L2/L3/L4 齐全 + (L5 有值 或 L5 明确写"缺"), 且主力比其它分力粗。
     _lf = getattr(f, "lf", None) or {}
     _miss_l5 = (not _lf or not ((_lf.get("L5") or {}).get("vec")))
-    chk("R3", "L2~L5 分力齐全(L5 无真源时须标缺), 且**被标为主力的那层**比其它分力粗",
+    chk("R3", "L2~L5 分力齐全(L5 无唯一依据时须标缺), 且**被标为主力的那层**比其它分力粗",
         {"L2", "L3", "L4"}.issubset(set(_ks)) and (("L5" in set(_ks)) or _miss_l5) and _main
         and _main[0]["w"] > max([a["w"] for a in _c if not a.get("main")] or [0]),
         "分力 %s; 主力笔宽 %.1f vs 其它 %.1f"
@@ -345,7 +345,7 @@ def check_earth_force(app):
         "面板 %s · 墨点 %d · 格位 %s" % (_rc, _ink, _slots))
     # R5 (老倪 2026-10-19「力场的合力方向，与太阳系地球的 F合 方向要一致」):
     #   两边必须走**同一个投影** ⇒ 角度差 ≈0; 再转 25° 偏航, 两个角都要跟着转且仍相等
-    #   (只比一次相等没有意义: 两处都写死同一个常数也会"相等")。
+    #   (只比一次相等没有意义: 两处都预先固定同一个常数也会"相等")。
     def _d360(a, b):
         return abs(((a - b + 180.0) % 360.0) - 180.0)
     _a1, _s1 = getattr(v, "_arrow_ang", None), getattr(v, "_s3_ang", None)
@@ -403,7 +403,7 @@ def check_uff_weight(app):
     # 证据位 (不作判据): 构造意图是"前馈最重", 实际力度比看这一行
     print("   📎 [证据] 前馈 L2=%.4f vs 最强 %.4f ⇒ %.2f× · w=%s"
           % (_m2, _mxm, _m2 / max(_mxm, 1e-9), _w))
-    chk("W2", "每层格子 src 写清它自己的真源 (chunk_latest / torque_live) ⇒ 可逐层对账",
+    chk("W2", "每层格子 src 写清它自己的唯一依据 (chunk_latest / torque_live) ⇒ 可逐层对账",
         "chunk_latest" in _src2 and "torque_live" in str((_cells.get("L4") or {}).get("src") or ""),
         "L2 src=%s | L4 src=%s" % (_src2[:44], str((_cells.get("L4") or {}).get("src") or "")[:44]))
     v = OA.OrbitalArchView()
@@ -524,7 +524,7 @@ def check_live_force_follows(app):
     两个真根因, 各一条判据锁死:
       F1 `_compute_earth_forces` 必须走 `self._field()` (每次 build 只 reload 一次)。
          旧代码直接用模块级 `_QUAT_FIELD`、从不 reload ⇒ 进程活久了合力永远停在第一次构造那一帧。
-      F2 运行中连续两次 build (间隔 ~1s) 的合力/q̂ 必须变 —— 前提是真源在动 (trace_live 新鲜)。
+      F2 运行中连续两次 build (间隔 ~1s) 的合力/q̂ 必须变 —— 前提是唯一依据在动 (trace_live 新鲜)。
     """
     import io as _io2
     _src = _io2.open(os.path.join(ROOT, "tools", "gui", "orbital_arch.py"), encoding="utf-8").read()
@@ -540,7 +540,7 @@ def check_live_force_follows(app):
     except Exception:                                                            # noqa: BLE001
         pass
     if _age is None or _age > 3.0:
-        chk("F2", "运行中两次 build 的合力必须变 (真源在动时才判)", True,
+        chk("F2", "运行中两次 build 的合力必须变 (唯一依据在动时才判)", True,
             "trace_live 帧龄 %.1fs (静止) ⇒ 本拍不适用, 不判失败" % (_age if _age is not None else -1))
         return
     OA.OrbitalArchData._ui_run = (lambda self: (True, "判据覆盖: 在跑"))
@@ -563,7 +563,7 @@ def main():
         OA.OrbitalArchData._ui_run = (lambda self: (bool(flag), "判据覆盖"))
         gt_mod._RUN_OVERRIDE = bool(flag)
 
-    # ── ① 每体 st 与真源独立复算一致 (真工程) ─────────────────────────
+    # ── ① 每体 st 与唯一依据独立复算一致 (真工程) ─────────────────────────
     d = OA.OrbitalArchData(ROOT)
     d.build()
     srcs = {"sun": ("engine_latest.json", "torque_live.json"), "mercury": ("engine_latest.json",),
@@ -581,7 +581,7 @@ def main():
         if not isinstance(got, (int, float)) or abs(got - want) > 1.5:
             bad.append((body, "%s≠%s" % (got, round(want, 2))))
     _any_run = (d.body.get("sun", {}).get("st") or {}).get("txt") != "未运行"
-    chk("W1b", "7 个天体都有状态, 帧龄与各自真源 mtime 独立复算一致; 未运行态下文案=未运行",
+    chk("W1b", "7 个天体都有状态, 帧龄与各自唯一依据 mtime 独立复算一致; 未运行态下文案=未运行",
         not bad and (all((d.body.get(b, {}).get("st") or {}).get("txt") == "未运行" for b in srcs) if not _any_run else True),
         "%s · sun=%s" % (str(bad or "")[:110], (d.body.get("sun", {}).get("st") or {}).get("txt")))
 
@@ -589,8 +589,8 @@ def main():
     st = OA.OrbitalArchData._state_of
     chk("W2", "帧龄阈值: 0.5s→在跑 · 10s→陈旧 · 600s→离线", (st(0.5)[0], st(10)[0], st(600)[0]) == ("live", "stale", "off"),
         "0.5s=%s/10s=%s/600s=%s" % (st(0.5)[0], st(10)[0], st(600)[0]))
-    chk("W3", "无真源 (age=None) ⇒ 离线且文案「无真源」, 不是猜「在跑」",
-        st(None)[0] == "off" and "无真源" in st(None)[1], str(st(None)))
+    chk("W3", "无唯一依据 (age=None) ⇒ 离线且文案「无唯一依据」, 不是猜「在跑」",
+        st(None)[0] == "off" and "无唯一依据" in st(None)[1], str(st(None)))
 
     # ── ③ L2~L5 取末行 + 末行变旧 ⇒ 整条带跟着变 (这条只在"在跑"分支有意义) ──
     _set_run(True)
@@ -632,7 +632,7 @@ def main():
         f.write(json.dumps(rec) + "\n")
     d2.build()
     k_off = d2.layers.get("k")
-    chk("S5", "同一份流水把 ts 改新/改旧 ⇒ 层状态 live→stale→off (跟着真源走)",
+    chk("S5", "同一份流水把 ts 改新/改旧 ⇒ 层状态 live→stale→off (跟着唯一依据走)",
         (k_live, k_stale, k_off) == ("live", "stale", "off"), "%s/%s/%s" % (k_live, k_stale, k_off))
 
     # ── ④ 视图每 500ms 重读 (不是 __init__ 快照) ───────────────────────
@@ -652,7 +652,7 @@ def main():
 
     v.data._j = _cnt
     v.refresh()
-    chk("S7", "refresh() 真的重读真源 (一次刷新至少重读 6 份 JSON)", calls["n"] >= 6, "重读 %d 份" % calls["n"])
+    chk("S7", "refresh() 真的重读唯一依据 (一次刷新至少重读 6 份 JSON)", calls["n"] >= 6, "重读 %d 份" % calls["n"])
     v.data._j = _orig_j
     c0, p0 = v.data.body["sun"].get("cycle"), v.data.body["sun"].get("phi")
     t0 = time.time()
@@ -679,10 +679,10 @@ def main():
     pos = v.positions(cx, cy, R)
     v._hover(int(pos["sun"][0]), int(pos["sun"][1]))
     tip = v.toolTip()
-    chk("S10", "悬停太阳给出 名/运行态/帧龄/M/T/真源 六项",
-        all(k in tip for k in ("流形引擎", "运行态", "帧龄", "M 主参数", "T 扭矩", "真源")), tip.replace("\n", " | ")[:150])
+    chk("S10", "悬停太阳给出 名/运行态/帧龄/M/T/唯一依据 六项",
+        all(k in tip for k in ("流形引擎", "运行态", "帧龄", "M 主参数", "T 扭矩", "唯一依据")), tip.replace("\n", " | ")[:150])
     v._hover(int(pos["earth"][0]), int(pos["earth"][1]))
-    chk("S11", "悬停地球给出前馈请求与真源 (不只是名字)", "前馈请求" in v.toolTip() and "真源" in v.toolTip(),
+    chk("S11", "悬停地球给出前馈请求与唯一依据 (不只是名字)", "前馈请求" in v.toolTip() and "唯一依据" in v.toolTip(),
         v.toolTip().replace("\n", " | ")[:120])
 
     # ── ⑦ 图上必须有状态字形 + L2~L5 图注 ────────────────────────────
@@ -752,7 +752,7 @@ def main():
     chk("S14", "表格上方有结构映射行, 8 组对应全在 (黄道面/S³ · 太阳/中心 · 行星/DiT · 地球/MLP · 轨道/测地线 · 引力/度量 · 周期/节拍 · 自转/微调)",
         all(k in mtxt for k in need), mtxt[:120])
     _met = "M=3.643" in mtxt and "dim=6" in mtxt
-    chk("S15", "映射行里的度量是真值 (M/dim 来自 config/calib/zmax_manifold.json, 不是写死)", _met,
+    chk("S15", "映射行里的度量是真值 (M/dim 来自 config/calib/zmax_manifold.json, 不是预先固定)", _met,
         next((t for t in mtxt.split(" · ") if t.startswith("太阳=流形中心")), "")[:90])
     _tips = {i: (gt.t.horizontalHeaderItem(i).toolTip() or "") for i in range(1, 6)}
     chk("S16", "列头 tooltip 把 层↔天体 说清 (L2 地球 · L3 火星 · L4 木星 · L5 太阳 · 合力)",

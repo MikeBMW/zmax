@@ -56,7 +56,7 @@ for r in rows:
 chk("每个技能 a_max == F/m 且参数全为正", not _bad, _bad or "全部自洽")
 chk("四条约束齐 (速度/加速度/加加速度/动量·质量率)",
     all(all(x in r["约束"] for x in ("①", "②", "③", "④")) for r in rows))
-chk("质量与力上限取真源 (未夹持 1.20kg / 夹持 1.35kg / 插入 ≤2N)",
+chk("质量与力上限取唯一依据 (未夹持 1.20kg / 夹持 1.35kg / 插入 ≤2N)",
     abs(PHYS["接近"]["m"] - 1.20) < 1e-9 and abs(PHYS["插入"]["m"] - 1.35) < 1e-9 and PHYS["插入"]["F"] == 2.0,
     "接近 m=%.2f 插入 m=%.2f F=%.1fN" % (PHYS["接近"]["m"], PHYS["插入"]["m"], PHYS["插入"]["F"]))
 

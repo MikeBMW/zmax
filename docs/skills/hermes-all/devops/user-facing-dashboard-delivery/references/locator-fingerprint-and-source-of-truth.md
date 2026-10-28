@@ -74,7 +74,7 @@ git worktree add -q -f --detach /tmp/wt origin/main
 cd /tmp/wt && git commit … && git push origin HEAD:main     # ✅ 推送成功
 # 但主工作区的**本地 main 引用没动**，而我的脚本读的是:
 git show main:tools/<tool>.py > …                            # ❌ 拿到的还是旧版本
-# ⇒ 日志显示"已推送"，但跑起来的行为仍是旧的（静默失败，最难查）
+# ⇒ 日志显示"已推送"，但启动的行为仍是旧的（静默失败，最难查）
 ```
 
 **修法**：

@@ -32,7 +32,7 @@ def _resolve_dir():
             return c
     raise FileNotFoundError("未找到(已探测: " + "; ".join(dict.fromkeys(cands)) + ")")
 ```
-启动脚本 export `ZMAX_REPO_ROOT=<repo>` 即显式兜底。
+启动脚本 export `ZMAX_REPO_ROOT=<repo>` 即显式保障。
 
 ## 2. exe 无法做的重负载 → frozen 守卫 + 友好提示
 
@@ -57,7 +57,7 @@ _mk("START"); sim = SimulinkModule(); _mk("post-construct")
 ```
 缺哪行 = 崩在哪段。本机 offscreen 构造 OK ≠ 目标平台 OK（Mac cocoa/OpenGL 差异）。
 
-## 5. macOS 黑屏 — OpenGL 软件渲染兜底 + .command 启动器
+## 5. macOS 黑屏 — OpenGL 软件渲染保障 + .command 启动器
 
 3D 视图（GLViewWidget/pyqtgraph）在 Mac 上 OpenGL 上下文失败 → 窗口黑。启动器模式：
 ```bash
@@ -76,4 +76,4 @@ export ZMAX_REPO_ROOT="$REPO"
 2. frozen 路径探测是否覆盖（_MEIPASS / env / 上溯）
 3. 资源是否 --add-data 打进去 + 名字匹配
 4. 置顶窗口/自动弹窗是否盖画布
-5. OpenGL 兜底（QT_OPENGL=software）
+5. OpenGL 保障（QT_OPENGL=software）

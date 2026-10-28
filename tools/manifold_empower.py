@@ -20,7 +20,7 @@
 三层映射:
     L5 DeepSeek  语义 → 意图编码 → **目标点 goal_sem** (不需要球面: 文本无天然几何)
     L4 INTACT    空间 → 8 维 action → 位置3 投 S^2 + 姿态5 平直 → 输出收窄后的 action
-    L2 技能      物理 → 4 维 chunk  → S^3 势函数兜底 → 保证收敛 + 单调
+    L2 技能      物理 → 4 维 chunk  → S^3 势函数保障 → 保证收敛 + 单调
 
 自主进化(在线, 无需重训):
     · goal_sem 从「成功执行轨迹的终点」滑动更新 (EMA, 只吃 gate_pass=1 的样本)
@@ -31,7 +31,7 @@
     emp = EmpowerLayer(enable_sem=True, enable_spa=True, enable_phy=True)
     emp.set_intent_from_l5(l5_json)              # L5 意图 → goal
     a8 = emp.empower_action(l4_action8)          # L4 8 维 → 收窄后 8 维
-    c4 = emp.empower_chunk(l2_chunk4)            # L2 4 维 → 兜底后 4 维
+    c4 = emp.empower_chunk(l2_chunk4)            # L2 4 维 → 保障后 4 维
     emp.update_from_outcome(success=True, end_state=...)   # 自主进化
 """
 from __future__ import annotations
@@ -206,7 +206,7 @@ class EmpowerLayer:
 
     # ─────────────── L2 物理层: 4 维 chunk ───────────────
     def empower_chunk(self, c4, w=None):
-        """L2 4 维 chunk action → S^3 势函数兜底 (可分辨率 49.4%, 几何有效)。
+        """L2 4 维 chunk action → S^3 势函数保障 (可分辨率 49.4%, 几何有效)。
         L2 是执行收口层: 这里只保证「朝目标单调下降」, 不改执行链。"""
         c = np.asarray(c4, float).ravel()
         if not self.en_phy or c.size != 4 or not self.st.goal_phy:
@@ -218,18 +218,18 @@ class EmpowerLayer:
         # 然后被单调闸退回原值 => 等于没做事, 白折腾 (2026-10-21 真实轨迹实测踩到)
         step = 0.5 * float(np.linalg.norm(_unit(c) - _unit(goal))) * float(np.linalg.norm(c) + 1e-12)
         cand = c + metric_gradient(c, goal, w=w, eu_scale=1.0) * step
-        # 单调性保底: 若候选让势函数不降, 退原值(绝不让兜底把事办坏)
+        # 单调性保底: 若候选让势函数不降, 退原值(绝不让保障把事办坏)
         if phi_smooth(cand, goal) > phi0:
             return c.copy()
         return cand
 
     def empower_chunk_seq(self, chunk_hx4):
-        """整块 [H,4] 协同兜底 —— 块内**时序平滑**, 不是逐帧独立。
+        """整块 [H,4] 协同保障 —— 块内**时序平滑**, 不是逐帧独立。
 
         2026-10-21 真实轨迹实测: 逐帧独立引导会把单调率 0.7372 拉到 0.7347
         (真机轨迹本身单调率只有 0.74, 逐帧再抖一次更抖)。
-        真源判据: 修正量必须沿时间**平滑**, 否则引导本身就成了新的抖动源。
-        做法: ① 逐帧兜底得修正量 Δ  ② 对 Δ 做 3 点滑动平均(端点保持)
+        唯一依据判据: 修正量必须沿时间**平滑**, 否则引导本身就成了新的抖动源。
+        做法: ① 逐帧保障得修正量 Δ  ② 对 Δ 做 3 点滑动平均(端点保持)
               ③ 帧号越靠后平滑越轻(近端响应快, 远端更稳) ④ 再过一次逐帧单调闸
         """
         arr = np.asarray(chunk_hx4, float)
@@ -237,7 +237,7 @@ class EmpowerLayer:
             return self.empower_chunk(arr)
         if not self.en_phy or arr.shape[1] != 4 or not self.st.goal_phy:
             return arr.copy()
-        # ① 逐帧兜底
+        # ① 逐帧保障
         guided = np.vstack([self.empower_chunk(row) for row in arr])
         delta = guided - arr                        # 纯修正量
         if delta.shape[0] < 3:

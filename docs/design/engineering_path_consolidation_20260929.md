@@ -59,7 +59,7 @@ zmax 工程路径里 … 以后推送代码、调试代码都到 /home/ubuntu/zm
 | 7 | cron 正名(备份留存) | 备份 `zmax_data/backups/crontab_20260929_pre_consolidation.bak`; 现无一行引用旧路径 |
 | 8 | unit 进版本库 | `tools/systemd/{zmax-dds-pub,zmax-dds-ss,zmax-dds-agg,zmax-hw-upload,ss-bridge}.service` + `zmax-studio.service.user` |
 
-⚠ 踩坑(记下来): `write_file` 对**已存在且本任务未读过**的文件会拒绝写入(返回错误但外层循环没检查),
+⚠ 遇到问题(记下来): `write_file` 对**已存在且本任务未读过**的文件会拒绝写入(返回错误但外层循环没检查),
 导致 `ss-bridge.service` 仍是旧挂载 ⇒ 容器起不来。**改 unit 后必须 `systemctl cat` 实测内容, 不能只看"写成功"。**
 
 ## 4. 观测覆盖清单(「所有数据都要被观察」的现状与计划)

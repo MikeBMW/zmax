@@ -5,7 +5,7 @@ description: Use when 状态空间节点要包成模块接 DDS 总线。
 
 # 状态空间节点中间件 (src/lerobot/middleware)
 
-工程 JSON 是唯一真源; 节点模块、端口、路由全部从它派生。改动前先读
+工程 JSON 是唯一依据; 节点模块、端口、路由全部从它派生。改动前先读
 `src/lerobot/middleware/README.md` (契约 + 命令)。
 
 ## 结构
@@ -22,7 +22,7 @@ nodes/n_<单词>.py 每节点一个模块 (tools/gen_middleware_nodes.py 生成;
 
 ## 硬规则
 
-- 模块文件名 = **一个英文单词**, 真源 `src/lerobot/middleware/node_names.json` (id→word);
+- 模块文件名 = **一个英文单词**, 唯一依据 `src/lerobot/middleware/node_names.json` (id→word);
   不许中文、不许用 id。改单词 → 跑 `gen_middleware_nodes.py` 自动重命名+删旧文件。
   Python 3 允许中文模块名 (实测可 import), 但老倪要求全英文单词。
 
@@ -41,7 +41,7 @@ nodes/n_<单词>.py 每节点一个模块 (tools/gen_middleware_nodes.py 生成;
 ## 话题名 & 工程库
 
 - 话题 = `ss.node.<node_id>.<port>` (`bus.TOPIC_PREFIX` / `bus.topic()`), 端口来自连线。
-- **落库真源**: `mw_topic` (表在 `data/database/zmax/zmax_engineering.db`), 由 `db.sync()` 写入,
+- **落库唯一依据**: `mw_topic` (表在 `data/database/zmax/zmax_engineering.db`), 由 `db.sync()` 写入,
   `load_project(source="auto")` 按画布 sha256 判是否同源: 一致走库, 不一致重解析并回写。
 - 判据 `tools/verify_mw_db.py` 7 项: 其中两条是铁证 —— ①改 `mw_topic` 一行话题名 → 重新 load →
   `Node.topic()` 立刻变; ②画布改名 → sha 变 → 库判过期并自动回写。
@@ -52,7 +52,7 @@ nodes/n_<单词>.py 每节点一个模块 (tools/gen_middleware_nodes.py 生成;
 ```bash
 PYTHONPATH=src ./gui-venv311/bin/python tools/verify_middleware.py
 ```
-① 加载数=真源 ② 每节点端口=JSON ③ 注入→上游发总线→下游从总线读
+① 加载数=唯一依据 ② 每节点端口=JSON ③ 注入→上游发总线→下游从总线读
 ④ DDS 只对 550B 开 ⑤ shm 跨进程 ⑥ 右键落点=节点模块 ⑦ 550B 真 DDS ⑧ A/C 非 DDS
 
 数据面探针要挑"干净连线": 源节点对应输入口**没有上游写者**(注入不被覆盖)、

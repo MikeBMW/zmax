@@ -78,7 +78,7 @@ sudo -n docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-sm
 ## ⚠️ Dockerfile 从 PyPI 装 torch 全家必踩的坑 (2026-08-08 实测, 换 3 个方案才成)
 
 1. **pypi.nvidia.com 下载 cudnn 657MB 超时** (ReadTimeoutError, 换清华镜像 `-i`
-   也没用 — torch cu128 wheel 的 nvidia 依赖写死指向官方源, -i 不覆盖) →
+   也没用 — torch cu128 wheel 的 nvidia 依赖预先固定指向官方源, -i 不覆盖) →
    常规 `pip install torch==2.11.0` 在容器里构建基本必失败。
 2. **多阶段 Dockerfile 默认构建所有阶段**: 即使 --target train 也会先跑 infer
    阶段 (残留 torch 2.4.1 旧版本) → 白白下载 797MB 再被覆盖。修: 两阶段统一

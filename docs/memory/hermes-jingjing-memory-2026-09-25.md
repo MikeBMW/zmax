@@ -4,15 +4,15 @@ NTP回拨8h(勿动RTC)→节拍用monotonic, 负帧龄拒用
 §
 分层(老倪): L5定方向造数据/L4认知预测/L3状态调度/L2检测反馈; 主干=SigLIP768d+四头; from-scratch主干必崩; 画布重生id→按名断言
 §
-交付前先自跑通; GPU不许空转; 改配置必核验生效(打印/hash)
+交付前先自验证通过; GPU不许空转; 改配置必核验生效(打印/hash)
 §
 技能清单少而可分辨; 一切可复制可执行(curl/JSON/图右键)
 §
 Hermes: 长命令拆多段(内联易截断→写脚本); sudo免密; 开机网络优化=unit zmax-net-optimize(sysctl.d/99-zmax-net+DNS预热+台账), 远端下载+6~19%(5/6轮胜), 首测当基准必假提升
 §
-ssh pkill -f自杀→锚定^python3; L5=DeepSeek Vision(61s→异步旁路; smolvlm2-500m兜底)
+ssh pkill -f自杀→锚定^python3; L5=DeepSeek Vision(61s→异步旁路; smolvlm2-500m保障)
 §
-飞书99991663=gateway token缓存过期→用户重启gateway(agent被禁);兜底feishu_notify.py自换token;长文≥1.5k字→400须拆条
+飞书99991663=gateway token缓存过期→用户重启gateway(agent被禁);保障feishu_notify.py自换token;长文≥1.5k字→400须拆条
 §
 磁盘红线300G; 留档~/zmax_data
 §
@@ -24,7 +24,7 @@ L4=INTACT直驱; 反归一化按ckpt训练集同源; L2收口闸逐轴corr<0.5�
 §
 🔴 工具scope内存≈8GB: 超则OOM杀(与机器空闲无关)→大缓存训练必挂, 改磁盘流式/≤5GB; 同刻仅一模型进程
 §
-评估铁律: 口径=训练同源零回退; 布局漂移禁写死几何; loss低≠有效→留出集+平凡基线
+评估铁律: 口径=训练同源零回退; 布局漂移禁预先固定几何; loss低≠有效→留出集+平凡基线
 §
 Orin ROS=domain0; tcp_pose 50Hz真值; 几何须ss_geom_calib; 红线Orin零自研零自启→4060只读订阅
 §
@@ -46,7 +46,7 @@ L2.lissa_insert=里萨如力控插入(6N配方,插槽口沿工具Z退60mm→推�
 §
 记忆五层: L2/L3/L4工作+总装Qwen宏观(SS_MACRO); 势场须喂obs[0:3]非peg_head
 §
-真源: zmax_robot_spec/calib.json→tools/zmax_params.py; 联合训练joint_train_all.py(4阶段零回退); LoRA=lora_inject.py
+唯一依据: zmax_robot_spec/calib.json→tools/zmax_params.py; 联合训练joint_train_all.py(4阶段零回退); LoRA=lora_inject.py
 §
 L5规划器/safety路径=left_right/state_space/{planner,safety}.py; INTACT稳态101ms(10Hz)冷6.7s→须常驻
 §

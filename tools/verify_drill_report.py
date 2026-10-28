@@ -7,7 +7,7 @@
 
   ① 每个任务一个目录 reports/drill/<TASK>/ , 7 个齐;
   ② 每个任务的配置链快照真有 7 个域 (任务/产品/功能/模型/性能/工程/工单), 不是空壳;
-  ③ 原型单步留了 step_run.json, 且记录到"真跑通节点数/topic" (ok>0 且至少一个非空 topic);
+  ③ 原型单步留了 step_run.json, 且记录到"真验证通过节点数/topic" (ok>0 且至少一个非空 topic);
   ④ 原型整体运行留了 closure_run.json + closure_stdout.txt, 且 stdout 里有引擎闭环那行真结果;
   ⑤ 实际波形 ≥2 张 PNG 且文件非空;
   ⑥ 实际模型运行证据 models.json 至少落 2 层;
@@ -84,7 +84,7 @@ def main():
         chk("功能配置有元任务数 (>0)", bool(fn_n), "元任务 %s 个" % fn_n)
         st = _j(os.path.join(d, "step_run.json"), {}) or {}
         chk("单步真跑留证 (ok>0)", (st.get("ok") or 0) > 0,
-            "跑通 %s/%s" % (st.get("ok"), st.get("total")))
+            "验证通过 %s/%s" % (st.get("ok"), st.get("total")))
         tp = [r.get("topic") for r in (st.get("rows") or []) if r.get("topic")]
         chk("单步有真实输出 topic", len(tp) > 0, "带 topic 节点 %d 个, 例 %s" % (len(tp), tp[:2]))
         co = _j(os.path.join(d, "closure_run.json"), {}) or {}

@@ -306,7 +306,7 @@ def main() -> int:
             return 0, ""
 
     def _publish_degraded(seq, desc, why):
-        """本轮卡住也要落一份**针对当前意图**的降级裁决: 执行层据此快速拒发, 不许干等。"""
+        """本轮阻塞也要落一份**针对当前意图**的降级裁决: 执行层据此快速拒发, 不许干等。"""
         rec = {"ts": time.time(), "ts_str": time.strftime("%F %T"), "safe": False, "risk_level": "high",
                "arm_path_clear": False, "degraded": True, "intent_seq": seq, "intent_desc": desc,
                "hazards": [{"what": "安全守护本轮未完成", "where": "-", "why": why}],
@@ -318,7 +318,7 @@ def main() -> int:
         print("[%s] 降级裁决已落盘(seq=%s): %s" % (rec["ts_str"], seq, why), flush=True)
 
     # ⏱ 单轮上限: 文件头写"VL 单次 40~150s", 但**带 2x2 拼图的实际单轮实测 137~168s**
-    #   (2026-09-28 现场: 137/154/158.6/168s) ⇒ 默认 150s 会每轮都判"卡住"落降级裁决,
+    #   (2026-09-28 现场: 137/154/158.6/168s) ⇒ 默认 150s 会每轮都判"阻塞"落降级裁决,
     #   把一个"慢但正常"的 VL 说成"未给出裁决", 现场看到的就是莫名其妙的"从严当不安全"。
     #   取值与调用方口径对齐 (l2_daemon VL_INTENT_WAIT_S=300 / 记忆: DeepSeek 单次 29~137s)。
     ct = float(os.environ.get("ZMAX_VL_CYCLE_TIMEOUT_S", "300"))
@@ -338,8 +338,8 @@ def main() -> int:
         th = threading.Thread(target=_work, daemon=True)
         th.start()
         th.join(ct)
-        if th.is_alive():          # 一轮卡住 ⇒ 立刻落"针对当前意图"的降级裁决, 每 15s 续一次, 直到它结束
-            print("⚠️ 本轮超过 %.0fs 未完成(疑远端 VL 卡住) → 落降级裁决" % ct, flush=True)
+        if th.is_alive():          # 一轮阻塞 ⇒ 立刻落"针对当前意图"的降级裁决, 每 15s 续一次, 直到它结束
+            print("⚠️ 本轮超过 %.0fs 未完成(疑远端 VL 阻塞) → 落降级裁决" % ct, flush=True)
             while th.is_alive():
                 _publish_degraded(*_intent_now(), "%.0fs" % ct)
                 time.sleep(15)

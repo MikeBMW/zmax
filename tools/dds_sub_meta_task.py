@@ -4,12 +4,12 @@
 
 老倪 2026-10-14: 「流形引擎, 需要根据任务, 输出 元任务, 怎么搞? 是在哪个节点输出比较合理? 意图直读么?」
 
-载荷 (真源 = 任务 → 画布节点 → 功能, 由 tools/ss_meta_task.py 现算):
-  task_id/task_name  活跃任务 (真源 ss_task_binding.json 的 active_task)
+载荷 (唯一依据 = 任务 → 画布节点 → 功能, 由 tools/ss_meta_task.py 现算):
+  task_id/task_name  活跃任务 (唯一依据 ss_task_binding.json 的 active_task)
   n / n_all          本任务元任务数 / 全量 (工程 74)
   layers / prio      层分布 (L2/L3/L4-L5/PLAT) · 优先级分布
   fn_ids             功能ID串 (前 12 个, 全量看派生器 --json 或 zmax_data/ss_live/meta_tasks.json)
-  src                真源 sha 摘要 (可复核)
+  src                唯一依据 sha 摘要 (可复核)
 
 用法:
   venvs/dds-venv/bin/python tools/dds_sub_meta_task.py --seconds 14
@@ -58,7 +58,7 @@ def main():
                 if m.fn_ids:
                     print("   功能: %s" % m.fn_ids)
                 if m.src:
-                    print("   真源: %s" % m.src)
+                    print("   唯一依据: %s" % m.src)
                 if m.note:
                     print("   note: %s" % m.note)
         if a.n and got >= a.n:

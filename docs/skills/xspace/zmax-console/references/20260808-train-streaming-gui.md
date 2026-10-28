@@ -2,10 +2,10 @@
 
 ## 场景
 老倪监控训练时要求：终端信息**详细不简化**（数据加载/模型加载/每步 loss 全打印）、**操作真实窗口按钮**（不能只在后台执行）、远程服务器**计时计费须快**。
-两次报"卡住/怎么就一句话"的根因排查记录。
+两次报"阻塞/怎么就一句话"的根因排查记录。
 
 ## 🐛 根因 1：python 子进程 stdout 块缓冲（非 tty）
-Popen 管道模式下 python 进程 stdout 是**块缓冲（4K）**——输出攒满 4K 才 flush，日志区长时间无输出（看起来"卡住"）。
+Popen 管道模式下 python 进程 stdout 是**块缓冲（4K）**——输出攒满 4K 才 flush，日志区长时间无输出（看起来"阻塞"）。
 **修复：训练命令加 `-u`**（python 无缓冲）：
 ```python
 ["nice", "-n", "10", os.path.join(root, ".venv", "bin", "python"),
@@ -13,7 +13,7 @@ Popen 管道模式下 python 进程 stdout 是**块缓冲（4K）**——输出�
 ```
 
 ## 🐛 根因 2：tqdm 用 `\r` 刷新不换行 → `for line in p.stdout` 永远等不到 `\n`
-tqdm 进度条每帧 `\r` 结尾（无 `\n`），`for line in p.stdout` 卡住直到训练结束——监控者只看到启动日志后"又停止"。
+tqdm 进度条每帧 `\r` 结尾（无 `\n`），`for line in p.stdout` 阻塞直到训练结束——监控者只看到启动日志后"又停止"。
 **修复：块读 + 按 `\r`/`\n` 分行**（text=False 读 bytes，手动解码）：
 ```python
 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)

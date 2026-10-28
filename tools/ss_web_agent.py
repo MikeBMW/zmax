@@ -5,7 +5,7 @@
 老倪 2026-09-25: 「开通一个状态空间 L5 的新节点, 用于与 web 的 agent 交换信息 … 远程通过提示词操纵
 状态空间的功能」→ 本 CLI 就是那个节点的**执行体** (画布节点 = 🌐 Web 智能体桥 · 远程提示词)。
 
-⚠️ 命名坑: 本文件**不能**叫 web_agent_bridge.py —— 与真源模块同名会让 `import web_agent_bridge`
+⚠️ 命名坑: 本文件**不能**叫 web_agent_bridge.py —— 与唯一依据模块同名会让 `import web_agent_bridge`
 导到自己 (shadow) → 报 "Module is not callable"。所以 CLI 用 ss_web_agent.py。
 
 用法:

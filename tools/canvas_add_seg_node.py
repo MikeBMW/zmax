@@ -27,9 +27,9 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FLOW_LINK = os.path.join(ROOT, "flows", "state_space_obs.json")
-# 🐛 2026-09-29 踩过: 仓库根这份是**软链**, 真源在包里 (src/lerobot/engineering/flows/...)。
-#    直接用 os.replace 写软链路径会把软链替换成普通文件 (git 里 T 类型变更, 真源反而没改) ⇒
-#    一律按 realpath 写**真源**, 软链保持不动。
+# 🐛 2026-09-29 踩过: 仓库根这份是**软链**, 唯一依据在包里 (src/lerobot/engineering/flows/...)。
+#    直接用 os.replace 写软链路径会把软链替换成普通文件 (git 里 T 类型变更, 唯一依据反而没改) ⇒
+#    一律按 realpath 写**唯一依据**, 软链保持不动。
 FLOW = os.path.realpath(FLOW_LINK)
 
 NID = "ss_seg"

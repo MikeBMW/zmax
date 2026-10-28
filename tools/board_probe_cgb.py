@@ -65,7 +65,7 @@ for p in imgs:
                     break
             if hits:
                 break
-    # ③ 团块兜底 (圆点板常用 SimpleBlobDetector)
+    # ③ 团块保障 (圆点板常用 SimpleBlobDetector)
     if not hits:
         try:
             det = cv2.SimpleBlobDetector_create(cv2.SimpleBlobDetector_Params())

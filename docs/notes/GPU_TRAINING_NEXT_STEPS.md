@@ -5,10 +5,10 @@
 ## ✅ 已完成 (08-24)
 - 4060 GPU 全通 (驱动 580.126.09 + 设备节点 systemd 服务持久化 + torch cu128 + ldconfig)
 - 深度模型 GPU 训练完成: outputs/yolo_peg_depth/peg_depth_v1-2/weights/best.pt (abs_rel 0.94%, 自动校准 b=0.604)
-- 双脑训练跑通 (但评估 0/8 未解决)
+- 双脑训练验证通过 (但评估 0/8 未解决)
 
 ## 🔧 已修复的 3 个 bug (已 commit)
-1. cuda tensor bug: depth.data 是 cuda tensor → np.asarray 抛异常被 except 吞 → 回退写死 z
+1. cuda tensor bug: depth.data 是 cuda tensor → np.asarray 抛异常被 except 吞 → 回退预先固定 z
    修: yolo_state_aligner.py detect_3d 加 .detach().cpu().numpy()
 2. depth scale 重标定: GPU+自动校准后 scale 变了, 旧 1.685/1.566 作废
    新: DEPTH_SCALE=0.978 (peg/hole), DEPTH_SCALE_HAND=0.885 (hand)

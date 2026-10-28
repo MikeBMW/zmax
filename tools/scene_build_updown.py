@@ -8,9 +8,9 @@
 与既有场景的区别: SCN-02-HANDLE 是搬运, SCN-06-TRAY 是摆盘; 本场景是**工位级上下料**,
 指标验证重点是 对位重复性 / 插入到位 / 端面与力 的可复现性 (而不是节拍吞吐)。
 
-真源优先, 假设明标:
+唯一依据优先, 假设明标:
   · 坐标取自 `data/scene/objects3d.json` (现场示教 + 深度实测) 与 `data/skills/l2_atomic/space_points.json`
-    (真机 /robot/tcp_pose 实测 7 点) —— 凡抄自真源的, source 字段写明出处。
+    (真机 /robot/tcp_pose 实测 7 点) —— 凡抄自唯一依据的, source 字段写明出处。
   · 工位夹具/上料口等**现场未示教**的位姿按父场景几何 + 安全偏置推导, source 明写「推导(待现场示教)」。
   · 不编造"现场实测"字样; 位姿单位 m (base_link), 尺寸 mm。
 
@@ -76,7 +76,7 @@ def build(scene_id="SCN-07-UP"):
 
     def center_of(o, fallback, why):
         if o and isinstance(o.get("center"), list) and len(o["center"]) == 3:
-            return [float(x) for x in o["center"]], "真源: " + str(o.get("source", "objects3d.json"))
+            return [float(x) for x in o["center"]], "唯一依据: " + str(o.get("source", "objects3d.json"))
         return [float(x) for x in fallback], why
 
     c_feed, s_feed = center_of(slot1, [0.6488, 0.4983, 0.1104], "推导(待现场示教): 取料位暂借父场景槽位1")
@@ -87,7 +87,7 @@ def build(scene_id="SCN-07-UP"):
     sp_pt = sp.get("space1", {})
     if isinstance(sp_pt.get("pos"), list) and len(sp_pt["pos"]) == 3:
         c_home = [float(x) for x in sp_pt["pos"]]
-        s_home = "真源: space_points.json#space1 (真机 tcp_pose 实测)"
+        s_home = "唯一依据: space_points.json#space1 (真机 tcp_pose 实测)"
     else:
         c_home, s_home = [0.42, 0.36, 0.52], "推导(待现场示教): 待机位暂用臂可达中心"
 
@@ -113,7 +113,7 @@ def build(scene_id="SCN-07-UP"):
     ]
     if slot2 and isinstance(slot2.get("center"), list):
         objects.append(obj("上下料·备用料位 (双工位)", [float(x) for x in slot2["center"]], [22.0, 18.0, 12.0],
-                           "真源: " + str(slot2.get("source", "objects3d.json")),
+                           "唯一依据: " + str(slot2.get("source", "objects3d.json")),
                            "双工位切换/低料位告警位 (现场示教槽位2)", "spare"))
 
     markers = [
@@ -150,7 +150,7 @@ def build(scene_id="SCN-07-UP"):
                     "metric_scope": ["perf.mate_align_repeat", "perf.mate_angle_repeat", "perf.D_INSERT_mm",
                                      "perf.insert_depth_res", "perf.force_res", "perf.force_overshoot",
                                      "perf.success_rate", "perf.cycle_s"],
-                    "note": "位姿真源优先; 未示教位姿来源标'推导(待现场示教)'"}}
+                    "note": "位姿唯一依据优先; 未示教位姿来源标'推导(待现场示教)'"}}
     ov = {"mode": "updown", "source": "scene_build_updown.py", "handeye_ok": parent_meta.get("handeye") == "TSAI",
           "cameras": (_j(PARENT_OVERLAY, {}) or {}).get("cameras", {}),
           "scene": "上下料工位: 取料位/上料夹具/下料位/回收位 + 保护围栏 + 上下料轨迹 (SCN-07-UP)",

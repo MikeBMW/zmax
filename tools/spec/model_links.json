@@ -1,7 +1,7 @@
 {
  "_meta": {
   "schema": "zmax-model-links/1.0",
-  "note": "功能→实际模型 的桥。功能侧真源是 function_layer_map 的 models 名称 (粗粒度, 只有层模型名), 模型侧真源是 models/active_models.json (在役指针 + extra_in_service + ar:* 场景条目, 带真实权重路径)。这里只做名称到条目的对齐, 不产生新事实; 权重/大小/时间/是否存在全部现场 stat。 | fn_overrides: 层模型点名了具体策略(L3 SmolVLA+LEW)但模块漏登记权重路径的函数, 在这里显式对齐, 不靠猜。",
+  "note": "功能→实际模型 的桥。功能侧唯一依据是 function_layer_map 的 models 名称 (粗粒度, 只有层模型名), 模型侧唯一依据是 models/active_models.json (在役指针 + extra_in_service + ar:* 场景条目, 带真实权重路径)。这里只做名称到条目的对齐, 不产生新事实; 权重/大小/时间/是否存在全部现场 stat。 | fn_overrides: 层模型点名了具体策略(L3 SmolVLA+LEW)但模块漏登记权重路径的函数, 在这里显式对齐, 不靠猜。",
   "author": "静静 (Hermes) 2026-10-28",
   "checked_by": "verify_config_active_task.py ⑨ 段 (逐条 stat 权重 + 服务功能数回归)"
  },
@@ -32,13 +32,13 @@
    "env_base": "DEEPSEEK_BASE_URL",
    "env_key": "DEEPSEEK_API_KEY",
    "env_model": "DEEPSEEK_VLM_MODEL",
-   "role": "L5 场景理解/规划 (短提示 + 小 JSON, timeout≥300); 本地 3B VLM 为兜底"
+   "role": "L5 场景理解/规划 (短提示 + 小 JSON, timeout≥300); 本地 3B VLM 为保障"
   },
   "ext:qwen3": {
    "kind": "llm",
    "layer": "L4/L5",
    "name": "Qwen3-7B (可插拔 · 未配置走规则)",
-   "role": "L5 规划/技能编排的可插拔 LLM; 未配置时走 _plan_rules (真源 modules.params.llm)"
+   "role": "L5 规划/技能编排的可插拔 LLM; 未配置时走 _plan_rules (唯一依据 modules.params.llm)"
   }
  },
  "model_names": {
@@ -58,7 +58,7 @@
     "L3",
     "L3#lora"
    ],
-   "note": "该功能真源 (function_layer_map) 层模型 = SmolVLA+LEW 长程规划, 但模块 params 没登记权重路径 ⇒ 按层模型对齐到 L3 在役 ckpt + LoRA (作者口径, 已写入本文件)"
+   "note": "该功能唯一依据 (function_layer_map) 层模型 = SmolVLA+LEW 长程规划, 但模块 params 没登记权重路径 ⇒ 按层模型对齐到 L3 在役 ckpt + LoRA (作者口径, 已写入本文件)"
   },
   "FN-SYS0-43": {
    "keys": [

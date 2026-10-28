@@ -6,11 +6,11 @@
        用户可以选择要编辑的场景元素，位置，轨迹等」
 
 设计 (与 zmax-scene-engineering 一致):
-  · 真源: flows/scenes_5jobs.json (6 个作业场景: SCN-01-FW 插拔 / 02-HANDLE / 03-BI / 04-THERMAL / 05-ATS / 07-UP 上下料)
-          + 在役现场场景 data/scene/{objects3d,overlay_spec}.json (插拔机位, **只读真源, 本工具绝不写**)
+  · 唯一依据: flows/scenes_5jobs.json (6 个作业场景: SCN-01-FW 插拔 / 02-HANDLE / 03-BI / 04-THERMAL / 05-ATS / 07-UP 上下料)
+          + 在役现场场景 data/scene/{objects3d,overlay_spec}.json (插拔机位, **只读唯一依据, 本工具绝不写**)
   · 产物: data/scene/scenes/<SCENE_ID>/{objects3d.json, overlay_spec.json}  (可编辑场景目录)
           并把它们登记进 data/scene/scenes/index.json 的 named_scenes (id → 名字/类别/来源/元素数)
-  · 每个场景都能: 切换 / 选元素 / 改位置 / 改轨迹 —— 与 GUI 页内 3D 视图、scene_edit.py 同一份真源。
+  · 每个场景都能: 切换 / 选元素 / 改位置 / 改轨迹 —— 与 GUI 页内 3D 视图、scene_edit.py 同一份唯一依据。
   · 幂等: 已存在且 --force 未给 ⇒ 不动 (保护用户已编辑过的场景); 现场场景 sha 前后必须一致 (写后自检)。
 
 用法:
@@ -40,7 +40,7 @@ BACKUP = os.path.join(ROOT, "data", "scene", "_backup_registry")
 # 现场场景 (插拔机位) 派生的可编辑副本
 PEG_COPY = "SCN-01-PEG"
 
-# step 描述里的显式坐标 (X=2.5,Y=-0.4,Z=1.3) ⇒ 真源给的就是这些点, 抽出来当轨迹航点
+# step 描述里的显式坐标 (X=2.5,Y=-0.4,Z=1.3) ⇒ 唯一依据给的就是这些点, 抽出来当轨迹航点
 _COORD = re.compile(r"X\s*=\s*(-?\d+(?:\.\d+)?)\s*[,，]\s*Y\s*=\s*(-?\d+(?:\.\d+)?)\s*[,，]\s*Z\s*=\s*(-?\d+(?:\.\d+)?)")
 # 只给一个轴的写法 (X=1.0 / Z=1.2m) ⇒ 记下来, 缺的轴沿用前一点 (不编造)
 _AXIS = re.compile(r"([XYZ])\s*[=:]\s*(-?\d+(?:\.\d+)?)\s*m?")
@@ -98,7 +98,7 @@ def load_index() -> dict:
     if os.path.exists(INDEX):
         with open(INDEX, encoding="utf-8") as f:
             return json.load(f)
-    return {"format": "zmax-scene-index", "version": "1.0", "named_scenes": {}, "in_service": "现场场景 (只读真源)"}
+    return {"format": "zmax-scene-index", "version": "1.0", "named_scenes": {}, "in_service": "现场场景 (只读唯一依据)"}
 
 
 def save_index(ix: dict) -> None:
@@ -110,8 +110,8 @@ def save_index(ix: dict) -> None:
 def from_jobs(scene: dict) -> tuple[dict, dict]:
     """flows/scenes_5jobs.json 的一个作业场景 ⇒ (objects3d, overlay_spec)。
 
-    objects: pos 单位 m (真源坐标) → center; size_mm → size (m)。
-    轨迹: 从 steps[].desc 里抽出显式坐标点 (真源自己写的点), 标 derived_from。
+    objects: pos 单位 m (唯一依据坐标) → center; size_mm → size (m)。
+    轨迹: 从 steps[].desc 里抽出显式坐标点 (唯一依据自己写的点), 标 derived_from。
     标记: 首个/末个坐标点 ⇒ 取料位/放置位; 围栏: 全部对象 bbox 外扩 0.15m。
     """
     sid = scene["scene_id"]
@@ -124,9 +124,9 @@ def from_jobs(scene: dict) -> tuple[dict, dict]:
         c = [round(float(x), 4) for x in pos]
         objs.append({"id": "ob_%02d" % (i + 1), "name": str(o.get("name")),
                      "center": c, "size": sz, "role": o.get("role", ""),
-                     "unit": "m (真源 pos/size_mm 换算)", "editable": True})
+                     "unit": "m (唯一依据 pos/size_mm 换算)", "editable": True})
         pts_all.append(c)
-    # 轨迹航点: steps 描述里的显式坐标 (真源给的点, 不编造); 只给单轴的写法缺轴沿用前一点
+    # 轨迹航点: steps 描述里的显式坐标 (唯一依据给的点, 不编造); 只给单轴的写法缺轴沿用前一点
     _seed = pts_all[0] if pts_all else [0.0, 0.0, 0.0]
     wp, names, partial = _step_points(scene.get("steps") or [], _seed)
     if len(wp) >= 2:
@@ -164,10 +164,10 @@ def from_jobs(scene: dict) -> tuple[dict, dict]:
                        "shape": {"center": [round((lo[k] + hi[k]) / 2, 4) for k in range(3)],
                                  "size": [round(hi[k] - lo[k], 4) for k in range(3)]},
                        "enabled": True})
-    o3d = {"format": "zmax-scene-objects3d", "version": "1.0", "scene_id": sid, "coord": "m, 自车坐标系 (真源)",
+    o3d = {"format": "zmax-scene-objects3d", "version": "1.0", "scene_id": sid, "coord": "m, 自车坐标系 (唯一依据)",
            "source": "flows/scenes_5jobs.json", "scene_name": scene.get("name"), "objects": objs}
     ov = {"format": "zmax-scene-overlay-spec", "version": "1.0", "scene_id": sid,
-          "source": "flows/scenes_5jobs.json (轨迹/标记为真源步骤描述派生)",
+          "source": "flows/scenes_5jobs.json (轨迹/标记为唯一依据步骤描述派生)",
           "markers": markers, "fences": fences, "trajectories": trajs}
     if fence_note:
         ov["fence_note"] = fence_note
@@ -214,7 +214,7 @@ def collect() -> list[tuple[str, str, dict, dict, str]]:
     except FileNotFoundError as e:
         print("⚠️  现场场景缺文件, 跳过派生副本: %s" % e)
     # 🎯 2026-10-10 仿真场景 (老倪: 画布 3D 视图的插拔光模块场景也要能选/编辑/运行):
-    #   几何真源 = data/scene/sim/sim_scenes.json (sim_scene_def.py); 可编辑 + 可运行
+    #   几何唯一依据 = data/scene/sim/sim_scenes.json (sim_scene_def.py); 可编辑 + 可运行
     try:
         sys.path.insert(0, os.path.join(ROOT, "tools"))
         import sim_scene_def as _SSD
@@ -226,7 +226,7 @@ def collect() -> list[tuple[str, str, dict, dict, str]]:
             print("   ⚠️ 回放场景导出跳过: %r" % (_e,))
         for sid, sc in (_SSD.load().get("scenes") or {}).items():
             out.append((sid, sc.get("name") or sid, _SSD.to_objects3d(sid), _SSD.to_overlay(sid),
-                        "仿真场景真源 data/scene/sim/sim_scenes.json · 运行 %s"
+                        "仿真场景唯一依据 data/scene/sim/sim_scenes.json · 运行 %s"
                         % (sc.get("runner", {}).get("tool", ""))))
     except Exception as e:                                                      # noqa: BLE001
         print("⚠️  仿真场景登记跳过: %r" % (e,))
@@ -241,7 +241,7 @@ def cmd_list() -> int:
         print("  %-12s %-30s 来源=%-22s 对象%d/标记%d/围栏%d/轨迹%d" % (
             sid, row.get("name", "")[:30], row.get("source", "")[:22],
             row.get("n_objects", 0), row.get("n_markers", 0), row.get("n_fences", 0), row.get("n_trajectories", 0)))
-    print("  在役: %s (只读真源)" % LIVE_DIR)
+    print("  在役: %s (只读唯一依据)" % LIVE_DIR)
     return 0
 
 
@@ -281,7 +281,7 @@ def cmd_build(force: bool) -> int:
                       "n_fences": len(b.get("fences") or []),
                       "n_trajectories": len(b.get("trajectories") or []),
                       "editable": True}
-    ix["in_service"] = "现场场景 (只读真源)"
+    ix["in_service"] = "现场场景 (只读唯一依据)"
     save_index(ix)
     live_after = {p: sha(os.path.join(LIVE_DIR, p)) for p in ("objects3d.json", "overlay_spec.json")}
     print("✅ 新建/重建 %d 个: %s" % (len(made), ", ".join(made) or "-"))

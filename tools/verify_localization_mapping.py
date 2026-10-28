@@ -8,12 +8,12 @@
   ③真录像建图 (真实运动): 真 mp4 ⇒ 关键帧/地图点/视差 三条硬指标
   ④去重: 源刷新慢/静止段 ⇒ 重复帧被识别跳过 (不伪造关键帧)
   ⑤静止场景不撒谎: 重复帧输入 ⇒ 不新增关键帧, 地图点 0 且带 degenerate 说明
-  ⑥机器人位姿真源: 新鲜/陈旧判定 + 路径 + 不造位姿
-  ⑦落盘真源: map/traj/live 三份文件 + traj 行数 == 帧数
+  ⑥机器人位姿唯一依据: 新鲜/陈旧判定 + 路径 + 不造位姿
+  ⑦落盘唯一依据: map/traj/live 三份文件 + traj 行数 == 帧数
   ⑧自主进化接口: 质数签名 + 产品标识
   ⑨自动加载开关: auto_load=false 时 auto_start 真返回未启动 (自清理)
   ⑩零回归: perception.py 的 fuse_sensors/OBS_DIM 未被本模块改动
-幂等: 探针写 /tmp 带 pid; 不改任何既有真源 (auto_load 开关测完恢复); 不重启控制台。
+幂等: 探针写 /tmp 带 pid; 不改任何既有唯一依据 (auto_load 开关测完恢复); 不重启控制台。
 用法: QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/verify_localization_mapping.py
 """
 from __future__ import annotations
@@ -121,27 +121,27 @@ def main() -> int:
     chk("地图点 0 时带退化说明 (不装成有图)", (len(sess.map_points) == 0) and bool(sess.summary()["degenerate_note"]),
         sess.summary()["degenerate_note"][:40])
 
-    # ⑥ 机器人位姿真源
-    print("\n[⑥ 机器人位姿] 真源新鲜度判定 (不造位姿)")
+    # ⑥ 机器人位姿唯一依据
+    print("\n[⑥ 机器人位姿] 唯一依据新鲜度判定 (不造位姿)")
     p = LM.read_robot_pose()
     if p.get("available"):
-        chk("读到新鲜位姿真源", p["age_s"] < 10.0 and "tcp_out" in (p.get("path") or ""),
+        chk("读到新鲜位姿唯一依据", p["age_s"] < 10.0 and "tcp_out" in (p.get("path") or ""),
             "age=%.2fs · path=…%s · xyz=%s" % (p["age_s"], (p.get("path") or "")[-34:], [round(x, 3) for x in p["xyz"]]))
         chk("位姿带坐标系/来源标注", bool(p.get("frame")) and bool(p.get("src")),
             "frame=%s src=%s" % (p.get("frame"), (p.get("src") or "")[:32]))
     else:
         chk("无新鲜位姿时如实说明 (不造位姿)", bool(p.get("reason")) and p.get("xyz") is None,
             "reason=%s" % (p.get("reason") or "")[:60])
-        SKIP.append(("新鲜位姿", "当前环境无新鲜位姿真源"))
+        SKIP.append(("新鲜位姿", "当前环境无新鲜位姿唯一依据"))
 
-    # ⑦ 落盘真源
-    print("\n[⑦ 落盘真源] map / traj / live 三份")
+    # ⑦ 落盘唯一依据
+    print("\n[⑦ 落盘唯一依据] map / traj / live 三份")
     live_p = os.path.join(ROOT, "zmax_data", "mapping", "mapping_live.json")
     if os.path.isfile(live_p):
         live = json.load(io.open(live_p, encoding="utf-8"))
         tj = live.get("traj_file")
         n_lines = sum(1 for _ in io.open(tj, encoding="utf-8")) if tj and os.path.isfile(tj) else -1
-        chk("live 真源可读且字段齐全",
+        chk("live 唯一依据可读且字段齐全",
             all(k in live for k in ("frames", "keyframes", "map_points", "loops", "scale_source", "map_file")),
             "帧 %s · kf %s · 地图点 %s · 帧龄 %.0fs" % (live["frames"], live["keyframes"], live["map_points"],
                                                     time.time() - live["ts"]))
@@ -150,7 +150,7 @@ def main() -> int:
             all(k in json.load(io.open(live["map_file"], encoding="utf-8")) for k in ("summary", "keyframes", "loops")),
             os.path.basename(live["map_file"]))
     else:
-        chk("live 真源存在", False, "未生成 %s" % live_p)
+        chk("live 唯一依据存在", False, "未生成 %s" % live_p)
 
     # ⑧ 自主进化接口
     print("\n[⑧ 自主进化] 质数签名 + 产品标识")

@@ -12,7 +12,7 @@
   ⑤ /crop_info 带 judge 台账(保留行/切过曝行/列裁/倾角/定尺) + model_input_file
 
 做法: 桩掉 SciCam SDK 底层, 但把**相机图像换成工控机真实原图**(/tmp/aoi_cmp/gk_origin.png),
-      让真的 GrabAndSaveImage + 真的 render_judge 跑起来。
+      让真的 GrabAndSaveImage + 真的 render_judge 启动。
 用法: .venv-test/bin/python test_v7_judge_offline.py
 """
 import glob

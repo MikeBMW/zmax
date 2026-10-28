@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""🏷 流形引擎输出 topic 的**标识信息**块 (真源现算, 不编数字)。
+"""🏷 流形引擎输出 topic 的**标识信息**块 (唯一依据现算, 不编数字)。
 
 老倪 2026-10-14: 「先通过配置中心，配置成 插拔任务，然后运行状态空间，流形引擎的输出topic看到，
 正在执行的任务、产品质数、主参数等标识信息」。
@@ -11,7 +11,7 @@
   ③ 产品 + 产品质数  ← src/lerobot/manifold/prime_structure.load_products()
                        (active_product / version_segment / prime / 能力数 / 能力质数签名)
   ④ 主参数          ← config/calib/zmax_manifold.json (M / dim / mode / diag) + 任务 overrides (工艺参数) + t_max
-取不到的一律写 "真源未登记" (绝不拿默认值糊); 每块都带 src, 可回读复核。
+取不到的一律写 "唯一依据未登记" (绝不拿默认值糊); 每块都带 src, 可回读复核。
 
 CLI:
     gui-venv311/bin/python tools/ss_identity.py            # 当前活跃任务/场景的标识块 (JSON)
@@ -44,7 +44,7 @@ def _load(path: str):
 
 
 def active_task_id() -> str:
-    """活跃任务真源 = config/ss_task_binding.json (配置中心「活跃配置」写的那份)。"""
+    """活跃任务唯一依据 = config/ss_task_binding.json (配置中心「活跃配置」写的那份)。"""
     return str((_load(F_BIND) or {}).get("active_task") or "")
 
 
@@ -60,7 +60,7 @@ def find_task(task_id: str = "") -> dict:
 
 
 def scene_of(task_id: str) -> dict:
-    """任务 → 场景/SCN/名字: 单一真源 = tools/ss_scene_switch.py 的 TASK_SCENE。"""
+    """任务 → 场景/SCN/名字: 单一唯一依据 = tools/ss_scene_switch.py 的 TASK_SCENE。"""
     try:
         import ss_scene_switch as _s                                              # noqa: PLC0415
         m = (_s.TASK_SCENE or {}).get(str(task_id)) or {}
@@ -68,11 +68,11 @@ def scene_of(task_id: str) -> dict:
                 "scene_color": m.get("color") or "", "src": "tools/ss_scene_switch.py:TASK_SCENE"}
     except Exception as e:                                                        # noqa: BLE001
         return {"scn": "", "scene_name": "", "scene_color": "",
-                "src": "真源未登记 (ss_scene_switch 读不到: %s)" % type(e).__name__}
+                "src": "唯一依据未登记 (ss_scene_switch 读不到: %s)" % type(e).__name__}
 
 
 def product_block() -> dict:
-    """产品 + 产品质数 + 版本段 + 能力质数签名 (真源 prime_structure.load_products)。"""
+    """产品 + 产品质数 + 版本段 + 能力质数签名 (唯一依据 prime_structure.load_products)。"""
     out = {"product_id": "", "product_name": "", "version_segment": "", "product_prime": None,
            "n_capabilities": None, "cap_signature": None, "src": REL(
                os.path.join("config", "platform", "zmax_product.json"))}
@@ -89,7 +89,7 @@ def product_block() -> dict:
                     "product_prime": pr.get("prime"), "n_capabilities": len(pr.get("capabilities") or []),
                     "cap_signature": str(sig)})
     except Exception as e:                                                        # noqa: BLE001
-        out["src"] = "真源未登记 (prime_structure 读不到: %s)" % type(e).__name__
+        out["src"] = "唯一依据未登记 (prime_structure 读不到: %s)" % type(e).__name__
     return out
 
 
@@ -122,15 +122,15 @@ def identity(scene: str = "", task_id: str = "", metric_cfg: dict | None = None)
     tid = str(t.get("task_id") or task_id or "")
     sc = scene_of(tid)
     if not tid:
-        sc = dict(sc, src=sc.get("src", "") + " · 活跃任务真源未登记")
+        sc = dict(sc, src=sc.get("src", "") + " · 活跃任务唯一依据未登记")
     return {
-        "task_id": tid or "真源未登记",
-        "task_name": str(t.get("name") or "真源未登记"),
-        "task_type": str(t.get("recipe_type") or "真源未登记"),
-        "scene": scene or sc.get("scn") or "真源未登记",
-        "scn": sc.get("scn") or "真源未登记",
-        "scene_name": sc.get("scene_name") or "真源未登记",
-        "site": str(t.get("site") or "真源未登记"),
+        "task_id": tid or "唯一依据未登记",
+        "task_name": str(t.get("name") or "唯一依据未登记"),
+        "task_type": str(t.get("recipe_type") or "唯一依据未登记"),
+        "scene": scene or sc.get("scn") or "唯一依据未登记",
+        "scn": sc.get("scn") or "唯一依据未登记",
+        "scene_name": sc.get("scene_name") or "唯一依据未登记",
+        "site": str(t.get("site") or "唯一依据未登记"),
         "targets": t.get("targets") or {},
         **product_block(),
         "main_params": main_params_block(metric_cfg, t),
@@ -147,7 +147,7 @@ def product_block_src() -> str:
 
 
 def flat(d: dict) -> list:
-    """一行键=值 (给人看; 数字照真源, 缺就是 真源未登记)。"""
+    """一行键=值 (给人看; 数字照唯一依据, 缺就是 唯一依据未登记)。"""
     mp = d.get("main_params") or {}
     return [
         ("任务", "%s · %s (%s)" % (d.get("task_id"), d.get("task_name"), d.get("task_type"))),
@@ -162,7 +162,7 @@ def flat(d: dict) -> list:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="流形引擎输出 topic 的标识块 (真源现算)")
+    ap = argparse.ArgumentParser(description="流形引擎输出 topic 的标识块 (唯一依据现算)")
     ap.add_argument("--task", default="", help="指定任务 (默认取活跃配置)")
     ap.add_argument("--scene", default="", help="tap 里那帧的场景名 (默认按任务映射)")
     ap.add_argument("--flat", action="store_true", help="一行键=值")

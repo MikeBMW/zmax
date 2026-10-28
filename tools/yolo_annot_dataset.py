@@ -487,8 +487,8 @@ def build_dataset(root=ROOT_DEFAULT, val_ratio=0.15, seed=0, link=True) -> dict:
         samples = _uniq
     except Exception as _e:                                                    # noqa: BLE001
         print(f"⚠️ 去重跳过 ({type(_e).__name__}: {_e})")
-    # 小样本兜底: ultralytics 必须有非空 val; 样本太少时 val=train (并在 stats 里**显式标注**,
-    # 因为"train=val 同数据"会让 mAP 虚高 —— 只用于跑通管线, 不能当精度证据)
+    # 小样本保障: ultralytics 必须有非空 val; 样本太少时 val=train (并在 stats 里**显式标注**,
+    # 因为"train=val 同数据"会让 mAP 虚高 —— 只用于验证通过管线, 不能当精度证据)
     # 🔴 红线 2026-09-18 (L2 边干边学): **自动标注样本绝不进 val**。
     #   原因: val 是交付门槛的裁决集 (同口径对照的"真值侧"); 自动标注来自在役模型/几何真值,
     #   放进 val = 自证循环 (自己标自己, 指标虚高 → 假提升上线)。val 只由人工标注构成。
@@ -496,7 +496,7 @@ def build_dataset(root=ROOT_DEFAULT, val_ratio=0.15, seed=0, link=True) -> dict:
     auto_sess = {s["name"] for s in (_meta.get("sessions") or [])
                  if str(s.get("annotator", "")).startswith("auto")}
     # ⚠️ 2026-09-18 质量红线: **待标注帧 (auto:pending) 不进数据集** —— 无标签帧若当背景负样本,
-    #   会教模型"目标=背景"(在役权重低置信漏检的帧里其实有目标)。等人工/几何补标后再进。
+    #   会教模型"目标=背景"(在役权重低置信漏检的帧里实际有目标)。等人工/几何补标后再进。
     pending_sess = {s["name"] for s in (_meta.get("sessions") or [])
                     if str(s.get("annotator", "")) == "auto:pending"}
     _n_all = len(samples)
@@ -514,7 +514,7 @@ def build_dataset(root=ROOT_DEFAULT, val_ratio=0.15, seed=0, link=True) -> dict:
              "n_auto_samples": n_auto, "n_human_samples": n_human, "n_auto_train": 0,
              "auto_in_val": 0, "auto_sessions": sorted(auto_sess),
              "n_pending_excluded": _n_pend, "pending_sessions": sorted(pending_sess),
-             "note": (("样本<8: val 复用 train (只用于跑通训练管线, mAP 不可信); "
+             "note": (("样本<8: val 复用 train (只用于验证通过训练管线, mAP 不可信); "
                        + ("val 仅由人工样本构成" if n_human else "⚠️ 无人工样本, val 含自动标注 → mAP 不可信"))
                       if small else
                       "val 按文件名哈希划分且**不含自动标注样本** (自动标注红线: 只进 train)"),

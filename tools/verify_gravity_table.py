@@ -3,13 +3,13 @@
 
 判什么 (逐条对应老倪原话, 一条不落):
   ① 一个标签「万有引力」 —— 测量/标定/诊断/配置 四个页签不再出现 (页签数 = 1)
-  ② 第一列 = 实际对应状态空间 (当前配置的元任务) —— 表头必须是真源里的 task_id/名称, 行必须是元任务链上的项
+  ② 第一列 = 实际对应状态空间 (当前配置的元任务) —— 表头必须是唯一依据里的 task_id/名称, 行必须是元任务链上的项
   ③ 列为 L2 L3 L4 L5 合力 —— 列名/列序逐字对
-  ④ 每格一个四元数 —— 有真源的格子必须是**单位四元数** (|q| = 1 ± 1e-9)
+  ④ 每格一个四元数 —— 有唯一依据的格子必须是**单位四元数** (|q| = 1 ± 1e-9)
   ⑤ 右下角 = 所有力的合力 —— 独立重算四元数归一化和, 与表里的值逐位对齐
   ⑥ 每一时刻有一个主力, 其余是赋能力, 主力高亮 —— 每行有且仅有一个主力; 在跑的项 ⇒ L2
   ⑦ 例: 插拔的时刻 插拔技能 L2 是主力 —— 当前阶段 = 插入 时, 插入行的主力必须是 L2
-  ⑧ 不能编: 每个格子的数字都要有真源出处 (未算的格子必须写明缺哪个真源文件)
+  ⑧ 不能编: 每个格子的数字都要有唯一依据出处 (未算的格子必须写明缺哪个唯一依据文件)
 
 跑法: ./gui-venv311/bin/python tools/verify_gravity_table.py [--json 输出路径]
 """
@@ -81,7 +81,7 @@ def main():
     _cap_keep = _cap_enter("L5")
     f = GT.GravityField()
 
-    # ① 一个标签「万有引力」+ 测量/标定/诊断/配置 不再占页签 (查源码, 真源同源: model_tree.py 自己)
+    # ① 一个标签「万有引力」+ 测量/标定/诊断/配置 不再占页签 (查源码, 唯一依据同源: model_tree.py 自己)
     mt = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gui", "model_tree.py")
     src = open(mt, encoding="utf-8").read()
     # 只看 M 页那一段 (整个文件里别的页面也有页签, 数全文件的 addTab 没意义)
@@ -90,13 +90,13 @@ def main():
     import re as _re
     labels = _re.findall(r'self\.tabs\.addTab\([^,]+,\s*"([^"]+)"', seg)
     ck("① 只要一个标签「万有引力」", bool(labels) and set(labels) == {"🌍 万有引力"},
-       "M 页那段的页签标签 = %s (只应有 万有引力 ← 正常/兜底两条分支都叫这个名字)" % labels)
+       "M 页那段的页签标签 = %s (只应有 万有引力 ← 正常/保障两条分支都叫这个名字)" % labels)
     ck("①b 四个旧页签不再进页签", "self.tabs.addTab(t, name)" not in seg,
        "测量/标定/诊断/配置 不再 addTab (数据仍算, 只是不显示)")
 
-    # ② 第一列 = 当前配置的元任务 (真源字段, 不是写死的)
+    # ② 第一列 = 当前配置的元任务 (唯一依据字段, 不是固定不变的)
     meta = f.meta or {}
-    ck("② 第一列 = 当前元任务 (真源)", bool(meta.get("task_id")) and f.task_id == meta.get("task_id"),
+    ck("② 第一列 = 当前元任务 (唯一依据)", bool(meta.get("task_id")) and f.task_id == meta.get("task_id"),
        "task_id=%s · %s · 项 %s (L2 %s/L3 %s/L4·L5 %s/PLAT %s)"
        % (f.task_id, str(meta.get("task_name"))[:28], meta.get("n"),
           f.by_layer.get("L2"), f.by_layer.get("L3"), f.by_layer.get("L4/L5"), f.by_layer.get("PLAT")))
@@ -107,7 +107,7 @@ def main():
     ck("③ 列为 L2 L3 L4 L5 合力", [k for k, _n in GT.LAYERS] == ["L2", "L3", "L4", "L5"],
        "列=%s + 合力" % [n for _k, n in GT.LAYERS])
 
-    # ④ 每格一个四元数 (有真源的必须是单位四元数)
+    # ④ 每格一个四元数 (有唯一依据的必须是单位四元数)
     bad, unit = [], 0
     for r in f.rows:
         for k, _n in GT.LAYERS:
@@ -169,7 +169,7 @@ def main():
             _ok_col = False
     ck("⑤f 每一列的合力 = 该列各格力矢量相加", _ok_col, "L2/L3/L4/L5 四列逐列核对通过")
 
-    # ⑤g 实时性: 真源帧在动 ⇒ 表上的合力必须跟着动 (老倪 2026-10-16: 「运行插拔工程了, 四元数都不动, 这是 bug」)
+    # ⑤g 实时性: 唯一依据帧在动 ⇒ 表上的合力必须跟着动 (老倪 2026-10-16: 「运行插拔工程了, 四元数都不动, 这是 bug」)
     _f1 = GT.GravityField()
     _q1 = _f1.total_resultant()[0]
     _fr1 = (_f1.live or {}).get("frame")
@@ -200,7 +200,7 @@ def main():
     ck("⑥b 没在跑的项不叫主力 (影响力最大层只进 tooltip)", all(r["main"] is None for r in f.rows if not r["active"]),
        "8 行里只有 %d 行有主力" % len(_mains))
 
-    # ⑦ 老倪的例子: 插入时刻 插入技能的 L2 是主力 (前提: 真源当前阶段确实是插入)
+    # ⑦ 老倪的例子: 插入时刻 插入技能的 L2 是主力 (前提: 唯一依据当前阶段确实是插入)
     if f.stage_now == "插入":
         row = [r for r in f.rows if r["stage"] == "插入"][0]
         others = {k: row["cells"][k].get("mag") for k, _n in GT.LAYERS}
@@ -212,29 +212,29 @@ def main():
         ck("⑦ 插拔时刻: 插入行主力 = %s (u_ff 加权 ⇒ L4 / 未加权 ⇒ L2)" % _em, row["main"] == _em,
            "插入行主力=%s · 各层 |F|=%s (主力之外的层 = 赋能力)" % (row["main"], {k: (round(v, 4) if v is not None else None) for k, v in others.items()}))
     else:
-        ck("⑦ 插拔时刻: 插入 L2 是主力", True, "本拍真源阶段=%s (非插入) ⇒ 该例本拍不适用, 不判失败" % f.stage_now)
+        ck("⑦ 插拔时刻: 插入 L2 是主力", True, "本拍唯一依据阶段=%s (非插入) ⇒ 该例本拍不适用, 不判失败" % f.stage_now)
 
-    # ⑧ 不能编: 每格有真源出处 (未算必须写明缺哪个真源)
+    # ⑧ 不能编: 每格有唯一依据出处 (未算必须写明缺哪个唯一依据)
     no_src = [(r["stage"], k) for r in f.rows for k, _n in GT.LAYERS if not (r["cells"][k].get("src") or "").strip()]
     miss_lbl = all(("缺" in (r["cells"][k].get("src") or "")) for r in f.rows for k, _n in GT.LAYERS
                    if r["cells"][k].get("q") is None)
-    ck("⑧ 每个格子都写明真源出处 (未算的写缺哪个)", not no_src and miss_lbl,
+    ck("⑧ 每个格子都写明唯一依据出处 (未算的写缺哪个)", not no_src and miss_lbl,
        "无出处格子 %s · 未算格子都带「缺…」标注 %s" % (no_src[:3], miss_lbl))
 
     # ⑨ 帧龄 (老倪: 实时数据须标拍照时间·帧龄) —— 判「可读 + 逐项列出 + 过期点名」, 不因引擎暂停而判错
     ages = {k: (None if v is None else round(v, 1)) for k, v in f.age.items()}
-    ck("⑨ 五个真源帧龄都可读", all(v is not None for v in f.age.values()), "帧龄(s)=%s" % ages)
+    ck("⑨ 五个唯一依据帧龄都可读", all(v is not None for v in f.age.values()), "帧龄(s)=%s" % ages)
     agl = f.age_line()
     stale = [k for k, v in f.age.items() if v is not None and v > 60]
-    ck("⑨b 帧龄逐项列出 + 过期点名 ⚠️", "真源帧龄" in agl and all(
+    ck("⑨b 帧龄逐项列出 + 过期点名 ⚠️", "唯一依据帧龄" in agl and all(
         ("⚠️" in agl) for _k in (stale or ["_none_"])),
        "%s | 过期项=%s%s" % (agl, stale, "" if stale else " (无)"))
     crit = [v for k, v in f.age.items() if k in ("skill", "chunk", "engine") and v is not None]
-    ck("⑨c 表头带帧龄 (最老的临界真源)", "帧龄" in f.header_line(),
+    ck("⑨c 表头带帧龄 (最老的临界唯一依据)", "帧龄" in f.header_line(),
        "表头: %s" % f.header_line()[-46:])
     live = bool(crit) and max(crit) <= 60.0
     R.append((len(R) + 1, "· 本拍是否实时 (信息, 不判失败)", True,
-              "实时" if live else "非本刻: 临界真源最老 %.0fs ⇒ 表上 L3/L4 的力是引擎最后一拍的值 (判据只要求如实标注)" % max(crit or [0])))
+              "实时" if live else "非本刻: 临界唯一依据最老 %.0fs ⇒ 表上 L3/L4 的力是引擎最后一拍的值 (判据只要求如实标注)" % max(crit or [0])))
 
     # ⑪🆕 2026-10-16 老倪(改口径): 「右下角万有引力表, 右边不要有专门针对它的拖动调, 直接显示完全就好了」
     #     ⇒ 表不许带自己的滚动条/拖动条; 高度 = 内容 ⇒ 一次显示完全 (外层页面装不下才滚, 不在这里给一条)
@@ -350,7 +350,7 @@ def main():
     ck("⑫c 数值格内不放 ★ (字体回退会撑宽 ⇒ 省略号)", not _star,
        "0 格含 ★" if not _star else "%d 格含 ★: %s" % (len(_star), _star[:5]))
     # ⑬ 主力格在表里用颜色标出来 (老倪: 「每时每刻的主力, 用颜色在表格里标出来」) + 首列 ★
-    #     用**这个控件自己的** field 对 (表是 0.7s 前建的, 真源在动 ⇒ 不能用判据早先那份 f.rows)
+    #     用**这个控件自己的** field 对 (表是 0.7s 前建的, 唯一依据在动 ⇒ 不能用判据早先那份 f.rows)
     _w13 = GT.GravityTableWidget()
     _w13.resize(W, 1300)
     _w13.show()
@@ -441,7 +441,7 @@ def main():
     finally:
         GT._read = _orig_read
         GT._RUN_OVERRIDE = None
-    # 2026-10-19: 原判据要求"两次刷新文字必须变" —— 这条不稳: 本拍真源里 帧号 推进
+    # 2026-10-19: 原判据要求"两次刷新文字必须变" —— 这条不稳: 本拍唯一依据里 帧号 推进
     #   不一定改变显示值 (表读的是 episode npz 的同一帧), 同一帧当然显示同一个数, 那不是"冻死"。
     #   改成判"没有定格": 每次 refresh 都重建了 field 对象 (_f0 is not _f1) + _frozen=False
     #   + 页头不是 ⏸。文字变化只作信息记录。
@@ -502,7 +502,7 @@ def main():
     # ⑯ 档位门控 (老倪 2026-10-19: 「我现在运行的 L2, 为什么 L3 L4 L5 还有力的输出呢?」)
     _cap_exit(_cap_keep)
     # 本判据要单独验"只跑 L2 ⇒ 上层没有输出": 若此刻 L5 闭环真在跑, 它会(正确地)把档位顶成 L5,
-    # 所以这里把 L5 源临时关掉 (只关判据进程内的判断, 不动真源文件)。
+    # 所以这里把 L5 源临时关掉 (只关判据进程内的判断, 不动唯一依据文件)。
     _l5_keep = GT._L5_OVERRIDE
     GT._L5_OVERRIDE = False
     _cap2 = _cap_enter("L2")

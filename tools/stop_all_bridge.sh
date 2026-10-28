@@ -12,7 +12,7 @@ for f in zmax_data/ss_live/bridge_async.pid zmax_data/ss_live/bridge_path.pid zm
   esac
   rm -f "$f"
 done
-# 兜底: 扫 /proc 命令行里含 bridge_ 且 comm=python 的进程 (排除本脚本)
+# 保障: 扫 /proc 命令行里含 bridge_ 且 comm=python 的进程 (排除本脚本)
 for d in /proc/[0-9]*; do
   p=${d#/proc/}
   [ "$p" = "$$" ] && continue

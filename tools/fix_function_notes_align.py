@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""fix_function_notes_align.py — 把「功能点描述真源」重新按**节点名**对齐 (fn_id 是位置号, 插节点会整体错位)。
+"""fix_function_notes_align.py — 把「功能点描述唯一依据」重新按**节点名**对齐 (fn_id 是位置号, 插节点会整体错位)。
 
 背景 (2026-10-15 实捉):
   `data/database/zmax/function_notes.json` 按 `fn_id` (FN-<系统>-<序号>) 存描述, 而 **fn_id 是行内位置号** ——

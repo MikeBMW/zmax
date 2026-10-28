@@ -7,7 +7,7 @@
     而 `wmctrl -i -a <winid>` 抬窗可能静默失败 (mutter 把 frame 与 client 分成两个 id, 抬的是另一个)
     ⇒ 截到的是压在上面的窗口 (实测 OCR 出来全是自己的终端文字)。
   · `xwd -id <winid>` 在合成器下拿到的是该窗口自己的内容, 与是否被遮挡无关;
-    只是 PIL 打不开 `.xwd` ⇒ 本脚本自己解 XWD 头并按 mask 还原通道。
+    只是 PIL 无法打开 `.xwd` ⇒ 本脚本自己解 XWD 头并按 mask 还原通道。
 
 用法:
   DISPLAY=:0 <venv>/bin/python xwd_window_grab.py 0x20058a /tmp/win.png

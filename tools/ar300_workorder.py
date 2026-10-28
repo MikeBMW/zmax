@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""📋 把 AR 300UPH 的元任务组合写进工单真源 SCN-07-AOI, 再重生成工单 (工单即任务)
+"""📋 把 AR 300UPH 的元任务组合写进工单唯一依据 SCN-07-AOI, 再重生成工单 (工单即任务)
 
 老倪口径 (2026-10-28):
   「最后输出工单; 实际的生产目标是 300UPH, 场景就是 AR 场景的仿真机器人, 左臂摆盘, 右臂插拔和 AOI 检查。
@@ -8,7 +8,7 @@
 
 做法:
   ① flows/scenes_5jobs.json 的 SCN-07-AOI: 补 performance(300UPH/12s/双臂) + 用 4 个元任务重写 steps
-     + 挂 ar_meta_tasks 引用 (元任务组合真源), 不动 objects/其他场景
+     + 挂 ar_meta_tasks 引用 (元任务组合唯一依据), 不动 objects/其他场景
   ② 备份 config/orders/ → 跑 tools/build_sheet.py 重生成 9 份工单
   ③ 校验: BS_SCN-07-AOI.json 含 uph_target=300 / 双臂角色 / 元任务步 / 节拍 12s
 """
@@ -76,12 +76,12 @@ def main():
     s["goal"] = ("AR 场景双臂并行 300UPH: 左臂摆盘 + 右臂插拔与 AOI 五点检测; "
                  "一轮 %d 段 / %.2fs / 14 件, 目标 300 件/小时 (12s/件)"
                  % (lh["segments_total"], lh["round_total_s"]))
-    s["_ar300_note"] = "2026-10-28 由 tools/ar300_workorder.py 写入 (元任务组合 + 300UPH), 真源保持不变的其他字段"
+    s["_ar300_note"] = "2026-10-28 由 tools/ar300_workorder.py 写入 (元任务组合 + 300UPH), 唯一依据保持不变的其他字段"
 
     bak = P_SCENES + ".bak_" + time.strftime("%H%M%S")
     shutil.copy2(P_SCENES, bak)
     json.dump(scenes, open(P_SCENES, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    print("① 场景真源已更新: SCN-07-AOI steps=%d 元任务, 一件 %.2fs, 目标 %s UPH"
+    print("① 场景唯一依据已更新: SCN-07-AOI steps=%d 元任务, 一件 %.2fs, 目标 %s UPH"
           % (len(steps), one_piece_s, lh["uph_target"]))
     print("   备份: %s" % os.path.basename(bak))
 

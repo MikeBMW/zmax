@@ -366,7 +366,7 @@ def _crop_metrics(canvas, bgr, ratio, offset):
 #   亮度分不开, 只能靠 ROI 右界拦住(实测台面从 x≈1820 起, 故右界取 1815)。
 # 估倾角双法互校: (a) 上边缘滑窗最直段直线 (b) ROI 掩膜 minAreaRect —— 两法差 >1.5° 就判失败,
 #   宁可回退全幅也不硬裁(实测整条拟合残差 ±100px 是脏的, 只有中段直线干净)。
-JUDGE_ROI = (330, 960, 1815, 1440)          # 外框(右界只当兜底 —— 正常走"上边缘竖直台阶"收紧到模块本体)
+JUDGE_ROI = (330, 960, 1815, 1440)          # 外框(右界只当保障 —— 正常走"上边缘竖直台阶"收紧到模块本体)
 JUDGE_TH_BAR = 200                          # 过曝条(模块壳体)阈值
 JUDGE_TH_MOD = 170                          # 模块并集阈值(放宽: 含左端灰青连接器头, 实测灰 ~187)
 JUDGE_CANVAS = (1400, 300)                  # 判据图定尺(宽,高) —— 模块水平居中, 背景灰填充
@@ -701,7 +701,7 @@ def _detect_worker_loop():
         topview_path, origin_path, detect_type = (list(item) + [None] * 3)[:3]
         try:
             if not topview_path or not os.path.exists(topview_path):
-                print("  ⚠️ 跳过一项: 模型输入图已不在(%s) —— 不把不存在的路径喂给检测器" % topview_path)
+                print("  ⚠️ 跳过一项: 模型输入图已不在(%s) —— 不把不存在的路径提供给检测器" % topview_path)
                 continue
             t0 = time.time()
             result = detector.detect(topview_path, detect_type=detect_type)

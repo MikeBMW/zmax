@@ -88,7 +88,7 @@ def episode_facts():
 
 
 def manifold_facts():
-    """在役主参数 M 真源 vs 配置单映射算出的 M (两端对账)。"""
+    """在役主参数 M 唯一依据 vs 配置单映射算出的 M (两端对账)。"""
     live = {}
     if os.path.isfile(MANIFOLD):
         live = json.load(open(MANIFOLD, encoding="utf-8"))
@@ -174,7 +174,7 @@ def rows(t, ep, mf, ss, tq):
     add(4, "取放精度 (水平单边)", "≤1.0 mm", ("最大 %.3f mm (%s)" % (max(xy), " ; ".join("%.3f" % x for x in xy))) if xy else "未测",
         ("达标" if xy and max(xy) <= 1.0 else "未达/未测"),
         "python3 -c \"import numpy as np;print(np.load('reports/tray_place_latest.npz',allow_pickle=True)['meta'].item()['judges'])\"",
-        "真源: 每颗判据 dx/dy 绝对值之和")
+        "唯一依据: 每颗判据 dx/dy 绝对值之和")
 
     yaw = (ep or {}).get("yaw_deg") or []
     add(5, "姿态偏差", "≤1.0 °", ("最大 %.3f °" % max(yaw)) if yaw else "未测",
@@ -202,11 +202,11 @@ def rows(t, ep, mf, ss, tq):
 
     lv, mp = (mf or {}).get("live") or {}, (mf or {}).get("mapped") or {}
     same = (lv.get("M") == mp.get("scale")) and (lv.get("dim") == mp.get("dim")) and (lv.get("mode") == mp.get("mode"))
-    add(9, "主参数 M (配置单→M 映射落役)", "配置单算出的 M 必须 == 在役真源",
+    add(9, "主参数 M (配置单→M 映射落役)", "配置单算出的 M 必须 == 在役唯一依据",
         "在役 M=%s (dim=%s/%s) vs 配置单映射 M=%s (dim=%s/%s)" % (
             lv.get("M"), lv.get("dim"), lv.get("mode"), mp.get("scale"), mp.get("dim"), mp.get("mode")),
         "**不一致 ⇒ 映射未落役**" if not same else "一致",
-        "python3 tools/config_to_M.py --task TASK-06-TRAY   # 落役: 加 --write (改在役真源前须评审)",
+        "python3 tools/config_to_M.py --task TASK-06-TRAY   # 落役: 加 --write (改在役唯一依据前须评审)",
         "映射规则 R1–R5 在 config_to_M.py; 落役判据 verify_metric_main_param.py 23/0 PASS (节点侧)")
 
     add(10, "驱动扭矩话题 ss_torque", "10Hz 常驻 · 与 tap 逐位一致 · 场景=活跃场景",
@@ -237,7 +237,7 @@ def build(tid, ver):
         "scene": t.get("scene_ref"), "scene_color": "#1f6feb",
         "sources": {k: {"path": os.path.relpath(p, ROOT), "sha256_16": _sha(p), "mtime": (
             datetime.fromtimestamp(os.path.getmtime(p)).strftime("%Y-%m-%d %H:%M:%S") if os.path.isfile(p) else None)}
-            for k, p in (("任务绑定", BINDING), ("摆盘真跑产物", NPZ), ("主参数M真源", MANIFOLD),
+            for k, p in (("任务绑定", BINDING), ("摆盘真跑产物", NPZ), ("主参数M唯一依据", MANIFOLD),
                          ("扭矩判据报告", TORQUE_JUDGE))},
         "rows": rr, "episode": ep, "manifold": mf, "speed_gate": ss, "torque": tq,
     }
@@ -277,14 +277,14 @@ def to_md(d):
     L.append("")
     lv, mp = mf.get("live") or {}, mf.get("mapped") or {}
     L.append("- **定义**: 度量张量 g_ij(x) = M·G_ij(x), det G=1, M ∈ %s —— M = 整体尺度(物理=等效惯量尺度, a=F/M), G = 形状" % (lv.get("range")))
-    L.append("- **在役真源** `config/calib/zmax_manifold.json`: M=%s · dim=%s · mode=%s · 更新 %s" % (lv.get("M"), lv.get("dim"), lv.get("mode"), lv.get("updated_at")))
+    L.append("- **在役唯一依据** `config/calib/zmax_manifold.json`: M=%s · dim=%s · mode=%s · 更新 %s" % (lv.get("M"), lv.get("dim"), lv.get("mode"), lv.get("updated_at")))
     L.append("- **配置单映射算得** (config_to_M R1–R5): M=%s · dim=%s · mode=%s · audit_sha=%s" % (mp.get("scale"), mp.get("dim"), mp.get("mode"), mp.get("audit_sha")))
-    L.append("- **判定**: %s" % ("一致" if (lv.get("M") == mp.get("scale") and lv.get("dim") == mp.get("dim")) else "**不一致 ⇒ 摆盘配置单尚未落到在役主参数** (映射链存在、判据在节点侧 23/0 PASS, 但真源未写)"))
+    L.append("- **判定**: %s" % ("一致" if (lv.get("M") == mp.get("scale") and lv.get("dim") == mp.get("dim")) else "**不一致 ⇒ 摆盘配置单尚未落到在役主参数** (映射链存在、判据在节点侧 23/0 PASS, 但唯一依据未写)"))
     if mp.get("inputs"):
         L.append("- **可测量输入 (R5 能量标定)**:")
         for k, v in (mp.get("inputs") or {}).items():
             L.append("  - %s: %s" % (k, v))
-    L.append("- **测量方法 (可被测量, 现场照做)**: ①能量法 M = 1 + (½·m_eff·v_peak² + m_eff·g·h)/E_ref, 输入 m_eff=夹具+工件(真源 calib/称重)、v_peak(轨迹实测峰值, 由 tcp_pose 50Hz 差分)、h=行程(结构参数), E_ref=标定基准; ②动力学反解 M = F/a (施加已知力 F, 测加速度 a), 两种方法互检; ③验收区间 [0,8], 在役值须与配置单算出值逐位一致 (不一致即判不通过)。")
+    L.append("- **测量方法 (可被测量, 现场照做)**: ①能量法 M = 1 + (½·m_eff·v_peak² + m_eff·g·h)/E_ref, 输入 m_eff=夹具+工件(唯一依据 calib/称重)、v_peak(轨迹实测峰值, 由 tcp_pose 50Hz 差分)、h=行程(结构参数), E_ref=标定基准; ②动力学反解 M = F/a (施加已知力 F, 测加速度 a), 两种方法互检; ③验收区间 [0,8], 在役值须与配置单算出值逐位一致 (不一致即判不通过)。")
     L.append("")
     ss = d.get("speed_gate") or {}
     L.append("## 4. 节拍可达性 (配置项 → 性能, 代码级证据)")
@@ -310,7 +310,7 @@ def to_md(d):
     L.append("")
     L.append("- 判据报告: %s 项 · 通过 %s · 未过 %s" % (tq.get("总项"), tq.get("通过"), tq.get("未过")))
     L.append("- 未过项: %s" % (tq.get("未过清单") or "无"))
-    L.append("- 语义: ss_torque = M·(−∇Φ) (M 来自主参数真源, Φ 为真实势场); 单位按规格记 N·m, **未做扭矩计量学标定** (payload 自带声明)")
+    L.append("- 语义: ss_torque = M·(−∇Φ) (M 来自主参数唯一依据, Φ 为真实势场); 单位按规格记 N·m, **未做扭矩计量学标定** (payload 自带声明)")
     L.append("- 复核: `gui-venv311/bin/python tools/verify_driving_torque_topic.py` → `reports/driving_torque_judge.json`")
     L.append("")
     L.append("## 7. 数据来源与指纹 (可回读)")

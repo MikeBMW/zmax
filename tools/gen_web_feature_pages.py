@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """gen_web_feature_pages.py — datadrive.world 两个网页生成器 (2026-09-04 老倪统稿)
 
-从单一真源 src/lerobot/verification/node_func_tree.py 导出:
+从单一唯一依据 src/lerobot/verification/node_func_tree.py 导出:
   1. function-list.html 功能清单网页
      §1 几何能力分类总纲: LFP局部精细感知 / LFO局部精细操作 / HDM全局高维
         流形泛化 (纤维丛视角: 局部截面+联络 → 全局同胚) + 三大精密作业

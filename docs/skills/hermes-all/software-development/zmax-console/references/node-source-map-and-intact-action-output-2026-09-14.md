@@ -1,4 +1,4 @@
-# 画布节点「右键 → 打开 VSCode」定位真源码 + INTACT action 输出地图
+# 画布节点「右键 → 打开 VSCode」定位唯一依据码 + INTACT action 输出地图
 (2026-09-14 实战; 触发: 老倪「DiT 的右键怎么没有进入源代码呢?」+「INTACT 的 action 输出在哪里」)
 
 ## 一、右键定位的判定顺序 (GUI `simulink_module.py::open_in_vscode`)
@@ -15,11 +15,11 @@
 **两个必踩根因 (2026-09-14 修)**:
 1. **只写文件不写符号** → `code -g <file>:1` 打开在**第 1 行** → 看着像"没跳进实现"。
    DiT 节点 (`ssdec`) 当时就是 `params.source=action_head.py` 无符号 → 打开第 1 行。
-2. **source 指向 GUI 壳文件, 真实现其实在 src/** → 11 个节点: `sssk1-8` 写
+2. **source 指向 GUI 壳文件, 真实现实际在 src/** → 11 个节点: `sssk1-8` 写
    `tools/gui/node_logic.py node_ss_skill` (而 `atomic_skills.py` 自己的注释就写着"画布 SK01-08
    右键源码指向本文件"), `ssyolo/ss2d3d/sstactile` 写 `tools/gui/yolo_perception.py`
    (150 行里**没有** YoloStateAligner/detect_3d/synth_tactile)。
-   **判据: 目标文件里 grep 不到那个符号 = 指向错了**, 不是"打不开"。
+   **判据: 目标文件里 grep 不到那个符号 = 指向错了**, 不是"无法打开"。
 
 ## 二、三件工具 (都在 `tools/`, 可复跑)
 

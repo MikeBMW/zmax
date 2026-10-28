@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""🚀 run_all_models.py — 把**所有在役模型**按档位真跑一遍并逐层取证 (老倪: 「运行所有模型」)
+"""🚀 run_all_models.py — 把**所有在役模型**按档位真执行一遍并逐层取证 (老倪: 「运行所有模型」)
 
 跑什么 (与 GUI 勾选框等价, 用 GUI 同一代码路径 RealStateSpaceSim):
   · L2 档  : R1 真实视觉 = metaworld 渲染 → YOLO detect_3d 每帧真推理 (SS_L2_YOLO)

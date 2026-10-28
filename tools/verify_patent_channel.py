@@ -7,14 +7,14 @@
    你来根据先有状态空间工程，设计专利申请的内容，要有层次，逻辑，要保证全局数据真实，可靠，能落地，形成专有知识产权」
 
 判据 (真跑真读, 不看图):
-  ① 真源: config/patents/patent_registry.json 存在、schema 对、件数 ≥ 8
+  ① 唯一依据: config/patents/patent_registry.json 存在、schema 对、件数 ≥ 8
   ② 内容: 每件必需字段齐全 (编号/标题/层次/代号/类型/状态/摘要/问题/方案/效果/权项/实施例/落地引用/挂载功能)
   ③ 渠道: 74 条功能**逐条**挂上 (主挂或关联) —— 未挂 0 条; 且 fn_ids 无孤儿 (库里有这个功能)
   ④ 不许空专利: 每件主挂+关联 > 0
   ⑤ 层次: 层次分类 ≥ 4 类; 每件星位属于北斗七星
   ⑥ 逻辑: 问题 ≥2 · 方案 ≥4 · 效果 ≥2 · 权项 ≥3 · 实施例 ≥2
   ⑦ 落地: 每件落地引用 ≥2 条, 且**逐条真实存在** (文件/目录在仓库里)
-  ⑧ 数据真实: 文档里的统计 = 真源现算 (工程库 functions/product_features/canvas_nodes + 主控台模型矩阵)
+  ⑧ 数据真实: 文档里的统计 = 唯一依据现算 (工程库 functions/product_features/canvas_nodes + 主控台模型矩阵)
   ⑨ 导出: 12 件 md + docx 全落地非空, 总览清单含"渠道 100% 预留"
   ⑩ 同源: 文档内"挂载功能表"行数 == 该专利挂载数
   ⑪ 文档配置页: 专利块在位 (表 12 行) 且与 SOR/立项/合作协议**同一页签**(同级别) + 共用同一预览窗
@@ -55,8 +55,8 @@ def main():
     cov = PC.coverage()
     facts = PC.live_facts()
 
-    print("═══ ① 真源 ═══")
-    chk("真源存在 + schema 对 + 件数 ≥ 8", reg.get("schema") == "zmax-patent-registry/1" and len(pats) >= 8,
+    print("═══ ① 唯一依据 ═══")
+    chk("唯一依据存在 + schema 对 + 件数 ≥ 8", reg.get("schema") == "zmax-patent-registry/1" and len(pats) >= 8,
         "%s · %d 件" % (os.path.relpath(PC.REG_J, ROOT), len(pats)))
 
     print("\n═══ ② 内容字段 (层次/逻辑要写全) ═══")
@@ -102,7 +102,7 @@ def main():
                 _miss.append("%s:%s" % (p["pat_id"], r))
     chk("每件 ≥2 条落地引用 且**逐条存在** (共 %d 条)" % _n, not _miss, "%s" % (_miss[:4] or "%d 条全部存在" % _n))
 
-    print("\n═══ ⑧ 数据真实: 文档里的统计 = 真源现算 ═══")
+    print("\n═══ ⑧ 数据真实: 文档里的统计 = 唯一依据现算 ═══")
     _txt = PC.draft_text(pats[0], cov=cov, facts=facts)
     _want = [str(facts.get("fn_total")), str(facts.get("pf_total")), str(facts.get("nodes"))]
     _ok8 = all(w in _txt for w in _want if w) and "生成时间" in _txt
@@ -120,17 +120,17 @@ def main():
     chk("12 件 md + 12 件 docx + 总览清单都落地", len(_md) >= len(pats) + 1 and len(_dx) >= len(pats) and os.path.exists(_idx),
         "md %d · docx %d · 清单 %s" % (len(_md), len(_dx), os.path.exists(_idx)))
     _itxt = open(_idx, encoding="utf-8").read() if os.path.exists(_idx) else ""
-    chk("总览清单写明渠道 100% 预留 + 真源数据", ("100%" in _itxt or "渠道 100% 预留" in _itxt) and "已挂渠道" in _itxt,
+    chk("总览清单写明渠道 100% 预留 + 唯一依据数据", ("100%" in _itxt or "渠道 100% 预留" in _itxt) and "已挂渠道" in _itxt,
         _itxt.splitlines()[8][:70] if len(_itxt.splitlines()) > 8 else "")
     _p0, _mine = pats[1], [x for x in cov["per_fn"]
                            if pats[1]["pat_id"] in (x["pat_primary"] + x["pat_related"])]
     _t0 = PC.draft_text(_p0, cov=cov, facts=facts)
     _rows = [l for l in _t0.splitlines() if l.startswith("| FN-")]
     chk("文档内挂载功能表行数 == 该专利挂载数", len(_rows) == len(_mine),
-        "%s: 表 %d 行 · 真源 %d 条" % (_p0["pat_id"], len(_rows), len(_mine)))
-    chk("每行挂载功能带真源符号或模块 (可点到代码)",
+        "%s: 表 %d 行 · 唯一依据 %d 条" % (_p0["pat_id"], len(_rows), len(_mine)))
+    chk("每行挂载功能带唯一依据符号或模块 (可点到代码)",
         sum(1 for l in _rows if "`" in l) >= int(0.9 * max(1, len(_rows))),
-        "%d/%d 行带真源符号" % (sum(1 for l in _rows if "`" in l), len(_rows)))
+        "%d/%d 行带唯一依据符号" % (sum(1 for l in _rows if "`" in l), len(_rows)))
 
     print("\n═══ ⑪⑫⑬⑭ 控制台 UI: 与 SOR/立项/协议 同级 + 功能渠道可点 ═══")
     from PyQt5.QtWidgets import QApplication, QPushButton                             # noqa: E402

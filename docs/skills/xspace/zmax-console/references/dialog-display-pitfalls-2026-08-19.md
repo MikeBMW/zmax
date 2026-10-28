@@ -6,7 +6,7 @@
   看到的是播放中的视频窗口 → 误报"打开的是视频"。
 - 排查顺序:
   1. `xwininfo -root -tree | grep -iE "Feature|视频|XSpace"` 看窗口列表 —
-     新弹窗其实存在且内容正常 (别先怀疑代码链路/信号连接)
+     新弹窗实际存在且内容正常 (别先怀疑代码链路/信号连接)
   2. offscreen 触发 action (app.topLevelWidgets 快照对比) 验证信号连接无误
   3. 抓用户环境的窗口验证内容 (见 §2), 区分"渲染坏" vs "被遮挡" vs "用户误解"
 - 修复: show() 后 `QTimer.singleShot(60, dlg.raise_)` + `singleShot(250, dlg.raise_)`

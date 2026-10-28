@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """扫描所有可用帧: 打印每帧 n_keys/pitch/v26b/merged_segs[0]/mask_bbox/key_rows —— 找出
-"前视(节距47 / merged_segs 含[586,773] w=188 / 掩膜停1607)" 与 "点2" 两组真源。"""
+"前视(节距47 / merged_segs 含[586,773] w=188 / 掩膜停1607)" 与 "点2" 两组唯一依据。"""
 import sys, glob, os, json
 import numpy as np, cv2
 sys.path.insert(0, "/home/ubuntu/zmax/tools/aoi/_replay")

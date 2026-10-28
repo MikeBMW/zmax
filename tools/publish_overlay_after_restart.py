@@ -8,7 +8,7 @@ publish_overlay_after_restart.py — **等状态空间重启完成后再发布**
   (= 已被清空/新会话)后再发布; 若 10 分钟内没等到, 就把'待发布'命令写进总结。
 
 发布内容(一次做掉, 不半途):
-  ① plan 层: 一整条 kind=path3d 意图路径 —— **起点=发布时刻的实时 TCP**(现场会手动移臂 ⇒ 不写死),
+  ① plan 层: 一整条 kind=path3d 意图路径 —— **起点=发布时刻的实时 TCP**(现场会手动移臂 ⇒ 不预先固定),
      路线 抬离(60mm) → 高度横移 → 分步下落(≤30mm/段); 起点漂移 >10mm 自动按新起点重规划
   ② vlm 层: `tools/l5_understand_three_cams.py` 的离线清单(三路相机; 无坐标条目不写、光模块不出 2D 框)
   ③ 发布后**立刻**取帧实测 plan 亮白像素(整帧/下半部)+ 最大连通域, 并落图 + 落证据 JSON
@@ -182,7 +182,7 @@ def main() -> int:
           % (pub["n_plan_elems"], pub["n_plan_pts"], pub["mode"], os.path.basename(pub["backup"])))
     print("  回读 by_origin=%s · 全部来源=%s" % (pub["by_origin"], pub["all_origins"]))
 
-    if not a.vlm:                                    # 自动认最新的三路相机清单(发布时再取, 免写死路径)
+    if not a.vlm:                                    # 自动认最新的三路相机清单(发布时再取, 免预先固定路径)
         cand = sorted((_REPO / "reports" / "l5").glob("three_cam_vlm_*.json"))
         if cand:
             a.vlm = str(cand[-1])

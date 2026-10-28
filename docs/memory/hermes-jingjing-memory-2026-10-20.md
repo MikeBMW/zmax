@@ -4,7 +4,7 @@ NTP回拨8h(勿动RTC)→用monotonic; 判活判'未来时间戳'; cron ticker�
 §
 分层: L5造数据/L4认知/L3调度/L2检测; SigLIP768d+四头; from-scratch崩
 §
-交付前自跑通; 改文件必回读
+交付前自验证通过; 改文件必回读
 §
 L5=DeepSeek视觉:短提示+小JSON; timeout≥300
 §
@@ -26,7 +26,7 @@ YOLO在役=软链yolo_peg_live.pt; 瓶颈=数据; 相机独占⇒检测同进程
 §
 记忆五层: L2/L3/L4+总装Qwen(SS_MACRO); 势场喂obs[0:3]
 §
-真源calib.json→zmax_params.py; 训练=joint_train_all.py --only L4,L3,L2
+唯一依据calib.json→zmax_params.py; 训练=joint_train_all.py --only L4,L3,L2
 §
 L5规划器/safety=left_right/state_space/{planner,safety}.py; INTACT须常驻
 §
@@ -42,13 +42,13 @@ GPU掉载主因=每步CPU>计算→静音日志+workers↑
 §
 控制台禁反复重启GUI
 §
-工程库=zmax_engineering.db(单文件=一套工程; build|check; 8798); 真源=zmax/sources/; 改画布后: ss_task_bind→space-save→db build→两check
+工程库=zmax_engineering.db(单文件=一套工程; build|check; 8798); 唯一依据=zmax/sources/; 改画布后: ss_task_bind→space-save→db build→两check
 §
 我=主节点(工控机+Orin); AOI.23.23=10082/10083(禁84/85); 更新=aoi_remote_deploy.py
 §
 动作授权只从8793; 代发前先授权
 §
-位姿真源=tcp_out/latest.json(全0=陈旧)
+位姿唯一依据=tcp_out/latest.json(全0=陈旧)
 §
 运动安全: 速度mm/s 1~1000; 前置idle+automatic; 腿上限须重启容器; 清79免授权; 新点位老倪先做; 台账INCIDENT-INDEX.md; 要碰撞先agent_all_stop; 插入力≤40N
 §
@@ -60,7 +60,7 @@ AR=8797: 底图4相机=8791(arm/gold/surface)+本机D435; /api/cams·/snap/<k>.j
 §
 控制进程: 按端口/pid找(ss -ltnp), 禁ps|grep名(自杀); 杀进程写脚本别内联; sudo免密; MoveIt起点=SDK直采
 §
-判据图=aoi_surface_rect(贯穿列截断夹具+vertical兜底+扩暗头); 曝光5000us; 10083=5.50.750同算法
+判据图=aoi_surface_rect(贯穿列截断夹具+vertical保障+扩暗头); 曝光5000us; 10083=5.50.750同算法
 §
 奇异区: 姿态>5°被50113拒且腿假报到位(看真值); 转移=抬50→转身→低位横移→上方升降
 §

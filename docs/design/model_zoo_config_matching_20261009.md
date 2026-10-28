@@ -27,10 +27,10 @@ manifest: 结构/权重+sha16   config/calib/*.json           逐层选型 + 档
 
 ## 1. 现状盘点（这不是从零建，是补一层）
 
-| 已有真源 | 作用 | 什么已有 | 缺什么 |
+| 已有唯一依据 | 作用 | 什么已有 | 缺什么 |
 |---|---|---|---|
-| `src/lerobot/engineering/models_manifest.json` | 模型**版本**真源（`in_service/candidate/untrained` + `probe`），`status_hub` 消费成 `/status/all` | 名称/版本/状态/产物路径/来源/探针 | **契约段**（输入输出/域/依赖/归一化） |
-| `models/active_models.json` | **在役指针**真源（L2/L3/L4 + `candidates` + promote） | 指针/软链/sha16/env 覆盖 | 同上（模型能力与依赖） |
+| `src/lerobot/engineering/models_manifest.json` | 模型**版本**唯一依据（`in_service/candidate/untrained` + `probe`），`status_hub` 消费成 `/status/all` | 名称/版本/状态/产物路径/来源/探针 | **契约段**（输入输出/域/依赖/归一化） |
+| `models/active_models.json` | **在役指针**唯一依据（L2/L3/L4 + `candidates` + promote） | 指针/软链/sha16/env 覆盖 | 同上（模型能力与依赖） |
 | `docs/third_party_model_spec.md` | **模型包标准 v1** | `format/name/node/version/capabilities/interfaces/weights/adapter/runtime/config` | `domain` / `requires` / `normalization` / IO 语义 |
 | `tools/model_autoload.py` | 加载/切换/promote | L2/L3/L4 加载器 + 显存门 | 加载前的**匹配前置校验** |
 | `flows/model_zoo.json` | Model Zoo 画布 | 11 个模型家族（ACT/SmolVLA/SmolVLA+LEW/VLA-Touch/AWE/MLP蒸馏/官方专家…）各一行 | 每行的**配置卡 + 兼容徽章** |
@@ -68,14 +68,14 @@ L2.yolo_peg     = 域 real      × 层 L2 × 角色 检测     ⇒ 只需 cam.K/
 | 4 | **归一化契约** | 模型 `normalization`（per-dim stats 的 sha16 / "训练集同源"） | ckpt 自带 stats | 不同源 → 静默退化（铁律：必须同源，**不匹配 = 拒绝加载**，不是警告） |
 | 5 | **载荷/工具契约** | 模型 `requires` 含 `tool_payload/TCP` | 站点（`tool_payload.mass_kg` / `control_tcp.offset_xyz_m`） | 力控/插入类偏 → 3D 分解误差 |
 
-**三态判定规则（写死，避免"全绿"假象）**
+**三态判定规则（预先固定，避免"全绿"假象）**
 - `OK` = 模型**声明需要** 且 站点**有真值**（值非 null）
 - `缺项` = 模型声明需要 而 站点为 null ⇒ 红格 + 原因 + 补法（现场量/示教/标定）
 - `不适用` = 模型**没声明**（不是"缺"） ⇒ 灰格，不报错 —— 这条最重要：没有它，矩阵会一片红，看不出真问题。
 
 ---
 
-## 4. 冲突消解（谁说了算，写死）
+## 4. 冲突消解（谁说了算，预先固定）
 
 | 参数级 | 谁赢 | 规则 |
 |---|---|---|
@@ -150,7 +150,7 @@ MZ.l2_muscle    ·       ·       ·      ·       ·       ·        ·        
 
 - 工程配置不进模型包（一份真相）；模型包只放 `requires`+容差。
 - 归一化不同源 = **拒绝加载**，不降级、不警告。
-- `real` 域模型缺站点几何 ⇒ 判 `MCD-E02` 拦下，**不允许"先跑起来再说"**。
+- `real` 域模型缺站点几何 ⇒ 判 `MCD-E02` 拦下，**不允许"先启动再说"**。
 - 本匹配器**只读**（不改 calib、不改在役指针、不切权重）。
 - 矩阵里的契约目前部分为**设计推定**（`declared_by` 字段标明证据来源：`active_models.json` / 画布 / 推定），
   B2 起逐条换成模型包自带 manifest —— 未换成的不许当"已证明"用。

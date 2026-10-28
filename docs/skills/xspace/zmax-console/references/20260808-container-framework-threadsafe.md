@@ -23,7 +23,7 @@
 - ssh 后台长任务: `setsid bash x.sh > /dev/null 2>&1 < /dev/null & disown` (nohup/普通& 在 ssh 断开后被杀); 验证 `pgrep -f 'zoo_train_v3'`
 - 远程 venv 是 --no-deps 装的 lerobot — 反复缺包: accelerate/tensorboard/transformers/datasets/av — 报错就补; 每个 config 数据 root 要 sed 统一 (远程只有 data/metaworld_peg(_grab6))
 
-## transformers 版本大战 (踩坑史 — 结论: 锁定 4.44.2)
+## transformers 版本大战 (遇到问题史 — 结论: 锁定 4.44.2)
 | 版本 | 崩点 |
 |---|---|
 | 5.14.1 | tensor_parallel.py `torch is not defined`; AutoProcessor 导入失败 |

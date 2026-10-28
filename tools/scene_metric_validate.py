@@ -3,7 +3,7 @@
 """scene_metric_validate.py — 在**仿真场景**里验证性能指标 (老倪 2026-10-10)
 
 「性能指标能在仿真场景验证」——本工具跑真引擎 (tools/gui/state_space_sim.py, 即画布 ▶运行 / L5 回路
-背后的同一个 StateSpaceSim), 在 N 轮起始扰动下量出**仿真可量**的那些指标, 并与性能指标真源
+背后的同一个 StateSpaceSim), 在 N 轮起始扰动下量出**仿真可量**的那些指标, 并与性能指标唯一依据
 config/platform/zmax_perf_spec.json 的目标值对照。
 
 🔴 口径纪律 (老倪零容忍: 不以设计值冒充实测值, 指标不夸大):
@@ -49,7 +49,7 @@ CHANNEL = {
 
 
 def check_ids():
-    """判据: 场景 perf_metrics 与验证通道引用的每个 perf.* id, 必须能在性能指标真源里解析 (无悬空 id)。"""
+    """判据: 场景 perf_metrics 与验证通道引用的每个 perf.* id, 必须能在性能指标唯一依据里解析 (无悬空 id)。"""
     tg = targets()
     refs = {}
     for s in (_j(SCENES, {}) or {}).get("scenes", []):
@@ -165,7 +165,7 @@ def main():
     ap.add_argument("--n", type=int, default=5)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--check-ids", dest="check_ids", action="store_true",
-                    help="只查: 场景/通道引用的 perf.* id 是否都能在真源解析 (无悬空)")
+                    help="只查: 场景/通道引用的 perf.* id 是否都能在唯一依据解析 (无悬空)")
     a = ap.parse_args()
     if a.check_ids:
         return check_ids()

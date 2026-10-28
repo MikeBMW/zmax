@@ -8,7 +8,7 @@
   1. 功能积木已从 Sim&Real 页删除 (studio.py 里 brick 相关代码 0 处; 页内不再有该面板)
   2. Sim&Real 页真建起来 (PluggingSceneModule, offscreen) 且第一块就是 3D 场景视图卡
   3. 3D 视图真渲染出像素 (非背景像素 > 8000; 对象青绿 / 轨迹蓝 都 > 300)
-  4. 场景下拉含 SCN-07-UP (上下料); 数据源 = 场景真源 (6 对象/4 标记/1 围栏/2 轨迹)
+  4. 场景下拉含 SCN-07-UP (上下料); 数据源 = 场景唯一依据 (6 对象/4 标记/1 围栏/2 轨迹)
   5. 拖动写回真落盘 (scene_edit 备份+回读) 且**在役场景 sha 不变**; 测完自动还原
   6. 在役场景选择时写操作被拒 (只读预览保护)
 
@@ -133,7 +133,7 @@ def main():
     check([o[2] for o in opts] == ["SS-EPI-CORNER", "SS-TRAY-PLACE"], "下拉 = 插拔场景 + 摆盘场景: %s" % labels)
     d = U.load_scene(SDIR)
     check(len(d["objects"]) == 6 and len(d["markers"]) == 4 and len(d["fences"]) == 1 and len(d["trajectories"]) == 2,
-          "场景真源 6 对象/4 标记/1 围栏/2 轨迹")
+          "场景唯一依据 6 对象/4 标记/1 围栏/2 轨迹")
     check("上下料" in str((d.get("meta") or {}).get("name")), "场景名 = %s" % (d.get("meta") or {}).get("name"))
 
     print("5) 拖动写回真落盘 + 在役场景零影响")
@@ -241,7 +241,7 @@ def main():
     opts = U.scene_options()
     sim = [o for o in opts if o[2] == "SIM-PEG-L4"]
     # 🩹 2026-10-10: v5.39.7 起仿真场景按口径**收起** (老倪: 「其它场景先不用搞」) ⇒ 不在下拉里;
-    #   几何/真源判据仍直接读目录 (与是否露脸无关), 下面几条继续有效。
+    #   几何/唯一依据判据仍直接读目录 (与是否露脸无关), 下面几条继续有效。
     check(not sim, "仿真场景 SIM-PEG-L4 已按口径收起 (不在下拉露脸): %s" % [o[2] for o in opts])
     check(all(bool(o[3]) for o in opts), "露脸场景都带 ▶运行元数据: %s" % [bool(o[3]) for o in opts])
     SIMDIR = os.path.join(ROOT, "data", "scene", "scenes", "SIM-PEG-L4")
@@ -249,18 +249,18 @@ def main():
     ondisk = U.load_scene(SIMDIR, "SIM-PEG-L4")["objects"]
     same = all(any(d["name"] == o["name"] and [round(float(x), 4) for x in d["center"]] == [round(float(x), 4) for x in o["center"]]
                    for d in ondisk) for o in truth)
-    check(same and len(ondisk) == len(truth), "3D 视图读到的几何 == 仿真真源 (%d 对象)" % len(ondisk))
-    check(SSD.check() == 0, "真源 ↔ 两个生成器 ↔ XML 注入 四处一致 (改一处不同步会报错)")
-    # 可编辑: 改真源 ⇒ 目录同步 + 生成器仍一致 (编辑真生效, 不是只改产物)
+    check(same and len(ondisk) == len(truth), "3D 视图读到的几何 == 仿真唯一依据 (%d 对象)" % len(ondisk))
+    check(SSD.check() == 0, "唯一依据 ↔ 两个生成器 ↔ XML 注入 四处一致 (改一处不同步会报错)")
+    # 可编辑: 改唯一依据 ⇒ 目录同步 + 生成器仍一致 (编辑真生效, 不是只改产物)
     _tt = [o for o in truth if "geom=tt_disc" in str(o.get("source", ""))][0]
     _old = list(_tt["center"])
     _nm = _tt["name"]
     r = SSD.apply_patch("objects", _nm, {"center": [_old[0] + 0.01, _old[1], _old[2]]})
     _now = [o for o in U.load_scene(SIMDIR, "SIM-PEG-L4")["objects"] if o["name"] == _nm][0]["center"]
-    check(r.get("ok") and abs(_now[0] - (_old[0] + 0.01)) < 1e-6, "编辑落真源 + 目录同步: %s (%s)" % (_now, _nm))
+    check(r.get("ok") and abs(_now[0] - (_old[0] + 0.01)) < 1e-6, "编辑落唯一依据 + 目录同步: %s (%s)" % (_now, _nm))
     _rc = SSD.check()
     SSD.apply_patch("objects", _nm, {"center": _old})
-    check(_rc == 0, "编辑后 真源/生成器/XML 仍一致 (rc=%s)" % _rc)
+    check(_rc == 0, "编辑后 唯一依据/生成器/XML 仍一致 (rc=%s)" % _rc)
     check(all(abs(a - b) < 1e-6 for a, b in zip(
         [o for o in U.load_scene(SIMDIR, "SIM-PEG-L4")["objects"] if o["name"] == _nm][0]["center"], _old)),
         "已还原 %s (%s)" % (_old, _nm))
@@ -317,7 +317,7 @@ def main():
     check(len(_disk) == len(_r1["objects"]) and
           all(any(o["name"] == d["name"] and [round(float(v), 4) for v in o["center"]] == d["center"]
                   for d in _disk) for o in _r1["objects"]),
-          "真源几何 == MuJoCo 模型实测 (逐字, %d 对象)" % len(_disk))
+          "唯一依据几何 == MuJoCo 模型实测 (逐字, %d 对象)" % len(_disk))
     _tbl = [o for o in _r1["objects"] if o["name"] == "工作台面"]
     check(bool(_tbl) and _tbl[0]["size"] == [1.4, 0.8, 0.054],
           "台面真值 1.4×0.8×0.054 m (手写版曾误写 0.8×0.8) → %s" % (_tbl[0]["size"] if _tbl else None))
@@ -327,7 +327,7 @@ def main():
     check(any(m["name"] == "site:hole" for m in _r1["markers"]),
           "孔口来自 MuJoCo site 真值: %s" % [m["name"] for m in _r1["markers"]])
     check(all("MuJoCo 模型实测" in o.get("source", "") for o in _disk), "每个对象都标出处 (MuJoCo 模型实测)")
-    check(SSD.check() == 0, "真源判据 (含 MuJoCo 对齐) 全绿")
+    check(SSD.check() == 0, "唯一依据判据 (含 MuJoCo 对齐) 全绿")
     # ⚠️ 类方法走 self.scene_id (曾写成闭包里的 view.scene_id → GUI 一拖就 NameError 崩, 实测崩过)
     _src = open(os.path.join(ROOT, "tools", "gui", "updown_scene_view.py"), encoding="utf-8").read()
     check("apply_patch(kind, str(_id), patch, scene_id=view.scene_id" not in _src,
@@ -394,7 +394,7 @@ def main():
     _s3.pop("user_edited_at", None)
     SSD.save_raw(_d3)
     check(abs(SSD.load()["scenes"]["SS-EPI-CORNER"]["objects"][0]["center"][0] - _c0[0]) < 1e-9 and
-          not SSD.load()["scenes"]["SS-EPI-CORNER"].get("user_edited"), "判据自身不留痕 (真源已还原)")
+          not SSD.load()["scenes"]["SS-EPI-CORNER"].get("user_edited"), "判据自身不留痕 (唯一依据已还原)")
     _mk = [m for m in _oe.get("markers", []) if "corner2" in m["name"]]
     check(bool(_mk) and max(abs(float(a) - float(b)) for a, b in zip(_mk[0]["pos"], [float(v) for v in _t["cam_pos"]])) < 1e-6,
           "含 corner2 相机机位标记 == episode meta.cam_pos")

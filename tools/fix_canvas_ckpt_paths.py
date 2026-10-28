@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""fix_canvas_ckpt_paths.py — 修画布两个节点里**写错的 ckpt 路径** (真源一致性)
+"""fix_canvas_ckpt_paths.py — 修画布两个节点里**写错的 ckpt 路径** (唯一依据一致性)
 
 2026-10-14 排查发现 (功能点描述核查副产物):
   · `ss_moe`      params.ckpt = `checkpoints/stage_moe/moe.pt (351MB)`

@@ -11,13 +11,13 @@
     · 10Hz 常驻的 zmax-torque-bus (tools/tdrive_bus.py) 每周期算的是 T = M·(−∇Φ),
       **不经过 ManifoldEngine.step()** ⇒ 引擎核心在系统里"没有常驻回路"
     ⇒ 本脚本补上这条回路: 常驻按周期真调 `eng.step(...)`, 每周期把结果落 tap + 发 DDS,
-      由**状态空间工程**驱动 (工程文件 / 活跃任务 / 主参数 M 每 5s 跟随真源变化)。
+      由**状态空间工程**驱动 (工程文件 / 活跃任务 / 主参数 M 每 5s 跟随唯一依据变化)。
 
-真源 (全部现读, 不造):
+唯一依据 (全部现读, 不造):
     状态   ← ①--state-file 外部实时源(每周期读最新一行 {"obs":[43],...})
-             ②状态空间工程运行轨迹真源 data/database/zmax/sources/canvas/ss_traj_last.json
+             ②状态空间工程运行轨迹唯一依据 data/database/zmax/sources/canvas/ss_traj_last.json
                (控制台 ▶ 运行状态空间时落盘; 每周期按 idx 滚动取一帧, 走完一圈标 replay=true)
-             ③都没有 ⇒ **空转并明说** (不造状态; 一有真源立刻开始每周期调)
+             ③都没有 ⇒ **空转并明说** (不造状态; 一有唯一依据立刻开始每周期调)
     工程   ← data/database/zmax/zmax_space.proj         (名称/saved_at)
     任务   ← config/ss_task_binding.json                (active_task + 名称)
     主参数 ← config/calib/zmax_manifold.json            (M)
@@ -73,7 +73,7 @@ ACTION_DIM = 4
 
 # 🧠 多层 pipeline 逐层真跑 (老倪 2026-10-14「所有层按 pipeline 依次全都运行推理」)
 #   · 输入用**真产线帧** (8791 /aoi_modelin.png = 喂产线检测器的那张图) ⇒ L2 在役 YOLO 有真检出
-#   · 每 N 周期跑一遍 L5→MEM→L2→L4→L3, 每层落一行计数 ⇒ models_manifest 探针读的是真调用, 不造假绿
+#   · 每 N 周期执行一遍 L5→MEM→L2→L4→L3, 每层落一行计数 ⇒ models_manifest 探针读的是真调用, 不造假绿
 PIPE_IMG_DEFAULT = os.environ.get("ZMAX_SS_PIPE_IMG") or "http://127.0.0.1:8791/aoi_modelin.png"
 PIPE_TAP = os.path.join(ROOT, "zmax_data/ss_live/layer_calls.jsonl")
 
@@ -112,7 +112,7 @@ def _trim_tap(path: str, cap_bytes: int) -> None:
         pass
 
 
-# ─────────────────────────── 真源读取 ───────────────────────────
+# ─────────────────────────── 唯一依据读取 ───────────────────────────
 def read_project() -> dict:
     d = _j(PROJ, {}) or {}
     return {"project": str(d.get("name") or ""), "project_saved_at": str(d.get("saved_at") or ""),
@@ -131,7 +131,7 @@ def read_task() -> dict:
 
 
 def read_M() -> tuple[float, str]:
-    """主参数 M 真源 (键名不写死 —— 按候选键取, 并回报用了哪个键)。"""
+    """主参数 M 唯一依据 (键名不预先固定 —— 按候选键取, 并回报用了哪个键)。"""
     d = _j(CALIB, {}) or {}
     for k in ("M", "m", "manifold_M", "master_M", "M_value"):
         try:
@@ -154,7 +154,7 @@ def read_M() -> tuple[float, str]:
 
 
 def read_traj(path: str) -> dict | None:
-    """状态空间工程运行轨迹真源 (obs 矩阵 + 执行动作 + 场景/任务标识)。"""
+    """状态空间工程运行轨迹唯一依据 (obs 矩阵 + 执行动作 + 场景/任务标识)。"""
     d = _j(path, None)
     if not isinstance(d, dict):
         return None
@@ -248,7 +248,7 @@ def build_engine(traj: dict, M: float, inertia: bool, su2_tangent: bool = True):
 # ─────────────────────────── 主循环 ───────────────────────────
 class Loop:
     def _chunk_stage(self) -> tuple[int, str]:
-        """当前八阶段 (真源 zmax_data/ss_live/trace_live.json = ss_stage 话题的同一份; 读不到就 0 + 如实标注)。"""
+        """当前八阶段 (唯一依据 zmax_data/ss_live/trace_live.json = ss_stage 话题的同一份; 读不到就 0 + 如实标注)。"""
         try:
             d = _j(os.path.join(LIVE_DIR, "trace_live.json"), None) or {}
             _n = str(d.get("阶段") or d.get("stage") or "")
@@ -264,7 +264,7 @@ class Loop:
         return 0, ""
 
     def _skill_err(self, ttl=1.0):
-        """⚖ 原子技能物理偏差 (真源 zmax_data/ss_live/skill_error.json, 技能派发服务写)。
+        """⚖ 原子技能物理偏差 (唯一依据 zmax_data/ss_live/skill_error.json, 技能派发服务写)。
 
         返回该文件 dict (含 err/err_norm/big/why/phys), 帧龄 >5s 视为停更返回 None。
         """
@@ -376,7 +376,7 @@ class Loop:
         return out
 
     def _meta_pred(self):
-        """🧾 元任务预测 (真源 meta_pred.json —— 与话题 zmax/ss_meta_pred 同源; 读不到返回 None)。"""
+        """🧾 元任务预测 (唯一依据 meta_pred.json —— 与话题 zmax/ss_meta_pred 同源; 读不到返回 None)。"""
         try:
             d = _j(os.path.join(LIVE_DIR, "meta_pred.json"), None) or {}
             _t = d.get("top") or []
@@ -484,7 +484,7 @@ class Loop:
             self.l4 = None
 
     def _hjepa_state7(self):
-        """H-JEPA 的 state7: 优先本周期真值; 首周期还没走到 step 时用轨迹真源末帧 (都是真数据)。"""
+        """H-JEPA 的 state7: 优先本周期真值; 首周期还没走到 step 时用轨迹唯一依据末帧 (都是真数据)。"""
         s = self._state_now
         if s is None:
             try:
@@ -534,7 +534,7 @@ class Loop:
             _log("⚠️ H-JEPA 接入异常 (%s: %s) ⇒ 不接" % (type(e).__name__, str(e)[:90]))
             self.hjepa = None
 
-    # 真源 5s 跟随 (工程/任务/M/源文件)—— 与 tdrive_bus 的场景跟随同口径
+    # 唯一依据 5s 跟随 (工程/任务/M/源文件)—— 与 tdrive_bus 的场景跟随同口径
     # ── 🧠 多层 pipeline: 让 L5/MEM/L2/L4/L3 每周期按序真跑 (不是只看状态灯) ──
     def _attach_pipeline(self) -> None:
         if not self.pipe_on:
@@ -573,7 +573,7 @@ class Loop:
         return self.pipe_frame
 
     def _run_pipeline(self, state) -> dict:
-        """逐层真跑一次并落每层计数 (探针的真源)。"""
+        """逐层真跑一次并落每层计数 (探针的唯一依据)。"""
         if self.pipe is None:
             return {}
         img = self._pick_frame()
@@ -624,7 +624,7 @@ class Loop:
                     self.idx = 0
         if new is None:
             if self.src_key:
-                _log("⏸ 状态真源消失 (%s) → 空转, 不造状态" % self.src_key)
+                _log("⏸ 状态唯一依据消失 (%s) → 空转, 不造状态" % self.src_key)
             self.src_key = ""
             self.traj = None
             return
@@ -655,14 +655,14 @@ class Loop:
                     pass
                 # 🧾 元任务 (老倪 2026-10-14: 「流形引擎, 需要根据任务, 输出 元任务」)
                 #   引擎每周期都在跑 ⇒ 它是"根据任务"最合适的**触发者**; 但元任务清单本体是配置的
-                #   派生件 (功能+参数+依赖+验证+层), 内容一律真源现算 (复用 export_meta_doc 同一条映射链),
+                #   派生件 (功能+参数+依赖+验证+层), 内容一律唯一依据现算 (复用 export_meta_doc 同一条映射链),
                 #   **不从意图直读**。这里只做两件事: 任务变 ⇒ 重算派生件(落 zmax_data/ss_live/
                 #   meta_tasks.json) + 记下本任务元任务数 (随每周期 rec 带出); 5s 常态发布由
                 #   主参数节点出口 zmax/ss_meta_task 负责, 不在这里每步刷清单 (避免污染高频记录)。
                 try:
                     import ss_meta_task as _SM                              # noqa: PLC0415
                     self.meta = _SM.build(self.task.get("task_id") or None, write=True)
-                    _log("🧾 元任务: %s → %d 个 (全量 %d · 层 %s) · 真源现算, 非意图直读"
+                    _log("🧾 元任务: %s → %d 个 (全量 %d · 层 %s) · 唯一依据现算, 非意图直读"
                          % (self.meta.get("task_id") or "—", self.meta.get("n") or 0,
                             self.meta.get("n_all") or 0, self.meta.get("by_layer") or {}))
                 except Exception as e:                                        # noqa: BLE001
@@ -679,7 +679,7 @@ class Loop:
         if self.eng is None or self.traj is None:
             self.idle_n += 1
             if self.idle_n % max(1, int(self.hz * 5)) == 1:
-                _log("⏸ 无状态真源 → 空转 (不造状态)。给 --state-file <jsonl> 或用状态空间工程 ▶ 运行"
+                _log("⏸ 无状态唯一依据 → 空转 (不造状态)。给 --state-file <jsonl> 或用状态空间工程 ▶ 运行"
                      " (会落盘 %s)" % os.path.relpath(self.traj_path, ROOT))
             return None
         O = self.traj["obs"]
@@ -707,7 +707,7 @@ class Loop:
                 chunk_rec["stage_name"] = _sn
             except Exception as e:                                           # noqa: BLE001
                 chunk_rec = {"ok": False, "reason": "%s: %s" % (type(e).__name__, str(e)[:120])}
-        # ⚖ 物理偏差: 读技能闸的真源 → 大偏差走"融合定位 → 顶层补偿"
+        # ⚖ 物理偏差: 读技能闸的唯一依据 → 大偏差走"融合定位 → 顶层补偿"
         try:
             _se = self._skill_err()
             if _se:
@@ -761,7 +761,7 @@ class Loop:
             "project": self.proj.get("project") or "", "project_saved_at": self.proj.get("project_saved_at") or "",
             "task_id": self.task.get("task_id") or self.traj.get("task_id") or "",
             "task_name": self.task.get("task_name") or "",
-            "meta_n": int((self.meta or {}).get("n") or 0),        # 🧾 本任务元任务数 (真源现算)
+            "meta_n": int((self.meta or {}).get("n") or 0),        # 🧾 本任务元任务数 (唯一依据现算)
             "meta_all": int((self.meta or {}).get("n_all") or 0),
             "scene": str(self.traj.get("scene") or ""),
             "M": float(self.M), "M_key": self.M_key, "inertia": bool(self.inertia),
@@ -830,7 +830,7 @@ class Loop:
         # 🌍 2026-10-25 老倪「增加万有引力节点…计算状态空间的动能和势能…H=K+U」:
         #   本回路每周期算一次能量场 (U/K/H/Ḣ/F), 落 zmax_data/ss_live/hamiltonian.json
         #   ⇒ 右侧栏「主参数 M」下的 H 能量块与 DDS 切面都读这一份 (同一算式, 不各算一套)。
-        #   算式唯一真源 = lerobot.manifold.state_space_energy.live_energy (画布节点 ss_grav_h 同用)。
+        #   算式唯一依据 = lerobot.manifold.state_space_energy.live_energy (画布节点 ss_grav_h 同用)。
         #   只读观测 / 不下发: 力场结论进快照与日志, 机械臂方向仍由 L2 收口决定。
         try:
             if not hasattr(self, "_ham_cache"):
@@ -847,7 +847,7 @@ class Loop:
         if self.n % max(1, int(self.hz)) == 0:
             hz_act = len(self.slice) / max(1e-6, (d["ts"] - self.slice[0]["ts"]) or self.dt)
             if self.l4 is not None and self.eng is not None:
-                self.eng.latent_provider_note = self.l4.note()      # 每周期刷新帧龄 (真源现算)
+                self.eng.latent_provider_note = self.l4.note()      # 每周期刷新帧龄 (唯一依据现算)
             _log("周期 %6d · %5.2fHz · Φ=%+.4f ‖∇Φ‖=%6.2f ‖a‖=%.3f · M=%.4f%s · H=%s(gain %.2f)%s"
                  " · p̂=%.4f 置信=%.2f · %.2fms · 帧#%d/%d%s · 任务 %s · 工程 %s"
                  % (d["cycle"], hz_act, d["phi"], d["grad_norm"], d["action_norm"], d["M"],
@@ -920,11 +920,11 @@ class Loop:
 
 
 def cmd_seed(episode: str, out: str | None = None) -> int:
-    """先把一份**真实** episode (reports/ss_episode*.npz, obs[43]+u_exec_vec) 落成轨迹真源。
+    """先把一份**真实** episode (reports/ss_episode*.npz, obs[43]+u_exec_vec) 落成轨迹唯一依据。
 
-    为什么需要: 控制台 ▶ 运行状态空间会自动落盘轨迹真源 (simulink_module 的 dump); 若还没跑过,
-    常驻回路没有状态源 ⇒ 会空转。本命令让回路可以先吃**已有的真实 episode** 跑起来
-    (src 字段如实写清来源; 之后工程一跑, 更新的真源会覆盖它并被回路自动接上)。
+    为什么需要: 控制台 ▶ 运行状态空间会自动落盘轨迹唯一依据 (simulink_module 的 dump); 若还没跑过,
+    常驻回路没有状态源 ⇒ 会空转。本命令让回路可以先吃**已有的真实 episode** 启动
+    (src 字段如实写清来源; 之后工程一跑, 更新的唯一依据会覆盖它并被回路自动接上)。
     """
     out = out or TRAJ
     d = np.load(episode, allow_pickle=True)
@@ -946,7 +946,7 @@ def cmd_seed(episode: str, out: str | None = None) -> int:
     _atomic_json(out, obj)
     back = _j(out, {}) or {}
     ok = len(back.get("obs") or []) == len(rows)
-    print("种子轨迹真源: %s · %d 帧 × %d 维 · 回读校验 %s" %
+    print("种子轨迹唯一依据: %s · %d 帧 × %d 维 · 回读校验 %s" %
           (os.path.relpath(out, ROOT), len(rows), int(obs.shape[1]), "OK ✅" if ok else "失败 ❌"))
     return 0 if ok else 1
 
@@ -1014,7 +1014,7 @@ def main() -> int:
     ap.add_argument("--state-file", default=os.environ.get("ZMAX_SS_ENGINE_STATE"),
                     help="外部实时状态源 (json/jsonl, 含 obs[43])")
     ap.add_argument("--traj", default=os.environ.get("ZMAX_SS_ENGINE_TRAJ") or TRAJ,
-                    help="状态空间工程轨迹真源 (默认 %s)" % os.path.relpath(TRAJ, ROOT))
+                    help="状态空间工程轨迹唯一依据 (默认 %s)" % os.path.relpath(TRAJ, ROOT))
     ap.add_argument("--inertia", action="store_true", help="二阶演化 (M=等效惯量, 默认过阻尼=旧行为)")
     # 🔵 2026-10-19 老倪「现在就把 su2_tangent 接进 ss_engine_loop, 但先不接入真机」
     #   接到本回路 (只算方向/动作建议, 写 engine_latest + DDS); 真机下发链 (8793/l2_daemon/臂) 一行未改。
@@ -1029,7 +1029,7 @@ def main() -> int:
                          "(调试断点用, 不污染在役记录)")
     ap.add_argument("--no-lock", action="store_true", help="不检查/不写单写入器锁 (纯调试用)")
     ap.add_argument("--episode", default="", help="seed 用: 真实 episode npz (reports/ss_episode*.npz)")
-    ap.add_argument("--out", default="", help="seed 用: 输出路径 (默认轨迹真源)")
+    ap.add_argument("--out", default="", help="seed 用: 输出路径 (默认轨迹唯一依据)")
     ap.add_argument("--encoder", default=os.environ.get("ZMAX_SS_ENGINE_ENCODER") or "pca",
                     choices=["pca", "l4", "hjepa"],
                     help="潜表示来源: pca=内建 PCA (默认) · l4=VLM视觉编码器→黎曼度规约束 · "

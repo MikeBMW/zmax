@@ -6,11 +6,11 @@
   「全局梳理所有可以更改的数字, 有默认值, 有调试参数, 有最大最小值; 当改变任意数值, 均可链动
     功能·性能·代码逻辑; 从顶层产品性能的数据改变, 直接调整代码; 中间的代码要完整映射这个全局架构。」
 
-本页 = 数字的**唯一交互面** (数据面在 tools/param_registry.py, 真源在 config/… + 源码):
+本页 = 数字的**唯一交互面** (数据面在 tools/param_registry.py, 唯一依据在 config/… + 源码):
   · 左: 分类树 (🟡标定 / 🔵画布 / 🟣代码 / 🟢产品性能 / 🟠运行开关 / 🩷空间点 / 📍号位示教点) + 搜索 + 「只看可写/只看缺口」过滤
-  · 右: 数字表 —— 当前值·默认·最小·最大·单位·状态·真源位置·归属, 用颜色区分用途与状态
-  · 双击一行 = 改数: 弹校验框 (范围/档位) → 先**预览影响链** (功能/模块/系统/KPI/代码位置) → 点「应用」才落真源
-  · 落真源走 param_registry.set_param(write=True): 备份 → 写 → 回读核对; 代码常量写坏语法立即回滚
+  · 右: 数字表 —— 当前值·默认·最小·最大·单位·状态·唯一依据位置·归属, 用颜色区分用途与状态
+  · 双击一行 = 改数: 弹校验框 (范围/档位) → 先**预览影响链** (功能/模块/系统/KPI/代码位置) → 点「应用」才落唯一依据
+  · 落唯一依据走 param_registry.set_param(write=True): 备份 → 写 → 回读核对; 代码常量写坏语法立即回滚
   · 下部: 影响链 + 改数事件日志 (每一步都可观察)
 """
 import json
@@ -68,10 +68,10 @@ class ParamCenterPage(QWidget):
         self.lbl_info = QLabel("")
         self.lbl_info.setStyleSheet("color:%s; font-size:10pt;" % C_DIM)
         head.addWidget(self.lbl_info)
-        for txt, tip, fn in (("🔁 重建工程库", "把真源(含最新参数)重新装进单一数据库文件", self.rebuild_db),
+        for txt, tip, fn in (("🔁 重建工程库", "把唯一依据(含最新参数)重新装进单一数据库文件", self.rebuild_db),
                              ("📋 复制清单", "复制当前过滤后的数字清单 (可贴到文档)", self.copy_rows),
                              ("💾 导出 JSON", "导出当前过滤后的数字清单", self.export_rows),
-                             ("🔄 刷新", "重新扫描真源 (改了文件后点这里)", self.reload)):
+                             ("🔄 刷新", "重新扫描唯一依据 (改了文件后点这里)", self.reload)):
             b = QPushButton(txt)
             b.setToolTip(tip)
             b.setStyleSheet("QPushButton{background:%s; color:%s; border:1px solid %s; border-radius:4px;"
@@ -83,7 +83,7 @@ class ParamCenterPage(QWidget):
 
         bar = QHBoxLayout()
         self.ed_search = QLineEdit()
-        self.ed_search.setPlaceholderText("🔎 搜数字 (名字/真源路径/单位, 如 insert_depth · plane_z · mm)…")
+        self.ed_search.setPlaceholderText("🔎 搜数字 (名字/唯一依据路径/单位, 如 insert_depth · plane_z · mm)…")
         self.ed_search.setStyleSheet("QLineEdit{background:%s; color:%s; border:1px solid %s; border-radius:4px;"
                                      " padding:6px; font-size:10.5pt;}" % (C_BG2, C_WHITE, C_BORDER))
         self.ed_search.textChanged.connect(self._refill)
@@ -105,7 +105,7 @@ class ParamCenterPage(QWidget):
 
         split = QSplitter(Qt.Horizontal)
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["分类 / 真源 (改数面)"])
+        self.tree.setHeaderLabels(["分类 / 唯一依据 (改数面)"])
         self.tree.setStyleSheet("QTreeWidget{background:%s; color:%s; border:1px solid %s; font-size:10.5pt;}"
                                 " QTreeWidget::item:selected{background:%s;}"
                                 % (C_BG2, C_WHITE, C_BORDER, C_CARD))
@@ -117,7 +117,7 @@ class ParamCenterPage(QWidget):
         rl.setContentsMargins(0, 0, 0, 0)
         rl.setSpacing(4)
         self.table = QTableWidget(0, 9)
-        self.table.setHorizontalHeaderLabels(["用途", "数字", "当前值", "默认", "最小", "最大", "单位", "状态", "真源位置"])
+        self.table.setHorizontalHeaderLabels(["用途", "数字", "当前值", "默认", "最小", "最大", "单位", "状态", "唯一依据位置"])
         self.table.setStyleSheet("QTableWidget{background:%s; color:%s; gridline-color:%s; font-size:10pt;}"
                                  " QHeaderView::section{background:%s; color:%s; padding:5px;}"
                                  % (C_BG2, C_WHITE, C_BORDER, C_CARD, C_GRAY))
@@ -135,7 +135,7 @@ class ParamCenterPage(QWidget):
         split.setSizes([330, 900])
         root.addWidget(split, 1)
 
-        hint = QLabel("双击一行 = 改这个数字 (先预览影响链, 再落真源) · 数字落盘前一律备份 · "
+        hint = QLabel("双击一行 = 改这个数字 (先预览影响链, 再落唯一依据) · 数字落盘前一律备份 · "
                       "代码常量写坏语法立即回滚 · 所有改动直接记入唯一工程库的 param_events 表")
         hint.setStyleSheet("color:%s; font-size:9.5pt;" % C_DIM)
         root.addWidget(hint)
@@ -235,21 +235,21 @@ class ParamCenterPage(QWidget):
             return
         p = self.rows[i]
         if not p["writable"]:
-            self.txt.setPlainText("🔒 %s 是只读项 (产品/性能指标真源在 zmax_platform.json, 请在「功能清单」页改)。"
+            self.txt.setPlainText("🔒 %s 是只读项 (产品/性能指标唯一依据在 zmax_platform.json, 请在「功能清单」页改)。"
                                   % p["cn"])
             return
         if p["kind"] == "enum" and p.get("choices"):
             val, ok = QInputDialog.getItem(self, "改档位 · %s" % p["cn"],
-                                           "档位 (真源: %s):" % p["source"], [str(c) for c in p["choices"]],
+                                           "档位 (唯一依据: %s):" % p["source"], [str(c) for c in p["choices"]],
                                            max(0, [str(c) for c in p["choices"]].index(str(p["value"]))
                                                if str(p["value"]) in [str(c) for c in p["choices"]] else 0), False)
         elif p["kind"] == "bool":
-            val, ok = QInputDialog.getItem(self, "改开关 · %s" % p["cn"], "值 (真源: %s):" % p["source"],
+            val, ok = QInputDialog.getItem(self, "改开关 · %s" % p["cn"], "值 (唯一依据: %s):" % p["source"],
                                            ["true", "false"], 0 if p["value"] else 1, False)
         else:
             rng = "范围 %s ~ %s %s" % (_fmt(p["min"]), _fmt(p["max"]), p["unit"])
             val, ok = QInputDialog.getText(self, "改数字 · %s" % p["cn"],
-                                           "%s\n当前 %s · 默认 %s\n%s\n真源: %s"
+                                           "%s\n当前 %s · 默认 %s\n%s\n唯一依据: %s"
                                            % (p["cn"], _fmt(p["value"]), _fmt(p["default"]), rng, p["source"]),
                                            text=_fmt(p["value"]))
         if not ok or val is None or val == "":
@@ -261,7 +261,7 @@ class ParamCenterPage(QWidget):
         chain = prev.get("chain") or {}
         lines = ["参数: %s (%s)" % (p["cn"], p["param_id"]),
                  "改动: %s → %s %s" % (_fmt(prev["old"]), _fmt(prev["new"]), p["unit"]),
-                 "分类: %s · 真源: %s (%s)" % (p["cat_cn"], p["source"], p["ref"]),
+                 "分类: %s · 唯一依据: %s (%s)" % (p["cat_cn"], p["source"], p["ref"]),
                  "", "── 链动影响 ──"]
         if chain.get("systems"):
             lines.append("· 子系统: %s" % " ".join(chain["systems"]))
@@ -276,7 +276,7 @@ class ParamCenterPage(QWidget):
             lines.append("· 性能(KPI): %s" % " | ".join(chain["kpis"][:4]))
         if p.get("impact"):
             lines.append("· 说明: %s" % p["impact"])
-        lines += ["", "点「应用」= 备份真源 → 写入 → 回读核对 (写坏立即回滚)"]
+        lines += ["", "点「应用」= 备份唯一依据 → 写入 → 回读核对 (写坏立即回滚)"]
         dlg = QDialog(self)
         dlg.setWindowTitle("应用改动 · %s" % p["cn"])
         dl = QVBoxLayout(dlg)
@@ -287,7 +287,7 @@ class ParamCenterPage(QWidget):
         te.setStyleSheet("QTextEdit{background:%s; color:%s; font-size:10.5pt;}" % (C_BG2, C_WHITE))
         dl.addWidget(te)
         bb = QDialogButtonBox()
-        b_ok = bb.addButton("✅ 应用 (写回真源)", QDialogButtonBox.AcceptRole)
+        b_ok = bb.addButton("✅ 应用 (写回唯一依据)", QDialogButtonBox.AcceptRole)
         b_no = bb.addButton("取消", QDialogButtonBox.RejectRole)
         b_ok.setStyleSheet("QPushButton{background:%s; color:%s; padding:6px 12px; border-radius:4px;}"
                            % (C_CARD, C_GREEN))
@@ -297,13 +297,13 @@ class ParamCenterPage(QWidget):
         if dlg.exec_() != QDialog.Accepted:
             self.txt.setPlainText("已取消 (未落盘)。\n\n" + "\n".join(lines))
             return
-        res = _pr().set_param(p["param_id"], val, write=True)             # ② 落真源
+        res = _pr().set_param(p["param_id"], val, write=True)             # ② 落唯一依据
         self.txt.setPlainText("════ 改数结果 ════\n" + json.dumps(
             {k: res.get(k) for k in ("ok", "param", "cn", "old", "new", "unit", "msg", "written")},
             ensure_ascii=False, indent=1) + "\n\n── 链动影响 ──\n" + "\n".join(lines[6:]))
         self.reload()
         self._log_to_main("🎛 改数 %s: %s → %s %s (%s)" % (p["cn"], _fmt(prev["old"]), _fmt(prev["new"]),
-                                                          p["unit"], "已写回真源" if res.get("ok") else "失败"))
+                                                          p["unit"], "已写回唯一依据" if res.get("ok") else "失败"))
 
     def _show_log(self):
         # 改数事件 = 唯一工程库 param_events 表 (2026-10-09 起不再有 param_events.jsonl)
@@ -340,7 +340,7 @@ class ParamCenterPage(QWidget):
         txt = "\n".join("\t".join([p["cat_cn"], p["cn"], _fmt(p["value"]), _fmt(p["default"]), _fmt(p["min"]),
                                    _fmt(p["max"]), p["unit"], p["status"], p["source"], p["ref"]])
                         for p in self.rows)
-        QApplication.clipboard().setText("用途\t数字\t当前\t默认\t最小\t最大\t单位\t状态\t真源\t位置\n" + txt)
+        QApplication.clipboard().setText("用途\t数字\t当前\t默认\t最小\t最大\t单位\t状态\t唯一依据\t位置\n" + txt)
         self._log_to_main("📋 已复制 %d 个数字的清单到剪贴板" % len(self.rows))
 
     def export_rows(self):

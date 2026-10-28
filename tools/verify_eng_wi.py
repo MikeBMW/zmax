@@ -3,10 +3,10 @@
 """判据: 工程配置 (A/B/C 三档) + 操作手册 (WI) 是否「真能工程实现」。
 
 判三件事:
-  1) 真源完整: 三档各有 硬件/软件/标定/安全/WI, 每条 WI 都有 命令+期望+失败处理
+  1) 唯一依据完整: 三档各有 硬件/软件/标定/安全/WI, 每条 WI 都有 命令+期望+失败处理
   2) 命令真跑: need=local 的每一步**现场执行**, 输出必须匹配 expect (不是嘴上说能跑)
   3) 界面真出: 工程配置页有 A/B/C 切换、四张表、每步「▶ 跑」按钮, 点了状态真的变 ✅
-  4) 文档同源: docs/deliverables/工程操作手册_三档_A_B_C.md 的步骤与真源一致
+  4) 文档同源: docs/deliverables/工程操作手册_三档_A_B_C.md 的步骤与唯一依据一致
 
 跑法: QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/verify_eng_wi.py
 """
@@ -33,7 +33,7 @@ def chk(name, ok, detail=""):
 def main():
     spec = json.load(open(SPEC, encoding="utf-8"))
     profs = spec.get("profiles") or []
-    chk("① 真源三档 A/B/C", [p.get("id") for p in profs] == ["A", "B", "C"], [p.get("id") for p in profs])
+    chk("① 唯一依据三档 A/B/C", [p.get("id") for p in profs] == ["A", "B", "C"], [p.get("id") for p in profs])
 
     # ── 1) 结构与完备
     for p in profs:
@@ -77,7 +77,7 @@ def main():
                 gaps.append("%s: %s" % (w.get("id"), out.replace("\n", " ")[:40]))
                 continue
             ok_n += 1 if ok else 0
-            chk("② %s 真跑通过 (%s)" % (w.get("id"), w.get("title")[:18]), ok,
+            chk("② %s 真验证通过过 (%s)" % (w.get("id"), w.get("title")[:18]), ok,
                 (out.replace("\n", " ⏎ ")[:90] or "无输出"))
     chk("② 本机步骤全部真跑 (跳过 %d 条自指验收: %s)" % (len(slow), ",".join(slow)), ran >= 10,
         "%d/%d 通过 · 缺口 %d 条" % (ok_n, ran, len(gaps)))
@@ -107,7 +107,7 @@ def main():
         for _ in range(12):
             app.processEvents()
         wi_t = page.eng_wi_table
-        chk("③ A 档 WI 行数 = 真源 9", wi_t.rowCount() == len(profs[0].get("wi") or []),
+        chk("③ A 档 WI 行数 = 唯一依据 9", wi_t.rowCount() == len(profs[0].get("wi") or []),
             "%d 行" % wi_t.rowCount())
         chk("③ 硬件/软件/标定 三表都有行",
             page.eng_hw_table.rowCount() >= 3 and page.eng_sw_table.rowCount() >= 2
@@ -150,7 +150,7 @@ def main():
     if os.path.exists(DOC):
         txt = open(DOC, encoding="utf-8").read()
         n_wi = sum(len(p.get("wi") or []) for p in profs)
-        chk("④ 文档步骤数 = 真源", txt.count("| **") == n_wi, "%d vs %d" % (txt.count("| **"), n_wi))
+        chk("④ 文档步骤数 = 唯一依据", txt.count("| **") == n_wi, "%d vs %d" % (txt.count("| **"), n_wi))
         chk("④ 三档标题都在", all(("%s 档 · " % p.get("id")) in txt for p in profs), [p.get("id") for p in profs])
         chk("④ 每条命令都进了文档",
             all((w.get("cmd") or "")[:26] in txt for p in profs for w in (p.get("wi") or [])), "逐条核对")

@@ -24,7 +24,7 @@ for _ in range(60):                     # 等各数据源把快照读进来
     time.sleep(0.1)
 
 print("=" * 78)
-print("信号目录: 分组 / 行数 / 行色 (真源 trace_live.json + engine_trace.json + trace.jsonl)")
+print("信号目录: 分组 / 行数 / 行色 (唯一依据 trace_live.json + engine_trace.json + trace.jsonl)")
 print("=" * 78)
 tot = 0
 for i in range(w.tree.topLevelItemCount()):

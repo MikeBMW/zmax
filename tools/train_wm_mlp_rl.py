@@ -140,7 +140,7 @@ def main():
     env = make_env(0)
     obs_dim = len(get_obs(env))
     act_dim = 4
-    print(f"  obs_dim={obs_dim} act_dim={act_dim} 世界模型={'✅' if wm else '❌差分兜底'}", flush=True)
+    print(f"  obs_dim={obs_dim} act_dim={act_dim} 世界模型={'✅' if wm else '❌差分保障'}", flush=True)
     model = ExpertMLP(obs_dim, act_dim).to(DEVICE)
     # 从专家 MLP 初始化 (如有)
     try:

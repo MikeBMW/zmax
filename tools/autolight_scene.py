@@ -4,18 +4,18 @@
 autolight_scene.py — 把 /autoLight#c1 (光纤端面检测设备 · 待测物料缓存仓一) 构想成
 Z-MAX 状态空间工程里的**真场景 + 真任务**，并做全链自检。
 
-链路（每一步都是真源，不手改生成物）:
+链路（每一步都是唯一依据，不手改生成物）:
   flows/scenes_5jobs.json  ← 插 SCN-08-AL1 (本文件构建, 幂等)
-      ↓ tools/task_build.py            (场景 × 配方 PLAN → 任务真源)
+      ↓ tools/task_build.py            (场景 × 配方 PLAN → 任务唯一依据)
   config/tasks/tasks.json            → TASK-08-AL1
-      ↓ tools/ss_task_bind.py          (任务 × 画布 → 绑定真源 + 激活)
+      ↓ tools/ss_task_bind.py          (任务 × 画布 → 绑定唯一依据 + 激活)
   config/ss_task_binding.json        (active_task = TASK-08-AL1)
       ↓ tools/scene_registry.py --build(场景库: objects3d + overlay_spec)
   data/scene/scenes/SCN-08-AL1/*.json
 
 用法:
   python tools/autolight_scene.py --check     # 只查, 不写
-  python tools/autolight_scene.py --build     # 写场景真源 + 重建任务/绑定/场景库
+  python tools/autolight_scene.py --build     # 写场景唯一依据 + 重建任务/绑定/场景库
   python tools/autolight_scene.py --build --no-activate
 """
 from __future__ import annotations
@@ -39,7 +39,7 @@ SCENES = os.path.join(ROOT, "data", "scene", "scenes")
 SCENE_ID = "SCN-08-AL1"
 TASK_ID = "TASK-08-AL1"
 
-# ───────────────────── 场景真源 (坐标 = /autoLight 第 1 张卡的 base 世界系, 米) ─────────────────────
+# ───────────────────── 场景唯一依据 (坐标 = /autoLight 第 1 张卡的 base 世界系, 米) ─────────────────────
 SCENE = {
     "scene_id": SCENE_ID,
     "scene_type": "al1_cache",
@@ -59,7 +59,7 @@ SCENE = {
     "objects": [
         {"name": "人工取放堆叠架 (人工放料位/人工下料位/缓存1/缓存2)",
          "pos": [-1.47, 0.0, 1.08], "size_mm": [260, 440, 440],
-         "role": "料仓/料盘取件位 (真源: /autoLight#c1 场景几何)"},
+         "role": "料仓/料盘取件位 (唯一依据: /autoLight#c1 场景几何)"},
         {"name": "推料模组 (气缸 + 推板)",
          "pos": [-1.32, 0.0, 1.08], "size_mm": [200, 120, 120],
          "role": "推料执行器 (推入缓存1 / 缓存1→缓存2)"},
@@ -213,7 +213,7 @@ def main():
     before = dir_hashes() if os.path.isdir(SCENES) else {}
     print("📦 场景库快照 → %s" % bak)
 
-    print("① 场景真源 flows/scenes_5jobs.json : %s" % insert_scene())
+    print("① 场景唯一依据 flows/scenes_5jobs.json : %s" % insert_scene())
     rc1, _ = _run(["tools/task_build.py"], "task_build")
     if rc1 != 0:
         print("⛔ task_build 失败"); return rc1

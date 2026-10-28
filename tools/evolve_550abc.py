@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 evolve_550abc.py — 新场景 (TASK-08-AL1 · 光纤端面检测上料缓存) 的全系统自主进化,
-三个产品档位 550A / 550B / 550C 各跑一遍「配置 → 自生成数据 → 训练全模型 → 推理 → 报告」。
+三个产品档位 550A / 550B / 550C 各执行一遍「配置 → 自生成数据 → 训练全模型 → 推理 → 报告」。
 
 它不发明流程: 每一段都是 Z-MAX 已有工具的**真调用**:
   档位      tools/zmax_compute_mode.py --apply 550X --no-vscode --no-train
@@ -37,7 +37,7 @@ SCENE = "SCN-08-AL1"          # 由 --task 推导 (见 scene_of / main)
 
 
 def scene_of(task):
-    """任务 → 场景 (真源 tasks.json 的 scene_ref; 读不到再退回绑定真源)"""
+    """任务 → 场景 (唯一依据 tasks.json 的 scene_ref; 读不到再退回绑定唯一依据)"""
     for p, key in ((os.path.join(ROOT, "data/database/zmax/sources/config/tasks/tasks.json"), "tasks"),
                    (os.path.join(ROOT, "data/database/zmax/sources/config/ss_task_binding.json"), "tasks")):
         try:
@@ -216,7 +216,7 @@ def write_report(evo_dir, results, meta):
     L.append("- 场景: %s" % SCENE)
     L.append("- 任务: %s" % TASK)
     L.append("- 链路: ① 配置任务=ss_task_bind+ss_scene_switch ② 自生成数据=collect_simreal_vla_data ③ 训练=joint_train_all(L4,L3,L2,L5) ④ 推理=ss_engine_loop+run_l4_intent_models+ss_meta_predict ⑤ 报告=本文件")
-    L.append("- 仿真环境: metaworld 插拔 (平台唯一仿真环境); 场景几何/参数真源 = /autoLight#c1 (米, base 世界系)\n")
+    L.append("- 仿真环境: metaworld 插拔 (平台唯一仿真环境); 场景几何/参数唯一依据 = /autoLight#c1 (米, base 世界系)\n")
     L.append("## 结果\n")
     def cell(x):
         return re.sub(r"\s+", " ", str(x if x is not None else "—")).replace("|", "／")
@@ -256,15 +256,15 @@ def write_report(evo_dir, results, meta):
         L.append("- 元任务预测: 候选 %s · top %s" % (r.get("meta_candidates"), json.dumps(r.get("meta_top"), ensure_ascii=False)[:300]))
         L.append("- 日志: `%s`" % os.path.relpath(r["log"], ROOT))
         L.append("")
-    L.append("## 系统同步 (四件真源 + 数据源)\n")
+    L.append("## 系统同步 (四件唯一依据 + 数据源)\n")
     try:
         t = json.load(open(os.path.join(ROOT, "config/tasks/tasks.json"), encoding="utf-8")).get("tasks") or []
         b = json.load(open(os.path.join(ROOT, "config/ss_task_binding.json"), encoding="utf-8"))
         row = next((x for x in t if x.get("task_id") == TASK), {}) or {}
         sc = json.load(open(os.path.join(ROOT, "flows/scenes_5jobs.json"), encoding="utf-8")).get("scenes") or []
         has_scene = any(x.get("scene_id") == SCENE for x in sc)
-        L.append("- 场景真源 flows/scenes_5jobs.json: %s (共 %d 场景)" % ("含 %s" % SCENE if has_scene else "缺", len(sc)))
-        L.append("- 任务真源 config/tasks/tasks.json: %s · 场景=%s · 段=%d · 覆盖=%d" % (
+        L.append("- 场景唯一依据 flows/scenes_5jobs.json: %s (共 %d 场景)" % ("含 %s" % SCENE if has_scene else "缺", len(sc)))
+        L.append("- 任务唯一依据 config/tasks/tasks.json: %s · 场景=%s · 段=%d · 覆盖=%d" % (
             row.get("task_id"), row.get("scene_ref"), len(row.get("applies_segments") or []), len(row.get("overrides") or {})))
         L.append("- 绑定 config/ss_task_binding.json: active_task=%s (共 %d 任务)" % (b.get("active_task"), len(b.get("tasks") or [])))
         d = os.path.join(ROOT, "data/scene/scenes", SCENE)
@@ -285,7 +285,7 @@ def write_report(evo_dir, results, meta):
     else:
         L.append("- 判定: ⚠️ **不同源** —— 造数据与训练各自读不同的集, 训练不会因为本次造数据而改变")
         L.append("  - 根因1: `stage_sim_data` 输出固定目录且收集器幂等(已满足 target 就报完成不重采) ⇒ 看着 rc=0 但没新样本")
-        L.append("  - 根因2: `stage_train` 调 `joint_train_all.py` **不传数据集**, 训练用它配置里写死的 `dataset.root`")
+        L.append("  - 根因2: `stage_train` 调 `joint_train_all.py` **不传数据集**, 训练用它配置里固定不变的 `dataset.root`")
         L.append("  - 修复: stage_train 增加 `--dataset data/datasets/sim_%s` 并让 joint_train_all 透传到 L3 训练配置" % TASK)
     L.append("")
     L.append("## 口径说明\n")

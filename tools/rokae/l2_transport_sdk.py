@@ -232,7 +232,7 @@ def taught_z_ceiling():
         return None
 
 def env_box():
-    """🛡 实时扫掠闸门用的包络盒 —— 与 L2 同一真源(env_model 的 envelope)。
+    """🛡 实时扫掠闸门用的包络盒 —— 与 L2 同一唯一依据(env_model 的 envelope)。
 
     为什么需要: 指令的**目标点**在包络内 ≠ **扫过的路径**在包络内。2026-10-07 碰撞就是
     MoveJ 关节插值把 TCP 带到 z=0.064(低于下限 0.0848) 撞上去的。代理每 0.15s 拿真值比
@@ -333,7 +333,7 @@ def _run_abs(tgt, rpy, sp_mm, meta, logf, ang=None):
     dist = math.sqrt(sum(v * v for v in d)) * 1000.0
     # ⏱ 2026-10-08 实测修正: 现场 3 次独立测量一致 —— 下发 11.2mm/s ⇒ **实际 1.11mm/s**。
     #    原来按 sp_mm(标称)算等待窗口 ⇒ 低估 10 倍 ⇒ 200mm 横移只等 83s(实际要 180s),
-    #    代理在这时候返回 rc=6/CHECK 被当成"失败"(其实控制器还在走, 臂后来**真的到位了**)。
+    #    代理在这时候返回 rc=6/CHECK 被当成"失败"(实际控制器还在走, 臂后来**真的到位了**)。
     wait = max(90.0, min(2400.0, dist / max(sp_mm * 0.1, 0.35) * 1.6 + 60.0))
     if ang is not None and ang >= 0.3:
         # 🔄 2026-10-08: 纯旋转/带转姿态时, 位移≈0 ⇒ 只按位移算等待会太短(腕部慢转, 实测 10° 要数十秒);
@@ -345,7 +345,7 @@ def _run_abs(tgt, rpy, sp_mm, meta, logf, ang=None):
            # 🧗 自愈(2026-10-08 现场): 控制器会以 50102「[SDK MoveL] 轨迹前瞻遇到奇异点」拒发 ——
            #    特征是 moveStart ec=0 但臂**一动不动**(实测: 位移 411mm/姿态差 173.9° 的直线被拒,
            #    Δ=0.001mm · 5~7s 后残差=全量)。代理里已有控制器手册修法②(MoveL→关节空间 MoveJ 重试一次),
-           #    但**一直没开闸**(主机侧没带这个键) ⇒ 现场表现就是"点了卡住不动"。现开闸; 重试仍带 guard_box。
+           #    但**一直没开闸**(主机侧没带这个键) ⇒ 现场表现就是"点了阻塞不动"。现开闸; 重试仍带 guard_box。
            "allow_movej_retry": MOVEJ_RETRY,
            **({"motion": "J"} if FORCE_J else {})}
     r = send_agent(req, wait, logf)
@@ -381,7 +381,7 @@ def _run_rel(dxyz, sp_mm, meta, logf):
             return False, done
         step = [max(-REL_STEP_MM, min(REL_STEP_MM, v)) for v in left]
         # ⏱ 2026-10-08: 同 _run_abs —— 分片等待也按**实测速率**(标称的 1/10)给, 否则分片一超时
-        #    就报失败, 而控制器其实还在把这一片走完。
+        #    就报失败, 而控制器实际还在把这一片走完。
         wait = max(60.0, min(2400.0, max(abs(v) for v in step) / max(sp_mm * 0.1, 0.35) * 1.6 + 45.0))
         r = send_agent({"cmd": "move-rel", "tag": "l2", "dx": step[0], "dy": step[1], "dz": step[2],
                         "speed": sp_mm, "cap_mm": 50.0, "allow_movej_retry": MOVEJ_RETRY,   # 🧗 同上: 分片被 50102 拒也可改 MoveJ 重试
@@ -476,7 +476,7 @@ def exec_call(call, logf, meta=""):
     #   (`_run_rel` 只吃 dxyz, 姿态被丢) ⇒ 纯旋转(位移≈0、姿态差 10°)走 rel 后 `while >0.2mm` 一次都不进
     #   = **静默不动**(页面点 A/B/C 毫无反应); J6 那种「位移 34mm + 姿态差 90°」也走 rel ⇒ **只平移不转**
     #   (现场看到的就是"没转、却降了 24mm" —— 降的是 J6 目标的**位置分量**)。凡姿态差 ≥0.3° 一律走 abs
-    #   (abs = 整位姿 MoveL, 被拒还有 MoveJ 兜底), 不再静默丢姿态。
+    #   (abs = 整位姿 MoveL, 被拒还有 MoveJ 保障), 不再静默丢姿态。
     _rot = (ang is not None) and (ang >= 0.3)
     kind = "abs" if (dist_mm > REL_STEP_MM or _rot) else "rel"
     with _LOCK:

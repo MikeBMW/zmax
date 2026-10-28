@@ -13,7 +13,7 @@
      只留质量告警 —— 闭环门本来就是质量判据的一部分, 数据面不再单开一页)
 数据全真实: busdb.json(画布 DBC 74节点/182信号/14报文) · live.json(每话题质量) ·
 trace.jsonl(总线帧)。缺测一律 '—' (不许 0 冒充); 实时量带帧龄与拍照时间。
-busdb 的真源是**状态空间工程库**(mw_*) —— 画布保存时同口落库, 数据空间只读库, 不再另抄一份。
+busdb 的唯一依据是**状态空间工程库**(mw_*) —— 画布保存时同口落库, 数据空间只读库, 不再另抄一份。
 """
 from __future__ import annotations
 
@@ -75,7 +75,7 @@ except Exception:                                                        # noqa:
 try:                                     # 节点名归一 (Tx/Rx 只放本名)
     from lerobot.middleware import naming as _naming
 except Exception:                                                        # noqa: BLE001
-    class _NamingFallback:                       # 兜底: 至少有 clean/unique_map 两个口
+    class _NamingFallback:                       # 保障: 至少有 clean/unique_map 两个口
         @staticmethod
         def clean(x, fallback=""):
             return str(x or fallback)
@@ -276,7 +276,7 @@ class BarDelegate(QStyledItemDelegate):
 def _sig_type_txt(topic, default=None):
     """topic → 语义类型 (与信号表 Type 列同源: config/platform/dds_topic_types.json)。
 
-    default: 非 ss.node.* 形态的话题 (如连线总线 zmax/link_value) 用它自己声明的类型兜底,
+    default: 非 ss.node.* 形态的话题 (如连线总线 zmax/link_value) 用它自己声明的类型保障,
              不要显示成 "— (非节点话题)" —— 连线数据也是有类型的。
     """
     try:
@@ -623,7 +623,7 @@ class BusView(QWidget):
 
     def _on_filter(self, txt):
         """🐛 2026-10-01 修: 原来调 _fill_trace() 没带 force ⇒ 只要 trace.jsonl 签名没变
-        (1 秒内刚填过) 就直接 return ⇒ 老倪「我搜索 plan 了, 啥都没有」= 搜索框没反应的真根因。
+        (1 秒内刚填过) 就直接 return ⇒ 老倪「我搜索 plan 了, 什么都没有」= 搜索框没反应的真根因。
         搜索必须**立即重填**。"""
         self._filter = (txt or "").strip().lower()
         self._fill_trace(force=True)
@@ -666,7 +666,7 @@ class BusView(QWidget):
         # 注意: 不能在"不可见"时直接 return —— 构建期 (还没 show) 会把首刷也吃掉,
         # 表现为打开数据空间是空表。省 CPU 只在**值刷新**上做, 骨架/树照建。
 
-        # 🐛 2026-09-29 老倪「全局数据空间怎么卡住了」真根因: 1s 定时器**无条件**重建 500 行×9 列的表
+        # 🐛 2026-09-29 老倪「全局数据空间怎么阻塞了」真根因: 1s 定时器**无条件**重建 500 行×9 列的表
         #   (每轮 4500 个 QTableWidgetItem + 整页重排) ⇒ 进程 CPU 实测 81.7%, 页面像冻住。
         #   修法三条: ①不在看的页直接不刷新 ②trace 没变(体积+mtime)就整轮跳过 ③行数 500→150。
         if not self.isVisible():
@@ -941,7 +941,7 @@ class BusView(QWidget):
                     _tx_full = _names.get(_pre, _pre)
                 else:                                # 注册表类话题的 producer 是一句说明, 只留主名
                     _tx_full = _naming.clean(_tx_full, fallback=_tx_full)
-                _tx_full = _naming.clean(_tx_full, fallback=_tx_full)   # 兜底: 任何残留说明都砍掉
+                _tx_full = _naming.clean(_tx_full, fallback=_tx_full)   # 保障: 任何残留说明都砍掉
                 _rx_full = ", ".join(_names.get(x, x) for x in (m.get("consumers") or [])) or _rx_by_topic.get(m.get("topic"), "—")
                 _tx = _tx_full            # 已是归一后的短名, 不再拼端口/不再截断
                 _rxl = [short_name(x) for x in _rx_full.split(", ") if x and x != "—"]
@@ -953,7 +953,7 @@ class BusView(QWidget):
                 # 🎯 2026-10-17 老倪: 「type 列显示的不对, 应该是 topic 的类型」
                 #   Type = 数据类型 (zmax::SSNodePort 等); topic 全名放 Name 的 tooltip, 不占列
                 # 🔴 类型以**语义注册表**为准 (busdb.json 是快照, 可能还是旧的 SSNodePort)
-                #    真源: config/platform/dds_topic_types.json ← tools/gen_topic_types.py
+                #    唯一依据: config/platform/dds_topic_types.json ← tools/gen_topic_types.py
                 _type, _type_cn = str(m.get("type") or "—"), ""
                 try:
                     from lerobot.middleware import topic_types as _tt
@@ -1071,7 +1071,7 @@ class BusView(QWidget):
             it.setForeground(2, QColor(VERDICT_COLOR.get(t.get("verdict", "unknown"), C_WHITE)))
             it.setForeground(4, QColor(C_GRAY))
 
-    # ─────────── 🥽 AR 场景 (文件通道 · 与「信号分析」同一份真源) ───────────
+    # ─────────── 🥽 AR 场景 (文件通道 · 与「信号分析」同一份唯一依据) ───────────
     _AR_SECTIONS = (
         ("末端位姿 (真机 TCP 真值)", ("末端.x", "末端.y", "末端.z", "末端.vx", "末端.vy", "末端.vz", "末端.帧龄_s")),
         ("插拔力 (真机六维力 / 接触)", ("末端.轴向力_N", "末端.侧向力_N", "末端.侧向力y_N",
@@ -1098,7 +1098,7 @@ class BusView(QWidget):
                                     "ar_aoi_live.json", "", "", "", "", "", ""])
             root.setFont(0, QFont(UI, 10, QFont.Bold))
             root.setForeground(0, QColor(C_AR))
-            root.setToolTip(0, "与「信号分析」页同一份真源: zmax_data/ar_live/ar_aoi_live.json\n"
+            root.setToolTip(0, "与「信号分析」页同一份唯一依据: zmax_data/ar_live/ar_aoi_live.json\n"
                                "AR 总线是文件通道(2s/次), 不在 DDS 上 —— 所以这里单独列, 不冒充 DDS 报文。\n"
                                "明细/波形: 信号分析 → 🎯 主要信号")
             for name, keys in self._AR_SECTIONS:
@@ -1253,7 +1253,7 @@ class BusView(QWidget):
     def _mark_search(self, n, q):
         """搜索框边缘报命中: 绿=有命中(o), 红=0 命中 — 省得把"没反应"当成"没数据"。
 
-        🆕 2026-10-01 老倪: 「我搜索 plan 了, 啥都没有」⇒ 搜索框自身给出命中数 + 建议关键词。
+        🆕 2026-10-01 老倪: 「我搜索 plan 了, 什么都没有」⇒ 搜索框自身给出命中数 + 建议关键词。
         """
         try:
             if not q:
@@ -1376,7 +1376,7 @@ class BusView(QWidget):
         """话题 → 下游节点 id 清单 (来自 busdb 的 consumers; 没有就空)。"""
         if getattr(self, "_consmap", None) is None:
             m = {}
-            try:                        # 真源: 工程库连线 (node_rows.outs[].to) —— 不依赖 busdb 是否已加载
+            try:                        # 唯一依据: 工程库连线 (node_rows.outs[].to) —— 不依赖 busdb 是否已加载
                 from lerobot.middleware import db as _db
                 for r in _db.node_rows():
                     for o in (r.get("outs") or []):
@@ -1796,7 +1796,7 @@ class BusView(QWidget):
             return
         self._trace_sig = _sig
         self.tb.setUpdatesEnabled(False)
-        # 🗑 2026-10-17 老倪: 「Trace 的 SYS 层是啥? 没有用, 删掉」
+        # 🗑 2026-10-17 老倪: 「Trace 的 SYS 层是什么? 没有用, 删掉」
         #   SYS = 没有画布节点的信号 (派发服务计数/文件元数据/未归属话题) —— 对现场判读没用, 直接不列。
         _pre_n = len(rows)
         try:
@@ -2189,7 +2189,7 @@ class BusView(QWidget):
                                   t.get("lamp_reason") or "")
             # 🔴 2026-10-17 老倪: 「信号表右侧的详细信息 topic类型 怎么都没改? 要数据一致, 改一样」
             #   真根因: 左表读注册表, 详情读 live.json/busdb 快照里的旧 type ⇒ 同一行两个说法。
-            #   口径: 两边都走 topic_types.describe(), 表格与详情只有一个真源。
+            #   口径: 两边都走 topic_types.describe(), 表格与详情只有一个唯一依据。
             _dt, _dcn = "", ""
             try:
                 from lerobot.middleware import topic_types as _tt

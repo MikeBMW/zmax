@@ -24,7 +24,7 @@ gsettings reset org.gnome.mutter check-alive-timeout   # 调试完还原 (默认
 
 ## 2) 判「是断点阻塞还是真卡死」
 - `pgrep -af studio.py` 能看到 debugpy 两个进程 (launcher + adapter/`--connect`) = **跑在调试器下**,
-  此时"卡住"多半是断点/单步, 不是代码 bug;
+  此时"阻塞"多半是断点/单步, 不是代码 bug;
 - 想确认是否真的死在主线程: 在调试器里看主线程栈是否停在 `app.exec_()`, 或在代码里
   `faulthandler.dump_traceback_later(20)` 落盘 (见 references/qt-mutter-native-gnome.md)。
 
@@ -55,6 +55,6 @@ gsettings reset org.gnome.mutter check-alive-timeout   # 调试完还原 (默认
 - 应用侧修法(实测 24 线程 → 16 线程): ① `debugpy.is_client_connected()` 或 `sys.gettrace() is not None` 判定调试中,
   此时**不 start** 后台轮询 QThread (各打一行 `🐞 调试模式: ... 未启动` 让效果可验证), 另留环境变量强制开; 
   ② `threading.excepthook` 改为落日志, 不抛回解释器。
-- 用户侧兜底: 断点 → Edit Breakpoint → Hit Count=1 / 条件 (`self.n_calls == 1`), 只停你关心的那一拍。
+- 用户侧保障: 断点 → Edit Breakpoint → Hit Count=1 / 条件 (`self.n_calls == 1`), 只停你关心的那一拍。
 - 别用 `SS_FF_BREAK` 这类"每 N 次硬停"去确认路径 —— 在 Qt 多线程下它正好制造"栈乱跳"的观感。
 

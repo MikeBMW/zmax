@@ -51,7 +51,7 @@ metadata:
    或 `systemctl --user stop zmax-vscode-<ts>.scope`。
 4. **起独立实例**用 `systemd-run --user --scope --no-block --collect --unit=zmax-vscode-$(date +%s) /usr/bin/code <工作区>`。
    裸 `Popen` 会让它落在控制台服务的 **cgroup** 里, 控制台一停/一崩 systemd 按 cgroup 连它一起收走
-   (用户看到的现象是"VSCode 卡住")。
+   (用户看到的现象是"VSCode 阻塞")。
 5. **核凭证禁止 cat/grep `~/.git-credentials`** —— 随手写的正则会把 token 连用户名一起打出来
    (首尾字符也算泄露)。`git config --get credential.helper` + `git remote -v` 足够。
 6. **VSCode 崩溃 ≠ 用户的工程/扩展坏了**: 先取证再下结论。入库证据 = `dmesg` 的 `trap invalid opcode`、

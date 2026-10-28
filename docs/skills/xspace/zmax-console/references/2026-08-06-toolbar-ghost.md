@@ -18,7 +18,7 @@
 - 本段删除清单：CICD 默认流水线+取料100G 模板、工作流过滤行(①访问·标注数据)、参考应用条整行、🪟画布窗口按钮+show_canvas_win、时间10.0s/dt 控件、🖥Scope 工具栏按钮、🧠ACT-Meta 引导按钮、📚模块库工具栏按钮
 - 入口去重原则：同一功能只留一个入口（彩色按钮 vs 白字参考条重复 → 删参考条整行）
 - Scope 从工具栏移入左侧 node 库：LIBRARY 新增 `("system", "📊 评估 (3)", [...])` 分组，节点双击走既有 NODE_RUN_ACTIONS ("Scope","on_scope") 链路，零额外代码
-- 删按钮前必查引用：btn_scope/btn_actmeta/show_canvas_win 等被别处调用会 AttributeError；删控件前查 .value() 读取（start_sim 读过 sp_dt.value() → 改 getattr 兜底）
+- 删按钮前必查引用：btn_scope/btn_actmeta/show_canvas_win 等被别处调用会 AttributeError；删控件前查 .value() 读取（start_sim 读过 sp_dt.value() → 改 getattr 保障）
 
 ## 3. ⚠️ "左侧列表/模块库" 歧义——改错对象浪费 3 轮（本段最大教训）
 老倪三次反馈"左侧模块库没隐藏"，我改的是 SimulinkModule 的 LibraryPanel（画布左侧小面板）——**用户实际指的是 XSpace Studio 主窗口左侧 SystemSidebar**（240px，含 XSpace Studio logo + System2/Sys-12 卡片，studio.py 主窗口 root 布局第一个 widget，注释写"可隐藏"但从未实现）。
@@ -29,7 +29,7 @@
 - SystemSidebar 折叠实现（a7b3cabd）：类加 `collapse_requested = pyqtSignal()` + 标题行 ◀ 按钮；主窗口 root 加 16px ▶ 展开条（_sb_expand_bar）；_collapse_sidebar/_expand_sidebar 方法
 
 ## 4. WSLg/MSRDC 标题栏 emoji 乱码（f2d2234d）——"01F 5A5"之谜
-老倪问"标题栏出现 01F 5A5 这是啥"——真相：**画布子窗口标题「🖥 画布 · Simulink 模型」里的 🖥 emoji (U+1F5A5) 在 MSRDC 标题栏渲染成十六进制码点乱码**。MDI 子窗口激活时 Qt 自动把子标题附加到主标题（`主标题 - [子标题]`），乱码进窗口标题栏。
+老倪问"标题栏出现 01F 5A5 这是什么"——真相：**画布子窗口标题「🖥 画布 · Simulink 模型」里的 🖥 emoji (U+1F5A5) 在 MSRDC 标题栏渲染成十六进制码点乱码**。MDI 子窗口激活时 Qt 自动把子标题附加到主标题（`主标题 - [子标题]`），乱码进窗口标题栏。
 - 诊断：`Get-Process msrdc | Select MainWindowTitle` 直接读到完整标题
 - 修复：窗口标题（尤其 MDI 子窗口标题，会被附加到主标题）**不要用 emoji**，纯文本最稳
 - 其他对话框标题的 emoji（Scope 📊/视频对比 🎥）在各自标题栏也可能乱码，但只在用户反馈时改
@@ -39,7 +39,7 @@
 - 修复：_start_worker 启动时记录 `self._busy_info = {"name": ..., "start": time.time(), "queue_len": len(_flow_queue)-1}`；4 处防重入点（_start_canvas_flow/_start_worker/_run_full_flow/_run_node_stage）统一提示：
   `⏳ 正在运行「ACT 训练」已 25s · 队列还有 3 个任务, 完成后自动继续`
 - busy_info 名称提取：`(busy_msg or stage or "任务").split("(")[0].strip().lstrip("⏳ ")`
-- 无 busy_info 时兜底提示 "worker 运行中"
+- 无 busy_info 时保障提示 "worker 运行中"
 - patch 技巧：4 处相同旧文本用 replace_all 一次替换（否则 "Found 2/3 matches" 报错，需加上下文行区分）
 
 ## 6. 真实流程 vs 仿真 tick——运行 t 时间不变

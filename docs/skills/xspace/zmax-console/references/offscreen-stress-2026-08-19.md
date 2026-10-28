@@ -18,7 +18,7 @@ Xvfb :99 + x11vnc :5900 为默认显示通道。
 **⚠️ 坑: 压测会污染画布 JSON** — 模拟双击模式开关触发 `_toggle_mode` 持久化写回
 (a72bb04 模式开关持久化功能) → flows/*.json 的 mode 字段被改。v2.1.5 修复:
 脚本启动时备份 flows/ 全部 json 到 /tmp/flow_backup_*, atexit 注册恢复。
-注意: SIGSEGV 时 atexit 不执行, 崩溃后调用方需 `git checkout flows/` 兜底恢复。
+注意: SIGSEGV 时 atexit 不执行, 崩溃后调用方需 `git checkout flows/` 保障恢复。
 
 **裸容器跑压测前置** (PyQt5 ImportError: libGL.so.1):
 ```bash

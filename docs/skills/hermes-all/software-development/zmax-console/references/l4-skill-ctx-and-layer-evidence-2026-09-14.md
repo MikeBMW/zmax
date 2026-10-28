@@ -18,7 +18,7 @@
 (这是回答「能不能单独跑/逐步升级」的正面证据; 反例说法「要重启/换文件才能切层」是错的)。
 
 ### ⚠️ 坑: 阶段轨迹不能读 `sim.stage_hist` (实测恒空)
-`sim.stage_hist` 是空列表 → B 格覆盖率会误报 0/6 (功能其实走全了)。正解 = 挂帧 sink 逐帧取:
+`sim.stage_hist` 是空列表 → B 格覆盖率会误报 0/6 (功能实际走全了)。正解 = 挂帧 sink 逐帧取:
 ```python
 stages = []
 def _sink(s, act, o, _st=stages):

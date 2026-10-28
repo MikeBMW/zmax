@@ -1,7 +1,7 @@
 # 🌐 全局数据空间 (Global Data Space) —— 映射关系 · 数据闭环 · 质量管理 · 全链路可视化
 
-- 作者: 静静 (总架构师) · 日期: **2026-09-29** · 状态: 映射表已落地并**真跑通**(DDS 实测取证见 §5)
-- 机器可读真源: `src/lerobot/dataspace/topics.py`(映射表) + `quality.py`(质量规则) + `probe.py`(全链路探针)
+- 作者: 静静 (总架构师) · 日期: **2026-09-29** · 状态: 映射表已落地并**真验证通过**(DDS 实测取证见 §5)
+- 机器可读唯一依据: `src/lerobot/dataspace/topics.py`(映射表) + `quality.py`(质量规则) + `probe.py`(全链路探针)
 - 对标: 百度 Apollo Cloud / DreamView —— 节点+频道清单 · 实时频率与帧龄 · 数据质量告警 · 闭环环节状态
 
 ---
@@ -13,7 +13,7 @@
 
 三层映射(老倪的分层口径, 不许越层):
 
-| 层 | 映射什么 | 真源 |
+| 层 | 映射什么 | 唯一依据 |
 |---|---|---|
 | ① 物理层 | 话题 ↔ IDL 类型 ↔ QoS ↔ 频率 | `topics.py::TOPICS` |
 | ② 语义层 | 话题 ↔ 生产者/消费者(进程/服务/网页/画布节点) | `topics.py::TOPICS[*].producer/consumers` + `PRODUCERS` |
@@ -23,7 +23,7 @@
 
 ## 1. ① 物理层: 话题清单 (14 个, 全部在 DDS 域 0)
 
-QoS 三档(按用途分级, 不一刀切): `state` = RELIABLE·KEEP_LAST(1)·TRANSIENT_LOCAL(新订阅者立刻拿到最新) ·
+QoS 三档(按用途分级, 不统一处理): `state` = RELIABLE·KEEP_LAST(1)·TRANSIENT_LOCAL(新订阅者立刻拿到最新) ·
 `beat` = BEST_EFFORT·KEEP_LAST(1)(丢帧无妨, 要低延迟) · `cmd` = RELIABLE·KEEP_ALL(一条都不许丢)。
 
 | 话题 | 类型 | 设计Hz | QoS | 生产者 | 主要消费者 | 允许模式 |
@@ -38,7 +38,7 @@ QoS 三档(按用途分级, 不一刀切): `state` = RELIABLE·KEEP_LAST(1)·TRA
 | zmax/ss_canvas | SSCanvasNode | 0.5 | state | 画布节点执行上报 | 控制台画布页 | test |
 | zmax/ss_macro | SSMacro | 0.2 | state | 五层记忆/宏观层 | 控制台记忆页 | test |
 | zmax/ss_nodes | SSNodes | 0.2 | state | 数据空间自描述 | 控制台节点清单 | test |
-| zmax/ss_calib | SSCalib | 0.2 | state | 守护 ← 标定真源文件 | 控制台标定页/现场核对 | calib·test |
+| zmax/ss_calib | SSCalib | 0.2 | state | 守护 ← 标定唯一依据文件 | 控制台标定页/现场核对 | calib·test |
 | zmax/ss_diag | SSDiag | 0.5 | beat | 守护(延时/帧龄/吞吐/健康度) | 控制台监控页/告警 | diag·calib·test |
 | zmax/ss_test | SSTest | 事件 | state | 取证/回归脚本 | 控制台评估页 | test |
 | zmax/link_value | LinkValue | 5 | beat | 画布连线总线 | 控制台画布页 | calib·test |

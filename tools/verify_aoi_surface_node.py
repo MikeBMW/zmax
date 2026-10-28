@@ -4,7 +4,7 @@
 
 老倪 2026-10-19: 「将这个功能做到状态空间工程的L2光学质量检测节点, 10083服务, 可以在4060上旁路运行」
 判据 (缺一条不算做到):
- ① 模块真源 LAYER='L2'  ② DB mw_node.layer='L2'  ③ 画布 JSON 写明 surface_bypass_10083
+ ① 模块唯一依据 LAYER='L2'  ② DB mw_node.layer='L2'  ③ 画布 JSON 写明 surface_bypass_10083
  ④ SurfaceOpticalQuality 可跑, 返回 dict 且 ok=True
  ⑤ 摆正后长边水平 (光模块水平放置)
  ⑥ no_stretch=True (零插值; 只有 resize 才算拉伸)
@@ -40,10 +40,10 @@ print("=" * 78)
 print("L2 光学质量检测节点 · 10083 表面旁路 交付自检")
 print("=" * 78)
 
-# ① 模块真源
+# ① 模块唯一依据
 mod_path = os.path.join(ROOT, "src/lerobot/middleware/nodes/n_inspection.py")
 src = open(mod_path, encoding="utf-8").read()
-ck("① 模块真源 LAYER='L2'", bool(re.search(r"^LAYER = 'L2'", src, re.M)),
+ck("① 模块唯一依据 LAYER='L2'", bool(re.search(r"^LAYER = 'L2'", src, re.M)),
    "n_inspection.py")
 
 # ② DB

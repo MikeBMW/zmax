@@ -41,7 +41,7 @@ $bmp.Save('C:\temp\gui_shot.png')
 "按钮是否存在/面板是否隐藏"。本次靠这个发现: 面板色只有 1448 像素 (该显示 17 万) →
 折叠按钮根本没被用户看到 (而非折叠逻辑坏)。
 
-## ⚡ 训练步数统一 50→10 (0af2128c, 老倪: "改成训练10步吧, 先跑通流程")
+## ⚡ 训练步数统一 50→10 (0af2128c, 老倪: "改成训练10步吧, 先验证通过流程")
 所有训练入口默认 steps 从 50 改 10 (链路验证更快)。改动位置清单 (新增训练入口时照此检查):
 - `simulink_module.py`: REFERENCE_APPS 全部模板训练节点 `"steps": 50`→10 (18处),
   对话框 `p.get("steps", 50)`→10 (TrainConfigDialog + tooltip 显示), `setSingleStep(50)` 不动
@@ -63,7 +63,7 @@ $bmp.Save('C:\temp\gui_shot.png')
    finished 回调 no-op `lambda: None` 防止 GC 竞态)。
 3. finished_ok 连接在 worker.start() 前, `worker.finished.connect(lambda: None)` 必须有
    (不置 None → worker 无引用被 GC → QThread destroyed SIGABRT)。
-若 _done 没执行 (日志无 ✅ 摘要行) → 看 worker.run() 是否在 fn 内部卡住 (子进程 Popen
+若 _done 没执行 (日志无 ✅ 摘要行) → 看 worker.run() 是否在 fn 内部阻塞 (子进程 Popen
 等待) 或异常被吞。GUI 日志里训练脚本自己的 `✅ 训练完成` 是子进程 stdout, 与 _done 的
 `✅ {summary}` 是两条 — 只有后者出现才说明锁会释放。
 
@@ -105,12 +105,12 @@ self.btn_lib_toggle = mk_btn("📚 模块库", "隐藏/显示 左侧模块库面
 前三次 (b66c6833/aaf370a5/ca63eb33) 一直在改 `SimulinkModule.LibraryPanel` (Simulink 页画布左侧 220px 模块库)。
 老倪第 4 次明说 \"**XSpace Studio 这个列表栏**\" — 才意识到指的是**主窗口左侧 `StudioMainWindow.SystemSidebar`** (240px,
 含 XSpace Studio 标题 + System2/Sys-12/Sys-11 架构卡片 + 模块库分隔)。**代码注释写着\"侧边栏 (可隐藏)\"但从未实现** —
-注释是愿望不是事实, 信注释就踩坑。
+注释是愿望不是事实, 信注释就遇到问题。
 
 **架构事实**: `studio.py` 是 QStackedWidget 多页面主程序 (home/architecture/dataset/training/.../simulink 12 页),
 `SystemSidebar` 在主窗口 `root = QHBoxLayout()` 最左, `SimulinkModule` 只是其中一个 stack 页 (其内部又有自己的 LibraryPanel)。
 **两个\"左侧栏\"并存**: 主窗口级 SystemSidebar vs Simulink 页级 LibraryPanel。用户说\"左侧列表/侧边栏/列表栏\"默认指主窗口的;
-说\"模块库/左侧模块库\"在 Simulink 页上下文里才指 LibraryPanel — 但这次老倪说\"模块库\"其实还是主窗口侧边栏 (其内有\"模块库\"分隔标签)。
+说\"模块库/左侧模块库\"在 Simulink 页上下文里才指 LibraryPanel — 但这次老倪说\"模块库\"实际还是主窗口侧边栏 (其内有\"模块库\"分隔标签)。
 **诊断**: 拿不准时先截图 (PowerShell 全屏) 定位窗口边界和面板位置, 或直接问\"是主窗口左侧还是 Simulink 画布左侧\" —
 别埋头改一个\"功能验证已过\"的入口。
 

@@ -8,14 +8,14 @@
     标定配置版本，不需要那么多并行逻辑，多线程，要保持稳定的，面向 清晰单线程逻辑的debug模式」
 
 判据 (逐条都有实测值, 不看代码"看起来对"):
-  ① 只有 550B 起: 真源 550B=True; 临时真源 550A/550C=False
+  ① 只有 550B 起: 唯一依据 550B=True; 临时唯一依据 550A/550C=False
   ② 省资源启动参数齐 + 目标是真状态空间工程 (ZMAX.code-workspace 存在)
   ③ 单线程口径: 550B 环境 = SINGLE_THREAD_ENV 逐键相等; 非标定档不被改写
   ④ 独立 scope (systemd-run) —— 关控制台不带走 VSCode
   ⑤ **真调用链**: 注入 spawn 替身跑 autostart → 550B 收到正确 argv+env; 550C 一次都不调
      (全程不真起进程: 前后 pgrep 计数必须一致)
   ⑥ studio.py 两条打开路径都接了钩子 (打开总工程 / 加载工程文件)
-  ⑦ .vscode/launch.json 有「🅱 550B 标定版 · 单线程 debug (状态空间工程)」且 env 与真源逐键一致
+  ⑦ .vscode/launch.json 有「🅱 550B 标定版 · 单线程 debug (状态空间工程)」且 env 与唯一依据逐键一致
   ⑧ 右键「打开 VSCode」的模板 (_vscode_launch_cfg) 里也有同一条 (否则右键一按就被抹掉)
   ⑨ .vscode/settings.json 的资源开关在位 (索引/监视/minimap/git 轮询/自动更新)
   ⑩ 自证日志 ~/.cache/zmax/vscode_autostart.log 有本次记录
@@ -61,7 +61,7 @@ def _code_procs():
 
 print("=== ① 只有标定档 (550B) 自动起 ===")
 _prod = VL.active_product()
-chk("①a 真源 active_product 读得到", _prod in ("550A", "550B", "550C"), "active_product=%r" % _prod)
+chk("①a 唯一依据 active_product 读得到", _prod in ("550A", "550B", "550C"), "active_product=%r" % _prod)
 chk("①b AUTOSTART_PRODUCTS 只含 550B", tuple(VL.AUTOSTART_PRODUCTS) == ("550B",), str(VL.AUTOSTART_PRODUCTS))
 _tmp = tempfile.mkdtemp(prefix="zmax_prod_")
 os.makedirs(os.path.join(_tmp, "config", "platform"), exist_ok=True)

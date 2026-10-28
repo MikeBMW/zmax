@@ -15,14 +15,14 @@ metadata:
 ## When to Use
 - 老倪要「把状态空间工程里所有任务进行分析, 每个功能清单的功能叠加配置参数, 转化成元任务」。
 - 要重出/改「元任务开发计划 · 项目立项书」, 或在配置中心「任务配置」里导出 Word/PDF。
-- 版本升级 / 加任务 / 改配置后要同步这份计划 —— 它是**派生件**, 真源一动就得重出。
+- 版本升级 / 加任务 / 改配置后要同步这份计划 —— 它是**派生件**, 唯一依据一动就得重出。
 
 ## 1. 口径
 **元任务 = 一个功能(FN-SYSx-N) + 该功能全部配置参数 + 依赖 + 验证方法 + 归属层**
 (不是「一个任务」, 也不是「一个画布节点」; 只有功能带完整元数据: 字段/范围/单位/依赖/验证)
 
-## 2. 真源与映射链（4 个文件）
-| 真源 | 内容 |
+## 2. 唯一依据与映射链（4 个文件）
+| 唯一依据 | 内容 |
 |---|---|
 | `data/database/zmax/config_meta.json` | 74 个功能的字段/范围/单位/依赖/验证 |
 | `sources/config/tasks/tasks.json` | 7 个任务(工艺步骤/overrides/触发循环) |
@@ -57,7 +57,7 @@ metadata:
 排序键: `(优先级, 层序 L2→L3→L4/L5→PLAT, -参数数, 名称)` —— 参数多的先开工(迭代久)。
 
 ## 6. 导出（Word/PDF）
-- 脚本 `tools/export_meta_doc.py` —— 真源 → md → HTML → LibreOffice → docx + pdf; 内建一致性校验。
+- 脚本 `tools/export_meta_doc.py` —— 唯一依据 → md → HTML → LibreOffice → docx + pdf; 内建一致性校验。
   CLI: `--check`(只校验不出文档) / `--no-pdf` / `--no-docx` / `--out DIR` / `--json`
 - GUI 入口: 配置中心「📋 任务配置」首屏按钮「📄 元任务计划 (Word/PDF)」→ `_run_doc("metaplan")`;
   注册点在 `tools/gui/veh6_config_page.py` 的 `DOC_SCRIPTS` + `DOCS`; 文档交付页挂同一个导出器。
@@ -71,14 +71,14 @@ metadata:
 | 功能 module_ref → 画布节点 | 74/74 命中 |
 | 任务 enabled_nodes → 画布节点 | 全部存在 |
 | 各任务元任务数 = 启用节点数 | 51/51/42/51/51/51/31 |
-真源 sha256 随文档发布冻结; 任一真源变更 ⇒ 重出计划 + 重跑校验。
+唯一依据 sha256 随文档发布冻结; 任一唯一依据变更 ⇒ 重出计划 + 重跑校验。
 
 ## 9. 运行时输出（与文档同一映射链, 2026-10-14）
 问「流形引擎需要根据任务输出元任务, 哪个节点输出合理? 意图直读么?」时的定论:
 
 | 项 | 口径 |
 |---|---|
-| 内容 | 元任务 = 功能+参数+依赖+验证+层; **只能真源现算**, 不从意图/技能直读 |
+| 内容 | 元任务 = 功能+参数+依赖+验证+层; **只能唯一依据现算**, 不从意图/技能直读 |
 | 派生器 | `tools/ss_meta_task.py` → 复用 `export_meta_doc.build_meta_tasks()`（不重写映射链）; 19ms/次 |
 | 出口节点 | **主参数节点 n_calib_mani**（与「已加载配置名」同一个 5s 节拍）→ 话题 `zmax/ss_meta_task`; 订阅 `tools/dds_sub_meta_task.py` |
 | 流形引擎的角色 | 每周期只带 `meta_n/meta_all`（运行时可观测量）+ 任务变时重算派生件落盘; **不在 step() 里每步带清单**（污染高频记录） |
@@ -93,10 +93,10 @@ metadata:
 | 画布节点 | id 仍 `n_intent_direct`（保 id 不改，免得断线）; 名 → 「🧾 元任务预测 (驱动扭矩 → 元任务预测值)」 |
 | 输入边 | `ssintact_dec → n_intent_direct`(Δz→技能 kNN) **重接为** `ss_mani_eng → n_intent_direct` 标签「驱动扭矩 T_drive=M·(−∇Φ) (6D)」 |
 | 输出边 | `n_intent_direct → sssched` 标签改为「元任务预测值 → 动作调制」 |
-| 实现 | `tools/ss_meta_predict.py` + `mem_nodes.node_ss_intent_direct`; 真源 tap `/dev/shm/zmax_torque/torque_<scene>.jsonl` |
+| 实现 | `tools/ss_meta_predict.py` + `mem_nodes.node_ss_intent_direct`; 唯一依据 tap `/dev/shm/zmax_torque/torque_<scene>.jsonl` |
 | 口径 | 结构先验原型 + 真算特征（trained=false）; 层响应选择向量 LAYER_SEL + 画布入度 + 参数规模 |
 | ⚠️ 输入真相 | **驱动扭矩目前恒定**(std=0, 发布器跑固定状态) ⇒ 预测无区分度, 输出必带 `frozen/degraded` + 说明; 要真预测需时变扭矩 + 阶段标签后 `--fit` |
-| 判据 | `ss_meta_predict.py --selftest` 4/4（输入真读 / 分数归一Σ=1 / 信息量如实 / 与真源集对照） |
+| 判据 | `ss_meta_predict.py --selftest` 4/4（输入真读 / 分数归一Σ=1 / 信息量如实 / 与唯一依据集对照） |
 | 改名连带（必做） | `config_meta.json` 的 FN-SYS2-24 name+module_ref（**同名才能保住 74/74**）→ `ss_task_bind.py` 重绑 → `engineering_db.py build` → 两 check |
 
 ## 12. 汇报口径

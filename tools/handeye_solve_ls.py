@@ -207,7 +207,7 @@ def solve(views, Km, grid, spacing, transpose=False, sub=None):
     交替: ① 固定 X → 每个视图推一个 板在基座下 的位姿 → 取平均
           ② 固定板位姿 → 每个视图推一个 X → 取平均; 迭代到收敛
     最后用重投影最小二乘精修, 并用**留一法**给不确定度。
-    单位统一成米 (2026-09-19 踩坑: 物点 mm + 位姿 m → 投影错位, 怎么解都解不出来)。
+    单位统一成米 (2026-09-19 遇到问题: 物点 mm + 位姿 m → 投影错位, 怎么解都解不出来)。
     """
     idx = list(range(len(views))) if sub is None else list(sub)
     obj = obj_points(grid, spacing / 1000.0, transpose=transpose).reshape(-1, 1, 3)

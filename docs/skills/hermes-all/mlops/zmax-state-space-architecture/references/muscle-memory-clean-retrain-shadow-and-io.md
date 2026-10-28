@@ -2,7 +2,7 @@
 
 本文是引擎侧肌肉记忆/标杆库的操作事实 (原 zmax-muscle-memory 技能的补充;
 该技能为 user-owned, 无法自动更新 — 需要时 `hermes curator adopt zmax-muscle-memory`)。
-真源代码: `tools/gui/muscle_memory.py`, `tools/gui/state_space_sim_real.py`,
+唯一依据代码: `tools/gui/muscle_memory.py`, `tools/gui/state_space_sim_real.py`,
 `src/lerobot/memory/memory_graph.py`, `tools/gen_skill_dict.py`。
 
 ## 1. 测量纪律 (先看这条, 否则所有结论都不可信)
@@ -72,4 +72,4 @@
 (最多 2 次修正, 之后走回退, 与 SS_LEW 关闭路径一致) → 修复后 3/3, 平均步数还少 9%。
 
 **通用规则**: 任何"再给一次机会"的补救机制(重试/微调/自适应)都必须占用一次尝试额度,
-否则它会吃掉兜底回退, 表现为"接了新功能反而更慢/失败" — 也就是用户红线里的"性能回退"。
+否则它会吃掉保障回退, 表现为"接了新功能反而更慢/失败" — 也就是用户红线里的"性能回退"。

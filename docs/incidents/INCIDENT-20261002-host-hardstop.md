@@ -63,7 +63,7 @@ fstab 行仍在(重启后由 systemd-fstab-generator 自动恢复)。**回滚**:
 | 预留内存 | `/etc/default/grub.d/kdump-tools.cfg`(包自带) `crashkernel=2G-4G:320M,4G-32G:512M,…` ⇒ 本机 31G 走 **512M** |
 | 卡死也当 panic | 新落 `/etc/default/grub.d/99-zmax-crash.cfg`: `panic=10 softlockup_panic=1 hardlockup_panic=1`(`nmi_watchdog` 已是 1) |
 | 自动回来 | `panic=10` = 崩后 10 秒自动重启(无人值守工位机要能自己起来; 起来后按既有自愈链恢复) |
-| 转储落点 | `/var/crash/<时间戳>/vmcore`(makedumpfile `-c -d 31` 压缩 + 只丢内核页; `KDUMP_NUM_DUMPS=2` 限份数, 不写死磁盘) |
+| 转储落点 | `/var/crash/<时间戳>/vmcore`(makedumpfile `-c -d 31` 压缩 + 只丢内核页; `KDUMP_NUM_DUMPS=2` 限份数, 不预先固定磁盘) |
 | 预建迷你 initrd | 手动跑了一次内核钩子 `/etc/kernel/postinst.d/kdump-tools $(uname -r)` ⇒ `/var/lib/kdump/initrd.img-6.17.0-14-generic` 252MB(解压 340MB), 免首启现建/失败 |
 | 开机留痕 | `tools/boot_crashcheck.sh` + crontab `@reboot sleep 120` ⇒ 每次开井记一行 kdump 就绪状态; **发现 `/var/crash` 有转储就推飞书**(静界群), 正常开机不打扰 |
 

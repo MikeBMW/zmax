@@ -173,7 +173,7 @@ def main():
             P_hat, off_hat, rms = solve(train, obs, size, use_size)
             m3, x3, mpx, miou, niou = evaluate(P_hat, off_hat, P_true, holdout, size)
             off_err = float(np.linalg.norm(off_hat - OFF_TRUE)) * 1000
-            degenerate = rms > 20.0          # 残差卡在兜底值 = 解跑飞 (中心法就是这种)
+            degenerate = rms > 20.0          # 残差卡在保障值 = 解跑飞 (中心法就是这种)
             key = f"{tag} · {'框4边(中心+宽高)' if use_size else '只用框中心'}"
             results[key] = {"train_n": len(train), "rms_px": round(rms, 3), "degenerate": bool(degenerate),
                             "off_err_mm": round(off_err, 2),

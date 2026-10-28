@@ -1,6 +1,6 @@
 # 摆盘作业 交付文档 · TASK-06-TRAY · 5.50.5
 
-> 本文件由配置模板同源渲染 (真源: 配置单 / 功能 topic 实测 / 验收报告 / 工程库), **数字不手写**。
+> 本文件由配置模板同源渲染 (唯一依据: 配置单 / 功能 topic 实测 / 验收报告 / 工程库), **数字不手写**。
 > 场景: 摆盘场景 · 站点: SITE-A.ST11 · 场景号: SCN-06-TRAY · 生成: 2026-10-13 13:30:27
 
 ## 一、目标与达成情况 (硬指标: 成功率 99% · 节拍 3.5s)
@@ -25,7 +25,7 @@
 | TASK-06-TRAY | 摆盘场景 | SCN-06-TRAY | `#1f6feb` 摆盘场景(蓝) |
 | TASK-07-AOI | AR场景 | SCN-07-AOI | `#8957e5` AR场景(紫) |
 
-当前活跃任务: `TASK-06-TRAY` (真源 `config/ss_task_binding.json`) · 切换器 `tools/ss_scene_switch.py`
+当前活跃任务: `TASK-06-TRAY` (唯一依据 `config/ss_task_binding.json`) · 切换器 `tools/ss_scene_switch.py`
 
 ### 2.2 空间点位 / 位置 / 角度
 
@@ -35,7 +35,7 @@
 | 空间点 1..8 | `data/skills/l2_atomic/space_points.json` | 8 | `a8098b0e7a110a02` | 2026-10-12 14:02:11 |
 | AOI 示教点 | `reports/aoi_points/` | 10 | `—` | 2026-10-13 10:38:54 |
 
-标定真源: `config/calib/zmax_calib.json` sha `9e4edc6f5b87f6a2`; `config/calib/zmax_manifold.json` sha `a56a3c3bf6a3988b`
+标定唯一依据: `config/calib/zmax_calib.json` sha `9e4edc6f5b87f6a2`; `config/calib/zmax_manifold.json` sha `a56a3c3bf6a3988b`
 
 站位几何: **未标定** `T_base_cam`, `plane_z`, `cell_geometry.points` ⇒ 坐标类参数标「不可信」
 
@@ -134,7 +134,7 @@
 |---|---|---|---|---|---|
 | **💪 L2 肌肉记忆技能库 (光模块抓放循环)** | L2 | L2 肌肉记忆: 对准→下降→夹紧(force40)→抬起; 由 L3 序列调用, 经 l2_ros2_bridge(ROS2) 转发 Orin | `ss/ssskill/out` | `ss/n_l2_muscle/out` | 单颗 CT ≤3.15s (PVT) · 取放精度 单边 ≤1mm/角 ≤1° · 成功率 ≥99% (PVT) · 载具与产品损伤 0; 连续自主 ≥12 盘周转盘 (硬下限 ≥6) · 单日连续运行 ≥20h · 月 ≥28 天 · 寿命 ≥3 年; 采集→训练→部署闭环可无人值守 |
 | **📐 板坐标系定位 (工序坐标系·免手眼)** | - | 真机帧 → 板检测(20点/反色/排镜像) → 模块射线∩板平面 → 模块在板坐标(x,y)mm。绕开手拖位姿精度限制; 精度~1mm(图像决定)。 | `ss/n_dsvl/out`, `ss/ssyolo/out`, `ss/ssz700/out` | `ss/n_board_frame/out` | 对位残差 ≤0.5mm · 重投影 rmse 合格; 对接精度 ±10mm; 空/满/异常三态判定 100% (POC ≥98%) · 单次判定 ≤500ms · 异常态拒送并告警 |
-| **🧿 DeepSeek-V4-Flash · 场景理解 (L5 大模型主路)** | - | [L5 大模型主路] DeepSeek-V4-Flash (API · 支持 Vision): 场景判读/工序纠错 → 结构化落 data/scene/scene_state.json, 喂 L3 规划/技能编排与 L4 意图解码; 本地兜底 = smolvlm2-500m (HuggingFaceTB/SmolVLM2-500M, 权重在 ~/.cache | `ss/n_web_agent/out`, `ss/ssdata/out`, `ss/ssllm_in/out` | `ss/n_dsvl/out` | 见能力层 §4.1 |
+| **🧿 DeepSeek-V4-Flash · 场景理解 (L5 大模型主路)** | - | [L5 大模型主路] DeepSeek-V4-Flash (API · 支持 Vision): 场景判读/工序纠错 → 结构化落 data/scene/scene_state.json, 喂 L3 规划/技能编排与 L4 意图解码; 本地保障 = smolvlm2-500m (HuggingFaceTB/SmolVLM2-500M, 权重在 ~/.cache | `ss/n_web_agent/out`, `ss/ssdata/out`, `ss/ssllm_in/out` | `ss/n_dsvl/out` | 见能力层 §4.1 |
 | **📚 工程记忆 · 技能与经验库** | - | 工程记忆 = docs/memory/*.md (跨端同步记忆) + Hermes 记忆 (MEMORY/USER) + 技能库清单; 读真实文件 → 汇总条数/落盘时间 → 同步进 🧠总装记忆中枢 (顶层宏观记忆, macro_memory.uplink) | （源节点） | `ss/n_eng_mem/out` | 采集→训练→部署闭环可无人值守 |
 | **🧠 意图丛 · 四槽语法** | - | goal/from/skill/gate — 层间只传意图 Δz=z_g−z_t, 动作只在 L2 生成 (INTACT 同构接口) | `ss/ssllm/out` | `ss/n_intent_bundle/out` | 见能力层 §4.1 |
 | **🔮 意图直读 · Direct** | - | Δz → 技能最近邻, 无搜索 (参照 INTACT Direct 2.9–5.5ms) | `ss/ssintact_dec/out` | `ss/n_intent_direct/out` | IntAct 稳态 101ms · 冷启 6.7s (常驻) |

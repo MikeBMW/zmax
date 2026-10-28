@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """🧭 fit_lie_intent.py — 标定 "INTACT 意图 Δz(192) → 李代数" 的丛映射 Φ
 
-教师标签 (全部引擎真值, 逐帧差分得到, 不写死几何):
+教师标签 (全部引擎真值, 逐帧差分得到, 不预先固定几何):
     ω_true(t) ∈ su(2)≅R³  : 光模块/末端 相对旋转 ΔU = U_{t+1}U_t⁻¹ 的 log
     ξ_true(t) ∈ se(3)≅R⁶  : 同一帧间刚体运动 (ω, v), v = 位置增量
     e_true(t) ∈ se(3)≅R⁶  : 接触 twist = log(T_hole⁻¹·T_peg) (孔系表达的接触误差)
@@ -99,7 +99,7 @@ def main() -> int:
            "meta": res, "n": len(X),
            "hash": vec_hash(np.concatenate([m.W_su2.ravel(), m.W_se3.ravel()])),
            "note": ("Φ: INTACT 意图 Δz(192) → su(2) 旋转意图 ω 与 se(3) 刚体意图 (ω,v) = "
-                    "log(T_ee(t+1)·T_ee(t)⁻¹) 的教师标签; 教师全部引擎真值逐帧差分, 无写死几何"),
+                    "log(T_ee(t+1)·T_ee(t)⁻¹) 的教师标签; 教师全部引擎真值逐帧差分, 无预先固定几何"),
            "source_files": [os.path.basename(p) for p in paths]}
     dst = os.path.join(ROOT, "models", "lie_intent_map.json")
     os.makedirs(os.path.dirname(dst), exist_ok=True)

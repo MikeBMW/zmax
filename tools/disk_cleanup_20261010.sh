@@ -87,7 +87,7 @@ for r in "${RUNS[@]}"; do
   d="$TRAIN/$r"
   [ -d "$d" ] || { log "跳过(不存在) $r"; continue; }
   sz=$(du -sh "$d" | cut -f1)
-  # 兜底: 删前再 grep 一次活引用 (排除审计脚本自身与 outputs/reports 记录)
+  # 保障: 删前再 grep 一次活引用 (排除审计脚本自身与 outputs/reports 记录)
   # ⚠️ 必须排除"本脚本自己" —— RUNS 数组里写着这些名字, 会自我匹配导致全部误判为活引用
   #   (与 pgrep -f "studio.py" 把本 shell 杀了是同一类自匹配坑)
   hits=$(grep -rl "$r" "$ROOT/tools" "$ROOT/src" "$ROOT/config" /home/ubuntu/.hermes/scripts 2>/dev/null \

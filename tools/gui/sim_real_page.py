@@ -7,9 +7,9 @@
           也要能够通过建图，VR，AR 等虚拟现实技术，给真实的现场环境添加标记，同步地图等，
           可以人工添加自定义轨迹，保护围栏等。」
 
-设计: 页面 = 真源文件上的**编辑器** (不是说明页)。数据层 = tools/scene_edit.py (读写 data/scene/*.json,
+设计: 页面 = 唯一依据文件上的**编辑器** (不是说明页)。数据层 = tools/scene_edit.py (读写 data/scene/*.json,
       带备份/原子写/回读/围栏校验)。本模块只管 UI: 四张表 (对象/标记/围栏/轨迹) + 增删改 + 显示隐藏
-      + 真源路径与条数 (带采集时间) + 修改后提示"运行中的仿真/AR 叠加会立即读到"。
+      + 唯一依据路径与条数 (带采集时间) + 修改后提示"运行中的仿真/AR 叠加会立即读到"。
 
 口径: 一律经过 scene_edit.py, 不自己写 JSON (单一写路径, 免得两处逻辑打架)。
 """
@@ -250,7 +250,7 @@ class SceneTab(QWidget):
     def _after(self, ok, res, what):
         if ok:
             QMessageBox.information(self, "%s 成功" % what,
-                                    "已写入真源 (备份+回读核对)。运行中的仿真/AR 叠加会立即读到。")
+                                    "已写入唯一依据 (备份+回读核对)。运行中的仿真/AR 叠加会立即读到。")
         else:
             QMessageBox.warning(self, "%s 失败" % what, str(res)[:500])
         self.reload()
@@ -274,7 +274,7 @@ def build_body(parent=None):
     _hd = QLabel("🧭 3D 场景编辑器 · 主视图")
     _hd.setStyleSheet("color:%s; border:none; font-size:13px; font-weight:600;" % C_GOLD)
     cl.addWidget(_hd)
-    _sub = QLabel("与状态空间画布「🧭 3D 视图」同一个窗口、同一份场景真源（对象 / 标记 / 围栏 / 轨迹）；"
+    _sub = QLabel("与状态空间画布「🧭 3D 视图」同一个窗口、同一份场景唯一依据（对象 / 标记 / 围栏 / 轨迹）；"
                   "视图内可选中编辑，写库走 scene_edit.py 单一写路径。")
     _sub.setWordWrap(True)
     _sub.setStyleSheet("color:%s; border:none; font-size:11px;" % C_DIM)
@@ -359,14 +359,14 @@ def build_body(parent=None):
     cl.addWidget(_st)
     bl.addWidget(card)
 
-    # ── 顶部: 真源 + 条数 + 采集时间 ─────────────────────────────────────────
+    # ── 顶部: 唯一依据 + 条数 + 采集时间 ─────────────────────────────────────────
     top = QLabel("读取中…")
     top.setWordWrap(True)
     top.setStyleSheet("background:%s; color:%s; border:1px solid %s; border-radius:8px;"
                       " padding:8px 12px; font-size:12px;" % (C_BG2, C_GRAY, C_BORDER))
     bl.addWidget(top)
 
-    # 2026-10-10 老倪: 「场景变体 建图资产 这行字删掉，没啥意思」⇒ 两个统计标签整行删除。
+    # 2026-10-10 老倪: 「场景变体 建图资产 这行字删掉，没什么意思」⇒ 两个统计标签整行删除。
     # 建图↔标记同步这个**功能**保留 (按钮自带说明, 不再配无意义计数文案)。
     row = QHBoxLayout()
     btn_sync = QPushButton("🔗 同步 标记↔建图资产")
@@ -416,7 +416,7 @@ def build_body(parent=None):
     def reload_all():
         ok, d = _run("list", "--json")
         if not ok or not isinstance(d, dict):
-            top.setText("❌ 读取场景真源失败: %s" % str(d)[:300])
+            top.setText("❌ 读取场景唯一依据失败: %s" % str(d)[:300])
             top.setStyleSheet("background:%s; color:%s; border:1px solid %s; border-radius:8px;"
                               " padding:8px 12px; font-size:12px;" % (C_BG2, C_RED, C_BORDER))
             return
@@ -431,7 +431,7 @@ def build_body(parent=None):
         cnt = " · ".join("%s %d" % (t.split(" ", 1)[1][:4], len(d.get(k) or []))
                          for k, t, _c in KINDS)
         state["at"] = time.strftime("%H:%M:%S")
-        top.setText("📁 真源 data/scene/{objects3d, overlay_spec, traj_display}.json · %s · "
+        top.setText("📁 唯一依据 data/scene/{objects3d, overlay_spec, traj_display}.json · %s · "
                     "轨迹显示 %s · 采集 %s" % (cnt, "开" if vis.get("traj_show") else "关", state["at"]))
         top.setStyleSheet("background:%s; color:%s; border:1px solid %s; border-radius:8px;"
                           " padding:8px 12px; font-size:12px;" % (C_BG2, C_GREEN, C_BORDER))

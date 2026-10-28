@@ -8,16 +8,16 @@
     从顶层产品性能的数据改变, 直接调整代码; 中间的代码要完整映射这个全局架构。」
 
 一句话: **一个数字 → 一条链路** (产品性能 → 子系统 → 功能 → 模块 → 代码位置), 改数字必须能说清
-        它动了什么、影响了什么、写回了哪个真源文件的哪一行。
+        它动了什么、影响了什么、写回了哪个唯一依据文件的哪一行。
 
 五类数字 (颜色是 UI 用的用途色):
-  🟡 calib    标定/真源参数    config/calib/*.json 叶子 (相机/外参/台面/工具/TCP/主参数 M)   [可写·走标定真源写口]
+  🟡 calib    标定/唯一依据参数    config/calib/*.json 叶子 (相机/外参/台面/工具/TCP/主参数 M)   [可写·走标定唯一依据写口]
   🔵 canvas   画布节点数据      state_space 画布节点 params 的数值项 (帧数/维度/权重…)      [可写·走 flows.save_canvas]
   🟣 code     代码常量          源码里的模块级数值常量 (安全阈值/深度/步长/维度…)              [可写·带备份+语法校验+可回滚]
-  🟢 platform 产品/性能指标     产品特征 KPI 目标 (插入成功率/精度/节拍…)                     [可写·真源 zmax_platform.json]
+  🟢 platform 产品/性能指标     产品特征 KPI 目标 (插入成功率/精度/节拍…)                     [可写·唯一依据 zmax_platform.json]
   🟠 switch   运行开关/调试     L3 模式/L4 推理频率/流形偏航/L2 兼容 等档位开关               [可写·枚举档位]
 
-范围 (min/max/默认/单位/中文名) 真源: config/platform/param_spec.json (人可编, 缺省自动播种);
+范围 (min/max/默认/单位/中文名) 唯一依据: config/platform/param_spec.json (人可编, 缺省自动播种);
 没有 spec 的数字**不猜范围**, 标 status="范围未定义" 并在 UI 里显式提示。
 
 CLI: python3 tools/param_registry.py scan|stats|list|show <id>|set <id> <value> [--write]|verify|chain <id>|seed
@@ -45,7 +45,7 @@ EVENTS_LEGACY = os.path.join(ROOT, "data", "database", "zmax", "param_events.jso
 SPACE = os.path.join(ROOT, "data", "skills", "l2_atomic", "space_points.json")
 TAUGHT = os.path.join(ROOT, "data", "skills", "l2_atomic", "taught_points.json")   # 号位/示教点 (61 个点)
 SCENE_DIR = os.path.join(ROOT, "data", "scene")
-OBJECTS3D = os.path.join(SCENE_DIR, "objects3d.json")      # 场景对象 (真源)
+OBJECTS3D = os.path.join(SCENE_DIR, "objects3d.json")      # 场景对象 (唯一依据)
 OVERLAY_SPEC = os.path.join(SCENE_DIR, "overlay_spec.json")  # AR 规格: 标记/围栏/轨迹
 SCENE_EDIT = os.path.join(ROOT, "tools", "scene_edit.py")  # 场景唯一写路径
 
@@ -99,7 +99,7 @@ CURATED = {
 CAT_COLOR = {"calib": "#ffc857", "canvas": "#4da3ff", "code": "#b07cff", "scene": "#2ec4b6",
              "platform": "#00d4aa", "switch": "#ff9f43", "space": "#ff5fa2", "teach": "#c084fc",
              "spec": "#7fb3ff"}
-CAT_CN = {"calib": "标定/真源参数", "canvas": "画布节点数据", "code": "代码常量", "scene": "场景数据(对象/标记)",
+CAT_CN = {"calib": "标定/唯一依据参数", "canvas": "画布节点数据", "code": "代码常量", "scene": "场景数据(对象/标记)",
           "platform": "产品/性能指标", "switch": "运行开关", "space": "空间点", "teach": "号位/示教点",
           "spec": "性能指标定义(目标值)"}
 
@@ -250,12 +250,12 @@ def _scan_pts_file(path, group, group_cn_label):
 
 
 def scan_space():
-    """🆕 2026-10-10: 空间点 (8793 站台页标定的 空间1..N, 真源 space_points.json)。"""
+    """🆕 2026-10-10: 空间点 (8793 站台页标定的 空间1..N, 唯一依据 space_points.json)。"""
     return _scan_pts_file(SPACE, "space", "空间点")
 
 
 def scan_teach():
-    """🆕 2026-10-10: 号位/示教点 (真源 taught_points.json, 61 个点: slot1/2, insert_pose,
+    """🆕 2026-10-10: 号位/示教点 (唯一依据 taught_points.json, 61 个点: slot1/2, insert_pose,
     金手指点1/2, aoi_gold_view, loop20_*/afx*_* 循环路点 …) —— 同样全部可在线改。"""
     return _scan_pts_file(TAUGHT, "teach", "号位/示教点")
 
@@ -263,7 +263,7 @@ def scan_teach():
 
 def scan_scene():
     """🆕 2026-10-10 老倪: 「依据已有的仿真场景，同步所有元数据，同步所有功能」⇒ 场景实体
-    (对象中心/尺寸 · 现场标记位置) 也进参数中心, 与其它功能区**同源** (同一真源文件的切面)。
+    (对象中心/尺寸 · 现场标记位置) 也进参数中心, 与其它功能区**同源** (同一唯一依据文件的切面)。
     写入一律走 tools/scene_edit.py (单一写路径: 备份+原子写+回读+围栏校验), 本文件不自己写 JSON。"""
     out = []
     REL_OBJ = os.path.relpath(OBJECTS3D, ROOT)
@@ -408,11 +408,11 @@ def _perf_spec_path():
 
 
 def scan_perf_spec():
-    """📊 性能指标定义 (目标值/规格) — 真源 config/platform/zmax_perf_spec.json。
+    """📊 性能指标定义 (目标值/规格) — 唯一依据 config/platform/zmax_perf_spec.json。
 
     🐛 2026-10-15: 单一工程库 (engineering_db.build) 早已把这 58 条按 kind='spec' 入库, 而本注册表
        没有对应扫描器 ⇒ 注册表 759 条 vs 库 817 条; 主界面「参数中心」与画布右侧栏「参数中心」
-       两张表总数对不上 (判据 verify_param_center ⑤ 抓到)。补同一份真源的扫描器 ⇒ 一个口径。
+       两张表总数对不上 (判据 verify_param_center ⑤ 抓到)。补同一份唯一依据的扫描器 ⇒ 一个口径。
     只读: 目标值/规格是**定义**不是现场可改的标定数 (改它 = 改验收口径, 走配置中心/文档流程)。
     """
     out = []
@@ -527,11 +527,11 @@ def scan():
     return sorted(out, key=lambda x: (x["group"], x["param_id"]))
 
 
-# ── spec 播种 (人可编真源) ────────────────────────────────────────────────
+# ── spec 播种 (人可编唯一依据) ────────────────────────────────────────────────
 def build_spec_seed(force=False):
     if os.path.exists(SPEC) and not force:
         return False
-    d = {"_doc": "参数元数据真源 (人可编): 中文名/单位/默认/min/max/档位/影响说明/归属系统。"
+    d = {"_doc": "参数元数据唯一依据 (人可编): 中文名/单位/默认/min/max/档位/影响说明/归属系统。"
                  "缺省范围由 tools/param_registry.py 自动播种, code=auto 的行可人工收紧。",
          "version": "1.0", "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
          "params": {}}
@@ -553,9 +553,9 @@ def build_spec_seed(force=False):
 
 
 def _sync_spec_auto(ps):
-    """把 auto 播种行的 中文名/单位/默认 同步回真源 param_spec.json (只动 code=auto 行; 人工收紧的 min/max/choices 不动)。
+    """把 auto 播种行的 中文名/单位/默认 同步回唯一依据 param_spec.json (只动 code=auto 行; 人工收紧的 min/max/choices 不动)。
 
-    为什么: 这些字段本来就是从真源文本现算的 (KPI 文本改了, 中文名/单位要跟着改), 不写回就会
+    为什么: 这些字段本来就是从唯一依据文本现算的 (KPI 文本改了, 中文名/单位要跟着改), 不写回就会
     留下「值已变、文案还是旧的」的不一致 (老倪 2026-10-19「保证全局数据统一」)。
     """
     try:
@@ -591,9 +591,9 @@ def registry():
     for p in ps:
         s = file_spec.get(p["param_id"])
         if s:
-            # 🐛 2026-10-19 老倪「保证全局数据统一」: auto 播种行的 中文名/单位 是**从真源文本现算**的
+            # 🐛 2026-10-19 老倪「保证全局数据统一」: auto 播种行的 中文名/单位 是**从唯一依据文本现算**的
             #   (KPI 文本 "头到孔底 <4mm" → "节拍 <12秒")。若还用 spec 里的旧文案覆盖, 就会出现
-            #   「值 12 但文案/单位仍是 mm」的石英钟式不一致 ⇒ auto 行一律以真源现算为准。
+            #   「值 12 但文案/单位仍是 mm」的石英钟式不一致 ⇒ auto 行一律以唯一依据现算为准。
             _auto = (s.get("code") or "manual") == "auto"
             for k, kk in (("cn", "cn"), ("unit", "unit"), ("min", "min"), ("max", "max"),
                           ("choices", "choices"), ("impact", "impact"), ("sys", "sys_hint")):
@@ -614,7 +614,7 @@ def registry():
             if p["value"] is None and p["group"] == "calib":
                 p["status"] = "未标定(缺口)" if "已定义" not in p["status"] else "未标定(缺口) · 范围已定义"
             p["spec_code"] = s.get("code", "manual")
-    _sync_spec_auto(ps)          # auto 行的文案/单位/默认 写回真源 (真源文本改了 ⇒ 自动跟上)
+    _sync_spec_auto(ps)          # auto 行的文案/单位/默认 写回唯一依据 (唯一依据文本改了 ⇒ 自动跟上)
     groups = {}
     for p in ps:
         groups.setdefault(p["group"], []).append(p)
@@ -680,7 +680,7 @@ def effect_chain(pid, reg=None):
     return out
 
 
-# ── 写: 校验 → 备份 → 落真源 → 回读 ───────────────────────────────────────
+# ── 写: 校验 → 备份 → 落唯一依据 → 回读 ───────────────────────────────────────
 def _validate(p, value):
     if p["kind"] == "bool":
         v = value if isinstance(value, bool) else str(value).lower() in ("1", "true", "on", "yes", "是")
@@ -884,13 +884,13 @@ def _edb():
 
 
 def set_param(pid, value, write=False, reg=None):
-    """校验 → (可选) 落真源 → 回读核对 → 返回链路影响。write=False 只做预览(dry-run)。"""
+    """校验 → (可选) 落唯一依据 → 回读核对 → 返回链路影响。write=False 只做预览(dry-run)。"""
     reg = reg or registry()
     p = reg["by_id"].get(pid)
     if not p:
         return {"ok": False, "err": "参数不存在: %s" % pid}
     if not p["writable"]:
-        return {"ok": False, "err": "该参数只读 (产品/性能指标真源在 zmax_platform.json, 请在平台页编辑)"}
+        return {"ok": False, "err": "该参数只读 (产品/性能指标唯一依据在 zmax_platform.json, 请在平台页编辑)"}
     v, err = _validate(p, value)
     if err:
         return {"ok": False, "err": err, "param": pid, "range": [p.get("min"), p.get("max")], "unit": p["unit"]}
@@ -905,7 +905,7 @@ def set_param(pid, value, write=False, reg=None):
         elif p["group"] == "canvas":
             ok, msg = _write_canvas_param(pid, v)
         elif p["group"] == "space":
-            # 🆕 空间点: 回写真源 data/skills/l2_atomic/space_points.json (带备份 + 回读核对)
+            # 🆕 空间点: 回写唯一依据 data/skills/l2_atomic/space_points.json (带备份 + 回读核对)
             ok, msg = _guard_point(SPACE, p["ref"], v)
             if ok:
                 ok, msg = _write_json_path(SPACE, p["ref"], v)
@@ -913,17 +913,17 @@ def set_param(pid, value, write=False, reg=None):
             # 🆕 场景实体 (对象/标记): 经 scene_edit.py 写 (单一写路径)
             ok, msg = _write_scene(p["param_id"], v)
         elif p["group"] == "teach":
-            # 🆕 号位/示教点: 回写真源 taught_points.json (同样带写前哨)
+            # 🆕 号位/示教点: 回写唯一依据 taught_points.json (同样带写前哨)
             ok, msg = _guard_point(TAUGHT, p["ref"], v)
             if ok:
                 ok, msg = _write_json_path(TAUGHT, p["ref"], v)
         elif p["group"] == "code":
             ok, msg = (_write_code_default(pid, v) if ":" in pid.split("#", 1)[1]
                        else _write_code_const(pid, v))
-        else:                       # switch: 记到 switch 真源文件 (运行开关档位)
+        else:                       # switch: 记到 switch 唯一依据文件 (运行开关档位)
             ok, msg = _write_json_path(SPEC.replace("param_spec.json", "run_switches.json"),
                                        "json:" + pid.split(".", 1)[1], v) if os.path.exists(
-                SPEC.replace("param_spec.json", "run_switches.json")) else (True, "档位记录 (运行开关真源未建)")
+                SPEC.replace("param_spec.json", "run_switches.json")) else (True, "档位记录 (运行开关唯一依据未建)")
         res["written"], res["msg"] = ok, msg
         res["ok"] = ok
         _log_event({"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "param": pid, "cn": p["cn"], "old": p["value"],
@@ -950,21 +950,21 @@ def verify():
     spec_params = (_load(SPEC, {}) or {}).get("params", {})
     for p in reg["params"]:
         if not os.path.exists(os.path.join(ROOT, p["source"])):
-            bad.append("真源文件不存在: %s (%s)" % (p["source"], p["param_id"]))
+            bad.append("唯一依据文件不存在: %s (%s)" % (p["source"], p["param_id"]))
         if p["group"] == "switch" and p["param_id"] not in spec_params:
-            bad.append("运行开关未在 spec 真源登记: %s" % p["param_id"])
+            bad.append("运行开关未在 spec 唯一依据登记: %s" % p["param_id"])
         if p["group"] != "canvas" and p["ref"].startswith("json:") and p["group"] != "switch":
             _raw = _load(os.path.join(ROOT, p["source"]), {})
             _ref = p["ref"].split("json:", 1)[1]
             cur = _get_path(_raw, _ref)
             if not _path_exists(_raw, _ref):
-                bad.append("真源路径读不到: %s (%s)" % (p["ref"], p["param_id"]))
+                bad.append("唯一依据路径读不到: %s (%s)" % (p["ref"], p["param_id"]))
             elif cur is not None and p["value"] is not None and abs(float(cur) - float(p["value"])) > 1e-9:
-                bad.append("库值≠真源: %s 库=%s 源=%s" % (p["param_id"], p["value"], cur))
+                bad.append("库值≠唯一依据: %s 库=%s 源=%s" % (p["param_id"], p["value"], cur))
         if p["status"] == "已定义" and p["min"] is not None and p["max"] is not None:
             if float(p["min"]) > float(p["max"]):
                 bad.append("min>max: %s" % p["param_id"])
-    msgs.append("② 每个数字的真源可读 (库==源)")
+    msgs.append("② 每个数字的唯一依据可读 (库==源)")
     ids = {p["param_id"] for p in reg["params"]}
 
     def _has(suf):

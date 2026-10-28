@@ -5,18 +5,18 @@
 A 路 = 画布工具栏「🧮 状态空间」按钮  → SimulinkModule.open_state_space()
         (clear + load_flow_file(state_space_obs.json) + _relayout_row_gaps())
 B 路 = 文件 → 📂 加载工程文件 / 🗂 打开总工程
-        (project_file._write_canvas → flows.save_canvas() 写回真源 → 重载, 无 relayout)
+        (project_file._write_canvas → flows.save_canvas() 写回唯一依据 → 重载, 无 relayout)
 
 输出三段铁证:
   ① 内容是否同源 (samefile + canvas md5) —— 内容不同才是"两个工程"
   ② A vs B 加载后逐节点几何 (x/y/w/h) 差多少、差哪些节点
-  ③ 两边各自 vs 真源 JSON 里写的坐标 —— 量化"加载时界面自己改了多少"
+  ③ 两边各自 vs 唯一依据 JSON 里写的坐标 —— 量化"加载时界面自己改了多少"
 
 用法:  cd /home/ubuntu/zmax && ./gui-venv311/bin/python <本脚本>
-(离屏, 不碰正在跑的控制台; 只读真源, 不写盘)
+(离屏, 不碰正在跑的控制台; 只读唯一依据, 不写盘)
 
 ⚠️ 写"逐项比对"探针必看下面的 key() 与 matched 断言: 键集合不相交时, 比对会
-   报出"一致 0 个 / 不一致 0 个", 看起来像"没有差异", 其实是根本没比上 (假绿)。
+   报出"一致 0 个 / 不一致 0 个", 看起来像"没有差异", 实际是根本没比上 (假绿)。
 """
 import json
 import os
@@ -46,7 +46,7 @@ try:
     same = os.path.samefile(CANVAS, BTN)
 except OSError:
     same = False
-print("   os.path.samefile = %s  (False ⇒ 真的是两份文件, 先去查软链/真源)" % same)
+print("   os.path.samefile = %s  (False ⇒ 真的是两份文件, 先去查软链/唯一依据)" % same)
 
 src = json.load(open(CANVAS, encoding="utf-8"))
 
@@ -65,7 +65,7 @@ def geo(items):
     return out
 
 json_geo = geo(src.get("nodes", []))
-print("   真源: %d 节点 / %d 连线" % (len(json_geo), len(src.get("links") or [])))
+print("   唯一依据: %d 节点 / %d 连线" % (len(json_geo), len(src.get("links") or [])))
 
 print("\n② 两条入口各加载一次")
 mA = SM.SimulinkModule()

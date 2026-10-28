@@ -2,7 +2,7 @@
 
 **症状**: 推理模式运行数据层节点 → "❌ 缺少 .venv/bin/python (推理需本地 GPU 环境)"。
 
-**根因**: on_infer_rollout / on_eval_state_space 写死 `os.path.join(root, ".venv", "bin", "python")`,
+**根因**: on_infer_rollout / on_eval_state_space 预先固定 `os.path.join(root, ".venv", "bin", "python")`,
 但本机项目**没有 .venv** — 推理/训练环境是 `~/lerobot-venv` (uv 建的, python 3.12.13,
 torch 2.7.1+cu128 CUDA 可用)。
 

@@ -74,7 +74,7 @@ def main():
               "任务配置" not in cur and (n is None or n > 0), f"{cur} 行={n}")
 
     print("\n═══ 2) 数值口径 (过滤才叫显示, 全显等于没筛) ═══")
-    # 期望值 = 真源里该域的参数条数 (指标会长, 不写死)
+    # 期望值 = 唯一依据里该域的参数条数 (指标会长, 不预先固定)
     import json as _js
     _m = _js.load(open(os.path.join(ROOT, "config/mcd/zmax_mcd.json"), encoding="utf-8"))
     _exp = {}
@@ -86,7 +86,7 @@ def main():
     seen["工程配置"] = (page.tabs.tabText(page.tabs.currentIndex()),
                     sum(1 for r in range(page.tab2_table.rowCount()) if not page.tab2_table.isRowHidden(r)))
     for _d in ("工程配置", "功能配置", "性能配置"):
-        check("%s 筛出行数 = 真源条数 %d" % (_d, _exp[_d]), seen.get(_d, ("", -1))[1] == _exp[_d], seen.get(_d))
+        check("%s 筛出行数 = 唯一依据条数 %d" % (_d, _exp[_d]), seen.get(_d, ("", -1))[1] == _exp[_d], seen.get(_d))
     check("性能配置含光模块精细操作指标 (≥50 条)", _exp["性能配置"] >= 50, _exp["性能配置"])
 
     print("\n═══ 3) 定位到具体参数 → 只留那一行且选中 ═══")

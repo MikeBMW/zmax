@@ -1,7 +1,7 @@
 # Phase 0 · L2 原子技能「速度反馈延迟」逐技能全测 (v5.50.735)
 
 > 老倪 2026-10-15: 「一步一步迭代 phase0 所有L2层的原子技能, 速度反馈延迟, 全测」
-> 真源 KPI: **速度反馈延迟 ≤ 10ms** (config/roadmap_phase_texts.json · config/eval/iteration_roadmap.json)
+> 唯一依据 KPI: **速度反馈延迟 ≤ 10ms** (config/roadmap_phase_texts.json · config/eval/iteration_roadmap.json)
 > 测法: `tools/probe_l2_speed_fb_latency.py` — **只读**, 不下发任何真机指令, 不改任何服务
 > 数据: `zmax_data/eval/l2_speed_fb_latency.json` (2026-10-15 23:34 · 600s @200Hz · 117,316 拍)
 
@@ -9,12 +9,12 @@
 
 速度反馈延迟 = 一条速度指令从**产出**到**该技能速度反馈可见**, 拆三段腿 + 一条物理腿:
 
-| 腿 | 定义 | 真源 |
+| 腿 | 定义 | 唯一依据 |
 |---|---|---|
 | ① 引擎→块 | 引擎产出动作块的周期 (新速度指令多久算一次) | `/dev/shm/.../engine_default.jsonl` 逐拍 ts |
 | ② 块→派发 | 新块到达 → 派发服务认领 (服务自报) | `zmax_data/ss_live/skill_latest.json::块帧龄_s` |
 | ③ 派发→反馈 | 该技能速度反馈**跟上新指令值**的时间 | `zmax_data/ss_live/skill_phys.json` 逐技能 `v_mms` + ts |
-| 物理腿 | 真机实测速度反馈 (位姿微分) | 位姿真源 `tcp_out/latest.json` / 位姿 tap |
+| 物理腿 | 真机实测速度反馈 (位姿微分) | 位姿唯一依据 `tcp_out/latest.json` / 位姿 tap |
 
 主指标 = ① + ③ (端到端)。**不是** `perf.latency_e2e`(采图→位姿输出), 也不是机械臂实测速度 —— 语义对不上的一律不硬套。
 
@@ -46,7 +46,7 @@
 - min 出现 -0.58ms: 同机时钟/写序的**亚毫秒**偏差 (反馈与块的 ts 交叉), 说明这一段几乎无延迟, 不是"负延迟"。
 - SK03/04/07/08 记为 0 到达不是"没测到延迟", 而是**: 请求速度被物理闸削** (SK07 插入 v_cap=0.085m/s, 请求 120mm/s ⇒ 恒削到 85mm/s, 反馈值恒定) 或该段当拍无 ≥1mm/s 的阶跃 ⇒ 这四段的"反馈跟随"在现口径下**不可测**, 已在表里如实分列。
 
-### (b) 逐技能反馈迟滞 (共享内存真源 /dev/shm/zmax_ss_engine/skill_*.json, 60Hz 每拍刷, 117,343 拍)
+### (b) 逐技能反馈迟滞 (共享内存唯一依据 /dev/shm/zmax_ss_engine/skill_*.json, 60Hz 每拍刷, 117,343 拍)
 
 | 技能 | 阶段 | age 段中位 | age P95 | age Max | 反馈更新次数 | 块新鲜度中位 | v 中位 mm/s | 削因拍 |
 |---|---|---|---|---|---|---|---|---|
@@ -113,6 +113,6 @@ cd /home/ubuntu/zmax
 ./gui-venv311/bin/python tools/eval_analysis.py                                      # 刷评估分析报告 (含本指标)
 ```
 
-- 评估分析页已带上此杆 (补充指标组): **「L2 原子技能速度反馈延迟」ms · 目标 ≤10 (Phase 0 KPI) · 当前 110 · 不达标 · 实测 · 真源 `zmax_data/eval/l2_speed_fb_latency.json`**
-- 截图: `docs/data_snapshots/20261015_l2_speed_fb_latency/eval_page_补充指标表_速度反馈延迟_选中行.png` (行被选中, 含 目标/基线/当前/达标/证据真源/帧龄 全部列)
+- 评估分析页已带上此杆 (补充指标组): **「L2 原子技能速度反馈延迟」ms · 目标 ≤10 (Phase 0 KPI) · 当前 110 · 不达标 · 实测 · 唯一依据 `zmax_data/eval/l2_speed_fb_latency.json`**
+- 截图: `docs/data_snapshots/20261015_l2_speed_fb_latency/eval_page_补充指标表_速度反馈延迟_选中行.png` (行被选中, 含 目标/基线/当前/达标/证据唯一依据/帧龄 全部列)
 - 采集器: `tools/eval_probes.py::p_sys_l2_fb_latency` (语义边界写在函数 docstring 里: 与 `perf.latency_e2e` 不是一个量, 不许硬套)

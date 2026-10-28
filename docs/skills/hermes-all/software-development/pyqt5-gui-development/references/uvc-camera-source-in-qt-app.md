@@ -33,14 +33,14 @@ lsusb | grep -iE "cam|webcam|integrated"            # 认内置相机型号
 
 ## 坑 2: UVC 设备独占 + 起线程不幂等 = 设备被永久占用 ★
 
-- 症状: 第一次切到摄像头源好好的, 之后**任何一路都"打不开摄像头"**, 重启窗口也不恢复。
+- 症状: 第一次切到摄像头源好好的, 之后**任何一路都"无法打开摄像头"**, 重启窗口也不恢复。
 - 根因: `_start_source()` 被**调了两次** (典型来源: `__init__` 里 `QTimer.singleShot(200, self._start_source)`
   + 用户在 200ms 内手切了下拉 → `currentIndexChanged` 再调一次) → 第二次把 `self._cam` 覆盖成新线程,
   **旧线程没人置 stop_flag 成了孤儿, 一直握着 `/dev/videoN`** → 独占设备谁都开不了。
 - 修法 (两条都要):
   1. **入口幂等**: `_start_source()` 开头先收掉在跑的采集线程 (`stop_flag=True` + `join(timeout=1.5)` 等它 release);
   2. **停源要 join**: `_stop_source()` 里对摄像头线程 `join(timeout=1.5)` 再返回 —— 不等它 release,
-     立刻切回来就会"打不开" (自愈重试要 1s, 体验上就是坏的)。
+     立刻切回来就会"无法打开" (自愈重试要 1s, 体验上就是坏的)。
 - 打开失败文案要写清两种可能: **被占用**(另一路摄像头源/别的程序在读) vs **设备号不对**, 并给出
   `ZMAX_USBCAM_DEV=/dev/videoN` 这种可改项 —— 独占冲突是用户最常遇到的。
 
@@ -70,7 +70,7 @@ lsusb | grep -iE "cam|webcam|integrated"            # 认内置相机型号
 
 ### 测试自身两个假 FAIL (本次踩到, 已修)
 - **自己的测试窗口在抢设备**: 测试里每构造一个窗口, `__init__` 的 singleShot 就会起一个采集线程 →
-  紧接着由测试再起一个 grabber 必然"打不开"。对策: 只测上屏/文案的窗口把 `_start_source` 换成 no-op,
+  紧接着由测试再起一个 grabber 必然"无法打开"。对策: 只测上屏/文案的窗口把 `_start_source` 换成 no-op,
   真要抢设备的阶段之间**轮询等设备空闲**再开。
 - 断言"会话名 = xxx"时忘了 `session_name()` 会**带时间戳前缀** (`s20260917_1811_usbcam`) →
   应断言 `endswith("usbcam")`。

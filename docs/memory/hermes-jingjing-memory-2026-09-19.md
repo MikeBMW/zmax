@@ -6,7 +6,7 @@ NTP回拨8h(勿动RTC)→节拍/新鲜度用time.monotonic, 负帧龄拒用; cro
 §
 分层(09-19更正): LLM=DeepSeek-VL场景理解; L4 INTACT=安全+物理导航; L3=长程序列规划; L2=肌肉记忆; 画布加载重生node id→按节点名断言
 §
-交付前先自跑通; 清理只删明显垃圾
+交付前先自验证通过; 清理只删明显垃圾
 §
 安全: 🛡4栏位+三层(否决/限幅/Sys0)
 §
@@ -36,7 +36,7 @@ L4档运行=INTACT直驱(install_direct_act→run_once喂skill_ctx), 装配pop S
 §
 断点: 动作头loss行351仅画布「训练」节点进; L3真跑须SS_L3_DEV=cpu; 前馈MLP须SS_USE_MLP=1(parallel.py:143)
 §
-评估铁律: 运行时口径=训练(/255+ImageNet,stats同源,零回退); 布局漂移禁写死几何; 每臂独立进程+同解释器; 肌肉记忆A/B冷隔离
+评估铁律: 运行时口径=训练(/255+ImageNet,stats同源,零回退); 布局漂移禁预先固定几何; 每臂独立进程+同解释器; 肌肉记忆A/B冷隔离
 §
 L4'接近'真因: 直驱反向→SS_DIRECT_COS_MIN=0.9+否决步交回引擎; L4预算4000步
 §

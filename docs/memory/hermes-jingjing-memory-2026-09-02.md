@@ -32,7 +32,7 @@ GUI: gui-venv311(Py3.11); 推理/训练=~/lerobot-venv(uv建无pip→uv pip inst
 §
 GitHub(08-28): 直连已通不走代理(ghproxy证书失效/ghfast作废); Release下载走browser_download_url(asset API带token返400); 凭证~/.git-credentials; 视频/权重不进库
 §
-数据/监视界面偏好: 单色显示勿大面积彩色高亮; 数据须实时滚动非静态填充; 可视化必须自解释(标签+数值面板), 他会追问'这是啥'→答案要给物理含义+实测数字; 信号/图层名用源模块名+按链路排序, 开关须连文字一起绑
+数据/监视界面偏好: 单色显示勿大面积彩色高亮; 数据须实时滚动非静态填充; 可视化必须自解释(标签+数值面板), 他会追问'这是什么'→答案要给物理含义+实测数字; 信号/图层名用源模块名+按链路排序, 开关须连文字一起绑
 §
 GUI数据总线=DataBusTrace 14模块51接口
 §
@@ -40,4 +40,4 @@ GUI数据总线=DataBusTrace 14模块51接口
 §
 3D视图=操作视频同源(v3.3.0): 六层直驱metaworld出trace+mp4, 相机corner2四元数(fov水平), 八阶段状态机图层; Release双平台exe+mac; ⚠️pyqtgraph shader全局缓存绑定首GL上下文→3D窗口只复用不新建, 重建场景按id去重removeItem
 §
-VSCode调试: F5=🚀全新进程; attach 5678; 断点三坑(09-01): 右键重写launch.json覆盖ZMAX_DEBUG_BREAK→env写死模板+子串过滤; 播放帧数<节点数→n_rounds=max; 置顶弹窗+冻结→not responding点等待; 节点真实执行铁律: 右键源码必真实执行(状态空间9/双脑/YOLO/触觉已接), importlib必sys.modules注册
+VSCode调试: F5=🚀全新进程; attach 5678; 断点三坑(09-01): 右键重写launch.json覆盖ZMAX_DEBUG_BREAK→env预先固定模板+子串过滤; 播放帧数<节点数→n_rounds=max; 置顶弹窗+冻结→not responding点等待; 节点真实执行铁律: 右键源码必真实执行(状态空间9/双脑/YOLO/触觉已接), importlib必sys.modules注册

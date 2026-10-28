@@ -9,7 +9,7 @@
 缩放 (老倪 2026-10-19「打开 AR 页面整体上很小，每次都得按住 Ctrl 用滚轮放大」「记住上次的状态么」):
     · 这台机器 eDP-1 **3200x2000、DPR=1.0、物理 236 DPI** ⇒ 页面里 12px 就只有 12 个物理像素,
       落在这块屏上约 3.6pt, 肉眼就是"小得看不见"。所以默认**按 DPI 自动定标**: dpi/96*0.85
-      (236 DPI ⇒ 2.1 倍); 换一台 96 DPI 的机器自动回到 1.0, 不写死。
+      (236 DPI ⇒ 2.1 倍); 换一台 96 DPI 的机器自动回到 1.0, 不预先固定。
     · 缩放值**存盘**(zmax_data/ar_zoom.json): 下次开控制台/下次点 AR 就是你上次那一档 —— 不用每次 Ctrl+滚轮。
     · 三种调法都能记住: 工具栏 🔍－/🔍＋(0.2/下)、Ctrl+滚轮(0.1/格)、Ctrl+= / Ctrl+- / Ctrl+0(回 100%)。
 
@@ -239,7 +239,7 @@ class ARWebWindow(QMainWindow):
         → QWidget → ARWebWindow(5 次), 每路都进这个 filter ⇒ 不防抖的话一格滚轮放大 0.5(冲到 300%)。
         其中 **QWindow 那一路每次物理滚轮只出现一次**, 所以:
           · 认 QWindow 那一路 —— 一格算一格, 快速连滚也不会被吞;
-          · 其余几路只在"30ms 内没见过 QWindow 那一路"时兜底(某些平台上 QWindow 路可能不出现)。
+          · 其余几路只在"30ms 内没见过 QWindow 那一路"时保障(某些平台上 QWindow 路可能不出现)。
         """
         try:
             if (ev.type() == QEvent.Wheel and (ev.modifiers() & Qt.ControlModifier)
@@ -330,7 +330,7 @@ def prewarm(url: str = AR_URL) -> bool:
     """控制台启动后预建窗口(**不 show**) + **预载页面**。
 
     老倪 2026-10-19「AR 打开后, 怎么是白屏呢? 好长时间才显示」:
-      只预热窗口、不 load 时, 第一次点开仍要现场跑一遍"WebEngine 起渲染进程 + 拉 90KB 页面 +
+      只预热窗口、不 load 时, 第一次点开仍要现场执行一遍"WebEngine 起渲染进程 + 拉 90KB 页面 +
       解析内联 JS", 期间就是一片空(旧版还是白底)。现在页面在**隐藏窗口**里先加载完:
         · 点开 = show + raise (实测 <0.1s), 页面骨架/控件已经在 ⇒ 不再白屏;
         · 页面自己在 document.hidden 时不取帧、不轮询 (见 tcp-ar.html pumpTick/refresh),

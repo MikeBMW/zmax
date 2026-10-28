@@ -56,7 +56,7 @@ def _apply_params(sim, params: dict) -> dict:
     """把候选参数写到**已创建**的调度器实例上 (全部是 ActionModulator 的实例属性)。
 
     为什么要包一层: 引擎的 `self.sched` 是在 `_reset()` 里建的 (不是 __init__) →
-    构造后直接取 sim.sched 会 AttributeError (实测踩坑)。所以用包 _reset 的钩子在它建好之后写参。
+    构造后直接取 sim.sched 会 AttributeError (实测遇到问题)。所以用包 _reset 的钩子在它建好之后写参。
     未知参数名直接抛错 (不许静默忽略 —— 否则"扫了个不存在的参数"会得出假结论)。
     """
     s = sim.sched

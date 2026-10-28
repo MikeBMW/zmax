@@ -9,7 +9,7 @@
   ⇒ 本机从 `kind=origin`(2448×2048 原图) 自己搜矩形 + 摆正 + 裁剪, 判据图口径由我们保证。
 
 口径(与 `workpiece-crop-and-rectify` 技能一致):
-  · 搜索: CLAHE(2.0,(8,8)) → GaussianBlur(5,5) → Otsu(前景>60% 时改 p80 分位兜底)
+  · 搜索: CLAHE(2.0,(8,8)) → GaussianBlur(5,5) → Otsu(前景>60% 时改 p80 分位保障)
           → close(15×15) + open(25×25) → 逐轮廓 得分=面积占比×矩形度(contourArea/minAreaRect面积)
           → 面积闸 [0.5%, 75%] → 择优 minAreaRect(boxPoints 天然平行)
   · 摆正: **纯旋转** getRotationMatrix2D(scale=1.0) + warpAffine + getRectSubPix(按检出真实尺寸)
@@ -33,7 +33,7 @@ def _prep(gray):
 
 
 def surface_roi(bgr, area_lo=0.005, area_hi=0.75, min_fill=0.45, keep_top=4, aspect_min=2.5):
-    """在整幅画面里**搜索**矩形刚体(位置/角度每帧变, 不写死坐标)。
+    """在整幅画面里**搜索**矩形刚体(位置/角度每帧变, 不预先固定坐标)。
 
     返回 (rect, meta): rect = dict(cx,cy,w,h,angle,fill,area_frac) 或 None。
     """
@@ -45,7 +45,7 @@ def surface_roi(bgr, area_lo=0.005, area_hi=0.75, min_fill=0.45, keep_top=4, asp
     thr, th = cv2.threshold(e, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     fg = float(np.mean(th > 0))
     mode = "otsu"
-    if fg > 0.60:                       # 前景占多数 ⇒ Otsu 失效(把背景当工件) → p80 分位兜底
+    if fg > 0.60:                       # 前景占多数 ⇒ Otsu 失效(把背景当工件) → p80 分位保障
         pv = float(np.percentile(e, 80))
         th = (e >= pv).astype(np.uint8) * 255
         mode = "p80"

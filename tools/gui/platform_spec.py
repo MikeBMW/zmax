@@ -10,7 +10,7 @@
 设计要点 (GUI ↔ 工程数据解耦):
   · 本页**不认识任何工程文件**, 只认一个数据库文件 (默认 data/database/zmax/zmax_engineering.db)。
   · 数据全部走 tools/engineering_db.py 的 load() (纯 sqlite 读取, 不 import GUI 依赖) ⇒ 换库 = 换工程。
-  · 顶部: 库路径 + 📂 打开工程数据库(文件框) + 🔁 重建(真源→库) + 📋 复制/导出(老倪: 内容要可复制可导出)。
+  · 顶部: 库路径 + 📂 打开工程数据库(文件框) + 🔁 重建(唯一依据→库) + 📋 复制/导出(老倪: 内容要可复制可导出)。
   · 四个页签: 🏭 Z-MAX 平台 / 🧠 System 2 / 🚀 System 1 / 🔧 System 0
       Z-MAX: 平台定位 + 产品(Z700/Z100)KPI + 产品特征清单 (特征·KPI·状态·归属子系统·用到模块·能力引用)
       子系统: 角色/KPI + 三轴清单 (配置·标定·诊断) + 功能清单 (功能·行·对应模块·模块代码位置)
@@ -77,7 +77,7 @@ class PlatformSpecPage(QWidget):
         self.lbl_db.setStyleSheet("color:%s; font-size:10pt;" % C_DIM)
         head.addWidget(self.lbl_db)
         for txt, tip, fn in (("📂 打开工程数据库…", "选一个 .db 工程库 = 换一套工程数据 (GUI 不绑死工程)", self.open_db_dialog),
-                             ("🔁 从真源重建", "真源 (平台JSON/.proj/标定/feature.dbc/FEATURES) → 重建单一数据库文件", self.rebuild_db),
+                             ("🔁 从唯一依据重建", "唯一依据 (平台JSON/.proj/标定/feature.dbc/FEATURES) → 重建单一数据库文件", self.rebuild_db),
                              ("📋 复制本页", "把当前页签的清单复制到剪贴板 (可粘贴到文档/邮件)", self.copy_page),
                              ("💾 导出 JSON", "导出当前页签数据为 JSON 文件 (外部消费者可直接用)", self.export_page),
                              ("📡 服务状态", "查看/打开只读 JSON 服务 (127.0.0.1:8798)", self.show_service)):
@@ -143,7 +143,7 @@ class PlatformSpecPage(QWidget):
             self.tabs.removeTab(0)
         if self.data is None:
             w, lay = self._mk_tab("⚠️ 未加载")
-            self._kb(lay, "数据库读取失败或不存在:\n%s\n\n库: %s\n\n点右上「🔁 从真源重建」生成, 或「📂 打开工程数据库…」"
+            self._kb(lay, "数据库读取失败或不存在:\n%s\n\n库: %s\n\n点右上「🔁 从唯一依据重建」生成, 或「📂 打开工程数据库…」"
                           "选一个已迁移过来的 .db 工程文件。" % (self.err, self.db_path))
             self.lbl_db.setText("库: %s (缺失)" % os.path.basename(self.db_path))
             return
@@ -231,7 +231,7 @@ class PlatformSpecPage(QWidget):
         try:
             cnt = _dbmod().build(self.db_path, quiet=True)
             self.reload()
-            self._log("🔁 工程数据库已从真源重建: %s (功能 %d / 特征 %d / 模块 %d)"
+            self._log("🔁 工程数据库已从唯一依据重建: %s (功能 %d / 特征 %d / 模块 %d)"
                       % (os.path.basename(self.db_path), cnt.get("functions", 0),
                          cnt.get("product_features", 0), cnt.get("modules", 0)))
         except Exception as e:                                                    # noqa: BLE001

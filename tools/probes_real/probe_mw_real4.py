@@ -27,7 +27,7 @@ try:
             print(f"[probe4] site({i}) name={nm} xpos={np.round(d.site_xpos[i],4)}", flush=True)
 except Exception as ex:
     print(f"[probe4] site(i).name API 失败: {ex}", flush=True)
-    # 兜底: 尝试 name2id
+    # 保障: 尝试 name2id
     for cand in ["goal", "hole", "pegGrasp", "pegHead", "pegEnd", "endEffector"]:
         try:
             i = m.name2id("site", cand)

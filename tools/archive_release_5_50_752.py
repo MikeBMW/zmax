@@ -58,7 +58,7 @@ UNITS = [
 MANIFEST = """# Z-MAX v{ver} 归档
 
 ## 主题
-550C 端侧量产落地: 三档运行位置写进真源 + 550B 打开工程自动起 VSCode(单线程·省资源) +
+550C 端侧量产落地: 三档运行位置写进唯一依据 + 550B 打开工程自动起 VSCode(单线程·省资源) +
 L2 检测权重在 Intel 边缘机 NPU 上真跑 (2.46ms/帧) + 端侧推理服务 (端到端 10.8ms=93FPS)。
 
 ## 根因 (为什么改)
@@ -67,15 +67,15 @@ L2 检测权重在 Intel 边缘机 NPU 上真跑 (2.46ms/帧) + 端侧推理服�
 - 550B 每次打开工程都要人手工开 VSCode, 且每次启动吃 3.76GB 内存、306 线程, 机器明显变慢。
 
 ## 改动清单
-### ① 三档运行位置 (真源 + 界面 + 判据)
+### ① 三档运行位置 (唯一依据 + 界面 + 判据)
 - `config/platform/zmax_product.json`: `products.<id>.runtime` (location/label/host/host_ip/models/realtime);
   550A=本地运行@192.168.23.50 / 550B=VSCode 标定@192.168.23.50 / 550C=Intel 端侧@192.168.23.70 全模型。
-- 配置中心「运行位置」行 + 卡片底行 = 系统总版本号 · 运行位置 (值全部真源回读)。
-- 判据 `verify_product_card_ui.py` 14/14 (新增 ⑥d: 三档位置必须等于真源三处)。
+- 配置中心「运行位置」行 + 卡片底行 = 系统总版本号 · 运行位置 (值全部唯一依据回读)。
+- 判据 `verify_product_card_ui.py` 14/14 (新增 ⑥d: 三档位置必须等于唯一依据三处)。
 
 ### ② 550B 自动起 VSCode (省资源 / 单线程 debug)
 - `tools/gui/vscode_launch.py`: 只 550B 触发; `--reuse-window --disable-gpu`; 禁 pylance/containers/remote/python-envs;
-  `OMP/MKL/OPENBLAS/NumExpr/VECLIB/TORCH=1` + `MALLOC_ARENA_MAX=2` (单线程口径唯一真源);
+  `OMP/MKL/OPENBLAS/NumExpr/VECLIB/TORCH=1` + `MALLOC_ARENA_MAX=2` (单线程口径唯一依据);
   `systemd-run --user --scope` 隔离; `--goto tools/gui/simulink_module.py:1` (不停在 Welcome)。
 - `studio.py` 两条打开路径 (打开总工程 / 加载工程文件) 末尾各接一次; 关闭非 550B 时如实报"未自动起"。
 - 判据 `verify_vscode_autostart.py` 24/24 (含注入替身真跑调用链, 不真起进程)。
@@ -93,7 +93,7 @@ L2 检测权重在 Intel 边缘机 NPU 上真跑 (2.46ms/帧) + 端侧推理服�
 ## 目录
 - `tools/` `gui/` — 本轮改动过的代码 (只拷改过的)
 - `.vscode/` — launch.json (550B 单线程配置) + settings.json (省资源项)
-- `data/` — 真源快照 (产品档运行位置 / 数据治理 / 机器人规格 / config_meta)
+- `data/` — 唯一依据快照 (产品档运行位置 / 数据治理 / 机器人规格 / config_meta)
 - `units/` — 本轮落成的 systemd 单元与 frpc 配置 (重建环境靠它)
 - `evidence/` — 实测数字
 - `docs/` — VERSION.md

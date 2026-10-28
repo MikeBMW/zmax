@@ -421,7 +421,7 @@ def _reg_cjk_fonts():
               "/usr/share/fonts/opentype/noto/NotoSerifCJK-Bold.ttc"]:
         if os.path.exists(p):
             cands.append(p)
-    # 兜底: 扫描 fc-list 输出的所有 CJK 字体
+    # 保障: 扫描 fc-list 输出的所有 CJK 字体
     if not cands:
         try:
             import subprocess
@@ -442,7 +442,7 @@ def _reg_cjk_fonts():
             except Exception:
                 continue
     # 别名: 让 NotoSansCJK/NotoSansCJKBold/MicrosoftYaHei 都映射到成功注册的 CJK 字体
-    # (2026-08-06: Sans TTC 加载失败, 用成功注册的 Serif 兜底)
+    # (2026-08-06: Sans TTC 加载失败, 用成功注册的 Serif 保障)
     reg = pdfmetrics.getRegisteredFontNames()
     alias_src = None
     for i in range(len(cands)):
@@ -991,7 +991,7 @@ def conclusion(score_map, curves):
            ("、".join(f"{n} {d:.0f}%" for n, d in drops) if drops else "无完整曲线") + "。")
     if top[0] == "awe_zflow":
         txt += ("AWE 以场景原生视触觉 + 潜空间世界模型在收敛性/触觉/部署三维度均衡领先,"
-                "适合作为 Z700 下一代主力路线; ACT 保持产线兜底 (确定性输出),"
+                "适合作为 Z700 下一代主力路线; ACT 保持产线保障 (确定性输出),"
                 "VLA-Touch 待真机 H06 力觉接入后复评 (当前触觉为模拟)。")
     elif top[0] == "act":
         txt += ("ACT 以确定性与部署极简领先, 但无世界模型/触觉, 建议作为产线基线;"

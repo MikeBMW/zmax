@@ -1,11 +1,11 @@
 # 画布模板布局 / 撤销栈 / 输入链验证 (2026-08-07 七模型对比实战)
 
-本次把五模型对比升级为七模型（+MLP蒸馏 +官方专家），踩坑与修复全记录。
+本次把五模型对比升级为七模型（+MLP蒸馏 +官方专家），遇到问题与修复全记录。
 
-## 1. 模板 layout 网格 — 兜底单行是"节点跑飞"根因
+## 1. 模板 layout 网格 — 保障单行是"节点跑飞"根因
 
 `load_reference_app(node_specs, link_specs, layout)`:
-- specs 里**名字不在 layout 网格**的节点 → 走兜底单行 `(base_x + i*200, base_y)`，x 随 specs 索引爆炸（Interpolant 曾到 x=6620、交叉注意力 x=7920，显示区外十万八千里）。
+- specs 里**名字不在 layout 网格**的节点 → 走保障单行 `(base_x + i*200, base_y)`，x 随 specs 索引爆炸（Interpolant 曾到 x=6620、交叉注意力 x=7920，显示区外十万八千里）。
 - **铁律：新增 specs 节点必须同步 layout 行**，否则静默跑飞。
 - 列距 260→200（全局常量，`base_x + c*200`、行距 230）；节点 w=150，50px 间隙够放连线标签。
 - 共享节点（数据/YOLO开关/StateAdapter）出现在多行 → 取第一个未用位置，其余行占位空。
@@ -69,7 +69,7 @@ pkill -f "tools.cicd_pipeline"
 
 ## 8. 验证方法论（本次实战）
 
-- **布局静态验证**：AST/正则提取模板 specs+layout → 重放 load_reference_app 分配逻辑 → 断言零兜底 + 列对齐（ActionHead 列7、训练/基准列9）。不启动 GUI。
+- **布局静态验证**：AST/正则提取模板 specs+layout → 重放 load_reference_app 分配逻辑 → 断言零保障 + 列对齐（ActionHead 列7、训练/基准列9）。不启动 GUI。
 - **撤销运行时验证**：`QT_QPA_PLATFORM=offscreen` + QApplication + 实例化 SimulinkModule → 真实调用 add_node/delete_selected/undo 断言状态。注意 links 段边界：specs 结束 `], [` → layout 注释前（`seg.rindex("], [")` 会与 index 撞同一位置导致 links 段为空）。
 - 七模型对齐约定：列3=输入编码/主干、列7=Action Head、列9=训练/基准（全部模型行对齐）。
 

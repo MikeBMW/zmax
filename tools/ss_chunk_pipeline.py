@@ -27,7 +27,7 @@
   ⑥ 技能派发: 8 个技能 (接近/对位/下降/抓取/抬起/转移/插入/完成) 各取**本技能最新的那一拍**动作 (实时执行),
      由常驻循环服务 tools/ss_skill_dispatch.py 以高频流转到具体技能 (/dev/shm/zmax_ss_engine/skill_*.json)。
 
-真源落盘 (守护/信号页/技能服务都读它):
+唯一依据落盘 (守护/信号页/技能服务都读它):
   zmax_data/ss_live/chunk_latest.json   最新一块 (话题 zmax/ss_action_chunk 的载荷)
   zmax_data/ss_live/skill_dispatch.json 每技能最新动作 + 帧龄 + 派发计数
 """
@@ -156,7 +156,7 @@ class ChunkPipeline:
         u_mod = np.asarray(u_mod, float)
         # ⑤ 逐拍安全边界
         u_safe = np.asarray([np.asarray(self.sat(u), float).ravel()[:ACTION_DIM] for u in u_mod], float)
-        # ⑥ 技能派发: 每个技能取"本技能最新的那一拍" —— 块内第 0 拍就是当前阶段的实时动作, 其余喂给后续技能
+        # ⑥ 技能派发: 每个技能取"本技能最新的那一拍" —— 块内第 0 拍就是当前阶段的实时动作, 其余提供给后续技能
         skills = {}
         for i, a in enumerate(u_safe):
             sidx = min(len(STAGES) - 1, int(stage_idx) + i)
@@ -226,14 +226,14 @@ def _turn_deg(seq):
 
 # ── CLI: 单独跑一块 (自检/取证) ────────────────────────────────────────────────
 def _build_engine():
-    """与常驻回路同口径建引擎 (真标定文件 + 真轨迹真源)。"""
+    """与常驻回路同口径建引擎 (真标定文件 + 真轨迹唯一依据)。"""
     sys.path.insert(0, os.path.join(REPO, "tools"))
     import ss_engine_loop as L                                                    # noqa: PLC0415
     traj = L.read_traj(os.path.join(L.LIVE_DIR, "traj_latest.json")) or L._j(L.TRAJ, None)
     if not traj:
         traj = L.read_traj(os.path.join(REPO, "zmax_data", "ss_live", "traj_latest.json"))
     if not traj:
-        raise SystemExit("拿不到轨迹真源 (先跑 tools/ss_engine_loop.py seed 或控制台 ▶ 运行状态空间)")
+        raise SystemExit("拿不到轨迹唯一依据 (先跑 tools/ss_engine_loop.py seed 或控制台 ▶ 运行状态空间)")
     M, _src = L.read_M()
     eng, note, traj = L.build_engine(traj, M, False)
     # 🎯 目标点: build_engine 那份因为 traj["obs"] 是 list (JSON 原样) 会 TypeError ⇒ 这里按同口径补上

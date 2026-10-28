@@ -3,7 +3,7 @@
 """生成 nodes/by_level.py —— 按 L2/L3/L4/L5 组织节点逻辑的"档位视图"。
 
 只做索引, 不搬代码: 每条 key → (注册函数, 所在文件, 该档位节点)。
-物理拆分(每档一个文件)是下一步, 保留在同一份 library.py 里是当前唯一真源。
+物理拆分(每档一个文件)是下一步, 保留在同一份 library.py 里是当前唯一依据。
 """
 import json
 import os
@@ -33,7 +33,7 @@ HEADER = '''# -*- coding: utf-8 -*-
 """档位视图 (by_level) —— 按 L2/L3/L4/L5 把节点逻辑索引出来 (自动生成, 勿手改)。
 
 生成: `gui-venv311/bin/python tools/verify_engineering.py --regen-by-level`
-真源: `..nodes.library` (逻辑) + `..registry` (key↔函数) + `..flows.state_space_obs.json` (画布) + `..levels` (档位归属)
+唯一依据: `..nodes.library` (逻辑) + `..registry` (key↔函数) + `..flows.state_space_obs.json` (画布) + `..levels` (档位归属)
 
 用途: 一眼看清"这一档有哪些节点、每个节点落到哪个函数、函数在哪个文件" ——
 GUI 只显示, 逻辑在包里, 这份索引就是把两边对上的那张表。

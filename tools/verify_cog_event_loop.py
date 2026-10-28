@@ -3,7 +3,7 @@
 """verify_cog_event_loop.py — 🧠 事件头进引擎闭环 取证 (真跑引擎, 逐帧真调用, 闭环 AUC)
 
 判据:
-  ① 引擎真跑通 (tr 帧数 > 0) 且 7 个 cog_ev_* 键长度 == 帧数
+  ① 引擎真验证通过 (tr 帧数 > 0) 且 7 个 cog_ev_* 键长度 == 帧数
   ② **逐帧真调用**: sim._cog_ev_calls == 帧数 (证明是"每帧真调真权重", 不是占位/抽样)
   ③ 值域: 全部概率 ∈ [0,1] 且非 -1 (证明真推理出结果)
   ④ 单帧耗时中位 < 20ms/帧 (不拖慢引擎闭环)
@@ -92,7 +92,7 @@ def main() -> int:
     sim, tr, el = run_engine(a.steps, a.seed)
     n = len(tr["t"])
     print("  引擎真跑: %d 帧 / %.1fs (%.0f 帧/s)" % (n, el, n / max(el, 1e-6)))
-    chk("① 引擎真跑通 (帧数 > 0)", n > 0, "%d 帧" % n)
+    chk("① 引擎真验证通过 (帧数 > 0)", n > 0, "%d 帧" % n)
     lens = {k: len(tr.get(tkey(k), [])) for k in KEYS}
     chk("① 7 个事件键长度 == 帧数", all(v == n for v in lens.values()) and len(tr.get("cog_ev_ms", [])) == n,
         "lens=%s ms=%d" % (lens, len(tr.get("cog_ev_ms", []))))

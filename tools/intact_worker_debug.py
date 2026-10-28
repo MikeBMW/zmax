@@ -69,4 +69,4 @@ a = np.load(out)["actions"]
 print(f"actions{a.shape} std={float(a.std()):.4f} 第一拍前4维={np.round(a[0][:4], 4).tolist()}")
 with np.load(out) as z:
     print("潜空间键:", [k for k in ("z_t", "z_goal", "delta") if k in z.files])
-print("\n✅ 模型侧单步完成 (真输入 + 真前向; 无任何写死/合成替代)")
+print("\n✅ 模型侧单步完成 (真输入 + 真前向; 无任何预先固定/合成替代)")

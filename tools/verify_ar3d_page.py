@@ -580,7 +580,7 @@ def main():
     except Exception as e2:                                   # noqa: BLE001
         fd = "解析失败 %r" % (e2,)
     chk("⑫ 750 平齐落地: 箱体=桌子=750 + 四轮/桌腿同一地面(-750) + 四轮真画出来", fl_ok, fd)
-    # 🧱 铝型材框架: 四腿向上通到上横梁底面(真源=围栏台账里的"上横梁") + 顶框/支撑梁/角码真画出来
+    # 🧱 铝型材框架: 四腿向上通到上横梁底面(唯一依据=围栏台账里的"上横梁") + 顶框/支撑梁/角码真画出来
     fr_ok = False
     frm = "tab.beam=%r" % ((j.get("tab") or {}).get("beam") if isinstance(j, dict) else None,)
     try:
@@ -588,7 +588,7 @@ def main():
         B = T.get("beam") or {}
         bx, by, bz = B.get("x") or [], B.get("y") or [], B.get("z") or []
         nm = B.get("name") or ""
-        from_fence = ("横梁" in nm) and ("缺省" not in nm)          # 坐标必须来自围栏台账, 不是写死的兜底
+        from_fence = ("横梁" in nm) and ("缺省" not in nm)          # 坐标必须来自围栏台账, 不是固定不变的保障
         ztop = bz[0] if len(bz) == 2 else None
         colh = (ztop + 0.750) if ztop is not None else None        # 柱高 = 从地面 -0.750 到横梁底面
         geo_ok = (from_fence and ztop is not None
@@ -604,7 +604,7 @@ def main():
                   ztop if ztop is not None else -9, colh if colh is not None else -9, aOn, aOff))
     except Exception as e2:                                   # noqa: BLE001
         frm = "解析失败 %r" % (e2,)
-    chk("⑬ 铝型材框架: 四腿通顶到上横梁底面(真源读围栏台账) + 顶框/支撑梁/角码真画出来 + 随桌子一起关", fr_ok, frm)
+    chk("⑬ 铝型材框架: 四腿通顶到上横梁底面(唯一依据读围栏台账) + 顶框/支撑梁/角码真画出来 + 随桌子一起关", fr_ok, frm)
     # 🎯 目标点开关(单选) + 轨迹5「实时」= 当前 TCP → 选中的目标点, 换目标自动重算
     tg_ok = False
     tgd = "tgt=%r" % (tgt_res,)

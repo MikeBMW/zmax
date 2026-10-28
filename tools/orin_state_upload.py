@@ -6,7 +6,7 @@
   本机只读订阅 Orin ROS 是活的(tap 帧龄 0.1s), 但 **Orin→云 上行缺失** (云端只有 4060_hw + mac_hw 包)
   ⇒ 云端/APP 看不到机器人状态。
 
-契约 (来自 ECS 中转真源 zmax_relay.py):
+契约 (来自 ECS 中转唯一依据 zmax_relay.py):
   POST https://datadrive.world/api/relay/orin/heartbeat
   body: {"online":true,"model":"...","infer_count":N,"last_infer_ms":x,"uptime":s,"role":"orin","note":"..."}
   → GET /api/relay/orin/status 回读同样字段
@@ -48,7 +48,7 @@ def read_infer(url):
 
 
 def read_hw():
-    """Orin 自身硬件 (Jetson: tegrastats 可用时读, 否则 /proc 兜底)"""
+    """Orin 自身硬件 (Jetson: tegrastats 可用时读, 否则 /proc 保障)"""
     hw = {}
     tg = _sh("timeout 3 tegrastats --interval 1000 --count 1 2>/dev/null | head -1")
     if tg:

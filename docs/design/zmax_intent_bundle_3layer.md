@@ -52,7 +52,7 @@ gate  : 验收度量(mani 6维/位置残差) + 阈值     ← 由 history 校验
 ## 4. 落地切片(依赖序, 每片独立可验证)
 
 - **S1 记忆图谱**: `memory_store.py` 增字段 `links` / `l2.muscle.skills[*].io` / `intent` 索引;
-  新 API `recall(z, k)` / `link(...)` / `l2_io(skill)`; 新模块 `src/lerobot/memory/memory_graph.py`(真源在 src);
+  新 API `recall(z, k)` / `link(...)` / `l2_io(skill)`; 新模块 `src/lerobot/memory/memory_graph.py`(唯一依据在 src);
   引擎 `_write_shared_memory` 补写 links(flow → skills)。
 - **S2 L2 io 契约 + 技能词典**: `muscle_memory.py` 固化时记录 entry/exit; 脚本离线产出 `models/skill_dict.json`。
 - **S3 L3 先验条件化**: smolvla_lew 推理管道加"L2 先验动作块 + gate 校验" — **影子模式先行**(只记录不接管)。

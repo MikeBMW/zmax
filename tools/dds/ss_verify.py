@@ -79,7 +79,7 @@ def main() -> int:
     chk("diag: 不含 ss_state (档位裁剪)", not got.get("ss_state"), "ss_state=%d" % len(got.get("ss_state") or []))
     chk("diag: 不含 ss_calib (档位裁剪)", not got.get("ss_calib"), "ss_calib=%d" % len(got.get("ss_calib") or []))
 
-    print("═══ ③ calib 档: 标定量 (真源文件) ═══")
+    print("═══ ③ calib 档: 标定量 (唯一依据文件) ═══")
     got, out = collect("calib", ["ss_calib", "ss_state", "ss_action", "ss_diag"], seconds=8)
     c = got.get("ss_calib") or []
     chk("calib: 收到 ss_calib", bool(c), "n=%d" % len(c))
@@ -101,12 +101,12 @@ def main() -> int:
     chk("test: 收到 ss_test (取证结果)", bool(te), "detail=%s" % (te[0].detail[:60] if te else ""))
     chk("test: 收到 ss_calib", bool(got.get("ss_calib")), "n=%d" % len(got.get("ss_calib") or []))
     cv, mc, nd = (got.get("ss_canvas") or []), (got.get("ss_macro") or []), (got.get("ss_nodes") or [])
-    chk("test: 收到 ss_canvas (画布节点真源)", bool(cv) and bool(cv[0].node_id) and bool(cv[0].name),
+    chk("test: 收到 ss_canvas (画布节点唯一依据)", bool(cv) and bool(cv[0].node_id) and bool(cv[0].name),
         "n=%d 例: %s / %s / layer=%s" % (len(cv), cv[0].node_id if cv else "", (cv[0].name or "")[:18] if cv else "",
                                         (cv[0].layer or "")[:16] if cv else ""))
     chk("test: ss_canvas 诚实标注 (无计数源 → status=idle/counter=-1)", bool(cv) and cv[0].status == "idle" and cv[0].counter == -1,
         "status=%s counter=%s fps=%s" % (cv[0].status if cv else "", cv[0].counter if cv else "", cv[0].fps if cv else ""))
-    chk("test: 收到 ss_macro (五层记忆真源)", bool(mc) and bool(mc[0].layer_name),
+    chk("test: 收到 ss_macro (五层记忆唯一依据)", bool(mc) and bool(mc[0].layer_name),
         "layers=%s recalled=%s" % ([m.layer_name for m in mc][:5], mc[0].recalled if mc else None))
     chk("test: 收到 ss_nodes (自描述: 话题+实测Hz)", bool(nd) and len(nd[0].topics) > 3 and max(nd[0].publish_hz or [0]) > 0,
         "topics=%d 例: %s · 最高 Hz=%.3f" % (len(nd[0].topics) if nd else 0,

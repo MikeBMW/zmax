@@ -3,7 +3,7 @@
 场景: 一轮实验做完要「保存数据」(关机前收尾), `reports/` 下积了几百个产物: 演示 mp4、见证 png、A/B 结果 json。
 直接 `git add reports/` 的后果与正解:
 
-## 坑 1: `git status` 把未跟踪**目录**折叠成一行 → 你以为是 20 个文件, 其实 1862 个
+## 坑 1: `git status` 把未跟踪**目录**折叠成一行 → 你以为是 20 个文件, 实际 1862 个
 `?? reports/evidence_ab10_f0_r1/` 这样一行 = 该目录下全部文件。实测一次 `git add reports/` 提交了
 **1862 files / 34 万行插入**, 其中还有 4.8MB 的 json。**先 `git status --short | wc -l` 看条数,
 再 `git ls-files --others --exclude-standard <dir> | wc -l` 看真实文件数**。

@@ -11,10 +11,10 @@
   ② 元任务编排表 = 该任务的任务级元任务 7 条(表头含 手别/时空窗/目标对象)
   ③ 工艺段→功能覆盖表 = 8 段(4 启用 / 4 排除), 每段给 节点/启用节点/功能/缺参数
   ④ 本任务功能明细 = 33 条, 且**全部**是 TASK-07-AOI 的归属功能(与 export_meta_doc 同源核对)
-  ⑤ 过滤按钮真生效: 缺参数 / 仅本任务专用 的可见行数 < 33 且与真源算出来的一致
+  ⑤ 过滤按钮真生效: 缺参数 / 仅本任务专用 的可见行数 < 33 且与唯一依据算出来的一致
   ⑥ 性能配置页有同一条活跃任务横幅 + KPI 表(tact/UPH/一轮/元任务次数 都在)
   ⑦ 模型配置页有同一条横幅 + 映射表默认只列本任务功能(33), 点「全部」能回到 77
-  ⑧ 三个页的横幅 tasks.json/绑定真源一致 —— 换 active_task 就跟着换(用 TASK-06-TRAY 验一次, 验完改回)
+  ⑧ 三个页的横幅 tasks.json/绑定唯一依据一致 —— 换 active_task 就跟着换(用 TASK-06-TRAY 验一次, 验完改回)
 """
 import json
 import os
@@ -64,7 +64,7 @@ def main():
     segs = V._task_seg_cover(tid)
     mts = V._task_level_meta(tid)[0]
     print("活跃任务 = %s · 功能 %d · 段 %d · 任务级元任务 %d" % (tid, len(funcs), len(segs), len(mts)))
-    chk("① 活跃任务真源 = TASK-07-AOI", tid == "TASK-07-AOI", tid)
+    chk("① 活跃任务唯一依据 = TASK-07-AOI", tid == "TASK-07-AOI", tid)
     chk("① 该任务功能 33 条", len(funcs) == 33, len(funcs))
 
     p = V.ConfigCenterPage()
@@ -103,7 +103,7 @@ def main():
         chk("② 时空窗列非空(并行也算)", all(t_mt.item(r, c_tw).text() for r in range(t_mt.rowCount())))
         segcol = [t_mt.item(r, c_seg).text() for r in range(t_mt.rowCount())]
         chk("② 每条元任务都标了工艺段", all(segcol) and all("/" not in x for x in segcol), segcol)
-        # 功能列与真源一致: 并集必须覆盖本任务全部 33 个功能
+        # 功能列与唯一依据一致: 并集必须覆盖本任务全部 33 个功能
         mfx = V._mt_funcs(tid)
         union = {f["fn"] for m in mfx for f in m["fns"]}
         chk("② 元任务「功能」列并集 = 本任务 33 个功能", union == {f["fn"] for f in funcs},
@@ -134,7 +134,7 @@ def main():
             all(any(k in h for h in hdr) for k in ("功能名称", "输入", "输出", "描述", "对应元任务")), hdr)
         chk("② 总表行数 = 本任务功能数 33", tf.rowCount() == len(funcs), "%d vs %d" % (tf.rowCount(), len(funcs)))
         ids_ft = [tf.item(r, 0).text() for r in range(tf.rowCount())]
-        chk("② 总表功能ID与真源逐条一致", ids_ft == [f["fn"] for f in funcs], ids_ft[:3])
+        chk("② 总表功能ID与唯一依据逐条一致", ids_ft == [f["fn"] for f in funcs], ids_ft[:3])
         ci, co, cm, cd = (_hidx(tf, "输入"), _hidx(tf, "输出"), _hidx(tf, "对应元任务"), _hidx(tf, "描述"))
         bad_io = [ids_ft[r] for r in range(tf.rowCount())
                   if not tf.item(r, ci).text().strip() or not tf.item(r, co).text().strip()]
@@ -175,7 +175,7 @@ def main():
             for j in range(top.childCount()):
                 leaves.append(top.child(j).data(0, Qt.UserRole))
         ids = [d[1] for d in leaves if d and d[0] == "fn"]
-        chk("④ 树叶=33 个功能且与真源一致(按子系统分组, 序不同)",
+        chk("④ 树叶=33 个功能且与唯一依据一致(按子系统分组, 序不同)",
             sorted(ids) == sorted(f["fn"] for f in funcs) and len(ids) == len(set(ids)),
             "%d 个 / 首个 %s" % (len(ids), ids[:2]))
         if dtail is not None and ids:
@@ -188,7 +188,7 @@ def main():
                     "逻辑实现": "逻辑实现" in tx, "file:line": ".py:" in tx}
             chk("④ 详情四件套 + 元任务 + 逻辑实现 全在", all(need.values()),
                 {k: v for k, v in need.items() if not v} or "全有")
-            # 结构性地量: 33 个功能 实现/I/O 覆盖 (真源现算)
+            # 结构性地量: 33 个功能 实现/I/O 覆盖 (唯一依据现算)
             n_impl = n_io = 0
             for fid in ids:
                 d = V._fn_detail(fid)
@@ -320,7 +320,7 @@ def main():
         chk("⑩ 时间/距离类指标占多数 (≥12 行)", _td >= 12, "%d/%d 行" % (_td, ot.rowCount()))
         chk("⑩ 每行都有测量工具/方法", all(ot.item(r, c_tool).text().strip() not in ("", "—")
                                      for r in range(ot.rowCount())), ot.item(0, c_tool).text()[:40])
-        chk("⑩ 每行都有依据 (标准/真源)", all(ot.item(r, c_bs).text().strip() not in ("", "—")
+        chk("⑩ 每行都有依据 (标准/唯一依据)", all(ot.item(r, c_bs).text().strip() not in ("", "—")
                                        for r in range(ot.rowCount())), ot.item(0, c_bs).text()[:40])
         _std = sum(1 for r in range(ot.rowCount()) if "ISO" in ot.item(r, c_bs).text())
         chk("⑩ 有国际标准做依据 (ISO 条数 ≥4)", _std >= 4, "%d 行引 ISO" % _std)
@@ -346,7 +346,7 @@ def main():
             _layers.get("专业性能"))
         c8 = ot.columnCount() - 1
         _ok = sum(1 for r in range(ot.rowCount()) if ot.item(r, c8).text().startswith("✅"))
-        chk("⑩ 每行真源现场校验 (%d/%d)" % (_ok, ot.rowCount()), _ok == ot.rowCount(),
+        chk("⑩ 每行唯一依据现场校验 (%d/%d)" % (_ok, ot.rowCount()), _ok == ot.rowCount(),
             "未通过: " + " ; ".join(ot.item(r, c_k).text() for r in range(ot.rowCount())
                                    if not ot.item(r, c8).text().startswith("✅")))
         ptxt = " ".join(l.text() for l in wp0.findChildren(QLabel))
@@ -374,7 +374,7 @@ def main():
         k_all = next((k for k in mb if k.startswith("全部")), None)
         k_task = next((k for k in mb if k.startswith("仅本任务")), None)
         chk("⑦ 有「仅本任务 / 全部 77」两个按钮", bool(k_all and k_task), list(mb)[:6])
-        # 期望值按真源现算: 映射表行数 / 本任务功能在映射表里有条目的条数
+        # 期望值按唯一依据现算: 映射表行数 / 本任务功能在映射表里有条目的条数
         from zmax_platform_info import function_layer_map as _flm
         _ids = [r["fn_id"] for r in _flm()["rows"]]
         _fn = {f["fn"] for f in funcs}
@@ -389,11 +389,11 @@ def main():
             if k_task:
                 mb[k_task].click(); app.processEvents()
         _miss = sorted(_fn - set(_ids))
-        chk("⑦ 真源缺口如实标出(本任务 %d 个功能 / 映射表覆盖 %d)"
+        chk("⑦ 依据缺失如实标出(本任务 %d 个功能 / 映射表覆盖 %d)"
             % (len(_fn), n_int_exp), True,
             ("缺映射: " + "/".join(_miss)) if _miss else "无缺口")
 
-    # ── ⑧ 换活跃任务 ⇒ 三页都跟着换(真改真源, 验完改回)
+    # ── ⑧ 换活跃任务 ⇒ 三页都跟着换(真改唯一依据, 验完改回)
     bk = os.path.join(ROOT, "config/ss_task_binding.json")
     import shutil
     bak = bk + ".verify_bak"
@@ -417,7 +417,7 @@ def main():
         chk("⑧ 功能树也跟着换条数", _leaves == len(fn6), "%d vs %d" % (_leaves, len(fn6)))
     finally:
         shutil.move(bak, bk)
-    chk("⑧ 真源已还原 TASK-07-AOI", V._active_bind()[0] == "TASK-07-AOI", V._active_bind()[0])
+    chk("⑧ 唯一依据已还原 TASK-07-AOI", V._active_bind()[0] == "TASK-07-AOI", V._active_bind()[0])
 
     print("\n=== %d PASS / %d FAIL ===" % (len(PASS), len(FAIL)))
     if FAIL:

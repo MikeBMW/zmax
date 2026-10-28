@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """sim2real_readiness.py — 上真机前 · 仿真侧全链自检总跑 (只读, 不动真机)
 
-把"上真机后立刻要用的能力"在**仿真里**逐项跑一遍, 出一张判据表:
+把"上真机后立刻要用的能力"在**仿真里**逐项执行一遍, 出一张判据表:
   ① 引擎闭环真跑 (state_space_sim_real, insert/full 两种模式)
   ② 事件级认知头逐帧真调 (含闭环 AUC)
   ③ 策略 rollout (仿真) — ACT/SmolVLA/left_right 装载真跑

@@ -134,8 +134,8 @@ txt(s, 0.9, 3.35, 11.6, 0.9, "以大批量量产的 BOM / 摊销 / 实施成本�
 line = s.shapes.add_shape(1, Inches(0.92), Inches(4.62), Inches(2.2), Inches(0.05))
 line.fill.solid(); line.fill.fore_color.rgb = RGBColor(0x1F, 0x6F, 0xEB); line.line.fill.background()
 txt(s, 0.9, 4.86, 11.5, 0.9,
-    f"节拍真源: /ar3d 右侧栏 左臂 3.00 s/个 · 右臂 {T['right']:.2f} s/个 · 整体 {T['overall']:.2f} s/个\n"
-    f"成本真源: config/platform/zmax_cost_model.json（硬件逐项给定）+ tools/pricing_model_20261027.py 现算",
+    f"节拍唯一依据: /ar3d 右侧栏 左臂 3.00 s/个 · 右臂 {T['right']:.2f} s/个 · 整体 {T['overall']:.2f} s/个\n"
+    f"成本唯一依据: config/platform/zmax_cost_model.json（硬件逐项给定）+ tools/pricing_model_20261027.py 现算",
     11, False, RGBColor(0x9A, 0xA8, 0xBA), spacing=1.4)
 txt(s, 0.9, 6.55, 11.0, 0.35, "2026-10-27 · 静态测算版（软件尚未报价，价格为本方案推导值）", 10.5, False, RGBColor(0x7C, 0x8A, 0x9C))
 
@@ -180,7 +180,7 @@ footer(s, "口径：右臂为仿真段表（距离/200mm/s + 每个固定动作 
 # ── 4 现状成本 ────────────────────────────────────────────────────────────
 s = prs.slides.add_slide(BLANK)
 y0 = head(s, "现状单套成本：36.3 万，回本 2.02 年（人效 100% 口径）",
-          "硬件逐项为给定真源；软件 16 万是套餐份额，尚未单独报价")
+          "硬件逐项为给定唯一依据；软件 16 万是套餐份额，尚未单独报价")
 _HW = json.load(open(os.path.join(ROOT, "config/platform/zmax_cost_model.json"), encoding="utf-8"))["hardware"]
 it = [(h["item"], h["model"], format(h["price"], ",")) for h in _HW]
 data = [["项", "型号 / 规格", "单价（元）"]] + [[a, b, c] for a, b, c in it]
@@ -195,7 +195,7 @@ txt(s, 8.10, y0 + 0.05, 4.6, 3.4,
     "扣掉维保 3% + 软件年费 2 万、人效按 0.85，\n"
     f"同一台机器的真实回本 = {R[10]['payback']:.2f} 年。",
     12.5, False, INK, spacing=1.55)
-footer(s, "真源 config/platform/zmax_cost_model.json（2026-10-19 老倪给定）+ tools/cost_model.py 现算")
+footer(s, "唯一依据 config/platform/zmax_cost_model.json（2026-10-19 老倪给定）+ tools/cost_model.py 现算")
 
 # ── 5 降本三来源 ──────────────────────────────────────────────────────────
 s = prs.slides.add_slide(BLANK)

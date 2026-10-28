@@ -9,11 +9,11 @@
 控制台左下角的 0.5.2 lerobot这写字符串，删掉；System 1 VLA-T动作后面的括号里的 (SmolVLA 500M)删掉，
 后面的 (LeWM 15M)这几个字和括号，删掉」
 
-判据 (源码静态 + 真源直读交叉核对, 不看印象):
+判据 (源码静态 + 唯一依据直读交叉核对, 不看印象):
   ① 文案清理: 品牌行无「Simulink 模式」· 左下角无「0.5.2 / LeRobot · Z-MAX」· System 1 两卡与架构框无括号型号
   ② 三灯语义在位: 绿=功能正常/黄=训练进行中且GPU>50%/红=真机联调且可操作 的 tooltip 与判据注释在源码里
-  ③ 真源自洽: tools/status_lights.py --json 的三个结论与**独立重测**一致
-     (8790 直连 · nvidia-smi 直读 · 位姿/授权真源直读)
+  ③ 唯一依据自洽: tools/status_lights.py --json 的三个结论与**独立重测**一致
+     (8790 直连 · nvidia-smi 直读 · 位姿/授权唯一依据直读)
   ④ 闪烁口径: BLINK_PERIOD_S == 1.0 (1s 周期) + 相位函数占空比 50% (0.5s 亮/0.5s 灭)
   ⑤ GUI 接线: 采样线程 got→_on_light_state · _render_lights 由 250ms 定时器驱动 · 取不到数据会标失效
 
@@ -79,7 +79,7 @@ def main() -> int:
     miss = [k for k, v in sem.items() if v not in src]
     chk("② 三灯语义在位", not miss, "缺 %s" % (miss or "无 (3/3)"))
 
-    # ③ 真源自洽 (独立重测)
+    # ③ 唯一依据自洽 (独立重测)
     out = sh("%s %s --json" % (PY, TOOL))
     try:
         d = json.loads(out.strip().splitlines()[-1])
@@ -147,7 +147,7 @@ def main() -> int:
         "采样线程": "_StatusLightFetcher(self, interval=2.0)" in src and ".got.connect(self._on_light_state)" in src,
         "渲染定时器 250ms": "_light_timer.start(250)" in src,
         "取不到标失效": "状态源已静止" in src,
-        "真源单一出处注释": "tools/status_lights.py" in src,
+        "唯一依据单一出处注释": "tools/status_lights.py" in src,
     }
     bad = [k for k, v in wiring.items() if not v]
     chk("⑤ GUI 接线齐", not bad, "缺 %s" % (bad or "无 (4/4)"))

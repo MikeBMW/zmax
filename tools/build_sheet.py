@@ -17,7 +17,7 @@
     L4 工单实例  本生成器输出            一批 N 件: 逐件 ID + 选项 + 参数覆盖
     优先级: 安全(G1) > 站点几何(G3) > 工单覆盖(G2) > 变体 > 配方默认
 
-真源 (只读):
+唯一依据 (只读):
     flows/scenes_5jobs.json                        5 个作业场景 (对象坐标/穴位/步骤/性能目标)
     docs/orin-grasp-place-workflow.md              抓取放置工序实测判据 (抓取力/插入深度/容错/安全)
     config/calib/zmax_calib.json                   站点工程配置真值
@@ -40,7 +40,7 @@ SCENES = os.path.join(ROOT, "flows", "scenes_5jobs.json")
 CALIB = os.path.join(ROOT, "config", "calib", "zmax_calib.json")
 OUTDIR = os.path.join(ROOT, "config", "orders")
 
-# ── L2 工序配方: 上下料/插拔工序的 8 段模板 (每段带参数定义: 真源·判据·级·权限) ──
+# ── L2 工序配方: 上下料/插拔工序的 8 段模板 (每段带参数定义: 唯一依据·判据·级·权限) ──
 # src: 参数真值来自哪   judge: 可执行判据   grade: G0..G4   perm: readonly/field/auth/version
 RECIPE_STEPS = [
     dict(seg="0 料源与来料状态", params=[
@@ -168,7 +168,7 @@ OPT_BY_TYPE = {"fw_loading": ["扫码", "EEPROM 读写校验", "分拣"],
 def build(scene, calib, idx):
     st = scene.get("scene_type")
     bs = {
-        "_note": "工单配置单 (Build Sheet)。真源: flows/scenes_5jobs.json + 工序配方 + config/calib。生成物, 勿手改。",
+        "_note": "工单配置单 (Build Sheet)。唯一依据: flows/scenes_5jobs.json + 工序配方 + config/calib。生成物, 勿手改。",
         "identity": {"order_no": f"BS-{scene['scene_id']}-{idx:04d}",
                      "scene_id": scene["scene_id"], "scene_type": st,
                      "name": scene.get("name"), "goal": scene.get("goal"),
@@ -191,7 +191,7 @@ def build(scene, calib, idx):
         "trace": {"per_unit": ["工件码", "工单号", "时间", "结果", "参数快照", "binding_id"],
                   "binding_id": "sha16(工件变体+站点+档位+覆盖)"},
     }
-    # 参数就绪度: 每条配方参数是否有"真源 + 判据", 站点几何是否就位
+    # 参数就绪度: 每条配方参数是否有"唯一依据 + 判据", 站点几何是否就位
     gaps = site_gaps(calib)
     params = [p for r in RECIPE_STEPS for p in r["params"]]
     bs["readiness"] = {

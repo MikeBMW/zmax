@@ -1,7 +1,7 @@
 ✅ ① 画布拓扑 (LoRA 插在意图解码器后, 旁路已删) 缺 无 · 旁路残留 无
 ✅ ② UI 顺序 (左→右 x 递增) ssintact_dec(10016) → ss_lora_l4(10430) → ssmani_exp(10872) → ssmani_c(11346) → ssmani_p(11666) → ssdec(12166)
 ✅ ③ 节点执行注册 节点 89 (功能 74 / 背景 15) · 实现命中 73/74 · 未命中 1
-✅ ④ LoRA 产物真源 (原权重冻结) 产物 weights_epoch_1.pt · 112 组 · r=8 α=16 scaling=2.00 · merged 已排除
+✅ ④ LoRA 产物唯一依据 (原权重冻结) 产物 weights_epoch_1.pt · 112 组 · r=8 α=16 scaling=2.00 · merged 已排除
 ✅ ⑤ 数学自检 (Δu/限幅/无产物恒等/锥投影/帕累托) 自检 9/9 PASS
 ✅ ⑥ 真被消费 (下游节点读 lora_l4) 三节点执行 [True, True, True, True] · ⛓ 承接日志 4 条 · lora_l4 状态 True
 ✅ ⑦ 元任务预测 → LoRA 门控 元任务预测门控: 元任务预测门控: 候选 10 个 (L4/L5 层 3 个) · 焦点权重 0.822 ⇒ 增益 γ_eff=0.822 · 层组 112 · ⚠️ 预测 frozen(输入无区分度) ⇒ 增益≈均匀

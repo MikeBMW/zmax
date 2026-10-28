@@ -1,7 +1,7 @@
 # Z-MAX 感知层 sim→real 无缝移植 (YOLO · 2026-09-17)
 
 老倪: 「这段代码原来是适配仿真程序的，现在引入真机的 realsense 相机，需要做什么修改？
-目标是仿真运行完成后，要无缝移植到真机。你来设计流程，跑通 sim to real 流程；我要用 yolo
+目标是仿真运行完成后，要无缝移植到真机。你来设计流程，验证通过 sim to real 流程；我要用 yolo
 目标检测的模型，运行在 orin 上，能够感知实际的机器人环境。」
 
 ## 一、结论先说 (实测证据)
@@ -16,7 +16,7 @@
 | 仿真权重在真机的检测能力 | ❌ **0/4 帧, 4 种朝向全 0** (最高分 0.0105, 阈值 0.25) | `probe_sim2real_domain_gap.py` (对照组: 仿真帧 0.95~0.97) |
 
 **一句话**: 代码与流程已经做到"换源即换世界"(仿真/真机同一份检测与反投影), 并已在 Orin 上
-用真实 D405 跑通；但**模型本身还看不懂真机画面**(域差), 需要在真机数据上微调/重训才谈得上
+用真实 D405 验证通过；但**模型本身还不易理解真机画面**(域差), 需要在真机数据上微调/重训才谈得上
 "感知实际机器人环境"。这条缺口是数据问题, 不是接线问题。
 
 ## 二、差异点收口: 只有 5 处, 全在 FrameSource
@@ -36,7 +36,7 @@
 
 **不编造纪律**: 缺内参/外参/深度一律进 `meta["gaps"]`, 并在相机系给点, 绝不冒充 base 系。
 
-## 三、跑通流程 (命令)
+## 三、验证通过流程 (命令)
 
 ```bash
 # ① 仿真 (回归基线, 与改造前逐位一致)
@@ -91,7 +91,7 @@ python3 tools/calib_real_cam.py --handeye   <手眼标定图目录>     # T_base
 |---|---|
 | `src/lerobot/policies/yolo_3d/frame_source.py` | 四种输入源 + 口径声明 (唯一差异点收口) |
 | `src/lerobot/policies/yolo_3d/yolo_state_aligner.py` | 统一入口 `detect_3d`/`detect_3d_meta`/`estimate_3d`; 原仿真实现保留为 legacy 分支 |
-| `src/lerobot/policies/yolo_3d/tv_ops_shim.py` | Jetson torch/torchvision ABI 不匹配时的纯 torch NMS/IoU 兜底 |
+| `src/lerobot/policies/yolo_3d/tv_ops_shim.py` | Jetson torch/torchvision ABI 不匹配时的纯 torch NMS/IoU 保障 |
 | `tools/real_yolo_perceive.py` | 真机/仿真统一感知入口 (sim/ros/uvc/file) → 39D 契约 + 取证 json |
 | `tools/ros_record_realsense.py` | 4060 侧 Docker 只读采真机帧 (Orin 零程序) |
 | `tools/ros_scan_image_topics.py` | 扫"哪路像素真有 publisher" (避免假设有帧) |

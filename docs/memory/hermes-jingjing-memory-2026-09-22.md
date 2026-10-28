@@ -6,7 +6,7 @@ NTP回拨8h(勿动RTC)→节拍用monotonic, 负帧龄拒用
 §
 分层双口径: 职责=LLM理解场景/L4安全导航/L3序列规划/L2肌肉记忆; 栈=L5LLM/L4INTACT/L3smolvla/L2YOLO2D→3D; 画布重生node id→按名断言
 §
-交付前先自跑通; 清理只删明显垃圾
+交付前先自验证通过; 清理只删明显垃圾
 §
 安全: 🛡4栏位+三层(否决/限幅/Sys0)
 §
@@ -18,7 +18,7 @@ GitHub不通→ghproxy.net
 §
 Hermes: 长/$()命令拆多段; sudo免密
 §
-ssh pkill -f自杀→锚定^python3; L5=DeepSeek Vision(deepseek-flash有Vision,本机key已配,61s→异步旁路; smolvlm2-500m兜底); qwen3B勿再试(HF镜像大文件必败)
+ssh pkill -f自杀→锚定^python3; L5=DeepSeek Vision(deepseek-flash有Vision,本机key已配,61s→异步旁路; smolvlm2-500m保障); qwen3B勿再试(HF镜像大文件必败)
 §
 Hermes: CLI≠gateway; 飞书99991663→重启gateway
 §
@@ -32,7 +32,7 @@ L4=INTACT直驱; 反归一化按ckpt训练集同源; L2收口闸逐轴corr<0.5�
 §
 断点: L3须SS_L3_DEV=cpu(8G装不下SmolVLA+LEW7.08G→OOM); MLP须SS_USE_MLP=1; 训练前腾GPU
 §
-评估铁律: 运行时口径=训练(/255+ImageNet,stats同源,零回退); 布局漂移禁写死几何; 每臂独立进程+同解释器
+评估铁律: 运行时口径=训练(/255+ImageNet,stats同源,零回退); 布局漂移禁预先固定几何; 每臂独立进程+同解释器
 §
 Orin ROS=domain0; tcp_pose 50Hz真值; 几何须ss_geom_calib; 红线Orin零自研零自启→4060只读订阅
 §
@@ -60,10 +60,10 @@ AOI: .23工控机admin/admin; /picture原图·?kind=crop拉长960喂YOLO·natura
 §
 L2.lissa_insert=里萨如力控插入(产线6N配方,插槽口=沿工具Z退60mm→推进→/lissajous_force_search); 点位insert_pose=产线治具插入位
 §
-真机视: 产线相机须手动只起camera/realsense_source(参数抄launch); tap→cam_rs.png; cam_local.png=本机兜底不抢源; 拔出=L2.pull_module(退15→合爪f30→退120)
+真机视: 产线相机须手动只起camera/realsense_source(参数抄launch); tap→cam_rs.png; cam_local.png=本机保障不抢源; 拔出=L2.pull_module(退15→合爪f30→退120)
 §
 记忆五层: L2/L3/L4工作+总装Qwen宏观(SS_MACRO); 势场须喂obs[0:3]非peg_head
 §
-真源: zmax_robot_spec/calib.json→tools/zmax_params.py; 联合训练joint_train_all.py(4阶段,零回退); LoRA=lora_inject.py(L4/L3通); 闭环sim2real_loop.py
+唯一依据: zmax_robot_spec/calib.json→tools/zmax_params.py; 联合训练joint_train_all.py(4阶段,零回退); LoRA=lora_inject.py(L4/L3通); 闭环sim2real_loop.py
 §
 L5规划器/safety路径=left_right/state_space/{planner,safety}.py; INTACT稳态101ms(10Hz)冷6.7s→须常驻

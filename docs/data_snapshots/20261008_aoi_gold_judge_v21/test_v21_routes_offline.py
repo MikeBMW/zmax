@@ -175,7 +175,7 @@ def main():
     chk("⑦ grab 出图也是判据图口径 900x332", jp is not None and jp.shape[1] == 900 and jp.shape[0] == 332,
         "%dx%d" % (jp.shape[1], jp.shape[0]) if jp is not None else "解码失败")
 
-    # ⑨ 🆕 v11: 模型输入取图口 —— "你看到的图"必须与"喂给 YOLO 的像素"逐位相同(md5)
+    # ⑨ 🆕 v11: 模型输入取图口 —— "你看到的图"必须与"提供给 YOLO 的像素"逐位相同(md5)
     r = cli.get("/picture?kind=modelin")
     chk("⑨ /picture?kind=modelin → 200 PNG", r.status_code == 200 and r.mimetype == "image/png",
         "%s %s" % (r.status_code, r.mimetype))
@@ -187,7 +187,7 @@ def main():
     chk("⑨ 取图口像素 md5 == /last_result.model_input_md5(同源硬证据)",
         bool(md5_served) and md5_served == md5_result, "served=%s result=%s" % (md5_served[:12], str(md5_result)[:12]))
     mt = (cli.get("/picture?kind=modelin&meta=1").get_json() or {})
-    chk("⑨ ?meta=1 给尺寸/来源/喂给谁", mt.get("hw") == [960, 960] and bool(mt.get("src")) and "detect" in str(mt.get("fed_to")),
+    chk("⑨ ?meta=1 给尺寸/来源/提供给谁", mt.get("hw") == [960, 960] and bool(mt.get("src")) and "detect" in str(mt.get("fed_to")),
         str(mt)[:150])
 
     # ⑧ v21: the stored judge picture must be the PIANO-KEY recipe:

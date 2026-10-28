@@ -48,7 +48,7 @@ def api(path):
 
 
 def main():
-    # ═══ ① ② 服务端真源
+    # ═══ ① ② 服务端唯一依据
     m = api("/api/ar/meta")
     ck("① /api/ar/meta ok", bool(m.get("ok")), m.get("err") or "")
     ln = m.get("lanes") or {}

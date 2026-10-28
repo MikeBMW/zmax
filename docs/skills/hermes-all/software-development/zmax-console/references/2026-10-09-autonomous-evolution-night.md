@@ -5,11 +5,11 @@
 
 ## 1. 训练失败先怀疑"路径", 别先怀疑模型
 数据整合/目录搬家后, 两处静默杀手:
-- **数据集 yaml 里写死绝对路径**: `data/datasets/yolo_annot/dataset/data.yaml` 的 `path:` 还指老位置
+- **数据集 yaml 里预先固定绝对路径**: `data/datasets/yolo_annot/dataset/data.yaml` 的 `path:` 还指老位置
   (`data/yolo_annot`) ⇒ ultralytics 报 `images not found`。修法: `gui-venv311/bin/python tools/yolo_annot_dataset.py --build --check`
   (注意必须是 gui-venv311, 系统 python3 没 cv2)。
-- **jsonl 清单里写死图片绝对路径**: L5 的 `train.jsonl` 38/38 全是搬迁前的路径 ⇒ 训练"没有可用样本"。
-  修法: `tools/fix_l5_manifest_paths.py` (先备份到 `zmax_data/backups/`, 三级兜底: 尾段重挂 → data↔data/datasets → 按名全盘找)。
+- **jsonl 清单里预先固定图片绝对路径**: L5 的 `train.jsonl` 38/38 全是搬迁前的路径 ⇒ 训练"没有可用样本"。
+  修法: `tools/fix_l5_manifest_paths.py` (先备份到 `zmax_data/backups/`, 三级保障: 尾段重挂 → data↔data/datasets → 按名全盘找)。
   同时给消费端加**解析器**(`img_path(row)`) —— 只修清单不修代码, 下次搬家还会翻车。
 
 ## 2. 判据自己也会过时, 修判据 ≠ 修产品
@@ -25,7 +25,7 @@
 - **studio.py 把 sys.stdout 重定向进 GUI 日志面板**: 探针的 print 会消失 ⇒ 结论写文件 (`open('/tmp/xxx.txt','w')`)。
 
 ## 4. 老机器残留路径是定时炸弹
-`tools/verify_p3_metrics.py` 写死 `/home/xspace/lerobot-smolvla-lew` ⇒ 本机 import 即崩。
+`tools/verify_p3_metrics.py` 预先固定 `/home/xspace/lerobot-smolvla-lew` ⇒ 本机 import 即崩。
 一律 `ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))`。
 排查一把梭: `git grep -n "/home/xspace\|/home/jetson" -- 'tools/*.py' 'src/*' '*.sh'`
 

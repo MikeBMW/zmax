@@ -77,4 +77,4 @@ Orin 采集端把当前关节状态当 action 记录 → 数据包 `action == ob
   — 混用会 ModuleNotFoundError 或 PyQt5 缺失
 - metaworld 采集 subprocess 必须传 DISPLAY/MUJOCO_GL 环境 (见上)
 - 验证脚本写 PIPELINE_STATE.json 会污染真实状态 → 用 monkeypatch 或临时路径,
-  跑完恢复真实状态 (S1 真实 ckpt 丢失会导致 Stage2 兜底回退旧模型)
+  跑完恢复真实状态 (S1 真实 ckpt 丢失会导致 Stage2 保障回退旧模型)

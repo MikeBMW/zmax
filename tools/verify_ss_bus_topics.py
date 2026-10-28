@@ -3,8 +3,8 @@
 
 判据 (逐条可复核):
   ① 每个画布节点**至少一个输出 topic** (89/89, 缺 = 0)
-  ② 节点输出 topic 语义正确: 有出线的节点用**真源 topic**(取自 DBC 连线), 没出线的用合成 topic(synth=true)
-  ③ 合成不覆盖真源: 真实连线数(182)不减、不重名、真源信号条数不减
+  ② 节点输出 topic 语义正确: 有出线的节点用**唯一依据 topic**(取自 DBC 连线), 没出线的用合成 topic(synth=true)
+  ③ 合成不覆盖唯一依据: 真实连线数(182)不减、不重名、唯一依据信号条数不减
   ④ 单步运行 ⇒ **真序列化**: trace.jsonl 追加一行(含 node/topic/载荷) + step_current.json 指针正确
   ⑤ 整体运行 ⇒ **不序列化**(性能闸): publish(mode='run') 时 trace 不增长, 只登记 topic
   ⑥ 高亮口径: highlight_topics() == 当前单步节点输出 topic 集合 (数据总线视图据此金色高亮)
@@ -36,10 +36,10 @@ def main() -> int:
 
     # ① 每节点 ≥1 topic
     chk("① 每个画布节点 ≥1 输出 topic", st["n_missing"] == 0 and st["nodes_with_own_out_topic"] == st["canvas_nodes"],
-        "画布 %d 节点 · 各有独立输出 topic 的 %d · 缺 %d · (其中 %d 节点另有真源出线 topic)"
+        "画布 %d 节点 · 各有独立输出 topic 的 %d · 缺 %d · (其中 %d 节点另有唯一依据出线 topic)"
         % (st["canvas_nodes"], st["nodes_with_own_out_topic"], st["n_missing"], st["nodes_with_real_out_topic"]))
 
-    # ② 语义正确: 有出线的用真源, 无出线的合成
+    # ② 语义正确: 有出线的用唯一依据, 无出线的合成
     by_key = {x.get("key"): x for x in (db0.get("signals") or []) if isinstance(x, dict)}
     mism = []
     for n in nodes:
@@ -50,20 +50,20 @@ def main() -> int:
         e = by_key.get(t) or {}
         l2 = (real.get(n["id"]) or {}).get("topics") or []
         if sorted(e.get("link_topics") or []) != sorted(l2):
-            mism.append("%s: 真源出线 topic 未如实记录 (%s vs %s)" % (n["id"], e.get("link_topics"), l2))
-    chk("② 每节点独立输出 topic + 真源出线 topic 如实记录", not mism, "; ".join(mism[:3]) or "89/89 节点语义正确")
+            mism.append("%s: 唯一依据出线 topic 未如实记录 (%s vs %s)" % (n["id"], e.get("link_topics"), l2))
+    chk("② 每节点独立输出 topic + 唯一依据出线 topic 如实记录", not mism, "; ".join(mism[:3]) or "89/89 节点语义正确")
 
-    # ③ 合成不覆盖真源 + 真源连线不减
+    # ③ 合成不覆盖唯一依据 + 唯一依据连线不减
     links = [s for s in (db0.get("signals") or []) if not s.get("synth")]
     keys = [s.get("topic") for s in links]
     dup = len(keys) - len(set(keys))
-    chk("③ 真源连线不减 (≥182) 且未重名", len(links) >= 182 and dup >= 0,
-        "真源连线 %d 条 (唯一 topic %d, 含重名 %d — 连线 topic 允许重复, 合成 key 唯一)"
+    chk("③ 唯一依据连线不减 (≥182) 且未重名", len(links) >= 182 and dup >= 0,
+        "唯一依据连线 %d 条 (唯一 topic %d, 含重名 %d — 连线 topic 允许重复, 合成 key 唯一)"
         % (len(links), len(set(keys)), dup))
     syn_keys = [s.get("key") for s in (db0.get("signals") or []) if s.get("synth")]
-    chk("③' 合成 key 唯一且不与真源 topic 冲突",
+    chk("③' 合成 key 唯一且不与唯一依据 topic 冲突",
         len(syn_keys) == len(set(syn_keys)) and not (set(syn_keys) & set(k for k in keys if k)),
-        "合成 key %d 个 · 与真源 topic 交集 %d" % (len(syn_keys), len(set(syn_keys) & set(k for k in keys if k))))
+        "合成 key %d 个 · 与唯一依据 topic 交集 %d" % (len(syn_keys), len(set(syn_keys) & set(k for k in keys if k))))
 
     # ④ 单步 ⇒ 真序列化
     with_real = [n for n in nodes if real.get(n["id"])][:1] or nodes[:1]
@@ -75,8 +75,8 @@ def main() -> int:
     cur = bt.read_current()
     hl = bt.highlight_topics()
     exp = [bt.topic_id(nd["id"])]                     # 单步高亮 = 该节点**自己的**输出 topic
-    chk("④' 单步记录带真源出线 topic (link_topics)", cur.get("link_topics") == (real.get(nd["id"], {}).get("topics") or []),
-        "link_topics=%s (真源连线共用 topic zmax/link_value ⇒ 不能按它高亮, 只能记录)" % (cur.get("link_topics"),))
+    chk("④' 单步记录带唯一依据出线 topic (link_topics)", cur.get("link_topics") == (real.get(nd["id"], {}).get("topics") or []),
+        "link_topics=%s (唯一依据连线共用 topic zmax/link_value ⇒ 不能按它高亮, 只能记录)" % (cur.get("link_topics"),))
     chk("④ 单步: trace 追加 1 行 + 载荷已序列化", d_step.get("serialized") and n_after == n_before + 1,
         "%s → %s · trace %d→%d 行 · 载荷 %s" % (nd["id"], d_step.get("topics"), n_before, n_after,
                                                "有" if d_step.get("payload") else "无"))

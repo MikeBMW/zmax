@@ -2,14 +2,14 @@
 # -*- coding: utf-8 -*-
 """verify_config_center_text_copy.py — 判据: 配置中心**所有文字都能用鼠标选中/复制**。
 
-老倪 2026-10-19: 「为什么配置中心『选一个产品 =原子写回真源』这段话, 用鼠标选不了文字呢?
+老倪 2026-10-19: 「为什么配置中心『选一个产品 =原子写回唯一依据』这段话, 用鼠标选不了文字呢?
                  应该所有文字都可以被选中, 复制。你全都改一下」
 
-判据 (全程离屏, 不写任何真源):
+判据 (全程离屏, 不写任何唯一依据):
   ① 建页后: 页面内 **每一个 QLabel** 都带 TextSelectableByMouse + TextSelectableByKeyboard (0 例外)
-  ② 点名的「选一个产品 = 原子写回真源 …」那行: 真·鼠标拖选 → selectedText() 拿到字 (不是只看 flags)
+  ② 点名的「选一个产品 = 原子写回唯一依据 …」那行: 真·鼠标拖选 → selectedText() 拿到字 (不是只看 flags)
   ③ 八个页签逐个切过去 (含动态刷新的表格/特性页): 每页 QLabel 仍 100% 可选中
-  ④ 后建的 QLabel (app 级 eventFilter 兜底): show+polish 之后自动可选中
+  ④ 后建的 QLabel (app 级 eventFilter 保障): show+polish 之后自动可选中
 用法: QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/verify_config_center_text_copy.py
 """
 from __future__ import annotations
@@ -90,11 +90,11 @@ def main() -> int:
         app.processEvents()
         _audit(page.tabs.widget(i), "页签[%d] %s" % (i, page.tabs.tabText(i)), checks)
 
-    # ④ 后建的 QLabel (eventFilter 兜底)
+    # ④ 后建的 QLabel (eventFilter 保障)
     late = QLabel("动态新增的一行文字 (刷新后才出现)", page.tabs)
     late.show()
     app.processEvents()
-    checks.append(("④ 后建 QLabel 自动可选中 (app 级 eventFilter 兜底)",
+    checks.append(("④ 后建 QLabel 自动可选中 (app 级 eventFilter 保障)",
                    _flags_ok(late), "flags=%s" % int(late.textInteractionFlags())))
 
     # ⑤ 左树条目: 真按 Ctrl+C → 剪贴板拿到条目全文 (树不是 QLabel, 靠快捷键/右键菜单)

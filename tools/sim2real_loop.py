@@ -109,7 +109,7 @@ def step2_archive(out_dir, keep_mb=400) -> dict:
                 e["parse_note"] = f"{type(ex).__name__}"
         d = os.path.join(dst, os.path.basename(p))
         # ⚠️ 硬链接对 **root 拥有且本用户不可写** 的文件会被内核 protected_hardlinks 拒绝
-        #   (真机 tap 是容器里 root 写的) → 失败必须**回退复制**, 否则 MANIFEST 有记录而文件其实没归档
+        #   (真机 tap 是容器里 root 写的) → 失败必须**回退复制**, 否则 MANIFEST 有记录而文件实际没归档
         #   (2026-09-22 实测: 17 条里只有 1 条真落地)。method 逐条记录, 便于审计。
         try:
             if not os.path.exists(d):

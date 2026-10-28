@@ -112,19 +112,19 @@ metadata:
 
 ## 🔴 律 4: 目标机路径不一致时，软链收口 > 逐处改代码
 
-源码里写死 `/home/<源用户>/<项目>` 的地方可能有几百处，逐处改成目标机路径既慢又会漏。
+源码里预先固定 `/home/<源用户>/<项目>` 的地方可能有几百处，逐处改成目标机路径既慢又会漏。
 最快的收敛方式是在目标机上把名字补出来：
 
 ```bash
 sudo ln -sfn /home/<目标用户> /home/<源用户>                                # 源 HOME 整体重定向
-sudo ln -sfn /home/<目标用户>/<实际迁移目录> /home/<目标用户>/<代码里写死的目录名>
-readlink /home/<目标用户>/<代码里写死的目录名>                              # 回读确认
+sudo ln -sfn /home/<目标用户>/<实际迁移目录> /home/<目标用户>/<代码里固定不变的目录名>
+readlink /home/<目标用户>/<代码里固定不变的目录名>                              # 回读确认
 ```
 
 - ⚠️ **`ln -sfn src dir` 在 `dir` 已是真实目录时不替换，而是「在 dir 里面建同名链接」**。
   先 `ls -ld` 看清：是目录就 `mv` 备份（`mv /home/u/zmax /home/u/zmax_old_<日期>`）再建链，
   否则得到 `dir/src` 这种永远命中不了的嵌套链接，`readlink` 返回空、代码继续报 PermissionError。
-- 迁移目录名与代码里写死的目录名**常常不一致**（拷到 `zmax_550c`，代码写 `/home/u/zmax`）——
+- 迁移目录名与代码里固定不变的目录名**常常不一致**（拷到 `zmax_550c`，代码写 `/home/u/zmax`）——
   这条软链不做，前面所有 unit 都白装。
 
 ## 🔴 律 5: unit 里的 `User=` / `Group=` 必须换成目标机账户
@@ -149,19 +149,19 @@ sed -i -e 's/^User=.*/User=<目标用户>/' -e 's/^Group=.*/Group=<目标组>/' 
    `systemctl list-unit-files '<前缀>*' --plain | awk '$1 ~ /\.service$/ {print $1}'` 拿到全集（实测 53 个），
    再逐个 `systemctl show -p ExecStart --value <u> | grep -oE '/[a-z0-9_]+/[a-z0-9_]+\.(py|sh)'`
    ⇒ 一张“unit → 脚本”映射表，直接据此分类：业务服务（可迁）/ 隧道转发（迁了没意义）/ 桌面·守护·网络（留源机）。
-6. **路径环境变量化后再迁**：写死 `ROOT/zmax_data/...` 的脚本拷到布局不同的机器上一启动就 `FileNotFoundError`。
+6. **路径环境变量化后再迁**：预先固定 `ROOT/zmax_data/...` 的脚本拷到布局不同的机器上一启动就 `FileNotFoundError`。
    入口处一次性收口成可覆盖常量（`ZMAX_MAP_OUT` / `ZMAX_MAP_DEPTH_DIR` 这类）。
    批量改 unit 时 **长前缀先替换**：`sed -e 's|<源根>|<目标根>|g' -e 's|<源 HOME>|<目标 HOME>|g'` ——
    反过来先换 HOME，`/home/a/zmax` 那条子路径映射就永远匹配不到了。
 7. **先探 `sudo -n true` 再排自动化**：目标机 sudo 免密才能全自动 `cp unit → daemon-reload → enable --now`；
-   要密码就把需要人工的那一步提前讲清楚，别做到一半卡住。
+   要密码就把需要人工的那一步提前讲清楚，别做到一半阻塞。
 8. **起 systemd**：`Restart=always` + `RestartSec` + `Nice`/`CPUQuota`/`MemoryMax`，并 `enable`。
 9. **验收两件事**：① 两端各跑一次，**输出逐项对照**（点数/bbox/耗时）；
    ② `stop → start` 实测一次自恢复，确认换了新 PID 且端口重新监听。
    只验证「现在跑着」不算 —— 机器一重启就什么都不剩。
 10. **验收要看接口，不看 `is-active`**：逐个端口 `curl -s -o /dev/null -w '%{http_code}'`，200 才算活。
     实测一批 `is-active` 的服务接口是 500 / 读不到真值（跨机后缺相机/SDK 通道），`systemctl` 眼里完全正常。
-    补依赖后**重数一遍 active 数**（实测 12 → 26，那批「activating」的其实一直卡在缺包）。
+    补依赖后**重数一遍 active 数**（实测 12 → 26，那批「activating」的实际一直卡在缺包）。
 11. **跨机后「读不到真值」不是迁移失败**：机械臂/相机留在源机时，目标机上服务会 fail-closed 拒答
     （`{"ok": false, "err": "真值读不到(文件+桥都失败)"}`）。这是正确行为，别当 bug 修 ——
     要单独配一条通道（SDK 桥 / ROS domain / 推流），并在交付话术里写明「哪几个服务在等通道」。
@@ -177,7 +177,7 @@ sed -i -e 's/^User=.*/User=<目标用户>/' -e 's/^Group=.*/Group=<目标组>/' 
 | 看到 Windows 路径还继续排方案 | 到 Linux 上根本跑不起来 | 路径/盘符/反斜杠出现即封死（律 1） |
 | 端口被手动进程占着就装 systemd | 重启循环，起不来 | 先按 pid 停掉手动进程，再让 systemd 接管 |
 | 只验证「当前 active」 | 重启后全没 | `stop → start` 实测新 PID（流程 7） |
-| 路径写死 | 目标机启动即 `FileNotFoundError` | env 覆盖（流程 5） |
+| 路径预先固定 | 目标机启动即 `FileNotFoundError` | env 覆盖（流程 5） |
 | 两种口径的产物比数字 | “你的数和官方差一倍”来回扯 | 先问是不是两个口径（全体 vs 子集），两者都对 |
 | 从零在目标机重下大 wheel | 十几分钟无进展 / 直接超时 | 同版本 venv 直接 `cp -r` 包 + `dist-info`（律 3） |
 | 照搬源机 `pip freeze` 全量装 | 目标机的 XPU/CPU 版 torch 被 CUDA 版覆盖 | 清单先剔 torch 家族，由目标机单独解决 |
@@ -186,7 +186,7 @@ sed -i -e 's/^User=.*/User=<目标用户>/' -e 's/^Group=.*/Group=<目标组>/' 
 | 逐个读 unit 文件猜服务 | 几十个 unit 要看一天，还容易漏 | `systemctl show -p ExecStart` 批量导出映射表（流程 5） |
 | 批量 sed 先换 HOME 后换子路径 | 有一批路径根本没改到、启动即报文件不存在 | 长前缀先替换（流程 6） |
 | unit 照搬 `User=<源用户>` | 永远 `activating`、**journalctl 一条日志都没有** | 目标机账户名不同即 `217/USER`；批量 sed 换 `User=`（律 5） |
-| 迁移目录名 ≠ 代码写死目录名 | 代码报 PermissionError/FileNotFoundError，路径看着没错 | 补一条软链（律 4） |
+| 迁移目录名 ≠ 代码预先固定目录名 | 代码报 PermissionError/FileNotFoundError，路径看着没错 | 补一条软链（律 4） |
 | `ln -sfn src dir` 目标是真实目录 | 链接被建到 `dir/src` 里，`readlink` 空 | 先 `mv` 备份目录再建链（律 4） |
 | `pip download` 不带 `--no-deps` | 被 transformers/accelerate 拖着下几个 G 的 CUDA 包，卡几十分钟 | 见律 3 |
 | 依赖清单含 `-e` 行 | 整条下载失败、只零星下到几个包，之后靠猜补依赖 | 先 `grep -v '^-e '`（律 3） |
@@ -199,6 +199,6 @@ sed -i -e 's/^User=.*/User=<目标用户>/' -e 's/^Group=.*/Group=<目标组>/' 
 ## 交付话术
 
 给用户结论时要带**真实证据**，不要只报“已迁移”：
-- 哪些**不能迁**，各自卡在哪道红线（带一条接口或路径证据）。
+- 哪些**不能迁**，各自阻塞点道红线（带一条接口或路径证据）。
 - 哪些**已迁**，两端输出逐项一致的数字。
 - 迁移**没有收益**的，直说「不迁才是对的」并给替代方案。

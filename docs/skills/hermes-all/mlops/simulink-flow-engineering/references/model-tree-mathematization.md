@@ -5,7 +5,7 @@
 ## 架构
 - `tools/gui/model_tree.py` — 全部新代码 (ModelTreeDock + 数学内核 + PoleZeroPlot)
 - `tools/gui/simulink_module.py` — 集成两处:
-  1. `_build` 尾部: `from model_tree import ModelTreeDock; self.model_tree = ModelTreeDock(self); split.addWidget(self.model_tree); split.setStretchFactor(split.indexOf(self.model_tree), 0)` (try/except 兜底, 失败仅日志)
+  1. `_build` 尾部: `from model_tree import ModelTreeDock; self.model_tree = ModelTreeDock(self); split.addWidget(self.model_tree); split.setStretchFactor(split.indexOf(self.model_tree), 0)` (try/except 保障, 失败仅日志)
   2. `load_flow_file` 尾部 (`_assign_veh5_ids()` 之后): `if getattr(self, "model_tree", None): self.model_tree.refresh()`
 
 ## 🐛 2026-08-14: QDockWidget → QWidget (右侧面板一直没显示的根因)
@@ -74,7 +74,7 @@ u(t) ─▶ [感知 C] ─▶ x(t)=obs ─▶ [左脑 K] ─▶ u'(t)
 - 断言: cmb_view.count()==4; tree.topLevelItemCount()>=2; _switch_view(2) 后 lbl_math 含 "G(s)"/"极点"; _switch_view(3) 后含 "状态空间设计"/"谱半径"/"混合确定性"/"A=[[-10"; _switch_view(0) 后 tree.isVisible()
 - 数学内核单测: series_chain([hardware, model(K=2,T=0.5), action(pole=2)]) → den 长度 3; tf_to_ss → A.shape[0]==2, B.shape==(2,1)
 
-## 踩坑
+## 遇到问题
 - patch 大 (model_tree.py 14KB 新文件) 用 write_file 一次写, 别用大 patch
 - Pyright 报 PyQt5 import 无法解析是环境误报 (GUI 用 /usr/bin/python3 有 PyQt5)
 - 老倪"使用lerobot标准代码训练推理" = 训练已走 config_left_right.yaml + lerobot_train 容器 (标准), 推理走 gen_insert_video (自定义状态机, 因双脑+状态机架构非标准 eval 可覆盖); 汇报时说明"训练=lerobot 标准, 推理=双脑状态机定制"

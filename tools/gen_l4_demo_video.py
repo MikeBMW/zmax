@@ -184,8 +184,8 @@ TURNTABLE_Z = 0.0255                    # peg 坐盘面 (盘顶 z≈0.010 + peg 
 COUPLER_XY = np.array([0.55, 0.42])     # 光耦合压电台底座中心
 INSERT_DEPTH = 0.050                    # 插入目标深度 (m, 孔口→孔内; 孔深≈0.066 留安全余量)
 
-# 🎯 2026-10-10 单真源接入 (老倪: 画布 3D 视图的插拔光模块场景也要能在场景管理里编辑):
-#   几何统一从 data/scene/sim/sim_scenes.json 读 (场景管理功能区编辑 = 改这份真源)。
+# 🎯 2026-10-10 单唯一依据接入 (老倪: 画布 3D 视图的插拔光模块场景也要能在场景管理里编辑):
+#   几何统一从 data/scene/sim/sim_scenes.json 读 (场景管理功能区编辑 = 改这份唯一依据)。
 #   读不到就回退上面的常量 —— 不影响任何既有流程/打包版。
 try:
     import os as _os
@@ -200,7 +200,7 @@ try:
     INSERT_DEPTH = float(_G["insert_depth_m"])
     _SSD_SRC = "data/scene/sim/sim_scenes.json"
 except Exception as _e:                                                     # noqa: BLE001
-    _SSD_SRC = "内置常量 (真源读取失败: %r)" % (_e,)
+    _SSD_SRC = "内置常量 (唯一依据读取失败: %r)" % (_e,)
 
 
 class L4PegEnv(SawyerPegInsertionSideEnvV3):
@@ -520,7 +520,7 @@ class L4Demo:
     #   开关:   SS_L4_LIE_YAW=1 才启用 (不设 = 原有 Arm A/B 行为一行不改)。
     # ═══════════════════════════════════════════════════════════════════════════
     def _contact_twist_demo(self):
-        """🧭 接触 twist: log(T_hole⁻¹ · T_peg), 位姿直读 MuJoCo (site_xmat/xpos), 不写死几何。"""
+        """🧭 接触 twist: log(T_hole⁻¹ · T_peg), 位姿直读 MuJoCo (site_xmat/xpos), 不预先固定几何。"""
         try:
             from lerobot.manifold.lie_intent import contact_twist, quat_from_R, se3_make
             _hole_id = self.m.site("hole").id
@@ -752,7 +752,7 @@ class L4Demo:
         self.servo(pc + np.array([0, 0, 0.18]), tol=0.008, max_steps=500)
         dz = self.peg_center()[2] - z0
         ok = dz > 0.08
-        # 🐛 2026-09-11: 原日志写死 "yaw=90°" — Arm B 下实际指令可能是别的角 (实测 -44.7°) →
+        # 🐛 2026-09-11: 原日志预先固定 "yaw=90°" — Arm B 下实际指令可能是别的角 (实测 -44.7°) →
         #   改为打印**实际下发角** + 臂别 (证据不许与事实不符)
         _ydeg = float(np.degrees(self.env._grip_yaw))
         _arm = "Arm B 流形预测器决策" if getattr(self, "_mani_yaw", False) else "Arm A 脚本开环"

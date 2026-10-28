@@ -7,7 +7,7 @@ description: Use when GNOME .desktop 快捷方式叉号/未信任/双击没反�
 
 ## 触发场景
 - 桌面 .desktop 快捷方式图标带叉号(未信任徽章), 或双击提示 "untrusted desktop file" / 无法启动
-- 新建桌面快捷方式后图标不对/打不开
+- 新建桌面快捷方式后图标不对/无法打开
 - 系统克隆/rsync 迁移后桌面快捷方式失效 (E盘迁移后 09-06 复现过)
 - 双击图标「第一次没反应 / 要点两次才开」/ 启动后几十秒才有窗口
 
@@ -28,16 +28,16 @@ Ubuntu 24.04 (GNOME 46) 桌面图标由扩展 **Desktop Icons NG (ding@rastersof
 
 ## 目录改名/家目录整合后: 快捷方式**静默失效**(零反应、不报错)
 
-2026-10-08 实测(老倪报"控制台怎么打不开了"): 家目录整合(仓库 `zmax_rel/` → `zmax/`)后,
+2026-10-08 实测(老倪报"控制台怎么无法打开了"): 家目录整合(仓库 `zmax_rel/` → `zmax/`)后,
 `~/Desktop/XSpace-Studio.desktop` 里 `Exec=/home/ubuntu/zmax_rel/tools/gui/launch_studio.sh`、
 `Icon=/home/ubuntu/lerobot-smolvla-lew/tools/gui/logo.png` —— 两个目录都已不存在 ⇒ **双击毫无反应, 不弹窗不报错**
 (不像"叉号"那样有视觉提示)。
 - 判据: 先看 `Exec=`/`Icon=` 指向是否**真实存在且可执行**(`[ -e ] && [ -x ]`), 再判信任。**路径失效与信任是两回事**。
 - 修法: 改成新绝对路径 → 重装 `~/Desktop/` + `~/.local/share/applications/` → `touch`+`gio set metadata::trusted true` →
   重启 DING 扩展。脚本化:`install -m755` + `desktop-file-validate`(能抓到 `Exec=bash -lc '...$HOME...;'` 这类引号非法写法)。
-- **真源入库**: 把三个 .desktop 放进仓库 `tools/desktop/`, 附 `install_launchers.sh`(不带参数=安装修复,
+- **唯一依据入库**: 把三个 .desktop 放进仓库 `tools/desktop/`, 附 `install_launchers.sh`(不带参数=安装修复,
   `--check`=只核验) ⇒ 以后再改路径不会丢图标。
-- 别只修桌面那份: `~/.local/share/applications/` 里常有一份**同名副本**(应用菜单用), 两份都要改, 否则"菜单里点还是打不开"。
+- 别只修桌面那份: `~/.local/share/applications/` 里常有一份**同名副本**(应用菜单用), 两份都要改, 否则"菜单里点还是无法打开"。
 - 修完的实测证据: 他双击后 `studio.py` 进程真的起来了(记录 pid/时间), 不是"应该能开"。
 
 ## 「第一次没反应 / 总是启动两次」= 慢启动 + 零反馈 + 单实例闸静默
@@ -64,7 +64,7 @@ Ubuntu 24.04 (GNOME 46) 桌面图标由扩展 **Desktop Icons NG (ding@rastersof
 (`WantedBy=default.target`) 的 `ExecStart` 往往就是**同一个** launch 脚本 ⇒ 桌面图标实际只做“确保在跑 + 激活窗口”,
 两路不是竞态。查启动延迟时也要去看那个单元的 `Environment=DISPLAY=:0 / XAUTHORITY=...` 是否齐全(服务起的实例没有桌面环境)。
 
-改 .desktop 必须改**三份**(桌面 / `~/.local/share/applications/` / 仓库真源), 改完走信任序列
+改 .desktop 必须改**三份**(桌面 / `~/.local/share/applications/` / 仓库唯一依据), 改完走信任序列
 (`touch` + `gio set metadata::trusted true` + 重启 DING 扩展), 再 `desktop-file-validate` 收口。
 
 治本(单独一版做, 别和别的改动同批): 把模型/大数据加载从 `show()` 之前挪到之后 (`QTimer.singleShot`),

@@ -6,8 +6,8 @@
 这个版本评估分析后, 有性能提升才能升级; 在配置中心, 所有的性能指标, 都要科学的与基线版本做对比。」
 
 评测纪律 (与 eval_probes.py 同口径):
-  · 指标定义唯一真源 = config/platform/zmax_perf_spec.json (58 条) + 评测补充指标 4 条 (明确标注)
-  · 采集口径唯一真源 = tools/eval_probes.py (每条带证据类: 实测/标定·配置/推导/未测)
+  · 指标定义唯一依据 = config/platform/zmax_perf_spec.json (58 条) + 评测补充指标 4 条 (明确标注)
+  · 采集口径唯一依据 = tools/eval_probes.py (每条带证据类: 实测/标定·配置/推导/未测)
   · 基线锁 = config/eval/baseline_v<版本>.json (**冻结**; 锁定后不许改, 要改必须写理由 relock)
   · 判定: 阈值达标 (target 里的 ≤/≥) + 基线对比 (提升/持平/回退); 样本不足/未测 ⇒ 不出判定
   · 升级准入 (三条硬闸): ① 零回退 ② 至少 1 项净提升 ③ 全局一致性零冲突。未测项单列, **不算达标**
@@ -40,7 +40,7 @@ VERSION = "v5.50.735"                    # 版本号不自主升级 (老倪指�
 BASELINE = os.path.join(BASE_DIR, "baseline_%s.json" % VERSION.replace(".", "_"))
 DOC = os.path.join(ROOT, "docs", "eval", "评估分析报告_%s.md" % VERSION)
 
-# 证据面板 (老倪点名的四件工具 + 真源帧龄)
+# 证据面板 (老倪点名的四件工具 + 唯一依据帧龄)
 EV = {
     "信号分析": (os.path.join(ROOT, "zmax_data", "dataspace", "live.json"), ["n_topic_alive", "lamp_tally"]),
     "3D场景": (os.path.join(ROOT, "zmax_data", "ss_live", "trace_live.json"),
@@ -131,7 +131,7 @@ def evidence_panel():
             age = time.time() - os.path.getmtime(p)
         except OSError:
             age = -1.0
-        item = {"真源": os.path.relpath(p, ROOT), "帧龄_s": round(age, 2), "在": bool(d)}
+        item = {"唯一依据": os.path.relpath(p, ROOT), "帧龄_s": round(age, 2), "在": bool(d)}
         if isinstance(d, dict):
             for k in keys:
                 if k in d:
@@ -280,7 +280,7 @@ def to_md(rep):
     if rep["gate"]["reasons"]:
         L += ["## 为什么现在不能升级"] + ["- %s" % r for r in rep["gate"]["reasons"]] + [""]
     L += ["## 一、指标对比 (有采集结果的)", "",
-          "| 指标 | 分组 | 单位 | 目标 | 基线 %s | 当前 | 达标 | 基线对比 | 采集方式 | 证据真源 |" % rep["version_baseline"],
+          "| 指标 | 分组 | 单位 | 目标 | 基线 %s | 当前 | 达标 | 基线对比 | 采集方式 | 证据唯一依据 |" % rep["version_baseline"],
           "|---|---|---|---|---|---|---|---|---|---|"]
     for r in rep["metrics"]:
         if r["value"] is None:
@@ -296,10 +296,10 @@ def to_md(rep):
             continue
         L.append("| %s | %s | %s | %s |" % (r["cn"], (r["group"] or "")[:12], str(r["target"])[:30],
                                             (r["说明"] or r["how"] or "")[:70]))
-    L += ["", "## 三、证据面板 (工具真源帧龄)", "", "| 工具 | 真源 | 帧龄(s) | 关键量 |", "|---|---|---|---|"]
+    L += ["", "## 三、证据面板 (工具唯一依据帧龄)", "", "| 工具 | 唯一依据 | 帧龄(s) | 关键量 |", "|---|---|---|---|"]
     for k, v in rep["evidence"].items():
-        kv = " · ".join("%s=%s" % (kk, str(vv)[:40]) for kk, vv in v.items() if kk not in ("真源", "帧龄_s", "在"))
-        L.append("| %s | `%s` | %s | %s |" % (k, v["真源"], v["帧龄_s"], kv))
+        kv = " · ".join("%s=%s" % (kk, str(vv)[:40]) for kk, vv in v.items() if kk not in ("唯一依据", "帧龄_s", "在"))
+        L.append("| %s | `%s` | %s | %s |" % (k, v["唯一依据"], v["帧龄_s"], kv))
     L += ["", "## 四、全局数据一致性", "",
           "- 冲突数: **%d**" % rep["consistency"]["冲突数"],
           "- 明细: %s" % (rep["consistency"]["明细"] or "无冲突"), ""]

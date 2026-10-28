@@ -3,8 +3,8 @@
 
 老倪: 「检查配置中心的 活跃配置, 切换 任务1 FW-对应插拔场景; 任务6 TRAY 对应摆盘场景; 任务7 AOI 对应 AR场景」
 
-单一真源: 画布数据源节点(`ssdata`, 📦 metaworld 数据源)的 `params.src_state`
-  —— 经 src/lerobot/engineering/flows.py::load_canvas/save_canvas 读写真源(不手改 .db)。
+单一唯一依据: 画布数据源节点(`ssdata`, 📦 metaworld 数据源)的 `params.src_state`
+  —— 经 src/lerobot/engineering/flows.py::load_canvas/save_canvas 读写唯一依据(不手改 .db)。
 映射(本文件是**唯一**映射表, UI/信号分析/3D 都从这儿取色):
   TASK-01-FW  → 插拔场景 (#2e8b57 绿)
   TASK-06-TRAY→ 摆盘场景 (#1f6feb 蓝)
@@ -44,7 +44,7 @@ def _canvas():
 
 
 def _find_src_node(d: dict):
-    """数据源节点: 先认 id=ssdata, 再认带 params.src_state 的节点(只有一个真源)。"""
+    """数据源节点: 先认 id=ssdata, 再认带 params.src_state 的节点(只有一个唯一依据)。"""
     for n in (d.get("nodes") or []):
         if str(n.get("id")) == "ssdata":
             return n
@@ -104,7 +104,7 @@ def main() -> int:
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
     if a.list:
-        print("任务 → 场景/数据源 映射 (单一真源 %s):" % os.path.relpath(__file__, ROOT))
+        print("任务 → 场景/数据源 映射 (单一唯一依据 %s):" % os.path.relpath(__file__, ROOT))
         for k, v in TASK_SCENE.items():
             print("  %-14s → %-8s %-12s %s" % (k, v["scene"], v["scn"], v["color"]))
         return 0

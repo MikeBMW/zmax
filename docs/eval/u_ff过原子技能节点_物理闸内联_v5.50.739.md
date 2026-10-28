@@ -13,7 +13,7 @@
 ```
 
 但**引擎代码没照图跑**：`cognition.ActionModulator.decide()` 里只有一句 `STAGE_V_CAP` 等比缩放。
-本次把收口点搬到原子技能闸（真件 = `physics_constraints.InertiaLimiter.limit`，五条约束，真源
+本次把收口点搬到原子技能闸（真件 = `physics_constraints.InertiaLimiter.limit`，五条约束，唯一依据
 `config/calib/zmax_skill_physics.json`），并接线到两条仿真路：
 
 | 文件 | 改动 |
@@ -28,7 +28,7 @@
 开关：`ZMAX_L2_GATE=0|1`（**默认 0 = 不接，现场行为零改变**）、`ZMAX_GATE_DT`（闸 Δt）、
 `ZMAX_GATE_SKIP`、`ZMAX_GATE_JERK_X`。
 
-**Δt 口径**：闸的 Δt 默认取**标定口径 0.1s**（真源 `zmax_skill_physics.json` 的 `dt`，表里
+**Δt 口径**：闸的 Δt 默认取**标定口径 0.1s**（唯一依据 `zmax_skill_physics.json` 的 `dt`，表里
 `s_step = v·dt` 就是按 0.1s 算的）；`ZMAX_GATE_DT=0.02` 可切「物理真实时间步」口径（五条约束整体收紧 5 倍）。
 
 ## 二、判据一：解析引擎（确定性，`tools/ab_l2_inline_gate.py`）— 4/4 PASS

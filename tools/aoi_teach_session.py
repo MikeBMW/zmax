@@ -5,7 +5,7 @@
        记录完点位后, 你来插值规划平滑过渡轨迹」
 
 本工具 (真机口径, 单一写入器 + pid 锁 + 原子写 + 回读):
-  start   → 脱离终端常驻，按 --hz (默认 20Hz) 读**真机位姿真源** zmax_data/rokae_sdk/tcp_out/latest.json
+  start   → 脱离终端常驻，按 --hz (默认 20Hz) 读**真机位姿唯一依据** zmax_data/rokae_sdk/tcp_out/latest.json
             (珞石 xcoresdk endInRef 直采, 含 joint[12]), 逐帧追加到 zmax_data/aoi_teach/session_<ts>.jsonl
             ⇒ 这就是"学习路径"的原始素材 (手动示教的真实轨迹, 不是编的)
   status  → pid 活否 / 采样数 / 时长 / 实测Hz / 当前位姿 / 帧龄
@@ -52,7 +52,7 @@ def _now() -> float:
 
 
 def read_pose() -> dict | None:
-    """读真机位姿真源 (单文件直读, 不走递归 glob —— 实测那个 2.5s/次)。全 0 = 陈旧。"""
+    """读真机位姿唯一依据 (单文件直读, 不走递归 glob —— 实测那个 2.5s/次)。全 0 = 陈旧。"""
     try:
         with io.open(POSE_SRC, encoding="utf-8") as f:
             d = json.load(f)
@@ -121,7 +121,7 @@ def _cmd_rec(hz: float, out: str) -> int:
             if p is None or p["stale"]:
                 missed += 1
                 if missed % max(1, int(hz * 5)) == 0:
-                    f.write(json.dumps({"t": t, "miss": True, "reason": "位姿真源陈旧/不可读",
+                    f.write(json.dumps({"t": t, "miss": True, "reason": "位姿唯一依据陈旧/不可读",
                                         "missed": missed}, ensure_ascii=False) + "\n")
                     f.flush()
             else:
@@ -183,7 +183,7 @@ def _median_pose(n: int = 8, gap: float = 0.10) -> dict:
             ts.append(p["ts"])
         time.sleep(gap)
     if len(xs) < 3:
-        raise RuntimeError("位姿真源可用帧不足 (%d/%d) — 检查 zmax_data/rokae_sdk/tcp_out/latest.json" % (len(xs), n))
+        raise RuntimeError("位姿唯一依据可用帧不足 (%d/%d) — 检查 zmax_data/rokae_sdk/tcp_out/latest.json" % (len(xs), n))
     a = np.asarray(xs, float)
     med = np.median(a, axis=0)
     spread = float(np.max(np.linalg.norm(a - med, axis=1)))
@@ -267,7 +267,7 @@ def cmd_analyze(points: str, sess_file: str, n_between: int) -> int:
              "still_segs_top": [{"i0": a, "i1": b, "dur_s": round(float(sess[b, 0] - sess[a, 0]), 2),
                                  "xyz": [round(float(v), 4) for v in sess[(a + b) // 2, 1:4]]}
                                 for a, b in sorted(still, key=lambda ab: ab[1] - ab[0], reverse=True)[:6]]}
-    # 插值平滑过渡轨迹: 用**示教点位**作控制点 (真源台账), 段间五次多项式
+    # 插值平滑过渡轨迹: 用**示教点位**作控制点 (唯一依据台账), 段间五次多项式
     pts, missing = [], []
     for nm in names:
         f = os.path.join(WEB_PTS, nm + ".json")

@@ -116,7 +116,7 @@ class ConfigMetaPanel(QWidget):
         rl.addWidget(self.meta_tree, 3)
 
         self.table = QTableWidget(0, 7)
-        self.table.setHorizontalHeaderLabels(["用途", "参数", "当前值", "默认", "范围/档位", "单位", "真源"])
+        self.table.setHorizontalHeaderLabels(["用途", "参数", "当前值", "默认", "范围/档位", "单位", "唯一依据"])
         self.table.setStyleSheet("QTableWidget{background:%s; color:%s; gridline-color:%s; font-size:10pt;}"
                                  " QHeaderView::section{background:%s; color:%s; padding:5px;}"
                                  % (C_BG2, C_WHITE, C_BORDER, C_CARD, C_GRAY))
@@ -134,7 +134,7 @@ class ConfigMetaPanel(QWidget):
         split.setSizes([340, 980])
         root.addWidget(split, 1)
 
-        hint = QLabel("元数据真源: data/database/zmax/config_meta.json (从工程库 + param_registry 生成) · "
+        hint = QLabel("元数据唯一依据: data/database/zmax/config_meta.json (从工程库 + param_registry 生成) · "
                       "参数当前值实时读 param_registry · 「参数值」由 数字层(参数中心) 改, 「字段定义」由本页看")
         hint.setStyleSheet("color:%s; font-size:9.5pt;" % C_GRAY)
         root.addWidget(hint)
@@ -287,7 +287,7 @@ class ConfigMetaPanel(QWidget):
             lines.append("  %s %s (%d):" % (CAT_ICON.get(cat, ""), cat, len(ids)))
             for pid in ids[:16]:
                 rp = self.reg.get(pid, {})
-                lines.append("     • %s  →  当前 %s  (真源 %s)" %
+                lines.append("     • %s  →  当前 %s  (唯一依据 %s)" %
                              (pid, rp.get("value", "?"), rp.get("source", "?")))
             if len(ids) > 16:
                 lines.append("     … 另 %d 个" % (len(ids) - 16))

@@ -50,7 +50,7 @@ metadata:
 ```bash
 ./gui-venv311/bin/python tools/station_cmd.py "<PowerShell 一行>"   # 下发并取回执
 ```
-- 回执里 `whoami` = `nt authority\system` ⇒ 计划任务是真跑起来了。
+- 回执里 `whoami` = `nt authority\system` ⇒ 计划任务是真启动了。
 - 🔴 **命令里只要带 `$` 变量就会静默变空** —— 不只是注册表那种长脚本: 一条 `Copy-Item (Join-Path $d ...)`
   也会在包装层被吃掉 `$d`, 回执照样"成功"而文件根本没变。凡脚本里有 `$`/引号嵌套/多语句, 一律走
   `powershell -NoProfile -EncodedCommand <base64(UTF-16LE)>`(base64 里没有 `$`、`%`、引号, 一次绕开全部包装坑);
@@ -171,7 +171,7 @@ Get-CimInstance Win32_Process | Where-Object {$_.Name -like '*python*'} |
 
 ## 六、人眼看得见、模型没检出时怎么分责(缩样)
 
-在机器上用**同一份检测器**对**最新一帧的每种输入**各跑一遍(只读、不占端口):
+在机器上用**同一份检测器**对**最新一帧的每种输入**各执行一遍(只读、不占端口):
 - 全部 0 ⇒ 不是链路/积压问题, 是模型没检出;
 - 再比"人看的那张"与"模型吃的那张"是不是**同一个几何**(常见: 人手看的是自然比例条带,
   模型吃的是被拉伸填成方图的版本 —— 拉伸比因帧而异, 实测有帧纵向 ~15:1 且 40% 像素饱和,
@@ -210,7 +210,7 @@ Invoke-WebRequest -Proxy http://<操作机产线IP>:8889 -Uri <URL> -OutFile D:\
   `(Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings').ProxyEnable`(应=0) +
   产线端口 `(Get-NetTCPConnection -State Listen -LocalPort <端口>).LocalPort`; 再经代理取一次公网 → 200。
   - **别拿 `127.0.0.1:<port>` 测代理**: 代理只 `Listen <操作机产线IP>` 时打回环会 `HTTP 000`(curl 连不上) —— 看着像"代理坏了",
-    其实只是没听回环。测**它真正绑定的那个地址**, 判活也只信该地址上的 `ss -ltn`。
+    实际只是没听回环。测**它真正绑定的那个地址**, 判活也只信该地址上的 `ss -ltn`。
   - **"和浏览器同一条路"的验证**(比只测 `-Proxy` 更有说服力): 机器上不带 `-Proxy` 跑
     `(Invoke-WebRequest -Uri <URL> -UseBasicParsing -TimeoutSec 25).StatusCode` —— PS 5.1/.NET 会读 WinINET 用户设置,
     它通 ≈ 浏览器通; 同时复核产线端口仍 `Listen` ⇒ 旁路表确实生效。要区分层就用这个:
@@ -219,7 +219,7 @@ Invoke-WebRequest -Proxy http://<操作机产线IP>:8889 -Uri <URL> -OutFile D:\
   但**一旦产线机侧真配了代理, 它就开始依赖这个出口** —— 操作机一重启就等于产线机断网 ⇒ 此时做成 systemd
   (`Type=simple` + `ExecStart=<tinyproxy 绝对路径> -d -c <conf>`; `-d` 才不后台化), `enable --now` 后重启服务实测一次再交付。
 - **先说清做哪一层, 再动手**: "只让某条命令借道"(`-Proxy`) 之后机器上**任何东西都没配** —— 浏览器/正常程序照旧上不了网。
-  用户说"机器上不了网/打不开某网站"时, 先确认他要的是**整机(浏览器)能上网**还是**只让某条命令下载**;
+  用户说"机器上不了网/无法打开某网站"时, 先确认他要的是**整机(浏览器)能上网**还是**只让某条命令下载**;
   默认只做前者的话, 他试完会回你"还是上不了"。
 - **只有用户明确要"整机长期上网"**才升级为"操作机做上游 + 产线机加一条默认路由", 且必须 ① 只加默认路由
   (直连段不受影响) ② 配**机器本地的自检看门狗**(每 20s 探产线端口 + 反向通道, 异常自动删路由) —— 否则出事时你已经被关在门外。
@@ -252,7 +252,7 @@ Invoke-WebRequest -Proxy http://<操作机产线IP>:8889 -Uri <URL> -OutFile D:\
     - 决定性的判据(别只看注册表): 在**登录用户的会话**里跑 `Invoke-WebRequest http://www.baidu.com -UseBasicParsing`
       (PS 5.1/.NET 读 WinINET 当前用户设置 ⇒ 与浏览器同一条路) —— 通=浏览器通。
     - ⚠️ **别用无头 Edge 取证**: `msedge --headless[=new] --dump-dom/--screenshot` 在这台机器上
-      (Edge 154) 只创建 0 字节文件/无输出(Edge 的 launcher/子进程模型 + 已有实例转发), 看着像"没联网"其实是取证方法坏。
+      (Edge 154) 只创建 0 字节文件/无输出(Edge 的 launcher/子进程模型 + 已有实例转发), 看着像"没联网"实际是取证方法坏。
       改用 ① 代理日志(tinyproxy 会记每个被接受的连接, 浏览器真实流量里能看到 `www.baidu.com:443`/`mbd.baidu.com`/`edge.microsoft.com`)
       + ② 会话内 `Invoke-WebRequest` 状态码 双证。
     - ⚠️ tinyproxy 默认 `MaxClients 20` 会被"浏览器一次开一堆并行连接"打满, 日志出现
@@ -288,7 +288,7 @@ Invoke-WebRequest -Proxy http://<操作机产线IP>:8889 -Uri <URL> -OutFile D:\
     (轮换后同步 secrets 文件即可, 不需要改任何代码)。
     在**服务会话**里起浏览器(如 `msedge --headless --dump-dom <url>`)常常**零输出** —— 那是 session 0 没有桌面的环境限制,
     **不是"浏览器不通"的证据**, 别据此下结论。
-  - **兜底: 让浏览器自己带代理启动, 完全绕开 WinINET**. 给用户建一个专用快捷方式(原快捷方式一个字不动):
+  - **保障: 让浏览器自己带代理启动, 完全绕开 WinINET**. 给用户建一个专用快捷方式(原快捷方式一个字不动):
     `msedge.exe --proxy-server="http://<操作机IP>:8889" --proxy-bypass-list="192.168.23.*;127.*;localhost;<local>"` ——
     启动参数由浏览器自己解析, 不受注册表/会话缓存/策略缓存影响。**必须带 `--proxy-bypass-list`**: 少了它内网流量也走代理,
     产线服务当场断。这条只解决"用户能上网", 别拿它替代系统级设置。

@@ -92,7 +92,7 @@ Orin(192.168.23.66 采集) → 小芳Mac(192.168.23.1 中转) → ECS(39.102.211
 
 ## 4. 管理手段 (全链路)
 
-1. **自动闭环守护** `tools/auto_loop.py`: WS 事件驱动 (数据到达即训练) + 60s 轮询兜底 + 断线 5s 重连 + 训练锁
+1. **自动闭环守护** `tools/auto_loop.py`: WS 事件驱动 (数据到达即训练) + 60s 轮询保障 + 断线 5s 重连 + 训练锁
 2. **水流 DDS** `zmax-website/waterflow_dds.py`: 每 10s 刷写 7 节点状态到 dds.db (dds_node_state + dds_flow 时间序列)
 3. **容量守卫** `tools/disk_guard.py`: orin_live 限 60 包 / 训练保留 4 个 / 日志 5MB / 水流 2 万行
 4. **模型传递铁律**: 静态 URL `https://datadrive.world/models/act_cartesian.safetensors` (不弹栈, 覆盖即部署)

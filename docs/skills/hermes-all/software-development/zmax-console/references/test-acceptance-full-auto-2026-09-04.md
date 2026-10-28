@@ -28,7 +28,7 @@ DISPLAY=:0 gui-venv311/bin/python tools/test_acceptance_run.py   # 8s, 550 用�
 本会话抓到 5 处 (全在 t_* 断言, 无一例外):
 | 断言 | 摆设写法 | 真断言修法 |
 |---|---|---|
-| t_pred_default | `A==1.0 or True` (类默认其实 A=0.95, 文案早错) | 审计引擎/真实化/画布全部 `PriorDynamicsPredictor(A=1.0)` 实例化点 |
+| t_pred_default | `A==1.0 or True` (类默认实际 A=0.95, 文案早错) | 审计引擎/真实化/画布全部 `PriorDynamicsPredictor(A=1.0)` 实例化点 |
 | t_yolo_nofake | `... or True` | `_io_snapshot` 方法体去注释行后无 `0.99` 且含 `conf --` |
 | t_llm_unknown | `len(tokens)>=1 or True` | 未知指令不崩 (except→FAIL) + 0≤len≤50 |
 | t_rsn_count | `k_lo != k_hi or True` | 否决 2 次(未超限)→"插入未到位" vs 6 次(超限)→"力控异常" 必须不同 |
@@ -49,7 +49,7 @@ FAIL 是诚实结果, 进"自动改进→重测"循环 (修实现/修断言, 不
 
 ## 195 条 manual 全自动化 (manual_auto_map.py)
 - manual 用例本质 = GUI 目测/交互确认 (双击看面板/3D 图层/Scope 波形/总线滚动/真机物理)。
-- 映射原则: **可视化/3D/Scope/总线/日志 类 → 断言其背后数据真源** (引擎 io_trace 键覆盖/
+- 映射原则: **可视化/3D/Scope/总线/日志 类 → 断言其背后数据唯一依据** (引擎 io_trace 键覆盖/
   序列等长逐帧/数值随帧变化/源码映射有效/真实渲染) — 不依赖人眼; **真机/产线/文档对照 类 →
   验收记录文件在位** (docs/test-reports/*.md + zmax-console references/, 缺文件=FAIL, 严禁造记录)。
 - src/lerobot/verification/manual_auto_map.py: `MANUAL_AUTO = {"节点.fid.用例序": "t_auto_xxx", ...}`
@@ -63,7 +63,7 @@ FAIL 是诚实结果, 进"自动改进→重测"循环 (修实现/修断言, 不
   AOI 判级) / skill_combo / reason_recover / llm_offline(无 llm_url 规则链) / weights_missing /
   anchor_hand(锚=obs hand) / same_seed(同 seed 布局一致) / esc_guard(GUI stop_sim + saturate)。
 
-## 踩坑速记 (本会话)
+## 遇到问题速记 (本会话)
 - 新增方法必须插在 class VerificationLayer **内** (文件尾 FEATURE_META 是模块级 — 插后面会
   IndentationError; 类内最后方法 t_gdata_route 之后才是正确插入点)。
 - `_audit()` 返回 (bool, str) tuple — 在 `and`/`or` 里恒 truthy! 组合审计必须

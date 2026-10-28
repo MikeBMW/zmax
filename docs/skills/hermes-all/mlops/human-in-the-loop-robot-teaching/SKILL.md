@@ -33,7 +33,7 @@ description: Use when 真机人机在环示教/抓取(逐步请示+视觉伺服+
 ## 3. 超时不重发 (血亏教训)
 
 `success=False` + `error_code=ROBOT_IDLE_TIMEOUT`("wait_until_idle: timed out after 30.0s")
-**但动作其实已精确到位** (实测 z 目标 0.20840611 → 实到 0.20840644，误差 0.33µm)。
+**但动作实际已精确到位** (实测 z 目标 0.20840611 → 实到 0.20840644，误差 0.33µm)。
 判完成只看 **真值(关节/TCP) + operation_state=idle**；**绝不因 success=False 重发** (会叠成 2 倍位移)。
 
 ## 4. 可达性与单轴原则

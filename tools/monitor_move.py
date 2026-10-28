@@ -33,7 +33,7 @@ def seg_stats(S):
     if len(S) < 3:
         return None
     a, b = S[0][1], S[-1][1]
-    chord = math.dist(a, b)          # ⚠️ 单位是**米**(真源如此); 门槛 0.5mm 必须写成 0.0005
+    chord = math.dist(a, b)          # ⚠️ 单位是**米**(唯一依据如此); 门槛 0.5mm 必须写成 0.0005
     if chord < 0.0005:
         return None
     u = [(b[i] - a[i]) / chord for i in range(3)]

@@ -49,7 +49,7 @@
   → nginx 变量变字面量 → Upgrade 头空。用引号 heredoc (`<<'EOF'`) 写 `$http_upgrade` 不转义。
 - ECS noVNC 目录是残缺源码版 (缺 core/util.js 等模块) → 页面 UI 起不来: 把本地
   `/usr/share/novnc/` (1.3.0 完整模块树) rsync/scp 覆盖到 ECS websockify 的 --web 目录。
-- 用户端老打不开时:**先自己用 python websocket 走完整公网路径握手**证明服务端 OK, 再让用户
+- 用户端老无法打开时:**先自己用 python websocket 走完整公网路径握手**证明服务端 OK, 再让用户
   硬刷新/隐身窗 (浏览器缓存旧 401/404 会让"已修复"看起来没修)。
 - **用户明确"不要密码"** (老倪: 远程通道不想输认证) → sed 删 auth_basic 两行 + reload 即可;
   裸奔风险提示一句, 别反复劝。

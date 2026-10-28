@@ -6,9 +6,9 @@
 ① 下拉 = 3 行 (M / 数据总线 / 参数中心) —— 2026-10-15 老倪: 「画布右侧栏, 保留 主参数·数据总线·参数中心; 删除 运行开关」
 ② 测量页只挂数据总线: bus 在面板里可见, tree/ss_tree **对象仍在**(没删)但不占面板
 ③ 切到测量页会刷 bus (不抛异常)
-④ 标定页: 行数 == 真源 config/calib/zmax_calib.json 参数段数; 值逐条与文件一致
+④ 标定页: 行数 == 唯一依据 config/calib/zmax_calib.json 参数段数; 值逐条与文件一致
 ⑤ 未标定项 (T_base_cam/plane_z/cell_geometry) 高亮 + 给出可执行现场标定命令
-⑥ 标定页是只读 (没有写按钮) + 复制/真源路径可用
+⑥ 标定页是只读 (没有写按钮) + 复制/唯一依据路径可用
 """
 import os
 import sys
@@ -65,26 +65,26 @@ except Exception as ex:
 _cap = d.bus.lbl_cnt.text() if hasattr(d.bus, "lbl_cnt") else ""
 chk(_ok, f"测量↔M 来回切不抛异常; bus 表行数={_rows} · 计数标签={_cap!r}")
 
-print("\n④ 标定真源 (CalibTruthView): 对象保留, 不再占下拉; 数字在「参数中心」🟡标定 类里")
+print("\n④ 标定唯一依据 (CalibTruthView): 对象保留, 不再占下拉; 数字在「参数中心」🟡标定 类里")
 d.calib.refresh(); app.processEvents()          # 2026-10-15: 该页撤出下拉, 直刷对象
 c = d.calib
-chk(c.tbl.rowCount() == len(SECTIONS), f"行数 {c.tbl.rowCount()} == 真源参数段 {len(SECTIONS)}")
+chk(c.tbl.rowCount() == len(SECTIONS), f"行数 {c.tbl.rowCount()} == 唯一依据参数段 {len(SECTIONS)}")
 keys = [c.tbl.item(r, 0).text() for r in range(c.tbl.rowCount())]
 chk(keys == SECTIONS, f"参数名与文件同序: {keys}")
 sv = c.tbl.item(keys.index("depth_scale"), 1).text()
 chk(sv == f"{RAW['depth_scale']['value']:.4g}", f"depth_scale 值 = {sv} (文件 {RAW['depth_scale']['value']})")
 tv = c.tbl.item(keys.index("control_tcp"), 1).text()
 chk("verdict" not in tv and len(tv) > 0, f"control_tcp 摘要值 = {tv[:60]}")
-chk("zmax_calib.json" in c.lbl_src.text(), "页头标出真源路径")
+chk("zmax_calib.json" in c.lbl_src.text(), "页头标出唯一依据路径")
 
 print("\n⑤ 未标定项高亮 + 可执行补救命令")
 uncal = [r for r in range(c.tbl.rowCount()) if "未标定" in c.tbl.item(r, 2).text()]
 names = [c.tbl.item(r, 0).text() for r in uncal]
-# 🔁 2026-10-15: 期望值**从真源推**(不再写死 3 个名字 —— cell_geometry 已在 10-15 用现场示教填上,
-#   写死的判据当场假红)。未标定 = 该段带 _reason "未标定"
+# 🔁 2026-10-15: 期望值**从唯一依据推**(不再预先固定 3 个名字 —— cell_geometry 已在 10-15 用现场示教填上,
+#   固定不变的判据当场假红)。未标定 = 该段带 _reason "未标定"
 want = {k for k, v in RAW.items()
         if not k.startswith("_") and isinstance(v, dict) and "未标定" in str(v.get("_reason") or "")}
-chk(set(names) == want, f"未标定项 == 真源 _reason 推出来的 {len(want)} 项: {sorted(want)} (实测 {names})")
+chk(set(names) == want, f"未标定项 == 唯一依据 _reason 推出来的 {len(want)} 项: {sorted(want)} (实测 {names})")
 cmd = c.lbl_cmd.text()
 chk(("ss_geom_calib.py" in cmd) or ("cell_geometry" not in want),
     "凡未标定的几何段都给补救命令 (cell_geometry 已标定 ⇒ 该行不再要求)")
@@ -101,6 +101,6 @@ chk("zmax_calib.json" in QApplication.clipboard().text() and "cell_geometry" in 
     "「📋 复制全部」把注册表+缺口写进剪贴板")
 
 print("\n" + "═" * 60)
-print("❌ 失败 %d 项" % len(FAIL) if FAIL else "✅ 全部通过 — 测量只挂数据总线 + 标定页数据来自真源注册表")
+print("❌ 失败 %d 项" % len(FAIL) if FAIL else "✅ 全部通过 — 测量只挂数据总线 + 标定页数据来自唯一依据注册表")
 sys.stdout.flush()
 os._exit(1 if FAIL else 0)

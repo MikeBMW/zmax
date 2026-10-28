@@ -5,7 +5,7 @@
 > 云端 relay 里只有 `4060_hw` 与 `mac_hw` 两类包 ⇒ **Orin 侧没有任何上行**。
 > 本清单让现场把这一段接上; 全程**只读状态, 不下发任何机器人动作**。
 
-## 一、链路契约 (来自 ECS 中转真源 `zmax_relay.py`, 已本机实测)
+## 一、链路契约 (来自 ECS 中转唯一依据 `zmax_relay.py`, 已本机实测)
 ```
 上报: POST https://datadrive.world/api/relay/orin/heartbeat
       body: {"online":true,"role":"orin","model":"<模型名>","infer_count":N,

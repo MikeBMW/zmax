@@ -1,6 +1,6 @@
 # 信号分析页(实时监控·Graphic 信号分析) 场景分色/目录树/波形 — 踩过的坑
 
-真源: `tools/gui/canoe_graphic.py`(页面类) + `tools/sig_scene_tags.py`(场景打标) + `config/topics/scene_tags.json`(标签+overrides)。
+唯一依据: `tools/gui/canoe_graphic.py`(页面类) + `tools/sig_scene_tags.py`(场景打标) + `config/topics/scene_tags.json`(标签+overrides)。
 判据: `tools/verify_scene_signal_green.py`(离屏真建同一类, 逐行走树取 层级/文本/前景色/勾选态/可勾选/组展开)。
 
 ## 铁律
@@ -71,7 +71,7 @@ L5(planner.rules)/MEM(memory.json)/L2(detect.yolo)/L4(vote unified+intact)/L3 �
 
 `dds/ss_types.py`(类型) · `dds/zmax_node.py`(`_SS_TOPICS` + qos) · `src/lerobot/dataspace/topics.py`(`TOPICS` + `MODE_TOPICS`) ·
 `tools/gui/zmax_telemetry.py::MODE_TOPICS` · `tools/dds/ss_daemon.py`(`MODE_TOPICS` + `pub_xxx` + 挂线程), 然后**两端都重启**。
-细节/踩坑/digest 400 字上限/`or -1.0` 呑 0.0 见 `references/new-topic-into-signal-page.md`。
+细节/遇到问题/digest 400 字上限/`or -1.0` 呑 0.0 见 `references/new-topic-into-signal-page.md`。
 
 ## 现场验收话术(老倪看画面, 不看代码)
 
@@ -111,7 +111,7 @@ L5(planner.rules)/MEM(memory.json)/L2(detect.yolo)/L4(vote unified+intact)/L3 �
 
 11. **信号表列 = 信号名称 / 当前值 / 输出节点 / 来源话题** (老倪 2026-10-15 把「帧龄」列换成「输出节点」,
    “要能看到这个信号是哪个节点输出的”)。帧龄/Min/Max 全进 tooltip(信息不丢), 列宽 226。
-   节点名必须**有出处**: 画布节点名 = 真源 `flows/state_space_obs.json` 的 node.name;
+   节点名必须**有出处**: 画布节点名 = 唯一依据 `flows/state_space_obs.json` 的 node.name;
    `sseng.*` = 常驻引擎回路(流形引擎/VLM编码节点/动作调制器); `sstrace.*` = 3D 面板发布的画布场景快照
    (具体信号按 前馈/动作调制/安全边界/接触概率/末端=真机TCP/光模块=YOLO→2D→3D 分), 其余来源族同理。
    没凭据就写最保守的(画布数据源 / 本机真值流), 别编节点名。
@@ -121,12 +121,12 @@ L5(planner.rules)/MEM(memory.json)/L2(detect.yolo)/L4(vote unified+intact)/L3 �
    判据直接卡 `wave.curves == 树上已勾行序`, 不要卡“某个信号必须第一”。
 
 13. **动作调制_mps 只是模长, 不是动作** (老倪 2026-10-15「要变成 action, 至少有 x y z a b c, 怎么就一个 mps?」)。
-   真源: `state_space_sim_real.py` 的 `u_fuse_vec/u_limit_vec`, `u_prev = np.zeros(4)` ⇒ 动作是
+   唯一依据: `state_space_sim_real.py` 的 `u_fuse_vec/u_limit_vec`, `u_prev = np.zeros(4)` ⇒ 动作是
    **4 维** `[vx, vy, vz (m/s), 夹爪 0/1]`; 模长 = `‖u[:3]‖`。姿态 (rx/ry/rz) 不走这条出口。
    面板/发布器都要把 x/y/z/夹爪 分开发, 只发模长就是丢信息。
 14. **八阶段状态机 = `src/lerobot/policies/left_right/state_space/cognition.py:31 ActionModulator`**
    STAGES 13 段(接近/对位/下降/抓取/抬起/转移/插入/拔出/AOI转移/AOI检测/回程/放下/完成),
-   插拔八阶段 = 前 7 段 + 完成; `STAGE_V_CAP` = 每阶段限速(m/s) —— 调制器限速的真源。
+   插拔八阶段 = 前 7 段 + 完成; `STAGE_V_CAP` = 每阶段限速(m/s) —— 调制器限速的唯一依据。
    阶段名原本是**字符串**, 信号页只收数值 ⇒ 波形里看不到; 要看得把 阶段序号/八阶段序号/阶段限速_mps
    发成数值通道。取常量直接从类里 import (`_stage_maps()`), **不要另抄一份**。
 
@@ -138,14 +138,14 @@ L5(planner.rules)/MEM(memory.json)/L2(detect.yolo)/L4(vote unified+intact)/L3 �
    加类型 · `dds/zmax_node.py` 注册话题+QOS(beat) · `src/lerobot/dataspace/topics.py` +
    `tools/gui/zmax_telemetry.py` 登记话题/档位 · `tools/dds/ss_daemon.py` 读数并发布。
    窗口里看到它走的是“话题 → 探针 trace.jsonl → ds.<话题名>.<字段>”这条道 (ds 源)。
-   `ss_state.stage` 是**真机 tap 的 prod_stage**, 别把仿真阶段灌进去 (混源会在现场核对时踩坑)。
+   `ss_state.stage` 是**真机 tap 的 prod_stage**, 别把仿真阶段灌进去 (混源会在现场核对时遇到问题)。
 17. **pyqtgraph 递归爆栈要“全轴”断链**: 只关时间轴的 autoSIPrefix 不够 —— 主图每根轴
    (left/right/bottom/top) + 每个副轴都要 `enableAutoSIPrefix(False)`，副轴再
    `setStyle(autoExpandTextSpace=False, tickTextWidth=72)` (宽度不随数值长短变)，
    `_sync_vb_geometry` 加重入闸(setGeometry ⇒ sigResized ⇒ 又调回来)。
 
 18. **“话题在列表里、波形里没有” = 数据空间 digest 被截断** (老倪「没看到 topic 在信号分析里啊」)。
-   probe.py 对没专门摘要的话题走 `body[:180]` 兜底 ⇒ 残缺 JSON ⇒ `parse_ds_digest` 的 json.loads
+   probe.py 对没专门摘要的话题走 `body[:180]` 保障 ⇒ 残缺 JSON ⇒ `parse_ds_digest` 的 json.loads
    失败、人读正则也抠不到 ⇒ 该话题 0 条信号。修法两处: ① probe 的 `_digest_for` 给该话题一行
    **完整紧凑 JSON**(只留要画的叶子, 同 ss_torque 做法) ② `parse_ds_digest` 加“被切掉的 JSON”
    分支: 逐对抠 `"键": 数值`。**判据要直接调页面的 parse_ds_digest**, 不能只看话题列表。
@@ -165,7 +165,7 @@ L5(planner.rules)/MEM(memory.json)/L2(detect.yolo)/L4(vote unified+intact)/L3 �
       话题灰蓝#8ab4f8) > 调色板色; 标签笔+曲线笔都走它。
    ② 信号目录: 非当前场景那份重名行**不要 setForeground(C_DIM)** (整组摆盘 48 行会灰成一片),
       保留本场景色 + alpha≈165 淡显; “非当前场景”用不可勾选+tooltip 表达。
-22. **八阶段要“文字”不只序号**: 3D 面板随快照下发 `八阶段表`(真源 ActionModulator.STAGES 插拔
+22. **八阶段要“文字”不只序号**: 3D 面板随快照下发 `八阶段表`(唯一依据 ActionModulator.STAGES 插拔
    八段), 信号页状态行下再铺一行「🎛 八阶段: 接近 › 对位 › 【下降】 › …」当前段粗体绿+【】。
    长富文本 QLabel 会把窗口 minimumSizeHint 顶到 3068x1936 ⇒ 必须 `setSizePolicy(Ignored, …)`。
 23. **首屏“一条曲线都没有”的真因**: 自动补勾在 `tree.blockSignals(True)` 里做 ⇒ setCheckState 不触发
@@ -206,7 +206,7 @@ L5(planner.rules)/MEM(memory.json)/L2(detect.yolo)/L4(vote unified+intact)/L3 �
    定式: 轴名收敛成**唯一口径 helper** (4 处共用) + 每拍重入闸 + 相对秒模式**不碰 epoch**。
 31. **元任务预测 = 话题 `zmax/ss_meta_pred` (不是 ss_meta_task)**: ss_meta_task = 元任务**清单**派生;
    ss_meta_pred = 预测**得分** + top-k (输入=驱动扭矩). 长串字段 (top_ids/top_scores) 会让 `body[:180]`
-   兜底把数值叶子全挤掉 ⇒ 探针要给它**完整紧凑 JSON 摘要** (数值在前、名字在后). 现值 frozen=1 (驱动扭矩
+   保障把数值叶子全挤掉 ⇒ 探针要给它**完整紧凑 JSON 摘要** (数值在前、名字在后). 现值 frozen=1 (驱动扭矩
    恒定 ⇒ 无区分度) → 必须如实标, 不许写成“有预测力”。
 32. **画布接线先 grep 再动手**: 老倪说“X 要连到 Y”时, 先 `grep 两侧节点的出/入线` 列全 ——
    `ssff(out2) → sssched(in6)` 这条线**本来就存在**, 真正的问题是节点 outputs 只声明 out1 而线用 out2

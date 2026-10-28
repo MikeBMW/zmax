@@ -414,9 +414,9 @@ def _local_ipv4_set():
 def retarget_local_hosts(cfg):
     """配置里写的 host 若已不是本机地址(换网/换热点), 就在内存里换成当前默认路由 IP。
 
-    🔴 2026-10-26: station_url.json 里写死过 10.163.146.78, WiFi 换成热点后
+    🔴 2026-10-26: station_url.json 里预先固定过 10.163.146.78, WiFi 换成热点后
        旁路视图的链接和 /station/status 轮询全部指向一个不存在的地址 ⇒ 红色离线,
-       而用户点链接也打不开。配置文件保留他的意图, 只在**读出来的这一刻**纠正。
+       而用户点链接也无法打开。配置文件保留他的意图, 只在**读出来的这一刻**纠正。
     """
     _locals = _local_ipv4_set()
     try:
@@ -694,7 +694,7 @@ class SSBypassView(QtWidgets.QWidget):
         head.setStyleSheet(f"color:{DIM};font-size:15px;")
         root.addWidget(head)
 
-        gb = QtWidgets.QGroupBox("旁路运行状态 (六层真源码逐帧)")
+        gb = QtWidgets.QGroupBox("旁路运行状态 (六层唯一依据码逐帧)")
         g = QtWidgets.QGridLayout(gb)
         self.lab_stage, self.lab_res, self.lab_con = None, None, None
         keys = [("当前阶段 (13 段)", "stage"), ("残差 (m)", "residual"), ("接触概率", "contact_p"),
@@ -733,7 +733,7 @@ class SSBypassView(QtWidgets.QWidget):
             gp.addWidget(w, i // 5, i % 5)          # 5 列 → 9 格只占 2 行 (窗口别太高)
         root.addWidget(gbp)
 
-        gbimg = QtWidgets.QGroupBox("实时图像 (RealSense 彩色优先 / FoundationPose 调试帧兜底)")
+        gbimg = QtWidgets.QGroupBox("实时图像 (RealSense 彩色优先 / FoundationPose 调试帧保障)")
         gi = QtWidgets.QHBoxLayout(gbimg)
         self.img_view = QtWidgets.QLabel("(无图像)")
         self.img_view.setFixedSize(260, 195)
@@ -746,7 +746,7 @@ class SSBypassView(QtWidgets.QWidget):
         gi.addWidget(self.img_meta, 1)
         root.addWidget(gbimg)
 
-        self.curve = CurveWidget(BANDS_SS, title="状态空间通道 (旁路六层真源码逐帧)")
+        self.curve = CurveWidget(BANDS_SS, title="状态空间通道 (旁路六层唯一依据码逐帧)")
         self.curve_real = CurveWidget(BANDS_REAL, title="真机通道 (Orin 远程只读 · 位姿 50Hz/落盘 10Hz · 力 49.5Hz)")
         box = QtWidgets.QHBoxLayout()
         box.setSpacing(12)
@@ -1187,7 +1187,7 @@ class SSBypassView(QtWidgets.QWidget):
         self._net_setbtn(action, False)
 
     def _feed_curves(self):
-        """把最近一段真实逐帧记录喂给两条波形 (旁路通道 + 真机位姿/插入力); 缺的通道留空, 不填假值"""
+        """把最近一段真实逐帧记录提供给两条波形 (旁路通道 + 真机位姿/插入力); 缺的通道留空, 不填假值"""
         rows = self.src.tail_bypass(240)
         self.curve.set_series("residual", [(float(r.get("t", 0)), float(r.get("residual", 0) or 0))
                                            for r in rows])
@@ -1272,7 +1272,7 @@ class SSBypassView(QtWidgets.QWidget):
             _rsraw = p.get("robot_status") or ""
             try:
                 rs = _json.loads(_rsraw)
-            except Exception:                      # 截断/非完整 JSON → 正则兜底 (如实取值, 不猜)
+            except Exception:                      # 截断/非完整 JSON → 正则保障 (如实取值, 不猜)
                 rs = {}
                 for _k in ("power_state", "operation_state", "error_reason"):
                     _m = _re.search(r'"%s"\s*:\s*"([^"]*)"' % _k, _rsraw)
@@ -1458,7 +1458,7 @@ class Z700SignalsView(QtWidgets.QWidget):
         for i, (t_, k, h) in enumerate([("当前阶段", "stage", "13 段状态机 · 旁路判定"),
                                         ("残差", "res", "m · 测量 vs 先验 (状态校正器)"),
                                         ("接触概率", "con", "σ(残差) · 接触判据"),
-                                        ("旁路步 / 采样", "steps", "逐帧六层真源码"),
+                                        ("旁路步 / 采样", "steps", "逐帧六层唯一依据码"),
                                         ("零下行自证", "zero", "无 rclpy/socket/写回"),
                                         ("缺口", "gaps2", "缺通道与未示教项")]):
             w, lab = self._cell(t_, h)

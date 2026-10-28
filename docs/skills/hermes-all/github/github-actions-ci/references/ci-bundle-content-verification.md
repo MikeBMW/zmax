@@ -54,7 +54,7 @@ macOS `.app` (onedir) 用 `find App.app -name '*.xml' | wc -l` 更直接 (同样
 
 Git Bash (cp1252) 里跑 `python tools/xx.py`, 脚本中 `print("✅ 写入: ...")` 抛
 `UnicodeEncodeError: 'charmap' codec can't encode character '\u2705' in position 0` → 步骤 exit 1
-(文件其实已写好, 只是日志崩)。修法二选一:
+(文件实际已写好, 只是日志崩)。修法二选一:
 - 脚本顶部: `for _s in (sys.stdout, sys.stderr): _s.reconfigure(encoding="utf-8", errors="replace")`
 - 步骤级: `env: { PYTHONIOENCODING: "utf-8" }` (GUI 用 `subprocess(capture_output=True)` 调同一脚本时同理)
 

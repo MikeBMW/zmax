@@ -366,7 +366,7 @@ def _crop_metrics(canvas, bgr, ratio, offset):
 #   亮度分不开, 只能靠 ROI 右界拦住(实测台面从 x≈1820 起, 故右界取 1815)。
 # 估倾角双法互校: (a) 上边缘滑窗最直段直线 (b) ROI 掩膜 minAreaRect —— 两法差 >1.5° 就判失败,
 #   宁可回退全幅也不硬裁(实测整条拟合残差 ±100px 是脏的, 只有中段直线干净)。
-JUDGE_ROI = (330, 960, 1815, 1440)          # 外框(右界只当兜底 —— 正常走"上边缘竖直台阶"收紧到模块本体)
+JUDGE_ROI = (330, 960, 1815, 1440)          # 外框(右界只当保障 —— 正常走"上边缘竖直台阶"收紧到模块本体)
 JUDGE_TH_BAR = 200                          # 过曝条(模块壳体)阈值
 JUDGE_TH_MOD = 170                          # 模块并集阈值(放宽: 含左端灰青连接器头, 实测灰 ~187)
 JUDGE_CANVAS = (1400, 300)                  # 判据图定尺(宽,高) —— 模块水平居中, 背景灰填充
@@ -395,7 +395,7 @@ def _judge_th_levels(g, x0, y0, x1, y1):
     """本帧的 (背景电平, 亮条电平, 亮条阈值, 模块阈值) —— 不再吃固定 200/170。
 
     为什么: 表面判据 v12.1 是靠"找过曝亮条(掩膜)→取上边缘/台阶"量厚度的。相机把曝光降下来(修过曝)
-    时, 画面里就没有 ≥200 的亮条了 ⇒ 判据整条垮掉。所以阈值必须**跟着本帧走**, 而不是写死一个
+    时, 画面里就没有 ≥200 的亮条了 ⇒ 判据整条垮掉。所以阈值必须**跟着本帧走**, 而不是预先固定一个
     "只对过曝帧成立"的数。返回的 th 在 abs 模式下就是老常量 ⇒ 老行为逐位可复现。
     """
     side = np.concatenate([g[y0:y1, x0:x0 + 30].ravel(), g[y0:y1, x1 - 30:x1].ravel()])
@@ -418,7 +418,7 @@ def _judge_bg_level(g, x0, y0, x1, y1):
 def _judge_top_edge(g, xa, xb, ya, yb, th=None, min_run=40):
     """逐列取"模块上边缘"点: 该列里第一个亮像素(要求该列亮像素数≥min_run, 排除噪点)。
 
-    th=None ⇒ 用老常量 JUDGE_TH_BAR(仅兜底); 判据主路一律显式传**本帧算出的**阈值。
+    th=None ⇒ 用老常量 JUDGE_TH_BAR(仅保障); 判据主路一律显式传**本帧算出的**阈值。
     """
     if th is None:
         th = JUDGE_TH_BAR
@@ -758,7 +758,7 @@ def _detect_worker_loop():
         topview_path, origin_path, detect_type = (list(item) + [None] * 3)[:3]
         try:
             if not topview_path or not os.path.exists(topview_path):
-                print("  ⚠️ 跳过一项: 模型输入图已不在(%s) —— 不把不存在的路径喂给检测器" % topview_path)
+                print("  ⚠️ 跳过一项: 模型输入图已不在(%s) —— 不把不存在的路径提供给检测器" % topview_path)
                 continue
             t0 = time.time()
             result = detector.detect(topview_path, detect_type=detect_type)

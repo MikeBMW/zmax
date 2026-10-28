@@ -1,4 +1,4 @@
-# INTACT-JEPA 根运行时 (E1) 官方 eval 跑通实录 — 环境/数据/config.json/预检
+# INTACT-JEPA 根运行时 (E1) 官方 eval 验证通过实录 — 环境/数据/config.json/预检
 
 2026-09-12 本机实测。**与 `native-paper-weight-vs-domain-finetune-2026-09-12.md` 互补**:
 那份讲 **paper_runtime + paper 权重** 的口径 (prior_only 求解器、env_*.mp4 产物、权重命名撞车);
@@ -32,7 +32,7 @@ aria2c -x 16 -s 16 -k 1M -c --file-allocation=none --max-tries=0 --retry-wait=10
   -d <dir> -o <file> "https://hf-mirror.com/datasets/<repo>/resolve/main/<file>"
 ```
 **完成判据 = 侧车 `<file>.aria2` 消失**。用 `ps | grep aria2c` 判完成会**提前**开解压 →
-`zstd: Data corruption detected (36)` 是**假损坏** (文件其实还差几百 MB)。解压前先 `zstd -t` 校验。
+`zstd: Data corruption detected (36)` 是**假损坏** (文件实际还差几百 MB)。解压前先 `zstd -t` 校验。
 `hf_transfer` 已弃用 (新版提示用 `HF_XET_HIGH_PERFORMANCE`); 无 HF token 时 CDN 会限速到 ~0.1MB/s。
 数据集放 `$STABLEWM_HOME/datasets/`, 且 `STABLEWM_HOME` = `LOCAL_DATASET_DIR` = 缓存根。
 
@@ -105,17 +105,17 @@ bash scripts/eval_official.sh direct pusht /abs/path/to/ckpt_dir 42 20   # ★ �
 ## 7. (待并入 SKILL.md) 接管式集成: 一致性守卫 + 不替换控制器本体
 
 在**已有闭环控制器** (解析链 / 蒸馏 MLP 状态机) 的机器人上接模型时, **不要整体替换控制器对象**:
-这类控制器通常**自带域外兜底** (实测注释 `状态出训练域 → 解析守卫兜底`, 判据 d_guard / DOMAIN_SIGMA)。
-换掉对象 = 兜底一起丢 → 域外模型输出坏动作无人拦 → 闭环必崩 (实测 0/10)。
+这类控制器通常**自带域外保障** (实测注释 `状态出训练域 → 解析守卫保障`, 判据 d_guard / DOMAIN_SIGMA)。
+换掉对象 = 保障一起丢 → 域外模型输出坏动作无人拦 → 闭环必崩 (实测 0/10)。
 
 ```python
-u_eng = self.inner.forward(obs)          # ① 原控制器永远先算 = 安全基线 (含其域判定+兜底)
+u_eng = self.inner.forward(obs)          # ① 原控制器永远先算 = 安全基线 (含其域判定+保障)
 u_act = actor(z, intent, prev)           # ② 模型建议
 if np.abs(u_act - u_eng).max() <= TOL:   # ③ 一致才采纳
     return u_act
 return u_eng
 ```
-- 报告必须同时给 **actor 采纳次数 / 引擎兜底次数** — 采纳 0 次 = 模型是摆设, 不算接管。
+- 报告必须同时给 **actor 采纳次数 / 引擎保障次数** — 采纳 0 次 = 模型是摆设, 不算接管。
 - 控制器常是调度器**融合** `u = w_ff·u_ff + (1−w_ff)·u_fb`; 学"建议 u_ff"而执行融合值 = 标签错配,
   训练标签应取**真正下发的动作** (实测引擎落 `u_fuse_vec`)。
 

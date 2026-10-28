@@ -1,9 +1,9 @@
 # noVNC/x11vnc 生产加固 — ECS 公网 + nginx 前置 (2026-09-06 全踩过)
 
 补 remote-desktop-x11vnc-novnc.md 与 websockify-broken-vnc-bridge.md 的**生产部署尾段**。
-纯 WS bridge (自写 asyncio) 已跑通本地后, 走 ECS 公网还有四个必踩坑:
+纯 WS bridge (自写 asyncio) 已验证通过本地后, 走 ECS 公网还有四个必遇到问题:
 
-## 1. nginx 426 Upgrade Required (vnc.html 都打不开)
+## 1. nginx 426 Upgrade Required (vnc.html 都无法打开)
 症状: 页面 curl 返回 **426** (不是 200), noVNC UI 起不来。
 根因: 把整个 `location ^~ /novnc/` 都 proxy_pass 给纯 WS bridge → nginx 把**普通 GET
 (vnc.html 静态页) 也当 WebSocket 升级**要求。旧 websockify 带 `--web` 同时服务静态文件所以

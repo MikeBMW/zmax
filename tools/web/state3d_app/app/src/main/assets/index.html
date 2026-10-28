@@ -45,7 +45,7 @@ h1{font-size:17px;margin-bottom:2px}
 // 数据源: GitHub mac 分支的公网 JSON（4060 每 2 分钟自动同步写入）
 // 源①: ECS relay（每 3 秒刷新, 含 4060+Mac 两台, CORS 已允许）
 var RELAY = 'https://datadrive.world/api/relay/latest';
-// 源②/③: 公网 JSON 兜底（每 2 分钟）
+// 源②/③: 公网 JSON 保障（每 2 分钟）
 var URLS = [
   'https://raw.githubusercontent.com/MikeBMW/lerobot-smolvla-lew/mac/docs/web/robot-status.json',
   'https://cdn.jsdelivr.net/gh/MikeBMW/lerobot-smolvla-lew@mac/docs/web/robot-status.json'

@@ -9,7 +9,7 @@
   ② 逐帧喂 ManifoldEngineLoop (度量→健康度→动力 τ→L5/L4/L3/L2→记忆上行→L5 指挥更新)
   ③ 每个场景跑 N 轮 (默认 3, 让 L2 肌肉记忆固化: 同 seed 连续成功 ≥3 次)
   ④ 另跑一次「监督钻取」(注入越限 L4 提案) 取证 L4 监督确实拦过违规动作
-  ⑤ 节拍: 同时给「用户口径 <3s」与「真源 ≤3.15s (PVT, config/platform/zmax_perf_spec.json)」两个数
+  ⑤ 节拍: 同时给「用户口径 <3s」与「唯一依据 ≤3.15s (PVT, config/platform/zmax_perf_spec.json)」两个数
   ⑥ 输出 JSON (reports/sil_engine_<ts>.json) + 屏幕打印 (H/κ/τ 序列统计 · 五层计数 · 记忆/否决)
 
 用法:
@@ -40,16 +40,16 @@ PERF = os.path.join(ROOT, "config", "platform", "zmax_perf_spec.json")
 
 
 def _perf_takt() -> dict:
-    """从指标真源读 CT 目标 (用户口径 vs 真源)。"""
+    """从指标唯一依据读 CT 目标 (用户口径 vs 唯一依据)。"""
     try:
         d = json.load(open(PERF, encoding="utf-8"))
         for g in d.get("groups", []):
             for m in g.get("metrics", []):
                 if m.get("id") == "perf.cycle_s":
-                    return {"真源_target": m.get("target"), "真源_stage": m.get("stage")}
+                    return {"唯一依据_target": m.get("target"), "唯一依据_stage": m.get("stage")}
     except Exception:                                                       # noqa: BLE001
         pass
-    return {"真源_target": "≤3.15 / ≤8 / ≤20–25 s", "真源_stage": "PVT"}
+    return {"唯一依据_target": "≤3.15 / ≤8 / ≤20–25 s", "唯一依据_stage": "PVT"}
 
 
 def _frames_from_npz(path: str) -> tuple[list, dict]:
@@ -191,15 +191,15 @@ def main() -> int:
     per_part = (total_t / placed) if placed > 0 else None
     report["takt"] = {
         "用户口径_s": 3.0, "用户口径_note": "<3s",
-        "真源_s": 3.15, "真源_note": "≤3.15s (PVT, " + str(takt.get("真源_stage")) + ")",
-        "真源_target": takt.get("真源_target"),
+        "唯一依据_s": 3.15, "唯一依据_note": "≤3.15s (PVT, " + str(takt.get("唯一依据_stage")) + ")",
+        "唯一依据_target": takt.get("唯一依据_target"),
         "实测_tray_episode_total_s": total_t, "实测_tray_placed": placed,
         "实测_tray_per_part_s": per_part,
         "实测_gap_note": "实测/口径之差如实列, 不调口径凑数",
     }
     print("\n══ 节拍 (两口径并列, 不混) ══")
     print(f"  用户口径        : <3s")
-    print(f"  真源 (perf spec): {takt.get('真源_target')} (stage={takt.get('真源_stage')})")
+    print(f"  唯一依据 (perf spec): {takt.get('唯一依据_target')} (stage={takt.get('唯一依据_stage')})")
     print(f"  实测 tray episode: {total_t:.3f}s / {placed:g} 颗 ⇒ 单颗 {per_part if per_part is None else round(per_part, 4)}s")
     report["elapsed_s"] = round(time.time() - t0, 3)
 

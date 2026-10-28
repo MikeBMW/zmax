@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-生成「双脑 + 状态机」插拔模型 Simulink Flow JSON — 飞书端跑通方案 v1.0
+生成「双脑 + 状态机」插拔模型 Simulink Flow JSON — 飞书端验证通过方案 v1.0
 来源: 用户方案 JSON (2026-08-10): 抓起8/8 插入7/8 超越官方专家
 输出: flows/dual_brain_peg.json
 """

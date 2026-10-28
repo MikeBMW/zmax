@@ -25,7 +25,7 @@ import time
 import numpy as np
 
 STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入"]
-# ★ 2026-09-26 L3 修复: 引擎真源是 8 阶段 (cognition.py 含"完成"), 且 trace 里阶段名可能带 "阶段 " 前缀
+# ★ 2026-09-26 L3 修复: 引擎唯一依据是 8 阶段 (cognition.py 含"完成"), 且 trace 里阶段名可能带 "阶段 " 前缀
 #   → 原来 `stg in STAGES` 永远 False, skill_ctx 被静默写成常量 (dim13=1)。这里显式归一化 + 独立未知槽。
 STAGES8 = STAGES + ["完成"]
 SK_UNKNOWN_SLOT = 13 + len(STAGES8)          # = 20 (24 维里留出)

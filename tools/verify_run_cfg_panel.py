@@ -101,7 +101,7 @@ chk("Z-MAX 运行开关" in QApplication.clipboard().text(), "「📋 复制当�
 
 print("\n⑤ 精简后 3 视图 映射 (索引→控件) — 全部与状态空间工程有真连接")
 # 🧭 2026-10-15 老倪: 「画布右侧栏, 保留 主参数 · 数据总线 · 参数中心; 删除 运行开关」
-#   ⇒ 4 行 → 3 行; 标定真源(run_cfg 同批撤下) 的控件对象仍在, 只是不再显示
+#   ⇒ 4 行 → 3 行; 标定唯一依据(run_cfg 同批撤下) 的控件对象仍在, 只是不再显示
 EXP = {0: ("mparam",), 1: ("bus",), 2: ("param_center",)}
 OBJ = {"mparam": d.mparam, "bus": d.bus, "param_center": d.pc_side}
 chk(d.cmb_view.count() == 3, f"视图数 = {d.cmb_view.count()} (11 → 5 → 4 → 3: 2026-10-15 删运行开关, 加参数中心)")

@@ -5,13 +5,13 @@
 老倪 (2026-10-15): 「每个原子技能，应该有个物理模型 … 表示物理世界的连续性惯性约束，代码在哪里？
 这些物理参数 速度 v、加速度 a、位移 s 需要可以标定，比如上限下限、最大值最小值」
 
-分工 (单一真源, 不写第二套):
+分工 (单一唯一依据, 不写第二套):
   · 物理模型/闸门代码 → src/lerobot/policies/left_right/state_space/physics_constraints.py
     ①速度 ‖v‖≤v_cap ②加速度 ‖Δv‖≤a_max·dt ③加加速度 ‖Δa‖≤jerk_max·dt
     ④动量/质量率 ‖m·Δv+v·Δm‖≤F_max·dt ⑤位移 ‖v‖·dt≤s_step 且 段累计行程≤s_max
-  · 参数**标定面**= 本工具 + 真源文件 config/calib/zmax_skill_physics.json
-    真源里的每个物理量都写成 {value, min, max, unit, src} —— min/max 就是物理上下限。
-  · 本工具只做四件事: 从真源生成初值 / 打印标定表 / 改值(越界拒绝) / 校核。
+  · 参数**标定面**= 本工具 + 唯一依据文件 config/calib/zmax_skill_physics.json
+    唯一依据里的每个物理量都写成 {value, min, max, unit, src} —— min/max 就是物理上下限。
+  · 本工具只做四件事: 从唯一依据生成初值 / 打印标定表 / 改值(越界拒绝) / 校核。
 
 物理上下限从哪来 (不是拍的):
   v      上限 = safety.py::VEL_LIMIT (全局速度硬上限)          · 下限 = 5 mm/s (再低是末端磨蹭)
@@ -26,7 +26,7 @@
   dmdt   上限 = 0.5 kg/s (抓放实测 0.15 kg / 0.30 s)             · 下限 = 0
 
 CLI:
-  gui-venv311/bin/python tools/skill_physics_calib.py --init-from-sources   # 从引擎/状态机真源生成真源文件
+  gui-venv311/bin/python tools/skill_physics_calib.py --init-from-sources   # 从引擎/状态机唯一依据生成唯一依据文件
   gui-venv311/bin/python tools/skill_physics_calib.py --table               # 标定表 (含上下限/是否越界)
   gui-venv311/bin/python tools/skill_physics_calib.py --set 接近 v 0.30     # 改一个值 (越界→拒绝)
   gui-venv311/bin/python tools/skill_physics_calib.py --set SK01 v 0.30     # 也可以按技能号 SK01..SK08
@@ -49,7 +49,7 @@ CALIB = os.path.join(ROOT, "config", "calib", "zmax_skill_physics.json")
 
 
 def calib_path():
-    """真源路径 (ZMAX_SKILL_PHYS_JSON 可覆盖 —— 判据脚本用临时副本来验标定, 不动在役真源)。"""
+    """唯一依据路径 (ZMAX_SKILL_PHYS_JSON 可覆盖 —— 判据脚本用临时副本来验标定, 不动在役唯一依据)。"""
     return os.environ.get("ZMAX_SKILL_PHYS_JSON") or CALIB
 
 
@@ -62,7 +62,7 @@ SIMREAL = os.path.join(ROOT, "tools", "gui", "state_space_sim_real.py")
 DT = 0.1                       # 控制拍 (10 Hz) — 与 InertiaLimiter 默认一致
 PARAMS = ("v", "v_min", "a", "s", "s_step", "jerk", "m", "F", "dmdt")
 
-# ── 物理上下限表 (每条都注明真源) ─────────────────────────────────────────────
+# ── 物理上下限表 (每条都注明唯一依据) ─────────────────────────────────────────────
 BOUND_SRC = {
     "v":      "v ≤ safety.py::VEL_LIMIT (全局速度硬上限 1.0 m/s); v ≥ 0.005 m/s (再低=末端磨蹭)",
     "v_min":  "0 ≤ v_min ≤ 该段 v_cap (最小趋近速度, cognition.STAGE_V_MIN)",
@@ -81,13 +81,13 @@ M_MIN, M_MAX = 0.5, 3.0
 DMDT_MAX = 0.5
 JERK_MAX_HARD = 60.0
 
-# 技能号 ↔ 阶段 (真源: atomic_skills.py 的类名/code/stage)
+# 技能号 ↔ 阶段 (唯一依据: atomic_skills.py 的类名/code/stage)
 ATOMIC_SKILLS_PY = os.path.join(ROOT, "src", "lerobot", "policies", "left_right",
                                  "state_space", "skills", "atomic_skills.py")
 
 
 def parse_skill_classes():
-    """从 atomic_skills.py 解析 SK 类 (类名/code/stage) —— 技能号↔阶段 的**真源**。
+    """从 atomic_skills.py 解析 SK 类 (类名/code/stage) —— 技能号↔阶段 的**唯一依据**。
 
     老倪口径: 不许自己编编号。这里逐个类读 (SK07 在插拔链=插入、摆盘链=放入, 同号两支都保留)。
     """
@@ -119,7 +119,7 @@ def _skill_code_map():
     for c in parse_skill_classes():
         m.setdefault(c["code"], c["stage"])
     return m
-# 各段**几何行程 s** 的真源 (有常量的引常量, 没有的诚实标"待现场标定")
+# 各段**几何行程 s** 的唯一依据 (有常量的引常量, 没有的诚实标"待现场标定")
 S_SRC = {
     "接近":  (0.60,  "safety.POS_LIMIT 安全包络 (工位跨度, 待现场标定)"),
     "对位":  (0.06,  "cognition.ActionModulator.align_xy_coarse=0.06 (粗对位窗口)"),
@@ -137,7 +137,7 @@ S_SRC = {
 }
 
 
-# ───────────────────── 从真源源码解析 (不在本文件里写死引擎值) ─────────────────────
+# ───────────────────── 从唯一依据源码解析 (不在本文件里预先固定引擎值) ─────────────────────
 def _lit(node):
     """字面量求值 (兼容 dict(...) 调用与 {..} 字典) — 只读源码, 不执行代码。"""
     try:
@@ -157,7 +157,7 @@ def _lit(node):
 
 
 def _parse_dict_from_source(path, names, cls=None):
-    """从 .py 源码里解析字面量 dict (AST, 不执行代码) — 保证标定初值取自真源。"""
+    """从 .py 源码里解析字面量 dict (AST, 不执行代码) — 保证标定初值取自唯一依据。"""
     tree = ast.parse(open(path, encoding="utf-8").read())
     out = {}
     for n in ast.walk(tree):
@@ -187,7 +187,7 @@ def _parse_phys_table():
 
 
 def build_from_sources():
-    """生成真源 dict: 每个阶段 9 个物理量, 每项 {value,min,max,unit,src}。"""
+    """生成唯一依据 dict: 每个阶段 9 个物理量, 每项 {value,min,max,unit,src}。"""
     global SKILL_CODE2STAGE
     skill_classes = parse_skill_classes()
     SKILL_CODE2STAGE = _skill_code_map()
@@ -233,7 +233,7 @@ def build_from_sources():
             "F":      _q(F, 0.5, GRIP_FORCE_MAX, "N", "physics_constraints.PHYS[%s].F" % st),
             "dmdt":   _q(dmdt, 0.0, DMDT_MAX, "kg/s", "physics_constraints.PHYS[%s].dmdt" % st),
         }
-    return {"_doc": "L2 原子技能物理参数标定真源 (v/a/s + m/F/jerk/dmdt, 每项带物理上下限 min/max)。"
+    return {"_doc": "L2 原子技能物理参数标定唯一依据 (v/a/s + m/F/jerk/dmdt, 每项带物理上下限 min/max)。"
                     "写: tools/skill_physics_calib.py --set | 读: physics_constraints.limits_for()"
                     " (缺失时回退内置 PHYS 表)。",
             "_bounds_policy": "value 必须落在 [min,max]; CLI 越界拒绝, 运行期越界由 limiter 夹回并标 clamp。",
@@ -321,7 +321,7 @@ def table(d, only=None):
     stages = [only] if only else list(d["stages"].keys())
     W = (6, 9, 14, 9, 10, 10, 9, 7, 7, 8)
     print("═" * 96)
-    print("⚖ 原子技能物理参数标定表 (真源 %s)" % os.path.relpath(CALIB, ROOT))
+    print("⚖ 原子技能物理参数标定表 (唯一依据 %s)" % os.path.relpath(CALIB, ROOT))
     print("   v 速度 m/s · a 加速度 m/s² · s 段行程 m · s_step 单拍位移上限 m · jerk m/s³ · m kg · F N · dmdt kg/s")
     print("═" * 96)
     print(_col("技能", W[0]) + _col("阶段", W[1]) + _col("v≤(v_min)", W[2]) + _col("a≤", W[3]) +
@@ -349,7 +349,7 @@ def table(d, only=None):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="原子技能物理参数标定 (v/a/s + 上下限)")
-    ap.add_argument("--init-from-sources", action="store_true", help="从引擎/状态机真源生成真源文件")
+    ap.add_argument("--init-from-sources", action="store_true", help="从引擎/状态机唯一依据生成唯一依据文件")
     ap.add_argument("--table", action="store_true", help="打印标定表")
     ap.add_argument("--stage", default=None, help="只显示某阶段")
     ap.add_argument("--set", nargs=3, metavar=("STAGE", "PARAM", "VALUE"), action="append", default=[])
@@ -363,14 +363,14 @@ def main(argv=None):
         d = build_from_sources()
         save(d)
         bad = validate(d)
-        print("✅ 已从真源生成 %s (%d 阶段 × %d 物理量)" % (os.path.relpath(CALIB, ROOT), len(d["stages"]), len(PARAMS)))
+        print("✅ 已从唯一依据生成 %s (%d 阶段 × %d 物理量)" % (os.path.relpath(CALIB, ROOT), len(d["stages"]), len(PARAMS)))
         print("   校核: %s" % ("干净" if not bad else "; ".join(bad)))
         table(d)
         return 0 if not bad else 1
 
     d = load()
     if d is None:
-        print("⚠️ 真源不存在: %s\n   先跑 --init-from-sources" % CALIB)
+        print("⚠️ 唯一依据不存在: %s\n   先跑 --init-from-sources" % CALIB)
         return 2
 
     rc = 0

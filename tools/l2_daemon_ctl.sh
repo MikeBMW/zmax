@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # L2 常驻执行器 启停 (FIFO: zmax_data/l2_cmd.fifo)
-#   症状 "执行器 FIFO 打不开([Errno 6])" = FIFO 文件在、**没人读** ⇒ 守护进程没跑。
+#   症状 "执行器 FIFO 无法打开([Errno 6])" = FIFO 文件在、**没人读** ⇒ 守护进程没跑。
 #   本脚本只负责把守护进程拉起来并自证(有 reader + 日志无异常); 不发任何运动指令。
 set -u
 cd /home/ubuntu/zmax || exit 1

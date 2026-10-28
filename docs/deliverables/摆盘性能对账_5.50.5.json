@@ -18,7 +18,7 @@
    "sha256_16": "43a42916bdaa01d8",
    "mtime": "2026-10-12 20:14:36"
   },
-  "主参数M真源": {
+  "主参数M唯一依据": {
    "path": "config/calib/zmax_manifold.json",
    "sha256_16": "a56a3c3bf6a3988b",
    "mtime": "2026-10-13 11:56:46"
@@ -64,7 +64,7 @@
    "实测": "最大 0.597 mm (0.397 ; 0.552 ; 0.597)",
    "判定": "达标",
    "复核命令": "python3 -c \"import numpy as np;print(np.load('reports/tray_place_latest.npz',allow_pickle=True)['meta'].item()['judges'])\"",
-   "备注": "真源: 每颗判据 dx/dy 绝对值之和"
+   "备注": "唯一依据: 每颗判据 dx/dy 绝对值之和"
   },
   {
    "#": 5,
@@ -105,10 +105,10 @@
   {
    "#": 9,
    "指标": "主参数 M (配置单→M 映射落役)",
-   "目标(配置单)": "配置单算出的 M 必须 == 在役真源",
+   "目标(配置单)": "配置单算出的 M 必须 == 在役唯一依据",
    "实测": "在役 M=3.283 (dim=3/full) vs 配置单映射 M=4.423 (dim=6/isotropic)",
    "判定": "**不一致 ⇒ 映射未落役**",
-   "复核命令": "python3 tools/config_to_M.py --task TASK-06-TRAY   # 落役: 加 --write (改在役真源前须评审)",
+   "复核命令": "python3 tools/config_to_M.py --task TASK-06-TRAY   # 落役: 加 --write (改在役唯一依据前须评审)",
    "备注": "映射规则 R1–R5 在 config_to_M.py; 落役判据 verify_metric_main_param.py 23/0 PASS (节点侧)"
   },
   {

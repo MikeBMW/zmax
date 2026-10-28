@@ -134,7 +134,7 @@ print("  夹具位姿投影: %s" % {k: (round(v[0], 1), round(v[1], 1)) for k, v
 j2 = judge(proj, "slot2", "slot2")
 check("视觉", "正例: 框+棱边都在 slot2 → ok/slot2", j2["ok"] and j2["slot"] == "slot2", j2["reason"])
 j1 = judge(proj, "slot1", "slot1")
-check("视觉", "正例: 框+棱边都在 slot1 → ok/slot1 (非写死槽位)", j1["ok"] and j1["slot"] == "slot1", j1["reason"])
+check("视觉", "正例: 框+棱边都在 slot1 → ok/slot1 (非预先固定槽位)", j1["ok"] and j1["slot"] == "slot1", j1["reason"])
 jc = judge(proj, "slot2", "slot1")
 check("视觉", "两路冲突(棱边 slot2 / 框 slot1) → 拒判", (not jc["ok"]) and "冲突" in jc["reason"], jc["reason"])
 jn = judge(proj, "slot2", None)

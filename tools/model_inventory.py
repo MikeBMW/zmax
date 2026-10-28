@@ -4,13 +4,13 @@
 
 为什么存在: 『模型引擎』页需要"实时"地看到四层模型(L5认知/L4世界模型/L3动作/L2检测)的
 权重现状 + 与本机 GPU 的真实同步 + 当前有没有训练在跑。之前这些口径散落在各脚本里、
-靠人肉 ls,既容易过期也容易写死。本工具**只读**地把它们统一采一遍,输出固定字段,
+靠人肉 ls,既容易过期也容易预先固定。本工具**只读**地把它们统一采一遍,输出固定字段,
 页/编排器直接吃 JSON。
 
 设计红线 (与老倪工程约束一致):
   * 只读: 不写任何已有文件、不启动/停止训练、不杀进程、不发真机指令、不联网。
     唯一会落盘的是 --json-out <path> (调用者显式指定才写)。
-  * 全部实时采集, 不写死任何数值: GPU 走 nvidia-smi; 训练进程走 ps; 模型/报告走文件系统 stat。
+  * 全部实时采集, 不预先固定任何数值: GPU 走 nvidia-smi; 训练进程走 ps; 模型/报告走文件系统 stat。
   * 采集失败必须显式报错 (error 字段), 不允许留空静默 —— 页上"空"和"坏了"是两回事。
 
 用法:
@@ -39,7 +39,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPORTS_DIR = os.path.join(ROOT, "reports")
 ACTIVE_JSON = os.path.join(ROOT, "models", "active_models.json")
 
-# 四层: 数值来源 = active_models.json 的在役指针 (真源); 找不到就回退到目录扫描
+# 四层: 数值来源 = active_models.json 的在役指针 (唯一依据); 找不到就回退到目录扫描
 LAYERS = ["L5", "L4", "L3", "L2"]
 LAYER_DESC = {
     "L5": "VLM 认知 (SmolVLM2 LoRA/merged)",
@@ -308,8 +308,8 @@ def _newest(paths: list) -> str:
     return best
 
 
-# ── 在役模型**真名**真源 (老倪 2026-10-14: 「在役模型的名字要改成真实模型的名字, 例如 L2 YOLO」)
-#    以前这里写死的名字只说"指针种类"(如 在役指针/稳定指针), 没说是什么模型。名字真源 = models/active_models.json
+# ── 在役模型**真名**唯一依据 (老倪 2026-10-14: 「在役模型的名字要改成真实模型的名字, 例如 L2 YOLO」)
+#    以前这里固定不变的名字只说"指针种类"(如 在役指针/稳定指针), 没说是什么模型。名字唯一依据 = models/active_models.json
 #    (zh 名的指针文件, 与 model_autoload.py 加载的是同一份); 取不到就如实标注, **不编模型名**。
 _ACTIVE_JSON = os.path.join(ROOT, "models/active_models.json")
 _ACT_CACHE = {"mtime": None, "data": {}}
@@ -331,9 +331,9 @@ def _active_names() -> dict:
 
 
 def _act_name(layer: str, kind: str) -> str:
-    """在役行显示名 = 真源登记的真名; 没登记 ⇒ "<层> 在役 (<kind>) · 名称真源未登记" (不编)。"""
+    """在役行显示名 = 唯一依据登记的真名; 没登记 ⇒ "<层> 在役 (<kind>) · 名称唯一依据未登记" (不编)。"""
     nm = re.sub(r"^L\d\s*·\s*", "", str((_active_names().get(layer) or {}).get("name") or "").strip())
-    return nm or ("%s 在役 (%s) · 名称真源未登记" % (layer, kind))
+    return nm or ("%s 在役 (%s) · 名称唯一依据未登记" % (layer, kind))
 
 
 def _l5_merged_name() -> str:
@@ -352,11 +352,11 @@ def _l5_merged_name() -> str:
             return "%s 本地视觉语言模型 (merged 可部署)" % fam
     except Exception:                                                        # noqa: BLE001
         pass
-    return "本地 VLM merged (可部署) · 架构真源未登记"
+    return "本地 VLM merged (可部署) · 架构唯一依据未登记"
 
 
 def _layer_candidates(layer: str, active: dict) -> list:
-    """按层收集候选权重 (真源优先: active_models.json 的指针排第一)。"""
+    """按层收集候选权重 (唯一依据优先: active_models.json 的指针排第一)。"""
     cands = []  # (name, path, is_active)
     if layer == "L2":
         act = (active.get("L2") or {}).get("path")
@@ -369,8 +369,8 @@ def _layer_candidates(layer: str, active: dict) -> list:
             cands.append(("L2 最新训练产物", newest, False))
         # 🧩 2026-10-14 老倪: 「还有个 SAM3 呢，怎么搞？」
         #   SAM3 是 L2 的**第二个模型**(开放词汇分割, 官方基座 848M + annot_v1 适配器 + 常驻服务 8796),
-        #   此前不在清单里 ⇒ 配置通道/配置中心模型配置/模型引擎窗口(三处同一份真源)**一起漏掉它**。
-        #   这里按磁盘真源登记; 状态与判据由 8796 /status/all 的 state/note_short 给 (不在这里编)。
+        #   此前不在清单里 ⇒ 配置通道/配置中心模型配置/模型引擎窗口(三处同一份唯一依据)**一起漏掉它**。
+        #   这里按磁盘唯一依据登记; 状态与判据由 8796 /status/all 的 state/note_short 给 (不在这里编)。
         _sam3_base = os.path.join(ROOT, "zmax_data/models/sam3_hf/model.safetensors")
         if os.path.exists(_sam3_base):
             cands.append(("L2 候选 · SAM3 开放词汇分割 (官方基座 848M, 未在役)", _sam3_base, False))
@@ -456,7 +456,7 @@ def collect_models(reports: list) -> list:
     for layer in LAYERS:
         _tri = list(_layer_candidates(layer, active))
         # 🧩 2026-10-14 老倪: 「候选为什么不能都变成在役?」—— 一层可以**多条在役**: 基座指针 + 适配层(LoRA)
-        #   + 感知原语(SAM3) + 本地技能包(L5)。真源 = models/active_models.json#extra_in_service (不是界面开关)。
+        #   + 感知原语(SAM3) + 本地技能包(L5)。唯一依据 = models/active_models.json#extra_in_service (不是界面开关)。
         _ext: dict = {}
         for e in ((active.get("extra_in_service") or {}).get(layer) or []):
             if not isinstance(e, dict) or not e.get("path"):
@@ -570,7 +570,7 @@ def _parse_l5_train(fp: str) -> dict:
 
 
 def collect_reports(limit: int = 15) -> list:
-    """白名单格式: joint_train_*/summary.json + l5_vlm_train_*.json。自己探字段, 不写死 schema。"""
+    """白名单格式: joint_train_*/summary.json + l5_vlm_train_*.json。自己探字段, 不预先固定 schema。"""
     records = []
     for fp in sorted(glob.glob(os.path.join(REPORTS_DIR, "joint_train_*", "summary.json"))):
         records.extend(_parse_joint_summary(fp))

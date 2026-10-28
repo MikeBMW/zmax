@@ -2,7 +2,7 @@
 """验证「仿真输入图像 与 ▶运行 同步」修复 (2026-09-17)
 
 老倪问: 点了运行, 仿真渲染的图像不动, 应该实时同步。
-根因: 窗口仿真源渲染的是 node_logic._YOLO_ALIGNER.env (只 reset、从不 step) → 永远同一帧。
+根因: 窗口仿唯一依据渲染的是 node_logic._YOLO_ALIGNER.env (只 reset、从不 step) → 永远同一帧。
 修法: 引擎 RealStateSpaceSim 每步真渲染的帧挂到进程共享槽 SS_LIVE_FRAME, 窗口优先显示它。
 
 本脚本查 (全部用磁盘上真实代码):
@@ -10,7 +10,7 @@
   ② env.step 推进后, 发布的帧**逐帧在变** (证明"跟着运行动", 不是同一张)
   ③ 读取端: 帧太旧 (引擎停了) → 返回 None (窗口不许假动)
   ④ 窗口取帧 _SimGrabber._grab_once: 有实况 → 用实况帧并标 engine=True; 无实况且无 node_logic
-     → 返回 None (退回静态分支, 由 run() 兜底)
+     → 返回 None (退回静态分支, 由 run() 保障)
 
 跑法: cd /home/ubuntu/zmax && DISPLAY=:0 gui-venv311/bin/python tools/verify_engine_live_frame.py
 """
@@ -98,7 +98,7 @@ check("有实况 → 用引擎帧 + engine=True",
       f"src={info.get('src')} / {info.get('device')}")
 S["rgb"], S["t"] = None, 0.0                             # 模拟引擎停止
 img2, info2 = g._grab_once(None)
-check("无实况 且 无 node_logic → 返回 None (run() 走静态兜底)", img2 is None and info2 is None)
+check("无实况 且 无 node_logic → 返回 None (run() 走静态保障)", img2 is None and info2 is None)
 
 print("\n── ⑤ 窗口消费计数 (外部可核对) ──")
 c0 = int(S.get("consumed") or 0)

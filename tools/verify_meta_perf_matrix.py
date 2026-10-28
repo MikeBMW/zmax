@@ -9,14 +9,14 @@
 判据 (读工具现算的台账 `zmax_data/eval/meta_perf_matrix.json` + 报告, 逐条可复核):
   ① 元任务: 75 条都在, 每条**有定义**(层/子系统/节点) + **有配置**(params_head 非空) + **有验证方法**(verification 非空);
   ② 性能指标: 58 条每条都有 ①phase 归属(非"未映射") ②物理载体(段/量 或 全系统级) ③元任务 ④判定(五种之一);
-  ③ 物理参数: 117 条 (13 段 × 9 量) 每条有 标定值/上下限/单位/真源 + 元任务(消费者或业主) + 判定;
+  ③ 物理参数: 117 条 (13 段 × 9 量) 每条有 标定值/上下限/单位/唯一依据 + 元任务(消费者或业主) + 判定;
      并且**每条都真的能反查到元任务** (不许留空);
   ④ 标准状态: 13 段每段有 物理量(9 项) + 话题/闸门实测字段 + 判定; 段无技能类/无元任务必须**显式登记**
      (不许静默漏掉 —— 静默降级零容忍);
   ⑤ 判定口径: 未测必须带「采集条件: …」(来源 perf_spec.how) · 样本不足必须写明 n 与口径要求 ·
      目标值「待定」不许判成达标 · 实测值不许是 0 冒充;
   ⑥ 报告与台账一致: 报告里 指标行数=58 · 物理参数行数=117 · 段行数=13 · 元任务行数=75;
-  ⑦ 可复核: 台账带真源 sha256(16) + 生成时刻; 报告带生成时刻。
+  ⑦ 可复核: 台账带唯一依据 sha256(16) + 生成时刻; 报告带生成时刻。
 
 跑法: ./gui-venv311/bin/python tools/verify_meta_perf_matrix.py
 """
@@ -64,7 +64,7 @@ n_expect = len(sts) * 9
 chk("③a 物理参数条数 = 段数 × 9 量", len(prs) == n_expect, "%d 条 (期望 %d: %d 段 × 9)" % (len(prs), n_expect, len(sts)))
 _bad = [r for r in prs if r.get("value") is None or r.get("min") is None or r.get("max") is None
         or not r.get("unit") or not r.get("src")]
-chk("③b 每条物理参数都有 标定值/上下限/单位/真源", not _bad,
+chk("③b 每条物理参数都有 标定值/上下限/单位/唯一依据", not _bad,
     "缺项: %s" % ([("%s.%s" % (r["段"], r["量"])) for r in _bad][:5] or "无"))
 _bad = [r for r in prs if not r.get("元任务")]
 chk("③c 每条物理参数都反查到元任务 (消费者或业主)", not _bad,
@@ -76,7 +76,7 @@ chk("③d 每条物理参数判定 ∈ {合规,越界,缺上下限}", not _bad,
 
 # ④ 标准状态 (13 段)
 _bad = [s["段"] for s in sts if not s.get("物理量") or len([k for k, v in (s.get("物理量") or {}).items() if v is not None]) < 9]
-chk("④a 13 段每段都有 9 项物理量 (来自真源)", not _bad, "缺物理量的段: %s" % (_bad or "0"))
+chk("④a 13 段每段都有 9 项物理量 (来自唯一依据)", not _bad, "缺物理量的段: %s" % (_bad or "0"))
 _bad = [s["段"] for s in sts if "话题实测" not in s or "闸门实测" not in s]
 chk("④b 13 段每段都有 话题实测 + 闸门实测 字段 (拿不到就如实 null)", not _bad, "缺字段: %s" % (_bad or "0"))
 _gap = set(cov.get("段无技能类") or []) | set(cov.get("段无元任务") or [])
@@ -107,9 +107,9 @@ chk("⑥c 报告里 13 段标准状态都在", all(("| %s |" % s) in md for s in
 chk("⑥d 报告里 75 条元任务都在", md.count("| FN-") >= 75, "元任务行 %d" % md.count("| FN-"))
 
 # ⑦ 可复核
-chk("⑦a 台账带真源 sha256 + 生成时刻",
-    bool(d.get("generated_at")) and all(v.get("sha256_16") for v in (d.get("真源") or {}).values()),
-    "真源 %d 个 · 生成 %s" % (len(d.get("真源") or {}), d.get("generated_at")))
+chk("⑦a 台账带唯一依据 sha256 + 生成时刻",
+    bool(d.get("generated_at")) and all(v.get("sha256_16") for v in (d.get("唯一依据") or {}).values()),
+    "唯一依据 %d 个 · 生成 %s" % (len(d.get("唯一依据") or {}), d.get("generated_at")))
 chk("⑦b L2 闸门实测在台账里 (过闸计数可对) ",
     all(k in (d.get("闸门实测") or {}) for k in ("过闸_技能拍", "过闸_段闸拍", "闸_拍数")),
     json.dumps(d.get("闸门实测"), ensure_ascii=False))

@@ -28,7 +28,7 @@
 
 1. **按文件名直查** `src/lerobot/middleware/nodes/n_<单词>.py`；单词来自
    `src/lerobot/middleware/node_names.json`（id → 一个英文单词，那个文件可直接编辑），
-   与 `spec.module_name` 是**同一份真源**。GUI 里**读这个 JSON，不要 import lerobot.middleware**。
+   与 `spec.module_name` 是**同一份唯一依据**。GUI 里**读这个 JSON，不要 import lerobot.middleware**。
    节点没登记时: 名字里的英文 → 再不行用 id slug（`[^0-9a-zA-Z_]` → `_`）。
 2. 行号 = 文件里第一条 `PORTS_IN` 行（文件头就是输入输出/连线/compute，正好是用户要看的）。
 3. 直查命中后，resolve 结果**只允许补**「实现在 x:y」这一跳，不许覆盖已定落点。
@@ -66,13 +66,13 @@ VSCode 标题变成该文件、日志 `已定位 …:PORTS_IN 行号`；
 老倪要的是 **一个英文单词**，例如 `sssched → n_scheduler.py`、`ssff → n_feedforward.py`、
 `ssyolo → n_yolo.py`、`sssk1…8 → n_skill1.py…n_skill8.py`。
 
-- 真源 = `src/lerobot/middleware/node_names.json`（`id → 单词`，75 条，可直接编辑）。改单词后跑
+- 唯一依据 = `src/lerobot/middleware/node_names.json`（`id → 单词`，75 条，可直接编辑）。改单词后跑
   `python tools/gen_middleware_nodes.py`：它按新名重写模块、重建 `_index.py`、**自动删掉旧名文件**
   （id 名与中文名都会被清掉，实测「删 75」），别手工 mv。
 - Python 3 **允许**中文标识符与中文模块名（实测 `import` 正常），所以“中文跑不了”是错的认识；
   用英文是**命名规范要求**，不是技术限制。
 - `spec.module_name` 与 GUI 的 `_mw_module_path` 必须同规则（都查同一份 JSON）+ 按文件里的
-  `NODE_ID = '<id>'` 反查兜底 —— 只改一边，右键和生成器就会指向不同文件。
+  `NODE_ID = '<id>'` 反查保障 —— 只改一边，右键和生成器就会指向不同文件。
 - 验收: `gen --check` 75 个一致 · `verify_middleware.py` 10/10 · 节点目录里中文文件名残留 = 0。
 
 ## 3. 两个菜单项分工（别搞反）

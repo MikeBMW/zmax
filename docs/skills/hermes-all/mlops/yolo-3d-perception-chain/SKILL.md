@@ -5,7 +5,7 @@ description: YOLO 2D→3D→state 感知链, 含 ultralytics BGR 坑与同构评
 
 # YOLO 3D 感知链 (仿真=真机同构)
 
-## 🚀 sim→real 无缝移植 (2026-09-17 落地, Orin 已跑通真机相机)
+## 🚀 sim→real 无缝移植 (2026-09-17 落地, Orin 已验证通过真机相机)
 
 **架构 = 差异点收口**: 仿真与真机只差 5 处 (图像来源 / 内参 / 深度 / 外参 / 朝向·通道口径),
 全部收口到 `src/lerobot/policies/yolo_3d/frame_source.py` 的 `FrameSource`; 检测+反投影**只有一份代码**
@@ -35,7 +35,7 @@ description: YOLO 2D→3D→state 感知链, 含 ultralytics BGR 坑与同构评
   通用 torchvision 0.20.0): `Couldn't load custom C++ ops` 崩在 NMS。Orin 无外网 → ①本机
   `pip download --platform manylinux2014_aarch64 --only-binary=:all: --python-version 3.10 --no-deps`
   下纯 python 轮子 (ultralytics/ultralytics-thop/polars/py-cpuinfo), scp 过去 `pip3 install --user --no-index` ;
-  ②`yolo_3d/tv_ops_shim.py` 用纯 torch 实现 nms/batched_nms/box_iou 兜底 (只在 ops 真崩时打补丁)。
+  ②`yolo_3d/tv_ops_shim.py` 用纯 torch 实现 nms/batched_nms/box_iou 保障 (只在 ops 真崩时打补丁)。
 - **真机 3D 的两个前置**: 相机内参 K + 手眼外参 T_base_cam + 台面 plane_z → `tools/calib_real_cam.py`
   (棋盘格 `--intrinsics` / 手眼 `--handeye`), 写 `models/real_cam_calib.json`; 未标定时 `meta.gaps` 显式报
   "无外参 → 输出相机系", **绝不用仿真值冒充**。
@@ -107,12 +107,12 @@ description: YOLO 2D→3D→state 感知链, 含 ultralytics BGR 坑与同构评
 - **类别 combo 打字别顺手改选中框**: 原实现把 combo 变更同步到 selected box → 工程师只想切"下一个框的类别"
   却把当前框改了 (实测踩到: 本想标 optical_module 的框变成 fiber_connector, class id 直接错)。
   正解 = 单独「🏷 改选中类别」按钮, combo 只管"新建框用什么类"。
-- **小样本 val 兜底**: ultralytics 必须有非空 val; 样本<8 时 val 复用 train → **必须在 stats 里显式标注
+- **小样本 val 保障**: ultralytics 必须有非空 val; 样本<8 时 val 复用 train → **必须在 stats 里显式标注
   `val_overlap_train=true` + note"mAP 不可信"**, 统计别按两遍算 (框数会翻倍误导)。≥8 张时按文件名哈希划分 (可复现),
-  并兜底强制至少一张进 val。
+  并保障强制至少一张进 val。
 - **`--build` 后用硬链接** (跨盘自动退回拷贝) → 数据集不重复占盘。
 - **体检必须能抓错** (反向验证): 注入 `class id 越界` + `中心>1` 两行 → check 必须报 2 个错, 恢复后 0 误报;
-  纯"跑通"不算证据。体检项: 配对/字段数/类别范围/坐标范围/退化框/重复图 md5/空标注(背景样本)/data.yaml nc 一致性。
+  纯"验证通过"不算证据。体检项: 配对/字段数/类别范围/坐标范围/退化框/重复图 md5/空标注(背景样本)/data.yaml nc 一致性。
 - **保存口径**: 图片 = 窗口那一帧的像素 (真机源从 Orin JPEG 解码后 q95 重编码), **不旋转**, 与推理输入同向;
   0 框也保存 (背景负样本, 空 .txt)。
 - **窗口改码后要先在真桌面 (192DPI) 量一遍**: 标定行 13 个按钮实测不截断 (实际宽 ≥ sizeHint); offscreen 96DPI 会误判。
@@ -121,7 +121,7 @@ description: YOLO 2D→3D→state 感知链, 含 ultralytics BGR 坑与同构评
 - **GUI 与数据层解耦**: GUI `import yolo_annot_dataset as yad`, 保存走 `yad.save_sample()` —— 加新入口
   (网页/命令行/批处理) 复用同一落盘逻辑, 别在 GUI 里手写文件。
 - **⚠️ 入口控件绝不能藏 (2026-09-17 用户实测: 「窗口的标定按钮怎么没有找到? 无法拉出边界框啊」)**: 首版
-  `_set_annot_visible(False)` 把「✏️ 标定模式」**勾选框自己也 hide 了** → 界面上没有任何标定入口, 用户永远打不开
+  `_set_annot_visible(False)` 把「✏️ 标定模式」**勾选框自己也 hide 了** → 界面上没有任何标定入口, 用户永远无法打开
   标定 (死锁)。**offscreen 取证照样全绿** —— 因为断言是程序化 `setChecked(True)`, 绕过了"人能不能点到"。
   铁律: **开关类入口控件恒常显**, 只隐它的下级控件; 并在旁边给一句常显提示"下一步点哪"
   (自解释)。取证必须加一条**入口可达性断言**: 默认状态 `chk_annot.isVisible() and isEnabled()`
@@ -130,7 +130,7 @@ description: YOLO 2D→3D→state 感知链, 含 ultralytics BGR 坑与同构评
   SizePolicy 时, QLabel 的 minimumSizeHint = 整行文字宽 → 把窗口撑到 **2436px**, 在 1920 屏上直接出屏
   (用户看到"窗口跑到屏幕外面")。修: `setWordWrap(True)` + `horizontalPolicy=QSizePolicy.Ignored`。
   **拔外接显示器/换分辨率后窗口会留在屏外** → `showEvent` + `_tick` 每 5s 复查 `availableGeometry()`,
-  越界才 `setGeometry` 拉回 (不动用户手动缩放)。判据: 真桌面跑一遍断言
+  越界才 `setGeometry` 拉回 (不动用户手动缩放)。判据: 真桌面执行一遍断言
   `窗口完整在屏内 (x/y/w/h 都在 availableGeometry 内)`。⚠️ 我这台本机屏幕在会话中从 **3200x2000@192DPI
   变成 1920x1200@96DPI** (拔了外接屏) → 同一脚本两次运行结果不同, 别把环境变化误判成代码 bug。
 - **快捷键**: Enter=保存 · N=保存并下一帧 · F=冻结 (画面控件内 Del=删选中 · Ctrl+Z=撤销 · 1-9=选类别);
@@ -139,7 +139,7 @@ description: YOLO 2D→3D→state 感知链, 含 ultralytics BGR 坑与同构评
 **取证 (全绿, 脚本在 ~/zmax_data/)**: `verify_yolo_annot.py` (坐标映射 0/90/180/270 + 窗口集成落盘 + 标签数值手算比对 +
 体检反向验证 + 快捷键) · `verify_annot_ui_real.py` (真桌面 192DPI: 按钮不截断/两窗并排/截图) ·
 `annot_smoke_real.py` (真机 D405 帧 → 标定 → 构建, 8 张) + `yolo_annot_train.py --epochs 2 --device 0`
-→ **真 GPU 训练跑通**: box_loss 3.75→3.03, best.pt 落 `runs/detect/outputs/yolo_annot_smoke/.../weights/best.pt`。
+→ **真 GPU 训练验证通过**: box_loss 3.75→3.03, best.pt 落 `runs/detect/outputs/yolo_annot_smoke/.../weights/best.pt`。
 ⚠️ 精度仍未验证: 首次标定需人工 (建议首轮 ≥100-300 张, 覆盖不同位置/光照), 我做的烟雾框是**程序化占位框**只证管线。
 
 
@@ -264,7 +264,7 @@ yolo-venv/bin/python train_yolo.py --data data/yolo_peg --epochs 25 --device cpu
 - corner2 env + aligner.detect_3d(env.render()) 应检出 3 类 {hand,peg,hole}, hand 误差~4cm / hole~6.4cm / peg~20cm(plane_z=0.03 固有, 训练同源)。
 - 同构闭环: 训练(--yolo) 与 评估(yolo_aligner) 用同一 detect_3d + 同一 plane_z 假设 → state 分布一致 → 不再假 0%。
 
-## 评估流程真实跑通 (2026-08-23 闭环落地: BC policy + YOLO 感知)
+## 评估流程真实验证通过 (2026-08-23 闭环落地: BC policy + YOLO 感知)
 
 ### 环境关键 (LiveUSB 4060 控制节点)
 - 完整评估环境是 **gui-venv311** (Py3.11): metaworld 3.1.1 + mujoco 3.3.0 + ultralytics + torch 2.7.1+cpu + cv2 + scipy 全有。
@@ -308,7 +308,7 @@ yolo-venv/bin/python train_yolo.py --data data/yolo_peg --epochs 25 --device cpu
 - 训练: `DISPLAY=:0 MUJOCO_GL=glfw gui-venv311/bin/python tools/train_full_pipeline.py --eps 30 --epochs 800`
 - 结果: 4046帧 contact正例2910, 右脑contact_acc=1.00, 评估**抓起8/8 插入6/8** (YOLO噪声state, 比真值7/8略低但真实同构), 存 outputs/rl_peg/full_pipeline.pt。
 
-### gen_insert_video.py 三个坑 (本机跑通踩的)
+### gen_insert_video.py 三个坑 (本机验证通过踩的)
 - full_pipeline.pt 的 right 带 align_head (train_full_pipeline 版 RightBrainWM), 加载用 modeling_left_right 版(无align_head) → `right_sd={k:v for k,v in d["right"].items() if not k.startswith("align_head")}` + strict=False。
 - `from lerobot.policies.left_right.modeling_left_right import RightBrainWM` 触发 lerobot 包 __init__(huggingface_hub) → 直载文件; 且 importlib.util 直载带 @dataclass 的模块报 AttributeError NoneType __dict__ → exec_module 前须 `sys.modules["modeling_left_right"]=mod`。
 - safetensors 只在 left_right checkpoint 分支用, fallback full_pipeline.pt 不需要 → 延迟到 for 内 try import (gui-venv311 无 safetensors/huggingface_hub)。
@@ -332,8 +332,8 @@ yolo-venv/bin/python train_yolo.py --data data/yolo_peg --epochs 25 --device cpu
 
 ## YOLO depth head 深度感知 (2026-08-23 真闭环关键升级)
 
-### 动机: 写死 z 是假闭环
-- 原 `z_map={"hand":0.155,"peg":0.03,"hole":0.129}` 写死 z → hand-peg z 差恒 0.125 > 抓取阈 0.06 → 状态机永远进不了"抓取", 真闭环 0/12 卡"接近"。
+### 动机: 预先固定 z 是假闭环
+- 原 `z_map={"hand":0.155,"peg":0.03,"hole":0.129}` 预先固定 z → hand-peg z 差恒 0.125 > 抓取阈 0.06 → 状态机永远进不了"抓取", 真闭环 0/12 卡"接近"。
 - 方案2(检测框高反推深度) 信噪比太低: peg 抬升 0.15m 框高只变 ~2px, 被检测噪声淹没(深度误差 7-18cm) → 弃用。
 - 终选: YOLO 加 depth head。ultralytics 8.4 内置 `DepthModel`(YOLO backbone + DPT depth head + SILog loss), **无需改 head.py/loss.py/data 源码**。
 
@@ -355,9 +355,9 @@ yolo-venv/bin/python train_yolo.py --data data/yolo_peg --epochs 25 --device cpu
 - 校准后精度: hand 0.4-2.6cm / peg 0.2-1cm / hole 0.3-9cm。
 
 ### ⚠️ 深度闭环根因 (最重要教训, 勿重踩)
-- 旧 full_pipeline.pt 是"写死 z 时代"训练: 归一化 `xs` 有 **24 个维度 = 1e-6**(写死 z 时 std=0, 训练保存加 1e-6), 对应 hand z / peg z / hole z 及常量维度。
+- 旧 full_pipeline.pt 是"预先固定 z 时代"训练: 归一化 `xs` 有 **24 个维度 = 1e-6**(预先固定 z 时 std=0, 训练保存加 1e-6), 对应 hand z / peg z / hole z 及常量维度。
 - 深度反投影让这些维度出现真实变化 → `obs_n=(obs-xm)/xs` 除以 ~1e-6 → 输入爆炸 → 左脑输出 act_z 282~1066 → hand 乱飞。
-- **结论: 深度反投影后必须用深度 o_model 重新收集数据 + 重训左脑/右脑**, 不能复用写死 z 时代权重。
+- **结论: 深度反投影后必须用深度 o_model 重新收集数据 + 重训左脑/右脑**, 不能复用预先固定 z 时代权重。
 - 诊断手段: 每步打印 hand_z/peg_z/d_hp/contact/act_z, 一眼看出 act_z 爆炸。
 
 ### train_full_pipeline.py 真闭环改造
@@ -367,7 +367,7 @@ yolo-venv/bin/python train_yolo.py --data data/yolo_peg --epochs 25 --device cpu
 ## GPU 深度闭环 (2026-08-24, 4060 GPU 训练后新坑)
 
 ### ① cuda tensor bug (最重要, 勿重踩)
-- GPU 训练后 depth 模型 `.depth.data` 返回 **cuda tensor**, `np.asarray(cuda_tensor)` 抛 TypeError 被 detect_3d 里 `except Exception` 吞掉 → depth_map=None → 回退写死 z_map → 评估 0/8 卡"接近"。
+- GPU 训练后 depth 模型 `.depth.data` 返回 **cuda tensor**, `np.asarray(cuda_tensor)` 抛 TypeError 被 detect_3d 里 `except Exception` 吞掉 → depth_map=None → 回退预先固定 z_map → 评估 0/8 卡"接近"。
 - 修: `np.asarray(_d.detach().cpu().numpy())` (yolo_state_aligner.py detect_3d)。
 
 ### ② depth scale 重新标定

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 归档 v5.50.757 本轮产物 (3DGS 采集轨迹自主动作化 + PSNR 同协议口径)
 #   产物: ~/zmax_data/release_sync_<YYYYMMDD>_v5.50.757
-#   口径沿用 5.50.756: 只拷本轮改动的代码 + 真源快照 + 证据 + MANIFEST + sha256
+#   口径沿用 5.50.756: 只拷本轮改动的代码 + 唯一依据快照 + 证据 + MANIFEST + sha256
 set -u
 REPO=/home/ubuntu/zmax
 STAGE=$HOME/.hermes/cache/scratch/rel757
@@ -21,7 +21,7 @@ cp -f "$STAGE"/../plan_orbit3.py "$STAGE"/../geom_check.py "$STAGE"/../run_orbit
       "$STAGE"/../chain_proto25.sh "$STAGE"/../ab_orbit.sh "$STAGE"/../see_scene.py "$DST/scripts/" 2>/dev/null
 cp -f "$STAGE"/../live_mon.py "$STAGE"/../chain_ab.sh "$DST/scripts/" 2>/dev/null
 
-echo "=== ③ 真源快照 (config 是软链, 必须显式拷) ==="
+echo "=== ③ 唯一依据快照 (config 是软链, 必须显式拷) ==="
 mkdir -p "$DST/data/config"
 cp -a config/calib "$DST/data/config/" 2>/dev/null
 cp -a config/platform "$DST/data/config/" 2>/dev/null
@@ -129,7 +129,7 @@ cat > "$DST/MANIFEST.md" <<'EOM'
 |---|---|
 | tools/ gui/ src/ docs/ | 版本号相关代码与 VERSION.md |
 | scripts/ | 本轮新增脚本（轨迹/执行/对照/取证） |
-| data/ | 真源快照（config/calib + config/platform + handeye_state + real_cam_calib(_undist) + d405_intr + 工程库 + space.proj） |
+| data/ | 唯一依据快照（config/calib + config/platform + handeye_state + real_cam_calib(_undist) + d405_intr + 工程库 + space.proj） |
 | remote/orin/ · remote/intel/ | 两台远端机器的实际在役代码与训练产物 |
 | evidence/ | measured_20261025.md（全部实测数字） |
 | logs/ | 轨迹执行日志 + 四组训练日志 + sessions.jsonl |

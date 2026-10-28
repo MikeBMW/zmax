@@ -10,7 +10,7 @@
     同时更新工程数据库, 保证数据一致性。」
 
 每个任务真走 9 步 (没有一步是"已实现"声明, 全部留证据文件):
-  ① 配置链 7 域快照 —— 依序实读真源: 任务→产品→功能→模型→性能→工程→文档(工单) (config_chain.json)
+  ① 配置链 7 域快照 —— 依序实读唯一依据: 任务→产品→功能→模型→性能→工程→文档(工单) (config_chain.json)
   ② 场景切换       —— ss_scene_switch.py (有映射才切, 无映射明说 skipped)
   ③ 原型单步运行   —— 按该任务 enabled_nodes 依次真执行 execute_node_logic, 每节点真出 out,
                       经 ss_bus_topics.publish(mode='step') **真序列化**成节点输出 topic (topics/*.jsonl)
@@ -92,7 +92,7 @@ def _run(cmd, timeout=900, env=None):
                 "cmd": " ".join(cmd)}
 
 
-# ─────────────────────────── ① 配置链 7 域 (真源实读) ───────────────────────────
+# ─────────────────────────── ① 配置链 7 域 (唯一依据实读) ───────────────────────────
 def chain_snapshot(tid):
     tk = (_j(TASKS_J, {}) or {}).get("tasks", [])
     t = next((x for x in tk if x.get("task_id") == tid), {})
@@ -141,33 +141,33 @@ def chain_snapshot(tid):
         "① 任务配置": {"task_id": tid, "name": t.get("name"), "scene_ref": t.get("scene_ref"),
                    "档位": b.get("level") or t.get("level") or t.get("gear"),
                    "enabled_nodes": len(nodes), "blocked_by_site": bool(t.get("blocked_by_site")),
-                   "真源": [TASKS_J, BIND_J],
+                   "唯一依据": [TASKS_J, BIND_J],
                    "元任务数": len(my_fns)},
         "② 产品配置": {"active_product": ap,
                    "product": (prod.get("products") or {}).get(ap, {}),
                    "指纹": (prod.get("fingerprints") or {}),
-                   "真源": PROD_J},
-        "③ 功能配置": {"元任务数": len(my_fns), "元任务": my_fns, "真源": [META_J, NOTES_J, CANVAS]},
+                   "唯一依据": PROD_J},
+        "③ 功能配置": {"元任务数": len(my_fns), "元任务": my_fns, "唯一依据": [META_J, NOTES_J, CANVAS]},
         "④ 模型配置": {"站点": site, "站点缺项": mm.get("SITE_MISSING") or [],
                    "该任务相关模型": hit_models or models[:3],
-                   "模型总数": len(models), "真源": MATCH_J},
+                   "模型总数": len(models), "唯一依据": MATCH_J},
         "⑤ 性能配置": {"匹配组数": len(ghit), "匹配口径": kw, "组": ghit,
-                   "性能组总数": len(groups), "真源": PERF_J},
+                   "性能组总数": len(groups), "唯一依据": PERF_J},
         "⑥ 工程配置": {"T_base_cam": calib.get("T_base_cam"), "plane_z": calib.get("plane_z"),
                    "depth_scale": calib.get("depth_scale"), "cell_geometry": calib.get("cell_geometry"),
-                   "camera": calib.get("camera"), "真源": CALIB_J},
+                   "camera": calib.get("camera"), "唯一依据": CALIB_J},
         "⑦ 文档配置·工单实例": {"order_no": (bs.get("identity") or {}).get("order_no"),
                    "scene_id": (bs.get("identity") or {}).get("scene_id"),
                    "targets": bs.get("targets"), "readiness": bs.get("readiness"),
                    "配方段数": len(bs.get("recipe") or []),
-                   "真源": os.path.join(ORDERS_D, "BS_%s.json" % (t.get("scene_ref") or ""))},
+                   "唯一依据": os.path.join(ORDERS_D, "BS_%s.json" % (t.get("scene_ref") or ""))},
     }
 
 
 # ─────────────────────── ③ 原型单步运行 (真执行 + 真 topic) ───────────────────────
 class _ShimModule:
     """给节点逻辑的最低上下文 (GUI 模块的替身): 只给日志, 其它属性取不到就给 None,
-    节点自己会抛错 ⇒ 如实记 failed, 不假装跑通。"""
+    节点自己会抛错 ⇒ 如实记 failed, 不假装验证通过。"""
     _trace_nodes = False
     _log = staticmethod(lambda *a, **k: None)
 
@@ -198,8 +198,8 @@ def step_run(tid, snap, do_publish=True):
             continue
         t0 = time.time()
         out, err = None, ""
-        # ⏱ 单节点硬超时: 节点里可能是相机/服务/等待类调用, 卡住会把整个演练挂死 (实测遇到)。
-        #   用 SIGALRM 打墙钟上限, 超时如实记 timeout, 不假装跑通。
+        # ⏱ 单节点硬超时: 节点里可能是相机/服务/等待类调用, 阻塞会把整个演练挂死 (实测遇到)。
+        #   用 SIGALRM 打墙钟上限, 超时如实记 timeout, 不假装验证通过。
         def _tmo(_s, _f):
             raise TimeoutError("节点执行超时 (%.0fs)" % NODE_TIMEOUT_S)
         _old = None
@@ -286,7 +286,7 @@ def waveforms(d, tid, stepres, clos):
         ax.set_yscale("symlog")
         ax.set_xlabel("单步顺序 (该任务 enabled_nodes)")
         ax.set_ylabel("节点耗时 ms (symlog)")
-        ax.set_title("%s 原型单步: 每节点真实耗时/状态 (绿=真跑通 黄=未注册逻辑 红=抛错)" % tid)
+        ax.set_title("%s 原型单步: 每节点真实耗时/状态 (绿=真验证通过 黄=未注册逻辑 红=抛错)" % tid)
         p = os.path.join(d, "waveforms", "w2_step_cost.png")
         os.makedirs(os.path.dirname(p), exist_ok=True)
         fig.tight_layout(); fig.savefig(p); plt.close(fig)
@@ -362,7 +362,7 @@ def models_evidence(clos, stepres):
             out["层"][key] = m[0 if len(m) == 1 else 0]
     m = re.search(r"引擎闭环: .*?L4真推理(\d+)次", o)
     out["L4 真推理次数"] = int(m.group(1)) if m else None
-    out["单步真跑通节点"] = "%d/%d" % (stepres["ok"], stepres["total"])
+    out["单步真验证通过节点"] = "%d/%d" % (stepres["ok"], stepres["total"])
     out["判据"] = "负载与耗时来自本次真实运行 stdout; 无 stdout 证据的层不写"
     out["模型引擎窗口"] = _model_engine_evidence()
     return out
@@ -370,7 +370,7 @@ def models_evidence(clos, stepres):
 
 def _model_engine_evidence():
     """🧠 模型引擎窗口取证 (老倪 2026-10-14「L2~L5 在模型引擎窗口, 要能方便的查看控制所有模型的训练状态」):
-    离屏真建窗口 → 抓图 + 四层状态 (真源 model_inventory.py --json; 训练入口真源 = 配置中心 model.train_entry)。
+    离屏真建窗口 → 抓图 + 四层状态 (唯一依据 model_inventory.py --json; 训练入口唯一依据 = 配置中心 model.train_entry)。
     每次演练只抓一次 (与任务无关的全局证据), 落 reports/drill/model_engine_window.png。"""
     try:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -398,7 +398,7 @@ def _model_engine_evidence():
                 "四层": {x["layer"]: {"在役": x["name"], "版本": x["ver"], "本层产物": x["n"],
                                     "推理": x["infer"], "训练中": x["train"], "最近训练": x["last"]}
                        for x in rows},
-                "训练入口真源": "config/mcd/param_registry.json#model.train_entry"}
+                "训练入口唯一依据": "config/mcd/param_registry.json#model.train_entry"}
     except Exception as e:                                                            # noqa: BLE001
         return {"失败": "%s: %s" % (type(e).__name__, e)}
 
@@ -447,7 +447,7 @@ def _train_summary(text):
 
 
 def scene_map(tid):
-    """真源口径: 该任务有无场景映射 (ss_scene_switch --task --check --json)。
+    """唯一依据口径: 该任务有无场景映射 (ss_scene_switch --task --check --json)。
     返回 dict: {action: switch|skipped, scene, msg} —— 无映射就如实说, 不假装切过。"""
     r = _run([PY, "tools/ss_scene_switch.py", "--task", tid, "--check", "--json"], timeout=90)
     try:
@@ -484,8 +484,8 @@ def _wait_vram(need_mb=6500, timeout_s=180, quiet=False):
 
 
 def _train_argv(only, steps):
-    """训练命令真源 = 配置中心「模型配置」的 model.train_entry (单个层时逐字用它, 与模型引擎窗口的
-    ▶ 按钮**同一条命令**); 传多个层/取不到真源时退回 --only <层列表> --steps <N>。"""
+    """训练命令唯一依据 = 配置中心「模型配置」的 model.train_entry (单个层时逐字用它, 与模型引擎窗口的
+    ▶ 按钮**同一条命令**); 传多个层/取不到唯一依据时退回 --only <层列表> --steps <N>。"""
     try:
         reg = json.load(open(os.path.join(ROOT, "config", "mcd", "param_registry.json"),
                              encoding="utf-8"))
@@ -513,12 +513,12 @@ def self_train(tid, steps, only="L4"):
     #   = /home/ubuntu/zmax_data/hf_cache (缺 /zmax/ 一段, 该目录根本不存在) ⇒ joint_train_all 拿到坏的
     #   HF_HOME 后 HF_HUB_CACHE 不存在 ⇒ 它主动放弃 HF_ENV ⇒ transformers 不带 offline 去连 huggingface.co
     #   ⇒ **L3 直接 rc=1** (SmolVLM2 基座加载失败), 而 L2/L4 因不碰 HF 缓存而"看起来正常"。
-    #   现在统一从 tools/zmax_hf_env.py 取 (单一真源, 模型引擎窗口的 ▶ 按钮用的是同一份)。
+    #   现在统一从 tools/zmax_hf_env.py 取 (单一唯一依据, 模型引擎窗口的 ▶ 按钮用的是同一份)。
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     from zmax_hf_env import hf_env                                              # noqa: PLC0415
     _wait_vram(6500, 180)
     _argv, _cmdtxt = _train_argv(only, steps)
-    print("   命令(真源=配置中心 model.train_entry): %s" % _cmdtxt, flush=True)
+    print("   命令(唯一依据=配置中心 model.train_entry): %s" % _cmdtxt, flush=True)
     r = _run([PY] + _argv, timeout=3600, env=hf_env())
     r["cmd"] = _cmdtxt
     losses, detail = _parse_losses(r.get("out", ""))
@@ -528,7 +528,7 @@ def self_train(tid, steps, only="L4"):
     r["loss_detail"] = {k: {"首": v[0], "末": v[-1], "点": len(v)} for k, v in detail.items()}
     r["train_summary"] = _train_summary(r.get("out", ""))
     r["scene"] = scene or "?"
-    r["scene_note"] = "训练入口不按任务取数 (真源无任务→训练集映射)" if not scene or scene == "?" else "训练时画布数据源状态"
+    r["scene_note"] = "训练入口不按任务取数 (唯一依据无任务→训练集映射)" if not scene or scene == "?" else "训练时画布数据源状态"
     return r
 
 
@@ -537,22 +537,22 @@ def make_doc(tid, d, snap, stepres, clos, waves, models, train):
     import export_meta_doc as E                                                           # noqa: PLC0415
     sm = scene_map(tid)
     L = ["# %s 全链路演练记录（%s）\n" % (snap["① 任务配置"].get("name") or tid, tid),
-         "> 本文由 `tools/run_full_drill.py` 真跑生成：配置链 7 域全部实读真源，原型单步/整体运行真执行，",
-         "> topic 载荷真序列化，波形出自真数据；未跑通的项**保留失败原样**，不做美化。\n",
+         "> 本文由 `tools/run_full_drill.py` 真跑生成：配置链 7 域全部实读唯一依据，原型单步/整体运行真执行，",
+         "> topic 载荷真序列化，波形出自真数据；未验证通过的项**保留失败原样**，不做美化。\n",
          "| 项 | 值 |", "|---|---|",
          "| 任务 | %s |" % tid,
          "| 场景 | %s |" % snap["① 任务配置"].get("scene_ref"),
          "| 档位 | %s |" % snap["① 任务配置"].get("档位"),
          "| 元任务（enabled_nodes） | %s |" % snap["① 任务配置"].get("enabled_nodes"),
-         "| 单步真跑通 | %s/%s |" % (stepres["ok"], stepres["total"]),
+         "| 单步真验证通过 | %s/%s |" % (stepres["ok"], stepres["total"]),
          "| 引擎闭环 | %s |" % ((clos.get("engine") or {}).get("done")),
          "| 生成时间 | %s |" % time.strftime("%Y-%m-%d %H:%M:%S"), ""]
-    L += ["## 一、配置链（依序，逐域实读真源）\n",
+    L += ["## 一、配置链（依序，逐域实读唯一依据）\n",
           "1. **任务配置** `%s` — 任务 %s · 场景 %s · 启用节点 %s 个 · 站点几何拦截 %s"
-          % (snap["① 任务配置"]["真源"][0], tid, snap["① 任务配置"].get("scene_ref"),
+          % (snap["① 任务配置"]["唯一依据"][0], tid, snap["① 任务配置"].get("scene_ref"),
              snap["① 任务配置"].get("enabled_nodes"), snap["① 任务配置"].get("blocked_by_site")),
           "2. **产品配置** `%s` — 当前产品 %s" % (PROD_J, snap["② 产品配置"].get("active_product")),
-          "3. **功能配置** `%s` — 该任务承载元任务 %s 个（参数/输入输出/验证方法逐条取自真源）"
+          "3. **功能配置** `%s` — 该任务承载元任务 %s 个（参数/输入输出/验证方法逐条取自唯一依据）"
           % (META_J, snap["③ 功能配置"]["元任务数"]),
           "4. **模型配置** `%s` — 站点 %s 项 · 站点缺项 %s 项 · 模型 %s 个"
           % (MATCH_J, len(snap["④ 模型配置"].get("站点") or {}),
@@ -562,13 +562,13 @@ def make_doc(tid, d, snap, stepres, clos, waves, models, train):
           "6. **工程配置** `%s` — T_base_cam/plane_z/depth_scale/cell_geometry 实读"
           % CALIB_J,
           "7. **文档配置·工单实例** `%s` — 工单 %s · 站点就绪 %s"
-          % (snap["⑦ 文档配置·工单实例"]["真源"], snap["⑦ 文档配置·工单实例"].get("order_no"),
+          % (snap["⑦ 文档配置·工单实例"]["唯一依据"], snap["⑦ 文档配置·工单实例"].get("order_no"),
              (snap["⑦ 文档配置·工单实例"].get("readiness") or {}).get("site_ok")), ""]
-    # 该任务承载的元任务, 逐条给「干什么活 / 卡在哪 / 当前状态」(真源 data/database/zmax/function_notes.json)
+    # 该任务承载的元任务, 逐条给「做什么 / 阻塞点 / 当前状态」(唯一依据 data/database/zmax/function_notes.json)
     _mts = list(snap["③ 功能配置"].get("元任务") or [])
     if _mts:
-        L += ["### 1.1 该任务下的功能点描述（朴素工程化, 每条实读真源）\n",
-              "| 功能 | 干什么活 | 卡在哪 | 当前状态 |", "|---|---|---|---|"]
+        L += ["### 1.1 该任务下的功能点描述（朴素工程化, 每条实读唯一依据）\n",
+              "| 功能 | 做什么 | 阻塞点 | 当前状态 |", "|---|---|---|---|"]
         for x in _mts[:16]:
             ntd = x.get("note") or {}
             L.append("| %s %s | %s | %s | %s |" % (x.get("fn_id"), x.get("name"), ntd.get("work") or "—",
@@ -581,15 +581,15 @@ def make_doc(tid, d, snap, stepres, clos, waves, models, train):
         L.append("| %s | %s | %s | %s | `%s` |" % (r["order"], r.get("name") or r["node"],
                                                   r["status"], r["ms"], r.get("topic") or "-"))
     if stepres["failed"]:
-        L += ["", "**未跑通的节点（原样保留）**："]
+        L += ["", "**未验证通过的节点（原样保留）**："]
         for r in stepres["rows"]:
             if r["status"] not in ("ok",):
                 L.append("- `%s` %s — %s" % (r["node"], r["status"], (r.get("err") or "")[:160]))
     L += ["", "### 2.2 整体运行（引擎闭环）\n",
-          "- 数据源场景（任务↔场景映射，真源 `tools/ss_scene_switch.py`）：%s" % (
-              "有映射 → %s，本次运行前已按真源切到该场景" % sm.get("scene") if sm.get("action") == "switch"
-              else "**该任务在真源里没有场景映射** ⇒ 数据源保持不动（%s）；下面的 topic/波形/模型是真跑的，"
-                   "但「场景」这一维在该任务的真源里尚未定义" % (sm.get("msg") or "")[:90]),
+          "- 数据源场景（任务↔场景映射，唯一依据 `tools/ss_scene_switch.py`）：%s" % (
+              "有映射 → %s，本次运行前已按唯一依据切到该场景" % sm.get("scene") if sm.get("action") == "switch"
+              else "**该任务在唯一依据里没有场景映射** ⇒ 数据源保持不动（%s）；下面的 topic/波形/模型是真跑的，"
+                   "但「场景」这一维在该任务的唯一依据里尚未定义" % (sm.get("msg") or "")[:90]),
           "```", (clos.get("out", "") or "").strip()[-2000:], "```", ""]
     if waves.get("files"):
         L += ["### 2.3 实际波形（真数据出图）\n"]
@@ -607,7 +607,7 @@ def make_doc(tid, d, snap, stepres, clos, waves, models, train):
             L.append("  - %s：%s · 版本 %s · 本层产物 %s · 推理 %s · 训练中 %s · 最近训练 %s" % (
                 ly, v.get("在役"), v.get("版本"), v.get("本层产物"),
                 "推理中" if v.get("推理") else "空闲", v.get("训练中"), v.get("最近训练")))
-        # 训练入口 = 逐层真命令 (真源 = 配置中心 model.train_entry; 窗口 ▶ 与演练单层都逐字执行它)
+        # 训练入口 = 逐层真命令 (唯一依据 = 配置中心 model.train_entry; 窗口 ▶ 与演练单层都逐字执行它)
         try:
             import json as _json                                                   # noqa: PLC0415
             with open(os.path.join(ROOT, "config", "mcd", "param_registry.json"), encoding="utf-8") as _f:
@@ -617,20 +617,20 @@ def make_doc(tid, d, snap, stepres, clos, waves, models, train):
         except Exception:                                                          # noqa: BLE001
             _te = {}
         if isinstance(_te, dict) and _te:
-            L.append("  - 训练入口（真源 = 配置中心 `model.train_entry`，窗口 ▶ / 演练单层都逐字执行它）：")
+            L.append("  - 训练入口（唯一依据 = 配置中心 `model.train_entry`，窗口 ▶ / 演练单层都逐字执行它）：")
             for _ly in ("L4", "L3", "L2", "L5"):          # 联合训练真顺序 = L4→L3→L2; L5 单独
-                L.append("    - %s：`%s`" % (_ly, _te.get(_ly, "真源未登记")))
+                L.append("    - %s：`%s`" % (_ly, _te.get(_ly, "唯一依据未登记")))
         else:
-            L.append("  - 训练入口：真源未登记（`config/mcd/param_registry.json#model.train_entry`）")
+            L.append("  - 训练入口：唯一依据未登记（`config/mcd/param_registry.json#model.train_entry`）")
     elif me.get("失败"):
         L.append("- 模型引擎窗口：⛔ %s" % me["失败"])
     L += ["", "## 四、自主训练（有界步数真跑）\n",
           "- 命令：`%s`" % (train or {}).get("cmd"),
           "- 训练时场景：%s（%s）" % ((train or {}).get("scene") or "—",
                                 (train or {}).get("scene_note") or "未切场景"),
-          "- 任务↔场景映射（真源 `tools/ss_scene_switch.py` 口径）：%s" % (
+          "- 任务↔场景映射（唯一依据 `tools/ss_scene_switch.py` 口径）：%s" % (
               "有映射 → %s" % sm.get("scene") if sm.get("action") == "switch"
-              else "**该任务在真源里没有场景映射** ⇒ 数据源不切（%s）" % (sm.get("msg") or "")[:80]),
+              else "**该任务在唯一依据里没有场景映射** ⇒ 数据源不切（%s）" % (sm.get("msg") or "")[:80]),
           "- 返回码 %s · 耗时 %ss · 抓到 loss 点数 %s" % ((train or {}).get("rc"),
                                                    (train or {}).get("sec"), (train or {}).get("n_loss")),
           "- loss 明细（键 · 首→末 · 点数）：%s" % (json.dumps((train or {}).get("loss_detail") or {},
@@ -642,8 +642,8 @@ def make_doc(tid, d, snap, stepres, clos, waves, models, train):
           "- loss 前段 %s · 后段 %s" % ((train or {}).get("loss_head"), (train or {}).get("loss_tail")),
           "- 口径：演练用有界步数，只证「训练链路真能跑、loss 真出数」，不等同正式训练轮次。",
           "- **缺口（如实写，不掩盖）**：`tools/joint_train_all.py` 当前不吃「任务→训练集」的映射"
-          "（真源里没有这张表），所以 7 个任务触发的是同一套数据的有界训练，",
-          "  不是 7 份互不相同的训练。要做成「每任务各自训练」需先补：任务/场景 → 数据集清单 的真源映射。", "",
+          "（唯一依据里没有这张表），所以 7 个任务触发的是同一套数据的有界训练，",
+          "  不是 7 份互不相同的训练。要做成「每任务各自训练」需先补：任务/场景 → 数据集清单 的唯一依据映射。", "",
           "## 五、证据文件\n"]
     for f in sorted(glob.glob(os.path.join(d, "**", "*"), recursive=True)):
         if os.path.isfile(f):
@@ -673,7 +673,7 @@ def make_doc(tid, d, snap, stepres, clos, waves, models, train):
 
 # ─────────────────────── ⑨ 工程数据库 (写证据 + 一致性) ───────────────────────
 def engdb_write(rec):
-    # 场景切换会改画布真源 (src_state) ⇒ 先按真源重建库, 再插演练证据, 最后跑一致性判据。
+    # 场景切换会改画布唯一依据 (src_state) ⇒ 先按唯一依据重建库, 再插演练证据, 最后跑一致性判据。
     # (口径同 memory: 改画布后 → db build → check; 直接插行不重建会报漂移 ['project','canvas'])
     bld = _run([PY, "tools/engineering_db.py", "build"], timeout=600)
     con = sqlite3.connect(DB)
@@ -776,7 +776,7 @@ def main():
         print("③ 原型单步 (真执行 + 真 topic 序列化)")
         step = step_run(tid, snap, do_publish=not a.no_publish)
         _w(os.path.join(d, "step_run.json"), step)
-        print("   单步结果: %d/%d 跑通 (%d 失败/超时)" % (step["ok"], step["total"],
+        print("   单步结果: %d/%d 验证通过 (%d 失败/超时)" % (step["ok"], step["total"],
                                                        step["failed"]), flush=True)
         # ④ 整体运行
         print("④ 原型整体运行 (引擎闭环)")

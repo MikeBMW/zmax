@@ -24,7 +24,7 @@ GUI: gui-venv311在仓库内(Py3.11,无torch); 推理/训练=~/lerobot-venv; 项
 §
 GitHub: 直连超时→ghproxy.net代理+sslVerify=false; Release下载走browser_download_url; 凭证~/.git-credentials
 §
-数据/监视界面偏好: 单色勿彩高亮; 数据实时滚动; 可视化自解释(标签+数值), 追问'这是啥'→物理含义+实测数字; 信号/图层名按源模块名链路排序, 开关连文字绑
+数据/监视界面偏好: 单色勿彩高亮; 数据实时滚动; 可视化自解释(标签+数值), 追问'这是什么'→物理含义+实测数字; 信号/图层名按源模块名链路排序, 开关连文字绑
 §
 可视化/UI铁律: 画前算信噪比(噪声5mm vs步移0.35mm→画多帧均值+占比%); 凸组合量级差21倍→砍速29%(前馈+反馈相加+显式限速); 反馈前残差EMA; 老倪UI严审(直方图被打回3轮): Qt高分屏192dpi文字须QRect TextWordWrap+fontMetrics流式行高, QFont pt/坐标须int(float崩整窗), 直方图禁连线(像波形), 关窗单例sip.isdeleted重建; 播放=demo不跑真实fn→可视化靠引擎每步probe_seq(两引擎都加)同游标逐帧push三窗
 §

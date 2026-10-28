@@ -53,7 +53,7 @@ row_bg ffnbg: 「🧠 神经同构 (脑↔控制)」w=1060, bg #1a1030。
 - 加载 ff_pd_top → 16 节点 16 连线, 无悬空, 类型合法
 - 双击 3 神经节点 → _show_internal_detail 调用 3 次 (mock patch)
 - node_logic.match_node 命中 3 新节点; 未命中的 🔬Z700子系统/感知链/双脑/状态机/动作
-  是既有设计 (z700_internal 走 params 分支交互, execute_node_logic 返回 None 框架兜底)
+  是既有设计 (z700_internal 走 params 分支交互, execute_node_logic 返回 None 框架保障)
 - 单步执行 20 步无异常 (神经节点参与拓扑, 无环)
 - 画布→库覆盖: 差集为空 (注意硬编码字符串与文件字符细微差异会导致假 False,
   用画布 JSON 实际名做差集验证)
@@ -61,6 +61,6 @@ row_bg ffnbg: 「🧠 神经同构 (脑↔控制)」w=1060, bg #1a1030。
 ## 坑
 
 - 三节点名含「右脑/左脑/皮层」但现有 z700_internal 分支按名字匹配 (状态机/动作/双脑/感知链) —
-  神经节点靠 params 标记 (neural_kalman 等) 分支, 不是名字; 名字分支 else 会掉进感知链兜底
+  神经节点靠 params 标记 (neural_kalman 等) 分支, 不是名字; 名字分支 else 会掉进感知链保障
 - paint 的 role 映射 dict (感知链/双脑/状态机/动作) 不覆盖神经节点 → role="" 无类型标签, 正常
 - 三节点 w=190 (与内部行一致), 别用默认 150 会被背景行盖住

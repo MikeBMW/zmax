@@ -27,7 +27,7 @@
 
 模式:
   --rounds N --targets l5      L5 指导选点(每轮重新看画面, 边移动边学)
-  --rounds N --targets spaces  固定顺序 space1..N(兼容旧行为, 也是 L5 不可用时的兜底)
+  --rounds N --targets spaces  固定顺序 space1..N(兼容旧行为, 也是 L5 不可用时的保障)
   --order fixed|novelty        spaces 模式下的顺序: 固定序 / 按"最没拍过"优先
   --dry-run                    不移动: 用当前位姿当"到位", 走完 采集→建库→质检(验证链路)
   --from-recording <会话目录>   用已有录像重跑 建库→质检(→训练), 完全不动臂
@@ -119,7 +119,7 @@ def api_post(path, body, timeout=30):
 
 
 def power_on():
-    """机械臂上电真源(8793 /ctl/status → robot.power)。读不到 ⇒ None(如实说, 不猜)。"""
+    """机械臂上电唯一依据(8793 /ctl/status → robot.power)。读不到 ⇒ None(如实说, 不猜)。"""
     s = api_get("/ctl/status")
     if not isinstance(s, dict):
         return None, s
@@ -134,7 +134,7 @@ def power_on():
 
 
 def armed():
-    """真动授权真源(8793 /ctl/status)。读不到 ⇒ 如实当"未授权", 不猜。"""
+    """真动授权唯一依据(8793 /ctl/status)。读不到 ⇒ 如实当"未授权", 不猜。"""
     s = api_get("/ctl/status")
     if isinstance(s, dict):
         for k in ("motion_armed", "armed"):
@@ -149,7 +149,7 @@ def armed():
 # ----------------------------------------------------------------- 目标点目录
 
 def catalog():
-    """可执行目标点目录: {skill: {pos, quat, desc}} —— 来自空间点真源 + 绝对运动白名单"""
+    """可执行目标点目录: {skill: {pos, quat, desc}} —— 来自空间点唯一依据 + 绝对运动白名单"""
     pts = read_json(SP) or {}
     out = {}
     for nm, v in (pts.get("points") or {}).items():
@@ -190,7 +190,7 @@ def pick_by_direction(cat, cur, visited, dirs, min_align=0.30):
 
 
 def pick_novelty(cat, visited):
-    """覆盖度兜底: 挑离已访问视点最远的可达点"""
+    """覆盖度保障: 挑离已访问视点最远的可达点"""
     best, bd = None, -1
     for skill, meta in cat.items():
         p = meta.get("pos")
@@ -199,7 +199,7 @@ def pick_novelty(cat, visited):
         d = min([dist(p, q) for q in visited.values()], default=9.9)
         if d > bd:
             best, bd = skill, d
-    return best, {"novelty_m": round(bd, 3), "reason": "覆盖度兜底: 该点离已访问视点最远"}
+    return best, {"novelty_m": round(bd, 3), "reason": "覆盖度保障: 该点离已访问视点最远"}
 
 
 # ----------------------------------------------------------------- 各阶段
@@ -223,7 +223,7 @@ def l5_select(sess_or_ds, st, k=3):
 
 def move_and_wait(skill, tgt, timeout=900, speed=None):
     # 🚚 车速口径 (2026-10-07 老倪选 A 落地时定): L2 的 speed 是"相对量"。
-    #    原来写死 8 ⇒ 空间点之间 400~470mm 的转移要 10 分钟/次, 7 轮直接跑不完。
+    #    原来预先固定 8 ⇒ 空间点之间 400~470mm 的转移要 10 分钟/次, 7 轮直接跑不完。
     #    建图用 MOVE_SPEED(默认 120, 标称≈11mm/s, 仍受技能 speed_max=200 收口)。
     #    ⏱ 2026-10-08 实测: 标称 11.2mm/s 的**实际轴速只有 1.11mm/s**(3 次独立测量一致),
     #    所以 200mm 横移要 ~180s ⇒ 原 timeout=240s 是在"动作还没走完"时就判超时
@@ -378,7 +378,7 @@ def main():
     st["session"] = sess
     os.makedirs(sess, exist_ok=True)
 
-    # ---------- 真动前置: 授权真源 ----------
+    # ---------- 真动前置: 授权唯一依据 ----------
     # 🖐 人工走点模式**整程不碰臂** ⇒ 与 dry-run 同口径: 不需要真动授权, 也不走手动白名单。
     if not args.dry_run and not args.manual:
         a, raw = armed()
@@ -394,7 +394,7 @@ def main():
 
         # 🔌 上电前置 (2026-10-13 现场教训): 臂没上电时 SDK 腿在**自检那一步就 ABORT**
         #    ("ABORT 前置条件不满足: 上电状态不是 on (PowerState.off)"), 而本循环仍在等一个永远不会到的
-        #    "到位" ⇒ 现场白等 900s 才退出, 这一轮全是重复帧(唯一画面 69/1223)。这里提前读一次真源当场拒。
+        #    "到位" ⇒ 现场白等 900s 才退出, 这一轮全是重复帧(唯一画面 69/1223)。这里提前读一次唯一依据当场拒。
         _pw, _pwhy = power_on()
         if _pw is False:
             st.update(running=False, status_line="机械臂未上电(power=%s) ⇒ 下发必被 SDK 腿 ABORT; 先上电再点「开始建图」" % _pwhy)
@@ -403,7 +403,7 @@ def main():
         w(st, "上电已确认(power=%s)" % _pwhy)
 
     cat = catalog()
-    w(st, "可达目标点 %d 个(空间点真源 + 绝对运动白名单) · 模式=%s · %d 轮 × 采集 %.0fs"
+    w(st, "可达目标点 %d 个(空间点唯一依据 + 绝对运动白名单) · 模式=%s · %d 轮 × 采集 %.0fs"
       % (len(cat), args.targets, args.rounds, args.dwell))
 
     visited = {}
@@ -419,7 +419,7 @@ def main():
     if args.manual:
         if int(args.rounds) < 200:
             args.rounds = 200          # 人工模式没有"轮数"概念: 一直转, 直到 STOP
-        # 建议点用**纯几何**兜底(瞬时出): 人工模式下 L5 VLM 那一跳最长 300s(短提示+小JSON),
+        # 建议点用**纯几何**保障(瞬时出): 人工模式下 L5 VLM 那一跳最长 300s(短提示+小JSON),
         # 而"该往哪走"在你手上 —— 让人等 5 分钟拿一条建议不值得。要看 L5 建议: --targets l5。
         if args.targets == "l5":
             args.targets, args.order = "spaces", "novelty"
@@ -467,7 +467,7 @@ def main():
                     why = "固定序里没有「有已知位姿且未访问」的点"
         if not skill:
             skill, info = pick_novelty(cat, visited)
-            why = "兜底: %s" % json.dumps(info, ensure_ascii=False)
+            why = "保障: %s" % json.dumps(info, ensure_ascii=False)
         if not skill and args.manual:
             # 🖐 人工模式: **建议点不是队列** —— 我"建议"过了不算他"去过"(臂根本没动) ⇒ 轮空就
             #    把已建议集清掉重新给建议, 绝不能因为"没有可去的点"把整场人工建图收了。

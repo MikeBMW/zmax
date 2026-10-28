@@ -181,7 +181,7 @@ def cmd_verify(d: dict) -> int:
 
     pz = (d.get("plane_z") or {}).get("value")
     if pz is None:
-        print("  ③ 台面 plane_z: ❌ 缺失 → 无法做平面回退(深度不可用时无兜底)")
+        print("  ③ 台面 plane_z: ❌ 缺失 → 无法做平面回退(深度不可用时无保障)")
         ok_all = False
     else:
         print("  ③ 台面 plane_z: ✅ %.4f m" % pz)

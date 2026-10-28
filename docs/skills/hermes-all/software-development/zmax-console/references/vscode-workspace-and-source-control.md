@@ -49,7 +49,7 @@ git rev-list --left-right --count main...origin/main     # 左=本地没推, 右
 git ls-remote origin main                                # 直接问服务器, SHA == git rev-parse HEAD 才算推上去
 ```
 
-查分支/身份/远端要从配置真源读：
+查分支/身份/远端要从配置唯一依据读：
 ```bash
 git config --list --show-origin | grep -E "user\.|remote\.origin|branch\.main"   # 值 + 来自哪个文件
 git branch -vv ; git status -sb
@@ -67,7 +67,7 @@ git branch -vv ; git status -sb
   **绝不要** `pkill -f "<含路径的串>"`：该模式串就写在你自己这条命令行里，`-f` 会连自己一起匹配 ⇒
   命令中途被 SIGTERM 掐死、后续步骤全没执行（亲眼踩过）。同理禁 `ps | grep <名字>`。
 - 从控制台里起 VSCode 要走 `systemd-run --user --scope --no-block --collect --unit=zmax-vscode-<ts>`，
-  否则落在 `zmax-studio.service` 的 cgroup 里，控制台一停/一崩就被连坐收走（用户看到的就是「VSCode 卡住」）。
+  否则落在 `zmax-studio.service` 的 cgroup 里，控制台一停/一崩就被连坐收走（用户看到的就是「VSCode 阻塞」）。
 - 改 `.vscode/argv.json`（如硬件加速开关）**必须重启 VSCode 才生效**；改前备份原文件，并说明这是反向对照实验。
 - 重启前先确认没有未保存内容：崩过的实例常留着主进程但窗口为 0，别据此判「实例还活着」。
 - 探活证据：`wmctrl -l | grep -i "visual studio"` · exthost 日志激活记录 · 自建扩展的自证日志。

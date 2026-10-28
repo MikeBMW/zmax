@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""信号 → 目标场景 标签 (单一真源) —— 信号分析页按 绿/蓝/紫/白 标记与排序 (老倪 2026-10-12 逐字要求)。
+"""信号 → 目标场景 标签 (单一唯一依据) —— 信号分析页按 绿/蓝/紫/白 标记与排序 (老倪 2026-10-12 逐字要求)。
 
 老倪: 「每个场景对应不同的信号分析…信号分析主窗口的信号是有目标场景的, 你得标记出来…
        信号分析也用 绿色 蓝色 紫色 代表对应不同的场景; 信号分析要有个排序的功能, 即按照 绿色/蓝色/紫色/白色 来排列,
@@ -35,7 +35,7 @@ WHITE = "#ffffff"          # 未分类 = 白
 
 sys.path.insert(0, ROOT)
 try:
-    import ss_scene_switch as SSW                      # 颜色/任务映射的唯一真源
+    import ss_scene_switch as SSW                      # 颜色/任务映射的唯一依据
     TASK_SCENE = dict(SSW.TASK_SCENE)
     SCENE_COLOR = dict(SSW.SCENE_COLOR)
 except Exception:                                                             # noqa: BLE001
@@ -127,7 +127,7 @@ def _walk_keys(obj, acc: dict, scene: str, depth: int = 0):
 def _node_signal_tags(universe) -> dict:
     """按**任务启用的节点名**给信号打标 —— 信号名的既有约定是 `节点名.字段`(如 光学质量检测.判决)。
 
-    证据链: config/ss_task_binding.json 每任务的 enabled_nodes(真源) → 画布节点 id→name → 前缀匹配。
+    证据链: config/ss_task_binding.json 每任务的 enabled_nodes(唯一依据) → 画布节点 id→name → 前缀匹配。
     这样"每个场景对应不同的信号集合"是**按真实配置推出来的**, 不是我拍脑袋分类; 推不出来的一律白。
     """
     out = {}
@@ -162,7 +162,7 @@ def _node_signal_tags(universe) -> dict:
 
 
 # ── 场景专属关键词表 (2026-10-12 老倪: 「插拔信号绿色; 摆盘信号蓝色; AOI信号紫色」) ──
-#  依据 = **各场景自己定义原文里的对象/步骤**(真源 flows/scenes_5jobs.json, 下面每条括注出处),
+#  依据 = **各场景自己定义原文里的对象/步骤**(唯一依据 flows/scenes_5jobs.json, 下面每条括注出处),
 #  不是拍脑袋: 只有出现在场景定义里的词才算该场景的信号; 两边都沾(如 光模块/料盘/夹爪共用词)一律不猜 ⇒ 留白。
 SCENE_KEYWORDS = {
     "插拔场景": {   # SCN-01-FW「FW Loading + EEPROM 写/读校验」: 力控拉出/夹爪夹持/对位/插入/固件校验
@@ -216,7 +216,7 @@ def _source_scenes() -> dict:
 
     证据链(**不是拍脑袋分类**, 每一条都能复核):
       · `sstrace.*` = 状态空间引擎轨迹快照 (zmax_data/ss_live/trace_live.json), 由**画布数据源那一个场景**
-        的这一次运行写出 —— 画布数据源真源 = `tools/ss_scene_switch.now()['src_state']`。
+        的这一次运行写出 —— 画布数据源唯一依据 = `tools/ss_scene_switch.now()['src_state']`。
       · `ros./robot/force_torque.*` · `ros./gripper_pos.*` = 力控插入/夹持专用话题, 插拔链独用
         (摆盘走真空吸盘、AR 走 AOI 取像)。
       · `ros./robot/tcp_pose.*` = 真机末端位姿, 三个场景共用的平台量 ⇒ **留白**(要它绿就写进 overrides)。
@@ -296,7 +296,7 @@ def build(from_runs: bool = False) -> dict:
     for k, sc in overrides.items():        # 人工补充优先级最高
         sig[str(k)] = str(sc)
     doc = {"schema": 1,
-           "note": "信号→目标场景 标签真源 (signal→scene)。颜色/任务映射见 tools/ss_scene_switch.py; 未列出的 = 白(未分类)。",
+           "note": "信号→目标场景 标签唯一依据 (signal→scene)。颜色/任务映射见 tools/ss_scene_switch.py; 未列出的 = 白(未分类)。",
            "scenes": scenes_payload(),
            "colors": {"插拔场景": SCENE_COLOR.get("插拔场景"), "摆盘场景": SCENE_COLOR.get("摆盘场景"),
                       "AR场景": SCENE_COLOR.get("AR场景"), "未分类": WHITE},
@@ -359,13 +359,13 @@ def tag(key: str) -> str:
     for _pre in sorted((reg.get("source_scenes") or {}), key=len, reverse=True):
         if k.startswith(_pre):
             # 🔴 2026-10-13: 共用词(如「夹爪」)不随来源族染色 —— 与 build() 同口径。
-            #   否则 `sstrace.夹爪` 被这一层兜底判成"数据源场景"的颜色, 摆盘(真空吸盘)里又冒出夹爪。
+            #   否则 `sstrace.夹爪` 被这一层保障判成"数据源场景"的颜色, 摆盘(真空吸盘)里又冒出夹爪。
             if any(_w in k[len(_pre):].lower() for _w in _AMBIGUOUS):
                 return ""
             return (reg.get("source_scenes") or {})[_pre]
     bare = k.split(".", 1)[1] if k.startswith("ar.") else k
     if k.startswith("ar.") or bare.startswith("光学质量检测.") or bare.startswith("AOI."):
-        return "AR场景"                    # AR/AOI 前缀兜底: 注册表没刷也认得(照实标场景, 不丢颜色)
+        return "AR场景"                    # AR/AOI 前缀保障: 注册表没刷也认得(照实标场景, 不丢颜色)
     return ""
 
 
@@ -409,7 +409,7 @@ def main() -> int:
         print("%s → %r (色 %s)" % (a.tag, tag(a.tag), color(a.tag)))
         return 0
     s = summary()
-    print("信号→场景 标签 (真源 %s)" % s["registry"])
+    print("信号→场景 标签 (唯一依据 %s)" % s["registry"])
     for x in s["scenes"]:
         print("   %-8s %-12s %s" % (x["scene"], x["label"], x["color"]))
     print("   计数: %s" % s["counts"])

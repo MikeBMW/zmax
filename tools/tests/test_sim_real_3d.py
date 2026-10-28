@@ -10,7 +10,7 @@
   ① 页内第一块内容 = 「3D 场景编辑器 · 主视图」卡, 有 打开/档位L2L3L4/抓快照 五个按钮
   ② 点页内主按钮 → 真调画布 open_ss_3d(on_top=True); 档位按钮真带 level
   ③ **同源取证**: 画布工具栏「🧭 3D 视图」与页内按钮打到**同一个** open_ss_3d
-  ④ 兜底不崩: 没开 3D 时抓快照 / 画布未就绪时点打开 → 只提示不崩
+  ④ 保障不崩: 没开 3D 时抓快照 / 画布未就绪时点打开 → 只提示不崩
   ⑤ 视觉证据: 主视图卡真渲染 PNG (老倪要看得到, 不只看打印)
 """
 import os
@@ -95,7 +95,7 @@ app.processEvents()
 chk(bool(_hit), f"工具栏按钮 → 同一个 open_ss_3d (实测 {_hit})")
 SM.SimulinkModule.open_ss_3d = _REAL_OPEN3D            # 还原真实现 (否则判据⑥ 打的是替身)
 
-print("判据 ④ 兜底不崩 (没开 3D / 画布未就绪)", flush=True)
+print("判据 ④ 保障不崩 (没开 3D / 画布未就绪)", flush=True)
 try:
     _btn(body, "抓取快照").click()
     app.processEvents()

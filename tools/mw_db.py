@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""中间件工程库 CLI —— 节点/端口/连线/话题的落库真源。
+"""中间件工程库 CLI —— 节点/端口/连线/话题的落库唯一依据。
 
     python tools/mw_db.py status             # 库里有几套工程, 与画布是否同源
     python tools/mw_db.py sync               # 画布 JSON → 库 (幂等)

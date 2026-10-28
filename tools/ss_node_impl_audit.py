@@ -6,7 +6,7 @@
        哪个节点要高亮显示, 而且画布要跳到这个节点 —— 画布太大了, 找不到单步节点在哪」
 
 本工具把**画布上每个节点 == 哪段代码实现的**逐条查出来 (可核对), 并给出 GUI ⏭单步 的执行序:
-    · 实现真源: engineering.registry (节点名→语义 key→函数) + sourceview (含 _EXTERNAL_LOC 外部源)
+    · 实现唯一依据: engineering.registry (节点名→语义 key→函数) + sourceview (含 _EXTERNAL_LOC 外部源)
     · 单步序判据: 与 GUI `SimulinkModule._ss_*` **同一份逻辑** (本脚本优先直接调用 GUI 的函数;
       调用不到才用内联副本, 并在输出里注明用了哪条) —— row_bg / 能力档位开关 / 观察器 三类排除
 
@@ -139,7 +139,7 @@ def render(doc, show_code=True):
     m = doc["_meta"]
     out = []
     out.append("状态空间工程 · 逐节点实现审计")
-    out.append("真源: %s · 校验 %s" % (m["canvas"], "✅ 通过" if not m["problems"] else m["problems"][:2]))
+    out.append("唯一依据: %s · 校验 %s" % (m["canvas"], "✅ 通过" if not m["problems"] else m["problems"][:2]))
     out.append("节点 %d (功能 %d / 背景 %d) · 实现命中 %d/%d · 未命中 %d"
                % (m["nodes"], m["functional"], m["background"], m["impl_hit"], m["functional"], m["impl_miss"]))
     out.append("单步序 (档 %s): %d 节点会执行 · 判据来源: %s"

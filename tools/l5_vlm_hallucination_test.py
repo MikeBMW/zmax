@@ -95,5 +95,5 @@ else:
 print("-" * 78)
 print("结果: %d/%d PASS" % (PASS, PASS + FAIL))
 if FAIL:
-    print("⇒ 有项没过 ⇒ VLM 的缺陷判断**不能当依据**, 只能当描述性线索; 缺陷结论须由 L2 光学指标 + 人工确认兜底")
+    print("⇒ 有项没过 ⇒ VLM 的缺陷判断**不能当依据**, 只能当描述性线索; 缺陷结论须由 L2 光学指标 + 人工确认保障")
 sys.exit(0 if FAIL == 0 else 1)

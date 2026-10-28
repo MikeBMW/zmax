@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 归档 v5.50.750 本轮产物 (AR 场景接真机: 位姿/六维力/机器人状态机 + 信号分析收口与字号)
 #   产物: ~/zmax/zmax_data/release_sync_<YYYYMMDD>_v5.50.750
-#   口径沿用 archive_release_5_50_746.sh: 只拷本轮改动过的代码 + 真源快照 + 证据 + MANIFEST + sha256
+#   口径沿用 archive_release_5_50_746.sh: 只拷本轮改动过的代码 + 唯一依据快照 + 证据 + MANIFEST + sha256
 set -u
 REPO=/home/ubuntu/zmax
 VER=5.50.750
@@ -24,7 +24,7 @@ cp -f tools/gui/canoe_graphic.py tools/gui/dds_canoe.py "$DST/gui/" 2>/dev/null
 cp -f tools/web/tcp-ar.html "$DST/web/" 2>/dev/null
 cp -f VERSION.md "$DST/docs/"
 
-echo "=== ② 真源快照 (config 是软链, 必须显式拷) ==="
+echo "=== ② 唯一依据快照 (config 是软链, 必须显式拷) ==="
 cp -f config/topics/ar_aoi_signals.json "$DST/data/" 2>/dev/null
 cp -f zmax_data/ar_live/ar_aoi_live.json "$DST/data/" 2>/dev/null
 cp -f zmax_data/ar_state/module3d_lock.json "$DST/data/" 2>/dev/null
@@ -69,7 +69,7 @@ L.append("- 力换算自检 --selftest: 合成 3-4-5 直角 7/7 PASS (侧向合�
 L.append("- 静止时侧向力不为 0 = 夹爪+D405+工件的重力分量, 不是接触力 ⇒ 接触判据看**变化量**, 不看绝对值")
 L.append("- ft_out/latest.json 帧龄 > 1s ⇒ 总线不写任何力键, 值列显示「未接」, meta 写原因 (不用 0 冒充)")
 L.append("")
-L.append("## 机器人状态机 (真源 tools/robot_state.py, 当前三态走 SDK enum 直读)")
+L.append("## 机器人状态机 (唯一依据 tools/robot_state.py, 当前三态走 SDK enum 直读)")
 L.append("- 一句话: %s" % (m.get("robot") or "—"))
 L.append("- 状态码 %.0f · 插拔中 %.0f · 运动中 %.0f · 阶段码 %.0f · 历史报警 %d 条"
          % (g("机器人.状态_码"), g("机器人.插拔中", 0), g("机器人.运动中", 0), g("机器人.阶段_码"), g("机器人.报警数", 0)))
@@ -122,12 +122,12 @@ PY
   echo "## 判据实跑输出"
   echo '```'
   QT_QPA_PLATFORM=offscreen timeout 240 ./gui-venv311/bin/python tools/verify_ar_force_signals.py 2>&1 \
-    | grep -E "✅ PASS|❌ FAIL|^  ✅ .*(力|插拔|场景|数据源|10 条)|^   - " || echo "verify_ar_force_signals 未跑通"
+    | grep -E "✅ PASS|❌ FAIL|^  ✅ .*(力|插拔|场景|数据源|10 条)|^   - " || echo "verify_ar_force_signals 未验证通过"
   QT_QPA_PLATFORM=offscreen timeout 240 ./gui-venv311/bin/python tools/verify_sig_space_sync.py 2>&1 \
     > "$DST/evidence/verify_sig_space_sync.txt" 2>&1
   timeout 120 ./gui-venv311/bin/python tools/verify_rs_camera.py 2>&1 \
     | tee "$DST/evidence/verify_rs_camera.txt" \
-    | grep -E "^PASS|^FAIL|^[0-9]+/[0-9]+ PASS" || echo "verify_rs_camera 未跑通"
+    | grep -E "^PASS|^FAIL|^[0-9]+/[0-9]+ PASS" || echo "verify_rs_camera 未验证通过"
   echo '```'
 } >> "$EV"
 
@@ -140,7 +140,7 @@ echo "=== ⑤ MANIFEST ==="
   echo
   echo "## 本轮改动"
   echo '```'
-  echo "tools/robot_state.py           新增 · 机器人状态机单一真源 (state/latest/阶段/任务 → code 0..5 + 是否插拔)"
+  echo "tools/robot_state.py           新增 · 机器人状态机单一唯一依据 (state/latest/阶段/任务 → code 0..5 + 是否插拔)"
   echo "tools/rokae/ft_direct_sampler.py 新增 · 只读真机六维力采样 (xCoreSDK getEndTorque, 不调 fcStart/不下发运动)"
   echo "tools/ar_aoi_bus.py            新增 末端.轴向力/侧向力/侧向力y/z/力帧龄 + 机器人.* 6 条; real_force 元信息; 陈旧保护"
   echo "tools/tcp_ar_server.py         新增 /api/robot_state (只读代发)"
@@ -167,7 +167,7 @@ echo "=== ⑤ MANIFEST ==="
   echo
   echo "## 目录"
   echo "- tools/ gui/ web/ : 本轮改动过的代码 (只拷改过的, 不是整仓)"
-  echo "- data/ : 真源快照 —— ar_aoi_signals.json(注册表) · ar_aoi_live.json(AR 总线) · tcp_state/tcp_latest(控制器三查+位姿)"
+  echo "- data/ : 唯一依据快照 —— ar_aoi_signals.json(注册表) · ar_aoi_live.json(AR 总线) · tcp_state/tcp_latest(控制器三查+位姿)"
   echo "          ft_latest(六维力) · skill_dispatch/skill_gate/engine_latest(阶段与任务) · dataspace_live(DDS 话题质量)"
   echo "- evidence/ : 实测数字 (只写数字, 不写排查过程)"
   echo "- logs/ : tcp_ar_server.log / ar_aoi_bus.log"

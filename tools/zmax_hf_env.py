@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""HF 缓存环境真源 — 训练入口**只许从这里取**, 不许各写一份。
+"""HF 缓存环境唯一依据 — 训练入口**只许从这里取**, 不许各写一份。
 
 为什么独立成模块 (2026-10-14 实测事故):
   `run_full_drill.py` 与 `tools/gui/model_engine_window.py` 各自写了
@@ -10,7 +10,7 @@
   ("We couldn't connect to 'https://huggingface.co' … couldn't find them in the cached files"),
   而 L2/L4 因为不碰 HF 缓存"看起来正常"，故障被掩盖成"L3 就是不行"。
 
-真源口径 (与 tools/joint_train_all.py HF_HOME、tools/zmax_bootstrap.py ZMAX_HF_HOME 一致):
+唯一依据口径 (与 tools/joint_train_all.py HF_HOME、tools/zmax_bootstrap.py ZMAX_HF_HOME 一致):
   工程根下的 zmax_data/hf_cache   (hub/ 里是真模型, SmolVLM2 基座在
   models--HuggingFaceTB--SmolVLM2-500M-Video-Instruct/snapshots/<rev>/)
 """

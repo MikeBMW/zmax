@@ -50,7 +50,7 @@ main()
 提交命令从 `python -m lerobot.scripts.lerobot_train --config_path x.yaml`
 改为 `python remote_train_entry.py --config_path x.yaml`（两处提交路径都要改：studio.py `_start_remote_training` + simulink_model on_train 远程分支）。
 
-**验证命令**（容器内跑通 = 修复有效；跑不通 = 还崩）：
+**验证命令**（容器内验证通过 = 修复有效；跑不通 = 还崩）：
 ```bash
 docker run --rm --runtime nvidia --gpus all --entrypoint python zmax-train:latest -c \
 "import torch, torch.nn as nn; torch.backends.cudnn.enabled=False; \
@@ -190,7 +190,7 @@ def strip_all(src, cls):
 
 ## venv 3.12 快路径（容器折腾久时优先）
 
-服务器 `apt install python3.12 python3.12-venv`（deadsnakes）+ venv + `pip install -e .`——3.12 原生支持 PEP695，**无需改代码**，比容器快得多。踩坑：
+服务器 `apt install python3.12 python3.12-venv`（deadsnakes）+ venv + `pip install -e .`——3.12 原生支持 PEP695，**无需改代码**，比容器快得多。遇到问题：
 - **`pip install -e .` 会重装 torch 到最新**（如 2.11.0+cu130——与服务器驱动 12.4 不匹配 → `torch.cuda.is_available()=False`）→ 用 `--no-deps -e .` 再补核心依赖（termcolor/tensorboard/transformers/huggingface_hub/accelerate），torch 手动装匹配驱动的版本：`pip install torch==2.3.0 torchvision==0.18.0 --index-url https://download.pytorch.org/whl/cu118`（cp312 wheel ✓ V100 sm_70 ✓ 驱动 12.4 ✓）
 - 训练提交同容器链：git pull + sed 数据 root + `python3 -m lerobot.scripts.lerobot_train`（pip 模块方式）+ 提交后 3s 存活验证
 - **补依赖是迭代的**：`import_utils.require_package` 逐个报（`'datasets' is required` → `'av' is required` …）——`pip install lerobot[dataset]` 一次装全（或循环补 datasets/av/…），别一个错补一个
@@ -216,10 +216,10 @@ lerobot fork 的 smolvla_lew/molmoact2/wall_x/groot 等策略 import transformer
 （本地 smolvla_peg_long2 训练通过 + DTensor OK + torch_compilable OK——以 `pip show transformers` +
 `python -c "from torch.distributed.tensor import DTensor"` 双重确认）。4.49-4.51 缺 torch_compilable_check
 （`cannot import name 'torch_compilable_check' from 'transformers.utils'`，eo1 策略顶层引用），5.x 又
-需 torch 2.5+（DTensor）。**规则：以本地能跑通训练的版本为准，别在远程从零试版本矩阵。**
+需 torch 2.5+（DTensor）。**规则：以本地能验证通过训练的版本为准，别在远程从零试版本矩阵。**
 
 **规则**：
-- **以本地 `.venv` 能跑通训练的版本为准**（本地 5.5.4 全 import OK——`pip show transformers` 看本地版本，远程装同版本 `--force-reinstall`）
+- **以本地 `.venv` 能验证通过训练的版本为准**（本地 5.5.4 全 import OK——`pip show transformers` 看本地版本，远程装同版本 `--force-reinstall`）
 - **⚠️ huggingface-hub 必须 >=1.5.0（2026-08-09 arm64 构建实测）**：requirements.lock 曾写 `huggingface-hub>=0.24,<0.37` → arm64 `docker build` 直接 `ResolutionImpossible: Cannot install huggingface-hub==0.36.0 and transformers==5.5.4 because these package versions have conflicting dependencies`（transformers 5.5.4 要求 `huggingface-hub<2.0,>=1.5.0`）。**修：lock 里 `huggingface-hub>=1.5.0,<2.0`**。排查命令：`pip install --dry-run transformers==5.5.4 2>&1 | grep huggingface-hub` 直接看它要求的版本范围
 - **4 轮都崩时直接上 transformers 4.44.2**（最老但最稳，避开 4.49+ 的 TextConfig 缺失与 5.x 的 torch/nn/GenerationMixin 系列坑）；另一会话已验过的镜像 tag（如 v6）优先直接用，别自己从头试
 - **`GenerationMixin` import 改标准路径** `from transformers.generation.utils import GenerationMixin`（4.x/5.x 都兼容——`transformers.generation` 顶层在 5.x 部分版本没有）——改 lerobot 源码 3 处（molmoact2/wall_x/groot），提交后远程 git pull
@@ -231,7 +231,7 @@ lerobot fork 的 smolvla_lew/molmoact2/wall_x/groot 等策略 import transformer
 
 - **`nohup bash x.sh &` 经 ssh 断开后会被杀**（进程消失、log 停在半途）→ 用 **`setsid bash x.sh < /dev/null & disown`** 彻底脱离会话
 - **python 非 tty 块缓冲**：训练 stdout 攒 4K 才输出 → GUI/日志看不到实时进度 → 命令加 **`-u`**（`python -u -m lerobot.scripts.lerobot_train`）
-- **tqdm `\r` 进度条不触发 `for line in p.stdout`**（永远等不到 \n，日志"卡住"）→ 子进程读取改**块读 + 按 \r/\n 分行**：`p.stdout.read(4096)` 累积 buf，`while b"\n" in buf or b"\r" in buf: split` 后逐行 emit（进度条每帧都实时）
+- **tqdm `\r` 进度条不触发 `for line in p.stdout`**（永远等不到 \n，日志"阻塞"）→ 子进程读取改**块读 + 按 \r/\n 分行**：`p.stdout.read(4096)` 累积 buf，`while b"\n" in buf or b"\r" in buf: split` 后逐行 emit（进度条每帧都实时）
 - **训练队列秒推进误判**：轮询 `pgrep -f lerobot_train` 判"完成"，但 on_train 数据准备有延迟（进程未起）→ 14 秒误推进到下一个模型 → **启动后 45s 窗口内不判完成**；pgrep 有进程时**重置窗口**（等真正结束才推进）
 - **监控脚本进程优先**：`grep ALL_DONE` 会匹配 log 里的旧记录（重跑多次后误报"完成"）→ 先 `pgrep` 有进程 = 训练中，无进程再看尾部 ALL_DONE
 
@@ -258,7 +258,7 @@ lerobot fork 的 smolvla_lew/molmoact2/wall_x/groot 等策略 import transformer
 - **布局紧凑（2026-08-08 老倪"空着一大段"）**：模型引擎页 `layout.setSpacing(16)→6` + `setContentsMargins(20,20,20,20)→(16,6,16,12)`——标题区与 GPU 服务器状态区整体上移贴紧，不留大片空白
 - **模型引擎自动连接**：`__init__` 末尾 `QTimer.singleShot(3000, _auto_connect_gpu)`——检查 `~/.zmax_ssh.json` 存在且 `remote_engine` 未连接 → 自动 `_connect_gpu()`（无需手动点连接按钮）；连接成功后启动容器状态轮询
 - **⚠️ 远程不可达不许误导（2026-08-08 老倪"远程我都关机了，你这是误导；按照实际的信息输出"）**：`_on_gpu_mode` 必须加 `self.remote_engine.get("connected")` 才显示"训练引擎 → 远程 GPU"——否则 radio_remote 被选中 + engine 存在但 SSH 没连上时，日志仍假报远程（远程关机后用户看到"训练引擎 → 远程 GPU" = 误导）。`_connect_gpu` 失败分支补 `self._log("⚠️ 远程 GPU 不可达 (已关机/网络不通) — 自动使用本地引擎 (4060)")`。**验证**：mock `remote_engine=None` 与 `remote_engine={"connected": False}` 两种情况调 `_on_gpu_mode` → `gpu_mode` 都必须是 `"local"`。**规则：状态信息必须按实际输出——连不上就明说连不上并自动降级本地，绝不报"已连接/远程引擎"**
-- **⚠️ `_auto_connect_gpu` 快速失败探针（2026-08-08 老倪"我啥也没干呢，你肯定连不上，报连不上的信息啊"）**：启动自动连接若直接 `_connect_gpu()`，SSH 全流程在远程关机时慢且日志停在"模型引擎自动连接远程 GPU…"无下文 → 先做 **3 秒可达性探针**：`sshpass ssh -o ConnectTimeout=3 -o BatchMode=yes host 'echo OK'`（`timeout=6`），stdout 无 `OK` → 立即 `self._log("⚠️ 远程 GPU 连不上 (已关机/网络不通) — 使用本地引擎 (4060 容器)")` + `gpu_mode="local"` + `radio_local.setChecked(True)` 并 return（不调 `_connect_gpu`）；探针通过才 `_connect_gpu()`。文案"检测远程 GPU…"而不是"自动连接…"（还没连上）。**验证**：真实调用（远程关机时）断言 `gpu_mode=="local"` + 日志含"连不上/不可达"
+- **⚠️ `_auto_connect_gpu` 快速失败探针（2026-08-08 老倪"我什么也没干呢，你肯定连不上，报连不上的信息啊"）**：启动自动连接若直接 `_connect_gpu()`，SSH 全流程在远程关机时慢且日志停在"模型引擎自动连接远程 GPU…"无下文 → 先做 **3 秒可达性探针**：`sshpass ssh -o ConnectTimeout=3 -o BatchMode=yes host 'echo OK'`（`timeout=6`），stdout 无 `OK` → 立即 `self._log("⚠️ 远程 GPU 连不上 (已关机/网络不通) — 使用本地引擎 (4060 容器)")` + `gpu_mode="local"` + `radio_local.setChecked(True)` 并 return（不调 `_connect_gpu`）；探针通过才 `_connect_gpu()`。文案"检测远程 GPU…"而不是"自动连接…"（还没连上）。**验证**：真实调用（远程关机时）断言 `gpu_mode=="local"` + 日志含"连不上/不可达"
 - **远程关机不影响本地容器训练（2026-08-08 实测）**：本地 zmax-std:1.0 容器 GPU 直通完全独立——远程服务器关机只损失 V100 加速（本地 4060 慢些），训练/评估/推理全链路本地容器可跑（5 模型容器训练产物全在本机 `outputs/train/`）。GUI 自动连接在远程关机时走上面的"不可达"提示 + `gpu_mode=local`，本地容器轮询（`_poll_remote_container` 本地分支）照常显示容器训练状态
 - **训练日志必须桥接到模型引擎日志区（2026-08-08 老倪\"日志呢\"根因）**：simulink 的 `on_train` 日志走 `log_signal`（连 simulink 自己的日志页）——模型引擎（TrainingModule）日志区看不到 → 用户只看到队列推进行、看不到训练细节 → 主窗口连接处补 `self.simulink.log_signal.connect(self.model_engine._log)`（_log 已线程安全，可跨线程 emit）
 - **容器状态要详细状态树（老倪\"日志太少，跟没有一样\"）**：`_poll_remote_container` 只输出一行容器状态不够——SSH 一次拉全：`docker ps -a`（含 Exited/Paused）+ `docker images | grep zmax-train`（镜像/大小）+ `docker logs` 提取 `Training: N%|loss X|config_*.yaml|开始训练` + `nvidia-smi`，状态变化时输出树状：`🐳 远程容器: …\n   ├ 镜像: …\n   ├ 训练: …\n   └ GPU: …`（变化才输出防刷屏，但内容必须全）
@@ -349,7 +349,7 @@ simulink_module.py `on_train` 三个分支全改容器（**删除本地 .venv �
 - **🐛 递归全局包装会崩 GUI——禁止 `replaceWidget` 批量包角标（2026-08-08 实测 GUI 进程直接死）**：老倪\\\"所有、所有、所有控件都要有 ID\\\\\\\" → 写了 `_holo_apply_all/_holo_walk/_holo_walk_layout` 递归遍历所有页布局，对每个按钮/开关/下拉/输入 `lay.replaceWidget(wgt, wrap)` 包角标：**① offscreen 验证环境 segfault（exit 139）；② 真实 GUI（DISPLAY=:0）启动后 1.5s 递归执行时进程直接死（`ps aux` 无 studio、xdotool 找不到窗口）**——QStackedWidget 多页 + 复杂嵌套布局下 replaceWidget 会破坏 Qt 布局所有权。**处理：主窗口构造尾部的 `QTimer.singleShot(1500, lambda: self.model_engine._holo_apply_all(self))` 整段注释禁用（保留代码供日后安全遍历用），手动逐控件 `_holo_badge(...)` 角标（Start/Stop/上传/模式卡片）继续生效**。**规则：给已存在的控件加角标/包裹一律手动在构造处 `_holo_badge(widget, id)` 包（布局明确、可验证）；不要递归遍历 reparent/replaceWidget——Qt 布局树不是随便能改的，崩了 GUI 连窗口都出不来**。GUI 崩溃恢复流程：`pkill -9 -f studio.py` → 注释掉危险调用 → 重启确认窗口出现（`xdotool search` 见标题）→ 再补验证
 - **✅ 最终安全形态：`_holo_badge_overlay` 叠加 QLabel（2026-08-08 实测——递归全控件版恢复的唯一安全路径）**：`QLabel(h_id, widget)` 直接以控件为 parent 的子标签（`lbl.move(2, widget.height()-lbl.height()-2)` + `lbl.raise_()`），**完全不改布局**——QLabel 叠在控件左下角，无需 replaceWidget/reparent，多页复杂布局不崩。`_holo_apply_all(root)` 新版：`for w in root.findChildren(QWidget)` + `isinstance(w, (QPushButton, QCheckBox, QRadioButton, QComboBox, QLineEdit, QTableWidget, QGroupBox))` → `_holo_badge_overlay(w, h_id)` + 写 `_holo_coords`（ID 用 `_holo_seq_id`）。**页识别 `_holo_page_of(w)`**：沿 parent 链找 objectName（`simulink`→P11 / `model_engine`→P03 / `home`→P01…12 页映射），无匹配 → P00。主窗口构造尾部恢复 `QTimer.singleShot(1500, lambda: self.model_engine._holo_apply_all(self))`（overlay 版不崩）。**清理**：旧 replaceWidget 版 `_holo_apply_all/_holo_walk/_holo_walk_layout/_holo_assign_id` 同名方法删除（Python 后定义覆盖 + lint 报重声明；`_holo_name/_holo_type/_holo_state` 保留共用）。**验证**：静态断言 `def _holo_badge_overlay` + `QLabel(h_id, widget)` + 单一 `def _holo_apply_all` 定义 + `replaceWidget` 不在新版段；运行时 `m._holo_badge_overlay(w, id)` 返回 QLabel 且 `hasattr(w, "_holo_badge_lbl")`；**offscreen 下千万别实际调 apply_all 全树遍历**（findChildren 到 QGroupBox 叠加也可能触发插件崩溃）——静态 + 单控件验证即可
 - **🌐 3D 坐标 ID 系统（2026-08-08 老倪\"需要有个坐标系统，类似3D坐标……每个ID都是这个结构的一个点\"——角标之后的最终形态）**：ID 升级为 `X.Y.Z` 三维坐标——**X=页（P01首页…P12数据空间 12 页）、Y=区块（01训练区 02容器区 03配置区 04数据区 05评估区 06日志区 07导航区 08状态区 09对比区 10部署区）、Z=控件序号**。类级常量 `HOLO_PAGES`/`HOLO_ZONES` + 方法 `_holo_coord(x,y,z)`→`\"P03.01.01\"`、`_holo_coord_desc(\"P03.01.01\")`→`\"模型引擎 · 训练区 · 控件01\"`（人类可读）、`_holo_coord_register(x,y,z,widget,name,type,getter)` 写 `self._holo_coords[cid]`。**`_holo_act` 支持两种 ID**：含 `.` 的坐标 ID 查 `_holo_coords`（按钮 click / 开关 toggle / 下拉 showPopup），无点走旧 `_holo_reg`（B-01/S-01 简写）。P03 模型引擎页注册 16 点：`P03.01.01`Start `P03.01.02`Stop `P03.01.03`恢复默认 `P03.01.05..11`训练开关(ACT..官方专家) `P03.02.01..03`模式卡片 `P03.02.04`上传 `P03.03.01`配置表格 `P03.06.01`日志区。**规则：坐标 = 控制台结构的点，注册表就是全局数据空间——说\"P03.01.01\"即点 Start，无歧义**
-- **🎨 画布节点左下角 ID 绘制（2026-08-08 老倪\"simulink 功能也没有 ID 啊\"）**：模型引擎页有角标后画布（simulink）节点还是没 ID → 在 `NodeItem.paint`（simulink_module.py ~1018 行）主体绘制后追加：`painter.setPen(QColor(\"#00d4aa\")); painter.setFont(QFont(\"Arial\", 7)); nid = getattr(self, \"nid\", None) or f\"P11.{self.sid % 100:02d}\"; painter.drawText(QRectF(6, self.h - 13, ...), Qt.AlignLeft, nid)`——**每个画布节点左下角青色 7px 小字 ID**（P11 = 画布页坐标）。规则：画布节点 ID 用 paint 绘制（不是控件角标），节点创建处可分配可读 `nid`（默认 sid 兜底）
+- **🎨 画布节点左下角 ID 绘制（2026-08-08 老倪\"simulink 功能也没有 ID 啊\"）**：模型引擎页有角标后画布（simulink）节点还是没 ID → 在 `NodeItem.paint`（simulink_module.py ~1018 行）主体绘制后追加：`painter.setPen(QColor(\"#00d4aa\")); painter.setFont(QFont(\"Arial\", 7)); nid = getattr(self, \"nid\", None) or f\"P11.{self.sid % 100:02d}\"; painter.drawText(QRectF(6, self.h - 13, ...), Qt.AlignLeft, nid)`——**每个画布节点左下角青色 7px 小字 ID**（P11 = 画布页坐标）。规则：画布节点 ID 用 paint 绘制（不是控件角标），节点创建处可分配可读 `nid`（默认 sid 保障）
 
 ## 国内镜像加速器
 
@@ -372,7 +372,7 @@ systemctl restart docker
 - `docker run -d ... > host.log`：host.log 只收**容器 ID**；训练日志在 `docker logs <container>`——验证/查进度用 docker logs
 - `systemctl restart docker` 会**杀正在跑的 docker build**（buildkit 进程消失、log 卡死）——构建期间绝不重启 docker
 - 提交后验证存活：`docker ps --filter name=<c>` + `docker logs <c>` 无 Error/Traceback——不要 grep 宿主 log（只有容器 ID）或 ps 进程（会匹配提交 shell）
-- **`docker commit` 前必须先 `docker unpause`（2026-08-08 实测）**：SSH 会话中断会把容器挂成 `Up N minutes (Paused)`，此时 commit 的镜像层可能是**旧状态**——容器内 `python -c "import torch, torchaudio"` 验证 OK，但 commit 出来的镜像跑起来仍报旧的 CUDA 版本冲突。**铁律：commit 前 `docker ps` 确认非 Paused；commit 后用新镜像 tag 起一个干净容器重新验证，别信原容器内的验证结果。**
+- **`docker commit` 前必须先 `docker unpause`（2026-08-08 实测）**：SSH 会话中断会把容器挂成 `Up N minutes (Paused)`，此时 commit 的镜像层可能是**旧状态**——容器内 `python -c "import torch, torchaudio"` 验证 OK，但 commit 出来的镜像启动仍报旧的 CUDA 版本冲突。**铁律：commit 前 `docker ps` 确认非 Paused；commit 后用新镜像 tag 起一个干净容器重新验证，别信原容器内的验证结果。**
 - **`pip force-reinstall` 会被 pip 缓存骗（2026-08-08 实测）**：`--force-reinstall torchaudio==2.4.1 --index-url .../cu124` 后 `pip show` 仍是 cu121——先 `pip cache purge` 再装；且 force-reinstall 会**连带升级 torch**（依赖关系）→ torch 又跳回最新 cu130 → 更乱。**修：torch/torchvision/torchaudio 三者同源同版本一次装齐**（全 cu121 或全 cu124，别混），必要时 `pip uninstall -y torch torchaudio torchvision` 后一次装。
 - **串行队列每轮日志名必须带模型名（2026-08-08 实测）**：队列脚本 `> /tmp/train_tmp.log` 复用同名日志 → 上一轮失败的日志被下一轮覆盖 → 查失败原因时只剩最后一个模型的输出。修：`docker run ... bash -c "... > /tmp/train_${name}.log 2>&1"`，失败排查 `docker cp <c>:/tmp/train_<name>.log`。
 - **多端（飞书端 bot + CLI 会话）同时操作远程容器会互踢（2026-08-08 实测）**：另一端会 `docker pause/stop/rm` 你的容器（exec 报 `container is paused` → unpause 后变 `No such container`）→ **动远程容器前先对账**：`docker ps -a --format '{{.Names}} {{.Status}} {{.Image}}'` + `docker top <c>` 看容器在跑什么；协调分工（谁 commit/谁训练），别自己从零起容器覆盖对方正在跑的。被删后重建：`docker run -d --name zmax_train --device 三设备 -v libcuda.so.1 -v 工程:/app <镜像> sleep infinity` + `docker cp` 重拷脚本
@@ -388,7 +388,7 @@ systemctl restart docker
 
 ## 训练/容器状态 → 飞书 dataworld 通知（2026-08-08 老倪要求"修好了给飞书发消息"）
 
-容器训练跑通/状态变更时，老倪要求主动发飞书通知（用户从飞书端监控）：
+容器训练验证通过/状态变更时，老倪要求主动发飞书通知（用户从飞书端监控）：
 ```bash
 cd ~/.hermes && APP_ID=$(grep FEISHU_APP_ID .env | cut -d= -f2 | tr -d '"') && \
 APP_SECRET=$(grep FEISHU_APP_SECRET .env | cut -d= -f2 | tr -d '"') && \
@@ -456,7 +456,7 @@ ECS（阿里云宝塔）scp 传 >~100MB 文件全部 `Connection closed`（87MB 
 - **大权重跨网络传输是死路——优先在有权重缓存的机器训练（2026-08-08 实测）**：AWE 需要 SigLIP
   权重（本地 `~/.cache/huggingface/hub/models--google--siglip-base-patch16-224` 776MB），远程无缓存
   只能从 HF 下载或从本地传。实测：scp 775MB tar 传 30+ 分钟只到 55% 中断（网络慢），rsync 续传也卡
-  死（0% CPU 挂着不传）→ **AWE 远程训练 2 小时没跑起来**；切回本地 4060（SigLIP 缓存完整 +
+  死（0% CPU 挂着不传）→ **AWE 远程训练 2 小时没启动**；切回本地 4060（SigLIP 缓存完整 +
   `HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1` 离线模式）→ **秒起训练 335/2000 步**。
   **规则：训练机器选择先看 HF 权重缓存在哪**——远程没缓存的大模型（SmolVLA/SigLIP/AWE），
   本地有缓存就本地训；远程只跑数据已在远程且权重可下载的模型（ACT/MLP）。别把时间耗在传权重上。

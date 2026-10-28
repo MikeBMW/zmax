@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """项目立项文档导出器 — 数据驱动 (BOM 挂功能 / 成本自动核算 / ROI 由性能指标算)
 
-真源 (三份文档同源):
+唯一依据 (三份文档同源):
   · config/platform/zmax_project_bom.json   ← BOM/降本/人力/商务/ROI/市场 条款
   · data/database/zmax/zmax_engineering.db  ← 功能清单/能力/指标 (BOM 的 links 必须命中这里)
   · config/platform/zmax_data_governance.json ← 合作协议
@@ -109,7 +109,7 @@ def check_links(bom, fns, pfs, caps, params):
 
 
 def compute(root):
-    """成本/收益/ROI 计算 —— 输入是整份 BOM 真源 (含 bom/labor/commercial/roi 各段)。"""
+    """成本/收益/ROI 计算 —— 输入是整份 BOM 唯一依据 (含 bom/labor/commercial/roi 各段)。"""
     bom, labor_s, com, roi = root["bom"], root["labor"], root["commercial"], root["roi"]
     items = bom["items"]
     unpriced = [i for i in items if not isinstance(i.get("price"), (int, float))]
@@ -196,7 +196,7 @@ def build_doc(bom, r, ok, dangling, covered, uncovered):
     _font(t.add_run("%s · 立项文档" % (prj.get("doc_title") or prj.get("name") or "项目")), size=22, bold=True)
     para(doc, "项目: %s" % prj["name"], size=11)
     para(doc, "客户: %s · 现场: %s" % (prj["customer_block"], prj["site"]), size=11)
-    para(doc, "文档编号: %s · 版本 %s · 数据源: 单一工程库 + BOM 真源 (配置中心导出, %s)"
+    para(doc, "文档编号: %s · 版本 %s · 数据源: 单一工程库 + BOM 唯一依据 (配置中心导出, %s)"
          % (DOC_NO, VERSION, time.strftime("%Y-%m-%d %H:%M")), size=10)
 
     h(doc, "0. 文档信息", 1)
@@ -304,7 +304,7 @@ def build_doc(bom, r, ok, dangling, covered, uncovered):
     para(doc, "6.1 缩略语")
     table(doc, ["缩略语", "全称", "说明"], [list(a) for a in ABBR], widths=[2.6, 7.4, 5.0])
     para(doc, "6.2 问题收集记录: (项目周会逐条累积)", size=10)
-    para(doc, "6.3 数据来源与可复现: 工程库 %s (sha256 %s…) · BOM 真源 config/platform/zmax_project_bom.json · "
+    para(doc, "6.3 数据来源与可复现: 工程库 %s (sha256 %s…) · BOM 唯一依据 config/platform/zmax_project_bom.json · "
               "功能/指标/能力取自同一库, 与 SOR、合作协议同源。"
          % (os.path.relpath(DB, ROOT), sha(DB)[:16]), size=9)
     return doc

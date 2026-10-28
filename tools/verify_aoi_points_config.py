@@ -5,10 +5,10 @@
 
 判定 (真跑, 不看返回值):
   ① 任务配置 config/tasks/tasks.json 的 TASK-07-AOI.overrides 里有 pt.<点名> / pthist.<点名>
-  ② 配置里的数值 == 台账真源 reports/aoi_points/<点名>.json 的 pos (逐位相同 — 真源驱动, 不是手抄)
+  ② 配置里的数值 == 台账唯一依据 reports/aoi_points/<点名>.json 的 pos (逐位相同 — 唯一依据驱动, 不是手抄)
   ③ pthist 的更新次数 == 该点 history.jsonl 行数, 且 old→new 与最后一行一致
   ④ 配置中心页 (真起窗口): AOI 行的 tooltip + 底部面板 都能看到 金手指点1 的位置
-  ⑤ 生成器只读台账: 重跑 tools/task_build.py 后台账文件内容不变 (单一真源, 不反向写)
+  ⑤ 生成器只读台账: 重跑 tools/task_build.py 后台账文件内容不变 (单一唯一依据, 不反向写)
 """
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ def main():
     ck(bool(hist), "有 pthist.* 更新记录", "%d 条" % len(hist))
     ck(ov.get("pt.dir") == "reports/aoi_points", "配置里写明台账目录 pt.dir", ov.get("pt.dir"))
 
-    print("\n=== ② 配置数值 == 台账真源 (逐位) ===")
+    print("\n=== ② 配置数值 == 台账唯一依据 (逐位) ===")
     if os.path.isdir(PTDIR):
         for f in sorted(os.listdir(PTDIR)):
             if not f.endswith(".json"):
@@ -111,7 +111,7 @@ def main():
         if te is not None:
             out = te.toPlainText()
         tip_all = "\n".join(tips)
-        # 🔴 期望值**从台账真源现读**(原来写死 0.489774 ⇒ 2026-10-12 现场重教点1 后这条报假失败)
+        # 🔴 期望值**从台账唯一依据现读**(原来预先固定 0.489774 ⇒ 2026-10-12 现场重教点1 后这条报假失败)
         _x_led = None
         try:
             _p = os.path.join(ROOT, "reports", "aoi_points", "金手指点1.json")
@@ -121,7 +121,7 @@ def main():
             pass
         _x_exp = ("%.6f" % _x_led) if _x_led is not None else None
         ck("金手指点1" in tip_all, "AOI 行 tooltip 里有「金手指点1」")
-        ck(bool(_x_exp) and (_x_exp in tip_all), "tooltip 里的 x 与台账真源现读值一致",
+        ck(bool(_x_exp) and (_x_exp in tip_all), "tooltip 里的 x 与台账唯一依据现读值一致",
            "台账 x=%s · tooltip %s" % (_x_exp, tip_all.split("金手指点1")[-1][:60] if "金手指点1" in tip_all else ""))
         ck("金手指点1" in out and bool(_x_exp) and (_x_exp in out),
            "底部面板(可复制) 里有金手指点1 的位置(与台账同值)", "台账 x=%s" % _x_exp)
@@ -141,7 +141,7 @@ def main():
     for f in sorted(os.listdir(PTDIR)):
         if f.endswith(".json") or f.endswith(".jsonl"):
             after[f] = _file_hash(os.path.join(PTDIR, f))
-    ck(before == after, "台账文件逐个 hash 不变 (只读真源)", "%d 个文件" % len(before))
+    ck(before == after, "台账文件逐个 hash 不变 (只读唯一依据)", "%d 个文件" % len(before))
     t2 = _task()
     ck(((t2.get("overrides") or {}).get("pt.金手指点1") == ov.get("pt.金手指点1")),
        "重跑后配置里金手指点1 的值稳定(幂等)")

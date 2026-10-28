@@ -7,7 +7,7 @@
   2. 点左侧『供应商外发 SOR』→ 切到「📄 文档预览」页签, 且预览文本是**真 docx 内容** (含标记串)
   3. 三份文档都点一遍: 预览非空 + 头部给出的 docx 绝对路径真实存在
   4. 一致性核对: 三份文档记录的工程库 sha 相同 (同源) 且 = 当前工程库 sha ⇒ 全部 ✅
-  5. **过期判定真的会触发**: 把某个真源 mtime 改新 (内容不动) → 对应文档必须变 ⛔ 已过期 + 红字告警;
+  5. **过期判定真的会触发**: 把某个唯一依据 mtime 改新 (内容不动) → 对应文档必须变 ⛔ 已过期 + 红字告警;
      改回原 mtime 后必须恢复 ✅ (判据不是摆设)
 用法: QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/tests/test_config_doc_preview.py
 """
@@ -80,7 +80,7 @@ def main():
               body.strip().splitlines()[0][:60] if body.strip() else "(空)")
         dp = [l.split("docx 绝对路径: ")[-1] for l in head.splitlines() if "docx 绝对路径" in l]
         check(node + " → 给了 docx 绝对路径且存在", bool(dp) and os.path.exists(dp[0]), dp[0] if dp else "(无)")
-        check(node + " → 判定为与真源一致", "✅" in head.splitlines()[0], head.splitlines()[0][-40:])
+        check(node + " → 判定为与唯一依据一致", "✅" in head.splitlines()[0], head.splitlines()[0][-40:])
 
     print("\n═══ 3) 一致性核对视图 ═══")
     page._show_consistency()
@@ -92,7 +92,7 @@ def main():
     check("核对结论无告警标记 [⛔]", "[⛔]" not in con, [l for l in con.splitlines() if "[⛔]" in l][:2])
 
     print("\n═══ 4) 过期判定真会触发 (两条路径都要验) ═══")
-    # 4a) sha 路径: 真源**内容**变了 (备份→改动→复原)
+    # 4a) sha 路径: 唯一依据**内容**变了 (备份→改动→复原)
     bom = os.path.join(ROOT, "config", "platform", "zmax_project_bom.json")
     orig = open(bom, "rb").read()
     try:
@@ -103,14 +103,14 @@ def main():
         head = page.pv_head.text()
         body = page.preview.toPlainText()
         print("      内容改动后判定: " + st_new["why"])
-        check("真源内容变 → 立项文档判过期", st_new["stale"] and "过期" in head.splitlines()[0])
+        check("唯一依据内容变 → 立项文档判过期", st_new["stale"] and "过期" in head.splitlines()[0])
         check("过期时预览顶部有红字告警", body.startswith("⛔ 一致性告警"))
-        check("SOR(另一真源未动)不受影响", not vp._doc_state("sor")["stale"])
+        check("SOR(另一唯一依据未动)不受影响", not vp._doc_state("sor")["stale"])
     finally:
         open(bom, "wb").write(orig)
     check("内容复原后判定恢复一致", not vp._doc_state("project")["stale"], vp._doc_state("project")["why"])
 
-    # 4b) 时间戳路径: 只动 mtime 且该真源未被 manifest 记录 sha (平台配置)
+    # 4b) 时间戳路径: 只动 mtime 且该唯一依据未被 manifest 记录 sha (平台配置)
     plat = os.path.join(ROOT, "config", "platform", "zmax_platform.json")
     st0 = os.stat(plat)
     _dm = (vp._doc_state("project")["doc"] or {}).get("mtime") or os.path.getmtime(plat)
@@ -118,7 +118,7 @@ def main():
         os.utime(plat, (st0.st_atime, _dm + 60))   # 显式设成"比文档晚 60s", 不依赖时钟顺序
         st_p = vp._doc_state("project")
         print("      平台配置 mtime 更新后判定: " + st_p["why"])
-        check("未记录 sha 的真源动过 → 判过期(时间戳兜底)", st_p["stale"] and "平台配置真源" in st_p["why"])
+        check("未记录 sha 的唯一依据动过 → 判过期(时间戳保障)", st_p["stale"] and "平台配置唯一依据" in st_p["why"])
     finally:
         os.utime(plat, (st0.st_atime, st0.st_mtime))
     check("mtime 还原后判定恢复一致", not vp._doc_state("project")["stale"], vp._doc_state("project")["why"])

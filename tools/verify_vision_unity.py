@@ -6,7 +6,7 @@
 工程配置, 最后给出成本组成、市场分成, 达到全局愿景统一; 这个愿景, 一个在 AR 场景体现」
 
 六段:
-  ① 愿景真源 tools/spec/vision.json 结构完整 (一句话/三支柱/八步/AR 口径), 且八步与七页签对得上
+  ① 愿景唯一依据 tools/spec/vision.json 结构完整 (一句话/三支柱/八步/AR 口径), 且八步与七页签对得上
   ② 配置中心: 七个页签顶上都装了愿景带, 高亮环节与页签对应; 文档配置同时高亮 成本组成 + 市场分成
   ③ 成本组成表 / 市场分成表: 真读表格单元格, 与 cost_model.build_tiers() 逐项对账 (不是看有没有控件)
   ④ ar3d: /api/ar/vision 可读; 动作单元 7 + 段 40; 页面有愿景条与 __VIS__ 钩子; 愿景条在 dock 之上不遮挡
@@ -41,9 +41,9 @@ def main():
     d = build_tiers()
     T = {t["id"]: t for t in d["tiers"]}
 
-    # ── ① 愿景真源
+    # ── ① 愿景唯一依据
     vp = os.path.join(ROOT, "tools", "spec", "vision.json")
-    chk("① 愿景真源在 tools/spec/vision.json", os.path.exists(vp), vp)
+    chk("① 愿景唯一依据在 tools/spec/vision.json", os.path.exists(vp), vp)
     v = _json(vp)
     vs = v.get("vision") or {}
     head = vs.get("headline")
@@ -211,18 +211,18 @@ def main():
             chk("⑦ 立项报告回本与模型一致", all(("%.2f 年" % p["payback_years"]) in txt for p in R), "已核")
             chk("⑦ 立项报告分成与模型一致",
                 all(("%.1f%%" % TG[t["id"]]["pct_capped"]["sw"]) in txt for t in TG.values()), "已核")
-            chk("⑦ 立项报告只给建议利润空间, 不写死售价", ("建议报价区间" in txt) and ("建议利润空间" in txt), "已核")
+            chk("⑦ 立项报告只给建议利润空间, 不预先固定售价", ("建议报价区间" in txt) and ("建议利润空间" in txt), "已核")
             chk("⑦ 立项报告不出现任何密钥值", not any(x in txt for x in ("sk-", "api_key=", "token=", "password=")), "已核")
         chk("⑦ 立项报告 DOCX 存在",
             os.path.exists(os.path.join(ROOT, "docs", "deliverables", "项目立项报告_双臂协作工位.docx")), "已核")
-        # 真按按钮: 调导出方法, 看文件是否真的写出来且回显 ✅
+        # 真按按钮: 调导出方法, 看文件是否实际生成来且回显 ✅
         before = os.path.getmtime(rep) if os.path.exists(rep) else 0
         w._export_project_report()
-        chk("⑦ 按「导出立项报告」真的写出文件", os.path.exists(rep) and os.path.getmtime(rep) >= before
+        chk("⑦ 按「导出立项报告」实际生成文件", os.path.exists(rep) and os.path.getmtime(rep) >= before
             and "✅" in w.rollout_msg.text(), w.rollout_msg.text()[:60].replace("\n", " / "))
         csvp = os.path.join(ROOT, "docs", "deliverables", "市场分成_三档三阶段.csv")
         w._export_split_csv()
-        chk("⑦ 按「导出市场分成」真的写出 CSV", os.path.exists(csvp) and "✅" in w.rollout_msg.text(),
+        chk("⑦ 按「导出市场分成」实际生成 CSV", os.path.exists(csvp) and "✅" in w.rollout_msg.text(),
             w.rollout_msg.text()[:60].replace("\n", " / "))
         if os.path.exists(csvp):
             rows = open(csvp, encoding="utf-8-sig").read().strip().splitlines()
@@ -232,7 +232,7 @@ def main():
         pptp = "/home/ubuntu/zmax_data/deliverables/双臂协作工位_成本结构与市场分成预期.pptx"
         before_ppt = os.path.getmtime(pptp) if os.path.exists(pptp) else 0
         w._export_deck_ppt()
-        chk("⑦ 按「导出成本分析 PPT」真的重写 pptx", os.path.exists(pptp) and os.path.getmtime(pptp) >= before_ppt
+        chk("⑦ 按「导出成本分析 PPT」重新生成 pptx", os.path.exists(pptp) and os.path.getmtime(pptp) >= before_ppt
             and "✅" in w.rollout_msg.text() and "14 页" in w.rollout_msg.text(),
             w.rollout_msg.text().splitlines()[0] if w.rollout_msg.text() else "")
         chk("⑦ 配置中心可导出 (三个导出方法 + 一张三阶段表)",

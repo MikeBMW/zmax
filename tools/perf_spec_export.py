@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """性能指标清单导出 (老倪: 「显示内容要可复制可导出」)
 
-真源 config/platform/zmax_perf_spec.json → 供应商可用的 CSV + 人可读 Markdown 清单。
-不产生第二份真相: 只读真源, 输出带真源 sha256 与条数, 便于核对。
+唯一依据 config/platform/zmax_perf_spec.json → 供应商可用的 CSV + 人可读 Markdown 清单。
+不产生第二份真相: 只读唯一依据, 输出带唯一依据 sha256 与条数, 便于核对。
 用法: python tools/perf_spec_export.py            # 输出到 outputs/perf_spec/<ts>/
       config_center.py perf                      # 同一入口
 """
@@ -49,7 +49,7 @@ def main():
         w.writerows(rs)
     mdp = os.path.join(out, "性能指标清单_%s.md" % ts)
     L = ["# System 1 光模块精细操作 · 性能指标清单", "",
-         "- 真源: `config/platform/zmax_perf_spec.json` sha256 `%s`" % sha(SRC),
+         "- 唯一依据: `config/platform/zmax_perf_spec.json` sha256 `%s`" % sha(SRC),
          "- 条数: %d 条 / %d 组 · 导出 %s" % (len(rs), len(d["groups"]), time.strftime("%F %T")),
          "- 口径: value = 目标值(规格); 实测值在各阶段验收时填入, 未实测不填数", ""]
     L += ["## 引用标准", ""]

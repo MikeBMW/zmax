@@ -1,4 +1,4 @@
-# 断点「进不去」的通用诊断 + 启动期读配置真源（老倪）
+# 断点「进不去」的通用诊断 + 启动期读配置唯一依据（老倪）
 
 老倪原话：「必须能进入这个断点，改」——指 `src/lerobot/engineering/config_import.py:142
 `db = _read_db(os.path.join(R, DB_REL))`。
@@ -10,7 +10,7 @@
    `importlib.import_module(...)`（nodes/library.py）——即「懒加载」，而懒加载的前提是**那个节点被执行**。
 2. **代码路径没被执行**（即使文件已被 import）——查该函数所在节点/入口是否在本次运行的执行集合里。
    本例：控制台「运行」跑的是实跑链（数据源→L2→L3→L4→L5→流形），**配置导入类节点不在其中**；
-   证据 = 节点自带记录 `cfg_loaded_at` 未变 + 节点执行必打的日志行（`📥 配置导入: 真源 8/8 …`）0 次。
+   证据 = 节点自带记录 `cfg_loaded_at` 未变 + 节点执行必打的日志行（`📥 配置导入: 唯一依据 8/8 …`）0 次。
 3. **进程不对**——你盯的窗口不是挂着调试器的那个进程：`bash tools/studio_ctl.sh status` 会列
    `debug(VSCode F5): <pid>`；断点只在那个 pid 的进程里有效。
 
@@ -84,7 +84,7 @@ tail -3 /var/log/<log>                            # 抄一条实况给用户
   控制台仿真/画布节点里按需调。用户要“每周期调意图”= 新需求，按已有周期线程同构加一条 N 秒线程。
 
 ## 让断点必进的改法（老倪要的）
-把「读配置真源 + 工程库」**提到启动流程**：`tools/gui/studio.py` 顶部「工程状态自恢复」之后加一段
+把「读配置唯一依据 + 工程库」**提到启动流程**：`tools/gui/studio.py` 顶部「工程状态自恢复」之后加一段
 （模块级、GUI 起来之前）：
 ```python
 import importlib as _il_boot
@@ -94,7 +94,7 @@ _cf_boot = _ci_boot.import_config_files(verbose=False)   # ← 这一句执行 c
 ```
 口径：**只读**（不调 write_into_node，启动期不动画布；节点回写仍归主参数节点）；失败不拦启动，
 只如实打一行；实测耗时 0.01s（文件缓存命中），启动输出多一行
-`📚 启动期配置真源预读: 配置 N 项 (名称清单) · 工程库 ✅ 在位 · 实际任务 TASK-xx <任务名>`
+`📚 启动期配置唯一依据预读: 配置 N 项 (名称清单) · 工程库 ✅ 在位 · 实际任务 TASK-xx <任务名>`
 （尾部那截 = `res["task_cfg"]` 里的活跃任务，见下节）。
 
 ### 让「用户要看的那个变量」必定可见（同一类要求的通用做法）
@@ -106,15 +106,15 @@ _cf_boot = _ci_boot.import_config_files(verbose=False)   # ← 这一句执行 c
 3. **插入行会让断点行号右移** ⇒ 改完主动把新行号告诉用户（本例 142 → 186），否则 VSCode 里旧断点会
    停在别的语句上、用户以为「又进不去了」。
 
-### 「现在在跑哪个任务」的真源与查看点
-- 真源 `config/ss_task_binding.json::active_task`；注意 **`tasks` 是 list 不是 dict**
+### 「现在在跑哪个任务」的唯一依据与查看点
+- 唯一依据 `config/ss_task_binding.json::active_task`；注意 **`tasks` 是 list 不是 dict**
   （`config/tasks/tasks.json::tasks` 也是 list ⇒ `.get("tasks").values()` 会炸）。
 - 界面：控制台「⚙️ 配置中心」→ 任务表 → **「活跃」列**（`veh6_config_page._ACT_COL = 12`，
   加列后列序会右移 ⇒ 动表头必须同步 `_ACT_COL`），`★ 活跃` 那行 = 当前任务。
 - 另四处：启动预读行尾部、`task_cfg["active_task"]`、`--task-cfg`、`ss_torque` 载荷 identity 的
   `task_id/task_name`。
-- ⚠ **同节点内可能有两个不同源的字段**：`n_calib_mani` 里既有 `cfg_snapshot.active_task`（跟着绑定真源走）
-  也有旧字段 `m_task`（可能是很久以前写的值）⇒ 报「当前任务」只认绑定真源 / `cfg_snapshot.active_task`，
+- ⚠ **同节点内可能有两个不同源的字段**：`n_calib_mani` 里既有 `cfg_snapshot.active_task`（跟着绑定唯一依据走）
+  也有旧字段 `m_task`（可能是很久以前写的值）⇒ 报「当前任务」只认绑定唯一依据 / `cfg_snapshot.active_task`，
   发现不一致要**明说哪个是旧的**，不要混着当成一件事。
 
 ## 判据（必跑）
@@ -130,7 +130,7 @@ config_import.py，证明启动流程真执行了断点那行**（行号现读�
 - 探针结尾 `os._exit(rc)`：控制台模块级会起线程/单例，正常退出会被挂住。
 
 ## 相关：给了「必定命中」的 VSCode launch 配置
-`.vscode/launch.json` 已加：`🧮 配置导入 · 真源+工程库读 (config_import.py · 断点必停)` /
+`.vscode/launch.json` 已加：`🧮 配置导入 · 唯一依据+工程库读 (config_import.py · 断点必停)` /
 `🧮 配置导入 · 读+写回画布节点 (--node)`，以及 4 条流形引擎（自检 / --state / --hom-demo / energy --selftest）。
 入口是 `src/lerobot/manifold/manifold_engine.py`（`tools/manifold_engine.py` 只在老版本快照里，现仓库没有）。
 时间点：这段预读跑在「📌 工程状态自恢复」之后、PyQt5 等重依赖 import 之前 ⇒ `F5` 后终端里那两行相邻打印，
@@ -195,7 +195,7 @@ if __name__ == "__main__":
 `.vscode/launch.json` 是**生成物**：控制台「打开 VSCode」会用 `tools/gui/simulink_module.py` 里的模板
 整体重写它 ⇒ 手加的配置（包括断点必停那几条）下次点击就被抹掉（实测丢过）。
 规则：把模板抽成模块级函数（`_vscode_launch_cfg(root)`），控制台调用它、你要补配置也改它；
-需要立即生效就 `import` 该函数重新 dump 一遍 json。同理：**画布节点改名/改连线改的是画布真源**
+需要立即生效就 `import` 该函数重新 dump 一遍 json。同理：**画布节点改名/改连线改的是画布唯一依据**
 （`data/database/zmax/sources/canvas/state_space_obs.json`，`src/.../flows/*.json` 是软链），
 改完必须 `ss_task_bind` 重绑 → `engineering_db.py build` → 两 check（`canvas_level_audit` 真缺口应为 0）；
 改动前备份 json，并提醒用户**别在控制台里保存画布**（会用旧视图覆盖）。

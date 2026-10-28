@@ -7,11 +7,11 @@
 >  L3, 配置模型, 形成 L3元任务; 同理, L4元任务, 形成配置工单, 最后交付 元任务的定义, 迭代阶段,
 >  组成, 评估分析, 性能指标, 以及验证报告; 我要在文档中心, 得到元任务的总体设计文档, 发到飞书。」
 
-四层一套链 (本工具全部**只读真源 + 真跑**)：
+四层一套链 (本工具全部**只读唯一依据 + 真跑**)：
   ① L2   Phase 0 的 L2 级功能 (config_meta.json 里 layer=L2 的功能) → 通过**配置**实例化 →
         变成 L2 元任务; 其中 8 条原子技能 (FN-SYS0-51..58) **逐个真执行**
-        (真源码 atomic_skills 类 → AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit),
-        并取在役真源 skill_latest.json 的**同技能同口径**真值做对照 (请求/闸后/偏差/可行)。
+        (唯一依据码 atomic_skills 类 → AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit),
+        并取在役唯一依据 skill_latest.json 的**同技能同口径**真值做对照 (请求/闸后/偏差/可行)。
   ② L3   配置模型 (L3 功能 + 引擎/调度/安全配置) → 形成 L3 元任务 → 跑真模块核验。
   ③ L4   L4 元任务 → 形成**配置工单** (配置项/当前值/目标值/责任/验收/证据/阶段)。
   ④ DOC  汇总成《元任务总体设计》: 元任务定义 / 迭代阶段 / 组成 / 评估分析 / 性能指标 / 验证报告。
@@ -116,8 +116,8 @@ def l2_tasks(phase="0"):
 
 
 def exec_atomic_skills(phase="0"):
-    """**每个原子技能都要执行**: 真源码技能类 + 真闸门 (InertiaLimiter.limit) 逐个连跑 20 拍
-    (与常驻服务同款: 每拍带上拍的 v_prev/a_prev, 状态跨拍连续), 并取在役真源
+    """**每个原子技能都要执行**: 唯一依据码技能类 + 真闸门 (InertiaLimiter.limit) 逐个连跑 20 拍
+    (与常驻服务同款: 每拍带上拍的 v_prev/a_prev, 状态跨拍连续), 并取在役唯一依据
     skill_latest.json 的同技能同口径真值 (请求/闸后/偏差/可行) 做对照。"""
     from lerobot.policies.left_right.state_space.skills.atomic_skills import SKILLS, SKILLS_TRAY
     import numpy as np
@@ -210,7 +210,7 @@ def l3_tasks():
         ctx["引擎权重加载"] = bool(eng.load(w)) if os.path.exists(w) else False
         _eng = _j(os.path.join(LIVE, "engine_latest.json")) or {}
         if _eng.get("M"):
-            eng.set_M(float(_eng["M"]))          # M 取在役真源 (不写死)
+            eng.set_M(float(_eng["M"]))          # M 取在役唯一依据 (不预先固定)
             ctx["M 来源"] = "zmax_data/ss_live/engine_latest.json (在役)"
         tr = _j(TRAJ) or {}
         obs = np.asarray(tr.get("obs") or [], float)
@@ -224,7 +224,7 @@ def l3_tasks():
             st = dict(eng.step(obs[len(obs) // 2], dt=1.0 / 30.0))
             ctx["导航"] = {"键": sorted(list(st.keys()))[:6]}
         cb = _j(PHYS) or {}
-        ctx["物理标定真源"] = {"文件": os.path.relpath(PHYS, ROOT), "技能数": len(cb.get("skills") or cb)}
+        ctx["物理标定唯一依据"] = {"文件": os.path.relpath(PHYS, ROOT), "技能数": len(cb.get("skills") or cb)}
     except Exception as e:                                                   # noqa: BLE001
         ctx["核验失败"] = "%s: %s" % (type(e).__name__, e)
     ctx["阶段数"] = len(rm.get("phases") or [])
@@ -250,7 +250,7 @@ def l4_work_orders():
             "元任务": "MT-L4-%s" % fn_id.replace("FN-", ""),
             "功能": fn.get("name"), "系统": fn.get("subsystem"),
             "配置项": {"参数": params, "开关": flags if isinstance(flags, dict) else flags},
-            "当前值": "见 fields/画布真源", "目标值": "按迭代阶段指标 (评估分析第 ④ 章)",
+            "当前值": "见 fields/画布唯一依据", "目标值": "按迭代阶段指标 (评估分析第 ④ 章)",
             "责任": "L4 自主层 owner (老倪口径: 上层只给意图/条件, 执行由 L2 收口)",
             "验收": "① 零回退 ② 有净提升 ③ 全局一致性零冲突 (评估分析三闸)",
             "证据": "判据 + 报告 (迭代阶段指标逐条对照基线 v5.50.735)",
@@ -269,7 +269,7 @@ def build_doc(l2, pm, skl, l3, l3ctx, wo):
     A = L.append
     A("# 元任务总体设计 (Z-MAX v%s)" % VERSION)
     A("")
-    A("> 真源: `data/database/zmax/config_meta.json` (功能 %d) · `config/eval/iteration_roadmap.json` "
+    A("> 唯一依据: `data/database/zmax/config_meta.json` (功能 %d) · `config/eval/iteration_roadmap.json` "
       "(迭代阶段 %d · 性能指标 %d) · `src/lerobot/engineering/flows/state_space_obs.json` (画布节点) · "
       "`zmax_data/ss_live/skill_latest.json` (在役技能真值) · 生成器 `tools/meta_task_chain.py`。"
       % (len(((_j(os.path.join(DB, "config_meta.json")) or {}).get("functions") or {})), len(phases),
@@ -279,7 +279,7 @@ def build_doc(l2, pm, skl, l3, l3ctx, wo):
     A("")
     A("元任务 = **一条可执行、可验收、有物理量约束的配置实例**，不是一段描述。定义四要素（缺一即不算元任务）:")
     A("")
-    A("| 要素 | 含义 | 真源 |")
+    A("| 要素 | 含义 | 唯一依据 |")
     A("|---|---|---|")
     A("| 配置 | 该功能启用/关闭的参数与开关 (instance) | `config_meta.json::fields.parameters/declared_flags` |")
     A("| 执行入口 | 真代码文件/节点 (不是伪代码) | `code_file` / 画布节点 id |")
@@ -329,7 +329,7 @@ def build_doc(l2, pm, skl, l3, l3ctx, wo):
     A("")
     A("## ④ 评估分析")
     A("")
-    A("**原子技能逐个执行记录** (真源码技能类 → `AtomicSkill.apply_physics` → `InertiaLimiter.limit`; "
+    A("**原子技能逐个执行记录** (唯一依据码技能类 → `AtomicSkill.apply_physics` → `InertiaLimiter.limit`; "
       "在役对照 = `skill_latest.json` 同技能同口径真值):")
     A("")
     A("| 技能 (链) | 物理量 m/F/v_cap/a_max/jerk/s_step/dmdt | 末拍 请求→闸后 (m/s) | why (哪条约束削) | 偏差 | 20 拍 不可行/削因 | 在役对照 (请求/闸后/偏差/可行) |")

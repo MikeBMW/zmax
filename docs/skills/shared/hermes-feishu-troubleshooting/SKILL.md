@@ -170,7 +170,7 @@ echo "FEISHU_ALLOWED_USERS=ou_d82fe4c9f90c4e9337235d04b2241070" >> ~/.hermes/.en
 # 重启网关（会断掉当前连接再重新连）
 hermes gateway restart   # 前台命令，会阻塞。建议放后台或用 &。
 
-# 如果 restart 卡住（timeout），先杀掉再手动启：
+# 如果 restart 阻塞（timeout），先杀掉再手动启：
 hermes gateway stop
 hermes gateway run &     # 后台运行
 

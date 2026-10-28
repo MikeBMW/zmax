@@ -99,7 +99,7 @@ for y in range(760, 1010, 10):          # 白色外壳所在行(过曝区): 找�
         extra = {"y0": int(y), "y1": int(y + V22._V21_WIN_H - 1), "n_seg": int(len(segs)),
                  "pitch_px": round(med, 1), "jitter_px": round(mad, 1), "synthetic": False}
         break
-if extra is None:                        # 兜底: 手工造一个"过曝区里的窗"
+if extra is None:                        # 保障: 手工造一个"过曝区里的窗"
     extra = {"y0": 800, "y1": 849, "n_seg": 9, "pitch_px": 62.0, "jitter_px": 3.0, "synthetic": True}
 print("\n② 注入过曝窗: %s  real_hits=%d  注入=%s (synthetic=%s)"
       % (os.path.basename(TESTF), len(real_hits), (extra["y0"], extra["y1"]), extra["synthetic"]))

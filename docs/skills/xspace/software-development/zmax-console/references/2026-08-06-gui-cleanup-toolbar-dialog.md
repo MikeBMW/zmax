@@ -23,7 +23,7 @@ studio.py 主程序有 **两处左侧栏**，老倪用词决定指哪个：
 - 工作流过滤行（①访问·标注数据…⑥集成·测试 6 个按钮；set_filter 保留无 UI 入口）
 - ACT-Meta 引导按钮（点击没反应）
 - 画布窗口按钮（show_canvas_win——画布子窗口已不可关闭，恢复逻辑无意义）
-- 时间 10.0s / dt 0.010 仿真参数控件（QDoubleSpinBox；start_sim 改 `getattr(self,"_sim_dt",0.02)` 兜底）
+- 时间 10.0s / dt 0.010 仿真参数控件（QDoubleSpinBox；start_sim 改 `getattr(self,"_sim_dt",0.02)` 保障）
 - 工具栏「📚 模块库」按钮（面板内已有 ◀ 收起，tl2 冗余）
 - 工具栏「🖥 Scope」按钮（Scope 移入左侧 node 库）
 
@@ -41,7 +41,7 @@ stretch → t=0.00s 时钟
 ## 3. 删除按钮/控件的安全步骤（避免 AttributeError）
 
 1. grep 全部引用（含 addWidget 残留！删 mk_btn 创建但漏删 `tl.addWidget(self.btn_xxx)` 会崩）
-2. 检查方法调用方（如 start_sim 读 sp_dt.value() → 改 getattr 兜底）
+2. 检查方法调用方（如 start_sim 读 sp_dt.value() → 改 getattr 保障）
 3. 检查模板/数据引用（删 REFERENCE_APPS 模板要查 load_reference_app_by_name 调用方）
 4. offscreen 实例化验证 `not hasattr(w,"btn_xxx")` + 工具栏按钮列表确认
 

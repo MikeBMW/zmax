@@ -1,4 +1,4 @@
-# 「运行所有模型」取证配方 (一次把各层真模型都跑起来, 拿逐层证据)
+# 「运行所有模型」取证配方 (一次把各层真模型都启动, 拿逐层证据)
 
 ## 一条命令
 ```bash
@@ -27,7 +27,7 @@ cd /home/ubuntu/zmax && ./gui-venv311/bin/python tools/run_all_models.py --caps 
 3. YOLO 计数: `_vis['shot']`=出帧数, `_vis['n']`=检出对象数。每帧 2 个目标(peg + OPT_Gold) → n/shot=2.0,
    按百分比报会得出"200%" 的假象。
 4. `SceneVLM.ask(image, ...)`: HTTP 路径(DeepSeek/显式)传的是**文件路径**(内部 open+base64),
-   传 bytes 会得到 `ValueError: embedded null byte`;本地路径才吃 ndarray。要判真源看返回 `src`
+   传 bytes 会得到 `ValueError: embedded null byte`;本地路径才吃 ndarray。要判唯一依据看返回 `src`
    (`http:deepseek-flash` / `local:Qwen/...` / `rule`=规则回退, 规则回退不算真跑)。
 5. `tools/sam3_seg.py --bench N` 走相机源(`--cam local`), 要单图分割用 `--image 帧.jpg --text 概念 --out/--json`;
    实测 1471ms/帧。帧可从 `reports/ss_episode_latest.mp4` 抽: `ffmpeg -i ... -vf 'select=eq(n\,40)' -vframes 1 x.jpg`。

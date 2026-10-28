@@ -51,9 +51,9 @@ ECS 重启后那条 `-R` 会话可以是**半开**状态: 转发已失效、ssh 
    `timeout 4 bash -c 'echo > /dev/tcp/<ecs>/22022'` 都失败才 `systemctl restart <unit>`。
    **单次失败就重启会被网络抖动误杀** ⇒ 必须"连续 N 次 + 间隔"。
 
-### 🔁 LAN 直连 / 公网跳板 双模式: 隧道 unit 一律用 ssh 别名, 绝不写死 IP+端口
+### 🔁 LAN 直连 / 公网跳板 双模式: 隧道 unit 一律用 ssh 别名, 绝不预先固定 IP+端口
 
-写死 `ssh -NT -p 22022 … <ECS_IP>` 的 unit, ECS 一挂四个隧道(位姿桥 / 臂相机 / 3DGS 推流 / Intel 相机)全废 ——
+预先固定 `ssh -NT -p 22022 … <ECS_IP>` 的 unit, ECS 一挂四个隧道(位姿桥 / 臂相机 / 3DGS 推流 / Intel 相机)全废 ——
 而当时插上网卡本来就能直连, 却没人切。定式:
 - unit 里只写 `ssh -NT -L 19061:127.0.0.1:39061 orin`(**用 `~/.ssh/config` 的别名**), 一个 IP 都不写;
 - config 留两个入口: `Host orin`(当前模式) + `Host orin-lan`(直连产线 IP:22); 远程模式时 `Host orin → <ECS>:22022`。
@@ -68,10 +68,10 @@ ECS 重启后那条 `-R` 会话可以是**半开**状态: 转发已失效、ssh 
 `ping` 不通且 `ip neigh` 显示 `INCOMPLETE`, 再把整段 254 个地址并发扫一遍**只有自己应答** ⇒ 对面没有活设备
 (不是本机网卡配错, 别急着改 netplan)。扫段用:
 `seq 1 254 | xargs -P 64 -I{} sh -c 'ping -c1 -W1 192.168.23.{} >/dev/null 2>&1 && echo 192.168.23.{}'` (约 5s)。
-⚠️ **别写死网卡名**: 换一根 USB 网卡名字就变(实测 `enxd223ec68e0a6` → `enx00e04c0c32a0`),
+⚠️ **别预先固定网卡名**: 换一根 USB 网卡名字就变(实测 `enxd223ec68e0a6` → `enx00e04c0c32a0`),
 脚本一律按 `carrier=1` + IP 段动态找接口, 不要拿上次的名字去 `ip link set`。
 ⚠️ 改 `~/.ssh/config` 时判断"某段是否已存在"必须按 `'\nHost x'` **带换行**匹配 —— 注释里出现同样字样会让
-`'Host x' in s` 判真, 静默跳过追加(以为写了其实没写, 用 `grep '^Host '` 复核一遍)。
+`'Host x' in s` 判真, 静默跳过追加(以为写了实际没写, 用 `grep '^Host '` 复核一遍)。
 
 ### 「端口能建连、SSH 不握手、站点也不响应」= 主机用户态卡死, 不是网络
 分层取数, 别 ping 完就下结论:

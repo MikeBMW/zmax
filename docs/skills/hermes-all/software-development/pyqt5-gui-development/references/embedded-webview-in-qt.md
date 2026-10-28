@@ -18,7 +18,7 @@
 ```bash
 # 先看现有版本线, PyQtWebEngine-Qt5 必须与 PyQt5-Qt5 同版本(都装进 PyQt5/Qt5/lib, 装错会覆盖核心 Qt 库)
 python -m pip freeze | grep -iE "pyqt|sip"
-# 生产 venv 动手前留底, 并先在一次性 venv 里跑通
+# 生产 venv 动手前留底, 并先在一次性 venv 里验证通过
 python -m pip freeze > /tmp/venv_before.txt
 python -m venv /tmp/webtest && /tmp/webtest/bin/pip install PyQt5==<同版本> PyQtWebEngine
 ```
@@ -106,7 +106,7 @@ QTimer.singleShot(3000, _prewarm)
 **症状**: 用户说"网页整体很小, 每次都得按住 Ctrl 滚轮放大"。不是页面写小了 —— 3200x2000 的屏上
 `devicePixelRatio()` 仍可能是 1.0, CSS 12px 就是 12 个物理像素, 236 DPI 下约 3.6pt。
 
-**默认值按屏算**, 不写死 1.0:
+**默认值按屏算**, 不预先固定 1.0:
 
 ```python
 ZOOM_MIN, ZOOM_MAX, STEP_BTN, STEP_WHEEL = 0.6, 3.0, 0.2, 0.1

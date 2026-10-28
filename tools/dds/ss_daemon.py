@@ -13,7 +13,7 @@
    ss_state  ← 真机 tap `~/zmax/zmax_data/ss_live/state_*.jsonl` 最新行 (tcp / jpos / gripper / prod_stage / pubs)
    ss_action ← 真机 tap `~/zmax/zmax_data/ss_live/proposal_*.jsonl` 最新行 (action 6 维 / yaw / model_ms)
    ss_infer  ← 本机推理服务 `http://127.0.0.1:8790/health` (models / infer_count / last_ms / device)
-   ss_calib  ← 标定真源文件 (手眼 / 相机外参 / 对齐图 / 质量门) —— 有则实发, 无则 valid=0
+   ss_calib  ← 标定唯一依据文件 (手眼 / 相机外参 / 对齐图 / 质量门) —— 有则实发, 无则 valid=0
    ss_diag   ← 诊断: 各话题发布计数 / 源帧龄 / 推理延时 / 服务健康度 (systemctl 每 10s)
    ss_test   ← 最近一次取证结果 (reports/verify_*.json · sim2real_preflight · web agent 27/27)
 ③ **未测量 = -1.0** (不用 0 冒充) · 每条消息带 ts + 每话题 seq · 源帧过期 (>5s) 只发 diag 告警不发状态
@@ -81,7 +81,7 @@ STALE_ENERGY_S = float(os.environ.get("ZMAX_ENERGY_STALE_S", "900"))
 # 🔧 驱动扭矩是**逐帧高频信号** (10Hz 实测数据通道) ⇒ 用紧的帧龄预算: 3s 内算现在, 超过就发 -1 并说明
 STALE_TORQUE_S = float(os.environ.get("ZMAX_TORQUE_STALE_S", "3.0"))
 # 🧮 配置名称清单: 它只在**主参数节点执行**时才刷新 (不是流) ⇒ 帧龄预算给宽: 10 分钟内算"现在",
-#    超过就在 note 里明说"节点记录陈旧"(真源纪律: 不拿旧记录当现状), 但名称照发(名称本身没变过就不算错)。
+#    超过就在 note 里明说"节点记录陈旧"(唯一依据纪律: 不拿旧记录当现状), 但名称照发(名称本身没变过就不算错)。
 STALE_CFG_S = float(os.environ.get("ZMAX_CFG_STALE_S", "600"))
 # 🧮 流形引擎常驻回路 (老倪 2026-10-14): tap 由 tools/ss_engine_loop.py 每周期写, 这里读它发 DDS。
 #    与扭矩同口径: 帧龄超 STALE_ENGINE_S 只发告警, **不把旧帧当现在**。
@@ -92,7 +92,7 @@ _EN_LOGGED = {"dir": "", "none": 0.0}
 #    停发日志节流 (与 ss_engine 同款口径 —— 源不新鲜就明说停发, 不拿旧阶段当现在)
 STAGE_STALE_S = float(os.environ.get("ZMAX_SS_STAGE_STALE_S", "5.0"))
 _ST_LOGGED = {"none": 0.0, "stale": 0.0}
-# 🧮 主参数节点已加载配置名称的真源: 画布真源里该节点的 params (cfg_entries/cfg_loaded_at)
+# 🧮 主参数节点已加载配置名称的唯一依据: 画布唯一依据里该节点的 params (cfg_entries/cfg_loaded_at)
 CFG_CANDS = [os.path.join(REPO, "data", "database", "zmax", "sources", "canvas", "state_space_obs.json"),
              os.path.join(REPO, "flows", "state_space_obs.json"),
              os.path.join(HOME, "lerobot-smolvla-lew", "flows", "state_space_obs.json")]
@@ -108,7 +108,7 @@ SKILL_TOPICS = ["skill_%s" % c for c in
 # ─────────────── ⚡ 分层力 L2~L5 (老倪 2026-10-19) ───────────────
 # 「L2~L5 力的输出, 在力场上显示的力, 都做到 trace 的 topic; L4 的 Tx 是流形引擎,
 #   L3 的 Tx 是 DiT, L2 的 Tx 是前馈加速器」
-#   一层一条话题 ⇒ trace/信号分析里按话题名分辨层次; 载荷 tx 写死该层力的产生端。
+#   一层一条话题 ⇒ trace/信号分析里按话题名分辨层次; 载荷 tx 预先固定该层力的产生端。
 FORCE_LAYERS = (
     ("L2", "ss_force_l2", "前馈加速器"),
     ("L3", "ss_force_l3", "DiT 动作头"),
@@ -116,7 +116,7 @@ FORCE_LAYERS = (
     ("L5", "ss_force_l5", "DeepSeek VL 场景理解"),
 )
 FORCE_TOPICS = [t for _l, t, _x in FORCE_LAYERS]
-SKILL_PHYS = os.path.join(_TAP_CANON, "skill_phys.json")   # 数值真源 (技能派发循环服务 60Hz 写)
+SKILL_PHYS = os.path.join(_TAP_CANON, "skill_phys.json")   # 数值唯一依据 (技能派发循环服务 60Hz 写)
 POSE_STALE_S = float(os.environ.get("ZMAX_SKILL_POSE_STALE_S", "5.0"))   # 位姿停更 ⇒ 位置/角度发 -1
 
 MODE_TOPICS = {
@@ -145,7 +145,7 @@ def log(m):
         pass
 
 
-# ───────────────────────── 模式 (单一真源优先, 读不到则按同口径兜底) ─────────────────────────
+# ───────────────────────── 模式 (单一唯一依据优先, 读不到则按同口径保障) ─────────────────────────
 def mode():
     env = (os.environ.get("ZMAX_TELEMETRY") or "").strip().lower()
     if env in MODE_TOPICS:
@@ -173,7 +173,7 @@ def allowed(topic):
         return False
     # 🧭 2026-10-15 老倪三产品分工(以后同步开发 A/B/C): 产品档位**再收一道**, 且只能收窄不能放宽 ——
     #   C 档(量产) topics=none ⇒ 不发任何序列化 topic (信号只走共享内存 /dev/shm/zmax_ss_engine 直传);
-    #   A 档(开发) topics=core ⇒ 只发核心集; B 档(调试) topics=all ⇒ 全开。真源 tools/zmax_profile.py。
+    #   A 档(开发) topics=core ⇒ 只发核心集; B 档(调试) topics=all ⇒ 全开。唯一依据 tools/zmax_profile.py。
     try:
         _tp = os.path.join(REPO, "tools")
         if os.path.isdir(_tp) and _tp not in sys.path:
@@ -305,7 +305,7 @@ def read_engine():
 
 
 def read_trace_stage():
-    """🎛 动作调制器八阶段状态机 —— 真源 = 3D 面板快照 trace_live.json 的阶段字段。
+    """🎛 动作调制器八阶段状态机 —— 唯一依据 = 3D 面板快照 trace_live.json 的阶段字段。
 
     老倪 2026-10-15: 「八个状态, 是哪个 topic 发出来的? 你要放到信号分析的窗口里显示」
     在这之前**没有任何话题**发这八个状态: 阶段只是 trace_live.json 里的一个**字符串**
@@ -337,7 +337,7 @@ def read_infer():
 # ─────────────── ⚡ 分层力 L2~L5 (老倪 2026-10-19) ───────────────
 #   口径表 FORCE_LAYERS 在文件头 (与 MODE_TOPICS 同处, 三档一起登记)。
 def _json_file(path):
-    """读一份单 JSON 真源 → (dict, mtime)。读不到返回 ({}, None) —— 不猜。"""
+    """读一份单 JSON 唯一依据 → (dict, mtime)。读不到返回 ({}, None) —— 不猜。"""
     try:
         with open(path, encoding="utf-8") as fh:
             return (json.load(fh) or {}), os.path.getmtime(path)
@@ -363,7 +363,7 @@ def read_layer_forces():
 
 
 def read_calibs():
-    """标定真源 (存在才发, 不发假值)
+    """标定唯一依据 (存在才发, 不发假值)
 
     ⚠️ 2026-09-26: 标定文件在 **main 线检出** (worktree /home/ubuntu/zmax/models) ——
     共享目录 /home/ubuntu/zmax 被切到别的分支后这些文件会"消失"
@@ -414,7 +414,7 @@ def read_cfg_names():
         try:
             d = json.load(open(c, encoding="utf-8"))
         except Exception as e:                                           # noqa: BLE001
-            out["note"] = "画布真源解析失败: %s" % type(e).__name__
+            out["note"] = "画布唯一依据解析失败: %s" % type(e).__name__
             continue
         for n in (d.get("nodes") or []):
             pr = n.get("params") or {}
@@ -433,12 +433,12 @@ def read_cfg_names():
             return out
         out["note"] = "画布上没有主参数节点"
         return out
-    out["note"] = "画布真源找不到 (%s)" % os.path.basename(CFG_CANDS[0])
+    out["note"] = "画布唯一依据找不到 (%s)" % os.path.basename(CFG_CANDS[0])
     return out
 
 
 def read_canvas_nodes():
-    """画布真源 (state_space_obs.json) → 节点清单 [{id,name,layer,type}]
+    """画布唯一依据 (state_space_obs.json) → 节点清单 [{id,name,layer,type}]
 
     层判定与画布一致: 按 y 行带读 params.layer / 行背景名; 取不到就留空 (不猜)。
     """
@@ -472,7 +472,7 @@ def read_canvas_nodes():
 
 
 def read_memory_layers():
-    """五层记忆真源 (data/memory/memory_layers.json)"""
+    """五层记忆唯一依据 (data/memory/memory_layers.json)"""
     for c in (os.path.join(REPO, "data", "memory", "memory_layers.json"),
               os.path.join(REPO, "data", "memory", "memory_layers.json"),
               os.path.join(HOME, "lerobot-smolvla-lew", "data", "memory", "memory_layers.json")):
@@ -869,7 +869,7 @@ class SSDaemon:
         """🧾 任务 → 元任务清单 → zmax/ss_meta_task (老倪 2026-10-14)
 
         与「已加载配置名」同一个 5s 节拍、同一个出口 (主参数节点 n_calib_mani): 元任务是**配置的
-        派生件**, 内容由 tools/ss_meta_task.py 真源现算 (复用 export_meta_doc.build_meta_tasks,
+        派生件**, 内容由 tools/ss_meta_task.py 唯一依据现算 (复用 export_meta_doc.build_meta_tasks,
         与文档同一条映射链)。意图不参与内容, 只决定选哪一批 (任务ID)。
         """
         from ss_types import SSMetaTask                                  # noqa: PLC0415
@@ -894,7 +894,7 @@ class SSDaemon:
     def pub_action_chunk(self):
         """🧩 **动作块** → zmax/ss_action_chunk (老倪 2026-10-15)。
 
-        真源 = 常驻回路经 tools/ss_chunk_pipeline.py 落的 zmax_data/ss_live/chunk_latest.json。
+        唯一依据 = 常驻回路经 tools/ss_chunk_pipeline.py 落的 zmax_data/ss_live/chunk_latest.json。
         纪律: 帧龄 > CHUNK_STALE_S 就明说陈旧; 块不 ok (引擎无目标点等) 就发空块 + note 写原因, 不编块。
         """
         from ss_types import SSActionChunk                                    # noqa: PLC0415
@@ -905,7 +905,7 @@ class SSDaemon:
                 d = json.load(f)
         except Exception as e:                                               # noqa: BLE001
             self.publish("ss_action_chunk", SSActionChunk(ts=time.time(),
-                                                          note="读不到块真源 %s (%s)" % (os.path.basename(p),
+                                                          note="读不到块唯一依据 %s (%s)" % (os.path.basename(p),
                                                                                           type(e).__name__)))
             return False
         age = time.time() - float(d.get("ts") or 0.0)
@@ -931,7 +931,7 @@ class SSDaemon:
             ff=[float(x) for row in ff for x in (row or [])],
             u=[float(x) for row in uu for x in (row or [])],
             lam=[float(x) for x in (d.get("lam") or [])],
-            # ⚠️ 数值字段不能用 `or -1.0` 兜底: 0.0 是**合法值** (块退化时转角=0), 会被误判成"没值"
+            # ⚠️ 数值字段不能用 `or -1.0` 保障: 0.0 是**合法值** (块退化时转角=0), 会被误判成"没值"
             turn_max_deg=(-1.0 if d.get("turn_max_deg") is None else float(d["turn_max_deg"])),
             turn_mean_deg=(-1.0 if d.get("turn_mean_deg") is None else float(d["turn_mean_deg"])),
             step_delta=(-1.0 if d.get("step_delta") is None else float(d["step_delta"])),
@@ -946,7 +946,7 @@ class SSDaemon:
         """🧾 **元任务预测值** → zmax/ss_meta_pred (老倪 2026-10-14: 「将元任务预测的topic，放到信号分析」)
 
         输入 = 流形引擎驱动扭矩 (zmax/ss_torque) ⇒ 各元任务(功能)得分 + top-k。
-        真源 = tools/ss_meta_predict.py 落的 zmax_data/ss_live/meta_pred.json。
+        唯一依据 = tools/ss_meta_predict.py 落的 zmax_data/ss_live/meta_pred.json。
         纪律: 帧龄超过 META_PRED_STALE_S 就**明说陈旧**(预报值不是现在的值), trained/frozen 原样转发,
               不把"未训练/恒定输入"的降级结果说成有预测力。
         """
@@ -958,7 +958,7 @@ class SSDaemon:
             with open(p, encoding="utf-8") as f:
                 d = json.load(f)
         except Exception as e:                                             # noqa: BLE001
-            note = "读不到预测真源 %s (%s)" % (os.path.basename(p), type(e).__name__)
+            note = "读不到预测唯一依据 %s (%s)" % (os.path.basename(p), type(e).__name__)
             self.publish("ss_meta_pred", SSMetaPred(ts=time.time(), note=note))
             return False
         ip = d.get("input") or {}
@@ -967,7 +967,7 @@ class SSDaemon:
         for it in top[:8]:
             if isinstance(it, dict):
                 # 🧾 2026-10-15 老倪「需要显示确切的元任务」: 功能号后面**带上元任务名**
-                #   (真源 meta_pred.json 的 top[].name) ⇒ 话题本身就自解释, 下游不用再查表。
+                #   (唯一依据 meta_pred.json 的 top[].name) ⇒ 话题本身就自解释, 下游不用再查表。
                 _fid = str(it.get("fn_id") or it.get("id") or "")
                 _nm = str(it.get("name") or "").strip()
                 ids.append((_fid + " " + _nm).strip() if _nm else _fid)
@@ -979,7 +979,7 @@ class SSDaemon:
         age = (time.time() - ts_pred) if ts_pred else -1.0
         note = ""
         if age < 0:
-            note = "预测真源无时间戳"
+            note = "预测唯一依据无时间戳"
         elif age > META_PRED_STALE_S:
             note = "预测陈旧: %.0f 分钟前生成 (跑一次 ss_meta_predict 即刷新)" % (age / 60.0)
         if not int(d.get("trained") or 0):
@@ -1120,7 +1120,7 @@ class SSDaemon:
             ts=time.time(), idx=int(idx), idx8=int(idx8), name=name[:32],
             v_cap=_f(d.get("阶段限速_mms"), -1000.0) / 1000.0, done=1 if name == "完成" else 0,  # 🔢 快照 mm/s ⇒ DDS 口径仍 m/s
             age_s=float(age), source="zmax_data/ss_live/trace_live.json (3D 面板快照)",
-            note="真源 ActionModulator.STAGES (cognition.py:31) · 十三段 idx=%d · 插拔八段 idx8=%d"
+            note="唯一依据 ActionModulator.STAGES (cognition.py:31) · 十三段 idx=%d · 插拔八段 idx8=%d"
                  % (idx, idx8)))
         return True
 
@@ -1132,10 +1132,10 @@ class SSDaemon:
                           L4 的 Tx 是流形引擎, L3 的 Tx 是 DiT, L2 的 Tx 是前馈加速器」
 
         口径 (与力场页/万有引力表/太阳系**同一份**, 不另算):
-          · 数值直接取 tools/layer_forces.py 的加权矢量 (w/k 权重真源 config/calib/layer_forces.json)
-          · 一层一条话题, 载荷 layer + tx 写死该层力的产生端 ⇒ trace 里一眼看出"谁的力"
-          · 该层真源取不到 ⇒ **这条话题这一拍不发** (不拿 0/别的层顶替)
-          · 真源帧龄超限 ⇒ 照发但 fresh=0 + age_s 如实给 (让人看见"这是定格的", 不冒充实时)
+          · 数值直接取 tools/layer_forces.py 的加权矢量 (w/k 权重唯一依据 config/calib/layer_forces.json)
+          · 一层一条话题, 载荷 layer + tx 预先固定该层力的产生端 ⇒ trace 里一眼看出"谁的力"
+          · 该层唯一依据取不到 ⇒ **这条话题这一拍不发** (不拿 0/别的层顶替)
+          · 唯一依据帧龄超限 ⇒ 照发但 fresh=0 + age_s 如实给 (让人看见"这是定格的", 不冒充实时)
         """
         from ss_types import SSForceLayer                                # noqa: PLC0415
         try:
@@ -1155,7 +1155,7 @@ class SSDaemon:
             c = comps.get(L) or {}
             v = c.get("vec")
             if not v or len(v) < 3:
-                continue                     # 取不到该层 ⇒ 不发 (src 里已写明缺哪个真源)
+                continue                     # 取不到该层 ⇒ 不发 (src 里已写明缺哪个唯一依据)
             v = [float(q) for q in v[:3]]
             _age = x.get("age_s")
             ok = self.publish(topic, SSForceLayer(
@@ -1187,7 +1187,7 @@ class SSDaemon:
           包络  v_cap 限速 m/s · a_max 加速度上限 m/s² · jerk_max · s_step 单拍位移上限 m · s_max 段行程上限
                 m_kg 运动质量 · f_max 力上限  ⇒ 信号分析里"实测曲线 vs 物理上限"可以同图叠出来
 
-        真源 (全链可追, 一个数都不在这里算):
+        唯一依据 (全链可追, 一个数都不在这里算):
           zmax_data/ss_live/skill_phys.json   ← 技能派发循环服务 tools/ss_skill_dispatch.py 每拍过物理闸写出
           src/lerobot/policies/left_right/state_space/physics_constraints.py  (InertiaLimiter, 五条约束)
           config/calib/zmax_skill_physics.json (标定上下限, tools/skill_physics_calib.py)
@@ -1274,7 +1274,7 @@ class SSDaemon:
         return True
 
     def pub_canvas(self):
-        """ss_canvas ← 画布真源节点清单 (轮转发布: 每轮 5 个, 87 节点约 35s 扫完一遍)
+        """ss_canvas ← 画布唯一依据节点清单 (轮转发布: 每轮 5 个, 87 节点约 35s 扫完一遍)
 
         status/fps/counter 本机无真实计数源 → 一律 idle / -1.0 / -1 (诚实: 未测量不冒充 0)
         """
@@ -1294,7 +1294,7 @@ class SSDaemon:
         return True
 
     def pub_macro(self):
-        """ss_macro ← 五层记忆真源 (data/memory/memory_layers.json): 每层一条"""
+        """ss_macro ← 五层记忆唯一依据 (data/memory/memory_layers.json): 每层一条"""
         from ss_types import SSMacro                                    # noqa: PLC0415
         d, src = read_memory_layers()
         if not d:
@@ -1408,7 +1408,7 @@ class SSDaemon:
 
         为什么不挂在主 tick 上: 实测主循环一次 tick 17~26s (read_state/read_calibs/services_health
         都在 tick 里, 远端读慢), 5s 门控会退化成 ~20s。本线程只做一件事: 每 5s 把
-        **节点记录里的配置名称**发一条 zmax/ss_cfg_names — 只读真源, 不触发任何动作。
+        **节点记录里的配置名称**发一条 zmax/ss_cfg_names — 只读唯一依据, 不触发任何动作。
         """
         for _ in range(100):                      # 同上: 等 DDS 参与者就绪, 避免首轮半成品模块
             if self.node is not None or self._stop.is_set():
@@ -1432,7 +1432,7 @@ class SSDaemon:
     def _engine_thread(self, period=0.2):
         """🧮 流形引擎常驻回路的**专用节拍线程** (主 tick 实测 17~26s, 挂主 tick 会把 10Hz 压成 0.05Hz)。
 
-        只做一件事: 读 tap 最后一帧 → 发 zmax/ss_engine。只读真源, 不触发任何动作。
+        只做一件事: 读 tap 最后一帧 → 发 zmax/ss_engine。只读唯一依据, 不触发任何动作。
         """
         # ⏳ 首轮前等 DDS 参与者建好: 实测并发的首个 tick 会撞上 `import ss_types` / `import cyclonedds`
         #    的半成品模块 (ModuleNotFoundError: ss_types / KeyError: 'cyclonedds') ⇒ 白丢一帧 + 刷告警。

@@ -4,14 +4,14 @@
 用法:
   cd /home/ubuntu/zmax
   ./gui-venv311/bin/python tools/publish_canvas.py            # 强行重渲+双推
-  ./gui-venv311/bin/python tools/publish_canvas.py --if-changed   # 真源 md5 未变则跳过(cron 用)
+  ./gui-venv311/bin/python tools/publish_canvas.py --if-changed   # 唯一依据 md5 未变则跳过(cron 用)
   ./gui-venv311/bin/python tools/publish_canvas.py --no-ecs       # 只本机 8796
   ./gui-venv311/bin/python tools/publish_canvas.py --shots DIR    # 额外导出首屏/总览截图
 
 发布产物:
   reports/canvas_pdf/canvas_<version>.pdf      带版本 (留档)
   reports/canvas_pdf/canvas_latest.pdf         最新版 (8796 /canvas.pdf 与手机固定 URL 都用它)
-  reports/canvas_pdf/canvas_version.json       /canvas/version 的真源
+  reports/canvas_pdf/canvas_version.json       /canvas/version 的唯一依据
   /home/ubuntu/.zmax_canvas_publish_state.json  --if-changed 的判据 (md5/版本/上次推送结果)
 
 手机固定地址: https://datadrive.world/canvas_latest.pdf
@@ -86,7 +86,7 @@ def shots(pdf: Path, outdir: Path, dpi: int = 110) -> list[str]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--if-changed", action="store_true", help="真源 md5 未变则跳过 (不重渲不上传)")
+    ap.add_argument("--if-changed", action="store_true", help="唯一依据 md5 未变则跳过 (不重渲不上传)")
     ap.add_argument("--no-ecs", action="store_true", help="不推 ECS (只做本机 8796)")
     ap.add_argument("--no-local", action="store_true", help="不写本机产物 (只推 ECS)")
     ap.add_argument("--shots", default="", help="额外导出截图到该目录")
@@ -114,7 +114,7 @@ def main() -> int:
     if (a.if_changed and st.get("md5") == md5 and st.get("renderer") == rsig
             and CP.LATEST_PDF.exists()):
         out["skipped"] = True
-        out["reason"] = "真源 md5 未变 (%s@%s) 且渲染器未变 (%s); 上次发布 %s" % (
+        out["reason"] = "唯一依据 md5 未变 (%s@%s) 且渲染器未变 (%s); 上次发布 %s" % (
             md5[:8], CP.source_json().name, rsig, st.get("version"))
         say("[skip]", out["reason"])
         print(json.dumps(out, ensure_ascii=False))
@@ -138,7 +138,7 @@ def main() -> int:
     if a.no_local:
         say("[2/4] --no-local: 跳过本机产物")
     else:
-        # ② 本机产物: canvas_latest.pdf (原子换名) + canvas_version.json (8796 路由真源)
+        # ② 本机产物: canvas_latest.pdf (原子换名) + canvas_version.json (8796 路由唯一依据)
         tmp = CP.LATEST_PDF.with_suffix(".pdf.tmp")
         shutil.copy2(meta["pdf"], tmp)
         os.replace(tmp, CP.LATEST_PDF)

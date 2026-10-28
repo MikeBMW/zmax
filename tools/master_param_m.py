@@ -14,12 +14,12 @@ M 的物理身份 (来自 zmax_manifold.json 的 _doc): 等效惯量尺度 —�
     一个循环里末端+工件要带走多少机械能, 决定了这个等效质量该有多大 ⇒ 用能量定 M 是有量纲依据的。
   · 能级 = M 的离散档 (把连续的能量尺度离散成 E1~E4), 便于按项目/场景归档与比较。
 
-真源与假设分得很清 (老倪零容忍): 每个输入都标 来源 或 **假设(可标定)**; 假设项一律列在输出里, 不藏。
+唯一依据与假设分得很清 (老倪零容忍): 每个输入都标 来源 或 **假设(可标定)**; 假设项一律列在输出里, 不藏。
 写盘: 只写 config/calib/zmax_manifold.json 的 M / inertia / _energy_derivation, 备份+原子写+回读 sha256。
 
 用法:
     python3 tools/master_param_m.py --project PROJ-TH-TRAY        # 算 + 打印推导 (不写)
-    python3 tools/master_param_m.py --project PROJ-TH-TRAY --write # 写回真源 (备份+回读)
+    python3 tools/master_param_m.py --project PROJ-TH-TRAY --write # 写回唯一依据 (备份+回读)
     python3 tools/master_param_m.py --all --json                  # 所有项目一次算
 """
 from __future__ import annotations
@@ -42,13 +42,13 @@ G = 9.81
 E_REF = 2.0          # 光模块级单件基准能量 [J]
 M_RANGE = (0.0, 8.0)  # 与 zmax_manifold.json 的 _range 一致
 
-# 项目 → 能量输入 (质量/行程来自真源; 速度与夹具质量无真源 ⇒ 明标 假设)
+# 项目 → 能量输入 (质量/行程来自唯一依据; 速度与夹具质量无唯一依据 ⇒ 明标 假设)
 PROJECTS = {
     "PROJ-TH-TRAY": {
         "name": "泰国摆盘 (光模块 周转盘 → 上料 Tray 盘)",
         "part_kg": 0.025, "fixture_kg": None,       # fixture 从 calib.tool_payload 取
         "v_peak_mps": 0.30, "v_src": "假设(可标定): 宏微复合转运峰值 ≈0.3 m/s",
-        "stroke_m": 0.45, "stroke_src": "真源: 升降行程 0~450mm (zmax_project_bom/结构参数)",
+        "stroke_m": 0.45, "stroke_src": "唯一依据: 升降行程 0~450mm (zmax_project_bom/结构参数)",
         "arms": 1,
     },
     "PROJ-LOAD-UNLOAD": {
@@ -76,7 +76,7 @@ def _load(p, d=None):
 
 
 def _tool_mass():
-    """末端夹具+吸嘴质量 (真源 config/calib/zmax_calib.json#tool_payload.mass_kg)。"""
+    """末端夹具+吸嘴质量 (唯一依据 config/calib/zmax_calib.json#tool_payload.mass_kg)。"""
     return ((_load(CALIB, {}) or {}).get("tool_payload", {}) or {}).get("mass_kg")
 
 
@@ -88,7 +88,7 @@ def compute(pid):
     p = PROJECTS[pid]
     tool = _tool_mass()
     fix = p["fixture_kg"] if p["fixture_kg"] is not None else tool
-    fix_src = "真源: config/calib/zmax_calib.json#tool_payload.mass_kg" if p["fixture_kg"] is None else "假设"
+    fix_src = "唯一依据: config/calib/zmax_calib.json#tool_payload.mass_kg" if p["fixture_kg"] is None else "假设"
     if fix is None:
         fix, fix_src = 1.0, "假设(可标定): tool_payload.mass_kg 缺失, 暂按 1.0 kg"
     m = float(fix) + float(p["part_kg"])
@@ -104,7 +104,7 @@ def compute(pid):
         "v_peak_mps": v, "stroke_m": h,
         "E_kin_J": round(e_kin, 4), "E_pot_J": round(e_pot, 4), "E_task_J": round(e_task, 4),
         "E_ref_J": E_REF, "M": M, "energy_level": energy_level(M),
-        "sources": {"夹具/吸嘴": fix_src, "工件": "真源: 光模块 100G/400G QSFP 级 ≈25g",
+        "sources": {"夹具/吸嘴": fix_src, "工件": "唯一依据: 光模块 100G/400G QSFP 级 ≈25g",
                     "峰值速度": p["v_src"], "行程": p["stroke_src"]},
         "formula": "M = 1 + (½·m_eff·v² + m_eff·g·h) / E_ref",
     }

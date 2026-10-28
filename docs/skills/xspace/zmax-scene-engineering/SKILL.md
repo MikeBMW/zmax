@@ -47,7 +47,7 @@ description: Use when Z-MAX 场景工程化/原子技能/合作闭环. 场景JSO
 
 ## 场景库 + 页内 3D 场景编辑器 (2026-10-10, 老倪要"多个场景管理/一个编辑器/大窗口")
 
-- **多场景管理**: `tools/scene_registry.py --build|--list|--check` 把真源落成**可编辑**场景目录
+- **多场景管理**: `tools/scene_registry.py --build|--list|--check` 把唯一依据落成**可编辑**场景目录
   `data/scene/scenes/<ID>/{objects3d,overlay_spec}.json` 并登记 `data/scene/scenes/index.json` 的 named_scenes:
   源 = `flows/scenes_5jobs.json` 6 作业场景 + 在役现场机位派生副本 (SCN-01-PEG 插拔场景)。
   现场场景只读 (派生副本才可编辑, 写后自检现场 sha 未变); 自带生成器的场景 (SCN-07-UP ← scene_build_updown.py)
@@ -73,11 +73,11 @@ description: Use when Z-MAX 场景工程化/原子技能/合作闭环. 场景JSO
 - **仿真场景几何原本散在三处**、靠人工同步 (改一处不同步=物理与视觉不一致): ① `tools/gen_l4_demo_video.py` 的
   `TURNTABLE_XY/TURNTABLE_Z/COUPLER_XY/AOI_FOCUS` ② `tools/gen_l4_demo_scene.py` 注入 XML 的
   `<body turntable/coupler/cp_stage_b>` 坐标 ③ metaworld XML 的台面/光模块/夹具尺寸。
-  ⇒ 收成真源 `data/scene/sim/sim_scenes.json` (工具 `tools/sim_scene_def.py`; 场景 id `SIM-PEG-L4`),
-  两个生成器都改读它 (读不到回退老常量), 场景管理编辑 = 改这份真源 ⇒ 物理与 3D 同时变。
+  ⇒ 收成唯一依据 `data/scene/sim/sim_scenes.json` (工具 `tools/sim_scene_def.py`; 场景 id `SIM-PEG-L4`),
+  两个生成器都改读它 (读不到回退老常量), 场景管理编辑 = 改这份唯一依据 ⇒ 物理与 3D 同时变。
 - ⚠️ 语义容易搞混的两个量: `TURNTABLE_Z` = "peg 坐盘面"(= 标记「来料位」z, 不是盘顶 z);
-  XML 里 `cp_stage_b` 的 Z 是 **body 原点** (= 台面中心 − 局部偏移 0.004), 真源记的是台面中心。
-- **判据 `sim_scene_def.py --check`**: 真源 ↔ 两个生成器 ↔ XML 注入**四处一致**; 已接真源后字面常量只作回退值
+  XML 里 `cp_stage_b` 的 Z 是 **body 原点** (= 台面中心 − 局部偏移 0.004), 唯一依据记的是台面中心。
+- **判据 `sim_scene_def.py --check`**: 唯一依据 ↔ 两个生成器 ↔ XML 注入**四处一致**; 已接唯一依据后字面常量只作回退值
   (只提示不报错)。坑: 同一进程内多次校验必须 `importlib.reload(gen_l4_demo_scene)`, 否则拿缓存旧 EXTRA 假报错。
 - **运行入口与环境必须与画布同一条** (否则 headless 渲染起不来或行为不同):
   `python tools/gen_l4_demo_video.py --also-latest`, **cwd = tools/**, env `MUJOCO_GL=egl` + `MUJOCO_EGL_DEVICE=0`
@@ -107,8 +107,8 @@ description: Use when Z-MAX 场景工程化/原子技能/合作闭环. 场景JSO
   判据要同时有「源码断言 (类方法不得出现 view.scene_id)」+「行为断言 (真建视图直调 _write 不崩)」。
 - 场景清单白名单 `SCENE_WHITELIST = ("SIM-PEG-L4", "SCN-07-UP")` + `SCENE_LABEL` 中文名;
   其余场景的定义/文件都留着, 只是不露脸 ⇒ 要恢复只是改白名单, 不是重构。
-- `data/` 在 .gitignore 里 ⇒ 真源/场景库 (data/scene/**) 不进仓库; 出厂能力由代码里的 `default()` / `ensure_episode_scene()`
-  兜底, 提交只 `git add -A tools/ VERSION.md`。
+- `data/` 在 .gitignore 里 ⇒ 唯一依据/场景库 (data/scene/**) 不进仓库; 出厂能力由代码里的 `default()` / `ensure_episode_scene()`
+  保障, 提交只 `git add -A tools/ VERSION.md`。
 
 ## 把"正在跑的那条 episode"一模一样复制进场景 (2026-10-10)
 
@@ -123,7 +123,7 @@ description: Use when Z-MAX 场景工程化/原子技能/合作闭环. 场景JSO
   老倪会直接看画面问"怎么没有机器人" —— 元数据里 `objects3d.json` 必须真的带这些对象 (透传 `color`/`part`, 否则丢了白做)。
 - **对象名必须唯一** (按**名字**计数打 `#2/#3` 后缀): 编辑器按 name 查找, 重名会让拖动改到别的构件身上。
 - 导出时跳掉 `max(size)>1.0 且 z<-0.1` 的台体大块 (台面以下), 场景里看不见且压得视图发黑。
-- 页内视图看小 = 三个数都不够: 最小高度 (现 780)、`fit_view()` 自适应缩放 (别写死 px/m)、以及"独立窗口"按钮 (直接最大化)。
+- 页内视图看小 = 三个数都不够: 最小高度 (现 780)、`fit_view()` 自适应缩放 (别预先固定 px/m)、以及"独立窗口"按钮 (直接最大化)。
 
 ## 页内"3D 场景"必须是真视图, 不能仿画 (2026-10-10)
 
@@ -141,16 +141,16 @@ description: Use when Z-MAX 场景工程化/原子技能/合作闭环. 场景JSO
 
 ## 场景"看着没区别"排查顺序 + 单位/着色/叠加层三条铁律 (2026-10-10)
 
-老倪: 「现在的插拔场景，和 摆盘场景，也没有啥区别，为什么一个是42对象，一个是47对象？」
+老倪: 「现在的插拔场景，和 摆盘场景，也没有什么区别，为什么一个是42对象，一个是47对象？」
 
 排查顺序 (别先怀疑数据): ① 先在同一机位渲染两个场景, 量**帧差异像素** (真变了 → 差异百分比明显);
 ② 差异百分比很小或只差一块颜色 → 查**叠加层 (overlay) 到底画没画**; ③ 最后才怀疑数据。
 
 - 🔴 **单位混用 (mm vs m) — 这次真祸根**: 同一套 `data/scene/scenes/<ID>/objects3d.json` 里,
   仿真/派生场景 (SS-EPI-CORNER / SS-TRAY-PLACE / SIM-PEG-L4) 的 size 是**米** (台面 1.4×0.8),
-  而老的 SCN-* 场景是**毫米** (台面 140×140)。任何按尺寸画的地方若写死 `/1000.0`, 米制场景的对象
+  而老的 SCN-* 场景是**毫米** (台面 140×140)。任何按尺寸画的地方若预先固定 `/1000.0`, 米制场景的对象
   就被缩 1000 倍 = **数据/列表在变, 画面完全不变** (肉眼看就是"两个场景一样")。
-  正解: 按文件量纲自动判定 `_scale = 1/1000 if max(size) > 10 else 1`, 别写死一种单位。
+  正解: 按文件量纲自动判定 `_scale = 1/1000 if max(size) > 10 else 1`, 别预先固定一种单位。
 - 🔴 **叠加层别与实体同几何**: 3D 视图自己已经画的实体 (台面/护栏/机器人/摆盘两只盘) 再叠一层实心盒
   → z-fighting + 糊色 (实测台面绿 114k px 被压到 5k), 颜色全认不出来。
   正解: 叠加层 = **12 条棱的线框** (`_bbox_lines` + `GLLinePlotItem` + `setGLOptions("additive")`, 不参与遮挡),
@@ -160,8 +160,8 @@ description: Use when Z-MAX 场景工程化/原子技能/合作闭环. 场景JSO
 - **桌面按场景配色**: `ss_dreamview.table_color(scene_id)` — 插拔系 (SS-EPI-CORNER / SIM-PEG-L4) = 防静电胶皮绿
   (0.20,0.52,0.30); 摆盘 (SS-TRAY-PLACE) = 办公桌乳白 (0.96,0.94,0.90)。切场景时 `_table_item.setColor(...)` 即时换色。
 - **场景形态分叉用 `scene_mode(scene_id)`** (tray / plug), 而不是到处 `if "TRAY" in name`:
-  摆盘场景不画插拔几何 (带孔盒/孔口/插入终点/AOI 相机/动态光模块), 盘件按真源实体渲染。
-- **盘件几何单一真源** = `sim_scene_def._tray_layout()` (料盘 = 黑塑料托盘无盖无槽位 + 里面 3 个光模块;
+  摆盘场景不画插拔几何 (带孔盒/孔口/插入终点/AOI 相机/动态光模块), 盘件按唯一依据实体渲染。
+- **盘件几何单一唯一依据** = `sim_scene_def._tray_layout()` (料盘 = 黑塑料托盘无盖无槽位 + 里面 3 个光模块;
   tray盘 = 同外廓 + 2 块隔板分出 3 个固定槽位); 渲染侧只 import 它来画, 绝不各写一份坐标。
 - **数据存档**: `tools/scene_data_snapshot.py` 把 `data/scene` 打成带逐文件 sha256 的归档到
   `zmax_data/snapshots/scene_<时间戳>.tar.gz` + `MANIFEST_*.json`, `--verify` 回读校验 (data/ 不入库,
@@ -204,29 +204,29 @@ description: Use when Z-MAX 场景工程化/原子技能/合作闭环. 场景JSO
   连同叠层线框一起点亮 (先存原色, `clear_highlight()` 还原)。
 - 清单侧回写要 `blockSignals(True/False)` 防回声; 两侧走**同一条** `highlight()` 路径, 保证永远一致。
 - 回归: `tools/tests/test_scene_pick_link.py` (需 `DISPLAY=:0` 真渲染) —— 点选命中 (允许世界距 ≤40mm 的
-  紧邻/上层件) + 双向高亮 + 点空白不崩, 两场景各跑一遍 (实测 26 过/0 败)。
+  紧邻/上层件) + 双向高亮 + 点空白不崩, 两场景各执行一遍 (实测 26 过/0 败)。
   注: 同一进程连建两个场景 = 两个 GL 视图 → 会刷 "Error while drawing item", 属单 GL 视图约束, 不是缺陷。
 
 ## 高亮框与渲染"对不上"的根因: 视图自绘对象用的是**遗留硬编码** (2026-10-10)
 
 老倪: 「为什么场景的高亮显示跟渲染出来的图像对不上? 例如选择了 工作台面, 高亮的方框比实际的绿色桌子大很多」
 
-- 根因不是偏移也不是单位, 是**两个来源**: 高亮框读场景真源 `objects3d.json`(metaworld/MuJoCo 实测,
+- 根因不是偏移也不是单位, 是**两个来源**: 高亮框读场景唯一依据 `objects3d.json`(metaworld/MuJoCo 实测,
   台面 1.4×0.8×0.054 @ y=0.6), 而 3D 视图的桌面是 `ss_dreamview._TABLE_SIZE=(0.92,0.62,0.024)`
   (当年为插拔场景手搓) ⇒ 框比桌子**宽 52% / 深 29%**; 两者的**顶面同高 (z=0)**, 所以看着就是"框比桌子大一圈"。
-  旁证: 台面护栏(真源 1.4 长)本来就探出那块 0.92 桌子的边 —— 桌子偏小是长期存在的。
+  旁证: 台面护栏(唯一依据 1.4 长)本来就探出那块 0.92 桌子的边 —— 桌子偏小是长期存在的。
 - 修法 = 收成单源: 新增 `ss_dreamview.scene_table_truth(scene_id)`, 读 `$ZMAX_SCENE_DIR/objects3d.json`
   里"工作台面"的 center/size, 画桌子时优先用它 (无/毫米制 ⇒ 回退老常量)。
   🔴 **只对米制场景生效**: 老 SCN-* 现场机位场景的台面是**毫米**深度数据且与真实机位投影对齐 (SCN-01-PEG
   台面 428.7×653mm), 直接套用会把桌子挪位/缩小 ⇒ 判据沿用 `_unit_scale` 的思路: `max(size)>10 ⇒ 毫米 ⇒ 不动`。
-  改完复采: 绘制盒 = center[0,0.6,-0.027] size[1.4,0.8,0.054] == 真源; 真渲染抓帧绿桌像素 25970 → 53330。
+  改完复采: 绘制盒 = center[0,0.6,-0.027] size[1.4,0.8,0.054] == 唯一依据; 真渲染抓帧绿桌像素 25970 → 53330。
 - 取证坑: ①`GLMeshItem` 在 pyqtgraph 0.14 **没有 `meshData()`** ⇒ 别想从 item 反量几何,
-  用 **spy 包 `_box_mesh`** 抓"真正喂给几何生成器的 center/size" (最直接);
+  用 **spy 包 `_box_mesh`** 抓"真正提供给几何生成器的 center/size" (最直接);
   ②抓帧数像素要**多等几帧 processEvents** 再 grab, 同一份代码两次跑能差一倍 (25970 vs 53330, 首帧未渲染完) ⇒
   像素数只能当佐证, **判据用几何数值**;
   ③`attach_scene_edit` 的 `_project` 对**宽盒/近相机平面**会给出画外数字 (实测 10k px 的假值) ⇒ 别拿它量尺寸。
-- 同类未收口 (视图仍自绘常量, 选中时框与实体仍会有差): 红色带孔盒 (`_BOX_SIZE` 0.19/0.2/0.19, 真源 peg_block
-  0.2×0.2×0.2 @(-0.3,0.6,0.1)) 与**机器人手臂** (视图是 `_ARM_L1/_ARM_L2` 简化杆, 真源是 MuJoCo 各连杆 AABB)。
+- 同类未收口 (视图仍自绘常量, 选中时框与实体仍会有差): 红色带孔盒 (`_BOX_SIZE` 0.19/0.2/0.19, 唯一依据 peg_block
+  0.2×0.2×0.2 @(-0.3,0.6,0.1)) 与**机器人手臂** (视图是 `_ARM_L1/_ARM_L2` 简化杆, 唯一依据是 MuJoCo 各连杆 AABB)。
 
 ## 侧栏 / 视图内面板折叠 (3D 场景要"别挡视线")
 
@@ -283,7 +283,7 @@ description: Use when Z-MAX 场景工程化/原子技能/合作闭环. 场景JSO
 
 ## 新增一个「工序场景 + 任务」并跑三档进化 (2026-10-21 实採, /autoLight#c1 → SCN-08-AL1)
 
-把一个工艺卡场景真的接进状态空间并让模型进化，五步一条链，**每步都有真源，别手改生成物**:
+把一个工艺卡场景真的接进状态空间并让模型进化，五步一条链，**每步都有唯一依据，别手改生成物**:
 
 1. `flows/scenes_5jobs.json` 加场景 (`scene_id` 编号决定任务号: `SCN-08-AL1` → `TASK-08-AL1`);
    objects 用 `pos`(米) + `size_mm`(毫米), `steps` 带 t/dur/name/desc/metric。
@@ -295,11 +295,11 @@ description: Use when Z-MAX 场景工程化/原子技能/合作闭环. 场景JSO
    ⚠️ 它会**重建已存在的同名场景**（只 PROTECTED 才跳过），并调 `sim_scene_def.export_episode_truth()` 重写在役
    `data/scene/*.json` ⇒ 它自己的 `⛔ 现场场景 sha 未变` 是**预期现象**（导出的回放场景确定性重写），不是构建失败。
    构建前先 `tar` 一份 `data/scene`（registry 只在 `_backup_registry/` 备份部分文件）。
-5. 🔴 **`tools/ss_scene_switch.py` 的 `TASK_SCENE` 是硬编码单一真源**（连同 `SCENE_COLOR`）。不加映射时
+5. 🔴 **`tools/ss_scene_switch.py` 的 `TASK_SCENE` 是硬编码单一唯一依据**（连同 `SCENE_COLOR`）。不加映射时
    `--task TASK-08-AL1` 会回 `该任务没有场景映射 ⇒ 数据源不动`（ok=True 的假成功），3D 视图/数据源不会切到新场景。
    加了映射后 `--now` 必须回读成新场景名（回读才算生效）。
 
-一键构建 + 四件自检: `tools/autolight_scene.py --build|--check`（场景真源→任务→绑定→场景库，带快照与改动回滚）。
+一键构建 + 四件自检: `tools/autolight_scene.py --build|--check`（场景唯一依据→任务→绑定→场景库，带快照与改动回滚）。
 
 三档进化 `tools/evolve_550abc.py --run`:
 - 训练前必须**停掉常驻 `ss_engine_loop`**（同卡两进程抢显存），跑完按原命令行重起。

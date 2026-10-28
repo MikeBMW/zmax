@@ -61,7 +61,7 @@ step3: chunk(4,10) nonzero=40 std=0.2465 trained=True
 平均单步 316 ms (含跨 venv IPC + 前向) · RobotIO 逐步下发 12 = 3×4
 ```
 
-**单步正确性的三道闸 (踩坑换来的)**
+**单步正确性的三道闸 (遇到问题换来的)**
 1. `goal` 必须 **5 维** `[B,T,C,H,W]` — 模型内部把 `goal["pixels"]` 直接喂 ViT，传 4 维报
    `expected 4, got 3`；
 2. 动作历史由**节点**持有并滚动注入（数据源每次给 raw 零 = reset 语义；不注入则每步输出恒定）；

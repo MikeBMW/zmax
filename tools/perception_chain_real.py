@@ -31,7 +31,7 @@ def run(with_vlm=True):
 
 
 def write_out(out):
-    """写单一真源 data/scene/scene_state.json (合并语义) + 追加式记录 (可回放)"""
+    """写单一唯一依据 data/scene/scene_state.json (合并语义) + 追加式记录 (可回放)"""
     p = os.path.join(R, "data", "scene", "scene_state.json")
     d = {}
     if os.path.exists(p):
@@ -64,4 +64,4 @@ if __name__ == "__main__":
     o = run(with_vlm="--no-vlm" not in sys.argv)
     p, lp = write_out(o)
     print(json.dumps(o, ensure_ascii=False)[:900])
-    print("→ 真源:", p, "| 记录:", lp)
+    print("→ 唯一依据:", p, "| 记录:", lp)

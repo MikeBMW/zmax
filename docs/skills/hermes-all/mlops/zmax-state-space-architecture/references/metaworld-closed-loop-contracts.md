@@ -33,7 +33,7 @@ gui-venv311 环境, DISPLAY=:0, MUJOCO_GL=glfw。这些数字都是实测, 不�
 ## 几何与随机化
 - **布局跨进程漂移 >10cm**: 同进程内 freeze 后 seed0 稳定; 不同进程 peg/goal 位置不同
   (探针 3 进程 peg y: 0.58/0.67/0.69/0.52 全不同)。→ 几何**每轮现场采样** (obs 段位 +
-  site xpos), 不许写死常量。引擎注释里的 pegGrasp/hole 坐标只是某次快照, 差 3-6cm。
+  site xpos), 不得硬编码常量。引擎注释里的 pegGrasp/hole 坐标只是某次快照, 差 3-6cm。
 - 任务结构固定: 销沿 x 平躺 24cm (geom size [0.015,0.015,0.12] 局部, 世界=[0.12,0.015,0.015]),
   截面 3×3cm; 孔/终点在 -x 侧; peg 0.1kg free body, 底嵌入桌面 0.3mm (桌面顶 z=0)。
 - 夹爪沿 **y 开合** (两指全开 y 距 ~9cm, 全闭 ~3cm = 机械限位), 夹 3cm 宽销刚好过盈。
@@ -51,7 +51,7 @@ gui-venv311 环境, DISPLAY=:0, MUJOCO_GL=glfw。这些数字都是实测, 不�
   ⚠️ 8 个不同 seed 跑出全同轨迹 (seed 参数疑似未影响布局) — 多 seed 统计前先验证布局真变了。
 - mujoco API 版本差异: model.site_id2name / data.body_xpos / model.geom_xmat **不存在**
   → 用 model.site(name).id / d.site_xpos / d.geom_xpos / m.geom_quat+手写 quat2mat;
-  model.geom(i).name 可枚举; 无名 geom 用 m.geom(c.geom1).name or f"g{id}" 兜底。
+  model.geom(i).name 可枚举; 无名 geom 用 m.geom(c.geom1).name or f"g{id}" 保障。
 - 抓取完整序列 (验证可行): 悬停(z=销+8cm)水平对准 → 垂直降 (hand 到销身, 被销顶住) →
   闭合 20-30 步 (grp<0.7) → 抬升 act z 0.4-0.5 (peg 随动 Δz>3cm = 夹住; 不随 → 回退重抓)。
 - 接触力合成 (metaworld 无力传感器): 未夹持=夹爪到销上方 gap_z 判据; 夹持=销头-孔口
@@ -62,7 +62,7 @@ gui-venv311 环境, DISPLAY=:0, MUJOCO_GL=glfw。这些数字都是实测, 不�
   (grasp_th=0.28 / lift_h=0.08 / max_veto=5; 阈值按 metaworld 实测, 引擎默认值会卡)。
 - 夹持: 抓取阶段 grp<0.78 连续 3 步锁存"闭合候选" → 抬起阶段 peg 随动验证 (gf),
   滑脱置 grasped=False → 调度器 advance 夹持丢失回退 (grasp_force<0.05 连续5帧+peg落回)。
-- 单轮全流程跑通 (seed 100): 八阶段完成, 真夹持 gf=1。遗留: 多轮 0/8 (布局敏感)。
+- 单轮全流程验证通过 (seed 100): 八阶段完成, 真夹持 gf=1。遗留: 多轮 0/8 (布局敏感)。
 - 引擎语义 39D 与 metaworld 39D 段位冲突 ([4:7]=v vs peg) — 前馈解析律只吃 [0:3]/[36:39]
   相对量不受影响; 挂训练 MLP 前必须统一语义 (R1 决策点)。
 
@@ -107,7 +107,7 @@ metaworld 内部 (`sawyer_xyz_env.py::set_xyz_action`): `mocap_pos += action[:3]
 `u_ff` 的完整输出面 (问"前馈都输出什么"就按这四层答):
 1. 返回值 `[vx,vy,vz,grip]` —— MLP 路径 `u_norm*astd+am` → clip **±0.6**; 解析路径 `Kp=1.2*(target-pos)`
    → clip **±0.5**, 水平距 <3cm 再叠 `+0.03` 最小推力; `grip` 是**规则**(水平距 <3cm→1)不是网络学的。
-2. 可追溯计数: `loaded` / `n_calls` / `n_mlp`(域内) / `n_guard`(解析兜底); 域判据 = 3D 距 ≤0.25m
+2. 可追溯计数: `loaded` / `n_calls` / `n_mlp`(域内) / `n_guard`(解析保障); 域判据 = 3D 距 ≤0.25m
    **且** 归一化逐通道 |x| ≤4σ。
 3. `self.probe`: `_seq` · `obs{hand,target,d_h,d_xy,gripper}` · `layers[3]{act_l2,active,dim,top3}` ·
    `out_contrib`(输出归因) · `u_ff` · `act_raw`(3×512) —— 只进 GUI 探针窗口, 不进信号页。

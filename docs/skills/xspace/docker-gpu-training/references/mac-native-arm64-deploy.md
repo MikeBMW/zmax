@@ -41,7 +41,7 @@ sudo docker buildx inspect multi --bootstrap   # 等 Status: running 再构建
 sudo docker buildx build --platform linux/arm64 --target infer -t zmax-infer:arm64 --load -f docker/Dockerfile .
 ```
 **交叉构建的两个新坑**（实测）:
-- **实测成功（2026-08-09 本地 4060 完整跑通）**: buildx + binfmt 装好后 `--platform linux/arm64 --target infer --load` 成功出 `zmax-infer:arm64`（6.25GB, torch 2.11.0+cpu, 模型内置 /app/models/act/）——依赖 pin 对后 QEMU 15-30 分钟出镜像, 本地交叉编译是可用路径, 不必等 Mac 原生构建
+- **实测成功（2026-08-09 本地 4060 完整验证通过）**: buildx + binfmt 装好后 `--platform linux/arm64 --target infer --load` 成功出 `zmax-infer:arm64`（6.25GB, torch 2.11.0+cpu, 模型内置 /app/models/act/）——依赖 pin 对后 QEMU 15-30 分钟出镜像, 本地交叉编译是可用路径, 不必等 Mac 原生构建
 - **模型 COPY 进镜像时 `.dockerignore` 必须放行 outputs/ 具体目录**: 构建报
   `failed to compute cache key: ... "/outputs/train/xxx/pretrained_model": not found` ——
   不是文件缺失, 是 `.dockerignore` 的 `outputs/` 排除了它。放行:

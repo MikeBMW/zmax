@@ -31,7 +31,7 @@ REMOTE = os.environ.get("SS_REMOTE_DIR", os.path.expanduser("~/zmax/zmax_data/ss
 OUTDIR = os.environ.get("SS_BYPASS_DIR", os.path.expanduser("~/zmax/zmax_data/ss_bypass"))
 WEIGHTS = os.environ.get("SS_YOLO_WEIGHTS") or next(
     (p for p in (os.path.join(REPO, "models/yolo_peg_live.pt"),                                  # 🎯 真机在役权重 (指针, 升级只改它)
-                 os.path.join(REPO, "runs/detect/outputs/yolo_peg/peg_v1/weights/best.pt"))      # 旧仿真域权重 (兜底)
+                 os.path.join(REPO, "runs/detect/outputs/yolo_peg/peg_v1/weights/best.pt"))      # 旧仿真域权重 (保障)
      if os.path.exists(p)),
     os.path.join(REPO, "runs/detect/outputs/yolo_peg/peg_v1/weights/best.pt"))
 IMGSZ = int(os.environ.get("SS_YOLO_IMGSZ", "640"))
@@ -40,7 +40,7 @@ FRESH_S = float(os.environ.get("SS_IMG_FRESH_S", "5.0"))     # 真机帧新鲜�
 CAND = ("cam_rs.png", "cam_fp.png", "cam_latest.png", "srv_cam.png", "srv_cam.jpg",
         "cam_local.png")   # RealSense 优先; cam_local = 本机工位相机(备用, 明确标注)
 
-# 🏷 2026-09-20: 来源标签表 (诚实纪律: 兜底源必须自报家门, 不许冒充产线相机)
+# 🏷 2026-09-20: 来源标签表 (诚实纪律: 保障源必须自报家门, 不许冒充产线相机)
 _KIND_BY_NAME = {"cam_local.png": "bench_cam"}
 _SRC_LABEL = {"real": "产线 RealSense", "stale": "产线 RealSense(旧帧)",
               "bench_cam": "本机工位相机(备用·非产线视角)", "sim": "仿真", "test": "自检图"}
@@ -51,9 +51,9 @@ def pick_frame():
 
     🩹 2026-09-18: 帧龄钳到非负 —— NTP 回拨导致 mtime 在未来时, age 为负会让
     "新鲜"判据恒真 (旧帧冒充实时). 帧仍是最新可比的一张, 故只钳龄 + 标 clock_skew.
-    🩹 2026-09-20: **兜底源不得抢源** —— 本机相机帧写入频率比产线帧高, 原"新 0.5s 就可换源"
+    🩹 2026-09-20: **保障源不得抢源** —— 本机相机帧写入频率比产线帧高, 原"新 0.5s 就可换源"
        会让画面在 RealSense/本机相机之间来回跳 (实测检出数也跟着跳)。改为: 只要有**新鲜的
-       非本机(RealSense/FoundationPose)帧, 就用它; 本机相机只在前面全不可用时兜底。
+       非本机(RealSense/FoundationPose)帧, 就用它; 本机相机只在前面全不可用时保障。
     """
     cands = []                                   # [(path, age, idx)] 全为新鲜候选
     for i, name in enumerate(CAND):
@@ -69,7 +69,7 @@ def pick_frame():
         return None, None, None
     local = [c for c in cands if os.path.basename(c[0]) == "cam_local.png"]
     real = [c for c in cands if os.path.basename(c[0]) != "cam_local.png"]
-    pool = real if real else local               # ✅ 产线源优先; 全无 → 本机兜底
+    pool = real if real else local               # ✅ 产线源优先; 全无 → 本机保障
     pick = min(pool, key=lambda c: (c[2], c[1]))
     return pick[0], pick[1], (_KIND_BY_NAME.get(os.path.basename(pick[0]))
                               or ("real" if pick[1] <= FRESH_S else "stale"))

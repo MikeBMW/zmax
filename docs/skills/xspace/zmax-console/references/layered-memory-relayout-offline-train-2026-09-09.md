@@ -2,7 +2,7 @@
 
 ## 🧠 分层记忆入画布 (老倪: L2/L3/L4 记忆 + 大模型层共享, "总分结合, 分层有效")
 
-- **真源 = src/lerobot/memory/memory_store.py** → data/shared_memory.json
+- **唯一依据 = src/lerobot/memory/memory_store.py** → data/shared_memory.json
   (画布/引擎/CLI 跨进程桥; _REPO_ROOT = dirname(__file__, 4); put/save 写失败不打断主流程)。
   进程内引擎 worker 同 GUI 进程可共享 dict, 但 CLI probe 是独立进程 → **json 落盘是唯一桥**。
 - **布局**(记忆带 h≈110 紧贴功能区上方, 大模型行更名"共享记忆中枢层"并在链路端部加中枢节点):
@@ -33,7 +33,7 @@
    prefix 标记取 spec[2:] 不是 [3:]) → resolve 全部 StopIteration。布局脚本的 spec 前缀解析统一
    `spec[2:]`, 别用 [3:]。
 5. **链式插入(下方行逐次下移)极易错位**: 已插带也会被后续下移而节点不跟 → 改用**确定性目标布局表**
-   (每行写死 新顶y+高h, 节点按"所属旧行→新行顶差"整体平移, 行高保持原值防节点溢出)。
+   (每行预先固定 新顶y+高h, 节点按"所属旧行→新行顶差"整体平移, 行高保持原值防节点溢出)。
 6. **GUI 双实例**: `pkill` 与重启分两条命令且用 `[s]tudio.py` 方括号; 一条 `pkill; ... &` 组合命令被
    拦/漏执行 → 新旧两实例并存 (5678 争用)。重启前 `ps aux | grep "[s]tudio.py" | wc -l` 必须归 0。
 7. **行内节点数核对**: 重排后逐行打印"行内节点数"与改前比对 (感知4/融合2/控制4/状态机2/技能8/执行2…),

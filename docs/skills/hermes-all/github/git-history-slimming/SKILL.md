@@ -43,7 +43,7 @@ git worktree list                 # 看有几棵、各自在哪个分支
 git branch --show-current; git rev-list --left-right --count origin/main...HEAD
 [ -f <树>/<今天新增的文件> ]       # 关键文件存在性才是铁证
 ```
-新增文件只在一棵树里存在 ⇒ 那棵才是真源。
+新增文件只在一棵树里存在 ⇒ 那棵才是唯一依据。
 
 **② 用显式路径列表 add，不用 `git add -A`；且 `git add` 一个不匹配的 pathspec 会让**整条命令失败
 （什么都不暂存，但也不报哪条没匹配上）—— 先 `search_files (target='files')` 或列目录确认真实文件名。

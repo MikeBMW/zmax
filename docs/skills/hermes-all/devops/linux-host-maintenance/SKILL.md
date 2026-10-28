@@ -110,7 +110,7 @@ sudo <venv>/bin/py-spy dump --pid $(pgrep -f 'studio[.]py' | head -1) 2>&1 | hea
 ```
 实测栈形: `main → _step → _realize_pending → _realize_page → <某页>.__init__ → subprocess.run(ssh …)`
 ⇒ **惰性建页机制把同步子进程放在了页构造函数里**: 后台建页泵每 0.8s 真建一个页, 建到那个页就整窗卡
-2s(子进程 timeout), 期间点击/滚轮/重绘事件全丢 —— 用户看到的是「卡住了/滚轮没反应」, 而不是「开慢了」。
+2s(子进程 timeout), 期间点击/滚轮/重绘事件全丢 —— 用户看到的是「阻塞了/滚轮没反应」, 而不是「开慢了」。
 - **定式**: Qt 页面构造函数里的**任何同步 `subprocess.run` / 网络探测 / ssh 预连**都必须挤到后台线程
   (`threading.Thread(target=…, daemon=True).start()`), 并给子进程加 `ConnectTimeout`, 别让 timeout 决定帧时间。
 - **排查顺序**: ①先证页面功能本身可行(页面内自证) ②`py-spy dump` 看主线程是不是在 `_wait/communicate`
@@ -203,8 +203,8 @@ WiFi -42dBm/573Mbit/s = 满速档。含 5GHz HE-MCS11/NSS2 才算"好"。
 6. **验收给数字**: 家目录浅层图片张数(前→后) · 释放 MB · `~/图片库` 逐类文件数 · 盘 used/total,
    并把「数据集清单(大小 + 一句删了影响什么)」单独一段。**禁止把 30G 数据集说成“已清理”**。
 7. **用户说「没有这个文件夹」⇒ 多半同类目有两份路径**: 先并列打印候选(`ls -ld ~/<类目>` 与
-   `ls -ld ~/<repo>/<类目>`; 本项目家目录 `~/zmax_data` 与真源 `~/zmax/zmax_data` 并存), 再
-   `ln -sfn <真源> <另一位置>/<类目>` + `DISPLAY=:0 xdg-open <dir>` 在他屏上开个定位窗口。
+   `ls -ld ~/<repo>/<类目>`; 本项目家目录 `~/zmax_data` 与唯一依据 `~/zmax/zmax_data` 并存), 再
+   `ln -sfn <唯一依据> <另一位置>/<类目>` + `DISPLAY=:0 xdg-open <dir>` 在他屏上开个定位窗口。
    只把绝对路径再念一遍 = 他再问一次。
 8. **删测试占位文件时顺手清应用锁文件**: LibreOffice 留下的 `.~lock.<文件名>#` 看着像文件还在,
    也可能挡后续写入 ⇒ 先关自己开的那个窗口(`wmctrl -i -c <winid>`, 别动用户自己开的文档窗), 再 `rm -f '.~lock.*#'`。
@@ -303,8 +303,8 @@ WiFi -42dBm/573Mbit/s = 满速档。含 5GHz HE-MCS11/NSS2 才算"好"。
 4b. **归档本轮产物** (本仓既有约定: 照上一版 `tools/archive_release_<x_y_z>.sh` 抄结构):
    `bash tools/archive_release_<x_y_z>.sh` → `~/zmax/zmax_data/release_<ver>_<YYYYMMDD>/`, 分区固定
    `{tools,gui,src,config,canvas,docs,evidence,reports}`, 末尾出 `MANIFEST.md` + `sha256sums.txt`。
-   **“保存数据”不等于“提交代码”**: 归档必须带**生成物真源**(本轮产出的 `config/{mcd,tasks,orders,ss_task_binding.json,calib}` 这类)
-   + **画布真源**(`flows/state_space_obs.json`) **及其 `_archive/` 里那份改动前备份**(回滚面) + 用户要加载的工程文件(.zmaxproj)
+   **“保存数据”不等于“提交代码”**: 归档必须带**生成物唯一依据**(本轮产出的 `config/{mcd,tasks,orders,ss_task_binding.json,calib}` 这类)
+   + **画布唯一依据**(`flows/state_space_obs.json`) **及其 `_archive/` 里那份改动前备份**(回滚面) + 用户要加载的工程文件(.zmaxproj)
    + 实测证据。权重/大件不进归档, 只留清单(见本节步骤 2)。
    ⚠️ `reports/` 被 `.gitignore` 排除 ⇒ 证据文件**只存在于归档里**, 别以为 push 过就留档了。
    `git add reports/...` 会直接报 `The following paths are ignored` 并 exit 1 ⇒ 关机交接写进 reports/ 就**别试提交**,
@@ -315,7 +315,7 @@ WiFi -42dBm/573Mbit/s = 满速档。含 5GHz HE-MCS11/NSS2 才算"好"。
    暂存后必看 `git diff --cached --stat`, 并对每个文件核大小 (最大应 <1MB; 出现 .pt/.safetensors/视频 → 漏加了 ignore, 先修 .gitignore)。
 6. **push + tag**: `git commit` → `git tag vv<X.Y.Z>` (**每版新 tag, 已发布过的 tag 不许移动**) →
    `git push origin <分支>` + `git push origin <tag>` (tag 触发云端 CI 出包, 与本地关机无关, 可以放心打)。
-6b. **tag 之后复核"CI 真跑起来了"** —— 本地没装 gh 也能查(公开仓库只读 REST):
+6b. **tag 之后复核"CI 真启动了"** —— 本地没装 gh 也能查(公开仓库只读 REST):
    `curl -s 'https://api.github.com/repos/<owner>/<repo>/actions/runs?per_page=3'` 交给 `python3 -c` 打印
    `name/head_branch/status/conclusion`; 刚推的 tag 应出现 `in_progress`, 上一版应是 `completed/success`。
    判据是这条 run 的存在与结论 —— 写"已发布"前面必须看过它。
@@ -393,7 +393,7 @@ pgrep -af '<手工进程名>'                            # 自启单元管不到
                                                     #   每个候选 alive=false "探测异常 ModuleNotFoundError" ⇒ 全 -1
                                                     #   (实测 2026-10-25: 据此回落 --local-dev 0, 而重启后 video0
                                                     #    已不存在 ⇒ 推流 40s 后冻在 1839 帧); 且**推流在跑时**
-                                                    #   被占用的那路会报"打不开(被占用)"⇒ 解析要在起流之前跑
+                                                    #   被占用的那路会报"无法打开(被占用)"⇒ 解析要在起流之前跑
 ls -l /home/ubuntu/zmax/zmax_data/rokae_sdk/tcp_out/latest.json   # 位姿真值(全 0/读不到=会话陈旧)
                                                     # ⚠️ 家目录整合后的真实路径 = `~/zmax/zmax_data/...` (**不是** `~/zmax_data/...`):
                                                     #   按老家目录路径探会得到"缺 latest.json" ⇒ 误报"真值没在刷"(实测踩过);
@@ -409,7 +409,7 @@ nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; df -h 
   「环境缺失 ⇒ 拒发动作」是**假警报**(实测开机 1min 时判定缺失、90s 后网卡就位且 Orin/工控机全通)。
   判据: `ip -br addr` 里真出现 `192.168.23.x` + `ping -c1 -W2 <Orin>` 通才算「网卡在位」;
   一次不通就**隔 60~90s 复采一次**再下结论 —— **两次采样都查不到**才判真缺失(实操口径见 §9e③: 开机 5min 与 10min 两个点)。
- ⚠️ **判据只认「能通」，不认「有 IP」**：netplan 里产线口写死成某个 `enx<MAC>` 名字时，换一根 dongle
+ ⚠️ **判据只认「能通」，不认「有 IP」**：netplan 里产线口预先固定成某个 `enx<MAC>` 名字时，换一根 dongle
  (接口名就变) 就不匹配 ⇒ 没有 192.168.23.50; 反过来, 把匹配改成 `enx*` 通配后, **机载/扩展坞的 USB 网口
  也会拿到这个 IP** ⇒ `ip -br a` 看到 192.168.23.x 但 `RX bytes=0`、ARP 全 INCOMPLETE、ping 全丢。
  所以「产线网在位」= `ping -c1 <Orin>` 通 **或** 该接口 `RX packets > 0`; 只有 IP 不算。
@@ -419,7 +419,7 @@ nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; df -h 
  一行排掉干扰口: `for i in /sys/class/net/enx*; do echo $i $(ethtool -i $(basename $i)|awk '/driver/{print $2}'); done`
  （`r8152`/`cdc_ncm` = 真网卡; `rndis_host` = 手机/摄像头，不是产线口）。
  - 🔴 **动 netplan 前先记下 WiFi 的 IP**：`netplan apply` 会重启 NetworkManager、WiFi 可能跳到另一个 SSID ⇒
-  本机 IP 换网段; 而用户手里的页面链接/二维码是 **IP 形式**的，他会直接报「某某页面打不开」——
+  本机 IP 换网段; 而用户手里的页面链接/二维码是 **IP 形式**的，他会直接报「某某页面无法打开」——
   先 `ip -4 -br addr show wlp*` 对一眼是不是 IP 变了，别急着查服务/日志。恢复用 `nmcli con up <原SSID>`，
   防再跳设 `nmcli con mod <办公SSID> connection.autoconnect-priority 20` + 访客/热点网设 `0`。
   探活页面要**跟跳转**: `.../ar` 返回 302 是**正常**(它跳 8797/ar)，用 `curl -sL` 得 200 才算页面在。
@@ -428,7 +428,7 @@ nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; df -h 
  一句话报「远程模式 ⇒ 产线链路天然不通, 机器人/550C/AOI 本轮不可达」即可。
   ⚠️ **「等开机满 N 分钟再复采」必须用 `/proc/uptime` 计时, 不要用 `date -d` 做相对算术**:
   `date -d "$(uptime -s) + 10 minutes"` 里 GNU date 把 `+ 10` 读成**时区偏移**(UTC+10:00) ⇒ 算出比现在**早 2 小时**的时间戳,
-  于是 `while [ now -lt target ]; do sleep 10; done` **第一轮就退出**, 第二点采样其实离开机只有 4 分钟, 却打印"已满10min" ——
+  于是 `while [ now -lt target ]; do sleep 10; done` **第一轮就退出**, 第二点采样实际离开机只有 4 分钟, 却打印"已满10min" ——
   **凭空造出"两次复采一致 ⇒ 真缺失"的结论**(这条比采样本身更危险: 它让"两点复采"这条防线静默失效)。
   定式: `while [ "$(awk '{print int($1)}' /proc/uptime)" -lt 600 ]; do sleep 10; done`;
   `scripts/reboot_verify.sh --wait` 已按这个计时写好。
@@ -439,7 +439,7 @@ nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; df -h 
 - **本机那 5 个手工进程一律走官方复原脚本，别手敲命令行**（幂等，已在跑的不重拉）：
   `bash tools/boot_restore.sh check` 先看清点 → `bash tools/boot_restore.sh local` 补齐
   （cam_live_stream 8791+8793 / l5_live_mark / vl_safety_monitor / l2_daemon / studio）；它自己按
-  `tools/cam_dev_resolve.py` 解析相机设备号并在末尾复核 `8793/station→200`。手搓 `cam_live_stream.py` 会写死设备号串线/近黑。
+  `tools/cam_dev_resolve.py` 解析相机设备号并在末尾复核 `8793/station→200`。手搓 `cam_live_stream.py` 会预先固定设备号串线/近黑。
   ⚠️ 它**管不到** `tools/hil_local_api.py`(8795, 手起) 和 MoveIt 单元(`systemctl start zmax-moveit-plan`, oneshot ~3min) ——
   这两个要单独拉，且按 §9e① **单独一条短命令**（跟长动作串在同一条里会被超时一起带走）。
 - **「有进程」≠「在役」**：端口没在监听就是没在服务。逐个 `ss -ltnp | grep <端口>` + 一次 HTTP 探活，双证后才敢说「起来了」。
@@ -491,8 +491,8 @@ sudo docker exec ss-remote-tap bash -lc 'source /opt/ros/humble/setup.bash; expo
 ## 9b. 推流某一格「进程活着但不吐帧」= v4l2 卡死, 按官方启动器重启即可
 
 实测(2026-09-30 重启后): `8793/stats` 里 `local online=true, fps=0.0, age_s=137.6, stalled=true, frames_served=14`;
-进程在、`/dev/video0` 被它占着(`fuser -v`)、dmesg 无 uvc 报错、`ffprobe` 打不开(Device busy) —— 但相机就是不再出新帧。
-⇒ 这类「设备被占 + 帧龄单调增长 + 内核无错」不是硬件掉线, 是取流进程里的 v4l2 抓帧线程卡住。
+进程在、`/dev/video0` 被它占着(`fuser -v`)、dmesg 无 uvc 报错、`ffprobe` 无法打开(Device busy) —— 但相机就是不再出新帧。
+⇒ 这类「设备被占 + 帧龄单调增长 + 内核无错」不是硬件掉线, 是取流进程里的 v4l2 抓帧线程阻塞。
 **处置: 跑官方启动器换号重启**(它会按端口找旧 pid 先停、再按卡名解析设备):
 ```bash
 cd /home/ubuntu/zmax && bash tools/start_station_stream.sh            # 正常重启
@@ -509,7 +509,7 @@ cd /home/ubuntu/zmax && bash tools/start_station_stream.sh --check    # 只看�
   进程回落到内置(日志话术"上次选的是 USB …, 现在没扫到 ⇒ 先按内置起"), 守卫还把它当"相机不在位"跳过。
 - 两个必须同时做的修法: ①关键字改成**逗号分隔多关键字**(任一命中): `USB2.0 Camera,RealSense`;
   ②多节点相机(**D435 一台就 7 个 `/dev/video*`**: video0=Z16 深度 · video3=GREY/Y12I 红外 · video5=YUYV 彩色 · 其余 metadata 列不出格式)
-  必须**按彩色格式挑节点**; 老代码"有像素格式就兜底"会挑到 `/dev/video0` 深度节点 ⇒ 进程活着但 `fps=0 frames=0`
+  必须**按彩色格式挑节点**; 老代码"有像素格式就保障"会挑到 `/dev/video0` 深度节点 ⇒ 进程活着但 `fps=0 frames=0`
   (彩色判据 = 含 `MJPG/JPEG/YUYV`; `Z16/GREY/UYVY/Y12I` 都不算).
 - 修完的复核三证(缺一不算好): ① `python3 tools/cam_dev_resolve.py` 出 `USB=<n>`(且 `--json` 里挑中的是彩色那路);
   ② 官方启动器打印 `local 🔌 USB Intel(R) RealSense…`; ③ `/stats` 帧号**三次采样递增** + `/snapshot/local.jpg` 200 且不是黑帧
@@ -692,13 +692,13 @@ journalctl -b -1 --no-pager | grep "user@1000.service: Consumed"            # �
 Orin/工控机/珞石位姿真值/arm 取流全 0。判据: `ip -br a` 里没有 `192.168.23.x` + `lsusb` 无 USB 网卡,
 **开机 5min 与 10min 两次复采都在** 才算真缺失(§9 的 1~2min 规矩)。网卡插回后这些会各自恢复, 不用手工拉。
 
-## 9f. 2026-10-09 重启后复采: 四个"看着像故障其实不是"的点
+## 9f. 2026-10-09 重启后复采: 四个"看着像故障实际不是"的点
 
 **① 开机 2min 时 8791/8793 端口空 ⇒ 不要手搓拉起, 守护 5 分钟内会自己起。**
 实测: up 2min 时 `ss -ltnp` 无 8791/8793、`curl 8793/station` = 000; up 5min 再采, `cam_stream_guard`(cron)
 已在 21:10 拉起 pid 14240, `8793/station` 与 `8791/` 双 200。判据: 先看 `stat -c %y /tmp/cam_stream_guard.log`
 有没有刚写过, 再决定要不要 `boot_restore.sh local`。
-**用户此刻报「某页面打不开」时先对开机时长**: 开机 1~3 分钟内的 000 就是这段补齐窗口(实测 8793/8797 在 up 2min 时
+**用户此刻报「某页面无法打开」时先对开机时长**: 开机 1~3 分钟内的 000 就是这段补齐窗口(实测 8793/8797 在 up 2min 时
 全 000、up 3min 后 200), 复采即可, 别去动服务; 同时**「IP 没变」是正常答案** —— 重启不改 DHCP 租约,
 IP 变只发生在换 SSID / `netplan apply` 之后; 报页面前用 `curl -sL` 跟跳转(`/ar` 302→8797/ar 才算在役)。
 
@@ -764,7 +764,7 @@ hermes gateway restart                  # 让 ticker 在正时钟下重起 —�
   + `~/.config/systemd/user/hermes-cron-ticker-watchdog.{service,timer}`(每 5 分钟, `loginctl Linger=yes` 才随开机起)。
   三条判据任一命中就重启 gateway(30 分钟限流): ①心跳过期 >600s ②心跳在"未来" >120s ③有 enabled 任务的
   `next_run_at` 过点 >300s。健康时**一个字都不打**; 出动作才写 `~/.hermes/logs/cron_ticker_watchdog.log`。
-  两个分支都要真跑一遍验证(用一个假心跳文件 + 改掉副本里的路径 + `HERMES=/bin/true` 的副本试, 别拿真脚本试重启)。
+  两个分支都要真执行一遍验证(用一个假心跳文件 + 改掉副本里的路径 + `HERMES=/bin/true` 的副本试, 别拿真脚本试重启)。
 - `@reboot` 的重算脚本(`~/.hermes/scripts/hermes_cron_reclock.sh`)只重排 `next_run`, **修不了已经卡死的 ticker**;
   现在它在末尾量一次开机时钟偏差, 偏了(>60s)就调上面那个哨兵复核。
 - **重排 `next_run` 会吃掉"当前就过点"的那一次**(重排 = now + interval)。补火用 `hermes cron tick`, 不是重跑 reclock。
@@ -778,7 +778,7 @@ hermes gateway restart                  # 让 ticker 在正时钟下重起 —�
 + `636AC7854C947943`, 而 2026-10-12 已上线 v20(v6 文件在工控机上早删了) ⇒ 通道一醒就报
 "文件损坏且无可用副本"。修法两层: ①把 `F`/`WANT` 更新到在役版; ②**当"钉的文件名在盘上根本不存在"时单独报
 【哨兵钉的版本已过期】并列出在役 `cam_*_work_v*.py` 文件名** —— 与"文件真损坏"区分开, 否则下次升版本又是一场假警报。
-更根本: 版本号从部署真源取(`tools/aoi_remote_deploy.py` 的 `FILENAME_10082/FILENAME_10083`), 别在启动/恢复脚本里硬编码
+更根本: 版本号从部署唯一依据取(`tools/aoi_remote_deploy.py` 的 `FILENAME_10082/FILENAME_10083`), 别在启动/恢复脚本里硬编码
 (实测 `tools/start_aoi_v6.py`、`tools/boot_restore.sh` 的 aoi 段都还钉着 v6 ⇒ 会"成功地"起两个不存在的文件)。
 
 **这一轮的实测时间线**(口径照抄): 17:52:09 网关起 → ticker 唯一一次心跳 → 17:54:24 一条 4060 同步因
@@ -795,10 +795,10 @@ GitHub 连不上(135s 超时)失败 → 17:54:28 之后再无任何 tick → 18:
    "端口在听"只说明有进程, 探活码才是"在役"(闸门口 403 属合法拒绝, 不算坏)。
 
 **`last_status: error` ≠ 现在坏了 —— 回读它交付的产物再定性 (本节最值钱的一条)**:
-- 例: 硬件同步任务报 `unable to access … GnuTLS recv error`; 判据不是再跑一遍脚本, 而是读**它本该更新的那份东西**:
+- 例: 硬件同步任务报 `unable to access … GnuTLS recv error`; 判据不是再执行一遍脚本, 而是读**它本该更新的那份东西**:
   `git log -1 --format='%ci %s' origin/<分支>` + `git show origin/<分支>:<数据文件>` 里自报的 `*_updated` 时间戳。
   产物时间就在几分钟前 ⇒ 上一轮成功、这一轮网络抖动 ⇒ 报"瞬时失败, 已自愈", 不动它。
-- 反向也成立: 产物时间是 days 级 ⇒ 任务"看着 ok 其实早不出货", 这才是要查的。**结论永远由产物下, 不由 last_status 下。**
+- 反向也成立: 产物时间是 days 级 ⇒ 任务"看着 ok 实际早不出货", 这才是要查的。**结论永远由产物下, 不由 last_status 下。**
 - 开机头一个调度周期内读到的 `last_status` 可能是**重启前那一轮**的(见 §9), 与产物对账能一起排掉这个误读。
 
 **本机 `127.0.0.1:10082/10083` 在听 ≠ 产线直连可达 (本机常靠隧道)**:
@@ -845,7 +845,7 @@ GitHub 连不上(135s 超时)失败 → 17:54:28 之后再无任何 tick → 18:
 而 cron 日志里只看得到一行深度失败（看着像「守护在工作」）。
 - **立即恢复**：跑那条**官方启动器**，不要手搓命令行 ——
   `cd /home/ubuntu/zmax_rel && bash tools/start_station_stream.sh`（它自己按卡名解析设备、抬 fd 上限、末尾复核 `8793/station → 200`）。
-  手搓 `cam_live_stream.py` 会因为设备号写死串线/近黑。
+  手搓 `cam_live_stream.py` 会因为设备号预先固定串线/近黑。
 - **治本**（2026-09-30 已在 `tools/cam_stream_guard.py` 落地并实测）：把每一项自愈都跑完再汇总上报
   （收集式 `notes.append(...)` 代替中途 `return`），只有全好才静默；退出码 = 有失败项才非 0。
 - **守护判「环境缺失 vs 服务故障」**：先 `docker inspect -f {{.State.Status}} <容器>` 定容器状态，
@@ -854,7 +854,7 @@ GitHub 连不上(135s 超时)失败 → 17:54:28 之后再无任何 tick → 18:
   一直在 netwait、珞石采样容器一直 crash-loop，都属预期）。
   ⚠️ **docker 新版报错是小写** `error: no such object: <name>`（实测 docker 28）——按 `"No such"` 做
   大小写敏感匹配会漏判成「查不了」→ 该跳过的自愈反而去瞎折腾。判「容器不在位」要用 `.lower()`。
-- **改完必须真跑一遍故障路径**：`kill <8791 pid>` → 跑守护 → 复核 `8793/station=200` + `/stats` 帧号递增，
+- **改完必须真执行一遍故障路径**：`kill <8791 pid>` → 跑守护 → 复核 `8793/station=200` + `/stats` 帧号递增，
   这才证明「深度分支不再吃掉了推流分支」（自测开关 `--cmdline/--expect/--stats-json` 只验 judge 纯函数，验不到分支顺序）。
 - **排查定式**：守护「确实每 N 分钟都在动、但目标服务就是不活」⇒ **先定位它从哪个分支返回的**，别先去怀疑被守护的服务本身。
 - **"源文件不新鲜"不等于"进程不在"**（2026-10-07 实测）：深度源分支原来把「文件龄 > 20s」也当成需要拉起 ⇒
@@ -981,7 +981,7 @@ apt-cache policy <pkg>                         # 只有 dpkg 来源(无 repo) �
 
 **设备占用冲突（本机最容易误判成"硬件坏了"的一条）**:
 生产服务会长期占着 `/dev/video*`(推流/取流), 会议软件再打开同一台 UVC 时**内核允许 open, 但同时只有一个能真正推流**
-⇒ 表现就是"会议里摄像头黑屏/打不开"。先取证再下结论:
+⇒ 表现就是"会议里摄像头黑屏/无法打开"。先取证再下结论:
 ```bash
 sudo fuser -v /dev/video*          # 谁占着
 sudo lsof /dev/video*              # 占用者的完整命令行(能看出是哪个工具/哪一路)
@@ -990,26 +990,26 @@ sudo lsof /dev/video*              # 占用者的完整命令行(能看出是哪
 生产推流正被用户盯着看, 不要自己停; 停一路正在推流的相机还会连带让视觉安全闸 fail-closed。
 
 **没有看图工具时可读界面状态**: 截图(`import -window <id> out.png` / `gnome-screenshot -f`) +
-`tesseract out.png - -l chi_sim+eng` 抓关键字(登录/扫码/失败/会议号)判断卡在哪一步。
+`tesseract out.png - -l chi_sim+eng` 抓关键字(登录/扫码/失败/会议号)判断阻塞点一步。
 OCR 会把同屏其它窗口的文字一起抓进来 ⇒ 只能说"抓到 X 字样", **不要据此断言确切界面状态**;
 截图尺寸 = 整屏分辨率 ⇒ 那个窗口已最大化。
 
-**赶时间时的兜底**: 会议类软件基本都有网页版(浏览器打开 → 加入会议, 输会议号+昵称), 不用装也不用登录 ——
+**赶时间时的保障**: 会议类软件基本都有网页版(浏览器打开 → 加入会议, 输会议号+昵称), 不用装也不用登录 ——
 客户端起不来或登录态坏了先给这条, 别让对方卡在安装上。
 
 ## Pitfalls
 | 坑 | 症状 | 修法 |
 |---|---|---|
-| 把"有进程"当"在役" | 报"服务正常"但链路其实没数据 | 逐个 `systemctl is-active` + 端口/HTTP 探活, 双证 |
+| 把"有进程"当"在役" | 报"服务正常"但链路实际没数据 | 逐个 `systemctl is-active` + 端口/HTTP 探活, 双证 |
 | 用**本机** `ss -ltn` 查**远端**设备端口 (AOI/Orin/工控机) | 远端服务被判 DOWN 而实际是网卡不在位; 本机同名端口在听时又会把远端判成活着 | 判活三件套按序: `ip -br addr` 里真有对应网段(**没有 = 网卡不在位 = 环境缺失, 不是服务故障**) → `ping -c1 -W1 <ip>` → `timeout 3 bash -c 'echo > /dev/tcp/<ip>/<port>'` (或 `curl --max-time`)。本机 `ss` 永远只回答本机, | 报"某设备端口挂了"之前必须已经过了前两步 |
 | 只回"待办为空"或只读 cron 的 `last_status` 就下结论 | 用户问"检查任务"拿到一句空的, 或把上一轮 error 当当前故障 | 走 §9h: todo + cron + 端口/探活三处; cron 异常必回读它交付的**产物时间戳**再定性 |
-| 探活脚本乱传参数 | 兜底通知脚本把 `--probe` 当**正文**发进群里 | 先 `read` 脚本用法; 别拿"发条测试消息"当探活(会污染群) |
+| 探活脚本乱传参数 | 保障通知脚本把 `--probe` 当**正文**发进群里 | 先 `read` 脚本用法; 别拿"发条测试消息"当探活(会污染群) |
 | 清完不复核 | 删了在役权重的旁支文件 | 必扫保护清单 + `find -xtype l` 断链检查 |
-| `sudo du` 挂在超大目录 | 命令超时/卡住 | 限定路径 + `timeout`, 别 `du /` 全盘 |
+| `sudo du` 挂在超大目录 | 命令超时/阻塞 | 限定路径 + `timeout`, 别 `du /` 全盘 |
 | 汇报 governor"提升 X%" | 单轮先 A 后 B 的顺序效应 | 交错多轮取中位; 带宽瓶颈负载不能用来测频率 |
-| 顺手删备份件 | 用户其实还要那份镜像归档 | 备份/归档件**只列不删**, 让用户点头 |
-| `ls -l <真源> && python3 -c "解析" \|\| echo "无 <真源>"` | **解析器报错被当成"文件不存在"** —— 把在位的真源报成缺失(实测把在刷的位姿真值误报成"无 latest.json", 据此下了错结论) | 存在性探测与解析**分开写**: `[ -e f ] \|\| echo 缺 f;` 之后单独解析并让失败打印**真实异常**; 断言性结论只能由"读到的内容"下, 不能由 shell 的 `\|\|` 分支下 |
-| 用户说"帮我装 X"就直接下安装包 | 装了第二份/版本冲突, 其实早就装过 | 先 `dpkg -s` + `which` + 桌面入口查; 已装 ⇒ 直接启动 + 就绪核查 |
+| 顺手删备份件 | 用户实际还要那份镜像归档 | 备份/归档件**只列不删**, 让用户点头 |
+| `ls -l <唯一依据> && python3 -c "解析" \|\| echo "无 <唯一依据>"` | **解析器报错被当成"文件不存在"** —— 把在位的唯一依据报成缺失(实测把在刷的位姿真值误报成"无 latest.json", 据此下了错结论) | 存在性探测与解析**分开写**: `[ -e f ] \|\| echo 缺 f;` 之后单独解析并让失败打印**真实异常**; 断言性结论只能由"读到的内容"下, 不能由 shell 的 `\|\|` 分支下 |
+| 用户说"帮我装 X"就直接下安装包 | 装了第二份/版本冲突, 实际早就装过 | 先 `dpkg -s` + `which` + 桌面入口查; 已装 ⇒ 直接启动 + 就绪核查 |
 | 拿"进程在"当"应用可用" | 报成功但窗口根本没起 | 复核窗口(`wmctrl -l` / `xdotool search --name`), 不是 `pgrep` |
 | 设备被生产服务占着却报"硬件坏了" | 误判摄像头/串口故障 | `sudo fuser -v /dev/*` + `lsof` 找占用者 + `v4l2-ctl -d <dev> --info` 认卡名; 报冲突并请示, 不擅停生产服务; **让出 + 防再占的定式见 `zmax-live-video-stream` 的「显式关闭档」节**(停止服务很可能是白停: cron 守卫每 5 分钟会把它拉回来) |
 | 用户说"电脑卡/鼠标延迟"就只查 CPU + 磁盘 | 报"机器不忙、没到瓶颈"却解释不了拖动卡 | 查 `nvidia-smi pmon -c 1 -s u` 的按进程 sm% —— CUDA 常驻吃满时桌面合成只剩个位数 (见 §1b) |

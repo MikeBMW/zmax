@@ -90,7 +90,7 @@ def c_single():
     if os.path.exists(LP):
         n = sum(1 for _ in open(LP, encoding="utf-8"))
     return ("perception_chain" in d and bool(d.get("updated_at")) and n > 0,
-            "真源段=%s 记录=%d 行" % ("有" if "perception_chain" in d else "无", n))
+            "唯一依据段=%s 记录=%d 行" % ("有" if "perception_chain" in d else "无", n))
 
 
 def c_canvas():

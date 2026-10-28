@@ -151,7 +151,7 @@ def _se(scene_id, *args):
 
 
 def _sim_mod():
-    """仿真场景真源模块 (失败=None ⇒ 退回普通场景写路径)。"""
+    """仿真场景唯一依据模块 (失败=None ⇒ 退回普通场景写路径)。"""
     try:
         if ROOT not in sys.path:
             sys.path.insert(0, ROOT)
@@ -313,7 +313,7 @@ class SceneView3D(QWidget):
     def fit_view(self):
         """自适应取景: 让整个场景投到视口里 (约占 90% 宽 / 70% 高)。
 
-        老倪: 「大一些，现在太小了，图像都看不到」—— 之前 scale 写死 620px/m,
+        老倪: 「大一些，现在太小了，图像都看不到」—— 之前 scale 预先固定 620px/m,
         大场景撑出画面、小场景缩成一小撮 ⇒ 按投影包围盒真算。
         """
         pts = self._all_points()
@@ -337,7 +337,7 @@ class SceneView3D(QWidget):
             self.fit_view()
 
     def reload(self):
-        """重读真源。按 id/name 找回原选中项 (写一次就丢选中 ⇒ 连续拖动第二次会失效)。"""
+        """重读唯一依据。按 id/name 找回原选中项 (写一次就丢选中 ⇒ 连续拖动第二次会失效)。"""
         _keep = None
         if self.sel:
             it = self._item(self.sel)
@@ -722,13 +722,13 @@ class SceneView3D(QWidget):
             return False
         it = self._item(self.sel) if (self.sel and self.sel.get("kind") == kind) else None
         _id = ent_id_ or (ent_id(it, kind) if it else None)
-        # 🎯 仿真场景 (SIM-*): 几何真源是 data/scene/sim/sim_scenes.json ⇒ 写它, 再重建场景目录;
-        #    否则改了产物目录但物理/视觉仍按真源 → 就是"假接入" (老倪零容忍)
+        # 🎯 仿真场景 (SIM-*): 几何唯一依据是 data/scene/sim/sim_scenes.json ⇒ 写它, 再重建场景目录;
+        #    否则改了产物目录但物理/视觉仍按唯一依据 → 就是"假接入" (老倪零容忍)
         _S = _sim_mod()
         if _S is not None and _S.is_sim_scene(self.scene_id):
             r = _S.apply_patch(kind, str(_id), patch, scene_id=self.scene_id)
             if r.get("ok"):
-                self.status_cb("✅ %s · %s · 已写仿真场景真源 (备份 %s) · 物理与视觉同步"
+                self.status_cb("✅ %s · %s · 已写仿真场景唯一依据 (备份 %s) · 物理与视觉同步"
                                % (what, str(_id)[:26], str(r.get("backup"))))
             else:
                 self.status_cb("⛔ %s 失败: %s" % (what, r.get("msg")))
@@ -1061,7 +1061,7 @@ def build_card(parent=None):
                 lambda: _bump_seed(), "#d29922")
     b_seed.setVisible(False)
     top.addWidget(b_seed)
-    top.addWidget(_b("🔄 刷新", "重读场景真源并重绘", lambda: (view.reload(), _repop()), "#9aa7b4"))
+    top.addWidget(_b("🔄 刷新", "重读场景唯一依据并重绘", lambda: (view.reload(), _repop()), "#9aa7b4"))
     def _popout():
         """🗗 独立窗口: 把当前场景放进一个独立大窗口 (可最大化/拖边沿) — 老倪: 「窗口还是太小, 变大一些」"""
         _d = cmb.currentData() or {}
@@ -1088,7 +1088,7 @@ def build_card(parent=None):
         if getattr(card, "_pop", None) is not None:
             card._pop.setWindowTitle("🧭 场景编辑器 · 独立窗口 — %s%s"
                                      % (_d.get("sid") or "在役只读", "  (只读)" if not _d.get("sid") else ""))
-        st.setText("🗗 已在独立窗口打开当前场景 (可最大化/拖边沿放大; 编辑同样写真源)")
+        st.setText("🗗 已在独立窗口打开当前场景 (可最大化/拖边沿放大; 编辑同样写唯一依据)")
 
     top.addWidget(_b("🗗 独立窗口", "把当前场景放进独立窗口 (可最大化, 比页内大得多)",
                      lambda: _popout(), "#00d4aa"))
@@ -1107,7 +1107,7 @@ def build_card(parent=None):
                 m = getattr(parent.parent(), "canvas_page", None) or getattr(parent, "canvas_page", None)
                 if m is not None and hasattr(m, "open_ss_3d"):
                     m.open_ss_3d(on_top=True)
-                    st.setText("已打开真 GL 3D 视图 (仿真轨迹, 同一份场景真源)")
+                    st.setText("已打开真 GL 3D 视图 (仿真轨迹, 同一份场景唯一依据)")
                 else:
                     st.setText("画布模块未就绪: 先打开 Simulink 页再试")
             except Exception as e:                                             # noqa: BLE001
@@ -1229,7 +1229,7 @@ def build_card(parent=None):
         _S = _sim_mod()
         if _S is not None and _S.is_sim_scene(view.scene_id):
             r = _S.add_item(k, pl_, scene_id=view.scene_id)
-            st.setText(("✅ 已新增%s %s (写仿真场景真源)" % (KIND_CN[k], nm.strip()))
+            st.setText(("✅ 已新增%s %s (写仿真场景唯一依据)" % (KIND_CN[k], nm.strip()))
                        if r.get("ok") else ("⛔ 新增失败: %s" % r.get("msg")))
             view.reload()
             _repop()
@@ -1276,7 +1276,7 @@ def build_card(parent=None):
         _S = _sim_mod()
         if _S is not None and _S.is_sim_scene(view.scene_id):
             r = _S.del_item(k, str(ent_id(it, k)), scene_id=view.scene_id)
-            st.setText(("✅ 已删除%s %s (写仿真场景真源)" % (KIND_CN[k], str(it.get("name"))[:24]))
+            st.setText(("✅ 已删除%s %s (写仿真场景唯一依据)" % (KIND_CN[k], str(it.get("name"))[:24]))
                        if r.get("ok") else ("⛔ 删除失败: %s" % r.get("msg")))
             view.reload()
             _repop()

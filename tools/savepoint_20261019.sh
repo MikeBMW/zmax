@@ -12,7 +12,7 @@ git rev-parse HEAD > "$DST/GIT_HEAD.txt"
 git log --oneline -12 > "$DST/GIT_LOG.txt"
 git tag --list 'v5.50.*' | tail -5 > "$DST/GIT_TAGS.txt"
 
-echo "=== ② 真源快照 (分层力 / 引力律 / 运行态) ==="
+echo "=== ② 唯一依据快照 (分层力 / 引力律 / 运行态) ==="
 cp -f config/calib/layer_forces.json config/calib/gravity_law.json \
       config/calib/force_field.json config/calib/zmax_manifold.json "$DST/config/" 2>/dev/null
 for f in chunk_latest engine_latest torque_live ui_run trace_live plan_from_vff skill_phys; do
@@ -28,7 +28,7 @@ echo "=== ③ 证据 ==="
 {
   echo "# 收工实测 ($(date '+%F %T'))"
   echo
-  echo "## 分层力 (每层各自真源, 权重热生效)"
+  echo "## 分层力 (每层各自唯一依据, 权重热生效)"
   echo "- L2 前馈 = chunk_latest.ff[0][:3] · L3 动作头 = chunk_latest.chunk[0][:3]"
   echo "- L4 流形度量 = metric_M/m_ref × ff · L5 = l5_scene_vec.json (VL 标注框 → 方向×置信)"
   echo "- 权重 w: L2 1.0 / L3 0.30 / L4 0.55 / L5 0.35 · 主力 = 加权最大层 (实测 L2)"

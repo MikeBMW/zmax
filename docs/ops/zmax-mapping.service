@@ -11,7 +11,7 @@ User=ubuntu
 WorkingDirectory=/home/ubuntu/zmax
 Environment=PYTHONPATH=/home/ubuntu/zmax/src
 Environment=QT_QPA_PLATFORM=offscreen
-# 进系统即自动加载建图并启动建图程序 (幂等: 已在跑则不重复启动; 真源 auto_load=false 则拒绝)
+# 进系统即自动加载建图并启动建图程序 (幂等: 已在跑则不重复启动; 唯一依据 auto_load=false 则拒绝)
 ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/mapping_autostart.py start --n 30 --interval 0.5
 # 停服务按 pid 文件停 (禁 ps|grep 按名匹配)
 ExecStop=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/mapping_autostart.py stop

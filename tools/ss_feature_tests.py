@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""🧪 ss_feature_tests.py — 状态空间系统验证 CLI (薄封装, 真源 verification_layer.py)
+"""🧪 ss_feature_tests.py — 状态空间系统验证 CLI (薄封装, 唯一依据 verification_layer.py)
 
 三级树 (规范场三层 → 节点 → 功能 → 用例, v4.0.1): node_func_tree.py 550 用例
   22 节点 × 5 功能 × 5 用例; auto 339 全真实断言 (引擎/六层/源码审计)

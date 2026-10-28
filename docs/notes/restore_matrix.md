@@ -16,7 +16,7 @@
 | 5 | 分层记忆（肌肉/流程/工作/宏观） | `docs/design/memory-layers-v510.md`、`docs/design/zmax_memory_integration.md`、引擎内记忆节点代码 | 无 | ✅ 纯仓库 |
 | 6 | 服务与开机自启 | `tools/systemd/*.service`（30 个：工位总览/推流/agent-hub/DDS/ECS桥/网关/数据挂载…） | 密钥（`EnvironmentFile`） | ✅ 仓库（`--systemd` 一步装） |
 | 7 | 视觉感知（VLM） | `scene_vlm.py` `focus_quality.py` `tools/local_vlm*`、`src/lerobot/policies/sam3_seg/` | SmolVLM2-500M(1.9G)、Qwen2.5-VL-3B(7G)、SAM3(3.2G, gated) | ✅ 全部有确切下载命令 |
-| 8 | 工位总览 / 3D 叠加 | `tools/web/station.html`（热读真源）、overlay 相关工具、`tools/station_cmd.py` | 无 | ✅ 纯仓库 |
+| 8 | 工位总览 / 3D 叠加 | `tools/web/station.html`（热读唯一依据）、overlay 相关工具、`tools/station_cmd.py` | 无 | ✅ 纯仓库 |
 | 9 | 网页/远程 agent 通道 | `tools/agent_hub.py`、`station_cmd.py`、`web_agent_bridge.py` | `ZMAX_AGENT_TOKEN`（secrets） | ✅ 仓库 + 现场密钥 |
 | 10 | DDS 遥测中间件 | `dds/`（`ss_types.py` `zmax_node.py` `zmax_types.py`）、`config/dds_cycle.json`、`tools/dds*`、守护单元 | 无（`dds-venv`） | ✅ 纯仓库 |
 | 11 | 训练 / 数据闭环 | `tools/joint_train_all.py`、`joint_train_full/real*.py`、`auto_loop.py`、`lora_inject.py`、`merge_lora_ckpt.py` | 数据集（cube 95G / optical_insert 11G）、GPU | ✅ 代码；数据可下/自采 |

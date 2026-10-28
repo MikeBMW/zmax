@@ -13,7 +13,7 @@
 
 - 源端服务形状：**单进程独占相机** + 一个采集线程只留最新帧；给 `GET /snap.jpg` 回最新 JPEG 并带
   `X-Frame-Age-S`（源端自报帧龄，消费端 `url_cam_worker` 认这个头）；
-  **超过 STALE_S（3s）就回 503 + 原因，绝不拿旧帧冒充新鲜** —— 否则页面上是一格“看着有图、其实是定格”的画面。
+  **超过 STALE_S（3s）就回 503 + 原因，绝不拿旧帧冒充新鲜** —— 否则页面上是一格“看着有图、实际是定格”的画面。
 - 隧道 unit 要点：`ExitOnForwardFailure=yes` + `ServerAliveInterval=15` + `Restart=always` +
   `BatchMode=yes`（key 免密，别把密码写进 unit 正文）；`User=` 要能读到跳板的 key 与 known_hosts。
 - 消费端：`cam_live_stream.py --local2-url http://127.0.0.1:8812/snap.jpg`
@@ -55,7 +55,7 @@
   `VideoCapture` 打得开但 `CAP_PROP_FRAME_WIDTH/HEIGHT` 报 **0×0**、`read()` 全失败。
   修法：`cv2.VideoCapture(dev, cv2.CAP_V4L2)`（失败再回退默认），**只设尺寸/帧率、不碰 FOURCC**，
   用 `v4l2-ctl --list-formats-ext` 确认它本来就是 YUYV。
-- 🔴 **相机名/节点别写死**：同一台 UVC 常暴露两个节点（一真图一 metadata），先按卡名+有无像素格式解析。
+- 🔴 **相机名/节点别预先固定**：同一台 UVC 常暴露两个节点（一真图一 metadata），先按卡名+有无像素格式解析。
 - **源机器如果只有产线网口**，本机无法直连 HTTP ⇒ 走 ssh -L 隧道，目标写 `源机器:127.0.0.1:8812`
   （在源侧解析，不需要它监听 0.0.0.0）。
 - **通道名有别人在用就要提前说耦合**：`local2` 原先指 MAXHUB 顶摄，现指这台中央相机；同名字段在

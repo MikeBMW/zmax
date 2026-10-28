@@ -4,7 +4,7 @@ NTP回拨8h(勿动RTC)→节拍用monotonic, 负帧龄拒用
 §
 分层: L5定方向造数据/L4认知/L3调度/L2检测; 主干=SigLIP768d+四头; from-scratch崩
 §
-交付前先自跑通; GPU不许空转; 改文件必回读核验; 新增接线/脚本须真导入真跑(语法≠导入, 字段先查存在)
+交付前先自验证通过; GPU不许空转; 改文件必回读核验; 新增接线/脚本须真导入真跑(语法≠导入, 字段先查存在)
 §
 长命令写脚本文件; sudo免密; 网络优化=zmax-net-optimize
 §
@@ -36,7 +36,7 @@ YOLO在役=软链yolo_peg_live.pt; 瓶颈是数据
 §
 记忆五层: L2/L3/L4+总装Qwen(SS_MACRO); 势场喂obs[0:3]
 §
-真源: calib.json→zmax_params.py; 全系统训练=joint_train_all.py --only L4,L3,L2; LoRA=lora_inject.py
+唯一依据: calib.json→zmax_params.py; 全系统训练=joint_train_all.py --only L4,L3,L2; LoRA=lora_inject.py
 §
 L5规划器/safety=left_right/state_space/{planner,safety}.py; INTACT稳态101ms冷6.7s→须常驻
 §
@@ -64,4 +64,4 @@ GPU掉载主因=每步CPU开销>计算(非数据/显存)→静音逐步日志+wo
 §
 动作授权只从工位总览8793; 代发前先授权
 §
-位姿=rokae_tcp_sampler→rokae_sdk/tcp_out/latest.json(全0=会话陈旧⇒restart容器; 新订阅者收不到tcp_pose); 8793页真源=tools/web/station.html热读
+位姿=rokae_tcp_sampler→rokae_sdk/tcp_out/latest.json(全0=会话陈旧⇒restart容器; 新订阅者收不到tcp_pose); 8793页唯一依据=tools/web/station.html热读

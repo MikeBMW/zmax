@@ -125,7 +125,7 @@ def deck_meta(name: str, convert: bool = True) -> dict:
         json.dump(m, open(meta_f, "w"), ensure_ascii=False)
         return m
     except subprocess.TimeoutExpired:
-        return dict(name=name, ok=False, err="转换超时 (pptx 太大或 soffice 卡住)", slides=0,
+        return dict(name=name, ok=False, err="转换超时 (pptx 太大或 soffice 阻塞)", slides=0,
                     pages=[], path=d["path"])
 
 

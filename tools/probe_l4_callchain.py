@@ -156,7 +156,7 @@ def _gtrace(frame, event, arg):
 
 
 def _find_line(rel_path: str, needle: str, default: int, after: str | None = None) -> int:
-    """按源码内容定位行号 (改文件后行号会漂移 → 证据不能写死行号)。
+    """按源码内容定位行号 (改文件后行号会漂移 → 证据不能预先固定行号)。
     after: 只在首次出现 after 之后查找 (用于区分同名方法, 如 TimestepEncoder.forward vs
            SmolVLALewActionHead.forward)。"""
     try:
@@ -261,7 +261,7 @@ def build_intact_node():
     rt = IntactRuntime(task="pusht", device="cpu")
     nd = IntactNode(horizon=8, runtime=rt)
     gf = os.path.join(ROOT, "reports", "intact_goal_frame.npy")
-    # 🎯 2026-09-22: 反归一化统计按 ckpt 训练集自动同源 (原来写死 zmax_action_stats.json → 与 v6 权重不同源)
+    # 🎯 2026-09-22: 反归一化统计按 ckpt 训练集自动同源 (原来预先固定 zmax_action_stats.json → 与 v6 权重不同源)
     stf, _why = _idr.resolve_stats()
     print(f"统计同源解析: {_why}")
     print(f"INTACT runtime: trained={getattr(rt, 'trained', None)} · reason={getattr(rt, 'reason', '')}")
@@ -307,7 +307,7 @@ def run_engine(scen: str) -> dict:
         sim.attach_intact(nd, None)
     elif scen == "L3":          # 正对照: L3 模型真执行
         os.environ["SS_L3"] = "1"
-        # 2026-09-15 修: 原来写死 every=4, 而探针常只跑 2-3 步 → 推理一次都不触发,
+        # 2026-09-15 修: 原来预先固定 every=4, 而探针常只跑 2-3 步 → 推理一次都不触发,
         # 正对照会假阴 (l3_calls=0)。现允许外部覆盖, 默认每步都推理。
         os.environ["SS_L3_EVERY"] = os.environ.get("SS_L3_EVERY", "1")
     t0 = time.time()
@@ -487,7 +487,7 @@ def micro() -> None:
     finally:
         sys.settrace(None)
     print(f"微对照 (微型 DiT-test 头, 本进程内直接调) · forward@{FWD_LINE} / "
-          f"predict_action@{PRED_LINE} / loss 行@{LOSS_LINE} (按源码动态定位, 不写死行号):")
+          f"predict_action@{PRED_LINE} / loss 行@{LOSS_LINE} (按源码动态定位, 不预先固定行号):")
     print(f"   forward()       → loss={float(loss):.4f} · 行 {LOSS_LINE}(loss) 命中 {n_after_fwd} 次  ← 训练分支")
     print(f"   predict_action()→ 输出 {ok_pred} · 行 {LOSS_LINE}(loss) 累计 {n_after_pred} 次  ← 推理分支 (增量 {n_after_pred - n_after_fwd})")
     print(f"   已执行行: {', '.join(f'{ln}({c})' for ln, c in sorted(LC.get('action_head.py', {}).items()))}")

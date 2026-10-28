@@ -56,7 +56,7 @@ chk("TASK-07-AOI 元任务 7 条 (右手5 + 左手1 + 双手1)",
     and aoi_hands == ["右手"] * 5 + ["左手", "双手"], "%s / %s" % (aoi_ids, aoi_hands))
 chk("TASK-07-AOI 含 AOI 五点检测", any("AOI" in n or "五点" in n for n in aoi_names), str(aoi_names))
 chk("名称写全 (含被操作的槽/孔/点位)", any("孔" in n for n in aoi_names) and any("金手指" in n for n in aoi_names))
-chk("真源标注 = tasks.json meta_tasks", "meta_tasks" in p.tl_src.text(), p.tl_src.text())
+chk("唯一依据标注 = tasks.json meta_tasks", "meta_tasks" in p.tl_src.text(), p.tl_src.text())
 hdr2 = [tl.horizontalHeaderItem(c).text() for c in range(tl.columnCount())]
 chk("任务级表有『手别』列", "手别" in hdr2, " | ".join(hdr2))
 chk("任务级表有『时空窗』与『目标对象』列", "时空窗" in hdr2 and "目标对象" in hdr2)
@@ -136,7 +136,7 @@ try:
         bool(next(t for t in after["tasks"] if t["task_id"] == "TASK-07-AOI").get("long_horizon")))
     rc = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "task_build.py"), "--check"],
                         cwd=ROOT, capture_output=True, text=True).returncode
-    chk("task_build --check 与真源一致", rc == 0, "rc=%d" % rc)
+    chk("task_build --check 与唯一依据一致", rc == 0, "rc=%d" % rc)
 except Exception as e:                                                          # noqa: BLE001
     chk("task_build 重跑后 meta_tasks 仍在 (根因已堵)", False, repr(e))
 

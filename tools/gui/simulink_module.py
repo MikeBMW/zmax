@@ -65,8 +65,8 @@ _ECS_PW_SM = _os_mod.environ.get("ZMAX_ECS_PW", "")  # ECS 密码 (不入库)
 
 
 def _ecs_pw_from_secrets():
-    """兜底: 从 zmax_data/secrets/zmax.env 读 ZMAX_ECS_PW。
-    2026-10-10: 仓库为 public, 代码内不再保留任何明文口令 (原兜底明文已删)。"""
+    """保障: 从 zmax_data/secrets/zmax.env 读 ZMAX_ECS_PW。
+    2026-10-10: 仓库为 public, 代码内不再保留任何明文口令 (原保障明文已删)。"""
     try:
         _root = _os_mod.path.dirname(_os_mod.path.dirname(_os_mod.path.dirname(_os_mod.path.abspath(__file__))))
         _f = _os_mod.path.join(_root, "zmax_data", "secrets", "zmax.env")
@@ -212,7 +212,7 @@ NODE_TITLE_LINES = 2             # 标题最多两行 (超出 → 最后一行�
 #     · 框宽按**最终标签**自适应 (autofit_node_size) ⇒ 短标签单行放得下, 不再折两行挤在一起。
 NODE_LABEL_MAX_CHARS = 10        # 节点标签字数预算 (中文字 1 字 + 西文词 1 字)
 NODE_LABEL_MIN_CHARS = 5         # 裁剪时的下限 (低于此值继续补词, 避免"只剩 L4")
-NODE_LABEL_MAX_PX = 340          # 单行标签像素上限 (仅作最终的省略号兜底) — 2026-09-29 随字号倍率
+NODE_LABEL_MAX_PX = 340          # 单行标签像素上限 (仅作最终的省略号保障) — 2026-09-29 随字号倍率
                                  #   1.15 同步放大 (300→340): 像素字号长大 15%, 预算不同步就会误判"超宽"
 # 人工短名表: (命中正则, 短标签) —— 只在"原名/去括号名都超预算"时才用, 越具体的排前面。
 # 标签里**不写图标** (图标由原名字自动带过来), 长度按上面的算法都 ≤10 字。
@@ -369,7 +369,7 @@ def _label_segments(s):
 
 def _trim_label(s, budget=NODE_LABEL_MAX_CHARS, floor=NODE_LABEL_MIN_CHARS):
     """按词裁剪到 ≤budget 字; 达不到 floor 就继续补词 (绝不只剩 "L4" 这种层号)。
-    单个词就超预算时按字符兜底裁 (中文长词), 至少 floor 字。"""
+    单个词就超预算时按字符保障裁 (中文长词), 至少 floor 字。"""
     segs = _label_segments(s)
     out = ""
     for seg in segs:
@@ -386,7 +386,7 @@ def _trim_label(s, budget=NODE_LABEL_MAX_CHARS, floor=NODE_LABEL_MIN_CHARS):
                 break
             out += ch
     out = re.sub(r"\s{2,}", " ", out).strip().strip("·-—、,，+/| ")
-    # 兜底: 结果只剩层号 (L1~L5) 或 1 个字 ⇒ 从剩余词里再补 (宁可 2 行也不给无意义标签)
+    # 保障: 结果只剩层号 (L1~L5) 或 1 个字 ⇒ 从剩余词里再补 (宁可 2 行也不给无意义标签)
     if _label_cost(out) <= 2 and segs:
         for seg in segs:
             if seg not in out and _label_cost(out + " " + seg) <= budget:
@@ -1450,15 +1450,15 @@ def _local_src_args(owner, ld, l2):
 
 
 def _resolve_cam_devs():
-    """按 **卡名+能力** 解析本机两路相机设备号 (笔记本彩色=MJPG / 顶视=MAXHUB) —— 别写死索引。
+    """按 **卡名+能力** 解析本机两路相机设备号 (笔记本彩色=MJPG / 顶视=MAXHUB) —— 别预先固定索引。
 
     2026-09-28 老倪现场反馈: 「笔记本内置摄像头太黑了, 而且 MAXHUB 的摄像头显示的不对,
-    跟笔记本摄像头串线了」—— 根因就是两个按钮里**写死**了 `--local-dev 2 --local2-dev 0`:
+    跟笔记本摄像头串线了」—— 根因就是两个按钮里**预先固定**了 `--local-dev 2 --local2-dev 0`:
       · /dev/video2 = 笔记本相机的 GREY(IR) 那一路 ⇒ 无红外照明时整幅近黑(实测 mean≈6/255);
       · /dev/video0 = **笔记本彩色**那一路, 却被当成 MAXHUB ⇒ 两格串线
         (实测两格 label 都是 "Integrated RGB Camera");视频顺序还会随重启变。
     统一走 tools/cam_dev_resolve.py 的实测判据(彩色=支持 MJPG 的笔记本相机 / 顶视=卡名含 MAXHUB);
-    解析失败退回 (0, -1) —— 绝不把两路指到同一台设备(独占会打不开)。
+    解析失败退回 (0, -1) —— 绝不把两路指到同一台设备(独占会无法打开)。
     """
     import subprocess
     lo, l2 = 0, -1
@@ -1518,7 +1518,7 @@ def _load_skill_library_groups():
 # 🧮 状态空间模型组件区 (2026-08-18 老倪: 画布全部节点 → 库中一一对应,
 #   数据源唯一 = flows/state_space_obs.json — 改画布即同步库, 杜绝手抄漂移)
 def _flows_path(name):
-    """flows/ 真源多候选定位 —— 修「状态空间模型画布加载失败」(2026-09-26 老倪报)
+    """flows/ 唯一依据多候选定位 —— 修「状态空间模型画布加载失败」(2026-09-26 老倪报)
 
     根因: 画布/库加载原来只拼 `_repo_root_path()/flows/<name>`。仓库被并行线切到别的分支时
     (实测 /home/ubuntu/zmax 在 mac-hw 分支) 那个检出**没有 flows/ 目录**
@@ -1616,7 +1616,7 @@ def _apply_library_curation(lib):
 
 
 def _compose_library(nodes=None):
-    """📚 模块库 = 静态 + 原子技能(注册表) + 状态空间画布(内存优先/JSON 兜底) − curation 删除名单"""
+    """📚 模块库 = 静态 + 原子技能(注册表) + 状态空间画布(内存优先/JSON 保障) − curation 删除名单"""
     lib = list(LIBRARY_STATIC)
     try:
         lib += _load_skill_library_groups()
@@ -1874,7 +1874,7 @@ class StateSpaceScopeDialog(QDialog):
                 continue
             ymin, ymax = float(np.min(_y)), float(np.max(_y))
             if opt.get("mm"):
-                # 🐛 2026-10-10: 原写死 ymin=0 + ymax=percentile*1.2 —— 对**带符号**信号 (横向错位可为负)
+                # 🐛 2026-10-10: 原预先固定 ymin=0 + ymax=percentile*1.2 —— 对**带符号**信号 (横向错位可为负)
                 #   会算出 ymax<ymin ⇒ Y(v) 映射整体翻转, 曲线画到框外/看着"颠倒了"。
                 #   改: 视窗覆盖 0 与数据两端, 且强制 ymax>ymin。
                 _mm = _y * 1000.0
@@ -2179,7 +2179,7 @@ class MLPRolloutDialog(QDialog):
         except Exception:
             pass
 
-    # ── 轮播 (播完一圈自动循环, 🐛 2026-08-18: 不再自动暂停 — 用户误以为卡住) ──
+    # ── 轮播 (播完一圈自动循环, 🐛 2026-08-18: 不再自动暂停 — 用户误以为阻塞) ──
     def _tick(self):
         if self._loading or not self._frames:
             return
@@ -2254,7 +2254,7 @@ class TrainConfigDialog(QDialog):
         head.setStyleSheet("font-size:8.5pt; font-weight:700; color:#e6edf3; padding:2px;")
         lay.addWidget(head)
 
-        note = QLabel("保存后对下次训练生效 (当前 50 步快速验证, 跑通后可加大)")
+        note = QLabel("保存后对下次训练生效 (当前 50 步快速验证, 验证通过后可加大)")
         note.setStyleSheet("color:#8b949e; font-size:11pt;")
         lay.addWidget(note)
 
@@ -2840,7 +2840,7 @@ class PipelinePanel(QDialog):
                 for _pat in ("lerobot.scripts.lerobot_train", "tools.cicd_pipeline"):
                     _sp.run(["sudo", "-n", "pkill", "-9", "-f", _pat],
                             capture_output=True, timeout=8)
-                # 🐳 容器训练兜底: docker kill (容器内进程 root, pkill 杀不掉)
+                # 🐳 容器训练保障: docker kill (容器内进程 root, pkill 杀不掉)
                 try:
                     _out = _sp.run(["sudo", "-n", "docker", "ps", "-q",
                                     "--filter", "ancestor=zmax-std:1.0"],
@@ -3090,7 +3090,7 @@ class SimNodeItem(QGraphicsObject):
             p = self.node.get("params", {})
             # 🌉 桥接开关的**命中在 SimCanvas.mousePressEvent**(canvas 层) —— 实测 canvas 对节点
             #   左键按下会先拦截并 return, 节点自己的 mousePressEvent 收不到 (这就是"点了没反映"的根因)。
-            #   这里只留一个兜底: 万一以后 canvas 不再拦截, 节点层同样能点中。
+            #   这里只留一个保障: 万一以后 canvas 不再拦截, 节点层同样能点中。
             if e.button() == Qt.LeftButton and ("bridge_vff" in p):
                 _rects = _bridge_sw_rects(self.w, self.h)
                 _pt = QPointF(e.pos())
@@ -3105,7 +3105,7 @@ class SimNodeItem(QGraphicsObject):
                         _fn(self.node)
                         e.accept()
                         return
-            # 🎛 AR / 真机 开关的兜底命中 (真命中在 canvas 层, 这里防 canvas 以后不再拦截)
+            # 🎛 AR / 真机 开关的保障命中 (真命中在 canvas 层, 这里防 canvas 以后不再拦截)
             if e.button() == Qt.LeftButton and p.get("ar_real_sw"):
                 _rects = _ar_real_sw_rects(self.w, self.h)
                 _pt = QPointF(e.pos())
@@ -3268,7 +3268,7 @@ class SimNodeItem(QGraphicsObject):
         pal = THEMES[_CUR_THEME]  # 🎨 主题调色板
         # ══ 🧮 流形引擎 = 系统核心 (2026-10-10 老倪): 全画布**唯一暖色**「琥珀金」+ 双层光晕 + ◉核心徽章 ══
         #   设计意图: 其他节点一律冷色 (蓝灰/青/紫/绿), 只有核心是暖金 ⇒ 打开工程一眼就认出它是中心。
-        #   数据驱动: params.core=True 或节点类型 ss_mani_eng 即生效 (不写死节点名, 换工程也不失效)。
+        #   数据驱动: params.core=True 或节点类型 ss_mani_eng 即生效 (不预先固定节点名, 换工程也不失效)。
         _cp = self.node.get("params", {}) or {}
         #   判据: params.core 或 params.manifold_engine (画布里该节点的既有语义标记) 或 type/id 直指
         is_core = bool(_cp.get("core")) or bool(_cp.get("manifold_engine")) or t == "ss_mani_eng"
@@ -3327,11 +3327,11 @@ class SimNodeItem(QGraphicsObject):
         # 🌉 桥接安全开关 (plan 节点底部, 2026-10-18 老倪: 「做的大一些, 明显提示, 这是个需要注意的安全开关」)
         #   设计: ① 高 34px 整条 + 2px 描边 (关=红 / 开=绿) ② 左侧实体拨杆 (灰/绿滑块 + 轨道)
         #        ③ 状态文字加粗: "已断开·不驱动" / "已接通·输出≤10mm/s" ④ 关着时右侧写"点此接通"
-        #   唯一真源 = params.bridge_vff / bridge_vff_cap_mms / bridge_vff_deadband_mms
+        #   唯一依据 = params.bridge_vff / bridge_vff_cap_mms / bridge_vff_deadband_mms
         if "bridge_vff" in params:
             # 🌉🛰 两个同样的开关 (老倪 2026-10-25): 左 = v_ff 桥接 · 右 = station 通道
             #   文字就是他要的两句: 「v_ff 连接 / v_ff 断开」「station 连接 / station 断开」, 绿=连接 红=断开
-            #   唯一真源 = params.bridge_vff (桥接) / params.station_link (station 入口闸, 缺省连接)
+            #   唯一依据 = params.bridge_vff (桥接) / params.station_link (station 入口闸, 缺省连接)
             _swr = _bridge_sw_rects(self.w, self.h)
             _st_on = bool(params.get("station_link", True))
             for _k in BRIDGE_SW_KEYS:
@@ -3376,7 +3376,7 @@ class SimNodeItem(QGraphicsObject):
         # 🎛 AR / 真机 两个开关 (🤖 机器人执行器节点底部, 2026-10-27 老倪)
         #   左 = AR 场景: 绿=进 AR 场景控左右臂 · 红=AR 关(直接控制机器人)
         #   右 = 真机:   绿=已授权可下发     · 红=关(不发出真正指令, **默认关**)
-        #   唯一真源 = params.ar_scene / params.real_auth (画布 JSON)
+        #   唯一依据 = params.ar_scene / params.real_auth (画布 JSON)
         if params.get("ar_real_sw"):
             _swr2 = _ar_real_sw_rects(self.w, self.h)
             for _k in AR_REAL_SW_KEYS:
@@ -3422,7 +3422,7 @@ class SimNodeItem(QGraphicsObject):
             # 🎯 2026-09-10: L4D 档并入 L4 (90° 抗干扰演示); 2026-09-28 增 L5
             _cap_cur = {"L4D": "L4"}.get(_cap_cur, _cap_cur if _cap_cur in ("L2", "L3", "L4", "L5") else "L2")
             # 🎨 2026-09-29 老倪:「能力档位 这个节点的字太多了, 太挤了 … 像这样的情况, 不要出现, 看不清的情况」
-            #   原来标题写死 16 字「🧭 能力档位 (数据源层 · 单击直选/双击循环)」+ 9pt Arial(无中文字形)
+            #   原来标题预先固定 16 字「🧭 能力档位 (数据源层 · 单击直选/双击循环)」+ 9pt Arial(无中文字形)
             #   ⇒ 一行画不下被硬裁 + 和下面的 radio 挤在一起。现在:
             #   ① 标题只用**短标签**(走 node_display_name, ≤10 字, 与全画布同一套字体/规格);
             #   ② 括号里的操作提示搬进 tooltip (节点悬停能看), 不在框里挤;
@@ -4098,9 +4098,9 @@ class SimLinkItem(QGraphicsObject):
 # 画布视图
 # ════════════════════════════════════════════════════════════════
 # 🔀 2026-10-11 老倪: 「状态空间的数据源, 原来是 真机/仿真; 现在改成 真机/插拔场景/摆盘场景」
-#   真机     = Orin 远程只读 (原样, _data_source="bypass_real"), 场景真源不动
-#   插拔场景 = 原来的「仿真」那条算路 (metaworld 前馈/演示数据) + 全局场景真源切 SS-EPI-CORNER
-#   摆盘场景 = 同一套仿真算路 + 全局场景真源切 SS-TRAY-PLACE
+#   真机     = Orin 远程只读 (原样, _data_source="bypass_real"), 场景唯一依据不动
+#   插拔场景 = 原来的「仿真」那条算路 (metaworld 前馈/演示数据) + 全局场景唯一依据切 SS-EPI-CORNER
+#   摆盘场景 = 同一套仿真算路 + 全局场景唯一依据切 SS-TRAY-PLACE
 #   🥽 2026-10-12 老倪: 「任务1 FW 对应插拔场景; 任务6 TRAY 对应摆盘场景; 任务7 AOI 对应 AR场景」⇒ 数据源多一态:
 #     AR场景 = 底图就是**状态空间工程的视频数据源**(4 台相机实拍同一场景) + AOI/空间点位/TCP 叠加, 没有仿真场景目录。
 SRC_CYCLE = ("真机", "插拔场景", "摆盘场景", "AR场景")
@@ -4132,7 +4132,7 @@ def _src_is_real(state):
 
 
 def _src_scene_dir(state):
-    """插拔/摆盘 对应的场景目录 (真源 = data/scene/scenes/<ID>, 与 3D视图/场景编辑同一份)。"""
+    """插拔/摆盘 对应的场景目录 (唯一依据 = data/scene/scenes/<ID>, 与 3D视图/场景编辑同一份)。"""
     sid = SRC_SCENE_ID.get(_src_norm(state))
     if not sid:
         return None
@@ -4144,17 +4144,17 @@ def _src_scene_dir(state):
 
 
 def _apply_src_scene(state):
-    """切数据源时把**全局场景真源**也切过去 (ZMAX_SCENE_DIR + 已开场景窗 + 已导入模块的全局)。
+    """切数据源时把**全局场景唯一依据**也切过去 (ZMAX_SCENE_DIR + 已开场景窗 + 已导入模块的全局)。
 
     返回 (ok, 说明串) —— 照实说切到哪、场景几个对象; 切不动就说切不动, 不装。
     """
     st = _src_norm(state)
     if _src_is_real(st):
-        return True, "%s: 场景真源不动 (ZMAX_SCENE_DIR=%s)" % (st, os.environ.get("ZMAX_SCENE_DIR") or "默认")
+        return True, "%s: 场景唯一依据不动 (ZMAX_SCENE_DIR=%s)" % (st, os.environ.get("ZMAX_SCENE_DIR") or "默认")
     d = _src_scene_dir(st)
     if not d or not os.path.isdir(d):
         return False, "%s: 场景目录不存在 (%s)" % (st, d)
-    os.environ["ZMAX_SCENE_DIR"] = d                 # ← 全局真源: 3D视图/场景编辑/上下料视图都读它
+    os.environ["ZMAX_SCENE_DIR"] = d                 # ← 全局唯一依据: 3D视图/场景编辑/上下料视图都读它
     n = -1
     try:
         with open(os.path.join(d, "objects3d.json"), encoding="utf-8") as _f:
@@ -4191,7 +4191,7 @@ def _canvas_src_state(module):
     """画布当前输入源状态 → '真机' | '插拔场景' | '摆盘场景' (老工程的 '仿真' 归一成 '插拔场景')
 
     🎥 2026-09-17 老倪: 「调了仿真模式, 右键打开输入图像还是现场视频」的根因 ——
-    打开窗口时 source 写死 "real", 没跟画布「🔀 数据源切换」(📦 数据源节点 params.src_state) 走。
+    打开窗口时 source 预先固定 "real", 没跟画布「🔀 数据源切换」(📦 数据源节点 params.src_state) 走。
     这里统一取画布状态, 供右键菜单/窗口跟随使用; 画布上没有该节点时与画布自身默认一致 (= 👻仿真)。
     """
     try:
@@ -4273,7 +4273,7 @@ class SimCanvas(QGraphicsView):
             _sc.setWhatsThis(_what)
             _sc.activated.connect(_cb)
         # ── 🟡🟢🔴 「L5 运行状态」通栏横幅 (2026-09-28 老倪现场实锤) ──────────────
-        #   起因: 「选 L5 后点运行没反应」。功能其实在跑 (闭环 pid 真起来了), 但状态只画在
+        #   起因: 「选 L5 后点运行没反应」。功能实际在跑 (闭环 pid 真起来了), 但状态只画在
         #   87 节点密集画布里的**节点小字**上 —— 老倪自己看截图都读不出来 ⇒ 小字方案不成立。
         #   做法: 横幅 = **viewport 的子控件** (不是场景项) ⇒ 永远贴在可视区顶部居中,
         #   **任何缩放/平移都不动** (viewport 坐标), 且 grab()/截屏一定带上它。
@@ -4653,7 +4653,7 @@ class SimCanvas(QGraphicsView):
             self.module._open_verif_dialog(item.node, tab="rfp")
         elif a_input is not None and chosen == a_input:
             # 🎥 2026-09-17 老倪: 打开输入图像 — **输入源跟随画布「🔀 数据源切换」**
-            #   (原来写死 source="real" → 画布切到仿真, 窗口还是现场视频, 老倪当场抓出)
+            #   (原来预先固定 source="real" → 画布切到仿真, 窗口还是现场视频, 老倪当场抓出)
             #   真机: Orin srv → Docker → 本地文件轮询 ‖ 仿真: metaworld corner2 渲染帧
             try:
                 from yolo_input_viewer import open_input_viewer
@@ -5467,7 +5467,7 @@ class _DatasetInfoDialog(QDialog):
 
 
 def _dump_ss_traj_true_source(tr, max_rows: int = 400) -> str | None:
-    """💾 状态空间工程运行轨迹 → **落盘真源** (老倪 2026-10-14)
+    """💾 状态空间工程运行轨迹 → **落盘唯一依据** (老倪 2026-10-14)
 
     「常驻循环在周期性调，由状态空间工程调用，流形引擎是全系统的核心，怎么只是调用一次呢？改」
 
@@ -5590,7 +5590,7 @@ def _vscode_launch_cfg(root: str) -> dict:
              "args": ["once"], "env": {}},
             # ── 🧮 配置导入 (2026-10-14 老倪: 「必须能进入这个断点」) ──
             #   断点打 src/lerobot/engineering/config_import.py:186  db = _read_db(...)
-            {"name": "🧮 配置导入 · 真源+工程库读 (config_import · 断点 186 必停)", "type": "python", "request": "launch",
+            {"name": "🧮 配置导入 · 唯一依据+工程库读 (config_import · 断点 186 必停)", "type": "python", "request": "launch",
              "program": _os.path.join(root, "src", "lerobot", "engineering", "config_import.py"),
              "python": _py(), "cwd": root, "console": "integratedTerminal", "justMyCode": False,
              "env": {}},
@@ -5600,7 +5600,7 @@ def _vscode_launch_cfg(root: str) -> dict:
              "args": ["--node", "n_calib_mani"], "env": {}},
             # ── 🅱 550B 标定版 · 单线程 debug (2026-10-21 老倪: 「550B … 打开工程自动起 VSCode 的状态空间工程 …
             #    省资源 … 标定档不需要那么多并行/多线程, 面向清晰单线程逻辑的 debug 模式」) ──
-            #   单线程口径唯一真源 = tools/gui/vscode_launch.py::SINGLE_THREAD_ENV (判据逐键核)
+            #   单线程口径唯一依据 = tools/gui/vscode_launch.py::SINGLE_THREAD_ENV (判据逐键核)
             {"name": "🅱 550B 标定版 · 单线程 debug (状态空间工程)", "type": "python", "request": "launch",
              "program": _os.path.join(root, "tools", "gui", "simulink_module.py"),
              "python": _py(), "cwd": root, "console": "integratedTerminal", "justMyCode": False,
@@ -5769,7 +5769,7 @@ class SimulinkModule(QWidget):
                 self._veh5_done = True
         except Exception:
             pass
-        # 🧮 2026-10-10 兜底: 显示时若还没居中过核心 → 居中一次 (工程可能在工具栏建成前就加载了)。
+        # 🧮 2026-10-10 保障: 显示时若还没居中过核心 → 居中一次 (工程可能在工具栏建成前就加载了)。
         #   ⚠️ 只在**视口已真正布局**(宽>200)时才算数: 早显示 (隐藏栈/未布局, 视口 0~几十 px) 时
         #   centerOn 会算到错的位置 ⇒ 不置标志, 等真正可见那一次再居中 (切到画布页也能补上)。
         try:
@@ -5928,7 +5928,7 @@ class SimulinkModule(QWidget):
             # 2026-09-29 老倪「上边的按钮整理一下, 紧凑点」→ 间距/边距各收一档 (字号不动, 防再嫌小)
             tb = FlowBar(margin=(10, 6, 10, 6), h_spacing=9, v_spacing=6)
             tl = tb.flow()
-        except Exception:      # 兜底: 布局模块缺失退回旧单行
+        except Exception:      # 保障: 布局模块缺失退回旧单行
             tb = QFrame()
             tb.setFixedHeight(44)
             tl = QHBoxLayout(tb)
@@ -5984,7 +5984,7 @@ class SimulinkModule(QWidget):
 
         self.btn_run = mk_btn("▶ 运行", "按拓扑执行仿真 (Simulink Run)", self.start_sim, "#00d4aa")
         # 🛡 2026-10-28 老倪: 「画布的运行按钮还是不好使」——
-        #   根因: 按钮一旦变灰就**点不动** ⇒ start_sim 进不来 ⇒ 里面那个 8s 兜底永远不会被调度, 死锁。
+        #   根因: 按钮一旦变灰就**点不动** ⇒ start_sim 进不来 ⇒ 里面那个 8s 保障永远不会被调度, 死锁。
         #   改成**常驻守护**: 每 10s 查一次, 若按钮是灰的且文本还停在「运行中」(那次启动没走完) 就恢复可点。
         #   真在跑的任务文本会被改成别的态, 不会误恢复。
         try:
@@ -6012,7 +6012,7 @@ class SimulinkModule(QWidget):
         # 🗂 2026-10-11 老倪: 「状态空间的独立页做得太差了, 删除, 恢复成原来的样子, 但是要跟文件打开的工程保持一致」
         #   ⇒ 撤掉独立页 (ss_page_window.py 已删), 按钮恢复 = 把状态空间模型画布装进主画布 (原行为);
         #     "跟文件打开的工程一致" 由 normalize_after_load() 保证 (两条入口同一套加载后归一 + 几何落盘)。
-        self.btn_state_space = mk_btn("🧮 状态空间", "状态空间模型: 时空感知前端(43D obs) → 并行处理层(前馈加速器+自适应状态估计器) → 认知决策层(调度器握否决权) → 执行器 → 物理世界 (卡尔曼反馈闭环)\n  · 与「文件→加载工程文件」同一套加载后归一 (真源==屏幕, 摆位一致)", self.open_state_space, "#87CEEB")
+        self.btn_state_space = mk_btn("🧮 状态空间", "状态空间模型: 时空感知前端(43D obs) → 并行处理层(前馈加速器+自适应状态估计器) → 认知决策层(调度器握否决权) → 执行器 → 物理世界 (卡尔曼反馈闭环)\n  · 与「文件→加载工程文件」同一套加载后归一 (唯一依据==屏幕, 摆位一致)", self.open_state_space, "#87CEEB")
         # (🗑 2026-09-04 老倪: 工具栏「🧭 3D 视图」按钮曾删除 → 恢复 (用户要求保留工具栏入口;
         #   画布 🔭可视化层 也有 🧭 3D 视图 节点, 双入口同开 open_ss_3d)
         self.btn_ss_3d = mk_btn("🧭 3D场景", "Apollo 风格 3D 分层视图: 同一 3D 空间叠加所有处理层 (YOLO检测框/末端轨迹/前馈u_ff/融合指令u/限幅u_sat/状态估计/接触), 每层可开关", self.open_ss_3d, "#d29922")
@@ -6035,7 +6035,7 @@ class SimulinkModule(QWidget):
             "📈 实时监控",
             "打开【独立功能页】的实时监控 (信号分析页):\n"
             "  · 独立顶层窗口 (进程隔离, 不占控制台页面) ⇒ 可与画布/3D场景并排看\n"
-            "  · 首屏默认只显示 3D 场景数据 (与 3D场景 同一份快照真源 trace_live.json)\n"
+            "  · 首屏默认只显示 3D 场景数据 (与 3D场景 同一份快照唯一依据 trace_live.json)\n"
             "  · 🕒 时间戳标记线 = 3D 播放进度; ➕增加信号话题 可看 Orin ROS2 / 数据空间(DDS) / 本机真值流\n"
             "  · 已有窗口时不重复开, 只置顶",
             self.open_monitor_window, "#58a6ff")
@@ -6058,7 +6058,7 @@ class SimulinkModule(QWidget):
         #   ⇒ 工具栏直接给入口 (不必先进 3D 场景), 且**非阻塞**: 点一下立刻回报, 页面先送出。
         self.btn_ar = mk_btn(
             "🥽 AR",
-            "直接打开 AR 页面 (http://10.163.146.78:8793/ar · 302→8797 真源, 浏览器直开)\n"
+            "直接打开 AR 页面 (http://10.163.146.78:8793/ar · 302→8797 唯一依据, 浏览器直开)\n"
             "  · 底图 = 状态空间工程视频源 4 路相机 (手臂 D405 / 金手指 / 表面 / 本机)\n"
             "  · 叠加 = AOI 点位 / 空间点位 / TCP 真值 / 录制轨迹\n"
             "  · 8797 没起会自动拉起 (后台, 不卡界面); 数据源是「真机」时不抢你的设置\n"
@@ -6178,22 +6178,22 @@ class SimulinkModule(QWidget):
             self.open_dataspace_window, "#58a6ff")
         tl.addWidget(self.btn_ds_win)
         # 🗂 2026-10-13 老倪: 「simulink 画布上面工具栏增加配置中心的独立打开窗口; 所有这些独立打开的窗口,
-        #   要保证与全系统的数据一致性。数据源来源于全局数据空间」(独立窗口与主控制台同一真源: 每次打开/每 3s
-        #   重读磁盘真源并对齐指纹; 再点一次置顶复用, 不新开第二个)
+        #   要保证与全系统的数据一致性。数据源来源于全局数据空间」(独立窗口与主控制台同一唯一依据: 每次打开/每 3s
+        #   重读磁盘唯一依据并对齐指纹; 再点一次置顶复用, 不新开第二个)
         self.btn_cfg_win = mk_btn(
             "🗂 配置中心",
-            "配置中心 · 独立窗口 (与主控制台同一真源: config/ 配置 + 工程库 zmax_engineering.db;\n"
-            "  · 打开即重读磁盘真源 (无内存副本), 每 3s 自动对齐一次\n"
+            "配置中心 · 独立窗口 (与主控制台同一唯一依据: config/ 配置 + 工程库 zmax_engineering.db;\n"
+            "  · 打开即重读磁盘唯一依据 (无内存副本), 每 3s 自动对齐一次\n"
             "  · 与画布/3D/信号/数据总线各窗口共用同一份全局数据空间)",
             self.open_config_window, "#c9a0ff")
         tl.addWidget(self.btn_cfg_win)
         # 🧠 2026-10-14 老倪: 「在状态空间工程, 增加一个 模型引擎 按钮, 用于打开模型引擎的独立窗口」
-        #   口径: 弹出的就是**与主控制台功能区同一个 ModelEnginePanel** (同一份代码/同一真源/同一设计宽,
+        #   口径: 弹出的就是**与主控制台功能区同一个 ModelEnginePanel** (同一份代码/同一唯一依据/同一设计宽,
         #   判据 tools/verify_model_engine_same_render.py 逐像素 0 差异), 不是另做一套画布专用界面。
         self.btn_me_win = mk_btn(
             "🧠 模型引擎",
             "打开【独立窗口】的模型引擎 (L2~L5 训练与推理状态):\n"
-            "  · 与主控制台功能区「模型引擎」**同一个面板、同一份代码、同一份真源** (两处逐像素一致)\n"
+            "  · 与主控制台功能区「模型引擎」**同一个面板、同一份代码、同一份唯一依据** (两处逐像素一致)\n"
             "  · 四层在役行 + 🔎 候选行 (L2 候选 = 🧩 SAM3 开放词汇分割, 带未切在役判据与候选权重路径)\n"
             "  · 逐层 ▶训练本层 / ■停止 / 📄训练日志 / 📂目录 / 🚀执行; 双击任意格复制完整路径\n"
             "  · 非模态 (可与画布/3D 并排看), 已有窗口就置顶复用, 不新开第二个",
@@ -6976,7 +6976,7 @@ class SimulinkModule(QWidget):
             # 行 = 模型分支, 列 = 功能角色, 同名节点多行出现→垂直对齐(如 Action Head 共第5列);
             # 空串 = 占位跳过。无 layout → 传统单行横排 (兼容旧模板)。
             # ⚠️ 列距 200 (2026-08-07 老倪: 节点跑到显示区右侧太远 → 260 太宽, 10 列网格
-            #    也放得下; specs 无 layout 位置的节点走兜底单行会甩到 x=6000+, 必须补全 layout!)
+            #    也放得下; specs 无 layout 位置的节点走保障单行会甩到 x=6000+, 必须补全 layout!)
             index_to_id = {}  # 🐛 2026-08-08 老倪: 定义索引→实际节点id (共享跳过导致 ids 错位 — SmolVLM2/SigLIP 没接)
             if layout:
                 pos = {}
@@ -6993,7 +6993,7 @@ class SimulinkModule(QWidget):
                         continue
                     xy = next((p for p in cands if p not in used), None)
                     if xy is None:
-                        xy = (base_x + i * 300, base_y)  # 兜底单行
+                        xy = (base_x + i * 300, base_y)  # 保障单行
                     used.add(xy)
                     n = self.add_node(ntype, nm, xy[0], xy[1], params)
                     ids.append(n["id"])
@@ -7529,7 +7529,7 @@ class SimulinkModule(QWidget):
                 if _k in _nm:
                     _w = str(_v)
                     break
-        if not _w:                                          # ⑤ 稳定英文兜底
+        if not _w:                                          # ⑤ 稳定英文保障
             _w = "node" + _hl.md5((_nid or _nm or "node").encode()).hexdigest()[:4]
         _p = os.path.join(_nd, "n_" + _w.strip().lower() + ".py")
         if os.path.isfile(_p):
@@ -7645,7 +7645,7 @@ class SimulinkModule(QWidget):
         if os.path.isdir("/mnt/c") and shutil.which("explorer.exe"):
             import subprocess as _sp
             # 🐛 2026-08-12 老倪: 复制目标必须 WSL 路径 (/mnt/c/...), Windows 路径 "C:\\..." 
-            # 在 Linux 是相对路径 → 复制到错误位置 → 右键打不开
+            # 在 Linux 是相对路径 → 复制到错误位置 → 右键无法打开
             _name = os.path.basename(src.rstrip("/\\"))
             dst_mnt = os.path.join("/mnt/c/zmax_src_view", _name)   # shutil 复制用 (WSL)
             dst_win = os.path.join(r"C:\zmax_src_view", _name).replace("/", "\\")  # explorer 用
@@ -7681,7 +7681,7 @@ class SimulinkModule(QWidget):
         if self._open_path_in_vscode(path, _line):
             self._log(f"📂 已用 VSCode 打开源码: {path}:{_line}  ({src})")
             return
-        # 兜底: 弹窗查看 (VSCode 没装 / PATH 无 code)
+        # 保障: 弹窗查看 (VSCode 没装 / PATH 无 code)
         try:
             from node_logic_dialog import SourceViewDialog
             dlg = SourceViewDialog(path, src, parent=self)
@@ -7806,7 +7806,7 @@ class SimulinkModule(QWidget):
         except Exception:
             pass
 
-    # 🗂 2026-10-09 老倪: 「这些不常用的按钮迁移到菜单栏里面」—— 单一真源:
+    # 🗂 2026-10-09 老倪: 「这些不常用的按钮迁移到菜单栏里面」—— 单一唯一依据:
     #   (key, 菜单文字, 快捷键, 悬停说明, 前一条分割线) · studio 按本表建菜单, 本模块 attach 接管
     CANVAS_MENU = [
         ("save_canvas", "💾 另存为 JSON…", "Ctrl+Shift+S",
@@ -8264,7 +8264,7 @@ class SimulinkModule(QWidget):
         return w
 
     def _recover_run_btn(self):
-        """运行按钮兜底恢复: 8 秒后仍停在「运行中…」且是灰的 ⇒ 那次启动没走完, 恢复可点并告知"""
+        """运行按钮保障恢复: 8 秒后仍停在「运行中…」且是灰的 ⇒ 那次启动没走完, 恢复可点并告知"""
         try:
             if self.btn_run is not None and not self.btn_run.isEnabled() \
                     and "运行中" in self.btn_run.text():
@@ -8281,7 +8281,7 @@ class SimulinkModule(QWidget):
         self.btn_run.setEnabled(False)
         # 🔧 2026-10-28 老倪: 「运行按钮怎么无法点击了, 没有反映」——
         #   有些分支 setEnabled(False) 之后失败/中断没恢复 ⇒ 按钮永久变灰, 点不动也没提示。
-        #   兜底: 8 秒后若还停在「运行中…」且确实是灰的, 自动恢复可点 + 明确告知 (不掩盖, 只防卡死)
+        #   保障: 8 秒后若还停在「运行中…」且确实是灰的, 自动恢复可点 + 明确告知 (不掩盖, 只防卡死)
         try:
             from PyQt5.QtCore import QTimer as _QTimer9
             _QTimer9.singleShot(8000, self._recover_run_btn)
@@ -8316,7 +8316,7 @@ class SimulinkModule(QWidget):
         if any(n.get("params", {}).get("state_space") for n in self.nodes):
             # 🏭 数据源 = AR场景 ⇒ ▶ 运行 不跑 metaworld 真实化仿真
             #    那个流程要跑几百秒、资源不足时会立刻弹回, 看着就是"点了没运行";
-            #    而 AR 双臂动画其实由常驻循环 zmax-ss-canvas-loop 驱动、ar3d 页面自动播放。
+            #    而 AR 双臂动画实际由常驻循环 zmax-ss-canvas-loop 驱动、ar3d 页面自动播放。
             #    老倪 2026-10-28: 「点击运行后, 马上又变回来了, 没有运行」
             _ar_src = _canvas_src_state(self)          # 与画布其它地方同一口径 (不用 id 匹配: GUI 内存节点不带 id)
             if "AR" in _ar_src:
@@ -8575,7 +8575,7 @@ class SimulinkModule(QWidget):
         """🧮 状态空间画布 ⏭单步 = 与 ▶运行同源 (2026-08-31 老倪: 单步/运行逻辑必须一致)
         首次点击先跑 StateSpaceSim 引擎 (与 _start_state_space_sim 同源, io_every=25),
         每步从引擎轨迹最新快照取该节点模块的真实 I/O 打印 — 不再走 node_logic /
-        _simulate_output 的写死模拟值 (此前单步=壳逻辑+硬编码数值, 双轨不一致)"""
+        _simulate_output 的预先固定模拟值 (此前单步=壳逻辑+硬编码数值, 双轨不一致)"""
         # ⏳ ▶运行动画播放中 → 拦截 (先停止再单步)
         _tmr = getattr(self, "_ss_timer", None)
         if _tmr is not None and _tmr.isActive():
@@ -8651,7 +8651,7 @@ class SimulinkModule(QWidget):
             else:
                 self._log("  ⮕ 引擎无输出端口")
         else:
-            # 引擎无该模块 I/O (📊波形/🎥视频/📝LLM/🔀模式开关等辅助节点) → 该帧全局量兜底
+            # 引擎无该模块 I/O (📊波形/🎥视频/📝LLM/🔀模式开关等辅助节点) → 该帧全局量保障
             _t = tr["t"][-1]
             _st = tr.get("stage", ["?"])[-1]
             self._log(f"  ⮕ (引擎无独立 I/O 快照) t={_t:.2f}s · {_st}")
@@ -8704,7 +8704,7 @@ class SimulinkModule(QWidget):
 
     def _state_space_run_node(self, node, keep_active=True):
         """🧮 状态空间画布 右键「运行节点」 = 引擎同源 (2026-08-31 老倪: 单步/运行/右键三统一)
-        显示该节点在引擎轨迹的真实 I/O — 不再走 node_logic 壳逻辑 + 写死模拟值"""
+        显示该节点在引擎轨迹的真实 I/O — 不再走 node_logic 壳逻辑 + 预先固定模拟值"""
         tr = self._ss_ensure_trace()
         if tr is None:
             self._log("⚠️ 引擎轨迹不可用 — 右键运行节点中止")
@@ -8798,7 +8798,7 @@ class SimulinkModule(QWidget):
     def _dispatch_run_node(self, node, label=None, keep_active=True):
         name = node.get("name", "?")
         # 🧮 状态空间画布 → 引擎同源 (2026-08-31 老倪: 单步/运行/右键三统一 —
-        #   右键「运行节点」也显示引擎轨迹真实 I/O, 不走 node_logic 壳逻辑 + 写死模拟值)
+        #   右键「运行节点」也显示引擎轨迹真实 I/O, 不走 node_logic 壳逻辑 + 预先固定模拟值)
         if any(n.get("params", {}).get("state_space") for n in self.nodes):
             self._highlight_node(node, ms=2500)
             self._log_explain(node)
@@ -9864,7 +9864,7 @@ class SimulinkModule(QWidget):
             if not _stats_ok():
                 self.log_signal.emit("🛰 工位总览: 视频流未运行 → 自动启动 (6 路源 + 总览页) …")
                 orin_host = os.environ.get("ZMAX_ORIN_HOST", "tashan@192.168.23.66").split("@")[-1]
-                _ld, _l2 = _resolve_cam_devs()      # 2026-09-28: 按卡名+能力解析, 不再写死 2/0(串线+IR近黑)
+                _ld, _l2 = _resolve_cam_devs()      # 2026-09-28: 按卡名+能力解析, 不再预先固定 2/0(串线+IR近黑)
                 _local_args = _local_src_args(self, _ld, _l2)   # 2026-10-17: kind=off ⇒ 不打开本机摄像头
                 self.log_signal.emit("🛰 相机映射: 笔记本彩色 /dev/video%d · MAXHUB 顶视 %s"
                                      % (_ld, ("/dev/video%d" % _l2) if _l2 >= 0 else "(未找到)"))
@@ -9886,7 +9886,7 @@ class SimulinkModule(QWidget):
                 except Exception as e:                                          # noqa: BLE001
                     self.log_signal.emit("❌ 工位总览: 启动视频流失败 — %s" % e)
                     return
-            # 2) 页面地址: 现取 LAN IP(工位机 DHCP 会变) + 真 GET 验一次, 再用 127.0.0.1 兜底
+            # 2) 页面地址: 现取 LAN IP(工位机 DHCP 会变) + 真 GET 验一次, 再用 127.0.0.1 保障
             _ip = _lan_ip()
             url = None
             for _u in ("http://%s:8793/station" % _ip, "http://127.0.0.1:8793/station"):
@@ -9977,7 +9977,7 @@ class SimulinkModule(QWidget):
             """显式开浏览器**新窗口并最大化** (老倪 2026-09-27: 「应该显示一个浏览器网页…图像要大一些」)
 
             🐛 原实现只 xdg-open: 它会把地址塞进**已经开着的小窗口**里(甚至另一台显示器),
-               用户看到的就是"一个小窗口, 啥都看不到"。xdg-open 也无法指定窗口尺寸。
+               用户看到的就是"一个小窗口, 什么都看不到"。xdg-open 也无法指定窗口尺寸。
                ⇒ 改成: 认到具体浏览器就用 `--new-window --start-maximized`, 再用 wmctrl
                  把标题含"场景叠加"的窗口激活+最大化 (浏览器起在哪都能拉回正视野)。
             返回 (bool 成功, str 说明)。
@@ -10078,10 +10078,10 @@ class SimulinkModule(QWidget):
                     except Exception:
                         continue
             if not tried:
-                # 🔴 2026-09-27: 这里**删掉了**原来的 QDesktopServices.openUrl 兜底 ——
+                # 🔴 2026-09-27: 这里**删掉了**原来的 QDesktopServices.openUrl 保障 ——
                 #   它是在 _work 的工作线程里调 Qt GUI API ⇒ 实测把整个控制台打成
                 #   "QThread: Destroyed while thread is still running / Fatal Python error: Aborted"。
-                #   兜底只留 xdg-open / gio (纯进程调用, 不碰 Qt)。
+                #   保障只留 xdg-open / gio (纯进程调用, 不碰 Qt)。
                 return False, "没找到可用的浏览器 (只找到 xdg-open/gio 也不通)"
             # 🔴 「点了很久没反应」：浏览器进程已经起来了, 立刻报一声(不再等认窗才出声)
             self.log_signal.emit("🧩 场景叠加: 浏览器已启动(%s) — 页面加载中, 我去把窗口搬到控制台那块屏"
@@ -10185,7 +10185,7 @@ class SimulinkModule(QWidget):
             if not up:
                 self.log_signal.emit("🧩 场景叠加: 视频流未运行 → 自动启动 (含叠加) …")
                 orin_host = os.environ.get("ZMAX_ORIN_HOST", "tashan@192.168.23.66").split("@")[-1]
-                _ld, _l2 = _resolve_cam_devs()      # 2026-09-28: 按卡名+能力解析, 不再写死 2/0(串线+IR近黑)
+                _ld, _l2 = _resolve_cam_devs()      # 2026-09-28: 按卡名+能力解析, 不再预先固定 2/0(串线+IR近黑)
                 _local_args = _local_src_args(self, _ld, _l2)   # 2026-10-17: kind=off ⇒ 不打开本机摄像头
                 self.log_signal.emit("🧩 相机映射: 笔记本彩色 /dev/video%d · MAXHUB 顶视 %s"
                                      % (_ld, ("/dev/video%d" % _l2) if _l2 >= 0 else "(未找到)"))
@@ -10193,7 +10193,7 @@ class SimulinkModule(QWidget):
                        "--port", str(port), "--quality", "72", "--fps", "30",
                        "--arm-http", "http://%s:8792/frame.jpg" % orin_host, "--arm-fps", "30",
                        # 🎥 2026-09-27 三相机: ①臂上(Orin) ②笔记本内置(彩色 MJPG 那一路) ③MAXHUB 电视顶摄
-                       #   ⚠️ 设备号来自 _resolve_cam_devs() 实测解析 —— 写死 2/0 会选中 IR(近黑)并让两格串线
+                       #   ⚠️ 设备号来自 _resolve_cam_devs() 实测解析 —— 预先固定 2/0 会选中 IR(近黑)并让两格串线
                        *_local_args,
                        # 🛰 2026-09-27 工位总览 6 窗: 深度源 + 工控机金手指/表面检测 + 手动控制区
                        "--depth-fps", "4", "--aoi-fps", "0.25", "--ctl-motion",
@@ -10547,7 +10547,7 @@ class SimulinkModule(QWidget):
 
     def _run_cmd(self, cmd, cwd=None, collect=None, line_hook=None, timeout=None):
         """(后台线程内) 执行命令, 输出流式进日志; collect(list) 可选收集原始行; line_hook(ln) 每行回调
-        🐛 2026-08-08 老倪: tqdm 用 \\r 刷新不换行 — for line 卡住 → 块读按 \\r/\\n 分行, 实时全量输出
+        🐛 2026-08-08 老倪: tqdm 用 \\r 刷新不换行 — for line 阻塞 → 块读按 \\r/\\n 分行, 实时全量输出
         🐛 2026-08-20 静静: 无超时 → 子进程挂起 (docker/SSH/网络) 永久卡 worker 线程 → 防重入
            拦截后续所有训练 (GUI"点训练没反应")。加 select 非阻塞读 + deadline (默认 3600s), 超时 kill"""
         import subprocess
@@ -10641,7 +10641,7 @@ class SimulinkModule(QWidget):
         if w is not None:
             # 🐛 2026-08-06 修复: worker 终止竞态 — _done(主线程) 触发 _flow_next 时,
             #   worker 线程刚 emit 完还在收尾, isRunning() 短暂 True → 防重入误拦截
-            #   后续任务 (Model Zoo VLA-Touch 卡住不启动!); wait(300) 等正常收尾放行
+            #   后续任务 (Model Zoo VLA-Touch 阻塞不启动!); wait(300) 等正常收尾放行
             if w.isRunning() and not w.wait(300):
                 # 🔎 2026-08-06 老倪: "什么叫上一个任务还在跑? 要显示详细信息" — 详细提示
                 self._log(self._busy_hint())
@@ -10765,7 +10765,7 @@ class SimulinkModule(QWidget):
         用于打开模型引擎的独立窗口」)。
 
         内容 = 与主控制台功能区**同一个 `ModelEnginePanel`** (同一份代码 ⇒ 列宽/逐格文字/颜色逐像素一致,
-        判据 `tools/verify_model_engine_same_render.py`), 数据真源 = `model_inventory --json` + 8796 `/status/all`
+        判据 `tools/verify_model_engine_same_render.py`), 数据唯一依据 = `model_inventory --json` + 8796 `/status/all`
         (面板自带 5s 轮询, 所以训练状态/推理状态会自己刷新, 不是打开那一刻的快照)。
         非模态: 可与画布/3D 并排看; 关掉再点即复用, 不新开第二个。
         """
@@ -10783,7 +10783,7 @@ class SimulinkModule(QWidget):
                 sys.path.insert(0, _d)
             from model_engine_window import ModelEngineWindow
         except Exception as e:                                                  # noqa: BLE001
-            self._log("⛔ 模型引擎独立窗口打不开: %r" % (e,))
+            self._log("⛔ 模型引擎独立窗口无法打开: %r" % (e,))
             return None
         try:
             # 🖥 2026-10-14 老倪「无法最大化」真根因: 传了 parent ⇒ WM_TRANSIENT_FOR 被设上 ⇒
@@ -10794,7 +10794,7 @@ class SimulinkModule(QWidget):
             win.show()
             win.raise_()
             win.activateWindow()
-            self._log("🧠 模型引擎: 独立窗口已打开 (L2~L5 在役 + 🔎 候选行; 与功能区同一界面同一真源)")
+            self._log("🧠 模型引擎: 独立窗口已打开 (L2~L5 在役 + 🔎 候选行; 与功能区同一界面同一唯一依据)")
             return win
         except Exception as e:                                                  # noqa: BLE001
             self._log("⚠️ 模型引擎独立窗口打开失败: %r" % (e,))
@@ -10803,10 +10803,10 @@ class SimulinkModule(QWidget):
     def open_config_window(self):
         """🗂 配置中心 → **独立窗口** (老倪 2026-10-13)。
 
-        数据一致性口径: 独立窗口与主控制台**同一真源** — 页面类 ConfigCenterPage 每次 _j() 直读磁盘
-        (无缓存), 本方法打开即 reload_from_source(), 之后每 3s 比对真源指纹 (sha256), 变了就重读;
+        数据一致性口径: 独立窗口与主控制台**同一唯一依据** — 页面类 ConfigCenterPage 每次 _j() 直读磁盘
+        (无缓存), 本方法打开即 reload_from_source(), 之后每 3s 比对唯一依据指纹 (sha256), 变了就重读;
         因此主控制台/别的会话改了 config/ 或工程库, 这个窗口会自动跟上, 不会显示陈旧副本。
-        再点按钮: 复用已有窗口 → 重读真源 → 置顶 (不新开第二个)。
+        再点按钮: 复用已有窗口 → 重读唯一依据 → 置顶 (不新开第二个)。
         """
         from PyQt5.QtCore import QTimer as _QT
         w = getattr(self, "_cfg_win", None)
@@ -10861,10 +10861,10 @@ class SimulinkModule(QWidget):
         try:
             from veh6_config_page import ConfigCenterPage
         except Exception as e:                                                  # noqa: BLE001
-            self._log("⛔ 配置中心独立窗口打不开: %r" % (e,))
+            self._log("⛔ 配置中心独立窗口无法打开: %r" % (e,))
             return None
         dlg = QDialog(self.window() or self)
-        dlg.setWindowTitle("🗂 配置中心 · 独立窗口 (与主控制台同一真源)")
+        dlg.setWindowTitle("🗂 配置中心 · 独立窗口 (与主控制台同一唯一依据)")
         dlg.setWindowFlags(dlg.windowFlags() | Qt.WindowMaximizeButtonHint | Qt.WindowMinimizeButtonHint)
         # 🔴 老倪 2026-10-15: 「任务配置的窗口, 太矮了, 看不到任务, 调高, 优化UI显示」
         #   原来固定 resize(1480, 900): 离屏实测该尺寸下**上方工作区只有 ~450px**
@@ -10901,21 +10901,21 @@ class SimulinkModule(QWidget):
             pass
         fp0 = {}
         try:
-            fp0 = page.reload_from_source()          # 打开即对齐真源
+            fp0 = page.reload_from_source()          # 打开即对齐唯一依据
         except Exception:                                                       # noqa: BLE001
             pass
         dlg._cfg_page = page
         dlg._cfg_fp0 = fp0
         dlg._cfg_src_mtime = _src_mtime()          # 记住建这个页面时的源码 mtime (变了就重建, 见上)
 
-        def _sync():                                 # 每 3s 与磁盘真源比对 (跨窗口一致性)
+        def _sync():                                 # 每 3s 与磁盘唯一依据比对 (跨窗口一致性)
             try:
                 cur = page.source_fingerprint()
                 prev = getattr(dlg, "_cfg_fp", None) or fp0
                 if cur != prev:
                     page.reload_from_source()
                     dlg._cfg_fp = cur
-                    self._log("🔗 配置中心独立窗口: 真源已变 → 已重读对齐 (%d 个真源文件)" % len(cur))
+                    self._log("🔗 配置中心独立窗口: 唯一依据已变 → 已重读对齐 (%d 个唯一依据文件)" % len(cur))
             except Exception:                                                   # noqa: BLE001
                 pass
         tmr = _QT(dlg)
@@ -10937,7 +10937,7 @@ class SimulinkModule(QWidget):
         dlg.finished.connect(_on_close)
         self._cfg_win = dlg
         dlg.show()
-        self._log("🗂 配置中心独立窗口已打开 (同一真源 · 指纹 %s)" %
+        self._log("🗂 配置中心独立窗口已打开 (同一唯一依据 · 指纹 %s)" %
                   (", ".join("%s=%s" % (k.split("/")[-1], v[:8]) for k, v in list(fp0.items())[:3]) or "—"))
         return dlg
 
@@ -11084,7 +11084,7 @@ class SimulinkModule(QWidget):
         """8步搭完: 确认连线完整 → 进入训练引导 (直到训练完成)"""
         self._act_build_active = False
         self._act_build_step = -1
-        # 兜底: 补齐模板拓扑连线 (增量阶段可能因顺序漏连)
+        # 保障: 补齐模板拓扑连线 (增量阶段可能因顺序漏连)
         self._act_build_link_existing()
         self.canvas._scene.update()
         tmpl = None
@@ -11182,7 +11182,7 @@ class SimulinkModule(QWidget):
     def _impl_line(self, node):
         """节点的实现位置: 语义 key · 函数名 · 文件:行 (全面检查每个节点实现用)。
 
-        真源: engineering.registry (key→fn) + sourceview.get_node_location (含 _EXTERNAL_LOC 外部源)。"""
+        唯一依据: engineering.registry (key→fn) + sourceview.get_node_location (含 _EXTERNAL_LOC 外部源)。"""
         try:
             from lerobot.engineering import registry, sourceview
         except Exception:
@@ -11193,7 +11193,7 @@ class SimulinkModule(QWidget):
         name = node.get("name", "")
         key = registry.match_node(name)
         if not key:
-            return "实现: ⚠️ 无匹配关键字 (双击会落兜底)"
+            return "实现: ⚠️ 无匹配关键字 (双击会落保障)"
         info = registry.get(key) or {}
         fn = info.get("fn")
         fname = getattr(fn, "__name__", "?")
@@ -11269,7 +11269,7 @@ class SimulinkModule(QWidget):
         """🧾 全面检查每个节点的实现: 调 tools/ss_node_impl_audit.py (只读) → 终端汇总 + 全表落盘。
 
         输出: 每个功能节点的 语义key → 函数() 真实源文件:行号 + 单步序 (哪些会被 ⏭单步 执行)。
-        真源: engineering.registry / sourceview (含 _EXTERNAL_LOC 外部源), 与双击看源码同源。"""
+        唯一依据: engineering.registry / sourceview (含 _EXTERNAL_LOC 外部源), 与双击看源码同源。"""
         import subprocess
         tool = os.path.join(_repo_root_path(), "tools", "ss_node_impl_audit.py")
         if not os.path.exists(tool):
@@ -13677,7 +13677,7 @@ class SimulinkModule(QWidget):
 
     def on_train_config(self, node):
         """⚙️ 训练配置 (2026-08-05 老倪: 双击/右键训练节点 → 调整 steps/batch/lr)
-        2026-08-05 修复#2: 模态 exec_ 在 WSLg 下弹窗不可见 → 界面'卡死'(按啥都不好使);
+        2026-08-05 修复#2: 模态 exec_ 在 WSLg 下弹窗不可见 → 界面'卡死'(按什么都不好使);
         改非模态 show + 自动居中置前, 主窗口永不被禁用"""
         dlg = TrainConfigDialog(node, self)
         try:
@@ -13760,7 +13760,7 @@ class SimulinkModule(QWidget):
             self._log(f"⚠️ 验证层对话框打开失败: {_e}")
 
     def _auto_test_demo(self, on_done=None):
-        """🔭 一键自动测试 · GUI 可视化演示段 (2026-09-04 老倪: 自动操作窗口, 真跑一遍, 显示波形)
+        """🔭 一键自动测试 · GUI 可视化演示段 (2026-09-04 老倪: 自动操作窗口, 真执行一遍, 显示波形)
         主线程 QTimer 链: ①引擎真实跑(3s) ②📊仿真波形开窗显示+截图 ③🧠直方图(喂150帧)④🎯归因 PCA
         ⑤🧭3D ⑥🎥操作视频 — 每窗停留 1.2s 用户可见, 截图存 reports/viz_evidence → on_done()"""
         def _log(s):
@@ -14030,7 +14030,7 @@ class SimulinkModule(QWidget):
         """🎛 🤖 机器人执行器 · 左开关 = AR 场景
 
         老倪 2026-10-27: 「开了就是进 AR 场景控制左右臂, AR 关了就是直接控制机器人」
-        状态存 params.ar_scene (画布 JSON = 唯一真源) + 发布 ss_live/exec_switches.json。
+        状态存 params.ar_scene (画布 JSON = 唯一依据) + 发布 ss_live/exec_switches.json。
         """
         p = node.setdefault("params", {})
         on = not bool(p.get("ar_scene"))
@@ -14061,7 +14061,7 @@ class SimulinkModule(QWidget):
         """🎛 🤖 机器人执行器 · 右开关 = 真机授权 (默认关)
 
         老倪 2026-10-27: 「开就是授权发出真正指令, 关了就是不发出; 默认是关的状态」
-        真消费点 = ctl_auth 单一真源 (与 8793 工位总览同一个写口), 所以执行器/脚本天然认这一份;
+        真消费点 = ctl_auth 单一唯一依据 (与 8793 工位总览同一个写口), 所以执行器/脚本天然认这一份;
         画布 params.real_auth 只是显示与取证, 不另开第二条授权通路。
         """
         p = node.setdefault("params", {})
@@ -14097,7 +14097,7 @@ class SimulinkModule(QWidget):
         老倪 2026-10-18: 「开关, 做在画布 plan 节点上边, 我可以用鼠标控制」
           · 开: 只取 v_ff 的**方向**慢速驱动 plan 节点位姿, 真正输出速度 ≤ cap (硬上限 10mm/s)
           · 关: 只显示按仿真原速积分的位姿, 不驱动
-        状态存 params.bridge_vff (画布 JSON = 唯一真源); 控制台 3D 面板的勾选框读同一份。
+        状态存 params.bridge_vff (画布 JSON = 唯一依据); 控制台 3D 面板的勾选框读同一份。
         """
         p = node.setdefault("params", {})
         on = not bool(p.get("bridge_vff"))
@@ -14118,7 +14118,7 @@ class SimulinkModule(QWidget):
         老倪 2026-10-25: 「再增加一个一样的开关, 放在节点右侧, 显示 station 连接 / station 断开」
           · 连接 (绿): station 可以把轨迹/点位发进 plan 节点
           · 断开 (红): station 的规划请求一律拒 (fail-closed, 不给静默放行)
-        状态存 params.station_link (画布 JSON = 唯一真源); 真消费点在 station 服务侧
+        状态存 params.station_link (画布 JSON = 唯一依据); 真消费点在 station 服务侧
         tools/cam_live_stream.py::_station_plan —— 它读同一份画布, 断开即 403 并写明原因。
         """
         p = node.setdefault("params", {})
@@ -14138,8 +14138,8 @@ class SimulinkModule(QWidget):
         2026-09-16 老倪: 先做成 仿真 ⇄ 真机 两态, 就做在节点上不加连线;
         2026-10-11 老倪: 「原来是 真机/仿真; 现在改成 真机/插拔场景/摆盘场景」⇒ 三态循环。
         真机: 读 Orin 远程只读的真机帧 (TCP 位姿/关节/力/夹爪/图像) → _bypass_obs, _data_source="bypass_real"
-        插拔场景: 原来的「仿真」那条算路 (metaworld 演示/前馈数据) + 场景真源切 SS-EPI-CORNER
-        摆盘场景: 同一套算路 + 场景真源切 SS-TRAY-PLACE
+        插拔场景: 原来的「仿真」那条算路 (metaworld 演示/前馈数据) + 场景唯一依据切 SS-EPI-CORNER
+        摆盘场景: 同一套算路 + 场景唯一依据切 SS-TRAY-PLACE
         """
         p = node.setdefault("params", {})
         cur = _src_norm(p.get("src_state"))
@@ -14163,7 +14163,7 @@ class SimulinkModule(QWidget):
                     nxt = _s
                     break
         except Exception as _e:                                        # noqa: BLE001
-            self._log("⚠️ 数据源菜单打不开 (%s) — 退回落单步切换" % _e)
+            self._log("⚠️ 数据源菜单无法打开 (%s) — 退回落单步切换" % _e)
             nxt = SRC_CYCLE[(SRC_CYCLE.index(cur) + 1) % len(SRC_CYCLE)]
         if not nxt or nxt == cur:
             self._log("🔀 数据源保持「%s」不变" % cur)
@@ -14176,7 +14176,7 @@ class SimulinkModule(QWidget):
             it.update()
         self._save_param_to_flow(node, "src_state")
         self._log("🔀 数据源切换 → %s   [_data_source=%s]" % (SRC_DESC[nxt], self._data_source))
-        self._log("   %s" % _msg + ("" if _ok else "   ⚠️ 场景真源没切成功, 照实报"))
+        self._log("   %s" % _msg + ("" if _ok else "   ⚠️ 场景唯一依据没切成功, 照实报"))
         # 💾 2026-10-11 老倪: 「你要自动保存这种状态到 proj项目文件中, 下次我可以继续调试」⇒ 状态一变就自动存档
         try:
             import importlib.util as _ilu9
@@ -14896,7 +14896,7 @@ class SimulinkModule(QWidget):
         elif p.get("exception_reasoner"):
             html = (
                 f"<h3 style='color:#f0883e;margin:4px'>🔍 异常推理器 (LLM) — 慢决策 · 回路外</h3>"
-                f"<p style='color:#8b949e;font-size:11pt'>状态机卡住时诊断异常 + 恢复建议 (触发: 连续否决/阶段卡死/未接触)。</p>"
+                f"<p style='color:#8b949e;font-size:11pt'>状态机阻塞时诊断异常 + 恢复建议 (触发: 连续否决/阶段卡死/未接触)。</p>"
                 f"<table border='1' cellspacing='0' cellpadding='4' style='border-color:#30363d;font-size:11pt'>"
                 f"<tr style='color:#e6edf3'><th>异常分类</th><th>触发条件</th><th>恢复建议</th></tr>"
                 f"<tr><td style='color:#ff6b6b'>力控异常</td><td>连续否决 ≥ max_veto</td><td>减速重试 + 复核力阈值</td></tr>"
@@ -15157,7 +15157,7 @@ class SimulinkModule(QWidget):
 
         ① 节点尺寸规则: load_flow_file 内已按 DW/DH(280x110) 撑开 (JSON 里 160x68 只是输入)
         ② 按行重排: `_relayout_row_gaps()` 按 y 分桶把同行节点推到"前一个右缘+56"
-        ③ **几何落盘回真源**: 只把 x/y/w/h 写回 (其余字段以磁盘为准, 不污染真源) ⇒ 真源==屏幕
+        ③ **几何落盘回唯一依据**: 只把 x/y/w/h 写回 (其余字段以磁盘为准, 不污染唯一依据) ⇒ 唯一依据==屏幕
            收敛后幂等 (第二次加载不再产生差异), 从此「🧮状态空间」路 与「📂加载工程文件」路结果一致。
         返回 {relayout_moved, persisted, fields, backup, path}
         """
@@ -15201,17 +15201,17 @@ class SimulinkModule(QWidget):
             if fields:
                 p, bak = flows.save_canvas(disk, reason=reason)
                 out.update({"persisted": True, "path": p, "backup": bak})
-                self._log("🗂 加载后归一: 几何收敛 %d 处 → 已写回画布真源 (备份 %s)"
+                self._log("🗂 加载后归一: 几何收敛 %d 处 → 已写回画布唯一依据 (备份 %s)"
                           % (fields, os.path.basename(str(bak))))
             else:
-                self._log("🗂 加载后归一: 真源与屏幕已一致, 无需写盘")
+                self._log("🗂 加载后归一: 唯一依据与屏幕已一致, 无需写盘")
         except Exception as e:                                                   # noqa: BLE001
-            self._log("⚠️ 加载后归一: 写回真源失败(画布不受影响) %s: %s" % (type(e).__name__, e))
+            self._log("⚠️ 加载后归一: 写回唯一依据失败(画布不受影响) %s: %s" % (type(e).__name__, e))
         # 🧮 记账: 把"该文件内容的归一后状态"存下来 ⇒ 同一份文件再点按钮 = 零重绘 (不闪烁)
         try:
             import project_file as _pj2
             self._norm_md5 = self._src_md5(_pj2._flows().canvas_path())
-            self._loaded_src_md5 = self._norm_md5            # 此刻画布内容 == 该真源
+            self._loaded_src_md5 = self._norm_md5            # 此刻画布内容 == 该唯一依据
             self._loaded_src = os.path.abspath(_pj2._flows().canvas_path())
         except Exception:                                                        # noqa: BLE001
             self._norm_md5 = None
@@ -15260,7 +15260,7 @@ class SimulinkModule(QWidget):
         """
         # 🚫 2026-10-11 老倪: 「我已经加载了状态空间的工程 proj 文件, 再点击画布的状态空间按钮, 屏幕又闪烁了好几下。
         #   不是同一个源头么? 不要闪烁」——根因: 这条腿**无条件** clear() → 逐个重建 89 节点 → 再按行重排,
-        #   每一步都重绘 (整屏空 → 半成品 → 节点挪位) 就是"闪烁好几下"; 而画布上其实已经是同一份文件的归一状态。
+        #   每一步都重绘 (整屏空 → 半成品 → 节点挪位) 就是"闪烁好几下"; 而画布上实际已经是同一份文件的归一状态。
         #   修法: ① 已是"该文件内容的归一后状态"⇒ 直接不重建 (零重绘, 只落一行日志);
         #         ② 真要重建 (换了文件/几何确实需归一) ⇒ 全程冻结重绘, 最后只刷一帧 ⇒ 只有一次"到位置", 不再闪。
         flow = _flows_path("state_space_obs.json")          # v5.15.8: 多候选定位 (修"画布加载失败")
@@ -15268,7 +15268,7 @@ class SimulinkModule(QWidget):
         _fp = self._canvas_fingerprint()
         if (self.nodes and _md5 is not None and _md5 == getattr(self, "_norm_md5", None)
                 and _fp is not None and _fp == getattr(self, "_norm_fp", None)):
-            self._log("🧮 状态空间: 画布已在显示同一份工程 (真源 md5 %s… · %d 节点几何==归一后状态) ⇒ 不重建, 零闪烁"
+            self._log("🧮 状态空间: 画布已在显示同一份工程 (唯一依据 md5 %s… · %d 节点几何==归一后状态) ⇒ 不重建, 零闪烁"
                       % (_md5[:8], len(self.nodes)))
             self._l5_start_poll(1000)                        # 幂等: 保证状态轮询还在跑
             return
@@ -15290,7 +15290,7 @@ class SimulinkModule(QWidget):
         self._log("认知决策层 (握有否决权): 🧭动作调制器(原状态机, 8阶段状态机: 接近→对位→下降→抓取→抬起→转移→插入→完成) → 🛡安全执行边界(饱和限幅)")
         self._log("执行层: 🤖机器人执行器 → 🌍物理世界 → z_k传感器反馈 → 🧪状态校正器 (卡尔曼校正闭环)")
         # 2026-08-25 老倪: 节点放大后按行重排, 避免紧贴/重叠;
-        # 2026-10-11: 抽成 normalize_after_load() ⇒ 与「文件→加载工程文件」同一套归一 + 几何落盘(真源==屏幕)
+        # 2026-10-11: 抽成 normalize_after_load() ⇒ 与「文件→加载工程文件」同一套归一 + 几何落盘(唯一依据==屏幕)
         self.normalize_after_load(reason="open_state_space")
         _oneshot(self, 300, self._state_space_hint)
         # 🚩 2026-09-28 老倪第 3 次投诉「点击运行没反馈」: **画布一打开就挂 L5 状态轮询**。
@@ -15305,7 +15305,7 @@ class SimulinkModule(QWidget):
         老倪 2026-10-19: 「画布的 AR按钮, 也要换成 http://10.163.146.78:8793/ar」
         —— 不再走控制台内嵌的 QWebEngineView: 内嵌窗口被判 hidden 时页面只有 1fps,
            而且控制台主线程一忙(建页/绘图)滚轮和点击整段丢事件, 现场就是「卡 / 没以前好使」。
-           8793 的 /ar 是 302 → 8797/ar(AR 真源), 入口地址保持他记的这一个。
+           8793 的 /ar 是 302 → 8797/ar(AR 唯一依据), 入口地址保持他记的这一个。
         """
         try:
             sys.path.insert(0, os.path.join(self._repo_root(), "tools", "gui"))
@@ -15337,7 +15337,7 @@ class SimulinkModule(QWidget):
           · 8797 没起时后台 `ar_server_ctl.sh start` 起一次再开, 失败只在日志里说清。
         """
         import threading as _th
-        # 🔴 2026-10-26: 原来写死 "http://10.163.146.78:8797/autoLight" —— 换网/换热点后必然打不开
+        # 🔴 2026-10-26: 原来预先固定 "http://10.163.146.78:8797/autoLight" —— 换网/换热点后必然无法打开
         #    (与 AR 按钮同一条坑)。主机按当前默认路由网卡现算, ZMAX_AR_URL 覆盖时取其 host。
         try:
             from ss_dreamview import ar_page_url as _ar_page_url
@@ -15393,7 +15393,7 @@ class SimulinkModule(QWidget):
         level: 'L2'/'L3'/'L4' → 按档位预设图层 + 标题标注 (2026-09-13 老倪: 三个档位各一个 dreamview 窗口)
 
         🧭 2026-10-15 老倪三产品分工: **量产档 (550C) 不开 3D 场景** (稳定性优先, 现场只用远程旁路)。
-        判断调一处真源 tools/zmax_profile.py::gui_on('scene_3d'); 调试档 550B 全开 ⇒ 行为不变。"""
+        判断调一处唯一依据 tools/zmax_profile.py::gui_on('scene_3d'); 调试档 550B 全开 ⇒ 行为不变。"""
         try:
             sys.path.insert(0, os.path.join(self._repo_root(), "tools"))
             import zmax_profile as _zp                                          # noqa: PLC0415
@@ -15405,7 +15405,7 @@ class SimulinkModule(QWidget):
                     pass
                 return
         except Exception as _e:                                                 # noqa: BLE001
-            print("[3D] 产品档位读取失败 (按开兜底):", _e)
+            print("[3D] 产品档位读取失败 (按开保障):", _e)
         try:
             from ss_dreamview import DreamView3D, load_episode
             import ss_dreamview as _DV
@@ -15645,7 +15645,7 @@ class SimulinkModule(QWidget):
         self._ff_reset_wins()   # 🔭 2026-09-05: 新一轮仿真 → 可视化窗口清旧轮数据
         # 🚀 2026-09-08 L3 接入: 任务链模式 (主线程读 checkbox → worker 用属性, 禁 QObject 跨线程)
         # 🧭 2026-09-08 能力档位 (数据源层节点双击切换): L2→insert / L3·L4→full; 优先于 chk 勾选
-        # 🐛 2026-09-09: 档位以画布节点 params.cap_level 为准 (radio 持久/重启不丢), 兜底内存
+        # 🐛 2026-09-09: 档位以画布节点 params.cap_level 为准 (radio 持久/重启不丢), 保障内存
         _cap = None
         try:
             for _n in self.nodes:
@@ -15813,11 +15813,11 @@ class SimulinkModule(QWidget):
                     _demo_cap = False       # 不走固定演示 → INTACT 节点真干活
                     _logs.append(f"🤖 L4 = INTACT 节点工作: u_ff 槽位由 INTACT 真推理接管 "
                                  f"(每 {os.environ.get('SS_INTACT_EVERY')} 步一次真推理)")
-                    # 🎯 2026-09-14: 默认权重由写死轮次改为**稳定指针** `intact_l4_current`
+                    # 🎯 2026-09-14: 默认权重由预先固定轮次改为**稳定指针** `intact_l4_current`
                     #   (checkpoints/intact_l4_current/weights.pt 软链 → 当前模型; 换模型只动软链:
-                    #    bash tools/l4_use_ckpt.sh [轮次关键字] [epoch]) —— 原来写死
+                    #    bash tools/l4_use_ckpt.sh [轮次关键字] [epoch]) —— 原来预先固定
                     #    `intact_goal_zmax_v2_s3072/weights_epoch_3.pt` 是上一代权重, 续训换名后必然过期。
-                    #   标注也改**动态**: 指针实际指向哪个文件就报哪个, 判闸数字不写死在此处 (会变假话)。
+                    #   标注也改**动态**: 指针实际指向哪个文件就报哪个, 判闸数字不预先固定在此处 (会变假话)。
                     _ptr_root = os.environ.get("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache")
                     _ptr = os.path.join(_ptr_root, "checkpoints", str(_ckp))
                     _real = os.path.realpath(_ptr)
@@ -15828,7 +15828,7 @@ class SimulinkModule(QWidget):
                                  f" · 节点 src/lerobot/policies/intact/")
                     _logs.append("   └ 判闸口径: 同权重同帧 skill=on/zero 消融 (赢常数基线 ∧ on<zero "
                                  "∧ std比≥0.30); 结论以 /home/ubuntu/zmax/zmax_data/l4_ab/judged/ 的 json 为准, "
-                                 "此处不写死数字")
+                                 "此处不预先固定数字")
                 elif not _demo_cap:
                     os.environ.pop("SS_INTACT", None)   # 非 L4 档: 清掉, 不影响解析链/L3
                 # 🧠 2026-09-16 老倪: "L2 功能应该和 L4 功能兼容, 运行 L4 的时候 L2 也要运行" ——
@@ -15922,7 +15922,7 @@ class SimulinkModule(QWidget):
                             _logs.append(f"❌ INTACT 未就绪 ({getattr(_nd.runtime, 'reason', '?')}) → 保持解析链")
                         else:
                             _gf = os.path.join(_root, "reports", "intact_goal_frame.npy")
-                            # 🎯 2026-09-22: 反归一化统计**按 ckpt 训练集自动同源** (原来写死 zmax_action_stats.json,
+                            # 🎯 2026-09-22: 反归一化统计**按 ckpt 训练集自动同源** (原来预先固定 zmax_action_stats.json,
                             #   它源自旧 zmax_insert.h5 → 与在役 v6 权重不同源, dx/dz 幅度差约 2 倍)
                             _stf, _stf_why = _idr.resolve_stats()
                             _logs.append(f"   {_stf_why}")
@@ -15946,7 +15946,7 @@ class SimulinkModule(QWidget):
                                              f"目标帧 {os.path.basename(_gf)} · 变换 a_raw=z·std+mean (唯一变换)")
                                 _logs.append("   └ 判闸口径: 同权重同帧 skill=on/zero 消融 (赢常数基线 ∧ "
                                              "on<zero ∧ std比≥0.30); 结论以 /home/ubuntu/zmax/zmax_data/l4_ab/judged/ "
-                                             "的 json 为准, 此处不写死数字")
+                                             "的 json 为准, 此处不预先固定数字")
                     except Exception as _ei:
                         import traceback
                         traceback.print_exc()
@@ -16149,10 +16149,10 @@ class SimulinkModule(QWidget):
     def _real_finish(self, tr):
         """🎥 真实轨迹 → 播放/3D/总线 (io_trace 与引擎同构 13 模块, dw 复用)"""
         self._ss_tr = tr
-        # 💾 2026-10-14 老倪: 轨迹落盘真源 ⇒ 常驻流形引擎周期循环 (tools/ss_engine_loop.py) 才吃得到
+        # 💾 2026-10-14 老倪: 轨迹落盘唯一依据 ⇒ 常驻流形引擎周期循环 (tools/ss_engine_loop.py) 才吃得到
         try:
             _p = _dump_ss_traj_true_source(tr)
-            self._log("💾 轨迹真源落盘: %s (常驻流形引擎回路按周期吃它)" % (_p or "失败"))
+            self._log("💾 轨迹唯一依据落盘: %s (常驻流形引擎回路按周期吃它)" % (_p or "失败"))
         except Exception as _e:                                                  # noqa: BLE001
             self._log("⚠️ 轨迹落盘异常: %s" % _e)
         # 🐛 2026-10-12 老倪「信号分析运行啊，动起来」: 播放前把**本轮**轨迹推给在册 3D 窗口。
@@ -16287,14 +16287,14 @@ class SimulinkModule(QWidget):
             self.btn_run.setEnabled(True)
             return
         self._ss_tr = tr
-        # 💾 2026-10-14 老倪: 轨迹落盘真源 (常驻流形引擎周期循环的数据源; 失败只告警, 不影响运行)
+        # 💾 2026-10-14 老倪: 轨迹落盘唯一依据 (常驻流形引擎周期循环的数据源; 失败只告警, 不影响运行)
         try:
             _p = _dump_ss_traj_true_source(tr)
-            self._log("💾 轨迹真源落盘: %s" % (_p or "失败"))
+            self._log("💾 轨迹唯一依据落盘: %s" % (_p or "失败"))
         except Exception as _e:                                                  # noqa: BLE001
             self._log("⚠️ 轨迹落盘异常: %s" % _e)
         # 🎯 2026-09-03 老倪: ▶运行 真实 YOLO 感知 — 原引擎轨迹里 YOLO/2D→3D 快照是
-        #   state_space_sim._io_snapshot 写死的 conf 0.99 仿真伪装 (detect_3d 从不执行),
+        #   state_space_sim._io_snapshot 固定不变的 conf 0.99 仿真伪装 (detect_3d 从不执行),
         #   已改为 conf -- (引擎无 YOLO 模型, 不伪装)。这里真实执行一次 ss_yolo 节点:
         #   detect_3d 断点可进 + 真实 conf/3D 日志 (证据), 供播放演示展示。
         self._real_yolo_sense_once()
@@ -16354,7 +16354,7 @@ class SimulinkModule(QWidget):
                 _mt.bus.begin_stream()
         except Exception:
             pass
-        # 🎯 v3.4.8 老倪「运行后没有连续动作, 像卡住」: 播放改 30ms/tick 逐引擎步平滑
+        # 🎯 v3.4.8 老倪「运行后没有连续动作, 像阻塞」: 播放改 30ms/tick 逐引擎步平滑
         #   (旧 80ms/tick × 60 tick = 大步跳帧 + 慢节点冻结 → 不连续)。tick 上限 ≈ 8s。
         self._ss_tick_ms = 30
         self._ss_ticks = max(len(self._ss_order), min(len(tr["t"]), 267))
@@ -16456,7 +16456,7 @@ class SimulinkModule(QWidget):
                     it.update()
                 self.canvas._scene.update()
                 # 🎯 v3.4.8: ▶运行 播放演示 = demo 轻量路径 (读 DataWorld 帧展示,
-                #   不重跑 YOLO/LLM 等重节点函数 — 冷加载 1.6s+ 曾冻结播放 = "卡住"根因)。
+                #   不重跑 YOLO/LLM 等重节点函数 — 冷加载 1.6s+ 曾冻结播放 = "阻塞"根因)。
                 #   调试 (单步/右键/双击) 仍走真实执行 fn (断点可进)。
                 try:
                     from node_logic import execute_node_logic
@@ -16616,7 +16616,7 @@ class SimulinkModule(QWidget):
                 #   跑完会被误跳视图。该页已从侧栏移除 (v5.24.2「测量, 只保留数据总线」)
                 #   ⇒ 这里不再自动跳转 (对象/方法都还在, 要复活只需改这一处判定)。
                 # 🔌 数据总线: 跑完补一次**全量刷新** —— 老倪 2026-10-13 实报「跑过了总线还是空」:
-                #   原实现只有"切到该页"才 refresh, 且运行中的动态 feed 因写死 index 9 成了死分支
+                #   原实现只有"切到该页"才 refresh, 且运行中的动态 feed 因预先固定 index 9 成了死分支
                 #   ⇒ 停在总线页看运行的人全程看不到数据。现在: 运行中逐帧 feed (已修) + 结束全量铺一次。
                 if getattr(_mt, "view_is", None) and _mt.view_is("bus") and getattr(_mt, "bus", None) is not None:
                     _mt.bus.refresh()
@@ -16684,7 +16684,7 @@ class SimulinkModule(QWidget):
                 self._safe_log("🧭 3D 视图现在与该视频同源 — 点「🧭 3D 视图」看同一条 episode 的分层数据")
                 try:
                     # 🔐 2026-10-10: 仓库为 public, 明文口令已从代码全部移除
-                    #   只从环境变量或 zmax_data/secrets/zmax.env 取 (缺则明确报错, 不再兜底明文)
+                    #   只从环境变量或 zmax_data/secrets/zmax.env 取 (缺则明确报错, 不再保障明文)
                     _pw = _ECS_PW_SM or _ecs_pw_from_secrets()
                     if not _pw:
                         self._safe_log("⛔ 缺 ZMAX_ECS_PW (环境变量或 zmax_data/secrets/zmax.env) — 上传跳过")
@@ -16815,12 +16815,12 @@ class SimulinkModule(QWidget):
     # ───────────────── 🧿 L5 标注→训练闭环 (2026-09-28 老倪) ─────────────────
     # 「能力档位节点增加 L5 档位; 选 L5 + 点运行 → 大模型视觉语言自动标注 (为 L2/L3/L4
     #   提供监督标注数据) + 自动启动训练流程 (L2 YOLO 全量 / L3·L4 LoRA → merge)」
-    # 编排真源 = tools/l5_annotate_train_loop.py (后台异步, GUI 不阻塞);
-    # 状态真源 = ~/zmax/zmax_data/l5_loop/state.json (CLI --status 与画布徽章读同一份, 不造第二套数字)
+    # 编排唯一依据 = tools/l5_annotate_train_loop.py (后台异步, GUI 不阻塞);
+    # 状态唯一依据 = ~/zmax/zmax_data/l5_loop/state.json (CLI --status 与画布徽章读同一份, 不造第二套数字)
     L5_STATE = "/home/ubuntu/zmax/zmax_data/l5_loop/state.json"
 
     def _cap_level_now(self):
-        """当前能力档位 (以画布节点 params.cap_level 为准 — radio 持久/重启不丢; 兜底内存档位)"""
+        """当前能力档位 (以画布节点 params.cap_level 为准 — radio 持久/重启不丢; 保障内存档位)"""
         try:
             for _n in self.nodes:
                 if _n.get("params", {}).get("cap_switch"):
@@ -16965,7 +16965,7 @@ class SimulinkModule(QWidget):
                 _v = res.get(_k)
                 if _v is not None:
                     _ticks.append("%s %s" % (_lab, "✓" if _v.get("ok") else "✗"))
-            # 🐛 2026-09-29: 终态口径新增 done_with_gaps (链路跑通但有如实记录的缺口, 如
+            # 🐛 2026-09-29: 终态口径新增 done_with_gaps (链路验证通过但有如实记录的缺口, 如
             #   "尚未演示槽位"/"L2 零检出未过闸") —— 别再让编排把它报成"失败", 也别装作全绿。
             _gaps = st.get("gaps") or []
             _gtxt = (" · ⚠️ 缺口 " + ",".join(str(g) for g in _gaps)) if _gaps else ""
@@ -17236,7 +17236,7 @@ class SimulinkModule(QWidget):
             }.get(state, "")
             # ❶ 画布正上方大横幅: **每次轮询都重铺** (不只在状态变化时) — 换页/遮挡后不用管, 它自己回来
             if state == "running":
-                self._l5_err_seen = None      # 新一轮跑起来 → 允许下次失败重新提示
+                self._l5_err_seen = None      # 新一轮启动 → 允许下次失败重新提示
                 self._l5_banner_show("⏳ " + _banner, "running")
             elif state == "ok":
                 self._l5_err_seen = None
@@ -17287,7 +17287,7 @@ class SimulinkModule(QWidget):
         #   内容没变时不重绘, 见 _l5_badge)。
 
     def on_l5_loop_node(self, node):
-        """双击 L5 节点 → 画布刷新状态 + 日志打印闭环产物 (状态真源=state.json)"""
+        """双击 L5 节点 → 画布刷新状态 + 日志打印闭环产物 (状态唯一依据=state.json)"""
         st = self._l5_state()
         if not st:
             self._log("🧿 L5 闭环: 尚无运行记录 (~/zmax/zmax_data/l5_loop/state.json 不存在) — "
@@ -17940,7 +17940,7 @@ class SimulinkModule(QWidget):
         5678 在监听, 老倪找不到 attach 时直接 F5 全新启动一个调试进程
 
         🧭 2026-10-15 老倪三产品分工: **只有调试档 (550B) 允许 VSCode 联调** (量产档 C 关掉联调口子)。
-        判断调一处真源 tools/zmax_profile.py::vscode_ok()。"""
+        判断调一处唯一依据 tools/zmax_profile.py::vscode_ok()。"""
         try:
             sys.path.insert(0, os.path.join(self._repo_root(), "tools"))
             import zmax_profile as _zp2                                         # noqa: PLC0415
@@ -17952,7 +17952,7 @@ class SimulinkModule(QWidget):
                     pass
                 return
         except Exception as _e2:                                                # noqa: BLE001
-            print("[VSCode] 产品档位读取失败 (按开兜底):", _e2)
+            print("[VSCode] 产品档位读取失败 (按开保障):", _e2)
         import subprocess as _sp, shutil as _sh, json as _j
         root = self._repo_root()
         vsc = os.path.join(root, ".vscode")
@@ -18045,7 +18045,7 @@ class SimulinkModule(QWidget):
             from lerobot.middleware import resolve_open_target as _rot     # noqa: PLC0415
             _t = _rot(node, root=root) if node is not None else {}
             # 🎯 2026-10-17: 直查已经定了 node 文件 (上面), 这里只补第二跳的实现位置;
-            #   没命中才按 target 走 resolve 结果 / 老兜底。
+            #   没命中才按 target 走 resolve 结果 / 老保障。
             if _loc is not None:
                 if _t.get("impl_path"):
                     _impl_desc = " · 实现在 %s:%s" % (
@@ -18074,7 +18074,7 @@ class SimulinkModule(QWidget):
             #   ② 不少节点把 source 写成**描述式**("路径 · 符号" / "路径 符号" / "路径 --flag"),
             #      `os.path.isfile(join(root, 整串))` 必然失败 → 白丢一次定位机会。
             #   这里: 拆出路径与符号; 若 params.source 只落到 GUI 自身 (node_logic.py) 而 registry
-            #   有真实实现, 让 registry 赢 (右键要进"真源码"不是进壳)。
+            #   有真实实现, 让 registry 赢 (右键要进"唯一依据码"不是进壳)。
             _parts = [x.strip() for x in _src.replace("·", " ").split() if x.strip()]
             _head = _parts[0] if _parts else ""
             _sym_descr = (_parts[1] if len(_parts) > 1 and not _parts[1].startswith("--") else "")
@@ -18106,10 +18106,10 @@ class SimulinkModule(QWidget):
         if _loc:
             cmd += ["-g", f"{_loc[0]}:{_loc[1] or 1}"]
             loc_desc = f" · 已定位 {os.path.relpath(_loc[0], root)}:{_loc[1] or 1}"
-        # 🛡 2026-10-17 老倪「vscode 卡住了」根因之一: VSCode 原来是本进程直接 Popen ⇒
+        # 🛡 2026-10-17 老倪「vscode 阻塞了」根因之一: VSCode 原来是本进程直接 Popen ⇒
         #   落在 zmax-studio.service 的 **cgroup** 里。控制台一旦停/崩, systemd 按 cgroup 把
         #   VSCode 一起收走 —— 实测 06:57:45 两者同秒双双消失 (code 还留下 SIGTRAP core),
-        #   用户看到的就是"VSCode 卡住不动"。
+        #   用户看到的就是"VSCode 阻塞不动"。
         #   改: 经 `systemd-run --user --scope` 起在**独立 transient scope**
         #   (单元 = user@1000.service/app.slice/zmax-vscode-<ts>.scope, 已实测),
         #   与控制台 cgroup 解耦 ⇒ 以后关/崩控制台都不再带走 VSCode。
@@ -18131,7 +18131,7 @@ class SimulinkModule(QWidget):
 
         _isolated = _launch is not cmd and _spawn(_launch)
         if not _isolated:
-            _spawn(cmd)                     # 兜底: 没有 systemd-run 时按老路开 (进同一 cgroup)
+            _spawn(cmd)                     # 保障: 没有 systemd-run 时按老路开 (进同一 cgroup)
         # 🎯 2026-10-17 老倪「右键打开 node 没有进到 node 的代码」——
         #   ① 把每次点击的落点写进 ~/.cache/zmax/rightclick.log (右键到底进了哪个文件, 事后可查);
         #   ② 起窗后 1.5s 用 xdotool 把窗口提到前台 (VSCode 窗口原来可能开在别的窗后面 ⇒ 看着像"没反应")。

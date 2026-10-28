@@ -77,7 +77,7 @@ def main() -> int:
         except Exception:                                                     # noqa: BLE001
             names = []
         if not names:
-            # 兜底: 从内部信号目录取
+            # 保障: 从内部信号目录取
             for attr in ("catalog", "_catalog", "sig_names", "all_signals"):
                 v = getattr(w, attr, None)
                 if isinstance(v, dict):

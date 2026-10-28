@@ -3,7 +3,7 @@
 
 为什么需要: 采集守护原来指 http://192.168.23.66:8792/frame.jpg + http://192.168.23.50:8804/pose,
 这两个端点一个绑在 Orin 的 127.0.0.1、一个在工位机(不在产线网段时整台不可达) ⇒ Intel 侧一条都拉不到。
-Intel 本机 ROS2 域里其实两样都有: /realsense/color/image_raw (bgr8 640x480) + /robot/tcp_pose (base_link)。
+Intel 本机 ROS2 域里实际两样都有: /realsense/color/image_raw (bgr8 640x480) + /robot/tcp_pose (base_link)。
 
 契约与 8804 保持逐字段一致:
   GET /frame.jpg  → JPEG 字节

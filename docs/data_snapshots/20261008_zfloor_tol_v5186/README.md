@@ -22,7 +22,7 @@
 `12:30:12` 全部 3 阶段完成；随后现场点 space2 正常继续。
 
 ## 文件
-- `space_points.json`：7 点真源（同平面 z=0.1727）
+- `space_points.json`：7 点唯一依据（同平面 z=0.1727）
 - `registry.json`：`goto_space1~7` 三段单轴 + speed_max 2000
 - `collision_points.json` / `estop_events.jsonl`
 - `backups/`：改动前的 `l2_daemon.py`（含删抬升前、z_floor 修复前两版）

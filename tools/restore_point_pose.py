@@ -89,7 +89,7 @@ def main() -> int:
            "desc": ent["desc"], "restored_from": a.like}
     os.makedirs(LEDGER, exist_ok=True)
     json.dump(led, open(os.path.join(LEDGER, a.name + ".json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    # 示教库: 🔴 真源结构是 {"points": {点名: {...}}} —— 必须写进 points 里!
+    # 示教库: 🔴 唯一依据结构是 {"points": {点名: {...}}} —— 必须写进 points 里!
     #   (2026-10-12 我第一版写成**顶层**键 ⇒ 服务读 points 看不到, 页面继续显示旧值, 台账与库判不一致。
     #    自己踩的坑: 写共享状态文件前先确认嵌套层级, 写完必须用**服务自己的读法**回读。)
     t = json.load(open(TAUGHT, encoding="utf-8")) if os.path.exists(TAUGHT) else {}

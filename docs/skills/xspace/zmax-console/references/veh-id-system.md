@@ -66,7 +66,7 @@
 - **v6 (老倪: "小按钮灰色字很脏")**: `_is_big` 收紧 — QPushButton 一律 `return False` (永不常显), 仅 QGroupBox/QTableWidget/面积≥60000 常显。实测 41 控件 = 6 常显 + 35 悬停。铁律: **按钮上不要放常显 ID 文字 (哪怕灰色), 一律 tooltip**
 - **v7 (老倪: "首页上面几个按钮被污染")**: 主循环 hover_only 扩为 `self._holo_page_of(w) in ("P01", "P11")` — 首页 hero 区 8 按钮 (smolvla_lew/同步/升级/Z-MAX/版本/解决方案/PPT汇报/分享) 悬停弹出, 不常显。功能卡 VEH.1~12 徽标不受影响 (卡内 QLabel, 不走 overlay)
 - **v8 (老倪: "模型引擎所有ID都改成悬停, 你大部分把原有字遮挡了")**: VEH.2 (P03) 页**彻底取消常显** — `_veh2_apply` 删掉 `_is_big` 分支, 41 控件**全部** `hover_only=True`。定稿铁律: **ID 一律 tooltip 悬停, 页面零静态 ID; 常显只留给主页功能卡徽标 (VEH.1~12)**。分组框/表格这些"大窗口"也常显被否 — 老倪最终要的是干净页面
-- **v9 (老倪: "VEH.0.01 也不要显示...全局规则一致")**: 主循环 `hover_only` 从 `("P01","P11")` 扩为**无条件 True** (所有页所有控件一律悬停, 不再按页区分)。VEH.0.x (objectName 未映射页的兜底 ID, `_VEH_PAGE.get(pg,0)`) 自然也悬停。两处调用点 (VEH.2 页 + 主循环) 都是 `hover_only=True`, `veh_small` 常显路径零残留 — 全局已无常显角标
+- **v9 (老倪: "VEH.0.01 也不要显示...全局规则一致")**: 主循环 `hover_only` 从 `("P01","P11")` 扩为**无条件 True** (所有页所有控件一律悬停, 不再按页区分)。VEH.0.x (objectName 未映射页的保障 ID, `_VEH_PAGE.get(pg,0)`) 自然也悬停。两处调用点 (VEH.2 页 + 主循环) 都是 `hover_only=True`, `veh_small` 常显路径零残留 — 全局已无常显角标
 - 经验: 页面顶部 hero 行按钮最容易被 ID 角标污染 — 常显角标只留给主页功能卡徽标; 页级 hover_only 判断 (P01/P11) 最终也被全局化吞并, 别再做按页分支
 
 ## VEH.2 页布局定稿 (2026-08-09 老倪: VEH.2.17 全高 / VEH.2.01 取消拖动条)
@@ -185,7 +185,7 @@
 - 排查: 深色 UI 看不清 → grep 按钮样式里所有深色 hex (`#1f2328/#24292f`), 逐个确认在替换对里
 
 ## VEH.0 首页落地 (2026-08-09 老倪: "首页也都加上 ID 用 VEH.0.序列号, 鼠标悬停弹出")
-- 之前 VEH.0 只是 objectName 未映射页的兜底 ID (`_VEH_PAGE.get(pg,0)`) 且被跳过; 用户明确要求首页正式编号 VEH.0.xx。首页 = ModuleCard(QFrame) + QLabel + 按钮混合, 通用 targets 分支覆盖不到 ModuleCard → 必须写独立 `_veh0_apply` (仿 _veh4_apply)。
+- 之前 VEH.0 只是 objectName 未映射页的保障 ID (`_VEH_PAGE.get(pg,0)`) 且被跳过; 用户明确要求首页正式编号 VEH.0.xx。首页 = ModuleCard(QFrame) + QLabel + 按钮混合, 通用 targets 分支覆盖不到 ModuleCard → 必须写独立 `_veh0_apply` (仿 _veh4_apply)。
 - 落地: ①`_veh0_apply` 定义 ②`_holo_apply_all` 开头调 `self._veh0_apply(root)` (与 _veh2/_veh4 并列) ③P01 在 `_VEH_PAGE` 已=0 → 自动 VEH.0
 - **⚠️ 坑1 — 侧栏控件误编 VEH.0**: SystemSidebar 等 parent 链无 objectName 的控件, `_holo_page_of` 返回 P00 → `_VEH_PAGE.get("P00", 0)` = 0 → **通用分支把它编成 VEH.0** (offscreen 首测 179 个里混入 "◀ 收起"/"← 返回首页" 等侧栏按钮)。修复: 通用分支 `if _pg == "P00" or _pg is None: continue` (未识别页不编号, VEH.0 只由 _veh0_apply 产生)
 - **⚠️ 坑2 — _veh0_apply 必须严格限定 parent 链**: 不能只靠 `_holo_page_of(w) == "P01"` (侧栏按钮 parent 链断, 判不出 P01, 会漏)。必须: 先找 `home_w` (objectName=="home" 的 HomeWidget), 再沿每个控件 parent 链 `while _p is not None: if _p is home_w: in_home=True` — 不在 HomeWidget 内直接 continue
@@ -227,7 +227,7 @@ m._veh2_apply(m)  # 或 _holo_apply_all(m) 测全页
 execute_code 里写嵌套子脚本 (hermes-verify- 前缀) 做 offscreen 验证时: **子脚本内部用 `tempfile.mkstemp` 必须自己在子脚本里 `import tempfile`** — execute_code 外层已 import 不代表子进程继承。症状: 子脚本跑一半 `NameError: name 'tempfile' is not defined` → 验证脚本 exit 1 但静态断言全过 (误导)。
 两个稳法:
 1. 外层 `fd, path = tempfile.mkstemp(prefix="hermes-verify-", suffix=".py", dir="/tmp")` 写文件 → 子进程 `/usr/bin/python3 path` → 跑完 `os.remove(path)`
-2. 子脚本里自 `import tempfile` — 但子脚本 body 常是拼接字符串, 第一行忘加就踩坑
+2. 子脚本里自 `import tempfile` — 但子脚本 body 常是拼接字符串, 第一行忘加就遇到问题
 排查: 验证脚本 exit 1 + STDERR NameError → 不是被测代码问题, 是脚本自身 import 缺失 — 别去改被测代码。
 
 ## 📌 相关: 原子技能→条件编码 (ControlNet)

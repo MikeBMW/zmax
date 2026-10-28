@@ -24,7 +24,7 @@
 | `scripts/ui_jitter_probe.py` | 主线程 10ms 心跳测"最大间隙"(= 用户感知的"卡一下"), 直接可跑 |
 | `references/main-thread-io-and-button-evidence-2026-09-16.md` | 主线程 I/O + 按钮取证(同类问题的更早一例) |
 | `references/gui-patch-safety-and-side-effects-2026-09-19.md` | 大 GUI 单文件改动的安全流程 |
-| `references/display-refresh-honesty-and-window-stubs-2026-09-17.md` | 刷新/显示的"看着变了其实没变"类坑 |
+| `references/display-refresh-honesty-and-window-stubs-2026-09-17.md` | 刷新/显示的"看着变了实际没变"类坑 |
 
 ## 3. 一句话铁律(与 §1 同源)
 

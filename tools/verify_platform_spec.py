@@ -4,8 +4,8 @@
 
 判据 (全绿才算交付):
   ① 单一数据库文件: data/database/zmax/zmax_engineering.db 存在, 且 data/database 只放产品数据目录
-  ② 库内容: 平台/产品/产品特征/子系统/功能/三轴/标定/模块/模块代码/能力/验证项 全部非空且数目对得上真源
-  ③ 同步判据: engineering_db.py check rc=0 (特征→子系统·功能→模块·三轴覆盖·段齐·真源一致)
+  ② 库内容: 平台/产品/产品特征/子系统/功能/三轴/标定/模块/模块代码/能力/验证项 全部非空且数目对得上唯一依据
+  ③ 同步判据: engineering_db.py check rc=0 (特征→子系统·功能→模块·三轴覆盖·段齐·唯一依据一致)
   ④ 功能清单页 (离屏真建): 页签齐 (Z-MAX 平台 / System 2 / System 1 / System 0 / 平台支撑),
      Z-MAX 页有产品 Z700/Z100 与 18 条产品特征; 各系统页有 三轴 + 功能清单
   ⑤ 主窗口接线: 侧栏 Z-MAX 卡在 System 2 之上; 点 zmax/sys2/sys1/sys0 → 切到功能清单页并选中对应页签
@@ -47,7 +47,7 @@ chk(all(os.path.isdir(os.path.join(_dd, x)) or x.endswith((".db", ".md", ".txt",
         for x in _files),
     "data/database/zmax/ 内容 (库 + 工程文件 + 说明; 允许 archive/ 子目录): %s" % _files)
 
-print("② 库内容 (真源 ↔ 库 数目)", flush=True)
+print("② 库内容 (唯一依据 ↔ 库 数目)", flush=True)
 import engineering_db as ED                                                     # noqa: E402
 D = ED.load(DB)
 plat = json.load(open(ED.PLATFORM_SRC, encoding="utf-8"))
@@ -210,7 +210,7 @@ for _r, _sub in _LINKS:
             _bad.append("%s → 指向实例包外" % _r)
     elif os.path.exists(_p):
         _bad.append("%s 是平台仓库内的真实文件 (未解耦)" % _r)
-chk(not _bad, "平台/实例 解耦: 真源落在 data/database/<产品>/sources/ — 违规: %s" % (_bad or "无"))
+chk(not _bad, "平台/实例 解耦: 唯一依据落在 data/database/<产品>/sources/ — 违规: %s" % (_bad or "无"))
 _inst_src = os.path.join(_inst, "sources")
 chk(all(os.path.exists(os.path.join(_inst_src, _s)) for _s in ("config", "feature.dbc", "canvas/state_space_obs.json")),
     "实例数据包完整: sources/{config,feature.dbc,canvas} 都在")

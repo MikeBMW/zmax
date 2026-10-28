@@ -6,7 +6,7 @@
   ② 映射关系: 数据空间每个 topic 都由元数据组合而成 (覆盖率 100%) 且组合可复核 (抽样打印)
   ③ 全息系统: 映射矩阵秩 + 整体算子复现误差 (真线性代数) + 覆盖率曲线 + **退化反证** (少一个 topic 就该不一致)
   ④ 门控路由: 硬先验 7 阶段 → 7 专家 · 单射 · 路由熵 0 (真调 route())
-  ⑤ 改名一致: 画布真源 / by_level / 名称归一器 / 节点 docstring 四处都是「元数据MOE门控路由」, 旧名不在在役路径
+  ⑤ 改名一致: 画布唯一依据 / by_level / 名称归一器 / 节点 docstring 四处都是「元数据MOE门控路由」, 旧名不在在役路径
   ⑥ 零回归: 画布 89 节点 / 184 连线 (改名不动结构) + 原 7 专家权重口径仍在
   ⑦ 节点真跑: node_ss_moe(ctx) 返回 True, 日志含 元数据/映射/全息/门控 四段真值
 CLI: python3 tools/verify_meta_moe_router.py
@@ -99,7 +99,7 @@ def main() -> int:
     bl = io.open(os.path.join(ROOT, "src/lerobot/engineering/nodes/by_level.py"), encoding="utf-8").read()
     sm = io.open(os.path.join(ROOT, "tools/gui/simulink_module.py"), encoding="utf-8").read()
     lib = io.open(os.path.join(ROOT, "src/lerobot/engineering/nodes/library.py"), encoding="utf-8").read()
-    chk("⑤ 改名一致: 画布真源 + by_level + 归一器 + 节点 docstring",
+    chk("⑤ 改名一致: 画布唯一依据 + by_level + 归一器 + 节点 docstring",
         "元数据MOE门控路由" in nm and "元数据MOE门控路由" in bl and "元数据MOE门控路由" in sm
         and "元数据MOE门控路由" in lib,
         "画布节点名 = %s" % nm)

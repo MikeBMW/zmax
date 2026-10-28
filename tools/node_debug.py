@@ -11,20 +11,20 @@
 本工具 = 这**六个节点的真实单步执行器**, 三条铁律:
  ① 每一步调用的都是**节点自己在跑的那个函数**(manifold_engine / manifold_layer /
     predictor_layer / state_space_action_head / parallel), 不是另写一套仿制实现;
- ② 输入取**真源**(画布引擎落盘 ss_traj_last.json / engine_latest.json / npz 权重),
+ ② 输入取**唯一依据**(画布引擎落盘 ss_traj_last.json / engine_latest.json / npz 权重),
     取不到就如实报「未算 / 未测」, 不填 0 不编数;
- ③ 每步打印 输入 → 输出 → 真源 → 耗时, 并做**不变量自检**(投影 ‖p‖=1、切空间 ⟨v,p⟩=0、
+ ③ 每步打印 输入 → 输出 → 唯一依据 → 耗时, 并做**不变量自检**(投影 ‖p‖=1、切空间 ⟨v,p⟩=0、
     导航沿 −∇Φ 下降、同一组数两处重算必须逐位相等)。
 
-命令 (全部只读, 不改任何真源; 唯一写入口是 --json 报告)
-  --list                     六节点表: id / 名称 / 入口 file:line / 源码模块 / 三环节 / 真源
+命令 (全部只读, 不改任何唯一依据; 唯一写入口是 --json 报告)
+  --list                     六节点表: id / 名称 / 入口 file:line / 源码模块 / 三环节 / 唯一依据
   --node <id> --step         单步执行 (回车走一步, q 退出)      [默认 ss_mani_eng]
   --node <id> --trace        一次跑完打印全轨迹 (非交互, 判据用)
   --node <id> --src          打印源码绝对路径+行号 (VSCode: 复制路径按钮 / code -g 直接断点)
   --node <id> --pdb          每步前 pdb.set_trace() ⇒ 可断点进真实源码 (与 --step/--trace 叠加)
   --all --json <path>        六节点全跑并写 JSON (供文档/判据/报告)
-  --frame N                  用第 N 帧真源 (默认 200; 越界自动夹回并如实说明)
-  --stage <名>               覆盖阶段名 (默认按真源/轨迹推断, 取不到时报「未测」)
+  --frame N                  用第 N 帧唯一依据 (默认 200; 越界自动夹回并如实说明)
+  --stage <名>               覆盖阶段名 (默认按唯一依据/轨迹推断, 取不到时报「未测」)
   --product <550B|550A|550C> 档位校验: 只有 550B(标定/调试档) 允许深调试
 
 ZMAX_DEBUG_BREAK=1 等价于 --pdb (与画布「右键源码 → VSCode 断点」同一环境变量口径)。
@@ -46,7 +46,7 @@ for _p in (os.path.join(ROOT, "src"), _STATE_SPACE_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-# ── 真源路径 (全部只读) ────────────────────────────────────────────────────────
+# ── 唯一依据路径 (全部只读) ────────────────────────────────────────────────────────
 SRC_TRAJ = "data/database/zmax/sources/canvas/ss_traj_last.json"   # 画布引擎落盘 (357×43 obs + u)
 SRC_ENGINE = "zmax_data/ss_live/engine_latest.json"                # 引擎最新一步 (投影/度量/导航真值)
 SRC_WEIGHTS = "models/manifold_engine.npz"                         # 引擎权重 (符号链接→fork models)
@@ -77,7 +77,7 @@ def _read_json(rel):
 
 
 def _load(rel, name):
-    """按**绝对路径**加载真源码模块 —— 控制台里 `lerobot` 会先解析到 fork 包
+    """按**绝对路径**加载唯一依据码模块 —— 控制台里 `lerobot` 会先解析到 fork 包
     (external/lerobot-smolvla-lew/src/lerobot, 同名但不同源), 所以不能靠 sys.path 顺序。"""
     p = os.path.join(ROOT, rel)
     if not os.path.isfile(p):
@@ -111,7 +111,7 @@ def _v(a, nd=4):
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 真源输入: 引擎轨迹帧 (obs43 → 几何量) —— 与 su2.obs43_geometry 同一通道划分
+# 唯一依据输入: 引擎轨迹帧 (obs43 → 几何量) —— 与 su2.obs43_geometry 同一通道划分
 # ════════════════════════════════════════════════════════════════════════════
 # [0:3]手位置 [3]夹爪 [4:7]光模块位置 [7:11]四元数 [11:18]pad×7
 # [18:36]上一帧18D [36:39]孔位 [39:43]触觉(grasp/contact/dir_x/dir_z)
@@ -119,11 +119,11 @@ OBS_CH = "obs43 = [0:3]手 [3]夹爪 [4:7]光模块 [36:39]孔位 (su2.py:253 �
 
 
 def load_traj(frame=200, stage=None):
-    """画布引擎落盘轨迹 → 当前帧真实几何量 (无真源 ⇒ 明确报缺, 不编数)"""
+    """画布引擎落盘轨迹 → 当前帧真实几何量 (无唯一依据 ⇒ 明确报缺, 不编数)"""
     import numpy as np
     d = _read_json(SRC_TRAJ)
     if not d or not d.get("obs"):
-        return None, "真源缺失: %s (先在画布点 ▶ 运行状态空间, 轨迹是数据真源)" % SRC_TRAJ
+        return None, "唯一依据缺失: %s (先在画布点 ▶ 运行状态空间, 轨迹是数据唯一依据)" % SRC_TRAJ
     obs = np.asarray(d["obs"], dtype=float)
     u = np.asarray(d.get("u_exec_vec") or [], dtype=float)
     n = int(obs.shape[0])
@@ -135,7 +135,7 @@ def load_traj(frame=200, stage=None):
     peg_head[2] += 0.030                    # 光模块头偏置 (su2.obs43_geometry 同源)
     target = o[36:39].copy()
     e = peg_head - target
-    # 末端速度: 相邻帧差分 (真源里没有速度通道, 如实标注为差分估计)
+    # 末端速度: 相邻帧差分 (唯一依据里没有速度通道, 如实标注为差分估计)
     if idx > 0:
         dt = 1.0 / 30.0
         v = (hand - obs[idx - 1][0:3]) / dt
@@ -145,13 +145,13 @@ def load_traj(frame=200, stage=None):
             "peg_head": peg_head, "target": target, "e": e, "v": v,
             "u_exec": u[idx] if u.size else None,
             "saved_at": d.get("saved_at"), "task_id": d.get("task_id"),
-            "v_src": "相邻帧差分 (真源无速度通道)", "obs_ch": OBS_CH}
+            "v_src": "相邻帧差分 (唯一依据无速度通道)", "obs_ch": OBS_CH}
     if stage is None:
         eng = _read_json(SRC_ENGINE) or {}
         stage = (eng.get("status") or {}).get("stage") if isinstance(eng.get("status"), dict) else None
         if not stage:
             stage = eng.get("stage")
-        stage_src = "engine_latest.json" if stage else "未测 (真源无阶段字段 ⇒ 调用处显式 --stage)"
+        stage_src = "engine_latest.json" if stage else "未测 (唯一依据无阶段字段 ⇒ 调用处显式 --stage)"
     else:
         stage_src = "--stage 指定"
     geom["stage"] = stage or "未测"
@@ -160,7 +160,7 @@ def load_traj(frame=200, stage=None):
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 六个节点的单步编排 —— 每步 = 真源码里的真函数
+# 六个节点的单步编排 —— 每步 = 唯一依据码里的真函数
 # ════════════════════════════════════════════════════════════════════════════
 def stages_mani_eng(g):
     """🧮 流形引擎 (ManifoldEngine · 编码→投影→度量→导航→反馈)"""
@@ -171,8 +171,8 @@ def stages_mani_eng(g):
     loaded = eng.load(wp) if os.path.exists(wp) else False
     state = g["obs"]
     # 真代码行为: goal_point=None ⇒ gradient_flow 的 φ 恒 0 (空转, 不报错) ——
-    # 在役控制台先设目标; 这里目标取**真源轨迹末帧的投影** (收敛点), 并如实标注来源。
-    goal_src = "真源 ss_traj_last.json 末帧投影 (收敛点)"
+    # 在役控制台先设目标; 这里目标取**唯一依据轨迹末帧的投影** (收敛点), 并如实标注来源。
+    goal_src = "唯一依据 ss_traj_last.json 末帧投影 (收敛点)"
     try:
         tr_last = _read_json(SRC_TRAJ) or {}
         if tr_last.get("obs"):
@@ -595,7 +595,7 @@ def stages_dit_real(g):
     """
     import numpy as np
     import torch
-    cond_dim = 960                        # 真源: action_head.py 注释/实测 cross_attention_dim=960
+    cond_dim = 960                        # 唯一依据: action_head.py 注释/实测 cross_attention_dim=960
     chain = None
     try:
         import importlib
@@ -626,7 +626,7 @@ def stages_dit_real(g):
         return {"status": "ok", "preset": preset,
                 "cond_shape": list(cond.shape), "cond_dim": cond_dim,
                 "params": int(sum(p.numel() for p in head.parameters())),
-                "src": "SmolVLM/H16 条件 token 语义 (真源里没有逐 token 数值 ⇒ 本步用确定性合成 token, 不冒充真值)",
+                "src": "SmolVLM/H16 条件 token 语义 (唯一依据里没有逐 token 数值 ⇒ 本步用确定性合成 token, 不冒充真值)",
                 "weights": "无 ckpt (README/docstring 明说需训练) ⇒ 只证结构可执行"}
 
     def s_metric():
@@ -672,7 +672,7 @@ def stages_dit_real(g):
     ], (lambda res: [
         ("DiT 真身可构造 (真代码, 非别名)", res[0].get("status") == "ok",
          "preset=%s · 参数=%s" % (res[0].get("preset"), res[0].get("params"))),
-        ("条件宽度 = 960 (真源 cross_attention_dim)", res[0].get("cond_dim") == 960 or res[0].get("status") != "ok",
+        ("条件宽度 = 960 (唯一依据 cross_attention_dim)", res[0].get("cond_dim") == 960 or res[0].get("status") != "ok",
          str(res[0].get("why", "cond_dim=960"))[:70]),
         ("流匹配采样真跑出动作块 (H×action_dim)", bool(res[2].get("status") == "ok" and res[2]["chunk_3d"][1] == 7),
          "形状=%s · %.1fms" % (res[2].get("chunk_3d"), float(res[2].get("ms") or -1))),
@@ -758,7 +758,7 @@ CONN_MODES = [
 
 
 def _product_gate(product):
-    """档位校验: 只有调试档 (550B) 允许深调试 —— 读产品真源, 不写死"""
+    """档位校验: 只有调试档 (550B) 允许深调试 —— 读产品唯一依据, 不预先固定"""
     d = _read_json(SRC_PRODUCT) or {}
     prof = (d.get("dev_profile") or {}) if isinstance(d.get("dev_profile"), dict) else {}
     active = str(d.get("active") or d.get("current") or "").strip()
@@ -768,7 +768,7 @@ def _product_gate(product):
             cfg = v
             break
     if cfg is None:
-        # 兜底: 顶层直接按档位键放的写法
+        # 保障: 顶层直接按档位键放的写法
         cfg = d.get(str(product).upper()) or {}
     debug_ok = bool((cfg or {}).get("debug", (cfg or {}).get("allow_debug", None)) is not None)
     if "debug" in (cfg or {}):
@@ -795,7 +795,7 @@ def cmd_list():
     for name, anchor in CONN_MODES:
         print("  %s\n      %s" % (name, anchor))
     print()
-    print("真源: %s" % SRC_TRAJ)
+    print("唯一依据: %s" % SRC_TRAJ)
     print("      %s" % SRC_ENGINE)
     print("      %s   %s" % (SRC_WEIGHTS, OBS_CH))
     return 0
@@ -815,10 +815,10 @@ def cmd_src(nid):
     for rel in n["modules"]:
         print("  ② 算法真体  %s" % os.path.join(ROOT, rel))
     if err:
-        print("  %s" % _c("y", "  (真源缺失, 只列源码: %s)" % err))
+        print("  %s" % _c("y", "  (唯一依据缺失, 只列源码: %s)" % err))
         return 0
     stages, _ = n["stages"](g)
-    print("  ③ 单步环节 (每步 = 真源码里的一行, 断点就设在这些行上)")
+    print("  ③ 单步环节 (每步 = 唯一依据码里的一行, 断点就设在这些行上)")
     for i, (title, _fnx, note, meta) in enumerate(stages, 1):
         ef, efn, eln = meta["entry"]
         print("     %s" % _c("b", title))
@@ -839,7 +839,7 @@ def run_node(nid, g, step=False, use_pdb=False, quiet=False):
     print("  %s" % n["name"])
     print("  入口 %s:%d def %s() · 三环节 %s" %
           (n["entry"][0], n["entry"][2], n["entry"][1], n["links"]))
-    print("  真源帧 #%d/%d (%s·%s) · 阶段=%s [%s]" %
+    print("  唯一依据帧 #%d/%d (%s·%s) · 阶段=%s [%s]" %
           (g["idx"], g["n"] - 1, g.get("saved_at"), g.get("task_id"), g["stage"], g["stage_src"]))
     for i, (title, fn, note, meta) in enumerate(stages, 1):
         ef, efn, eln = meta["entry"]
@@ -932,7 +932,7 @@ def main(argv=None):
     if err:
         print(_c("bad", "❌ " + err))
         return 3
-    print(_c("dim", "真源 %s · %s" % (SRC_TRAJ, OBS_CH)))
+    print(_c("dim", "唯一依据 %s · %s" % (SRC_TRAJ, OBS_CH)))
     if a.all or (not a.step and not a.trace):
         results = [run_node(nid, g, step=False, use_pdb=False) for nid in NODES]
     else:

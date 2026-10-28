@@ -121,7 +121,7 @@ def main():
         app.quit()
 
     w.view.loadFinished.connect(on_loaded)
-    QTimer.singleShot(20000, finish)      # 兜底: 20s 必须退出
+    QTimer.singleShot(20000, finish)      # 保障: 20s 必须退出
     app.exec_()
 
     print(json.dumps(RES, ensure_ascii=False, indent=1))

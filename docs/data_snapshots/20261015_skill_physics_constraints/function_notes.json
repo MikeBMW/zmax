@@ -1,6 +1,6 @@
 {
- "_doc": "功能点描述真源 (老倪 2026-10-14): 每个功能点一条『干什么活/卡在哪/现在什么状态』, 面向问题与痛点, 车间口径。",
- "_rule": "禁词表: 赋能/生态/抓手/全面提升/显著提升/智能化升级/助力/打造/一站式/无缝/深度融合/颠覆/行业领先/大力; 每条须含至少一个来自真源的具体事实 (参数 ID/数字/文件名/验证方法名)。判据 tools/verify_function_notes.py。",
+ "_doc": "功能点描述唯一依据 (老倪 2026-10-14): 每个功能点一条『干什么活/卡在哪/现在什么状态』, 面向问题与痛点, 车间口径。",
+ "_rule": "禁词表: 赋能/生态/抓手/全面提升/显著提升/智能化升级/助力/打造/一站式/无缝/深度融合/颠覆/行业领先/大力; 每条须含至少一个来自唯一依据的具体事实 (参数 ID/数字/文件名/验证方法名)。判据 tools/verify_function_notes.py。",
  "_generated_at": "2026-10-14 11:58:32",
  "_sources": [
   "data/database/zmax/config_meta.json",
@@ -35,7 +35,7 @@
   },
   "FN-PLAT-67": {
    "name": "🎥 真实场景叠加 · 双眼 (sim2real)",
-   "work": "双眼真实场景叠加; 真源只登记 n_realscene, 实现在 library.py",
+   "work": "双眼真实场景叠加; 唯一依据只登记 n_realscene, 实现在 library.py",
    "pain": "code_file 为空、无 declared_flags, 只两项 calib 且未标定",
    "state": "已接入但待标定 (只有通用标定项, 无专属参数)"
   },
@@ -66,7 +66,7 @@
   "FN-PLAT-72": {
    "name": "🧭 3D 视图",
    "work": "开 Apollo 风格 3D 分层视图; node_ss_3d_view 在 ▶运行 模式跳过弹窗, 双击才开窗。",
-   "pain": "cell_geometry.points 为 null, 3D 场景缺摆位真源 (PF-Z100-01#0 有数)。",
+   "pain": "cell_geometry.points 为 null, 3D 场景缺摆位唯一依据 (PF-Z100-01#0 有数)。",
    "state": "在役: 3D 窗口可开, 场景几何与台面高度待现场零运动示教补齐。"
   },
   "FN-PLAT-73": {
@@ -96,7 +96,7 @@
   "FN-SYS0-36": {
    "name": "💪 L2 肌肉记忆技能库 (光模块抓放循环)",
    "work": "读 光模块_抓放循环_v1.json 的 slot/safe 点, speed=30 经 /move_line 走五步",
-   "pain": "真源 code_file 为空; 10 条 PF-Z100-09/13 指标标「范围未定义」",
+   "pain": "唯一依据 code_file 为空; 10 条 PF-Z100-09/13 指标标「范围未定义」",
    "state": "在役 (2026-09-19 示教固化 v1)"
   },
   "FN-SYS0-37": {
@@ -120,7 +120,7 @@
   "FN-SYS0-40": {
    "name": "🔍 光学质量检测",
    "work": "拍金手指/端面图, AOIQualityChecker.assess_frame() 判 ok/too_dark",
-   "pain": "真源 code_file 空; 38 条参数全 calib 通用集, AOI 接口只在 declared_flags",
+   "pain": "唯一依据 code_file 空; 38 条参数全 calib 通用集, AOI 接口只在 declared_flags",
    "state": "在役 (调试本机, 产线 192.168.23.23:10082)"
   },
   "FN-SYS0-41": {
@@ -169,7 +169,7 @@
    "name": "🧪 状态校正器",
    "work": "state_correction 用 dist_h/dxy/depth 证据推阶段, confirm_n=2 帧确认",
    "pain": "align_th=0.02、insert_depth=0.0005 单位标「-」; 4mm→0.5mm 只在代码注释",
-   "state": "在役 (阈值按代码默认, 真源未登记单位)"
+   "state": "在役 (阈值按代码默认, 唯一依据未登记单位)"
   },
   "FN-SYS0-49": {
    "name": "🧭 动作调制器",
@@ -186,8 +186,8 @@
   "FN-SYS0-51": {
    "name": "① 接近 · SK01",
    "work": "SK01Approach 把夹爪移到 peg 上方 0.09m 悬停面 (不触碰), 水平距离 <0.06 判对齐。",
-   "pain": "hover_h=0.09 与 0.06 对齐判据写死在类属性, 抓握点 cell_geometry 未示教就无真值可比。",
-   "state": "在役: 原子技能已注册, 抓握点几何真源待现场示教。"
+   "pain": "hover_h=0.09 与 0.06 对齐判据硬编码在类属性, 抓握点 cell_geometry 未示教就无真值可比。",
+   "state": "在役: 原子技能已注册, 抓握点几何唯一依据待现场示教。"
   },
   "FN-SYS0-52": {
    "name": "② 对位 · SK02",
@@ -239,7 +239,7 @@
   },
   "FN-SYS0-60": {
    "name": "⚖ 物理约束 · 惯性/质量率闸 (SK01-08)",
-   "work": "InertiaLimiter.limit() 让每个 L2 技能进执行前先过四条物理约束 (①速度 ②加速度 ③加加速度 ④动量/质量变化率), 参数逐技能取真源 (接近 5N/1.20kg ⇒ a_max=4.17; 插入 2N/1.35kg ⇒ a_max=1.48; jerk=15m/s³×v_cap/0.35), 出可行动作 + 偏差 error + 削因",
+   "work": "InertiaLimiter.limit() 让每个 L2 技能进执行前先过四条物理约束 (①速度 ②加速度 ③加加速度 ④动量/质量变化率), 参数逐技能取唯一依据 (接近 5N/1.20kg ⇒ a_max=4.17; 插入 2N/1.35kg ⇒ a_max=1.48; jerk=15m/s³×v_cap/0.35), 出可行动作 + 偏差 error + 削因",
    "pain": "原来只有 safety.py saturate() 幅值限幅, 技能 ctrl 只有 v_cap/v_min ⇒ 加速度/加加速度/质量变化率无人管, '动作物理上能不能被执行'没有闸 (老倪 2026-10-15 盘查缺口); 另外动量/质量率这条至今未被触发过 (速度/加速度先绑住)",
    "state": "在役 (zmax-ss-skill-dispatch 每拍过闸; 实测过闸 15.3 万次, 削因 速度 87330/加加速度 222/加速度 4/动量率 0; 小偏差→🧪状态校正器, 大偏差(>50mm/s)→📡融合定位→🧮流形引擎顶层补偿)"
   },
@@ -259,12 +259,12 @@
    "name": "🚀 L3 · 长程序列规划 (记忆: 海马体)",
    "work": "L3 海马体排跨段序列, 按 PF-Z100-12 重试 ≤3 次/断点续作 ≥95%",
    "pain": "code_file 为空、缺 ranges; PF-Z100-09/12/13 状态「范围未定义」",
-   "state": "未接入任务 (真源未登记实现文件, 只有指标挂靠)"
+   "state": "未接入任务 (唯一依据未登记实现文件, 只有指标挂靠)"
   },
   "FN-SYS1-32": {
    "name": "🧠 VLM 通用视觉编码器 (SmolVLA)",
    "work": "SmolVLMEncoder.encode 把观测图编码成视觉特征, 供 SmolVLA 动作头使用。",
-   "pain": "ensure_loaded_async + wait_loaded 超时 60s; 在役权重靠软链, 断链无兜底。",
+   "pain": "ensure_loaded_async + wait_loaded 超时 60s; 在役权重靠软链, 断链无保障。",
    "state": "在役: 编码器已接入策略, 权重档位与哈希待比对。"
   },
   "FN-SYS1-33": {
@@ -288,13 +288,13 @@
   "FN-SYS2-02": {
    "name": "🧠 L3 长程序列规划器 (场景理解驱动)",
    "work": "TaskPlanner 把指令拆成工序序列; llm_url 配了走大模型, 否则走 _plan_rules。",
-   "pain": "llm_url 未配置就退回 _plan_rules; 连续否决阈值 max_veto=3 写死在函数默认值里。",
+   "pain": "llm_url 未配置就退回 _plan_rules; 连续否决阈值 max_veto=3 硬编码在函数默认值里。",
    "state": "在役: 规则路径可用 (确定性优先), 大模型路径未配置。"
   },
   "FN-SYS2-03": {
    "name": "🔍 异常推理器 (LLM)",
    "work": "ExceptionReasoner 遇否决/超时诊断: max_veto=3 先走规则再调 diagnose_llm",
-   "pain": "llm_url/llm_key 代码默认 None, 真源未登记; 13/16 条参数是 calib 通用集",
+   "pain": "llm_url/llm_key 代码默认 None, 唯一依据未登记; 13/16 条参数是 calib 通用集",
    "state": "已接入但待定 (Qwen3-7B 端点靠外部注入)"
   },
   "FN-SYS2-04": {
@@ -318,7 +318,7 @@
   "FN-SYS2-07": {
    "name": "🧬 技能词典 · L2 动作基",
    "work": "node_ss_skill_dict 把 L2 原子技能编成词典 (bundle=True) 给 L4/L5 编排",
-   "pain": "deps.functions 空, 词典与 SK01~SK08 在真源里没登记关联; 13/14 条是通用集",
+   "pain": "deps.functions 空, 词典与 SK01~SK08 在唯一依据里没登记关联; 13/14 条是通用集",
    "state": "在役 (mem_nodes.py:224 node_ss_skill_dict)"
   },
   "FN-SYS2-08": {
@@ -336,12 +336,12 @@
   "FN-SYS2-10": {
    "name": "👁 视觉语言大模型 · 场景理解 (Qwen2.5/3-VL)",
    "work": "SceneVLM.ask 出场景摘要, 依次退 DeepSeek Vision / 本地 3B VLM / 规则回退。",
-   "pain": "key 走 ~/.hermes/.env 兜底, 被屏蔽时变成 src=rule, 看着像没配实则 key 空。",
-   "state": "在役: 三路径可切; 实际常用哪条 (src 字段) 真源未登记。"
+   "pain": "key 走 ~/.hermes/.env 保障, 被屏蔽时变成 src=rule, 看着像没配实则 key 空。",
+   "state": "在役: 三路径可切; 实际常用哪条 (src 字段) 唯一依据未登记。"
   },
   "FN-SYS2-11": {
    "name": "🧿 DeepSeek-V4-Flash · 场景理解 (L5 大模型主路)",
-   "work": "SceneVLM 把帧+上下文发 deepseek-flash 做描述/引导, 本地 smolvlm2 兜底",
+   "work": "SceneVLM 把帧+上下文发 deepseek-flash 做描述/引导, 本地 smolvlm2 保障",
    "pain": "provider/fallback 只在 declared_flags; max_tokens=256 未登记",
    "state": "在役 (本机 key 已配), 超时与 token 上限未登记"
   },
@@ -367,7 +367,7 @@
    "name": "🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)",
    "work": "L4 记忆层, 存世界模型预测与恢复策略, 供 L4 安全与导航取用",
    "pain": "code_file 空; 实现在 mem_nodes.py 的 node_ss_mem_l4, 13 条参数全通用集",
-   "state": "在役但真源未登记源文件 · 待标定, 参数未定值"
+   "state": "在役但唯一依据未登记源文件 · 待标定, 参数未定值"
   },
   "FN-SYS2-16": {
    "name": "🧲 总装机记忆 · 势场联络 (L2/L3/L4 势场 → 意图 −∇Φ)",
@@ -385,7 +385,7 @@
    "name": "🧮 接触流形 · 导航地图 (e∥进度/e⊥偏离)",
    "work": "ContactManifold 的 decompose 拆出沿轴进度 e_par 与法向偏离 e_perp 两分量。",
    "pain": "未接触阶段无弯曲风险源, e_perp 归零只报 progress; hole_pos 未标定则通道轴拿不到。",
-   "state": "已接入但待标定: 分解函数在役, 孔位 hole_pos 真源待标。"
+   "state": "已接入但待标定: 分解函数在役, 孔位 hole_pos 唯一依据待标。"
   },
   "FN-SYS2-19": {
    "name": "🧮 性能流形 · 耦合代价 (V_p/η)",
@@ -408,14 +408,14 @@
   "FN-SYS2-22": {
    "name": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
    "work": "run_once 调跨 venv 常驻桥跑 INTACT 真推理, 解码出 IntentReport 与证据。",
-   "pain": "L3 流形条件未标定就诚实拒绝, 不写死映射; 桥 ckpt 可能为空, 只能靠 ckpt_realpath 取证。",
+   "pain": "L3 流形条件未标定就诚实拒绝, 不预先固定映射; 桥 ckpt 可能为空, 只能靠 ckpt_realpath 取证。",
    "state": "已接入但待标定: 桥在役, L3 条件未标定即拒绝出动作。"
   },
   "FN-SYS2-23": {
    "name": "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)",
    "work": "WorldModelPredictor 由 z(960)+动作 a(4) 预测下帧潜空间与流形",
    "pain": "z_dim=960/act_dim=4/manifold_dim=6/lip=8.0 只在代码, 参数表未登记",
-   "state": "在役 (WorldModelPredictor), 超参未进真源"
+   "state": "在役 (WorldModelPredictor), 超参未进唯一依据"
   },
   "FN-SYS2-24": {
    "name": "🧾 元任务预测 (驱动扭矩 → 元任务预测值)",

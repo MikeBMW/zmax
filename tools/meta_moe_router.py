@@ -13,7 +13,7 @@
   ③ 映射关系 + 全息系统                     →  INCIDENCE 矩阵 P(topic×基元) + 全息重构算子 (真线性代数)
   ④ 门控路由 (硬先验, 可复核)               →  ROUTE: 阶段 → 专家 1:1 (单射), 路由熵 0
 
-真源: zmax_data/dataspace/busdb.json (节点/信号/报文) + config/calib/*.json ; 数值全部真算, 缺就报缺。
+唯一依据: zmax_data/dataspace/busdb.json (节点/信号/报文) + config/calib/*.json ; 数值全部真算, 缺就报缺。
 CLI: python3 tools/meta_moe_router.py report | holography | route
 """
 from __future__ import annotations

@@ -55,10 +55,10 @@ if time.time() - last_dec <= 1.0:       # 回拨后恒真 → 永久 continue, �
 - cron `next_run_at` → 见 `references/clock-reset-cron-reclock.md`
 - 全仓扫反模式: `scripts/audit_wall_clock_cadence.py <repo>`
 
-**不要一刀切**: 一次性超时循环 (`while time.time() - t0 < 30` / `--seconds` / `--duration`) 只会被拉长,
+**不要统一处理**: 一次性超时循环 (`while time.time() - t0 < 30` / `--seconds` / `--duration`) 只会被拉长,
 不会冻死 (回拨=多等 8h 但仍有界; 前拨=提前结束)。这类可以不动, 只改"每轮/每帧判据"。
 
-## 回归自检 (修完必须自跑通, 模式可复用)
+## 回归自检 (修完必须自验证通过, 模式可复用)
 
 `tools/verify_clock_skew_guard.py` (本次落地在 Z-MAX 仓库):
 offscreen 导入 GUI 模块 → monkeypatch `SHARED`/候选文件表到临时目录 → 造 4 种 mtime

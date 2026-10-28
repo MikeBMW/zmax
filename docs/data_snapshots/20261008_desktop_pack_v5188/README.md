@@ -21,14 +21,14 @@ ModuleNotFoundError: No module named 'lerobot'
 | 文件 | 改动 |
 |---|---|
 | `tools/gui/node_logic.py` | 冻结感知：工程根按候选表找（`_MEIPASS/src` → `<here>/src` → `ZMAX_SRC_DIR` → 源码上溯），缺包给人话提示 |
-| `.github/workflows/build-win-exe.yml` | win/mac **加 `--add-data src/lerobot/engineering`**；包内断言新增"工程包(节点逻辑) / 画布真源"两项；A/B 基线 job 同步补上（其契约 = 只少 runtime-hook） |
+| `.github/workflows/build-win-exe.yml` | win/mac **加 `--add-data src/lerobot/engineering`**；包内断言新增"工程包(节点逻辑) / 画布唯一依据"两项；A/B 基线 job 同步补上（其契约 = 只少 runtime-hook） |
 | `tools/gui/studio.py` | 冻结核验扩到 **GUI 启动导入链**：`node_logic → simulink_module → project_file → node_logic_dialog` + 断言注册节点数 ≥100 且画布 JSON 在位 |
 | `tools/fix_venv_shebangs.py`（新） | 顺带修 `gui-venv311/bin` **56 个** CLI 的破损 shebang（家目录整合遗留老路径） |
 
 ## 本目录文件
 | 文件 | 是什么 |
 |---|---|
-| `frozen_ab_A_with_package.json` | 本地冻结探针（带工程包）自检输出：`node_logic_keys=151`、画布真源在位、rc=0 |
+| `frozen_ab_A_with_package.json` | 本地冻结探针（带工程包）自检输出：`node_logic_keys=151`、画布唯一依据在位、rc=0 |
 | `frozen_ab_B_without_package.json` | 同一探针**不带**工程包：逐字复现现场报错 `No module named 'lerobot'`、rc=1（证明根因 + 证明核验有牙） |
 | `probe_frozen_node_logic.py` | 上面那个探针本体（冻结包里判定工程包是否可达） |
 | `frozen_ab_onedir.sh` | A/B 构建脚本。**注意**：本机 venv 带 torch/ultralytics，`--onefile` 归档会超 4GB 报 `struct.error` ⇒ 本地取证统一用 **onedir**（`sys._MEIPASS=<dist>/<name>/_internal`，冻结语义一致） |
@@ -40,7 +40,7 @@ ModuleNotFoundError: No module named 'lerobot'
 - CI（run 37755212807，两个 job 全 success）真产物自检：
   Windows exe `frozen=true, mujoco=3.3.0, node_logic_keys=151, logic_home=library.py, canvas_json=state_space_obs.json, gui_import_chain=true, rc=0`；
   macOS .app 同（`meipass=.../Contents/Frameworks`）。
-- 包内断言输出（Windows）：`metaworld 资产 563 · stock XML 1 · L4 场景 XML 2 · 工程包(节点逻辑) 1 · 画布真源 2 · mujoco 运行时库 1 · 插件 1`。
+- 包内断言输出（Windows）：`metaworld 资产 563 · stock XML 1 · L4 场景 XML 2 · 工程包(节点逻辑) 1 · 画布唯一依据 2 · mujoco 运行时库 1 · 插件 1`。
 - 已发布产物：`Z-MAX_Console.exe` 169,862,752 B（169.9 MB）md5 `c13e0c637d07185e433d46c3c7c7c2c1`；`Z-MAX_Console-macOS.zip` 133.8 MB。
 - 版本号六处一致（`integrity_check` 通过 v5.18.8），`repo_guard` 干净。
 

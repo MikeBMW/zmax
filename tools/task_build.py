@@ -6,17 +6,17 @@
     · 任务是**可复用的作业定义**: 选哪些配方段 + 参数覆盖 + 触发/循环策略 + 验收判据
     · 工单是任务的一次执行 (1 盘 = 1 工单, 1 件 = 1 记录)
 
-任务配置字段 (缺一不许进真源):
+任务配置字段 (缺一不许进唯一依据):
     task_id · name · recipe_type · scene_ref · site · applies_segments(适用的段)
     · variants(物料粒度) · overrides(参数覆盖) · trigger(怎么启动) · loop(循环策略)
     · targets(验收判据) · orders_rule · binding_hint · safety(继承站点 Sys-0)
 
-真源 (只读):
+唯一依据 (只读):
     flows/scenes_5jobs.json      5 个场景 (对象/步骤/性能目标)
     tools/build_sheet.py         工序配方 RECIPE_STEPS / 安全节
     config/calib/zmax_calib.json 站点工程配置 (用于标注阻塞)
 输出:
-    config/tasks/tasks.json      任务配置真源 (生成物, 勿手改)
+    config/tasks/tasks.json      任务配置唯一依据 (生成物, 勿手改)
 用法:
     python3 tools/task_build.py [--check] [--json]
 """
@@ -89,7 +89,7 @@ PLAN = {
         loop="单颗循环; 周转盘空或 Tray 满 → 上报待人工补料/下料",
         orders_rule="1 盘 = 1 工单; 1 颗 = 1 条记录",
         note="摆盘: 周转盘→上料Tray盘取放; 不涉及插入/拔出 ⇒ 配方段 5 不适用; "
-             "CT 起止口径写死=从吸取离盘到下一位就位"),
+             "CT 起止口径预先固定=从吸取离盘到下一位就位"),
     "ar_aoi": dict(
         task_type="光学质量检测",
         # 检测型任务: 只用到 来料状态/识别对接/分拣回位/节拍 四段 (取件/姿态/插拔不适用)
@@ -143,10 +143,10 @@ def teach_point_overrides(dir_rel="reports/aoi_points"):
     """把示教点位台账写进任务配置的 overrides —— 让「金手指点1 的位置」在**配置中心的配置里**就能查到。
 
     老倪: 「更新记录这个 金手指点1 的位置, 要在配置中心的配置里找到这个数据」
-      · pt.<点名>     = 位置(x,y,z) + 记录时间 + 真源文件      (读 reports/aoi_points/<点名>.json)
+      · pt.<点名>     = 位置(x,y,z) + 记录时间 + 唯一依据文件      (读 reports/aoi_points/<点名>.json)
       · pthist.<点名> = 更新次数 + 最近一次 old→new           (读 <点名>.history.jsonl)
       · pt.dir        = 台账目录
-    只**读**台账生成配置(不反向写台账): 台账改了重跑 build 即同步, 单一真源不打架。
+    只**读**台账生成配置(不反向写台账): 台账改了重跑 build 即同步, 单一唯一依据不打架。
     """
     # 姿态 a b c 用**唯一口径** tools/pt_pose.py(8793 页面 / 记录脚本 / 配置中心 同一份实现)——
     #   老倪 2026-10-12: 「配置中心的点, 除了位置, 还得有 a b c, 6 个数字都要记录」。
@@ -154,9 +154,9 @@ def teach_point_overrides(dir_rel="reports/aoi_points"):
         return _pose.abc_str(rec)
 
     out = {"pt.dir": dir_rel}
-    # 🔲 2026-10-12 老倪: 「配置中心, 也要有空间点1~7 的配置位置」—— 空间点真源是
+    # 🔲 2026-10-12 老倪: 「配置中心, 也要有空间点1~7 的配置位置」—— 空间点唯一依据是
     #   data/skills/l2_atomic/space_points.json (8793 标记模式下记的 7+1 个空间点), 只读摊进配置:
-    #   pt.空间点N = x/y/z + 记录时间 + 真源文件 ⇒ 配置中心那张表自动多出这几行(单一真源, 不另写)。
+    #   pt.空间点N = x/y/z + 记录时间 + 唯一依据文件 ⇒ 配置中心那张表自动多出这几行(单一唯一依据, 不另写)。
     sp_rel = "data/skills/l2_atomic/space_points.json"
     out["pt.space_dir"] = sp_rel
     try:
@@ -262,7 +262,7 @@ def build(scene, calib, i):
     p = PLAN.get(scene["scene_type"])
     if p is None:
         # 🚫 无配方计划(PLAN)的场景**不再静默套 ATS 配方** —— 那会造出一条"类型/段/覆盖全错"的任务。
-        #    场景照旧留在 scenes_5jobs.json (只读真源), 只是不入任务清单; 要建任务 = 在 PLAN 里加一条。
+        #    场景照旧留在 scenes_5jobs.json (只读唯一依据), 只是不入任务清单; 要建任务 = 在 PLAN 里加一条。
         return None
     gaps = [k for k, v in (("T_base_cam", "T_base_cam.value"), ("plane_z", "plane_z.value"),
                            ("cell_geometry.points", "cell_geometry.points"))
@@ -335,7 +335,7 @@ def main():
         print("🔒 已保留 %d 个任务的手写字段 (meta_tasks / long_horizon): %s"
               % (n_keep, [t["task_id"] for t in tasks if any(k in t for k in AUTHORED_KEYS)]))
     doc = {"schema": "zmax-tasks/1.0",
-           "note": "任务配置真源 (生成物: scenes_5jobs + 工序配方 + 站点配置)。任务 = 配方段子集 + 参数覆盖 + 触发/循环。",
+           "note": "任务配置唯一依据 (生成物: scenes_5jobs + 工序配方 + 站点配置)。任务 = 配方段子集 + 参数覆盖 + 触发/循环。",
            "sources": {"flows/scenes_5jobs.json": _sha16(SCENES),
                        "config/calib/zmax_calib.json": _sha16(CALIB),
                        "recipe": "tools/build_sheet.py#RECIPE_STEPS (8 段)"},
@@ -347,7 +347,7 @@ def main():
         old = open(OUT, encoding="utf-8").read() if os.path.isfile(OUT) else None
         same = old == txt
         print(f"  {'✅' if same else '❌'} config/tasks/tasks.json "
-              f"({'内容一致' if same else '不一致 — 真源变了, 需重生成'})")
+              f"({'内容一致' if same else '不一致 — 唯一依据变了, 需重生成'})")
         return 0 if same else 2
     if a.json:
         print(txt); return 0

@@ -241,7 +241,7 @@ def do_move(r, target_trans, target_rpy, speed, out, max_axis_mm, tag, motion="L
     _chk = None
     # ⚠️ 默认关: checkPath 的 Python 调用格式还没调对 —— 拿**已知可行**的 +1mm 做基准它同样报
     #    ec=-50519 "move invalid target"(空表和 6 零预分配都试过), 说明不是目标点的问题而是参数口径问题。
-    #    宁可不用它: 下面的 MoveL→被拒→自动改 MoveJ 是**实测过**的反应式兜底。调对后再开(env ZMAX_CHECKPATH=1)。
+    #    宁可不用它: 下面的 MoveL→被拒→自动改 MoveJ 是**实测过**的反应式保障。调对后再开(env ZMAX_CHECKPATH=1)。
     if str(motion).upper() != "J" and os.environ.get("ZMAX_CHECKPATH") == "1":
         try:
             _sj = [float(v) for v in (p0.get("joints") or [])]
@@ -294,8 +294,8 @@ def do_move(r, target_trans, target_rpy, speed, out, max_axis_mm, tag, motion="L
     log("moveStart() ec=%s · 开始盯真值" % ec)
 
     trace, stopped = [], None
-    # ⏱ 盯真值的预算必须跟着「距离 / 速度」走。旧实现写死 20s —— 在空间点之间的长转移上
-    #    (例: 460mm @18mm/s ≈ 26s) 会提前退出, 表现成代理报"未到位"而臂其实还在走。
+    # ⏱ 盯真值的预算必须跟着「距离 / 速度」走。旧实现预先固定 20s —— 在空间点之间的长转移上
+    #    (例: 460mm @18mm/s ≈ 26s) 会提前退出, 表现成代理报"未到位"而臂实际还在走。
     _want_mm = max(abs(target_trans[i] - p0["tcp"][i]) * 1000.0 for i in range(3))
     _is_j = (out.get("motion") == "MoveJ")
     if _is_j:
@@ -304,7 +304,7 @@ def do_move(r, target_trans, target_rpy, speed, out, max_axis_mm, tag, motion="L
     else:
         # ⏱ 2026-10-08 实测修正: 现场 3 次独立测量一致 —— 下发 11.2mm/s ⇒ **实际 1.11mm/s**。
         #    原式按 speed(标称)算 ⇒ 200mm 只给 73.6s(实际要 180s) ⇒ 预算到点判 CHECK/rc=6,
-        #    上层当成"失败"掐掉整条计划, 而控制器其实还在走(臂后来确实到位了)。按实测速率给。
+        #    上层当成"失败"掐掉整条计划, 而控制器实际还在走(臂后来确实到位了)。按实测速率给。
         _eff = max(float(speed) * 0.1, 0.35)
         _budget = max(45.0, min(2400.0, _want_mm / _eff * 1.6 + 45.0))
     log("盯真值预算 %.0fs (位移 %.1fmm · speed=%.1fmm/s · %s)" % (_budget, _want_mm, float(speed), out.get("motion")))

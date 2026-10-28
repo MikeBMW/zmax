@@ -20,7 +20,7 @@
 1. **物点单位必须是米**：`board_handeye_solve.py` 传 `--square-mm 20` 时物点用了 `20`（=20 米）→ 解出的"板距相机"是 **448m**（真实 0.448m 的 1000 倍），外参平移 267 米。
    **09-19 那次失败同因**（当时算出 256m）。⇒ 已改为米；任何"距离 ×1000"的现象先查单位。
 2. **`/target_relative_joint` 动作后驱动会把伺服下电**（老倪现场："怎么又下电了"）→ 标定这种要反复走位的场景改用 **`/move_pose`**（与 `/move_line` 同型 TargetPos）：实测 power_state 一直 on，不用人工反复上电。
-3. **判完成要看真值，不看 success**：`/move_pose` 大角度（20°）会报 `ROBOT_IDLE_TIMEOUT`（驱动等"空闲"30s 超时），但动作其实已完成（样本姿态 == 下发目标）。
+3. **判完成要看真值，不看 success**：`/move_pose` 大角度（20°）会报 `ROBOT_IDLE_TIMEOUT`（驱动等"空闲"30s 超时），但动作实际已完成（样本姿态 == 下发目标）。
    而且该标志会在**下一次成功动作后自动清掉**。⇒ 单步旋转压到 ≤10° 可避开；出现该码时按真值判定，别重发。
    另: `error_code=ROBOT_IDLE_TIMEOUT / collision_detected=false / estop_detected=false / controller_error_logs=[]` = 纯客户端超时记账，不是碰撞/急停。
 

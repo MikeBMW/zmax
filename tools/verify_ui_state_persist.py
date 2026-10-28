@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""tools/verify_ui_state_persist.py — 侧栏「视图选择」开机回选 判据 (只读真源; 只写自己的界面态键)
+"""tools/verify_ui_state_persist.py — 侧栏「视图选择」开机回选 判据 (只读唯一依据; 只写自己的界面态键)
 
 老倪 2026-10-16: 「画布右侧栏, 主参数的太阳系, 不是你关机前的状态。找回来恢复」
 根因: `cmb_viz_view` 的选择只在内存 ⇒ 控制台重启回到第 0 项 (🧊 四面板), 太阳系"不见"。
@@ -8,7 +8,7 @@
       **只有人点下拉 / 命令通道 `echo orbital` 才写盘**, 程序化切换 (含判据脚本) 一律不写。
 
 跑法: QT_QPA_PLATFORM=offscreen ./gui-venv311/bin/python tools/verify_ui_state_persist.py
-判据全部读真源/真构造, 不编数; 跑完把界面态键还原成跑之前的原值。
+判据全部读唯一依据/真构造, 不编数; 跑完把界面态键还原成跑之前的原值。
 """
 from __future__ import annotations
 
@@ -75,7 +75,7 @@ def main():
     MT.ui_state_put(MT.MPARAM_VIZ_KEY, 0)
     page2 = MT.MasterParamMView(_M())
     app.processEvents()
-    chk("S3", "存值=0 ⇒ 回选「🧊 几何四面板」(回选按真值走, 不是写死 1)",
+    chk("S3", "存值=0 ⇒ 回选「🧊 几何四面板」(回选按真值走, 不是预先固定 1)",
         {"下拉": page2.cmb_viz_view.currentIndex(), "stack": page2.viz_stack.currentIndex()},
         page2.cmb_viz_view.currentIndex() == 0 and page2.viz_stack.currentIndex() == 0, "两处都是 0")
 
@@ -106,20 +106,20 @@ def main():
         {"切视图": "cmb.setCurrentIndex(1)" in seg, "落盘": "ui_state_put(MPARAM_VIZ_KEY, 1)" in seg},
         ("cmb.setCurrentIndex(1)" in seg) and ("ui_state_put(MPARAM_VIZ_KEY, 1)" in seg), "两处都在")
 
-    # ── S7 回选不劫持刷新链: 回选后仍能 refresh 拿到真值 (太阳 M 与标定真源同值) ──
+    # ── S7 回选不劫持刷新链: 回选后仍能 refresh 拿到真值 (太阳 M 与标定唯一依据同值) ──
     MT.ui_state_put(MT.MPARAM_VIZ_KEY, 1)
     page3 = MT.MasterParamMView(_M())
     app.processEvents()
     import json
-    # 真源 = 视图自己读的那一个 (仓库根 config/calib/zmax_manifold.json ⇒ data/database/... 真源;
+    # 唯一依据 = 视图自己读的那一个 (仓库根 config/calib/zmax_manifold.json ⇒ data/database/... 唯一依据;
     # 注意别拿 defaults/config/... 的出厂默认 M 去比 —— 那是另一个文件, 2026-10-16 踩过)
     _mp = os.path.join(ROOT, "config", "calib", "zmax_manifold.json")
     with open(_mp, encoding="utf-8") as fh:
         mani = json.load(fh)
     sunM = getattr(getattr(page3, "orbital", None), "data", None)
     sunM = (sunM.body.get("sun", {}) or {}).get("M") if sunM is not None else None
-    chk("S7", "回选到 🪐 之后真源照读 (太阳 M == 视图自己的真源 config/calib/zmax_manifold.json)",
-        {"太阳 M": sunM, "真源 M": mani.get("M"), "真源文件": os.path.relpath(_mp, ROOT)},
+    chk("S7", "回选到 🪐 之后唯一依据照读 (太阳 M == 视图自己的唯一依据 config/calib/zmax_manifold.json)",
+        {"太阳 M": sunM, "唯一依据 M": mani.get("M"), "唯一依据文件": os.path.relpath(_mp, ROOT)},
         sunM == float(mani.get("M")), "同值")
 
     # ── 还原跑之前的界面态 (判据不许改老倪的偏好) ──

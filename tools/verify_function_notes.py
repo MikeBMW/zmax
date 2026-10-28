@@ -5,10 +5,10 @@
 口径 (每条都能复核):
   ① 覆盖: 74 个功能 (config_meta.json) **每个都有** work/pain/state 三条, 一个不少;
   ② 文字: 三条加起来不许出现宣传话术 (禁词表), 不许空话 (每条 ≥ 12 字);
-  ③ 有据: 每条 work 或 pain 至少含一个来自真源的具体事实 (参数 ID / 数字 / 文件名 / 验证方法词);
+  ③ 有据: 每条 work 或 pain 至少含一个来自唯一依据的具体事实 (参数 ID / 数字 / 文件名 / 验证方法词);
   ④ 不编: state 用工程口径词 (在役/未接入/待标定/缺口/回流 之类);
-  ⑤ 进库: 工程库 functions 表的 note_work/note_pain/note_state 与真源逐条一致 (库↔真源不漂移);
-  ⑥ 一致: 真源计数 count 与实际条数一致。
+  ⑤ 进库: 工程库 functions 表的 note_work/note_pain/note_state 与唯一依据逐条一致 (库↔唯一依据不漂移);
+  ⑥ 一致: 唯一依据计数 count 与实际条数一致。
 用法: ./gui-venv311/bin/python tools/verify_function_notes.py
 """
 from __future__ import annotations
@@ -52,7 +52,7 @@ def main():
     print("═══ ① 覆盖 ═══")
     miss = [k for k in meta if k not in notes]
     chk("每个功能都有描述 (%d/%d)" % (len(meta) - len(miss), len(meta)), not miss, "缺 %s" % miss[:6])
-    chk("真源 count 与实际条数一致", doc.get("count") == len(notes), "%s vs %s" % (doc.get("count"), len(notes)))
+    chk("唯一依据 count 与实际条数一致", doc.get("count") == len(notes), "%s vs %s" % (doc.get("count"), len(notes)))
     chk("描述里的功能名与 config_meta 一致",
         all((notes[k].get("name") or "") == (meta[k].get("name") or "") for k in notes if k in meta))
 
@@ -72,7 +72,7 @@ def main():
             bad_state.append((k, v.get("state")))
     chk("无宣传话术 (禁词 %d 个)" % len(BAN), not bad_ban, str(bad_ban[:3]))
     chk("三条都写实 (每条 ≥12 字)", not bad_len, str(bad_len[:3]))
-    chk("work/pain 含真源具体事实", not bad_fact, str(bad_fact[:3]))
+    chk("work/pain 含唯一依据具体事实", not bad_fact, str(bad_fact[:3]))
     chk("state 用工程口径词", not bad_state, str(bad_state[:3]))
 
     print("\n═══ ⑤ ⑥ 进库一致 ═══")
@@ -84,8 +84,8 @@ def main():
             n_ok = sum(1 for k, t in rows.items()
                        if k in notes and t == (notes[k].get("work"), notes[k].get("pain"),
                                                notes[k].get("state")))
-            chk("工程库描述与真源逐条一致 (%d/%d)" % (n_ok, len(rows)), n_ok == len(rows) and len(rows) == len(notes),
-                "库 %d 条 · 真源 %d 条" % (len(rows), len(notes)))
+            chk("工程库描述与唯一依据逐条一致 (%d/%d)" % (n_ok, len(rows)), n_ok == len(rows) and len(rows) == len(notes),
+                "库 %d 条 · 唯一依据 %d 条" % (len(rows), len(notes)))
             non = [k for k, t in rows.items() if not (t[0] or "").strip()]
             chk("库里没有空描述", not non, str(non[:5]))
         except Exception as e:                                                             # noqa: BLE001

@@ -4,7 +4,7 @@
 
 ## 🐛 窗口标题 emoji 在 WSLg 标题栏渲染成十六进制乱码（f2d2234d）
 
-现象：老倪问"标题栏出现 01F 5A5 这是啥？"
+现象：老倪问"标题栏出现 01F 5A5 这是什么？"
 真相：**01F 5A5 = 🖥 emoji 的 Unicode 码点 U+1F5A5**。画布子窗口标题「🖥 画布 · Simulink 模型」的 emoji 在 WSLg/MSRDC 标题栏渲染成 hex 乱码。MDI 子窗口激活时 Qt 自动把子标题附加到主标题（`主标题 - [子标题]`），乱码进了 Windows 任务栏/标题栏。
 
 调试路径（WSL 侧读不到 WSLg 窗口标题，必须走 Windows 侧）：
@@ -31,10 +31,10 @@ powershell.exe -NoProfile -Command "Get-Process | Where-Object {\$_.MainWindowTi
 ### ✅ 已完成（c46ef962）——hero 行 / git hash / 实时采集条 / 运行弹窗 四删齐
 
 - hero 行删除：已提交（simulink_module.py 只剩注释，标题已在菜单栏品牌标签）
-- **窗口标题 git hash 删除**：老倪问"上边的 ae62ea2 是啥？没用就删掉" → 删 `_git_short()` 静态方法（studio.py）+ setWindowTitle 改纯文本 `"XSpace Studio — Z-MAX v1.7.0"`。**窗口标题只保留产品名，不显示 commit hash**（老倪认为无用信息）。
+- **窗口标题 git hash 删除**：老倪问"上边的 ae62ea2 是什么？没用就删掉" → 删 `_git_short()` 静态方法（studio.py）+ setWindowTitle 改纯文本 `"XSpace Studio — Z-MAX v1.7.0"`。**窗口标题只保留产品名，不显示 commit hash**（老倪认为无用信息）。
 - **📡 实时采集状态条整行删除**：「实时采集/采集中/数据包:24」UI 块（acq QFrame 34px + lbl_acq_state/pkgs/latest + _acq_timer 轮询）——纯展示无操作入口 → 全删。坑：`self._theme = _CUR_THEME` 行与采集无关但相邻，删 UI 块时保留。
 - 「运行已启动」弹窗删除：已提交（L3471 只剩注释）
-- 遗留引用 `_acq_worker`/`_acq_timer`（closeEvent 清理循环里 getattr 兜底）无害，不必清。
+- 遗留引用 `_acq_worker`/`_acq_timer`（closeEvent 清理循环里 getattr 保障）无害，不必清。
 
 ### 🐛 大 patch 流超时 → 拆小 patch 或 Python index 切片删除（可靠方案）
 

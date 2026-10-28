@@ -74,7 +74,7 @@ def main() -> int:
         chk(len(types_here) == len(set(types_here)),
             "%s 内部多出口类型重名 (下游无法区分): %s" % (nid, types_here))
     shared = {t: w for t, w in owner.items() if len(w) > 1}
-    chk(not shared, "类型被多个出口共用 (说不清谁是主 Tx): %s" % shared)
+    chk(not shared, "类型被多个出口共用 (难以说明谁是主 Tx): %s" % shared)
 
     # ④ 入口 = 唯一上游类型
     fan_in = []

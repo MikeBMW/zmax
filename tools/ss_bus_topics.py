@@ -8,12 +8,12 @@
 
 口径 (三条, 逐条落到实现):
  1. **每个节点至少一个 topic**: `ensure_busdb()` 拿画布全部节点与 DBC(busdb.json) 对齐, 缺的补
-    `ss/<node_id>/out`(合成 topic, 标记 synth=true; 真源里已有的绝不覆盖)。幂等 + 备份 + 回读。
+    `ss/<node_id>/out`(合成 topic, 标记 synth=true; 唯一依据里已有的绝不覆盖)。幂等 + 备份 + 回读。
  2. **单步高亮**: 单步跑到哪个节点, `step_publish()` 写 `step_current.json`(当前节点 + 其输出 topic + 载荷),
     数据总线视图据此把该节点输出 topic 的 Trace/Data 行**金色高亮并置顶**。
  3. **序列化有闸**: 单步/调试 ⇒ 真序列化载荷进 trace.jsonl; **整体运行 ⇒ 不序列化**(只登记 topic, 零载荷开销)。
 
-真源: zmax_data/dataspace/{busdb.json, trace.jsonl} + 画布 data/database/zmax/sources/canvas/state_space_obs.json
+唯一依据: zmax_data/dataspace/{busdb.json, trace.jsonl} + 画布 data/database/zmax/sources/canvas/state_space_obs.json
 CLI:
   python3 tools/ss_bus_topics.py ensure [--dry]   # 对齐"每节点 ≥1 topic"
   python3 tools/ss_bus_topics.py status           # 现状(节点数/topic 数/缺口)
@@ -78,7 +78,7 @@ def topic_id(node_id: str) -> str:
 def topics_by_source(busdb: dict) -> dict:
     """节点**输出 topic** = 该节点出线的 topic (DBC signals 里 src == node_id)。
 
-    真源语义 (2026-10-12 查明): busdb.signals 是**画布连线**的记录
+    唯一依据语义 (2026-10-12 查明): busdb.signals 是**画布连线**的记录
     {sid, link_id, src, dst, src_port, dst_port, label, layer, topic} ⇒ 节点的"输出 topic"
     就是它所有出线携带的 topic (去重); 没有出线的节点才需要合成 topic。
     """
@@ -136,7 +136,7 @@ def ensure_busdb(*, dry: bool = False, path: str | None = None) -> dict:
     real, syn = topics_by_source(db), synth_topics(db)
     sigs = db.setdefault("signals", [])
     msgs = db.setdefault("messages", {})
-    # 合成条目只按"节点是否还在画布上"清理 (真源 182 条连线一律不动)
+    # 合成条目只按"节点是否还在画布上"清理 (唯一依据 182 条连线一律不动)
     alive = {n["id"] for n in nodes}
     keep, pruned = [], []
     for x in sigs:
@@ -149,7 +149,7 @@ def ensure_busdb(*, dry: bool = False, path: str | None = None) -> dict:
     added = []
     for n in nodes:
         # 🔌 老倪: 「默认每个节点至少输出一个 topic」⇒ **每个节点**都有自己的输出 topic
-        #   ss/<node_id>/out (独立、可被单步单独高亮); 该节点若还有真源出线 topic, 记录在 l2 里不丢。
+        #   ss/<node_id>/out (独立、可被单步单独高亮); 该节点若还有唯一依据出线 topic, 记录在 l2 里不丢。
         if syn.get(n["id"]):
             continue
         key = topic_id(n["id"])
@@ -172,7 +172,7 @@ def ensure_busdb(*, dry: bool = False, path: str | None = None) -> dict:
     cnt["messages"] = len(msgs)
     cnt["synth_topics"] = sum(1 for s in sigs if isinstance(s, dict) and s.get("synth"))
     db["built"] = round(time.time(), 3)
-    db["_synth_note"] = ("2026-10-12 老倪: 默认每个节点至少输出一个 topic; 合成 topic (synth=true) 无真源信号定义, "
+    db["_synth_note"] = ("2026-10-12 老倪: 默认每个节点至少输出一个 topic; 合成 topic (synth=true) 无唯一依据信号定义, "
                          "单步 debug 时按节点输出真序列化, 整体运行不序列化 (性能)。")
     if dry:
         return {"ok": True, "dry_run": True, "added": len(added), "added_list": added[:8], "status": status()}
@@ -218,7 +218,7 @@ def publish(node: dict, out, *, mode: str = "step", quiet: bool = True) -> dict:
     nid = node.get("id") or "?"
     topics = [topic_id(nid)]
     db = _load(BUSDB, {}) or {}
-    # 单步高亮口径: 用**该节点自己的输出 topic** (ss/<id>/out)。真源里所有画布连线共用
+    # 单步高亮口径: 用**该节点自己的输出 topic** (ss/<id>/out)。唯一依据里所有画布连线共用
     #   topic "zmax/link_value" ⇒ 按连线 topic 高亮会把全部连线点亮, 无法定位当前节点。
     own = synth_topics(db).get(nid) or []
     topics = list(own) or [topic_id(nid)]

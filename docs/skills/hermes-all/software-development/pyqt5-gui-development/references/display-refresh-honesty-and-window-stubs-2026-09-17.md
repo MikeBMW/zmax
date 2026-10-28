@@ -46,7 +46,7 @@
 - 消费端声明 `want` 标志, 生产者据此决定"没人看就不干活" (零开销);
 - 1Hz 节流写一个状态文件 (步号 + 消费计数) ⇒ **外部可核对**, 比截图/OCR 可靠 (GUI 进程内外都能验)。
 
-## 三、offscreen 验证真窗口的桩写法 (三个必踩坑)
+## 三、offscreen 验证真窗口的桩写法 (三个必遇到问题)
 
 1. **数据目录用环境变量重定向**: 模块级常量 (`LIVE_JPG`/`LIVE_META`/`ANNOT_ROOT`) 在 import 时读 env →
    测试里先 `os.environ[...] = tempfile.mkdtemp()` **再 import**, 造帧/写 meta 全在临时目录。

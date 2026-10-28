@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""单套成本 / 回本测算 (Z-MAX 唯一算法真源, 无 Qt 依赖)。
+"""单套成本 / 回本测算 (Z-MAX 唯一算法唯一依据, 无 Qt 依赖)。
 
 为什么单独一个模块: 配置中心「💰 成本/报价」页、画布「成本」节点、立项文档导出器
-三处要**同一套公式与同一个真源**, 各写一份必然出现"页面 36.3 万、文档 34.8 万"。
+三处要**同一套公式与同一个唯一依据**, 各写一份必然出现"页面 36.3 万、文档 34.8 万"。
 
-真源: config/platform/zmax_cost_model.json (硬件逐项 + 软件 + 人力 + 产线规模)
+唯一依据: config/platform/zmax_cost_model.json (硬件逐项 + 软件 + 人力 + 产线规模)
 口径 (老倪 2026-10-19):
   单套投入 = 硬件合计 + 软件
   年节省   = 工位数 × 班次 × 每班人数 × 人力成本/人·年
@@ -45,7 +45,7 @@ def hardware_total(d):
 def estimate(d=None, stations=None, shifts=None, persons_per_shift=None,
              labor_per_person_year=None, software=None, alt_arm_saving=None,
              hardware=None, alt_arm=False):
-    """算一套 (单工位口径可扩到 N 工位)。未给的量一律取真源, 不写死默认。"""
+    """算一套 (单工位口径可扩到 N 工位)。未给的量一律取唯一依据, 不预先固定默认。"""
     d = d if d is not None else load()
     line = d.get("line") or {}
     st = int(stations if stations is not None else line.get("stations", 1))
@@ -132,7 +132,7 @@ TRAJ = os.path.join(ROOT, "zmax_data", "runtime", "traj", "sim_insert.json")
 
 
 def measured_tact():
-    """从 392 段轨迹真源算单件节拍 (与《性能配置》同一口径, 不另拍数字)。"""
+    """从 392 段轨迹唯一依据算单件节拍 (与《性能配置》同一口径, 不另拍数字)。"""
     try:
         d = load_json(TRAJ)
         segs = d.get("plan")
@@ -140,7 +140,7 @@ def measured_tact():
             segs = next(v for v in d.values()
                         if isinstance(v, list) and v and isinstance(v[0], dict) and "a" in v[0])
         t_all = sum(float(s.get("t") or 0) for s in segs)
-        # 单件节拍真源优先级: tact_steady_s (稳态) > tact_module_s > total/件数
+        # 单件节拍唯一依据优先级: tact_steady_s (稳态) > tact_module_s > total/件数
         # ⚠ cycles=8 是「循环块」不是件数, 件数在 mods=14 —— 用错会把 11.42 算成 19.93
         n_mod = int(d.get("mods") or 14)
         tact = float(d.get("tact_steady_s") or d.get("tact_module_s") or (t_all / n_mod))
@@ -307,7 +307,7 @@ def main():
     if a.save_line:
         r = save_line(a.stations, a.shifts, a.persons_per_shift,
                       a.labor_per_person_year, a.software, a.alt_arm_saving)
-        print(("✅ 已写回真源 " if r["ok"] else "❌ 回读不一致 ") + r["path"])
+        print(("✅ 已写回唯一依据 " if r["ok"] else "❌ 回读不一致 ") + r["path"])
         print("   备份:", r["backup"])
         print("   line=%s labor=%s" % (r["line"], r["labor"]))
         return 0 if r["ok"] else 2
@@ -340,7 +340,7 @@ def main():
     if a.json:
         print(json.dumps(e, ensure_ascii=False, indent=1))
         return 0
-    print("单套成本 (%s)  真源 %s @ %s" % (e["scheme"], e["truth"], e["truth_mtime"]))
+    print("单套成本 (%s)  唯一依据 %s @ %s" % (e["scheme"], e["truth"], e["truth_mtime"]))
     print("  硬件 %.1f 万 + 软件 %.1f 万 = 单套 %.1f 万" % (
         e["hardware"] / 1e4, e["software"] / 1e4, e["total_first"] / 1e4))
     print("  产线 %d 工位 × %d 班 × %d 人/班 = %d 人 · %.1f 万/人·年 ⇒ 年节省 %.1f 万" % (

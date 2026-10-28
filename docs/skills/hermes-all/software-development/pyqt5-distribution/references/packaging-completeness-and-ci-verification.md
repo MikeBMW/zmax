@@ -41,13 +41,13 @@ pip install mujoco metaworld
 ```yaml
 # ❌ 崩: AttributeError: module 'metaworld' has no attribute '__version__'
 python -c "import metaworld, mujoco; print('metaworld', metaworld.__version__, '| mujoco', mujoco.__version__)"
-# ✅ 安全: hasattr / getattr 兜底
+# ✅ 安全: hasattr / getattr 保障
 python -c "import metaworld, mujoco; print('metaworld/mujoco OK:', hasattr(metaworld, 'ML1'), mujoco.__version__)"
 ```
 
 后果极重: 该行让 **`Install dependencies` 步骤 exit 1** → 两个平台都在打包前挂掉 →
 `Build Desktop (Windows .exe + macOS .app)` 整体 failure → **Release 里只有 tag、没有 app 资产**,
-用户侧表现是"新版下载不到 / 构建失败但看不出原因"。依赖本身其实装好了 (日志里
+用户侧表现是"新版下载不到 / 构建失败但看不出原因"。依赖本身实际装好了 (日志里
 `Successfully installed ... metaworld-3.1.1 mujoco-3.3.0`), 纯粹是验证行把自己搞崩。
 
 **排查顺序 (Release 无资产时)**: ① `GET /actions/runs?per_page=N` 找 tag 对应的 run →

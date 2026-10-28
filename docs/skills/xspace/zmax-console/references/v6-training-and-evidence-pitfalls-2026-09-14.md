@@ -10,7 +10,7 @@
 
 ## 坑 1: 阶段轨迹不能读 `sim.stage_hist` (实测恒空)
 统计「L3 扩展段 (插入/拔出/AOI转移/AOI检测/回程/放下) 走全了没」时读 `sim.stage_hist` → 恒为空 →
-覆盖率误报 0/6 (功能其实走全了, 视频里能看全链)。正解 = 挂帧 sink 逐帧收:
+覆盖率误报 0/6 (功能实际走全了, 视频里能看全链)。正解 = 挂帧 sink 逐帧收:
 ```python
 stages = []
 def _sink(s, act, o, _st=stages):
@@ -52,6 +52,6 @@ tr = sim.run(max_steps=..., cap=...)
 因为 `jepa.get_action` 有硬闸 (`skill_dim>0` 缺 `intr["skill_ctx"]` → 直接 ValueError, 不许静默降级)。
 
 ## 坑 6: 改采集口径后必须重采, 首 part 落盘就验
-第一版 v5 采集跑完 part00 (1.44GB / 600 窗口 / 日志全绿) 其实**整列 skill_ctx 缺失** (4 元组解包坑被
+第一版 v5 采集跑完 part00 (1.44GB / 600 窗口 / 日志全绿) 实际**整列 skill_ctx 缺失** (4 元组解包坑被
 `_frame_sink` 静默吞掉), 只能删档重跑 (白跑 ~20 分钟)。**首 part 一落盘就验三样**:
 keys 里有 `skill_ctx` · 帧 std > 5 (真图) · `meta.ep_jitter` 有真值 (干扰真注入了), 别等全量跑完。

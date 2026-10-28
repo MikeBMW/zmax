@@ -441,7 +441,7 @@ def cmd_serve(a) -> int:
                 seg = segment(img, req.get("texts") or [], threshold=float(req.get("threshold", 0.5)),
                               mask_threshold=float(req.get("mask_threshold", 0.5)),
                               boxes=req.get("boxes"), box_labels=req.get("box_labels"))
-                SERVED["n"] += 1                     # 真实分割调用计数 (inferring 探针的真源)
+                SERVED["n"] += 1                     # 真实分割调用计数 (inferring 探针的唯一依据)
                 SERVED["last_ts"] = time.time()
                 out = []
                 for it in seg["instances"]:

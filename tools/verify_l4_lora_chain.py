@@ -6,8 +6,8 @@
 向后接 流形专家预测器 + 接触流形 + 性能流形 · UI 连线顺序正确。
 
 ① 画布拓扑 (边都在, 旁路已删)      ② UI 顺序 (x 递增)      ③ 节点执行注册
-④ LoRA 产物真源 (包装 ckpt/112 组/原权重冻结)              ⑤ 数学自检 (Δu/限幅/恒等/锥/帕累托)
-⑥ 真被消费 (跑三节点, 日志里出现 ⛓ 承接)                    ⑦ 元任务预测门控真源
+④ LoRA 产物唯一依据 (包装 ckpt/112 组/原权重冻结)              ⑤ 数学自检 (Δu/限幅/恒等/锥/帕累托)
+⑥ 真被消费 (跑三节点, 日志里出现 ⛓ 承接)                    ⑦ 元任务预测门控唯一依据
 """
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ def main() -> int:
     from lerobot.manifold.manifold_chain import L4Adapter, ContactConstraint, PerformanceConstraint
     ad = L4Adapter(ROOT)
     ok_a, note_a = ad.load()
-    chk("④ LoRA 产物真源 (原权重冻结)", ok_a and len(ad.experts) > 0,
+    chk("④ LoRA 产物唯一依据 (原权重冻结)", ok_a and len(ad.experts) > 0,
         "产物 %s · %d 组 · r=%d α=%d scaling=%.2f · merged 已排除"
         % (os.path.basename(ad.src), len(ad.experts), ad.r, ad.alpha, ad.scaling))
     r_kept = subprocess.run([os.path.join(ROOT, "gui-venv311/bin/python"),

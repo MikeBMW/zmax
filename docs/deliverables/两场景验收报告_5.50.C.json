@@ -9,7 +9,7 @@
    "check_rc": 1,
    "check": [
     "VEH.6 全链校验",
-    "  ① 描述与真源同步 : ❌ 变了: tools/gui/studio.py",
+    "  ① 描述与唯一依据同步 : ❌ 变了: tools/gui/studio.py",
     "  ② 站点几何      : ⛔ 未标定 T_base_cam, plane_z, cell_geometry.points ⇒ 坐标类参数不可信",
     "  ③ 模型×工程配置 : ⛔ 可用 9/10 · 受阻 L4.intact",
     "  ④ 能力库        : ✅ feature.dbc BO_ 31 条",
@@ -20,7 +20,7 @@
     "总判: ⛔ 有阻塞项 (见上, 站点几何是共同根因)"
    ],
    "overview": [
-    "VEH.6 配置中心 · 总览     描述 zmax-mcd/1.0 @ 2026-10-13 13:14:10   真源同步: ❌ tools/gui/studio.py",
+    "VEH.6 配置中心 · 总览     描述 zmax-mcd/1.0 @ 2026-10-13 13:14:10   唯一依据同步: ❌ tools/gui/studio.py",
     "",
     "域             参数     就绪  缺口",
     "------------------------------------------------------------------------------",
@@ -702,7 +702,7 @@
       "target": "dim",
       "value": 6,
       "rule": "工序含腕部姿态控制(旋转/翻转/姿态/腕部) ⇒ dim=6 (位姿 6 轴); 否则 dim=3 (位置 3 轴)",
-      "source": "config/tasks/tasks.json 工序真源 + metric_field 口径 (位置 3 轴 / 位姿 6 轴)",
+      "source": "config/tasks/tasks.json 工序唯一依据 + metric_field 口径 (位置 3 轴 / 位姿 6 轴)",
       "evidence": "工序要求腕部姿态控制 ⇒ 位姿 6 轴",
       "hits": [
        "step[翻转]: 命中'旋转' ← 腕部旋转180°(150°/s), 模块标签面朝下, 金手指面朝上"
@@ -782,7 +782,7 @@
       "target": "scale",
       "value": 3.643,
       "rule": "M = 1 + (½·m_eff·v_peak² + m_eff·g·h) / E_ref   →  clamp[0,8]",
-      "source": "tools/master_param_m.py 能量标定真源 + config/calib/zmax_calib.json#tool_payload.mass_kg + config/tasks/tasks.json 工序速度",
+      "source": "tools/master_param_m.py 能量标定唯一依据 + config/calib/zmax_calib.json#tool_payload.mass_kg + config/tasks/tasks.json 工序速度",
       "project": "PROJ-LOAD-UNLOAD",
       "project_name": "上下料 (料仓/料盘 → 夹具 上料 → 卸料 → 回收)",
       "m_eff_kg": 1.535,
@@ -794,8 +794,8 @@
       },
       "input_sources": {
        "夹具/吸嘴": "config/calib/zmax_calib.json#tool_payload.mass_kg",
-       "工件": "真源: 光模块 QSFP 级 ≈25g (master_param_m 注释)",
-       "峰值速度": "工序真源 step[分拣] 命中'1.0m/s' (tasks.json)",
+       "工件": "唯一依据: 光模块 QSFP 级 ≈25g (master_param_m 注释)",
+       "峰值速度": "工序唯一依据 step[分拣] 命中'1.0m/s' (tasks.json)",
        "行程": "假设(可标定): 上下料工位升降 ≈300mm (待现场确认)"
       },
       "E_kin_J": 0.7675,
@@ -844,7 +844,7 @@
       "target": "dim",
       "value": 6,
       "rule": "工序含腕部姿态控制(旋转/翻转/姿态/腕部) ⇒ dim=6 (位姿 6 轴); 否则 dim=3 (位置 3 轴)",
-      "source": "config/tasks/tasks.json 工序真源 + metric_field 口径 (位置 3 轴 / 位姿 6 轴)",
+      "source": "config/tasks/tasks.json 工序唯一依据 + metric_field 口径 (位置 3 轴 / 位姿 6 轴)",
       "evidence": "工序要求腕部姿态控制 ⇒ 位姿 6 轴",
       "hits": [
        "step[转运对位]: 命中'姿态' ← 沿安全轨迹转移至目标 Tray 槽位上方, 姿态对准槽口方向, 粗定位后 XYZ/姿态微调",
@@ -918,7 +918,7 @@
       "target": "scale",
       "value": 4.423,
       "rule": "M = 1 + (½·m_eff·v_peak² + m_eff·g·h) / E_ref   →  clamp[0,8]",
-      "source": "tools/master_param_m.py 能量标定真源 + config/calib/zmax_calib.json#tool_payload.mass_kg + config/tasks/tasks.json 工序速度",
+      "source": "tools/master_param_m.py 能量标定唯一依据 + config/calib/zmax_calib.json#tool_payload.mass_kg + config/tasks/tasks.json 工序速度",
       "project": "PROJ-TH-TRAY",
       "project_name": "泰国摆盘 (光模块 周转盘 → 上料 Tray 盘)",
       "m_eff_kg": 1.535,
@@ -930,9 +930,9 @@
       },
       "input_sources": {
        "夹具/吸嘴": "config/calib/zmax_calib.json#tool_payload.mass_kg",
-       "工件": "真源: 光模块 QSFP 级 ≈25g (master_param_m 注释)",
+       "工件": "唯一依据: 光模块 QSFP 级 ≈25g (master_param_m 注释)",
        "峰值速度": "假设(可标定) 继承 PROJ-TH-TRAY: 假设(可标定): 宏微复合转运峰值 ≈0.3 m/s",
-       "行程": "真源: 升降行程 0~450mm (zmax_project_bom/结构参数)"
+       "行程": "唯一依据: 升降行程 0~450mm (zmax_project_bom/结构参数)"
       },
       "E_kin_J": 0.0691,
       "E_pot_J": 6.7763,
@@ -955,7 +955,7 @@
    }
   },
   "M_in_service": {
-   "_doc": "流形引擎主标定参数 M (状态空间的结构参数/等效惯量) — 标定层单一真源。物理: a=F/M ⇒ Δx=F·dt²/M; 信息: 把信息代价梯度换成状态加速度的曲率尺度; M 从流形结构导出 (非自由拟合), 现场以单标量标定。inertia=false ⇒ 零回归。",
+   "_doc": "流形引擎主标定参数 M (状态空间的结构参数/等效惯量) — 标定层单一唯一依据。物理: a=F/M ⇒ Δx=F·dt²/M; 信息: 把信息代价梯度换成状态加速度的曲率尺度; M 从流形结构导出 (非自由拟合), 现场以单标量标定。inertia=false ⇒ 零回归。",
    "M": 3.283,
    "inertia": false,
    "_range": [
@@ -1528,7 +1528,7 @@
    "d_xy_mm": 0.3922,
    "depth_judge_mm": 2.0,
    "depth_ok": true,
-   "depth_judge_src": "链内判完成口径: `_insert_depth()`(光模块头→插入终点距离) < 0.002m 且连续 2 帧 (真源: tools/diag_insert_depth.py 头注 + gen_ss_metaworld_episode.py:305)",
+   "depth_judge_src": "链内判完成口径: `_insert_depth()`(光模块头→插入终点距离) < 0.002m 且连续 2 帧 (唯一依据: tools/diag_insert_depth.py 头注 + gen_ss_metaworld_episode.py:305)",
    "depth_cfg_target_mm": 35.0,
    "depth_at_step": 835,
    "depth_at_stage": "完成",

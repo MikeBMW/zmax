@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 归档 v5.50.758 本轮产物 (市场分析 1000 台口径 + 2027 模型分层策略 + ar3d 4 孔交替/UPH 浮层)
 #   产物: ~/zmax_data/release_sync_<YYYYMMDD>_v5.50.758
-#   口径沿用 5.50.757: 只拷本轮改动的代码 + 真源快照 + 交付件 + 证据 + MANIFEST + sha256
+#   口径沿用 5.50.757: 只拷本轮改动的代码 + 唯一依据快照 + 交付件 + 证据 + MANIFEST + sha256
 set -u
 REPO=/home/ubuntu/zmax
 DATA=/home/ubuntu/zmax_data
@@ -23,7 +23,7 @@ cp -f tools/market_analysis_20261027.py tools/pricing_model_20261027.py \
       tools/make_pricing_deck_20261027.py tools/check_deck_layout.py "$DST/tools/"
 cp -f tools/archive_release_5_50_758.sh "$DST/scripts/"
 
-echo "=== ③ 真源快照（config 是软链，必须显式拷） ==="
+echo "=== ③ 唯一依据快照（config 是软链，必须显式拷） ==="
 mkdir -p "$DST/data/config"
 cp -a config/calib "$DST/data/config/" 2>/dev/null
 cp -a config/platform "$DST/data/config/" 2>/dev/null
@@ -35,7 +35,7 @@ cp -f zmax_data/reports/market_20261027/metrics_market.json "$DST/data/" 2>/dev/
 cp -f zmax_data/zmax_engineering.db "$DST/data/" 2>/dev/null
 cp -f zmax_data/zmax_space.proj "$DST/data/" 2>/dev/null
 
-echo "=== ④ 交付件（市场 PPT + 2027 模型规划，含 pdf/图/数字真源） ==="
+echo "=== ④ 交付件（市场 PPT + 2027 模型规划，含 pdf/图/数字唯一依据） ==="
 cp -a "$DATA"/deliverables/sp_module_market_2026-10-27 "$DST/deliverables/" 2>/dev/null
 cp -a "$DATA"/deliverables/model_plan_2027 "$DST/deliverables/" 2>/dev/null
 
@@ -47,7 +47,7 @@ echo "=== ⑥ 证据（实测数字） ==="
 cat > "$DST/evidence/measured_20261027.md" <<'EOM'
 # v5.50.758 实测证据 · 2026-10-27
 
-## 一、ar3d 节拍（真源 /api/sim_insert）
+## 一、ar3d 节拍（唯一依据 /api/sim_insert）
 
 | 项 | 实测 |
 |---|---|
@@ -99,11 +99,11 @@ ar3d 4 孔交替插拔 + 双相机 AOI + UPH 浮层/中键平移。
 ## 目录
 - `gui/ src/ tools/ web/` 本轮改动的代码（studio 三处显示 + update_checker + version_sync + docs_sync + integrity_check）
 - `web/tcp-ar.html` 构建 r50（4 孔 / UPH 300 浮层 / 中键平移 panOff / 真机臂分离）
-- `tools/sim_insert_plan.py` 节拍真源（loop 45.872 s / 4 件 · 625.6 mm/s · 检测 0.8/0.5 s）
+- `tools/sim_insert_plan.py` 节拍唯一依据（loop 45.872 s / 4 件 · 625.6 mm/s · 检测 0.8/0.5 s）
 - `tools/market_analysis_20261027.py` 市场模型（DISC 量价折扣 / PLATFORM 200 台年 / 五年 1000 台）
-- `data/config/` 标定与平台真源全量（calib + platform）
-- `data/traj/` sim_insert.json + sim_insert_plan.json（节拍与段表真源）
-- `data/metrics_market.json` 市场模型输出（唯一数字真源）
+- `data/config/` 标定与平台唯一依据全量（calib + platform）
+- `data/traj/` sim_insert.json + sim_insert_plan.json（节拍与段表唯一依据）
+- `data/metrics_market.json` 市场模型输出（唯一数字唯一依据）
 - `deliverables/` 两套交付件（市场 20 页 / 模型规划 13 页，含 pdf、逐页 png、figs、data.json、脚本）
 - `evidence/measured_20261027.md` 实测数字
 - `sha256sums.txt` 全量校验

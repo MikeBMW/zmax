@@ -9,7 +9,7 @@ description: Use when 循环跑 7 任务造数据→训练→推理全流程.
 
 编排器: `tools/fullflow_tasks7.py` (gui-venv311)。每个任务 5 段, 每段留日志+证据:
 
-| 段 | 干什么 | 真源/证据 |
+| 段 | 干什么 | 唯一依据/证据 |
 |---|---|---|
 | ① 配置任务 | `ss_task_bind.py --activate <T>` + `ss_scene_switch.py --task <T>` | `config/ss_task_binding.json` active_task |
 | ② 仿真造数据 | `collect_simreal_vla_data.py --target N --out data/datasets/sim_<T>` | 收集器 stdout「✅ 完成: N 轨迹 / M 帧」+ `meta/tasks.parquet` |
@@ -18,7 +18,7 @@ description: Use when 循环跑 7 任务造数据→训练→推理全流程.
 | ⑤ 任务7 真机只读 | arm/local2 抓帧 · `tcp_out/latest.json` 位姿 · `aoi_call.py gold|surface` | 只读, 不下发动作 |
 
 收尾: `reports/fullflow7/<ts>/REPORT.md` + `REPORT.json` → `tools/feishu_send_file.py`(报告群)。
-`state.json` 是唯一真源, 可回填后重生成报告: `import fullflow_tasks7 as F; F.stage_report(run_dir, state, run_dir, send=False)`。
+`state.json` 是唯一依据, 可回填后重生成报告: `import fullflow_tasks7 as F; F.stage_report(run_dir, state, run_dir, send=False)`。
 
 ## 坑 (全部实测踩过)
 
@@ -41,7 +41,7 @@ description: Use when 循环跑 7 任务造数据→训练→推理全流程.
 
 ## 结果同步（老倪「飞书的结果，同步」= 三处同源，不是再发一遍）
 
-1. **大屏**：`tools/fullflow_status.py`（新，只读 state.json + tap 尾帧；真源键 `train.gpu_peak={util,mem}`）⇒ 已挂进
+1. **大屏**：`tools/fullflow_status.py`（新，只读 state.json + tap 尾帧；唯一依据键 `train.gpu_peak={util,mem}`）⇒ 已挂进
    `tools/dashboard_source.py` 的 `fullflow` 段 ⇒ 刷新大屏：`gui-venv311/bin/python tools/dashboard_source.py`
    （写 `zmax_data/datapush/dashboard.json` + `tools/web/dashboard.json` + `unified_app.html` 页内快照）。
 2. **飞书卡片**：卡片渲染 `tools/feishu_dashboard_push.py`（已加「🔁 全流程闭环」行 + 输入退化/未跑异常项）
@@ -50,7 +50,7 @@ description: Use when 循环跑 7 任务造数据→训练→推理全流程.
    + MANIFEST.json + README.md，逐件 sha256；大文件 [全量日志/数据集/工程库] 只留绝对路径 + 重建命令，不进库）。
 4. **提交/版本**：先 `python3 tools/verify_version_sync.py` 看偏差 ⇒ 修掉再提交。踩过：本机**没 gh CLI 也没 GitHub 令牌**⇒
    只能 `git push origin <tag>`，**远端 Release 建不了**（大屏会留一条版本同源偏差，要建 Release 必须先给令牌）。
-5. 报告里写死的数字（如「磁盘 ~86%」）必须改成**实测** `shutil.disk_usage(ROOT)` —— 老倪会拿工具核。
+5. 报告里固定不变的数字（如「磁盘 ~86%」）必须改成**实测** `shutil.disk_usage(ROOT)` —— 老倪会拿工具核。
 
 ## 相关技能
 

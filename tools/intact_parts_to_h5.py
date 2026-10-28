@@ -2,7 +2,7 @@
 """📦 part npz (分块采集) → 单个 INTACT 官方 h5 (逐 part 流式写入, 内存有界)
 
 为什么需要它: 采集器按内存闸分块落 part npz (300 回合 ≈15 万帧 = 22GB, 一次性 concat
-会被 OOM 杀 — 实测踩坑)。本工具逐 part 读 → 追加写进同一个 h5 → 释放, 峰值内存 ≈ 一个 part。
+会被 OOM 杀 — 实测遇到问题)。本工具逐 part 读 → 追加写进同一个 h5 → 释放, 峰值内存 ≈ 一个 part。
 
 schema 与 tools/intact_domain_to_h5.py 完全一致 (官方 formats/hdf5.py):
   pixels(N,224,224,3 uint8, gzip) · action(N,4 f32) · observation(N,39 f32)
@@ -146,7 +146,7 @@ def main():
             print(f"  官方 load_dataset OK: len={len(ds)} · get_dim(action)={ds.get_dim('action')} "
                   f"· get_dim(pixels)={ds.get_dim('pixels')}")
         except Exception as e:
-            # 🐛 2026-09-12 踩坑: 验证抛异常 → 直接 return, 中间 part npz 7GB 没删 (占着盘)
+            # 🐛 2026-09-12 遇到问题: 验证抛异常 → 直接 return, 中间 part npz 7GB 没删 (占着盘)
             #   现在验证失败只告警, 不阻断清理与后续流程; 名字要带扩展名 (官方解析器认 .h5)
             print(f"  ⚠️ 官方加载器验证失败 (不阻断): {type(e).__name__}: {e}")
     if not a.keep_parts:

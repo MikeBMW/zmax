@@ -70,12 +70,12 @@ grep -nE '^\s{4}def [a-z]' src/lerobot/policies/left_right/state_space/scene_vlm
 ```
 ① **不阻塞控制循环** — 按需触发 (换工件/换工位/异常时), 不进每帧回路
 ② **场景指纹缓存** — 同一场景不重复问 ⇒ 秒级延迟只付一次
-③ **降级链** — API 超时 → 本地 500M → 规则兜底
+③ **降级链** — API 超时 → 本地 500M → 规则保障
 ```
 
 这与画布 `node_ss_llm` 的既有定位一致 (「慢决策, 回路外」), 不是新发明。
 
-## 6. 顺带确认: smolvlm2-500m 本地兜底**是完整的**
+## 6. 顺带确认: smolvlm2-500m 本地保障**是完整的**
 
 ```
 ~/.cache/huggingface/hub/models--HuggingFaceTB--SmolVLM2-500M-Video-Instruct  = 5.7G
@@ -92,5 +92,5 @@ blobs 里 11 个 >10MB 文件, 含 1 个 1936MB 主权重 ⇒ 完整 (不是空�
 | 猜 `understand()` → `AttributeError` | 先 grep `def` 拿真实入口 (`ask/describe/guide/quality`) |
 | VLM API 单帧 61s 就归因"API 慢" | 先关 thinking (`SS_VLM_THINKING != 1`) 再复测 |
 | 按扩展名在 blobs 里找权重 → 判"没下到" | blobs 是无扩展名哈希文件, 按 `-size +10M` 找 |
-| 3B 权重下不动就卡住 L5 | 先看 `SceneVLM.status()` —— 本机 DeepSeek key 已配, 零下载可用 |
+| 3B 权重下不动就阻塞 L5 | 先看 `SceneVLM.status()` —— 本机 DeepSeek key 已配, 零下载可用 |
 | 想把 L5 塞进每帧控制回路 | 秒级 vs 101ms 差数量级 ⇒ 只能异步旁路 + 缓存 + 降级链 |

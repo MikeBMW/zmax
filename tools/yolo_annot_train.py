@@ -169,7 +169,7 @@ def main():
     for ln in ytxt.strip().splitlines():
         print("   " + ln)
     if r["n_images"] < 10:
-        print(f"⚠️ 只有 {r['n_images']} 张 → 能跑通管线, 但精度别指望 (建议首轮 ≥100 张覆盖多位置/光照)")
+        print(f"⚠️ 只有 {r['n_images']} 张 → 能验证通过管线, 但精度别指望 (建议首轮 ≥100 张覆盖多位置/光照)")
 
     # ── 2. 基座权重 ──
     import torch

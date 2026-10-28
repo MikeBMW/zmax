@@ -11,11 +11,11 @@
     K 增益, 条件网络相当于模型 update, smolvlm 网络相当于测量」
 
 设计红线 (与全工程同口径):
-  ① **天体 ↔ 节点不是随便起的名字**: 每一个天体都是画布真源里的**真节点 id** (流形引擎 ss_mani_eng /
+  ① **天体 ↔ 节点不是随便起的名字**: 每一个天体都是画布唯一依据里的**真节点 id** (流形引擎 ss_mani_eng /
      接触流形 ssmani_c / 性能流形 ssmani_p / 前馈加速器 ssff / 状态校正器 ssinnov / DiT ssdec /
-     原子技能 ssbg_skill + skill_phys.json 的 SK01..SK13), 视图启动时从画布真源核一遍, 核不上如实报。
+     原子技能 ssbg_skill + skill_phys.json 的 SK01..SK13), 视图启动时从画布唯一依据核一遍, 核不上如实报。
   ② **连线只画真连线**: 双通道 (VLM→DiT 直连 ‖ VLM→流形→DiT) 、DiT→前馈→调配器、校正器↔地球协同、
-     反馈回中心 (校正器→融合定位建图→流形引擎) 全部取自画布 links 真源, 不凭空画。
+     反馈回中心 (校正器→融合定位建图→流形引擎) 全部取自画布 links 唯一依据, 不凭空画。
   ③ **每个球上的数是真值**: M / φ / ∇Φ / 扭矩 T=M·(−∇Φ) / 度规特征值 (torque_live) · 接触流形
      (‖e∥‖进度 · ‖e⊥‖偏离 · V · V̇) 与性能流形 (V_p · η · ∇V_p) 由 `manifold_layer.py` **真算**
      (与画布节点同一个模块, 不重写公式), 入力为 `ss_traj_last.json` 的真帧 (43D obs 按
@@ -101,7 +101,7 @@ def _load_by_path(modname, relpath, label):
         return None, "%s: %s: %s" % (label, type(e).__name__, e)
 
 
-# ── 天体 ↔ 画布真节点 (单一真源: 这里的 id 必须是画布真源里存在的 id) ──────────────
+# ── 天体 ↔ 画布真节点 (单一唯一依据: 这里的 id 必须是画布唯一依据里存在的 id) ──────────────
 BODIES = (
     # key,      画布节点 id,     中文名 (老倪口径),        节点名里必须包含
     ("sun",     "ss_mani_eng",  "流形引擎 · 太阳",        "流形引擎"),
@@ -132,7 +132,7 @@ KEY_EDGES = (
 
 
 class OrbitalArchData:
-    """球心引力架构的数据面: 全部现读真源 + 真模块真算 (无编造)。"""
+    """球心引力架构的数据面: 全部现读唯一依据 + 真模块真算 (无编造)。"""
 
     def __init__(self, root=_ROOT):
         self.root = root
@@ -152,12 +152,12 @@ class OrbitalArchData:
         self.nodes = {n.get("id"): n for n in (self.canvas.get("nodes") or [])} if self.canvas else {}
         self.links = list(self.canvas.get("links") or []) if self.canvas else []
         self.link_set = {(l.get("f"), l.get("t")) for l in self.links}
-        self.body = {}                       # 天体 → 真值 + 真源说明
+        self.body = {}                       # 天体 → 真值 + 唯一依据说明
         self.frames = self._frames()
 
-    # ── 读真源 ────────────────────────────────────────────────────────────
+    # ── 读唯一依据 ────────────────────────────────────────────────────────────
     def reload(self):
-        """重读全部真源 (2026-10-19 修: 原来只在 __init__ 读一次 ⇒ 500ms 刷新拿到的还是死值,
+        """重读全部唯一依据 (2026-10-19 修: 原来只在 __init__ 读一次 ⇒ 500ms 刷新拿到的还是死值,
         「模型停了界面也不变」)。canvas 138KB/2ms, 整体 ≈4ms, 2Hz 重读对主线程无感。"""
         self.err = []
         self.ages = {}
@@ -242,14 +242,14 @@ class OrbitalArchData:
     # ── 组装: 每个天体的真值 ──────────────────────────────────────────────
     def build(self):
         if not getattr(self, "_no_reload", False):
-            self.reload()                     # 2026-10-19: 每拍重读真源 (判据可用 _no_reload 冻结输入)
+            self.reload()                     # 2026-10-19: 每拍重读唯一依据 (判据可用 _no_reload 冻结输入)
         eng, tq, sk, se, sp = self.engine or {}, self.torque or {}, self.skills or {}, self.skerr or {}, self.skphys or {}
         stage = str(tq.get("stage") or (sk.get("cur_stage") if isinstance(sk, dict) else "") or "")
         if not stage:
             chunk = eng.get("chunk") or {}
             stage = str(chunk.get("stage") or "")
         mf = self.manifolds(stage)
-        # 真源核对: 每个天体 id 在画布真源里必须存在, 且名字对得上
+        # 唯一依据核对: 每个天体 id 在画布唯一依据里必须存在, 且名字对得上
         checked = {}
         for key, nid, cn, must in BODIES:
             n = self.nodes.get(nid)
@@ -262,7 +262,7 @@ class OrbitalArchData:
         mt = tq.get("metric_tensor") or []
         eig = [float(mt[i * int(tq.get("metric_dim") or 6) + i]) for i in range(int(tq.get("metric_dim") or 6))] if mt else []
         self.body["sun"] = {
-            "名": "流形引擎", "真源": "zmax_manifold.json + engine_latest.json + torque_live.json",
+            "名": "流形引擎", "唯一依据": "zmax_manifold.json + engine_latest.json + torque_live.json",
             "M": M, "phi": phi, "grad_norm": grad, "p": eng.get("p"),
             "T_norm": tq.get("torque_norm"), "T_max": tq.get("t_max"),
             "metric_dim": tq.get("metric_dim"), "metric_mode": tq.get("metric_mode"),
@@ -273,14 +273,14 @@ class OrbitalArchData:
         # 水星 接触流形
         c = mf.get("contact") or {}
         self.body["mercury"] = {
-            "名": "接触流形", "真源": "manifold_layer.ContactManifold.decompose(真帧)",
+            "名": "接触流形", "唯一依据": "manifold_layer.ContactManifold.decompose(真帧)",
             "progress": c.get("progress"), "risk": c.get("risk"), "V": c.get("V"), "Vdot": c.get("Vdot"),
             "state": c.get("state"), "risk_th": c.get("risk_th"), "note": mf.get("note", ""),
         }
         # 木星 性能流形
         p = mf.get("perf") or {}
         self.body["jupiter"] = {
-            "名": "性能流形", "真源": "manifold_layer.PerformanceManifold.evaluate(真帧)",
+            "名": "性能流形", "唯一依据": "manifold_layer.PerformanceManifold.evaluate(真帧)",
             "V_p": p.get("Vp"), "eta": p.get("eta"), "grad": p.get("grad"), "d_perp": p.get("d_perp_norm"),
             "stage": p.get("stage"), "pnote": p.get("note"), "note": mf.get("note", ""),
         }
@@ -290,7 +290,7 @@ class OrbitalArchData:
         dev = sk.get("%s_偏差_mps" % (act.get("stage") or ""), None)
         feas = sk.get("%s_可行" % (act.get("stage") or ""), None)
         self.body["earth"] = {
-            "名": "前馈加速器", "真源": "skill_latest.json (按拍过闸/请求/偏差/可行) + skill_phys.json",
+            "名": "前馈加速器", "唯一依据": "skill_latest.json (按拍过闸/请求/偏差/可行) + skill_phys.json",
             "stage": act.get("stage"), "SK": act.get("SK"), "req_mps": req, "dev_mps": dev, "可行": feas,
             "拍数": sk.get("闸_拍数"), "过闸": sk.get("过闸_技能拍"), "削因": sk.get("闸_削因"),
             "帧龄": self.ages.get("zmax_data/ss_live/skill_latest.json"),
@@ -298,7 +298,7 @@ class OrbitalArchData:
         # 月球 状态校正器 (卡尔曼校正: 残差 r)
         errs = se.get("err_norm") or {}
         self.body["moon"] = {
-            "名": "状态校正器", "真源": "skill_error.json (残差/大误差段) + engine_latest.residual",
+            "名": "状态校正器", "唯一依据": "skill_error.json (残差/大误差段) + engine_latest.residual",
             "err": errs.get(act.get("stage") or ""), "err_all": errs, "big": (se.get("big") or {}).get(act.get("stage") or ""),
             "why": (se.get("why") or {}).get(act.get("stage") or ""), "residual": eng.get("residual"),
             "协同": "与地球同相位锁定 (协同行进); 径向摆幅 ∝ 残差",
@@ -311,11 +311,11 @@ class OrbitalArchData:
             k = int((eng.get("idx") or 0) % len(chunk["chunk"]))
             lam = eng.get("chunk.λ%d" % k)
         self.body["mars"] = {
-            "名": "DiT 动作头", "真源": "engine_latest.json (chunk/λ 计划/action/confidence) + 画布入边真源",
+            "名": "DiT 动作头", "唯一依据": "engine_latest.json (chunk/λ 计划/action/confidence) + 画布入边唯一依据",
             "cond_n": len(ins), "cond_src": sorted(set(x for x in ins if x))[:8],
             "action_norm": eng.get("action_norm"), "confidence": eng.get("confidence"),
             "H": eng.get("chunk.H"), "lambda": lam, "stage_idx": chunk.get("stage_idx") if isinstance(chunk, dict) else None,
-            "K_gain": "未接入 (设计口径: DiT 输出 K 增益 · 条件网络=模型 update · SmolVLM=测量; 真源里目前没有这条边)",
+            "K_gain": "未接入 (设计口径: DiT 输出 K 增益 · 条件网络=模型 update · SmolVLM=测量; 唯一依据里目前没有这条边)",
         }
         # 卫星带 原子技能
         sats = []
@@ -335,8 +335,8 @@ class OrbitalArchData:
         # 2026-10-16 老倪: 「我看原子技能 SK01~SK08, 那就只是显示 8 个绕地球的卫星」
         _want = ["SK%02d" % i for i in range(1, 9)]
         _by = {d["SK"]: d for d in sats}
-        sats = [_by[k] for k in _want if k in _by]        # 真源里这 8 条的 stage/在职/偏差都保留
-        self.body["sats"] = {"名": "原子技能", "真源": "skill_phys.json (在职 SK↔段) + skill_latest.json + 标定真源 zmax_skill_physics.json",
+        sats = [_by[k] for k in _want if k in _by]        # 唯一依据里这 8 条的 stage/在职/偏差都保留
+        self.body["sats"] = {"名": "原子技能", "唯一依据": "skill_phys.json (在职 SK↔段) + skill_latest.json + 标定唯一依据 zmax_skill_physics.json",
                              "list": sats, "active": act.get("SK"), "n": len(sats), "n_calib": n_cal,
                              "sk_ids": [d["SK"] for d in sats]}
         self._compute_state()            # 2026-10-19: 每体运行态 + L2~L5 层状态 (帧龄/在跑/输出)
@@ -446,7 +446,7 @@ class OrbitalArchData:
             self.quat_err = str(_e)
 
     # ── 2026-10-19 老倪: 「太阳系窗口是观察 L2~L5 模型的主要窗口, 要反映模型实际状态」──
-    #   口径: 每体只认**它自己那一份真源**的 ts; 没有 ts 就用文件 mtime; 都没有 ⇒ 报"缺失"。
+    #   口径: 每体只认**它自己那一份唯一依据**的 ts; 没有 ts 就用文件 mtime; 都没有 ⇒ 报"缺失"。
     #   不许用"引擎在跑"去冒充"这一层在跑" (那是假的: L2/L3/L4 可能根本没被调用)。
     STATE_TTL_LIVE = 2.5      # ≤2.5s = 在跑
     STATE_TTL_STALE = 60.0    # ≤60s  = 陈旧 (能看到, 但不能当实时)
@@ -461,7 +461,7 @@ class OrbitalArchData:
     @staticmethod
     def _state_of(age):
         if age is None:
-            return "off", "无真源"
+            return "off", "无唯一依据"
         if age <= OrbitalArchData.STATE_TTL_LIVE:
             return "live", "在跑"
         if age <= OrbitalArchData.STATE_TTL_STALE:
@@ -469,7 +469,7 @@ class OrbitalArchData:
         return "off", "离线"
 
     def _layers_live(self):
-        """L5/L4/L3/L2 逐层: 最近一次**真调用**的 ok/src/ms + 帧龄 (真源 layer_calls.jsonl 末行)。
+        """L5/L4/L3/L2 逐层: 最近一次**真调用**的 ok/src/ms + 帧龄 (唯一依据 layer_calls.jsonl 末行)。
         这个文件是引擎每拍落一条的调用流水; 停写 ⇒ 界面必须显示"陈旧/离线", 不能拿旧数当在跑。"""
         p = os.path.join(self.root, "zmax_data", "ss_live", "layer_calls.jsonl")
         rec = None
@@ -501,7 +501,7 @@ class OrbitalArchData:
         return out
 
     def _ui_run(self):
-        """(是否在跑, 说明) —— 真源 = 控制台点 ▶ 运行 时写的 zmax_data/ss_live/ui_run.json。
+        """(是否在跑, 说明) —— 唯一依据 = 控制台点 ▶ 运行 时写的 zmax_data/ss_live/ui_run.json。
         为什么不用文件新鲜度: tools/ss_engine_loop.py / ss_fw_trace_pub.py 是**常驻后台**,
         engine_latest/torque_live 一直在写 ⇒ 没点运行也会"看着在跑"(老倪 2026-10-19 指出的)。
         pid 不在了也判没在跑 (崩溃/被杀不留假在跑)。"""
@@ -543,7 +543,7 @@ class OrbitalArchData:
             "skill":  self._age_of(os.path.join(root, "zmax_data", "ss_live", "skill_latest.json")),
             "skerr":  self._age_of(os.path.join(root, "zmax_data", "ss_live", "skill_error.json")),
         }
-        # 体 ← 它自己的真源 (太阳: 引擎+扭矩两条都新鲜才算在跑; 水星/木星: 吃引擎这一帧的位姿)
+        # 体 ← 它自己的唯一依据 (太阳: 引擎+扭矩两条都新鲜才算在跑; 水星/木星: 吃引擎这一帧的位姿)
         src = {"sun": ("engine", "torque"), "mercury": ("engine",), "jupiter": ("engine",),
                "mars": ("engine",), "earth": ("skill",), "moon": ("skerr",), "sats": ("skill",)}
         self.running, self.run_note = self._ui_run()
@@ -576,7 +576,7 @@ class OrbitalArchData:
 
 
     def _active_skill(self, sk_phys):
-        """当前在职技能 SKxx ↔ 段 (真源: skill_phys.json 的 SK→stage 映射; 段取 torque_live.stage)。"""
+        """当前在职技能 SKxx ↔ 段 (唯一依据: skill_phys.json 的 SK→stage 映射; 段取 torque_live.stage)。"""
         stage = str((self.torque or {}).get("stage") or "")
         for sid, d in sorted((sk_phys.get("skills") or {}).items()):
             if str(d.get("stage") or "") == stage and (d.get("在职") in (1, True)):
@@ -588,7 +588,7 @@ class OrbitalArchData:
 
 
 class OrbitalArchView(QWidget):
-    """🪐 球心引力架构 (太阳系映射) —— QPainter 2.5D 真球体 + 可旋转可缩放 + 真源力连线。
+    """🪐 球心引力架构 (太阳系映射) —— QPainter 2.5D 真球体 + 可旋转可缩放 + 唯一依据力连线。
 
     老倪 2026-10-16 反馈 (逐条落实):
       ① 「这些卫星都是原子技能, 应该围绕在地球周围, 不能散落在太阳系」
@@ -599,7 +599,7 @@ class OrbitalArchView(QWidget):
             全部是**真三维变换** (轨道平面绕 X 轴俯仰 + 绕 Z 轴偏航后正交投影), 不是画椭圆凑。
       ③ 「球与球之间的连线, 要做好规划, 相当于 模型节点之间的力的相互作用, 要能体现出,
          有相互作用, 就显示连线」
-         ⇒ 连线**全部来自画布 links 真源** (画布 state_space_obs.json 的 202 条连线):
+         ⇒ 连线**全部来自画布 links 唯一依据** (画布 state_space_obs.json 的 202 条连线):
             主体↔主体 的每一条真边都画; 主体↔体系外直接邻居 的边画到外圈小星点 (不隐形、也不编造)。
             没有真连线的一律不画 (缺哪条在脚注里可核)。
       ⑤ 「现在的连线太多了, 而且实现不好看。背景的圆形轨道也要体现出, 直线实线改成虚线,
@@ -611,9 +611,9 @@ class OrbitalArchView(QWidget):
             ③ **一条实线都不留** —— 全部虚线 (慢速相位流动, 柔顺不闪);
             ④ 线色 = 信号种类 (青=几何条件 · 金=性能/集合条件 · 绿=动作/前馈 · 紫=反馈/回灌);
             ⑤ **信号有值才画** (`_signal_ok`: 值由真节点函数当场算出, 缺值 ⇒ 那条线不画);
-            ⑥ 显示与代码同源: 线集来自画布 links 真源, 每条线的"有/无"由 `body` 里对应真源键
+            ⑥ 显示与代码同源: 线集来自画布 links 唯一依据, 每条线的"有/无"由 `body` 里对应唯一依据键
                决定 (见 SIG_OF 的 file:line 注释), 不在视图里编一张静态表;
-            ⑦ 卫星 = 真源在职技能表的 SK01~SK08 各一颗 (逐颗标 SK 号), 亮球=在职, 金圈=当前在职。
+            ⑦ 卫星 = 唯一依据在职技能表的 SK01~SK08 各一颗 (逐颗标 SK 号), 亮球=在职, 金圈=当前在职。
 
       ④ 「连线要适合人眼睛的观察, 不要太细, 不要高频率闪烁, 不要很快消失。要注意平顺柔和」
          ⇒ 每条线两遍画 (外发光 6px 半透明 + 实芯 2.2px); 反馈线用**慢速流动**虚线 (相位连续推进,
@@ -662,7 +662,7 @@ class OrbitalArchView(QWidget):
         self.setCursor(Qt.OpenHandCursor)
         self.setMouseTracking(True)
         self.setToolTip("🪐 球心引力架构 · 左键拖动=旋转 · 滚轮=缩放 · 双击=复位\n"
-                        "球与球的连线全部来自画布真源 (力的相互作用: 有真连线才画)\n"
+                        "球与球的连线全部来自画布唯一依据 (力的相互作用: 有真连线才画)\n"
                         "太阳=流形引擎 · 水星=接触流形 · 地球=前馈加速器(+原子技能卫星群) · "
                         "火星=DiT · 木星=性能流形 · 月球=状态校正器")
         self._tm = QTimer(self)
@@ -674,7 +674,7 @@ class OrbitalArchView(QWidget):
         # self._tm.start(self.TICK_MS)          # ← 原来无条件启动
         # 2026-10-19 老倪: 「太阳系窗口是观察 L2~L5 模型的主要窗口, 要反映模型实际状态」
         #   原来只在 __init__ 里 self.data.build() 一次 ⇒ 屏上数字是"打开那一刻"的死值, 模型停了也不变。
-        #   现在每 500ms 重读真源 (build ≈1ms), 窗口不可见时跳过。
+        #   现在每 500ms 重读唯一依据 (build ≈1ms), 窗口不可见时跳过。
         self._tm_data = QTimer(self)
         self._tm_data.timeout.connect(self.refresh)
         # self._tm_data.start(500)              # ← 同上, 改由 showEvent 启
@@ -701,7 +701,7 @@ class OrbitalArchView(QWidget):
             pass
         super().hideEvent(e)
 
-    # ── 真源: 力的相互作用 (画布 links) ──────────────────────────────────────
+    # ── 唯一依据: 力的相互作用 (画布 links) ──────────────────────────────────────
     @staticmethod
     def _ext_nodes():
         """2026-10-16 老倪: 「其它球体删掉」⇒ 体系外节点一律不上图 (保留空实现供旧调用)。"""
@@ -709,7 +709,7 @@ class OrbitalArchView(QWidget):
 
     @staticmethod
     def _kind(label):
-        """按**真源连线 label** 归类 (力/条件的种类; 不猜)。"""
+        """按**唯一依据连线 label** 归类 (力/条件的种类; 不猜)。"""
         t = str(label or "")
         if any(k in t for k in ("反馈", "回灌", "闭环", "z_k", "校正")):
             return "feedback"
@@ -721,7 +721,7 @@ class OrbitalArchView(QWidget):
             return "condition"
         return "misc"
 
-    # 每条 主体↔主体 连线 ↔ **真源信号** (值在场上由真节点函数算出, 不在视图里编表):
+    # 每条 主体↔主体 连线 ↔ **唯一依据信号** (值在场上由真节点函数算出, 不在视图里编表):
     #   ss_mani_eng→ssmani_c : ContactManifold.decompose (manifold_layer.py:116) → progress
     #   ss_mani_eng→ssmani_p : PerformanceManifold.evaluate (manifold_layer.py:181) → V_p
     #   ssmani_c/ssmani_p→ssdec : 条件注入 (state_space_action_head.py:52 forward) + 动作模 action_norm
@@ -735,7 +735,7 @@ class OrbitalArchView(QWidget):
     }
 
     def _signal_ok(self, e, b):
-        """「有就显示, 没有就不显示」: 该线依赖的真源信号**全部有值**才画 (缺值 ⇒ 不画, 不画假线)。"""
+        """「有就显示, 没有就不显示」: 该线依赖的唯一依据信号**全部有值**才画 (缺值 ⇒ 不画, 不画假线)。"""
         sig = e.get("sig") or ()
         for bk, fk in sig:
             v = (b.get(bk) or {}).get(fk)
@@ -746,8 +746,8 @@ class OrbitalArchView(QWidget):
     def _build_edges(self):
         """**只画主体↔主体**的真连线 (2026-10-16 老倪: 连线太多/其它球体删掉)。
 
-        每条边附 `sig` = 该相互作用依赖的真源信号键 (见 SIG_OF 的 file:line 注释),
-        绘制前用 `_signal_ok` 门控 —— 有就显示、没有就不显示, 且显示由真源代码驱动。
+        每条边附 `sig` = 该相互作用依赖的唯一依据信号键 (见 SIG_OF 的 file:line 注释),
+        绘制前用 `_signal_ok` 门控 —— 有就显示、没有就不显示, 且显示由唯一依据代码驱动。
         """
         body_ids = {b[1] for b in BODIES}
         out = []
@@ -774,7 +774,7 @@ class OrbitalArchView(QWidget):
         return uniq
 
     def interactions(self):
-        """给判据/自检用: 当前**真画出来**的相互作用清单 (真源边 + 信号门控通过)。"""
+        """给判据/自检用: 当前**真画出来**的相互作用清单 (唯一依据边 + 信号门控通过)。"""
         b = self.data.body
         return [e for e in self._edges if self._signal_ok(e, b)]
 
@@ -820,8 +820,8 @@ class OrbitalArchView(QWidget):
 
     # ── 2026-10-19: 悬停 = 读数卡 (太阳系窗口要能"看模型实际状态", 不只靠标签上的两行) ──
     def _hover(self, mx, my):
-        """鼠标落在某颗球上 ⇒ 土 tooltip 给出: 名/真源/运行态/帧龄/输出量。
-        数据全部来自 self.data.body (每 500ms 重读真源), 视图自己不攒数、不猜。"""
+        """鼠标落在某颗球上 ⇒ 土 tooltip 给出: 名/唯一依据/运行态/帧龄/输出量。
+        数据全部来自 self.data.body (每 500ms 重读唯一依据), 视图自己不攒数、不猜。"""
         W, H, S, cx, cy, R = self._geom()
         pos = self.positions(cx, cy, R)
         hit, best = None, 9.0
@@ -842,9 +842,9 @@ class OrbitalArchView(QWidget):
             _sk = hit[1]
             _d = next((x for x in (b.get("sats", {}).get("list") or []) if x.get("SK") == _sk), {})
             _st = (b.get("sats", {}).get("st") or {})
-            self._set_ttp("🛰 %s · 原子技能\n运行态: %s (帧龄 %s)\n段: %s · 在职 %s · 可行 %s · 偏差 %s m/s\n真源: %s" % (
+            self._set_ttp("🛰 %s · 原子技能\n运行态: %s (帧龄 %s)\n段: %s · 在职 %s · 可行 %s · 偏差 %s m/s\n唯一依据: %s" % (
                 _sk, _st.get("txt"), self._fmt_age(_st.get("age")), _d.get("stage"),
-                _d.get("在职"), _d.get("可行"), _d.get("偏差_mps"), b.get("sats", {}).get("真源")))
+                _d.get("在职"), _d.get("可行"), _d.get("偏差_mps"), b.get("sats", {}).get("唯一依据")))
             return
         d = b.get(hit, {}) or {}
         stt = d.get("st") or {}
@@ -876,7 +876,7 @@ class OrbitalArchView(QWidget):
                  "moon": "状态校正 (残差/反馈)"}
         rows.append("结构对应: %s" % _ROLE.get(hit, "—"))
         rows.append("节拍: 控制环 10Hz (一拍 0.1s) · 公转相位 = 该层实测量映射, 不做时间积分")
-        rows.append("真源: %s" % (d.get("真源") or "—"))
+        rows.append("唯一依据: %s" % (d.get("唯一依据") or "—"))
         self._set_ttp("\n".join(rows))
 
     @staticmethod
@@ -945,7 +945,7 @@ class OrbitalArchView(QWidget):
         self.update()
 
     def refresh(self):
-        """重读真源 (每 500ms): 天体运行态 / L2~L5 层状态 / 扭矩口径 都会跟着变。"""
+        """重读唯一依据 (每 500ms): 天体运行态 / L2~L5 层状态 / 扭矩口径 都会跟着变。"""
         if not self.isVisible():
             return
         try:
@@ -1179,7 +1179,7 @@ class OrbitalArchView(QWidget):
         pt = [self._proj(_er * math.cos(_ea) + x, _er * math.sin(_ea) + y, 0.0, cx, cy, R) for x, y in ring]
         for j in range(len(pt) - 1):
             p.drawLine(QPointF(pt[j][0], pt[j][1]), QPointF(pt[j + 1][0], pt[j + 1][1]))
-        # 力的相互作用 (真源连线) —— 先画线, 再画球 (球压线, 视觉更干净)
+        # 力的相互作用 (唯一依据连线) —— 先画线, 再画球 (球压线, 视觉更干净)
         #   2026-10-19: 没点 ▶ 运行 ⇒ 一条力线都不画 (老倪: 「应该没有运行的力啊」)
         _RUN = bool(getattr(self.data, "running", False))
         if _RUN:
@@ -1236,7 +1236,7 @@ class OrbitalArchView(QWidget):
             if getattr(self, "_focus", False) and kind != "earth":
                 energy *= 0.42                                   # 地球视角: 其余天体退成背景
             self._sphere(p, x, y, r, ecol, energy)
-        # 2026-10-19: 运行态环 —— 球外一圈按该体**自己真源的帧龄**上色 (绿=在跑/黄=陈旧/灰=离线)。
+        # 2026-10-19: 运行态环 —— 球外一圈按该体**自己唯一依据的帧龄**上色 (绿=在跑/黄=陈旧/灰=离线)。
         #   环与球之间留 3px, 线宽 1.6px; 不做脉冲 (老倪: 不要高频闪烁)。
         for kind, x, y, r, _z, sk in items:
             if kind == "sat":
@@ -1448,7 +1448,7 @@ class OrbitalArchView(QWidget):
             return ex + ux * ln, ey + uy * ln
 
         # 判据用: 这一刻每根箭头的 (类, 笔宽, 像素长)
-        # 🔧 绝对尺度 (老倪 2026-10-19「按建议来」): 长度 = |F| × px_per_mps (真源 force_field.json),
+        # 🔧 绝对尺度 (老倪 2026-10-19「按建议来」): 长度 = |F| × px_per_mps (唯一依据 force_field.json),
         #   不再"按当帧最大值归一" —— 那样帧与帧之间长度不可比, 看着忽长忽短。
         #   线性尺度在 |F| 跨 10 倍 (0.05~0.55 m/s) 时只能全线贴顶 ⇒ 用**固定参考的平方根尺度**:
         #   L = Lmax·√(|F|/F_ref), F_ref 固定 (force_field.json) ⇒ 同一 |F| 永远同样长, 跨帧可比, 不会饱和。
@@ -1488,7 +1488,7 @@ class OrbitalArchView(QWidget):
         # 记下合力箭头的**屏幕方向角** (判据 R5 用它跟 S³ 表盘的"合"射线逐度比对)
         self._arrow_ang = math.degrees(math.atan2(fy - ey, fx - ex)) % 360.0
         # ③ 合力实时数 (贴箭头尖)
-        # 潮汐项 (月球↔地球互作用): 真源里没有"月球对地球的引力", 只有状态校正器的**残差** ⇒
+        # 潮汐项 (月球↔地球互作用): 唯一依据里没有"月球对地球的引力", 只有状态校正器的**残差** ⇒
         #   拿残差当潮汐量, 画虚线箭并向月球方向, 标签写"潮汐(残差)", 不冒充引力。
         _me = (self.data.body.get("moon") or {}).get("err")
         if isinstance(_me, (int, float)) and not isinstance(_me, bool):
@@ -1536,7 +1536,7 @@ class OrbitalArchView(QWidget):
         p.setPen(QPen(QColor(90, 110, 140, 120), 1))
         p.setBrush(QColor(9, 14, 21, 238))      # 不再透到看得见后面的轨道 ⇒ 面板要"实"
         if not fE:
-            # 未运行 / 无真源: 画空骨架 (五个空盘 + 未运行), 布局不跳, 也不假装有力
+            # 未运行 / 无唯一依据: 画空骨架 (五个空盘 + 未运行), 布局不跳, 也不假装有力
             p.setPen(QPen(QColor(90, 110, 140, 120), 1))
             p.setBrush(QColor(9, 14, 21, 238))
             p.drawRoundedRect(QRectF(x0, _y0, w0, _h), 6, 6)
@@ -1574,7 +1574,7 @@ class OrbitalArchView(QWidget):
         #   ⇒ 五个盘看起来一模一样, 也**没有任何数字**。现在: 射线长 ∝ √(|F|/max) + 盘下写 |F|。
         self._s3_lens = []
         # 🔴 2026-10-19 老倪「就 L5, 力场不显示 L5 的单位圆」: 原来只遍历"有数据的层",
-        #   L5 没真源(缺 L5) 时整格都不画 ⇒ 五格变四格, 位置还整体错位, 看着像"L5 被吞了"。
+        #   L5 没唯一依据(缺 L5) 时整格都不画 ⇒ 五格变四格, 位置还整体错位, 看着像"L5 被吞了"。
         #   现在: **五个格位固定** (合/L5/L4/L3/L2), 没数据的层照样画单位圆 + 层名 + "缺",
         #   只是不画射线 —— 老倪要的是"能看见它在, 且知道它为什么没数"。
         _byL = {}
@@ -1599,7 +1599,7 @@ class OrbitalArchView(QWidget):
         _dy = _y0 + 52.0 + 44.0
         for _i, (_q, _vec, _col, _nm, _wgt, _mag) in enumerate(_items):
             if not _q and not _vec:
-                # 这一层没有真源 (例: L5 场景理解没跑) ⇒ 空盘 + 层名 + "缺", 位置不动
+                # 这一层没有唯一依据 (例: L5 场景理解没跑) ⇒ 空盘 + 层名 + "缺", 位置不动
                 _ccx = x0 + 14.0 + _cw * (_i + 0.5)
                 _ccy = _dy
                 _rad = min(34.0, _cw * 0.45)
@@ -1698,7 +1698,7 @@ class OrbitalArchView(QWidget):
 
     def _infer_halo(self, p, key, x, y, r):
         """推理中的**柔顺光晕** (画在球体之下): 半径 2.2r 的径向渐变, 强度按
-        _live_s (该层真源帧龄) × 呼吸曲线 (周期 2s, 正弦) —— 在推理就慢呼吸, 不在就自然灭掉。"""
+        _live_s (该层唯一依据帧龄) × 呼吸曲线 (周期 2s, 正弦) —— 在推理就慢呼吸, 不在就自然灭掉。"""
         a = getattr(self, "_live_s", {}).get(key, 0.0)
         if a <= 0.03:
             return
@@ -1742,7 +1742,7 @@ class OrbitalArchView(QWidget):
 
     def _layers_strip(self, p, W, H):
         """右上角 L5→L4→L3→L2 四格: 每格 = 层名 + 状态点 + 最近一次真调用的 ms; 整条带标公共帧龄。
-        真源: layer_calls.jsonl 末行 (引擎每拍一条流水)。文件停写 ⇒ 整条带变黄/灰并标"陈旧", 不冒充在跑。"""
+        唯一依据: layer_calls.jsonl 末行 (引擎每拍一条流水)。文件停写 ⇒ 整条带变黄/灰并标"陈旧", 不冒充在跑。"""
         L = getattr(self.data, "layers", None) or {}
         if not L:
             return
@@ -1774,7 +1774,7 @@ class OrbitalArchView(QWidget):
             p.drawText(QRectF(x + 6, y0 + 18, cw - 10, 12), Qt.AlignLeft | Qt.AlignVCenter, _t)
         # 公共帧龄
         _age = L.get("age")
-        _txt = "L2~L5 调用流水: " + (("帧龄 %.1fs · %s" % (_age, L.get("txt") or "")) if isinstance(_age, (int, float)) else "无真源")
+        _txt = "L2~L5 调用流水: " + (("帧龄 %.1fs · %s" % (_age, L.get("txt") or "")) if isinstance(_age, (int, float)) else "无唯一依据")
         p.setFont(_cached_font(12)); p.setPen(col)
         p.drawText(QRectF(x0, y0 + ch + 2, cw * 4 + gap * 3, 12), Qt.AlignRight | Qt.AlignVCenter, _txt)
 
@@ -1871,7 +1871,7 @@ class OrbitalArchView(QWidget):
           · 体系外的线与灰点**全部删除** (只留 7 类主体之间的真边);
           · 每一条都是虚线 (CustomDashLine, 相位连续慢推 ⇒ 在动, 但绝不闪、不断);
           · 颜色按**信号种类**: 青=几何条件 · 金=性能/集合条件 · 绿=动作/前馈 · 紫=反馈/回灌;
-          · `_signal_ok` 门控 —— 该相互作用依赖的真源信号没值 ⇒ **这条线不画** (不画假线)。
+          · `_signal_ok` 门控 —— 该相互作用依赖的唯一依据信号没值 ⇒ **这条线不画** (不画假线)。
         """
         pos = self.positions(cx, cy, R)
         col_of = {"geom": CYAN, "condition": CYAN, "perf": GOLD, "semantic": GOLD,
@@ -2017,7 +2017,7 @@ class OrbitalArchView(QWidget):
 
     def _foot_lines(self, W):
         """底部图注 (2026-10-19 老倪「不要显示那么多字, 精简」: 由 8~9 行砍到 3 行, 字号 9→11)。
-        保留可复核锚点: 真源: / 帧龄 / 节点映射核对 (判据 F2) · L2~L5 (判据 S13) · 角度映射 (F1)。
+        保留可复核锚点: 唯一依据: / 帧龄 / 节点映射核对 (判据 F2) · L2~L5 (判据 S13) · 角度映射 (F1)。
         细节 (每条连线/每个角度映射到哪个量) 全在悬停卡与 tooltip 里, 不占画面。"""
         s = self.data.body.get("sun", {})
         nv = self.info.get("checked", {})
@@ -2039,7 +2039,7 @@ class OrbitalArchView(QWidget):
             "L2~L5: %s · 帧龄 %s · 球位=角度映射" % (
                 _lg,
                 ((" %.0fs" % _L["age"]) if isinstance(_L.get("age"), (int, float)) else "无")),
-            "真源 engine/torque_live/skill · %.1fs · 核对 %d/%d%s" % (
+            "唯一依据 engine/torque_live/skill · %.1fs · 核对 %d/%d%s" % (
                 float(_age.rstrip("s")) if _age.endswith("s") else 0.0,
                 len(BODIES) - len(miss), len(BODIES), _run),
             # 🪐 万有引力定律约束 (老倪 2026-10-19): 场上正在用的力是否满足律, 写在画面上可核
@@ -2088,7 +2088,7 @@ class OrbitalArchView(QWidget):
     def _sun_text_short(self, s):
         """太阳只写两个数: M (标定) + T (在跑才有)。"""
         if not isinstance(s.get("M"), (int, float)):
-            return "真源不可用"
+            return "唯一依据不可用"
         if not getattr(self.data, "running", False):
             return "M=%.2f 未运行" % s["M"]
         t = "M=%.2f" % s["M"]
@@ -2137,7 +2137,7 @@ class OrbitalArchView(QWidget):
             elif not _run_all:
                 body = "未运行"          # 后台常驻引擎一直在写文件 ⇒ 未运行时不许让数字继续跳
             else:
-                body = self._body_short(key, b.get(key, {})) or "无真源"
+                body = self._body_short(key, b.get(key, {})) or "无唯一依据"
             # 一行: 状态字形 + 天体/节点名 + 关键量 (详细口径在悬停卡)
             rows.append((key, "%s %s %s" % (self._st_glyph(b.get(key, {})), head, body), col))
         # 卫星: 8 颗 SK 合成一行 (逐颗浮动标号会跟着地球转 = 飘, 老倪不要)
@@ -2264,7 +2264,7 @@ class OrbitalArchView(QWidget):
                     _clean = _cand
                     break
             if _clean is None:
-                # 7 个候选全冲突 ⇒ 兜底进页边栏空槽 (2026-10-16: 否则最后一块会与邻块只隔 1px, 判据 M3 红)
+                # 7 个候选全冲突 ⇒ 保障进页边栏空槽 (2026-10-16: 否则最后一块会与邻块只隔 1px, 判据 M3 红)
                 _clean = self._gutter_slot([str(_sk)], placed, _ks_sat, W, H, pad_top, pad_bot, 32.0) or _cand
             _blk = _clean
             _col = GOLD if _sk == b.get("sats", {}).get("active") else QColor("#9fe3d6")
@@ -2359,7 +2359,7 @@ class OrbitalArchView(QWidget):
                         return _fin(rect)
                     if best_ov is None or ov < best_ov:
                         best, best_ov = rect, ov
-            # 兜底 (2026-10-16 看图: 地球区 三条标签互压 —— "重叠最小者"在拥挤区就等于重叠):
+            # 保障 (2026-10-16 看图: 地球区 三条标签互压 —— "重叠最小者"在拥挤区就等于重叠):
             # 候选方向全冲突 ⇒ 放进**左侧/右侧页边栏**的第一个空槽 (先 clamp 再逐 8px 下移找位),
             # 槽位同样对 已放置块/球体/底栏 做 keep-out ⇒ 保证任何两块文字不重叠。
             fb = self._gutter_slot(lines, placed, ks, W, H, pad_top, pad_bot, w)
@@ -2384,7 +2384,7 @@ class OrbitalArchView(QWidget):
             _st = (b.get(key, {}) or {}).get("st") or {}
             _tail = "" if _st.get("k") == "live" else (" · %s" % (_st.get("txt") or ""))
             lines = ["%s %s" % (self._st_glyph(b.get(key, {})), names[key]),
-                     (self._body_short(key, b.get(key, {})) or "无真源") + _tail]
+                     (self._body_short(key, b.get(key, {})) or "无唯一依据") + _tail]
             place_near(x, y, lines, FG if key != "earth" else QColor("#cfe4ff"), 12,
                        ux, uy, S * self.RAD[key])
         # 太阳 (贴球底)
@@ -2403,7 +2403,7 @@ class OrbitalArchView(QWidget):
                    S * self.RAD["moon"] + 12)
         # 收尾防撞 (2026-10-16 看图/判据 J1: 加了 8 个卫星 SK 号之后, 拥挤区可能仍有两块相交):
         #   逐对检查, 相交的把**后一块**改放页边栏空槽; 槽位也撞就保持原位 (判据会报出来, 不藏着)。
-        # 2026-10-16 第三轮看图: 判据 K1 换一帧真源就红(1 块压火星) ⇒ 块↔球也进防撞:
+        # 2026-10-16 第三轮看图: 判据 K1 换一帧唯一依据就红(1 块压火星) ⇒ 块↔球也进防撞:
         #   块到任一球面(球半径+8px keep-out)不足 ⇒ 同样改放页边栏空槽。
         _ksF = keepouts()
         for _i in range(len(out)):
@@ -2433,7 +2433,7 @@ class OrbitalArchView(QWidget):
         return out, placed
 
     def _gutter_slot(self, lines, placed, ks, W, H, pad_top, pad_bot, w):
-        """页边栏空槽 (保证不重叠的兜底位置) —— 候选方向全冲突时用 (2026-10-16 看图: 地球区三条互压)。"""
+        """页边栏空槽 (保证不重叠的保障位置) —— 候选方向全冲突时用 (2026-10-16 看图: 地球区三条互压)。"""
         h = self.LH * len(lines) + 4
         for xg in (6.0, W - 6.0 - w):                 # 先左栏, 再右栏
             y = float(pad_top) + 4.0
@@ -2580,7 +2580,7 @@ class OrbitalArchView(QWidget):
 
     def _sun_text(self, s):
         if not isinstance(s.get("M"), (int, float)):
-            return "真源不可用 (未读 zmax_manifold/engine)"
+            return "唯一依据不可用 (未读 zmax_manifold/engine)"
         t = "M=%.3f · φ=%s · ‖∇Φ‖=%s" % (s["M"],
                                         ("%.3f" % s["phi"]) if isinstance(s.get("phi"), (int, float)) else "—",
                                         ("%.3f" % s["grad_norm"]) if isinstance(s.get("grad_norm"), (int, float)) else "—")

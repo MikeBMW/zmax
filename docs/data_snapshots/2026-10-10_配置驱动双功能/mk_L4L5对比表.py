@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 matplotlib.rcParams["font.sans-serif"] = ["Noto Sans CJK SC", "WenQuanYi Zen Hei", "DejaVu Sans"]
 matplotlib.rcParams["axes.unicode_minus"] = False
 
-FW_C = {  # 插拔 配置值 (真源 config/ss_task_binding.json)
+FW_C = {  # 插拔 配置值 (唯一依据 config/ss_task_binding.json)
     "阶段链": "13 段 (接近→…→插入→拔出→AOI转移→AOI检测→回程→放下→完成)",
     "工序": "取料→扫码→翻转→对位→插入→异步测试→拔出→AOI飞拍→分拣 (9)",
     "公差": "单边 ≤1.000mm / yaw ≤1.00°",
@@ -40,7 +40,7 @@ MEAS = [
 fig = plt.figure(figsize=(13.2, 10.2), dpi=125)
 fig.patch.set_facecolor("white")
 
-fig.text(0.5, 0.975, "Z-MAX · L4/L5 进控制逻辑 —— 配置切换对比 (真源 config/ss_task_binding.json)",
+fig.text(0.5, 0.975, "Z-MAX · L4/L5 进控制逻辑 —— 配置切换对比 (唯一依据 config/ss_task_binding.json)",
          ha="center", fontsize=15, weight="bold")
 fig.text(0.5, 0.945, "L5 下指令 = 任务意图→阶段/公差/力上限/节拍 · L4 保安全 = 每帧限速·力否决·z下限·档位介入方式",
          ha="center", fontsize=10.5, color="#444")

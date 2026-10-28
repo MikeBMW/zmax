@@ -7,8 +7,8 @@
 所有原子技能, 是否用这样的惯性约束 …」
 
 输出 (可复制进报告):
-  ① 技能级盘查表: m / F_max / v_cap / a_max=F/m / jerk_max / dm·dt⁻¹ + 四条约束 + 物理量真源
-  ② 画布口径一致性: 画布 ⚖物理约束闸 节点 params.skills 与代码真源逐字段一致 (防"界面上写一套、代码跑另一套")
+  ① 技能级盘查表: m / F_max / v_cap / a_max=F/m / jerk_max / dm·dt⁻¹ + 四条约束 + 物理量唯一依据
+  ② 画布口径一致性: 画布 ⚖物理约束闸 节点 params.skills 与代码唯一依据逐字段一致 (防"界面上写一套、代码跑另一套")
   ③ 现场闸门统计: skill_error.json 的削因计数 + 每技能最近请求/可行/偏差/大偏差
   ④ 判定: 9 个技能全部带 4 条约束 ⇒ 通过; 缺任何一条 ⇒ 红。
 """
@@ -26,7 +26,7 @@ from lerobot.policies.left_right.state_space.physics_constraints import InertiaL
 lim = InertiaLimiter()
 rows = lim.audit()
 print("=" * 118)
-print("⚖ 原子技能物理惯性 / 质量变化率 盘查表 (真源 src/lerobot/policies/left_right/state_space/physics_constraints.py)")
+print("⚖ 原子技能物理惯性 / 质量变化率 盘查表 (唯一依据 src/lerobot/policies/left_right/state_space/physics_constraints.py)")
 print("=" * 118)
 print("%-4s %-8s %-8s %-9s %-11s %-12s %-11s %s"
       % ("技能", "m/kg", "Fmax/N", "v_cap/(m/s)", "a_max/(m/s²)", "jerk/(m/s³)", "dm/dt/(kg/s)", "约束"))
@@ -37,13 +37,13 @@ for r in rows:
     print("%-4s %-8.2f %-8.1f %-9.3f %-11.2f %-12.1f %-11.2f %s%s"
           % (r["技能"], r["m_kg"], r["F_max_N"], r["v_cap_mps"], r["a_max_mps2"], r["jerk_max_mps3"],
              r["dmdt_max_kg_s"], r["约束"], "" if _four else "  ❌ 缺约束"))
-print("\n物理量真源 (逐个技能可复核):")
+print("\n物理量唯一依据 (逐个技能可复核):")
 for r in rows:
-    print("   %-3s %s" % (r["技能"], r["真源"]))
+    print("   %-3s %s" % (r["技能"], r["唯一依据"]))
 
 # ② 画布口径一致
 print("\n" + "-" * 118)
-print("② 画布口径一致性 (⚖物理约束闸 节点 params.skills vs 代码真源)")
+print("② 画布口径一致性 (⚖物理约束闸 节点 params.skills vs 代码唯一依据)")
 try:
     d = json.load(open(os.path.realpath(os.path.join(REPO, "flows", "state_space_obs.json")), encoding="utf-8"))
     node = next((n for n in d["nodes"] if n["id"] == "ssphys"), None)
@@ -68,7 +68,7 @@ except Exception as e:                                                          
 
 # ③ 现场闸门统计
 print("\n" + "-" * 118)
-print("③ 现场闸门统计 (真源 zmax_data/ss_live/skill_error.json, 由 zmax-ss-skill-dispatch 每拍写)")
+print("③ 现场闸门统计 (唯一依据 zmax_data/ss_live/skill_error.json, 由 zmax-ss-skill-dispatch 每拍写)")
 try:
     p = os.path.join(REPO, "zmax_data", "ss_live", "skill_error.json")
     e = json.load(open(p, encoding="utf-8"))
@@ -91,6 +91,6 @@ except Exception as ex:                                                         
 
 print("\n" + "=" * 118)
 print("盘查结论: %s" % ("✅ 9 个 L2 原子技能**全部**带 ①速度 ②加速度 ③加加速度 ④动量/质量变化率 ⑤位移 五条物理约束, "
-                    "且画布口径与代码真源一致" if ok else "❌ 有技能缺约束或口径不一致"))
+                    "且画布口径与代码唯一依据一致" if ok else "❌ 有技能缺约束或口径不一致"))
 print("=" * 118)
 sys.exit(0 if ok else 1)

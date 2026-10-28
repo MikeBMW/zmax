@@ -45,7 +45,7 @@
 | ①-6 | 旧归档清理评估(893MB tar + 489MB zip) | 给出清单+影响, 等用户点头(不自行删) | 属"需决策" |
 
 ### ② 需现场/需授权(我不能单独完成)
-| # | 任务 | 卡在哪 |
+| # | 任务 | 阻塞点 |
 |---|---|---|
 | ②-1 | **AOI 首轮标定**(金手指/外观缺陷)→ 训质量检测头 | 需人在 10082 相机前放光模块并**框选**(数据集现 0 框) |
 | ②-2 | 10083 表面相机 `/picture` 路由 | 现场按交付补丁改服务(今日实测仍 404) |
@@ -68,7 +68,7 @@
 | 产线主程序未跑 → `/robot/tcp_pose` 无发布者 | 抓取 S2 之后无法执行 |
 | AOI 标注需人手(数据集 0 框) | 质量检测头无法开训 |
 | 10083 无 `/picture` | 表面相机取图缺口 |
-| Qwen2.5-VL-3B 权重未下全 | 宏观层只能用 smolvlm2-500m 兜底 |
+| Qwen2.5-VL-3B 权重未下全 | 宏观层只能用 smolvlm2-500m 保障 |
 | 8GB 显存装不下 SmolVLA+LEW 同跑 | L3 段 CPU 4.24s/步 |
 
 ---
@@ -81,9 +81,9 @@
 | 位置 | L5 大模型层行 (y=554) · **DeepSeek 左侧** x=1544 (左邻工程记忆右沿 1513, DeepSeek 左沿 1806; 左右各留 31/32px) · w=230 |
 | 构图 | 画布 **87 节点 / 165 连线** (新增 1 节点 2 连线): 入 `工程记忆→桥.in1`(能力清单), 出 `桥.out1→DeepSeek.in3`(提示词意图→L5 场景理解); 回执走中转(画布外副作用, 不再画线 → 保持简洁) |
 | 构图纪律 | 工具 `tools/canvas_add_web_agent_node.py` 六条硬断言 (id 唯一/int 坐标/零重叠(排除行带背景)/在 L5 行带/DeepSeek 左侧同行/连线端口存在且全前向无重复) · 备份 `.bak_pre_webagent_20260925_084846` |
-| 运行时 | `node_logic._reg("n_web_agent")` 命中 + `_EXTERNAL_LOC` 指真源码 + 真执行函数 `node_web_agent(ctx)`; 档位级审计 **R2-档位级真接** (R2 33→34 · ⚠无执行注册 0 · 真缺口 0) |
+| 运行时 | `node_logic._reg("n_web_agent")` 命中 + `_EXTERNAL_LOC` 指唯一依据码 + 真执行函数 `node_web_agent(ctx)`; 档位级审计 **R2-档位级真接** (R2 33→34 · ⚠无执行注册 0 · 真缺口 0) |
 | 能力清单 | 新增 **L5 层** (`capability_levels.py` 新键) + `L5-C01 Web 智能体桥 · 远程提示词`; Tab5/自检循环补 "L5" → 35 条能力 |
-| 真源 | `src/lerobot/policies/left_right/state_space/web_agent_bridge.py` (class WebAgentBridge) · CLI `tools/ss_web_agent.py` · 常驻 `zmax-web-agent-bridge.service` (enabled+active, User=ubuntu) |
+| 唯一依据 | `src/lerobot/policies/left_right/state_space/web_agent_bridge.py` (class WebAgentBridge) · CLI `tools/ss_web_agent.py` · 常驻 `zmax-web-agent-bridge.service` (enabled+active, User=ubuntu) |
 | 取证 | `tools/verify_web_agent_node.py` **27/27** (含公网端到端: web POST→本地派发→web GET 回执含真数据 87 节点/165 连线 · 游标不重放 · 动作类拒答+审计) |
 
 ### 二、通道 (与 web 的 agent 交换信息)
@@ -130,11 +130,11 @@
 
 | # | 任务 | 结果 | 取证/判据 |
 |---|---|---|---|
-| ①-6 | 画布三话题纳入全局守护 | ss_canvas(画布真源 75 节点轮转) · ss_macro(五层记忆) · ss_nodes(自描述+实测Hz) | `zmax_dds_ss_verify` **16/16 → 20/20**; 未测量一律 -1 不冒充 0 |
+| ①-6 | 画布三话题纳入全局守护 | ss_canvas(画布唯一依据 75 节点轮转) · ss_macro(五层记忆) · ss_nodes(自描述+实测Hz) | `zmax_dds_ss_verify` **16/16 → 20/20**; 未测量一律 -1 不冒充 0 |
 | ①-5 | L4 哨兵提示词更新 | 改为"已定事实版"(参数线关闭/标定闸判死/专线待决策), workdir 指回 main | cron ee79cfec0871 已更新, 下轮生效 |
 | ①-4 | 控制台「🔔 发飞书」按钮 | 判据图窗口一键推当前图(后台线程, 不卡界面) + 推送器 `--file` | `verify_feishu_button` **7/7**(真推送 message_id · 推送图与判据图同源 960×960) |
 | ①-1 | 认知头换靶子 | **多步(K=1/5/10)仍输平凡基线**(匀速 R²≈1.0); **事件级 6/6 全赢平凡基线**(夹爪闭合 AUC .91 · 到位 .79 · 手在动 .91) | `cog_retarget_*` 3 份 JSON+2 份日志 · 数据 l5_gen_v6(100 段 39k 帧) |
-| ①-2 | 门控细化 | 根因=引擎 8 阶段 vs MOE 7 专家 → "完成"阶段行和为 0 走均匀兜底 → hard argmax 恒 E0; 修后 **8/8 覆盖**, 零回退(7 维逐位同), 同源 A/B 不变(单射 7/7) | `verify_moe_stage_coverage` **6/6** + 引擎真跑 rc=0 |
+| ①-2 | 门控细化 | 根因=引擎 8 阶段 vs MOE 7 专家 → "完成"阶段行和为 0 走均匀保障 → hard argmax 恒 E0; 修后 **8/8 覆盖**, 零回退(7 维逐位同), 同源 A/B 不变(单射 7/7) | `verify_moe_stage_coverage` **6/6** + 引擎真跑 rc=0 |
 | ①-3 | 认知头跨域复评 | 事件头 **跨域不退化**: v6→v5 六事件 AUC 0.87~0.92 / 0.77~0.80 ≈ 域内 | `cog_retarget_20260926_093024.json` |
 | ①-7 | 旧归档清理评估 | 只列不删: hermes-portable.tar.gz **893M**(08-21) · hermes_core_usb_20260822_1609.zip **489M** · hermes_core_20260826_1047.zip **263M** · hermes_core_usb_20260822_1037.zip **142M** = **1.79GB** 可回收 | 等老倪点头 (注: intact_pkgs/*.tar.gz 301M 是权重包, **不是**垃圾) |
 
@@ -199,7 +199,7 @@ GUI RSS 1.13GB 疑泄漏 · 页面注册疑有空串 —— 后两条经**实测
 |---|---|---|
 | 画布 | **n_hil** `🙋 HIL 人机在环 · 状态↔指示` @ (2171,554) 230×68, L5 行带 DeepSeek 右侧空位; 入线 1 (DeepSeek→HIL 展示) 出线 1 (HIL→L3 规划); 画布 88 节点/167 连线 | 六条硬断言构图 (`canvas_add_hil_node.py`) + `verify_hil_chain` ① |
 | 运行时 | `src/.../state_space/hil_bridge.py`: 上行=真值快照(真机 tap 的 obs7/帧龄 + **真调事件头 engine_v2 出 6 概率** + 四层健康 + 资源 + 画布 + 取证); 下行=轮询 `/agent/prompt` 只认 `from=hil_web` → 指示映射 (解释/状态/阶段=/暂停/恢复/待办) → 回 `/agent/reply`; **动作类红线拒答 + 审计** | `verify_hil_chain` ③④⑤ |
-| 通道 | ECS 中转**纯追加** `/hil/state` (POST 上报 append-only + GET 回读, `?history=N`); 并修 `/agent/reply` **保留客户端 from/action**(原来写死 "L5 状态空间节点" → HIL 网页看不到自己的回执) | 回归: 既有 status/orin/agent/packages 全 200 |
+| 通道 | ECS 中转**纯追加** `/hil/state` (POST 上报 append-only + GET 回读, `?history=N`); 并修 `/agent/reply` **保留客户端 from/action**(原来预先固定 "L5 状态空间节点" → HIL 网页看不到自己的回执) | 回归: 既有 status/orin/agent/packages 全 200 |
 | 网页 | `https://datadrive.world/hil.html` (8.2KB, hermes 形式: 左侧=状态空间核心思想(L2→L5 分层灯/阶段/6 事件概率条/资源/取证), 右侧=对话区(我↔工程), 输入框+快捷"解释") | `verify_hil_chain` ⑥ |
 | 接线 | node_logic `_reg("n_hil",...)` + `_EXTERNAL_LOC` → hil_bridge.py + `node_hil(ctx)` 真执行函数; 能力清单 **L5-C02** | `verify_hil_chain` ② |
 | 常驻 | `zmax-hil-bridge.service` (enabled+active, 每 5s 上报 + 收指示) | `verify_hil_chain` ⑦ |
@@ -207,7 +207,7 @@ GUI RSS 1.13GB 疑泄漏 · 页面注册疑有空串 —— 后两条经**实测
 **全链取证 17/17** (画布4 · 接线2 · 上行4 · 下行2 · 红线2 · 网页2 · 服务1) — `reports/hil_chain_verify_20260926_104846.json`
 **防串台**: 既有 web 智能体桥也加了 `from=hil_web` 跳过, 避免同一条指示被两处回答 (实测修前两条都答)。
 
-**新坑记录**: ① 远端 `pkill -f zmax_relay.py` 会匹配到**自己的 ssh 命令行**→ 自杀且真进程没死 → 改**按端口占用 PID** 精确重启 (`ss -lntp | awk ':39053'`) ② 中转把客户端 `from` 写死 → 多消费者场景必须保留来源字段, 否则前端无法区分回执归属。
+**新坑记录**: ① 远端 `pkill -f zmax_relay.py` 会匹配到**自己的 ssh 命令行**→ 自杀且真进程没死 → 改**按端口占用 PID** 精确重启 (`ss -lntp | awk ':39053'`) ② 中转把客户端 `from` 预先固定 → 多消费者场景必须保留来源字段, 否则前端无法区分回执归属。
 
 ## 2026-09-26 · 事故与修复: 「画布连线全没了」+ HIL 节点位置 + 连线交叉分析
 
@@ -244,14 +244,14 @@ GUI RSS 1.13GB 疑泄漏 · 页面注册疑有空串 —— 后两条经**实测
 | 项 | 结果 | 证据 |
 |---|---|---|
 | ① 引擎闭环 + ② 事件头逐帧真调 | ✅ 7/7 | 闭环 AUC gc 1.000 · mh 0.9995/0.9999 · rz 0.9969/0.9916 · 逐帧真调 220/220 · 0.278ms/帧 |
-| ③ 策略 rollout (仿真, state_space 权重) | ✅ 真跑通 (**成功率 0/5 — 真结果, 不是假 0%**) | 引擎内 `rollout_peg_check.py --policy state_space`: ep 最近距离 0.400m 没抬起 |
+| ③ 策略 rollout (仿真, state_space 权重) | ✅ 真验证通过 (**成功率 0/5 — 真结果, 不是假 0%**) | 引擎内 `rollout_peg_check.py --policy state_space`: ep 最近距离 0.400m 没抬起 |
 | ④ 数据 pipeline 五段 | ✅ | 采集帧龄 0.1s · relay 活 · 数据集 5 个 · 训练段空转 · 部署软链 |
 | ⑤ (需 --full) DDS 全局数据空间 | 20/20 | 前轮已验 |
 | ⑥ 控制台画布真实渲染 | ✅ 88 节点项/166 连线项 | 离屏真加载 (167→166 为既有去重行为) |
 | ⑦ Web 双通道 (桥 + HIL) | ✅ 17/17 | HIL 全链 + agent 提示词→回执 |
 | ⑧ 真机只读信号 | ✅ 仿真 8/8 · 真机只读 6/8 · 待现场 8 项 | 全程零动作下发 |
 
-**修掉两个真 bug**: `sim2real_preflight.run()` 无输出时 `tail[-1]` 崩 (5 处) → 兜底; `verify_canvas_render` 判据未对齐既有去重行为 → 对齐
+**修掉两个真 bug**: `sim2real_preflight.run()` 无输出时 `tail[-1]` 崩 (5 处) → 保障; `verify_canvas_render` 判据未对齐既有去重行为 → 对齐
 
 **真机操作授权申请**: `docs/patch/REAL_MACHINE_AUTHORIZATION_REQUEST.md` (A1~A9 逐项: 动作/预期/风险/现场前提/回滚/观测指标)
 - 只读类 A1(Orin 心跳) A2(AOI 标定) A3(10083 补丁) A4(10082 口径) → 一句「A1-A4 授权」即可开工
@@ -267,7 +267,7 @@ GUI RSS 1.13GB 疑泄漏 · 页面注册疑有空串 —— 后两条经**实测
 |---|---|---|
 | 1 | 产物是否存在 | `outputs/train/state_space_mw5w/checkpoints/030000` 在 (last→030000) · 两棵树都有 → **非缺产物** |
 | 2 | 装载 | `load_policy("state_space")` → LeftRightPolicy 成功 → **非装载失败** |
-| 3 | 配置真源 | `type=left_right` · `input_features=observation.state[39]` · `output=action[4]` · **无图像** · `normalization_mapping=None` |
+| 3 | 配置唯一依据 | `type=left_right` · `input_features=observation.state[39]` · `output=action[4]` · **无图像** · `normalization_mapping=None` |
 | 4 | 引擎真跑 | min 孔距 0.351/0.359/0.418m, 未抬起 → 表面 0/3 |
 | 5 | **口径对照 (决定性)** | 引擎 L3 路径 (state_space_sim_real.py:1249-1272) 用的是 **`visual39`(引擎自建) + `self._l3_pre(batch)` 预处理器 + 128×128 图 + task 串**; 而 `rollout_peg_check.py:65-79` 只喂 **裸 env obs + 无预处理** |
 | 6 | 失败指纹 | 直接喂裸 39D → 模型首层收到 **43 维 (mat1 64x43 vs mat2 39x512)** → 口径不同源被实证 |
@@ -477,13 +477,13 @@ GUI RSS 1.13GB 疑泄漏 · 页面注册疑有空串 —— 后两条经**实测
 
 ## 2026-09-26 · 会话十七: MoveIt 装本机(选A) + A5 物理结论
 
-**A · MoveIt 装本机 (绝不动 Orin 环境) —— 已完成并跑通**
+**A · MoveIt 装本机 (绝不动 Orin 环境) —— 已完成并验证通过**
 - 镜像 `zmax-moveit:humble` (FROM ros:humble-ros-base + ros-humble-moveit/-py/setup-assistant/rsp/jsp) 构建成功
 - 配置包 `config/moveit_xms5/`: urdf(真 URDF) + srdf(链 base→tool0) + kinematics(kdl) + joint_limits(**限位从 URDF 解析**) + ompl + launch(仅规划)
 - 冒烟: move_group 载入 `Loading robot model 'XMS5-R800-W4G3B4C'` ✓ · 服务 /compute_ik · /plan_kinematic_path 在 ✓
   **/compute_ik 实测返回有效解** (目标 (0.45,0.15,0.65) @world → 关节 [0.0254,1.8785,1.5102,-0.0521,-5.7555,3.0850], error_code=1=SUCCESS) ✓
 - 安全: launch 里 `allow_trajectory_execution: False` → **MoveIt 只规划, 绝不执行**; 执行仍由 Orin SDK 桥/ROS2 SRV 收口
-- 踩坑: ① 不能把 MoveIt 的 kinematics.yaml 用 `--params-file` 传 (rcl 要求 ros__parameters 结构) → 改字符串/嵌套参数
+- 遇到问题: ① 不能把 MoveIt 的 kinematics.yaml 用 `--params-file` 传 (rcl 要求 ros__parameters 结构) → 改字符串/嵌套参数
         ② SRDF robot name 必须与 URDF 同名 (否则告警) → 已修
 - 待补: URDF 引用的 meshes/ 不在本机 → 碰撞几何缺失 (功能不影响 IK/规划, 但避开碰撞检查会退化; 需拷 mesh 或改原始几何)
 
@@ -528,7 +528,7 @@ GUI RSS 1.13GB 疑泄漏 · 页面注册疑有空串 —— 后两条经**实测
 
 ## 2026-09-26 · 会话十九: 合并任务 + 砍标定 + 清理系统/DNS + 状态空间重启 (老倪指令)
 
-**① 任务合并与清理** (唯一真源: docs/NEXT_ITERATION_20260926.md)
+**① 任务合并与清理** (唯一依据: docs/NEXT_ITERATION_20260926.md)
 - **砍掉(不必要/不宜现场复杂操作)**: A5 手眼标定 · A6 T_base_cam/plane_z · A7 ring_pose 示教
   (理由: 三条追踪路线量化否决 + 相机逐帧自动曝光 64.5% 变异 ⇒ 属"没必要硬做"的标定)
   A3/A4 工控机补丁(复杂操作) → 降级; 画布交叉优化 1395 对(行内重排实测 +9.2%) → backlog
@@ -549,7 +549,7 @@ GUI RSS 1.13GB 疑泄漏 · 页面注册疑有空串 —— 后两条经**实测
 
 **④ 状态空间工程重启** (双证: is-active + 端点探活)
 - 控制台: 首启**失败** → 根因 = 我在 n_moveit 接线里用了未定义的 `_REPO`(NameError, 阻塞整个 GUI 导入)
-  → 修为 `_ARM_DIR`(与既有 _YOLO_DIR 同款) + 行号 175→133 与真源码一致 → **重启成功 (pid 1481349, Traceback 0)**
+  → 修为 `_ARM_DIR`(与既有 _YOLO_DIR 同款) + 行号 175→133 与唯一依据码一致 → **重启成功 (pid 1481349, Traceback 0)**
 - 服务 11 项全 active; 端点 200: 推理8790 · HIL/Agent/Orin上行(ECS) · Orin SDK桥 · AOI 10082
 - 画布 85 节点(70 真)/161 连线/孤立 0 · 版本 **v5.15.10** · 磁盘 299G/396G(80%, 红线内) · GPU 空闲 persistence=Enabled
 - 注: 我先前报的 `l2-daemon` 服务名**不存在**(误报), 真实 L2 链路走 ss-local-infer + ss-bypass, 均 active
@@ -597,8 +597,8 @@ GUI RSS 1.13GB 疑泄漏 · 页面注册疑有空串 —— 后两条经**实测
 ## 2026-09-26 · S2 第一步: RealityGap 量化 (两次试错后定位到正确做法)
 
 **第一次 (无效, 已自拦)**: 读 `state_20260922.jsonl`(旧快照) → TCP std=0 且字段不符 ⇒ 判**无效, 不当结论**
-**第二次 (真源)**: live tap = `/home/ubuntu/zmax/zmax_data/ss_live/state_20260925.jsonl` (478MB, **正在写**)
-  · 字段真源: `t/tcp/tcp_quat/tcp_frame/jnames/robot_status/image/images_by_topic/pubs/jpos/jvel/ft/gripper/prod_stage/z7/geom/scope`
+**第二次 (唯一依据)**: live tap = `/home/ubuntu/zmax/zmax_data/ss_live/state_20260925.jsonl` (478MB, **正在写**)
+  · 字段唯一依据: `t/tcp/tcp_quat/tcp_frame/jnames/robot_status/image/images_by_topic/pubs/jpos/jvel/ft/gripper/prod_stage/z7/geom/scope`
   · 尾读 4589 行: TCP mean=[0.5973, 0.1422, 0.6416] 与实时一致 ✓ · 但 **std=[0,0,0]**
   ⇒ 原因: **臂一直静止**(我把窗口取在静止期) — 不是数据问题, 是"没有激励"
   · `gripper` 字段在 tap 里**为空**; `jpos` 在该行为 None; `robot_status` 键未展开
@@ -608,7 +608,7 @@ GUI RSS 1.13GB 疑泄漏 · 页面注册疑有空串 —— 后两条经**实测
      → 得到**真机 (obs, TCP) 有变动的配对** ⇒ RealityGap 才可测 (零外部条件)
   ② 口径映射: 仿真 h5 obs dim=**43** ≠ 策略输入 39 ⇒ **映射本身就是第一个自进化项** (不等人给口径)
   ③ 夹爪信号缺失: 从 robot_status/话题自行补齐 (tap 字段为空不代表取不到)
-**工具**: `tools/s2_reality_gap.py`(初版, 保留供复盘) · `tools/s2_reality_gap2.py`(真源版, 尾读只读不占产线)
+**工具**: `tools/s2_reality_gap.py`(初版, 保留供复盘) · `tools/s2_reality_gap2.py`(唯一依据版, 尾读只读不占产线)
 **原则**: 测不出就改测法, **不回头求外部标定** (章程 §0)
 
 ## 2026-09-26 · 会话二十一: 双眼场景叠加接入状态空间 (sim2real)

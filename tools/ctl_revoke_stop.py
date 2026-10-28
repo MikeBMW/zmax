@@ -104,7 +104,7 @@ def main():
         try:
             st = CA.info()
         except Exception as e:                                          # noqa: BLE001
-            log("读授权真源失败: %s" % str(e)[:80])
+            log("读授权唯一依据失败: %s" % str(e)[:80])
             continue
         ep, armed = st["epoch"], st["armed"]
         if ep == last_epoch:

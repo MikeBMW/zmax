@@ -56,7 +56,7 @@ local_up() {
   echo "=== 拉本机进程 ==="
   # 推流服务(8791 看板 + 8793 工位总览)
   if ! pgrep -f "[c]am_live_stream.py --port 8791" >/dev/null; then
-    # 🚨 2026-09-28 现场根因(别再用写死的 2/0): 本机 video2 是笔记本相机的 **GREY(IR) 那一路**,
+    # 🚨 2026-09-28 现场根因(别再用固定不变的 2/0): 本机 video2 是笔记本相机的 **GREY(IR) 那一路**,
     #    没红外照明时整幅近黑(实测 mean=6/median=0)。VL 安全闸把 "local" 当**笔记本相机(全局)**:
     #    快反射层判『遮挡/糊化』⇒ **所有运动类原子技能一律拒发** (老倪:「原子技能又不好使了」)。
     #    video0 = 同一台相机的 MJPG 彩色路(实测 mean=112/Lap=260), video4 = MAXHUB 顶视。
@@ -68,7 +68,7 @@ local_up() {
     _devs=$($PY "$ROOT/tools/cam_dev_resolve.py" 2>/dev/null)
     _ld=$(printf '%s\n' "$_devs" | sed -n 's/^LOCAL=//p');  [ -n "$_ld" ] || _ld=0
     _l2=$(printf '%s\n' "$_devs" | sed -n 's/^LOCAL2=//p'); [ -n "$_l2" ] || _l2=-1
-    [ "$_l2" = "0" ] && _l2=-1          # 别让两路撞同一台设备(会被独占打不开)
+    [ "$_l2" = "0" ] && _l2=-1          # 别让两路撞同一台设备(会被独占无法打开)
     echo "  · 相机映射: local=/dev/video$_ld (笔记本彩色) · local2=/dev/video$_l2 (MAXHUB 顶视)"
     nohup $PY tools/cam_live_stream.py --port 8791 --station-port 8793 --quality 72 --fps 30 \
       --arm-http http://192.168.23.66:8792/frame.jpg --arm-fps 30 --local-dev "$_ld" --local2-dev "$_l2" \
@@ -135,7 +135,7 @@ case "${1:-check}" in
        setsid nohup python3 /home/tashan/zmax/rs_fast_node.py > /tmp/rs_fast.log 2>&1 < /dev/null &
        # ⚠ source 环境时**不要用 set -u**、**不要把 source 接进管道**
   3) 验收: curl -s http://127.0.0.1:8792/status   → {"n":>0,...,"err":""}
-          连取两次 frame.jpg, md5 必须**不同**(同=又卡住了)
+          连取两次 frame.jpg, md5 必须**不同**(同=又阻塞了)
   4) 未做: @reboot 自启(需老倪点头) —— 所以每次重启都要走一遍 2)
 TXT
   ;;

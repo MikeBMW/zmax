@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""真机 RealSense 只读采样器 (2026-09-17 老倪: 「引入真机 realsense 相机, 跑通 sim to real」)
+"""真机 RealSense 只读采样器 (2026-09-17 老倪: 「引入真机 realsense 相机, 验证通过 sim to real」)
 
 设计铁律 (与 09-16 架构红线一致):
   · **在 4060 侧 Docker (ros:humble-ros-base --network host, ROS_DOMAIN_ID=0) 里跑**,

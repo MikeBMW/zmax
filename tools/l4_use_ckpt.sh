@@ -2,7 +2,7 @@
 # 🎯 把 L4 INTACT 调试配置指向哪个权重 —— 一条命令切换 (老倪: "把调试配置先改好")
 #
 # 为什么这么设计 (踩过的坑):
-#   · 4 个 VSCode 调试配置原来写死 `intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt`
+#   · 4 个 VSCode 调试配置原来预先固定 `intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt`
 #     → 续训换名 (v5→v6→v6r2) 或删旧轮后, 配置就指向"上一代模型", 调试出来的数字不是当前的。
 #   · 官方加载器 stable_worldmodel `load_pretrained(name)` 的解析规则 (实测读源码):
 #       ① name 以 .pt 结尾 → 该文件 (同目录必须有 config.json)

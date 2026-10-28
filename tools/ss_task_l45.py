@@ -4,7 +4,7 @@
 
 老倪 2026-10-11: 「L4 和 L5 层的功能也要加进控制逻辑, 配置切换时 L4/L5 有什么区别」
 
-真源: config/ss_task_binding.json → tasks[TASK].{ss_mode, targets, overrides, run_cfg}
+唯一依据: config/ss_task_binding.json → tasks[TASK].{ss_mode, targets, overrides, run_cfg}
 
 设计 (两层各自的职责, 都真进控制回路, 不是只打印):
   L5 下指令  = 任务意图 → **每阶段该走多远/多准/多快/多大力**

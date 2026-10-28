@@ -56,7 +56,7 @@ def node_transfer(node):
         return np.array([K]), np.array([T, 1.0])          # 模型/控制器: K/(1+Ts)
     if t == "system":
         return np.array([K]), np.array([T, 1.0])          # 系统/调度: K/(1+Ts)
-    return np.array([1.0]), np.array([1.0])               # 兜底
+    return np.array([1.0]), np.array([1.0])               # 保障
 
 
 def series_chain(nodes):
@@ -1662,7 +1662,7 @@ class EngineeringReqWidget(QWidget):
             self.out.setText("已加载需求 ✓")
 
     # ── 🧩 原子技能定义 (统一 token: 动作口令 → 技术要领 → 约束条件) ──
-    # 🐛 2026-08-15 老倪: 口令改白话 — 现场工程师一看就懂, 不用四字诀
+    # 🐛 2026-08-15 老倪: 口令改白话 — 现场工程师可以直接懂, 不用四字诀
     ATOMIC_SKILLS = [
         {"skill": "接近", "token": "ATK_APPROACH",
          "口令": "对准光模块，慢慢靠过去",
@@ -1981,7 +1981,7 @@ class EngineeringReqWidget(QWidget):
         L.append("**S1 仿真验证** (快速迭代, 1-2 天):\n")
         L.append("| 项 | 内容 | 通过标准 |")
         L.append("|:---|:---|:---|")
-        L.append("| 环境 | Metaworld 光模块插拔仿真 + 状态机逻辑 | 状态机 6 阶段全跑通 |")
+        L.append("| 环境 | Metaworld 光模块插拔仿真 + 状态机逻辑 | 状态机 6 阶段全验证通过 |")
         L.append("| 模型 | 视觉 backbone 冻结, 只训 MLP 头 | 仿真插拔成功率 >90% |")
         L.append("| 数学 | 双通道校正参数 (K_obs/K_ff/Kp/Kd) 代入验证 | 特征根左半平面, 无振荡 |")
         L.append("| 输出 | 训练日志 + 行为视频 + 阶段切换时序 | 每阶段时间 ≤ 预算 |")
@@ -2041,7 +2041,7 @@ class EngineeringReqWidget(QWidget):
         L.append("| **搬运类负载超限** (≥5kg 工况) | 低 | 高: 结构过载 | 电机电流超阈值 | 按搬运类独立标定 m/b/k; 速度限幅降低; 力保护 |")
         L.append("\\n**风险应对流程图**: 发现异常信号 → 立即停机保护 → 归因分类 (视觉/力/时序/机械) "
                  "→ 查排查表处置 → 复测验收 → 记录归档。\n")
-        L.append("**兜底机制**: 状态机超时保护 (每阶段超时自动回退待机) + 力限位保护 (超 20N 立即停机) "
+        L.append("**保障机制**: 状态机超时保护 (每阶段超时自动回退待机) + 力限位保护 (超 20N 立即停机) "
                  "+ 模型版本回滚 (保留最近 3 个版本) + 数据闭环 (每次失败自动归档供增量训练)。\n")
         # ══ ⑩ 产品形态建议 (AMR 车 + 机械臂) ══
         L.append("\n## 十、产品形态建议 — AMR 车 + 机械臂\n")

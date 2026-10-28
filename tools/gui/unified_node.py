@@ -71,7 +71,7 @@ class UnifiedNode:
         x = np.asarray(fr, dtype=np.float32)
         if x.ndim == 3 and x.shape[0] == 3:
             img = torch.from_numpy(x / 255.0).unsqueeze(0)
-        else:                                     # (224,224,3) 兜底
+        else:                                     # (224,224,3) 保障
             img = torch.from_numpy(x / 255.0).permute(2, 0, 1).unsqueeze(0)
         img = img.to(self.dev)
         obs = torch.from_numpy(self._obs39()).unsqueeze(0).to(self.dev)

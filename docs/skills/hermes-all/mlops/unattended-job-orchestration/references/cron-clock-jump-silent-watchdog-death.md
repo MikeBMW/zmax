@@ -6,7 +6,7 @@
 
 **根因链**:
 1. 开机早期内核先用 RTC 置系统钟, 之后 NTP 才拨正 → 期间网关用**偏掉的时钟**算 `next_run`;
-2. 时钟被往回拨后, 已写死的 `next_run_at` 仍是"旧时间轴上的未来" → 调度器认为还没到点;
+2. 时钟被往回拨后, 已固定不变的 `next_run_at` 仍是"旧时间轴上的未来" → 调度器认为还没到点;
 3. 本机 `@reboot` 修复脚本 `~/.hermes/scripts/hermes_cron_reclock.sh` **每次开机都白跑** ——
    cron 裸环境 `PATH` 里没有 `hermes` (命令 not found 被 `grep -c "Next run"` 吞成 0, 日志全是 0 也没人看)。
 

@@ -28,7 +28,7 @@ U盘 Live 系统靠 systemd bind 借用。U盘离开 E盘 → 失忆。
 - rsync -aAX --delete, 排除: gateway.pid/sock/lock、gateway-starts.log、*.log、*.lock、*.pid、logs/ cache/ image_cache/ audio_cache/ tmp/ .cache/
 - 源完整判据: -d $SRC/hermes-agent
 
-### /usr/local/bin/zmax-hermes-fallback.sh (离家兜底, 顺序判定)
+### /usr/local/bin/zmax-hermes-fallback.sh (离家保障, 顺序判定)
 1. `mountpoint -q ~/.hermes` → 主模式已生效, exit 0
 2. 正牌 E盘存在(label 匹配)→ 交主模式, exit 0(防 zmax-data-mount 时序失败)
 3. 否则 `mount --bind /home/ubuntu/.hermes-mirror ~/.hermes` → 离家模式
@@ -46,9 +46,9 @@ U盘 Live 系统靠 systemd bind 借用。U盘离开 E盘 → 失忆。
 - **锁文件进镜像**: 同步排除 *.lock/*.pid, 防把运行态锁带回 E盘/镜像污染
 
 ## 验证记录(已完成)
-- 首次镜像同步: 2.3G, 两次跑通(日志 /var/log/zmax-hermes-mirror.log 有 ✅ size=2.3G)
+- 首次镜像同步: 2.3G, 两次验证通过(日志 /var/log/zmax-hermes-mirror.log 有 ✅ size=2.3G)
 - 镜像关键文件: config.yaml / auth.json / hermes-agent/venv/bin/python / skills / state.db 全 OK
-- fallback 主模式: "E盘主模式已生效 (.hermes 已 bind), 兜底退出" exit 0
+- fallback 主模式: "E盘主模式已生效 (.hermes 已 bind), 保障退出" exit 0
 - 主脚本幂等重跑: 全链路 exit 0, 不重复 bind、不破坏现状
 - systemctl: zmax-hermes-fallback.service / zmax-data-mount.service active; timer enabled active(waiting)
 

@@ -10,13 +10,13 @@
     全过程验证一边, 不留死角, 每个标准状态, 每个原子技能, 每个物理参数, 都要全系统验证。
     元任务定义, 元任务配置, 性能指标定义, 物理值验证结果报告, 完成后发到飞书端」
 
-真源 (全部现算, 一处取; 本文件不硬编任何数字):
+唯一依据 (全部现算, 一处取; 本文件不硬编任何数字):
   · 元任务定义/配置 = tools/export_meta_doc.py::build_meta_tasks()  (config_meta.json 75 元任务)
   · 任务配置       = config/tasks/tasks.json (7 任务: steps / applies_segments / targets / overrides)
   · 任务✓段序列    = zmax_data/task_runs/<TASK>/run_summary.json (真跑过的段序列) 或 tasks.overrides
   · 段→技能        = src/.../skills/atomic_skills.py 类属性 (code/stage) + SKILL_BY_STAGE
-  · 物理参数真源    = config/calib/zmax_skill_physics.json: stages[段][量] = {value,min,max,unit,src}
-  · 性能指标真源    = config/platform/zmax_perf_spec.json (58 条 / 6 组 / 目标值 + 采集方法 + 标准)
+  · 物理参数唯一依据    = config/calib/zmax_skill_physics.json: stages[段][量] = {value,min,max,unit,src}
+  · 性能指标唯一依据    = config/platform/zmax_perf_spec.json (58 条 / 6 组 / 目标值 + 采集方法 + 标准)
   · phase 归属     = config/eval/phase_metric_map.json (58/58) + config/roadmap_phase_texts.json (KPI 文案)
   · 实测           = zmax_data/ss_live/skill_phys.json (逐技能实测+包络) · skill_latest.json (过闸计数)
                      · zmax_data/task_runs/*/run_summary.json (CT/成功率/对位残差/插深)
@@ -29,7 +29,7 @@
   · 每个物理参数必须能反查到元任务; 查不到 ⇒ 进 coverage.无归属, 报红 (不留死角)。
 
 产出:
-  · zmax_data/eval/meta_perf_matrix.json        机器可读台账 (含真源 sha256 + 生成时刻 + 帧龄)
+  · zmax_data/eval/meta_perf_matrix.json        机器可读台账 (含唯一依据 sha256 + 生成时刻 + 帧龄)
   · docs/eval/元任务性能物理值全链验证_v5.50.735.md  报告 (人读)
   · --feishu                                    把摘要推到飞书 (tools/feishu_send.py)
 
@@ -131,7 +131,7 @@ def judge(value, tgt):
 
 # ── 实测采集 (只读; 拿不到就是 None, 绝不用 0 冒充) ───────────────────────────
 def measured():
-    """把本次跑得到的实测集中取一份 (每项带真源路径 + 样本数 + 帧龄)。"""
+    """把本次跑得到的实测集中取一份 (每项带唯一依据路径 + 样本数 + 帧龄)。"""
     out = {}
     # ① 任务真跑产物: CT / 成功率 / 对位残差 / 插深 / 落位
     for rf in sorted(glob.glob(os.path.join(RUNS, "*", "run_summary.json"))):
@@ -167,7 +167,7 @@ def measured():
                 out["perf.success_rate"] = [{"value": round(100.0 * float(r.get("placed") or 0) / n, 2),
                                              "n": n, "src": rel, "note": "%s/%s 颗落位合格 (p=%s)"
                                              % (r.get("placed"), n, tag)}]
-    # ② 标定真源: 像素当量 / 手眼残差
+    # ② 标定唯一依据: 像素当量 / 手眼残差
     c = _load(CALIB, {}) or {}
     for key, pid in (("vis_scale", "perf.vis_scale"), ("handeye_res", "perf.handeye_res")):
         sec = (c.get("camera") or {}).get(key) or c.get(key)
@@ -179,8 +179,8 @@ def measured():
         if val is None:
             continue
         out.setdefault(pid, []).append({"value": float(val), "n": 1, "src": os.path.relpath(CALIB, ROOT),
-                                        "note": "标定真源直读 (%s)" % key})
-    # ③ L2 回路拍周期 (反馈速度的结构性下限; 真源 DT)
+                                        "note": "标定唯一依据直读 (%s)" % key})
+    # ③ L2 回路拍周期 (反馈速度的结构性下限; 唯一依据 DT)
     try:
         import importlib.util as _iu
         _sp = _iu.spec_from_file_location("_dsp_mod", os.path.join(TOOLS, "ss_skill_dispatch.py"))
@@ -209,7 +209,7 @@ def build():
     tlist = tasks.get("tasks") or []
     meas = measured()
 
-    # 段 → 技能类 (真源 = 类属性)
+    # 段 → 技能类 (唯一依据 = 类属性)
     sys.path.insert(0, os.path.join(ROOT, "src"))
     from lerobot.policies.left_right.state_space.skills import atomic_skills as A         # noqa: E402
     from lerobot.policies.left_right.state_space import cognition as CG                   # noqa: E402
@@ -404,7 +404,7 @@ def build():
     return {
         "schema": "zmax-meta-perf-matrix/1",
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "真源": {os.path.relpath(p, ROOT): {"sha256_16": _sha(p), "mtime_age_s": _age(p)}
+        "唯一依据": {os.path.relpath(p, ROOT): {"sha256_16": _sha(p), "mtime_age_s": _age(p)}
                 for p in (SKILL_PHYS, PERF_SPEC, PHASE_MAP, ROADMAP, TASKS, CALIB,
                           os.path.join(ROOT, "config/ss_task_binding.json"))},
         "闸门实测": {k: gate.get(k) for k in ("ts", "n", "过闸_技能拍", "过闸_段闸拍", "闸_拍数", "闸_不可行拍")},
@@ -424,7 +424,7 @@ def render_md(d):
     cov = d["coverage"]
     A_("# 元任务 · 性能配置 · 物理参数 全链对应与物理值验证 (基线产品 v5.50.735)")
     A_("")
-    A_("生成时刻 `%s` · 全部数字现算自真源 (元任务/任务配置/技能物理标定/性能指标/phase 归属/实测产物), **本报告不硬编任何数字**。"
+    A_("生成时刻 `%s` · 全部数字现算自唯一依据 (元任务/任务配置/技能物理标定/性能指标/phase 归属/实测产物), **本报告不硬编任何数字**。"
        % d["generated_at"])
     A_("")
     A_("## 0. 一句话结论")
@@ -442,7 +442,7 @@ def render_md(d):
     A_("")
     A_("## 1. phase ↔ 性能指标 (老倪口径: 0 反馈速度延迟 / 1 对位残差 / 2 成功率·节拍 / 3 稳定性 / 4 可靠性·准确性)")
     A_("")
-    A_("| phase | 主题 | 阶段标题 | KPI (真源) | 指标 | 达标 | 不达标 | 样本不足 | 未测 | 待定 |")
+    A_("| phase | 主题 | 阶段标题 | KPI (唯一依据) | 指标 | 达标 | 不达标 | 样本不足 | 未测 | 待定 |")
     A_("|---|---|---|---|---|---|---|---|---|---|")
     for pid, r in d["phase"].items():
         A_("| %s | %s | %s | %s | %d | %d | %d | %d | %d | %d |"
@@ -462,7 +462,7 @@ def render_md(d):
            % (r["id"], r["cn"], r["unit"], r["target"], r["phase"], car_txt,
               "、".join(r["元任务"][:2]) or "-", m_txt, r["判定"]))
     A_("")
-    A_("> 未测的采集条件写在指标定义 `how` 字段 (真源 `config/platform/zmax_perf_spec.json`); 判据 `tools/verify_meta_perf_matrix.py` 卡住"
+    A_("> 未测的采集条件写在指标定义 `how` 字段 (唯一依据 `config/platform/zmax_perf_spec.json`); 判据 `tools/verify_meta_perf_matrix.py` 阻塞"
        "「未测必须带采集条件、待定不许套别的口径」。")
     A_("")
     A_("## 3. 元任务配置 ↔ 性能配置 (逐条对应)")
@@ -477,7 +477,7 @@ def render_md(d):
     A_("")
     A_("## 4. 每个 L2 原子技能全过程验证 (标准状态 = 13 段)")
     A_("")
-    A_("| 段 | 技能 | 元任务 | 进入条件 | 推进证据 | 物理量 (真源) | 话题实测 | 闸门实测 | 判定 |")
+    A_("| 段 | 技能 | 元任务 | 进入条件 | 推进证据 | 物理量 (唯一依据) | 话题实测 | 闸门实测 | 判定 |")
     A_("|---|---|---|---|---|---|---|---|---|")
     ph_keys = ("m", "F", "v", "v_min", "a", "jerk", "s_step", "s", "dmdt")
     for s in d["标准状态"]:
@@ -512,20 +512,20 @@ def render_md(d):
     A_("")
     A_("- `段无技能类` / `段无元任务` = **%s**: 引擎 13 段里有这 5 段, 但技能库和画布元任务都没有对应条目 ——"
        % "、".join(cov["段无技能类"]))
-    A_("  它们的物理量**有标定真源**(`config/calib/zmax_skill_physics.json` 里逐项在), 但没有技能类 ⇒ 没有")
+    A_("  它们的物理量**有标定唯一依据**(`config/calib/zmax_skill_physics.json` 里逐项在), 但没有技能类 ⇒ 没有")
     A_("  「进入条件/推进证据/元任务登记」, 也不在 L2 派发链在册段里 (派发链 8 段)。")
     A_("  补齐方案: ① 按 SK01-08 同构补 5 个技能类 (SK09 拔出 / SK10 AOI转移 / SK11 AOI检测 / SK12 回程 /"
-       " SK13 放下, 数值一律读真源不抄) ② 画布补对应节点并归到元任务登记 ③ 派发链 STAGES 扩到 13 段。")
+       " SK13 放下, 数值一律读唯一依据不抄) ② 画布补对应节点并归到元任务登记 ③ 派发链 STAGES 扩到 13 段。")
     A_("  (现在**不做的原因**: 这三步都是真机/真链路上的改动, 未做就报绿 = 假绿。本报告如实列为缺口。)")
     A_("- `物理参数无专属段元任务` = %d 条 (就是上面 5 段 × 9 量): 它们归属**业主元任务** `%s` (%s),"
        % (len(cov["物理参数无专属段元任务"]), cov["物理参数业主元任务"], cov["物理参数业主元任务名"]))
     A_("  即「物理约束闸」这个元任务登记全部 L2 物理量; 有技能类的 8 段另有自己的 SKxx 元任务作为**消费者**。")
     A_("")
-    A_("## 7. 真源指纹 (可复核)")
+    A_("## 7. 唯一依据指纹 (可复核)")
     A_("")
-    A_("| 真源 | sha256(16) | 帧龄(s) |")
+    A_("| 唯一依据 | sha256(16) | 帧龄(s) |")
     A_("|---|---|---|")
-    for k, v in d["真源"].items():
+    for k, v in d["唯一依据"].items():
         A_("| `%s` | `%s` | %s |" % (k, v["sha256_16"], v["mtime_age_s"]))
     A_("")
     return "\n".join(L) + "\n"

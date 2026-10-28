@@ -7,11 +7,11 @@
 单步执行, 我要看到实际的代码编写」⇒ 本判据核这五件事:
 
   A 结构   六节点在册 · 入口 file:line 真命中 `def node_*` · 算法真体文件存在 · 三环节齐全
-  B 真源   引擎轨迹真源 357×43 · 权重 npz 在位 · 观测通道划分与 su2.py 注释一致 (不各说各话)
+  B 唯一依据   引擎轨迹唯一依据 357×43 · 权重 npz 在位 · 观测通道划分与 su2.py 注释一致 (不各说各话)
   C 执行   六节点**真跑**: 每步输出非空 · 引擎 ‖p‖=1 · 接触/性能两处重算逐位一致 · 前馈 cos>0.9
-  D 档位   550B 允许深调试 · 550A/550C 拒深调试 (读产品真源) · --list/--src 任何档位不拦
+  D 档位   550B 允许深调试 · 550A/550C 拒深调试 (读产品唯一依据) · --list/--src 任何档位不拦
   E 调试   --pdb/ZMAX_DEBUG_BREAK 真进断点 · --step 可交互喂步 · --all --json 写全
-  F 诚实   未训练权重标注不冒充在役 · 真源缺失时报缺 (exit≠0), 不填 0 不编数
+  F 诚实   未训练权重标注不冒充在役 · 唯一依据缺失时报缺 (exit≠0), 不填 0 不编数
 """
 from __future__ import annotations
 
@@ -92,11 +92,11 @@ def main():
     chk("A5 四种连接方式的源码锚点真存在 (投影/度量/约束流形/条件空间)", not bad_anchor,
         "缺符号: %s" % (bad_anchor or "无"))
 
-    # ── B 真源 ────────────────────────────────────────────────────────────────
+    # ── B 唯一依据 ────────────────────────────────────────────────────────────────
     g, err = nd.load_traj(200, None)
-    chk("B1 引擎轨迹真源可读 (画布落盘 ss_traj_last.json)", bool(g), err or
+    chk("B1 引擎轨迹唯一依据可读 (画布落盘 ss_traj_last.json)", bool(g), err or
         "帧 %d/%d · %s" % ((g or {}).get("idx", -1), (g or {}).get("n", 0), (g or {}).get("saved_at")))
-    chk("B2 真源维度 357×43 (与 su2 通道划分同源)", bool(g) and (g or {}).get("n") == 357,
+    chk("B2 唯一依据维度 357×43 (与 su2 通道划分同源)", bool(g) and (g or {}).get("n") == 357,
         "n=%s" % (g or {}).get("n"))
     chk("B3 引擎权重 npz 在位", os.path.exists(os.path.join(ROOT, nd.SRC_WEIGHTS)),
         nd.SRC_WEIGHTS)
@@ -105,8 +105,8 @@ def main():
     chk("B4 观测通道划分与 su2.py 注释逐字一致 (不各说各话)",
         "[0:3]手位置" in su2 and "[36:39]孔位" in su2 and "[0:3]手 [3]夹爪 [4:7]光模块 [36:39]孔位" in OBSCHK(),
         OBSCHK()[:60])
-    chk("B5 几何量由真源帧真算 (e = 光模块头−孔位, 与 su2.obs43_geometry 同式)",
-        bool(g) and _same_geometry(g), "e=%s" % (nd._v(g["e"]) if g else "真源缺"))
+    chk("B5 几何量由唯一依据帧真算 (e = 光模块头−孔位, 与 su2.obs43_geometry 同式)",
+        bool(g) and _same_geometry(g), "e=%s" % (nd._v(g["e"]) if g else "唯一依据缺"))
 
     # ── C 执行 (六节点真跑) ───────────────────────────────────────────────────
     buf, results = _io.StringIO(), []
@@ -159,7 +159,7 @@ def main():
     gate_b = nd._product_gate("550B")
     gate_a = nd._product_gate("550A")
     gate_c = nd._product_gate("550C")
-    chk("D1 550B = 标定/调试档 (debug_allowed 真从产品真源读)",
+    chk("D1 550B = 标定/调试档 (debug_allowed 真从产品唯一依据读)",
         bool(gate_b["debug_allowed"]), "active=%s · 键=%s" % (gate_b["active"], gate_b["cfg_keys"]))
     chk("D2 非调试档拒深调试 (550A=%s · 550C=%s)" % (gate_a["debug_allowed"], gate_c["debug_allowed"]),
         not gate_a["debug_allowed"] and not gate_c["debug_allowed"],
@@ -203,16 +203,16 @@ def main():
     nd.SRC_TRAJ = "data/database/zmax/sources/canvas/_not_exist.json"
     g2, err2 = nd.load_traj(0, None)
     nd.SRC_TRAJ = old_src
-    chk("F2 真源缺失时报缺 (不填 0 不编数)", (g2 is None) and bool(err2), str(err2)[:60])
+    chk("F2 唯一依据缺失时报缺 (不填 0 不编数)", (g2 is None) and bool(err2), str(err2)[:60])
     rc, out = _run(["--node", "ss_mani_eng", "--trace", "--product", "550A"])
     chk("F3 非调试档 --trace 也不偷偷跑 (口径一致)", rc != 0, "exit=%d" % rc)
-    chk("F4 调试器只读真源 (源码里没有写真源的口, 唯一写入口=--json 报告)",
+    chk("F4 调试器只读唯一依据 (源码里没有写唯一依据的口, 唯一写入口=--json 报告)",
         _readonly_check(), "写口: --json 报告")
 
     print("═" * 96)
     # ── C2: DiT 真身可单步 + 画布"假接入"如实标注 (2026-10-16 review 发现) ─────────────────
     _rc, _out = _run(["--node", "ssdec_real", "--trace"], timeout=600)
-    chk("C2a DiT 真身在册并绑真源码 (action_head.py:205 SmolVLALewActionHead)",
+    chk("C2a DiT 真身在册并绑唯一依据码 (action_head.py:205 SmolVLALewActionHead)",
         "ssdec_real" in nd.NODES and "action_head.py" in " ".join(nd.NODES["ssdec_real"]["modules"]),
         str(nd.NODES.get("ssdec_real", {}).get("entry")))
     chk("C2b DiT 真身真跑流匹配采样 (predict_action → 动作块 H×action_dim)",
@@ -233,7 +233,7 @@ def OBSCHK():
 
 
 def _same_geometry(g):
-    """e 必须 == su2.obs43_geometry(obs) (逐位), 用真源码算子复核"""
+    """e 必须 == su2.obs43_geometry(obs) (逐位), 用唯一依据码算子复核"""
     try:
         import numpy as np
         su2 = nd._load("src/lerobot/policies/left_right/state_space/su2.py", "zm_su2_judge")
@@ -267,7 +267,7 @@ def _close(a, b, tol=1e-6):
 
 
 def _readonly_check():
-    """调试器不得写任何真源: 唯一 open(...,'w') 必须在 --json 报告那一段 (main 里 out 变量)"""
+    """调试器不得写任何唯一依据: 唯一 open(...,'w') 必须在 --json 报告那一段 (main 里 out 变量)"""
     src = _io.open(os.path.join(ROOT, "tools/node_debug.py"), encoding="utf-8").read()
     lines = src.splitlines()
     for i, line in enumerate(lines, 1):

@@ -9,7 +9,7 @@
 收尾还原: 活跃任务 TASK-01-FW · 数据源 插拔场景
 
 ## 判据口径
-- ① 绑定真源 active_task ② 画布 ssdata.src_state ③ 控制台 open_all 回执 (epoch晚于发命令+task匹配)
+- ① 绑定唯一依据 active_task ② 画布 ssdata.src_state ③ 控制台 open_all 回执 (epoch晚于发命令+task匹配)
 - ④ 3D 窗标题带本轮场景名 (AR 无仿真目录 ⇒ 如实保留上一场景)
 - ⑤ 信号分析窗自己的内容 (scrot -u 焦点窗 + 尺寸自证 + 顶部 OCR 自证) 里三场景色真上屏
 - ⑥ 配置中心该行 3D场景/实时监控 两格文字与颜色 == 该场景

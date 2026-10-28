@@ -367,7 +367,7 @@ class _LineNumberArea(QWidget):
 
 class SourceViewDialog(QDialog):
     """📂 打开源代码 (容器环境 2026-08-18 老倪):
-    容器无 /mnt/c + 无 explorer.exe (WSL interop 断) → explorer 链路打不开源码,
+    容器无 /mnt/c + 无 explorer.exe (WSL interop 断) → explorer 链路无法打开源码,
     改弹窗查看: 绝对路径 + 行号 + 📋复制路径按钮 + 只读源码 (可选中复制)。"""
 
     def __init__(self, abs_path, rel_src="", parent=None):

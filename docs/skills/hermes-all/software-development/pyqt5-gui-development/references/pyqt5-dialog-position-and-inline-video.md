@@ -1,7 +1,7 @@
 # PyQt5 弹窗定位 + 画布内嵌视频 + 静默失败 (2026-08-18 Z-MAX 控制台实测)
 
 ## 1. 弹窗定位: VcXsrv 多屏 = 单一虚拟大屏 (用户"视频/波形都没有"的真相)
-- 症状: 弹窗/播放器"看不到"但窗口其实在 — `DISPLAY=... xwininfo -root -tree` 显示 `+3707+237` 等 x>3000（副屏/屏缝坐标）
+- 症状: 弹窗/播放器"看不到"但窗口实际在 — `DISPLAY=... xwininfo -root -tree` 显示 `+3707+237` 等 x>3000（副屏/屏缝坐标）
 - **根因①: VcXsrv 把多显示器合成一个虚拟 X 屏**（宽 5120）— `QApplication.primaryScreen()`/`screenAt()` 返回整个虚拟桌面, `availableGeometry().center()` = 两屏之间 (x≈2159) → "屏幕居中"落在缝隙, 用户永远看不到
 - **根因②: `dlg.move()` 在 `show()` 之前会被 Qt 强制居中父窗口覆盖**（QDialog(parent) 的 show 语义）→ move 白做。**必须 show 之后再 move**
 - **正解: 按主窗口几何区域内居中**（不按屏幕）:

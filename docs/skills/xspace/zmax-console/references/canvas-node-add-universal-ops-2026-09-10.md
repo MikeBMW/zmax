@@ -53,7 +53,7 @@ def node_ss_abc(ctx):
     u   = np.asarray(tr["u_exec_vec"][idx], float) if tr.get("u_exec_vec") else np.zeros(4)
     ...
 ```
-L4 预测列真源 = `tr["mani_pred"][idx]` (dict, 取 `.get("manifold")` 6 维; 引擎每帧真调
+L4 预测列唯一依据 = `tr["mani_pred"][idx]` (dict, 取 `.get("manifold")` 6 维; 引擎每帧真调
 JEPA predictor, 见 references/state-space-exec-chain-*)。
 
 **② dispatch 路由** — 用自己写在 params 里的标志位, 不依赖 match_node 名称匹配 (最稳):

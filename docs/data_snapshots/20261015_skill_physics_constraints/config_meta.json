@@ -39661,7 +39661,7 @@
        "a_max_mps2": 4.1667,
        "jerk_max_mps3": 15.0,
        "dmdt_max_kg_s": 0.1,
-       "真源": "未夹持(只剩夹爪 1.2kg) · F=FORCE_LIMIT 5N"
+       "唯一依据": "未夹持(只剩夹爪 1.2kg) · F=FORCE_LIMIT 5N"
       },
       "对位": {
        "m_kg": 1.2,
@@ -39670,7 +39670,7 @@
        "a_max_mps2": 4.1667,
        "jerk_max_mps3": 5.143,
        "dmdt_max_kg_s": 0.1,
-       "真源": "未夹持 · F=FORCE_LIMIT 5N"
+       "唯一依据": "未夹持 · F=FORCE_LIMIT 5N"
       },
       "下降": {
        "m_kg": 1.2,
@@ -39679,7 +39679,7 @@
        "a_max_mps2": 4.1667,
        "jerk_max_mps3": 3.857,
        "dmdt_max_kg_s": 0.1,
-       "真源": "未夹持 · F=FORCE_LIMIT 5N (触到即停)"
+       "唯一依据": "未夹持 · F=FORCE_LIMIT 5N (触到即停)"
       },
       "抓取": {
        "m_kg": 1.28,
@@ -39688,7 +39688,7 @@
        "a_max_mps2": 9.375,
        "jerk_max_mps3": 2.25,
        "dmdt_max_kg_s": 0.5,
-       "真源": "夹持建立 m 1.20→1.35 · F=夹爪最大夹持力 12N"
+       "唯一依据": "夹持建立 m 1.20→1.35 · F=夹爪最大夹持力 12N"
       },
       "抬起": {
        "m_kg": 1.35,
@@ -39697,7 +39697,7 @@
        "a_max_mps2": 3.7037,
        "jerk_max_mps3": 12.857,
        "dmdt_max_kg_s": 0.1,
-       "真源": "已夹持 1.35kg · F=FORCE_LIMIT 5N"
+       "唯一依据": "已夹持 1.35kg · F=FORCE_LIMIT 5N"
       },
       "转移": {
        "m_kg": 1.35,
@@ -39706,7 +39706,7 @@
        "a_max_mps2": 3.7037,
        "jerk_max_mps3": 15.0,
        "dmdt_max_kg_s": 0.1,
-       "真源": "已夹持 · 平移 · F=FORCE_LIMIT 5N"
+       "唯一依据": "已夹持 · 平移 · F=FORCE_LIMIT 5N"
       },
       "插入": {
        "m_kg": 1.35,
@@ -39715,7 +39715,7 @@
        "a_max_mps2": 1.4815,
        "jerk_max_mps3": 3.643,
        "dmdt_max_kg_s": 0.1,
-       "真源": "已夹持 · **金手指保护 ≤2N** (过盈段力控)"
+       "唯一依据": "已夹持 · **金手指保护 ≤2N** (过盈段力控)"
       },
       "完成": {
        "m_kg": 1.35,
@@ -39724,7 +39724,7 @@
        "a_max_mps2": 1.4815,
        "jerk_max_mps3": 2.25,
        "dmdt_max_kg_s": 0.1,
-       "真源": "已夹持 · 保持 · ≤2N"
+       "唯一依据": "已夹持 · 保持 · ≤2N"
       },
       "放入": {
        "m_kg": 1.35,
@@ -39733,7 +39733,7 @@
        "a_max_mps2": 1.4815,
        "jerk_max_mps3": 2.571,
        "dmdt_max_kg_s": 0.5,
-       "真源": "摆盘链第7段 · 触底开爪释放 · ≤2N 不压伤"
+       "唯一依据": "摆盘链第7段 · 触底开爪释放 · ≤2N 不压伤"
       }
      },
      "big_err_mps": 0.05
@@ -40670,7 +40670,7 @@
     "cfg": [
      "physics_gate = True",
      "source = src/lerobot/policies/left_right/state_space/physics_constraints.py::InertiaLimiter.limit",
-     "skills = {'接近': {'m_kg': 1.2, 'F_max_N': 5.0, 'v_cap_mps': 0.35, 'a_max_mps2': 4.1667, 'jerk_max_mps3': 15.0, 'dmdt_max_kg_s': 0.1, '真源': '未夹持(只剩夹爪 1.2kg) · F=FORCE_LIMI",
+     "skills = {'接近': {'m_kg': 1.2, 'F_max_N': 5.0, 'v_cap_mps': 0.35, 'a_max_mps2': 4.1667, 'jerk_max_mps3': 15.0, 'dmdt_max_kg_s': 0.1, '唯一依据': '未夹持(只剩夹爪 1.2kg) · F=FORCE_LIMI",
      "big_err_mps = 0.05",
      "夹爪开合/力上限",
      "L2 兼容开关 (默认勾)",
@@ -43743,7 +43743,7 @@
      "模型在役哈希与版本比对",
      "反归一化/长轨迹平均化陷阱自检",
      "策略 rollout 成功率 (同源口径)",
-     "摆盘 CT 实测 (起止口径写死: 从吸取离盘到下一位就位)",
+     "摆盘 CT 实测 (起止口径预先固定: 从吸取离盘到下一位就位)",
      "槽位映射一致性 (放料到位 ±1mm · 槽位对号 100%)",
      "取放精度实测 (单边 mm / 角度 °, 同一位姿连续 30 次往返)",
      "型号识别/空满三态混淆矩阵 (每类 ≥300 样本; POC 各 ≥98%)",
@@ -43771,7 +43771,7 @@
      "深度口径 depth_scale / plane_z",
      "相机内参 camera.K/dist (真机出厂内参)",
      "坐标系: T_base_cam (未标定 ⇒ 走板坐标系口径)",
-     "盘面槽位几何 (Tray 30 槽 / 周转盘槽位) — 现场一次标定, 盘面坐标类参数的唯一真源",
+     "盘面槽位几何 (Tray 30 槽 / 周转盘槽位) — 现场一次标定, 盘面坐标类参数的唯一依据",
      "腕部相机工作距离窗口 0.1–0.6m (±1mm/±1° 只在此区间成立; 头部/胸部相机为 ±5mm 级)"
     ],
     "dia": [
@@ -43779,7 +43779,7 @@
      "模型在役哈希与版本比对",
      "反归一化/长轨迹平均化陷阱自检",
      "策略 rollout 成功率 (同源口径)",
-     "摆盘 CT 实测 (起止口径写死: 从吸取离盘到下一位就位)",
+     "摆盘 CT 实测 (起止口径预先固定: 从吸取离盘到下一位就位)",
      "槽位映射一致性 (放料到位 ±1mm · 槽位对号 100%)",
      "取放精度实测 (单边 mm / 角度 °, 同一位姿连续 30 次往返)",
      "型号识别/空满三态混淆矩阵 (每类 ≥300 样本; POC 各 ≥98%)",
@@ -44468,7 +44468,7 @@
      "模型在役哈希与版本比对",
      "反归一化/长轨迹平均化陷阱自检",
      "策略 rollout 成功率 (同源口径)",
-     "摆盘 CT 实测 (起止口径写死: 从吸取离盘到下一位就位)",
+     "摆盘 CT 实测 (起止口径预先固定: 从吸取离盘到下一位就位)",
      "槽位映射一致性 (放料到位 ±1mm · 槽位对号 100%)",
      "取放精度实测 (单边 mm / 角度 °, 同一位姿连续 30 次往返)",
      "型号识别/空满三态混淆矩阵 (每类 ≥300 样本; POC 各 ≥98%)",
@@ -44499,7 +44499,7 @@
      "深度口径 depth_scale / plane_z",
      "相机内参 camera.K/dist (真机出厂内参)",
      "坐标系: T_base_cam (未标定 ⇒ 走板坐标系口径)",
-     "盘面槽位几何 (Tray 30 槽 / 周转盘槽位) — 现场一次标定, 盘面坐标类参数的唯一真源",
+     "盘面槽位几何 (Tray 30 槽 / 周转盘槽位) — 现场一次标定, 盘面坐标类参数的唯一依据",
      "腕部相机工作距离窗口 0.1–0.6m (±1mm/±1° 只在此区间成立; 头部/胸部相机为 ±5mm 级)"
     ],
     "dia": [
@@ -44507,7 +44507,7 @@
      "模型在役哈希与版本比对",
      "反归一化/长轨迹平均化陷阱自检",
      "策略 rollout 成功率 (同源口径)",
-     "摆盘 CT 实测 (起止口径写死: 从吸取离盘到下一位就位)",
+     "摆盘 CT 实测 (起止口径预先固定: 从吸取离盘到下一位就位)",
      "槽位映射一致性 (放料到位 ±1mm · 槽位对号 100%)",
      "取放精度实测 (单边 mm / 角度 °, 同一位姿连续 30 次往返)",
      "型号识别/空满三态混淆矩阵 (每类 ≥300 样本; POC 各 ≥98%)",
@@ -45309,7 +45309,7 @@
      "模型在役哈希与版本比对",
      "反归一化/长轨迹平均化陷阱自检",
      "策略 rollout 成功率 (同源口径)",
-     "摆盘 CT 实测 (起止口径写死: 从吸取离盘到下一位就位)",
+     "摆盘 CT 实测 (起止口径预先固定: 从吸取离盘到下一位就位)",
      "槽位映射一致性 (放料到位 ±1mm · 槽位对号 100%)",
      "取放精度实测 (单边 mm / 角度 °, 同一位姿连续 30 次往返)",
      "型号识别/空满三态混淆矩阵 (每类 ≥300 样本; POC 各 ≥98%)",
@@ -45341,7 +45341,7 @@
      "深度口径 depth_scale / plane_z",
      "相机内参 camera.K/dist (真机出厂内参)",
      "坐标系: T_base_cam (未标定 ⇒ 走板坐标系口径)",
-     "盘面槽位几何 (Tray 30 槽 / 周转盘槽位) — 现场一次标定, 盘面坐标类参数的唯一真源",
+     "盘面槽位几何 (Tray 30 槽 / 周转盘槽位) — 现场一次标定, 盘面坐标类参数的唯一依据",
      "腕部相机工作距离窗口 0.1–0.6m (±1mm/±1° 只在此区间成立; 头部/胸部相机为 ±5mm 级)"
     ],
     "dia": [
@@ -45349,7 +45349,7 @@
      "模型在役哈希与版本比对",
      "反归一化/长轨迹平均化陷阱自检",
      "策略 rollout 成功率 (同源口径)",
-     "摆盘 CT 实测 (起止口径写死: 从吸取离盘到下一位就位)",
+     "摆盘 CT 实测 (起止口径预先固定: 从吸取离盘到下一位就位)",
      "槽位映射一致性 (放料到位 ±1mm · 槽位对号 100%)",
      "取放精度实测 (单边 mm / 角度 °, 同一位姿连续 30 次往返)",
      "型号识别/空满三态混淆矩阵 (每类 ≥300 样本; POC 各 ≥98%)",
@@ -45939,7 +45939,7 @@
      "模型在役哈希与版本比对",
      "反归一化/长轨迹平均化陷阱自检",
      "策略 rollout 成功率 (同源口径)",
-     "摆盘 CT 实测 (起止口径写死: 从吸取离盘到下一位就位)",
+     "摆盘 CT 实测 (起止口径预先固定: 从吸取离盘到下一位就位)",
      "槽位映射一致性 (放料到位 ±1mm · 槽位对号 100%)",
      "取放精度实测 (单边 mm / 角度 °, 同一位姿连续 30 次往返)",
      "型号识别/空满三态混淆矩阵 (每类 ≥300 样本; POC 各 ≥98%)",
@@ -45972,7 +45972,7 @@
      "深度口径 depth_scale / plane_z",
      "相机内参 camera.K/dist (真机出厂内参)",
      "坐标系: T_base_cam (未标定 ⇒ 走板坐标系口径)",
-     "盘面槽位几何 (Tray 30 槽 / 周转盘槽位) — 现场一次标定, 盘面坐标类参数的唯一真源",
+     "盘面槽位几何 (Tray 30 槽 / 周转盘槽位) — 现场一次标定, 盘面坐标类参数的唯一依据",
      "腕部相机工作距离窗口 0.1–0.6m (±1mm/±1° 只在此区间成立; 头部/胸部相机为 ±5mm 级)"
     ],
     "dia": [
@@ -45980,7 +45980,7 @@
      "模型在役哈希与版本比对",
      "反归一化/长轨迹平均化陷阱自检",
      "策略 rollout 成功率 (同源口径)",
-     "摆盘 CT 实测 (起止口径写死: 从吸取离盘到下一位就位)",
+     "摆盘 CT 实测 (起止口径预先固定: 从吸取离盘到下一位就位)",
      "槽位映射一致性 (放料到位 ±1mm · 槽位对号 100%)",
      "取放精度实测 (单边 mm / 角度 °, 同一位姿连续 30 次往返)",
      "型号识别/空满三态混淆矩阵 (每类 ≥300 样本; POC 各 ≥98%)",
@@ -58328,7 +58328,7 @@
       "参数注册表": "config/mcd/param_registry.json",
       "模型×工程匹配": "config/mcd/match_matrix.json",
       "主参数M能量标定": "config/calib/zmax_manifold.json#_energy_derivation",
-      "性能指标真源": "config/platform/zmax_perf_spec.json",
+      "性能指标唯一依据": "config/platform/zmax_perf_spec.json",
       "工单": "config/orders/BS_*.json",
       "工程库": "data/database/zmax/zmax_engineering.db"
      },
@@ -58360,7 +58360,7 @@
        "io_trace",
        "energy_manifold"
       ],
-      "判据": "帧龄 <2s · 真源在且值非空",
+      "判据": "帧龄 <2s · 唯一依据在且值非空",
       "命令": "python3 tools/config_center.py list 工程配置"
      },
      "calib_view": {
@@ -58370,7 +58370,7 @@
       "M当前值": 1.0,
       "M能级": null,
       "M标定": "python3 tools/master_param_m.py --project PROJ-TH-TRAY --write (能量标定: M=1+E_task/E_ref)",
-      "真源": "config/calib/zmax_manifold.json → tools/zmax_params.py::write_manifold_M()",
+      "唯一依据": "config/calib/zmax_manifold.json → tools/zmax_params.py::write_manifold_M()",
       "命令": "python3 tools/config_center.py show M"
      },
      "diagnose_view": {
@@ -58442,7 +58442,7 @@
        "exists": true
       },
       {
-       "name": "性能指标真源",
+       "name": "性能指标唯一依据",
        "rel": "config/platform/zmax_perf_spec.json",
        "sha256": "1bb010da5a848cc0",
        "exists": true
@@ -58494,7 +58494,7 @@
        "target": "dim",
        "value": 6,
        "rule": "工序含腕部姿态控制(旋转/翻转/姿态/腕部) ⇒ dim=6 (位姿 6 轴); 否则 dim=3 (位置 3 轴)",
-       "source": "config/tasks/tasks.json 工序真源 + metric_field 口径 (位置 3 轴 / 位姿 6 轴)",
+       "source": "config/tasks/tasks.json 工序唯一依据 + metric_field 口径 (位置 3 轴 / 位姿 6 轴)",
        "evidence": "工序要求腕部姿态控制 ⇒ 位姿 6 轴",
        "hits": [
         "step[翻转]: 命中'旋转' ← 腕部旋转180°(150°/s), 模块标签面朝下, 金手指面朝上"
@@ -58574,7 +58574,7 @@
        "target": "scale",
        "value": 3.643,
        "rule": "M = 1 + (½·m_eff·v_peak² + m_eff·g·h) / E_ref   →  clamp[0,8]",
-       "source": "tools/master_param_m.py 能量标定真源 + config/calib/zmax_calib.json#tool_payload.mass_kg + config/tasks/tasks.json 工序速度",
+       "source": "tools/master_param_m.py 能量标定唯一依据 + config/calib/zmax_calib.json#tool_payload.mass_kg + config/tasks/tasks.json 工序速度",
        "project": "PROJ-LOAD-UNLOAD",
        "project_name": "上下料 (料仓/料盘 → 夹具 上料 → 卸料 → 回收)",
        "m_eff_kg": 1.535,
@@ -58586,8 +58586,8 @@
        },
        "input_sources": {
         "夹具/吸嘴": "config/calib/zmax_calib.json#tool_payload.mass_kg",
-        "工件": "真源: 光模块 QSFP 级 ≈25g (master_param_m 注释)",
-        "峰值速度": "工序真源 step[分拣] 命中'1.0m/s' (tasks.json)",
+        "工件": "唯一依据: 光模块 QSFP 级 ≈25g (master_param_m 注释)",
+        "峰值速度": "工序唯一依据 step[分拣] 命中'1.0m/s' (tasks.json)",
         "行程": "假设(可标定): 上下料工位升降 ≈300mm (待现场确认)"
        },
        "E_kin_J": 0.7675,
@@ -59158,7 +59158,7 @@
      "m_energy_level = E3 带夹具/高速",
      "m_E_task_J = 5.285",
      "m_metric = {'dim': 6, 'mode': 'diag', 'diag': [10.0, 10.0, 50.0, 10.0, 10.0, 10.0], 'components': None, 'gain': None}",
-     "m_mapping = [{'id': 'R1', 'target': 'dim', 'value': 6, 'rule': '工序含腕部姿态控制(旋转/翻转/姿态/腕部) ⇒ dim=6 (位姿 6 轴); 否则 dim=3 (位置 3 轴)', 'source': 'config/tasks/tasks.json 工序真源 + metri",
+     "m_mapping = [{'id': 'R1', 'target': 'dim', 'value': 6, 'rule': '工序含腕部姿态控制(旋转/翻转/姿态/腕部) ⇒ dim=6 (位姿 6 轴); 否则 dim=3 (位置 3 轴)', 'source': 'config/tasks/tasks.json 工序唯一依据 + metri",
      "m_audit_sha = c9c9cd505ac03650bc9ea71bbc0563c8b811c352678f6f640e0a11ddfd040b8a",
      "m_sources = {'tasks': 'config/tasks/tasks.json', 'bind': 'config/ss_task_binding.json', 'perf': 'config/platform/zmax_perf_spec.json', 'reg': 'config/mcd/param_registry.jso",
      "m_loaded_at = 2026-10-14 16:55:49",

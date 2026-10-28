@@ -10,10 +10,10 @@
   ② 三页真切换: 切到哪页只有哪页可见 (另两页不显示)
   ③ **参数中心真读数据库服务**: 独立 HTTP 取 127.0.0.1:8798/params 的 total, 与页面表行数逐一对上;
      服务不可达 ⇒ 页面必须走**诚实空态**(报"未响应"), 不许显示 0/旧值
-  ④ 撤下下拉的两页 (🎛 标定真源 / 🔧 运行开关) 对象仍在 (没删) 且切遍下拉都不会显示
+  ④ 撤下下拉的两页 (🎛 标定唯一依据 / 🔧 运行开关) 对象仍在 (没删) 且切遍下拉都不会显示
   ⑤ 6 个运行开关**还是同一批控件对象** (module.chk_* is dock.run_cfg._cks[k]) + 引擎读法未变 (self.chk_ 计数 > 0)
   ⑥ 引擎侧栏判定口零改动: view_is(表驱动) 真判当前页 (切 bus ⇒ view_is("bus")=True / view_is("mparam")=False)
-  ⑦ 工程存档的 available_views 与 VIEW_KEYS **同源同序** (project_file 写死过一份, 漂移即红)
+  ⑦ 工程存档的 available_views 与 VIEW_KEYS **同源同序** (project_file 预先固定过一份, 漂移即红)
   ⑧ 眼睛能看到的证据: 三页各出一张截图 (reports/ui_shots/sidebar_*.png)
 
 用法: cd /home/ubuntu/zmax && QT_QPA_PLATFORM=offscreen ./gui-venv311/bin/python tools/verify_sidebar_views.py
@@ -97,7 +97,7 @@ def main() -> int:
         chk("③ 参数中心 ↔ 数据库服务 (逐条对上)",
             n_tbl == total and str(total) in cnt_txt and all(str(v) in cnt_txt for v in cats.values()),
             "服务 total=%d · 页面表 %d 行 · 计数行「%s」" % (total, n_tbl, cnt_txt[:80]))
-        chk("③b 标定类数字在参数中心里 (替代原「标定真源」页)",
+        chk("③b 标定类数字在参数中心里 (替代原「标定唯一依据」页)",
             "标定 %d" % cats.get("calib", -1) in cnt_txt,
             "服务 by_cat.calib=%s" % cats.get("calib"))
 
@@ -106,7 +106,7 @@ def main() -> int:
     for i in range(d.cmb_view.count()):
         d.cmb_view.setCurrentIndex(i); app.processEvents()
         ever.append((d.calib.isVisible(), d.run_cfg.isVisible()))
-    chk("④ 标定真源/运行开关两页: 对象在, 永不显示",
+    chk("④ 标定唯一依据/运行开关两页: 对象在, 永不显示",
         isinstance(d.calib, MT.CalibTruthView) and isinstance(d.run_cfg, MT.RunConfigWidget)
         and not any(a or b for a, b in ever),
         "两对象在 · 切遍 %d 页可见性=%s" % (d.cmb_view.count(), ever))

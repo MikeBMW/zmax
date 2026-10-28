@@ -37,7 +37,7 @@
    (`self._ss_scope_wins.append(dlg)`) 供 _ss_tick 推光标。
 4. **归因窗口自动投影 + 状态行**: push 内满 10 帧自动 `_project("pca")` (散点不等手动
    按钮); hist/attrib 的 push 都更新顶部 QLabel 状态行 (累积帧数/当前 u_ff/主导输出维/
-   读图解释) — 窗口"活着"可感知, 且回答"这是啥"。
+   读图解释) — 窗口"活着"可感知, 且回答"这是什么"。
 
 ## Scope set_cursor 实现坑 (实测崩)
 - 阈值线代码的局部变量**别叫 `_tv`**: _paint 外层 `_tv` 是时间数组; 第 7 格阈值线

@@ -21,7 +21,7 @@ trigger: "Use when the user asks to 优化/设计 多层级记忆系统, 或提�
 
 | 层 | 语义 | 典型实现 | 典型数据文件 |
 |---|---|---|---|
-| **顶层宏观** | 跨任务画像 / 失败归因 / 分阶段建议 | `memory/macro_memory.py` (LLM 接口 + 规则兜底) | `data/macro_memory.json` |
+| **顶层宏观** | 跨任务画像 / 失败归因 / 分阶段建议 | `memory/macro_memory.py` (LLM 接口 + 规则保障) | `data/macro_memory.json` |
 | **总装** | 跨层仲裁 (接触段下层优先 / 自由段上层优先) + 台账 | `MemoryLayerBridge` | `data/assembly_memory.json` |
 | **L4 工作** | 现场几何 + 抗干扰 (世界模型预测项常未接=恒 0) | `GlobalPotentialField` | `shared_memory.json#l4` |
 | **L3 流程** | 阶段时序调度 `Σw_k(t)≡1` (raised-cosine 交接) | `ProcessPotentialField` | `shared_memory.json#l3` |

@@ -210,13 +210,13 @@ def _edge_short(name: str) -> str:
 
 
 class StatusPanel(QWidget):
-    W, H = 1080, 20                 # 逻辑画布尺寸 (paint 里所有坐标都按这个写死, 别改它)
+    W, H = 1080, 20                 # 逻辑画布尺寸 (paint 里所有坐标都按这个预先固定, 别改它)
     #   2026-10-23 老倪(第五次): 「硬件状态窗口太高了, 很空旷, 高度变成当前的一半」⇒ H 40 → 20
-    #   能这么改是因为 paint 里所有 y 都围绕中线 `cy = h/2` 画 (没有写死的绝对 y),
+    #   能这么改是因为 paint 里所有 y 都围绕中线 `cy = h/2` 画 (没有固定不变的绝对 y),
     #   最高的固定元素只有 18 逻辑 px (当前档 chip 底 18 / 灯外圈 14 / 推理环 13) ⇒ h=20 刚好放下,
     #   上下各留 ~1px。物理高度 58 → 29 (按 SCALE 1.45), 正好一半。
     # 🔍 2026-10-21 老倪(第二次): 「主界面的下面的硬件指标，字体太小，需要放大」
-    #   做法: 不逐个改 30+ 处写死坐标 (11/37/47/60/88/96…), 而是**画布等比放大** ——
+    #   做法: 不逐个改 30+ 处预先固定坐标 (11/37/47/60/88/96…), 而是**画布等比放大** ——
     #   painter.scale(SCALE) 后仍按 1080x40 的逻辑坐标画, 实际像素 = 1080x40 × SCALE,
     #   字/灯/进度条/圆角全部同步变大, 布局关系一点不变 (不会互相压住)。
     #   1.42 ⇒ 10px 字体只有 14.2 物理像素, 而本机 Xft.dpi≈192 (1pt≈2.67px) ⇒ 等效 ~5.3pt, 现场看就是小。
@@ -382,7 +382,7 @@ class StatusPanel(QWidget):
         return o if isinstance(o, dict) else {}
 
     def _profile(self):
-        """当前产品档 (真源 active_product): {key:'550B', hardware:'calib', hw_label:'标定', mode, caps, summary}."""
+        """当前产品档 (唯一依据 active_product): {key:'550B', hardware:'calib', hw_label:'标定', mode, caps, summary}."""
         d = self._obj if isinstance(self._obj, dict) else {}
         p = d.get("profile")
         return p if isinstance(p, dict) else {}
@@ -393,7 +393,7 @@ class StatusPanel(QWidget):
         return c if isinstance(c, dict) else {}
 
     def _lan(self):
-        """连接方式真源: /status/all.lan = {mode: lan|remote|unknown, local_ips, hosts}"""
+        """连接方式唯一依据: /status/all.lan = {mode: lan|remote|unknown, local_ips, hosts}"""
         d = self._obj if isinstance(self._obj, dict) else {}
         l = d.get("lan")
         return l if isinstance(l, dict) else {}
@@ -405,7 +405,7 @@ class StatusPanel(QWidget):
 
     # ---------- 三档 = 三种算力用法 (550A/4060 · 550B/4060桥接 · 550C/Intel) ----------
     def _hw_of(self, key, fallback):
-        """该档要求的算力载体 (真源 products[<档>].hardware 优先; 读不到退回静态兜底)。"""
+        """该档要求的算力载体 (唯一依据 products[<档>].hardware 优先; 读不到退回静态保障)。"""
         try:
             from lerobot.engineering import status_hub as _hub
             h = _hub.profile_hardware(key) or {}
@@ -463,7 +463,7 @@ class StatusPanel(QWidget):
             ("%.0fms" % e_ms) if (e_on and e_ms is not None) else ("忙" if (e_on and e_busy) else "—"))
         npu_fill = _pn_duty if isinstance(_pn_duty, (int, float)) else None
         # 🔴 2026-10-23: duty_pct 是**每路**占空 (busy_ratio/streams)。实测 NPU busy_ratio=1.94 / 2 路
-        #   ⇒ 槽面 97% 其实是「2 路各 97%、整体已饱和」; 只写 97% 会让人以为还有余量。
+        #   ⇒ 槽面 97% 实际是「2 路各 97%、整体已饱和」; 只写 97% 会让人以为还有余量。
         #   busy_ratio ≥1.05 一律写「满载」+ 满条, 原始倍数留在 tooltip 的并行调度里。
         _pn_br = _pn.get("busy_ratio") if isinstance(_pn.get("busy_ratio"), (int, float)) else None
         _pg_br = _pg.get("busy_ratio") if isinstance(_pg.get("busy_ratio"), (int, float)) else None
@@ -559,7 +559,7 @@ class StatusPanel(QWidget):
         return out
 
     def current(self):
-        """当前档 (真源 active_product); 真源没给就用 550B (调试档兜底, 与 zmax_profile 同口径)."""
+        """当前档 (唯一依据 active_product); 唯一依据没给就用 550B (调试档保障, 与 zmax_profile 同口径)."""
         key = str(self._profile().get("key") or "550B")
         for m in self.modes():
             if m["key"] == key:
@@ -569,7 +569,7 @@ class StatusPanel(QWidget):
     def set_boot_product(self, key):
         """控制台**启动时**读到的档 (它的界面/话题就是按这个建的)。
 
-        与真源现读不同 ⇒ 右侧画 ⟳, 表示「真源已换, 重启控制台才全生效」; 不假装已经生效。
+        与唯一依据现读不同 ⇒ 右侧画 ⟳, 表示「唯一依据已换, 重启控制台才全生效」; 不假装已经生效。
         """
         k = str(key or "").strip().upper()
         if k:
@@ -578,7 +578,7 @@ class StatusPanel(QWidget):
             self.update()
 
     def switch_profile(self, key):
-        """写真源 active_product + 把档位交给算力决策部署口 (tools/zmax_compute_mode.py)。
+        """写唯一依据 active_product + 把档位交给算力决策部署口 (tools/zmax_compute_mode.py)。
 
         老倪 2026-10-21: 选 550C → intel 部署模式 (显示 intel 硬件); 选 550B → 自动起 VSCode +
         单线程 debug, 推理 intel 优先 / 无 intel 自动回 4060; 选 550A → 自动起 4060 全模型训练,
@@ -637,7 +637,7 @@ class StatusPanel(QWidget):
             act.setChecked(t["key"] == cur["key"])
             act.triggered.connect(lambda _c=False, k=t["key"]: self._on_pick(k))
         m.addSeparator()
-        m.addAction("切换写真源 active_product … 重启控制台后能力全生效").setEnabled(False)
+        m.addAction("切换写唯一依据 active_product … 重启控制台后能力全生效").setEnabled(False)
         m.exec_(gpos)
 
     def _on_pick(self, key):
@@ -696,7 +696,7 @@ class StatusPanel(QWidget):
         return chips
 
     def _edge_chips(self):
-        """局域网模式下 550B 的「模型状态」= 端侧流水线各设备真在跑的模型 + 占空 (真源 edge.pipeline.devices)。
+        """局域网模式下 550B 的「模型状态」= 端侧流水线各设备真在跑的模型 + 占空 (唯一依据 edge.pipeline.devices)。
 
         形状与层 chip 一致 (灯 + 3 字标签 + 短名 + 数字), 这样同一行画法不用改。
         """
@@ -798,7 +798,7 @@ class StatusPanel(QWidget):
                      % (caps.get("topics", "—"), caps.get("comm", "—"),
                         caps.get("signal_analysis", "—"), caps.get("scene_3d", "—"),
                         caps.get("vscode", "—"), caps.get("remote_bypass", "—"), caps.get("algo", "—")))
-            L.append("  真源 %s" % (pr.get("source") or "—"))
+            L.append("  唯一依据 %s" % (pr.get("source") or "—"))
             L.append("  硬件要求 %s · 本机 %s %s" % (
                 "%s(%s)" % (pr.get("hw_label", "—"), pr.get("hardware", "—")),
                 pr.get("host_hardware", "—"), "✓ 相符" if pr.get("hw_ok", True) else "⚠ 不符"))
@@ -806,9 +806,9 @@ class StatusPanel(QWidget):
                 L.append("  ⚠ %s" % pr.get("hw_warn"))
             boot = getattr(self, "_boot", "") or pr.get("key")
             if boot and boot != pr.get("key"):
-                L.append("  ⚠ 已从 %s 切到 %s: 真源已写, **重启控制台**后界面/话题/算法准入才全生效" % (boot, pr.get("key")))
+                L.append("  ⚠ 已从 %s 切到 %s: 唯一依据已写, **重启控制台**后界面/话题/算法准入才全生效" % (boot, pr.get("key")))
             L.append("  点最左侧 chip 可换档: 550A·4060 开发训练 / 550B·4060 桥接(状态空间工程·全tool) / 550C·Intel 端侧部署")
-            L.append("  硬件绑定以真源 products[<档>].hardware 为准; 档位与本机不符时 chip 灯转黄")
+            L.append("  硬件绑定以唯一依据 products[<档>].hardware 为准; 档位与本机不符时 chip 灯转黄")
         cm = self._cams()
         if cm:
             if cm.get("online"):
@@ -1029,7 +1029,7 @@ class StatusPanel(QWidget):
             self._lamp(p, tx + 5, cy, QColor(C_DIM), False)
 
         # 3DGS 资产 (同一条中线的最右, 通信灯左侧) —— 先算它要占多宽, 剩下的才给模型层
-        # 2026-10-23 老倪「3DGS ×5 1114 啥意思」⇒ 原来的字面是「最近 5 个资产目录 + 最后一个(最旧那个)的
+        # 2026-10-23 老倪「3DGS ×5 1114 什么意思」⇒ 原来的字面是「最近 5 个资产目录 + 最后一个(最旧那个)的
         #   版本哈希后 8 位」, 等于显示了个对不上号的哈希。改成: 最新的**轮次** + 轮数 + 不同场景数。
         #   · collect_assets 按 gs.ply mtime 倒序 ⇒ assets[0] 才是最新 (原来取 [-1] = 最旧)
         #   · 同一次扫场的多轮 (xxx_m196…m200) 是「5 轮」不是「5 个场景」, 场景数按去掉 _mNNN 后去重
@@ -1062,7 +1062,7 @@ class StatusPanel(QWidget):
         x = chips_x0
         for m in vs:
             cw, w_ly, w_nm, w_vr = _chip_w(m, with_cnt)
-            if x + cw > chips_limit:                 # 真源 4 层一定放得下; 这是不许画出框的兜底
+            if x + cw > chips_limit:                 # 唯一依据 4 层一定放得下; 这是不许画出框的保障
                 break
             st = str(m.get("state", ""))
             col = QColor(STATE_COLOR.get(st, C_DIM))
@@ -1184,7 +1184,7 @@ def _selftest(shot=None):
     chk("渲染内容只有 1 条行带 (一行)", len(bands) == 1, "行带 %s" % (bands,))
     if bands:
         y0, y1 = bands[0]
-        # 2026-10-21: 面板按 1.42 放大后, 行带应为 ~53px (原 40px); 判据改成"占满中部"而不是写死 40
+        # 2026-10-21: 面板按 1.42 放大后, 行带应为 ~53px (原 40px); 判据改成"占满中部"而不是预先固定 40
         chk("行带高度合理 (%.0f~%.0fpx)" % (_Hp * 0.35, _Hp * 0.98),
             _Hp * 0.35 <= (y1 - y0) <= _Hp * 0.98, "%d..%d (%dpx)" % (y0, y1, y1 - y0 + 1))
     # 1c) 一行里必须同时看得见 4 个硬件项 + 4 个模型层 + 3DGS (都没有被折到别处)
@@ -1204,7 +1204,7 @@ def _selftest(shot=None):
     chk("short_ver 去日期前缀", short_ver("v20261001-annot") == "annot", short_ver("v20261001-annot"))
     chk("short_ver 留尾巴", short_ver("v20261001-r6") == "r6", short_ver("v20261001-r6"))
     chk("short_ver ckpt 目录", short_ver("smolvla_lew_v10_1h/004000") == "004000", short_ver("smolvla_lew_v10_1h/004000"))
-    chk("short_ver 兜底", short_ver("unknown") == "unknown" and short_ver(None) == "—")
+    chk("short_ver 保障", short_ver("unknown") == "unknown" and short_ver(None) == "—")
 
     # 2c) 同层多模型 → 聚合成一个 chip 且优先在役
     pn.feed(REAL)
@@ -1293,7 +1293,7 @@ def _selftest(shot=None):
         c5b["slots"][0][2] == "满载" and _num(c5b["slots"][0][1]) == 100, c5b["slots"][0])
     pn.feed(REAL)
 
-    # 2g) 3DGS 标签口径 (2026-10-23 老倪问「3DGS x5 1114 啥意思」)
+    # 2g) 3DGS 标签口径 (2026-10-23 老倪问「3DGS x5 1114 什么意思」)
     _g5 = [{"kind": "3DGS", "name": "map_20261018_210049_m%d · 101693 高斯" % (200 - i),
             "version": "v20261019-hash%d" % i, "path": "/x/gs.splat"} for i in range(5)]
     chk("3DGS 同场景 5 轮 → 报最新轮+轮数", pn.gs_label(_g5) == "3DGS m200 ×5轮", pn.gs_label(_g5))

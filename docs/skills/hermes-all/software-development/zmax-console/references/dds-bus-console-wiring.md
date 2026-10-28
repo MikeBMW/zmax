@@ -35,6 +35,6 @@ _tabs: ① 🗂 全息映射(insertTab(0, wrap))
   QLineEdit 默认**白底**, 配上深色主题的字色 = “看着没字”(实测纯白像素 62~79%)。
   在每个 Tab 顶层 widget 上 `setStyleSheet(DARK_QSS)`(表/树/文本/输入/表头/滚动条都要写),
   改完用 cv2 数每张截图的纯白像素占比验证(应为 0.0%), 不要凭眼看。
-* **状态灯墙**: 每个模块/每条话题一盏灯(绿正常·红故障·黄报警·黑无信号), 口径唯一真源是
+* **状态灯墙**: 每个模块/每条话题一盏灯(绿正常·红故障·黄报警·黑无信号), 口径唯一依据是
   `src/lerobot/dataspace/lamps.py`, 页面只读 `live.json` 的 `lamp/lamp_reason/lamp_tally`;
   详见 dds-messaging 技能的 `references/status-lamp-four-colors.md`。

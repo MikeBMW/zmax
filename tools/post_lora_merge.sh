@@ -13,8 +13,8 @@ POLICY=${2:-intact_l4_${1}}
 R=${3:-8}
 ALPHA=${4:-16}
 IVENV=/home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python
-# 🔴 2026-09-30: 原来写死 /home/ubuntu/zmax(改名前的路径, 里面没有这两个工具⇒退出码 3)
-#   工程根现在是 /home/ubuntu/zmax(main 真源) ⇒ 默认改为自动定位本脚本所在的仓库, 也可用 ZMAX_REPO 覆盖。
+# 🔴 2026-09-30: 原来预先固定 /home/ubuntu/zmax(改名前的路径, 里面没有这两个工具⇒退出码 3)
+#   工程根现在是 /home/ubuntu/zmax(main 唯一依据) ⇒ 默认改为自动定位本脚本所在的仓库, 也可用 ZMAX_REPO 覆盖。
 REPO="${ZMAX_REPO:-$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)}"
 
 LATEST=$(ls -t $ART_DIR/weights_epoch_*.pt 2>/dev/null | head -1)

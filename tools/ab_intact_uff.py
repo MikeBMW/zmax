@@ -51,7 +51,7 @@ def _goal_frame(seed, max_steps):
     sim = RealStateSpaceSim(seed=seed, vision=False, mode="insert", log=lambda *a: None)
     sim._frame_sink = lambda s, a, o: frames.append(np.asarray(s.env.render()))
     sim.run(max_steps=max_steps)
-    # ★ 不 close: 引擎 _make_env() 是进程级单例 → close 会让后续渲染全黑 (实测踩坑)
+    # ★ 不 close: 引擎 _make_env() 是进程级单例 → close 会让后续渲染全黑 (实测遇到问题)
     return frames[-1] if frames else None
 
 
@@ -104,7 +104,7 @@ def main():
     arms = [x for x in a.arms.split(",") if x]
     rows, t0 = [], time.time()
     goals = {}
-    for seed in seeds:                      # 每个 seed 先跑一遍基线取 goal 帧 (末帧=完成态)
+    for seed in seeds:                      # 每个 seed 先执行一遍基线取 goal 帧 (末帧=完成态)
         goals[seed] = _goal_frame(seed, a.max_steps)
         print(f"  [goal] seed={seed}: {'已取末帧' if goals[seed] is not None else '⚠️ 无帧'}",
               flush=True)

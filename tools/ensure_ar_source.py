@@ -5,7 +5,7 @@
 老倪 2026-10-28: 「画布你要记下我之前的配置, 我每次启动控制台, 我都要手动修改数据源到 AR场景, 你要记下来」
 
 为什么需要它 (根因, 不是猜):
-  · 画布真源 data/database/zmax/sources/canvas/state_space_obs.json 里 📦数据源节点
+  · 画布唯一依据 data/database/zmax/sources/canvas/state_space_obs.json 里 📦数据源节点
     params.src_state 已经是「AR场景」(src/lerobot/engineering/flows/ 那份是软链, 同一份文件);
   · 但控制台打开工程 / 点「🔀 数据源切换」会把 src_state 写成别的值 (并在下次保存后落盘),
     于是每次启动都要人工再点回去。

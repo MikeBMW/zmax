@@ -1,7 +1,7 @@
 {
   "_meta": {
     "schema": "zmax-perf-bands/2.0",
-    "note": "老倪 2026-10-28 (第十轮): 「性能指标的值要用物理可测量的值, 跟时间和距离有关, 可以计算, 可以用工具测量; 指标太零散, 要专业有依据; 对应的模型不要写 D405 这种硬件, 要写算力: L2 ≤30 TOPS, L2+L3 ≤80 TOPS, L2+L3+L4 ≤300 TOPS」。⇒ 一张表, 每行 = 指标(符号·单位) + 物理可测值 + 测量工具/方法 + 依据(标准/真源) + 算力预算(TOPS) + 功能层级。所有时间/距离类值均来自 sim_insert.json 392 段实测或真源文件, 可直接用工具复算。",
+    "note": "老倪 2026-10-28 (第十轮): 「性能指标的值要用物理可测量的值, 跟时间和距离有关, 可以计算, 可以用工具测量; 指标太零散, 要专业有依据; 对应的模型不要写 D405 这种硬件, 要写算力: L2 ≤30 TOPS, L2+L3 ≤80 TOPS, L2+L3+L4 ≤300 TOPS」。⇒ 一张表, 每行 = 指标(符号·单位) + 物理可测值 + 测量工具/方法 + 依据(标准/唯一依据) + 算力预算(TOPS) + 功能层级。所有时间/距离类值均来自 sim_insert.json 392 段实测或唯一依据文件, 可直接用工具复算。",
     "author": "静静 (Hermes) 2026-10-28",
     "units": "s · mm · mm/s · mm/px · N · 件/h · Hz · ms · 维/s"
   },
@@ -42,7 +42,7 @@
       "cost_hint": "成本 B: A + 推理算力 (≤80 TOPS 级) + 真机数据采集标注 + LoRA 微调算力",
       "cost_items": ["推理算力 (≤80 TOPS 级)", "训练数据采集与标注", "LoRA 微调算力", "双臂时序联调人力"],
       "rows": [
-        {"k": "控制周期", "sym": "τ", "v": "80 ms (12.5 Hz)", "tool": "策略推理时间戳 (perf_counter) 统计 P50/P95", "basis": "真源设计 τ=0.08 s", "layer": "L3", "src": "config/platform/zmax_perf_spec.json"},
+        {"k": "控制周期", "sym": "τ", "v": "80 ms (12.5 Hz)", "tool": "策略推理时间戳 (perf_counter) 统计 P50/P95", "basis": "唯一依据设计 τ=0.08 s", "layer": "L3", "src": "config/platform/zmax_perf_spec.json"},
         {"k": "动作前瞻", "sym": "H = chunk·τ", "v": "7 × 80 ms = 0.56 s", "tool": "由 chunk_size 与 τ 计算 (可查 ckpt config)", "basis": "ACT 类 chunk 执行", "layer": "L3", "src": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model/config.json#output_features"},
         {"k": "动作空间", "sym": "a ∈ R^n", "v": "4 维 (Δx, Δy, Δz [mm], 夹爪 [mm])", "tool": "下发指令与末端实测位移逐维线性回归核比例", "basis": "ckpt output shape [4]", "layer": "L3", "src": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model/config.json#output_features"},
         {"k": "单步位移分辨率", "sym": "Δ_min", "v": "0.10 mm (与 RP 目标同量级)", "tool": "千分表测同一指令 30 次位移分布", "basis": "ISO 9283 RP", "layer": "L3", "src": "config/platform/zmax_perf_spec.json"},

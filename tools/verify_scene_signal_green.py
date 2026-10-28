@@ -8,7 +8,7 @@
   ③ 「摆盘的蓝色信号, 怎么也有 tick 小对号?」   → 非当前场景的那一份不可勾选、不带勾
   ④ 「蓝色区域你得折叠隐藏啊」                   → 非当前场景的场景组默认折叠隐藏
 
-口径: 离屏真建 CanoeGraphicWidget (与现场同一个类/同一份真源 config/topics/scene_tags.json),
+口径: 离屏真建 CanoeGraphicWidget (与现场同一个类/同一份唯一依据 config/topics/scene_tags.json),
       逐行走树取 (层级, 文本, 前景色, 勾选态, 可勾选标志, 组展开态)。缺一项即 FAIL, 并打印实际取到的行。
 """
 from __future__ import annotations
@@ -274,7 +274,7 @@ def main() -> int:
                   " 下次启动控制台才生效 (publisher 侧已生效)")
         _ok10 = bool(_eng) and (_tr in (True, None))
         ok &= _ok10
-        # 八阶段 = 真源常量, 不是我编的: 直接读 cognition.ActionModulator
+        # 八阶段 = 唯一依据常量, 不是我编的: 直接读 cognition.ActionModulator
         _sr = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src")
         if _sr not in sys.path:
             sys.path.insert(0, _sr)
@@ -282,7 +282,7 @@ def main() -> int:
         _p8 = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
         _sub_ok = _AM.STAGES[:7] == _p8[:7] and _AM.STAGES[-1] == _p8[-1]
         ok &= _sub_ok
-        print("   %s 八阶段真源 = cognition.py:31 ActionModulator.STAGES %s … 限速(m/s) %s" % (
+        print("   %s 八阶段唯一依据 = cognition.py:31 ActionModulator.STAGES %s … 限速(m/s) %s" % (
             "✅" if _sub_ok else "❌", _AM.STAGES[:7] + [_AM.STAGES[-1]],
             {k: _AM.STAGE_V_CAP.get(k) for k in _p8}))
     except Exception as _e:                                                    # noqa: BLE001
@@ -302,7 +302,7 @@ def main() -> int:
                     if "ss_stage" in _ln:
                         _lines.append(_ln)
         _n_topic = len(_lines)
-        print("   %s 话题 zmax/ss_stage 报文 %d 条 (真源: 数据空间探针 → trace.jsonl)" % (
+        print("   %s 话题 zmax/ss_stage 报文 %d 条 (唯一依据: 数据空间探针 → trace.jsonl)" % (
             "✅" if _n_topic > 0 else "❌", _n_topic))
         ok &= _n_topic > 0
         _last = None
@@ -383,7 +383,7 @@ def main() -> int:
         _names = _snap.get("八阶段表") or []
         _ok13 = all(str(x) in _strip for x in _names[:8]) and ("【" in _strip)
         print("   %s 文字行 = %s" % ("✅" if _ok13 else "❌", _strip))
-        print("      真源 八阶段表(快照里下发, = ActionModulator.STAGES 插拔八段) = %s" % (_names or "（快照里还没有）"))
+        print("      唯一依据 八阶段表(快照里下发, = ActionModulator.STAGES 插拔八段) = %s" % (_names or "（快照里还没有）"))
         if not _names:
             print("      (重启控制台后 3D 面板才会把「八阶段表」随帧发下来; 没表时只写当前阶段名, 不编)")
         ok &= _ok13

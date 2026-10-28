@@ -14,7 +14,7 @@
 ## 0. 结论先行（一句话架构）
 
 **M 节点 = 描述文件（MCD-2MC/A2L）+ 测量标定通道（MCD-1MC/XCP）+ 远程控制面（MCD-3MC）三件套在画布上的收口节点。**
-参数与能力的真源是文件（`feature.dbc` + `config/calib/*`），节点只做三件事：
+参数与能力的唯一依据是文件（`feature.dbc` + `config/calib/*`），节点只做三件事：
 ① 按 feature 组合**派生**参数集（配置）→ ② 在真机上做**受约束的扫描与目标函数寻优**（标定）
 → ③ 拿在役真值和 feature 断言做**同源判定与报告**（诊断）。
 所有结果写一条状态通道（`_SS_STATE["calib_mani"]` + `reports/mcd/*.jsonl`），旁路实时可视化节点以
@@ -24,7 +24,7 @@
 
 ## 1. ASAM-MCD ↔ Z-MAX 映射（这是本设计的骨架）
 
-| ASAM-MCD | 原义 | Z-MAX 对应物 | 真源/落点 |
+| ASAM-MCD | 原义 | Z-MAX 对应物 | 唯一依据/落点 |
 |---|---|---|---|
 | **MCD-1 MC**（通信协议 XCP/CCP） | 工具↔ECU 的物理/逻辑链路与协议 | **测量标定通道**：只读遥测帧（旁路 `bypass_sensor_source.py`）+ 在役位姿真值 `zmax_data/rokae_sdk/tcp_out/latest.json`（50Hz）+ DDS 遥测（`zmax-dds-*`）+ 写入走 8793 `/ctl/*` 收口链（白名单→授权→限流→FIFO→执行器→安全闸） | 不新建通道，复用既有 |
 | **MCD-2 MC**（数据描述 A2L） | 描述 ECU 里可测/可标/可诊断的量 | **描述文件 `config/mcd/zmax_mcd.json`**：MEASUREMENT / CHARACTERISTIC / COMPU_METHOD / GROUPS 四段，从 `feature.dbc` + `config/calib/*` 生成 | 本文 §2、§3 |
@@ -43,10 +43,10 @@ Z-MAX 现在缺的正是这份描述——M 的物理意义散落在 `manifold_M
 ## 2. 数据模型：三张表（A2L 概念的等价物）
 
 ### 2.1 MEASUREMENT（测量量 · 只读，能看不能改）
-每条 = {id, 中文名, 单位, 真源路径, 读取方式, 正常判据, 归属层}
+每条 = {id, 中文名, 单位, 唯一依据路径, 读取方式, 正常判据, 归属层}
 覆盖：
 - 状态类：43D obs 分段（hand/peg/hole/触觉）、SU(2) 统一状态、残差、contact_p
-- 位姿类：tcp(6) / joint(6) / 关节速度范数 / 力(6) / 夹爪，真源 `latest.json`（**帧龄是第一判据**）
+- 位姿类：tcp(6) / joint(6) / 关节速度范数 / 力(6) / 夹爪，唯一依据 `latest.json`（**帧龄是第一判据**）
 - 性能类：D_INSERT 终到误差、节拍、力峰、否决率、η(CJ/J)、V_p
 - 健康类：各源文件 mtime 帧龄、Publisher count、端口探活码
 
@@ -55,13 +55,13 @@ Z-MAX 现在缺的正是这份描述——M 的物理意义散落在 `manifold_M
 | 级 | 含义 | 写权限 | 例 | 允许的标定方式 |
 |---|---|---|---|---|
 | **G0 结构参数** | 由流形结构导出，**非自由拟合** | 只读+授权写 | **M（等效惯量尺度）**、latent_dim、manifold_type | 单标量现场标定；**禁止**当自由参数调 |
-| **G1 安全参数** | 硬红线，有守卫兜底 | 只读，写需现场一次性授权 | saturate ±0.6、veto_th、max_step、力阈值 ≤2N、抬升限位、collision_detection | 只能"证明不违反"后收紧，不允许放宽 |
+| **G1 安全参数** | 硬红线，有守卫保障 | 只读，写需现场一次性授权 | saturate ±0.6、veto_th、max_step、力阈值 ≤2N、抬升限位、collision_detection | 只能"证明不违反"后收紧，不允许放宽 |
 | **G2 性能参数** | 有目标函数，可扫 | 授权写（走 mcd 通道） | 速度系数、前馈增益、夹爪时序、τ | 扫描 + 目标函数寻优 |
 | **G3 场景参数** | 现场示教/几何 | 现场写（零运动录点） | 示教点、安全点、plane_z、z7、TCP offset | 只能"读当前真值落盘" |
 | **G4 模型权重** | 不可标，只版本 | 只读 | `model.safetensors` / LoRA / ckpt | 版本比对，不标 |
 
 每条 CHARACTERISTIC 的元数据（强制字段，缺一不可）：
-`{id, 级, 单位+换算, 范围+夹取策略, 默认值, 真源文件与键, 影响面(哪些节点/层读它), 判据(好/坏阈值), 写权限, 关联 feature}`
+`{id, 级, 单位+换算, 范围+夹取策略, 默认值, 唯一依据文件与键, 影响面(哪些节点/层读它), 判据(好/坏阈值), 写权限, 关联 feature}`
 
 > 为什么要五级：把"M 能调多少"和"安全阈值能调多少"分开，是**避免标定变成改红线**的唯一办法。
 > G1 的写口永远不在这条链上——M 节点只**读** G1 做约束，写 G1 仍走现场授权。
@@ -97,7 +97,7 @@ BO_ D2 运动规律建模: OUT D
 2. 按级过滤权限：`field` 级（G3）只有现场能写；`auth` 级要授权；`G0/G1` 强制二次确认
 3. **冲突检测**（必须报，不能静默取一个）：同一参数被两条能力以不同范围/默认要求 ⇒ 高亮冲突，取**交集**，交集为空则拒配
 4. 缺 G0/G1 参数 ⇒ 拒配（不允许"没标定就跑"）
-5. 产出 `run_cfg`（参数取值）+ `param_ready`（每参数就绪度：有真源/在范围/未陈旧）
+5. 产出 `run_cfg`（参数取值）+ `param_ready`（每参数就绪度：有唯一依据/在范围/未陈旧）
 
 ### 3.3 能力档位（`sscap` 的 L2/L3/L4/L5）与参数的关系
 每个档位声明"必须还能干的事"（`engineering/levels.py`）。参数集按档位收敛：
@@ -110,7 +110,7 @@ BO_ D2 运动规律建模: OUT D
 
 **现状（保持）**
 ```
-in1 ← sscalib.out3   (标定层单一真源 → M 注册口)
+in1 ← sscalib.out3   (标定层单一唯一依据 → M 注册口)
 in2 ← sslat.out3     (潜空间几何 → 曲率/维度尺度)
 out1 → ss_mani_eng.in6   (M → 流形引擎主核)
 out2 → ssmani_c.in3      (M → 接触流形势能惯性尺度)
@@ -157,9 +157,9 @@ out5 → (状态通道) 不画线，写 _SS_STATE + reports/mcd/*        ← 与
 ```
 
 ### 5.1 配置页
-- 表：`参数 | 级 | 当前值 | 单位 | 范围 | 真源 | 影响节点 | 写权限 | 状态灯`
+- 表：`参数 | 级 | 当前值 | 单位 | 范围 | 唯一依据 | 影响节点 | 写权限 | 状态灯`
 - 顶栏：**M 大数值 + 滑杆（0~8，越界夹取并显红）**、`inertia` 开关、`⟲ 零回归`（一键回 default/false）
-- 每行右键：`看源码`（走 `_EXTERNAL_LOC`）、`看真源文件`、`回滚到 prev`
+- 每行右键：`看源码`（走 `_EXTERNAL_LOC`）、`看唯一依据文件`、`回滚到 prev`
 - 底部：`就绪度 N/M 项`、`冲突 K 处`（点击跳到冲突行）
 
 ### 5.2 标定页（核心）
@@ -173,7 +173,7 @@ out5 → (状态通道) 不画线，写 _SS_STATE + reports/mcd/*        ← 与
 
 ### 5.3 诊断页
 - **断言跑分**：`verification_layer.FEATURES` 57 条（自动/手动）汇总一屏，按域分组，红/黄/绿
-- **参数健康**：越界 / 真源陈旧（帧龄）/ 漂移（与上次扫描比）/ 一致性（calib 描述 vs 在役读值）
+- **参数健康**：越界 / 唯一依据陈旧（帧龄）/ 漂移（与上次扫描比）/ 一致性（calib 描述 vs 在役读值）
 - **链路段**：8795 / 8793 / 位姿真值 / Orin / 工控机 的探活码 + 帧龄（会照实报"环境缺失"而不是"服务故障"）
 - **故障码**：稳定 ID（`MCD-E01 位姿真值陈旧` / `MCD-E02 参数越界` / `MCD-E03 组合冲突` / `MCD-E04 断言失败` …）
 - `导出诊断报告` → `reports/mcd/diag_<ts>.json` + `.md`（同一份数据的两种形态）
@@ -195,7 +195,7 @@ out5 → (状态通道) 不画线，写 _SS_STATE + reports/mcd/*        ← 与
 | 方法 | 路由 | 作用 |
 |---|---|---|
 | GET | `/hil/term/mcd` | 取 MCD 描述（参数表 + 级 + 范围 + 当前值 + 就绪度） |
-| GET | `/hil/term/mcd/value?p=M` | 取单参数当前值 + 真源 + 帧龄 |
+| GET | `/hil/term/mcd/value?p=M` | 取单参数当前值 + 唯一依据 + 帧龄 |
 | POST | `/hil/term/mcd/set` | 写参数（**只允许 G0/G2**，`{p,value,dry:true}` 先演练；G1 直接拒） |
 | POST | `/hil/term/mcd/scan` | 启停 M 扫描（`{start,stop,step,on}`），结果落 `reports/mcd/` |
 | GET | `/hil/term/mcd/report` | 取最近诊断报告（json） |
@@ -250,7 +250,7 @@ HIL 节点已 `out1 → ssllm`（人工指示 → 规划）。新增口 `out2 �
 |---|---|---|
 | MCD 描述（A2L 类比） | `config/mcd/zmax_mcd.json` | 四段：MEASUREMENT / CHARACTERISTIC / COMPU_METHOD / GROUPS；带 `_generated_at` + 源 md5 |
 | 生成器 | `tools/mcd_build.py` | 从 `feature.dbc`（config 侧符号）+ `config/calib/*.json` 生成；`--check` 幂等 |
-| 参数注册表 | `config/calib/param_registry.json` | 手动维护的"影响面/判据/权限"（生成器只补真源与当前值） |
+| 参数注册表 | `config/calib/param_registry.json` | 手动维护的"影响面/判据/权限"（生成器只补唯一依据与当前值） |
 | 扫描记录（MDF 类比） | `reports/mcd/scan_M_<ts>.jsonl` + `.json` | 每点一行 + 汇总（推荐值/敏感性/可辨识） |
 | 诊断报告 | `reports/mcd/diag_<ts>.{json,md}` | 同一数据的两种形态 |
 | 面板窗口 | `tools/gui/mcd_panel.py` | 四页签 |
@@ -301,14 +301,14 @@ HIL 节点已 `out1 → ssllm`（人工指示 → 规划）。新增口 `out2 �
 工具: `tools/ss_node_sync.py`  (`--check` 只比对 / `--json` 导出)
 节点: `n_calib_mani` · 名称 → **🧮 标定诊断测量 · 主参数 M (状态空间结构参数 · 等效惯量)**
 
-挂进 `params` 的 7 段 (文件本身仍是真源, 节点只挂指针 + 快照):
+挂进 `params` 的 7 段 (文件本身仍是唯一依据, 节点只挂指针 + 快照):
 | 段 | 内容 |
 |---|---|
 | `cfg_role` | 配置中心 ←→ 状态空间工程 的唯一收口口 (测量/标定/诊断 三视图 + 主参数 M) |
 | `cfg_entries` | 9 条配置项路径: MCD 描述 / 参数注册表 / 模型×工程匹配 / 任务配置 / 任务绑定 / 工单目录 / 工程文件 / 站点标定 / 流形标定 |
 | `cfg_snapshot` | 参数 10/24(缺14) · 五域分布 · 缺口清单 · 任务 5 · 活跃 TASK-01-FW · 工单 5 · 断言 57 · 模型匹配 9/10 · 站点缺 3 · 工程指纹(结构md5/节点/连线) |
 | `measure_view` | 测量视图: 9 个测量量 + 源 (tcp latest.json / io_trace / cognition / energy_manifold) + 判据 (帧龄<2s) |
-| `calib_view` | 标定视图: 14 个可写参数 + 主参数 M (G0 结构参数, [0,8], inertia 开关) + 真源 |
+| `calib_view` | 标定视图: 14 个可写参数 + 主参数 M (G0 结构参数, [0,8], inertia 开关) + 唯一依据 |
 | `diagnose_view` | 诊断视图: 57 断言 (自动 47) + 故障码 MCD-E01..E05 + 站点缺口 3 项 |
 | `task_layer` | 任务层: 5 任务 / 活跃 / 段覆盖 52 节点 / 口径「一个工程承载全部任务」 |
 

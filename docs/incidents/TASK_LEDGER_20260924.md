@@ -86,7 +86,7 @@
 |---|---|
 | 产线主程序未跑 → `/robot/tcp_pose` 0 发布者 | 光模块位姿来源未定 → 抓取计划 S2 之后无法执行 |
 | AOI 判决只在工控机终端(HTTP 只回"已受理") | 本机拿不到 OK/NG, 需另开结果通道 |
-| Qwen2.5-VL-3B 权重未下全 | 大模型层只能用 smolvlm2-500m 兜底 |
+| Qwen2.5-VL-3B 权重未下全 | 大模型层只能用 smolvlm2-500m 保障 |
 | 8GB 显存装不下 SmolVLA+LEW 同跑 | L3 段 CPU 4.24s/步(实时性受限) |
 | 三框架三 venv(torch 2.6/2.7 · py3.10/3.11/3.12) | 真联合脚本只能用 INTACT venv; 跨 venv 已用子进程桥 |
 
@@ -103,7 +103,7 @@
 | ①-3 | 统一主干 dense 同框架旁路 | 52,212 帧 · 9.47ms/帧 · 10/10 零回退 · 引擎流 MOE 0.0121 < dense 0.0167 |
 | ①-4 | 画布运行时对账 | 真跑引擎 120 步 → 18 通道; 节点 R1 17 · 档位链 22 · 语义 19 · 终端 9 · 待建 3 |
 | ①-4后续 | **档位级验收** | 新工具四件套: 70 节点 → R1 16 · R2 真接 31 · R3 13 · R4 7 · R5 3 · **⚠ 0**; 152 连线 → 双端 17 / 单端 67 / 双端非运行时 68, **真缺口 0** |
-| ①-4后续 | 6 个「画布有节点无执行函数」接线 | 4 个关键词对不上 (ss_llm/ss_skill/ss_mem_l2/ss_mem_l3) + 2 个新写真执行节点 (n_board_frame/n_l2_muscle); 均实测跑通 |
+| ①-4后续 | 6 个「画布有节点无执行函数」接线 | 4 个关键词对不上 (ss_llm/ss_skill/ss_mem_l2/ss_mem_l3) + 2 个新写真执行节点 (n_board_frame/n_l2_muscle); 均实测验证通过 |
 | — | 认知头定案 | 两模型一步预测**都输给持久基线** (同源 3.33×/5.19×; 引擎流 29×/40×) → 靶子定错 (预测下一帧无信息量) |
 
 ### 下一批 ② (待开工)
@@ -143,7 +143,7 @@
 | 功能清单 (capability_levels) | L2-A12 3D 视觉引导 · L2-A13 触觉反馈闭环 (desc 直接带实测指标) |
 | 测试用例 (verification_layer) | **F-B12 ✅** 横向偏差 135.9→38.5mm (0.28×, 判据≤0.50×) · 法向偏离 148.3→**0.29mm**(<1mm) · 引导范数中位 130.8mm; **F-B13 ✅** 触觉↔状态互补一致 **1.000** · corr(contact_p,\|F\|) **0.975** · 插入段 cp 0.9931 · 力上界 **0.665N** |
 | 功能树 (node_func_tree) | FN2d06 视觉伺服引导闭环 · FNtac06 触觉反馈闭环 (8 条子用例) |
-| 画布节点 | `ssfeat`/`sstest` desc 用**真源实时计数**刷新 (FEATURES 57 · 分组 A12/B13/C4/D3/E5/F4/G10/H6 · 树 113功能×562用例) — 由 `tools/canvas_update_verif_nodes.py` 生成, 不再手写 |
+| 画布节点 | `ssfeat`/`sstest` desc 用**唯一依据实时计数**刷新 (FEATURES 57 · 分组 A12/B13/C4/D3/E5/F4/G10/H6 · 树 113功能×562用例) — 由 `tools/canvas_update_verif_nodes.py` 生成, 不再手写 |
 | 网页 (ECS 上线) | 新页 `https://datadrive.world/l2-guidance-tactile.html` + `.md` (下载/复制 Markdown 按钮) · 总表 function-list.html 重生成+导航 · 主页 index.html 加导航 (全部 HTTP 200 复核) |
 | 三个如实标注 | ① 触觉通道 0 = 原始开度、轨迹 gripper = 夹紧度 = 1−开度 → 用**互补一致率**断言 (按相等比得 0%) ② 触觉通道 2/3 引擎恒 0 = 真机触觉缺口 ③ 静态目标向量 vs 逐帧速度 一致率仅 0.21 → 判据改用偏差收敛+法向偏离归零 |
 | 新工具 | `tools/measure_l2_guide_tactile.py` (阈值先实测) · `tools/gen_l2_guide_tactile_page.py` (生成+部署+HTTP 复核) · `tools/canvas_update_verif_nodes.py` |

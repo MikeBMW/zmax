@@ -7,7 +7,7 @@
 现状: 话题 zmax/ss_meta_pred (type zmax::SSMetaPred) 里已有 top_ids / top_scores (字符串, top-8),
 但 ① `top_ids` 只有功能号 (FN-SYS2-29) —— 认不出是哪个元任务; ② 信号页只把 3 个数值摘出来画, 名字根本没上屏。
 做法 (三段都不改 DDS 结构, 只加内容):
- ① 守护: `top_ids` 从「FN-SYS2-29」改成「FN-SYS2-29 小目标插入」(真源 meta_pred.json 里 top[].name) ⇒ 载荷自解释;
+ ① 守护: `top_ids` 从「FN-SYS2-29」改成「FN-SYS2-29 小目标插入」(唯一依据 meta_pred.json 里 top[].name) ⇒ 载荷自解释;
  ② 探针: digest 里数值槽 mt1..mt5 (可画/可导出) + 文本槽 top_txt (top-3「功能号 名字 得分」, 供上屏);
  ③ 信号页: 解析 digest 里的**字符串**叶子 (此前只解数值) → 在状态栏上方出一行
     「🧾 元任务预测 top3: FN-SYS2-29 小目标插入 0.0366 › …」; 并把 mt1..mt5 纳入首屏默认勾选。
@@ -43,7 +43,7 @@ patch("tools/dds/ss_daemon.py", [(
     '''        for it in top[:8]:
             if isinstance(it, dict):
                 # 🧾 2026-10-15 老倪「需要显示确切的元任务」: 功能号后面**带上元任务名**
-                #   (真源 meta_pred.json 的 top[].name) ⇒ 话题本身就自解释, 下游不用再查表。
+                #   (唯一依据 meta_pred.json 的 top[].name) ⇒ 话题本身就自解释, 下游不用再查表。
                 _fid = str(it.get("fn_id") or it.get("id") or "")
                 _nm = str(it.get("name") or "").strip()
                 ids.append((_fid + " " + _nm).strip() if _nm else _fid)

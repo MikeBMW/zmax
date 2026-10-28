@@ -52,7 +52,7 @@ patch("src/lerobot/policies/left_right/state_space/cognition.py", [
         为什么不再用凸组合: 见 STAGE_V_CAP 上方注释 (量级差 21 倍 → 凸组合等于砍速度)。
 
         🧾 meta (老倪 2026-10-15「元任务预测的输出…直接约束动作调制的状态输出」):
-          meta = {"spread": top1-top2, "top1": ..., "n_meta": ...} 来自 zmax/ss_meta_pred (真源 meta_pred.json)。
+          meta = {"spread": top1-top2, "top1": ..., "n_meta": ...} 来自 zmax/ss_meta_pred (唯一依据 meta_pred.json)。
           · 只在本函数吃到 meta 且 ```ZMAX_META_GATE=1``` 时生效 (默认 0 ⇒ 行为逐位不变);
           · 约束律: 得分离散度越低 ⇒ 预测越没区分度 ⇒ 越保守:
               f = clip(1.0 - KAPPA*(1 - spread/SPREAD_REF), META_GATE_MIN, 1.0)   (只削幅, 不改方向)
@@ -86,17 +86,17 @@ patch("src/lerobot/policies/left_right/state_space/cognition.py", [
      ),
 ])
 
-# ── ② 仿真回路: 读真源 meta_pred.json 传进去 + 轨迹键 ───────────────────────
+# ── ② 仿真回路: 读唯一依据 meta_pred.json 传进去 + 轨迹键 ───────────────────────
 patch("tools/gui/state_space_sim.py", [
     ('''            u, stage = self.sched.decide(u_ff, u_fb, contact_p, r_scalar)''',
-     '''            # 🧾 元任务预测 (真源 = daemon 发的 zmax/ss_meta_pred 的同一份文件) → 动作调制器状态约束
+     '''            # 🧾 元任务预测 (唯一依据 = daemon 发的 zmax/ss_meta_pred 的同一份文件) → 动作调制器状态约束
             #   默认不生效 (ZMAX_META_GATE=1 才吃); 拿不到文件就传 None, 不伪造。
             _meta = self._meta_pred_snapshot()
             u, stage = self.sched.decide(u_ff, u_fb, contact_p, r_scalar, meta=_meta)'''
      ),
     ('''    def _io_snapshot(self, force, obs, u_ff, act4, latent_pred, prior, z_k,''',
      '''    def _meta_pred_snapshot(self, ttl=1.0):
-        """🧾 元任务预测快照 (top1/spread/…): 真源 zmax_data/ss_live/meta_pred.json, 1s 缓存。
+        """🧾 元任务预测快照 (top1/spread/…): 唯一依据 zmax_data/ss_live/meta_pred.json, 1s 缓存。
 
         与话题 zmax/ss_meta_pred 同源 (守护就是读这份文件转发的)。读不到返回 None —— 不编数。
         """

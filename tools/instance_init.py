@@ -3,18 +3,18 @@
 """instance_init.py — 平台 / 实例 数据包的装配与切换
 
 平台仓库 (本目录) 只放: 代码 + 平台文档 + 出厂骨架 defaults/
-你的实例数据包: data/database/<产品>/  —— 真源 + 工程库 + 总工程 + 归档, 一个目录搬走即换一套数据
+你的实例数据包: data/database/<产品>/  —— 唯一依据 + 工程库 + 总工程 + 归档, 一个目录搬走即换一套数据
 
 实例包结构
   data/database/zmax/
-  ├── zmax_engineering.db     工程库 (由真源 build 出来)
+  ├── zmax_engineering.db     工程库 (由唯一依据 build 出来)
   ├── zmax_space.proj         总工程 (GUI「打开总工程」)
   ├── README.md               产品/数据手册
   ├── archive/                历史工程快照
-  └── sources/                ★ 真源 (可编辑/可标定 — 你自己的)
+  └── sources/                ★ 唯一依据 (可编辑/可标定 — 你自己的)
       ├── config/             标定·平台定义·任务·订单·机器人·状态机·MCD
       ├── feature.dbc         能力库
-      └── canvas/             状态空间画布真源
+      └── canvas/             状态空间画布唯一依据
 
 用法
   python3 tools/instance_init.py --check                      # 体检: 平台/实例 边界是否干净
@@ -54,7 +54,7 @@ def cmd_check():
     inst = instance_root()
     ok = True
     print("实例数据包: %s" % inst)
-    print("\n① 真源指向 (仓库内应是符号链接 → 实例包)")
+    print("\n① 唯一依据指向 (仓库内应是符号链接 → 实例包)")
     for rel, sub in LINKS:
         p = os.path.join(ROOT, rel)
         is_link = os.path.islink(p)
@@ -78,7 +78,7 @@ def cmd_check():
         ok = False
         print("   ❌ 仍被跟踪 %d 项: %s" % (len(dirty), dirty[:3]))
     else:
-        print("   ✅ config/ · feature.dbc · 画布真源 均未跟踪 (只随实例包走)")
+        print("   ✅ config/ · feature.dbc · 画布唯一依据 均未跟踪 (只随实例包走)")
     print("\n④ 出厂骨架 (供全新实例用)")
     n = sum(len(f) for _, _, f in os.walk(DEFAULTS)) if os.path.isdir(DEFAULTS) else 0
     ok &= n > 0

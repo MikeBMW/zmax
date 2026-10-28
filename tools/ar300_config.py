@@ -7,7 +7,7 @@
     性能配置、工程配置, 最后形成文档配置……实际的生产目标是 300UPH, 场景就是 AR 场景的仿真机器人,
     左臂摆盘, 右臂插拔和 AOI 检查。你要通过这一系列的配置, 能够规范地约束工厂生产, 实现工单即任务」
 
-四类配置的真源 (只改这四个 + 任务绑定, 不动权重/不碰真机):
+四类配置的唯一依据 (只改这四个 + 任务绑定, 不动权重/不碰真机):
   ① 功能配置  data/database/zmax/config_meta.json            新增 FN-PLAT-76/77 (module_ref 必须对上画布节点名)
                 sources/config/ss_task_binding.json           TASK-07-AOI 覆盖 8 工艺段 + 启用新节点 + 设为当前任务
   ② 模型配置  models/active_models.json                       extra_in_service 登记 AR 场景在役模型

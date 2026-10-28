@@ -14,13 +14,13 @@
     T_base_cam = T_base_tcp · T_cam2tool 做,**不让大模型猜 base 坐标**(量纲会漂)。
   · DeepSeek 是推理型: max_tokens 不足时 content 为空 ⇒ 必须给够(ZMAX_L5_VLM_MAXTOK, 默认 2000)
     且单次实测 ~120s ⇒ timeout 默认 300s。
-  · L5 失败/超时/JSON 不合规 ⇒ **不假装成功**: 退回**覆盖度兜底**(确定性算法), 并在输出里如实记 err。
+  · L5 失败/超时/JSON 不合规 ⇒ **不假装成功**: 退回**覆盖度保障**(确定性算法), 并在输出里如实记 err。
   · 候选点一律做可达性粗筛(已知空间点 bbox 外扩)/新颖度打分; 不可达的如实标 reachable=false。
 
 用法:
   gs_l5_select.py --dataset ~/zmax/zmax_data/gs_assets/<scene> [--k 3] [--out sel.json]
   gs_l5_select.py --session ~/zmax/zmax_data/gs_scan/<sess>  [--k 3]
-  gs_l5_select.py --dataset ... --no-llm        # 只用覆盖度兜底(不调大模型)
+  gs_l5_select.py --dataset ... --no-llm        # 只用覆盖度保障(不调大模型)
 输出: <out 或 输入目录>/l5_select_<ts>.json + 一行摘要(stdout)
 """
 from __future__ import annotations
@@ -34,7 +34,7 @@ from pathlib import Path
 
 # ⚠️ 2026-10-01 实测(同一批图重跑 3 次, 2000 额度下 3/3 失败): DeepSeek 是**推理型**模型 ——
 #    max_tokens=2000 时 reasoning 常常把额度吃光, 表现为 content 空、或只吐半句思考
-#    ("We need answer JSON only…") ⇒ L5 只能退兜底。给 4000 实测 **19.1s 稳定出真 JSON**;
+#    ("We need answer JSON only…") ⇒ L5 只能退保障。给 4000 实测 **19.1s 稳定出真 JSON**;
 #    给 6000 也成但要 162s(推理越多越慢)。这里只给**本工具**定 4000, 不动全局默认
 #    (叠加标注那条链另有延迟要求), 需要时用同名 env 覆盖。
 os.environ.setdefault("ZMAX_L5_VLM_MAXTOK", "4000")
@@ -155,7 +155,7 @@ def in_reach(p, box):
 # ---------------------------------------------------------------- 候选生成
 
 def coverage_candidates(frames, cur_pos, cur_T, k, box, radius_mm=(30, 50, 80)):
-    """覆盖度兜底(确定性): 在相机系里绕一圈方向 × 几档距离, 打分 = 新颖度 - 不可达惩罚。
+    """覆盖度保障(确定性): 在相机系里绕一圈方向 × 几档距离, 打分 = 新颖度 - 不可达惩罚。
     新颖度 = 与"已访问视点"的最近距离(越远越没拍过)。"""
     P = np.array([f["pos"] for f in frames]) if frames else np.zeros((0, 3))
     R = cur_T[:3, :3]
@@ -169,7 +169,7 @@ def coverage_candidates(frames, cur_pos, cur_T, k, box, radius_mm=(30, 50, 80)):
             nov = float(np.min(np.linalg.norm(P - p, axis=1))) if len(P) else 1.0
             reach = in_reach(p, box)
             cands.append({"pos": [round(float(x), 4) for x in p], "dir": nm, "dist_mm": r,
-                          "why": "覆盖度兜底: 该方向已访问视点最近 %.0fmm" % (nov * 1000),
+                          "why": "覆盖度保障: 该方向已访问视点最近 %.0fmm" % (nov * 1000),
                           "source": "coverage", "score": round(nov * 1000 * (1.0 if reach else 0.1), 1),
                           "reachable": reach})
     cands.sort(key=lambda c: -c["score"])
@@ -281,7 +281,7 @@ def call_l5_budgeted(mont, w, h, cur_pos, nv, sp, budget_s):
     t.start()
     t.join(max(5.0, float(budget_s)))
     if t.is_alive():
-        raise TimeoutError("L5 超过 %.0fs 没返回(云端不通/限流) ⇒ 退覆盖度兜底" % budget_s)
+        raise TimeoutError("L5 超过 %.0fs 没返回(云端不通/限流) ⇒ 退覆盖度保障" % budget_s)
     if "err" in box:
         raise RuntimeError(box["err"])
     print("L5 用时 %.1fs" % (time.time() - t0))
@@ -297,9 +297,9 @@ def main():
     g.add_argument("--session")
     ap.add_argument("--k", type=int, default=3)
     ap.add_argument("--out", default="")
-    ap.add_argument("--no-llm", action="store_true", help="不调大模型, 只用覆盖度兜底")
+    ap.add_argument("--no-llm", action="store_true", help="不调大模型, 只用覆盖度保障")
     ap.add_argument("--l5-timeout", type=float, default=180.0,
-                    help="L5 硬墙钟预算(秒, 默认 180): 超时才退覆盖度兜底。"
+                    help="L5 硬墙钟预算(秒, 默认 180): 超时才退覆盖度保障。"
                          "⚠️ 实测云端单次耗时会从 19s 摆到 149s(取决于端点负载), 预算给太紧会把"
                          "\"慢但会成功\"的调用砍掉; 180s 既兜住实测最慢值, 又保证坏端点不无限拖")
     ap.add_argument("--pose", default="", help="当前 TCP 位姿 x,y,z(米); 缺省用最后一帧")
@@ -309,7 +309,7 @@ def main():
     src = args.dataset or args.session
     if args.session and not os.path.exists(os.path.join(args.session, "frames.jsonl")):
         # 第一轮常常是"会话刚建好、还没采到帧" ⇒ 别报错崩, 如实说清并退 0
-        # (调用方 gs_map_run 会据此走覆盖度兜底选点, 下一轮 L5 就有画面可看了)
+        # (调用方 gs_map_run 会据此走覆盖度保障选点, 下一轮 L5 就有画面可看了)
         msg = "会话里还没有帧(%s 没有 frames.jsonl) ⇒ L5 无画面可看" % args.session
         print("⚠️ %s" % msg)
         if args.out:
@@ -349,7 +349,7 @@ def main():
                                              ensure_ascii=False)[:300])
         except Exception as e:                                       # noqa: BLE001
             err = "%s: %s" % (type(e).__name__, str(e)[:150])
-            print("⚠️ L5 失败, 退回覆盖度兜底: %s" % err)
+            print("⚠️ L5 失败, 退回覆盖度保障: %s" % err)
 
     cands = l5_candidates(l5_js or {}, cur_pos, T_base_cam, box)
     if not cands:
@@ -357,7 +357,7 @@ def main():
         if not cands:
             print("❌ 连覆盖度候选都生成不出来")
             return 3
-    # 兜底候选补在 L5 候选后面(保证总有可执行的)
+    # 保障候选补在 L5 候选后面(保证总有可执行的)
     if l5_js:
         extra = coverage_candidates(frames, cur_pos, T_base_cam, args.k, box)
         known = {tuple(c["pos"]) for c in cands}

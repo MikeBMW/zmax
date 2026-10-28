@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """ss_aoi_rename.py — 画布节点「🔍 外观质量检测」→「🔍 光学质量检测」(老倪 2026-10-11)
 
-改的是**真源** (flows.load_canvas/save_canvas; 真源文件见 config/topics 或 engineering 库同步链),
+改的是**唯一依据** (flows.load_canvas/save_canvas; 唯一依据文件见 config/topics 或 engineering 库同步链),
 不手改 .db / 不手改副本。要求: 节点数/连线数一个不差, 其余节点名字节不动。
 """
 import json
@@ -19,7 +19,7 @@ OLD, NEW = "外观质量检测", "光学质量检测"
 def main():
     from lerobot.engineering import flows
     p = flows.canvas_path()
-    print("真源画布:", p)
+    print("唯一依据画布:", p)
     before = json.load(open(p, encoding="utf-8"))
     nb = len(before.get("nodes", []))
     eb = len(before.get("links", before.get("edges", [])))

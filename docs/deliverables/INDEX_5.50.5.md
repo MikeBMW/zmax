@@ -5,7 +5,7 @@
 工程: `/home/ubuntu/zmax` · 对外口径:「符合 5 个场景的具身方案技术协议」
 本版取代: 5.50.B(`INDEX_5.50.B.md` 保留作历史, 其 SOR/配置清单**已被本版取代**)
 
-> 本索引汇总 5.50.5 交付文档包的全部文件、编号、适读对象与真源依据。所有数字由工具从工程真源**现取现算**并可复核；未达标/未实测项一律如实列明。
+> 本索引汇总 5.50.5 交付文档包的全部文件、编号、适读对象与唯一依据依据。所有数字由工具从工程唯一依据**现取现算**并可复核；未达标/未实测项一律如实列明。
 
 ---
 
@@ -29,8 +29,8 @@
 | # | 变化 | 依据/证据 |
 |:--|:---|:---|
 | A | SOR 新增 **附录 H 性能指标对账** / **附录 I 主参数 M** / **附录 J 验收试验设计** | `tools/sor_export.py` 读 `摆盘性能对账_5.50.5.json` 同源渲染(不手写数字) |
-| B | 文档版本号与开发工程**同版本** | `_dev_version()` 现读 `tools/gui/update_checker.py::CURRENT_VERSION` ⇒ 只有一处真源 |
-| C | 摆盘场景信号命名 = 真空吸持/吸住(原“夹爪/抓住”为插拔底座旧名) | `tools/scene_signal_names.py`(命名真源) + `verify_tray_vacuum.py` |
+| B | 文档版本号与开发工程**同版本** | `_dev_version()` 现读 `tools/gui/update_checker.py::CURRENT_VERSION` ⇒ 只有一处唯一依据 |
+| C | 摆盘场景信号命名 = 真空吸持/吸住(原“夹爪/抓住”为插拔底座旧名) | `tools/scene_signal_names.py`(命名唯一依据) + `verify_tray_vacuum.py` |
 | D | 驱动扭矩话题 `ss_torque` 落为**常驻服务**并跟随活跃场景 | `tools/systemd/zmax-torque-bus.service` + `tools/tdrive_bus.py`(scene 从 `ss_scene_switch` 现取) |
 | E | 数据空间发现层修复(单播配置 + 全参与者同一张) | `dds/cyclonedds_unicast.xml` + 四单元 `CYCLONEDDS_URI` + `tools/dds/gen_unicast_cfg.py` |
 
@@ -62,8 +62,8 @@
 | 6 | 连续盘数 | ≥12 盘 | 未测(单盘 3 颗) | SOR 附录 J | 轮次日志 |
 | 7 | 主参数 M 落役 | 在役 == 配置单算出 | **在役 3.283(dim3/full) ≠ 算出 4.423(dim6/isotropic) ⇒ 未落役** | SOR 附录 I · 对账表 #9 | `config_to_M.py` |
 | 8 | 数据空间话题灯 | 全部绿 | `ss_state/ss_action/ss_link_value/ss_plan/ss_energy` 黑(办公模式无源); `ss_calib` 红(0.2 Hz 设计 vs 19.84 Hz 实测) | 配置清单 §7 | `zmax_data/dataspace/live.json` |
-| 9 | 全部 58 条 `perf.*` | — | 真源 `value` 空 ⇒ 待实测 | SOR §5 · 配置清单 §9 | `zmax_perf_spec.json` |
-| 10 | 站点几何 `T_base_cam`/`plane_z`/`cell_geometry.points` | — | 未标定(真源 null) | SOR 附录 C | `config/calib/zmax_calib.json` |
+| 9 | 全部 58 条 `perf.*` | — | 唯一依据 `value` 空 ⇒ 待实测 | SOR §5 · 配置清单 §9 | `zmax_perf_spec.json` |
+| 10 | 站点几何 `T_base_cam`/`plane_z`/`cell_geometry.points` | — | 未标定(唯一依据 null) | SOR 附录 C | `config/calib/zmax_calib.json` |
 | 11 | 在役 L3 权重 sha256 | — | 未登记(`model.ckpt_l3`) | SOR 附录 C | `models/active_models.json` |
 | 12 | 商务静态项(价格/交期/质保) | — | 待填 | SOR 附录 C | — |
 
@@ -72,7 +72,7 @@
 ## 5. 复核与再生成
 
 ```bash
-# 性能对账(数字现取现算: 配置单 targets · 真跑产物 judges · M 真源 · 扭矩判据)
+# 性能对账(数字现取现算: 配置单 targets · 真跑产物 judges · M 唯一依据 · 扭矩判据)
 python3 tools/delivery/gen_tray_perf_report.py --ver 5.50.5
 
 # 重新导出 SOR(版本自动取开发工程版本) + 配置清单
@@ -87,4 +87,4 @@ python3 tools/ss_task_bind.py --check && python3 tools/engineering_db.py check
 
 ---
 
-*本索引所引数字均来自工程真源与 2026-10-13 在役系统扫描/真跑产物；未达标与未实测项一律如实标注，不作推测、不柔化。*
+*本索引所引数字均来自工程唯一依据与 2026-10-13 在役系统扫描/真跑产物；未达标与未实测项一律如实标注，不作推测、不柔化。*

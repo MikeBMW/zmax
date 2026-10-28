@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 归档 v5.50.745 产物 → ~/zmax/zmax_data/release_5.50.745_YYYYMMDD
 #   本轮主题: 臂相机上的 tool1 坐标系(原点=模块头顶中心) / 绿框钉死+不拉长 / 光模块放回槽位(反向复现抓取)
-#   沿用 archive_release_5_50_741.sh 口径: 代码 + 真源快照 + 数据 + 证据 + 文档, 末尾 MANIFEST.md + sha256sums.txt
+#   沿用 archive_release_5_50_741.sh 口径: 代码 + 唯一依据快照 + 数据 + 证据 + 文档, 末尾 MANIFEST.md + sha256sums.txt
 set -u
 REPO=/home/ubuntu/zmax
 VER=5.50.745

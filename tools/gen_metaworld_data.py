@@ -133,7 +133,7 @@ def main():
                 try:
                     state = np.asarray(env._get_obs(), dtype=np.float32).ravel()  # 39D
                 except Exception:
-                    state = ee.astype(np.float32).copy()  # 兜底 3D
+                    state = ee.astype(np.float32).copy()  # 保障 3D
             # 2026-08-08 ③目标条件化: state 加相对向量 (hand→光模块, 光模块→hole) — MLP 成功的核心
             if getattr(args, "rel_vec", False) and state.size >= 39:
                 try:

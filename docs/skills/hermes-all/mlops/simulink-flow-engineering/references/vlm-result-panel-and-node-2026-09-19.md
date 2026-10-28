@@ -17,7 +17,7 @@
 |---|---|---|
 | "字体和背景都是黑色, 看不清" | `QDialog` 未设样式 → 深色主题下继承成黑字黑底 | 显式套**工程既有深色规范** (`tools/gui/calibration_dialog.py` 的 `_DARK`); **表格/原始输出框/复选框/微调框/下拉/滚动条都要写**, 漏一个就黑一块 |
 | "最大化按钮不好使 / 窗口无法拖动" | `QDialog` 默认 flags 不含最大化; 以父窗口为 parent 被当瞬时窗口 | `setWindowFlags(Window｜MinMaxButtonsHint｜CloseButtonHint｜SystemMenuHint)` + `setWindowModality(NonModal)` + `setMinimumSize`; 再**记忆几何** (关闭写盘/打开恢复) |
-| "含义里很多字被省略了" | 列宽写死 + 默认省略号 | `setWordWrap(True)` + **`setTextElideMode(Qt.ElideNone)`** + 关键列 `Interactive/Stretch` + 行高 `ResizeToContents`; 实测最长 28 字含义换 3 行完整显示 |
+| "含义里很多字被省略了" | 列宽预先固定 + 默认省略号 | `setWordWrap(True)` + **`setTextElideMode(Qt.ElideNone)`** + 关键列 `Interactive/Stretch` + 行高 `ResizeToContents`; 实测最长 28 字含义换 3 行完整显示 |
 | "调整显示区域" | 固定布局 | 中部 **`QSplitter`** (可拖分隔条) + `resizeEvent` 立刻重排 (别等 5s 轮询) |
 
 ## 3. 无眼验证 UI (看不了图时的标准动作)
@@ -28,7 +28,7 @@
 ## 4. 右键入口的注册模式 (与工程既有套路一致)
 `params.vlm_llm=True` → 在 `SimCanvas._show_node_menu` 里按 params 加 action →
 `from vlm_panel import open_vlm_panel` 开窗。与既有 `params.calib_layer / verif_layer / viz_kind`
-同一套路: **节点只用 params 声明"我右键能开什么", 渲染层不写死节点名**。
+同一套路: **节点只用 params 声明"我右键能开什么", 渲染层不预先固定节点名**。
 
 ## 5. VLM provider 与节点接线 (同一功能的另一半)
 - 接线形态: **帧类数据源 (环境/引擎真图/真机帧) + 任务指令 → provider 节点 → 场景理解层 → LLM 层

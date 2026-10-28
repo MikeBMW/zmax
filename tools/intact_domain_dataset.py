@@ -47,7 +47,7 @@ def main():
     ap.add_argument("--vis-every", type=int, default=1)
     ap.add_argument("--part-frames", type=int, default=20000,
                     help="内存闸: 累计帧数到阈值就先落一个 part npz (300 回合≈15万帧 "
-                         "= 22GB 内存, 一次性 concat 会被 OOM 杀 — 实测踩坑)")
+                         "= 22GB 内存, 一次性 concat 会被 OOM 杀 — 实测遇到问题)")
     a = ap.parse_args()
 
     import cv2                                             # noqa: PLC0415

@@ -52,12 +52,12 @@ tools/train_deploy_console.py   ← 只用 http.server + json + subprocess, 零�
 
 ---
 
-## 4. 与画布/CICD 共用同一真源
+## 4. 与画布/CICD 共用同一唯一依据
 
 ```
 平台**不新造**状态文件: 读写 docs/PIPELINE_STATE.json（与画布高亮、CICD 控制台同一份）。
 job 起停时更新 stages[层] = {status, ts, note} → 画布自动高亮当前执行节点。
-⇒ 一个真源, 多个视图（画布 / 控制台 / APP）。别让平台自己维护一份状态。
+⇒ 一个唯一依据, 多个视图（画布 / 控制台 / APP）。别让平台自己维护一份状态。
 ```
 
 ---

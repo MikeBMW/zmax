@@ -7,7 +7,7 @@ v5.34.2 — 关机收尾: 数据快照 + 发布证据 + 交接核对单 (2026-10
 ① 数据保存 (真入库, 不是只喊"已保存")
    docs/data_snapshots/2026-10-09_关机收尾_v5.34.2/
      · zmax_engineering.db (单一工程库, 当天最后一次重扫, check 全绿)
-     · param_events.jsonl (改数留痕) · canvas_state_space_obs.json (画布真源)
+     · param_events.jsonl (改数留痕) · canvas_state_space_obs.json (画布唯一依据)
      · release_status.json (GitHub API 实测: tag / 运行 URL / 结论 / 资产名与字节数)
      · shutdown_checklist.md (关机前核对单) · README.md
    现场归档: ~/zmax/zmax_data/release_5.34.2_20261009/ (MANIFEST + sha256)

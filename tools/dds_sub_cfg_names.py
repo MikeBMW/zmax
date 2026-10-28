@@ -4,10 +4,10 @@
 
 老倪 2026-10-14: 「那主参数节点, 需要发出 加载的配置名称的 topic, 字符串就可以, 周期可以是5秒」
 
-载荷 (真源 = 画布节点 n_calib_mani 的 params.cfg_entries / cfg_loaded_at):
+载荷 (唯一依据 = 画布节点 n_calib_mani 的 params.cfg_entries / cfg_loaded_at):
   names     已加载配置名称, 以 " · " 连接的一整串 (不含路径/哈希/计数)
   loaded_at 主参数节点上次真加载的时刻 (供判帧龄; 节点记录陈旧时 note 里会写明)
-  source    名称的真源位置 · note 说明
+  source    名称的唯一依据位置 · note 说明
 
 用法:
   venvs/dds-venv/bin/python tools/dds_sub_cfg_names.py --seconds 14   # 收 2~3 条 (5s 一条)
@@ -52,7 +52,7 @@ def main():
                 if m.loaded_at:
                     print("   加载时刻: %s" % m.loaded_at)
                 if m.source:
-                    print("   真源: %s" % m.source)
+                    print("   唯一依据: %s" % m.source)
                 if m.note:
                     print("   note: %s" % m.note)
         if a.n and got >= a.n:

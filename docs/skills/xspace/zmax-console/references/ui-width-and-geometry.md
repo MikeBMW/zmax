@@ -48,7 +48,7 @@ print(pg._tree_need, pg.tree.width(), pg.splitter.sizes())"
 默认宽度已经压到上限、用户还说宽, 说明**内容本身**占宽: 行里堆了重复信息 (例: 树行写
 「1. 产品配置 · 天枢」, 而星名在顶部阵图条与条目 tooltip 里都有了)。口径顺序:
 
-1. 先删行内冗余文本 (保留真源要求的序号/名称), 重新算需求宽度 —— 实测 302px → 224px,
+1. 先删行内冗余文本 (保留唯一依据要求的序号/名称), 重新算需求宽度 —— 实测 302px → 224px,
    7 行**全部完整显示**, 不用省略号。
 2. 再设默认上限常量 (`_TREE_W_DEF_MAX`), 打开宽度 = `min(需求, 上限)`。
 3. 用户还要更窄 → 让他拖或给 pin, 不要继续改字号/截断名字。
@@ -58,7 +58,7 @@ print(pg._tree_need, pg.tree.width(), pg.splitter.sizes())"
 - **点选分派会断**: 处理函数常拿 `item.text(0)` 去正则匹配刚被删掉的片段。做法 =
   `it.setData(0, Qt.UserRole, 星key)` + `it.setData(0, Qt.UserRole+1, 全文)`, 并在分派入口
   先取 `UserRole+1` 当文本 (`Qt.UserRole` 是 0x0100, 探针里写 33 之类的值是错的)。
-- **别处会把它改回去**: `grep -n "setText(0" <file>` 找所有重写该行的地方 (真源同步回调
+- **别处会把它改回去**: `grep -n "setText(0" <file>` 找所有重写该行的地方 (唯一依据同步回调
   会重设整行文本), 每处都改成短版 + 存全文, 否则你的瘦身在上层构造完之后被静默撤销,
   表现就是"需求宽度一点没变"。
 
@@ -70,7 +70,7 @@ Qt 的省略号只在绘制层: `item.text(0)` 永远返回全文, 所以窄栏�
 
 ## 4. 一个数就能压死 (用户自助)
 
-用户说「我自己改宽度，数值在哪里」时，真源必须是**一个他能直接编辑的文件**，不能只给 env/QSettings:
+用户说「我自己改宽度，数值在哪里」时，唯一依据必须是**一个他能直接编辑的文件**，不能只给 env/QSettings:
 
 ```
 config/platform/zmax_ui_layout.json        # config/ 是软链, 写仓库相对路径即可
@@ -132,15 +132,15 @@ it.paint(painter, QStyleOptionGraphicsItem(), None)
 `grep -n "^class " <file>` 确认行号落在哪个类，把行为**加进已存在的那个**（同一个方法末尾
 追加），不要新建同名方法。
 
-## 7. 别写死像素高度/宽度 —— 按 fontMetrics 算 (192DPI 下写死必裁字)
+## 7. 别预先固定像素高度/宽度 —— 按 fontMetrics 算 (192DPI 下预先固定必裁字)
 
 **症状**: 按钮/标签「字只显示一半」「版本号没显示全」「黑底黑字看不见」。
 
 **根因两类**（都实测过）:
-1. **写死高度**: 某次为"压薄工具条"加了 `setFixedHeight(24)`, 而真屏 192DPI 下 `font-size:10pt`
+1. **预先固定高度**: 某次为"压薄工具条"加了 `setFixedHeight(24)`, 而真屏 192DPI 下 `font-size:10pt`
    → `fontMetrics().height()` = **40px** ⇒ 高度 24 正好裁掉一半字。凡 `setFixedHeight/setMaximumHeight`
    的数字都要问一句"这个数从哪来、字号变了还成立吗"。
-2. **写死宽度/没套样式**: `SystemSidebar.setFixedWidth(200)` → 栏内版本文本只剩 136px, 而
+2. **预先固定宽度/没套样式**: `SystemSidebar.setFixedWidth(200)` → 栏内版本文本只剩 136px, 而
    `"Z-MAX v5.50.73x"` 要 154px ⇒ 裁 18px。另一类"黑字"不是配色问题, 而是**控件从没套过样式**
    (同一批 `_style_chk()` 只套给了已搬走的 6 个) → Qt 默认黑字画在 `#0d1117` 上, 对比度≈1:1。
 

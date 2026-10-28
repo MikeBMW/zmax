@@ -6,9 +6,9 @@
 要证的不是"有个页", 而是**这页的数据真来自状态空间工程**:
  ① 从**真画布**(flows/state_space_obs.json)建的窗口里, 这页找到 M 节点 (id=n_calib_mani)
  ② 4 个页签都有行, 且值 == 画布节点 params 里的快照 (逐条比对, 不是自己编的)
- ③ M 微调框/惯性勾 反映节点里的 M / inertia (真源值)
- ④ 「✏️ 写 M」按钮真跑真源写入 (取当前值写一遍 = 幂等, 写完真源值不变)
- ⑤ 「📥 从真源同步到节点」按钮真跑 tools/ss_node_sync.py (退出码 0)
+ ③ M 微调框/惯性勾 反映节点里的 M / inertia (唯一依据值)
+ ④ 「✏️ 写 M」按钮真跑唯一依据写入 (取当前值写一遍 = 幂等, 写完唯一依据值不变)
+ ⑤ 「📥 从唯一依据同步到节点」按钮真跑 tools/ss_node_sync.py (退出码 0)
  ⑥ 没有 M 节点的画布 → 诚实空态 (不假造)
 """
 import os
@@ -71,53 +71,53 @@ chk(f"{snap.get('params_ready')}/{snap.get('params_total')}" in r_cfg.get("就�
     f"就绪度 = {r_cfg.get('就绪度')} (节点快照 {snap.get('params_ready')}/{snap.get('params_total')})")
 chk(str(snap.get("active_task", "")) in r_cfg.get("任务", ""),
     f"活跃任务 = {r_cfg.get('任务')} (节点快照 {snap.get('active_task')})")
-chk(any(k.startswith("真源 ") for k in r_cfg), f"真源路径行 {sum(k.startswith('真源 ') for k in r_cfg)} 条 (节点 cfg_entries)")
+chk(any(k.startswith("唯一依据 ") for k in r_cfg), f"唯一依据路径行 {sum(k.startswith('唯一依据 ') for k in r_cfg)} 条 (节点 cfg_entries)")
 r_cal = rows("calib")
 _want_m = (NODE_PARAMS.get("calib_view") or {}).get("主参数M")
 _got_m = r_cal.get("主参数 M", "")
 chk(bool(_got_m) and (_got_m == _want_m), f"标定页 M 行 == 节点 calib_view 原样: {_got_m!r}")
 
-print("\n③ M 控件反映**真源**值 (2026-10-15 修: 原来只读节点快照 ⇒ 一按写 M 就把真源标定值覆盖掉)")
+print("\n③ M 控件反映**唯一依据**值 (2026-10-15 修: 原来只读节点快照 ⇒ 一按写 M 就把唯一依据标定值覆盖掉)")
 _MANIFOLD = os.path.join("/home/ubuntu/zmax", "config", "calib", "zmax_manifold.json")
 try:
     _m_truth = float(json.load(open(_MANIFOLD, encoding="utf-8")).get("M"))
 except Exception:                                                            # noqa: BLE001
     _m_truth = None
 chk(_m_truth is not None and abs(v.sp_M.value() - _m_truth) < 1e-9,
-    f"微调框 M = {v.sp_M.value()} == 真源 {_m_truth} (节点快照 M={NODE_PARAMS.get('M')} 只作对照)")
+    f"微调框 M = {v.sp_M.value()} == 唯一依据 {_m_truth} (节点快照 M={NODE_PARAMS.get('M')} 只作对照)")
 if _m_truth is not None and abs(_m_truth - float(NODE_PARAMS.get("M", 1.0))) > 1e-9:
-    chk(("真源 M" in v.lbl_node.text() and "≠" in v.lbl_node.text()),
-        f"真源≠节点时页面标出来 (不许静默): …{v.lbl_node.text().split('·')[-1].strip()[:44]}")
+    chk(("唯一依据 M" in v.lbl_node.text() and "≠" in v.lbl_node.text()),
+        f"唯一依据≠节点时页面标出来 (不许静默): …{v.lbl_node.text().split('·')[-1].strip()[:44]}")
 chk(v.chk_inertia.isChecked() == bool(NODE_PARAMS.get("inertia", False)),
     f"惯性勾 = {v.chk_inertia.isChecked()} (节点 inertia={NODE_PARAMS.get('inertia')})")
 v.sp_M.setValue(99.0)
 chk(v.sp_M.value() == 8.0, f"控件范围校验: 输入 99 → 钳到 {v.sp_M.value()} (M∈[0,8] 红线)")
 
-print("\n④ ✏️ 写 M 按钮真跑真源 (取当前值 = 幂等, 值不变)")
+print("\n④ ✏️ 写 M 按钮真跑唯一依据 (取当前值 = 幂等, 值不变)")
 TK = os.path.join(ROOT, "config/calib/zmax_manifold.json")
 def _vals(d):
     return {k: v for k, v in d.items() if not k.startswith("_")}   # 忽略 _updated_at 时间戳
 _raw_before = open(TK, encoding="utf-8").read()
 before = _vals(json.load(open(TK, encoding="utf-8")))
 _logs = []
-v._log = lambda msg: _logs.append(msg)          # 抓按钮自己的日志 (证「按钮这条路」真跑通)
-# 🔴 2026-10-15: 原来这里把微调框改成**节点快照值**再写 ⇒ 那一下真的把真源标定值覆盖了
-#   (判据自己制造了脏写)。现在页面值 = 真源值, 直接点写就是"幂等", 这才是不许破坏真源的判据。
-v.refresh(); app.processEvents()                # ③ 里把微调框拨到 99→钳 8.0, 这里按真源重刷 (真实用法)
+v._log = lambda msg: _logs.append(msg)          # 抓按钮自己的日志 (证「按钮这条路」真验证通过)
+# 🔴 2026-10-15: 原来这里把微调框改成**节点快照值**再写 ⇒ 那一下真的把唯一依据标定值覆盖了
+#   (判据自己制造了脏写)。现在页面值 = 唯一依据值, 直接点写就是"幂等", 这才是不许破坏唯一依据的判据。
+v.refresh(); app.processEvents()                # ③ 里把微调框拨到 99→钳 8.0, 这里按唯一依据重刷 (真实用法)
 chk(abs(v.sp_M.value() - _m_truth) < 1e-9,
-    f"写之前微调框 == 真源 M ({v.sp_M.value()} vs {_m_truth}) —— 手滑点一下也不会改真源")
+    f"写之前微调框 == 唯一依据 M ({v.sp_M.value()} vs {_m_truth}) —— 手滑点一下也不会改唯一依据")
 v._write_M()
 app.processEvents()
-chk(any("✏️ 主参数 M 已写入真源" in x for x in _logs), f"按钮路径走通: {[x[:60] for x in _logs]}")
+chk(any("✏️ 主参数 M 已写入唯一依据" in x for x in _logs), f"按钮路径走通: {[x[:60] for x in _logs]}")
 after = _vals(json.load(open(TK, encoding="utf-8")))
-chk(before == after, f"真源 config/calib/zmax_manifold.json 数值不变 (幂等写): {after}")
+chk(before == after, f"唯一依据 config/calib/zmax_manifold.json 数值不变 (幂等写): {after}")
 open(TK, "w", encoding="utf-8").write(_raw_before)   # 只差 _updated_at 时间戳 → 复原, 别弄脏工作区
-chk(open(TK, encoding="utf-8").read() == _raw_before, "真源文件已复原 (判据跑完不留脏改动)")
+chk(open(TK, encoding="utf-8").read() == _raw_before, "唯一依据文件已复原 (判据跑完不留脏改动)")
 
 print("\n⑤ 📥 同步按钮真跑 ss_node_sync.py")
 _logs2 = []
 v._log = lambda msg: _logs2.append(msg)
-v.btn_sync.click()                              # 真点「📥 从真源同步到节点」按钮
+v.btn_sync.click()                              # 真点「📥 从唯一依据同步到节点」按钮
 app.processEvents()
 chk(any(("📥 节点同步" in x) and ("✅" in x) for x in _logs2), f"同步按钮路径走通: {[x[:70] for x in _logs2]}")
 chk("tools/tools" not in " ".join(_logs2), "路径没拼错 (无 tools/tools)")
@@ -141,6 +141,6 @@ chk(v2.tbl["cfg"].rowCount() >= 1 and "无条目" in v2.tbl["cfg"].item(0, 0).te
 chk("canvas_add_manifold_calib.py" in v2.lbl_cmd.text(), f"给出补救命令: {v2.lbl_cmd.text()[:60]}")
 
 print("\n" + "═" * 60)
-print("❌ 失败 %d 项" % len(FAIL) if FAIL else "✅ 全部通过 — 主参数 M 页数据来自画布节点, 写 M 走真源")
+print("❌ 失败 %d 项" % len(FAIL) if FAIL else "✅ 全部通过 — 主参数 M 页数据来自画布节点, 写 M 走唯一依据")
 sys.stdout.flush()
 os._exit(1 if FAIL else 0)

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """VEH.6 配置中心 · 操作面 (命令行等价物)
 
-配置中心的操作 = 读一份**描述**(config/mcd/zmax_mcd.json, 对标 A2L) + 对真源做读写。
+配置中心的操作 = 读一份**描述**(config/mcd/zmax_mcd.json, 对标 A2L) + 对唯一依据做读写。
 本工具就是这套操作的可复制、可脚本化版本 —— GUI 里每个按钮都是它的外壳:
 
     GUI 按钮        →  本工具命令
@@ -10,7 +10,7 @@
     首页·域树        →  config_center.py
     参数表(三列)      →  config_center.py list 工程配置
     点开一行          →  config_center.py show cam.K
-    复制真源路径      →  config_center.py open cam.K
+    复制唯一依据路径      →  config_center.py open cam.K
     工艺域·配方       →  config_center.py recipe
     工艺域·工件变体    →  config_center.py variants
     工艺域·工单列表    →  config_center.py orders
@@ -24,7 +24,7 @@
     协议 (Word)      →  config_center.py agreement (数据平台合作与模型授权协议)
     数据治理         →  config_center.py data   (下发计划/清单/台账/审计, 禁导出类别拒发)
 
-三列的含义 (MCD): 测量=当前值/真源/时间戳 · 标定=权限/写入 · 诊断=判据
+三列的含义 (MCD): 测量=当前值/唯一依据/时间戳 · 标定=权限/写入 · 诊断=判据
     python3 tools/config_center.py [--json] <命令> [参数]
 """
 from __future__ import annotations
@@ -71,7 +71,7 @@ def _need_mcd():
 
 
 def _fresh(d):
-    """描述新鲜度: 描述里记的每个真源 sha16 与当前文件比对。"""
+    """描述新鲜度: 描述里记的每个唯一依据 sha16 与当前文件比对。"""
     src = (d.get("_meta") or {}).get("sources") or {}
     bad = []
     for rel, h in src.items():
@@ -88,7 +88,7 @@ def cmd_overview(a):
     bad = _fresh(d)
     chars = d["CHARACTERISTIC"]
     print(f"VEH.6 配置中心 · 总览     描述 {d['_meta']['schema']} @ {d['_meta']['generated_at']}"
-          f"   真源同步: {'✅' if not bad else '❌ ' + ', '.join(bad)}")
+          f"   唯一依据同步: {'✅' if not bad else '❌ ' + ', '.join(bad)}")
     print()
     print(f"{'域':<12}{'参数':>4}{'就绪':>7}  缺口")
     print("-" * 78)
@@ -148,7 +148,7 @@ def cmd_list(a):
         return 2
     if a.json:
         print(json.dumps(cs, ensure_ascii=False, indent=1)); return 0
-    print(f"{'参数':<26}{'级':<4}{'权限':<10}{'测量: 真源/值':<42}{'诊断: 判据'}")
+    print(f"{'参数':<26}{'级':<4}{'权限':<10}{'测量: 唯一依据/值':<42}{'诊断: 判据'}")
     print("-" * 118)
     for c in cs:
         v = c.get("value")
@@ -169,7 +169,7 @@ def cmd_show(a):
         print(json.dumps(c, ensure_ascii=False, indent=1)); return 0
     print(f"【{c['id']}】{c['cn']}")
     print(f"  域/级/权限 : {c['domain']} / {c['grade']} / {c['perm']}")
-    print(f"  真源        : {c['src']}")
+    print(f"  唯一依据        : {c['src']}")
     print(f"  当前值      : {c.get('value')}     就绪: {'✅' if c.get('ready') else '⛔ ' + str(c.get('reason',''))}")
     print(f"  单位/范围/默认: {c.get('unit')} / {c.get('rng')} / {c.get('dflt')}")
     print(f"  影响面(节点) : {', '.join(c.get('affects') or []) or '—'}")
@@ -180,7 +180,7 @@ def cmd_show(a):
 
 
 def cmd_open(a):
-    """给出真源文件的绝对路径与定位串 (GUI 里就是「📋 复制路径」按钮)。"""
+    """给出唯一依据文件的绝对路径与定位串 (GUI 里就是「📋 复制路径」按钮)。"""
     d = _need_mcd()
     c = next((x for x in d["CHARACTERISTIC"] if x["id"] == a.arg), None)
     tot = d["CHARACTERISTIC"]
@@ -192,7 +192,7 @@ def cmd_open(a):
     p = os.path.join(ROOT, rel)
     print(f"{e['id']} → {p}" + (f"   键: {key}" if key else ""))
     if not os.path.isfile(p):
-        print("  ⚠ 文件不存在 (真源未落地)")
+        print("  ⚠ 文件不存在 (唯一依据未落地)")
     if c:
         print(f"  写入路径: {c.get('read')}")
         print(f"  改法: python3 tools/config_center.py show {c['id']}   # 看判据与权限后再动")
@@ -223,7 +223,7 @@ def cmd_tasks(a):
     ts = d["tasks"]
     if a.json:
         print(json.dumps(d, ensure_ascii=False, indent=1)); return 0
-    print(f"工艺域 · 任务配置 ({len(ts)} 条, 真源 config/tasks/tasks.json)")
+    print(f"工艺域 · 任务配置 ({len(ts)} 条, 唯一依据 config/tasks/tasks.json)")
     hdr = f"{'任务ID':<20}{'类型':<16}{'工艺步骤':<34}{'段':>3}{'粒度':>4}  目标"
     print(hdr); print("-" * len(hdr))
     for t in ts:
@@ -475,7 +475,7 @@ def cmd_check(a):
     ok = True
     print("VEH.6 全链校验")
     bad = _fresh(d)
-    print(f"  ① 描述与真源同步 : {'✅ ' + str(len(d['_meta']['sources'])) + ' 个真源一致' if not bad else '❌ 变了: ' + ', '.join(bad)}")
+    print(f"  ① 描述与唯一依据同步 : {'✅ ' + str(len(d['_meta']['sources'])) + ' 个唯一依据一致' if not bad else '❌ 变了: ' + ', '.join(bad)}")
     ok &= not bad
     g = [c["id"] for c in d["CHARACTERISTIC"] if not c.get("ready")]
     site = [x for x in g if x in ("T_base_cam", "plane_z", "cell_geometry.points")]
@@ -528,7 +528,7 @@ def cmd_sor(a):
 
     用法: python3 tools/config_center.py sor             # 生成 .docx (+ JSON/manifest)
           python3 tools/config_center.py sor json        # 同时导出结构化 JSON
-    数据源: 单一工程库 + 平台真源; 配置里没有的项在文档中显式标「待确认」。
+    数据源: 单一工程库 + 平台唯一依据; 配置里没有的项在文档中显式标「待确认」。
     """
     import subprocess
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -555,7 +555,7 @@ def cmd_data(a):
 
 
 def cmd_agreement(a):
-    """协议导出 — 《机器人数据平台合作与模型授权协议》Word (与治理真源同源)
+    """协议导出 — 《机器人数据平台合作与模型授权协议》Word (与治理唯一依据同源)
 
     用法: python3 tools/config_center.py agreement
     """
@@ -638,7 +638,7 @@ def cmd_sheet(a):
           % (d["画布"]["工程"], d["画布"]["节点"], d["画布"]["连线"], d["画布"]["启用节点数"],
              len(t.get("档位") or {}), len(t.get("参数覆盖") or {})))
     print("   参数注册表 %d 项: %s" % (p["总数"], " · ".join("%s %d" % (k, v) for k, v in p["分组计数"].items())))
-    print("   标定 %d 文件 · 点位台账 %d 份" % (len(d["标定真源"]), len(d["点位台账"])))
+    print("   标定 %d 文件 · 点位台账 %d 份" % (len(d["标定唯一依据"]), len(d["点位台账"])))
     print("   → outputs/config_sheets/%s.md · .json   (最新副本: 配置单_%s_latest.md/.json)" % (base, tid))
     return 0
 

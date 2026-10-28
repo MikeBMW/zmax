@@ -22,7 +22,7 @@
    --list                 → 4 个机器人的元数据 + 数据集/权重/视频就位情况 (JSON)
    --set-current <robot>  → 写 data/intact_robot_state.json  ← 「切换节点」的输出
    --run --robot X        → 原项目权重 + 原项目运行时跑一轮 → 官方渲染视频 + 成功率
-   关键约束 (实测踩坑, 不许改):
+   关键约束 (实测遇到问题, 不许改):
      · 论文权重必须用 paper_runtime 跑 (根运行时报 module.InverseTransitionActor 找不到)
      · 论文运行时的零搜索求解器叫 prior_only (根仓库 direct_solver 命名不兼容)
      · 数据集须落 $STABLEWM_HOME/datasets/ (pusht_expert_train.h5 / dmc/reacher_random.h5 /
@@ -88,7 +88,7 @@
 ## 5. 已验证 (2026-09-12)
 
 ```
-· 注册表: 4 个机器人 · 元数据/就位状态/视频数 全部真实读取 (非写死)
+· 注册表: 4 个机器人 · 元数据/就位状态/视频数 全部真实读取 (非预先固定)
 · 切换: 面板选 cube → data/intact_robot_state.json = {"robot":"cube", "ts":"2026-09-12 21:01:28", ...}
 · 画布: NODE_TYPES 注册 ✓ · 双击 robot_switch 节点 → 面板弹出 ✓ 列出 4 行 ✓
 · 实况窗: 载入官方视频真帧并显示 ✓ (tworoom 26 帧) · 面板切 reacher → state=reacher + 实况窗绑定 reacher ✓

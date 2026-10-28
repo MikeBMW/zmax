@@ -84,8 +84,8 @@ def main() -> int:
 
     bad = [r for r in rows if not r[1]]
     print("─── %d/%d %s" % (len(rows) - len(bad), len(rows), "全绿 PASS" if not bad else "FAIL"))
-    # ⚠️ HomeWidget 的构造会拉起硬件采集 QThread (_HwFetcher) ⇒ 正常退出会等它 join 卡住;
-    #    判据已全部打印, 直接 os._exit 收工 (离屏探针, 不写任何真源)。
+    # ⚠️ HomeWidget 的构造会拉起硬件采集 QThread (_HwFetcher) ⇒ 正常退出会等它 join 阻塞;
+    #    判据已全部打印, 直接 os._exit 收工 (离屏探针, 不写任何唯一依据)。
     sys.stdout.flush()
     os._exit(0 if not bad else 1)
 

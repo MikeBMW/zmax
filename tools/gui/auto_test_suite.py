@@ -251,7 +251,7 @@ class StateSpaceAutoTest:
                     #   (TC07 已验证 3D 窗口 grab 有效 265KB; grab 抓 Qt 渲染层不受 X map 影响)
                     p, kb = _shot_widget(w3, f"{nm}.png")
                     if p is None:
-                        # 兜底: 截整个 3D 窗口 (viewport)
+                        # 保障: 截整个 3D 窗口 (viewport)
                         try:
                             pm = w3.viewport().grab() if hasattr(w3, "viewport") else w3.grab()
                             p = os.path.join(OUT_DIR, f"{nm}.png")

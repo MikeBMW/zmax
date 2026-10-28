@@ -64,7 +64,7 @@ import faulthandler; faulthandler.enable()
 faulthandler.dump_traceback_later(20, repeat=True, file=sys.stderr)
 ```
 信号定时器, 事件循环卡死也能触发 — 每 20s dump 全部线程 Python 栈到 stderr。
-本会话用它证明"卡死"其实是主线程正常在 exec_() (显示层问题), 排除死锁。
+本会话用它证明"卡死"实际是主线程正常在 exec_() (显示层问题), 排除死锁。
 
 ## 7. 渲染/重活移子进程 (Pillow 持 GIL 卡主线程)
 Pillow 渲染 240 帧持 GIL 数秒 → 主线程事件循环饿死 (点运行后拖滚动条卡死/崩溃)。

@@ -92,9 +92,9 @@ def backproject_depth(depth_u16, stats):
 
     h, w = depth_u16.shape
     z = depth_u16.astype(np.float32) * scale          # mm
-    # 有效判据必须与真源 tools/ros_scene_depth_build.py 一致: z_m > 0.05 (50mm)。
+    # 有效判据必须与唯一依据 tools/ros_scene_depth_build.py 一致: z_m > 0.05 (50mm)。
     # 只判 z>0 会把近距噪声点也反投影出去, 实测直接把 bbox 撑到 Z[-3322,1158]mm
-    # (真源 bbox 是 Z[-1224,337]mm) —— 2026-10-22 踩过。
+    # (唯一依据 bbox 是 Z[-1224,337]mm) —— 2026-10-22 踩过。
     # 🔴 2026-10-22 实测补一条**上限**: D405 无效深度会被编码成 65535 (×0.1mm = 6553.5mm),
     #    只判下限时这些哨兵值照样通过 ⇒ 2.3% 的 6554mm 点把 bbox 撑到 X[120,6875] Z[-4524,1685]mm
     #    (工作台实际 ~2m 内)。≥2000mm 的点对 D405 而言是无效/远场, 默认丢掉。

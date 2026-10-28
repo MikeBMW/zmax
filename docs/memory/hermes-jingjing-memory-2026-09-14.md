@@ -6,7 +6,7 @@ web=4090训练+ComfyUI+前端+ECS+PM; 总工(4060/GitHub/GUI); 小芳=硬件
 §
 画布三级: L4=世界模型(流形JEPA+LEW) / L3=VLM+DiT / L2=原子技能SK01-08+左A/B/C算子
 §
-交付前先自跑通; 清理只删明显垃圾留证据
+交付前先自验证通过; 清理只删明显垃圾留证据
 §
 安全限值=🛡类别4栏位; 状态空间三层安全(否决+限幅+Sys0)
 §
@@ -24,7 +24,7 @@ Hermes: CLI≠gateway(system unit); 飞书99991663=token 2h过期→重启hermes
 §
 磁盘红线300G
 §
-评估铁律: metaworld布局每进程漂移→禁写死几何; 单次评估不可靠必多重复+同口径对照; AOI=镜头伸出+模块在镜头下+绕长轴90°+光向下
+评估铁律: metaworld布局每进程漂移→禁预先固定几何; 单次评估不可靠必多重复+同口径对照; AOI=镜头伸出+模块在镜头下+绕长轴90°+光向下
 §
 3DApp: 旧App不删(新包名并存); keystore勿丢
 §
@@ -44,10 +44,10 @@ Step1口径=不改逻辑,原生动作直env.step;
 §
 模型: 本机仅DeepSeek key(deepseek-flash/v4-pro); 换全局模型须钉住定时任务
 §
-老倪报bug时禁给选项菜单(他说'别选那么多'): 先定位真因+证据再修; 画布禁"右输入左输出"节点位置(可放大画布); 交付前先自跑通+留证据
+老倪报bug时禁给选项菜单(他说'别选那么多'): 先定位真因+证据再修; 画布禁"右输入左输出"节点位置(可放大画布); 交付前先自验证通过+留证据
 §
 L4档运行=INTACT直驱(install_direct_act→service.run_once, 逐帧喂skill_ctx), 装配时pop SS_L3→smolvla_lew不实例化; 引擎SS_L4_INTACT槽位没喂skill_ctx→v6权重硬闸拒; 动作头loss行仅训练分支
 §
-断点/真执行: action_head.py:307(loss)只有画布「训练」节点进; L4运行=INTACT直驱不碰smolvla_lew; L3档模型执行真跑须SS_L3_DEV=cpu(ckpt预处理器device写死cuda,已修+熔断)
+断点/真执行: action_head.py:307(loss)只有画布「训练」节点进; L4运行=INTACT直驱不碰smolvla_lew; L3档模型执行真跑须SS_L3_DEV=cpu(ckpt预处理器device预先固定cuda,已修+熔断)
 §
 口径铁律: 运行时须=训练(图像/255+ImageNet, stats同源, 零回退勿两端零初始→通道死); 多轮一致差先查口径勿加训练量

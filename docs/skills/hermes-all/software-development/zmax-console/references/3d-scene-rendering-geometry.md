@@ -1,7 +1,7 @@
 # 3D 场景 (ss_dreamview) 渲染 · 几何正确性 —— 专题口径
 
-适用: `tools/gui/ss_dreamview.py`(3D 场景窗) + `tools/sim_scene_def.py`(几何/尺寸真源) +
-`data/scene/scenes/<SCN>/objects3d.json` + episode 真源 `reports/{ss_episode,tray_place}_latest.npz`。
+适用: `tools/gui/ss_dreamview.py`(3D 场景窗) + `tools/sim_scene_def.py`(几何/尺寸唯一依据) +
+`data/scene/scenes/<SCN>/objects3d.json` + episode 唯一依据 `reports/{ss_episode,tray_place}_latest.npz`。
 症状入口: 件/夹具位置不对 · 孔口有偏差 · 件“变长/变透明” · 拿起后错位 · 放下后消失 · 点场景按钮跳错场景。
 
 入口链: `SKILL.md` → `references/config-sheet-and-scene-colors.md` → 本文件。
@@ -22,7 +22,7 @@
 * `shader=None` 平涂 + 线框穿面 + 露内底 ⇒ 观感就是玻璃/贴图块。实心件一律 `shader='shaded'`。
   量化判据: 金属件单色像素(±6) 72 → 宽色域(±45) 15893 ⇒ 明暗占比≈100% = 真有面明暗。
 * 槽位/线框尺寸按**件**算: 标记 r=0.012(24mm) < 件长 52mm ⇒ 目检“盘太小放不下”。
-  真源 `sim_scene_def._tray_layout()`(件 52×20×12mm; 料盘外廓 82×124mm)。
+  唯一依据 `sim_scene_def._tray_layout()`(件 52×20×12mm; 料盘外廓 82×124mm)。
 * 跨场景尺寸不同(摆盘 52×20×12 / 插拔 200×30×30): 网格尺寸**按场景取**; **别把臂上件整件隐藏** ——
   隐藏会让拿起的件露出别场景尺寸(“拿起来就变长”)或干脆不见。
 
@@ -30,9 +30,9 @@
 * 用 episode 阶段真值点亮已放槽位: `stage` 进入“完成”的次数 = 已放颗数 (摆盘真值帧 798/1723/2654);
   占位件按 `_tray_layout()['markers']` 槽位坐标建, 默认隐藏、逐颗点亮 ⇒ “放下后又消失”消失。
 
-## 5. UI 与自动跟随: 按钮必须写单一真源
+## 5. UI 与自动跟随: 按钮必须写单一唯一依据
 * 场景按钮只切窗口、不写画布 `ssdata.src_state` ⇒ “跟随画布”看门狗 2s 内扳回旧场景 (用户: “点击插拔却跳到摆盘”)。
-* 规则: 按钮 = 先写单一真源(复用 `tools/ss_scene_switch.py::switch`) 再切窗口 + 手动动作 8s 独占期。
+* 规则: 按钮 = 先写单一唯一依据(复用 `tools/ss_scene_switch.py::switch`) 再切窗口 + 手动动作 8s 独占期。
 * 验证: 写画布后 **10s 与 24s 各看一次**窗口标题仍停在目标场景。
 
 ## 6. 像素反查口径 (数字对齐 ≠ 画面正确)

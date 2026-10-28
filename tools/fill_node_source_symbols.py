@@ -5,7 +5,7 @@
 背景 (老倪 2026-09-14: "DiT 的右键怎么没有进入源代码呢?"):
   节点只写了 `params.source` = 文件路径, 没有符号 → 右键只能打开**第 1 行**;
   用户看到的是文件顶部而不是实现处, 观感 = "没进源码"。而 registry (_EXTERNAL_LOC)
-  里其实已经**人工核对过**每个 key 的真实符号 (如 ssdec → class SmolVLALewActionHead)。
+  里实际已经**人工核对过**每个 key 的真实符号 (如 ssdec → class SmolVLALewActionHead)。
 
 规则 (保守, 只在证据充分时才写):
   ① 节点有 params.source 且**是真文件**; ② 按节点名 match_node 能命中 registry key;

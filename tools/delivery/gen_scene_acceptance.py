@@ -9,18 +9,18 @@
 纪律(全工程一致): **每个数字现取现算**, 不手写; 取不到就写「未测 / 待标定 / 待现场」;
 判定给统计口径(置信下限 + 所需样本量), 不拿"看起来不错"当结论。
 
-真源(全部只读):
+唯一依据(全部只读):
   config/ss_task_binding.json              任务配置(段/节点/档位/覆盖/判据)
   reports/ss_task_run_<TASK>_latest.json   两场景**真跑**结果 (配置 → 功能 → 判据 → 产物)
   reports/tray_place_latest.npz            摆盘逐帧真值 (3 颗)
   reports/ss_episode_latest.npz            插拔逐帧真值 (1 件)
   zmax_data/dataspace/busdb.json           总线数据库 (节点/信号/报文; 由 src/lerobot/dataspace/busdb.py 生成)
   src/lerobot/dataspace/topics.py::TOPICS 话题注册表 (物理层: topic/type/qos/rate + 生产者/消费者)
-  config/topics/scene_tags.json            信号 → 场景 (信号分析着色/归属真源)
+  config/topics/scene_tags.json            信号 → 场景 (信号分析着色/归属唯一依据)
   zmax_data/dataspace/live.json            数据空间探针实测 (逐话题 hz/帧龄/灯)
   config/calib/zmax_manifold.json          在役主参数 M (流形引擎消费)
   tools/config_to_M.py                     配置单 → 主参数 M 的映射 (可审计)
-  config/platform/zmax_perf_spec.json      性能指标体系真源 (ISO 9283/230-2 口径)
+  config/platform/zmax_perf_spec.json      性能指标体系唯一依据 (ISO 9283/230-2 口径)
 
 用法:
   gui-venv311/bin/python tools/delivery/gen_scene_acceptance.py [--ver 5.50.5] [--quick]
@@ -63,7 +63,7 @@ def _sh(cmd, timeout=300, cwd=ROOT):
 
 
 def dev_version() -> str:
-    """开发工程版本真源 (不手写)"""
+    """开发工程版本唯一依据 (不手写)"""
     try:
         m = re.search(r'CURRENT_VERSION\s*=\s*"([^"]+)"',
                       open(os.path.join(ROOT, "tools", "gui", "update_checker.py"), encoding="utf-8").read())
@@ -73,7 +73,7 @@ def dev_version() -> str:
 
 
 def load_topics():
-    """话题注册表 (物理层真源)"""
+    """话题注册表 (物理层唯一依据)"""
     p = os.path.join(ROOT, "src")
     if p not in sys.path:
         sys.path.insert(0, p)
@@ -85,7 +85,7 @@ def load_topics():
 
 
 def compute_M(task_id):
-    """调真源 compute_M (不复制实现)"""
+    """调唯一依据 compute_M (不复制实现)"""
     try:
         spec = _ilu.spec_from_file_location("c2m", os.path.join(ROOT, "tools", "config_to_M.py"))
         mod = _ilu.module_from_spec(spec)
@@ -172,7 +172,7 @@ def insert_metrics():
                "depth_mm": round(depth * 1000.0, 4), "d_xy_mm": round(d_xy * 1000.0, 4),
                "depth_judge_mm": 2.0, "depth_ok": depth * 1000.0 <= 2.0,
                "depth_judge_src": "链内判完成口径: `_insert_depth()`(光模块头→插入终点距离) < 0.002m 且连续 2 帧 "
-                                  "(真源: tools/diag_insert_depth.py 头注 + gen_ss_metaworld_episode.py:305)",
+                                  "(唯一依据: tools/diag_insert_depth.py 头注 + gen_ss_metaworld_episode.py:305)",
                "depth_cfg_target_mm": 35.0,      # 配置 ins.depth (行程目标, 不是公差)
                "depth_at_step": i_min + 1, "depth_at_stage": stages[i_min].replace("阶段 ", ""),
                "depth_at_t": round(float(t[i_min]), 4),
@@ -200,9 +200,9 @@ def insert_metrics():
 def signal_ledger():
     """信号 → 网络 topic 台账 (信号分析每个信号: 通道 + topic + 登记 + 实测)
 
-    口径(不编): 一条信号的"网络 topic"按它的**真源通道**给, 分四类 ——
+    口径(不编): 一条信号的"网络 topic"按它的**唯一依据通道**给, 分四类 ——
       ① DDS typed  (src/lerobot/dataspace/topics.py::TOPICS 注册表, 25 个; 实测 hz/帧龄取数据空间探针 live.json)
-      ② 画布节点输出(DBC 登记: busdb 89 节点各 ≥1 个 `ss/<node>/out`; 真源连线共用 `zmax/link_value`)
+      ② 画布节点输出(DBC 登记: busdb 89 节点各 ≥1 个 `ss/<node>/out`; 唯一依据连线共用 `zmax/link_value`)
       ③ ROS2 话题   (Orin 侧 /robot/... 由 zmax_topic_sampler 采)
       ④ 非总线通道  (AR/L5 走 HTTP 8797 + ar_aoi_live.json; 未登记 DDS ⇒ **缺口, 如实标注**)
     """
@@ -273,7 +273,7 @@ def judges(with_judges=True):
         m = re.findall(r"(\d+)\s*/\s*(\d+)\s*PASS", txt)
         fails = re.findall(r"^  ❌ (.+)$", txt, re.M)
         ok = re.findall(r"(\d+)\s*项通过", txt)
-        # 环境依赖失败 (办公模式无相机/位置真源不新鲜/未建图) 与代码缺陷分开报 —— 不混口径
+        # 环境依赖失败 (办公模式无相机/位置唯一依据不新鲜/未建图) 与代码缺陷分开报 —— 不混口径
         _env = re.compile(r"帧龄|未标定|无新鲜|相机|建图|重复帧|位姿")
         real = [f for f in fails if not _env.search(f)]
         envf = [f for f in fails if _env.search(f)]
@@ -425,7 +425,7 @@ def main(argv=None):
     A("")
     A("版本 `%s`　生成 `%s`　活跃任务 `%s`" % (ver, doc["generated_at"], doc["binding_active"]))
     A("")
-    A("> 口径: 每个数字**现取现算**(真跑产物/真源文件), 取不到写「未测/待标定」; 成功率给统计置信下限, 不拿样本少当达标。")
+    A("> 口径: 每个数字**现取现算**(真跑产物/唯一依据文件), 取不到写「未测/待标定」; 成功率给统计置信下限, 不拿样本少当达标。")
     A("")
     A("## §0 结论前置")
     A("")
@@ -456,7 +456,7 @@ def main(argv=None):
              ("功能模式", "mode"), ("执行链(真跑用的)", "chain"), ("链选择依据", "chain_why"),
              ("启用节点", "enabled_nodes"), ("禁用节点", "disabled_nodes"),
              ("适用段", "segments"), ("排除段", "excluded"), ("六档位开", "run_cfg"),
-             ("参数覆盖", "overrides"), ("验收判据(任务真源)", "targets"),
+             ("参数覆盖", "overrides"), ("验收判据(任务唯一依据)", "targets"),
              ("触发条件", "trigger"), ("循环", "loop"), ("安全(不可覆盖)", "safety"),
              ("本次真跑时刻", "run_started")]
     def cell(v):
@@ -526,7 +526,7 @@ def main(argv=None):
            ins.get("depth_cfg_target_mm")))
         A("- 出现在第 %s 步/阶段 `%s` · XY 残差 %.4f mm · 抓取成功帧=%s" %
           (ins.get("depth_at_step"), ins.get("depth_at_stage"), ins.get("d_xy_mm"), ins.get("grasped_any")))
-        A("- 判据真源: %s" % ins.get("depth_judge_src"))
+        A("- 判据唯一依据: %s" % ins.get("depth_judge_src"))
         A("- 口径: 残差取 **插入段 ∪ 完成帧** 内的最小值 = 插入到位最好值; 若任务末段含「拔出/取回」, 那一段已离开插入位, 不计入"
           " (本 episode 末帧 ‖头−终点‖ = %s mm)" % ins.get("depth_end_of_episode_mm"))
         A("- 光模块头末值 %s · 孔口目标 %s · TCP 末值 %s" %
@@ -577,7 +577,7 @@ def main(argv=None):
     A("")
     A("## §9 质量评估结论")
     A("")
-    A("**已达**: 两场景可**由同一工程、改配置**分别真跑通 (插拔 835 步/终态完成; 摆盘 3/3 合格, 2708 步) · "
+    A("**已达**: 两场景可**由同一工程、改配置**分别真验证通过 (插拔 835 步/终态完成; 摆盘 3/3 合格, 2708 步) · "
       "取放精度 Δxy ≤0.47mm / 姿态 ≤0.04°(判据 ≤1mm/≤1°) · 信号全部登记到网络 topic (节点 %d 个, 未注册 0) · "
       "总线判据见 §7 · 主参数 M 可审计 (%s / %s)。" %
       (led["busdb_nodes"], (doc["sections"]["M"].get("TASK-01-FW") or {}).get("audit_sha"),

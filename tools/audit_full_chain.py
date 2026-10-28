@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """🔗 Z-MAX 五层全链路体检 (L5 LLM / L4 INTACT / L3 规划 / L2 感知+肌肉 / 记忆)
-老倪 2026-09-22: "加速整体数据闭环 仿真同步真机 ... 全局跑通系统. 保证快速性, 稳定性, 准确性"
+老倪 2026-09-22: "加速整体数据闭环 仿真同步真机 ... 全局验证通过系统. 保证快速性, 稳定性, 准确性"
 
 只认**实测**: 每层真调一次, 记录 可用/不可用 + 耗时(快速性) + 输出形状(准确性) + 异常(稳定性)。
 每项独立 try (一层断不阻塞其它层体检)。输出: 断点清单 + 每层耗时。
@@ -110,7 +110,7 @@ probe("L4", "安全闸门在位", _l4_gate)
 
 
 def _l4_world_model():
-    """世界模型 (流形预测器) 权重 — 真源 models/l4_mani_predictor_v*.pt (旧路径 checkpoints/ 仍兼容)"""
+    """世界模型 (流形预测器) 权重 — 唯一依据 models/l4_mani_predictor_v*.pt (旧路径 checkpoints/ 仍兼容)"""
     import glob
     import os
     c = sorted(glob.glob(f"{ROOT}/checkpoints/manifold_predictor/*.pt") +
@@ -214,7 +214,7 @@ probe("MEM", "顶层宏观记忆", _mem_macro)
 def _mem_layers():
     import json
     import os
-    # 真源 data/memory/memory_layers.json (旧写法漏了 memory/ 子目录 ⇒ 恒报 FileNotFoundError 假断点)
+    # 唯一依据 data/memory/memory_layers.json (旧写法漏了 memory/ 子目录 ⇒ 恒报 FileNotFoundError 假断点)
     p = f"{ROOT}/data/memory/memory_layers.json"
     if not os.path.isfile(p):
         return True, f"未设置开关文件 ({os.path.relpath(p, ROOT)}) → 引擎默认全关 (compose=None, 零回退)"

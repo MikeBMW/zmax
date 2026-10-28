@@ -308,7 +308,7 @@ Background check silently swallows exceptions (network down = no notification).
 **别只 grep 一种记法** —— 漏掉一处的结果是"包打好、标题/同步器还是旧号"且**全程不报错**;
 另外状态栏 `Z-MAX v1.0.4` / 「关于」框 `Z-MAX v1.0.1` 这类**不在同步清单里的旧号**也要顺手对齐。
 - 仓库里有 `tools/bump_version.py` 就用它: `--to X.Y.Z [--from A.B.C] --summary-file <一行摘要> [--dry]`,
-  一次改完 5 处 + 给 `VERSION.md` 历史表插一行(**改版前先读 `VERSION.md`**, 它是位置与摘要规范的真源)。
+  一次改完 5 处 + 给 `VERSION.md` 历史表插一行(**改版前先读 `VERSION.md`**, 它是位置与摘要规范的唯一依据)。
 - **工具自己的打印就是判据**: 每处 `旧命中 N → 新命中 M`, **任一处 N=0 就是"一个都没改到"**
   (记法变了/锚点失配 ⇒ 静默漏同步, 看起来成功)。修法是先把工具的匹配写成
   "**认版本号不认记法**"的正则(`v{1,2}<ver>` / 从 `QLabel("Z-MAX …")` 取号), 再跑; 旧号探测同理
@@ -504,7 +504,7 @@ slide.background.fill.fore_color.rgb = WHITE  # match template
 
 ## 引擎类依赖 (mujoco/metaworld) 打包 — 数据资产 + frozen 路径 (2026-09-11 实测)
 
-三类必踩坑, 全部表现为"源码跑得通, exe 里点运行没轨迹/没动画":
+三类必遇到问题, 全部表现为"源码跑得通, exe 里点运行没轨迹/没动画":
 
 1. **数据资产不进包** — `metaworld` 运行时用 `Path(__file__).parent/assets/*.xml` 读模型 (非 importlib.resources),
    而 PyInstaller **只自动收 .py**, 资产缺失 → `File ... does not exist`。**Windows 与 mac 的 pyinstaller 命令行必须一致地带**
@@ -532,7 +532,7 @@ slide.background.fill.fore_color.rgb = WHITE  # match template
    用 `resolve_python()`; 需要仓库脚本时的 frozen 分支直接跳过 (由 CI 预生成 + 随包)。
 
 4. **Windows cp1252 控制台编码** — 脚本里的 `print("✅ 写入: ...")` 在 Windows 控制台/CI (bash 步骤) 抛
-   `UnicodeEncodeError: 'charmap' codec can't encode character '\u2705'` → **exit 1** (CI 步骤实测失败, 文件其实已写好);
+   `UnicodeEncodeError: 'charmap' codec can't encode character '\u2705'` → **exit 1** (CI 步骤实测失败, 文件实际已写好);
    GUI 用 `subprocess(capture_output=True)` 调同一脚本时同样崩 = 静默"视频生成失败"。双保险:
    脚本顶部 `sys.stdout.reconfigure(encoding="utf-8", errors="replace")` + 父进程 env 传 `PYTHONIOENCODING=utf-8`。
 
@@ -563,7 +563,7 @@ slide.background.fill.fore_color.rgb = WHITE  # match template
 `Failed to load dynlib/dll '...\_MEI00000d042\mujoco\plugin\actuator.dll'.
 Most likely this dynlib/dll was not found when the application was frozen.`
 
-**别被这句话骗 —— 文件其实在包里**。`--collect-all mujoco` 收集没问题, 但布局是:
+**别被这句话骗 —— 文件实际在包里**。`--collect-all mujoco` 收集没问题, 但布局是:
 - `_MEIPASS/mujoco/mujoco.dll` (运行时库, 在 mujoco/ 这一级)
 - `_MEIPASS/mujoco/plugin/actuator.dll` (插件, 在下一级)
 而 `actuator.dll` 的 PE 导入表依赖 **mujoco.dll** + VCRUNTIME140/MSVCP140。Windows 解析 DLL 依赖
@@ -601,7 +601,7 @@ PyQt5/Qt5/bin) → WinError 126; PyInstaller 的 ctypes 钩子 (`PyInstaller/loa
 | Symptom | Root cause | Fix |
 |---------|-----------|-----|
 | CI 任务几小时一直 `in_progress`、最后失败, **一条产物都没发** | 裸调打包产物 (`./App.exe --engine-selftest`) 且该步骤**没设超时** ⇒ exe 在 runner 上卡死, 后面的构建/上传步骤全 `pending` (实测 v5.50.74~736 连续十余个 tag 全栽在这一步, 而 mac 侧一直 success ⇒ Release 里只有 mac 资产) | ① 改**有界等待**: 后台起 + 轮询 (如 600s) + 超时 `taskkill` 收尸; ② 步骤加 `timeout-minutes`; ③ 产物侧**按关增量落盘** (`stage` 字段: 导入/建场景/渲染探针/导入链各环) —— 卡死没有 traceback, 只看得到"最后走到哪一关"; ④ 核验步 `continue-on-error: true` + `if: steps.<id>.outcome == 'success'` 门控**是否上传那一份产物**, 别让一个制品的核验掐死另一个制品的发布 |
-| Release 只有 mac 资产 / 正文空白 | 单文件 exe 的上传步在前一步失败后被跳过; Release 正文只挂在 windows 上传步 | 正文/release_name 也挂到 mac 上传步 (两侧一致), 版本号引用 `${{ steps.release_tag.outputs.tag }}` 而不是写死 |
+| Release 只有 mac 资产 / 正文空白 | 单文件 exe 的上传步在前一步失败后被跳过; Release 正文只挂在 windows 上传步 | 正文/release_name 也挂到 mac 上传步 (两侧一致), 版本号引用 `${{ steps.release_tag.outputs.tag }}` 而不是预先固定 |
 | Checkout fails: `invalid path ':Zone.Identifier'` | Windows ADS files in repo | `git rm --cached` + `*:Zone.Identifier` in `.gitignore` |
 | Release upload: "Resource not accessible" | Missing `permissions: contents: write` | Add permissions block to job |
 | Release upload: skipped on workflow_dispatch | `if: startsWith(github.ref, 'refs/tags/v')` doesn't match branches | Add `|| github.event_name == 'workflow_dispatch'` |
@@ -612,7 +612,7 @@ PyQt5/Qt5/bin) → WinError 126; PyInstaller 的 ctypes 钩子 (`PyInstaller/loa
 | .exe crashes: `AttributeError: 'HomeWidget' has no '_check_updates'` | Button calls main window method directly | Use `pyqtSignal` pattern instead |
 | .exe 点「运行」即崩: `Failed to load dynlib/dll '...\mujoco\plugin\actuator.dll' ... not found when the application was frozen` | 插件目录里没有它依赖的 `mujoco.dll`(在上一级 `mujoco/`) + VC 运行时 | `--runtime-hook pyi_rth_mujoco_dlls.py` (把依赖复制进 `mujoco/plugin/` 做自足目录) + CI 冻结核验 `App.exe --engine-selftest`; 报错处打印 `e.__cause__` |
 | .exe crashes at startup: `FileNotFoundError [WinError 3] ...\AppData\Local\data` | PyInstaller **onefile** exe cwd ≠ repo (unpacked temp/AppData); relative-path `os.listdir("data")` throws | Guard EVERY filesystem probe with `os.path.exists/isdir` before listdir; build paths from an absolute `_repo_root()` (frozen-aware), never bare relative names; probe-only code must degrade to empty list on missing dirs |
-| .exe **双击即崩**: `studio.py:NNN → simulink_module.py:NN → node_logic.py:NN ModuleNotFoundError: No module named 'lerobot'` | GUI 的 compat shim 把节点逻辑迁进 `src/lerobot/engineering` 后, **打包没跟着带这个包**; 且 shim 用 `dirname(__file__)/../../src` 相对上溯 ⇒ 冻结时指到 `_MEIPASS` 的父级 | ① shim 改**冻结感知候选表**(`_MEIPASS/src` → `_MEIPASS` → 源码上溯 → env 兜底), 命中含 `lerobot/engineering` 的那条; ② 打包加 `--add-data src/lerobot/engineering:<dest>`(每个平台都要, 少了就是坏包); ③ 冻结核验必须覆盖 **GUI 启动导入链** (见下) |
+| .exe **双击即崩**: `studio.py:NNN → simulink_module.py:NN → node_logic.py:NN ModuleNotFoundError: No module named 'lerobot'` | GUI 的 compat shim 把节点逻辑迁进 `src/lerobot/engineering` 后, **打包没跟着带这个包**; 且 shim 用 `dirname(__file__)/../../src` 相对上溯 ⇒ 冻结时指到 `_MEIPASS` 的父级 | ① shim 改**冻结感知候选表**(`_MEIPASS/src` → `_MEIPASS` → 源码上溯 → env 保障), 命中含 `lerobot/engineering` 的那条; ② 打包加 `--add-data src/lerobot/engineering:<dest>`(每个平台都要, 少了就是坏包); ③ 冻结核验必须覆盖 **GUI 启动导入链** (见下) |
 
 ### 冻结包必须验「GUI 启动链」, 只验引擎 = 假绿 (2026-10-08 实测)
 
@@ -620,14 +620,14 @@ PyQt5/Qt5/bin) → WinError 126; PyInstaller 的 ctypes 钩子 (`PyInstaller/loa
 **连发四个版本**的 exe 双击即崩 —— 崩在 `import node_logic → import lerobot.engineering`。
 根因是核验只覆盖了引擎, 没覆盖应用自己启动时必经的导入链。
 
-**规则**: 冻结核验里必须真跑一遍**应用启动路径上的每一个模块导入**, 再断言关键运行期不变量:
+**规则**: 冻结核验里必须真执行一遍**应用启动路径上的每一个模块导入**, 再断言关键运行期不变量:
 
 ```python
 # studio.py --engine-selftest 分支内 (Qt 导入之前)
 import node_logic as _nl            # 崩点本体 (compat shim)
 import simulink_module, project_file, node_logic_dialog   # 启动链的其余环
 assert len(_nl.NODE_LOGIC) >= 100, "工程包没进包/不完整"          # 注册表条数
-assert os.path.isfile(_nl.CANVAS_JSON), "画布真源 JSON 不在包内"   # package data
+assert os.path.isfile(_nl.CANVAS_JSON), "画布唯一依据 JSON 不在包内"   # package data
 ```
 
 配套的"文件在不在包里"断言(archive_viewer / find)只是**前置守卫**, 不能替代真导入 ——

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""P3 验证: left_right select_action 动作级指标量测 — 8 seed 跑通 + metrics 打印
+"""P3 验证: left_right select_action 动作级指标量测 — 8 seed 验证通过 + metrics 打印
 2026-08-10 静静 · 大屏监督方案 P3"""
 import os, sys, numpy as np, torch
 os.environ.setdefault("DISPLAY", ":0")
 os.environ.setdefault("MUJOCO_GL", "glfw")
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 🐛 原写死 /home/xspace/lerobot-smolvla-lew (老机器路径) ⇒ 本机 import 就崩
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 🐛 原预先固定 /home/xspace/lerobot-smolvla-lew (老机器路径) ⇒ 本机 import 就崩
 sys.path.insert(0, ROOT); sys.path.insert(0, os.path.join(ROOT, "src"))
 from lerobot.policies.left_right import LeftRightPolicy
 from importlib import util

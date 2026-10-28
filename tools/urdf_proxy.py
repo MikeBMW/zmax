@@ -24,7 +24,7 @@ PTS_PER_LINK = 220
 
 
 def _stl_points(path, limit=PTS_PER_LINK):
-    """读 STL(二进制优先/ASCII 兜底) 取三角面顶点, 按三角形等间隔抽 limit 个点"""
+    """读 STL(二进制优先/ASCII 保障) 取三角面顶点, 按三角形等间隔抽 limit 个点"""
     try:
         with open(path, "rb") as f:
             head = f.read(84)

@@ -50,7 +50,7 @@
 ### 2.3 offscreen 验证 GUI 的三条硬约束
 - **模态弹窗必须桩掉**: `QMessageBox.information/warning/critical/question` 在无头环境**永久阻塞**
   (症状: 脚本超时 / exit 124 / `timeout: the monitored command dumped core`)。
-  桩法: 三个静态方法 setattr 成记录函数; 要验"确认后才执行"就把 `question` 分别返回 `No`/`Yes` 各跑一遍。
+  桩法: 三个静态方法 setattr 成记录函数; 要验"确认后才执行"就把 `question` 分别返回 `No`/`Yes` 各执行一遍。
   **产品代码保留弹窗**(人要看得见), 只在测试里桩。
 - **可见性断言前必须 `show()` + `app.processEvents()`** —— 未 show 时子控件 `isVisible()` 恒 False。
 - **替身对象接口要给全**: 用 `lambda *a, **k: None` 顶替采集线程 → 调用方 `.start()` 立刻 AttributeError,
@@ -77,7 +77,7 @@
 ## 4. 真机位姿真值 (单一来源 `tools/real_truth.py`)
 
 - 读采集容器落盘的 `$SS_OUT/state_YYYYMMDD.jsonl` **最后一行**(尾部 64KB 反向扫, 文件几百 MB 别整读)
-  / `status.json` 兜底 → `tcp / tcp_quat / jpos / jvel / ft` + `age_s` + `fresh`(≤5s)。GUI 不引 rclpy。
+  / `status.json` 保障 → `tcp / tcp_quat / jpos / jvel / ft` + `age_s` + `fresh`(≤5s)。GUI 不引 rclpy。
 - 每帧存档字段: `tcp_frame=base_link`; `tcp_quat` 顺序 = ROS `(x,y,z,w)`(采集端 `[o.x,o.y,o.z,o.w]`)。
 - **metaworld 39D 段位 (权威 = `yolo_3d/yolo_state_aligner.py:317-328`)**:
   `[0:3]=hand` · `[4:7]=光模块(peg)` · `[7:11]=peg_quat` · `[18:21]=prev_hand` · `[22:25]=prev_peg` · `[36:39]=hole`。
@@ -115,7 +115,7 @@
 
 ### 两个数学坑
 1. **AABB 有厚度时"旋转 90° 宽高互换"不成立**: 沿光轴的深度分量会污染包围盒(实测 40×16×12mm 件
-   0° 得 28.5×39.2、转 90° 得 25.8×59.8 —— 看着像错其实是正确的透视行为)。**自检要用薄片(厚度 0)**,
+   0° 得 28.5×39.2、转 90° 得 25.8×59.8 —— 看着像错实际是正确的透视行为)。**自检要用薄片(厚度 0)**,
    否则会误判成 bug 去改对的代码。
 2. **从 P 估内参必须用 RQ 分解**(Hartley 那套: `P = flipud(fliplr(·))` + `qr((P@A).T)` + 翻回),
    裸 `linalg.qr(inv(M))` 解出来 fx 会是 1.24 这种垃圾值(实测踩到)。

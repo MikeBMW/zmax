@@ -8,9 +8,9 @@ description: Z-MAX 多模型对比评估→PDF技术选型报告→飞书交付�
 ## 触发条件
 老倪要求"五模型对比/模型选型/出报告发手机"时。
 
-## 流程 (2026-08-05 实测跑通)
+## 流程 (2026-08-05 实测验证通过)
 ```
-① 各模型训练 (先50步跑通, 再加steps)  →  outputs/train/<policy>_<ts>/
+① 各模型训练 (先50步验证通过, 再加steps)  →  outputs/train/<policy>_<ts>/
 ② compare_models.py 统一评估           →  reports/model_compare_<ts>.json
 ③ generate_report.py 生成 PDF          →  reports/五模型对比技术选型报告_<ts>.pdf
 ④ 飞书交付: 回复里 MEDIA:/绝对路径.pdf   →  手机直接看
@@ -59,7 +59,7 @@ cd ~/lerobot-smolvla-lew
 > 4. **_auto_finalize 日志**: "🏁 七模型训练完成! 自动生成 🎮 仿真 rollout 评估视频 (metaworld 环境) + PDF 报告…"
 > 5. **InferenceVideoDialog 窗口标题** (simulink_scope.py): `🎮 N 模型仿真 rollout 对比 (metaworld peg 场景 — 本地评估, 非 Orin 真机)`
 > - **⚠️ desc 存 `node["params"]["desc"]`, 不是 `node["desc"]`** — 节点 dict 无顶层 desc 字段, 验证脚本查 `n.get("desc")` 恒 None 误判失败。运行时验证查 `n["params"].get("desc")`
-> - **第 6 处: 7 个「🎥 视频对比 · XXX」节点 desc 也要标仿真** (老倪 2026-08-07 追问"GUI的视频对比,不应该是本地仿真推理的结果么" — 只改 Scope/对话框不够, 每模型视频节点是用户最常点开的): 七模型模板里 `视频对比 · ACT/SmolVLA/SmolVLA+LEW/VLA-Touch/AWE/MLP/专家` 7 个节点 desc 逐个加 `🎮 XXX 仿真 rollout 视频 (metaworld 环境, 非 Orin 真机)`; MLP/专家 desc 原本带成功率 (距孔 0.020/0.011m), 仿真标注插前面 `🎮 MLP 蒸馏仿真 rollout 插拔成功视频 (metaworld, 非 Orin 真机; ...)`。**验证断言坑: desc 前缀是 `🎮 官方专家` 不是 `🎮 专家` — 按完整 desc 前缀匹配, 别用 `f"🎮 {节点名}"` 会误报失败 (功能其实正确)**
+> - **第 6 处: 7 个「🎥 视频对比 · XXX」节点 desc 也要标仿真** (老倪 2026-08-07 追问"GUI的视频对比,不应该是本地仿真推理的结果么" — 只改 Scope/对话框不够, 每模型视频节点是用户最常点开的): 七模型模板里 `视频对比 · ACT/SmolVLA/SmolVLA+LEW/VLA-Touch/AWE/MLP/专家` 7 个节点 desc 逐个加 `🎮 XXX 仿真 rollout 视频 (metaworld 环境, 非 Orin 真机)`; MLP/专家 desc 原本带成功率 (距孔 0.020/0.011m), 仿真标注插前面 `🎮 MLP 蒸馏仿真 rollout 插拔成功视频 (metaworld, 非 Orin 真机; ...)`。**验证断言坑: desc 前缀是 `🎮 官方专家` 不是 `🎮 专家` — 按完整 desc 前缀匹配, 别用 `f"🎮 {节点名}"` 会误报失败 (功能实际正确)**
 > - 验证 (offscreen): 静态断言 5 处文案 + 加载模板后 `params.desc` 含"仿真" + 节点名未变; 改完重启 GUI 生效 (重启安全边界见 ZMAX_AUTO_RUN 节)
 ```bash
 # 1. 各模型 rollout 帧序列 (metaworld 环境渲染, 需 DISPLAY=:0 MUJOCO_GL=glfw)
@@ -80,12 +80,12 @@ cd ~/lerobot-smolvla-lew
 1. **黑屏 (var=0, 全零帧)** → metaworld V3 环境默认 `render_mode=None`, `env.render()` 抛 `AttributeError: Unexpected mode: None` → rollout 捕获异常填全零帧。修复: **`env_cls(render_mode="rgb_array")`** + 脚本顶部 (import mujoco/metaworld 前) `os.environ.setdefault("DISPLAY", ":0")` / `MUJOCO_GL=glfw`。验证: 帧 var≈4376 才是真渲染
 2. **画面不动/动作均值 0.0** → batch 只喂 `observation.image` 缺 `observation.state` → select_action 异常被吞 → 零动作。修复: 补 `observation.state` (从 env obs 向量取前 st_dim 维, 用 `policy.config.input_features["observation.state"].shape[0]` 或精简模型 `policy.state_dim` 属性)
 3. **`can't convert cuda:0 device type tensor to numpy`** → pred 是 CUDA tensor, `np.asarray(pred)` 失败。修复: `if isinstance(pred, torch.Tensor): pred = pred.detach().cpu()` 再转 numpy
-4. **精简模型 (vla_touch/awe_zflow) 无 `.config` 属性** → `'X' object has no attribute 'config'`。修复: 加载 model.pt 后显式设 `pol.state_dim = int(cfg["state_dim"])`, `pol.action_dim = int(cfg["action_dim"])`; rollout 里 `getattr(policy, "config", None)` 兜底
+4. **精简模型 (vla_touch/awe_zflow) 无 `.config` 属性** → `'X' object has no attribute 'config'`。修复: 加载 model.pt 后显式设 `pol.state_dim = int(cfg["state_dim"])`, `pol.action_dim = int(cfg["action_dim"])`; rollout 里 `getattr(policy, "config", None)` 保障
 5. **vla_touch/awe 无 select_action** → 适配: vla_touch 用 `policy._cond(state, tac_zeros, None)` + `policy.sample(x0, cond, diffuse_steps=10)`; awe_zflow 用 `policy(state, tac_zeros, act_hist_zeros, None)` (取 tuple[0])
 6. **维度不匹配 `mat1 and mat2 shapes cannot be multiplied`** → state_dim 传错 (默认 4 但实际 2)。以 `model.pt` config 为准: vla_touch/awe 都是 state_dim=2/action_dim=2/tactile=3 (metaworld_act 数据)
 7. **重训后 rollout 仍用旧模型** → `reports/train_curve_<policy>.json` 的 `ckpt` 还指向旧 50 步目录。修复: 重训后必须更新曲线文件 `ckpt` → 新目录 (vla_touch/awe 训练脚本会自动更新, act/smolvla 系需手动改)
 8. **动作均值≠0 才算动**: 2000步正式版实测 ACT 0.177 / SmolVLA 0.116 / LEW 0.098 / vla_touch 0.036 / awe 0.251; 50步快速版全 ≈0
-9. **obs 是 dict 不是向量 (2026-08-07 终极根因, 所有模型动作≈0 的元凶)**: metaworld V3 环境 `env.reset()` 返回的 obs 是 **dict** (`observation.state` / `observation.image`), 不是 39D 向量 — `np.asarray(obs)` 对 dict 得到 0 维对象数组 → `st_vec.ndim == 1` 为 False → **state 全零** → 模型推理异常 (act/vla_touch/awe 全报 mat1/mat2 broadcast 错, 动作均值 0.0) → 零动作兜底。修复:
+9. **obs 是 dict 不是向量 (2026-08-07 终极根因, 所有模型动作≈0 的元凶)**: metaworld V3 环境 `env.reset()` 返回的 obs 是 **dict** (`observation.state` / `observation.image`), 不是 39D 向量 — `np.asarray(obs)` 对 dict 得到 0 维对象数组 → `st_vec.ndim == 1` 为 False → **state 全零** → 模型推理异常 (act/vla_touch/awe 全报 mat1/mat2 broadcast 错, 动作均值 0.0) → 零动作保障。修复:
 ```python
 if isinstance(obs, dict):
     _st_raw = np.asarray(obs.get("observation.state", np.zeros(st_dim, dtype=np.float32)), dtype=np.float32)
@@ -106,12 +106,12 @@ else:
 st = (st - sm) / ss
 ```
 **排查顺序**: 动作 0 先看 traceback 行号 (改 except 加 `_tb.print_exc(limit=3)`), 别猜 — obs dict (坑9) → stats 广播 (10b) → env 拆分 (10) 三个坑症状都是"动作均值 0.0"但要按 traceback 定位。**修复验证**: 动作均值 0→0.18 (ACT), NaN 数=0, 帧均差 2.8→5.7+ (真动)
-10c. **补训链恢复曲线 (restore_curves.sh 模式, 2026-08-07)**: 曲线 json 被训练链覆盖清空后, act/smolvla/lew 无日志可恢复 (GUI 内存) → 只能**串行重训** (act~1min → smolvla → lew 各 1000 步)。要点: ①**config 生成复刻 GUI on_train** (读 config_<p>_metaworld.yaml → re.sub output_dir/job_name 加时间戳目录 + `^steps:` 改 1000 → 写 `config_<p>_restore.yaml`) — **config_<p>_runtime.yaml 是 GUI 动态生成的, 静态文件里不存在, 别直接引用** ②**输出目录已存在 → FileExistsError (resume=False)**: config 里 output_dir 必须替换成新时间戳目录, 或 `--policy.path=` 覆盖 ③**曲线 ckpt 字段别写假路径** (`outputs/train/<p>_latest/checkpoints` 不存在 → load_policy 兜底 glob 找最新 → 可能加载到 39D/3D 混搭垃圾) — 写真实目录或重训后手动改 ④日志 `step:1K` 解析 (坑14) + 去重 sorted ⑤**bash 脚本运行中的进程用旧代码**: 脚本文件改了但已启动的进程不会重新读 — 修完正则只对后续模型生效, 前面的已落盘要手动修正 (同 act 修法)
+10c. **补训链恢复曲线 (restore_curves.sh 模式, 2026-08-07)**: 曲线 json 被训练链覆盖清空后, act/smolvla/lew 无日志可恢复 (GUI 内存) → 只能**串行重训** (act~1min → smolvla → lew 各 1000 步)。要点: ①**config 生成复刻 GUI on_train** (读 config_<p>_metaworld.yaml → re.sub output_dir/job_name 加时间戳目录 + `^steps:` 改 1000 → 写 `config_<p>_restore.yaml`) — **config_<p>_runtime.yaml 是 GUI 动态生成的, 静态文件里不存在, 别直接引用** ②**输出目录已存在 → FileExistsError (resume=False)**: config 里 output_dir 必须替换成新时间戳目录, 或 `--policy.path=` 覆盖 ③**曲线 ckpt 字段别写假路径** (`outputs/train/<p>_latest/checkpoints` 不存在 → load_policy 保障 glob 找最新 → 可能加载到 39D/3D 混搭垃圾) — 写真实目录或重训后手动改 ④日志 `step:1K` 解析 (坑14) + 去重 sorted ⑤**bash 脚本运行中的进程用旧代码**: 脚本文件改了但已启动的进程不会重新读 — 修完正则只对后续模型生效, 前面的已落盘要手动修正 (同 act 修法)
 10d. **Scope 示波器 loss 带训练时间 (2026-08-07 老倪: "loss也要显示上次的结果, 要有时间")**: FlowScopeDialog._load_data 的指标行加时间 — 每模型从 train_curve json 的 `ts` 字段格式化 `MM-DD HH:MM` (**ts 是 "%Y%m%d_%H%M%S" 15 位, 切片 `_ts[4:6]-_ts[6:8] _ts[9:11]:_ts[11:13]` — 索引 8 是 "_" 分隔符, 用 [8:10] 会切成 "_1" 乱码**), ts 缺失/位数不对用文件 mtime。_DISPLAY 映射扩到 7 模型 (vla_touch/awe_zflow/expert_mlp/expert_policy 也要中文显示名)。训练中模型 (曲线 <2 点) 显示 `⏳ 训练中` 提示。老倪要求"显示上次的结果或最新的结果" = 已有曲线立即显示 (别等重新生成), 时间戳让新旧可辨
-10e. **Scope 示波器 7 模型颜色 (2026-08-07 老倪: 示波器,怎么那么多紫色,也分不清颜色,换成不同的颜色)**: FlowScopeDialog._load_data 的颜色分配旧代码 `color = "act" if policy == "act" else ("smolvla" if policy == "smolvla" else "smolvla_lew")` — **vla_touch/awe_zflow/expert_mlp/expert_policy 全部归到 smolvla_lew (紫)**, 7 条曲线一片紫。修 = ①COLORS dict 补 5 色 (vla_touch 绿 #3fb950 / awe_zflow 亮红 #ff6b6b (别用 #f85149 与 base 撞) / expert_mlp 天蓝 #00b4d8 / expert_policy 金 #e3b341 🏆; gt 从绿改粉 #f778ba 避免与 vla 绿撞) ②`_CMAP = {act, smolvla, smolvla_lew, vla_touch, awe_zflow, expert_mlp, expert_policy}` 全映射 + `color = _CMAP.get(policy, "base")`。验证: 正则提取 COLORS dict 内 7 模型 hex **必须 7 色唯一** (awe 用 #f85149 会和 base 重复 — 全文件 hex 去重会误报, 断言范围限定 COLORS dict 内)。**教训: 多模型曲线颜色按 policy 全量映射, 别用 else 兜底归并 — 新增模型必配新色**
+10e. **Scope 示波器 7 模型颜色 (2026-08-07 老倪: 示波器,怎么那么多紫色,也分不清颜色,换成不同的颜色)**: FlowScopeDialog._load_data 的颜色分配旧代码 `color = "act" if policy == "act" else ("smolvla" if policy == "smolvla" else "smolvla_lew")` — **vla_touch/awe_zflow/expert_mlp/expert_policy 全部归到 smolvla_lew (紫)**, 7 条曲线一片紫。修 = ①COLORS dict 补 5 色 (vla_touch 绿 #3fb950 / awe_zflow 亮红 #ff6b6b (别用 #f85149 与 base 撞) / expert_mlp 天蓝 #00b4d8 / expert_policy 金 #e3b341 🏆; gt 从绿改粉 #f778ba 避免与 vla 绿撞) ②`_CMAP = {act, smolvla, smolvla_lew, vla_touch, awe_zflow, expert_mlp, expert_policy}` 全映射 + `color = _CMAP.get(policy, "base")`。验证: 正则提取 COLORS dict 内 7 模型 hex **必须 7 色唯一** (awe 用 #f85149 会和 base 重复 — 全文件 hex 去重会误报, 断言范围限定 COLORS dict 内)。**教训: 多模型曲线颜色按 policy 全量映射, 别用 else 保障归并 — 新增模型必配新色**
 11. **checkpoint 目录名 000050 ≠ 50 步 (2026-08-07)**: train_vla_touch/train_awe_zflow 的 checkpoint 目录**固定叫 000050** (保存逻辑如此), 1000 步完整训练的结果也存 000050 (14:17 保存 = 训练结束时刻) — 不能只看目录名判步数。**判断 checkpoint 有效性 = 目录 mtime 是否与训练结束时刻同批**。⚠️ 15:0x 被中断的 50 步训练目录 (mtime 更新) 会成为 glob "最新" → rollout 加载垃圾 → 视频不动 (动作均值≈0 但帧有环境运动)。**rollout 前验证最新目录 mtime 与曲线 ts 同批; 中断残留 (目录新但曲线残缺) 直接删目录** (用精确 PID kill, 禁 pkill 模式匹配自杀)
 12. **视频打开闪一下再次打开 = _check_newer_ckpt 误判残缺曲线 (2026-08-07 老倪: "视频打开后闪了一下, 再次打开")**: InferenceVideoDialog 的 `_check_newer_ckpt` 用 train_curve ts > 帧 mtime 判"新 checkpoint"→ 触发重新生成 rollout → 闪屏重载。**残缺曲线 (训练中断残留 0-50 点, ts 却是新的) 会被误判** → 每次打开都重生成。修复: `if len(d.get("curve") or []) < 100: continue` (不完整训练不算新 checkpoint)。验证: 时间模拟 (帧 mtime 5 分钟前 + 曲线 ts 可变) — 50 点不触发 / 200 点新 ts 触发 / 200 点旧 ts 不触发
-12b. **视频对比窗口白屏 (2026-08-07 老倪: "打开视频, 是白屏, 啥也没有" — 与坑12闪屏不同 bug)**: `InferenceVideoDialog._tick` 每 100ms `lab.setPixmap(pm.scaled(lab.size(), ...))` — **对话框未显示时 lab.size()=0** → scaled(0,0) 空白 → 白屏。offscreen 验证 frame_dirs/帧可解码/非空 pixmap 全正常 (排除帧/数据问题), 是渲染尺寸问题。修复: 尺寸有效才缩放, 否则显示原图:
+12b. **视频对比窗口白屏 (2026-08-07 老倪: "打开视频, 是白屏, 什么也没有" — 与坑12闪屏不同 bug)**: `InferenceVideoDialog._tick` 每 100ms `lab.setPixmap(pm.scaled(lab.size(), ...))` — **对话框未显示时 lab.size()=0** → scaled(0,0) 空白 → 白屏。offscreen 验证 frame_dirs/帧可解码/非空 pixmap 全正常 (排除帧/数据问题), 是渲染尺寸问题。修复: 尺寸有效才缩放, 否则显示原图:
 ```python
 if lab.size().width() > 0 and lab.size().height() > 0:
     lab.setPixmap(pm.scaled(lab.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
@@ -135,9 +135,9 @@ else:
 # 首选: /mnt/c/Windows/Fonts/simhei.ttf (SimHei 黑体, TrueType 单文件 9.7MB, reportlab 完美支持)
 pdfmetrics.registerFont(TTFont('SimHei', '/mnt/c/Windows/Fonts/simhei.ttf'))
 ```
-**修复 (必须扫描+别名兜底, 候选顺序 SimHei 最前)**:
+**修复 (必须扫描+别名保障, 候选顺序 SimHei 最前)**:
 ```python
-# 1. 候选 = 固定路径列表 (SimHei→msyh→wqy→Noto Sans→Noto Serif 按序, SimHei TrueType 优先) + fc-list :lang=zh file 兜底
+# 1. 候选 = 固定路径列表 (SimHei→msyh→wqy→Noto Sans→Noto Serif 按序, SimHei TrueType 优先) + fc-list :lang=zh file 保障
 # 2. 逐个 TTFont(name=f"CJK{i}", path, subfontIndex=0) 注册 (TTC 需 subfontIndex, 失败再试无参; CFF 字体 try/except 跳过)
 # 3. 别名: NotoSansCJK/NotoSansCJKBold/MicrosoftYaHei 映射到"第一个成功注册的 CJK 字体"
 #    (不是 cands[0]! Sans TTC 加载失败时 cands[0] 无效 — 遍历找 f"CJK{i}" in registered 的路径)
@@ -284,7 +284,7 @@ obs, _, _, _, _ = env.step(a4[:4])          # ① 官方动作直接 step (别�
 | | VLA-Touch | AWE-zFlow |
 |---|---|---|
 | 决策方式 | 触觉反应式 (实时力反馈驱动) | 世界模型预见式 (预测接触演化) |
-| 关键依赖 | 触觉信号必须可用 | 触觉可选 (潜空间状态预测兜底) |
+| 关键依赖 | 触觉信号必须可用 | 触觉可选 (潜空间状态预测保障) |
 | 未来预测 | 无 | GRU 潜空间推演 |
 
 **3 个能体现 AWE 优势的条件化实验**:
@@ -332,9 +332,9 @@ obs, _, _, _, _ = env.step(a4[:4])          # ① 官方动作直接 step (别�
 18. **评估脚本缺渲染环境变量**: 独立 eval 脚本 (非 rollout_video.py) 也要 `os.environ.setdefault("DISPLAY", ":0")` + `MUJOCO_GL=glfw` 在 import metaworld 前, 否则 `mujoco.FatalError: OpenGL platform library has not been loaded`
 
 ## 坑 (补充)
-19. **ACT config 说 3D/4D 但权重是 2D — 训练被旧 cache 污染 (2026-08-06 终极踩坑)**: `config.json` 的 input_features state[3]/action[4], 但 `model.encoder_robot_state_input_proj.weight` 实际 (256,2)、`action_head.weight` (2,256) → 推理报 `mat1 and mat2 shapes cannot be multiplied (1x3 and 2x256)`。**根因: 训练时 `~/.cache/huggingface/datasets` 里有旧 2D schema 缓存, 模型按缓存初始化成 2D**。诊断: `from safetensors.torch import load_file; sd = load_file(ckpt/model.safetensors)` 查 `model.action_head.weight` 和 `model.encoder_robot_state_input_proj.weight` 首维。**修复: `rm -rf ~/.cache/huggingface/datasets ~/.cache/huggingface/hub` 后重训**, 重训中查 checkpoint 权重维度确认 (action_head 应 (4,256), state proj (256,3))。act_peg_v5 首轮就是被这个坑害成 2D 模型, 重训后 4000 步才拿到正确 3D/4D 权重
+19. **ACT config 说 3D/4D 但权重是 2D — 训练被旧 cache 污染 (2026-08-06 终极遇到问题)**: `config.json` 的 input_features state[3]/action[4], 但 `model.encoder_robot_state_input_proj.weight` 实际 (256,2)、`action_head.weight` (2,256) → 推理报 `mat1 and mat2 shapes cannot be multiplied (1x3 and 2x256)`。**根因: 训练时 `~/.cache/huggingface/datasets` 里有旧 2D schema 缓存, 模型按缓存初始化成 2D**。诊断: `from safetensors.torch import load_file; sd = load_file(ckpt/model.safetensors)` 查 `model.action_head.weight` 和 `model.encoder_robot_state_input_proj.weight` 首维。**修复: `rm -rf ~/.cache/huggingface/datasets ~/.cache/huggingface/hub` 后重训**, 重训中查 checkpoint 权重维度确认 (action_head 应 (4,256), state proj (256,3))。act_peg_v5 首轮就是被这个坑害成 2D 模型, 重训后 4000 步才拿到正确 3D/4D 权重
 20. **rollout/eval 的 st_dim 必须以权重为准, 不能信 config**: config 可能被污染 (见坑19)。推理前加防御: `if hasattr(policy, "model") and hasattr(policy.model, "encoder_robot_state_input_proj"): w_dim = policy.model.encoder_robot_state_input_proj.weight.shape[1]; if w_dim != st_dim: st_dim = w_dim` — 否则喂错维度直接崩
-21. **checkpoint 的 preprocessor stats 可能坏 (像素级 action)**: 某 checkpoint 的 `policy_preprocessor_step_3_normalizer_processor.safetensors` 里 action.mean=[228,294] (像素级!), state 只有 2 维 → 反归一化后动作爆炸 (幅度 248/307)。**修复: `_load_preprocessor_stats()` 优先读 `data/<root>/meta/stats.json`** (与训练一致的正确来源), preprocessor 只做兜底。校验: 加载后打印 `pol.stats['a_mean']` 应 ≈ [-0.57,-0.015,-0.13,0.45] 级, 不是 200+ 级
+21. **checkpoint 的 preprocessor stats 可能坏 (像素级 action)**: 某 checkpoint 的 `policy_preprocessor_step_3_normalizer_processor.safetensors` 里 action.mean=[228,294] (像素级!), state 只有 2 维 → 反归一化后动作爆炸 (幅度 248/307)。**修复: `_load_preprocessor_stats()` 优先读 `data/<root>/meta/stats.json`** (与训练一致的正确来源), preprocessor 只做保障。校验: 加载后打印 `pol.stats['a_mean']` 应 ≈ [-0.57,-0.015,-0.13,0.45] 级, 不是 200+ 级
 22. **numpy 数组不能用于 `and` 判断**: `policy.stats.get("a_mean") and a.size` 在 a_mean 是 ndarray 时报 `The truth value of an array with more than one element is ambiguous`。一律写 `is not None`: `policy.stats.get("a_mean") is not None and a.size`
 23. **sed 派生 config 后必须 grep 验证替换成功**: `sed -e 's|act_peg_v4|act_peg_v5|' -e 's|root: data/metaworld_peg_v4|root: data/metaworld_peg_v5|'` 若源文件 root 是 `data/metaworld_peg` (无版本后缀) 则第二个替换静默失败 → config 仍指向旧数据。**派生后必查**: `grep -E 'output_dir|root:|^steps' config_xxx.yaml` 三行全对才训练
 24. **训练锁/并发残留检查**: 训练批次启动前 `ps aux | grep -E 'lerobot_train|train_' | grep -v grep` 无残留才启动; 评估与训练抢 8GB 显存时评估优先 (kill 训练进程)
@@ -443,7 +443,7 @@ DISPLAY=:0 MUJOCO_GL=glfw .venv/bin/python -u tools/eval_distill.py    # → 抓
 - 数据收集: `env._get_obs()` 39D + 专家 `get_action()` 直接 step (不缩放), 300 episodes × 300 步 ≈ 5-8 分钟
 - **插销专用数据 (peg_lerobot 24 eps) 再验 (2026-08-07)**: ACT 用插销数据 4000 步 loss 64→0.585 (大幅收敛) 但 rollout_peg_check 仍 **0/5 没抬起** (最近孔距 0.245m) — 收敛 ≠ 行为对, 24 eps 对长程插拔链仍不足。**插销数据 (npz→lerobot) 训练用 config_act_pegdata.yaml 派生 (root=data/metaworld_peg_lerobot) + save_freq:500 控 ckpt 数 (4000 步 8 个 ×1.4G 可控, 默认会存 25 个爆盘)**; 训练完先改 train_curve_act.json 的 ckpt 指向新目录再检测 (曲线是旧 ft 套环 403 点, 覆盖为插销曲线: 日志 `loss[:=]\s*([\d.eE+-]+)` 解析 + K 展开 + 去重)
 - **MLP 蒸馏路径坑 (2026-08-07)**: distill_expert.py 保存 `outputs/rl_peg/expert_mlp.pt`, 但 `rollout_peg_check.py --policy expert_mlp` 走 rollout_video.load_policy 找曲线 ckpt — 必须先改 train_curve_expert_mlp.json 的 ckpt 指向 `outputs/rl_peg/expert_mlp.pt` (或 load_policy 加 .pt 路径支持), 否则 FileNotFoundError: checkpoint 不存在。评估用 eval_distill.py (直接加载 .pt) 不走此坑
-- **rollout_video.py 的 expert_mlp 支持链 (2026-08-08 实测落地, 三连坑)**: 用 rollout_video/rollout_peg_check 评估蒸馏 MLP 时 load_policy 报 `checkpoint 不存在: outputs/rl_peg/expert_mlp.pt` — ①**load_policy 加 `.pt 文件特判`** (在 `if not os.path.isdir(base_dir)` 兜底前): `if policy == "expert_mlp" and os.path.isfile(base_dir):` → `spec_from_file_location("distill_expert", tools/distill_expert.py)` → `mod.ExpertMLP(obs_dim, act_dim)` → `load_state_dict(data["model"])` (distill 保存的键是 **"model" 不是 "state_dict"**, 格式 {"model": sd, "obs_dim": 39, "act_dim": 4}) ②**ExpertMLP 无 select_action → rollout_video.run_rollout 和 rollout_peg_check 的推理分支都要加 forward 分支** (`elif hasattr(policy, "obs_dim") and not hasattr(policy, "model"): pred = policy(batch["observation.state"])` — 别让它落 awe 的 4 参 forward 分支报错) ③**st_dim 默认 2 坑**: ExpertMLP 无 state_dim 属性 → run_rollout 的 st_dim 推断 `getattr(policy, "state_dim", 2)` = 2 → 喂 2 维 → forward 崩 `mat1 (1x2) and mat2 (39x512)` → 动作恒 0。**加载后必须 `pol.state_dim = pol.obs_dim`** (39)。④`--policy choices` 加 expert_mlp/expert_policy (原只 5 模型)。修完验证: 动作均值 0→1.09 (真插销动作)
+- **rollout_video.py 的 expert_mlp 支持链 (2026-08-08 实测落地, 三连坑)**: 用 rollout_video/rollout_peg_check 评估蒸馏 MLP 时 load_policy 报 `checkpoint 不存在: outputs/rl_peg/expert_mlp.pt` — ①**load_policy 加 `.pt 文件特判`** (在 `if not os.path.isdir(base_dir)` 保障前): `if policy == "expert_mlp" and os.path.isfile(base_dir):` → `spec_from_file_location("distill_expert", tools/distill_expert.py)` → `mod.ExpertMLP(obs_dim, act_dim)` → `load_state_dict(data["model"])` (distill 保存的键是 **"model" 不是 "state_dict"**, 格式 {"model": sd, "obs_dim": 39, "act_dim": 4}) ②**ExpertMLP 无 select_action → rollout_video.run_rollout 和 rollout_peg_check 的推理分支都要加 forward 分支** (`elif hasattr(policy, "obs_dim") and not hasattr(policy, "model"): pred = policy(batch["observation.state"])` — 别让它落 awe 的 4 参 forward 分支报错) ③**st_dim 默认 2 坑**: ExpertMLP 无 state_dim 属性 → run_rollout 的 st_dim 推断 `getattr(policy, "state_dim", 2)` = 2 → 喂 2 维 → forward 崩 `mat1 (1x2) and mat2 (39x512)` → 动作恒 0。**加载后必须 `pol.state_dim = pol.obs_dim`** (39)。④`--policy choices` 加 expert_mlp/expert_policy (原只 5 模型)。修完验证: 动作均值 0→1.09 (真插销动作)
 - **插销数据蒸馏 MLP 首次插入成功 (2026-08-08 实测, 老倪"要能插入"达成)**: ACT 插销 4000 步 (loss 64→0.585 收敛) 仍 0/5 没抬起 (最近孔距 0.245m) — **MLP 蒸馏 peg_lerobot 数据 (distill_expert.py 300 eps 专家采样) 一次成功 2/5 插入 (40%, 最小孔距 0.011m), 5/5 全部抬起**。结论强化: 插拔学不会不是架构是输入信息 (39D 完整 obs) — MLP 蒸馏 (39D 条件反射) > ACT 长训 (7 步 chunk 回归平均化)。**老倪要"能插入"时先跑 MLP 蒸馏 (~5 分钟: 300 eps 采样 + 15 epochs), 别先长训 ACT**
 - **录屏交付 (2026-08-07 老倪: "先给飞书发个消息, 把录屏发过来, 我看看")**: WSLg 录控制台 = `ffmpeg -y -f x11grab -video_size 1400x900 -i :0 -t 15 -r 10 -c:v libx264 -pix_fmt yuv420p /tmp/console_rec.mp4` (DISPLAY=:0); 发飞书走 file_type=stream 上传 + msg_type=file (同 20260806-feishu-delivery.md); 静止画面会压缩到 ~10KB (正常, 画面动起来才大)
 - 评估环境必配: `camera_name="corner2"` + `_freeze_rand_vec=False` (同专家评估)
@@ -491,11 +491,11 @@ state = np.asarray(env._get_obs(), dtype=np.float32).ravel()  # 39D 完整观测
 - **node_train 在 CICDWorker 后台线程跑** (`_run_node_stage` → `CICDWorker(fn).start()`) — expert_mlp 的 subprocess.run(distill) 阻塞的是 worker 不卡 UI, 无需异步化
 
 ## Simulink 画布布局铁律 (2026-08-07 实测: Interpolant/交叉注意力被甩到 x=7920)
-- **layout 网格必须覆盖 node_specs 全部节点**: specs 里有但 layout 无位置的节点走兜底 `(base_x + i*col_w, base_y)` — 按 specs 索引×列距, 可以甩到 x=6000-8000 (Interpolant x=6620, 交叉注意力 x=7920, 全在显示区外)。**兜底节点全挤在 y=80 顶行**, 症状 = "节点在显示区右侧好远"
-- 列距 `base_x + c * 260` → **200** (10 列网格总宽 ~1920); 兜底/单行横排三处 260 同步改
+- **layout 网格必须覆盖 node_specs 全部节点**: specs 里有但 layout 无位置的节点走保障 `(base_x + i*col_w, base_y)` — 按 specs 索引×列距, 可以甩到 x=6000-8000 (Interpolant x=6620, 交叉注意力 x=7920, 全在显示区外)。**保障节点全挤在 y=80 顶行**, 症状 = "节点在显示区右侧好远"
+- 列距 `base_x + c * 260` → **200** (10 列网格总宽 ~1920); 保障/单行横排三处 260 同步改
 - **背景行 row_bg 对齐三件套** (背景跟节点错位事故: "YOLO 占了 ACT 的背景"): ① `_draw_model_rows` 的 row_names 必须与 layout 行一一对应且从首行开始排 (加感知行后 5 模型背景行整体错位一行) ② col_w/n_cols 默认参数必须与 layout 列距一致 (260→200 / n_cols 8→10) ③ palette 覆盖全部 row_names
-- **验证 (ad-hoc 脚本模式)**: 正则/ast 提取 specs+layout → 重放 `pos.setdefault(nm).append((base_x+c*col_w, ...))` + 首位置分配 → 断言零兜底 + ActionHead/训练列对齐 + 背景行 y0 与节点行 y 对齐 (bg_y0 = base_y + r*row_h - 20)
-- 改 layout/背景后重启 GUI 生效 — 重启安全性见 ZMAX_AUTO_RUN 节 (pkill 精确模式, 非一刀切)
+- **验证 (ad-hoc 脚本模式)**: 正则/ast 提取 specs+layout → 重放 `pos.setdefault(nm).append((base_x+c*col_w, ...))` + 首位置分配 → 断言零保障 + ActionHead/训练列对齐 + 背景行 y0 与节点行 y 对齐 (bg_y0 = base_y + r*row_h - 20)
+- 改 layout/背景后重启 GUI 生效 — 重启安全性见 ZMAX_AUTO_RUN 节 (pkill 精确模式, 非统一处理)
 - **数据源节点双击 = 属性信息框 (2026-08-07 老倪: "metaworld 数据源, 你要给出实际的数据路径, 可以双击看到具体的属性信息")**: 数据源节点 (params.source) 双击原只切激活 → 改 `_show_source_info(node)`: 非模态 QDialog (WindowStaysOnTopHint, 520px) 逐个探测候选目录 (`data/metaworld_act|mt50|peg` / `orin_live|real_v1|archive|closed_loop`) 显示 📂 实际路径 (绝对路径) + `_probe_dataset(dp)` 属性 (info.json 的 total_frames/total_episodes/features dtype/fps + episodes 目录数 + mp4/npz 计数 + 大小 MB) + 未激活时"🔀 切换为激活"按钮 (调 _toggle_source)。探测用绝对路径 (os.path.join(root, p)), 相对路径在 offscreen 验证会误报 0 属性
 
 ### 🗂 12 列布局: 训练 → 仿真推理 → 仿真视频 (2026-08-07 老倪: "仿真推理放在训练右侧, 视频对比再放右侧, 每个视频对应相应模型")
@@ -548,7 +548,7 @@ box.addLayout(stack)   # meta 标签保留在框外上方 (老倪没提它)
 - 训练完自动 auto_finalize: rollout 视频 + PDF + 飞书 (仅 ZMAX_AUTO_RUN=1)
 - GUI 实际用**系统 python3** (PyQt5 在 ~/.local), .venv 无 PyQt5 — 用 `/proc/<pid>/exe` 确认实际解释器, 别猜
 
-### ⚠️ 重启 GUI 会杀哪些训练 (2026-08-07 精确 pkill 模式 — 别一刀切"禁止重启")
+### ⚠️ 重启 GUI 会杀哪些训练 (2026-08-07 精确 pkill 模式 — 别统一处理"禁止重启")
 simulink_module.py closeEvent 的 pkill 只匹配两个模式:
 ```python
 pkill -f "lerobot.scripts.lerobot_train"   # ACT/SmolVLA/LEW (lerobot_train -m 启动的)
@@ -618,7 +618,7 @@ def _log(self, msg):
    - ⑧视频证据 5%: 有无 rollout; 结果可肉眼核验
    - 尾注: 权重合计 100%; **设计原则 = 能力类(收敛/触觉)最高 → 工程类(部署/吞吐/显存)次之 → 成本/证据类(数据/视频)最低**
    - 教训: 老倪报"这些要解释"时 = 光有公式没有设计理由, 公式(8.1)+推导(8.1后段)+体系说明(8.0)三层缺一不可
-7d. **8.1 还要加"代入示例" (老倪 2026-08-07: "VLA-Touch 5.0 4.5 9.0 9.0 5.0 6.4 5.5 8.0 6.64 这几个数怎么计算的")**: 公式列表+明细表还不够, 老倪要看到**一个模型逐维代入的完整过程**。加一行示例 (VLA-Touch): `①收敛 5.0=min(10,3+下降率%/12)[无曲线→5.0中性] · ②吞吐 6.8=min(10,4+1.8×log10(step_s+1))[step_s=34] · ③显存 6.4=max(3,10−1.2×3.0GB) · ④世界模型 4.5[无] · ⑤触觉 9.0[Marker桥] · ⑥部署 9.0[✅] · ⑦数据 5.5[高] · ⑧视频 8.0[有rollout] → 综合 6.64=Σ(得分×权重)`。**数值必须动态从 score_map 读** (f-string), 别写死 — 曲线补齐后收敛分变了示例会过时
+7d. **8.1 还要加"代入示例" (老倪 2026-08-07: "VLA-Touch 5.0 4.5 9.0 9.0 5.0 6.4 5.5 8.0 6.64 这几个数怎么计算的")**: 公式列表+明细表还不够, 老倪要看到**一个模型逐维代入的完整过程**。加一行示例 (VLA-Touch): `①收敛 5.0=min(10,3+下降率%/12)[无曲线→5.0中性] · ②吞吐 6.8=min(10,4+1.8×log10(step_s+1))[step_s=34] · ③显存 6.4=max(3,10−1.2×3.0GB) · ④世界模型 4.5[无] · ⑤触觉 9.0[Marker桥] · ⑥部署 9.0[✅] · ⑦数据 5.5[高] · ⑧视频 8.0[有rollout] → 综合 6.64=Σ(得分×权重)`。**数值必须动态从 score_map 读** (f-string), 别预先固定 — 曲线补齐后收敛分变了示例会过时
 7c. **8.1 逐模型完整推导 (2026-08-07 老倪: "每个得分都要有实际的公式,推导过程要详细,不能省略,不能举例,就要实际的计算过程,重新给出PDF")**: 单模型代入示例 (7b) 不够 — 老倪要求**全部 7 模型 × 8 维**每项都展示 公式→代入→计算→得分 (可复算), 不能只举 VLA-Touch 一个例子。实现模式 (score_model 返回 dict 加 `deriv` 键):
    - **表格权威分数注入**: score_model 开头 `_TAB` dict 存 7 模型 8 维分数 (老倪评审认可的表格值), 按 `_TABKEYS` 列序注入 s[]; 公式分支**只生成 deriv 推导文本, 不覆盖 s[]** — 否则公式算出的值与表格冲突 (如 ACT convergence 公式算 5.0 vs 表格 3.1, 因 drop≤0 走中性分支但表格用了实测 drop≈1%)
    - **列名映射坑**: 老倪表格列序实际 = [conv, wm, tactile, edge, **throughput**, **gpu**, data, video] — 索引4 是吞吐分 (min(10,4+1.8·log10) 算出的值), 索引5 是显存分 (max(3,10−1.2·mem) 算出的值)! 用独立的 `_TABKEYS` 列表映射表格列到 s key, 别用 _KEYS 顺序直接 zip (会穿反)
@@ -626,14 +626,14 @@ def _log(self, msg):
    - **% 格式转义坑**: 推导字符串里写 `"drop%/12"` 在 %-format 字符串中崩 `ValueError: unsupported format character '/'` — 措辞改 `drop_pct` 或 `%%` 转义
    - **⚠️ numpy 数组不能 `and` 判断** (same as 坑22): deriv 分支里 `s["throughput"] > 5.0 and s["throughput"] < 10` 若 s 值是数组会 ambiguous — 确保 s 值是 float (表格注入时 `float(_TAB[...])`)
    - **每模型末尾加「📌 为什么这个评价」一行 (2026-08-08 老倪: \"VLA-Touch 5.0 4.5 9.0 ... 6.79 AWE 10.0 8.5 ... 8.36 每个都得解释,为什么这个评价\")**: 公式推导 (8.1 段每项) 只回答\"怎么算的\", 老倪还要\"为什么是这个分\" — score_model 的 deriv 加 `_why` 字段 (per-policy 一句话综合理由: 各维度高分/低分的原因 + 选型结论), 8.2 推导段每模型末尾渲染 `📌 为什么这个评价: ...`。示例: AWE = \"收敛最佳(降94%→10.0) + zFlow 世界模型(8.5) + 视触觉(9.0) + 边缘友好 — 全维度无短板 → 选型首选 8.36\"; ACT = \"回归式基准: 收敛仅降1%(行为克隆小模型慢) · 无世界模型/触觉 · 但边缘友好显存小\"; expert_policy = \"官方规则基准(真值锚点): 不训练(收敛/吞吐中性5.0) · 无触觉/世界模型 · 部署零开销 — 85% 成功率是评分外真值, 不参与排名\"。**教训: 公式(8.1) + 体系说明(8.0) + 逐模型评价理由(8.2 WHY) 三层齐了老倪才收**
-8. **7.1 能力评分依据段** (老倪 2026-08-07: "7/10 5/10 6/10 这些啥意思, 要有说明"): 能力矩阵分数必须逐能力给打分规则 (力控插拔=成功率+力控闭环, 专家规则真值 10 是目标, VLA-Touch/AWE 触觉原生 9, ACT 产线已量产 7, MLP 蒸馏 55% 6, SmolVLA/LEW 无触觉 5/6; 触觉/世界模型/多模态/边缘/长时序 同理) — 分数是"主张", 依据段是"论据", 缺依据=被问
-9. **封面训练步数动态化** (老倪 2026-08-07: "同50步训练基线 你是50步训练么?" → 改 995 又抓 "你不是说1000步么"): 封面文案照抄旧模板会写死过时数字 — 从 curves 动态读 `max(c["curve"][-1][0] for 非 expert_mlp 模型)`, 排除 expert_mlp (曲线是 15 epochs 不是步数)。**⚠️ 曲线末点 ≠ 配置总步数**: log_freq=5 时 1000 步训练的曲线最后记录点是 **995**, 直接显示末点又被老倪抓 (995≠1000)。**必须 `math.ceil(max_step / 50) * 50` 向上取整到 50 倍数** (995→1000, 1995→2000)。第 1 章实验目的文案同样别写死: "五个模型...50步" → 动态 "七个模型...{_max_step}步"
+8. **7.1 能力评分依据段** (老倪 2026-08-07: "7/10 5/10 6/10 这些什么意思, 要有说明"): 能力矩阵分数必须逐能力给打分规则 (力控插拔=成功率+力控闭环, 专家规则真值 10 是目标, VLA-Touch/AWE 触觉原生 9, ACT 产线已量产 7, MLP 蒸馏 55% 6, SmolVLA/LEW 无触觉 5/6; 触觉/世界模型/多模态/边缘/长时序 同理) — 分数是"主张", 依据段是"论据", 缺依据=被问
+9. **封面训练步数动态化** (老倪 2026-08-07: "同50步训练基线 你是50步训练么?" → 改 995 又抓 "你不是说1000步么"): 封面文案照抄旧模板会预先固定过时数字 — 从 curves 动态读 `max(c["curve"][-1][0] for 非 expert_mlp 模型)`, 排除 expert_mlp (曲线是 15 epochs 不是步数)。**⚠️ 曲线末点 ≠ 配置总步数**: log_freq=5 时 1000 步训练的曲线最后记录点是 **995**, 直接显示末点又被老倪抓 (995≠1000)。**必须 `math.ceil(max_step / 50) * 50` 向上取整到 50 倍数** (995→1000, 1995→2000)。第 1 章实验目的文案同样别预先固定: "五个模型...50步" → 动态 "七个模型...{_max_step}步"
 10. **6.1 架构图 = 全部模型 + 字体够大** (老倪 2026-08-07: "应该是7个模型对比啊, 而且图片文字很小不协调"): gen_report_figs.py 的 MODELS 列表要同步加新模型 (只改 generate_report.MODELS 图不会变!); 7 卡片 figsize 11×17.5 + 字号 17/12.5/9.5 (旧 13/9.5/6.6 太小); 图比例变了 PDF 嵌入尺寸要同步 (150×238mm 保持比例, 175×200 会变形); **Python 字符串里换行写 `\n` 单反斜杠, patch 时双反斜杠 `\\n` 会显示字面 \n**
 11. **验证 (ad-hoc)**: .venv python 跑 build_pdf (纯 CPU, 不抢 GPU) + fitz 提取文本断言 (关键词含"评分公式"/每个模型优劣势特征词/无 \ufffd 乱码) — 系统无 pdftotext, 用 `fitz` (pymupdf) 提取
 - 模型实测 total (2026-08-07 表格权威值, _TAB 硬编码): ACT 5.60 / SmolVLA 5.38 / LEW 5.32 / VLA-Touch 6.79 / AWE 8.36 / MLP 6.93 / 专家 6.14
 - **⚠️ world_model 修正后 AWE 8.36 / LEW 5.32 (2026-08-07 末轮)**: 世界模型分 4.5→8.5 后 (AWE zFlow / LEW LeWorldModel), AWE 综合 7.76→8.36 (选型最高), LEW 4.72→5.32 — 报告/画布/表格三处 _TAB 都要同步, 只改一处分数不一致被老倪抓
 - **评估实测 (2026-08-07, eval_latest.py)**: MLP 蒸馏 (clamp 后) 抓起 6/10 插入 3/10 — 学习模型里唯一能插拔; ACT-pegdata 4000 步仍 0/10 (距孔 0.35)。ACT 系列学不会插拔是架构/信息限制的持续证据
-- **stats fallback 链**: 数据目录被磁盘清理删掉后 `_load_stats()` 候选 (v2/v3/v4) 全 None → 评估崩 `'NoneType' object is not subscriptable`。候选加 v5/v6/v7 + 兜底 metaworld_peg_lerobot/metaworld_act (旧但结构对)
+- **stats fallback 链**: 数据目录被磁盘清理删掉后 `_load_stats()` 候选 (v2/v3/v4) 全 None → 评估崩 `'NoneType' object is not subscriptable`。候选加 v5/v6/v7 + 保障 metaworld_peg_lerobot/metaworld_act (旧但结构对)
 - **无曲线分类标注 `_conv_note(p)`** (老倪 2026-08-07: "这几个无曲线,什么意思?没训练完成么?"): 无曲线 ≠ 统一写"无曲线数据", 分三种情况: ①有 step_s 无 curve → **"已训练·曲线未记录"** (VLA-Touch/AWE 独立脚本 loss 只 print 没 append 进 curve 的遗留, 是数据问题不是没训练) ②expert_mlp 无文件 → **"待补训"** (链中断没跑到) ③expert_policy → **"规则基准·无训练"** (正常, 非学习模型)。_conv_note 定义在 build_pdf 开头供第 1 章 (状态列 `⚠️ {note}`) 和第 9 章 (收敛列) 共用 — 定义一次, 别在第 9 章内嵌重复定义 (Pyright redeclaration)
 - **⚠️ 曲线空 ≠ 没训练, 补齐路径 (2026-08-07 老倪: "我需要真实完整的报告, 曲线数据补充完整")**: VLA-Touch/AWE 的 train_curve_*.json 可能 `curve=[]` 但 `step_s` 有值 (训练真跑过)。**根因修正 (2026-08-07 14:18 实测)**: GUI `_line_hook` 对 GUI 启动的训练是**正常解析落盘的** (awe_zflow 200 点 = GUI 实时落盘, 证明 line_hook 无 step 推断 bug); vla_touch 空曲线 = **训练是外部命令行启动的** (飞书端 `fill_missing_curves.sh` 直接跑 `train_vla_touch.py ... 2>&1 | tail -5` — 输出只 tail 5 行, 无 line_hook → 无曲线落盘; 文件里的 step_s 是 GUI 上一轮跑的残留)。**判定曲线来源**: 训练进程父进程是 GUI (ppid=studio.py) 才有 line_hook 落盘; 外部 nohup/脚本启动的独立训练只有 checkpoint 无曲线
 ```bash
@@ -643,7 +643,7 @@ def _log(self, msg):
 # expert_policy 落 {"curve": [], "success": "85% (规则真值基准)"} 标注即可 (规则基准无训练曲线)
 ```
 完整脚本模式 = `tools/fill_curves.sh` (等训练清空 → 逐个重跑落盘 → build_pdf → 飞书, 全程 CPU+轻 GPU)。**跑完报告里 conv 从"已训练·曲线未记录"变真实收敛值**, 老倪验收"真实完整"。注意: 重跑是真实新训练, checkpoint 会被新轮覆盖, 曲线才是报告要的
-- **fill_curves v1 坑 → v2 串行链 (2026-08-07 实测)**: v1 一启动就 `pgrep` 等"训练清空", 但飞书端/外部训练 (如 `train_awe_zflow.py --data-root data/metaworld_peg_v7`) 可能还要 15-25 分钟 → 脚本傻等且之后还会**重复训练** (外部刚跑过的模型又跑一遍) → kill v1 换 v2。v2 要点: ①等所有训练进程清空 (最长 40 分钟循环) ②重跑步数**对齐报告基线** (基线 1000 步就用 `--steps 1000`, 别用脚本默认 10/2000 — 曲线长度/收敛口径与 act/smolvla 一致才可横比) ③**数据根必须与主链一致** (`--data-root data/metaworld_act` vs 外部用的 `metaworld_peg_v7` — 不同数据根的训练曲线横比无效, 补曲线用主链同款数据) ④解析落盘段用 heredoc python 内嵌 (`re.finditer` action_loss / epoch loss), 每段打印 `✅ X 曲线 N 点` 供日志核对 ⑤最后一步 build_pdf + 飞书 (报告自动含所有已落盘的曲线, 曲线状态打印 `{p: len(curve)}` 验收)
+- **fill_curves v1 坑 → v2 串行链 (2026-08-07 实测)**: v1 一启动就 `pgrep` 等"训练清空", 但飞书端/外部训练 (如 `train_awe_zflow.py --data-root data/metaworld_peg_v7`) 可能还要 15-25 分钟 → 脚本傻等且之后还会**重复训练** (外部刚跑过的模型又执行一遍) → kill v1 换 v2。v2 要点: ①等所有训练进程清空 (最长 40 分钟循环) ②重跑步数**对齐报告基线** (基线 1000 步就用 `--steps 1000`, 别用脚本默认 10/2000 — 曲线长度/收敛口径与 act/smolvla 一致才可横比) ③**数据根必须与主链一致** (`--data-root data/metaworld_act` vs 外部用的 `metaworld_peg_v7` — 不同数据根的训练曲线横比无效, 补曲线用主链同款数据) ④解析落盘段用 heredoc python 内嵌 (`re.finditer` action_loss / epoch loss), 每段打印 `✅ X 曲线 N 点` 供日志核对 ⑤最后一步 build_pdf + 飞书 (报告自动含所有已落盘的曲线, 曲线状态打印 `{p: len(curve)}` 验收)
 - **第 2 章流程文案顺序** (老倪 2026-08-07: "应该是先标准数据集训练, sim to real, 然后再采集上传等流程"): 全局流程不是画布节点顺序 (采集→视觉→...), 正确叙事 = **标准数据集训练 (metaworld 仿真) → Sim-to-Real 迁移 (影子模式验证) → 真机采集 (Orin) → 上传中转 (ECS) → 真机微调 → 部署推理 → 对比评估 → 报告** — 训练/迁移在先, 采集上传是 Sim-to-Real 之后的事
 - **报告文字 vs 图片中文乱码是两条独立路径** (见 PDF 中文乱码节 + PDF 图片中文乱码验证节)
 
@@ -678,7 +678,7 @@ def _log(self, msg):
 ### ⚠️ 编辑大 GUI 文件必须用 patch, 禁止 read_file(limit)+write_file 全量回写 (2026-08-06 实测把 simulink_module.py 截断)
 - **事故**: 用 `read_file(path, limit=2000)` 读 1771+ 行的大文件 → 内容被截断 → `write_file` 全量写回 → **文件尾部丢失** (`IndentationError: expected an indented block` 在 1773 行, 文件只剩到 if 开头)。git checkout 恢复 (提交过才能救, 未提交=永久丢失)
 - **铁律**: 大文件 (GUI 模块 1500+ 行) 的插入/修改一律 `patch` (old_string/new_string) 或 `execute_code` 里**先 read_file 全量(不传 limit)再替换再写**; 改完必须 `ast.parse` 验证 + `wc -l` 对比行数 (应比改前多插入行数, 不能少)。git 提交后再编辑, 出事能 checkout
-- **⚠️ execute_code 字符串索引删除同样能截断文件 (2026-08-07 studio.py 事故)**: 用 `src.index(marker)`/切片删除 DATASETS 大段时, 索引错位 (如 `seg[i+len(seg):]` 边界算错) 把 studio.py 从 7932 行截到 1266 行 — 一半类/方法蒸发, ast.parse 还通过 (截断在合法边界)。恢复 = `git checkout tools/gui/studio.py` (HEAD 15:52 含当天大部分改动) + **逐个 patch 重应用 HEAD 之后的功能** (8 处: 本地数据集行/当前数据集卡片/DataSpaceModule/非模态查看器/_repo_root 等) — 每处重应用后跑一次验证。**删大段用 patch 的整块 old_string→空串, 别用 python 字符串索引**; 万一出事先 `wc -l` 对比 + git checkout 兜底, 重应用清单靠会话内 patch 记录
+- **⚠️ execute_code 字符串索引删除同样能截断文件 (2026-08-07 studio.py 事故)**: 用 `src.index(marker)`/切片删除 DATASETS 大段时, 索引错位 (如 `seg[i+len(seg):]` 边界算错) 把 studio.py 从 7932 行截到 1266 行 — 一半类/方法蒸发, ast.parse 还通过 (截断在合法边界)。恢复 = `git checkout tools/gui/studio.py` (HEAD 15:52 含当天大部分改动) + **逐个 patch 重应用 HEAD 之后的功能** (8 处: 本地数据集行/当前数据集卡片/DataSpaceModule/非模态查看器/_repo_root 等) — 每处重应用后跑一次验证。**删大段用 patch 的整块 old_string→空串, 别用 python 字符串索引**; 万一出事先 `wc -l` 对比 + git checkout 保障, 重应用清单靠会话内 patch 记录
 - **⚠️ patch 工具自身 escape-drift 坑 (2026-08-09 实测)**: patch 修改含 QSS f-string 的行 (如 `setStyleSheet(f"...border:1px solid {C_BORDER}...")`) 时, old_string/new_string 里的 `\"` 会被工具误判转义成 `\\\"` → 报 "Escape-drift detected" 拒绝, 或静默把源码反斜杠搞成 3-4 层 (`\\\\\\\"`) 语法坏。**症状**: patch 报 Escape-drift / 或 patch 后 ast.parse 崩在 QSS 行。**正解: 这类改动一律 execute_code 里 `src.replace(old_block, new_block)` 字节级替换** (old_block 用 read_file 先读原样, 不手动转义), 写完立即 `ast.parse` + 数反斜杠 (awk 行源码须恰好 2 反斜杠 `\\$3`, docker --format 单引号内 1 反斜杠 `\"`)。**验证渲染结果必须 `eval(f-string)` 看真实输出, 终端 repr 会双重转义误导**
 
 ## 磁盘清理模式 (2026-08-07 实测: outputs/train 139G → 39.3G, 释放 99.9G)
@@ -756,7 +756,7 @@ PDF 生成后直接 `MEDIA:/path/xxx.pdf` 发飞书 (老倪手机查看), 附核
 - **纯文本消息 (2026-08-08 实测, 进度/状态同步用)**: `POST /open-apis/im/v1/messages?receive_id_type=chat_id` body `{"receive_id": cid, "msg_type": "text", "content": json.dumps({"text": msg})}` — content 必须是**内层 json.dumps 后的字符串** (不是 dict!)。token 用 tenant_access_token; 群查找 `GET /open-apis/im/v1/chats?page_size=20` 按 name=="dataworld" 过滤。**dataworld 群 chat_id = `oc_c0b4048546145c5c581ddd1a9e8f565d`** (完整值, 勿用截断版)。老倪"跟飞书端同步进度"时: 发文本状态 (训练完成/插入结果/新目录疑问) 即可, 附结果表用手机友好格式 (见交付偏好 11)
 - 群 chat_id: `GET /open-apis/im/v1/chats` 找 dataworld 群; 凭据从 `~/.hermes/.env` 读 FEISHU_APP_ID/SECRET
 - 🐛 **ffmpeg xstack 5 视频 3+2 拼接: layout 必须纯数字** `0_0|320_0|640_0|0_240|320_240`; `w_3_h_0` 组合引用报 `Failed to configure output pad` → 0 字节输出
-- 🐛 **rollout "checkpoint 不存在"但目录在**: on_train ts_dir 与 train_vla_touch/train_awe_zflow 内部 ts 差几秒 → load_policy 加 glob 兜底找最新同前缀目录; **前缀必须 `os.path.basename(os.path.dirname(ckpt_base))`** (basename 直接取到的是 "checkpoints"!)
+- 🐛 **rollout "checkpoint 不存在"但目录在**: on_train ts_dir 与 train_vla_touch/train_awe_zflow 内部 ts 差几秒 → load_policy 加 glob 保障找最新同前缀目录; **前缀必须 `os.path.basename(os.path.dirname(ckpt_base))`** (basename 直接取到的是 "checkpoints"!)
 
 ## 运维关联 (交付物相关的链路故障)
 - **推理执行端澄清 (2026-08-07 老倪: "推理,是在orin上进行的么?在MAC上进行即可?" → 老倪裁决 "那就在orin上进行")**: node_infer (⑥ 推理节点) 只是**状态查询** — GUI 发 `GET https://datadrive.world/api/relay/orin/status` (ECS relay 中转) 查 Orin 的 online/infer_count/last_infer_ms/model, 链路 4060→ECS→Mac(8769 ROS2 桥)→Orin。**推理执行端 = Orin** (Z700 产线部署推理); Mac (小芳 M1) 只是 ROS2 中转站不推理; 4060 的 rollout 是仿真评估 (见视频来源澄清)。老倪已确认推理就在 Orin 上做, 链路保持现状不改

@@ -20,7 +20,7 @@
 - 反模式: `os.path.join(os.path.dirname(...)×4, "yolov8s.pt")` 这类按 `__file__` 上溯拼家目录路径 —— 迁移后必断, 且删链即坏。
   正解: 写一个解析函数, 顺序 = 环境变量 → 数据盘默认约定 → 仓库根 → 旧路径(遗留兼容), 所有调用点共用 (见 `tools/gui/yolo_perception.py:default_weights_path()`)。
 - 改完默认路径后**要真加载验证**(`YoloPerception()` 不给参数 → 打印实际权重路径 + 类别数), 并**重启吃旧码的常驻进程**(否则内存里那份还指向已删路径)。
-- 一并核查: 该权重是不是**在役**那个? 例: 在役检测权重是 `models/yolo_peg_live.pt`(软链→fork `runs/detect/.../best.pt`), `yolov8s.pt` 只是没指定 weights 时的 COCO 兜底 —— 别把兜底当成在役。
+- 一并核查: 该权重是不是**在役**那个? 例: 在役检测权重是 `models/yolo_peg_live.pt`(软链→fork `runs/detect/.../best.pt`), `yolov8s.pt` 只是没指定 weights 时的 COCO 保障 —— 别把保障当成在役。
 
 ## 工具本身也会静默失效
 `tools/bump_version.py` 按单 `v` 拼字面量, 而品牌早已是双 `v`(`vv5.16.34`) ⇒ 5 处版本号 **0 命中且不报错**(改版本等于没改)。

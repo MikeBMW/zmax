@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""model_runtime_map.py — 「每个模型在哪跑 / 跑的哪个权重 / 用什么转的 / 推理还是训练」的唯一真源。
+"""model_runtime_map.py — 「每个模型在哪跑 / 跑的哪个权重 / 用什么转的 / 推理还是训练」的唯一依据。
 
 老倪 2026-10-21: 「在模型引擎, 增加 每个模型在哪里运行, 运行的是哪个权重, 对应的转换工具,
 是正在推理, 还是在训练, 你来设计 UI」。
@@ -15,7 +15,7 @@
 用法:
     ./gui-venv311/bin/python tools/model_runtime_map.py            # 打印人话表
     ./gui-venv311/bin/python tools/model_runtime_map.py --json     # 给界面
-    ./gui-venv311/bin/python tools/model_runtime_map.py --write    # 落盘真源
+    ./gui-venv311/bin/python tools/model_runtime_map.py --write    # 落盘唯一依据
 退出码: 0=都拿得到 / 1=有采集失败项 (绝不把"读不到"写成"没在跑")
 """
 from __future__ import annotations
@@ -148,7 +148,7 @@ def build(inv=None):
         items.append(it)
         return it
 
-    # ① Intel 端侧 IR 三件 (真源 = edge /models 的 sha16 + pipeline 的 device 归属)
+    # ① Intel 端侧 IR 三件 (唯一依据 = edge /models 的 sha16 + pipeline 的 device 归属)
     ir_by_name = {m.get("name"): m for m in (emodels.get("models") or []) if isinstance(m, dict)}
     dev_of = {}
     for dev, d in pdevs.items():

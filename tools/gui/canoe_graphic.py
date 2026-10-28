@@ -74,7 +74,7 @@ MAX_CURVES = 64       # 同时画在波形页上的曲线数上限
 HOST_POLL_HZ = 20     # 本机文件源轮询频率 (2026-10-18: 50 → 20。
 #   实测 50Hz 时这一个线程烧 ~0.25 核, 而人眼在曲线上分辨不出 50Hz 与 20Hz 的差别;
 #   数据真值不丢: 落盘文件仍按生产者节拍写, 只是进曲线库的采样密度降到 20Hz。)
-# ▶ 3D 场景播放进度真源 (与 ss_dreamview.publish_trace_live 同一份: 帧/总帧/场景时刻 时间_s/时刻 ts)
+# ▶ 3D 场景播放进度唯一依据 (与 ss_dreamview.publish_trace_live 同一份: 帧/总帧/场景时刻 时间_s/时刻 ts)
 PLAYBACK_FILE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "zmax_data", "ss_live", "trace_live.json")
@@ -88,7 +88,7 @@ SAMPLER_REMOTE = "/tmp/zmax_topic_sampler.py"
 ORIN = "tashan@192.168.23.66"
 LOG_DIR = os.path.join(ROOT, "zmax_data", "graphic_logs")
 CATALOG_CACHE = os.path.join(LOG_DIR, "topic_catalog.json")   # 话题目录缓存 ⇒ 一进页面就有名字
-# 🌐 全局数据空间 (DDS) — 与「数据空间」页同一份真源: busdb=DBC, live=话题质量, trace=总线帧
+# 🌐 全局数据空间 (DDS) — 与「数据空间」页同一份唯一依据: busdb=DBC, live=话题质量, trace=总线帧
 DS_DIR = os.path.join(ROOT, "zmax_data", "dataspace")
 DS_TRACE = os.path.join(DS_DIR, "trace.jsonl")
 DS_LIVE = os.path.join(DS_DIR, "live.json")
@@ -97,7 +97,7 @@ DS_BUSDB = os.path.join(DS_DIR, "busdb.json")
 # 本机真值流默认源 (存在才启)
 # 🥽 2026-10-12 老倪: 「每个场景对应不同的信号分析…信号分析主窗口的信号是有目标场景的, 你得标记出来;
 #   信号分析也用 绿色 蓝色 紫色 代表对应不同的场景; 要有排序功能, 按 绿/蓝/紫/白 排列, 白=所有颜色的信号都显示,
-#   没有分类的信号都是白色」 ⇒ 标签真源 = tools/sig_scene_tags.py(颜色/任务映射又来自 tools/ss_scene_switch.py, 不重写)。
+#   没有分类的信号都是白色」 ⇒ 标签唯一依据 = tools/sig_scene_tags.py(颜色/任务映射又来自 tools/ss_scene_switch.py, 不重写)。
 SCENE_SORT_WHITE = "#ffffff"
 SCENE_SORT_ITEMS = (("⚪ 全部(白)", "", SCENE_SORT_WHITE), ("🟢 插拔", "插拔场景", "#2e8b57"),
                     ("🔵 摆盘", "摆盘场景", "#1f6feb"), ("🟣 AR", "AR场景", "#8957e5"))
@@ -142,7 +142,7 @@ CORE_GROUP = "🎯 主要信号 · 末端位姿 + 真机力"
 
 
 def _scene_tags_mod():
-    """加载 信号→场景 标签真源; 任何异常都返回 None(页面照常可用, 只是不标色)。"""
+    """加载 信号→场景 标签唯一依据; 任何异常都返回 None(页面照常可用, 只是不标色)。"""
     try:
         import importlib.util
         p = os.path.join(ROOT, "tools", "sig_scene_tags.py")
@@ -163,7 +163,7 @@ HOST_SOURCES = [
     ("safety",  "zmax_data/vl_safety_fast.json"),
     ("yolo",    "zmax_data/ss_bypass/yolo_detections.json"),
     ("space",   "zmax_data/dataspace/live.json"),
-    # 状态空间工程实况 (引擎轨迹快照 = 3D 场景面板屏幕上的同一批数字; 单一真源)
+    # 状态空间工程实况 (引擎轨迹快照 = 3D 场景面板屏幕上的同一批数字; 单一唯一依据)
     ("sstrace", "zmax_data/ss_live/trace_live.json"),
     # 🔴 2026-10-15 老倪「信号分析, 主窗口, 没有波形信号啊」: trace_live.json 的唯一发布者是 3D 面板,
     #   3D 不播放 ⇒ 每键只有 1 个样本 ⇒ 画不出线。这一路是**常驻引擎回路**的真值帧流(10Hz, 由
@@ -171,7 +171,7 @@ HOST_SOURCES = [
     #   与 3D 是否在播无关 ⇒ 波形恒有数据。schema 同 trace_live(ts + 时间_s ⇒ 按场景时刻铺点)。
     ("sseng", "zmax_data/ss_live/engine_trace.json"),
     # 🧩 2026-10-15 老倪「Flow Matching Action Head 的输出是个 chunk action … 应该有输出 topic, 在信号分析里显示」:
-    #   块真源 = 常驻回路每周期经 tools/ss_chunk_pipeline.py 落的 chunk_latest.json
+    #   块唯一依据 = 常驻回路每周期经 tools/ss_chunk_pipeline.py 落的 chunk_latest.json
     #   (与话题 zmax/ss_action_chunk 同一份文件: 块/前馈序列/加权+调制+安全后序列 三段都在)。
     #   ⚠️ 不直接把 chunk_latest.json 当宿主源: 它的 chunk/ff/u 是 H×4 原始数组 ⇒ 页面会铺 48 行生数
     #   (界面要极简)。语义键走常驻回路平铺的 trace (engine_trace.json → sseng.chunk.*), 见下面的分组标签。
@@ -179,21 +179,21 @@ HOST_SOURCES = [
     ("skill", "zmax_data/ss_live/skill_latest.json"),
     # ⚖ 原子技能物理量 (老倪 2026-10-15: 「所有的原子技能, 例如接近、对位, 都要有 topic 输出, 且在实时监控
     #   信号分析窗口都有对应的信号; 我要在信号分析窗口看到实际的物理模型, x y z v a 等距离、速度、角度等
-    #   物理值; 要实际发出来。」): 真源 = tools/ss_skill_dispatch.py 每拍过物理闸写出的 skill_phys.json,
+    #   物理值; 要实际发出来。」): 唯一依据 = tools/ss_skill_dispatch.py 每拍过物理闸写出的 skill_phys.json,
     #   8 个技能 × (x/y/z 位置 · v 速度 · a 加速度 · s 段行程 · angle 姿态角 · err 削出偏差 +
     #   v_cap/a_max/jerk_max/s_step/s_max/m/F 物理包络) = 每条一行, 「实测曲线 vs 物理上限」可同图叠。
     #   DDS 侧同一份数据的通道 = zmax/skill_sk01 … zmax/skill_sk08 (类型 zmax::SSSkillPhys)。
     ("skillphys", "zmax_data/ss_live/skill_phys.json"),
     # 🌍 万有引力表 (主参数 M 页) 的力 —— 老倪 2026-10-16: 「将万有引力的所有信号, 都加到插拔场景的
     #   信号分析窗口, 我要运行检查」+「集中显示力的大小」(改口径) +「力的大小, 和力的实部即可」。
-    #   真源 = 表自己的数据层 tools/gui/gravity_table.py::GravityField (同一拍同一批真源 ⇒ 波形与
+    #   唯一依据 = 表自己的数据层 tools/gui/gravity_table.py::GravityField (同一拍同一批唯一依据 ⇒ 波形与
     #   屏幕上那张表同源), 由常驻发布器 tools/gravity_trace_pub.py 每拍写一帧 (只认 TASK-01-FW* ⇒
     #   固定标「插拔场景·绿」)。只发两个口径: 力的大小 |F| · 力的实部 w (=|F|/u_ref), 不铺四元数四个分量。
     #   ⚠️ 94 条信号 ≫ flatten_json 的 48 键上限 ⇒ 走下面的 `s` 直取分支 (与 skillphys/ar 同款),
     #      绝不许回落 flatten (回落会静默只进 48 条, 看着像"部分项没有力")。
     ("gravity", "zmax_data/ss_live/gravity_trace.json"),
     # 🥽 AR 场景 · 空间点位 + AOI 话题 (老倪 2026-10-11: 「信号分析对应 AR 场景下的所有空间点位置」;
-    #    真源 = 机器人 TCP 真值 / 示教点位台账 / RealSense 服务 8797 / 工控机 AOI 10082 / 画布节点 🔍 光学质量检测;
+    #    唯一依据 = 机器人 TCP 真值 / 示教点位台账 / RealSense 服务 8797 / 工控机 AOI 10082 / 画布节点 🔍 光学质量检测;
     #    单一写入器 = tools/ar_aoi_bus.py, 注册表 config/topics/ar_aoi_signals.json)
     ("ar", "zmax_data/ar_live/ar_aoi_live.json"),
 ]
@@ -206,7 +206,7 @@ ORIN_ENV = ("source /opt/ros/humble/setup.bash; "
 _DS_TUPLE_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_\.]*(?:\[\d+\])?)\s*=\s*\(([^)]*)\)")
 _DS_SCALAR_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_\.]*(?:\[\d+\])?)\s*=\s*(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)")
 # 🔴 2026-10-15 老倪「没看到 topic 在信号分析里啊」: 数据空间里有些话题的 digest 是**被定长切掉的
-#   JSON**(缺右括号, 见 probe.py 的 body[:180] 兜底) ⇒ json.loads 必然失败 ⇒ 以前一条信号都出不来
+#   JSON**(缺右括号, 见 probe.py 的 body[:180] 保障) ⇒ json.loads 必然失败 ⇒ 以前一条信号都出不来
 #   (ss_stage 就是这种情况: 话题在列表里, 波形里没有)。这条正则专收"键": 数值 的成对叶子。
 _DS_JSONNUM_RE = re.compile(r'"([A-Za-z_][A-Za-z0-9_]*)"\s*:\s*(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)')
 # 🧾 字符串叶子 (2026-10-15 老倪「需要显示确切的元任务」): digest 里除了数值还有**名字/ID 串**
@@ -1463,7 +1463,7 @@ class WaveArea(QWidget):
                 continue
             b._used = True          # 🎯 真在屏上画 ⇒ 允许长到 CAP (其余信号封顶 CAP_SOFT)
             t, v = b.arrays()
-            # 🧮 速度键 (键名带 _mps) 的**曲线与 Y 量程**都按 mm/s 显示 (真源 m/s ×1000;
+            # 🧮 速度键 (键名带 _mps) 的**曲线与 Y 量程**都按 mm/s 显示 (唯一依据 m/s ×1000;
             #   老倪: 「不要出现 mps…就是 mm/s 毫米/秒」) —— 与列表/图例/状态栏同一口径。
             if str(k).endswith("_mps"):      # 🔢 只有旧口径 _mps 才 ×1000; 新口径 _mms 已是 mm/s
                 v = v * 1000.0
@@ -1935,7 +1935,7 @@ class CanoeGraphicWidget(QWidget):
             _w.hide()
 
         # ── 八阶段状态机: **文字**一行 (老倪 2026-10-15: 「八个 stage, 除了序号, 还应该有文字表示」) ──
-        #    八段名 = 真源 ActionModulator.STAGES 的插拔八段 (由 3D 面板随快照发下来的「八阶段表」),
+        #    八段名 = 唯一依据 ActionModulator.STAGES 的插拔八段 (由 3D 面板随快照发下来的「八阶段表」),
         #    当前段 **粗体+场景绿+【】**, 已走过段淡显, 未到段常规 —— 一眼看出"现在在第几段、叫什么"。
         self.lb_stages = QLabel("")
         self.lb_stages.setTextFormat(Qt.RichText)
@@ -1948,7 +1948,7 @@ class CanoeGraphicWidget(QWidget):
         except Exception:                                                      # noqa: BLE001
             pass
         self.lb_stages.setToolTip("八阶段状态机 = src/lerobot/policies/left_right/state_space/cognition.py:31 "
-                                 "ActionModulator.STAGES 的插拔八段 (真源常量, 随 3D 面板快照下发)")
+                                 "ActionModulator.STAGES 的插拔八段 (唯一依据常量, 随 3D 面板快照下发)")
         root.addWidget(self.lb_stages)
 
         # ── 🧾 元任务预测: **文字**一行 (老倪 2026-10-15: 「需要显示确切的元任务, 在信号分析窗口要显示」) ──
@@ -1963,14 +1963,14 @@ class CanoeGraphicWidget(QWidget):
         except Exception:                                                      # noqa: BLE001
             pass
         self.lb_meta.setToolTip("元任务预测 = 🧾 元任务预测节点 (驱动扭矩 T_drive=M·(−∇Φ) → 逐元任务得分);\n"
-                                "话题 zmax/ss_meta_pred (type zmax::SSMetaPred) · 真源 zmax_data/ss_live/meta_pred.json\n"
+                                "话题 zmax/ss_meta_pred (type zmax::SSMetaPred) · 唯一依据 zmax_data/ss_live/meta_pred.json\n"
                                 "生成: gui-venv311/bin/python tools/ss_meta_predict.py --scene SCN-01-FW --write")
         self.lb_meta.setParent(self)     # 老倪: 八阶段之外的文字行全删
         self.lb_meta.hide()
 
         # ── 🧩 动作块: **文字**一行 (老倪 2026-10-15「Flow Matching Action Head 的输出是个 chunk action …
         #    应该有输出 topic, 在信号分析里显示」) ──
-        #    内容 = 块真源 zmax_data/ss_live/chunk_latest.json (与话题 zmax/ss_action_chunk 同一份) 的
+        #    内容 = 块唯一依据 zmax_data/ss_live/chunk_latest.json (与话题 zmax/ss_action_chunk 同一份) 的
         #    H/阶段/平滑性/技能派发 + 帧龄; 没块就写"等引擎出块", 不编。
         self.lb_chunk = QLabel("")
         self.lb_chunk.setTextFormat(Qt.RichText)
@@ -1983,7 +1983,7 @@ class CanoeGraphicWidget(QWidget):
         self.lb_chunk.setToolTip("动作块 = 流形引擎一次求解的测地线规划 (a_t…a_t+H-1) → 前馈序列 → 加权 → "
                                  "逐拍动作调制 → 逐拍安全 → 技能派发\n"
                                  "话题 zmax/ss_action_chunk (type zmax::SSActionChunk) · "
-                                 "真源 zmax_data/ss_live/chunk_latest.json (常驻回路每周期写)\n"
+                                 "唯一依据 zmax_data/ss_live/chunk_latest.json (常驻回路每周期写)\n"
                                  "技能派发循环服务: systemctl status zmax-ss-skill-dispatch (60Hz)")
         self.lb_chunk.setParent(self)    # 老倪: 八阶段之外的文字行全删
         self.lb_chunk.hide()
@@ -2046,7 +2046,7 @@ class CanoeGraphicWidget(QWidget):
 
         # ⚙️ 2026-10-12 老倪: 「现在的实时监控, 要能看出配置」——顶部常显一行"当前配置"
         #   (任务/场景+色/配方/工艺步数/启用节点/档位/覆盖参数/配置单文件与时间);
-        #   真源 = tools/config_sheet.py 导出的配置单 (outputs/config_sheets/配置单_*_latest.json), 5s 自刷新。
+        #   唯一依据 = tools/config_sheet.py 导出的配置单 (outputs/config_sheets/配置单_*_latest.json), 5s 自刷新。
         self._cfg_mtime = None
         self._cfg_lab = QLabel("")
         self._cfg_lab.setTextFormat(Qt.RichText)
@@ -2247,7 +2247,7 @@ class CanoeGraphicWidget(QWidget):
 
     # 首屏默认曲线: 3D 场景里最说明问题的几条 (量纲差大 ⇒ 配「每信号独立图」)
     # 🔤 两套按场景给 (2026-10-13): 摆盘 = 真空吸持 / 吸嘴到槽位_mm; 插拔 = 夹爪 / 光模块头到孔_mm。
-    #   命名真源 = tools/scene_signal_names.py; 实际哪套在跑由快照里的键决定 (下面用 store.bufs 过滤)。
+    #   命名唯一依据 = tools/scene_signal_names.py; 实际哪套在跑由快照里的键决定 (下面用 store.bufs 过滤)。
     DEFAULT_3D = ("sstrace.末端_x", "sstrace.末端_y", "sstrace.末端_z",
                   "sstrace.光模块头到孔_mm", "sstrace.吸嘴到槽位_mm",
                   "sstrace.接触概率", "sstrace.安全边界_mms",
@@ -2269,7 +2269,7 @@ class CanoeGraphicWidget(QWidget):
                   "ds.zmax/ss_meta_pred.mt3", "ds.zmax/ss_meta_pred.spread",
                   # 🌍 2026-10-16 老倪「将万有引力的所有信号都加到插拔场景的信号分析窗口」:
                   #   万有引力表 (主参数 M 页) 的力 —— 只发两个口径: 力的大小 |F| + 力的实部 w。
-                  #   真源 = tools/gravity_trace_pub.py 每拍搬表自己的 GravityField (与屏幕上那张表同源)。
+                  #   唯一依据 = tools/gravity_trace_pub.py 每拍搬表自己的 GravityField (与屏幕上那张表同源)。
                   "gravity.插入·L2 力大小_mps", "gravity.总合力 实部")
 
     def _apply_watch(self):
@@ -2299,7 +2299,7 @@ class CanoeGraphicWidget(QWidget):
     def _trim_selected(self, added=0):
         """同时显示的曲线数超过 MAX_CURVES ⇒ 只保留前 MAX_CURVES 条 (说清楚, 不静默)。
 
-        🔴 2026-10-19 老倪「怎么卡住了」真因 (py-spy 实测主线程 100%, 栈:
+        🔴 2026-10-19 老倪「怎么阻塞了」真因 (py-spy 实测主线程 100%, 栈:
            _tick → _update_tree_values → _on_item_changed → _draw_order → _trim_selected 每拍都走):
            `_ordered_selected()` 是**按树上勾选状态重算** selected 的, 而这里只裁内存列表、没动勾选 ⇒
            被裁掉的行在树上仍是 Checked ⇒ 下一拍 `_on_item_changed` 的守卫 `checked == (key in selected)`
@@ -2638,7 +2638,7 @@ class CanoeGraphicWidget(QWidget):
         摆盘呢, 摆盘应该是蓝色信号; 其它无法分类的信号, 定义为基础场景, 用白色显示 topic」)。
 
         四组(顺序 = 色序): 🟢 插拔场景 / 🔵 摆盘场景 / 🥽 AR 场景 / ⚪ 基础场景(白)。
-        一个信号归哪组 = 打标真源 `tools/sig_scene_tags.py` → `config/topics/scene_tags.json`;
+        一个信号归哪组 = 打标唯一依据 `tools/sig_scene_tags.py` → `config/topics/scene_tags.json`;
         没打标的一律进「基础场景」(白 ○)。可反复调用: 记指纹 + 保留展开/折叠状态
         (老倪点的折叠不再被下一次重建顶开 —— 之前是硬编码 setExpanded(True) 顶开的)。
         """
@@ -2826,7 +2826,7 @@ class CanoeGraphicWidget(QWidget):
                 ros_root.addChild(tnode)
         else:
             ros_root.addChild(QTreeWidgetItem(["（点「⟳ 话题目录」从 Orin 拉取）", "", ""]))
-        # 3) 🌐 全局数据空间 (DDS 总线帧) — 与「数据空间」页同一份真源 (未分类 ⇒ 挂基础场景组下)
+        # 3) 🌐 全局数据空间 (DDS 总线帧) — 与「数据空间」页同一份唯一依据 (未分类 ⇒ 挂基础场景组下)
         ds_root = QTreeWidgetItem(["🌐 全局数据空间 (DDS 总线)", "", ""])
         ds_root.setForeground(0, QColor("#bc8cff"))
         ds_root.setData(0, Qt.UserRole + 1, "base:ds")
@@ -2916,7 +2916,7 @@ class CanoeGraphicWidget(QWidget):
                 for b in _cand[:10]:
                     self._add_to(_r, b, scene=_keep)
                 if not _cand:
-                    _it = QTreeWidgetItem(["（%s 此刻没有数据帧 — 该场景跑起来后这里出前 10 条信号）" % _keep,
+                    _it = QTreeWidgetItem(["（%s 此刻没有数据帧 — 该场景启动后这里出前 10 条信号）" % _keep,
                                            "-", "-", "-", "-"])
                     _it.setForeground(0, QColor(C_DIM))
                     _r.addChild(_it)
@@ -3092,7 +3092,7 @@ class CanoeGraphicWidget(QWidget):
     def _fill_cfg(self):
         """顶部「当前配置」横幅 —— 让实时监控一眼看出"正在看的是哪套配置"。
 
-        真源 = tools/config_sheet.py 导出的配置单 (outputs/config_sheets/配置单_<TASK>_latest.json);
+        唯一依据 = tools/config_sheet.py 导出的配置单 (outputs/config_sheets/配置单_<TASK>_latest.json);
         没有配置单就退回 config/ss_task_binding.json + config/tasks/tasks.json 现算一行(不编数字)。
         """
         import glob as _g
@@ -3111,7 +3111,7 @@ class CanoeGraphicWidget(QWidget):
                 col = t.get("场景色") or "#c9d1d9"
                 txt = ("⚙️ <b>当前配置</b> <b>%s</b> %s · 场景 <span style='color:%s'><b>%s</b></span>"
                        " · 配方 %s · 工艺 %d 步 · 启用节点 %d · 档位 %d · 参数覆盖 %d"
-                       " <span style='color:#8b949e'>[配置单 %s · 导出 %s · 真源 任务/绑定/画布/参数注册表]</span>") % (
+                       " <span style='color:#8b949e'>[配置单 %s · 导出 %s · 唯一依据 任务/绑定/画布/参数注册表]</span>") % (
                     t.get("task_id") or "—", t.get("name") or "", col, t.get("场景") or "—",
                     t.get("recipe_type") or "—", len(t.get("工艺步骤") or []),
                     (d.get("画布") or {}).get("启用节点数") or 0, len(t.get("档位") or {}),
@@ -3140,7 +3140,7 @@ class CanoeGraphicWidget(QWidget):
         全路径 + Min/Max + 点数 都放 tooltip。
 
         🧮 速度单位 (老倪 2026-10-15): 「不要出现 mps 这样的速度, 就是 mm/s 毫米/秒」—— 键名里的
-        `_mps` 只是**数据契约** (真源 trace_live.json 是 m/s), 界面上换成 `(mm/s)` 显示, 值 ×1000。
+        `_mps` 只是**数据契约** (唯一依据 trace_live.json 是 m/s), 界面上换成 `(mm/s)` 显示, 值 ×1000。
         """
         if key.startswith("ros."):
             name = "/" + key[4:]                     # ROS 保留话题全路径 (老倪要看 topic)
@@ -3181,7 +3181,7 @@ class CanoeGraphicWidget(QWidget):
 
     # ── 输出节点 (老倪 2026-10-15: 「删除 列 帧龄, 增加输出这个信号的节点名称」) ──
     # 依据(每条都能复核, 不猜):
-    #   · 画布节点名 = 真源 flows/state_space_obs.json 里的 node.name (动作调制器/前馈加速器/
+    #   · 画布节点名 = 唯一依据 flows/state_space_obs.json 里的 node.name (动作调制器/前馈加速器/
     #     安全执行边界/流形引擎/状态校正器/YOLO 目标检测/VLM 编码 …)
     #   · sseng.* = 常驻引擎回路 (tools/ss_engine_loop.py + tools/systemd/zmax-ss-engine-loop.service,
     #     TASK-01-FW) 每周期真值; 潜表示来自 L4/L3 的 VLM 编码节点。
@@ -3246,7 +3246,7 @@ class CanoeGraphicWidget(QWidget):
     )
 
     def _attrib(self):
-        """归属真源 (middleware.attribution): 与数据空间 Trace **同一份** Tx/Rx/Layer 映射。"""
+        """归属唯一依据 (middleware.attribution): 与数据空间 Trace **同一份** Tx/Rx/Layer 映射。"""
         from lerobot.middleware import attribution as _at
         return _at
 
@@ -3283,7 +3283,7 @@ class CanoeGraphicWidget(QWidget):
             return 1
 
     def _active_scene(self):
-        """当前正在看哪个场景: 排序里选中的场景优先; 否则取画布数据源场景真源 (ss_scene_switch src_state)。
+        """当前正在看哪个场景: 排序里选中的场景优先; 否则取画布数据源场景唯一依据 (ss_scene_switch src_state)。
 
         用途(老倪 2026-10-15): ① 非当前场景的重名信号行不可勾选 ② 非当前场景的场景组默认**折叠隐藏**
         (「摆盘的蓝色信号, 怎么也有 tick 小对号?」「蓝色区域你得折叠隐藏啊」)。
@@ -3330,7 +3330,7 @@ class CanoeGraphicWidget(QWidget):
         """切场景 ⇒ **立刻**把别的场景的曲线撤掉 (老倪 2026-10-20: 「我都选择 AR 场景了, 右侧还是绿色的
         插拔场景信号, 应该马上切换到 AR 场景」)。
 
-        只动"画哪些曲线"(selected), 不动数据; 判据用与目录同一个标签真源 `sig_scene_tags.tag()`。
+        只动"画哪些曲线"(selected), 不动数据; 判据用与目录同一个标签唯一依据 `sig_scene_tags.tag()`。
         """
         if not scene:
             return 0
@@ -3771,7 +3771,7 @@ class CanoeGraphicWidget(QWidget):
                 if b is None or b.n == 0:
                     continue
                 t, v = b.arrays()
-                _sc = self._unit_scale(k)                 # 🧮 导出也按 mm/s (真源 m/s ×1000), 列名带单位
+                _sc = self._unit_scale(k)                 # 🧮 导出也按 mm/s (唯一依据 m/s ×1000), 列名带单位
                 for i in range(b.n):
                     w.writerow([self._disp_name(k), round(float(t[i] - t0), 4),
                                 float(v[i]) * _sc, b.age])
@@ -3872,7 +3872,7 @@ class CanoeGraphicWidget(QWidget):
             self._log("⤢ Fit: %d 条曲线自适应 · X=%.3f~%.3fs · Y 逐子图自适应"
                       % (len(_keys), min(starts), max(ends)))
         else:
-            self._log("⤢ Fit: 暂无数据可适配 (先勾信号 / 让场景跑起来)")
+            self._log("⤢ Fit: 暂无数据可适配 (先勾信号 / 让场景启动)")
 
     def _pan(self, fx, fy):
         """平移 (CANoe: Pan up/down/left/right); 时间轴平移即取消跟随"""
@@ -3920,7 +3920,7 @@ class CanoeGraphicWidget(QWidget):
         p.setXRange(c - half, c + half, padding=0)
 
     def _poll_playback(self):
-        """▶ 每帧读 3D 场景快照 (= 它的播放进度真源) ⇒ 波形页竖线跟着 3D 进度条走。"""
+        """▶ 每帧读 3D 场景快照 (= 它的播放进度唯一依据) ⇒ 波形页竖线跟着 3D 进度条走。"""
         try:
             st = os.stat(PLAYBACK_FILE)
             with open(PLAYBACK_FILE, "r", encoding="utf-8") as f:
@@ -3976,7 +3976,7 @@ class CanoeGraphicWidget(QWidget):
             for k in keys:
                 b = self.store.bufs.get(k)
                 if b is not None and b.n:
-                    # 🧮 速度键按 mm/s 落记录 (真源 m/s ×1000), signal 列写显示名 (带单位)
+                    # 🧮 速度键按 mm/s 落记录 (唯一依据 m/s ×1000), signal 列写显示名 (带单位)
                     _sc = self._unit_scale(k)
                     w.writerow([self._disp_name(k), round(now - self.store.t0, 4),
                                 time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -4006,7 +4006,7 @@ class CanoeGraphicWidget(QWidget):
             self._update_status(keys)
 
     def _chunk_text(self):
-        """🧩 块一行文字: H / 阶段 / 平滑性 / 技能派发 / 帧龄 —— 全部取自块真源 (不编)。"""
+        """🧩 块一行文字: H / 阶段 / 平滑性 / 技能派发 / 帧龄 —— 全部取自块唯一依据 (不编)。"""
         import json as _json
         _p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                           "..", "zmax_data", "ss_live", "chunk_latest.json")
@@ -4014,7 +4014,7 @@ class CanoeGraphicWidget(QWidget):
             with open(os.path.abspath(_p), encoding="utf-8") as f:
                 d = _json.load(f)
         except Exception:                                                      # noqa: BLE001
-            return ("🧩 <b>动作块</b>: 等引擎出块 (真源 zmax_data/ss_live/chunk_latest.json 还没有; "
+            return ("🧩 <b>动作块</b>: 等引擎出块 (唯一依据 zmax_data/ss_live/chunk_latest.json 还没有; "
                     "常驻回路 ZMAX_CHUNK_H>1 时每周期写)", None)
         _age = max(0.0, time.time() - float(d.get("ts") or 0.0))
         if not d.get("ok"):
@@ -4071,7 +4071,7 @@ class CanoeGraphicWidget(QWidget):
     def _stage_strip(self):
         """八阶段**文字**一行 (老倪 2026-10-15: 「八个 stage, 除了序号, 还应该有文字表示」)。
 
-        真源: 3D 面板快照的「八阶段表」(= ActionModulator.STAGES 插拔八段, 由 ss_dreamview 随帧下发)
+        唯一依据: 3D 面板快照的「八阶段表」(= ActionModulator.STAGES 插拔八段, 由 ss_dreamview 随帧下发)
         + 「八阶段序号」定当前段。表取不到 ⇒ 只写当前阶段名, **不编**八段。
         返回 (HTML, 是否新鲜)。
         """
@@ -4102,8 +4102,8 @@ class CanoeGraphicWidget(QWidget):
     def _stage_now(self):
         """🎛 八阶段状态机现状 —— 老倪 2026-10-15: 「是八阶段信号么? 也没有显示状态啊」
 
-        真源 = 3D 面板快照 trace_live.json 的 阶段 / 八阶段序号 / 阶段限速_mms
-        (阶段名 = ActionModulator.STAGES, 真源 cognition.py:31)。按 mtime 缓存 0.1s 省 IO。
+        唯一依据 = 3D 面板快照 trace_live.json 的 阶段 / 八阶段序号 / 阶段限速_mms
+        (阶段名 = ActionModulator.STAGES, 唯一依据 cognition.py:31)。按 mtime 缓存 0.1s 省 IO。
         **停更就明说停更 + 帧龄**, 不拿旧阶段冒充"现在"。
         返回 (文本, 是否新鲜)。
         """
@@ -4129,7 +4129,7 @@ class CanoeGraphicWidget(QWidget):
             fresh = age < 5.0
             txt = "🎛 状态机: %s (%s/7)" % (nm, ("%d" % i8) if isinstance(i8, (int, float)) and i8 >= 0 else "?")
             if isinstance(cap, (int, float)) and cap >= 0:
-                txt += " · 限速 %.0f mm/s" % (float(cap) * 1000.0)     # 🧮 真源 m/s ⇒ 界面按 mm/s (老倪)
+                txt += " · 限速 %.0f mm/s" % (float(cap) * 1000.0)     # 🧮 唯一依据 m/s ⇒ 界面按 mm/s (老倪)
             txt += (" · 帧龄 %.1fs" % age) if fresh else (" · ⚠️ 快照停更 %.0fs (3D 面板没跑/播完)" % age)
             try:                                    # 🎬 趟号: 3D 回放绕圈会让波形重铺, 先说清楚现在是第几趟
                 _st = getattr(self, "store", None)
@@ -4203,7 +4203,7 @@ class CanoeGraphicWidget(QWidget):
                 self.lb_meta.setText(_mt)
         except Exception:                                                      # noqa: BLE001
             pass
-        try:                                   # 🧩 动作块一行 (H/阶段/平滑性/技能派发, 来自块真源)
+        try:                                   # 🧩 动作块一行 (H/阶段/平滑性/技能派发, 来自块唯一依据)
             _ct, _ = self._chunk_text()
             if self.lb_chunk.text() != _ct:
                 self.lb_chunk.setText(_ct)
@@ -4245,7 +4245,7 @@ class CanoeGraphicWidget(QWidget):
             v = b.last_val
             if v is None:                        # 真值缺失 (工作线程可能正好把它置空) —— 不写, 也不炸
                 continue
-            # 🧮 速度键按 mm/s 显示 (真源 m/s ×1000)
+            # 🧮 速度键按 mm/s 显示 (唯一依据 m/s ×1000)
             _sc = self._unit_scale(key)
             _v = v * _sc
             _txt = f"{_v:.4g}" if abs(_v) < 1e5 else f"{_v:.3g}"  # 紧凑: 1.79e+09 不再撑列

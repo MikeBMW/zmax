@@ -23,9 +23,9 @@
 | `atomic_conditions_flow.json` | **画布 DAG**: 251 节点 (9 row_bg + 242 coord_overlay) + 242 连线 — load_flow_file 可加载 |
 
 ## 编码规则 (11 通道固定)
-`MODALITY_RULES` 关键词表 (10 模态 + state_2d 兜底):
+`MODALITY_RULES` 关键词表 (10 模态 + state_2d 保障):
 image(图/图像/视觉/相机/显微) / force(力/力矩/力控/六维力) / pose(位姿/坐标/手眼/6D/朝向) / tactile(触觉) / joint(关节/机械臂/轴) / pointcloud(点云/3D/扫描) / temp(温度) / signal(信号/IO/触发/到位/仓/状态) / code(ID/条码/扫码/编码) / cad(CAD/图纸)
-- **⚠️ 必须固定 11 通道** (含 state_2d 兜底位, 无模态匹配时 state_2d=1): 第一版 56 条因无匹配追加 state_2d 变 11 键, 其余 10 键 → 通道数不一致。所有条件统一 11 通道是 ControlNet 定长编码前提
+- **⚠️ 必须固定 11 通道** (含 state_2d 保障位, 无模态匹配时 state_2d=1): 第一版 56 条因无匹配追加 state_2d 变 11 键, 其余 10 键 → 通道数不一致。所有条件统一 11 通道是 ControlNet 定长编码前提
 - 动作分类 `ACTION_RULES`: 取料pick/插insert/预插pre_insert/拔extract/放place/贴attach/锁screw/检测inspect/测试test/扫码scan/定位locate/压press/转运transfer...
 
 ## ⚠️ 两个 JSON 用途不同 (用户报"simulink 加载不了"的教训)

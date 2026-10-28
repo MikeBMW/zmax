@@ -22,7 +22,7 @@ curl -s -X POST "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type
 - 说明文字**另发一条** `msg_type=text` (单条长文会 400, 长文拆条)
 - 视频/音频仍走 `/im/v1/files` + `msg_type=media` (**file 类型只能发文档类, 230055 实锤**)
 - **token 每次现取** → 不依赖 gateway 进程内缓存 ⇒ `99991663 Invalid access token` 期间这条直推通道照样能发
-  (与技能正文"兜底直推"同一思路, 可作 gateway token 死掉时的告急通道)
+  (与技能正文"保障直推"同一思路, 可作 gateway token 死掉时的告急通道)
 - 群 id 取法: `~/.hermes/channel_directory.json`, 或 `grep -i Inbound ~/.hermes/logs/gateway.log` 里的 `chat_id=oc_...`
 - 群消息**必须 @机器人**才触发入站事件; DM 可直接发
 

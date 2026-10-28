@@ -2,14 +2,14 @@
 # -*- coding: utf-8 -*-
 """把 AR 300UPH 的全部交付件归集到 zmax_data/deliverables/2026-10-28-AR300UPH/
 
-清单 (每一件都指向仓内真源, 不做第二份真相):
+清单 (每一件都指向仓内唯一依据, 不做第二份真相):
   01_元任务/       ar_meta_tasks.json + 元任务组合快照
   02_四类配置/     config_meta.json(77功能) / active_models.json / zmax_perf_spec.json / zmax_platform.json / ss_task_binding.json
   03_工单/         BS_SCN-07-AOI.json
   04_文档/         立项文档.docx / SOR.docx + .md / 性能对账.json + .md
   05_规划/         MODEL_PLAN_2027_2028.md + .docx (在 model_plan_2027/)
   06_迁移/         push_ar300_to_550c.sh + 生成器脚本
-  DELIVERY.md      交付清单 (含 sha256 + 真源路径 + 复现命令)
+  DELIVERY.md      交付清单 (含 sha256 + 唯一依据路径 + 复现命令)
 """
 import hashlib
 import json
@@ -123,13 +123,13 @@ def main():
     # DELIVERY.md
     L = ["# AR 300UPH · 交付清单", "",
          "生成 %s · 产品档位 550A(本机开发) → 550C(Intel 工厂执行) · 真机零指令" % TS, "",
-         "| 组 | 文件 | 大小 | 真源 | sha256(16) |", "|---|---|---|---|---|"]
+         "| 组 | 文件 | 大小 | 唯一依据 | sha256(16) |", "|---|---|---|---|---|"]
     for g, n, sz, src, h in rows:
         L.append("| %s | %s | %s | `%s` | %s |" % (g, n, sz, src, h))
     L += ["", "## 复现命令", "```bash",
           "python3 tools/ar300_config.py        # ① 功能/模型/性能/工程 四类配置 (幂等, 自带 5 项判据)",
           "python3 tools/ss_meta_task_ar.py     # ② 元任务组合 → TASK-07-AOI (392 段逐段校验)",
-          "python3 tools/ar300_workorder.py     # ③ 场景真源 → 工单 BS_SCN-07-AOI (10 项判据)",
+          "python3 tools/ar300_workorder.py     # ③ 场景唯一依据 → 工单 BS_SCN-07-AOI (10 项判据)",
           "python3 tools/project_doc_export.py  # ④ 立项文档 Word",
           "python3 tools/sor_export.py --task TASK-07-AOI   # ⑤ 供应商 SOR",
           "bash tools/push_ar300_to_550c.sh     # ⑥ 增量迁移 Intel 550C (19 文件 + 回读 8 项)",

@@ -7,12 +7,12 @@ L3 元任务 / L4 配置工单 / 总体设计文档) 是真的
 形成 L3元任务; 同理, L4元任务, 形成配置工单, 最后交付 元任务的定义, 迭代阶段, 组成, 评估分析, 性能指标,
 以及验证报告; 我要在文档中心, 得到元任务的总体设计文档, 发到飞书。」
 
-判据四段 (全部对**真源**核, 不看工具自己的说法):
-  A L2 元任务  条数 == config_meta 里 layer=L2 的功能数 · 逐条带配置实例/执行入口/阶段指标 · 配置取自真源
+判据四段 (全部对**唯一依据**核, 不看工具自己的说法):
+  A L2 元任务  条数 == config_meta 里 layer=L2 的功能数 · 逐条带配置实例/执行入口/阶段指标 · 配置取自唯一依据
   B 技能执行   **每个原子技能都真跑了** (SKILLS ∪ SKILLS_TRAY 全覆盖) · 执行过真闸门 · 可行性与 big/err 自洽
                · 削因统计与 why 一致 · 在役对照逐条等于 skill_latest.json · 物理量等于技能类 phys() · 无对照不编数
-  C L3/L4      L3 元任务 == layer=L3 条数 + 真模块三环节核验 (‖p‖=1 · M 取在役真源) · L4 工单 == L4/L5 条数 + 要件齐
-  D 文档       总体设计文档六章齐 · 数字与真源一致 · 文档中心已登记 · 口径说明在 (请求不同源如实写)
+  C L3/L4      L3 元任务 == layer=L3 条数 + 真模块三环节核验 (‖p‖=1 · M 取在役唯一依据) · L4 工单 == L4/L5 条数 + 要件齐
+  D 文档       总体设计文档六章齐 · 数字与唯一依据一致 · 文档中心已登记 · 口径说明在 (请求不同源如实写)
 """
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ def main():
     chk("A2 每条元任务带: 元任务号/功能号/名称/执行入口/配置实例/阶段指标",
         all(t["mt_id"] and t["fn_id"] and t["name"] and t["执行入口"] and t["配置"] and "指标" in t
             for t in l2), "例: %s" % l2[0]["mt_id"])
-    chk("A3 元任务的配置实例逐条等于配置真源 fields (不是另手写一套)",
+    chk("A3 元任务的配置实例逐条等于配置唯一依据 fields (不是另手写一套)",
         all(t["配置"]["declared_flags"] == (l2_src[t["fn_id"]].get("fields") or {}).get("declared_flags")
             and t["配置"]["parameters"] == (l2_src[t["fn_id"]].get("fields") or {}).get("parameters")
             for t in l2), "核了 %d 条" % len(l2))
@@ -107,7 +107,7 @@ def main():
         q = cls.phys() if cls else {}
         if q and float(r["物理量"]["m_kg"] or 0) != float(q.get("m") or 0):
             phy_ok = False
-    chk("B6 物理量 (m/F/v_cap/a_max/jerk/s_step/dmdt) 逐条等于技能类 phys() (标定真源)",
+    chk("B6 物理量 (m/F/v_cap/a_max/jerk/s_step/dmdt) 逐条等于技能类 phys() (标定唯一依据)",
         phy_ok, "例: SK01 m=%.2fkg v_cap=%.3fm/s" % (float(skl[0]["物理量"]["m_kg"] or 0),
                                                    float(skl[0]["物理量"]["v_cap_mps"] or 0)))
     tray = [r for r in skl if r["chain"] == "摆盘链" and r["stage"] == "放入"]
@@ -127,7 +127,7 @@ def main():
     l3, l3ctx = mtc.l3_tasks()
     chk("C1 L3 元任务条数 == config_meta 里 layer=L3 功能数", len(l3) == len(l3_src),
         "%d == %d" % (len(l3), len(l3_src)))
-    chk("C2 L3 真模块核验含三环节 (投影 ‖p‖=1 · 度量 ∇Φ · 导航 step) 且 M 取在役真源",
+    chk("C2 L3 真模块核验含三环节 (投影 ‖p‖=1 · 度量 ∇Φ · 导航 step) 且 M 取在役唯一依据",
         abs(float(((l3ctx.get("投影") or {}).get("‖p‖") or 0)) - 1.0) < 1e-6 and
         (l3ctx.get("度量") or {}).get("phi") is not None and
         (l3ctx.get("导航") or {}).get("键") and "M 来源" in l3ctx,
@@ -150,7 +150,7 @@ def main():
     chk("D1 总体设计文档存在且六章齐 (定义/迭代阶段/组成/评估分析/性能指标/验证报告)",
         exists and all(h in txt for h in heads),
         "%s (%d 字符)" % (os.path.relpath(doc_path, ROOT) if exists else "缺", len(txt)))
-    chk("D2 文档数字与真源一致 (L2 元任务数 · L3/L4 条数 · 原子技能执行条数)",
+    chk("D2 文档数字与唯一依据一致 (L2 元任务数 · L3/L4 条数 · 原子技能执行条数)",
         ("L2 元任务: **%d**" % len(l2)) in txt and
         ("L3 元任务: **%d**" % len(l3)) in txt and
         ("L4 元任务 → 配置工单: **%d**" % len(wo)) in txt,

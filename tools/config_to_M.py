@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""**配置单 → 主参数 M** 的显式映射 (可审计, 唯一真源实现)。
+"""**配置单 → 主参数 M** 的显式映射 (可审计, 唯一依据实现)。
 
 老倪 2026-10-12 口述 (原话):
 > 配置中心的参数, 要映射到主参数 M, 即我的配置单定下来, 主参数就被决定下来, 这个逻辑在**主参数 M 节点**实现,
@@ -10,7 +10,7 @@
   · 主参数 M 节点 (画布 `n_calib_mani`) = **配置单 → M 的映射关系** (本模块 `compute_M`)
   · 流形引擎节点 (画布 `ss_mani_eng`)   = **用 M 实现功能** (度量几何/健康度 H/扭矩 τ) —— 消费 `M_SPEC`
 
-主参数 M 的数学口径 (真源 src/lerobot/manifold/metric_field.py):
+主参数 M 的数学口径 (唯一依据 src/lerobot/manifold/metric_field.py):
       度量张量  g_ij(x) = M · G_ij(x),   det G(x) = 1,  M ∈ [0, 8]
   · **M**  = 度量的**整体尺度** (物理=等效惯量尺度; a = F/M, 与旧标量语义逐字一致)
   · **G**  = 度量的**形状** (各向异性方向 + 随状态变化)
@@ -19,16 +19,16 @@
 
 | 规则 | 目标分量 | 映射 | 来源依据 |
 |---|---|---|---|
-| R1 | **dim** (位姿自由度) | 工序含腕部姿态控制(旋转/翻转/姿态/腕部) ⇒ 6 (位姿 6 轴); 否则 3 (位置 3 轴) | 任务工序真源 config/tasks/tasks.json; metric_field 口径「位置 3 轴 / 位姿 6 轴」 |
-| R2 | **mode** | 存在平移-姿态/图面-深度**耦合** ⇒ `full`; 同类轴**公差比 ≥1.25** ⇒ `diag`; 否则 `isotropic` | 性能指标真源 config/platform/zmax_perf_spec.json (工艺公差/耦合指标) + 任务配置 |
-| R3 | **diag / components** (形状 G, det=1) | 各轴刚度 g_轴 ∝ 1/ε_轴 (公差不许偏的轴 ⇒ 距离更"贵"), 归一 det G = 1 | 逐轴工艺公差真源 (下方逐条列出 R3-各轴来源) |
+| R1 | **dim** (位姿自由度) | 工序含腕部姿态控制(旋转/翻转/姿态/腕部) ⇒ 6 (位姿 6 轴); 否则 3 (位置 3 轴) | 任务工序唯一依据 config/tasks/tasks.json; metric_field 口径「位置 3 轴 / 位姿 6 轴」 |
+| R2 | **mode** | 存在平移-姿态/图面-深度**耦合** ⇒ `full`; 同类轴**公差比 ≥1.25** ⇒ `diag`; 否则 `isotropic` | 性能指标唯一依据 config/platform/zmax_perf_spec.json (工艺公差/耦合指标) + 任务配置 |
+| R3 | **diag / components** (形状 G, det=1) | 各轴刚度 g_轴 ∝ 1/ε_轴 (公差不许偏的轴 ⇒ 距离更"贵"), 归一 det G = 1 | 逐轴工艺公差唯一依据 (下方逐条列出 R3-各轴来源) |
 | R4 | **gain** (状态相关 G(x)=G0+Σx_k G_k) | 动态交互场景 ⇒ 需现场辨识 G_k; 系数**待标定** (缺省 0 = 常度量) | MCD 设计 §6 可辨识性 (有限差分敏感性 S=∂J/∂参数) ⇒ 留实测入口 |
-| R5 | **scale = M** | M = 1 + (½·m_eff·v_peak² + m_eff·g·h) / E_ref | 能量标定真源 tools/master_param_m.py + config/calib/zmax_calib.json#tool_payload.mass_kg + 任务工序速度 |
+| R5 | **scale = M** | M = 1 + (½·m_eff·v_peak² + m_eff·g·h) / E_ref | 能量标定唯一依据 tools/master_param_m.py + config/calib/zmax_calib.json#tool_payload.mass_kg + 任务工序速度 |
 
-真源 (只读, 不造数; 缺就如实标缺):
+唯一依据 (只读, 不造数; 缺就如实标缺):
   config/tasks/tasks.json · config/mcd/param_registry.json · config/mcd/zmax_mcd.json ·
   config/ss_task_binding.json · config/cc_snapshot.json · config/platform/zmax_perf_spec.json ·
-  config/calib/zmax_manifold.json (可写真源) · config/calib/zmax_calib.json
+  config/calib/zmax_manifold.json (可写唯一依据) · config/calib/zmax_calib.json
 
 写盘 (可选): 经 tools/zmax_params.py 的写盘闸门 (非正定拒写) 落 config/calib/zmax_manifold.json 的
   M / metric 段, 并写回画布节点 `n_calib_mani` 的 params (m_mapping / m_calc / m_loaded_at / m_source)。
@@ -37,7 +37,7 @@
     gui-venv311/bin/python tools/config_to_M.py                       # 活跃任务, 打印映射
     gui-venv311/bin/python tools/config_to_M.py --task TASK-06-TRAY    # 指定配置单
     gui-venv311/bin/python tools/config_to_M.py --all --json
-    gui-venv311/bin/python tools/config_to_M.py --task TASK-06-TRAY --write   # 写 M 真源 + 节点
+    gui-venv311/bin/python tools/config_to_M.py --task TASK-06-TRAY --write   # 写 M 唯一依据 + 节点
 """
 from __future__ import annotations
 
@@ -53,14 +53,14 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 sys.path.insert(0, ROOT)
 
-# ── 真源路径 ──────────────────────────────────────────────────────────────────
+# ── 唯一依据路径 ──────────────────────────────────────────────────────────────────
 F_TASKS = os.path.join(ROOT, "config", "tasks", "tasks.json")
 F_REG = os.path.join(ROOT, "config", "mcd", "param_registry.json")
 F_MCD = os.path.join(ROOT, "config", "mcd", "zmax_mcd.json")
 F_BIND = os.path.join(ROOT, "config", "ss_task_binding.json")
 F_CC = os.path.join(ROOT, "config", "cc_snapshot.json")
 F_PERF = os.path.join(ROOT, "config", "platform", "zmax_perf_spec.json")
-F_MANIFOLD = os.path.join(ROOT, "config", "calib", "zmax_manifold.json")      # 可写真源 (软链)
+F_MANIFOLD = os.path.join(ROOT, "config", "calib", "zmax_manifold.json")      # 可写唯一依据 (软链)
 F_CALIB = os.path.join(ROOT, "config", "calib", "zmax_calib.json")
 
 NODE_ID = "n_calib_mani"
@@ -72,19 +72,19 @@ CANVAS_CANDIDATES = ("data/database/zmax/sources/canvas/state_space_obs.json",
 MAPPING_RULES = [
     {"id": "R1", "target": "dim", "what": "位姿自由度 (度量维数)",
      "rule": "工序含腕部姿态控制(旋转/翻转/姿态/腕部) ⇒ dim=6 (位姿 6 轴); 否则 dim=3 (位置 3 轴)",
-     "source": "config/tasks/tasks.json 工序真源 + metric_field 口径 (位置 3 轴 / 位姿 6 轴)"},
+     "source": "config/tasks/tasks.json 工序唯一依据 + metric_field 口径 (位置 3 轴 / 位姿 6 轴)"},
     {"id": "R2", "target": "mode", "what": "度量形状参数化 (isotropic/diag/full)",
      "rule": "存在平移-姿态 / 图面-深度耦合 ⇒ full; 同类轴公差比 ≥1.25 ⇒ diag; 否则 isotropic",
      "source": "config/platform/zmax_perf_spec.json (工艺公差/耦合指标) + config/tasks/tasks.json 任务配置"},
     {"id": "R3", "target": "diag|components", "what": "形状 G 各轴刚度 (det G=1)",
      "rule": "各轴刚度 g_轴 ∝ 1/ε_轴 (公差越小 ⇒ 该轴距离越贵); det 归一 ⇒ 尺度全归 M",
-     "source": "逐轴工艺公差真源 (见 mapping_table 里 R3 的 eps_sources)"},
+     "source": "逐轴工艺公差唯一依据 (见 mapping_table 里 R3 的 eps_sources)"},
     {"id": "R4", "target": "gain", "what": "状态相关度量 G(x)=G0+Σ_k x_k G_k",
      "rule": "动态交互场景 ⇒ 需现场辨识 G_k; 系数待标定 (缺省 0 ⇒ 常度量, 零回归)",
      "source": "MCD 设计 §6 可辨识性 (有限差分敏感性) ⇒ 标'待标定' + 留实测入口"},
     {"id": "R5", "target": "scale(M)", "what": "度量整体尺度 = 等效惯量尺度",
      "rule": "M = 1 + (½·m_eff·v_peak² + m_eff·g·h) / E_ref   →  clamp[0,8]",
-     "source": "tools/master_param_m.py 能量标定真源 + config/calib/zmax_calib.json#tool_payload.mass_kg "
+     "source": "tools/master_param_m.py 能量标定唯一依据 + config/calib/zmax_calib.json#tool_payload.mass_kg "
                "+ config/tasks/tasks.json 工序速度"},
 ]
 
@@ -135,9 +135,9 @@ def _reload(name, relpath):
     return m
 
 
-# ───────────────────────── 真源装载 ─────────────────────────
+# ───────────────────────── 唯一依据装载 ─────────────────────────
 def load_bundle(root: str | None = None) -> dict:
-    """读全部配置真源 (只读; 缺项如实标 missing)。"""
+    """读全部配置唯一依据 (只读; 缺项如实标 missing)。"""
     R = root or ROOT
     b = {
         "tasks": _j(os.path.join(R, "config/tasks/tasks.json"), {}) or {},
@@ -154,7 +154,7 @@ def load_bundle(root: str | None = None) -> dict:
 
 
 def perf_metric(perf: dict, mid: str) -> dict | None:
-    """在 perf_spec 的 groups[*].metrics 里按 id 找指标 (真源字段, 不自算)。"""
+    """在 perf_spec 的 groups[*].metrics 里按 id 找指标 (唯一依据字段, 不自算)。"""
     for g in (perf.get("groups") or []):
         for m in (g.get("metrics") or []):
             if m.get("id") == mid:
@@ -176,7 +176,7 @@ def _reg_param(reg: dict, pid: str) -> dict | None:
 
 
 def active_task_id(bundle: dict) -> str:
-    """活跃配置单: 优先任务绑定 (真源), 否则第一张配置单。"""
+    """活跃配置单: 优先任务绑定 (唯一依据), 否则第一张配置单。"""
     tid = (bundle.get("binding") or {}).get("active_task")
     if tid:
         return tid
@@ -221,7 +221,7 @@ def has_coupling(task: dict) -> list:
 
 
 def derive_tolerances(task: dict, perf: dict, bundle: dict) -> dict:
-    """逐轴工艺公差 (mm / °) + 逐条来源。优先级: 任务显式 > 工序步骤 > 性能指标真源。"""
+    """逐轴工艺公差 (mm / °) + 逐条来源。优先级: 任务显式 > 工序步骤 > 性能指标唯一依据。"""
     eps, src = {}, {}
     # ① 侧向 (x,y): 任务 targets 里的"精度/偏差" → 工序步骤里的"偏差<X mm" → perf.mate_align_repeat
     lat, lsrc = None, ""
@@ -341,7 +341,7 @@ def _task_to_project(task: dict) -> str:
 
 
 def _max_step_speed(task: dict):
-    """从工序步骤描述里取最大线速度 (m/s)。真源: 任务工序。"""
+    """从工序步骤描述里取最大线速度 (m/s)。唯一依据: 任务工序。"""
     best, who = None, ""
     for s in (task.get("steps") or []):
         for m in re.finditer(r"([-+]?\d+(?:\.\d+)?)\s*m/s", str(s.get("desc", ""))):
@@ -364,7 +364,7 @@ def derive_scale(task: dict, bundle: dict) -> dict:
     m_eff = float(tool) + part
     v_parsed, vsrc = _max_step_speed(task)
     if v_parsed is not None:
-        v, v_source = v_parsed, "工序真源 %s (tasks.json)" % vsrc
+        v, v_source = v_parsed, "工序唯一依据 %s (tasks.json)" % vsrc
     else:
         v, v_source = float(P["v_peak_mps"]), "假设(可标定) 继承 %s: %s" % (project, P["v_src"])
     h, h_source = float(P["stroke_m"]), P["stroke_src"]
@@ -378,7 +378,7 @@ def derive_scale(task: dict, bundle: dict) -> dict:
             "project": project, "project_name": P["name"],
             "m_eff_kg": round(m_eff, 4),
             "inputs": {"夹具/吸嘴 kg": float(tool), "工件 kg": part, "v_peak_mps": v, "stroke_m": h},
-            "input_sources": {"夹具/吸嘴": tsrc, "工件": "真源: 光模块 QSFP 级 ≈25g (master_param_m 注释)",
+            "input_sources": {"夹具/吸嘴": tsrc, "工件": "唯一依据: 光模块 QSFP 级 ≈25g (master_param_m 注释)",
                               "峰值速度": v_source, "行程": h_source},
             "E_kin_J": round(e_kin, 4), "E_pot_J": round(e_pot, 4), "E_task_J": round(e_task, 4),
             "E_ref_J": MP.E_REF, "energy_level": MP.energy_level(M),
@@ -417,9 +417,9 @@ def compute_M(task_id: str | None = None, bundle: dict | None = None,
             "missing": b.get("missing") or []}
 
 
-# ───────────────────────── 写盘: M 真源 (带非正定闸门) ─────────────────────────
+# ───────────────────────── 写盘: M 唯一依据 (带非正定闸门) ─────────────────────────
 def write_master_param(spec: dict, root: str | None = None, write_M: bool = True) -> dict:
-    """把 spec 的 M/metric 写进真源 config/calib/zmax_manifold.json (经 zmax_params 写盘闸门)。
+    """把 spec 的 M/metric 写进唯一依据 config/calib/zmax_manifold.json (经 zmax_params 写盘闸门)。
 
     **非正定拒写** (闸门在 zmax_params.write_manifold_metric + 本处预检): 非法形状直接返回 ok=False, 不碰盘。
     """
@@ -542,12 +542,12 @@ def main(argv=None) -> int:
     ap.add_argument("--task", default=None, help="配置单 task_id (缺省=活跃任务)")
     ap.add_argument("--all", action="store_true", help="全部配置单")
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--write", action="store_true", help="写 M 真源 + 画布节点")
-    ap.add_argument("--no-node", action="store_true", help="只写 M 真源, 不写画布节点")
+    ap.add_argument("--write", action="store_true", help="写 M 唯一依据 + 画布节点")
+    ap.add_argument("--no-node", action="store_true", help="只写 M 唯一依据, 不写画布节点")
     a = ap.parse_args(argv)
     b = load_bundle()
     if b["missing"]:
-        print("⚠️ 缺真源: %s" % ", ".join(b["missing"]))
+        print("⚠️ 缺唯一依据: %s" % ", ".join(b["missing"]))
     ids = [t.get("task_id") for t in (b["tasks"].get("tasks") or [])] if a.all else [a.task or active_task_id(b)]
     out = {}
     for tid in ids:
@@ -561,7 +561,7 @@ def main(argv=None) -> int:
     if a.write:
         for tid, s in out.items():
             w = write_master_param(s)
-            print("[%s] 写 M 真源: %s" % (tid, "✅" if w.get("ok") else "⛔ " + str(w.get("gate"))))
+            print("[%s] 写 M 唯一依据: %s" % (tid, "✅" if w.get("ok") else "⛔ " + str(w.get("gate"))))
             if w.get("ok"):
                 print("     回读 metric = %s · M = %s · 闸门 min_eig = %.4g"
                       % (w["metric_readback"].get("mode"), w["M_write"]["M"] if w.get("M_write") else "?",

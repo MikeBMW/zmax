@@ -6,7 +6,7 @@
 ## 三层, 各管各的
 
 ### ① 任务层 = 状态空间工程的 plan 节点
-- 真源: `src/lerobot/policies/left_right/state_space/planner.py` → `TaskPlanner().plan(instruction)`
+- 唯一依据: `src/lerobot/policies/left_right/state_space/planner.py` → `TaskPlanner().plan(instruction)`
 - ⚠ 路径是 `src/lerobot/policies/left_right/state_space/`, **不是** `left_right/state_space/`(那个不存在)。
   `find . -name planner.py | grep -v venvs` 一次就能定位, 别照记忆里的旧路径硬编 import。
 - 未配 `llm_url` 时走确定性规则回退(零重依赖、只 import json/os), 输出 token 序列,
@@ -35,7 +35,7 @@
   - 取景(近似 `drawVR` 前段): `if(typeof LARM!=='undefined' && LARM.show && VR.urdf && URDF && LINKM){ ... pts.push(...) }`
   - 实绘(后段): `if(LARM.show && URDF && LINKM){ const X=larmXform(); drawUrdf(g, pr, LARMFK || LINKM, X); }`
   实测只改取景那处时: `LARM.q` 变了、`LARMFK` 算出来了、`tool1` 坐标对了, 而两次截图**逐像素相同(差异 0px)**。
-  这种症状特别像「IK 没生效」, 其实只差一个变量名。
+  这种症状特别像「IK 没生效」, 实际只差一个变量名。
 - IK 用现成的 `ikTool1(target, q0)`(DLS 位置逆解, 末端 link = `tool1`, 迭代 ≤140, <0.5mm 收敛),
   🔴 target 必须换算到**左臂自身系** = 世界点 − `LARM.off`([0, 0.5, 0]); 直接喂世界点解出来的是右臂姿态。
 - 播放器: 每段两端点各解一次 IK, 段内 6 关节线性插值; 取帧 `n=max(4, min(16, dist/0.012))`(每 12mm 一帧),

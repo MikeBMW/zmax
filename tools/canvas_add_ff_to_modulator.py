@@ -4,7 +4,7 @@
 老倪 2026-10-15: 「前馈加速器的输出，要连到动作调制器；前馈加速器是 L2 功能一个状态预测模型，
 使用 MLP 实现；这个预测的状态，进入动作调制器，变成规范动作」
 
-真源口径 (代码):
+唯一依据口径 (代码):
   parallel.py:3   快通道 (前馈加速器 = 左脑 MLP): obs → 建议动作 u_ff (权重 30%)
   parallel.py:20  输出汇合到 S3 认知决策层: 调度器 u = w_ff·u_ff + (1−w_ff)·u_fb
   cognition.py:240 def decide(self, u_ff, u_fb, contact_p, residual) → u (规范动作, 按阶段限速+否决)

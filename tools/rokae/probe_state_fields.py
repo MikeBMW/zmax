@@ -44,7 +44,7 @@ for m in ("getStateData", "stateData", "safetyState", "getSafetyState", "emergen
     if hasattr(r, m):
         safe(lambda m=m: r.__getattribute__(m)({}), m)
 
-# 控制器错误日志(报警真源) —— 与新状态文件同一口径: 最近 30 条里的 error/warning
+# 控制器错误日志(报警唯一依据) —— 与新状态文件同一口径: 最近 30 条里的 error/warning
 try:
     errs = r.queryControllerLog(30, {x.LogInfoLevel.error}, {})
     o["log_error_n"] = len(errs)

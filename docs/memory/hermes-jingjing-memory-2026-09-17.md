@@ -6,7 +6,7 @@ RTC勿动; 开机NTP拨钟→报时间先核对; cron next_run会被推8h→herm
 §
 画布三级: L4=世界模型(流形JEPA+LEW)/L3=VLM+DiT/L2=原子技能; 画布加载会重生node id→断言/对比按节点名
 §
-交付前先自跑通; 清理只删明显垃圾
+交付前先自验证通过; 清理只删明显垃圾
 §
 安全限值=🛡类别4栏位; 状态空间三层安全(否决+限幅+Sys0)
 §
@@ -24,7 +24,7 @@ Hermes: CLI≠gateway; 飞书99991663=token过期→重启hermes-gateway
 §
 磁盘红线300G; 留档写~/zmax_data(勿放/tmp)
 §
-评估铁律: 布局每进程漂移禁写死几何; 单次不可靠必多重复+同口径; 每臂独立进程+同解释器; 肌肉记忆A/B须SS_MUSCLE_PATH冷隔离
+评估铁律: 布局每进程漂移禁预先固定几何; 单次不可靠必多重复+同口径; 每臂独立进程+同解释器; 肌肉记忆A/B须SS_MUSCLE_PATH冷隔离
 §
 引擎obs39D=cur18+prev18+target3, cur=[x3,grip1,v3,_pc3,goal_p3,0×5]→obs[7:10]=_pc光模块位置; 训练用o=env._get_obs()[:39]; L3推理须env原生obs+128图+task动态读+post()反归一化(u_ff=act×0.5)
 §
@@ -50,7 +50,7 @@ Orin ROS=domain0; tcp_pose 50Hz真值; 几何须示教ss_geom_calib; force_torqu
 §
 感知源收口: yolo_3d/frame_source.py 四源+profile, 反投影仅一份estimate_3d; 真机3D须K+手眼外参+plane_z(calib_real_cam.py)
 §
-画面≠结果: 仿真窗口idle=静止初始帧(光模块离槽358mm,带横幅), 跑起来=引擎实况帧; /tmp/ss_live_frame.json 记step/depth/lateral; L2=插好收尾, L3/L4全链=放回台面
+画面≠结果: 仿真窗口idle=静止初始帧(光模块离槽358mm,带横幅), 启动=引擎实况帧; /tmp/ss_live_frame.json 记step/depth/lateral; L2=插好收尾, L3/L4全链=放回台面
 §
 看不了图→抓窗口+模板匹配定哪一帧(技法见 pyqt-gui-auto-verification 的 pixel-forensics 参考)
 §

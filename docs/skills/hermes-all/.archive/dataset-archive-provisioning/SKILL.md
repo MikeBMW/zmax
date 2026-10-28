@@ -9,7 +9,7 @@ description: Use when 大归档(.zst)未解压致下游FileNotFoundError或需�
 - 下游加载数据集/权时报 `FileNotFoundError: ... unable to open file: name = '.../xxx.h5'` (errno=2)
 - 数据集"已下载"但训练/评测找不到文件
 - 磁盘吃紧, 需回收大归档 (.zst / .tar.zst / 冗余 .h5), 老倪问"清了多少 / 有没有达标"
-- 下载看门狗每几分钟报"卡住, 重新续传"
+- 下载看门狗每几分钟报"阻塞, 重新续传"
 
 ## 第一原则: 下载完成 ≠ 可用
 落盘的归档只是**字节在盘上**。解压/转换那一步常常属于**另一条流水线**(自动接力脚本 / autopilot / 看门狗),
@@ -47,7 +47,7 @@ print(last.mean(), last.std())                                       # std>5 才
 只读 keys/形状是读元数据, 不算验证数据本体。
 
 ## 证明"修好了"
-不要只回"文件存在了"。**用真实下游命令复跑一遍**, rc=0 且指标与历史记录一致才算硬证据:
+不要只回"文件存在了"。**用真实下游命令复执行一遍**, rc=0 且指标与历史记录一致才算硬证据:
 ```bash
 bash ~/l4_ab/run_paper_direct.sh pusht recovery_delta_full_pusht_s3072 42 100   # → rc=0, success_rate 77.0 (与 09-12 一致)
 ```
@@ -65,10 +65,10 @@ bash ~/l4_ab/run_paper_direct.sh pusht recovery_delta_full_pusht_s3072 42 100   
 
 ## 坑
 - **稀疏文件**: `du -sh` 与 `du -sh --apparent-size` **两个都要看**。中断/半成品副本常见 apparent 23G / 实占 9G;
-  只看 apparent 会虚报回收量, 只看 du 会看不出"其实还有一份 23G 的完整副本"
+  只看 apparent 会虚报回收量, 只看 du 会看不出"实际还有一份 23G 的完整副本"
 - **同名的两份归档**: 先 `stat -c '%i %h %s %n'` 比 inode 和硬链接数。`link=1` 且 inode 不同 = 两份**独立数据**,
   不是硬链接 → 删一份前先确认哪份完整 (`zstd -t` / `tar -tvf` 各验一次)
-- **.aria2 残留 + 看门狗误报**: 文件已 100% 下完但 aria2 控制文件没清 → 看门狗判定"没增长 = 卡住", 每几分钟"重启续传"。
+- **.aria2 残留 + 看门狗误报**: 文件已 100% 下完但 aria2 控制文件没清 → 看门狗判定"没增长 = 阻塞", 每几分钟"重启续传"。
   判据: 大小不再增长 + `zstd -t` 通过 = 已完成, 该清的是 `.aria2`(和误报逻辑), 不是重下
 - **归档里的东西不一定被用到**: tar 内可能是另一版本数据集 (例: 98.9G reacher.h5), 而实际评测跑的
   是别的小文件 (`datasets/dmc/reacher_random.h5`)。删前用「结果 JSON + 评测日志里的实际加载路径」确认,

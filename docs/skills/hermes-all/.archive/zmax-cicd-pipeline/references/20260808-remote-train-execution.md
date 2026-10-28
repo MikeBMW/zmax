@@ -6,7 +6,7 @@
 
 ## 输出实时性 (老倪: "要详细的终端打印, 我在监控")
 1. python 非 tty → 块缓冲(4K 攒批) → 训练命令加 `-u` (stdout/stderr 无缓冲)
-2. tqdm 用 `\r` 刷新不换行 → `for line in p.stdout` 卡住 → Popen 改 bytes 块读 `read(4096)` 按 `\r`/`\n` 分行, 每行 emit; 截断放宽到 600 不简化
+2. tqdm 用 `\r` 刷新不换行 → `for line in p.stdout` 阻塞 → Popen 改 bytes 块读 `read(4096)` 按 `\r`/`\n` 分行, 每行 emit; 截断放宽到 600 不简化
 3. 队列轮询防误判: on_train 数据准备有延迟, 轮询 pgrep 会误判"完成"秒推进下一个 → 记录启动时间戳, 45s 窗口内不判完成; 进程存在则重置窗口
 
 ## ssh 后台长任务

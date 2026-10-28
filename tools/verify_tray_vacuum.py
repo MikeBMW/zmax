@@ -25,11 +25,11 @@ chk(n_tray_mod >= 3 and n_tray_ji == 0, "① 摆盘场景的对象构成对: 有
 chk(n_peg_blk >= 9, "① 插拔场景特征物在插拔场景 (孔座/夹具 x%d) —— 不是被搬到摆盘里" % n_peg_blk)
 
 import ss_dreamview as SV
-# ② 工具判定 (真源)
+# ② 工具判定 (唯一依据)
 stub = types.SimpleNamespace(scene_id="SS-TRAY-PLACE")
 k_tray = SV.DreamView3D._tool_kind(stub)
 print("  摆盘 → 工具 %s (依据 %s)" % (k_tray, getattr(stub, "_tool_reason", "?")))
-chk(k_tray == "vacuum" and "真空" in getattr(stub, "_tool_reason", ""), "② 摆盘 ⇒ 真空吸盘, 依据来自活跃任务/场景真源")
+chk(k_tray == "vacuum" and "真空" in getattr(stub, "_tool_reason", ""), "② 摆盘 ⇒ 真空吸盘, 依据来自活跃任务/场景唯一依据")
 stub2 = types.SimpleNamespace(scene_id="SS-EPI-CORNER")
 k_peg = SV.DreamView3D._tool_kind(stub2)
 chk(k_peg == "gripper", "② 插拔 ⇒ 两指夹爪 (依据 %s)" % getattr(stub2, "_tool_reason", "?"))

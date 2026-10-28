@@ -56,7 +56,7 @@
 根因: 流动动画 `_tick_flow` 只看**源节点** status ∈ (running, success)，不看链路是否被 switch 选中 — 采集轮询 `_poll_acquisition` 会把 hardware 节点标 running，Orin 源一旦 running 其连线就流动。
 
 修复 (commit 0fe89d25):
-- `SimLinkItem._switch_active()`: dst 是 switch 节点时, 源侧 `params.source` (兜底按名称含 orin/metaworld) 与 `dst.params.switch` 不匹配 → False; dst 非 switch → True。
+- `SimLinkItem._switch_active()`: dst 是 switch 节点时, 源侧 `params.source` (保障按名称含 orin/metaworld) 与 `dst.params.switch` 不匹配 → False; dst 非 switch → True。
 - `_tick_flow`: 流动条件加 `self._switch_active()` — 未选中链路 `_flow_offset` 归零。
 - `paint`: flowing 条件同样加 active; **未选中链路颜色覆盖为暗灰 #3a3f4b 实线** (选中链路保持类型色+虚线流动)。箭头色也随 color 变量。
 - 切换路由立即生效 (每次 tick 重查 switch 当前值)。

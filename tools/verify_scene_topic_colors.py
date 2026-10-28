@@ -84,8 +84,8 @@ def main() -> int:
     import sig_scene_tags as SST
     import ss_scene_switch as SSW
     scene = (SSW.now() or {}).get("src_state") or ""
-    # 🎨 场景色**随数据源真源取**, 不写死 (老倪 10-13: 画布数据源切到摆盘后, sstrace 全族应转蓝)
-    #   写死 #2e8b57 会让"摆盘在跑"这件事被判成红 —— 判据必须跟真源, 不跟历史某一刻。
+    # 🎨 场景色**随数据源唯一依据取**, 不预先固定 (老倪 10-13: 画布数据源切到摆盘后, sstrace 全族应转蓝)
+    #   预先固定 #2e8b57 会让"摆盘在跑"这件事被判成红 —— 判据必须跟唯一依据, 不跟历史某一刻。
     _scol = (SSW.now() or {}).get("color") or SST.color("sstrace.接触概率") or "#1f6feb"
     chk("画布数据源场景可读", bool(scene), scene or "读不到")
     chk("sstrace.* → 画布场景", SST.tag("sstrace.末端.0") == scene, SST.tag("sstrace.末端.0"))

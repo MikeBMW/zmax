@@ -41,7 +41,7 @@ try:                                  # 容器里一般没有 → 走"宿主上�
 except Exception:                                                             # noqa: BLE001
     cv2 = None
 
-# 彩色化口径**唯一真源**: tools/depth_colorize.py (宿主 cam_live_stream 也 import 同一份,
+# 彩色化口径**唯一依据**: tools/depth_colorize.py (宿主 cam_live_stream 也 import 同一份,
 # 免得两边颜色/量程/文字各写一套 → 迟早漂移)。
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from depth_colorize import RANGE_M, colorize          # noqa: E402

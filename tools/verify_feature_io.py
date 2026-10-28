@@ -3,10 +3,10 @@
 """verify_feature_io.py — **每个功能**的网络 topic 输入/输出 实测报告 (老倪 2026-10-13)
 
 口径 (三条, 逐条落到实现):
- 1. **功能 = 画布节点**。真源 `data/database/zmax/sources/canvas/state_space_obs.json`
+ 1. **功能 = 画布节点**。唯一依据 `data/database/zmax/sources/canvas/state_space_obs.json`
     (89 节点 / 184 连线)。每个功能:
       · 输入 topic = 上游节点输出 topic 集合 (由连线 f→t 反解) + 连线总线 `zmax/link_value`
-      · 输出 topic = `ss/<node_id>/out` (busdb 注册真源, 每节点 ≥1, 见 busdb.messages.ss_node_out)
+      · 输出 topic = `ss/<node_id>/out` (busdb 注册唯一依据, 每节点 ≥1, 见 busdb.messages.ss_node_out)
       · 描述 = 节点 params.desc / source / source_symbol
       · 性能指标 = 该节点所属产品特征(PF)的 KPI (engineering_db: capability→product_feature→module)
  2. **真收发, 不是登记核对**:
@@ -35,7 +35,7 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# ── 真源路径 ──────────────────────────────────────────────────────────────
+# ── 唯一依据路径 ──────────────────────────────────────────────────────────────
 CANVAS = os.path.join(ROOT, "data", "database", "zmax", "sources", "canvas", "state_space_obs.json")
 BUSDB = os.path.join(ROOT, "zmax_data", "dataspace", "busdb.json")
 ENGDB = os.path.join(ROOT, "data", "database", "zmax", "zmax_engineering.db")
@@ -102,7 +102,7 @@ def load_functions():
         if tid:
             scene_nodes[tid] = {"scn": scn, "scene": (d.get("任务") or {}).get("场景"), "nodes": ids,
                                 "n": (d.get("画布") or {}).get("启用节点数")}
-    # 性能指标真源: capability→product_feature→module → KPI
+    # 性能指标唯一依据: capability→product_feature→module → KPI
     kpi_by_node, cap_by_node = {}, {}
     try:
         c = sqlite3.connect(ENGDB)
@@ -275,7 +275,7 @@ def render_md(snap):
     A = L.append
     A("# 功能 topic 输入/输出 实测报告 · %s" % ver)
     A("")
-    A("> 真源: 画布 `data/database/zmax/sources/canvas/state_space_obs.json` (89 节点/184 连线) · "
+    A("> 唯一依据: 画布 `data/database/zmax/sources/canvas/state_space_obs.json` (89 节点/184 连线) · "
       "注册表 `zmax_data/dataspace/busdb.json` · 工程库 `data/database/zmax/zmax_engineering.db`")
     A("> 口径: 功能=画布节点; **输出 topic** = `ss/<节点id>/out`; **输入 topic** = 上游节点输出 topic 集合 + 连线总线 `zmax/link_value`")
     A("> 实测方式: 逐 topic **真 DDS 往返** (`zmax::SSTest` 载体, writer+reader 同进程) + 注册 typed 话题按注册 QoS 只读订阅")

@@ -59,7 +59,7 @@ def main() -> int:
         print(f"   chunk_norm: 均值 {np.mean(cn):.4f} · 最小 {np.min(cn):.4f} · 最大 {np.max(cn):.4f}")
     aa = np.asarray(rec.get("act", []), dtype=float)
     if aa.size:
-        print(f"③ 模型动作 (喂给 env 的 4D, 前 5 帧):\n{np.round(aa[:5], 4)}")
+        print(f"③ 模型动作 (提供给 env 的 4D, 前 5 帧):\n{np.round(aa[:5], 4)}")
         print(f"   |逐维 std| = {np.round(aa.std(axis=0), 4).tolist()}  (全 0 = 没真驱动)")
         print(f"   |逐维均值| = {np.round(aa.mean(axis=0), 4).tolist()}")
     # 与解析链对照: trace 里的 u_exec (实际执行)

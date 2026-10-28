@@ -247,7 +247,7 @@ class ScopeWidget(QWidget):
             n = len(data)
             if n < 2:
                 # 2026-08-05 老倪: "刚开始, 不要显示任何曲线, 会引起歧义. 训练完了再显示"
-                # 1 点(训练中)不画任何标记 (调用方 FlowScopeDialog 已过滤, 这里兜底)
+                # 1 点(训练中)不画任何标记 (调用方 FlowScopeDialog 已过滤, 这里保障)
                 continue
             p.setPen(pen)
             x_lo, x_hi = (float(xs[0]), float(xs[-1])) if xs is not None else (0.0, float(n - 1))
@@ -613,7 +613,7 @@ class FlowScopeDialog(QDialog):
             pass
         if not series:
             # 2026-08-05 老倪: "刚开始, 不要显示任何曲线, 会引起歧义. 训练完了再显示"
-            # 去掉原兜底单条显示 (曾用旧 _train_curve 数据画默认 loss 曲线 → 歧义)
+            # 去掉原保障单条显示 (曾用旧 _train_curve 数据画默认 loss 曲线 → 歧义)
             self.scope.set_series({})
             if training:
                 self.lbl_metrics.setText(f"⏳ 训练中: {'/'.join(sorted(training))} — 训练完成后显示曲线")
@@ -979,7 +979,7 @@ class InferenceVideoDialog(QDialog):
         for i, (policy, name, color) in enumerate(self.POLICIES):
             r, c = divmod(i, cols)
             box = QVBoxLayout()
-            # 🕐 元信息副标题: 生成时间 + 动作幅度 (2026-08-06 老倪: 不知道啥时候生成的, 对比没依据)
+            # 🕐 元信息副标题: 生成时间 + 动作幅度 (2026-08-06 老倪: 不知道什么时候生成的, 对比没依据)
             meta = QLabel("—")
             meta.setStyleSheet(_qss("color:#57606a;font-size:9px;"))
             box.addWidget(meta)
@@ -1099,7 +1099,7 @@ class InferenceVideoDialog(QDialog):
         self.cur_idx = 0
         self.lbl_note.setText(f"🎞 {len(dirs)} 模型 × {min_len} 帧 · 同一场景同步播放")
         # 🕐 元信息: 生成时间 (帧 mtime) + 动作幅度 (actions.npy std) — 2026-08-06 老倪:
-        #   不知道啥时候生成的 + 对比没依据 (视频"都差不多/没拿起来" → 动作 std 直接可见)
+        #   不知道什么时候生成的 + 对比没依据 (视频"都差不多/没拿起来" → 动作 std 直接可见)
         for p in dirs:
             frames = dirs[p]
             mtime = time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(frames[0])))

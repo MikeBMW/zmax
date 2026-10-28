@@ -23,7 +23,7 @@
 ## 坑
 - **systemd Restart=always 会用旧 ExecStart 抢着重启**: 杀散跑的裸进程无效 —— 改档必须改**单元文件** ExecStart 再 `daemon-reload && restart` (仓库模板 `tools/systemd/` 与 `/etc/systemd/system/` 各一份, 要同步)。
 - **`pkill -f '...原文...'` 会杀掉自己的 shell**: 命令文本里含同一串时自杀 (exit -15, 前功尽弃) ⇒ 杀进程写脚本, 模式用 `[s]s_engine_loop` 断开自匹配。
-- 联调实例用 `--instance <名字>` (自己的 tap/pid + `engine_latest_<名字>.json`), 不打扰常驻 `main`; 判据读实例真源要挑**新鲜的**, 超时回落到主实例, 不然报旧档。
+- 联调实例用 `--instance <名字>` (自己的 tap/pid + `engine_latest_<名字>.json`), 不打扰常驻 `main`; 判据读实例唯一依据要挑**新鲜的**, 超时回落到主实例, 不然报旧档。
 - 挂上 VLM(≈960ms/次, 1Hz) + 管线(每 10 拍 100~900ms) 后回路实测 ~5~8Hz (原 10Hz) —— 属预期, 报数要如实说节奏下降。
 - 编码帧接不上时回路**明写原因并留在 pca** (不假装): 单元起完等 20~40s 再核 `z_source`, 首帧窗口内可能还是回退态。
 - 现场 `config/topics/` 是**符号链接**(不在代码库内) ⇒ scene_tags.json 改了不会出现在 `git status`; 别以为没写进去, 用 `git check-ignore -v`/直接读文件核。

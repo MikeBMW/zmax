@@ -69,7 +69,7 @@
 老倪: "**数据集的页面，下面的终端为什么显示很多的训练结果？不要显示跟数据无关的东西，你要重新设计数据UI**"。
 - 数据页的「🧠 训练结果 (outputs/train)」整段**搬到训练台 `TrainingModule`** (不是删: 老倪要求\"训练结果完全可控\"); 
   搬法 = 在 `content_widget.setLayout(layout)` 前插 section + `self._tr_box`, 方法挪到类体内, `_tr_log` 用
-  getattr 兜底 log_signal。
+  getattr 保障 log_signal。
 - 数据页只留: 数据总表 (h5 台账 + `<repo>/data/` 本地集真实统计) + 选中行详情 + 数据操作日志。
 - 铁律: **页面职责单一**, 老倪会逐页检查\"这个跟这页有关系么\"。
 

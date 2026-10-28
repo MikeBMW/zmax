@@ -40,9 +40,9 @@ STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入"]
 NS = len(STAGES)
 
 # ★ 2026-09-26 ①-2 门控细化: 引擎状态机是 8 阶段(多一个"完成"), 原 MOE 只认 7 维 →
-#   引擎走到"完成"时 stage_p 行和为 0 → 走均匀兜底 → hard top-1 恒取 E0 (= "E0 吞阶段"真因)。
+#   引擎走到"完成"时 stage_p 行和为 0 → 走均匀保障 → hard top-1 恒取 E0 (= "E0 吞阶段"真因)。
 #   这里显式给出**引擎阶段 → 专家**覆盖表, 并支持把 8 维/任意维 stage_p 投影到专家空间。
-STAGES_ENGINE = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]   # cognition.py 真源
+STAGES_ENGINE = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]   # cognition.py 唯一依据
 STAGE_TO_EXPERT = {"接近": 0, "对位": 1, "下降": 2, "抓取": 3,
                    "抬起": 4, "转移": 5, "插入": 6, "完成": 6}   # 完成 并入 E6(插入/终止段)
 
@@ -75,7 +75,7 @@ class StageMoE(nn.Module):
                                     nn.Linear(expert_hidden, chunk * act_dim)),
             }))
         self.mem_dim = mem_dim
-        # ★ 2026-09-26 ①-2: 未识别阶段的兜底专家 (原为"均匀 1/7" → hard 路由恒取 E0, 静默吞阶段)
+        # ★ 2026-09-26 ①-2: 未识别阶段的保障专家 (原为"均匀 1/7" → hard 路由恒取 E0, 静默吞阶段)
         self.default_expert = int(os.environ.get("SS_MOE_DEFAULT_EXPERT", 6))
         self.route_stats = {"frames": 0, "unrouted": 0, "per_expert": [0] * n_experts}
         self._proj_cache = {}
@@ -103,7 +103,7 @@ class StageMoE(nn.Module):
             # ★ 硬先验路由: 直接按阶段选择专家 (无自由学习 → 不可能坍缩)
             rowsum = stage_p.sum(1, keepdim=True)
             g = stage_p / rowsum.clamp_min(1e-6)
-            # 未识别阶段: 不再"均匀 1/7"(那会经 hard top-1 静默变 E0), 改走显式兜底专家并计数
+            # 未识别阶段: 不再"均匀 1/7"(那会经 hard top-1 静默变 E0), 改走显式保障专家并计数
             unr = (rowsum.view(-1) <= 0.5)
             if bool(unr.any()):
                 fb = torch.zeros_like(g)

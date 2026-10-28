@@ -2,8 +2,8 @@
 
 适用: 老倪说「插拔是绿色信号 / 没看到 / 加在 topic / 怎么这么多蓝色信号」这类关于「📈 实时监控 · Graphic 信号分析」页面的问题。页面实现 = `tools/gui/canoe_graphic.py`（`CanoeGraphicWidget`，控制台内嵌 tab 与独立窗口**同一个类**）。
 
-## 真源与文件
-- 打标真源 = `tools/sig_scene_tags.py` → `config/topics/scene_tags.json`（键 `signals`(信号名→场景) / `overrides`(人工·学习补充, 优先级最高) / `source_scenes`(来源族兜底)）；颜色/任务映射再来自 `tools/ss_scene_switch.py`（不重写）。
+## 唯一依据与文件
+- 打标唯一依据 = `tools/sig_scene_tags.py` → `config/topics/scene_tags.json`（键 `signals`(信号名→场景) / `overrides`(人工·学习补充, 优先级最高) / `source_scenes`(来源族保障)）；颜色/任务映射再来自 `tools/ss_scene_switch.py`（不重写）。
 - 页面里的信号名 = `<源前缀>.<键名>`，前缀表在 `canoe_graphic.HOST_SOURCES`：`sstrace`(trace_live.json) / `pose` / `state` / `safety` / `yolo` / `space` / `ar`(ar_aoi_live.json)。**页面只列「源文件里当前出现的键」** ⇒ 想加一个信号, 先确认它真在某个源文件里落盘。
 - `config/topics/` 是**符号链接**（真身在仓库外）⇒ 改完标签 `git status` 看不到该文件, 别以为没写进去（用 `git check-ignore -v` / 直接读文件核）。
 

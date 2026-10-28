@@ -81,7 +81,7 @@ else:
 print("\n=== ④ 画面变化检测 (连抓 4 帧) ===")
 cap = cv2.VideoCapture(dev)
 if not cap.isOpened():
-    print("  ❌ cv2 打不开设备")
+    print("  ❌ cv2 无法打开设备")
     sys.exit(1)
 frames = []
 t0 = time.time()

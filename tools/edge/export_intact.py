@@ -12,7 +12,7 @@
 导出两块 (推理真正需要的, 其余是训练期的东西):
   ① intact_enc.onnx     pixels(B,3,224,224) → emb(B,192)                 每帧跑这块
   ② intact_pred.onnx    emb(B,3,192) + act_emb(B,3,192) → pred(B,3,192)  世界模型预测
-配置真源 = ckpt 同目录的 config.json (那次训练实际用的), 不是仓库里任何一份 yaml。
+配置唯一依据 = ckpt 同目录的 config.json (那次训练实际用的), 不是仓库里任何一份 yaml。
 对账 = torch vs onnxruntime, max|Δ| > 1e-4 直接红。
 """
 from __future__ import annotations

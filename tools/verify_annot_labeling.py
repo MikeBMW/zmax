@@ -3,7 +3,7 @@
 ① 控件坐标映射: 拖框 → 原始帧像素坐标 (含 180°/90° 旋转窗的换算)
 ② 标定会话落盘: 图片/YOLO 标签/annotations.jsonl/session.json/meta.json/classes.txt, 两窗同步
 ③ 数据集构建 + 体检 (含"注入坏标签 → 体检必须抓出来"的反向验证)
-④ (--real) 用真机 D405 帧跑一遍 ①②③: 真机帧 + 真落盘
+④ (--real) 用真机 D405 帧执行一遍 ①②③: 真机帧 + 真落盘
 跑法: DISPLAY=:0 QT_QPA_PLATFORM=offscreen gui-venv311/bin/python 本文件 [--real]
 """
 import json

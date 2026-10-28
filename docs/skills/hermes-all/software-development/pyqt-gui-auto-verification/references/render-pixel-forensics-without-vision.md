@@ -29,7 +29,7 @@ def proj(p):
     v = np.asarray(p, float) - cpos
     xc, yc, zc = cmat[:,0]@v, cmat[:,1]@v, cmat[:,2]@v
     depth = -zc                      # MuJoCo/GL: 视轴 = 相机 −z
-    if depth < 0: depth, xc, yc = -depth, -xc, -yc   # 约定不确定时按符号兜底
+    if depth < 0: depth, xc, yc = -depth, -xc, -yc   # 约定不确定时按符号保障
     return (W/2 + f*xc/depth, H/2 - f*yc/depth) if depth > 1e-6 else None
 ```
 **必须自检**: 投影一个"图里必然可见"的物体 (本次=绿色光模块中心), 其像素点要落在该颜色像素质心

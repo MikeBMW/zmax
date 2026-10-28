@@ -4,7 +4,7 @@
 
 要点: 用 `QGraphicsScene.render(painter, target, source)` 按**场景坐标**切图 ——
 不依赖视口滚动/布局 (离屏下 `centerOn` 常不生效, 出图会变成同一张 ⇒ 假证据, 已实测踩过)。
-只读画布, 不写任何真源。
+只读画布, 不写任何唯一依据。
 
 用法:
     python tools/shot_seg_dsvl_link.py <out.png> [全览|src|dst|mid]

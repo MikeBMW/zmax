@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""🤖🔁 真机机器人模型参数同步器 (Z-MAX 全系统单一真源)
+"""🤖🔁 真机机器人模型参数同步器 (Z-MAX 全系统单一唯一依据)
 
 老倪 (09-22): 「你现在已经连接真机了，你要同步所有仿真与真机数据，URDF，质量，惯性，
 自由度等，按照真实的机器人机械臂，全面更新状态空间的仿真数据」+「不要发出真机控制指令，
@@ -160,7 +160,7 @@ def fk_from_chain(chain: list, q: list, upto: str | None = None) -> tuple:
     组合口径 (与 tools/ss_fk_xms5.py::compose 逐位一致):
       T_child = T_parent · T_origin · Rot(axis, q)
       ⇒ 平移用**父系**旋转 R_parent 变换 origin.xyz, 旋转再右乘 origin.rpy 与关节转角.
-    (踩坑: 先乘 origin.rpy 再去平移 origin.xyz = 用新旋转变换原点 → 只有 rpy≠0 的
+    (遇到问题: 先乘 origin.rpy 再去平移 origin.xyz = 用新旋转变换原点 → 只有 rpy≠0 的
      末段工具关节会错, 实测假偏差 136mm; 6 个运动关节 rpy 全 0 所以看不出来.)
     """
     R = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
@@ -376,7 +376,7 @@ def build_spec(urdf_path: str) -> dict:
 
     masses = [L["mass"] for L in links_out if L["mass"] is not None]
     spec = {
-        "_doc": ("Z-MAX 真机机器人模型参数 单一真源 — 由 tools/robot_spec_sync.py 生成。"
+        "_doc": ("Z-MAX 真机机器人模型参数 单一唯一依据 — 由 tools/robot_spec_sync.py 生成。"
                  "所有层 (状态空间引擎 / 3D 视图 / L2 安全闸 / 感知反投影 / 训练配置) 一律读本文件, "
                  "禁止再各自硬编码几何/限位/质量。真机只读采集, 零运动指令。"),
         "_generated_at": time.strftime("%F %T"),
@@ -459,7 +459,7 @@ def print_table(spec: dict) -> None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="真机机器人模型参数同步 (URDF + 真机只读实测 → 单一真源)")
+    ap = argparse.ArgumentParser(description="真机机器人模型参数同步 (URDF + 真机只读实测 → 单一唯一依据)")
     ap.add_argument("--urdf", default=URDF_DEFAULT)
     ap.add_argument("--out", default=SPEC_DEFAULT)
     ap.add_argument("--check", action="store_true", help="只校验, 不写文件")
@@ -487,7 +487,7 @@ def main() -> int:
                           "fk_err_mm": spec["live_check"].get("fk", {}).get("err_mm")},
                          ensure_ascii=False))
     elif not a.quiet:
-        print(f"\n✅ 已写单一真源: {os.path.relpath(a.out, ROOT)}")
+        print(f"\n✅ 已写单一唯一依据: {os.path.relpath(a.out, ROOT)}")
     return 0
 
 

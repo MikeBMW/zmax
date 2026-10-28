@@ -35,8 +35,8 @@ SYNC_LOCS = [
      r'QLabel\("Z-MAX (v?\d+\.\d+\.\d+)"\)', "侧栏品牌版本小字"),
     # 2026-10-15 老倪: 窗口标题改成「XSpace ZMAX <产品号>」(产品标识, 不含版本号) ⇒ 标题不再是版本同步点。
     #   版本仍由上面的「品牌版本 QLabel」(侧栏) + 状态栏 + 关于框承担;
-    #   标题↔产品真源的一致性归 tools/verify_console_title_product.py 判
-    #   (产品真源 config/platform/zmax_product.json · 实机窗口标题 · F5 调试同源 md5)。
+    #   标题↔产品唯一依据的一致性归 tools/verify_console_title_product.py 判
+    #   (产品唯一依据 config/platform/zmax_product.json · 实机窗口标题 · F5 调试同源 md5)。
     ("studio.py:changelog 前缀", "tools/gui/studio.py",
      r'(?m)^[ \t]*# (v?\d+\.\d+\.\d+):', "变更摘要注释(取最新一条)"),
     ("update_checker.py:CURRENT_VERSION", "tools/gui/update_checker.py",

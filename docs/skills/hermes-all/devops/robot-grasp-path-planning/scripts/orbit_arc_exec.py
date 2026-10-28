@@ -8,7 +8,7 @@ traj.json: {"quat": [x,y,z,w], "z": 0.4303,
 
 纪律:
   · 三查不过不下发: power=on · operation=idle · has_error 假
-  · 每路点核 z 与 traj.z 一致、姿态写死不变 ⇒ 纯平移
+  · 每路点核 z 与 traj.z 一致、姿态预先固定不变 ⇒ 纯平移
   · 一路点一条 /move_line, 到位判据 = 位置偏差 <2mm 连续 1.5s
   · 超时 / 偏差超限 / 状态异常 ⇒ 中止剩余路点, 绝不重发(重发=两个动作叠加)
   · 订阅一律 BEST_EFFORT —— 该发布者是 BEST_EFFORT, RELIABLE 收不到任何消息

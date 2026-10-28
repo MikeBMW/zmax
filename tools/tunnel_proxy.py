@@ -95,7 +95,7 @@ DENY_STATION_RE = [re.compile("^" + p + "$") for p in DENY_STATION]
 # 默认口径**不变**: POST 一律 403。只有给闸门加 `--allow-ctl` 才打开下面这张**极窄**的白名单:
 #   · 页面: /room(手机远程控制页) —— 只读放行, 与 /station 同等对待
 #   · POST: 只放行这三个端点, 其余(含 /gen 烧钱拍照、/api/aoi/*、/cmd、/skill、/teach、/api/*)
-#     依然永久 403, 连 --allow-ctl 也打不开
+#     依然永久 403, 连 --allow-ctl 也无法打开
 # 安全不变量(**不因为开了远程就丢**):
 #   ① 必须有口令(无 ?k= 或 zmaxk cookie 一律 403);
 #   ② 真动仍要 8793 的**两步确认**且 10 分钟自动失效, 未授权时 /ctl/move 会被 8793 如实拒绝;
@@ -192,7 +192,7 @@ def build_wall(w=400, q=60, layout="h"):
             for key, im in ex.map(grab, [k for k, _ in WALL_CAMS]):
                 imgs[key] = im
     except Exception:                                                         # noqa: BLE001
-        for key, _n in WALL_CAMS:                                             # 兜底: 退回串行
+        for key, _n in WALL_CAMS:                                             # 保障: 退回串行
             _k, im = grab(key)
             imgs[key] = im
 

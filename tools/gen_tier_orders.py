@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """按性能等级 A/B/C 生成三张生产工单 (T1/T2/T3) —— 供「🧾 工单配置」页与 ar3d 演练选用。
 
-真源:
+唯一依据:
   基础工单 config/orders/BS_SCN-07-AOI.json   (场景/工艺/配方/目标, 勿手改)
   成本口径 tools/spec/cost_model.json          (单价) → tools/cost_model.build_tiers() 现算结论
 做法: 读基础工单 → 复制 → 覆盖 identity/options/targets 里的档位字段 + 挂 cost 快照 → 写 BS_SCN-07-AOI-T{1,2,3}.json

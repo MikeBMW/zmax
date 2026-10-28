@@ -5,7 +5,7 @@
 老倪指令（2026-10-16）：让前馈加速器的 u_ff **经过 接近/对位 等原子技能节点，再给仿真器**。
 落地点：动作调制器里原本的 `STAGE_V_CAP` **等比缩放** → 换成
 `physics_constraints.InertiaLimiter.limit()`（= 画布节点「⚖ 物理约束 · 惯性/质量率闸」，五条约束：
-①速度 ②加速度 ③加加速度 ④动量/质量变化率 ⑤位移/行程；真源 `config/calib/zmax_skill_physics.json`）。
+①速度 ②加速度 ③加加速度 ④动量/质量变化率 ⑤位移/行程；唯一依据 `config/calib/zmax_skill_physics.json`）。
 
 两个臂（同一份引擎、同一初值、确定性）：
   臂 A  ZMAX_L2_GATE=0  旧链：动作调制器按 STAGE_V_CAP 等比缩放
@@ -39,7 +39,7 @@ STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", 
 
 
 def _arm(tag: str, gate_on: bool) -> dict:
-    """跑一遍解析引擎（确定性），返回该臂的逐拍轨迹与闸门取证。"""
+    """执行一遍解析引擎（确定性），返回该臂的逐拍轨迹与闸门取证。"""
     os.environ["ZMAX_L2_GATE"] = "1" if gate_on else "0"
     # 热重载引擎模块：构造函数在 __init__ 里读环境变量，模块只需 import 一次
     from lerobot.engine.sim import StateSpaceSim  # noqa: PLC0415

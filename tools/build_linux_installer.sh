@@ -35,7 +35,7 @@ tar --exclude='__pycache__' --exclude='*.pyc' --exclude='.git' --exclude='dist' 
     -cf - \
     tools src dds defaults flows config/pyproject.toml pyproject.toml README.md VERSION.md 2>/dev/null \
     | tar -xf - -C "$STAGE/zmax-console" || true
-# 目录可能不存在 (config/ 是软链) ⇒ 逐个兜底
+# 目录可能不存在 (config/ 是软链) ⇒ 逐个保障
 for _d in tools src dds defaults flows; do
   [ -e "$STAGE/zmax-console/$_d" ] || { echo "❌ 打包缺目录: $_d"; exit 1; }
 done

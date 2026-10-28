@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ss_plan_show.py — 命令行看 MoveIt plan-only 镜像的当前状态 (与数据空间同一份真源)
+ss_plan_show.py — 命令行看 MoveIt plan-only 镜像的当前状态 (与数据空间同一份唯一依据)
 ────────────────────────────────────────────────────────────────────────────
 给现场/审计用: 不开 GUI 也能核对 ss_plan 这一条到底在发什么。
 

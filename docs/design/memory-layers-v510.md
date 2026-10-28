@@ -8,4 +8,4 @@
 | MEM | 工程记忆(文档/技能/条目) | tools/eng_memory.py | LLM 层问答 | macro_memory.engineering |
 | 感知 | 感知/场景记忆(本轮新增) | tools/perception_chain_real.py | 规划器/异常推理器/总装记忆 | macro_memory.perception + data/scene_state.json |
 
-真实链路: 真机帧 → YOLO(L2) → 板坐标系3D(工序系·免手眼) → DeepSeek VL(L3) → scene_state(单一真源) → macro_memory.perception → perception_chain.jsonl(可回放)
+真实链路: 真机帧 → YOLO(L2) → 板坐标系3D(工序系·免手眼) → DeepSeek VL(L3) → scene_state(单一唯一依据) → macro_memory.perception → perception_chain.jsonl(可回放)

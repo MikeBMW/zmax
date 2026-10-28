@@ -68,7 +68,7 @@ for seed in seeds:
         # 官方口径: raw 观测 → pre (内建 MEAN_STD/VISUAL=IDENTITY + device)
         batch = pre({'observation.image': torch.from_numpy(rgb128).float(),
                      'observation.state': torch.from_numpy(o).float()})
-        batch['task'] = TASK     # 🗣 语言指令: 与训练同款 (缺它 → 兜底串 → 分布错) 
+        batch['task'] = TASK     # 🗣 语言指令: 与训练同款 (缺它 → 保障串 → 分布错) 
         with torch.no_grad():
             pred = pol.select_action(batch)
         act = np.asarray(post(pred).detach().cpu().float()).ravel()[:4]

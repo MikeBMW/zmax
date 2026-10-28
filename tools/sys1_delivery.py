@@ -5,7 +5,7 @@
 把「单一工程库」里已经定义好的 System 1 配置 (功能清单 / 配置项 / 性能指标 / 接口契约 /
 供货边界 / 缺口) 导成一个可发放给供应商的独立包。
 
-真源: data/database/zmax/zmax_engineering.db (单文件=一套工程) + config/platform/zmax_platform.json
+唯一依据: data/database/zmax/zmax_engineering.db (单文件=一套工程) + config/platform/zmax_platform.json
 不产生第二份真相: 本工具只读, 输出到 outputs/sys1_delivery/ 供发放。
 
 用法:
@@ -57,7 +57,7 @@ CONTRACT = {
         {"to": "Sys-2 (上报)", "item": "阶段/成功/失败/异常码 · 断点信息 · 单颗 CT 计时 · 料盘空/满事件 · 型号识别结果"},
     ],
     "节拍/时延": [
-        {"item": "单颗 CT (PVT)", "value": "≤3.15s", "note": "起止口径写死: 从吸取离盘到下一位就位"},
+        {"item": "单颗 CT (PVT)", "value": "≤3.15s", "note": "起止口径预先固定: 从吸取离盘到下一位就位"},
         {"item": "动作块下发", "value": "≥10Hz (待实测标定)", "note": "缺口: 未纳入诊断断言, 需补"},
         {"item": "型号识别单帧", "value": "≤100ms", "note": "父项 sOPE-06 写 ≤200ms ⇒ 已统一取子项"},
     ],
@@ -85,7 +85,7 @@ METRICS = [
 
 GAPS = [
     ("站点几何", "T_base_cam / plane_z / cell_geometry.points 未标定 ⇒ 坐标类参数与工单全部阻塞", "现场标定后重跑 config_center check"),
-    ("性能真源", "perf.D_INSERT_mm / perf.cycle_s 未落地到 verif 真源 (摆盘以 CT 为主, 插入深度不适用)", "摆盘任务改挂 cyc.takt 判据, 不再引用 ins.*"),
+    ("性能唯一依据", "perf.D_INSERT_mm / perf.cycle_s 未落地到 verif 唯一依据 (摆盘以 CT 为主, 插入深度不适用)", "摆盘任务改挂 cyc.takt 判据, 不再引用 ins.*"),
     ("档位契约", "feature.cap_level / feature.dbc_version 未定义 ⇒ 档位级验收无口径", "补 feature.dbc 版本与能力档位"),
     ("能力库", "摆盘能力暂挂 C1/C4/B1/B2 平台级能力, 未新增项目级能力条目", "如需供应链逐条报价, 再评估是否加 I 组能力"),
     ("模型在役", "model.ckpt_l3 (VLA-T/Z-Flow 权重) 未登记在役哈希", "登记权重路径 + sha256"),
@@ -298,7 +298,7 @@ def main():
     for n, v in man["files"].items():
         print("   %-28s %8d B" % (n, v["bytes"]))
     print("\n发放: 整包 tar 后交供应商; 核验: 比对 manifest.json 内 sha256")
-    print("包内 sys1_config.json 为机器可读真源导出, sys1_供货配置说明.md 为供应商版本")
+    print("包内 sys1_config.json 为机器可读唯一依据导出, sys1_供货配置说明.md 为供应商版本")
 
 
 if __name__ == "__main__":

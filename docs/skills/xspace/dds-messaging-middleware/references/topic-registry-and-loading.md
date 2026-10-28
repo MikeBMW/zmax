@@ -5,7 +5,7 @@
 话题名 = `"<prefix>.<node_id>.<port>"`, 端口由工程连线推出 (指向节点的 `t_port` = inputs,
 从节点出发的 `f_port` = outputs)。**只拼不存**的后果:
 
-- 监控/CI/抓包工具问“这套工程有哪些话题” → 只能把工程跑起来才拿得到;
+- 监控/CI/抓包工具问“这套工程有哪些话题” → 只能把工程启动才拿得到;
 - 改命名规则/改前缀 → 不知道哪些订阅端会断;
 - 排查“订阅端 0 条”时, 双方各拼一次字符串, 拼错了没地方对照。
 
@@ -16,7 +16,7 @@ mw_project(project, canvas_sha, canvas_path, built_at, node_n, link_n, topic_n)
 mw_node   (project,node_id,name,type,module,layer,exec_mode,impl_key,source,symbol,x,y,params_json)
 mw_port   (project,node_id,port,dir,label,dtype)
 mw_link   (project,link_id,f,f_port,t,t_port,label)
-mw_topic  (project,node_id,port,dir,topic,qos,enabled)   -- 话题真源, 加 topic 索引
+mw_topic  (project,node_id,port,dir,topic,qos,enabled)   -- 话题唯一依据, 加 topic 索引
 ```
 `project` = 工程文件名去扩展名。qos 字段写档位口径 (如 `reliable/transient_local` 或 `shm`) + 一个
 `enabled` 位, 让“同一套节点在低档位不开 DDS”也留痕, 而不是运行时才算。
@@ -58,4 +58,4 @@ PYTHONPATH=src python tools/verify_mw_db.py     # 7 项
 ⑤改过的副本 → 判 stale 并回写, 再 load 认库 ⑥`source="json"` 与库节点集合一致
 ⑦**改库里一行话题名 → 重新 load → 立刻生效**。
 
-⑦ 与 ⑤ 是“库是真源”和“不会跑过期图”的铁证; 其余只证明拷贝没丢字段。
+⑦ 与 ⑤ 是“库是唯一依据”和“不会跑过期图”的铁证; 其余只证明拷贝没丢字段。

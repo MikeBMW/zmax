@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """生成《双臂协作工位项目立项报告》(md + docx)。
 
-数字全部来自 cost_model.build_tiers() 与 rollout_model.build_rollout(), 报告里不写死任何结论,
+数字全部来自 cost_model.build_tiers() 与 rollout_model.build_rollout(), 报告里不预先固定任何结论,
 改售价上限、免费期或阶段参数后重跑本脚本即同步。
 
 跑法: python3 tools/gen_project_report.py [--md-only]

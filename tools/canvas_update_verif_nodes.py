@@ -3,9 +3,9 @@
 """🧩 canvas_update_verif_nodes.py — 用**实时计数**刷新画布上「功能清单 / 测试用例」两个节点的 desc
 
 为什么: `ssfeat` 的 desc 里写着 "A引擎 7/B六层 11/C感知链 4/…" 这类**分组用例计数**, 加用例后会过期
-(2026-09-24 新增 F-B12/F-B13 → B 组 11→13)。本脚本从**单一真源**重算并写回, 幂等。
+(2026-09-24 新增 F-B12/F-B13 → B 组 11→13)。本脚本从**单一唯一依据**重算并写回, 幂等。
 
-断言: ① 两个节点存在 ② 计数 > 0 且与真源一致 ③ 坐标/结构不动 (只改 params.desc) ④ 幂等 (已最新则跳过)
+断言: ① 两个节点存在 ② 计数 > 0 且与唯一依据一致 ③ 坐标/结构不动 (只改 params.desc) ④ 幂等 (已最新则跳过)
 用法: bash tools/studio_ctl.sh stop && ./gui-venv311/bin/python tools/canvas_update_verif_nodes.py --apply
 """
 from __future__ import annotations
@@ -62,7 +62,7 @@ def main() -> int:
     for nid, desc in (("ssfeat", desc_feat), ("sstest", desc_test)):
         assert nid in nodes, f"画布缺节点 {nid}"
         nodes[nid]["params"]["desc"] = desc
-    print(f"真源计数: FEATURES {n_feat} (自动 {auto}, L2 {L2}/L4 {L4}) · 分组 {grp_txt} · "
+    print(f"唯一依据计数: FEATURES {n_feat} (自动 {auto}, L2 {L2}/L4 {L4}) · 分组 {grp_txt} · "
           f"capability 功能 {cap_n} · 功能树 {tree[0]} 节点/{tree[1]} 功能/{tree[2]} 用例")
     print("ssfeat.desc ←", desc_feat[:120], "…")
     print("sstest.desc ←", desc_test[:120], "…")

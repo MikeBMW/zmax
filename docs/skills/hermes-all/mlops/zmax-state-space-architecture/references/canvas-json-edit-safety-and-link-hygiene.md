@@ -105,8 +105,8 @@ python3 tools/relayout_canvas_v2.py --apply --x-mode grid --pitch 700 --gap 300 
 补 23 条断头/悬空边; 结果 70 节点 · 152 连线 · 15 行带 · 18899×7362 · 孤岛 0 · 违反前向 0。
 
 **新增节点要"进得了系统"三件事 (老倪: 进不了系统的节点删掉)**: ①`_reg("<key>", [名关键词], doc, fn)`
-②`_EXTERNAL_LOC["<key>"] = (真源码文件, 行, 符号)` ③`capability_levels.py` 的 funcs 里加 {fid,name,desc,groups}
-—— 缺任一就是"画上去但进不了系统"。节点函数要读**磁盘实况**(ckpt 大小/mtime、报告数字), 缺就报缺, 不写死。
+②`_EXTERNAL_LOC["<key>"] = (唯一依据码文件, 行, 符号)` ③`capability_levels.py` 的 funcs 里加 {fid,name,desc,groups}
+—— 缺任一就是"画上去但进不了系统"。节点函数要读**磁盘实况**(ckpt 大小/mtime、报告数字), 缺就报缺, 不预先固定。
 
 ### 🐛 断环 (FAS) 不幂等三连坑 —— 实锤, 每个都让画布每次跑都不一样
 1. **DFS 起点**: `_find_cycle` 在 `set` 上迭代 → 字符串哈希随机化 → 跨进程起点不同 → 断环集 3~6 条乱跳。

@@ -5,7 +5,7 @@
 模拟"装配线正常干活"攒数据: 机器人夹着模块在工作域里走 120 个位姿, 每帧只有
   ① YOLO 风格的目标框 (从**渲染图像里**抠出来的模块轮廓 AABB + 0.5px 噪声 —— 不是从真值 3D 投出来的)
   ② 机器人 TCP 位姿真值 (编码器给的)
-喂给 Box3DSolver → 它自己解出 (P, off) → 输出 3D。真值 3D **从不进入解算器**, 只用来打分。
+提供给 Box3DSolver → 它自己解出 (P, off) → 输出 3D。真值 3D **从不进入解算器**, 只用来打分。
 
 检查项:
   ① 位姿多样性体检通过   ② 拟合/留出残差  ③ 留出位姿 3D 误差(mm)  ④ 留出框 IoU
@@ -132,7 +132,7 @@ def main():
 
     checks = [
         ("① 位姿多样性体检通过", bool(div["ok"]), div["why"]),
-        ("② 拟合未退化 (rms 不是兜底值)", (res.get("rms_px") or 99) < 20.0, f"rms={res.get('rms_px')}px"),
+        ("② 拟合未退化 (rms 不是保障值)", (res.get("rms_px") or 99) < 20.0, f"rms={res.get('rms_px')}px"),
         ("③ 留出位姿 3D 误差中位 ≤10mm", float(np.median(e3d)) <= 10.0, f"{np.median(e3d):.2f}mm"),
         ("④ 留出框 IoU 中位 ≥0.5", float(np.median(ious)) >= 0.5, f"{np.median(ious):.3f}"),
         ("⑤ mono 路径可用 (误差中位 ≤60mm)", float(np.median(emono)) <= 60.0, f"{np.median(emono):.2f}mm"),

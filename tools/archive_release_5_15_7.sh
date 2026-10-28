@@ -6,7 +6,7 @@ DST=$HOME/zmax/zmax_data/release_5.15.7_$(date +%Y%m%d)
 mkdir -p "$DST"/{tools,dds,docs,reports}
 cd "$REPO" || exit 1
 
-# ① DDS 件 (类型真源 + 节点 + 发布守护 + 取证)
+# ① DDS 件 (类型唯一依据 + 节点 + 发布守护 + 取证)
 cp -f dds/ss_types.py dds/zmax_node.py dds/zmax_types.py dds/README.md "$DST/dds/" 2>/dev/null
 cp -f /home/ubuntu/zmax/dds/cyclonedds_unicast.xml "$DST/dds/" 2>/dev/null
 cp -f tools/zmax_dds_ss_daemon.py tools/zmax_dds_ss_verify.py tools/fix_services_to_main.sh "$DST/tools/" 2>/dev/null

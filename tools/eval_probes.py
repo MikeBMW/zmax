@@ -8,9 +8,9 @@
 你的工具是信号分析窗口, 3D场景窗口, 以及状态空间的元任务, 主参数, 以及 L2 原子技能的实际物理参数。」
 
 设计原则 (评测纪律):
-  1. **指标定义只有一个真源** = config/platform/zmax_perf_spec.json (58 条: A 运动学/B 视觉/C 电口/D 光口/
+  1. **指标定义只有一个唯一依据** = config/platform/zmax_perf_spec.json (58 条: A 运动学/B 视觉/C 电口/D 光口/
      E 节拍/F 环境)。本文件**只写"怎么量"**, 不抄指标名/目标值 —— 抄了就迟早两处打架。
-  2. 每条采集结果必须带**证据类**: `实测` (有真源文件+帧龄) / `标定·配置` (来自标定真源或规格) /
+  2. 每条采集结果必须带**证据类**: `实测` (有唯一依据文件+帧龄) / `标定·配置` (来自标定唯一依据或规格) /
      `推导` (由实测换算, 写明算式) / `未测` (没有采集条件 —— 绝不用 0 或设计值冒充实测)。
   3. 样本量不够 (n < 判定所需) ⇒ 记 `n` 并标 `样本不足`, **不出判定** —— 3 次插入算不出 3σ。
   4. 语义必须对得上: 物理量名字像 ≠ 同一个量 (例: L2 插入段 `s_step` 是"单拍位移上限", 不是"插深分辨率";
@@ -271,11 +271,11 @@ def p_handeye_res():
 
 
 def p_contact_pressure():
-    """金手指插入力上限 = L2 插入段的力包络 (标定真源, 真值可追)"""
+    """金手指插入力上限 = L2 插入段的力包络 (标定唯一依据, 真值可追)"""
     d = _load(SKILL_CALIB, {}) or {}
     st = ((d.get("stages") or d) or {}).get("插入") if isinstance(d.get("stages") or d, dict) else None
     if not isinstance(st, dict):
-        return _untested("perf.contact_pressure", "标定真源里没有「插入」段")
+        return _untested("perf.contact_pressure", "标定唯一依据里没有「插入」段")
     f = (st.get("F") or {})
     v = f.get("value")
     return {"value": v, "mode": "标定·配置", "unit": "N", "n": 1, "src": SKILL_CALIB, "age_s": _now_age(SKILL_CALIB),
@@ -290,7 +290,7 @@ def p_payload_ratio():
 
 
 def p_sys_l2_physics():
-    """⚖ 系统级: L2 原子技能物理合规率 (实测 v/a/s ≤ 标定包络 / 真源一致)"""
+    """⚖ 系统级: L2 原子技能物理合规率 (实测 v/a/s ≤ 标定包络 / 唯一依据一致)"""
     d = _load(SKILL_PHYS, {}) or {}
     sk = d.get("skills") or {}
     if not sk:
@@ -314,7 +314,7 @@ def p_sys_l2_physics():
 
 
 def p_sys_l2_fb_latency():
-    """⚡ Phase 0 · L2 原子技能「速度反馈延迟」— 真源 = 只读探针 probe_l2_speed_fb_latency.py 的落盘。
+    """⚡ Phase 0 · L2 原子技能「速度反馈延迟」— 唯一依据 = 只读探针 probe_l2_speed_fb_latency.py 的落盘。
 
     语义边界 (不许硬套): 这是 **L2 技能回路**的反馈延迟
       = ① 引擎→块 (块周期, 新速度指令多久产出一次) + ② 块→反馈 (技能速度反馈多久跟上)
@@ -394,7 +394,7 @@ def p_sys_manifold():
 
 
 def p_sys_consistency():
-    """🔗 系统级: 全局数据一致性 (指标定义唯一真源 + 版本一致 + L2 包络同源)"""
+    """🔗 系统级: 全局数据一致性 (指标定义唯一依据 + 版本一致 + L2 包络同源)"""
     spec = _load(PERF_SPEC, {}) or {}
     n_spec = sum(len(g.get("metrics") or []) for g in (spec.get("groups") or []))
     bad = []
@@ -405,17 +405,17 @@ def p_sys_consistency():
             bad.append("docs_sync 版本与基线不一致")
     except Exception:                                                     # noqa: BLE001
         bad.append("docs_sync 读不到")
-    # L2 包络与标定真源逐条一致
+    # L2 包络与标定唯一依据逐条一致
     sp, cal = _load(SKILL_PHYS, {}) or {}, _load(SKILL_CALIB, {}) or {}
     for code, r in (sp.get("skills") or {}).items():
         st = str(r.get("stage") or "")
         c = ((cal.get("stages") or cal) or {}).get(st)
         if isinstance(c, dict) and isinstance((c.get("v") or {}).get("value"), (int, float)):
             if isinstance(r.get("v_cap"), (int, float)) and abs(r["v_cap"] - c["v"]["value"]) > 1e-6 and r.get("在职"):
-                bad.append("%s v_cap≠标定真源" % code)
+                bad.append("%s v_cap≠标定唯一依据" % code)
     return {"value": round(100.0 * (1 - len(bad) / max(1, n_spec)), 2), "mode": "实测", "unit": "%", "n": n_spec,
             "src": PERF_SPEC, "age_s": _now_age(PERF_SPEC),
-            "note": "指标定义 %d 条来自唯一真源; 冲突 %d 项" % (n_spec, len(bad)), "extra": {"冲突": bad[:6]}}
+            "note": "指标定义 %d 条来自唯一依据; 冲突 %d 项" % (n_spec, len(bad)), "extra": {"冲突": bad[:6]}}
 
 
 # ═══════════════════ 评测补充指标 (不在 58 条里, 但这是具身产品的真实性能面) ═══════════════════
@@ -434,7 +434,7 @@ EXTRA = [
      "how": "插拔链真值帧的度规特征值上限/下限; 正定性逐帧核对", "probe": p_sys_manifold,
      "links": ["主参数 M", "3D场景", "元任务"]},
     {"id": "perf.sys_consistency", "cn": "全局数据一致性", "unit": "%", "target": "≥100 (零冲突)",
-     "how": "指标定义唯一真源 + 版本一致 + L2 包络与标定真源同源", "probe": p_sys_consistency,
+     "how": "指标定义唯一依据 + 版本一致 + L2 包络与标定唯一依据同源", "probe": p_sys_consistency,
      "links": ["工程库", "配置中心", "L2 物理参数"]},
 ]
 
@@ -450,7 +450,7 @@ PROBES = {
 
 
 def metric_index():
-    """指标定义索引 (唯一真源 perf_spec): {id: {cn, unit, target, how, std, stage, links, gid, gname}}"""
+    """指标定义索引 (唯一依据 perf_spec): {id: {cn, unit, target, how, std, stage, links, gid, gname}}"""
     spec = _load(PERF_SPEC, {}) or {}
     out = {}
     for g in (spec.get("groups") or []):

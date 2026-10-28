@@ -8,11 +8,11 @@
     前馈加速器和状态校正器协同行进」
 
 判据分六段:
-  A 天体↔节点 真源 (不是随手起名)   B 真连线 (双通道/卡尔曼结构/协同)
-  C 球上的数是真值 (与真源/真模块逐位一致)   D 画 (球/轨道/相位锁定/无数据压暗)
-  E 侧栏接线 (M 页真挂 + 切换 + 只读)   F 文案诚实 (真源·帧龄·映射写清)
+  A 天体↔节点 唯一依据 (不是随手起名)   B 真连线 (双通道/卡尔曼结构/协同)
+  C 球上的数是真值 (与唯一依据/真模块逐位一致)   D 画 (球/轨道/相位锁定/无数据压暗)
+  E 侧栏接线 (M 页真挂 + 切换 + 只读)   F 文案诚实 (唯一依据·帧龄·映射写清)
 
-只读: 本判据不写真源 (E4 静态核 + 跑前后真源 sha 对比)。
+只读: 本判据不写唯一依据 (E4 静态核 + 跑前后唯一依据 sha 对比)。
 """
 
 from __future__ import annotations
@@ -85,9 +85,9 @@ def main():
     canvas_nodes = data.nodes
     canvas_links = data.link_set
 
-    # ═══ A 天体 ↔ 节点 真源 ═══
+    # ═══ A 天体 ↔ 节点 唯一依据 ═══
     allin = all(v["在"] for v in info["checked"].values())
-    chk("A1", "7 类天体 (太阳/水星/地球/火星/木星/月球/卫星带) 都是画布真源里的真节点",
+    chk("A1", "7 类天体 (太阳/水星/地球/火星/木星/月球/卫星带) 都是画布唯一依据里的真节点",
         {k: (v["在"], v["id"]) for k, v in info["checked"].items()}, allin,
         "7 个 id 全在画布 state_space_obs.json 的 nodes 里")
     chk("A2", "每个天体的节点名与老倪口径一致 (不是同名不同物)",
@@ -95,21 +95,21 @@ def main():
         all(v["名匹配"] for v in info["checked"].values()),
         "太阳=流形引擎 · 水星=接触流形 · 地球=前馈加速器 · 火星=Action Head(DiT) · 木星=性能流形 · 月球=状态校正器 · 卫星带=原子技能")
     ids = [b[1] for b in OA.BODIES]
-    chk("A3", "没有编造节点: BODIES 里每个 id 都能在画布真源里查到",
+    chk("A3", "没有编造节点: BODIES 里每个 id 都能在画布唯一依据里查到",
         {"ids": ids, "全在": all(i in canvas_nodes for i in ids)},
-        all(i in canvas_nodes for i in ids), "全部命中 (真源 90 节点)")
-    chk("A4", "卫星带条数来自真源 (skill_phys.json 在职 SK), 不是写死的数",
+        all(i in canvas_nodes for i in ids), "全部命中 (唯一依据 90 节点)")
+    chk("A4", "卫星带条数来自唯一依据 (skill_phys.json 在职 SK), 不是固定不变的数",
         {"在职": body["sats"]["n"], "标定表": body["sats"].get("n_calib"),
          "list": [s["SK"] for s in body["sats"]["list"]]},
         body["sats"]["n"] == len([s for s in body["sats"]["list"] if str(s["SK"]).startswith("SK")]) and body["sats"]["n"] > 0,
-        "条数 == 真源在职 SK 数 (>0)")
+        "条数 == 唯一依据在职 SK 数 (>0)")
 
     # ═══ B 真连线 ═══
     _bids_all = {x[1] for x in OA.BODIES}
     _bb_keys = [(f, t) for f, t, _l in OA.KEY_EDGES if f in _bids_all and t in _bids_all]
     miss = [(f, t) for f, t, _l in OA.KEY_EDGES if (f, t) not in canvas_links]
-    chk("B1", "视图要画的 **主体↔主体 5 条**连线在画布 links 真源里全都存在 (一条不缺; 体系外按老倪要求不再上图)",
-        {"缺": miss, "真源连线总数": len(canvas_links)}, not miss, "缺 = []")
+    chk("B1", "视图要画的 **主体↔主体 5 条**连线在画布 links 唯一依据里全都存在 (一条不缺; 体系外按老倪要求不再上图)",
+        {"缺": miss, "唯一依据连线总数": len(canvas_links)}, not miss, "缺 = []")
     twin = {"直连 VLM→DiT": ("ssvlm", "ssdec") in canvas_links,
             "经流形 VLM→接触流形": ("ssvlm", "ssmani_c") in canvas_links,
             "经流形 VLM→性能流形": ("ssvlm", "ssmani_p") in canvas_links}
@@ -133,17 +133,17 @@ def main():
 
     # ═══ C 球上的数是真值 ═══
     mani = json.load(open(os.path.join(ROOT, "config", "calib", "zmax_manifold.json"), encoding="utf-8"))
-    chk("C1", "太阳主参数 M 与标定真源 zmax_manifold.json 同源 (逐位相等)",
-        {"视图 M": body["sun"]["M"], "真源 M": mani.get("M")},
+    chk("C1", "太阳主参数 M 与标定唯一依据 zmax_manifold.json 同源 (逐位相等)",
+        {"视图 M": body["sun"]["M"], "唯一依据 M": mani.get("M")},
         float(body["sun"]["M"]) == float(mani.get("M")), "相等")
     tq = json.load(open(os.path.join(ROOT, "zmax_data", "ss_live", "torque_live.json"), encoding="utf-8"))
     mt = tq.get("metric_tensor") or []
     dim = int(tq.get("metric_dim") or 6)
     diag = [float(mt[i * dim + i]) for i in range(dim)] if mt else []
     chk("C2", "太阳的扭矩与度量特征值都取自 torque_live.json (引力=度量: 井扁率用真特征值)",
-        {"T": body["sun"]["T_norm"], "真源 T": tq.get("torque_norm"),
+        {"T": body["sun"]["T_norm"], "唯一依据 T": tq.get("torque_norm"),
          "eig_min/max": [body["sun"]["eig_min"], body["sun"]["eig_max"]],
-         "真源对角": [round(min(diag), 3), round(max(diag), 3)] if diag else None},
+         "唯一依据对角": [round(min(diag), 3), round(max(diag), 3)] if diag else None},
         abs(float(body["sun"]["T_norm"]) - float(tq.get("torque_norm"))) < 1e-9
         and abs(float(body["sun"]["eig_min"]) - min(diag)) < 1e-9
         and abs(float(body["sun"]["eig_max"]) - max(diag)) < 1e-9,
@@ -184,11 +184,11 @@ def main():
     se = json.load(open(os.path.join(ROOT, "zmax_data", "ss_live", "skill_error.json"), encoding="utf-8"))
     e = body["earth"]
     chk("C6", "地球(前馈请求/偏差/可行)与月球(残差)都是 skill_latest / skill_error 的真值",
-        {"请求": e.get("req_mps"), "真源请求": sk.get("%s_请求_mps" % (e.get("stage") or "")),
-         "残差": body["moon"].get("err"), "真源残差": (se.get("err_norm") or {}).get(e.get("stage") or "")},
+        {"请求": e.get("req_mps"), "唯一依据请求": sk.get("%s_请求_mps" % (e.get("stage") or "")),
+         "残差": body["moon"].get("err"), "唯一依据残差": (se.get("err_norm") or {}).get(e.get("stage") or "")},
         float(e.get("req_mps")) == float(sk.get("%s_请求_mps" % (e.get("stage") or "")))
         and float(body["moon"].get("err")) == float((se.get("err_norm") or {}).get(e.get("stage") or "")),
-        "与真源逐位一致")
+        "与唯一依据逐位一致")
 
     # ═══ D 画 ═══
     view.resize(680, 900)
@@ -265,7 +265,7 @@ def main():
         texts = [v2._sun_text(b2["sun"]), v2._body_text("mercury", b2["mercury"]),
                  v2._body_text("jupiter", b2["jupiter"]), v2._body_text("earth", b2["earth"])]
         hit = sum(1 for t in texts if any(k in t for k in ("未算", "未测", "未运行", "不可用", "无真帧")))
-        chk("D5", "真源缺失时: 球压暗 (_live=False) 且文案写「未算/未测/不可用」—— 不填 0 不编数",
+        chk("D5", "唯一依据缺失时: 球压暗 (_live=False) 且文案写「未算/未测/不可用」—— 不填 0 不编数",
             {"_live": [OA.OrbitalArchView._live(b2[k]) for k in ("mercury", "jupiter", "earth")],
              "文案": [t[:26] for t in texts]},
             not any(OA.OrbitalArchView._live(b2[k]) for k in ("mercury", "jupiter", "earth")) and hit >= 3,
@@ -308,7 +308,7 @@ def main():
         {"类型": type(pg).__name__, "refresh": hasattr(pg, "refresh"),
          "太阳 M": getattr(getattr(pg, "data", None), "body", {}).get("sun", {}).get("M")},
         type(pg).__name__ == "OrbitalArchView" and pg.data.body["sun"]["M"] == float(mani.get("M")),
-        "OrbitalArchView · M 与标定真源同值")
+        "OrbitalArchView · M 与标定唯一依据同值")
     with open(os.path.join(ROOT, "tools", "gui", "studio.py"), encoding="utf-8") as fh:
         st_src = fh.read()
     nav = {"分支 orbital": 'elif line == "orbital":' in st_src,
@@ -320,10 +320,10 @@ def main():
     src = open(os.path.join(ROOT, "tools", "gui", "orbital_arch.py"), encoding="utf-8").read()
     _src_nop = src.replace("p.save()", "").replace("_p.save()", "")   # QPainter.save 不是写文件口
     writes = [k for k in ('open(fpath, "w"', "open(p, \"w\"", "json.dump(", "np.save", ".save(") if k in _src_nop]
-    chk("E4", "视图是只读的 (源码里没有写文件口; 只读真源画图)", {"命中写口": writes}, not writes, "无写口")
+    chk("E4", "视图是只读的 (源码里没有写文件口; 只读唯一依据画图)", {"命中写口": writes}, not writes, "无写口")
 
     # ═══ 冻源: 现场有别的进程(控制台/引擎)每帧在写 zmax_data/ss_live/*.json ⇒
-    #    像素类判据必须有**确定输入**, 先拷一份真源到临时目录, 后面的视图都读冻结副本 (只读, 不改真源)。
+    #    像素类判据必须有**确定输入**, 先拷一份唯一依据到临时目录, 后面的视图都读冻结副本 (只读, 不改唯一依据)。
     import shutil as _sh
     _FREEZE = tempfile.mkdtemp(prefix="orb_freeze_")
     _RELS = ("data/database/zmax/sources/canvas/state_space_obs.json",
@@ -342,10 +342,10 @@ def main():
             os.makedirs(os.path.dirname(_dp), exist_ok=True)
             _sh.copy2(_sp, _dp)
             _frozen += 1
-    chk("K1", "判据在**冻结真源副本**上跑 (现场别的进程每帧在写 ss_live ⇒ 输入不漂, 结论可复现)",
+    chk("K1", "判据在**冻结唯一依据副本**上跑 (现场别的进程每帧在写 ss_live ⇒ 输入不漂, 结论可复现)",
         {"已冻结文件": _frozen, "清单": [r.split("/")[-1] for r in _RELS],
          "冻源目录": os.path.basename(_FREEZE)},
-        _frozen >= 8, "关键真源 ≥8 个文件已冻结")
+        _frozen >= 8, "关键唯一依据 ≥8 个文件已冻结")
 
     # ═══ H 鼠标可操作 (旋转 / 缩放 / 复位) ═══
     from PyQt5.QtCore import QPoint, QPointF, Qt
@@ -410,7 +410,7 @@ def main():
         abs(_pitch_hi) <= 1.1501 and abs(_pitch_lo) <= 1.1501 and _zoom_hi <= 2.4001 and _zoom_lo >= 0.5499,
         "pitch ∈ [-1.15, 1.15] · zoom ∈ [0.55, 2.4]")
 
-    # ═══ I 力的相互作用连线 (真源 + 粗细 + 不闪) ═══
+    # ═══ I 力的相互作用连线 (唯一依据 + 粗细 + 不闪) ═══
     v3._tm.stop()                         # 量像素时**冻结动画**: 否则虚线相位随 60ms 计时器漂 ⇒ 判据时红时绿
     v3._phase = 0.0
     v3.reset_view()                       # 量线宽要在正视角 (H2 把视角拖到极端了, 不是干净量法)
@@ -426,8 +426,8 @@ def main():
     _got = {(e["f"], e["t"]) for e in ed}
     chk("I1", "只画主体↔主体真连线 (2026-10-16 老倪: 连线太多 ⇒ 体系外一条都不画) 且一条不漏一条不造",
         {"视图线数": len(ed), "主体↔主体": len(_bb), "体系外(应为 0)": len(_ex2),
-         "真源应有": len(_want), "缺失": sorted(_want - _got)[:4], "多余(编造)": sorted(_got - _want)[:4]},
-        _src_ok and _want == _got and len(_ex2) == 0 and len(ed) == len(_want), "真源===视图 (只有主体↔主体)")
+         "唯一依据应有": len(_want), "缺失": sorted(_want - _got)[:4], "多余(编造)": sorted(_got - _want)[:4]},
+        _src_ok and _want == _got and len(_ex2) == 0 and len(ed) == len(_want), "唯一依据===视图 (只有主体↔主体)")
     # I1b 像素级: 每条主体↔主体线在画面里**真的可见** (清单相等 ≠ 真画出来 —— 端点取不到会被静默跳过)
     _A1b = _arr(v3.grab().toImage())
     _rs1b = v3.label_rects()
@@ -585,10 +585,10 @@ def main():
     chk("J3", "底部图注**完整** (自动换行写全, 不用省略号截断): 无「…」· 每行都不超宽 · 关键项都在",
         {"行数": len(_fl), "超宽行": _tooWide,
          "含省略号": [t for t in _fl if "…" in t],
-         "关键项": {k: (k in _joined) for k in ("线义", "L2~L5", "真源", "torque_live")}},
+         "关键项": {k: (k in _joined) for k in ("线义", "L2~L5", "唯一依据", "torque_live")}},
         # 2026-10-19 老倪「字数太多要精简」: 图注由 4 行砍到 3 行短句 ⇒ 判据只核"不截断 + 三个锚点还在"
         len(_fl) >= 3 and not _tooWide and not any("…" in t for t in _fl)
-        and all(k in _joined for k in ("线义", "L2~L5", "真源", "torque_live")),
+        and all(k in _joined for k in ("线义", "L2~L5", "唯一依据", "torque_live")),
         "全在 · 无省略号 · 无超宽")
 
     # ═══ K 视觉缺陷收口 (2026-10-16 逐图复核: 地球区三条互压 / 标签压球 / 卫星互叠压地球 / 月球混堆 /
@@ -658,20 +658,20 @@ def main():
         {"图例token": _tok, "实际色": _c.name() if _c else None, "RGB": [_c.red(), _c.green(), _c.blue()] if _c else None},
         _ok_color, "图例与色板一致 (%s)" % _tok)
 
-    # ── J6: 球标签不硬截真源串 (2026-10-16 看图: 真源串被 str(state)[:10] 硬截 ⇒ 图上「自由空间 (无接触约」) ──
+    # ── J6: 球标签不硬截唯一依据串 (2026-10-16 看图: 唯一依据串被 str(state)[:10] 硬截 ⇒ 图上「自由空间 (无接触约」) ──
     _oa_src = open(os.path.join(ROOT, "tools/gui/orbital_arch.py"), encoding="utf-8").read()
     _long = "自由空间 (无接触约束)"
     _txt6 = v3._body_text("mercury", {"progress": 0.125, "risk": 0.0, "state": _long})
-    chk("J6", "球标签把真源串写全 (无 [:10] 硬截; 太长才由 _fit 省略)",
+    chk("J6", "球标签把唯一依据串写全 (无 [:10] 硬截; 太长才由 _fit 省略)",
         {"标签": _txt6[:88], "可执行硬截还在?": 'or "")[:10]' in _oa_src},
         (_long in _txt6) and ('or "")[:10]' not in _oa_src), "整串「%s」都在标签里 (注释可留, 代码不许硬截)" % _long)
 
     # ═══ F 文案诚实 ═══
     chk("F1", "图注写清 角度映射 (位置不是装饰, 是实测量的映射)",
         {"含角度映射": "角度映射" in src}, "角度映射" in src, "源码图注含该项")
-    chk("F2", "脚注含真源清单 + 帧龄 + 节点映射核对数 (可复核)",
-        {"含真源": "真源:" in src, "含帧龄": "帧龄" in src, "含节点映射核对": "节点映射核对" in src},
-        all(k in src for k in ("真源:", "帧龄", "节点映射核对")), "三项都在")
+    chk("F2", "脚注含唯一依据清单 + 帧龄 + 节点映射核对数 (可复核)",
+        {"含唯一依据": "唯一依据:" in src, "含帧龄": "帧龄" in src, "含节点映射核对": "节点映射核对" in src},
+        all(k in src for k in ("唯一依据:", "帧龄", "节点映射核对")), "三项都在")
 
     # ═══ L 本轮口径 (老倪 2026-10-16): 全虚线 · 颜色=信号 · 有才显示 · 轨道可见 · 卫星 SK01-08 ═══
     _vL = OA.OrbitalArchView(root=_FREEZE)
@@ -1050,7 +1050,7 @@ def main():
             if math.hypot(_nx4 - _kx4, _ny4 - _ky4) < _kr4:
                 _violO.append(_idx)
                 break
-    chk("O6", "任何文字块都不压球 (第四轮判据 K1 换一帧真源就红的根因: 块↔球防撞缺席)",
+    chk("O6", "任何文字块都不压球 (第四轮判据 K1 换一帧唯一依据就红的根因: 块↔球防撞缺席)",
         {"压球的块": _violO or "无", "块数": len(_bkO)}, not _violO, "块↔球 keep-out 全过")
 
     print("\n═══ 判据 %d 条: PASS %d · FAIL %d ═══" % (PASS + FAIL, PASS, FAIL))

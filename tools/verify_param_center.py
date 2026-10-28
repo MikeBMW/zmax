@@ -4,7 +4,7 @@
 
 判据:
   ① 注册表覆盖: 五类数字都非空 (标定/画布/代码常量/产品性能/运行开关), 总数 ≥100
-  ② 每个数字: 真源在盘上 · 值==真源 · 有 min/max 或显式标注"范围未定义" · 缺口(null)显式标注
+  ② 每个数字: 唯一依据在盘上 · 值==唯一依据 · 有 min/max 或显式标注"范围未定义" · 缺口(null)显式标注
   ③ 链动: 主参数 M / 插入深度 insert_depth / 平面 plane_z 都能给出 功能·模块·系统 影响链
   ④ 真改一次 (在临时副本上): 改画布数字 → 落盘 → 回读一致 → 还原; 改代码常量 → 备份+语法校验;
      越界值必须被拒; 档位非法必须被拒
@@ -42,9 +42,9 @@ chk(len(reg["params"]) >= 100, "全局可改数字 %d 个: %s" % (len(reg["param
 for c in ("calib", "canvas", "code", "switch"):
     chk(cats.get(c, 0) > 0, "分类 %s 非空 (%d)" % (c, cats.get(c, 0)))
 
-print("② 每个数字的真源与范围标注", flush=True)
+print("② 每个数字的唯一依据与范围标注", flush=True)
 miss = [p["param_id"] for p in reg["params"] if not os.path.exists(os.path.join(ROOT, p["source"]))]
-chk(not miss, "真源文件全部在盘上 (%d 个来源)" % len({p["source"] for p in reg["params"]}))
+chk(not miss, "唯一依据文件全部在盘上 (%d 个来源)" % len({p["source"] for p in reg["params"]}))
 _VOCAB = ("已定义", "自动推断", "未标定", "未定义")
 noflag = [p["param_id"] for p in reg["params"] if not any(k in p["status"] for k in _VOCAB)]
 chk(not noflag, "每个数字都有明确口径标注 (人工确认 %d · 自动推断 %d · 缺口 %d)" % (
@@ -70,7 +70,7 @@ for pid in ("calib:manifold_engine.M", "code:src/lerobot/policies/left_right/sta
                                                 len(ch.get("functions", [])), len(ch.get("modules", [])),
                                                 len(ch.get("code", []))))
 
-print("④ 真改一次 (临时副本, 不碰真源)", flush=True)
+print("④ 真改一次 (临时副本, 不碰唯一依据)", flush=True)
 tmp_dir = os.path.join(ROOT, ".hermes_pc_test")
 os.makedirs(tmp_dir, exist_ok=True)
 canvas_p = PR.CANVAS

@@ -16,7 +16,7 @@
 - **eps 语义**: episodes = 演示次数 (一次完整操作轨迹); 帧数 = 这些演示总图像数
 - **本地 vs 云端**: 本地行恒 "✅ 本地", 不查 HF 缓存; 下载按钮: orin 本地行 → "📥 CICD" 打开 https://datadrive.world/cicd.html (真机数据网页采集下载, 不是 HF!); 其他本地行 → 禁用 "本地"; 仅 HF 云端行走 HF 下载
 - **_is_cached 递归 glob**: metaworld_mt50 parquet 在 chunk-000/ 子目录 → `glob(..., recursive=True)` 否则缓存列恒 "—"
-- **data/ 清理原则** (老倪"没用的都删掉"): 中间产物 (npz 源已转 lerobot) 删、旧版本目录 (peg_v2/v3...v7) 删、被曲线 ckpt 引用的保留 (glob 兜底最新 = ft 目录); orin/closed_loop 老倪手动删 → 同步清理代码引用 (候选列表/采集包统计/查看器特判)
+- **data/ 清理原则** (老倪"没用的都删掉"): 中间产物 (npz 源已转 lerobot) 删、旧版本目录 (peg_v2/v3...v7) 删、被曲线 ckpt 引用的保留 (glob 保障最新 = ft 目录); orin/closed_loop 老倪手动删 → 同步清理代码引用 (候选列表/采集包统计/查看器特判)
 
 ## patch 误删事故 (大文件纪律延伸)
 - patch 替换时删一行会连带周边: 删 `dl_btn.clicked.connect` 时误删了 `manual_btn = QPushButton("📥 手动")` 创建行 → GUI 启动 NameError (manual_btn not defined)

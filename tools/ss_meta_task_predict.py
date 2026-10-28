@@ -23,7 +23,7 @@
      evidence{}  原始证据: yolo{ndet,boxes}/vlm{backend,prompt,raw}/state{字段+帧龄}
 
 CLI:
-  --task TASK-07-AOI   指定任务 (默认真源 active_task)
+  --task TASK-07-AOI   指定任务 (默认唯一依据 active_task)
   --src auto|real|render
   --json / --write / --selftest
 """

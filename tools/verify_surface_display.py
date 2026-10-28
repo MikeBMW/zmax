@@ -76,7 +76,7 @@ def main() -> int:
     try:
         chk(len(get("http://127.0.0.1:8793/station")) > 5000, "8793/station → 200 且非空")
     except Exception as ex:                                                       # noqa: BLE001
-        chk(False, "8793/station 打不开: %s" % str(ex)[:60])
+        chk(False, "8793/station 无法打开: %s" % str(ex)[:60])
     html = open(os.path.join(ROOT, "tools/web/station.html"), encoding="utf-8").read()
     chk("已压高光" in html, "station.html 表面面板有「已压高光」标注")
     src = open(os.path.join(ROOT, "tools/cam_live_stream.py"), encoding="utf-8").read()

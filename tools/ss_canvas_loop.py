@@ -53,7 +53,7 @@ def keepalive_switch():
 
     背景: exec_switches.json 由控制台「点开关」写盘, 有效期 AR_SW_FRESH_S=1800s。
     控制台长时间不开 ⇒ 过期 ⇒ /api/ar/mode 返回 ar_scene=false ⇒ AR 页回落自播
-    ⇒ 用户看到「双臂不工作」。画布常驻循环本来每拍就在读这份真源, 顺手续期最合适。
+    ⇒ 用户看到「双臂不工作」。画布常驻循环本来每拍就在读这份唯一依据, 顺手续期最合适。
     ⛔ real_auth (真机授权) 绝不续期: 那是人点出来的, 机器不能替人授权。
     """
     now = time.time()

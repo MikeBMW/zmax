@@ -50,7 +50,7 @@ R0_TRACE=1 gui-venv311/bin/python -c "import sys; sys.path.insert(0,'tools/gui')
 写任何真实化代码前, 先跑探针钉死 metaworld 契约 (每个都是血泪教训):
 
 ### metaworld 关键契约 (实测)
-1. **布局跨进程漂移 >10cm**: 同进程 seed0 freeze 稳定, 换进程 peg/goal 全变 → 几何必须每轮现场采样 (obs[4:7]/site), 引擎写死常量仅作展示
+1. **布局跨进程漂移 >10cm**: 同进程 seed0 freeze 稳定, 换进程 peg/goal 全变 → 几何必须每轮现场采样 (obs[4:7]/site), 引擎预先固定常量仅作展示
 2. **seed 冻结时序**: `_freeze_rand_vec=True` 必须在 `reset(seed)` **之后**设; 先 freeze 则布局锁死, 多轮跑同一轨迹 (0/8 实锤)
 3. **控制锚 = obs[0:3] hand (腕部=真实夹爪 claw), 不是 endEffector site**: site 是腕下 4cm 虚拟视觉点! 用 site 当夹爪 → 真夹爪悬空 2-3.5cm → 永远空夹。且 site 与 claw 都挂 hand body (claw 局部 z=0, site 局部 z≈-0.04)
 4. **动作映射**: metaworld act ±1 = 目标位移, 伺服 ramp 收敛稳态 ~9mm/步@act1 (≈ 引擎 0.5m/s×0.02s=10mm/步, 巧合对齐); act = u(m/s) / 0.5
@@ -93,7 +93,7 @@ R0_TRACE=1 gui-venv311/bin/python -c "import sys; sys.path.insert(0,'tools/gui')
 | 插入差 0.1mm 磨死 | insert_depth 太紧 | 0.006 + 插入 v_min 0.02 |
 | R1 卡下降 400 步 | 视觉 peg z 偏低, z 阈值等不到 | z 停滞检测 (≥8 帧) |
 | 抓取对准幻影追着跑 | 夹爪遮挡 peg 检测崩 | 悬停刷新 + 下降冻结 + EMA |
-| 机械臂乱转接近/对位 0/8 (2026-09-06) | 蒸馏 MLP 单布局: goal 零方差 ss≈1e-8 → 真实化现场孔位偏离 → 归一化 ±6000σ → 输出恒饱和 [0.6,-0.6,-0.6] | 零方差通道归一化置 0 + forward 逐通道 \|x\|≤4σ 域守卫 (域外解析兜底), commit 185dab9e |
+| 机械臂乱转接近/对位 0/8 (2026-09-06) | 蒸馏 MLP 单布局: goal 零方差 ss≈1e-8 → 真实化现场孔位偏离 → 归一化 ±6000σ → 输出恒饱和 [0.6,-0.6,-0.6] | 零方差通道归一化置 0 + forward 逐通道 \|x\|≤4σ 域守卫 (域外解析保障), commit 185dab9e |
 
 ### 🐛 2026-09-06 蒸馏 MLP 域外两大坑 (R0 全 seed 失败根因, commit 185dab9e)
 1. **零方差除零炸弹**: 蒸馏数据单布局 → goal/孔位通道 std≈0 → 导出 ss=std+1e-8 →
@@ -185,15 +185,15 @@ R1 多布局 2/6 (104/108 过; 105-109 物理难布局, 与 R0 同分布 — 视
 - 教训: 跨源 tr 数据进共享 3D 前必须统一语义; 引擎 vs metaworld gripper 相反是
   双源坑 (引擎自己 0=开, metaworld obs 1=开)。
 
-### 🕳 2026-09-07 老倪目检: 3D 插入位置偏 (场景几何写死 vs 布局现场漂移, commit fa32ddac)
+### 🕳 2026-09-07 老倪目检: 3D 插入位置偏 (场景几何预先固定 vs 布局现场漂移, commit fa32ddac)
 老倪: "插口插入的位置偏了" — 实锤: metaworld 布局**每进程漂移** (seed104 现场孔口
-[-0.177,0.424,0.13] vs 3D ss_dreamview 写死常量 _HOLE_MOUTH y=0.462 偏 3.8cm; seed100
-偏 21cm) → ▶运行真实化轨迹 3D 里 peg 插入点总偏离画的孔 (孔/盒画在写死位)。
+[-0.177,0.424,0.13] vs 3D ss_dreamview 预先固定常量 _HOLE_MOUTH y=0.462 偏 3.8cm; seed100
+偏 21cm) → ▶运行真实化轨迹 3D 里 peg 插入点总偏离画的孔 (孔/盒画在预先固定位)。
 修: sim_real `_reset` 现场采样 box 中心 (body "box"; ⚠️ _reset 无 m 变量, 用 env.model)
 + run() 结束 `tr["_meta"]` = {goal, hole_mouth, peg0, box_center, seed, steps,
 stage_final, vision, done} → ss_dreamview.set_trajectory 见 tr["_meta"] 自动
 _apply_meta → 场景盒/孔口画到本轮现场。验证: seed104 meta 与 geom 一致, 343步不受影响。
-教训: metaworld 现场几何 (孔/盒/peg) 全布局相关, 任何写死坐标进 3D/显示都会对不上;
+教训: metaworld 现场几何 (孔/盒/peg) 全布局相关, 任何预先固定坐标进 3D/显示都会对不上;
 tr 必须自带现场 meta, 显示层不许用全局常量猜几何。
 
 ### 🏋️ 2026-09-07 深夜: 全模型训练 (老倪"训练到100%") + 多布局评估
@@ -224,7 +224,7 @@ tr 必须自带现场 meta, 显示层不许用全局常量猜几何。
    (真实已到孔底 0.2mm)。meta.success 看 meta 的 success + history 证据链 + peg_head vs goal。
 2. **3D 视图显示失败 ≠ 渲染错**: ▶运行(默认真实化 R1 视觉)轨迹 = 真失败就显示失败;
    EPISODE 回放(预录成功 npz)≠ 本次运行。看 simulink_log.txt 尾部 "⚠️ 未完成/✅ 完成"。
-3. **GUI 真实化 seed 写死 = 演示永远失败**: simulink_module.py:10838 `RealStateSpaceSim(seed=100...)`,
+3. **GUI 真实化 seed 预先固定 = 演示永远失败**: simulink_module.py:10838 `RealStateSpaceSim(seed=100...)`,
    seed100 是 R0 实测失败布局 (夹持链问题) → 每次 ▶运行 必失败。R0 回归 seed100-109 仅
    101/102/103/104/108 通过 (104 最快 352 步) → GUI 换 seed=104。
 

@@ -19,7 +19,7 @@
 ## 1. 架构总览 (三横切 + 四层)
 
 ```
-        ┌─────────────────── 单一真源 (横切, 只此一份, 禁硬编码) ───────────────────┐
+        ┌─────────────────── 单一唯一依据 (横切, 只此一份, 禁硬编码) ───────────────────┐
         │  config/robot/zmax_robot_spec.json   ← URDF + 真机只读实测 (tools/robot_spec_sync.py)
         │  config/calib/zmax_calib.json        ← 各标定源合并   (tools/zmax_params.py --sync)
         │  config/robot/zmax_sim2real.json     ← 引擎口径↔真机量 (tools/sim2real_bridge.py)
@@ -33,13 +33,13 @@
                     ▲ 闭环:     tools/sim2real_loop.py  (采集→归档→数据→训练→评测→部署指针)
 ```
 
-**为何要"单一真源"**: 历史上口径漂移全是从"各处各写一份常量"开始的 —— 布局写死几何 (09-07)、
+**为何要"单一唯一依据"**: 历史上口径漂移全是从"各处各写一份常量"开始的 —— 布局预先固定几何 (09-07)、
 gripper 语义两源相反 (09-07)、B 增益写错 (09-04)、归一化 stats 配错 (09-06)。本轮的架构优化
 把它们统一成 3 个 JSON + 1 个读取器 (`tools/zmax_params.py`), 消费方一律 import 读。
 
 ## 2. 真机机器人模型同步 (URDF · 质量 · 惯量 · 自由度)
 
-工具: `tools/robot_spec_sync.py` → 单一真源 `config/robot/zmax_robot_spec.json`
+工具: `tools/robot_spec_sync.py` → 单一唯一依据 `config/robot/zmax_robot_spec.json`
 
 | 项 | 值 | 来源 |
 |---|---|---|
@@ -59,7 +59,7 @@ gripper 语义两源相反 (09-07)、B 增益写错 (09-04)、归一化 stats �
 
 ⚠️ **诚实边界**: 反解用的 400 帧期间机械臂**静止**(关节极差 0.0 rad) ⇒ `std=0.0` 只证明"同一姿态
 重复读数稳定", **不能**证明该 TCP 偏移在整个工作空间是刚体常量。要闭环该标定, 需现场**人工拖动**
-机械臂到多个位姿后复采 (零运动指令, 人手拖动即可) —— 脚本已把这条写成 `static_warning` 落进真源。
+机械臂到多个位姿后复采 (零运动指令, 人手拖动即可) —— 脚本已把这条写成 `static_warning` 落进唯一依据。
 
 ## 3. 统一标定参数接口
 
@@ -79,7 +79,7 @@ gripper 语义两源相反 (09-07)、B 增益写错 (09-04)、归一化 stats �
 
 消费方已接入 (不再各自硬编码):
 - `tools/gui/yolo_perception.py` — 台面高度改读注册表; 未标定时**显式标注**"回退**仿真**默认"。
-- `tools/real_truth.py` — 示教几何与夹具偏移增加**注册表兜底**; `snapshot()` 回读正常 (tcp 帧龄 0.07s)。
+- `tools/real_truth.py` — 示教几何与夹具偏移增加**注册表保障**; `snapshot()` 回读正常 (tcp 帧龄 0.07s)。
 
 ## 4. 仿真↔真机参数桥 (口径对齐)
 
@@ -120,7 +120,7 @@ skill_ctx_usage 1.000`。
 target_modules:[q_proj,k_proj,v_proj,o_proj]}` **写进生成的 YAML** (不走 `--peft.xxx` 命令行:
 draccus 对可空子配置的命令行覆盖不可靠), 日志确认 `Using PEFT! Wrapping model.`。
 
-⚠️→✅ **L3 LoRA: 先 OOM 四次, 最后用自研引擎跑通 (全过程留档)**
+⚠️→✅ **L3 LoRA: 先 OOM 四次, 最后用自研引擎验证通过 (全过程留档)**
 1. lerobot 0.5.2 原生 PEFT 链路本身是通的 (补装 `peft 0.21.0`, 日志 `Using PEFT! Wrapping model.`)。
 2. 但 **8GB 卡上四档全 OOM** (`all-linear`/`q,k,v,o` × batch 8/4/2, 含 `expandable_segments`):
    报错点固定为 `peft/tuners/lora/layer.py:1100 → _cast_input_dtype`, 栈停在 smolvlm 前向的
@@ -138,12 +138,12 @@ draccus 对可空子配置的命令行覆盖不可靠), 日志确认 `Using PEFT
 
 **部署口径**: `tools/lora_merge_ckpt.py` 把 LoRA 训练产物折叠成普通权重
 (`W_eff = W_base + (alpha/r)·B@A`), 并**校验输出键集合与起点权重完全一致**才允许落盘 ——
-避免"看着训了其实结构不对"。实测: 112 层折叠 / scaling=2.0 / 最大单层增量 |Δ|=0.0064 /
+避免"看着训了实际结构不对"。实测: 112 层折叠 / scaling=2.0 / 最大单层增量 |Δ|=0.0064 /
 键集合与 d9 完全一致 ✅。同时用同一份 ckpt 对照验证**基座确实冻结**: 99 个非 LoRA 张量与 d9
 逐位相同, 只有 6 个 BatchNorm `running_mean/var/num_batches_tracked` 因前向统计而变
 (属 buffer 正常更新, 非参数漂移)。
 
-踩坑入档 (三条都是本轮实测抓出来的):
+遇到问题入档 (三条都是本轮实测抓出来的):
 1. **LoRA 补丁写成 post 步骤 = 整轮没开 LoRA** (日志 `'peft': None, use_peft=False`) → 必须在
    mkcfg 之后、训练启动之前; 编排器已改 `pre` 顺序。
 2. **8GB 卡 + `all-linear`/`q,k,v,o` 与 batch 8/4/2 三档都 OOM** (见上 ⚠️ 条; 根因 = peft fp32 输入转换)。
@@ -226,26 +226,26 @@ seed 3072, skill=on, device=cpu) 的真实数字:
 
 | 文件 | 作用 |
 |---|---|
-| `tools/robot_spec_sync.py` | URDF + 真机实测 → 机器人参数单一真源 (+ FK 校验/产线 TCP 反解) |
+| `tools/robot_spec_sync.py` | URDF + 真机实测 → 机器人参数单一唯一依据 (+ FK 校验/产线 TCP 反解) |
 | `tools/zmax_params.py` | 全系统参数/标定**唯一读取接口** (robot_spec/fk/joint_limits/calib/plane_z/gaps) |
 | `tools/sim2real_bridge.py` | 引擎口径 ↔ 真机物理量 对照表 (含就绪度与来源) |
 | `tools/lora_inject.py` | LoRA 适配器 (注入/冻结/合并/存取 + selftest) |
 | `tools/joint_train_all.py` | L4/L3/L2/LLM 联合训练编排 (LoRA 开关, 显存仲裁, 取证) |
 | `tools/llm_layer_check.py` | 大模型层权重/接口/凭据体检 (按权重文件体积判"下全") |
 | `tools/sim2real_loop.py` | 六环数据闭环 |
-| `config/robot/zmax_robot_spec.json` | ★ 机器人真源 (DOF/质量/惯量/限位/工具/TCP 反解) |
+| `config/robot/zmax_robot_spec.json` | ★ 机器人唯一依据 (DOF/质量/惯量/限位/工具/TCP 反解) |
 | `config/robot/zmax_sim2real.json` | ★ 仿↔真参数桥 |
 | `config/calib/zmax_calib.json` | ★ 标定注册表 (K/T_base_cam/plane_z/几何/负载/TCP) |
 | `INTACT-JEPA/train.py` | +ZMAX_LORA 守卫钩子 (默认关) |
-| `tools/gui/yolo_perception.py` · `tools/real_truth.py` | 改为读单一真源 (缺项显式标注, 不冒充已标) |
+| `tools/gui/yolo_perception.py` · `tools/real_truth.py` | 改为读单一唯一依据 (缺项显式标注, 不冒充已标) |
 
 ## 9. 命令速查
 
 ```bash
 R=/home/ubuntu/zmax; cd $R; P=gui-venv311/bin/python
-$P tools/robot_spec_sync.py                 # 同步真机模型参数 → 单一真源 (含 FK 校验表)
+$P tools/robot_spec_sync.py                 # 同步真机模型参数 → 单一唯一依据 (含 FK 校验表)
 $P tools/zmax_params.py --check             # 标定就绪度 (缺口非零退出)
-$P tools/zmax_params.py --fk <q1..q6> --live  # 真源几何 FK 对照真机 tcp 真值
+$P tools/zmax_params.py --fk <q1..q6> --live  # 唯一依据几何 FK 对照真机 tcp 真值
 $P tools/sim2real_bridge.py                 # 仿↔真参数桥
 $P tools/lora_inject.py --selftest          # LoRA 五条断言
 $P tools/joint_train_all.py --env-check     # 各层前置体检

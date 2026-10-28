@@ -7,7 +7,7 @@ tags: [zmax, handeye, calibration, eye-in-hand, rokae, orin]
 platforms: [linux]
 ---
 
-# 真机眼在手 手眼标定 — 一次跑通的配方 (2026-09-21 实测通过)
+# 真机眼在手 手眼标定 — 一次验证通过的配方 (2026-09-21 实测通过)
 
 ## When to Use
 - 要标定"相机装在协作臂上"的外参 T_cam2tool（画布/感知要 像素↔基座 换算）
@@ -49,7 +49,7 @@ gui-venv311/bin/python tools/handeye_verify.py     --session ~/zmax_data/handeye
    **448m**（真实 0.448m 的 1000 倍），外参平移 267 米。**任何"距离 ×1000"先查单位**（09-19 那次 256m 同因）。
 2. **`/target_relative_joint` 动作后驱动会把伺服下电**（老倪："怎么又下电了"）→ 要反复走位的场景用
    **`/move_pose`**（TargetPose，与 `/move_line` 同族）：实测 power_state 一直 on。
-   但大角度（20°）会报 `ROBOT_IDLE_TIMEOUT`（驱动等"空闲"30s）—— **动作其实已完成**（比对目标四元数即可），
+   但大角度（20°）会报 `ROBOT_IDLE_TIMEOUT`（驱动等"空闲"30s）—— **动作实际已完成**（比对目标四元数即可），
    该标志在**下一次成功动作后自动清掉**。单步压到 **≤10°** 可完全避开。
 3. **旧脚本 `board_handeye_solve.py` 的"留出复核"是循环论证**：它用 PnP 自己的位姿投回自己 → 永远 ~0.03px，
    267 米的外参也"通过"。真判据只能是全链路（`handeye_verify.py`）或板在基座系一致性。

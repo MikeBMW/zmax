@@ -21,7 +21,7 @@
 
 配色: 状态=推理中 cyan, 训练中 yellow; 候选行整体压暗 + `🔎`; `ElideNone` + 路径列 Stretch ⇒ 窄屏横滚不截断; 双击单元格复制。
 
-## 真源 tools/model_runtime_map.py (一份, 界面不自猜)
+## 唯一依据 tools/model_runtime_map.py (一份, 界面不自猜)
 
 ```bash
 ./gui-venv311/bin/python tools/model_runtime_map.py            # 人话表
@@ -50,7 +50,7 @@
    不一致就进 `warns`, 界面 tooltip 写"⚠ 与在役指针不是同一份" —— 不许静默。
 4. **L5 别一句"云端 API"就完事**: 主路是 `api.deepseek.com`(`state_space/scene_vlm.py`), 本机还有 smolvlm 备用
    (`l5_vlm_merged_*`, 未转 IR) ⇒ 权重列必须写"云端权重 · 本机 smolvlm 备用未转 IR"。
-5. **`_conv_short()` 会把 `无 (torch 直跑, 不进 IR)` 截成 `无`** —— 非工具链字符串要按语义映射, 不能一刀切 split(" (")。
+5. **`_conv_short()` 会把 `无 (torch 直跑, 不进 IR)` 截成 `无`** —— 非工具链字符串要按语义映射, 不能统一处理 split(" (")。
 6. **采集失败 ≠ 没在跑**: 一律写 `未加载` / 保留上次数值, 不许把读不到渲染成 0% 或空闲。
 7. `config/` 是软链且被 gitignore ⇒ `git add config/platform/model_runtime_map.json` 会让整条 `git add` 失败
    (后续 commit 不执行), 只提交 `tools/` 下的代码。

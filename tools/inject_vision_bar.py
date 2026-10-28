@@ -7,8 +7,8 @@
   左: 愿景一句话 · 最后一厘米
   中: 闭环四环节 (看 → 判 → 动 → 验)，生产时点亮呼吸灯
   右: 三个可数的东西 (动作单元 / 完成件数 / 数据回流) + 四个物理量 (插入行程/速度/力上限/像素当量)
-数据: /api/ar/vision (真源 tools/spec/vision.json) + window.__PROD__ 的演练件数;
-  条上不写死任何数字 (除 vision.json 里的物理量)。
+数据: /api/ar/vision (唯一依据 tools/spec/vision.json) + window.__PROD__ 的演练件数;
+  条上不预先固定任何数字 (除 vision.json 里的物理量)。
 
 跑法: python3 tools/inject_vision_bar.py   (幂等)
 """

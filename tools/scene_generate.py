@@ -4,7 +4,7 @@
 
 职责 (只做生成, 不改在役链路):
   · 读**父场景** `data/scene/objects3d.json` (+`overlay_spec.json` 的 scene 文本 / 相机口径)
-    与空间点真源 `data/skills/l2_atomic/space_points.json`, 自主批量生成 N 个**场景变体**。
+    与空间点唯一依据 `data/skills/l2_atomic/space_points.json`, 自主批量生成 N 个**场景变体**。
   · 每个变体 = 一份完整场景规格:
         {id, name, parent, seed, created_at, envelope_m, objects:[...], meta:{generator,params,note,...}}
   · 落盘 `data/scene/scenes/<id>.json` + 索引 `data/scene/scenes/index.json`。
@@ -76,7 +76,7 @@ _CST = timezone(timedelta(hours=8))
 KINDS = ["translate", "rotate", "count", "feed_anchor", "mixed"]
 KIND_CN = {"translate": "平移", "rotate": "旋转", "count": "数量",
            "feed_anchor": "来料锚点", "mixed": "组合"}
-# 父场景中可被平移/旋转的"槽位/孔位"对象 (按名字挑, 不写死坐标)
+# 父场景中可被平移/旋转的"槽位/孔位"对象 (按名字挑, 不预先固定坐标)
 MOVABLE_KEYWORDS = ("槽位", "插孔", "孔口")
 # 来料光模块标称尺寸 (mm) —— 与 gen_scene_cell.py 深度实测口径一致 (40×16×12)
 MODULE_SIZE = [40, 16, 12]
@@ -291,12 +291,12 @@ def build_variant(i: int, seed: int, parent: dict, space_pts: dict,
                 "center": [round(float(pos[0]), 6), round(float(pos[1]), 6), round(float(pos[2]), 6)],
                 "size": list(MODULE_SIZE), "coord": "base",
                 "yaw_deg": float(feed_angle), "R": yaw_to_R(feed_angle),
-                "source": "场景生成器 (来料锚点=%s, 空间点真源 space_points.json)" % sp,
+                "source": "场景生成器 (来料锚点=%s, 空间点唯一依据 space_points.json)" % sp,
                 "note": "变体: 来料锚点=%s (真机实测 TCP) · 来料角=%.1f°" % (sp, feed_angle),
             })
-            changed.append("来料锚点=%s (空间点真源) + 来料角 %.1f° + 曝光 %dms" % (sp, feed_angle, exposure))
+            changed.append("来料锚点=%s (空间点唯一依据) + 来料角 %.1f° + 曝光 %dms" % (sp, feed_angle, exposure))
         else:
-            changed.append("来料角 %.1f° + 曝光 %dms (无空间点真源, 未加对象)" % (feed_angle, exposure))
+            changed.append("来料角 %.1f° + 曝光 %dms (无空间点唯一依据, 未加对象)" % (feed_angle, exposure))
         params.update({"space_point": sp, "incoming_angle_deg": feed_angle, "exposure_ms": exposure})
         conditions = {"incoming_angle_deg": feed_angle, "exposure_ms": exposure}
 
@@ -485,7 +485,7 @@ def cmd_list(parent: dict, out_dir: Path, dataset_dir: Path, as_json: bool) -> i
     print("  对象: %s" % ", ".join(info["parent_names"]))
     print("  bbox(mm): %s" % info["parent_bbox_mm"])
     print("  overlay scene: %s" % (info["overlay_scene_text"] or "(无)"))
-    print("空间点真源        : %s" % ", ".join(info["space_points"]))
+    print("空间点唯一依据        : %s" % ", ".join(info["space_points"]))
     print("场景目录          : %s  (存在=%s, scn_*.json=%d)" % (
         info["scenes_dir"], info["scenes_dir_exists"], info["n_scene_files"]))
     print("索引              : %s  (存在=%s, 条目=%d)" % (

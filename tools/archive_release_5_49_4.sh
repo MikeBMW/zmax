@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 小版本迭代 v5.49.4 归档 — 3D 场景渲染修正 (2026-10-12 老倪现场两条)
 #   主题: ① 摆盘光模块"拿起来变长/透明/位置偏/放下消失" ② 插拔夹具孔口不可见(看着像错位)
-#   约定沿用 archive_release_5_49_3.sh: 代码 + 真源快照 + 证据 + 文档, 末尾 MANIFEST.md + sha256sums.txt
+#   约定沿用 archive_release_5_49_3.sh: 代码 + 唯一依据快照 + 证据 + 文档, 末尾 MANIFEST.md + sha256sums.txt
 set -u
 REPO=/home/ubuntu/zmax
 VER=5.49.4
@@ -20,7 +20,7 @@ cat > /tmp/rel_${VER}.md <<'EOF'
    修: 按钮改走 `_switch_scene_manual()` = 先 `write_canvas_scene()`(复用 tools/ss_scene_switch.py::switch)
    再切窗口 + 8s 独占期。实测: 写画布=插拔 → 10s/24s 后标题仍「3D场景 · 插拔场景」。
 2. 拿起来"变长": 摆盘臂上件被整件隐藏(旧逻辑怕与料盘 3 件重复) ⇒ 拿起时露出插拔的 200mm 那根。
-   修: 摆盘也画臂上件, 尺寸按摆盘件真源 52×20×12mm (`sim_scene_def._tray_layout`)。
+   修: 摆盘也画臂上件, 尺寸按摆盘件唯一依据 52×20×12mm (`sim_scene_def._tray_layout`)。
 3. "透明长方体": 盘件原为无光照平涂 (shader=None, 单色+线框穿面) ⇒ 金色件改 shader='shaded'。
    实测: 单色平涂像素 72 → 含明暗面 15893 (明暗占比≈100%)。
 4. 拿起件与渲染件"位置偏差"30mm: 摆盘 episode 的 meta 无 `peg_head_off`, 代码静默套用插拔默认
@@ -32,12 +32,12 @@ cat > /tmp/rel_${VER}.md <<'EOF'
 7. 摆盘 tray盘 槽位线框按件半长放大 r=0.012→0.027 (24mm 框装不下 52mm 件 = "盘太小"来源之一)。
 8. 老倪定规矩: 双击启动图标 → **只落配置中心, 不自动开 3D/信号/画布**, 先检查任务配置再点「🚀 启动工程」。
    真根因: /tmp/zmax_nav_cmd 残留上一轮命令 ⇒ 新进程(去重表空)一建好界面就执行 ⇒ 看着像"3D 自己开起来"。
-   修: launch_studio.sh 启动前清空命令通道 + unset 全部 ZMAX_AUTO_*; studio.py 启动段写死该规矩。
+   修: launch_studio.sh 启动前清空命令通道 + unset 全部 ZMAX_AUTO_*; studio.py 启动段预先固定该规矩。
    判据: tools/verify_no_autostart.py PASS (启动后 45s 无 3D/信号窗; 命令通道空; 落配置中心)。
-9. 配置中心配置数据 → 状态空间「标定诊断测量 · 主参数 M」节点: 新真源模块
-   src/lerobot/engineering/config_import.py (8 真源 + 工程库 + 工单 → 写回节点 cfg_*), 节点运行真加载;
+9. 配置中心配置数据 → 状态空间「标定诊断测量 · 主参数 M」节点: 新唯一依据模块
+   src/lerobot/engineering/config_import.py (8 唯一依据 + 工程库 + 工单 → 写回节点 cfg_*), 节点运行真加载;
    右键「打开源码」直达导入函数 (params.source+source_symbol ⇒ code -g config_import.py:94);
-   画布写口改真源 data/database/zmax/sources/canvas/。判据 verify_node_cfg_import.py ✅ 15/15 PASS。
+   画布写口改唯一依据 data/database/zmax/sources/canvas/。判据 verify_node_cfg_import.py ✅ 15/15 PASS。
 10. 主参数 M = 度量张量 g_ij(x) = M·G_ij(x) (det G=1): src/lerobot/manifold/metric_field.py
    (Γ/曲率/梯度/测地线全数值; 单位行列式 ⇒ 尺度与形状可分开标定) + 节点真跑报几何量
    + 写盘闸门 (原始形状须严格正定)。判据 verify_metric_main_param.py ✅ 23/23 PASS。
@@ -71,7 +71,7 @@ cp -f src/lerobot/manifold/metric_field.py src/lerobot/manifold/health.py src/le
 cp -f config/calib/zmax_manifold.json "$DST/config/" 2>/dev/null
 cp -f src/lerobot/engineering/nodes/library.py "$DST/src/lerobot/engineering/nodes/" 2>/dev/null
 
-echo "=== ② 真源快照 (场景/画布/信号色标) ==="
+echo "=== ② 唯一依据快照 (场景/画布/信号色标) ==="
 cp -f data/scene/scenes/SS-TRAY-PLACE/objects3d.json "$DST/config/tray_objects3d.json" 2>/dev/null
 cp -f data/scene/scenes/SS-EPI-CORNER/objects3d.json "$DST/config/fw_objects3d.json" 2>/dev/null
 cp -fL data/database/zmax/sources/canvas/state_space_obs.json "$DST/canvas/state_space_obs.json" 2>/dev/null

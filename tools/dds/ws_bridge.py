@@ -8,7 +8,7 @@
    · 跨网那一跳是 web(443/TLS), 因为两台之间只有 SSH, DDS 的 UDP 没有路;
    · 中继不解析业务, 只按 channel 名 fan-out。
 
-角色 (说白了就是"哪些话题往上发、哪些往下收"):
+角色 (直白地说就是"哪些话题往上发、哪些往下收"):
   edge (550C): up=hw_state,train_prog,heartbeat   down=deploy_cmd
   hub  (4060): up=deploy_cmd                       down=hw_state,train_prog,heartbeat
 

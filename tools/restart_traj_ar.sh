@@ -1,5 +1,5 @@
 #!/bin/bash
-# 重启 8797 AR/VR 台 (systemctl stop 会超时: SIGTERM 后线程收不掉 ⇒ 这里 stop --no-block + 兜底 kill)
+# 重启 8797 AR/VR 台 (systemctl stop 会超时: SIGTERM 后线程收不掉 ⇒ 这里 stop --no-block + 保障 kill)
 # 用法: bash tools/restart_traj_ar.sh
 set -u
 SVC=zmax-traj-ar
@@ -14,7 +14,7 @@ for i in $(seq 1 25); do
 done
 cur=$(systemctl show -p MainPID --value $SVC 2>/dev/null)
 if [ "${cur:-0}" != "0" ]; then
-  echo "⛔ SIGTERM 收不掉, 兜底 SIGKILL pid=$cur"
+  echo "⛔ SIGTERM 收不掉, 保障 SIGKILL pid=$cur"
   kill -TERM "$cur" 2>/dev/null
   sleep 4
   kill -KILL "$cur" 2>/dev/null

@@ -158,7 +158,7 @@ p.eval(); p2.eval()                         # ⚠️ 必须 eval 再比权重
 torch.allclose(p(batch)['action'], p2(batch)['action'])  # True (训练模式 dropout → False, 非bug)
 ```
 
-## 实测踩坑记录
+## 实测遇到问题记录
 
 | 报错 | 根因 | 修法 |
 |---|---|---|

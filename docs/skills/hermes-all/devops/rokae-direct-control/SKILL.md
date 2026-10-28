@@ -89,7 +89,7 @@ bash tools/rokae_sdk_run.sh stop | reset
 法兰同步 ±1.000mm, 横向漂移峰值 0.007mm, **控制器报警无新增**; 证据 JSON 在 `~/zmax_data/rokae_sdk/logs/sdk_ctl_*.json`。
 未通: 夹爪(DH 夹爪只有 aarch64 的 .so) ⇒ 直连只能控臂。
 
-## Orin 侧 SDK 直驱桥 (端口 39061) — 启动报 `ModuleNotFoundError: xcoresdk_python` = SDK 路径写死且已过期
+## Orin 侧 SDK 直驱桥 (端口 39061) — 启动报 `ModuleNotFoundError: xcoresdk_python` = SDK 路径预先固定且已过期
 
 Orin 上常驻一条 **HTTP 桥**(`systemd` 单元 `zmax-arm-sdk-bridge.service`, `ExecStart=/usr/bin/python3 /home/tashan/.zmax/arm/zmax_arm_sdk_bridge.py`,
 `User=tashan`, 听 **0.0.0.0:39061**): `GET /health` · `GET /status`(关节/速度/力矩/`endInRef`/`flangeInBase`/模式/电源) ·
@@ -97,7 +97,7 @@ Orin 上常驻一条 **HTTP 桥**(`systemd` 单元 `zmax-arm-sdk-bridge.service`
 
 **故障(2026-10-08 实测)**: `/health` → `{"ok":true,"sdk":false,"err":"ModuleNotFoundError: No module named 'xcoresdk_python'"}`,
 `/status` → 503；同时 Orin 上 `ros2 topic info /robot/tcp_pose` 报 **`Publisher count: 0`**，
-4060 侧 tap 收包 `tcp=0/joint=0/ft=0` —— 看着像"机器人没连"，**其实控制器好的**(4060 采样器同时刻读到位姿、Orin `ping .23.160` 0.3ms)。
+4060 侧 tap 收包 `tcp=0/joint=0/ft=0` —— 看着像"机器人没连"，**实际控制器好的**(4060 采样器同时刻读到位姿、Orin `ping .23.160` 0.3ms)。
 - 真因: 桥代码里的默认 `ZMAX_SDK_PATH` 指向一个**已不存在的旧工作区**
   (`.../tashan_robot_so_20260807_174920_6983506_aarch64/...`)，而 `0810/` 下现役的是带哈希的
   `tashan_robot_so_**20260924_142706_0cabfde**_aarch64` **⇒ 每次重新部署工作区哈希都会变**。

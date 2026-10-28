@@ -29,7 +29,7 @@ def _find_dir(rel, marker):
 ```
 
 - 标志文件选稳定存在的 (如 `perception.py`、目录存在性)
-- `ZMAX_REPO_ROOT` env 兜底: Linux/跨机部署显式指定仓库根
+- `ZMAX_REPO_ROOT` env 保障: Linux/跨机部署显式指定仓库根
 - **importlib 动态加载的 .py 不会被 PyInstaller 自动收集** → 打包必须 `--add-data` 含整个源码目录 (如 `src/lerobot/policies/left_right`)
 
 ## exe 运行时其他坑 (同批次实测)
@@ -44,4 +44,4 @@ def _find_dir(rel, marker):
 用户报"启动后黑屏返回主页"时: 在构造函数关键段写文件打点
 (`/tmp/zmax_simulink_init.log`: START → pre-_build → post-_build), 缺失哪行 = 崩在哪段,
 不依赖 GUI 就能定位构造崩溃点。源码模式启动脚本应带 `QT_OPENGL=software` +
-`LIBGL_ALWAYS_SOFTWARE=1` 兜底 (3D GLViewWidget 在 Mac OpenGL 上下文失败会黑屏)。
+`LIBGL_ALWAYS_SOFTWARE=1` 保障 (3D GLViewWidget 在 Mac OpenGL 上下文失败会黑屏)。

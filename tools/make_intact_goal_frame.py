@@ -3,7 +3,7 @@
 """🎯 生成 INTACT 直驱用的"目标帧" (goal)：成功回合的末帧 → 224² CHW float32 → .npy
 
 为什么: INTACT 的意图/动作以 goal 潜变量为条件 (z_goal 来自目标观测帧)。直驱脚本原先用
-"解析链跑完的末帧"当 goal (要先跑一遍解析链), 控制台 L4 档不方便 → 这里从**域内数据集里
+"解析链跑完的末帧"当 goal (要先执行一遍解析链), 控制台 L4 档不方便 → 这里从**域内数据集里
 挑一个 done=True 回合的末帧**固化成工件 (可复现, 带 provenance), 控制台直接读。
 
 命令: python tools/make_intact_goal_frame.py [--ep 3] [--out reports/intact_goal_frame.npy]
@@ -34,7 +34,7 @@ def main() -> int:
     a = ap.parse_args()
 
     if a.mode == "analytic":
-        # 解析链真跑一遍成功回合 → 取末帧当目标 (与 tools/intact_direct_rollout.py 同口径)
+        # 解析链真执行一遍成功回合 → 取末帧当目标 (与 tools/intact_direct_rollout.py 同口径)
         sys.path.insert(0, os.path.join(ROOT, "tools"))
         sys.path.insert(0, os.path.join(ROOT, "src"))
         import intact_direct_rollout as idr                  # noqa: PLC0415
@@ -82,7 +82,7 @@ def main() -> int:
             why = "meta.done_flags 里第一个成功回合"
         else:
             ep = int(np.argmax(ln))
-            why = "帧数最多的回合 (无 done 元数据时的兜底, 属估算)"
+            why = "帧数最多的回合 (无 done 元数据时的保障, 属估算)"
         e, s = int(off[ep]), int(off[ep]) + int(ln[ep])
         last = s - 1
         px = np.asarray(f["pixels"][last])                    # (H,W,3) uint8, 引擎真实渲染

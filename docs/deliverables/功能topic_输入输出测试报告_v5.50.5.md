@@ -1,6 +1,6 @@
 # 功能 topic 输入/输出 实测报告 · v5.50.5
 
-> 真源: 画布 `data/database/zmax/sources/canvas/state_space_obs.json` (89 节点/184 连线) · 注册表 `zmax_data/dataspace/busdb.json` · 工程库 `data/database/zmax/zmax_engineering.db`
+> 唯一依据: 画布 `data/database/zmax/sources/canvas/state_space_obs.json` (89 节点/184 连线) · 注册表 `zmax_data/dataspace/busdb.json` · 工程库 `data/database/zmax/zmax_engineering.db`
 > 口径: 功能=画布节点; **输出 topic** = `ss/<节点id>/out`; **输入 topic** = 上游节点输出 topic 集合 + 连线总线 `zmax/link_value`
 > 实测方式: 逐 topic **真 DDS 往返** (`zmax::SSTest` 载体, writer+reader 同进程) + 注册 typed 话题按注册 QoS 只读订阅
 > 生成时间: 2026-10-13 13:28:39 (窗口 10s)

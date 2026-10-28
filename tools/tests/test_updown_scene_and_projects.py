@@ -6,7 +6,7 @@
   1. 项目档案: 合并基线 + _append_bom_items; 缺口可枚举; 改 overlay ⇒ 合并 sha 变 (同源判据的抓手)
   2. 上下料场景 build: 幂等 (同输入两次 ⇒ 字节一致) · 在役父场景 sha 不变 · index 登记
   3. scene_edit --scene: 写只落在命名场景目录 (父场景 sha 不变) + 备份 + 回读
-  4. 指标验证引用: 场景/通道里的 perf.* id 全部能在真源解析 (无悬空)
+  4. 指标验证引用: 场景/通道里的 perf.* id 全部能在唯一依据解析 (无悬空)
   5. 主参数 M: 能量公式自洽 (M = 1 + (E_kin+E_pot)/E_ref) 且落在范围 [0,8]
 
 用法: python3 tools/tests/test_updown_scene_and_projects.py
@@ -115,7 +115,7 @@ def sec3():
         check(True, "rm 生效: 测试点已移除 (场景回到 %d 标记)" % n0)
     else:
         json.dump(before, open(d, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-        check(False, "rm 未生效 (stdout=%s) ⇒ 已还原真源" % ((rr.stdout or rr.stderr)[-80:] if rr else "无新增标记"))
+        check(False, "rm 未生效 (stdout=%s) ⇒ 已还原唯一依据" % ((rr.stdout or rr.stderr)[-80:] if rr else "无新增标记"))
 
 
 def sec4():
@@ -135,7 +135,7 @@ def sec5():
     check(bool(r["energy_level"]), "能级已给出 = %s" % r["energy_level"])
     mf = json.load(open(os.path.join(ROOT, "config", "calib", "zmax_manifold.json"), encoding="utf-8"))
     der = mf.get("_energy_derivation") or {}
-    check("E_task_J" in der and der.get("formula", "").startswith("M = 1"), "真源里存了推导 (E_task=%s J)" % der.get("E_task_J"))
+    check("E_task_J" in der and der.get("formula", "").startswith("M = 1"), "唯一依据里存了推导 (E_task=%s J)" % der.get("E_task_J"))
     check(mf.get("inertia") is False, "inertia 保持 false (零回归; 开二阶需 ΔV<0 证据)")
 
 

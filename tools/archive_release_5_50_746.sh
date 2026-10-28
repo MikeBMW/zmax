@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 归档 v5.50.746 产物 → ~/zmax/zmax_data/release_5.50.746_YYYYMMDD
 #   本轮主题: 分层力 L2~L5 各接自己的模型输出张量 + 权重热生效 + 表/太阳系不再被挤掉
-#   沿用 archive_release_5_50_745.sh 口径: 代码 + 真源快照 + 证据 + 文档, 末尾 MANIFEST.md + sha256sums.txt
+#   沿用 archive_release_5_50_745.sh 口径: 代码 + 唯一依据快照 + 证据 + 文档, 末尾 MANIFEST.md + sha256sums.txt
 set -u
 REPO=/home/ubuntu/zmax
 VER=5.50.746
@@ -22,7 +22,7 @@ cp -f tools/ci/integrity_check.py "$DST/tools/" 2>/dev/null
 cp -f config/calib/layer_forces.json config/calib/force_field.json "$DST/data/" 2>/dev/null
 cp -f VERSION.md "$DST/docs/"
 
-echo "=== ② 数据快照 (分层力真源 / 判据落盘 / 太阳系截图) ==="
+echo "=== ② 数据快照 (分层力唯一依据 / 判据落盘 / 太阳系截图) ==="
 cp -f zmax_data/ss_live/chunk_latest.json "$DST/data/" 2>/dev/null
 cp -f zmax_data/ss_live/engine_latest.json zmax_data/ss_live/torque_live.json "$DST/data/" 2>/dev/null
 cp -f zmax_data/ss_live/ui_run.json zmax_data/ss_live/trace_live.json "$DST/data/" 2>/dev/null
@@ -38,7 +38,7 @@ echo "=== ③ 证据 (实测数字) ==="
   echo "- L2 前馈 u_ff   = chunk_latest.ff[0][:3]     实测 |F| 0.047 m/s  ← 主力"
   echo "- L3 动作头      = chunk_latest.chunk[0][:3]  实测 |F| 0.038 m/s"
   echo "- L4 流形度量    = metric_M/m_ref × ff        实测 |F| 0.026 m/s (metric_M 3.643)"
-  echo "- L5 VL 场景理解 = l5_scene_vec.json           当前无真源 ⇒ 格子写「缺 L5」, 不拿 prior 回放冒充"
+  echo "- L5 VL 场景理解 = l5_scene_vec.json           当前无唯一依据 ⇒ 格子写「缺 L5」, 不拿 prior 回放冒充"
   echo "- 权重 w = L2 1.0 / L3 0.45 / L4 0.55 / L5 0.35 (config/calib/layer_forces.json, 热生效)"
   echo "- 主力判定: 加权后模长最大那层 ⇒ 实测稳定为 L2(前馈); 太阳系 L2 分力笔宽 3.2 vs 其它 1.7"
   echo
@@ -66,10 +66,10 @@ echo "=== ④ MANIFEST ==="
   echo
   echo "## 改动"
   echo "- tools/layer_forces.py        分层力核心: L2=前馈 ff / L3=动作头 chunk / L4=度量 M×ff / L5=VL 场景矢量; 权重+换算系数读 config"
-  echo "- tools/gui/gravity_table.py   活源之后压分层力 (每层它自己的真源), 缺层清空写「缺 Lx」; 不再二次乘 α; 主力=加权最大层"
+  echo "- tools/gui/gravity_table.py   活源之后压分层力 (每层它自己的唯一依据), 缺层清空写「缺 Lx」; 不再二次乘 α; 主力=加权最大层"
   echo "- tools/gui/orbital_arch.py    未运行全冻结 · 同拍 reload · S³ 表盘数字/对数射线 · q̂ 行(提示条去重不再遮读数)"
   echo "- tools/gui/model_tree.py      太阳系高度先按「视口−表整块−页头」封顶 (表不再被挤到视口外)"
-  echo "- tools/ar_l5_understand.py    VL 每理解一帧把最大目标框偏移折成方向矢量写 ss_live/l5_scene_vec.json (L5 真源钩子)"
+  echo "- tools/ar_l5_understand.py    VL 每理解一帧把最大目标框偏移折成方向矢量写 ss_live/l5_scene_vec.json (L5 唯一依据钩子)"
   echo "- tools/gui/simulink_module.py ui_run 发布 cap_level · 无 3D 窗口时由控制台发布 trace_live"
   echo "- tools/tdrive_bus.py          τ = M·(−∇Φ + α·u_ff), apply_to_tau 默认关闭"
   echo "- tools/verify_*.py            判据口径随新分层力更新 (R3/P2/Q1/W1/W2)"
@@ -82,9 +82,9 @@ echo "=== ④ MANIFEST ==="
   echo "- docs/VERSION.md"
   echo
   echo "## 已知缺口"
-  echo "- L5 没有持续的场景矢量真源 (VL 只按需跑; 相机 arm 目前无帧) ⇒ 界面标「缺 L5」"
+  echo "- L5 没有持续的场景矢量唯一依据 (VL 只按需跑; 相机 arm 目前无帧) ⇒ 界面标「缺 L5」"
   echo "- L3 当前产出者是「测地线规划 + ridge 解码」, 不是 DiT action head 前向"
-  echo "- 姿态四元数无真源 (tcp_pose rx/ry/rz=None); 界面显示的是力/方向四元数"
+  echo "- 姿态四元数无唯一依据 (tcp_pose rx/ry/rz=None); 界面显示的是力/方向四元数"
 } > "$DST/MANIFEST.md"
 
 cd "$DST" && find . -type f ! -name sha256sums.txt -print0 | sort -z | xargs -0 sha256sum > sha256sums.txt

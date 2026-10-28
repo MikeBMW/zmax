@@ -106,7 +106,7 @@ def main():
     print(f"   动作标准差: {actions.std().item():.4f}")
 
     print("\n" + "=" * 60)
-    print("✅ 实验成功！SmolVLA 推理流程跑通")
+    print("✅ 实验成功！SmolVLA 推理流程验证通过")
     print("=" * 60)
 
 if __name__ == "__main__":

@@ -23,7 +23,7 @@
 - model_tree.py 用 QSS `font-size:Npx` — 统一 +Npx 缩放 (40 处)
 - ⚠️ 三处字体单位不同: 画布节点=pt, 左侧库=pt, 右侧树=px。放大必须三处一起改, 漏一处就"大小不统一"。
 
-## 🐛 批量替换字号的正则链陷阱 (本次踩坑)
+## 🐛 批量替换字号的正则链陷阱 (本次遇到问题)
 
 用多个 `re.subn` 顺序替换字号, 中间值会被后续规则再匹配 → 过度放大、层次丢失:
 
@@ -37,9 +37,9 @@ re.subn(r'QFont\("Arial", 13, QFont\.Bold\)', '...15...', s)
 - ✅ 正确做法: (a) 单次正则带回调按原值一次映射; 或 (b) 先 `grep -n` 出所有目标行号, **按行号精确改** (assert old in line), 每行只改一次。
 - 改完必须 `grep -nE 'QFont\("Arial", [0-9]+, QFont\.Bold\)'` 复查层次, 别只看"替换了几处"。目标是标题>徽章>小字 的清晰层级。
 
-## 模块库折叠/展开重构 (去掉"啥也没有"的空扩展条)
+## 模块库折叠/展开重构 (去掉"什么也没有"的空扩展条)
 
-- 旧实现: library 右侧一个独立 16px `_lib_expand_bar` QPushButton("▶"), `setVisible(False)` 隐藏但仍在 QSplitter 里占一个空白分割位置 → 拖动时露出"啥也没有"的空白, 用户要求去掉。
+- 旧实现: library 右侧一个独立 16px `_lib_expand_bar` QPushButton("▶"), `setVisible(False)` 隐藏但仍在 QSplitter 里占一个空白分割位置 → 拖动时露出"什么也没有"的空白, 用户要求去掉。
 - 新实现: 删掉独立窄条。LibraryPanel 自折叠 — `set_collapsed(True)` 收窄到 20px 只显示 `_btn_expand`(▶), `False` 恢复 360px 完整面板。信号: `collapse_requested` + `expand_requested` (都是 pyqtSignal)。
 - split 只剩 [library | mdi] 两个 widget, `setStretchFactor(0,0)/(1,1)`。
 - 要点: 折叠/展开条别再做成独立 QSplitter 子项 — 做成 panel 内部自收窄, 否则隐藏的条仍留空白分割位置。

@@ -13,7 +13,7 @@ Environment=PYTHONUNBUFFERED=1
 #   万有引力表 (主参数 M 页) 是 GUI 内部每次 refresh 现算的 ⇒ 表上的力**没有任何时序流**,
 #   信号分析窗口画不出波形(与 sstrace 那条"3D 不播放就没数据"是同一类问题)。
 #   本单元把表自己的数据层 (tools/gui/gravity_table.py::GravityField, 与屏幕上那张表同一个类、
-#   同一拍同一批真源) 每拍算一遍, 只搬两个口径: 力的大小 |F| + 力的实部 w (=|F|/u_ref)。
+#   同一拍同一批唯一依据) 每拍算一遍, 只搬两个口径: 力的大小 |F| + 力的实部 w (=|F|/u_ref)。
 # 只认 task_id=TASK-01-FW*(插拔) 才发布 ⇒ gravity.* 固定标「插拔场景·绿」不会说谎
 #   (tools/sig_scene_tags.py::tag 里 gravity.* 前缀直判插拔)。
 ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/gravity_trace_pub.py --hz 5

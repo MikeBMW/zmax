@@ -6,14 +6,14 @@
   「VEH.6.01 550A / VEH.6.02 550B / VEH.6.03 550C 这些配置的 UI 设计应该更加绚丽一些,
    现在只是一个小白点来选择配置, 不好看, 你来增强设计 … 要明显, 好看一些」
 
-判据 (全程离屏, 不动生产 GUI, 不写任何真源):
+判据 (全程离屏, 不动生产 GUI, 不写任何唯一依据):
   ① 自绘卡  三档控件都是 _ProductCard (QRadioButton 子类), 232×108, 编号 VEH.6.01/02/03 各一
   ② 不挤    三张卡横向不重叠、间距 ≥10px
   ③ 不截断  编号/大号档名/中文后缀/底行 全在卡内 (与 paintEvent 同口径算), 三条竖直带不重叠
   ④ 明显    同一张卡「选中 vs 未选」底色亮度差 ≥60% (跨色相比亮度没意义, 所以同卡自己比)
   ⑤ 现状标识 选中卡右上角亮「✓ 当前」胶囊 (该区域有高亮像素), 未选卡没有
-  ⑥ 真源同源 卡底行 = 真源 version_segment + dev_profile.role; card.text() = 真源 products.<id>.name
-  ⑦ 只读    判据跑完 zmax_product.json sha256 不变 (取证不写真源)
+  ⑥ 唯一依据同源 卡底行 = 唯一依据 version_segment + dev_profile.role; card.text() = 唯一依据 products.<id>.name
+  ⑦ 只读    判据跑完 zmax_product.json sha256 不变 (取证不写唯一依据)
 用法: QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/verify_product_card_ui.py
 """
 from __future__ import annotations
@@ -181,15 +181,15 @@ def main() -> int:
             pill_ok = False
     chk("⑤ 选中时右上角出现「✓ 当前」小标, 未选时该区域与卡面同色", pill_ok, " · ".join(detail))
 
-    print("═══ ⑥ 真源同源 (卡上文字/底行 == 真源) ═══")
+    print("═══ ⑥ 唯一依据同源 (卡上文字/底行 == 唯一依据) ═══")
     same_name = all(cards[p].text() == str((prods.get(p) or {}).get("name")) for p in cards)
-    chk("⑥a 卡上档名 == 真源 products.<id>.name (回读, 非界面自写)", same_name,
+    chk("⑥a 卡上档名 == 唯一依据 products.<id>.name (回读, 非界面自写)", same_name,
         " · ".join("%s=%s" % (p, cards[p].text()) for p in sorted(cards)))
     sub_ok = True
     dup_ok = True
     sysv = V._system_version()
     # 🖥 2026-10-21 老倪定三档运行位置: A=本地运行 / B=VSCode(标定) / C=量产(Intel 端侧, 全模型, 远程实时)
-    #   ⇒ 卡底行 = 系统总版本号 · 真源 products.<id>.runtime.label (不再是 dev_profile.role)
+    #   ⇒ 卡底行 = 系统总版本号 · 唯一依据 products.<id>.runtime.label (不再是 dev_profile.role)
     for p in cards:
         pp = prods.get(p) or {}
         _nm = str(pp.get("name") or "")
@@ -204,12 +204,12 @@ def main() -> int:
             print("     ⚠ %s 底行重复档名后缀「%s」: %r" % (p, _suf, getattr(cards[p], "_sub", "")))
     chk("⑥b2 卡底行不重复档名后缀 (550C 曾出现「量产版」两次)", dup_ok,
         " · ".join("%s=%s" % (p, getattr(cards[p], "_sub", "")) for p in sorted(cards)))
-    chk("⑥b 卡底行 == 系统总版本号 + 真源 runtime.label (A本地/B VSCode/C Intel 端侧)", sub_ok,
+    chk("⑥b 卡底行 == 系统总版本号 + 唯一依据 runtime.label (A本地/B VSCode/C Intel 端侧)", sub_ok,
         " · ".join("%s=%s" % (p, cards[p]._sub) for p in sorted(cards)))
-    # ⑥d 运行位置必须是**真源写下的那三处**, 不是界面口径: C 必须是 Intel 边缘机且全模型
+    # ⑥d 运行位置必须是**唯一依据写下的那三处**, 不是界面口径: C 必须是 Intel 边缘机且全模型
     _rt = {p: ((prods.get(p) or {}).get("runtime") or {}) for p in cards}
     _c = _rt.get("550C") or {}
-    chk("⑥d 三档运行位置 == 真源 (A/B 本机 192.168.23.50 · C Intel 192.168.23.70 全模型)",
+    chk("⑥d 三档运行位置 == 唯一依据 (A/B 本机 192.168.23.50 · C Intel 192.168.23.70 全模型)",
         [str((_rt.get(p) or {}).get("host_ip") or "") for p in ("550A", "550B", "550C")] ==
         ["192.168.23.50", "192.168.23.50", "192.168.23.70"]
         and str(_c.get("models") or "").startswith("全部模型")
@@ -260,8 +260,8 @@ def main() -> int:
             cont_ok = False
     chk("⑦ 选中卡文字/卡面对比度 ≥4.5:1", cont_ok, " · ".join(cont_det))
 
-    print("═══ ⑧ 只读 (取证不写真源) ═══")
-    for p, c in cards.items():                       # 视觉状态还原成真源当前档
+    print("═══ ⑧ 只读 (取证不写唯一依据) ═══")
+    for p, c in cards.items():                       # 视觉状态还原成唯一依据当前档
         c.setChecked(p == active)
         c.blockSignals(False)
     for _ in range(3):

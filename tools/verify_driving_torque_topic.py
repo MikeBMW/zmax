@@ -5,7 +5,7 @@
 
 判据口径 (逐项 ✅/❌ + 证据字符串 + 未验证项), 覆盖 12 组:
   ① 定义式一致: 从 tap 最后一行 payload 自带字段独立复算 clip(M·(−∇Φ),±t_max)·gain / M·(−∇Φ) / M⁻¹·(−∇Φ)
-  ② 真源同源: payload.metric_tensor ↔ MetricField.from_config(cfg).g(x); payload.potential_gradient[3:5] ↔ grad_raw(x) 现场重算
+  ② 唯一依据同源: payload.metric_tensor ↔ MetricField.from_config(cfg).g(x); payload.potential_gradient[3:5] ↔ grad_raw(x) 现场重算
   ③ 正定性/健康度: 度量对称正定 (特征值>0); gain 与 status 一致
   ④ 限幅: 逐分量 |torque_i| ≤ t_max; clipped 标志与 raw 是否超限一致
   ⑤ 注册三处: topics.py TOPICS / MODE_TOPICS 三档 / PRODUCERS / QUALITY_RULES 三条新规则
@@ -17,7 +17,7 @@
   ⑪ 单位/口径自证: unit=N·m + unit_note 非空含「未做扭矩计量学标定」; spec 未接通道(1000Hz/100Hz)如实说明
   ⑫ 零回归: 其余 9 个总线话题仍在 · 画布 89 节点/184 连线 · ss_task_bind --check · verify_localization_mapping 23/23
 
-幂等: 只读真源 + 只订阅 DDS (不写 tap/不改运行中的发布器/守护); 唯一写入是本报告。
+幂等: 只读唯一依据 + 只订阅 DDS (不写 tap/不改运行中的发布器/守护); 唯一写入是本报告。
 用法: QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/verify_driving_torque_topic.py
 """
 from __future__ import annotations
@@ -41,9 +41,9 @@ DDS_PY = os.path.join(ROOT, "venvs", "dds-venv", "bin", "python")
 
 
 def _resolve_tap() -> str:
-    """驱动的 tap 真源 = **当前活跃场景**那份 (与 tools/tdrive_bus.py 同一口径)。
+    """驱动的 tap 唯一依据 = **当前活跃场景**那份 (与 tools/tdrive_bus.py 同一口径)。
 
-    🔴 2026-10-13: 原先这里写死 `torque_SCN-07-AOI.jsonl` —— 服务改成"场景跟随 ss_scene_switch"
+    🔴 2026-10-13: 原先这里预先固定 `torque_SCN-07-AOI.jsonl` —— 服务改成"场景跟随 ss_scene_switch"
     之后, 活跃场景是摆盘(SCN-06-TRAY)时, 判据去读**没人再写的旧 AOI 文件**, 于是 ⑩b 假红
     (实测 tap 帧龄 4318s ⇒ 判据在量一个陈旧文件, 不是在量现场)。
     规则: 跟活跃场景取 torque_<SCN>.jsonl; 取不到就取最新在写的那份, 并把选中的文件打出来。
@@ -72,7 +72,7 @@ def _resolve_tap() -> str:
 
 
 TAP = _resolve_tap()
-print("驱动扭矩判据 · tap 真源: %s" % os.path.relpath(TAP, ROOT))
+print("驱动扭矩判据 · tap 唯一依据: %s" % os.path.relpath(TAP, ROOT))
 LIVE = os.path.join(ROOT, "zmax_data", "ss_live", "torque_live.json")
 PIDF = os.path.join(ROOT, "zmax_data", "ss_live", "torque.pid")
 DS_LIVE = os.path.join(ROOT, "zmax_data", "dataspace", "live.json")
@@ -182,7 +182,7 @@ def main() -> int:
     # ───────────────────────── ① 定义式一致 ─────────────────────────
     print("\n[① 定义式一致] 用 payload 自带字段独立复算 (不信任发布器结论)")
     ROT = 3
-    # 主参数维数真源: dim=3 (位置) / dim=6 (位姿, 插拔任务含腕部翻转 ⇒ config_to_M R1 判 6)。
+    # 主参数维数唯一依据: dim=3 (位置) / dim=6 (位姿, 插拔任务含腕部翻转 ⇒ config_to_M R1 判 6)。
     # 向量必须与 M 同维 —— 与 tools/tdrive_bus.py 同一条口径 (dim=6 用 6D 向量 [旋转 0,0,0 | 平移 …])。
     _d6 = (M.shape[0] == 6)
     raw_exp = (M @ neg6) if _d6 else np.concatenate([np.zeros(ROT), M @ neg6[ROT:]])
@@ -201,8 +201,8 @@ def main() -> int:
         _ = ex
     chk("①c torque_inv == M⁻¹·(−∇Φ)", e2 <= 1e-6, "逐位最大偏差 %.3e (≤1e-6)" % e2)
 
-    # ───────────────────────── ② 真源同源 ─────────────────────────
-    print("\n[② 真源同源] M ← 主参数真源; −∇Φ ← potential_field 现场重算")
+    # ───────────────────────── ② 唯一依据同源 ─────────────────────────
+    print("\n[② 唯一依据同源] M ← 主参数唯一依据; −∇Φ ← potential_field 现场重算")
     x = np.asarray(d["x"], float)
     try:
         from lerobot.manifold.metric_field import MetricField, _load_manifold_cfg
@@ -217,7 +217,7 @@ def main() -> int:
             % (em, mf.dim, mf.scale, mf.mode))
     except Exception as ex:                                                       # noqa: BLE001
         em = 9e9
-        chk("②a metric_tensor ↔ 真源度量", False, "复算失败: %s" % repr(ex)[:120])
+        chk("②a metric_tensor ↔ 唯一依据度量", False, "复算失败: %s" % repr(ex)[:120])
     try:
         from lerobot.memory.potential_field import MemoryLayerBridge
         br = MemoryLayerBridge.from_real_data(ROOT)
@@ -227,7 +227,7 @@ def main() -> int:
         chk("②b potential_gradient[3:5] == grad_raw(x) (现场重算)", eg <= 1e-9,
             "逐位最大偏差 %.3e · grad_raw=%s · gates=%s" % (eg, np.round(gr, 3).tolist(), d.get("gates")))
     except Exception as ex:                                                       # noqa: BLE001
-        chk("②b potential_gradient ↔ grad_raw 真源", False, "复算失败: %s" % repr(ex)[:120])
+        chk("②b potential_gradient ↔ grad_raw 唯一依据", False, "复算失败: %s" % repr(ex)[:120])
 
     # ───────────────────────── ③ 正定性 / 健康度 ─────────────────────────
     print("\n[③ 正定性/健康度] 度量对称正定 + 增益与状态一致")
@@ -443,8 +443,8 @@ def main() -> int:
 
     # ───────────────────────── ⑬ 标识信息 (老倪 2026-10-14) ─────────────────────────
     #  「流形引擎的输出 topic 看到: 正在执行的任务 / 产品质数 / 主参数 等标识信息」
-    #  判据口径: 载荷里的标识必须与**各自真源**逐字段一致 (不从载荷反推载荷), 且必须真在 DDS 话题上。
-    print("\n[⑬ 标识信息] 任务 / 场景 / 产品质数 / 主参数 —— 与各自真源逐字段核对")
+    #  判据口径: 载荷里的标识必须与**各自唯一依据**逐字段一致 (不从载荷反推载荷), 且必须真在 DDS 话题上。
+    print("\n[⑬ 标识信息] 任务 / 场景 / 产品质数 / 主参数 —— 与各自唯一依据逐字段核对")
     idb = d.get("identity") or {}
     try:
         bind = json.load(io.open(os.path.join(ROOT, "config", "ss_task_binding.json"), encoding="utf-8"))
@@ -463,7 +463,7 @@ def main() -> int:
             ("%s · %s · %s" % (idb.get("task_id"), idb.get("task_name"), idb.get("site"))) if not bad
             else "; ".join(bad)[:150])
     except Exception as ex:                                                       # noqa: BLE001
-        chk("⑬a 标识-任务 ↔ 真源", False, "核对失败: %s" % repr(ex)[:120])
+        chk("⑬a 标识-任务 ↔ 唯一依据", False, "核对失败: %s" % repr(ex)[:120])
     try:
         sys.path.insert(0, os.path.join(ROOT, "src"))
         from lerobot.manifold import prime_structure as _PS
@@ -474,7 +474,7 @@ def main() -> int:
         if str(idb.get("product_id")) != pid:
             b2.append("product_id %r ≠ %r" % (idb.get("product_id"), pid))
         if int(idb.get("product_prime") or -1) != int(pr.get("prime") or -2):
-            b2.append("product_prime %r ≠ 真源 %r" % (idb.get("product_prime"), pr.get("prime")))
+            b2.append("product_prime %r ≠ 唯一依据 %r" % (idb.get("product_prime"), pr.get("prime")))
         if str(idb.get("version_segment")) != str(pr.get("version_segment")):
             b2.append("version_segment %r ≠ %r" % (idb.get("version_segment"), pr.get("version_segment")))
         chk("⑬b 标识-产品: 产品 id / **产品质数** / 版本段 与 config/platform/zmax_product.json 一致",
@@ -483,13 +483,13 @@ def main() -> int:
                                                      idb.get("version_segment"), idb.get("n_capabilities")))
             if not b2 else "; ".join(b2)[:150])
     except Exception as ex:                                                       # noqa: BLE001
-        chk("⑬b 标识-产品 ↔ 真源", False, "核对失败: %s" % repr(ex)[:120])
+        chk("⑬b 标识-产品 ↔ 唯一依据", False, "核对失败: %s" % repr(ex)[:120])
     try:
         mcfg = json.load(io.open(os.path.join(ROOT, "config", "calib", "zmax_manifold.json"), encoding="utf-8"))
         mp = idb.get("main_params") or {}
         b3 = []
         if abs(float(mp.get("metric_M") or -1) - float(mcfg.get("M") or -2)) > 1e-12:
-            b3.append("metric_M %r ≠ 真源 M %r" % (mp.get("metric_M"), mcfg.get("M")))
+            b3.append("metric_M %r ≠ 唯一依据 M %r" % (mp.get("metric_M"), mcfg.get("M")))
         if int(mp.get("metric_dim") or -1) != int((mcfg.get("metric") or {}).get("dim") or -2):
             b3.append("metric_dim %r ≠ %r" % (mp.get("metric_dim"), (mcfg.get("metric") or {}).get("dim")))
         if str(mp.get("metric_mode")) != str((mcfg.get("metric") or {}).get("mode")):
@@ -502,7 +502,7 @@ def main() -> int:
                 mp.get("metric_M"), mp.get("metric_dim"), mp.get("metric_mode"),
                 mp.get("metric_diag"), len(mp.get("task_params") or {}))) if not b3 else "; ".join(b3)[:170])
     except Exception as ex:                                                       # noqa: BLE001
-        chk("⑬c 标识-主参数 ↔ 真源", False, "核对失败: %s" % repr(ex)[:120])
+        chk("⑬c 标识-主参数 ↔ 唯一依据", False, "核对失败: %s" % repr(ex)[:120])
     # ⑬d 必须**真在 DDS 话题上** (不是只在 tap 文件里)
     try:
         ok9, samp9, err9 = dds_subscribe()
@@ -516,7 +516,7 @@ def main() -> int:
         chk("⑬d DDS 话题 zmax/ss_torque 上真带标识 (task_id/产品质数/主参数 M 与 tap 逐字段同值)", same,
             "话题样本: task=%s · 产品质数=%s · M=%s · task_name=%s" % (
                 s0.get("task_id"), s0.get("product_prime"), s0.get("m_scale"), s0.get("task_name")))
-        chk("⑬e identity_json 在话题上是完整块 (含 真源 出处, 可回读复核)",
+        chk("⑬e identity_json 在话题上是完整块 (含 唯一依据 出处, 可回读复核)",
             len(str(s0.get("identity_json") or "")) > 80 and "src" in str(s0.get("identity_json")),
             "identity_json %d 字符 · 首 60: %s" % (len(str(s0.get("identity_json"))),
                                                    str(s0.get("identity_json"))[:60]))

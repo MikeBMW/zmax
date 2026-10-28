@@ -37,7 +37,7 @@ def label_one(cropper, img_path, out, split, min_score=0.90, min_cover=0.45, cop
         return None
     crop, info = cropper.crop(im)
     if info.get("method") != "template":
-        return {"file": os.path.basename(img_path), "ok": False, "reason": "非模板法(兜底) → 不标"}
+        return {"file": os.path.basename(img_path), "ok": False, "reason": "非模板法(保障) → 不标"}
     q = info.get("quality") or {}
     sc, cov = info.get("score"), q.get("gold_cover")
     if (sc is not None and sc < min_score) or (cov is not None and cov < min_cover):

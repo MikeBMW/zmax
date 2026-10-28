@@ -43,7 +43,7 @@ git show main:tools/hw_upload_relay.py > /home/ubuntu/zmax_hw_uploader.py
 # ② 装服务
 sudo cp /tmp/zmax-hw-upload.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable --now zmax-hw-upload
-# ③ 三连验证（缺一条都可能"以为在跑其实没跑"）
+# ③ 三连验证（缺一条都可能"以为在跑实际没跑"）
 systemctl is-active  zmax-hw-upload      # active
 systemctl is-enabled zmax-hw-upload      # enabled（开机自启）
 tail -3 /var/log/zmax-hw-upload.log      # 真有时间戳在推进

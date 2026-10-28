@@ -9,7 +9,7 @@
   ① 四条话题都真的在发 (每条 ≥1 帧)
   ② 每帧 layer / tx 与口径表一致 (tx = 力的产生端)
   ③ x/y/z/mag/raw_mag/w/k 与 tools/layer_forces.py 的**同一份**加权结果逐位相等 (tol 1e-9)
-  ④ src 非空 (能追到真源文件.字段)
+  ④ src 非空 (能追到唯一依据文件.字段)
   ⑤ 帧龄/新鲜度如实: fresh 与 age_s 必须能对上 layer_forces 的 fresh/age_s
 
 用法:

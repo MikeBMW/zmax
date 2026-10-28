@@ -134,7 +134,7 @@ else:
 
 **用户多轮迭代的最终规则 — 所有控件 ID 一律悬停 tooltip, 无任何静态常显**:
 - 演进: P01/P11 悬停 → VEH.2 页全悬停 (`_veh2_apply` 去掉 `_is_big` 常显逻辑, 41 控件全 hover) → **主循环 `_holo_apply_all` 全页 hover_only=True** (不再区分页面)
-- **VEH.0.x 兜底 ID**: 页面 objectName 未注册 (如 HomeWidget 缺 `setObjectName("home")`) 时 `_holo_page_of` 返回 P00 → ID 编号 VEH.0.xx。**HomeWidget 补 `setObjectName("home")` 后首页按钮才进 P01 hover_only 分支** — 报"首页按钮还是常显"时先查页面 objectName 是否注册 (首页按钮原判定 P00 不走悬停分支)
+- **VEH.0.x 保障 ID**: 页面 objectName 未注册 (如 HomeWidget 缺 `setObjectName("home")`) 时 `_holo_page_of` 返回 P00 → ID 编号 VEH.0.xx。**HomeWidget 补 `setObjectName("home")` 后首页按钮才进 P01 hover_only 分支** — 报"首页按钮还是常显"时先查页面 objectName 是否注册 (首页按钮原判定 P00 不走悬停分支)
 - 常显白名单: **主页 12 功能卡徽标 VEH.1~VEH.12 保留** (老倪明确要的对话 ID) — 其余页面控件全部悬停
 - 验证: offscreen 实例化 TrainingModule → 断言所有 badge `hover_only=True` / 0 常显角标对象 + tooltip 含 `VEH.x.xx — 控件名`
 

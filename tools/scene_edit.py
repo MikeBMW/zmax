@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """场景编辑器后端 —— 对"运行中的仿真场景 + 真机场景"做可视化编辑的数据层 (GUI 调它)。
 
-真源 (只碰这三个, 绝不写 scene_state.json):
+唯一依据 (只碰这三个, 绝不写 scene_state.json):
   · data/scene/objects3d.json    —— 3D 对象表 (objects[])
   · data/scene/overlay_spec.json —— 叠加规范 (markers[] / fences[] / trajectories[] / deleted 黑名单)
   · data/scene/traj_display.json —— 轨迹显示开关 (show)
@@ -888,7 +888,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("check", help="数据体检", parents=[common])
     p.set_defaults(fn=cmd_check)
 
-    p = sub.add_parser("path", help="打印真源文件绝对路径", parents=[common])
+    p = sub.add_parser("path", help="打印唯一依据文件绝对路径", parents=[common])
     p.set_defaults(fn=cmd_path)
     return ap
 

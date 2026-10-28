@@ -3,11 +3,11 @@
 """
 autolight_docx.py — /autoLight 工艺卡 → Word(.docx) 一键导出
 
-真源是页面里的 CARDS 数据（tools/web/autoLight.html），本模块只负责**排版**：
+唯一依据是页面里的 CARDS 数据（tools/web/autoLight.html），本模块只负责**排版**：
   前端 POST 上来 {cards:[{n,title,stage,act,det[],kv[[k,v]],tags[],fn,img}], meta:{...}}
   这里用 python-docx 生成封面 + 工艺路线总览 + 每步一张工艺卡（含三维视图截图）。
 
-为什么要前端传内容：工艺卡文字只允许有一个真源（页面），服务端不复制一份，
+为什么要前端传内容：工艺卡文字只允许有一个唯一依据（页面），服务端不复制一份，
 避免"改了页面忘了改导出"。图片是 canvas.toDataURL('image/png') 的 data URL。
 """
 from __future__ import annotations

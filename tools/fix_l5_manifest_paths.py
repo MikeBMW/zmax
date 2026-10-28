@@ -38,7 +38,7 @@ for fn in files:
                 tail = p.split("/data/", 1)[-1]
                 c = os.path.join(ROOT, "data/datasets", tail)
                 cand = c if os.path.exists(c) else ""
-            # ③ 按文件名全盘找 (兜底)
+            # ③ 按文件名全盘找 (保障)
             if not cand:
                 b = os.path.basename(p)
                 for root, _dirs, fs in os.walk(os.path.join(ROOT, "data")):

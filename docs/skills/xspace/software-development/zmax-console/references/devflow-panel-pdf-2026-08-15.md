@@ -86,7 +86,7 @@ _QTM2.singleShot(2000, lambda: (win.show(), win.raise_(),
                                 win.activateWindow(), _QA2.processEvents()))
 ```
 窗口第一次映射 = 最终位置 + 完整内容 (Simulink 400ms 延迟创建已完成), 全程无位移
-无黑条。except 兜底 win.show()。**原则: 重量级 GUI (延迟创建子模块) 的首次 show
+无黑条。except 保障 win.show()。**原则: 重量级 GUI (延迟创建子模块) 的首次 show
 推迟到所有子模块构建完成后一次性映射, 别 show 后移动窗口**。
 
 ## 6. dash 流动动画改静态高亮 (黑条最终方案)

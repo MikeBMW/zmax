@@ -17,7 +17,7 @@ cp -f tools/canvas_add_web_agent_node.py tools/verify_web_agent_node.py tools/ss
 cp -f /etc/sysctl.d/99-zmax-net.conf "$DST/tools/" 2>/dev/null
 cp -f /etc/systemd/system/zmax-web-agent-bridge.service /etc/systemd/system/zmax-net-optimize.service \
       /etc/systemd/system/aoi-feishu-push.service "$DST/tools/" 2>/dev/null
-# ② 源码 (桥真源 + 能力清单 + 画布运行时注册)
+# ② 源码 (桥唯一依据 + 能力清单 + 画布运行时注册)
 cp -f src/lerobot/policies/left_right/state_space/web_agent_bridge.py "$DST/src/" 2>/dev/null
 cp -f src/lerobot/verification/capability_levels.py "$DST/src/" 2>/dev/null
 cp -f tools/gui/node_logic.py "$DST/src/" 2>/dev/null

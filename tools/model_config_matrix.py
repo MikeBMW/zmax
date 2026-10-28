@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""🧩 模型配置矩阵 (真源) — 主界面「配置通道」与配置中心「模型配置」共用的同一份数据。
+"""🧩 模型配置矩阵 (唯一依据) — 主界面「配置通道」与配置中心「模型配置」共用的同一份数据。
 
 老倪 2026-10-14:
   「你看下面的配置通道，都是之前的模型配置了。现在要与状态空间工程实际数据一致。
     最开始配置中心的模型配置，就是配置模型的。也没对应上啊」
 ⇒ 这张表不再手写 (旧的 ZOO_SPEC 是 2026-08-08 的 Model Zoo 实验对比: ACT/VLA-Touch/AWE/官方专家…),
-  改成每次从**状态空间工程的真源**现算:
+  改成每次从**状态空间工程的唯一依据**现算:
 
   ① tools/model_inventory.py --json        在役模型/权重真实路径/体积/最近训练
   ② http://127.0.0.1:8796/status/all       在役模型名/版本/状态 (引擎实际加载的)
@@ -14,7 +14,7 @@
   ④ config/mcd/param_registry.json         配置中心「模型配置」域 (ckpt_l2..l5 / train_state / train_entry)
   ⑤ reports/joint_train_*/summary.json     最近一次真训练的 rc/秒 (每层)
 
-取不到的一律写 "真源未登记", **不编数字** (老倪: 工程真实性零容忍)。
+取不到的一律写 "唯一依据未登记", **不编数字** (老倪: 工程真实性零容忍)。
 
 用法:
   ./gui-venv311/bin/python tools/model_config_matrix.py --json     # 给 GUI/页面用
@@ -47,7 +47,7 @@ LAYER_NODES = {
     "L5": ("n_dsvl", "n_vlm_llm", "n_qwen"),
 }
 LAYER_ARCH_HINT = {"L2": "YOLO", "L3": "SmolVLA", "L4": "INTACT", "L5": "VLM"}
-# L2 第二个模型 (开放词汇分割) 的真源路径 —— 老倪 2026-10-14:「还有个 SAM3 呢, 怎么搞?」
+# L2 第二个模型 (开放词汇分割) 的唯一依据路径 —— 老倪 2026-10-14:「还有个 SAM3 呢, 怎么搞?」
 SAM3_BASE_REL = "zmax_data/models/sam3_hf/model.safetensors"
 SAM3_ADAPTER_REL = "outputs/sam3_finetune/annot_v1/lora_adapter/adapter_model.safetensors"
 
@@ -93,7 +93,7 @@ def _last_train_per_layer():
     out = {}
     for d in sorted(glob.glob(os.path.join(ROOT, "reports", "joint_train_*")), reverse=True)[:12]:
         s = _j(os.path.join(d, "summary.json"))
-        rows = s.get("rows") or s.get("results") or s.get("stages") or []      # 真源键名 = rows (实测)
+        rows = s.get("rows") or s.get("results") or s.get("stages") or []      # 唯一依据键名 = rows (实测)
         if not rows:
             continue
         for x in rows:
@@ -103,7 +103,7 @@ def _last_train_per_layer():
                 out[lid] = {"rc": x.get("rc"), "secs": x.get("secs") or x.get("sec"),
                             "src": os.path.basename(d),
                             "artifact": os.path.basename(str(ev.get("path") or ""))}
-        if len(out) >= len(LAYERS):        # 四层都要 (原来 >=3 就 break ⇒ L5 被漏成"真源未登记")
+        if len(out) >= len(LAYERS):        # 四层都要 (原来 >=3 就 break ⇒ L5 被漏成"唯一依据未登记")
             break
     return out
 
@@ -115,10 +115,10 @@ def _size(path):
             b = sum(os.path.getsize(os.path.join(r, f)) for r, _s, fs in os.walk(path)
                     for f in fs if f.endswith((".pt", ".safetensors", ".bin")))
         if not b:
-            return "真源未登记"
+            return "唯一依据未登记"
         return "%.1f MB" % (b / 1048576.0) if b < 1073741824 else "%.2f GB" % (b / 1073741824.0)
     except Exception:                                                                  # noqa: BLE001
-        return "真源未登记"
+        return "唯一依据未登记"
 
 
 def _params_from_log(layer):
@@ -135,7 +135,7 @@ def _params_from_log(layer):
         if m:
             n = int(m.group(1).replace(",", ""))
             return "%s (%.1fM)" % (m.group(1), n / 1e6), os.path.basename(d)
-    return "真源未登记", ""
+    return "唯一依据未登记", ""
 
 
 def _cmpp(n):
@@ -156,7 +156,7 @@ def _cmpp(n):
 def candidate_rows(models, st_models=(), layers=LAYERS):
     """🔎 候选行 —— 给「🧠 模型引擎」窗口用 (每层一条, 只在**有候选**时出)。
 
-    与主表 `build()` **同规则同真源**: 名字压缩 `_cmpp`; 判据 = 8796 `/status/all` 的 `note_short`
+    与主表 `build()` **同规则同唯一依据**: 名字压缩 `_cmpp`; 判据 = 8796 `/status/all` 的 `note_short`
     (引擎没给该候选写备注 ⇒ 如实写「产物未评估(尚无 A/B 判据)」, 不编结论)。
     🧩 L2 的 SAM3 就是走这一行显示 (老倪 2026-10-14: 「在模型引擎里要增加 SAM3, 位置 L2」)。
     返回: [{"layer","layer_tag","models","note","path","ts","n","names"}]
@@ -223,7 +223,7 @@ def candidate_rows(models, st_models=(), layers=LAYERS):
         out.append({"layer": ly, "layer_tag": "%s · 候选" % ly, "ver": _vdisp or "—",
                     "models": disp or "—", "names_all": names,
                     "note": " · ".join(notes) or "产物未评估(尚无 A/B 判据)",
-                    "path": path or "真源未登记", "ts": ts or "无训练记录",
+                    "path": path or "唯一依据未登记", "ts": ts or "无训练记录",
                     "n": len(mine), "names": names})
     return out
 
@@ -248,27 +248,27 @@ def build():
         act = next((m for m in models if m.get("active")), None) or (models[0] if models else {})
         sm = next((m for m in (st.get("models") or []) if str(m.get("layer")) == ly), {})
         path = act.get("realpath") or act.get("path") or reg.get("model.ckpt_%s" % ly.lower()) or ""
-        e["在役模型"] = (sm.get("name") or act.get("name") or "真源未登记")
-        e["版本"] = (sm.get("version") or act.get("ver") or "真源未登记")
-        e["权重路径"] = path or "真源未登记"
-        e["权重体积"] = _size(path) if path else "真源未登记"
-        e["状态"] = {"in_service": "在役", "candidate": "候选"}.get(str(sm.get("state")), "真源未登记")
-        e["架构"] = (sm.get("name") or "").split("(")[0].strip() or LAYER_ARCH_HINT.get(ly, "真源未登记")
+        e["在役模型"] = (sm.get("name") or act.get("name") or "唯一依据未登记")
+        e["版本"] = (sm.get("version") or act.get("ver") or "唯一依据未登记")
+        e["权重路径"] = path or "唯一依据未登记"
+        e["权重体积"] = _size(path) if path else "唯一依据未登记"
+        e["状态"] = {"in_service": "在役", "candidate": "候选"}.get(str(sm.get("state")), "唯一依据未登记")
+        e["架构"] = (sm.get("name") or "").split("(")[0].strip() or LAYER_ARCH_HINT.get(ly, "唯一依据未登记")
         pq, _pd = _params_from_log(ly)
         e["参数量"] = pq
         ns = [n for n in nodes if str(n.get("id")) in LAYER_NODES.get(ly, ())]
-        if not ns:                                  # 兜底: 按名字关键字在画布上找
+        if not ns:                                  # 保障: 按名字关键字在画布上找
             ns = [n for n in nodes if LAYER_ARCH_HINT.get(ly, "\0") in str(n.get("name") or "")][:2]
-        e["状态空间节点"] = " · ".join(str(n.get("name")) for n in ns) or "真源未登记"
-        e["输出话题"] = " ".join("ss/%s/out" % n.get("id") for n in ns) or "真源未登记"
+        e["状态空间节点"] = " · ".join(str(n.get("name")) for n in ns) or "唯一依据未登记"
+        e["输出话题"] = " ".join("ss/%s/out" % n.get("id") for n in ns) or "唯一依据未登记"
         _srcs, _seen = [], set()            # 两个节点可能指向同一个源文件 ⇒ 去重 (L4/L5 实测重复)
         for _n in ns:
             _s = str((_n.get("params") or {}).get("source") or "")
             if _s and _s not in _seen:
                 _seen.add(_s)
                 _srcs.append(_s)
-        e["节点源码"] = " · ".join(_srcs) or "真源未登记"
-        e["训练入口"] = (reg.get("model.train_entry") or {}).get(ly, "真源未登记")
+        e["节点源码"] = " · ".join(_srcs) or "唯一依据未登记"
+        e["训练入口"] = (reg.get("model.train_entry") or {}).get(ly, "唯一依据未登记")
         # 在役指针本身没有 last_train (它只是软链) ⇒ 扫本层**所有**产物取最新那次 (与引擎窗口同一口径)
         lt = ""                                    # 用空串起比 (拿中文占位串去比会把所有 ts 都比掉)
         for m in models:
@@ -283,11 +283,11 @@ def build():
                                        (":" + _m2.group(6)) if _m2.group(6) else "")
         e["最近训练"] = lt
         t = last.get(ly)
-        e["最近一次结果"] = ("rc=%s · %ss · %s" % (t["rc"], t["secs"], t["src"])) if t else "真源未登记"
+        e["最近一次结果"] = ("rc=%s · %ss · %s" % (t["rc"], t["secs"], t["src"])) if t else "唯一依据未登记"
         e["微调方式"] = {"L2": "LoRA(annot 域) · 30 epoch",
                         "L3": "LoRA(local) · 20 步",
                         "L4": "LoRA(r8/α16) · 20 步",
-                        "L5": "L5 头 + 合并为可部署"}.get(ly, "真源未登记")
+                        "L5": "L5 头 + 合并为可部署"}.get(ly, "唯一依据未登记")
         # 🔎 候选 (未在役): 该层**所有非在役**产物的真实清单 + 为什么没切 (判据取自 8796 note_short)
         cand_names = [_cmpp(str(m.get("name") or "")) for m in models if not m.get("active")]
         cand_names = [c for c in cand_names if c and c not in e["在役模型"]]
@@ -297,7 +297,7 @@ def build():
         notes = [str(m.get("note_short") or m.get("note") or "")[:80] for m in st_cands]
         if not notes and cand_names:
             notes = ["产物未评估(尚无 A/B 判据)"]      # 如实: 有产物但没做过对照 ⇒ 不编结论
-        if "SAM3" in e["候选模型"]:                     # SAM3 的判据真源 = 引擎 note_short
+        if "SAM3" in e["候选模型"]:                     # SAM3 的判据唯一依据 = 引擎 note_short
             _s3 = [n for n in notes if n]
             notes = _s3 or ["引擎 note 未登记"]
         e["候选判据"] = " · ".join(notes) or "无"
@@ -310,20 +310,20 @@ def build():
                 _cp = _p
         e["候选权重路径"] = _cp or "无"
         rows[ly] = e
-    # 🧩 L2 候选 · SAM3 的单项真源 (给配置中心模型配置域用; 与上面的表同源同一次现算)
+    # 🧩 L2 候选 · SAM3 的单项唯一依据 (给配置中心模型配置域用; 与上面的表同源同一次现算)
     _sm3 = next((m for m in (st.get("models") or []) if "SAM3" in str(m.get("name") or "")), {})
     _base = os.path.join(ROOT, SAM3_BASE_REL)
     _adap = os.path.join(ROOT, SAM3_ADAPTER_REL)
     extras = {
-        "SAM3|基座路径": (os.path.relpath(_base, ROOT) if os.path.exists(_base) else "真源未登记"),
-        "SAM3|基座体积": _size(_base) if os.path.exists(_base) else "真源未登记",
+        "SAM3|基座路径": (os.path.relpath(_base, ROOT) if os.path.exists(_base) else "唯一依据未登记"),
+        "SAM3|基座体积": _size(_base) if os.path.exists(_base) else "唯一依据未登记",
         "SAM3|适配器路径": (os.path.relpath(_adap, ROOT) if os.path.exists(_adap) else "无 (纯基座)"),
         "SAM3|适配器体积": _size(_adap) if os.path.exists(_adap) else "无 (纯基座)",
-        "SAM3|状态": ({"in_service": "在役", "candidate": "候选"}.get(str(_sm3.get("state")), "真源未登记")
-                     if _sm3 else "真源未登记"),
-        "SAM3|判据": (str(_sm3.get("note_short") or _sm3.get("note") or "")[:120] or "真源未登记"),
+        "SAM3|状态": ({"in_service": "在役", "candidate": "候选"}.get(str(_sm3.get("state")), "唯一依据未登记")
+                     if _sm3 else "唯一依据未登记"),
+        "SAM3|判据": (str(_sm3.get("note_short") or _sm3.get("note") or "")[:120] or "唯一依据未登记"),
         "SAM3|服务": ("tools/sam3_seg.py --serve --port 8796 --lazy (常驻, 首次 /seg 才加载)"
-                     if _sm3 else "真源未登记"),
+                     if _sm3 else "唯一依据未登记"),
     }
     groups = [("🏗 模型身份", ["在役模型", "版本", "权重路径", "权重体积", "状态"]),
               ("🧠 结构与训练", ["架构", "参数量", "微调方式", "训练入口", "最近训练", "最近一次结果"]),
@@ -338,13 +338,13 @@ def build():
 
 
 def show(m):
-    print("模型配置矩阵 (真源现算 · %s)" % m["ts"])
+    print("模型配置矩阵 (唯一依据现算 · %s)" % m["ts"])
     print("  " + " | ".join("%s %s" % (c["layer"], c["版本"]) for c in m["columns"]))
     for g in m["groups"]:
         print("\n%s" % g["cat"])
         for r in g["rows"]:
             print("  %-10s" % r["name"] + " | ".join(str(r["vals"][ly])[:34] for ly in LAYERS))
-    print("\n真源:")
+    print("\n唯一依据:")
     for k, v in m["sources"].items():
         print("  %s = %s" % (k, v))
 

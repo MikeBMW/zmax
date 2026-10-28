@@ -118,7 +118,7 @@ def main():
     intact = [i for i, n in N.items() if "intact" in i or "INTACT" in (n.get("name") or "")]
     print(f"节点 {len(ids_before)} → {len(d2['nodes'])} (+{added_nodes}) · 连线 {len(links_before)} → {len(d2['links'])} (+{len(added)})")
     print(f"孤立节点 (无进无出): {iso or '无 ✓'}")
-    print(f"无入线节点 (应为真源): {[(N[i]['name'][:18], dout[i]) for i in srcs]}")
+    print(f"无入线节点 (应为唯一依据): {[(N[i]['name'][:18], dout[i]) for i in srcs]}")
     print("INTACT 相关节点连线:")
     for i in sorted(intact):
         print(f"   {i:16s} 入{din[i]:2d} 出{dout[i]:2d}  {N[i]['name'][:30]}")

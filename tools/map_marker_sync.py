@@ -7,11 +7,11 @@
 本工具把**建图产物**扫出来, 与场景里的**现场标记 / 对象 / 空间点**做对齐同步, 让每个标记
 能溯源到它属于**哪次建图**、在**哪个坐标系**、是否**已过期**。
 
-建图产物 (真源, 只读):
+建图产物 (唯一依据, 只读):
   · zmax_data/gs_assets/<资产>/ gs.ply · gs.splat · cameras.json (T_cam2world, base_link) · images/
   · zmax_data/gs_scan/<会话>/   frames/*.jpg · frames.jsonl (逐帧 pose, frame=base_link)
   · zmax_data/gs_map/status.json  在役建图会话状态
-  · data/scene/{objects3d,overlay_spec}.json  场景真源 (ts / mtime)
+  · data/scene/{objects3d,overlay_spec}.json  场景唯一依据 (ts / mtime)
 
 对齐对象 (标记/对象/空间点):
   · overlay_spec.json markers[]  —— 现场标记 (经 tools/scene_edit.py list --json 读)
@@ -222,7 +222,7 @@ def scan_map_assets():
 
 # ══════════════════════ ② 扫场景侧实体 (标记/对象/空间点) ══════════════════════
 def _scene_edit_list():
-    """经 tools/scene_edit.py list --json 读场景真源 (与 GUI 同一条读路径)。"""
+    """经 tools/scene_edit.py list --json 读场景唯一依据 (与 GUI 同一条读路径)。"""
     try:
         r = subprocess.run([PY, str(SCENE_EDIT), "list", "--json"],
                            cwd=str(REPO), capture_output=True, text=True, timeout=30)
@@ -267,7 +267,7 @@ def scan_entities():
 
 # ══════════════════════ ③ 绑定 + 新鲜度 ══════════════════════
 def _scene_ts():
-    """场景**编辑**真源时间 (epoch): 用 objects3d.json 的语义 ts (人工/示教编辑时刻)。
+    """场景**编辑**唯一依据时间 (epoch): 用 objects3d.json 的语义 ts (人工/示教编辑时刻)。
 
     ⚠️ 不能用 overlay_spec.json 的 ts/mtime —— 它被在役 L5 感知环每秒重写, 其时间恒 = now,
     拿它当"场景 ts"会让所有建图产物都被误判过期。overlay 的实时时间另存 scene_live_ts 供展示。"""
@@ -291,7 +291,7 @@ def _newest_map_mtime(assets):
 def bind_entity(ent, assets, scene_ts, newest_map=None):
     """给一个实体算 map_ref: 归属哪次建图 / 坐标系 / 新鲜度。
 
-    scene_ts = 场景编辑真源时间 (objects3d.ts); newest_map = 最新建图产物 mtime。"""
+    scene_ts = 场景编辑唯一依据时间 (objects3d.ts); newest_map = 最新建图产物 mtime。"""
     pos = ent["pos"]
     best, best_d = None, None
     for a in assets:
@@ -322,9 +322,9 @@ def bind_entity(ent, assets, scene_ts, newest_map=None):
     if newest_map and ent_epoch and (newest_map - ent_epoch) > STALE_DAYS * 86400:
         reasons.append("标注早于最新建图 %.1f天 > %.0f天" %
                        ((newest_map - ent_epoch) / 86400.0, STALE_DAYS))
-    # ④ 最新建图早于场景编辑真源 (地图没跟上场景改动)
+    # ④ 最新建图早于场景编辑唯一依据 (地图没跟上场景改动)
     if newest_map and scene_ts and newest_map < scene_ts - 60:
-        reasons.append("最新建图早于场景编辑真源 %.1fh" % ((scene_ts - newest_map) / 3600.0))
+        reasons.append("最新建图早于场景编辑唯一依据 %.1fh" % ((scene_ts - newest_map) / 3600.0))
     stale = bool(reasons)
     return {
         "coord": ent.get("coord", "base"),
@@ -363,7 +363,7 @@ def _fmt_table(r):
     A, E, B = r["assets"], r["entities"], r["bindings"]
     out.append("地图同步  ·  建图产物 ↔ 现场标记  (%s)" % time.strftime("%Y-%m-%d %H:%M:%S"))
     out.append("=" * 78)
-    out.append("场景编辑真源时间(objects3d.ts): %s" % (r.get("scene_ts_iso") or "-"))
+    out.append("场景编辑唯一依据时间(objects3d.ts): %s" % (r.get("scene_ts_iso") or "-"))
     out.append("最新建图产物: %s   ·   在役感知环写入: %s"
                % (r.get("newest_map_iso") or "-", r.get("scene_live_ts_iso") or "-"))
     out.append("")

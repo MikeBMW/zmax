@@ -10,7 +10,7 @@
 | 2 Sim-to-Real 测试 | data/closed_loop_v2 (Orin 7D/6D/64² LeRobot 目录) | 加载 stage1 ckpt 评估 MSE/成功率/延迟 (先仿真验证再 Sim2Real) | 量化 Reality Gap |
 | 3 Orin 微调 | data/closed_loop_v2 | lr=1e-5, lr_backbone=1e-6, kl=10, chunk=100, n_action=1, ensemble=0.01, policy.path=stage1 ckpt (CLI --policy.path= 等号) | 保守迁移 |
 
-命令: `.venv/bin/python tools/cicd_pipeline.py run --steps1 N --steps3 N` (自动流转) / `stage N --steps N` (单阶段) / `status` / `test` (最少迭代跑通链路)。状态落 `docs/PIPELINE_STATE.json`，GUI 面板 2s 轮询刷新。
+命令: `.venv/bin/python tools/cicd_pipeline.py run --steps1 N --steps3 N` (自动流转) / `stage N --steps N` (单阶段) / `status` / `test` (最少迭代验证通过链路)。状态落 `docs/PIPELINE_STATE.json`，GUI 面板 2s 轮询刷新。
 
 ## 状态结构 — 每阶段独立持久化 (用户实测反馈修复)
 
@@ -27,7 +27,7 @@
 
 - `run_stage()`: 每阶段 `stages[str(stage)]` 独立 state/ckpt/result，历史阶段**不被后续阶段覆盖**；全局 stage/state 只反映当前阶段。
 - PipelinePanel._refresh 读 `stages` 而非全局 state：每张卡独立颜色/徽章。
-- 兼容旧字段: `ckpt1`/`stage2`/`ckpt3` 顶层字段保留为兜底读 (stages 优先)。
+- 兼容旧字段: `ckpt1`/`stage2`/`ckpt3` 顶层字段保留为保障读 (stages 优先)。
 - ckpt 显示用 `Path(ckpt).parts[-4]` 取训练目录名 (pretrained_model/000300/checkpoints/<dir> — dirname 两次会取到 "checkpoints"，本会话踩过)。
 
 ## 配置生成 (gen_train_cfg) — 踩过的坑
@@ -47,13 +47,13 @@
 - action = 关节速度差分 `qpos[0:6]` 逐帧差 → 6D (metaworld 3.x 无 joint action 模式, 只能记录差分)
 - image = `mujoco.Renderer(env.model, 64, 64)` offscreen (WSL headless OK)
 - metaworld 3.1.1 API: `MT1('reach-v3')` (v2 名报 not a V3); 先 `env.set_task(mt.train_tasks[0])` 再 reset (否则 AssertionError _last_rand_vec); Gymnasium 元组式 reset/step; `qpos` 16D 前 7 才是关节角; 夹爪 body 名 rightclaw/leftclaw
-- Stage1 数据切到 joint 集后: Stage2 Sim2Real **真正跑通** (实测 MSE=0.0884 成功率0% "零样本需微调", 不再是维度不匹配), Stage3 权重迁移成功 (不再降级)。这是用户策略"仿真预训练→真机微调"成立的前提。
+- Stage1 数据切到 joint 集后: Stage2 Sim2Real **真正验证通过** (实测 MSE=0.0884 成功率0% "零样本需微调", 不再是维度不匹配), Stage3 权重迁移成功 (不再降级)。这是用户策略"仿真预训练→真机微调"成立的前提。
 
 ## Stage2 失败排查 (2026-08-02 用户 "为什么阶段2失败了")
 
-**验证/测试脚本污染真实 `docs/PIPELINE_STATE.json`** (写入模拟 stages) → stages.1 丢失 → run_stage(2) 找不到 S1 ckpt → 旧兜底 `latest_ckpt("outputs/train/act_mw_v111")` 回退到**假训练时代的 2D/pusht 模型** → 在 4D 真实数据上 mat1/mat2 崩 → failed。教训:
+**验证/测试脚本污染真实 `docs/PIPELINE_STATE.json`** (写入模拟 stages) → stages.1 丢失 → run_stage(2) 找不到 S1 ckpt → 旧保障 `latest_ckpt("outputs/train/act_mw_v111")` 回退到**假训练时代的 2D/pusht 模型** → 在 4D 真实数据上 mat1/mat2 崩 → failed。教训:
 - **测试脚本不得写真实状态文件** (用临时路径或跑完恢复原文件)
-- 兜底必须 `latest_s1_ckpt()` (glob outputs/train/act_s1_* 按 mtime 最新, 真实模型), **固定旧目录名会捡回假训练产物**
+- 保障必须 `latest_s1_ckpt()` (glob outputs/train/act_s1_* 按 mtime 最新, 真实模型), **固定旧目录名会捡回假训练产物**
 - 判别模型真假: config.json `input_features` state shape (真 metaworld=4 / 真 orin=7 / 假 pusht 模板=2)
 
 ## 数据链路 (已实测)

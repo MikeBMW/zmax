@@ -19,4 +19,4 @@
   入库副本 `docs/notes/studio_hero_buttons_backup_20261015.py` (zmax_data/ 被 gitignore)。
 - 恢复: 贴回 `HomeWidget._hero()` 里 `row.addStretch()` 之后、分享按钮之前。
 - 判据: `tools/verify_hero_buttons.py` (离屏建真控件树枚举 hero 行按钮 + 检查 7 个替代入口都在 + 备份件在位)。
-  收尾必须 `os._exit(...)`: HomeWidget 构造会拉起 `_HwFetcher` QThread，正常退出会 join 卡住。
+  收尾必须 `os._exit(...)`: HomeWidget 构造会拉起 `_HwFetcher` QThread，正常退出会 join 阻塞。

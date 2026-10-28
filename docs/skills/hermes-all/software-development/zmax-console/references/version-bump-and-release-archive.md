@@ -29,9 +29,9 @@ git push -qf origin v<ver>
 ## 3. 保存数据 = 两份落盘 + 可复核校验
 ```
 docs/data_snapshots/<date>_<主题>/        判据实跑输出 (每项一份) + NOTE.md + git_ref.txt
-zmax_data/release_<ver>_<date>/           代码/判据 + truth/ (产品真源·话题类型·画布·工程库) + evidence/ + MANIFEST.md + sha256sums.txt
+zmax_data/release_<ver>_<date>/           代码/判据 + truth/ (产品唯一依据·话题类型·画布·工程库) + evidence/ + MANIFEST.md + sha256sums.txt
 ```
-- 归档用脚本写 (`tools/save_release_*.py`), 而不是手抄文件清单: 脚本里列出"代码 27 · 真源 6 · sha256 行 36",
+- 归档用脚本写 (`tools/save_release_*.py`), 而不是手抄文件清单: 脚本里列出"代码 27 · 唯一依据 6 · sha256 行 36",
   跑完 `sha256sum -c sha256sums.txt` 回读, 报告 **N/N OK** 这种能复核的数字。
 - 归档脚本自己也会报"行数", 与 `find` 实测不一致时**按 find 为准**并在回复里更正 (别把脚本的自报当事实)。
 - 判据输出进快照时保留 exit code; 红了先分辨"本轮引入"还是"历史遗留":

@@ -273,7 +273,7 @@ def main():
         for at in man["assets"]:
             st, dest, src = check_asset(at, P)
             if at.get("kind") in ("venv", "env") and st == "alt":
-                print("  ⓘ %s: 本机已有同类环境(%s), venv 内部路径写死不能软链 —— 复用原处, 或按 %s 重建" % (
+                print("  ⓘ %s: 本机已有同类环境(%s), venv 内部路径预先固定不能软链 —— 复用原处, 或按 %s 重建" % (
                     at["id"], src, (at.get("fetch") or {}).get("note", "")[:60]))
                 continue
             if st == "alt" and src and not os.path.exists(dest):

@@ -280,7 +280,7 @@ class BusPanel:
         v.addWidget(self.wall, 1)
         hint = QLabel("灯的含义: 🟢 正常(规则全过) · 🟡 报警(频率偏低/抖动大/部分信号无) · "
                       "🔴 故障(violation/veto/值域越界) · ⚫ 无信号(本档不发/窗口内 0 条/发布端没起)\n"
-                      "口径来自 src/lerobot/dataspace/lamps.py(唯一真源); 数据来自探针 live.json(2s 刷新)")
+                      "口径来自 src/lerobot/dataspace/lamps.py(唯一依据); 数据来自探针 live.json(2s 刷新)")
         hint.setStyleSheet("color:%s;font-size:11px" % DIM)
         v.addWidget(hint)
         _darkify(t)

@@ -2,7 +2,7 @@
 """判据: 信号分析「场景标记 + 按色排序」与 AR 底图来源 —— 真跑, 不靠看代码 (老倪 2026-10-12 要求)。
 
 覆盖:
-  ① 标签真源: AR/AOI 信号 → AR场景(紫 #8957e5); 未分类 → 白 #ffffff
+  ① 标签唯一依据: AR/AOI 信号 → AR场景(紫 #8957e5); 未分类 → 白 #ffffff
   ② 颜色/任务映射与 tools/ss_scene_switch.py **逐字一致**(不重写映射)
   ③ AR 底图来源清单(8797 /api/cams): 4 台相机都在册 + 状态空间视频源有真帧龄
   ④ 4 路快照是真 JPEG(魔数 ff d8) —— 底图确实来自状态空间工程视频源
@@ -36,7 +36,7 @@ def ck_skip(name, detail=""):
 
 
 def main() -> int:
-    print("=== ① 标签真源 (tools/sig_scene_tags.py) ===")
+    print("=== ① 标签唯一依据 (tools/sig_scene_tags.py) ===")
     import sig_scene_tags as SST
     import ss_scene_switch as SSW
     ck("AR/AOI 信号 → AR场景", SST.tag("光学质量检测.判决") == "AR场景", SST.tag("光学质量检测.判决"))

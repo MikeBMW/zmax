@@ -97,7 +97,7 @@ def main():
 
     sk = {"id": SID, "name": "🔍 AOI 侧面巡检 (示教4点 + 平滑过渡轨迹)", "layer": "L2", "kind": "muscle_memory",
           "version": 1, "group": "AOI检测",
-          "source": "现场示教 %s (老倪手摇, 位姿真源 xcoresdk endInRef 直采 20Hz)" % (side.get("created") or ""),
+          "source": "现场示教 %s (老倪手摇, 位姿唯一依据 xcoresdk endInRef 直采 20Hz)" % (side.get("created") or ""),
           "created": time.strftime("%Y-%m-%d %H:%M:%S"),
           "points": points_out,
           "steps": steps,

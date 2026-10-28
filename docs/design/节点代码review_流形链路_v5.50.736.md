@@ -7,7 +7,7 @@
 
 本次交付 = **代码 review (逐条带源码行号) + 单步调试器**:
 - 工具 `tools/node_debug.py` — 六节点真实单步执行器 (每步调的是节点自己在跑的那个函数)
-- 判据 `tools/verify_node_debug.py` — **33/33** (结构 / 真源 / 执行 / 档位 / 调试能力 / 诚实性)
+- 判据 `tools/verify_node_debug.py` — **33/33** (结构 / 唯一依据 / 执行 / 档位 / 调试能力 / 诚实性)
 - 调试四件套: `--list` · `--node <id> --step` (回车走一步) · `--pdb` (pdb.set_trace 真进源码) ·
   `--src` (打印每个环节的绝对路径+行号, `code -g file:line` 直接断点)
 
@@ -29,15 +29,15 @@
 | 连接方式 (老倪原文) | 本仓库锚点 | 实测 |
 |---|---|---|
 | ① 投影到流形 + 沿流形导航 | `ManifoldEngine.project:691` → `Navigator.step:438` → `great_circle_path:430` | 投影后 **‖p‖=1.000000000**; 寻址走测地线 |
-| ② 度量张量决定切空间长度/角度 | `MetricCalculator:301` · `tangent_gradient:336` · `M`/度规特征值 | `M=3.643` (在役) · 调试器目标取真源末帧 ⇒ φ=3.53e-4, ‖∇Φ‖=0.0266 |
-| ③ 流形是约束流形 (越界=风险) | `ContactManifold.channel_axis:101` → 法向 `e⊥` → `risk` 三档 (`在流形/贴边缘/离流形:135-140`) | 真源帧 200 (自由空间): 进度 0.1250m · 风险 0.0000m · V=7.78e-3 |
+| ② 度量张量决定切空间长度/角度 | `MetricCalculator:301` · `tangent_gradient:336` · `M`/度规特征值 | `M=3.643` (在役) · 调试器目标取唯一依据末帧 ⇒ φ=3.53e-4, ‖∇Φ‖=0.0266 |
+| ③ 流形是约束流形 (越界=风险) | `ContactManifold.channel_axis:101` → 法向 `e⊥` → `risk` 三档 (`在流形/贴边缘/离流形:135-140`) | 唯一依据帧 200 (自由空间): 进度 0.1250m · 风险 0.0000m · V=7.78e-3 |
 | ④ 流形是条件空间 (条件注入 DiT) | 画布真连线 `ssmani_c`/`ssmani_p`/潜空-流形/L4 LoRA/VLM → `ssdec` (`action_head:37`) | 判据 B2/B3 已核: 直连 ‖ 旁路双通道 + ≥3 路并联汇总 |
 
 ## 3. review 发现 (全部带源码行号; 3 处已改, 1 处如实记录)
 
 1. **`gradient_flow` 目标未设时静默给 0**（`manifold_engine.py:753-761`）
    原实现: `goal_point is None` ⇒ 势 φ 恒 `0.0`、梯度恒 `0` —— 调用方**分不清「已到目标」与
-   「根本没设目标」**，看起来正常其实空转（与老倪「静默降级零容忍 / 未测不许冒充 0」冲突）。
+   「根本没设目标」**，看起来正常实际空转（与老倪「静默降级零容忍 / 未测不许冒充 0」冲突）。
    **已改**（`:759` 起加 `no_goal` 显式标记 + `note` 文案，数值口径不变，向后兼容）。
    佐证: 在役引擎 `engine_latest.json` φ=0.4627 · ‖∇Φ‖=0.962 ⇒ 在役控制台是设了目标的，不受影响。
 
@@ -49,7 +49,7 @@
    文档写「接触流形势 V=½‖e⊥‖²」，**代码是 `V=½‖e‖²`**（`manifold_layer.py:141`，总误差势；
    自由空间段 `e∥=e`、风险=0，见 `:123-128`）。**已改**为与代码一致并注明行号。
 
-4. **前馈加速器是「解析守卫 + MLP 混路」**（`parallel.py:143`）：真源帧 200 实测
+4. **前馈加速器是「解析守卫 + MLP 混路」**（`parallel.py:143`）：唯一依据帧 200 实测
    `n_calls=3 / n_mlp=3 / n_guard=0 · loaded=True`；输出方向与误差方向 **cos=0.9980 (夹角 3.65°)**，
    解析律 cos=1.0000 ⇒ 方向语义正确（FNff05 成立）。
    ⚠️ 注意参考方向必须与 `ContactManifold._error` 同源：自由空间段误差是 **阶段目标−末端**，
@@ -66,7 +66,7 @@ python3 tools/node_debug.py --all --json reports/node_debug/node_debug_latest.js
 ZMAX_DEBUG_BREAK=1 python3 tools/node_debug.py --node ss_ff --trace   # 与画布「右键源码断点」同口径
 ```
 
-真源(只读): `data/database/zmax/sources/canvas/ss_traj_last.json` (357×43 obs + u_exec_vec) ·
+唯一依据(只读): `data/database/zmax/sources/canvas/ss_traj_last.json` (357×43 obs + u_exec_vec) ·
 `zmax_data/ss_live/engine_latest.json` · `models/manifold_engine.npz`。
 观测通道划分与 `su2.py:253` 注释逐字一致 (`[0:3]手 [3]夹爪 [4:7]光模块 [36:39]孔位`)，判据 B4 核过。
 
@@ -90,7 +90,7 @@ ZMAX_DEBUG_BREAK=1 python3 tools/node_debug.py --node ss_ff --trace   # 与画�
    `predict_action` → (1, 7, 4) 用时 4.6ms · `l4_cond` 通道真建起 (未训练)。
 4. 要真接 (让 ssdec 指向 DiT 并喂 960 宽条件) 需动 L3 真链路 —— **等老倪点头**。
 
-## 5. 七条单步实测 (真源帧 200 · 2026-10-15 16:58:53 落盘)
+## 5. 七条单步实测 (唯一依据帧 200 · 2026-10-15 16:58:53 落盘)
 
 | 节点 | 关键实测值 | 不变量 |
 |---|---|---|
@@ -107,8 +107,8 @@ ZMAX_DEBUG_BREAK=1 python3 tools/node_debug.py --node ss_ff --trace   # 与画�
 - DiT / 流形专家 **未加载 ckpt**（随机权重）⇒ 只证结构可执行与条件注入路径；真动作要
   `smolvla_lew` 训练产物落地后再测（工具已如实标「未训练」，不冒充在役）。
 - DiT 的 5 路条件值在 `engine_latest.json` 里**没有对应字段** ⇒ 调试器报「未测」而不是 0；
-  连线真源已核（判据 B2/B3），条件**数值**要等引擎把条件发布出来才能逐路对照。
-- 接触流形 `v`（末端速度）在真源里没有速度通道，调试器用**相邻帧差分**并标注 `v_src`。
+  连线唯一依据已核（判据 B2/B3），条件**数值**要等引擎把条件发布出来才能逐路对照。
+- 接触流形 `v`（末端速度）在唯一依据里没有速度通道，调试器用**相邻帧差分**并标注 `v_src`。
 - **`ssdec` 名不副实 (见 4b)**: 名字是 DiT、跑的是 MLP；真 DiT 未被任何节点引用。
   真接要动 L3 真链路 ⇒ 等老倪点头。
 - 「投影/度量/导航」三环节在 `ContactManifold`/`PerformanceManifold` 上**不成立**:

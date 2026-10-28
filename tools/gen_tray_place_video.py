@@ -81,7 +81,7 @@ MAX_STEPS_MODULE = 2600
 SETTLE_STEPS = 55      # 释放后退避 + 件落定
 
 # ══════════════════════════════════════════════════════════════════
-# 🔴 判据/参数真源 = **配置中心** (老倪: 「这个工程, 是通过配置改变功能」)
+# 🔴 判据/参数唯一依据 = **配置中心** (老倪: 「这个工程, 是通过配置改变功能」)
 #    config/ss_task_binding.json → tasks[TASK-06-TRAY].targets + .overrides
 #    配置改了 → 本次运行的判据/行为随之改; 读不到 → 配方默认并**显式标注来源**(不静默当已生效)
 # ══════════════════════════════════════════════════════════════════
@@ -90,7 +90,7 @@ BINDING = os.path.join(ROOT, "config", "ss_task_binding.json")
 
 
 def task_spec(task_id=TASK_ID):
-    """读配置中心真源 → 判据阈值 + 参数覆盖 (含 src 标注, 供报告追溯)。"""
+    """读配置中心唯一依据 → 判据阈值 + 参数覆盖 (含 src 标注, 供报告追溯)。"""
     import re
     spec = dict(src="配方默认(未读配置)", task_id=task_id, xy_tol_m=0.001, yaw_tol_deg=1.0,
                 dz_tol_m=0.004, vac_establish_ms=200.0, hold_s=5.0, takt_s=3.15, targets={})
@@ -145,7 +145,7 @@ def make_renderer(m):
 
 
 def _layout_objs():
-    """摆盘真源 objects 列表 (sim_scene_def._tray_layout) — 模块半高等几何从这里取"""
+    """摆盘唯一依据 objects 列表 (sim_scene_def._tray_layout) — 模块半高等几何从这里取"""
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     import sim_scene_def as SSD
     return SSD._tray_layout()["objects"]
@@ -160,7 +160,7 @@ XML = os.path.join(_mw_assets(), "sawyer_xyz", "sawyer_tray_place.xml")
 
 
 def scene_truth():
-    """摆盘几何真源 (与页内 3D 视图同一份): 模块位 + 槽位落点 + 落座高度"""
+    """摆盘几何唯一依据 (与页内 3D 视图同一份): 模块位 + 槽位落点 + 落座高度"""
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     import sim_scene_def as SSD
     d = SSD._tray_layout()
@@ -190,7 +190,7 @@ class TrayEnv(SawyerPegInsertionSideEnvV3):
     def reset_model(self):
         """摆盘场景的复位: 没有「带孔盒」(box) —— 父类 reset_model 会 `model.body("box")` KeyError。
 
-        摆盘语义: 3 颗光模块**固定放在料盘**(真源坐标, 不随机撒点), 目标点 = tray 槽位 1;
+        摆盘语义: 3 颗光模块**固定放在料盘**(唯一依据坐标, 不随机撒点), 目标点 = tray 槽位 1;
         臂初始位形仍走父类 `_reset_hand()` (随机化保留, 与插拔同款起手)。
         """
         self._reset_hand()
@@ -335,7 +335,7 @@ def run_module(env, ss, mod_i, cfg, log=print, record=True, frames=None, rend=No
     ctrl_dt = float(m.opt.timestep) * int(env.frame_skip)
     a_gain = ctrl_dt / float(env.action_scale)
     sched = ss.cognition.ActionModulator(grasp_th=GRASP_TH, mode="tray")
-    # 🧠🛡 L4/L5 进控制逻辑: 真源=配置中心 (档位/公差/力上限/节拍)
+    # 🧠🛡 L4/L5 进控制逻辑: 唯一依据=配置中心 (档位/公差/力上限/节拍)
     l45 = TaskL45(TASK_ID, ss=ss, limit=A_LIMIT, z_floor=HAND_MIN_Z,
                   binding=os.environ.get("ZMAX_L45_BINDING") or BINDING)   # A/B: 可用副本配置
     log(l45.describe())
@@ -357,7 +357,7 @@ def run_module(env, ss, mod_i, cfg, log=print, record=True, frames=None, rend=No
     tr = {k: [] for k in TR_KEYS}
     settle_n = 0
     t_module = 0
-    # ── 配置驱动计时/判据 (真源: 配置中心 → 见 task_spec()) ──
+    # ── 配置驱动计时/判据 (唯一依据: 配置中心 → 见 task_spec()) ──
     t_grasp0 = None            # 抓取阶段起点 → 真空建立计时起点
     vac_ms_actual = None       # 实测真空建立耗时 (ms)
     vac_ok = None              # 是否在配置上限 (pick.vac_establish_ms) 内建立
@@ -545,7 +545,7 @@ def run_module(env, ss, mod_i, cfg, log=print, record=True, frames=None, rend=No
             if settle_n >= SETTLE_STEPS:
                 break
 
-    # ── 判据: 阈值真源 = 配置中心 tasks[TASK-06-TRAY].targets「取放精度: 单边 ≤1mm / ≤1°」
+    # ── 判据: 阈值唯一依据 = 配置中心 tasks[TASK-06-TRAY].targets「取放精度: 单边 ≤1mm / ≤1°」
     #    (改配置 → 本条判据随之变; CLI --params-json 可临时覆盖, 见 main) ──
     peg_f = body_xyz(m, d, body)
     yaw_f = body_yaw_deg(m, d, body)
@@ -579,7 +579,7 @@ def main():
     ap.add_argument("--push", action="store_true")
     a = ap.parse_args()
     cli = json.loads(a.params_json) if a.params_json.strip() else {}
-    # 🔴 判据/参数 = 配置中心真源 (task_spec) ← CLI --params-json 临时覆盖 (A/B 用)
+    # 🔴 判据/参数 = 配置中心唯一依据 (task_spec) ← CLI --params-json 临时覆盖 (A/B 用)
     spec = task_spec()
     _alias = {"place.angle_tol_deg": "yaw_tol_deg", "place.xy_tol_mm": "xy_tol_m",
               "place.dz_tol_mm": "dz_tol_m", "pick.vac_establish_ms": "vac_establish_ms",
@@ -600,7 +600,7 @@ def main():
     log("🎯 摆盘 episode · 状态空间六层直接驱动 metaworld (mode=tray)")
     log(f"   场景 {os.path.basename(XML)} · 料盘 {len(mods)} 颗 → tray 盘 {len(slots)} 槽 · "
         f"落座 z={rest_z:.4f}")
-    log(f"   判据真源: {spec['src']} · 取放精度 单边 ≤{spec['xy_tol_m']*1000:.3f}mm / ≤{spec['yaw_tol_deg']:.2f}°"
+    log(f"   判据唯一依据: {spec['src']} · 取放精度 单边 ≤{spec['xy_tol_m']*1000:.3f}mm / ≤{spec['yaw_tol_deg']:.2f}°"
         f" · Δz ≤{spec['dz_tol_m']*1000:.1f}mm · 真空建立 ≤{spec['vac_establish_ms']:.0f}ms"
         f" · 保持 {spec['hold_s']:.1f}s · 单颗CT ≤{spec['takt_s']:.2f}s"
         + (f" · ⚙️CLI覆盖 {list(cli)}" if cli else ""))
@@ -637,7 +637,7 @@ def main():
             log("  " + _ml)
     _cts = [j["ct_s"] for j in judges]
     _vacs = [j["vac_establish_ms"] for j in judges if j["vac_establish_ms"] is not None]
-    log(f"   判据真源 {spec['src']} · 目标: 成功率 {spec['targets'].get('成功率', '—')} / "
+    log(f"   判据唯一依据 {spec['src']} · 目标: 成功率 {spec['targets'].get('成功率', '—')} / "
         f"取放精度 {spec['targets'].get('取放精度', '—')} / 单颗CT {spec['targets'].get('单颗CT', '—')}")
     log(f"   实测: 单颗CT max {max(_cts):.2f}s (目标 ≤{spec['takt_s']:.2f}s) · "
         f"真空(进带→锁) max {max(_vacs):.0f}ms (配方上限 {spec['vac_establish_ms']:.0f}ms, 仿真口径含下降末段)" if _vacs

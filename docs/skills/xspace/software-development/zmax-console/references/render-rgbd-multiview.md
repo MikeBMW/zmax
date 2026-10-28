@@ -9,7 +9,7 @@
 metaworld 渲染 150 步仿真慢 (3s/视角), 必须放 threading.Thread 后台渲染。
 但用 `QTimer.singleShot(0, cb)` 从后台线程回主线程弹窗 → **回调永不执行**:
 QTimer 绑定到发起它的线程, daemon 线程没有 Qt 事件循环, singleShot 根本不触发。
-症状 = "等了很久没渲染", 但日志里 metaworld UserWarning 已出现 (渲染其实跑完了)。
+症状 = "等了很久没渲染", 但日志里 metaworld UserWarning 已出现 (渲染实际跑完了)。
 
 正解: 类级 pyqtSignal emit 跨线程 (AutoConnection 自动队列投递到主线程):
 ```python

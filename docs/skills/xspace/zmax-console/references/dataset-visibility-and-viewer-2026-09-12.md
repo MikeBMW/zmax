@@ -33,7 +33,7 @@ HDF5_PLUGIN_PATH=/home/ubuntu/.h5plugins \
    `setPixmap(pix.scaled(label.w, label.h, KeepAspectRatio, SmoothTransformation))`。
    自检: `layout().totalMinimumSize() <= size()` (实测 566×744 ≤ 1180×880 = 不裁切)。
 2. **点「下一帧」没反应** (两个真根因):
-   - 帧滑块上限**写死 300 / 100 (假值)**, 不是该回合真实帧数;
+   - 帧滑块上限**预先固定 300 / 100 (假值)**, 不是该回合真实帧数;
    - `_on_frame_changed` 的触发条件 `if video_files or parquet_files or local_npz` **没有 h5** → 只改数字不重载图。
    修: 上限取 h5 `ep_len[ep]`; 触发条件加 h5; 状态行 `帧 k/N 加载中…` + `QApplication.processEvents()`
    (子进程读帧约 1 秒, 没有即时反馈用户会以为没反应); 帧缓存 `{(ep,frame): (QPixmap, vec)}` ≤64 键;

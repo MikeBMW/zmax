@@ -83,7 +83,7 @@ curl -s -X POST -H "Authorization: token $TOKEN" \
 
 实测证据 (build 34421966900) 日志末三行:
 ```
-Successfully installed ... metaworld-3.1.1 mujoco-3.3.0 ...   ← 依赖其实装成功了
+Successfully installed ... metaworld-3.1.1 mujoco-3.3.0 ...   ← 依赖实际装成功了
 AttributeError: module 'metaworld' has no attribute '__version__'   ← 我的探针崩了
 ##[error]Process completed with exit code 1.
 ```

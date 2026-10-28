@@ -71,7 +71,7 @@ y(t) = e^{σt}·cos(ωt) + 包络线 ±e^{σt} (σ=衰减速率, ω=振荡频率
 
 **导出 scene_config.yaml**: scene_name/hand_eye_matrix/peg_hole_ref/
 三物理阈值/mbk/gain_schedule → ~/lerobot-smolvla-lew/configs/scenes/。
-无 pyyaml 时手写 YAML 文本兜底 (GUI venv 可能没有)。
+无 pyyaml 时手写 YAML 文本保障 (GUI venv 可能没有)。
 
 **快检表 (机柜贴纸)**: 感知像素偏差<2px / 几何倒角×1.1临界×0.8 / 辨识衰减震荡 /
 整定2mm阶跃震荡↑Kd爬行↑Kp / 验收: 超调<5%·回正≤1.5次·力峰<10N·无咯噔。

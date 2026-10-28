@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Z-MAX 边学边练闭环守护 · 静静端 (v2 — WS 事件驱动 + 轮询兜底)
+"""Z-MAX 边学边练闭环守护 · 静静端 (v2 — WS 事件驱动 + 轮询保障)
 小芳采集→ECS→本脚本自动拉取→快速训练→推回ECS→小芳部署Orin→循环
 
 循环:
   1. WS 订阅 ECS 广播 (data_arrived 事件) → 数据到达立即处理 (演示零等待)
-  2. 每60s HTTP 轮询兜底 (WS 掉线/错过事件时补拉)
+  2. 每60s HTTP 轮询保障 (WS 掉线/错过事件时补拉)
   3. 有可训练数据 (frames≥20) → 拉取 → 触发快速训练 (2000步)
   4. 训练完 → 自动推模型回 ECS
   5. 小芳拉取部署 → 采集新数据 → 回到 1
@@ -152,7 +152,7 @@ def ws_listener():
                 WS_URL,
                 on_message=lambda w, m: ws_on_message(m),
                 on_error=lambda w, e: log(f"⚠️ WS错误: {e}"),
-                on_close=lambda w, c, m: log("🔌 WS 断开, 转轮询兜底"),
+                on_close=lambda w, c, m: log("🔌 WS 断开, 转轮询保障"),
             )
             ws.run_forever()  # 阻塞直到断开; 断开后重连
         except Exception as ex:
@@ -176,14 +176,14 @@ def ws_on_message(raw):
 
 def main():
     once = "--once" in sys.argv
-    log("🔄 边学边练闭环守护 v2 启动 (WS事件驱动 + 60s轮询兜底)")
+    log("🔄 边学边练闭环守护 v2 启动 (WS事件驱动 + 60s轮询保障)")
     # WS 订阅线程 (事件驱动, 零等待)
     if not once:
         threading.Thread(target=ws_listener, daemon=True).start()
     idle = 0
     while True:
         try:
-            # 轮询兜底 (WS 掉线/错过事件时补拉)
+            # 轮询保障 (WS 掉线/错过事件时补拉)
             process_new_data()
             if idle % 6 == 0 and check_new_data()[0] is None:
                 log("⏳ 队列空, 等小芳采集数据...")

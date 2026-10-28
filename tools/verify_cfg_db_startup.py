@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""判据: 控制台**启动流程**里真读「配置真源 + 工程库」⇒ 断点 config_import.py:142 必被走到。
+"""判据: 控制台**启动流程**里真读「配置唯一依据 + 工程库」⇒ 断点 config_import.py:142 必被走到。
 
 老倪 2026-10-14: 「必须能进入这个断点 (db = _read_db(os.path.join(R, DB_REL))), 改」
 
 判据口径 (逐条可查, 不靠"看起来像"):
-  ① 启动输出里有新加的预读行 `📚 启动期配置真源预读: 配置 N 项 (…) · 工程库 ✅ 在位`
+  ① 启动输出里有新加的预读行 `📚 启动期配置唯一依据预读: 配置 N 项 (…) · 工程库 ✅ 在位`
   ② 用 sys.settrace 逐行盯着 `src/lerobot/engineering/config_import.py` ⇒ **第 142 行真被执行**
      (这就是 VSCode 断点那一行; 行号取自文件原文, 运行前现读现验, 不硬编)
-  ③ 预读是**只读**: 运行前后画布真源 sha256 不变 (启动期不动画布)
+  ③ 预读是**只读**: 运行前后画布唯一依据 sha256 不变 (启动期不动画布)
   ④ 启动输出无 Traceback
 用法: QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/verify_cfg_db_startup.py
 """
@@ -76,12 +76,12 @@ def main():
     dt = __import__("time").time() - t0
     out = buf.getvalue()
 
-    m = re.search(r"📚 启动期配置真源预读: 配置 (\d+) 项 \(([^)]*)\).*?工程库 (✅ 在位|❌ 取不到)", out)
+    m = re.search(r"📚 启动期配置唯一依据预读: 配置 (\d+) 项 \(([^)]*)\).*?工程库 (✅ 在位|❌ 取不到)", out)
     ok.append(("① 启动输出有预读行 (配置名清单 + 工程库在位)",
                bool(m), (m.group(0)[:110] if m else "没找到")))
     ok.append(("② 断点行 %d 在启动流程里**真被执行**" % ln, len(hits) >= 1,
                "命中 %d 次" % len(hits)))
-    # ③ 预读这一步本身**只读** (画布真源不动)。注意: 启动流程里"工程状态自恢复"本来就会回写画布
+    # ③ 预读这一步本身**只读** (画布唯一依据不动)。注意: 启动流程里"工程状态自恢复"本来就会回写画布
     #    (既有行为, 与本改动无关) ⇒ 这里单独量**预读调用**的副作用, 别把别人的写记在它头上。
     _c0 = sha(CANVAS)
     _tm = __import__("time").time()
@@ -98,12 +98,12 @@ def main():
     _seg = open(STUDIO, encoding="utf-8").read().split("必须能进入这个断点")[-1]
     _seg = _seg.split("# 🔬 2026-10-10 启动探测")[0]
     _code = "\n".join(l for l in _seg.splitlines() if not l.strip().startswith("#"))
-    ok.append(("③ 预读这一步只读 (画布真源不变 + 代码里不写画布 · 耗时 %.2fs)" % _cost,
+    ok.append(("③ 预读这一步只读 (画布唯一依据不变 + 代码里不写画布 · 耗时 %.2fs)" % _cost,
                (_c0 == _c1) and ("write_into_node" not in _code) and not _err2,
                "%s → %s%s" % (_c0[:12], _c1[:12], (" · " + _err2) if _err2 else "")))
     ok.append(("④ 启动无异常", not err, (err.splitlines()[-1][:120] if err else "clean")))
     print("=" * 78)
-    print("判据: 启动期真读配置真源+工程库 ⇒ 断点 config_import.py:%d 必进 (实测 %.1fs 启动)" % (ln, dt))
+    print("判据: 启动期真读配置唯一依据+工程库 ⇒ 断点 config_import.py:%d 必进 (实测 %.1fs 启动)" % (ln, dt))
     print("=" * 78)
     n = 0
     for name, good, info in ok:
@@ -112,7 +112,7 @@ def main():
     print("-" * 78)
     print("%d/%d %s" % (n, len(ok), "PASS" if n == len(ok) else "FAIL"))
     # 把预读行**原文整行**打出来 (证据可复制; 含尾部的"实际任务 …")
-    _full = next((l.strip() for l in out.splitlines() if "启动期配置真源预读" in l), "")
+    _full = next((l.strip() for l in out.splitlines() if "启动期配置唯一依据预读" in l), "")
     if _full:
         print("预读行原文: " + _full)
     return 0 if n == len(ok) else 1

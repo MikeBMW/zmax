@@ -40,7 +40,7 @@ description: Use when 把模型部署到 Intel 边缘机 NPU/Arc 做端侧实时
 **NPU 空闲不是坏了**: 服务只在收到 /detect 才占设备; `infer.busy=false` + `last_ms` 是上次实测值。
 
 ### 设备节点坑 (必记)
-- NPU 真实节点是 **`/dev/accel/accel0`** (`/dev/accel/` 是目录), 不是 `/dev/accel0` —— 写错会让 `/health.hw.npu` 永远 `present:false` 而推理其实正常。
+- NPU 真实节点是 **`/dev/accel/accel0`** (`/dev/accel/` 是目录), 不是 `/dev/accel0` —— 写错会让 `/health.hw.npu` 永远 `present:false` 而推理实际正常。
 - `…/device/driver/module` 是**指向目录的软链**, `open().read()` 会失败 ⇒ 用 `os.path.basename(os.path.realpath(p))` 取驱动名 (xe / intel_vpu)。
 - xe 驱动**不提供** `gpu_busy_percent`; 要想看 iGPU 占用只能用 `intel_gpu_top`(本机未装) 或从推理侧数请求, 别在界面上编一个数。
 - 磁盘: `/` 1005.9 GB (用 33.5 / 余 921.2); `/boot/efi` 1.1 GB。OpenVINO 2026.1 venv = `/home/intel/openvino_2026.1_env`。

@@ -27,5 +27,5 @@
 
 ## 中文节点名按字符拆两行
 - 中文名无空格, `.split()` 拆不动 → 整段塞进第一行超宽被 boundingRect 裁掉 = "显示不全"。
-- 修: 按空格/·/括号拆词失败后, 按字符贪心拆两行 (`for ch in name: if advance(line1+ch)<=avail or not line1: line1+=ch else: line2+=ch`), 字号 9→8→7 循环兜底保证每行 ≤ avail。
+- 修: 按空格/·/括号拆词失败后, 按字符贪心拆两行 (`for ch in name: if advance(line1+ch)<=avail or not line1: line1+=ch else: line2+=ch`), 字号 9→8→7 循环保障保证每行 ≤ avail。
 - 节点 w≈160 放不下 7字中文 9pt(252px) → 拆两行每行 3-4 字, 降到 7pt(28px) 才完整。标题垂直居中 `QRectF(8,2,w-36,h-4)` 而非贴顶 y=4。

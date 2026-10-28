@@ -225,7 +225,7 @@ def main() -> int:
     except Exception as e:                                                        # noqa: BLE001
         chk("⑭", "球面距离损失/正则", "torch 异常: %s" % e, False, "无异常")
 
-    # ── ⑯ 引擎: 单真源一致 + 零回归 ──
+    # ── ⑯ 引擎: 单唯一依据一致 + 零回归 ──
     nv = Navigator("sphere")
     pj = ManifoldProjector(manifold_type="sphere")
     pz2, rz2, _ = pj.project(X[10])
@@ -233,7 +233,7 @@ def main() -> int:
     e_dist = abs(mc.distance(p0, p1) - S.distance(p0, p1))
     e_step = float(np.linalg.norm(nv.step(p0, g_tan, dt=0.05) - S.exp_map(p0, g_tan * 0.05)))
     e_gcp = abs(nv.great_circle_path(p0, p1, 8)["length"] - S.great_circle_path(p0, p1, 8)["length"])
-    chk("⑯", "引擎与 sphere.py **单真源**一致 (投影/距离/大圆; 浮点表达式顺序不同故容差 1e-12)",
+    chk("⑯", "引擎与 sphere.py **单唯一依据**一致 (投影/距离/大圆; 浮点表达式顺序不同故容差 1e-12)",
         "投影差=%.2e · 距离差=%.2e · 大圆差=%.2e" % (e_proj, e_dist, e_gcp),
         max(e_proj, e_dist, e_gcp) < 1e-12, "<1e-12")
     fp = _engine_sphere_fingerprint()
@@ -288,7 +288,7 @@ def main() -> int:
     n_pass = sum(1 for r in RES if r["结论"] == "PASS")
     out = {"口径": "归一化球面 S^n 判据 (老倪 2026-10-15「归一化球面实现方案」逐条对账)",
            "ts": int(__import__("time").time()), "判据数": len(RES), "PASS": n_pass,
-           "FAIL": len(RES) - n_pass, "真源": "src/lerobot/manifold/sphere.py + manifold_engine.py",
+           "FAIL": len(RES) - n_pass, "唯一依据": "src/lerobot/manifold/sphere.py + manifold_engine.py",
            "结果": RES}
     os.makedirs(os.path.dirname(args.json), exist_ok=True)
     with open(args.json, "w", encoding="utf-8") as fh:

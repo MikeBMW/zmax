@@ -58,7 +58,7 @@ def wait_idle(timeout=60.0):
 
 def d435():
     """真 D435 = 8791 的 'local' (640×480)。
-    🔴 2026-10-18 踩坑: 'local2'(1280×720) 是 MAXHUB 顶摄, 不是 D435 —— 用错流会得
+    🔴 2026-10-18 遇到问题: 'local2'(1280×720) 是 MAXHUB 顶摄, 不是 D435 —— 用错流会得
     "臂只有 90px、离 2.5~3m" 的荒谬结论。判据: 不动机器人时两帧差 0.01%(local) vs 0.93%(local2)。"""
     b = urllib.request.urlopen("http://127.0.0.1:8791/snapshot/local.jpg", timeout=8).read()
     return cv2.imdecode(np.frombuffer(b, np.uint8), cv2.IMREAD_COLOR)

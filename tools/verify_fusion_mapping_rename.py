@@ -3,12 +3,12 @@
 """verify_fusion_mapping_rename.py — 判据: 画布节点「📡 融合定位」全面改名「📡 融合定位建图」
 
 证明 6 件事 (逐项 ✅/❌ + 证据 文件:行号):
-  ① 画布真源里节点 name == 「📡 融合定位建图」 (id 不变 = sssensor)
+  ① 画布唯一依据里节点 name == 「📡 融合定位建图」 (id 不变 = sssensor)
   ② registry 用**新旧两个关键词**都命中同一个节点 id:
        ②a grep 到注册表行 (含新旧关键词)  ②b 在 import/load 路径里真的解析一次 match_node
   ③ 所有已同步文件里不再残留**画布显示口径**的旧名 (脚本 matcher / 兼容别名不算; 白名单显式列出)
-  ④ 画布结构未变: 89 节点 / 184 连线 (且真源节点数 = 89)
-  ⑤ 真源链四条命令全绿 (ss_task_bind --check / engineering_db build / engineering_db check / canvas_level_audit)
+  ④ 画布结构未变: 89 节点 / 184 连线 (且唯一依据节点数 = 89)
+  ⑤ 唯一依据链四条命令全绿 (ss_task_bind --check / engineering_db build / engineering_db check / canvas_level_audit)
   ⑥ 节点描述含建图能力 (专用实现 src/lerobot/manifold/localization_mapping.py) 且无禁词红线
 
 用法: gui-venv311/bin/python tools/verify_fusion_mapping_rename.py
@@ -94,15 +94,15 @@ print("═" * 78)
 print("判据: 画布节点「%s」→「%s」全面改名" % (OLD, NEW))
 print("═" * 78)
 
-# ── ① 画布真源 name ────────────────────────────────────────────────────────
-print("\n① 画布真源 name == 「%s」" % NEW)
+# ── ① 画布唯一依据 name ────────────────────────────────────────────────────────
+print("\n① 画布唯一依据 name == 「%s」" % NEW)
 canvas = json.load(open(CANVAS, encoding="utf-8"))
 clines = open(CANVAS, encoding="utf-8").read().splitlines()
 named_new = [n for n in canvas["nodes"] if n.get("name") == NEW]
 named_old = [n for n in canvas["nodes"] if n.get("name") == OLD]
 name_line = next((i + 1 for i, ln in enumerate(clines) if ('"name": "%s"' % NEW) in ln), None)
 chk(bool(named_new) and not named_old,
-    "真源 `%s` 节点 name == 「%s」 (恰好 1 个)" % (relpath(CANVAS), NEW),
+    "唯一依据 `%s` 节点 name == 「%s」 (恰好 1 个)" % (relpath(CANVAS), NEW),
     "%s:%s" % (relpath(CANVAS), name_line))
 chk(named_new and named_new[0].get("id") == NODE_ID,
     "节点 id 未变 = %s (函数/键不动)" % NODE_ID,
@@ -169,8 +169,8 @@ nfun = len([n for n in (canvas.get("nodes") or []) if n.get("type") != "row_bg"]
 chk(nn == 89 and nl == 184, "画布 = 89 节点 / 184 连线",
     "实测 %d 节点 (非 row_bg %d) / %d 连线" % (nn, nfun, nl))
 
-# ── ⑤ 真源链四条命令全绿 ────────────────────────────────────────────────────
-print("\n⑤ 真源链四条命令全绿")
+# ── ⑤ 唯一依据链四条命令全绿 ────────────────────────────────────────────────────
+print("\n⑤ 唯一依据链四条命令全绿")
 CHAIN = [
     (["tools/ss_task_bind.py", "--check"], "ss_task_bind --check", "✅ config/ss_task_binding.json"),
     (["tools/engineering_db.py", "build"], "engineering_db build", "canvas_links"),

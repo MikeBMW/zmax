@@ -10,7 +10,7 @@
   forward 主执行 = MLP 前向 (闭包 mlp_ff_forward L43)。
 - 解析比例律 (Kp=1.2) 降级 analytic_forward = **域外守卫 D_GUARD=0.25** (hand→目标 3D 距离):
   蒸馏 MLP 域外闭环发散是本质 — 实证 ±3cm 扰动 1/3 seed 失败、±5cm+ 全失败 (hand 恒速飞出
-  9m); 解析全局稳定 (≤±20cm 全收敛) → 域外由解析教师兜底。+ 标定层 Kp 字面量对象 + 诊断基准。
+  9m); 解析全局稳定 (≤±20cm 全收敛) → 域外由解析教师保障。+ 标定层 Kp 字面量对象 + 诊断基准。
 - self.loaded / n_mlp / n_guard 可查真实执行占比; 断点验证模型在跑打 parallel.py L49-52
   (矩阵乘), 不是 load_npz_weights (只在进程内首次实例化执行一次, 之后 _NPZ_CACHE 命中)。
 - AdaptiveStateEstimator (L128) 仍是线性卡尔曼 A/K/B (教学式, 非 GRU)。
@@ -19,7 +19,7 @@
   sim 几何漂移须重跑管道、checkpoints last→00X000 级联) 见 zmax-left-right-policy
   「前馈加速器真实化」节。
 - 通用判别更新: 看 __init__ 是否 np.load npz / forward 是否 self._ff; 有 D_GUARD = 蒸馏 MLP
-  主路径 + 域外解析兜底。
+  主路径 + 域外解析保障。
 
 ## 📍 画布右键跳源码: 行号动态定位 (2026-09-04)
 - node_logic.get_node_location: _EXTERNAL_LOC 映射带符号名 (ext[2]) 时**按文件现搜行号**

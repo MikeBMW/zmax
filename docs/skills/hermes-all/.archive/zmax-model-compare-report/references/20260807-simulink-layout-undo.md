@@ -1,6 +1,6 @@
 # Simulink 画布布局/撤销实录 (2026-08-07)
 
-## 事故 1: 节点被甩到显示区右侧 (layout 兜底跑飞)
+## 事故 1: 节点被甩到显示区右侧 (layout 保障跑飞)
 症状: 五模型画布里 "🌉 Interpolant 控制器" 在 x=6620、"🔀 未来决策交叉注意力" 在 x=7920, 超出显示区十万八千里。
 
 根因: `load_reference_app` 的布局分配逻辑:
@@ -8,18 +8,18 @@
 pos.setdefault(nm, []).append((base_x + c * col_w, base_y + r * row_h))  # 网格位置
 xy = next((p for p in cands if p not in used), None)
 if xy is None:
-    xy = (base_x + i * col_w, base_y)   # 兜底单行: i = specs 索引!
+    xy = (base_x + i * col_w, base_y)   # 保障单行: i = specs 索引!
 ```
-specs 里有 41 个节点, layout 网格只覆盖 35 个 → 6 个漏网 (YOLO目标检测/2D→3D/Encoder/Decoder/Interpolant/交叉注意力) 走兜底,
-x = 120 + specs索引×260 → Interpolant 索引25 → 6620, 交叉注意力 索引30 → 7920。**兜底节点全挤在 y=80 顶行**。
+specs 里有 41 个节点, layout 网格只覆盖 35 个 → 6 个漏网 (YOLO目标检测/2D→3D/Encoder/Decoder/Interpolant/交叉注意力) 走保障,
+x = 120 + specs索引×260 → Interpolant 索引25 → 6620, 交叉注意力 索引30 → 7920。**保障节点全挤在 y=80 顶行**。
 
 修复:
 1. 重写 layout 覆盖全部 41 节点 (后扩到 51)
-2. 列距 260 → 200 (load_reference_app 里 3 处: 网格/兜底/单行横排), 10 列网格总宽 ~1920
+2. 列距 260 → 200 (load_reference_app 里 3 处: 网格/保障/单行横排), 10 列网格总宽 ~1920
 
 验证 (ad-hoc 脚本, 重放分配算法):
 ```python
-# 提取 specs + layout 行 → 模拟分配 → 断言零兜底
+# 提取 specs + layout 行 → 模拟分配 → 断言零保障
 specs = re.findall(r'\(\s*"([a-z_]+)"\s*,\s*"([^"]+)"\s*,', seg[:seg.index("], [")])
 rows = [re.findall(r'"([^"]*)"', rs) for rs in re.findall(r'^\s*\[([^\]]*)\]\s*,?$', layout_seg, re.M)]
 pos = {}

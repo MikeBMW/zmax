@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""render_strip_550b.py — 550B 两种连接方式的真实渲染取证 (离屏, 不动真源)
+"""render_strip_550b.py — 550B 两种连接方式的真实渲染取证 (离屏, 不动唯一依据)
 
 输出: 远程模式 / 局域网模式 各一张 PNG + OCR 文本, 用来核对「链」槽与硬件槽是否按模式换人。
 用法: QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/render_strip_550b.py [--out 前缀]

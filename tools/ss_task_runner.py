@@ -4,7 +4,7 @@
 
 老倪 2026-10-10: 配置中心切任务 → 状态空间换功能 → 真跑(仿真) → 出结果 → 发飞书。
 
-配置真源 (只读):  config/ss_task_binding.json   (config_center bind / tools/ss_task_bind.py 生成)
+配置唯一依据 (只读):  config/ss_task_binding.json   (config_center bind / tools/ss_task_bind.py 生成)
     tasks[TASK].ss_mode        insert | tray      ← **功能模式**, 由任务工艺机械推出
     tasks[TASK].enabled_nodes  该任务该开的节点
     tasks[TASK].disabled_nodes 该任务该关的节点 (配置把功能剪掉的那部分)
@@ -89,7 +89,7 @@ def l2_skills(mode: str) -> list:
 
 
 def stages_of(mode: str) -> list:
-    """L3 八阶段链 (真源 = cognition.ActionModulator.STAGES; 摆盘 = 前 6 段 + 放入(放下) + 完成)"""
+    """L3 八阶段链 (唯一依据 = cognition.ActionModulator.STAGES; 摆盘 = 前 6 段 + 放入(放下) + 完成)"""
     try:
         sys.path.insert(0, os.path.join(ROOT, "src"))
         from lerobot.policies.left_right.state_space.cognition import ActionModulator as AM

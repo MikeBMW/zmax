@@ -198,7 +198,7 @@ def main() -> int:
             types[(nid, i["port"])] = t
 
     doc = {
-        "_doc": "topic 语义类型注册表 (真源)。type 由主要发送节点决定; DDS 线上信封仍为 zmax::SSNodePort (JSON 载荷)。",
+        "_doc": "topic 语义类型注册表 (唯一依据)。type 由主要发送节点决定; DDS 线上信封仍为 zmax::SSNodePort (JSON 载荷)。",
         "_gen": "tools/gen_topic_types.py",
         "_counts": {"nodes": len(nodes),
                     "outs": sum(len(v["outs"]) for v in by_node.values()),
