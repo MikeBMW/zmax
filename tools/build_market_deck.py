@@ -208,6 +208,37 @@ def box_flow(s, items, y=2.0, h=1.05, gap=0.28, x0=0.85, total_w=11.9, hsize=12,
         x += w + gap
 
 
+
+def kpi_strip(s, x, y, w, rows, accent=C_BLUE):
+    """右栏底部的小数字条: 填掉文字栏下半截空白, 让左右两栏视觉等高 (复核意见)。"""
+    h = 0.30 + 0.34 * len(rows)
+    b = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(x), Inches(y), Inches(w), Inches(h))
+    b.fill.solid()
+    b.fill.fore_color.rgb = C_BG
+    b.line.color.rgb = RGBColor(0xE1, 0xE5, 0xEA)
+    b.shadow.inherit = False
+    tf = b.text_frame
+    tf.word_wrap = True
+    tf.margin_left = Inches(0.14)
+    tf.margin_right = Inches(0.10)
+    tf.margin_top = Inches(0.06)
+    tf.margin_bottom = Inches(0.04)
+    for i, (k, v) in enumerate(rows):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        r1 = p.add_run()
+        r1.text = k + "　"
+        r1.font.size = Pt(9.5)
+        r1.font.color.rgb = C_MUTE
+        r1.font.name = "Microsoft YaHei"
+        r2 = p.add_run()
+        r2.text = v
+        r2.font.size = Pt(10)
+        r2.font.bold = True
+        r2.font.color.rgb = accent
+        r2.font.name = "Microsoft YaHei"
+        p.space_after = Pt(3)
+    return b
+
 def main():
     d = build_tiers()
     T = d["tiers"]
@@ -289,7 +320,7 @@ def main():
         p.space_after = Pt(12)
     for k, pl in enumerate(pillars[:3]):
         y = 1.45 + k * 1.62
-        b = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(8.55), Inches(y), Inches(4.3), Inches(1.42))
+        b = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(8.30), Inches(y), Inches(4.20), Inches(1.42))
         b.fill.solid()
         b.fill.fore_color.rgb = C_BG
         b.line.color.rgb = COL3[k]
@@ -309,6 +340,11 @@ def main():
             r.font.bold = bold
             r.font.color.rgb = c2
             r.font.name = "Microsoft YaHei"
+    kpi_strip(s, 0.92, 4.62, 7.05, [
+        ("节拍 / 产能", "11.39 s/件 · 315.2 件/h"),
+        ("插入行程 / 速度", "47 mm @ 156.7 mm/s"),
+        ("力上限 / 像素当量", "40 N · 0.76 mm/px @300mm"),
+    ], C_BLUE)
     note(s, "愿景真源 tools/spec/vision.json：配置中心每页顶部的愿景带、ar3d 屏幕下方的愿景条、这份材料，读的是同一个文件。")
 
     # ── 3 八步链路
@@ -323,7 +359,7 @@ def main():
     steps = []
     for i, st in enumerate(spine[:8]):
         steps.append(("%d %s" % (st.get("step", i + 1), st.get("title", "")), nums[i], COL3[i % 3]))
-    box_flow(s, steps, y=1.55, h=1.15, gap=0.14, x0=0.72, total_w=11.9, hsize=9.5, bsize=8.5)
+    box_flow(s, steps, y=1.55, h=1.15, gap=0.18, x0=0.96, total_w=11.40, hsize=9.5, bsize=8.5)
     para_block(s, 0.9, 3.05, 11.7, 3.4, [
         ("这条链路为什么重要", C_DARK, 14, True),
         ("左边四步决定「能不能干」：产品定义划出精度边界，任务配置把工序拆成七个可复用动作单元，"
@@ -332,6 +368,12 @@ def main():
          "工程配置把它变成客户现场二十五步能复测的手册，成本组成与市场分成才是这笔账的落点。", C_DARK, 10.5, False),
         ("八步里任何一步空着，后面报出来的数就是空的 —— 这也是我们不给客户只报一个总价的原因。", C_ORANGE, 11, True),
     ])
+    for k, (big, lab, sub) in enumerate([
+        ("8 个环节", "从产品定义到市场分成", "每一环都有真源与判据，缺一环后面就空"),
+        ("33 个功能 · 107 行", "功能 × 模型对应", "每个功能有输入输出与可定位实现"),
+        ("25 步操作手册", "三档工程配置", "客户能按手册自己复测节拍与良率"),
+    ]):
+        card(s, X0 + k * (WC + GAPC), 5.02, WC, 1.30, big, lab, sub, COL3[k], 20, 9)
     note(s, "八个环节与配置中心八个页签同一套命名；ar3d 的愿景条把这条链路压成四个闭环环节（看、判、动、验）实时演示。")
 
     # ── 4 一页结论
@@ -376,6 +418,11 @@ def main():
          C_DARK, 10.5, False),
         ("设备价不是利润来源，而是入场券。", C_ORANGE, 11.5, True),
     ])
+    kpi_strip(s, 8.25, 5.28, 4.45, [
+        ("硬件毛利率", "%.1f%% / %.1f%% / %.1f%%" % tuple(T[i]["hw_gross_pct"] for i in range(3))),
+        ("装不下的实施", "%.1f / %.1f / %.1f 万" % tuple(wan(T[i]["gap_nre"]) for i in range(3))),
+        ("售价 / 上限", "%.0f%% / %.0f%% / %.0f%%" % tuple(100 * T[i]["price_set"] / T[i]["price_cap"] for i in range(3))),
+    ], C_BLUE)
     note(s, "售价取上限与成本合计中的较小者：基础型成本合计低于上限，按二十七万九定价，留出约两万元议价空间。")
 
     # ── 6 投入结构
@@ -404,6 +451,11 @@ def main():
          C_DARK, 10.5, False),
         ("年度运营支出基本持平，说明这套方案的钱是一次性投入，不是靠后期慢慢消耗。", C_ORANGE, 11.5, True),
     ])
+    kpi_strip(s, 8.25, 5.28, 4.45, [
+        ("硬件投入", "%.1f / %.1f / %.1f 万" % tuple(wan(T[i]["capex"]) for i in range(3))),
+        ("实施投入", "%.1f / %.1f / %.1f 万" % tuple(wan(T[i]["nre_sum"]) for i in range(3))),
+        ("年度运营", "%.1f / %.1f / %.1f 万" % tuple(wan(T[i]["opex_year"]) for i in range(3))),
+    ], C_ORANGE)
     note(s, "硬件按市场参考价估算，实施按人天计价，运营支出含电费、维保、耗材与少量值守人工。")
 
     # ── 7 客户视角
@@ -431,6 +483,11 @@ def main():
          C_DARK, 10.5, False),
         ("谈判时先算这笔账，再谈设备价。", C_ORANGE, 11.5, True),
     ])
+    kpi_strip(s, 8.25, 5.28, 4.45, [
+        ("客户单件", "%.3f / %.3f / %.3f 元" % tuple(T[i]["client_unit_cost"] for i in range(3))),
+        ("比人工省", "%.0f%% / %.0f%% / %.0f%%" % tuple(T[i]["client_save_pct"] for i in range(3))),
+        ("人工基准", "%.2f 元/件" % labor),
+    ], C_GREEN)
     note(s, "方案单件总成本含设备折旧、软件许可与运营服务费；若客户不买设备而选按件代运营，则按每件三角五至五角五计价。")
 
     # ── 8 产能爬坡
@@ -438,23 +495,24 @@ def main():
                   "累计产量按达产节拍推算，单位：万件；基础型与精细型节拍相同、两线重合，故基础型画虚线")
     cd = CategoryChartData()
     cd.categories = ["第一个月", "第三个月", "第六个月", "第九个月", "第十二个月"]
-    for k, t in enumerate(T):
+    for k, t in enumerate(T[:2]):                # 基础型与精细型节拍相同, 只画一条, 避免两条重合
         monthly = t["pieces_year"] / 12.0 / 1e4
-        cd.add_series(NAMES[k], [round(monthly * m, 1) for m in (1, 3, 6, 9, 12)])
+        if k == 0:
+            cd.add_series("基础型 / 精细型（节拍相同）", [round(monthly * m, 1) for m in (1, 3, 6, 9, 12)])
+    monthly_c = T[2]["pieces_year"] / 12.0 / 1e4
+    cd.add_series("专业型", [round(monthly_c * m, 1) for m in (1, 3, 6, 9, 12)])
     gf = s.shapes.add_chart(XL_CHART_TYPE.LINE_MARKERS, Inches(0.72), Inches(1.45),
                             Inches(8.1), Inches(4.8), cd)
     ch = gf.chart
     style_chart(ch, 10.5)
     for i, ser in enumerate(ch.plots[0].series):
-        ser.format.line.color.rgb = COL3[i]
+        ser.format.line.color.rgb = [C_BLUE, C_GREEN][i]
         ser.smooth = False
-        if i == 0:
+        ser.format.line.width = Pt(3.2) if i else Pt(2.6)
+        if i == 1:
             ser.format.line.dash_style = MSO_LINE_DASH_STYLE.DASH
-            ser.format.line.width = Pt(2.0)
-        else:
-            ser.format.line.width = Pt(3.4)
     ch.plots[0].has_data_labels = False
-    ser2 = ch.plots[0].series[2]
+    ser2 = ch.plots[0].series[1]
     ser2.data_labels.show_value = True
     ser2.data_labels.number_format = '0.0'
     ser2.data_labels.number_format_is_linked = False
@@ -479,7 +537,7 @@ def main():
     cd = CategoryChartData()
     cd.categories = ["设备与实施款", "软件许可", "运营服务"]
     cd.add_series("首年收入", [round(wan(t1["price_set"]), 1), round(wan(lic_year), 1), round(wan(ops_year), 1)])
-    gf = s.shapes.add_chart(XL_CHART_TYPE.PIE, Inches(0.72), Inches(1.42), Inches(5.7), Inches(4.85), cd)
+    gf = s.shapes.add_chart(XL_CHART_TYPE.PIE, Inches(0.30), Inches(1.42), Inches(6.10), Inches(4.85), cd)
     ch = gf.chart
     ch.font.size = Pt(11)
     ch.font.name = "Microsoft YaHei"
@@ -531,7 +589,7 @@ def main():
             pt.format.fill.solid()
             pt.format.fill.fore_color.rgb = COL3[i]
         g = T[k]["gross_year_hw"] + T[k]["gross_year_sw"] + T[k]["gross_year_op"]
-        lab = s.shapes.add_textbox(Inches(x), Inches(4.86), Inches(3.55), Inches(0.95))
+        lab = s.shapes.add_textbox(Inches(x), Inches(4.84), Inches(3.55), Inches(1.02))
         tf = lab.text_frame
         tf.word_wrap = True
         p = tf.paragraphs[0]
@@ -545,7 +603,8 @@ def main():
         p2 = tf.add_paragraph()
         p2.alignment = PP_ALIGN.CENTER
         r2 = p2.add_run()
-        r2.text = "三方年毛利合计 %.1f 万元" % wan(g)
+        r2.text = "三方合计年毛利 %.1f 万元" % wan(g)
+        p2.space_before = Pt(5)
         r2.font.size = Pt(9.5)
         r2.font.color.rgb = C_MUTE
         r2.font.name = "Microsoft YaHei"
@@ -555,11 +614,11 @@ def main():
     s = new_slide(prs, "从进场标定到无人夜班，落地可以拆成四个可验收的阶段",
                   "每一阶段都有交付物与判据，任何一步不达标就停下来修")
     box_flow(s, [
-        ("第一阶段　现场标定", "补齐几何关系，定坐标基准", C_BLUE),
-        ("第二阶段　节拍达标", "取放插拔检测跑通，每小时三百件", C_LBLUE),
-        ("第三阶段　双臂协同", "左右手交接进节拍，换型不停线", C_GREEN),
-        ("第四阶段　自主运行", "异常自恢复，具备夜班条件", C_ORANGE),
-    ], y=1.62, h=1.25, hsize=11.5, bsize=9.5)
+        ("第一阶段　现场标定", "定几何基准", C_BLUE),
+        ("第二阶段　节拍达标", "每小时三百件", C_LBLUE),
+        ("第三阶段　双臂协同", "换型不停线", C_GREEN),
+        ("第四阶段　自主运行", "具备夜班条件", C_ORANGE),
+    ], y=1.62, h=1.25, hsize=11.5, bsize=9.5, x0=0.96, total_w=11.40)
     para_block(s, 0.9, 3.25, 11.75, 3.0, [
         ("每个阶段的时间与验收", C_DARK, 14, True),
         ("基础型从进场到验收约两周；精细型约四周，其中采集真实数据与训练策略占一半；专业型约八周，安全验证与第三方认证是长周期项。",
@@ -567,17 +626,21 @@ def main():
         ("验收不看演示，看数据：单件节拍、连续运行小时数、良率、异常恢复次数，四项都要有记录。", C_ORANGE, 11, True),
         ("客户可以按我们提供的操作手册自行复测，这也是与集成商最大的区别。", C_MUTE, 10.5, False),
     ])
+    kpi_strip(s, 0.96, 5.62, 11.40, [
+        ("交付周期（标定→验收）", "基础型约 2 周 · 精细型约 4 周 · 专业型约 8 周"),
+        ("验收四项硬指标", "单件节拍 / 连续运行小时数 / 良率 / 异常恢复次数，逐项留记录"),
+    ], C_BLUE)
     note(s, "阶段划分与三档配置的交付周期一致，也与工程操作手册中的验收步骤一一对应。")
 
     # ── 12 风险边界
     s = new_slide(prs, "对客户承诺之前，先把四个缺口补上",
                   "这些问题不解决，任何节拍与良率的数字都只是实验室数据")
     box_flow(s, [
-        ("几何标定缺口", "外参未标定，三维换算不闭环", C_RED),
-        ("训练数据缺口", "数据集未成结构，策略缺支撑", C_RED),
-        ("安全认证缺口", "安全等级仍是目标，未验证", C_RED),
-        ("价格口径缺口", "单价为参考价，待供应商报价", C_RED),
-    ], y=1.6, h=1.25, hsize=11.5, bsize=9.5)
+        ("几何标定缺口", "外参未标定", C_RED),
+        ("训练数据缺口", "数据未成结构", C_RED),
+        ("安全认证缺口", "未做第三方验证", C_RED),
+        ("价格口径缺口", "待供应商报价", C_RED),
+    ], y=1.6, h=1.25, hsize=11.5, bsize=9.5, x0=0.96, total_w=11.40)
     para_block(s, 0.9, 3.2, 11.75, 3.1, [
         ("补齐的顺序与代价", C_DARK, 14, True),
         ("几何标定需要现场一天；训练数据需要两百条左右真实示教，按每条三百元计约六万元；安全认证周期八到十二周，费用约十五万元。",
@@ -585,6 +648,10 @@ def main():
         ("在这三件事完成之前，对外只承诺能力边界，不承诺具体产量与良率。", C_ORANGE, 11, True),
         ("这也是这套方案与买一台机器人的本质区别：卖的是可验证的产能，不是设备清单。", C_MUTE, 10.5, False),
     ])
+    kpi_strip(s, 0.96, 5.62, 11.40, [
+        ("补齐代价", "标定 1 天 · 真实示教约 6 万元 · 安全认证 8~12 周约 15 万元"),
+        ("补齐之前对外只承诺", "能力边界（算力/层数/功能），不承诺具体产量与良率"),
+    ], C_RED)
     note(s, "以上缺口已在工程操作手册中列为必做项，与配置中心的判据脚本同步跟踪。")
 
     prs.save(OUT)
