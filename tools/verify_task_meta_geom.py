@@ -28,17 +28,20 @@ for tid in ("TASK-07-AOI", "TASK-01-FW", "TASK-02-HANDLE"):
             tt.selectRow(r)
     for _ in range(4):
         app.processEvents()
-    tl, mt = p.tl_table, p.meta_table
+    tl, mt, sg = p.tl_table, p.meta_table, p.seg_table
     tlneed = sum(tl.rowHeight(r) for r in range(tl.rowCount())) + tl.horizontalHeader().height()
     vis = [r for r in range(mt.rowCount()) if not mt.isRowHidden(r)]
     mtneed = sum(mt.rowHeight(r) for r in vis) + mt.horizontalHeader().height()
+    sgneed = sum(sg.rowHeight(r) for r in range(sg.rowCount())) + sg.horizontalHeader().height()
     a = tl.height() + 2 >= tlneed
     b = mt.height() + 2 >= mtneed
-    # 口径: 任务级表**必须**一屏装全; 功能级表在 ≤40 行时必须装全 (AOI 33 条),
+    c = sg.rowCount() == 0 or sg.height() + 2 >= min(sgneed, 14 * 24 + 47)
+    # 口径: 任务级/段级表**必须**装全 (≤14 段); 功能级表在 ≤40 行时必须装全 (AOI 33 条),
     #       53/44 行的任务 (全 8 任务共用的长清单) 允许表内滚 —— 有 9px 可拖分隔条, 页面整体也可滚。
-    ok.append(a and (b or len(vis) > 40))
-    print("%-14s 任务级 %3dpx/%3dpx %-4s (%d 条) | 功能级 %3dpx/%3dpx %-6s (%d/%d 条可见)"
+    ok.append(a and c and (b or len(vis) > 40))
+    print("%-14s 任务级 %3dpx/%3dpx %-4s (%d 条) | 段级 %3dpx/%3dpx %-4s (%d 段) | 功能级 %3dpx/%3dpx %-6s (%d/%d 条可见)"
           % (tid, tl.height(), tlneed, "OK" if a else "滚", tl.rowCount(),
+             sg.height(), sgneed, "OK" if c else "滚", sg.rowCount(),
              mt.height(), mtneed, "OK" if b else "表内滚", len(vis), mt.rowCount()))
 print("RESULT:", "PASS" if all(ok) else "FAIL")
 sys.exit(0 if all(ok) else 1)

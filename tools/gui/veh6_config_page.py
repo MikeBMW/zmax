@@ -38,7 +38,7 @@ if TOOLS not in sys.path:
 
 from PyQt5.QtCore import Qt, QSettings, QTimer, QEvent, QSize, QRectF, QPointF  # noqa: E402
 from PyQt5.QtGui import (QColor, QFont, QKeySequence, QFontMetrics, QLinearGradient,  # noqa: E402
-                         QPainter, QPen, QRadialGradient)
+                         QPainter, QPen, QRadialGradient, QBrush)
 from PyQt5.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QGridLayout, QHBoxLayout,  # noqa: E402
                              QFrame, QHeaderView, QLabel, QLineEdit, QMenu, QPushButton, QRadioButton, QScrollArea, QSizePolicy,
                              QSplitter, QShortcut,
@@ -159,46 +159,87 @@ def _task_obj(tid):
 _LAYER_ORD = {"L2": 0, "L3": 1, "L4": 2, "L4/L5": 2, "L5": 2, "PLAT": 3}
 
 
-def _task_level_meta(tid):
-    """该任务**自己的**元任务 (任务级元任务 = 它跑起来的那几个执行元任务)。
+HAND_CN = {"R": "右手", "L": "左手", "BOTH": "双手"}
+HAND_COLOR = {"R": "#4a90e0", "L": "#3fbf7f", "BOTH": "#b58cf0"}
 
-    老倪 2026-10-28: 「配置中心 TASK-07-AOI 任务的元任务, 要有对应关系, 点击 TASK0-7 下面的元任务要对应变化」
-      功能级元任务 (FN-SYSx-N, 77 条) 是**全工程共用**的底座 —— 8 个任务里没有一个功能是只服务单个任务的,
-      所以只按"启用节点"过滤, 看到的就是 29 条底座 + 几条 7 任务共用, 与"这个任务"对不上。
-      任务真正的对应关系在 tasks.json:
-        ① TASK-07-AOI 有登记 meta_tasks (5 条执行元任务: 取料插入/拔出/AOI 五点检测/良品下料/NG 下料);
-        ② 其余任务没登记 ⇒ 用它自己的 steps (工艺步骤段) 派生, 并标明"派生" (不冒充登记元任务)。
-    返回 (rows, note, src); rows = [(编号, 名称, 层, 段数/时长, 出现/时刻, 动作要点/描述)]。
+
+def _hand_of(text):
+    """从一句中文描述里判手别 (真源里 左臂/右臂 是写明的); 判不出就 ''(未知), 不猜。"""
+    t = text or ""
+    l = "左臂" in t or "左手" in t
+    r = "右臂" in t or "右手" in t
+    if l and r:
+        return "BOTH"
+    if l:
+        return "L"
+    if r:
+        return "R"
+    return ""
+
+
+def _task_level_meta(tid):
+    """该任务**自己的**元任务 (任务级元任务 = 它跑起来的那几个执行元任务), 带手别 + 时空 + 段级明细。
+
+    老倪 2026-10-28 两轮:
+      ① 「TASK-07-AOI 任务的元任务, 要有对应关系, 点击 TASK0-7 下面的元任务要对应变化」
+      ② 「只有 5 个元任务么? 名称也不全; 能对应 AR 场景的具体操作么? 左右手任务也不一样 ——
+         元任务要有一列标识 左手/右手/左右, 要有时空对应关系」
+    ⇒ 每条元任务给: 手别 (L/R/BOTH) · 层 · 段数 · 时空窗 (一轮里 t 起→止) · 目标对象 (槽k/孔k/金手指点/侧面点N/下料盘/废料盘)
+      · 段级明细 (seq/动作/目标/手别/时长/累计, 可直接对到 AR 场景的具体操作)。
+      真源 = tasks.json 的 meta_tasks (TASK-07-AOI: 7 条, 由 ss_meta_task_ar.py 从 392 段归纳);
+      没登记 meta_tasks 的任务 ⇒ 用它自己的 steps 派生 (手别从 desc 里的 左臂/右臂 读, 判不出就留空)。
+    返回 (items, note, src); items = [dict(id,name,hand,layer,n_seg,t_win,targets,segs,actions)]。
     """
     tk = _task_obj(tid) or {}
     lh = tk.get("long_horizon") or {}
     mts = tk.get("meta_tasks") or []
     if mts:
-        rows = []
+        items = []
         for i, m in enumerate(mts, 1):
-            occ = m.get("occurrences")
-            rows.append((m.get("id") or "MT-%02d" % i, m.get("name") or "—", m.get("layer") or "—",
-                         "%s 段" % (m.get("segments") or "—"),
-                         ("%d 次" % occ) if occ not in (None, "") else "—",
-                         " → ".join((m.get("actions") or [])[:3]) or (m.get("prompt") or "—")))
-        note = ("%s 的任务级元任务 %d 条 · 真源 tasks.json(%s.meta_tasks)"
+            items.append({"id": m.get("id") or "MT-%02d" % i,
+                          "name": m.get("name") or "—",
+                          "hand": m.get("hand") or _hand_of(m.get("name")),
+                          "layer": m.get("layer") or "—",
+                          "n_seg": m.get("segments") or 0,
+                          "t_win": m.get("t_win"),
+                          "targets": m.get("targets") or [],
+                          "actions": m.get("actions") or [],
+                          "segs": m.get("segs") or [],
+                          "occ": m.get("occurrences")})
+        hs = {"R": sum(1 for x in items if x["hand"] == "R"),
+              "L": sum(1 for x in items if x["hand"] == "L"),
+              "BOTH": sum(1 for x in items if x["hand"] == "BOTH")}
+        note = ("%s 的任务级元任务 %d 条 (右手 %d / 左手 %d / 双手 %d) · 真源 tasks.json(%s.meta_tasks)"
                 " · 长程: 目标 %s UPH · 一轮 %s 段 / %s s · %s 种轮模板 · 元任务执行 %s 次/轮"
-                % (tid, len(rows), tid, lh.get("uph_target") or "—", lh.get("segments_total") or "—",
+                % (tid, len(items), hs["R"], hs["L"], hs["BOTH"], tid,
+                   lh.get("uph_target") or "—", lh.get("segments_total") or "—",
                    lh.get("round_total_s") or "—", len(lh.get("rounds") or []), lh.get("meta_count") or "—"))
-        return rows, note, "tasks.json:meta_tasks"
+        return items, note, "tasks.json:meta_tasks"
     steps = tk.get("steps") or []
-    rows = []
+    items = []
+    acc = 0.0
     for i, s in enumerate(steps, 1):
         if not isinstance(s, dict):
-            rows.append((("S%02d" % i), str(s), "L3", "—", "—", "—"))
+            items.append({"id": "S%02d" % i, "name": str(s), "hand": "", "layer": "L3",
+                          "n_seg": 1, "t_win": None, "targets": [], "actions": [],
+                          "segs": [{"seq": i, "label": str(s), "target": "—", "hand": "", "t": None}]})
             continue
-        rows.append((("S%02d" % i), s.get("name") or "—", s.get("layer") or "L3",
-                     ("%ss" % s.get("dur")) if s.get("dur") not in (None, "") else "—",
-                     ("t=%ss" % s.get("t")) if s.get("t") not in (None, "") else "—",
-                     (s.get("desc") or "—")))
-    note = ("%s 的任务级元任务 %d 条 · **由 steps 派生** (该任务在 tasks.json 未登记 meta_tasks; "
-            "工艺步骤 t/dur 逐段摊开, 段源真取, 不是编的)" % (tid, len(rows)))
-    return rows, note, "tasks.json:steps(派生)"
+        t0 = float(s.get("t") or acc)
+        dur = s.get("dur")
+        h = _hand_of((s.get("desc") or "") + (s.get("name") or ""))
+        items.append({"id": "S%02d" % i, "name": s.get("name") or "—", "hand": h,
+                      "layer": s.get("layer") or "L3", "n_seg": 1,
+                      "t_win": [round(t0, 2), round(t0 + float(dur or 0), 2)] if dur else None,
+                      "targets": [], "actions": [s.get("desc") or ""],
+                      "segs": [{"seq": i, "label": s.get("name") or "—", "target": "—", "hand": h,
+                                "t": dur, "t_end": round(t0 + float(dur or 0), 2) if dur else None}]})
+        acc = t0 + float(dur or 0)
+    hs = {"R": sum(1 for x in items if x["hand"] == "R"), "L": sum(1 for x in items if x["hand"] == "L"),
+          "BOTH": sum(1 for x in items if x["hand"] == "BOTH")}
+    note = ("%s 的任务级元任务 %d 条 (右手 %d / 左手 %d / 双手 %d) · **由 steps 派生** "
+            "(该任务在 tasks.json 未登记 meta_tasks; 手别取自 desc 里的 左臂/右臂, 判不出就留空)"
+            % (tid, len(items), hs["R"], hs["L"], hs["BOTH"]))
+    return items, note, "tasks.json:steps(派生)"
 
 
 def _n_tasks():
@@ -2507,15 +2548,29 @@ class ConfigCenterPage(QWidget):
             return 0
         tk = _j(BIND_J, {}) or {}
         tid = tid or tk.get("active_task") or (self._task_rows[0] if getattr(self, "_task_rows", None) else None)
-        rows, note, src = _task_level_meta(tid) if tid else ([], "无任务可选", "—")
+        items, note, src = _task_level_meta(tid) if tid else ([], "无任务可选", "—")
+        self._tl_items = items
         t.setWordWrap(False)             # 一行一条 (开了换行 + resizeRowsToContents 会把 5 行撑成 665px)
-        t.setRowCount(len(rows))
-        for r, row in enumerate(rows):
-            for c, val in enumerate(row):
-                s = str(val)
-                cell = s if c < len(row) - 1 else (s[:70] + ("…" if len(s) > 70 else ""))
-                it = QTableWidgetItem(cell)
-                it.setToolTip(s)         # 完整文本走 tooltip (列里不截断口径, 只是显示短)
+        t.setRowCount(len(items))
+        for r, m in enumerate(items):
+            twin = m.get("t_win")
+            twin_s = ("%.2f→%.2fs" % (twin[0], twin[1])) if twin else "并行/常驻"
+            tg = " / ".join(m.get("targets") or []) or "—"
+            acts = m.get("actions") or []
+            cells = [m.get("id") or "—", m.get("name") or "—",
+                     HAND_CN.get(m.get("hand") or "", "—(真源未标)"),
+                     m.get("layer") or "—",
+                     ("%d" % m["n_seg"]) if m.get("n_seg") else "0(协同)",
+                     twin_s, tg, (acts[0] if acts else "—")]
+            for c, val in enumerate(cells):
+                it = QTableWidgetItem(str(val))
+                it.setToolTip("元任务 %s · %s\n手别: %s\n时空窗: %s\n目标对象: %s\n动作序列:\n  %s"
+                              % (m.get("id"), m.get("name"), HAND_CN.get(m.get("hand") or "", "未标注"),
+                                 twin_s, tg, "\n  ".join(acts) or "—"))
+                if c == 2:                                   # 手别上色: 右蓝 / 左绿 / 双手紫
+                    col = HAND_COLOR.get(m.get("hand") or "")
+                    if col:
+                        it.setForeground(QBrush(QColor(col)))
                 t.setItem(r, c, it)
         try:                             # 行高按实际 (Consolas 10 实测 28px/行): 表高 = 表头 + 全部行, 5~9 条一屏装下
             t.verticalHeader().setDefaultSectionSize(24)
@@ -2523,16 +2578,93 @@ class ConfigCenterPage(QWidget):
                 t.setRowHeight(_r, 24)
             _need = (max(41, t.horizontalHeader().height())
                      + sum(t.rowHeight(_r) for _r in range(t.rowCount())) + 6)
-            t.setMinimumHeight(min(_need, 340))
-            t.setMaximumHeight(min(_need, 340))
+            t.setMinimumHeight(min(_need, 400))
+            t.setMaximumHeight(min(_need, 400))
         except Exception:                                                       # noqa: BLE001
             pass
+        self._fit_meta_box()
         if getattr(self, "tl_head", None) is not None:
-            self.tl_head.setText("🎯 任务级元任务 · %s  ← 点上面任一任务行, 这里立即换成该任务的元任务序列"
+            self.tl_head.setText("🎯 任务级元任务 (带手别/时空窗/目标对象) · %s"
+                                 "  ← 点上面任一任务行换任务; 点本表某行 ⇒ 下方摊开它的段级动作"
                                  % (note if tid else "未选中任务"))
         if getattr(self, "tl_src", None) is not None:
             self.tl_src.setText("   真源: %s" % src)
-        return len(rows)
+        # 段级明细: 默认摊第一条 (老倪要"能对应 AR 场景的具体操作")
+        try:
+            t.itemSelectionChanged.disconnect()
+        except Exception:                                                       # noqa: BLE001
+            pass
+        try:
+            t.itemSelectionChanged.connect(self._fill_seg_level)
+        except Exception:                                                       # noqa: BLE001
+            pass
+        if items:
+            t.selectRow(0)
+        self._fill_seg_level()
+        return len(items)
+
+    def _fill_seg_level(self, *_a):
+        """选中的元任务 ⇒ 段级明细 (seq/动作/目标/手别/时长/累计时刻)。这段是"对应 AR 场景具体操作"的实证。"""
+        t, s = getattr(self, "tl_table", None), getattr(self, "seg_table", None)
+        if t is None or s is None:
+            return 0
+        items = getattr(self, "_tl_items", []) or []
+        r = t.currentRow()
+        m = items[r] if 0 <= r < len(items) else {}
+        segs = m.get("segs") or []
+        s.setWordWrap(False)
+        s.setRowCount(len(segs))
+        for i, g in enumerate(segs):
+            dur = g.get("t")
+            end = g.get("t_end")
+            cells = [str(g.get("seq") or i + 1),
+                     str(g.get("label") or "—"),
+                     str(g.get("target") or "—"),
+                     HAND_CN.get(g.get("hand") or "", "—"),
+                     ("%.3fs" % dur) if isinstance(dur, (int, float)) else "—",
+                     ("%.3fs" % end) if isinstance(end, (int, float)) else "—"]
+            for c, val in enumerate(cells):
+                it = QTableWidgetItem(val)
+                it.setToolTip("%s · 目标 %s · 手别 %s · 时长 %s · 累计 %s"
+                              % (g.get("label"), g.get("target"), cells[3], cells[4], cells[5]))
+                if c == 3:
+                    col = HAND_COLOR.get(g.get("hand") or "")
+                    if col:
+                        it.setForeground(QBrush(QColor(col)))
+                s.setItem(i, c, it)
+        if getattr(self, "seg_head", None) is not None:
+            self.seg_head.setText("↳ 段级明细 · %s %s · %d 段 · 目标对象 %s"
+                                  % (m.get("id") or "—", m.get("name") or "",
+                                     len(segs), " / ".join(m.get("targets") or []) or "—"))
+        try:                             # 段级表按实际段数给高 (1 段就别占 287px, AOI 的 10 段一屏装全)
+            s.verticalHeader().setDefaultSectionSize(24)
+            for _r in range(s.rowCount()):
+                s.setRowHeight(_r, 24)
+            _sn = (max(41, s.horizontalHeader().height())
+                   + sum(s.rowHeight(_r) for _r in range(s.rowCount())) + 6)
+            s.setMinimumHeight(min(_sn, 24 * 14 + 47))
+            s.setMaximumHeight(min(_sn, 24 * 14 + 47))
+        except Exception:                                                       # noqa: BLE001
+            pass
+        self._fit_meta_box()
+        return len(segs)
+
+    def _fit_meta_box(self):
+        """三张表 (任务级 / 段级 / 功能级) 同在一个舱里 ⇒ 舱最小高度 = 两张表真实需要 + 表头/按钮 + 功能级地板。
+
+        老倪 2026-10-28: 「元任务窗口太矮」的历史根因就是"舱高是布局分剩下的"。
+        这里按当前实际行数重算, 换任务/换元任务时舱高跟着变 (AOI 9 段就给 9 行, 别的任务 1 段就只给 1 行)。
+        """
+        box = getattr(self, "_meta_box", None)
+        tl, sg = getattr(self, "tl_table", None), getattr(self, "seg_table", None)
+        if box is None or tl is None or sg is None:
+            return
+        try:
+            fixed = 470          # 两个表头行 (tl_head ≤72 / seg_head ≤44 / tl_src 20 / meta_head 60) + 按钮行 + 间距
+            floor = 500          # 功能级元任务表地板 (AOI 33 行 = 767px 刚好一屏; 53 行时表内滚, 9px 分隔条可拖大)
+            box.setMinimumHeight(int(tl.height() + sg.height() + fixed + floor))
+        except Exception:                                                       # noqa: BLE001
+            pass
 
     def _meta_from_task_row(self, *_a):
         """点任务表某行 ⇒ 元任务表只留该任务的元任务 (两表联动, 一处口径)。"""
@@ -2616,8 +2748,8 @@ class ConfigCenterPage(QWidget):
         self.tl_head.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         self.tl_head.setMaximumHeight(72)
         layout.addWidget(self.tl_head)
-        self.tl_table = _mk_table(["元任务", "名称", "层", "段数/时长", "出现/时刻", "动作要点 / 描述"],
-                                  [], th)
+        self.tl_table = _mk_table(["元任务", "名称 (含手别/对象)", "手别", "层", "段数", "时空窗",
+                                   "目标对象", "动作要点"], [], th)
         try:
             self.tl_table.verticalHeader().setDefaultSectionSize(24)
             self.tl_table.setMinimumHeight(28 * 4 + 47)      # 4 条地板 (少于 4 条也按 4 条给高, 免得跳)
@@ -2625,6 +2757,24 @@ class ConfigCenterPage(QWidget):
         except Exception:                                                       # noqa: BLE001
             pass
         layout.addWidget(self.tl_table)
+        # ── ↳ 段级明细 (选中的元任务 ⇒ 逐段: 动作/目标/手别/时长/累计) ────────────────────
+        #   老倪 2026-10-28: 「这些元任务能对应 AR 场景的具体操作么?」 —— 这一段就是对应关系:
+        #   每条动作段直接落在 槽k/孔k/金手指点/侧面点N/下料盘/废料盘 上, 带手别与时刻。
+        self.seg_head = QLabel("↳ 段级明细 · 点上面任一元任务行")
+        self.seg_head.setFont(QFont("Consolas", 10))
+        self.seg_head.setStyleSheet("color:%s;background:transparent;" % th["C_GRAY"])
+        self.seg_head.setWordWrap(True)
+        self.seg_head.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        self.seg_head.setMaximumHeight(44)
+        layout.addWidget(self.seg_head)
+        self.seg_table = _mk_table(["段号", "动作 (AR 场景)", "目标对象", "手别", "时长", "累计时刻"], [], th)
+        try:
+            self.seg_table.verticalHeader().setDefaultSectionSize(24)
+            self.seg_table.setMinimumHeight(24 * 10 + 47)
+            self.seg_table.setMaximumHeight(24 * 14 + 47)
+        except Exception:                                                       # noqa: BLE001
+            pass
+        layout.addWidget(self.seg_table)
         self.tl_src = QLabel("   真源: —")
         self.tl_src.setFont(QFont("Consolas", 9))
         self.tl_src.setStyleSheet("color:%s;background:transparent;" % th["C_GRAY"])
@@ -3322,6 +3472,7 @@ class ConfigCenterPage(QWidget):
             _ul.addWidget(self.tasks_table, 1)
             _ul.addLayout(row2)
             _meta_box = QWidget()
+            self._meta_box = _meta_box          # 舱引用 (2026-10-28: 三张表按实际行数重算舱高, 见 _fit_meta_box)
             _ml = QVBoxLayout(_meta_box)
             _ml.setContentsMargins(0, 0, 0, 0)
             _ml.setSpacing(4)
@@ -3349,10 +3500,10 @@ class ConfigCenterPage(QWidget):
                 _tneed = max(300, int(self.tasks_table.minimumHeight()))
             except Exception:                                                   # noqa: BLE001
                 pass
-            _mneed = min(1000, 22 * (len(getattr(self, "_meta_rows", []) or []) + 2) + 70 + 8) + 130
-            #   +130 = 🎯 任务级元任务表 (2026-10-28 新增, 4~8 行 + 表头 + 两行说明) 必须一起装进下舱
-            #   上限 700→900 (2026-10-28): 按任务过滤后最多 53 行 (=1166px) 仍要滚, 但 AOI 的 33 行 / 
-            #   摆盘的 53 行都想尽量一屏看完 —— 页面整体可滚是老倪已接受的口径, 表内少滚一点更好。
+            #   +420 = 🎯 任务级元任务表 (≤400) 与 ↳ 段级明细表 (≤383) 都要装进下舱 (2026-10-28 第二轮)
+            _mneed = 1040
+            #   1040 = 任务级表 ≤400 + 段级表 ≤383 + 两个表头/说明 + 功能级元任务表地板 260
+            #   (三张表同舱 ⇒ 页面整体滚动, 老倪已接受; 中间 9px 分隔条随时可拖)
             _mneed = max(360, _mneed)
             _upper.setMinimumHeight(_tneed + 48)
             _meta_box.setMinimumHeight(_mneed)

@@ -19,7 +19,7 @@ def chk(name, ok, detail=""):
     print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f" — {detail}" if detail else ""))
 
 p = V.ConfigCenterPage()
-tt, mt, tl = p.tasks_table, p.meta_table, p.tl_table
+tt, mt, tl, sg = p.tasks_table, p.meta_table, p.tl_table, p.seg_table
 print("任务 %d 行 / 功能级元任务 %d 行 / 任务级元任务 %d 行" % (tt.rowCount(), mt.rowCount(), tl.rowCount()))
 print("首屏 任务级头部:", p.tl_head.text())
 
@@ -43,14 +43,45 @@ for r in range(tt.rowCount()):
 uniq = len({v[2] for v in seen.values()})
 chk("8 个任务的元任务序列互不相同", uniq == len(seen), f"{uniq}/{len(seen)} 种")
 
-# TASK-07-AOI 专项: 必须是 tasks.json 登记的 5 条
+# TASK-07-AOI 专项: 必须是 tasks.json 登记的 7 条, 且带手别/时空窗/目标对象 + 段级明细
 p._filter_meta_tasks("TASK-07-AOI"); app.processEvents()
 aoi_ids = [tl.item(i, 0).text() for i in range(tl.rowCount())]
 aoi_names = [tl.item(i, 1).text() for i in range(tl.rowCount())]
-print("\nTASK-07-AOI 任务级元任务:", list(zip(aoi_ids, aoi_names)))
-chk("TASK-07-AOI = 5 条登记元任务", aoi_ids == ["MT-01", "MT-02", "MT-03", "MT-04", "MT-05"], str(aoi_ids))
-chk("TASK-07-AOI 含 AOI 五点检测", any("AOI" in n for n in aoi_names), str(aoi_names))
+aoi_hands = [tl.item(i, 2).text() for i in range(tl.rowCount())]
+print("\nTASK-07-AOI 任务级元任务:")
+for i in range(tl.rowCount()):
+    print("  ", [tl.item(i, c).text() if tl.item(i, c) else "" for c in range(tl.columnCount())])
+chk("TASK-07-AOI 元任务 7 条 (右手5 + 左手1 + 双手1)",
+    aoi_ids == ["MT-01", "MT-02", "MT-03", "MT-04", "MT-05", "MT-06", "MT-07"]
+    and aoi_hands == ["右手"] * 5 + ["左手", "双手"], "%s / %s" % (aoi_ids, aoi_hands))
+chk("TASK-07-AOI 含 AOI 五点检测", any("AOI" in n or "五点" in n for n in aoi_names), str(aoi_names))
+chk("名称写全 (含被操作的槽/孔/点位)", any("孔" in n for n in aoi_names) and any("金手指" in n for n in aoi_names))
 chk("真源标注 = tasks.json meta_tasks", "meta_tasks" in p.tl_src.text(), p.tl_src.text())
+hdr2 = [tl.horizontalHeaderItem(c).text() for c in range(tl.columnCount())]
+chk("任务级表有『手别』列", "手别" in hdr2, " | ".join(hdr2))
+chk("任务级表有『时空窗』与『目标对象』列", "时空窗" in hdr2 and "目标对象" in hdr2)
+twin = [tl.item(i, hdr2.index("时空窗")).text() for i in range(tl.rowCount())]
+tgt = [tl.item(i, hdr2.index("目标对象")).text() for i in range(tl.rowCount())]
+chk("右手 5 条都有实测时空窗 (0→2.83s 等)", all("→" in twin[i] and "s" in twin[i] for i in range(5)), str(twin[:5]))
+chk("左/右手目标对象具体 (槽/孔/金手指点/侧面点/下料盘/废料盘)",
+    any("槽" in t for t in tgt) and any("孔" in t for t in tgt) and any("下料盘" in t for t in tgt), str(tgt))
+# 段级明细联动: 点 MT-03 ⇒ 10 段 5 个点; 点 MT-01 ⇒ 9 段
+def _pick(i):
+    tl.selectRow(i); app.processEvents(); app.processEvents()
+    return [[sg.item(r, c).text() if sg.item(r, c) else "" for c in range(sg.columnCount())] for r in range(sg.rowCount())]
+rows3 = _pick(2)
+chk("段级明细: MT-03 = 10 段", len(rows3) == 10, "%d 段" % len(rows3))
+chk("段级明细: MT-03 覆盖 金手指点 + 侧面点0..3",
+    sorted({r[2] for r in rows3 if "点" in r[2]}) == ["侧面点0", "侧面点1", "侧面点2", "侧面点3", "金手指点"],
+    str(sorted({r[2] for r in rows3})))
+rows1 = _pick(0)
+chk("段级明细: MT-01 = 9 段 (取料→插入)", len(rows1) == 9, "%d 段" % len(rows1))
+chk("段级明细: MT-01 时间累计递增", [float(r[5].rstrip("s")) for r in rows1 if r[5].endswith("s")] ==
+    sorted(float(r[5].rstrip("s")) for r in rows1 if r[5].endswith("s")))
+chk("段级明细: 手别列 = 该元任务手别", all(r[3] == "右手" for r in rows1), str({r[3] for r in rows1}))
+rows6 = _pick(5)
+chk("段级明细: MT-06 (左臂摆盘) 5 段 手别=左手", len(rows6) == 5 and all(r[3] == "左手" for r in rows6),
+    "%d 段 / %s" % (len(rows6), {r[3] for r in rows6}))
 print("AOI 头部:", p.meta_head.text().replace("\n", " "))
 print("AOI 说明:", p.tl_head.text())
 
