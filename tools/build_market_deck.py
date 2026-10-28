@@ -100,7 +100,7 @@ def new_slide(prs, title, kicker=""):
     return s
 
 
-def note(s, text, x=0.85, y=6.86, w=11.9, h=0.36):
+def note(s, text, x=0.96, y=6.86, w=11.72, h=0.36):
     tb = s.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
     tf = tb.text_frame
     tf.word_wrap = True
@@ -239,6 +239,16 @@ def kpi_strip(s, x, y, w, rows, accent=C_BLUE):
         p.space_after = Pt(3)
     return b
 
+def rollout():
+    """市场策略三阶段 (唯一算法 tools/rollout_model.py)。"""
+    import sys as _sys
+    _tp = os.path.join(os.path.dirname(os.path.abspath(__file__)))
+    if _tp not in _sys.path:
+        _sys.path.insert(0, _tp)
+    from rollout_model import build_rollout
+    return build_rollout()["phases"]
+
+
 def main():
     d = build_tiers()
     T = d["tiers"]
@@ -302,7 +312,7 @@ def main():
     # ── 2 愿景与三条护城河
     s = new_slide(prs, "要解决的不是「能不能动」，而是「每一次都得一样」",
                   "产品愿景与三条护城河 —— 后面八页的成本与分成，都是为这件事算账")
-    tb = s.shapes.add_textbox(Inches(0.92), Inches(1.45), Inches(7.3), Inches(2.6))
+    tb = s.shapes.add_textbox(Inches(0.96), Inches(1.45), Inches(7.2), Inches(2.6))
     tf = tb.text_frame
     tf.word_wrap = True
     for i, (txt, col, size, bold) in enumerate([
@@ -340,7 +350,7 @@ def main():
             r.font.bold = bold
             r.font.color.rgb = c2
             r.font.name = "Microsoft YaHei"
-    kpi_strip(s, 0.92, 4.62, 7.05, [
+    kpi_strip(s, 0.96, 4.62, 7.01, [
         ("节拍 / 产能", "11.39 s/件 · 315.2 件/h"),
         ("插入行程 / 速度", "47 mm @ 156.7 mm/s"),
         ("力上限 / 像素当量", "40 N · 0.76 mm/px @300mm"),
@@ -360,7 +370,7 @@ def main():
     for i, st in enumerate(spine[:8]):
         steps.append(("%d %s" % (st.get("step", i + 1), st.get("title", "")), nums[i], COL3[i % 3]))
     box_flow(s, steps, y=1.55, h=1.15, gap=0.18, x0=0.96, total_w=11.40, hsize=9.5, bsize=8.5)
-    para_block(s, 0.9, 3.05, 11.7, 3.4, [
+    para_block(s, 0.96, 3.05, 11.40, 3.4, [
         ("这条链路为什么重要", C_DARK, 14, True),
         ("左边四步决定「能不能干」：产品定义划出精度边界，任务配置把工序拆成七个可复用动作单元，"
          "功能配置给每个单元配上输入输出与实现，模型配置把能力分到 L2 到 L5 四层。", C_DARK, 10.5, False),
@@ -398,8 +408,8 @@ def main():
     cd.categories = NAMES
     cd.add_series("整套售价（封顶）", [round(wan(t["price_set"]), 1) for t in T])
     cd.add_series("硬件成本", [round(wan(t["capex"]), 1) for t in T])
-    gf = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.72), Inches(1.32),
-                            Inches(7.3), Inches(5.0), cd)
+    gf = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.96), Inches(1.32),
+                            Inches(7.22), Inches(5.0), cd)
     ch = gf.chart
     style_chart(ch, 10.5)
     color_series(ch.plots[0], [C_BLUE, C_GRAY])
@@ -433,8 +443,8 @@ def main():
     cd.add_series("设备与硬件", [round(wan(t["capex"]), 1) for t in T])
     cd.add_series("实施与训练", [round(wan(t["nre_sum"]), 1) for t in T])
     cd.add_series("年度运营支出", [round(wan(t["opex_year"]), 1) for t in T])
-    gf = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_STACKED, Inches(0.72), Inches(1.32),
-                            Inches(7.3), Inches(5.0), cd)
+    gf = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_STACKED, Inches(0.96), Inches(1.32),
+                            Inches(7.22), Inches(5.0), cd)
     ch = gf.chart
     style_chart(ch, 10.5)
     color_series(ch.plots[0], [C_BLUE, C_ORANGE, C_GRAY])
@@ -465,8 +475,8 @@ def main():
     cd.categories = NAMES
     cd.add_series("人工折算成本", [round(labor, 3) for _ in T])
     cd.add_series("方案单件总成本", [round(t["client_unit_cost"], 3) for t in T])
-    gf = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.72), Inches(1.32),
-                            Inches(7.3), Inches(5.0), cd)
+    gf = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.96), Inches(1.32),
+                            Inches(7.22), Inches(5.0), cd)
     ch = gf.chart
     style_chart(ch, 10.5)
     color_series(ch.plots[0], [C_GRAY, C_GREEN])
@@ -501,8 +511,8 @@ def main():
             cd.add_series("基础型 / 精细型（节拍相同）", [round(monthly * m, 1) for m in (1, 3, 6, 9, 12)])
     monthly_c = T[2]["pieces_year"] / 12.0 / 1e4
     cd.add_series("专业型", [round(monthly_c * m, 1) for m in (1, 3, 6, 9, 12)])
-    gf = s.shapes.add_chart(XL_CHART_TYPE.LINE_MARKERS, Inches(0.72), Inches(1.45),
-                            Inches(8.1), Inches(4.8), cd)
+    gf = s.shapes.add_chart(XL_CHART_TYPE.LINE_MARKERS, Inches(0.96), Inches(1.45),
+                            Inches(8.02), Inches(4.8), cd)
     ch = gf.chart
     style_chart(ch, 10.5)
     for i, ser in enumerate(ch.plots[0].series):
@@ -537,7 +547,7 @@ def main():
     cd = CategoryChartData()
     cd.categories = ["设备与实施款", "软件许可", "运营服务"]
     cd.add_series("首年收入", [round(wan(t1["price_set"]), 1), round(wan(lic_year), 1), round(wan(ops_year), 1)])
-    gf = s.shapes.add_chart(XL_CHART_TYPE.PIE, Inches(0.30), Inches(1.42), Inches(6.10), Inches(4.85), cd)
+    gf = s.shapes.add_chart(XL_CHART_TYPE.PIE, Inches(0.96), Inches(1.42), Inches(5.55), Inches(4.85), cd)
     ch = gf.chart
     ch.font.size = Pt(11)
     ch.font.name = "Microsoft YaHei"
@@ -573,7 +583,7 @@ def main():
         cd = CategoryChartData()
         cd.categories = ["机器人本体硬件", "模型与软件", "运营与数据"]
         cd.add_series("分成", [pct["hw"], pct["sw"], pct["op"]])
-        x = 0.72 + k * 4.18
+        x = 0.96 + k * 3.925
         gf = s.shapes.add_chart(XL_CHART_TYPE.DOUGHNUT, Inches(x), Inches(1.42),
                                 Inches(3.55), Inches(3.35), cd)
         ch = gf.chart
@@ -619,7 +629,7 @@ def main():
         ("第三阶段　双臂协同", "换型不停线", C_GREEN),
         ("第四阶段　自主运行", "具备夜班条件", C_ORANGE),
     ], y=1.62, h=1.25, hsize=11.5, bsize=9.5, x0=0.96, total_w=11.40)
-    para_block(s, 0.9, 3.25, 11.75, 3.0, [
+    para_block(s, 0.96, 3.25, 11.40, 2.25, [
         ("每个阶段的时间与验收", C_DARK, 14, True),
         ("基础型从进场到验收约两周；精细型约四周，其中采集真实数据与训练策略占一半；专业型约八周，安全验证与第三方认证是长周期项。",
          C_DARK, 10.5, False),
@@ -632,7 +642,48 @@ def main():
     ], C_BLUE)
     note(s, "阶段划分与三档配置的交付周期一致，也与工程操作手册中的验收步骤一一对应。")
 
-    # ── 12 风险边界
+    # ── 12 市场策略三阶段接续落地 (老倪 2026-10-28: 精细版先上, 一年后且场景>10 降配基础版, 最后跨场景专业版)
+    R = rollout()
+    s = new_slide(prs, "三个版本不是同时卖，而是按信任度接续落地",
+                  "设备价内含免费运营期，是让客户三年内回本的让利；让利成本由该阶段毛利承担")
+    cd = CategoryChartData()
+    cd.categories = ["精细版首发", "基础版铺量", "专业版跨场景"]
+    cd.add_series("不让利时的回本（年）", [round((R[0]["payback_months_nofree"] or 999) / 12.0, 2),
+                                          round((R[1]["payback_months_nofree"] or 999) / 12.0, 2),
+                                          round((R[2]["payback_months_nofree"] or 999) / 12.0, 2)])
+    cd.add_series("设备价内免费期后的回本（年）", [round(R[0]["payback_years"], 2), round(R[1]["payback_years"], 2),
+                                                  round(R[2]["payback_years"], 2)])
+    gf = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.96), Inches(1.42), Inches(5.75), Inches(4.55), cd)
+    ch = gf.chart
+    color_series(ch.plots[0], [C_MUTE, C_ORANGE])
+    style_chart(ch, size=10, legend=True)
+    ch.plots[0].has_data_labels = True
+    ch.plots[0].data_labels.font.size = Pt(9)
+    ch.plots[0].data_labels.font.bold = True
+    ch.plots[0].gap_width = 70
+    ch.has_title = True
+    ch.chart_title.text_frame.text = "客户回本年限（三年是工业品采购的硬门槛）"
+    ch.chart_title.text_frame.paragraphs[0].font.size = Pt(11)
+    para_block(s, 7.05, 1.55, 5.55, 3.7, [
+        ("第一阶段 · 精细版首发", C_ORANGE, 12, True),
+        ("一个工位替白班晚班两人，设备价 %s 内含 %d 个月运营与许可，客户 %.2f 年回本。"
+         % (wan(R[0]["price"]), R[0]["free_months"], R[0]["payback_years"]), C_DARK, 10, False),
+        ("第二阶段 · 基础版铺量", C_BLUE, 12, True),
+        ("满一年且场景超过十个后降配，用简单操作铺量，%d 个月免费，%.2f 年回本。"
+         % (R[1]["free_months"], R[1]["payback_years"]), C_DARK, 10, False),
+        ("第三阶段 · 专业版跨场景", C_GREEN, 12, True),
+        ("真价值是新场景不再从零集成，按每年多一个场景、实施费省六成计，每年多 %s，%.2f 年回本。"
+         % (wan(R[2]["reuse_year"]), R[2]["payback_years"]), C_DARK, 10, False),
+    ])
+    kpi_strip(s, 7.05, 5.28, 5.55, [
+        ("人工基准（替代对象）", "每人每年 %.0f 万 · 两班共 %.0f 万" % (
+            R[0]["labor_year"] / R[0]["persons"] / 1e4, R[0]["labor_year"] / 1e4)),
+        ("三方分成随阶段移动", " %.1f→%.1f→%.1f%%（软件）" % (R[0]["pct"]["sw"], R[1]["pct"]["sw"], R[2]["pct"]["sw"])),
+    ], C_ORANGE)
+    note(s, "分成比例与回本年限由同一个模型算出：设备价受上限约束后，钱从硬件转到许可与按件运营，"
+            "阶段越往后，软件与运营的份额越高。")
+
+    # ── 13 风险边界
     s = new_slide(prs, "对客户承诺之前，先把四个缺口补上",
                   "这些问题不解决，任何节拍与良率的数字都只是实验室数据")
     box_flow(s, [
@@ -641,7 +692,7 @@ def main():
         ("安全认证缺口", "未做第三方验证", C_RED),
         ("价格口径缺口", "待供应商报价", C_RED),
     ], y=1.6, h=1.25, hsize=11.5, bsize=9.5, x0=0.96, total_w=11.40)
-    para_block(s, 0.9, 3.2, 11.75, 3.1, [
+    para_block(s, 0.96, 3.2, 11.40, 2.25, [
         ("补齐的顺序与代价", C_DARK, 14, True),
         ("几何标定需要现场一天；训练数据需要两百条左右真实示教，按每条三百元计约六万元；安全认证周期八到十二周，费用约十五万元。",
          C_DARK, 10.5, False),

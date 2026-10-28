@@ -4498,6 +4498,14 @@ class ConfigCenterPage(QWidget):
             _lb8t.setWordWrap(True)
             l7.addWidget(_lb8t)
         try:
+            l7.addWidget(_sec("第 8 步 · 市场策略（三阶段接续落地 · 可导出立项报告）",
+                              "唯一算法 tools/rollout_model.py ← tools/spec/rollout.json (阶段参数/免费期/分成偏好) + cost_model"))
+            l7.addWidget(self._rollout_block(th))
+        except Exception as _e8r:                                               # noqa: BLE001
+            _lb8r = QLabel("⛔ 市场策略块构造失败: %r" % (_e8r,))
+            _lb8r.setWordWrap(True)
+            l7.addWidget(_lb8r)
+        try:
             l7.addWidget(_sec("💰 成本/报价",
                               "算法真源 tools/cost_model.py · 参数真源 config/platform/zmax_cost_model.json"))
             l7.addWidget(self._cost_page(th))
@@ -6120,6 +6128,117 @@ class ConfigCenterPage(QWidget):
         msg.setStyleSheet("color:%s;background:transparent;" % th.get("C_GRAY", "#8b949e"))
         lay.addWidget(msg)
         return w
+
+    def _rollout_data(self):
+        """市场策略三阶段 (唯一算法 tools/rollout_model.build_rollout)。"""
+        try:
+            if not hasattr(self, "_rollout_cache"):
+                import sys as _sys
+                _tp = os.path.join(ROOT, "tools")
+                if _tp not in _sys.path:
+                    _sys.path.insert(0, _tp)
+                from rollout_model import build_rollout
+                self._rollout_cache = build_rollout()
+            return self._rollout_cache
+        except Exception as _e:                                                # noqa: BLE001
+            return {"_err": repr(_e), "phases": []}
+
+    def _rollout_block(self, th):
+        r = self._rollout_data()
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 2, 0, 2)
+        if not r.get("phases"):
+            lb = QLabel("⛔ 市场策略模型不可用: %s" % r.get("_err", ""))
+            lb.setWordWrap(True)
+            lay.addWidget(lb)
+            return w
+        lay.addWidget(QLabel("先集中部署精细版, 一个工位替白班晚班两个人; 满一年且场景超十个后降配基础版做简单操作; "
+                             "最后跨场景专业版做自主安全作业。人工按每人每年十万元计。"))
+        rows = []
+        for p_ in r["phases"]:
+            rows.append([
+                "%s %s" % (p_["key"], p_["name"]), p_["tier"], "%d 人" % p_["persons"],
+                "%.1f" % (p_["price"] / 1e4), "%d 个月" % p_["free_months"],
+                "%.1f" % (p_["labor_year"] / 1e4), "%.1f" % (p_["reuse_year"] / 1e4),
+                "%.1f" % (p_["net_save_year"] / 1e4),
+                "%.2f" % ((p_["payback_months_nofree"] or 999) / 12.0),
+                "%.2f" % (p_["payback_years"] or 999),
+                "%.1f / %.1f / %.1f" % (p_["pct"]["hw"], p_["pct"]["sw"], p_["pct"]["op"]),
+            ])
+        tb = _mk_table(["阶段", "档位", "替代人数", "客户投入(万)", "设备价内免费期", "人工/年(万)",
+                        "复用收益/年(万)", "净省/年(万)", "回本(不让利,年)", "回本(让利后,年)",
+                        "分成 硬件/软件/运营(%)"], rows, th)
+        tb.setMinimumHeight(41 + 34 * len(rows) + 8)
+        self.rollout_table = tb
+        lay.addWidget(tb)
+        hint = QLabel("回本是逐月现金流算的: 免费期内客户不付软件与运营费, 人工照省。设备售价受上限约束, "
+                      "免费期是这套策略的让利; 让利成本由该阶段毛利承担。")
+        hint.setWordWrap(True)
+        lay.addWidget(hint)
+        btns = QWidget()
+        bl = QHBoxLayout(btns)
+        bl.setContentsMargins(0, 0, 0, 0)
+        for txt, fn, tip in (
+            ("📄 导出立项报告 (MD + DOCX)", self._export_project_report,
+             "写出 docs/deliverables/项目立项报告_双臂协作工位.md 与 .docx, 数字现算"),
+            ("📊 导出市场分成 (CSV)", self._export_split_csv,
+             "三档 × 三阶段分成与回本, 可直接给财务"),
+        ):
+            b = QPushButton(txt)
+            b.setToolTip(tip)
+            b.clicked.connect(fn)
+            bl.addWidget(b)
+        bl.addStretch(1)
+        lay.addWidget(btns)
+        self.rollout_msg = QLabel("")
+        self.rollout_msg.setWordWrap(True)
+        lay.addWidget(self.rollout_msg)
+        return w
+
+    def _export_project_report(self):
+        try:
+            import sys as _sys
+            _tp = os.path.join(ROOT, "tools")
+            if _tp not in _sys.path:
+                _sys.path.insert(0, _tp)
+            import gen_project_report as G
+            md, L = G.build_md()
+            dx = G.build_docx(L)
+            self.rollout_msg.setText("✅ 已导出\n立项报告 MD: %s (%d 字节)\n立项报告 DOCX: %s"
+                                     % (md, os.path.getsize(md), dx or "未生成 (缺 python-docx)"))
+        except Exception as _e:                                                # noqa: BLE001
+            self.rollout_msg.setText("⛔ 导出失败: %r" % (_e,))
+
+    def _export_split_csv(self):
+        try:
+            import csv
+            r = self._rollout_data()
+            d = self._tier_data()
+            out = os.path.join(ROOT, "docs", "deliverables", "市场分成_三档三阶段.csv")
+            os.makedirs(os.path.dirname(out), exist_ok=True)
+            with open(out, "w", newline="", encoding="utf-8-sig") as f:
+                wr = csv.writer(f)
+                wr.writerow(["阶段", "档位", "客户投入(元)", "免费期(月)", "人工/年(元)", "复用收益/年(元)",
+                             "净省/年(元)", "回本(不让利,年)", "回本(让利后,年)",
+                             "硬件%", "软件%", "运营%"])
+                for p_ in r["phases"]:
+                    wr.writerow([p_["key"], p_["tier"], "%.0f" % p_["price"], p_["free_months"],
+                                 "%.0f" % p_["labor_year"], "%.0f" % p_["reuse_year"],
+                                 "%.0f" % p_["net_save_year"],
+                                 "%.2f" % ((p_["payback_months_nofree"] or 999) / 12.0),
+                                 "%.2f" % (p_["payback_years"] or 999),
+                                 "%.1f" % p_["pct"]["hw"], "%.1f" % p_["pct"]["sw"], "%.1f" % p_["pct"]["op"]])
+                wr.writerow([])
+                wr.writerow(["档位", "硬件成本(元)", "实施投入(元)", "年运营(元)", "年产量(件)",
+                             "单件成本(元)", "售价(元)", "售价上限(元)", "硬件毛利(元)", "客户单件(元)"])
+                for t in d["tiers"]:
+                    wr.writerow([t["id"], "%.0f" % t["capex"], "%.0f" % t["nre_sum"], "%.0f" % t["opex_year"],
+                                 "%.0f" % t["pieces_year"], "%.4f" % t["unit_cost"], "%.0f" % t["price_set"],
+                                 "%.0f" % t["price_cap"], "%.0f" % t["hw_gross"], "%.4f" % t["client_unit_cost"]])
+            self.rollout_msg.setText("✅ 已导出\n市场分成: %s (%d 字节)" % (out, os.path.getsize(out)))
+        except Exception as _e:                                                # noqa: BLE001
+            self.rollout_msg.setText("⛔ 导出失败: %r" % (_e,))
 
     def _tier_split_block(self, th):
         d = self._tier_data()

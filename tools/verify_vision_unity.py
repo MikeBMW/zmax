@@ -10,7 +10,7 @@
   ② 配置中心: 七个页签顶上都装了愿景带, 高亮环节与页签对应; 文档配置同时高亮 成本组成 + 市场分成
   ③ 成本组成表 / 市场分成表: 真读表格单元格, 与 cost_model.build_tiers() 逐项对账 (不是看有没有控件)
   ④ ar3d: /api/ar/vision 可读; 动作单元 7 + 段 40; 页面有愿景条与 __VIS__ 钩子; 愿景条在 dock 之上不遮挡
-  ⑤ 市场分成 PPT: 12 页, 含愿景句与八步, 图表 ≥6, 不出现 任务7/T1 编号
+  ⑤ 市场分成 PPT: 13 页, 含愿景句与八步, 图表 ≥6, 不出现 任务7/T1 编号
   ⑥ 三处话术同源: 配置中心愿景带首句 == PPT 首页标题 == ar3d 愿景条首句 == vision.json headline
 
 跑法: QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/verify_vision_unity.py
@@ -153,7 +153,7 @@ def main():
     chk("⑤ PPT 存在", os.path.exists(ppt), ppt)
     if os.path.exists(ppt):
         prs = Presentation(ppt)
-        chk("⑤ PPT 页数 = 12", len(prs.slides._sldIdLst) == 12, len(prs.slides._sldIdLst))
+        chk("⑤ PPT 页数 = 13 (含市场策略三阶段页)", len(prs.slides._sldIdLst) == 13, len(prs.slides._sldIdLst))
         txt, charts = [], 0
         for sl in prs.slides:
             for sh in sl.shapes:
@@ -190,6 +190,40 @@ def main():
         cover = [sh.text_frame.text.strip() for sh in prs.slides[0].shapes if sh.has_text_frame]
         chk("⑥ PPT 封面首句 = vision.json headline", head in cover, cover[:3])
         chk("⑥ PPT 出现愿景副句 (最后一厘米)", "最后一厘米" in allt, "已核")
+        # ⑦ 市场策略三阶段 (老倪 2026-10-28)
+        from rollout_model import build_rollout
+        R = build_rollout()["phases"]
+        chk("⑦ 有三阶段接续落地页 (精细版首发 / 基础版铺量 / 专业版跨场景)",
+            all(k in allt for k in ("精细版首发", "基础版铺量", "专业版跨场景")), "已核")
+        chk("⑦ 三阶段回本年限与模型一致", all(("%.2f" % p["payback_years"]) in allt for p in R), "已核")
+        chk("⑦ 人工口径写明每人每年 10 万", "每人每年 10 万" in allt.replace(" ", " "), "已核")
+        rep = os.path.join(ROOT, "docs", "deliverables", "项目立项报告_双臂协作工位.md")
+        chk("⑦ 立项报告 MD 存在", os.path.exists(rep), rep)
+        if os.path.exists(rep):
+            txt = open(rep, encoding="utf-8").read()
+            chk("⑦ 立项报告写进三阶段策略", all(k in txt for k in ("集中部署精密版", "降配基础版铺量", "专业版跨场景自主")), "已核")
+            chk("⑦ 立项报告回本与模型一致", all(("%.2f 年" % p["payback_years"]) in txt for p in R), "已核")
+            chk("⑦ 立项报告分成与模型一致",
+                all(("%.1f%%" % p["pct"]["sw"]) in txt for p in R), "已核")
+            chk("⑦ 立项报告不出现任何密钥值", not any(x in txt for x in ("sk-", "api_key=", "token=", "password=")), "已核")
+        chk("⑦ 立项报告 DOCX 存在",
+            os.path.exists(os.path.join(ROOT, "docs", "deliverables", "项目立项报告_双臂协作工位.docx")), "已核")
+        # 真按按钮: 调导出方法, 看文件是否真的写出来且回显 ✅
+        before = os.path.getmtime(rep) if os.path.exists(rep) else 0
+        w._export_project_report()
+        chk("⑦ 按「导出立项报告」真的写出文件", os.path.exists(rep) and os.path.getmtime(rep) >= before
+            and "✅" in w.rollout_msg.text(), w.rollout_msg.text()[:60].replace("\n", " / "))
+        csvp = os.path.join(ROOT, "docs", "deliverables", "市场分成_三档三阶段.csv")
+        w._export_split_csv()
+        chk("⑦ 按「导出市场分成」真的写出 CSV", os.path.exists(csvp) and "✅" in w.rollout_msg.text(),
+            w.rollout_msg.text()[:60].replace("\n", " / "))
+        if os.path.exists(csvp):
+            rows = open(csvp, encoding="utf-8-sig").read().strip().splitlines()
+            chk("⑦ CSV 有三阶段行 + 三档行", len([r for r in rows if r.startswith(("P1", "P2", "P3"))]) == 3
+                and len([r for r in rows if r.startswith(("A,", "B,", "C,"))]) == 3, "%d 行" % len(rows))
+        chk("⑦ 配置中心可导出 (两个导出方法 + 一张三阶段表)",
+            hasattr(w, "_export_project_report") and hasattr(w, "_export_split_csv")
+            and getattr(w, "rollout_table", None) is not None, "已核")
 
     print("\n=== %d PASS / %d FAIL ===" % (len(PASS), len(FAIL)))
     if FAIL:

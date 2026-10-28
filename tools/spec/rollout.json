@@ -1,0 +1,73 @@
+{
+ "_meta": {
+  "schema": "zmax-rollout/1.0",
+  "note": "先集中部署精密版替白班晚班两人; 1 年后且场景数>10 降配基础版; 最后跨场景专业版自主安全",
+  "only_inputs": "只放阶段参数与分成偏好 (无结论数字)",
+  "readme": "回收期/分成由 tools/cost_model.py --rollout 现算, 页面/立项报告/PPT 共用"
+ },
+ "labor": {
+  "per_person_year": 100000,
+  "shifts_note": "白班一人+晚班一人=2 人/工位, 每人每年 10 万含社保公积金",
+  "target_payback_years": 3.0,
+  "target_note": "工业设备采购硬门槛: 客户静态回本不超过 3 年, 否则免费期按此反算"
+ },
+ "phases": [
+  {
+   "key": "P1",
+   "name": "集中部署精密版",
+   "tier": "B",
+   "months": 12,
+   "persons": 2,
+   "scenes_gate": 0,
+   "gate_note": "首发不设场景门槛, 先在一个工位做稳",
+   "why": "一个工位替白班晚班两个人, 先把稳定性与节拍做出来",
+   "free_months": 24,
+   "split_bias": {
+    "hw": -3.0,
+    "sw": 1.0,
+    "op": 2.0
+   },
+   "bias_note": "首发: 设备价含 24 个月运营与许可, 硬件让 3 个点换装机"
+  },
+  {
+   "key": "P2",
+   "name": "降配基础版铺量",
+   "tier": "A",
+   "months": 12,
+   "persons": 2,
+   "scenes_gate": 10,
+   "gate_note": "精密版稳定运行满 1 年且数据覆盖超过 10 个场景",
+   "why": "同样工位用基础版做简单普通操作, 把装机量铺开",
+   "free_months": 12,
+   "split_bias": {
+    "hw": -4.0,
+    "sw": 2.0,
+    "op": 2.0
+   },
+   "bias_note": "铺量: 免 12 个月, 硬件再让 1 个点, 收钱主力转到按件运营"
+  },
+  {
+   "key": "P3",
+   "name": "专业版跨场景自主",
+   "tier": "C",
+   "months": 24,
+   "persons": 3,
+   "scenes_gate": 20,
+   "gate_note": "老倪未给门槛; 建议 >=20 个场景且含 3 类工艺",
+   "why": "跨场景专业版做自主安全作业, 三班无人, 一人管多工位",
+   "free_months": 6,
+   "split_bias": {
+    "hw": -5.0,
+    "sw": 4.0,
+    "op": 1.0
+   },
+   "bias_note": "跨场景: 硬件只做载体, 收钱主力转到软件许可与年度授权",
+   "reuse": {
+    "new_scenes_per_year": 1,
+    "reuse_ratio": 0.6,
+    "note": "跨场景专业版的真价值: 新场景不再从 0 集成, 实施费按 60% 节省计 (假设, 待实测)"
+   }
+  }
+ ],
+ "policy_note": "免费期内的运营与许可成本由厂家承担, 计入该阶段毛利扣减; 分成仍按成本模型的三档定价分成再按阶段偏好微调"
+}
