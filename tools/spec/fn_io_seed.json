@@ -1,0 +1,356 @@
+{
+ "_meta": {
+  "schema": "zmax-fn-io-seed/1.0",
+  "note": "功能输入/输出 (老倪 2026-10-28: 功能必须有 名称/输入/输出/描述)。每条都由该功能自己的 note_work / 模块 desc / 制品真源逐条改写, 不改口径不外推; 界面标『作者整理』。曾从产品特征→能力接口派生过一版, 粒度是能力级(会把别的能力的输入混进来), 只作参考行保留, 不当输入/输出用。",
+  "author": "静静 (Hermes) 2026-10-28",
+  "applies_to": "TASK-07-AOI 的 33 个功能 (全量)",
+  "source_of_each_line": "该功能自己的 note_work / 模块 desc / 元任务动作, 逐条对得上, 不外推"
+ },
+ "items": {
+  "FN-SYS0-50": {
+   "inputs": [
+    "目标位姿 ξ_d (段表 target)",
+    "当前位姿 ξ (tcp_pose 真值 50Hz)",
+    "刚度 K / 阻尼 B (calib)"
+   ],
+   "outputs": [
+    "力/力矩指令 F = K·ξ_e − B·ξ̇ + F_d",
+    "能量 U/H (供势场与监视同源)"
+   ],
+   "desc": "SE(3) 几何阻抗 + Hamiltonian: 每帧算 ξ_e = 目标−当前, U = ½ξ_eᵀKξ_e, 分量序 [ρ;ω]"
+  },
+  "FN-SYS0-60": {
+   "inputs": [
+    "目标点位 (pos/speed/dir)",
+    "起点 (SDK 直采, 禁手推)",
+    "围栏 · 奇异区约束"
+   ],
+   "outputs": [
+    "段表 plan (pos/speed/dir/lin_mm/service)",
+    "落盘 zmax_data/runtime/plan/*.json"
+   ],
+   "desc": "把目标点位拆成可下发的段表, 每段带 lin_mm; 起点必须 SDK 直采"
+  },
+  "FN-SYS0-35": {
+   "inputs": [
+    "固化标杆库 (data/skills/l2_muscle/*.json)",
+    "当前工件位姿",
+    "L2 兼容开关"
+   ],
+   "outputs": [
+    "关节/末端动作流 (经 tools/l2_ros2_bridge.py)",
+    "回放状态 (直通/降级)"
+   ],
+   "desc": "按固化标杆库回放 L2 抓放动作, 38 参全走 calib, 无专属参数"
+  },
+  "FN-SYS2-04": {
+   "inputs": [
+    "场景理解结果",
+    "技能库 spec",
+    "当前段状态"
+   ],
+   "outputs": [
+    "技能序列 (原子技能 + 参数)",
+    "异常诊断分支 (diagnose)"
+   ],
+   "desc": "SkillComposer.compose 按场景或 spec 编技能序列"
+  },
+  "FN-SYS2-26": {
+   "inputs": [
+    "模型动作 (policy 输出)",
+    "sim.env 当前状态"
+   ],
+   "outputs": [
+    "spool 帧 (obs/action)",
+    "真物理步进结果"
+   ],
+   "desc": "光学插拔桥把模型动作直发 sim.env.step (RealStateSpaceSim)"
+  },
+  "FN-SYS2-21": {
+   "inputs": [
+    "工作安全配置",
+    "导航/场景目标",
+    "data_source=metaworld"
+   ],
+   "outputs": [
+    "安全动作 · 导航决策 (run_once)",
+    "工作安全状态"
+   ],
+   "desc": "INTACT service run_once 组工作安全与导航"
+  },
+  "FN-SYS2-28": {
+   "inputs": [
+    "意图解码器输出",
+    "LoRA 超参 (r=8 / alpha=16)",
+    "微调数据"
+   ],
+   "outputs": [
+    "合并后 INTACT 权重 (merge_lora)",
+    "微调报告"
+   ],
+   "desc": "lora_inject.py 注适配器, merge 后导出 (不 merge = 零动作伪装)"
+  },
+  "FN-SYS2-10": {
+   "inputs": [
+    "相机帧 (arm/gold/surface/本机)",
+    "提示词"
+   ],
+   "outputs": [
+    "场景摘要 JSON",
+    "回退档位 (DeepSeek Vision / 本地 3B / 规则)"
+   ],
+   "desc": "Qwen2.5/3-VL 场景理解, 短提示+小 JSON, timeout≥300"
+  },
+  "FN-SYS2-08": {
+   "inputs": [
+    "memory_graph 层间链接",
+    "8 阶段上下文"
+   ],
+   "outputs": [
+    "recall(k=2) 记忆条目"
+   ],
+   "desc": "node_ss_mem_links 读记忆图谱, 按 8 阶段召回"
+  },
+  "FN-SYS2-16": {
+   "inputs": [
+    "L2/L3/L4 势场",
+    "冠军轨迹 champ_x",
+    "段时长"
+   ],
+   "outputs": [
+    "−∇Φ 行走意图"
+   ],
+   "desc": "总装机记忆 · 势场联络: L2 用 champ_x 谷底加管壁, L3 按段时长加权"
+  },
+  "FN-SYS2-15": {
+   "inputs": [
+    "世界模型预测",
+    "恢复策略记录"
+   ],
+   "outputs": [
+    "L4 安全/导航取用的记忆条目"
+   ],
+   "desc": "L4 记忆层 (前额叶), 存预测与恢复策略"
+  },
+  "FN-PLAT-63": {
+   "inputs": [
+    "metaworld 环境 (peg-insert-side-v3)",
+    "frames=4800",
+    "src_switch"
+   ],
+   "outputs": [
+    "39 维 state / 4 维 action 流 (供全部层级)"
+   ],
+   "desc": "仿真数据源; 注意该功能在 function_layer_map 里没有条目 (真源缺口)"
+  },
+  "FN-PLAT-74": {
+   "inputs": [
+    "rollout 帧序列 (多模型)"
+   ],
+   "outputs": [
+    "对比窗视频 (viz_kind=video)"
+   ],
+   "desc": "画布 ssvideo2 双击开 rollout 对比窗"
+  },
+  "FN-PLAT-66": {
+   "inputs": [
+    "mode=train/infer",
+    "calib 台面参数"
+   ],
+   "outputs": [
+    "训练/推理分支选择 (ssmode)",
+    "模式生效标记"
+   ],
+   "desc": "训练/推理模式开关, 按 calib 台面参数决定走哪个分支"
+  },
+  "FN-PLAT-73": {
+   "inputs": [
+    "ssobs 43D 状态流"
+   ],
+   "outputs": [
+    "示波窗波形"
+   ],
+   "desc": "勾 state_space_scope 把 43D 状态画成波形"
+  },
+  "FN-PLAT-65": {
+   "inputs": [
+    "仿真/真机信号源开关",
+    "frames / state_dim"
+   ],
+   "outputs": [
+    "39 维观测流 (旁路只读, 不下发动作)"
+   ],
+   "desc": "Z700 真机信号全量观测, 旁路只读"
+  },
+  "FN-PLAT-75": {
+   "inputs": [
+    "⚡前馈加速器探针 (三层 512 激活)"
+   ],
+   "outputs": [
+    "激活分布直方图"
+   ],
+   "desc": "读前馈加速器探针画三层激活分布"
+  },
+  "FN-PLAT-68": {
+   "inputs": [
+    "cap_level (L2..L5)",
+    "连线开关 lkcap1/2/3"
+   ],
+   "outputs": [
+    "下游节点开关状态",
+    "档位生效标记"
+   ],
+   "desc": "sscap 按 cap_level 选档, 开关下游节点"
+  },
+  "FN-SYS0-36": {
+   "inputs": [
+    "标杆库 光模块_抓放循环_v1.json (slot / safe 点)",
+    "当前工件·孔位 (来自 43D obs)"
+   ],
+   "outputs": [
+    "五步 /move_line 动作 (speed=30)",
+    "到位 / 夹持状态"
+   ]
+  },
+  "FN-SYS0-49": {
+   "inputs": [
+    "残差 ξ_e (目标−当前)",
+    "接触概率 (触觉 4D)",
+    "否决计数 veto_count"
+   ],
+   "outputs": [
+    "加减速调制后的动作 u",
+    "异常标记 (连续否决 ≥3)"
+   ]
+  },
+  "FN-SYS0-37": {
+   "inputs": [
+    "相机 RGB 帧 (arm / gold / surface)",
+    "39D obs 当前值"
+   ],
+   "outputs": [
+    "hand / hole / 光模块检测框 + 置信度",
+    "覆写后的 39D obs 对应段"
+   ]
+  },
+  "FN-SYS0-41": {
+   "inputs": [
+    "靶板点 (像素)",
+    "YOLO 模块框",
+    "板面法向 / 平面"
+   ],
+   "outputs": [
+    "板位姿 T_board",
+    "模块在板 (x, y) mm"
+   ]
+  },
+  "FN-SYS0-43": {
+   "inputs": [
+    "视觉 39 维",
+    "触觉 4 维"
+   ],
+   "outputs": [
+    "43 维 obs (维度断言通过)"
+   ]
+  },
+  "FN-SYS0-52": {
+   "inputs": [
+    "peg 位置 (obs)",
+    "夹爪当前位姿"
+   ],
+   "outputs": [
+    "悬停位 (peg 上方 0.09m, 不触碰)",
+    "对齐判定 (水平距离 <0.06)"
+   ]
+  },
+  "FN-SYS1-31": {
+   "inputs": [
+    "工序序列需求 (任务指令)",
+    "海马体历史序列",
+    "断点状态"
+   ],
+   "outputs": [
+    "跨段技能序列",
+    "重试 / 断点续作决策 (≤3 次, ≥95%)"
+   ]
+  },
+  "FN-SYS2-01": {
+   "inputs": [
+    "MES 工单 / 自然语言任务输入",
+    "veto_count"
+   ],
+   "outputs": [
+    "task_input 解析结果",
+    "规划请求 (max_veto=3)"
+   ]
+  },
+  "FN-SYS2-02": {
+   "inputs": [
+    "任务指令",
+    "场景理解结果",
+    "llm_url 配置"
+   ],
+   "outputs": [
+    "工序序列 (配了 llm_url 走大模型, 否则 _plan_rules)"
+   ]
+  },
+  "FN-SYS2-12": {
+   "inputs": [
+    "ECS /agent/prompt?after=N (poll_s=5s)"
+   ],
+   "outputs": [
+    "远程提示词事件 → 引擎执行"
+   ]
+  },
+  "FN-SYS2-09": {
+   "inputs": [
+    "现场数据 (采集 / 轨迹)",
+    "考核模型",
+    "变更记录"
+   ],
+   "outputs": [
+    "技能与经验库条目 (sync_to_macro)"
+   ]
+  },
+  "FN-SYS2-17": {
+   "inputs": [
+    "调参指令",
+    "标定真值"
+   ],
+   "outputs": [
+    "生效参数",
+    "变更记录"
+   ]
+  },
+  "FN-SYS2-05": {
+   "inputs": [
+    "任务队列",
+    "车状态",
+    "三层记忆 (肌肉 / 流程 / 工作)"
+   ],
+   "outputs": [
+    "任务分配",
+    "协同指令 (PF-Z100-07)"
+   ]
+  },
+  "FN-SYS0-40": {
+   "inputs": [
+    "金手指 / 端面图像 (曝光 5000us)",
+    "判据矩形 (aoi_surface_rect)"
+   ],
+   "outputs": [
+    "ok / too_dark 判决",
+    "质量分与缺陷标记"
+   ]
+  },
+  "FN-PLAT-76": {
+   "inputs": [
+    "画布节点 / 连线 (状态空间)",
+    "▶运行 模式"
+   ],
+   "outputs": [
+    "Apollo 风格 3D 分层视图 (双击开窗)"
+   ]
+  }
+ }
+}

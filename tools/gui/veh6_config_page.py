@@ -42,7 +42,7 @@ from PyQt5.QtGui import (QColor, QFont, QKeySequence, QFontMetrics, QLinearGradi
 from PyQt5.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QGridLayout, QHBoxLayout,  # noqa: E402
                              QFrame, QHeaderView, QLabel, QLineEdit, QMenu, QPushButton, QRadioButton, QScrollArea, QSizePolicy,
                              QSplitter, QShortcut,
-                             QTableWidget, QTableWidgetItem, QComboBox, QTabWidget, QTextEdit, QTreeWidget,
+                             QTableWidget, QTableWidgetItem, QComboBox, QTabWidget, QTextBrowser, QTextEdit, QTreeWidget,
                              QSpinBox, QDoubleSpinBox,
                              QTreeWidgetItem, QVBoxLayout, QWidget)
 
@@ -340,6 +340,196 @@ def _task_seg_cover(tid=None):
                      "excluded": seg in (bt.get("excluded_segments") or []),
                      "fns": fs})
     return rows
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 功能定义 · 真源装配 (老倪 2026-10-28: 「功能, 应该有 功能名称, 输入, 输出, 描述, 这些信息, 对应着元任务;
+#   可以是 1 个功能, 也可以由功能组成子系统。重写功能配置, 每个功能要有 function 这样的逻辑实现」)
+#   四个字段各自的真源 (逐条标明来源, 别混):
+#     名称/子系统/层/描述 ← zmax_engineering.db: functions(name, system_id, layer, row_name, note_work)
+#     输入/输出           ← functions 所属产品特征 → capability_dbc(inputs/outputs)  ← 派生, 粒度=能力接口
+#     逻辑实现 function   ← links(kind='对应模块') function→canvas节点  →  links(kind='实现') 节点→library.py:LINE
+#                            + functions.params.source/source_symbol (业务逻辑文件/类)
+#   校验: 文件存在 + 行号在界内 + 该行附近真是 def/class 才标 ✅ (不靠自报)。
+# ══════════════════════════════════════════════════════════════════════════════
+ENGR_DB = os.path.join(ROOT, "data", "database", "zmax", "zmax_engineering.db")
+CONFIG_META_J = os.path.join(ROOT, "data", "database", "zmax", "config_meta.json")
+_FNREG = {}
+_CONFIG_META = {}
+
+
+def _config_meta():
+    global _CONFIG_META
+    if _CONFIG_META:
+        return _CONFIG_META
+    try:
+        _CONFIG_META = json.load(open(CONFIG_META_J, encoding="utf-8"))
+    except Exception:                                                          # noqa: BLE001
+        _CONFIG_META = {}
+    return _CONFIG_META
+
+
+FN_IO_SEED_J = os.path.join(ROOT, "tools", "spec", "fn_io_seed.json")
+_FNIO = {}
+
+
+def _fn_io_seed():
+    global _FNIO
+    if _FNIO:
+        return _FNIO
+    try:
+        _FNIO = json.load(open(FN_IO_SEED_J, encoding="utf-8"))
+    except Exception:                                                          # noqa: BLE001
+        _FNIO = {}
+    return _FNIO
+
+
+def _eng_db():
+    import sqlite3
+    con = sqlite3.connect("file:%s?mode=ro" % ENGR_DB, uri=True)
+    con.row_factory = sqlite3.Row
+    return con
+
+
+def _fn_registry():
+    """一次读出 功能/模块实现/子系统, 供功能配置页用 (只读, 进程内缓存)。"""
+    if _FNREG:
+        return _FNREG
+    try:
+        con = _eng_db()
+    except Exception:                                                          # noqa: BLE001
+        return _FNREG
+    try:
+        fns = {}
+        for r in con.execute("SELECT fn_id,system_id,name,layer,kind,row_name,module_ref,"
+                             "params,source,note_work,note_pain,note_state FROM functions"):
+            fns[r["fn_id"]] = dict(r)
+        mod = {}
+        for r in con.execute("SELECT module_name,logic_key,file,line,doc FROM module_code"):
+            mod[r["module_name"]] = dict(r)
+        fn2mod = {}
+        for r in con.execute("SELECT src_id,dst_id FROM links WHERE kind='对应模块'"):
+            fn2mod.setdefault(r["src_id"], r["dst_id"])
+        subs = {}
+        for r in con.execute("SELECT system_id,name,level,role,hardware,kpi FROM subsystems"):
+            subs[r["system_id"]] = dict(r)
+        # 功能 → 产品特征 → 能力接口 (输入/输出), 与 config_meta.py 同口径
+        pf = {}
+        for r in con.execute("SELECT src_id,dst_id FROM links WHERE kind='能力引用'"):
+            pf.setdefault(r["dst_id"], []).append(r["src_id"])
+        caps = {r["bo_id"]: dict(r) for r in
+                con.execute("SELECT bo_id,name,inputs,outputs,brief FROM capability_dbc")}
+        fn_pf = {}
+        for r in con.execute("SELECT src_type,src_id,dst_id FROM links WHERE kind IN ('用到')"):
+            pass
+        _FNREG.update(fns=fns, mod=mod, fn2mod=fn2mod, subs=subs, caps=caps, pf=pf)
+    finally:
+        con.close()
+    return _FNREG
+
+
+def _impl_at(path, line):
+    """核对: 文件在不在 / 行号在不在界内 / 该行(或往上 12 行)是不是 def/class。返回 (ok, msg)。"""
+    if not path:
+        return False, "未登记"
+    fp = path if os.path.isabs(path) else os.path.join(ROOT, path)
+    if not os.path.exists(fp):
+        return False, "文件不存在"
+    try:
+        lines = open(fp, encoding="utf-8", errors="replace").read().splitlines()
+    except Exception:                                                          # noqa: BLE001
+        return False, "读不了"
+    if line:
+        if not (1 <= int(line) <= len(lines)):
+            return False, "行号越界(%d/%d)" % (int(line), len(lines))
+        for k in range(int(line) - 1, max(-1, int(line) - 13), -1):
+            t = lines[k].strip()
+            if t.startswith(("def ", "class ", "async def ")):
+                return True, "%s:%d  %s" % (os.path.relpath(fp, ROOT), k + 1, t.split("(")[0].replace("def ", "def ").strip())
+        return True, "%s:%d  (该行非 def/class, 是画布节点注册处)" % (os.path.relpath(fp, ROOT), int(line))
+    return True, os.path.relpath(fp, ROOT)
+
+
+def _fn_detail(fn_id):
+    """单个功能的完整定义 (四个字段 + 逻辑实现 + 承载元任务)。"""
+    R = _fn_registry()
+    f = (R.get("fns") or {}).get(fn_id) or {}
+    pj = {}
+    try:
+        pj = json.loads(f.get("params") or "{}")
+    except Exception:                                                          # noqa: BLE001
+        pj = {}
+    cm0 = (_config_meta().get("functions") or {}).get(fn_id) or {}
+    mname = ((R.get("fn2mod") or {}).get(fn_id) or f.get("module_ref") or cm0.get("module_ref") or "")
+    mc = (R.get("mod") or {}).get(mname) or {}
+    # ── 逻辑实现: ① 业务逻辑 (params.source + source_symbol) ② 画布节点注册 (library.py:LINE)
+    impl = []
+    src = (pj.get("source") or "").strip()
+    sym = (pj.get("source_symbol") or "").strip()
+    if src:
+        line2 = None
+        if sym:
+            fp = src if os.path.isabs(src) else os.path.join(ROOT, src)
+            if os.path.exists(fp):
+                nm = sym.replace("class ", "").replace("def ", "").strip()
+                for i, t in enumerate(open(fp, encoding="utf-8", errors="replace"), 1):
+                    if t.strip().startswith(("def %s(" % nm, "class %s(" % nm, "class %s:" % nm,
+                                             "async def %s(" % nm)):
+                        line2 = i
+                        break
+        ok, msg = _impl_at(src, line2)
+        impl.append({"kind": "业务逻辑", "file": src, "line": line2, "symbol": sym, "ok": ok, "msg": msg})
+    if mc.get("file"):
+        ok, msg = _impl_at(mc.get("file"), mc.get("line"))
+        impl.append({"kind": "画布节点注册", "file": mc.get("file"), "line": mc.get("line"),
+                     "symbol": mc.get("logic_key") or "", "ok": ok, "msg": msg,
+                     "doc": mc.get("doc") or ""})
+    # ── 输入/输出: 沿用 config_meta.py 的派生口径 (功能 → 所属产品特征 → 能力接口 inputs/outputs)
+    cm = (_config_meta().get("functions") or {}).get(fn_id) or {}
+    cfl = cm.get("fields") or {}
+    ins = [x for x in (cfl.get("inputs") or []) if x]
+    outs = [x for x in (cfl.get("outputs") or []) if x]
+    pf_used = list((cm.get("deps") or {}).get("product_features") or [])
+    # ── 真源没有 I/O 的: 用作者补写种子 (tools/spec/fn_io_seed.json), 标来源, 不冒充真源
+    seed = (_fn_io_seed().get("items") or {}).get(fn_id) or {}
+    io_ref = ("派生(参考): 产品特征能力接口 " + " / ".join(pf_used)) if (ins or outs) else ""
+    io_src = ""
+    if seed and (seed.get("inputs") or seed.get("outputs")):
+        ins = list(seed.get("inputs") or [])
+        outs = list(seed.get("outputs") or [])
+        io_src = "作者整理 · 自该功能 note_work / 模块 desc (tools/spec/fn_io_seed.json)"
+    elif ins or outs:
+        io_src = io_ref
+    desc_auto = f.get("note_work") or f.get("row_name") or ""
+    name = f.get("name") or ""
+    if not name or name == fn_id:
+        name = mname or fn_id
+    return {"fn_id": fn_id, "name": name, "system_id": f.get("system_id") or "",
+            "layer": f.get("layer") or "", "row_name": f.get("row_name") or "",
+            "work": desc_auto, "pain": f.get("note_pain") or "", "state": f.get("note_state") or "",
+            "seed_desc": seed.get("desc") or "", "io_from_seed": bool(seed), "io_ref": io_ref,
+            "module": mname, "impl": impl,
+            "inputs": ins, "outputs": outs, "io_src": io_src,
+            "subsystem": ((R.get("subs") or {}).get(f.get("system_id") or "") or {}).get("name") or f.get("system_id") or "",
+            "n_impl": sum(1 for i in impl if i["ok"])}
+
+
+def _subs_list():
+    """子系统清单 (老倪: 「可以是 1 个功能, 也可以由功能组成子系统」)。"""
+    R = _fn_registry()
+    tid = _active_bind()[0]
+    funcs = _task_funcs(tid)
+    out = []
+    by_name = {(v.get("name") or k): k for k, v in (R.get("subs") or {}).items()}
+    for sub_name in sorted({(f.get("sub") or "") for f in funcs}):
+        mem = [f for f in funcs if (f.get("sub") or "") == sub_name]
+        if not mem:
+            continue
+        sid = by_name.get(sub_name) or sub_name
+        s = (R.get("subs") or {}).get(sid) or {"name": sub_name}
+        out.append({"system_id": sid, "name": s.get("name") or sid, "level": s.get("level") or "",
+                    "role": s.get("role") or "", "kpi": s.get("kpi") or "", "fns": mem, "n": len(mem)})
+    return sorted(out, key=lambda x: (x["system_id"] != "sys0", x["system_id"]))
 
 
 def _mt_funcs(tid=None):
@@ -4657,49 +4847,234 @@ class ConfigCenterPage(QWidget):
         t3.setMinimumHeight(24 * max(3, len(r3)) + 46)
         lay.addWidget(t3)
 
-        # ④ 本任务功能明细
-        head4 = _sec("📋 本任务功能明细 · %d 条" % len(funcs),
-                     "%s —— 点一行看完整配置面; 参数(专用/总) = 该功能的专属参数 / 全部参数" % tid)
+        # ④ 子系统 → 功能 (树) + 功能定义详情
+        #    老倪 2026-10-28: 「功能, 应该有 功能名称, 输入, 输出, 描述, 这些信息, 对应着元任务;
+        #    可以是 1 个功能, 也可以由功能组成子系统。重写功能配置, 每个功能要有 function 这样的逻辑实现」
+        subs4 = _subs_list()
+        head4 = _sec("🏗 子系统 → 功能 · %d 个子系统 / %d 个功能" % (len(subs4), len(funcs)),
+                     "功能四件套 = 名称 · 输入 · 输出 · 描述; 再挂 承载元任务 与 逻辑实现(file:line) —— 点左边看右边")
         lay.addWidget(head4)
-        brow = QHBoxLayout()
-        b_all = _btn("全部 %d" % len(funcs), th)
-        b_on = _btn("仅启用节点 %d" % sum(1 for f in funcs if f["enabled"]), th)
-        b_bad = _btn("缺参数 %d" % sum(1 for f in funcs if not f["complete"]), th)
-        b_own = _btn("仅本任务专用", th)
-        for b in (b_all, b_on, b_bad, b_own):
-            brow.addWidget(b)
-        brow.addStretch()
-        lay.addLayout(brow)
-
-        r4 = []
-        for f in funcs:
-            segs = " · ".join(s.split(" ")[0] for s in (f["segs"] or [])) or "—"
-            r4.append([f["fn"], f["name"], " + ".join(fn_mts.get(f["fn"]) or []) or "⛔ 无", f["layer"] or "—", segs,
-                       "%s/%s" % (f["n_spec"], f["n_par"]),
-                       "✅" if f["complete"] else "⛔ 缺%d" % len(f["missing"]),
-                       f["prio"] or "—",
-                       "⛔ 禁用" if f["disabled"] else ("✅ 启用" if f["enabled"] else "—"),
-                       (f["verify"] or "")[:46]])
-        t4 = _mk_table(["功能ID", "功能名称", "承载元任务", "层", "段", "参数(专用/总)", "完整",
-                        "优先级", "本任务", "验证方法"], r4, th)
-        t4.setWordWrap(False)
+        split = QSplitter(Qt.Horizontal)
+        split.setChildrenCollapsible(False)
+        tree = QTreeWidget()
+        tree.setHeaderLabels(["子系统 / 功能", "功能ID", "层", "实现"])
+        tree.setRootIsDecorated(True)
+        tree.setUniformRowHeights(True)
+        tree.setAlternatingRowColors(True)
+        tree.setStyleSheet("QTreeWidget{background:%s;color:%s;border:1px solid %s;}"
+                           "QTreeWidget::item{height:22px;}"
+                           "QHeaderView::section{background:%s;color:%s;border:0;height:24px;}" %
+                           (th["C_BG2"], th["C_WHITE"], th["C_BORDER"], th["C_CARD"], th["C_GRAY"]))
         try:
-            t4.verticalHeader().setDefaultSectionSize(22)
+            tree.setColumnWidth(0, 322)
+            tree.setColumnWidth(1, 96)
+            tree.setColumnWidth(2, 46)
+            tree.setColumnWidth(3, 40)
         except Exception:                                                       # noqa: BLE001
             pass
-        t4.setMinimumHeight(24 * 12 + 46)
-        self.func_table, self.func_rows = t4, funcs
-        lay.addWidget(t4, 2)
+        _impl_of = {}
+        for _f in funcs:
+            try:
+                _impl_of[_f["fn"]] = _fn_detail(_f["fn"])
+            except Exception:                                                   # noqa: BLE001
+                _impl_of[_f["fn"]] = {"impl": [], "inputs": [], "outputs": [], "io_src": ""}
+        for _s in subs4:
+            top = QTreeWidgetItem(["%s · %s" % (_s["name"], _s["level"]), "%d 个" % _s["n"], "", ""])
+            fnt = top.font(0)
+            fnt.setBold(True)
+            top.setFont(0, fnt)
+            top.setForeground(0, QBrush(QColor(th["C_BLUE"])))
+            top.setData(0, Qt.UserRole, ("sub", _s["system_id"]))
+            tree.addTopLevelItem(top)
+            for _f in _s["fns"]:
+                _d = _impl_of.get(_f["fn"]) or {}
+                _ok = sum(1 for i in _d.get("impl") or [] if i.get("ok"))
+                ch = QTreeWidgetItem([_f["name"], _f["fn"], _f["layer"] or "—",
+                                      ("✅%d" % _ok) if _ok else "⛔"])
+                ch.setData(0, Qt.UserRole, ("fn", _f["fn"]))
+                if not _ok:
+                    ch.setForeground(3, QBrush(QColor(th["C_RED"])))
+                top.addChild(ch)
+        tree.expandAll()
 
-        def _hid(pred):
-            for r, f in enumerate(funcs):
-                t4.setRowHidden(r, not pred(f))
-            t4.setMinimumHeight(24 * (min(12, sum(1 for f in funcs if pred(f))) or 3) + 46)
+        detail = QTextBrowser()
+        detail.setOpenExternalLinks(False)
+        detail.setStyleSheet("QTextBrowser{background:%s;color:%s;border:1px solid %s;padding:2px;}"
+                             % (th["C_BG2"], th["C_WHITE"], th["C_BORDER"]))
+        dcol = QWidget()
+        dlay = QVBoxLayout(dcol)
+        dlay.setContentsMargins(0, 0, 0, 0)
+        dlay.setSpacing(4)
+        drow = QHBoxLayout()
+        b_cp_spec = _btn("📋 复制功能定义", th)
+        b_cp_impl = _btn("📋 复制实现路径", th)
+        drow.addWidget(b_cp_spec)
+        drow.addWidget(b_cp_impl)
+        drow.addStretch()
+        dlab = QLabel("点左侧 子系统 看由哪些功能组成 · 点 功能 看四件套 + 逻辑实现")
+        dlab.setStyleSheet("color:%s;font-size:11px;" % th["C_GRAY"])
+        drow.addWidget(dlab)
+        dlay.addLayout(drow)
+        dlay.addWidget(detail, 1)
 
-        b_all.clicked.connect(lambda: _hid(lambda f: True))
-        b_on.clicked.connect(lambda: _hid(lambda f: bool(f["enabled"])))
-        b_bad.clicked.connect(lambda: _hid(lambda f: not f["complete"]))
-        b_own.clicked.connect(lambda: _hid(lambda f: len(f["tasks"]) <= 1))
+        _cur = {"kind": "fn", "id": funcs[0]["fn"] if funcs else ""}
+        _fnmap = {f["fn"]: f for f in funcs}
+
+        def _fn_text(fid):
+            d = _impl_of.get(fid) or {}
+            f0 = _fnmap.get(fid) or {}
+            L = ["【功能】%s  %s" % (fid, d.get("name") or ""),
+                 "子系统: %s · 层 %s · 段 %s" % (d.get("subsystem") or "—", d.get("layer") or "—",
+                                                " / ".join(f0.get("segs") or []) or "—"),
+                 "", "描述: %s" % (d.get("work") or d.get("row_name") or d.get("seed_desc") or "—"),
+                 "", "输入:"]
+            L += ["  · %s" % x for x in (d.get("inputs") or ["⛔ 未登记"])]
+            L.append("输出:")
+            L += ["  · %s" % x for x in (d.get("outputs") or ["⛔ 未登记"])]
+            L.append("")
+            if d.get("io_src"):
+                L.append("(输入/输出来源: %s)" % d["io_src"])
+            if d.get("io_ref"):
+                L.append("(%s)" % d["io_ref"])
+            L += ["", "承载元任务: %s" % (" + ".join(fn_mts.get(fid) or []) or "⛔ 无"),
+                  "参数: 专用 %s / 总 %s · %s · 优先级 %s" %
+                  (f0.get("n_spec"), f0.get("n_par"),
+                   "✅ 完整" if f0.get("complete") else "⛔ 缺 %s" % "、".join(f0.get("missing") or []),
+                   f0.get("prio") or "—"),
+                  "", "逻辑实现 (function):"]
+            for i in (d.get("impl") or []):
+                L.append("  [%s] %s  %s" % ("✅" if i.get("ok") else "⛔", i.get("kind"), i.get("msg")))
+            if not (d.get("impl") or []):
+                L.append("  ⛔ 未登记实现")
+            L += ["", "验证方法: %s" % (", ".join(f0.get("verify") or []) or "—")]
+            return "\n".join(L)
+
+        def _fn_html(fid):
+            d = _impl_of.get(fid) or {}
+            f0 = _fnmap.get(fid) or {}
+            red, mut, acc = th["C_RED"], th["C_GRAY"], th["C_BLUE"]
+            h = ["<div style='font-size:12px;line-height:1.55'>"]
+            h.append("<div style='font-size:15px;font-weight:700;color:%s'>%s</div>" %
+                     (acc, d.get("name") or fid))
+            h.append("<div style='color:%s;margin-bottom:6px'>%s · 子系统 %s · 层 %s · 段 %s</div>" %
+                     (mut, fid, d.get("subsystem") or "—", d.get("layer") or "—",
+                      " / ".join(f0.get("segs") or []) or "—"))
+            h.append("<b>描述</b><br>%s<br><br>" % (d.get("work") or d.get("seed_desc") or "—"))
+            h.append("<table width='100%%' cellspacing='0' cellpadding='3'><tr>"
+                     "<td width='50%%' valign='top'><b>输入</b><br>%s</td>"
+                     "<td width='50%%' valign='top'><b>输出</b><br>%s</td></tr></table>" %
+                     ("<br>".join("· " + x for x in (d.get("inputs") or ["<span style='color:%s'>⛔ 未登记</span>" % red])),
+                      "<br>".join("· " + x for x in (d.get("outputs") or ["<span style='color:%s'>⛔ 未登记</span>" % red]))))
+            if d.get("io_src"):
+                h.append("<div style='color:%s;font-size:11px'>输入/输出来源: %s</div>" % (mut, d["io_src"]))
+            if d.get("io_ref"):
+                h.append("<div style='color:%s;font-size:11px'>%s</div>" % (mut, d["io_ref"]))
+            h.append("<br><b>承载元任务</b>: %s" % (" + ".join(fn_mts.get(fid) or []) or
+                                                "<span style='color:%s'>⛔ 无</span>" % red))
+            h.append("<br><b>参数</b>: 专用 %s / 总 %s · %s · 优先级 %s" %
+                     (f0.get("n_spec"), f0.get("n_par"),
+                      "✅ 完整" if f0.get("complete") else
+                      "<span style='color:%s'>⛔ 缺 %s</span>" % (red, "、".join(f0.get("missing") or [])),
+                      f0.get("prio") or "—"))
+            h.append("<br><br><b>逻辑实现 (function)</b><br>")
+            if d.get("impl"):
+                for i in d["impl"]:
+                    c = acc if i.get("ok") else red
+                    h.append("<div style='margin:2px 0'><span style='color:%s'>%s</span> %s — "
+                             "<code>%s</code></div>" % (c, "✅" if i.get("ok") else "⛔",
+                                                        i.get("kind"), i.get("msg")))
+            else:
+                h.append("<span style='color:%s'>⛔ 未登记实现</span>" % red)
+            h.append("<br><b>验证方法</b><br>%s" % ("<br>".join("· " + x for x in (f0.get("verify") or [])) or "—"))
+            h.append("</div>")
+            return "".join(h)
+
+        def _sub_html(sid):
+            _s = next((x for x in subs4 if x["system_id"] == sid), None)
+            if not _s:
+                return ""
+            red, mut, acc = th["C_RED"], th["C_GRAY"], th["C_BLUE"]
+            ins, outs = [], []
+            for _f in _s["fns"]:
+                _d = _impl_of.get(_f["fn"]) or {}
+                for x in (_d.get("inputs") or []):
+                    if x not in ins:
+                        ins.append(x)
+                for x in (_d.get("outputs") or []):
+                    if x not in outs:
+                        outs.append(x)
+            h = ["<div style='font-size:12px;line-height:1.55'>"]
+            h.append("<div style='font-size:15px;font-weight:700;color:%s'>%s</div>" % (acc, _s["name"]))
+            h.append("<div style='color:%s;margin-bottom:6px'>%s · %s · 由 %d 个功能组成</div>" %
+                     (mut, _s["system_id"], _s["level"], _s["n"]))
+            h.append("<b>角色</b><br>%s<br><br><b>KPI</b><br><code>%s</code><br><br>" %
+                     (_s.get("role") or "—", (_s.get("kpi") or "—")[:400]))
+            h.append("<b>成员功能</b><br>%s<br><br>" %
+                     "<br>".join("· %s %s" % (f["fn"], f["name"]) for f in _s["fns"]))
+            h.append("<b>子系统输入</b> (成员功能输入并集)<br>%s<br><br>" %
+                     ("<br>".join("· " + x for x in ins[:14]) or "⛔ 未登记"))
+            h.append("<b>子系统输出</b> (成员功能输出并集)<br>%s" %
+                     ("<br>".join("· " + x for x in outs[:14]) or "⛔ 未登记"))
+            h.append("</div>")
+            return "".join(h)
+
+        def _show():
+            kind, oid = _cur["kind"], _cur["id"]
+            if kind == "sub":
+                detail.setHtml(_sub_html(oid))
+            else:
+                detail.setHtml(_fn_html(oid))
+
+        def _on_sel():
+            it = tree.currentItem()
+            if it is None:
+                return
+            dat = it.data(0, Qt.UserRole)
+            if dat:
+                _cur["kind"], _cur["id"] = dat[0], dat[1]
+                _show()
+
+        def _copy_spec():
+            if _cur["kind"] == "func" or _cur["kind"] == "fn":
+                QApplication.clipboard().setText(_fn_text(_cur["id"]))
+                dlab.setText("已复制 %s 的功能定义 (名称/输入/输出/描述/元任务/实现)" % _cur["id"])
+            else:
+                _s = next((x for x in subs4 if x["system_id"] == _cur["id"]), None)
+                if _s:
+                    QApplication.clipboard().setText("【子系统】%s · %s · %d 个功能\n%s\n%s" %
+                                                     (_s["name"], _s["level"], _s["n"], _s.get("role") or "",
+                                                      "\n".join("%s %s" % (f["fn"], f["name"]) for f in _s["fns"])))
+                    dlab.setText("已复制子系统 %s 的组成" % _s["name"])
+
+        def _copy_impl():
+            fid = _cur["id"] if _cur["kind"] == "fn" else ""
+            d = _impl_of.get(fid) or {}
+            paths = [i.get("msg") for i in (d.get("impl") or []) if i.get("ok")]
+            if paths:
+                QApplication.clipboard().setText("\n".join(paths))
+                dlab.setText("已复制 %d 条实现路径 (file:line)" % len(paths))
+            else:
+                dlab.setText("该条目没有可复制的实现路径")
+
+        tree.currentItemChanged.connect(lambda *_: _on_sel())
+        b_cp_spec.clicked.connect(_copy_spec)
+        b_cp_impl.clicked.connect(_copy_impl)
+        tree.setMinimumWidth(430)
+        detail.setMinimumWidth(360)
+        split.addWidget(tree)
+        split.addWidget(dcol)
+        try:
+            split.setSizes([470, 900])
+        except Exception:                                                       # noqa: BLE001
+            pass
+        split.setMinimumHeight(420)
+        self.fn_tree, self.fn_detail = tree, detail
+        self.func_rows = funcs
+        lay.addWidget(split, 3)
+        if funcs:
+            tree.setCurrentItem(tree.topLevelItem(0).child(0) if tree.topLevelItem(0).childCount() else
+                                tree.topLevelItem(0))
+        _show()
 
         # ⑤ 参数明细 (特征库 · 功能域) —— 保留原表与选中定位口径 (点参数名直接定位到行)
         cs = [c for c in d.get("CHARACTERISTIC", []) if c.get("domain") == "功能配置"]

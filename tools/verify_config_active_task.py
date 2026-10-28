@@ -25,6 +25,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, os.path.join(ROOT, "tools", "gui"))
 
+from PyQt5.QtCore import Qt   # noqa: E402
 from PyQt5.QtWidgets import QApplication, QTableWidget, QLabel, QPushButton   # noqa: E402
 app = QApplication.instance() or QApplication([])
 import veh6_config_page as V                                    # noqa: E402
@@ -124,38 +125,65 @@ def main():
         marks = [t_seg.item(r, 1).text() for r in range(t_seg.rowCount())]
         chk("③ 4 启用 / 4 本任务不用", marks.count("✅ 启用") == 4 and marks.count("⛔ 本任务不用") == 4,
             marks)
-    # ④ 功能明细表
-    t_fn = getattr(p, "func_table", None)
-    chk("④ 功能明细表 33 行", t_fn is not None and t_fn.rowCount() == 33,
-        t_fn.rowCount() if t_fn else "无")
-    if t_fn:
-        ids = [t_fn.item(r, 0).text() for r in range(t_fn.rowCount())]
-        want = [f["fn"] for f in funcs]
-        chk("④ 33 行与真源功能清单逐条一致", ids == want)
-        cm = _hidx(t_fn, "承载元任务")
-        chk("④ 功能明细有「承载元任务」列(反向连接)", cm >= 0,
-            [t_fn.horizontalHeaderItem(c).text() for c in range(t_fn.columnCount())])
-        if cm >= 0:
-            col = [t_fn.item(r, cm).text() for r in range(t_fn.rowCount())]
-            chk("④ 33 个功能每个都挂到元任务(无 ⛔ 无)", all(x and "⛔" not in x for x in col),
-                "样例: " + " · ".join(col[:3]))
-        # ⑤ 过滤
-        bad = sum(1 for f in funcs if not f["complete"])
-        t_fn2 = t_fn
-        # 直接调按钮: 找「缺参数」按钮
-        btns = {b.text(): b for b in wf.findChildren(QPushButton)}
-        b_bad = next((k for k in btns if k.startswith("缺参数")), None)
-        if b_bad:
-            btns[b_bad].click()
+    # ④ 子系统 → 功能 树 + 功能定义详情 (老倪: 功能要有 名称/输入/输出/描述 + 逻辑实现 function)
+    tr = getattr(p, "fn_tree", None)
+    dtail = getattr(p, "fn_detail", None)
+    chk("④ 有 子系统→功能 树", tr is not None and tr.topLevelItemCount() >= 3,
+        "子系统 %d 个" % (tr.topLevelItemCount() if tr else 0))
+    chk("④ 有 功能定义详情面板", dtail is not None, type(dtail).__name__ if dtail else "无")
+    if tr is not None:
+        leaves = []
+        for i in range(tr.topLevelItemCount()):
+            top = tr.topLevelItem(i)
+            for j in range(top.childCount()):
+                leaves.append(top.child(j).data(0, Qt.UserRole))
+        ids = [d[1] for d in leaves if d and d[0] == "fn"]
+        chk("④ 树叶=33 个功能且与真源一致(按子系统分组, 序不同)",
+            sorted(ids) == sorted(f["fn"] for f in funcs) and len(ids) == len(set(ids)),
+            "%d 个 / 首个 %s" % (len(ids), ids[:2]))
+        if dtail is not None and ids:
+            # 选第一条功能看四件套
+            tr.setCurrentItem(tr.topLevelItem(0).child(0))
             app.processEvents()
-            chk("⑤ 「缺参数」过滤生效", vis(t_fn2) == bad, "可见 %d · 真源缺参数 %d" % (vis(t_fn2), bad))
-        else:
-            chk("⑤ 有「缺参数」过滤按钮", False, list(btns))
-        b_all = next((k for k in btns if k.startswith("全部")), None)
-        if b_all:
-            btns[b_all].click()
+            tx = dtail.toPlainText()
+            need = {"名称": bool(tx.strip()), "输入": "输入" in tx, "输出": "输出" in tx,
+                    "描述": "描述" in tx, "承载元任务": "承载元任务" in tx,
+                    "逻辑实现": "逻辑实现" in tx, "file:line": ".py:" in tx}
+            chk("④ 详情四件套 + 元任务 + 逻辑实现 全在", all(need.values()),
+                {k: v for k, v in need.items() if not v} or "全有")
+            # 结构性地量: 33 个功能 实现/I/O 覆盖 (真源现算)
+            n_impl = n_io = 0
+            for fid in ids:
+                d = V._fn_detail(fid)
+                if any(i.get("ok") for i in d.get("impl") or []):
+                    n_impl += 1
+                if d.get("inputs") and d.get("outputs"):
+                    n_io += 1
+            chk("④ 每个功能都有 输入+输出 (%d/33)" % n_io, n_io == 33, "%d/33" % n_io)
+            chk("④ 每条实现都指向真实 file:line (≥ %d/33)" % n_impl, n_impl == 33,
+                "%d/33 有 ✅ 可定位实现" % n_impl)
+            # 复制按钮 (老倪: 显示内容要可复制)
+            bt = {b.text(): b for b in wf.findChildren(QPushButton)}
+            k1 = next((k for k in bt if "复制功能定义" in k), None)
+            k2 = next((k for k in bt if "复制实现路径" in k), None)
+            chk("④ 有「复制功能定义 / 复制实现路径」按钮", bool(k1 and k2), [k for k in bt if "复制" in k])
+            if k1:
+                bt[k1].click()
+                app.processEvents()
+                ct = QApplication.clipboard().text()
+                chk("④ 复制功能定义 真进了剪贴板", ("输入" in ct and "输出" in ct and "逻辑实现" in ct),
+                    ct[:60].replace("\n", " | "))
+            if k2:
+                bt[k2].click()
+                app.processEvents()
+                ct2 = QApplication.clipboard().text()
+                chk("④ 复制实现路径 是 file:line", ".py:" in ct2, ct2[:80])
+            # 选子系统 → 详情讲组成
+            tr.setCurrentItem(tr.topLevelItem(0))
             app.processEvents()
-            chk("⑤ 「全部」恢复 33 行", vis(t_fn2) == 33, vis(t_fn2))
+            txs = dtail.toPlainText()
+            chk("④ 子系统详情讲「由 N 个功能组成」", ("由" in txs and "个功能组成" in txs and "成员功能" in txs),
+                txs[:70].replace("\n", " | "))
 
     # ── 性能配置页
     wp, tp = tab_page(p, "性能配置")
@@ -225,8 +253,11 @@ def main():
         wf2, _t = tab_page(p2, "功能配置")
         b2 = next((t for t in labels(wf2) if "当前活跃任务" in t), "")
         chk("⑧ 重建页后横幅变成 TASK-06-TRAY", "TASK-06-TRAY" in b2, (b2 or "")[:80].replace("\n", " "))
-        chk("⑧ 功能明细也跟着换条数", p2.func_table.rowCount() == len(fn6),
-            "%d vs %d" % (p2.func_table.rowCount(), len(fn6)))
+        _leaves = 0
+        if getattr(p2, "fn_tree", None) is not None:
+            for _i in range(p2.fn_tree.topLevelItemCount()):
+                _leaves += p2.fn_tree.topLevelItem(_i).childCount()
+        chk("⑧ 功能树也跟着换条数", _leaves == len(fn6), "%d vs %d" % (_leaves, len(fn6)))
     finally:
         shutil.move(bak, bk)
     chk("⑧ 真源已还原 TASK-07-AOI", V._active_bind()[0] == "TASK-07-AOI", V._active_bind()[0])
