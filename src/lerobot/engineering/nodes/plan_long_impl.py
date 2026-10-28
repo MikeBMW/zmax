@@ -37,6 +37,53 @@ _S = {"segs": None, "cum": None, "i": 0, "t0": None, "round": 0,
 LAST_STATUS = ""
 
 
+def _self_plan():
+    """🆕 段表由 **本节点自己算** (L2 Plan 节点真执行)。磁盘 sim_insert.json 只作对拍基准与回退。
+
+    · 自算成功且与磁盘表逐段一致 (段数/kind/t/端点 ≤0.01mm) ⇒ 用自算的 (真执行);
+    · 自算失败 / 不一致 ⇒ **回退**用磁盘表, 并把差异写进 LAST_STATUS (老实说回退过);
+    · 两边都拿不到 ⇒ (None, None) 让调用方拒跑。
+    """
+    global LAST_STATUS
+    disk = None
+    if os.path.isfile(_PLAN):
+        try:
+            disk = json.load(open(_PLAN, encoding="utf-8"))
+        except Exception as e:                                               # noqa: BLE001
+            LAST_STATUS = "磁盘段表读不出: %s: %s" % (type(e).__name__, e)
+    if os.environ.get("ZMAX_PLAN_SELF", "1") != "1":
+        return disk, "disk(自算关闭)"
+    try:
+        from . import cycle_plan as _CP                                       # noqa: PLC0415
+        out = _CP.build()
+    except Exception as e:                                                    # noqa: BLE001
+        LAST_STATUS = "节点自算失败 (%s: %s) ⇒ 回退磁盘段表" % (type(e).__name__, e)
+        return disk, "disk(自算失败)"
+    if disk is None:
+        return out, "self"
+    if disk.get("cfg_sha") != out.get("cfg_sha"):
+        LAST_STATUS = ("段表 = 节点自算 %d 段 (磁盘表来自旧配置 %s ≠ 当前 %s ⇒ 以自算为准)"
+                       % (len(out.get("plan") or []), disk.get("cfg_sha"), out.get("cfg_sha")))
+        return out, "self(配置已变)"
+    a, b = out.get("plan") or [], disk.get("plan") or []
+    if len(a) != len(b):
+        LAST_STATUS = "自算 %d 段 ≠ 磁盘 %d 段 ⇒ 回退磁盘段表" % (len(a), len(b))
+        return disk, "disk(段数不一致)"
+    worst, bad_i = 0.0, -1
+    for i, (x, y) in enumerate(zip(a, b)):
+        if (x.get("kind"), round(float(x.get("t") or 0), 4)) != (y.get("kind"), round(float(y.get("t") or 0), 4)):
+            bad_i = i
+            break
+        for j in range(min(len(x.get("a") or []), len(y.get("a") or []))):
+            worst = max(worst, abs(float(x["a"][j]) - float(y["a"][j])), abs(float(x["b"][j]) - float(y["b"][j])))
+    if bad_i >= 0 or worst > 0.01:
+        LAST_STATUS = ("自算与磁盘段表不一致 (第 %d 段 kind/t 异 · 端点最大差 %.2fmm) ⇒ 回退磁盘段表"
+                       % (bad_i, worst))
+        return disk, "disk(不一致)"
+    LAST_STATUS = "段表 = 节点自算 %d 段 (与磁盘表逐段一致 · 端点差 ≤%.3fmm)" % (len(a), worst)
+    return out, "self"
+
+
 def _load():
     """元任务组合 + 段几何 → 逐段带元任务归属的段序列 (双向校验)"""
     global LAST_STATUS
@@ -46,11 +93,30 @@ def _load():
     except OSError as e:
         LAST_STATUS = "配置/段表不可读 (%s)" % e
         return None, None
-    if _S["segs"] is not None and (m1, m2) == _S["mtime"]:
+    try:
+        _mcp0 = os.path.getmtime(os.path.join(_ROOT, "config", "points", "cell_points.json"))
+    except OSError:
+        _mcp0 = 0.0
+    if _S["segs"] is not None and (m1, m2, _mcp0) == _S["mtime"]:
         return _S["segs"], _S["cum"]
 
+    # 🔴 新鲜度闸: 只有**回退用磁盘表**时才需要 (自算每次 build() 直接吃最新配置, 不需要闸)
     meta = json.load(open(_META, encoding="utf-8"))
-    seg_doc = json.load(open(_PLAN, encoding="utf-8"))
+    seg_doc, _src = _self_plan()
+    if seg_doc is None:
+        LAST_STATUS = LAST_STATUS or "段表取不到 (自算+磁盘都失败)"
+        return None, None
+    _S["plan_src"] = _src
+    if str(_src).startswith("disk"):
+        _cp = os.path.join(_ROOT, "config", "points", "cell_points.json")
+        try:
+            if os.path.getmtime(_cp) > m2 + 1.0:
+                LAST_STATUS = ("回退用磁盘段表, 但点位配置比它新 (%s) ⇒ 拒跑, 先跑 "
+                               "./gui-venv311/bin/python tools/sim_insert_plan.py" % os.path.basename(_cp))
+                _S["verified"] = False
+                return None, None
+        except OSError:
+            pass
     plan = seg_doc.get("plan") or []
     rounds = (meta.get("long_horizon") or {}).get("rounds") or []
     mt_lib = {m["id"]: m for m in (meta.get("meta_tasks") or [])}
@@ -102,7 +168,11 @@ def _load():
         macc += float(c.get("t_work") or tact)
         mod_cum.append(macc)
 
-    _S.update(segs=segs, cum=cum, i=0, t0=None, mtime=(m1, m2), tact=tact,
+    try:
+        _mcp = os.path.getmtime(os.path.join(_ROOT, "config", "points", "cell_points.json"))
+    except OSError:
+        _mcp = 0.0
+    _S.update(segs=segs, cum=cum, i=0, t0=None, mtime=(m1, m2, _mcp), tact=tact,
               uph_target=int(seg_doc.get("uph_target") or 300), n_mods=len(cyc),
               mod_cum=mod_cum, task_id=meta.get("task_id") or "TASK-07-AOI",
               verified=bool(meta.get("verified")), n_mt=mt_i)

@@ -38,15 +38,45 @@ def resolve_open_target(node=None, specs=None, root=None):
     node: 画布节点 dict (GUI 右键传进来的那个) 或 NodeSpec 或节点名/ID 字符串。
     """
     spec = None
+    _n_params = {}
+    if isinstance(node, dict):
+        _n_params = node.get("params") or {}
     if isinstance(node, spec_mod.NodeSpec):
         spec = node
     elif isinstance(node, dict):
         candidates = specs if specs is not None else spec_mod.parse_canvas()[0]
         spec = spec_mod.spec_by_name_or_id(candidates, node.get("id") or node.get("name") or "")
+        if spec is None and node.get("name"):
+            spec = spec_mod.spec_by_name_or_id(candidates, node.get("name") or "")
     elif isinstance(node, str):
         candidates = specs if specs is not None else spec_mod.parse_canvas()[0]
         spec = spec_mod.spec_by_name_or_id(candidates, node)
+
+    root = root or os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                "..", "..", ".."))
+
+    def _impl_from_dict():
+        """🔴 2026-10-28 老倪「plan 节点还是打不开 VSCode 的源代码」:
+
+        GUI 里右键的那个节点 dict **自带** params.source / params.source_symbol
+        (画布上就有), 但它的 id 是 GUI 现场生成的 (n1793...acw), 而 resolve 去
+        parse_canvas() 读的是盘上的画布 —— 两边的 id 不一定一致 ⇒ 查不到 spec 就弹
+        "未配置源码映射"。**节点自己声明的 source 最高优先**, 先认它。
+        """
+        _s = str(_n_params.get("source") or "")
+        if not _s:
+            return None, None
+        _p = _s if os.path.isabs(_s) else os.path.join(root, _s)
+        if not os.path.isfile(_p):
+            return None, None
+        _y = str(_n_params.get("source_symbol") or "")
+        return os.path.abspath(_p), (_line_of(_p, _y) if _y else None)
+
     if spec is None:
+        _ip, _il = _impl_from_dict()
+        if _ip:
+            return {"path": _ip, "line": _il or 1, "kind": "impl-only (节点自带 source)",
+                    "impl_path": _ip, "impl_line": _il}
         return {"path": None, "line": None, "kind": "", "impl_path": None, "impl_line": None}
 
     mpath = node_module_path(spec)
@@ -59,13 +89,29 @@ def resolve_open_target(node=None, specs=None, root=None):
     root = root or os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                                 "..", "..", ".."))
     impl_path, impl_line = None, None
-    if spec.source:
+    _ip0, _il0 = _impl_from_dict()          # 节点自带的 params.source 优先 (GUI 现场节点带它)
+    if _ip0:
+        impl_path, impl_line = _ip0, _il0
+    elif spec.source:
         p = spec.source if os.path.isabs(spec.source) else os.path.join(root, spec.source)
         if os.path.isfile(p):
             impl_path = os.path.abspath(p)
             impl_line = None
             if spec.source_symbol:
                 impl_line = _line_of(impl_path, spec.source_symbol)
+    if not impl_path and getattr(spec, "impl_key", ""):
+        # 🔴 2026-10-28 老倪「plan 节点右键打不开源代码」第二层兜底:
+        #   画布 params 没写 source、中间件模块也没声明 SOURCE 时, 用注册表里登记的
+        #   实现函数真实位置 (registry 的 file/line) —— 所有有 impl_key 的节点都能打开真源码。
+        try:
+            from lerobot.engineering import registry as _reg2               # noqa: PLC0415
+            _info = _reg2.get(spec.impl_key) or {}
+            _f = _info.get("file") or ""
+            if _f and os.path.isfile(_f):
+                impl_path = os.path.abspath(_f)
+                impl_line = int(_info.get("line") or 0) or None
+        except Exception:                                                   # noqa: BLE001
+            pass
     if os.path.isfile(mpath):
         return {"path": mpath, "line": _line_of(mpath, "PORTS_IN"), "kind": "middleware-node",
                 "impl_path": impl_path, "impl_line": impl_line}

@@ -1600,11 +1600,145 @@ def _yolo_capture(log, aligner):
     aligner.env._freeze_rand_vec = True
     img = (np.zeros((480, 480, 3), dtype=np.uint8) if (__import__('sys').platform == 'darwin' and __import__('os').environ.get('SS_MAC_RENDER') != '1') else aligner.env.render())
     obs39 = np.asarray(aligner.env._get_obs(), dtype=np.float64).ravel()
-    det3d = aligner.detect_3d(img)
+    # 🆕 2026-10-28: 用 detect_3d_meta 拿取证元数据 (frame / gaps) —— 发布观测点要靠它判"这帧够不够格当真值"
+    try:
+        det3d, _meta = aligner.detect_3d_meta(img)
+    except AttributeError:                                                   # 老版对齐器无 meta
+        det3d, _meta = aligner.detect_3d(img), {"frame": "world", "gaps": ["对齐器无 detect_3d_meta"]}
     det2d = _yolo_detect2d(aligner, img)   # 真实 conf/框 (detect_3d 不带 conf)
     _YOLO_CACHE.update({"det3d": det3d, "det2d": det2d, "obs39": obs39, "img": img,
-                        "img_src": "sim"})   # 仿真渲染帧 (非臂上相机 ⇒ 掩膜3D 如实拒答)
+                        "meta": _meta, "img_src": "sim"})   # 仿真渲染帧 (非臂上相机 ⇒ 掩膜3D 如实拒答)
     return det3d, obs39, img
+
+def _det2d_and_3d(img_bgr, meta, log=None):
+    """YOLO(真机在役权重) → 2D 框/conf; 标定齐了再做 3D (射线∩台面)。缺哪项就往 meta['gaps'] 记。"""
+    import json as _json
+    gaps = meta.setdefault("gaps", [])
+    w = os.path.join(_REPO_ROOT, "models", "yolo_peg_live.pt")
+    if not os.path.isfile(w):
+        gaps.append("真机权重缺失 models/yolo_peg_live.pt")
+        return {}, {}
+    from ultralytics import YOLO                                                  # noqa: PLC0415
+    res = YOLO(w).predict(img_bgr, conf=float(os.environ.get("SS_YOLO_CONF", "0.4")), verbose=False)[0]
+    det2d = {}
+    for b in getattr(res, "boxes", []):
+        try:
+            cls = res.names[int(b.cls)]
+        except Exception:                                                        # noqa: BLE001
+            continue
+        x1, y1, x2, y2 = [float(v) for v in b.xyxy[0].tolist()]
+        det2d[cls] = {"box": [x1, y1, x2, y2], "conf": float(b.conf),
+                      "cx": (x1 + x2) / 2.0, "cy": (y1 + y2) / 2.0}
+    if not det2d:
+        meta.setdefault("notes", []).append("本帧 0 检出")
+    calib_p = os.path.join(_REPO_ROOT, "config", "calib", "zmax_calib.json")
+    calib = _json.load(open(calib_p, encoding="utf-8")) if os.path.isfile(calib_p) else {}
+    K = (calib.get("camera") or {}).get("K") or []
+    T = (calib.get("T_base_cam") or {}).get("value")
+    pz = (calib.get("plane_z") or {}).get("value")
+    if not K:
+        gaps.append("无相机内参 K")
+    if not T:
+        gaps.append("无外参 T_base_cam(手眼未标定)")
+    if not pz:
+        gaps.append("无 plane_z(台面高度未标定)")
+    det3d = {}
+    if not gaps and det2d:
+        from . import vision_points as _vp                                      # noqa: PLC0415
+        for cls, d2 in det2d.items():
+            try:
+                det3d[cls] = [v / 1000.0 for v in _vp.ray_plane_3d(d2["cx"], d2["cy"], K, T, float(pz))]
+            except Exception as e:                                              # noqa: BLE001
+                gaps.append("%s 反投影失败: %s" % (cls, e))
+    return det3d, det2d
+
+
+def _yolo_capture_real(log=None):
+    """真机源: ①`ZMAX_L2_VIDEO=x.mp4` 逐帧真读视频 ②否则取 zmax_data/ss_live/cam_*.png 最新帧。
+
+    两条路都用**真机在役权重** models/yolo_peg_live.pt; 3D 需 K + T_base_cam + plane_z,
+    缺就只记 gaps 不造点。视频源按调用次数推进帧号 ⇒ 节点每次被调度就是新一帧 (真正读视频)。
+    """
+    import time as _time
+    gaps, notes = [], []
+    meta = {"frame": "base_link", "K_src": "config/calib camera.K", "ext_src": "config/calib T_base_cam",
+            "depth_src": "plane_z 射线求交", "gaps": gaps, "notes": notes, "cam": "真机相机帧"}
+    _vid = os.environ.get("ZMAX_L2_VIDEO") or ""
+    if _vid:
+        import cv2                                                               # noqa: PLC0415
+        if not os.path.isfile(_vid):
+            gaps.append("视频不存在: %s" % _vid)
+            return {}, {}, meta
+        cap = _YOLO_CACHE.get("_cap")
+        if cap is None or _YOLO_CACHE.get("_cap_path") != _vid:
+            cap = cv2.VideoCapture(_vid)
+            _YOLO_CACHE.update({"_cap": cap, "_cap_path": _vid, "_cap_i": 0})
+        ok, img = cap.read()
+        if not ok:                                                              # 播完回卷
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            ok, img = cap.read()
+            _YOLO_CACHE["_cap_i"] = 0
+        _YOLO_CACHE["_cap_i"] = int(_YOLO_CACHE.get("_cap_i") or 0) + 1
+        if not ok or img is None:
+            gaps.append("视频读帧失败: %s" % _vid)
+            return {}, {}, meta
+        fps = float(cap.get(cv2.CAP_PROP_FPS) or 0) or 30.0
+        meta.update({"cam": "视频 %s" % os.path.basename(_vid), "video": _vid,
+                     "frame_i": _YOLO_CACHE["_cap_i"], "video_fps": round(fps, 1)})
+        det3d, det2d = _det2d_and_3d(img, meta, log)
+        # 扫帧找目标: 视频里目标不是每帧都在 (节点被调度一次 = 最多扫 SCAN 帧)
+        _scan = int(os.environ.get("ZMAX_L2_VIDEO_SCAN", "24"))
+        _k = 0
+        while not det2d and _k < _scan:
+            ok, img = cap.read()
+            if not ok:
+                break
+            _k += 1
+            _YOLO_CACHE["_cap_i"] = int(_YOLO_CACHE.get("_cap_i") or 0) + 1
+            gaps[:] = [g for g in gaps if "反投影失败" in g or "K" in g or "外参" in g or "plane_z" in g]
+            meta["gaps"] = gaps
+            det3d, det2d = _det2d_and_3d(img, meta, log)
+        if _k:
+            meta["scan_frames"] = _k
+            meta["frame_i"] = _YOLO_CACHE["_cap_i"]
+        if log:
+            log("🎯 真机源(视频): %s 第 %d 帧 %.0ffps · 检出 %d 类 · 3D %d 点%s"
+                % (os.path.basename(_vid), meta["frame_i"], fps, len(det2d or {}), len(det3d or {}),
+                   (" · gaps=%s" % gaps) if gaps else ""))
+        return det3d, det2d, meta
+
+    live = os.path.join(_REPO_ROOT, "zmax_data", "ss_live")
+    fresh_s = float(os.environ.get("SS_IMG_FRESH_S", "5.0"))
+    cands = ["cam_rs.png", "cam_fp.png", "cam_latest.png", "srv_cam.png", "srv_cam.jpg", "cam_local.png"]
+    best, best_age = None, None
+    for c in cands:
+        pth = os.path.join(live, c)
+        if os.path.isfile(pth):
+            age = _time.time() - os.path.getmtime(pth)
+            if best is None or age < best_age:
+                best, best_age = pth, age
+    if best is None:
+        gaps.append("无真机帧文件")
+        return {}, {}, meta
+    if best_age > fresh_s:
+        gaps.append("真机帧超龄 %.1fs > %.0fs (%s)" % (best_age, fresh_s, os.path.basename(best)))
+    try:
+        import cv2                                                              # noqa: PLC0415
+        img = cv2.imread(best, cv2.IMREAD_COLOR)          # BGR (ultralytics 同口径)
+        if img is None:
+            gaps.append("帧读不出 (%s)" % os.path.basename(best))
+            return {}, {}, meta
+        meta.update({"frame_age_s": round(best_age, 2), "img": os.path.basename(best)})
+        det3d, det2d = _det2d_and_3d(img, meta, log)
+        if log:
+            log("🎯 真机源: 帧 %s (%.1fs) · 检出 %d 类 · 3D %d 点%s"
+                % (os.path.basename(best), best_age, len(det2d or {}), len(det3d or {}),
+                   (" · gaps=%s" % gaps) if gaps else ""))
+        return det3d, det2d, meta
+    except Exception as e:                                                       # noqa: BLE001
+        gaps.append("真机感知异常: %s: %s" % (type(e).__name__, e))
+        return {}, {}, meta
+
 
 def node_yolo_3d(ctx):
     """🎯 YOLO 3D — 真实执行: metaworld 渲染帧 → YOLO 检测 → 3D 反投影
@@ -1859,31 +1993,15 @@ def node_yolo_align(ctx):
         return False
 
 def node_yolo_tactile(ctx):
-    """📍 Marker 触觉跟踪 — 真实执行: gen_tactile.py synth_tactile 从 39D 合成 4D (夹持/接触/方向)
-    🐛 2026-09-01 真实化: 原只打日志, gen_tactile.py 断点永不命中"""
-    log = ctx["log"]
-    try:
-        import numpy as np
-        obs39 = _SS_STATE.get("obs39")
-        if obs39 is None:
-            obs39, _ = _ss_env_obs(log)
-            _SS_STATE["obs39"] = obs39
-        tac = np.asarray(_ss_tactile_mod().synth_tactile(obs39.reshape(1, 39))).reshape(4)
-        _SS_STATE["tactile4"] = tac
-        if log:
-            log(f"📍 Marker 触觉 (真实): grasp={tac[0]:.3f} contact={tac[1]:.3f} "
-                f"dir=({tac[2]:.2f},{tac[3]:.2f}) (gen_tactile.py)")
-        return True
-    except Exception as e:
-        if log:
-            log(f"⚠️ 触觉合成真实执行失败: {e}")
-        return False
+    """📍 Marker 触觉跟踪 — 真实执行: gen_tactile.py synth_tactile 从 39D 合成 4D (夹持/接触/方向) —— 薄壳: 真实现已迁到 nodes/tactile_impl.py::run (2026-10-28 执行链外迁)"""
+    from .tactile_impl import run as _run
+    return _run(ctx)
 
 _reg("yolo_3d",     ["YOLO 3D"], "🎯 YOLO 3D — 检测销钉/插孔/末端 → 2D→3D → 39D state (源码 yolo_3d/)", node_yolo_3d)
 
 _reg("yolo_align",  ["2D→3D"], "📐 2D→3D 解算 — 像素→3D 坐标 (源码 yolo_3d/yolo_state_aligner.py)", node_yolo_align)
 
-_reg("yolo_tactile", ["Marker 触觉", "触觉感知"], "📍 Marker 触觉跟踪 — 4D 触觉信号 (源码 yolo_3d/gen_tactile.py)", node_yolo_tactile)
+_reg("yolo_tactile", ["Marker 触觉", "触觉感知"], "📍 Marker 触觉跟踪 — 4D 触觉信号 (源码 yolo_3d/gen_tactile.py); 节点实现 nodes/tactile_impl.py", node_yolo_tactile)
 
 # ── 📦 Z700 数据源 / 适配 / obs (2026-08-12 老倪: 每个节点都有代码) ──
 def node_metaworld_peg(ctx):
@@ -2562,115 +2680,19 @@ def node_ss_ff_attrib(ctx):
         return False
 
 def node_ss_dyn(ctx):
-    """动力学预测-校正 — 📈先验动力学预测器(PriorDynamicsPredictor) / 🧪状态校正器(state_correction)"""
-    log = ctx.get("log")
-    try:
-        import numpy as np
-        name = ctx.get("name", "")
-        obs43 = _ss_ensure_obs43(log)
-        act4 = np.concatenate([_SS_STATE.get("u_prev", np.zeros(3)), [0.0]])
-        if "校正" in name:
-            cog = _ss_import("cognition")
-            prior = _SS_STATE.get("prior")
-            if prior is None:
-                dyn = _ss_import("dynamics")
-                lat = _SS_STATE.get("latent", obs43[:4])
-                prior = dyn.PriorDynamicsPredictor(A=1.0, B=0.02).predict(np.asarray(lat, dtype=float), act4)
-                _SS_STATE["prior"] = np.asarray(prior, dtype=float)
-            obs39 = _SS_STATE.get("obs39")
-            if obs39 is None:
-                obs39, _ = _ss_env_obs(log)
-            tac = np.asarray(_ss_tactile_mod().synth_tactile(obs39.reshape(1, 39))).reshape(4)
-            z_k = np.concatenate([obs39[0:3], [tac[1]]])
-            corrected, residual = cog.state_correction(np.asarray(prior, dtype=float), z_k, K=0.5)
-            r = float(np.linalg.norm(residual))
-            cp = float(cog.contact_probability(r, gain=8.0))
-            _SS_STATE.update({"residual": np.asarray(residual, dtype=float), "contact_p": cp,
-                              "corrected": np.asarray(corrected, dtype=float)})
-            if log:
-                log(f"🧪 状态校正器 (真实): state_correction(prior,z_k) → residual={np.round(residual,4)} · "
-                    f"接触概率={cp:.3f} (cognition.py)")
-            return True
-        dyn = _ss_import("dynamics")
-        lat = _SS_STATE.get("latent", obs43[:4])
-        prior = dyn.PriorDynamicsPredictor(A=1.0, B=0.02).predict(np.asarray(lat, dtype=float), act4)
-        _SS_STATE["prior"] = np.asarray(prior, dtype=float)
-        if log:
-            log(f"📈 先验动力学预测器 (真实): predict(latent,act) → next_obs={np.round(prior,4)} (dynamics.py)")
-        return True
-    except Exception as e:
-        if log:
-            log(f"⚠️ 动力学预测-校正真实执行失败: {e}")
-        return False
+    """动力学预测-校正 — 📈先验动力学预测器(PriorDynamicsPredictor) / 🧪状态校正器(state_correction) —— 薄壳: 真实现已迁到 nodes/state_correct_impl.py::run (2026-10-28 执行链外迁)"""
+    from .state_correct_impl import run as _run
+    return _run(ctx)
 
 def node_ss_s3(ctx):
-    """认知决策层 — 🧭动作调制器(ActionModulator.decide 8阶段状态机) / 🛡安全执行边界(saturate)"""
-    log = ctx.get("log")
-    try:
-        import numpy as np
-        name = ctx.get("name", "")
-        if "边界" in name:
-            u = _SS_STATE.get("u", np.zeros(4))
-            u_sat = _ss_import("safety").saturate(np.asarray(u, dtype=float), limit=0.6)
-            _SS_STATE["u_sat"] = np.asarray(u_sat, dtype=float)
-            if log:
-                log(f"🛡 安全执行边界 (真实): saturate(u={np.round(u,3)}, limit=0.6) → "
-                    f"u_sat={np.round(u_sat,3)} (safety.py)")
-            return True
-        cog = _ss_import("cognition")
-        u_ff = _SS_STATE.get("u_ff", np.zeros(4))
-        cp = _SS_STATE.get("contact_p", 0.1)
-        res = _SS_STATE.get("residual", np.zeros(4))
-        r = float(np.linalg.norm(res))
-        u_fb = np.concatenate([np.clip(0.5 * np.asarray(res, dtype=float)[:3], -0.5, 0.5), [0.0]])
-        mod = cog.ActionModulator()
-        u, stage = mod.decide(np.asarray(u_ff, dtype=float), u_fb, float(cp), r)
-        if np.ndim(u) == 0:
-            u = np.zeros(4)
-        u = np.asarray(u, dtype=float).copy()
-        u[3] = mod.gripper_cmd(u_ff[3])
-        _SS_STATE.update({"u": u, "stage": stage})
-        if log:
-            log(f"🧭 动作调制器 (真实): decide(u_ff,u_fb,cp={cp:.2f},r={r:.3f}) → 阶段「{stage}」· "
-                f"u={np.round(u,3)} (cognition.py)")
-        return True
-    except Exception as e:
-        if log:
-            log(f"⚠️ 认知决策层真实执行失败: {e}")
-        return False
+    """认知决策层 — 🧭动作调制器(ActionModulator.decide 8阶段状态机) / 🛡安全执行边界(saturate) —— 薄壳: 真实现已迁到 nodes/safety_limit_impl.py::run (2026-10-28 执行链外迁)"""
+    from .safety_limit_impl import run as _run
+    return _run(ctx)
 
 def node_ss_exec(ctx):
-    """执行层 — 🤖机器人执行器(RobotExecutor.execute) / 🌍物理世界(PhysicalWorld 质量/惯量)"""
-    log = ctx.get("log")
-    try:
-        import numpy as np
-        name = ctx.get("name", "")
-        ex = _ss_import("execution")
-        if "物理" in name:
-            w = ex.PhysicalWorld()
-            _SS_STATE["world"] = w
-            if log:
-                try:
-                    gm = np.asarray(w.generalized_mass())
-                    gd = np.round(np.diag(gm)[:4], 3) if gm.ndim == 2 and gm.shape[0] == gm.shape[1] else np.round(gm.ravel()[:4], 3)
-                except Exception:
-                    gd = "?"
-                log(f"🌍 物理世界 (真实): total_mass={w.total_mass}kg · 广义质量≈{gd} · "
-                    f"7自由度 (execution.py)")
-            return True
-        u_sat = _SS_STATE.get("u_sat", np.zeros(4))
-        u_vec = ex.RobotExecutor().execute(np.asarray(u_sat, dtype=float))
-        if np.ndim(u_vec) == 0:
-            u_vec = np.zeros(4)
-        _SS_STATE["u_prev"] = np.asarray(u_vec, dtype=float)[:3]
-        if log:
-            log(f"🤖 机器人执行器 (真实): execute(u_sat={np.round(u_sat,3)}) → 指令={np.round(u_vec,4)} "
-                f"(execution.py)")
-        return True
-    except Exception as e:
-        if log:
-            log(f"⚠️ 执行层真实执行失败: {e}")
-        return False
+    """执行层 — 🤖机器人执行器(RobotExecutor.execute) / 🌍物理世界(PhysicalWorld 质量/惯量) —— 薄壳: 真实现已迁到 nodes/robot_actuator_impl.py::run (2026-10-28 执行链外迁)"""
+    from .robot_actuator_impl import run as _run
+    return _run(ctx)
 
 def node_ss_video(ctx):
     """🎥 操作视频 — 双击打开 metaworld 训练后 rollout 视频对比窗口 (多模型同步播放)"""
@@ -2875,13 +2897,13 @@ _reg("ss_dyn",  ["先验动力学"], "📈 先验动力学预测器 — x̂ₖ�
 #    重名后 dict 覆盖 ⇒ **先验动力学预测器这个画布节点从来没有可执行逻辑**(match_node 返回 None)。
 #    现改名 ss_dyn(语义独立), 两条各归其位: sspred → ss_dyn/dynamics.py · ssmani_exp → ss_pred/manifold
 
-_reg("ss_correct", ["状态校正器"], "🧪 状态校正器 — 残差 r = z_k−ĥ(x̂ₖ₋) & 接触概率 → 卡尔曼校正 (源码 cognition.py state_correction)", node_ss_dyn)
+_reg("ss_correct", ["状态校正器"], "🧪 状态校正器 — 残差 r = z_k−ĥ(x̂ₖ₋) & 接触概率 → 卡尔曼校正 (源码 cognition.py state_correction); 节点实现 nodes/state_correct_impl.py", node_ss_dyn)
 
 _reg("ss_bg3",   ["认知决策层"], "认知决策层 — 调度器握否决权 (源码 state_space/cognition.py)", node_ss_s3)
 
 _reg("ss_sched", ["动作调制器"], "🧭 动作调制器 — 8阶段状态机(接近→对位→下降→抓取→抬起→转移→插入→完成, 与操作视频状态机同构) + 否决权 + 夹持锁存 + 按阶段融合 (源码 cognition.py ActionModulator)", node_ss_s3)
 
-_reg("ss_limit", ["安全执行边界"], "🛡 安全执行边界 — 饱和限幅 (速度/力/位置上限, 源码 safety.py saturate)", node_ss_s3)
+_reg("ss_limit", ["安全执行边界"], "🛡 安全执行边界 — 饱和限幅 (速度/力/位置上限, 源码 safety.py saturate); 节点实现 nodes/safety_limit_impl.py", node_ss_s3)
 
 _reg("ss_bg4",   ["物理闭环"], "执行层 · 物理闭环 — 执行器→物理世界→z_k 反馈 (源码 state_space/execution.py)", node_ss_exec)
 
@@ -3144,62 +3166,19 @@ def node_dsvl(ctx):
         return False
 
 def node_moveit(ctx):
-    """🧭 MoveIt 运动规划节点: 真执行函数 — 读统一控制层状态 + 规划层可用性 (不动真机)"""
-    import json as _json
-    import sys as _sys
-    _sys.path.insert(0, "/home/ubuntu/zmax/src")
-    out = {"node": "n_moveit"}
-    try:
-        from lerobot.arm.arm_control import ArmController, MoveItPlan
-        c = ArmController()
-        out["backend"] = c.backend
-        out["precheck"] = c.precheck()
-        out["moveit"] = MoveItPlan.plan([0, 0, 0], [0, 0, 0])
-    except Exception as e:
-        out["error"] = "%s: %s" % (type(e).__name__, str(e)[:120])
-    print("[MoveIt 节点] " + _json.dumps(out, ensure_ascii=False)[:400])
-    return out
+    """🧭 运动规划 (plan) 节点 —— 薄壳: 真实现已迁到 nodes/plan_impl.py::run
+
+    老倪 2026-10-28: 「运动规划节点的源代码怎么能是 library.py 呢？应该是 plan 的代码」
+      ⇒ 规划正文(段表生成)搬到 src/lerobot/engineering/nodes/plan_impl.py, 这里只转调,
+        右键「打开源代码」经 _EXTERNAL_LOC 直接落到 plan_impl.py:def run。
+    """
+    from .plan_impl import run as _plan_run
+    return _plan_run(ctx)
 
 def node_exec(ctx):
-    """⚙️ 动作执行器 (l2_daemon) — 真执行函数: 读执行器真值状态与最近事件 (本节点**不下发**任何动作)。
-
-    📚 2026-10-18 老倪: 「l2_daemon 也要做一个节点，我要看到」
-    真源: zmax_data/ss_live/exec_state.json  (l2_daemon 每 5Hz 写: 段号/目标/实测/残差/闸/授权)
-          zmax_data/ss_live/exec_events.jsonl (每命令一行: 受理/拒绝/到位/失败)
-    职责边界: 规划在 n_moveit(plan) 节点, 本节点只做"段表 → 实时闸 → 下发 → 等真位"。
-    """
-    import json as _json
-    import os as _os
-    import time as _time
-    out = {"node": "n_exec"}
-    base = _os.path.expanduser("~/zmax/zmax_data/ss_live")
-    sp = _os.path.join(base, "exec_state.json")
-    try:
-        st = _json.load(open(sp, encoding="utf-8"))
-        age = _time.time() - float(st.get("t_pub") or st.get("t") or 0.0)
-        out.update({"phase": st.get("phase"), "seg": st.get("seg"), "n_seg": st.get("n_seg"),
-                    "skill": st.get("skill"), "target": st.get("target"), "pos": st.get("pos"),
-                    "residual_mm": st.get("residual_mm"), "speed_mm_s": st.get("speed_mm_s"),
-                    "transport": st.get("transport"), "blocked_by": st.get("blocked_by") or "",
-                    "auth_epoch": st.get("auth_epoch"), "age_s": round(age, 2)})
-    except Exception as e:
-        out["state_error"] = "%s: %s" % (type(e).__name__, str(e)[:80])
-    try:
-        ev = _os.path.join(base, "exec_events.jsonl")
-        tail = []
-        with open(ev, "rb") as f:
-            f.seek(0, 2)
-            f.seek(max(0, f.tell() - 4096))
-            for ln in f.read().decode("utf-8", "ignore").splitlines()[-3:]:
-                try:
-                    tail.append(_json.loads(ln))
-                except Exception:
-                    pass
-        out["last_events"] = tail
-    except Exception:
-        pass
-    print("[执行器节点] " + _json.dumps(out, ensure_ascii=False)[:400])
-    return out
+    """⚙️ 动作执行器 (l2_daemon) — 真执行函数: 读执行器真值状态与最近事件 (本节点**不下发**任何动作)。 —— 薄壳: 真实现已迁到 nodes/exec_dispatch_impl.py::run (2026-10-28 执行链外迁)"""
+    from .exec_dispatch_impl import run as _run
+    return _run(ctx)
 
 def node_hil(ctx):
     """🙋 HIL 人机在环 · 状态↔指示 — 状态空间状态发 ECS web, 并取回人的指示 (2026-09-26)
@@ -3500,13 +3479,26 @@ _reg("n_web_agent", ["Web 智能体桥", "远程提示词", "web agent", "web_ag
 # 🙋 2026-09-26 老倪: L5「HIL 人机在环」— 状态空间状态 ↔ 浏览器里的指示 (hermes 形式界面)
 _ARM_DIR = os.path.join(_paths.REPO_ROOT, "src", "lerobot", "arm")
 
-_EXTERNAL_LOC["n_moveit"] = (os.path.join(_ARM_DIR, "arm_control.py"), 133, "class ArmController")   # 🦾 2026-09-26: MoveIt 规划 + 双后端 (Orin SDK 桥默认 / ROS2 SRV 兼容)
-_EXTERNAL_LOC["n_exec"] = (os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "tools", "l2_daemon.py"), 2143, "def main")
+_EXTERNAL_LOC["n_moveit"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "plan_impl.py"),
+                             132, "def run")     # 🧭 2026-10-28: 规划正文迁出 registry 大文件, 落点 = plan_impl.py::run
+_EXTERNAL_LOC["ss_limit"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "safety_limit_impl.py"),
+                             16, "def run")     # 2026-10-28 执行链外迁
+_EXTERNAL_LOC["ss_grav_h"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "grav_impedance_impl.py"),
+                             17, "def run")     # 2026-10-28 执行链外迁
+_EXTERNAL_LOC["n_exec"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "exec_dispatch_impl.py"),
+                             15, "def run")     # 2026-10-28 执行链外迁
+_EXTERNAL_LOC["ss_act"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "robot_actuator_impl.py"),
+                             16, "def run")     # 2026-10-28 执行链外迁
+_EXTERNAL_LOC["ss_correct"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "state_correct_impl.py"),
+                             16, "def run")     # 2026-10-28 执行链外迁
+_EXTERNAL_LOC["yolo_tactile"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "tactile_impl.py"),
+                             16, "def run")     # 2026-10-28 执行链外迁
+# (已删) 2026-10-28 执行链外迁: n_exec 旧映射指向 l2_daemon.py:2143 但 def main 实际在 2748, 且与 exec_dispatch_impl.py 重复 —— 统一以 exec_dispatch_impl.py 为准
 
 _EXTERNAL_LOC["n_hil"] = (os.path.join(_SS_DIR, "hil_bridge.py"), 157, "build_snapshot")  # 行号按真源实测(2026-09-29)
 
-_reg("n_moveit", ["MoveIt", "运动规划", "moveit"], "🧭 MoveIt 运动规划 · SDK 直驱桥(Orin) — MoveIt2 规划 + 双后端执行(Orin SDK 桥 默认 / ROS2 SRV 兼容); 安全闸 dry-run 默认 (源码 arm_control.py)", node_moveit)
-_reg("n_exec", ["执行器", "l2_daemon", "下发", "dispatch", "闸"], "⚙️ 动作执行器 (L2 收口 · 授权/闸/到位) — 段表→实时闸→下发→等真位→台账; 唯一能碰执行器的一层 (源码 tools/l2_daemon.py)", node_exec)
+_reg("n_moveit", ["MoveIt", "运动规划", "moveit"], "🧭 运动规划 (plan) — 原子技能意图 + 安全限制 → 段表(PlanSegments); rule 确定性分段(抬升→横移→下落), 起点=真机TCP真值, 只规划不下发 (源码 nodes/plan_impl.py)", node_moveit)
+_reg("n_exec", ["执行器", "l2_daemon", "下发", "dispatch", "闸"], "⚙️ 动作执行器 (L2 收口 · 授权/闸/到位) — 段表→实时闸→下发→等真位→台账; 唯一能碰执行器的一层 (源码 tools/l2_daemon.py); 节点实现 nodes/exec_dispatch_impl.py", node_exec)
 
 _reg("n_hil", ["HIL", "人机在环", "human in the loop", "hil", "在环"],
      "🙋 HIL 人机在环 · 状态↔指示 — 状态→ECS web(hil.html) + 收人的指示; 动作类拒答 (源码 hil_bridge.py)",
@@ -3536,20 +3528,50 @@ def node_ss_yolo(ctx):
     log = ctx.get("log")
     try:
         import numpy as np
-        aligner = _yolo_ensure_aligner(log)
-        det3d, obs39, _img = _yolo_capture(log, aligner)
-        aligned = aligner.align(obs39, det3d)
-        _YOLO_CACHE["aligned39"] = aligned
+        _meta, _d2 = {}, None
+        _src = (os.environ.get("ZMAX_L2_SRC") or ctx.get("l2_src") or "sim").lower()
+        if _src == "real":
+            det3d, _d2, _meta = _yolo_capture_real(log)
+            obs39, aligned = None, None
+        else:
+            aligner = _yolo_ensure_aligner(log)
+            det3d, obs39, _img = _yolo_capture(log, aligner)
+            aligned = aligner.align(obs39, det3d)
+        if aligned is not None:
+            _YOLO_CACHE["aligned39"] = aligned
+        # 🆕 2026-10-28 老倪: L2 感知节点→plan 的唯一交界 = vision_points.json (由本节点写, 不由脚本写)
+        try:
+            from . import vision_points as _vp
+            _meta = _meta if _src == "real" else (_YOLO_CACHE.get("meta") or {})
+            _d2 = _d2 if _src == "real" else _YOLO_CACHE.get("det2d")
+            _path, _verified, _np_ = _vp.publish_from_det(
+                det3d, _d2, _meta,
+                cam=("真机相机帧" if _src == "real" else "metaworld渲染帧"),
+                kind=("ss_yolo_node_real" if _src == "real" else "ss_yolo_node"),
+                note="canvas node 🎯 YOLO 目标检测 (%s 源)" % _src)
+            if log:
+                log("📍 3D 观测点已发布 → %s · frame=%s · verified=%s · %d 点%s"
+                    % (os.path.basename(_path), _meta.get("frame"), _verified, _np_,
+                       (" · gaps=%s" % _meta.get("gaps")) if _meta.get("gaps") else ""))
+        except Exception as _e:                                               # noqa: BLE001
+            if log:
+                log("⚠️ 3D 观测点发布失败: %s: %s" % (type(_e).__name__, _e))
         if log:
             n = len(det3d)
-            det2d = _YOLO_CACHE.get("det2d", {})
+            det2d = _d2 if _src == "real" else _YOLO_CACHE.get("det2d", {})
             desc = " ".join(
                 f"{k}=[{v[0]:.3f},{v[1]:.3f},{v[2]:.3f}]"
                 + (f" conf={det2d[k]['conf']:.2f}" if k in det2d else "")
                 for k, v in sorted(det3d.items()))
-            log(f"🎯 YOLO 目标检测 (真实): {n}/3 目标 · {desc}")
-            log(f"   39D 对齐 (align 真实执行): hand={np.round(aligned[0:3],3)} · "
-                f"光模块={np.round(aligned[4:7],3)} · hole={np.round(aligned[36:39],3)}")
+            log(f"🎯 YOLO 目标检测 (真实, {_src} 源): {n}/3 目标 · {desc}"
+                + ("" if _src == "real" else ""))
+            if _src == "real":
+                log("   2D: %s · 3D: %d 点%s" % (
+                    {k: round(v["conf"], 2) for k, v in (det2d or {}).items()}, len(det3d),
+                    "" if not _meta.get("gaps") else " · 缺证据 %s" % _meta.get("gaps")))
+            elif aligned is not None:
+                log(f"   39D 对齐 (align 真实执行): hand={np.round(aligned[0:3],3)} · "
+                    f"光模块={np.round(aligned[4:7],3)} · hole={np.round(aligned[36:39],3)}")
         return True
     except Exception as e:
         if log:
@@ -6041,56 +6063,9 @@ def _ham_mod():
 
 
 def node_ss_grav_h(ctx):
-    """🌍 万有引力 · SE(3) 几何阻抗 + H=K+U — 全层力场仲裁。
-
-    物理口径 (与 state_space_energy.py 逐式对应):
-        ξ_e = [目标 − 当前] (体坐标, 指向目标) · U = ½ ξ_eᵀ K ξ_e (+ 逐层分解 s_l, Σs=1)
-        K = ½ ξᵀ Λ ξ  (Λ = diag(m,m,m,Ix,Iy,Iz)) · H = K + U
-        F = +K ξ_e (驱动) · F_l = s_l·F (逐层, Σ_l F_l = F 恒等式)
-        ξ̇ = Λ⁻¹(F − Bξ) · Ḣ = −ξᵀBξ ≤ 0 (被动, 结构保证)
-    数据来源 (实时, 缺就报缺, 不造数):
-        zmax_data/ss_live/trace_live.json   末端_x/y/z + 光模块_x/y + 阶段 + src
-        zmax_data/ss_live/chunk_latest.json 参考速度 u / 阶段 (交叉核对)
-    """
-    log = ctx.get("log")
-    root = ctx.get("root") or _REPO_ROOT
-    live = os.path.join(root, "zmax_data", "ss_live")
-    try:
-        import json as _json
-        import numpy as _np
-        tr = _json.load(open(os.path.join(live, "trace_live.json"), encoding="utf-8"))
-        try:
-            ck = _json.load(open(os.path.join(live, "chunk_latest.json"), encoding="utf-8"))
-        except Exception:                                                   # noqa: BLE001
-            ck = {}
-        # ① ② ③ 算式只有一份: state_space_energy.live_energy()（引擎 emit 每周期也调它,
-        #   两处不各算一套 —— 公式/符号/单位改一处就全局一致）。
-        from lerobot.manifold.state_space_energy import live_energy
-        out = live_energy(root, _HAM_CACHE)
-        U, K, F = float(out["U"]), float(out["K"]), out["F"]
-        hd = float(out["hdot"])
-        xi_e, stage = out["xi_e"], out["stage"]
-        src_vel = out["xi_src"]
-        try:
-            os.makedirs(live, exist_ok=True)
-            with open(os.path.join(live, "hamiltonian.json"), "w", encoding="utf-8") as fh:
-                _json.dump(out, fh, ensure_ascii=False, indent=1)
-        except Exception:                                                   # noqa: BLE001
-            pass
-        if log:
-            log("🌍 万有引力: ξ_e=[%.1f,%.1f,%.1f]mm · U=%.6fJ · K=%.6fJ · H=%.6fJ · Ḣ=%.2e %s"
-                % (xi_e[0] * 1000, xi_e[1] * 1000, xi_e[2] * 1000, U, K, K + U, hd,
-                   "(被动✅)" if hd <= 0 else "(主动⚠)"))
-            log("   力场: |F|=%.3fN (Fx %.3f · Fy %.3f · Fz %.3f) · 逐层 %s"
-                % (out["F_norm"], F[0], F[1], F[2],
-                   " ".join("%s %.3fN" % (k, float(_np.linalg.norm(v))) for k, v in out["F_layers"].items())))
-            log("   数据源: %s · 阶段 %s · ξ 来自 %s · 落 zmax_data/ss_live/hamiltonian.json"
-                % (str(out["src"])[:48], stage, src_vel))
-        return _NodeOut(out)
-    except Exception as e:                                                  # noqa: BLE001
-        if log:
-            log("⚠️ 万有引力节点: %s: %s (缺实况 ⇒ 不出数, 不造数)" % (type(e).__name__, e))
-        return _NodeOut({"ok": False, "err": "%s: %s" % (type(e).__name__, e)})
+    """🌍 万有引力 · SE(3) 几何阻抗 + H=K+U — 全层力场仲裁。 —— 薄壳: 真实现已迁到 nodes/grav_impedance_impl.py::run (2026-10-28 执行链外迁)"""
+    from .grav_impedance_impl import run as _run
+    return _run(ctx)
 
 
 _reg("ss_grav_h", ["万有引力", "SE3 几何阻抗", "H=K+U", "哈密顿"],

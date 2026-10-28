@@ -30,7 +30,7 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'n_exec'
 SOURCE = 'tools/l2_daemon.py'
-SOURCE_SYMBOL = ''
+SOURCE_SYMBOL = 'def run'
 PARAMS = {'layer': 'L2', 'role': 'execution sink (唯一能碰执行器的一层)', 'impl': 'tools/l2_daemon.py', 'fifo': 'zmax_data/l2_cmd.fifo', 'leg': 'sdk (本机直连, ZMAX_L2_FORCE_J=1 ⇒ MoveJ)', 'safety': '授权 epoch · guard_box 包络 · z_floor · 天花板 · 抬升闸 · VL 快层', 'source': 'tools/l2_daemon.py', 'state_file': 'zmax_data/ss_live/exec_state.json', 'events_file': 'zmax_data/ss_live/exec_events.jsonl', 'notes': 'ExecResult(到位/残差/耗时) 走实时话题 zmax/ss_exec → host_sources, 不占画布端口'}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现

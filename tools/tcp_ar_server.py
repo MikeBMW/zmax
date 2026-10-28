@@ -1006,6 +1006,28 @@ def _ar_meta_payload() -> dict:
             "current": cur}
 
 
+def _ar_play_payload() -> dict:
+    """▶ 画布「运行」开关 —— 唯一依据 zmax_data/ss_live/ar_play.json (控制台 start_sim 写)。
+
+    action=start ⇒ 页面"接入并跟随状态空间执行信号"; action=stop ⇒ 画面停住但开关仍开。
+    人不点运行 ⇒ 文件不存在/过期 ⇒ 页面绝不自播。
+    """
+    import json as _j
+    import os as _o
+    import time as _t
+    pf = _o.path.expanduser("~/zmax/zmax_data/ss_live/ar_play.json")
+    try:
+        if not _o.path.exists(pf):
+            return {}
+        with open(pf, encoding="utf-8") as ph:
+            play = _j.load(ph)
+        play["age_s"] = round(_t.time() - float(play.get("ts") or 0), 1)
+        play["fresh"] = play["age_s"] <= 120            # 2 分钟内的开关命令才认(旧命令不许再自己拉起播放)
+        return play
+    except Exception:                                               # noqa: BLE001
+        return {}
+
+
 def _ar_cmd_payload() -> dict:
     """🥽 状态空间 → AR 场景 的机器人驱动指令 (只用于**渲染虚拟臂**, 永不产生真机下发)
 
@@ -1034,6 +1056,8 @@ def _ar_cmd_payload() -> dict:
                "mt_i": d.get("mt_i"), "mt_n": d.get("mt_n"), "batch": d.get("batch")}
         if not out["fresh"]:
             out["note"] = "指令过期(%.1fs > %.1fs) ⇒ 页面回落自身播放" % (age, AR_CMD_FRESH_S)
+        # ▶ 画布「运行」开关: 页面靠这条决定"接入并跟随"(老倪 2026-10-28 画布运行要真驱动三维)
+        out["play"] = _ar_play_payload()
         return out
     except Exception as e:                                          # noqa: BLE001
         return {"ok": False, "fresh": False, "age_s": None,
@@ -1560,6 +1584,16 @@ class H(BaseHTTPRequestHandler):
                 self._json(self._traj_exec_state())
             elif p == "/api/traj/state":
                 self._json(self._traj_state())
+            elif p == "/api/ar/build":             # 🏷 当前线上构建号(页面横幅里那串"构建 … rNN")
+                # 用途: 老倪习惯把标签页挂一整天 ⇒ 旧标签页会一直留着上次的"运行中"状态,
+                # 看着就是"我没点运行它自己在跑"。页面拿这个号和自己对一下, 不一致就自动刷新一次。
+                try:
+                    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                           "web", "tcp-ar.html"), encoding="utf-8") as _fh:
+                        _m = re.search(r"构建 (\d{4}-\d{2}-\d{2} r\d+)", _fh.read())
+                    self._json({"ok": bool(_m), "build": _m.group(1) if _m else ""})
+                except Exception as _e:                                      # noqa: BLE001
+                    self._json({"ok": False, "err": str(_e)})
             elif p == "/api/ar_diag":              # 🩺 AR 页面自诊断上报(页面每 3s 推一次真实运行时状态)
                 # 老倪 2026-10-19「点击刷新也不好使」——服务端日志只能看到 /api/* 轮询, 看不到页面里
                 # FPUMP.busy 是否卡死、document.hidden 是什么、CAMS 有没有 arm。让页面自己上报。

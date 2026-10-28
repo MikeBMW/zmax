@@ -8267,11 +8267,118 @@ class SimulinkModule(QWidget):
         """运行按钮保障恢复: 8 秒后仍停在「运行中…」且是灰的 ⇒ 那次启动没走完, 恢复可点并告知"""
         try:
             if self.btn_run is not None and not self.btn_run.isEnabled() \
-                    and "运行中" in self.btn_run.text():
+                    and "运行中" in self.btn_run.text() and not self._ar_playing():
                 self.btn_run.setEnabled(True)
                 self.btn_run.setText("▶ 运行")
                 self._log("⚠️ 运行按钮已恢复可点 — 上一次 ▶运行 没走完 (前置检查未过/被中断/分支异常), "
                           "原因见上面日志")
+        except Exception:                                          # noqa: BLE001
+            pass
+
+    def _ar_playing(self):
+        """AR 双臂播放中 = 「▶ 运行」按钮与窗口标题的**唯一写者**是 _ar_play_ui。
+
+        🔴 2026-10-28 老倪「运行按钮一直是 运行/停止 的跳变」: 播放态下还有别处收尾逻辑
+           (流程队列清空 / 真实化轮询 / 停止仿真 / 引擎收尾) 把按钮改回「▶ 运行」,
+           与 1s 收口轮询互相拉扯 ⇒ 看见跳变。所有这类收尾写入都要先问这一句。
+        """
+        return bool(getattr(self, "_ar_play_on", False))
+
+    def _ar_play_ui(self, quiet=False):
+        """AR 双臂播放态的界面收口 (1s 轮询驱动)。
+
+        🔴 2026-10-28 老倪「点完运行后, 闪了一下, 又变回 运行 了」:
+           AR 分支设的按钮文字在同一秒内被别处(引擎/状态机/标题轮询)改回「▶ 运行」。
+           与其去追那个写者(它会随功能演进再出现), 让**按钮文字由轮询驱动**:
+           只要 _ar_play_on 为真, 每秒把按钮/标题纠回播放态, 并把"被谁改回去"留一行日志(去重)。
+        """
+        on = bool(getattr(self, "_ar_play_on", False))
+        try:
+            want = "⏸ 停止 AR 播放 (运行中)" if on else "▶ 运行"
+            if self.btn_run is not None:
+                cur = self.btn_run.text()
+                if cur != want:
+                    # 兜底(正常情况下 _ar_trace_btn 的写入点拦截已保证播放期间文字不改):
+                    #   ≥2s 仍不对才纠一次, 日志最多 3 条, 不做无限互抢
+                    _wc = getattr(self, "_ar_ui_wrong", 0) + 1
+                    self._ar_ui_wrong = _wc
+                    if (quiet or _wc >= 2) and getattr(self, "_ar_ui_fix_n", 0) < 3:
+                        self._ar_ui_fix_n = getattr(self, "_ar_ui_fix_n", 0) + 1
+                        if on and not quiet:
+                            self._log("⚠️ 按钮停在「%s」⇒ 纠正为「%s」(第 %d 次)"
+                                      % (cur, want, self._ar_ui_fix_n))
+                        self.btn_run.setText(want)
+                        self._ar_ui_wrong = 0
+                else:
+                    self._ar_ui_wrong = 0
+                if not self.btn_run.isEnabled():
+                    self.btn_run.setEnabled(True)
+                # 播放中「■ 停止」必须亮着 (老倪 2026-10-28); 停止态交给 stop_sim 收
+                if on and self.btn_stop is not None and not self.btn_stop.isEnabled():
+                    self.btn_stop.setEnabled(True)
+        except Exception:                                          # noqa: BLE001
+            pass
+        try:                                                       # 窗口标题横幅: 永远可见, 不占画布
+            _w = self.window()
+            if _w is not None:
+                _cur = _w.windowTitle() or ""
+                _b = getattr(self, "_win_title_base", None)
+                if (not _b) or ("AR 双臂播放中" in _b):
+                    import re as _re3
+                    _b = _re3.sub(r"^● AR 双臂播放中( · \S+)?\s+—\s+", "", _cur).strip() or "XSpace ZMAX"
+                    self._win_title_base = _b
+                want_t = _b if not on else ("● AR 双臂播放中 · %s   —   %s"
+                                            % (getattr(self, "_ar_started_at", "") or "", _b))
+                if _cur != want_t:
+                    _w.setWindowTitle(want_t)
+        except Exception:                                          # noqa: BLE001
+            pass
+
+    def _ar_trace_btn(self):
+        """给 btn_run.setText 装探针: AR 播放期间任何把它写成"非播放态"的调用, 记下 文件:行号。
+
+        🔴 2026-10-28 老倪「运行和停止之间还是跳变好几次」—— 不再靠猜哪个定时器,
+           谁写的直接点名 (日志里 🔍 行)。最多记 12 条, 不刷屏。
+        """
+        try:
+            if getattr(self, "_ar_btn_traced", False) or self.btn_run is None:
+                return
+            import traceback as _tb
+            _orig = self.btn_run.setText
+            _want = "⏸ 停止 AR 播放 (运行中)"
+
+            def _set(_t, _o=_orig, _self=self):
+                _t2 = _t
+                try:
+                    # 🛡 播放期间按钮文字改成"只读": 谁想写别的值都会被顶回播放态 —— 从根上消灭跳变
+                    #   (老倪 2026-10-28「运行和停止之间还是跳变好几次」: 与其每秒纠正一次跟写者互抢,
+                    #    不如在写入点直接改写; 写者是谁仍记一行 🔍 供定位)
+                    if _self._ar_playing() and _t != _want:
+                        if getattr(_self, "_ar_btn_trace_n", 0) < 8:
+                            _self._ar_btn_trace_n = getattr(_self, "_ar_btn_trace_n", 0) + 1
+                            _fr = _tb.extract_stack()[-3:-1]
+                            _self._log("🔍 运行按钮被写「%s」→ 已按播放态顶回 ← %s" % (
+                                _t, " | ".join("%s:%s" % (f.filename.split("/")[-1], f.lineno)
+                                               for f in _fr)))
+                        _t2 = _want
+                except Exception:                                  # noqa: BLE001
+                    pass
+                return _o(_t2)
+
+            self.btn_run.setText = _set
+            self._ar_btn_traced = True
+        except Exception:                                          # noqa: BLE001
+            pass
+
+    def _ar_play_arm_timer(self):
+        """首次进入 AR 播放时挂上 1s 界面收口定时器 (常驻, 不随任务结束停)"""
+        try:
+            if getattr(self, "_ar_ui_timer", None) is None:
+                from PyQt5.QtCore import QTimer as _QTA
+                self._ar_ui_timer = _QTA(self)
+                self._ar_ui_timer.timeout.connect(self._ar_play_ui)
+            self._ar_trace_btn()                # 装探针: 谁改按钮, 日志点名
+            self._ar_ui_timer.start(1000)
         except Exception:                                          # noqa: BLE001
             pass
 
@@ -8320,21 +8427,38 @@ class SimulinkModule(QWidget):
             #    老倪 2026-10-28: 「点击运行后, 马上又变回来了, 没有运行」
             _ar_src = _canvas_src_state(self)          # 与画布其它地方同一口径 (不用 id 匹配: GUI 内存节点不带 id)
             if "AR" in _ar_src:
-                self.btn_run.setText("▶ 运行")
-                self.btn_run.setEnabled(True)
-                # ▶ 运行 = 人授权的播放开关: 写 ar_play.json, ar3d 页面收到才 plantStart()
-                #   (老倪 2026-10-28: 没点运行机器人不许动 ⇒ 只有这个按钮能发起播放)
+                # 🔴 2026-10-28 老倪「画布的运行按钮, 点击后, 没反应」:
+                #   真因 = 这个分支把按钮 **立刻 setText("▶ 运行") 就 return** ⇒ 按钮一个字都没变、画布不动,
+                #   只有终端 3 行日志(他不看终端) ⇒ 在他看来就是"没反应"。
+                #   改成 **可切换的运行开关**: ① 按钮文字本身就是状态(⏸ 停止 AR 播放) ② 窗口标题横幅(最前, 不会被省略)
+                #   ③ 终端三行。再点一次 = 停止 (写 ar_play action=stop, 页面收到就停)。
+                import time as _t
+                import json as _j2
+                _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                _pp = os.path.join(_root, "zmax_data/ss_live/ar_play.json")
+                _was = bool(getattr(self, "_ar_play_on", False))
+                _act = "stop" if _was else "start"
+                self._ar_play_on = (not _was)
+                if self._ar_play_on:
+                    self._ar_started_at = _t.strftime("%H:%M:%S")
                 try:
-                    import time as _t
-                    import json as _j2
-                    _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                    _pp = os.path.join(_root, "zmax_data/ss_live/ar_play.json")
                     os.makedirs(os.path.dirname(_pp), exist_ok=True)
-                    _j2.dump({"ts": _t.time(), "action": "start", "by": "simulink.run", "src": _ar_src, "task": "TASK-07-AOI"},
+                    _j2.dump({"ts": _t.time(), "action": _act, "by": "simulink.run", "src": _ar_src,
+                              "task": "TASK-07-AOI"},
                              open(_pp, "w", encoding="utf-8"), ensure_ascii=False)
                 except Exception as _e:                            # noqa: BLE001
                     self._log("⚠️ 写 ar_play.json 失败: %s" % _e)
-                self._log("🏭 数据源 = %s ⇒ ▶ 运行 = 启动 AR 双臂播放 (已写 ar_play.json)" % _ar_src)
+                self.btn_run.setText("⏸ 停止 AR 播放 (运行中)" if self._ar_play_on else "▶ 运行")
+                self.btn_run.setEnabled(True)
+                # 🔴 老倪 2026-10-28「运行后, 停止按钮应该亮了, 现在是灰色的」:
+                #   AR 分支从来没碰过 btn_stop ⇒ 播放中「■ 停止」一直是灰的, 点不了。
+                self.btn_stop.setEnabled(bool(self._ar_play_on))
+                self._ar_play_ui(quiet=True)          # 按钮文字 + 标题横幅一次到位
+                self._ar_play_arm_timer()             # 之后每秒收口: 谁把它改回「▶ 运行」就纠回来
+                self._log("🏭 数据源 = %s ⇒ ▶ 运行 = %s AR 双臂播放 (ar_play.json action=%s)"
+                          % (_ar_src, "启动" if self._ar_play_on else "停止", _act))
+                self._log("   └ 按钮已变: 「%s」— 再点一次就是%s" % (self.btn_run.text(),
+                                                             "停止" if self._ar_play_on else "启动"))
                 self._log("   └ 动画由常驻循环 zmax-ss-canvas-loop 驱动; 页面: http://10.163.146.78:8797/ar3d")
                 self._log("   └ 真机零指令 (real_auth 保持关, AR 开关只授权 AR 场景)")
                 return
@@ -9023,6 +9147,20 @@ class SimulinkModule(QWidget):
         self.stop_sim()
 
     def stop_sim(self):
+        # 🛑 AR 双臂播放中按「■ 停止」⇒ 必须先解掉播放态, 否则按钮被"只读"拦着会显示错态
+        if getattr(self, "_ar_play_on", False):
+            try:
+                import json as _j9
+                import time as _t9
+                _r9 = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                with open(os.path.join(_r9, "zmax_data/ss_live/ar_play.json"), "w", encoding="utf-8") as _f9:
+                    _j9.dump({"ts": _t9.time(), "action": "stop", "by": "simulink.stop",
+                              "src": "AR场景"}, _f9, ensure_ascii=False)
+            except Exception:                                      # noqa: BLE001
+                pass
+            self._ar_play_on = False
+            self._ar_started_at = ""
+            self._log("⏹ 停止 AR 双臂播放 (已写 ar_play.json action=stop, 页面收到就停)")
         self._ui_run_publish(False)          # 2026-10-19: 停止 ⇒ 观察窗口立刻"没力"
         # 🐛 2026-09-09 🔄重启崩溃根因修复: 真实化引擎 daemon 线程必须真停 —
         #   置 _abort → run 循环退出 → 轮询 join (≤10s), 否则 🔄重启立即开新引擎 =
@@ -9088,8 +9226,9 @@ class SimulinkModule(QWidget):
                 pass
             self._flow_queue = []
             self._log("⏹ 已终止训练进程 (worker 已停止)")
-        self.btn_run.setText("▶ 运行")
-        self.btn_run.setEnabled(True)
+        if not self._ar_playing():          # AR 双臂播放中: 运行按钮由 _ar_play_ui 唯一写
+            self.btn_run.setText("▶ 运行")
+            self.btn_run.setEnabled(True)
         self.btn_stop.setEnabled(False)
         # 2026-08-06 老倪: 手动停止 → 停流程时钟
         fc = getattr(self, "_flow_clock", None)
@@ -12735,8 +12874,9 @@ class SimulinkModule(QWidget):
                 fc.stop()
             # 2026-08-05 老倪: 全流程完成/终止后恢复运行按钮
             if getattr(self, "_worker", None) is None or not self._worker.isRunning():
-                self.btn_run.setText("▶ 运行")
-                self.btn_run.setEnabled(True)
+                if not self._ar_playing():  # AR 双臂播放中: 运行按钮由 _ar_play_ui 唯一写
+                    self.btn_run.setText("▶ 运行")
+                    self.btn_run.setEnabled(True)
                 self.btn_stop.setEnabled(False)
             # 🏁 全流程完成 → 自动最终交付 (2026-08-06 老倪: 要能插拔的视频 + PDF,
             #   且视频也发 dataworld 群; 仅 ZMAX_AUTO_RUN=1 自动模式触发, 手动运行不打扰)
@@ -16075,8 +16215,9 @@ class SimulinkModule(QWidget):
             self._real_poll_timer.stop()
         except Exception:
             pass
-        self.btn_run.setText("▶ 运行")
-        self.btn_run.setEnabled(True)
+        if not self._ar_playing():          # AR 双臂播放中: 运行按钮由 _ar_play_ui 唯一写
+            self.btn_run.setText("▶ 运行")
+            self.btn_run.setEnabled(True)
         self.btn_stop.setEnabled(False)
         if r[0] == "ok":
             tr, sim, rate, logs = r[1], r[2], r[3], r[4]
@@ -16585,8 +16726,9 @@ class SimulinkModule(QWidget):
             if it:
                 it.update()
         self.canvas._scene.update()
-        self.btn_run.setText("▶ 运行")
-        self.btn_run.setEnabled(True)
+        if not self._ar_playing():          # AR 双臂播放中: 运行按钮由 _ar_play_ui 唯一写
+            self.btn_run.setText("▶ 运行")
+            self.btn_run.setEnabled(True)
         self.btn_stop.setEnabled(False)
         self._sim_running = False
         done = bool(tr.get("done") and tr["done"][-1])
@@ -17276,7 +17418,7 @@ class SimulinkModule(QWidget):
                 if not _base:
                     _base = _w.windowTitle() or "XSpace ZMAX"
                     self._win_title_base = _base
-                if state == "idle":
+                if state == "idle" and not getattr(self, "_ar_play_on", False):
                     _w.setWindowTitle(_base)
                 else:
                     _w.setWindowTitle("%s   —   %s" % (_banner, _base))

@@ -66,6 +66,16 @@
  body.vrfull #vrRail>pre{display:none!important}
  body.vrfull #vrRail::before{content:"🧭 三维视图";display:block;font:700 13px system-ui,sans-serif;
    color:#c9a6ff;letter-spacing:.5px;padding:2px 2px 6px;border-bottom:1px solid #21262d;margin-bottom:2px}
+ /* 🧠 状态空间 执行信号开关 (拨杆式 —— 2026-10-28 老倪: 「增加一个开关（不是按钮）」) */
+ .ssw{position:relative;display:inline-block;width:54px;height:27px;border-radius:14px;flex:0 0 auto;
+   background:#21262d;border:1px solid #30363d;cursor:pointer;transition:background .16s,border-color .16s}
+ .ssw .knob{position:absolute;left:3px;top:3px;width:19px;height:19px;border-radius:50%;
+   background:#8b949e;transition:left .16s,background .16s}
+ .ssw.on{background:#1f6feb;border-color:#58a6ff;box-shadow:0 0 10px rgba(31,111,235,.55)}
+ .ssw.on .knob{left:30px;background:#fff}
+ .ssw:focus{outline:2px solid #58a6ff;outline-offset:2px}
+ /* 左栏里这一行要横排(默认 vrfull 把 .row 改成竖排, 会把拨杆拉到整行宽) */
+ body.vrfull #vrRail #ssSwRow{flex-direction:row!important;align-items:center!important;gap:10px!important}
  /* 窄屏(手机竖屏): 左栏换成底部横条, 免得把画面挤没 */
  @media (max-width:820px){
    body.vrfull #vrcard{grid-template-columns:1fr;grid-template-rows:1fr 34vh}
@@ -100,7 +110,7 @@
   <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
   <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
      style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-28 r46 · 🧵元任务双臂并行(左/右两条 lane 共用一条件周期时间轴 + 同一时刻左右手读数) · 右臂 11.40s/件 · 左臂 4.70s 供料后空闲等取 · 交接点 8.70s</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-28 r61 · 🧠 左栏「状态空间」拨杆(不是按钮) = 接入(只订阅 ar_cmd, 报 seq/帧龄/段/元任务, 画面不动) · 点「▶ 跟随执行信号」三维双臂才按信号走帧 · 拨回关=断开且全页静止 · 旧标签页自动跟版刷新 · 真机零指令</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -154,6 +164,29 @@
          ⇒ 三维按钮全部收进这层 rail: 普通页面里照旧排在画布下方(display:block),
            /ar3d 里 CSS 把它摆到**左栏**(grid 左固定 300px, 画布占右边其余宽度)。 -->
     <div id="vrRail">
+    <!-- 🧠 状态空间 执行信号开关 (2026-10-28 老倪: 「在左侧栏，增加一个开关（不是按钮），用于切换成状态空间，
+         打开开关，就是接入状体空间的机器人执行信号」)
+         口径: 拨杆开关(label+.ssw), 不是按钮。
+           · 开 = 三维里的仿真双臂**只**按状态空间真实执行信号走帧 —— 唯一依据
+                  zmax_data/ss_live/ar_cmd.json (zmax-ss-canvas-loop 10Hz 写: seq/段/插值 u/节拍/元任务),
+                  下面一行实时显示 seq / 帧龄 / 段 / 元任务, 一眼看出信号真在流。
+           · 关 = 本页按本地虚拟时钟自己仿真(原行为, 可倍速)。
+           · 信号断(帧龄超阈值) ⇒ 画面停在最后一帧, 不偷偷退回本地时钟(否则"看着接了其实没接")。
+           · 只接执行信号: 不写 exec_switches.json、不碰真机授权(仍只在 8793 授权)、不下发真机指令。 -->
+    <div class="row" id="ssSwRow" style="margin-top:4px;align-items:center;gap:8px;flex-wrap:nowrap;white-space:nowrap">
+      <span style="font:700 13px system-ui,sans-serif;color:#c9d1d9">🧠 状态空间</span>
+      <label id="ssSw" class="ssw" role="switch" aria-checked="false" tabindex="0"
+             title="拨到开 = 机器人执行信号接入状态空间工程(三维双臂按 ar_cmd.json 的段/插值/节拍走帧, seq/帧龄显示在顶部横幅); 拨回关 = 断开并停一切播放。只接执行信号 —— 不改真机授权(仍只在 8793 工位总览授权), 不下发真机指令">
+        <span class="knob"></span>
+      </label>
+      <span id="ssSwTxt" style="font:600 12.5px system-ui,sans-serif;color:#8b949e">关 · 本地仿真</span>
+      <!-- ▶ 接入 ≠ 播放: 拨开只订阅信号, 点这个三维双臂才开始按信号走帧
+           2026-10-28 老倪「开关下面的文字不要显示, 删掉, 还总自动增加一行, 左侧按钮上下跳」
+           ⇒ 提示文字整行删掉(信号状态只在顶部横幅说), 这个按钮**放在同一行**里,
+             出现/消失都不改变左侧栏高度 ⇒ 按钮不再上下跳。 -->
+      <button id="ssRun" class="sm" style="display:none;margin-left:2px;padding:3px 8px;font-size:11.5px"
+              title="点了这个, 三维双臂才按状态空间真实执行信号(ar_cmd.json 10Hz)走帧; 不点 = 只接入看信号, 画面一帧都不动">▶ 跟随</button>
+    </div>
     <!-- 🎚 2026-10-26 老倪「现在移动的速度太快了，在 执行轨迹 按钮上边，给出速度 5mm/s 10mm/s 50mm/s 三个档位，你来设计」
          设计口径:
            · 三个档 = **真实末端速度**(mm/s), 不是控制器内部档位号 —— 现场说的"太快"是看得见的 mm/s。
@@ -1877,7 +1910,11 @@ function drawVR(){
   const w=c.clientWidth,h=c.clientHeight;
   g.clearRect(0,0,w,h);
   g.fillStyle='#070a0e'; g.fillRect(0,0,w,h);
-  if(VR.auto) vrFitBox();
+  // 🔴 2026-10-28 老倪「图像不要总是上下漂浮」:
+  //   原来 `if(VR.auto) vrFitBox();` 每帧重新取景, 而 vrFitBox 把**会动的臂点云**算进包围盒
+  //   ⇒ 双臂一上一下, 相机目标点跟着上下移, 整幅图就"漂浮"。
+  //   口径: 自动取景只做**一次**(点 🎯对准 / 双击执行轨迹 时), 之后相机锁死, 只有手拖动才动。
+  if(VR.auto){ VR.auto=false; vrFitBox(); }
   // 🦾 正运动学必须在**取景之前**算: vrFitBox() 会用 LINKM 算包围盒,
   //    原来这一句写在下面(画臂的地方) ⇒ 第一帧 URDF 刚到、LINKM 还是空的时候,
   //    取景只按"立柱+左臂原点"这点点算 ⇒ 视距 0.42m(画面糊在立柱上), 要等下一帧才纠正。
@@ -2780,10 +2817,12 @@ const PLANT={on:false,rate:1,simT:0,last:0,raf:null,units:0,ok:0,ng:0,_u0:0,
              //   local=true ⇒ 人点了按钮, 走原来的本地虚拟时钟自播(dt*rate, 10× 有效),
              //   **不被 /api/ar/cmd 的 10Hz 指令接管**(那条通道的时间基在服务端, 天生 1×)
              local:false};
-// 🔴 防"没点就自播" (老倪 2026-10-28 再次撞到: 打开页面就在跑, 产出 1 件):
-//   原来 _lastPlayTs 初值 0 ⇒ 服务端残留的旧 ar_play.json(哪怕 19 分钟前写的) 也当成新指令。
-//   ⇒ 下限锁到"页面加载时刻": 只有**加载之后**写下的 start 才算人点的。
-PLANT._lastPlayTs = Date.now() / 1000;
+// 🔴 防"没点就自播" + 防"刷新就丢播放"(老倪 2026-10-28 第五次: 「开关也开了, 这次怎么不动了」):
+//   旧: 下限 = 页面加载时刻 ⇒ ① 服务端残留的旧 ar_play.json 被当新指令(打开就跑, 已修)
+//       ② 但页面自动跟版刷新(r56→r59)后, 人在 2 分钟前点的「运行」被判成"旧命令" ⇒ 开关开着也不动。
+//   新: 下限 = 加载时刻 - 120s, 与服务端 play.fresh(≤120s) 同一口径 ⇒ 人刚点过的运行不会因刷新失效,
+//       超过 2 分钟的老命令仍然不许自己拉起。
+PLANT._lastPlayTs = Date.now() / 1000 - 120;
 // 不良率 0.8% ⇒ 良率 99.2% > 99%(老倪: 「每 100 个光模块可以有一个不良品」⇒ 取 1/125 更保险)
 let NG_RATIO=1/125;
 const UPH_TARGET=300;                   // 老倪定: UPH 目标 300(不是稳态 314)
@@ -2791,6 +2830,96 @@ const UPH_TARGET=300;                   // 老倪定: UPH 目标 300(不是稳�
 // 🥽 状态空间 → AR 场景: 虚拟臂由画布节点(🏭 UPH 节拍循环器 ss_uph_tact)按拍驱动。
 //   只在 AR 开关=开 且指令新鲜时接管; 其它情况一律走原来的 plantAt 自播 —— 普通模式行为零变化。
 //   真机零指令: 本通道只产生"渲染用关节角", 碰不到 ctl_auth / l2_daemon。
+// ═════ 🧠 状态空间 执行信号开关 (左栏拨杆, 2026-10-28 老倪) ═════
+//   原话: 「在左侧栏，增加一个开关（不是按钮），用于切换成状态空间，打开开关，就是接入状体空间的机器人执行信号」
+//   开 = 三维仿真双臂**只**跟 /api/ar/cmd 的真实执行帧走(唯一依据 zmax_data/ss_live/ar_cmd.json,
+//        zmax-ss-canvas-loop 10Hz 写: seq / 段 a~b / 插值 u / 节拍 / 元任务); 信号断 ⇒ 停在最后一帧。
+//   关 = 本页按本地虚拟时钟自己仿真(原行为, 可倍速)。
+//   🔴 只接执行信号: 不写 exec_switches.json、不碰真机授权(仍只在 8793 授权)、不下发任何真机指令。
+//   ⚠️ 绝不自播: 只有人拨这一下才启动; 刷新页面后默认关, 不还原上次状态。
+var SSMODE={on:false,touched:false,follow:false,_hint:''};
+function ssSigLine(){
+  var d=ARCMD.d||{};
+  if(!SSMODE.on) return '执行信号: 关(未接入状态空间) · 画面静止 —— 点右栏「🏭/🔌/🚚」才走本地仿真'
+    + ((typeof ARMODE!=='undefined'&&ARMODE.on)?' · 画布 AR 开关=开(只影响显示路由)':'');
+  if(!ARCMD.on) return '⚠ 已接入但拿不到 /api/ar/cmd · 画面不动';
+  if(!ARCMD.fresh) return '⚠ 状态空间信号中断 · 帧龄 '+((ARCMD.age==null)?'—':(+ARCMD.age).toFixed(1))
+    +'s · 画面停在最后一帧(不退回本地时钟)';
+  // 接入 ≠ 播放: 只接入时把信号念出来, 但三维一帧都不动
+  var head = SSMODE.follow ? '✅ 跟随中' : '✅ 已接入(未跟随 · 点 ▶ 跟随执行信号 才动)';
+  return head+' · seq '+(d.seq==null?'—':d.seq)
+    +' · 帧龄 '+((d.age_s==null)?'—':(+d.age_s).toFixed(2))+'s'
+    +' · '+(d.kind||'—')+(d.label?(' '+d.label):'')
+    +(d.mt_id?(' · '+d.mt_id+' '+(d.mt_i||'?')+'/'+(d.mt_n||'?')):'')
+    +(d.task_id?(' · '+d.task_id):'')+(d.batch?(' · 第'+d.batch+'批'):'');
+}
+function ssSigShort(){
+  // 顶部横幅用的一行信号摘要(左栏提示行已按老倪要求删掉, 信号状态只在横幅说, 不占左侧栏高度)
+  if(!SSMODE.on) return '';
+  var d=ARCMD.d||{};
+  if(!ARCMD.on) return ' · 信号读不到';
+  if(!ARCMD.fresh) return ' · 信号中断(帧龄'+((ARCMD.age==null)?'—':Math.round(ARCMD.age))+'s)';
+  return ' · seq '+(d.seq==null?'—':d.seq)+' · 帧龄'+((d.age_s==null)?'—':(+d.age_s).toFixed(1))+'s';
+}
+function ssHintPaint(){
+  // 2026-10-28 老倪: 「开关下面的文字不要显示, 删掉, 还总自动增加一行, 左侧按钮上下跳」
+  //   ⇒ 左栏提示行整行已删; 信号摘要改由顶部横幅显示(ssSigShort), 左侧栏高度恒定。
+  return;
+}
+function ssPaint(){
+  var s=document.getElementById('ssSw'), t=document.getElementById('ssSwTxt');
+  if(s){ s.classList.toggle('on',!!SSMODE.on); s.setAttribute('aria-checked',SSMODE.on?'true':'false'); }
+  if(t){ t.textContent = SSMODE.on ? '开 · 已接入状态空间' : '关 · 本地仿真';
+         t.style.color  = SSMODE.on ? '#3fb950' : '#8b949e'; }
+  // 接入后才出现「▶ 跟随」——接入≠播放, 点这个三维才动; 它是**同一行里的按钮**, 不占新行(左侧按钮不再上下跳)
+  var b=document.getElementById('ssRun');
+  if(b){ b.style.display = SSMODE.on ? '' : 'none';
+         b.textContent = SSMODE.follow ? '⏸ 停跟随' : '▶ 跟随';
+         b.classList.toggle('on',!!SSMODE.follow); }
+  ssHintPaint();
+}
+// 拨到开 = 只**接入**(订阅 ar_cmd: 显示 seq/帧龄/段/元任务), 三维一帧都不动
+function ssConnect(){ SSMODE.on=true; SSMODE.touched=true; }
+function ssDisconnect(){ ssFollowStop(); SSMODE.on=false; SSMODE.touched=true; }   // 拨回关 = 停一切播放(不管它是信号驱动还是本地时钟)
+// 点 ▶ = 才开始按信号走帧(唯一能驱动三维的入口)
+function ssFollowStart(){
+  SSMODE.on=true; SSMODE.touched=true; SSMODE.follow=true;   // 人点的这一下 = 开始跟; 页面自己绝不自调
+  PLANT.userStop=false;
+  PLANT.on=true;
+  PLANT.local=false;                          // ← 关键: 本地虚拟时钟让位给状态空间信号
+  PLANT.simT=0; PLANT.last=performance.now(); PLANT.rate=INSP.rate||1; PLANT.lp=null;
+  if(PLANT.raf) cancelAnimationFrame(PLANT.raf);
+  PLANT.raf=requestAnimationFrame(plantStep);
+  ssPaint();
+}
+function ssFollowStop(){
+  SSMODE.follow=false;
+  PLANT.on=false; PLANT.local=false;
+  if(PLANT.raf){ cancelAnimationFrame(PLANT.raf); PLANT.raf=null; }
+  PREV.on=false; PREV.ssOn=0; PREV.ssSeq=null; PREV.ssAge=null;   // 收掉那条"按信号走"的幽灵臂
+  ssPaint();
+}
+function ssToggle(){
+  if(SSMODE.on) ssDisconnect(); else ssConnect();
+  ssPaint();
+  if(typeof arViewSet==='function') arViewSet(!!(SSMODE.on&&SSMODE.follow));
+  if(typeof arModePoll==='function') arModePoll();     // 顶部横幅/真机臂口径立刻对齐
+}
+function ssRunToggle(){
+  if(!SSMODE.on) return;
+  if(SSMODE.follow) ssFollowStop(); else ssFollowStart();
+  if(typeof arViewSet==='function') arViewSet(!!SSMODE.follow);
+  if(typeof arModePoll==='function') arModePoll();
+}
+(function(){
+  var s=document.getElementById('ssSw'); if(!s) return;
+  s.addEventListener('click',function(e){ e.preventDefault(); ssToggle(); });
+  s.addEventListener('keydown',function(e){
+    if(e.key===' '||e.key==='Enter'){ e.preventDefault(); ssToggle(); }
+  });
+  var b=document.getElementById('ssRun');
+  if(b) b.addEventListener('click',function(){ ssRunToggle(); });
+})();
 const ARCMD={on:false,fresh:false,d:null,q:null,ts:0,age:null,seq:null};
 function arCmdSolve(d){
   if(!d||!d.a||!d.b) return null;
@@ -2807,6 +2936,8 @@ function arCmdPoll(){
     ARCMD.seq=d.seq; ARCMD.mod=d.mod;
     if(d.ok&&d.fresh){ const q=arCmdSolve(d); if(q) ARCMD.q=q; }
     else { ARCMD.q=null; }
+    // 🧠 左栏拨杆下面那一行: 只在拨杆打开时实时显示 seq/帧龄/段/元任务(证明信号真在流)
+    try{ if(typeof ssHintPaint==='function') ssHintPaint(); }catch(e){}
     // 🔴 不自动播放: 老倪 2026-10-28「我现在画布上也没有点击运行, 你怎么运行机器人了呢?」
     //    ⇒ 动画只能由人点「🏭 全流程 UPH」启动, 页面自己绝不 plantStart()
   }).catch(function(){ ARCMD.on=false; ARCMD.fresh=false; ARCMD.q=null; });
@@ -2921,7 +3052,16 @@ function plantStep(){
   if(typeof TRANS!=='undefined' && !TRANS.playing){
     try{ TRANS.rate=PLANT.rate; transPlay(); }catch(e){}
   }
-  const isAR=!!(typeof ARMODE!=='undefined'&&ARMODE.on&&ARCMD.on&&ARCMD.fresh&&ARCMD.q&&!PLANT.local);
+  // 🧠 拨杆打开 = 执行信号只认状态空间(与画布开关无关, 也不许被本地时钟顶掉);
+  //    关着 = 原来那套(AR 开关 + 非本地播放)。
+  const isAR=(SSMODE.on && SSMODE.follow) ? !!(ARCMD.on && ARCMD.fresh && ARCMD.q)
+                       : !!(typeof ARMODE!=='undefined'&&ARMODE.on&&ARCMD.on&&ARCMD.fresh&&ARCMD.q&&!PLANT.local);
+  if(SSMODE.on && !isAR){          // 接了状态空间但信号断了: 停在最后一帧, 绝不偷偷退回本地仿真
+    drawVR();
+    if((PLANT.frames++ % 6)===0) plantHud();
+    PLANT.raf=requestAnimationFrame(plantStep);
+    return;
+  }
   const r=isAR?plantAtAR():plantAt(PLANT.simT);
   if(r){
     const lp=r.lp;
@@ -2960,6 +3100,12 @@ window.addEventListener('resize', uphPlace);
 
 function plantStart(){
   PLANT.userStop=false;
+  // 🧠 两个驱动源互斥(本地时钟 vs 状态空间信号): 人点了本地全流程 ⇒ 左栏拨杆自己拨回关, 不留"开着却走本地时钟"的假象
+  // 🔴 2026-10-28 老倪「状态空间开关怎么自动关闭了? 关闭后手臂还动」:
+  //   原来这里把 SSMODE.on 强行拨回关(消"双驱动"假象), 但他看到的是"开关自己关了"。
+  //   现在: 只停"跟随", **不动开关** —— 开关是"接入"的事实, 不该被别的按钮改写。
+  if(SSMODE.follow){ SSMODE.follow=false; ssPaint();
+    if(typeof arViewSet==='function') arViewSet(false); }
   PLANT.local=true;                      // ← 点按钮 = 走原来的本地全流程(可倍速), 不交给状态空间
   PLANT.on=true; PLANT.simT=0; PLANT.units=0; PLANT.ok=0; PLANT.ng=0; PLANT._u0=0;
   PLANT.buf=PLANT.bufMax; PLANT.feedAcc=0; PLANT.frames=0; PLANT.warmT=0; PLANT.warmU=0;
@@ -3494,16 +3640,35 @@ $('bUrdf').addEventListener('click',()=>vrKeepCam(()=>{
 //  唯一依据: 控制台 on_toggle_ar → zmax_data/ss_live/exec_switches.json → /api/ar/mode
 //  只在状态**变化**时应用一次, 不每 2s 抢用户手动切的 VR.real / VR.simArm
 var ARMODE={on:false,real_auth:false,age:null};
+// 进/出 AR/状态空间时的**视图**路由(真机臂让位、仿真臂接管) —— 画布开关与左栏拨杆共用这一份
+function arViewSet(on){
+  if(on){ VR.real=false; VR.simArm=true; }   // 进 AR: 真机右臂让位, 仿真双臂接管
+  else  { VR.real=true; }                    // 回真机: 真机右臂重新显示
+  if($('bArmReal')){ $('bArmReal').classList.toggle('on', VR.real!==false);
+    $('bArmReal').textContent = VR.real!==false ? '🦾 右臂_真机' : '🦾 右臂_真机(已隐藏)'; }
+  if($('bArmR')){ $('bArmR').classList.toggle('on', !!VR.simArm);
+    $('bArmR').textContent = VR.simArm ? '🦾 右臂_仿真' : '🦾 右臂_仿真(已隐藏)'; }
+  if(typeof drawVR==='function') drawVR();
+}
 function arModeApply(d){
   if(!d || d.ok===false) return;
-  var on = !!d.ar_scene;
+  // 🧠 左栏「状态空间」拨杆一旦被人动过, 就以它为准 —— 否则人拨回关, 画布开关每 2s 又把它抢回去
+  //    (症状就是"开关关不掉 / 视图自己跳回来")。
+  var on = SSMODE.touched ? !!SSMODE.on : !!d.ar_scene;
   ARMODE.real_auth = !!d.real_auth; ARMODE.age = d.age_s;
   // ▶ 播放开关 (老倪 2026-10-28): 只有人点了画布「▶ 运行」才会写 ar_play.json;
-  //   页面收到一次新的 start 才 plantStart() —— 人不点就绝不自播, 点了就一定要动
+  //   页面收到一次新的 start 才**接入并跟随状态空间执行信号**(箭头由 ar_cmd 驱动, 不是本地时钟)
   var _pl = d.play || {};
   if(_pl.fresh && _pl.action==='start' && _pl.ts && _pl.ts > (PLANT._lastPlayTs||0)){
     PLANT._lastPlayTs = _pl.ts;
-    if(!PLANT.on) plantToggle();
+    if(!(SSMODE.on && SSMODE.follow)){
+      ssFollowStart(); ssPaint();
+      if(typeof arViewSet==='function') arViewSet(true);
+    }
+  } else if(_pl.fresh && _pl.action==='stop' && _pl.ts && _pl.ts > (PLANT._lastPlayTs||0)){
+    // 画布「⏸ 停止 AR 播放」⇒ 画面立刻停住, 但**开关仍是开(接入)** —— 停止 ≠ 断开
+    PLANT._lastPlayTs = _pl.ts;
+    if(PLANT.on || PREV.on){ ssFollowStop(); PLANT.userStop=true; drawVR(); }
   }
   var b = document.getElementById('arBanner');
   if(on){
@@ -3516,19 +3681,16 @@ function arModeApply(d){
       document.body.appendChild(b);
     }
     b.textContent='🥽 AR 场景 · 由状态空间画布控制左右臂 · 真机不下发'
+                 + (SSMODE.on ? (SSMODE.follow ? ' · 拨杆=开·跟随中 · ' : ' · 拨杆=开·已接入未跟随(点 ▶ 跟随 才动) · ')
+                              : ' · 未接入执行信号(拨左栏 🧠 状态空间)')
+                 + ssSigShort()
                  + (ARMODE.real_auth ? '' : ' · 真机开关=关')
                  + (ARMODE.age==null?'':' · 开关帧龄 '+Math.round(ARMODE.age)+'s');
     b.style.display='block';
   } else if(b){ b.style.display='none'; }
   if(on===ARMODE.on) return;                 // 只在跳变时动视图
   ARMODE.on = on;
-  if(on){ VR.real=false; VR.simArm=true; }   // 进 AR: 真机右臂让位, 仿真双臂接管
-  else  { VR.real=true; }                    // 回真机: 真机右臂重新显示
-  if($('bArmReal')){ $('bArmReal').classList.toggle('on', VR.real!==false);
-    $('bArmReal').textContent = VR.real!==false ? '🦾 右臂_真机' : '🦾 右臂_真机(已隐藏)'; }
-  if($('bArmR')){ $('bArmR').classList.toggle('on', !!VR.simArm);
-    $('bArmR').textContent = VR.simArm ? '🦾 右臂_仿真' : '🦾 右臂_仿真(已隐藏)'; }
-  if(typeof drawVR==='function') drawVR();
+  arViewSet(on);                             // 真机臂/仿真臂路由(与左栏拨杆同一份实现)
 }
 function arModePoll(){
   fetch('/api/ar/mode',{cache:'no-store'}).then(r=>r.json()).then(arModeApply).catch(function(){});
@@ -4104,6 +4266,29 @@ async function robotTick(){
     }catch(e){ window.__realRefreshing = false; }
   }, 5000);
   lockTick(); setInterval(lockTick,3000);
+  // 🏷 版本自校 (2026-10-28): 老倪把标签页挂一整天 ⇒ 旧标签页会一直留着上次的"运行中"状态,
+  //    看着就是「我还没点运行, ar3d 怎么就开始跑了」。服务端构建号一变就自动刷新一次,
+  //    每版每个会话只刷一次(sessionStorage 记着) ⇒ 绝不死循环。
+  //   可单测: arBuildStale(self, remote) —— 从 console 直接喂两个号就能验判据, 不用真刷新。
+  window.arBuildStale=function(self,remote){
+    if(!self||!remote) return false;
+    if(self===remote) return false;
+    return !sessionStorage.getItem('arbuild_'+remote);
+  };
+  var arBuildCheck=function(){
+    try{
+      var self=(document.documentElement.innerHTML.match(/构建 (\d{4}-\d{2}-\d{2} r\d+)/)||[])[1];
+      if(self) window.ARBUILD=self;   // 给自己上报(诊断里能看出这个标签页跑的是哪一版)
+      if(!self) return;
+      fetch('/api/ar/build').then(function(r){return r.json();}).then(function(d){
+        if(!window.arBuildStale(self,d&&d.build)) return;
+        sessionStorage.setItem('arbuild_'+d.build,'1');
+        location.reload();
+      }).catch(function(){});
+    }catch(e){}
+  };
+  setTimeout(arBuildCheck,1500);
+  setInterval(arBuildCheck,60000);   // 挂一整天的标签页也要能自己换版(刚部署的 60s 内自动跟上)
   peg2dTick(); setInterval(peg2dTick,600);          // 🆕 D435 专用 2D 头
   // 🩺 每 3s 把页面**真实运行时状态**推给服务端(/api/ar_diag):
   //   老倪 2026-10-19「点击刷新也不好使」时, 服务端只看得到 /api/* 轮询, 看不到 bus y卡死/hidden/CAMS。
@@ -4114,7 +4299,24 @@ async function robotTick(){
         vis:document.visibilityState, hidden:document.hidden,
         ready:(typeof READY!=='undefined'&&!!READY), busy:!!FPUMP.busy, ok:FPUMP.ok, err:FPUMP.err,
         timer:!!FPUMP.timer, cam:String(CAM), hasCam:!!CAMS[CAM], period:FPUMP.period,
-        innerH:innerHeight, scrollY:Math.round(scrollY), zoom:document.documentElement.style.zoom||null
+        innerH:innerHeight, scrollY:Math.round(scrollY), zoom:document.documentElement.style.zoom||null,
+        // 🩺 2026-10-28 老倪「没点运行还是自动运行」: 把"到底是谁在驱动画面"一并上报
+        //    ss/plant/local/prev = 三个可能的动画驱动源; spin/yaw = 视角自转; cv = 画布指纹(变没变)
+        ss:(typeof SSMODE!=='undefined'&&SSMODE.on)?1:0,
+        plant:(typeof PLANT!=='undefined'&&PLANT.on)?1:0,
+        local:(typeof PLANT!=='undefined'&&PLANT.local)?1:0,
+        simT:(typeof PLANT!=='undefined'&&PLANT.simT)?+PLANT.simT.toFixed(2):0,
+        prev:(typeof PREV!=='undefined'&&PREV.on)?1:0,
+        insp:(typeof INSP!=='undefined'&&INSP.playing)?1:0,
+        trans:(typeof TRANS!=='undefined'&&TRANS.playing)?1:0,
+        spin:(typeof VR!=='undefined'&&VR.spin)?1:0,
+        yaw:(typeof VR!=='undefined'&&VR.yaw!=null)?+VR.yaw.toFixed(4):null,
+        mod3:(typeof MOD3ON!=='undefined'&&MOD3ON)?1:0,
+        tcpJ:((typeof TCP!=='undefined'&&TCP&&TCP.joints)?TCP.joints.length:0),
+        bld:(window.ARBUILD||null),
+        cv:(function(){try{var c=document.getElementById('vr');if(!c)return null;
+             var d=c.getContext('2d').getImageData(0,0,c.width,c.height).data,h=0;
+             for(var i=0;i<d.length;i+=9973){h=(h*31+d[i])>>>0;}return h;}catch(e){return -1;}})()
       })));
     }catch(e){}
   },3000);
@@ -4493,10 +4695,21 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
     return h + '</div>';
   }
   // 当前游标: ① 状态空间指令(服务器时间基) ② 本地全流程播放 ③ 待运行停在 0s
+  // 🔴 2026-10-28 老倪: 「我还没有点运行按钮, ar3d 怎么就开始运行了」
+  //    真因: 这里原来**无条件**优先用 /api/ar/cmd 的 mt_id(状态空间循环一直在写) ⇒ 页面一打开,
+  //    元任务游标/高亮就在自己走, 看着像"没点运行却在跑"。现在只有**本页真在跟**时才用它:
+  //    左栏 🧠 状态空间拨杆=开(SSMODE.on) 或 本地全流程在播(PLANT.on, 此时用本地时间)。
+  function mtFollowing() {
+    // 🔴 2026-10-28 老倪「没点运行还是自动运行」第3次: "拨上开关" ≠ "开始跑"。
+    //    拨开只是**接入**(订阅信号, 显示 seq/帧龄), 只有 PLANT.on(点过 ▶ 跟随执行信号 或 点过全流程)才算真在跑。
+    //    ⇒ 判据只认 PLANT.on, 不再认 SSMODE.on, 否则"只接入"的页面右栏又开始自己走。
+    var lp = (typeof PLANT !== 'undefined' && PLANT && PLANT.on);
+    return !!lp;
+  }
   function mtNow() {
     var cyc = (MT.lanes && MT.lanes.cycle_s) || 11.4;
     var d = ((typeof ARCMD !== 'undefined' && ARCMD && ARCMD.d) || {});
-    if (d.mt_id) {
+    if (mtFollowing() && d.mt_id) {
       var all = ((MT.lanes.R || {}).blocks || []).concat((MT.lanes.L || {}).blocks || []);
       var hit = null;
       for (var i = 0; i < all.length; i++) { if (all[i].mt === d.mt_id) { hit = all[i]; break; } }
@@ -4505,7 +4718,7 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
     if (typeof PLANT !== 'undefined' && PLANT && PLANT.on) {
       return { t: PLANT.simT % cyc, src: '全流程播放 ' + PLANT.rate + '×' };
     }
-    return { t: 0, src: '待运行 (点 🏭 全流程 或 控制台画布 ▶ 运行)' };
+    return { t: 0, src: '待运行 (拨左栏 🧠 状态空间 或 点 🏭 全流程 UPH)' };
   }
   function mtAt(ln, t) {
     var bs = ln.blocks || [];
@@ -4539,8 +4752,10 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
     if (!box) return;
     if (!MT) return;
     var d = (typeof ARCMD !== 'undefined' && ARCMD && ARCMD.d) || {};
-    var cur = d.mt_id || '';
-    var i = d.mt_i || 0, n = d.mt_n || 0;
+    // 🔴 没在跑(既没拨 🧠 状态空间 也没点全流程) ⇒ 不高亮"当前执行"元任务, 否则一打开页面就像在跑
+    var run = mtFollowing();
+    var cur = run ? (d.mt_id || '') : '';
+    var i = run ? (d.mt_i || 0) : 0, n = run ? (d.mt_n || 0) : 0;
     var key = cur + '|' + i + '|' + n + '|' + (MT.meta_tasks || []).length
       + '|' + ((MT.lanes || {}).cycle_s || 0);
     if (key === mtLastKey) return;
@@ -4596,7 +4811,7 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
     h += '<div style="display:flex;justify-content:space-between;margin-top:4px;font:9px ui-monospace,monospace;color:#6e7681">'
       + '<span>轮 ' + (lh.segments_total || 392) + ' 段 / ' + (lh.round_total_s || 0) + 's / '
       + (lh.tact_s || 11.42) + 's每件</span>'
-      + '<span>' + (d.kind ? esc(d.kind) + ' ' + esc(d.label || '') : '待运行') + '</span></div>';
+      + '<span>' + ((run && d.kind) ? esc(d.kind) + ' ' + esc(d.label || '') : '待运行') + '</span></div>';
     box.innerHTML = h;
     mtTick();
   }

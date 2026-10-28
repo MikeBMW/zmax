@@ -18,6 +18,9 @@ import os
 import re
 from dataclasses import dataclass, field
 
+# 画布参数里没写 source 时, 从中间件节点模块回落的缓存: nid -> (source, source_symbol)
+_MODSRC_CACHE: dict = {}
+
 # 会真的动设备/需要授权的节点 —— 数据面照跑, 但 **不自动执行实现** (红线)
 _ACT_HINTS = ("执行器", "下发", "MoveIt", "夹爪", "机械臂", "运动", "动作块", "安全执行边界", "授权")
 _VIEW_HINTS = ("视图", "视频", "可视化", "监视", "大屏", "历史", "曲线", "3D")
@@ -174,13 +177,22 @@ def parse_canvas(canvas_path=None):
             key = match(name) or ""
         except Exception:                                            # noqa: BLE001
             key = ""
+        # 🔴 2026-10-28 老倪「plan 节点右键打不开源代码 — 该节点未配置源码映射 (params.source)」:
+        #   画布节点的 params 里常常没写 source(尤其后加的节点), 但中间件节点模块里已经声明了
+        #   SOURCE / SOURCE_SYMBOL ⇒ 这里回落读一次, 右键「打开源代码」就能直接落到真实现。
+        _src = str(p.get("source") or "")
+        _sym = str(p.get("source_symbol") or "")
+        if not _src:
+            _s2, _y2 = _source_from_module(nid)
+            _src = _src or _s2
+            _sym = _sym or _y2
         specs.append(NodeSpec(
             id=nid, name=name, type=n.get("type") or "model",
             inputs=i_ports, outputs=o_ports,
             port_labels=dict(p.get("_port_labels") or {}),
             params=p, impl_key=key,
-            source=str(p.get("source") or ""),
-            source_symbol=str(p.get("source_symbol") or ""),
+            source=_src,
+            source_symbol=_sym,
             exec_mode=_exec_mode(name, p),
             x=int(n.get("x") or 0), y=int(n.get("y") or 0),
         ))
@@ -191,6 +203,42 @@ def parse_canvas(canvas_path=None):
         "impl_registry_keys": (len(registry.keys()) if registry is not None else 0),
     }
     return specs, links, meta
+
+
+def _source_from_module(nid):
+    """画布 params 没写 source 时, 从中间件节点模块 (nodes/*.py 里 NODE_ID==nid) 回落取 SOURCE。
+
+    🔴 2026-10-28 老倪「plan 节点右键打不开源代码 (该节点未配置源码映射)」:
+       params 里没写的节点其实在中间件模块里已经声明了 SOURCE/SOURCE_SYMBOL, 只是没人去读。
+    返回 (source, source_symbol)；找不到给 ("", "")。结果按 nid 缓存 (解析一份画布只读一轮)。
+    """
+    if not nid:
+        return "", ""
+    if nid in _MODSRC_CACHE:
+        return _MODSRC_CACHE[nid]
+    src = sym = ""
+    d = os.path.join(os.path.dirname(os.path.abspath(__file__)), "nodes")
+    try:
+        for fn in sorted(os.listdir(d)):
+            if not fn.endswith(".py") or fn.startswith("_"):
+                continue
+            fp = os.path.join(d, fn)
+            try:
+                with open(fp, encoding="utf-8", errors="ignore") as fh:
+                    txt = fh.read()
+            except Exception:                                        # noqa: BLE001
+                continue
+            if ("NODE_ID = '%s'" % nid) not in txt and ('NODE_ID = "%s"' % nid) not in txt:
+                continue
+            m = re.search(r"^SOURCE\s*=\s*['\"]([^'\"]+)['\"]", txt, re.M)
+            m2 = re.search(r"^SOURCE_SYMBOL\s*=\s*['\"]([^'\"]+)['\"]", txt, re.M)
+            src = m.group(1) if m else ""
+            sym = m2.group(1) if m2 else ""
+            break
+    except Exception:                                                # noqa: BLE001
+        pass
+    _MODSRC_CACHE[nid] = (src, sym)
+    return src, sym
 
 
 def spec_by_name_or_id(specs, name_or_id):
