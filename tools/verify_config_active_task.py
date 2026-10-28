@@ -80,21 +80,47 @@ def main():
 
     ts = tables(wf)
     chk("②③④ 功能配置页有 5 张表(元任务/段/功能/参数…)", len(ts) >= 4, len(ts))
-    # ② 元任务编排表: 表头含 手别+时空窗, 行数=7
-    t_mt = next((t for t in ts if t.rowCount() == len(mts) and
-                 "手别" in t.horizontalHeaderItem(2).text()), None)
-    chk("② 元任务编排表 7 行 + 手别列", t_mt is not None,
-       ("%d 行" % t_mt.rowCount()) if t_mt else "没找到")
+    # ② 元任务编排表: 必须**有「功能」列** (老倪: 「看到一个列, 应该是功能, 哪里去了?」)
+    def _hidx(t, kw):
+        return next((c for c in range(t.columnCount())
+                     if kw in (t.horizontalHeaderItem(c).text() if t.horizontalHeaderItem(c) else "")), -1)
+
+    t_mt = next((t for t in ts if t.rowCount() == len(mts) and _hidx(t, "功能") >= 0
+                 and "元任务" in (t.horizontalHeaderItem(0).text() or "")), None)
+    chk("② 元任务编排表 7 行 + 有「功能」列", t_mt is not None,
+       ("%d 行 / 表头 %s" % (t_mt.rowCount(),
+                             [t_mt.horizontalHeaderItem(c).text() for c in range(t_mt.columnCount())]))
+       if t_mt else "没找到")
     if t_mt:
-        hands = [t_mt.item(r, 2).text() for r in range(t_mt.rowCount())]
-        chk("② 手别三种齐全(右手/左手/双手)",
-            {"右手", "左手", "双手"} <= set(hands), sorted(set(hands)))
-        chk("② 时空窗列非空(并行也算)", all(t_mt.item(r, 5).text() for r in range(t_mt.rowCount())))
+        def _eq(t, name):
+            return next((c for c in range(t.columnCount())
+                         if (t.horizontalHeaderItem(c).text() if t.horizontalHeaderItem(c) else "") == name), -1)
+        c_fn, c_n, c_hand, c_seg, c_tw = (_hidx(t_mt, "功能 (承载"), _eq(t_mt, "功能数"),
+                                          _eq(t_mt, "手别"), _eq(t_mt, "工艺段"), _eq(t_mt, "时空窗"))
+        hands = [t_mt.item(r, c_hand).text() for r in range(t_mt.rowCount())]
+        chk("② 手别三种齐全(右手/左手/双手)", {"右手", "左手", "双手"} <= set(hands), sorted(set(hands)))
+        chk("② 时空窗列非空(并行也算)", all(t_mt.item(r, c_tw).text() for r in range(t_mt.rowCount())))
+        segcol = [t_mt.item(r, c_seg).text() for r in range(t_mt.rowCount())]
+        chk("② 每条元任务都标了工艺段", all(segcol) and all("/" not in x for x in segcol), segcol)
+        # 功能列与真源一致: 并集必须覆盖本任务全部 33 个功能
+        mfx = V._mt_funcs(tid)
+        union = {f["fn"] for m in mfx for f in m["fns"]}
+        chk("② 元任务「功能」列并集 = 本任务 33 个功能", union == {f["fn"] for f in funcs},
+            "并集 %d / 33" % len(union))
+        n0 = [m.get("id") for m in mfx if m["n_fn"] == 0]
+        c0 = [t_mt.item(r, c_fn).text() for r in range(t_mt.rowCount()) if t_mt.item(r, c_n).text() == "0"]
+        chk("② 无功能承载的元任务如实标出(不静默)", all("⛔" in x for x in c0),
+            "零承载: %s → %s" % (n0, c0))
     # ③ 段覆盖表
     t_seg = next((t for t in ts if t.rowCount() == len(segs) and
                   "工艺段" in t.horizontalHeaderItem(0).text()), None)
     chk("③ 工艺段覆盖表 8 行", t_seg is not None, ("%d 行" % t_seg.rowCount()) if t_seg else "没找到")
     if t_seg:
+        cmt = next((c for c in range(t_seg.columnCount())
+                    if "承载元任务" in ((t_seg.horizontalHeaderItem(c).text() or ""))), -1)
+        chk("③ 段表有「承载元任务」列(再一条连接链)", cmt >= 0,
+            ("8 段承载: " + " | ".join("%s←%s" % (t_seg.item(r, 0).text(), t_seg.item(r, cmt).text())
+                                     for r in range(t_seg.rowCount()))) if cmt >= 0 else "缺列")
         marks = [t_seg.item(r, 1).text() for r in range(t_seg.rowCount())]
         chk("③ 4 启用 / 4 本任务不用", marks.count("✅ 启用") == 4 and marks.count("⛔ 本任务不用") == 4,
             marks)
@@ -106,6 +132,13 @@ def main():
         ids = [t_fn.item(r, 0).text() for r in range(t_fn.rowCount())]
         want = [f["fn"] for f in funcs]
         chk("④ 33 行与真源功能清单逐条一致", ids == want)
+        cm = _hidx(t_fn, "承载元任务")
+        chk("④ 功能明细有「承载元任务」列(反向连接)", cm >= 0,
+            [t_fn.horizontalHeaderItem(c).text() for c in range(t_fn.columnCount())])
+        if cm >= 0:
+            col = [t_fn.item(r, cm).text() for r in range(t_fn.rowCount())]
+            chk("④ 33 个功能每个都挂到元任务(无 ⛔ 无)", all(x and "⛔" not in x for x in col),
+                "样例: " + " · ".join(col[:3]))
         # ⑤ 过滤
         bad = sum(1 for f in funcs if not f["complete"])
         t_fn2 = t_fn

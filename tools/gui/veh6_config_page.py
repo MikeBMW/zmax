@@ -205,6 +205,8 @@ def _task_level_meta(tid):
                           "targets": m.get("targets") or [],
                           "actions": m.get("actions") or [],
                           "segs": m.get("segs") or [],
+                          # 🧩 2026-10-28: 元任务 → 工艺段 (衔接功能配置的桥, 作者口径见 ss_meta_task_ar.MT_SEG8)
+                          "seg8": m.get("seg8") or [],
                           "occ": m.get("occurrences")})
         hs = {"R": sum(1 for x in items if x["hand"] == "R"),
               "L": sum(1 for x in items if x["hand"] == "L"),
@@ -338,6 +340,23 @@ def _task_seg_cover(tid=None):
                      "excluded": seg in (bt.get("excluded_segments") or []),
                      "fns": fs})
     return rows
+
+
+def _mt_funcs(tid=None):
+    """元任务 → 承载功能 (老倪 2026-10-28: 「功能配置, 怎么和元任务连接呢? 看到一个列, 应该是功能」)。
+
+    链路: 元任务 --(按动作性质)--> 工艺段(seg8) --(segment_node_map: 段→节点)--> 功能(node_id)。
+    这是两边**唯一**的公共轴 (功能带 node_id, 元任务带动作段, 两者没有直接外键), 所以不做关键词猜配。
+    返回每条 [dict(...任务级元任务字段..., "seg8": [...], "fns": [功能...], "n_fn": N)]。
+    """
+    tid = tid or _active_bind()[0]
+    funcs = _task_funcs(tid)
+    out = []
+    for m in _task_level_meta(tid)[0]:
+        seg8 = m.get("seg8") or []
+        fs = [f for f in funcs if set(f["segs"]) & set(seg8)]
+        out.append(dict(m, seg8=seg8, fns=fs, n_fn=len(fs)))
+    return out
 
 
 def _orders_list():
@@ -4575,18 +4594,45 @@ class ConfigCenterPage(QWidget):
         # ① 活跃任务
         lay.addWidget(self._active_banner(th, "功能配置"))
 
-        # ② 元任务编排 (该任务跑起来的那几条执行元任务)
-        lay.addWidget(_sec("🧩 元任务编排 · %d 条" % len(mts),
-                           "手别 / 层 / 段数 / 时空窗 / 目标对象 —— 功能配置按这个编排落地"))
+        # ② 元任务编排 —— **带「功能」列** (老倪 2026-10-28: 「功能配置, 怎么和元任务连接呢?
+        #    看到一个列, 应该是功能, 哪里去了?」) 连接方式 = 元任务 → 工艺段 → 画布节点 → 功能
+        mfx = _mt_funcs(tid)
+        n_fn_all = len({f["fn"] for m in mfx for f in m["fns"]})
+        lay.addWidget(_sec("🧩 元任务编排 · %d 条 → 承载功能 %d 个 (本任务共 %d)" % (len(mfx), n_fn_all, len(funcs)),
+                           "「功能」列就是元任务与功能配置的连接: 元任务 → 工艺段 → 画布节点 → 功能"))
         r2 = []
-        for m in mts:
+        for m in mfx:
             tw = m.get("t_win")
             twn = ("%.2f→%.2fs" % (tw[0], tw[1])) if (tw and tw[0] is not None) else "并行/常驻"
-            r2.append([m.get("id"), m.get("name"), HAND_CN.get(m.get("hand") or "", "—(真源未标)"),
-                       m.get("layer") or "—", m.get("n_seg") or 0, twn,
-                       " / ".join(m.get("targets") or []) or "—",
-                       (" / ".join(m.get("actions") or []) or "—")[:52]])
-        t2 = _mk_table(["元任务", "名称", "手别", "层", "段数", "时空窗", "目标对象", "动作要点"], r2, th)
+            fids = [f["fn"] for f in m["fns"]]
+            ftxt = (" / ".join(fids[:3]) + ((" 等 %d 个" % len(fids)) if len(fids) > 3 else "")
+                    if fids else "⛔ 无功能承载")
+            nm = (m.get("name") or "").replace("右臂 · ", "").replace("左臂 · ", "").replace("双手 · ", "")
+            r2.append([m.get("id"), nm, ftxt, m["n_fn"],
+                       HAND_CN.get(m.get("hand") or "", "未标"),
+                       " + ".join(sx.split(" ")[0] for sx in (m.get("seg8") or [])) or "—",
+                       m.get("n_seg") or 0, twn,
+                       " / ".join(m.get("targets") or []) or "—"])
+        t2 = _mk_table(["元任务", "名称", "功能 (承载 · 经工艺段)", "功能数", "手别",
+                        "工艺段", "动作段", "时空窗", "目标对象"], r2, th)
+        for r, m in enumerate(mfx):
+            _it = t2.item(r, 2)
+            if _it is not None:
+                _it.setToolTip("\n".join("%s %s" % (f["fn"], f["name"]) for f in m["fns"]) or "该元任务落在的工艺段下没有功能条目")
+            _it4 = t2.item(r, 0)
+            if _it4 is not None and m["n_fn"] == 0:
+                _it4.setForeground(QColor(th["C_RED"]))
+                _it4.setToolTip("工艺段「%s」在 段→节点 映射里没有落成本任务功能的节点 ⇒ 该元任务目前没有功能承载(真源缺口)"
+                                % " / ".join(m.get("seg8") or []))
+        # 反向: 功能 → 承载元任务
+        fn_mts = {}
+        for m in mfx:
+            for f in m["fns"]:
+                fn_mts.setdefault(f["fn"], []).append(m.get("id"))
+        mt_of_seg = {}
+        for m in mfx:
+            for sx in (m.get("seg8") or []):
+                mt_of_seg.setdefault(sx, []).append(m.get("id"))
         t2.setWordWrap(False)
         try:
             t2.verticalHeader().setDefaultSectionSize(22)
@@ -4603,10 +4649,11 @@ class ConfigCenterPage(QWidget):
         r3 = []
         for s in segg:
             mark = "✅ 启用" if s["applies"] else ("⛔ 本任务不用" if s["excluded"] else "· 未声明")
-            r3.append([s["seg"], mark, s["n_node"], s["n_on"], s["n_fn"],
+            r3.append([s["seg"], mark, " + ".join(mt_of_seg.get(s["seg"]) or []) or "⛔ 无元任务",
+                       s["n_node"], s["n_on"], s["n_fn"],
                        ("⛔ %d" % s["n_bad"]) if s["n_bad"] else "✅ 0",
                        " / ".join(f["fn"] for f in s["fns"][:4]) or "—"])
-        t3 = _mk_table(["工艺段", "本任务", "节点数", "启用节点", "对应功能", "缺参数", "功能举例"], r3, th)
+        t3 = _mk_table(["工艺段", "本任务", "承载元任务", "节点数", "启用节点", "对应功能", "缺参数", "功能举例"], r3, th)
         t3.setMinimumHeight(24 * max(3, len(r3)) + 46)
         lay.addWidget(t3)
 
@@ -4627,14 +4674,14 @@ class ConfigCenterPage(QWidget):
         r4 = []
         for f in funcs:
             segs = " · ".join(s.split(" ")[0] for s in (f["segs"] or [])) or "—"
-            r4.append([f["fn"], f["name"], f["layer"] or "—", segs,
+            r4.append([f["fn"], f["name"], " + ".join(fn_mts.get(f["fn"]) or []) or "⛔ 无", f["layer"] or "—", segs,
                        "%s/%s" % (f["n_spec"], f["n_par"]),
                        "✅" if f["complete"] else "⛔ 缺%d" % len(f["missing"]),
                        f["prio"] or "—",
                        "⛔ 禁用" if f["disabled"] else ("✅ 启用" if f["enabled"] else "—"),
                        (f["verify"] or "")[:46]])
-        t4 = _mk_table(["功能ID", "功能名称", "层", "段", "参数(专用/总)", "完整", "优先级", "本任务", "验证方法"],
-                       r4, th)
+        t4 = _mk_table(["功能ID", "功能名称", "承载元任务", "层", "段", "参数(专用/总)", "完整",
+                        "优先级", "本任务", "验证方法"], r4, th)
         t4.setWordWrap(False)
         try:
             t4.verticalHeader().setDefaultSectionSize(22)
