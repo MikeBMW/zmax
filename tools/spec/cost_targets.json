@@ -14,7 +14,7 @@
     "A": {
       "name": "基础版",
       "arms": "单臂",
-      "hw_cost": 150000, "sw_cost": 50000,
+      "hw_cost": 150000, "sw_cost": 70000,
       "hw_margin": [25.0, 30.0], "sw_margin": [45.0, 55.0],
       "compute": "L2 单任务 · ≤30 TOPS",
       "hw_desc": "单臂 + 单相机 + 基础夹爪 + 标准工装",

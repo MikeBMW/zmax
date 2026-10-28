@@ -6285,8 +6285,8 @@ class ConfigCenterPage(QWidget):
         bl = QHBoxLayout(btns)
         bl.setContentsMargins(0, 0, 0, 0)
         for txt, fn, tip in (
-            ("📊 导出成本分析 PPT (14 页)", self._export_deck_ppt,
-             "调 tools/build_market_deck.py 现算三档成本、建议利润空间、三方分成、三阶段回本, 写 zmax_data/deliverables"),
+            ("📊 导出成本分析 PPT (10 页)", self._export_deck_ppt,
+             "调 tools/build_cost_deck.py 现算三档目标成本与降本缺口 (10 页, 只算成本不写销售价), 写 zmax_data/deliverables"),
             ("📄 导出立项报告 (MD + DOCX)", self._export_project_report,
              "写出 docs/deliverables/项目立项报告_双臂协作工位.md 与 .docx, 数字现算"),
             ("📊 导出市场分成 (CSV)", self._export_split_csv,
@@ -6304,22 +6304,28 @@ class ConfigCenterPage(QWidget):
         return w
 
     def _export_deck_ppt(self):
-        """📊 导出成本分析 PPT: 调 build_market_deck.py 现算现画 (13 页全图表)。"""
+        """📊 导出成本分析 PPT: 调 build_cost_deck.py 现算现画 (10 页, 只算成本, 不写销售价)。
+
+        2026-10-28 老倪: 「按照这个给出成本分析；不要写销售价。重写 PPT」
+          ⇒ 生成器从 build_market_deck.py 换成 build_cost_deck.py (纯成本: 三档目标成本 /
+            现估→目标降本缺口 / 实施摊销 / 每件成本 / 产能摊薄), 产物改名, 旧册不再生成。
+          ⇒ 判据 tools/verify_cost_deck.py (24 项: 含「全文无 售价/报价/利润/毛利/分成/回本/销售」)。
+        """
         try:
             import subprocess
             _tp = os.path.join(ROOT, "tools")
-            self.rollout_msg.setText("⏳ 正在生成成本分析 PPT (现算成本/毛利/分成并套模板)…")
+            self.rollout_msg.setText("⏳ 正在生成成本分析 PPT (现算三档目标成本并套模板)…")
             try:
                 QApplication.processEvents()
             except Exception:                                                   # noqa: BLE001
                 pass
-            r = subprocess.run([sys.executable, os.path.join(_tp, "build_market_deck.py")],
+            r = subprocess.run([sys.executable, os.path.join(_tp, "build_cost_deck.py")],
                                cwd=_tp, capture_output=True, text=True, timeout=600)
             out = (r.stdout or "").strip().splitlines()
             err = (r.stderr or "").strip().splitlines()
-            ppt = "/home/ubuntu/zmax_data/deliverables/双臂协作工位_成本结构与市场分成预期.pptx"
+            ppt = "/home/ubuntu/zmax_data/deliverables/双臂协作工位_成本分析_三档目标成本.pptx"
             if r.returncode == 0 and os.path.exists(ppt):
-                self.rollout_msg.setText("✅ 成本分析 PPT 已导出\n%s (%d 字节)\n%s"
+                self.rollout_msg.setText("✅ 成本分析 PPT 已导出 (10 页, 只有成本, 无销售价)\n%s (%d 字节)\n%s"
                                           % (ppt, os.path.getsize(ppt), out[-1] if out else ""))
             else:
                 self.rollout_msg.setText("⛔ 导出失败 (exit %s): %s" % (r.returncode, (err or out)[-1:]))

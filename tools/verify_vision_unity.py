@@ -154,57 +154,40 @@ def main():
     chk("④ 暴露 __VIS__ 钩子给离屏判据", "window.__VIS__" in html, "已核")
     chk("④ 愿景条数据来自 /api/ar/vision", "fetch('/api/ar/vision')" in html, "已核")
 
-    # ── ⑤/⑥ PPT
+    # ── ⑤ 成本分析 PPT (2026-10-28 老倪: 「按照这个给出成本分析；不要写销售价。重写 PPT」)
+    #    旧的《成本结构与市场分成预期》作废 (含售价/分成口径); 主判据 tools/verify_cost_deck.py 24 项。
+    #    这里只做「同源 + 不回归」抽样, 不重复那边的逐项对账。
     from pptx import Presentation
-    ppt = "/home/ubuntu/zmax_data/deliverables/双臂协作工位_成本结构与市场分成预期.pptx"
-    chk("⑤ PPT 存在", os.path.exists(ppt), ppt)
+    ppt = "/home/ubuntu/zmax_data/deliverables/双臂协作工位_成本分析_三档目标成本.pptx"
+    chk("⑤ 成本分析 PPT 存在 (新版, 只算成本)", os.path.exists(ppt), ppt)
     if os.path.exists(ppt):
         prs = Presentation(ppt)
-        chk("⑤ PPT 页数 = 14 (含四条策略 + 三阶段页)", len(prs.slides._sldIdLst) == 14, len(prs.slides._sldIdLst))
-        txt, charts = [], 0
+        n = len(prs.slides._sldIdLst)
+        chk("⑤ 成本 PPT 页数 = 10", n == 10, n)
+        txts = []
         for sl in prs.slides:
             for sh in sl.shapes:
                 if sh.has_text_frame:
-                    txt.append(sh.text_frame.text)
+                    txts.append(sh.text_frame.text)
                 if getattr(sh, "has_table", False) and sh.has_table:
                     for row in sh.table.rows:
                         for c in row.cells:
-                            txt.append(c.text)
-                if getattr(sh, "has_chart", False) and sh.has_chart:
-                    charts += 1
-                    try:
-                        pl = sh.chart.plots[0]
-                        txt.extend([str(c) for c in pl.categories])
-                        for ser in pl.series:
-                            txt.append(str(ser.name))
-                            for vv in ser.values:
-                                txt.append("%.1f%%" % float(vv))
-                    except Exception:                                           # noqa: BLE001
-                        pass
-        allt = " ".join(txt)
-        chk("⑤ 图表数量 ≥6 (饼/柱/折线/环形/方框)", charts >= 6, charts)
-        chk("⑤ 有三条护城河页 (场景数据/工艺/产品化)",
-            all(k in allt for k in ("场景数据", "工艺与技术", "产品化")), "已核")
-        chk("⑤ 有八步链路页 (八步标题齐)", all(k in allt for k in
-                                              ("产品定义", "任务配置", "功能配置", "模型配置",
-                                               "性能配置", "工程配置", "成本组成", "市场分成")), "已核")
-        chk("⑤ 不出现 任务7 / T1 / T2 / T3 编号",
-            not any(b in allt for b in ("任务7", "任务 7", "T1 ", "T2 ", "T3 ")), "已核")
-        chk("⑤ 三档建议报价区间与模型一致",
-            all(("%.1f ~ %.1f 万" % (TG[k]["price_lo"] / 1e4, TG[k]["price_hi"] / 1e4)) in allt for k in "ABC"), "已核")
-        chk("⑤ 分成比例与模型一致", all(("%.1f%%" % TG[k]["pct_capped"]["sw"]) in allt for k in "ABC"), "已核")
-        chk("⑤ 标题不再写「三个」硬缺口", "三个硬缺口" not in allt, "已核")
-        # ⑥ 话术同源
-        cover = [sh.text_frame.text.strip() for sh in prs.slides[0].shapes if sh.has_text_frame]
-        chk("⑥ PPT 封面首句 = vision.json headline", head in cover, cover[:3])
-        chk("⑥ PPT 出现愿景副句 (最后一厘米)", "最后一厘米" in allt, "已核")
+                            txts.append(c.text)
+        allt = " ".join(txts)
+        BAN = ("售价", "报价", "利润", "毛利", "分成", "回本", "销售")
+        chk("⑤ 成本 PPT 不写销售价", not any(b in allt for b in BAN),
+            [b for b in BAN if b in allt])
+        for tid, want in (("A", 22), ("B", 30), ("C", 37)):
+            chk("⑤ %s 档单套成本 = %d 万 (老倪口述口径)" % (tid, want), ("%d 万" % want) in allt, want)
+        chk("⑤ 配置中心导出按钮已接到 build_cost_deck.py",
+            "build_cost_deck.py" in open(os.path.join(ROOT, "tools", "gui", "veh6_config_page.py"),
+                                         encoding="utf-8").read(), "已接线")
+
         # ⑦ 市场策略三阶段 (老倪 2026-10-28)
+        # 2026-10-28 老倪: 「不要写销售价。重写 PPT」⇒ 市场册作废, PPT 侧
+        #   三阶段/回本/人工口径断言随册删除; 这些口径仍留在立项报告(下一段逐条核)与 rollout_model。
         from rollout_model import build_rollout
         R = build_rollout()["phases"]
-        chk("⑦ 有三阶段接续落地页 (精细版首发 / 基础版铺量 / 专业版跨场景)",
-            all(k in allt for k in ("精细版首发", "基础版铺量", "专业版跨场景")), "已核")
-        chk("⑦ 三阶段回本年限与模型一致", all(("%.2f" % p["payback_years"]) in allt for p in R), "已核")
-        chk("⑦ 人工口径写明每人每年 10 万", "每人每年 10 万" in allt.replace(" ", " "), "已核")
         rep = os.path.join(ROOT, "docs", "deliverables", "项目立项报告_双臂协作工位.md")
         chk("⑦ 立项报告 MD 存在", os.path.exists(rep), rep)
         if os.path.exists(rep):
@@ -230,12 +213,13 @@ def main():
             rows = open(csvp, encoding="utf-8-sig").read().strip().splitlines()
             chk("⑦ CSV 有三阶段行 + 三档行", len([r for r in rows if r.startswith(("P1", "P2", "P3"))]) == 3
                 and len([r for r in rows if r.startswith(("A,", "B,", "C,"))]) == 3, "%d 行" % len(rows))
-        # 真按「导出成本分析 PPT」: 看 pptx 是否被重写且回显 ✅
-        pptp = "/home/ubuntu/zmax_data/deliverables/双臂协作工位_成本结构与市场分成预期.pptx"
+        # 真按「导出成本分析 PPT」: 走新生成器, 看文件被重写且回显 ✅ (页数 10)
+        pptp = "/home/ubuntu/zmax_data/deliverables/双臂协作工位_成本分析_三档目标成本.pptx"
         before_ppt = os.path.getmtime(pptp) if os.path.exists(pptp) else 0
         w._export_deck_ppt()
-        chk("⑦ 按「导出成本分析 PPT」重新生成 pptx", os.path.exists(pptp) and os.path.getmtime(pptp) >= before_ppt
-            and "✅" in w.rollout_msg.text() and "14 页" in w.rollout_msg.text(),
+        chk("⑦ 按「导出成本分析 PPT」重新生成 pptx",
+            os.path.exists(pptp) and os.path.getmtime(pptp) >= before_ppt
+            and "✅" in w.rollout_msg.text() and "10 页" in w.rollout_msg.text(),
             w.rollout_msg.text().splitlines()[0] if w.rollout_msg.text() else "")
         chk("⑦ 配置中心可导出 (三个导出方法 + 一张三阶段表)",
             hasattr(w, "_export_deck_ppt") and hasattr(w, "_export_project_report")
