@@ -1341,7 +1341,11 @@ class RealStateSpaceSim:
                 self._l3_task_str = getattr(_cls, "_L3_TASK", "metaworld 光模块插拔")
             if getattr(self, "_l3_pol", None) is None:
                 import sys as _s
-                _repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                # 🔴 2026-10-29: __file__ = <repo>/src/lerobot/engine/runtime.py ⇒ 要 **4** 级才到仓库根。
+                #   原来 3 级 = <repo>/src ⇒ _ck 拼成 <repo>/src/outputs/train/... (不存在) ⇒
+                #   from_pretrained 抛 "Repo id must be in the form 'repo_name'" ⇒ 整层 L3 熔断, 0 次真推理。
+                _repo = os.path.dirname(os.path.dirname(os.path.dirname(
+                    os.path.dirname(os.path.abspath(__file__)))))
                 _src = os.path.join(_repo, "src")
                 if _src not in _s.path:
                     _s.path.insert(0, _src)
@@ -4108,6 +4112,7 @@ class RealStateSpaceSim:
             tr["io_trace"].append((round(step * DT_ENV, 3), self._io_snapshot(
                 o, obs, force_norm, u_ff, latent_pred, prior, z_k, corrected, residual,
                 contact_p, u_fb, u, stage, u_sat, self._u_vec, step, at_grasp_pose)))
+            self._pub_ar_state(o, stage, step, done)
             if done:
                 break
         tr["io"] = tr["io_trace"][-1][1] if tr["io_trace"] else {}
@@ -4198,6 +4203,41 @@ class RealStateSpaceSim:
         except Exception:                                                  # noqa: BLE001
             pass
         return tr
+
+    def _pub_ar_state(self, o, stage, step, done):
+        """🎬 四层模型每步决策 → AR3D 页面契约 zmax_data/ss_live/ar_state.json
+
+        「为什么不接入四层模型」的正面回答: 页面不再只吃预烤段表, 而是吃**引擎每步真决策**的位置。
+        只写渲染用数值, 不下发任何真机指令。
+        """
+        import json as _j
+        import os as _o
+        import time as _t
+        try:
+            if _o.environ.get("ZMAX_UPH_AR_STATE", "1") != "1":
+                return
+            _rp = _o.path.dirname(_o.path.dirname(_o.path.dirname(_o.path.abspath(__file__))))
+            _d = _o.path.join(_rp, "zmax_data", "ss_live")
+            _o.makedirs(_d, exist_ok=True)
+            _p = _o.path.join(_d, "ar_state.json")
+            _g = self.geom
+            _vec = lambda v: [round(float(x), 4) for x in list(v)[:3]]          # noqa: E731
+            _doc = {
+                "t": _t.time(), "t_str": _t.strftime("%H:%M:%S"), "src": "engine_4layer",
+                "step": int(step), "stage": str(stage), "done": bool(done),
+                "hand": _vec(o[0:3]), "peg": _vec(o[4:7]), "hole": _vec(o[36:39]),
+                "goal": _vec(_g["goal"]), "hole_mouth": _vec(_g["hole"]),
+                "frame": "env", "env": _o.environ.get("SS_ENV", "metaworld"),
+                "vision": bool(getattr(self, "vision", False)),
+                "caps": {"SS_L3": _o.environ.get("SS_L3"), "SS_INTACT": _o.environ.get("SS_INTACT"),
+                         "SS_USE_MLP": _o.environ.get("SS_USE_MLP")},
+            }
+            _tmp = _p + ".tmp%d" % _o.getpid()
+            with open(_tmp, "w", encoding="utf-8") as _f:
+                _j.dump(_doc, _f, ensure_ascii=False)
+            _o.replace(_tmp, _p)
+        except Exception:                                                       # noqa: BLE001
+            pass
 
     def _write_shared_memory(self, tr):
         """🧠 分层记忆入库 (真源 src/lerobot/memory/memory_store.py → data/memory/shared_memory.json):

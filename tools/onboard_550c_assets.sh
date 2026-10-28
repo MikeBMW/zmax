@@ -21,7 +21,9 @@ say() { echo "$(date '+%m-%d %H:%M:%S') $*" | tee -a "$LOG"; }
 rsh="ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=10"
 
 # 已经全好了就直接退出 (timer 每 60s 跑一次, 不能有副作用)
-done_marker() { $rsh ${INTEL_U}@${INTEL_IP} "test -f $RDIR/models/sam3_hf/model.safetensors && test -d $RDIR/models/l5_vlm && /home/intel/train_venv/bin/python -c 'import transformers' 2>/dev/null && echo YES" 2>/dev/null | grep -q YES; }
+# 2026-10-29: 原判据 test -d 只看目录存在 ⇒ 空目录也算"已齐"(实测 models/l5_vlm 是空的, 服务天天报已齐)。
+#   改成按**内容**判: L5 至少一个权重文件、INTACT 至少一个 .pt。
+done_marker() { $rsh ${INTEL_U}@${INTEL_IP} "test -f $RDIR/models/sam3_hf/model.safetensors && ls $RDIR/models/l5_vlm/* >/dev/null 2>&1 && ls $RDIR/models/intact/*.pt >/dev/null 2>&1 && /home/intel/train_venv/bin/python -c 'import transformers' 2>/dev/null && echo YES" 2>/dev/null | grep -q YES; }
 
 # 0) 直连可用吗? 不可用就安静退出(等网卡), 不刷日志
 if ! ping -c1 -W1 "$INTEL_IP" >/dev/null 2>&1; then
@@ -61,7 +63,13 @@ L5=$(ls -dt "$REPO"/zmax_data/models/l5_vlm_merged_* 2>/dev/null | head -1)
 
 # 4) INTACT L4
 INTACT="$REPO/zmax_data/stable-wm-cache/checkpoints/intact_l4_v6merged.pt"
-[ -f "$INTACT" ] && { $rsh ${INTEL_U}@${INTEL_IP} "mkdir -p $RDIR/models/intact"; push "$(dirname "$INTACT")" "$RDIR/models/intact" "INTACT ckpt" || true; } || say "⚠️ 无 INTACT ckpt"
+# 2026-10-29: 原来 push "$(dirname ...)" 会把整个 checkpoints 目录(12.16GB/355 文件)推过去 ⇒ 只推这一个 .pt
+if [ -f "$INTACT" ]; then
+  $rsh ${INTEL_U}@${INTEL_IP} "mkdir -p $RDIR/models/intact"
+  say "推 INTACT 单文件 $(basename "$INTACT") ($(du -h "$INTACT" | cut -f1)) ..."
+  rsync -a --partial --inplace ${BW:+--bwlimit=$BW} -e "$rsh" "$INTACT" "${INTEL_U}@${INTEL_IP}:$RDIR/models/intact/" 2>&1 | tail -2 | tee -a "$LOG"
+  [ "${PIPESTATUS[0]}" = "0" ] && say "✅ INTACT ckpt 完成" || say "❌ INTACT ckpt 失败"
+else say "⚠️ 无 INTACT ckpt"; fi
 
 # 5) 校验 SAM3 sha256
 LS=$(awk '{print $1}' "$REPO/zmax_data/models/sam3_hf/model.safetensors.sha256" 2>/dev/null)

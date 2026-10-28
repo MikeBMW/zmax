@@ -47,21 +47,50 @@ def _publish_scene_vec(boxes, w, h, model):
         import time as _t
         vec, conf, bb = None, 0.0, None
         if boxes:
+            def _xyxy(b):
+                """统一取 [x1,y1,x2,y2] —— VLM 实际回的是 bbox=[x1,y1,x2,y2] (引擎 L5 的解析口径),
+                老代码只认 cx/x + w/bw ⇒ 框心恒 (0,0)、矢量恒为常数(实测 -0.566/+0.566), 与画面无关。"""
+                bb = b.get("bbox") or b.get("box") or b.get("xyxy")
+                if isinstance(bb, (list, tuple)) and len(bb) >= 4:
+                    x1, y1, x2, y2 = (float(bb[0]), float(bb[1]), float(bb[2]), float(bb[3]))
+                    return x1, y1, x2, y2
+                w_ = float(b.get("w") or b.get("bw") or 0)
+                h_ = float(b.get("h") or b.get("bh") or 0)
+                x1 = float(b.get("cx") or b.get("x") or 0)
+                y1 = float(b.get("cy") or b.get("y") or 0)
+                return x1, y1, x1 + w_, y1 + h_
+
             def _area(b):
                 try:
-                    return float(b.get("w") or b.get("bw") or 0) * float(b.get("h") or b.get("bh") or 0)
+                    x1, y1, x2, y2 = _xyxy(b)
+                    return max(0.0, x2 - x1) * max(0.0, y2 - y1)
                 except Exception:                                                # noqa: BLE001
                     return 0.0
-            b = max(boxes, key=_area)
-            cx = float(b.get("cx") or b.get("x") or 0) + float(b.get("w") or b.get("bw") or 0) / 2.0
-            cy = float(b.get("cy") or b.get("y") or 0) + float(b.get("h") or b.get("bh") or 0) / 2.0
+            # 2026-10-29: 只按面积取最大框会选中背景物(实测选中"扫码枪"=壁挂设备), 力矢量指向错目标。
+            #   目标物标签优先, 背景类排除, 面积仅作次判据。
+            _TARGET_KW = ("光模块", "模组", "module", "peg", "工件", "金手指", "连接器", "connector", "插头", "销")
+            _SKIP_KW = ("扫码枪", "scanner", "托盘", "tray", "背景", "wall", "夹具", "fixture")
+
+            def _rank(bb):
+                lb = str(bb.get("label") or "")
+                low = lb.lower()
+                hit = any((k in lb) or (k in low) for k in _TARGET_KW)
+                skip = any((k in lb) or (k in low) for k in _SKIP_KW)
+                return (0 if skip else 1, 1 if hit else 0, _area(bb))
+
+            b = max(boxes, key=_rank)
+            _x1, _y1, _x2, _y2 = _xyxy(b)
+            cx = (_x1 + _x2) / 2.0
+            cy = (_y1 + _y2) / 2.0
             conf = float(b.get("conf") or b.get("score") or 0.5)
+            _picked_label = str(b.get("label") or "")
             dx = (cx - w / 2.0) / max(1.0, w / 2.0)
             dy = (cy - h / 2.0) / max(1.0, h / 2.0)
             n = _m.hypot(dx, dy)
             vec = [0.0, 0.0, 0.0] if n < 1e-6 else [dx / n * conf, -dy / n * conf, 0.0]
-            bb = [round(cx, 1), round(cy, 1), b.get("w") or b.get("bw"), b.get("h") or b.get("bh")]
+            bb = [round(_x1, 1), round(_y1, 1), round(_x2, 1), round(_y2, 1)]
         out = {"ts": _t.time(), "vec": vec, "conf": conf, "box": bb, "w": w, "h": h,
+               "label": locals().get("_picked_label", ""),
                "src": "ar_l5_understand:%s" % (model or "SceneVLM")}
         path = os.path.join(ROOT, "zmax_data", "ss_live", "l5_scene_vec.json")
         os.makedirs(os.path.dirname(path), exist_ok=True)

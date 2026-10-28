@@ -101,7 +101,7 @@ ulimit -n 65535 2>/dev/null || ulimit -n 4096 2>/dev/null || true
 # ── 手臂相机源: 产线网直连优先, 本机不在产线网时走 ECS 隧道本地口 18792 ─────────
 #   直连: http://192.168.23.66:8792/frame.jpg (Orin rs_fast_node)
 #   隧道: zmax-orin-arm-fwd.service (ssh -L 18792 -> Orin 8792, 走 39.102.211.79:22022)
-ARM_URL="http://$ORIN_HOST:8792/frame.jpg"
+ARM_URL="http://$ORIN_HOST:8794/frame.jpg,http://$ORIN_HOST:8792/frame.jpg"
 if ! curl -s -m 2 -o /dev/null "http://$ORIN_HOST:8792/frame.jpg" 2>/dev/null; then
   if curl -s -m 2 -o /dev/null "http://127.0.0.1:18792/frame.jpg" 2>/dev/null; then
     ARM_URL="http://127.0.0.1:18792/frame.jpg"

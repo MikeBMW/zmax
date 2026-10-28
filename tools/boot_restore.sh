@@ -71,7 +71,7 @@ local_up() {
     [ "$_l2" = "0" ] && _l2=-1          # 别让两路撞同一台设备(会被独占无法打开)
     echo "  · 相机映射: local=/dev/video$_ld (笔记本彩色) · local2=/dev/video$_l2 (MAXHUB 顶视)"
     nohup $PY tools/cam_live_stream.py --port 8791 --station-port 8793 --quality 72 --fps 30 \
-      --arm-http http://192.168.23.66:8792/frame.jpg --arm-fps 30 --local-dev "$_ld" --local2-dev "$_l2" \
+      --arm-http http://192.168.23.66:8794/frame.jpg,http://192.168.23.66:8792/frame.jpg --arm-fps 30 --local-dev "$_ld" --local2-dev "$_l2" \
       --depth-fps 4 --aoi-fps 1.0 --ctl-motion --overlay --overlay-src all --overlay-fps 10 \
       > /tmp/cam_live_stream.out 2>&1 &
     echo "  ✓ 起了推流服务"
