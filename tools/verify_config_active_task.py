@@ -125,6 +125,43 @@ def main():
         marks = [t_seg.item(r, 1).text() for r in range(t_seg.rowCount())]
         chk("③ 4 启用 / 4 本任务不用", marks.count("✅ 启用") == 4 and marks.count("⛔ 本任务不用") == 4,
             marks)
+    # ② 功能总表 (老倪: 「第一个表应该是所有当前任务的所有功能, 再对应哪个元任务」)
+    tf = getattr(p, "fn_all_table", None)
+    chk("② 有 功能总表", tf is not None, tf.rowCount() if tf else "无")
+    if tf is not None:
+        hdr = [tf.horizontalHeaderItem(c).text() for c in range(tf.columnCount())]
+        chk("② 功能总表列 = 名称/输入/输出/描述/对应元任务",
+            all(any(k in h for h in hdr) for k in ("功能名称", "输入", "输出", "描述", "对应元任务")), hdr)
+        chk("② 总表行数 = 本任务功能数 33", tf.rowCount() == len(funcs), "%d vs %d" % (tf.rowCount(), len(funcs)))
+        ids_ft = [tf.item(r, 0).text() for r in range(tf.rowCount())]
+        chk("② 总表功能ID与真源逐条一致", ids_ft == [f["fn"] for f in funcs], ids_ft[:3])
+        ci, co, cm, cd = (_hidx(tf, "输入"), _hidx(tf, "输出"), _hidx(tf, "对应元任务"), _hidx(tf, "描述"))
+        bad_io = [ids_ft[r] for r in range(tf.rowCount())
+                  if not tf.item(r, ci).text().strip() or not tf.item(r, co).text().strip()]
+        chk("② 每个功能的输入+输出都列出来了", not bad_io, bad_io[:6] or "33/33 有")
+        bad_mt = [ids_ft[r] for r in range(tf.rowCount())
+                  if not tf.item(r, cm).text().strip() or "⛔" in tf.item(r, cm).text()]
+        chk("② 每个功能都对应到元任务(无空/无⛔)", not bad_mt, bad_mt[:6] or "33/33 有元任务")
+        chk("② 每个功能都有描述", all(tf.item(r, cd).text().strip() for r in range(tf.rowCount())),
+            "FN-SYS0-36 描述: " + tf.item(0, cd).text()[:40])
+        # FN-SYS0-36 具体对应关系 (老倪点名的)
+        r36 = ids_ft.index("FN-SYS0-36") if "FN-SYS0-36" in ids_ft else -1
+        chk("② FN-SYS0-36 有对应元任务", r36 >= 0 and "MT-" in tf.item(r36, cm).text(),
+            tf.item(r36, cm).text() if r36 >= 0 else "缺失")
+        # 按元任务过滤的 chips
+        bt2 = {b.text(): b for b in wf.findChildren(QPushButton)}
+        k_mt3 = next((k for k in bt2 if k.startswith("MT-03")), None)
+        chk("② 有按元任务过滤的按钮 MT-01..MT-07",
+            all(any(k.startswith("MT-0%d" % i) for k in bt2) for i in range(1, 8)), [k for k in bt2 if k.startswith("MT-")])
+        if k_mt3:
+            bt2[k_mt3].click(); app.processEvents()
+            n3 = tf.rowCount()
+            want3 = len([f for f in funcs if "MT-03" in (V._fn_detail(f["fn"]).get("x") or "") or
+                         "MT-03" in (tf.item(r, cm).text() if False else "")]) if False else n3
+            chk("② 点 MT-03 只剩该元任务的 %d 个功能" % want3, n3 > 0 and n3 < len(funcs), "%d 行" % n3)
+            bt2[next(k for k in bt2 if k.startswith("本任务"))].click(); app.processEvents()
+            chk("② 点回「本任务」恢复 33 行", tf.rowCount() == len(funcs), tf.rowCount())
+
     # ④ 子系统 → 功能 树 + 功能定义详情 (老倪: 功能要有 名称/输入/输出/描述 + 逻辑实现 function)
     tr = getattr(p, "fn_tree", None)
     dtail = getattr(p, "fn_detail", None)

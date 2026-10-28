@@ -4784,7 +4784,137 @@ class ConfigCenterPage(QWidget):
         # ① 活跃任务
         lay.addWidget(self._active_banner(th, "功能配置"))
 
-        # ② 元任务编排 —— **带「功能」列** (老倪 2026-10-28: 「功能配置, 怎么和元任务连接呢?
+        # ② 功能总表 —— 老倪 2026-10-28: 「每个功能, 都要有对应关系, 要有功能总表;
+        #    第一个表应该是所有当前任务的所有功能, 再对应哪个元任务; 我现在看不到功能, 每个功能都要列出来」
+        _det, _fnm = {}, {}
+        for f in funcs:
+            try:
+                _det[f["fn"]] = _fn_detail(f["fn"])
+            except Exception:                                                   # noqa: BLE001
+                _det[f["fn"]] = {}
+        for _m in _mt_funcs(tid):
+            for _f in _m["fns"]:
+                _fnm.setdefault(_f["fn"], []).append(_m.get("id"))
+        head_ft = _sec("📋 功能总表 · 本任务 %d 个功能" % len(funcs),
+                       "每个功能一行: 名称 · 输入 · 输出 · 描述 · 对应元任务 · 逻辑实现 —— 点一行右下详情跟着跳")
+        lay.addWidget(head_ft)
+
+        ft_bar = QHBoxLayout()
+        ft_note = QLabel()
+        ft_note.setStyleSheet("color:%s;font-size:11px;" % th["C_GRAY"])
+        ft_bar.addWidget(ft_note)
+        ft_bar.addStretch()
+        lay.addLayout(ft_bar)
+
+        def _ft_rows(only_task=True, mt=None):
+            rr = []
+            if only_task:
+                pool = [(f["fn"], f.get("layer") or "", f.get("name") or f["fn"]) for f in funcs]
+            else:
+                pool = sorted((k, (v.get("layer") or ""), (v.get("name") or k))
+                              for k, v in (_fn_registry().get("fns") or {}).items())
+            for fid, lay0, nm0 in pool:
+                d0 = _det.get(fid)
+                if d0 is None:
+                    try:
+                        d0 = _fn_detail(fid) or {}
+                    except Exception:                                           # noqa: BLE001
+                        d0 = {}
+                mts_of = _fnm.get(fid) or []
+                if mt and mt not in mts_of:
+                    continue
+                impl = next((i for i in (d0.get("impl") or []) if i.get("ok")), None)
+                _imsg = (impl.get("msg") or "") if impl else "⛔ 未登记"
+                _short = _imsg
+                if impl and impl.get("file"):
+                    _rel = _imsg.split("  ")[0] if "  " in _imsg else _imsg
+                    _short = "%s  %s" % (os.path.basename(_rel.split(":")[0]) + ":" + _rel.split(":")[1]
+                                         if ":" in _rel else os.path.basename(_rel),
+                                         (_imsg.split("  ", 1)[1].strip() if "  " in _imsg else ""))
+                rr.append([fid, d0.get("name") or nm0,
+                           " · ".join(d0.get("inputs") or []) or "⛔ 未登记",
+                           " · ".join(d0.get("outputs") or []) or "⛔ 未登记",
+                           (d0.get("work") or d0.get("seed_desc") or "—"),
+                           " + ".join(mts_of) or ("⛔ 无" if only_task else "— 不服务本任务"),
+                           _short, _imsg])
+            return rr
+
+        t_ft = _mk_table(["功能ID", "功能名称", "输入", "输出", "描述", "对应元任务",
+                          "逻辑实现 (function)"], _ft_rows(True), th)
+        t_ft.setWordWrap(True)
+        t_ft.verticalHeader().setDefaultSectionSize(30)
+        for _c, _w in ((0, 92), (1, 200), (2, 246), (3, 226), (4, 296), (5, 82)):
+            t_ft.setColumnWidth(_c, _w)
+        t_ft.horizontalHeader().setSectionResizeMode(6, QHeaderView.Stretch)
+        t_ft.setMinimumHeight(24 * 10 + 46)
+        self.fn_all_table = t_ft
+        lay.addWidget(t_ft)
+
+        def _ft_fill(only_task=True, mt=None):
+            rows = _ft_rows(only_task, mt)
+            t_ft.setRowCount(len(rows))
+            for r, row in enumerate(rows):
+                for c, val in enumerate(row[:7]):
+                    it = QTableWidgetItem("" if val is None else str(val))
+                    it.setToolTip(str(row[7]) if c == 6 else str(val))
+                    if c in (2, 3, 4):
+                        it.setForeground(QBrush(QColor(th["C_GRAY"])))
+                    if c == 5 and "⛔" in str(val):
+                        it.setForeground(QBrush(QColor(th["C_RED"])))
+                    if c == 7 and "⛔" in str(val):
+                        it.setForeground(QBrush(QColor(th["C_RED"])))
+                    t_ft.setItem(r, c, it)
+                t_ft.setRowHeight(r, 30 if len(str(row[4])) < 40 else 44)
+            t_ft.resizeRowsToContents()
+            for r in range(len(rows)):                       # 单行最多 3 行字 (58px), 全文在 tooltip
+                if t_ft.rowHeight(r) > 58:
+                    t_ft.setRowHeight(r, 58)
+            # 老倪: 「每个功能都要列出来」 ⇒ 表本身不留内滚, 高度按全部行撑开 (页面整体滚)
+            _hh = sum(t_ft.rowHeight(r) for r in range(len(rows))) + 48
+            t_ft.setMinimumHeight(max(160, _hh))
+            t_ft.setMaximumHeight(max(160, _hh) + 6)
+            ft_note.setText("显示 %d 行%s · 输入/输出来源见右下详情" %
+                            (len(rows), "" if only_task else " (全部功能, 含不服务本任务的)"))
+
+        ft_btns = []
+        for lab, mtv in [("本任务 %d" % len(funcs), None)] + [("MT-0%d" % i, "MT-0%d" % i) for i in range(1, 8)]:
+            _b = _btn(lab, th)
+            _b.setCheckable(True)
+            _b.setChecked(mtv is None)
+            ft_btns.append((_b, mtv))
+            ft_bar.addWidget(_b)
+        _b_all77 = _btn("全部 77", th)
+        _b_all77.setCheckable(True)
+        ft_bar.addWidget(_b_all77)
+
+        def _ft_pick(mtv, only_task=True):
+            for b, mv in ft_btns:
+                b.setChecked(mv == mtv and only_task)
+            _b_all77.setChecked(not only_task)
+            _ft_fill(only_task, mtv)
+
+        for _b, mv in ft_btns:
+            _b.clicked.connect(lambda _=False, m=mv: _ft_pick(m, True))
+        _b_all77.clicked.connect(lambda: _ft_pick(None, False))
+
+        def _ft_jump(r, c):
+            it = t_ft.item(r, 0)
+            if it is None or not hasattr(self, "fn_tree") or self.fn_tree is None:
+                return
+            fid = it.text()
+            for i in range(self.fn_tree.topLevelItemCount()):
+                top = self.fn_tree.topLevelItem(i)
+                for j in range(top.childCount()):
+                    if top.child(j).data(0, Qt.UserRole) and top.child(j).data(0, Qt.UserRole)[1] == fid:
+                        self.fn_tree.setCurrentItem(top.child(j))
+                        return
+
+        t_ft.cellClicked.connect(_ft_jump)
+        _ft_fill(True)
+        if funcs:
+            pass
+
+        # ③ 元任务编排 —— **带「功能」列** (老倪 2026-10-28: 「功能配置, 怎么和元任务连接呢?
         #    看到一个列, 应该是功能, 哪里去了?」) 连接方式 = 元任务 → 工艺段 → 画布节点 → 功能
         mfx = _mt_funcs(tid)
         n_fn_all = len({f["fn"] for m in mfx for f in m["fns"]})
