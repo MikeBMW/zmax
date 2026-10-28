@@ -3749,6 +3749,28 @@ class ConfigCenterPage(QWidget):
                    "每步都能直接跑到出结果</span>" % (th["C_YELLOW"], th["C_GRAY"]))
         hd.setWordWrap(True)
         lay.addWidget(hd)
+        # 节拍/产能口径条 (老倪 2026-10-28: 「要与 AR 场景的 300 UPH 有对应性」)
+        try:
+            import sys as _sys
+            _tp = os.path.join(ROOT, "tools")
+            if _tp not in _sys.path:
+                _sys.path.insert(0, _tp)
+            from cost_model import build_tiers as _bt
+            _c = _bt()
+            _cu = QLabel()
+            _cu.setTextFormat(Qt.RichText)
+            _cu.setText(
+                "<span style='font-size:11.5px;color:%s'>🎯 产能口径（与 AR 场景同一口径）："
+                "全程实测 <b>%.2f s/件</b> → <b>%.1f 件/h</b>（%d 段 / %d 件一轮）；"
+                "稳态 <b>11.39 s/件</b> → <b>316.1 件/h</b>；产品目标 <b>300 件/h</b> ——— "
+                "实测比目标高 <b>%.1f%%</b>，AR 演练件数就按 %.2f s/件的时钟推</span>"
+                % (th.get("C_GREEN", "#3fb950"), _c["tact_s"], _c["uph_geo"], _c["segs"], _c["cycles"],
+                   100.0 * (_c["uph_geo"] / 300.0 - 1.0), _c["tact_s"]))
+            _cu.setWordWrap(True)
+            lay.addWidget(_cu)
+            self.perf_caliber_label = _cu
+        except Exception as _ec:                                                # noqa: BLE001
+            lay.addWidget(QLabel("⛔ 产能口径条构建失败: %r" % (_ec,)))
 
         rowb = QHBoxLayout()
         btns = {}
@@ -6255,6 +6277,8 @@ class ConfigCenterPage(QWidget):
         bl = QHBoxLayout(btns)
         bl.setContentsMargins(0, 0, 0, 0)
         for txt, fn, tip in (
+            ("📊 导出成本分析 PPT (13 页)", self._export_deck_ppt,
+             "调 tools/build_market_deck.py 现算三档成本、建议利润空间、三方分成、三阶段回本, 写 zmax_data/deliverables"),
             ("📄 导出立项报告 (MD + DOCX)", self._export_project_report,
              "写出 docs/deliverables/项目立项报告_双臂协作工位.md 与 .docx, 数字现算"),
             ("📊 导出市场分成 (CSV)", self._export_split_csv,
@@ -6270,6 +6294,29 @@ class ConfigCenterPage(QWidget):
         self.rollout_msg.setWordWrap(True)
         lay.addWidget(self.rollout_msg)
         return w
+
+    def _export_deck_ppt(self):
+        """📊 导出成本分析 PPT: 调 build_market_deck.py 现算现画 (13 页全图表)。"""
+        try:
+            import subprocess
+            _tp = os.path.join(ROOT, "tools")
+            self.rollout_msg.setText("⏳ 正在生成成本分析 PPT (现算成本/毛利/分成并套模板)…")
+            try:
+                QApplication.processEvents()
+            except Exception:                                                   # noqa: BLE001
+                pass
+            r = subprocess.run([sys.executable, os.path.join(_tp, "build_market_deck.py")],
+                               cwd=_tp, capture_output=True, text=True, timeout=600)
+            out = (r.stdout or "").strip().splitlines()
+            err = (r.stderr or "").strip().splitlines()
+            ppt = "/home/ubuntu/zmax_data/deliverables/双臂协作工位_成本结构与市场分成预期.pptx"
+            if r.returncode == 0 and os.path.exists(ppt):
+                self.rollout_msg.setText("✅ 成本分析 PPT 已导出\n%s (%d 字节)\n%s"
+                                          % (ppt, os.path.getsize(ppt), out[-1] if out else ""))
+            else:
+                self.rollout_msg.setText("⛔ 导出失败 (exit %s): %s" % (r.returncode, (err or out)[-1:]))
+        except Exception as _e:                                                # noqa: BLE001
+            self.rollout_msg.setText("⛔ 导出失败: %r" % (_e,))
 
     def _export_project_report(self):
         try:

@@ -67,7 +67,8 @@ JS = """
     var o=(d.ar&&d.ar.overlay)||{};
     $('vPhys').innerHTML='插入 <b>'+(o.insert_mm||'—')+'</b> mm @ <b>'+(o.insert_mm_s||'—')
       +'</b> mm/s · 力 ≤ <b>'+(o.force_limit_n||'—')+'</b> N · <b>'+(o.pixel_mm_at_300||'—')
-      +'</b> mm/px · <b>'+(o.tact_s||'—')+'</b> s/件 @ <b>'+(o.uph||'—')+'</b> UPH';
+      +'</b> mm/px · <b>'+(o.tact_s||'—')+'</b> s/件 @ <b>'+(o.uph||'—')+'</b> UPH'
+      +' · 目标 <b>'+(o.uph_target||300)+'</b> UPH';
     document.getElementById('visBar').title=(d.vision&&d.vision.subline||'')+'\\n'+(d.vision&&d.vision.answer||'');
   }).catch(function(){});
   setInterval(function(){

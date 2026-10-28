@@ -10,7 +10,7 @@
   ② 配置中心: 七个页签顶上都装了愿景带, 高亮环节与页签对应; 文档配置同时高亮 成本组成 + 市场分成
   ③ 成本组成表 / 市场分成表: 真读表格单元格, 与 cost_model.build_tiers() 逐项对账 (不是看有没有控件)
   ④ ar3d: /api/ar/vision 可读; 动作单元 7 + 段 40; 页面有愿景条与 __VIS__ 钩子; 愿景条在 dock 之上不遮挡
-  ⑤ 市场分成 PPT: 13 页, 含愿景句与八步, 图表 ≥6, 不出现 任务7/T1 编号
+  ⑤ 市场分成 PPT: 14 页, 含愿景句与八步, 图表 ≥6, 不出现 任务7/T1 编号
   ⑥ 三处话术同源: 配置中心愿景带首句 == PPT 首页标题 == ar3d 愿景条首句 == vision.json headline
 
 跑法: QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/verify_vision_unity.py
@@ -63,8 +63,9 @@ def main():
     chk("① AR 口径有闭环四环节", (ar.get("loop") or []) == ["看 (相机)", "判 (模型)", "动 (轨迹)", "验 (到位/力)"],
         ar.get("loop"))
     ov = ar.get("overlay") or {}
-    chk("① AR 物理量与性能配置同源 (节拍 11.39 / 315.2 UPH / 47mm / 40N)",
-        abs(ov.get("tact_s", 0) - 11.39) < 0.02 and abs(ov.get("uph", 0) - 315.2) < 0.3
+    chk("① AR 物理量与性能配置同源 (节拍 11.42 / 315.2 UPH / 47mm / 40N, 稳态 11.39 另标)",
+        abs(ov.get("tact_s", 0) - 11.42) < 0.02 and abs(ov.get("tact_steady_s", 0) - 11.39) < 0.02
+        and abs(ov.get("uph", 0) - 315.2) < 0.3
         and ov.get("insert_mm") == 47.0 and ov.get("force_limit_n") == 40.0,
         "tact %s / uph %s / mm %s / F %s" % (ov.get("tact_s"), ov.get("uph"), ov.get("insert_mm"), ov.get("force_limit_n")))
 
@@ -157,7 +158,7 @@ def main():
     chk("⑤ PPT 存在", os.path.exists(ppt), ppt)
     if os.path.exists(ppt):
         prs = Presentation(ppt)
-        chk("⑤ PPT 页数 = 13 (含市场策略三阶段页)", len(prs.slides._sldIdLst) == 13, len(prs.slides._sldIdLst))
+        chk("⑤ PPT 页数 = 14 (含四条策略 + 三阶段页)", len(prs.slides._sldIdLst) == 14, len(prs.slides._sldIdLst))
         txt, charts = [], 0
         for sl in prs.slides:
             for sh in sl.shapes:
@@ -227,9 +228,18 @@ def main():
             rows = open(csvp, encoding="utf-8-sig").read().strip().splitlines()
             chk("⑦ CSV 有三阶段行 + 三档行", len([r for r in rows if r.startswith(("P1", "P2", "P3"))]) == 3
                 and len([r for r in rows if r.startswith(("A,", "B,", "C,"))]) == 3, "%d 行" % len(rows))
-        chk("⑦ 配置中心可导出 (两个导出方法 + 一张三阶段表)",
-            hasattr(w, "_export_project_report") and hasattr(w, "_export_split_csv")
-            and getattr(w, "rollout_table", None) is not None, "已核")
+        # 真按「导出成本分析 PPT」: 看 pptx 是否被重写且回显 ✅
+        pptp = "/home/ubuntu/zmax_data/deliverables/双臂协作工位_成本结构与市场分成预期.pptx"
+        before_ppt = os.path.getmtime(pptp) if os.path.exists(pptp) else 0
+        w._export_deck_ppt()
+        chk("⑦ 按「导出成本分析 PPT」真的重写 pptx", os.path.exists(pptp) and os.path.getmtime(pptp) >= before_ppt
+            and "✅" in w.rollout_msg.text() and "14 页" in w.rollout_msg.text(),
+            w.rollout_msg.text().splitlines()[0] if w.rollout_msg.text() else "")
+        chk("⑦ 配置中心可导出 (三个导出方法 + 一张三阶段表)",
+            hasattr(w, "_export_deck_ppt") and hasattr(w, "_export_project_report")
+            and hasattr(w, "_export_split_csv") and getattr(w, "rollout_table", None) is not None, "已核")
+        chk("⑦ 旧的两导出方法 + 三阶段表仍在",
+            hasattr(w, "_export_project_report") and hasattr(w, "_export_split_csv"), "已核")
 
     print("\n=== %d PASS / %d FAIL ===" % (len(PASS), len(FAIL)))
     if FAIL:

@@ -80,7 +80,7 @@ def ink_rows(png):
 def main():
     prs = Presentation(PPT)
     n = len(prs.slides._sldIdLst)
-    chk("① 页数 = 13", n == 13, n)
+    chk("① 页数 = 14", n == 14, n)
 
     for i, sl in enumerate(prs.slides, 1):
         shapes = [sh for sh in sl.shapes if bbox(sh)]
@@ -137,7 +137,7 @@ def main():
 
     # ④ 页面填充 (渲染墨迹)
     pngs = sorted(f for f in os.listdir(PNG) if f.startswith("s-") and f.endswith(".png"))
-    chk("④ 渲染图 13 张", len(pngs) == 13, len(pngs))
+    chk("④ 渲染图 14 张", len(pngs) == 14, len(pngs))
     for f in pngs:
         w, h, rows = ink_rows(os.path.join(PNG, f))
         body = [y for y in rows if y < 0.855 * h]        # 排除页脚
