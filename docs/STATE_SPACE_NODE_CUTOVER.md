@@ -86,3 +86,11 @@ L2 `ss_yolo` 节点就是这么拿帧的（`_yolo_capture`），再用 YOLO 推�
 改   src/lerobot/engineering/nodes/points_source.py       vision_points 真源 + vision_doc()
 重写 tools/sim_insert_plan.py                             薄壳 CLI (旧实现备份 scratch/sim_insert_plan.py.pre_node_migrate)
 ```
+
+## 7. 本轮收尾 (2026-10-28 夜)
+
+- 代码：commit `50f03a6c` 已推 `origin/main`（HEAD == origin/main）
+- 飞书：成果已发 dataworld/静界 报告群（message_id `om_x100b6113e3d888a0c0f1ad1950258b8`，http 200）
+- 现场缺口未变（手眼/plane_z/相机帧/Orin），**3D 观测点仍出不来**，plan 走配置槽位路径（300UPH 达标）
+- 关机前状态：`zmax-ss-canvas-loop` 正常（10Hz，only ssplan，`plan_src=self`）；零真机指令
+- 下次开机第一件事：`sudo systemctl status zmax-ss-canvas-loop` → 跑 `tools/sim_insert_plan.py` 确认段表与配置指纹一致 → 继续 L3 VLM 接帧源
