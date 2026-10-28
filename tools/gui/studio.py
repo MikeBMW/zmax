@@ -12989,8 +12989,17 @@ class StudioMainWindow(QMainWindow):
         #   · 已有实例再双击图标: 启动脚本把 $ZMAX_BOOT_PAGE (=home) 写进命令通道 → 这条跳转把它带回主控制台
         try:
             _bp = (os.environ.get("ZMAX_BOOT_PAGE") or "home").strip()
-            if _bp and _bp != "home" and _bp in getattr(self, "modules", {}):
-                _QTimer.singleShot(3200, lambda: self._on_nav(_bp))
+            # 🐛 2026-10-28: 原先把 `_bp in self.modules` 判在这里 —— 这段跑在 self.modules 赋值之前
+            #   ⇒ 判定恒为 False, ZMAX_BOOT_PAGE=config 从来跳不过去 (重启后老倪落在主控制台)。
+            #   改成把判定挪进 3.2s 后的回调, 那时 modules 已建好, 页面也建完。
+            if _bp and _bp != "home":
+                def _boot_jump(_k=_bp):
+                    try:
+                        if _k in getattr(self, "modules", {}):
+                            self._on_nav(_k)
+                    except Exception as _e:                                     # noqa: BLE001
+                        print("⚠️ ZMAX_BOOT_PAGE 跳转失败: %r" % _e, flush=True)
+                _QTimer.singleShot(3200, _boot_jump)
             print("🚀 开机默认页: %s (home=主控制台; 要别的页用 ZMAX_BOOT_PAGE=<key>)" % _bp,
                   flush=True)
         except Exception:                                                           # noqa: BLE001

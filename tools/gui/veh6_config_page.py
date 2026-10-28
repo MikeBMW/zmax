@@ -4630,7 +4630,11 @@ class ConfigCenterPage(QWidget):
         #     二者都是**记录与导出** ⇒ 归第七阵 瑶光·定记录。原页构造器 _cost_page()/_biz_page() 一行没改,
         #     仍是唯一算法入口 (tools/cost_model.py / tools/business_model.py), 不存在第二套公式。
         self._apply_tab_order()          # ⭐ 页签次序 = 北斗次序 (老倪 2026-10-15)
-        self._install_vision_bars(th)     # 🎯 2026-10-28 全局愿景统一: 每页顶部一条愿景带
+        # ❌ 2026-10-28 老倪: 「配置中心 让工业机器人干精密活 xxx 这行字, 删掉, 而且这行字已经遮挡了
+        #    产品定义 任务配置 等标签」⇒ 每页顶部那条 58px 愿景带**不再插入**。
+        #    函数 _vision_bar()/_install_vision_bars() 原样保留 (唯一依据 tools/spec/vision.json 仍给
+        #    ar3d 愿景条 / 市场 PPT 用), 只是配置中心不再画, 要恢复就把下面这行放开。
+        # self._install_vision_bars(th)  # 🎯 2026-10-28 全局愿景统一 (已按老倪要求停用)
         # 🆕 2026-10-21 老倪: 「配置中心 打开的时候, 应该先显示 产品配置」
         #   ⇒ 初始页**固定**为第一阵「🏷 产品配置」; 「记住上次那一页」不再回放
         #     (文件照旧随浏览写, 只是不再拿它决定打开哪一页 —— 否则回来会落在随便哪一页)。

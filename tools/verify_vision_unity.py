@@ -69,7 +69,10 @@ def main():
         and ov.get("insert_mm") == 47.0 and ov.get("force_limit_n") == 40.0,
         "tact %s / uph %s / mm %s / F %s" % (ov.get("tact_s"), ov.get("uph"), ov.get("insert_mm"), ov.get("force_limit_n")))
 
-    # ── ② 配置中心愿景带
+    # ── ② 配置中心: 愿景带已按老倪 2026-10-28 要求撤掉
+    #    老倪: 「配置中心 让工业机器人干精密活 xxx 这行字, 删掉, 而且这行字已经遮挡了 产品定义 任务配置 等标签」
+    #    ⇒ 判据翻面: 七个页签**都不许**再有 visionBar; 页签标签本身必须完好 (不许把标签一起删了)。
+    #      vision.json / ar3d 愿景条 / PPT 话术同源不动 (那些老倪点过头)。
     from PyQt5.QtWidgets import QApplication, QFrame, QScrollArea
     app = QApplication.instance() or QApplication([])
     sys.path[:0] = [os.path.join(ROOT, "tools"), os.path.join(ROOT, "tools", "gui")]
@@ -78,32 +81,31 @@ def main():
     w.resize(1700, 1000)
     w.show()
     app.processEvents()
-    by_tab = {}
+    by_tab, inner_tab = {}, {}
     for i in range(w.tabs.count()):
         title = w.tabs.tabText(i)
         page = w.tabs.widget(i)
         inner = page.widget() if isinstance(page, QScrollArea) else page
+        inner_tab[title] = inner
         bar = inner.findChild(QFrame, "visionBar") if inner is not None else None
         by_tab[title] = bar
-    chk("② 七个页签都装了愿景带", all(b is not None for b in by_tab.values()),
+    chk("② 七个页签都在 (标签没被删)", w.tabs.count() == 7,
+        [t.split()[-1] for t in by_tab])
+    chk("② 七个页签都已撤掉愿景带 (无 visionBar)", all(b is None for b in by_tab.values()),
         {k.split()[-1]: bool(b) for k, b in by_tab.items()})
-    want = {"产品配置": ["product_define"], "任务配置": ["task"], "功能配置": ["function"],
-            "模型配置": ["model"], "性能配置": ["perf"], "工程配置": ["eng"],
-            "文档配置": ["cost", "market"]}
-    for tab, ks in want.items():
-        bar = next((b for t, b in by_tab.items() if tab in t), None)
-        got = list(getattr(bar, "_vision_keys", []) or []) if bar is not None else None
-        chk("② %s 高亮环节 = %s" % (tab, ks), got == ks, got)
-    bars = [b for b in by_tab.values() if b is not None]
-    chk("② 愿景带上写着愿景首句", all(head in b.findChildren(type(b))[0].text() or True for b in bars[:1]) and bool(head),
-        head)
-    # 每个带子的第一个 QLabel 必须是愿景首句
+    chk("② 七星页签名完好 (产品/任务/功能/模型/性能/工程/文档)",
+        all(any(k in t for t in by_tab) for k in
+            ("产品配置", "任务配置", "功能配置", "模型配置", "性能配置", "工程配置", "文档配置")),
+        [t.split()[-1] for t in by_tab])
     from PyQt5.QtWidgets import QLabel
-    firsts = []
-    for b in bars:
-        lbs = b.findChildren(QLabel)
-        firsts.append(lbs[0].text() if lbs else "")
-    chk("② 七条愿景带首句一致 = %s" % head, all(head in f for f in firsts), firsts[:2])
+    hits = []
+    for t, inner in inner_tab.items():
+        if inner is None:
+            continue
+        for lb in inner.findChildren(QLabel):
+            if head and head in lb.text():
+                hits.append(t.split()[-1])
+    chk("② 页里不再有「%s」这行字" % head, not hits, hits)
 
     # ── ③ 成本组成 / 市场分成 两张表真读
     tc = getattr(w, "tier_cost_table", None)
