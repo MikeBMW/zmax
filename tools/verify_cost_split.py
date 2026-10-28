@@ -18,6 +18,7 @@ sys.path[:0] = [os.path.join(ROOT, "tools"), os.path.join(ROOT, "tools", "gui")]
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from cost_model import build_tiers                                             # noqa: E402
+from targets_model import build_targets                                        # noqa: E402
 
 PASS, FAIL = [], []
 
@@ -29,6 +30,7 @@ def chk(name, ok, detail=""):
 
 def main():
     d = build_tiers()
+    TG = {t["id"]: t for t in build_targets()["tiers"]}
     spec = json.load(open(os.path.join(ROOT, "tools", "spec", "cost_model.json"), encoding="utf-8"))
     by = {t["id"]: t for t in d["tiers"]}
 
@@ -68,14 +70,14 @@ def main():
         r = by[k]
         chk("① %s 售价 %.1f 万 ≤ 上限 %.0f 万" % (k, r["price_set"] / 1e4, CAPS[k]),
             r["price_set"] / 1e4 <= CAPS[k] + 1e-6, "%.2f 万" % (r["price_set"] / 1e4))
-        chk("① %s 售价 = min(上限, 硬件+实施)" % k,
-            abs(r["price_set"] - min(CAPS[k] * 1e4, r["capex"] + r["nre_sum"])) < 1,
-            "%.0f" % r["price_set"])
+        chk("① %s 建议报价 = min(目标成本×1.3, 红线)" % k,
+            abs(r["price_set"] - min(CAPS[k] * 1e4, TG[k]["price_mid"])) < 1,
+            "%.0f vs %.0f" % (r["price_set"], min(CAPS[k] * 1e4, TG[k]["price_mid"])))
         chk("① %s 硬件毛利 = 售价 − 硬件成本 ≥ 0" % k,
             abs(r["hw_gross"] - (r["price_set"] - r["capex"])) < 1 and r["hw_gross"] > 0,
             "%.1f 万 (%.1f%%)" % (r["hw_gross"] / 1e4, r["hw_gross_pct"]))
-        chk("① %s 装不进设备价的实施 = (capex+NRE) − 售价" % k,
-            abs(r["gap_nre"] - max(0.0, r["capex"] + r["nre_sum"] - r["price_set"])) < 1,
+        chk("① %s 实施差额 = capex+NRE − 建议报价 (负=全装得进)" % k,
+            abs(r["gap_nre"] - (r["capex"] + r["nre_sum"] - r["price_set"])) < 1,
             "%.1f 万" % (r["gap_nre"] / 1e4))
         recompute = (r["price_set"] / r["dep_years"] / r["pieces_year"]
                      + r["license_per_piece"] + r["ops_fee_per_piece"])
@@ -114,7 +116,7 @@ def main():
                 and int(co.get("pieces_year") or 0) == r["pieces_year"],
                 "capex %s / unit %s / 年产 %s" % (co.get("capex"), co.get("unit_cost"), co.get("pieces_year")))
             _tg = o.get("targets") or {}
-            chk("② %s 工单写了设备售价与上限" % no,
+            chk("② %s 工单写了建议报价与上限" % no,
                 ("设备售价" in _tg) and ("上限" in str(_tg.get("设备售价", ""))),
                 str(_tg.get("设备售价", ""))[:40])
             chk("② %s 工单写了产能与单价" % no,
@@ -183,7 +185,7 @@ def main():
     chk("③ 演练 60h 产量与节拍一致", abs(pieces - 18914) <= 3, "%d 件 (期望 ≈18914)" % pieces)
     _lpr = by["A"]["license_per_piece"] + by["A"]["ops_fee_per_piece"]
     chk("③ 演练收入 = 设备售价 + 件数 × (许可+运营)",
-        abs((by["A"]["price_set"] + pieces * _lpr) - (278500.0 + 18914 * _lpr)) < 5,
+        abs((by["A"]["price_set"] + pieces * _lpr) - (by["A"]["price_set"] + 18914 * _lpr)) < 5,
         "%.2f 元" % (by["A"]["price_set"] + pieces * _lpr))
     chk("③ dock 显示售价/客户单件成本/软件回收期",
         all(x in html for x in ("设备售价", "客户单件成本", "软件方回收")), "已核")
@@ -215,14 +217,14 @@ def main():
                     except Exception:
                         pass
         allt = " ".join(txt)
-        for kw, why in (("%.1f 万元" % (by["A"]["price_set"] / 1e4), "基础型售价"),
-                        ("%.1f 万元" % (by["C"]["price_set"] / 1e4), "专业型售价"),
+        for kw, why in (("%.1f ~ %.1f 万" % (TG["A"]["price_lo"] / 1e4, TG["A"]["price_hi"] / 1e4), "基础型建议报价区间"),
+                        ("%.1f ~ %.1f 万" % (TG["C"]["price_lo"] / 1e4, TG["C"]["price_hi"] / 1e4), "专业型建议报价区间"),
                         ("%.3f 元" % by["C"]["client_unit_cost"], "客户单件成本"),
                         ("315", "UPH"), ("三方", "三方分成"),
-                        ("机器人本体硬件", "三方名"), ("封顶", "售价封顶口径")):
+                        ("机器人本体硬件", "三方名"), ("单套目标成本", "目标成本口径")):
             chk("④ PPT 含 %s (%s)" % (kw, why), kw in allt, "有" if kw in allt else "缺")
         for k in "ABC":
-            pct = d["split"][k]["s4_priced"]["pct"]
+            pct = TG[k]["pct_capped"]
             chk("④ PPT 含 %s 档按毛利分成比例 (%.1f/%.1f/%.1f)" % (k, pct["hw"], pct["sw"], pct["op"]),
                 all(("%.1f%%" % pct[x]) in allt for x in ("hw", "sw", "op")), "已核")
         chk("④ PPT 不出现 任务7 / T1 / T2 / T3 编号",

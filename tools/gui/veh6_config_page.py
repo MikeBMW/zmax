@@ -4482,17 +4482,17 @@ class ConfigCenterPage(QWidget):
                           "工单 = 一次执行 (Build Sheet) · 真源 config/orders/BS_*.json · 点行看完整配置面"))
         l7.addWidget(getattr(self, "_w4_orders", QWidget()), 2)
         try:
-            l7.addWidget(_sec("第 7 步 · 成本组成（三档 · 硬件 / 实施 / 运营 / 售价 / 客户单件）",
+            l7.addWidget(_sec("第 7 步 · 成本组成（三档目标成本 · 建议报价区间 · 建议利润空间）",
                               "唯一真源 tools/cost_model.build_tiers() ← tools/spec/cost_model.json (单价 + 售价上限)"))
-            l7.addWidget(self._tier_cost_block(th))
+            l7.addWidget(self._target_cost_block(th))
         except Exception as _e7t:                                               # noqa: BLE001
             _lb7t = QLabel("⛔ 成本组成块构造失败: %r" % (_e7t,))
             _lb7t.setWordWrap(True)
             l7.addWidget(_lb7t)
         try:
-            l7.addWidget(_sec("第 8 步 · 市场分成（三方按毛利贡献 · 三种商务模式）",
+            l7.addWidget(_sec("第 8 步 · 市场分成（三方按目标成本的毛利贡献）",
                               "硬件 = 售价 − 硬件成本 · 软件 = 许可 − 实施摊销 · 运营 = 按件费 − 运营支出"))
-            l7.addWidget(self._tier_split_block(th))
+            l7.addWidget(self._target_split_block(th))
         except Exception as _e8t:                                               # noqa: BLE001
             _lb8t = QLabel("⛔ 市场分成块构造失败: %r" % (_e8t,))
             _lb8t.setWordWrap(True)
@@ -6126,6 +6126,81 @@ class ConfigCenterPage(QWidget):
                      "人工折算 %.2f 元/件" % d["tiers"][0]["labor_per_piece"])
         msg.setWordWrap(True)
         msg.setStyleSheet("color:%s;background:transparent;" % th.get("C_GRAY", "#8b949e"))
+        lay.addWidget(msg)
+        return w
+
+    def _targets_data(self):
+        """三档目标成本 → 建议利润空间 (唯一算法 tools/targets_model.build_targets)。"""
+        try:
+            if not hasattr(self, "_targets_cache"):
+                import sys as _sys
+                _tp = os.path.join(ROOT, "tools")
+                if _tp not in _sys.path:
+                    _sys.path.insert(0, _tp)
+                from targets_model import build_targets
+                self._targets_cache = build_targets()
+            return self._targets_cache
+        except Exception as _e:                                                # noqa: BLE001
+            return {"_err": repr(_e), "tiers": []}
+
+    def _target_cost_block(self, th):
+        r = self._targets_data()
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 2, 0, 2)
+        if not r.get("tiers"):
+            lb = QLabel("⛔ 目标成本模型不可用: %s" % r.get("_err", ""))
+            lb.setWordWrap(True)
+            lay.addWidget(lb)
+            return w
+        lay.addWidget(QLabel("三档目标成本由老倪定死（基础 硬件 15 万单臂 + 软件 5 万；精细 硬件 20 万双臂 + 软件 10 万；"
+                             "专业 硬件 22 万双臂高算力 + 软件 15 万）。这里只给建议利润空间，不写死售价。"))
+        rows = []
+        for t in r["tiers"]:
+            rows.append([
+                t["name"], t["arms"],
+                "%.1f" % (t["hw_cost"] / 1e4), "%.1f" % (t["sw_cost"] / 1e4), "%.1f" % (t["cost_total"] / 1e4),
+                "%.1f ~ %.1f" % (t["price_lo"] / 1e4, t["price_hi"] / 1e4),
+                "%.1f%% ~ %.1f%%" % (t["gross_pct_lo"], t["gross_pct_hi"]),
+                "%.0f" % (t["cap_ref"] / 1e4),
+                "%.1f%s" % (t["price_rec"] / 1e4, "·顶格" if t["capped"] else ""),
+                "%.1f%%" % t["pct_at_cap"],
+                "%.1f" % (t["gap_to_bom"] / 1e4),
+            ])
+        tb = _mk_table(["档位", "臂", "目标硬件(万)", "目标软件(万)", "单套成本(万)", "建议报价区间(万)",
+                        "建议毛利空间", "客户红线(万)", "建议报价(万)", "红线内实际毛利", "比现估要降(万)"], rows, th)
+        tb.setMinimumHeight(41 + 34 * len(rows) + 8)
+        self.tier_cost_table = tb
+        lay.addWidget(tb)
+        return w
+
+    def _target_split_block(self, th):
+        r = self._targets_data()
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 2, 0, 2)
+        if not r.get("tiers"):
+            lay.addWidget(QLabel("⛔ 分成模型不可用"))
+            return w
+        rows = []
+        for t in r["tiers"]:
+            rows.append([
+                t["name"], "%.1f%%" % t["pct_capped"]["hw"], "%.1f%%" % t["pct_capped"]["sw"],
+                "%.1f%%" % t["pct_capped"]["op"],
+                "%.1f" % ((t["year"]["hw"] + t["year"]["sw"] + t["year"]["op"]) / 1e4),
+                "%.1f" % (t["year"]["hw"] / 1e4), "%.1f" % (t["year"]["sw"] / 1e4),
+                "%.1f" % (t["year"]["op"] / 1e4),
+                "%.1f" % (t["gross_hw_capped"] / 1e4), "%.1f" % (t["gross_sw_capped"] / 1e4),
+                "%.1f" % (t["sw_share_of_cost"]),
+            ])
+        tb = _mk_table(["档位", "硬件", "软件", "运营", "三方年毛利(万)", "硬件(万)", "软件(万)", "运营(万)",
+                        "单套硬件毛利(万)", "单套软件毛利(万)", "软件占成本(%)"], rows, th)
+        tb.setMinimumHeight(41 + 34 * len(rows) + 8)
+        self.tier_split_table = tb
+        lay.addWidget(tb)
+        msg = QLabel("分成按目标成本的毛利贡献分：硬件拿「建议报价 − 目标硬件成本」，软件拿「许可 − 目标软件成本」，"
+                     "运营拿「按件费 − 运营支出」。年度口径按每年 10 套/档（假设）。")
+        msg.setWordWrap(True)
         lay.addWidget(msg)
         return w
 

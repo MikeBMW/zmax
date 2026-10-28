@@ -220,7 +220,18 @@ def build_tiers(path=None):
     # ── 定价上限约束下的真实商务结构 (老倪 2026-10-28 定价: A≤30万 / B≤40万 / C≤55万)
     for r in out["tiers"]:
         cap = float(r.get("price_cap") or 0) or None
+        # 老倪 2026-10-28: 不再定死售价。price_set 改为「建议报价」=
+        #   目标成本 (硬件+软件) × (1 + 建议毛利), 再受客户红线约束; 目标成本见 spec/cost_targets.json
         price_set = min(cap, r["capex"] + r["nre_sum"]) if cap else (r["capex"] + r["nre_sum"])
+        try:
+            _tp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "spec", "cost_targets.json")
+            _ts = json.load(open(_tp, encoding="utf-8"))["tiers"][r["id"]]
+            _hm = sum(_ts["hw_margin"]) / 2.0 / 100.0
+            _sm = sum(_ts["sw_margin"]) / 2.0 / 100.0
+            _mid = _ts["hw_cost"] / (1 - _hm) + _ts["sw_cost"] / (1 - _sm)
+            price_set = min(_mid, cap) if cap else _mid
+        except Exception:                                                      # noqa: BLE001
+            pass
         if cap is None:
             price_set = r["capex"] + r["nre_sum"]
         pieces = max(1, r["pieces_year"])
@@ -235,7 +246,7 @@ def build_tiers(path=None):
         g_op = pieces * ops_lpr - r["opex_year"]
         r.update({
             "price_cap": cap, "price_set": round(price_set, 2),
-            "price_basis": (r.get("price_basis") or "") + " ; 售价按上限 %.0f 万定价" % (price_set / 1e4),
+            "price_basis": (r.get("price_basis") or "") + " ; 建议报价 = 目标成本 × (1+建议毛利), 受红线 %.0f 万约束" % (cap / 1e4),
             "hw_gross": round(hw_gross, 2),
             "hw_gross_pct": round(100.0 * hw_gross / price_set, 1) if price_set else 0,
             "gap_nre": round(gap, 2),

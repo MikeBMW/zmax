@@ -14,7 +14,8 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from cost_model import build_tiers  # noqa: E402
+from cost_model import build_tiers      # noqa: E402
+from targets_model import build_targets  # noqa: E402
 
 SPEC = os.path.join(HERE, "spec", "rollout.json")
 
@@ -44,7 +45,11 @@ def build_rollout():
     for ph in spec["phases"]:
         t = T[ph["tier"]]
         pieces = t["pieces_year"]
-        invest = t["price_set"]                     # 客户实付 = 设备价; 未吸收 NRE 厂家自担
+        # 老倪 2026-10-28: 不再定死售价, 客户投入取「建议报价」(目标成本 + 建议毛利, 并受红线约束)
+        TGT = {x["id"]: x for x in build_targets()["tiers"]}[ph["tier"]]
+        invest = TGT["price_rec"]
+        t = dict(t)
+        t["gap_nre"] = max(0.0, TGT["gap_to_bom"])
         labor = ph["persons"] * ppy
         lic_y = t["license_per_piece"] * pieces + t["license_upfront"] / t["nre_years"]
         ops_y = t["ops_fee_per_piece"] * pieces
@@ -59,7 +64,7 @@ def build_rollout():
         pm_nofree = _payback_months(invest, (labor + reuse_y) / 12.0, fee_y / 12.0, 0)
         pm = _payback_months(invest, (labor + reuse_y) / 12.0, fee_y / 12.0, free)
         y1 = labor - (0.0 if free >= 12 else fee_y * max(0, 12 - free) / 12.0)
-        base = d["split"][ph["tier"]]["s4_priced"]["pct"]
+        base = TGT["pct_capped"]                     # 分成基准改成按目标成本的毛利贡献
         bias = ph.get("split_bias") or {}
         adj = {k: base[k] + float(bias.get(k, 0.0)) for k in ("hw", "sw", "op")}
         pct = _norm3(adj["hw"], adj["sw"], adj["op"])

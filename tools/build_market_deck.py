@@ -4,7 +4,7 @@
 
 三轮要求叠在一起:
   ① 图表化: 饼图/方框图/比例图/趋势图/柱状图, 不要只列数字表格; 不出现"任务7"式编号文字, 用完整句子。
-  ② 售价封顶: 专业 ≤55 万 / 精细 ≤40 万 / 基础 ≤30 万 → 实施投入装不进设备价, 由许可与运营回收。
+  ② 不再定死售价: 三档目标成本 (15+5 / 20+10 / 22+15 万) + 建议毛利空间; 客户红线 30/40/55 万只作上界。
   ③ 产品愿景统一: 先用「让工业机器人干精密活 · 最后一厘米」开场, 再给八步链路 (产品定义→任务→功能→
      模型→性能→工程→成本组成→市场分成), 让成本与分成落在愿景里, 而不是孤立的账。
   ④ 版面复核意见已修: 封面标题与副标题拉开、折线基础型改虚线且只给专业型打标签、环形图关掉扇区内百分比
@@ -239,6 +239,16 @@ def kpi_strip(s, x, y, w, rows, accent=C_BLUE):
         p.space_after = Pt(3)
     return b
 
+def targets():
+    """三档目标成本 + 建议利润空间 (唯一算法 tools/targets_model.py)。"""
+    import sys as _sys
+    _tp = os.path.dirname(os.path.abspath(__file__))
+    if _tp not in _sys.path:
+        _sys.path.insert(0, _tp)
+    from targets_model import build_targets
+    return build_targets()["tiers"]
+
+
 def rollout():
     """市场策略三阶段 (唯一算法 tools/rollout_model.py)。"""
     import sys as _sys
@@ -253,6 +263,7 @@ def main():
     d = build_tiers()
     T = d["tiers"]
     S = d["split"]
+    TG = targets()
     v = vision_spec()
     vs = v.get("vision") or {}
     pillars = v.get("pillars") or []
@@ -360,12 +371,12 @@ def main():
     # ── 3 八步链路
     s = new_slide(prs, "从一个动作单元到一份报价，中间有八步，每一步都能被数出来",
                   "上排八步与配置中心的八个环节一一对应；每步下面挂一个可核对的数字")
-    hw_min = min(S[k]["s4_priced"]["pct"]["hw"] for k in "ABC")
-    hw_max = max(S[k]["s4_priced"]["pct"]["hw"] for k in "ABC")
+    sw_min = min(TG[k]["pct_capped"]["sw"] for k in range(3))
+    sw_max = max(TG[k]["pct_capped"]["sw"] for k in range(3))
     nums = ["550A / B / C", "7 个动作单元", "33 个功能", "L2 ~ L5",
             "%.0f 件/h" % d["uph_geo"], "25 步 WI",
-            "%.1f ~ %.1f 万" % (wan(T[0]["price_set"]), wan(T[2]["price_set"])),
-            "%.0f%% ~ %.0f%%" % (hw_min, hw_max)]
+            "%.1f ~ %.1f 万" % (wan(TG[0]["cost_total"]), wan(TG[2]["cost_total"])),
+            "%.0f%% ~ %.0f%%" % (sw_min, sw_max)]
     steps = []
     for i, st in enumerate(spine[:8]):
         steps.append(("%d %s" % (st.get("step", i + 1), st.get("title", "")), nums[i], COL3[i % 3]))
@@ -387,53 +398,57 @@ def main():
     note(s, "八个环节与配置中心八个页签同一套命名；ar3d 的愿景条把这条链路压成四个闭环环节（看、判、动、验）实时演示。")
 
     # ── 4 一页结论
-    s = new_slide(prs, "三档配置各自对应一类客户，价格封顶之后比拼的是谁用得更满",
-                  "从左到右投入递增、能力递增、可承接的工艺复杂度递增")
-    for k, t in enumerate(T):
+    s = new_slide(prs, "成本目标定死之后，三档的差别不在毛利厚度，而在能力边界",
+                  "只给建议利润空间，不写死售价：报价由销售在区间内与客户谈")
+    for k, t in enumerate(TG):
         x = X0 + k * (WC + GAPC)
-        card(s, x, 1.42, WC, 1.66, "%.1f 万元" % wan(t["price_set"]),
-             "%s整套售价（上限 %.0f 万）" % (NAMES[k], wan(t["price_cap"])),
-             "硬件 %.1f 万 · 毛利 %.0f%%" % (wan(t["capex"]), t["hw_gross_pct"]), COL3[k], 24, 9.5)
-        card(s, x, 3.20, WC, 1.66, "%.3f 元" % t["client_unit_cost"],
-             "%s客户单件总成本" % NAMES[k],
-             "人工折算 %.2f 元/件" % labor, COL3[k], 24, 9.5)
-        card(s, x, 4.98, WC, 1.10, "%.0f%%" % t["client_save_pct"],
-             "%s相比人工节省" % NAMES[k], "按年产量折算", COL3[k], 22, 9)
-    note(s, "硬件仍有毛利（三成二到四成九），但实施投入装不进设备价：专业型五十三万实施费里有二十六万要靠许可与运营收回。")
+        card(s, x, 1.42, WC, 1.66, "%.1f ~ %.1f 万" % (t["price_lo"] / 1e4, t["price_hi"] / 1e4),
+             "%s建议报价区间" % NAMES[k],
+             "%s · 单套成本 %.1f 万" % (t["arms"], t["cost_total"] / 1e4), COL3[k], 21, 9.5)
+        card(s, x, 3.20, WC, 1.66, "%.1f%% ~ %.1f%%" % (t["gross_pct_lo"], t["gross_pct_hi"]),
+             "%s建议利润空间" % NAMES[k],
+             "硬件 25~30%% · 软件 45~55%% · 红线 %.0f 万" % (t["cap_ref"] / 1e4), COL3[k], 21, 9.5)
+        card(s, x, 4.98, WC, 1.10, "%.1f 万" % (t["cost_total"] / 1e4),
+             "%s单套目标成本" % NAMES[k],
+             "硬件 %.1f + 软件 %.1f" % (t["hw_cost"] / 1e4, t["sw_cost"] / 1e4), COL3[k], 22, 9)
+    note(s, "三档成本目标：基础型硬件十五万加软件五万，精细型二十万加十万，专业型二十二万加十五万；"
+            "按此目标，红线内的实际毛利是 %.1f%% / %.1f%% / %.1f%%。"
+            % tuple(TG[k]["pct_at_cap"] for k in range(3)))
 
-    # ── 5 定价与毛利
-    s = new_slide(prs, "设备价封顶之后，硬件这一层依然有毛利，只是厚度不同",
-                  "单位：万元；柱为整套售价与硬件成本")
+    # ── 5 建议利润空间
+    s = new_slide(prs, "利润空间不是拍出来的，是由目标成本与客户红线夹出来的",
+                  "单位：万元；柱为单套目标成本、建议报价下限与上限，红线是客户可接受的上界")
     cd = CategoryChartData()
     cd.categories = NAMES
-    cd.add_series("整套售价（封顶）", [round(wan(t["price_set"]), 1) for t in T])
-    cd.add_series("硬件成本", [round(wan(t["capex"]), 1) for t in T])
+    cd.add_series("单套目标成本", [round(t["cost_total"] / 1e4, 1) for t in TG])
+    cd.add_series("建议报价下限", [round(t["price_lo"] / 1e4, 1) for t in TG])
+    cd.add_series("建议报价上限", [round(t["price_hi"] / 1e4, 1) for t in TG])
+    cd.add_series("客户红线", [round(t["cap_ref"] / 1e4, 1) for t in TG])
     gf = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.96), Inches(1.32),
                             Inches(7.22), Inches(5.0), cd)
     ch = gf.chart
-    style_chart(ch, 10.5)
-    color_series(ch.plots[0], [C_BLUE, C_GRAY])
+    style_chart(ch, 10)
+    color_series(ch.plots[0], [C_GRAY, C_LBLUE, C_BLUE, C_RED])
     ch.plots[0].has_data_labels = True
     ch.plots[0].data_labels.number_format = '0.0'
     ch.plots[0].data_labels.number_format_is_linked = False
-    ch.plots[0].data_labels.font.size = Pt(10)
-    ch.plots[0].gap_width = 70
-    para_block(s, 8.25, 1.42, 4.45, 5.3, [
-        ("三档的毛利厚度", C_DARK, 14, True),
-        ("基础型售价二十七万九，略低于三十万上限，硬件毛利九万、毛利率三成二；实施费九万正好装得进去。",
-         C_DARK, 10.5, False),
-        ("精细型顶到四十万，硬件毛利十七万一、毛利率四成三；实施费二十一万装不下，差三点九万要由许可补。",
-         C_DARK, 10.5, False),
-        ("专业型顶到五十五万，硬件毛利二十六万九、毛利率四成九；实施费五十三万里有二十六万一装不进去。",
-         C_DARK, 10.5, False),
-        ("设备价不是利润来源，而是入场券。", C_ORANGE, 11.5, True),
+    ch.plots[0].data_labels.font.size = Pt(8.5)
+    ch.plots[0].gap_width = 60
+    para_block(s, 8.25, 1.42, 4.45, 3.6, [
+        ("为什么不定售价", C_DARK, 14, True),
+        ("基础型成本二十万，按三成左右毛利应报二十九到三十二万，但客户红线是三十万，所以只能在三十万顶格，"
+         "实际毛利三成三。", C_DARK, 10, False),
+        ("精细型是最紧的一档：成本三十万、红线四十万，顶格卖也只有两成半毛利。要拿到三成，"
+         "单套成本必须压到二十八万以内。", C_ORANGE, 10, False),
+        ("专业型成本三十七万、红线五十五万，顶格毛利三成三，是三档里空间最舒服的。", C_DARK, 10, False),
+        ("对销售的建议：先守住红线内毛利，再谈装机数量换价格。", C_ORANGE, 10.5, True),
     ])
-    kpi_strip(s, 8.25, 5.28, 4.45, [
-        ("硬件毛利率", "%.1f%% / %.1f%% / %.1f%%" % tuple(T[i]["hw_gross_pct"] for i in range(3))),
-        ("装不下的实施", "%.1f / %.1f / %.1f 万" % tuple(wan(T[i]["gap_nre"]) for i in range(3))),
-        ("售价 / 上限", "%.0f%% / %.0f%% / %.0f%%" % tuple(100 * T[i]["price_set"] / T[i]["price_cap"] for i in range(3))),
+    kpi_strip(s, 8.25, 5.12, 4.45, [
+        ("红线内实际毛利", "%.1f%% / %.1f%% / %.1f%%" % tuple(t["pct_at_cap"] for t in TG)),
+        ("要降的目标成本差", "%.1f / %.1f / %.1f 万" % tuple(t["gap_to_bom"] / 1e4 for t in TG)),
+        ("软件占单套成本", "%.0f%% / %.0f%% / %.0f%%" % tuple(t["sw_share_of_cost"] for t in TG)),
     ], C_BLUE)
-    note(s, "售价取上限与成本合计中的较小者：基础型成本合计低于上限，按二十七万九定价，留出约两万元议价空间。")
+    note(s, "四根柱依次是：单套目标成本、建议报价下限、建议报价上限、客户红线。上限高于红线时按红线报，毛利空间自动被压薄。")
 
     # ── 6 投入结构
     s = new_slide(prs, "一套工位的钱主要花在设备上，实施投入随智能化程度快速上升",
@@ -542,11 +557,12 @@ def main():
     s = new_slide(prs, "同样的工位，收钱的方式决定了三年后的收入曲线",
                   "以精细型首年为例：设备款、软件许可、运营服务三段收入")
     t1 = T[1]
+    p1 = TG[1]
     lic_year = t1["license_upfront"] + t1["pieces_year"] * t1["license_per_piece"]
     ops_year = t1["pieces_year"] * t1["ops_fee_per_piece"]
     cd = CategoryChartData()
     cd.categories = ["设备与实施款", "软件许可", "运营服务"]
-    cd.add_series("首年收入", [round(wan(t1["price_set"]), 1), round(wan(lic_year), 1), round(wan(ops_year), 1)])
+    cd.add_series("首年收入", [round(wan(p1["price_rec"]), 1), round(wan(lic_year), 1), round(wan(ops_year), 1)])
     gf = s.shapes.add_chart(XL_CHART_TYPE.PIE, Inches(0.96), Inches(1.42), Inches(5.55), Inches(4.85), cd)
     ch = gf.chart
     ch.font.size = Pt(11)
@@ -569,17 +585,17 @@ def main():
         ("只卖设备，收入在交付那年就到顶；改成设备加许可加运营，同一个客户每年都会再产生一笔与产量挂钩的收入。",
          C_DARK, 10.5, False),
         ("精细型首年结构是设备款 %.1f 万、许可 %.1f 万、运营 %.1f 万，许可与运营合计已占两成以上。"
-         % (wan(t1["price_set"]), wan(lic_year), wan(ops_year)), C_DARK, 10.5, False),
+         % (wan(p1["price_rec"]), wan(lic_year), wan(ops_year)), C_DARK, 10.5, False),
         ("许可在两年半左右就把实施投入收回来，这是这套商业模式能成立的前提。", C_DARK, 10.5, False),
         ("把许可与运营写进合同，一次性生意就变成随客户产能成长的长期生意。", C_ORANGE, 11.5, True),
     ])
-    note(s, "许可费 = 售价的六个点一次性 + 实施投入按五年摊销另加四成毛利；运营费 = 年度运营支出另加两成半毛利。")
+    note(s, "许可费 = 建议报价的六个点一次性 + 软件成本按五年摊销另加四成毛利；运营费 = 年度运营支出另加两成半毛利。")
 
     # ── 10 三方分成
     s = new_slide(prs, "收益按毛利贡献在三方之间分配，档位越高软件的分量越重",
                   "从左到右依次为基础型、精细型、专业型；环下写出确切比例，避免小扇区标签压线")
     for k, (tid, title) in enumerate(zip("ABC", NAMES)):
-        pct = S[tid]["s4_priced"]["pct"]
+        pct = TG[k]["pct_capped"]
         cd = CategoryChartData()
         cd.categories = ["机器人本体硬件", "模型与软件", "运营与数据"]
         cd.add_series("分成", [pct["hw"], pct["sw"], pct["op"]])
@@ -618,7 +634,7 @@ def main():
         r2.font.size = Pt(9.5)
         r2.font.color.rgb = C_MUTE
         r2.font.name = "Microsoft YaHei"
-    note(s, "规则：硬件拿「售价 − 硬件成本」，软件拿「许可 − 实施摊销」，运营拿「按件费 − 运营支出」；三方均为正。")
+    note(s, "规则：硬件拿「建议报价 − 目标硬件成本」，软件拿「许可 − 目标软件成本」，运营拿「按件费 − 运营支出」；三方均为正。")
 
     # ── 11 落地路径
     s = new_slide(prs, "从进场标定到无人夜班，落地可以拆成四个可验收的阶段",

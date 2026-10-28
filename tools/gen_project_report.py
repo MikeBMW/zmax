@@ -40,10 +40,12 @@ def gather():
     r = build_rollout()
     v = json.load(open(os.path.join(HERE, "spec", "vision.json"), encoding="utf-8"))
     T = {t["id"]: t for t in d["tiers"]}
-    return d, r, v, T
+    from targets_model import build_targets
+    TG = build_targets()["tiers"]
+    return d, r, v, T, TG
 
 
-def lines(d, r, v, T):
+def lines(d, r, v, T, TG):
     vs = v["vision"]
     L = []
     A = lambda s="": L.append(s)                                   # noqa: E731
@@ -91,7 +93,7 @@ def lines(d, r, v, T):
     return L
 
 
-def lines2(d, r, v, T):
+def lines2(d, r, v, T, TG):
     L = []
     A = lambda s="": L.append(s)                                   # noqa: E731
     A("## 五、市场策略：三个阶段接续落地")
@@ -120,54 +122,51 @@ def lines2(d, r, v, T):
           r["phases"][1]["free_months"], r["phases"][1]["payback_years"],
           wan(r["phases"][2]["reuse_year"]), "%.2f 年" % r["phases"][2]["payback_years"]))
     A("")
-    A("## 六、三档定价与成本组成")
+    A("## 六、三档目标成本与建议利润空间")
     A("")
-    A("| 档位 | 硬件成本 | 实施投入 | 年运营 | 年产量 | 单件成本 | 售价(上限) | 硬件毛利 | 装不下的实施 | 客户单件 | 比人工省 |")
-    A("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
-    for k in "ABC":
-        t = T[k]
-        A("| %s | %s | %s | %s | %.1f 万件 | %.4f 元 | %s (≤%.0f 万) | %s / %s | %s | %.4f 元 | %s |" % (
-            t["name"], wan(t["capex"]), wan(t["nre_sum"]), wan(t["opex_year"]), t["pieces_year"] / 1e4,
-            t["unit_cost"], wan(t["price_set"]), t["price_cap"] / 1e4, wan(t["hw_gross"]),
-            pct(t["hw_gross_pct"]), wan(t["gap_nre"]), t["client_unit_cost"], pct(t["client_save_pct"])))
+    A("成本目标是定死的：基础型硬件 15 万（单臂）加软件 5 万；精细型硬件 20 万（双臂）加软件 10 万；"
+      "专业型硬件 22 万（双臂、高算力高带宽）加软件 15 万。对外不定售价，只给建议利润空间，"
+      "由销售在区间内与客户谈。")
     A("")
-    A("售价上限为硬约束（基础 ≤30 万 / 精细 ≤40 万 / 专业 ≤55 万）。当成本合计低于上限时按成本定价，"
-      "不按上限定价：基础型成本低于上限，按 %s 定价留出议价空间。实施投入装不进设备价的部分"
-      "（精细 %s、专业 %s）由厂家自担，只能靠后续许可与按件运营费回收。" % (
-          wan(T["A"]["price_set"]), wan(T["B"]["gap_nre"]), wan(T["C"]["gap_nre"])))
+    A("| 档位 | 臂 | 目标硬件 | 目标软件 | 单套成本 | 建议报价区间 | 建议毛利空间 | 客户红线 | 红线内实际毛利 | 比现估要降 |")
+    A("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
+    for t in TG:
+        A("| %s | %s | %s | %s | %s | %.1f ~ %.1f 万 | %.1f%% ~ %.1f%% | %.0f 万 | %.1f%% | %s |" % (
+            t["name"], t["arms"], wan(t["hw_cost"]), wan(t["sw_cost"]), wan(t["cost_total"]),
+            t["price_lo"] / 1e4, t["price_hi"] / 1e4, t["gross_pct_lo"], t["gross_pct_hi"],
+            t["cap_ref"] / 1e4, t["pct_at_cap"], wan(t["gap_to_bom"])))
     A("")
-    return L
-
-
-def lines3(d, r, v, T):
-    L = []
-    A = lambda s="": L.append(s)                                   # noqa: E731
+    A("三条必须说清的话：基础型成本二十万、建议报价二十九到三十二万，但客户红线是三十万，只能顶格报，"
+      "实际毛利三成三；精细型是最紧的一档，成本三十万对红线四十万，顶格也只有两成半，要拿到三成毛利"
+      "单套成本必须压到二十八万以内；专业型成本三十七万对红线五十五万，顶格毛利三成三，"
+      "是三档里空间最舒服的。")
+    A("")
+    A("另外，现估硬件成本比目标高 %s / %s / %s，这是采购与结构要挤出来的水分，"
+      "挤不出来就会直接吃掉上面算的毛利空间。" % tuple(wan(t["gap_to_bom"]) for t in TG))
+    A("")
     A("## 七、三方分成策略")
     A("")
-    A("分成不看谁投入多，看谁真正赚到钱：设备受售价上限约束后，硬件毛利被压薄，钱转到许可与运营上。"
-      "因此在每个阶段按「硬件 / 软件 / 运营」的毛利贡献分，再按阶段目标微调。")
+    A("分成不看谁投入多，看谁真正赚到钱，而且以目标成本为分母：硬件拿「建议报价 − 目标硬件成本」，"
+      "软件拿「许可 − 目标软件成本」，运营拿「按件费 − 运营支出」。年度口径按每年 10 套/档（假设）。")
     A("")
-    A("| 阶段 | 档位 | 硬件 | 软件 | 运营 | 收钱主力 |")
-    A("| --- | --- | --- | --- | --- | --- |")
-    chief = {"P1": "设备价 + 首装服务", "P2": "按件运营费（铺量）", "P3": "软件许可与年度授权"}
-    for p in r["phases"]:
-        A("| %s %s | %s | %s | %s | %s | %s |" % (
-            p["key"], p["name"], SHORT[p["tier"]], pct(p["pct"]["hw"]), pct(p["pct"]["sw"]),
-            pct(p["pct"]["op"]), chief.get(p["key"], "—")))
+    A("| 档位 | 硬件 | 软件 | 运营 | 三方年毛利 | 单套硬件毛利 | 单套软件毛利 | 软件占成本 |")
+    A("| --- | --- | --- | --- | --- | --- | --- | --- |")
+    for t in TG:
+        A("| %s | %.1f%% | %.1f%% | %.1f%% | %s | %s | %s | %.0f%% |" % (
+            t["name"], t["pct_capped"]["hw"], t["pct_capped"]["sw"], t["pct_capped"]["op"],
+            wan(t["year"]["hw"] + t["year"]["sw"] + t["year"]["op"]),
+            wan(t["gross_hw_capped"]), wan(t["gross_sw_capped"]), t["sw_share_of_cost"]))
     A("")
-    A("按毛利贡献看，三档的基准分成是：基础型 %s / %s / %s，精细型 %s / %s / %s，专业型 %s / %s / %s"
-      "（硬件 / 软件 / 运营）。阶段偏好在此之上做增减：首发让硬件 3 个点换装机，铺量阶段硬件再让 1 个点"
-      "把收钱主力转到按件运营，跨场景阶段硬件只做载体，让出 2 个点，软件前移 4 个点。" % tuple(
-          ["%.1f%%" % d["split"][k]["s4_priced"]["pct"][x] for k in "ABC" for x in ("hw", "sw", "op")]))
+    A("三档的软件份额依次是 %.1f%% / %.1f%% / %.1f%%，正好对应软件成本占单套成本的比例 %.0f%% / %.0f%% / %.0f%%："
+      "档位越高，软件在成本里越重，分成里也就越重。这不是人为调出来的，是成本结构决定的。" % (
+          TG[0]["pct_capped"]["sw"], TG[1]["pct_capped"]["sw"], TG[2]["pct_capped"]["sw"],
+          TG[0]["sw_share_of_cost"], TG[1]["sw_share_of_cost"], TG[2]["sw_share_of_cost"]))
     A("")
     A("## 八、客户账与厂家账")
     A("")
-    A("客户账：三档的客户单件总持有成本分别是 %.3f / %.3f / %.3f 元，对比人工 %.2f 元/件，"
-      "省 %.0f%% / %.0f%% / %.0f%%。但单件便宜不等于买得动，采购看的是几年回本，所以设备价内"
-      "含免费运营期是这套策略的关键让利。" % (
-          T["A"]["client_unit_cost"], T["B"]["client_unit_cost"], T["C"]["client_unit_cost"],
-          T["B"]["labor_per_piece"], T["A"]["client_save_pct"], T["B"]["client_save_pct"],
-          T["C"]["client_save_pct"]))
+    A("客户账：按建议报价与年度运营费折算，单件总持有成本约 %.3f / %.3f / %.3f 元，对比人工 %.2f 元/件，"
+      "省三成到五成。但客户真正看的是几年回本，所以设备价内含免费运营期是这套策略的关键让利。" % (
+          TG[0]["unit_cost"], TG[1]["unit_cost"], TG[2]["unit_cost"], T["B"]["labor_per_piece"]))
     A("")
     A("厂家账：不让利时客户回本是 %.2f / %.2f / %.2f 年，多数工厂的采购门槛是三年，"
       "因此按免费期让利后压到 %.2f / %.2f / %.2f 年。让利的成本（免费期内的软件与运营支出）"
@@ -177,6 +176,12 @@ def lines3(d, r, v, T):
           (r["phases"][2]["payback_months_nofree"] or 999) / 12.0,
           r["phases"][0]["payback_years"], r["phases"][1]["payback_years"], r["phases"][2]["payback_years"]))
     A("")
+    return L
+
+
+def lines3(d, r, v, T, TG):
+    L = []
+    A = lambda s="": L.append(s)                                   # noqa: E731
     A("## 九、里程碑")
     A("")
     A("| 时间 | 里程碑 | 判据 |")
@@ -213,8 +218,8 @@ def lines3(d, r, v, T):
 
 
 def build_md():
-    d, r, v, T = gather()
-    L = lines(d, r, v, T) + lines2(d, r, v, T) + lines3(d, r, v, T)
+    d, r, v, T, TG = gather()
+    L = lines(d, r, v, T, TG) + lines2(d, r, v, T, TG) + lines3(d, r, v, T, TG)
     os.makedirs(OUT_DIR, exist_ok=True)
     open(MD, "w", encoding="utf-8").write("\n".join(L) + "\n")
     return MD, L

@@ -36,6 +36,8 @@ def _json(p):
 
 def main():
     from cost_model import build_tiers
+    from targets_model import build_targets
+    TG = {t["id"]: t for t in build_targets()["tiers"]}
     d = build_tiers()
     T = {t["id"]: t for t in d["tiers"]}
 
@@ -113,14 +115,16 @@ def main():
         for i, tid in enumerate("ABC"):
             t = T[tid]
             cell = lambda tb, r_, c_: tb.item(r_, c_).text()
-            chk("③ %s 硬件成本 表=%.1f 万 模型=%.1f 万" % (tid, float(cell(tc, i, 3)), t["capex"] / 1e4),
-                abs(float(cell(tc, i, 3)) - t["capex"] / 1e4) < 0.06, cell(tc, i, 3))
-            chk("③ %s 售价 表含上限 %.0f 万" % (tid, t["price_cap"] / 1e4),
-                cell(tc, i, 8).startswith("%.1f" % (t["price_set"] / 1e4)) and ("≤%.0f" % (t["price_cap"] / 1e4)) in cell(tc, i, 8),
-                cell(tc, i, 8))
-            chk("③ %s 客户单件成本 表=模型 (%.4f)" % (tid, t["client_unit_cost"]),
-                abs(float(cell(tc, i, 11)) - t["client_unit_cost"]) < 0.0006, cell(tc, i, 11))
-            pct = d["split"][tid]["s4_priced"]["pct"]
+            chk("③ %s 目标硬件 表=%.1f 万" % (tid, TG[tid]["hw_cost"] / 1e4),
+                abs(float(cell(tc, i, 2)) - TG[tid]["hw_cost"] / 1e4) < 0.06, cell(tc, i, 2))
+            chk("③ %s 目标软件 表=%.1f 万" % (tid, TG[tid]["sw_cost"] / 1e4),
+                abs(float(cell(tc, i, 3)) - TG[tid]["sw_cost"] / 1e4) < 0.06, cell(tc, i, 3))
+            chk("③ %s 建议报价区间 表=模型" % tid,
+                cell(tc, i, 5) == "%.1f ~ %.1f" % (TG[tid]["price_lo"] / 1e4, TG[tid]["price_hi"] / 1e4),
+                cell(tc, i, 5))
+            chk("③ %s 红线内实际毛利 表=模型 (%.1f%%)" % (tid, TG[tid]["pct_at_cap"]),
+                abs(float(cell(tc, i, 9).replace("%", "")) - TG[tid]["pct_at_cap"]) < 0.06, cell(tc, i, 9))
+            pct = TG[tid]["pct_capped"]
             tot = sum(float(cell(ts, i, c_).replace("%", "")) for c_ in (1, 2, 3))
             chk("③ %s 分成三列合计 100%%" % tid, abs(tot - 100) < 0.6, "%.1f" % tot)
             chk("③ %s 软件占比 表=模型 (%.1f%%)" % (tid, pct["sw"]),
@@ -183,8 +187,9 @@ def main():
                                                "性能配置", "工程配置", "成本组成", "市场分成")), "已核")
         chk("⑤ 不出现 任务7 / T1 / T2 / T3 编号",
             not any(b in allt for b in ("任务7", "任务 7", "T1 ", "T2 ", "T3 ")), "已核")
-        chk("⑤ 三档售价与模型一致", all(("%.1f 万元" % (T[k]["price_set"] / 1e4)) in allt for k in "ABC"), "已核")
-        chk("⑤ 分成比例与模型一致", all(("%.1f%%" % d["split"][k]["s4_priced"]["pct"]["sw"]) in allt for k in "ABC"), "已核")
+        chk("⑤ 三档建议报价区间与模型一致",
+            all(("%.1f ~ %.1f 万" % (TG[k]["price_lo"] / 1e4, TG[k]["price_hi"] / 1e4)) in allt for k in "ABC"), "已核")
+        chk("⑤ 分成比例与模型一致", all(("%.1f%%" % TG[k]["pct_capped"]["sw"]) in allt for k in "ABC"), "已核")
         chk("⑤ 标题不再写「三个」硬缺口", "三个硬缺口" not in allt, "已核")
         # ⑥ 话术同源
         cover = [sh.text_frame.text.strip() for sh in prs.slides[0].shapes if sh.has_text_frame]
@@ -204,7 +209,8 @@ def main():
             chk("⑦ 立项报告写进三阶段策略", all(k in txt for k in ("集中部署精密版", "降配基础版铺量", "专业版跨场景自主")), "已核")
             chk("⑦ 立项报告回本与模型一致", all(("%.2f 年" % p["payback_years"]) in txt for p in R), "已核")
             chk("⑦ 立项报告分成与模型一致",
-                all(("%.1f%%" % p["pct"]["sw"]) in txt for p in R), "已核")
+                all(("%.1f%%" % TG[t["id"]]["pct_capped"]["sw"]) in txt for t in TG.values()), "已核")
+            chk("⑦ 立项报告只给建议利润空间, 不写死售价", ("建议报价区间" in txt) and ("建议利润空间" in txt), "已核")
             chk("⑦ 立项报告不出现任何密钥值", not any(x in txt for x in ("sk-", "api_key=", "token=", "password=")), "已核")
         chk("⑦ 立项报告 DOCX 存在",
             os.path.exists(os.path.join(ROOT, "docs", "deliverables", "项目立项报告_双臂协作工位.docx")), "已核")
