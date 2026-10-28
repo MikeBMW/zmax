@@ -69,7 +69,11 @@ class YoloStateAligner:
         #   det3d 键、GUI 画框标签 (state_space_sim_real _vis["boxes"]) 全走业务名。
         #   注意: 类 id 顺序不变 (训练数据 gen_yolo_data.py 的 {hand:0, peg:1, hole:2} 绑定, 勿改 id)
         for _cid, _nm in list(self.model.model.names.items()):
-            if _nm == "peg":
+            # AR 工位小头（ar_mujoco_dataset.py 训出来的）类名是 gold_module，
+            # 与在役 metaworld 小头的 "peg" 同义 —— 都要落到业务名「光模块」。
+            # runtime.py:797 硬编码 `det3d.get("光模块")`，不做这层映射则检出了也不采信，
+            # _vis["peg"] 恒 None → _d_xy_peg() 返回 9.9 哨兵值（实测终点 9900mm）。
+            if _nm in ("peg", "gold_module"):
                 self.model.model.names[_cid] = "光模块"
         self.env = env          # 兼容旧调用 (部分工具直接读 aligner.env)
         self.cam_id = env.model.camera("corner2").id if env is not None else None
@@ -290,7 +294,12 @@ class YoloStateAligner:
         out = {}
         H, W = img.shape[:2]
         f = (H / 2) / np.tan(np.radians(fovy) / 2)
-        z_map = {"hand": 0.155, "光模块": 0.03, "hole": 0.129}
+        # z 兜底值按场景可配: metaworld 台面口径 (光模块 0.03) 套到 AR 工位上会
+        # 差 8cm(真值 0.112) ⇒ runtime 的 ghost 判据 |z-peg_z0|>0.02 每帧触发,
+        # _vis["peg"] 恒 None ⇒ 终点 9900mm 哨兵。AR 场景由 SS_ZMAP_* 覆盖。
+        z_map = {"hand": float(os.environ.get("SS_ZMAP_HAND", 0.155)),
+                 "光模块": float(os.environ.get("SS_ZMAP_GOLD", 0.03)),
+                 "hole": float(os.environ.get("SS_ZMAP_HOLE", 0.129))}
         # 光轴方向 (相机看向 -z) → 世界坐标单位向量
         forward = cam_mat.T @ np.array([0.0, 0.0, -1.0])
         forward = forward / np.linalg.norm(forward)

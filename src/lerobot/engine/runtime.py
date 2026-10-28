@@ -322,6 +322,18 @@ def _make_env():
         _setup_gl("glfw")
     except Exception:
         os.environ.setdefault("MUJOCO_GL", "glfw")
+    # 🌐 SS_ENV=ar → 用 AR 工位场景（tools/ar_mujoco_env.ArMujocoEnv）替掉 metaworld。
+    #    接口已对齐 (model/data/reset(seed)->(obs,info)/step/render/_get_obs/
+    #    set_task/_freeze_rand_vec/max_path_length), 见 ar_mujoco_env.py 顶部契约。
+    if os.environ.get("SS_ENV", "").lower() in ("ar", "ar_station", "mujoco_ar"):
+        import sys as _sys
+        _sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "tools"))
+        from ar_mujoco_env import ArMujocoEnv  # noqa: PLC0415
+        env = ArMujocoEnv(render_mode="rgb_array", camera_name="corner2")
+        env.max_path_length = 3000
+        _ENV = env
+        return env
     import metaworld as _mt
     mt = _mt.MT1("peg-insert-side-v3")
     env = mt.train_classes["peg-insert-side-v3"](render_mode="rgb_array", camera_name="corner2")
@@ -692,12 +704,28 @@ class RealStateSpaceSim:
         #    "../../.." = <repo>            ← 正确 (runs/ outputs/ src/ 都挂在仓库根)
         _REPO = _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
                                                "..", "..", ".."))
+        # AR 工位场景默认用专门小头 models/yolo_ar_peg.pt（在 AR 渲染机位上训的,
+        # 未见机位 holdout 召回 100%）。在役 yolo_peg_live.pt 是 D405 腕相机视角,
+        # 换到 AR 俯视机位实测 0 框 —— 如实留日志, 不静默换权重。
+        _env_w = _os.environ.get("SS_YOLO_WEIGHTS", "").strip()
         _cands = [_os.path.join(_REPO, "runs", "detect", "outputs", "yolo_peg", "peg_v1", "weights", "best.pt"),
                   _os.path.join(_REPO, "outputs", "yolo_peg", "peg_v1", "weights", "best.pt")]
+        _ar_w = _os.path.join(_REPO, "models", "yolo_ar_peg.pt")
+        _is_ar = _os.environ.get("SS_ENV", "").lower() in ("ar", "ar_station", "mujoco_ar")
+        if _env_w and _os.path.isfile(_env_w):
+            _cands = [_env_w] + _cands
+        elif _is_ar and _os.path.isfile(_ar_w):
+            _cands = [_ar_w] + _cands
         _w = next((c for c in _cands if _os.path.isfile(c)), _cands[0])
         _dc = [_os.path.join(_REPO, "outputs", "yolo_peg_depth", "peg_depth_v1-2", "weights", "best.pt"),
                _os.path.join(_REPO, "outputs", "yolo_peg_depth", "peg_depth_v1", "weights", "best.pt")]
         _dw = next((c for c in _dc if _os.path.isfile(c)), None)
+        # 🔴 AR 场景必须**禁用深度模型**: 该深度头是在 metaworld 渲染上训的, 喂 AR 渲染图
+        #    会瞎猜 (实测 det3d 光模块 z=-0.8, 台面下 0.8m), 每帧被判 ghost ⇒ _vis["peg"] 恒 None
+        #    ⇒ _peg_cur 恒 None ⇒ _d_xy_peg() 返 9.9 哨兵 (终点 9900mm)。
+        #    禁掉后 aligner 退回 z_map/几何反投影, 量纲才对。
+        if _os.environ.get("SS_ENV", "").lower() in ("ar", "ar_station", "mujoco_ar"):
+            _dw = None
         _ss_dir = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))  # tools/gui
         _yolo_dir = _os.path.join(_REPO, "src", "lerobot", "policies", "yolo_3d")
         _yolo_py = _os.path.join(_yolo_dir, "yolo_state_aligner.py")
