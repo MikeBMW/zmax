@@ -187,6 +187,59 @@ def _left_arm_steps():
         return []
 
 
+def build_lanes(meta_seq, meta_lib, left_steps, tact):
+    """双臂并行轨道 —— 老倪 2026-10-28:「左右臂的任务, 应该是并行的, 同一时间应该是左手任务和右手任务同时显示」
+
+    口径: 一条"件周期"= 右臂稳态单件 (段级实取, 不按比例摊); 两条 lane 共用这一条时间轴:
+      右手 lane = [拔 MT-02][AOI MT-03][放 MT-04|MT-05][取+插 MT-01]  ← 392 段表里连续出现的这四段
+      左手 lane = [摆盘供料 MT-06 0→4.7s] + 空闲(已供料, 等右臂来取)
+      双手 lane = MT-07 交接点 = 右臂开始从 槽k 取料那一刻
+    """
+    seqs = [x["mt"] for x in meta_seq]
+    pick = None
+    for i in range(len(seqs) - 3):
+        if (seqs[i] == "MT-02" and seqs[i + 1] == "MT-03"
+                and seqs[i + 2] in ("MT-04", "MT-05") and seqs[i + 3] == "MT-01"):
+            pick = [meta_seq[i + j] for j in range(4)]
+            break
+    lib = {m["id"]: m for m in meta_lib}
+    R, acc = [], 0.0
+    for x in (pick or []):
+        dur = round(float(x["t"]), 3)
+        m = lib[x["mt"]]
+        R.append({"mt": x["mt"], "name": m["name"], "hand": m["hand"],
+                  "t0": round(acc, 3), "t1": round(acc + dur, 3), "dur": dur,
+                  "targets": m.get("targets") or [], "steps": len(x["segs"])})
+        acc += dur
+    cyc = round(acc, 3) or round(float(tact or 11.42), 3)
+
+    L, lacc = [], 0.0
+    for s in left_steps:
+        # _left_arm_steps() 出的是 {"name","t"} (t=dur 秒), tasks.json 原文键是 dur ⇒ 两个都认
+        d0 = float(s.get("dur") if s.get("dur") is not None else (s.get("t") or 0.0))
+        L.append({"mt": "MT-06", "step": s.get("name"), "t0": round(lacc, 3),
+                  "t1": round(lacc + d0, 3), "dur": round(d0, 3)})
+        lacc += d0
+    lt = round(lacc, 3)
+    both_t = None
+    for b in R:
+        if b["mt"] == "MT-01":
+            both_t = b["t0"]
+            break
+    return {
+        "cycle_s": cyc,
+        "axis": "一件周期 %.2fs (右臂稳态单件, 392 段表实取)" % cyc,
+        "L": {"arm": "L", "label": "左手 · 摆盘供料", "mt": ["MT-06"], "tact_s": lt,
+              "blocks": L, "idle_from": lt,
+              "idle_note": "已供料, 等右臂从 槽k 取走"},
+        "R": {"arm": "R", "label": "右手 · 插拔+AOI", "tact_s": cyc,
+              "mt": sorted(set(b["mt"] for b in R)), "blocks": R},
+        "B": {"arm": "BOTH", "label": "双手 · 交接", "mt": ["MT-07"], "at": both_t,
+              "note": "右臂开始从 槽k 取料 = 交接点 (左臂 %.2fs 放好, 空等 %.2fs)"
+                      % (lt, max(0.0, round((both_t or 0.0) - lt, 2)))},
+    }
+
+
 def main():
     d, segs = load_segs()
     ok = True
@@ -320,11 +373,19 @@ def main():
             "全过程 %d 段 / %.2fs / %d 件, 目标 %s UPH。任何一步 NG 一律走废料盘, 良品与 NG 分槽。"
             % (len(segs), total_t, n_mod, d.get("uph_target", 300))),
     }
+    lanes = build_lanes(meta_seq, meta_lib, left_steps, d.get("tact_steady_s"))
+    print("⑥ 双臂并行轨道: 件周期 %.2fs · 右手 %s · 左手 %s (%.2fs 供料 + %.2fs 空闲) · 交接点 %.2fs"
+          % (lanes["cycle_s"],
+             " → ".join("%s %.2fs" % (b["mt"], b["dur"]) for b in lanes["R"]["blocks"]),
+             " → ".join("%s %.2fs" % (b["step"], b["dur"]) for b in lanes["L"]["blocks"]),
+             lanes["L"]["tact_s"], max(0.0, lanes["cycle_s"] - lanes["L"]["tact_s"]),
+             lanes["B"]["at"] or 0.0))
     os.makedirs(os.path.dirname(OUT_JSON), exist_ok=True)
-    payload = {"schema": "zmax-ar-meta-tasks/1.1", "task_id": "TASK-07-AOI",
+    payload = {"schema": "zmax-ar-meta-tasks/1.2", "task_id": "TASK-07-AOI",
                "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
                "source_seg": "zmax_data/runtime/traj/sim_insert.json",
-               "verified": ok, "meta_tasks": meta_lib, "long_horizon": long_horizon}
+               "verified": ok, "meta_tasks": meta_lib, "long_horizon": long_horizon,
+               "lanes": lanes}
     json.dump(payload, open(OUT_JSON, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print("⑥ 写出: %s" % OUT_JSON)
     print("   手别: 右手 %d 条 / 左手 %d 条 / 双手 %d 条 / 段级明细 %d 行"

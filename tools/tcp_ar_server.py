@@ -878,8 +878,10 @@ def _rs_online_fast(timeout: float = 2.5):
 AR_SW_FRESH_S = 1800.0          # 开关状态有效期: 控制台只在"点开关"那一刻写盘, 120s 太短(2min后页面自己退出 AR 模式)
 AR_CMD_FRESH_S = 3.0            # 🥽 状态空间→AR 指令新鲜度: 超时页面回落到自己的播放逻辑(不卡死)
 
-# 元任务 → 手臂归属 (AR 300UPH: 左臂摆盘, 右臂插拔+AOI)
-_MT_ARM = {"MT-01": "left", "MT-02": "right", "MT-03": "right", "MT-04": "right", "MT-05": "right"}
+# 元任务 → 手臂归属 (真源 = 元任务里的 hand 字段; 这个表只是老 schema(无 hand) 的兜底)
+_MT_ARM = {"MT-01": "right", "MT-02": "right", "MT-03": "right", "MT-04": "right",
+           "MT-05": "right", "MT-06": "left", "MT-07": "both"}
+_HAND_ARM = {"L": "left", "R": "right", "BOTH": "both"}
 
 
 def _ar_meta_payload() -> dict:
@@ -902,7 +904,10 @@ def _ar_meta_payload() -> dict:
         mts.append({"id": mid, "name": m.get("name"), "segments": m.get("segments"),
                     "occurrences": m.get("occurrences"), "t_s": m.get("t_s"),
                     "prompt": m.get("prompt"), "actions": m.get("actions"),
-                    "arm": m.get("arm") or _MT_ARM.get(mid)})
+                    "hand": m.get("hand"), "hand_cn": m.get("hand_cn"),
+                    "t_win": m.get("t_win"), "dur": m.get("dur"),
+                    "targets": m.get("targets"),
+                    "arm": _HAND_ARM.get(m.get("hand") or "") or _MT_ARM.get(mid)})
     lh = d.get("long_horizon") or {}
     cur = {}
     try:
@@ -916,8 +921,11 @@ def _ar_meta_payload() -> dict:
     return {"ok": True, "task_id": d.get("task_id") or "TASK-07-AOI",
             "scene": "AR 仿真双臂 · 左臂摆盘 / 右臂插拔+AOI",
             "meta_tasks": mts,
+            # 🧵 双臂并行轨道 (老倪 2026-10-28): 一条件周期时间轴 + 左手/右手两条 lane + 交接点
+            "lanes": d.get("lanes") or {},
             "long_horizon": {k: lh.get(k) for k in ("uph_target", "tact_s", "segments_total",
-                                                    "round_total_s", "meta_count", "verified")},
+                                                    "round_total_s", "meta_count", "verified",
+                                                    "hands")},
             "current": cur}
 
 

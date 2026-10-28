@@ -100,7 +100,7 @@
   <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
   <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
      style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-27 r45 · UPH浮层顶部居中可收起+中键平移+按可见区取景 · 🏭全流程无限循环(稳态45.87s/4件)+UPH浮层 · 4孔柜内等距60mm · 先插满→拔一对→AOI→插同一对 · 右臂 626mm/s ⇒ 11.42 s/个 · 右侧栏新增「每模块时间构成」: 在孔/检测/落盘</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-28 r46 · 🧵元任务双臂并行(左/右两条 lane 共用一条件周期时间轴 + 同一时刻左右手读数) · 右臂 11.40s/件 · 左臂 4.70s 供料后空闲等取 · 交接点 8.70s</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -4395,7 +4395,8 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
     + '.tHd b{font-size:16px;color:#58a6ff;font-weight:700}'
     + '.tSum{padding:0 13px 9px;font-size:11px;line-height:1.6;color:#8b949e;border-bottom:1px solid #21262d}'
     + '.tSum em{color:#e6edf3;font-style:normal;font-weight:600}'
-    + '.tBody{flex:1;overflow-y:auto;padding:9px 11px 12px}'
+    + '#mtBox{flex:0 0 auto}'                             /* 🧵 双臂轨道块按内容占高, 不许被甘特挤压(挤了就截字) */
+    + '.tBody{flex:1;min-height:0;overflow-y:auto;padding:9px 11px 12px}'
     + '.tRow{display:grid;grid-template-columns:28px 1fr 44px;gap:7px;align-items:center;'
     + 'margin-bottom:4px;padding:2px 1px;border-radius:4px}'
     + '.tRow.on{background:rgba(88,166,255,.10);box-shadow:inset 0 0 0 1px rgba(88,166,255,.35)}'
@@ -4458,6 +4459,81 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
       .then(function (j) { if (j && j.ok) { MT = j; mtLastKey = ''; mtRender(); } })
       .catch(function () { });
   }
+  // 🧵 双臂并行轨道 (老倪 2026-10-28:「左右臂的任务, 应该是并行的, 同一时间应该是左手任务和右手任务同时显示」)
+  //   真源 = /api/ar/meta 的 lanes (由 tools/ss_meta_task_ar.py 从 392 段表 + TASK-06-TRAY.steps 实取,
+  //   件周期 11.40s = 右臂稳态单件; 左臂 4.70s 供料后空闲等右臂取)。两条 lane 共用一条时间轴 + 同一条游标,
+  //   所以画面里同一时刻必然同时有"左手在做什么"和"右手在做什么"。只读, 真机零指令。
+  var MT_SHORT = { 'MT-01': '取+插', 'MT-02': '拔出', 'MT-03': 'AOI', 'MT-04': '放盘',
+                   'MT-05': 'NG放', 'MT-06': '供料', 'MT-07': '交接' };
+  var MT_COL = { 'MT-01': '#1f6feb', 'MT-02': '#f85149', 'MT-03': '#a371f7',
+                 'MT-04': '#2ea043', 'MT-05': '#ef4444', 'MT-06': '#22d3ee' };
+  var MT_HC = { 'L': '#3fbf7f', 'R': '#4a90e0', 'BOTH': '#b58cf0' };
+  function mtPct(x, cyc) { return (Math.max(0, Math.min(1, x / cyc)) * 100).toFixed(2) + '%'; }
+  function mtLaneHtml(ln, cyc, arm) {
+    var h = '<div class="mtTrack" data-arm="' + arm + '" style="position:relative;height:22px;'
+      + 'background:#0b0f14;border:1px solid #21262d;border-radius:3px;overflow:hidden">';
+    (ln.blocks || []).forEach(function (b, i) {
+      var w = (b.t1 - b.t0) / cyc * 100;
+      var txt = (arm === 'L') ? (b.step || '') : (b.mt + ' ' + (MT_SHORT[b.mt] || ''));
+      h += '<span class="mtb" data-arm="' + arm + '" data-i="' + i + '"'
+        + ' title="' + esc(b.mt + ' ' + (b.name || b.step || '') + ' · ' + b.t0 + '→' + b.t1 + 's') + '"'
+        + ' style="position:absolute;top:0;bottom:0;left:' + mtPct(b.t0, cyc) + ';width:' + w.toFixed(2) + '%;'
+        + 'background:' + (MT_COL[b.mt] || '#8b949e') + ';opacity:.85;border-right:1px solid #0b0f14;'
+        + 'font:9px ui-monospace,monospace;color:#06131c;font-weight:600;display:flex;align-items:center;'
+        + 'justify-content:center;overflow:hidden;white-space:nowrap">' + (w > 7 ? esc(txt) : '') + '</span>';
+    });
+    if (arm === 'L' && ln.idle_from != null && ln.idle_from < cyc) {
+      h += '<span class="mtIdle" style="position:absolute;top:0;bottom:0;left:' + mtPct(ln.idle_from, cyc) + ';right:0;'
+        + 'background:repeating-linear-gradient(45deg,#161b22,#161b22 4px,#0d1117 4px,#0d1117 8px);'
+        + 'font:9px ui-monospace,monospace;color:#8b949e;display:flex;align-items:center;justify-content:center;'
+        + 'overflow:hidden;white-space:nowrap">' + ((cyc - ln.idle_from) > 2 ? '空闲 · 等右臂取料' : '') + '</span>';
+    }
+    h += '<span class="mtPh" data-arm="' + arm + '" style="position:absolute;top:-2px;bottom:-2px;left:0%;'
+      + 'width:2px;background:#f0f6fc;box-shadow:0 0 5px #f0f6fc;pointer-events:none"></span>';
+    return h + '</div>';
+  }
+  // 当前游标: ① 状态空间指令(服务器时间基) ② 本地全流程播放 ③ 待运行停在 0s
+  function mtNow() {
+    var cyc = (MT.lanes && MT.lanes.cycle_s) || 11.4;
+    var d = ((typeof ARCMD !== 'undefined' && ARCMD && ARCMD.d) || {});
+    if (d.mt_id) {
+      var all = ((MT.lanes.R || {}).blocks || []).concat((MT.lanes.L || {}).blocks || []);
+      var hit = null;
+      for (var i = 0; i < all.length; i++) { if (all[i].mt === d.mt_id) { hit = all[i]; break; } }
+      return { t: hit ? (hit.t0 + hit.t1) / 2 : 0, src: '状态空间指令 ' + d.mt_id };
+    }
+    if (typeof PLANT !== 'undefined' && PLANT && PLANT.on) {
+      return { t: PLANT.simT % cyc, src: '全流程播放 ' + PLANT.rate + '×' };
+    }
+    return { t: 0, src: '待运行 (点 🏭 全流程 或 控制台画布 ▶ 运行)' };
+  }
+  function mtAt(ln, t) {
+    var bs = ln.blocks || [];
+    for (var i = 0; i < bs.length; i++) { if (t >= bs[i].t0 && t < bs[i].t1) { return { i: i, b: bs[i] }; } }
+    return { i: -1, b: null };
+  }
+  function mtTick() {
+    if (!MT || !MT.lanes || !MT.lanes.R) { return; }
+    var n = mtNow(), cyc = MT.lanes.cycle_s || 11.4;
+    var phs = document.querySelectorAll('#mtBox .mtPh');
+    for (var i = 0; i < phs.length; i++) { phs[i].style.left = mtPct(n.t, cyc); }
+    var lS = mtAt(MT.lanes.L, n.t), rS = mtAt(MT.lanes.R, n.t);
+    var acts = document.querySelectorAll('#mtBox .mtb');
+    for (var j = 0; j < acts.length; j++) {
+      var on = (acts[j].getAttribute('data-arm') === 'L' ? lS.i : rS.i) === Number(acts[j].getAttribute('data-i'));
+      acts[j].style.outline = on ? '2px solid #f0f6fc' : 'none';
+      acts[j].style.opacity = on ? '1' : '.78';
+    }
+    var el = document.getElementById('mtNow');
+    if (!el) { return; }
+    var lTxt = lS.b ? ('MT-06 ' + esc(lS.b.step)) : ('空闲 · ' + esc((MT.lanes.L || {}).idle_note || ''));
+    var rTxt = rS.b ? (rS.b.mt + ' ' + esc((rS.b.name || '').replace(/^右手 · /, ''))) : '—';
+    el.innerHTML = '<div style="font:10px ui-monospace,monospace;color:#6e7681;margin-bottom:2px">'
+      + '🕐 同一时刻 t=' + n.t.toFixed(2) + 's / ' + cyc.toFixed(2) + 's · ' + esc(n.src) + '</div>'
+      + '<div style="font-size:11px;line-height:1.45">◀ 左手 <b style="color:#3fbf7f">' + lTxt + '</b></div>'
+      + '<div style="font-size:11px;line-height:1.45">▶ 右手 <b style="color:#a371f7">' + rTxt + '</b></div>';
+  }
+  window.__MTP__ = { get: function () { return MT; }, at: mtAt, tick: mtTick, now: mtNow };
   function mtRender() {
     var box = document.getElementById('mtBox');
     if (!box) return;
@@ -4465,40 +4541,69 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
     var d = (typeof ARCMD !== 'undefined' && ARCMD && ARCMD.d) || {};
     var cur = d.mt_id || '';
     var i = d.mt_i || 0, n = d.mt_n || 0;
-    var key = cur + '|' + i + '|' + n + '|' + (MT.meta_tasks || []).length;
+    var key = cur + '|' + i + '|' + n + '|' + (MT.meta_tasks || []).length
+      + '|' + ((MT.lanes || {}).cycle_s || 0);
     if (key === mtLastKey) return;
     mtLastKey = key;
     var lh = MT.long_horizon || {};
-    var h = '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">'
-      + '<span style="font-size:12px;font-weight:600;color:#e6edf3">🧩 元任务</span>'
+    var LN = MT.lanes || {}, cyc = LN.cycle_s || 11.4;
+    var h = '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">'
+      + '<span style="font-size:12px;font-weight:600;color:#e6edf3">🧵 元任务 · 双臂并行</span>'
       + '<span style="font:10px ui-monospace,monospace;color:#8b949e">' + esc(MT.task_id) + ' · '
-      + (lh.uph_target || 300) + ' UPH</span></div>';
+      + (lh.uph_target || 300) + ' UPH · ' + cyc.toFixed(2) + 's/件</span></div>';
     var mts = MT.meta_tasks || [];
     if (!mts.length) { box.innerHTML = h + '<div style="font-size:11px;color:#6e7681">元任务配置为空</div>'; return; }
+    if (!LN.R || !(LN.R.blocks || []).length) {
+      box.innerHTML = h + '<div style="font-size:11px;color:#f85149">双臂轨道缺失 ⇒ 跑 tools/ss_meta_task_ar.py 重生成</div>';
+      return;
+    }
+    h += '<div style="display:grid;grid-template-columns:52px 1fr;gap:6px">'
+      + '<span></span><div style="display:flex;justify-content:space-between;font:9px ui-monospace,monospace;color:#6e7681">'
+      + '<span>0s</span><span>' + (cyc / 2).toFixed(1) + 's</span><span>' + cyc.toFixed(1) + 's</span></div></div>';
+    h += '<div style="display:grid;grid-template-columns:52px 1fr;gap:6px;align-items:center;margin-bottom:3px">'
+      + '<span style="font-size:10px;color:' + MT_HC.L + ';white-space:nowrap">◀ 左手 '
+      + (LN.L.tact_s || 0).toFixed(1) + 's</span>' + mtLaneHtml(LN.L, cyc, 'L') + '</div>';
+    h += '<div style="display:grid;grid-template-columns:52px 1fr;gap:6px;align-items:center">'
+      + '<span style="font-size:10px;color:' + MT_HC.R + ';white-space:nowrap">▶ 右手 '
+      + (LN.R.tact_s || cyc).toFixed(1) + 's</span>' + mtLaneHtml(LN.R, cyc, 'R') + '</div>';
+    if (LN.B && LN.B.at != null) {
+      h += '<div style="display:grid;grid-template-columns:52px 1fr;gap:6px"><span></span>'
+        + '<div style="font:9px ui-monospace,monospace;color:' + MT_HC.BOTH + ';line-height:1.35">⇄ MT-07 交接点 '
+        + LN.B.at.toFixed(2) + 's · ' + esc(LN.B.note || '') + '</div></div>';
+    }
+    h += '<div id="mtNow" style="margin-top:5px;padding:4px 6px;background:#0d1117;border-left:2px solid #58a6ff;'
+      + 'border-radius:2px"></div>';
+    h += '<div style="margin-top:6px;padding-top:5px;border-top:1px solid #21262d">';
     for (var k = 0; k < mts.length; k++) {
       var m = mts[k], on = (m.id === cur);
-      var right = on ? (i + '/' + n) : ((m.occurrences || m.segments) + '');
-      var bar = on
-        ? '<span style="display:block;height:2px;background:#58a6ff;width:' + Math.min(100, Math.round(i / Math.max(1, n) * 100)) + '%;border-radius:1px"></span>'
-        : '';
-      h += '<div style="display:grid;grid-template-columns:42px 1fr auto;gap:6px;align-items:center;'
-        + 'padding:3px 5px;border-radius:4px;margin-bottom:2px;'
-        + (on ? 'background:rgba(88,166,255,.14);box-shadow:inset 0 0 0 1px rgba(88,166,255,.4)' : '') + '">'
-        + '<span style="font:10px ui-monospace,monospace;color:' + (on ? '#58a6ff' : '#6e7681') + '">' + m.id + '</span>'
-        + '<span style="font-size:11px;color:' + (on ? '#e6edf3' : '#8b949e') + ';white-space:nowrap;'
-        + 'overflow:hidden;text-overflow:ellipsis" title="' + esc(m.prompt || '') + '">'
-        + (m.arm === 'left' ? '◀ ' : '▶ ') + esc(m.name) + '</span>'
-        + '<span style="font:10px ui-monospace,monospace;color:' + (on ? '#3fb950' : '#6e7681') + '">' + right + '</span>'
-        + '</div>' + bar;
+      var hand = m.hand || (m.arm === 'left' ? 'L' : (m.arm === 'both' ? 'BOTH' : 'R'));
+      var arrow = hand === 'L' ? '◀' : (hand === 'BOTH' ? '⇄' : '▶');
+      var tw = (m.t_win && m.t_win.length === 2 && m.t_win[0] != null)
+        ? (m.t_win[0].toFixed(1) + '–' + m.t_win[1].toFixed(1)) : '并行';
+      h += '<div class="mtRow" style="display:grid;grid-template-columns:38px 48px 1fr 56px;gap:5px;align-items:center;'
+        + 'padding:2px 4px;border-radius:3px;' + (on ? 'background:rgba(88,166,255,.14);' : '') + '">'
+        + '<span style="font:10px ui-monospace,monospace;color:' + (on ? '#58a6ff' : '#6e7681') + '">'
+        + esc(m.id) + '</span>'
+        + '<span style="font-size:9.5px;color:' + (MT_HC[hand] || '#8b949e') + '">' + arrow + ' '
+        + esc(m.hand_cn || '') + '</span>'
+        + '<span style="font-size:10.5px;color:' + (on ? '#e6edf3' : '#8b949e') + ';white-space:nowrap;'
+        + 'overflow:hidden;text-overflow:ellipsis" title="' + esc(m.name || '') + '">'
+        + esc((m.name || '').replace(/^(右手|左手|双手) · /, '')) + '</span>'
+        + '<span style="font:9px ui-monospace,monospace;color:#6e7681;text-align:right">'
+        + (on && i ? (i + '/' + n) : tw) + '</span></div>';
     }
-    h += '<div style="display:flex;justify-content:space-between;margin-top:5px;font:10px ui-monospace,monospace;color:#6e7681">'
-      + '<span>轮 ' + (lh.segments_total || 392) + ' 段 / ' + (lh.round_total_s || 0) + 's / ' + (lh.tact_s || 11.42) + 's每件</span>'
+    h += '</div>';
+    h += '<div style="display:flex;justify-content:space-between;margin-top:4px;font:9px ui-monospace,monospace;color:#6e7681">'
+      + '<span>轮 ' + (lh.segments_total || 392) + ' 段 / ' + (lh.round_total_s || 0) + 's / '
+      + (lh.tact_s || 11.42) + 's每件</span>'
       + '<span>' + (d.kind ? esc(d.kind) + ' ' + esc(d.label || '') : '待运行') + '</span></div>';
     box.innerHTML = h;
+    mtTick();
   }
   mtLoad();
   setInterval(mtLoad, 15000);          // 元任务定义 15s 拉一次 (配置改了能跟上)
   setInterval(mtRender, 400);          // 当前执行 400ms 刷一次 (跟动画同拍)
+  setInterval(mtTick, 160);            // 🧵 双臂游标 160ms 走一次 (左/右两条 lane 同一个 t)
 
   var arrow = document.getElementById('tactArrow');
   arrow.addEventListener('click', function(){

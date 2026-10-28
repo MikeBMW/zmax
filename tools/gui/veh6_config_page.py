@@ -261,6 +261,85 @@ def _owner_text(m):
     return "%d 任务共用" % n
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 🎯 当前活跃任务 → 该任务的功能配置 (元任务编排驱动) —— 老倪 2026-10-28
+#   「根据元任务的编排, 继续完成 功能配置 模型配置 性能配置; 当前激活的是 任务7, 功能上要将任务7的任务都对应上;
+#    在功能配置页面, 要提示 当前的活跃任务, 随即显示当前活跃任务的功能配置」
+#   真源 (三份, 都不猜):
+#     config/ss_task_binding.json  → active_task / enabled_nodes / applies_segments / segment_node_map
+#     config/tasks/tasks.json      → 该任务的 meta_tasks(任务级元任务 7 条) + steps
+#     tools/export_meta_doc.build_meta_tasks() → 77 条功能级元任务 (含 tasks 归属/参数/验证)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _active_bind():
+    """(tid, 任务对象, 该任务在绑定真源里的条目, 绑定整份) —— 活跃任务只认 active_task, 不猜。"""
+    b = _j(BIND_J, {}) or {}
+    tid = (b.get("active_task") or "").strip()
+    tk = _task_obj(tid) or {}
+    bt = next((x for x in (b.get("tasks") or []) if x.get("task_id") == tid), {}) or {}
+    return tid, tk, bt, b
+
+
+def _node_segments(smap):
+    """节点 → 所属工艺段 (segment_node_map 是 段→节点, 这里反查)。"""
+    idx = {}
+    for seg, nodes in (smap or {}).items():
+        for n in (nodes or []):
+            idx.setdefault(n, []).append(seg)
+    return idx
+
+
+def _task_funcs(tid=None):
+    """该任务的功能级元任务 —— 77 条 FN 里 `tasks` 命中它的那些 (TASK-07-AOI 实测 33 条)。
+
+    每条附三样**派生**信息, 全部来自绑定真源, 不猜:
+      node    该功能对应的画布节点 (功能清单 node_id)
+      enabled 该节点在本任务里是 启用 / 禁用 (enabled_nodes / disabled_nodes)
+      segs    该节点落在哪些工艺段 (segment_node_map 反查)
+    """
+    tid = tid or _active_bind()[0]
+    _t, _tk, bt, bd = _active_bind()
+    en = set(bt.get("enabled_nodes") or [])
+    dis = set(bt.get("disabled_nodes") or [])
+    seg_of = _node_segments(bd.get("segment_node_map"))
+    out = []
+    for m in _meta_tasks():
+        if tid not in (m.get("tasks") or []):
+            continue
+        node = m.get("node_id") or ""
+        out.append({"fn": m.get("fn_id"), "name": m.get("name"), "layer": m.get("layer"),
+                    "sub": m.get("subsystem"), "node": node,
+                    "n_par": m.get("n_params"), "n_spec": m.get("n_specific"),
+                    "complete": bool(m.get("complete")), "missing": m.get("missing") or [],
+                    "prio": m.get("prio"), "verify": (m.get("verification") or [""])[0],
+                    "tasks": m.get("tasks") or [], "n_serv": m.get("n_serv"),
+                    "enabled": (node in en) if (en or dis) else None,
+                    "disabled": node in dis,
+                    "segs": seg_of.get(node) or []})
+    return out
+
+
+def _task_seg_cover(tid=None):
+    """工艺段 → 功能 覆盖 (该任务 applies_segments/excluded_segments 逐段算, 缺谁一目了然)。"""
+    tid = tid or _active_bind()[0]
+    _t, _tk, bt, bd = _active_bind()
+    smap = bd.get("segment_node_map") or {}
+    en = set(bt.get("enabled_nodes") or [])
+    fn_of_node = {}
+    for f in _task_funcs(tid):
+        fn_of_node.setdefault(f["node"], []).append(f)
+    rows = []
+    for seg, nodes in smap.items():
+        on = [n for n in (nodes or []) if n in en]
+        fs = [f for n in (nodes or []) for f in fn_of_node.get(n, [])]
+        rows.append({"seg": seg, "n_node": len(nodes or []), "n_on": len(on), "n_fn": len(fs),
+                     "n_bad": sum(1 for f in fs if not f["complete"]),
+                     "applies": seg in (bt.get("applies_segments") or []),
+                     "excluded": seg in (bt.get("excluded_segments") or []),
+                     "fns": fs})
+    return rows
+
+
 def _orders_list():
     """工单实例真源: config/orders/BS_*.json (Build Sheet) —— 读不到的文件跳过, 不编数。"""
     out = []
@@ -3560,12 +3639,21 @@ class ConfigCenterPage(QWidget):
         #    🧩 功能配置 默认只筛功能域 · ⚡ 性能配置 默认只筛性能域。数据同一真源 (特征库), 不复制真相。
         self.fpm_views = {}
         self.tab3_domains = ["功能配置", "性能配置", "模型配置"]
-        _v_func = self._build_fpm_view(th, d, self.tab3_domains, "功能配置", "🧩 功能配置")
+        # 🎯 2026-10-28 老倪: 「当前激活的是 任务7, 功能上要将任务7的任务都对应上; 功能配置的UI 你再设计一下;
+        #    在功能配置页面, 要提示 当前的活跃任务, 随即显示当前活跃任务的功能配置」
+        #    ⇒ 功能配置页改成「活跃任务驱动」版: 活跃任务横幅 + 元任务编排 + 段→功能覆盖 + 本任务功能明细(可过滤) + 参数明细
+        _v_func = self._build_func_active_view(th, d)
         try:                     # 2026-10-15 老倪: 「功能配置, 要包括 系统1 系统2 系统0 的所有功能,
             _v_func["lay"].addWidget(self._functions_block(th), 3)   # 还有功能清单的汇总」
         except Exception as _ef:                                                # noqa: BLE001
             _v_func["lay"].addWidget(QLabel("⛔ 功能清单块构建失败: %r" % (_ef,)))
         _v_perf = self._build_fpm_view(th, d, self.tab3_domains, "性能配置", "⚡ 性能配置")
+        # ⚡ 性能配置也按活跃任务来 (老倪 2026-10-28「模型配置 性能配置」同一口径): 横幅 + 该任务的节拍/KPI
+        try:
+            _v_perf["lay"].insertWidget(0, self._active_banner(th, "性能配置"))
+            _v_perf["lay"].insertWidget(1, self._task_perf_block(th))
+        except Exception as _ep:                                                # noqa: BLE001
+            _v_perf["lay"].insertWidget(0, QLabel("⛔ 性能横幅/指标块构建失败: %r" % (_ep,)))
         self.fpm_views["功能配置"] = _v_func
         self.fpm_views["性能配置"] = _v_perf
         # 兼容别名 (老代码/判据引用 self.tab3_* ⇒ 一律指「功能配置」那张三域总表)
@@ -3629,6 +3717,52 @@ class ConfigCenterPage(QWidget):
         #    2026-10-15 老倪: 「取消 模型匹配, 信息合并到 模型配置页面」⇒ 不再单列页签, 一张页看全。
         w6 = QWidget(); l6 = QVBoxLayout(w6); l6.setContentsMargins(6, 6, 6, 6)
         self._th = th
+        # 🎯 2026-10-28 老倪: 「根据元任务的编排, 继续完成 功能配置 模型配置 性能配置」⇒ 模型配置也挂活跃任务横幅,
+        #    下面的「功能 → 层模型」映射默认只列**本任务的功能**(33 条), 一键切回 77 条全量。
+        try:
+            l6.addWidget(self._active_banner(th, "模型配置"))
+            _mrow = QHBoxLayout()
+            _b_task = _btn("仅本任务功能", th)
+            _b_all = _btn("全部", th)
+            _mrow.addWidget(_b_task); _mrow.addWidget(_b_all); _mrow.addStretch()
+            _mlab = QLabel()
+            _mlab.setFont(QFont("Consolas", 9))
+            _mlab.setStyleSheet("color:%s;background:transparent;" % th["C_GRAY"])
+            _mrow.addWidget(_mlab)
+            l6.addLayout(_mrow)
+            self._ml_filter_row, self._ml_filter_label = _mrow, _mlab
+
+            def _ml_filter(only_task):
+                """只筛显示行, 不动表内容; 条数一律按**表里真实有多少**报, 不写死 77/33。"""
+                _t2, _tk2, _bt2, _ = _active_bind()
+                _fn = {f["fn"] for f in _task_funcs(_t2)}
+                t = getattr(self, "ml_map_table", None)
+                if t is None:
+                    return
+                ids = [((t.item(r, 0).text() if t.item(r, 0) is not None else "")) for r in range(t.rowCount())]
+                n_int = len([i for i in ids if i in _fn])          # 本任务功能里有层模型映射的
+                n_all = len(ids)
+                _b_task.setText("仅本任务 %d" % n_int)
+                _b_all.setText("全部 %d 条" % n_all)
+                n_on = 0
+                for r, fid in enumerate(ids):
+                    on = (not only_task) or (fid in _fn)
+                    t.setRowHidden(r, not on)
+                    n_on += 1 if on else 0
+                t.setMinimumHeight(min(460, 28 * (min(n_on, 16) + 2) + 8))
+                _miss = sorted(_fn - set(ids))
+                _mlab.setText("显示 %d / %d 条 · %s%s"
+                              % (n_on, n_all,
+                                 ("仅活跃任务 %s 的功能" % _t2) if only_task else "全部功能",
+                                 (" · ⚠ 本任务 %d 个功能里 %d 个在层模型映射表没有条目: %s (真源缺口)"
+                                  % (len(_fn), len(_miss), "/".join(_miss))) if _miss else ""))
+
+            _b_task.clicked.connect(lambda: _ml_filter(True))
+            _b_all.clicked.connect(lambda: _ml_filter(False))
+            # 建完映射表后再按活跃任务筛一次 (表对象在 _model_layer_block 里才创建)
+            QTimer.singleShot(0, lambda: _ml_filter(True))
+        except Exception as _em:                                                # noqa: BLE001
+            l6.addWidget(QLabel("⛔ 模型配置活跃任务横幅构建失败: %r" % (_em,)))
         # 🧠 **本页主要信息** (老倪 2026-10-15: 「模型配置, 要映射功能配置和 L2 L3 L4 L5层模型, 这是主要信息」)
         #    —— 放在模型配置页最上面: 四层在役一行一层 + 功能↔层模型全量映射 (两个真源现算)。
         try:
@@ -4316,6 +4450,230 @@ class ConfigCenterPage(QWidget):
         _rowcp.addStretch()
         lay.addLayout(_rowcp)
         return w
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # ⚡ 该任务的性能 KPI (节拍 / UPH / 一轮 / 元任务次数 / 轮模板 / 质量目标)
+    # ══════════════════════════════════════════════════════════════════════════
+    def _task_perf_block(self, th):
+        tid, tk, bt, bd = _active_bind()
+        lh = tk.get("long_horizon") or {}
+        sim = _j(os.path.join(ROOT, "zmax_data/runtime/traj/sim_insert.json"), {}) or {}
+        rows = []
+
+        def _add(k, v, src):
+            rows.append([k, v if v not in (None, "", []) else "—", src])
+
+        _add("单件节拍 tact", ("%.2f s/件" % lh["tact_s"]) if lh.get("tact_s") else None,
+             "tasks.json long_horizon.tact_s")
+        _add("UPH 目标", (("%s 件/h" % lh["uph_target"]) if lh.get("uph_target") else None),
+             "tasks.json long_horizon.uph_target")
+        if sim:
+            _add("仿真几何 UPH", ("%.1f 件/h" % (len(sim.get("cycles_data") or []) * 3600.0
+                                                / max(1e-6, float(sim.get("total_t") or 1))))
+                 if sim.get("total_t") else None, "sim_insert.json (392 段 / total_t)")
+            _add("一轮规模", "%s 段 / %s s / %d 件" % (lh.get("segments_total") or sim.get("n_segs"),
+                                                     lh.get("round_total_s") or round(float(sim.get("total_t") or 0), 2),
+                                                     len(sim.get("cycles_data") or [])),
+                 "sim_insert.json + long_horizon")
+            _add("在孔驻留 / AOI / 落盘",
+                 "%.1f / %.2f / %.2f s" % (float(sim.get("dwell_s") or 0), float(sim.get("aoi_s") or 0),
+                                           float(sim.get("place_s") or 0))
+                 if (sim.get("dwell_s") or sim.get("aoi_s")) else None,
+                 "sim_insert.json (dwell_s/aoi_s/place_s)")
+            _add("良率目标", ("%.1f%%" % (100.0 * float(sim.get("yield_target")))) if sim.get("yield_target") else None,
+                 "sim_insert.json yield_target")
+        _add("元任务执行次数/轮", lh.get("meta_count"), "long_horizon.meta_count")
+        _add("轮模板", ("%d 种" % len(lh["rounds"])) if lh.get("rounds") else None,
+             "long_horizon.rounds")
+        _add("启用节点 / 禁用节点",
+             "%d / %d" % (len(bt.get("enabled_nodes") or []), len(bt.get("disabled_nodes") or [])),
+             "ss_task_binding.json (本任务)")
+        _add("工艺段", "%d 启用 / %d 排除" % (len(bt.get("applies_segments") or []),
+                                             len(bt.get("excluded_segments") or [])),
+             "ss_task_binding.json (本任务)")
+        for k, v in (bt.get("targets") or {}).items():
+            _add("质量目标 · %s" % k, v, "ss_task_binding.json targets")
+        _add("运行模式", bt.get("ss_mode"), "ss_task_binding.json ss_mode")
+        _add("循环口径", bt.get("loop"), "ss_task_binding.json loop")
+
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 4)
+        lay.setSpacing(4)
+        hd = QLabel()
+        hd.setTextFormat(Qt.RichText)
+        hd.setText("<span style='font-size:12px;font-weight:600;color:%s'>⚡ %s 的性能指标 (全部真源现算)</span>"
+                   "<span style='color:%s;font-size:10.5px'>&nbsp;&nbsp;节拍/UPH/驻留/良率 + 该任务的质量目标"
+                   " —— 性能域的工程参数见下表</span>"
+                   % (th["C_YELLOW"], tid or "—", th["C_GRAY"]))
+        lay.addWidget(hd)
+        t = _mk_table(["指标", "值", "真源"], rows, th)
+        t.setMinimumHeight(min(300, 24 * (len(rows) + 2) + 8))
+        lay.addWidget(t)
+        self.perf_kpi_table = t
+        return w
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # 🎯 活跃任务横幅 (功能配置 / 模型配置 / 性能配置 三页共用)
+    # ══════════════════════════════════════════════════════════════════════════
+    def _active_banner(self, th, scope, extra=""):
+        """当前活跃任务提示条 —— 老倪 2026-10-28:「在功能配置页面, 要提示 当前的活跃任务, 随即显示它的功能配置」"""
+        tid, tk, bt, bd = _active_bind()
+        funcs = _task_funcs(tid)
+        segg = _task_seg_cover(tid)
+        n_en = sum(1 for f in funcs if f["enabled"])
+        n_dis = sum(1 for f in funcs if f["disabled"])
+        n_app = sum(1 for s in segg if s["applies"])
+        box = QLabel()
+        box.setTextFormat(Qt.RichText)
+        box.setWordWrap(True)
+        box.setText(
+            "<div style='font-size:14px'><b>🎯 当前活跃任务 &nbsp;"
+            "<span style='color:#58a6ff'>%s</span></b> &nbsp;"
+            "<span style='color:#c9d1d9'>%s</span></div>"
+            "<div style='color:#8b949e;font-size:11px;margin-top:2px'>"
+            "本页（%s）显示的就是这个任务的配置 —— 任务级元任务 "
+            "<b style='color:#d2a8ff'>%d</b> 条 · 工艺段 <b>%d/%d</b> 启用 · 功能 "
+            "<b style='color:#3fb950'>%d</b> / 全部 77（启用节点 %d · 禁用 %d）· 场景 %s · 站点 %s%s</div>"
+            "<div style='color:#6e7681;font-size:10px;margin-top:2px'>"
+            "真源 config/ss_task_binding.json → active_task（换任务 = 任务配置页点该行 ★）"
+            " · 功能真源 tools/export_meta_doc.build_meta_tasks()</div>"
+            % (tid or "—", tk.get("name") or "—", scope, len(_task_level_meta(tid)[0]),
+               n_app, len(segg), len(funcs), n_en, n_dis,
+               tk.get("scene_ref") or bt.get("scene_ref") or "—",
+               tk.get("site") or bt.get("site") or "—", extra))
+        box.setStyleSheet("QLabel{background:#0d1a26;border:1px solid #1f6feb;border-left:4px solid #58a6ff;"
+                          "border-radius:4px;padding:7px 10px;color:#e6edf3;}")
+        return box
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # 🧩 功能配置 (以当前活跃任务为主线重做) —— 老倪 2026-10-28
+    #   「根据元任务的编排, 继续完成 功能配置; 当前激活的是 任务7, 功能上要将任务7的任务都对应上;
+    #    功能配置的UI, 你再设计一下; 在功能配置页面, 要提示 当前的活跃任务, 随即显示当前活跃任务的功能配置」
+    # ══════════════════════════════════════════════════════════════════════════
+    def _build_func_active_view(self, th, d):
+        """版面自上而下: ①活跃任务 ②元任务编排 ③工艺段→功能覆盖 ④本任务功能明细(可过滤) ⑤参数明细(特征库)"""
+        tid, tk, bt, bd = _active_bind()
+        funcs = _task_funcs(tid)
+        segg = _task_seg_cover(tid)
+        mts, mt_note, mt_src = _task_level_meta(tid)
+
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setSpacing(7)
+
+        def _sec(txt, hint=""):
+            q = QLabel()
+            q.setTextFormat(Qt.RichText)
+            q.setWordWrap(False)
+            q.setText("<span style='font-size:12px;font-weight:600;color:%s'>%s</span>"
+                      "<span style='color:%s;font-size:10.5px'>&nbsp;&nbsp;%s</span>"
+                      % (th["C_YELLOW"], txt, th["C_GRAY"], hint))
+            return q
+
+        # ① 活跃任务
+        lay.addWidget(self._active_banner(th, "功能配置"))
+
+        # ② 元任务编排 (该任务跑起来的那几条执行元任务)
+        lay.addWidget(_sec("🧩 元任务编排 · %d 条" % len(mts),
+                           "手别 / 层 / 段数 / 时空窗 / 目标对象 —— 功能配置按这个编排落地"))
+        r2 = []
+        for m in mts:
+            tw = m.get("t_win")
+            twn = ("%.2f→%.2fs" % (tw[0], tw[1])) if (tw and tw[0] is not None) else "并行/常驻"
+            r2.append([m.get("id"), m.get("name"), HAND_CN.get(m.get("hand") or "", "—(真源未标)"),
+                       m.get("layer") or "—", m.get("n_seg") or 0, twn,
+                       " / ".join(m.get("targets") or []) or "—",
+                       (" / ".join(m.get("actions") or []) or "—")[:52]])
+        t2 = _mk_table(["元任务", "名称", "手别", "层", "段数", "时空窗", "目标对象", "动作要点"], r2, th)
+        t2.setWordWrap(False)
+        try:
+            t2.verticalHeader().setDefaultSectionSize(22)
+        except Exception:                                                       # noqa: BLE001
+            pass
+        t2.setMinimumHeight(24 * max(3, min(len(r2), 8)) + 46)
+        lay.addWidget(t2)
+        lay.addWidget(QLabel("<span style='color:%s;font-size:10px'>%s · 真源 %s</span>"
+                             % (th["C_GRAY"], mt_note.replace("<", "&lt;"), mt_src)))
+
+        # ③ 工艺段 → 功能 覆盖
+        lay.addWidget(_sec("🧭 工艺段 → 功能 覆盖",
+                           "本任务 applies_segments 逐段算: 节点/启用节点/落成功能/缺参数 —— 哪段没人承载一眼看到"))
+        r3 = []
+        for s in segg:
+            mark = "✅ 启用" if s["applies"] else ("⛔ 本任务不用" if s["excluded"] else "· 未声明")
+            r3.append([s["seg"], mark, s["n_node"], s["n_on"], s["n_fn"],
+                       ("⛔ %d" % s["n_bad"]) if s["n_bad"] else "✅ 0",
+                       " / ".join(f["fn"] for f in s["fns"][:4]) or "—"])
+        t3 = _mk_table(["工艺段", "本任务", "节点数", "启用节点", "对应功能", "缺参数", "功能举例"], r3, th)
+        t3.setMinimumHeight(24 * max(3, len(r3)) + 46)
+        lay.addWidget(t3)
+
+        # ④ 本任务功能明细
+        head4 = _sec("📋 本任务功能明细 · %d 条" % len(funcs),
+                     "%s —— 点一行看完整配置面; 参数(专用/总) = 该功能的专属参数 / 全部参数" % tid)
+        lay.addWidget(head4)
+        brow = QHBoxLayout()
+        b_all = _btn("全部 %d" % len(funcs), th)
+        b_on = _btn("仅启用节点 %d" % sum(1 for f in funcs if f["enabled"]), th)
+        b_bad = _btn("缺参数 %d" % sum(1 for f in funcs if not f["complete"]), th)
+        b_own = _btn("仅本任务专用", th)
+        for b in (b_all, b_on, b_bad, b_own):
+            brow.addWidget(b)
+        brow.addStretch()
+        lay.addLayout(brow)
+
+        r4 = []
+        for f in funcs:
+            segs = " · ".join(s.split(" ")[0] for s in (f["segs"] or [])) or "—"
+            r4.append([f["fn"], f["name"], f["layer"] or "—", segs,
+                       "%s/%s" % (f["n_spec"], f["n_par"]),
+                       "✅" if f["complete"] else "⛔ 缺%d" % len(f["missing"]),
+                       f["prio"] or "—",
+                       "⛔ 禁用" if f["disabled"] else ("✅ 启用" if f["enabled"] else "—"),
+                       (f["verify"] or "")[:46]])
+        t4 = _mk_table(["功能ID", "功能名称", "层", "段", "参数(专用/总)", "完整", "优先级", "本任务", "验证方法"],
+                       r4, th)
+        t4.setWordWrap(False)
+        try:
+            t4.verticalHeader().setDefaultSectionSize(22)
+        except Exception:                                                       # noqa: BLE001
+            pass
+        t4.setMinimumHeight(24 * 12 + 46)
+        self.func_table, self.func_rows = t4, funcs
+        lay.addWidget(t4, 2)
+
+        def _hid(pred):
+            for r, f in enumerate(funcs):
+                t4.setRowHidden(r, not pred(f))
+            t4.setMinimumHeight(24 * (min(12, sum(1 for f in funcs if pred(f))) or 3) + 46)
+
+        b_all.clicked.connect(lambda: _hid(lambda f: True))
+        b_on.clicked.connect(lambda: _hid(lambda f: bool(f["enabled"])))
+        b_bad.clicked.connect(lambda: _hid(lambda f: not f["complete"]))
+        b_own.clicked.connect(lambda: _hid(lambda f: len(f["tasks"]) <= 1))
+
+        # ⑤ 参数明细 (特征库 · 功能域) —— 保留原表与选中定位口径 (点参数名直接定位到行)
+        cs = [c for c in d.get("CHARACTERISTIC", []) if c.get("domain") == "功能配置"]
+        lay.addWidget(_sec("⚙️ 参数明细 · 特征库 功能域 %d 条" % len(cs),
+                           "工程共用参数 (所有任务读同一份真源); 点左侧具体参数名会定位到这一行"))
+        t5 = _mk_table(["域", "参数", "级", "权限", "真源", "值", "判据"],
+                       [[c["domain"], c["id"], c["grade"], c["perm"], str(c["src"]).split("#")[0],
+                         ("缺失 ⛔" if c.get("value") is None else str(c.get("value"))[:20]),
+                         str(c["judge"])[:48]] for c in cs], th)
+        lay.addWidget(t5, 1)
+
+        head = QLabel("点左侧「功能配置 / 性能配置 / 模型配置」只筛该域; 点具体参数名直接定位到行")
+        head.setFont(QFont("Consolas", 10))
+        head.setStyleSheet("color:%s;background:transparent;" % th["C_GRAY"])
+        lay.addWidget(head)
+
+        view = {"w": w, "table": t5, "rows": [(c["domain"], c["id"]) for c in cs], "head": head,
+                "btns": {}, "default": "功能配置", "title": "🧩 功能配置", "lay": lay}
+        self.tabs.addTab(_scrollable(w, th), "🧩 功能配置")
+        self._apply_fpm_filter(view, "功能配置")
+        return view
 
     def _build_fpm_view(self, th, d, domains, default_dom, tab_title):
         """建一张「特征库三域」页 (功能配置 / 性能配置 各一张, 同一真源)。

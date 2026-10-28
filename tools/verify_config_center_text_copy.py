@@ -61,7 +61,7 @@ def main() -> int:
     from PyQt5.QtGui import QMouseEvent
     tgt = None
     for lb in page.findChildren(QLabel):
-        if "产品配置 —— 产品标识" in (lb.text() or ""):
+        if "产品配置 —— 产品档" in (lb.text() or ""):
             tgt = lb
             break
     got = ""
@@ -80,7 +80,7 @@ def main() -> int:
         _send(QEvent.MouseButtonRelease, _x1, Qt.LeftButton, Qt.NoButton)
         app.processEvents()
         got = (tgt.selectedText() or "").strip()
-    checks.append(("② 「🏷 产品配置 —— 产品标识…」鼠标拖选真能选中文字",
+    checks.append(("② 「🏷 产品配置 —— 产品档…」鼠标拖选真能选中文字",
                    tgt is not None and bool(got),
                    ("选中: 「%s」" % got[:34]) if got else ("找不到该行" if tgt is None else "拖选后 selectedText() 为空")))
 
