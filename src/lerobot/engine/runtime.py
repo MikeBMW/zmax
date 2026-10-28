@@ -684,8 +684,14 @@ class RealStateSpaceSim:
     def _load_aligner(self):
         """加载 YOLO 对齐器 (检测 + 深度反投影, 同 GUI 链路的真实模型)"""
         import os as _os
+        # 🔴 必须是**仓库根** /home/ubuntu/zmax, 不是 /home/ubuntu/zmax/src。
+        #    __file__ = <repo>/src/lerobot/engine/runtime.py
+        #    dirname          = <repo>/src/lerobot/engine
+        #    "../.."    = <repo>/src        ← 少一级, 导致下面 _yolo_dir 拼成 src/src/lerobot/...
+        #                                     实测四档全挂 FileNotFoundError
+        #    "../../.." = <repo>            ← 正确 (runs/ outputs/ src/ 都挂在仓库根)
         _REPO = _os.path.abspath(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
-                                               "..", ".."))
+                                               "..", "..", ".."))
         _cands = [_os.path.join(_REPO, "runs", "detect", "outputs", "yolo_peg", "peg_v1", "weights", "best.pt"),
                   _os.path.join(_REPO, "outputs", "yolo_peg", "peg_v1", "weights", "best.pt")]
         _w = next((c for c in _cands if _os.path.isfile(c)), _cands[0])
