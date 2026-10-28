@@ -4,7 +4,7 @@
 老倪: 「主界面, 下面的硬件显示, 排成一行; 现在两行, 占地方, 修改」
 - 它原先 **W,H=560,68 两行**: 第1行 GPU/CPU/内存/磁盘+训练进度+3DGS, 第2行 L2~L5 层 chip。
 - 改法: `W,H = 1080,40` + 全部元素共用一条中线 `cy = h/2` (硬件 4 项 → 训练条 → 层 chip → 3DGS → 通信灯)。
-  层 chip 的可用空间 = `3DGS 标签左缘 - 10`, 先算标签宽度再给 chip, 放不下就 `break` (唯一依据 4 层实测放得下)。
+  层 chip 的可用空间 = `3DGS 标签左缘 - 10`, 先算标签宽度再给 chip, 放不下就 `break` (真源 4 层实测放得下)。
 - **一行判据在 `--selftest` 里**: 抓图按像素扫内容行带, 断言只有 1 条带 + 行带高 ≤40 + 横向跨度 ≥600px。
   实测: `面积 1080x40 · 行带 [(12,27)] · x 4..1076 · SELFTEST PASS`。
 - 真数据核对: `--live-shot <png> --scale 2 --seconds 3` 拉 8796 真数据; 短名聚合正确 (L2 YOLO annot / L3 SmolVLA 004000 / L4 INTACT current / L5 DeepSeek deepseek-vl)。
@@ -13,10 +13,10 @@
 ## 2. 🧠 模型引擎窗口 = `tools/gui/model_engine_window.py` (新, 独立非模态窗)
 老倪: 「改变模型配置，L2~L5 在模型引擎窗口，要能方便的查看控制所有模型的训练状态，执行任务工程」
 - 一屏四行 L2~L5: 在役模型 / 在役版本 / 本层产物数 / 推理(青) / 训练中(黄, 带 pct+step/total) / 最近训练 / 在役权重路径。
-- 数据唯一依据: `tools/model_inventory.py --json` (nvidia-smi + 四层清单 + training[]) + `http://127.0.0.1:8796/status/all` (在役/推理标记)。
+- 数据真源: `tools/model_inventory.py --json` (nvidia-smi + 四层清单 + training[]) + `http://127.0.0.1:8796/status/all` (在役/推理标记)。
   后台 `_Fetcher` 线程取数, GUI 侧 QTimer 600ms 排水 —— **阻塞 I/O 绝不进 GUI 线程**。
 - 控制: ▶ 训练本层 / ■ 停止 / 📄 训练日志 / 📂 权重目录 / 🚀 执行任务工程 / 📋 复制状态 / 🔄 刷新。
-- **命令唯一依据 = 配置中心「模型配置」的 `model.train_entry`** (窗口不另写一份):
+- **命令真源 = 配置中心「模型配置」的 `model.train_entry`** (窗口不另写一份):
   L2 `tools/joint_train_all.py --only L2 --yolo-epochs 1` · L3 `--only L3 --steps 20` ·
   L4 `--only L4 --steps 20` · L5 `--only L5 --l5-steps 20 --l5-merge`。
 - 纪律: **同刻只允许一个训练进程** (8GB 卡) ⇒ 有任务在跑时 ▶ 变灰; 停止=真 SIGTERM 进程组 + 回读 `poll()`;
@@ -60,9 +60,9 @@ class ModelEngineWindow(QDialog):     # 薄壳: 只把同一个 Panel 装进去 
   (源码里不再有"另有窗口"的说法) ⑦ **两处界面实例化两遍逐字一致** (列名 + 按钮文字 list 相等)。
   改界面后它与 `verify_product_ui.py` 一起跑。
 
-## 2c. 「推理中 / 空闲」的口径与唯一依据 (2026-10-14 老倪问诊「跑 L5 功能为什么 L2 L3 显空闲」)
+## 2c. 「推理中 / 空闲」的口径与真源 (2026-10-14 老倪问诊「跑 L5 功能为什么 L2 L3 显空闲」)
 
-那一列是**推理**列, 逐条 `probe` 真探针决定 (`models_manifest.json` 每条模型的 `probe`, 由 `status_hub._probe_inferring` 判)。唯一依据:
+那一列是**推理**列, 逐条 `probe` 真探针决定 (`models_manifest.json` 每条模型的 `probe`, 由 `status_hub._probe_inferring` 判)。真源:
 
 | 层 | 在役条目 | 探针 | 阈值 |
 |---|---|---|---|
@@ -89,7 +89,7 @@ L5 标注→监督→训练闭环的**标注阶段**只调 L5 大模型 (碰不�
 (实测 `l5_annotate_train_loop.py --run` 的 ppid = studio pid) —— **先 `ps -o ppid` 再决定要不要重启控制台**,
 否则重启会把用户正在跑的功能一起杀掉。
 
-**目检前先自证**: 用户说"某层显空闲/在跑"时, 别直接答"机制就是这样" —— 先执行一遍
+**目检前先自证**: 用户说"某层显空闲/在跑"时, 别直接答"机制就是这样" —— 先跑一遍
 `ModelEnginePanel(poll=False)` + `_force_refresh()` + `_drain()` + `_rows()` 复现那一屏 (离屏), 再对探针目标
 连续采样 (实测 L2 探针目标 20/20 次帧龄 0.0~0.6s ⇒ L2 真在推理, "显空闲" 是那个窗没刷到 ⇒ 让他点 🔄 刷新)。
 
@@ -103,7 +103,7 @@ zmax_data/ss_live/l3_live.pid)` 停)。每周期: 抓一帧真相机 (`8791/snap
 L2 不用另起回路: 在役 `ss_yolo_on_real.py --auto --loop` 写 `ss_bypass/yolo_detections.json` (探针 10s 新鲜度)
 就是 L2 的推理信号。
 
-🔴 **坑: 节点“看着在跑”实际一次前向都没发生** —— `vlm_encoder.py` 原先是 `MODEL_ID` 联网 (`hf-mirror.com`)
+🔴 **坑: 节点“看着在跑”其实一次前向都没发生** —— `vlm_encoder.py` 原先是 `MODEL_ID` 联网 (`hf-mirror.com`)
 加载, 而本机 HF 缓存**已有**权重 ⇒ 卡在 `loading` 永不 `ready`, `ss_vlm` 每周期 2ms 返回「权重加载中」
 (实测连跑 26 周期 0 次真编码)。**判据: 看单周期节点耗时** —— 真前向 SmolVLM2-500M 在 4060 上 **350~420ms**,
 2ms 就是没算。修法: 默认离线 (`HF_HUB_OFFLINE`/`TRANSFORMERS_OFFLINE` + `local_files_only`), 留
@@ -127,7 +127,7 @@ L2 不用另起回路: 在役 `ss_yolo_on_real.py --auto --loop` 写 `ss_bypass/
 
 ## 5. GUI 硬约束 (跨界面通用, 改任何窗口/面板都要过)
 
-* **面板/窗口的唯一依据认准自绘文件**: 底栏硬显在 `status_panel.py` (不是 `hw_widgets.py`) —— 先在 `studio.py` 里
+* **面板/窗口的真源认准自绘文件**: 底栏硬显在 `status_panel.py` (不是 `hw_widgets.py`) —— 先在 `studio.py` 里
   搜显示文案 (如 `3DGS ×`、`本地就绪`) 反查是哪个自绘类画的, 再动手。
 * **形态即判据**: 用户说"排成一行/别占地方"时, 把形态写成离屏自检 (面积上限 · 内容行带条数 · 横向跨度),
   不靠目检 —— 否则下次改布局又回退。

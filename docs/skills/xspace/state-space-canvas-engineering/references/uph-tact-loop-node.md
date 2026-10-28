@@ -7,7 +7,7 @@
 
 ## §1 段表字段语义 (先认清哪个字段是件号, 否则 UPH 全错)
 
-唯一依据 `zmax_data/runtime/traj/sim_insert.json`(由 `tools/sim_insert_plan.py` 生成) 的字段口径:
+真源 `zmax_data/runtime/traj/sim_insert.json`(由 `tools/sim_insert_plan.py` 生成) 的字段口径:
 
 | 字段 | 真实含义 | 用错会怎样 |
 |---|---|---|
@@ -15,11 +15,11 @@
 | `seq` | **件内段号 1..28**, 每件都从 1 重数 | 当全局段号 ⇒ "序号不单调""段数只有 28" 的假失败 |
 | `seg_index` (自己累加) | 全局推进指针 | 判进度必须看它 |
 | `k` | **搬运批次 1..8**, 不是件号 | 当件号 ⇒ 件数只到 8, UPH 算成 200 出头 |
-| `cycles_data` | **件数唯一依据**, 一件一条 (实测 14 条) | 件数 = 14, 不是 `k` 的最大值 |
+| `cycles_data` | **件数真源**, 一件一条 (实测 14 条) | 件数 = 14, 不是 `k` 的最大值 |
 | `total_t` | 整表时长 (实测 159.43s) | `total_t / len(cycles_data)` = 单件节拍 |
 | `tact_steady_s` | 稳态节拍 (实测 11.42s ⇒ 315 UPH) | 与 `total_t/n` 的 11.39s 是两个口径, 别混着报 |
 | `loop` / `cum` / `states` | 循环块选择 / 每段累积时刻 / 每段取放占用态 | 循环要按 `cum` 定位, 不要自己重算时间 |
-| `uph_target` | 目标 UPH (300) | 显示的"目标"取自这里, 不预先固定 |
+| `uph_target` | 目标 UPH (300) | 显示的"目标"取自这里, 不写死 |
 
 **判据先对账**: `len(cycles_data) * tact_steady_s ≈ total_t`。两个数对不上就说明你拿错了件数口径,
 此时任何 UPH 输出都不可信 —— 先去读 `cycles_data`, 不要去调公式。
@@ -40,6 +40,9 @@
 
 ## §3 节点实现骨架 (`src/lerobot/middleware/nodes/n_<语义>.py`)
 
+> ⚠️ 下面这段是**生成器产出的外壳形态**(`tools/gen_middleware_nodes.py` 写), 供你读结构用;
+> **不要手写这个文件** —— 手写的是 `engineering/nodes/<名>_impl.py`, 外壳里只保留绑定。
+
 ```python
 NODE_ID   = 'ssuph'            # 与画布节点 id 一致
 NAME      = '🏭 UPH 节拍循环器'
@@ -59,7 +62,7 @@ def compute(ctx):
   `_reg("ss_uph", ["UPH 节拍循环器", …], "…", _uph_impl.run)`。外壳的 `IMPL_KEY` 由
   `registry.match_node(节点名)` 反查得到(名字要能命中关键字列表), 不用手填。
 - 🔴 **`PURE` 由画布参数控制, 否则重生成即回 False**: `tools/gen_middleware_nodes.py` 原先把 `PURE = False`
-  预先固定; 已改成读节点 `params.pure_verified`。要开某节点的计算面 = 画布 params 加 `pure_verified: true`
+  写死; 已改成读节点 `params.pure_verified`。要开某节点的计算面 = 画布 params 加 `pure_verified: true`
   (经 `flows.save_canvas` 写), 再跑一次生成器。判据: 生成后 `grep "^PURE =" n_*.py` —— 只有该节点是 True,
   其余恒 False(红线: 会动设备的 `EXEC_MODE=act` 不许开)。
 - 🔴 **`compute` 只收 dict**: 返回 numpy 数组/标量会落成 `实现返回非 dict → 直通`, 表现为"PURE=True 也什么都不发生"。
@@ -119,7 +122,7 @@ def compute(ctx):
 能跑画布节点的只有 `tools/mw_project.py step`(一拍就退) 和控制台 GUI 内的 tick(窗口关着就不跑)。
 ⇒ "由状态空间的节点实现"在本机落不了地, 除非补一个常驻循环。`tools/ss_canvas_loop.py` 就是它:
 
-- `load_project()` 读画布唯一依据 → `prj.step(only=WHITELIST)` → 落 `zmax_data/ss_live/canvas_loop.json`(帧龄/节点状态)。
+- `load_project()` 读画布真源 → `prj.step(only=WHITELIST)` → 落 `zmax_data/ss_live/canvas_loop.json`(帧龄/节点状态)。
 - 🔴 **必须白名单** `ZMAX_CANVAS_ONLY=ssuph`: 默认跑全部 78 节点会真调模型/硬件。
 - 画布 mtime 变了自动重载(加节点不用重启服务)。
 - unit `zmax-ss-canvas-loop.service`(Restart=always), 环境里带 `ZMAX_CANVAS_ONLY` / `ZMAX_UPH_AR_PUB`。

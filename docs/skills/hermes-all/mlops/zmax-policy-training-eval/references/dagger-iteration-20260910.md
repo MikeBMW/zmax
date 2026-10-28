@@ -24,7 +24,7 @@
 3. 训练 — resume from 上轮 ckpt, `dataset.root` 换 DAgger 版,
    `steps = 上轮 + 10000` (~2h/轮 on 4060)。
 
-## 遇到问题 (真报错)
+## 踩坑 (真报错)
 - **`ValueError: All arrays must be of the same length`** — 补行时必须覆盖原 parquet
   **所有列** (本次漏 `next.success`)。data 列全集:
   `observation.state, action, episode_index, frame_index, timestamp, index,

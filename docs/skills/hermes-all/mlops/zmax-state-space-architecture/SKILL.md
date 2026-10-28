@@ -7,7 +7,7 @@ description: "Use when 状态空间画布 debug — 字段来源(预定义vs预�
 
 状态空间(状态空间仿真画布)是 left_right 双脑策略的仿真蒸馏版。用户(老倪)反复 debug
 此区域, 高频问题: "某字段是预先定义还是模型预测的?" / "为什么两个模块源码一样?" /
-"这是不是固定不变的?"。本技能是溯源方法和架构事实。
+"这是不是写死的?"。本技能是溯源方法和架构事实。
 
 ## 分层模型 (谁产生什么)
 - **感知层** (state_space/perception.py, tools/gui/state_space_sim.py): 构造 obs。
@@ -42,15 +42,15 @@ description: "Use when 状态空间画布 debug — 字段来源(预定义vs预�
 
 ```
 src/lerobot/engineering/
-  paths.py      路径唯一依据 (REPO_ROOT / LOGIC_FILE / FLOWS_DIR / GUI_DIR)
+  paths.py      路径真源 (REPO_ROOT / LOGIC_FILE / FLOWS_DIR / GUI_DIR)
   registry.py   register(key,[关键字],doc,fn) · match_node(name) · home_file(key) · logic_globals()
   runtime.py    execute_node_logic(module,node,...) · _trace_exec · _demo_node_output
   sourceview.py get_node_source / get_node_location / explain_node / save/restore/reload
   flows.py      load_canvas / save_canvas(原子+备份) / validate_* / orphans / stats
   levels.py     L2/L3/L4/L5 档位契约 (must 列表) + band_map() + check()
-  nodes/library.py    141 条节点逻辑 · 148 个注册 key (唯一依据)
+  nodes/library.py    141 条节点逻辑 · 148 个注册 key (唯一真源)
   nodes/by_level.py   档位索引 (节点↔key↔函数, 自动生成)
-  flows/state_space_obs.json   画布唯一依据 (87 节点 / 173 连线)
+  flows/state_space_obs.json   画布真源 (87 节点 / 173 连线)
 ```
 
 `tools/gui/node_logic.py` = 33 行兼容壳 (转发包命名空间) · 仓库根 `flows/state_space_obs.json` = 软链。
@@ -69,7 +69,7 @@ src/lerobot/engineering/
 同一个 key 注册两次 ⇒ 后一条把 fn+关键字一起换掉 ⇒ 画布上那个节点**永远 match 不到逻辑**。
 实例: `ss_pred` 被「先验动力学」(dynamics.py) 与「流形专家」(manifold) 重复注册,
 导致「📈 先验动力学预测器」长期不可执行 (落在档位审计 R5-待建); 已拆为 `ss_dyn` + `ss_pred`。
-新加节点/改关键字后, 拿画布节点名执行一遍 `match_node()` 验非 None (或直接 `levels.check()`)。
+新加节点/改关键字后, 拿画布节点名跑一遍 `match_node()` 验非 None (或直接 `levels.check()`)。
 **反过来: 目标节点若已有更长匹配的 key, 你新注册的短关键字 key 永远不命中** (实测给「标定诊断测量 · 主参数 M」
 另立 `cfg_import` key 毫无效果, `match_node` 仍返回既有的 `n_calib_mani`) ⇒ 要给已存在的节点加行为, **改它自己的
 节点函数或它已注册的 key**, 不要另立新 key。
@@ -115,7 +115,7 @@ src/lerobot/engineering/
    姿态推不出来 (动作只有 3 轴线速度 + 夹爪, 无角速度); `SSPlan` 只是 MoveIt 规划结果的镜像,
    **不反推位姿**。实测误差表、量纲自证法 (拟合缩放 k, k≈1 才说明单位与 dt 对) 见
    `references/metaworld-closed-loop-contracts.md` 末节。
-7. **「界面说在跑」≠「这一层在算」; 档位是意图, 在跑的子链路才是事实**: 同一轮里往往有两条唯一依据 ——
+7. **「界面说在跑」≠「这一层在算」; 档位是意图, 在跑的子链路才是事实**: 同一轮里往往有两条真源 ——
    画布节点参数(用户点选)与子系统状态文件(实际在跑, 如 `zmax_data/l5_loop/state.json` 的 `status==running`)。
    取值必须**事实盖过意图**, 而且发布方与消费方两处都按同一优先级, 否则同一轮会得出相反的档位口径,
    用户看到的就是"运行了 L5 却没有 L5 的输出"。另一条同类红线: **归一化四元数 q̂ 的模恒为 1,
@@ -130,9 +130,9 @@ src/lerobot/engineering/
    而设的表示(所以故意不归一: q(合力)=Σq_i), 不是单位四元数、更不是姿态四元数; 屏上的 q̂ 模恒 1, 只承载方向。
    (b) **力矩那条支路必须报开关**: `τ = M·(−∇Φ + α·u_ff)` 里 α(`u_ff_gain`) 只改显示与表; 只有 `apply_to_tau=true`
    才进控制回路 —— 默认关闭时**不许**说"这些力已经变成驱动力矩"(打开后实测 |Δτ| 仅 0.283 N·m, z 轴已贴限幅)。
-   (c) 姿态四元数无唯一依据时(`tcp_pose.rx/ry/rz=None`、`plan_from_vff.rotation="未建模"`)一律写"未建模/未算",
+   (c) 姿态四元数无真源时(`tcp_pose.rx/ry/rz=None`、`plan_from_vff.rotation="未建模"`)一律写"未建模/未算",
    不拿力的方向冒充姿态。
-   逐字段唯一依据表(含单位、自查命令、"看起来像但实际不是"三条)见 `references/force-and-quaternion-provenance.md`。
+   逐字段真源表(含单位、自查命令、"看起来像但其实不是"三条)见 `references/force-and-quaternion-provenance.md`。
 
 ## 🧮 流形层逐帧发布闭环 (2026-09-03 老倪: "为什么流形/潜空间没有输出连线")
 - 回路外元层此前只读日志、无输出 → 半吊子。闭环: 引擎 run() 每步实算流形量
@@ -147,7 +147,7 @@ src/lerobot/engineering/
   禁止无输入也无输出(孤立)与有输入无输出(断头)。连线不改执行 (状态空间跑引擎拓扑)。
 
 ## 🧩 验证层 (2026-09-03 老倪: 系统要能逐个验证)
-- 唯一依据: src/lerobot/verification/verification_layer.py — FEATURES 注册表 (45 项:
+- 真源: src/lerobot/verification/verification_layer.py — FEATURES 注册表 (45 项:
   35 自动 F-A01~F-F04 + 10 GUI 手动 F-G01~G10) + **FEATURE_META (v4.0.1, 并行 dict:
   fid → (基本功能|泛化功能, 感知模型|世界模型|决策控制|规划推理|安全机制|引擎|数据平台|标定工具|GUI工具, 模型特点))
   — 加在文件末尾 main() 前 (勿插 FEATURES 后: 会错位 _EXTERNAL_LOC 行号锚点 47/97)**。
@@ -174,8 +174,8 @@ src/lerobot/engineering/
 - **⏭ 单步 / 右键"运行节点" = 真实执行**: `execute_node_logic(demo=False)` →
   node_ss_yolo → `_yolo_ensure_aligner`(best.pt + metaworld env) → `_yolo_capture` →
   `aligner.detect_3d` — 断点可进 (ZMAX_DEBUG_BREAK=YOLO 只停该节点)。
-- **引擎 io_trace 曾预先固定伪装 (老倪红线)**: state_space_sim._io_snapshot 的
-  "🎯 YOLO 目标检测" out 预先固定 "conf 0.99"、坐标抄仿真 peg/hole、hand 抄 peg → 总线/播放
+- **引擎 io_trace 曾写死伪装 (老倪红线)**: state_space_sim._io_snapshot 的
+  "🎯 YOLO 目标检测" out 写死 "conf 0.99"、坐标抄仿真 peg/hole、hand 抄 peg → 总线/播放
   显示假检测。2026-09-03 已改 conf "--"(引擎无 YOLO 模型, 诚实标注) + hand=末端 self.x、
   peg=独立物体 self.peg (原误用末端当 peg)。
 - **真实 YOLO 采样一次 (2026-09-03 落地)**: simulink `_real_yolo_sense_once()` —
@@ -209,7 +209,7 @@ src/lerobot/engineering/
 - 源码: src/lerobot/manifold/manifold_layer.py (与 calibration/ 同级) —
   ContactManifold (L51) / PerformanceManifold (L124); 常量 HOLE_POS/HOLE_MOUTH/
   PEG_HEAD_OFF 与 state_space_sim.py 逐字同源 (别改单边)。
-- 数据唯一依据: node_ss_mani 从 module._ss_tr 当前帧取 tr["x"/"peg_head"/"target"/
+- 数据真源: node_ss_mani 从 module._ss_tr 当前帧取 tr["x"/"peg_head"/"target"/
   "v_vec"/"stage"] (node_ss_calib 同款 idx=_ss_round); 无轨迹 → 提示先 ▶ 运行。
 - 接触流形数学: e=T−hand (x 通道=e=peg_head−HOLE_POS); 通道轴按阶段 —
   下降/抓取/抬起=z 垂直, 插入=工艺斜线 AXIS_INSERT (孔口上方悬高 2cm→孔底,
@@ -234,7 +234,7 @@ src/lerobot/engineering/
   contact=手obs[0:3]-peg obs[7:10]<5cm 自建标签) → next 位置误差 0.1cm + contact acc
   1.000 (近1.00/远0.00)。**训完直接导出 npz (同结构)**; best.pt 在 outputs/rl_peg/。
 - 接入: dynamics.contact_of(obs,act) (逐通道域检 4σ + wm contact; 域外 None) → 引擎
-  contact_p = max(经验残差公式, 右脑真权重) — 抓取时机由训练模型主执行, 教学公式保障。
+  contact_p = max(经验残差公式, 右脑真权重) — 抓取时机由训练模型主执行, 教学公式兜底。
 - **实测否决 pred_next 位置先验主执行**: 引擎纯积分动力学线性先验即最优 (u→位移精确),
   右脑 1cm 级实时残差反而加噪 (残差 0.108 vs 0.0485, 状态机卡对位)。wm 位置先验能力
   保留 (predict obs=), 待真实物理/非积分动力学场景启用; real sim 布局漂移域外
@@ -294,7 +294,7 @@ src/lerobot/engineering/
 
 **踩过的坑**
 1. **数组进布尔上下文**: `float(frame.get(k) or 0.0)` 遇 ndarray → "truth value of an array is
-   ambiguous" → 用 `_scalar()` 保障(ndarray/0-d/None 全安全); `obs43_geometry` 兼容 (1,43)/列表。
+   ambiguous" → 用 `_scalar()` 兜底(ndarray/0-d/None 全安全); `obs43_geometry` 兼容 (1,43)/列表。
 2. **FakeMod 必须显式 `_trace_nodes = False`** — `__getattr__` 返回 lambda(truthy) 会让
    `execute_node_logic` 走 `_trace_exec` 逐行执行 → 节点"失败且无日志"的假象(排查浪费最久)。
 3. **画布加载会重映射 node id**(id_map): 断言/查找一律按**节点名**, 不能按 json id。
@@ -400,7 +400,7 @@ src/lerobot/engineering/
   **M 由流形结构导出, 不是拟合出来的自由参数** — 结构决定可能性, 质量是果不是因。
   过阻尼含义: `M→0` = 现在的一阶 GD(速度∝力, 感觉不到惯性); `M>0` ⇒ 状态带**动量** ⇒ 过渡更平滑、抑制突变。
 - 落点: 引擎 `src/lerobot/manifold/manifold_engine.py`(MANIFOLD_M_DEFAULT/RANGE/UNIT + `set_M()` + 有惯性二阶分支)
-  · 唯一依据 `config/calib/zmax_manifold.json` → `tools/zmax_params.py --check | --m <v> [--inertia on|off]`
+  · 真源 `config/calib/zmax_manifold.json` → `tools/zmax_params.py --check | --m <v> [--inertia on|off]`
   · 标定层新域 `calibration_layer.MANIFOLD_CALIB`
   · 画布新节点 `n_calib_mani`「🧮 流形引擎标定 · 主参数 M」+ 5 条前向连线(sscalib/sslat → 本节点 → ss_mani_eng/ssmani_c/ssmani_exp)。
 - **零回归红线**: 默认 `M=1.0 · inertia=false` 必须与旧一阶过阻尼**逐位相同**; 判据 = 引擎内建 selftest(M=0/关 ⇒ 与旧轨迹相等)
@@ -414,13 +414,13 @@ src/lerobot/engineering/
   `a = F/M` 逐字零回归), **G 是形状**(各向异性 + 随状态变化)。
 - 为什么非分不可: **Γ 对度量的整体尺度不变** ⇒ 弯曲只由形状决定 ⇒ 尺度与形状**可分开标定**, 互不污染;
   不分离就会「标 M 的时候曲率跟着动」, 现场根本标不动。
-- 唯一依据实现 `src/lerobot/manifold/metric_field.py`(∇Φ=g⁻¹∂Φ 用 Cholesky 解 · Γ 中心差分 · R^i_jkl+Ric ·
+- 真源实现 `src/lerobot/manifold/metric_field.py`(∇Φ=g⁻¹∂Φ 用 Cholesky 解 · Γ 中心差分 · R^i_jkl+Ric ·
   测地线半步辛积分; n>8 的曲率如实降为 3 维子空间抽样)。参数化 `isotropic / diag / full`(n(n+1)/2 独立分量:
   3→6 · 6→21 · 16→136 · 43→946) + 可选状态相关项 `G(x)=G₀+Σx_k G_k`。
-- 标定接口 `tools/zmax_params.py::manifold_metric()/write_manifold_metric()`; 唯一依据 `config/calib/zmax_manifold.json`
+- 标定接口 `tools/zmax_params.py::manifold_metric()/write_manifold_metric()`; 真源 `config/calib/zmax_manifold.json`
   的 `metric` 段; 画布节点「标定诊断测量 · 主参数 M」运行即打印 dim/mode/独立分量/正定性/‖Γ‖/‖R‖/测地线偏离。
 - 判据 `tools/verify_metric_main_param.py`(7 组: 独立分量数 · 正定+det G=1 · 零回归 · 解析 Γ 张量对照 ·
-  常度量 ‖R‖=0 / 弯曲 ‖R‖>0 · 配置唯一依据读写+非正定拒写 · 真跑节点报数) ✅ 23/23 PASS。
+  常度量 ‖R‖=0 / 弯曲 ‖R‖>0 · 配置真源读写+非正定拒写 · 真跑节点报数) ✅ 23/23 PASS。
 - 公式/解析对照值/两个数值坑见 `references/metric-tensor-main-param.md`。
 
 ### 📊 健康度 H 与**尺度分离** (分级口径红线)
@@ -429,7 +429,7 @@ src/lerobot/engineering/
 - 🔴 **分级/阈值一律落在 H̃, 不许落在 H**: 同一套形状 M=3.643 ⇒ H=0.557/H̃=0.153(良好); M=4.423 ⇒ H=4.423/H̃=1.0(优秀)
   —— 拿 H 分级会把"物理尺度变大"读成"几何变好"。对外报数 **H 与 H̃ 两个都给**。
 - 口径唯一实现 `src/lerobot/manifold/health.py`(`health_from_metric(g)`/`health_from_eigvals` → H/κ/λmin/λmax/
-anisotropy/status/trend); 阈值唯一依据 `config/calib/zmax_health.json`(现场可标定) —— 别在调用处复制阈值常量。
+anisotropy/status/trend); 阈值真源 `config/calib/zmax_health.json`(现场可标定) —— 别在调用处复制阈值常量。
 
 ### 🔁 闭环引擎 · 配置单→M 映射 · 集成总线 (落点分工)
 - 分工: **「标定诊断测量 · 主参数 M」节点 = 配置单→M 的映射关系** · **「流形引擎」节点 = 用 M 实现功能**。
@@ -441,12 +441,12 @@ anisotropy/status/trend); 阈值唯一依据 `config/calib/zmax_health.json`(现
 - 判据: `verify_engine_loop.py`(闭环完整性) · `verify_config_to_M.py`(映射/闸门/幂等) · `sil_test_engine.py`(SIL 真 trace 重放)。
 - 深度(尺度分离推导/映射规则表/SIL 数字/写盘与判据两坑)见 `references/metric-tensor-main-param.md` §8–§12。
 - 🔴 **映射存在 ≠ 已落役**: `tools/config_to_M.py --task <T>` 算出的是**提案**(实测摆盘 M=4.423 · dim6 · isotropic),
-  而唯一依据 `config/calib/zmax_manifold.json` 是**在役值**(实测 M=3.283 · dim3 · full) —— 两者不一致时只能报
+  而真源 `config/calib/zmax_manifold.json` 是**在役值**(实测 M=3.283 · dim3 · full) —— 两者不一致时只能报
   "映射链在、**未落役**", 绝不说"已映射/已生效"。节点侧判据 `verify_metric_main_param.py` 23/23 PASS
-  **只证明映射本身对**, 不证明作业链在用这个 M。核口径 = 唯一依据 JSON 的 `M/dim/mode` 与 `config_to_M` 输出**逐项对照**。
+  **只证明映射本身对**, 不证明作业链在用这个 M。核口径 = 真源 JSON 的 `M/dim/mode` 与 `config_to_M` 输出**逐项对照**。
 - 驱动扭矩 topic: `ss_torque = M·(−∇Φ)` 由 `tools/tdrive_bus.py` 发布, 落**系统服务常驻**(`zmax-torque-bus.service`,
   10Hz; 写 `zmax_data/ss_live/torque_live.json` + `torque_<场景>.jsonl` tap)。🔴 **发布器里的场景必须现取**
-  (跟 `ss_scene_switch` 的活跃场景), **不得硬编码 `SCN-xx`** —— 预先固定会让 tap 文件名与场景标签长期指错任务
+  (跟 `ss_scene_switch` 的活跃场景), **不许写死 `SCN-xx`** —— 写死会让 tap 文件名与场景标签长期指错任务
   (实测手跑 120s、published/errors 全对, 却整份写进了另一个场景的 jsonl)。改完重启服务并**回读 tap 的场景字段**。
   判据口径: 逐项 PASS 里**只有依赖真录像/真相机源的那几条**在办公模式必然未过 ⇒ 如实标"待现场复跑", 不算回归。
 
@@ -470,7 +470,7 @@ anisotropy/status/trend); 阈值唯一依据 `config/calib/zmax_health.json`(现
 - **真机下发是另一个常驻进程**: GUI/CLI → `~/zmax_data/l2_cmd.fifo` → `tools/l2_daemon.py`(独立 pid) → `ros2 service call /move_pose|/move_line|/gripper_driver`(l2_daemon.py 325/518/916)。断点要 **attach 到 daemon 的 pid**(VSCode: Attach using Process ID), 不是另起的调试会话; 断在真实执行器里会暂停下发, 现场臂动着时别停太久。
 - **别为了看下发去改 daemon**: `l2_daemon.py:79 maybe_reload(reg)` 会热加载 ⇒ 现场改码可能 reload。用只读镜像 `tools/l2_dispatch_watch.py`(tail l2_daemon.log → reports/l2_dispatch.jsonl, 分清 DRY-RUN/真发) 代替断点。
 - **契约式退出码 ≠ 崩溃**: `raise SystemExit(main())` 得 1/2 = 工具按判据拒绝(VSCode 报成 "Exception has occurred: SystemExit")。真原因打在 traceback **上面**; 判断他跑了哪个模式看产物 mtime, 不要猜。
-- **L5 槽位工具 0 框退出码**: `tools/l5_slot_tool.py --build-dataset` 默认只收 `status=已记录`; VLM 复核不一致 / 无 TCP 真值 / 深度未上线 → 一律停 `待确认` ⇒ 0 框 ⇒ exit 1(不是崩)。验证通过管线用 `--include-pending`(仅供冒烟, 报告标注); 要真标签必须现场 `--record --slot N`(判据: 投影 ok + TCP≤3s + VLM 一致)。
+- **L5 槽位工具 0 框退出码**: `tools/l5_slot_tool.py --build-dataset` 默认只收 `status=已记录`; VLM 复核不一致 / 无 TCP 真值 / 深度未上线 → 一律停 `待确认` ⇒ 0 框 ⇒ exit 1(不是崩)。跑通管线用 `--include-pending`(仅供冒烟, 报告标注); 要真标签必须现场 `--record --slot N`(判据: 投影 ok + TCP≤3s + VLM 一致)。
 - 现场拖动时的实时叠加三件套见 `sim-real-scene-overlay`: 50Hz 录制真关节+TCP(`tools/live_motion_recorder.py`) · 停顿点自动打点+实测轨迹层(`live_pause_marker.py`, origin=`trace` 黄) · 同源规划段(`live_plan_segment.py`, 两端真机真值, 按执行器守卫 ≤50mm/下降≤20mm/≤10°分段)。
 - **断在具体某一召却不停 (上条的镜像)**: 三因按序分离 —— ①方法被**实例属性覆盖** (`self.accel.forward = analytic_forward`，门是 `SS_USE_MLP`) ②跑这段的是**另一个常驻进程** (引擎 loop 无 pydevd) ③模块是 `spec_from_file_location` 动态加载、**不进 `sys.modules`** ⇒ debugpy 解析不到。修法与自证见 `references/breakpoint-and-realization-notes.md` 末节 (含断点友好加载器、`真身执行 #N` 执行证据、`SS_FF_BREAK=1` 硬停)。
 
@@ -485,8 +485,8 @@ xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py [--level L2|L3|L4]
   在有人作业的现场跑会动真机、可能引发控制器报警(实测过一次)。现场要验回归只用离屏/离线手段,
   或先确认无人在场、臂处于安全位姿再跑; 要真机证据时单跑指定用例并提前告知现场。
 - **节点逻辑迁 `src/lerobot/engineering/` 后验证层会假失败**: 审计/映射仍指旧壳 `tools/gui/node_logic.py`(已不含逻辑)。
-  · `verification_layer._audit()` 用 `_MIGRATED_SRC` 同时扫【旧壳 ∪ 新唯一依据】, 命中任一即过。
-  · `_EXTERNAL_LOC` 行号随唯一依据漂移, 须按唯一依据实测校正: n_web_agent 1→93 · n_hil 1→157 · ss_test 111→123 · ssa/ssb/ssc 3900→3533 · ss_lat 58→55 · ss_moe 42→50 · ss_mani_eng 395→403。
+  · `verification_layer._audit()` 用 `_MIGRATED_SRC` 同时扫【旧壳 ∪ 新真源】, 命中任一即过。
+  · `_EXTERNAL_LOC` 行号随真源漂移, 须按真源实测校正: n_web_agent 1→93 · n_hil 1→157 · ss_test 111→123 · ssa/ssb/ssc 3900→3533 · ss_lat 58→55 · ss_moe 42→50 · ss_mani_eng 395→403。
 - **L4 `t_sched_real` 必须放在子进程里跑**(已改, 否则套件内假失败): 它调 `lerobot.engine.runtime.quick_run(n_episodes=2, vision=False)`(真身; `tools/gui/state_space_sim_real.py`
   已是 27 行别名 shim, 老 import 路径照旧可用), 判据 **2 集 ≥1 完成**。
   同进程内跑过前面一堆用例后两集都折在 1000 步(❌ 0/2); **单独子进程跑 = 1/2 ✓**(完成那集只 395 步、夹持=True)。
@@ -503,13 +503,13 @@ xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py [--level L2|L3|L4]
    判据用**冻结快照后逐字比对**, 不要用 ±25% 容差 (那是给实时两窗口的假报警)。
 2. **固定行: 行集合必须稳**。老行按上拍顺序、新行插同话题末尾、本拍缺失字段保留上一拍那行 (标陈旧 60s)
    判据走**增量路径**, `force=True` 是用户点刷新, 允许重排。
-   同一份带 TTL 缓存 (0.25s) 的唯一依据, 判据**不许 `sleep()` 跳窗口**: `a=read(); sleep(0.1); b=read()` 会随机跨边界 ⇒
+   同一份带 TTL 缓存 (0.25s) 的真源, 判据**不许 `sleep()` 跳窗口**: `a=read(); sleep(0.1); b=read()` 会随机跨边界 ⇒
    单跑必过、批量偶红 (实测), 看起来像被测代码出了问题。修法: **强制刷新一次缓存 → 紧接着连读两拍**再比。
 3. **删层前先补归属**: `ss.node.<id>.<port>` 没规则 ⇒ 判 SYS ⇒ 删 SYS 时整类话题消失。
-   唯一依据 `config/platform/dds_topic_types.json -> nodes.<id>` (ins.producers/outs.consumers/layer);
+   真源 `config/platform/dds_topic_types.json -> nodes.<id>` (ins.producers/outs.consumers/layer);
    in 口 Tx=上游、out 口 Tx=本节点/Rx=下游 consumer。
    · **画布上有节点 ≠ 有层索引**: `attribution.layer_of` 看的是 `db.node_rows()` 的 layer, 它由
-     `src/lerobot/engineering/nodes/by_level.py::LEVELS_INDEX` 保障 —— 节点在画布里、但 LEVELS_INDEX 里没有这一条 ⇒
+     `src/lerobot/engineering/nodes/by_level.py::LEVELS_INDEX` 兜底 —— 节点在画布里、但 LEVELS_INDEX 里没有这一条 ⇒
      layer 落 `meta` ⇒ `layer_of` 返回 **SYS** ⇒ Trace「SYS 不入表」⇒ 该节点**整族信号一行都不显示**
      (实测「🛡 安全执行边界」`sslimit` 一直在画布, 而 `sstrace.安全边界_*` 4 条一条都看不到)。
      修法是**补 by_level 的层索引**(按语义归 L2 —— 执行由 L2 收口), 不是改 attribution 的 `PREFIX_OWNER`:
@@ -517,7 +517,7 @@ xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py [--level L2|L3|L4]
      验: 新开进程跑 `attribution.layer_of("sstrace.安全边界_mms")` 应从 SYS 变 L2、`tx_of` 给中文节点名 ⇒ 再重启控制台。
      同型指纹: 用户说「数据空间怎么没有 XX 这个 Tx 节点」⇒ 先查 `db.node_rows()` 里该节点的 `layer`, 不要先怀疑映射表。
 4. **给表加列 = 所有 `verify_*.py` 的列下标位移** ⇒ 判据会读出"不一致 398 处"的假故障; 加列必须同步改下标或改成按列头名取列。
-5. **元数据过滤会把"只有信封字段"的端口整行滤掉** ⇒ 保障用端口名占一行, 不回信封、不编 payload 字段。
+5. **元数据过滤会把"只有信封字段"的端口整行滤掉** ⇒ 兜底用端口名占一行, 不回信封、不编 payload 字段。
 6. **位姿信号**: x/y/z 是当前 TCP (不是每技能规划点); tap 停更时用 `trace_live.末端_x/y/z`(m→mm) 代偿并写
    `pose_src/age`; 3D 出口无姿态 ⇒ a/b/c 发 -1 + 一条 QoS warn, 不许凑。偏差 >5mm 走 fail 报警, 判据要注错值验。
 7. **"3D 里位姿谁规划的" = 没人规划**, 是回放 `reports/ss_episode_latest.npz` (蒸馏 MLP + 八阶段状态机 +
@@ -529,7 +529,7 @@ xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py [--level L2|L3|L4]
 
 8. **没有连线就不许写来源** (老倪: 「实际上也没有连线啊, 在 Rx 里删掉…没有这个连接」): 闭环内部算出来的量
    (帧/总帧/时间_s/估计值/估计误差/估计抖动/残差/残差系统偏差/接触概率/净接触) 画布上没有任何一条线 ⇒
-   Rx 返回 `—`; 同时**不许用 catch-all 前缀规则**把它们糊给某个节点 (实测 `sstrace.*` 保障把残差/帧全判成
+   Rx 返回 `—`; 同时**不许用 catch-all 前缀规则**把它们糊给某个节点 (实测 `sstrace.*` 兜底把残差/帧全判成
    「Z-MAX 引擎」)。能指到真正算它的 L2 节点就指 (估计→`ssest` · 残差/净接触→`ssinnov`), 纯簿记量指进程
    (帧/总帧/时间_s→`ss_dreamview`)。归属表里出现「(无话题)/(无节点)」这类后缀 = 编造连接的痕迹, 直接清掉。
    最终口径比逐条判断更简单: 3D 场景那族 (`sstrace.*`) **整族 Rx 全清成 `—`** (全空不辩), 取数来源表
@@ -588,13 +588,13 @@ xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py [--level L2|L3|L4]
    会安静地读到 `None`, 看起来像功能坏了。
 
 15. **信号名必须表意: 端口名 (out1/in1) 不许直接上屏** (老倪: 「out1 in1 根本看不出来是什么意思」)。
-   端口名是画布的机械命名, 语义在**报文类型**里 ⇒ 唯一依据 `mw_topic.type`, 不是端口名、也不是话题名猜。
+   端口名是画布的机械命名, 语义在**报文类型**里 ⇒ 真源 `mw_topic.type`, 不是端口名、也不是话题名猜。
    · 名字只在**一个函数**里生成: `src/lerobot/middleware/signal_en.py::en_of_key(prefix, field, mtype)`。
      两张窗口 (Trace / 信号分析) 都走它, 别各写一份映射 —— 各写一份必分叉。
    · 规则顺序: `TYPE_SIGNAL_EN` 人工短名 (`MotionPlan→plan` · `MotionPlanIn→plan_in` · `RobotActionIn→action_in`
-     · `OpticalInspection→aoi` · `MuscleSkillBank→muscle_bank`) → 表里没有就 CamelCase→snake_case 保障;
+     · `OpticalInspection→aoi` · `MuscleSkillBank→muscle_bank`) → 表里没有就 CamelCase→snake_case 兜底;
      **拿不到类型就不编**, 保留原端口名。同一类型多条入口 (`in1/in2`) 只有第一条用裸名, 其余带序号 (`plan_in_2`)。
-   · 类型查不到时用**行自带的 `type`** 保障 (`type_of_topic()` 只对 `ss.node.<id>.<port>` 命中; 直播话题/别名不带)。
+   · 类型查不到时用**行自带的 `type`** 兜底 (`type_of_topic()` 只对 `ss.node.<id>.<port>` 命中; 直播话题/别名不带)。
    · 改名放在**渲染前一次**, 原始端口名留在 `raw`/tooltip 可追溯; 别在每行的渲染循环里做 (会撞上变量复用坑)。
    · 判据 `tools/verify_signal_names.py`: 全端口 (272) 裸端口名 == 0 · Trace 行裸端口名 == 0 · 点名口对照
      (`n_moveit.out1→plan` / `in1→plan_in`)。回退指纹: 屏上再出现 `out1`/`in1` 就是口径被破坏。
@@ -606,7 +606,7 @@ xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py [--level L2|L3|L4]
      规则: 单位换算不能靠"键名后缀"判定, 后缀只用于**标注** (图例/Y 轴 `(mm/s)`)。
    · **契约内部仍是 m/s**: DDS 的 `v_cap`、`gravity_table`、物理约束表这类消费端读到 mm/s 键要显式 `/1000`,
      别顺手把内部契约也改成 mm —— 改的是信号口径, 不是接口单位。
-   · 注册表同步: `config/topics/scene_tags.json` 的场景信号名 (唯一依据在 `data/database/zmax/sources/config/`, **不在 git**,
+   · 注册表同步: `config/topics/scene_tags.json` 的场景信号名 (真源在 `data/database/zmax/sources/config/`, **不在 git**,
      所以 `git add config/...` 会 exit 1 —— 那是软链到工程库 source); `signals.db` 里旧 `_mps` 行要顺手清,
      否则面板新旧两套名同时存在。
    · 验收: `tools/verify_trace_sync.py` 的「速度类信号单位 = mm/s」「数值口径 ±25% 越界 0 例」两行 + 现场采 2~3 帧看值在
@@ -630,6 +630,6 @@ xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py [--level L2|L3|L4]
 - 数据空间(DDS 总线)的信号表与关键词、MoveIt 规划/action 取数地图（含"域是 42""action 话题默认隐藏"
   "规划结果走 get_result 服务不走话题""`tcp_path` 只存 x y z""姿态比对只能用四元数夹角"）
   → `references/dds-bus-signal-map-and-moveit-action.md`
-- **末端位姿 x/y/z/a/b/c 的唯一依据与坐标系口径**（仿真 episode 不记姿态 · 真机走 `rokae_sdk/tcp_out/latest.json`
+- **末端位姿 x/y/z/a/b/c 的真源与坐标系口径**（仿真 episode 不记姿态 · 真机走 `rokae_sdk/tcp_out/latest.json`
   `frame=base_link` · 现场世界系须标定才存在 · `ss_live/trace_live.json` 是单槽会被不同任务互相覆盖）
-  → 同上文件末节「末端位姿 x/y/z/a/b/c 的唯一依据与坐标系」
+  → 同上文件末节「末端位姿 x/y/z/a/b/c 的真源与坐标系」

@@ -1,6 +1,6 @@
 # 控制台子进程 (cgroup 连带) 与崩溃现场取证
 
-触发: 用户说「VSCode / 别的工具阻塞了」「控制台崩了」「起不来了」, 或 `systemctl --user status` 显示
+触发: 用户说「VSCode / 别的工具卡住了」「控制台崩了」「起不来了」, 或 `systemctl --user status` 显示
 `status=11/SEGV` / `Failed with result 'core-dump'`。
 
 > 配套读: `vscode-extension-plan.md` — VSCode 宿主升级分工 + 「把 Z-MAX 插进 VSCode 开发界面」(自研 vsix 扩展)的分阶段方案与定位红线。
@@ -10,7 +10,7 @@
 systemd user unit 默认 `KillMode=control-group` ⇒ 控制台**停止或崩溃时整个 cgroup 里的子进程被一起收走**。
 `studio.py` 用 QProcess/subprocess 拉起来的工具 (如「打开代码」按钮的 `code -g <file>:<line>`) 就住在这个 cgroup 里。
 - 判据: `systemctl --user status <unit> --no-pager | sed -n '/CGroup/,+6p'` —— 子进程 pid 挂在控制台 cgroup 下 ⇒
-  那个工具「阻塞/消失」很可能是**连带**, 不是它自己的毛病。别一上来就重装/重配那个工具。
+  那个工具「卡住/消失」很可能是**连带**, 不是它自己的毛病。别一上来就重装/重配那个工具。
 - 修法: 需要长期存活的外部工具要从 cgroup 摘出去, 用 `systemd-run --user --scope <cmd>` 启动
   (裸 `subprocess.Popen` 摘不掉, `setsid` 也不够 —— 还在同一个 cgroup)。摘出去后控制台重启/崩溃不再带走它。
 - 本工程落点: `tools/gui/simulink_module.py` 的「打开代码」= 唯一直接 Popen `code` 的地方 (grep `which("code")` 只有这一处),

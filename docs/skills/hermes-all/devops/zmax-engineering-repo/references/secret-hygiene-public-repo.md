@@ -6,7 +6,7 @@
 ## 铁律
 1. **口令/token 一律不进仓库**，包括文档、技能快照、记忆文件、示例代码、systemd 单元。真值只放 `zmax_data/secrets/*.env`(600) 或环境变量(`ZMAX_ECS_PW` 等)。
 2. **本地技能源 (`~/.hermes/skills/**`) 也会被同步进仓库** —— 在本地技能里写明文 = 下一次“入库”就泄露。改代码时要同步改技能源。
-3. 代码里取口令用 helper（环境变量 → secrets 文件 → 找不到就**报错退出**），**不要留 "保障明文"**：`os.environ.get("X") or "明文"` 是最常见的泄露方式。
+3. 代码里取口令用 helper（环境变量 → secrets 文件 → 找不到就**报错退出**），**不要留 "兜底明文"**：`os.environ.get("X") or "明文"` 是最常见的泄露方式。
 4. 删 HEAD 里的明文 ≠ 收回泄露：git 历史/已发布 Release/别人已 clone 都还有。**处置顺序：先改服务器口令（旧值立即失效），再考虑清历史**。
 
 ## 轮换线上口令（改 ECS root）的硬顺序 (2026-10-10 实做)
@@ -26,7 +26,7 @@ cd /home/ubuntu/zmax
 python3 tools/secret_scan.py                 # 全量已跟踪文件; 命中退出码 1
 python3 tools/secret_scan.py --staged        # 提交前闸
 python3 tools/repo_guard.py --staged         # 大文件/交付件闸
-git ls-files -z | xargs -0 grep -n "sshpass -p" | grep -v '\${'   # 残留明文保障
+git ls-files -z | xargs -0 grep -n "sshpass -p" | grep -v '\${'   # 残留明文兜底
 curl -s -H "Authorization: token $TOKEN" https://api.github.com/repos/MikeBMW/zmax | grep -o '"visibility":"[a-z]*"'  # 确认仓库可见性
 ```
 

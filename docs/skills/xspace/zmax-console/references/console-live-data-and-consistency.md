@@ -1,20 +1,20 @@
-# 控制台数据同步与一致性 (数字不得硬编码 + 单库唯一依据 + 审计)
+# 控制台数据同步与一致性 (数字不许写死 + 单库真源 + 审计)
 
-适用范围: `tools/gui/studio.py` (1.1MB 主窗口) 及各功能页。单一唯一依据 = `data/database/zmax/zmax_engineering.db`。
+适用范围: `tools/gui/studio.py` (1.1MB 主窗口) 及各功能页。单一真源 = `data/database/zmax/zmax_engineering.db`。
 
 ## 铁律: 界面上的数字一律从库现算, 不写字符串
 
-- 手写过计数必然漂移 (实测: 参数中心卡预先固定 '162 个可改数字', 库里已 645 ⇒ 界面说谎)。
+- 手写过计数必然漂移 (实测: 参数中心卡写死 '162 个可改数字', 库里已 645 ⇒ 界面说谎)。
 - 用 `studio._live_counts()`: 一次算好 `特征 / 子系统 / 功能 / 参数 / 参数分组 / 功能·sys0|sys1|sys2 / 画布节点 / 画布连线`,
-  按**库 mtime** 做进程内缓存 (`_LIVE_CACHE`) ⇒ 库重建后自动失效, 不必重启 GUI; 库不在回退 0 并由文案保障。
+  按**库 mtime** 做进程内缓存 (`_LIVE_CACHE`) ⇒ 库重建后自动失效, 不必重启 GUI; 库不在回退 0 并由文案兜底。
 - 新卡片/页要计数时接它, 别再拼字符串。
-- 改参数/唯一依据后记得 `python3 tools/engineering_db.py build` + `check`, 否则 GUI 读到的还是旧库。
+- 改参数/真源后记得 `python3 tools/engineering_db.py build` + `check`, 否则 GUI 读到的还是旧库。
 
 ## 口径对照表 (同一句话可能有多个都对的分母, 判据/文案必须选对)
 
 | 说法 | 真值 | 来源 |
 |---|---|---|
-| 画布节点 | **89** | 画布唯一依据 `data/database/zmax/sources/canvas/state_space_obs.json` 的 nodes (含 15 条 row_bg 背景带) |
+| 画布节点 | **89** | 画布真源 `data/database/zmax/sources/canvas/state_space_obs.json` 的 nodes (含 15 条 row_bg 背景带) |
 | 画布节点(库口径) | 74 | `canvas_nodes` 表 = 89 − 15 背景带 |
 | 画布连线 | 184 | 两边一致 |
 | 功能 | 74 全局 | `functions`; 按系统: sys2=30 / sys1=4 / sys0=27 / plat=13 |

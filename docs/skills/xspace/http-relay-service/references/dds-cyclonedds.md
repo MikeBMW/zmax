@@ -31,7 +31,7 @@ from cyclonedds.idl.types import ... string                # ❌ ImportError
 ```
 IDL 的 string 直接用 Python 内置 `str` 标注。
 
-**(b) Policy 有的可调用、有的不可 —— 用保障 helper**
+**(b) Policy 有的可调用、有的不可 —— 用兜底 helper**
 ```python
 def _p(cls, *a):
     """Reliable(n)/KeepLast(n) 可调用; BestEffort / Durability.TransientLocal 不可调用"""
@@ -137,7 +137,7 @@ GPU 利用率接口 → 明确 `-1.0`，而不是填 0 让人以为 GPU 闲着�
 
 ---
 
-## 6. 话题 / QoS 设计（按用途分层，不要统一处理）
+## 6. 话题 / QoS 设计（按用途分层，不要一刀切）
 
 | 话题 | 类型 | QoS | 理由 |
 |---|---|---|---|
@@ -160,17 +160,17 @@ dds-venv:  dds_bridge.py   订阅 DDS → 写 reports/dds_latest.json（按节�
 
 1. 同进程 pub→sub 往返收到 1 条（证明栈通）。
 2. **跨进程**：发布端 + 订阅端各一个进程 → 收到 ≥1 条（证明发现通）。
-3. 带跨网 XML 再执行一遍 2（证明单播配置有效）。
+3. 带跨网 XML 再跑一遍 2（证明单播配置有效）。
 4. `matched_publications > 0`。
 5. 把收到的字段逐个打印（node/role/device_name/数值），确认**不是空壳**。
 6. 桥 JSON 落盘后，控制台端点能读到同样数值（端到端闭环）。
 
-## 8. 本会话遇到问题账单（供未来对照）
+## 8. 本会话踩坑账单（供未来对照）
 
 | 现象 | 根因 | 修法 |
 |---|---|---|
 | `ImportError: cannot import name 'string'` | 该版本无 `string` 类型 | 用内置 `str` |
-| `'Durability.TransientLocal' object is not callable` | Policy API 不一致 | `_p()` 保障 helper |
+| `'Durability.TransientLocal' object is not callable` | Policy API 不一致 | `_p()` 兜底 helper |
 | `'Reliability.BestEffort' object is not callable` | 同上 | 同上 |
 | XML 初始化 `DDS_RETCODE_ERROR` | `<Interfaces>` / `<Ports>` 不被接受 | 只用 AllowMulticast=false + Peers |
 | 发布正常但订阅 0 条 | 多网卡下多播选错网卡 | 默认单播配置（Peers 列全） |

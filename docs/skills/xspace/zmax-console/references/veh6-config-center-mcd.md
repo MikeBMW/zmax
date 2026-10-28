@@ -5,36 +5,36 @@
 
 ## 核心结构：一张参数表 + 三个视角列（不是十二个页面）
 - **行 = 参数**（A2L CHARACTERISTIC 的 UI 投影）。**域 = 分组**（模型/工程/功能/性能）。**列 = 同一个参数的三种操作**：
-  测量（只读·唯一依据·帧龄）| 标定（权限·编辑器·扫描）| 诊断（判据·故障码·差异）。
+  测量（只读·真源·帧龄）| 标定（权限·编辑器·扫描）| 诊断（判据·故障码·差异）。
 - 参数行固定 14 列，缺列不许入库：
-  `id | 中文名 | 域 | 级 | 唯一依据(文件#键) | 当前值 | 单位/换算 | 范围 | 默认 | 影响面(节点/层) | 判据 | 权限 | 关联feature | 状态灯`
+  `id | 中文名 | 域 | 级 | 真源(文件#键) | 当前值 | 单位/换算 | 范围 | 默认 | 影响面(节点/层) | 判据 | 权限 | 关联feature | 状态灯`
 - 参数五级：**G0 结构(非自由拟合)** · **G1 安全红线** · G2 性能(可扫) · G3 场景(现场零运动示教) · G4 权重/版本。
 - 权限四档：`readonly` / `field`(现场) / `auth`(需真动授权) / `version`(只版本比对)。
 
 ## 四条不可破的口径
-1. **唯一依据唯一**：VEH.6 是编辑面，不是第二份真相；每行必须能答"文件#键"。描述文件由生成器产出，不手改。
+1. **真源唯一**：VEH.6 是编辑面，不是第二份真相；每行必须能答"文件#键"。描述文件由生成器产出，不手改。
 2. **G1 红线永无编辑控件**：`saturate/veto_th/力阈值/限位` 只读展示，诊断列只报"是否被违反"。
 3. **只改本节**：写 `calib.json` 只读-改-写本域键；**禁** `sync_calib(write=True)` 整表重合并（会把其他在役域刷成"当前源"）。
 4. **写后必回读**：`manifold_M()`/`calib()` 读回逐位比对；三段 = 备份 prev → 只改本节 → 回读核验。
 
 ## 生成器 `tools/mcd_build.py`（B1 已落）
-只读唯一依据 → 出 `config/mcd/zmax_mcd.json`（MEASUREMENT/CHARACTERISTIC/COMPU_METHOD/GROUPS/DIAGNOSTICS）
+只读真源 → 出 `config/mcd/zmax_mcd.json`（MEASUREMENT/CHARACTERISTIC/COMPU_METHOD/GROUPS/DIAGNOSTICS）
 + `config/mcd/param_registry.json`（扁平+就绪度）。
-- 唯一依据: `config/calib/zmax_calib.json` · `config/calib/zmax_manifold.json` · `feature.dbc` ·
+- 真源: `config/calib/zmax_calib.json` · `config/calib/zmax_manifold.json` · `feature.dbc` ·
   `engineering/levels.py` · `verification/verification_layer.py` · `studio.py::ConfigModule.cfg_spec`。
 - `--check` 幂等判据：剔除 `_meta.generated_at` 后内容比对（**逐位比对会把时间戳误报成不一致**）。
 - 实测：CHARACTERISTIC 24 · 域 工程9/性能6/功能3/模型6 · G0 2·G1 2·G2 9·G3 6·G4 5 ·
   feature.dbc 能力 30(8 域) 组合 5 · 档位契约 L2 7/L3 4/L4 6/L5 5 · 断言 57(自动 47) · 就绪 10/24 缺 14。
 - 缺口分三类（诊断列要分开显示）：**现场未标定**(T_base_cam/plane_z/cell_geometry) ·
-  **唯一依据非文件**(saturate/veto_th 在源码常量里) · **未接线**(权重/第三方/档位)。
-  ⚠ **"未接线"与"现场未标定"是两种不同的缺**: 前者改生成器去接唯一依据, 后者得去现场标; 都写成"缺"就分不清该动谁。
+  **真源非文件**(saturate/veto_th 在源码常量里) · **未接线**(权重/第三方/档位)。
+  ⚠ **"未接线"与"现场未标定"是两种不同的缺**: 前者改生成器去接真源, 后者得去现场标; 都写成"缺"就分不清该动谁。
 - **`read` 种类**: `calib` / `manifold` / `dbc` / `levels` / `features` / `cfgspec` / `perf_spec` / **`model`**。
-  `model` 这一类的唯一依据 = `tools/model_inventory.py --json` (nvidia-smi + 四层在役/最新产物 + 训练进程):
-  `("model","L2")` = `os.path.realpath(models/yolo_peg_live.pt)` (**L2 唯一依据是软链**) ·
+  `model` 这一类的真源 = `tools/model_inventory.py --json` (nvidia-smi + 四层在役/最新产物 + 训练进程):
+  `("model","L2")` = `os.path.realpath(models/yolo_peg_live.pt)` (**L2 真源是软链**) ·
   `("model","L3"|"L4"|"L5")` = inventory 里该层 `active` 的 `realpath || path` ·
   `("model","status")` = 逐层 {在役, 本层产物数, 最近训练, 训练中} 现算 ·
   `("model","entry")` = 逐层真训练命令 (脚本文件不存在 ⇒ `ready=false`, 不许编)。
-  加唯一依据后 `_meta.sources` 要带 `tools/model_inventory.py` 的 sha16 (否则"唯一依据同步"会假报)。
+  加真源后 `_meta.sources` 要带 `tools/model_inventory.py` 的 sha16 (否则"真源同步"会假报)。
 - **模型配置域已接线 (实测 9 项全 ready)**: `model.arch_mode / cfg_spec / ckpt_l2 / ckpt_l3 / ckpt_l4 / ckpt_l5 /
   train_state / train_entry / third_party`。以前 `ckpt_l2/l3/l4` 全是 `value=null · ready=false · 未接线` 且
   **L5 根本没有** ⇒ 现在 L2~L5 在役权重逐层真取 (例 `zmax_data/models/l5_vlm_merged_<stamp>/model.safetensors`)。
@@ -53,7 +53,7 @@
   模型包只放 `requires` + 容差；真值永远在 `config/calib/*`。
 - **域是第一判据**：仿真域(`metaworld`)模型对站点几何几乎无依赖；真机域(`real`)一缺几何就红。
   实测：10 模型可用 9/10，**唯一受阻的是唯一真机域在役模型 L4.intact**（缺 T_base_cam/plane_z/cell_geometry）。
-- **已有唯一依据不能绕过**（不要新建第二套）：`models/active_models.json`(在役指针) ·
+- **已有真源不能绕过**（不要新建第二套）：`models/active_models.json`(在役指针) ·
   `engineering/models_manifest.json`(版本+probe) · `docs/third_party_model_spec.md`(模型包 manifest v1) ·
   `tools/model_autoload.py`。该补的是 manifest 的 **契约段**(domain/requires/normalization/io)，不是新体系。
 - 匹配器 `tools/model_site_match.py` → `config/mcd/match_matrix.json`（纯只读，可复算）。
@@ -74,18 +74,18 @@
 - **依赖关系不许手写**: `config_meta.json` 的 `deps.functions` 实测 74/74 为空, 唯一有据来源是
   画布连线 (`state_space_obs.json` links 的 t←f) ⇒ 用它算上游依赖。编一张依赖表就是造假。
 - **一份逻辑两处用**: GUI 元任务表直接 import `tools/export_meta_doc.py` 的构建函数 (与 Word/PDF
-  导出同源), 不在 GUI 里写第二套取数。唯一依据: `config_meta.json` + 画布连线 + `tasks.json` +
+  导出同源), 不在 GUI 里写第二套取数。真源: `config_meta.json` + 画布连线 + `tasks.json` +
   `ss_task_binding.json`。
 - CLI 同步: `config_center.py` 的 `DOMAINS` 同步拆成 `任务配置` / `工单配置` (GUI 树与 CLI 域名一致);
   `tools/verify_product_ui.py` keep 列表里的 `🎯 工单` 要跟着改成 `🧾 工单配置`, 否则判据假红。
-- 判据: `tools/verify_task_order_split.py` (离屏真起 ConfigCenterPage, 27 项: 拆项/七字段/回读唯一依据/
-  两表联动条数 == 唯一依据 enabled_nodes/增列不换列/CLI 同源)。改这一块后必跑它 + `verify_product_ui.py`。
+- 判据: `tools/verify_task_order_split.py` (离屏真起 ConfigCenterPage, 27 项: 拆项/七字段/回读真源/
+  两表联动条数 == 真源 enabled_nodes/增列不换列/CLI 同源)。改这一块后必跑它 + `verify_product_ui.py`。
 
 ### 原第五域设计说明 (保留: 四层配置/优先级/拦截, 仍然有效)
 
 - 汽车总装 Build Sheet(单车身份+装配指令+零件清单) → 机器人产线: 工单身份+工序配方+物料清单;
   再加一节汽车表上不写的: **安全(Sys-0)**(急停/力阈值/关节限位/光幕), 它不在配方里、在站点里。
-- **四层配置 + 优先级(谁说了算, 预先固定)**:
+- **四层配置 + 优先级(谁说了算, 写死)**:
   `L1 站点 config/calib/*`(现场事实, 永远最高, 只读) > `L2 工序配方`(工艺定型, 参数化) >
   `L3 工件变体`(scenes_5jobs.json: 物料/穴位/朝向) > `L4 工单实例`(生成物)。
   取值优先: 安全(G1) > 站点几何(G3) > 工单覆盖(G2) > 变体 > 配方默认。
@@ -100,7 +100,7 @@
 
 ## 操作面 CLI：GUI 每个按钮 = 一条命令(一份逻辑两处用)
 - `tools/config_center.py` 读 `config/mcd/zmax_mcd.json` 描述后提供: 总览 / `list 域` / `show id` /
-  `open id`(唯一依据绝对路径+键) / `recipe` / `variants` / `orders` / `order --scene` / `check`。
+  `open id`(真源绝对路径+键) / `recipe` / `variants` / `orders` / `order --scene` / `check`。
 - 规则: **GUI 只做外壳** —— 命令函数抽成可导入模块给 GUI 直接调, **不写第二份实现**。
   每个按钮 = 纯函数 + 结果面板 + 可导出 JSON; 失败给**根因行**("站点几何未标定 ⇒ 坐标类参数不可信"),
   不给"操作失败"这种空话。
@@ -109,20 +109,20 @@
 - GUI 冻结纪律照旧: 一次改完再重启, 不在演示/准备重启时动。
 
 ## 生成物三条硬规矩(工单与描述文件都是生成物)
-1. **不手改生成物**: 改唯一依据 → 重生成。工单的唯一依据 = 场景 + 配方 + 站点配置。
-2. **ID 由唯一依据决定, 不由遍历序号决定**: 工单号取场景编号(SCN-02→0002)而非 `enumerate` 下标 ——
+1. **不手改生成物**: 改真源 → 重生成。工单的真源 = 场景 + 配方 + 站点配置。
+2. **ID 由真源决定, 不由遍历序号决定**: 工单号取场景编号(SCN-02→0002)而非 `enumerate` 下标 ——
    否则加一个 `--scene` 筛选就换号, 追溯就断了。
-3. **只读取证 = 唯一依据 mtime 不变**: 生成器跑完 `stat -c %y` 比对唯一依据文件, 把结果贴进交付说明 ——
+3. **只读取证 = 真源 mtime 不变**: 生成器跑完 `stat -c %y` 比对真源文件, 把结果贴进交付说明 ——
    这是"未触碰在役值"最简单可信的证据。
 
-## 已落工具(VEH.6 相关, 全部只读唯一依据/可复算)
+## 已落工具(VEH.6 相关, 全部只读真源/可复算)
 `tools/mcd_build.py`(MCD 描述) · `tools/model_site_match.py`(模型×站点矩阵) ·
 `tools/build_sheet.py`(工单/配方) · `tools/config_center.py`(操作面 CLI)。
 
 ## 任务配置 (主要工程配置) + 配置中心新页
 - **层级**: 能力(feature.dbc) → 工序配方(8 段 25 条, **全集**) → **任务配置(子集+参数覆盖)** → 工单(一次执行) → 单件记录。
   任务 = 「这台设备在这个工位干哪件活」：选哪些配方段 + 覆盖哪些参数 + 触发/循环。**换产品只改任务，不动机器人与模型。**
-- 唯一依据: `config/tasks/tasks.json`（生成物: `tools/task_build.py` ← scenes_5jobs + 配方 + 站点配置）。
+- 真源: `config/tasks/tasks.json`（生成物: `tools/task_build.py` ← scenes_5jobs + 配方 + 站点配置）。
   实测 5 条；上下料 `TASK-02-HANDLE` = 6/8 段（排除「4 放置/插入」「5 拔出/取回」）+ 3 级物料粒度(L1 料盘/L2 治具/L3 单颗) + 6 条参数覆盖。
 - 命令: `config_center.py tasks | task <ID> | order --task <ID>`。
 
@@ -136,24 +136,24 @@
 ### 坑 (已踩)
 - **给用户看的清单加列只能「增列」，不许「换列」**：把任务表原有的「步骤」列替换成「启用/禁用节点」列，
   工艺步骤当场从界面消失（用户一眼就看出来）。加维度前先问"原来那列挪到哪去了"，宁可横向变宽或把细节挪进详情页。
-- **字段要从唯一依据一路带到所有派生物**：任务的 `steps` 必须同时出现在
+- **字段要从真源一路带到所有派生物**：任务的 `steps` 必须同时出现在
   `config/tasks/tasks.json` → `config/ss_task_binding.json` → 导出的 `.zmaxproj`(task_binding) → UI 列；
   只在 UI 列里取了而绑定/导出里没存该字段 = 换个入口就丢（本轮 binding 就漏了 steps）。派生链任一环缺字段都算 bug。
 - **任务清单首屏必须直接显示「工艺步骤」**（名字序列，如 取料→扫码→翻转→对位→插入→异步测试→拔出→AOI飞拍→分拣），
   详情再展开每步 `desc`（坐标/力/速度）。工艺步骤是用户判断"这台设备到底干了什么"的第一眼内容，
   不能只留节点数/档位数这类派生指标。
 - **返回主窗口按钮**: 顶栏最左。实现走真实路径 —— 在 `win.sidebar` 里找 text 含「首页」的 `QPushButton` 并 `.click()`
-  （它会 `layer_clicked.emit("home")`，能同步侧栏高亮 + 切栈）；保障才 `win._on_nav("home")`；都不通必须提示，不静默。
+  （它会 `layer_clicked.emit("home")`，能同步侧栏高亮 + 切栈）；兜底才 `win._on_nav("home")`；都不通必须提示，不静默。
 - **离屏测整个主窗口可行**：`StudioMainWindow` 可直接构造（stack 12 页；`_on_nav("config")` → index 5），
   但**解释器退出时会 core dump**（DDS 线程）—— 属正常，用 `grep -E "^[①-⑥]"` 抓自己的标记行，不要看 tail。
 - **终端会话导出的 PYTHONPATH 会污染后续测试**：先 `export PYTHONPATH=<lerobot site-packages>` 再用 gui-venv311 跑 GUI 会报
   “import numpy from its source directory”；GUI 测试一律 `env -u PYTHONPATH`。
-- **改了 `studio.py` 要重跑 `tools/mcd_build.py`**：`studio.py::cfg_spec` 是模型域的唯一依据，描述里的 sha16 立刻对不上（面板会报「唯一依据同步 ❌」）——这是正确行为，不是故障。
+- **改了 `studio.py` 要重跑 `tools/mcd_build.py`**：`studio.py::cfg_spec` 是模型域的真源，描述里的 sha16 立刻对不上（面板会报「真源同步 ❌」）——这是正确行为，不是故障。
 - `patch` 工具对 studio.py 这种超大文件匹配失败时，往往是**空白行差异**；从 read_file 的连续行直接取原文，不要在中间自己加空行。
 
 ## 一个状态空间工程承载全部任务 (配置清单)
 - 口径: **不按任务分工程文件**。一个工程(.zmaxproj)里带全部任务清单；切任务 = 改 `active_task`，不换文件。
-- 唯一依据: `config/ss_task_binding.json`（生成物: `tools/ss_task_bind.py`）。含 工程指纹(canvas md5 + 节点/连线数) + 5 任务 + 段→节点映射。
+- 真源: `config/ss_task_binding.json`（生成物: `tools/ss_task_bind.py`）。含 工程指纹(canvas md5 + 节点/连线数) + 5 任务 + 段→节点映射。
 - 机械推导（不手写映射）：①段→节点（关键词表匹配 节点 id+name+desc）②任务启用集=∪(applies 段的节点)、
   禁用集=只被 excluded 段命中的节点 ③六档位由段推出（含段 4/5 ⇒ L3全链/流形yaw/L4 INTACT/L4→DiT；含 1/3 ⇒ L2 兼容；不含 4/5 ⇒ ⚡引擎快演）。
 - 实测：画布 **89 节点 / 184 连线**，段覆盖 53/89；上下料任务启用 42 / **禁用 11**（n_intent_bundle/n_intent_direct/ss_mani_eng/sslat/ssmani_c/ssmani_p/sssk5-8/ssvlm）。
@@ -167,7 +167,7 @@
 - 命令: `config_center.py node`(看) / `node write`(写) · 工具 `tools/ss_node_sync.py [--check|--json]`(0=一致/2=需更新)。
   GUI 任务配置页按钮: 「📥 写入状态空间节点」「🏷 看节点配置」。
 - 节点 `params` 挂 7 段: `cfg_role` / `cfg_entries`(9 条配置文件指针) / `cfg_snapshot`(就绪度/任务/工单/断言/站点缺口/工程指纹)
-  / `measure_view` / `calib_view` / `diagnose_view` / `task_layer`。**文件仍是唯一依据, 节点只挂指针+快照**。
+  / `measure_view` / `calib_view` / `diagnose_view` / `task_layer`。**文件仍是真源, 节点只挂指针+快照**。
 - 写盘只碰 `name` + 那几个 `cfg_*` 键: **id/端口/连线一律不动**; 验证三件套 =
   除本节点外整幅画布指纹**逐位相同** + 节点/连线数不变 + 再跑 `--check` **幂等**。
 - 🔴 指纹必须用**结构指纹**(算 md5 前剔除 `cfg_*`/各 `_view`/`task_layer` 挂载键):

@@ -12,7 +12,7 @@
 根因两条, 都是通用反模式:
 1. 写入前没建目录: `fp.write_text(...)` 目标是 `data/orin_live/`, 该目录不存在 (或被清理) ⇒ 抛异常。
 2. **先标记「已处理」再落盘**: 代码在写盘之前就 `SEEN.add(latest)`, 于是异常后该包被永久视为已处理,
-   轮询保障也不会重试 ⇒ **静默丢包** (日志里只有一次线程栈, 守护本身继续跑, 用户侧只看到\"没训练\")。
+   轮询兜底也不会重试 ⇒ **静默丢包** (日志里只有一次线程栈, 守护本身继续跑, 用户侧只看到\"没训练\")。
 
 修法 (顺序铁律):
 ```python
@@ -25,10 +25,10 @@ SEEN.add(latest)                                  # ② 落盘成功之后才标
 ```
 自检问句: 「这一步失败时, 这个包/任务会不会被永远跳过?」顺序错了就答\"会\"。
 
-## 坑② 常驻守护静默死亡 → 用 5 分钟保障守护自愈
+## 坑② 常驻守护静默死亡 → 用 5 分钟兜底守护自愈
 
 - `@reboot` 只能保证开机拉起; 进程中途死掉 (线程异常/被杀/OOM) 没人管, 而它的失败模式正是\"静默\"。
-- 保障行 (幂等, 与 `@reboot` 共存):
+- 兜底行 (幂等, 与 `@reboot` 共存):
   ```cron
   */5 * * * * pgrep -f "[a]uto_loop.py" >/dev/null || ( cd /home/ubuntu/lerobot-smolvla-lew && /home/ubuntu/lerobot-venv/bin/python tools/auto_loop.py >> /home/ubuntu/lerobot-smolvla-lew/outputs/auto_loop.log 2>&1 )
   ```
@@ -46,7 +46,7 @@ SEEN.add(latest)                                  # ② 落盘成功之后才标
 ## 坑④ Hermes 环境里怎么起常驻进程
 
 前台命令里写 `nohup` / `setsid` / 结尾 `&` 会被 Hermes **硬拦** (返回 error, 命令不执行)。
-- 正解: `terminal(background=true)` 启动; 要跨会话/跨重启存活就靠 `@reboot` + 坑②的 `*/5` 保障行。
+- 正解: `terminal(background=true)` 启动; 要跨会话/跨重启存活就靠 `@reboot` + 坑②的 `*/5` 兜底行。
 - 别为了绕过拦截去拼字符串, 那是给守护进程埋雷。
 
 ## 相关

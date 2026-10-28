@@ -44,7 +44,7 @@ background 启动。kill -9 也跳过 closeEvent 的 pkill 训练, 保住后台�
 ## 节点名显示不全 (字符数截断 → 像素自适应)
 
 旧: `if len(name) > 16: name = name[:15] + "…"` (emoji 算字符, 长名截断)。
-新: 像素宽度自适应 — 9pt→8pt→7pt 降字号直到 fit, 保障 fm.elidedText。
+新: 像素宽度自适应 — 9pt→8pt→7pt 降字号直到 fit, 兜底 fm.elidedText。
 验证: QFontMetrics.horizontalAdvance 须在 QApplication 创建后调用 (否则段错误)。
 
 ## 曲线 ts 字段 = 真实训练时间 (防视频白屏)

@@ -31,7 +31,7 @@ offscreen 平台字体度量与真机一致 (同 fontconfig), 但会打印 `prop
 | 窄窗口 (2400/1200) | 挤压/文字省略号 | 2 行 / 3 行, 挤压 0 |
 | 模块库宽 | 360px | 560px (LibraryPanel.LIB_W) |
 | 模块名被切 | 270/434 = **62.2%** | 0/434 = 0% |
-| 主窗口启动 | 预先固定 1400x900 (占 3068x1936 工作区 27%) | 可用宽≥2560 → 最大化 |
+| 主窗口启动 | 写死 1400x900 (占 3068x1936 工作区 27%) | 可用宽≥2560 → 最大化 |
 
 模块名文字宽分位: P50=333 P75=408 P90=461 P95=472 P99=505 P100=625px
 → 面板宽 460 切 25.3% / 500 切 15.0% / **560 切 0.9%** / 620 切 0.5%; 560 是性价比拐点。
@@ -50,7 +50,7 @@ offscreen 平台字体度量与真机一致 (同 fontconfig), 但会打印 `prop
 
 ## 坑 (踩过的, 别重复)
 1. **QSS 字号没生效就算 sizeHint**: `setStyleSheet` 后必须 `ensurePolished()` 再取
-   `sizeHint()/fontMetrics()`, 否则拿到默认字号 (「◀ 收起」预先固定 72px 就是这么切字的)。
+   `sizeHint()/fontMetrics()`, 否则拿到默认字号 (「◀ 收起」写死 72px 就是这么切字的)。
 2. **FlowLayout 跳过隐藏控件不能用 `it.isEmpty()`**: QSpacerItem.isEmpty() 恒 True,
    会把 addSpacing 一起吃掉 → 用 `it.widget() is not None and it.widget().isHidden()`。
    (`btn_back` 「⬅ 返回总系统」默认 setVisible(False), 不跳过会在行里留 180px 空洞)
@@ -58,7 +58,7 @@ offscreen 平台字体度量与真机一致 (同 fontconfig), 但会打印 `prop
    用 FlowBar 在 resizeEvent 里显式 setFixedHeight (同值不再 set, 不递归抖动)。
 4. **emoji 让按钮高矮不齐** (⛶ 比 ▶ 高 14px): 组装完统一
    `h = max(b.sizeHint().height()); b.setFixedHeight(h)`, 别一个个设 minimumHeight。
-5. **窗口大小有两处预先固定**: `StudioMainWindow.__init__` 的 `resize(1400,900)` **和**
+5. **窗口大小有两处写死**: `StudioMainWindow.__init__` 的 `resize(1400,900)` **和**
    `main()` 里 `win.setGeometry(..., 1400, 900)` — 只改前者无效, main() 会覆盖。
    大屏判据: `QGuiApplication.primaryScreen().availableGeometry().width() >= 2560`。
 6. **switch_theme 只替换颜色不动字号** (实测 light→dark 字高 30px 保持) → 放大是安全的;

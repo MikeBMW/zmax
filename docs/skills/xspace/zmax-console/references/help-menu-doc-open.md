@@ -26,7 +26,7 @@
 ## 3. 视频"已存在直接打开"快速路径 (老倪"视频早就生成好了怎么还要等")
 - on_insert_video 每次点都重新跑 gen_insert_video.py (1-2 分钟) 是错的。
 - ✅ 入口先查 `reports/insert_success_demo.mp4` 存在且 size>0 → 直接
-  `_open_video_for_user(mp4)` + 发飞书，不重新生成。生成逻辑留 _work 分支保障。
+  `_open_video_for_user(mp4)` + 发飞书，不重新生成。生成逻辑留 _work 分支兜底。
 - 打开逻辑抽成共用方法 `_open_video_for_user(mp4)`（生成后 + 快速路径两处复用）。
 
 ## 4. 飞书消息 API 必须带 Authorization: Bearer (HTTP 400 "Missing access token")

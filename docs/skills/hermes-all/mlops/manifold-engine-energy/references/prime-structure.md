@@ -1,6 +1,6 @@
 # 空间质数结构化理解能力 (prime_structure) — 实测坑与口径
 
-实现唯一依据 `src/lerobot/manifold/prime_structure.py` · 判据 `tools/verify_prime_structure.py` (31/31) · 产品唯一依据 `config/platform/zmax_product.json`
+实现真源 `src/lerobot/manifold/prime_structure.py` · 判据 `tools/verify_prime_structure.py` (31/31) · 产品真源 `config/platform/zmax_product.json`
 
 ## 口径 (老倪文档《流形引擎·用质数约束泛化性》四条规则)
 - 规则2 唯一分解: 原子结构⇄质数, 复杂结构=质数乘积; 算术基本定理⇒唯一可逆。**唯一数学严格的一条。**
@@ -9,19 +9,19 @@
 - 规则4: 采样率 = π(step)/step。
 
 ## 坑 (都实测过)
-1. **质数域必须从唯一依据生成, 禁止手写**。手写 18 项基元时写了 `m_grasp`/`m_slot`/`m_gold` 等唯一依据里**不存在**的 id, 被新判据"与根服务逐项同名"当场抓到。唯一依据 = `tools/meta_moe_router.py` 的 `META_PRIMITIVES` (18 项: m_pos/m_rot/m_vel/m_w/m_force/m_time/m_conf/m_health/m_metric/m_flux/m_node/m_topic/m_layer/m_stage/m_skill/m_msg/m_scene/m_task)。改法: 导入唯一依据生成, 读不到直接 raise。
+1. **质数域必须从真源生成, 禁止手写**。手写 18 项基元时写了 `m_grasp`/`m_slot`/`m_gold` 等真源里**不存在**的 id, 被新判据"与根服务逐项同名"当场抓到。真源 = `tools/meta_moe_router.py` 的 `META_PRIMITIVES` (18 项: m_pos/m_rot/m_vel/m_w/m_force/m_time/m_conf/m_health/m_metric/m_flux/m_node/m_topic/m_layer/m_stage/m_skill/m_msg/m_scene/m_task)。改法: 导入真源生成, 读不到直接 raise。
 2. **"归一化谱对称于 1/2" 在 n>2 时不可达** (成对补和为 1 ⇒ 总和 n/2 ≠ 1)。判据里别写"各向同性应比病态更对称"这类想当然断言 —— 实测两者都是 0.333。要判就判: n=2 可达 (λ̃=[0.3,0.7] ⇒ 缺口 1.0) / n>2 不可达 / 质心偏离量能区分双峰对称(0)与单主方向(>0)。
 3. **三质数域必须互不相交** (能力 2..101 / 产品 1009,1013,1019 / 迭代 ≥1031), 否则指纹不可反解。反证判据: 拿产品质数去能力域 `decompose` 必须失败。
 3b. **换产品域的值必须逐个验"是不是质数", 不能只看域不相交** (2026-10-14 实测): 判据里那条"三域两两不相交"查的是**集合交集**, 只把产品质数当整数与 {2..101} 比 —— 合数只要因子不落在能力域集合里就**蒙混过关**。实测提议 1009→1007 / 1013→1017 / 1019→1077: 三个都不是质数 (1007=19×53 · 1017=3²×113 · 1077=3×359), 其中 19=`m_health`、53=`m_msg`、3=`m_rot` **本来就在能力域** ⇒
    - `signature(["m_health","m_msg"])` = **1007**, 恰好等于提议的产品质数 ⇒ 判据"跨域不混叠"当场 ❌ (在役 31/31 ✅);
    - 1017 与 1077 共享因子 3 ⇒ 两者 gcd=3 **不互质** (在役三个两两互质) ⇒ 算术基本定理的前提没了;
-   - 反解实际坏掉: 550B 的合法指纹 `1017·1031·1007 = 1055866689` **同时被 1007 和 1017 整除** ⇒ `read_fingerprint` 先命中 550A, 残下 1017 在能力域分解不干净 ⇒ **抛错、合法指纹读不回来**(唯一依据 6 个发布指纹里 5.50.C 那个直接反解报错)。
+   - 反解实际坏掉: 550B 的合法指纹 `1017·1031·1007 = 1055866689` **同时被 1007 和 1017 整除** ⇒ `read_fingerprint` 先命中 550A, 残下 1017 在能力域分解不干净 ⇒ **抛错、合法指纹读不回来**(真源 6 个发布指纹里 5.50.C 那个直接反解报错)。
    ⇒ 定式: 改任何域的常量前先跑 `isprime()`, 再跑一次 `tools/verify_prime_structure.py`; 判据过不等于常量对。
    ⇒ **合法候选是稀缺的**: 产品域要在 [1000, 迭代域起点) 内取质数, 当前只有 **1009/1013/1019/1021**(1021 是唯一没被占用的); 要更多号必须把迭代域起点上移 (1031→1033/1039/1049… 每上移一次多腾出一个质数)。
 4. **能力集合用包含关系 ⇒ 签名整除** (550A⊆550B⊆550C ⇒ cap_sig(A)|cap_sig(B)|cap_sig(C)); 这是产品协同/数据一致性最省事的可测不变量, 升级只等于"乘上新增能力的质数"。
-5. 引擎集成时记忆落盘必须挂开关: `understand(..., record=apply_updates)`, 干跑只读 —— 否则自检/判据会污染唯一依据记忆库 (判据查 mtime 不变)。
-6. **`data/` 与 `zmax_data/` 在 .gitignore 里** (第 170/339 行), 且 `config/` 是软链到 `data/database/zmax/sources/config` ⇒ 工程数据库/产品唯一依据在 git 眼里不存在。要"保存到 github"必须把压缩归档放到**未被忽略的路径**(如 `release/db/`), 入库后用 `git ls-files` 回读确认真的被跟踪; `git add config/...` 会报 "beyond a symbolic link"。
+5. 引擎集成时记忆落盘必须挂开关: `understand(..., record=apply_updates)`, 干跑只读 —— 否则自检/判据会污染真源记忆库 (判据查 mtime 不变)。
+6. **`data/` 与 `zmax_data/` 在 .gitignore 里** (第 170/339 行), 且 `config/` 是软链到 `data/database/zmax/sources/config` ⇒ 工程数据库/产品真源在 git 眼里不存在。要"保存到 github"必须把压缩归档放到**未被忽略的路径**(如 `release/db/`), 入库后用 `git ls-files` 回读确认真的被跟踪; `git add config/...` 会报 "beyond a symbolic link"。
 
 ## 版本指纹 (每次系统更新一个质数结构)
 `F = p_prod · p_iter · Π p_cap`; 已注册 5.50.A/B/C + 5.50.1/2/3 六个指纹两两互异, 可反解。5.50.3 = 4056194784082756189908876233542010574 (hex 30d31d7d373f)。
-改能力集后**必须重算**并写回唯一依据 (脚本化: 载入 JSON → 改 capabilities → dump → 重算 signatures/fingerprints/checks), 否则判据的唯一依据自洽项会红。
+改能力集后**必须重算**并写回真源 (脚本化: 载入 JSON → 改 capabilities → dump → 重算 signatures/fingerprints/checks), 否则判据的真源自洽项会红。

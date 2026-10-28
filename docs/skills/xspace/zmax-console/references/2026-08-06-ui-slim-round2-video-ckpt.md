@@ -31,7 +31,7 @@
 - 用户说删 = 整行/整元素删除, 不商量不保留 UI; "删掉了吗?"= 催促, 立即完成提交重启
 - 删前 grep 引用链: 按钮删了要删 addWidget 行 (否则 AttributeError);
   控件删了查 .value()/.text() 读取点 (sp_dt/sp_t_end 删后 start_sim 的 .value() 崩
-  → getattr(self,"_sim_dt",0.02) 保障); 方法删了查调用点
+  → getattr(self,"_sim_dt",0.02) 兜底); 方法删了查调用点
 - 数据/方法被别处引用时保留逻辑只删 UI 入口 (REFERENCE_APPS 数据、open_* 方法保留)
 - 大 patch 易流超时 → 方法体删除用 execute_code 按 "    def X" text.index 边界精确删,
   UI 块删用小 patch; 每个工具调用参数 <8K tokens

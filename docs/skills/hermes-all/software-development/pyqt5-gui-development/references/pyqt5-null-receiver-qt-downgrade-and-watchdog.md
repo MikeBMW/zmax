@@ -19,7 +19,7 @@
 - 降级后启动验证: `qVersion()` 5.15.2 + SimulinkModule 加载 OK + 窗口出现
 
 ## 守护脚本 studio_watch.sh (崩溃自愈 + gdb 留证)
-用户"总崩溃没法干活"时的保障: 崩溃自动重启, 5s 内恢复, 用户无感。
+用户"总崩溃没法干活"时的兜底: 崩溃自动重启, 5s 内恢复, 用户无感。
 ```bash
 #!/bin/bash
 cd <gui_dir> || exit 1

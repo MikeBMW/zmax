@@ -37,7 +37,7 @@ curl -sL -H "Authorization: token $TOKEN" ".../actions/jobs/<JOB_ID>/logs" | gre
    `--hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco`。
 3. **CI 的"验证行"本身会 fail 整个安装步骤**
    `python -c "import metaworld; print(metaworld.__version__)"` —— **metaworld 没有 `__version__`**
-   → `AttributeError` → `Install dependencies` FAIL（依赖实际装成功了，metaworld 3.1.1 / mujoco 3.3.0）。
+   → `AttributeError` → `Install dependencies` FAIL（依赖其实装成功了，metaworld 3.1.1 / mujoco 3.3.0）。
    改成不抛的属性：`hasattr(metaworld, 'ML1')` + `mujoco.__version__`。
 
 ## 顺带的版本号纪律

@@ -22,20 +22,20 @@
    不是"随便拿几个就有整体"。
 4. **门控** = 硬先验 7 阶段→7 专家 1:1 (单射), 学习式门控实测坦缩 ⇒ 不用。判据要含**单射性**, "每行最大值"会假阳性。
 
-## 实现/唯一依据
+## 实现/真源
 - `tools/meta_moe_router.py`: META_PRIMITIVES / COMPOSE_RULES / incidence() / holography() / route() / report()
-  (`report|holography|route` 三个 CLI)。唯一依据 `zmax_data/dataspace/busdb.json` (signals=连线记录 src/dst/topic,
+  (`report|holography|route` 三个 CLI)。真源 `zmax_data/dataspace/busdb.json` (signals=连线记录 src/dst/topic,
   nodes=节点名)。
 - 节点 `node_ss_moe` (`src/lerobot/engineering/nodes/library.py`): docstring 四段口径 + 真跑 `meta_moe_router.report()`
   打印元数据/映射/全息/门控四段真值。**函数名与画布 id 不变** (`ss_moe`/`node_ss_moe`), 只改显示名 ⇒ 不破连线。
-- 改名同步**四处**: 画布唯一依据 `data/database/zmax/sources/canvas/state_space_obs.json` 的 name/params.desc ·
+- 改名同步**四处**: 画布真源 `data/database/zmax/sources/canvas/state_space_obs.json` 的 name/params.desc ·
   `src/lerobot/engineering/nodes/by_level.py` 显示名 · 名称归一器 `tools/gui/simulink_module.py`
   `(r"(阶段专家|元数据)\s*MOE", "元数据MOE门控路由")` · 节点 docstring。历史变更记录里的旧名不改。
 - 判据 `tools/verify_meta_moe_router.py` (17 条): 基元完整定义/禁词/两类 · 映射 100% 覆盖 · 全息(复现误差+退化反证+
   残差) · 门控单射/熵 · 改名四处一致 · 零回归(89 节点/184 连线) · 节点真跑。
 
 ## 独立窗口 × 数据一致性
-- 口径: 独立窗口**不存私有副本**; 页面每次 `_j()` 直读磁盘唯一依据; 打开即 `reload_from_source()`, 之后每 3s 比对
+- 口径: 独立窗口**不存私有副本**; 页面每次 `_j()` 直读磁盘真源; 打开即 `reload_from_source()`, 之后每 3s 比对
   `source_fingerprint()` (sha256 前 16 位, 覆盖 config/ 配置 + `data/database/zmax/zmax_engineering.db`) ⇒ 变了就重读。
 - 画布工具栏按钮落点 `simulink_module.py`: `mk_btn(...)` + `tl.addWidget(...)` (`tl.addWidget(self.btn_ds_win)` 后面
   接一个 `btn_cfg_win`)。`ConfigCenterPage(model_page=None)` 可离屏独立建。
@@ -43,11 +43,11 @@
   (否则它去导航主窗口)。
 
 ## 坑 (都是实测踩过的)
-1. **判据里的 0.0 会被 `or` 吃掉**: `x.get("err") or -1` 在 err=0.0 时打印 -1 (看着像失败) ⇒ 别用 `or` 给 0 保障。
+1. **判据里的 0.0 会被 `or` 吃掉**: `x.get("err") or -1` 在 err=0.0 时打印 -1 (看着像失败) ⇒ 别用 `or` 给 0 兜底。
 2. **禁词表要同时卡定义与名称**, 且定义措辞要让路: `度量张量…梯度怎么走` 命中禁词“梯度” ⇒ 改写为“距离与方向怎么算”。
 3. **推导不能想当然**: 子集重构 `s` 需要行数 ≥ 基元数; 直接把 `pinv(A_S.T)` 当重构算子会 `matmul` 尺寸报错 ——
    正确对象是行空间投影算子 `pinv(A)·A`。
-4. **改名后必须重绑唯一依据链**, 否则 `ss_task_bind.py --check` 报“不一致 — 唯一依据变了, 需重绑定”:
+4. **改名后必须重绑真源链**, 否则 `ss_task_bind.py --check` 报“不一致 — 真源变了, 需重绑定”:
    顺序 `ss_task_bind.py` → `engineering_db.py build` → `engineering_db.py check` (全绿才算完成)。
 5. `git add` 一个 pathspec 不存在/在软链外会**整条命令失败且什么都不加** (如 `config/ss_task_binding.json` 是软链后的
   路径 ⇒ `fatal: pathspec … is beyond a symbolic link`) ⇒ 逐个 add 并看退出码, 别用 `2>/dev/null` 盖住。

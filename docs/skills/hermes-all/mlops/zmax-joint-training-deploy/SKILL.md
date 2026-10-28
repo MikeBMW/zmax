@@ -68,7 +68,7 @@ metadata:
 
 引擎侧另有一个**条件初始化 bug**（已修，勿回退）：
 `state_space_sim_real.py` 的 `_l4_dit_cond` 只在部分路径初始化（@1439/1450），
-访问处必须用 `getattr(self, "_l4_dit_cond", None)` 保障 —— @3093 曾直接访问导致
+访问处必须用 `getattr(self, "_l4_dit_cond", None)` 兜底 —— @3093 曾直接访问导致
 未初始化路径抛 AttributeError。
 
 ## 三、加载 ckpt 的环境变量
@@ -104,7 +104,7 @@ sim.attach_intact(IntactNode(horizon=8), None)   # GUI 路径会自动做, 裸�
 
 **四道门总览（训练产物 → 引擎真接管，全部实跑撞出，无文档）**：
 ```
-① 引擎 bug: _l4_dit_cond 条件属性直接访问       → getattr 保障
+① 引擎 bug: _l4_dit_cond 条件属性直接访问       → getattr 兜底
 ② 产物格式: 扁平 state_dict (非嵌套)            → torch.save(sd)
 ③ 目录约定: 单 .pt 文件 + 必须含 config.json     → 清理+拷贝
 ④ 节点契约: out.diagnostics['intent_norm']      → 否则 w=0 假接入
@@ -145,7 +145,7 @@ sim.attach_intact(IntactNode(horizon=8), None)   # GUI 路径会自动做, 裸�
 
 
 **天花板效应**：若解析链本身就能完成任务（`done=True`），则无论 L4/联合训练多强，
-A/B 两臂结果都相同 → 看起来"无提升"，实际是**判据没有区分度**。
+A/B 两臂结果都相同 → 看起来"无提升"，其实是**判据没有区分度**。
 
 ```bash
 # 反例(无区分度): seed104 无扰动, max_steps=4000

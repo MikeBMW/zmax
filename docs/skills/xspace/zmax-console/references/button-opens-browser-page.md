@@ -67,4 +67,4 @@ DISPLAY=:0 QT_QPA_PLATFORM=offscreen ./gui-venv311/bin/python tools/verify_<page
 - `cam_live_stream.py` 的总览页要 `--station-port 8793` 才存在; 任何**自动拉起视频流**的按钮/脚本漏了这个
   参数 ⇒ 新起的流只服务 `/overlay`, `8793/station` **404** ⇒ 用户报"那个网页搞丢了"。改拉流命令必带上它。
 - 拉流重启别用 `pkill -f cam_live_stream.py`(会打死调用它的那条命令自身), 按端口找 pid。
-- 高频页面入口给两处: 控制台工具栏按钮 + 叠加页顶部链接(互为保障)。
+- 高频页面入口给两处: 控制台工具栏按钮 + 叠加页顶部链接(互为兜底)。

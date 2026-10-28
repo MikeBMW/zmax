@@ -13,7 +13,7 @@ AttributeError: 'list' object has no attribute 'get'
 ```
 `Z700_ROS2_NODES["real"]` 定义是 **list**: `[("/tashan/robot_driver", "他山机器人驱动"), ...]` —— 对它调 `.get()` 必炸。
 - 为什么"以前能用、今天才崩": 之前"发现硬件"必失败(发现线程里 ORIN_USER 还是废弃的 `nvidia` →
-  Permission denied → 提前 return), **根本走不到这一行**; 修好账号/免密让发现真验证通过后, 立刻踩中潜伏 bug。
+  Permission denied → 提前 return), **根本走不到这一行**; 修好账号/免密让发现真跑通后, 立刻踩中潜伏 bug。
   ⇒ 教训: "某个按钮以前点了没反应/不报错" 修通后, **紧接着的下一段代码要从没被跑过**, 必须重新验一遍。
 
 ## 逼出 traceback 的脚本模板 (qFatal 场景通用)
@@ -35,7 +35,7 @@ try:    hw._on_discovery_result(res); print("✅ _on_discovery_result 正常返�
 except Exception: traceback.print_exc()
 ```
 要点: ①`w.show()` 不能省(可见性会改变控件/编号/渲染分支); ②类在 studio.py 里的用 `studio.XxxModule`
-(别去别的模块 import, 会 ImportError); ③修完**同脚本再执行一遍**, 打印 "✅ 正常返回" 就是修复证据。
+(别去别的模块 import, 会 ImportError); ③修完**同脚本再跑一遍**, 打印 "✅ 正常返回" 就是修复证据。
 
 ## 修复三件套 (已落地 commit 926cab8d)
 1. 注册表 list/dict 双兼容:

@@ -50,7 +50,7 @@ grep -q 'GTK_IM_MODULE' ~/.bashrc || echo -e '\n# ibus 中文输入法\nexport G
   gsettings set org.gnome.desktop.input-sources sources "[('xkb', 'us'), ('ibus', 'libpinyin')]"
   gsettings set org.gnome.desktop.input-sources mru-sources "[('ibus','libpinyin'),('xkb','us')]"
   ```
-  重装/换新机后典型症状：用户发来的消息是纯拼音（如 "jingjing" 实际是「静静」）——daemon 在跑、`ibus list-engine` 有 libpinyin、`mru-sources` 还留着 libpinyin，但 `sources` 被重置成只有 xkb:us（旧 dconf 残留 mru，sources 没跟过来）。只需补 sources，不必重装/重启；dconf 写入即持久。
+  重装/换新机后典型症状：用户发来的消息是纯拼音（如 "jingjing" 其实是「静静」）——daemon 在跑、`ibus list-engine` 有 libpinyin、`mru-sources` 还留着 libpinyin，但 `sources` 被重置成只有 xkb:us（旧 dconf 残留 mru，sources 没跟过来）。只需补 sources，不必重装/重启；dconf 写入即持久。
   排查脚本需要 D-Bus：CLI 里先 `export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/<uid>/bus`，否则 gsettings 写到错误总线或报错。验证：`ibus engine libpinyin && sleep 1 && ibus engine` 应回 `libpinyin`（切回来证明 daemon 通路正常）。  设置后 GNOME 切换键是 Super+Space（Win+空格），Ctrl+Space (ibus) 也可用；顶栏出现「拼」即成功。
 - `ibus restart` 后立刻 `ibus engine` 可能返回空 — daemon 还没就绪，等 1-2s 重试
 - daemon 以 `--panel disable --xim` 运行是正常的（无桌面面板环境），XIM 兼容模式仍可用

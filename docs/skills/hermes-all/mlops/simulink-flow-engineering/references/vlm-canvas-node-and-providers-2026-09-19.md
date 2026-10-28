@@ -22,7 +22,7 @@
 | 本地 Qwen2.5-VL-3B | 权重 7.1GB；**bf16 需 ~6.5GB 显存** → 8GB 卡+其它进程(~1GB) 同住会 **CUDA OOM**（实测只剩 8.62MiB）→ 上卡要 4bit(~2.5GB) 或 CPU |
 | 权重下载 | **必须避开 `~/.cache/huggingface`**：磁盘守护会删 `*.incomplete`，正在下的权重被删 → `FileNotFoundError: ...incomplete`（实测白下 4.9GB）→ `HF_HOME=~/zmax_data/hf_home` |
 | Qwen API | 秒级需 key；百炼 https://bailian.console.aliyun.com/ · SiliconFlow https://cloud.siliconflow.cn/account/ak · OpenRouter https://openrouter.ai/keys |
-| key 保障 | GUI 进程 env 通常没 key → 客户端直接解析 `~/.hermes/.env`（DeepSeek key 本机已有 = **零申请可用**） |
+| key 兜底 | GUI 进程 env 通常没 key → 客户端直接解析 `~/.hermes/.env`（DeepSeek key 本机已有 = **零申请可用**） |
 | 强制本地 | `SS_VLM_PROVIDER=local` 跳过 HTTP provider；否则"检测到 DeepSeek key"会一直优先于本地 worker |
 | 分工 | DeepSeek = 少量高把握判读（慢无妨）；本地 Qwen 3B = 逐帧引导；最终运动决策仍由主 agent/操作员把关 |
 

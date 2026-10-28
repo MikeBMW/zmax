@@ -4,7 +4,7 @@
 
 **根因 (误报)**: Hermes 源码 `warn_deprecated_cwd_env_vars()` (hermes_cli/config.py:2181-2225)。
 告警条件 = 环境里有 `TERMINAL_CWD` **且** config.yaml 的 `terminal.cwd` 不是显式路径
-(`"."`, `"auto"`, `"cwd"`, `""` 都算非显式)。用户 .env 里实际只有注释掉的 `# TERMINAL_CWD=.`,
+(`"."`, `"auto"`, `"cwd"`, `""` 都算非显式)。用户 .env 里其实只有注释掉的 `# TERMINAL_CWD=.`,
 环境里的 `TERMINAL_CWD=/root` 是 Hermes 自己转译注入的 → 每次启动都误报。
 
 **修复 (实测通过 2026-08-16)**:

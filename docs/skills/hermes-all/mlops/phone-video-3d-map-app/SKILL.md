@@ -111,7 +111,7 @@ ffmpeg -hide_banner -loglevel error -i in.mp4 -vf fps=2 -qscale:v 3 <out>/f_%04d
 - 🔴 **任务状态必须落盘**（`job.json`）。纯内存态的表在服务重启后让历史任务全部"消失"，
   而用户手里的分享链接还在 ⇒ `_load(id)` 要先查内存再回盘读。
 - 🔴 **路径可环境变量覆盖**（`ZMAX_MOBILE_MAP_DIR` / `ZMAX_MONO_SFM` / `ZMAX_PY`）。
-  预先固定 `ROOT/...` 拷到布局不同的机器上启动即 `FileNotFoundError`。
+  写死 `ROOT/...` 拷到布局不同的机器上启动即 `FileNotFoundError`。
 - 抽帧 + SfM 丢进 daemon thread，HTTP 只负责读写状态；上传体积设上限（几百 MB 以上直接回 413 并说明）。
 
 ---
@@ -138,7 +138,7 @@ ffmpeg -hide_banner -loglevel error -i in.mp4 -vf fps=2 -qscale:v 3 <out>/f_%04d
 | 视差不足还调参数 | 怎么改都稀疏 | 是拍摄/序列问题，让用户横向移动重拍 |
 | 把归一化尺度当毫米 | 用户拿去量尺寸全错 | 律 3, 明说单目无绝对尺度 |
 | `import cgi` 解析上传 | 新版 Python 直接 ImportError | 按 boundary 手切 |
-| 任务表只放内存 | 重启后旧链接 404 | 状态写 `job.json`，读时回盘保障 |
+| 任务表只放内存 | 重启后旧链接 404 | 状态写 `job.json`，读时回盘兜底 |
 | Three.js 走 CDN | 内网手机白屏，本机却正常 | 下载到同域 `/lib/` 由后端静态服务 |
 | 页面显示点数就当渲染成功 | 数据对但画面黑 | `preserveDrawingBuffer` + 读像素 |
 | 抽帧不清理 | 磁盘被几百帧 JPEG 吃掉 | 任务收尾删 frames |
@@ -150,4 +150,4 @@ ffmpeg -hide_banner -loglevel error -i in.mp4 -vf fps=2 -qscale:v 3 <out>/f_%04d
 - `tools/mobile_map_app.py` — 后端（stdlib，零第三方，含 job 落盘与 multipart 手切）
 - `tools/mobile_map_page.html` + `tools/three.module.js` — 手机页与同域 Three.js
 - `deploy/systemd/zmax-mobile-map.service` — 常驻单元（`Restart=always` + 环境变量化路径）
-- `tools/mapping/mono_sfm.py` — 单目 SfM 唯一依据（律 1）
+- `tools/mapping/mono_sfm.py` — 单目 SfM 真源（律 1）

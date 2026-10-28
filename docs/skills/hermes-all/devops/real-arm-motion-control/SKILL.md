@@ -43,7 +43,7 @@ metadata:
 
 - 症状行(执行器 stdout): `🛡 阶段 2/4 拒绝: 目标 z=… 低于下限 <点>+0mm=… (低了 Nmm)`,
   或 `🛡🛡 阶段 N 拒发: 相对计划起点抬升 Nmm > 上限 100mm`。**受理行里没有「已下发」** ⇒ 零下发。
-- 根因: 四段轨迹第 1 段"就地抬升"预先固定 `dz_mm=50`。目标点记在 z=0.3596、臂在 0.2596 时, 抬完只有
+- 根因: 四段轨迹第 1 段"就地抬升"写死 `dz_mm=50`。目标点记在 z=0.3596、臂在 0.2596 时, 抬完只有
   0.3096 仍低于该点 ⇒ keep_z 横移被 `z_floor` 拒发; 且去该点实际要升 130mm 才到"点位+30mm" ⇒ 爬升闸也拦。
   **两道闸各拦一次, 整条计划一个字节都不发**。
 - 修法(已落地, 见 `tools/register_space_skills.py` + `l2_daemon.plan_stage/run_stages`):
@@ -56,9 +56,9 @@ metadata:
 - 排查顺序(只读·零运动): ①执行器 stdout 尾找 `拒绝`/`拒发` 那行 ②当前真值 z vs 点位 z
   (`data/skills/l2_atomic/space_points.json`) ③`grep -n adapt_point tools/l2_daemon.py` 确认代码版本已重启生效。
 - ⚠️ 建图/上层脚本只判"到没到位"、**不看执行器拒发回执** ⇒ 每轮白等 240s 超时;
-  现场看起来像"慢", 实际是"根本没发"。汇报要把这两者分开。
+  现场看起来像"慢", 其实是"根本没发"。汇报要把这两者分开。
 - ⚠️ 这类慢速 MoveL 上执行器的 SDK 腿可能在 60s 后报 `❌ rc=6 · 残差 …mm` —— **是等待判据误报**:
-  实测报"失败"时臂实际已逐位走到目标 z(判完成只看真值; 绝不据此重发)。
+  实测报"失败"时臂其实已逐位走到目标 z(判完成只看真值; 绝不据此重发)。
 
 ## 🛑 起跑阶段「就地抬升」禁盲抬 —— 起点越高越容易撞净空 (2026-10-08 事故)
 
@@ -85,7 +85,7 @@ metadata:
 
 0. 🔴 **先验录点工具本身能读真值**: `tools/record_point_sdk.py --show`。
 
-  2026-10-08 实测遇到问题: 该脚本**文档写 `~/zmax/zmax_data/...`、代码却写老名 `~/zmax_data/...`** ——
+  2026-10-08 实测踩坑: 该脚本**文档写 `~/zmax/zmax_data/...`、代码却写老名 `~/zmax_data/...`** ——
   `~/zmax_data` 在“老名全删”后已不存在 ⇒ 跑 `--record` 直接 `❌ 读不到真值源`, **任何点位都录不了**
   (而它看起来“只是环境没起”, 极易误判)。改完要跑 `tools/scan_oldpaths.py` 全仓扫同类残留
   (它只认**代码**里的老路径; 注释里的历史说明不算)。
@@ -236,11 +236,11 @@ metadata:
 读 `~/zmax_data/vl_safety_fast.json`(快层) 与 `~/zmax_data/vl_safety.json`(慢层):
 `safe=False` 时 `why` 就是原因。日志里 `🛡 VL 安全闸(快层): **遮挡/糊化**` = 快层, 不是网络/相机驱动。
 
-**② 快层判「遮挡/糊化」十有八九是**相机喂错了**, 不是真被挡。** 实测根因: 推流启动参数预先固定
+**② 快层判「遮挡/糊化」十有八九是**相机喂错了**, 不是真被挡。** 实测根因: 推流启动参数写死
 `--local-dev 2 --local2-dev 0`, 而 `video2` 是笔记本相机的 **GREY(IR) 那一路**(无红外照明 ⇒
 mean=6/median=0/96% 像素<20), 被当成「笔记本相机(全局视角)」⇒ 快层永远 unsafe ⇒ **所有运动技能全拒**。
 判据: `v4l2-ctl -d /dev/videoN --list-formats-ext` 只有 `GREY 640x360` = IR 路; `MJPG` 才是彩色路。
-⇒ **设备号按卡名+能力解析, 别预先固定索引**(重启后编号会变): `tools/cam_dev_resolve.py` → `LOCAL=<彩色>/LOCAL2=<MAXHUB>`;
+⇒ **设备号按卡名+能力解析, 别写死索引**(重启后编号会变): `tools/cam_dev_resolve.py` → `LOCAL=<彩色>/LOCAL2=<MAXHUB>`;
 `tools/boot_restore.sh local` 已改用它。换后实测快层 safe=True / 慢层 safe=True risk=low / 闸门放行。
 
 **③ 调用方超时必须 ≥ 慢层单轮耗时。** `vl_safety_monitor` 单轮带 2x2 拼图实测 **137~168s**,
@@ -288,7 +288,7 @@ mean=6/median=0/96% 像素<20), 被当成「笔记本相机(全局视角)」⇒ 
 4. **首条动作取最小可见步**: J6 相对 **+1°(0.017453 rad)** → TCP 弧长 ~0.42mm(半径 24.2mm)，比 30° 试探安全得多；
    前后各取 `/real_joint_states` + `/robot/tcp_pose`，算 Δ 与理论核对后再放大步长。
 5. 历史报警信号: 控制器日志出现 `set_joint_position rt MoveJ failed ... error_reason=实时模式异常` 或
-   `ROBOT_IDLE_TIMEOUT (wait_until_idle)` —— 前者=模式/拖动残留，后者=动作实际**跑了但驱动报超时**(不可凭 success=False 重发，
+   `ROBOT_IDLE_TIMEOUT (wait_until_idle)` —— 前者=模式/拖动残留，后者=动作其实**跑了但驱动报超时**(不可凭 success=False 重发，
    会把 1° 叠成 2°)。
 
 ## 标定需要"机器人位姿变化", 不是"手移物体"
@@ -375,20 +375,20 @@ daemon 全部运动技能安全拒绝("位姿缓存未就绪"); 恢复前不要�
   (阶段级 `guard` 可覆盖技能级) · `point_locked`+`point`(锁点) · `quat:"taught"`(回示教姿态)。
   ⚠️ 下发前会用**实时**位姿**复算 Δ 并复检一次守卫** —— 守卫看的是真实 Δ, 不是定义里的 dz
   (踩过: 从 +50mm 处再降 50mm 实际 Δz=-100mm, 只带 allow_down_mm=60 照样该拒)。
-  ⚠️ **"等到位"的时间上限必须按距离算, 不能预先固定** (2026-09-20 21:09 现场打脸):
+  ⚠️ **"等到位"的时间上限必须按距离算, 不能写死** (2026-09-20 21:09 现场打脸):
      驱动限速 `rt_speed_ratio=0.05` + `speed=30` 实测 ≈ **2.8mm/s**(≈0.093 mm/s 每单位 speed;
-     155mm 走 56s)。448mm 斜线回位要走 ~160s, 而超时预先固定 60s → 60s 时臂还在半路(差 196.6mm)
+     155mm 走 56s)。448mm 斜线回位要走 ~160s, 而超时写死 60s → 60s 时臂还在半路(差 196.6mm)
      被判"未到位"而中止 —— **但已下发的指令不会撤回**, 臂自己走完停在"正上方"没落位,
      现场看起来就是"技能只走了一半"。现在 `_stage_timeout()` = `max(timeout_s, 15 + lin/eff*1.6)`
      (448mm@speed30 → 272s); `timeout_dynamic:false` 才用硬值(自检用)。
   ⚠️ 驱动自身 `wait_until_idle` **只等 30s** → 任何 >30s 的长转移跑完会让 `/robot_status` 带
-     `error_code=ROBOT_IDLE_TIMEOUT, operation_state=moving, has_error=true`(动作实际已完成)。
+     `error_code=ROBOT_IDLE_TIMEOUT, operation_state=moving, has_error=true`(动作其实已完成)。
      **别凭 success=False / has_error 就重发**; 练习时把转移距离压到 **200~300mm 内**最省事。
   ⚠️ **关键判定必须直读话题, 别信常驻状态流缓存** (2026-09-20 21:27 现场): 常驻状态流
      (`state_thread` 那条 ssh 流) 的位姿会**滞后整分钟级** → 算出的 Δ 是旧值、到位被误判
-     (点二号位时 Δ 报 -87.9mm 实际是旧位姿, 且连判两轮"未到位"而臂正在走到位)。
+     (点二号位时 Δ 报 -87.9mm 其实是旧位姿, 且连判两轮"未到位"而臂正在走到位)。
      `_pose_direct()/_pose_best()` = 经 Docker tap `ros2 topic echo --once` 直读(只读);
-     守卫的 Δ 与"等到位"都走它, 常驻缓存只保障; 日志会打「当前位姿(来源 direct/cache)」。
+     守卫的 Δ 与"等到位"都走它, 常驻缓存只兜底; 日志会打「当前位姿(来源 direct/cache)」。
   ⚠️ **拖到槽位后必须切自动(idle)**, 否则 SDK 下发一律被拒:
      `error_code=-18 setPowerState(false before automatic mode): 该操作不允许在机器人当前运行状态下执行`
      —— 现场表现就是"点了技能没反应"(2026-09-20 21:28 实测)。
@@ -478,7 +478,7 @@ zmax_data/rokae_sdk/tcp_out/state.json             → mode
    (特征: rc=6 · 残差 = **全量位移** · 6.9s 零位移 · 报警变化=True); 姿态差 ≤8° 的全过。
    ⇒ 腿内 ROT_SPLIT(姿态差 >15° ⇒ 先原地 slerp 分步转身 ≤5°/步, 转身完再平移);
    离线判据 verify_rot_split.py(真实点对 + 90/150/179°: 每段 ≤5° · 平移段残差 ≤5° · 无 NaN);
-   真机已验证通过 3 次(每段残差 0.0mm); ZMAX_SDK_LEG_ROT_SPLIT=0 退回直发。
+   真机已跑通 3 次(每段残差 0.0mm); ZMAX_SDK_LEG_ROT_SPLIT=0 退回直发。
 ③ 排队层(**最容易被当成"又不动了"**): 腿当场拒绝后, 执行器原来还要**空等到位窗口跑满**(实测 ~130s)
    才返回 ⇒ 现场连点几下全堵在 FIFO 里, 看着就是"连着几下都不动"。
    ⇒ 执行器 wait_arrive(fail_check=...): 腿的失败行(log 钩子)一出现就**立刻**中止
@@ -486,7 +486,7 @@ zmax_data/rokae_sdk/tcp_out/state.json             → mode
    `🛑 阶段 X/Y 被**腿当场拒**(不再空等到位窗口 Ns)` + 腿的原话。
 ```
 
-**重启执行器前必须清队列**: 重启会把 FIFO 里没执行的旧点击**真执行一遍**(实测臂自己走到别的点位,
+**重启执行器前必须清队列**: 重启会把 FIFO 里没执行的旧点击**真跑一遍**(实测臂自己走到别的点位,
 现场看到"没人点它却动了")。先 O_NONBLOCK 读空 `zmax_data/rokae_sdk/cmd_arm.fifo` 再重启。
 
 ## 🕹 网页手动控制区 (2026-09-27, 老倪: 「手动控制机器人 X Y Z 平移 + A B C 绕轴旋转」)
@@ -504,7 +504,7 @@ zmax_data/rokae_sdk/tcp_out/state.json             → mode
 - **网页按钮"点不动"先查连接名额, 别先怀疑按钮**: `ss -tnp | grep :<port>` 按 pid 数
   **ESTAB**(TIME-WAIT 不算) —— 到 6 就是 HTTP/1.1 的每 host:port 上限被占满, 点动的 POST
   全排在队里 ⇒ 表现就是"按钮灰着/点了没反应"。修法见技能 sim-real-scene-overlay
-  (页面去 MJPEG 化 + 该页单独端口 + 按钮/请求超时保障)。
+  (页面去 MJPEG 化 + 该页单独端口 + 按钮/请求超时兜底)。
 - **GET 绝不可触发动作**(实测 `GET /ctl/move` → 404)：浏览器预取/爬虫/取证脚本都会 GET。
 - **点击必须回执行器原始日志行**(可复制), 不留"已发送"这种自报；实现 = 记 `os.path.getsize(log)` 偏移,
   下发后只读偏移之后的新行(不靠时间戳解析), 最多等 ~9s。
@@ -544,7 +544,7 @@ zmax_data/rokae_sdk/tcp_out/state.json             → mode
   ②`arm:1` 未授权 → **HTTP 403**(服务端拦) ③**绕过页面**直接写 FIFO → 执行器「🛑 被拦(真动授权)」且 `grep -c 已下发` = 0
   ④页面点按钮 → 结果栏出执行器**原始行**(可复制)。
 - ⚠️ **速度有两道限幅, 提速要同时改两处** (2026-09-30 老倪: 「转速太慢了，加速。别限制，我在现场，安全」):
-  ① 服务端 `cam_live_stream._ctl_move` 里 `speed = max(1.0, min(<上限>, speed))` (原预先固定 60);
+  ① 服务端 `cam_live_stream._ctl_move` 里 `speed = max(1.0, min(<上限>, speed))` (原写死 60);
   ② 技能级 `registry.speed_max` (`plan_stage` 用 `sp = min(sp, speed_max)` 收口; **`run_rot_chunks`/`run_j6_rot` 不读它**)。
   现口径: 上限 **1000**(相对量), 页面档位 8/60/200/500 + 右侧可自填任意数 ⇒ 真正物理上限交给控制器关节限速。
   **实测基线: speed=60 → 腕部 10° 花 ~10s(≈1°/s)**; 线性实测 ≈0.0999mm/s 每单位 ⇒ 想快 N 倍就把 60 乘 N。
@@ -590,7 +590,7 @@ zmax_data/rokae_sdk/tcp_out/state.json             → mode
   +50mm(不依赖任何点位); 后面再接绝对阶段 `{"to": "slotN", "dz_mm": 200}` 即成 4 段。
   阶段级守卫写 `{"guard": {"dz_down_limit_mm": ...}}` —— 大落差段给 400, 最后入槽段保持 40。
 - 🔍 **重启执行器后的自检**: `pgrep -f 'l2_daemon.py'` 会把**自己那条 bash 命令**也算进去(命令行里含同字符串),
-  要数实例用 `ps -ef | grep '[l]2_daemon.py'`; 重启后 FIFO 会短暂"无法打开([Errno 6] No such device or address)
+  要数实例用 `ps -ef | grep '[l]2_daemon.py'`; 重启后 FIFO 会短暂"打不开([Errno 6] No such device or address)
   —— 那是旧实例已死/新实例未就绪, 等 10s 再发, 别当成故障去改代码。
 - ⏰ **授权 5 分钟窗对两阶段技能很紧 — 一晚上坑了三次** (21:40 二号位阶段2 被拦 / 21:41~21:42 三号位七号位只剩演练 / 21:52 一号位七号位又被拦):
   慢速号位技能一个阶段就走 22~40s, 两个技能就连不上了。现场报“点了不动”**先看号位面板上的常驻授权状态条**
@@ -619,7 +619,7 @@ zmax_data/rokae_sdk/tcp_out/state.json             → mode
      生效口径: 注册表按 mtime **热加载**(改文件即可), 服务端白名单在**进程内** ⇒ 必须重启推流; 实测真发
      `L2.lift d_mm=1` ⇒ 真值 z 0.108520 → 0.109520 (**+1.000mm**)。
   ⑤ 自己的等待脚本对**小位移**有坑: 到位判据里“累计位移 ≥ max(5mm, 30% 指令距离)”对 1mm 位移永远不满足
-     ⇒ 卡满 240s 到超时(实测 exit 124, 而臂实际已经动完了)。小位移要用 `max(0.5mm, 30%)` 并靠真值帧龄+静止保障。
+     ⇒ 卡满 240s 到超时(实测 exit 124, 而臂其实已经动完了)。小位移要用 `max(0.5mm, 30%)` 并靠真值帧龄+静止兜底。
 - 🧱 **“先到候选点上方 30mm 让人看一眼再记”的已验证路径** (同上一条, 无新技能): `L2.lift` +Z → `L2.left` +Y →
   `L2.lower` −Z 拆步, 全程保持工具姿态(direct), 不经过料盘上方低空横移(先在 15cm 高度平移再降);
   测例: 7号位上方 30mm(0.6474,0.2059,0.1377) → 抬 120 → 左 151 → 降 100+19+94(94 是我算错的补偿) → 抬 43
@@ -629,7 +629,7 @@ zmax_data/rokae_sdk/tcp_out/state.json             → mode
   + 白名单放行 ⇒ `ready` 才画**绿+可点**; 否则灰+`disabled`(点了也不下发, 服务端同样拦)。
   **判据必须在服务端算** —— 页面自己判会画出"点了却没通道"的假绿(点位真值在执行器侧, 页面读不到)。
   号位技能用 `tools/register_slot_skills.py` 幂等注册(与 slot1/2/3 同规格: 先到正上方 30mm → 竖直下降 30mm,
-  `z_floor_point` 保障, `speed_max=150`); 未示教的号位被执行器干净拒发 `点位 slotN 不在点位库`(不崩也不瞎走)。
+  `z_floor_point` 兜底, `speed_max=150`); 未示教的号位被执行器干净拒发 `点位 slotN 不在点位库`(不崩也不瞎走)。
   ⚠️ **真 bug(现场只会看到一行 `执行异常`)**: 示教点库里 `slot3/slot7/slot7_up/hole_retract/insert_*` 共 **7 个点的
   `quat` 只存了 3 个分量**(抄 slot1 改写 pos 时丢了 w, 疑似写入侧 `[:3]` 或丢字段) ⇒ `plan_stage` 取 `q[3]` 抛
   `IndexError: list index out of range`, 被外层 `except Exception` 吞成 `执行异常` ⇒ 号位技能 **dry 与真动都干点不动**
@@ -745,7 +745,7 @@ def _point_name(sk, st, spec):
   现成命令 `bash tools/rokae_sdk_run.sh speed-scale --scale 1.0`(带 idle+automatic 前置闸);
   SDK **没有 getter**(读不到当前值) ⇒ **只能实测验证**; 退回原样 `--scale 0.1`。
   实调后实测: 名义 10 ⇒ 9.44mm/s(94%) · 名义 18.7 ⇒ 15.22mm/s(81%)。
-* **四处收口必须同口径**(缺一处就"设了没用"): 工位页唯一依据 `tools/web/station.html`(热读;
+* **四处收口必须同口径**(缺一处就"设了没用"): 工位页真源 `tools/web/station.html`(热读;
   `tools/cam_live_stream.py` 里还有一份**重复内联副本**, 两处都要改) · 服务 `/ctl/move` 收 [1,1000] ·
   腿 `tools/rokae/l2_transport_sdk.py MAX_SPEED_MM_S` · 代理 `tools/rokae/sdk_ctl.py MAX_SPEED_MM_S`
   (改后**必须重启容器**才对在役生效) · 技能注册表 `speed_max`(单位是 speed_units, 静默压档) ·
@@ -829,7 +829,7 @@ DRY-RUN = 上层只算了目标没真下发(演练/未授权), 链路本身可�
 3. 已经下发给控制器的慢速动作(speed=8, 实测 30~90s 才到位)**不会因为点撤销就停** —— 用户看到的"还在动"就是它。
 
 改法(已在 v5.16.27 落地, 可照搬):
-- 授权状态**落文件做单一唯一依据** `tools/ctl_auth.py` → `~/zmax_data/ctl_auth.json`
+- 授权状态**落文件做单一真源** `tools/ctl_auth.py` → `~/zmax_data/ctl_auth.json`
   (armed = until>now 到期自动失效 + **单调 epoch**: 每次授权/撤销都 +1)。页面与执行器共用同一份。
 - 页面写 FIFO 的命令**带上签发时的 auth_epoch**; 执行器在**下发唯一收口**处校验:
   ①此刻必须有授权(不是"签发时有") ②命令 epoch 不旧于当前 epoch(撤销即作废)
@@ -866,14 +866,14 @@ DRY-RUN = 上层只算了目标没真下发(演练/未授权), 链路本身可�
 - **现状对比**: 10082 金手指有成熟视觉伺服 `tools/aoi_gold_servo.py`(`check`/`teach`/`calibrate`/`serve`
   + 四级闸: 检测可靠/限幅/跳变/默认dry)。 **10083 侧面没有对应件** —— 要把工件调到侧面检测视野里,
   得照 10082 那套同构补一个(单步 ≤2mm / 单轴总量 ≤15mm / 迭代 ≤25 / 收敛 12px / 跳变闸 3×)。
-- **判据唯一依据 = 工控机自己的 judge, 不是我看图**: `POST /capture_detect`(≈9s) 后读
+- **判据真源 = 工控机自己的 judge, 不是我看图**: `POST /capture_detect`(≈9s) 后读
   `GET /last_result` → `judge_ok` 必须 true 才算"拍到位"; `judge_why` 会直说原因
   (实测: 「亮条上边沿点太少(0) —— 画面里没找到过曝条(没拍到位/曝光变了?)」)。judge_ok=false 时
   `count/defects` 一律不可信; 曝光因素用 `tools/aoi_surface_exposure_sweep.py` 单独排查。
 - **坐标系**: 原图 **2448×2048**, 程序 ROI = 原图 (330,960)-(1815,1440); 模型输入是 letterbox 1280×1280。
   2026-10-09 实测亮物 bbox=(634,1491)-(1648,1852) ⇒ **整体落在 ROI 下方 51~412px**(所以才判不出)。
   ⇒ 微调目标是"把亮条移进 ROI", 方向/比例要用**标定**(真动 2 次 ≤2mm 量像素↔mm 雅可比), 别凭猜。
-- **侧面观察位唯一依据** = 示教点 `侧面点0/1/2/3`(表面检测观察位) + `准备点`(安全退让位, 比观察位低 105mm/退 77mm);
+- **侧面观察位真源** = 示教点 `侧面点0/1/2/3`(表面检测观察位) + `准备点`(安全退让位, 比观察位低 105mm/退 77mm);
   任何侧面调整的目标 XY 都必须落在这些点附近 —— **不要自己发明侧面 XY**。
 - 🔴 **硬闸门: `operation_state=drag` 一律不下发**(实测当时 power=on/mode=manual/operation=drag,
   臂静止 2s 漂移 0.000mm)。要自动微调必须请现场在示教器**关拖动→切自动(idle)**, SDK 侧没有切模式接口。
@@ -888,7 +888,7 @@ DRY-RUN = 上层只算了目标没真下发(演练/未授权), 链路本身可�
   不要单靠 `tools/aoi_surface_exposure_sweep.py`. 扫完**记得还原原值** `POST /exposure?us=80000&gain=1.8`。
 - **取图/抓拍本身也不稳**: `POST /capture_detect` 实测 6 次 4 次 `http=500 图像抓取失败`(1.3~7.5s 抖动),
   `GET /picture?kind=...&grab=1` 间歇 500(46B 错误体) ⇒ 任何基于它的测量都要重试+有效性门。
-- **参数单一唯一依据**: `data/config/aoi_surface_params.json`(安全区域/速度/侧面检测/伺服四段, 每项带
+- **参数单一真源**: `data/config/aoi_surface_params.json`(安全区域/速度/侧面检测/伺服四段, 每项带
   value·unit·range·说明·代码位置) —— 现场改这一个文件, 不用翻代码。
 
 ## 取证纪律（每次动作都要）
@@ -920,7 +920,7 @@ DRY-RUN = 上层只算了目标没真下发(演练/未授权), 链路本身可�
 | 环节 | 怎么查 | 典型故障 |
 |---|---|---|
 | 8797 后端 | `POST /api/traj/exec` 的返回 msg | `规划已 N 分钟 ⇒ 请重新规划`(段表太旧) / `已有另一个 traj_exec 正在执行`(flock 被卡死的进程占着) |
-| traj_exec | `/api/traj/exec/state`、`zmax_data/runtime/traj/exec_stdout.log` | 阻塞不退 ⇒ 后续点击全被拒; 用 `tools/clean_traj_exec.sh` 清 |
+| traj_exec | `/api/traj/exec/state`、`zmax_data/runtime/traj/exec_stdout.log` | 卡住不退 ⇒ 后续点击全被拒; 用 `tools/clean_traj_exec.sh` 清 |
 | FIFO/执行器 | `zmax_data/l2_daemon_stdout.log` 里 `受理:` 行 | 启动时要等 ssh 探针(最长 60 轮) ⇒ FIFO 迟建, 点击全落空 ⇒ 设 `ZMAX_SKIP_CHAN_PROBE=1` |
 | 闸门 | `🛑 被拦(真动授权)` / `🛑 被拦: 命令通道不可用` | 授权窗(900s)**从点的时刻算**, 过期就拒; 页面不一定会把���拒理由弹出来 |
 | 执行腿 | `🚚 bridge 腿下发 OK` / `bridge 腿拒发` / `moveStart 报错` | 见下 |
@@ -931,11 +931,11 @@ DRY-RUN = 上层只算了目标没真下发(演练/未授权), 链路本身可�
 三条实测坑, 每一条都曾让“点了不动”:
 1. **段表必须带绝对目标** `abs_mm`(= 规划里的 `to_mm`)。`d_mm` 是“当前位姿 + 增量”, 任一段被拦/跳过后, 后续段全体漂移 ——
    实测臂停在起点 +80mm 外、z 差 26mm。`traj_exec` 写 FIFO 时带 `abs_mm`, `build_move()` 末尾用绝对点覆盖。
-2. **`moveStart` 撞上上一条还在走** ⇒ 报 busy, 但命令实际已进队列 ⇒ 判据不可信。
+2. **`moveStart` 撞上上一条还在走** ⇒ 报 busy, 但命令其实已进队列 ⇒ 判据不可信。
    `_bridge_send()` 发之前先等 `max|jointVel| < 0.05`。
 3. **FIFO 一个 chunk 内按行连续跑**: 前段被拦却继续跑后段 ⇒ 相对段漂移。现在前段一被拦就丢弃本批剩余段。
 
-参考提交: `a39542b`(验证通过) / `b5198b0`(bridge 腿+位姿中继) / `6296a5f`(跳过 ssh 探针)。
+参考提交: `a39542b`(跑通) / `b5198b0`(bridge 腿+位姿中继) / `6296a5f`(跳过 ssh 探针)。
 实测基线: 4 段 280mm @200mm/s 全程 ~5s, 每段残差 ≤0.03mm, 闭环回起点零偏差。
 
 ## Orin SDK 桥 `/move_pose` 真下发 (2026-10-25 实测)
@@ -961,7 +961,7 @@ DRY-RUN = 上层只算了目标没真下发(演练/未授权), 链路本身可�
 
 授权状态在 `/station/status` 里是**嵌在 `ctl.auth`** 的(`{armed,left_s,window_s,ip}`),
 不是 `ctl` 顶层的平铺字段。页面若读 `a.armed` ⇒ 永远 undefined ⇒ 按钮一直 disabled,
-现象就是"手机上授权明明成功但方向键灰着点不动"(服务端唯一依据实际 armed=true)。
+现象就是"手机上授权明明成功但方向键灰着点不动"(服务端真源其实 armed=true)。
 自查: 浏览器 console 看 `ARMED` 与 `document.querySelectorAll('button[data-sk]').map(b=>b.disabled)`;
 再看 `/station/status` 里 `ctl.auth.armed`。修法: 页面取 `const au = a.auth || a;` 再读。
 
@@ -1049,7 +1049,7 @@ J1 +29.08 → **−0.258** · 全部六轴与现场 URDF 重力模型量值吻�
 - 脚本: `~/zmax_data/rokae_sdk/fix_torque_zero.py`(加 `--dry` 只读) · `probe_torque_stability.py` ·
   `probe_state_repair.py` · `probe_torque_alarm.py` · `gravity_torque_check.py`
 - 相关错误码(C# 手册): `-10005 标定中/标定时重置负载失败` · `-10040 开始拖动失败, 正确设置负载并标定力矩传感器`
-  ⇒ 拖动无法打开、力控飘、碰撞误报, 第一件事都是"设对负载 + 标定力矩传感器"。
+  ⇒ 拖动打不开、力控飘、碰撞误报, 第一件事都是"设对负载 + 标定力矩传感器"。
 - ❌ 别用 `setSoftLimit` 抬限值"绕过"(拆安全边界); ❌ 别常关 `disableCollisionDetection`;
   ❌ 静态读数贴限值(占 99.8%)时别让产线跑自动。
 - 判据/取证: `~/zmax_data/arm_j5_torque_diagnosis_20260922.md` · `torque_zero_*.json` · `torque_stability_*.json`
@@ -1117,7 +1117,7 @@ J1 +29.08 → **−0.258** · 全部六轴与现场 URDF 重力模型量值吻�
   与上文"≥30° 姿态单独成段"不冲突 —— 那条是**别与平移混段**, 这条是**单段姿态幅度**上限。
 - **同一姿态下不同轴放行不一样(实测)**: 该姿态下 `+Z 上升`/`−X 后退`/`+Y 左移`/`绕工具X旋转` **放行**,
   而 `−Z 下降`(`rc=6 · CHECK · 报警变化=True · 疑似 50102`)与 `绕工具Z自转` **被拒**。
-  ⇒ 阻塞时先**逐轴放行探测**再决定绕行路线: `gui-venv311/bin/python tools/probe_motion_axes.py`
+  ⇒ 卡住时先**逐轴放行探测**再决定绕行路线: `gui-venv311/bin/python tools/probe_motion_axes.py`
   (每轴 ≤10mm/5°, 逐步核真值, 报"✅动/❌不动")。
 - 控制器原生报警点: `/last_result` 旁的 `recent` 列表里 `50113 奇异规避(姿态变化超阈值)` / `50120 沿路径无法到达终点`
   —— 看到这两条就**别再加大单步幅度**, 改小步分片。
@@ -1159,7 +1159,7 @@ J1 +29.08 → **−0.258** · 全部六轴与现场 URDF 重力模型量值吻�
 ⇒ 页面必须同时写清"这是名义速度"+"以实测为准"; 每次动作落一行
 `📏 整段平均速率 X mm/s (Δ路径/耗时 · 名义 N mm/s ⇒ 实得 M%)`(实现在 `tools/rokae/sdk_agent.py` 移动收尾处;
 实得 0% = 没动, 一眼可判, 比翻日志快)。
-- **改页面要改对文件**: 工位页唯一依据 = `tools/web/station.html`(服务**按 mtime 热读 ⇒ 改它不用重启**);
+- **改页面要改对文件**: 工位页真源 = `tools/web/station.html`(服务**按 mtime 热读 ⇒ 改它不用重启**);
 `cam_live_stream.py` 里的 `STATION_PAGE` 字符串只是**回退副本**(文件缺失时才用)。改错文件的现象 = 页面一字不变,
 而 `curl | grep` 能立刻发现(核 `speed_mm_s` / 档位 `data-v` 是否上屏)。
 ⚠️ 但**后端口径**(`_ctl_move`)在 `cam_live_stream.py` ⇒ 那部分必须重启 8793 才生效。

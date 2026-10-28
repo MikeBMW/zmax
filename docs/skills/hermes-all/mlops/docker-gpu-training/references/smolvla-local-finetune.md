@@ -39,7 +39,7 @@ gui-venv311/bin/python -m pip install termcolor draccus 'datasets<4' av accelera
   → 该 fork 的 LeRobotDatasetMetadata 只要 revision 非 None 就 get_safe_version 查 hub。
   解法: HF_HUB_OFFLINE=1 下 repo_id 用本地路径 + `huggingface_hub` monkeypatch
   list_repo_refs 返回空 _Refs (见 docs/skills/xspace/zmax-console/references/manifold-predictor-train-2026-09-09.md),
-  或 utils.py get_safe_version 加本地保障 `if version in ("main","local",""): return version`。
+  或 utils.py get_safe_version 加本地兜底 `if version in ("main","local",""): return version`。
 - 训练 config 结构: 顶层 batch_size/steps/num_workers/log_freq/eval_freq/save_freq/save_checkpoint/
   seed + optimizer(type: adam/lr/weight_decay) + wandb(enable:false)。不是 training: 子段。
 

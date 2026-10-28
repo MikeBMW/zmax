@@ -1,4 +1,4 @@
-# Simulink 画布节点布局 — 保障跑飞 pitfall (2026-08-07)
+# Simulink 画布节点布局 — 兜底跑飞 pitfall (2026-08-07)
 
 ## 症状
 老倪: "Interpolant 和 未来决策交叉注意力 node 怎么在显示区域右侧那么远"
@@ -7,7 +7,7 @@
 ## 根因
 simulink_module.py 模板 = (name, node_specs, link_specs, layout_grid)。
 `load_reference_app()` 按 layout 网格给节点排位 (base 120,80; 列距 200; 行距 230)。
-**node_specs 里名字不在 layout 网格中的节点 → 静默保障单行**:
+**node_specs 里名字不在 layout 网格中的节点 → 静默兜底单行**:
 
 ```python
 xy = next((p for p in cands if p not in used), None)
@@ -15,7 +15,7 @@ if xy is None:
     xy = (base_x + i * 200, base_y)   # i = specs 索引!
 ```
 
-保障位置 x = 120 + i*200, 全部挤在顶部一行 (y=80)。
+兜底位置 x = 120 + i*200, 全部挤在顶部一行 (y=80)。
 五模型对比 specs 41 节点: 索引 25 的 🌉 Interpolant → x=6620, 索引 30 的 🔀 未来决策交叉注意力 → x=7920。
 
 触发经过: 往 specs 加了新节点 (🎯 YOLO 目标检测 idx2 / 📐 2D→3D 解算 idx3 / 🔤 Encoder idx7 /
@@ -30,13 +30,13 @@ if xy is None:
 3. 旧 layout 中无效占位名 (specs 里不存在的节点名, 如 MLP/专家行残留) 可顺手删, 无损失。
 
 ## 验证 (改布局必做)
-AST 提取模板数据、重放分配算法、断言零保障 —— `scripts/verify-simulink-layout.py`。
+AST 提取模板数据、重放分配算法、断言零兜底 —— `scripts/verify-simulink-layout.py`。
 关键: 模板数据虽是模块级常量, 但 import 模块会拉起 PyQt5 副作用 → 用 ast 解析, 不 import。
-五模型应报: 41节点 9行 保障=0 maxX=1920 maxY=1920。全部 11 模板 0 保障才算过。
+五模型应报: 41节点 9行 兜底=0 maxX=1920 maxY=1920。全部 11 模板 0 兜底才算过。
 
 ## 守则
 - **给模板加节点 = specs 加条目 + layout 网格同步加条目, 缺一不可**。
-- 节点名必须与 specs 里的 name 逐字一致 (含 emoji), 否则匹配不上照样保障。
+- 节点名必须与 specs 里的 name 逐字一致 (含 emoji), 否则匹配不上照样兜底。
 - 改完布局重启 GUI 看效果 (ZMAX_AUTO_RUN=1 自动加载五模型对比)。
 
 ## 背景行 row_bg 与网格同步 (2026-08-07 追加: 老倪 "背景跟node没对齐")

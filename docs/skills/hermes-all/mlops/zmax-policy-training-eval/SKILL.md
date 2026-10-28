@@ -43,7 +43,7 @@ description: Z-MAX 插拔策略训练与评估管道 — 评估铁律(逐维norm
   (最近 0.029m, 200 步)。排查\"模型不动\"顺序: 先查 use_vae, 再查数据量。
 - **VAE 为什么原版好使、我们这反而有害 (老倪\"原文用 VAE 怎么好用\"答疑, 2026-08-08)**:
   原版 ACT (ALOHA 穿衣/整理) 是**多模态任务** (同状态多条路都对), VAE latent = 多样性开关
-  (训练看未来动作记住路线, 推理采样选路线) + **数百条 demo 保障**; 我们的 peg-insert 是
+  (训练看未来动作记住路线, 推理采样选路线) + **数百条 demo 兜底**; 我们的 peg-insert 是
   **单模态精确任务** (唯一正确的路: 对准→插) + 数据少 (68 条) → 多样性用不上, 反而暴露
   \"训练偷看答案 / 推理 latent=0 傻眼\" 的 gap。类比: 原版是选择题 (VAE 选路线), 我们是
   填空题 (唯一答案, 直接 state→action 映射最干净) — 这也解释了 MLP (纯映射) 一直最稳。
@@ -79,7 +79,7 @@ description: Z-MAX 插拔策略训练与评估管道 — 评估铁律(逐维norm
   5 个视觉大模型全 0%。MLP 蒸馏(39D直接映射)免疫, 唯一成功(6/10抓起)。
 - 解法: 分段数据 `--stop-after-grab`(抓起后保持30帧即停) + `--rel-vec` 45D +
   夹爪规则 grip_assist(接近<8cm闭合, 解决稀疏夹爪奖励)。
-- RL 纯 PPO 探索不到稀疏抓取奖励(60轮 -9.9阻塞) → RL+夹爪规则组合。
+- RL 纯 PPO 探索不到稀疏抓取奖励(60轮 -9.9卡住) → RL+夹爪规则组合。
 
 ## 数据生成器陷阱
 - `lifted` 判断禁用手高度(手初始 z 就高→永远 True→跳过抓取),
@@ -136,7 +136,7 @@ description: Z-MAX 插拔策略训练与评估管道 — 评估铁律(逐维norm
   写成本地 `data/...` 容器内 FileNotFoundError, 训练失败又静默回退旧逻辑。
 - **容器训练验证通过 (2026-08-08)**: zmax-std:1.0 内 ACT grab6+无VAE 训练
   12 step/s, loss 0.315 正常下降, GPU 容器直通 RTX 4060。
-- simulink 训练节点生成 `config_<policy>_runtime.yaml`, **默认 root 预先固定
+- simulink 训练节点生成 `config_<policy>_runtime.yaml`, **默认 root 写死
   `data/metaworld_peg` (旧数据) + use_vae: true (旧配置)** → 控制台自动训练
   产出无效模型 (旧数据方向反转 + VAE 坑)。训练节点双击触发的是旧配置, 不是
   最新实验配置 — 修: 默认 root 指向最新 grab6 数据 + use_vae: false。
@@ -184,7 +184,7 @@ description: Z-MAX 插拔策略训练与评估管道 — 评估铁律(逐维norm
   用 av 纯解码不依赖 torchcodec** (只有 streaming_dataset 用) → `pip uninstall -y torchcodec`。
 - **⚠️ `pip install -e .` 会覆盖 torch 版本**: lerobot 的 pyproject 不锁 torch → -e . 装完
   又被顶回最新 cu130 → **torch 固定必须放 Dockerfile 最后一步** (v3 才修对)。
-- **容器保活+装包模式**: `docker run -d --name X <img> sleep 600` → 多次\n  `docker exec X pip install ...` → 装完 `docker commit X <img>:<tag>` 固化\n  (增量层, 比反复 docker build 快)。已验证最终镜像 **zmax-train:ready2**\n  (cu124 torch + datasets/av/accelerate + 卸载 torchcodec), V100 训练\n  loss 0.345 正常推进。\n- **⚠️ 容器保活别用 `sleep 600` (会到期被杀)**: 装 799MB torch 耗时超过 sleep\n  窗口 → 容器被删, pip 装一半全丢 (只剩 torchelastic, torch 都没了)。\n  **用 `tail -f /dev/null` 持久容器**: `docker run -d --name X <img> tail -f /dev/null`\n  永不退出, 任意时长 exec 装包。\n- **⚠️ 长 pip 安装用 `docker exec -d` 后台 + 日志轮询**: 前台 `docker exec X pip\n  install` 下载 799MB wheel 时 SSH 会话卡死/无输出。改\n  `docker exec -d X bash -c \"pip install ... > /tmp/pip.log 2>&1; echo DONE >> /tmp/pip.log\"`\n  然后轮询 `docker exec X tail -3 /tmp/pip.log` (看 Downloading/Installed 进度)。\n- **⚠️ torchaudio 的 CUDA 版本必须与 torch 一致**: torch 2.4.1+cu124 配\n  torchaudio 2.4.1+cu121 → `RuntimeError: PyTorch and TorchAudio were compiled\n  with different CUDA versions`。且 **force-reinstall torchaudio 会连带升级 torch**\n  (依赖关系) → torch 又跳回 cu130 → 更乱。修: **三者同源同版本一次装齐**\n  (`torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 --index-url .../cu121`, 全用\n  cu121 或全用 cu124, 别混)。缺 torchaudio 是 VLA-Touch 类脚本 (import torchaudio)\n  秒退的常见根因。\n- **Dockerfile 必须提交 git (老倪\"docker也要提交dockerfile\")**: 镜像的\n  遇到问题修复 (torch 固定 cu124 最后一步 / extras 全装 / torchcodec 卸载) 全部\n  固化进仓库根 Dockerfile + .dockerignore (data/outputs/reports/*.mp4 排除),\n  远程 git pull 即同步构建源 — 别只 commit 镜像不 commit 配方。
+- **容器保活+装包模式**: `docker run -d --name X <img> sleep 600` → 多次\n  `docker exec X pip install ...` → 装完 `docker commit X <img>:<tag>` 固化\n  (增量层, 比反复 docker build 快)。已验证最终镜像 **zmax-train:ready2**\n  (cu124 torch + datasets/av/accelerate + 卸载 torchcodec), V100 训练\n  loss 0.345 正常推进。\n- **⚠️ 容器保活别用 `sleep 600` (会到期被杀)**: 装 799MB torch 耗时超过 sleep\n  窗口 → 容器被删, pip 装一半全丢 (只剩 torchelastic, torch 都没了)。\n  **用 `tail -f /dev/null` 持久容器**: `docker run -d --name X <img> tail -f /dev/null`\n  永不退出, 任意时长 exec 装包。\n- **⚠️ 长 pip 安装用 `docker exec -d` 后台 + 日志轮询**: 前台 `docker exec X pip\n  install` 下载 799MB wheel 时 SSH 会话卡死/无输出。改\n  `docker exec -d X bash -c \"pip install ... > /tmp/pip.log 2>&1; echo DONE >> /tmp/pip.log\"`\n  然后轮询 `docker exec X tail -3 /tmp/pip.log` (看 Downloading/Installed 进度)。\n- **⚠️ torchaudio 的 CUDA 版本必须与 torch 一致**: torch 2.4.1+cu124 配\n  torchaudio 2.4.1+cu121 → `RuntimeError: PyTorch and TorchAudio were compiled\n  with different CUDA versions`。且 **force-reinstall torchaudio 会连带升级 torch**\n  (依赖关系) → torch 又跳回 cu130 → 更乱。修: **三者同源同版本一次装齐**\n  (`torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 --index-url .../cu121`, 全用\n  cu121 或全用 cu124, 别混)。缺 torchaudio 是 VLA-Touch 类脚本 (import torchaudio)\n  秒退的常见根因。\n- **Dockerfile 必须提交 git (老倪\"docker也要提交dockerfile\")**: 镜像的\n  踩坑修复 (torch 固定 cu124 最后一步 / extras 全装 / torchcodec 卸载) 全部\n  固化进仓库根 Dockerfile + .dockerignore (data/outputs/reports/*.mp4 排除),\n  远程 git pull 即同步构建源 — 别只 commit 镜像不 commit 配方。
 - **Exited(0) 但日志只在容器内**: 容器退出后 `docker exec` 不可用 → `docker cp X:/tmp/x.log
   /tmp/x.log` 取日志 (容器没删才可取 — 别加 --rm)。
 - **SSH 会话中断 → 容器变 Paused**: `docker ps` 显示 `Up N minutes (Paused)` →
@@ -231,7 +231,7 @@ description: Z-MAX 插拔策略训练与评估管道 — 评估铁律(逐维norm
   ⚠️ **torchvision 版本必须 0.26.0 不是 0.24.0**: 0.24.0 与 torch 2.11 依赖冲突
   (`ResolutionImpossible`), 本地实测配对是 torch 2.11.0+cu128 ↔ torchvision 0.26.0+cu128
   (用 `.venv/bin/python -c "import torch, torchvision; print(versions)"` 查真实配对, 别猜)。
-  遇到问题链: 4.44.2 缺 qwen 模块 → 4.49-4.51 缺 torch_compilable_check (eo1 引用)
+  踩坑链: 4.44.2 缺 qwen 模块 → 4.49-4.51 缺 torch_compilable_check (eo1 引用)
   → 5.14.1 全有但需要 torch 2.5+ 的 DTensor (2.4.1 缺 → `cannot import name
   'DTensor' from 'torch.distributed.tensor'`)。**远程 V100 驱动 550 限 CUDA12.4**
   只能用 torch 2.4.1+cu124 (SmolVLA 在远程训不了, 本地 2.11 才行)。
@@ -264,7 +264,7 @@ description: Z-MAX 插拔策略训练与评估管道 — 评估铁律(逐维norm
   `ValueError: dictionary update sequence element #0 has length 3` → **EVAL 直接用
   label 做 key** (`EVAL = {'ACT': '0/8', ..., 'MLP蒸馏': '6/10', '官方专家': '19/20'}`);
   ② 官方专家分支用 `SawyerPegInsertionSideV3Policy.get_action(env._get_obs())[:4]`
-  (含视觉模型分支用 load_policy+select_action)。生成前先执行一遍看各模型距孔
+  (含视觉模型分支用 load_policy+select_action)。生成前先跑一遍看各模型距孔
   (官方专家 0.152→0.019 插入成功, 其余 5 模型 0/8)。
 - 视频交付顺序: 先发已有成功视频 (MLP/专家) → 再生成对比视频, 别让生成阻塞交付。
 
@@ -298,7 +298,7 @@ description: Z-MAX 插拔策略训练与评估管道 — 评估铁律(逐维norm
 if st.shape[1] >= 49:
     tac = st[:, 45:49].astype(np.float32).copy()   # 用数据自带触觉, 不再重造
 else:
-    d = np.diff(st, axis=0, prepend=st[:1])        # 旧路径保障
+    d = np.diff(st, axis=0, prepend=st[:1])        # 旧路径兜底
     force = np.clip(np.linalg.norm(d, axis=1, keepdims=True), 0, 1) * 5.0
     tac = np.concatenate([d[:, :3] * 10.0, force], axis=1).astype(np.float32)
 ```
@@ -640,7 +640,7 @@ tools/train_full_pipeline.py。老倪追问后把状态机完整搬进 LeftRight
 
 ## left_right 用 lerobot_train 标准训练管道 (2026-08-10 实测打通, 自定义 policy 接入模板)
 
-封装成 policy 类 ≠ 能 `lerobot_train` 训练。**让自定义 policy 走标准 CLI 的遇到问题链**
+封装成 policy 类 ≠ 能 `lerobot_train` 训练。**让自定义 policy 走标准 CLI 的踩坑链**
 (config_left_right.yaml + src/lerobot 适配, 每条都是真实报错):
 
 **yaml 配置侧**:
@@ -675,9 +675,9 @@ tools/train_full_pipeline.py。老倪追问后把状态机完整搬进 LeftRight
   FeatureType`。config 里可以存 dict, processor 里转 PolicyFeature。
 - **`get_optimizer_preset` 返回 AdamWConfig 类 + `get_optim_params` 返回参数组列表**
   (见上面 left_right 封装节修正) — 两个都错会先报 dict.build 后报 params is str。
-- **保障补丁 (如果不想改 config 侧)**: `src/lerobot/optim/factory.py` 的
+- **兜底补丁 (如果不想改 config 侧)**: `src/lerobot/optim/factory.py` 的
   `make_optimizer_and_scheduler` 加 dict→AdamWConfig 转换 + scheduler dict 跳过
-  (cfg.optimizer 解析成 dict 时保障, 不依赖 preset 机制)。
+  (cfg.optimizer 解析成 dict 时兜底, 不依赖 preset 机制)。
 
 **⚠️ PolicyFeature JSON 序列化 (2026-08-10 最后卡点, 已修)**: checkpoint 保存时
 `TypeError: Object of type PolicyFeature is not JSON serializable` — save_pretrained/
@@ -695,7 +695,7 @@ def _feat_to_dict(feats):
     return out
 ```
 
-**✅ 3000 步完整验证通过 (2026-08-10 收尾验证)**:
+**✅ 3000 步完整跑通 (2026-08-10 收尾验证)**:
 - `Training: 100% |██████| 3000/3000 [01:44, 28.83step/s]` + `End of training` +
   `EXIT=0`, loss 0.219→0.034 收敛, checkpoint `003000` + `last` 落盘。
 - **标准产物清单 (完全符合 lerobot 规范)**: `config.json` + `model.pt` +
@@ -937,7 +937,7 @@ print(len(B), len(nz), max(float(v.abs().max()) for v in B.values()))
   v1-v8 版本迭代表 + d_hp/peg_z 轨迹证据 + grab_effort 夹爪探针 + seed 稳定性
 - references/left-right-lerobot-policy.md — 2026-08-10 lerobot 标准自定义 Policy 封装模板
   (left_right 工程): 目录结构 + config/modeling 代码骨架 + factory 两处注册 + 6 个抽象
-  方法清单 + 遇到问题表 (config_class/name/super 顺序/weights_only/factory 注册)
+  方法清单 + 踩坑表 (config_class/name/super 顺序/weights_only/factory 注册)
 - references/left-right-simulink-integration.md — 2026-08-10 Simulink 集成补充: ▶运行自动训练
   触发链实测参数 (36 step/s 1分22秒) + configs/policies/ 位置 + episodes 占位坑 +
   train_curve 前置 + node_logic 外部源码映射入口
@@ -979,7 +979,7 @@ pass, lastFail} + actionLog 历史留痕。API: `GET /api/robot-action?robot=` �
 - 给 web 的规格要含可直接复制的 JS (STAGE_METRICS 模板) + API 契约 + 模拟数据分配 (R1-R7 对应场景1-6),
   代码级规格才不来回沟通。
 - 指标上报的模型侧实现 (P3): left_right select_action 各阶段结束时把实测 (d_hp/contact/peg_z/插入深度/力)
-  写 self.metrics, 推理循环每 N 帧上报 — 仿真先验证通过 (metaworld 实测), 真机换力传感器读数。
+  写 self.metrics, 推理循环每 N 帧上报 — 仿真先跑通 (metaworld 实测), 真机换力传感器读数。
 
 **P3 实现 (2026-08-10 已落地 816b10d7, `_measure_metrics` 方法)**:
 - `select_action` 逐 batch 循环里: `st_prev = self.state` → `_step_state_machine` → `_act_state_machine`
@@ -1028,7 +1028,7 @@ pass, lastFail} + actionLog 历史留痕。API: `GET /api/robot-action?robot=` �
 
 ## WebSocket 服务链路诊断 (2026-08-10 chat.html 群聊无消息根因, ECS 服务侧)
 
-老倪报"http://datadrive.world/chat.html 群聊怎么没消息" — 诊断方法 (可复用, 脚本
+老倪报"http://datadrive.world/chat.html 群聊咋没消息" — 诊断方法 (可复用, 脚本
 scripts/ws_probe.py):
 - **先验通道通不通**: `curl -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H
   'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' <url>` —
@@ -1240,8 +1240,8 @@ scripts/ws_probe.py):
   cwd 影响**静默失败**(老倪"点视频节点播放器没弹出")。统一走 `cmd.exe /c start "" "C:\...mp4"`
   + `cwd="/mnt/c/Windows"`(与文档/链接打开同链路); 且**反复弹出型动作必须防抖**
   (`self._last_video_pop` 时间戳, 15s 内重复调用 return, 老倪"怎么弹出好几次视频")。
-- **⚠️ gen_insert_video.py 等生成脚本必须加载最新 checkpoint, 别预先固定路径 (2026-08-12 实测)**:
-  原预先固定 `outputs/rl_peg/full_pipeline.pt` → 新训练后生成的还是旧模型视频。修 `_load_brain()`:
+- **⚠️ gen_insert_video.py 等生成脚本必须加载最新 checkpoint, 别写死路径 (2026-08-12 实测)**:
+  原写死 `outputs/rl_peg/full_pipeline.pt` → 新训练后生成的还是旧模型视频。修 `_load_brain()`:
   glob `outputs/train/left_right_*` 按 **mtime** 排序取最新 (⚠️ 字母序 reverse 会把
   `left_right_std` 排最前 — 必须 `key=lambda p: os.path.getmtime(p)`) → `checkpoints/last/
   pretrained_model/model.pt`。

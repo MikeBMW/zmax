@@ -26,7 +26,7 @@ DONE ...
 ## 2) 两类"假失败" (都会让整链被判红)
 
 **(a) 可选件被计成缺口**。LLM 阶段仅因 `qwen2.5-vl-3b` 权重未下全(`0MB < 门槛 3000MB`)就 rc=1,
-而项目既定口径根本不用它(DeepSeek Vision API + `smolvlm2-500m` 保障; 8GB 卡勿试 3B VL)。
+而项目既定口径根本不用它(DeepSeek Vision API + `smolvlm2-500m` 兜底; 8GB 卡勿试 3B VL)。
 修法: 闸门只统计**本次真会用**的件, 其余标 `xxx_informational: true` + 打印提示, **不计入 gaps**。
 ⇒ 闸门设计原则: "我们决定不用的东西"不得成为失败条件。
 

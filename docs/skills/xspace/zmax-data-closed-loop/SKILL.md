@@ -73,7 +73,7 @@ curl -s https://datadrive.world/api/relay/orin/status  # infer_count > 0 = 推�
 - ECS 磁盘 40G 易满, 重点清 /www/wwwlogs + archive(快照505M)
 
 ## WS 事件驱动 (v2, 2026-08-03)
-- auto_loop v2: WS订阅 data_arrived → 毫秒级触发训练 + 60s轮询保障 + 断线5s重连
+- auto_loop v2: WS订阅 data_arrived → 毫秒级触发训练 + 60s轮询兜底 + 断线5s重连
 - ECS zmax_relay: /upload成功→notify(:8766)→广播; ws_relay 8766通知口
 - 单测6/6: 事件触发/非事件忽略/快照过滤/frames阈值/全链路/并发锁
 

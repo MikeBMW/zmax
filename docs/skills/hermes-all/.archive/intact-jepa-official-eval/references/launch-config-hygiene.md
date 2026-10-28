@@ -11,7 +11,7 @@
 "solver=direct", "policy=recovery_delta_full_pusht_s3072",                        // ← 论文权重 (错)
 ```
 后果：论文权重 config 要 `module.InverseTransitionActor`，根 `module.py` 没这个类
-⇒ `InstantiationException: Error locating target`，**该配置从诞生到删除一次都没验证通过过**
+⇒ `InstantiationException: Error locating target`，**该配置从诞生到删除一次都没跑通过**
 （判据：预期产物 `/home/ubuntu/stable-wm-cache/debug_root_pusht.txt` 根本不存在）。
 更糟的是我自己写的 `DEBUG_VSCODE.md` 表格第 11 行明明写着「③ = repo 自训权重用」——
 意图写对了、args 写错了，属于自相矛盾，不能拿"当时是这么设计的"当解释。
@@ -30,7 +30,7 @@
 ```
 
 ## 3. 通用规则（下次写任何 debugpy/launch 配置照这个来）
-1. 新配置 **必须真跑到 rc=0** 才算交付；没验证通过的不许留在 launch.json 里（老倪判据就是"不好使"，他不读你的意图）。
+1. 新配置 **必须真跑到 rc=0** 才算交付；没跑通的不许留在 launch.json 里（老倪判据就是"不好使"，他不读你的意图）。
 2. `policy` / `--config-name` 必须与 `program` 的**运行时**匹配；
    自查 = 把 args 里的 policy 跟配置名对一遍，不一致就是坏的。
 3. 删配置要顺位重命名 + **在文档里留「已删除 + 为什么」**，否则下一个我/下一个人会再造同样的坑。

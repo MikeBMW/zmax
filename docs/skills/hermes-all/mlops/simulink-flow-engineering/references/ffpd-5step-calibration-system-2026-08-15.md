@@ -34,7 +34,7 @@ gain_schedule: approach/transfer/insert/lift 各 {Kp, Kd}
   (行拼接, gain_schedule 用 `{Kp: x, Kd: y}` 内联 dict)
 - 手眼矩阵默认 np.eye(4), 用户点过①生成才用真实矩阵
 
-## 🐛 QDoubleSpinBox 精度坑 (本会话验证脚本阻塞的根因)
+## 🐛 QDoubleSpinBox 精度坑 (本会话验证脚本卡住的根因)
 
 **QDoubleSpinBox 默认 2 位小数 → setValue(0.055) 被四舍五入成 0.06** (银行家舍入),
 标定阈值类输入 (0.055/0.05/0.06) 全错。**任何标定/参数 spinbox 必须 `setDecimals(4)`**:

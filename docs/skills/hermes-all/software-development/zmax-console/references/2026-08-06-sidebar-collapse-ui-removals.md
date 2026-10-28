@@ -38,7 +38,7 @@ def _expand_sidebar(self):   self.sidebar.setVisible(True);  self._sb_expand_bar
 | 参考应用条整行（`🗂 参考应用:` + 11 个白字模板按钮） | 与上方彩色工具栏按钮重复（三/五模型对比/VLA-Touch/AWE/总系统/ACT-Meta 都有彩色入口） | **REFERENCE_APPS 数据保留**（模块库完整条目/load_reference_app_by_name 仍用）；`_ref_btns` 无残留引用 |
 | 工作流过滤行（① 访问·标注数据…⑥ 集成·测试 6 个白钮） | 没用占地方 | `_filter_library` 方法一并删（引用已删按钮会 AttributeError）；`LibraryPanel.set_filter` 保留供内部 |
 | 「🪟 画布窗口」按钮 + show_canvas_win 方法 | 画布子窗口已不可最小化/关闭，恢复逻辑无存在必要 | 删前确认无其他引用（仅按钮一处） |
-| 「时间 10.0s / dt 0.010」仿真参数 QDoubleSpinBox | 纯 UI 无逻辑价值 | **陷阱**：`start_sim` L3421-22 读取 `sp_dt.value()`/`sp_t_end.value()` → 删控件必须 grep 引用，改 `getattr(self, "_sim_dt", 0.01)` 保障 |
+| 「时间 10.0s / dt 0.010」仿真参数 QDoubleSpinBox | 纯 UI 无逻辑价值 | **陷阱**：`start_sim` L3421-22 读取 `sp_dt.value()`/`sp_t_end.value()` → 删控件必须 grep 引用，改 `getattr(self, "_sim_dt", 0.01)` 兜底 |
 | 工具栏「📚 模块库」按钮 + _toggle_lib_btn | 面板内已有 ◀ 收起，tl2 按钮冗余 | 保留 collapse_requested/_collapse_library/_expand_library |
 
 **通用规则**：删任何 UI 控件前 `grep -rn "控件名" tools/gui/` 查全部引用（含 lambda/回调/其他方法）；删除按钮后还要查 `addWidget(self.btn_xxx)` 残留行。

@@ -6,7 +6,7 @@
 做法：多个 glob 模式都试 + 只在目录里有 `config.json` 时才算命中 + 多个候选时取 mtime 最新的；
 找不到就把 `backend` 如实标为 fallback（如 `encoder+fusion` / `rules`），**不要**把 fallback 输出当成 VLM 结论。
 
-## 加载类要按模型族试，不得硬编码 CausalLM
+## 加载类要按模型族试，不要写死 CausalLM
 SmolVLM 系权重用 `AutoModelForCausalLM.from_pretrained` 会报
 `Unrecognized configuration class <class 'transformers.models.smo...'>`。
 按这个顺序依次试，哪个不抛错就用哪个：

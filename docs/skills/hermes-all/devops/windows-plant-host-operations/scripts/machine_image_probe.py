@@ -6,7 +6,7 @@
 
 用法:
     venv\Scripts\python.exe machine_image_probe.py <文件或 glob> [<文件或 glob> ...]
-    venv\Scripts\python.exe machine_image_probe.py --detect <glob>     # 可选: 再喂真模型执行一遍(需目标程序的 detector 可用)
+    venv\Scripts\python.exe machine_image_probe.py --detect <glob>     # 可选: 再喂真模型跑一遍(需目标程序的 detector 可用)
 
 输出: 纯 ASCII key 的 JSON(产线控制台是 GBK, 不打印中文)。
 判读: block16_std_mean 高(>15) = 有细结构; <6 = 离焦/雾面; pct_gt240 高 = 过曝会吃掉低对比度缺陷;

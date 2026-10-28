@@ -22,7 +22,7 @@ Policy.History.KeepLast            # 可调用: KeepLast(n)
 Policy.History.KeepAll             # 可调用
 Policy.Durability.TransientLocal   # ❌ 不可调用（传类本身）
 ```
-**统一保障写法**（一次写对，别逐个子类试）：
+**统一兜底写法**（一次写对，别逐个子类试）：
 ```python
 def _p(cls, *a):
     """有的可调用有的不可 → 能调就调, 不能就原样用"""
@@ -56,7 +56,7 @@ for k in KEYS[topic]:
         v = [str(x) for x in v]
     d[k] = v
 ```
-> 保障也可 `dataclasses.asdict(m)`，但仍建议白名单 —— 顺便把内部字段挡在 JSON 之外。
+> 兜底也可 `dataclasses.asdict(m)`，但仍建议白名单 —— 顺便把内部字段挡在 JSON 之外。
 
 ## 4. XML 配置：这些元素该版本不接受
 ```xml

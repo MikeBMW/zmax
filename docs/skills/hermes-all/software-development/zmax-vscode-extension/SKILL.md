@@ -18,9 +18,9 @@ metadata:
 - 要改/重打包 `vscode-zmax/` 扩展, 或扩展已装却"没生效"(先查单例坑, 见下)。
 
 ## 定位铁律
-扩展是**又一个前端**: 只做「取唯一依据 + 展示 + 触发」, 不复制业务逻辑。
-唯一依据 = 本机 8793 只读口 (`/station/status` / `/snapshot/<cam>.jpg` / `/cam/src` / `/aoi/*` / `/station/ledger`)
-+ 仓库配置唯一依据 (`config/platform/zmax_product.json` · `param_spec.json` · `flows/calib_closure.json` · `src/lerobot/calibration/calibration_layer.py`)。
+扩展是**又一个前端**: 只做「取真源 + 展示 + 触发」, 不复制业务逻辑。
+真源 = 本机 8793 只读口 (`/station/status` / `/snapshot/<cam>.jpg` / `/cam/src` / `/aoi/*` / `/station/ledger`)
++ 仓库配置真源 (`config/platform/zmax_product.json` · `param_spec.json` · `flows/calib_closure.json` · `src/lerobot/calibration/calibration_layer.py`)。
 写操作一律走后端闸门 (`POST /ctl/arm` 两步 + 5 分钟窗口), 扩展**不新开旁路、不静默写**。
 只对 **550B** (调试档, `vscode_debug=true`) 生效。
 
@@ -39,7 +39,7 @@ metadata:
    必须 `code -n <path>` (新窗口) 或触发 Reload Window; 或停掉旧实例再起。别以为"装了就生效"。
 2. **扩展真激活的判据** (不靠肉眼):
    - `grep -i zmax550b <logs>/window1/exthost/exthost.log` → 应有 `ExtensionService#_doActivateExtension zmax.zmax550b`
-   - 扩展内自带**自证日志**: `pullStatus()` 前 3 次把状态行同时写 `/tmp/zmax550b_ext.log` (与 8793 唯一依据可逐字段对账)
+   - 扩展内自带**自证日志**: `pullStatus()` 前 3 次把状态行同时写 `/tmp/zmax550b_ext.log` (与 8793 真源可逐字段对账)
    - 反过来: 自证日志出现 ⇒ 说明 `createTreeView × N` 与命令注册都没抛错 (抛错会中断 activate)
 3. **视图/命令 id 必须在 package.json 声明**: `createTreeView('未声明的 id')` 会抛错并让整个扩展激活失败。
    注册了但没在 `contributes.commands` 里声明的命令, 命令面板里看不到 (本次漏过 `zmax550b.calib.gsMap`)。

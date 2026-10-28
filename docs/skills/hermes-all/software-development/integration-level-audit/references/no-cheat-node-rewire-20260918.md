@@ -45,7 +45,7 @@ aligned = aligner.align(obs39, det3d)     # 只是把它拷进 39D 段位
    新 key; 再 `N._box3d_ensure()` 看解算器模式 (已知工具零点 / 偏移未知)。
    画布节点改码后**必须重启**控制台才生效 (`systemctl --user restart zmax-studio`)。
 
-## 两个配套坑 (都会让改造"看着生效实际没生效")
+## 两个配套坑 (都会让改造"看着生效其实没生效")
 
 ### ① 顶层常量惰性求值 — 插在常量定义之前会崩 import
 

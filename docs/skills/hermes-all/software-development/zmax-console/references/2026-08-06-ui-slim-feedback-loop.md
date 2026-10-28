@@ -11,7 +11,7 @@
 2. **删 UI 前必须 grep 全仓库引用**：删除按钮/控件后，`tl.addWidget(self.btn_x)` 等
    挂载行、`.value()` 读取、方法调用都是 AttributeError 隐患。本周期删 btn_win
    时漏删 `tl.addWidget(self.btn_win)` 差点崩；删 sp_dt/sp_t_end 时 start_sim 里
-   `self.sp_dt.value()` 必须改 getattr 保障。
+   `self.sp_dt.value()` 必须改 getattr 兜底。
 3. **同款信息只显示一处**：t 时钟（工具栏右上角 vs 底部状态栏）重复被点名 →
    删工具栏的，统一走底部 lbl_rt。教训：合并/重构布局后必查重复控件
    （本周期 lbl_clock 合并单行时残留两处定义）。

@@ -18,7 +18,7 @@
    实例: 「📐 2D→3D 解算」_EXTERNAL_LOC["yolo_align"] 原指 pixel_to_ray(yolo_state_aligner.py:11)
    — 2026-08-23 改 cam_mat0 矩阵反投影后成**死代码** (全仓库零执行调用, 只剩源码映射展示),
    真实反投影在 detect_3d 103-125 行 (rot90 坐标还原 W-u/H-v → cam_mat0.T@pc 世界方向 →
-   深度优先 / 预先固定 z 平面回退)。已改映射 → def detect_3d(53行)。铁律: 源码映射必须指真实
+   深度优先 / 写死 z 平面回退)。已改映射 → def detect_3d(53行)。铁律: 源码映射必须指真实
    执行符号。断点打 104-110(循环内)还需该帧 YOLO 检出框 (boxes 非空)。
 - 排查手法: 改代码/映射后必重启 studio.py; GUI 日志区 ①"🧮 状态空间真实仿真…"
   ②"🎯 YOLO 目标检测 (真实): n/3" ③"⚠️ ▶运行: 当前画布无…" 三条定位到分叉点。
@@ -32,13 +32,13 @@
   全是展示/调试: 播放演示 _demo_node_output (node_logic 124行)、📐2D→3D 单节点 align
   (1441 取缓存)、AOI 检测 (2384)。→ **两条平行链只有展示层相交**: 引擎闭环链
   (训练/3D/播放/总线, obs=上帝视角真值 — 仿真阶段合理) 与 YOLO 感知链 (metaworld 帧→
-  YOLO→3D→39D→43D, 独立验证真机同构链路能验证通过的证据采样)。
+  YOLO→3D→39D→43D, 独立验证真机同构链路能跑通的证据采样)。
 - "1 帧够不够/稳不稳" 不影响闭环正确性, 只影响展示证据置信度。真闭环 = R0/R1 真实化。
 
 ## 🔄 闭环真实化 R0 (方案2 落地)
 老倪拍板: 引擎世界换 metaworld + YOLO 每 N 步喂 obs。设计: docs/closed_loop_realization_design.md。
 - **R0 物理真实化** (tools/gui/state_space_sim_real.py, 已提交 109e6a68): 六层控制器源码
-  importlib 直载 (同引擎), 指令→env.step 真实物理, 感知真值直读。**单轮全流程验证通过**
+  importlib 直载 (同引擎), 指令→env.step 真实物理, 感知真值直读。**单轮全流程跑通**
   (seed100: 接近→对位→下降→抓取 grp0.41 锁存→抬起 gf=1 真夹持→转移→插入 cp0.93→完成)。
 - **R1 感知真实化** (YOLO 喂 obs) 未做 — 决策点 D2(前馈解析律 vs 引擎 MLP 语义错位)、
   D3(感知刷新 N) 待老倪拍板。
@@ -82,7 +82,7 @@ exec(compile(src, m.__file__, "exec"), m.__dict__)      # co_filename = 真实�
 `state_space_sim_real._load` 早已是这个写法, `state_space_sim._load` 直到 2026-10-17 才补齐 ——
 **看到同类 `spec_from_file_location` 就顺手对齐**, 别等下次再问一遍。
 
-调试器无关的保障 (断点绑定失败也能拿到"到底跑了没"):
+调试器无关的兜底 (断点绑定失败也能拿到"到底跑了没"):
 
 ```python
 if os.environ.get("SS_FF_BREAK") == "1":

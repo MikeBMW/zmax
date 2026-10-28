@@ -1,7 +1,7 @@
 # INDEX — 「集成审计」新增内容 (SKILL.md 指针因写入门禁未能落, 先读本文件)
 
 > ⚠️ 本文件是补位的索引: 2026-09-14 想把下面第 1 节写进 `SKILL.md`, 但被
-> "read-before-write + skill_view dedup 不返回内容"的交互阻塞 ⇒ 内容完整落在此处。
+> "read-before-write + skill_view dedup 不返回内容"的交互卡住 ⇒ 内容完整落在此处。
 > 下次前台会话请把第 1 节并入 SKILL.md, 并按第 4 节补 `## 参考` 指针。
 
 ## 1. 「断点没进来」= 分支级取证 (最高频追问形态) — 应并入 SKILL.md

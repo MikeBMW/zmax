@@ -22,7 +22,7 @@ episodes parquet 的 `to_timestamp = (视频帧数-1)/fps`。
 
 ## 三、离线训练 (无网)
 - `dataset.repo_id` 是 draccus 必需字段, 但填任意 id 都触发 hub 检查 → 断网必炸 OfflineModeIsEnabled
-- 两件套 (同 docker-gpu-training 主文): ① runner monkeypatch `huggingface_hub.HfApi.list_repo_refs` 返回空 _Refs; ② src/lerobot/datasets/utils.py `get_safe_version` 加本地保障 `if version in ("main","local",""): return version`
+- 两件套 (同 docker-gpu-training 主文): ① runner monkeypatch `huggingface_hub.HfApi.list_repo_refs` 返回空 _Refs; ② src/lerobot/datasets/utils.py `get_safe_version` 加本地兜底 `if version in ("main","local",""): return version`
 - 权重走 HF 缓存 + `HF_HUB_OFFLINE=1`; SmolVLM2-500M-Video-Instruct 缓存后 ~489 块秒载
 
 ## 四、续训 resume (三步缺一不可)

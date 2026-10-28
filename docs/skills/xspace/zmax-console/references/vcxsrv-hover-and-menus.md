@@ -50,7 +50,7 @@ powershell.exe -NoProfile -Command "Start-Process 'C:\Program Files\VcXsrv\vcxsr
 - 每次重启 GUI 前先清残留, 只留一个实例
 
 ## 5. 外部源码显示 (node_logic _EXTERNAL_LOC)
-- 截取外部源码用**符号名定位** (文件内搜 "class Xxx"/函数名), 不要依赖固定不变的行号 —
+- 截取外部源码用**符号名定位** (文件内搜 "class Xxx"/函数名), 不要依赖写死的行号 —
   映射行号与实际错 1 行 → 截到空行/错误内容 → 面板只显示"源码结束"标记
 - `_EXTERNAL_LOC[key] = (abs_path, line, "class Xxx")` — line 仅作 fallback
 - 节点"没有独立逻辑"= match_node 没匹配到注册 → 补 `_reg(key, [关键词], desc, fn)` + `_EXTERNAL_LOC`

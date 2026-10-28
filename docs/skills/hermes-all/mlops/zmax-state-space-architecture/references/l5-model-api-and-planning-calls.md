@@ -6,7 +6,7 @@
   `max_tokens` 给小了(实测 800) → 全部预算被 reasoning 吃掉 → `finish_reason="length"` 且
   **`content` 为空字符串**(看着像"模型没回答"。诊断: 打印 `list(message.keys())` +
   `len(content)` + `len(reasoning_content)` + `usage.completion_tokens_details.reasoning_tokens`)。
-  ⇒ 规划类调用 **max_tokens ≥ 9000**; 代码里加保障: content 空则回退输出 `reasoning_content`(标注"这是推理过程")
+  ⇒ 规划类调用 **max_tokens ≥ 9000**; 代码里加兜底: content 空则回退输出 `reasoning_content`(标注"这是推理过程")
 - **耗时**: 规划类(长 prompt / 短答案) 实测 20~40s; 带真图的视觉类 实测 ~122s(文本路也 120s 量级)
   ⇒ 一律**异步/后台调用**, 别在 GUI 主线程或同步链路里调
 - 账号可用模型: `deepseek-flash` / `deepseek-v4-pro`; 仓库配置的 `deepseek-flash` 即最新的 Flash(V4.1)

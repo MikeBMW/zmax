@@ -16,7 +16,7 @@
   抢先 → 双击变切换、无窗口 (与 ssfeat/sstest verif_layer 同坑)。修: params 加
   `viz_kind` (hist/attrib/scope/3d/video) + on_node_activated 顶部统一分派
   `_open_viz_node(kind)` (必须放 source 分支前)。
-- **可视化窗口数据前提 (老倪"无法打开"主因)**: scope 需 `self._ss_tr` (仿真轨迹)、
+- **可视化窗口数据前提 (老倪"打不开"主因)**: scope 需 `self._ss_tr` (仿真轨迹)、
   video 需 reports/*MLP*.mp4、3d 需 episode、hist/attrib 需 ff_probe (引擎末帧探针,
   在 `self._ss_last_sim.accel.probe`)。无数据双击 = 静默无窗 → **show_state_space_scope
   无数据时自动 `_ss_ensure_trace(force=True)` (引擎 ~3s) 再开窗** (双击必出波形)。

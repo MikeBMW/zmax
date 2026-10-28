@@ -19,7 +19,7 @@
   播放不卡, 断点可命中。
 
 ## ② harness/假模块的属性是 truthy
-`FakeMod.__getattr__` 万能保障返回 lambda ⇒ `trace = bool(getattr(module, "_trace_nodes", False))`
+`FakeMod.__getattr__` 万能兜底返回 lambda ⇒ `trace = bool(getattr(module, "_trace_nodes", False))`
 变 True ⇒ 走 `_trace_exec` 逐行执行 ⇒ 节点"执行失败且无日志"的假象(本次排查最费时的一环)。
 给假模块**显式**写 `_trace_nodes = False`(以及 `_ss_tr`/`_ss_round`/`_ss_io_frame` 等)。
 
@@ -29,7 +29,7 @@
 带 `source` 字段的节点会被"数据源切换"分支抢先(历史上多次踩)。
 
 ## ④ 断点所在的文件/进程不对
-- 断点必须设在**唯一依据码**上(右键 open_in_vscode 打开的是仓库真路径);
+- 断点必须设在**真源码**上(右键 open_in_vscode 打开的是仓库真路径);
   `open_node_source` 复制到 `/mnt/c/zmax_src_view/<name>` 的**副本**上设的断点永不命中。
 - 目标进程必须由 VSCode **F5/attach** 启动; 终端裸起 `studio.py` 的进程不绑任何断点
   (可用 `ps` 看命令里是否带 `debugpy ... launcher` 判断)。

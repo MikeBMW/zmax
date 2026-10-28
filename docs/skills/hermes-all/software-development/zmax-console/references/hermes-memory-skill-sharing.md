@@ -63,7 +63,7 @@ git -c http.sslVerify=false ls-remote "$M" refs/heads/main    # 远端 SHA == �
 ## 四、通知飞书 (含 @所有人 + 视频)
 
 - 凭据: `~/.hermes/.env` 里**只有** `FEISHU_APP_SECRET`, **没有** `FEISHU_APP_ID` 也没有 chat id →
-  app_id 保障 `cli_a87851ffe46b500d`; chat id 保障两个已知群:
+  app_id 兜底 `cli_a87851ffe46b500d`; chat id 兜底两个已知群:
   dataworld `oc_c0b4048546145c5c581ddd1a9e8f565d` · 静界群 `oc_74ef27c7c49782b7ffbf0543cf8a2d75`
   (两个群都发; 老倪说"所有人"= 每个群都 `@所有人`)。
 - 取 token: `POST open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal` {app_id, app_secret}

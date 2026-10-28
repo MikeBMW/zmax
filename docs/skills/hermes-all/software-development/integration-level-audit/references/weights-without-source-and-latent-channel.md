@@ -29,13 +29,13 @@ net = build_guess(); missing, unexpected = net.load_state_dict(ck, strict=False)
   1. 画面: 固定 state, 换 8 张真帧, 比 `v_enc` 输出余弦 (实测 0.9982~1.0000 ⇒ 图像支路近似常数);
   2. state: 单维 ±0.3 后比 `z_concat` 余弦 (实测 0.980~0.992 ⇒ state 真在用);
   3. 输出有限性 + 头维度 (实测头 98 维 = 7×14, 只报维度不宣称语义)。
-- **判据线预先固定不许抬**: 图像支路生效取 `cos < 0.995`; 过不了就红着报, 结论写成
+- **判据线写死不许抬**: 图像支路生效取 `cos < 0.995`; 过不了就红着报, 结论写成
   「该权重 state 主导 / 欠训练, 不能当视觉编码器」, 不许抬阈值换绿再对外说已接入视觉。
 
 ## C. 接进引擎: 加第三通道, 不换主编码器
 
 主编码器 (`Encoder` PCA 或 `latent_provider`) 决定 `p` / `goal_point` / Φ 的语义 ⇒ **不许顶掉**;
-否则 `goal_point` 由轨迹潜空间变成"当前帧自己", Φ 恒 0、∇Φ 恒 0, 看着在跑实际没目标。加一个观测通道:
+否则 `goal_point` 由轨迹潜空间变成"当前帧自己", Φ 恒 0、∇Φ 恒 0, 看着在跑其实没目标。加一个观测通道:
 
 ```python
 # manifold_engine.py
@@ -49,10 +49,10 @@ def _x_read(self):                            # 在 step() 末尾 rec["x"] = …
 - **世界模型残差才有信息**: `surprise = ‖z_now − 上一帧 z_pred‖ / ‖z_now‖`; 只存单帧前向等于存一个常数。
 - **常驻回路里 state 在 attach 时还没到**: `build_engine()` 后立刻 attach ⇒ `state_fn()` 返回 None ⇒
   provider 起不来, 而 attach 只在"源变了"时重入 ⇒ **整段跑完都没有该通道** (日志只有一句接不上)。
-  修法两条一起上: `state_fn` 回退到轨迹唯一依据末帧 (真数据, 不拿零填充) + 每周期懒重试 (上限 3 次, 失败明写)。
+  修法两条一起上: `state_fn` 回退到轨迹真源末帧 (真数据, 不拿零填充) + 每周期懒重试 (上限 3 次, 失败明写)。
 - 权重/注入系数放 env, **默认 0 (只观测)**: 判据里把 `w` 打出来, 让人一眼看出是"只观测"还是"参与势场";
   `w>0` 会改动作, 属新档位, 必须单独授权过闸。
-- 新增 `--encoder <name>` 时 **argparse 的 `choices` 也要加**, 否则报 `invalid choice` —— 看着像功能没实现, 实际只是参数解析。
+- 新增 `--encoder <name>` 时 **argparse 的 `choices` 也要加**, 否则报 `invalid choice` —— 看着像功能没实现, 其实只是参数解析。
 - 画布节点三档降级, 禁止 `return True` 回显参数: ①引擎在跑 ⇒ 读 `engine_latest*.json` 里那一路真值;
   ②否则自己加载权重跑一次; ③权重/state 缺 ⇒ `return False` + 说明缺什么。
 

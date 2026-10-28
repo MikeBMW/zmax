@@ -76,7 +76,7 @@ metadata:
 - `G.pose()` 姿态是**弧度**, 目标按度写 ⇒ 必须换算(3.1rad 当 3.1° ⇒ 47° 假姿态差/命令发错)
 - `PowerState.estop` 期间所有 move 直接 ABORT(前置条件不满足), 与授权无关, 要先人工解除急停
 
-位姿唯一依据: `taught_points.mod_slot_return`(0.6533,0.2107,0.2202 / ABC 143.2,−85.58,37.74)、
+位姿真源: `taught_points.mod_slot_return`(0.6533,0.2107,0.2202 / ABC 143.2,−85.58,37.74)、
 `mod_slot_approach`(0.6466,0.2056,0.1105); 脚本 `tools/place_back.py` + `tools/place_back_finish.py`。
 
 ## 坑（都踩过）
@@ -84,7 +84,7 @@ metadata:
 0. **`pkill -f 脚本名` 会杀掉自己那条命令**：命令行里就包含这个字符串，`pkill -f` 把自己 shell 一起 TERM（exit -15，后面的命令全不执行）。后台任务的 pid 就是 terminal 返回的 `pid`，用 `kill <pid>`；要停进程只按 pid 文件 + `/proc/<pid>/cmdline` 判定。
 0b. **50120 / 50113 奇异区拒动**：`move-abs` 默认走笛卡尔 MoveL，沿路径进奇异区就报「[奇异规避]使用奇异规避，沿路经无法到达终点」或「路径中改变的姿态最大值超过阈值」，回执是 `CHECK` 而不是 `PASS`，机器人一动不动。实测 60~280mm 的单步都可能被拒。两个解：① 每段拆 ≤60mm；② 直接发 `"motion": "J"` + `"allow_movej_retry": True`（关节空间 MoveJ，目标仍是笛卡尔位姿）——这条最有效。
 
-1. **夹爪服务名会变**：2026-10-12 是 `/gripper_driver`，2026-10-18 实测是 `/gripper_srv`。预先固定名字 ⇒ `ros2 service call` 卡在 "waiting for service to become available"，25~30s 后报 `rcl node's context is invalid`，现场表现就是「点关闭夹爪没反应」。⇒ 运行时探一次（`ros2 service list | grep ^/gripper`）并缓存。
+1. **夹爪服务名会变**：2026-10-12 是 `/gripper_driver`，2026-10-18 实测是 `/gripper_srv`。写死名字 ⇒ `ros2 service call` 卡在 "waiting for service to become available"，25~30s 后报 `rcl node's context is invalid`，现场表现就是「点关闭夹爪没反应」。⇒ 运行时探一次（`ros2 service list | grep ^/gripper`）并缓存。
 2. **`/gripper_pos` 同 topic 挂两个类型**（Float32/Float64）⇒ `ros2 topic echo` 直接报 `contains more than one type`，必须显式给类型：`ros2 topic echo /gripper_pos std_msgs/msg/Float32 --once`。
 3. **远端 `ros2` CLI 的 daemon 会坏**（xmlrpc 错）⇒ `ros2 service list` 返回 0 条。加 `--no-daemon` 立刻正常；别据此判断"服务没起"。
 4. **检测框会短一截**：YOLO 只盖住壳体，实测框到 y=118/124 而模块到 y≈156（头部漏掉）⇒ `_refine_extent()` 用 HSV（金属低饱和高亮 | 绿色拉环）行剖面从框内向外扩，允许 ≤3 行空洞。
@@ -102,9 +102,9 @@ metadata:
     - **绝不外扩**：被裁时检测框下方紧邻的是台面/背景亮面，按颜色连续性也会跳缝隙扩进去（实测 58px→92px）⇒ 直接用检测框原样。
     - **宽度按物理值收口**：模块宽 13.4mm、刚性距离 159.2mm ⇒ 画面里就该是 `fx×13.4/159.2 ≈ 32px`；可见掩膜常把背景亮面圈进来（实测 68px）⇒ 超过 1.25 倍就按物理宽度重建框。
     - **不做尺寸反解**：被裁时长轴（365mm）和宽度（77.7mm）反解都不对，真值 159mm ⇒ 直接取刚性参考距离。
-16. **别丢目标：三级保障**（老倪“稳住，别丢光模块”；实测只剩小头时 YOLO 连丢 13 帧，conf<0.25）：
+16. **别丢目标：三级兜底**（老倪“稳住，别丢光模块”；实测只剩小头时 YOLO 连丢 13 帧，conf<0.25）：
     - 一级 **模板匹配**：把上一次成功框内的灰度图存成模板（`/dev/shm/*_patch.png`），在 ±0.6 尺寸的搜索窗里 `matchTemplate`（TM_CCOEFF_NORMED ≥ 0.55 就接住）。实测相似度 1.00，框正确。
-    - 二级 邻域放大 2× 重检（对小目标有时有效；本例无效，仅作保障）。
+    - 二级 邻域放大 2× 重检（对小目标有时有效；本例无效，仅作兜底）。
     - 三级 **沿用上次框 + stale/detect_lost 标注**，画面继续更新（不冻住），但页面必须明说“沿用上次框（连续 N 帧未检出）”。
 
 ## 留证文件

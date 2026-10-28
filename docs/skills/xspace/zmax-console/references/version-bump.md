@@ -1,6 +1,6 @@
 # 小版本迭代 (VERSION.md 规范 + tools/bump_version.py)
 
-适用于「保存数据, 小版本迭代」「发版」「升级版本号」。**规范唯一依据 = 仓库根的 `VERSION.md`**; 改动只走脚本, 不手改。
+适用于「保存数据, 小版本迭代」「发版」「升级版本号」。**规范真源 = 仓库根的 `VERSION.md`**; 改动只走脚本, 不手改。
 
 ## 一条命令 + 6 处同步
 ```bash
@@ -19,7 +19,7 @@ update_checker.py `CURRENT_VERSION` · docs_sync.py `"version"`+`"zmax_version"`
 **先跑 `--dry` 再真写** —— 这个脚本的病是静默: 匹配不到就什么都不改, 但照旧打印"✅ 已写盘"。
 
 ## 🚦 发布/出包 (2026-10-01 实测: tag 打了却一个 CI 都没起)
-- **GitHub 只跑「被推 ref 那一棵树里」的 workflow**。唯一依据 `MikeBMW/zmax` 的 `.gitignore` 封了 `.github/`
+- **GitHub 只跑「被推 ref 那一棵树里」的 workflow**。真源 `MikeBMW/zmax` 的 `.gitignore` 封了 `.github/`
   ⇒ 打 tag 推上去**一个 run 都不会起**。判据: `git ls-tree -r --name-only <tag> | grep .github/workflows`
   必须非空(空 = 那个 tag 永远不会出包); 佐证: `workflow_dispatch` 指定 `ref=tag` 会 422
   "Workflow does not have 'workflow_dispatch' trigger"。修法: 把 `build-win-exe.yml` `git add -f` 入库,
@@ -33,7 +33,7 @@ update_checker.py `CURRENT_VERSION` · docs_sync.py `"version"`+`"zmax_version"`
 
 ## 🕳 三条当天踩到并已固化的坑
 1. **看板/面板空态不许留白** —— 没在训练时进度条留空 = 现场读不出"上一次是什么时候"。空态必须显示
-   **上次训练**(时间 + 结果/步数), 值来自状态唯一依据, 不许前端自造。
+   **上次训练**(时间 + 结果/步数), 值来自状态真源, 不许前端自造。
 2. **重启控制台用独立方式; 判活不许 `pgrep` 自匹配** —— 正路
    `systemctl --user restart zmax-studio.service`(ExecStart 指 worktree 的 launch_studio.sh);
    自查式脚本里 `pgrep -f "<模式>"` 会命中**脚本自己的命令行文本** ⇒ 误判"已有实例"而 33ms 静默退出(假成功)。
@@ -54,7 +54,7 @@ update_checker.py `CURRENT_VERSION` · docs_sync.py `"version"`+`"zmax_version"`
    `grep -rn 'Z-MAX v1\.0\.' tools/gui/` 一并对齐(老倪口径: 不要留下第二处旧号)。
 1c. 🔴 **打 tag 前先确认"这个 tag 会触发 CI"**: 见上面《发布/出包》一节。
 2. **旧版本号探测别用裸 `Z-MAX v(\d+\.\d+\.\d+)`** —— 会命中 changelog 里的历史串(实测探出 1.0.4) ⇒ 只在
-   `QLabel("Z-MAX v{1,2}…")` → 窗口标题 → 保障 这三档里取, 取众数。
+   `QLabel("Z-MAX v{1,2}…")` → 窗口标题 → 兜底 这三档里取, 取众数。
 3. `version_sync.py` 的 `zmax_ver` **不带 v**(`"5.17.0"`), 其余品牌位带**单 v** —— 一处口径错就会漏同步。
 4. `--from` 显式给上, 别依赖自动探测(探测逻辑本身也会漂)。
 5. 版本号只在**下次启动**的窗口标题生效: 已在跑的控制台不会自更新(别为此重启 GUI —— 老倪投诉过反复重启)。

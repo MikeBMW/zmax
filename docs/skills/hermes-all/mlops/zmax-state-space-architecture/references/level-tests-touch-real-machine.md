@@ -1,4 +1,4 @@
-# 能力测试跑在现场机上会动真机（真实遇到问题）
+# 能力测试跑在现场机上会动真机（真实踩坑）
 
 **结论：`tools/ss_level_tests.py` 不能在现场在用期间随手跑。**
 L2 套件里有**会真实接触真机**的用例（`t_sssensor_real`、`t_sobs_realalign`、`t_*_real*` 这一族，会读真机 / 驱动 aligner）。实测：在现场机上跑完一次 `--level L2`，控制器随即出现**关节限位报警**（`/real_joint_states` 读得 j3 = −2.95 rad = **−169°**，已在限位），且 `/robot_status` 的 `operation_state` 落进 **`drag`**。

@@ -31,7 +31,7 @@ Dockerfile.win 坑: 构建上下文必须从仓库根 (`docker build -f tools/gu
 - 绿色版/复制版: tools/gui 被复制到任意位置时同样错
 
 **修复 = 多候选探测 (state_space_sim.py `_find_ss_dir()` / node_logic.py `_node_repo_root()`)**, 顺序:
-1. env `ZMAX_REPO_ROOT` (显式指定仓库根, 跨机/绿色版部署保障)
+1. env `ZMAX_REPO_ROOT` (显式指定仓库根, 跨机/绿色版部署兜底)
 2. frozen → `sys._MEIPASS` (PyInstaller 解包资源目录, 配合根因一的 add-data)
 3. `__file__` 上溯三级 (源码仓库内运行)
 4. **向上逐级探测**: 从 `__file__` 所在目录逐级向上找含 `src/lerobot` 的目录

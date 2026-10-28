@@ -54,7 +54,7 @@ self._real_future = _REAL_SIM_EXECUTOR.submit(_work)
 ## 关联 (同指纹家族)
 
 - YOLO 0% 也可能来自 concat 0D 崩溃轮 (np.concatenate dims, `_peg_cur` 变 0D) —
-  防御 = detect_3d 输出形状守卫 (size!=3 丢弃保旧估值) + 拼接保障置零, 见
+  防御 = detect_3d 输出形状守卫 (size!=3 丢弃保旧估值) + 拼接兜底置零, 见
   perception-shape-guard-2026-09-09.md。排查先看 stderr traceback 行号, 别只看症状。
 - 排查工具: 命令行短跑对比 (全新进程 insert/full 各 100% = 代码正常, 问题在 GUI
   进程状态) → 再查同进程第二次/跨线程是否复现 (probe_thread_env.py 思路)。

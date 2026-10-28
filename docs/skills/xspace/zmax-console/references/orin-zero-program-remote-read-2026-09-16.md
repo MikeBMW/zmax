@@ -44,7 +44,7 @@ sudo docker run --rm --network host -e ROS_DOMAIN_ID=0 ros:humble-ros-base \
   `tools/ss_geom_calib.py --record peg_head|goal --note "谁在哪示教"` (可在 4060 容器内跑 → 不动 Orin),
   产物 `real_cell_geometry.json` 带 `by/note/updated_at` + 校验 (两点距离 20~600 mm、z 合理、点数齐) → `validated`。
 - 推理端 `tools/ss_local_infer_server.py`: 有 `state["z7"]` (7 维且 |值|≤2 m) → `input_map=tcp_pose_v1`;
-  几何缺失 → `z7=null` + `geom=缺失…拒算`; `SS_INFER_STRICT=1` 时无真 z7 直接 **409 拒绝**, 不用 placeholder 保障。
+  几何缺失 → `z7=null` + `geom=缺失…拒算`; `SS_INFER_STRICT=1` 时无真 z7 直接 **409 拒绝**, 不用 placeholder 兜底。
 - **诚实口径**: 示教前模型仍每帧被真调用 (GPU 0.8~1.5 ms), 但 `input_map=placeholder_v0` **逐条落盘** —
   汇报必须说"这不是真口径在驱动", 别让"模型在跑"听起来像"模型接上了"。
 

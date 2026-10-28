@@ -1,6 +1,6 @@
 # SmolVLM2 批量编码 + 特征实验口径 (2026-09-11 实测)
 
-## 1. 批量编码 API 形态（遇到问题 → 正解）
+## 1. 批量编码 API 形态（踩坑 → 正解）
 
 失败写法（整批报错）:
 ```python
@@ -24,7 +24,7 @@ z = (h * m).sum(1) / m.sum(1).clamp(min=1)           # 按 mask 加权 mean-pool
 - 128×128 输入的 `pixel_values` 会被 processor 上采样到 **[B, 17, 3, 512, 512]**（Video-Instruct 帧结构）
 - 单帧调用 (`images=[pil]`) 一直是 OK 的；只有批量才踩这个坑
 
-## 2. ⚠️ 静默保障 → 全零特征 → 假结论（本次最贵教训）
+## 2. ⚠️ 静默兜底 → 全零特征 → 假结论（本次最贵教训）
 
 批处理包 try/except 时，若 except 分支写 `Z.append(np.zeros(960, np.float32))`：
 - 全部批次失败 → 特征矩阵**全零**
@@ -43,7 +43,7 @@ z = (h * m).sum(1) / m.sum(1).clamp(min=1)           # 按 mask 加权 mean-pool
 
 - 与其它训练共享 4060 时：bs=1~4 + `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`
 - bs=16 × 512×512 在剩余 ~2.7GB 下必 OOM
-- **CUDA OOM 会落进上面的静默保障，双坑叠加** → 表现同样是"全零特征"
+- **CUDA OOM 会落进上面的静默兜底，双坑叠加** → 表现同样是"全零特征"
 - 大数据集先 SUB 抽样（每 N 帧取 1）出结论，有增益再全量编码
 
 ## 4. 特征实验 vs 几何量基线的公平口径

@@ -29,10 +29,10 @@ RealStateSpaceSim 复用六层控制器源码 importlib (perception/parallel/cog
 
 ## 探针钉死的 metaworld 契约 (全部实测, 别信引擎常量/代码注释几何)
 1. **控制锚 = obs[0:3] hand (腕部=真实夹爪 claw)**; endEffector site 是腕下 4cm 虚拟视觉点 —
-   拿它当夹爪位置 = 空夹根因 (探针12 前所有抓取全空夹; 探针里 "peg 接触" 实际是 peg 贴桌面 g3,
+   拿它当夹爪位置 = 空夹根因 (探针12 前所有抓取全空夹; 探针里 "peg 接触" 其实是 peg 贴桌面 g3,
    被误读成夹持!). 抓握: hand 降到 peg_z+0.02 (被销顶住 = 指已包销) 闭合即夹住。
 2. **metaworld 布局跨进程漂移 >10cm** (同进程同 seed 稳定) → 几何每轮 env 现场采样,
-   引擎预先固定常量 (PEG_POS0/HOLE_POS/HOLE_MOUTH) 是某次随机化快照, 只配展示。
+   引擎写死常量 (PEG_POS0/HOLE_POS/HOLE_MOUTH) 是某次随机化快照, 只配展示。
 3. **_freeze_rand_vec 必须先解冻再 reset(seed) 再冻结** — 先 freeze 后 reset = 布局锁死,
    多 seed 全跑同一轨迹 (0/8 实锤)。每轮 _reset 解冻→reset→冻结。
 4. **gripper obs 语义 1=开 0=闭 (与引擎相反)**; 空夹收敛 ~0.29, 深夹夹住 3cm 销也到 ~0.28-0.66 →

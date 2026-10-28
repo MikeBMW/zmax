@@ -6,7 +6,7 @@
 - 注入时机: env.reset() 之后、obs/_get_obs 之前 → 改 qpos + `mujoco.mj_forward` →
   引擎"现场几何/obs 全重读"(o[4:7] 销位/head site 随 body 转),决策链解析伺服自动跟踪新摆放。
 - 干扰后**每帧现场读**几何(禁旧锚): 抓取/插入全走现场 site → 平移 ±4cm + 小角 ≤15° attempt1 稳定成功。
-- **多布局 attempts 保障**: 同进程多次 run(cap="L4"),每次 `_jitter_round+=1` 得新随机干扰布局,
+- **多布局 attempts 兜底**: 同进程多次 run(cap="L4"),每次 `_jitter_round+=1` 得新随机干扰布局,
   直到 done — "来料重摆"语义,容忍干扰最终必达成功(GUI simulink_module 已接)。
 - **死局早停**: 仅**未夹持**时 peg 台面漂移 >10cm 或压翻 z<0.012 → break 交 attempts 换布局;
   夹持转移段 peg 离初始 >10cm 是正常 → grasped 时跳过,防误杀。

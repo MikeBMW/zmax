@@ -98,10 +98,10 @@ lerobot 用 Python 3.12 泛型语法, 镜像 Python 3.10 解析崩 SyntaxError, 
 /root/lerobot-venv/bin/python3 -u -m lerobot.scripts.lerobot_train --config_path config_act_peg_novae.yaml  # -u 无缓冲实时日志
 ```
 
-## 训练输出实时 (GUI 日志阻塞的根因 — 2026-08-08)
+## 训练输出实时 (GUI 日志卡住的根因 — 2026-08-08)
 
 1. **python 非 tty 块缓冲** — 输出攒 4K 才 flush → 命令加 `-u`
-2. **tqdm 用 `\r` 刷新不换行** — `for line in p.stdout` 永远等不到 `\n` → 进度条阻塞不显示
+2. **tqdm 用 `\r` 刷新不换行** — `for line in p.stdout` 永远等不到 `\n` → 进度条卡住不显示
    → 修: `_run_cmd` 块读 `p.stdout.read(4096)` 按 `\r`/`\n` 分行, 每行 emit (老倪铁律: 终端信息不简化, 截 600)
 
 ```python

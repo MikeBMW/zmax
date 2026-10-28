@@ -53,7 +53,7 @@ Simulink 窗口里 **VEH.5.xx 有两套独立编号**,用户说"VEH.5.13"必须�
 ## 3. dirname 层数铁律(第 3 次确认)
 
 `simulink_module.py` 在 `tools/gui/`,`os.path.dirname(os.path.abspath(__file__))` 2 层只到 `tools/`。
-**仓库根必须 3 层 dirname**。本次遇到问题:`_load_skill_library_groups()` 用 2 层 → 路径 `tools/flows/atomic_skill_tokens.json` 不存在 → try/except 吞异常 → 模块库技能分组 0(无报错!)。诊断:直接调函数看返回值,别信 LIBRARY 静态检查。
+**仓库根必须 3 层 dirname**。本次踩坑:`_load_skill_library_groups()` 用 2 层 → 路径 `tools/flows/atomic_skill_tokens.json` 不存在 → try/except 吞异常 → 模块库技能分组 0(无报错!)。诊断:直接调函数看返回值,别信 LIBRARY 静态检查。
 
 ## 4. 原子技能 → W²-VLA Token 工程化链路(2026-08-09 落地)
 
@@ -65,7 +65,7 @@ dds-atomic-api.php (242 条技能, 9 大类)
 ```
 
 - **6 元组 Token**(W²-VLA Latent Modeling Tokens 思想):`[SKILL_ID] [SEMANTIC] [SCENE] [STAGE] [MATURITY] [CoT]`,每 token 配 dimensions(id 64/semantic 384/scene 32/stage 16/maturity 8/cot 256)。
-- **模态编码固定 11 通道**:image/force/pose/tactile/joint/pointcloud/temp/signal/code/cad + state_2d 保障(无模态匹配时 state_2d=1)。生成器里 `enc` dict 必须先初始化 11 键,否则部分技能变 11、部分 10 → 结构不一致。
+- **模态编码固定 11 通道**:image/force/pose/tactile/joint/pointcloud/temp/signal/code/cad + state_2d 兜底(无模态匹配时 state_2d=1)。生成器里 `enc` dict 必须先初始化 11 键,否则部分技能变 11、部分 10 → 结构不一致。
 - **模块库组件区**:`_load_skill_library_groups()` 模块加载时 `LIBRARY += ...`(try/except 包住,缺文件不崩)。分组名 `("skill", f"🧩 原子技能 · {cat} ({len})", entries)`,每条 params 含 skill_id/tokens/action/modalities/encoding/gate。
 - **skill 节点**:NODE_TYPES 加 `"skill": {"cn": "原子技能", "color": "#00d4aa"}`,icon 映射加 `"skill": "🧩"`。双击 → `_export_skill_action`(单技能 → `flows/action_<id>.json`);`export_all_skill_actions`(画布全部 → `flows/actions_<ts>.json`,画板可加载)。
 - **模态提取规则**(关键词→通道):图/视觉→image;力/力矩→force;位姿/手眼/6D→pose;触觉→tactile;关节→joint;点云/3D→pointcloud;温度→temp;信号/IO/到位→signal;ID/条码/扫码→code;CAD/图纸→cad。
@@ -91,7 +91,7 @@ dds-atomic-api.php (242 条技能, 9 大类)
 ## 6. WSLg 窗口"看不到"三连查(2026-08-09,控制台启动)
 
 - 用户"没看到/你没启动"但进程在跑:①`xdotool search --name "XSpace Studio"` 查窗口存在 ②`xdotool getwindowgeometry` 看 Position —— **负值巨大(如 -32692,-32650,接近 16 位整数边界)= Xwayland 坐标溢出,窗口在屏幕外**,不是没启动。
-- 修复:①studio.py main() 里 `win.setGeometry(60,40,1400,900)` 保障(show 之前,`QGuiApplication.primaryScreen()` 取屏);②或 `QT_QPA_PLATFORM=wayland /usr/bin/python3 tools/gui/studio.py` 直接走 wayland(compositor 管坐标不飞屏;日志的 libEGL/ZINK 警告是软件渲染噪音,可忽略)。
+- 修复:①studio.py main() 里 `win.setGeometry(60,40,1400,900)` 兜底(show 之前,`QGuiApplication.primaryScreen()` 取屏);②或 `QT_QPA_PLATFORM=wayland /usr/bin/python3 tools/gui/studio.py` 直接走 wayland(compositor 管坐标不飞屏;日志的 libEGL/ZINK 警告是软件渲染噪音,可忽略)。
 - xdotool `windowmove` 对飞屏窗口无效(WM 拦截),resize 有效——别在移动上耗时间,直接换 wayland 平台重启。
 - 进程健康判定:`ps -o etime,%cpu -p <pid>` + 无崩溃 traceback = 窗口在;`xwininfo` 在 WSLg wayland 下不可用是正常的;wayland 平台窗口 xdotool 搜不到也正常(隔离)。
 
@@ -134,7 +134,7 @@ dds-atomic-api.php (242 条技能, 9 大类)
 - 弹窗版(v2)要点(若用户回退要求):场景大按钮卡片(3 QPushButton 横排含成功率,选中青色高亮)+ 推荐技能勾选(process_steps.atoms 去重 + key_atoms)+ 工艺指标预览。
 - 推荐数实测(v2):SCN-01 插拔 9 技能 / SCN-02 搬运 6 / SCN-03 检测 7。
 - **⚠️ 弹窗深色主题白字铁律**(仍适用任何 QDialog):深色主题下默认 QLabel/QComboBox 黑字看不清(用户明确报"字体是黑色,看不清,要改成白色")。必须 `dlg.setStyleSheet(""" QDialog{background:#0d1117;} QLabel{color:#e6edf3; font-size:12px;} QComboBox{background:#161b22; color:#e6edf3; border:1px solid #30363d;} QComboBox QAbstractItemView{background:#161b22; color:#e6edf3; selection-background-color:#0d3b33;} QCheckBox{color:#e6edf3;} QPushButton{background:#21262d; color:#e6edf3; border:1px solid #30363d;} """)`。子控件下拉列表必须给 `QAbstractItemView` 设背景色(否则下拉项黑字黑底)。
-- 场景 JSON 传 ECS:scene.html 读 `?scene=&json=`(base64url),JS `b64u()` = decodeURIComponent(atob(...));无 json 参数时 fetch `/api/scenes.json` 保障渲染。Simulink 端 `base64.b64encode(json.dumps(scene, ensure_ascii=False).encode())` + `urllib.parse.quote` 拼 URL。
+- 场景 JSON 传 ECS:scene.html 读 `?scene=&json=`(base64url),JS `b64u()` = decodeURIComponent(atob(...));无 json 参数时 fetch `/api/scenes.json` 兜底渲染。Simulink 端 `base64.b64encode(json.dumps(scene, ensure_ascii=False).encode())` + `urllib.parse.quote` 拼 URL。
 
 ### ECS 部署
 - `scene.html` + `api/scenes.json` scp 到 `/www/wwwroot/datadrive.world/` → **chmod 644**(scp 保留 600 → nginx 403)。

@@ -34,7 +34,7 @@ description: 磁盘红线守护, 训练产物只留最后ckpt, HF缓存清incomp
 判据: 子目录名集合 ⊆ 外层且无独有内容 ⇒ 整目录删。
 
 ### 根目录瘦身(老倪: “有用的整合”)
-散落脚本/小目录一律 `mv` 进工程对应位置 + 在旧路径 `ln -sfn` 留软链(兼容优先); 删完执行一遍
+散落脚本/小目录一律 `mv` 进工程对应位置 + 在旧路径 `ln -sfn` 留软链(兼容优先); 删完跑一遍
 `crontab -l | grep -oE '/home/ubuntu/[A-Za-z0-9_.-]+'` 逐项验证路径仍存在。
 
 ### 坑 4: 清理时控制台/GUI 会 ABRT
@@ -70,7 +70,7 @@ description: 磁盘红线守护, 训练产物只留最后ckpt, HF缓存清incomp
   uv 只清 `~/.local/share/uv/{cache,archives}`。
 
 ### 坑 6: 清理脚本会**自我匹配**, 把整个删除列表判成"活引用"
-- 踩法: 保障 grep `grep -rl "$name" tools/` 里, 脚本自己 (数组里写着这些名字) 被命中 ⇒ 全部跳过 = 白跑。
+- 踩法: 兜底 grep `grep -rl "$name" tools/` 里, 脚本自己 (数组里写着这些名字) 被命中 ⇒ 全部跳过 = 白跑。
 - 与 `pgrep -f "studio.py"` 把本 shell 杀了是同一类自匹配。**grep 必须 `| grep -v <本脚本名>`。**
 - 同理: 审计脚本要用 `--dry-run` 先验证"在役链一条都没匹配上", 再真跑。
 
@@ -117,7 +117,7 @@ train_cog_event_head.py / stage_moe_backbone.py)、checkpoints 其余 20 个目�
 
 ## ⚠️ 2026-10-13 实测: 325G → 296G (释放 29G) + 把"流不落盘"定成规矩
 
-老倪: 「torque_SCN-06-TRAY.jsonl 已 306.6 MB 这是什么？删掉，**不要自己保存**。清理磁盘，保证在 300G 以下」
+老倪: 「torque_SCN-06-TRAY.jsonl 已 306.6 MB 这是啥？删掉，**不要自己保存**。清理磁盘，保证在 300G 以下」
 台账 `reports/disk_cleanup_20261013_ledger.json` · 脚本 `tools/disk_cleanup_20261013.sh`
 
 | 阶段 | 释放 | 内容 |
@@ -147,7 +147,7 @@ train_cog_event_head.py / stage_moe_backbone.py)、checkpoints 其余 20 个目�
 
 ### 坑 7: 保护区核对别用错路径, 会自己骗自己
 本次脚本核对 `zmax_data/models/yolo_peg_live.pt` 报「❌ 丢失」, 实际在役软链在 **`models/yolo_peg_live.pt`**
-(→ `external/lerobot-smolvla-lew/models/`)。核对清单必须写**唯一依据路径**; 报丢失先 `ls`/`readlink` 复核再动手。
+(→ `external/lerobot-smolvla-lew/models/`)。核对清单必须写**真源路径**; 报丢失先 `ls`/`readlink` 复核再动手。
 
 ## 清理清单 (超红线时按此顺序, 2026-09-14 实测把 307G→295G)
 
@@ -167,7 +167,7 @@ train_cog_event_head.py / stage_moe_backbone.py)、checkpoints 其余 20 个目�
 2. **同族旧 run 判定要用严格白名单式匹配**: `^…_l[0-9]{7}_[0-9]{6}$` 才对, 拆族用 `awk -F'_l'`
    会把 `smolvla_lew_v10` / `v10_1h` / `d1` / `lora_200`(全是被 tools/ 引用的在役链) 也算成一族 ——
    实测第一版 cron 空跑就要删 `v10_1h`。**删前必须 `--dry-run` 并确认"在役链一条都没匹配上"**。
-3. **删训练 run 前再 grep 一次活引用**做保障; 被 reports/ 引用过不算活引用(run 记录了它的数字,
+3. **删训练 run 前再 grep 一次活引用**做兜底; 被 reports/ 引用过不算活引用(run 记录了它的数字,
    权重可由 joint_train_all.py 重训) —— 但要在台账里写明"哪个 report 曾引用它"。
 
 **仍在那里的大头 (需人工定夺)**: `datasets/cube_single_expert.h5` **95G** —— 只有 INTACT 论文复现脚本

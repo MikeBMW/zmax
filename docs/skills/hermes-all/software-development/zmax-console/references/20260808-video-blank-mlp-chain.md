@@ -13,7 +13,7 @@
 
 ## expert_mlp (MLP 蒸馏) 加载/推理链 — 3 个坑
 `outputs/rl_peg/expert_mlp.pt` 是 torch.save({"model": state_dict, "obs_dim": 39, "act_dim": 4}) 单文件:
-1. **load_policy (rollout_video.py)**: 曲线 ckpt 指向 `.pt` **文件非目录** → isdir False → 保障 glob 失败 → FileNotFoundError。
+1. **load_policy (rollout_video.py)**: 曲线 ckpt 指向 `.pt` **文件非目录** → isdir False → 兜底 glob 失败 → FileNotFoundError。
    修: `if policy == "expert_mlp" and os.path.isfile(base_dir):` 特判 — importlib 加载 distill_expert.py → ExpertMLP(obs_dim, act_dim) → load_state_dict(data["model"])。
    **必须设 `pol.state_dim = pol.obs_dim`** — 否则 run_rollout 的 st_dim 推断 `getattr(policy, "state_dim", 2)` = 2 → 输入 2D vs 权重 39x512 → `mat1 and mat2 shapes cannot be multiplied` → 动作 0.0
 2. **推理分支**: ExpertMLP 无 `select_action`/`_cond` → 落 else (awe 4 参数 forward) 报错 → 动作 0。
@@ -42,7 +42,7 @@
   不能只 tail 固定日志文件; 训练目录名/配置来自 `/proc/<pid>/cmdline` 的 `config_*.yaml` 可溯源
 
 ## 指令最小化 — 老倪连续纠正 4 次 (最重要的工作方式教训)
-- "YOLO 3D, 删掉检测" → 我理解成删 YOLO 功能/画布节点 → 又删背景行大字 → 老倪: "背景字删掉" → "**就是删掉 检测两个字**" → "**别删多了**" → "你做什么呢"
+- "YOLO 3D, 删掉检测" → 我理解成删 YOLO 功能/画布节点 → 又删背景行大字 → 老倪: "背景字删掉" → "**就是删掉 检测两个字**" → "**别删多了**" → "你干啥呢"
 - **教训**: 老倪的删除指令是**字面最小化的** — 删"检测"两字 = 只改字符串, 不是删功能/节点/背景;
   先 grep 确认目标范围再动, 改完小验证; 拿不准时用最小改动 (rename 而非 delete)
 - 关联记忆: "指令最小化(删X=先改名非删功能; 删检测=YOLO 3D改名)"

@@ -8,7 +8,7 @@ tags: [feishu, lark, gateway, websocket, hermes-setup, platform-config]
 
 # Feishu Gateway Setup for Hermes Agent
 
-## 🆕 99991663 复发处置 (2026-09-23 实测): agent 无法自己重启 → 用直推保障 + 让人重启
+## 🆕 99991663 复发处置 (2026-09-23 实测): agent 无法自己重启 → 用直推兜底 + 让人重启
 
 症状复现: gateway.log 里 `response ready` → `[Feishu] Sending response` → `Send failed: [99991663]
 Invalid access token`。三步诊断 (只读, 60 秒):
@@ -24,7 +24,7 @@ cat /proc/self/cgroup ; pid=$(pgrep -f 'hermes_cli.main gateway run' | head -1);
 只有运行时真的回绝了命令文本(cron job 里带 gateway 生命周期命令、或从 gateway 自身会话里发起)才需要转人工 ——
 别不试就直接告诉用户"agent 自己重启不了"。
 
-**保障(推荐同时做)**: `~/.hermes/scripts/feishu_notify.py` 直连开放平台发送 (每次自换 token, 不过 gateway),
+**兜底(推荐同时做)**: `~/.hermes/scripts/feishu_notify.py` 直连开放平台发送 (每次自换 token, 不过 gateway),
 哨兵脚本用它推送 → 即使 gateway token 死了, 训练/巡逻结果照样进群。两者并存无冲突。
 
 ## 用 sentinel + 直推交付结果 (推荐模式)
@@ -222,7 +222,7 @@ Full working command sequence (token + all 4 API calls): see `references/group-r
 ### 「我从飞书发消息但没反应」——先分清 没推到 / 被门控丢了 / 发错了地方
 
 群里**策略已是 `open` 也仍然默认要求被 @**（adapter `require_mention` 默认 True）：不带 @ 的群消息被
-`_admit()` 拒成 `bot_not_mentioned`，**只写 DEBUG**，gateway.log 里零痕迹 ⇒ 看起来像网关死了，实际是设计。
+`_admit()` 拒成 `bot_not_mentioned`，**只写 DEBUG**，gateway.log 里零痕迹 ⇒ 看起来像网关死了，其实是设计。
 要免 @：给该群配 `platforms.feishu.extra.group_rules`，或让用户 @ 机器人 / 走私聊（私聊不受 @ 门控，最干净的对照）。
 群里有多个机器人时 @ 必须命中本 app（群里出现 4 个机器人是常态）：`GET /open-apis/bot/v3/info` 取
 `app_name`/`open_id`，再核对消息详情里的 `mentions[].id.open_id`；@ 了别的机器人 = 本 app 一个事件都收不到。
@@ -269,7 +269,7 @@ curl -s "https://open.feishu.cn/open-apis/im/v1/messages/<message_id>" -H "Autho
   缓存过期的 99991663), 支持 `"文本"` 与 `--image <图> --text <说明>` 两种, `--chat <oc_…>` 换会话,
   `--dry-run` 只自检不发; 输出 `{ok, code, message_id, http, attempts}`, 失败自动换新 token 重试一次。
   图片要两跳(先 `POST /im/v1/images` 拿 `image_key`, 再发 `msg_type=image`)。
-- 目标会话标识从 gateway 维护的 `~/.hermes/channel_directory.json` 取(群与私聊都在里面), **别硬编码在脚本里**;
+- 目标会话标识从 gateway 维护的 `~/.hermes/channel_directory.json` 取(群与私聊都在里面), **别写死在脚本里**;
   凭据只存 `~/.hermes/.env` 的 `FEISHU_APP_ID/FEISHU_APP_SECRET`, **不进仓库**。
 - 已踩过的开放平台侧限制: 频率限制 `9499` 要退避重试 · 图片上限约 10MB(`image_type=message`) ·
   **视频必须 `msg_type=media`**(用 `file` 会回 `230055`)。

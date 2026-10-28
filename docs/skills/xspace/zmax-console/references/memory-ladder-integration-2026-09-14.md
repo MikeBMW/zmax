@@ -38,7 +38,7 @@ assy   disturb  3  0/3     610.8 (std 60.2)     1.00  3000    0.1
 
 ## 3. 两个根因 (代码级)
 
-1. **场权预先固定太低** (`src/lerobot/memory/potential_field.py::blend_action`):
+1. **场权写死太低** (`src/lerobot/memory/potential_field.py::blend_action`):
    旧式 `w = w_max·max(conf, w_floor)`; 桥用 `w_max=0.5, w_floor=0.2`, 现场 `conf ≡ 0` (离最近轨迹管 207mm)
    ⇒ w̄ 恒 **0.1** = 介入全部步数但只出力 10%, 扳不动 600mm 误差。
    已修 (v5.5.47, **增益调度**): `far = clip((d_perp−d_near)/(d_far−d_near),0,1)`,

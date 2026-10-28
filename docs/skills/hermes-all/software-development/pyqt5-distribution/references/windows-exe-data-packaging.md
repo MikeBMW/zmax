@@ -10,7 +10,7 @@ v3.2.0 Windows exe: 主控制台能打开, 但 Simulink 画布加载失败。
    `--add-data "logo.png;." "docs_sync.py;." "ppt_engine.py;." "update_checker.py;."` —
    **flows/ 目录 (画布 JSON, 1.2M) 没打包**。
 2. PyInstaller 只收集 import 的 `.py`, 从不自动收集数据文件。
-3. `studio._init_simulink` (延迟 400ms 创建 SimulinkModule) 有 try/except 保障 →
+3. `studio._init_simulink` (延迟 400ms 创建 SimulinkModule) 有 try/except 兜底 →
    statusBar "⚠️ Simulink 初始化失败"; 模块库/场景/合作闭环的 JSON 读取虽有 try/except
    返回空, 但用户点画布按钮必然报"找不到画布/加载失败"。
 
@@ -28,7 +28,7 @@ v3.2.0 Windows exe: 主控制台能打开, 但 Simulink 画布加载失败。
 
 注: docs_sync.py 已有 frozen 处理 (exe 目录 + LOCALAPPDATA fallback), 不用改。
 另注意 simulink_module.py 10427 行 `_pick_atomic_condition` 是 `dirname×2` (读 tools/flows/) —
-既有的层数 bug, 有 exists 检查保障, 本次未动。
+既有的层数 bug, 有 exists 检查兜底, 本次未动。
 
 ## 验证 — 模拟 PyInstaller frozen 布局 (offscreen)
 ```python

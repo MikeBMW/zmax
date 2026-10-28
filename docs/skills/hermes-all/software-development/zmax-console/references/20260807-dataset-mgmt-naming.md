@@ -28,7 +28,7 @@
 |---|---|---|
 | npz | `_load_npz_frame` | **内存提取**：`np.load` 后 NpzFile 数组访问是 lazy 解压（1.5s/帧）→ `_np.array(d["observations"])` 一次提取 → 翻帧 1ms；180° 旋转**仅 peg 数据**（`"peg" in local_npz`）——metaworld_act 是 MT50 官方数据方向正确**不转**（曾无条件旋转把 act 转反被纠） |
 | parquet | `_load_parquet_frame` | 系统 python3 无 pandas/pyarrow → 读不了；**有 npz 时 npz 优先** |
-| mp4 视频 | cv2 | AV1 编码 cv2 硬件解码失败（metaworld_act videos）→ npz 优先保障 |
+| mp4 视频 | cv2 | AV1 编码 cv2 硬件解码失败（metaworld_act videos）→ npz 优先兜底 |
 | json 采集包 | `_load_json_package` | orin_live 无图像 → 显示包 meta（源/帧数/关节）+ 每帧 state/action 文本；ep_slider 切包、frame_slider 切帧 |
 - 打开自动加载首帧（`QTimer.singleShot(0, self._load_video_frame)`）——frame_slider maximum 初始 0，手动点"加载帧"才更新导致"下一帧点不了"
 - 低清图放大加 `Qt.SmoothTransformation`

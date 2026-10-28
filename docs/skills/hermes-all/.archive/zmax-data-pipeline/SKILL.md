@@ -28,7 +28,7 @@ Orin(192.168.23.10:8765 采集) → 小芳Mac(192.168.23.1:8769 中转) → ECS�
 - **所有训练/推理脚本必须用 `.venv/bin/python` 跑** (系统 python3.14 无 torch; act_infer.py 用系统 python 会 `ModuleNotFoundError: No module named 'torch'`)
 
 ## CICD 部署链路 (4060 训练产物 → ECS → Mac → Orin)
-全链路已实测验证通过 (2026-08-02): 84M model.safetensors 上传 37.9s HTTP 200, SHA256 一致。
+全链路已实测跑通 (2026-08-02): 84M model.safetensors 上传 37.9s HTTP 200, SHA256 一致。
 ```
 4060 训练 → tools/cicd_deploy.py push (找最新 model.safetensors 推 ECS 二进制包)
          → ECS /latest (拉取即删)
@@ -57,11 +57,11 @@ Orin 推理服务 ──WS长连:8765──→ ECS ws_relay.py 广播 ──WS�
 - ECS WS 服务: `/root/zmax-relay/ws_relay.py`（websockets 16.1.1 已装; 启动用 `bash /root/zmax-relay/start_ws.sh`; 模板见 `templates/ws_relay.py`）
 - 协议: Orin→ECS `{"type":"heartbeat", online, model, infer_count, last_infer_ms, uptime}`; ECS→控制台 `{"type":"orin_status", ...last_seen}`; 新客户端接入立即推当前状态（打开即有数据）
 - **nginx `/ws` location 是遗留配置**（已指向 127.0.0.1:8765, 8765 原本空闲）→ 直接复用, WS 服务绑定 8765 即可, 无需改 nginx
-- Orin 端 `orin_infer_service.py`: WS 主心跳 + **HTTP 保障双通道**（`http_fallback()` 10秒 POST /orin/heartbeat）; Orin 无 websockets 库时自动降级纯 HTTP（`try import websockets except ImportError`）
+- Orin 端 `orin_infer_service.py`: WS 主心跳 + **HTTP 兜底双通道**（`http_fallback()` 10秒 POST /orin/heartbeat）; Orin 无 websockets 库时自动降级纯 HTTP（`try import websockets except ImportError`）
 - 本地测试 WS: `.venv/bin/python` 需先 `uv pip install --python .venv/bin/python websockets`（venv 里没装）
 - 验证: 模拟 Orin 推 3 次心跳, 控制台端逐条收到广播 = 链路通
 
-## lerobot fork 训练配置 Schema (2026-08-02 六轮遇到问题实测, 勿再逐条试错)
+## lerobot fork 训练配置 Schema (2026-08-02 六轮踩坑实测, 勿再逐条试错)
 此 fork (`lerobot-smolvla-lew`, src/lerobot/configs/parser.py 包装 draccus) 与上游格式不同。正确结构:
 ```yaml
 output_dir: outputs/train/act_closed_loop
@@ -103,7 +103,7 @@ wandb:
 ```
 **实测报错过的字段 (全部踩过)**: `--config-path` 连字符 → unrecognized; 顶层 `training:` 块 / `learning_rate` / `offline` / `device` / `repo_id` → `The fields ... are not valid for TrainPipelineConfig`; `policy.num_inference_timesteps` → ACTConfig 无此字段 (那是 smolvla 的); `policy.n_obs_steps: 2` → Multiple observation steps not handled yet。4060 实测: 1000 步 loss→1.962, 13-18 step/s, 1分16秒, GPU 0.39GB; 产物 `outputs/train/<job>/checkpoints/<step>/pretrained_model/model.safetensors` (~84M)。
 
-## metaworld → ACT 训练/部署 (2026-08-01 全链路实测验证通过)
+## metaworld → ACT 训练/部署 (2026-08-01 全链路实测跑通)
 
 ### 1. parquet → npz 转换 (`tools/ci/prepare_metaworld.py`)
 ```bash
@@ -246,12 +246,12 @@ rollout 视频全黑 (var=0.0, 60帧全零) 的根因:
 - 老倪问"数据跑哪了"时能答: 快照堵在 relay 队列 → 归档到 `/root/zmax-relay/archive/`（`snap_<ts>_<action>.jpg` 解码落盘 + 同名 .json 存 current_state/all_states/action）+ 从队列删除。实测 411 帧一次归档。
 - **上传即归档 (2026-08-02 最终版)**: `/upload` 端点收到 `meta.source == "orin_snapshot"` 或带 `snapshot_b64` 的包 → **直接解码归档到 archive/ 并从请求路径返回, 不进训练队列**。从此快照不再堆积队列, 无需定期清理; 队列只保留可训练的 orin 数据包。清理历史残留时按 `meta.source` 判别删除。
 - **帧端点优先级: 归档快照 PRIMARY (2026-08-02 实测)**: `/cam/latest.jpg` 和 `/cam/status` **先读 archive 最新 snap_*.jpg**（快照每 ~1s 更新 = 真实现场）, CAM_DIR 实时推帧目录其次（可能残留已停止的模拟推帧旧图, age_s 会涨到几分钟）。顺序反了页面就"图像不动"。验证: 隔 2s 拉两次 diff 字节 + status age_s < 2。
-- **/peek 归档保障 (2026-08-02 实测)**: 页面状态机轮询 `/peek` 渲染 current_state + snapshot_b64——快照自动归档后队列只剩数据包 → peek 拿不到快照 → 状态/图像全停。修复: 队列空时 `/peek` 回退返回最新归档快照 `{archived_snapshot: true, current_state, all_states, action, timestamp, snapshot_b64(重新base64)}`。队列优先、归档保障; 队列里有残留二进制包会遮蔽保障, 排空队列才能看到保障路径。
+- **/peek 归档兜底 (2026-08-02 实测)**: 页面状态机轮询 `/peek` 渲染 current_state + snapshot_b64——快照自动归档后队列只剩数据包 → peek 拿不到快照 → 状态/图像全停。修复: 队列空时 `/peek` 回退返回最新归档快照 `{archived_snapshot: true, current_state, all_states, action, timestamp, snapshot_b64(重新base64)}`。队列优先、归档兜底; 队列里有残留二进制包会遮蔽兜底, 排空队列才能看到兜底路径。
 - 真实帧 vs 模拟帧判别（np 分析）: 唯一颜色数 **>500 = 真实场景**（快照实测 4371 色, 亮度 std 32.6）, **==1 或 <50 = 纯色测试/占位帧**（std≈0）。老倪说"不是现场图像"时先拉帧算唯一色数, 别猜。
 
 ### Orin 全量系统状态上报 (sys 字段)
 - `hermes_gateway_mac/orin_sys_status.py` — 采集 CPU% / 负载 / 内存 / GPU(tegrastats或nvidia-smi) / 温度 / 磁盘 / ROS2 节点数 / 关键进程 / 推理服务 / 关节数。
-- 心跳 payload 加 `"sys": collect_sys_safe()`（WS 主 + HTTP 保障都加）; **ECS 两个状态存储都要加 `"sys": {}` 初始化并在 update 里收 `data.get("sys", {})`——zmax_relay.py 和 ws_relay.py 是两份独立存储, 只改一个则另一条路没 sys**。
+- 心跳 payload 加 `"sys": collect_sys_safe()`（WS 主 + HTTP 兜底都加）; **ECS 两个状态存储都要加 `"sys": {}` 初始化并在 update 里收 `data.get("sys", {})`——zmax_relay.py 和 ws_relay.py 是两份独立存储, 只改一个则另一条路没 sys**。
 - 部署后验证: 旧版 Orin 服务还在跑时 `/orin/status` 的 `sys` 为空 {}（正常, 等小芳更新重启推理服务）。
 
 ### 现场视频流 (cicd.html 直播窗口)
@@ -272,7 +272,7 @@ rollout 视频全黑 (var=0.0, 60帧全零) 的根因:
 - ECS 3.5G 内存偏紧（free 常 <200M, 两个 hermes-venv python 占 770M）——84M 上传前先看 free, OOM 崩 relay 后 `bash start.sh` 重启即可。
 
 ## relay/nginx 双挂恢复 (2026-08-05 实测: 控制台"采集查询失败红字")
-- **症状**: 控制台实时采集状态条红色 "采集查询失败"; `curl -s https://datadrive.world/api/relay/status` 返回空; `curl -sv` 也无输出 → 网络层实际通 (ping 39.102.211.79 29ms, DNS 正常) → 是 ECS 服务层挂了
+- **症状**: 控制台实时采集状态条红色 "采集查询失败"; `curl -s https://datadrive.world/api/relay/status` 返回空; `curl -sv` 也无输出 → 网络层其实通 (ping 39.102.211.79 29ms, DNS 正常) → 是 ECS 服务层挂了
 - **诊断顺序**: `curl -o /dev/null -w "%{http_code}" https://datadrive.world/` (000=服务挂) vs `https://github.com` (200=外网通) → `ping ECS` (通=主机活着) → SSH: `systemctl status nginx` + `ss -tlnp | grep :443` + `ps aux | grep '[z]max_relay'`
 - **双挂场景实测**: nginx inactive + relay 无进程 → 先 `systemctl start nginx` 恢复 active，但 **systemd 版 nginx (/usr/sbin/nginx) 加载 /etc/nginx/conf.d，不加载宝塔 vhost (/www/server/panel/vhost/nginx/)** → 443 仍无监听! 必须用宝塔二进制 `/www/server/nginx/sbin/nginx -t && /www/server/nginx/sbin/nginx` 启动（master PID 新起, 443 才监听）
 - **relay 重启**: `cd /root/zmax-relay && bash start.sh`（**不要**在 ssh 命令里 `&` 后台跑——会话结束即杀; start.sh 落盘是标准方式）; 验证 `curl -s http://127.0.0.1:39053/status` 本地通 + `curl -s https://datadrive.world/api/relay/status` 公网通
@@ -291,10 +291,10 @@ rollout 视频全黑 (var=0.0, 60帧全零) 的根因:
 9. **relay `/upload` 二进制崩溃 (2026-08-02 实测)**: 直接 `json.loads(raw)` 对二进制 safetensors 抛 **UnicodeDecodeError**（不是 JSONDecodeError！），handler 未捕获 → 整个服务崩溃退出 → nginx 502。修复: 先 `json.loads(raw.decode("utf-8"))` 包在 `except Exception` 里走二进制分支。判断二进制要用 decode 后 try, 别只捕获 JSONDecodeError
 10. **大文件上传 nginx 502 超时**: 84M 模型上传默认 proxy 60s 就断 → location 加 `proxy_read_timeout 300s; proxy_send_timeout 300s; proxy_connect_timeout 30s;`（200m body 限制够，超时才是坑）
 11. **nginx 反代剥前缀 (2026-08-02 小芳心跳联调实测)**: `location /api/orin/ { proxy_pass http://127.0.0.1:39053/; }` 会剥掉 `/api/orin/` 前缀 → `POST /api/orin/heartbeat` 到达 relay 时是 `/heartbeat`，而 relay 只认 `/orin/heartbeat` → 404/502。修复: relay 端 `if path in ("/orin/heartbeat", "/heartbeat")` 双路径兼容。**同理 `GET /api/orin/status` 会被剥成 `/status`（返回队列信息而非 Orin 状态！）** — 控制台/客户端读 Orin 状态必须用完整路径 `https://datadrive.world/api/relay/orin/status`，别用剥前缀的短路径。新加 nginx location 后先 curl 两条路径验证返回体差异。
-12. **relay do_POST 无 else 保障 → 未知端点 nginx 502**: do_POST 只 if 匹配已知路径、末尾无 else 时，未知端点不写任何响应 → nginx 报 502 Bad Gateway（不是 404）。修复: do_POST 末尾加 `self._send({"error": f"unknown endpoint: {path}"}, 404)`（do_GET 本就有 else，只有 do_POST 缺）。症状排查: curl 返回 502 但 relay 日志无对应 POST 记录 = 端点没匹配上 + 无保障。
+12. **relay do_POST 无 else 兜底 → 未知端点 nginx 502**: do_POST 只 if 匹配已知路径、末尾无 else 时，未知端点不写任何响应 → nginx 报 502 Bad Gateway（不是 404）。修复: do_POST 末尾加 `self._send({"error": f"unknown endpoint: {path}"}, 404)`（do_GET 本就有 else，只有 do_POST 缺）。症状排查: curl 返回 502 但 relay 日志无对应 POST 记录 = 端点没匹配上 + 无兜底。
 13. **Orin 心跳状态判别**: `/orin/status` 里的 `last_seen` 若长时间不变（如 10:59:52 停留）说明**没有真实心跳进来**——可能是模拟测试残留值或心跳路径不通。真实 Orin 上线时 last_seen 每 5 秒刷新、infer_count 递增。判断\"是否真部署\"看 last_seen 新鲜度，别只看 online:true。
 14. **审批窗口 BLOCK**: 前台命令跑超审批窗口会被 BLOCKED（"timed out without user response"）→ 大文件上传/长任务用 `terminal(background=true)` + `notify_on_complete` 跑, 别前台硬等（老倪明确"还用批准么"——部署操作直接干, 后台跑即可）
-15. **WS 心跳 vs HTTP 心跳状态源不同**: 控制台读状态有两条路——WS (`wss://datadrive.world/ws` 广播) 和 HTTP (`GET /api/relay/orin/status`)；WS 是实时主通道, HTTP 是轮询保障。两条路的状态是**两份独立存储**（ws_relay.py 的 ORIN_STATE vs zmax_relay.py 的 ORIN_STATE）——修一条路时另一条不自动同步, 联调时两条都要验
+15. **WS 心跳 vs HTTP 心跳状态源不同**: 控制台读状态有两条路——WS (`wss://datadrive.world/ws` 广播) 和 HTTP (`GET /api/relay/orin/status`)；WS 是实时主通道, HTTP 是轮询兜底。两条路的状态是**两份独立存储**（ws_relay.py 的 ORIN_STATE vs zmax_relay.py 的 ORIN_STATE）——修一条路时另一条不自动同步, 联调时两条都要验
 16. **大 JSON 包被误判为二进制 (2026-08-02 联调实测)**: relay `/upload` 原来只读前 4KB 嗅探 JSON——真实采集包(300帧≈97KB) 在 4KB 内无法完整解析 → 落二进制分支存成 `.npz`（丢了 `.json` 语义和 meta.frames）。修复: ①先看 `Content-Type` 含 `json` 直接走 JSON; ②否则读 64KB head 尝试完整解析(≤64MB 才尝试防 OOM); ③否则二进制流式。**另坑**: `is_json = "json" in ctype` 为 True 但 `obj` 只在解析分支里定义 → 跳过解析直接进存储块 → NameError 被 blanket except 吞掉 → 又落二进制。解析要先于分支判断, 确保 `obj` 已绑定。修复后三向验证: 小JSON / 大JSON(300帧) / 84MB模型 都要落对后缀
 
 ## 验证闭环

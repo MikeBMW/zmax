@@ -22,7 +22,7 @@ if self._vis["peg"] is not None:
         self._peg_shape_warned = getattr(self, "_peg_shape_warned", 0) + 1
         self.log(f"⚠️ 防御: 视觉 peg 形状异常 {np.asarray(self._vis['peg']).shape} → 丢弃保旧估值")
 ```
-② **concat 保障** (拼接处局部变量, 不改 self._peg_cur 本体 → 控制语义 None=等待定位 不受影响):
+② **concat 兜底** (拼接处局部变量, 不改 self._peg_cur 本体 → 控制语义 None=等待定位 不受影响):
 ```python
 _pc = self._peg_cur
 if _pc is None: _pc = np.zeros(3)

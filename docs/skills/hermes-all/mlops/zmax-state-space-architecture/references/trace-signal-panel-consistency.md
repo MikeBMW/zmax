@@ -29,14 +29,14 @@ LS.topics = _orig
 
 ## 3. 元数据过滤的连带效应: 端口整行消失
 - `signal_en.is_meta()` 覆盖 `ts/topic/json/src/count/bytes/n/seq/type/payload` (含末段命中)。
-  全路径 (建树/取值/保障) 都要过它, 否则 Trace 会列出 `topic/ts/json` 当信号。
-- 但 `ss.node.*` 端口**只有**信封字段时, 一过滤就什么都不剩 ⇒ 该端口整行消失。保障改为用
+  全路径 (建树/取值/兜底) 都要过它, 否则 Trace 会列出 `topic/ts/json` 当信号。
+- 但 `ss.node.*` 端口**只有**信封字段时, 一过滤就什么都不剩 ⇒ 该端口整行消失。兜底改为用
   **端口名**占一行 (值 `—`, 标「端口(未声明信号)」), 不要回信封元数据、也不要编 payload 字段名。
 
 ## 4. 删层之前先补归属规则
 - 删某层 (例如 SYS = 无画布节点的信号) 前, 先确认没有整类话题正落在 SYS 上: 缺归属规则的
   话题会被判 SYS 然后**随层一起消失**, 现象是"这个节点的输出在表里根本没有"。
-- `ss.node.<id>.<port>` 的唯一依据是 `config/platform/dds_topic_types.json` 的 `nodes.<id>`:
+- `ss.node.<id>.<port>` 的真源是 `config/platform/dds_topic_types.json` 的 `nodes.<id>`:
   `ins[].producers` / `outs[].consumers` / `layer`。归属口径:
   · in 口: Tx = 上游 fan-in 节点名, Rx = 本节点 · out 口: Tx = 本节点, Rx = 下游 consumer
   · `layer_of()` 取 `nodes.<id>.layer` (不按话题名前缀猜)
@@ -85,10 +85,10 @@ LS.topics = _orig
 - Rx 列用户会逐行对画布。闭环内部算出来的量 (帧/总帧/时间_s/估计值_len/估计误差_mm/估计抖动/
   残差/残差系统偏差_mm/占比_pct/接触概率/净接触) 在工程图上**没有任何一条线进来** ⇒ `rx_of()` 返回 `—`。
   写一个看着像连接的来源 (例如「L2 状态空间引擎 (无话题)」) 等于编连接, 会被当场要求删。
-- 反向也成立: 不许用 catch-all 前缀规则把这些量糊给某节点 (实测 `sstrace.*` 保障把残差/帧/估计
+- 反向也成立: 不许用 catch-all 前缀规则把这些量糊给某节点 (实测 `sstrace.*` 兜底把残差/帧/估计
   全判成「Z-MAX 引擎」)。口径: 能指到真正算它的 L2 节点就指 (估计→`ssest` 自适应状态估计器 ·
   残差/净接触→`ssinnov` 状态校正器); 纯写盘簿记量指进程 (帧/总帧/时间_s→`ss_dreamview` 3D 回放)。
-- 自查: 拿 live 快照的字段列表执行一遍 `tx_of/rx_of`, 把所有非 `—` 的 Rx 逐条回画布找线;
+- 自查: 拿 live 快照的字段列表跑一遍 `tx_of/rx_of`, 把所有非 `—` 的 Rx 逐条回画布找线;
   归属串里出现 `(无话题)` / `(无节点)` 这类后缀就是编造痕迹。
 - 同一口径适用于 `ss.node.*` 端口: 只是没人声明信号时, 才用端口名占一行 (见 §3), 不借此编来源。
 
@@ -98,7 +98,7 @@ LS.topics = _orig
 
 1. **备份三处**: 画布 JSON → `data/database/zmax/sources/canvas/_archive/<name>_before_<why>_<ts>.json`;
    `config/platform/dds_topic_types.json` 与 `zmax_engineering.db` → scratch 目录。
-2. **改画布唯一依据** `data/database/zmax/sources/canvas/state_space_obs.json` 的 `links` (按 link id 删)。
+2. **改画布真源** `data/database/zmax/sources/canvas/state_space_obs.json` 的 `links` (按 link id 删)。
    ⚠️ `flows/state_space_obs.json` 与根目录同名文件是软链/存档, 只有 `sources/canvas/` 这份在役;
    删完 `grep <link_id>` 只应命中 `_archive/`。
 3. **改话题注册表** `config/platform/dds_topic_types.json`: 删 `nodes.<id>.ins.<port>`, 并从对端
@@ -110,7 +110,7 @@ LS.topics = _orig
    `select count(*) from mw_link where link_id='<id>'` = 0 且 `mw_port` 里无该 `in` 口。
 5. **重建数据空间总线库** `PYTHONPATH=src python -c "from lerobot.dataspace import busdb; db=busdb.build(); busdb.save(db)"`。
    `busdb.json` 由工程库派生, 不重建就仍带旧话题 ⇒ 数据空间 Trace 里那条线/那个端口行照旧存在。
-6. **判据**: `verify_mw_db.py`(含"改库→话题名即变"的唯一依据判据) · `engineering_db.py check` ·
+6. **判据**: `verify_mw_db.py`(含"改库→话题名即变"的真源判据) · `engineering_db.py check` ·
    `verify_trace_cols / verify_trace_sync / verify_signal_panel / verify_global_source` · `ci/integrity_check.py`。
    端到端证据两句话就够: 该话题在 Trace 里 **0 行**; 被删端口从 Rx 里消失 (例如 `ssff.out2` 的 Rx
    只剩 `动作调制器`)。
@@ -129,7 +129,7 @@ LS.topics = _orig
 `layer_of` 走前缀属主给 L2 —— 用户一眼就能看出"Tx 是 L4 的节点, 层却写 L2"。
 
 - **定式**: `layer_of(key)` 先取 `tx_of(key)` 的第一段 → 查「节点显示名 → 层」表 (由工程库 + `naming` 生成);
-  取不到才走端口/规则保障。层永远是从 Tx 那个节点读出来的, 不另起一条判断。
+  取不到才走端口/规则兜底。层永远是从 Tx 那个节点读出来的, 不另起一条判断。
 - **Tx/Rx 只许工程节点名**。进程名 (`.py`)、服务名、总线标签 (「🥽 AR/AOI 信号总线」)、
   「本机真值流 (JSON)」这类字符串一律不许进这两列; 没有节点就 `—`。出处说明只进 tooltip 的「来源:」行
   (`attribution.source_of()`), 不占列。
@@ -176,8 +176,8 @@ LS.topics = _orig
 ## 16. 判据不能把 bug 写成期望
 
 - 曾有判据断言「gravity 的 Tx 是进程(非节点)」—— 它把假节点固化成契约, 修对之后反而判红,
-  下一个人会照着它把 bug 改回去。**判据的期望值必须来自唯一依据 (工程库/画布), 不许把"当前实现的样子"抄成断言。**
-- 别硬编码行数/节点数 (89 节点 → 画布加到 90 就假红): 断言"不少于基线"或直接从唯一依据取期望值。
+  下一个人会照着它把 bug 改回去。**判据的期望值必须来自真源 (工程库/画布), 不许把"当前实现的样子"抄成断言。**
+- 别硬编码行数/节点数 (89 节点 → 画布加到 90 就假红): 断言"不少于基线"或直接从真源取期望值。
 - 期望词表变了要同步改判据 (SK 阶段名从「① 接近 · SK01」统一成「接近」), 并在判据注释里写明口径来自哪里。
 
 ## 17. 「只留 L2」收口: 闸门只在 attribution 写一次, 顺序错了会静默清空
@@ -198,7 +198,7 @@ attribution:  l2_names() · names_l2(name) · tx_l2(key) · rx_l2(key) · layer_
 1. **topic 级闸不能套到工程话题上**: 先判 `if key 是 live 真值流话题 → 查 l2 属主`, 否则 `db / mw_topic`
    的 layer 字段 (可能空/L4) 会把正常 L2 端口全判掉。
 2. **阶段话题 (skill / skillphys) 的属主**是逐行的 (接近/对位/…), 必须在**行级**判 L2,
-   不能在 topic 级统一处理。
+   不能在 topic 级一刀切。
 3. **SK 归一化必须锚到结尾**: `SK0[1-8]$`。实测「⚖ 物理约束 · 惯性/质量率闸 (SK01-08)」名字里带
    `SK01-08`, 用无锚点正则就被当成 "SK 阶段节点 ⇒ L2" 漏进 Rx —— 用户一眼看出来
    (「Rx 怎么还有物理约束呢? 也没有这个节点啊」)。同理可视化层「前馈直方图」是 meta, 不得出现。

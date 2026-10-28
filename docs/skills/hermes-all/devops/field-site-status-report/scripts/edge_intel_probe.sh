@@ -78,5 +78,5 @@ LOG=$(systemctl cat zmax-edge.service 2>/dev/null | sed -n 's/.*StandardOutput=a
 if [ -n "${LOG:-}" ]; then echo "--- tail $LOG"; tail -n 12 "$LOG" 2>/dev/null; fi
 
 echo "===== PROFILE FILES (端侧通常没有) ====="
-ls /home/*/zmax/config/platform/zmax_product.json 2>/dev/null || echo "zmax_product.json: 无 (档位唯一依据只在工程机)"
+ls /home/*/zmax/config/platform/zmax_product.json 2>/dev/null || echo "zmax_product.json: 无 (档位真源只在工程机)"
 echo "===== END ====="

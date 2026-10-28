@@ -54,7 +54,7 @@ model = get_peft_model(model, LoraConfig(r=16, lora_alpha=32, lora_dropout=0.05,
                                          target_modules=[...], task_type="CAUSAL_LM"))
 model = model.to("xpu")          # ← 必须在 get_peft_model 之后
 ```
-**Gate**: 可训参数占比 1-3% · forward+backward 各验证通过一次
+**Gate**: 可训参数占比 1-3% · forward+backward 各跑通一次
 **端侧优化**: SDPA attention · channels_last · TF32（XPU 对应开关）
 
 ## 06 Quantize 量化

@@ -25,7 +25,7 @@ gui-venv311/bin/python tools/zmax_open.py status    # 只读现状
 
 - `/tmp/zmax_console_state.json`: `page`(当前页) · `task` · `scene` · `last_action=open_all` · `open_all_ok` · `open_all_steps[]`
 - `wmctrl -lG`: `XSpace Studio — Z-MAX…` / `3D场景` / `📈 实时监控 · Graphic 信号分析`
-- 唯一依据: 任务 `config/ss_task_binding.json`; 配置参数 `outputs/config_sheets/配置单_<TASK>_latest.json`
+- 真源: 任务 `config/ss_task_binding.json`; 配置参数 `outputs/config_sheets/配置单_<TASK>_latest.json`
 
 ## 界面入口 (2026-10-12 二次追加: 双击图标 → 配置中心; 三列 + 右下角启动按钮)
 
@@ -41,8 +41,8 @@ gui-venv311/bin/python tools/zmax_open.py status    # 只读现状
     再跑 `tools/desktop/install_launchers.sh` 同步 (桌面/应用菜单/仓库源**三份是拷贝, 不是软链**, 只改一份不联动)。
 - 任务配置表列: 任务ID/类型/**工程**/**3D场景**/**实时监控**/工艺步骤/… —— 工程=工程名+项目启动文件真名真路径
   (tooltip 给绝对路径, 判据会 `os.path.isfile` 校真); 实时监控=`#hex 场景 ×N` + `基础/未分类 白 #ffffff`
-  (唯一依据 `config/topics/scene_tags.json`); 3D场景=场景名+场景ID (`插拔场景 · SCN-01-FW`)。
-  三列内容/上色都从唯一依据算, 没绑场景的任务如实写「未绑场景」。
+  (真源 `config/topics/scene_tags.json`); 3D场景=场景名+场景ID (`插拔场景 · SCN-01-FW`)。
+  三列内容/上色都从真源算, 没绑场景的任务如实写「未绑场景」。
 - 右下角按钮「🚀 启动工程 · 信号 · 场景」(表格下方右对齐) = 确定配置→应用场景→开 画布+3D+信号分析,
   与 `zmax_open.py step2` 同一执行体。
 - 表宽坑: 列多时用 `ResizeToContents` + 只给「工艺步骤」`Stretch`; 两行单元格要
@@ -52,7 +52,7 @@ gui-venv311/bin/python tools/zmax_open.py status    # 只读现状
 ## 自动测试矩阵 (2026-10-12 加: 换任务→换场景→信号颜色)
 
 `tools/verify_task_scene_matrix.py --tasks TASK-01-FW,TASK-06-TRAY,TASK-07-AOI` —— 每轮真激活→切场景→open_all,
-核 6 项真值 (绑定唯一依据 / 画布 src_state / 回执 epoch>发命令时刻 且 task 匹配 / 3D 窗标题带场景名 /
+核 6 项真值 (绑定真源 / 画布 src_state / 回执 epoch>发命令时刻 且 task 匹配 / 3D 窗标题带场景名 /
 信号窗三场景色像素 / 配置中心该行两格文字+颜色), 收尾自动还原现场。实测 46/46 PASS。
 
 两条**假绿**教训 (都写进判据, 不许再犯):
@@ -110,9 +110,9 @@ gui-venv311/bin/python tools/zmax_open.py status    # 只读现状
 ## 🔭 观察窗口 (太阳系/3D/信号) 的状态显示铁律 (2026-10-19 实测)
 1. **视图不许只在 `__init__` 建一次数据**: `OrbitalArchView` 原来 `self.data.build()` 只在构造时跑一次,
    `_tick` 只推虚线相位 ⇒ 引擎 cycle 2.5s 内一动不动, 屏上是"打开那一刻"的死值。
-   正确: `OrbitalArchData.reload()` 重读全部唯一依据 (canvas 138KB≈2ms, 8 份 JSON 合计≈4ms) + 500ms `refresh()`,
+   正确: `OrbitalArchData.reload()` 重读全部真源 (canvas 138KB≈2ms, 8 份 JSON 合计≈4ms) + 500ms `refresh()`,
    且 `if not self.isVisible(): return`。
-2. **状态必须分源, 不许一个灯代表全部**: 每体按**它自己唯一依据**的 mtime 上色 (●在跑≤2.5s · ◐陈旧≤60s · ○离线),
+2. **状态必须分源, 不许一个灯代表全部**: 每体按**它自己真源**的 mtime 上色 (●在跑≤2.5s · ◐陈旧≤60s · ○离线),
    L2~L5 取 `layer_calls.jsonl` 末行的 ok/ms/帧龄; 文件停写就显示陈旧/离线, 不拿旧 ok 装绿。
 3. **口径写在画面上**: 扭矩 τ=M·(−∇Φ) 里 −∇Φ 是解析势场梯度, 模型张量没进 τ ⇒ 太阳标签必须写
    「τ源=解析势场(未接模型张量)」+「已限幅(T>T_max)」; 否则用户会以为 τ 是推理输出。
@@ -158,7 +158,7 @@ gui-venv311/bin/python tools/zmax_open.py status    # 只读现状
 ## 🔠 主参数 M 页的字号/字数 (2026-10-19 老倪: 「字体太小了看不到, 不要显示那么多字」)
 这台屏 3200x2000 / DPR=1.0 / 236 DPI ⇒ 9px 字实际只有 ~3pt, 必须按"看得见"定字号, 不能按常规 Web 习惯:
 · 太阳系: 标签 9→12 · 标题 12→15 · 图注 9→11; 行高 11→16 (常量 `LH`); 图注 8~9 行砍到 4 行
-  (保留可复核锚点: 力的相互作用 / 线义 青=…虚线 / L2~L5 / 唯一依据·帧龄·节点映射核对); 每颗球只留 2 行
+  (保留可复核锚点: 力的相互作用 / 线义 青=…虚线 / L2~L5 / 真源·帧龄·节点映射核对); 每颗球只留 2 行
   (名字 + 1 行关键量); 球径 +25%; `viz_stack` 高度 300→360 (从表行高 40→36、右下角 124→104 里省)。
 · 万有引力表: 表体 14→16 · 表头 13→15 · 映射行 10→12 且长句砍半 · 页脚 13→14 且 3 行→2 行 ·
   右下角 16px 粗体(5 行, 判据要 本刻总合力/全表32格和/主/Δ主 四个词)。
@@ -212,7 +212,7 @@ gui-venv311/bin/python tools/zmax_open.py status    # 只读现状
 ## ✨ 「谁在推理」的可视化: 光晕 + 外扩环 (2026-10-19 老倪: 「前馈加速模型运行 ⇒ 地球就有高亮且柔顺闪烁,
 依次类推, 每个模型运行推理时都有对应关系」)
 · `_live_s[key]`: 该层"此刻在推理"的平滑度 = live→1 / stale→0.35 / off→0, 一阶低通 (dt*2.4)。
-  来源是该层**自己的唯一依据帧龄**, 不是猜的; 未点 ▶ 运行时全为 0 ⇒ 画面完全静。
+  来源是该层**自己的真源帧龄**, 不是猜的; 未点 ▶ 运行时全为 0 ⇒ 画面完全静。
 · 光晕 `_infer_halo`: 画在球体**之下**, 半径 2.2r 径向渐变, alpha = 0.34×_live_s×(0.55+0.45sin(2πt/2s))
   ⇒ 2 秒一呼一吸, 柔顺不闪; 颜色 = 该天体色 `COL[key]` (与右栏文字同色, 形成对应关系)。
 · 外扩环 `_infer_ripple`: 画在球体**之外** (r+5 → r+18), 两个环错半周期, 1.5px, alpha=(1-f)^1.7×135×_live_s
@@ -235,7 +235,7 @@ gui-venv311/bin/python tools/zmax_open.py status    # 只读现状
   **不拿 (0,0,0,0) 冒充姿态**(四个 0 不是四元数, 也不是 S³ 上的点)。
 · 图形: 地球(=状态点)画完整三轴 (X#f85149 / Y#3fb950 / Z#4da3ff), 其余三层各一根方向轴 (局部 X 轴);
   **一律从球面外侧 r+1 起画** —— 三轴里那根绿轴与"动作"连线同色, 压在球面上会被像素判据误判成"线穿球"。
-· 诚实边界: 真机**姿态**四元数目前没有唯一依据 (plan_from_vff.rotation="未建模", tcp_pose.rx/ry/rz=None,
+· 诚实边界: 真机**姿态**四元数目前没有真源 (plan_from_vff.rotation="未建模", tcp_pose.rx/ry/rz=None,
   skill_phys.pose.angle=-1) ⇒ 界面显示的是"力/方向四元数", 不是编的姿态。姿态真值接入后换字段即可。
 · 判据 `verify_orbital_state.py` Q1~Q4: 与表 col_resultant 归一后逐位一致 (≤1e-9) · 平方和=1 ·
   无值时写"未算" · 三轴像素真的画在球外。4/4。
@@ -257,13 +257,13 @@ gui-venv311/bin/python tools/zmax_open.py status    # 只读现状
 · 行数/图注预算: **以 observation-window-live-state.md「精简的最终形态」为准**
   (10 行 · 14px · LH19 · 图注 3 行短句 · 预算 = H−22−图注行数×LH · 最小高 360)。
 · 判据 `verify_orbital_state.py` R1~R4: 合力最粗最长 (5.4px/104px vs 分力 3.2px/32px) · 数与表逐项一致 ·
-  四层分力齐全且**被标为主力的那层**更粗 (主力是哪层由 u_ff_gain 定, 不是预先固定 L2) · S³ 面板有墨。
+  四层分力齐全且**被标为主力的那层**更粗 (主力是哪层由 u_ff_gain 定, 不是写死 L2) · S³ 面板有墨。
 · 坑: N2 (近共线不糊成一条) 不能用端点最小距 —— 链式边共顶点必然 0px; 改成 5 个采样点带距的**中位数**
   (交叉一次不算糊), 这样才稳定。
 
 ## ⚖️ u_ff 加权 (改力场构造) + 尺度/视角/S³ 角距 (2026-10-19)
 老倪: 「改力场构造（给 u_ff 加权）；按照你的建议来」。
-· 唯一依据**只有一份**: `config/calib/force_field.json`
+· 真源**只有一份**: `config/calib/force_field.json`
     u_ff_gain (α, **缺省 4.0**: α=4 时各阶段前馈层/其它层 = 2.28~4.11×, α=3 时转移阶段只 1.7×)
     · arrow_ref_mps / arrow_max_px (箭头尺度) · apply_to_tau (默认 false)
   改文件即生效 (GravityField.reload 每 500ms 读一次), 不用重启控制台。
@@ -276,11 +276,11 @@ gui-venv311/bin/python tools/zmax_open.py status    # 只读现状
 · 「🌍 地球视角」胶囊 (左上 108×22, 可点): 切过去其它天体 energy×0.42 压暗、箭头 ×1.18。
 · S³ 角距 = `2·acos|⟨q1,q2⟩|` (同 q 0°, 正交 180°); **画布只留 `∠主力↔合力 xx°` 一句**,
   六对矩阵进悬停卡 (9px 两行上身就是"字太小字太多")。
-· 潮汐: 唯一依据没有"月球对地球的引力", 只有状态校正器残差 ⇒ 画虚线箭 + 标 "潮汐 |残差|x.xxx",
+· 潮汐: 真源没有"月球对地球的引力", 只有状态校正器残差 ⇒ 画虚线箭 + 标 "潮汐 |残差|x.xxx",
   **不冒充引力**。
 · τ 通路: `tdrive_bus.compute()` 加 `ff_gain` 参数与 `apply_to_tau` 开关 —— τ = M·(−∇Φ + α·u_ff)。
-  u_ff 唯一依据是 trace_live 的 **`前馈速度_*_mms`** (毫米/秒, 必须 /1000; 没有 _mps 键)。
+  u_ff 真源是 trace_live 的 **`前馈速度_*_mms`** (毫米/秒, 必须 /1000; 没有 _mps 键)。
   实测 α=3 时 |Δτ| = 0.283 N·m (27.911→27.867, −14.949→−14.669, z 已贴 −30 限幅)。
   默认 false ⇒ 控制回路零回归; 要进 τ 就把 apply_to_tau 改 true。
 · 判据: `verify_orbital_state` W1~W4 (主力=L4 且 ≥2× · 权重写进 src · 尺度公式 · 胶囊可切 · 角距口径);
-  主力改 L4 后必须同步改旧判据 ⑥/⑦ (原来预先固定 L2), 否则假红。
+  主力改 L4 后必须同步改旧判据 ⑥/⑦ (原来写死 L2), 否则假红。

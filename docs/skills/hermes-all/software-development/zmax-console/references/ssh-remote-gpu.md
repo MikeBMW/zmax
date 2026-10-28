@@ -58,7 +58,7 @@
 
 ## ⚠️ 第六次修复 (老倪: "你到底是不是在转送啊") — 本地镜像名 zmax-std ≠ 检测的 zmax-train
 - **识别信号**: 连接已成功 (`训练引擎 → 远程 GPU`), 点容器同步后只有 "🐳 容器同步开始…" 再无下文, 用户怀疑根本没在传
-- **真根因**: `_upload_container` 本地镜像检测预先固定 `"zmax-train" in docker_images_stdout`, 但本地实际镜像名是 **`zmax-std:1.0` (28GB)** → `has_local=False` → 误走"本地无 docker → 远程构建"分支 → 远程 `git pull` 又因远端未提交改动 (config_act_metaworld.yaml / reports/*.json) 冲突 → 整条链路挂死, 用户干等几分钟
+- **真根因**: `_upload_container` 本地镜像检测写死 `"zmax-train" in docker_images_stdout`, 但本地实际镜像名是 **`zmax-std:1.0` (28GB)** → `has_local=False` → 误走"本地无 docker → 远程构建"分支 → 远程 `git pull` 又因远端未提交改动 (config_act_metaworld.yaml / reports/*.json) 冲突 → 整条链路挂死, 用户干等几分钟
 - **修复 (双管齐下)**:
   1. **本地检测兼容双命名**: 遍历 `docker images` 输出, `_nm in ("zmax-train", "zmax-std")` 取实际存在的镜像名 `_img`, docker save 用 `_img` 而非硬编码 `zmax-train:latest`
   2. **远程已有镜像短路 (关键省时)**: 检测本地之前先 SSH 查远程 `docker images | grep -E "zmax-(train|std)"` — 有就直接 `_log("✅ 远程已有: ...") + "🎉 无需上传 — 远程镜像已就绪"` 并 return, **不传 28GB 大包**。实测 4090 已有 zmax-train:std 23.9GB / v8 / v7, 上传秒跳过

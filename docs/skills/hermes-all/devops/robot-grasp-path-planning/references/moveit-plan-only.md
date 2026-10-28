@@ -64,7 +64,7 @@ sudo docker cp zmax-moveit:/ws/out/same_source_check.json reports/moveit/same_so
 可复用入口: `tools/moveit_plan_only.py`(`--start-joints` 喂真关节, `--rename-prefix` 做关节改名,
 `--out` 落 JSON: 起/终点、关节轨迹、`tcp_path`、误差)。脚本内客户端一律命名 `*_cli`。
 
-## 4. 三个必遇到问题
+## 4. 三个必踩坑
 - **关节名与真机不一致**: URDF 里常是带前缀的 CAD 名(`<robot>_joint_1..6`), 控制器报的是 `joint_1..6`。
   先加改名映射做**非侵入实验**, 但报告里要写明"配置尚未正式对齐"。
 - **`compute_fk` 传未知关节名会把 `move_group` 打崩**(崩溃栈落在 `MoveGroupKinematicsService::computeFKService`),
@@ -81,7 +81,7 @@ FK(真机关节角)  vs  真 /robot/tcp_pose
 - 修法: 采真机 (关节角, TCP) 配对(两路都是实时流即可), 拟合 6 个关节零位偏移(必要时再加基座变换), 复验 FK < 5mm。
 
 ## 6. 报告口径
-分三段: ①它跑没启动(容器/镜像/日志) ②它能不能规划(`plan_code` / 路点数 / 终点误差)
+分三段: ①它跑没跑起来(容器/镜像/日志) ②它能不能规划(`plan_code` / 路点数 / 终点误差)
 ③**它现在能不能当真轨迹**(同源闸结论)。未过闸就明说"架构上该由它出, 但当前出不来真轨迹",
 并交代替代折线的真实身份(示教位姿 + 真机 TCP 推得), 不冒充规划结果。
 
@@ -112,7 +112,7 @@ x y z a b c —— 在哪里? 搜什么?」。三个"位置"指的是同一件�
   `bash -lc 'source /opt/ros/humble/setup.bash; export ROS_DOMAIN_ID=42; python3 …'`;
   起点用真关节(不要 IK 猜), `RobotState` 从 `moveit_msgs.msg` 导入(`sensor_msgs.msg` 里没有)。
 - 🔴 **比姿态用四元数夹角, 绝不用 RPY 三元组**: RPY 不唯一(同一姿态有多组解) ⇒ 直接比 a/b/c 会得出完全错误的结论
-  (实测按 RPY 比"差 25°", 按四元数夹角只有 **2.29°**、位置差 **4.86mm** ⇒ 规划实际是合格的)。
+  (实测按 RPY 比"差 25°", 按四元数夹角只有 **2.29°**、位置差 **4.86mm** ⇒ 规划其实是合格的)。
   报告里位置差(mm)、姿态差(deg)、终点误差(`end_err_mm`)三者对齐着写, 别只给一个。
 - 末点姿态差也要看:`end_err_mm` **只量位置** ⇒ 位置 5mm 而姿态差 40° 的规划照样能过 ——
   抓取类任务两个都要报。

@@ -61,7 +61,7 @@ for i, c in enumerate(reversed(colors)):        # 逐点分色
 - **雷达图的刻度数字会叠在第一个轴标签上**。`va.tick_labels.number_format = ";;;"`
   （同时 `number_format_is_linked = False`）把数字隐藏，网格环保留。
 - **`LineSeries` 没有 `marker_format`**（`AttributeError`）。用 `ser.marker.style` / `ser.marker.size`，
-  marker 填色包 try/except 保障；线本身用 `ser.format.line.color`，并关掉 `ser.smooth`。
+  marker 填色包 try/except 兜底；线本身用 `ser.format.line.color`，并关掉 `ser.smooth`。
 - **图例位置只有几个固定档，压到结论条时没法微调**：页面级手绘图例（色块 + 文字，2×2 排列
   `_lx = 8.60 + (i % 2) * 1.66`）比 `ch.has_legend` 可控。
 - **交付前数一遍 embeddings**：`unzip -l out.pptx | grep -c 'embeddings/'` 必须等于图表数。

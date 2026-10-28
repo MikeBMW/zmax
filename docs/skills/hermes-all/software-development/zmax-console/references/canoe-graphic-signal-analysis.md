@@ -38,7 +38,7 @@
 * 信号名口径 (老倪明确要求): 左侧显示**话题.字段全路径** (`/robot/tcp_pose.pose.position.x` / `pose.x`),
   话题行 `/robot/tcp_pose (PoseStamped)`; 本机源没数据也先把 `pose (latest.json) 等数据…` 列出来。
 * 调色板按"缓冲区创建顺序"分配, 窗口里信号多了 (joint[0..11] 先建) 颜色会整体后移 ⇒
-  取颜色**从控件读** (`store.get(k).color`), 别在测试里预先固定十六进制色值。
+  取颜色**从控件读** (`store.get(k).color`), 别在测试里写死十六进制色值。
 * **选时间窗不要强行打开「跟随最新」**: 原 `_on_window_changed` 无条件 `follow=True` ⇒ 把用户手动平移的位置顶掉,
   且按钮勾选状态与实际行为不符。跟随应由「⇥ 跟随最新」独立控制。
 * **波形像素数回归必须先"定格"** (停数据源 + 关跟随 + 时间窗=全部), 否则脉冲型信号随窗口漂移, 前后两次抓图天然差几百 px,
@@ -46,7 +46,7 @@
 
 ## 离线取证模板2 (名字/模式)
 
-## 📡 状态空间实况快照 = 3D 面板 / 波形页 / 外部核对 的单一唯一依据 (2026-10-11)
+## 📡 状态空间实况快照 = 3D 面板 / 波形页 / 外部核对 的单一真源 (2026-10-11)
 
 老倪: 「3D 场景左下角这些实时变化的数据 topic 是什么? 对应实时监控哪个波形? 当前状态空间工程的所有数据要同步」。
 
@@ -92,7 +92,7 @@
   光模块/光模块头=`YOLO 3D 检测 (旁路 JSON)` · 光模块头到孔=`L2 引擎 (孔口 objects3d.json)` · 其余=`L2 状态空间引擎 (无话题)`) ·
   其余 → `本机真值流 (JSON)`。
 * **DDS 名字与「数据空间」页同源**: 键 = `ds.<登记话题名>.<字段>`, 名称列渲染成 `zmax/<话题名>.<字段>`,
-  来源列 `DDS · zmax/<话题名>` (唯一依据同为 `zmax_data/dataspace/{trace.jsonl,live.json,busdb.json}`)。
+  来源列 `DDS · zmax/<话题名>` (真源同为 `zmax_data/dataspace/{trace.jsonl,live.json,busdb.json}`)。
   实测 9/9 登记名都能命中; 但**有名字 ≠ 有帧** —— live.json 口径 `registered=24 / allowed=9 / alive=5`,
   没在发的话题 0 条是如实为空, 不是 bug。DDS 行「帧龄」列是 `-` (未算话题级帧龄), 值 `-1` = DDS 未提供约定。
 * ⚠️ **「找不到 topic」先看数据范围下拉**: 默认 `3d` 只列 3D 场景数据 (`sstrace.*`); ROS/DDS/本机真值流要切
@@ -135,7 +135,7 @@
   (c) 拉 Qt 子进程的 env 坑与归一按 name 配对的坑仍然成立 (见下)。
   当前按钮口径: `🧮 状态空间`→open_state_space(主画布) · `🖥 产品大屏`(原「工位总览」, 服务一字不动)→open_station_page ·
   `🧭 3D场景`→open_ss_3d · `🌐 数据空间`→open_dataspace_window · `📈 实时监控`→open_monitor_window(独立功能页)。
-* 新页只读渲染 **同一份画布唯一依据** (`flows.canvas_path()`), 纯 QGraphicsScene (无 GL ⇒ 不踩"第二个 GL 视图"坑),
+* 新页只读渲染 **同一份画布真源** (`flows.canvas_path()`), 纯 QGraphicsScene (无 GL ⇒ 不踩"第二个 GL 视图"坑),
   右侧点节点看参数。`flows.load_canvas()` 返回 **(data, errors) 2 元组** (不是 4 元组; 4 元组在 `project_file.canvas_status()`)。
 * 🔴 **拉 Qt 子进程必须清平台/插件变量**: 控制台进程 env 带 `QT_QPA_PLATFORM=xcb`, 子进程会去
   `gui-venv311/.../cv2/qt/plugins` 找 xcb 插件 ⇒ 打印 "Could not load the Qt platform plugin xcb ... failed to start"
@@ -143,14 +143,14 @@
   修: 子进程 env 去掉 `QT_QPA_PLATFORM` / `QT_QPA_PLATFORM_PLUGIN_PATH` / `QT_PLUGIN_PATH` (+ 用 `_zmax_sane_env()`),
   启动脚本里也 `unset` 一遍 (双保险)。
 * **加载后归一 `normalize_after_load(persist=True)`**: 两个入口 (状态空间按钮 / 文件→加载工程文件) 共用
-  加载 → 节点尺寸规则(280×110) → `_relayout_row_gaps()` → **几何落盘回唯一依据** ⇒ 唯一依据==屏幕, 收敛后幂等。
+  加载 → 节点尺寸规则(280×110) → `_relayout_row_gaps()` → **几何落盘回真源** ⇒ 真源==屏幕, 收敛后幂等。
   ⚠️ **必须按 `name` 配对节点**: `load_flow_file` 给画布节点分的是**新 id** (id_map), 按 id 与文件配对会全部落空
   ⇒ `fields` 恒 0、归一形同虚设 (实测踩到)。
-  ⚠️ 改完画布唯一依据后要跑 `tools/engineering_db.py build`, 否则 `check` 报漂移 `['project','canvas']` (库跟着唯一依据走)。
+  ⚠️ 改完画布真源后要跑 `tools/engineering_db.py build`, 否则 `check` 报漂移 `['project','canvas']` (库跟着真源走)。
 * **自测通道**: `/tmp/zmax_nav_cmd` 新增 `ss_page` / `monitor` ⇒ 能从控制台内部触发按钮本体自测, 不必盲点坐标。
 * 判据: `tools/probe_canvas_menu.py` 已更新 (10 项菜单真触发 · 5 个工具栏按钮 `isVisibleTo` ·
   🚀Z700 断言"没挂进任何布局"(`_z.btn.parent() is None`) · 4 个按钮点击真转发到方法);
-  `verify_load_normalize.py` 9 项 (含"搅乱唯一依据→归一→回读复原"+幂等+唯一依据==屏幕)。
+  `verify_load_normalize.py` 9 项 (含"搅乱真源→归一→回读复原"+幂等+真源==屏幕)。
   **Z700 从工具栏撤下, 能力不丢**: `open_z700_flow` 保留 + 画布(C)菜单固定入口。
 
 ## ⏹ 3D 一停竖线就"不见了" (2026-10-11 老倪: 「同步时间轴不要消失 —— 我移动 3D 场景的播放按钮, 刚停止, 你的时间轴就不见了」)
@@ -167,7 +167,7 @@
 * **判据**: `verify_pin_persist.py` (10 项): 播放中 x==7.500 ⇒ `fresh=False` 后 **仍 7.500 且可见**、
   停止后连刷 5 次不变、标签 🕒 == 停前最后一帧 ts、反向拖动 (12.000) 保护、无播放历史也不隐藏;
   真机取证件 `probe_pin_stop.py` (观测现场) + `sim_pb.py`+`start_gw.sh` (写 `trace_live.json` 模拟播放→突然停,
-  再读 watch 日志看 `竖线x` 是否原地不动; **用完必把唯一依据 cp 回去**)。
+  再读 watch 日志看 `竖线x` 是否原地不动; **用完必把真源 cp 回去**)。
 * ⚠️ 用真实在役 `trace_live.json` 做测试时, 3D **正在播放** ⇒ TIME-CORR 这类"快照 vs 最新样本"同刻断言会
   **假失败** (文件在测中还在跑): 先把 3D 跑到尾/停下 (帧==总帧 且 mtime 变老) 再跑。
 * 命名口径: 窗口标题只写「📈 实时监控 · Graphic 信号分析」—— 老倪明确要求删掉“(CANoe 式)”那几个字
@@ -180,8 +180,8 @@
   闪烁来自"重建过程"本身, 不是内容不一致。
 * **修法 (两条一起上, 缺一不可)**:
   ① **记账 + 早退**: `load_flow_file()` 末尾记 `_loaded_src/_loaded_src_md5/_loaded_fp`; `normalize_after_load()` 末尾记
-     `_norm_md5`(写回后的唯一依据 md5) + `_norm_fp`(`_canvas_fingerprint()`); 点按钮时若
-     `唯一依据 md5 == _norm_md5 且 画布指纹 == _norm_fp` ⇒ **直接 return, 零重绘** (只落一行日志) ——
+     `_norm_md5`(写回后的真源 md5) + `_norm_fp`(`_canvas_fingerprint()`); 点按钮时若
+     `真源 md5 == _norm_md5 且 画布指纹 == _norm_fp` ⇒ **直接 return, 零重绘** (只落一行日志) ——
      这就是"已在显示该文件内容的归一后状态"的机器判据。
   ② **真要重建就冻结**: `self._frozen(True)` → `clear()+load+normalize` → `finally: self._frozen(False)`;
      `_frozen` 对 `canvas` + `scene.views()` 调 `setUpdatesEnabled(not on)`, 解冻后 `scene.update()` 刷一帧
@@ -189,7 +189,7 @@
   ③ 画布内容指纹口径: 非 `type=='row_bg'` 节点的 `(name, x, y, w, h)` 排序元组 —— 与文件同口径可直接比。
 * **判据**:
   · `verify_no_flicker.py` (12 项, offscreen): 首开真加载+记账 · 同一份再点**没触发 clear() 且 item 对象同一批** ·
-    画布指纹==唯一依据指纹 · 换内容必须真重建(之后又回到不重建) · 重建被 `_frozen` 包住 · 唯一依据 md5 前后一致。
+    画布指纹==真源指纹 · 换内容必须真重建(之后又回到不重建) · 重建被 `_frozen` 包住 · 真源 md5 前后一致。
   · `shutter_flicker_probe.py` (真机): 写 `ss_canvas` 到 `/tmp/zmax_nav_cmd` 后连拍 8 帧, 逐帧有效像素占比 + 相邻帧像素差
     (近拍 0.12s), 判无空帧/半成品帧/首末一致。
   · 测试别写错期望: 复制同一份文件≠"换了文件" (内容指纹相同 ⇒ 本就不该重建); `load_flow_file` 内部自己会
@@ -250,7 +250,7 @@
   打印 `tree.mapToGlobal` + `columnWidth` + 前几行 `text(0)`/`visualItemRect`, 并 `w.tree.grab().save()`
   —— 直接把控件自己的图拿去做 OCR (`ImageOps.invert` + 4x 放大, tesseract 才认深底亮字)。
 * 离线可跑的列宽/可读性判据: `verify_tree_contrast.py` (浅色像素占比 <2% + 每行"深底+笔画"可读行数) ──
-  比"看截图”可靠。
+  比"看截图”靠谱。
 
 ## 🔥 整页「反应非常慢」= `_tick` 里的 itemChanged 风暴 (2026-10-17 实测, 主线程 99.9%)
 
@@ -302,8 +302,8 @@ Signal Logging 落 CSV · 导入 CSV 回放 · 导出 CSV/PNG (落 `zmax_data/gr
 白色就是所有颜色的信号都显示, 没有分类的信号都是白色」。
 
 * **颜色/任务映射只准有一份**: `tools/ss_scene_switch.py` —— 插拔 `#2e8b57`(绿) · 摆盘 `#1f6feb`(蓝) · AR场景 `#8957e5`(紫);
-  未分类 = 白 `#ffffff`。3D 场景按钮、配置中心「场景」列、信号分析目录**都从它取**, 不许各处预先固定色值。
-* **标签唯一依据**: `tools/sig_scene_tags.py --build [--from-runs]` → `config/topics/scene_tags.json`(生成物, 勿手改)。
+  未分类 = 白 `#ffffff`。3D 场景按钮、配置中心「场景」列、信号分析目录**都从它取**, 不许各处写死色值。
+* **标签真源**: `tools/sig_scene_tags.py --build [--from-runs]` → `config/topics/scene_tags.json`(生成物, 勿手改)。
   打标证据: ① AR/AOI 信号注册表(`config/topics/ar_aoi_signals.json`) ② **任务启用节点的名字前缀** ——
   信号键约定 `节点名.字段`, 节点名要先剥 emoji/括号再比 ③ 运行产物 (`zmax_data/task_runs/`) ④ 人工 overrides。
   **没证据的分类就留白**: 宁可未分类并在标题行报数, 也不要猜(某场景暂无带节点前缀的信号 ⇒ 该类 0 条是如实结果)。
@@ -335,7 +335,7 @@ Signal Logging 落 CSV · 导入 CSV 回放 · 导出 CSV/PNG (落 `zmax_data/gr
   `QAbstractItemView` 在该文件已导入 —— 别再写 `QtWidgets.QAbstractItemView`, 那个名字没导入)。
   树很长, 默认落点不在首组时用户会把"没滚到"当成"绿色信号没在"。
 * **当前场景判定**: `_scene_sort` (排序里选中的) 优先, 否则 `ss_scene_switch.now()['src_state']`
-  (唯一依据直接返回场景名, 如 `'插拔场景'`, 不需要再映射)。`_active_scene()` 收口这一条。
+  (真源直接返回场景名, 如 `'插拔场景'`, 不需要再映射)。`_active_scene()` 收口这一条。
 * 目录树只在**建窗那一刻**按当时 `scene_tags.json` 铺一次 ⇒ 打完标签必须重开窗口才看得见:
   `tools/gui/restart_graphic_window.sh` (锚定整条 cmdline 找旧窗 pid, 先停→等死→再起; 子进程 env 要清
   `QT_QPA_PLATFORM*`, 否则找不到 xcb 插件会整进程退出)。
@@ -356,7 +356,7 @@ Signal Logging 落 CSV · 导入 CSV 回放 · 导出 CSV/PNG (落 `zmax_data/gr
 * 链: `sstrace.前馈速度_mps` (u_ff · 前馈加速器) → `sstrace.动作调制_mps`
   (**= ‖u_fuse_vec[:3]‖**, 融合律 = 前馈 u_ff + 反馈 u_fb 相加后按阶段限速; 节点「🧭 动作调制器」
   id=`sssched` = `cognition.py::decide`, 导出在 `ss_dreamview.py` 状态面板那一段) →
-  `sstrace.安全边界_mps` (u_limit · 饱和限幅)。唯一依据同 `trace_live.json`。
+  `sstrace.安全边界_mps` (u_limit · 饱和限幅)。真源同 `trace_live.json`。
 * 单问一个功能名时**给链上邻居 + 节点 id + 导出位置**, 不要只丢一个 topic 名 (用户接着就问上下游)。
 * 常驻 10Hz 路另有出口 `zmax/ss_engine` 的 action(4 维)/action_norm —— 与波形页的 `sstrace.*` 不是同一条路。
 * ⚠️ `sstrace.*` 的值来自 3D 回放快照 (`trace_live.json`) ⇒ 3D 不播时值停在末帧, 帧龄可能几千秒;
@@ -375,9 +375,9 @@ Signal Logging 落 CSV · 导入 CSV 回放 · 导出 CSV/PNG (落 `zmax_data/gr
   像"这批 topic 没有这些物理量"，实际是读键截断。
 * **键名要自解释**: `<对象号> <对象名> · <物理量> <单位>` (例 `SK01 接近 · v 速度 mm/s`)。
   扁平目录里用户搜前缀就能看到这一个对象的全部量，比再加一层二级分组实用；行数多时用搜索框而不是折叠。
-* **键名必须与唯一依据 JSON 的字段名逐字一致** (拿 DDS 消息的字段名 `v`/`a`/`x` 去读文件里叫 `v_mms`/`a_mms2`
+* **键名必须与真源 JSON 的字段名逐字一致** (拿 DDS 消息的字段名 `v`/`a`/`x` 去读文件里叫 `v_mms`/`a_mms2`
   的键 ⇒ 那几行直接不出现)。字段清单换名时两处一起改，判据要对账。
-* 判据三条: ① 目录里该类行数 == 对象数 × 每对象字段数 (字段清单**从唯一依据 JSON 的键算**，不预先固定)
+* 判据三条: ① 目录里该类行数 == 对象数 × 每对象字段数 (字段清单**从真源 JSON 的键算**，不写死)
   ② 每行前景色 == 该对象的场景色 ③ 勾选后至少有**真有点数**的曲线 —— 有行 ≠ 画得出线:
   `[b.key for b in store.bufs.values() if b.n]`；只有前者会把"源文件没在刷新"判绿。
 * 取证姿势 (离屏，真控件): 建 `CanoeGraphicWidget` → `start()` → 跑十几秒 → 递归走 `w.tree` 取

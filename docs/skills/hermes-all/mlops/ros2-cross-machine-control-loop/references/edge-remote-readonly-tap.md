@@ -86,5 +86,5 @@ docker run --rm --network host -e ROS_DOMAIN_ID=0 ros:humble-ros-base bash -c \
 - "目标/光模块" 属**现场几何，必须现场示教**（示教工具跑在主机容器里即可，边缘机不用装东西）⇒
   `--record peg_head/goal` 记 TCP 到 json，含 `by/note/时间`，校验不过则推理端拒用；
 - 几何缺失时：`z7 = null` + 状态里写"**拒算，不编造**"；推理端做范围检查（|值|>2m → HTTP 409 refuse）
-  + 提供严格模式（`*_STRICT=1` 拒绝占位保障）；
+  + 提供严格模式（`*_STRICT=1` 拒绝占位兜底）；
 - 汇报必须同时说清两件事：**模型每帧真被调用**（GPU 0.8~1.5ms/帧）与 **input_map=placeholder_v0 表示口径未标定**，不是可用决策。

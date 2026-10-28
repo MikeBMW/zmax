@@ -22,7 +22,7 @@
 - 采样起点与官方 eval 同法 (`np.unique(ep_idx)` → 每回合 `max_start_idx = ep_len - goal_offset - 1`
   → 合法行随机抽 num_envs 个), 所以窗口/视频口径与官方一致。
   ⚠️ **首个坑**: 若自己乱选起点 (episode 0, step 0), 起点可能已经满足 goal → `mode='wait'` 第 1 步就
-  终止 (frame=1, steps=1), 看着像 "桥坏了", 实际是数据取样问题。
+  终止 (frame=1, steps=1), 看着像 "桥坏了", 其实是数据取样问题。
 
 ## 2. 节点逻辑 (node_logic.py 可修改区)
 - `_sw_paths(root)` 返回 **(dir, frames, status, video)** —— 解包错位 (`_, st, fr, vd = ...`) 会把 frames
@@ -30,7 +30,7 @@
 - `_sw_start(root, log)`: 起/复用桥进程, 日志文件 `reports/intact_sw/bridge.log`, 返回
   `(ok, status, frames, video)`; **已存在活的桥就复用**。
 - `_sw_alive()` 判活; `_sw_wait(status, pred, timeout, log, tag)` 轮询终态, 内含
-  "进程已退出 → 再读一次终态 → 才判失败并打 bridge.log 尾部" 的保障 (修 status 写入竞态)。
+  "进程已退出 → 再读一次终态 → 才判失败并打 bridge.log 尾部" 的兜底 (修 status 写入竞态)。
 - 顺序链上 **第一个节点负责启动桥并等到 `stage=='done'`**, 后续节点只读终态 —— 避免节点间竞态。
 - 桥必须用 INTACT venv: 仓库 `.venv` 没有 numpy/torch → `ModuleNotFoundError: No module named 'numpy'`
   (症状: bridge.log 报错, status.json 永不出现)。`_sw_python()` 里 INTACT venv 排第一。

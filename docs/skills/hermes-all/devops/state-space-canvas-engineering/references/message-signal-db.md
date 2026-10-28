@@ -2,7 +2,7 @@
 
 用户口径:「数据空间的显示要根据配置中心的参数中心的**数据库**实际配置」;
 「状态空间工程的所有连接关系, 那个可以保存的 json 文件, 保存到状态空间的工程数据库」。
-一句话: **画布 JSON 是人编辑的唯一依据, 工程库是给系统查的注册表, 两者必须同一个写口。**
+一句话: **画布 JSON 是人编辑的真源, 工程库是给系统查的注册表, 两者必须同一个写口。**
 
 ## 1. 概念映射
 
@@ -56,36 +56,36 @@ flows.save_canvas()  (写盘唯一入口)
 
 ## 5. 下游消费者
 
-- `lerobot.dataspace.busdb.build()` 唯一依据 = 工程库 (库不可用才回落画布 JSON)。
+- `lerobot.dataspace.busdb.build()` 真源 = 工程库 (库不可用才回落画布 JSON)。
 - 报文的下游 = `mw_link` 里 `f==node & f_port==port` 的 `t`: 这是 UI 里 Tx/Rx 两列的**唯一来源**,
   不要在显示层另算一遍 (两处算法必然漂)。
 - 改库一行再重新 `load_project()` → `Node.topic()` 立刻变 = 话题名确实走库 (判据见
   `tools/verify_mw_db.py`, 7 项)。
 
-## 6. 保存流程探针 (不动唯一依据画布)
+## 6. 保存流程探针 (不动真源画布)
 
 ```bash
 PYTHONPATH=src ./gui-venv311/bin/python tools/verify_mw_db.py          # 7 项
 PYTHONPATH=src ./gui-venv311/bin/python -m lerobot.dataspace.busdb --build
 ```
 写盘探针用**独立工程名** `flows.save_canvas(d, name="probe_xxx.json")` → 查三张表行数 →
-删探针工程与文件。直接拿唯一依据画布跑探针会把存档/库一起改动。
+删探针工程与文件。直接拿真源画布跑探针会把存档/库一起改动。
 
 ## 7. 信号名必须是人看得懂的语义名, 不许是裸端口名
 
 端口名 (`out1` / `in1`) 是画布机械名。用户看到这种名字会直接说「根本看不出来是什么意思」—— 数据空间的 Signal 列、
 信号分析的曲线名都属于"要给现场人读"的界面文字, 不是内部变量名。
 
-命名唯一依据 = **报文类型** `mw_topic.type`, 不是端口名、不是节点名:
+命名真源 = **报文类型** `mw_topic.type`, 不是端口名、不是节点名:
 
 - 只对**裸端口**改名: `re.fullmatch(r"(in|out)(\d+)", field)` 命中才换; 其它字段走原有中英映射, 不许乱改。
 - 短名表 `TYPE_SIGNAL_EN` (`MotionPlan→plan` · `MotionPlanIn→plan_in` · `RobotActionIn→action_in` ·
-  `OpticalInspection→aoi` · `MuscleSkillBank→muscle_bank` …); 表里没有就 `CamelCase→snake_case` 保障
+  `OpticalInspection→aoi` · `MuscleSkillBank→muscle_bank` …); 表里没有就 `CamelCase→snake_case` 兜底
   (`ActionChunkCmd→action_chunk_cmd`)。
 - 同类型多入口按序号区分 (`plan_in` / `plan_in_2`), 否则同一节点几条入口全重名, 用户照样分不清。
 - **取不到类型就保留原名**, 不要用"节点名+端口"拼假名 —— 假名比裸名更误导。
 - 一处改、全窗口生效: 取名函数在 `middleware/signal_en.py` (`en_of_key(prefix, field, mtype)`),
-  Trace 与信号分析都调它; 行里自带 `type` 时优先用它 (话题名查不到类型时的保障)。
+  Trace 与信号分析都调它; 行里自带 `type` 时优先用它 (话题名查不到类型时的兜底)。
 - 渲染前再统一扫一遍「Signal 仍是裸端口就改名」—— 增量缓存里的历史行不会自己重新取名。
 - 判据 `tools/verify_signal_names.py`: 全端口 0 裸名 · Trace 0 裸名 · 点名端口逐个对照; 改完并入回归。
 
@@ -124,7 +124,7 @@ PYTHONPATH=src ./gui-venv311/bin/python -m lerobot.dataspace.busdb --build
 2. **聚合值在落盘侧算一次**, 窗口只读: 抬升/横移/下落不许在前端按阶段标签判 —— 标签会写反
    (实测 `↓下降` 那条是竖直段)。落盘函数收 `start_pos` + 每段目标 `pos`, 用 Δz/Δxy 判 role,
    同一份聚合既进段表又进 live 信号, 两处口径天然一致。
-3. **改名要一次改到底**: 发布端 (`host_sources` 命名块) · 信号库 (`signals.db` 旧话题行) · 判据脚本里固定不变的旧名
+3. **改名要一次改到底**: 发布端 (`host_sources` 命名块) · 信号库 (`signals.db` 旧话题行) · 判据脚本里写死的旧名
    · 提交信息。改完重启采集器 (`--hz 2 --force`) 再看 `signals.db` 里确实是新名 —— 只改代码不重启,
    界面照旧显示旧名, 会误判成"改错了"。
 
@@ -153,7 +153,7 @@ PYTHONPATH=src ./gui-venv311/bin/python -m lerobot.dataspace.busdb --build
    一律 `*_mm` / `*_mms` / `*_deg` / `*_n`; 跨量纲换算要在交付时算给用户看 (32mm/s ÷ 0.0935 = 342 units)。
 3. **改完必须重启两个进程**: `signal_store_daemon --hz 2 --force` (库里的旧名不会自己变) **和** 控制台
    (Trace/树是 GUI 进程内代码)。只重启一个 ⇒ 界面照旧旧名, 会误判成"没改对"。
-4. **判据别预先固定条数**: 断言关系式 (≤10 / ≤100 / 单射), 具体数字进 detail (见 SKILL.md 同名小节)。
+4. **判据别写死条数**: 断言关系式 (≤10 / ≤100 / 单射), 具体数字进 detail (见 SKILL.md 同名小节)。
 
 ## 8. 给节点接一路实时数据源 (live JSON → 数据空间 Trace)
 

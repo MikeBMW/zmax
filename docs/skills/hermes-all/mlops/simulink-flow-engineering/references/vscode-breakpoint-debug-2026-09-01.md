@@ -20,7 +20,7 @@
 6. 用户流程 = 右键(覆盖) → F5(读覆盖后的 launch.json, 无 env) → debugpy.breakpoint() 不触发 → 断点永不命中。
 
 ## 修复
-1. `open_in_vscode` 模板预先固定 env: `{"name": "🚀 全新调试进程 (studio.py)", ..., "env": {"ZMAX_DEBUG_BREAK": "metaworld"}}`
+1. `open_in_vscode` 模板写死 env: `{"name": "🚀 全新调试进程 (studio.py)", ..., "env": {"ZMAX_DEBUG_BREAK": "metaworld"}}`
    — 右键重写不丢失 (根治)。
 2. `execute_node_logic` 断点过滤升级:
    ```python

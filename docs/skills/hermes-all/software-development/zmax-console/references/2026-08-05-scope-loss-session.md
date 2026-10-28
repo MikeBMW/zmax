@@ -4,8 +4,8 @@
 
 ## Scope 铁律（老倪反复强调，全部已落地 simulink_scope.py）
 
-1. **训练中不显示曲线**：`len(cv) < 2` 的点不进 series（1 点=训练中=歧义）；ScopeWidget.paintEvent 保障 `n < 2: continue` 不画圆点。训练完成（≥2 落盘点）才显示。指标行用 `⏳ 训练中: 模型名` 提示。
-2. **默认无显示**：series 空 → `set_series({})` + 提示「暂无完整训练曲线」，**禁止保障画单条 loss 曲线**（曾用旧 _train_curve 数据画默认线 = 歧义来源）。
+1. **训练中不显示曲线**：`len(cv) < 2` 的点不进 series（1 点=训练中=歧义）；ScopeWidget.paintEvent 兜底 `n < 2: continue` 不画圆点。训练完成（≥2 落盘点）才显示。指标行用 `⏳ 训练中: 模型名` 提示。
+2. **默认无显示**：series 空 → `set_series({})` + 提示「暂无完整训练曲线」，**禁止兜底画单条 loss 曲线**（曾用旧 _train_curve 数据画默认线 = 歧义来源）。
 3. **x 轴用真实 step**：series 值格式 `(xs, y, color, dashed)`，xs=None 时退索引（兼容旧格式）；刻度范围取所有曲线 xs 的 min/max，不是点数。
 4. **图例色块必须显式 setBrush**：drawRect 空心框会残留前一次圆点的 brush → 所有图例变同色（"怎么都用黄色"）。每个色块 setPen(color)+setBrush(color)，画完 setBrush(NoBrush)。
 5. **归一化统一量纲**（用户要求三模型可比）：ACT loss=动作空间 MSE（(rad/s)² 量级大），SmolVLA 系=扩散噪声空间 MSE（量级小），绝对值差量级**不可比**。Scope 显示时 `ys /= mean(ys[:3])`（前 3 点平均，**不是单点**——SmolVLA 首点 0.4357 异常小，单点基准会让次点显示 2.4 倍暴涨）。y 轴标签「loss (归一化 · 起点=1)」。
@@ -20,8 +20,8 @@
 
 ## 训练进度与步数
 
-- `_line_hook` 每 log_freq 步 emit `📈 {pname} 训练中: {step}/{total} 步 · loss {loss:.4f}`（训练中日志区实时滚动，防"阻塞"错觉）。log_freq=5（150→100→50 步时同步改）。
-- **步数哲学**（用户：先验证通过流程再加步数）：steps 从 150→100→50；50 步时三模型总时长 ~1.5min（ACT 13s + SmolVLA 30s + SmolVLA+LEW 30s）。验证通过全流程后再逐步加。改步数 = 模板 10 处 `"steps": N` + node_logic.py 默认值 + 3 个 config_*_metaworld.yaml + simulink_module._parse_loss_curve 的推断步进（`max(dedup, default=0) + log_freq`）。
+- `_line_hook` 每 log_freq 步 emit `📈 {pname} 训练中: {step}/{total} 步 · loss {loss:.4f}`（训练中日志区实时滚动，防"卡住"错觉）。log_freq=5（150→100→50 步时同步改）。
+- **步数哲学**（用户：先跑通流程再加步数）：steps 从 150→100→50；50 步时三模型总时长 ~1.5min（ACT 13s + SmolVLA 30s + SmolVLA+LEW 30s）。跑通全流程后再逐步加。改步数 = 模板 10 处 `"steps": N` + node_logic.py 默认值 + 3 个 config_*_metaworld.yaml + simulink_module._parse_loss_curve 的推断步进（`max(dedup, default=0) + log_freq`）。
 
 ## QThread 终局模式（崩溃修复#10 之后的最终形态）
 

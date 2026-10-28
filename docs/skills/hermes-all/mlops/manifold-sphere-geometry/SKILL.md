@@ -10,12 +10,12 @@ description: Use when 给流形引擎加/改球面 S^n·SU(2) 几何算子。
 - 要给 `manifold_engine` 的球面/sphere/su2 档加算子 (投影·度量·exp/log·测地线·平行移动·损失·正则)。
 - 要验证“归一化球面/单位向量约束”在引擎里是否真成立。
 
-## 1. 单唯一依据, 引擎只复用不重写
+## 1. 单真源, 引擎只复用不重写
 公式全部写进 `src/lerobot/manifold/sphere.py` (numpy + 惰性 torch)。`manifold_engine.py` 只 import 复用 (顶部 `try: from lerobot.manifold import sphere as sphere_mod`), 引擎里**不再写第二份公式** —— 两处实现必然漂移。
 未实现的档位必须 `raise ValueError` 明确报错, 不许静默返回假值 (仓库铁律)。
 
 ## 2. 改活代码前先冻结行为指纹 (零回归证据)
-固定种子执行一遍「投影 / 距离 / 步进 / 测地线」→ `json.dumps(..., sort_keys=True)` → sha256 存成常量。
+固定种子跑一遍「投影 / 距离 / 步进 / 测地线」→ `json.dumps(..., sort_keys=True)` → sha256 存成常量。
 改完重跑对指纹: 相等 = 逐位零回归。把该 sha256 常量写进判据脚本, 成为可重复的门。
 在役档位 (su2) 不要顺手改默认值; 切档要按门槛「有提升非仅不回退」先出同口径 A/B。
 
@@ -41,9 +41,9 @@ description: Use when 给流形引擎加/改球面 S^n·SU(2) 几何算子。
   M=0→35 拍 · 0.3→29 · **1.0→18 (甜点)** · 3.0→31 · 8.0→50; M=0.3 路径比 1.759 = 步长大 ⇒ 绕远兜圈。
 - 档位数字必须**真跑引擎导出** (`--export` → `zmax_data/ss_live/mparam_gravity.json`), 界面只读它, 不手填。
 - 窗口可操作 = 拖动条 (0~8) ↔ 微调框双向联动 + 档位一键填入; **拖/点不写盘**, 仍走「✏️ 写 M」一步。
-- 窗口有信息连接 = 一行 `唯一依据 3.643 · 在役 3.643✓ · 93min前 · a=0.004 · 3.643 重载档(≈实测31拍)`,
-  唯一依据 `config/calib/zmax_manifold.json` / 在役 `zmax_data/ss_live/engine_latest.json`; 非档位值用最近档并标 ≈。
-  判据 `tools/verify_mparam_window.py` 9/9 (联动/档位/唯一依据/在役/物理读数/实测拍数/写入口)。
+- 窗口有信息连接 = 一行 `真源 3.643 · 在役 3.643✓ · 93min前 · a=0.004 · 3.643 重载档(≈实测31拍)`,
+  真源 `config/calib/zmax_manifold.json` / 在役 `zmax_data/ss_live/engine_latest.json`; 非档位值用最近档并标 ≈。
+  判据 `tools/verify_mparam_window.py` 9/9 (联动/档位/真源/在役/物理读数/实测拍数/写入口)。
 
 ## 3. 判据按**真数学**写, 别照抄方案文字
 方案文档里的几何描述常有想当然处, 判据要实测把它们挑出来:
@@ -60,20 +60,20 @@ description: Use when 给流形引擎加/改球面 S^n·SU(2) 几何算子。
 
 ## 4. 判据脚本形态
 `tools/verify_*.py`: 每条约 `chk(id, claim, got, ok, expect, note)` → 落 `zmax_data/eval/*.json` (判据/实测/阈值/结论) → 非全 PASS 时 `exit 1`。
-必带: ① 与引擎单唯一依据一致 (逐项数值等价, 容差 1e-12, 说明浮点表达式顺序不同) ② 零回归指纹 ③ 非实现档报错 ④ **真数据段** (现场唯一依据, 如 `zmax_data/ss_live/engine_latest*.json::z_latent`)。
-最后执行一遍 `manifold_engine.py --selftest`, 确认所有 ready 档仍全通过。
+必带: ① 与引擎单真源一致 (逐项数值等价, 容差 1e-12, 说明浮点表达式顺序不同) ② 零回归指纹 ③ 非实现档报错 ④ **真数据段** (现场真源, 如 `zmax_data/ss_live/engine_latest*.json::z_latent`)。
+最后跑一遍 `manifold_engine.py --selftest`, 确认所有 ready 档仍全通过。
 
 ## 6. 可视化 (S³ 立体投影球 · 侧栏面板)
 
 老倪 (2026-10-16) 给了完整可视化方案 (状态点/切空间/测地线/度量场/轨迹/四面板共享时间轴),
 要求「做到画布右侧的主参数 M 的侧面栏窗口」。落地要点 (踩过的坑):
 
-1. **立体投影进 sphere.py, 不进 GUI** (单唯一依据铁律): `stereographic_project(p, pole)` / `stereographic_inverse(x)`。
+1. **立体投影进 sphere.py, 不进 GUI** (单真源铁律): `stereographic_project(p, pole)` / `stereographic_inverse(x)`。
    北极→无穷远、南极→原点 ⇒ `x = p[:n]/(1−p[n])`; 极点必须 **clip 并标 `clipped=True`**, 返回 inf 会让
    GUI 画出垃圾、判据 NaN。**批量路径** (`p.ndim==2`) 必须有 —— 整条轨迹逐点调用会慢 100 倍, 而且
    两套实现必然漂移 (判据 A4 核「批量==逐点, 逐位相等」)。
 2. **S³ 上画什么**: 单位球面 = 赤道 {p₄=0} 的像 (数学上精确, 不是装饰); 点在球内 ⇔ p₄>0, 球外 ⇔ p₄<0;
-   大圆仍映为圆/直线 ✓; 状态点用**唯一依据四元数**, 轨迹用**引擎同源映射**。
+   大圆仍映为圆/直线 ✓; 状态点用**真源四元数**, 轨迹用**引擎同源映射**。
 3. **状态序列从哪来**: `ss_traj_last.json` 的 `obs[i]` 是 43 维原始观察, 位姿四元数只是其中 `obs[3:7]`
    (任务里几乎不动 ⇒ 球上只有一个点)。**正解 = 引擎同源映射** `left_right/state_space/su2.py::encode_obs43(obs)`
    (ω = π·tanh(gain·‖e‖)·ê, e = 模块头−孔位 ⇒ e→0 ⇒ U→I)。实测 357 帧弧长 1.62 rad、首帧 φ=0.248→末帧 0,
@@ -81,15 +81,15 @@ description: Use when 给流形引擎加/改球面 S^n·SU(2) 几何算子。
 4. **渲染走 QPainter 2.5D, 不开第二个 GL 控件** (画布主窗口已有 GL 上下文, 见 `qt-gl-rendering-pitfalls`):
    球面经纬线预渲染 QPixmap (一次) + 每帧只投影动态元素 (轨迹/测地线/状态点)。Qt API 尺寸参数一律 `int()`。
 5. **切空间向量必须是真切向量**: 速度用 `log_map` 相邻帧差分 (传 `tangent_project` 收口, 判据核 ⟨v,p⟩=0);
-   力 = M·a (M 取**标定唯一依据**, 不是画布节点快照的默认值); 梯度 = `log_p(目标)` 方向。
+   力 = M·a (M 取**标定真源**, 不是画布节点快照的默认值); 梯度 = `log_p(目标)` 方向。
    在切标架坐标里画 (先 `coeff = ⟨v, e_i⟩`, 再 3 维投影) —— 直接拿 R⁴ 向量去投影会 matmul 维度崩。
 6. **度量椭球要分清作用空间**: 球面固有度规 (测地线=slerp ⇒ 圆度规) 是**各向同性** ⇒ 采样椭球全等 =
-   「度量均匀」; 标定唯一依据的 diag 度规 (dim=6 · 第 3 轴 50 vs 其余 10) 作用在**任务空间 (xyz+rpy)**,
+   「度量均匀」; 标定真源的 diag 度规 (dim=6 · 第 3 轴 50 vs 其余 10) 作用在**任务空间 (xyz+rpy)**,
    与 S³ 切空间不是同一空间 ⇒ 如实分开画 + 文字标清, 别拿 6 维度量去画球上的椭球。
 7. **面板要自适应**: 侧栏窄了 2×2 自动转单列 (`resizeEvent` 里切 grid), 否则 4 个 min-size 面板挤成一团
    (老倪: 不许挤/不许截断)。底栏可见文字要短、完整路径挂 tooltip (界面字数有判据预算 400 字)。
-8. 判据形态 `tools/verify_manifold_viz.py` (29 条): 几何 A (极点/往返/批量) · 唯一依据 B (单位范数/同源映射/
-   M 取标定唯一依据/只读) · 几何量 C (distance 交叉核对/大圆弧长=θ/切空间性) · 控件 D (四面板/共享时间轴/
+8. 判据形态 `tools/verify_manifold_viz.py` (29 条): 几何 A (极点/往返/批量) · 真源 B (单位范数/同源映射/
+   M 取标定真源/只读) · 几何量 C (distance 交叉核对/大圆弧长=θ/切空间性) · 控件 D (四面板/共享时间轴/
    空态诚实/窄栏转单列/帧龄标注) · 接线取证 E (M 页真接线/四面板像素证据/无重复公式)。
 9. **取证坑 (真踩过)**: 用 X11 全屏抓图 (`grabWindow(0)`) 时, 只要控制台被终端/浏览器压住, 抓到的**就是压在上面那个窗口** ——
    会误判成"可视化没显示"。两条正确做法: ① 从控制台进程内 `QWidget.grab()` (与遮挡无关);
@@ -113,8 +113,8 @@ description: Use when 给流形引擎加/改球面 S^n·SU(2) 几何算子。
 12. **面板中部不要放浮标数值**: 切空间面板把 `v/F/∇d` 三个数值原本画在画面中部 (无宽度夹紧) ⇒ 窄侧栏下
    直接撞右边界被硬切。一律改成**底部固定行** (统一 13px 行距, 每行 `_fit`), 否则必然出现
    "两行同 y 叠死"(真踩过: 作用空间行与值行都在 h-12) 和"右侧半个字被切"。
-13. **现场唯一依据被别的进程每帧改写 ⇒ 像素类判据必须先冻源**: 控制台/引擎每帧写 `zmax_data/ss_live/*.json`,
-   判据读的几何/角度一直在变 ⇒ 同一份代码时红时绿。做法: 把关键唯一依据拷到 `tempfile.mkdtemp()`,
+13. **现场真源被别的进程每帧改写 ⇒ 像素类判据必须先冻源**: 控制台/引擎每帧写 `zmax_data/ss_live/*.json`,
+   判据读的几何/角度一直在变 ⇒ 同一份代码时红时绿。做法: 把关键真源拷到 `tempfile.mkdtemp()`,
    视图支持 `root=` 参数指向冻结副本 (在役行为不变); 另外量像素前 **停掉 QTimer + phase 归零**。
    颜色掩码容区别卡太紧 (~320): 线压在金色引力井环上/浅角度抗锯齿会混色, 太紧会误判"线没了"。
    判定用"每条线 ≥3 个可用采样点 · 至少 1 处命中 · 单线 ≥50% · 全线平均 ≥85%"。
@@ -126,7 +126,7 @@ description: Use when 给流形引擎加/改球面 S^n·SU(2) 几何算子。
 落在画布右侧「主参数 M」页 (`tools/gui/orbital_arch.py`, 与四面板同页用下拉切换)。
 
 **三条硬规矩 (少了任何一条就是造假):**
-1. **天体必须是画布唯一依据里的真节点 id** —— 活画布 (`data/database/zmax/sources/canvas/state_space_obs.json`)
+1. **天体必须是画布真源里的真节点 id** —— 活画布 (`data/database/zmax/sources/canvas/state_space_obs.json`)
    里是: 太阳 `ss_mani_eng` · 水星 `ssmani_c` · 地球 `ssff` · 火星 `ssdec` · 木星 `ssmani_p` ·
    月球 `ssinnov` · 卫星带 `ssbg_skill`+`skill_phys.json` 在职 SK。**名字对不上或 id 不存在就报错, 不倒推**
    (库里还有同名不同 id 的节点: `ss_ff`/`ss_correct`/`dit_b`/`ss_mani_c`/`ss_mani_p` 是注册名,
@@ -134,7 +134,7 @@ description: Use when 给流形引擎加/改球面 S^n·SU(2) 几何算子。
 2. **连线只画真连线** (画布 `links` 的 f/t): 双通道 = `ssvlm→ssdec` (直连语义条件) ‖ `ssvlm→ssmani_c/ssmani_p`
    (旁路几何条件); DiT 条件并联汇总 = 入边 `ssmani_c/ssmani_p/sslat/ss_lora_l4/ssvlm` (5 路) → `ssdec`;
    卡尔曼闭环 = `ssworld→ssinnov` (测量) + `ssest/sspred→ssinnov` (update) → `ssinnov→sssensor→ss_mani_eng` (回灌);
-   协同行进 = `ssff→sssched` 与 `ssinnov→sssched` 两路同进动作调制器。**图上不画唯一依据里没有的边**。
+   协同行进 = `ssff→sssched` 与 `ssinnov→sssched` 两路同进动作调制器。**图上不画真源里没有的边**。
 3. **球上的数是真值**, 且尽量用**同一个真模块**现算: 接触流形 `manifold_layer.ContactManifold.decompose`、
    性能流形 `PerformanceManifold.evaluate` (返回值键是 `Vp` 不是 `V_p`!)、太阳扭矩/度规取 `torque_live.json`
    (`metric_tensor` 是**展开的 6×6**, 对角项 = `mt[i*dim+i]`), M 取 `zmax_manifold.json`, 前馈请求/残差取
@@ -149,9 +149,9 @@ description: Use when 给流形引擎加/改球面 S^n·SU(2) 几何算子。
 2. **鼠标可操作**: 左键拖动 = 旋转 (偏航 + 俯仰, 限幅 ±1.15), 滚轮 = 缩放 (0.55~2.4), 双击 = 复位。
    必须是**真三维变换**: 轨道面倾角 → 绕 Z 偏航 → 绕 X 俯仰 → 正交投影 + 近大远小 (`1+0.10*z`),
    不是手画椭圆凑。判据派假 `QMouseEvent`/`wheelEvent` 断言状态变化 + `grab()` 图真变了 (像素差 >5000) + 限幅。
-3. **连线 = 力的相互作用, 有作用才画**: 线集全部来自画布 `links` 唯一依据 —— 所有「至少一端是主体」的真连线
+3. **连线 = 力的相互作用, 有作用才画**: 线集全部来自画布 `links` 真源 —— 所有「至少一端是主体」的真连线
    都画 (主体↔主体 + 主体↔体系外直接邻居画到外圈灰星点), 反向核 `want == got` (一条不漏一条不造);
-   同一对节点的**重边去重** (画布里常有不同 label 的重边, 叠线会发灰发亮); 线义按**唯一依据 label** 归类 (不猜)。
+   同一对节点的**重边去重** (画布里常有不同 label 的重边, 叠线会发灰发亮); 线义按**真源 label** 归类 (不猜)。
 4. **连线人眼友好**: 每条线**两遍画** (外发光 `pen_w+3.6` alpha 22~46 + 实芯 2.2px alpha 210; 主体↔外部降到
    1.4px); 反馈类虚线用 `setDashOffset(phase)` **慢速流动** (每 tick +0.06), **禁止任何透明度脉冲/闪烁动画**。
    量化判据: ① 沿线 **7 处法向剖面取中位数** ≥2px (**别只量中点**: 单点会被“线恰压轨道虚线/光晕”

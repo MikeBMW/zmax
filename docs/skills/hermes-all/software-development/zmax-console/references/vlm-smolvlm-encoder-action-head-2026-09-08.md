@@ -20,7 +20,7 @@
 - 依赖装 gui-venv311 (venv 无 pip → `uv pip install -q --python gui-venv311/bin/python <pkg>`):
   transformers (实测 5.16.1) + num2words (processor 必需, 缺失 ImportError 明确报);
   清华源快。权重 ~1GB 已缓存 ~/.cache/huggingface/hub (快照含 4.7GB onnx 子目录, 用不上)。
-- processor 缺 preprocessor_config 等文件时 AutoProcessor 自动补下 (HF_ENDPOINT=hf-mirror 保障)。
+- processor 缺 preprocessor_config 等文件时 AutoProcessor 自动补下 (HF_ENDPOINT=hf-mirror 兜底)。
 - **processor 输出 5D**: pixel_values [1,17,3,512,512] (Video-Instruct 帧结构) — 直接喂
   vision_model 报 "too many values to unpack (expected 4)"。**正确通道 = 仿 smolvla_lew.
   _get_multimodal_embeds 全前向**: processor(images=[pil], text="<image>") → model(

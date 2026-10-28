@@ -12,14 +12,14 @@
 | 前馈槽位 (冗余边) | `sim.attach_intact(node, adapter)` → `_intact_u_ff` (`state_space_sim_real.py:1351`) | 是: `IntactActionAdapter.enabled` 需 `models/intact_action_map.json` (生成器 `tools/calib_intact_action_map.py` 从未写 ⇒ 从未标定) | `_intact_stats.u_ff_src` |
 
 **结论**: 前馈槽位 `refused_map=N` **只说明那条冗余边断**; 它旁边的 `u_ff_source="intact(chunk×K_ACT=0.5)"`
-说明解码器先验实际可用。诊断 "L4 不驱动" **先看直驱路**。
+说明解码器先验其实可用。诊断 "L4 不驱动" **先看直驱路**。
 直驱路每帧还会: 真渲染帧 → `build_skill_ctx(...)` (L2 24 维上下文, 逐帧) → `policy_service.run_once(decode=True)`
 → `chunk` → (可选 `SS_L4_DIT=1` 与 DiT 融合 `act = (1−β)·act_INTACT + β·act_DiT`) → **L2 收口闸**。
 
 ## B. 口径 bug: 反归一化统计与权重**不同源** (已修)
 
 ```
-GUI 装配 (simulink_module.py:12016) / probe / diag 原读预先固定 reports/zmax_action_stats.json
+GUI 装配 (simulink_module.py:12016) / probe / diag 原读写死 reports/zmax_action_stats.json
                                         ↳ 源自 zmax_insert.h5 (n=18635)
 在役 intact_l4_current/weights.pt → v6r11/weights_epoch_2.pt → train_config.yaml name: optical_insert_v5_disturb.h5
 本轮 intact_goal_optical_insert_v6d5_s3072        → train_config.yaml name: optical_insert_v6_disturb.h5

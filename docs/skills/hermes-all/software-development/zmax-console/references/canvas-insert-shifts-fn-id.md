@@ -1,8 +1,8 @@
-# 往画布插节点 → `fn_id` 位置号整体错位 (描述唯一依据静默错挂)
+# 往画布插节点 → `fn_id` 位置号整体错位 (描述真源静默错挂)
 
 ## 现象与根因
 
-功能描述唯一依据 `data/database/zmax/function_notes.json`、配置元数据 `config_meta.json` 都按 **`fn_id` = `FN-<系统>-<序号>`**
+功能描述真源 `data/database/zmax/function_notes.json`、配置元数据 `config_meta.json` 都按 **`fn_id` = `FN-<系统>-<序号>`**
 存放, 而 fn_id 是**行内位置号**。往某一行里插一个画布节点 ⇒ 该行**后面所有节点的号前移一位** ⇒ 每个描述被挂到
 "下一个节点"上。
 

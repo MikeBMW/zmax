@@ -6,7 +6,7 @@
 ## ① 模式下拉切「🔌 本地连接 (Local)」→ 整进程消失 (无弹窗)
 `_on_mode_changed`: `modes=["sim","local","real"]` 而 `Z700_ROS2_NODES` 只有 `sim`/`real`
 → `KeyError: 'local'` 在 Qt 槽里没人接 → qFatal → **SIGABRT**。日志: `Fatal Python error: Aborted` + traceback 直指行号。
-修: 未知/越界模式键一律退回 `sim` 表 + 如实打日志; 槽体总保障。同类坑 2026-09-14 也出现过(`Z700_ROS2_NODES["real"]` 被当 dict 用 `.get()`)。
+修: 未知/越界模式键一律退回 `sim` 表 + 如实打日志; 槽体总兜底。同类坑 2026-09-14 也出现过(`Z700_ROS2_NODES["real"]` 被当 dict 用 `.get()`)。
 
 ## ② 「输入图像」真机源永远无画面, 但 L2 一直在吃帧
 窗口真机源只认 srv 落盘 `live_frame.jpg/.json`(Orin `/zmax/live_frame` → Docker `ss_frame_srv_client.py`)。
@@ -27,7 +27,7 @@
 处置顺序:
 1. **先留栈**: systemd 默认 `LimitCORE=0` → drop-in `~/.config/systemd/user/zmax-studio.service.d/core.conf` 写
    `[Service]` + `LimitCORE=infinity`; `sudo sysctl -w kernel.core_pattern=/tmp/core.%e.%p`; `systemctl --user daemon-reload`(下次启动生效)。
-2. **槽体总保障**: 66ms 刷新等所有定时器/槽包 try/except(只记日志不冒泡)。
+2. **槽体总兜底**: 66ms 刷新等所有定时器/槽包 try/except(只记日志不冒泡)。
 3. **读图健壮**: 别人 10Hz 覆盖写的 PNG, 读者要**整块读入内存再解码, 失败返回 None**; cv2 可用时**它就是权威**
    (解码失败直接判该帧不可用), 不要把坏 buffer 再交给 Qt 解码器 —— 实测截断 buffer 走 Qt 路径, 无 QApplication 时
    `QPixmap: Must construct a QGuiApplication` → SIGABRT。

@@ -3,7 +3,7 @@
 **规则: 报/显臂位姿一律用「世界系 x y z (m) + a b c (度)」——不用四元数、不换欧拉序。**
 用户对照的是示教器上的 x y z a b c; 他明确要求"你的输出要跟这个值一样"。
 
-## 唯一依据(位姿)
+## 真源(位姿)
 - `~/zmax_data/rokae_sdk/tcp_out/latest.json`(容器 `rokae_tcp_sampler`, `/sdk/tcp_direct_sampler.py`, ~5Hz)。
 - 直连珞石 xCore SDK `CoordinateType.endInRef`(工具系在参考系 base_link), **不经 DDS/Orin** ⇒ 跨机链断了它照样有值, 位姿不因此串台。
 - 字段: `x,y,z`(m) · `rx,ry,rz`(即 **a,b,c**, rad, SDK 原生 `p6[3:5]`) · `qx,qy,qz,qw`(派生) · `joint[6]` · `frame` · `src`。

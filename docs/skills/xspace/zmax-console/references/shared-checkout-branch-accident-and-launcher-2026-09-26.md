@@ -10,19 +10,19 @@
       ├─ 该分支没有 flows/  → 画布加载 (只拼 <仓库根>/flows/state_space_obs.json) 直接失败
       │    → 弹「状态空间模型画布加载失败」
       └─ 该分支的 studio.py 还是**旧版** (665KB/v5.6.0 vs main 808KB/v5.15.7)
-           ⇒ 用户点的实际是旧控制台
+           ⇒ 用户点的其实是旧控制台
 桌面启动器 XSpace-Studio.desktop 的 Exec 硬编码指向那棵树 → 点图标必踩
 ```
 **判据(3 条命令定位)**: ① `ps -o args -p $(pgrep -f "studio.py")` 看解释器/路径 ②
-`ls <那棵树>/flows` 有没有画布唯一依据 ③ 比对 `grep -oE "Z-MAX v5\.[0-9.]+" <树>/tools/gui/studio.py` 版本号。
+`ls <那棵树>/flows` 有没有画布真源 ③ 比对 `grep -oE "Z-MAX v5\.[0-9.]+" <树>/tools/gui/studio.py` 版本号。
 > 教训: 同一台机器上多个 agent 线共用一个 checkout 时, "文件消失/版本回退/服务起不来"这一族症状,
 > **先查当前分支与哪棵树在跑**, 再查代码。
 
-## 1. 修法 A: 路径解析改多候选 (谁在跑都能找到唯一依据)
+## 1. 修法 A: 路径解析改多候选 (谁在跑都能找到真源)
 
 ```python
 def _flows_path(name):
-    """flows/ 唯一依据多候选定位: env > 本检出 > main worktree > 默认检出 > 打包 _MEIPASS"""
+    """flows/ 真源多候选定位: env > 本检出 > main worktree > 默认检出 > 打包 _MEIPASS"""
     if getattr(sys, "frozen", False):
         cands = [os.path.join(getattr(sys, "_MEIPASS", "") or "", "flows", name)]
     else:
@@ -41,7 +41,7 @@ def _flows_path(name):
 **取证** (`tools/verify_canvas_load_fix.py`, 8/8): 把 `_repo_root_path` monkeypatch 成"没有 flows 的那棵树" → 断言仍命中真画布;
 再断言画布 JSON 真加载(节点/连线数 + 关键节点在位) + env 覆盖生效。
 
-## 2. 修法 B: 启动器/服务别预先固定检出路径
+## 2. 修法 B: 启动器/服务别写死检出路径
 
 - `tools/gui/launch_studio.sh`: `GUI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"` +
   `REPO_ROOT="$(cd "$GUI_DIR/../.." && pwd)"`, 解释器在 `$REPO_ROOT/gui-venv311/bin/python` 与旧路径间取第一个可执行的。
@@ -66,7 +66,7 @@ def _flows_path(name):
 ## 4. 两条线的长期解法 (建议, 需用户点头)
 
 - 每线独立 `git worktree`(main 线留在原目录, 其它线另开目录), 避免"共用一棵树"互相踩。
-- 服务/启动器**一律不预先固定 checkout 路径**, 用"launcher 自身位置推导 + 多候选回落"(§1/§2)。
+- 服务/启动器**一律不写死 checkout 路径**, 用"launcher 自身位置推导 + 多候选回落"(§1/§2)。
 
 ## 5. 相关技能
 - 主线程阻塞 I/O → 界面卡顿的度量与修法: `pyqt5-gui-development`

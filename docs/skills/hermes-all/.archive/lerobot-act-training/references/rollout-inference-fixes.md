@@ -61,6 +61,6 @@ hole = env.data.site_xpos[env.model.site("hole").id]
 - 官方专家: `from metaworld.policies.sawyer_peg_insertion_side_v3_policy import SawyerPegInsertionSideV3Policy`
 - 采样成功轨迹 (含图像 128² + env._get_obs() 39D state + 4D action) → train/val.npz
 - 失败轨迹提前终止 (150 步) 加速; 实测 30 成功 eps / 41 尝试 (73%), 5850 帧
-- 图像: `obs["observation.image"]` (V3 dict) 或 `env.render()` 保障, CHW float(0-1)
+- 图像: `obs["observation.image"]` (V3 dict) 或 `env.render()` 兜底, CHW float(0-1)
 - 已有 `data/metaworld_peg` (8-06) 只有 state+action **无图像列** — VLA 不能用, 必须重新生成含图的
 - npz → lerobot 格式: `tools/npz_to_lerobot.py --npz train.npz --out <dir> --task "..." --fps 10 --episode-frames 200`

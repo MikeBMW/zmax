@@ -40,7 +40,7 @@ metadata:
 
 ## 2. 自动开机落地 (3 个文件, 幂等)
 ```
-/etc/sysctl.d/99-zmax-net.conf                  # 内核旋钮唯一依据(含"拒绝项"注释)
+/etc/sysctl.d/99-zmax-net.conf                  # 内核旋钮真源(含"拒绝项"注释)
 <repo>/tools/zmax_net_optimize.sh               # 应用+断言+体检+落台账 (--quick / --no-throughput)
 /etc/systemd/system/zmax-net-optimize.service   # oneshot · After=network-online.target · enable
 ```

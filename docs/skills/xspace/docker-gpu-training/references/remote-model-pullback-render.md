@@ -52,7 +52,7 @@ xvfb-run -a -s '-screen 0 1280x1024x24' python /app/tools/rollout_video.py --pol
 **`docker commit` 固化依赖的坑**：
 - apt 安装是异步的，`which Xvfb` 成功 ≠ 全部装完（xvfb-run 可能还没落盘）——commit 前容器内确认 `which Xvfb xvfb-run` 都在
 - commit 出 tag（如 `zmax-std:render`）后**用新 tag 起干净容器重新验证**（跑 xvfb-run 冒烟），别信原容器内验证
-- 装依赖的容器如果 `docker run` 阻塞超时（apt 慢），容器还在 Up → 直接 `docker exec` 确认后再 commit，别急着删
+- 装依赖的容器如果 `docker run` 卡住超时（apt 慢），容器还在 Up → 直接 `docker exec` 确认后再 commit，别急着删
 
 **注意**：本地 WSL 跑 rollout 时 zmax-std:1.0（无渲染依赖）也会崩 → 用 zmax-std:render 或先装依赖；
 `rollout_final_act.mp4` 等旧视频文件存在不代表本次成功（看时间戳）。

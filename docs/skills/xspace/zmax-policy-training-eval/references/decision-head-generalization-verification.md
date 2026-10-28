@@ -47,7 +47,7 @@
 - 附带产出: `tools/eval_yaw_head_ops.py` 逐留一工况打印 (预测 argmax 的实测 Δz / 实测可成功集合 /
   实测最优值) — 可复跑, 别现场手算。
 
-## 6. 本轮遇到问题
+## 6. 本轮踩坑
 1. **argparse 传负数列表**: `--phis -45,-30,...` 被当作选项 →
    `error: argument --phis: expected one argument`, 且被 grep 过滤后表现为"脚本无输出"
    (看起来像脚本崩了) → 用等号形式 `--phis=-45,-30,...`。

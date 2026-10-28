@@ -13,7 +13,7 @@
   “亮条上边沿点太少(0) —— 画面里没找到过曝条”)。`judge_ok=false` 时 `count/defects` 不可信。
 - 曝光异常同样会让它判不出来 ⇒ 用 `tools/aoi_surface_exposure_sweep.py` 单独排查(只读, 不动机器人)。
 
-## 侧面观察位(示教点唯一依据 `data/skills/l2_atomic/taught_points.json`)
+## 侧面观察位(示教点真源 `data/skills/l2_atomic/taught_points.json`)
 - `侧面点0/1/2/3` = 表面检测观察位; `准备点` = 现场确认的安全退让位(比观察位低、再往外退)。
 - **任何侧面调整的目标 XY 必须落在这些点附近 —— 不自己发明侧面 XY。**
 - 不在观察位上时, 先按两点转移铁律把工件送到观察位附近(垂直抬 ≥50mm → 横移 → 到目标上方 → 垂直下落), 再谈微调。
@@ -23,7 +23,7 @@
 - `tools/probe_surface_live.py` — 整轮存证(判据图/原图 + 量化), 目录 `reports/aoi_surface_probe_<ts>/`。
 - `tools/aoi_gold_servo.py` — 10082 金手指的成熟伺服(check/teach/calibrate/serve + 四级闸), 建 10083 伺服时照它同构。
 
-## 参数单一唯一依据
+## 参数单一真源
 `data/config/aoi_surface_params.json` — 安全区域 / 运动速度 / 侧面检测 / 伺服四段, 每项带
 value·unit·range·说明·代码位置; 现场改这一个文件。
 

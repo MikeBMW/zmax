@@ -26,9 +26,9 @@
 - 症状: 窗口完全不动 / 点击无效，但进程活着、主线程 `poll_schedule_timeout`（事件循环正常）、负载低、无训练进程。
 - 诊断顺序: `cat /proc/<pid>/status` 看 State=S (sleeping) + 线程 wchan → 主线程在 poll = Qt 正常；
   `ls /tmp/.X11-unix/` 有 X0 + `ps aux | grep weston` 查不到合成器 = **WSLg weston 合成器崩溃**。
-- 修复: ① QApplication 创建前设 `AA_DisableWindowManagerEffects` + `AA_UseSoftwareOpenGL`（软件渲染保障，studio.py main 开头）；
+- 修复: ① QApplication 创建前设 `AA_DisableWindowManagerEffects` + `AA_UseSoftwareOpenGL`（软件渲染兜底，studio.py main 开头）；
   ② 终极: Windows PowerShell `wsl --shutdown` 重建 WSLg，或 `sudo pkill -9 weston` 让 WSLg 自动拉起。
-- 模态对话框不可见假死: WSLg 下 `exec_()` 模态框可能弹到不可见位置 → 主窗口被模态禁用 = "按什么都不好使"。
+- 模态对话框不可见假死: WSLg 下 `exec_()` 模态框可能弹到不可见位置 → 主窗口被模态禁用 = "按啥都不好使"。
 - 根治: **全部对话框改非模态** `_show_nonmodal(dlg, on_accept=None)`（居中 + `WindowStaysOnTopHint` + raise_ + activateWindow + finished 回调 + show）。
   8 处已改: TrainConfigDialog/BlockParamsDialog/NodeLogicDialog/FlowScopeDialog/InferenceVideoDialog/ModelCompareDialog/ScopeCompareDialog/对比面板。
   仅 QFileDialog（需返回值）保留模态。offscreen 验证: 弹任意对话框后 `w.isEnabled()` 必须仍 True。
@@ -53,7 +53,7 @@
 
 ## 6. Scope 显示约定（用户铁律，反复修正后定型）
 
-- **训练中 1 点不显示**（歧义）; ≥2 点才画。ScopeWidget 内 `n<2: continue` 保障 + FlowScopeDialog 过滤。
+- **训练中 1 点不显示**（歧义）; ≥2 点才画。ScopeWidget 内 `n<2: continue` 兜底 + FlowScopeDialog 过滤。
 - **未训练默认空**（不显示旧曲线）; 单模型训练启动只删自己 policy 的曲线文件（保留其他模型已完成曲线）。
 - **三模型对比（≥2 训练节点）启动时清空全部 train_curve_*.json**（本轮从零开始，避免上轮残留混淆）。
 - 图例色块必须显式 `setBrush(颜色)` + 画完 `setBrush(Qt.NoBrush)`：1 点圆点残留的 brush 会让所有图例色块同色。
@@ -63,9 +63,9 @@
 
 ## 7. 训练流程用户偏好
 
-- **训练步数先小后大**: 150→100→50。用户明确: "都改成50步吧，先跑完流程，再增加步数"。三模型对比 50 步 ≈ 1.5 分钟验证通过。
+- **训练步数先小后大**: 150→100→50。用户明确: "都改成50步吧，先跑完流程，再增加步数"。三模型对比 50 步 ≈ 1.5 分钟跑通。
 - 训练节点**双击 → 训练配置对话框**（steps 10-5000 / batch / lr），右键菜单也有「🎛 训练配置」；参数存 node params，node_logic 透传下次训练生效。
-- 训练中每 5-10 步日志区输出 `📈 pname 训练中: X/Y 步 · loss Z`（防"感觉阻塞"）；log_freq 已 50→5。
+- 训练中每 5-10 步日志区输出 `📈 pname 训练中: X/Y 步 · loss Z`（防"感觉卡住"）；log_freq 已 50→5。
 - 训练子进程 `nice -n 10` 降优先级（防 CPU 满载卡 UI）；`stop_sim` 用 processEvents 轮询（200×50ms）代替阻塞 `wait(10000)`。
 - 运行反馈三层: 按钮变「⏳ 运行中…」+ 非模态弹窗「🚀 正在执行 N 环节」3s 自动关 + 日志流程行。
 - 总系统模板点运行自动展开子系统再跑（start_sim 检测 subsystem → _open_subsystem → 重收环节节点）。

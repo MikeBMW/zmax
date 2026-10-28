@@ -5,7 +5,7 @@
 对位残差≤0.5mm / 成功率≥97% / 稳定恢复时间≤1s; 字体排列、位置要一致, UI 要优美整洁」
 
 ## 1. 卡上描述不许手写 —— 由单一工程库生成
-- 唯一依据 `data/database/zmax/zmax_engineering.db` 表 `sys0/sys1/sys2` 的功能行。
+- 真源 `data/database/zmax/zmax_engineering.db` 表 `sys0/sys1/sys2` 的功能行。
 - `tools/gui/studio.py`: `PHASE_ROW_SHORT`(库行名 → 卡面短语) + `_db_sys_rows()` + `_phase_desc()`
   + `_phase_db_ref()`(弹窗里的「库真值全量」块, 可复制核对)。
 - 判据 `tools/verify_roadmap_phase_texts.py` ① 断「对照表的键集合 == 库行集合」(逐条相等,
@@ -35,7 +35,7 @@
   实测卡内 176px: 13pt 两条需 226/242px(折行); 12pt 最长 174px ⇒ 单行。
 - 折行的那一张 = 那一行比别的卡多一行 ⇒ 判据要断「每一条都单行放得下」(verify ⑧)。
 
-## 4. 几何唯一依据头量, 别拿截图猜
+## 4. 几何真源头量, 别拿截图猜
 - 命令通道: `echo roadmap_geo > /tmp/zmax_nav_cmd` → `/tmp/zmax_roadmap_geo.json`
   (五张卡 + 各自 KPI 标签的**真窗坐标/宽高/字号** + 是否被挤出窗外 + kpi_ok 判定)。
 - 截图/OCR 只能给「大概在哪」; 判「同一水平线 / 同一字号 / 有没有被挤出窗外」必须用控件几何(误差 0)。

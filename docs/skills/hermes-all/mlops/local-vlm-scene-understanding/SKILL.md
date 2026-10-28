@@ -11,7 +11,7 @@ metadata:
 
 # 场景理解层 VLM (本地 Qwen2.5-VL / API DeepSeek-Vision)
 
-面向"让大模型层**先看到场景**"这类工作: 判读真实画面 → 结构化 JSON → 喂 L4 意图/L3 流程/L2 执行。
+面向"让大模型层**先看到场景**"这类活儿: 判读真实画面 → 结构化 JSON → 喂 L4 意图/L3 流程/L2 执行。
 Z-MAX 现成落点: `src/lerobot/policies/left_right/state_space/scene_vlm.py` (SceneVLM) +
 `tools/vlm_worker.py` (本地子进程 worker, stdio RPC: hello/ask/bye)。
 
@@ -41,7 +41,7 @@ bash 赋值右侧只做参数/命令/算术展开, **不做文件名展开**(POS
 优先级(现成实现): 显式 `SS_VLM_URL`/`SS_VLM_KEY` > 本机已配 API key > 本地 worker。
 - `SS_VLM_PROVIDER=local` ⇒ 强制走本地权重(绕开 API key); `=deepseek` / 显式 URL ⇒ 走 API。
 - `SS_VLM_MODEL` 可给本地 snapshots 目录或远端 repo id; `SS_VLM_DEVICE`(默认 cuda:0) / `SS_VLM_DTYPE`(bf16 等)。
-- **每次判读都先打印 `status()`**(path/provider/model/detail) —— 否则"以为在用本地 Qwen, 实际在打 API"。
+- **每次判读都先打印 `status()`**(path/provider/model/detail) —— 否则"以为在用本地 Qwen, 其实在打 API"。
 - 交付口径: 诚实报"当前哪条路 + 时延", 不夸大(用户红线: 真值+波动)。
 
 ## 四、慢? 先把"加载"和"生成"分开量 (不要把加载时间当推理延迟)
@@ -103,7 +103,7 @@ VLM 只留描述线索; 否则进日志的"缺陷"是模型偏置不是工件缺
 ⇒ 需要"自动标注"这类要出结构性答案的活时, **几何量一律由确定性算法给**
 (局部对比度/局部 std 的 MAD-z/连通域, 参数显式写进记录), VLM 只在最外层出一句不设选项的描述或干脆不参与;
 并把该算法脚本当唯一标注源 (参考 `tools/vlm_auto_label.py` 的双通道设计: VLM 只作区域先验, 冲突样本标 `pending` 交人工)。
-辅助脚本: `tools/l5_vlm_hallucination_test.py`(三测) · `tools/l2_surface_defect_local.py`(客观算法保障)。
+辅助脚本: `tools/l5_vlm_hallucination_test.py`(三测) · `tools/l2_surface_defect_local.py`(客观算法兜底)。
 
 ⚠️ 即便 VLM 说"无缺陷", 也要先看**画面自身达标没**: 摆正后 ROI 死白/清晰度/暗部不达标时,
 "未发现缺陷"不等于合格(过曝会把真实划痕洗掉)。判决顺序: 画面达标 → 算法异常 → VLM 描述。
@@ -235,7 +235,7 @@ curl -s -o /dev/null -w "%{http_code} %{time_total}s\n" -X POST https://api.deep
   实测同一张 960×754 拼图: 三次调用 2.7s / 2.8s / 137s 全部 `finish_reason=stop` 且 content 正常；
   而守护进程里那次 **49.5s 返回、content 空** ⇒ **不是超时、不是 token 不够，是 API 侧偶发空 content**。
 - **修法：空了就重试**（最多 3 次, 间隔 2s）。**别**按"慢返回空=忙, 不重试"跳过 —— 实测 137s 的调用照样出真裁决。
-- **保鲜期必须 > 单轮最慢耗时**：实测 VL 一轮 中位 53s / 最慢 222s ⇒ 给 240s 太紧，下游会把新鲜裁决判成"过期"⇒ 拒动作（600s 合适）。裁决带 `intent_seq`/`intent_desc` 时，下游应按**意图匹配**判适用性，时效只保障。
+- **保鲜期必须 > 单轮最慢耗时**：实测 VL 一轮 中位 53s / 最慢 222s ⇒ 给 240s 太紧，下游会把新鲜裁决判成"过期"⇒ 拒动作（600s 合适）。裁决带 `intent_seq`/`intent_desc` 时，下游应按**意图匹配**判适用性，时效只兜底。
 - **fail-closed 的语义要分清**：判不了 ⇒ 拒动作（对）；但上报文案写"本帧无法裁决(API 侧偶发)"、`hazards` 留空，**不要**写成"现场有危险"——否则用户收到的是误导性告警（本轮就因此被要求"别发了"）。
 - **同一个 wrapper 的所有调用点都要修, 不能只修报错的那一个**: 空 content 的处理分散在各调用方
   (`grep -rn "call_vlm(" tools/`), 漏掉一处 = 那条链路继续静默出空结果。实测: 守护侧修好了,
@@ -245,7 +245,7 @@ curl -s -o /dev/null -w "%{http_code} %{time_total}s\n" -X POST https://api.deep
   (n_obj/scene 有值), 空就按失败上报; 否则数据集里"加上了新标注"是假的。
 - **下游产物为空, 先怀疑上游模型空返回**: 叠加图 0 个框、标注文件只有壳, 根因常不在画框代码,
   而在那一次 VLM 调用返回了空 content ⇒ 顺着"谁写了这个文件/谁画的这个框"**往回查一步**。
-- **改完必须重跑一次取实证**: 修完立刻单独执行一遍并数产物条目(`annotations.jsonl` 里该相机路
+- **改完必须重跑一次取实证**: 修完立刻单独跑一遍并数产物条目(`annotations.jsonl` 里该相机路
   `ok/n_obj` 是否为真值), 用新记录当证据; 只说"已修复"不算。
 
 ## 十二、出框类提示词: 先拓扑+投影推理, 再自检修角 (2026-09-28 老倪: 「大模型VL得先理解拓扑关系，投影原理，自己修正角度」)
@@ -313,7 +313,7 @@ curl -s -o /dev/null -w "%{http_code} %{time_total}s\n" -X POST https://api.deep
 - **显式通道的 key 只看环境变量** ⇒ 密钥在 shell 里被屏蔽/未 export 时, 症状是 `src=rule`
   「无可用 VLM 路径」(看着像"没有 VLM 路径", 实际是 key 空)。修法: 进程内注入
   (`os.environ['SS_VLM_KEY']=os.environ.get('DASHSCOPE_API_KEY','')`, 密钥不进命令行也不打印),
-  或给显式分支加 `~/.hermes/.env` 保障(与 DeepSeek 分支同套)。
+  或给显式分支加 `~/.hermes/.env` 兜底(与 DeepSeek 分支同套)。
 - 🩸 **别用 `pkill -f "脚本名"` 杀自己刚起的任务**: 模式会匹配到**当前 shell 自己的命令行**
   ⇒ 把自己的 shell 一起杀掉(补丁没落、任务还在跑, 双输)。用**写进脚本文件**的模式跑, 或按 PID 精确杀。
 
@@ -330,12 +330,12 @@ curl -s -o /dev/null -w "%{http_code} %{time_total}s\n" -X POST https://api.deep
   更阴的是**它还会把基座打成废物**: 分块开着时基座 A/B 合法率 **0.0**(只会复述提示词), 关掉后基座 
   **0.833** —— 于是"LoRA 把 0.0 提到 0.75"的漂亮提升**是预处理 bug 造出来的假象**。
   规矩: 输入是"目标区域裁剪"就关分块(`proc.image_processor.do_image_splitting=False`); 看到基座
-  离谱地差(0.0/复述提示词)先怀疑**提供给它的图坏了**, 别急着夸自己的微调。
+  离谱地差(0.0/复述提示词)先怀疑**喂给它的图坏了**, 别急着夸自己的微调。
 - **判据要带样本量闸**: val 只有 12 帧时, "合法率 0.833→1.0" 只是差 2 帧 = 噪声 ⇒
   判据里加 `n < 20 ⇒ 样本不足, 不下结论`。**两个指标一起看**(合法率 + 字段命中):
   只盯合法率会被"学会吐 JSON 但内容更差"骗过(实测合法率 +0.167 而字段命中 -0.033)。
 
-## 十七、加载本地视觉权重: 别预先固定 `AutoModelForCausalLM`
+## 十七、加载本地视觉权重: 别写死 `AutoModelForCausalLM`
 SmolVLM / Idefics 系权重的 config 与 CausalLM 不匹配, 直接报
 `ValueError: Unrecognized configuration class <class 'transformers.models.smolvlm...'>`。
 按模型族**依次试**, 第一个成功的留用, 全失败才 raise(把每次的异常串起来报, 便于定位):
@@ -345,7 +345,7 @@ for name in ("AutoModelForVision2Seq", "AutoModelForImageTextToText", "AutoModel
 ```
 产出里记下**哪个类加载的 / backend 名**(如 `l5-vlm` vs 退化成 `encoder+fusion`/`none`) —— 否则
 "VLM 真跑过了"这句无法复核; 只有见到 `l5-vlm` 才能说走了语言推理。
-同理别靠**目录名大小写**找权重: 大小写变体都试(`l5_*` / `L5_*`), 实测漏一个大写变体就静默退化成保障实现。
+同理别靠**目录名大小写**找权重: 大小写变体都试(`l5_*` / `L5_*`), 实测漏一个大写变体就静默退化成兜底实现。
 
 ## 十八、输入图像先过"可用性闸" (全黑/纯色不是证据)
 送 VLM/YOLO 前算灰度 `mean`/`std`, `mean≤3 或 std≤2` 判**不可用**: 跳过模型调用(省算力)、
@@ -380,13 +380,13 @@ for name in ("AutoModelForVision2Seq", "AutoModelForImageTextToText", "AutoModel
 | 关键指标算成 0/0 却看不出来 | 裁剪样本的真值要回**原帧**查(`src_img`), 否则真值全 -1 |
 | 3B 在 8GB 卡上训 LoRA 直接 OOM | 走 4-bit QLoRA; 500M 级模型不必量化 |
 | 训练单步几十秒、GPU 利用率个位数 | 图像预处理是 CPU 瓶颈 ⇒ **预编码缓存** + 限输入边长 |
-| 显式 VLM 通道报"无可用 VLM 路径" | 先看 key 是否为空(可能被 shell 屏蔽) ⇒ 进程内注入或加 env 文件保障 |
+| 显式 VLM 通道报"无可用 VLM 路径" | 先看 key 是否为空(可能被 shell 屏蔽) ⇒ 进程内注入或加 env 文件兜底 |
 | `pkill -f 脚本名` 后 shell 也没了 | 模式匹配到自己 ⇒ 写进脚本文件跑, 或按 PID 杀 |
 | "训练完成/loss 收敛"但只有 1 条样本 | max_len 过滤**静默丢样本** ⇒ 丢弃必须计数打印 |
 | 基座 A/B 离谱地差(0.0 复述提示词) | 先查图: SmolVLM `do_image_splitting` 把裁剪图上采样切 9 块 ⇒ 关掉再看 |
 | 12 帧 val 差 2 条就报"提升" | 判据加样本量闸(n<20 不下结论) + 合法率与字段命中双指标 |
-| 加载 SmolVLM/Idefics 系权重报 `Unrecognized configuration class` | 别预先固定 `AutoModelForCausalLM` ⇒ Vision2Seq→ImageTextToText→CausalLM 依次试, 并记下哪个类加载的 |
-| 权重目录明明在却报"找不到"、静默退化成保障实现 | 大小写变体都找(`l5_*` / `L5_*`), 并把实际 backend 名打进产出 |
+| 加载 SmolVLM/Idefics 系权重报 `Unrecognized configuration class` | 别写死 `AutoModelForCausalLM` ⇒ Vision2Seq→ImageTextToText→CausalLM 依次试, 并记下哪个类加载的 |
+| 权重目录明明在却报"找不到"、静默退化成兜底实现 | 大小写变体都找(`l5_*` / `L5_*`), 并把实际 backend 名打进产出 |
 | 输入帧全黑/纯色还送去 VLM | 先算灰度 mean/std(mean≤3 或 std≤2 = 不可用) ⇒ 跳过调用 + 标 degraded, 别把黑图当证据 |
 | 调用挂起 45s+, 连状态码都没有, 调 timeout/预算都没用 | **模型名无效**(实测 `deepseek-v4-flash`) ⇒ 先用纯文本最小请求验模型名, 换成 `deepseek-chat`(0.61s) |
 | content 与 reasoning_content 都空, 但 completion_tokens 有几百 | 内容在**别的字段**里 ⇒ 打印原始 `choices[0].message` 全部键, 别只读两个键就判成 API 故障 |

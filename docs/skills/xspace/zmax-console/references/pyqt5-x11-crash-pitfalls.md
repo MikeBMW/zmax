@@ -12,7 +12,7 @@ BoundingRectViewportUpdate=4, SmartViewportUpdate=2
 ## 2. 虚函数重写里 Python 异常 = qFatal abort (显示 "Segmentation fault")
 QDialog/QGraphicsItem 的事件虚函数重写 (resizeEvent/paintEvent/mouseDoubleClickEvent/
 showEvent/closeEvent) 里抛 Python 异常 → PyQt5 的 sip 回调 → QMessageLogger::fatal →
-abort → 崩溃显示为 "Fatal Python error: Segmentation fault" (实际不是 SIGSEGV!)
+abort → 崩溃显示为 "Fatal Python error: Segmentation fault" (其实不是 SIGSEGV!)
 - gdb 栈特征: `sipQDialog::resizeEvent → sip_api_call_error_handler → pyqt5_err_print →
   QMessageLogger::fatal → abort`
 - **铁律: 所有事件虚函数重写必须 try/except 包裹** (resizeEvent 早期触发时属性可能
@@ -44,7 +44,7 @@ faulthandler.dump_traceback_later(20, repeat=True, file=sys.stderr)
 - Qt 侧已是最优: MinimalViewportUpdate (XCopyArea + 小条重绘), **任何全量重绘都踩 bug**
 - **根治只能换显示**: 升级 VcXsrv / Xvfb+VNC / 换 X server。代码侧绕不开 resize 全量重绘
 - 诊断工具: `xdpyinfo | grep -iE "max request|extension"` (容器有 xdpyinfo);
-  ffmpeg x11grab 无法打开 TCP X (host.docker.internal:0), 用
+  ffmpeg x11grab 打不开 TCP X (host.docker.internal:0), 用
   `QApplication.primaryScreen().grabWindow(0)` 截图; **xdotool 的 XTEST 注入 Qt 收不到**
   (Qt 用 XInput2, xdotool 发 core 事件) — 模拟交互无效, 只能用户手动测
 

@@ -1,6 +1,6 @@
 # Sim&Real 场景编辑器 + 实时数据条 + 控制台数据同步
 
-适用: 改控制台场景页/数据集页/模型引擎页/监控页; 给页面挂实时只读数据; 场景唯一依据 data/scene/* 的读写。
+适用: 改控制台场景页/数据集页/模型引擎页/监控页; 给页面挂实时只读数据; 场景真源 data/scene/* 的读写。
 
 ## 1. 页面改名与定位
 - 首页卡/页/导航: `插拔场景/Z700` → **`Sim&Real`**（副标题「仿真 · 真机 同一场景」, 描述「对象·标记·轨迹·保护围栏 可编辑 / 建图·AR 标记 · 地图同步」）。老倪明确: 描述里**不要再出现 Z700**。
@@ -8,8 +8,8 @@
 - 原页只有 L2/L3/L4 **产品形态对比**（营销内容, 读不到真实场景、不能改）= 老倪说的「显示功能不对」。修法: 真实编辑器**置顶**, 原内容下移为参考, **不删**。
 
 ## 2. 场景编辑器分层（单一写路径）
-- UI: `tools/gui/sim_real_page.py` `build_body()` → studio.py 里 `bl.addWidget(_sr_build())`。四张表: 对象/现场标记/保护围栏/自定义轨迹; 顶部一条唯一依据路径+条数+采集时间。
-- 数据层: `tools/scene_edit.py`（GUI 与参数中心只经它, 绝不自己写 JSON）。唯一依据 `data/scene/{objects3d,overlay_spec,traj_display}.json`; **`scene_state.json` 是运行中的实时感知状态, 只读禁写**。
+- UI: `tools/gui/sim_real_page.py` `build_body()` → studio.py 里 `bl.addWidget(_sr_build())`。四张表: 对象/现场标记/保护围栏/自定义轨迹; 顶部一条真源路径+条数+采集时间。
+- 数据层: `tools/scene_edit.py`（GUI 与参数中心只经它, 绝不自己写 JSON）。真源 `data/scene/{objects3d,overlay_spec,traj_display}.json`; **`scene_state.json` 是运行中的实时感知状态, 只读禁写**。
 - 写纪律: 带时间戳备份 → 唯一 `.tmp` 原子 `os.replace` → 回读核对 → 失败回滚; load-modify-dump **只动自己的键**, 保留一切不认识的键, 从不改 ts/updated_at。围栏硬校验(多边形≥3点 / z_min<z_max / 体积>0 / 坐标 ±3m, 越界拒写)。
 - **`overlay_spec.json` 是热文件**: 8793 叠加服务(l5_live_mark)每轮刷 ts/updated_at/l5live/cameras ⇒ **拿 md5 前后比来验「dry 有没有写」是错的**（md5 必变）。要验写纪律就 `ZMAX_SCENE_DIR=<沙箱>` 复制副本再测。
 - 数据层自带的坑: 写权限探针**曾在真文件 traj_display.json 上做并覆盖了它**（内容逐字重建、mtime 丢失）。权限探针一律在临时文件上做。

@@ -67,7 +67,7 @@
 
 - Simulink 工具栏「💾 保存模型」(`btn_save_model`) → `save_trained_model()`:
   - 遍历 `reports/train_curve_<policy>.json` 的 `ckpt` 路径
-  - 复制 `last/pretrained_model` (保障 000300) 到 `models/saved/<policy>_<ts>/`
+  - 复制 `last/pretrained_model` (兜底 000300) 到 `models/saved/<policy>_<ts>/`
   - 写 `models/saved/registry.json` (name/path/step_s/ts)
 - studio.py `InferencePanel` 加「已保存模型」下拉 (`saved_combo` 读 registry.json, 新在前)
   + 🔄 刷新按钮; `_on_saved_model_selected` 填 `ckpt_edit` 指向 `.../pretrained_model`

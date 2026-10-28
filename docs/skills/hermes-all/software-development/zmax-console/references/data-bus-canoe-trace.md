@@ -31,8 +31,8 @@
 - **修**: 增量追加 — 每帧只 `append_snapshot` 37 行 + `scrollToBottom()`, 17 帧滚完, 不卡。
 - **铁律**: 大数据量表格展示必须"增量追加"而非"一次性灌入"; offscreen 通过 ≠ 真实 GUI 不卡。
 
-### ⚠️ 高频刷新表禁用 `ResizeToContents` (真实 GUI 满核"阻塞"的隐形杀手)
-- 症状: 带 1~1.5s 自刷新的页面, 现场进程 cpu% 80+, 界面"阻塞"; **逐个 fill 函数计时却只有 2ms/整轮 11ms**, 完全对不上。
+### ⚠️ 高频刷新表禁用 `ResizeToContents` (真实 GUI 满核"卡住"的隐形杀手)
+- 症状: 带 1~1.5s 自刷新的页面, 现场进程 cpu% 80+, 界面"卡住"; **逐个 fill 函数计时却只有 2ms/整轮 11ms**, 完全对不上。
 - 机制: 单元格一变, `ResizeToContents` 就为每列**逐格测量文字**重算列宽(192DPI 下 9 列 × 150 行), 而这份开销在**事件循环里结算**(不在 fill 调用内) → 逐函数计时看不见。
 - 修: 四张表全改显式列宽(`setSectionResizeMode(i, Interactive)` + `resizeSection`), 只留名字列 `Stretch`; 附带"不可见页不刷新 + 文件签名(mtime+size)没变就整轮跳过 + 只读文件尾部 256KB + timer 1s→1.5s" → 基线 CPU 83% → 5%。
 - 定位法(不靠猜): 见下节 CPU 二分。
@@ -62,7 +62,7 @@ def run(sec):
 - 检查: 提取方法后 grep 旧代码块是否残留; `ast.parse` 过不等于没冗余。
 
 ## 卡死/进程诊断工具 (GUI 无响应定位)
-- 主线程阻塞点: `sudo gdb -p <PID> -batch -ex "info threads" -ex "thread 1" -ex "bt"`
+- 主线程卡在哪: `sudo gdb -p <PID> -batch -ex "info threads" -ex "thread 1" -ex "bt"`
   - `poll()` + `QEventDispatcherGlib::processEvents` = 正常空闲事件循环 (**没卡**, 是短暂假死已恢复)
   - `PyEval_EvalFrame` / Qt 渲染函数 = 卡在 Python/Qt 代码
   - ptrace 权限: 需 `sudo` (yama ptrace_scope), 免密 sudo 可直接用

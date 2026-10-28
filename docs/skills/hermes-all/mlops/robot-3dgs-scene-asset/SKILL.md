@@ -135,7 +135,7 @@ metadata:
    `out/` 里 `gs.ply`/`gs.splat`/`train_report.json` 落盘。
    ⚠️ `GS_TRAIN_STEPS` 按**本机实测步速**定, 别照抄 GPU 机的数(同一份数据 Intel XPU 实测 0.43~1.2s/步 ⇒
    30000 步 ≈3.6h, 3000 步 ≈22 分钟); 采集机同时在跑别的 XPU 任务时步速还会再慢一档。
-   ⚠️ 训练验证通过 ≠ 资产可用: 数据集没有 `depth/` 时 `init_source=random_box`(在相机前 0.28m 摆随机盒),
+   ⚠️ 训练跑通 ≠ 资产可用: 数据集没有 `depth/` 时 `init_source=random_box`(在相机前 0.28m 摆随机盒),
    实测留出 PSNR 只有 10.6~13 dB —— 要真资产先补深度反投影初始点云, 别靠加步数。
    🔴 **深度初始化买的是「收敛速度」, 不是「精度天花板」—— 同口径跑满才知道**(216 帧/视差 0.31m/同 3000 步/同留出 20):
    随机盒 **14.24dB**(104,774 高斯, **1886s**) vs 深度反投影 **14.00dB**(278,445 高斯, **574s**) ⇒
@@ -179,13 +179,13 @@ metadata:
 | **无人值守自训跑了一整夜, 一版资产都没有** | 守护 active、`state.json` 在刷新、`train_*.log` 一天十几个, 看着"一直在训"; 实际每次都在同一步崩, 成功标志数 = **0** | 三查定案, 别信"进程在跑": ①`grep -l '训练完成\|gs.ply' <资产目录下的 train 日志> \| wc -l` = 0 ⇒ **一版都没成过** ②`grep -c DATASET_FAILED state.json` ⇒ 指纹里堆着失败记录 ③两份日志的报错是否**逐字相同**(同错重复 11 小时 = 没人看)。修完故障必须**清掉 `state.json` 里对应的 `*_FAILED` 指纹**(备份后改), 否则同一指纹永不重试, 你会以为"修好了但没触发"。另: 有多个 `gs_auto_train.py` 实例时按**显式 pid** 清到一个, 否则几份日志互相覆盖、时间线读不出来 |
 | 建库步崩 `ModuleNotFoundError: cv2`(XPU venv 里只装了 torch/gsplat) | 想把系统 `cv2*.so` 软链进 venv 救一下 ⇒ `ImportError: numpy.core.multiarray failed to import`(系统 cv2 是 numpy1.x 编的, venv 是 numpy 2.x) | **按 CPU/GPU 分工**: 建库(去畸变+选帧)只需要 cv2/numpy ⇒ 用**系统 `python3`** 跑 `gs_dataset.py`; 训练才用 XPU venv。编排器里给两个解释器各一个变量(`SYS_PY` / `PY`), 不要为了一个 import 去动 venv 的 numpy 版本 |
 | gsplat **SYCL 后端**在空 tile 交集时崩 | `IndexError: shape mismatch: indexing tensors could not be broadcast together with shapes [0], [0, 2]`, 崩在第一步 render; CUDA 后端同样情形不报错 ⇒ 容易被误判成"数据/位姿坏了" | 真因是 nnz=0 时后端退化, **不是**几何错(先核实: 300 台相机里 248 台能看见初值点云、深度中位 0.5, 再下结论)。定式 = 该视角**重抽**, 连续 20 次都空才抛"零交集"错(不掩盖真坏数据); 判据 = `--smoke 200` 能跑完并落 `gs.ply/gs.splat`。
-🔴 **训练循环有保护 ≠ 全链有保护(实测 2026-10-24)**: `gs_train.py` 的 step 循环里有 `except IndexError: 换视角重抽`, 但 `evaluate()` 里那个 `render(c)` **漏了** ⇒ 训练照跑到 400 步、第一次 eval 必崩。traceback 指向 `evaluate()` 而不是训练循环, 很容易看错位置。症状 = 守护 active、`state.json` 在刷、日志一天十几个, 但 `grep -l '训练完成\|gs.ply' gs_assets/train_*.log | wc -l` 卡在一个数不再涨。修法 = `evaluate()` 的两个循环(留出 `te` + 训练诊断 `tr`)各加 `try/except IndexError: continue`, 并且**遍历全集、凑够样本数就 break**(`for c in te: if len(ps) >= _want: break`), 这样坏视角跳过后还能补上, 不是直接少一个样本; 全跳光才打"留出不可用", 别记成 0dB。 | 以为「Arc 上 torch 可用」就等于「能训 3DGS」，去下 860MB torch 轮再发现训不了 | **两件事要分开判**: ①intel 上 torch-xpu + ultralytics 确实可用(实测 2.7.1+xpu: `xpu.is_available()=True`、`get_device_name(0)=Intel(R) Arc(TM) B390 GPU`、矩阵乘真算过、ultralytics 也认这个 device) ②但 **pypi 的 `gsplat` 包不是 SYCL 路线**: `gsplat/cuda/_backend.py` 的门就是 `cuda_toolkit_available()`(只查 nvcc/CUDA_HOME), 装了 `intel-sycl-rt` 让 `No CUDA toolkit found` 警告消失之后 `_C` 仍是 None、`rasterization` 照报 `'NoneType' ... CameraModelType` ⇒ **别在 pypi 轮上反复试**, 要 SYCL 只能用下面的轮 ③但 **官方有 SYCL 路线, 不是只能 CUDA**: `isl-org/gsplat` 分支 `sycl_code_integration` + `docs/Intel_XPU.md`, 预编译轮在 `https://isl-org.github.io/gsplat/whl/gsplat`(索引实测为 `gsplat-1.5.3+pt210xpu-cp310..cp314-linux/win`)。**轮名里的 `pt210xpu` 必须与 torch 对齐 ⇒ 装 `torch==2.10.0+xpu`**, 装 2.13/2.14 会 ABI 不匹配(白下 800MB+); 两者是绑定关系, 不是"装新不装旧"。编译器: Ubuntu 的 oneAPI apt 源已配好时直接 `sudo apt-get install intel-oneapi-compiler-dpcpp-cpp`, 装完核 `/opt/intel/oneapi/compiler/latest/bin/icpx` 存在(只有 `intel-oneapi-runtime-*` 不算装好)。远端密码 sudo 用 `echo <pw> | sudo -S <cmd>`, 不要加 `-p ''`(会报 sudo 用法错)。⚠️ 栅格化已验证、**完整训练循环也已验证通过**(见 `references/autocap-daemon.md`) ⇒ 别报"intel 能端到端训 3DGS 了"就往线上推。
+🔴 **训练循环有保护 ≠ 全链有保护(实测 2026-10-24)**: `gs_train.py` 的 step 循环里有 `except IndexError: 换视角重抽`, 但 `evaluate()` 里那个 `render(c)` **漏了** ⇒ 训练照跑到 400 步、第一次 eval 必崩。traceback 指向 `evaluate()` 而不是训练循环, 很容易看错位置。症状 = 守护 active、`state.json` 在刷、日志一天十几个, 但 `grep -l '训练完成\|gs.ply' gs_assets/train_*.log | wc -l` 卡在一个数不再涨。修法 = `evaluate()` 的两个循环(留出 `te` + 训练诊断 `tr`)各加 `try/except IndexError: continue`, 并且**遍历全集、凑够样本数就 break**(`for c in te: if len(ps) >= _want: break`), 这样坏视角跳过后还能补上, 不是直接少一个样本; 全跳光才打"留出不可用", 别记成 0dB。 | 以为「Arc 上 torch 可用」就等于「能训 3DGS」，去下 860MB torch 轮再发现训不了 | **两件事要分开判**: ①intel 上 torch-xpu + ultralytics 确实可用(实测 2.7.1+xpu: `xpu.is_available()=True`、`get_device_name(0)=Intel(R) Arc(TM) B390 GPU`、矩阵乘真算过、ultralytics 也认这个 device) ②但 **pypi 的 `gsplat` 包不是 SYCL 路线**: `gsplat/cuda/_backend.py` 的门就是 `cuda_toolkit_available()`(只查 nvcc/CUDA_HOME), 装了 `intel-sycl-rt` 让 `No CUDA toolkit found` 警告消失之后 `_C` 仍是 None、`rasterization` 照报 `'NoneType' ... CameraModelType` ⇒ **别在 pypi 轮上反复试**, 要 SYCL 只能用下面的轮 ③但 **官方有 SYCL 路线, 不是只能 CUDA**: `isl-org/gsplat` 分支 `sycl_code_integration` + `docs/Intel_XPU.md`, 预编译轮在 `https://isl-org.github.io/gsplat/whl/gsplat`(索引实测为 `gsplat-1.5.3+pt210xpu-cp310..cp314-linux/win`)。**轮名里的 `pt210xpu` 必须与 torch 对齐 ⇒ 装 `torch==2.10.0+xpu`**, 装 2.13/2.14 会 ABI 不匹配(白下 800MB+); 两者是绑定关系, 不是"装新不装旧"。编译器: Ubuntu 的 oneAPI apt 源已配好时直接 `sudo apt-get install intel-oneapi-compiler-dpcpp-cpp`, 装完核 `/opt/intel/oneapi/compiler/latest/bin/icpx` 存在(只有 `intel-oneapi-runtime-*` 不算装好)。远端密码 sudo 用 `echo <pw> | sudo -S <cmd>`, 不要加 `-p ''`(会报 sudo 用法错)。⚠️ 栅格化已验证、**完整训练循环也已跑通**(见 `references/autocap-daemon.md`) ⇒ 别报"intel 能端到端训 3DGS 了"就往线上推。
 🔴 **步速是变量, 必须现量, 不许照抄历史数**: 同一套代码实测出现过 **2.5s/步**(338 帧, 独占) 与 **0.66s/步**(300 帧/640x480/10 万高斯, 且同时在跑 YOLO XPU 训练) 两个值 —— 受帧数/分辨率/高斯数/并发影响。
-定式 = 先跑 `--smoke 200` 量实际步速, 再按 `steps × 步速` 折算 ETA 报给用户(顺带说明是否与在役训练抢 XPU)。**2026-10-23 实测补充(装完 icpx + torch2.10 之后)**: ① 装轮**别用 `--index-url https://isl-org.github.io/gsplat/whl/gsplat`** —— 那个站点是 HTML 列表不是 PEP503 索引, pip 报 `from versions: none`；要么 `--find-links`, 要么直接装发布 URL `https://github.com/isl-org/gsplat/releases/download/v1.5.3-xpu1/gsplat-1.5.3%2Bpt210xpu-cp312-cp312-linux_x86_64.whl` ② 装成后 `import gsplat` 会打印 `gsplat: Using SYCL XPU backend.`、`from gsplat import rasterization` OK ⇒ **能 import 不等于能开训** ③ 首次 `rasterization(...)` 调用实测 **>180s 没返回** —— 那是 SYCL 首次编译,**不是卡死**: 同一条命令再跑 **4s 就出结果**(实测 `渲染输出 (1,480,320,3) dtype torch.float32 device xpu:0`、非零像素 100%) ⇒ 首次一律给 ≥10 分钟预算, 别据此判"intel 训不了"; 但要分清"栅格化验证通过"与"训练循环验证通过"(前者已验证) ④ 调用签名先对���: `opacities` 要 `(N,)` 不是 `(N,1)`(报 `assert opacities.shape == batch_dims + (N,)`)**建图(非 3DGS)在 intel 上是现成的**: `zmax-map-intel.service`(8801, 已知位姿深度点云 `/map/status|points.bin|topdown.png`) + `zmax-mobile-map.service`(单片 SfM), 纯 CPU、不占 4060；建库/质检也已在 intel CPU 验证通过(300 帧/174 视点/5 项 PASS) |
+定式 = 先跑 `--smoke 200` 量实际步速, 再按 `steps × 步速` 折算 ETA 报给用户(顺带说明是否与在役训练抢 XPU)。**2026-10-23 实测补充(装完 icpx + torch2.10 之后)**: ① 装轮**别用 `--index-url https://isl-org.github.io/gsplat/whl/gsplat`** —— 那个站点是 HTML 列表不是 PEP503 索引, pip 报 `from versions: none`；要么 `--find-links`, 要么直接装发布 URL `https://github.com/isl-org/gsplat/releases/download/v1.5.3-xpu1/gsplat-1.5.3%2Bpt210xpu-cp312-cp312-linux_x86_64.whl` ② 装成后 `import gsplat` 会打印 `gsplat: Using SYCL XPU backend.`、`from gsplat import rasterization` OK ⇒ **能 import 不等于能开训** ③ 首次 `rasterization(...)` 调用实测 **>180s 没返回** —— 那是 SYCL 首次编译,**不是卡死**: 同一条命令再跑 **4s 就出结果**(实测 `渲染输出 (1,480,320,3) dtype torch.float32 device xpu:0`、非零像素 100%) ⇒ 首次一律给 ≥10 分钟预算, 别据此判"intel 训不了"; 但要分清"栅格化跑通"与"训练循环跑通"(前者已验证) ④ 调用签名先对���: `opacities` 要 `(N,)` 不是 `(N,1)`(报 `assert opacities.shape == batch_dims + (N,)`)**建图(非 3DGS)在 intel 上是现成的**: `zmax-map-intel.service`(8801, 已知位姿深度点云 `/map/status|points.bin|topdown.png`) + `zmax-mobile-map.service`(单片 SfM), 纯 CPU、不占 4060；建库/质检也已在 intel CPU 跑通(300 帧/174 视点/5 项 PASS) |
 | 在 intel/远端机上 ROS2 订阅 `/robot/tcp_pose` 一条消息都收不到 | 节点起得来、日志只有 `New publisher discovered … offering incompatible QoS. No messages will be received`, 位姿恒 None ⇒ 采集器一张都不存 | 该发布者是 **BEST_EFFORT**(`ros2 topic info -v` 核 Reliability), 默认 RELIABLE 订阅收不到任何消息 ⇒ 订阅端显式 `QoSProfile(depth=2, reliability=ReliabilityPolicy.BEST_EFFORT)`(彩色/深度话题同样); 判据 = 启动日志里没有那条 incompatible 警告 |
 | **采集端每取必存**(老版) | 118586 次取图只对应 5830 张唯一画面(重复 95.1%), 且同一画面被存成多份、每份配**不同** TCP 位姿(最大差 193.7mm) = 矛盾监督 ⇒ 训练视角 PSNR 16.5dB、留出 11~13dB(**低于"填常数"平凡基线**) | 采集端按内容 md5 去重(内容没变不落盘, 重复只在 jsonl 记一行); 建库端再兜一层并把位姿取该图**首现时刻** |
 | **选帧贪心忘了把选中点自己归零** (`gs_dataset.select`) | 数据集 `unique_images` FAIL(实测 唯一图 **180/400**)，报错话术是"同图配多位姿"，把人往"走得不够好/走太快"上带；数据集里 **400 帧有 221 帧是同一张图**；训出来 PSNR 平在 15dB(正常 33dB+)，怎么改走法都不涨 | 最远点贪心里 `sel.append(nxt)` 后**必须 `dmin[nxt] = 0.0`** —— 否则只要"新点到最后一点"的距离 `d[nxt]` 比 `dmin[nxt]` 大，argmax 每轮都返回同一个索引。判据(10 秒): 跑 `select()` 后断言 `len(set(sel)) == len(sel)`；或读数据集 `cameras.json` 的 `src`，**唯一 src 数必须 == 帧数**。⚠️ 症状与"数据脏"完全同名，先查这一条再叫人重走 |
-| 把 "0.0" 当假值做保障 (`x or 999.0`) | **最理想**的测量值被判成最差: 同一位姿不同时刻画面差 = 0.0(=最一致) 被 `0.0 or 999.0` 替成 999 ⇒ `static_scene` FAIL，干净数据也过不了门(实测同一场数值在 0.4↔999 之间跳) | 保障一律写成 `v = d.get(k)` + `if v is None: v = 999.0` —— **不要用 `or`**(0.0/0/[]/'' 都是假值)。凡是"0 是最优"的指标(画面差/误差/偏差)都要这么写 |
+| 把 "0.0" 当假值做兜底 (`x or 999.0`) | **最理想**的测量值被判成最差: 同一位姿不同时刻画面差 = 0.0(=最一致) 被 `0.0 or 999.0` 替成 999 ⇒ `static_scene` FAIL，干净数据也过不了门(实测同一场数值在 0.4↔999 之间跳) | 兜底一律写成 `v = d.get(k)` + `if v is None: v = 999.0` —— **不要用 `or`**(0.0/0/[]/'' 都是假值)。凡是"0 是最优"的指标(画面差/误差/偏差)都要这么写 |
 | 渲染把 **log 域尺度**当线性尺度喂 `gsplat.rasterization` | 整帧单一纯色(唯一色=1)、PNG 1.9KB、`0 split/0 duplicate`、PSNR 平在平凡基线附近; 参数看似没动 | 渲染前 `torch.exp(params["scales"])`(官方 simple_trainer 即如此); 导出 `.ply/.splat` 才存 log/logit 域 |
 | 位置学习率**不衰减** + 致密化跑满全程 | 后期 loss 回升(0.16→0.29)、高斯爆到 140 万、留出 PSNR 回落 | 指数衰减到 1e-6; **致密化在 40% 步数停**(官方 30k 训练 / 15k 停) |
 | 只看 loss 降就以为建出来了 | loss 一直在降但留出 PSNR 低于平凡基线 | **判据必须与平凡基线比**: 留出 PSNR > 平凡基线+3dB 且渲染唯一色 >100 才算建出东西 ⇒ `tools/gs_quality.py` |
@@ -228,8 +228,8 @@ metadata:
 系统里建图那条链(ROS 桥 / 自动采集 / 训练 / 地图服务)全 `active`, 不代表有数据: 实测 ROS 桥 `/health` 回
 `img_age_s=43257 · pose_age_s=43257 · fps=0.0`、采集目录近 2 小时 0 张 jpg —— 两路输入都死了, 只是服务没退。
 定式: 开跑前必读三个数(`img_age_s` / `pose_age_s` / `fps`) + `ls <会话>/frames | wc -l` 近一小时增量;
-再往上一层查唯一依据: 相机 hub 的 `/snap`(报 `n` 与 `age_s`)、`/dev/video*`、以及相机那个 unit 是否
-**只是 `linked` 未 enabled**(`systemctl is-active` = inactive, 看着像装好了实际从没自启)。
+再往上一层查真源: 相机 hub 的 `/snap`(报 `n` 与 `age_s`)、`/dev/video*`、以及相机那个 unit 是否
+**只是 `linked` 未 enabled**(`systemctl is-active` = inactive, 看着像装好了其实从没自启)。
 图像源死了而位姿活着 ⇒ 采集器能一直跑但一张有用数据都没有, 别拿"守护在跑"向用户报进度。
 
 ### 🖐 人拖、我记: 一条"停手即收尾"的无人值守链
@@ -243,7 +243,7 @@ metadata:
 
 ## 自主动作采集: 帧数由**路程**决定, 不由速度决定 (2026-10-24 实测)
 
-让臂自己走(而不是人拖)来补视角时, 帧数被两件事阻塞, 只有一件能拧:
+让臂自己走(而不是人拖)来补视角时, 帧数被两件事卡住, 只有一件能拧:
 
 - **采集环的真实吞吐 ≈ 2.5 帧/秒**, 不是配置的 10Hz: 每帧 = 拉彩色 + 拉深度 + 算亮度/清晰度 + 写盘
   ⇒ 45 秒的运动只采到 ~110 帧。
@@ -271,7 +271,7 @@ metadata:
 
 采集守护发现 `depth/` 存在就自动加 `--init-ply`(job 里 `init_source=depth`), 而历史基线多半是 `random_box`
 ⇒ 直接拿它的 PSNR 和旧数比 = 同时动了"数据"和"初始化"两个变量(实测: 绕拍那组自动提交后立刻变成
-`init_source=depth`, 与同数据的 random 基线不可比)。定式: **用同一份新数据再执行一遍 random**(同留出/同步数),
+`init_source=depth`, 与同数据的 random 基线不可比)。定式: **用同一份新数据再跑一遍 random**(同留出/同步数),
 让两组只差 init。报数按三组一起给: 旧数据·random(基准) · 新数据·depth · 新数据·random ——
 只有"新 random vs 旧 random"才是"这批数据有没有用"。
 
@@ -279,7 +279,7 @@ metadata:
 老倪 2026-10-01 口径: 「L5 功能运行后, deepseek 给出环境理解, 指导 3DGS 建图, 一边移动机器人, 一边自己学环境, 一边建立场景视图」。
 一键: `~/gs-venv/bin/python tools/gs_map_run.py --rounds 7 --targets l5 --order fixed`
 (`--dry-run` 不碰臂验链路; `--from-recording <会话>` 用录像重跑建库+质检)。
-- 🔴 **目标只是"把建图流程验证通过"时, 一律走固定序 (`--order fixed`), 不要走 L5 选点**: L5 那条链要调外网视觉模型,
+- 🔴 **目标只是"把建图流程跑通"时, 一律走固定序 (`--order fixed`), 不要走 L5 选点**: L5 那条链要调外网视觉模型,
   单 IP 抽风时 `urllib` 会在 connect 里干等到硬墙钟预算(实测卡过 3 分钟、更早卡过 5m44s) ⇒ 建图循环就停在那里,
   现场看到的正是"臂不动了"(而臂本身、网络、闸门全部正常)。固定序 = 确定、可复现、零外网依赖;
   另 L5 子进程会占着这条链, 要中途停它得单独 kill 而不是只停主进程。
@@ -287,7 +287,7 @@ metadata:
   `R_base_cam` 乘上相机系单位向量得到 base 系方向, 再在**已示教可达点**(`space_points.json` + `ctl_abs_skills.json`
   白名单)里挑 `align≥0.30` 且最没拍过的点。原因: 运动白名单目前**只有示教点类技能**, 没有任意笛卡尔原语 ⇒
   "L5 想去哪就去哪"要等开了笛卡尔点动; 到时只换候选目录, 上层契约不变。
-  L5 超时/解析失败 ⇒ 自动退**覆盖度保障**(去离已访问视点最远的可达点)并把原因写进 `l5_err`, 不假装是 L5 选的。
+  L5 超时/解析失败 ⇒ 自动退**覆盖度兜底**(去离已访问视点最远的可达点)并把原因写进 `l5_err`, 不假装是 L5 选的。
   ⚠️ `gen_overlay_from_vlm.call_vlm` 返回键是 **`txt`**(不是 `text`), 且 200 但 content 空是已知瞬态(内部会重试)。
 - **移动**: POST `127.0.0.1:8793/ctl/move {skill:"L2.goto_spaceN"}` —— 与页面按钮同一条授权+收口链;
   到位判据 = TCP 真值 <3mm 且连续 1s 稳定; 真动前先读 `/ctl/status` 的 `motion_armed`, **未授权绝不发动作**(如实停)。
@@ -341,7 +341,7 @@ metadata:
   `gs_map_run.py --incremental --inc-steps N` 每轮采完就重建数据集+续训, 出中间资产)。
   `.ply` 读回来要自己做归一化换算: `means=S*(m_world-center)`、`scales=logS+log(米)`(归一化是纯缩放无旋转, 故安全);
   文件里 SH 是**通道优先**(f_rest 按 R/G/B 分段)⇒ 读回要 `reshape(N,3,K).transpose(0,2,1)`。
-  遇到问题: 载入时的临时变量名别用 `K` —— 会覆盖相机内参, 渲染时报 `'int' object has no attribute 'shape'`。
+  踩坑: 载入时的临时变量名别用 `K` —— 会覆盖相机内参, 渲染时报 `'int' object has no attribute 'shape'`。
   同口径实测(同数据集/同留出/总步数相同): 增量 3000+续训3000 留出 12.24dB vs 一次性 6000 留出 10.76dB
   ⇒ 增量不劣化且过拟合更轻; 续训首评(500步)就回到上一轮水平 = 确实接着训而不是重训。
 - **L5 选点两个必备护栏**(都实测过):
@@ -410,7 +410,7 @@ metadata:
   控制器拒**(前置要求 idle+automatic) —— 人工走点用不到它们, 别去点, 点了只会看到"机器人不空闲"。
 - 页面「▶ 开始建图」可整体切到该模式(不用再点🔓授权真动); 回旧的"程序自己跑点"模式用 env 开关重启推流服务。
 - 🔴 **人工模式别让 L5 VLM 挡路**: 选点那条链单次最长 300s(硬墙钟预算), 而"该往哪走"在用户手上 ⇒
-  人工模式把建议点降级为**纯几何保障**(`--targets spaces --order novelty`, 瞬时可出), 只当提示、绝不下发。
+  人工模式把建议点降级为**纯几何兜底**(`--targets spaces --order novelty`, 瞬时可出), 只当提示、绝不下发。
   实测: 留着 L5 时"第一条建议"卡 75s+ 才出现, 人站在机器前等这个没意义。
 - 🔴 **重启 driver 前必须按显式 pid 一并停掉 `gs_capture.py`(孤儿采帧)**: 旧 driver 被 kill 后, 它的
   `--secs 0` 采集子进程**会继续活着**; 再起一个新的 = **两个 capture 往同一个 `frames.jsonl` 追加**
@@ -418,7 +418,7 @@ metadata:
   核实 `ps` 里一个不剩再起新的。
 - 🔴 **旧自动模式"建图在跑但臂不动"的第一嫌疑 = 热读白名单缺条目**: 白名单 = 代码常量 ∪
   `data/skills/l2_atomic/ctl_abs_skills.json`(**热读覆盖层, 改完立即生效、不用重启服务**);
-  覆盖度保障偏爱"离已访问视点最远"的点(实测选 `L2.goto_space8`), 这条不在白名单里时腿直接回
+  覆盖度兜底偏爱"离已访问视点最远"的点(实测选 `L2.goto_space8`), 这条不在白名单里时腿直接回
   "技能 'X' 不在手动控制白名单里" ⇒ 每轮第一下被拒、采帧白跑。加一行 `"L2.goto_spaceX": "🚀 空间X"` 即修。
 - 📊 **"人没动 ⇒ 不训"是正确行为不是故障**: 门判的是**去重后视点**, 人停着不动时 `真正不同视点=1(<30)`
   ⇒ 本轮不训(建库/质检照跑)。要让地图长起来必须真的**动**(平移 + 高度 + 角度), 不是加点位名字。
@@ -550,7 +550,7 @@ A 35.7 · 黑 66.2%    B 92.7 · 黑 13.0%    C 99.4 · 黑 7.8%     (A 的相�
   判据改口径: **卡不卡由两件事决定 —— ①发给浏览器的字节数 ②显示的高斯数**;
   只降采样显示(②)而不减字节(①)照样卡: 下载与解析都在宿主页同一个主线程上。
   ⑥ 🔴 **宿主页(工位页那类)绝不自动加载 3D**: 同标签页里的 iframe 与宿主页**共用主线程和同源连接池**,
-  自动去拉全量 splat 会把整个浏览器拖住(现场原话「阻塞鼠标和其它窗口」)。定式 = 进页面先给静态图(秒出),
+  自动去拉全量 splat 会把整个浏览器拖住(现场原话「卡住鼠标和其它窗口」)。定式 = 进页面先给静态图(秒出),
   3D 一律**用户点了才加载**, 且点了只拉轻量副本。
   ④ 🔴 **挑哪 KMAX 个必须用线性算法, 不许对全量高斯做 JS `sort(比较器)`**: 200 万+ 高斯时比较器被调用
   约 4000 万次 ⇒ 主线程一卡十几秒~几十秒, 现场看到的就是**白屏/假死**(此刻服务端一切正常、页面也不报错,
@@ -558,14 +558,14 @@ A 35.7 · 黑 66.2%    B 92.7 · 黑 13.0%    C 99.4 · 黑 7.8%     (A 的相�
   ≥KMAX 得阈值 → 阈值以上整块 `set()` 收下, 不足再从阈值桶补满(`new ArrayBuffer(KMAX*32)` + 每记录 32B 整块 memcpy)。
   实测 216 万高斯从数十秒降到亚秒级。
 - 🔴 **工位页那格「怎么没有建好的高斯图」= 默认态是空的, 不是没建**: 那格默认露出的是**未加载的 iframe**
-  (`about:blank` = 一个空黑框), 而渲染图实际已经被轮询取回来、也设进了 `#gs_img`, 但它的容器还挂着
+  (`about:blank` = 一个空黑框), 而渲染图其实已经被轮询取回来、也设进了 `#gs_img`, 但它的容器还挂着
   `display:none`(只有点「🖼 参考渲染图」才显示) ⇒ 用户读成"没建出图", 他不会先去点旁边按钮试。
   定式: **服务端只要给了 `image_url` 就默认把它显示出来**(解除容器隐藏 + 收掉"还没有训练好的场景"占位);
   两个按钮只负责**切换形态**(可拖拽实景 ↔ 静态渲染图), 并且切换要打 `dataset.manual='1'` 这类标记,
   同类页面的通用定式见 `user-facing-dashboard-delivery` 的态⑥。
 - 🔴 **「打开是白屏」= 大资产还没拉完/没画完那段时间屏幕上什么都没有**: `.splat` 是几十 MB 级
   (实测 69MB / 216 万高斯), 拉取 + 挑显示副本期间界面空无一物 ⇒ 用户读成"坏了/没建出来"。三条定式:
-  ① 页面**先垫一张轻量静态图**(同域的参考渲染图, 几百 KB 秒出)盖在画布上 —— 这一条同时是弱网/无 WebGL 的保障;
+  ① 页面**先垫一张轻量静态图**(同域的参考渲染图, 几百 KB 秒出)盖在画布上 —— 这一条同时是弱网/无 WebGL 的兜底;
   ② 查看器接管后(数秒)再撤掉垫底图, 并留一个**「🖼 参考图」按钮**随时叫回来;
   ③ 宿主页面(工位页那种)给 iframe 加**超时退回**: N 秒还没画出来就切回静态图并写明"要 3D 点「↗ 新窗口打开」"。
   判据: **任何时刻那一格都有画面**(加载中=静态图, 就绪=3D), 不允许"先空着等它加载"。
@@ -615,7 +615,7 @@ A 35.7 · 黑 66.2%    B 92.7 · 黑 13.0%    C 99.4 · 黑 7.8%     (A 的相�
 - 📎 完整定式(路由四件套 · 查看器壳页骨架与它要的 6 个 DOM id · 相机矩阵 · 无头取证判据 · 页服务重启口径)
   见 `references/splat-web-viewer.md`。
 
-## 多次扫描合并成一个数据集 (同一场景 · 同一手眼/TCP 唯一依据)
+## 多次扫描合并成一个数据集 (同一场景 · 同一手眼/TCP 真源)
 
 现场问「前后两张图能合并么? 都是同一个场景」⇒ **能, 而且该合**: 覆盖/视差翻倍, 比再扫一遍便宜。
 前提只有一条: 两次的位姿在**同一基坐标系** —— 同一台臂 + 同一套手眼标定 + 同一 TCP 真值源即可,

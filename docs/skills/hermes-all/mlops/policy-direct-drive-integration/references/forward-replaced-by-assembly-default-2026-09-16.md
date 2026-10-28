@@ -8,7 +8,7 @@
 ## 镜像的另一半: 引擎自己把 `forward` 换掉了
 
 `references/taking-over-a-controller-guard.md` §1 记的是"**我们**把引擎控制器整个换掉 → 我们放进去的
-模型没有保障"。这里记相反的一半 —— 引擎**默认就在替换自己**:
+模型没有兜底"。这里记相反的一半 —— 引擎**默认就在替换自己**:
 
 ```python
 # tools/gui/state_space_sim_real.py (构造 RealStateSpaceSim 时)

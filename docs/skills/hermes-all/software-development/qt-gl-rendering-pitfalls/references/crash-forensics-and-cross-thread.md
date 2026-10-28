@@ -4,7 +4,7 @@
 
 | 症状 | 日志特征 | 类别 | 解法 |
 |---|---|---|---|
-| 点一下就整个进程消失, 无弹窗 | `Fatal Python error: Aborted` + **Python traceback** (栈顶在槽 / `paint()`) | Qt 槽内**未捕获 Python 异常** → PyQt5 qFatal | 槽体/函数入口 `try/except` 保障 + 类型归一 (见坑 0) |
+| 点一下就整个进程消失, 无弹窗 | `Fatal Python error: Aborted` + **Python traceback** (栈顶在槽 / `paint()`) | Qt 槽内**未捕获 Python 异常** → PyQt5 qFatal | 槽体/函数入口 `try/except` 兜底 + 类型归一 (见坑 0) |
 | 用着用着 (~40-90s) 消失 | 只有线程转储, **无 traceback**; systemd `status=11/SEGV` | **原生段错误** (C/C++ 侧) | 开 core dump + gdb 看栈顶库 (本文件) |
 | 日志刷 `Cannot queue arguments of type 'QTextCursor'` | 之后常接上面第二行 | **后台线程操作 Qt 文本控件** | 在写日志的唯一出口做线程收口 (见下) |
 

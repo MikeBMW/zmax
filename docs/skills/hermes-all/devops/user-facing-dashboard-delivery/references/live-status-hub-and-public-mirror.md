@@ -17,14 +17,14 @@
               "step":0,"total":0,"pct":0,"eta_s":0,"speed_s_per_step":0.0},
  "assets": [{"kind":"3DGS","name":"","version":"","path":""}]}
 ```
-- **版本号唯一依据 = 一个 manifest 文件**（如 `src/lerobot/engineering/models_manifest.json`），
+- **版本号真源 = 一个 manifest 文件**（如 `src/lerobot/engineering/models_manifest.json`），
   不要散在代码里；每条带 `artifact` 绝对路径 + `state` + `probe`（怎么判它在推理）。
 - 没证据的条目写 `"unknown"` + 在 manifest 的 note 里写"无版本证据"。**宁缺毋编** ——
   用户会拿这张表逐个检查，编一个就等于整张表作废。
 - 采样：`nvidia-smi --query-gpu=... --format=csv,noheader` · `/proc/stat`+`/proc/loadavg`+`/proc/meminfo` ·
   `shutil.disk_usage('/')` · 训练中 = `--query-compute-apps=pid,used_memory` 里 **>1500MiB** 的进程。
 - **必须后台 1s 刷快照、请求只读缓存** ⇒ 实测响应 <1ms（每次全量采集会把页面拖慢）。
-- **每段独立降级**（给 `null`/0 + 一个 `err` 字段），最外层保障契约 ⇒ 任何一个采样器崩了也不能 500。
+- **每段独立降级**（给 `null`/0 + 一个 `err` 字段），最外层兜底契约 ⇒ 任何一个采样器崩了也不能 500。
 
 ## 2. 往本机服务加路由时不要抢端口
 目标服务常已被别的服务占着（如 SAM3 的 `--serve --port 8796`）：
@@ -38,7 +38,7 @@
   `cp ss3d_push.php ss3d_push.php.bak_<ts>`，改完远端 `php -l`。
 - 推送器要可 cron：`--if-changed`（md5/指纹未变就跳），别对外网做无意义写入。
 - 状态类要**新鲜** ⇒ 每分钟级 cron（不是小时级）；分版本留档的产物（如画布 PDF）小时级即可。
-- **公网页与局域网页是两份产物**：要么同源同文件，要么写清唯一依据 + 同步器；
+- **公网页与局域网页是两份产物**：要么同源同文件，要么写清真源 + 同步器；
   否则你会改一边、用户看另一边。
 
 ## 4. 页面那条状态带（用户口径）

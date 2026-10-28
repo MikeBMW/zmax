@@ -18,7 +18,7 @@
 
 QLabel 默认按全文撑宽 ⇒ 一条长说明行能把**整页**最小宽度顶起来, 而这种行看着完全无害。
 
-实测链: 页1「⚙️ 工程配置」一条 **2621px** 说明行(`任务 TASK-07-AOI…唯一依据 reports/aoi_points…`)
+实测链: 页1「⚙️ 工程配置」一条 **2621px** 说明行(`任务 TASK-07-AOI…真源 reports/aoi_points…`)
 → `页1.minimumSizeHint().width() = 2649` → `tabs = 2653` → 整页 3046。
 同类: 页0 `状态空间工程(主工程): …` = 2078px(把页0 顶到 2090)。
 
@@ -34,7 +34,7 @@ for w in page.findChildren(QWidget):
 
 1. **左栏按 fontMetrics 实测定宽**(`_tree_need_width()`): 遍历树(含子项)取 `缩进×层级 + 文本宽` 最大值
    + 箭头/边框/滚动条/余量 ⇒ 当**初始宽**同时当**最小宽**(挤不没)。用 fontMetrics ⇒ DPI 自动适配:
-   96DPI→230 · 真机192DPI→393。预先固定像素必然在某天被截。
+   96DPI→230 · 真机192DPI→393。写死像素必然在某天被截。
 2. **真能拖 + 记得住**: `setHandleWidth(8)`(原来 4px 不好抓) · `setChildrenCollapsible(False)`(禁拖成 0 宽) ·
    拖动结果写 `QSettings("ZMAX","Console").setValue("config_center/tree_width", w)`;
    下次开页面恢复时**只在 ≥ 需求宽度时**用, 且不超过页面 50%(防把右栏挤没)。
@@ -47,8 +47,8 @@ for w in page.findChildren(QWidget):
 
 * 离屏是 **96 DPI**, 真机 (X 3200x2000, Qt `logicalDotsPerInch = 192`) 文本 px **差 2×** ⇒
   只跑离屏会把"真机才截"的 bug 判绿。跑法: `QT_FONT_DPI=192 python tools/verify_config_tree_width.py`。
-* **别预先固定像素**(如"拖到 320"): 高 DPI 下 320 < 需求 393 ⇒ 假红。用「需求宽度+60」这类相对口径;
-  页面也要放到「最小尺寸 + 300」而不是预先固定 2200(否则高 DPI 下最小尺寸顶死, 拖拽测不出来 = 假红)。
+* **别写死像素**(如"拖到 320"): 高 DPI 下 320 < 需求 393 ⇒ 假红。用「需求宽度+60」这类相对口径;
+  页面也要放到「最小尺寸 + 300」而不是写死 2200(否则高 DPI 下最小尺寸顶死, 拖拽测不出来 = 假红)。
 * 10 项判据: 需求按内容实测 · 初始=需求 · 初始不截字 · **强压 `setSizes([1,50])` 后仍 ≥ 需求** ·
   拖宽生效 · 宽度落盘 · **拖到比内容窄被拒** · 新开页面沿用 · 右栏仍 ≥400px · 拖后仍不截字。
 
@@ -61,6 +61,6 @@ for w in page.findChildren(QWidget):
 ## 生效
 
 GUI 改动要重启才生效: `env -u QT_QPA_PLATFORM bash tools/studio_ctl.sh restart --force`
-(restart 脚本自己会等, 别用 `timeout` 卡它 —— 实测 180s 被切断时重启实际已在正常进行);
+(restart 脚本自己会等, 别用 `timeout` 卡它 —— 实测 180s 被切断时重启其实已在正常进行);
 完事核**窗口标题里的版本号** + 窗口归属: `DISPLAY=:0 xdotool search --onlyvisible --name "XSpace Studio" getwindowname %@`
 与 `xprop -id <win> _NET_WM_PID` 是不是新 pid —— 只看 `pgrep` 会漏"起的是旧版本"。

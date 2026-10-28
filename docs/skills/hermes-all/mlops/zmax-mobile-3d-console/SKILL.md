@@ -76,7 +76,7 @@ description: Use when 把状态空间3D复刻成手机Three.js页看/控, 或手
 - **① 指令往返慢 = 桥的轮询节奏, 不是执行慢**: `web_agent_bridge.watch()` 里 `time.sleep(interval)` 是往返延迟的**主导项**。
   出厂的 `--interval 5` ⇒ 每次操作**无谓白等 0~5s**(平均 2.5s, 最坏 5s), 与功能本身耗时无关。
   ⇒ 改 `interval` 默认值 **和** systemd 单元 `zmax-web-agent-bridge.service` 的 `ExecStart ... --interval 5`
-  (**单元预先固定, 只改代码默认值不生效**), 然后 `daemon-reload` + `restart`。
+  (**单元写死, 只改代码默认值不生效**), 然后 `daemon-reload` + `restart`。
   实测口径(工具 `tools/phone_latency_probe.sh`, 走手机同一条路 + 只读指令): 5s ⇒ **端到端 1.43s** ✓。
 - **② 实况看不到 = 页面取的是相对地址**: `state-3d.html` 的 `LIVE_URL = "ss3d_live.json"`(相对) ⇒ 只在
   **页面所在主机**可达。页面从局域网 IP(如 `10.163.146.78:8791`)开、手机走移动网络 ⇒ 够不到; 若再依赖
@@ -109,17 +109,17 @@ description: Use when 把状态空间3D复刻成手机Three.js页看/控, 或手
 - 现场设备在局域网时**不要绕公网 relay**: 本地 API 直连, 又快又不依赖外网; 公网那条保留给远程访问。
 - **红线随入口走**: 涉及真机动作的指示由 `handle_instruction` 在**服务端**拒答(只记为待授权),
   换手机入口也绕不过去; 手机页的远程操作另走 `/ctl/*` 两步授权(无授权服务端 403)。
-- 页面要固定不变的现场纪律: **本页没有软急停**(急停用示教器/现场按钮), 默认未授权并显示剩余授权秒数。
+- 页面要写死的现场纪律: **本页没有软急停**(急停用示教器/现场按钮), 默认未授权并显示剩余授权秒数。
 - **路由必须回读核对, 别只看“页面能开”**: 8791 上 `/app` 曾被 room.html 那条 `elif` **抢先命中**(后面那条
   `p in ("/app",...)` 成了死代码), 而 `/overlay` 发的是 `cam_live_stream.py` 里 **py 内嵌的旧副本** ⇒
   改 `tools/web/<页>.html` 完全不生效(改完 curl /overlay 仍是旧内容)。判据: `curl -s 页面 | sha256sum`
   与 `sha256sum tools/web/<页>.html` 必须相等; 要新增/改路由必须**重启**服务(它是手工起的进程, 无 systemd,
   杀掉按 **PID**, 别 `pkill -f cam_live_stream.py` —— 会连自己那条同名命令行一起杀), 重启后用同一条
   `--port 8791 ...` 原命令行拉起并核对 `/stats` 各路 fps 回来了。
-- **在线判据用 `/stats` 的 `fps>0.1`, 不预先固定**: arm/depth 会长时间掉线(Orin `/frame.jpg` 返 503/拒连),
+- **在线判据用 `/stats` 的 `fps>0.1`, 不写死**: arm/depth 会长时间掉线(Orin `/frame.jpg` 返 503/拒连),
   页面要么运行时探测、要么如实标“未上线不上屏”; “未上线”提示要**每轮都重绘**(只在重建瓦片时写会被下一轮
   清空擦掉)。每格标 **帧龄 + 拍照时间(=本机时钟−帧龄)**, 导出 CSV/JSON 也带这两列 ⇒ 实时数据可取证。
-- **叠加框要先看唯一依据脸色**: sim/scene 只对**臂上相机**成立(要手眼), vlm/det 是三路都能跑的纯 2D;
+- **叠加框要先看真源脸色**: sim/scene 只对**臂上相机**成立(要手眼), vlm/det 是三路都能跑的纯 2D;
   `sim` 会**重建整份** overlay_spec(把其它来源的框冲掉), `vlm`/`det` 只替换各自那一类 —— 跑之前想清楚
   会不会把别人正在看的框弄没。
 - 多路相机的连接预算见 android-webview-shell-apk / sim-real-scene-overlay:
@@ -134,12 +134,12 @@ description: Use when 把状态空间3D复刻成手机Three.js页看/控, 或手
   (如 `https://datadrive.world/canvas_latest.pdf` · `zmax_status.html`)。用户说"推到 8796"时, 别把它当成"手机能直接访问 8796"。
 - **`https://datadrive.world/st/<页>` 是反代回本机, 不是 ECS 上的静态文件** —— ECS nginx 里
   `location ^~ /st/ { proxy_pass http://127.0.0.1:18793/; }`(隧道回工位机, 由 `tools/cam_live_stream.py` 在 8793 热读
-  `tools/web/*.html`)。⇒ **只改本机唯一依据即可全网生效**(不存在"改了 ECS 上的文件"这回事);
+  `tools/web/*.html`)。⇒ **只改本机真源即可全网生效**(不存在"改了 ECS 上的文件"这回事);
   验收口径 = `curl -s <公网页> | md5sum` 与 `md5sum tools/web/<页>.html` **逐位相等**。
   改这个 location 时 `^~` 必须留着(否则被宝塔的图片正则 location 抢走 ⇒ 图片路径 404)。
   页面 `?k=` 是鉴权: 无 key/错 key 回 403, 对 key 回 200 —— 加东西后要**两个分支都实测**, 别把鉴权弄坏。
 - 用户手机上常看的"工位总站"就是这个页 ⇒ 往它上面加状态条/新入口时, 条目口径(层+短名+版本、绿黄红灰语义、空态显示上次训练)
-  按 `zmax-console` 的"状态看板 / 版本唯一依据"那节, 两边保持一致(手机页与控制台面板不许各说各话)。
+  按 `zmax-console` 的"状态看板 / 版本真源"那节, 两边保持一致(手机页与控制台面板不许各说各话)。
 - **手机 APK = WebView 壳, 加载的是远端页面** ⇒ **改网页 = 手机上刷新就生效, 不用重新打包/签名/分发**;
   只有当 HTML 被打进包内 `assets/` 时才必须重打包(拿不准就拆包看 `assets/`)。⇒ 用户问"APP 要不要升级"时,
   先用证据回答(页面能否从站点根 200 取到 + 8796 是否回环), 别默认要先改 APK。

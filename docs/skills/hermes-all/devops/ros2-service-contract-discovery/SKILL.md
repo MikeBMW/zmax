@@ -48,7 +48,7 @@ metadata:
 - **单元素序列会挂住**: 只有一段的"序列/轨迹"命令, 驱动的 idle 等待可能**永不返回** ——
   脚本白等几分钟而目标机器一动不动。**永远发 ≥2 段**, 只想走一步就把**当前状态当第 1 段**。
 - **驱动的 `wait_until_idle` 有固定上限(常见 30s)**: 长动作会先返回
-  `success=False (…IDLE_TIMEOUT)` **而动作实际继续跑完**。⇒ **绝不凭 success=False 重发**
+  `success=False (…IDLE_TIMEOUT)` **而动作其实继续跑完**。⇒ **绝不凭 success=False 重发**
   (重发 = 叠加第二个动作); 该标志可能顺手把 `has_error` 置 true, 下一次成功动作会自动清。
 - **编译产物里捞枚举是浪费**: 处理逻辑常在 `install/<pkg>/lib/python3.10/site-packages/<pkg>/*.so`,
   而 `install/<pkg>/lib/<pkg>/<name>` 只是几十行的入口壳。`.so` 的字符串表常被压/剥, `strings` 出不来;

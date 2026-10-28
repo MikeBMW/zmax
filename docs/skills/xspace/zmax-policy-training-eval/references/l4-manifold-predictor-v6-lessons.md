@@ -23,7 +23,7 @@
   git log — 并行会话可能已部署更强版本, 别重复造轮子 (本次 v3.5 45.6% vs v5 45.7%
   白跑一轮才发现)。
 
-## 训练"阻塞"诊断 (py-spy, 别急着杀)
+## 训练"卡住"诊断 (py-spy, 别急着杀)
 - 症状: 大模型 CPU 训练长时间无新 ep 输出 + CPU 高。可能只是 ep 打点稀疏 (每 50-100 ep),
   不是死锁。判别: `sudo env PATH=$PATH py-spy dump --pid <pid>` — 主线程栈在
   `torch/nn/modules/linear.py forward` = 正常前向, 等即可。

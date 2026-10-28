@@ -11,7 +11,7 @@
 | A latent | INTACT `z_t(192)` + `δ=z_goal−z_t` | 流形 6 维 | 逐折 −0.6 / −8.4e9 / −1.6e10 / −6.6e4 / +0.25 | **不可辨识, 作废** |
 | B 几何 | 引擎 `z7(7)` + 动作 + 几何意图 `Δ=target−peg_head(3)` | 流形 6 维 | **0.552(意图关) → 0.638(意图开)**, 中位 0.779 | **成立** |
 
-路线 A 的两个独立佐证: ① 早先 decoder 用线性/CCA 判 `z_t→流形6维 LOSO R²≤0` → 拒绝预先固定映射;
+路线 A 的两个独立佐证: ① 早先 decoder 用线性/CCA 判 `z_t→流形6维 LOSO R²≤0` → 拒绝写死映射;
 ② 本次用非线性 MLP + 意图口复现同一结论; ③ 线性 ridge `z_t→Δxyz` 逐维 `[0.06, −4.45, −0.31]`。
 ⇒ **latent 方向不是可用的意图表示**, 别再投入。
 
@@ -51,7 +51,7 @@ MUJOCO_GL=egl ./gui-venv311/bin/python tools/smoke_intent_line_engine.py
   ⇒ 汇报必须**中位 + 逐折**, 并说明哪一维/哪一折退化 (本次 eta 维在当前采集下不稳)。
 - **Δ 要配对比**: 同一折、同一 init 的 on/off 相减, 报 ΔR² 与赢折数 (6/8), 不要拿两个均值相减。
 
-## 4. ckpt 落地纪律 (三条, 全部来自本次遇到问题)
+## 4. ckpt 落地纪律 (三条, 全部来自本次踩坑)
 
 1. **meta 带质量指标**: `meta.loso_r2_mean` / `loso_r2_median` / `input_kind` / `hidden` / `layers` /
    `intent_kind` / `frames` / `groups`。

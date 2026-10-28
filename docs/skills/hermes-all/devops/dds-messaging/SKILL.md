@@ -40,7 +40,7 @@ class HardwareState(IdlStruct, typename="zmax::HardwareState"):
 ```
 `from cyclonedds.idl.types import string` → **ImportError**（该版本没有 `string`）。
 
-## QoS：按用途分级，不要统一处理
+## QoS：按用途分级，不要一刀切
 | 用途 | QoS | 为什么 |
 |---|---|---|
 | 状态快照（硬件/进度）| RELIABLE · KEEP_LAST(1) · **TRANSIENT_LOCAL** | 新订阅者**立刻**拿到最新值（latch），只留最新不积压 |

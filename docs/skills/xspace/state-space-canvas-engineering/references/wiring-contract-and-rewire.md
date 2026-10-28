@@ -54,7 +54,7 @@ links.extend(add)                       # 再接线
 → `NameError` 阻塞整个 GUI 导入 → **控制台起不来**（`ast.parse` 完全看不出）。
 修法：对照既有条目（如 `_YOLO_DIR`）先 grep 确认常量存在；路径用
 `os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src", ...)`；
-行号要与唯一依据码一致（`grep -n "class X"` 复核）。改完**重启控制台并确认 `Traceback=0`**。
+行号要与真源码一致（`grep -n "class X"` 复核）。改完**重启控制台并确认 `Traceback=0`**。
 
 ## 6. 一次性验证脚本（都留在 tools/）
 ```
@@ -90,7 +90,7 @@ tools/verify_seg_dsvl_canvas_link.py 渲染链: 按节点名在 SimLinkItem 里�
 
 坑:
 - `flows.load_canvas()` 返回 **(data, errors) 二元组**(validate 默认 True) ⇒ 直接 `d['nodes']` 会 `TypeError`。
-- 改画布**前先 `studio_ctl.sh stop`** (GUI 退出/另存为会把内存画布写回唯一依据, 覆盖你的改动), 写完再 `restart --force`;
+- 改画布**前先 `studio_ctl.sh stop`** (GUI 退出/另存为会把内存画布写回真源, 覆盖你的改动), 写完再 `restart --force`;
   控制台日志里 `已加载工作流: ... (89节点 185连线)` 是"新画布真读进来了"的唯一凭证。
 
 ## 全图重排 — 用户说"接线要像左上→右下"时怎么做 (2026-10-15 实测定式)
@@ -136,13 +136,48 @@ tools/verify_seg_dsvl_canvas_link.py 渲染链: 按节点名在 SimLinkItem 里�
 干跑/`--apply` 双模式 + 备份到 `flows/_archive/<事由>_<ts>.json` + 打印还原命令 + 落盘后**回读**
 (节点数/连线数/目标 x/目标节点端口表) + `assert 节点数不变 and 连线数只增这一条`。
 
+## 8. 节点「取输入」的四条路 + 三处断点 (输入不通时按此顺序查)
+
+引擎里 compute 收到的 `ctx` **不是节点参数表, 是端口表**:
+`middleware/node.py::Node.step` → `ctx = self.pull()` → `{port: {"value":…, "age_s":…, "fresh":…}}`。
+
+| 想取的东西 | 唯一正确写法 | 写错的后果 |
+|---|---|---|
+| 上游发来的值 | `(ctx.get("in1") or {}).get("value")`, 是 dict 再挑业务键 | 直接把 `ctx["in1"]` 当值用 ⇒ 拿到整包 `{"value":…}`, 类型判断全错 |
+| 节点参数(画布 params) | **引擎里没有这个键**; `ctx.get("params")` 恒为空 ⇒ 永远走默认值 | 用户改了参数、行为一点不变, 且**不报错** (GUI 双击演示会传 params, 所以本地自测完全看不出来) |
+| 共享态 | `_SS_STATE[...]` (library 模块级 dict) | 只写不读 = 死信 (见断点③) |
+| 落盘文件 / 环境变量 | 直接 read / `os.environ` | — |
+
+三处断点, 全都静默、不抛异常, 必须按下面顺序排:
+1. **外壳 `PURE=False`** ⇒ compute 根本不执行, `last_status = "直通 (PURE=False: 只走数据面)"`, `out` 全 None。
+   要它真跑: 画布节点 `params.pure_verified = True` → 重跑 `tools/gen_middleware_nodes.py` (外壳 `PURE` 由它推导)。
+2. **实现 `return True` / 返回 numpy 数组或标量** ⇒ 引擎判 `"实现返回非 dict → 直通"`, 同样 out 全 None。
+   节点函数必须 `return {"out1": <dict>}`, 异常分支也 `return {"out1": None}` —— **不要 `return False`**。
+3. **写了共享态但没人读** (`_SS_STATE["x"] = v` 全仓只有这一处写点) ⇒ 上下游看着"接了", 实际是死信。
+   `search_files` 查该键的读点, 0 处 = 没接; 要真接上就由下游实现自己读, 别指望"上游写过了"。
+
+**定式 (三级回落)**: 一个量可能来自 参数 / 入边 / 共享态 时, 一律写成
+`params → 入边 → 共享态 → 默认值`, 每一级判类型 (dict 里挑业务键、str 去空白)。
+这样 GUI 演示 (只给 params) 与引擎真跑 (只给端口) 走同一份实现都不炸。
+
+**实测判据 (不靠 GUI, 且必须停常驻循环)**:
+```bash
+sudo systemctl stop zmax-ss-canvas-loop        # 常驻 10Hz 会覆盖 canvas_loop.json, 手工跑的 trace 立刻被冲掉
+ZMAX_CANVAS_ONLY=<id> timeout 6 gui-venv311/bin/python tools/ss_canvas_loop.py >/dev/null
+./gui-venv311/bin/python -c "import json;d=json.load(open('zmax_data/ss_live/canvas_loop.json'));print(d['traces'])"
+sudo systemctl start zmax-ss-canvas-loop
+```
+读 trace 三样: `status` ("实现执行"才算通电, "直通"/"实现返回非 dict → 直通" 都是没通) ·
+`in` 的 keys (空 = 上游没数据, 不等于没接线; 要区分就看 links 里有没有该 t_port) · `out` (None = 没发总线)。
+停服务这一步最容易漏: 不停就连着读到常驻循环自己的 trace, 看着"节点没事"实际是另一个进程在跑。
+
 界面几何探针的具体取法 (配合 SKILL.md「load_flow_file 重编 id」):
 ```python
 m = SM.SimulinkModule(); m.open_state_space(); ...
 for k, it in (getattr(m, "_items", {}) or {}).items():
     nm = str((getattr(it, "node", None) or {}).get("name") or k)   # 只能按**名字**对位
-    p, br = it.pos(), it.boundingRect()                            # 场景坐标 == 唯一依据 x/y
+    p, br = it.pos(), it.boundingRect()                            # 场景坐标 == 真源 x/y
 ```
-重叠判定要**排除 bg/row_bg**并用**唯一依据 w/h** (界面 boundingRect 会带上选中/光晕余量, 直接比会报一堆假重叠)。
+重叠判定要**排除 bg/row_bg**并用**真源 w/h** (界面 boundingRect 会带上选中/光晕余量, 直接比会报一堆假重叠)。
 
 

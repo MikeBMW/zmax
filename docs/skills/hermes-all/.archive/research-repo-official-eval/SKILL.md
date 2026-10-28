@@ -11,11 +11,11 @@ metadata:
     related_skills: [cross-venv-model-canvas-node, robot-policy-eval-pitfalls, huggingface-hub, hf-weight-download]
 ---
 
-# 研究仓库官方评测验证通过 (与接权重前的准备)
+# 研究仓库官方评测跑通 (与接权重前的准备)
 
 ## When to Use
 
-要"把某个研究项目启动/出分"或"把它的论文权重接进本工程"时 —— 例如
+要"把某个研究项目跑起来/出分"或"把它的论文权重接进本工程"时 —— 例如
 `zju3dv/INTACT-JEPA`、LeWM、robomimic 系。触发信号: 官方 `scripts/eval_*.sh` / `preflight`、
 `load_pretrained`、`config.json not found`、`size mismatch for ...`、
 `FileNotFoundError: .../datasets/<x>.h5`。
@@ -119,12 +119,12 @@ WorldModelPolicy.get_action = _patched
 
 ## 7. 诚实纪律 (不可妥协)
 
-- 没验证通过就说没验证通过, 不许把"管线通了"写成"功能对齐了"。
+- 没跑通就说没跑通, 不许把"管线通了"写成"功能对齐了"。
 - 模型未就绪 → `trained=False` + `reason`, **返回零动作也不返回假动作**。
 - 引用官方数字 (如官方 SR 80.22%) 必须标来源文件 (manifest/README)。
-- 只验证通过一个域 ≠ 项目验证通过; 报清楚跑了哪几域、几 episodes、成功率多少。
+- 只跑通一个域 ≠ 项目跑通; 报清楚跑了哪几域、几 episodes、成功率多少。
 
 ## 支持文件
 
-- `references/intact-jepa-e2e.md` — INTACT-JEPA 从零到出分的完整命令与遇到问题链 (含 h5 布局探测脚本、
+- `references/intact-jepa-e2e.md` — INTACT-JEPA 从零到出分的完整命令与踩坑链 (含 h5 布局探测脚本、
   checkpoint 形状反推记录、四域实测数字)。

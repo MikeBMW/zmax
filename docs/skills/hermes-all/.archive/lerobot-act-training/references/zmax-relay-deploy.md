@@ -32,11 +32,11 @@ Orin 采集 → MAC → ECS 中转 → 4060 训练 → 模型回传 ECS → MAC 
 - 裸 `nohup python3 x.py &` 随 SSH 会话退出被杀 → 用 `setsid nohup ... < /dev/null &` 或 start.sh 脚本。
 - `pkill -f zmax_relay.py` 与 `nohup python3 zmax_relay.py &` 放**同一条命令**会把新进程也杀掉 (模式匹配自身命令行) → kill 和 start 分开两条 SSH, 或写 start.sh。
 - start.sh 模式: pkill → sleep 1 → setsid nohup → sleep 2.5 → ps + tail 验证。
-- BaseHTTPRequestHandler **必须有 else 保障**返回 404, 否则未知端点无响应 → nginx 502。
+- BaseHTTPRequestHandler **必须有 else 兜底**返回 404, 否则未知端点无响应 → nginx 502。
 
 ## WS 实时心跳 (升级替代轮询)
 - `ws_relay.py` :8765 (`websockets` 16.1.1; nginx `/ws` 已反代到 8765 遗留配置正好复用)。
-- Orin `orin_infer_service.py` :8766: 每 5s WS push `{"type":"heartbeat",...,"sys":{...}}`, **HTTP /orin/heartbeat 保障**, 无 websockets 库自动降级。
+- Orin `orin_infer_service.py` :8766: 每 5s WS push `{"type":"heartbeat",...,"sys":{...}}`, **HTTP /orin/heartbeat 兜底**, 无 websockets 库自动降级。
 - 控制台订阅 `wss://datadrive.world/ws` → 打开即收初始状态, 之后毫秒级广播。
 - ECS 状态聚合: `POST /orin/heartbeat` (别名 `/heartbeat`, 因为 nginx 剥 `/api/orin/` 前缀) → `GET /orin/status` 返回全量 (含 `sys` 字段: CPU/GPU/内存/温度/ROS2节点/关节 via `orin_sys_status.py`)。
 - 坑: nginx 反代剥前缀 → 控制台读 `/api/relay/orin/status` 而不是 `/api/orin/status` (后者被剥成 `/status` 返回队列信息)。
@@ -53,7 +53,7 @@ Orin 采集 → MAC → ECS 中转 → 4060 训练 → 模型回传 ECS → MAC 
 ## 快照归档 + 视频流端点 (2026-08-02 下午-晚上迭代)
 - **快照自动归档**: `POST /upload` 收到的包若 `meta.source=="orin_snapshot"` 或含 `snapshot_b64` → 不占训练队列, 直接解码落盘 `/root/zmax-relay/archive/snap_<ts>_<action>.jpg` + `.json` (元数据: current_state/all_states/action/timestamp)。队列只留可训练数据包。
 - **视频流端点 (cicd.html 实时画面)**: `GET /api/relay/cam/latest.jpg` 返回最新现场帧 (归档快照优先, `CAM_DIR` 实时推帧次之); `GET /api/relay/cam/status` 返回 ok/age_s/last。页面 `<img>` 2 秒刷新即可直播。
-- **`/peek` 归档保障**: 队列空时 peek 返回最新归档快照 (`archived_snapshot:true` + current_state + snapshot_b64) — 页面状态机/图像依赖 peek 的包在队列空时仍能显示现场。
+- **`/peek` 归档兜底**: 队列空时 peek 返回最新归档快照 (`archived_snapshot:true` + current_state + snapshot_b64) — 页面状态机/图像依赖 peek 的包在队列空时仍能显示现场。
 - **快照是训练队列的污染源**: 每 30s 一个 orin_snapshot 会堆满队列 (467 个/小时)。归档机制上线前必须手动清: `json.load` 判 source==orin_snapshot → os.remove, 保留 orin 数据包。监控/守护脚本也要过滤 `orin_snapshot` 源。
 - **nginx 正则 location 拦截 `.jpg` 请求 (2026-08-02 大坑)**: BT 面板默认 `location ~ .*\.(gif|jpg|jpeg|png|bmp|swf)$` 会先于 `/api/relay/` 前缀匹配, 把 `/api/relay/cam/latest.jpg` 当静态文件处理 → 404。**修法: 用 `location ^~ /api/relay/cam/` 前缀匹配** (nginx 中 `^~` 优先级高于所有正则), 或在正则之前插入。验证: `curl -o /tmp/t.jpg -w '%{http_code} %{content_type}' https://datadrive.world/api/relay/cam/latest.jpg` 应 200/image/jpeg。
 - **新端点必须确认 nginx 反代 + relay 双端匹配**: 加 `/api/snapshot/latest` 别名端点时, nginx 反代 `proxy_pass http://127.0.0.1:39053/api/snapshot/` 的路径会拼接, relay 里 `self.path` 可能带/不带 `/api` 前缀 — 排查时先 curl relay 本机 (`http://127.0.0.1:39053/snapshot/latest` 与 `/api/snapshot/latest` 两个都试) 区分是 relay 还是 nginx 层 404; 本机 200 公网 404 = nginx 层问题。

@@ -53,7 +53,7 @@ L4  GlobalPotentialField       Φ_global = Φ_process + Φ_obstacle(孔壁/台�
 ## ⚠️ 坑
 
 1. **muscle_memory.json 是活数据**: 每次真实化 rollout/桥跑完都会更新 (n_ok/champ_x) → 势场与判据数字会随之漂移
-   (实测同一脚本两次跑, SK06/07 的 io.exit 失配从 126/145mm 变成 27.8/31.4mm)。验证要用"当前"数据 + 别把数字预先固定进断言。
+   (实测同一脚本两次跑, SK06/07 的 io.exit 失配从 126/145mm 变成 27.8/31.4mm)。验证要用"当前"数据 + 别把数字写死进断言。
 2. **不要给 `process.active(t)` 传 t=None** (会 `'>' not supported between float and NoneType`) —
    已统一走 `MemoryLayerBridge._active(x, t)` / `ProcessPotentialField._w(x, t)`; t=None 表示"按状态判相位"。
 3. **L2 节点日志里必须打印 io.exit 失配**: 这是数据质量问题 (锚点不同源), 不修就会让"谷底"长期错位。

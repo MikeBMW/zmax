@@ -19,7 +19,7 @@
 
 ## 坑
 - NM 的 profile 里 `ipv4.address1: "192.168.23.70/24,192.168.1.1"` 会写进一个**别的网段的网关**(192.168.1.1)，
-  路由表里就有 `default via 192.168.1.1` 永不生效 ⇒ 看着有默认路由实际没网。先 `ip route` 核对网关是不是同网段。
+  路由表里就有 `default via 192.168.1.1` 永不生效 ⇒ 看着有默认路由其实没网。先 `ip route` 核对网关是不是同网段。
 - `https://pypi.org/simple/` 本身 34 MB，慢不等于不通；`files.pythonhosted.org/...` 返回 302/0 字节是正常重定向，别当失败。
 - 只有 IPv4 NAT，IPv6 不通(`curl -6` = 000)，属预期。
 - MTU 实测 1500 端到端通(`ping -M do -s 1472` 过)，一般不需要 MSS clamp。

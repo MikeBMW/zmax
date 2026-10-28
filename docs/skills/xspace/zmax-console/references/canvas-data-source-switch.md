@@ -1,4 +1,4 @@
-# 状态空间画布的「数据源」与「场景唯一依据」切换
+# 状态空间画布的「数据源」与「场景真源」切换
 
 画布上 📦 数据源节点的拨钮 (点节点底部那条, 或右键「切换数据源」) 是**三态循环**, 点一下走一步:
 
@@ -9,15 +9,15 @@
 
 ## 三态各自的含义
 
-| 态 | 引擎数据源 | 场景唯一依据 |
+| 态 | 引擎数据源 | 场景真源 |
 |---|---|---|
 | 真机 | `_data_source="bypass_real"` (Orin 远程只读真机帧: TCP 位姿/关节/六维力/夹爪/图像) | 不动 |
 | 插拔场景 | `_data_source="metaworld"` (原「仿真」算路: 39D 状态 / 4D 动作) | `data/scene/scenes/SS-EPI-CORNER` |
 | 摆盘场景 | `_data_source="metaworld"` (同一套算路) | `data/scene/scenes/SS-TRAY-PLACE` |
 
-## 场景唯一依据怎么切 (关键: 它是全局的)
+## 场景真源怎么切 (关键: 它是全局的)
 
-`ZMAX_SCENE_DIR` 是**全局场景唯一依据** —— 3D 视图 / 场景编辑窗(`dreamview_scene_edit`) / 上下料视图
+`ZMAX_SCENE_DIR` 是**全局场景真源** —— 3D 视图 / 场景编辑窗(`dreamview_scene_edit`) / 上下料视图
 (`updown_scene_view`) 都读它。切数据源时必须一起做三件事, 少一件就会「画布切了、场景窗还是旧场景」:
 
 1. `os.environ["ZMAX_SCENE_DIR"] = <场景目录>`;
@@ -53,12 +53,12 @@ cls.on_toggle_src(stub, {"id": "n", "params": {}})                   # 未绑定
 方法挂在哪个类上不要猜 (`on_toggle_src` 不在 `SimCanvas` 上, 在 `SimulinkModule`) —— 遍历模块属性找
 `hasattr(cls, name)`。判据要断言**副作用真的发生了**: 循环序列 (点 4 次回到起点)、`_data_source` 映射、
 `ZMAX_SCENE_DIR` 真被切到目标目录、场景 `objects3d.json` 的对象数从磁盘实读 (插拔 42 / 摆盘 49),
-以及「切真机时场景唯一依据不动」。
+以及「切真机时场景真源不动」。
 
 ## 常见改动点
 
 * 加一个场景态: `SRC_CYCLE` 加名字 + `SRC_SCENE_ID` 加 `data/scene/scenes/<ID>` + `SRC_DESC` 加说明;
   场景目录要真实存在 (判据会核 `objects3d.json` 对象数)。
-* 只改文案: 拨钮画的是 `f"数据源: {_st}"`, `_st` 来自 `_src_norm()` ⇒ 归一表是唯一依据。
+* 只改文案: 拨钮画的是 `f"数据源: {_st}"`, `_st` 来自 `_src_norm()` ⇒ 归一表是唯一真源。
 * ⚠️ 改动纪律: 只改老倪指的那一处。他要「数据源改成 A/B/C」就别顺手把三态变成四态或加个新面板 ——
   做多了会被判「你怎么把东西全给改了」并要求改回去 (见 SKILL.md「只改老倪指的那一处」)。

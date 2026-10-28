@@ -1,7 +1,7 @@
 # WS 事件驱动数据闭环 (2026-08-03, 演示零等待)
 
 老倪需求演进: "为什么不用websocket长连接?" → "websocket不可靠么?" → 最终场景: 静静是笔记本总关机, ECS 常驻, 小芳有时关机; **演示时三端在线且不希望等待**。
-结论: **事件型用 WS 推送 (数据到达即触发), 状态型用 HTTP 轮询 (幂等自愈), 配合启动全量拉取保障**。
+结论: **事件型用 WS 推送 (数据到达即触发), 状态型用 HTTP 轮询 (幂等自愈), 配合启动全量拉取兜底**。
 
 ## 三端架构 (全部实测打通)
 
@@ -9,9 +9,9 @@
 小芳采集 → Orin → Mac(8769) → ECS relay /upload
                                     │ 存队列 (100M 缓冲, 关机不丢)
                                     ├─ notify → ws_relay(:8766) → 广播 data_arrived 事件 (WS)
-                                    └─ /status (轮询保障)
+                                    └─ /status (轮询兜底)
 4060 auto_loop v2: WS 订阅 wss://datadrive.world/ws → 事件到 → 立即拉取+训练 (零等待)
-                   + 每60s HTTP /status 轮询保障 (WS 掉线/错过事件补拉)
+                   + 每60s HTTP /status 轮询兜底 (WS 掉线/错过事件补拉)
 ```
 
 ## ECS 侧改动
@@ -78,7 +78,7 @@ def ws_on_message(raw):
 
 def main():
     threading.Thread(target=ws_listener, daemon=True).start()
-    while True: process_new_data(); time.sleep(60)   # 轮询保障
+    while True: process_new_data(); time.sleep(60)   # 轮询兜底
 ```
 
 设计要点:
@@ -90,4 +90,4 @@ def main():
 ## 验证方法
 - ECS 侧: `echo notify test.json 107 | nc 127.0.0.1 8766` 或 python socket → 看 ws_relay.log 出 "📢 数据到达广播"。
 - 端到端 (本会话实测): 本地 POST /upload 25帧 JSON 包 → 4060 auto_loop 日志秒级出现 `⚡⚡ [WS事件] 数据到达: ... 立即处理` (非等 60s 轮询) → 拉取→训练→推回 ECS 全自动。
-- 断线自愈: 重启 ECS relay → 4060 WS 断开 → 5s 自动重连 (日志 "🔌 WS 断开, 转轮询保障" + "🔌 WS 连接 ..." 交替)。
+- 断线自愈: 重启 ECS relay → 4060 WS 断开 → 5s 自动重连 (日志 "🔌 WS 断开, 转轮询兜底" + "🔌 WS 连接 ..." 交替)。

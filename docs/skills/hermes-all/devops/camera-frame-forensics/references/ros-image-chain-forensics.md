@@ -91,7 +91,7 @@ cv2.imwrite(os.path.expanduser("~/zmax_ss_remote/local_cam_test.png"), f)
 |---|---|
 | Publisher count: 0 (订阅数是自己) | 源头无发布者 ⇒ 发布端问题, 与像素/曝光无关 |
 | 进程在但 `ros2 node list` 没有 | 僵死/初始化未完成 ⇒ 需重启该节点 |
-| `/proc/<pid>/fd` 握着 /dev/video* | 设备被这只僵死进程独占 ⇒ 别人也无法打开 |
+| `/proc/<pid>/fd` 握着 /dev/video* | 设备被这只僵死进程独占 ⇒ 别人也打不开 |
 | 无 respawn 的普通 Node | 杀它不自愈、不带崩; 恢复=重启节点/整条 launch |
 | 话题在、BEST_EFFORT 订阅也 0 帧 | 别继续调订阅 ⇒ 翻 launch 日志找 `process has died … exit code`(节点崩了, 重启节点) |
 | 本机相机 std>5 + VLM 认得出工位 | 可用作备选眼睛(零接触产线) |

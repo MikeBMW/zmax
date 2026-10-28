@@ -86,7 +86,7 @@ set_data_source(数据源层) → set_goal(goal帧|waypoint) → step() → acti
   (确定性 Math-SDPA / `CUBLAS_WORKSPACE_CONFIG`)，必要时只**新增** config 文件
 - **红线**: `RUNTIME_SHA256SUMS` 钉住的文件一个字节都不许改；跑前 `sha256sum -c`，把它当证据贴出来
 
-**求解器/配置也要跟着换 (实测遇到问题)**:
+**求解器/配置也要跟着换 (实测踩坑)**:
 - 求解器可能**不是**根仓库那个: INTACT 根 `direct_solver.py` 检查 `has_intent_actor()`，
   而论文运行时 actor 名为 `inverse_actor` → 抛 `RuntimeError: Direct evaluation requires a
   trained intent actor`。正解 = 用论文运行时自带的 `prior_only_solver.PriorOnlySolver`
@@ -105,7 +105,7 @@ set_data_source(数据源层) → set_goal(goal帧|waypoint) → step() → acti
 | `HF_ENDPOINT` 设晚了 | 镜像不生效、直连超时 | 必须在 `import huggingface_hub` **之前** `os.environ.setdefault(...)` |
 | `pkill -f <pattern>` | 把自己的 shell 也 SIGTERM 了 (模式匹配到自身命令行) | 一律按 PID `kill <pid>` |
 | 自己拼 hydra 配置加载权重 | `ConfigAttributeError: Missing key ...` | 走官方 `load_pretrained` 路径 |
-| eval 顶层 `get_cost_calls` 是 0 | 被当成"零搜索"证据，实际是**回退默认值** | 报 `solver_timing.get_cost_calls_mean` / `candidate_sequences_mean` (实测 0 才算) |
+| eval 顶层 `get_cost_calls` 是 0 | 被当成"零搜索"证据，其实是**回退默认值** | 报 `solver_timing.get_cost_calls_mean` / `candidate_sequences_mean` (实测 0 才算) |
 | tar 包解压路径 | 找不到 `.pt` | 包内路径相对**缓存根** (含 `checkpoints/` 前缀)，解压目标 = `$CACHE` |
 | 官方脚本 `python: command not found` | preflight 直接挂 | `export PATH=<repo>/.venv/bin:$PATH`；`STABLEWM_HOME` 要**导出**(脚本不读 `.env`) |
 | 数据集只差几百 MB 却慢 | 镜像/直连都 ~100KB/s (本机国际带宽瓶颈) | 先测国内源确认是全局慢；换 source 无用 → 等或切网络 |
@@ -119,7 +119,7 @@ set_data_source(数据源层) → set_goal(goal帧|waypoint) → step() → acti
 | **零动作回退冒充成功** | `trained=True` + chunk 形状对 + 全零, 自检只看形状/有限性就通过了 | 节点层**硬闸**: adapter 标 `act_failed`/`trained=0` 时**必须 raise**; 自检加"非零 + 非常量 + 随观测变化"判据 |
 | **计数 > 0 冒充"真接入"** | A/B 影子臂 `calls=60` 看着像"真推理 60 次", 实际每帧抛 `ValueError` 空转 (计数照涨) | 判据必须**同看** `err` / `reuse` / `u_ff_src` / `goal_src`: `reuse≈calls×(chunk−1)` 才是真按 chunk 节拍推理; `err` 非空 = 全废 |
 | **未设 `STABLEWM_HOME` 时桥退回 `<repo>/.cache`** | 本工程权重 (`$SHARED/checkpoints/*`) 全部 `FileNotFoundError: Checkpoint not found` (引擎/桥都显式导出了该变量 → 只有"直接跑节点"才踩到) | adapter 启动 worker 时: `STABLEWM_HOME = $STABLEWM_HOME or (<共享缓存> if isdir else <repo>/.cache)`, 别默认 repo 内 `.cache` |
-| **`goal_displacement` 无 goal 帧** | 引擎"直喂帧"路径 (`step(fr, obs_source=...)`) 每帧 `ValueError: goal_displacement 模式需要 goal 帧` | 节点加 `ensure_goal()` 三级保障: 已 `set_goal` > 数据源自报 goal > 默认目标帧文件; 兜不到才显式报错 (别静默出垃圾) |
+| **`goal_displacement` 无 goal 帧** | 引擎"直喂帧"路径 (`step(fr, obs_source=...)`) 每帧 `ValueError: goal_displacement 模式需要 goal 帧` | 节点加 `ensure_goal()` 三级兜底: 已 `set_goal` > 数据源自报 goal > 默认目标帧文件; 兜不到才显式报错 (别静默出垃圾) |
 | worker 异常原因不可见 | adapter 丢弃 stderr, 只看到一句 message | worker 失败时把 **traceback 尾部**拼进 `reason` |
 | **`--device` 默认值吃掉调用方的 env** | adapter `device="cuda"` 且**总是**传 `--device` → 调用方设 `INTACT_DEVICE=cpu` 无效, 探针去抢训练显存 | `device: str\|None = None`;**只在显式设置时**才加 `--device`, 否则让 worker 读 env |
 | **hf_rev=paper-* 时默认走 paper 运行时** | 本地微调权重 (根运行时训的, action_dim=8) 加载报 `InstantiationException: Error locating target 'module.IntentActionActor'` (论文运行时没有这个类) | adapter 里定规则: `$INTACT_RUNTIME` 优先 → 否则"设了 `INTACT_POLICY`(本地 ckpt) → root" → 都没有才 None (官方 HF paper 资产走 paper) |
@@ -140,12 +140,12 @@ set_data_source(数据源层) → set_goal(goal帧|waypoint) → step() → acti
 
 ```
 GUI (node_logic.py)                    ← 只留瘦调用: 取单例 → run_once(log=ctx["log"]) → to_panel()
-src/lerobot/policies/<m>/service.py    ← 编排: ensure_ready(建桥+接数据源, 保障要写 note) / run_once(真推理+解码+证据+日志) / bridge_status / describe / close
+src/lerobot/policies/<m>/service.py    ← 编排: ensure_ready(建桥+接数据源, 兜底要写 note) / run_once(真推理+解码+证据+日志) / bridge_status / describe / close
 src/lerobot/policies/<m>/runtime/      ← 桥 (model_adapter: 子进程) + 节点 (node: 滑窗/历史/诊断) + 契约
 src/lerobot/policies/<m>/decoder.py    ← 输出 → 下游可消费条件 (标定缺失必须拒绝并计数)
 ```
 判据: 编排层要有 `IntentReport` 这类**唯一结果对象** (带 `to_dict()/log_lines()/to_panel()/evidence()`),
-面板/日志/报告/证据全从它出 → 不会出现两套数字。E2E 必须能**不经 GUI** 验证通过 (一条命令 + 断言表)。
+面板/日志/报告/证据全从它出 → 不会出现两套数字。E2E 必须能**不经 GUI** 跑通 (一条命令 + 断言表)。
 
 ## 8.5 潜空间导出 + 真实性前置 (Step 0, 2026-09-12 实测)
 
@@ -176,7 +176,7 @@ src/lerobot/policies/<m>/decoder.py    ← 输出 → 下游可消费条件 (标
    按比例映射阶段名并**标注"估算"**, 不要假装逐帧对齐。
 5. **动作空间不是截取是标定**: 官方动作维 (如 10) ≠ 本工程动作维 (4D)。适配层默认
    `enabled=False`, 未标定 (`models/<name>_action_map.json`) 时**拒绝返回数值**只给 reason;
-   标定要用真实数据拟 (同 L3 的 `u_ff = act × K_ACT` 口径), 不得硬编码。
+   标定要用真实数据拟 (同 L3 的 `u_ff = act × K_ACT` 口径), 不许写死。
 6. **推理设备**: 与同机训练共存时 `INTACT_DEVICE=cpu` (实测 ViT-tiny 单步 ~330ms, 够做取证);
    GPU 是稀缺资源, 别为探针抢训练显存。
 7. **验收闸 (五道, 全过才算)**: chunk 非零 且非常量且随观测变 / 潜空间维度对且非零 /
@@ -190,7 +190,7 @@ src/lerobot/policies/<m>/decoder.py    ← 输出 → 下游可消费条件 (标
 
 1. **配对数据必须"同帧四路"**: 一帧同时记 (外部模型输出 + 潜空间) × (本工程真值: 参考动作/流形/观测)。
    用 `_frame_sink` 采引擎真渲染帧, 跑完再逐帧喂外部模型 → 保证时间对齐; 别拿两次不同跑的数据拼。
-2. **拟合口径 (遇到问题修正)**: 192 维潜空间 + 几百样本 = p≈n → 岭回归 train R² 0.4~1.0 / test 全负 /
+2. **拟合口径 (踩坑修正)**: 192 维潜空间 + 几百样本 = p≈n → 岭回归 train R² 0.4~1.0 / test 全负 /
    CCA≈1.0, 全是过拟合假象。正确做法: **训练折内 PCA(16) → 岭 → 留一轮交叉验证 (LOSO) → 打乱标签
    null 对照**; 近常值维 (如 eta 恒 1.0) 会算出 −1e7 的假极端值 → R² 加双闸 (绝对 std + 相对 std·|mean|)。
 3. **闸值裁决**: 动作映射中位 R² ≤ 0.05 → **不写映射文件** (写不出来还硬用 = 假接入);
@@ -219,9 +219,9 @@ src/lerobot/policies/<m>/decoder.py    ← 输出 → 下游可消费条件 (标
 - VSCode 配置文件 (`.vscode/launch.json`) 若由 GUI **右键重写**: 新的调试配置必须同时写进那个生成器模板,
   否则下次右键就被抹掉 —— 加回归 (打桩 Popen 调一次 `open_in_vscode`, 断言配置条目全在)。
 
-### 权重别预先固定轮次 —— 用「稳定指针」(v5.5.53 实测遇到问题修)
+### 权重别写死轮次 —— 用「稳定指针」(v5.5.53 实测踩坑修)
 
-症状: 4 个调试配置把 `INTACT_POLICY` 预先固定成 `..._v4_s3072/weights_epoch_2.pt` → 续训换名 (v5→v6→v6r2) 或被磁盘守护
+症状: 4 个调试配置把 `INTACT_POLICY` 写死成 `..._v4_s3072/weights_epoch_2.pt` → 续训换名 (v5→v6→v6r2) 或被磁盘守护
 清掉旧轮后, 配置**静默指向过期模型**, 你调试出来的数字根本不是当前的 (老倪: "把调试配置先改好")。
 
 做法 (利用官方加载器的"文件夹"格式):
@@ -231,9 +231,9 @@ src/lerobot/policies/<m>/decoder.py    ← 输出 → 下游可消费条件 (标
 2. 配置里只写 `<稳定名>`; 换模型 = 换软链 (`bash tools/l4_use_ckpt.sh [轮次关键字] [epoch]`, 默认最新轮次最新 epoch)。
 3. **上线前必须验等价**: 指针 vs 显式路径跑同批帧, 逐维 MAE/std 必须**逐位相同**才算指针有效 (不能只看"加载成功")。
 4. 自检闸: `tools/check_debug_cfg.py` —— 查 4 个配置都指指针 + runtime/device 对 + 指针目录符合官方文件夹格式 +
-   软链不断 + **模板与 launch.json 一致且无预先固定轮次**。
+   软链不断 + **模板与 launch.json 一致且无写死轮次**。
 5. 同一个坑还有第二处: GUI 里选 L4 档时设的**默认权重** (simulink_module.py 的 `os.environ.get("INTACT_POLICY", <默认>)`)
-   往往也是固定不变的老轮次 —— 它会决定"点运行"实际加载哪个模型。改指针的同时把**固定不变的判闸标注**一并改成动态
+   往往也是写死的老轮次 —— 它会决定"点运行"实际加载哪个模型。改指针的同时把**写死的判闸标注**一并改成动态
    (读指针实际指向 + 把结论指向 judged/*.json), 否则那些数字会随训练变假话 (老倪红线)。
 6. 提醒用户: 调试配置改动**立即生效**, 但 GUI 源码里的默认值要**重启控制台** (GUI 改码必重启)。
 
@@ -243,7 +243,7 @@ src/lerobot/policies/<m>/decoder.py    ← 输出 → 下游可消费条件 (标
 直接 `self._intact_node.step(...)` + 自己 `IntactIntentDecoder().decode(...)`, **完全不经过 `service.run_once`**
 (后者只被"双击节点"/E2E 驱动调用)。所以"点运行"永远进不了 `run_once` 的断点 —— 不是断点没生效。
 定位手法: `grep -rn "run_once\|get_service(" tools/ src/` 列出**所有**调用点, 对照你点的那个入口走哪条。
-顺带结论: 这种双实现会漂移 (一处 cond_dim=6 预先固定、一处走 decoder 单例) → 面板长期标"未接入"。
+顺带结论: 这种双实现会漂移 (一处 cond_dim=6 写死、一处走 decoder 单例) → 面板长期标"未接入"。
 
 ### 运行路径必须喂 skill_ctx (skill_dim>0 的 ckpt 会硬闸拒绝, v5.5.54 实测)
 
@@ -277,7 +277,7 @@ but info['skill_ctx'] was not provided — refusing to silently degrade` → **�
 **接线形态 (画布)**: provider 节点 (🧿) ← 帧类数据源 (环境/引擎真图/真机帧) + 任务指令 → **场景理解层** (👁) → LLM 层
 (任务规划器/异常推理器/技能编排器/意图解码器/总装记忆)。**不要把帧直接连给文本 LLM** — LLM 吃不了像素, 必须经 VLM 转场景文字。
 
-**key 保障**: GUI 进程 env 通常没有 key → 客户端里直接解析 `~/.hermes/.env` (不要要求重启时再配一次)。
+**key 兜底**: GUI 进程 env 通常没有 key → 客户端里直接解析 `~/.hermes/.env` (不要要求重启时再配一次)。
 
 **判读结果 UI 要点 (老倪口径: 单色/自解释/禁假值)**
 - 数据源只有一处: 客户端每次判读**落盘** `~/zmax_data/vlm_calls.jsonl` (ts/mode/延迟/来源/json/why/帧) → 面板读它, 没记录就显示"暂无", 不造数

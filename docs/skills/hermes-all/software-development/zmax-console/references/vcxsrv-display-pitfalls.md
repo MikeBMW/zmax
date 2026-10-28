@@ -20,7 +20,7 @@
   1. 节点类补 hover: `setAcceptHoverEvents(True)` + `_hover=False` + hoverEnterEvent/hoverLeaveEvent(设 _hover + update)
   2. view 开 `setMouseTracking(True)`
   3. **mouseMoveEvent 里 itemAt 直接驱动**(不依赖 hover 事件流): 移入设 _hover=True+update, 移出清除
-  4. 保障: QTimer 150ms 轮询 QCursor.pos()(鼠标不动跳过防狂闪; isVisible/underMouse 检查; parent=self 防关闭崩溃)
+  4. 兜底: QTimer 150ms 轮询 QCursor.pos()(鼠标不动跳过防狂闪; isVisible/underMouse 检查; parent=self 防关闭崩溃)
 - **崩溃陷阱**: hover_items 集合引用已删除的 item 会崩 → 清除时检查 `it.scene() is not None`
 
 ## 3. VcXsrv 崩溃 = "狂闪+闪退" 的真相
@@ -69,7 +69,7 @@
 - `_EXTERNAL_LOC[key] = (路径, 行号, "class/def 符号名")` —— sym 必须是**真实符号名**,
   且不要多个节点误指同一符号(State Adapter 曾误指 YoloStateAligner → 与 YOLO 3D 显示相同, 用户指出)
 - 数据流节点(State Adapter/obs)无独立实现 → 不挂外部映射, 显示自身函数(可编辑区)
-- 验证: `node_logic.match_node(name)` + `execute_node_logic(FakeMod(), ...)`(FakeMod 要 _log + __getattr__ 保障)
+- 验证: `node_logic.match_node(name)` + `execute_node_logic(FakeMod(), ...)`(FakeMod 要 _log + __getattr__ 兜底)
 
 ## 10. 节点 ID 显示规范(老倪 2026-08-12 定稿)
 - simulink 画布节点 ID = **VEH.5.顺序号**(加载后按 y→x 布局排序 001-020, `_assign_veh5_ids`),

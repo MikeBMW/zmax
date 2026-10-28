@@ -8,7 +8,7 @@
 root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ```
 **症状**: 读 `models/saved/registry.json` 时拼成 `<repo>/tools/models/saved/registry.json` →
-`os.path.exists` False → 部署模型下拉空、registry 保障失效(异常被 except 吞, 界面静默空白)。
+`os.path.exists` False → 部署模型下拉空、registry 兜底失效(异常被 except 吞, 界面静默空白)。
 **排查**: 打印 `reg_path` 看是否多了一层 `tools/`。
 **规则**: 在 tools/gui/ 下的文件, 凡引用仓库根一律 3 层 dirname; 已有 `_repo_root()` 方法的类直接用
 (它已是 3 层)。验证脚本断言时注意函数内可能用 `_os.path` 前缀 (import os as _os), 别只匹配 `os.path`。

@@ -23,7 +23,7 @@ Z700 画布 (dual_brain_peg_yolo.json) 全功能行:
 
 ## 训练状态诊断 — 看 outputs/train 别信配置名
 
-🐛 **陷阱 (2026-08-14 实测遇到问题)**: 训练容器命令行显示
+🐛 **陷阱 (2026-08-14 实测踩坑)**: 训练容器命令行显示
 `--config_path /app/config_act_runtime.yaml`, **不代表在训 ACT**!
 config_act_runtime.yaml 是运行时生成的临时配置 (名字是模板命名),
 实际策略看 `outputs/train/` 最新目录前缀 (left_right_20260814_173341 = left_right)。

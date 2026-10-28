@@ -31,7 +31,7 @@ ceiling = 净年省 × 客户目标回本年限
 
 ## 2. 三配置 → 成本行（系数表骨架）
 
-| 配置 | 驱动量 | 成本行 | 唯一依据字段 | 状态 |
+| 配置 | 驱动量 | 成本行 | 真源字段 | 状态 |
 |---|---|---|---|---|
 | 模型配置 | 在役层 L2–L5、是否本地大模型推理、产品档 | 域控算力档（Orin 3.5 万 / Thor 5.5 万）、软件 12/16/20 万、复训 2/3/4 万/年 | `models/active_models.json` 层指针；`zmax_product.json` products.capabilities；cost model 的 software | 档位系数待写入 drivers |
 | 任务配置 | 工位数、班次、型号数、来料形态、换型时间、精度档 | 硬件×工位、软件 1 份、NRE = 12 万 + 2 万/型号 ×(1+0.15×(工位−1))、η_struct | `config/platform/projects/<PID>.json` 的 scene / perf_targets；元任务表 | NRE 与 η_struct 为假设 |
@@ -42,7 +42,7 @@ ceiling = 净年省 × 客户目标回本年限
 
 规则：性能只存 id + stage；模型只存指针；派生值不落盘。
 
-## 3. 边界矩阵样例（示例数，务必用唯一依据现算）
+## 3. 边界矩阵样例（示例数，务必用真源现算）
 
 毛利 30%、客户目标回本 2 年、550B、PVT：
 
@@ -86,14 +86,14 @@ A 与 D 差近 3 倍。报价页必须四行同屏，而不是只留最漂亮那
 
 ## 6. 实现落点
 
-- 唯一依据：`defaults/config/platform/zmax_cost_model.json`（加 `drivers` 段）、
+- 真源：`defaults/config/platform/zmax_cost_model.json`（加 `drivers` 段）、
   `config/platform/zmax_project_bom.json` 的 `roi` 段、`config/platform/zmax_perf_spec.json`。
 - 唯一算法：`tools/cost_model.py` 增加 `estimate_config(model, task, perf)`；CLI 加 `--json`。
 - 页面：`tools/gui/veh6_config_page.py` 的「💰 成本/报价」页 = 配置来源徽标条（三条指针）+ 三个驱动块
   + 结果 6 行（CAPEX / 年毛节省 / OPEX / 净年省 / 客户回本(四口径) / 我方成本·底价·毛利·区间）+ 敏感度一行。
 - 判据：`tools/verify_cost_page.py` 在原有 12 条之外加 5 条 —— ①三配置改动触发对应行重算；
-  ②A/B/C/D 同屏且标签正确；③ floor≤ceiling 判定随输入翻转；④每个系数有 `[唯一依据]/[实测]/[假设]` 标签；
-  ⑤派生值不落盘 + 唯一依据字节级还原。
+  ②A/B/C/D 同屏且标签正确；③ floor≤ceiling 判定随输入翻转；④每个系数有 `[真源]/[实测]/[假设]` 标签；
+  ⑤派生值不落盘 + 真源字节级还原。
 - 同源校验：页面结果与 CLI `--json` 逐字段相等（容差 1e-9）。
 
 ## 7. 默认档之前必须锁定的三个实测数

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 被墙环境把本地提交推上 GitHub (ghproxy 镜像) — 2026-09-13 实测通, 4 轮遇到问题后的定版流程。
+# 被墙环境把本地提交推上 GitHub (ghproxy 镜像) — 2026-09-13 实测通, 4 轮踩坑后的定版流程。
 #
 # 为什么不能直接 `git push origin main`:
 #   ① github.com 直连被墙 (GnuTLS recv error -110)

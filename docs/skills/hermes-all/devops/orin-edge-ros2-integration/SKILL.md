@@ -40,7 +40,7 @@ platforms: [linux]
 3. `export ROS_DOMAIN_ID=0` 再查图 —— 域错只会看到 /rosout。
 4. 最后才是网络/端口（`ping`、`/dev/tcp` 探 22/8000/8765）。
 
-## 旁路（影子）运行器配方（已验证通过）
+## 旁路（影子）运行器配方（已跑通）
 只读铁律：**只 create_subscription，绝不 create_publisher 控制话题、绝不 call 服务**。对外写入只有三处：
 本地 jsonl、relay 回传（POST `datadrive.world/api/relay/upload`，`meta.source=orin_shadow`）、遥测 `/zmax_shadow/status`。
 
@@ -62,7 +62,7 @@ platforms: [linux]
 
 ⇒ Python rclpy ≈ **0.17% 单核 per msg/s**；`raw=True` 比非 raw 省 ~20%；
 要真正守住 <8% 红线，Orin 侧采集节点应写 **C++/rclcpp**（同订阅量 ≈1~2%）。
-⚠️ 诊断启发：订阅进程 CPU 只有 0.1% **不代表健康** —— 可能在等 HTTP 超时（实测现役采集器全量上报超时到 Mac 端点，那条流实际是死的）。
+⚠️ 诊断启发：订阅进程 CPU 只有 0.1% **不代表健康** —— 可能在等 HTTP 超时（实测现役采集器全量上报超时到 Mac 端点，那条流其实是死的）。
 
 ## 跨机两节点目标架构（老倪 2026-09-16 定）
 - **Orin 节点**：传感采集 + **执行指令收口**（唯一允许动硬件处：阶段白名单 + 方向/幅值闸 + 限幅 + 超时回退产线原链）。
@@ -80,7 +80,7 @@ platforms: [linux]
   取证：offscreen 直接调那个 handler 拿真 traceback，别翻 journal（可能什么都没有）。
 - **塔灯旧实现只走 relay→Mac 守护** → Mac 不在线就静默失效（界面还写"指令已下发"）。改**直连优先**：
   `ssh tashan@.66 'export ROS_DOMAIN_ID=0; source /opt/ros/humble/setup.bash; ros2 topic pub --once /tower_light/command std_msgs/msg/String "{data: red}"'`
-  + **回读 `/tower_light/status` 的 state** 验证（实测点🔴 state=red / 点🟢 state=green），relay 只作保障。
+  + **回读 `/tower_light/status` 的 state** 验证（实测点🔴 state=red / 点🟢 state=green），relay 只作兜底。
 - **"按钮反应慢" = 主线程跑 ssh**：实测塔灯命令阻塞 **5.48s**、夹爪 0.39s；100ms 的 `_refresh()` 只 0.1ms（无辜）。
   正解：阻塞体下子线程，结果经 `_oneshot(self, 0, lambda: apply(res))` 回主线程（与 `_cam_apply_later` 同模式），主线程绝不 ssh/HTTP。
 - **一批老命令口径过期**：`ROS_DOMAIN_ID=23` + `~/0615/.../install/setup.bash` → 应为 domain 0 + `~/0810/*/install/setup.bash`（/opt/ros/humble 已够）。
@@ -88,7 +88,7 @@ platforms: [linux]
 
 ## 真机位姿真值 → 标注/训练同口径（2026-09-17 老倪: 记录光模块 xyz, 对齐 metaworld）
 - **单一来源 = `tools/real_truth.py`**：读采集容器落盘的 `$SS_OUT/state_YYYYMMDD.jsonl` 最后一行
-  (尾部 64KB 反向扫, 别整文件 load — 文件几百 MB) / `status.json` 保障 → TCP/quat/关节/力 + 新鲜度。GUI 不引 rclpy。
+  (尾部 64KB 反向扫, 别整文件 load — 文件几百 MB) / `status.json` 兜底 → TCP/quat/关节/力 + 新鲜度。GUI 不引 rclpy。
 - **metaworld 39D 段位 (权威 = `yolo_3d/yolo_state_aligner.py:317-328`)**：
   `[0:3]=hand` · `[4:7]=光模块(peg)` · `[7:11]=peg_quat` · `[18:21]=prev_hand` · `[22:25]=prev_peg` · `[36:39]=hole`。
   真机对齐规则：hand=TCP 真值；光模块=TCP+R(quat)·夹具偏移(**未标定填 null + 原因, 绝不编造**)；hole=示教 goal 点。
@@ -117,7 +117,7 @@ $P tools/sim2real_preflight.py   # 仿真链路真跑 8 项 + 真机只读信号
 同一组参数结构**（口径同源），**不**证明真机几何准 —— 标定项还是 `None` 时，真机侧实际走的是 plane_z
 光线回退/感知直给。报进度必须把「口径已同源」与「精度已达标」分两层说，别把口径等价讲成精度达标。
 
-**自检判据会假红**：判据报 ❌ 时先读它自己的明细行再下结论 —— 实测「画布渲染 ❌」实为判据里固定不变的基线数
+**自检判据会假红**：判据报 ❌ 时先读它自己的明细行再下结论 —— 实测「画布渲染 ❌」实为判据里写死的基线数
 （88 节点/166 连线）与当前画布（86/169）对不上，而明细行自己写着「渲染正常」(节点全出，连线差 1 是既有去重行为)。
 **判据基线过期 = 假红，不是回归**；报进展前先分辨，别把假红当事故报上去。
 

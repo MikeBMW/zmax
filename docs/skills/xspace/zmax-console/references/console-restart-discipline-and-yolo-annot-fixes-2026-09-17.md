@@ -54,7 +54,7 @@ CLASS_MAP = {"hand": "hand", "peg": "光模块", "hole": "hole"}   # 注释: peg
   `hole` **是视觉出的**, 画面看得到孔口就必须标, 看不到则只能由现场几何示教顶上
   (`tools/ss_geom_calib.py --record goal`), 两条路**至少通一条**。
 - 已统一: `data/yolo_annot/classes.txt` 与 `yolo_annot_dataset.DEFAULT_CLASSES` 均为 `peg`
-  (两处 GUI 保障默认也改掉了)。
+  (两处 GUI 兜底默认也改掉了)。
 
 ### ⚠️ 可编辑 combo = 类别表污染源
 combo 是 `setEditable(True)`, `_on_cls_changed` 里"手输新类别名 → **立即 `add_class()` 追加一行**";

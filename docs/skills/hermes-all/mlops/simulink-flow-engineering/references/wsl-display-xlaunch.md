@@ -40,10 +40,10 @@ DISPLAY=<宿主IP>:0 xdotool search --name "Z-MAX" getwindowname %@
   `win.raise_() + win.activateWindow()` 置前一次
 - 教训: WSL GUI 主窗口勿设 StaysOnTopHint; 防遮挡用启动置前一次即可
 
-## 帮助文档/文件无法打开: explorer.exe 打开 md 无关联程序没反应
+## 帮助文档/文件打不开: explorer.exe 打开 md 无关联程序没反应
 - studio._mk_doc_action 曾用 `explorer.exe <C盘副本>` 打开文档 → .md 无默认关联程序时**静默没反应**
   (用户反馈"点击帮助文档不自动打开")
 - 统一改 `cmd.exe /c start "" <C盘路径>` + `cwd="/mnt/c/Windows"` → Windows 默认程序自动处理
   (md→编辑器 / docx→Word / pptx→PowerPoint; WSL 侧必须先复制到 C:\Users\Public\ZMAX_docs 再开,
-  UNC/\\wsl$ 路径 Windows 无法打开)
+  UNC/\\wsl$ 路径 Windows 打不开)
 - 打开网页/文件/目录在 WSL GUI 里统一走: cmd.exe start + cwd=/mnt/c/Windows (详见 SKILL.md 坑列表)

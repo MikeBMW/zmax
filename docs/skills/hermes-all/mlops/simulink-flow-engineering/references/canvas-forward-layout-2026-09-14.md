@@ -68,7 +68,7 @@ QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/verify_l4_zero_regression
    - 描述式写法 `"tools/gui/node_logic.py · node_ss_ff_hist"` / `"路径 符号"` / `"路径 --flag"`
      会让 `os.path.isfile(join(root, 整串))` 失败 → GUI `open_in_vscode` 已改为拆出路径与符号;
      且 `source` 只落到 GUI 自身 (`tools/gui/node_logic.py`) 时**让位给 registry 真实现**。
-2. registry 保障: `match_node(名字)` (最长关键词匹配) → `_EXTERNAL_LOC[key]`;
+2. registry 兜底: `match_node(名字)` (最长关键词匹配) → `_EXTERNAL_LOC[key]`;
    sym 必须是真实符号名 (`class Xxx` / `def xxx`), 写描述文字会定位失败。
 3. 都没有 → 只能打开工程根。
 
@@ -88,4 +88,4 @@ QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/verify_l4_zero_regression
 
 - 报 bug 时**不给选项菜单** — 先定位真因、拿证据 (语义 diff / 行号 / 实测数字) 再修。
 - "赶快修改" = 立刻改 + 跑验证 + 报结果, 不要再追加确认问题。
-- 交付前先自己验证通过并留证据 (体检器输出 / 截图绝对路径 / 零回退结论), 口头结论不算。
+- 交付前先自己跑通并留证据 (体检器输出 / 截图绝对路径 / 零回退结论), 口头结论不算。

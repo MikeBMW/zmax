@@ -13,5 +13,5 @@
 
 ## 血泪：重启这类服务必须带**原始参数**
 - 裸启动 `python tools/cam_live_stream.py` 会同时打掉 `--overlay`（叠加全 503）、`--local2-dev 6`（MAXHUB 无帧）、`--ctl-motion`（手动退化成「仅演练」）。
-- ⇒ 唯一依据 = `tools/start_station_8793.sh`（参数逐项注释 + 停旧 + 起新 + 逐路验收），别再手敲。
+- ⇒ 唯一真源 = `tools/start_station_8793.sh`（参数逐项注释 + 停旧 + 起新 + 逐路验收），别再手敲。
 - 重启前先看**谁占着端口**（按端口占用者 pid 精确重启），否则新实例 bind 失败 core dump。

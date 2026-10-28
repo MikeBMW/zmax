@@ -35,7 +35,7 @@ sawyer_xyz_env 的 reset(seed=) 参数被忽略, 布局由**全局 np.random** �
 peg 是 **free body** (qpos 7 维: 平移3+四元数4)。找它: 遍历 body 名 `"peg"` →
 `body_jntadr[body_id]` → `jnt_qposadr`。**joint 名未必含 "peg"**, 别按 joint 名搜。
 注入: qpos 平移 += Δxy(±4cm)/Δz + 四元数绕竖轴 yaw; 然后 `mujoco.mj_forward(model, data)`
-→ 之后**现场几何/obs 全部重读** (决策链靠现场几何自恢复, 不预先固定常量)。
+→ 之后**现场几何/obs 全部重读** (决策链靠现场几何自恢复, 不写死常量)。
 注入时机: env.reset 后、obs/geom 采样前。可控复现: 引擎加 `_jitter_override` dict 供回归矩阵。
 
 **钉/搬运一个 free body: 设 qpos 必须同时清 qvel** (否则速度继续累积, 每步掉 ~9.81×ctrl_dt):
@@ -93,7 +93,7 @@ ren.update_scene(d, camera=cam); frame = ren.render()
 2. **先验几何可行性, 再看控制**: 控制链路全绿却放不进去时, 先量**间隙** (槽位开口 vs 件外形)。
    实测: 隔板 20mm 厚 + 节距 30mm ⇒ 开口 10~15mm < 件宽 20mm, 件物理上放不进去, 只能骑在
    隔板棱上 (落座高 +3.6mm、单边偏 2.5mm) —— 看着像"控制精度不够", 实际是几何不可行。
-   夹具/槽位的尺寸与节距必须在唯一依据里对得上, 仿真与 3D 视图同源改一次即同步。
+   夹具/槽位的尺寸与节距必须在真源里对得上, 仿真与 3D 视图同源改一次即同步。
 3. **释放时机决定横向残差**: 距落座 6mm 就断真空/开爪 ⇒ 件自由落体时横向漂 2.2mm 撞壁;
    收到 1.5mm 内再放, 残差 ≤0.5mm。判据要按工艺配方定 (单边 ≤1mm / 姿态 ≤1°), 别自己放宽。
 
@@ -107,6 +107,42 @@ ren.update_scene(d, camera=cam); frame = ren.render()
 - 解析仿真路（无 mujoco, `v ← v+(u−v)dt/τ; x += v·dt`) 与真物理路的「速度」语义不同源, 对比两路数据前先声明用哪一条。
 
 口径表/两路链路/改法见 `references/action-to-physics-mapping.md`; 量它用 `scripts/probe_action_mapping.py`（一条命令打 action_scale/frame_skip/timestep + 各 act 的稳态位移与真实速度）。
+
+## 无头环境渲染: 必须 `MUJOCO_GL=osmesa`
+
+headless Linux 上 `mujoco.Renderer` 报 `an OpenGL platform library has not been loaded into this process`。三后端实测：
+
+| MUJOCO_GL | 结果 |
+|---|---|
+| `egl` | `glCheckError` → `EGLError`（无 GPU EGL 时不可用）|
+| `glfw` | `AttributeError: 'Renderer' object has no attribute '_mjr_context'` |
+| `osmesa` | ✅ 软件渲染正常出图 |
+
+⇒ 无头/远程一律 `MUJOCO_GL=osmesa`。代价：960×720 约 0.3~0.5s/帧，批量造数据集可接受。
+
+## 真源箱体里的「结构件包围盒」不能当实体画
+
+从配置/真源读的箱体元素里，**结构参照件**（横梁/相机支架/设备外框）的包围盒往往跨越整个工位。按 p1/p2 直接画实心 box ⇒ 正俯视时把下面全盖死，表现是「目标明明在画面里却 0 像素」。实测：`长方体-上横梁` 200×1600×18mm（1.6m 长）一条梁盖死整张台面。
+
+对策：名字含 `横梁 / 相机 / 检测设备` 的结构件**只用来定台面范围，不进 worldbody**。
+同理**料盘要画「薄底 + 四壁」，不能画实心盒** —— 实测料盘 z=100~140mm 的实心盒把槽（z=110~125）和坐在 130mm 的模块整个包住，目标色像素归零。
+
+## 可见性必做消融法（区分「没画出来」vs「被挡住了」）
+
+只看「传了相机、图不黑」不够。标准动作：把目标 geom 移到 `[0,0,-5]` 再渲一帧，与正常帧求差。差 = 0 ⇒ **拍了等于没拍**。
+
+排查 0 差异的顺序（实测有效）：
+1. 确认 `model.geom_pos[gid]` 赋值生效（`mj_forward` 后 `data.geom_xpos` 应跟着变）
+2. **只留目标**：其余 geom `geom_rgba[:,3]=0`、目标 `=1` 单独渲一次 —— 单独能出像素 ⇒ 机位没问题、是遮挡；单独也 0 ⇒ 位置/机位错
+3. 逐个单独渲染其他 geom，看谁盖住目标的屏幕坐标 → 直接点名遮挡者
+
+## 渲染图天然带真值：颜色分割自动标注
+
+仿真渲染最大红利是不用人标。目标用独特颜色（如 `0.94 0.76 0.22`），按 `R 高 / B 低` 阈值 + 连通域外接框 ⇒ **像素级真值标注**，直接产 YOLO 格式。
+盲区：目标被遮挡时分割为空 ⇒ 空图标签留空并单独计数，**不要拿空图配「有目标」标签**。
+
+实测：300 张渲染自动标注 → yolov8n 60 epoch（2.6min/4060）→ 换 seed 重生 60 张**未见机位** holdout，召回 100%、置信度 0.871~0.969、框位误差 1~2px。
+注意「同集验证 mAP50 0.995」不算泛化指标，必须另出 holdout 才报数。
 
 ## 关联
 

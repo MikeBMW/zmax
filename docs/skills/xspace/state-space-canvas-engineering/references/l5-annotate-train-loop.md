@@ -3,7 +3,7 @@
 用途：能力档位节点选 L5 后点 ▶运行，后台跑「视觉语言自动标注 → 监督数据 → L2/L3/L4 训练 → merge」，
 并把状态回画布；以及「重启后自动加载在役权重」这条链。改这条链或排查"点了没反应"时看这里。
 
-## 状态唯一依据（只有一份，不要造第二套数字）
+## 状态真源（只有一份，不要造第二套数字）
 `~/zmax_data/l5_loop/state.json`
 ```
 status     running | done | failed
@@ -27,12 +27,12 @@ updated    时间戳
    判据是 `mapped_boxes>0` 且映射后无空标签/越界，不是"跑完了"。
 2. **训练启动前断言数据集非空**（train/val 的 labels 文件数与非零框数 > 0），否则**拒绝启动**（state 里 cmd 留空，进程一次都不许起）。
    症状对照：空集上也照样打印 `8 epochs completed in 0.001 hours` 并"成功"。
-3. **训完要真推理验证**：执行一遍真帧，0 框 ⇒ 记为**不算成功 / 权重不可用**，即使训练器自己的日志写着 `✅ 完成` —— 闭环的判据要覆盖工具的自报。
+3. **训完要真推理验证**：跑一遍真帧，0 框 ⇒ 记为**不算成功 / 权重不可用**，即使训练器自己的日志写着 `✅ 完成` —— 闭环的判据要覆盖工具的自报。
 4. **换在役不自动**：`tools/l5_promote_l2.py` 默认只做"回退风险校验 + 打印命令"，`--check-only` 先比新/旧模型真帧检出数，`--yes --force` 才实切。
 
 ## 在役权重的换法（reboot 自动加载链）
 - 换在役**走软链，不覆盖文件**：`models/yolo_peg_live.pt` → `ln -sfn <新 best.pt> models/yolo_peg_live.pt`（回退就是再指回旧的）。
-- 自动加载唯一依据 `models/active_models.json`，入口 `tools/model_autoload.py`；
+- 自动加载真源 `models/active_models.json`，入口 `tools/model_autoload.py`；
   挂钩在 `tools/gui/studio.py` `main()` 里 `app.exec_()` **之前**，且必须是**独立子进程**（lerobot/metaworld 的 import 链带 GIL/GPU，线程里跑会拖死 GUI）。
 - 验证一条命令即可：`./gui-venv311/bin/python tools/model_autoload.py --only L2` →
   期望 `✅ L2 已加载 · <权重路径> (Xs) · 类别 [...] · 真帧检出 N` + 一份 `reports/model_autoload_*.json`（判据字段写"全部就绪"）。

@@ -59,7 +59,7 @@ def refresh(self):                              # GUI 侧: 零 I/O, 实测 <1ms
 **现象**：弹「状态空间模型画布加载失败」; 或点桌面图标起来的是**旧版本 GUI**（少了近期功能）。
 
 **根因（实测）**：加载只拼 `<仓库根>/flows/state_space_obs.json`。共享检出 `/home/ubuntu/lerobot-smolvla-lew`
-被并行 APP 线切到 `mac-hw` 分支 → 该目录**没有 `flows/`**（画布唯一依据只在 main 线）, 且那棵树的 `studio.py`
+被并行 APP 线切到 `mac-hw` 分支 → 该目录**没有 `flows/`**（画布真源只在 main 线）, 且那棵树的 `studio.py`
 是旧版（v5.6.0 vs main v5.15.x）; 更隐蔽的是**桌面启动器 `Exec=` 与 `launch_studio.sh` 都硬编码了那棵树**
 ⇒ 用户点图标永远起旧 GUI。
 
@@ -68,7 +68,7 @@ def refresh(self):                              # GUI 侧: 零 I/O, 实测 <1ms
    ```python
    def _flows_path(name):
        cands = [os.path.join(_repo_root_path(), "flows", name),
-                os.path.join("/home/ubuntu/zmax_rel", "flows", name),      # main worktree 保障
+                os.path.join("/home/ubuntu/zmax_rel", "flows", name),      # main worktree 兜底
                 os.path.join(os.path.expanduser("~"), "lerobot-smolvla-lew", "flows", name)]
        env = os.environ.get("ZMAX_FLOWS_DIR")                             # 环境变量优先
        if env: cands.insert(0, os.path.join(env, name))
@@ -87,5 +87,5 @@ def refresh(self):                              # GUI 侧: 零 I/O, 实测 <1ms
 `FileNotFoundError`（实测 `ss-remote-tap` 重启即挂、真机只读采集链断流）。处置: 逐个 unit 重指
 main worktree（含 docker `-v` 挂载路径）+ venv 软链 + 重启复核 `6/6 active`。
 
-**收尾纪律**：改完必须"用真实入口执行一遍"（点启动器 → 查进程 cwd 是否 main worktree、实例数=1、启动日志 0 错误）,
+**收尾纪律**：改完必须"用真实入口跑一遍"（点启动器 → 查进程 cwd 是否 main worktree、实例数=1、启动日志 0 错误）,
 不能只看源码 diff。

@@ -21,7 +21,7 @@ description: "Use when U盘出差要带Hermes记忆或双系统数据架构(nvme
 | 主挂载脚本 v2 | /usr/local/bin/zmax-data-mount.sh | label 校验 → 挂 E盘 → 回家回灌 → bind → 后台同步镜像 |
 | 主挂载服务 | /etc/systemd/system/zmax-data-mount.service | ConditionPathExists=/dev/nvme0n1p5, U盘系统开机跑 |
 | 镜像同步脚本 | /usr/local/bin/zmax-hermes-mirror.sh | E盘→mirror 全量 rsync, 只在主模式跑 |
-| 保障脚本+服务 | /usr/local/bin/zmax-hermes-fallback.sh + /etc/systemd/system/zmax-hermes-fallback.service | 无正牌 E盘时 bind mirror→~/.hermes(离家模式) |
+| 兜底脚本+服务 | /usr/local/bin/zmax-hermes-fallback.sh + /etc/systemd/system/zmax-hermes-fallback.service | 无正牌 E盘时 bind mirror→~/.hermes(离家模式) |
 | 定时同步 | zmax-hermes-mirror.timer | OnBootSec=15min + OnUnitActiveSec=6h + Persistent |
 | gateway 顺序 | hermes-gateway.service 已加 `After=zmax-data-mount.service zmax-hermes-fallback.service` | 防空壳 .hermes 抢跑 |
 

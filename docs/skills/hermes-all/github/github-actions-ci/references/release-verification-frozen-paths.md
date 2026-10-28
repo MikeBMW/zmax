@@ -1,6 +1,6 @@
 # Release 资产验证 & PyInstaller frozen 路径 (2026-08-26 v3.2.1 发版实战)
 
-本文件记录 v3.2.1 发版验证遇到问题全过程。SKILL.md 正文的 inline 段落（后台 curator 的
+本文件记录 v3.2.1 发版验证踩坑全过程。SKILL.md 正文的 inline 段落（后台 curator 的
 read-before-write 门禁 + dedup 阻止了正文 patch）等价内容如下，可直接抄进正文对应小节；
 `scripts/verify_release_assets.sh` 是可直接复用的完整脚本。
 
@@ -36,7 +36,7 @@ sha256sum Z-MAX_Console.exe    # 必须等于 digest
 **并发加速（慢网实测 50~130KB/s 单连接 → 8 并发 ~1MB/s）**:
 - browser_download_url 支持 Range；8 并发 × 8MB 分块 + `wait` 收集 + cat 拼接
 - ⚠️ 分块 curl 必须带 `-L`：302 不跟随 → 每块 0 字节 → 拼接后整文件 0 字节
-  （本会话真实遇到问题：两个文件都拼出 0 bytes，sha256 全是 e3b0c442...）
+  （本会话真实踩坑：两个文件都拼出 0 bytes，sha256 全是 e3b0c442...）
 - ⚠️ `pkill -f <pattern>` 的模式别出现在自己命令行里——会匹配到当前 shell 自己并 SIGTERM 自杀；
   杀后台进程用 process 工具或精确匹配
 

@@ -12,7 +12,7 @@
 |---|---|---|---|
 | 1 | 产物是否存在 (ckpt/config) | `checkpoints/030000` 在, `last→030000` | 非缺产物 |
 | 2 | `load_policy()` 能否装载 | LeftRightPolicy OK | 非装载失败 |
-| 3 | ckpt 配置唯一依据 (`pretrained_model/config.json`) | `type=left_right · input=observation.state[39] · output=action[4] · normalization_mapping=None` | 输入维/归一化模式已知 |
+| 3 | ckpt 配置真源 (`pretrained_model/config.json`) | `type=left_right · input=observation.state[39] · output=action[4] · normalization_mapping=None` | 输入维/归一化模式已知 |
 | 4 | 引擎真跑 (min 孔距 / 阶段) | 0.35m 未抬起 | 表面 0% |
 | 5 | **口径指纹: 直接喂裸 obs 的形状报错** | `mat1 and mat2 shapes cannot be multiplied (64x43 and 39x512)` | **决定性证据**: 模型首层要 39, 收到 43 ⇒ 与训练口径不同源 |
 | 6 | 读引擎真实调用路径 | `state_space_sim_real.py:1249-1272`: `visual39`(引擎自建, `concat([cur,prev,target])`) + **`self._l3_pre(batch)` 训练期预处理器** + 图像 128×128 (LANCZOS) + `task` 串 (= 数据集 parquet 真实字面串) | 缺 4 项中的任一 = 不同源 |

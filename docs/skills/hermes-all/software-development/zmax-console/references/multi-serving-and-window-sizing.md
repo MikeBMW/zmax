@@ -1,19 +1,19 @@
 # 模型引擎：每层多条「在役」+ 窗口尺寸口径（2026-10-14 老倪两条要求）
 
-## 1. 一层可以有多条在役（候选→在役的唯一依据，不是界面开关）
+## 1. 一层可以有多条在役（候选→在役的真源，不是界面开关）
 老倪：L2 SAM3 要服役（建图先分割背景）、L3/L4 LoRA 要服役（基座不动，适配层跟状态空间相关）、L5 本地 tool 技能做成技能包——**每层都服役**。
 
-- 唯一依据：`models/active_models.json`。单指针键（`L2.name/path`…）保持不变（很多工具在读）；
+- 真源：`models/active_models.json`。单指针键（`L2.name/path`…）保持不变（很多工具在读）；
   另加 `extra_in_service: {L2:[…],L3:[…],L4:[…],L5:[…]}`，每条 `{kind,name,path,state:"在役",since,role,note,base?,adapter?}`。
 - 代码口径：`tools/model_inventory.py::collect_models()` 把 extra 条目按 `is_active=True` 追加进候选三元组
   （`_layer_candidates` 之后），并在 entry 里带 `serving_ext` 字段；
   `tools/gui/model_engine_window.py::_rows()` 把「第一条之外的 active 条目」渲染成 **在役扩展行**
-  （层列 `   ↳ L2`，绿色，tooltip 写 `在役唯一依据: extra_in_service[L2]`）。
+  （层列 `   ↳ L2`，绿色，tooltip 写 `在役真源: extra_in_service[L2]`）。
 - **候选行不会因此消失**：真的未证提升的产物仍是候选（灰），判据照旧。别把没验过的东西混进在役。
 - 已在役清单（本次）：L2 `SAM3 开放词汇分割`(zmax_data/models/sam3_hf/model.safetensors + outputs/sam3_finetune/annot_v1/lora_adapter)、
   L3 LoRA merged(smolvla_lew_lora_40_*/model_merged.safetensors)、L4 LoRA(zmax_data/stable-wm-cache/checkpoints/intact_l4_v6lora_200/weights.pt)、
   L5 技能包(`models/l5_skill_pack.json`)。
-- **L5 技能包唯一依据** = 工程库 `zmax_engineering.db#functions` 里 layer 含 L5 的功能点（30 条）+ 各自 `params.source` 本地实现源；
+- **L5 技能包真源** = 工程库 `zmax_engineering.db#functions` 里 layer 含 L5 的功能点（30 条）+ 各自 `params.source` 本地实现源；
   生成物 `models/l5_skill_pack.json`。有 8 条实现源缺失 ⇒ 如实写在 pack 里，不要编路径。
 - 显示串必须放得进列宽（在役模型列 340px）：扩展行用固定短名（`SAM3 开放词汇分割 (在役原语)` 等），完整名只进 tooltip。
 

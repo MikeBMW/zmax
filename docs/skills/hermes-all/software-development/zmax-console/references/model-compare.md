@@ -60,7 +60,7 @@
    - 鲁棒性重复推理全部取队列同一值 → std=0 假象。
    - ACT 的 select_action 无队列 (直接 predict), 不需要 reset。
 2. **图像 batch 布局不同**: SmolVLA `_prepare_model_inputs` 里 `t.permute(0, 3, 1, 2)` → batch 是 **NHWC** (B,H,W,C) 或 (B,T,H,W,C), 0-255 或 0-1 均可 (max<=1 自动 *255); ACT 是 NCHW 0-1 (act_compare.py 既有模式)。评估脚本 is_act 分支分开构造。
-3. **batch state**: SmolVLA state 支持 (B,D) 或 (B,T,D) (ndim>2 取 [-1], ndim==2 unsqueeze(1)); task 缺失时保障指令 "push red block to target"。
+3. **batch state**: SmolVLA state 支持 (B,D) 或 (B,T,D) (ndim>2 取 [-1], ndim==2 unsqueeze(1)); task 缺失时兜底指令 "push red block to target"。
 4. **transformers 依赖**: `lerobot[smolvla_lew]` extras, 缺则 `ImportError: 'transformers' is required but not installed`。装法: `export TMPDIR=/home/xspace/pip-tmp && .venv/bin/python -m pip install -i https://mirrors.aliyun.com/pypi/simple/ "lerobot[smolvla_lew]"` (装完 transformers 5.5.4)。
 5. **模型权重**: SmolVLM2-500M-Video-Instruct 首次训练/评估从 HF 下载 (~1GB+, 38 文件)。**⚠️ 2026-08-05 实测: `HF_ENDPOINT=https://hf-mirror.com` 对该模型没用 — hf-mirror 无此仓库, 直接 308 重定向回 huggingface.co, transformers 下载失败 (OSError: couldn't connect to hf-mirror to load files)**。正确做法: 训练前先 `huggingface_hub.snapshot_download("HuggingFaceTB/SmolVLM2-500M-Video-Instruct")` 直连 HF 下到 ~/.cache/huggingface (后台跑, ~1GB 几分钟; HF 直连 curl 200 可达), 之后训练/评估走缓存无需网络。**训练命令本身也别设 HF_ENDPOINT** (设了反而让缓存检查去请求 hf-mirror)。
 

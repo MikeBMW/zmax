@@ -11,7 +11,7 @@
 - ⚠️ **桩绑定 `@staticmethod` 必须 `staticmethod(...)` 包一层**, 否则被当实例方法绑 self → TypeError 被
   被测代码的 `except Exception: pass` 吞掉 → **"不许动"的 case 全部假 PASS**。
   排查口诀: 若某个**本该发生动作**的 case 也 `moved/switched=False`, 先怀疑异常被吞, 不是逻辑对
-  (诊断: 临时把 `except Exception: pass` 换 `traceback.print_exc()` 执行一遍, 定位后还原)。
+  (诊断: 临时把 `except Exception: pass` 换 `traceback.print_exc()` 跑一遍, 定位后还原)。
 - 真窗口级 A/B 台架见 pyqt5-gui-development `scripts/multiscreen_clamp_probe.py`
   (老实现从 `git show HEAD:<file>` 抠出来跑同一台架 — 同台架 old❌/new✅ 才算证据)。
 

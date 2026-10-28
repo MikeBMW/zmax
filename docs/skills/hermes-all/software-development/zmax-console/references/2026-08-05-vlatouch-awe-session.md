@@ -39,7 +39,7 @@
 - **视觉编码器回退**: DINOv2/SigLIP 不可用(无网/显存)自动回退 state-only: vis_dim=0, 条件补零, 网络结构固定 (训练/评估一致安全)
 - **触觉/力觉模拟**: 状态差分 d[:,:3]*10 + 力范数*5, 训练与 eval 同管道; 维度 = min(state_dim,3)+1 → 测试数据 state_dim 必须匹配 tactile_dim (不匹配 mat1/mat2 崩)
 - **模型前向测试 DEVICE 一致性**: CPU 建模 → 评估也要 cm.DEVICE='cpu', 否则 cuda/cpu 混合报错
-- **冒烟**: `HF_HUB_OFFLINE=1` 强制 state-only 快速验证 (跳过 DINOv2/SigLIP 下载阻塞)
+- **冒烟**: `HF_HUB_OFFLINE=1` 强制 state-only 快速验证 (跳过 DINOv2/SigLIP 下载卡住)
 - 训练后清理冒烟产物: `outputs/train/<prefix>_<ts>/` + `reports/train_curve_<policy>.json`
 
 ## 界面可见性教训 (老倪两次反馈 "没有VLA-Touch管道啊")
@@ -151,7 +151,7 @@ zFlow 世界引擎"预言未来"(生成未来潜状态) → 未来决策交叉�
    每行 QRectF 高 24, y = h/2-24 与 h/2+2
 ⚠️ 布局偏移 off-by-one 教训: `base_x=120` 时 `x0=base_x-130=-10` (不是 -130!),
 大字绝对右界 = -10+8+126 = 124 > 120 仍重叠 4px → 验证脚本必须用**实际 base_x 值**
-计算 (120-140=-20, 右界 114 < 120 ✓), 别预先固定偏移量。
+计算 (120-140=-20, 右界 114 < 120 ✓), 别写死偏移量。
 验证 (offscreen 13/15): QFontMetricsF 逐名量宽 (15px bold 拆行后每行 ≤126px) +
 大字绝对右界 < 节点 x / 加载后 row_bg x==-20 / 渲染不崩 / 三模型+CICD 回归。
 通用教训: 画布上"文字重复/叠字"类反馈, 先渲染出节点坐标看同一区域有无多个
@@ -184,6 +184,6 @@ if n.get("type") == "train_gate": continue         # ☑ 训练开关 (含"训�
 不直观。验证 (offscreen 9/9 + 回归): 五模型恰 5 stage / 无推理效果对比 / 无训练开关 /
 排序 act→awe_zflow / CICD 无开关首环节 ACT / 三模型仍 3 policy。
 
-诊断套路 (队列疑似阻塞): ① `pgrep -f train_*` 查训练进程 ② nvidia-smi 查 GPU
+诊断套路 (队列疑似卡住): ① `pgrep -f train_*` 查训练进程 ② nvidia-smi 查 GPU
 (无训练进程但 GPU 忙 = 另有进程) ③ `reports/train_curve_*.json` 步数看完成到哪个模型
 ④ offscreen 调 `_canvas_stage_nodes()` 看队列里混了什么。

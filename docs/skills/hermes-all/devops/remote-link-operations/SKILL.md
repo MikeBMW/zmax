@@ -53,7 +53,7 @@ platforms: [linux]
 一天内卡三次，症状全是“TCP 能连、应用层不响”，而每次重启都能“好”十几分钟 ⇒ 正确结论是**挪机器**，
 不是继续重启。把这句话直接告诉用户，并给出迁移清单，不要每轮都重启一遍。
 
-## 1. 反向隧道「unit 看着 active、转发实际已死」是最贵的坑
+## 1. 反向隧道「unit 看着 active、转发其实已死」是最贵的坑
 跳板端口往往**不是跳板机 sshd 的端口**，而是内网设备用 `ssh -R 0.0.0.0:<port>:127.0.0.1:22` 反向注册出来的。
 跳板机重启后这条已建立连接半开：**ssh 进程不退出 ⇒ systemd 不重启 ⇒ unit 一直 active，端口却根本不存在**，
 可以静默失联几十分钟而没人发现。
@@ -64,7 +64,7 @@ ss -ltn | grep <反向端口>                       # 跳板机上：没有监�
 ss -tn | grep :<frp bindPort>                   # frp 侧零客户端 ⇒ 不是服务端挂了, 是客户端没连回来
 systemctl is-active <tunnel-unit>; journalctl -u <tunnel-unit> -n 5 --no-pager   # 设备上 active, 日志停在很久以前
 ```
-`ServerAliveInterval` / `ServerAliveCountMax` 在这种半开下**不可靠**，不要靠参数保障。
+`ServerAliveInterval` / `ServerAliveCountMax` 在这种半开下**不可靠**，不要靠参数兜底。
 恢复：设备上 `systemctl restart <tunnel-unit>`，实测 5s 内端口立即回来。
 
 ## 2. 主动探测式自愈（装在**内网设备**上，不是跳板机上）
@@ -83,7 +83,7 @@ Host <dev>-lan    → <lan-ip>:22             # 插产线网卡时
 Host <其他内网设备> → ProxyJump <dev>        # 两种模式下都成立
 ```
 **所有隧道 unit / 脚本的 ExecStart 一律写别名 `<dev>`，绝不写 IP** ⇒ 换模式只改 config 那两行，unit 一个都不动。
-这是整套设计的关键；预先固定 IP 之后每换一次模式就要改 N 个 unit，迟早漏一个。
+这是整套设计的关键；写死 IP 之后每换一次模式就要改 N 个 unit，迟早漏一个。
 
 ## 4. 自动切换的判据要「三条同时满足」，宁可不切
 本机 timer（30s）自动切 LAN，只有当：
@@ -131,7 +131,7 @@ for _ in range(3):
     time.sleep(5)
 return True     # 连不上 ⇒ 按「还活着」处理, 继续等, 绝不据此下结论
 ```
-真实代价：链路断时守护误判「训练已退出」并跳过切换，而训练实际还在跑到 25400/30000 —— 表现为「任务完成但没结果」。
+真实代价：链路断时守护误判「训练已退出」并跳过切换，而训练其实还在跑到 25400/30000 —— 表现为「任务完成但没结果」。
 
 ## 6. 找进程别用 `pgrep -af <名字>`，也别用 `pkill -f <名字>`
 命令行里含目标字符串 ⇒ 匹配到自己的 shell，输出假阳性；`pkill -f` 更狠，**会把自己那条命令一起杀掉**
@@ -272,7 +272,7 @@ exec ssh -i "$HOME/.ssh/<jump-key>" -o BatchMode=yes -o ConnectTimeout=10 -o Str
 顺带：`netplan apply` **不会**摘掉 NetworkManager 已经挂上的地址 ——
 试验留下的影子地址（如 `192.168.23.50/24` 挂在一块没插线的 `enx*` 上，还带 `239.0.0.0/8` 多播路由）会一直留着，
 把 DDS 发现钉在死网卡上。清理必须显式 `sudo ip addr del <ip>/24 dev <if>` + `sudo ip route del 239.0.0.0/8 dev <if>`，
-再 `ip -br a` / `ip route show` 回读确认；只跑 `netplan apply` 会以为已恢复而实际还在。
+再 `ip -br a` / `ip route show` 回读确认；只跑 `netplan apply` 会以为已恢复而其实还在。
 
 🔴 **产线网口的 match 用 MAC，不要用 `enx*` 通配**：`enx*` 会把插着的**手机 USB 网络共享（RNDIS）**也当成产线网口，
 把 `192.168.23.50/24` 配到手机上，整段 192.168.23.0/24 就被它吃掉，真网卡插回来也不通。先 `ethtool -i <if>` 认设备：
@@ -280,6 +280,6 @@ exec ssh -i "$HOME/.ssh/<jump-key>" -o BatchMode=yes -o ConnectTimeout=10 -o Str
 绑定，插哪个口、名字变成 `enxe6...` 都照样拿到同一个静态 IP。
 
 🔴 **`netplan apply` 会重启 NetworkManager ⇒ WiFi 可能换到另一个 AP，本机 IP 跟着变**：
-用户手里记着的 `http://<旧IP>:<端口>/...` 会立刻无法打开（他报「页面无法打开」时先 `ip -4 -br addr` 对一遍 IP，
+用户手里记着的 `http://<旧IP>:<端口>/...` 会立刻打不开（他报「页面打不开」时先 `ip -4 -br addr` 对一遍 IP，
 别先去查端口/进程）。改完必须回读地址、按 SSID 切回原来的 AP（`nmcli con up <SSID>`），并给常用 AP 设
 `connection.autoconnect-priority`（其余置 0），否则下次 apply/重连还会跳。

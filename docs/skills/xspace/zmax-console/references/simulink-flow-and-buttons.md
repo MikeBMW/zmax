@@ -72,7 +72,7 @@
 
 ## 8. WSLg 打开视频 (老倪"生成的视频看不到")
 - ❌ 失败链路: `cmd.exe /c start` + UNC `\\wsl.localhost\...` → CMD 不支持 UNC 当前目录
-  + 共享被拒 ("拒绝访问")。explorer.exe 传 UNC 也 rc=1 无法打开。
+  + 共享被拒 ("拒绝访问")。explorer.exe 传 UNC 也 rc=1 打不开。
 - ✅ 成功链路 (on_insert_video 实测): `shutil.copy2(mp4, "/mnt/c/Users/Public/ZMAX_videos/")`
   → `Popen(["explorer.exe", dst.replace("/mnt/c/","C:\\").replace("/","\\")])`。
 - 验证播放器真的起来: `tasklist.exe | grep ApplicationFrameHost` (Win11 UWP"电影和电视"

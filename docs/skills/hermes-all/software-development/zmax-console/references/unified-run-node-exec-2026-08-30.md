@@ -65,4 +65,4 @@ offscreen 断言 active/yolo_enabled 真实翻转。
   mujoco 3.3.0。requirements-macos.txt 锁 metaworld==3.0.0 (3.0.0 wheel 下载不稳未装成)。
 - gen_insert_video 12/12 seed 卡转移/下降 = 模型与 metaworld 物理不匹配 (contact_head 预测 0.30-0.41
   徘徊达不到 0.5 阈值; 降阈值 0.35 会误进转移但 peg 抓空) — 诊断脚本: 加载模型 → 状态机逐步打印
-  hand/peg/hole/contact, 阻塞点一步看哪段坐标。本机可用 left_right 模型被磁盘红线清光, 要出视频需新模型。
+  hand/peg/hole/contact, 卡在哪一步看哪段坐标。本机可用 left_right 模型被磁盘红线清光, 要出视频需新模型。

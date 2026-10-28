@@ -36,7 +36,7 @@
 
 ## 🐛 共存路径暴露的 2 处属性 bug（freeze+LEW 之前从未执行过这段代码）
 - modeling_smolvla_lew.py ~98 行 + world_model_le.py ~364 行：`vision_encoder.config.vision_config.hidden_size` 崩（SmolVLMVisionConfig 无嵌套 vision_config）
-- 修复：`getattr(config, "vision_config", None)` → hidden_size，保障 1152
+- 修复：`getattr(config, "vision_config", None)` → hidden_size，兜底 1152
 - 教训：**配置开关从未组合过的代码路径是隐藏 bug 温床**；开新组合先跑单测构建模型
 
 ## 🐛 SmolVLA+LEW 训练必失败 — 3 处 bug（freeze+LEW 共存后第一跑，老倪报"SmolVLA+LEW 训练失败"）
@@ -111,7 +111,7 @@
   - SmolVLA+LEW：`total_loss = action_loss + lew_loss`（多一项世界模型损失，lew_loss = 预测下一帧嵌入 L1）
 - 所以 LEW 版曲线数值天然更高、下降更平缓：① 多一项损失成本 ② LeWorldModel 随机初始化从零学，lew_loss 前期大收敛慢 ③ 起点就高（LEW 版 0.844 vs 纯版 0.757，差值 ≈ 初始 lew_loss 贡献）
 - **教训：对比评估最终裁决用「动作 MSE」（预测 vs 真值，口径统一），不用训练 loss**——不同模型 loss 构成不同（多 LEW 项/多 KL 项）时训练 loss 是混频信号
-- **解读 loss 数值的答法**（老倪 2026-08-05 连续问「MSE 66 意味着什么」「4.27 什么物理含义」）：MSE 是对 batch×动作维所有元素取平均 → **每维 RMSE ≈ √MSE**（66 → ~8 单位/维 = 起步瞎猜误差大；4.27 → ~2.07 rad/s ≈ 115°/s 每关节速度平均偏差）。要点：① 数值大小取决于动作单位尺度（metaworld 关节速度 rad/s 量级 ±5~10，MSE 60+ 是正常起点）② 绝对值不能跨任务/跨模型直接比，同任务内 ↓90%+ 才是学习有效的信号 ③ 收敛没完成时（150 步快速验证）loss 还在下降，别拿最终值下结论 ④ 真机精度（±0.02mm）靠 S3 真机微调，不是仿真 MSE 能直接对应的
+- **解读 loss 数值的答法**（老倪 2026-08-05 连续问「MSE 66 意味着啥」「4.27 啥物理含义」）：MSE 是对 batch×动作维所有元素取平均 → **每维 RMSE ≈ √MSE**（66 → ~8 单位/维 = 起步瞎猜误差大；4.27 → ~2.07 rad/s ≈ 115°/s 每关节速度平均偏差）。要点：① 数值大小取决于动作单位尺度（metaworld 关节速度 rad/s 量级 ±5~10，MSE 60+ 是正常起点）② 绝对值不能跨任务/跨模型直接比，同任务内 ↓90%+ 才是学习有效的信号 ③ 收敛没完成时（150 步快速验证）loss 还在下降，别拿最终值下结论 ④ 真机精度（±0.02mm）靠 S3 真机微调，不是仿真 MSE 能直接对应的
 - 旧曲线数据是 300 步的（steps 已改 150），新训练后自动更新
 
 ## 📊 loss 口径统一（已实现：只画 action_loss）
@@ -127,7 +127,7 @@
 - 排查顺序（先看 reports/ 文件再动代码）：① `train_curve_act.json` **不存在** = ACT 本轮根本没训练过（Scope 只显示存在文件）② 训练中的 `train_curve_smolvla.json` 只有 **1 点**——`_load_data` 的 `len(cv) < 2` 直接 continue 跳过！③ 于是只剩 smolvla_lew 旧数据 1 条
 - 修复：`_load_data` len 门槛 `< 2 → < 1`（训练中 1 点也显示）+ 指标行追加 `⚠️ 缺: ACT/SmolVLA/SmolVLA+LEW (训练后自动出现)`（present_policies 集合比对）
 - 教训：**Scope 显示 N 条的前提是 N 个曲线文件都存在且有 ≥ 门槛点数**；用户报\"少了\"先 `ls reports/train_curve_*.json` 看文件数/点数/时间戳，别急着改代码——本案例真正缺的是 ACT 训练，代码只误杀了训练中的 1 点曲线
-- **🐛 0 点曲线文件诊断**（用户\"为什么smolvla训练, act波形没了\"时发现 act/smolvla 文件 `curve: []` 但 mtime 是训练启动时刻）：**有内容但 curve 空的文件 = 训练子进程 0 步就失败**（on_train 走到最终落盘、但 stdout 无 loss 行）——不是\"没训过\"（没训过不会有文件），是\"训了但秒挂\"。区分法：文件存在+0点+ts=训练启动时间 = 启动即失败；文件不存在 = 本轮没轮到/没训。**隔离法（比猜快）**：`nice -n 10 .venv/bin/python -m lerobot.scripts.lerobot_train --config_path config_<policy>_metaworld.yaml 2>&1 | tail` 手动执行一遍——ACT 手动 100 步 26s 完全正常 = 当时是临时失败（数据源/并发抖动），让用户重跑即可，别为一次性故障改代码
+- **🐛 0 点曲线文件诊断**（用户\"为什么smolvla训练, act波形没了\"时发现 act/smolvla 文件 `curve: []` 但 mtime 是训练启动时刻）：**有内容但 curve 空的文件 = 训练子进程 0 步就失败**（on_train 走到最终落盘、但 stdout 无 loss 行）——不是\"没训过\"（没训过不会有文件），是\"训了但秒挂\"。区分法：文件存在+0点+ts=训练启动时间 = 启动即失败；文件不存在 = 本轮没轮到/没训。**隔离法（比猜快）**：`nice -n 10 .venv/bin/python -m lerobot.scripts.lerobot_train --config_path config_<policy>_metaworld.yaml 2>&1 | tail` 手动跑一遍——ACT 手动 100 步 26s 完全正常 = 当时是临时失败（数据源/并发抖动），让用户重跑即可，别为一次性故障改代码
 
 ## ⚠️ 其他坑
 - 验证脚本用 venv python（有 torch 无 PyQt5）跑 GUI 会 ModuleNotFoundError；GUI 测试用系统 python3，torch 测试用 .venv/bin/python，分开跑
@@ -144,11 +144,11 @@
 - 帧同步：3 模型共用最小公共帧数 min_len 截断
 - **接入训练流程**（老倪："是不是直接接到当前训练流程之后呢？"）：三模型模板 18→19 节点 / 22→25 连线——3 个训练节点各连一条线到「🎥 推理效果对比」节点（params.video="all"），拓扑序保证训练完才触发；布局第 4 行加推理节点与训练列垂直对齐；InferenceVideoDialog 构造时 `_load_frames` 无帧 → `QTimer.singleShot(300, self._run_rollouts)` 自动生成（不阻塞构造）；on_infer_video 检测三模型 rollout 帧缺失时提示自动生成
 
-## 🐛 metaworld V3 API 遇到问题（rollout_video.py 实测）
+## 🐛 metaworld V3 API 踩坑（rollout_video.py 实测）
 - 环境名是 **`push-v3`**（不是 push-v2/v1——"not a V3 environment"）；`metaworld.MT1("push-v3")` 的 train_envs 属性**不存在**（dir 只有 train_classes/train_tasks）
 - 正确创建：`from metaworld.env_dict import ALL_V3_ENVIRONMENTS; env = ALL_V3_ENVIRONMENTS["push-v3"]()` → `env._freeze_rand_vec = False` → **`env.set_task(mt1.train_tasks[0])` 必须在 step 前**（否则 RuntimeError）→ `env.reset(seed=...)` 返回 **(obs, info) 元组**
 - 帧获取：`env.render()` 返回 (H,W,3) uint8；obs 是 39D 状态 ndarray **无 "image" 键**（V3 改了）
-- select_action 输出维度与 env.action_space 不符时：截断/补零（`act[:] = a[:act.size]`），推理异常 except 保障零动作（视频仍展示环境）
+- select_action 输出维度与 env.action_space 不符时：截断/补零（`act[:] = a[:act.size]`），推理异常 except 兜底零动作（视频仍展示环境）
 
 ## 🎥 录屏功能（老倪：训练→推理→部署全程录制成视频，可加速，总长<1分钟）
 - 工具栏「🔴 录制 / ⏹ 停止」两按钮（btn_record / btn_stop_rec，红/橙配色，停止默认 disabled）
@@ -157,7 +157,7 @@
 - `stop_recording`：停定时器 + 按钮复位 **立即返回** → **后台线程** `_ffmpeg_compose`（threading.Thread daemon）合成；完成经 `log_signal.emit` 回主线程日志（**线程内不能直接调 _log/弹窗**，用信号）
 - **🐛 ffmpeg 加速陷阱**：`-framerate 1 -i ... -r 2` **不加速**（时长按输入帧数算，10 帧 1fps → 10s 视频）——要 2x 加速必须**输入帧率直接给 2**：`-framerate 2 -i frame_%04d.jpg -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" -c:v libx264 -pix_fmt yuv420p -r 2 screen_rec.mp4`（play_fps = 采集 fps × 2）。实测：录 10s → 视频 5.0s ✓
 - **🐛 MP4 0 字节坑（libx264 偶数尺寸）**：grab() 窗口尺寸可能奇数（实测 1668x929，高 929 奇数）→ libx264 报 `Generic error in an external library` → **输出 0 字节 MP4**（ffprobe 为空、用户找不到视频）。修复：`-vf pad=ceil(iw/2)*2:ceil(ih/2)*2` 补齐偶数。**验证：ffprobe -show_entries stream=width,height,duration 确认输出非 0 且宽高偶数**
-- **🎬 录制视觉反馈（老倪："点击录制按钮，没反应"）**：功能正常但无醒目反馈 → 用户以为没反应。start_recording 里按钮变「⏺ 录制中…」+ `_rec_blink` QTimer 500ms 呼吸闪烁（红/深红交替 setStyleSheet）；stop_recording 停 blink + 恢复「🔴 录制」+ 还原样式；**closeEvent 的定时器清理列表要同步加 `_rec_blink`**（否则录屏中关窗又 exit 134）。排查"按钮没反应"：先 `ps aux | grep "[s]tudio.py"` 查进程是否存活（可能已崩）→ offscreen `btn.click()` 实测（看 _rec_dir 是否创建/_rec_timer 是否 active）+ `ls reports/screenrec_*` 看用户是否实际在录（旧代码 PNG 卡死会录出数百帧但停止按钮点不动）
+- **🎬 录制视觉反馈（老倪："点击录制按钮，没反应"）**：功能正常但无醒目反馈 → 用户以为没反应。start_recording 里按钮变「⏺ 录制中…」+ `_rec_blink` QTimer 500ms 呼吸闪烁（红/深红交替 setStyleSheet）；stop_recording 停 blink + 恢复「🔴 录制」+ 还原样式；**closeEvent 的定时器清理列表要同步加 `_rec_blink`**（否则录屏中关窗又 exit 134）。排查"按钮没反应"：先 `ps aux | grep "[s]tudio.py"` 查进程是否存活（可能已崩）→ offscreen `btn.click()` 实测（看 _rec_dir 是否创建/_rec_timer 是否 active）+ `ls reports/screenrec_*` 看用户是否其实在录（旧代码 PNG 卡死会录出数百帧但停止按钮点不动）
 - **offscreen 测试坑：`time.sleep()` 不驱动 QTimer**——录制测试必须 `while time.time()<t_end: app.processEvents(); time.sleep(0.05)` 手动驱动事件循环，否则 sleep 3s 只采到 1 帧
 
 ## 📐 Scope 坐标轴（老倪："scope loss曲线，为什么没有横纵坐标"）
@@ -171,7 +171,7 @@
 ## 📐 Scope x 轴真实 step（老倪："只显示 1 2 4 step，而训练已经 35/150 了"）
 - 症状：x 轴刻度显示 1/2/4 而不是 50/100/150——曲线数据是 `[[step, loss], ...]`，但 series 只存了 loss 数组，**step 被丢弃**，x 轴按索引 0/1/2 画
 - 修复：series 值从 3 元组 `(ys, color, dashed)` 升级为 **4 元组 `(xs, ys, color, dashed)`**（xs=None 兼容旧格式）：
-  - FlowScopeDialog._load_data：`xs = np.array([float(s) for s, _ in cv])`，`series[key] = (xs, ys, color, False)`；保障单条同样带 xs
+  - FlowScopeDialog._load_data：`xs = np.array([float(s) for s, _ in cv])`，`series[key] = (xs, ys, color, False)`；兜底单条同样带 xs
   - ScopeWidget 波形绘制：`x_lo, x_hi = (xs[0], xs[-1])`，每点 `x = (xi - x_lo)/(x_hi - x_lo) * w`（真实 step 归一化）
   - `_y_range()` 取 `v[1] if len(v)>=2 else v[0]`；图例/指标行同样解 4 元组
   - 验证：真实数据 ACT xs == [50, 100, 150]（不是 [0,1,2]）
@@ -206,7 +206,7 @@
 ## 🛡 QThread 崩溃修复 #4（StudioMainWindow 主窗口 closeEvent，exit 134 四连复发）✅ 已修复
 - 症状：用户报「录制按钮又没反应」——先查 `ps aux | grep "[s]tudio.py"` → **0 进程 = 控制台已崩**（exit 134），按钮当然没反应。排查\"按钮没反应\"第一步永远是查进程是否存活
 - 根因：`StudioMainWindow(QMainWindow)`（6762 行）**没有 closeEvent**——`_orin_timer`(4967, 5s 轮询 Orin)/`_rerun_worker`(5207, _RerunStreamWorker QThread)/`_live_timer`/`_replay_timer`/`_stats_timer` 关闭时全部未清理 → 主窗口关闭即 `QThread: Destroyed while thread is still running`
-- 修复：StudioMainWindow 加 closeEvent——循环停 5 个定时器（_timer/_orin_timer/_live_timer/_replay_timer/_stats_timer）+ `_rerun_worker.stop() + wait(3000)` + 保障 `sim.close()` 触发 SimulinkModule.closeEvent 链
+- 修复：StudioMainWindow 加 closeEvent——循环停 5 个定时器（_timer/_orin_timer/_live_timer/_replay_timer/_stats_timer）+ `_rerun_worker.stop() + wait(3000)` + 兜底 `sim.close()` 触发 SimulinkModule.closeEvent 链
 - 验证：主窗口构造 → `w.simulink.start_recording()` → processEvents 驱动 1.5s → `w.close()` → 无崩溃
 - **教训（崩溃排查总纲）**：exit 134 四连复发（CICDPanel→录屏定时器→SimulinkModule 主类→StudioMainWindow 主窗口）后总结——**每个持 QTimer/QThread 的类都要有自己的 closeEvent**，且新增定时器/线程成员时必须同步补 closeEvent 清理。查法：`grep -n "def closeEvent" tools/gui/*.py` 列出**每个类**，对照成员表逐类核对
 
@@ -237,7 +237,7 @@
 
 ## 📊 Scope 默认清空（最终决策：\"默认不要显示线，你还没训练呢，不要显示线。scope先清空\"）
 - ⚠️ 最终定案（在本节之上又进一步）：**Scope 打开就是空白，任何历史/默认曲线都不显示**——即使 reports/ 里有旧曲线文件也不画
-- ⚠️⚠️ **2026-08-05 傍晚最终语义修正（51097377，用户\"smolvla训练为什么act波形没了\"）**：清空只针对**当前 policy 自己**的旧曲线，**必须保留其他模型已完成曲线**——三模型对比串行训练时，SmolVLA 训练启动不能把 ACT 训完的曲线删掉。实现：on_train 只 `os.remove(train_curve_{policy}.json)`；Scope `_load_data` **去掉 mtime 过滤**（保留所有已训练曲线）。\"scope先清空\"= 打开时无默认线（series 空 → `set_series({})` + 提示，去掉旧 `_train_curve` 保障），**不是**训练启动清别人的曲线。
+- ⚠️⚠️ **2026-08-05 傍晚最终语义修正（51097377，用户\"smolvla训练为什么act波形没了\"）**：清空只针对**当前 policy 自己**的旧曲线，**必须保留其他模型已完成曲线**——三模型对比串行训练时，SmolVLA 训练启动不能把 ACT 训完的曲线删掉。实现：on_train 只 `os.remove(train_curve_{policy}.json)`；Scope `_load_data` **去掉 mtime 过滤**（保留所有已训练曲线）。\"scope先清空\"= 打开时无默认线（series 空 → `set_series({})` + 提示，去掉旧 `_train_curve` 兜底），**不是**训练启动清别人的曲线。
 - 完整行为链（验证过）：训练启动→只删当前 policy 文件（其他模型曲线保留）→ Scope 打开显示已完成模型曲线 + ⏳ 训练中提示 → 当前模型训练完成（≥2 点）自动加入
 
 ## 📐 Scope 坐标轴单位/含义标注（老倪：\\\"纵坐标的单位，含义也写上\\\"）
@@ -264,11 +264,11 @@
   2. 展开后仍无环节 → 明确日志 + `_show_bubble` 气泡提示「子系统内部无执行环节 — 加载「🔬 三模型对比」模板再运行」（不静默）
   3. 无子系统也无环节 → 同样气泡提示「画布无执行环节」
 - 验证套路：加载「🎛 总系统·三模型对比」（3 节点）→ start_sim → 断言展开后 >3 节点 + `_flow_queue` 非空 + `_worker` 已创建
-- 教训：**运行按钮必须有可见反馈链**——模板按"观察型（无环节）"和"执行型（有环节）"分两类；观察型点运行要么自动展开进入执行、要么气泡明说怎么才能启动，绝不能静默进仿真；顺带注意模板名（「🎛 总系统·三模型对比」≠「🎛 总系统」，加载用错名返回 False 且 nodes 不变，排查时先打印 REFERENCE_APPS 名字列表）
+- 教训：**运行按钮必须有可见反馈链**——模板按"观察型（无环节）"和"执行型（有环节）"分两类；观察型点运行要么自动展开进入执行、要么气泡明说怎么才能跑起来，绝不能静默进仿真；顺带注意模板名（「🎛 总系统·三模型对比」≠「🎛 总系统」，加载用错名返回 False 且 nodes 不变，排查时先打印 REFERENCE_APPS 名字列表）
 
-## 📈 训练中进度日志（老倪："上一个任务还在跑，请稍候 为什么这里阻塞很长时间了"）
+## 📈 训练中进度日志（老倪："上一个任务还在跑，请稍候 为什么这里卡住很长时间了"）
 - **症状**：用户训练中又点运行/双击节点 → 日志只有「⏳ 上一个任务还在跑, 请稍候…」，用户以为卡死
-- **排查**：`ps aux | grep "[l]erobot_train"` → 训练进程在跑且 **CPU 460% 满负荷 = 训练正常进行中，不是阻塞**——真正问题是**训练中日志区没有任何输出**（_line_hook 只解析 loss 写文件，不打印），界面静止像死机
+- **排查**：`ps aux | grep "[l]erobot_train"` → 训练进程在跑且 **CPU 460% 满负荷 = 训练正常进行中，不是卡住**——真正问题是**训练中日志区没有任何输出**（_line_hook 只解析 loss 写文件，不打印），界面静止像死机
 - **修复**（simulink_module.py on_train 的 _line_hook）：每解析到一个 loss 点就 emit 进度行：
   ```python
   total = int(steps) if steps else 300
@@ -276,7 +276,7 @@
   ```
   （log_freq 已改 5，所以每 5 步一行，100 步训练共 20 行进度）
 - 4 处「⏳ 上一个任务还在跑, 请稍候…」拦截提示统一改为「…(训练中, 日志区可看到 📈 进度)」（_run_node_stage/_start_canvas_flow/_start_worker/_run_full_flow）
-- **教训**：**"阻塞/没反应"先查进程 CPU/存活，再查是否有进度输出**——长任务（训练/合成/下载）必须在后台 worker 里周期 emit 进度日志，否则界面静止 = 用户必然报"卡死"；拦截提示要引导用户看进度日志在哪
+- **教训**：**"卡住/没反应"先查进程 CPU/存活，再查是否有进度输出**——长任务（训练/合成/下载）必须在后台 worker 里周期 emit 进度日志，否则界面静止 = 用户必然报"卡死"；拦截提示要引导用户看进度日志在哪
 
 ## ▶ 运行弹窗反馈（最终版：非模态 show + 3s 自动关，老倪第三次报"点击运行没反应没有反馈"）
 - 按钮变色+日志仍不够（用户不看日志区）→ `_start_canvas_flow` 启动时弹醒目提示窗「🚀 正在执行 N 个环节: X → Y → Z」+「后台自动运行中 — 关闭本窗口可继续查看画布/日志区进度」+ 按钮「知道了, 开始运行」

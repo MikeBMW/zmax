@@ -33,7 +33,7 @@ def resolve_python() -> str:
         p = shutil.which(name) if not name.startswith("/") else (name if os.path.exists(name) else None)
         if p:
             return p
-    return "python3"                      # 保障: 报清晰的 not found, 而不是静默重启 app
+    return "python3"                      # 兜底: 报清晰的 not found, 而不是静默重启 app
 ```
 替换所有**子进程启动**处 (本次 6 处: `simulink_module.py`×5 + `node_logic.py`×1),
 并顺便干掉对开发 venv 的硬编码 (`os.path.join(root, "gui-venv311", "bin", "python")`) —
@@ -53,7 +53,7 @@ ERROR: Unable to find 'D:\a\...\src\lerobot\skills' when adding binary and data 
 **依赖装好了、前面的步骤都过了, 只因为加了一个仓库里并不存在的目录, 打包整步失败** →
 双平台 job 全挂 → Release 无资产(用户表现为"新版下载不到")。
 **动作: 加每一条 --add-data 前先 `ls -d <path>` 确认存在**; 本次误加 `src/lerobot/skills`
-(原子技能源码实际在 `policies/left_right/state_space/skills`, 已被父目录整体打进去)。
+(原子技能源码其实在 `policies/left_right/state_space/skills`, 已被父目录整体打进去)。
 
 ## 3. 运行时才按路径加载的脚本也要 --add-data (dest 必须是包根)
 
@@ -85,7 +85,7 @@ frozen 下它算出的目录 = **包根 (`Contents/` / `_MEIPASS`)** → 缺文�
 ## 5. 批量替换后必须做**全量语法自检** (本次连挂两版)
 
 用脚本批量改多文件(缩进/import/字符串)极易留下 `IndentationError` / 劈开的 import 语句。
-**提交前一条命令保障**:
+**提交前一条命令兜底**:
 ```bash
 gui-venv311/bin/python -c "
 import ast, glob

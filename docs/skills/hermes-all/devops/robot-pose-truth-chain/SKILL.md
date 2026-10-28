@@ -1,6 +1,6 @@
 ---
 name: robot-pose-truth-chain
-description: "Use when 机器人位姿真值读不到或疑似陈旧(执行器报「位姿缓存未就绪」) — 真值来源分级、链路判别、跨跳板保障。"
+description: "Use when 机器人位姿真值读不到或疑似陈旧(执行器报「位姿缓存未就绪」) — 真值来源分级、链路判别、跨跳板兜底。"
 version: 1.0.0
 author: hermes-agent
 license: proprietary
@@ -12,7 +12,7 @@ metadata:
     related_skills: [real-arm-motion-control, rokae-direct-control, orin-lan-direct-access]
 ---
 
-# 机器人位姿真值链路：读不到 / 疑似陈旧时怎么定位与保障
+# 机器人位姿真值链路：读不到 / 疑似陈旧时怎么定位与兜底
 
 ## When to Use
 - 常驻运动执行器对**所有**技能一律回 `拒绝: 位姿读不到(直读失败且常驻缓存过期)` / `受理: 位姿缓存未就绪`
@@ -25,7 +25,7 @@ metadata:
 | ① | SDK 直采文件 `tcp_out/latest.json` | 本机能到控制器的 xCore 端口 | 文件龄停住；采样容器 `Restarting`，日志 `RuntimeError: network: network connection` |
 | ② | 本机 docker tap 容器（`--network host`）订阅 `/robot/tcp_pose` | 本机 DDS 发现 + 到产线网段的路由 | `docker exec` 报容器不在 / `Publisher count: 0` / 全 0 |
 | ③ | 状态流 `ssh <机器人主机>` + `ros2 topic echo --once` | 到主机 IP 的 22 端口 | 日志反复 `No route to host`，5s 重连一次 |
-| ④ | **保障：走跳板机的宿主 ROS CLI**（见下） | 只需一条能 ssh 到机器人主机的跳板 | 无（这条就是为了前三条全灭时用） |
+| ④ | **兜底：走跳板机的宿主 ROS CLI**（见下） | 只需一条能 ssh 到机器人主机的跳板 | 无（这条就是为了前三条全灭时用） |
 
 ## 30 秒判别（全只读，不下发任何指令）
 ```bash
@@ -37,7 +37,7 @@ stat -c %y <真值文件>                 # 文件龄 >10s 就当没有位姿（
 ```
 判读铁律：**跳板 alive 而本机全灭 ⇒ 问题在本机网口/布线/交换机口，不是控制器、不是执行器代码。**
 给网口配上同网段地址后仍 `No route to host`（ARP 无回应）⇒ 那根线**根本不在产线网段**，
-别再反复改 IP：现场换口，或直接用下面的保障通道。
+别再反复改 IP：现场换口，或直接用下面的兜底通道。
 
 ## 🔴 ROS 话题上可能挂着第二个发布者：`echo --once` 会取到错的
 同一个 `/robot/tcp_pose` 上可以同时有**真机驱动(≈50Hz) 和一个残留节点**（仿真壳、旧进程、别的机器的桥）。
@@ -45,7 +45,7 @@ stat -c %y <真值文件>                 # 文件龄 >10s 就当没有位姿（
 （它读到的关节角与它读到的 TCP 互相对得上）—— 只检查“有没有数据 / 频率多少”永远发现不了。
 
 - `ros2 topic hz` 有稳定 ~50Hz 只说明**至少有一个**活发布者，不说明你读到的是它。
-- 真值以**控制器直出**为准：SDK 桥 `/status` 的 `jointPos` + `endInRef`（与页面同一个源）；ROS 话题只作保障。
+- 真值以**控制器直出**为准：SDK 桥 `/status` 的 `jointPos` + `endInRef`（与页面同一个源）；ROS 话题只作兜底。
   顺序：`SDK 直采文件(新鲜时) → 控制器 SDK 桥 → 跳板 ROS 话题 → 本地文件`。
 - 拿到关节后**必须 FK 复算并与 TCP 比对**，差 >15mm 直接拒检 —— 这是唯一能挡住“关节读的是 A、TCP 读的是 B”的门。
   🔴 **目标 link 必须锁 `tool1`**：同一组关节角，`tools/fk_check_tool_frame.py` 的 `fk(URDF, link, q)`
@@ -61,7 +61,7 @@ stat -c %y <真值文件>                 # 文件龄 >10s 就当没有位姿（
 4. **独立算路对账**: 关节角 → URDF FK → 与上报比(见上面 tool1 口径)。四条齐了才能说“准”。
 - SDK 桥拿不到时，用 `ssh <跳板别名> 'curl -s http://127.0.0.1:<桥端口>/status'` 直取，别依赖本机那条隧道（隧道会半开、返回空串）。
 
-## 保障通道：跳板机宿主 ROS CLI（不需要本机 DDS / 不需要 docker）
+## 兜底通道：跳板机宿主 ROS CLI（不需要本机 DDS / 不需要 docker）
 ```bash
 ssh <跳板别名> 'bash -lc "source /opt/ros/humble/setup.bash; \
   for ws in <工作空间通配>/install/setup.bash; do [ -f \"$ws\" ] && source \"$ws\" && break; done; \
@@ -73,7 +73,7 @@ ssh <跳板别名> 'bash -lc "source /opt/ros/humble/setup.bash; \
 
 ## 落地到常驻执行器的两个固定改法
 1. **主机地址自动选路**：启动时探 `tcp/<robot_host>:22`（2s 超时），通就用直连地址，不通自动退 **ssh 别名**
-   （别名里配 ProxyJump 走跳板）。硬编码在代码里的 IP 一旦网段漂走，整套运动链就全线哑掉，而日志只有一行 `No route to host`。
+   （别名里配 ProxyJump 走跳板）。写死在代码里的 IP 一旦网段漂走，整套运动链就全线哑掉，而日志只有一行 `No route to host`。
 2. **`_pose_direct()` 增加第四条通道**：SDK 文件 → 跳板宿主 ROS 直读 → 本机 tap。顺序按“依赖越少越靠前”排，
    每条都带自己的超时并 `try/except`，失败只记一行日志、不抛。
 
@@ -86,7 +86,7 @@ ssh <跳板别名> 'bash -lc "source /opt/ros/humble/setup.bash; \
 - 同时报出**目标位姿数值**与**文件龄**，两者都要能对上现场。
 - 只有 `cache` 就说明直读仍坏（缓存可能是几小时前的旧值，且守卫会拿它算 Δ）。
 
-## 位姿中继：让 “活着的桥” 嗂回 “死掉的唯一依据文件” (症状链最长的一条)
+## 位姿中继：让 “活着的桥” 嗂回 “死掉的真源文件” (症状链最长的一条)
 
 采样器容器 CrashLoop(本机无产线路由) 时, `tcp_out/latest.json` 会冻住。冻住的代价不只是“读不到”, 而是**三个下游同时静默坏掉**:
 
@@ -105,11 +105,19 @@ fetch /status → [x,y,z,rx,ry,rz] → rpy→quat(ZYX) → 写 tmp → os.replac
 
 - 🔴 **root 跑的 systemd 里 `os.path.expanduser("~/...")` = `/root/...`**: 中继会“成功写入”到 `/root/zmax/...`,
   日志照打“已中继 N 次”, 而 `/home/<user>/...` 那份一动不动 —— 极容易当“中继没生效”去改代码。
-  一律预先固定绝对路径或从 env 传 (`ZMAX_POSE_OUT`), 不要指望 `~`。
+  一律写死绝对路径或从 env 传 (`ZMAX_POSE_OUT`), 不要指望 `~`。
 - 🔴 中继不能只在文件不存在时写、也不能带自己的小缓存; 真值的时间戳必须来自**本次**读到的那一帧。
 - 判据顺序固定: 先 `stat` 文件龄 + `drift` 与桥比对, 再看下游日志 —— 倒着查会把中继问题当执行器问题。
 
 ## 坑
+- 🔴 **单位: `tcp_out/latest.json` 的 `x/y/z` 是「米」(SDK 口径), 而段表/执行器要的是「mm」** ——
+  拿真值直接做几何规划不乘 1000, 起点就变成 `0.66, -0.03, 0.29`“mm”, 规划器以为臂在原点附近,
+  算出的抬升/倒落段全是废的(实测抬到 50mm = 起点上方 49.3mm, 而真实高度是 292mm)。
+  自己用读值前先 `print` 一次起点量级对账 (正常应是几百 mm); 产出段表时一路用 mm, 单位换在**读入那一处**收口。
+- 🔴 **起点新鲜度不达标就不出段表**, 不要“拿旧位姿照规划”: `age > 2s` 就返回 `tcp_stale` 并拒出,
+  比产出一张基于陈旧位姿的段表诚实得多(后者到下发那一步才被闸门拦, 用户只看到“点了不动”)。
+- 🔴 **绕不开的旧值陷阱**: 真值文件是“宿主 mtime 判断新鲜”的, 但其他进程/中继可能刚写过 ts 而值没变
+  ⇒ 判新鲜要看**数值是否在变**, 而不是只看 `age_s`。
 - 🔴 **绝不用文件龄 >10s 的位姿算 Δ**：陈旧值与真值可以差 450mm 量级，按它算出的目标会把臂开错地方。
 - 🔴 **页面显示“有位姿”不等于位姿新鲜**：页面读的就是同一个文件，文件冻住时页面照旧画点。
 - 🔴 **容器重启循环本身就是证据**：`docker ps` 里 `Restarting (N)` + 日志尾 `network: network connection`

@@ -7,7 +7,7 @@
 ## Bug 1: 归一化用错来源 (标量 vs 逐维)
 - 旧 `_load_stats()` 硬编码读 ACT checkpoint (标量 mean/std, shape (1,)) → 广播到 39D
 - SmolVLA/AWE 训练是逐维归一化 (39 个独立 mean/std)
-- 结果: 提供给模型的 state 分布全错 → 输出乱
+- 结果: 喂给模型的 state 分布全错 → 输出乱
 - 修: 候选 checkpoint 列表逐个找 normalizer safetensors，读 `observation.state.mean/std`，
   `sm.size==1 → 广播`, 否则直接用逐维
 

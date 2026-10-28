@@ -105,7 +105,7 @@ gui-venv311/bin/python <skill>/scripts/detect_circle_grid.py --image frame.png -
 - ⚠️ **正面（近无透视）单视图解不出焦距 f**：这是退化情形（两个消失点趋于无穷远），别指望用一张正对靶的图定 f；
   板上看不出横竖边的收缩比时，就说明该走“位移法/多姿态标定”，不要再在单帧上试。
 
-## 🔴 报“能不能测距/定位”之前先读一遍标定唯一依据里的 null
+## 🔴 报“能不能测距/定位”之前先读一遍标定真源里的 null
 配置文件里“有内参”很容易被误读成“手眼也有”。实测 `config/calib/zmax_calib.json`: `camera.K` 是全的（fx/fy/cx/cy/dist），
 而 `T_base_cam.value = null`（`_reason: 未标定`）、`plane_z.value = null` ⇒ **只有内参、没有外参、没有台面平面**。
 ⇒ 任何“用 PnP 得到基座系位姿”“用已知距离交叉校验”的方案，**先 `json.load` 把这两个 value 打出来**，
@@ -126,7 +126,7 @@ gui-venv311/bin/python <skill>/scripts/detect_circle_grid.py --image frame.png -
 停守护 → 停节点(kill -9, 确认残留=0) → 1280×720 单次抓帧(彩色+深度+内参+get_depth_scale)
 → 按原配置重启节点 → 重启守护
 ```
-- 一次约 35s，画面中断几秒；多位姿采集就每位姿执行一遍
+- 一次约 35s，画面中断几秒；多位姿采集就每位姿跑一遍
 - **重启节点那步必须 `source /opt/ros/*/setup.bash` + 工作空间 `install/setup.bash`**：非交互 ssh 不 source ⇒ `rclpy` 找不到 ⇒ 相机起不来
 - 起完立刻核 `/stats` 的 fps + 日志里的 depth_scale/DDS 行，确认真回来了再往下走
 - **换了分辨率就换内参**：720p 与 480p 的 fx/cx 不同（本机 720p 为 fx=655.06/fy=654.08/cx=637.41/cy=357.77），沿用小分辨率 K 会让 rmse 虚高

@@ -3,7 +3,7 @@
 老倪原话: 「**功能清单和测试用例都要对应**」。这是交付门槛的一部分 (与他既有的
 "交付=有提升非仅不回退"、"要证据才认完成" 同源)。
 
-## 一、执行一遍 `verify_*.py` 得到的 PASS/FAIL ≠ 功能好坏
+## 一、跑一遍 `verify_*.py` 得到的 PASS/FAIL ≠ 功能好坏
 
 实测: 25 个验证脚本 → **15 PASS / 10 FAIL**; 逐个查根因后 **5/10 是脚本自身腐化**, 不是功能坏。
 先把 FAIL 分三类再动手, 否则会把好功能"修坏"或者白改一天。
@@ -11,7 +11,7 @@
 | 腐化形态 | 实例 | 修法 |
 |---|---|---|
 | **期望过时** | 代码默认类别早已 `optical_module → peg`, 脚本仍断言旧名 → FAIL | **先读代码/注释判哪边对**。本例代码注释写明"旧名在 CLASS_MAP 无条目 → 真机权重接不进感知链, 光模块那路恒空" ⇒ 代码对 → 改**脚本**并在断言文案里写清依据 |
-| **路径预先固定** | `ROOT = "/home/tashan/zmax_yolo"` (别人家目录) → `PermissionError` | 路径自适应 (`if os.path.isdir(alt) else <本仓根>`); 该脚本本来就是给 Orin 写的 |
+| **路径写死** | `ROOT = "/home/tashan/zmax_yolo"` (别人家目录) → `PermissionError` | 路径自适应 (`if os.path.isdir(alt) else <本仓根>`); 该脚本本来就是给 Orin 写的 |
 | **脆弱快照断言** | "连线数应比上版少 1" 依赖 `/tmp/state_space_obs.bak2.json` | 改成**稳健子集判据** ("旧连线全在") 或容差 (`>= len(base)-1`); 别把某个历史 diff 钉成永久不变式 |
 | **用例缺失** | 矩阵里 2 个功能指向不存在的脚本 | 补写用例 (不是删功能); 补时把 path 与 import 一次配齐 (`sys.path` 要含 `src` **和** `tools/gui`) |
 | 环境依赖 | `ModuleNotFoundError: lerobot` (脚本没在 `PYTHONPATH=src` 下跑) | 脚本自加 `sys.path.insert(0, ROOT/'src')`, 别依赖调用方 |

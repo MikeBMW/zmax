@@ -34,7 +34,7 @@ NTP 把钟回拨 8h 后判据反转 → **进程还在、CPU 空转、一行产�
 `age <= 10s` 恒真 → 冻住的画面照样上屏且不换占位图; GUI 断流自愈 (`_stale_since`/`_last_recover`) 也变恒假, 没人救。
 ⇒ 修法: `age < -1.0` 一律拒用并标「⏰ 时钟异常」, live_frame.json 的 `age_s` 必须落在 `[0, 5]`。
 
-**L3 唯一依据帧率天花板**: `ros2 topic hz /realsense/color/image_raw` = 1.17Hz。
+**L3 真源帧率天花板**: `ros2 topic hz /realsense/color/image_raw` = 1.17Hz。
 **这层不是故障**, 但"每秒 1 帧"会被当成"不实时"; 报现象时必须连这一层一起说清, 否则用户以为修好了还是1fps是没好。
 
 ## 诊断序 (先证源头速率, 再看落盘, 最后看窗口)
@@ -42,11 +42,11 @@ NTP 把钟回拨 8h 后判据反转 → **进程还在、CPU 空转、一行产�
 ```bash
 # 0) 时钟本身 (一切判据的前提)
 date; timedatectl | head -4
-# 1) 唯一依据速率 (在 Orin 上测, 权威)
+# 1) 真源速率 (在 Orin 上测, 权威)
 ssh tashan@192.168.23.66 'source /opt/ros/humble/setup.bash; timeout 8 ros2 topic hz /realsense/color/image_raw'
 # 2) 落盘是否在推进 (间隔 ≥10s 量两次; 或 --time-style 看 mtime)
 ls -l --time-style=+%H:%M:%S ~/zmax_ss_remote/cam_rs.png ~/zmax_ss_remote/state_$(date +%Y%m%d).jsonl
-# 3) 采集器内部计数 (样本数/收包是否在涨; img 计数 ≈ 唯一依据 Hz)
+# 3) 采集器内部计数 (样本数/收包是否在涨; img 计数 ≈ 真源 Hz)
 sudo docker logs --tail 3 ss-remote-tap
 # 4) 落盘的帧元数据 (topic/w/h/std/age; std>5 = 真图不是黑图)
 tail -c 4000 ~/zmax_ss_remote/state_$(date +%Y%m%d).jsonl | tail -1 | python3 -c "import json,sys;print(json.load(sys.stdin)['image'])"
@@ -66,7 +66,7 @@ tail -c 4000 ~/zmax_ss_remote/state_$(date +%Y%m%d).jsonl | tail -1 | python3 -c
 `Restart=always` 救不了时钟事故 —— 进程**没退出**, 只是空转, 必须手动重启。
 GUI 改码必须重启 (无 autosave), 且桌面图标拉起的实例与 user unit 是两路, 容易双开。
 
-## 回归自检 (修完自验证通过, 别只看"现在有图了")
+## 回归自检 (修完自跑通, 别只看"现在有图了")
 
 `tools/verify_clock_skew_guard.py` 模式: offscreen 导入 GUI 模块 → monkeypatch `SHARED`/候选文件表到临时目录 →
 造 未来8h / 未来30s / 新鲜1s / 旧60s 四种 mtime → 断言 拒用/拒用/入选/拒用; 最后对现场真目录断一次 "帧龄 ≤ 阈值"。
@@ -74,6 +74,6 @@ GUI 改码必须重启 (无 autosave), 且桌面图标拉起的实例与 user un
 
 ## 报现象纪律
 
-- 报"图像不实时"必须分层给数: 唯一依据 Hz (Orin 实测) / 落盘 mtime 间隔 / 窗口新鲜度阈值。
+- 报"图像不实时"必须分层给数: 真源 Hz (Orin 实测) / 落盘 mtime 间隔 / 窗口新鲜度阈值。
 - 时钟事故波及面要主动扫: cron `next_run_at` + 所有常驻循环 + 帧新鲜度, 只修一处会二次复发。
 - 长内联命令 (heredoc / 多行 `python3 -c`) 在 Hermes 会被硬拦 → 用 `write_file` 落脚本再跑。

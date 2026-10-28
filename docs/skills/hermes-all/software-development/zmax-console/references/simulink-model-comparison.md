@@ -16,7 +16,7 @@
 - "🎥 推理效果对比" 含 "推理" → 误匹配 on_infer → 混进队列排最后 → 阻塞后续训练 (用户看到"训练到第3个就停了")
 - "☑ 训练开关" 含 "训练" → 误匹配 on_train → 成了 CICD 主控台第一个环节
 修复: 匹配前先排除 `params.video` 节点和 `type=="train_gate"` 节点。
-排查线索: 队列阻塞时先打印 `_canvas_stage_nodes()` 输出看有没有"杂鱼"。
+排查线索: 队列卡住时先打印 `_canvas_stage_nodes()` 输出看有没有"杂鱼"。
 
 ## row_bg 背景行节点 (五模型对比 5 行彩色背景)
 - 真节点类型 (可编辑: name + params.bg; BlockParamsDialog 里 bg/bg_color/color 参数渲染成 QComboBox 预设色)

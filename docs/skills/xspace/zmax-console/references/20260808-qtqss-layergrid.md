@@ -4,7 +4,7 @@
 - QSS 8 位 hex 是 **alpha 在前**（不是 CSS 的 #RRGGBBAA）
 - `border:1px solid #00d4aa88` → Qt 解析 alpha=0x00（全透明）→ **边框完全不可见**
 - 触发案例: 首页四层分组框, 架构层青色 #00d4aa 恰好首字节 00 → 只有架构层看不到边框
-  (其他层颜色首字节非0 → "有边框"但颜色实际错乱——更隐蔽)
+  (其他层颜色首字节非0 → "有边框"但颜色其实错乱——更隐蔽)
 - 老倪诊断: "鼠标放上有边框, 默认看不到" = hover 用全色(生效) vs 默认用 8位hex(透明)
 - **修法**: QSS 带透明度一律用 `rgba(r,g,b,a)` 或干脆全色 6 位 hex
 - 本会话最终态 (老倪两轮校正): ①全色边框太亮不协调 → ②**默认 `border:2px solid rgba(r,g,b,0.40)` (暗淡) + hover `border-color:{gcol}` 变全色点亮**; 标题色条 ▍+组名保持全色 (层级标题仍醒目)。分层分组框 QFrame 用 C_BG 深底 (比卡 C_CARD 浅色深, 深框浅卡对比)——验证: 亮度断言 `lum(C_BG) < lum(C_CARD)` (16 < 35)
@@ -57,7 +57,7 @@
 
 ## 📖 数据集查看器 (dataset_viewer.py) — npz/AV1/翻帧坑
 - **npz 压缩格式慢**: savez_compressed 的 npz, `d["observations"]` 每次访问**重新解压** (1.5s/帧) — 缓存 NpzFile 不够, 首次 load 后**提取数组到内存** (`self._npz_obs = d["observations"]`) → 翻帧 0-1ms (提速 1500x)
-- **AV1 编码 mp4 cv2 解码失败** (如 metaworld 数据集 videos/) → "帧 0 超出范围" — **有 train.npz 时优先走 npz** (numpy 可靠路径), 视频/parquet 保障
+- **AV1 编码 mp4 cv2 解码失败** (如 metaworld 数据集 videos/) → "帧 0 超出范围" — **有 train.npz 时优先走 npz** (numpy 可靠路径), 视频/parquet 兜底
 - **frame_slider 初始 maximum=0** → "下一帧点不了" — 打开查看器 `QTimer.singleShot(0, self._load_video_frame)` **自动加载第一帧** (maximum 就位)
 - **图像 180° 旋转按数据集类型区分**: 插销数据 (peg*) 与视频同源需 rot90(k=2), metaworld_act 官方数据方向本来就对**不转** — 无条件旋转会转反 (老倪: "图像反了, 要旋转 180 度" 后又报 act 反了)
 - orin 采集包 (json, 无图像) → `_load_json_package` 显示包 meta + 帧 state/action 文本 (查看器加 json 分支)

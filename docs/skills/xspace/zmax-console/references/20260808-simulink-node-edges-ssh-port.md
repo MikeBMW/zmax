@@ -1,6 +1,6 @@
 # simulink 模板节点机制 + SSH 端口坑 + GUI 多实例清理 (2026-08-08)
 
-## simulink REFERENCE_APPS 模板加载机制（关键，遇到问题多次）
+## simulink REFERENCE_APPS 模板加载机制（关键，踩坑多次）
 
 模板结构 = `(name, node_specs, edges, layout)`。
 

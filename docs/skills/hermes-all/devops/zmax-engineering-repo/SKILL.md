@@ -40,7 +40,7 @@ metadata:
    `Desktop/README_首次启动说明.md` + `put_points.yaml`(厂商/操作员文档)。
 6. `~/logs/`(global_logger_*.log)是 **xCoreSDK 按 cwd 生成的**日志, 不是代码; 单元 `WorkingDirectory=/home/tashan` 不变时它还会再生成
    ⇒ 要彻底收进 .zmax 得同时改 WorkingDirectory(本次没改, 保行为不变)。
-7. 验证服务活没活: 本机 `curl https://datadrive.world/api/relay/orin/status` 看 `ts` 是否继续前进(uplink 每 5s 推一次), 比翻本地日志可靠。
+7. 验证服务活没活: 本机 `curl https://datadrive.world/api/relay/orin/status` 看 `ts` 是否继续前进(uplink 每 5s 推一次), 比翻本地日志靠谱。
 
 - 清理结果(2026-10-07): `~/.zmax` **1.8G → 19M**。删了老数据(act/ models/ lerobot/ shadow_reports/ orin_10s/)+15 个无引用的一次性 8月脚本,
   凭据存 `~/.zmax/_deleted_<ts>.jsonl`(逐条 path/字节/文件数/原因)。**保留** 10 个文档里仍是 Orin 管线组件的脚本
@@ -106,7 +106,7 @@ metadata:
 - **平台仓库** = 代码 + 平台文档 + `defaults/` 出厂骨架(结构同构·数值空); **你的数据** = 实例包 `data/database/<产品>/`。
 - 实例包结构: `zmax_engineering.db` + `zmax_space.proj` + `README.md` + `archive/` + `sources/{config, feature.dbc, canvas/state_space_obs.json}`。
 - 仓库内 `config` · `feature.dbc` · `src/lerobot/engineering/flows/state_space_obs.json` 是**相对符号链接**指向实例包 → 110 处 `config/xx` 字面路径零改动仍可用。
-- 🔴 **原子写(`os.replace`)会顶掉符号链接** → 写实例唯一依据前必须 `os.path.realpath`(已修 `flows.save_canvas`)。加新的原子写点必须照此办。
+- 🔴 **原子写(`os.replace`)会顶掉符号链接** → 写实例真源前必须 `os.path.realpath`(已修 `flows.save_canvas`)。加新的原子写点必须照此办。
 - 换实例: `tools/instance_init.py --new <dir>`(骨架铺开) / `--link <dir>`(平台指向) / `--check`(四段边界体检)。
 - 判据: `verify_platform_spec` 含 4 条解耦判据(共 18 项); 边界失守报红。
 - 商务/交付/供应链/PPT 资产归实例侧 `data/docs/`(不进开源仓库)。
@@ -122,8 +122,8 @@ metadata:
 - **是什么**: SQLite 3 单文件库 (~0.9MB, 24 张表)。**不是服务器**: 没装 MySQL/PG/Mongo, 无监听端口;
   读写靠 Python 自带 `sqlite3` 模块 + 系统包 `libsqlite3-0` (`/usr/lib/x86_64-linux-gnu/libsqlite3.so.0`);
   `sqlite3` CLI 未装 (不需要)。库文件跨 sqlite 版本可读 (写它的 3.53.1 / 系统 python 3.45.1 / gui-venv311 3.53.1 都能读)。
-- **唯一依据 → 库**: 库是**生成物** (`engineering_db.py build`), 唯一依据是人可编·进 git 的 JSON/源码 (config/*.json ·
-  feature.dbc · 画布 · verification_layer.py · param_spec.json)。改唯一依据 → 重建库 → `check` 17 项。
+- **真源 → 库**: 库是**生成物** (`engineering_db.py build`), 真源是人可编·进 git 的 JSON/源码 (config/*.json ·
+  feature.dbc · 画布 · verification_layer.py · param_spec.json)。改真源 → 重建库 → `check` 17 项。
 - **唯一例外 = 运行时表**: `param_events` (改数留痕) 由程序**直接写库**, `SCHEMA` 里用 `CREATE TABLE IF NOT EXISTS`,
   **build 不清空它** (曾经是 param_events.jsonl + 库表投影两个家, 2026-10-09 老倪要求收口, jsonl 已退场)。
   新增运行时表照这个模式: `IF NOT EXISTS` + 写口函数 + build 开头按唯一键去重并入旧文件。
@@ -149,18 +149,18 @@ data/datasets/  📊 yolo_* · ss_* · metaworld_* · smolvla_* · orin_* · *.n
   它只改可执行代码区, 跳过 docs/reports/zmax_data/external 与 `_archive/`, 并**逐行排除** `lerobot-smolvla-lew/data/`
   (那是别的仓库的 data, 实测 `tools/diag_aoi_frame.py` 就命中; 不排除就会改错)。
 - 🔴 **按名字动态拼路径必须走 `tools/gui/data_locate.py`** (`data_dir(root,name)` / `datasets_root(root)`):
-  预先固定 `os.path.join(root,"data",x)` 在分区后**不报错、只是找不到** (isdir 为 False ⇒ 静默跳过/枚举为空)。
+  写死 `os.path.join(root,"data",x)` 在分区后**不报错、只是找不到** (isdir 为 False ⇒ 静默跳过/枚举为空)。
   已收口三处: `studio._local_datasets` · `data_space._scan_datasets` · `simulink_module` 数据集组。
 - 🔴 **`config/` 是 `data/database/<产品>/sources/config` 的软链 ⇒ 改它不在 git 里**: 改 `config/*.json` 后
   `git status` **什么都不显示**(且 `git add config/xxx` 报 `beyond a symbolic link`)。定式:
-  ① 改 `config/` 里的唯一依据 → ② `engineering_db.py build`(把 sources 重包进库) → ③ `engineering_db.py check` + 审计脚本
+  ① 改 `config/` 里的真源 → ② `engineering_db.py build`(把 sources 重包进库) → ③ `engineering_db.py check` + 审计脚本
   → ④ **把改过的 config JSON 拷一份到 `docs/data_snapshots/<日期>_<主题>/` + README 说明**, 它才真进 git。
-  实测:`tools/task_build.py` 生成的任务配置(tasks.json)里的点位/目标文本, 唯一依据一半在 `config/`(软链), 一半在
+  实测:`tools/task_build.py` 生成的任务配置(tasks.json)里的点位/目标文本, 真源一半在 `config/`(软链), 一半在
   `tools/task_build.py` 的 PLAN 与 `flows/scenes_5jobs.json`(真进 git) —— **同一个数字会同时活在两处**, 改一处必出两套口径。
 - 🔴 **要往配置里加一类新东西(如空间点位), 扩展生成器而不是另立显示源**: 任务配置的 `overrides` 由
-  `tools/task_build.py::teach_point_overrides()` 从台账**只读**生成(`pt.<名>` = x/y/z + 记录时间 + 唯一依据文件)。
+  `tools/task_build.py::teach_point_overrides()` 从台账**只读**生成(`pt.<名>` = x/y/z + 记录时间 + 真源文件)。
   新增数据源(如 `data/skills/l2_atomic/space_points.json`)就在那个函数里多读一份、写成同格式的 `pt.xxx` ⇒
-  配置中心那张表自动多出几行, 单一唯一依据不打架(实测: 配置中心 8 示教点 + 8 空间点 = 16 行)。
+  配置中心那张表自动多出几行, 单一真源不打架(实测: 配置中心 8 示教点 + 8 空间点 = 16 行)。
 - 🔴 **改完画布必须重绑**: 画布 `state_space_obs.json` 一改 (`canvas_md5` 变) ⇒ `ss_task_bind.py --check` 报
   "需重绑定", `engineering_db check` 报 `drift ['project'/'canvas']`。定式: `ss_task_bind.py --activate <task>` →
   `engineering_db.py build` → 两个 check 走一遍。
@@ -228,7 +228,7 @@ python3 tools/audit_paths.py       # 全仓扫(含 docs, 用于区分"历史留�
 ### 守卫误判要当故障修(2026-10-08 实测)
 站台加了「笔记本内置 ↔ USB」换源功能并落盘 `cam_local_src.json` 后, `cam_stream_guard.py` 仍只认
 `"Integrated RGB"` ⇒ 用户选了 USB 之后守卫**每 5 分钟重启一次站台**(页面反复掉线)。
-口径: **守卫的期望值必须来自用户的运行时选择, 不能预先固定** ⇒ `judge(..., local_key=local_expected())`。
+口径: **守卫的期望值必须来自用户的运行时选择, 不能写死** ⇒ `judge(..., local_key=local_expected())`。
 
 ## 路径命名空间统一 (老倪: 左右脑源码打开后都以 /home/ubuntu/zmax 开头)
 ```bash
@@ -273,7 +273,7 @@ python3 tools/ns_unify_paths.py         # 真改 (改前 tar 备份: zmax_data/b
    重启顺序无关; 但**只信落盘位置**——改完看新旧两侧的 mtime, 老侧停住、新侧每秒在动才算好。
 6. **看护脚本只会 `restart` 不等于能自愈**: `cam_stream_guard.start_tcp_sampler()` 原来只有 `docker restart`,
    容器一旦被 `docker rm` 过就永远救不回来(TCP 真值停刷 ⇒ 整条臂链路看着"死了", 而守护每 5 分钟报一次"已处理")。
-   ⇒ 保障补 `docker run`(照原参数重建)。检查任何守护时都问一句: 目标**不存在**时它会怎么办?
+   ⇒ 兜底补 `docker run`(照原参数重建)。检查任何守护时都问一句: 目标**不存在**时它会怎么办?
   (实现在 `tools/zmax_bootstrap.py`; 清单 `tools/zmax_assets.json`, 机器可读, 加资产只加一条)。
 - **识别顺序**(已下载的绝不重下): 默认路径 → `alt_paths`(老位置) → `alt_globs`(精确文件) → HF 老缓存 `~/.cache/huggingface`。
   命中即"可用/可采纳"; `--apply` 只建软链/建目录/写 `$ZMAX_DATA/zmax_paths.env`, **只增不改不删**。
@@ -343,8 +343,8 @@ rm -rf /tmp/c && git clone --depth 1 https://github.com/MikeBMW/zmax.git /tmp/c 
 | 用 `du` 统计仓库体积 | 报出来的数跟 `git ls-tree HEAD` 差几倍(块取整 + 输出被截断) | 入库体积一律 `git ls-tree -r -l HEAD` 求和 |
 | 只改仓库内、忘了 systemd/Hermes 脚本 | 单元里还是旧路径, 下次改口径又漂 | 仓库外一起 sed + daemon-reload + 核验 |
 | 技能镜像与仓库不一致 | `git status` 一堆 D 与 ??(docs/skills 下) | `rsync -a --delete` 重新镜像, 别只 cp |
-| 大图/PDF 混进技能镜像 | 仓库体积暴涨 | 镜像后 `find -size +300k -delete` + `repo_guard.py` 保障 |
-| 把 venv 当老位置资产"采纳" | 软链过去的 venv 跑不了(内部路径预先固定) | bootstrap 里 venv/env 类只报"复用原处"并给重建命令, **不建软链** |
+| 大图/PDF 混进技能镜像 | 仓库体积暴涨 | 镜像后 `find -size +300k -delete` + `repo_guard.py` 兜底 |
+| 把 venv 当老位置资产"采纳" | 软链过去的 venv 跑不了(内部路径写死) | bootstrap 里 venv/env 类只报"复用原处"并给重建命令, **不建软链** |
 | `alt_paths` 里写了目录 | 把整个目录当资产采纳(如 lora_l3 → reports/) | 精确文件用 `alt_globs` 且 **glob 先于 alt_paths**; 取文件要 `os.path.isfile` 过滤 |
 | 从 fork 收源码时连生成物一起收 | `tools/ros2_interfaces/install/**` 上千个 rosidl 生成文件入库 | 排除 `/install/`、`docs/`、`reports/`、`media/`、`.github/`; 根级脚本归 `tools/fork_experiments/` |
 | 用 `du -sh` 判目录空不空 | 明明有文件却报 0 | 用 `ls -A`/`os.listdir` 判非空; du 受挂载/稀疏影响 |
@@ -353,4 +353,4 @@ rm -rf /tmp/c && git clone --depth 1 https://github.com/MikeBMW/zmax.git /tmp/c 
 | 只改内容不看软链 | 服务全绿但 1121 条 `zmax/models/*` 断链, 检测器加载不到在役权重 | 搬完 `find <根> -xtype l` 修目标(见 playbook 坑 2) |
 | 改完源码不重启长跑进程 | 老路径目录被静默重建, 新路径文件不刷新 | 重启 VL 链/L2/站台, 再比对新旧两侧 mtime(见 playbook 坑 5) |
 | `pgrep -f <模式>` 里出现自己命令行里的名字 | 执行它的 shell 被自己杀掉(实测一晚 5 次; 用 `kee[p]alive` 括号技巧**不够**, 因为命令行别处还会原样出现这个名字) | 一律写脚本文件执行(脚本 cmdline 里没有这个名字), 或先取 pid 再 kill |
-| systemd 单元 exit 75 无限重启 | 网关"看着没起来", 实际野进程在服务, restart counter 涨到 2110 | `systemctl --user status` 看真身; 系统级重复单元 stop+disable(用户级 Linger=yes 已保证开机自启) |
+| systemd 单元 exit 75 无限重启 | 网关"看着没起来", 其实野进程在服务, restart counter 涨到 2110 | `systemctl --user status` 看真身; 系统级重复单元 stop+disable(用户级 Linger=yes 已保证开机自启) |

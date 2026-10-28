@@ -7,19 +7,54 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 # Z-MAX Console — 维护指南
 
-> 🔴 **GUI 里任何「打开浏览器页面」的地址都不得硬编码 IP。** 实测: `ss_dreamview.py` 的
-> `AR_PAGE_URL_LOOPBACK` 预先固定了旧 WiFi IP `10.163.146.78:8793/ar`(变量名还叫 LOOPBACK), 本机改连热点后
-> 按钮和状态栏把地址指向一个不存在的 IP ⇒ 用户报「AR 按钮无法打开 ar 网页」, 而 8797 服务一直 200。
+> 🔴 **GUI 里任何「打开浏览器页面」的地址都不许写死 IP。** 实测: `ss_dreamview.py` 的
+> `AR_PAGE_URL_LOOPBACK` 写死了旧 WiFi IP `10.163.146.78:8793/ar`(变量名还叫 LOOPBACK), 本机改连热点后
+> 按钮和状态栏把地址指向一个不存在的 IP ⇒ 用户报「AR 按钮打不开 ar 网页」, 而 8797 服务一直 200。
 > 定式四条: ① 提供 `ar_page_url()` —— **点击时**按默认路由网卡现算
 > (`socket(AF_INET,SOCK_DGRAM).connect(("10.255.255.255",1)).getsockname()`), `ZMAX_AR_URL` 仍可覆盖;
 > ② **函数默认参数不能写 `url: str = ar_page_url()`** —— 默认值在 `def` 执行时求值, 等于又冻死一次;
 > 要写 `url: str = ""` 再在体内 `url = url or ar_page_url()`(ar_open_url / ar_spawn_browser 两处都中过);
-> ③ 同源位置一起改, 否则下一个按钮还是无法打开: 工具栏「光纤」(`8797/autoLight`)、旁路视图的
+> ③ 同源位置一起改, 否则下一个按钮还是打不开: 工具栏「光纤」(`8797/autoLight`)、旁路视图的
 > `zmax_data/ss_bypass/station_url.json`(用 `retarget_local_hosts()` 在读取时校验 host 是否仍是本机地址,
 > 不是就换成现算 IP —— **改代码不改用户配置**, 配置里保留他自己的意图);
 > ④ 判据 `tools/verify_ar_button.py` 断言「地址里不许出现旧 IP」, 再 `AR_REAL_OPEN=1` 真开一次,
 > 认窗口表(`win=0x…`)+ 落在控制台同屏, 不认 `webbrowser.open()` 的返回值。
 > 换网后先量: `ip -4 -br a` 里到底有没有那个 IP —— 没有就别在服务端查日志, 问题在地址本身。
+
+> 📊 **成本册 PPT 不许“顺手写上售价”。** 老倪 2026-10-28: 「按照这个给出成本分析；不要写销售价。重写 PPT」
+> 定式: 目标成本口径只改 `tools/spec/cost_targets.json` (A/B/C 的 hw_cost/sw_cost) —— 生成器
+> `tools/build_cost_deck.py` 与配置中心导出按钮、判据全部现算，一个结论数字都不手写。
+> 禁词要**硬查而不是说说**: `tools/verify_cost_deck.py` 全文扫 售价/报价/利润/毛利/分成/回本/销售，
+> 一个都不行 (连“供应商未正式报价”也得改成“核价”，否则老倪一眼看到“报价”就认为没听他的)。
+> 图表数据标签/表格单元格算“全文”—— 断言必须扫 shapes + table cells + chart 类别与系列名，
+> 光扫 `shape.text_frame` 会漏掉表格里的字。验收口径=判据全绿 + `soffice --headless --convert-to pdf`
+> 后 `pdftoppm`+`tesseract` 能读出每页关键数字 (证明真的渲染得出来，不是只有 pptx XML 对)。
+
+> 🎨 **「字体是黑色, 看不到, 背景也是黑色」⇒ 先量页面 WindowText, 别瞎加一堆 setStyleSheet。**
+> 实测: `ConfigCenterPage.__init__` 里只有 `self.setStyleSheet(f"background:{th['C_BG']};")`
+> ——— 只设背景不设前景 ⇒ 整页 WindowText 还是系统默认 `#000000`, 于是**没手写 styleSheet 的 QLabel**
+> (文档配置页 16 处: 第7步成本组成/第8步市场分成/三阶段/回本说明/「工位数」「班次」…) 全是黑底黑字。
+> 修法一行: 同一行补 `color:{th.get('C_FG','#e6edf3')}` ——— QSS 的 `color` 会继承给所有子控件,
+> 手写了 styleSheet 的控件仍然优先(不会把已有配色覆盖掉)。
+> 口径陷阱: **`QTableWidgetItem.foreground()` 对没 setForeground 的单元格返回无效黑 brush, 不代表实际绘制色**
+> ——— `_mk_table` 已带 `color:C_WHITE`, 照这个口径统计会满天飞假阳性; 判 "看得见" 用
+> ① `label.palette().color(QPalette.WindowText).lightness()`; ② 离屏 `inner.grab().save(png)` +
+> `tesseract png stdout -l chi_sim+eng` 认出正文才算真可见(这条能同时验文案: 如按钮写「14 页」)。
+
+> 🚫 **配置中心页里不许再插「全局横条」(愿景带/横幅/口号行)。** 2026-10-28 实测: 每页顶部插
+> 58px 愿景带(🎯 让工业机器人干精密活 + 八步脊柱 chips)后，老倪一眼看到的是「这行字已经遮挡了
+> 产品定义 任务配置 等标签」⇒ 要求删掉。定式: 配置中心的页面内容从页签下方第一行开始，
+> 一句产品话术放 ar3d 愿景条(`#visBar`, 底部 140px)与市场 PPT，**不进配置中心页内**。
+> 停用点只有一行 `self._install_vision_bars(th)`(veh6_config_page): 注释掉即可，函数与
+> `tools/spec/vision.json` 保留(ar3d/PPT 还读它)。判据翻面写 `tools/verify_vision_unity.py` ②
+> 段: 七页签都不许有 `visionBar`、页签名必须完好、页里不再出现该行字(70/70 PASS 才算完)。
+
+> 🔧 **`ZMAX_BOOT_PAGE` 的判定不能放在 `self.modules` 赋值之前。** 原写法
+> `if _bp != "home" and _bp in getattr(self, "modules", {})` 跑在 `_build()` 之前 ⇒ `modules` 还是空
+> ⇒ 恒 False ⇒ 设了 `config` 也永远落在主控制台(日志还会打印「开机默认页: config」，看着像成功)。
+> 定式: 只注册 `QTimer.singleShot(3200, _boot_jump)`，把 `_bp in self.modules` 的判定挪进回调里，
+> 那时页面已建完。验证要看**真实窗口**，不看启动日志: 截图 + `tesseract … -l chi_sim+eng` 认出
+> 「产品配置/任务配置」页签才算落到配置中心。
 
 > 🧊 **「画布/控制台用鼠标关不掉了」** ⇒ 别先怀疑鼠标和窗口管理器：`py-spy dump` 看主线程是
 > `idle`（事件没送到）还是 `active+gil` 卡在 `paintEvent/setData`（绘制占死事件循环，WM_DELETE/Ctrl+Q/SIGTERM
@@ -53,7 +88,7 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 > 看不见先查 `availableGeometry()` 越界/帧外延 74px；画「—」是隧道 3s vs 1.5s 超时，不是 NPU 没跑。
 
 > 🧠 **模型引擎四列 (运行位置/运行权重/转换工具/推理还是训练)**: `references/model-engine-runtime-columns.md`
-> —— 唯一依据 `tools/model_runtime_map.py`(Intel /models 的 sha16 + /pipeline 的设备占空 + CONVERTERS 表), 界面不自猜;
+> —— 真源 `tools/model_runtime_map.py`(Intel /models 的 sha16 + /pipeline 的设备占空 + CONVERTERS 表), 界面不自猜;
 > 只看 `/status/all.inferring` 会把 96% 占空的端侧渲染成「空闲」。
 
 > 🎴 **产品档三张自绘卡片 + 三档运行位置 (A 本地 / B VSCode / C Intel 端侧)**: `references/product-card-ui.md`
@@ -69,7 +104,7 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 > ❗ **「配置中心 打开先显示 产品配置」+ 左树小对号 = 当前打开的那一页 (常驻口径)**:
 > 初始页固定 `_tab_index_by_title("产品配置")`; `zmax_data/cc_last_tab.txt` **只写不读**(回放会让它落回上一页,
 > 现场验证: 文件里写着别的页, 打开仍落在产品配置); 左树行首 ✅ = 当前页(并加粗)、○ = 其余页,
-> 唯一依据就绪 ✅/⛔ 挪进条目 tooltip; `_mark_tree_current()` 要在 `_fill_tree` 末尾、`_on_tab_changed`、
+> 真源就绪 ✅/⛔ 挪进条目 tooltip; `_mark_tree_current()` 要在 `_fill_tree` 末尾、`_on_tab_changed`、
 > 以及**设完初始页之后**都显式调一次(`setCurrentIndex` 索引没变时不发 `currentChanged`, 联动不会自己刷)。
 > 「版本号」= 全系统一个号, 读 `update_checker.CURRENT_VERSION`(现 v5.50.751), 不手抄; 550A/B/C 只是配置标识。
 
@@ -80,7 +115,7 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 >
 > 📄 **产品档位卡 (VEH.6.01/02/03 · 550A/B/C) 调档位 UI /「内敛不刺眼」**: `references/product-card-ui.md` ——
 > 自绘 `_ProductCard(QRadioButton)`, **必须仍是 QRadioButton 子类**(判据读 text/isChecked/objectName);
-> 取证 `setChecked` 会**真写唯一依据** ⇒ 每张卡 `blockSignals(True)` + 判据断言 sha256 不变;
+> 取证 `setChecked` 会**真写真源** ⇒ 每张卡 `blockSignals(True)` + 判据断言 sha256 不变;
 > 互斥组不能 `setChecked(False)`(换另一张当基线); 像素判据用**区域均值**(单点会落在字形抗锯齿上);
 > 选中/未选只能同卡比亮度 (≥60%), 排版用 paintEvent 同口径常量复算。
 
@@ -108,7 +143,7 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 > 拿文件新鲜度判在跑 ⇒ 没点 ▶ 运行也显示力/在转 (用户一问就穿)；没在跑就不画力线/不画自转弧/相位冻结/太阳标签不写 T。
 > 公转相位必须**积分** (`_ph += ω·dt`, ω 平滑向目标)，禁 `相位 = f(实测量)` (数据一跳就来回跳)；`_geom()` 图注行数加滞回防“呼吸”; 结构映射 (黄道面↔S³ · 太阳=中心 · 行星=DiT · 地球=MLP · 引力=度量) 的落点、
 > 以及画布「画了但没画出来」三种静默失败 (坐标单位/低 α/亮度跟实时量) 也在这份里;
-> 状态按**每个实体自己的唯一依据 mtime** 上色 (●≤2.5s ◐≤60s ○离线), 层状态取 `layer_calls.jsonl` 末行;
+> 状态按**每个实体自己的真源 mtime** 上色 (●≤2.5s ◐≤60s ○离线), 层状态取 `layer_calls.jsonl` 末行;
 > 口径写屏上 (τ 是解析势场还是模型张量 · 是否限幅); 加信息前先算遮挡代价 (贴球标签压球、右上角状态带压虚线)。
 
 > 📄 **「改完用户看不到」/ 数据空间缺 Tx 节点 / 速度 mm/s 口径 / v_ff 能否算位姿**:
@@ -121,7 +156,7 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 > py-spy raw 要**按 count 加权** · 3D 面板每帧新建 QFont/QFontMetrics(缓存后 13.7→4.5us, 缓存必须设上限) ·
 > `HOST_POLL_HZ` 50→20 · anon 64MB 段 = glibc arena(`MALLOC_ARENA_MAX=4` 只有走 restart 脚本才带上) ·
 > 段差分报 `RSS 0MB/负值` = pid 被换掉了。
-> 「阻塞了 / 点不动」先 `py-spy dump --pid` 抓主线程栈(dump 一次就够, 不必先 record): 栈里同一链反复出现
+> 「卡住了 / 点不动」先 `py-spy dump --pid` 抓主线程栈(dump 一次就够, 不必先 record): 栈里同一链反复出现
 > (`_tick → … → _trim_selected`)就是周期 tick 死循环。定式: **周期性 tick 里"裁到 N 条"必须同时回写控件状态**
 > (只裁内存列表、不取消勾选 ⇒ itemChanged 每拍把行塞回 ⇒ 裁/塞 4Hz 循环, 主线程 100%),
 > 并给裁裁日志加 10s 节流、所有入径走同一收口; 修完报 `/proc` 差分前后数 + MainThread 回 `idle`(§9)。
@@ -130,7 +165,7 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 > 📄 **配置中心「💰 成本/报价」+「🧩 商业模式」**: `references/config-center-cost-page.md` · `references/config-center-business-model.md`
 > —— 成本只存输入(BOM/软件/人力/产线), 派生值现算不落盘; 商业模式从成本+性能+任务推 分层口径/成交区间/三阶段/模式,
 > 区间不成立就改配置不降价; 加页必连带改 `_TAB_ORDER` 与既有判据里的页签计数。
-> 📄 **唯一依据改了 → 工程库/参数中心同步 (ensure-fresh · 三表对账 · param auto 行)**: `references/truth-to-db-sync.md`
+> 📄 **真源改了 → 工程库/参数中心同步 (ensure-fresh · 三表对账 · param auto 行)**: `references/truth-to-db-sync.md`
 📄 **配置中心页面改 UI (删重复块 / 文字全可选可复制 / 判据同步 / 一次重启)**: `references/config-center-ui-changes.md` ——
 > `ConfigCenterPage` 被主控制台与独立窗口共用 ⇒ 改一处两边同时生效; 删块必须同改判据并翻成"不该再有这个块";
 > 全页文字可选中 = QLabel OR flags + app 级 Polish 过滤器 (跳过条件别写成 `if f & (A|B)`); 判据变红先 stash 取基线。
@@ -142,7 +177,7 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 > 归档两份 (`docs/data_snapshots` + `zmax_data/release_<ver>_<date>`) 并用 `sha256sum -c` 回读 · 跨平台只说"配置已验, 产物由 CI 出"。
 
 > 📄 **两窗口同源 (信号分析 ⇄ 数据空间 Trace)**: 同文件 **§11 / §13③~⑦ / §14 / §15 只留 L2 收口 / §16 统一信号库** —— Tx/Rx/Layer/单位/数值/变化率
-> 只许一份唯一依据 `middleware/attribution.py`；固定行不许按帧龄等衍生量重排（行会跳）；
+> 只许一份真源 `middleware/attribution.py`；固定行不许按帧龄等衍生量重排（行会跳）；
 > §15: Tx/Rx 只认工程节点名（禁进程名·数据空间禁横杠行）；§16: 两窗口读 `signals.db` 而不是各读 JSON。
 > 场景组默认勾满全部动态信号，波形同时只画 24 条（278 条实测一次刷新 14.5s）。
 > 📄 同文件 **§14** = 固定行的最后一公里：字段一拍有一拍没 ⇒ 老行保序 + 缺键保留上拍 ≤60s，
@@ -150,9 +185,9 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 > 同一 `live_signals` 快照，否则快变量差一拍）；位姿无真值就写 -1 + QoS 告警，禁止按动画推角度。
 > 📄 **表格类 UI 硬规矩**: `references/dataspace-message-signal.md` §7 —— 用户手拖过列宽后，
 > 刷新心跳里的 `_fit_columns()` 必须停手（它就是“拖完又自动还原”的真根因），复位只给 `↺` 按钮；
-> 列宽按 `ensurePolished()` 后的表头字宽 + **该列最长文本**算；**不许省略号**（`ElideNone`，放不下就横向滚动）；Tx/Rx 只放 `middleware/naming.py` 归一后的节点本名（无 emoji/层号/序号/箭头）；右侧详情与表格必须同一个类型唯一依据；
+> 列宽按 `ensurePolished()` 后的表头字宽 + **该列最长文本**算；**不许省略号**（`ElideNone`，放不下就横向滚动）；Tx/Rx 只放 `middleware/naming.py` 归一后的节点本名（无 emoji/层号/序号/箭头）；右侧详情与表格必须同一个类型真源；
 > 表头一列一个英文短词，不加中文/括号/解释（解释进 tooltip），面板标题就一个词。
-> 同文件的 **§8** = Tx/Rx 只放 `naming.py` 归一后的本名 + 表格与详情必须同一个类型唯一依据；
+> 同文件的 **§8** = Tx/Rx 只放 `naming.py` 归一后的本名 + 表格与详情必须同一个类型真源；
 > **§9** = 质量告警必须判物理值（超上限/低于下限/NaN/无单位/跳变），Trace 一行一个信号带 `Unit`+`Phys`，
 > 顶部工具条只留一个搜索（放在 Trace 按钮区）且**删控件前先 grep 引用**（否则暂停键联动已删按钮 → AttributeError）。
 > 同文件的 **§11** = 信号分析窗口(canoe_graphic) 与数据空间同口径: 7 列 `Name|Layer|Signal|Value|Type|Tx|Rx`（Layer 必须在第2列，放最后窄栏就看不见）、
@@ -163,7 +198,7 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 > Trace 列口径 = `Time | Layer | Name(中文≤5) | Signal(程序真实变量) | Value | Unit | Phys | Type | Tx | Rx | QoS | Hz`，
 > Layer 只有 `L2~L5` + `SYS`(meta / 注册表类话题)；本工程没有 L1，**不许为了凑 L1~L5 编层**；
 > Trace 必须遍历**工程库全部话题**(含入口, 实测 273 个)，不能只显示 live.json 里有流量的那几个(24)；
-> QoS 必须显示 DDS 标准策略名（不是内部 beat/state），空值直接 `—` 不要 `❌ 未知: —`；改列前先 grep 旧列名（表头在构造 + 两处 setter 共三处预先固定），并同步 `QTableWidget(0, N)` 的列数与所有按列号取值的代码（选中行取 Name、`_fit_name_col` 的目标列）。
+> QoS 必须显示 DDS 标准策略名（不是内部 beat/state），空值直接 `—` 不要 `❌ 未知: —`；改列前先 grep 旧列名（表头在构造 + 两处 setter 共三处写死），并同步 `QTableWidget(0, N)` 的列数与所有按列号取值的代码（选中行取 Name、`_fit_name_col` 的目标列）。
 
 > 📄 画布节点右键「打开代码」落点 / “点了没反应” 分诊: `references/gui-rightclick-and-code-jump.md` ——
 > 先读 `~/.cache/zmax/rightclick.log` 的 `kind=`/`loc=`/`err=`，再谈改代码；落点解析不许依赖 import
@@ -186,7 +221,7 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 > 画布加显示元素要包在 `paint()` 外层 (`_paint_internal` 只覆盖 Z700 分支); 宽到压不下去时先瘦行内冗余文本
 > (全文存 item data 供分派, 并 grep 所有 `setText(0)` 处一并改), 再谈省略号。
 
-> 📄 相关: `references/live-value-freshness.md`(显示诚实性: 任何标"当前"的值必须过源新鲜度判据, 源停更要标失效+勿据此判安全) · 右上角三色状态灯唯一依据+控制台重启(禁 systemctl restart) `references/status-lights-and-restart.md` · 首页 hero 按钮基线 `references/ui-hero-buttons-slimming.md`。
+> 📄 相关: `references/live-value-freshness.md`(显示诚实性: 任何标"当前"的值必须过源新鲜度判据, 源停更要标失效+勿据此判安全) · 右上角三色状态灯真源+控制台重启(禁 systemctl restart) `references/status-lights-and-restart.md` · 首页 hero 按钮基线 `references/ui-hero-buttons-slimming.md`。
 
 > 📄 Roadmap Phase 卡(描述由工程库生成·点开可编辑·主指标整齐 + 真窗几何取证 + 整页横向溢出陷阱 + **卡面不许写解释性横幅文字: 状态用图标/说明进 tooltip**): `references/roadmap-phase-cards.md`
 
@@ -204,7 +239,7 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 * **旧编号一律换成当前层号**: 画布里遗留的 `SYS11 VLA-T / SYS12 Z-Flow`、`Sys-0 / L2基石` 只在画布条目名里保留;
   侧栏/首页文案统一写 `System 1 · L3 动作执行 (VLA-T + Z-Flow)`、`System 0 · L2 基石执行`。
   **画布条目名不要顺手改** —— 改它等于改工程画布, 必须走 `flows.save_canvas`(校验+备份) 写口, 并单独确认。
-* **卡片里固定不变的数字会过期**: 把「功能 30 / 162 个可改数字」这类库计数印进文案时, 交付时明说这是当前快照,
+* **卡片里写死的数字会过期**: 把「功能 30 / 162 个可改数字」这类库计数印进文案时, 交付时明说这是当前快照,
   或改成开机从库读一次再填。
 * 左侧分组标题带用法提示 (如「平台产品 · 点开 = 产品与功能清单」) —— 老倪要点开才知道那卡去哪。
 
@@ -246,11 +281,11 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 zmax_space 总工程, 通过 文件→打开/加载工程 集成式打开, 不像现在还得手动加载」。
 
 * 格式 = 一个自包含 JSON, **7 段**: ①canvas ②panel(视图/页签+6 运行开关+画布栈索引)
-  ③calibration(唯一依据全文+sha256/mtime+未标定项+现场标定命令) ④master_param(M/inertia/范围+M 节点快照)
-  ⑤measure(measure_view/diagnose_view+总线配置) ⑥tasks ⑦fingerprints(每个唯一依据 sha256)。
+  ③calibration(真源全文+sha256/mtime+未标定项+现场标定命令) ④master_param(M/inertia/范围+M 节点快照)
+  ⑤measure(measure_view/diagnose_view+总线配置) ⑥tasks ⑦fingerprints(每个真源 sha256)。
   代码: `tools/gui/project_file.py`(采集/比对/写入) + `tools/project_archive.py`(CLI: space-save/
   space-open/space-show/save/inspect/diff/verify/restore/explode/list/upgrade)。
-* 🔴 **唯一依据唯一**: 存档=快照+指纹; 写盘只走各自写口 —— 画布 `flows.save_canvas()`(校验+备份到
+* 🔴 **真源唯一**: 存档=快照+指纹; 写盘只走各自写口 —— 画布 `flows.save_canvas()`(校验+备份到
   `flows/_archive/`)、标定 逐文件 `*.bak_<ts>`→写→**回读 sha256**、任务 `ss_task_bind.py --activate`。
   普通存档默认**只回填画布+面板**; 标定/主参数只看不动 (要覆盖: `--with-calib --yes`)。
 * **总工程** = 同一格式 + `kind="zmax_space"` (固定 `reports/projects/zmax_space.zmaxproj`);
@@ -274,22 +309,22 @@ zmax_space 总工程, 通过 文件→打开/加载工程 集成式打开, 不�
   INTACT机器人 → 画布节点双击; 另存为/加载/保存模型/录制/停止/浮动 → 新菜单「画布(C)」。
 * 快捷键注册: `QShortcut(QKeySequence(k), canvas)` + `setContext(Qt.WidgetWithChildrenShortcut)`。
 
-**二、菜单设计模式 (单一唯一依据)**
+**二、菜单设计模式 (单一真源)**
 * 菜单表放模块类属性 `SimulinkModule.CANVAS_MENU = [(key,文字,快捷键,tip,sep), …]`; 主窗口按表建 QAction,
   画布模块建好后 `attach_canvas_actions(acts)` 接管, 并**把属性名沿用 btn_save/btn_record/…** ⇒ 旧代码零改动。
   (主窗口菜单在 `_build_menubar()` 建, 早于懒创建的画布模块 → 点击转发里必须 `sim is None` 时给实话提示。)
-* 主窗口**没有** `_log()` (那是别的类)! 加 `_ui_msg()` 保障: model_engine._log → self._log → print。
+* 主窗口**没有** `_log()` (那是别的类)! 加 `_ui_msg()` 兜底: model_engine._log → self._log → print。
 
-**三、QAction 替换 QPushButton 的两个必遇到问题**
+**三、QAction 替换 QPushButton 的两个必踩坑**
 * `QAction` 无 `rect()` → 气泡定位 `mapToGlobal(btn.rect().center())` 直接炸; 用 `_action_anchor(act)`
   (act.associatedWidgets() → mapToGlobal, 拿不到就用窗口中心)。
 * `QAction` 无 `setStyleSheet()` → 录制中的按钮变色/呼吸会炸; 改**画布横幅报进度** (set_banner)。
-* 0 点击高亮类代码 (教程/新手引导) 接到菜单项时必须 `isinstance(w, QWidget)` 保障退到画布。
+* 0 点击高亮类代码 (教程/新手引导) 接到菜单项时必须 `isinstance(w, QWidget)` 兜底退到画布。
 
 **四、侧边栏“字数太多”的四招 (数据一条不删)**
 1. 长文案→短句卡面, **全文进 tooltip** (含引擎行号/实测代价), 判据改为“卡面短 + tooltip 含全文”。
 2. 表格单元格截断 (`_cut(t, n)` + `setToolTip(全文)`), **📋复制/导出仍给全文** (老倪要可复制)。
-3. 重复文案合并 (同一句写两遍 85 字→39); 显示层压掉 `python3 tools/` 前缀 (唯一依据原串不动)。
+3. 重复文案合并 (同一句写两遍 85 字→39); 显示层压掉 `python3 tools/` 前缀 (真源原串不动)。
 4. 长值紧凑格式化: 列表/字典嵌套也要走 `_fmt` (只格式化顶层 → 嵌套 list 会把 384 字完整 K/dist 呼出来)。
 * 共用小工具要放**模块级** (`_cut`/`_fmt`), 多个视图各自 `@staticmethod` 会 `self._cut` 直接 AttributeError。
 
@@ -304,7 +339,7 @@ zmax_space 总工程, 通过 文件→打开/加载工程 集成式打开, 不�
 老倪的硬要求: **一个数据库文件 = 一套工程**, GUI 不绑死工程, 换库 = 换工程。落地形态:
 
 ```
-唯一依据 (人可编·进 git)                       库 (生成物, 可随时重建)
+真源 (人可编·进 git)                       库 (生成物, 可随时重建)
   config/platform/zmax_platform.json   ─┐
   reports/projects/*.proj (7 段)        │
   flows/state_space_obs.json            ├─→ data/database/zmax_engineering.db (0.82 MB SQLite)
@@ -339,7 +374,7 @@ zmax_space 总工程, 通过 文件→打开/加载工程 集成式打开, 不�
 ```
 
 * **MCD = 测量 Measurement · 标定 Calibration · 诊断 Diagnosis**, 卡片上是 MCD 单色数字行 (彩条已废 — 老倪要求不五颜六色)
-  (🟦M / 🟨C / 🟩D)。数字**一律从单一工程库 `mcd` 表读** (`_mcd_from_db()`), 不预先固定; 库不在就自动省略该行。读库发生在窗口构造时 ⇒ 改完库/标定后要重启控制台卡片数字才刷新(交付时先说清这一点)。
+  (🟦M / 🟨C / 🟩D)。数字**一律从单一工程库 `mcd` 表读** (`_mcd_from_db()`), 不写死; 库不在就自动省略该行。读库发生在窗口构造时 ⇒ 改完库/标定后要重启控制台卡片数字才刷新(交付时先说清这一点)。
   当前: 产品 M9/C45/D57 · sys0 M9/C41/D38 · sys2 C4/D11 · sys1 D8 · 平台支撑 M9/C45/D57。
   M=工程 measure 视图测量量(帧龄<2s) · C=zmax_calib.json 标定叶子 · D=FEATURES 断言+故障码 MCD-E0x+站点缺口。
 * **卡片只留 4 样**: 标题 · 副标题(哪一层/多少功能) · MCD 单色数字行 (说明行已删, 改挂 tooltip)。**不要**三行长描述
@@ -380,13 +415,13 @@ zmax_space 总工程, 通过 文件→打开/加载工程 集成式打开, 不�
 
 ## 🎛 全局可改数字 (参数注册表 / 改数即链动, 2026-10-09)
 
-老倪的硬要求: **改任意一个数字都要能说清它动了什么** (功能·性能·代码), 且数字只有一份唯一依据。
+老倪的硬要求: **改任意一个数字都要能说清它动了什么** (功能·性能·代码), 且数字只有一份真源。
 
 ```
 tools/param_registry.py  scan→registry()  162 个数字五类:
   calib(45) JSON 叶子 / canvas(78) 节点 params / code(25) 常量+函数默认参数
   platform(8) KPI 文本里的数 / switch(6) 档位
-set_param(id, v, write=False) 校验→预览链 ;  write=True 备份→写唯一依据→回读核对
+set_param(id, v, write=False) 校验→预览链 ;  write=True 备份→写真源→回读核对
   写口五路: calib JSON 路径 / canvas params / KPI 文本原地替换 / 代码常量行 / 函数默认参数行
 effect_chain(id) → 子系统·功能·模块·代码 file:line·KPI
 ```
@@ -397,10 +432,10 @@ effect_chain(id) → 子系统·功能·模块·代码 file:line·KPI
   否则要么误报要么把缺口洗成正常值。
 * **范围口径分三态**: `已定义(人工)` / `范围自动推断(未确认)` / `未标定(缺口)`。自动推断的界**不许**冒充人工定义,
   否则用户以为 0..1 是权威界 (实测 w_ff=0.3 推成 0..1, 改 1.3 被拦是**对的**, 但界本身是猜的)。
-* **负值要能推范围** (畸变系数是负的), 预先固定 `0..max` 会让自校验全红。
+* **负值要能推范围** (畸变系数是负的), 写死 `0..max` 会让自校验全红。
 * **画布 params 大多是元数据**: `state_space/row_bg/bg/status` 不是旋钮, 过滤后 149 → 78。
 * **代码数字不只在模块级**: `insert_depth=0.0005` 在函数默认参数里 → `ast` 要扫签名 default (3 → 25 条)。
-* **顶层 KPI 的数字也在唯一依据里**: 正则从 KPI 文本抽量化目标(≥99% / <4mm), 写回原地替换数字、保留比较符与单位。
+* **顶层 KPI 的数字也在真源里**: 正则从 KPI 文本抽量化目标(≥99% / <4mm), 写回原地替换数字、保留比较符与单位。
 * 写代码类数字**必过 ast 语法校验, 坏则从备份回滚**; 所有改数直接写唯一工程库 `param_events` 表留痕 (没有 jsonl; build 不清空该表)。
 * 判据: `tools/param_registry.py verify` + `tools/verify_param_center.py`(8 项, 含真改数→回读→还原/越界必拒/非法档位必拒)
   + `engineering_db.py check` ⑧ 参数面。
@@ -413,7 +448,7 @@ effect_chain(id) → 子系统·功能·模块·代码 file:line·KPI
 ```
 LIBRARY = LIBRARY_STATIC(源码里的手写组)
         + _load_skill_library_groups()          # flows/atomic_skill_tokens.json (原子技能注册表)
-        + _load_state_space_library_group(nodes) # 画布节点: 给 nodes 就用内存(刚拖进来也算), 同 JSON 保障
+        + _load_state_space_library_group(nodes) # 画布节点: 给 nodes 就用内存(刚拖进来也算), 同 JSON 兜底
         − _apply_library_curation(LIBRARY)        # config/library_curation.json 的 removed 名单
 ```
 
@@ -460,7 +495,7 @@ LIBRARY = LIBRARY_STATIC(源码里的手写组)
    `Ctrl+Alt+O` 这类**唯一**快捷键一按就弹文件框 —— 用它区分“接线坏了”vs“快捷键撞了”。
    **写盘类操作看文件时间戳就算成功**: 打开总工程成功 ⇒ `flows/_archive/*_before_space_open_<ts>.json`
    与 `config/calib/*.bak_<ts>` 必然新生; 没新文件 = 压根没走到写盘 (卡在确认那步)。
-4. **留痕保障**: 打开/加载工程全链写 `zmax_data/logs/open_project.log` (入口/选了哪个文件/确认结果/
+4. **留痕兜底**: 打开/加载工程全链写 `zmax_data/logs/open_project.log` (入口/选了哪个文件/确认结果/
    写盘异常/界面回填+画布场景项数) —— 以后“没反应”直接看文件, 不用再猜。
 5. 守门: `tools/verify_shortcuts.py` (枚举全 QAction, **任何重复快捷键判失败** + 默认按钮/动作名/留痕可写)
    已入 `run_gui_verifiers.sh`。
@@ -469,12 +504,12 @@ LIBRARY = LIBRARY_STATIC(源码里的手写组)
 
 老倪: 「工程文件后缀应该是 proj」、「我点击 open 怎么没反应? 应该打开 simulink 的画布啊」。
 
-* 后缀 **`.proj`** (不是 .zmaxproj); 唯一依据位置 `reports/projects/zmax_space.proj`;
+* 后缀 **`.proj`** (不是 .zmaxproj); 真源位置 `reports/projects/zmax_space.proj`;
   读档**按内容识别**(schema/kind)不看后缀 — 老 .zmaxproj 照样能读; 对话框列 `*.proj *.zmaxproj`;
   `find_space()`: 新名在就用它, 不在退回旧名。改名/换后缀**只动文件名, 不动格式**。
 * 🔴 **“点了没反应”的头号真因 = 打开后跑去别的页**: 原代码把存档里的 `canvas_stack_index`
   当“切到哪一页” (`setCurrentIndex(idx)`) ⇒ 存档存在第 5 页就停在第 5 页, 画布没前置,
-  用户看着就是“没反应”(实际唯一依据已写好、备份也做了)。
+  用户看着就是“没反应”(其实真源已写好、备份也做了)。
   **规矩: 打开工程后一律切到 Simulink 画布 tab (`setCurrentWidget(sim)`); 存档里的页索引只当信息不当指令。**
   画布是懒创建的 (启动 400ms) ⇒ `sim is None` 时先 `_init_simulink()` 建出来再切;
   `_init_simulink` 必带幂等闸 (不然重复调用会往 stack 插第二份画布)。
@@ -548,7 +583,7 @@ grep 一命中就跳过追加 ⇒ 规则从未生效, 而后面的 `.bak` 照旧
   · tap `~/zmax_ss_remote/state_*.jsonl` : `tcp` (605.8, -107.5, 190.8)mm ↔ tcp_out `latest.json` `xyz` 完全一致(差 0.0mm) ⇒ **位姿链路没问题**;
   · 但**关节不一致**: tap `jpos` = (-0.1695, 0.4354, -1.8779, 1.9238, 1.9359, -2.4137)(多次读取**一字不变** ⇒ 冻住)
     vs tcp_out `joint` = (-0.3788, 0.0561, -2.2648, 5.0707, 0.2159, -4.51)(在变);
-  · `moveit_plan_req.py` 把 tap 的 `jpos` 直接当 `start_joints` 提供给 MoveIt ⇒ 规划起点不是真机姿态
+  · `moveit_plan_req.py` 把 tap 的 `jpos` 直接当 `start_joints` 喂给 MoveIt ⇒ 规划起点不是真机姿态
     ⇒ 规划器**自己就在报** `fk_start_pos_err_mm`(366.8mm) — 这个字段就是这条同源闸, 现场用它判。
   待办(未定论, 别猜): 用容器 FK 判哪个关节源对 —— 关节名带前缀 `XMS5-R800-W4G3B4C_joint_N`,
   FK link 名 = `tool0`, 规划器自己就是在域 42 调的 `/compute_fk`; 注意 `bash -lc` 里传 JSON 参数必须
@@ -625,7 +660,7 @@ grep 一命中就跳过追加 ⇒ 规则从未生效, 而后面的 `.bak` 照旧
   ④ `btn.receivers(btn.clicked) >= 1` (不是摆设按钮) ⑤ `toolbar.grab().save(png)` 出工具栏渲染图作视觉证据。
 
 ## 🚦 发布/出包 (2026-10-01 实测: tag 打了却一个 CI 都没起)
-- **GitHub 只跑「被推 ref 那一棵树里」的 workflow**。唯一依据 `MikeBMW/zmax` 的 `.gitignore` 封了 `.github/`
+- **GitHub 只跑「被推 ref 那一棵树里」的 workflow**。真源 `MikeBMW/zmax` 的 `.gitignore` 封了 `.github/`
   ⇒ 打 tag 推上去**一个 run 都不会起**。判据: `git ls-tree -r --name-only <tag> | grep .github/workflows`
   必须非空(空 = 那个 tag 永远不会出包); 佐证: `workflow_dispatch` 指定 `ref=tag` 会 422
   "Workflow does not have 'workflow_dispatch' trigger"。修法: 把 `build-win-exe.yml` `git add -f` 入库,
@@ -639,7 +674,7 @@ grep 一命中就跳过追加 ⇒ 规则从未生效, 而后面的 `.bak` 照旧
 
 ## 🕳 三条当天踩到并已固化的坑
 1. **看板/面板空态不许留白** —— 没在训练时进度条留空 = 现场读不出"上一次是什么时候"。空态必须显示
-   **上次训练**(时间 + 结果/步数), 值来自状态唯一依据, 不许前端自造。
+   **上次训练**(时间 + 结果/步数), 值来自状态真源, 不许前端自造。
 2. **重启控制台用独立方式; 判活不许 `pgrep` 自匹配** —— 正路
    `systemctl --user restart zmax-studio.service`(ExecStart 指 worktree 的 launch_studio.sh);
    自查式脚本里 `pgrep -f "<模式>"` 会命中**脚本自己的命令行文本** ⇒ 误判"已有实例"而 33ms 静默退出(假成功)。
@@ -649,10 +684,10 @@ grep 一命中就跳过追加 ⇒ 规则从未生效, 而后面的 `.bak` 照旧
    (先看真 JSON 的键名); ②`grep -E "a\|b"` 里的 `\|` 被当**字面量** ⇒ 页面明明改了却报"没改"。
    纪律: 探针先在**已知答案**的样本上验证再对目标跑, 结论前换第二种口径交叉核对。
 
-## 📊 状态看板 / 版本唯一依据 (显示口径: 用户要"扫一眼就知道现在在役哪个模型")
+## 📊 状态看板 / 版本真源 (显示口径: 用户要"扫一眼就知道现在在役哪个模型")
 出现"给硬件/模型/训练状态做个看板""每个模型要有版本标记"这类需求时, 按这套口径落 (本机面板与手机页**同一套**):
 - **版本徽章必须带模型名** —— 只显示 `v20261001-r6` 用户读不出是哪个模型(他的原话: 「现在的 v1001 也不知道是哪个模型」)。
-  字段 = `层 + 短名 + 版本`; 短名**从真 `name` 字段派生**(不许手预先固定表), 且**同层多个模型必须互相可区分**
+  字段 = `层 + 短名 + 版本`; 短名**从真 `name` 字段派生**(不许手写死表), 且**同层多个模型必须互相可区分**
   (两个 INTACT ⇒ `INTACT` / `INTACT-WM`; 两个 SmolVLA ⇒ `SmolVLA` / `SmolVLA-L`), 否则等于没写名字。
   屏幕省面积: 短名 ≤9 字符 + 完整名/完整版本/step/eta **放 tooltip 或点按展开**(手机无 hover ⇒ 用点按)。
 - **颜色语义全局统一**: 绿=在役 · 黄=**候选** · 红=异常/未训练 · 灰=未知。**黄灯必须能说出原因**
@@ -662,8 +697,8 @@ grep 一命中就跳过追加 ⇒ 规则从未生效, 而后面的 `.bak` 照旧
   在役服务 ⇒ 永远保持 candidate。**灯色的诚实性 > 界面好看**; 训完 ≠ 够格。
 - **未知就写 `unknown`, 不许编版本号**: 系统里没有版本证据的模型(画布上无 source/无产物的裸节点)一律标 unknown,
   等它真有了训练版本再改。
-- **版本唯一依据 = 一个 manifest 文件**(`src/lerobot/engineering/models_manifest.json`: 层/名/版本/state/产物路径/训练时间),
-  面板与页面**都从它派生**, 不许各自在代码里预先固定版本号。**契约只增不改**(多个看板/页面并行读它, 加字段别动老字段)。
+- **版本真源 = 一个 manifest 文件**(`src/lerobot/engineering/models_manifest.json`: 层/名/版本/state/产物路径/训练时间),
+  面板与页面**都从它派生**, 不许各自在代码里写死版本号。**契约只增不改**(多个看板/页面并行读它, 加字段别动老字段)。
 - **空态与"最近一次"**: 没有活任务时不留白(见上一条), 显示"上次训练: L4·L3·L2 <版本> ✓ <时间>"; 进行中才给进度条 + %
   + eta。数据取自训练编排写的 `reports/<编排>_*/summary.json` 最新一个。
 - 数据源分档标注: 直接探针(有调用计数/帧龄)才能宣称"在推理/在训练"; 拿不到独立计数的层要标为**代理信号**,
@@ -747,7 +782,7 @@ QSplitter(左画面 `YoloLabelWidget` / 右面板 判决表→定位→缺陷清
 2. **QProcess 信号里别引用 `self._proc`**: 进程结束时 C++ 对象已删 → `RuntimeError: wrapped C/C++ object
    has been deleted`。用默认参数绑进闭包 `lambda pr=_p: ...`。
 3. **关窗必须收口**: `closeEvent` 里 `disconnect()` 三个信号 + 若在跑则 `kill()`; 否则进程收尾信号打到已销毁
-   控件 → RuntimeError → **进程 abort (core dumped)**。`log()` 也加 try/except 保障。
+   控件 → RuntimeError → **进程 abort (core dumped)**。`log()` 也加 try/except 兜底。
 4. **`load_frame_file` 要分支视频**: `cv2.imread` 读不了 mp4 → 走 `cv2.VideoCapture` 取首帧。
 
 **验证套路 (两层, 记取"offscreen 全绿≠人能用")**:
@@ -757,7 +792,7 @@ QSplitter(左画面 `YoloLabelWidget` / 右面板 判决表→定位→缺陷清
 
 ## 🌐 功能清单/测试用例 → 网页 (datadrive.world, 2026-09-24 新增 L2 专项页)
 
-**唯一依据三处 (改功能/用例只改这三处, 网页全部自动带出)**:
+**真源三处 (改功能/用例只改这三处, 网页全部自动带出)**:
 | 内容 | 文件 | 关键点 |
 |---|---|---|
 | 功能定义 | `src/lerobot/verification/capability_levels.py` | `CAPABILITY_LEVELS[层]["funcs"]` = {fid,name,desc,groups} |
@@ -772,11 +807,11 @@ QSplitter(左画面 `YoloLabelWidget` / 右面板 判决表→定位→缺陷清
 - 上传: `ZMAX_ECS_PW=<密码> python <工具>` 或 `sshpass -p <pw> scp 文件 root@39.102.211.79:/www/wwwroot/datadrive.world/` + `chmod 644`
   (**22 端口**; 23 端口连不上) → 复核 `https://datadrive.world/<页>.html`
 - ⚠️ **主页 `index.html` 只在 ECS 上, 仓库里没有源**: 改导航要 `scp` 拉回本地 → 本地 patch (锚点断言 count==1) → `scp` 回传 → HTTP 复核
-- 计数类文案别手写: `tools/canvas_update_verif_nodes.py` 从唯一依据重算并刷新画布 `ssfeat`/`sstest` 的 `desc`
+- 计数类文案别手写: `tools/canvas_update_verif_nodes.py` 从真源重算并刷新画布 `ssfeat`/`sstest` 的 `desc`
   (加用例后 "B六层 11" 这类数字会过期; 该脚本幂等, 改画布前先 `bash tools/studio_ctl.sh stop`)
 
 **测试用例写法纪律**: 阈值必须**先实测再写** (`tools/measure_l2_guide_tactile.py` 这类量测脚本先行),
-断言里带上"判据 + 实测值"字符串; 口径不确定时先核对唯一依据 (实例: 触觉通道 0 = 原始开度, 轨迹 gripper = 夹紧度 = 1−开度
+断言里带上"判据 + 实测值"字符串; 口径不确定时先核对真源 (实例: 触觉通道 0 = 原始开度, 轨迹 gripper = 夹紧度 = 1−开度
 → 必须用**互补一致率**断言, 按"相等"比会得 0%); 未实现/占位通道要**如实标注**不得冒充。
 
 ## 架构速查
@@ -865,7 +900,7 @@ d_perp(1) | arc_frac(1) | grip(1)]`, 单一事实来源 `src/lerobot/policies/in
   (老倪红线: 静默降级 = 白做)。教训: sink/回调里的构造失败要显式 raise 或至少记 `_SKERR` 进 meta。
 - 采集器 flush 时 `np.savez_compressed(p, **kw, ...)` —— `kw` 忘了 `**` → pixels/action/observation
   全不落盘, 文件只有几 KB 而日志说"窗口 18" ✓ 假成功。**落盘后必须验 keys + 帧std>5**。
-1. **场权预先固定太低**: `blend_action` 里 `w = w_max·max(conf, w_floor)`, 桥用 `w_max=0.5`, `w_floor=0.2`,
+1. **场权写死太低**: `blend_action` 里 `w = w_max·max(conf, w_floor)`, 桥用 `w_max=0.5`, `w_floor=0.2`,
    而现场 `conf ≡ 0` (离最近轨迹管 207mm) ⇒ w̄ 恒 = **0.1** → 10% 的场权扳不动 600mm 模型误差。
    已修 (增益调度): `far = clip((d_perp−d_near)/(d_far−d_near),0,1)`, `w = max(w_max·max(conf,w_floor), w_far·far)`,
    默认 `w_far=0.85, d_near=30mm, d_far=150mm` —— **在管内维持原公式 (不回退), 远场让场主导**。
@@ -909,7 +944,7 @@ d_perp(1) | arc_frac(1) | grip(1)]`, 单一事实来源 `src/lerobot/policies/in
   `reports/intact_goal_frame_optical.npy`), 注册名 `metaworld` (与 `l4_episode`/`official` 并列)。
 - **解码器两路** (`decoder.py`): ① `u_ff` 先验 4D = `act×K_ACT` (K_ACT **现读引擎源码**, 量纲逆运算,
   **无需标定**) ② L3 流形条件 = 需 `models/intact_l3_map.json` (闸值 R²>0.3 且 null<0.1);
-  未标定 → **拒绝返回并计数** (`cond_src="拒绝(未标定)"`), 绝不预先固定映射。
+  未标定 → **拒绝返回并计数** (`cond_src="拒绝(未标定)"`), 绝不写死映射。
 - **画布连线** (77 节点/83 连线): `ssdata →💾→ ssintact`(🎯 INTACT 策略, L4 行) `→ ssintact_dec`(🎯 INTACT
   意图解码器, L4 行) `→ ssdec`(L3 DiT)。**两节点都在 L4 行内 (cap=4) → L2/L3 档根本不执行** = 结构性零回退。
   改 flows/state_space_obs.json 用**文本级替换脚本**(正则锚点 + 断言其它节点逐字段不变), 别 json.load+dump。
@@ -926,7 +961,7 @@ d_perp(1) | arc_frac(1) | grip(1)]`, 单一事实来源 `src/lerobot/policies/in
 - **两个必修的坑** (A/B 首轮抓到): ① 未设 `STABLEWM_HOME` 时桥退回 `<repo>/.cache` → 权重全找不到
   (`FileNotFoundError: Checkpoint not found`) → adapter 改为优先共享缓存 `stable-wm-cache`;
   ② 引擎"直喂帧"路径没人设 goal → `goal_displacement` 每帧 `ValueError` (**影子臂 60/60 次"真推理"实为空转,
-  计数照涨**) → 节点加 `ensure_goal()` 三级保障 (已 set_goal > 数据源自报 > 默认目标帧文件), 兜不到才显式报错。
+  计数照涨**) → 节点加 `ensure_goal()` 三级兜底 (已 set_goal > 数据源自报 > 默认目标帧文件), 兜不到才显式报错。
   **教训: `calls>0` 不能单独当"真接入"证据, 必须同看 `err`/`reuse`/`u_ff_src`/`goal_src`。**
 - 复现: `INTACT_RUNTIME=root INTACT_DEVICE=cpu INTACT_POLICY=intact_goal_optical_insert_v4_s3072/weights_epoch_2.pt
   gui-venv311/bin/python tools/l4_intact_ab.py --seeds 0,1 --max-steps 700 --cap l4`
@@ -977,7 +1012,7 @@ d_perp(1) | arc_frac(1) | grip(1)]`, 单一事实来源 `src/lerobot/policies/in
 - **⚠️ 三个必须记住的设计约束 (都踩过)**: ① 谷底只能取 champ_x 末点 — muscle_memory 的 io.entry/exit
   **锚点不同源** (差 15~145mm, SK06/07≈PEG_HEAD_OFF_XY=0.13), 用 io.exit 当谷底会导致场的最小值不在谷底 → 不收敛;
   ② λ 必须按 λ=4·k_att·σ² 归一 + 加锥形项 k_lin, 否则短轨迹会出现离谷底 3~5mm 的次极小 (流量停住);
-  ③ muscle_memory.json 是**活数据** (rollout 会更新), 判据数字会漂移, 别预先固定。
+  ③ muscle_memory.json 是**活数据** (rollout 会更新), 判据数字会漂移, 别写死。
 - 📄 详见 `references/memory-potential-fields-2026-09-13.md`
 
 ## 🌍 L4 · 光模块插拔链 (v5.5.37, 2026-09-13 — 红方块抓取 → 光模块抓取插拔)
@@ -1001,7 +1036,7 @@ d_perp(1) | arc_frac(1) | grip(1)]`, 单一事实来源 `src/lerobot/policies/in
 - **判闸根因 (配置级, 非训练量)**: ① `loss.intent.local_weight=0.1/goal=0.05` 而 `forward=1.0`
   → actor 几乎不发声; ② `min_log_std=-5.0` → std 可缩到 0.007, "输出均值+极小方差"就是 NLL 最优解
   ⇒ 塌缩是最优解。对策 = `intact_goal_optical_insert_v5.yaml` (权重 1.0/1.0 + min_log_std -2.0)。
-- **训练接力**: `train.py` 预先固定 `timeout 14400` (4h) 而 12 epoch 要 ~9.2h → 必被 SIGTERM (v3 死因 rc=124);
+- **训练接力**: `train.py` 写死 `timeout 14400` (4h) 而 12 epoch 要 ~9.2h → 必被 SIGTERM (v3 死因 rc=124);
   `l4_ab/train_intact_optical_chain.sh` 从最新 ckpt 换名续训到累计 TARGET epoch (CFG/FAMILY_V/TARGET/PER_RUN/DEADLINE)。
 - 📄 全部细节 (桥执行流/坑清单/命令) 见 `references/l4-optical-insert-chain.md`
 
@@ -1042,7 +1077,7 @@ d_perp(1) | arc_frac(1) | grip(1)]`, 单一事实来源 `src/lerobot/policies/in
 3. **check_params 语义级校验**: 原只有类型白名单 → "pos":"not-a-list" 误判通过。
    PARAM_SCHEMA 只收确定类型的控制参数 (Kp/K_ff/Kd 数值; limit 兼容单值/区间;
    force_res="0.1N"/grid="7x9" 是文本; encoding 是 dict; in_dim/frames 可能是
-   描述文本 '39D obs+4D action' — 实测校准, 不可统一处理)。
+   描述文本 '39D obs+4D action' — 实测校准, 不可一刀切)。
 4. **check_ports 隐式端口兼容**: 真实画布节点无 outputs/inputs 字段 → 原代码
    p["id"] 对字符串索引 TypeError → 无端口列表的画布跳过。
 5. **check_format 降级**: 合作闭环 (zmax-cooperation-closed-loop)/旧格式
@@ -1073,7 +1108,7 @@ d_perp(1) | arc_frac(1) | grip(1)]`, 单一事实来源 `src/lerobot/policies/in
   - 不要靠 `code -r`(复用"最后活动窗")或 `wmctrl -a` 先激活: 实测 `wmctrl` 聚焦后 `-r` 仍投到**别的**窗(焦点事件没进 VSCode 的窗口列表)。
   - 取证用 `code --status`: 它按窗口列 `Window (...)` + 其下 `Folder (...)` ⇒ **多根工作区窗 = 标题里没有 " - <目录> - " 段、Folder 有 4~5 条**;
     只按窗口标题猜类型会判错(标题只反映活动文件)。
-  **一律给符号名, 不预先固定行号** (行号随重构漂移, 上次就跳到了 import 区看起来"没跳")。
+  **一律给符号名, 不写死行号** (行号随重构漂移, 上次就跳到了 import 区看起来"没跳")。
   自查: `QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/verify_vscode_source_loc.py [节点id ...]`
   (打桩 Popen 捕获 `code -g` 真命令, 断言路径含 `src/lerobot/policies` 且不含 `node_logic.py`)。
 - **解法三选一**: ① 右键节点→查看/编辑节点逻辑→「恢复出厂逻辑」(restore_default 从文件重新 exec, 行号真实) ② 重启 GUI(_SOURCE_CACHE 是内存, 重启即清) ③ `ZMAX_DEBUG_BREAK=1` 启动 GUI — execute_node_logic 开头(node_logic.py:124) `debugpy.breakpoint()` 任何节点逻辑执行前强制停, **不依赖断点绑定**, 调试动态 exec 函数唯一办法。
@@ -1098,19 +1133,19 @@ d_perp(1) | arc_frac(1) | grip(1)]`, 单一事实来源 `src/lerobot/policies/in
   v3.2.4 及之前 (全平台无条件 `AA_UseSoftwareOpenGL, True`) 正常。
 - **根因**: v3.3.4 为修 Linux GNOME/Mutter 黑屏 (软件 GL 在合成器下全黑) 把
   `AA_UseSoftwareOpenGL` **整行注释** → Windows/macOS 无硬件 GL 环境 (虚拟机/远程/无独显驱动)
-  3D 无保障 → 渲染失败。软件 GL 对 Linux GNOME 是毒药, 对 Windows/macOS 打包版是救生圈 —
-  平台 GL 策略不同, 不能统一处理。
+  3D 无兜底 → 渲染失败。软件 GL 对 Linux GNOME 是毒药, 对 Windows/macOS 打包版是救生圈 —
+  平台 GL 策略不同, 不能一刀切。
 - **修 (v5.0.0)**: 平台条件启用 — `if sys.platform in ("win32", "darwin"): setAttribute(AA_UseSoftwareOpenGL, True)`;
   Linux 源码版不启用 (GNOME 黑屏修复保留)。studio.py main() QApplication 创建前。
 - **铁律**: 跨平台 GL/渲染设置改动 (AA_UseSoftwareOpenGL/AA_UseDesktopOpenGL 等) 必须按
-  sys.platform 分叉, 禁止无条件开/关; 打包版 (win/darwin) 优先可用性 (软件 GL 保障),
+  sys.platform 分叉, 禁止无条件开/关; 打包版 (win/darwin) 优先可用性 (软件 GL 兜底),
   源码 Linux 版优先合成器兼容。老倪验收口径 = 每个发布版都要在**无独显 Windows 环境**
   实测 3D 渲染, 不能只在 Linux 源码版验证。回归判据: 3.2.4 (正常基线) vs 新版本 diff
   里找平台性设置变化。
 
-## Windows exe 画布无法打开 = /tmp 打点无保护 (2026-08-28 v3.3.2, 老倪: "3.3.1 3.3.0 无法打开画布, 3.2.4 可以")- **症状**: Windows exe 上 simulink 画布 tab 无法打开/空白, 状态栏 "⚠️ Simulink 初始化失败: [Errno 2] No such file or directory: '/tmp/...'"; 源码版 Linux 正常 (有 /tmp)。
+## Windows exe 画布打不开 = /tmp 打点无保护 (2026-08-28 v3.3.2, 老倪: "3.3.1 3.3.0 无法打开画布, 3.2.4 可以")- **症状**: Windows exe 上 simulink 画布 tab 打不开/空白, 状态栏 "⚠️ Simulink 初始化失败: [Errno 2] No such file or directory: '/tmp/...'"; 源码版 Linux 正常 (有 /tmp)。
 - **根因**: 3.3.0 为排查 Mac 黑屏加的 SimulinkModule 构造打点直接 `open("/tmp/zmax_simulink_init.log", "a")` — studio.py `_init_simulink` 里 `_mk` lambda **无 try/except** → Windows 无 /tmp 目录 → FileNotFoundError 抛在 `SimulinkModule()` 之前 → 画布从未创建。simulink_module.py 里同款打点有 try/except 所以不崩 (静默失效)。
-- **铁律**: ①跨平台诊断打点/临时文件一律 `os.path.join(tempfile.gettempdir(), name)` + try/except, 禁止裸 `/tmp` (Windows 没有); ②`_init_simulink` 这类"建画布"路径里任何语句抛异常都会让画布整体消失 — 打点类语句必须自身容错, 不能依赖外层 try 保障 (外层 catch 后画布也没了); ③验证必须模拟 Windows: monkeypatch `tempfile.gettempdir` → 不存在目录, 再跑 `SimulinkModule()` + `load_flow_file`, 断言 nodes>0。
+- **铁律**: ①跨平台诊断打点/临时文件一律 `os.path.join(tempfile.gettempdir(), name)` + try/except, 禁止裸 `/tmp` (Windows 没有); ②`_init_simulink` 这类"建画布"路径里任何语句抛异常都会让画布整体消失 — 打点类语句必须自身容错, 不能依赖外层 try 兜底 (外层 catch 后画布也没了); ③验证必须模拟 Windows: monkeypatch `tempfile.gettempdir` → 不存在目录, 再跑 `SimulinkModule()` + `load_flow_file`, 断言 nodes>0。
 - **排查流程**: 3.2.4 正常 → 3.3.0 坏 = 二分 diff `git diff <v3.2.4>..<v3.3.0>`, 找新增的 IO/路径类语句; 用户报"Windows 打包的版本"时优先怀疑平台差异 (路径/权限/编码), 不是 UI 逻辑。
 
 ## QDialog 最大化按钮点了没反应 (2026-08-28, 节点逻辑/参数/源码窗口)
@@ -1138,13 +1173,13 @@ label:触觉数据} + 节点 desc 注明数据来源。拓扑验证: 单步第�
 - **需求**: 点 ▶运行 时 3D 视图要跟程序执行走, 不是独立播离线 episode; 断点停在哪一步 3D 显示哪一步。
 - **实现三件套**: ①`open_ss_3d` 数据源优先 `self._ss_tr`(sim.run() 程序轨迹), 没运行过才退回 episode npz(保持与操作视频同源能力); ②`_ss_tick` 每帧把引擎步 `idx` 推给 3D 窗口: 窗口 tr 不是当前 tr 先 `set_trajectory(tr)` 再 `w.set_frame(idx)`(sip.isdeleted 判活); ③`DreamView3D.set_frame(i)`: `_pause()` 停自播防双驱动 + `_update_frame(i)` + slider/lbl 同步。
 - **断点天然同步**: 引擎断点挂起主线程 → 推送停 → 3D 同步停; F5 放行 → 继续。无需额外逻辑。
-- **配套 (fe2c82af)**: 打开即自动播放 — set_trajectory 末尾 `_timer.start(60)`(原默认静态第 0 帧, 用户以为"无法打开")。
+- **配套 (fe2c82af)**: 打开即自动播放 — set_trajectory 末尾 `_timer.start(60)`(原默认静态第 0 帧, 用户以为"打不开")。
 - 验证: sim.run() 322 步 set_frame 0→321 跟随, 0.5s 不被自播抢动。
-- **🐛 real sim.run 轨迹喂 3D 缺 residual_vec KeyError → 窗口无法打开 (2026-09-07 v4.4.0 实锤, 老倪"3D视图无法打开")**: open_ss_3d 优先用 _ss_tr (真实化 sim.run 轨迹) 时, ss_dreamview._update_frame 直读 `tr["residual_vec"]` (无 .get 容错, 引擎轨迹才有该 key) → KeyError 崩在 10774 构造行, 日志停在"3D 视图数据源: 程序执行轨迹"无后续。修: sim_real run() 补 latent_vec/prior_vec/corrected_vec/residual_vec 四个顶层向量通道 (对齐引擎 tr 格式, 数据每帧已有: prior/latent/corrected/residual)。排查: GUI stderr (studio_launch.log) 见 KeyError; 3D 打开后日志缺"✅ 已打开 3D 分层视图"行。**铁律: 任何新轨迹源 (sim_real/gen/episode) 喂 DreamView3D 前, 对照 ss_dreamview 引用的 18 个 tr key 全量补齐**。
+- **🐛 real sim.run 轨迹喂 3D 缺 residual_vec KeyError → 窗口打不开 (2026-09-07 v4.4.0 实锤, 老倪"3D视图无法打开")**: open_ss_3d 优先用 _ss_tr (真实化 sim.run 轨迹) 时, ss_dreamview._update_frame 直读 `tr["residual_vec"]` (无 .get 容错, 引擎轨迹才有该 key) → KeyError 崩在 10774 构造行, 日志停在"3D 视图数据源: 程序执行轨迹"无后续。修: sim_real run() 补 latent_vec/prior_vec/corrected_vec/residual_vec 四个顶层向量通道 (对齐引擎 tr 格式, 数据每帧已有: prior/latent/corrected/residual)。排查: GUI stderr (studio_launch.log) 见 KeyError; 3D 打开后日志缺"✅ 已打开 3D 分层视图"行。**铁律: 任何新轨迹源 (sim_real/gen/episode) 喂 DreamView3D 前, 对照 ss_dreamview 引用的 18 个 tr key 全量补齐**。
 
 ## _EXTERNAL_LOC 行号铁律 (2026-09-02 v3.4.3, 老倪连续 3 轮 "源码不是这个")
 - **症状**: 双击画布节点编辑器显示正确类, 但「VSCode 打开/复制位置」跳到错误代码 → 用户反复看到"自适应状态估计器源码=forward"(ss_est 映射行号 34, 类实际 45, 34 行正好是 FeedforwardAccelerator.forward 的代码)。
-- **根因**: _EXTERNAL_LOC 的 line 是"保障行号", 符号名匹配成功时行号不参与截取, 但 VSCode 打开用行号 → 行号错位 = 定位到错代码。文件头加注释/改行 → 全部错位 +1。
+- **根因**: _EXTERNAL_LOC 的 line 是"兜底行号", 符号名匹配成功时行号不参与截取, 但 VSCode 打开用行号 → 行号错位 = 定位到错代码。文件头加注释/改行 → 全部错位 +1。
 - **铁律**: 新增/修改 _EXTERNAL_LOC 后跑符号名+行号双查脚本(逐行 strip 匹配 `sym`/`sym(`/`sym:` 找真实行), 全量 29 条 0 错位才算完。symbol 必须是真实定义(`def synth_tactile` 不是 `gen_tactile`; 类行号含 `class X:` 冒号)。
 - **配套修复**: ss_est→AdaptiveStateEstimator(45), ss_sched→def decide(167, 动作调制器双击直接看核心决策), ss_aoi→AOIQualityChecker(40), ss_bg5 符号误写路径字符串"planner.py"→class TaskPlanner。
 
@@ -1248,7 +1283,7 @@ label:触觉数据} + 节点 desc 注明数据来源。拓扑验证: 单步第�
   右键 a_verif/a_rfp/a_auto 三分支; _open_verif_dialog(node, tab="rfp") 初始切 Tab3。
 
 ## 🧩 验证层 = 规范场三层三级树 (v4.0.2, 2026-09-04 老倪 Gauge Theory 重构)
-- **主唯一依据 = src/lerobot/verification/node_func_tree.py** (新注册表 550 用例):
+- **主真源 = src/lerobot/verification/node_func_tree.py** (新注册表 550 用例):
   规范场三层 → 节点 → 功能 → 用例: G1 场感知 (9节点/45功能/225用例) · G2 协变操作
   (10/50/250) · G3 对称认知 (3/15/75); 22 节点 × 5 功能 (名 5~10 字, check_contract 强制)
   × 5 用例 (auto 339 / semi 16 / manual 195); FUNC_CHAINS 模块化组合链 (截面合成)。
@@ -1339,10 +1374,10 @@ label:触觉数据} + 节点 desc 注明数据来源。拓扑验证: 单步第�
 - 验证 7/7 offscreen: 控制区创建/▶运行→start_sim/⏹停止→stop_sim/置顶 flag 随 toggle/
   busy→▶禁用⏹启用/就绪恢复/无 module 不建控制区。
 
-## 播放"阻塞"根因 = execute 冷加载 + 平滑播放 (2026-09-03 v3.4.8, 老倪: "运行后没有连续动作, 好像阻塞了")
+## 播放"卡住"根因 = execute 冷加载 + 平滑播放 (2026-09-03 v3.4.8, 老倪: "运行后没有连续动作, 好像卡住了")
 - **真机计时铁证**: 播放 tick 间隔中位 81.6ms 正常但**最大 1632ms** = 📡传感器融合节点
   execute_node_logic 真跑 → `_yolo_ensure_aligner` **冷加载 1.6s+** (metaworld MT1 env +
-  YOLO 模型构造) 冻结主线程 → GUI "阻塞"。判定法: 包 execute 打点计时
+  YOLO 模型构造) 冻结主线程 → GUI "卡住"。判定法: 包 execute 打点计时
   (`_slow_exec` 包 execute_node_logic, dt>30ms 打印) — 别猜。
 - **execute_node_logic 加 demo 参数 (v3.4.8)**: ▶运行 播放演示 = demo=True 轻量路径
   `_demo_node_output` — 读 module._dw 当前帧该节点 out (引擎真实算的, 同源不伪造) 打印,
@@ -1386,7 +1421,7 @@ close 只是隐藏 (无 WA_DeleteOnClose), 对象+GL 上下文都在; 数据源�
 布局逻辑/文字放不放得下, 像素尺寸验证必须真实 DISPLAY=:0。验证:
 `QFontInfo(QFont('Arial', pt)).pixelSize()` 打真机 px。
 
-- **🗂 模板多行展开布局 (2026-08-05, commit ada65fb1, 老倪: \"你每次都是从一条直线上开始给出, 你需要把所有节点展开, 不要重叠成一条线; 类似的功能, 例如 Action Head, 应该垂直对齐\")**: **用户偏好 — 模板加载节点禁止单行横排 (13+ 节点一条直线出画布外)**。REFERENCE_APPS 条目支持可选**第4元素 layout** (3元组模板兼容, 4元组才启用): `layout = [[节点名...]每行]` 网格 — **行 = 模型分支 (y 递进 230), 列 = 功能角色 (x 递进 260), 空串 \"\" 占位跳过**。同名节点多行出现 → 取各自候选坐标 → **同列垂直对齐** (三模型 Action Head 都落第5列 x=1420, y=80/310/540)。load_reference_app 加 layout 分支: 先 `pos.setdefault(nm, []).append((x,y))` 收集同名多行坐标 → 每节点取 `next(p for p in cands if p not in used)` (used 去重保证共享节点只画一次, 如 metaworld 三行共用顶部一个) → 保障单行。**⚠️ REFERENCE_APPS 改 4 元组后全仓库 3 处 `for nm, nodes, links in REFERENCE_APPS` 解包全崩 (ValueError) — 必须逐个改 `for item in ...: nm=item[0]`** (参考应用按钮 1758 / _act_build_link_existing / _act_build_finish)。验证 (offscreen): 三模型模板 18节点 / Action Head `len(set(x))==1` 且 `ys == [80,310,540]` / metaworld 只画一次 / 双模型+ACT-Meta 回归 (3元组) 不崩。
+- **🗂 模板多行展开布局 (2026-08-05, commit ada65fb1, 老倪: \"你每次都是从一条直线上开始给出, 你需要把所有节点展开, 不要重叠成一条线; 类似的功能, 例如 Action Head, 应该垂直对齐\")**: **用户偏好 — 模板加载节点禁止单行横排 (13+ 节点一条直线出画布外)**。REFERENCE_APPS 条目支持可选**第4元素 layout** (3元组模板兼容, 4元组才启用): `layout = [[节点名...]每行]` 网格 — **行 = 模型分支 (y 递进 230), 列 = 功能角色 (x 递进 260), 空串 \"\" 占位跳过**。同名节点多行出现 → 取各自候选坐标 → **同列垂直对齐** (三模型 Action Head 都落第5列 x=1420, y=80/310/540)。load_reference_app 加 layout 分支: 先 `pos.setdefault(nm, []).append((x,y))` 收集同名多行坐标 → 每节点取 `next(p for p in cands if p not in used)` (used 去重保证共享节点只画一次, 如 metaworld 三行共用顶部一个) → 兜底单行。**⚠️ REFERENCE_APPS 改 4 元组后全仓库 3 处 `for nm, nodes, links in REFERENCE_APPS` 解包全崩 (ValueError) — 必须逐个改 `for item in ...: nm=item[0]`** (参考应用按钮 1758 / _act_build_link_existing / _act_build_finish)。验证 (offscreen): 三模型模板 18节点 / Action Head `len(set(x))==1` 且 `ys == [80,310,540]` / metaworld 只画一次 / 双模型+ACT-Meta 回归 (3元组) 不崩。
 ## 控制台两个高频故障 (2026-09-18 实测, 都已修)
 
 ### ① 模式下拉切「🔌 本地连接 (Local)」→ 整个控制台 SIGABRT (无弹窗, 直接消失)
@@ -1394,15 +1429,15 @@ close 只是隐藏 (无 WA_DeleteOnClose), 对象+GL 上下文都在; 数据源�
 → `KeyError: 'local'` 抛在 Qt 槽里没人接 = **Qt 槽内未捕获异常 → qFatal → 整进程中止**
 (日志 /tmp/studio_launch.log: `Fatal Python error: Aborted` + traceback 到 studio.py:7317)。
 同一类坑 2026-09-14 出现过一次 (`Z700_ROS2_NODES["real"]` 被当 dict 调 `.get()`)。
-**纪律: 任何 Qt 槽体都要包 try/except 保障 (异常只记日志, 绝不冒泡) — 这是"点一下就崩"的通式。**
-修法: 未知/越界模式键一律退回 sim 表 + 如实打日志; 槽体总保障。
+**纪律: 任何 Qt 槽体都要包 try/except 兜底 (异常只记日志, 绝不冒泡) — 这是"点一下就崩"的通式。**
+修法: 未知/越界模式键一律退回 sim 表 + 如实打日志; 槽体总兜底。
 排查证据: `journalctl --user -u zmax-studio --since "…"` 找 `Fatal Python error`, 看 `Current thread` 那几行。
 
-### ② 「输入图像」真机源"永远无画面", 但 L2 实际一直在吃帧
+### ② 「输入图像」真机源"永远无画面", 但 L2 其实一直在吃帧
 `yolo_input_viewer.py` 的真机源原来**只认 srv 落盘** `live_frame.jpg/.json`
 (Orin `/zmax/live_frame` → 本机 Docker `ss_frame_srv_client.py`)。
 Orin 侧服务不可达时 (容器日志 `❌ 服务 /zmax/live_frame 不存在 → 退出`) 该文件冻结在旧时间戳
-→ 窗口按"不上旧帧"纪律显示空/占位, **而真机图像实际一直在流**: Docker tap 落盘 `cam_rs.png`
+→ 窗口按"不上旧帧"纪律显示空/占位, **而真机图像其实一直在流**: Docker tap 落盘 `cam_rs.png`
 (0.x 秒龄, 只读订阅生产话题), **L2 侧 (`ss_yolo_on_real.py` CAND) 吃的就是这条**。
 口径: 窗口显示的真机源必须 = L2 实际消费的那条流 → 加同源回退链
 `cam_rs.png → cam_fp.png → cam_latest.png → srv_cam.png/.jpg`, 逐文件 mtime 新鲜度 (≤10s),
@@ -1417,8 +1452,8 @@ Orin 侧服务不可达时 (容器日志 `❌ 服务 /zmax/live_frame 不存在 
   **坑1 (cv2 V4L2)**: `cv2.VideoCapture("/dev/video0", cv2.CAP_V4L2)` 报
   "backend generally available but can't be used to capture by name" → **必须换算成索引**(`cv2.VideoCapture(0, CAP_V4L2)`)。
   **坑2 (UVC 独占)**: `_start_source` 非幂等时 (`__init__` 的 singleShot(200ms) + 手切下拉各起一次) 旧采集线程成孤儿 →
-  **设备被永久占用**, 之后任何一路都"无法打开摄像头" → 修: start 前先收旧线程 + `join(1.5)` 等 release。
-**仿唯一依据语义**: 引擎没在跑时窗口渲染的是 `node_logic._YOLO_ALIGNER.env` (只 reset、**从不 step**) = 静止初始帧
+  **设备被永久占用**, 之后任何一路都"打不开摄像头" → 修: start 前先收旧线程 + `join(1.5)` 等 release。
+**仿真源语义**: 引擎没在跑时窗口渲染的是 `node_logic._YOLO_ALIGNER.env` (只 reset、**从不 step**) = 静止初始帧
 (老倪两次误读成"光模块没插进槽"!). 点 ▶运行 后窗口自动跟随引擎实况帧 (SS_LIVE_FRAME 共享槽, 与 detect_3d 同一帧);
 无实况 → 画面顶部压橙字横幅"引擎未运行 · 静态初始帧", 不假动。
 **引擎实况取证 (1Hz)**: `/tmp/ss_live_frame.json` = 步号/阶段/**沿孔轴进深 mm**/**横向偏差 mm**/夹持/窗口消费计数,

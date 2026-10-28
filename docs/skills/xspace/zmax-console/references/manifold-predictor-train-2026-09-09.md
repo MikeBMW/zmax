@@ -32,7 +32,7 @@
   ① runner 里 monkeypatch `huggingface_hub.HfApi.list_repo_refs = lambda *a,**k: _Refs()`
   (branches/tags 空列表的假对象);
   ② 仓库 src/lerobot/datasets/utils.py `get_safe_version`: hub 无 tag 时原来抛
-  RevisionNotFoundError (且构造缺 response kwarg → TypeError), 加本地保障
+  RevisionNotFoundError (且构造缺 response kwarg → TypeError), 加本地兜底
   `if version in ("main","local",""): return version`。
 - 权重走 HF 缓存 + `HF_HUB_OFFLINE=1` (SmolVLM2-500M-Video-Instruct 5.7G 已缓存)。
 - **数据集 meta 损坏坑**: data/metaworld_peg 声称 30 集/5400 帧, 实际 21 集/3780 帧,

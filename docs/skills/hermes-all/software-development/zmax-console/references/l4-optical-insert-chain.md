@@ -28,7 +28,7 @@ cube 链相反: 桥跑 INTACT venv (`tools/intact_sw_bridge.py`), 因为那个�
 
 ## 桥的执行流 (真跑, 无加工)
 
-1. **同 seed 解析链对照** (`mode=insert`): 真引擎验证通过 → 末帧 (resize 224² CHW float32) = **目标帧**
+1. **同 seed 解析链对照** (`mode=insert`): 真引擎跑通 → 末帧 (resize 224² CHW float32) = **目标帧**
    (`reports/intact_goal_frame_optical.npy`), 同轮再做一次 `mode=full` = 插→拔→AOI 全链视频 (可达性基线)
 2. **模型直驱**: `sim._frame_sink` 内做一次真推理 → 写 `sim._direct_act` → **下一步**引擎用该值做 `env.step`
    (引擎 1179 行既有直驱入口; 非 None 时 act 直接取该值, 不经 u/K_ACT 与夹爪阈值化)。

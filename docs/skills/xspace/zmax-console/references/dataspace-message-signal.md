@@ -3,7 +3,7 @@
 什么时候看这个文件: 要改「全局数据空间」(dds_space 页 / dds_canoe 独立窗) 的显示内容,
 或要把画布连线关系落到工程库, 或要给节点输出补信号定义。
 
-## 1. 一条链路, 一个唯一依据
+## 1. 一条链路, 一个真源
 
 ```
 画布 JSON (人编辑)  --保存-->  flows.save_canvas()  --同口-->  db.sync()
@@ -50,13 +50,13 @@ Trace      一行一个**信号**: Time·abs|rel | Layer | Signal | Value | Unit
 
 - **Trace 每一列的语义 (用户口径, 越权改名会被打回)**:
   - `Name` 列**已删** (用户: 「删除 name 列」)。中文名只留在 `Signal` 的 tooltip 第一行;
-    `middleware/cn_names.py` 仍是中文名唯一依据, 别连工具一起删。
+    `middleware/cn_names.py` 仍是中文名真源, 别连工具一起删。
   - `Signal` = **英文变量名**, 要能在状态空间代码里对上那一个变量 (`end_x` / `grasp_prob` /
-    `u_ff_x` / `descend_l2_force_mps` / `chunk.lambda0` / `latent_p2`)。唯一依据 `middleware/signal_en.py`:
+    `u_ff_x` / `descend_l2_force_mps` / `chunk.lambda0` / `latent_p2`)。真源 `middleware/signal_en.py`:
     逐键表 + gravity(阶段×层) / skillphys(SK编号) / ar(段.字段) 规则 + ASCII 原样透传。
     名字取自**生产者代码标识**, 没收录的键原样返回 —— 别按拼音/翻译凑一个像变量的名字。
   - `Type` = topic 的语义类型 (见 §2 / §5), 不是 topic 名也不是信封名。
-  - `Tx` / `Rx` = 节点中文名; Rx 唯一依据取工程库 `node_rows().outs[].to` (不依赖 busdb 是否已加载),
+  - `Tx` / `Rx` = 节点中文名; Rx 真源取工程库 `node_rows().outs[].to` (不依赖 busdb 是否已加载),
     无下游写 `—`; 注册表类话题 (heartbeat 等) 没有单一节点, Tx 就用它自己的中文名。
   - `Layer` = `L2~L5` / `SYS`。来源: `ss.node.*` 查工程库 `node_rows().layer`; `meta` 与注册表类话题
     (heartbeat / ss_state) 显示 `SYS` —— 它们本来就没有 L1~L5 归属。本工程层索引只有
@@ -94,10 +94,10 @@ Trace      一行一个**信号**: Time·abs|rel | Layer | Signal | Value | Unit
 ③ 端口标签 画布 params._port_labels 的英文标识 ("u_ff 建议动作"→u_ff) src=画布
 ④ 实现     节点源码 return 字典的字符串键                       src=实现 / impl_node
 ⑤ 上游继承  入口 topic 按 mw_link 继承上游出口信号, fan-in 取并集    src=上游
-⑥ 信封保障  仍无证据的 ss.node.* 列 DDS 信封真字段 topic/ts/json    src=信封
+⑥ 信封兜底  仍无证据的 ss.node.* 列 DDS 信封真字段 topic/ts/json    src=信封
 ```
 
-- 生成器 `tools/gen_signal_dict.py` → 唯一依据 `config/platform/dds_signals.json` (topic → [{name,src}])。
+- 生成器 `tools/gen_signal_dict.py` → 真源 `config/platform/dds_signals.json` (topic → [{name,src}])。
   抽键**只认 `return {...}` 与惯用返回变量** (`out/result/payload/ret`); 把实现里所有 dict 键都收进来
   会把 `path/size/mtime` 这类无关键混进信号表。
 - 多输出节点: 端口没有 `_port_labels` 时实现键归属不明 ⇒ 挂到每个出口并标 `impl_node`
@@ -112,7 +112,7 @@ Trace      一行一个**信号**: Time·abs|rel | Layer | Signal | Value | Unit
 ## 5. 分层分组 (报文按 L1~L5) + Tx / Rx 列
 
 - **报文先按层分组, 不是平铺**: 层 = 端口所属节点的层 (`mw_node.layer`, 空则用
-  `engineering/nodes/by_level.LEVELS_INDEX` 保障)。组序 `L5 → L4 → L3 → L2 → L1 → 系统(meta)`,
+  `engineering/nodes/by_level.LEVELS_INDEX` 兜底)。组序 `L5 → L4 → L3 → L2 → L1 → 系统(meta)`,
   每组标题带条数, 根标题直接给分层条数:
   `🚌 报文 (Messages 157)   [L5 12 · L4 30 · L3 6 · L2 45 · 系统 64]`。
 - **不硬造空组**: 本工程 `by_level` 里没有 L1 ⇒ 就不出现 L1 组 (在根 tooltip 说明“L1 本工程未用”)。
@@ -122,7 +122,7 @@ Trace      一行一个**信号**: Time·abs|rel | Layer | Signal | Value | Unit
   **topic 全名只进 Name 的 tooltip 第一行** (不占列)。
   Type = **topic 的语义数据类型**, 由**主要发送 (Tx) 节点**决定 (`zmax::FeedforwardAction` /
   `zmax::ModulatedAction` …), 既不是 topic 名、也不是信封名 `zmax::SSNodePort`;
-  唯一依据 `config/platform/dds_topic_types.json` ← `tools/gen_topic_types.py`, 运行时 `middleware/topic_types.py`,
+  真源 `config/platform/dds_topic_types.json` ← `tools/gen_topic_types.py`, 运行时 `middleware/topic_types.py`,
   判据 `tools/verify_topic_types.py` (覆盖 / 唯一主 Tx / 入口=上游 / 落库一致 / 零信封名 / 命名规范);
   节点行没有 topic ⇒ Type 写 `—`, 节点自身类型挪进 Name tooltip。
   报文行 Tx = 生产者节点名, Rx = 下游节点名; 连线信号行 Tx = src / Rx = dst;
@@ -190,7 +190,7 @@ PYTHONPATH=src ./gui-venv311/bin/python -m lerobot.dataspace.busdb --build   # �
    上次手拖的持久化宽度, 会误判成"内容宽没生效";
    ④探针进程若用 `os._exit()` 收尾, `print()` 必须 `flush=True` —— 否则日志整个是空的, 会被误判成
    "脚本没跑/改动没生效", 白白多查一轮。
-8. 🔴 **改列/表头前先全局 grep 旧列名**: 同一张表头常在**三处**预先固定 —— 控件构造里的
+8. 🔴 **改列/表头前先全局 grep 旧列名**: 同一张表头常在**三处**写死 —— 控件构造里的
    `setHorizontalHeaderLabels([...])`、`_set_trace_header()`、`_set_trace_header0()`。只改一处 ⇒
    首屏仍是旧列 (实测构造里的 `Prob % / Sender / Class` 盖掉新表头), 列数对不上还会让单元格静默错位。
    判据: `grep -n 'Prob %\|Sender Id\|Lamp\|Count'` 在 Trace 相关文件里 0 命中 + 探针读
@@ -212,13 +212,13 @@ clean(): 去 emoji → 去开头 L1~L5 / meta → 去圈号①..⑳ → 在 " ("
 unique_map(): 归一后重名的补 "(短id)", 保证 Tx/Rx 能唯一定位 (实测 75 节点 0 重名)
 ```
 
-- 只在**显示层**归一, 不改画布唯一依据; 导出要另留 `节点全名` 列, 否则追溯断链。
+- 只在**显示层**归一, 不改画布真源; 导出要另留 `节点全名` 列, 否则追溯断链。
 - 截断点必须带空格 (`\s+\(` / `\s+→\s+`), 否则 `SU(2) 统一状态空间` 会被砍成 `SU`、
   `2D→3D 解算` 被砍成 `D`、`3D 视图` 被当作序号砍成 `D 视图` —— 圈号正则也不能吃普通数字。
 - 应用面一次改全: 报文行 Tx/Rx · 节点树 Name · 连线信号行 Name (用连线标签, 不用 `源→目的`) ·
   详情面板 · 数据空间报文表/节点表/导出。改完断言: Tx/Rx 里 `L[1-5]` token 数 = 0、`→` 数 = 0。
 
-**② 表格与右侧详情必须同一个唯一依据。** 症状: 左边 Type 列已经是语义类型, 右下"详细信息"还是
+**② 表格与右侧详情必须同一个真源。** 症状: 左边 Type 列已经是语义类型, 右下"详细信息"还是
 `zmax::SSNodePort` —— 因为表格读语义注册表、详情读 `live.json`/`busdb` 快照。
 做法: 详情面板也调同一个 `topic_types.describe(topic)`, 并多给一行「类型含义」(中文语义);
 非 `ss.node.*` 形态的话题 (heartbeat / link_value…) **保留它自己声明的类型**, 不要硬套注册表
@@ -231,7 +231,7 @@ unique_map(): 归一后重名的补 "(短id)", 保证 Tx/Rx 能唯一定位 (实
 表里什么都没有, 于是"真的没告警"和"根本没接上"长得一模一样。真判据 (`middleware/quality.py`):
 
 ```
-超上限 / 低于下限     声明量程 (mw_signal ← 参数中心); 无声明时按物理规律保障
+超上限 / 低于下限     声明量程 (mw_signal ← 参数中心); 无声明时按物理规律兜底
 物理规律              概率/比例 ∈ [0,1] · 百分比 ≤100 · 质量/刚度/阻尼 ≥0 · 温度 ≥-273.15°C ·
                       压力 ≥0 · 角度 |x|≤720 · 速度 |x|≤1000 · Hz ≥0
 数值有效性            NaN / inf / 非数值 / 空值
@@ -245,7 +245,7 @@ unique_map(): 归一后重名的补 "(短id)", 保证 Tx/Rx 能唯一定位 (实
 - 验证方式是**注入越界帧**: 造假 `fields={grasp_prob:1.4, joint1_deg:999}` → Trace 必须出现 `✘`,
   告警表必须出 `range_high` 两条; 正常值必须一条不报 (不制造假警)。只测"页面能打开"不算验证。
 - 🔴 **只有实测数值才进物理判据**: 占位/信封行 (`signal="value"`、`src=占位|信封`) 与 `Value="—"`
-  必须在提供给 `scan_frames()` 之前剔除。全量加载后大部分行没有实测值, 不剔除的话 `—` 被判成
+  必须在喂给 `scan_frames()` 之前剔除。全量加载后大部分行没有实测值, 不剔除的话 `—` 被判成
   "非数值", 一次刷出上千条假 fail (实测 1429 条), 真告警被淹没。判据: 有实时数据时告警应为 0~个位数,
   打开页面不该满屏红。
 - 一个判据两个入口同源: `dds_canoe._fill_alerts()` 与 `dds_space.alerts()` 都调同一套 `scan_frames()`;
@@ -278,7 +278,7 @@ unique_map(): 归一后重名的补 "(短id)", 保证 Tx/Rx 能唯一定位 (实
 
 **同源文件源 (推荐, 同时满足"与信号分析一致")**: 数据空间不要自己再采一遍, 直接读「信号分析」窗口
 正在读的那几份本机真值文件 —— 同一拍数据, 两处数值天然相等, 不是各算一套再对齐。
-唯一依据 `zmax_data/ss_live/{trace_live,engine_trace,gravity_trace}.json` (sstrace / sseng / gravity),
+真源 `zmax_data/ss_live/{trace_live,engine_trace,gravity_trace}.json` (sstrace / sseng / gravity),
 封装成 `middleware/live_signals.py::topics()` (0.25s 缓存, 带 `ts`/`age_s`), Trace 侧按 topic 覆盖字段。
 
 - 覆盖时**按短名 + 全名双向去重**, 否则 `ss_state` 与 `zmax/ss_state` 会出现两行。
@@ -317,7 +317,7 @@ unique_map(): 归一后重名的补 "(短id)", 保证 Tx/Rx 能唯一定位 (实
   (Layer, Signal, Tx, Rx) 元组在 1.5s 内两次填充后逐行相等 (实测 1948 行, 变动 0)。
   也不要按"fields 非空": 停了的单步话题 fields 还在 (`state=[] count=0`), 会压在最上面, 让人以为有数据在跑。
 - 时间列 = `time.time() - age_s`; 源文件里的 `ts` 是采集机时钟(本机 NTP 回拨过), 直接上屏差 8 小时。
-- `Type` 保障: `topic_types.type_of_topic()` 对 `zmax/ss_state|ss_engine|ss_torque` 返回空串 ⇒
+- `Type` 兜底: `topic_types.type_of_topic()` 对 `zmax/ss_state|ss_engine|ss_torque` 返回空串 ⇒
   再取 `lerobot.dataspace.topics.TOPICS[短名]["type"]` (`zmax::SSState` / `SSManifoldStep` / `SSDrivingTorque`)。
 - `Name`: 源键本身是中文就直接裁短 (`下降·L2 力大小_mps` → `L2力大小`), 英文键才走 `cn_names`。
 
@@ -364,9 +364,9 @@ OUT_NODE_RULES = (键前缀, 工程库 node_id, 无节点时的进程名)
 判据: 劫持 `QMenu.exec_` 返回 data=="L2" 的 action ⇒ 行数 556→274 且层只剩 L2;
 再选一个 `zmax::` 类型 ⇒ 82 行且只有一种类型; 只清 Layer 时 Type 过滤仍在。
 
-**③ Tx / Rx / Layer 只许有一份唯一依据 (`middleware/attribution.py`).**
+**③ Tx / Rx / Layer 只许有一份真源 (`middleware/attribution.py`).**
 两个窗口各写一份映射 = 必然漂: Trace 从工程库话题推导, 信号分析用另一套规则表 ⇒ 同一条信号
-两处显示不同节点, 用户直接指出「Tx Rx 要同步, 你现在显示的不一样」。唯一依据只留一个模块:
+两处显示不同节点, 用户直接指出「Tx Rx 要同步, 你现在显示的不一样」。真源只留一个模块:
 
 ```
 key_of(topic, field)   zmax/ss_state|ss_engine|ss_torque → sstrace./sseng./gravity. 前缀
@@ -383,7 +383,7 @@ fmt_value(v, key) / display_unit(key, unit)  数值与单位也走同一份
 - 判据 `tools/verify_trace_sync.py`: 面板每一个信号键在 Trace 里都要找到 (Layer,Tx,Rx) 完全相同的行
   (实测 506 键, 不一致 0); 再叠「行不跳 / 单位 mm/s / 数值同量级」三项。
 
-**④ 数值/单位也必须同口径.** 速度类键 (`_mps`) 两个窗口统一按 **mm/s** 显示 (唯一依据 m/s ×1000)
+**④ 数值/单位也必须同口径.** 速度类键 (`_mps`) 两个窗口统一按 **mm/s** 显示 (真源 m/s ×1000)
 + `.4g` 格式; 只同步 Tx/Rx 不同步单位, 同一条信号会变成 0.032 对 32.21, 用户照样说"不一样"。
 判跳变/量程仍用**原始值** (行里另存 `vraw`), 显示换算不能污染判据。
 
@@ -488,7 +488,7 @@ show_in_l2_link(k)  数据空间 Trace: Tx 与 Rx 都必须是 L2 节点 ⇒ 横
 - 没有连线的 (3D 场景 `sstrace.*`: 末端/八阶段) 老实不显示, 不要为了填满 Rx 编一个下游。
   代价要当面讲清: 这两类信号会从数据空间消失, 只在信号分析里可见。
 
-### ③ 判据白名单要用显示名唯一依据, 不要用工程库原始名
+### ③ 判据白名单要用显示名真源, 不要用工程库原始名
 
 原始节点名带 emoji / `L2~L5` 前缀 / 圈号 / SK 编号 / `· 解释`, 逐字比对必报几百条假违规
 (实测 202 条)。白名单一律 `A.l2_names()` 或 `naming.unique_map()` 的输出 (75 节点 ↔ 75 唯一名)。
@@ -501,7 +501,7 @@ Trace 每行都要 Layer/Tx/Rx, 若每次都 `db.node_rows()` 全表重查: 1618
 
 ### ⑤ 判据纪律: 别钉死数量和显示串
 
-- 节点数预先固定 (89) ⇒ 画布加到 90 就假红; 用 `>=` 或直接读画布唯一依据。
+- 节点数写死 (89) ⇒ 画布加到 90 就假红; 用 `>=` 或直接读画布真源。
 - 显示文案 (SK 编号) 会被统一改一次 ⇒ 改成按集合/前缀比。
 - 列头过滤判据要跟口径一起改: 窗口只剩 L2 时"过滤 L4 应 0 行"成立, 但"过滤后刷新仍保持"要看
   刷新路径有没有重套过滤 (`reload` 重建整表会冲掉过滤)。

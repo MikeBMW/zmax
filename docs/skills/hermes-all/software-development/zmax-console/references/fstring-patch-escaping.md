@@ -23,7 +23,7 @@ open(path, "w", encoding="utf-8").write("\n".join(lines) + "\n")
 **渲染验证三步曲**（改完必做，别直接提交）：
 1. `ast.parse` 全文件语法
 2. `eval` 该 f-string 看渲染结果（`repr` 输出里 `\\` = 1 个反斜杠字符，别被双重转义显示骗了）
-3. **真实执行**：把渲染后的命令用 sshpass 实际执行一遍，断言 exit 0 + 期望输出
+3. **真实执行**：把渲染后的命令用 sshpass 实际跑一遍，断言 exit 0 + 期望输出
 
 ## f-string 里别嵌方法调用（引号冲突）
 

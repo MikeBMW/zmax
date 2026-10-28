@@ -11,7 +11,7 @@
   (整页起不来); ② `_mlog` 函数体被截断(`mon_log.append` 掉进 `_show_inline_data`) ⇒ 全页日志静默 +
   点「启动」时 `ts/msg` NameError。
 * 判"有没有关联"落到运行期证据: 页面上每个值都要追得到真话题/真进程。硬编码的假关节力数(J1~J6/Fx~Fz)、
-  无发布者的话题、只打一行日志的按钮都算无关联 —— 要么接唯一依据, 要么如实报缺。
+  无发布者的话题、只打一行日志的按钮都算无关联 —— 要么接真源, 要么如实报缺。
 
 ## 保留口径 (2026-10-11 老倪: 没有关联的功能都删掉)
 
@@ -32,7 +32,7 @@ ssh -o ConnectTimeout=3 tashan@192.168.23.66 \
 ```
 
 * **缺 `FASTDDS_BUILTIN_TRANSPORTS=UDPv4` 就发现不到发布者**: 实测 `ros2 topic info /robot/tcp_pose` 会把
-  Publisher count 报成 0(Subscriber 却有 53), `ros2 topic list` 只剩 2 条 —— 看着像"话题没数据", 实际是传输层没配。
+  Publisher count 报成 0(Subscriber 却有 53), `ros2 topic list` 只剩 2 条 —— 看着像"话题没数据", 其实是传输层没配。
 * **域号必须是 0**: `ROS_DOMAIN_ID=23` → 2 topics / 0 nodes; `=0` → 15 topics / 8 nodes(实测)。
 * **`/gripper_pos` 有两种类型** ⇒ 必须显式给 `std_msgs/msg/Float32`, 否则报
   `Cannot echo topic '/gripper_pos', as it contains more than one type`。

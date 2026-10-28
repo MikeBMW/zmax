@@ -18,7 +18,7 @@
 11 seed (mode=insert, 600 步, 权重 `intact_l4_current` = v6r11 ep2):
 - 成功率: 解析链 3/11 vs 直驱 2/11 (seed 7 解析成功/直驱失败 = 回退案例);
 - **两轮成功里模型采纳步数 = 3 和 0** → 名义"直驱"实为解析链收口 = 脚本开环。
-  ⇒ success 必须与采纳步数一起报, 否则把"链路验证通过"说成"模型驱动"。
+  ⇒ success 必须与采纳步数一起报, 否则把"链路跑通"说成"模型驱动"。
 - 否决以方向为主: 末 5 步 cos ≈ −0.67 (系统性反相), 提案幅度 ≈ 执行层参考的 1/10;
   阶段白名单 `SS_DIRECT_STAGES=接近,对位,转移` 在 insert 模式下 `stage_out` 常有 250-530/600 步。
 
@@ -40,7 +40,7 @@
 要用当前 L4 权重重跑标定/配对, 先确认工具链喂 skill_ctx (参考 `intact_replay_check_v4.py` 的采样口径:
 连续窗口 stride=frameskip、真值动作历史、goal_mode=train)。
 
-## 5. 分层回答"什么水平" (同一权重的三档证据)
+## 5. 分层回答"啥水平" (同一权重的三档证据)
 
 v6r11 ep2 离线同源 replay (200 clips × 3 reps, teacher-forced):
 slot0 MAE 0.0347 vs 常数基线 0.0828 (≈42%), pearson_dx 0.71, skill_on ≫ skill_zero (0.0837)

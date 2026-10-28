@@ -72,4 +72,4 @@ act = post(policy.select_action(batch))
 世界模型/流形预测器这类小 MLP (百万参数级) 在 CPU 上训 1000 epoch 可能 >17 分钟/epoch 级
 (550 万参数 × 8 万帧), 而 4060 GPU 上 1000 epoch ≈ 12 分钟。**先 `nvidia-smi` 看卡空再上 GPU**;
 `py-spy dump --pid <pid>` (sudo) 可确认进程是在真算 (栈停在 `torch/nn/modules/linear.py forward`)
-还是在阻塞 — 别凭"半天没输出"就判死。
+还是在卡住 — 别凭"半天没输出"就判死。

@@ -48,11 +48,11 @@ InferenceVideoDialog 5 个视频框各 `lab.setFixedSize(400,300)` 并排 = 2000
 
 ## 🐛 VLA-Touch rollout x0 修复 (692e65e6)
 
-"拿不起来"残余: VLA-Touch Interpolant 扩散采样训练时 `q_sample(x0=轨迹前帧, x1=目标动作, t)`，但 rollout 里 x0 用了随机噪声 → 扩散从噪声走不到动作空间 → 动作 std=0.10。**修法**: rollout x0 用上帧动作 (act_hist 或 zeros 保障) → std 0.46/max 1.05。验证: 60 帧 rollout 断言 std>0.3 (30 帧只到接近阶段幅度小，必须 60 帧)。
+"拿不起来"残余: VLA-Touch Interpolant 扩散采样训练时 `q_sample(x0=轨迹前帧, x1=目标动作, t)`，但 rollout 里 x0 用了随机噪声 → 扩散从噪声走不到动作空间 → 动作 std=0.10。**修法**: rollout x0 用上帧动作 (act_hist 或 zeros 兜底) → std 0.46/max 1.05。验证: 60 帧 rollout 断言 std>0.3 (30 帧只到接近阶段幅度小，必须 60 帧)。
 
 ## 🔢 训练步数 50→10 统一 (0af2128c)
 
-老倪: "改成训练10步吧，先验证通过流程"。全仓 `"steps": 50` / `steps=50` / `p.get("steps", 50)` → 10 (simulink_module.py 17处 + node_logic.py 默认 + 2 个训练脚本 argparse default + config yaml)。注意 `n_action_steps=50` 是 ACT 推理参数**不动**。验证: 模板节点 params 全部 steps=10。
+老倪: "改成训练10步吧，先跑通流程"。全仓 `"steps": 50` / `steps=50` / `p.get("steps", 50)` → 10 (simulink_module.py 17处 + node_logic.py 默认 + 2 个训练脚本 argparse default + config yaml)。注意 `n_action_steps=50` 是 ACT 推理参数**不动**。验证: 模板节点 params 全部 steps=10。
 
 ## 验证模式 (本会话 8 轮)
 

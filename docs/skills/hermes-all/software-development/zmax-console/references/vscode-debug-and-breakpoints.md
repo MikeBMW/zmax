@@ -22,7 +22,7 @@
 ## 三、`.vscode/launch.json` 现成配置
 统一口径: `python=/home/ubuntu/zmax/gui-venv311/bin/python`, `cwd=/home/ubuntu/zmax`, `console=integratedTerminal`, `justMyCode=false`, 脚本类带 `PYTHONPATH=/home/ubuntu/zmax/src`。
 - `🚀 全新调试进程 (studio.py)` — 控制台本体 (画布运行/节点内断点靠它)。
-- `🧮 配置导入 · 唯一依据+工程库读 (config_import.py · 断点 142 必停)` — `args:["--json"]`; 读到 `db.path/projects/tables` 即证 142 执行过。
+- `🧮 配置导入 · 真源+工程库读 (config_import.py · 断点 142 必停)` — `args:["--json"]`; 读到 `db.path/projects/tables` 即证 142 执行过。
 - `🧮 配置导入 · 读+写回画布节点 (config_import.py --node)` — 走 `load_config` 并把 cfg_* 写回节点 (写盘前备份 + 写后回读)。
 - `🌀 流形引擎 · 自检 / 状态快照 (--state) / 内稳态演示 (--hom-demo) / 能量层自检 (energy_manifold.py --selftest)`。
 - INTACT L4 四条 (policy 层 / GUI 节点路径 / 模型侧单步 / 真物理桥)。

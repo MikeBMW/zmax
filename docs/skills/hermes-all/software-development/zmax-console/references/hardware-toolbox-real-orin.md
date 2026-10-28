@@ -8,7 +8,7 @@
 - 发现硬件 = VEH.3.04 按钮 → `HardwareDiscoveryThread` (定义在 `hardware_simulator.py`, **不在** studio.py)
 - 真机栈: 18 ROS 节点 / 46 话题, **ROS_DOMAIN_ID=0**(不是 23), 服务 `/gripper_driver [interfaces/srv/GripperSrv]`
 
-## 1. 点「发现硬件」弹「无法连接 192.168.23.66」= 账号预先固定旧值
+## 1. 点「发现硬件」弹「无法连接 192.168.23.66」= 账号写死旧值
 - `HardwareDiscoveryThread.ORIN_USER = "nvidia"` (nvidia@.10 时代遗留) → `ssh nvidia@.66` = Permission denied → rc!=0
   → 直接报 `无法连接 Orin (192.168.23.66)`。studio.py 其它路径早已改用 `tashan`, 只有这个发现线程漏改。
 - 配套两条: ① GUI 所有 ssh 路径靠**免密**(弹窗自己写着"请确认 SSH 免密已配置"); 本机无密钥时一律连不上 →
@@ -31,7 +31,7 @@
 ## 3. 点🔴不变红 = 只走 relay→Mac 一条链路
 - 旧 `_tower_cmd`: ECS relay `/command` → Mac 守护 → ssh Orin → `ros2 topic pub`。Mac 守护不在线时指令石沉大海,
   而界面照样写"🟡 指令已下发" = **静默失效** (用户观感"以前能用现在不好使")。
-- 改「**直连优先 + 回读验证** + relay 保障」:
+- 改「**直连优先 + 回读验证** + relay 兜底」:
   `ros2 topic pub --once /tower_light/command std_msgs/msg/String "{data: <color>}"`
   → `ros2 topic echo /tower_light/status --once` 读回 `state`, 打进 GUI 日志 (点到变色可证)。
   实测: 点 red → `state=red`; 点 green → `state=green` (口 `/dev/serial/by-id/usb-Artery_LED_*`, 115200, dry_run=False)。

@@ -22,7 +22,7 @@
 | ⑥推理 | 产线位姿 | 动作块+infer_count | count>0·延迟<70ms |
 
 ## 全链路管理手段
-1. auto_loop.py: WS 事件驱动(数据到达即训) + 60s 轮询保障 + 断线5s重连 + 训练锁
+1. auto_loop.py: WS 事件驱动(数据到达即训) + 60s 轮询兜底 + 断线5s重连 + 训练锁
 2. waterflow_dds.py: 每10s 刷写 7 节点状态 (dds_node_state + dds_flow 时间序列)
 3. disk_guard.py: 采集60包/训练4个/日志5MB/水流2万行
 4. 模型铁律: 静态 URL 覆盖即部署 (不弹栈)

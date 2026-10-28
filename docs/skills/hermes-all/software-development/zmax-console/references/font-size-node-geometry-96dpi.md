@@ -41,7 +41,7 @@ re.subn(r'QFont\("(Arial|Consolas)", (\d+)(, QFont\.Bold)?\)', _map, s)
 或按行号精确修 (行号-1 索引)。改完必须 `grep` 最终字号分布确认层次正确。
 
 ## 左侧模块库折叠 (LibraryPanel)
-- 原设计: 独立 16px `_lib_expand_bar` QPushButton 插在 QSplitter 里, `setVisible(False)` 后**仍占一个可拖动的空白分割槽** → 用户拖动时露出"什么也没有"的空白区。
+- 原设计: 独立 16px `_lib_expand_bar` QPushButton 插在 QSplitter 里, `setVisible(False)` 后**仍占一个可拖动的空白分割槽** → 用户拖动时露出"啥也没有"的空白区。
 - 修法: 删掉独立展开条, LibraryPanel 自折叠 `set_collapsed(bool)` — 收起时隐藏内容+`setFixedWidth(20)`只留 ▶ 按钮, 展开恢复 360。split 只留 [library | mdi] 两 widget。
 - 面板宽 360 (容纳放大后的模块名)。
 

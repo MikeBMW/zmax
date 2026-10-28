@@ -32,7 +32,7 @@
   - `observation.state.mean/std` (1,) 标量 (MEAN_STD 用整体标量, 非逐维!) — 实测 mean≈0.147 / std≈0.30
   - `action.mean/std` (1,) — 实测 mean≈-0.62 / std≈2.12
   - **广播到完整维度**: `sm = np.full(39, sd["observation.state.mean"][0])`, `am = np.full(4, sd["action.mean"][0])`
-  - fallback 候选目录 (peg_lerobot/act) 结构对但维度旧 (1 维), 只保障
+  - fallback 候选目录 (peg_lerobot/act) 结构对但维度旧 (1 维), 只兜底
 - 验证: `_load_stats()` 非 None + state mean len == st_dim (39)
 
 ### 5b. eval_insert 里 sm/ss 被 np.zeros/np.ones 覆盖 (归一化静默失效)
@@ -42,7 +42,7 @@
 
 ### 6. 设备不匹配 (单独测试脚本)
 - `/tmp/mlp_test.py` 里 `s_t` 没 `.to(DEVICE)` → `Expected all tensors to be on the same device, but got mat1 is on cpu... cuda:0`
-- 修复: `s_t.to(next(pol.parameters()).device)` — 用模型参数设备, 别预先固定
+- 修复: `s_t.to(next(pol.parameters()).device)` — 用模型参数设备, 别写死
 
 ### 7. ACT 方向性诊断 (老倪: "那ACT至少方向性应该能学出来啊" — 他完全对)
 **只看 0% 结论会误判 "ACT 没学到"** — 单 episode 行为跟踪 (手-peg 距离/夹爪/peg_z):

@@ -23,7 +23,7 @@ description: 机器人策略(ACT/SmolVLA/AWE)评估管道同构性与训练数�
 ### ② 图像尺寸必须匹配
 - SmolVLA: `siglip_image_size: 64` → 评估喂 64×64
 - ACT: 128×128
-- 喂错尺寸 → 视觉编码全错 → 模型不易理解 → 输出乱/恒定
+- 喂错尺寸 → 视觉编码全错 → 模型看不懂 → 输出乱/恒定
 
 ### ③ diffusion 模型必须反归一化
 - AWE/VLA-Touch 输出是**归一化空间动作**，eval 必须 `act*std+mean` 还原再 env.step

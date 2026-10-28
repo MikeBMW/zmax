@@ -47,7 +47,7 @@ Orin 上通常只 ping 得通 intel、没有到它的 key 授权（`ssh orin 'ss
 `open_channel('direct-tcpip', (内网IP, 22), ('127.0.0.1', 0))` + 目标机用户名/密码，之后 sftp/exec_command 照常用。
 ⚠️ **后台起进程时 `exec_command('… &')` 会把通道挂住**（读输出超时，但进程已经起来）：发完就关、另开连接验，或把 stdout 全重定向到文件再读。
 🔴 **读远端日志别 `tail -c N` 后直接 decode**：字节数会切在多字节字符中间 ⇒
-`UnicodeDecodeError: 'utf-8' codec can't decode byte 0xa7`（看着像文件坏了，实际是读法）。
+`UnicodeDecodeError: 'utf-8' codec can't decode byte 0xa7`（看着像文件坏了，其实是读法）。
 一律 `.decode('utf-8', errors='replace')`，或远端 `tr -d '\r'` 后按行取。
 
 🔴 **人在办公室(本机只有办公 WiFi)、实验室内网整段不可达时, 走公网跳板两跳**:
@@ -60,7 +60,7 @@ ssh -p 22022 tashan@39.102.211.79 'hostname; ip -4 addr show | awk "/inet 192.16
 第二跳用 paramiko (`Transport((host,22))` + `open_channel('direct-tcpip',(内网IP,22),(…))`) 或先跳板上装 sshpass;
 ⚠️ 跳板上跑长探测/写文件的脚本用 paramiko 的 **SFTP 写**而不是 heredoc —— 远端 heredoc 里 `$V`/`$(date)` 会被本地 shell 先展开。
 
-🔴 **“现场无法打开页面/看不到画面”先看那套页服务到底跑在哪台机**: 相机流(`8791`)、工位控制(`8793`)、AR(`8797`)
+🔴 **“现场打不开页面/看不到画面”先看那套页服务到底跑在哪台机**: 相机流(`8791`)、工位控制(`8793`)、AR(`8797`)
 如果跑在**笔记本(工位机)**上, 笔记本被带回办公室后实验室就真的没有这条链路了 —— 此时设备、控制器、AOI 全正常,
 报的时候要写“入口在笔记本上、已离开现场”, 别让用户以为实验室死了。现场自带的服务(AOI 10082/10083、建图 8801/8803)照常。
 
@@ -137,7 +137,7 @@ sshpass -p <pw> ssh -J orin intel@192.168.23.70 'bash -s' < scripts/edge_intel_p
 三、生产栈   起了什么（带速率），没起什么（带证据：端口没听、publisher=0）
 四、真值     机械臂关节+法兰+power/mode，写明“静止”还是“在动”的判断依据
 五、周边     AOI 两路（帧龄）、边缘机（模型/延迟/uptime）、录制是否在落、遥测是否在上报
-结论        一句话：通的是什么，阻塞点一层
+结论        一句话：通的是什么，卡在哪一层
 没动的事    明确列出（没拉生产栈 / 没触发拍照），把下一步交回用户
 ```
 单位一律写上（ms / Hz / °C / MB / mm / °）；“静止”“在跑”“没起”这类判断必须紧跟证据，不写形容词。
@@ -183,7 +183,7 @@ sshpass -p <pw> ssh -J orin intel@192.168.23.70 'bash -s' < scripts/edge_intel_p
 - **`ss` 里的 pid 会过期**：隧道/守护进程被重拉后 `/proc/<pid>/cmdline` 报 “No such file or directory”。
   重跑一次 `ss -ltnp` 拿新 pid；判隧道死没死只认 `curl 127.0.0.1:<隧道口>/health`，不看 pid 在不在。
 - **相机报离线，先分“相机死”和“取流地址没走隧道”**：直接打源端 `/health`（Orin `8792` 回
-  `{"n":…,"age_s":0.3}` = 相机活），再看本机取流进程 cmdline 里拉的是哪个地址 —— 预先固定 `192.168.23.66:8792` 时
+  `{"n":…,"age_s":0.3}` = 相机活），再看本机取流进程 cmdline 里拉的是哪个地址 —— 写死 `192.168.23.66:8792` 时
   本机没产线路由必然 0fps，而 `127.0.0.1:18792` 这条隧道口是通的。两条证据一起给，用户才知道是改地址不是修相机。
 - **ROS 侧命令拿不到结果 ≠ 机器人不可访问**：`ros2` 不在 PATH / 要进容器时别停在“ROS 看不到”，直接走 SDK 桥
   （Orin 39061）+ 服务单元（`systemctl list-units --state=running | grep -Ei 'zmax|arm|bridge'`）拿真值。

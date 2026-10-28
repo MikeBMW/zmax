@@ -54,5 +54,5 @@ curl -s "https://<domain>/api/snapshot/arm" -o frame.jpg
 2. 每格取一张 `/snapshot/<name>.jpg`，`cv2.imread` 得尺寸 + `mean/std`：`std<5` 或全黑 = 假帧；
    实测参考：arm 640x480 mean≈23、local 1280x720 mean≈126、local2 mean≈66。
 3. 帧率如实报（实测 arm≈3fps 来自 Orin 侧 JPEG 桥、local≈23~27fps、local2≈3.7fps 受源侧节拍限制）。
-4. 用户给的旧地址无法打开时先查**本机当前 IP**（WiFi 换网段 DHCP 会给新地址，旧书签 curl 直接 000），
+4. 用户给的旧地址打不开时先查**本机当前 IP**（WiFi 换网段 DHCP 会给新地址，旧书签 curl 直接 000），
    再给一个不随 IP 变的入口（公网 `<domain>/st/station?k=<token>` 实测页面与 `/st/snapshot/<cam>.jpg` 都 200）。

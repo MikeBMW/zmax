@@ -37,7 +37,7 @@ class Hw(IdlStruct, typename="selftest::Hw"):
 
 
 def _p(cls, *a):
-    """Policy 子类 API 不一致: Reliable/KeepLast 可调用, BestEffort/TransientLocal 不可 → 保障"""
+    """Policy 子类 API 不一致: Reliable/KeepLast 可调用, BestEffort/TransientLocal 不可 → 兜底"""
     try:
         return cls(*a)
     except TypeError:

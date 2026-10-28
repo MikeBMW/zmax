@@ -36,7 +36,7 @@
   (`tools/gui/launch_studio.sh` 有 pgrep guard, 但 F5 直接起新实例没有)。
 - **`.vscode/launch.json` 由 GUI 右键重写**: 模板在 `tools/gui/simulink_module.py` (~12785-12837)。
   手改 launch.json 会被下次右键抹掉 ⇒ 改配置必须**两处同步**(launch.json + 模板)。
-  4 个 INTACT 配置里的 `INTACT_POLICY` 是固定不变的旧权重, 换权重时同样要两处同步。
+  4 个 INTACT 配置里的 `INTACT_POLICY` 是写死的旧权重, 换权重时同样要两处同步。
   跨 venv: 只有「🔬 模型侧单步 (INTACT venv, 真输入重放)」能停进 `/home/ubuntu/INTACT-JEPA/**`
   (in-process 驱动器 `tools/intact_worker_debug.py`; 真输入靠 `INTACT_KEEP_INPUT=1` 留档后重放)。
 

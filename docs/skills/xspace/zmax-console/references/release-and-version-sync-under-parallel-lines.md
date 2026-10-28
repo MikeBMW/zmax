@@ -1,9 +1,9 @@
-# 并行线共存的发版与归档 (6 唯一依据 / worktree 隔离 / 唯一依据漂移) — 2026-09-26 实测
+# 并行线共存的发版与归档 (6 真源 / worktree 隔离 / 真源漂移) — 2026-09-26 实测
 
 场景: 同一个仓库(同一台机器、甚至同一个检出目录)上跑着**两条线** —— 主线 (GUI/引擎/采集) 与
 并行线 (APP/DDS 硬件监控, 每 2 分钟自动 commit 一条 `chore(hw)`)。发版时踩到 4 个真坑, 全部可复现。
 
-## 坑① 并行线发版只改 studio.py → 6 处唯一依据漂移
+## 坑① 并行线发版只改 studio.py → 6 处真源漂移
 `tools/bump_version.py --to X.Y.Z --summary-file <f>` **先 `--dry`**。期望 6 处全 ✅:
 ```
 studio.py 品牌 QLabel · studio.py 窗口标题×2 · studio.py changelog 行
@@ -50,7 +50,7 @@ git worktree add /home/ubuntu/zmax_rel main     # main 线独立检出, 本次�
 ## 顺带修掉的真 bug (同类常见)
 `~/.hermes/scripts/chain_health.py` 每 30 分钟报 `error`: 判定行 `v.startswith("FAIL")` 遇到上游
 `null` 字段 (`/api/relay/orin/status` 的 `model`) 抛 `AttributeError`。
-修法: `str(v or "")` 保障 + **值型键(ts/disk/model 名)不参与状态判定**。教训: 守护脚本自己挂了
+修法: `str(v or "")` 兜底 + **值型键(ts/disk/model 名)不参与状态判定**。教训: 守护脚本自己挂了
 比被守护对象挂了更危险 —— 交接巡检时逐个 `cronjob list` 看 `last_status`。
 
 ## 技能/记忆同步脚本的位置纪律

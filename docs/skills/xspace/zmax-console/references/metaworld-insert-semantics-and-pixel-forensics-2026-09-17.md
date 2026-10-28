@@ -33,7 +33,7 @@
 
 - **光模块站点/偏置** (`metaworld/assets/objects/assets/peg_insert.xml`):
   `pegHead (-0.1,0,0)` · `pegEnd (0.1,0,0)` · `pegGrasp (0.03,0,0.01)`
-  ⇒ `head_off = pegHead − pegGrasp = (-0.13,0,-0.01)` —— **正好是 DreamView3D 里固定不变的默认值**,
+  ⇒ `head_off = pegHead − pegGrasp = (-0.13,0,-0.01)` —— **正好是 DreamView3D 里写死的默认值**,
   说明那个常量来自老资产口径, 不是拍脑袋; `_PEG_CENTER_OFF=[-0.03,0,-0.01]` 同理 (中心相对 pegGrasp)。
   光模块 = box half-size `0.015/0.015/0.12` + euler 转 90° (长轴=世界 x) ⇒ **3×3×24cm**。
 - **官方成功判据** (`metaworld/envs/sawyer_peg_insertion_side_v3.py:115`):

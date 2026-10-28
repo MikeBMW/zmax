@@ -28,7 +28,7 @@ Scope 没有)。修 = sim_real tr 初始化加同 keys + 每步 append(except �
   w(3000), icon, color, h(行高), params:{bg(底色), desc, source}}。
 - 重排顺序 = 每行 bg 平移 + **其业务节点显式跟随**(行 y 差 + 节点 y)。
 - ⚠️ 勿用"最近行"(min |y-bg_y|)自动归属——行重叠/节点落行间隙时归错行,节点错位
-  (实锤: 状态机行吞了技能节点)。必须**显式 id→行 map**,预先固定全部 40+ 业务节点。
+  (实锤: 状态机行吞了技能节点)。必须**显式 id→行 map**,写死全部 40+ 业务节点。
 - 行 y 分配: 顶行定 y0, `y_next = y_prev + h_prev/2 + h_cur/2 + 45`(缝 45),防 bg 重叠。
 - 新旧坐标换算: **先 `git show HEAD:flows/x.json` 读基线坐标**,算 delta 平移;
   **绝不要 `git checkout -- flows/...` 覆盖工作区** —— 多并行会话(飞书端 agent)共享

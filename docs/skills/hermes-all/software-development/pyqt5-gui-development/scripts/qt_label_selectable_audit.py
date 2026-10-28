@@ -9,7 +9,7 @@
 判据:
   ① 页面内每个 QLabel 都带 TextSelectableByMouse + TextSelectableByKeyboard (默认 NoTextInteraction ⇒ 选不了)
   ② 每个页签切过去再查一遍 (动态刷新/换页后建的标签也算)
-  ③ 后建的 QLabel (show + polish) 自动带上 (app 级 eventFilter 保障; 没有就红)
+  ③ 后建的 QLabel (show + polish) 自动带上 (app 级 eventFilter 兜底; 没有就红)
   ④ 真发一次鼠标拖选: selectedText() 非空 (QTest.mouseMove 不带按键状态, 必须手工 QMouseEvent)
 
 退出码 0 = 全过。仅依赖 PyQt5。

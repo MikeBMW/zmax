@@ -12,7 +12,7 @@
 ## 🔬 模型性能对比扩展 (老倪: "除了loss曲线, 还有什么能对比模型的性能呢? 也需要增加")
 
 - **对比维度 (除 loss 曲线外)**: ① 动作轨迹对比 (预测 vs 专家真值逐帧波形) ② 逐帧误差曲线 (MSE over frames) ③ 误差分布 P50/P90 (长尾) ④ 动作平滑度 (相邻预测差分 std, 真机抖动) ⑤ 收敛速度 ⑥ 验证集曲线 (过拟合)。
-- **落地**: compare_models.py eval_policy 新增采集 `traj_pred/traj_gt` (逐帧轨迹, 限120帧) + `frame_err` (逐帧MSE) + `mse_p50/mse_p90` + `smoothness` (np.diff std); res dict 全带。ModelCompareDialog 加「📉 逐帧误差曲线」err_scope (ScopeWidget 每模型一条) + 表格加 误差P50/误差P90(长尾)/动作平滑度 3 行 + bars 5→8 指标; 旧数据缺字段 get 保障显示 "-" 不崩。
+- **落地**: compare_models.py eval_policy 新增采集 `traj_pred/traj_gt` (逐帧轨迹, 限120帧) + `frame_err` (逐帧MSE) + `mse_p50/mse_p90` + `smoothness` (np.diff std); res dict 全带。ModelCompareDialog 加「📉 逐帧误差曲线」err_scope (ScopeWidget 每模型一条) + 表格加 误差P50/误差P90(长尾)/动作平滑度 3 行 + bars 5→8 指标; 旧数据缺字段 get 兜底显示 "-" 不崩。
 - **⚠️ 对比报告是文件快照**: 对话框读 reports/model_compare_<ts>.json 最新文件 — **旧脚本生成的报告没有新字段 → 用户看到"还是只有loss"**。改了 compare_models.py 必须重新跑评估 (`tools/compare_models.py --frames 60`) 生成新报告, 光改代码不重跑等于没改 (2026-08-05 实测踩过)。
 - **实测参考 (4060, 60帧)**: ACT MSE=1.40 P90=2.63 平滑度=0.036 延迟6.4ms vs SmolVLA+LEW MSE=1.07 (更准) P90=2.31 平滑度=0.204 (抖动大5.7x) 延迟470ms。
 
@@ -59,7 +59,7 @@
 
 - **REFERENCE_APPS 加「🎛 总系统·三模型对比」3节点**: 📦metaworld数据 → 🔬总系统·三模型对比 (params: `{"subsystem": "🔬 三模型对比", "type_label": "Subsystem"}`) → 📊对比评估Scope; links (0,1,"数据")(1,2,"评估"); layout 单行三节点。
 - **on_node_activated 最前面加 subsystem 分支** (优先于 source/switch/环节匹配): `if params.get("subsystem"): self._open_subsystem(node); return`。
-- **_open_subsystem(node)**: 保存顶层 flow dict (nodes+links+sim) 到 `self._subsystem_stack` (init 保障 getattr) → load_reference_app_by_name(sub_name) (失败则 pop 回滚) → `_update_back_btn()` → 日志指引 + QTimer _compare_load_hint。
+- **_open_subsystem(node)**: 保存顶层 flow dict (nodes+links+sim) 到 `self._subsystem_stack` (init 兜底 getattr) → load_reference_app_by_name(sub_name) (失败则 pop 回滚) → `_update_back_btn()` → 日志指引 + QTimer _compare_load_hint。
 - **back_to_subsystem()**: 栈空则"已在顶层"; 否则 pop 栈顶 → load_flow 恢复 (位置/连线全回) → 栈空时 `_subsystem_active=False` → _update_back_btn。
 - **工具栏 btn_back "⬅ 返回总系统"** (#3fb950) 初始 `setVisible(False)`; `_update_back_btn()` 按 `bool(self._subsystem_stack)` 显隐; load_flow 末尾也调 (加载顶层时自动隐藏)。
 - **验证 (offscreen 5/5)**: 顶层3节点 → on_node_activated 展开 18节点22连线 + btn_back 可见 + 栈深1 → back_to_subsystem 恢复3节点 + 栈空 + 按钮隐藏 → 可嵌套往返。

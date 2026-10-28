@@ -14,7 +14,7 @@ tworoom 3.1GB / cube 46GB, 单机 4060 笔记本, 出口带宽 ~1.6MiB/s, 磁盘
 /home/ubuntu/l4_ab/intact_results/autopilot.log 全量日志 (tee 追加)
 ```
 
-流水线内部关键点 (遇到问题后固化):
+流水线内部关键点 (踩坑后固化):
 - 结果文件名**逐任务不同** (`pusht_results.txt` / `ogb_cube_results.txt` / `dmc_results.txt` / `tworoom_results.txt`),
   猜名字会误报"未产出结果" → 用 `result_file()` 映射表。
 - "结果已齐" 只能跳过**评测**, 数据该补还得补 (曾因整段 `continue` 导致数据没下)。

@@ -12,7 +12,7 @@
 - **左侧功能块数据集组**: LibraryPanel 构建循环后动态探测 data/ 目录 (metaworld_peg_lerobot/peg_v2/act/mt50/closed_loop/orin_*) → 每组一个 QToolButton, 点击 `module.add_node_at_center("data", f"📦 {d} 数据", {source, data_dir, desc})` 拖入画布。功能块 = 模块库, 动态探测目录才能\"同步显示已有数据集\"。
 - **数据空间页 (studio.py DataSpaceModule)**: modules dict 加 `"dataspace": 12` + stack.addWidget(DataSpaceModule(self)) (self.simulink 必须先建); 首页 _modules_grid 加卡片 ("dataspace","🌐","全局数据空间")。表格 7 列: 节点/类型/关联对象/属性/时间/状态/路径, 每 node 取 node_objects 前 3 条。刷新按钮 scan(force=True)。
 - **数据集管理并入本地训练数据** (_local_datasets): 探测 data/ → 行 dict 加 `local: True, local_root, local_npz`; 表格行数 = local + DATASETS; 本地行缓存列恒 "✅ 本地"; **信息按钮本地分支跳过 HF API** (ds.get("local") 直接 _msg_ok 显示本地信息); 查看按钮 `ds.get("local_root")/ds.get("local_npz")` 通用化 (不再特判 metaworld repo)。
-- **当前训练数据集卡片** (_current_dataset_html): 扫描 config_*.yaml 按 mtime 倒序取 `root: data/...` → 探测 info.json/npz → 显示路径+类型(插销=绿/套环=黄)+帧数。**坑: root 行有 2 空格缩进, 正则必须 `^\s*root:\s*(data/\S+)` (m 标志), 写 `^root:` 匹配不到 → 保障显示 metaworld_act**。
+- **当前训练数据集卡片** (_current_dataset_html): 扫描 config_*.yaml 按 mtime 倒序取 `root: data/...` → 探测 info.json/npz → 显示路径+类型(插销=绿/套环=黄)+帧数。**坑: root 行有 2 空格缩进, 正则必须 `^\s*root:\s*(data/\S+)` (m 标志), 写 `^root:` 匹配不到 → 兜底显示 metaworld_act**。
 
 ## npz 查看器 (dataset_viewer.py)
 - **系统 python3 (GUI 用) 没有 pandas/pyarrow, 只有 numpy+PIL** → parquet 内嵌图像读不了 (ImportError)。加 `local_npz` 参数 + `_load_npz_frame`: np.load → observations[N] (3,H,W) → transpose→uint8 → QImage → scaled(640,480)。np.load 结果缓存 (self._npz_cache) 防拖动滑块重复读 28MB。
@@ -21,7 +21,7 @@
 
 ## 节点文本截断修复 (SimNodeItem.paint)
 - **根因: `if len(name) > 16: name = name[:15] + \"…\"` 字符数截断** (中文/emoji 下"🎯 YOLO 3D 检测"9pt 只有 106px 但字符判断把名字砍了)。
-- 修法: **像素宽度自适应字号** — fontMetrics().horizontalAdvance(name) 与可用宽 (self.w-20) 比较, 9→8→7pt 逐级降, 仍超则 fm.elidedText 保障。视频节点分支 (左下角 8pt) 与普通节点分支都用 disp。实测: "🎯 YOLO 3D 检测" 9pt 106px ≤ 110px 完整显示; 长名 "🎮 仿真推理 · VLA-Touch" 8pt 129px 在视频节点 (宽 160px, 可用 148px) 内放得下。
+- 修法: **像素宽度自适应字号** — fontMetrics().horizontalAdvance(name) 与可用宽 (self.w-20) 比较, 9→8→7pt 逐级降, 仍超则 fm.elidedText 兜底。视频节点分支 (左下角 8pt) 与普通节点分支都用 disp。实测: "🎯 YOLO 3D 检测" 9pt 106px ≤ 110px 完整显示; 长名 "🎮 仿真推理 · VLA-Touch" 8pt 129px 在视频节点 (宽 160px, 可用 148px) 内放得下。
 
 ## 数据源名统一 (数据一致性)
 - 画布数据源节点名 = **实际数据集路径** ("📦 metaworld_act 数据"), 与左侧功能块数据集组 (📦 metaworld_act) 完全一致 — 老倪\"好几个, 不知道你用的是哪个\"。

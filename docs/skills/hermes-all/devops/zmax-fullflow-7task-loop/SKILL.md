@@ -59,7 +59,7 @@ tail -5 "$LOG"                     # 确认已进入 ② 并开始报 seed/traj
 - GPU 全负荷举证: 训练中连采 10 次 `nvidia-smi --query-gpu=utilization.gpu`，报**几次=100%**（实测 `0 73 100 99 100 0 100 100 100 100`），单点采样不算。
 - 仿真阶段每条轨迹报 `插深 0.0mm` 属常见: 不代表轨迹失败，但**必须在报告里单列**（否则等于把“未插入”写成“已插入”）。
 
-## 坑：L3 SmolVLA 会在中途"阻塞"（不是跑得慢）
+## 坑：L3 SmolVLA 会在中途"卡住"（不是跑得慢）
 症状：日志停在某个 step 不再增长（实测 90/150）、GPU util **0%** 但显存仍占 ~6.9 GB、主线程 **99.9% CPU 自旋**、其余线程全 idle。
 判据（三条同时满足就必须介入，别再等）：日志字节数 15 s 内的两次读取不变 + `nvidia-smi` util=0 且 power~11 W + 进程 STATE=R。
 ```bash
@@ -74,8 +74,8 @@ py-spy dump --pid <train_pid>                          # 本机: ~/.hermes/tools
 1. **`collect_simreal_vla_data.py --target` 计的是成功轨迹数, 不是尝试数** — 失败 seed 每个还要空跑 ~20s
    (`tr["done"][-1]` 为假即「未完成, 跳过」)。target=24 时只出 8~13 条成功、白磨 4 分钟; **用 10**,
    并给仿真段加墙钟上限 (SIM_TIMEOUT_S, 默认 900) 防 target 不可达把循环拖死。
-2. **判据脚本别硬编码任务**: `run_l4_intent_models.py` 曾预先固定 TASK-06-TRAY, 换任务后 ④摆盘轨迹唯一依据/⑦回路口径
-   两条判据假失败。唯一依据 = `config/ss_task_binding.json#active_task` (+ 任务表的 scene_ref)。
+2. **判据脚本别硬编码任务**: `run_l4_intent_models.py` 曾写死 TASK-06-TRAY, 换任务后 ④摆盘轨迹真源/⑦回路口径
+   两条判据假失败。真源 = `config/ss_task_binding.json#active_task` (+ 任务表的 scene_ref)。
 3. **训练要独占显卡**: 先停自己的常驻回路, 跑完再起回。占 GPU 的不只 `l3_live.pid`,
    **`zmax_data/ss_live/engine_loop.pid` (ss_engine_loop --encoder l4) 是最大的一个**——先看
    `pgrep -af "ss_engine_loop|l3_live|ss_torque"` 把带 cuda 的逐个停（停前把 cmdline 记下来，跑完按原参数起回）。
@@ -86,13 +86,13 @@ py-spy dump --pid <train_pid>                          # 本机: ~/.hermes/tools
    `data/chunk-000/file-000.parquet`, 数文件名恒 0)。
 
 ## 把话题接进「信号分析」(4 处 + 重启哪个服务)
-唯一依据链: 发布者 → DDS topic → `zmax_data/dataspace/live.json` → 信号分析页 (读 live.json + busdb)。
+真源链: 发布者 → DDS topic → `zmax_data/dataspace/live.json` → 信号分析页 (读 live.json + busdb)。
 **live.json 的写者是 `zmax-dataspaces-probe.service`** (`venvs/dds-venv/bin/python src/lerobot/dataspace/probe.py --watch --interval 2`),
 **不是** `zmax-dataspaces-loop.service` (那个写 loop.json)。话题清单 = probe 的
 `self.keys = T.topics_for_mode(mode)`, mode 来自 `~/.zmax_telemetry_mode`, 表在
 `src/lerobot/dataspace/topics.py::MODE_TOPICS`。
 
-加一条话题 (以 `ss_meta_pred` 为例, 全验证通过):
+加一条话题 (以 `ss_meta_pred` 为例, 全跑通):
 1. `dds/ss_types.py` 加 IdlStruct 类型 (镜像同类, 如 SSMetaTask)。
 2. `dds/zmax_node.py` 注册 type + QOS class。
 3. `tools/dds/ss_daemon.py` 加 `pub_<x>()` + MODE_TOPICS + 挂到 tick 线程; **别用 `ZMAX_DATA` 变量**

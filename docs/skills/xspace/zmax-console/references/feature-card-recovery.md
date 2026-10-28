@@ -120,7 +120,7 @@ GPU 服务器 (223.109.239.36:24340) 连接失败排查顺序:
 4. **btn_map 按钮ID映射** (~4212): `{"B-01": "start_btn", "B-02": "stop_btn", "B-03": "defaults_btn", "B-04": "_btn_upload_ct"}` — 删项
 5. **方法定义**: `def _reset_defaults(self): ...` 整个方法体删
 
-**⚠️ B-xx 编号顺移坑**: B-xx 由按钮列表动态编号 (B-01=第1个按钮...), 删中间按钮后**后续按钮编号全部前移**。本例删 B-03 后 `_btn_upload_ct` 从 B-04 → B-03, 但它的 `_holo_badge(self._btn_upload_ct, "B-04")` 角标是**固定不变的** → 必须同步改成 B-03, 否则 ID 角标与 btn_map 不一致, 全息ID执行功能错乱。
+**⚠️ B-xx 编号顺移坑**: B-xx 由按钮列表动态编号 (B-01=第1个按钮...), 删中间按钮后**后续按钮编号全部前移**。本例删 B-03 后 `_btn_upload_ct` 从 B-04 → B-03, 但它的 `_holo_badge(self._btn_upload_ct, "B-04")` 角标是**写死的** → 必须同步改成 B-03, 否则 ID 角标与 btn_map 不一致, 全息ID执行功能错乱。
 
 **验证纪律**: 删完 grep 残留 (`defaults_btn|_reset_defaults|恢复默认` 必须 0 命中) → 语法检查 → `python3 tools/ci/integrity_check.py` 必须仍绿 → 重启 GUI 看实际效果。负向自测可选: 临时改坏检查器确认它能报错。
 

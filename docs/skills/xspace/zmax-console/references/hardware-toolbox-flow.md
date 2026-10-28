@@ -32,7 +32,7 @@
 `add_node` 用 `gen_id()` 生成新 id, `id_map[spec["id"]]=n["id"]`。加载后 m.nodes 的 id ≠ 原始 JSON id。
 校验"无悬空连线"必须对**原始 JSON** 的 links 用原始 nodes id 检查; 对加载后画布断言 `len(m.nodes)/len(m.links)` 与期望一致即可 (add_link 只在两端映射成功时调用, 数量对上即无悬空)。
 
-## offscreen 验证 (无头验证通过, 不必开 GUI)
+## offscreen 验证 (无头跑通, 不必开 GUI)
 ```python
 os.environ["QT_QPA_PLATFORM"]="offscreen"
 from PyQt5.QtWidgets import QApplication

@@ -34,7 +34,7 @@ encoder_in_tokens = [latent_embed]             # 不再 append state token
 - 官方专家动作序列夹爪先 -1 后 0.6 (离散), 多阶段专家夹爪 0→-0.8→-1 更适合 BC
 
 ## RL 组合 (train_peg_rl.py)
-- 纯 PPO 60 轮 -9.9 阻塞 (稀疏抓取奖励探索不到)
+- 纯 PPO 60 轮 -9.9 卡住 (稀疏抓取奖励探索不到)
 - 组合: run_episode 里位置动作用 RL (a[:3]*0.15), 夹爪规则:
   `d_hp<0.08 未抬起 → -1.0 闭合; lifted → 0.6; 否则 0.0`
 
@@ -86,7 +86,7 @@ ValueError: Column 'dataset_from_index' doesn't exist.          ← 缺全局区
 - HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=1 (OFFLINE=1 数据集 refs 解析直接报错)
 
 ## 控制台训练节点默认配置坑 (2026-08-08)
-- 训练节点生成 config_<policy>_runtime.yaml, root 预先固定 data/metaworld_peg (旧数据)
+- 训练节点生成 config_<policy>_runtime.yaml, root 写死 data/metaworld_peg (旧数据)
   + use_vae: true → 控制台自动训练产出无效模型
 - 模型引擎远程容器化: 仅 gpu_mode=remote 且 remote_engine 已连才走 Docker,
   SSH 失败回退本地 (remote_engine=None)

@@ -13,7 +13,7 @@
 - QLabel 显示帧 (KeepAspectRatio 缩放), 底部按钮: 上一个/暂停/下一个/转正 180°/左右翻转
 - **180° 旋转 = `pm.mirrored(True, True)` (位图快速操作)** — QTransform().rotate
   SmoothTransformation 每帧全像素变换是卡顿根因 (VcXsrv 软渲染)
-- 播放中缩放 FastTransformation, 暂停/翻转 Smooth; **循环播放** (勿自动暂停=误判阻塞)
+- 播放中缩放 FastTransformation, 暂停/翻转 Smooth; **循环播放** (勿自动暂停=误判卡住)
 - 抽帧: 后台线程 ffmpeg → PNG 缓存 (reports/_mlp_cache_<名>/), 缓存命中秒开;
   完成信号回主线程 (pyqtSignal)
 - 事件虚函数 (resizeEvent/paintEvent/closeEvent) 全部 try 包裹 (qFatal 铁律)

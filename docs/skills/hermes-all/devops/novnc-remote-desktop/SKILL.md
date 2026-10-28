@@ -97,7 +97,7 @@ websockify --web=/usr/share/novnc 127.0.0.1:6080 127.0.0.1:5900
 - ⚠️ **`-clip` 是启动时快照的区域, 不跟随窗口**: 窗口挪动/改大小后要重起 x11vnc(封装成 `--restart` 的幂等脚本);
   想整轮桌面用就 `ZMAX_VNC_CLIP=screen`。先启动目标程序再起 VNC, 否则拿不到窗口几何。
 - 消费端可以就是 VSCode 编辑器标签页: `vscode.commands.executeCommand('simpleBrowser.show', 'http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale')`
-  (保障链 `simpleBrowser.show` → `simpleBrowser.api.open` → `vscode.env.openExternal`); 见 `zmax-vscode-extension`。
+  (兜底链 `simpleBrowser.show` → `simpleBrowser.api.open` → `vscode.env.openExternal`); 见 `zmax-vscode-extension`。
 - **排查桌面"卡"时不要先怀疑 x11vnc**: 实测它常驻 **0.0% CPU**(即使正在被 noVNC 拉流) —— 桌面卡先量按进程的 GPU sm%(见 `linux-host-maintenance` §1b)。
 
 ## 开关口径

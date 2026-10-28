@@ -46,12 +46,12 @@
   「⚠️ 引擎未运行 · 静态初始帧 — 这幅画面没有在跑仿真 (点 ▶运行 看实况)」), 有实况帧则**原样显示**。
   取证 `tools/verify_viewer_idle_banner.py` (6 项: idle 有横幅 / 实况无横幅且字节一致 / 帧过期回横幅)。
 
-## 3D 分层视图 (DreamView3D) 预先固定几何清单 (顺带核对, 本次 x/y 未违反)
+## 3D 分层视图 (DreamView3D) 写死几何清单 (顺带核对, 本次 x/y 未违反)
 
 `tools/gui/ss_dreamview.py`: `_HOLE_MOUTH=[-0.1685,0.4623,0.1309]` · `_HOLE=[-0.2345,0.4623,0.1309]` ·
 `_BOX_CENTER=[-0.2645,0.4623,0.095]` · `_PEG_CENTER_OFF=[-0.03,0,-0.01]` · `_PEG_SIZE=(0.20,0.03,0.03)`。
 - 槽/孔/盒 **由 `tr["_meta"]` 覆盖** (引擎发 `hole_mouth/goal/box_center`) → 实测 Δ=**0mm** ✅ (老"偏 3.8cm"已修)。
-- **光模块几何**走 `tr["peg"] + _peg_center_off`, 而 meta 里**没有** `peg_head_off` ⇒ 走预先固定默认 `[-0.13,0,-0.01]`
+- **光模块几何**走 `tr["peg"] + _peg_center_off`, 而 meta 里**没有** `peg_head_off` ⇒ 走写死默认 `[-0.13,0,-0.01]`
   → `center_off=[-0.03,0,-0.005]`。实测终局: 视图画的中心 vs 真值 = **Δx/Δy=0, Δz=+5mm**;
   另 `_PEG_SIZE[0]=0.20`(画 20cm) 而真值 **24cm** ⇒ 画的杆短 4cm (要精确就补 meta 的 peg 几何)。
 - `tools/diag_view_vs_truth_pegalign.py` 一键出这三行对照, 改这块前先跑它。

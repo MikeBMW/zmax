@@ -57,7 +57,7 @@ curl -sL -o data/chunk-000/file-000.parquet "https://huggingface.co/datasets/<re
 - **磁盘预算**: 告诉用户实际占用量 (如 "194M: meta + 2分片"), 让用户确认是否够。
 - **不装 huggingface_hub 也能下**: 纯 curl + resolve URL 即可, 不需要 hf CLI / snapshot_download (那个会拉全量)。
 - **训练环境**: `python3 -m venv --clear .venv && .venv/bin/pip install -i https://mirrors.aliyun.com/pypi/simple/ ...` (国内镜像)。**清华 pypi 镜像 (pypi.tuna.tsinghua.edu.cn) 会返回 403** (2026-08-01 实测, 阿里云 200) — 换镜像前先 `timeout 15 curl -sI <mirror>/simple/huggingface-hub/` 看 HTTP 码再选。装 torch 大包时 **TMPDIR 必须指向磁盘** (WSL 的 /tmp 是 tmpfs 内存盘 ~8G, pip 解包会撑爆它报 `No space left on device`): `export TMPDIR=$HOME/pip-tmp && mkdir -p $HOME/pip-tmp` 再跑 pip。PEP 668 环境给系统 python 装包用 `--break-system-packages`。
-- **官方 PyPI 是保障, 别判死**: 镜像源都失败时 (阿里云也网络错误), 官方源 `pip install --resume-retries 5 torch torchvision datasets` **能成功** — 2026-08-01 实测 torch 2.11.0+cu128 装通且 CUDA 可用 (下载慢, 断点续传可靠)。pip 报 network error 时加 `--resume-retries 5` 重试, 不要立刻放弃。
+- **官方 PyPI 是兜底, 别判死**: 镜像源都失败时 (阿里云也网络错误), 官方源 `pip install --resume-retries 5 torch torchvision datasets` **能成功** — 2026-08-01 实测 torch 2.11.0+cu128 装通且 CUDA 可用 (下载慢, 断点续传可靠)。pip 报 network error 时加 `--resume-retries 5` 重试, 不要立刻放弃。
 - **venv 重建陷阱**: `python3 -m venv --clear .venv` 安装中断后可能留下损坏 venv — 症状: `.venv/bin/pip` 消失 (No such file) 或 pip 报 `certifi/cacert.pem` 路径无效 / site-packages 空。修: `rm -rf .venv && python3 -m venv .venv` 完全重建再装 (别用 --clear)。注意 venv 里 python 版本可能与你预期不同 (系统 python3.14 建的 venv 实际是 3.12) — 以 `.venv/bin/python --version` 为准。
 
 ## 参考实例

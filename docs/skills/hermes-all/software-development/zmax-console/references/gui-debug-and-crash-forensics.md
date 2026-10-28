@@ -23,7 +23,7 @@
 - 按文件路径 `spec_from_file_location` + `module_from_spec` + `exec_module` 装载的模块(不走 sys.modules)
   **能**命中断点, 前提是 `os.path.realpath(文件)` 与工作区路径逐字一致 —— 先 `readlink -f` 核对路径里有没有软链成分。
 - 附带好处: 这类模块**每次点击都从磁盘重新 exec** ⇒ 改它不用重启控制台, 下次点运行即生效。
-- 断点只打**唯一依据文件**: `grep -rn "class 名字" --include=*.py .` 全仓确认没有第二份副本/另一个检出。
+- 断点只打**真源文件**: `grep -rn "class 名字" --include=*.py .` 全仓确认没有第二份副本/另一个检出。
 
 ### 4. 触发路径确认
 - 节点只在 ▶运行 / 单步 / 右键运行 时执行, 且跑在 **Qt 主线程**(不是 worker 线程) ⇒ attach 后主线程断点正常命中。

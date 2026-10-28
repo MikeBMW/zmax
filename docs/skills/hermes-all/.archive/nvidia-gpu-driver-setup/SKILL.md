@@ -61,7 +61,7 @@ description: Use when Ubuntu 装 NVIDIA 驱动或 nouveau 冲突加载失败。
 - 显示走 Intel 核显(i915)的笔记本, 卸 nouveau 不影响显示; dmesg 里 nouveau "Cannot find any crtc or sizes" = 独显没接显示器, 可安全卸。
 
 ## ⚠️ nvidia_drm 显示闪烁 / gem 错误 (双显卡笔记本, modeset=0 根治, 2026-08-25 实测)
-- 症状: 显示器狂闪、新窗口无法打开(窗口 state=Iconic/IsUnMapped, `xdotool windowactivate` 无效)、GNOME 反复重绘; dmesg 反复刷 `nvidia_drm ... Failed to lookup gem object` + `nvidia-modeset: Unable to read EDID for display device DP-4`。
+- 症状: 显示器狂闪、新窗口打不开(窗口 state=Iconic/IsUnMapped, `xdotool windowactivate` 无效)、GNOME 反复重绘; dmesg 反复刷 `nvidia_drm ... Failed to lookup gem object` + `nvidia-modeset: Unable to read EDID for display device DP-4`。
 - 根因: nvidia_drm 默认 modeset=1(KMS 开), mutter 合成器用 nvidia(card2) 做显示合成时 gem 对象查找失败 → 反复重试 + EDID 重读 → 闪屏 + 窗口合不出。
 - 根治: 关 nvidia KMS, 显示纯走 Intel 核显(i915/eDP-1), nvidia 只留 CUDA:
   ```bash

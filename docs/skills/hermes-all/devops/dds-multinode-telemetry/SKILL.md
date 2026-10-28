@@ -30,7 +30,7 @@ python3 -m venv ~/dds-venv && ~/dds-venv/bin/pip install cyclonedds
 2. **节点封装**（`dds/zmax_node.py`）：`Node(name, domain, config_xml)` + `pub/sub/send/take/wait_for_match`
    - ★ `wait_for_match(topic, n=1, timeout)` —— **n 必须 ≥1**；写 0 会"永远匹配成功"→ 没等发现就发 → 丢包
 3. **采集器**（`tools/gui/dds_hw.py`）：后台线程订阅 → 共享 dict（加锁）
-   - 三级降级：**进程内直连** → 子进程 DDS 桥（读桥落盘的 JSON）→ HTTP 保障（**必须标注"非DDS"**，别偷偷降级）
+   - 三级降级：**进程内直连** → 子进程 DDS 桥（读桥落盘的 JSON）→ HTTP 兜底（**必须标注"非DDS"**，别偷偷降级）
 4. **三端脚本**：本机发布端 / 对端发布端 / 只读 watcher（自检用）
 
 ## ★ 8 个实测坑（都踩过）
@@ -44,7 +44,7 @@ python3 -m venv ~/dds-venv && ~/dds-venv/bin/pip install cyclonedds
 5. **IDL 消息不能直接 `m.__dict__` 转 JSON** —— 里面含 `SampleInfo` → `not JSON serializable`
    → 按话题**显式提取字段白名单**
 6. **QoS Policy API 不统一**：`Reliability.Reliable(0)`/`History.KeepLast(1)` 可调用，但
-   `Reliability.BestEffort` / `Durability.TransientLocal` **不可调用** → 写个保障：
+   `Reliability.BestEffort` / `Durability.TransientLocal` **不可调用** → 写个兜底：
    ```python
    def _p(cls, *a):
        try: return cls(*a)

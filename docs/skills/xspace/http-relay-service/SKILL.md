@@ -155,16 +155,16 @@ GET  /agent/status                         → 两侧计数 + last_prompt/last_r
    - 往看门狗里加的"防呆"要能治 §12.5 的死锁: 杀掉**挂在取命令临时脚本上超过 N 分钟**的子进程(实测 10 分钟), 只杀子进程、主循环不动。
 4. **通道死了就从外面救不回来** (无登录口 = 无第二入口) ⇒ 把「让人在那台机贴一行」当正式恢复手段写进 runbook, 交付时就把那一行贴出来。一行模板:
    `cd <工作目录>; iwr http://<hub>:<port>/<client>.ps1 -OutFile <client>.ps1 -UseBasicParsing -TimeoutSec 20; powershell -ExecutionPolicy Bypass -File .\<client>.ps1`
-   (PS 5.1 下下载/轮询一律带 `-UseBasicParsing -TimeoutSec N` —— 不带会卡在 IE/代理初始化, 现场表现就是"怎么阻塞了")。
+   (PS 5.1 下下载/轮询一律带 `-UseBasicParsing -TimeoutSec N` —— 不带会卡在 IE/代理初始化, 现场表现就是"怎么卡住了")。
 
-5. **命令必须"有界": 子进程没有超时, 一条阻塞的命令会把整条通道堵死**. 循环是**同步**执行子进程
+5. **命令必须"有界": 子进程没有超时, 一条卡住的命令会把整条通道堵死**. 循环是**同步**执行子进程
    (`& powershell -NoProfile -ExecutionPolicy Bypass -File <临时.ps1> 2>&1 | Out-String`), **没有任何超时**;
-   而目标机的看门狗只看"客户端进程在不在"(CommandLine 含客户端脚本名) ⇒ **阻塞但活着的客户端永不自愈**。
+   而目标机的看门狗只看"客户端进程在不在"(CommandLine 含客户端脚本名) ⇒ **卡住但活着的客户端永不自愈**。
    症状: hub 日志里最后一条「下发」没有对应「回执」、beat 文件停更、回执目录不再增长。
    挨雷的命令型(实测把通道堵死十几分钟): 通配删除(`Remove-Item <dir>\*.png`)、扫系统大目录
    (`Get-ChildItem C:\Windows\Temp`)、任何会弹交互提示的调用。定式: 一次只做一件事、**不通配删、不扫大目录**,
    长活拆成多条短命令、每条自带 `-TimeoutSec`; 清文件交给对方的定时任务或分页做。
-   恢复(无登录口 ⇒ 必须让人在现场跑一行; 只杀阻塞的子进程即可, 主循环会自己接着跑, 队列里的命令会继续执行):
+   恢复(无登录口 ⇒ 必须让人在现场跑一行; 只杀卡住的子进程即可, 主循环会自己接着跑, 队列里的命令会继续执行):
    `Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { $_.CommandLine -like '*<临时脚本名>*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`
    判活: `beat` 文件 mtime < 90s **且** 回执目录出现了新文件(只看一条会误判)。
 
@@ -200,7 +200,7 @@ GET  /agent/status                         → 两侧计数 + last_prompt/last_r
   而同一份东西在 `/api/relay/data/<名>` 是 200。**判写入失败前先按消费者实际读的那条 URL 回读**，两边都对不上再怀疑写入。
   另外 `GET /api/relay/data/<不存在>` 可能返回**端点自述 JSON**而不是 404 ⇒ 判存在看**内容**，不看状态码。
 - 判"某路径是不是真端点"不能只看 200：设备/中继常见 catch-all（未知路径返回同一份默认 JSON）。
-  逐路径比 `%{size_download}` + 首字节（`head -c 4 | xxd -p`）—— 大小与类型完全一致 = 保障路由，端点不存在。
+  逐路径比 `%{size_download}` + 首字节（`head -c 4 | xxd -p`）—— 大小与类型完全一致 = 兜底路由，端点不存在。
 
 ## Verification checklist
 1. `curl -X POST <relay>/upload` small JSON → `{"ok": true}`
@@ -237,6 +237,6 @@ Prevention note: nothing supervises relay/nginx on the ECS — a reboot or crash
 ## References
 - `references/host-down-vs-service-down-triage.md` — 整站不可达: 实例停机 vs web 层死的判据表 + 可直接复用的取证命令 + 「它真的重启了吗 / 服务自愈了吗」的判据
 - `references/zmax-relay-deploy.md` — Z-MAX deployment specifics (endpoints, nginx block, client scripts, bug history)
-- `references/websocket-relay.md` — WS 状态中转实测: ws_relay.py 广播 hub + Orin WS主/HTTP保障 + 路径别名坑 + 验证步骤
+- `references/websocket-relay.md` — WS 状态中转实测: ws_relay.py 广播 hub + Orin WS主/HTTP兜底 + 路径别名坑 + 验证步骤
 - `references/zmax-ws-event-loop.md` — WS 事件驱动闭环实测 (2026-08-03): data_arrived 事件广播 (notify:8766→hub) + auto_loop.py v2 订阅端 + /command 采集指令端点 + 三个新坑 (/status mtime 排序 / 二进制包 frames=? / 远程补丁吞函数头)
 - `templates/frpc.toml` — 内网穿透起步配置 (一台 frpc 代理局域网多台机器 + loginFailExit + 每个 remotePort 都要开安全组)

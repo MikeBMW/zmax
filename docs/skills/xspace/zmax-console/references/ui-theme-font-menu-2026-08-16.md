@@ -6,7 +6,7 @@
 - 🔤 字体大小: 小(-2) / 标准(0) / 大(+2) / 特大(+4)，相对原始 11px 的 delta
 
 ## 实现架构 (studio.py)
-1. 浅色调色板 `L_*` 常量 (与 simulink_module.THEMES["light"] 对齐) + `THEME_PAIRS = [(dark色, light色), ...]` + `THEME_PAIRS_EXTRA`(画布/节点/日志 QSS 里固定不变的深色硬编码值)
+1. 浅色调色板 `L_*` 常量 (与 simulink_module.THEMES["light"] 对齐) + `THEME_PAIRS = [(dark色, light色), ...]` + `THEME_PAIRS_EXTRA`(画布/节点/日志 QSS 里写死的深色硬编码值)
 2. `apply_ui_theme(window, theme)`:
    - 遍历 `[window] + window.findChildren(QWidget)`，**并显式 append `window.menuBar()`** — QMenuBar 是 QMainWindow 特殊子控件，不在 findChildren 返回里
    - 每控件: `for dc, lc in pairs: ss.replace(dc, lc) if light else ss.replace(lc, dc)` — 元组顺序是 (dark, light)!

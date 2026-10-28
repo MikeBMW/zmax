@@ -35,7 +35,7 @@
 - 选片排除 rot180/rot 变体 + 伪装副本「发送_MLP插拔成功.mp4」
   (字节数与 mlp_insert_success_rot180.mp4 完全相同 = rot180 副本, HUD 文字倒)
 - MLP 视频默认 rot180 (老倪实测图像才正); 用 QPixmap.fromImage(pm.toImage().mirrored) 快转
-- 播放器要点: 初始 1280x820 可调大小, 循环播放 (播完自动暂停会被误认"阻塞"),
+- 播放器要点: 初始 1280x820 可调大小, 循环播放 (播完自动暂停会被误认"卡住"),
   QLabel setPixmap 缩放适配 (resizeEvent try 保护), 标题栏/按钮禁 emoji (VcXsrv wqy 无字形 → ??)
 
 ## 渲染子进程化 (Pillow GIL)

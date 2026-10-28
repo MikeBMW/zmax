@@ -35,7 +35,7 @@
 * **✓ 提交按钮灰着 = 没有已暂存更改** —— VSCode 只在 `Staged Changes` 非空时亮。两条路:
   ① 点文件行 / `Changes` 标题行的 `+` 先暂存;
   ② 设 `git.enableSmartCommit: true` **并 Reload Window** —— 设置改了不重载, **已打开的窗口读不到**, 按钮照样灰(本次就卡在这)。
-* 身份/远端唯一依据 = **仓库级** `/home/ubuntu/zmax/.git/config` (`user.name`/`user.email`/`remote.origin.url`/`branch.main.*`);
+* 身份/远端真源 = **仓库级** `/home/ubuntu/zmax/.git/config` (`user.name`/`user.email`/`remote.origin.url`/`branch.main.*`);
   全局 `~/.gitconfig` 只有 `credential.helper = store`(口令在 `~/.git-credentials`, 内含 github.com/ghproxy.net/ghfast.top)。
   查证用 `git config --list --show-origin | grep -E "user\.|remote\.origin|branch\.main"` / `git branch -vv` / `git status -sb`。
 * 🔴 **打印凭证时只截主机名**: `grep -oE 'https://[^/]+' ~/.git-credentials` 仍会带出 `用户名:token@` 整段 —— 本次踩到。要脱敏就 `sed 's#//[^@]*@#//***@#'`。

@@ -6,7 +6,7 @@
     W=$(wmctrl -l | awk '/XSpace ZMAX/{print $1; exit}')
     DISPLAY=:0 QT_QPA_PLATFORM=xcb <venv>/bin/python grab_window_by_winid.py "$W" /tmp/win.png
 
-为什么不用别的: ImageMagick `import` 常没装; `xwd -id` 输出 PIL 无法打开, 且窗口被遮挡时
+为什么不用别的: ImageMagick `import` 常没装; `xwd -id` 输出 PIL 打不开, 且窗口被遮挡时
 截到的是压在上面的那个窗口 (实测截到自己的终端)。QScreen.grabWindow 直接取该窗口的后备缓冲,
 被遮挡、在别的 workspace 都能拿到正确像素。
 

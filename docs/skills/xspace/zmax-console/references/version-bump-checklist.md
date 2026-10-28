@@ -7,7 +7,7 @@
 2. `tools/gui/studio.py` — `setWindowTitle("XSpace Studio — Z-MAX vX.Y.Z [W-01]")` × 2 处 (正常 + ⚠️非调试模式)
 3. `git tag vX.Y.Z` + push
 
-## 两处易漏 (2026-09-01 实测遇到问题)
+## 两处易漏 (2026-09-01 实测踩坑)
 - **`VERSION.md` 版本历史表缺条目**: 实测 v3.4.0 条目从未写入, 表头从 v3.2.3 直接跳 v3.4.1。
   升级时检查上一版条目是否在表里, 缺则补。
 - **窗口标题摘要注释头部停旧版**: `_QTimer.singleShot(2000, self._maybe_warn)` 那行的注释

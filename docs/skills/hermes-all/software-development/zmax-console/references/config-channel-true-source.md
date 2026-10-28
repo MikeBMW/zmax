@@ -1,4 +1,4 @@
-# 「配置通道」/配置中心模型配置 —— 必须唯一依据现算, 不许留手写实验表
+# 「配置通道」/配置中心模型配置 —— 必须真源现算, 不许留手写实验表
 
 ## 老倪口径 (2026-10-14)
 > 「你看下面的配置通道，都是之前的模型配置了。现在要与状态空间工程实际数据一致。
@@ -6,32 +6,32 @@
 > 「还有个 SAM3 呢，怎么搞？」
 
 ⇒ 界面上任何"模型/参数"表象 (配置通道大表、配置中心模型配置域、模型引擎窗口) 都必须是
-**同一份唯一依据现算**, 且必须能回答"这层到底在跑哪个模型", 而不是残留某次实验的对比表。
+**同一份真源现算**, 且必须能回答"这层到底在跑哪个模型", 而不是残留某次实验的对比表。
 
-## 落点: `tools/model_config_matrix.py` (单一唯一依据)
+## 落点: `tools/model_config_matrix.py` (单一真源)
 - 列 = 真实层 L2/L3/L4/L5 (不是旧 Model Zoo 的实验名 ACT/SmolVLA/AWE/官方专家…)。
 - 行 = 四组 + 一组候选:
   🏗 模型身份(在役模型/版本/权重路径/权重体积/状态) · 🧠 结构与训练(架构/参数量/微调方式/训练入口/最近训练/最近一次结果)
   · 🔗 状态空间接入(状态空间节点/输出话题/节点源码) · 🔎 候选(未在役)(候选模型/候选判据)
-- 读的唯一依据: `tools/model_inventory.py --json` + `8796 /status/all` + `state_space_obs.json`(画布节点 id) +
+- 读的真源: `tools/model_inventory.py --json` + `8796 /status/all` + `state_space_obs.json`(画布节点 id) +
   `config/mcd/param_registry.json` + `reports/joint_train_*/summary.json`(真训 rc/秒)。
 - 输出三用: `--json`(GUI) / `--write`(缓存 `reports/model_config_matrix.json`, GUI 冷启动读它不阻塞) / `--check`(判据: 四层 × N 项无空值)。
-- **取不到一律写 "唯一依据未登记"，不编数字**; 唯一依据全取不到时界面**明写"取不到"并拒绝退回旧表** (拿旧数据当现状=骗人)。
+- **取不到一律写 "真源未登记"，不编数字**; 真源全取不到时界面**明写"取不到"并拒绝退回旧表** (拿旧数据当现状=骗人)。
 - `extras` 键 (如 `SAM3|基座路径`) 供配置中心模型配置域做单项参数 (在役/候选之外的独立能力)。
 
 ## 层的"好几个模型"要如实并列 (本次教训)
 每层往往不止一个模型: **在役 1 个 + 候选 N 个** (L2 就有 YOLO 在役 + SAM3 开放词汇分割 候选)。
 - 只取 active 那个 ⇒ 界面上 SAM3 直接"不存在" ⇒ 老倪一句「还有个SAM3呢」就穿。
 - 做法: matrix 多出一组 `🔎 候选 (未在役)` → 列该层所有非在役产物 + **为什么没切**的判据
-  (判据唯一依据 = 8796 的 `note_short`; 有产物但没做过 A/B ⇒ 写"产物未评估(尚无 A/B 判据)"。
+  (判据真源 = 8796 的 `note_short`; 有产物但没做过 A/B ⇒ 写"产物未评估(尚无 A/B 判据)"。
 - 候选被整个漏掉的**根因常在清单侧**: `model_inventory.py::_layer_candidates()` 按层 glob 固定目录,
   别的能力 (SAM3) 不在那些目录 ⇒ 清单没有 ⇒ 三个界面一起漏。**修在清单, 不在界面**。
 
-## 配置中心: 参数注册用 `matrix` 类唯一依据 (`tools/mcd_build.py`)
+## 配置中心: 参数注册用 `matrix` 类真源 (`tools/mcd_build.py`)
 - `_model_matrix()` 把 `groups[].rows[].vals` 拍平为 `"<层>|<行名>"` 键, 并把 `extras` 一并拍平。
 - 参数写成 `read=("matrix", "L2|候选判据")` 即可 (与界面同一份缓存, 「改一次三处同步」)。
 - `_cur()` 支持的 kind: `calib/manifold/dbc/cfgspec/perf_spec/model/matrix`; **`file` 这种 kind 不存在**
-  (写了会静默 None ⇒ 就绪度缺口里冒出一片未接线)。路径类唯一依据要走 `matrix`/`model`。
+  (写了会静默 None ⇒ 就绪度缺口里冒出一片未接线)。路径类真源要走 `matrix`/`model`。
 - 判据: 跑完 `mcd_build.py` 看就绪度缺口列表里**不该出现本轮新增的 id**。
 
 ## 长格被 Qt **静默右截**（连省略号都没有）—— 实测一轮
@@ -68,7 +68,7 @@
 ## 旧表下线: 删代码, 不是不调用
 「都是之前的模型配置了」⇒ 旧的 `ZOO_SPEC/ZOO_MODELS/_build_zoo_table`（114 行）**直接删**：留着就有被重新接上的风险。
 - 删后必须清扫引用: `hasattr(self, "zoo_table")` 这类守卫会静默变 False ⇒ 把控件坐标注册 `_holo_coord_register("P03",…)` 改指向新表 `cfg_matrix_table`。
-- 回归判据写进 `tools/verify_model_engine_unified.py`（⑧配置通道唯一依据现算 ⑨表高按内容定 ⑩列头不硬切 ⑪矩阵唯一依据 --check PASS）⇒ 现 11/11。
+- 回归判据写进 `tools/verify_model_engine_unified.py`（⑧配置通道真源现算 ⑨表高按内容定 ⑩列头不硬切 ⑪矩阵真源 --check PASS）⇒ 现 11/11。
 
 ## PyQt 布局崩溃坑 (实测 core dumped, 一整轮)
 `layout.addLayout(x)` / `layout.addWidget(x)` 在 **QFormLayout** 上不存在 ⇒ 建页时 AttributeError ⇒
@@ -81,7 +81,7 @@
 
 ## 反复重启 GUI 会被守卫拒（不是故障）
 `tools/studio_ctl.sh restart` 在**距上次启动 <300s** 时会打「⛔ 拒绝: 控制台才起了 179s（<300s）」并
-**返回 exit 0、status 仍是旧的 pid** —— 看着像“重启成功”，实际跑的还是旧代码。必须改代码后验证界面时:
+**返回 exit 0、status 仍是旧的 pid** —— 看着像“重启成功”，其实跑的还是旧代码。必须改代码后验证界面时:
 `bash tools/studio_ctl.sh restart --force`（一次到位，别反复刷 —— 老倪已投诉窗口闪来闪去）。
 判据: `pgrep -f 'tools/gui/studio[.]py'` 的 pid 必须变，且新 pid 存活。
 

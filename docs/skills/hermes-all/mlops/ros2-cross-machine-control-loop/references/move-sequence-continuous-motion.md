@@ -48,5 +48,5 @@ ros2 service call /move_sequence interfaces/srv/MoveSequence \
 ## 两种客户端形态
 - **循环放边缘机**(一个 ssh 会话里发 N 条请求, 比本机逐条 ssh 快一个量级)：循环里自己订阅机器人 TCP 判到位
   —— `QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT)`(这类话题是 BEST_EFFORT, 默认 RELIABLE 收不到)。
-- **本机脚本发单腿**: 到位轮询 0.4~0.5s, 超时预算按距离算(别预先固定小值), 不达标**立即 `exit 1`**, 带疑点不往下走。
+- **本机脚本发单腿**: 到位轮询 0.4~0.5s, 超时预算按距离算(别写死小值), 不达标**立即 `exit 1`**, 带疑点不往下走。
 - 到位判据要与动作同源: 平移看位置, **姿态看 quat**(纯姿态动作拿位置当判据永远为真 = 假 ✅)。

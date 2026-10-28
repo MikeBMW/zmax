@@ -46,7 +46,7 @@ def _hw_sources(self):
 - 订阅 `zmax/hw_state` / `train_prog` / `heartbeat` → 按 node 名聚合
 - 节点列表：`🟢/🔴 + 名字 + 角色 + 设备 + 后端(CUDA/MPS) + 训练进度 + 在线龄`
 - 按钮「📡 启动本机 DDS 发布」→ 自包含（用打包进来的 dds 模块起线程发布，不依赖外部脚本/venv）
-- 卡片要标注**传输方式**：`DDS 直连` / `DDS 桥` / `⚠️非DDS(HTTP保障)` —— 别偷偷降级
+- 卡片要标注**传输方式**：`DDS 直连` / `DDS 桥` / `⚠️非DDS(HTTP兜底)` —— 别偷偷降级
 
 ## 4. 改 studio.py 加控件的 4 个坑（都踩过）
 | # | 坑 | 症状 | 修 |

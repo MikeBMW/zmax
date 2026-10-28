@@ -11,10 +11,10 @@
 常见误标: 把 DeepSeek VL 标成 L3(它是 **LLM 层**); 把规划标成 LLM; 把 L4 只当"策略"而丢了"安全+导航"。
 功能清单里的层标要同步: `feature_test_matrix.py` 的 F23(DeepSeek VL 场景理解) 层标 = **LLM**。
 
-## 真机链路 (一次抓取的真实数据流, 已验证通过)
+## 真机链路 (一次抓取的真实数据流, 已跑通)
 ```
 Orin 真机帧(tap) ──► LLM: DeepSeek VL 场景理解 ─┐
-YOLO(在役权重) 2D ──► 板坐标系/视觉常数 3D ─────┴─► data/scene_state.json (单一唯一依据)
+YOLO(在役权重) 2D ──► 板坐标系/视觉常数 3D ─────┴─► data/scene_state.json (单一真源)
         │
         ▼
 L4 闸门: power_state=on · operation_state=idle · has_error=false (有错先 /rokae_recover_estop 复位)

@@ -10,7 +10,7 @@ description: Use when 做产品级评估分析/设升级门槛(基线版对比).
 - 要「配置中心所有性能指标科学地与基线对比」, 或要一个有准入门槛的评估功能页。
 - 要判某次改动到底算不算「提升」(而不是只看不回退)。
 
-## 三层唯一依据 (改一处即可, 别在页面里算)
+## 三层真源 (改一处即可, 别在页面里算)
 | 层 | 文件 | 职责 |
 |---|---|---|
 | 指标定义 | `config/platform/zmax_perf_spec.json` (A–F 共 58 条: 运动学/视觉/电口/光口/节拍/环境) | 指标名 · 单位 · **目标** · how(怎么测) · std |
@@ -21,7 +21,7 @@ description: Use when 做产品级评估分析/设升级门槛(基线版对比).
 页面只**读报告**(单一显示口径): `studio.py::EvalModule`。判据 `tools/verify_eval_analysis.py`。
 
 ## 证据类必须标出来 (这是评测可信度的全部)
-`实测` (唯一依据文件+帧龄) / `标定·配置` (标定唯一依据) / `推导` (写算式) / `设计声明(BOM)` / `未测` (写采集条件)。
+`实测` (真源文件+帧龄) / `标定·配置` (标定真源) / `推导` (写算式) / `设计声明(BOM)` / `未测` (写采集条件)。
 - **未测 = value 必须 None**, 绝不用 0 或设计值冒充实测 (0 是「测得为零」, 不是「没测」)。
 - **声明≠实测**: BOM/厂商规格/设计要求值一律判 `待现场实测`, 不许记「达标」(否则假达标混进升级结论)。
 - **样本不足不判定**: n < 判定所需 (如 3σ 要 ≥30 次) ⇒ 达标列写「样本不足」, 只报值。
@@ -32,9 +32,9 @@ description: Use when 做产品级评估分析/设升级门槛(基线版对比).
 物理值验证结果, 每个 L2 的原子技能都要全过程验证一遍, 不留死角, 每个标准状态, 每个原子技能, 每个物理参数,
 都要全系统验证。元任务定义/配置, 性能指标定义, 物理值验证结果报告, 完成后发到飞书端」。
 
-**链条与唯一依据 (一处取, 不硬编数字):**
+**链条与真源 (一处取, 不硬编数字):**
 
-| 环节 | 唯一依据 | 说明 |
+| 环节 | 真源 | 说明 |
 |---|---|---|
 | 元任务定义/配置 | `tools/export_meta_doc.py::build_meta_tasks()` | 75 条 = 功能(FN-SYSx-N)+参数+依赖+验证方法+层 |
 | 任务配置 | `config/tasks/tasks.json` (7 任务) | steps / applies_segments / targets / overrides |
@@ -42,7 +42,7 @@ description: Use when 做产品级评估分析/设升级门槛(基线版对比).
 | 段→技能 | `atomic_skills.py` 类属性 + `SKILL_BY_STAGE` | 别自己编号 (SK07 同号两支: 插入/放入) |
 | 物理参数 | `config/calib/zmax_skill_physics.json::stages[段][量]` | `{value,min,max,unit,src}`; 13 段 × 9 量 = 117 |
 | 性能指标 | `config/platform/zmax_perf_spec.json` | 58 条 / 6 组 / 目标值 + how + std + links |
-| phase 归属 | `config/eval/phase_metric_map.json` (自建唯一依据) | 58/58 映射 + 物理载体; 没写进去的算未映射报红 |
+| phase 归属 | `config/eval/phase_metric_map.json` (自建真源) | 58/58 映射 + 物理载体; 没写进去的算未映射报红 |
 | L2 闸门实测 | `zmax_data/ss_live/skill_phys.json` · `skill_latest.json` | 逐技能实测+包络; 过闸计数 |
 
 **phase 归属口径 (老倪给的关键词, 别自己发明):** Phase 0 反馈速度延迟 (单拍时延/分辨率/整定) ·
@@ -69,7 +69,7 @@ Phase 3 稳定性 (长期/扰动) · Phase 4 可靠性·准确性 (寿命/故障
    「样本不足并报值」; 目标值「待定」的**不许判达标**; 未测必须带 `采集条件:` (取自 how)。
 3. **飞书发送结果字段是扁平的**: `feishu_send.send_text` 返回 `{ok, code, msg, message_id, http, attempts}`,
    不是 `{data:{message_id}}` —— 判成功要读 `message_id` (否则送达了也报「未送达」)。
-4. 报告/台账落 `docs/eval/` 与 `zmax_data/eval/`; **config/ 是符号链接进 data/ (被 gitignore)** ⇒ 自建唯一依据
+4. 报告/台账落 `docs/eval/` 与 `zmax_data/eval/`; **config/ 是符号链接进 data/ (被 gitignore)** ⇒ 自建真源
    (phase map / 基线锁) 不在代码库里, 交付时要说清。
 
 ## 判定与准入
@@ -78,17 +78,17 @@ Phase 3 稳定性 (长期/扰动) · Phase 4 可靠性·准确性 (寿命/故障
 3. **三闸准入** `upgrade_allowed = ①零回退 ∧ ②有净提升 ∧ ③全局一致性零冲突`; 未测/样本不足**不计入净提升**, 单列计数。
 
 ## 全局数据一致性 (三链交叉核)
-- 指标定义唯一依据 (条数与页面/报告一致)
+- 指标定义唯一真源 (条数与页面/报告一致)
 - 版本一致 (studio / docs_sync / 基线锁同版本)
-- L2 包络 == 标定唯一依据 (`config/calib/zmax_skill_physics.json`) 逐条比对
+- L2 包络 == 标定真源 (`config/calib/zmax_skill_physics.json`) 逐条比对
 
 改坏任一条 ⇒ 冲突数 >0 ⇒ 一致性闸不过 (判据里用沙箱篡改验证「改了一定会红」)。
 
-## 现在能实测量的 (唯一依据在手, 别凭感觉)
+## 现在能实测量的 (真源在手, 别凭感觉)
 - 节拍/成功率/对位残差: `zmax_data/task_runs/*/run_summary.json` (judges: ct_s/takt_s/dx_mm/dy_mm/dz_mm/yaw_err_deg)
 - 主参数 M: `task_runs/TASK-01-FW/chain_*.jsonl` (度规特征值上下限 ⇒ 条件数, 度规正定)
 - 通道/实时性: `zmax_data/dataspace/live.json`
-- 物理参数: `zmax_data/ss_live/skill_phys.json` ↔ 标定唯一依据
+- 物理参数: `zmax_data/ss_live/skill_phys.json` ↔ 标定真源
 - 像素当量: `config/calib/zmax_calib.json` 的 fx (`距离/fx`)
 - 规格类: `config/platform/zmax_project_bom.json` items[].note (半径/负载/重复精度/行程/ESD/安全等级)
 

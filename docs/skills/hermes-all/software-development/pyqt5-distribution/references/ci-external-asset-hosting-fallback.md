@@ -1,4 +1,4 @@
-# CI 取不到外部权重/资产时的保障: 改用 GitHub Release 资产 (2026-09-19 实测)
+# CI 取不到外部权重/资产时的兜底: 改用 GitHub Release 资产 (2026-09-19 实测)
 
 ## 症状
 Windows job 在 **"Download … weights" 步骤** fail, 后面所有步骤 skip;
@@ -12,7 +12,7 @@ mac job 同样会挂。日志里就是 `curl -fsSL` 非零退出 (404/连接失�
    → 注意区分"本机连不上"与"源站真缺文件": 同一 workflow 里**别的**下载步骤(如视频包)成功了
    ⇒ 域名在 GitHub runner 侧可达, 只是**那几个文件不在**(404) ✓ 结论精确。
 
-## 保障修法 (不依赖对象存储/ECS, 不违反"权重不进代码库")
+## 兜底修法 (不依赖对象存储/ECS, 不违反"权重不进代码库")
 把权重挂到 **GitHub Release 资产**, 让 CI 从 GitHub 自己拉:
 1. 建/找一个 release 专门托管资产 (轻量 tag, 如 `weights-v1`):
    `POST /repos/{o}/{r}/releases {"tag_name":"weights-v1","name":"模型权重托管 (CI 用)"}`

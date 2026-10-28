@@ -45,7 +45,7 @@ src2 = src2.replace(anchor, ENTRY + anchor, 1)   # 只在它**前面插入**新�
 ```
 - summary 只写**结论与判据**（口径/根因/实测数, 如「名义10 ⇒ 实测9.44mm/s」）一行 —— 它直接进 studio.py 的 changelog。
 - 🔴 **工具的命中集 ≠ 全量**: 判据会点出工具**漏掉**的显示字面量。实测 studio.py 的状态栏
-  `sb.showMessage("Z-MAX v…  |  Sys-…")` 与「关于」框 `<b>Z-MAX v…</b>` 各有一处固定不变的版本号，
+  `sb.showMessage("Z-MAX v…  |  Sys-…")` 与「关于」框 `<b>Z-MAX v…</b>` 各有一处写死的版本号，
   不在工具的命中集里，长期停在旧版本。判据报 `❌ GUI 显示陈旧: studio.py:<行>` —— 照行号改掉再复跑。
   **bump 报全 ✅ 不等于同步完成**; 推完才发现漏改，补一个订正 commit 再 push 即可，不必动已推的 tag。
 - 🔴 判据里「**最新 Release tag ≠ 新版本**」那一条**不要追**: tag 推送即触发本仓库 workflow 构建并自动建

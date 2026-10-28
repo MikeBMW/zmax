@@ -32,10 +32,10 @@ U盘 Live 系统开机 → systemd 自动 bind E盘数据目录(读写直通);U�
 | 组件 | 路径 | 作用 |
 |---|---|---|
 | 主挂载脚本 | /usr/local/bin/zmax-data-mount.sh (v2, 备份 .bak_*) | E盘身份校验→挂载→回家回灌→bind→后台同步镜像 |
-| 保障脚本 | /usr/local/bin/zmax-hermes-fallback.sh | 无正牌E盘时 bind 镜像 → ~/.hermes |
+| 兜底脚本 | /usr/local/bin/zmax-hermes-fallback.sh | 无正牌E盘时 bind 镜像 → ~/.hermes |
 | 镜像同步脚本 | /usr/local/bin/zmax-hermes-mirror.sh | E盘 .hermes → /home/ubuntu/.hermes-mirror (全量,排除运行态) |
 | 主服务 | /etc/systemd/system/zmax-data-mount.service | ConditionPathExists=/dev/nvme0n1p5 触发 |
-| 保障服务 | /etc/systemd/system/zmax-hermes-fallback.service | After=data-mount, enabled |
+| 兜底服务 | /etc/systemd/system/zmax-hermes-fallback.service | After=data-mount, enabled |
 | 镜像定时 | /etc/systemd/system/zmax-hermes-mirror.{service,timer} | 开机15min + 每6h, Persistent, enabled |
 | gateway 顺序 | /etc/systemd/system/hermes-gateway.service | After= 已加 zmax-data-mount + fallback |
 | 日志 | /var/log/zmax-data-mount.log, zmax-hermes-fallback.log, zmax-hermes-mirror.log | 各组件运行痕迹 |
@@ -79,5 +79,5 @@ blkid -s LABEL -o value /dev/nvme0n1p5          # 必须 = ubuntu-e
 
 ## 回退
 - 主脚本原版: /usr/local/bin/zmax-data-mount.sh.bak_20260906_053717
-- 停用离家保障: sudo systemctl disable --now zmax-hermes-fallback.service
+- 停用离家兜底: sudo systemctl disable --now zmax-hermes-fallback.service
 - 停用定时同步: sudo systemctl disable --now zmax-hermes-mirror.timer

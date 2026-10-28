@@ -9,7 +9,7 @@
   → 同步进顶层宏观记忆 `data/macro_memory.json#engineering`。
 - **原实现只收** `docs/memory/*.md` + `~/.hermes/memories/*.md` + `~/.hermes/skills/**/SKILL.md`
   ⇒ 只看得见"Hermes 技能清单"，**看不见机器人能执行什么**。
-- **扩展后** 追加: `data/skills/l2_atomic/registry.json` (L2 原子技能库 = GUI 技能清单与常驻执行器同一唯一依据)
+- **扩展后** 追加: `data/skills/l2_atomic/registry.json` (L2 原子技能库 = GUI 技能清单与常驻执行器同一真源)
   + `data/skills/l2_muscle/*.json` → 快照含 `l2_skills`(id/name/group/ros/point) 与
   `counts.l2_skills` / `counts.l2_muscle_skills`，并写进 `macro_memory.engineering.l2_skills`。
 
@@ -28,7 +28,7 @@
 
 ## 2. L2 示教点位库 + 回位技能
 
-- 点位库唯一依据: `data/skills/l2_atomic/taught_points.json`
+- 点位库真源: `data/skills/l2_atomic/taught_points.json`
   (`{pos:[3], quat:[4], desc, recorded_at, source, n_samples, spread_pos_m, spread_quat}`, frame=base_link)。
   **`data/` 不进代码库 = 运行时状态**（真机现场改点位不需要提交）。
 - 回位技能写法 (`registry.json`):

@@ -25,7 +25,7 @@ $UV pip install --python gui-venv311/bin/python packaging   # gymnasium 依赖�
 
 - **pip 最新版 metaworld 3.1.1 的 `env.reset()` 返回 array shape (39,), 不是 dict**
 - 与主 SKILL.md "渲染黑屏"节记录的"本项目远程旧版 obs 是 dict (observation.state 39D + observation.image)"矛盾 = **版本差异**: pip 3.1.1 = array, 远程旧版 = dict
-- 代码要 `np.asarray(obs, dtype=np.float64)` 双兼容, 别预先固定
+- 代码要 `np.asarray(obs, dtype=np.float64)` 双兼容, 别写死
 
 ## EGL headless 渲染 (GUI 进程内真渲染, 不依赖 DISPLAY/WSLg)
 

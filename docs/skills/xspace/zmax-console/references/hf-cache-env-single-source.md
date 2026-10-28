@@ -23,7 +23,7 @@ HF_HOME=os.path.expanduser("~/zmax_data/hf_cache")   # ⇒ /home/ubuntu/zmax_dat
 L2(YOLO 自带权重)与 L4(INTACT 本地 ckpt) 不碰 HF 缓存 ⇒ **"看起来正常", 故障被掩盖成 L3 不行**。
 
 ## 修法 (已落地)
-新建 **`tools/zmax_hf_env.py` = HF 环境单一唯一依据**:
+新建 **`tools/zmax_hf_env.py` = HF 环境单一真源**:
 - `hf_home()`: 依次认 `ZMAX_HF_HOME` → `HF_HOME` → 工程根 `zmax_data/hf_cache`,
   **但只认真正带 `hub/` 子目录的那个** (写错/空的直接跳过, 不瞎指)。
 - `hf_env()`: 返回 `dict(os.environ)` + `HF_HOME`/`HF_HUB_CACHE`/`HF_HUB_OFFLINE=1` (继承 environ,

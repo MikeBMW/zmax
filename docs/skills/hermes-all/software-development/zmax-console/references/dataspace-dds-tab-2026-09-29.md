@@ -34,7 +34,7 @@ src/lerobot/dataspace/topics.py              ← 注册表(话题/类型/QoS/生
   standalone 模式要**隐藏「🗂 经典视图」开关**(它依赖主窗口的 Tab 容器)。命令通道: `printf 'ds_win' > /tmp/zmax_nav_cmd`。
 - ⚠️ 高频自刷新的表格 **禁用 `ResizeToContents`**(逐格量列宽 → 整核 CPU), 详见 SKILL.md 那条。
 
-## 🔎 「某节点的输出是哪个 topic?」怎么查 (先查唯一依据, 别凭印象答)
+## 🔎 「某节点的输出是哪个 topic?」怎么查 (先查真源, 别凭印象答)
 四步，全部可在本机文件里查证：
 1. **设计态(注册表)**: `busdb.json` 的 `signals[]`，每条 = `{sid, src, src_port, dst, dst_port, label, layer, topic, link_id}`。
    **判据: `src` == 目标节点的那条就是它的输出连线; `topic` 字段才是它挂的话题。**
@@ -56,7 +56,7 @@ src/lerobot/dataspace/topics.py              ← 注册表(话题/类型/QoS/生
 **它不产生 DDS 话题**; 真机执行走 `arm_control.py` 的 `ArmController`(Orin SDK 直驱桥 / ROS2 SRV 双后端)。
 查"在不在跑": `docker ps` + `pgrep -af move_group` 为空 = 没起 ⇒ 任何"MoveIt 输出"都不会有新值。
 
-**回答口径(三件一起说, 否则被当成"阻塞了")**: ①设计态那条连线挂哪个话题 → ②现在实测有没有在发(`live.json`) →
+**回答口径(三件一起说, 否则被当成"卡住了")**: ①设计态那条连线挂哪个话题 → ②现在实测有没有在发(`live.json`) →
 ③它上游那一级(如 MoveIt 本体/子容器)此刻有没有在跑。缺任何一件, 用户会在一个永远不更新的字段前面白盯。
 
 ## 复核后整改(2026-09-29, 已入库 f9b58fa0)
@@ -66,7 +66,7 @@ src/lerobot/dataspace/topics.py              ← 注册表(话题/类型/QoS/生
 - 全黑灯墙必须配一句“本档无节点间数据流=预期, 点回灌可点亮全图” —— 否则 74 盏黑灯被老板读成“系统挂了”。
 - 质量页别出 `门=None/None` 这种半成品字样(拿不到 gate 就给 `-`)。
 
-## 改这个页面的遇到问题与铁律
+## 改这个页面的踩坑与铁律
 - **重启纪律**：改 GUI 必须重启才生效，但重启是代价最高的动作。流程 = 作业前备份 → offscreen 自检 → **一次**干净重启 → 汇报带新 pid + 启动时间。`zmax-studio.service` 必须是 `Restart=on-failure`（曾 `always` 导致关窗口被反复拉起）。
 - **offscreen ≠ 现场字体口径**：现场 `Xft.dpi=192`，offscreen 跑 96dpi ⇒ offscreen “全过” 不能当字体不裁的证据。
 - **按钮必须 addWidget**：对象存在 + text() 对，但没挂布局就是界面不可见且不报错。自检断言 `btn.parent() is not None`。

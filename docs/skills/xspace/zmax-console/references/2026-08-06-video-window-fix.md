@@ -43,7 +43,7 @@ h_min = 640 if n <= 3 else 700
 ## 🎯 双击单个视频节点 → 自动升级全模型对比 (2bea7f48)
 老倪: 双击「🎥 视频对比 · ACT」只开 1 个模型没意义, 要 5 个同时一起打开做对比。
 on_infer_video 里 policy 参数不再"只放该模型", 而是**先探测画布 → 全模型列表, 单模型
-只在不在全模型列表时保障**:
+只在不在全模型列表时兜底**:
 ```python
 names = " ".join(n.get("name", "") for n in self.nodes)
 if "VLA-Touch" in names or "AWE" in names:
@@ -51,7 +51,7 @@ if "VLA-Touch" in names or "AWE" in names:
 else:
     policies = InferenceVideoDialog.POLICIES
 if policy and not any(p == policy for p, _, _ in policies):
-    policies = [(policy, ...)]   # 异常保障才单模型
+    policies = [(policy, ...)]   # 异常兜底才单模型
 ```
 
 ## 🔁 循环播放 (看着做对比)

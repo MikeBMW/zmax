@@ -52,7 +52,7 @@ or QApplication(sys.argv)` 再创建 QFontMetrics。
   (name + links 全部同步, 与左侧功能块数据集组字样一致 — 老倪"好几个不知道用哪个")
 - YOLO 文字截断根因: `len(name) > 16` **字符数截断** (emoji/中文计数失真) →
   改**像素宽度自适应字号**: `for pt in (9,8,7): if fm.horizontalAdvance(name) <= avail: break`,
-  保障 `fm.elidedText(disp, Qt.ElideRight, avail)`。视频节点(宽160px)长名 8pt 放得下;
+  兜底 `fm.elidedText(disp, Qt.ElideRight, avail)`。视频节点(宽160px)长名 8pt 放得下;
   普通节点(130px) "🎯 YOLO 3D 检测" 9pt=106px 完整显示。
 
 ## 6. 数据集管理瘦身 (老倪: 只留 metaworld)

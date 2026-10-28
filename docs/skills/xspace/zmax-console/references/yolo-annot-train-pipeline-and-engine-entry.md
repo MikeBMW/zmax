@@ -15,7 +15,7 @@
 - 实测 6 张 → `train=6 val=6 框=6 类别=['peg']`, 体检 `✅ 通过` 同时报 **2 对同 md5 重复图**
   (标定员连点两次保存) ⇒ 有效样本 4 张。**重复图体检会抓, 别忽略那条 ⚠️。**
 - ⚠️ 小样本 `val` 复用 `train` (`stats.json: val_overlap_train=true`, 工具显式标注) ⇒
-  **此阶段 mAP 不可信, 只证管线验证通过**; 要真精度得 100+ 张、覆盖不同位置/光照/朝向。
+  **此阶段 mAP 不可信, 只证管线跑通**; 要真精度得 100+ 张、覆盖不同位置/光照/朝向。
 - 构建后可先看 `dataset/stats.json` (类别分布/会话来源/note) 再决定要不要补标。
 
 ## 2. ⚠️ 模型引擎页的「YOLO检测 训练配置」点了不会跑 —— 入口不可达
@@ -42,17 +42,17 @@ grep -n '("system", "🚀'   tools/gui/simulink_module.py      # 看真有哪些
 `("system", "🚀 YOLO 训练", {"policy": "yolo", "steps": N, ...})` ——
 节点构成属架构改动 (会影响模型引擎页布局/节点数), **先跟老倪确认再动**, 别擅自加。
 「训练步数 steps」对 YOLO = **epoch 数** (`epochs = int(steps)`), 正式训 100 起, 默认 50。
-**当前可用入口** = 视频流窗口的「🚀 训练 YOLO」(同一条 `tools/yolo_annot_train.py` 命令, 已实测验证通过)。
+**当前可用入口** = 视频流窗口的「🚀 训练 YOLO」(同一条 `tools/yolo_annot_train.py` 命令, 已实测跑通)。
 
 ## 3. 训练实现的三处收口 (通用铁律, 不止 YOLO)
 
 凡是"引擎里的按钮 → 拉起外部训练脚本"这类实现, **解释器按能力探测、数据源按存在性解析、日志打真实值**;
-预先固定任何一个都会变成"按钮点了没反应 / 跑了错的东西但日志看着正常"。
+写死任何一个都会变成"按钮点了没反应 / 跑了错的东西但日志看着正常"。
 
 | 项 | 旧实现 (错) | 正解 |
 |---|---|---|
-| 解释器 | 预先固定 `~/lerobot-venv/bin/python` —— 实测该 venv **没有 ultralytics** ⇒ 一点必报"ultralytics 未安装" | **按能力探测**: `gui-venv311/bin/python` (ultralytics 8.4.126) → `~/lerobot-venv/bin/python`, 用 `py -c 'import ultralytics'` 判定; 都不行才显式报错并说明候选 |
-| 数据源 | 预先固定仿真 `data/yolo_peg` | 有 `data/yolo_annot/dataset/data.yaml` → **真机标注(默认走这条**, 现场唯一真数据) + `tools/yolo_annot_train.py --base auto --imgsz 640`; 否则退仿真 + `train_yolo.py --imgsz 480`。环境变量 `SS_YOLO_DATA=<dir>` 可强制指定 |
+| 解释器 | 写死 `~/lerobot-venv/bin/python` —— 实测该 venv **没有 ultralytics** ⇒ 一点必报"ultralytics 未安装" | **按能力探测**: `gui-venv311/bin/python` (ultralytics 8.4.126) → `~/lerobot-venv/bin/python`, 用 `py -c 'import ultralytics'` 判定; 都不行才显式报错并说明候选 |
+| 数据源 | 写死仿真 `data/yolo_peg` | 有 `data/yolo_annot/dataset/data.yaml` → **真机标注(默认走这条**, 现场唯一真数据) + `tools/yolo_annot_train.py --base auto --imgsz 640`; 否则退仿真 + `train_yolo.py --imgsz 480`。环境变量 `SS_YOLO_DATA=<dir>` 可强制指定 |
 | device | `train_yolo.py` 默认 `--device cpu`, 而日志硬编码写 "4060 GPU" (**实际在跑 CPU**, 自己骗自己) | 按 `torch.cuda.is_available()` **现探**再传 `--device`; 日志必须打**实际**解释器 / 数据源 / epoch 数 / 权重输出路径 |
 
 真机数据走 `yolo_annot_train.py --base auto` 的理由: `--base auto` 会挑**现有仿真权重**做域适应微调
@@ -75,4 +75,4 @@ cd ~/lerobot-smolvla-lew && gui-venv311/bin/python -u tools/yolo_annot_train.py 
 ## 5. 报告口径 (老倪会问)
 - 先说 **数据现状的实数**: 几张 / 几个会话 / 有效几张(去重) / 类别分布 / 多少张进 train/val。
 - 再说 **管线通没通** (命令 + GPU + 参数量 + 权重路径 + 验证行), 最后才说**精度还不可信及原因**
-  (样本少 + val=train)。**别把"管线验证通过"说成"模型可用"。**
+  (样本少 + val=train)。**别把"管线跑通"说成"模型可用"。**

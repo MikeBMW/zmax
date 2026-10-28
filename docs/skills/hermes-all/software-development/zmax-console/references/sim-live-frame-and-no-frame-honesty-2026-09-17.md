@@ -9,7 +9,7 @@
 
 | 谁 | env | 行为 |
 |---|---|---|
-| 窗口仿唯一依据 `_SimGrabber` | `node_logic._YOLO_ALIGNER.env` (单例, 只 `reset(seed=0)` 一次) | **从来没人 step** → 永远同一张初始画面 (FPS 还照样显示 12.5, 骗眼睛) |
+| 窗口仿真源 `_SimGrabber` | `node_logic._YOLO_ALIGNER.env` (单例, 只 `reset(seed=0)` 一次) | **从来没人 step** → 永远同一张初始画面 (FPS 还照样显示 12.5, 骗眼睛) |
 | ▶运行 真跑的 | `state_space_sim_real.RealStateSpaceSim` (`state_space_sim_real.py` `_make_env()`) | 每步 `env.step()` 真物理 + 视觉档每步 `_render_frame() → detect_3d` |
 
 ⇒ 真画面一直在生成, 只是窗口在看**另一个环境**。
@@ -47,7 +47,7 @@ def ss_should_render_for_viewer(step, vision_on, every=5) -> bool:
 - 帧真挂槽 + 1Hz 落盘 (step 正确); **相邻步渲染帧逐帧平均差 0.139/0.132/0.111** = "跟着运行动"的硬证据
   (env 推 `act=[±0.02,0,∓0.02,0.6]` 让场景真变);
 - `age=30s` 的旧帧 → `ss_latest_live_frame` 返回 None (引擎停了不许假动);
-- 窗口取帧走实况分支 (engine=True/step/age), 无实况且无 node_logic → `(None, None)` 由 run() 保障;
+- 窗口取帧走实况分支 (engine=True/step/age), 无实况且无 node_logic → `(None, None)` 由 run() 兜底;
 - R0 门控真值表: want=True 非视觉档 → `[0,5,10]`; 视觉档 → 不再额外渲染; want=False → 全 False。
 
 **坑**: ①测试别断言"首帧落盘就是最新 step" —— 1Hz 节流下首帧写的就是当时那一步 (本次测试第一版因此误报
@@ -67,7 +67,7 @@ FAIL, 正确断言 = 睡过节流窗口后再发一帧, 文件必须刷新)。�
 def _placeholder_rgb(self, lines, w=640, h=480):   # QImage 深底 + QPainter 写文字 → RGB ndarray
 def _show_placeholder(self, lines, tag):           # 同时清框 (上一路的框属于上一路帧坐标系) + 记 _view_tag
 def _reset_view_for_source(self, source):          # 清 _last_sig/_pending_sig/_real_last_fresh + 占位提示
-    # real → "🎥 真机源 · 等 Orin 帧 …" (写明通道/排查项) ; sim → "🧪 仿唯一依据 · 等 metaworld 渲染帧 …"
+    # real → "🎥 真机源 · 等 Orin 帧 …" (写明通道/排查项) ; sim → "🧪 仿真源 · 等 metaworld 渲染帧 …"
 ```
 - `_start_source()` 两个分支各调一次 `_reset_view_for_source(self.source)` ⇒ **切源即清屏** (别再靠"数据变了"触发)。
 - `_tick_real()` 重排: **先判新鲜度** `_fresh = meta.ok and not stale(age>5s)`; 只有 `_fresh` 才允许

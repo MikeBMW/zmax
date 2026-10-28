@@ -1,6 +1,6 @@
 # Hermes 本体升级 — 逐步配方与判据
 
-适用：源码安装（`Install method: git`）的 Hermes 自我升级。目标：一次验证通过、可回滚、可验证。
+适用：源码安装（`Install method: git`）的 Hermes 自我升级。目标：一次跑通、可回滚、可验证。
 
 ## 0. 先认清安装形态
 

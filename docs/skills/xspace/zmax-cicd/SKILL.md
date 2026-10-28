@@ -104,7 +104,7 @@ PYTHONPATH=src .venv/bin/python tools/act_compare.py --baseline <ckpt> --candida
 - 数据闭环节奏: 每轮训练 ~2.5min (2000步)，数据持续累积 (300帧→346→493帧) loss 稳步下降
 - **闭环已闭合 (2026-08-02 里程碑)**: 笛卡尔模型 (state 3D TCP位姿 → action 4D 末端速度) 部署 Orin 后真实推理成功 — `orin_real_infer.py 0.6639 -0.0293 0.2935` 输出 (7,4) 动作块 (dx/dy/dz/grip 量级 0.1-0.3 m/s)。**模型传递最终方案 = 静态 URL** (`scp → /www/wwwroot/datadrive.world/models/ + chmod 644` → `https://datadrive.world/models/<name>.safetensors` 直接 GET, 不弹栈不竞争), 详见 lerobot-act-training 模型传递节。闭环验证: `/api/relay/orin/status` 的 infer_count > 0 + 归档快照 age_s < 2。
 - **守护训练失败排查顺序 (2026-08-02 实测)**: 数据包 timestamp/frame_index None → `str/str` 除法; 视频帧数<parquet帧数 → FrameTimestampError; frame_index 非全局 → Invalid frame index=N; **timestamp 全局而非 episode 相对 → 双重偏移幽灵超界 (517/1388)** — 见 references/lerobot-dataset-construction.md 帧索引节; ACT delta 未来帧越界 → 每包独立视频; 缓存幽灵 → 清 `~/.cache/huggingface` + `~/.cache/datasets` 整个目录。
-- **WS 事件驱动 v2 (2026-08-03)**: auto_loop v2 WS 订阅 `wss://datadrive.world/ws` data_arrived → 毫秒级触发训练 + 60s 轮询保障 + 断线 5s 重连。ECS 侧: zmax_relay /upload 成功 → notify(:8766) → 广播; ws_relay 加 8766 本地通知口。**依赖 websocket-client** — 缺失时报 `No module named 'websocket'` 退化为纯轮询: `.venv/bin/python -m pip install websocket-client`。单测 6/6 (事件触发/非事件忽略/快照过滤/frames阈值/全链路/并发锁)。
+- **WS 事件驱动 v2 (2026-08-03)**: auto_loop v2 WS 订阅 `wss://datadrive.world/ws` data_arrived → 毫秒级触发训练 + 60s 轮询兜底 + 断线 5s 重连。ECS 侧: zmax_relay /upload 成功 → notify(:8766) → 广播; ws_relay 加 8766 本地通知口。**依赖 websocket-client** — 缺失时报 `No module named 'websocket'` 退化为纯轮询: `.venv/bin/python -m pip install websocket-client`。单测 6/6 (事件触发/非事件忽略/快照过滤/frames阈值/全链路/并发锁)。
 - **容量上限 (2026-08-03, 老倪"控制数据量防磁盘满")**: 单包/缓冲 100M (nginx client_max_body_size 100m + relay MAX_PKG 413 拒绝); `tools/disk_guard.py` 每小时自动清理 (orin_live 限60包/训练产物保留4个/loop_train.log 限5MB/dds_flow 限2万行/tmp 清7天前); ECS logrotate 配 datadrive.world.log + error.log (daily/100M/3份压缩)。ECS 40G 磁盘易满, 重点清 /www/wwwlogs (曾 500M+) 和 /root/zmax-relay/archive (快照 505M)。
 
 ## Sim-to-Real 影子模式 (2026-08-05, 老倪"4D action影子模式对比真机")
@@ -149,7 +149,7 @@ metaworld 仿真模型与真机模型**双模型并存**, 仿真模型只推理�
 - 简洁直给，迭代不超 2 轮，说根因不说"试试/应该"
 - 自动迭代要"没提升则改进方案重训"，要明确提升路径 (基线→更多数据→更长训练→超参→架构)
 - 不跃迁：迭代式开发，保持已有资产，逐步升级
-- 别问凭据，自己完成 (ECS 密码 ***REDACTED***(原值见 zmax_data/secrets/zmax.env) 在记忆里)
+- 别问凭据，自己搞定 (ECS 密码 ***REDACTED***(原值见 zmax_data/secrets/zmax.env) 在记忆里)
 - 注意各端性能负载，别死机，及时保存数据 (git push)
 
 ## 归档与提交卫生 (老倪: "小版本迭代, 保存数据, 推动代码")

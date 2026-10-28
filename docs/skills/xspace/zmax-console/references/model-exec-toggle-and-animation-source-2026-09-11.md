@@ -24,7 +24,7 @@ simulink 画布 ▶运行  →  按当前档位切分:
   · L2/L3 档 → 引擎 RealStateSpaceSim 真跑 → 轨迹喂 3D 窗口 (逐帧 set_frame)
   · L4 档   → simulink_module 里 `_demo_cap = (cap == "L4")` → `demo_l4=True`
               → 引擎 run() **完全委托** `gen_l4_demo_video.L4Demo` 独立控制器
-                (直接 import metaworld, 轨迹预先固定, 90° 转台演示)
+                (直接 import metaworld, 轨迹写死, 90° 转台演示)
 ```
 **`L4Demo` 与引擎零共享** — 它不用六层控制器、不用 `gripper_cmd`、不用流形、不用模型
 (grep 命中数 = 0)。所以 **L4 档下无论换什么模型、修什么引擎 bug, 动画都一模一样** ——

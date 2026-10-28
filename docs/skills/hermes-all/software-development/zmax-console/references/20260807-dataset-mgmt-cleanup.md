@@ -7,7 +7,7 @@
   - 例: `📁 插销插拔` / `peg-insert-side-v3`; `📁 套环` / `nut-on-peg`
 - **任务数列 = "—"**: 本地数据集是**单一任务演示集**, 没有"任务数"概念 — 之前误填帧数 (4800/696) 被老倪抓 "为什么显示 4800 个" → 改 "—", 帧数/演示数放描述列
 - **机器人列 = 真实机器人**: metaworld 数据 = `Sawyer (metaworld)` (不是 "metaworld"); Orin = `Orin (真机)`
-- **描述列**: `中文名 (官方名) · N 帧 · eps` — 光看名称不知道是什么 → 中文描述放最前
+- **描述列**: `中文名 (官方名) · N 帧 · eps` — 光看名称不知道是啥 → 中文描述放最前
 - **eps 解释 (老倪反复问)**: eps = episodes = 演示次数 (一次完整操作轨迹); 帧 = 总图像张数
 
 ## 下载按钮语义 (老倪: orin 真机下载不对, 应该在 datadrive.world/cicd.html 下载)
@@ -20,7 +20,7 @@
 ## 数据集清理原则 (老倪: 数据集里没用的都删掉)
 - **data/ 只留训练用数据**: 本会话终态只剩 `metaworld_peg_lerobot` (插销训练) + `yolo_peg_full` (YOLO 检测数据) — metaworld_act (套环)/metaworld_mt50 (原始 parquet)/metaworld_peg_v2-v7 (旧版+中间产物)/orin 系列/closed_loop 全删
 - **删除 = 目录 + 代码引用一起清**: 数据源候选 (_dset_cands)、训练 placeholder (_ensure_training_data 的 `placeholder = os.path.join(root, "data", ...)`)、数据源切换候选 (cands dict)、采集包统计 (glob closed_loop)、查看器特判 (_on_view_dataset 的 mt50 local_npz)、日志文案 — grep 全部引用逐处清, 验证脚本断言 `grep -c "name"` 无活跃引用
-- **曲线 ckpt 引用判断保留**: outputs/train 清理时先读 train_curve_*.json 的 ckpt 字段 (假路径 *_latest 会保障 glob 最新 → 保留 mtime 最新的 ft 目录, 删 v7/restore 过时目录)
+- **曲线 ckpt 引用判断保留**: outputs/train 清理时先读 train_curve_*.json 的 ckpt 字段 (假路径 *_latest 会兜底 glob 最新 → 保留 mtime 最新的 ft 目录, 删 v7/restore 过时目录)
 - 磁盘铁律下清理是减少: 删 13 目录释放 ~6G (39G→33G)
 
 ## 老倪 "删掉X" 指令处理铁律 (本会话两次理解错)
