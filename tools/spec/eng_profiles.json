@@ -1,0 +1,488 @@
+{
+ "_meta": {
+  "schema": "zmax-eng-profiles/1.0",
+  "note": "老倪 2026-10-28: 「根据性能等级, 进行工程配置, 要有操作手册 working instruction, 保证能够工程实现」。三档 = 性能配置 A/B/C。每档给 硬件清单/软件栈/标定项/安全项/操作手册(WI) 步骤; WI 每步都有可直接粘的命令 + 期望输出 + 失败处理; need=local 的步骤可在本机真跑, onsite 需现场, orin 需 Orin 可达。",
+  "author": "静静 (Hermes) 2026-10-28",
+  "root": "/home/ubuntu/zmax",
+  "tiers": [
+   "A",
+   "B",
+   "C"
+  ]
+ },
+ "profiles": [
+  {
+   "id": "A",
+   "name": "基本性能 · L2 单任务",
+   "perf_ref": "基本性能 (L2) · 11.42s/件 · 316.1UPH",
+   "hardware": [
+    {
+     "item": "工控机 (550C 级)",
+     "spec": "x86_64 · ≥16G · Ubuntu 22.04 · 单机跑 8791/8793/8794/8797/8799",
+     "qty": 1,
+     "why": "五路本机服务常驻"
+    },
+    {
+     "item": "关节臂 + 控制器",
+     "spec": "珞石 (xCore) · SDK 直连 · 力控可用",
+     "qty": 1,
+     "why": "L2 技能执行本体"
+    },
+    {
+     "item": "腕部相机",
+     "spec": "Intel RealSense D405 (深度 unit 0.1mm)",
+     "qty": 1,
+     "why": "插拔/对位视觉"
+    },
+    {
+     "item": "侧视相机",
+     "spec": "Intel RealSense D435",
+     "qty": 1,
+     "why": "第二视角/AR 底图"
+    },
+    {
+     "item": "AOI 检测服务主机",
+     "spec": "192.168.23.23 · 10082 金手指 / 10083 表面",
+     "qty": 1,
+     "why": "五点检测判据"
+    },
+    {
+     "item": "产线网卡 + 千兆交换",
+     "spec": "与 192.168.23.x 同段",
+     "qty": 1,
+     "why": "AOI/Orin 直连"
+    }
+   ],
+   "software": [
+    {
+     "svc": "状态空间引擎 (画布/任务)",
+     "port": 8793,
+     "how": "systemd zmax-* 或 tools/restart_traj_ar.sh"
+    },
+    {
+     "svc": "AR / 实时流页面",
+     "port": 8797,
+     "how": "tools/restart_traj_ar.sh"
+    },
+    {
+     "svc": "大屏/遥测",
+     "port": 8791,
+     "how": "随主程序"
+    },
+    {
+     "svc": "工位服务",
+     "port": 8794,
+     "how": "随主程序"
+    },
+    {
+     "svc": "任务/元任务服务",
+     "port": 8799,
+     "how": "随主程序"
+    },
+    {
+     "svc": "L2 技能库",
+     "port": null,
+     "how": "data/skills/l2_muscle/光模块_抓放循环_v1.json"
+    }
+   ],
+   "calib": [
+    {
+     "item": "相机内参 K",
+     "src": "config/calib/zmax_calib.json#camera",
+     "tol": "fx 394.06 / fy 393.47 / cx 318.44 / cy 238.66 (±2%)"
+    },
+    {
+     "item": "手眼 T_base_cam",
+     "src": "config/calib/zmax_calib.json#T_base_cam",
+     "tol": "平移 <2mm · 旋转 <1°"
+    },
+    {
+     "item": "台面高度 plane_z",
+     "src": "config/calib/zmax_calib.json#plane_z",
+     "tol": "⚠ 当前 value=null 未标定 ⇒ 3D 换算被拒, 必须先标"
+    },
+    {
+     "item": "深度尺度 depth_scale",
+     "src": "config/calib/zmax_calib.json#depth_scale",
+     "tol": "D405 = 0.1mm/单位"
+    }
+   ],
+   "safety": [
+    "速度 1~1000 mm/s, 分段限速; 插入段力 ≤40N",
+    "safety.py 收口: VEL_LIMIT 1.0 · FORCE_LIMIT 5.0N · POS_LIMIT 0.6 (越限饱和/拒发)",
+    "rt 类指令执行后必须下电; move_* 不下电; 30s 内勿重发",
+    "姿态 >5° 会被 50113 拒且腿可能假报到位 ⇒ 以真值 tcp_out/latest.json 为准"
+   ],
+   "wi": [
+    {
+     "id": "A1",
+     "title": "五路服务在位自检",
+     "need": "local",
+     "cmd": "ss -ltnp | grep -E ':(8791|8793|8794|8797|8799)' | wc -l",
+     "expect": "5",
+     "fail": "少于 5 ⇒ 起服务: bash tools/restart_traj_ar.sh (8797/8793), 其余随 zmax 主程序"
+    },
+    {
+     "id": "A2",
+     "title": "AR 页面可用",
+     "need": "local",
+     "cmd": "curl -s -m 3 -o /dev/null -w '%{http_code}' http://127.0.0.1:8797/ar3d",
+     "expect": "200",
+     "fail": "非 200 ⇒ 看 8797 日志 (tools/restart_traj_ar.sh 重启)"
+    },
+    {
+     "id": "A3",
+     "title": "相机内参在位",
+     "need": "local",
+     "cmd": "python3 -c \"import json;c=json.load(open('config/calib/zmax_calib.json'))['camera'];print(round(c['fx'],2),round(c['fy'],2))\"",
+     "expect": "394.06 393.47",
+     "fail": "缺内参 ⇒ 先跑标定靶标流程, 不要手填"
+    },
+    {
+     "id": "A4",
+     "title": "台面 plane_z 标定 (当前未标定 ⇒ 必做)",
+     "need": "onsite",
+     "cmd": "python3 -c \"import json;print(json.load(open('config/calib/zmax_calib.json'))['plane_z'])\"",
+     "expect": "'value': None",
+     "fail": "看到 None ⇒ 用夹爪尖轻触台面读 tcp z, 三次取均值写入 calib (写入后本步期望值变为数值)"
+    },
+    {
+     "id": "A5",
+     "title": "位姿真值新鲜 (帧龄 <2s)",
+     "need": "orin",
+     "cmd": "python3 -c \"import json,time,datetime as D;d=json.load(open('zmax_data/rokae_sdk/tcp_out/latest.json'));t=D.datetime.strptime(d['ts'],'%Y-%m-%d %H:%M:%S.%f');print('帧龄s',round(time.time()-t.timestamp(),1))\"",
+     "expect": "帧龄s 0~2",
+     "fail": "帧龄大 ⇒ 采样器崩/链路断: 在 dobot/Orin 侧重启采样, 或 zmax-pose-relay 兜底; 全 0 也视为陈旧"
+    },
+    {
+     "id": "A6",
+     "title": "L2 技能库在位",
+     "need": "local",
+     "cmd": "test -f data/skills/l2_muscle/光模块_抓放循环_v1.json && echo SKILL_OK",
+     "expect": "SKILL_OK",
+     "fail": "缺 ⇒ 用示教流程重新生成标杆 (human-in-the-loop 示教), 不要手写 JSON"
+    },
+    {
+     "id": "A7",
+     "title": "AOI 服务连通",
+     "need": "onsite",
+     "cmd": "curl -s -m 3 -o /dev/null -w '%{http_code}' http://192.168.23.23:10082/",
+     "expect": "200/404 都算通 (端口有响应)",
+     "fail": "000 ⇒ 检查产线网卡是否插上 (本机当前未插), AOI 主机是否起服务"
+    },
+    {
+     "id": "A8",
+     "title": "单件试跑 (节拍验收)",
+     "need": "onsite",
+     "cmd": "在 8793 页面点 1 件 → 记录 start/end 时间戳",
+     "expect": "单件 ≤11.42s, 无急停/无越限日志",
+     "fail": "超节拍 ⇒ 查段表 abs_mm 与速度档; 撞到围栏 ⇒ 先 agent_all_stop 再查围栏"
+    },
+    {
+     "id": "A9",
+     "title": "配置一致性验收",
+     "need": "local",
+     "cmd": "python3 tools/verify_config_active_task.py > /tmp/v.log 2>&1; tail -1 /tmp/v.log",
+     "expect": "0 FAIL",
+     "fail": "有 FAIL ⇒ 按 FAIL 行给出的真源路径逐条修, 不要跳过"
+    }
+   ],
+   "acceptance": [
+    "A1~A9 全过",
+    "单件节拍 ≤11.42s",
+    "plane_z 已标定 (非 null)",
+    "首件 AOI 五点判据通过"
+   ]
+  },
+  {
+   "id": "B",
+   "name": "精细操作性能 · L2+L3 多任务编排",
+   "perf_ref": "精细操作性能 (L2+L3) · 双臂 供料4.70/交接8.70/件周期11.40",
+   "hardware": [
+    {
+     "item": "A 档全部",
+     "spec": "—",
+     "qty": 1,
+     "why": "底座"
+    },
+    {
+     "item": "推理 GPU 主机 (550A)",
+     "spec": "RTX 4060 8G · CUDA 12",
+     "qty": 1,
+     "why": "SmolVLA 500M 推理"
+    },
+    {
+     "item": "训练数据采集位",
+     "spec": "同构工位 + 采集脚本",
+     "qty": 1,
+     "why": "每技能 ≥50 episode"
+    }
+   ],
+   "software": [
+    {
+     "svc": "L3 策略权重",
+     "port": null,
+     "how": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000 (1289MB)"
+    },
+    {
+     "svc": "LoRA 合并",
+     "port": null,
+     "how": "python3 tools/merge_lora_ckpt.py (不 merge 会零动作伪装)"
+    },
+    {
+     "svc": "训练入口",
+     "port": null,
+     "how": "python3 joint_train_all.py --only L3 (带 HF_HOME)"
+    },
+    {
+     "svc": "双臂时序编排",
+     "port": null,
+     "how": "python3 tools/ss_meta_task_ar.py"
+    }
+   ],
+   "calib": [
+    {
+     "item": "A 档全部标定",
+     "src": "config/calib/zmax_calib.json",
+     "tol": "同 A"
+    },
+    {
+     "item": "动作空间映射 (action 4 维)",
+     "src": "ckpt config.json#output_features",
+     "tol": "dx/dy/dz/gripper 顺序必须与训练一致"
+    },
+    {
+     "item": "观测维度对齐 (state 39)",
+     "src": "ckpt config.json#input_features",
+     "tol": "少一维就整段跑飞"
+    }
+   ],
+   "safety": [
+    "A 档全部安全项",
+    "序列级校验: 每段动作过 safety 收口再下发",
+    "双臂并行: 同一槽同一时刻只有一只手 (交接点 8.70s)"
+   ],
+   "wi": [
+    {
+     "id": "B1",
+     "title": "GPU 在位",
+     "need": "local",
+     "cmd": "nvidia-smi --query-gpu=name,memory.total --format=csv,noheader",
+     "expect": "4060",
+     "fail": "无输出 ⇒ 驱动/显卡未就绪, L3 推理未起 (可降级跑 A 档)"
+    },
+    {
+     "id": "B2",
+     "title": "L3 权重在位 (含大小)",
+     "need": "local",
+     "cmd": "python3 -c \"import os;p='outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model';s=sum(os.path.getsize(os.path.join(dp,f)) for dp,_,fs in os.walk(p) for f in fs)//2**20;print('OK' if s>=1000 else 'SMALL',s)\"",
+     "expect": "OK",
+     "fail": "偏小 ⇒ 权重不完整, 重下/重训"
+    },
+    {
+     "id": "B3",
+     "title": "LoRA 已合并 (否则零动作)",
+     "need": "local",
+     "cmd": "python3 -c \"import json;d=json.load(open('outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model/config.json'));print('lora' in json.dumps(d).lower())\"",
+     "expect": "False",
+     "fail": "True ⇒ 先 python3 tools/merge_lora_ckpt.py 再部署"
+    },
+    {
+     "id": "B4",
+     "title": "输入/输出域对齐",
+     "need": "local",
+     "cmd": "python3 -c \"import json;d=json.load(open('outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model/config.json'));print(d['chunk_size'],d['output_features']['action']['shape'])\"",
+     "expect": "7 [4]",
+     "fail": "不匹配 ⇒ 与训练配置同源重建, 不要改推理侧将就"
+    },
+    {
+     "id": "B5",
+     "title": "数据量达标 (每技能 ≥50 episode)",
+     "need": "local",
+     "cmd": "python3 -c \"import glob;n=len(glob.glob('zmax_data/datasets/**/*.parquet',recursive=True))//max(1,len(glob.glob('zmax_data/datasets/*/')));print('DATA_OK' if n>=50 else 'DATA_LOW', 'episodes≈'+str(n))\"",
+     "expect": "DATA_OK",
+     "fail": "看到 DATA_LOW ⇒ 数据量不足 (L3 掉点主因): 按 human-in-the-loop 示教采每技能 ≥50 episode, 并在数据集里补 LeRobot meta/info.json",
+     "gate": "gap"
+    },
+    {
+     "id": "B6",
+     "title": "双臂时序复算",
+     "need": "local",
+     "cmd": "python3 tools/ss_meta_task_ar.py 2>&1 | grep -E '件周期|交接' | head -2",
+     "expect": "11.4",
+     "fail": "对不上 ⇒ 先查 tasks.json steps 时长, 再查 build_lanes"
+    },
+    {
+     "id": "B7",
+     "title": "序列试跑 3 件 (编排验收)",
+     "need": "onsite",
+     "cmd": "8793 页面选 TASK-07-AOI → 跑 3 件, 记录每件 start/end",
+     "expect": "3 件节拍均 ≤11.42s, 无碰撞/无急停",
+     "fail": "有碰撞 ⇒ agent_all_stop, 查围栏与段间过渡 (抬50→转身→低位横移)"
+    },
+    {
+     "id": "B8",
+     "title": "双臂并行判据",
+     "need": "local",
+     "cmd": "gui-venv311/bin/python tools/verify_ar_meta_parallel.py 2>&1 | grep -E 'PASS|FAIL' | tail -1",
+     "expect": "PASS",
+     "fail": "FAIL ⇒ 看左右手 lane 采样点, 是编排还是渲染问题"
+    }
+   ],
+   "acceptance": [
+    "A 档全过",
+    "B1~B8 全过",
+    "双臂交接 8.70s 稳定",
+    "3 件连续跑无人工干预"
+   ]
+  },
+  {
+   "id": "C",
+   "name": "专业性能 · L2+L3+L4 (含 L5) 安全分级自主",
+   "perf_ref": "专业性能 (L2+L3+L4含L5) · 意图101ms · 目标 PL d",
+   "hardware": [
+    {
+     "item": "A/B 档全部",
+     "spec": "—",
+     "qty": 1,
+     "why": "底座"
+    },
+    {
+     "item": "L4 训练 GPU (或云端)",
+     "spec": "≥16G 显存, 训练 INTACT-JEPA 224×224×3帧",
+     "qty": 1,
+     "why": "L4 权重训练/合并"
+    },
+    {
+     "item": "L5 运行资源",
+     "spec": "本地 3B VLM 需 ≥16G 显存 / 或云端 API",
+     "qty": 1,
+     "why": "场景理解与任务规划"
+    },
+    {
+     "item": "安全验证台架",
+     "spec": "急停/安全门/光栅 + 记录仪",
+     "qty": 1,
+     "why": "ISO 13849 验证"
+    }
+   ],
+   "software": [
+    {
+     "svc": "L4 权重",
+     "port": null,
+     "how": "zmax_data/stable-wm-cache/checkpoints/intact_l4_current (84MB + LoRA 需 merge)"
+    },
+    {
+     "svc": "L4 决策/规划",
+     "port": null,
+     "how": "src/lerobot/policies/left_right/state_space/{planner,safety}.py · INTACT 须常驻"
+    },
+    {
+     "svc": "L5 配置",
+     "port": null,
+     "how": "zmax_data/secrets/zmax.env (只核对键名, 不打印值)"
+    },
+    {
+     "svc": "动作授权",
+     "port": 8793,
+     "how": "授权只从 8793 代发, 其余入口一律拒"
+    }
+   ],
+   "calib": [
+    {
+     "item": "A/B 档全部标定",
+     "src": "config/calib/zmax_calib.json",
+     "tol": "同 A/B"
+    },
+    {
+     "item": "skill 24 维映射",
+     "src": "intact config.json#intent_actor",
+     "tol": "技能表顺序必须与训练一致"
+    },
+    {
+     "item": "安全距离/围栏",
+     "src": "config/calib/zmax_calib.json#robot",
+     "tol": "预检扣连杆半径 (肘 r78) 后 <20mm ⇒ FAIL"
+    }
+   ],
+   "safety": [
+    "A/B 档全部安全项",
+    "目标安全等级 PL d (ISO 13849): 当前未认证 ⇒ 不得对外宣称达标",
+    "认证前必须完成: 急停链验证 / 安全门互锁 / 危险动作授权 / 异常演练各 1 次并留证",
+    "危险动作前 agent_all_stop 兜底; 台账写 docs/incidents/INCIDENT-INDEX.md"
+   ],
+   "wi": [
+    {
+     "id": "C1",
+     "title": "L4 权重在位",
+     "need": "local",
+     "cmd": "ls -l zmax_data/stable-wm-cache/checkpoints/intact_l4_current/config.json | wc -l",
+     "expect": "1",
+     "fail": "0 ⇒ 权重未就位, L4 不可用 (可降级 B 档)"
+    },
+    {
+     "id": "C2",
+     "title": "L4 未残留 LoRA 标记",
+     "need": "local",
+     "cmd": "python3 -c \"import json;d=json.load(open('zmax_data/stable-wm-cache/checkpoints/intact_l4_current/config.json'));print('lora' in json.dumps(d).lower())\"",
+     "expect": "False",
+     "fail": "True ⇒ 先 merge, 否则零动作伪装"
+    },
+    {
+     "id": "C3",
+     "title": "L5 凭据键在位 (不打印值)",
+     "need": "local",
+     "cmd": "python3 -c \"import re;t=open('zmax_data/secrets/zmax.env').read();print(sorted(set(re.findall(r'^([A-Z0-9_]+)=',t,re.M)))[:6])\"",
+     "expect": "[",
+     "fail": "空/文件缺 ⇒ L5 不可用, 走 _plan_rules 降级 (功能不受影响, 仅无自主规划)"
+    },
+    {
+     "id": "C4",
+     "title": "授权链只认 8793",
+     "need": "local",
+     "cmd": "grep -n '8793' src/lerobot/policies/left_right/state_space/hil_bridge.py | head -2",
+     "expect": "8793",
+     "fail": "找不到 ⇒ 授权入口散落, 先收口再谈安全等级"
+    },
+    {
+     "id": "C5",
+     "title": "否决链阈值在位",
+     "need": "local",
+     "cmd": "grep -n 'max_veto' src/lerobot/policies/left_right/state_space/planner.py",
+     "expect": "max_veto",
+     "fail": "无 ⇒ 分层否决未生效, 禁止上自主模式"
+    },
+    {
+     "id": "C6",
+     "title": "急停/异常演练 (1 次留证)",
+     "need": "onsite",
+     "cmd": "运行中按急停 → 记录恢复时间与复位步骤; 截图/录像存档",
+     "expect": "停机 ≤1s, 复位后可继续; 台账登记",
+     "fail": "无响应 ⇒ 立即下电, 安全链整改前不得再上电自动化"
+    },
+    {
+     "id": "C7",
+     "title": "安全等级证据清单",
+     "need": "onsite",
+     "cmd": "cat docs/incidents/INCIDENT-INDEX.md | head -20",
+     "expect": "有台账条目",
+     "fail": "空 ⇒ 认证无从谈起; 目标 PL d 只能写「目标」不能写「已达」"
+    },
+    {
+     "id": "C8",
+     "title": "全量判据验收",
+     "need": "local",
+     "cmd": "python3 tools/verify_config_active_task.py > /tmp/vc.log 2>&1; tail -1 /tmp/vc.log",
+     "expect": "0 FAIL",
+     "fail": "有 FAIL ⇒ 逐条修, 不带病交付"
+    }
+   ],
+   "acceptance": [
+    "A/B 档全过",
+    "C1~C8 全过",
+    "急停/异常演练留证",
+    "安全等级只宣称「目标 PL d」直至认证完成"
+   ]
+  }
+ ]
+}

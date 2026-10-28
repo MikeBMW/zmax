@@ -3723,6 +3723,153 @@ class ConfigCenterPage(QWidget):
             return False
 
     # ── 右侧页签 ──
+    # ══════════════════════════════════════════════════════════════════════════
+    # ⚙️ 工程配置 · 按性能等级 A/B/C (老倪 2026-10-28: 「根据性能等级, 进行工程配置,
+    #    要有操作手册 working instruction, 保证能够工程实现」)
+    #    真源: tools/spec/eng_profiles.json —— 与 docs/deliverables/工程操作手册_三档_A_B_C.md 同源
+    # ══════════════════════════════════════════════════════════════════════════
+    def _eng_profile_block(self, th):
+        import subprocess as _sp
+        PJ = os.path.join(ROOT, "tools", "spec", "eng_profiles.json")
+        try:
+            spec = json.load(open(PJ, encoding="utf-8"))
+        except Exception:                                                       # noqa: BLE001
+            spec = {"profiles": []}
+        profs = spec.get("profiles") or []
+        cur = {"id": (profs[0].get("id") if profs else "A")}
+
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 4)
+        lay.setSpacing(4)
+        hd = QLabel()
+        hd.setTextFormat(Qt.RichText)
+        hd.setText("<span style='font-size:12px;font-weight:600;color:%s'>⚙️ 工程配置 + 操作手册 (按性能等级分档)</span>"
+                   "<span style='color:%s;font-size:10.5px'>&nbsp;&nbsp;档位与《性能配置》A/B/C 一一对应; "
+                   "每步都能直接跑到出结果</span>" % (th["C_YELLOW"], th["C_GRAY"]))
+        hd.setWordWrap(True)
+        lay.addWidget(hd)
+
+        rowb = QHBoxLayout()
+        btns = {}
+        for p2 in profs:
+            b = _btn("%s 档 · %s" % (p2.get("id"), p2.get("name")), th)
+            btns[p2.get("id")] = b
+            rowb.addWidget(b)
+        rowb.addStretch()
+        lay.addLayout(rowb)
+
+        desc = QLabel(); desc.setTextFormat(Qt.RichText); desc.setWordWrap(True)
+        lay.addWidget(desc)
+
+        t_hw = _mk_table(["#", "设备", "规格", "数量", "为什么"], [], th)
+        t_sw = _mk_table(["服务/资产", "端口", "起法/位置"], [], th)
+        t_cb = _mk_table(["标定项", "真源", "容差/判据"], [], th)
+        t_wi = _mk_table(["步骤", "做什么", "在哪做", "命令 / 操作", "期望", "状态", ""], [], th)
+        t_wi.verticalHeader().setDefaultSectionSize(28)
+        for _c, _w2 in ((0, 48), (1, 150), (2, 92), (5, 120), (6, 54)):
+            t_wi.setColumnWidth(_c, _w2)
+        t_wi.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        t_wi.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
+
+        def _fill(pid):
+            cur["id"] = pid
+            prof = next((x for x in profs if x.get("id") == pid), {})
+            desc.setText("<span style='color:%s;font-size:10.5px'><b>%s 档</b> · 对应性能: %s</span>"
+                         % (th["C_GREEN"], pid, prof.get("perf_ref") or "—"))
+            t_hw.setRowCount(0)
+            for i, h in enumerate(prof.get("hardware") or [], 1):
+                _r = t_hw.rowCount(); t_hw.insertRow(_r)
+                for c, v in enumerate([str(i), h.get("item"), h.get("spec"), str(h.get("qty")), h.get("why")]):
+                    t_hw.setItem(_r, c, QTableWidgetItem(str(v or "")))
+                t_hw.setRowHeight(_r, 26)
+            t_hw.setMinimumHeight(26 * max(1, len(prof.get("hardware") or [])) + 48)
+            t_sw.setRowCount(0)
+            for s2 in prof.get("software") or []:
+                _r = t_sw.rowCount(); t_sw.insertRow(_r)
+                for c, v in enumerate([s2.get("svc"), str(s2.get("port") or "—"), s2.get("how")]):
+                    t_sw.setItem(_r, c, QTableWidgetItem(str(v or "")))
+                t_sw.setRowHeight(_r, 24)
+            t_sw.setMinimumHeight(24 * max(1, len(prof.get("software") or [])) + 48)
+            t_cb.setRowCount(0)
+            for c2 in prof.get("calib") or []:
+                _r = t_cb.rowCount(); t_cb.insertRow(_r)
+                for c, v in enumerate([c2.get("item"), c2.get("src"), c2.get("tol")]):
+                    t_cb.setItem(_r, c, QTableWidgetItem(str(v or "")))
+                t_cb.setRowHeight(_r, 26)
+            t_cb.setMinimumHeight(26 * max(1, len(prof.get("calib") or [])) + 48)
+            t_wi.setRowCount(0)
+            for s3 in prof.get("wi") or []:
+                _r = t_wi.rowCount(); t_wi.insertRow(_r)
+                cells = [s3.get("id"), s3.get("title"),
+                         {"local": "本机", "onsite": "现场", "orin": "Orin"}.get(s3.get("need"), s3.get("need")),
+                         s3.get("cmd"), s3.get("expect"), "未跑", ""]
+                for c, v in enumerate(cells):
+                    _it = QTableWidgetItem(str(v or ""))
+                    _it.setToolTip(str(s3.get("fail") or ""))
+                    t_wi.setItem(_r, c, _it)
+                if s3.get("need") == "local":
+                    _b = QPushButton("▶ 跑")
+                    _b.setFixedHeight(22)
+                    _b.clicked.connect(lambda _=False, rr=_r, s4=s3: _run(rr, s4))
+                    _b.setStyleSheet("QPushButton{font-size:10px;padding:0 6px;}")
+                    t_wi.setCellWidget(_r, 6, _b)
+                t_wi.setRowHeight(_r, 28)
+            t_wi.setMinimumHeight(28 * max(1, len(prof.get("wi") or [])) + 48)
+            for k, b in btns.items():
+                b.setStyleSheet("QPushButton{font-weight:600;}" if k == pid else "")
+
+        def _run(rr, s4):
+            cmd = s4.get("cmd") or ""
+            try:
+                r = _sp.run(cmd, shell=True, cwd=ROOT, capture_output=True, text=True, timeout=90)
+                out = ((r.stdout or "") + (r.stderr or "")).strip()
+                ok = (s4.get("expect") or "") in out
+                t_wi.item(rr, 5).setText(("✅ 过" if ok else "⛔ 不符"))
+                t_wi.item(rr, 5).setForeground(QBrush(QColor(th["C_GREEN"] if ok else th["C_RED"])))
+                t_wi.item(rr, 3).setToolTip(out[-600:] or cmd)
+                t_wi.item(rr, 5).setToolTip(out[-600:] or "无输出")
+            except Exception as _e:                                             # noqa: BLE001
+                t_wi.item(rr, 5).setText("⛔ 异常")
+                t_wi.item(rr, 5).setToolTip(repr(_e))
+
+        for pid, b in btns.items():
+            b.clicked.connect(lambda _=False, k=pid: _fill(k))
+        _fill(cur["id"])
+        lay.addWidget(t_hw)
+        lay.addWidget(t_sw)
+        lay.addWidget(t_cb)
+        lay.addWidget(t_wi)
+
+        br = QHBoxLayout()
+        b_all = _btn("▶ 一键跑本档全部本机步骤", th)
+
+        def _run_all():
+            for _r in range(t_wi.rowCount()):
+                _wd = t_wi.cellWidget(_r, 6)
+                if _wd is not None:
+                    _wd.click()
+                    QApplication.processEvents()
+        b_all.clicked.connect(_run_all)
+        b_cp = _btn("📋 复制本档 WI (TSV)", th)
+
+        def _cp():
+            prof = next((x for x in profs if x.get("id") == cur["id"]), {})
+            lines = ["\t".join(["步骤", "做什么", "在哪做", "命令", "期望", "失败处理"])]
+            for s5 in prof.get("wi") or []:
+                lines.append("\t".join([str(s5.get("id")), str(s5.get("title")), str(s5.get("need")),
+                                        str(s5.get("cmd")), str(s5.get("expect")), str(s5.get("fail"))]))
+            QApplication.clipboard().setText("\n".join(lines))
+        b_cp.clicked.connect(_cp)
+        br.addWidget(b_all); br.addWidget(b_cp); br.addStretch()
+        lay.addLayout(br)
+
+        self.eng_hw_table, self.eng_sw_table = t_hw, t_sw
+        self.eng_calib_table, self.eng_wi_table = t_cb, t_wi
+        self.eng_profile_tiers = [x.get("id") for x in profs]
+        self.eng_cur_profile = cur
+        return w
+
     def _ar_pts_card(self, th, tk):
         """🥽 AR 场景 · 工程配置数据 (专用一块, 放「工程配置」页顶部)。
 
@@ -4102,6 +4249,14 @@ class ConfigCenterPage(QWidget):
         self.eng_rows = [c["id"] for c in cs]
         w2 = QWidget(); l2 = QVBoxLayout(w2); l2.setContentsMargins(6, 6, 6, 6)
         # 🆕 2026-10-12 老倪: 「搞一个专门对应 AR场景的 工程配置数据」⇒ 工程配置页顶部先给这块(点位实际位置)
+        try:
+            self.eng_profile_card = self._eng_profile_block(th)
+            self.ar_pts_panel = QWidget(); _l2p = QVBoxLayout(self.ar_pts_panel)
+            _l2p.setContentsMargins(0, 0, 0, 0); _l2p.addWidget(self.eng_profile_card)
+            l2.addWidget(self.ar_pts_panel)
+        except Exception as _ee:                                                # noqa: BLE001
+            self.eng_profile_card = None
+            l2.addWidget(QLabel("⛔ 工程配置(A/B/C)块构建失败: %r" % (_ee,)))
         try:
             self.ar_pts_card = self._ar_pts_card(th, tk)
             l2.addWidget(self.ar_pts_card)
