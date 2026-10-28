@@ -294,53 +294,71 @@ def main():
         chk("⑨ 台账每条都有状态标记", all(("✅" in x or "⚠" in x or "⛔" in x) for x in sts), sts[:5])
         chk("⑨ 台账 ≥ 4 个实际模型", ml.rowCount() >= 4, "%d 条" % ml.rowCount())
 
-    # ⑩ 性能配置: 只有一张表 (老倪 2026-10-28) —— 性能指标 · 值 · 对应模型 · 功能层级 · 三档(基本/精细/专业)
+    # ⑩ 性能配置: 一张表 · 物理可测值 · 按算力分档 (老倪第十轮: 值要可测/可算, 模型位置写算力 TOPS)
     wp0, tp0 = tab_page(p, "性能配置")
     ot = getattr(p, "perf_one_table", None)
     chk("⑩ 性能配置页有整合表", ot is not None, ot.rowCount() if ot else "无")
-    chk("⑩ 旧的三张表已下线 (三档表/边界表/分档指标/指标表)", all(getattr(p, k, None) is None
-        for k in ("perf_tier_table", "perf_boundary_table", "perf_tier_metric_table", "perf_spec_table")),
-        [k for k in ("perf_tier_table", "perf_boundary_table", "perf_tier_metric_table", "perf_spec_table")
-         if getattr(p, k, None) is not None])
+    chk("⑩ 旧表已下线 (三档表/边界表/KPI 块)", all(getattr(p, k, None) is None
+        for k in ("perf_tier_table", "perf_boundary_table", "perf_tier_metric_table", "perf_spec_table",
+                  "perf_kpi_table")), "已下线")
     if ot is not None:
         hd = [ot.horizontalHeaderItem(c).text() for c in range(ot.columnCount())]
-        for _k in ("性能档次", "性能指标", "值", "对应的模型", "功能层级"):
-            chk("⑩ 表头含「%s」" % _k, _k in hd, hd)
+        for _k in ("性能档次", "性能指标", "物理可测值", "测量工具", "依据", "算力预算", "层级"):
+            chk("⑩ 表头含「%s」" % _k, any(_k in (h or "") for h in hd), hd)
         _bands = {ot.item(r, 0).text().split("\n")[0] for r in range(ot.rowCount()) if ot.item(r, 0)}
-        chk("⑩ 三档齐全 (基本性能/精细操作性能/专业性能)",
-            {"基本性能", "精细操作性能", "专业性能"} <= _bands, sorted(_bands))
-        chk("⑩ 指标行数 15~24 (一张表装得下)", 15 <= ot.rowCount() <= 24, "%d 行" % ot.rowCount())
-        c_v, c_m, c_l = 2, 3, 4
-        chk("⑩ 每行都有 值", all(ot.item(r, c_v) is not None and ot.item(r, c_v).text().strip()
-                                for r in range(ot.rowCount())), ot.item(0, c_v).text()[:44])
-        chk("⑩ 每行都有 对应模型", all(ot.item(r, c_m) is not None and ot.item(r, c_m).text().strip() not in ("", "—")
-                                for r in range(ot.rowCount())), ot.item(0, c_m).text()[:44])
-        chk("⑩ 每行都有 功能层级",
-            all(any(x in ot.item(r, c_l).text() for x in ("L2", "L3", "L4", "L5")) for r in range(ot.rowCount())),
-            sorted({ot.item(r, c_l).text() for r in range(ot.rowCount())}))
-        c6 = ot.columnCount() - 1
-        _ok = sum(1 for r in range(ot.rowCount()) if ot.item(r, c6).text().startswith("✅"))
-        chk("⑩ 值/模型 逐条真源现场校验 (%d/%d)" % (_ok, ot.rowCount()), _ok >= ot.rowCount() - 1,
-            "未通过: " + " ; ".join(ot.item(r, 1).text() for r in range(ot.rowCount())
-                                   if not ot.item(r, c6).text().startswith("✅")))
+        chk("⑩ 三档齐全", {"基本性能", "精细操作性能", "专业性能"} <= _bands, sorted(_bands))
+        c_k, c_v, c_tool, c_bs, c_tops, c_ly = 1, 2, 3, 4, 5, 6
+        # 值必须是物理量 (带单位), 且可计算/可测
+        _units = ("mm", "s", "N", "Hz", "px", "件/h", "维/s", "ms", "MB", "维")
+        chk("⑩ 每一行的值都带物理单位", all(any(u in ot.item(r, c_v).text() for u in _units)
+                                       for r in range(ot.rowCount())),
+            [ot.item(r, c_v).text()[:24] for r in range(ot.rowCount())
+             if not any(u in ot.item(r, c_v).text() for u in _units)][:3])
+        _td = sum(1 for r in range(ot.rowCount())
+                  if ("mm" in ot.item(r, c_v).text() or "s/件" in ot.item(r, c_v).text()
+                      or "mm/s" in ot.item(r, c_v).text()))
+        chk("⑩ 时间/距离类指标占多数 (≥12 行)", _td >= 12, "%d/%d 行" % (_td, ot.rowCount()))
+        chk("⑩ 每行都有测量工具/方法", all(ot.item(r, c_tool).text().strip() not in ("", "—")
+                                     for r in range(ot.rowCount())), ot.item(0, c_tool).text()[:40])
+        chk("⑩ 每行都有依据 (标准/真源)", all(ot.item(r, c_bs).text().strip() not in ("", "—")
+                                       for r in range(ot.rowCount())), ot.item(0, c_bs).text()[:40])
+        _std = sum(1 for r in range(ot.rowCount()) if "ISO" in ot.item(r, c_bs).text())
+        chk("⑩ 有国际标准做依据 (ISO 条数 ≥4)", _std >= 4, "%d 行引 ISO" % _std)
+        # 算力: L2 ≤30 / L2+L3 ≤80 / L2+L3+L4 ≤300
+        _tops_of = {}
+        for r in range(ot.rowCount()):
+            _b = ot.item(r, 0).text().split("\n")[0]
+            _tops_of.setdefault(_b, set()).add(ot.item(r, c_tops).text())
+        chk("⑩ 基本性能算力 ≤30 TOPS", _tops_of.get("基本性能") == {"≤30 TOPS"}, _tops_of.get("基本性能"))
+        chk("⑩ 精细操作性能算力 ≤80 TOPS", _tops_of.get("精细操作性能") == {"≤80 TOPS"}, _tops_of.get("精细操作性能"))
+        chk("⑩ 专业性能算力 ≤300 TOPS", _tops_of.get("专业性能") == {"≤300 TOPS"}, _tops_of.get("专业性能"))
+        # 算力列不许写硬件型号 (老倪: 不要写 D405 这样的硬件, 要有算力对应)
+        chk("⑩ 算力列无硬件型号", all(("D405" not in ot.item(r, c_tops).text()
+                                and "D435" not in ot.item(r, c_tops).text()) for r in range(ot.rowCount())), "已核")
+        _layers = {}
+        for r in range(ot.rowCount()):
+            _b2 = ot.item(r, 0).text().split("\n")[0]
+            _layers.setdefault(_b2, set()).add(ot.item(r, c_ly).text())
+        chk("⑩ 基本性能只用 L2", _layers.get("基本性能") == {"L2"}, _layers.get("基本性能"))
+        chk("⑩ 精细操作性能含 L3", all("L3" in x for x in (_layers.get("精细操作性能") or [])),
+            _layers.get("精细操作性能"))
+        chk("⑩ 专业性能含 L4/L5", all(("L4" in x or "L5" in x) for x in (_layers.get("专业性能") or [])),
+            _layers.get("专业性能"))
+        c8 = ot.columnCount() - 1
+        _ok = sum(1 for r in range(ot.rowCount()) if ot.item(r, c8).text().startswith("✅"))
+        chk("⑩ 每行真源现场校验 (%d/%d)" % (_ok, ot.rowCount()), _ok == ot.rowCount(),
+            "未通过: " + " ; ".join(ot.item(r, c_k).text() for r in range(ot.rowCount())
+                                   if not ot.item(r, c8).text().startswith("✅")))
         ptxt = " ".join(l.text() for l in wp0.findChildren(QLabel))
         for _b in ("成本 A", "成本 B", "成本 C"):
             chk("⑩ 档次带成本参考 (%s)" % _b, _b in ptxt, "有" if _b in ptxt else "缺")
-        _layers = {}
-        for r in range(ot.rowCount()):
-            _b2 = ot.item(r, 0).text().split("\n")[0] if ot.item(r, 0) else ""
-            _layers.setdefault(_b2, set()).add(ot.item(r, c_l).text())
-        chk("⑩ 基本性能只用 L2", _layers.get("基本性能") == {"L2"}, _layers.get("基本性能"))
-        chk("⑩ 精细操作性能 = L3 档", all("L3" in x for x in (_layers.get("精细操作性能") or [])),
-            _layers.get("精细操作性能"))
-        chk("⑩ 专业性能 = L4/L5 档",
-            all(("L4" in x or "L5" in x) for x in (_layers.get("专业性能") or [])), _layers.get("专业性能"))
+        chk("⑩ 页面写明算力估算口径", "TOPS" in ptxt and "估算" in ptxt, "有" if "估算" in ptxt else "缺")
         bts = {b.text(): b for b in wp0.findChildren(QPushButton)}
         kb = next((k for k in bts if "性能指标 (TSV)" in k), None)
         if kb:
             bts[kb].click(); app.processEvents()
             ct = QApplication.clipboard().text()
-            chk("⑩ 复制 TSV 真进剪贴板 (含三档)", ct.count("\n") >= 15 and "基本性能" in ct, "行数 %d" % ct.count("\n"))
+            chk("⑩ 复制 TSV 真进剪贴板", ct.count("\n") >= 30 and "≤30 TOPS" in ct, "行数 %d" % ct.count("\n"))
 
     # ── 模型配置页
     wm, tm = tab_page(p, "模型配置")

@@ -5317,56 +5317,68 @@ class ConfigCenterPage(QWidget):
         lay.setSpacing(4)
         hd = QLabel()
         hd.setTextFormat(Qt.RichText)
-        hd.setText("<span style='font-size:12px;font-weight:600;color:%s'>📊 性能指标 (一张表 · 按 基本/精细/专业 三档 · 右侧即成本挂点)</span>"
-                   "<span style='color:%s;font-size:10.5px'>&nbsp;&nbsp;每行 = 指标 · 值 · 对应模型 · 功能层级; "
-                   "档次列第二行就是该档成本组成</span>" % (th["C_YELLOW"], th["C_GRAY"]))
+        hd.setText("<span style='font-size:12px;font-weight:600;color:%s'>📊 性能指标 (一张表 · 物理可测值 · 按算力分档)</span>"
+                   "<span style='color:%s;font-size:10.5px'>&nbsp;&nbsp;每行 = 指标(符号·单位) · 物理可测值 · 测量工具 "
+                   "· 依据(标准) · 算力预算(TOPS) · 层级</span>" % (th["C_YELLOW"], th["C_GRAY"]))
         hd.setWordWrap(True)
         lay.addWidget(hd)
 
         rows, spans = [], []
         for b in bands:
             br = b.get("rows") or []
+            tops = b.get("tops")
             spans.append((len(rows), len(br), b))
             for r in br:
                 rows.append([b.get("name") or b.get("id") or "—",
-                             r.get("k") or "—", r.get("v") or "—",
-                             r.get("model") or "—", r.get("layer") or "—",
-                             _src_check(r.get("src"))])
-        t = _mk_table(["性能档次", "性能指标", "值", "对应的模型", "功能层级", "真源校验"], rows, th)
+                             "%s (%s)" % (r.get("k") or "—", r.get("sym") or "—"),
+                             r.get("v") or "—", r.get("tool") or "—", r.get("basis") or "—",
+                             ("≤%d TOPS" % tops) if tops else "—",
+                             r.get("layer") or "—", _src_check(r.get("src"))])
+        t = _mk_table(["性能档次", "性能指标 (符号)", "物理可测值", "测量工具 / 方法", "依据 (标准/真源)",
+                       "算力预算", "层级", "真源校验"], rows, th)
         t.setWordWrap(True)
         t.verticalHeader().setDefaultSectionSize(30)
-        for _c, _w2 in ((0, 150), (1, 170), (4, 96), (5, 104)):
+        for _c, _w2 in ((0, 108), (1, 150), (5, 82), (6, 62), (7, 78)):
             t.setColumnWidth(_c, _w2)
         t.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        t.horizontalHeader().setSectionResizeMode(4, QHeaderView.Interactive)
+        t.setColumnWidth(4, 200)
         t.setMinimumHeight(30 * len(rows) + 48)
         self.perf_one_table = t
         self.perf_bands = [b.get("id") for b in bands]
+        self.perf_tops = {b.get("id"): b.get("tops") for b in bands}
         for _r0, _n, _b in spans:
             if _n <= 0:
                 continue
             _it = t.item(_r0, 0)
             if _it is not None:
                 _it.setText("%s\n(%s)" % (_b.get("name"), _b.get("layers")))
-                _it.setToolTip("%s\n成本组成: %s" % (_b.get("name"), " · ".join(_b.get("cost_items") or [])))
+                _it.setToolTip("%s\n算力预算: ≤%s TOPS\n估算占用: %s\n成本组成: %s"
+                               % (_b.get("name"), _b.get("tops"), _b.get("tops_estimate") or "—",
+                                  " · ".join(_b.get("cost_items") or [])))
                 _it.setBackground(QBrush(QColor("#161b22")))
                 _it.setForeground(QBrush(QColor(th["C_BLUE"])))
             t.setSpan(_r0, 0, _n, 1)
-        lay.addWidget(t)
 
-        # 三档成本组成 (并成一行, 只作参考不填金额)
-        for b in bands:
+        # 每档的算力/成本挂点 (一行一块, 便于成本核算)
+        for _r0, _n, _b in spans:
             lab = QLabel()
             lab.setTextFormat(Qt.RichText)
-            lab.setText("<span style='color:%s;font-size:10.5px'><b>%s (%s)</b> —— %s</span>"
-                        % (th["C_GRAY"], b.get("name"), b.get("layers"), b.get("cost_hint") or "—"))
+            lab.setText("<span style='color:%s;font-size:10.5px'><b>%s (%s) · ≤%s TOPS</b> —— %s<br/>"
+                        "<span style='color:%s'>算力估算: %s</span><br/>"
+                        "<span style='color:%s'>成本: %s</span></span>"
+                        % (th["C_GRAY"], _b.get("name"), _b.get("layers"), _b.get("tops"),
+                           _b.get("tops_note") or "", th["C_GRAY"], _b.get("tops_estimate") or "—",
+                           th["C_GRAY"], _b.get("cost_hint") or "—"))
             lab.setWordWrap(True)
             lay.addWidget(lab)
+        lay.addWidget(t)
 
         br2 = QHBoxLayout()
         b1 = _btn("📋 复制 性能指标 (TSV)", th)
         b1.clicked.connect(lambda: QApplication.clipboard().setText(
-            "\t".join(["性能档次", "性能指标", "值", "对应的模型", "功能层级"]) + "\n"
-            + "\n".join("\t".join(r[:5]) for r in rows)))
+            "\t".join(["性能档次", "指标(符号)", "物理可测值", "测量工具", "依据", "算力预算", "层级"]) + "\n"
+            + "\n".join("\t".join(r[:7]) for r in rows)))
         br2.addWidget(b1)
         br2.addStretch()
         lay.addLayout(br2)

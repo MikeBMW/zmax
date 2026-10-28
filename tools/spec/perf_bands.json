@@ -1,54 +1,77 @@
 {
   "_meta": {
-    "schema": "zmax-perf-bands/1.0",
-    "note": "老倪 2026-10-28: 「性能指标太多了, 就要一张表, 保留 性能指标/值/对应的模型/对应的功能层级; 要为产品成本组成提供参考, 要能看出来 基本性能、精细操作的性能、专业性能」。⇒ 一张表三档, 每行 = 一个指标 + 值 + 实际模型 + 功能层级; 每档的 cost_hint 就是成本组成的挂点 (只列项目, 不填金额)。src 逐条指真源, 页面现场校验。",
-    "author": "静静 (Hermes) 2026-10-28"
+    "schema": "zmax-perf-bands/2.0",
+    "note": "老倪 2026-10-28 (第十轮): 「性能指标的值要用物理可测量的值, 跟时间和距离有关, 可以计算, 可以用工具测量; 指标太零散, 要专业有依据; 对应的模型不要写 D405 这种硬件, 要写算力: L2 ≤30 TOPS, L2+L3 ≤80 TOPS, L2+L3+L4 ≤300 TOPS」。⇒ 一张表, 每行 = 指标(符号·单位) + 物理可测值 + 测量工具/方法 + 依据(标准/真源) + 算力预算(TOPS) + 功能层级。所有时间/距离类值均来自 sim_insert.json 392 段实测或真源文件, 可直接用工具复算。",
+    "author": "静静 (Hermes) 2026-10-28",
+    "units": "s · mm · mm/s · mm/px · N · 件/h · Hz · ms · 维/s"
   },
   "bands": [
     {
       "id": "A",
       "name": "基本性能",
       "layers": "L2",
-      "cost_hint": "成本 A: 工控机 + 相机 D405/D435 + AOI 服务 · 无训练算力 (L2 模型直接部署)",
-      "cost_items": ["工控机 (550C 级)", "相机 D405/D435", "AOI 检测服务", "L2 技能库示教人力"],
+      "tops": 30,
+      "tops_note": "算力预算 ≤30 TOPS (INT8 峰值) —— L2: YOLO 检测 + 技能库 + AOI 客户端",
+      "tops_estimate": "YOLOv8s 11.2M 参数 · 28.6 GFLOP/帧 @640 · 30 fps ⇒ 0.86 TFLOPS 等效 (≈1.7 TOPS INT8), 预算余额 ≈17×",
+      "cost_hint": "成本 A: 工控机 + 深度/侧视相机 + AOI 服务 · 无训练算力 (L2 直部署, ≤30 TOPS 级算力可承载)",
+      "cost_items": ["工控机 (≤30 TOPS 算力)", "相机 (深度 + 侧视)", "AOI 检测服务", "L2 技能库示教人力"],
       "rows": [
-        {"k": "单件节拍 / UPH", "v": "11.42 s/件 · 316.1 件/h (目标 300)", "model": "YOLO 检测 + 技能库 + AOI 服务", "layer": "L2", "src": "config/tasks/tasks.json#tasks"},
-        {"k": "长程节拍", "v": "一轮 392 段 / 159.43 s / 14 件", "model": "光模块_抓放循环_v1.json (技能记忆)", "layer": "L2", "src": "zmax_data/runtime/traj/sim_insert.json"},
-        {"k": "定位精度", "v": "位姿可重复性 RP ≤0.10 mm", "model": "关节臂 + 手眼标定 (calib)", "layer": "L2", "src": "config/platform/zmax_perf_spec.json"},
-        {"k": "检测能力", "v": "YOLO conf ≥0.4 · AOI 五点 · 曝光 5000us", "model": "yolo_peg_live.pt + AOI (10082/10083)", "layer": "L2", "src": "src/lerobot/policies/yolo_3d/yolo_state_aligner.py:93"},
-        {"k": "执行安全限幅", "v": "VEL_LIMIT 1.0 · FORCE_LIMIT 5.0N · POS_LIMIT 0.6", "model": "safety 收口闸 (代码规则)", "layer": "L2", "src": "src/lerobot/policies/left_right/state_space/safety.py:12"},
-        {"k": "视觉量程", "v": "640×480 · fx 394.06 / fy 393.47 · 深度 0.1mm", "model": "D405 / D435 相机", "layer": "L2", "src": "config/calib/zmax_calib.json#camera"}
+        {"k": "循环时间", "sym": "T_c", "v": "11.39 s/件 (392 段 / 14 件实测)", "tool": "控制器时间戳差 (首段入口→末段出口), 秒表复核", "basis": "ISO 9283 §6.3 循环时间", "layer": "L2", "src": "zmax_data/runtime/traj/sim_insert.json"},
+        {"k": "理论产能", "sym": "Q = 3600/T_c", "v": "316.1 件/h (目标 300)", "tool": "由 T_c 计算, 无独立测量", "basis": "计算值 · 与节拍同源", "layer": "L2", "src": "config/tasks/tasks.json#tasks"},
+        {"k": "单件路径长度", "sym": "L", "v": "3200.6 mm/件 (全长 44807.9 mm / 14 件)", "tool": "轨迹段矢量积分 Σ|b−a|; 现场激光跟踪仪抽核 3 段", "basis": "ISO 9283 §6.5 路径长度", "layer": "L2", "src": "zmax_data/runtime/traj/sim_insert.json"},
+        {"k": "平均末端速度", "sym": "v̄ = L/T_c", "v": "281.0 mm/s", "tool": "由 L 与 T_c 计算; 激光跟踪仪复核", "basis": "ISO 9283 §6.5", "layer": "L2", "src": "zmax_data/runtime/traj/sim_insert.json"},
+        {"k": "峰值末端速度", "sym": "v_max / v_p90", "v": "631 / 625.3 mm/s", "tool": "控制器速度监控; 激光跟踪仪 100Hz 采样取最大", "basis": "ISO 9283 §6.5 · 安全速度上限 1000 mm/s", "layer": "L2", "src": "zmax_data/runtime/traj/sim_insert.json"},
+        {"k": "插入行程与速度", "sym": "s_in · v_in", "v": "47.0 mm · 156.7 mm/s (0.30 s/次)", "tool": "光栅尺/控制器末端位移反馈; 千分表核 47 mm", "basis": "IEC 61754 光模块插入深度 · 力控插入段", "layer": "L2", "src": "zmax_data/runtime/traj/sim_insert.json"},
+        {"k": "取放垂直行程", "sym": "s_v · v_v", "v": "546 mm/件 (下 242 + 上 304) · 253~269 mm/s", "tool": "控制器 z 轴位置差; 钢尺抽核", "basis": "ISO 9283 §6.5", "layer": "L2", "src": "zmax_data/runtime/traj/sim_insert.json"},
+        {"k": "夹爪动作时间", "sym": "t_g", "v": "0.38 s/次 · 2 次/件 = 0.76 s", "tool": "IO 时序抓取 (夹爪指令→到位信号)", "basis": "设备 IO 时序 · 计入 T_c 预算", "layer": "L2", "src": "zmax_data/runtime/traj/sim_insert.json"},
+        {"k": "检测时间", "sym": "t_d", "v": "2.80 s/件 (金手指 0.80 s + 侧面 4 点 2.00 s, 0.5 s/点)", "tool": "段日志时间戳; 服务端响应时间录屏核对", "basis": "AOI 五点判据 · 曝光 5 ms", "layer": "L2", "src": "zmax_data/runtime/traj/sim_insert.json"},
+        {"k": "视觉空间分辨率", "sym": "δ = z/fx", "v": "0.76 mm/px @300 mm · 0.38 mm/px @150 mm", "tool": "棋盘格标定 (张正友) + 量块核 δ", "basis": "针孔模型 · fx=394.06 px", "layer": "L2", "src": "config/calib/zmax_calib.json#camera"},
+        {"k": "深度分辨率", "sym": "δ_z", "v": "0.1 mm/单位 (读数 4013 = 401.3 mm)", "tool": "量块置于 400 mm 处读数核对", "basis": "深度相机标定 · calib.depth_scale", "layer": "L2", "src": "config/calib/zmax_calib.json#depth_scale"},
+        {"k": "力阈值", "sym": "F_p · F_max", "v": "5.0 N 保护 · 40 N 插入上限", "tool": "六维力传感器标定 + 砝码加载验证", "basis": "ISO/TS 15066 简化 · safety 收口", "layer": "L2", "src": "src/lerobot/policies/left_right/state_space/safety.py:12"},
+        {"k": "位姿准确度 (目标)", "sym": "AP", "v": "≤0.50 mm (未实测)", "tool": "ISO 9283 测试球 + 千分表/激光跟踪仪, 5 点×30 次", "basis": "ISO 9283 §7.2 AP", "layer": "L2", "src": "config/platform/zmax_perf_spec.json"},
+        {"k": "位姿可重复性 (目标)", "sym": "RP", "v": "≤0.10 mm (未实测)", "tool": "同上, 同点 30 次往返取 3σ", "basis": "ISO 9283 §7.2 RP", "layer": "L2", "src": "config/platform/zmax_perf_spec.json"}
       ]
     },
     {
       "id": "B",
       "name": "精细操作性能",
       "layers": "L2+L3",
-      "cost_hint": "成本 B: A + 推理 GPU (500M 策略) + 真机数据采集标注 + LoRA 微调算力",
-      "cost_items": ["推理 GPU (4060 级)", "训练数据采集与标注", "LoRA 微调算力", "双臂时序联调人力"],
+      "tops": 80,
+      "tops_note": "算力预算 ≤80 TOPS (INT8 峰值) —— 含 L3 SmolVLA+LEW 图像策略 (3×480×480)",
+      "tops_estimate": "A 档 0.86 TFLOPS + SmolVLA 500M@12.5Hz (2×0.5e9×12.5 = 12.5 GFLOP/s) + ViT 视觉编码 ⇒ ≈1.1 TFLOPS (≈2.2 TOPS INT8), 预算余额 ≈36×",
+      "cost_hint": "成本 B: A + 推理算力 (≤80 TOPS 级) + 真机数据采集标注 + LoRA 微调算力",
+      "cost_items": ["推理算力 (≤80 TOPS 级)", "训练数据采集与标注", "LoRA 微调算力", "双臂时序联调人力"],
       "rows": [
-        {"k": "插入力控制", "v": "插入段力上限 ≤40N · 保护阈值 5.0N", "model": "力控插入段 + safety 闸", "layer": "L2+L3", "src": "src/lerobot/policies/left_right/state_space/safety.py:12"},
-        {"k": "策略输出", "v": "action 4 维 · chunk 7 / n_action_steps 7", "model": "SmolVLA+LEW (在役 ckpt 1289MB)", "layer": "L3", "src": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model/config.json#output_features"},
-        {"k": "策略输入", "v": "image 3×480×480 + state 39 维", "model": "SmolVLA+LEW", "layer": "L3", "src": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model/config.json#input_features"},
-        {"k": "控制频率", "v": "12.5 Hz (τ=0.08s 设计值)", "model": "L3 策略执行环", "layer": "L3", "src": "config/platform/zmax_perf_spec.json"},
-        {"k": "双臂并行", "v": "供料 4.70s · 交接 8.70s · 件周期 11.40s", "model": "L3 编排 (SkillComposer) + TASK-06 steps", "layer": "L3", "src": "config/tasks/tasks.json#tasks"},
-        {"k": "位姿准确度", "v": "AP ≤0.50 mm (设计目标)", "model": "L3 策略 + 标定链", "layer": "L3", "src": "config/platform/zmax_perf_spec.json"},
-        {"k": "模型资源", "v": "1289MB 权重 · GPU 推理 · LoRA 需 merge", "model": "SmolVLA+LEW + L3 LoRA", "layer": "L3", "src": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model"}
+        {"k": "控制周期", "sym": "τ", "v": "80 ms (12.5 Hz)", "tool": "策略推理时间戳 (perf_counter) 统计 P50/P95", "basis": "真源设计 τ=0.08 s", "layer": "L3", "src": "config/platform/zmax_perf_spec.json"},
+        {"k": "动作前瞻", "sym": "H = chunk·τ", "v": "7 × 80 ms = 0.56 s", "tool": "由 chunk_size 与 τ 计算 (可查 ckpt config)", "basis": "ACT 类 chunk 执行", "layer": "L3", "src": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model/config.json#output_features"},
+        {"k": "动作空间", "sym": "a ∈ R^n", "v": "4 维 (Δx, Δy, Δz [mm], 夹爪 [mm])", "tool": "下发指令与末端实测位移逐维线性回归核比例", "basis": "ckpt output shape [4]", "layer": "L3", "src": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model/config.json#output_features"},
+        {"k": "单步位移分辨率", "sym": "Δ_min", "v": "0.10 mm (与 RP 目标同量级)", "tool": "千分表测同一指令 30 次位移分布", "basis": "ISO 9283 RP", "layer": "L3", "src": "config/platform/zmax_perf_spec.json"},
+        {"k": "观测带宽", "sym": "f_obs × n", "v": "12.5 Hz × 39 维 = 487.5 维/s", "tool": "采样时间戳统计丢帧率", "basis": "ckpt input state 39 维", "layer": "L3", "src": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model/config.json#input_features"},
+        {"k": "双臂交接时间窗", "sym": "t_ho", "v": "8.70 s (取料完成→右臂接管)", "tool": "左右臂 IO/轨迹时间戳对齐, 秒表复核", "basis": "双臂并行编排 (同一槽不双手)", "layer": "L3", "src": "config/tasks/tasks.json#tasks"},
+        {"k": "供料时间", "sym": "t_feed", "v": "4.70 s/件 (左臂), 在右臂节拍内并行", "tool": "左臂段日志时间戳差", "basis": "TASK-06-TRAY steps 实测", "layer": "L3", "src": "config/tasks/tasks.json#tasks"},
+        {"k": "编排时间增量", "sym": "ΔT", "v": "0 s (并行后仍 11.39 s/件)", "tool": "编排前后各跑 14 件比总时长", "basis": "并行不增节拍 · 300 UPH 目标", "layer": "L3", "src": "zmax_data/runtime/traj/sim_insert.json"},
+        {"k": "轨迹跟随误差 (目标)", "sym": "e_tr", "v": "≤0.50 mm (未实测)", "tool": "激光跟踪仪 100 Hz 记录末端实际轨迹 vs 指令轨迹", "basis": "ISO 9283 §7.4 路径准确度", "layer": "L3", "src": "config/platform/zmax_perf_spec.json"},
+        {"k": "模型参数规模", "sym": "N", "v": "500M (权重 1229 MB)", "tool": "权重文件字节 stat + 参数量统计", "basis": "SmolVLA+LEW 在役 ckpt", "layer": "L3", "src": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model"}
       ]
     },
     {
       "id": "C",
       "name": "专业性能",
       "layers": "L2+L3+L4(+L5)",
-      "cost_hint": "成本 C: B + L4 训练 GPU (INTACT+LoRA) + L5 云端 API 或本地 3B 显存 + 安全验证与认证 (ISO 13849/9283)",
-      "cost_items": ["L4 训练 GPU 与权重合并", "L5 云端 API 费用 或 3B 显存", "安全验证与认证 (ISO 13849/9283)", "异常场景测试集与现场验证"],
+      "tops": 300,
+      "tops_note": "算力预算 ≤300 TOPS (INT8 峰值) —— 含 L4 INTACT-JEPA 意图决策 + L5 规划/场景理解 (可选)",
+      "tops_estimate": "B 档 ≈1.1 TFLOPS + INTACT 84MB(≈21M 参数)@9.9Hz (≈0.4 GFLOP/s) + L5 3B VLM 按需 ⇒ ≈1.5 TFLOPS (≈3 TOPS INT8); 300 TOPS 预算主要给 L5 实时视觉留余量",
+      "cost_hint": "成本 C: B + L4 训练算力 + L5 云端 API 或本地 3B 显存 + 安全验证与认证 (ISO 13849/9283)",
+      "cost_items": ["L4 训练算力与权重合并", "L5 云端 API 或 3B 显存", "安全验证与认证 (ISO 13849/9283)", "异常场景测试集与现场验证"],
       "rows": [
-        {"k": "意图决策时延", "v": "稳态 101 ms (零搜索)", "model": "INTACT-JEPA (84MB + LoRA)", "layer": "L4", "src": "config/platform/zmax_perf_spec.json"},
-        {"k": "意图输入/输出", "v": "image 224×224×3帧 + skill 24 → action 8 (feat 192)", "model": "INTACT-JEPA", "layer": "L4", "src": "zmax_data/stable-wm-cache/checkpoints/intact_l4_current/config.json#encoder"},
-        {"k": "异常与否决", "v": "max_veto=3 连续否决转异常 · 自主重规划", "model": "INTACT 决策 + TaskPlanner", "layer": "L4+L5", "src": "src/lerobot/policies/left_right/state_space/planner.py"},
-        {"k": "任务规划", "v": "timeout ≥300 s · 短提示 + 小 JSON · 失败回退规则", "model": "Qwen3-7B (可插拔) / DeepSeek 视觉", "layer": "L5", "src": "tools/spec/model_links.json#external"},
-        {"k": "场景理解", "v": "1019MB · 零搜索 · 本机推理", "model": "Qwen2.5-VL-3B (l5_vlm_merged)", "layer": "L5", "src": "zmax_data/models/l5_vlm_merged_20261009_231339"},
-        {"k": "安全等级", "v": "目标 PL d · 动作授权只从 8793 · 危险动作 all_stop (认证未做)", "model": "L4 授权链 + 分层否决", "layer": "L4", "src": "docs/incidents/INCIDENT-INDEX.md"}
+        {"k": "意图决策周期", "sym": "T_dec", "v": "101 ms (9.9 Hz)", "tool": "决策入口→动作出口时间戳 P50/P95", "basis": "稳态零搜索实测口径", "layer": "L4", "src": "config/platform/zmax_perf_spec.json"},
+        {"k": "意图动作维", "sym": "a ∈ R^n · s ∈ R^m", "v": "8 维动作 · 24 维技能条件", "tool": "读 ckpt 配置 + 逐维下发-实测比例回归", "basis": "ckpt intent_actor.action_dim / skill_dim", "layer": "L4", "src": "zmax_data/stable-wm-cache/checkpoints/intact_l4_current/config.json#intent_actor"},
+        {"k": "否决响应时间", "sym": "t_veto = n·T_dec", "v": "3 × 101 ms = 303 ms (连续 3 次否决转异常)", "tool": "注入越界指令, 计时到转异常/停机", "basis": "planner max_veto=3 分层否决", "layer": "L4", "src": "src/lerobot/policies/left_right/state_space/planner.py"},
+        {"k": "急停停机时间 (目标)", "sym": "t_stop", "v": "≤1.0 s (未实测, 需现场演练)", "tool": "高速段按急停, 编码器记录停止位移与耗时", "basis": "ISO 13850 急停 · 目标 PL d", "layer": "L4", "src": "docs/incidents/INCIDENT-INDEX.md"},
+        {"k": "安全力/速度上限", "sym": "F_lim · v_lim", "v": "5.0 N · 1000 mm/s (超限饱和/拒发)", "tool": "力传感器 + 速度监控读回, 逐级加载到阈值", "basis": "safety 收口 · ISO/TS 15066 简化", "layer": "L4", "src": "src/lerobot/policies/left_right/state_space/safety.py:12"},
+        {"k": "重规划时延上限", "sym": "T_plan,max", "v": "300 s (超时回退规则规划)", "tool": "规划请求→返回时间戳; 断网演练验回退", "basis": "L5 超时口径 · 失败降级路径", "layer": "L5", "src": "tools/spec/model_links.json#external"},
+        {"k": "场景理解分辨率", "sym": "I · f", "v": "224×224 px · 3 帧输入", "tool": "读 ckpt encoder.image_size + 帧率统计", "basis": "INTACT 视觉编码输入", "layer": "L4", "src": "zmax_data/stable-wm-cache/checkpoints/intact_l4_current/config.json#encoder"},
+        {"k": "自主恢复成功率 (待测)", "sym": "R_rec", "v": "未实测 (需 N≥30 次异常注入)", "tool": "异常注入台架: 断电/急停/遮挡/超时 各 10 次统计", "basis": "目标 PL d 验证项", "layer": "L4+L5", "src": "docs/incidents/INCIDENT-INDEX.md"}
       ]
     }
   ]
