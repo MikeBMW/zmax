@@ -88,4 +88,11 @@ if ! pgrep -f "signal_store_daemon.py" >/dev/null 2>&1; then
     echo "📚 统一信号库已启动 (signals.db · 2Hz)"
 fi
 
+# 🔀 2026-10-28 老倪: 「画布打开, 数据源不是 AR场景, 刚才我已经改了啊」
+#   根因: 控制台启动时把当时的 src_state 读进内存, 之后文件被守护改对了 → 界面还是旧值。
+#   ⇒ 启动前先把数据源对齐 (守护只认 ar_scene 有效 ⇒ AR场景; 用户关了 AR 就不碰)
+if [ -x "$REPO_ROOT/tools/ensure_ar_source.py" ] || [ -f "$REPO_ROOT/tools/ensure_ar_source.py" ]; then
+    "$VENV_PY" "$REPO_ROOT/tools/ensure_ar_source.py" >> "$LOG" 2>&1 || true
+fi
+
 exec nice -n 10 "$VENV_PY" studio.py >> "$LOG" 2>&1

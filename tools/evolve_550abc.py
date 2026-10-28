@@ -33,6 +33,23 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PY = os.path.join(ROOT, "gui-venv311/bin/python")
 TASK = "TASK-08-AL1"
+SCENE = "SCN-08-AL1"          # 由 --task 推导 (见 scene_of / main)
+
+
+def scene_of(task):
+    """任务 → 场景 (真源 tasks.json 的 scene_ref; 读不到再退回绑定真源)"""
+    for p, key in ((os.path.join(ROOT, "data/database/zmax/sources/config/tasks/tasks.json"), "tasks"),
+                   (os.path.join(ROOT, "data/database/zmax/sources/config/ss_task_binding.json"), "tasks")):
+        try:
+            d = json.load(open(p, encoding="utf-8"))
+        except Exception:                                        # noqa: BLE001
+            continue
+        for x in (d.get(key) or []):
+            if x.get("task_id") == task:
+                v = x.get("scene_ref") or x.get("scene") or x.get("scene_id")
+                if v:
+                    return v if str(v).startswith("SCN") else str(v).split()[0]
+    return "?"
 EVO = os.path.join(ROOT, "reports", "evolution")
 FF = os.path.join(ROOT, "reports", "fullflow7")
 MODEL = "zmax_compute_mode.py"
@@ -174,16 +191,30 @@ def run_profile(pf, sim_target, steps, yolo_epochs, l5_steps, skip_train, run_di
     return res
 
 
+def _train_dataset():
+    """最近一次 L3 训练实际用的数据集根 (从 train_config.json 读) —— 用来核「造的 data 有没有进训练」"""
+    import glob
+    ps = sorted(glob.glob(os.path.join(ROOT, "outputs/train/*/checkpoints/*/pretrained_model/train_config.json")),
+                key=os.path.getmtime)
+    if not ps:
+        return None, None
+    try:
+        c = json.load(open(ps[-1], encoding="utf-8"))
+        return (c.get("dataset") or {}).get("root"), os.path.getmtime(ps[-1])
+    except Exception:                                            # noqa: BLE001
+        return None, None
+
+
 def write_report(evo_dir, results, meta):
-    j = {"ts": meta["ts"], "task": TASK, "scene": "SCN-08-AL1", "profiles": results, "meta": meta}
+    j = {"ts": meta["ts"], "task": TASK, "scene": SCENE, "profiles": results, "meta": meta}
     with open(os.path.join(evo_dir, "evolution.json"), "w", encoding="utf-8") as f:
         json.dump(j, f, ensure_ascii=False, indent=1)
 
     L = []
-    L.append("# 光纤端面检测上料缓存工位 · 550A/B/C 自主进化报告\n")
+    L.append("# 自主进化报告 · %s (%s)\n" % (TASK, SCENE))
     L.append("- 时间: %s" % meta["ts"])
-    L.append("- 场景: SCN-08-AL1 (光纤端面检测设备 技协 rev1.0 §2.2 第 1~3 步 · 人工上料→缓存1→缓存2→主流线缓存位)")
-    L.append("- 任务: TASK-08-AL1 (上料缓存·载具搬运取放 · 段 4 · 覆盖参数 8)")
+    L.append("- 场景: %s" % SCENE)
+    L.append("- 任务: %s" % TASK)
     L.append("- 链路: ① 配置任务=ss_task_bind+ss_scene_switch ② 自生成数据=collect_simreal_vla_data ③ 训练=joint_train_all(L4,L3,L2,L5) ④ 推理=ss_engine_loop+run_l4_intent_models+ss_meta_predict ⑤ 报告=本文件")
     L.append("- 仿真环境: metaworld 插拔 (平台唯一仿真环境); 场景几何/参数真源 = /autoLight#c1 (米, base 世界系)\n")
     L.append("## 结果\n")
@@ -231,15 +262,31 @@ def write_report(evo_dir, results, meta):
         b = json.load(open(os.path.join(ROOT, "config/ss_task_binding.json"), encoding="utf-8"))
         row = next((x for x in t if x.get("task_id") == TASK), {}) or {}
         sc = json.load(open(os.path.join(ROOT, "flows/scenes_5jobs.json"), encoding="utf-8")).get("scenes") or []
-        has_scene = any(x.get("scene_id") == "SCN-08-AL1" for x in sc)
-        L.append("- 场景真源 flows/scenes_5jobs.json: %s (共 %d 场景)" % ("含 SCN-08-AL1" if has_scene else "缺", len(sc)))
+        has_scene = any(x.get("scene_id") == SCENE for x in sc)
+        L.append("- 场景真源 flows/scenes_5jobs.json: %s (共 %d 场景)" % ("含 %s" % SCENE if has_scene else "缺", len(sc)))
         L.append("- 任务真源 config/tasks/tasks.json: %s · 场景=%s · 段=%d · 覆盖=%d" % (
             row.get("task_id"), row.get("scene_ref"), len(row.get("applies_segments") or []), len(row.get("overrides") or {})))
         L.append("- 绑定 config/ss_task_binding.json: active_task=%s (共 %d 任务)" % (b.get("active_task"), len(b.get("tasks") or [])))
-        d = os.path.join(ROOT, "data/scene/scenes/SCN-08-AL1")
-        L.append("- 场景库 data/scene/scenes/SCN-08-AL1: %s" % sorted(os.listdir(d)) if os.path.isdir(d) else "- 场景库: 缺")
+        d = os.path.join(ROOT, "data/scene/scenes", SCENE)
+        L.append("- 场景库 data/scene/scenes/%s: %s" % (SCENE, sorted(os.listdir(d)) if os.path.isdir(d) else "缺"))
     except Exception as e:                                                       # noqa: BLE001
         L.append("- 系统同步核验异常: %r" % (e,))
+    L.append("")
+    L.append("## 数据 → 训练 同源核验 (这一环最容易假闭环)")
+
+    sd = os.path.join(ROOT, "data/datasets/sim_%s" % TASK)
+    tr, _tmt = _train_dataset()
+    sd_mt = time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(sd))) if os.path.isdir(sd) else "缺"
+    L.append("- 本任务造数据目录: `data/datasets/sim_%s` (最后改动 %s)" % (TASK, sd_mt))
+    L.append("- 训练实际数据集: `%s`" % (tr or "读不到 train_config.json"))
+    same = bool(tr) and os.path.abspath(str(tr).replace("\\", "/")) == os.path.abspath(sd)
+    if same:
+        L.append("- 判定: ✅ 同源 —— 本次造的 data 就是训练用的那个集")
+    else:
+        L.append("- 判定: ⚠️ **不同源** —— 造数据与训练各自读不同的集, 训练不会因为本次造数据而改变")
+        L.append("  - 根因1: `stage_sim_data` 输出固定目录且收集器幂等(已满足 target 就报完成不重采) ⇒ 看着 rc=0 但没新样本")
+        L.append("  - 根因2: `stage_train` 调 `joint_train_all.py` **不传数据集**, 训练用它配置里写死的 `dataset.root`")
+        L.append("  - 修复: stage_train 增加 `--dataset data/datasets/sim_%s` 并让 joint_train_all 透传到 L3 训练配置" % TASK)
     L.append("")
     L.append("## 口径说明\n")
     L.append("- 数据是**平台仿真**造出来的 (metaworld 插拔环境按任务指令采样), 不是设备实拍; 设备级(专机)仿真不在现有 sim 内。")
@@ -252,6 +299,7 @@ def write_report(evo_dir, results, meta):
 
 
 def main():
+    global TASK, SCENE
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", action="store_true")
     ap.add_argument("--status", action="store_true")
@@ -260,7 +308,10 @@ def main():
     ap.add_argument("--steps", type=int, default=40)
     ap.add_argument("--yolo-epochs", type=int, default=3)
     ap.add_argument("--l5-steps", type=int, default=20)
+    ap.add_argument("--task", default=TASK, help="要进化的任务 (默认 %s; AR 300UPH 用 TASK-07-AOI)" % TASK)
     a = ap.parse_args()
+    TASK = a.task
+    SCENE = scene_of(TASK)
 
     if a.status:
         if not os.path.isdir(EVO):

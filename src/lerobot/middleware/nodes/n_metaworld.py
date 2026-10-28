@@ -4,7 +4,7 @@
 工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← (工程外注入/无上游)
     out out1  → ssintact, ssvlm, ssyolo, sstactile, ssbypv, ssllm_in, ssskill, ssmode, ssintact_dec, n_dsvl, swds, n_realscene, ss_l5
-    out out2  → sssensor
+    out out2  → sssensor, ssuph, ssplan
     out out3  → ss_seg
 
 输出 / 输入代码:
@@ -30,7 +30,7 @@ PORT_LABELS = {}
 IMPL_KEY = 'data'
 SOURCE = 'metaworld'
 SOURCE_SYMBOL = ''
-PARAMS = {'src_switch': True, 'src_state': 'AR场景', 'source': 'metaworld', 'task': 'peg-insert-side-v3', 'frames': 4800, 'state_dim': 39, 'action_dim': 4, 'policy': 'left_right', 'run_env': True, 'state_space': True, 'desc': '[数据源层] 运行环境数据源: 仿真(metaworld 39D/4D 演示) ⇄ 真机(4060 远程只读订阅 Orin: TCP位姿+姿态/六关节/六维力/夹爪/机器人状态/图像) — 点节点上的「仿真/真机」拨钮或右键菜单切换; 双击=按当前模式运行真实模型 (🚀训练/📷推理)'}
+PARAMS = {'src_switch': True, 'src_state': '插拔场景', 'source': 'metaworld', 'task': 'peg-insert-side-v3', 'frames': 4800, 'state_dim': 39, 'action_dim': 4, 'policy': 'left_right', 'run_env': True, 'state_space': True, 'desc': '[数据源层] 运行环境数据源: 仿真(metaworld 39D/4D 演示) ⇄ 真机(4060 远程只读订阅 Orin: TCP位姿+姿态/六关节/六维力/夹爪/机器人状态/图像) — 点节点上的「仿真/真机」拨钮或右键菜单切换; 双击=按当前模式运行真实模型 (🚀训练/📷推理)'}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

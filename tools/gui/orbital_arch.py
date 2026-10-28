@@ -667,13 +667,39 @@ class OrbitalArchView(QWidget):
                         "火星=DiT · 木星=性能流形 · 月球=状态校正器")
         self._tm = QTimer(self)
         self._tm.timeout.connect(self._tick)
-        self._tm.start(self.TICK_MS)
+        # 🔴 2026-10-28 老倪: 「运行按钮点击还是一直显示运行, 没变化」+「数据源没记住」
+        #   真根因 (py-spy 实测): 主线程 100% 卡在 paintEvent → _earth_force_arrows。
+        #   这个太阳系视图每 60ms 全量重绘, **在后台页也在跑** ⇒ 主线程被吃满, 界面点不动、显示不刷新。
+        #   ⇒ 改为只在可见时跑 (showEvent 启 / hideEvent 停), 不在 __init__ 里 start。
+        # self._tm.start(self.TICK_MS)          # ← 原来无条件启动
         # 2026-10-19 老倪: 「太阳系窗口是观察 L2~L5 模型的主要窗口, 要反映模型实际状态」
         #   原来只在 __init__ 里 self.data.build() 一次 ⇒ 屏上数字是"打开那一刻"的死值, 模型停了也不变。
         #   现在每 500ms 重读真源 (build ≈1ms), 窗口不可见时跳过。
         self._tm_data = QTimer(self)
         self._tm_data.timeout.connect(self.refresh)
-        self._tm_data.start(500)
+        # self._tm_data.start(500)              # ← 同上, 改由 showEvent 启
+
+    def showEvent(self, e):
+        """可见才跑 (否则后台页吃满主线程)"""
+        super().showEvent(e)
+        try:
+            if getattr(self, "_tm", None) is not None:
+                self._tm.start(self.TICK_MS)
+            if getattr(self, "_tm_data", None) is not None:
+                self._tm_data.start(500)
+        except Exception:                                          # noqa: BLE001
+            pass
+
+    def hideEvent(self, e):
+        """不可见就停表 —— 主线程留给界面响应"""
+        try:
+            if getattr(self, "_tm", None) is not None:
+                self._tm.stop()
+            if getattr(self, "_tm_data", None) is not None:
+                self._tm_data.stop()
+        except Exception:                                          # noqa: BLE001
+            pass
+        super().hideEvent(e)
 
     # ── 真源: 力的相互作用 (画布 links) ──────────────────────────────────────
     @staticmethod

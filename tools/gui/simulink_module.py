@@ -3030,6 +3030,22 @@ def _bridge_rect(w, h):
     return _bridge_sw_rects(w, h)["vff"]
 
 
+# 🎛 2026-10-27 老倪: 「在机器人执行器, 增加一个 AR 开关…再增加一个真机开关, 默认是关的状态」
+#   左 = AR 场景 (开=进 AR 场景控左右臂 / 关=直接控制机器人)
+#   右 = 真机授权 (开=授权发出真正指令 / 关=不发出 · **默认关**)
+#   几何只在这里定义一次, 绘制 / 节点层命中 / canvas 层命中三处都从这里取。
+AR_REAL_SW_H = 34
+AR_REAL_SW_KEYS = ("ar", "real")
+
+
+def _ar_real_sw_rects(w, h):
+    """🤖 机器人执行器底部**两个开关**的矩形 (节点内坐标): 左=AR 场景 · 右=真机。"""
+    _y = h - AR_REAL_SW_H - 4
+    _half = (w - 12 - BRIDGE_SW_GAP) / 2.0
+    return {"ar": QRectF(6, _y, _half, AR_REAL_SW_H),
+            "real": QRectF(6 + _half + BRIDGE_SW_GAP, _y, _half, AR_REAL_SW_H)}
+
+
 class SimNodeItem(QGraphicsObject):
     def __init__(self, node, scene_ref):
         super().__init__()
@@ -3087,6 +3103,18 @@ class SimNodeItem(QGraphicsObject):
                     if _hit:
                         _fn = self.scene_ref.on_toggle_bridge if _k == "vff" else self.scene_ref.on_toggle_station
                         _fn(self.node)
+                        e.accept()
+                        return
+            # 🎛 AR / 真机 开关的兜底命中 (真命中在 canvas 层, 这里防 canvas 以后不再拦截)
+            if e.button() == Qt.LeftButton and p.get("ar_real_sw"):
+                _rects = _ar_real_sw_rects(self.w, self.h)
+                _pt = QPointF(e.pos())
+                for _k in AR_REAL_SW_KEYS:
+                    if _rects[_k].contains(_pt):
+                        if _k == "ar":
+                            self.scene_ref.on_toggle_ar(self.node)
+                        else:
+                            self.scene_ref.on_toggle_real(self.node)
                         e.accept()
                         return
             if e.button() == Qt.LeftButton and p.get("src_switch"):
@@ -3344,6 +3372,46 @@ class SimNodeItem(QGraphicsObject):
                     _t1 = _fm1.elidedText(_t1, Qt.ElideRight, int(_tw))
                 painter.drawText(QRectF(_tx, _rect.top() + 3, _tw, 14), Qt.AlignVCenter | Qt.AlignLeft, _t1)
                 # 老倪 2026-10-25: 「点此接通 / 轨迹可下发 这几个字去掉, 太多了」⇒ 只留一句主文案, 不加次行
+
+        # 🎛 AR / 真机 两个开关 (🤖 机器人执行器节点底部, 2026-10-27 老倪)
+        #   左 = AR 场景: 绿=进 AR 场景控左右臂 · 红=AR 关(直接控制机器人)
+        #   右 = 真机:   绿=已授权可下发     · 红=关(不发出真正指令, **默认关**)
+        #   唯一真源 = params.ar_scene / params.real_auth (画布 JSON)
+        if params.get("ar_real_sw"):
+            _swr2 = _ar_real_sw_rects(self.w, self.h)
+            for _k in AR_REAL_SW_KEYS:
+                _rect = _swr2[_k]
+                if _k == "ar":
+                    _sw_on = bool(params.get("ar_scene"))
+                    _t_on, _t_off = "AR 场景·控左右臂", "AR 关·控真机"
+                else:
+                    _sw_on = bool(params.get("real_auth"))
+                    _t_on, _t_off = "真机 已授权·可下发", "真机 关·不发出"
+                _edge = QColor("#3fb950") if _sw_on else QColor("#e05252")
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QBrush(QColor(_edge.red(), _edge.green(), _edge.blue(), 44 if _sw_on else 24)))
+                painter.drawRoundedRect(_rect.adjusted(-2, -2, 2, 2), 9, 9)
+                painter.setPen(QPen(_edge, 2.0))
+                painter.setBrush(QBrush(QColor("#0f2a1a") if _sw_on else QColor("#231417")))
+                painter.drawRoundedRect(_rect, 7, 7)
+                _trk = QRectF(_rect.left() + 5, _rect.center().y() - 8, 26, 16)
+                painter.setPen(QPen(_edge if _sw_on else QColor("#8b949e"), 1.2))
+                painter.setBrush(QBrush(QColor("#12351f") if _sw_on else QColor("#1a1f24")))
+                painter.drawRoundedRect(_trk, 8, 8)
+                _kx = _trk.right() - 8 if _sw_on else _trk.left() + 8
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QBrush(QColor("#3fb950") if _sw_on else QColor("#e05252")))
+                painter.drawEllipse(QPointF(_kx, _trk.center().y()), 5.5, 5.5)
+                _tx2 = _trk.right() + 5
+                _tw2 = _rect.right() - 4 - _tx2
+                _font2 = _node_font(NODE_SUB_PT, bold=True)
+                painter.setFont(_font2)
+                painter.setPen(QColor("#e6edf3") if _sw_on else QColor("#ff9f9f"))
+                _t2 = _t_on if _sw_on else _t_off
+                _fm2 = QFontMetrics(_font2)
+                if _fm2.horizontalAdvance(_t2) > _tw2:
+                    _t2 = _fm2.elidedText(_t2, Qt.ElideRight, int(_tw2))
+                painter.drawText(QRectF(_tx2, _rect.top() + 3, _tw2, 14), Qt.AlignVCenter | Qt.AlignLeft, _t2)
 
         # 🧭 能力档位开关 (2026-09-09 重新设计: 数据源层 radio 三档 L2/L3/L4,
         #   单击圆钮直选 / 双击循环 — 档位存 params.cap_level + module._cap_level)
@@ -4401,6 +4469,22 @@ class SimCanvas(QGraphicsView):
                         return
                     if _hit_key == "station":
                         self.module.on_toggle_station(n.node)
+                        return
+                # 🎛 AR / 真机 开关 (🤖 机器人执行器节点底部两个) —— 命中必须在 canvas 层, 见上
+                if (n.node.get("params") or {}).get("ar_real_sw"):
+                    _rects = _ar_real_sw_rects(n.w, n.h)
+                    _hit_key = None
+                    for _k in AR_REAL_SW_KEYS:
+                        if _rects[_k].translated(n.scenePos()).contains(p):
+                            _hit_key = _k
+                            break
+                    print("[ssact/sw] 画布点击 节点=%s 命中=%s scene=(%.0f,%.0f)"
+                          % (n.node.get("id"), _hit_key, p.x(), p.y()), flush=True)
+                    if _hit_key == "ar":
+                        self.module.on_toggle_ar(n.node)
+                        return
+                    if _hit_key == "real":
+                        self.module.on_toggle_real(n.node)
                         return
                 rp = n.scenePos()
                 out_x = rp.x() + n.w
@@ -5899,6 +5983,18 @@ class SimulinkModule(QWidget):
             return b
 
         self.btn_run = mk_btn("▶ 运行", "按拓扑执行仿真 (Simulink Run)", self.start_sim, "#00d4aa")
+        # 🛡 2026-10-28 老倪: 「画布的运行按钮还是不好使」——
+        #   根因: 按钮一旦变灰就**点不动** ⇒ start_sim 进不来 ⇒ 里面那个 8s 兜底永远不会被调度, 死锁。
+        #   改成**常驻守护**: 每 10s 查一次, 若按钮是灰的且文本还停在「运行中」(那次启动没走完) 就恢复可点。
+        #   真在跑的任务文本会被改成别的态, 不会误恢复。
+        try:
+            from PyQt5.QtCore import QTimer as _QTGuard
+            self._runbtn_guard = _QTGuard(self)
+            self._runbtn_guard.setInterval(10000)
+            self._runbtn_guard.timeout.connect(self._recover_run_btn)
+            self._runbtn_guard.start()
+        except Exception:                                          # noqa: BLE001
+            pass
         self.btn_step = mk_btn("⏭ 单步", "执行一个时间步", self.step_sim)
         # 🗑 2026-10-21 老倪: 「删掉 simulink 画布 跟随单步 核心居中 两个按钮」+「整体按钮向左移动, 左侧对齐」
         #   两个勾选框从工具栏撤掉 (它们原来占住最左两格 ⇒ 剩下的按钮整体右移)。
@@ -7567,7 +7663,25 @@ class SimulinkModule(QWidget):
             except Exception as e:
                 self._log(f"⚠️ 打开源码失败: {e}")
             return
-        # 容器链路: 弹窗查看 (无 /mnt/c 老链路)
+        # 🖥 2026-10-28 老倪: 「每个节点右键打开源代码(模块实现), 要打开源代码在 vscode 里的位置;
+        #    你现在是用自己的编辑器打开的, UI 不好 ⇒ 切换成用 VSCode 直接打开」
+        # 老实现: 无 /mnt/c 通道(纯 Linux 工位机) ⇒ 落到 SourceViewDialog 弹窗自己渲染。
+        # 现在: 一律先投 VSCode (`code -r -g <绝对路径>:<行号>` 复用已开窗口); VSCode 不可用才回退弹窗。
+        _line = 1
+        try:
+            from lerobot.engineering import sourceview as _sv
+            from lerobot.engineering import registry as _rg
+            _k = _rg.match_node(node.get("name", ""))
+            if _k:
+                _p, _l, _ = _sv.get_node_location(_k)
+                if _p and os.path.abspath(_p) == os.path.abspath(path):
+                    _line = int(_l or 1)
+        except Exception:                                                   # noqa: BLE001
+            pass
+        if self._open_path_in_vscode(path, _line):
+            self._log(f"📂 已用 VSCode 打开源码: {path}:{_line}  ({src})")
+            return
+        # 兜底: 弹窗查看 (VSCode 没装 / PATH 无 code)
         try:
             from node_logic_dialog import SourceViewDialog
             dlg = SourceViewDialog(path, src, parent=self)
@@ -7575,9 +7689,33 @@ class SimulinkModule(QWidget):
             # 统一 _show_nonmodal (与全部对话框一致)
             self._show_nonmodal(dlg)
             self._popup_on_main_screen(dlg)   # 🎯 show 之后定位
-            self._log(f"📂 已打开源码弹窗: {path}")
+            self._log(f"📂 已打开源码弹窗(无 VSCode): {path}")
         except Exception as e:
             self._log(f"⚠️ 打开源码弹窗失败: {e}")
+
+    def _open_path_in_vscode(self, path: str, line: int = 1) -> bool:
+        """🖥 用 VSCode 打开文件并定位到行 (复用已开窗口)。成功返回 True。
+
+        口径: `code -r -g <绝对路径>:<行号>` —— -r 复用当前窗口, -g 跳到行列。
+        本机实测可用 (2026-10-27: `code --reuse-window --goto ...:13894` 状态栏 = Ln 13894)。
+        """
+        import shutil as _sh
+        import subprocess as _sp
+        if not os.path.exists(path):
+            return False
+        code = _sh.which("code") or next(
+            (p for p in ("/usr/bin/code", "/usr/local/bin/code", "/snap/bin/code",
+                         "/usr/share/code/bin/code") if os.path.exists(p)), None)
+        if not code:
+            return False
+        try:
+            _sp.Popen([code, "-r", "-g", "%s:%d" % (os.path.abspath(path), max(1, int(line or 1)))],
+                      stdout=_sp.DEVNULL, stderr=_sp.DEVNULL,
+                      start_new_session=True)
+            return True
+        except Exception as e:                                              # noqa: BLE001
+            self._log(f"⚠️ VSCode 调用失败: {e}")
+            return False
 
     def open_solution_web(self):
         """🌐 方案介绍 (2026-08-12 老倪: 画板直达方案介绍分页 — 不干扰主页)
@@ -8125,10 +8263,30 @@ class SimulinkModule(QWidget):
                 pass
         return w
 
+    def _recover_run_btn(self):
+        """运行按钮兜底恢复: 8 秒后仍停在「运行中…」且是灰的 ⇒ 那次启动没走完, 恢复可点并告知"""
+        try:
+            if self.btn_run is not None and not self.btn_run.isEnabled() \
+                    and "运行中" in self.btn_run.text():
+                self.btn_run.setEnabled(True)
+                self.btn_run.setText("▶ 运行")
+                self._log("⚠️ 运行按钮已恢复可点 — 上一次 ▶运行 没走完 (前置检查未过/被中断/分支异常), "
+                          "原因见上面日志")
+        except Exception:                                          # noqa: BLE001
+            pass
+
     def start_sim(self):
         # 🚀 即时反馈 (2026-08-05 老倪: "运行, 还是没反应" — 点击瞬间按钮变运行中+状态栏提示)
         self.btn_run.setText("⏳ 运行中…")
         self.btn_run.setEnabled(False)
+        # 🔧 2026-10-28 老倪: 「运行按钮怎么无法点击了, 没有反映」——
+        #   有些分支 setEnabled(False) 之后失败/中断没恢复 ⇒ 按钮永久变灰, 点不动也没提示。
+        #   兜底: 8 秒后若还停在「运行中…」且确实是灰的, 自动恢复可点 + 明确告知 (不掩盖, 只防卡死)
+        try:
+            from PyQt5.QtCore import QTimer as _QTimer9
+            _QTimer9.singleShot(8000, self._recover_run_btn)
+        except Exception:                                         # noqa: BLE001
+            pass
         self._log("▶ 运行指令已接收, 正在解析画布…")
         if not self.nodes:
             self.btn_run.setText("▶ 运行")
@@ -8156,7 +8314,30 @@ class SimulinkModule(QWidget):
             return
         # 🧮 状态空间画布 → 真实仿真引擎 (2026-08-18 老倪: 六层源码闭环, 非占位观察模式)
         if any(n.get("params", {}).get("state_space") for n in self.nodes):
-            # 🎬 2026-09-13 老倪: L4 档 ▶运行 → 自动弹出「SW 实况」独立窗口 (跑链条时画面自己出来)
+            # 🏭 数据源 = AR场景 ⇒ ▶ 运行 不跑 metaworld 真实化仿真
+            #    那个流程要跑几百秒、资源不足时会立刻弹回, 看着就是"点了没运行";
+            #    而 AR 双臂动画其实由常驻循环 zmax-ss-canvas-loop 驱动、ar3d 页面自动播放。
+            #    老倪 2026-10-28: 「点击运行后, 马上又变回来了, 没有运行」
+            _ar_src = _canvas_src_state(self)          # 与画布其它地方同一口径 (不用 id 匹配: GUI 内存节点不带 id)
+            if "AR" in _ar_src:
+                self.btn_run.setText("▶ 运行")
+                self.btn_run.setEnabled(True)
+                # ▶ 运行 = 人授权的播放开关: 写 ar_play.json, ar3d 页面收到才 plantStart()
+                #   (老倪 2026-10-28: 没点运行机器人不许动 ⇒ 只有这个按钮能发起播放)
+                try:
+                    import time as _t
+                    import json as _j2
+                    _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                    _pp = os.path.join(_root, "zmax_data/ss_live/ar_play.json")
+                    os.makedirs(os.path.dirname(_pp), exist_ok=True)
+                    _j2.dump({"ts": _t.time(), "action": "start", "by": "simulink.run", "src": _ar_src, "task": "TASK-07-AOI"},
+                             open(_pp, "w", encoding="utf-8"), ensure_ascii=False)
+                except Exception as _e:                            # noqa: BLE001
+                    self._log("⚠️ 写 ar_play.json 失败: %s" % _e)
+                self._log("🏭 数据源 = %s ⇒ ▶ 运行 = 启动 AR 双臂播放 (已写 ar_play.json)" % _ar_src)
+                self._log("   └ 动画由常驻循环 zmax-ss-canvas-loop 驱动; 页面: http://10.163.146.78:8797/ar3d")
+                self._log("   └ 真机零指令 (real_auth 保持关, AR 开关只授权 AR 场景)")
+                return
             self._auto_sw_live_window()
             # 🎥 2026-09-04 老倪「YOLO 还是假的?」: ▶运行 默认 = 真实化流程
             #   (metaworld 物理 + 每帧渲染→detect_3d, 断点每步可进); 勾选 ⚡引擎快演
@@ -13779,6 +13960,99 @@ class SimulinkModule(QWidget):
                 return p["mode"]
         return None
 
+    # ═════════ 🎛 2026-10-27 老倪: 机器人执行器上的 AR / 真机 两个开关 ═════════
+    def _exec_sw_live_path(self):
+        """exec_switches.json 的落点 (执行侧/面板读同一份)。"""
+        d = os.environ.get("ZMAX_DATA_DIR") or os.path.join(
+            os.path.expanduser("~"), "zmax", "zmax_data")
+        return os.path.join(d, "ss_live", "exec_switches.json")
+
+    def _publish_exec_switches(self, node):
+        """把 AR/真机 两个开关的当前值写一份 live json。失败只记日志, 绝不抛 (不拦开关本身)。"""
+        try:
+            import json as _j
+            import time as _t
+            p = node.get("params") or {}
+            f = self._exec_sw_live_path()
+            os.makedirs(os.path.dirname(f), exist_ok=True)
+            tmp = f + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                _j.dump({"t": _t.time(),
+                         "t_str": _t.strftime("%Y-%m-%d %H:%M:%S"),
+                         "node": node.get("id"),
+                         "ar_scene": bool(p.get("ar_scene")),
+                         "real_auth": bool(p.get("real_auth")),
+                         "src": "canvas 🤖 机器人执行器 开关"}, fh, ensure_ascii=False, indent=1)
+            os.replace(tmp, f)
+            self._log("🎛 开关状态已发布 → %s" % f)
+        except Exception as _e:
+            self._log("⚠ 开关 live 文件写入失败(不影响开关本身): %s" % _e)
+
+    def on_toggle_ar(self, node):
+        """🎛 🤖 机器人执行器 · 左开关 = AR 场景
+
+        老倪 2026-10-27: 「开了就是进 AR 场景控制左右臂, AR 关了就是直接控制机器人」
+        状态存 params.ar_scene (画布 JSON = 唯一真源) + 发布 ss_live/exec_switches.json。
+        """
+        p = node.setdefault("params", {})
+        on = not bool(p.get("ar_scene"))
+        p["ar_scene"] = on
+        it = self._items.get(node.get("id"))
+        if it:
+            it.update()
+        self._save_param_to_flow(node, "ar_scene")
+        self._publish_exec_switches(node)
+        self._log(("🎛 AR 开关 → 开   进 AR 场景: 左右臂走 ar3d 仿真, **真机不动** (仍需真机开关=开才发)"
+                   if on else
+                   "🎛 AR 开关 → 关   直接控制机器人 (真机通路; 真机开关=关时照旧不发出)"))
+        # 🥽 接上 AR 场景: 开 → 把 8797/ar3d 拉起来 (页面自己轮询 /api/ar/mode 进 AR 模式)
+        #    判据脚本会连点它, 用 ZMAX_NO_OPEN=1 抑制弹窗; 离屏/无 DISPLAY 也不弹。
+        if on and not os.environ.get("ZMAX_NO_OPEN"):
+            try:
+                import webbrowser
+                _u = "http://127.0.0.1:8797/ar3d"
+                if os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
+                    webbrowser.open(_u, new=2)
+                    self._log("🥽 已拉起 AR 场景: %s (页面轮询 /api/ar/mode ⇒ 右臂切仿真臂 + 顶部横幅)" % _u)
+                else:
+                    self._log("🥽 AR 场景入口(无图形会话, 未自动打开): %s" % _u)
+            except Exception as _e:                                      # noqa: BLE001
+                self._log("⚠ 打开 AR 场景失败(%s: %s); 手动打开 http://127.0.0.1:8797/ar3d" % (type(_e).__name__, _e))
+
+    def on_toggle_real(self, node):
+        """🎛 🤖 机器人执行器 · 右开关 = 真机授权 (默认关)
+
+        老倪 2026-10-27: 「开就是授权发出真正指令, 关了就是不发出; 默认是关的状态」
+        真消费点 = ctl_auth 单一真源 (与 8793 工位总览同一个写口), 所以执行器/脚本天然认这一份;
+        画布 params.real_auth 只是显示与取证, 不另开第二条授权通路。
+        """
+        p = node.setdefault("params", {})
+        on = not bool(p.get("real_auth"))
+        p["real_auth"] = on
+        it = self._items.get(node.get("id"))
+        if it:
+            it.update()
+        self._save_param_to_flow(node, "real_auth")
+        _ca, _win = "—", 0
+        try:
+            import ctl_auth as _CA          # tools/ 已在 sys.path (8793/执行器同源)
+            if on:
+                _r = _CA.grant(ip="canvas", note="画布·机器人执行器 真机开关 开")
+                _inf = _CA.info() or {}
+                _win = float(_inf.get("left_s") or 0.0)
+                _ca = "已授权" if _inf.get("armed") else "已授权(未确认)"
+            else:
+                _CA.revoke(ip="canvas", note="画布·机器人执行器 真机开关 关")
+                _ca = "已撤销"
+        except Exception as _e:
+            _ca = "ctl_auth 不可用(%s)" % _e
+        self._publish_exec_switches(node)
+        if on:
+            self._log("🎛 真机开关 → 开   授权窗口已开 (%s · 剩余 %.0fs) —— 指令会真的下发, 点关可立刻撤销"
+                      % (_ca, _win))
+        else:
+            self._log("🎛 真机开关 → 关   %s —— 任何指令都不发出 (fail-closed)" % _ca)
+
     def on_toggle_bridge(self, node):
         """🌉 画布 plan 节点上的桥接开关 (鼠标点节点底部那条) —— 仿真 v_ff → 末端位姿
 
@@ -13831,7 +14105,31 @@ class SimulinkModule(QWidget):
         """
         p = node.setdefault("params", {})
         cur = _src_norm(p.get("src_state"))
-        nxt = SRC_CYCLE[(SRC_CYCLE.index(cur) + 1) % len(SRC_CYCLE)]     # 真机 → 插拔场景 → 摆盘场景 → 真机
+        # 🔀 2026-10-28 老倪: 「从循环改成点开直接选（下拉或四个小按钮）」——
+        #   循环切会点过头 (真机→插拔→摆盘→AR 四态, 想切 AR 得点三四次), 改成弹菜单一次选到位。
+        nxt = None
+        try:
+            from PyQt5.QtWidgets import QMenu
+            from PyQt5.QtGui import QCursor
+            _m = QMenu()
+            _acts = []
+            for _s in SRC_CYCLE:
+                _a = _m.addAction(("✓  " if _s == cur else "     ") + str(SRC_DESC.get(_s, _s)))
+                _a.setCheckable(True)
+                _a.setChecked(_s == cur)
+                _acts.append((_a, _s))
+            _m.setTitle("🔀 数据源")
+            _r = _m.exec_(QCursor.pos())
+            for _a, _s in _acts:
+                if _r is _a:
+                    nxt = _s
+                    break
+        except Exception as _e:                                        # noqa: BLE001
+            self._log("⚠️ 数据源菜单打不开 (%s) — 退回落单步切换" % _e)
+            nxt = SRC_CYCLE[(SRC_CYCLE.index(cur) + 1) % len(SRC_CYCLE)]
+        if not nxt or nxt == cur:
+            self._log("🔀 数据源保持「%s」不变" % cur)
+            return
         p["src_state"] = nxt
         self._data_source = "bypass_real" if _src_is_real(nxt) else "metaworld"
         _ok, _msg = _apply_src_scene(nxt)

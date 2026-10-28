@@ -68,9 +68,11 @@ def render(spec, links=None, bus_note=""):
     impl = ("registry key=`%s`" % spec.impl_key) if spec.impl_key else "(未绑定注册表实现)"
     if spec.source:
         impl += " · %s%s" % (spec.source, (":" + spec.source_symbol) if spec.source_symbol else "")
-    pure_init = "False"
+    pure_init = "True" if ((spec.params or {}).get("pure_verified")) else "False"
     pure_note = ("(会动设备: 只走数据面, 需 8793 授权后由引擎执行)"
-                 if spec.exec_mode == "act" else "(数据面直通; 逐个验证口径后再置 True)")
+                 if spec.exec_mode == "act" else
+                 "(口径已逐一验证 ⇒ 允许计算面真跑)" if pure_init == "True"
+                 else "(数据面直通; 逐个验证口径后再置 True)")
     body = HEADER
     body = body.replace("%NAME%", spec.name or spec.id)
     body = body.replace("%ID%", spec.id)
@@ -99,7 +101,7 @@ SOURCE_SYMBOL = %r
 PARAMS = %r
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = False
+PURE = %PURE_INIT%
 LAST_STATUS = ""
 
 
@@ -168,6 +170,7 @@ def compute(ctx):
     ):
         body = body.replace(tok, val)
     body = body.lstrip("\n")
+    body = body.replace("%PURE_INIT%", pure_init)      # 尾部代码块里的 PURE 占位符
     return body
 
 

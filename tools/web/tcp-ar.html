@@ -194,6 +194,7 @@
     <div style="color:#8b949e">实时 UPH <b id="uphLive" style="color:#58a6ff">—</b> · 达成 <b id="uphReach" style="color:#c9d1d9">—</b> · 运行 <b id="uphRun" style="color:#c9d1d9">0秒</b> · 产出 <b id="uphUnits" style="color:#c9d1d9">0</b> 件</div>
     <div style="color:#8b949e">实时良率 <b id="uphYield" style="color:#3fb950">—</b> <span style="color:#6e7681">(目标 ≥99%)</span> · 良品 <b id="uphOk" style="color:#3fb950">0</b> / 不良 <b id="uphNg" style="color:#f85149">0</b></div>
     <div style="color:#8b949e">上料盘 <b id="uphBuf" style="color:#c9d1d9">14/14</b> · 左臂 <b id="uphLA" style="color:#c9d1d9">—</b> · 右臂 <b id="uphRA" style="color:#c9d1d9">—</b></div>
+    <div style="color:#8b949e">元任务 <b id="uphMt" style="color:#d2a8ff">—</b></div>
     <div style="color:#6e7681" id="uphNote">节拍 — · 一批 —</div>
     </div>
   </div>
@@ -1943,6 +1944,10 @@ function drawVR(){
   // 🦾 URDF 外形: 正运动学已在 drawVR 开头算好(取景要用同一份), 这里只负责画
   if(URDF){
     if(VR.urdf && VR.real!==false) drawUrdf(g,pr);              // 真机右臂(静止)
+    // 🦾 AR 模式下真机臂让位(VR.real=false)、而仿真臂要等 PREV.on 才画 ⇒ 画面一条臂都没有,
+    //    但「右臂_仿真」按钮却是亮的 —— 老倪 2026-10-28: 「右臂_仿真 是看不到的, 但是按钮是蓝色高亮的, 显示没有对应上」
+    //    兜底: 没有仿真臂可画时, 用当前正运动学(LINKM, 来自 TCP 关节角)画一条静止臂, 让按钮态与画面一致
+    else if(VR.urdf && VR.simArm!==false && !(PREV.on && PREV.M && PREV.ssOn)) drawUrdf(g,pr);
   }
   // 👻 预览动作: 紫色幽灵右臂 —— 与真实右臂同屏, 末端对着轨迹终点; 真机不动, 这条只是画上去的
   if(PREV.on && PREV.M && URDF && VR.simArm!==false){          // 仿真右臂(紫色幽灵)
@@ -2770,10 +2775,53 @@ if($('bInsp')) $('bInsp').addEventListener('click', inspPlay);
 // → 无限循环引擎: 取「两块相邻稳态轮次」= 无缝平铺块(45.87s / 4 件)，永远循环；
 //   时钟用虚拟仿真秒(simT)，与播放倍速解耦 ⇒ 10× 只是看得快, UPH/时长仍是真实值。
 const PLANT={on:false,rate:1,simT:0,last:0,raf:null,units:0,ok:0,ng:0,_u0:0,
-             buf:14,bufMax:14,feedS:3.0,feedAcc:0,lp:null,_k0:null,_P:0,frames:0};
+             buf:14,bufMax:14,feedS:3.0,feedAcc:0,lp:null,_k0:null,_P:0,frames:0,
+             // 🔴 老倪 2026-10-28: 「我点击 全流程UPH, 就要恢复原来的不是状态工程控制的模式, 可以10倍速」
+             //   local=true ⇒ 人点了按钮, 走原来的本地虚拟时钟自播(dt*rate, 10× 有效),
+             //   **不被 /api/ar/cmd 的 10Hz 指令接管**(那条通道的时间基在服务端, 天生 1×)
+             local:false};
+// 🔴 防"没点就自播" (老倪 2026-10-28 再次撞到: 打开页面就在跑, 产出 1 件):
+//   原来 _lastPlayTs 初值 0 ⇒ 服务端残留的旧 ar_play.json(哪怕 19 分钟前写的) 也当成新指令。
+//   ⇒ 下限锁到"页面加载时刻": 只有**加载之后**写下的 start 才算人点的。
+PLANT._lastPlayTs = Date.now() / 1000;
 // 不良率 0.8% ⇒ 良率 99.2% > 99%(老倪: 「每 100 个光模块可以有一个不良品」⇒ 取 1/125 更保险)
 let NG_RATIO=1/125;
 const UPH_TARGET=300;                   // 老倪定: UPH 目标 300(不是稳态 314)
+
+// 🥽 状态空间 → AR 场景: 虚拟臂由画布节点(🏭 UPH 节拍循环器 ss_uph_tact)按拍驱动。
+//   只在 AR 开关=开 且指令新鲜时接管; 其它情况一律走原来的 plantAt 自播 —— 普通模式行为零变化。
+//   真机零指令: 本通道只产生"渲染用关节角", 碰不到 ctl_auth / l2_daemon。
+const ARCMD={on:false,fresh:false,d:null,q:null,ts:0,age:null,seq:null};
+function arCmdSolve(d){
+  if(!d||!d.a||!d.b) return null;
+  const a=d.a, b=d.b, u=Math.min(1,Math.max(0,+d.u||0));
+  const tm=[a[0]+(b[0]-a[0])*u, a[1]+(b[1]-a[1])*u, a[2]+(b[2]-a[2])*u];      // mm
+  let q=(PREV.q&&PREV.q.length>=6)?PREV.q.slice()
+        :((TCP&&TCP.ok&&TCP.joints&&TCP.joints.length>=6)?TCP.joints.slice(0,6):[0,-0.35,0,-1.35,0,0.3]);
+  const r=ikTool1([tm[0]/1000,tm[1]/1000,tm[2]/1000], q);
+  return (r&&r.q)?r.q:null;
+}
+function arCmdPoll(){
+  fetch('/api/ar/cmd').then(function(r){return r.json();}).then(function(d){
+    ARCMD.on=!!d.ok; ARCMD.fresh=!!d.fresh; ARCMD.d=d; ARCMD.age=d.age_s; ARCMD.ts=Date.now();
+    ARCMD.seq=d.seq; ARCMD.mod=d.mod;
+    if(d.ok&&d.fresh){ const q=arCmdSolve(d); if(q) ARCMD.q=q; }
+    else { ARCMD.q=null; }
+    // 🔴 不自动播放: 老倪 2026-10-28「我现在画布上也没有点击运行, 你怎么运行机器人了呢?」
+    //    ⇒ 动画只能由人点「🏭 全流程 UPH」启动, 页面自己绝不 plantStart()
+  }).catch(function(){ ARCMD.on=false; ARCMD.fresh=false; ARCMD.q=null; });
+}
+setInterval(arCmdPoll, 100); arCmdPoll();      // 10Hz: 一段≈0.4s, 每段能拿到 ~4 次更新
+
+function plantAtAR(){
+  const d=ARCMD.d||{};
+  if(ARCMD.q){ PREV.on=true; PREV.q=ARCMD.q; PREV.M=urdfFK(ARCMD.q); }
+  PREV.ssOn=1; PREV.ssSeq=d.seq; PREV.ssKind=d.kind||''; PREV.ssAge=d.age_s;
+  // 🧩 元任务归属 (Plan 节点 ss_plan_long 写进 ar_cmd): 让界面直接显示"正在执行哪个元任务"
+  PREV.ssMt = d.mt_id ? (d.mt_id+' '+d.mt_name+'  ('+(d.mt_i||'?')+'/'+(d.mt_n||'?')+' · 第'+(d.batch||'?')+'批)') : '';
+  PREV.ssTask = d.task_id||'';
+  return {lp:plantCtx(), el:(+d.elapsed_s||0), ss:d};
+}
 window.PLANT=PLANT;                     // 供另一段脚本(倍速按钮)访问: const 不挂 window
 
 function plantCtx(){
@@ -2839,6 +2887,7 @@ function plantHud(){
     g('uphReach').style.color = (live!=null && rp>=1) ? '#3fb950' : '#d29922';
   }
   set('uphUnits', PLANT.units);
+  if(g('uphMt')) g('uphMt').textContent = PREV.ssMt || '—';   // 🧩 元任务归属(AR 模式由状态空间 Plan 节点给)
   set('uphOk', PLANT.ok); set('uphNg', PLANT.ng);
   const yl=PLANT.units? (100*PLANT.ok/PLANT.units) : 100;
   if(g('uphYield')){ g('uphYield').textContent=yl.toFixed(1)+'%';
@@ -2872,11 +2921,17 @@ function plantStep(){
   if(typeof TRANS!=='undefined' && !TRANS.playing){
     try{ TRANS.rate=PLANT.rate; transPlay(); }catch(e){}
   }
-  const r=plantAt(PLANT.simT);
+  const isAR=!!(typeof ARMODE!=='undefined'&&ARMODE.on&&ARCMD.on&&ARCMD.fresh&&ARCMD.q&&!PLANT.local);
+  const r=isAR?plantAtAR():plantAt(PLANT.simT);
   if(r){
     const lp=r.lp;
-    PLANT.units=Math.floor(PLANT.simT/lp.dur)*lp.mods+INSP.doneK;
-    if(PLANT.units>PLANT._u0){ PLANT.buf=Math.max(0,PLANT.buf-(PLANT.units-PLANT._u0)); PLANT._u0=PLANT.units; }
+    if(isAR){                                    // 🥽 产出/进度由状态空间节点的件号给
+      const m=+((r.ss&&r.ss.mod)||0);
+      if(m>PLANT.units){ PLANT.buf=Math.max(0,PLANT.buf-(m-PLANT.units)); PLANT.units=m; PLANT._u0=m; }
+    }else{
+      PLANT.units=Math.floor(PLANT.simT/lp.dur)*lp.mods+INSP.doneK;
+      if(PLANT.units>PLANT._u0){ PLANT.buf=Math.max(0,PLANT.buf-(PLANT.units-PLANT._u0)); PLANT._u0=PLANT.units; }
+    }
     PLANT.ng=Math.floor(PLANT.units*NG_RATIO); PLANT.ok=PLANT.units-PLANT.ng;   // 每 125 件出 1 件不良
   }
   drawVR();
@@ -2904,6 +2959,8 @@ function uphPlace(){
 window.addEventListener('resize', uphPlace);
 
 function plantStart(){
+  PLANT.userStop=false;
+  PLANT.local=true;                      // ← 点按钮 = 走原来的本地全流程(可倍速), 不交给状态空间
   PLANT.on=true; PLANT.simT=0; PLANT.units=0; PLANT.ok=0; PLANT.ng=0; PLANT._u0=0;
   PLANT.buf=PLANT.bufMax; PLANT.feedAcc=0; PLANT.frames=0; PLANT.warmT=0; PLANT.warmU=0;
   PLANT.rate=INSP.rate||1; PLANT.last=performance.now();
@@ -2926,6 +2983,8 @@ function plantStart(){
 }
 
 function plantStop(){
+  PLANT.userStop=true;                                  // 人主动停的 ⇒ 不再自动拉起
+  PLANT.local=false;                                    // 停了就把画面交回状态空间(ARCMD)驱动
   PLANT.on=false;
   if(typeof TRANS!=='undefined'){ TRANS.playing=false; if(TRANS.raf){ cancelAnimationFrame(TRANS.raf); TRANS.raf=null; }
     if($('bTrans')){ $('bTrans').classList.remove('on'); $('bTrans').textContent='🚚 仿真搬运'; } }
@@ -3429,6 +3488,53 @@ $('bArmR').addEventListener('click',()=>vrKeepCam(()=>{
 }));
 $('bUrdf').addEventListener('click',()=>vrKeepCam(()=>{
   VR.urdf=!VR.urdf; $('bUrdf').classList.toggle('on',VR.urdf); }));
+
+// ═════ 🥽 AR 开关 (画布 🤖 机器人执行器 ssact) → 本页进 AR 场景 ═════
+//  2026-10-27 老倪: 「AR 开了就是进 AR 场景控制左右臂, AR 关了就是直接控制机器人」
+//  真源: 控制台 on_toggle_ar → zmax_data/ss_live/exec_switches.json → /api/ar/mode
+//  只在状态**变化**时应用一次, 不每 2s 抢用户手动切的 VR.real / VR.simArm
+var ARMODE={on:false,real_auth:false,age:null};
+function arModeApply(d){
+  if(!d || d.ok===false) return;
+  var on = !!d.ar_scene;
+  ARMODE.real_auth = !!d.real_auth; ARMODE.age = d.age_s;
+  // ▶ 播放开关 (老倪 2026-10-28): 只有人点了画布「▶ 运行」才会写 ar_play.json;
+  //   页面收到一次新的 start 才 plantStart() —— 人不点就绝不自播, 点了就一定要动
+  var _pl = d.play || {};
+  if(_pl.fresh && _pl.action==='start' && _pl.ts && _pl.ts > (PLANT._lastPlayTs||0)){
+    PLANT._lastPlayTs = _pl.ts;
+    if(!PLANT.on) plantToggle();
+  }
+  var b = document.getElementById('arBanner');
+  if(on){
+    if(!b){
+      b=document.createElement('div'); b.id='arBanner';
+      b.style.cssText='position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:99999;'
+        +'padding:9px 18px;border-radius:12px;background:rgba(122,72,232,.94);color:#fff;'
+        +'font:600 14px/1.35 system-ui,sans-serif;box-shadow:0 6px 22px rgba(0,0,0,.5);'
+        +'pointer-events:none;white-space:nowrap;letter-spacing:.3px';
+      document.body.appendChild(b);
+    }
+    b.textContent='🥽 AR 场景 · 由状态空间画布控制左右臂 · 真机不下发'
+                 + (ARMODE.real_auth ? '' : ' · 真机开关=关')
+                 + (ARMODE.age==null?'':' · 开关帧龄 '+Math.round(ARMODE.age)+'s');
+    b.style.display='block';
+  } else if(b){ b.style.display='none'; }
+  if(on===ARMODE.on) return;                 // 只在跳变时动视图
+  ARMODE.on = on;
+  if(on){ VR.real=false; VR.simArm=true; }   // 进 AR: 真机右臂让位, 仿真双臂接管
+  else  { VR.real=true; }                    // 回真机: 真机右臂重新显示
+  if($('bArmReal')){ $('bArmReal').classList.toggle('on', VR.real!==false);
+    $('bArmReal').textContent = VR.real!==false ? '🦾 右臂_真机' : '🦾 右臂_真机(已隐藏)'; }
+  if($('bArmR')){ $('bArmR').classList.toggle('on', !!VR.simArm);
+    $('bArmR').textContent = VR.simArm ? '🦾 右臂_仿真' : '🦾 右臂_仿真(已隐藏)'; }
+  if(typeof drawVR==='function') drawVR();
+}
+function arModePoll(){
+  fetch('/api/ar/mode',{cache:'no-store'}).then(r=>r.json()).then(arModeApply).catch(function(){});
+}
+arModePoll(); setInterval(arModePoll, 2000);
+
 // 🦾 右臂_真机: 只藏那条静止的真机臂, 不动仿真/幽灵臂
 if($('bArmReal')) $('bArmReal').addEventListener('click',()=>{
   VR.real = (VR.real===false);                        // 切换
@@ -4320,6 +4426,8 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
   var wrap = document.createElement('div');
   wrap.id = 'tactWrap';
   wrap.innerHTML = '<div id="tactPanel">'
+    + '<div id="mtBox" style="padding:9px 13px 6px;border-bottom:1px solid #21262d">'
+    + '<div style="font-size:11px;color:#6e7681">🧩 元任务加载中…</div></div>'
     + '<div class="tHd"><span>⏱ 生产节拍 · 整体</span><b id="tAll">—</b></div>'
     + '<div class="tSum" id="tSumAll">节拍数据加载中…</div>'
     + '<div class="tSum" id="tSum" style="display:none"></div>'
@@ -4336,6 +4444,62 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
   document.body.appendChild(wrap);
 
   var panel = document.getElementById('tactPanel');
+
+  // ═══ 🧩 元任务区 (真源: 配置中心 TASK-07-AOI 的 ar_meta_tasks.json → /api/ar/meta) ═══
+  //  老倪(2026-10-28):「元任务的配置, AR场景, 也写到 ar3d 右侧面栏, 我能看到每个任务的依次执行」
+  //  只读展示: 5 个元任务 + 当前执行到哪个(高亮) + 进度 x/n + 手臂归属; 真机零指令。
+  var MT = null, mtLastKey = '';
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function mtLoad() {
+    fetch('/api/ar/meta', { cache: 'no-store' }).then(function (r) { return r.json(); })
+      .then(function (j) { if (j && j.ok) { MT = j; mtLastKey = ''; mtRender(); } })
+      .catch(function () { });
+  }
+  function mtRender() {
+    var box = document.getElementById('mtBox');
+    if (!box) return;
+    if (!MT) return;
+    var d = (typeof ARCMD !== 'undefined' && ARCMD && ARCMD.d) || {};
+    var cur = d.mt_id || '';
+    var i = d.mt_i || 0, n = d.mt_n || 0;
+    var key = cur + '|' + i + '|' + n + '|' + (MT.meta_tasks || []).length;
+    if (key === mtLastKey) return;
+    mtLastKey = key;
+    var lh = MT.long_horizon || {};
+    var h = '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">'
+      + '<span style="font-size:12px;font-weight:600;color:#e6edf3">🧩 元任务</span>'
+      + '<span style="font:10px ui-monospace,monospace;color:#8b949e">' + esc(MT.task_id) + ' · '
+      + (lh.uph_target || 300) + ' UPH</span></div>';
+    var mts = MT.meta_tasks || [];
+    if (!mts.length) { box.innerHTML = h + '<div style="font-size:11px;color:#6e7681">元任务配置为空</div>'; return; }
+    for (var k = 0; k < mts.length; k++) {
+      var m = mts[k], on = (m.id === cur);
+      var right = on ? (i + '/' + n) : ((m.occurrences || m.segments) + '');
+      var bar = on
+        ? '<span style="display:block;height:2px;background:#58a6ff;width:' + Math.min(100, Math.round(i / Math.max(1, n) * 100)) + '%;border-radius:1px"></span>'
+        : '';
+      h += '<div style="display:grid;grid-template-columns:42px 1fr auto;gap:6px;align-items:center;'
+        + 'padding:3px 5px;border-radius:4px;margin-bottom:2px;'
+        + (on ? 'background:rgba(88,166,255,.14);box-shadow:inset 0 0 0 1px rgba(88,166,255,.4)' : '') + '">'
+        + '<span style="font:10px ui-monospace,monospace;color:' + (on ? '#58a6ff' : '#6e7681') + '">' + m.id + '</span>'
+        + '<span style="font-size:11px;color:' + (on ? '#e6edf3' : '#8b949e') + ';white-space:nowrap;'
+        + 'overflow:hidden;text-overflow:ellipsis" title="' + esc(m.prompt || '') + '">'
+        + (m.arm === 'left' ? '◀ ' : '▶ ') + esc(m.name) + '</span>'
+        + '<span style="font:10px ui-monospace,monospace;color:' + (on ? '#3fb950' : '#6e7681') + '">' + right + '</span>'
+        + '</div>' + bar;
+    }
+    h += '<div style="display:flex;justify-content:space-between;margin-top:5px;font:10px ui-monospace,monospace;color:#6e7681">'
+      + '<span>轮 ' + (lh.segments_total || 392) + ' 段 / ' + (lh.round_total_s || 0) + 's / ' + (lh.tact_s || 11.42) + 's每件</span>'
+      + '<span>' + (d.kind ? esc(d.kind) + ' ' + esc(d.label || '') : '待运行') + '</span></div>';
+    box.innerHTML = h;
+  }
+  mtLoad();
+  setInterval(mtLoad, 15000);          // 元任务定义 15s 拉一次 (配置改了能跟上)
+  setInterval(mtRender, 400);          // 当前执行 400ms 刷一次 (跟动画同拍)
+
   var arrow = document.getElementById('tactArrow');
   arrow.addEventListener('click', function(){
     var hid = panel.classList.toggle('hide');

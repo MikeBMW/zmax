@@ -941,7 +941,7 @@
    "scene_type": "ar_aoi",
    "name": "AR 光学质量检测 (AOI 联合检查)",
    "desc": "AR 场景: RealSense D435 实拍为底图, 叠加三层虚拟信息 (工控机 AOI 联合检查 10082/10083 · 光模块检测在役权重 · 相机系 3D 位姿); 判据图可导出",
-   "goal": "把 AOI 光学质量检测落到 AR 实拍画面上, 与产线 AOI (10082 金手指 / 10083 表面) 同口径",
+   "goal": "AR 场景双臂并行 300UPH: 左臂摆盘 + 右臂插拔与 AOI 五点检测; 一轮 392 段 / 159.43s / 14 件, 目标 300 件/小时 (12s/件)",
    "targets": {
     "缺陷检出": "与产线 AOI 同口径 (10082 金手指 / 10083 表面)",
     "判决": "PASS/FAIL + 缺陷数 (工控机 /capture_detect → GET /last_result)",
@@ -995,47 +995,184 @@
    "steps": [
     {
      "t": 0.0,
-     "dur": 0.5,
-     "name": "AR 取像",
-     "desc": "RealSense D435 实拍 640×480 作 AR 底图 (深度 1mm 尺度 · 工作区有效深度 93.7% · 自动曝光)",
-     "force": null
+     "dur": 1.78,
+     "name": "MT-02 从孔内拔出模块",
+     "desc": "你站在 AR 场景的 AOI 工位。走到待测孔正上方→下降到孔位→在孔内夹住模块→沿孔轴垂直拔出→抬起到安全高度。拔出不许可斜拉，避免损伤金手指。",
+     "force": null,
+     "arm": "right",
+     "meta_task": "MT-02",
+     "segments": 5
     },
     {
-     "t": 0.5,
-     "dur": 1.8,
-     "name": "AOI 联合检查",
-     "desc": "工控机 AOI 10082 (金手指) 触发拍照检测 → 判据图 + 金手指矩形搜索 (位置/尺寸/倾角) + 侧边位置修正 Δx 一次拿全; 10083 (表面) 同口径",
-     "force": null
+     "t": 1.78,
+     "dur": 5.19,
+     "name": "MT-03 AOI 五点检测",
+     "desc": "你拿着刚拔出的光模块，先移到金手指检测点拍一张，再依次移到侧面点 0/1/2/3 各拍一张。五个点全部拍完才算检测完成；任意一点判 NG，这颗模块按 NG 规则走废料，不许混入良品。",
+     "force": null,
+     "arm": "right",
+     "meta_task": "MT-03",
+     "segments": 10
     },
     {
-     "t": 2.3,
-     "dur": 0.4,
-     "name": "光模块检测",
-     "desc": "在役权重 models/yolo_peg_live.pt 在 AR 帧上检测 (conf/imgsz 可调, 检出即给像素坐标)",
-     "force": null
+     "t": 6.97,
+     "dur": 1.77,
+     "name": "MT-04 良品放回下料盘",
+     "desc": "把手里这颗良品移到下料盘的空槽正上方→下降→松开放稳→抬起脱离。良品只能进下料盘。",
+     "force": null,
+     "arm": "right",
+     "meta_task": "MT-04",
+     "segments": 4
     },
     {
-     "t": 2.7,
-     "dur": 0.3,
-     "name": "位姿叠加",
-     "desc": "相机系 3D 位姿: 深度反投影 + 平面拟合 (RMS 留痕), 虚拟坐标架画回实拍; 手眼 TSAI 闭环 1.74mm",
-     "force": null
-    },
-    {
-     "t": 3.0,
-     "dur": 0.3,
-     "name": "判决与上报",
-     "desc": "判决 PASS/FAIL + 缺陷数; 判据图导出; AOI 全部话题经 ar_aoi_bus 发到信号分析页 (来源 ar.)",
-     "force": null
+     "t": 8.74,
+     "dur": 2.83,
+     "name": "MT-01 取料并插入一个模块",
+     "desc": "你站在 AR 场景的双臂工作站。走到料槽正上方→下降→夹住一颗光模块→抬起到安全高度→平移到目标孔的行进高度→对准孔口→受控插入到底→松开让模块留在孔内→退爪抬起。插入只准沿孔轴推进，不允许侧向挤压。",
+     "force": null,
+     "arm": "left",
+     "meta_task": "MT-01",
+     "segments": 9
     }
    ],
    "performance": {
-    "tact_time": 3.6,
-    "positioning_accuracy": 0.001,
-    "depth_valid_ratio": 0.937,
-    "plane_rms_mm": 101.39,
-    "aoi_infer_ms": 1715
-   }
+    "uph_target": 300,
+    "tact_s": 11.42,
+    "tact_target_s": 12.0,
+    "one_piece_s": 11.57,
+    "segments_per_piece": 28,
+    "segments_per_round": 392,
+    "round_total_s": 159.43,
+    "modules_per_round": 14,
+    "yield_target": 0.99,
+    "dual_arm": {
+     "left": "摆盘 (料盘 → 治具孔位, MT-01)",
+     "right": "插拔 + AOI 五点检测 (MT-02/03/04/05)"
+    },
+    "speed_mm_s": 625.6,
+    "insert_mm": 47.0,
+    "insert_force_n_max": 40.0,
+    "note": "几何能力 3600/11.42 = 315 UPH; 设计目标取 300 (=12s/件)"
+   },
+   "ar_meta_ref": {
+    "task_id": "TASK-07-AOI",
+    "meta_tasks_file": "data/database/zmax/sources/config/tasks/ar_meta_tasks.json",
+    "meta_tasks": {
+     "MT-01": {
+      "name": "取料并插入一个模块",
+      "segments": 9,
+      "occurrences": 14
+     },
+     "MT-02": {
+      "name": "从孔内拔出模块",
+      "segments": 5,
+      "occurrences": 14
+     },
+     "MT-03": {
+      "name": "AOI 五点检测",
+      "segments": 10,
+      "occurrences": 14
+     },
+     "MT-04": {
+      "name": "良品放回下料盘",
+      "segments": 4,
+      "occurrences": 12
+     },
+     "MT-05": {
+      "name": "NG 放废料盘",
+      "segments": 4,
+      "occurrences": 2
+     }
+    },
+    "rounds": [
+     {
+      "template": "MT-01×4",
+      "meta_seq": [
+       "MT-01",
+       "MT-01",
+       "MT-01",
+       "MT-01"
+      ],
+      "count": 1,
+      "batches": [
+       1
+      ],
+      "segments": 36
+     },
+     {
+      "template": "MT-02 + MT-03 + MT-04 + MT-02 + MT-03 + MT-04 + MT-01×2",
+      "meta_seq": [
+       "MT-02",
+       "MT-03",
+       "MT-04",
+       "MT-02",
+       "MT-03",
+       "MT-04",
+       "MT-01",
+       "MT-01"
+      ],
+      "count": 4,
+      "batches": [
+       2,
+       4,
+       5,
+       6
+      ],
+      "segments": 56
+     },
+     {
+      "template": "MT-02 + MT-03 + MT-04 + MT-02 + MT-03 + MT-05 + MT-01×2",
+      "meta_seq": [
+       "MT-02",
+       "MT-03",
+       "MT-04",
+       "MT-02",
+       "MT-03",
+       "MT-05",
+       "MT-01",
+       "MT-01"
+      ],
+      "count": 1,
+      "batches": [
+       3
+      ],
+      "segments": 56
+     },
+     {
+      "template": "MT-02 + MT-03 + MT-05 + MT-02 + MT-03 + MT-04",
+      "meta_seq": [
+       "MT-02",
+       "MT-03",
+       "MT-05",
+       "MT-02",
+       "MT-03",
+       "MT-04"
+      ],
+      "count": 1,
+      "batches": [
+       7
+      ],
+      "segments": 38
+     },
+     {
+      "template": "MT-02 + MT-03 + MT-04 + MT-02 + MT-03 + MT-04",
+      "meta_seq": [
+       "MT-02",
+       "MT-03",
+       "MT-04",
+       "MT-02",
+       "MT-03",
+       "MT-04"
+      ],
+      "count": 1,
+      "batches": [
+       8
+      ],
+      "segments": 38
+     }
+    ],
+    "sequence_prompt": "长程任务(TASK-07-AOI · AR 场景): 先装满 4 个孔(4×MT-01 取料插入); 之后每批 拔 2 个(MT-02) → 各做 AOI 五点检测(MT-03) → 良品进下料盘(MT-04)/NG 进废料盘(MT-05) → 再补插 2 个新模块(MT-01); 末批只拔不插(收尾)。全过程 392 段 / 159.43s / 14 件, 目标 300 UPH。任何一步 NG 一律走废料盘, 良品与 NG 分槽。"
+   },
+   "_ar300_note": "2026-10-28 由 tools/ar300_workorder.py 写入 (元任务组合 + 300UPH), 真源保持不变的其他字段"
   },
   {
    "scene_id": "SCN-08-AL1",

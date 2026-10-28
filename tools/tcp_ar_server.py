@@ -875,6 +875,124 @@ def _rs_online_fast(timeout: float = 2.5):
         _ex.shutdown(wait=False)                                            # 不等卡住的线程
 
 
+AR_SW_FRESH_S = 1800.0          # 开关状态有效期: 控制台只在"点开关"那一刻写盘, 120s 太短(2min后页面自己退出 AR 模式)
+AR_CMD_FRESH_S = 3.0            # 🥽 状态空间→AR 指令新鲜度: 超时页面回落到自己的播放逻辑(不卡死)
+
+# 元任务 → 手臂归属 (AR 300UPH: 左臂摆盘, 右臂插拔+AOI)
+_MT_ARM = {"MT-01": "left", "MT-02": "right", "MT-03": "right", "MT-04": "right", "MT-05": "right"}
+
+
+def _ar_meta_payload() -> dict:
+    """🧩 AR 场景元任务组合 (真源: 配置中心 TASK-07-AOI 的 ar_meta_tasks.json)
+
+    给 /ar3d 右侧边栏「🧩 元任务」区用: 5 个元任务 + 长程节拍 + 当前执行到哪一个。
+    只读, 不下发 (真机零指令)。
+    """
+    import json as _j
+    import os as _o
+    P = _o.path.join(_o.path.dirname(_o.path.dirname(_o.path.abspath(__file__))),
+                     "data/database/zmax/sources/config/tasks/ar_meta_tasks.json")
+    try:
+        d = _j.load(open(P, encoding="utf-8"))
+    except Exception as e:                                          # noqa: BLE001
+        return {"ok": False, "err": "%s: %s" % (type(e).__name__, e)}
+    mts = []
+    for m in (d.get("meta_tasks") or []):
+        mid = m.get("id")
+        mts.append({"id": mid, "name": m.get("name"), "segments": m.get("segments"),
+                    "occurrences": m.get("occurrences"), "t_s": m.get("t_s"),
+                    "prompt": m.get("prompt"), "actions": m.get("actions"),
+                    "arm": m.get("arm") or _MT_ARM.get(mid)})
+    lh = d.get("long_horizon") or {}
+    cur = {}
+    try:
+        c = _j.load(open(_o.path.join(_o.path.dirname(_o.path.dirname(_o.path.abspath(__file__))),
+                                      "zmax_data/ss_live/ar_cmd.json"), encoding="utf-8"))
+        cur = {k: c.get(k) for k in ("mt_id", "mt_name", "mt_i", "mt_n", "batch",
+                                     "seq", "kind", "label", "mod", "elapsed_s")}
+        cur["age_s"] = round(max(0.0, time.time() - float(c.get("t") or 0)), 2)
+    except Exception:                                               # noqa: BLE001
+        pass
+    return {"ok": True, "task_id": d.get("task_id") or "TASK-07-AOI",
+            "scene": "AR 仿真双臂 · 左臂摆盘 / 右臂插拔+AOI",
+            "meta_tasks": mts,
+            "long_horizon": {k: lh.get(k) for k in ("uph_target", "tact_s", "segments_total",
+                                                    "round_total_s", "meta_count", "verified")},
+            "current": cur}
+
+
+def _ar_cmd_payload() -> dict:
+    """🥽 状态空间 → AR 场景 的机器人驱动指令 (只用于**渲染虚拟臂**, 永不产生真机下发)
+
+    真源: zmax_data/ss_live/ar_cmd.json (状态空间侧 plan/执行器节点按拍写)
+    口径: 页面只在 AR 开关=开 且本条新鲜(<=AR_CMD_FRESH_S)时才用它驱动虚拟臂;
+          过期或没有 ⇒ 页面回落到原来的播放逻辑。真机通路与本文件无关(真机由 ctl_auth+l2_daemon 管)。
+    """
+    import json as _j
+    import os as _o
+    import time as _t
+    f = _o.path.expanduser("~/zmax/zmax_data/ss_live/ar_cmd.json")
+    try:
+        age = _t.time() - _o.path.getmtime(f)
+        with open(f, encoding="utf-8") as fh:
+            d = _j.load(fh)
+        out = {"ok": True, "age_s": round(age, 2), "fresh": age <= AR_CMD_FRESH_S,
+               "src": d.get("src"), "seq": d.get("seq"), "mod": d.get("mod"),
+               "kind": d.get("kind"), "label": d.get("label"),
+               "a": d.get("a"), "b": d.get("b"), "u": d.get("u"),
+               "q": d.get("q"), "q_l": d.get("q_l"), "t_str": d.get("t_str"),
+               "t_seg": d.get("t_seg"), "t_left": d.get("t_left"),
+               "elapsed_s": d.get("elapsed_s"),
+               # 🧩 2026-10-28: 长程元任务归属 (Plan 节点 ss_plan_long 写) —— 让页面/取证能看到
+               #   "当前属于哪个元任务、第几个、第几批", 而不是只有段号
+               "task_id": d.get("task_id"), "mt_id": d.get("mt_id"), "mt_name": d.get("mt_name"),
+               "mt_i": d.get("mt_i"), "mt_n": d.get("mt_n"), "batch": d.get("batch")}
+        if not out["fresh"]:
+            out["note"] = "指令过期(%.1fs > %.1fs) ⇒ 页面回落自身播放" % (age, AR_CMD_FRESH_S)
+        return out
+    except Exception as e:                                          # noqa: BLE001
+        return {"ok": False, "fresh": False, "age_s": None,
+                "err": "%s: %s" % (type(e).__name__, e),
+                "note": "无指令文件 ⇒ 页面回落自身播放"}
+
+
+def _ar_mode_payload() -> dict:
+    """🥽 AR 开关状态 —— 画布 🤖 机器人执行器(ssact) 的 AR / 真机 两个开关, 经控制台发布到这里。
+
+    真源: zmax_data/ss_live/exec_switches.json (控制台 on_toggle_ar/on_toggle_real 写)
+    口径: AR=开 ⇒ 本页进 AR 场景(右臂用仿真臂, 真机右臂不参与), 且 l2_daemon 对该帧之后的一律拒发;
+          文件过期(>120s, 控制台没在发布) ⇒ 视为 AR=关, 不能让控制台失联把页面锁在 AR 模式。
+    """
+    import json as _j
+    import os as _o
+    import time as _t
+    f = _o.path.expanduser("~/zmax/zmax_data/ss_live/exec_switches.json")
+    try:
+        age = _t.time() - _o.path.getmtime(f)
+        with open(f, encoding="utf-8") as fh:
+            d = _j.load(fh)
+        fresh = age <= AR_SW_FRESH_S
+        # ▶ 播放开关 (老倪 2026-10-28): 只有人点了画布「▶ 运行」才写 ar_play.json,
+        #   页面据此 plantStart(); 人不点 ⇒ play 为空 ⇒ 页面绝不自播
+        play = {}
+        try:
+            _pf = _o.path.expanduser("~/zmax/zmax_data/ss_live/ar_play.json")
+            if _o.path.exists(_pf):
+                with open(_pf, encoding="utf-8") as _ph:
+                    play = _j.load(_ph)
+                play["age_s"] = round(_t.time() - float(play.get("ts") or 0), 1)
+                play["fresh"] = play["age_s"] <= 3600       # 1 小时内的启动命令才算
+        except Exception:                                          # noqa: BLE001
+            play = {}
+        return {"ok": True, "ar_scene": bool(d.get("ar_scene")) if fresh else False,
+                "raw_ar_scene": bool(d.get("ar_scene")), "real_auth": bool(d.get("real_auth")),
+                "age_s": round(age, 1), "fresh": fresh, "play": play,
+                "t_str": d.get("t_str"), "src": d.get("src")}
+    except Exception as e:                                          # noqa: BLE001
+        return {"ok": False, "ar_scene": False, "real_auth": False, "age_s": None,
+                "err": "%s: %s" % (type(e).__name__, e)}
+
+
 def _cams_payload() -> dict:
     """底图来源清单: 每路带 来源/分辨率/是否已标定/在线/帧龄(从视频源真值读)。"""
     st = _ss_stats()
@@ -1207,6 +1325,12 @@ class H(BaseHTTPRequestHandler):
                     except Exception as _ae:                                # noqa: BLE001
                         self._send(500, "text/plain; charset=utf-8",
                                    ("读取技术协议失败: %s: %s" % (type(_ae).__name__, _ae)).encode())
+            elif p == "/api/ar/mode":           # 🥽 AR 开关(画布 🤖 机器人执行器) → 本页 AR 模式/真机不下发
+                self._json(_ar_mode_payload())
+            elif p == "/api/ar/cmd":            # 🥽 状态空间 → AR 虚拟臂驱动指令(只渲染, 不下发真机)
+                self._json(_ar_cmd_payload())
+            elif p == "/api/ar/meta":            # 🧩 AR 元任务组合(配置中心 TASK-07-AOI) + 当前执行到哪
+                self._json(_ar_meta_payload())
             elif p == "/api/cams":              # 🥽 底图来源清单(含状态空间工程视频源实况: 在线/帧龄/fps)
                 self._json(_cams_payload())
             elif p == "/api/ss_stats":          # 🥽 状态空间工程视频源(8791 cam_live_stream)原始实况

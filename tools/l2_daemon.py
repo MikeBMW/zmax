@@ -2006,10 +2006,37 @@ _CUR = {"epoch": None, "skill": "", "t": 0.0}      # 当前正在处理的 FIFO 
 DISPATCH_MARK = os.path.expanduser("~/zmax/zmax_data/l2_last_dispatch.json")
 
 
+AR_SW_FRESH_S = 1800.0          # 与 tcp_ar_server.AR_SW_FRESH_S 同口径: 控制台只在点开关时写盘
+
+
+def _ar_scene_gate():
+    """🎛 画布 🤖 机器人执行器 的 AR 开关 (2026-10-27 老倪: 「开了就是进 AR 场景控制左右臂」)
+
+    AR=开 ⇒ 左右臂走 ar3d 仿真, **真机一律不动**; AR=关 ⇒ 才走真机通路(仍要过 ctl_auth)。
+    真源: 画布 params.ar_scene → 控制台写 zmax_data/ss_live/exec_switches.json。
+    文件缺失或过期(>120s, 说明控制台没在发布) ⇒ 视为 AR=关, 不拦 —— 不能让画布失联把现场锁死。
+    """
+    try:
+        f = os.path.expanduser("~/zmax/zmax_data/ss_live/exec_switches.json")
+        if time.time() - os.path.getmtime(f) > AR_SW_FRESH_S:
+            return None
+        with open(f, encoding="utf-8") as fh:
+            d = json.load(fh)
+        if d.get("ar_scene"):
+            return ("🛑 AR 场景开关=开 (画布 🤖 机器人执行器) ⇒ 真机不动, 只走 ar3d 仿真左右臂; "
+                    "要动真机先把 AR 开关点关")
+    except Exception:                       # noqa: BLE001  —— 读不到不拦(fail-open 仅限这一道)
+        return None
+    return None
+
+
 def _auth_guard(call: str, kind: str = "运动"):
     """(ok, why): 该条下发此刻是否被授权。CA 缺失 ⇒ 拒发(现场安全优先)。"""
     if any(k in (call or "") for k in _VL_ALWAYS_ALLOW):
         return True, "停机/复位类 ⇒ 放行(闸门不挡急停)"
+    _ar = _ar_scene_gate()
+    if _ar:
+        return False, _ar
     if CA is None:
         return False, "🛑 ctl_auth 不可用(单一真源缺失) ⇒ 拒发: 运动一律要过 8793 授权"
     ok, why = CA.check(_CUR.get("epoch"))

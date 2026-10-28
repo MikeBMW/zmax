@@ -2920,7 +2920,25 @@ def node_ss_llm(ctx):
         m = _ilu.module_from_spec(spec)
         spec.loader.exec_module(m)
         p = m.TaskPlanner()
-        ins = (ctx.get("params") or {}).get("instruction", "插入光模块")
+        # 🔌 2026-10-28 老倪「具体是哪个函数负责输入」: 原来只读 ctx["params"] —— 引擎里根本没有这个键
+        #   (Node.step: ctx = self.pull() = {port: {value,age_s,fresh}}), 所以永远取默认「插入光模块」,
+        #   上游 ssllm_in / n_vlm_llm / ss_mem_share 四条入线一条都没被消费。现在三级回落:
+        #   ① 节点参数 instruction/task_input (GUI 演示可传) ② 入边 in1 (引擎真链路) ③ ssllm_in 写的共享态
+        _p = ctx.get("params") or {}
+        _ins_in = None
+        for _port in ("in1", "in2"):
+            _v = (ctx.get(_port) or {}).get("value")
+            if isinstance(_v, dict):
+                for _k in ("instruction", "task_input", "text", "cmd", "intent"):
+                    if _v.get(_k):
+                        _ins_in = str(_v[_k])
+                        break
+            elif isinstance(_v, str) and _v.strip():
+                _ins_in = _v.strip()
+            if _ins_in:
+                break
+        ins = (_p.get("instruction") or _p.get("task_input") or _ins_in
+               or _SS_STATE.get("instruction") or "插入光模块")
         _ctx_txt = _llm_context_text()          # 场景理解 + 总装记忆上下文 (真实读, 取不到如实说)
         if log and _ctx_txt:
             log(f"   📥 规划上下文: {_ctx_txt[:200]}")
@@ -2936,11 +2954,17 @@ def node_ss_llm(ctx):
             for i, (t, nm) in enumerate(zip(tokens, names), 1):
                 log(f"   {i}. {t}  {nm}")
             log(f"   📚 Token 序列已下发 🧭动作调制器 (慢决策 · 回路外, 状态机握否决权)")
-        return True
+        # 🔌 2026-10-28: 原来 return True ⇒ 引擎判「实现返回非 dict → 直通」, out1 永远 None,
+        #   下游 sssched / ssuph 一条 token 都收不到。现在真发总线。
+        _outs = {"out1": {"instruction": ins, "tokens": tokens, "names": names,
+                          "n": len(tokens), "src": "TaskPlanner.plan", "t": time.time()}}
+        if log:
+            log(f"📤 已发 out1: {len(tokens)} 个技能 token {tokens[:4]}")
+        return _outs
     except Exception as e:
         if log:
             log(f"⚠️ 任务规划器演示失败: {e}")
-        return False
+        return {"out1": None}
 
 def node_ss_reason(ctx):
     """🔍 异常推理器 — 连续否决/阶段卡死 → 异常分类 + 恢复建议 (双击=诊断演示)"""
@@ -3432,7 +3456,9 @@ def node_ss_llm_in(ctx):
     """
     log = ctx.get("log")
     try:
-        ins = _ctx_params(ctx).get("instruction", "插入光模块")
+        # 🔌 2026-10-28: 画布参数键叫 task_input(见节点参数), 代码原来只认 instruction ⇒ 填了不生效
+        _cp = _ctx_params(ctx)
+        ins = _cp.get("instruction") or _cp.get("task_input") or "插入光模块"
         _SS_STATE["instruction"] = ins
         img, src, meta = _vlm_frame()
         _VLM["img"] = dict({"src": src}, **meta)
@@ -6076,6 +6102,20 @@ _reg("ss_grav_h", ["万有引力", "SE3 几何阻抗", "H=K+U", "哈密顿"],
 
 _EXTERNAL_LOC["ss_grav_h"] = (os.path.join(_MANIFOLD_DIR, "state_space_energy.py"),
                               92, "class StateSpaceHamiltonian")
+
+# ── 🏭 UPH 节拍循环器 (节点 ssuph) ────────────────────────────────
+# 真实现住 ../nodes/uph_tact_impl.py, 这里只做注册绑定 (画布每次保存会重生成 n_uph.py 外壳, 算法不能被写进外壳)
+from . import uph_tact_impl as _uph_impl                      # noqa: E402
+from . import plan_long_impl as _planlong_impl                # noqa: E402
+
+_reg("ss_plan_long", ["长程元任务编排器", "元任务编排器", "长程任务", "元任务组合"],
+     "🧩 长程元任务编排器 (Plan) — 读配置中心 TASK-07-AOI 的元任务组合(ar_meta_tasks.json), "
+     "按轮模板展开成段序列(与段表逐段校验), 每段带元任务归属 → 驱动 AR 场景双臂; 真机零指令",
+     _planlong_impl.run)
+
+_reg("ss_uph", ["UPH 节拍循环器", "节拍循环器", "UPH循环", "节拍"],
+     "🏭 UPH 节拍循环器 — 读 sim_insert 段表按节拍推进当前动作, 输出可驱动 AR 场景虚拟臂 (真机零指令)",
+     _uph_impl.run)
 
 # ── 迁移收尾: 把本模块命名空间交给注册表 (用户改过的逻辑 exec 时用同一份 globals) ──
 

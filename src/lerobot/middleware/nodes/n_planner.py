@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""🧠 L3 长程序列规划器 (场景理解驱动)  ·  节点 ssllm · L3
+"""🧠 长程序列规划器 (场景理解驱动)  ·  节点 ssllm
 
 工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ss_mem_share, n_hil
@@ -13,12 +13,12 @@
 话题 =  ss.node.ssllm.<port>
 
 实现绑定: registry key=`ss_llm` · src/lerobot/policies/left_right/state_space/planner.py:class TaskPlanner
-执行口径: EXEC_MODE=act · PURE=False (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
+执行口径: EXEC_MODE=act · PURE=True (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
 """
 
 NODE_ID = 'ssllm'
-NAME = '🧠 L3 长程序列规划器 (场景理解驱动)'
-LAYER = 'L3'
+NAME = '🧠 长程序列规划器 (场景理解驱动)'
+LAYER = ''
 TYPE = 'model'
 EXEC_MODE = 'act'
 
@@ -30,10 +30,10 @@ PORT_LABELS = {}
 IMPL_KEY = 'ss_llm'
 SOURCE = 'src/lerobot/policies/left_right/state_space/planner.py'
 SOURCE_SYMBOL = 'class TaskPlanner'
-PARAMS = {'state_space': True, 'task_planner': True, 'llm': 'Qwen3-7B (可插拔, 未配置走规则)', 'desc': '任务规划器 TaskPlanner: 指令/场景 → 技能Token序列 (242条原子技能库, 规则校验后) → 下发状态机', 'source': 'src/lerobot/policies/left_right/state_space/planner.py', 'source_symbol': 'class TaskPlanner'}
+PARAMS = {'state_space': True, 'task_planner': True, 'llm': 'Qwen3-7B (可插拔, 未配置走规则)', 'desc': '任务规划器 TaskPlanner: 指令/场景 → 技能Token序列 (242条原子技能库, 规则校验后) → 下发状态机', 'source': 'src/lerobot/policies/left_right/state_space/planner.py', 'source_symbol': 'class TaskPlanner', 'pure_verified': True}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = False
+PURE = True
 LAST_STATUS = ""
 
 

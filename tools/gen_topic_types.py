@@ -63,6 +63,8 @@ NODES = {
     "ss_mem_share":    ("SharedMemoryHub",   "总装记忆中枢",        {}),
     "ss_moe":          ("MoeRouting",        "MOE 门控路由",        {}),
     "ss_seg":          ("OpenVocabSeg",      "开放词汇分割",        {}),
+    # 🏭 2026-10-28: UPH 节拍循环器 (数据源层·预存段表驱动 · 不依赖大模型/语言层)
+    "ssuph":           ("UphTact",           "UPH 节拍循环",        {"out1": "UphTactSegment"}),
     "ssact":           ("RobotAction",       "机器人执行动作",      {}),
     "ssaoi":           ("OpticalInspection", "光学质量检测",        {}),
     "ssbypv":          ("BypassView",        "旁路可视化",          {}),
