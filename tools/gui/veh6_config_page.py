@@ -2000,6 +2000,39 @@ class _CopyLabel(QLabel):
         super().mouseDoubleClickEvent(ev)
 
 
+def _src_check(src):
+    """现场核对真源引用: path:line / path#key#key / path —— 存在且行号在界内/键取得到才算 ✅"""
+    if not src:
+        return "⛔ 无真源"
+    pth = src.split("#")[0].split(" (")[0].strip()
+    line = None
+    if ":" in pth and not pth.endswith(":"):
+        head, _, tail = pth.rpartition(":")
+        if tail.isdigit():
+            pth, line = head, int(tail)
+    fp = pth if os.path.isabs(pth) else os.path.join(ROOT, pth)
+    if not os.path.exists(fp):
+        return "⛔ 文件不存在: %s" % pth
+    if line:
+        try:
+            n = len(open(fp, encoding="utf-8", errors="replace").read().splitlines())
+        except Exception:                                                       # noqa: BLE001
+            n = 0
+        if n and line > n:
+            return "⛔ 行号越界 %d/%d" % (line, n)
+        return "✅ %s" % src
+    if "#" in src:
+        key = src.split("#", 1)[1]
+        try:
+            j = json.load(open(fp, encoding="utf-8"))
+            cur = j
+            for part in key.split("#"):
+                cur = cur[part]
+            return "✅ %s" % src
+        except Exception:                                                       # noqa: BLE001
+            return "⚠ 键取不到: %s" % src
+    return "✅ %s" % src
+
 class ConfigCenterPage(QWidget):
     """左五域树 + 右工作区 (首屏=任务配置) + 底部结果面板。"""
 
@@ -4104,9 +4137,13 @@ class ConfigCenterPage(QWidget):
             _v_perf["lay"].insertWidget(0, self._active_banner(th, "性能配置"))
             _v_perf["lay"].insertWidget(1, self._task_perf_block(th))
             try:
-                _v_perf["lay"].insertWidget(2, self._perf_boundary_block(th))
+                _v_perf["lay"].insertWidget(2, self._perf_tier_block(th))
+            except Exception as _et:                                            # noqa: BLE001
+                _v_perf["lay"].insertWidget(2, QLabel("⛔ 性能等级块构建失败: %r" % (_et,)))
+            try:
+                _v_perf["lay"].insertWidget(3, self._perf_boundary_block(th))
             except Exception as _eb:                                            # noqa: BLE001
-                _v_perf["lay"].insertWidget(2, QLabel("⛔ 能力边界块构建失败: %r" % (_eb,)))
+                _v_perf["lay"].insertWidget(3, QLabel("⛔ 能力边界块构建失败: %r" % (_eb,)))
         except Exception as _ep:                                                # noqa: BLE001
             _v_perf["lay"].insertWidget(0, QLabel("⛔ 性能横幅/指标块构建失败: %r" % (_ep,)))
         self.fpm_views["功能配置"] = _v_func
@@ -5174,6 +5211,109 @@ class ConfigCenterPage(QWidget):
         self.perf_kpi_table = t
         return w
 
+
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # ⚡ 性能等级 (按模型配置分档) —— 老倪 2026-10-28:
+    #   「根据不同的模型配置, 性能指标也要分出级别, 这样下一步的成本组成就可以核算了。
+    #     L2模型能满足速度节拍/单任务; L3 能满足多任务编排; L4(含L5) 能满足不同安全等级」
+    #   真源: tools/spec/perf_tiers.json (指标逐条指到 perf_spec / sim / safety / 模型 config)
+    # ══════════════════════════════════════════════════════════════════════════
+    def _perf_tier_block(self, th):
+        TJ = os.path.join(ROOT, "tools", "spec", "perf_tiers.json")
+        try:
+            spec = json.load(open(TJ, encoding="utf-8"))
+        except Exception:                                                       # noqa: BLE001
+            spec = {"tiers": []}
+        tiers = spec.get("tiers") or []
+
+        tid, tk, bt, bd = _active_bind()
+        funcs = _task_funcs(tid)
+        lays = {str(f.get("layer") or "") for f in funcs}
+        has = lambda *ks: any(any(k == x or k in x for x in lays) for k in ks)
+        need = "P3" if has("L4", "L5") else ("P2" if has("L3") else "P1")
+
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 4)
+        lay.setSpacing(4)
+
+        hd = QLabel()
+        hd.setTextFormat(Qt.RichText)
+        hd.setText("<span style='font-size:12px;font-weight:600;color:%s'>🎚 性能等级 (按模型配置分 3 档 · 下一步据此核算成本)</span>"
+                   "<span style='color:%s;font-size:10.5px'>&nbsp;&nbsp;档位由「在役哪些层的模型」决定; "
+                   "本任务涉及层 %s ⇒ 需要 %s</span>"
+                   % (th["C_YELLOW"], th["C_GRAY"], "/".join(sorted(x for x in lays if x)) or "—", need))
+        hd.setWordWrap(True)
+        lay.addWidget(hd)
+
+        rows = []
+        for t in tiers:
+            rows.append([t.get("id") or "—", t.get("name") or "—", "/".join(t.get("layers") or []),
+                         " · ".join(t.get("models") or []), t.get("can") or "—", t.get("cannot") or "—",
+                         t.get("perf_grade") or "—", t.get("safety_level") or "—",
+                         " · ".join(t.get("cost_factors") or []),
+                         " · ".join(t.get("tasks") or [])])
+        t1 = _mk_table(["档位", "配置名", "含层", "组成模型", "能做到", "做不到 (边界)", "性能等级",
+                        "安全等级", "成本因子 (下一步核算)", "适用任务"], rows, th)
+        t1.setWordWrap(True)
+        t1.verticalHeader().setDefaultSectionSize(46)
+        for _c, _w2 in ((0, 44), (1, 132), (2, 60), (3, 220), (5, 200), (6, 96), (9, 130)):
+            t1.setColumnWidth(_c, _w2)
+        t1.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        t1.setMinimumHeight(24 * 6 + 48)
+        self.perf_tier_table = t1
+        for _r, _row in enumerate(rows):
+            if _row[0] == need:
+                for _c in range(t1.columnCount()):
+                    _it = t1.item(_r, _c)
+                    if _it is not None:
+                        _it.setBackground(QBrush(QColor("#1d2b1f")))
+                        _it.setForeground(QBrush(QColor(th["C_GREEN"])))
+            for _c in (3, 4, 5, 7, 8):
+                _it = t1.item(_r, _c)
+                if _it is not None:
+                    _it.setToolTip(_row[_c])
+        lay.addWidget(t1)
+
+        # 分档指标 (逐条真源现场校验)
+        mrows = []
+        for t in tiers:
+            for m in (t.get("metrics") or []):
+                mrows.append([t.get("id") or "—", m.get("k") or "—", m.get("v") or "—", m.get("src") or "—",
+                              _src_check(m.get("src"))])
+        t2 = _mk_table(["档位", "指标", "值 / 边界", "真源", "真源校验"], mrows, th)
+        t2.setWordWrap(False)
+        t2.verticalHeader().setDefaultSectionSize(24)
+        for _c, _w2 in ((0, 44), (1, 132), (2, 300), (4, 116)):
+            t2.setColumnWidth(_c, _w2)
+        t2.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        t2.setMinimumHeight(24 * len(mrows) + 48)
+        self.perf_tier_metric_table = t2
+        for _r, _row in enumerate(mrows):
+            _it = t2.item(_r, 2)
+            if _it is not None:
+                _it.setToolTip(_row[2])
+            _s = t2.item(_r, 4)
+            if _s is not None and _row[4].startswith("⛔"):
+                _s.setForeground(QBrush(QColor(th["C_RED"])))
+        lay.addWidget(t2)
+
+        _br = QHBoxLayout()
+        _b1 = _btn("📋 复制 性能等级 (TSV)", th)
+        _b1.clicked.connect(lambda: QApplication.clipboard().setText(
+            "\t".join(["档位", "配置名", "含层", "组成模型", "能做到", "做不到", "性能等级", "安全等级", "成本因子", "适用任务"]) + "\n"
+            + "\n".join("\t".join(str(x) for x in r) for r in rows)))
+        _b2 = _btn("📋 复制 分档指标 (TSV)", th)
+        _b2.clicked.connect(lambda: QApplication.clipboard().setText(
+            "\t".join(["档位", "指标", "值", "真源"]) + "\n"
+            + "\n".join("\t".join(str(x) for x in r[:4]) for r in mrows)))
+        for _b in (_b1, _b2):
+            _br.addWidget(_b)
+        _br.addStretch()
+        lay.addLayout(_br)
+        return w
+
     # ══════════════════════════════════════════════════════════════════════════
     # ⚡ 性能配置 · 模型能力边界 (老倪 2026-10-28: 「继续写性能配置, 要体现模型的能力边界」)
     #   真源: tools/spec/capability_limits.json (每条带 src file:line, 页面现场校验)
@@ -5186,46 +5326,13 @@ class ConfigCenterPage(QWidget):
         except Exception:                                                       # noqa: BLE001
             spec = {"rows": []}
 
-        def _chk(src):
-            """现场核对真源引用: path:line / path#key / path —— 存在且行号在界内才算 ✅"""
-            if not src:
-                return "⛔ 无真源"
-            pth = src.split("#")[0]
-            line = None
-            if ":" in pth and not pth.endswith(":"):
-                head, _, tail = pth.rpartition(":")
-                if tail.isdigit():
-                    pth, line = head, int(tail)
-            fp = pth if os.path.isabs(pth) else os.path.join(ROOT, pth)
-            if not os.path.exists(fp):
-                return "⛔ 文件不存在: %s" % pth
-            if line:
-                try:
-                    n = len(open(fp, encoding="utf-8", errors="replace").read().splitlines())
-                except Exception:                                               # noqa: BLE001
-                    n = 0
-                if n and line > n:
-                    return "⛔ 行号越界 %d/%d" % (line, n)
-                return "✅ %s" % src
-            if "#" in src:
-                key = src.split("#", 1)[1]
-                try:
-                    j = json.load(open(fp, encoding="utf-8"))
-                    cur = j
-                    for part in key.split("#"):
-                        cur = cur[part]
-                    return "✅ %s" % src
-                except Exception:                                               # noqa: BLE001
-                    return "⚠ 键取不到: %s" % src
-            return "✅ %s" % src
-
         rows = []
         for r in (spec.get("rows") or []):
             rows.append([r.get("domain") or "—", r.get("model") or "—", r.get("layer") or "—",
                          r.get("node") or "—",
                          "%s → %s" % (r.get("input") or "—", r.get("output") or "—"),
                          r.get("limit") or "—", r.get("precision") or "—", r.get("latency") or "—",
-                         r.get("guard") or "—", _chk(r.get("src"))])
+                         r.get("guard") or "—", _src_check(r.get("src"))])
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setContentsMargins(0, 0, 0, 4)

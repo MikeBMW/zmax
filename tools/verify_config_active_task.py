@@ -307,6 +307,40 @@ def main():
     pt = getattr(p, "perf_spec_table", None)
     chk("⑩ 有 模型能力边界 表", pb is not None, pb.rowCount() if pb else "无")
     chk("⑩ 有 性能指标 表", pt is not None, pt.rowCount() if pt else "无")
+    # ⑪ 性能等级: 3 档配置 (L2 / L2+L3 / L2+L3+L4(+L5)) 各自的能力边界与成本因子
+    tt = getattr(p, "perf_tier_table", None)
+    tm = getattr(p, "perf_tier_metric_table", None)
+    chk("⑪ 有 性能等级 三档表", tt is not None and tt.rowCount() == 3, tt.rowCount() if tt else "无")
+    chk("⑪ 有 分档指标 表", tm is not None, tm.rowCount() if tm else "无")
+    if tt is not None:
+        ids = [tt.item(r, 0).text() for r in range(tt.rowCount())]
+        chk("⑪ 三档 = P1/P2/P3 (L2 · L2+L3 · L2+L3+L4含L5)", ids == ["P1", "P2", "P3"], ids)
+        lays = [tt.item(r, 2).text() for r in range(tt.rowCount())]
+        chk("⑪ 档位含层逐级递进", lays[0] == "L2" and "L3" in lays[1] and "L4" in lays[2], lays)
+        chk("⑪ P1 = 速度节拍/单任务",
+            "节拍" in tt.item(0, 6).text() and "单任务" in tt.item(0, 1).text(), tt.item(0, 6).text())
+        chk("⑪ P2 = 多任务编排",
+            "多任务" in tt.item(1, 6).text() and "编排" in tt.item(1, 4).text(), tt.item(1, 6).text())
+        chk("⑪ P3 = 安全等级/自主",
+            "安全" in tt.item(2, 6).text() and "安全" in tt.item(2, 7).text(), tt.item(2, 6).text())
+        chk("⑪ 每档都有 成本因子 (供下一步核算)",
+            all(tt.item(r, 8).text().strip() not in ("", "—") for r in range(tt.rowCount())),
+            "P3: " + tt.item(2, 8).text()[:60])
+        chk("⑪ 每档都写了 做不到 (能力边界)",
+            all(tt.item(r, 5).text().strip() not in ("", "—") for r in range(tt.rowCount())),
+            "P1: " + tt.item(0, 5).text()[:50])
+        chk("⑪ 每档都指了组成模型 (实际在役名/文件)",
+            all(len(tt.item(r, 3).text().strip()) >= 12 for r in range(tt.rowCount())),
+            "P2: " + tt.item(1, 3).text()[:56])
+    if tm is not None:
+        chk("⑪ 分档指标 ≥ 12 条", tm.rowCount() >= 12, "%d 条" % tm.rowCount())
+        c4 = tm.columnCount() - 1
+        _okn = sum(1 for r in range(tm.rowCount()) if tm.item(r, c4).text().startswith("✅"))
+        chk("⑪ 分档指标真源现场校验 (%d/%d)" % (_okn, tm.rowCount()), _okn >= tm.rowCount() - 1,
+            "未通过: " + " ; ".join(tm.item(r, 1).text() for r in range(tm.rowCount())
+                                   if not tm.item(r, c4).text().startswith("✅")))
+        tiers_in = {tm.item(r, 0).text() for r in range(tm.rowCount())}
+        chk("⑪ 三档都有指标", tiers_in == {"P1", "P2", "P3"}, sorted(tiers_in))
     if pb is not None:
         hd = [pb.horizontalHeaderItem(c).text() for c in range(pb.columnCount())]
         chk("⑩ 边界表头有 输入域→输出域/上限/精度/时延/越界",

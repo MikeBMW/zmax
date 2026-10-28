@@ -1,0 +1,179 @@
+{
+ "_meta": {
+  "schema": "zmax-perf-tiers/1.0",
+  "note": "按模型配置分级的性能等级 (老倪 2026-10-28: 「根据不同的模型配置, 性能指标也要分出级别, 这样下一步的成本组成就可以核算了; L2模型能满足速度节拍/单任务; L3 能满足多任务编排; L4(含L5) 能满足不同安全等级」)。每条指标都指到真源, 不编。cost_factors 只列成本项, 单价下一步核算。",
+  "author": "静静 (Hermes) 2026-10-28",
+  "tiers_order": [
+   "P1",
+   "P2",
+   "P3"
+  ]
+ },
+ "tiers": [
+  {
+   "id": "P1",
+   "name": "L2 单任务 · 速度节拍级",
+   "layers": [
+    "L2"
+   ],
+   "models": [
+    "YOLO 光模块检测 (yolo_peg_live.pt)",
+    "SAM3 开放词汇分割",
+    "光模块_抓放循环_v1.json (技能库)",
+    "AOI 检测服务 (10082/10083)"
+   ],
+   "can": "固定序单任务执行: 取料 → 插入 → 拔出 → AOI 五点 → 回盘/废料; 节拍可测可复现",
+   "cannot": "不能自主编排多任务 (任务来了要人工选流程); 异常不能自恢复, 只能停在安全位等人工",
+   "perf_grade": "P1 · 速度/节拍达标",
+   "metrics": [
+    {
+     "k": "单件节拍 (TASK-07-AOI)",
+     "v": "11.42 s/件",
+     "src": "config/tasks/tasks.json#tasks"
+    },
+    {
+     "k": "节拍 UPH",
+     "v": "316.1 件/h (目标 300)",
+     "src": "zmax_data/runtime/traj/sim_insert.json"
+    },
+    {
+     "k": "位姿可重复性 RP",
+     "v": "≤0.10 mm (设计目标)",
+     "src": "config/platform/zmax_perf_spec.json"
+    },
+    {
+     "k": "检测阈值",
+     "v": "YOLO conf ≥0.4 · AOI 曝光 5000us 五点",
+     "src": "src/lerobot/policies/yolo_3d/yolo_state_aligner.py:93"
+    },
+    {
+     "k": "执行安全",
+     "v": "VEL_LIMIT 1.0 · FORCE_LIMIT 5.0N · POS_LIMIT 0.6",
+     "src": "src/lerobot/policies/left_right/state_space/safety.py:12"
+    }
+   ],
+   "safety_level": "单机安全限幅 (无自主决策); 安全功能 PL 未做 ISO 13849 认证",
+   "cost_factors": [
+    "工控机 (550C 级)",
+    "相机 D405/D435",
+    "AOI 检测服务 (工控机 10082/10083)",
+    "无训练 GPU 需求 (推理轻量)",
+    "L2 技能库示教人力 (人机在环)"
+   ],
+   "tasks": [
+    "TASK-07-AOI (AR 仿真链 · 单任务版)"
+   ]
+  },
+  {
+   "id": "P2",
+   "name": "L2+L3 · 多任务编排级",
+   "layers": [
+    "L2",
+    "L3"
+   ],
+   "models": [
+    "P1 全部",
+    "L3 · SmolVLA+LEW 策略 (在役 ckpt 1289MB)",
+    "L3 · 状态空间 LoRA 适配层"
+   ],
+   "can": "多任务编排: 技能序列可组合 (SkillComposer), 换产品/换工位靠序列而不是改代码; 视觉-状态端到端出动作",
+   "cannot": "复杂异常的语义级推理与自主恢复仍缺 (异常只能按预案分支); 跨工位自主流转不具备",
+   "perf_grade": "P2 · 多任务/可编排",
+   "metrics": [
+    {
+     "k": "策略输入域",
+     "v": "image 3×480×480 + state 39 维",
+     "src": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model/config.json#input_features"
+    },
+    {
+     "k": "策略输出域",
+     "v": "action 4 维 · chunk 7 / n_action_steps 7",
+     "src": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model/config.json#output_features"
+    },
+    {
+     "k": "控制周期",
+     "v": "τ=0.08s (12.5Hz 设计值)",
+     "src": "config/platform/zmax_perf_spec.json"
+    },
+    {
+     "k": "序列能力",
+     "v": "跨段技能序列可复用 · 摆盘节拍 4.70s 供料",
+     "src": "config/tasks/tasks.json"
+    },
+    {
+     "k": "模型体积",
+     "v": "SmolVLA 1289MB + LoRA 适配层",
+     "src": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model"
+    }
+   ],
+   "safety_level": "单机安全限幅 + 序列级校验 (每段过 safety); 安全等级同上, 未做 PL 认证",
+   "cost_factors": [
+    "P1 全部硬件",
+    "推理 GPU (SmolVLA 500M, 4060 级)",
+    "训练数据采集与标注 (真机/仿真同源)",
+    "LoRA 微调算力"
+   ],
+   "tasks": [
+    "TASK-01-FW / TASK-02-HANDLE / TASK-06-TRAY 等多工位任务"
+   ]
+  },
+  {
+   "id": "P3",
+   "name": "L2+L3+L4 (可含 L5) · 安全分级自主级",
+   "layers": [
+    "L2",
+    "L3",
+    "L4",
+    "L5 (可选)"
+   ],
+   "models": [
+    "P2 全部",
+    "L4 · INTACT-JEPA 意图-动作 (84MB + LoRA)",
+    "L5 · Qwen3-7B 规划 (可插拔)",
+    "L5 · DeepSeek 视觉规划 (云端 API)",
+    "L5 · Qwen2.5-VL-3B 场景理解 (1019MB)"
+   ],
+   "can": "不同安全等级的自主运行: 意图级决策 + 异常语义推理 + 自主恢复/重规划; 危险动作走授权与 veto 链",
+   "cannot": "未标定项仍受限 (plane_z 未标定 → 拒 3D 换算); 无钥匙的安全认证与现场验证前不能宣称 PL d 达标",
+   "perf_grade": "P3 · 安全等级/自主",
+   "metrics": [
+    {
+     "k": "L4 输入域",
+     "v": "image 224×224 ×3 帧 + skill 24 维",
+     "src": "zmax_data/stable-wm-cache/checkpoints/intact_l4_current/config.json#encoder"
+    },
+    {
+     "k": "L4 输出域",
+     "v": "action 8 维 (零搜索 chunk) · feat 192",
+     "src": "zmax_data/stable-wm-cache/checkpoints/intact_l4_current/config.json#intent_actor"
+    },
+    {
+     "k": "L4 时延",
+     "v": "稳态 101ms",
+     "src": "config/platform/zmax_perf_spec.json"
+    },
+    {
+     "k": "异常/veto",
+     "v": "max_veto=3, 连续否决转异常; 危险动作授权阈值",
+     "src": "src/lerobot/policies/left_right/state_space/planner.py"
+    },
+    {
+     "k": "L5 规划",
+     "v": "timeout ≥300s · 短提示 + 小 JSON · 失败回退本地 VLM→规则",
+     "src": "tools/spec/model_links.json#external"
+    }
+   ],
+   "safety_level": "分级安全: 动作授权 (只从 8793) + 分层否决链 + 危险动作 agent_all_stop; 目标 PL d (ISO 13849), 认证未做",
+   "cost_factors": [
+    "P2 全部",
+    "L4 训练 GPU (INTACT-JEPA + LoRA 合并)",
+    "L5 云端 API 费用 或 本地 3B VLM 显存",
+    "安全验证与认证 (ISO 13849 / 9383 报告)",
+    "异常场景测试集与现场验证人力"
+   ],
+   "tasks": [
+    "TASK-07-AOI 自主版 / 跨工位自主流转 R-MPV"
+   ]
+  }
+ ]
+}
