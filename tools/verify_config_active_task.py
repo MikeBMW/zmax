@@ -229,16 +229,9 @@ def main():
     bperf = next((t for t in lp if "当前活跃任务" in t), "")
     chk("⑥ 性能配置页也有活跃任务横幅", bool(bperf) and "TASK-07-AOI" in bperf,
         (bperf or "")[:90].replace("\n", " "))
-    kpi = getattr(p, "perf_kpi_table", None)
-    chk("⑥ 性能 KPI 表存在", kpi is not None and kpi.rowCount() >= 6,
-        kpi.rowCount() if kpi else "无")
-    if kpi:
-        keys = [kpi.item(r, 0).text() for r in range(kpi.rowCount())]
-        need = ["单件节拍", "UPH", "一轮规模", "元任务执行次数"]
-        chk("⑥ KPI 含 节拍/UPH/一轮/元任务次数", all(any(n in k for k in keys) for n in need), keys[:6])
-        vals = {kpi.item(r, 0).text(): kpi.item(r, 1).text() for r in range(kpi.rowCount())}
-        chk("⑥ 节拍与真源一致(11.42)", any("11.4" in v for k, v in vals.items() if "节拍" in k),
-            {k: v for k, v in vals.items() if "节拍" in k})
+    ot = getattr(p, "perf_one_table", None)
+    chk("⑥ 性能配置页 = 一张整合表 (不再是 KPI 块)", ot is not None and getattr(p, "perf_kpi_table", None) is None,
+        ot.rowCount() if ot else "无")
 
     # ⑨ 模型配置: 功能 × 模型 对应 (模型名称 / L2~L5 层 / 状态空间节点 / 来源)
     wm0, tm0 = tab_page(p, "模型配置")
@@ -301,71 +294,53 @@ def main():
         chk("⑨ 台账每条都有状态标记", all(("✅" in x or "⚠" in x or "⛔" in x) for x in sts), sts[:5])
         chk("⑨ 台账 ≥ 4 个实际模型", ml.rowCount() >= 4, "%d 条" % ml.rowCount())
 
-    # ⑩ 性能配置: 模型能力边界 + 该任务性能指标
+    # ⑩ 性能配置: 只有一张表 (老倪 2026-10-28) —— 性能指标 · 值 · 对应模型 · 功能层级 · 三档(基本/精细/专业)
     wp0, tp0 = tab_page(p, "性能配置")
-    pb = getattr(p, "perf_boundary_table", None)
-    pt = getattr(p, "perf_spec_table", None)
-    chk("⑩ 有 模型能力边界 表", pb is not None, pb.rowCount() if pb else "无")
-    chk("⑩ 有 性能指标 表", pt is not None, pt.rowCount() if pt else "无")
-    # ⑪ 性能等级: 3 档配置 (L2 / L2+L3 / L2+L3+L4(+L5)) 各自的能力边界与成本因子
-    tt = getattr(p, "perf_tier_table", None)
-    tm = getattr(p, "perf_tier_metric_table", None)
-    chk("⑪ 有 性能等级 三档表", tt is not None and tt.rowCount() == 3, tt.rowCount() if tt else "无")
-    chk("⑪ 有 分档指标 表", tm is not None, tm.rowCount() if tm else "无")
-    if tt is not None:
-        ids = [tt.item(r, 0).text() for r in range(tt.rowCount())]
-        chk("⑪ 三档 = P1/P2/P3 (L2 · L2+L3 · L2+L3+L4含L5)", ids == ["P1", "P2", "P3"], ids)
-        lays = [tt.item(r, 2).text() for r in range(tt.rowCount())]
-        chk("⑪ 档位含层逐级递进", lays[0] == "L2" and "L3" in lays[1] and "L4" in lays[2], lays)
-        chk("⑪ P1 = 速度节拍/单任务",
-            "节拍" in tt.item(0, 6).text() and "单任务" in tt.item(0, 1).text(), tt.item(0, 6).text())
-        chk("⑪ P2 = 多任务编排",
-            "多任务" in tt.item(1, 6).text() and "编排" in tt.item(1, 4).text(), tt.item(1, 6).text())
-        chk("⑪ P3 = 安全等级/自主",
-            "安全" in tt.item(2, 6).text() and "安全" in tt.item(2, 7).text(), tt.item(2, 6).text())
-        chk("⑪ 每档都有 成本因子 (供下一步核算)",
-            all(tt.item(r, 8).text().strip() not in ("", "—") for r in range(tt.rowCount())),
-            "P3: " + tt.item(2, 8).text()[:60])
-        chk("⑪ 每档都写了 做不到 (能力边界)",
-            all(tt.item(r, 5).text().strip() not in ("", "—") for r in range(tt.rowCount())),
-            "P1: " + tt.item(0, 5).text()[:50])
-        chk("⑪ 每档都指了组成模型 (实际在役名/文件)",
-            all(len(tt.item(r, 3).text().strip()) >= 12 for r in range(tt.rowCount())),
-            "P2: " + tt.item(1, 3).text()[:56])
-    if tm is not None:
-        chk("⑪ 分档指标 ≥ 12 条", tm.rowCount() >= 12, "%d 条" % tm.rowCount())
-        c4 = tm.columnCount() - 1
-        _okn = sum(1 for r in range(tm.rowCount()) if tm.item(r, c4).text().startswith("✅"))
-        chk("⑪ 分档指标真源现场校验 (%d/%d)" % (_okn, tm.rowCount()), _okn >= tm.rowCount() - 1,
-            "未通过: " + " ; ".join(tm.item(r, 1).text() for r in range(tm.rowCount())
-                                   if not tm.item(r, c4).text().startswith("✅")))
-        tiers_in = {tm.item(r, 0).text() for r in range(tm.rowCount())}
-        chk("⑪ 三档都有指标", tiers_in == {"P1", "P2", "P3"}, sorted(tiers_in))
-    if pb is not None:
-        hd = [pb.horizontalHeaderItem(c).text() for c in range(pb.columnCount())]
-        chk("⑩ 边界表头有 输入域→输出域/上限/精度/时延/越界",
-            all(any(k in h for h in hd) for k in ("输入域", "上限", "阈值", "时延", "越界")), hd)
-        chk("⑩ 边界 ≥ 10 条 (每层都覆盖)", pb.rowCount() >= 10, "%d 条" % pb.rowCount())
-        c_in, c_lim, c_grd, c_src2 = (_hidx(pb, "输入域"), _hidx(pb, "上限"), _hidx(pb, "越界"), pb.columnCount() - 1)
-        chk("⑩ 每条都写清 输入→输出 与 上限量程",
-            all("→" in pb.item(r, c_in).text() and pb.item(r, c_lim).text().strip() not in ("", "—")
-                for r in range(pb.rowCount())), "首条: " + pb.item(0, c_lim).text()[:40])
-        chk("⑩ 每条都有越界行为/闸门",
-            all(pb.item(r, c_grd).text().strip() not in ("", "—") for r in range(pb.rowCount())),
-            "首条: " + pb.item(0, c_grd).text()[:44])
-        _ok = sum(1 for r in range(pb.rowCount()) if pb.item(r, c_src2).text().startswith("✅"))
-        chk("⑩ 边界真源现场校验通过 (%d/%d)" % (_ok, pb.rowCount()), _ok >= pb.rowCount() - 1,
-            "未通过的行: " + " ; ".join(pb.item(r, 1).text()[:16] for r in range(pb.rowCount())
-                                      if not pb.item(r, c_src2).text().startswith("✅")))
-        # 关键边界值必须在表里 (安全常量 + 模型维度)
-        alltxt = " ".join(pb.item(r, c_lim).text() + pb.item(r, c_in).text() for r in range(pb.rowCount()))
-        for kw in ("FORCE_LIMIT", "VEL_LIMIT", "480×480", "224×224", "40N"):
-            chk("⑩ 边界值含 %s" % kw, kw in alltxt, "缺" if kw not in alltxt else "有")
-    if pt is not None:
-        chk("⑩ 指标行 ≥ 5", pt.rowCount() >= 5, "%d 条" % pt.rowCount())
-        c_tg = _hidx(pt, "目标")
-        chk("⑩ 每条指标都有目标值", all(pt.item(r, c_tg).text().strip() not in ("", "—")
-                                    for r in range(pt.rowCount())), "首条: " + pt.item(0, c_tg).text()[:40])
+    ot = getattr(p, "perf_one_table", None)
+    chk("⑩ 性能配置页有整合表", ot is not None, ot.rowCount() if ot else "无")
+    chk("⑩ 旧的三张表已下线 (三档表/边界表/分档指标/指标表)", all(getattr(p, k, None) is None
+        for k in ("perf_tier_table", "perf_boundary_table", "perf_tier_metric_table", "perf_spec_table")),
+        [k for k in ("perf_tier_table", "perf_boundary_table", "perf_tier_metric_table", "perf_spec_table")
+         if getattr(p, k, None) is not None])
+    if ot is not None:
+        hd = [ot.horizontalHeaderItem(c).text() for c in range(ot.columnCount())]
+        for _k in ("性能档次", "性能指标", "值", "对应的模型", "功能层级"):
+            chk("⑩ 表头含「%s」" % _k, _k in hd, hd)
+        _bands = {ot.item(r, 0).text().split("\n")[0] for r in range(ot.rowCount()) if ot.item(r, 0)}
+        chk("⑩ 三档齐全 (基本性能/精细操作性能/专业性能)",
+            {"基本性能", "精细操作性能", "专业性能"} <= _bands, sorted(_bands))
+        chk("⑩ 指标行数 15~24 (一张表装得下)", 15 <= ot.rowCount() <= 24, "%d 行" % ot.rowCount())
+        c_v, c_m, c_l = 2, 3, 4
+        chk("⑩ 每行都有 值", all(ot.item(r, c_v) is not None and ot.item(r, c_v).text().strip()
+                                for r in range(ot.rowCount())), ot.item(0, c_v).text()[:44])
+        chk("⑩ 每行都有 对应模型", all(ot.item(r, c_m) is not None and ot.item(r, c_m).text().strip() not in ("", "—")
+                                for r in range(ot.rowCount())), ot.item(0, c_m).text()[:44])
+        chk("⑩ 每行都有 功能层级",
+            all(any(x in ot.item(r, c_l).text() for x in ("L2", "L3", "L4", "L5")) for r in range(ot.rowCount())),
+            sorted({ot.item(r, c_l).text() for r in range(ot.rowCount())}))
+        c6 = ot.columnCount() - 1
+        _ok = sum(1 for r in range(ot.rowCount()) if ot.item(r, c6).text().startswith("✅"))
+        chk("⑩ 值/模型 逐条真源现场校验 (%d/%d)" % (_ok, ot.rowCount()), _ok >= ot.rowCount() - 1,
+            "未通过: " + " ; ".join(ot.item(r, 1).text() for r in range(ot.rowCount())
+                                   if not ot.item(r, c6).text().startswith("✅")))
+        ptxt = " ".join(l.text() for l in wp0.findChildren(QLabel))
+        for _b in ("成本 A", "成本 B", "成本 C"):
+            chk("⑩ 档次带成本参考 (%s)" % _b, _b in ptxt, "有" if _b in ptxt else "缺")
+        _layers = {}
+        for r in range(ot.rowCount()):
+            _b2 = ot.item(r, 0).text().split("\n")[0] if ot.item(r, 0) else ""
+            _layers.setdefault(_b2, set()).add(ot.item(r, c_l).text())
+        chk("⑩ 基本性能只用 L2", _layers.get("基本性能") == {"L2"}, _layers.get("基本性能"))
+        chk("⑩ 精细操作性能 = L3 档", all("L3" in x for x in (_layers.get("精细操作性能") or [])),
+            _layers.get("精细操作性能"))
+        chk("⑩ 专业性能 = L4/L5 档",
+            all(("L4" in x or "L5" in x) for x in (_layers.get("专业性能") or [])), _layers.get("专业性能"))
+        bts = {b.text(): b for b in wp0.findChildren(QPushButton)}
+        kb = next((k for k in bts if "性能指标 (TSV)" in k), None)
+        if kb:
+            bts[kb].click(); app.processEvents()
+            ct = QApplication.clipboard().text()
+            chk("⑩ 复制 TSV 真进剪贴板 (含三档)", ct.count("\n") >= 15 and "基本性能" in ct, "行数 %d" % ct.count("\n"))
 
     # ── 模型配置页
     wm, tm = tab_page(p, "模型配置")

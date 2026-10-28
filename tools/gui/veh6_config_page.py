@@ -4135,15 +4135,8 @@ class ConfigCenterPage(QWidget):
         # ⚡ 性能配置也按活跃任务来 (老倪 2026-10-28「模型配置 性能配置」同一口径): 横幅 + 该任务的节拍/KPI
         try:
             _v_perf["lay"].insertWidget(0, self._active_banner(th, "性能配置"))
-            _v_perf["lay"].insertWidget(1, self._task_perf_block(th))
-            try:
-                _v_perf["lay"].insertWidget(2, self._perf_tier_block(th))
-            except Exception as _et:                                            # noqa: BLE001
-                _v_perf["lay"].insertWidget(2, QLabel("⛔ 性能等级块构建失败: %r" % (_et,)))
-            try:
-                _v_perf["lay"].insertWidget(3, self._perf_boundary_block(th))
-            except Exception as _eb:                                            # noqa: BLE001
-                _v_perf["lay"].insertWidget(3, QLabel("⛔ 能力边界块构建失败: %r" % (_eb,)))
+            # 老倪 2026-10-28: 「性能指标太多了, 就要一张表」⇒ 只留整合表, 旧的 KPI 块/三档表/能力边界块全部下线
+            _v_perf["lay"].insertWidget(1, self._perf_one_table(th))
         except Exception as _ep:                                                # noqa: BLE001
             _v_perf["lay"].insertWidget(0, QLabel("⛔ 性能横幅/指标块构建失败: %r" % (_ep,)))
         self.fpm_views["功能配置"] = _v_func
@@ -5150,278 +5143,80 @@ class ConfigCenterPage(QWidget):
         return w
 
     # ══════════════════════════════════════════════════════════════════════════
-    # ⚡ 该任务的性能 KPI (节拍 / UPH / 一轮 / 元任务次数 / 轮模板 / 质量目标)
+    # ⚡ 性能配置 · 唯一一张表 (老倪 2026-10-28: 「性能指标太多了, 就要一张表,
+    #    保留 性能指标/值/对应的模型/对应的功能层级; 要为产品成本组成提供参考,
+    #    要能看出来 基本性能、精细操作的性能、专业性能」)
+    #    真源: tools/spec/perf_bands.json —— 三档 (基本A/L2 · 精细B/L2+L3 · 专业C/L2+L3+L4含L5)
     # ══════════════════════════════════════════════════════════════════════════
-    def _task_perf_block(self, th):
-        tid, tk, bt, bd = _active_bind()
-        lh = tk.get("long_horizon") or {}
-        sim = _j(os.path.join(ROOT, "zmax_data/runtime/traj/sim_insert.json"), {}) or {}
-        rows = []
-
-        def _add(k, v, src):
-            rows.append([k, v if v not in (None, "", []) else "—", src])
-
-        _add("单件节拍 tact", ("%.2f s/件" % lh["tact_s"]) if lh.get("tact_s") else None,
-             "tasks.json long_horizon.tact_s")
-        _add("UPH 目标", (("%s 件/h" % lh["uph_target"]) if lh.get("uph_target") else None),
-             "tasks.json long_horizon.uph_target")
-        if sim:
-            _add("仿真几何 UPH", ("%.1f 件/h" % (len(sim.get("cycles_data") or []) * 3600.0
-                                                / max(1e-6, float(sim.get("total_t") or 1))))
-                 if sim.get("total_t") else None, "sim_insert.json (392 段 / total_t)")
-            _add("一轮规模", "%s 段 / %s s / %d 件" % (lh.get("segments_total") or sim.get("n_segs"),
-                                                     lh.get("round_total_s") or round(float(sim.get("total_t") or 0), 2),
-                                                     len(sim.get("cycles_data") or [])),
-                 "sim_insert.json + long_horizon")
-            _add("在孔驻留 / AOI / 落盘",
-                 "%.1f / %.2f / %.2f s" % (float(sim.get("dwell_s") or 0), float(sim.get("aoi_s") or 0),
-                                           float(sim.get("place_s") or 0))
-                 if (sim.get("dwell_s") or sim.get("aoi_s")) else None,
-                 "sim_insert.json (dwell_s/aoi_s/place_s)")
-            _add("良率目标", ("%.1f%%" % (100.0 * float(sim.get("yield_target")))) if sim.get("yield_target") else None,
-                 "sim_insert.json yield_target")
-        _add("元任务执行次数/轮", lh.get("meta_count"), "long_horizon.meta_count")
-        _add("轮模板", ("%d 种" % len(lh["rounds"])) if lh.get("rounds") else None,
-             "long_horizon.rounds")
-        _add("启用节点 / 禁用节点",
-             "%d / %d" % (len(bt.get("enabled_nodes") or []), len(bt.get("disabled_nodes") or [])),
-             "ss_task_binding.json (本任务)")
-        _add("工艺段", "%d 启用 / %d 排除" % (len(bt.get("applies_segments") or []),
-                                             len(bt.get("excluded_segments") or [])),
-             "ss_task_binding.json (本任务)")
-        for k, v in (bt.get("targets") or {}).items():
-            _add("质量目标 · %s" % k, v, "ss_task_binding.json targets")
-        _add("运行模式", bt.get("ss_mode"), "ss_task_binding.json ss_mode")
-        _add("循环口径", bt.get("loop"), "ss_task_binding.json loop")
-
-        w = QWidget()
-        lay = QVBoxLayout(w)
-        lay.setContentsMargins(0, 0, 0, 4)
-        lay.setSpacing(4)
-        hd = QLabel()
-        hd.setTextFormat(Qt.RichText)
-        hd.setText("<span style='font-size:12px;font-weight:600;color:%s'>⚡ %s 的性能指标 (全部真源现算)</span>"
-                   "<span style='color:%s;font-size:10.5px'>&nbsp;&nbsp;节拍/UPH/驻留/良率 + 该任务的质量目标"
-                   " —— 性能域的工程参数见下表</span>"
-                   % (th["C_YELLOW"], tid or "—", th["C_GRAY"]))
-        lay.addWidget(hd)
-        t = _mk_table(["指标", "值", "真源"], rows, th)
-        t.setMinimumHeight(min(300, 24 * (len(rows) + 2) + 8))
-        lay.addWidget(t)
-        self.perf_kpi_table = t
-        return w
-
-
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # ⚡ 性能等级 (按模型配置分档) —— 老倪 2026-10-28:
-    #   「根据不同的模型配置, 性能指标也要分出级别, 这样下一步的成本组成就可以核算了。
-    #     L2模型能满足速度节拍/单任务; L3 能满足多任务编排; L4(含L5) 能满足不同安全等级」
-    #   真源: tools/spec/perf_tiers.json (指标逐条指到 perf_spec / sim / safety / 模型 config)
-    # ══════════════════════════════════════════════════════════════════════════
-    def _perf_tier_block(self, th):
-        TJ = os.path.join(ROOT, "tools", "spec", "perf_tiers.json")
+    def _perf_one_table(self, th):
+        PJ = os.path.join(ROOT, "tools", "spec", "perf_bands.json")
         try:
-            spec = json.load(open(TJ, encoding="utf-8"))
+            spec = json.load(open(PJ, encoding="utf-8"))
         except Exception:                                                       # noqa: BLE001
-            spec = {"tiers": []}
-        tiers = spec.get("tiers") or []
-
-        tid, tk, bt, bd = _active_bind()
-        funcs = _task_funcs(tid)
-        lays = {str(f.get("layer") or "") for f in funcs}
-        has = lambda *ks: any(any(k == x or k in x for x in lays) for k in ks)
-        need = "P3" if has("L4", "L5") else ("P2" if has("L3") else "P1")
+            spec = {"bands": []}
+        bands = spec.get("bands") or []
 
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setContentsMargins(0, 0, 0, 4)
         lay.setSpacing(4)
-
         hd = QLabel()
         hd.setTextFormat(Qt.RichText)
-        hd.setText("<span style='font-size:12px;font-weight:600;color:%s'>🎚 性能等级 (按模型配置分 3 档 · 下一步据此核算成本)</span>"
-                   "<span style='color:%s;font-size:10.5px'>&nbsp;&nbsp;档位由「在役哪些层的模型」决定; "
-                   "本任务涉及层 %s ⇒ 需要 %s</span>"
-                   % (th["C_YELLOW"], th["C_GRAY"], "/".join(sorted(x for x in lays if x)) or "—", need))
+        hd.setText("<span style='font-size:12px;font-weight:600;color:%s'>📊 性能指标 (一张表 · 按 基本/精细/专业 三档 · 右侧即成本挂点)</span>"
+                   "<span style='color:%s;font-size:10.5px'>&nbsp;&nbsp;每行 = 指标 · 值 · 对应模型 · 功能层级; "
+                   "档次列第二行就是该档成本组成</span>" % (th["C_YELLOW"], th["C_GRAY"]))
         hd.setWordWrap(True)
         lay.addWidget(hd)
 
-        rows = []
-        for t in tiers:
-            rows.append([t.get("id") or "—", t.get("name") or "—", "/".join(t.get("layers") or []),
-                         " · ".join(t.get("models") or []), t.get("can") or "—", t.get("cannot") or "—",
-                         t.get("perf_grade") or "—", t.get("safety_level") or "—",
-                         " · ".join(t.get("cost_factors") or []),
-                         " · ".join(t.get("tasks") or [])])
-        t1 = _mk_table(["档位", "配置名", "含层", "组成模型", "能做到", "做不到 (边界)", "性能等级",
-                        "安全等级", "成本因子 (下一步核算)", "适用任务"], rows, th)
-        t1.setWordWrap(True)
-        t1.verticalHeader().setDefaultSectionSize(46)
-        for _c, _w2 in ((0, 44), (1, 132), (2, 60), (3, 220), (5, 200), (6, 96), (9, 130)):
-            t1.setColumnWidth(_c, _w2)
-        t1.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
-        t1.setMinimumHeight(24 * 6 + 48)
-        self.perf_tier_table = t1
-        for _r, _row in enumerate(rows):
-            if _row[0] == need:
-                for _c in range(t1.columnCount()):
-                    _it = t1.item(_r, _c)
-                    if _it is not None:
-                        _it.setBackground(QBrush(QColor("#1d2b1f")))
-                        _it.setForeground(QBrush(QColor(th["C_GREEN"])))
-            for _c in (3, 4, 5, 7, 8):
-                _it = t1.item(_r, _c)
-                if _it is not None:
-                    _it.setToolTip(_row[_c])
-        lay.addWidget(t1)
-
-        # 分档指标 (逐条真源现场校验)
-        mrows = []
-        for t in tiers:
-            for m in (t.get("metrics") or []):
-                mrows.append([t.get("id") or "—", m.get("k") or "—", m.get("v") or "—", m.get("src") or "—",
-                              _src_check(m.get("src"))])
-        t2 = _mk_table(["档位", "指标", "值 / 边界", "真源", "真源校验"], mrows, th)
-        t2.setWordWrap(False)
-        t2.verticalHeader().setDefaultSectionSize(24)
-        for _c, _w2 in ((0, 44), (1, 132), (2, 300), (4, 116)):
-            t2.setColumnWidth(_c, _w2)
-        t2.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
-        t2.setMinimumHeight(24 * len(mrows) + 48)
-        self.perf_tier_metric_table = t2
-        for _r, _row in enumerate(mrows):
-            _it = t2.item(_r, 2)
-            if _it is not None:
-                _it.setToolTip(_row[2])
-            _s = t2.item(_r, 4)
-            if _s is not None and _row[4].startswith("⛔"):
-                _s.setForeground(QBrush(QColor(th["C_RED"])))
-        lay.addWidget(t2)
-
-        _br = QHBoxLayout()
-        _b1 = _btn("📋 复制 性能等级 (TSV)", th)
-        _b1.clicked.connect(lambda: QApplication.clipboard().setText(
-            "\t".join(["档位", "配置名", "含层", "组成模型", "能做到", "做不到", "性能等级", "安全等级", "成本因子", "适用任务"]) + "\n"
-            + "\n".join("\t".join(str(x) for x in r) for r in rows)))
-        _b2 = _btn("📋 复制 分档指标 (TSV)", th)
-        _b2.clicked.connect(lambda: QApplication.clipboard().setText(
-            "\t".join(["档位", "指标", "值", "真源"]) + "\n"
-            + "\n".join("\t".join(str(x) for x in r[:4]) for r in mrows)))
-        for _b in (_b1, _b2):
-            _br.addWidget(_b)
-        _br.addStretch()
-        lay.addLayout(_br)
-        return w
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # ⚡ 性能配置 · 模型能力边界 (老倪 2026-10-28: 「继续写性能配置, 要体现模型的能力边界」)
-    #   真源: tools/spec/capability_limits.json (每条带 src file:line, 页面现场校验)
-    #        + config/platform/zmax_perf_spec.json (指标定义/目标值/口径/标准, value 空 = 未实测)
-    # ══════════════════════════════════════════════════════════════════════════
-    def _perf_boundary_block(self, th):
-        CL = os.path.join(ROOT, "tools", "spec", "capability_limits.json")
-        try:
-            spec = json.load(open(CL, encoding="utf-8"))
-        except Exception:                                                       # noqa: BLE001
-            spec = {"rows": []}
-
-        rows = []
-        for r in (spec.get("rows") or []):
-            rows.append([r.get("domain") or "—", r.get("model") or "—", r.get("layer") or "—",
-                         r.get("node") or "—",
-                         "%s → %s" % (r.get("input") or "—", r.get("output") or "—"),
-                         r.get("limit") or "—", r.get("precision") or "—", r.get("latency") or "—",
-                         r.get("guard") or "—", _src_check(r.get("src"))])
-        w = QWidget()
-        lay = QVBoxLayout(w)
-        lay.setContentsMargins(0, 0, 0, 4)
-        lay.setSpacing(4)
-        hd = QLabel()
-        hd.setTextFormat(Qt.RichText)
-        hd.setText("<span style='font-size:12px;font-weight:600;color:%s'>🧱 模型能力边界 (%d 条)</span>"
-                   "<span style='color:%s;font-size:10.5px'>&nbsp;&nbsp;输入域 → 输出域 · 量程上限 · 阈值精度 · 时延 · "
-                   "越界行为 —— 每条真源现场校验</span>" % (th["C_YELLOW"], len(rows), th["C_GRAY"]))
-        hd.setWordWrap(False)
-        lay.addWidget(hd)
-        t = _mk_table(["域", "模型 / 能力", "层", "状态空间节点", "输入域 → 输出域", "上限 / 量程",
-                       "阈值 / 精度", "时延", "越界行为 / 闸门", "真源校验"], rows, th)
-        t.setWordWrap(False)
-        t.verticalHeader().setDefaultSectionSize(24)
-        for _c, _w2 in ((0, 96), (1, 168), (2, 40), (3, 96), (5, 168), (6, 148), (7, 110), (9, 116)):
+        rows, spans = [], []
+        for b in bands:
+            br = b.get("rows") or []
+            spans.append((len(rows), len(br), b))
+            for r in br:
+                rows.append([b.get("name") or b.get("id") or "—",
+                             r.get("k") or "—", r.get("v") or "—",
+                             r.get("model") or "—", r.get("layer") or "—",
+                             _src_check(r.get("src"))])
+        t = _mk_table(["性能档次", "性能指标", "值", "对应的模型", "功能层级", "真源校验"], rows, th)
+        t.setWordWrap(True)
+        t.verticalHeader().setDefaultSectionSize(30)
+        for _c, _w2 in ((0, 150), (1, 170), (4, 96), (5, 104)):
             t.setColumnWidth(_c, _w2)
-        t.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
-        t.horizontalHeader().setSectionResizeMode(8, QHeaderView.Interactive)
-        t.setColumnWidth(8, 220)
-        t.setMinimumHeight(min(24 * 14 + 48, 24 * len(rows) + 48))
-        for _i, _r in enumerate(rows):
-            for _c in (4, 5, 6, 7, 8):
-                _it = t.item(_i, _c)
-                if _it is not None:
-                    _it.setToolTip(_r[_c])
-            _s = t.item(_i, 9)
-            if _s is not None and _r[9].startswith("⛔"):
-                _s.setForeground(QBrush(QColor(th["C_RED"])))
-        self.perf_boundary_table = t
+        t.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        t.setMinimumHeight(30 * len(rows) + 48)
+        self.perf_one_table = t
+        self.perf_bands = [b.get("id") for b in bands]
+        for _r0, _n, _b in spans:
+            if _n <= 0:
+                continue
+            _it = t.item(_r0, 0)
+            if _it is not None:
+                _it.setText("%s\n(%s)" % (_b.get("name"), _b.get("layers")))
+                _it.setToolTip("%s\n成本组成: %s" % (_b.get("name"), " · ".join(_b.get("cost_items") or [])))
+                _it.setBackground(QBrush(QColor("#161b22")))
+                _it.setForeground(QBrush(QColor(th["C_BLUE"])))
+            t.setSpan(_r0, 0, _n, 1)
         lay.addWidget(t)
 
-        # 指标定义 (zmax_perf_spec.json), 只留关联到本任务功能的
-        try:
-            ps = json.load(open(os.path.join(ROOT, "config", "platform", "zmax_perf_spec.json"), encoding="utf-8"))
-        except Exception:                                                       # noqa: BLE001
-            ps = {}
-        tid = _active_bind()[0]
-        fids = {f["fn"] for f in _task_funcs(tid)}
-        mrows = []
-        for g in (ps.get("groups") or []):
-            for m in (g.get("metrics") or []):
-                links = [str(x) for x in (m.get("links") or [])]
-                if fids and not any(x in fids for x in links):
-                    continue
-                mrows.append([g.get("name") or "—", m.get("cn") or m.get("id") or "—", m.get("unit") or "—",
-                              m.get("target") or "—", (m.get("how") or "—"),
-                              m.get("std") or "—", m.get("stage") or "—",
-                              " ".join(links)[:40] or "—",
-                              (m.get("value") if m.get("value") not in (None, "") else "未实测")])
-        hd2 = QLabel()
-        hd2.setTextFormat(Qt.RichText)
-        hd2.setText("<span style='font-size:12px;font-weight:600;color:%s'>📏 该任务的性能指标 (%d 条, 真源 config/platform/zmax_perf_spec.json)</span>"
-                    "<span style='color:%s;font-size:10.5px'>&nbsp;&nbsp;目标值 / 口径 / 标准 / 阶段; 实测列空 = 还没测, 不编</span>"
-                    % (th["C_YELLOW"], len(mrows), th["C_GRAY"]))
-        lay.addWidget(hd2)
-        t2 = _mk_table(["指标组", "指标", "单位", "目标", "口径 (怎么测)", "标准", "阶段", "关联功能", "实测"], mrows, th)
-        t2.setWordWrap(False)
-        t2.verticalHeader().setDefaultSectionSize(24)
-        for _c, _w2 in ((0, 150), (1, 170), (2, 48), (3, 150), (5, 90), (6, 44), (7, 110), (8, 66)):
-            t2.setColumnWidth(_c, _w2)
-        t2.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
-        t2.setMinimumHeight(min(24 * 14 + 48, 24 * len(mrows) + 48))
-        for _i, _r in enumerate(mrows):
-            for _c in (3, 4):
-                _it = t2.item(_i, _c)
-                if _it is not None:
-                    _it.setToolTip(_r[_c])
-        self.perf_spec_table = t2
-        lay.addWidget(t2)
+        # 三档成本组成 (并成一行, 只作参考不填金额)
+        for b in bands:
+            lab = QLabel()
+            lab.setTextFormat(Qt.RichText)
+            lab.setText("<span style='color:%s;font-size:10.5px'><b>%s (%s)</b> —— %s</span>"
+                        % (th["C_GRAY"], b.get("name"), b.get("layers"), b.get("cost_hint") or "—"))
+            lab.setWordWrap(True)
+            lay.addWidget(lab)
 
-        _b = _btn("📋 复制能力边界 (TSV)", th)
-        _b.clicked.connect(lambda: QApplication.clipboard().setText(
-            "\t".join(["域", "模型/能力", "层", "状态空间节点", "输入→输出", "上限/量程", "阈值/精度", "时延", "越界行为", "真源"]) + "\n"
-            + "\n".join("\t".join(str(x) for x in r) for r in rows)))
-        _b2 = _btn("📋 复制性能指标 (TSV)", th)
-        _b2.clicked.connect(lambda: QApplication.clipboard().setText(
-            "\t".join(["指标组", "指标", "单位", "目标", "口径", "标准", "阶段", "关联功能", "实测"]) + "\n"
-            + "\n".join("\t".join(str(x) for x in r) for r in mrows)))
-        _br = QHBoxLayout()
-        _br.addWidget(_b)
-        _br.addWidget(_b2)
-        _br.addStretch()
-        lay.addLayout(_br)
+        br2 = QHBoxLayout()
+        b1 = _btn("📋 复制 性能指标 (TSV)", th)
+        b1.clicked.connect(lambda: QApplication.clipboard().setText(
+            "\t".join(["性能档次", "性能指标", "值", "对应的模型", "功能层级"]) + "\n"
+            + "\n".join("\t".join(r[:5]) for r in rows)))
+        br2.addWidget(b1)
+        br2.addStretch()
+        lay.addLayout(br2)
         return w
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # 🎯 活跃任务横幅 (功能配置 / 模型配置 / 性能配置 三页共用)
-    # ══════════════════════════════════════════════════════════════════════════
     def _active_banner(self, th, scope, extra=""):
         """当前活跃任务提示条 —— 老倪 2026-10-28:「在功能配置页面, 要提示 当前的活跃任务, 随即显示它的功能配置」"""
         tid, tk, bt, bd = _active_bind()

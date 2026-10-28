@@ -1,0 +1,55 @@
+{
+  "_meta": {
+    "schema": "zmax-perf-bands/1.0",
+    "note": "老倪 2026-10-28: 「性能指标太多了, 就要一张表, 保留 性能指标/值/对应的模型/对应的功能层级; 要为产品成本组成提供参考, 要能看出来 基本性能、精细操作的性能、专业性能」。⇒ 一张表三档, 每行 = 一个指标 + 值 + 实际模型 + 功能层级; 每档的 cost_hint 就是成本组成的挂点 (只列项目, 不填金额)。src 逐条指真源, 页面现场校验。",
+    "author": "静静 (Hermes) 2026-10-28"
+  },
+  "bands": [
+    {
+      "id": "A",
+      "name": "基本性能",
+      "layers": "L2",
+      "cost_hint": "成本 A: 工控机 + 相机 D405/D435 + AOI 服务 · 无训练算力 (L2 模型直接部署)",
+      "cost_items": ["工控机 (550C 级)", "相机 D405/D435", "AOI 检测服务", "L2 技能库示教人力"],
+      "rows": [
+        {"k": "单件节拍 / UPH", "v": "11.42 s/件 · 316.1 件/h (目标 300)", "model": "YOLO 检测 + 技能库 + AOI 服务", "layer": "L2", "src": "config/tasks/tasks.json#tasks"},
+        {"k": "长程节拍", "v": "一轮 392 段 / 159.43 s / 14 件", "model": "光模块_抓放循环_v1.json (技能记忆)", "layer": "L2", "src": "zmax_data/runtime/traj/sim_insert.json"},
+        {"k": "定位精度", "v": "位姿可重复性 RP ≤0.10 mm", "model": "关节臂 + 手眼标定 (calib)", "layer": "L2", "src": "config/platform/zmax_perf_spec.json"},
+        {"k": "检测能力", "v": "YOLO conf ≥0.4 · AOI 五点 · 曝光 5000us", "model": "yolo_peg_live.pt + AOI (10082/10083)", "layer": "L2", "src": "src/lerobot/policies/yolo_3d/yolo_state_aligner.py:93"},
+        {"k": "执行安全限幅", "v": "VEL_LIMIT 1.0 · FORCE_LIMIT 5.0N · POS_LIMIT 0.6", "model": "safety 收口闸 (代码规则)", "layer": "L2", "src": "src/lerobot/policies/left_right/state_space/safety.py:12"},
+        {"k": "视觉量程", "v": "640×480 · fx 394.06 / fy 393.47 · 深度 0.1mm", "model": "D405 / D435 相机", "layer": "L2", "src": "config/calib/zmax_calib.json#camera"}
+      ]
+    },
+    {
+      "id": "B",
+      "name": "精细操作性能",
+      "layers": "L2+L3",
+      "cost_hint": "成本 B: A + 推理 GPU (500M 策略) + 真机数据采集标注 + LoRA 微调算力",
+      "cost_items": ["推理 GPU (4060 级)", "训练数据采集与标注", "LoRA 微调算力", "双臂时序联调人力"],
+      "rows": [
+        {"k": "插入力控制", "v": "插入段力上限 ≤40N · 保护阈值 5.0N", "model": "力控插入段 + safety 闸", "layer": "L2+L3", "src": "src/lerobot/policies/left_right/state_space/safety.py:12"},
+        {"k": "策略输出", "v": "action 4 维 · chunk 7 / n_action_steps 7", "model": "SmolVLA+LEW (在役 ckpt 1289MB)", "layer": "L3", "src": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model/config.json#output_features"},
+        {"k": "策略输入", "v": "image 3×480×480 + state 39 维", "model": "SmolVLA+LEW", "layer": "L3", "src": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model/config.json#input_features"},
+        {"k": "控制频率", "v": "12.5 Hz (τ=0.08s 设计值)", "model": "L3 策略执行环", "layer": "L3", "src": "config/platform/zmax_perf_spec.json"},
+        {"k": "双臂并行", "v": "供料 4.70s · 交接 8.70s · 件周期 11.40s", "model": "L3 编排 (SkillComposer) + TASK-06 steps", "layer": "L3", "src": "config/tasks/tasks.json#tasks"},
+        {"k": "位姿准确度", "v": "AP ≤0.50 mm (设计目标)", "model": "L3 策略 + 标定链", "layer": "L3", "src": "config/platform/zmax_perf_spec.json"},
+        {"k": "模型资源", "v": "1289MB 权重 · GPU 推理 · LoRA 需 merge", "model": "SmolVLA+LEW + L3 LoRA", "layer": "L3", "src": "outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model"}
+      ]
+    },
+    {
+      "id": "C",
+      "name": "专业性能",
+      "layers": "L2+L3+L4(+L5)",
+      "cost_hint": "成本 C: B + L4 训练 GPU (INTACT+LoRA) + L5 云端 API 或本地 3B 显存 + 安全验证与认证 (ISO 13849/9283)",
+      "cost_items": ["L4 训练 GPU 与权重合并", "L5 云端 API 费用 或 3B 显存", "安全验证与认证 (ISO 13849/9283)", "异常场景测试集与现场验证"],
+      "rows": [
+        {"k": "意图决策时延", "v": "稳态 101 ms (零搜索)", "model": "INTACT-JEPA (84MB + LoRA)", "layer": "L4", "src": "config/platform/zmax_perf_spec.json"},
+        {"k": "意图输入/输出", "v": "image 224×224×3帧 + skill 24 → action 8 (feat 192)", "model": "INTACT-JEPA", "layer": "L4", "src": "zmax_data/stable-wm-cache/checkpoints/intact_l4_current/config.json#encoder"},
+        {"k": "异常与否决", "v": "max_veto=3 连续否决转异常 · 自主重规划", "model": "INTACT 决策 + TaskPlanner", "layer": "L4+L5", "src": "src/lerobot/policies/left_right/state_space/planner.py"},
+        {"k": "任务规划", "v": "timeout ≥300 s · 短提示 + 小 JSON · 失败回退规则", "model": "Qwen3-7B (可插拔) / DeepSeek 视觉", "layer": "L5", "src": "tools/spec/model_links.json#external"},
+        {"k": "场景理解", "v": "1019MB · 零搜索 · 本机推理", "model": "Qwen2.5-VL-3B (l5_vlm_merged)", "layer": "L5", "src": "zmax_data/models/l5_vlm_merged_20261009_231339"},
+        {"k": "安全等级", "v": "目标 PL d · 动作授权只从 8793 · 危险动作 all_stop (认证未做)", "model": "L4 授权链 + 分层否决", "layer": "L4", "src": "docs/incidents/INCIDENT-INDEX.md"}
+      ]
+    }
+  ]
+}
