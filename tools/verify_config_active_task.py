@@ -240,6 +240,54 @@ def main():
         chk("⑥ 节拍与真源一致(11.42)", any("11.4" in v for k, v in vals.items() if "节拍" in k),
             {k: v for k, v in vals.items() if "节拍" in k})
 
+    # ⑨ 模型配置: 功能→实际模型 (用真权重, 不是层模型名)
+    wm0, tm0 = tab_page(p, "模型配置")
+    mr = getattr(p, "ml_real_table", None)
+    ml = getattr(p, "ml_ledger_table", None)
+    chk("⑨ 有 功能→实际模型 表", mr is not None, mr.rowCount() if mr else "无")
+    chk("⑨ 有 模型台账 表", ml is not None, ml.rowCount() if ml else "无")
+    if mr is not None:
+        hd = [mr.horizontalHeaderItem(c).text() for c in range(mr.columnCount())]
+        chk("⑨ 表头有 实际模型/类型/实际文件/状态",
+            all(any(k in h for h in hd) for k in ("实际模型", "类型", "实际文件", "状态")), hd)
+        chk("⑨ 行数 = 本任务功能数", mr.rowCount() == len(funcs), "%d vs %d" % (mr.rowCount(), len(funcs)))
+        ids_m = [mr.item(r, 0).text() for r in range(mr.rowCount())]
+        chk("⑨ 功能逐条与真源一致", ids_m == [f["fn"] for f in funcs], ids_m[:3])
+        c_nm, c_tp, c_pt, c_st = (_hidx(mr, "实际模型"), _hidx(mr, "类型"), _hidx(mr, "实际文件"), _hidx(mr, "状态"))
+        chk("⑨ 每个功能都写了实际加载物", all(mr.item(r, c_nm).text().strip() for r in range(mr.rowCount())),
+            "FN-SYS0-37 → " + mr.item(ids_m.index("FN-SYS0-37"), c_nm).text()[:40])
+        # 真权重必须在盘上: 逐条 stat
+        n_real = n_ok = 0
+        for fid in ids_m:
+            for it in (V._fn_load_items(fid) or []):
+                if it.get("path") and it.get("kind") != "规则/数据源":
+                    n_real += 1
+                    n_ok += 1 if it.get("ok") else 0
+        chk("⑨ 模型条目路径现场 stat 存在 (%d/%d)" % (n_ok, n_real), n_real > 0 and n_ok >= 3,
+            "本任务真权重/端点/技能库条目 %d 条, 其中 %d 条在位" % (n_real, n_ok))
+        # YOLO 必须指到在役软链
+        r_yolo = ids_m.index("FN-SYS0-37") if "FN-SYS0-37" in ids_m else -1
+        chk("⑨ YOLO 功能指到真实在役权重 yolo_peg_live.pt",
+            r_yolo >= 0 and "yolo_peg_live.pt" in mr.item(r_yolo, c_pt).text(),
+            mr.item(r_yolo, c_pt).text() if r_yolo >= 0 else "缺")
+        # 技能库/端点/API 三类都要出现
+        kinds_txt = " ".join(mr.item(r, c_tp).text() for r in range(mr.rowCount()))
+        chk("⑨ 类型覆盖 权重/技能库/端点/规则",
+            all(k in kinds_txt for k in ("技能库", "yolo", "aoi_service", "规则/数据源")), kinds_txt[:80])
+        # 复制按钮
+        btm = {b.text(): b for b in wm0.findChildren(QPushButton)}
+        km = next((k for k in btm if "功能→实际模型" in k), None)
+        chk("⑨ 有复制按钮", bool(km), [k for k in btm if "复制" in k][:4])
+        if km:
+            btm[km].click(); app.processEvents()
+            ct = QApplication.clipboard().text()
+            chk("⑨ 复制功能→模型 TSV 真进剪贴板", ct.count("\n") >= 32 and "功能ID" in ct,
+                "行数 %d" % ct.count("\n"))
+    if ml is not None:
+        sts = [ml.item(r, 5).text() for r in range(ml.rowCount())]
+        chk("⑨ 台账每条都有状态标记", all(("✅" in x or "⚠" in x or "⛔" in x) for x in sts), sts[:5])
+        chk("⑨ 台账 ≥ 4 个实际模型", ml.rowCount() >= 4, "%d 条" % ml.rowCount())
+
     # ── 模型配置页
     wm, tm = tab_page(p, "模型配置")
     chk("⑦ 有 模型配置 页签", wm is not None, tm)

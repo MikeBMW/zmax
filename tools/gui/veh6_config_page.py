@@ -514,6 +514,248 @@ def _fn_detail(fn_id):
             "n_impl": sum(1 for i in impl if i["ok"])}
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 模型真源 (老倪 2026-10-28: 「继续 模型配置, 如何对应功能配置, 要用实际的模型」)
+#   模型侧真源 = models/active_models.json: L2/L3/L4/L5 在役指针 + extra_in_service (多地/原语/LoRA/技能包)
+#              + ar:* (AR 场景登记条目, 带 used_by 场景与功能)
+#   功能侧 = function_layer_map 的 models 名称 → tools/spec/model_links.json 对齐到条目
+#   所有权重/大小/时间/是否存在 全部现场 stat, 不抄不猜。
+# ══════════════════════════════════════════════════════════════════════════════
+ACTIVE_MODELS_J = os.path.join(ROOT, "models", "active_models.json")
+MODEL_LINKS_J = os.path.join(ROOT, "tools", "spec", "model_links.json")
+_MODREG = {}
+
+
+def _model_links():
+    try:
+        return json.load(open(MODEL_LINKS_J, encoding="utf-8"))
+    except Exception:                                                          # noqa: BLE001
+        return {"links": {}, "external": {}}
+
+
+def _models_registry():
+    """扁平化 models/active_models.json → {key: entry}; entry 带 path/endpoint/used_by/scene/role/note。"""
+    if _MODREG:
+        return _MODREG
+    try:
+        am = json.load(open(ACTIVE_MODELS_J, encoding="utf-8"))
+    except Exception:                                                          # noqa: BLE001
+        return _MODREG
+    ent = {}
+    for L in ("L2", "L3", "L4", "L5"):
+        e = am.get(L) or {}
+        if isinstance(e, dict) and (e.get("path") or e.get("name")):
+            ent[L] = dict(e, key=L, layer=L, pointer=True)
+    for L, arr in (am.get("extra_in_service") or {}).items():
+        if not isinstance(arr, list):
+            continue
+        for i, e in enumerate(arr):
+            if not isinstance(e, dict):
+                continue
+            k = "%s#%s" % (L, e.get("kind") or ("x%d" % i))
+            if k in ent:
+                k = "%s#%s%d" % (L, e.get("kind") or "x", i)
+            ent[k] = dict(e, key=k, layer=L, pointer=False)
+    for k, e in (am.get("extra_in_service") or {}).items():
+        if isinstance(e, dict):
+            ent[k] = dict(e, key=k, layer=e.get("layer") or "", pointer=False, scene_entry=True)
+    for k, e in ((_model_links().get("external") or {}).items()):
+        ent[k] = dict(e, key=k, pointer=False, external=True)
+    _MODREG.update(ent=ent, raw=am, updated=am.get("updated") or "")
+    return _MODREG
+
+
+def _model_disk(e):
+    """→ (ok, 描述, 字节, mtime)。文件/目录/端点/云端 API 四种。"""
+    import time as _t
+    p = e.get("path") or ""
+    if not p:
+        ep = e.get("endpoint")
+        if isinstance(ep, dict):
+            return True, "端点 " + " · ".join("%s=%s" % (k, v) for k, v in ep.items()), 0, 0
+        if e.get("external"):
+            sec = os.path.join(ROOT, "zmax_data", "secrets", "zmax.env")
+            txt = ""
+            try:
+                txt = open(sec, encoding="utf-8", errors="replace").read()
+            except Exception:                                                   # noqa: BLE001
+                txt = ""
+            ks = e.get("env_key") or ""
+            have = bool(ks) and ("%s=" % ks) in txt
+            base = ""
+            for line in txt.splitlines():
+                if (e.get("env_base") or "") and line.strip().startswith((e.get("env_base") or "") + "="):
+                    base = line.split("=", 1)[1].strip()
+                if (e.get("env_model") or "") and line.strip().startswith((e.get("env_model") or "") + "="):
+                    e["_model_name"] = line.split("=", 1)[1].strip()
+            return have, ("云端 API · key %s%s" % ("已配" if have else "未配", (" · " + base) if base else "")), 0, 0
+        return False, "无路径/端点", 0, 0
+    fp = p if os.path.isabs(p) else os.path.join(ROOT, p)
+    if not os.path.exists(fp):
+        return False, "⛔ 路径不存在", 0, 0
+    if os.path.isdir(fp):
+        files = [os.path.join(r, f) for r, _, fs in os.walk(fp) for f in fs]
+        if not files:
+            return True, "✅ 空目录", 0, 0
+        sz = sum(os.path.getsize(f) for f in files)
+        mt = max(os.path.getmtime(f) for f in files)
+        return True, "✅ 目录 %d 文件" % len(files), sz, mt
+    return True, "✅ 文件", os.path.getsize(fp), os.path.getmtime(fp)
+
+
+def _fn_real_models(fn_id):
+    """功能 → 实际在役模型条目 (list of dict, 每条带 _ok/_disk/_mb/_mt)。"""
+    R = _models_registry()
+    ent = R.get("ent") or {}
+    L = _model_links()
+    out, seen = [], set()
+    from zmax_platform_info import function_layer_map as _flm
+    row = next((r for r in _flm()["rows"] if r["fn_id"] == fn_id), None)
+    names = (row or {}).get("models") or []
+    for nm in names:
+        for k in (L.get("links") or {}).get(nm, []):
+            if k in ent and k not in seen:
+                seen.add(k)
+                out.append(dict(ent[k], via=nm))
+    for k, e in ent.items():                       # 登记条目里直接点名该功能的 (如 ar:L2:aoi → FN-SYS0-40)
+        if fn_id in (e.get("used_by") or []) and k not in seen:
+            seen.add(k)
+            out.append(dict(e, via="used_by"))
+    for e in out:
+        ok, desc, sz, mt = _model_disk(e)
+        e["_ok"], e["_desc"], e["_mb"], e["_mt"] = ok, desc, sz / 1e6, mt
+    return out
+
+
+_MODPARAMS = {}
+
+
+def _module_params(mod_name):
+    """画布节点(模块)在工程库里登记的加载物: model / skill / llm / expert / decoder / source。"""
+    if mod_name in _MODPARAMS:
+        return _MODPARAMS[mod_name]
+    pj = {}
+    try:
+        con = _eng_db()
+        row = con.execute("SELECT params FROM modules WHERE name=?", (mod_name,)).fetchone()
+        if row and row[0]:
+            pj = json.loads(row[0])
+        con.close()
+    except Exception:                                                          # noqa: BLE001
+        pj = {}
+    _MODPARAMS[mod_name] = pj
+    return pj
+
+
+def _file_status(path):
+    fp = path if os.path.isabs(path) else os.path.join(ROOT, path)
+    if not os.path.exists(fp):
+        return False, 0.0, 0
+    if os.path.isdir(fp):
+        fs = [os.path.join(r, f) for r, _, g in os.walk(fp) for f in g]
+        if not fs:
+            return True, 0.0, 0
+        return True, sum(os.path.getsize(f) for f in fs) / 1e6, max(os.path.getmtime(f) for f in fs)
+    return True, os.path.getsize(fp) / 1e6, os.path.getmtime(fp)
+
+
+def _fn_load_items(fn_id):
+    """功能 → 该功能**实际加载的东西** (权重 / 技能库 / LLM / 端点 / 规则代码), 逐条带依据与现场 stat。
+
+    依据优先级 (先具体后笼统, 谁登记得细用谁):
+      a. 模块 params: model (权重名) / skill (技能库 json) / llm / expert+decoder
+      b. models/active_models.json 里 used_by 点名该功能的条目 (场景登记, 如 AR 的 AOI 端点)
+      c. 兜底: function_layer_map 的层模型名 (粗粒度, 明确标「层模型(粗)」)
+    路径/大小/时间/是否存在 = 现场 stat。
+    """
+    from zmax_platform_info import function_layer_map as _flm
+    R = _fn_registry()
+    ent = (_models_registry().get("ent") or {})
+    L = _model_links()
+    mod = (R.get("fn2mod") or {}).get(fn_id) or ""
+    pj = _module_params(mod) if mod else {}
+    out, seen = [], set()
+
+    def _push(name, kind, entry=None, path=None, endpoint=None, basis="", note=""):
+        k = "%s|%s" % (name, path or endpoint or "")
+        if k in seen:
+            return
+        seen.add(k)
+        ok, mb, mt = _file_status(path) if path else (None, 0.0, 0)
+        if entry is not None:
+            ok2, desc, sz, mt2 = _model_disk(entry)
+            ok = ok2
+            mb = (sz or 0) / 1e6
+            mt = mt2 or mt
+            path = path or entry.get("path") or ""
+            endpoint = endpoint or entry.get("endpoint")
+        out.append({"name": name, "kind": kind, "path": path or "", "endpoint": endpoint,
+                    "ok": ok, "mb": mb, "mt": mt, "basis": basis, "note": note})
+
+    mdl = str(pj.get("model") or "").strip()
+    if mdl:
+        keys = (L.get("model_names") or {}).get(mdl) or []
+        if not keys:
+            for _k, _v in (L.get("model_names") or {}).items():
+                if mdl.startswith(_k) or _k in mdl:
+                    keys = _v
+                    break
+        if keys:
+            for kk in keys:
+                if kk in ent:
+                    _push(ent[kk].get("name") or mdl, ent[kk].get("kind") or "权重", entry=ent[kk],
+                          basis="模块登记 model=%s" % mdl)
+        else:
+            _push(mdl, "权重/模型名", basis="模块登记 model=%s (未登记权重路径)" % mdl)
+    sk = pj.get("skill")
+    if isinstance(sk, str) and ("/" in sk or sk.endswith(".json")):
+        _push(os.path.basename(sk), "技能库", path=sk, basis="模块登记 skill")
+    llm = str(pj.get("llm") or "").strip()
+    if llm:
+        keys = (L.get("model_names") or {}).get(llm.split(" ")[0]) or []
+        if not keys:
+            for _k, _v in (L.get("model_names") or {}).items():
+                if _k in llm:
+                    keys = _v
+                    break
+        hit = False
+        for kk in keys:
+            if kk in ent:
+                _push(ent[kk].get("name") or llm, "LLM", entry=ent[kk], basis="模块登记 llm=%s" % llm[:24])
+                hit = True
+        if not hit:
+            _push(llm, "LLM (可插拔)", basis="模块登记 llm")
+    if str(pj.get("expert") or "").lower() == "true" or pj.get("decoder"):
+        e4 = ent.get("L4")
+        if e4:
+            _push("INTACT-JEPA 意图-动作 (expert=%s · decoder=%s)" % (pj.get("expert"), pj.get("decoder") or "—"),
+                  "权重", entry=e4, basis="模块登记 expert/decoder")
+    for kk, e in ent.items():
+        if fn_id in (e.get("used_by") or []):
+            _push(e.get("name") or kk, e.get("kind") or "登记条目", entry=e, basis="场景登记 used_by=%s" % fn_id)
+    _ov = (L.get("fn_overrides") or {}).get(fn_id) or {}
+    for kk in (_ov.get("keys") or []):
+        if kk in ent:
+            _push(ent[kk].get("name") or kk, ent[kk].get("kind") or "层模型",
+                  entry=ent[kk], basis="层模型对齐(见 model_links.json fn_overrides)")
+    if not out:
+        # 没有权重/技能库/LLM/端点登记 ⇒ 这个功能就是**代码/规则/数据源**, 不硬塞层模型
+        d = {}
+        try:
+            d = _fn_detail(fn_id) or {}
+        except Exception:                                                       # noqa: BLE001
+            d = {}
+        impl = next((i for i in (d.get("impl") or []) if i.get("ok")), None)
+        if impl:
+            _push("无权重 · 代码/规则实现", "规则/数据源", path=(impl.get("file") or ""),
+                  basis="工程库未登记权重; 逻辑实现 %s" % (impl.get("msg") or "")[:60])
+            out[-1]["ok"] = True
+            out[-1]["_line"] = impl.get("msg") or ""
+        else:
+            _push("⚠ 未登记加载物", "未知", basis="工程库/场景登记都没写")
+    return out
+
+
 def _subs_list():
     """子系统清单 (老倪: 「可以是 1 个功能, 也可以由功能组成子系统」)。"""
     R = _fn_registry()
@@ -4489,6 +4731,179 @@ class ConfigCenterPage(QWidget):
         except Exception as _e:                                                        # noqa: BLE001
             self.out.setPlainText("⛔ 重读专利块失败: %r" % (_e,))
 
+    def _model_real_blocks(self, th):
+        """模型配置 · 实际在役模型 ←→ 功能 (老倪 2026-10-28: 「继续 模型配置, 如何对应功能配置, 要用实际的模型」)
+
+        ① 功能 → 实际加载物 (本任务 33 条, 一条一条对上; 权重/技能库/LLM/端点/规则代码 分类型)
+        ② 模型台账 (按实际模型聚合: 权重路径 / 端点 / 大小 · 时间 / 状态 / 服务哪些功能)
+        路径/大小/时间/是否存在 全部现场 stat; 依据列写明「凭什么这么对」(模块登记 / 场景登记 / 代码实现)。
+        """
+        import time as _t
+        from zmax_platform_info import function_layer_map as _flm2
+        tid, tk, bt, bd = _active_bind()
+        funcs = _task_funcs(tid)
+        fl = {r["fn_id"]: r for r in _flm2()["rows"]}
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 4)
+        lay.setSpacing(4)
+
+        def _hd(txt, color=None, size=10):
+            _l = QLabel(txt)
+            _l.setWordWrap(True)
+            _l.setFont(QFont("Consolas", size))
+            _l.setStyleSheet("color:%s;background:transparent;" % (color or th["C_YELLOW"]))
+            return _l
+
+        lmap, rows = {}, []
+        for f in funcs:
+            its = []
+            try:
+                its = _fn_load_items(f["fn"]) or []
+            except Exception:                                                   # noqa: BLE001
+                its = []
+            lmap[f["fn"]] = its
+            names = " / ".join(x["name"] for x in its) or "⛔ 未登记加载物"
+            kinds = " / ".join(x["kind"] for x in its) or "—"
+            def _pth(x):
+                if x.get("path"):
+                    return x["path"]
+                ep = x.get("endpoint")
+                if isinstance(ep, dict) and ep:
+                    return "端点 " + " , ".join("%s=%s" % (k, v) for k, v in ep.items())
+                return "—(可插拔/云端)"
+            def _sz(x):
+                if not x.get("mb"):
+                    return "—"
+                _v = ("%.0fKB" % (x["mb"] * 1000)) if x["mb"] < 1 else ("%.0fMB" % x["mb"])
+                return _v + ((" · " + _t.strftime("%m-%d", _t.localtime(x["mt"]))) if x["mt"] else "")
+            paths = " / ".join(_pth(x) for x in its) or "—"
+            siz = " / ".join(_sz(x) for x in its) or "—"
+            okall = [x["ok"] for x in its]
+            _soft = its and all(x["kind"] in ("api", "LLM", "llm") for x in its)
+            if not its:
+                st = "⛔ 未登记"
+            elif all(okall):
+                st = "✅ 在位"
+            elif any(okall):
+                st = "⚠ 部分"
+            elif _soft:
+                st = "⚠ 未配置(走规则)"
+            else:
+                st = "⛔ 缺"
+            basis = " / ".join(x["basis"] for x in its)[:70] or "—"
+            layer_model = ((fl.get(f["fn"]) or {}).get("model_text") or "—")
+            rows.append([f["fn"], f["name"], f["layer"] or "—", names, kinds, paths, siz, st, basis, layer_model])
+
+        self.ml_real_table = _mk_table(
+            ["功能ID", "功能名称", "层", "实际模型 / 加载物", "类型", "实际文件 / 端点", "大小 · 时间", "状态", "依据", "层模型(真源)"],
+            rows, th)
+        self.ml_real_table.setWordWrap(False)
+        self.ml_real_table.verticalHeader().setDefaultSectionSize(24)
+        for _c, _w2 in ((0, 96), (1, 190), (2, 50), (3, 210), (4, 118), (6, 118), (7, 74), (8, 172), (9, 118)):
+            self.ml_real_table.setColumnWidth(_c, _w2)
+        self.ml_real_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
+        self.ml_real_table.setMinimumHeight(min(24 * 12 + 48, 24 * len(rows) + 48))
+        for _r, _row in enumerate(rows):
+            for _c in (3, 5, 8, 9):
+                _it = self.ml_real_table.item(_r, _c)
+                if _it is not None:
+                    _it.setToolTip(_row[_c])
+            if "⛔" in _row[7]:
+                self.ml_real_table.item(_r, 7).setForeground(QBrush(QColor(th["C_RED"])))
+            elif "⚠" in _row[7]:
+                self.ml_real_table.item(_r, 7).setForeground(QBrush(QColor(th["C_YELLOW"])))
+        lay.addWidget(_hd("   ① 功能 → 实际模型 (%d 个功能逐条; 真源 = 工程库模块登记 + models/active_models.json 场景登记, 路径与大小现场 stat)"
+                          % len(rows)))
+        lay.addWidget(self.ml_real_table)
+
+        # ② 模型台账: 按实际条目聚合
+        agg = {}
+        _n_code = 0
+        for fid, its in lmap.items():
+            if its and all(x["kind"] == "规则/数据源" for x in its):
+                _n_code += 1
+                continue
+            for x in its:
+                if x["kind"] == "规则/数据源":
+                    continue
+                k = x.get("name") or x.get("path") or "?"
+                a = agg.setdefault(k, {"kind": x["kind"], "path": x.get("path") or "",
+                                       "endpoint": x.get("endpoint"), "ok": x["ok"], "mb": x["mb"],
+                                       "mt": x["mt"], "fns": []})
+                a["fns"].append(fid)
+        rows2 = []
+        for k, a in agg.items():
+            if a["mb"]:
+                siz = ("%.0fKB" % (a["mb"] * 1000)) if a["mb"] < 1 else ("%.0fMB" % a["mb"])
+            else:
+                siz = "—"
+            tm = _t.strftime("%m-%d %H:%M", _t.localtime(a["mt"])) if a["mt"] else "—"
+            ep = a.get("endpoint")
+            if a["path"]:
+                loc = a["path"]
+            elif isinstance(ep, dict) and ep:
+                loc = "端点 " + " , ".join("%s=%s" % (kk, vv) for kk, vv in ep.items())
+            elif a["kind"] in ("api", "LLM", "llm"):
+                loc = "— 未配置 (走本地兜底/规则)"
+            else:
+                loc = "—"
+            if a["ok"] and isinstance(ep, dict):
+                st = "✅ 端点在位"
+            elif a["ok"]:
+                st = "✅ 在位"
+            elif a["kind"] in ("api", "LLM", "llm"):
+                st = "⚠ 未配置"
+            else:
+                st = "⛔ 缺"
+            rows2.append([k, a["kind"], loc, siz, tm, st, "%d" % len(a["fns"]),
+                          " ".join(a["fns"][:6]) + (" …" if len(a["fns"]) > 6 else "")])
+        self.ml_ledger_table = _mk_table(["实际模型 / 加载物", "类型", "权重路径 / 端点", "大小", "时间", "状态", "服务功能数", "服务功能"],
+                                         rows2, th)
+        self.ml_ledger_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.ml_ledger_table.setMinimumHeight(min(24 * 10 + 48, 24 * len(rows2) + 48))
+        lay.addWidget(_hd("   ② 模型台账 (按实际模型聚合: 一个模型服务哪些功能 · 权重在不在盘上; 另有 %d 个功能没有权重, 是代码/规则实现, 见①表)"
+                          % _n_code))
+        lay.addWidget(self.ml_ledger_table)
+
+        # 登记了但没挂到任何功能的条目 (真源缺口, 明说)
+        _used, _usedp = set(), set()
+        for _its in lmap.values():
+            for _x in _its:
+                _used.add((_x.get("name") or "").strip())
+                if _x.get("path"):
+                    _usedp.add(os.path.normpath(_x["path"]))
+        _orphan = []
+        for _k, _e in (_models_registry().get("ent") or {}).items():
+            _nm = (_e.get("name") or _k).strip()
+            if _nm in _used:
+                continue
+            if _e.get("path") and os.path.normpath(_e["path"]) in _usedp:
+                continue
+            _ubs = _e.get("used_by") or []
+            if any(str(u).startswith("TASK-") for u in _ubs) and not any(str(u) == tid for u in _ubs):
+                continue
+            _ok2, _d2, _sz2, _mt2 = _model_disk(_e)
+            _orphan.append("%s [%s] %s%s" % (_k, _e.get("kind") or "—", _d2,
+                                             (" · " + ((_e.get("path") or "") or "无路径")) if _e.get("path") else ""))
+        if _orphan:
+            lay.addWidget(_hd("   ⚠ 登记了但没挂到本任务任何功能: " + " ; ".join(_orphan), th["C_YELLOW"], 9))
+
+        _bb = QHBoxLayout()
+        _c1 = _btn("📋 复制 功能→实际模型 (TSV)", th)
+        _c1.clicked.connect(lambda: QApplication.clipboard().setText(
+            "\t".join(["功能ID", "功能名称", "层", "实际模型", "类型", "实际文件/端点", "大小·时间", "状态", "依据", "层模型"]) + "\n"
+            + "\n".join("\t".join(str(x) for x in r) for r in rows)))
+        _c2 = _btn("📋 复制 模型台账 (TSV)", th)
+        _c2.clicked.connect(lambda: QApplication.clipboard().setText(
+            "\t".join(["实际模型", "类型", "权重路径/端点", "大小", "时间", "状态", "服务功能数", "服务功能"]) + "\n"
+            + "\n".join("\t".join(str(x) for x in r) for r in rows2)))
+        for _b in (_c1, _c2):
+            _bb.addWidget(_b)
+        _bb.addStretch()
+        lay.addLayout(_bb)
+        return w
+
     def _model_layer_block(self, th):
         """🧠 功能配置 ←→ L2/L3/L4/L5 层模型 映射 —— **模型配置页的主要信息**。
 
@@ -4512,7 +4927,9 @@ class ConfigCenterPage(QWidget):
             _l.setStyleSheet("color:%s;background:transparent;" % (color or th["C_YELLOW"]))
             return _l
 
-        lay.addWidget(_hd("🧠 功能配置 ←→ L2/L3/L4/L5 层模型 —— 本页主要信息 (改模型只改真源 %s)" % ls["src"]))
+        lay.addWidget(self._active_banner(th, "模型配置"))
+        lay.addWidget(self._model_real_blocks(th))
+        lay.addWidget(_hd("🧠 功能配置 ←→ L2/L3/L4/L5 层模型 —— 层视图 (改模型只改真源 %s)" % ls["src"]))
         _miss = ls.get("missing") or []
         lay.addWidget(_hd("   功能清单 %d 条 (真源 %s, layer 字段) · 层模型 %s · %s"
                           % (ls["total_fn"], fl["src_functions"], ls["src"],
