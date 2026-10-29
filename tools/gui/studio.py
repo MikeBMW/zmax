@@ -16643,6 +16643,39 @@ def main():
                 pass
     except Exception:                                                        # noqa: BLE001
         pass
+    # 🔴 2026-10-29 老倪「断点进不去」的架构根因: 代码跑在 systemd 常驻服务进程
+    #   (zmax-ss-canvas-loop / zmax-ss-engine-loop) 里, 而断点打在他 F5 起的 GUI 进程里 ——
+    #   两个进程。GUI 界面自己写着「未运行(没点 ▶ 运行)」, py-spy 显示主线程只在 paintEvent 画 3D 球,
+    #   从来没有节点执行 ⇒ 断点必然不命中, 重启多少次都一样。
+    #   调试模式 (ZMAX_DEBUG_MODE=1, launch.json 已带) 下自动跑一次引擎: 让"有代码在跑"这件事
+    #   不依赖他记不记得点 ▶ 运行。ZMAX_AUTO_RUN=0 可关。
+    if os.environ.get("ZMAX_DEBUG_MODE") == "1" and os.environ.get("ZMAX_AUTO_RUN", "1") != "0":
+        try:
+            from PyQt5.QtCore import QTimer as _QT
+            _tries = {"n": 0}
+
+            def _auto_run_once():
+                """窗口是异步建好的 —— 轮询到带 _start_state_space_sim 的实例再跑。"""
+                _tries["n"] += 1
+                if _tries["n"] > 60:            # 1s × 60 = 60s 还没窗口就放弃
+                    print("⚠️ 调试模式: 60s 内没找到主窗口, 放弃自动运行", flush=True)
+                    return
+                _w = next((x for x in app.allWidgets()
+                           if hasattr(x, "_start_state_space_sim")), None)
+                if _w is None:
+                    _QT.singleShot(1000, _auto_run_once)
+                    return
+                print("🔴 调试模式 (ZMAX_DEBUG_MODE=1): 自动跑一次状态空间引擎 "
+                      "— 这样断点才有代码可停 (不想自动跑设 ZMAX_AUTO_RUN=0)", flush=True)
+                try:
+                    _w._start_state_space_sim()
+                except Exception as _e2:                                   # noqa: BLE001
+                    print("⚠️ 自动运行引擎失败: %s: %s" % (type(_e2).__name__, _e2), flush=True)
+
+            _QT.singleShot(2500, _auto_run_once)
+        except Exception as _e:                                             # noqa: BLE001
+            print("⚠️ 调试模式自动运行引擎失败: %s: %s" % (type(_e).__name__, _e), flush=True)
+
     _rc = app.exec_()
     # 🎯 2026-10-17 老倪关窗口时控制台崩: 「QThread: Destroyed while thread is still running」
     #   + Fatal Python error: Aborted (exit -6 + core dump)。Qt 事件循环已退出, 但信号页回放/
