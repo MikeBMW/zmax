@@ -13,7 +13,8 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.n_exec.<port>
 
-实现绑定: registry key=`n_exec` · tools/l2_daemon.py
+实现绑定: registry key=`n_exec` · src/lerobot/engineering/nodes/exec_dispatch_impl.py:def run
+下发进程(不是本节点): tools/l2_daemon.py (FIFO + 8793 授权 + 闸)
 执行口径: EXEC_MODE=act · PURE=False (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
 """
 
@@ -29,9 +30,13 @@ PORTS_OUT = ['out1', 'out2']
 PORT_LABELS = {}
 
 IMPL_KEY = 'n_exec'
-SOURCE = 'tools/l2_daemon.py'
+# 🔴 2026-10-29 老倪「动作执行器的代码怎么跑到这里来了」:
+#   2026-10-28 执行链外迁把 n_exec 实现搬到 nodes/exec_dispatch_impl.py, registry 与 library 都改了,
+#   但**节点自己的 source 映射没跟着改** ⇒ 右键「打开源代码」按 params.source 跳到 tools/l2_daemon.py
+#   的 def main()(那是常驻 FIFO 下发进程的入口, 不是画布节点实现)。
+SOURCE = 'src/lerobot/engineering/nodes/exec_dispatch_impl.py'
 SOURCE_SYMBOL = 'def run'
-PARAMS = {'layer': 'L2', 'role': 'execution sink (唯一能碰执行器的一层)', 'impl': 'tools/l2_daemon.py', 'fifo': 'zmax_data/l2_cmd.fifo', 'leg': 'sdk (本机直连, ZMAX_L2_FORCE_J=1 ⇒ MoveJ)', 'safety': '授权 epoch · guard_box 包络 · z_floor · 天花板 · 抬升闸 · VL 快层', 'source': 'tools/l2_daemon.py', 'state_file': 'zmax_data/ss_live/exec_state.json', 'events_file': 'zmax_data/ss_live/exec_events.jsonl', 'notes': 'ExecResult(到位/残差/耗时) 走实时话题 zmax/ss_exec → host_sources, 不占画布端口'}
+PARAMS = {'layer': 'L2', 'role': 'execution sink (唯一能碰执行器的一层)', 'impl': 'src/lerobot/engineering/nodes/exec_dispatch_impl.py', 'dispatcher': 'tools/l2_daemon.py', 'fifo': 'zmax_data/l2_cmd.fifo', 'leg': 'sdk (本机直连, ZMAX_L2_FORCE_J=1 ⇒ MoveJ)', 'safety': '授权 epoch · guard_box 包络 · z_floor · 天花板 · 抬升闸 · VL 快层', 'source': 'src/lerobot/engineering/nodes/exec_dispatch_impl.py', 'source_symbol': 'def run', 'state_file': 'zmax_data/ss_live/exec_state.json', 'events_file': 'zmax_data/ss_live/exec_events.jsonl', 'notes': 'ExecResult(到位/残差/耗时) 走实时话题 zmax/ss_exec → host_sources, 不占画布端口'}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False
