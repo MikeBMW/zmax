@@ -502,27 +502,14 @@ def node_decoder(ctx):
 # 🎯 Action Head 4D — 官方 action_head (线性映射到动作空间)
 # ════════════════════════════════════════════════════════════════
 def node_action_head(ctx):
-    """🎯 Action Head — 解码特征 → 关节动作 (维度=数据动作维度)
+    """🎯 Flow-Matching Action Head (DiT) — L3 加权修正 —— 薄壳: 真实现 nodes/flow_matching_impl.py::run
 
-    🐛 2026-09-08 老倪 (标准算法归位): 真实实现全在 src/lerobot/policies/smolvla_lew/ —
-    官方 DiT 流匹配头 action_head.py SmolVLALewActionHead (VLM token→动作块) + 新增
-    状态空间变体 state_space_action_head.py StateSpaceActionHead (潜空间 z R⁷/R⁹⁶⁰ → 4D 块)"""
-    log = ctx["log"]
-    p = ctx["params"]
-    # === ✏️ 可修改区 START ===
-    action_dim = p.get("action_dim", 4)      # ★ 4=metaworld(sawyer) / 6=真机Orin珞石
-    chunk_size = p.get("chunk_size", 7)      # 每次预测的动作步数
-    if log:
-        log(f"🎯 ActionHead: action_dim={action_dim} · chunk={chunk_size} (真机Orin为6D)")
-    # === ✏️ 可修改区 END ===
-    if log:
-        # 🔒 真实算法位置 (标准 lerobot 结构, 右键进源码):
-        log("   真实实现 (src/lerobot/policies/smolvla_lew/):")
-        log("   ① action_head.py → SmolVLALewActionHead (官方 DiT 流匹配, VLM 条件 → 动作块)")
-        log("   ② state_space_action_head.py → StateSpaceActionHead "
-            f"(状态空间: 潜空间 z → {action_dim}D × chunk={chunk_size}, 本工程新增变体)")
-    # 🔒 结构节点 (勿改)
-    return (True, f"ActionHead 配置: {action_dim}D chunk={chunk_size}")
+    老倪 2026-10-29: L2 是基础输出, L3 是加权修正。
+    动作来自真数据 chunk_latest.chunk[0]; 修正量 Δ=chunk−ff; DiT/StateSpaceActionHead 前向只作结构自检
+    (无训练权重, 不冒充推理); 产出 out1(名义动作) / out2(L3 力 → 万有引力 in3)。
+    """
+    from .flow_matching_impl import run as _run
+    return _run(ctx)
 
 # ════════════════════════════════════════════════════════════════
 # ⏳ Temporal Ensemble — 官方 ACTTemporalEnsembler (动作平滑)
@@ -4698,8 +4685,8 @@ _reg("ss_pred", ["流形专家", "JEPA", "潜空间预测"], "🧠 世界模型�
 _reg("ss_cap", ["能力档位", "L4自主", "档位"], "🧭 能力档位 (数据源层) — L2 插 / L3 插拔+AOI / L4 自主恢复, 双击循环切换",
     node_ss_cap)
 
-_EXTERNAL_LOC["action_head"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "smolvla_lew",
-                                              "action_head.py"), 205, "class SmolVLALewActionHead")  # 🐛 2026-09-08: Action Head 节点右键 → 官方 Flow-Matching DiT 头 (src)
+_EXTERNAL_LOC["action_head"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                             "flow_matching_impl.py"), 62, "def run")  # 2026-10-29: L3 真执行迁到 flow_matching_impl.py (动作来自 chunk_latest 真数据; DiT 前向只作结构自检)
 
 _EXTERNAL_LOC["ss_vlm"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "smolvla_lew",
                                          "vlm_encoder.py"), 39, "class SmolVLMEncoder")  # 🐛 2026-09-08: 真实 VLM 编码器 (键对齐注册 ss_vlm; 架构归位 src)

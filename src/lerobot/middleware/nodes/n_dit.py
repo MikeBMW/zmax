@@ -13,7 +13,7 @@
 话题 =  ss.node.ssdec.<port>
 
 实现绑定: registry key=`action_head` · src/lerobot/policies/smolvla_lew/action_head.py:class SmolVLALewActionHead
-执行口径: EXEC_MODE=act · PURE=False (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
+执行口径: EXEC_MODE=act · PURE=True (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
 """
 
 NODE_ID = 'ssdec'
@@ -30,10 +30,10 @@ PORT_LABELS = {'out1': 'out1'}
 IMPL_KEY = 'action_head'
 SOURCE = 'src/lerobot/policies/smolvla_lew/action_head.py'
 SOURCE_SYMBOL = 'class SmolVLALewActionHead'
-PARAMS = {'desc': '[高级·端到端模仿学习] Decoder: 状态空间 ActionHead — 潜空间 z → 4D 动作块 (StateSpaceActionHead); 源码 src/lerobot/policies/smolvla_lew/state_space_action_head.py', 'decoder': True, 'state_space': True, 'source': 'src/lerobot/policies/smolvla_lew/action_head.py', 'source_symbol': 'class SmolVLALewActionHead', '_port_labels': {'out1': 'out1'}}
+PARAMS = {'desc': '[高级·端到端模仿学习] Decoder: 状态空间 ActionHead — 潜空间 z → 4D 动作块 (StateSpaceActionHead); 源码 src/lerobot/policies/smolvla_lew/state_space_action_head.py', 'decoder': True, 'state_space': True, 'source': 'src/lerobot/policies/smolvla_lew/action_head.py', 'source_symbol': 'class SmolVLALewActionHead', '_port_labels': {'out1': 'out1'}, 'pure_verified': True}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = False
+PURE = True
 LAST_STATUS = ""
 
 

@@ -245,9 +245,15 @@ def live_energy(root: str, cache: dict | None = None, ham=None) -> dict:
     except Exception:                                                    # noqa: BLE001
         ck = {}
     pos = np.array([float(tr.get(k, 0.0)) for k in ("末端_x", "末端_y", "末端_z")])
-    tgt = np.array([float(tr.get("光模块_x", pos[0])), float(tr.get("光模块_y", pos[1])), pos[2]])
+    # 🔴 2026-10-29: 原来 z 恒取 pos[2] ⇒ ξ_e[2]≡0, 势场只在 xy 平面,
+    #   插入/下降阶段的 z 误差被整段忽略 (实测光模块_z 0.1458 vs 末端_z 0.1735 差 27.7mm 却算成 0),
+    #   四层力与势场力夹角落到 88°/126° 全被否决。改成 z 也参与, 缺值才回落。
+    _mz = tr.get("光模块_z")
+    tgt = np.array([float(tr.get("光模块_x", pos[0])), float(tr.get("光模块_y", pos[1])),
+                    float(_mz) if _mz is not None else pos[2]])
+    _axis = "xyz" if _mz is not None else "xy(z 缺光模块_z ⇒ 不参与)"
     xi_e = np.zeros(6)
-    xi_e[0:2] = tgt[0:2] - pos[0:2]
+    xi_e[0:3] = tgt[0:3] - pos[0:3]
     ts = float(tr.get("ts") or _t.time())
     prev = cache.get("prev")
     src_vel = "差分(实测末端)"
@@ -268,6 +274,7 @@ def live_energy(root: str, cache: dict | None = None, ham=None) -> dict:
             "U": U, "K": K, "H": K + U, "hdot": h.hdot_analytic(xi), "passive": bool(h.hdot_analytic(xi) <= 0),
             "F": [float(x) for x in F], "F_norm": float(np.linalg.norm(F)),
             "xi_e": [float(x) for x in xi_e], "rho_mm": 1000.0 * float(np.linalg.norm(xi_e[:3])),
+            "xi_e_axes": _axis,
             "xi": [float(x) for x in xi], "xi_src": src_vel,
             "K_diag": [float(x) for x in np.diag(h.K)], "alpha": h.alpha, "mass_kg": h.mass,
             "share": dict(h.share),
