@@ -2394,37 +2394,38 @@ _SS_MODS = {}           # 真实模块懒加载缓存
 def _ss_import(modname):
     """懒加载 state_space 真实模块 (perception/parallel/dynamics/cognition/safety/execution)
 
-    🐛 2026-10-29 老倪「断点还没用」: 原来用 `spec_from_file_location` 加载 —— 与 engine/runtime.py:_load
-    的老坑同一个 (技能 zmax-console「VSCode 断点坑 根因⑤」): 函数真在跑, debugpy 却绑定不上 ⇒
-    在画布/节点路径到达断点不停。改成 exec(compile(src, 真实绝对路径)) + 注入 __file__/__name__
-    + 注册 sys.modules, 与 engine 侧同口径; 失败才退回 spec (不静默改语义)。
+    🔴 2026-10-29 老倪「取消断点后再打断点, 就进不了这个断点」—— 这句话点出了机制:
+    VSCode 重新添加断点时, debugpy/pydevd 要**按 loader 重新定位文件并重建 code object**。
+    `exec(compile())` 造出来的模块没有 __spec__/__loader__, 取消后重加就静默失败
+    (不是"代码没跑到", 是断点根本没绑上)。所以这里**必须**走 spec_from_file_location ——
+    模块带 __spec__/__loader__, pydevd 才能反复绑定/解绑。exec 只作降级兜底。
     """
     if modname in _SS_MODS:
         return _SS_MODS[modname]
     import sys as _sys
-    import types as _types
+    import importlib.util as _ilu
     _p = os.path.abspath(os.path.join(
         _REPO_ROOT, "src", "lerobot", "policies", "left_right", "state_space", modname + ".py"))
     _name = "state_space." + modname
     if os.path.isfile(_p):
         try:
-            with open(_p, encoding="utf-8") as _f:
-                _src = _f.read()
-            m = _types.ModuleType(_name)
-            m.__file__ = _p
-            m.__name__ = _name
-            _sys.modules[_name] = m      # dataclass 查 sys.modules[cls.__module__]; 断点解析也要
-            exec(compile(_src, _p, "exec"), m.__dict__)
+            spec = _ilu.spec_from_file_location(_name, _p)
+            m = _ilu.module_from_spec(spec)
+            _sys.modules[_name] = m   # dataclass 查 sys.modules[cls.__module__]; 断点解析也要
+            spec.loader.exec_module(m)
             _SS_MODS[modname] = m
             return m
         except Exception as _e:                                          # noqa: BLE001
-            print("⚠️ _ss_import exec 路径失败 (%s): %s: %s → 退回 spec 加载"
-                  % (modname, type(_e).__name__, _e))
-    import importlib.util as _ilu
-    spec = _ilu.spec_from_file_location(_name, _p)
-    m = _ilu.module_from_spec(spec)
-    _sys.modules[_name] = m   # 🐛 2026-09-01: dataclass 装饰器查 sys.modules[cls.__module__], 未注册→None.__dict__
-    spec.loader.exec_module(m)
+            print("⚠️ _ss_import spec 加载失败 (%s): %s: %s → 退回 exec(无 __spec__, "
+                  "断点取消/重加会失效)" % (modname, type(_e).__name__, _e))
+    import types as _types
+    with open(_p, encoding="utf-8") as _f:
+        _src = _f.read()
+    m = _types.ModuleType(_name)
+    m.__file__ = _p
+    m.__name__ = _name
+    _sys.modules[_name] = m
+    exec(compile(_src, _p, "exec"), m.__dict__)
     _SS_MODS[modname] = m
     return m
 

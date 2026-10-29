@@ -109,32 +109,35 @@ def _load_manifold():
 def _load(name):
     """按文件路径加载六层模块 (避开 lerobot 包级 torch 依赖)。
 
-    🐛 2026-10-17 老倪: 「为什么断点不进入 return self._ff(obs)」—— 根因之三在这里:
-    `spec_from_file_location` 加载的模块**不进 sys.modules**, debugpy 解析不到 ⇒ 函数真在跑,
-    VSCode 却不停 (与 state_space_sim_real.py:_load 同一个坑, 那边早已改成 exec+sys.modules)。
-    这里补齐同一修法: exec(compile(src, 真实绝对路径)) + 注入 __file__/__name__ + 注册 sys.modules;
-    失败退回 spec 加载 (不静默改变语义)。
+    🔴 2026-10-29 老倪「取消断点后再打断点, 就进不了这个断点」:
+    VSCode 重新添加断点时 pydevd 要按 **loader** 重新定位文件并重建 code object。
+    所以这里必须用 spec_from_file_location (模块带 __spec__/__loader__) **并注册 sys.modules**
+    (pydevd 按模块名找文件)。`exec(compile())` 造的模块没有 loader, 取消后重加断点会静默失效 ——
+    之前为了"让断点绑上"改成 exec, 方向正好反了。exec 只保留为降级兜底。
     """
     path = os.path.join(_SS_DIR, name)
     mod_name = f"state_space.{name[:-3]}"
     if os.path.isfile(path):
         try:
             import sys as _sys
-            import types as _types
-            with open(path, encoding="utf-8") as _f:
-                _src = _f.read()
-            _m = _types.ModuleType(mod_name)
-            _m.__file__ = os.path.abspath(path)
-            _m.__name__ = mod_name
-            _sys.modules[mod_name] = _m
-            exec(compile(_src, _m.__file__, "exec"), _m.__dict__)
-            return _m
+            spec = importlib.util.spec_from_file_location(mod_name, path)
+            m = importlib.util.module_from_spec(spec)
+            _sys.modules[mod_name] = m      # pydevd 按模块名解析文件; dataclass 也查这里
+            spec.loader.exec_module(m)
+            return m
         except Exception as _e:                                       # noqa: BLE001
-            print(f"⚠️ _load exec 路径失败 ({name}): {type(_e).__name__}: {_e} → 退回 spec 加载")
-    spec = importlib.util.spec_from_file_location(mod_name, path)
-    m = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(m)
-    return m
+            print(f"⚠️ _load spec 路径失败 ({name}): {type(_e).__name__}: {_e} "
+                  f"→ 退回 exec (无 __spec__, 断点取消/重加会失效)")
+    import sys as _sys2
+    import types as _types
+    with open(path, encoding="utf-8") as _f:
+        _src = _f.read()
+    _m = _types.ModuleType(mod_name)
+    _m.__file__ = os.path.abspath(path)
+    _m.__name__ = mod_name
+    _sys2.modules[mod_name] = _m
+    exec(compile(_src, _m.__file__, "exec"), _m.__dict__)
+    return _m
 
 
 # ── 🎯 原子技能库 (2026-10-16: 阶段目标/偏置的真源搬进技能类, 引擎不再自带一份) ──────────

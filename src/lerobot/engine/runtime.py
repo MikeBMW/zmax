@@ -280,32 +280,35 @@ def _tool_path(name):
 def _load(name):
     """加载六层控制器子模块 (parallel/perception/cognition/...)。
 
-    🐛 2026-09-16 老倪「这段 forward 在 L4 运行时还是进不了断点」根因之一:
-    `spec_from_file_location` 加载的模块 **debugpy 断点不绑定** (函数真执行但 VSCode 不停 —
-    技能 zmax-console「VSCode 断点调试坑 根因⑤」已实证)。改用 `exec(compile(src, 真实绝对路径))`
-    → 函数 `co_filename` 指向真实文件, 断点按路径查表必命中; 命名空间注入 `__file__`/`__name__`
-    (子模块里用 `__file__` 定位资源, 丢了会 NameError)。失败则退回原 spec 加载 (不静默降级语义)。
+    🔴 2026-10-29 老倪「取消断点后再打断点, 就进不了这个断点」—— 这条把方向定死了:
+    VSCode 重新添加断点时 pydevd 要按 **loader** 重新定位文件、重建 code object。
+    所以必须 spec_from_file_location (带 __spec__/__loader__) + 注册 sys.modules;
+    `exec(compile())` 的模块没有 loader, 取消后重加断点静默失效 (而首次加载时能绑上 ——
+    这正是"第一次能停、取消重加就不进"的机制)。exec 仅作降级兜底并明确告警。
     """
     path = os.path.join(_SS_DIR, name)
     mod_name = f"ss_real.{name[:-3]}"
     if os.path.isfile(path):
         try:
             import sys as _sys
-            import types as _types
-            with open(path, encoding="utf-8") as _f:
-                _src = _f.read()
-            _m = _types.ModuleType(mod_name)
-            _m.__file__ = os.path.abspath(path)
-            _m.__name__ = mod_name
-            _sys.modules[mod_name] = _m               # 断点解析/pickle 需要
-            exec(compile(_src, _m.__file__, "exec"), _m.__dict__)
-            return _m
+            spec = importlib.util.spec_from_file_location(mod_name, path)
+            m = importlib.util.module_from_spec(spec)
+            _sys.modules[mod_name] = m                # pydevd 按模块名解析文件
+            spec.loader.exec_module(m)
+            return m
         except Exception as _e:                       # noqa: BLE001
-            print(f"⚠️ _load exec 路径失败 ({name}): {type(_e).__name__}: {_e} → 退回 spec 加载")
-    spec = importlib.util.spec_from_file_location(mod_name, path)
-    m = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(m)
-    return m
+            print(f"⚠️ _load spec 路径失败 ({name}): {type(_e).__name__}: {_e} "
+                  f"→ 退回 exec (无 __spec__, 断点取消/重加会失效)")
+    import sys as _sys2
+    import types as _types
+    with open(path, encoding="utf-8") as _f:
+        _src = _f.read()
+    _m = _types.ModuleType(mod_name)
+    _m.__file__ = os.path.abspath(path)
+    _m.__name__ = mod_name
+    _sys2.modules[mod_name] = _m
+    exec(compile(_src, _m.__file__, "exec"), _m.__dict__)
+    return _m
 
 
 # metaworld 环境 (模块级懒加载单例 — 构造 ~0.5s, import 0.3s)
