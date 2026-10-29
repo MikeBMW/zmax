@@ -17,6 +17,19 @@ from ._single_thread import brk as _brk
 
 def run(ctx):
     _brk("act")          # ZMAX_DEBUG_BREAK=act 时停在这里
+    # 🔴 2026-10-29 事实记录 (不受调试器/env 影响): 每次节点被真正调用就往
+    #   zmax_data/ss_live/actuator_calls.log 追加一行。用来回答"右键运行节点到底有没有
+    #   走到这个函数"—— 有日志=走到了(问题在断点绑定), 没日志=根���没调用(问题在 GUI 分派)。
+    try:
+        import os as _os
+        _p = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.dirname(
+            _os.path.dirname(_os.path.abspath(__file__)))))), "zmax_data", "ss_live", "actuator_calls.log")
+        if _os.path.isdir(_os.path.dirname(_p)):
+            with open(_p, "a", encoding="utf-8") as _f:
+                _f.write("%s pid=%s name=%s\n" % (time.strftime("%H:%M:%S"), _os.getpid(),
+                                                  str(ctx.get("name"))[:20]))
+    except Exception:                                                      # noqa: BLE001
+        pass
     log = ctx.get("log")
     try:
         import numpy as np

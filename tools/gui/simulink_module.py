@@ -5536,13 +5536,21 @@ def _vscode_launch_cfg(root: str) -> dict:
             #   ZMAX_SINGLE_THREAD / ZMAX_DEBUG_BREAK 一项都没有 (实测多次踩)。单线程/550B 写进模板才留得住。
             #   断点: brk() 在调试会话里每个 tag 首次自动停; 要每次都停就在这加 "ZMAX_DEBUG_BREAK": "actuator"
             #   要关单线程(跑基准/批量推理) 就把 ZMAX_SINGLE_THREAD 换成 ZMAX_MULTI_THREAD=1
+            # 🔴 2026-10-29 断点不命中的官方原因 (debugpy 自己吐的警告):
+            #   "It seems that frozen modules are being used, which may make the debugger miss breakpoints.
+            #    Please pass -Xfrozen_modules=off to python to disable frozen modules."
+            #   Python 3.11 把 importlib 等编成 frozen bytecode, debugpy 按 "文件:行" 定位就漏;
+            #   pythonArgs 把 -X frozen_modules=off 传给解释器 (这是 Python 扩展的正式字段, args 不行)。
+            #   PYDEVD_DISABLE_FILE_VALIDATION=1 同时关掉它的文件校验, 双保险。
             {"name": "🚀 全新调试进程 (studio.py)", "type": "python", "request": "launch",
              "program": _os.path.join(root, "tools", "gui", "studio.py"), "python": _py(),
+             "pythonArgs": ["-X", "frozen_modules=off"],
              "cwd": root, "console": "integratedTerminal", "justMyCode": False,
              "env": {"OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1",
                      "NUMEXPR_NUM_THREADS": "1", "VECLIB_MAXIMUM_THREADS": "1", "TORCH_NUM_THREADS": "1",
                      "MALLOC_ARENA_MAX": "2", "ZMAX_SINGLE_THREAD": "1", "ZMAX_DEBUG_MODE": "1",
-                     "ZMAX_PRODUCT": "550B", "PYTHONUNBUFFERED": "1"}},
+                     "ZMAX_PRODUCT": "550B", "PYTHONUNBUFFERED": "1",
+                     "PYDEVD_DISABLE_FILE_VALIDATION": "1"}},
             {"name": "🔌 Attach 现有控制台 (5678)", "type": "python", "request": "attach",
              "connect": {"host": "127.0.0.1", "port": 5678}, "justMyCode": False},
             {"name": "工具脚本 (lerobot-venv)", "type": "python", "request": "launch",
