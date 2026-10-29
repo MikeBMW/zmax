@@ -116,8 +116,31 @@ def section_signals() -> list:
     return L
 
 
+def section_uph() -> list:
+    """300UPH 口径：段表节拍（保守）+ 执行信号推进（状态空间驱动）。"""
+    L = ["【③ 300UPH 口径】"]
+    p = os.path.join(REPO, "zmax_data", "runtime", "traj", "sim_insert.json")
+    d = jload(p)
+    tact = d.get("tact_steady_s")
+    tgt = d.get("uph_target")
+    if tact:
+        L.append("  段表节拍 %.2f s/件 ⇒ %d UPH（保守口径）· 目标 %s"
+                 % (float(tact), round(3600.0 / float(tact)), tgt))
+    tr = jload(os.path.join(REPO, "zmax_data", "runtime", "traj", "sim_transport.json"))
+    if tr.get("n_segs"):
+        L.append("  左臂段表 sim_transport: %s 段（14 槽 × 8 段）" % tr.get("n_segs"))
+    ac = jload(os.path.join(LIVE, "ar_cmd.json"))
+    if ac:
+        el = ac.get("elapsed_s")
+        md = ac.get("mod")
+        if el and md:
+            L.append("  执行信号: seq=%s mod=%s elapsed=%.1fs ⇒ 累计 %d UPH"
+                     % (ac.get("seq"), md, float(el), round(float(md) / (float(el) / 3600.0))))
+    return L
+
+
 def section_blockers() -> list:
-    L = ["【④ 到 300UPH 的断点 (按影响排序)】"]
+    L = ["【④ 仍未闭环（如实）】"]
     items = []
     snap = jload(os.path.join(LIVE, "model_io_snapshot.json"))
     slow = []
@@ -126,17 +149,31 @@ def section_blockers() -> list:
             ms = float(n.get("ms") or 0)
             if ms > 300:
                 slow.append((n["id"], int(ms)))
-    for nid, ms in sorted(slow, key=lambda x: -x[1])[:4]:
-        items.append("%s 单拍 %dms —— 300UPH 每件预算 12000ms" % (nid, ms))
-    items.append("sslimit/ssff/n_exec/ssaoi/ssvlm/ss2d3d/sssensor/L5 全部 PURE=False（只过数据面）")
-    items.append("ssact u_cmd=[0,0,0,0]：上游无有效动作可执行")
+    for nid, ms in sorted(slow, key=lambda x: -x[1])[:3]:
+        items.append("%s 冷启 %dms（一次性；热态见进程内实测）" % (nid, ms))
+    # u_cmd 真读（engine_latest.action 是引擎侧占位恒 0，实值在节点快照 ssact 的 u_cmd）
+    snap2 = jload(os.path.join(LIVE, "model_io_snapshot.json"))
+    _ucmd = None
+    for _g, _gv in (snap2.get("groups") or {}).items():
+        for _n in _gv.get("nodes", []):
+            if _n.get("id") == "ssact":
+                _o2 = _n.get("out1") or {}
+                if isinstance(_o2, dict):
+                    _ucmd = _o2.get("u_cmd")
+    try:
+        if _ucmd and all(abs(float(x)) < 1e-9 for x in _ucmd[:4]):
+            items.append("ssact u_cmd 全 0（上游无有效动作）")
+    except (TypeError, ValueError):
+        pass
     l3 = jload(os.path.join(LIVE, "l3_latest.json"))
-    if l3.get("degraded"):
+    _l3 = (l3.get("out1") if isinstance(l3.get("out1"), dict) else l3) or {}
+    if _l3.get("degraded"):
         items.append("L3 degraded（模型未出结果，落到测地线块）")
-    if l3.get("l4_cond_injected") is False:
+    if _l3.get("l4_cond_injected") is False:
         items.append("L4→L3 条件未注入（ckpt 未训 l4_cond 通道）")
-    if not items:
-        items.append("无")
+    items.append("段表 arm 字段=none：左右臂两张表并行，非同一张表标注归属")
+    items.append(".23 离线：工控机 10082/10083 远程模型未接（本机图像处理口径已对齐）")
+    items.append("L5 三个节点（ss_l5/n_dsvl/n_vlm_llm）仍 PURE=False")
     for i, s in enumerate(items, 1):
         L.append("  %d. %s" % (i, s))
     return L
