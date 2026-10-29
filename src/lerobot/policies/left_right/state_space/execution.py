@@ -27,9 +27,21 @@ def _brk(tag=""):
     """
     import os as _os
     _HERE = _os.path.abspath(__file__)
+    # state_space → left_right → policies → lerobot → src → zmax (6 层!)
+    # 少一层会指到 /home/ubuntu/zmax/src 而永远不命中 —— 文件开关和到达记账都会静默失效。
     _ROOT = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.dirname(
-        _os.path.dirname(_HERE)))))
+        _os.path.dirname(_os.path.dirname(_HERE))))))
     _FLAG = _os.path.join(_ROOT, "zmax_data", "ss_live", "BREAK")
+    # 🔴 2026-10-29 到达即记账 (不受调试器/env 影响): 用它回答"execute 到底有没有被调用"。
+    #   改的是本函数内部, 不影响 execute 的行号。
+    try:
+        _tm = __import__("time")           # 不新增顶层 import (会让 execute 行号再漂)
+        with open(_os.path.join(_ROOT, "zmax_data", "ss_live", "brk_calls.log"),
+                  "a", encoding="utf-8") as _lf:
+            _lf.write("%s pid=%s tag=%s\n"
+                      % (_tm.strftime("%H:%M:%S"), _os.getpid(), tag or "-"))
+    except Exception:                                                      # noqa: BLE001
+        pass
     if _os.path.exists(_FLAG):
         if "flag:" + (tag or "-") not in _SAID_BRK:
             _SAID_BRK.add("flag:" + (tag or "-"))
