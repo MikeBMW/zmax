@@ -2664,7 +2664,24 @@ def node_ss_s2(ctx):
                     f"(parallel.py; obs: 手{_p['obs']['hand']}→目标{_p['obs']['target']} d={_p['obs']['d_h']})")
             else:
                 log(f"⚡ 前馈加速器 (真实): forward(obs43) → u_ff={np.round(u_ff,3)} (parallel.py)")
-        return {"out1": {"kind": "ff_probe", "probe": (accel.probe if isinstance(accel.probe, dict) else {})},
+        # ⚠️ 2026-10-30 实锤两连坑: ① 直接返回 accel.probe → float32 不可 JSON 序列化;
+        #   ② default=float 对 numpy **数组** 报 "only 0-dimensional arrays can be converted"。
+        #   ⇒ 必须按类型分流 (ndarray→tolist / np标量→item), 否则壳 step 抛异常整节点废掉。
+        import json as _js
+
+        def _conv(o):
+            try:
+                if isinstance(o, np.ndarray):
+                    return o.tolist()
+                if isinstance(o, np.generic):
+                    return o.item()
+                return float(o)
+            except Exception:                                          # noqa: BLE001
+                return str(o)
+
+        _probe = accel.probe if isinstance(accel.probe, dict) else {}
+        _probe = _js.loads(_js.dumps(_probe, default=_conv))
+        return {"out1": {"kind": "ff_probe", "probe": _probe},
                 "out2": {"kind": "u_ff", "layer": "L2", "role": "前馈建议动作",
                          "u_ff": [round(float(x), 6) for x in np.asarray(u_ff).ravel()],
                          "w_ff": float((ctx.get("params") or {}).get("w_ff", 0.3)),
