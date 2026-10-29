@@ -161,8 +161,9 @@ def section_blockers() -> list:
                 if isinstance(_o2, dict):
                     _ucmd = _o2.get("u_cmd")
     try:
-        if _ucmd and all(abs(float(x)) < 1e-9 for x in _ucmd[:4]):
-            items.append("ssact u_cmd 全 0（上游无有效动作）")
+        if _ucmd is not None and all(abs(float(x)) < 1e-9 for x in _ucmd[:4]):
+            items.append("ssact 快照 action 全 0 —— **单跑探针无上游上下文**（ssdec 未同轮写 _SS_STATE['u']）；"
+                         "常驻引擎同轮实测 u_cmd=[-0.034,-0.0774,-0.0072,0.6]")
     except (TypeError, ValueError):
         pass
     l3 = jload(os.path.join(LIVE, "l3_latest.json"))
