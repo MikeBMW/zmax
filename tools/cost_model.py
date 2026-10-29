@@ -349,6 +349,24 @@ def main():
     print("  静态回本 %s 年   (%s)" % (e["payback_years"], e["formula"]))
     print("  替代力控臂: 单套 %.1f 万 (降 %.1f 万) ⇒ 回本 %s 年" % (
         e["total_alt"] / 1e4, e["alt_arm_saving"] / 1e4, e["payback_years_alt"]))
+    # 产能口径（实测值来自 config 的 throughput 段；没有实测就不打印，绝不估算）
+    _tp, _line = {}, {}
+    try:
+        _raw = json.load(open(os.path.join(ROOT, "config", "platform", "zmax_cost_model.json"),
+                              encoding="utf-8"))
+        _tp = _raw.get("throughput") or {}
+        _line = _raw.get("line") or {}
+    except Exception:
+        pass
+    if _tp.get("uph_measured_state_driven"):
+        _uph = float(_tp["uph_measured_state_driven"])
+        _tact = float(_tp.get("tact_s_per_unit") or (3600.0 / _uph))
+        _shifts = float(_line.get("shifts") or 2)
+        _units_y = _shifts * 8 * 300 * 3600 / _tact
+        _per_unit = e["total"] / _units_y if _units_y else 0
+        print("  产能: 实测 %.0f UPH · 节拍 %.2f s/件 · 年 %s 件 · 单件摊销 %.2f 元"
+              % (_uph, _tact, format(int(_units_y), ","), _per_unit))
+        print("        口径: %s" % (_tp.get("real_machine") or ""))
     return 0
 
 
