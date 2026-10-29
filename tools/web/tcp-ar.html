@@ -110,7 +110,7 @@
   <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
   <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
      style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-29 r63 · 🧠 状态空间模式: 拨开即加载段表(不播放) + 手里模块/孔占用/检测标注按 carry_from/carry_to 同步(不再空手走轨迹) · ▶跟随才走帧 · 与全流程UPH 同一份 392 段段表 · 真机零指令</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-29 r65 · 🧠 状态空间: 拨开加载段表(不播放)+手里模块/孔占用/检测按 carry_from/carry_to 同步 · ▶跟随走帧时 UPH 窗口一起出来且产出按轮累计(不归零) · 与全流程UPH 同一份 392 段 · 真机零指令</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -2889,7 +2889,13 @@ function inspEnsure(cb){
   INSP.loading=true;
   fetch('/api/sim_insert').then(function(r){return r.json();}).then(function(d){
     INSP.loading=false;
-    if(d&&d.ok){ inspPrepare(d); INSP.on=true; INSP.playing=false; cb&&cb(); }
+    if(d&&d.ok){ inspPrepare(d); INSP.on=true; INSP.playing=false;
+      // 🔴 2026-10-29: 段表就位但没在播时, 给一个可点的小胶囊(否则 UPH 窗口"凭空消失", 用户只能问)
+      var pb=document.getElementById('uphPill');
+      if(pb && document.getElementById('uphBox').style.display==='none'){
+        pb.textContent='🏭 UPH '+Math.round(UPH_TARGET)+' ▸ 点开看节拍'; pb.style.display='block'; uphPlace();
+      }
+      cb&&cb(); }
   }).catch(function(){ INSP.loading=false; });
 }
 function ssConnect(){ SSMODE.on=true; SSMODE.touched=true; inspEnsure(); }
@@ -2904,6 +2910,13 @@ function ssFollowStart(){
   PLANT.simT=0; PLANT.last=performance.now(); PLANT.rate=INSP.rate||1; PLANT.lp=null;
   if(PLANT.raf) cancelAnimationFrame(PLANT.raf);
   PLANT.raf=requestAnimationFrame(plantStep);
+  // 🔴 2026-10-29 老倪「上边的 UPH 窗口怎么不显示了」:
+  //   UPH 浮层原来只在 plantStart()(本地全流程)里显示, 状态空间跟随不显示;
+  //   而页面跟版自动刷新会把 PLANT.on 复位 ⇒ 窗口连小胶囊一起消失, 看着就是"坏了"。
+  //   跟随也是在跑节拍(件号来自状态空间节点的 mod), 窗口必须一起出来。
+  if($('uphBox')){ $('uphBox').style.display='block'; uphPlace(); }
+  if($('uphPill')) $('uphPill').style.display='none';
+  try{ plantHud(); }catch(e){}
   ssPaint();
 }
 function ssFollowStop(){
@@ -3121,7 +3134,14 @@ function plantStep(){
     const lp=r.lp;
     if(isAR){                                    // 🥽 产出/进度由状态空间节点的件号给
       const m=+((r.ss&&r.ss.mod)||0);
-      if(m>PLANT.units){ PLANT.buf=Math.max(0,PLANT.buf-(m-PLANT.units)); PLANT.units=m; PLANT._u0=m; }
+      // 🔴 2026-10-29: 状态空间的 mod 是「本轮第几件」(1..14, 每轮归零) —— 直接当产出会让
+      //   实时 UPH 掉回 0/负数、产出数每 159s 归零。这里按轮数累加: 产出 = 轮数×14 + mod。
+      if(m>0){
+        if(PLANT._lastMod!=null && m<PLANT._lastMod) PLANT.arRounds=(PLANT.arRounds||0)+1;
+        PLANT._lastMod=m;
+        const tot=(PLANT.arRounds||0)*(INSP.mods||14)+m;
+        if(tot>PLANT.units){ PLANT.buf=Math.max(0,PLANT.buf-(tot-PLANT.units)); PLANT.units=tot; PLANT._u0=tot; }
+      }
     }else{
       PLANT.units=Math.floor(PLANT.simT/lp.dur)*lp.mods+INSP.doneK;
       if(PLANT.units>PLANT._u0){ PLANT.buf=Math.max(0,PLANT.buf-(PLANT.units-PLANT._u0)); PLANT._u0=PLANT.units; }
