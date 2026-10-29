@@ -3813,11 +3813,34 @@ def node_ss_aoi(ctx):
             log(f"🔍 AOI 话题已发出 ({len(_sig)} 个): " + " · ".join("%s=%g" % (k.split('.')[-1], v)
                                                                   for k, v in sorted(_sig.items())))
         _surface_bypass(log)          # 🆕 10083 表面旁路 (4060 本机), 失败不影响金手指那一路
-        return bool(res.get("pass"))
+        # 🔴 2026-10-29 接口对齐: 原来 return bool ⇒ 壳判定「实现返回非 dict → 直通」⇒ 下游
+        #    ssplan/ssdec 拿不到 AOI 判决。改为发业务字典 (与 INTACT 节点同一口径)。
+        _items = []
+        for _it in (res.get("items") or [])[:12]:
+            _items.append({"id": _it.get("target_id"), "defect": _it.get("defect"),
+                           "value": _it.get("value"), "threshold": _it.get("threshold"),
+                           "pass": bool(_it.get("pass")),
+                           "note": _it.get("note")})
+        return {"kind": "aoi", "pass": bool(res.get("pass")),
+                "verdict": (_q.get("verdict") if _q else None),
+                "verdict_why": (_q.get("why") if _q else None),
+                "scratch": res.get("scratch"), "blob": res.get("blob"),
+                "focus": res.get("focus"), "gray_dev": res.get("gray_dev"),
+                "edge_frac": res.get("edge_frac"),
+                "defect_n": (int(res.get("scratch") or 0) + int(res.get("blob") or 0))
+                            if isinstance(res.get("scratch"), (int, float)) else None,
+                "items": _items,
+                "sig_n": len(_sig),
+                "src": "quality_check.AOIQualityChecker (本机图像处理)",
+                "remote": (f"10083 {(_AOI_REMOTE.get('surface') or '未接')}"
+                           if isinstance(globals().get("_AOI_REMOTE"), dict) else "10083 未接"),
+                "no_truth": True}
     except Exception as e:
         if log:
             log(f"⚠️ 光学质量检测真实执行失败: {e}")
-        return False
+        # 失败也要有输出 (老倪: 可以没有真值, 但必须有输出, 接口要对齐)
+        return {"kind": "aoi", "pass": None, "verdict": "unavailable",
+                "err": f"{type(e).__name__}: {e}", "items": [], "no_truth": True}
 
 _reg("ss_aoi", ["光学质量检测", "外观质量检测"],
      "🔍 光学质量检测 — 真实执行: 目标帧 → quality_check.py 图像处理缺陷检测 + **发出 AOI 话题** "
