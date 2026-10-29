@@ -110,7 +110,7 @@
   <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
   <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
      style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-28 r61 · 🧠 左栏「状态空间」拨杆(不是按钮) = 接入(只订阅 ar_cmd, 报 seq/帧龄/段/元任务, 画面不动) · 点「▶ 跟随执行信号」三维双臂才按信号走帧 · 拨回关=断开且全页静止 · 旧标签页自动跟版刷新 · 真机零指令</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-29 r63 · 🧠 状态空间模式: 拨开即加载段表(不播放) + 手里模块/孔占用/检测标注按 carry_from/carry_to 同步(不再空手走轨迹) · ▶跟随才走帧 · 与全流程UPH 同一份 392 段段表 · 真机零指令</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -2014,7 +2014,8 @@ function drawVR(){
     }
   }
   // 🔁 插拔全流程: 源盘同步 + 手里模块 + 已放下
-  if(typeof INSP!=='undefined' && INSP.on){
+  //   🔴 2026-10-29: 闸从 INSP.on 放宽到 状态空间接入(SSMODE.on) —— 否则接状态空间后手里模块/孔/分拣全不画
+  if(typeof INSP!=='undefined' && (INSP.on || (typeof SSMODE!=='undefined' && SSMODE.on))){
     // ① 黑盘里还没被抓走的模块(蓝) —— 抓一个少一个
     for(var si0=(INSP.pickedK||0); si0<14; si0++){
       const sp=SLOT_MM[si0];
@@ -2879,11 +2880,24 @@ function ssPaint(){
   ssHintPaint();
 }
 // 拨到开 = 只**接入**(订阅 ar_cmd: 显示 seq/帧龄/段/元任务), 三维一帧都不动
-function ssConnect(){ SSMODE.on=true; SSMODE.touched=true; }
+// 🔴 2026-10-29 老倪: 接状态空间后右臂空手走轨迹 —— 手里那颗模块/孔占用/检测标注的真源是 INSP.*,
+//   而 INSP.plan 只有点过「全流程UPH」才会加载。这里补一个**只加载不播放**的入口(纯数据, 不启动播放器)。
+function inspEnsure(cb){
+  if(typeof INSP==='undefined') return;
+  if(INSP.plan && INSP.plan.length){ INSP.on=true; cb&&cb(); return; }
+  if(INSP.loading) return;
+  INSP.loading=true;
+  fetch('/api/sim_insert').then(function(r){return r.json();}).then(function(d){
+    INSP.loading=false;
+    if(d&&d.ok){ inspPrepare(d); INSP.on=true; INSP.playing=false; cb&&cb(); }
+  }).catch(function(){ INSP.loading=false; });
+}
+function ssConnect(){ SSMODE.on=true; SSMODE.touched=true; inspEnsure(); }
 function ssDisconnect(){ ssFollowStop(); SSMODE.on=false; SSMODE.touched=true; }   // 拨回关 = 停一切播放(不管它是信号驱动还是本地时钟)
 // 点 ▶ = 才开始按信号走帧(唯一能驱动三维的入口)
 function ssFollowStart(){
   SSMODE.on=true; SSMODE.touched=true; SSMODE.follow=true;   // 人点的这一下 = 开始跟; 页面自己绝不自调
+  inspEnsure();                              // 段表(手里模块/孔占用)真源, 只加载不播放
   PLANT.userStop=false;
   PLANT.on=true;
   PLANT.local=false;                          // ← 关键: 本地虚拟时钟让位给状态空间信号
@@ -2947,6 +2961,46 @@ setInterval(arCmdPoll, 100); arCmdPoll();      // 10Hz: 一段≈0.4s, 每段能
 function plantAtAR(){
   const d=ARCMD.d||{};
   if(ARCMD.q){ PREV.on=true; PREV.q=ARCMD.q; PREV.M=urdfFK(ARCMD.q); }
+  // 🔴 2026-10-29 老倪: 「点全流程UPH 右臂能拿起光模块, 开状态空间就看不到手里那颗了」
+  //   根因: 手里模块/源盘剩余/孔占用/检测标注 全靠 INSP.*, 而 INSP.* 只有全流程播放器(inspStep)在写,
+  //   plantAtAR 只写 PREV.q ⇒ 臂在走但空手。真源改回段表自身(carry_from/carry_to + check),
+  //   与全流程读的是同一份 sim_insert(392 段), 所以动作/手里状态同源。
+  try{
+    const P=(typeof INSP!=='undefined' && INSP.plan)||[];
+    if(P.length){
+      const _k=function(v){ return Array.isArray(v)?(v[0].toFixed(1)+','+v[1].toFixed(1)+','+v[2].toFixed(1)):''; };
+      const ka=_k(d.a)+'|'+_k(d.b);
+      // ⚠ 同一段动作在 14 件里重复出现 ⇒ 端点会撞多个候选, 必须用服务端 elapsed_s 落进哪段累计时间
+      //   来定位是"第几圈的第几个", 否则手里有货/孔占用会取到别的件。
+      if(!plantAtAR._cum || plantAtAR._cum.n!==P.length){
+        let c=0, arr=[]; for(let i=0;i<P.length;i++){ c+=(+P[i].t||0); arr.push(+c.toFixed(3)); }
+        plantAtAR._cum={n:P.length, arr:arr};
+      }
+      const CUM=plantAtAR._cum.arr, el2=+d.elapsed_s||0;
+      let cands=[];
+      for(let i=0;i<P.length;i++){ if(_k(P[i].a)+'|'+_k(P[i].b)===ka) cands.push(i); }
+      let si=-1;
+      if(cands.length===1) si=cands[0];
+      else if(cands.length>1){
+        for(let j=0;j<cands.length;j++){ const i=cands[j], t0=(i>0?CUM[i-1]:0);
+          if(el2>=t0-0.05 && el2<=CUM[i]+0.05){ si=i; break; } }
+        if(si<0) si=cands[0];
+      }
+      if(si<0 && d.seq!=null){ for(let i=0;i<P.length;i++){ if(+P[i].seq===+d.seq){ si=i; break; } } }
+      if(si>=0){
+        const s=P[si], uu=Math.min(1,Math.max(0,+d.u||0));
+        INSP.si=si;
+        INSP.carry=(uu<0.5)?!!s.carry_from:!!s.carry_to;
+        INSP.curCheck=s.check||null;
+        if(INSP.states && INSP.states[si]){
+          const st=INSP.states[si];
+          INSP.pickedK=st.pick; INSP.doneK=st.done;
+          INSP.holeOcc=st.occ; INSP.holeT=st.occT;
+        }
+      }
+    }
+  }catch(e){}
+
   PREV.ssOn=1; PREV.ssSeq=d.seq; PREV.ssKind=d.kind||''; PREV.ssAge=d.age_s;
   // 🧩 元任务归属 (Plan 节点 ss_plan_long 写进 ar_cmd): 让界面直接显示"正在执行哪个元任务"
   PREV.ssMt = d.mt_id ? (d.mt_id+' '+d.mt_name+'  ('+(d.mt_i||'?')+'/'+(d.mt_n||'?')+' · 第'+(d.batch||'?')+'批)') : '';
@@ -4312,6 +4366,10 @@ async function robotTick(){
         spin:(typeof VR!=='undefined'&&VR.spin)?1:0,
         yaw:(typeof VR!=='undefined'&&VR.yaw!=null)?+VR.yaw.toFixed(4):null,
         mod3:(typeof MOD3ON!=='undefined'&&MOD3ON)?1:0,
+        // 🩺 2026-10-29 老倪「开状态空间就看不到手里那颗模块」: 手里有没有货 / 落在第几段 直接上报
+        carry:(typeof INSP!=='undefined'&&INSP.carry)?1:0,
+        ssi:(typeof INSP!=='undefined'&&INSP.si!=null)?INSP.si:-1,
+        hold:(typeof INSP!=='undefined'&&INSP.holeOcc)?Object.keys(INSP.holeOcc).length:0,
         tcpJ:((typeof TCP!=='undefined'&&TCP&&TCP.joints)?TCP.joints.length:0),
         bld:(window.ARBUILD||null),
         cv:(function(){try{var c=document.getElementById('vr');if(!c)return null;
