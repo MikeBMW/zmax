@@ -231,6 +231,24 @@ def infer(img, obs39, root, log=None):
         batch = {"observation.image": it.to(dev), "observation.state": st.to(dev),
                  "task": _CACHE["task"]}
         batch = pre(batch)
+        # 🔴 2026-10-29 老倪「predict_action 断点进不去」: select_action 只在动作队列为空时真推理
+        #   (modeling_smolvla_lew.py:537 `if len(self._queues[ACTION]) == 0`), 一次推理出
+        #   n_action_steps=7 个动作 ⇒ 之后 6 拍直接 popleft, 不进 predict_action。policy 又是
+        #   _CACHE 单例, 队列跨调用累积 ⇒ 断点看起来"永远不进"。要每拍真推理就设 SS_L3_NO_CACHE=1。
+        _no_cache = os.environ.get("SS_L3_NO_CACHE") == "1"
+        if _no_cache:
+            try:
+                _q = getattr(pol, "_queues", None)
+                if isinstance(_q, dict):
+                    for _k in list(_q.keys()):
+                        try:
+                            _q[_k].clear()
+                        except Exception:                                  # noqa: BLE001
+                            pass
+                else:
+                    pol._queues = {}
+            except Exception:                                              # noqa: BLE001
+                pass
         with torch.no_grad():
             pred = pol.select_action(batch)
             act = post(pred) if post is not None else pred           # 🔴 反归一化, 缺则动作全错
