@@ -590,10 +590,36 @@ class Loop:
         ms = (time.perf_counter() - t0) * 1000.0
         layers = {}
         for k, v in (out or {}).items():
+            # 🔴 2026-10-29: 层计数器必须能证明"真检出", 不只是 ok/ms。
+            #   L2 的 NodeOut.data["det"] 是检测结果 dict ⇒ n = 检出条数 (0 就是 0, 不许糊成 ok=True)。
+            _d = getattr(v, "data", None) or {}
+            _det = _d.get("det") if isinstance(_d, dict) else None
+            try:
+                _n = len(_det or [])
+            except Exception:                                                # noqa: BLE001
+                _n = 0
             layers[str(k)] = {"ok": bool(getattr(v, "ok", False)),
                               "src": str(getattr(v, "src", ""))[:44],
-                              "ms": round(float(getattr(v, "latency_ms", 0.0) or 0.0), 2)}
+                              "ms": round(float(getattr(v, "latency_ms", 0.0) or 0.0), 2),
+                              "conf": round(float(getattr(v, "conf", 0.0) or 0.0), 3),
+                              "n": _n}
         self.pipe_calls += 1
+        # 🔴 2026-10-29: L2 真检出结果外发一份给画布节点 (ssyolo) 复用 —— 画布节点不再自己开模型,
+        #   否则 8GB 显存里两份 YOLO 互相挤。这里写的是**同一次推理**的结果, 不是复制猜测。
+        try:
+            _l2 = (out or {}).get("L2")
+            _det = (_l2.data or {}).get("det") if (_l2 is not None and getattr(_l2, "ok", False)) else None
+            _p = "/dev/shm/l2_det.json"
+            _tmp = _p + ".tmp"
+            with open(_tmp, "w", encoding="utf-8") as _f:
+                json.dump({"t": time.time(), "t_str": time.strftime("%H:%M:%S"),
+                           "src": "L2:detect.yolo", "img": self.pipe_img_url,
+                           "n": len(_det or {}), "det": _det or {},
+                           "ms": round(float(getattr(_l2, "latency_ms", 0.0) or 0.0), 1)
+                           if _l2 is not None else None}, _f, ensure_ascii=False)
+            os.replace(_tmp, _p)
+        except Exception:                                                    # noqa: BLE001
+            pass
         rec = {"ts": time.time(), "ts_str": time.strftime("%F %T"), "cycle": self.n,
                "pipe_calls": self.pipe_calls, "ms": round(ms, 2), "layers": layers}
         self.pipe_last = rec

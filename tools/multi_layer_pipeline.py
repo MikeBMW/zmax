@@ -37,7 +37,18 @@ _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def _default_live_weights() -> str:
     """在役检测器权重 (光模块) — models/yolo_peg_live.pt 软链; 缺失则回 None (由 YoloPerception 保障)。
-    L2 层默认必须用这个, 否则会静默退到通用 COCO yolov8s = 假件。"""
+    L2 层默认必须用这个, 否则会静默退到通用 COCO yolov8s = 假件。
+
+    🔴 2026-10-29 老倪「用 AR 场景渲染视频当数据源, L2 感知节点检测」:
+       权重必须与**帧源同域**。L2 吃臂/工位相机帧时用 yolo_peg_live.pt (D405 视角训);
+       吃 AR 工位渲染帧 (8802) 时必须用 models/yolo_ar_peg.pt (AR 渲染域训, holdout mAP50 0.995),
+       否则就是"链通了但 0 框"。⇒ ZMAX_L2_WEIGHTS 可指定具体权重文件 (相对仓库根或绝对路径)。
+    """
+    env = (os.environ.get("ZMAX_L2_WEIGHTS") or "").strip()
+    if env:
+        p = env if os.path.isabs(env) else os.path.join(_REPO, env)
+        if os.path.exists(p):
+            return p
     p = os.path.join(_REPO, "models", "yolo_peg_live.pt")
     return p if os.path.exists(p) else None
 
