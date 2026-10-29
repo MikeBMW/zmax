@@ -25,6 +25,7 @@ def _brk(tag=""):
       ② ZMAX_DEBUG_BREAK=1/*/all 全停; =tag1,tag2 按 tag 停
       ③ 调试器已连接 + 未设 env ⇒ 每个 tag 只停第一次 (不把 10Hz 刷成无限暂停)
     """
+    return                # 🔴 2026-10-29 老倪「不要干扰我 debug」: 本函数已停用 (纯 no-op)。
     import os as _os
     if _os.environ.get("ZMAX_BREAK_OFF") == "1":      # 日常跑不想被内置断点打扰
         return
@@ -107,7 +108,6 @@ class RobotExecutor:
 
     def execute(self, u):
         """执行物理指令 → 校验后的可执行指令 (数值原样; 校验结论在 self.last_check)。"""
-        _brk("actuator")          # ZMAX_DEBUG_BREAK=actuator 时停在这里 (UI 断点绑不住就用这条)
         a = np.asarray(u, dtype=float).ravel()
         chk = {"valid": True, "clip_hint": [], "over_rate": [], "why": [], "n": int(a.size)}
         # ① NaN/Inf: 脏数不往外送

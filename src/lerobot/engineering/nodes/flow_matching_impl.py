@@ -88,7 +88,6 @@ def _l4_in_summary(ctx):
 
 
 def run(ctx):
-    _brk("l3")          # ZMAX_DEBUG_BREAK=l3 时停在这里
     log = ctx.get("log")
     root = ctx.get("root") or _REPO_ROOT
     live = os.path.join(root, "zmax_data", "ss_live")

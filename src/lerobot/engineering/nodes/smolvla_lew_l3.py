@@ -235,7 +235,11 @@ def infer(img, obs39, root, log=None):
         #   (modeling_smolvla_lew.py:537 `if len(self._queues[ACTION]) == 0`), 一次推理出
         #   n_action_steps=7 个动作 ⇒ 之后 6 拍直接 popleft, 不进 predict_action。policy 又是
         #   _CACHE 单例, 队列跨调用累积 ⇒ 断点看起来"永远不进"。要每拍真推理就设 SS_L3_NO_CACHE=1。
-        _no_cache = os.environ.get("SS_L3_NO_CACHE") == "1"
+        # 🔴 2026-10-29 老倪「我看到打了断点, 就得进入」: 调试模式下一律关掉动作缓存,
+        #   让 predict_action 每拍都真跑 —— 否则 n_action_steps=7 的队列缓存会让断点
+        #   连续 6 拍看起来"不进"。等价 SS_L3_NO_CACHE=1, 这里按调试模式自动生效。
+        _no_cache = (os.environ.get("SS_L3_NO_CACHE") == "1"
+                     or os.environ.get("ZMAX_DEBUG_MODE") == "1")
         if _no_cache:
             try:
                 _q = getattr(pol, "_queues", None)

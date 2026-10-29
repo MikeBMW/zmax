@@ -16,7 +16,6 @@ from ._single_thread import brk as _brk
 
 
 def run(ctx):
-    _brk("act")          # ZMAX_DEBUG_BREAK=act 时停在这里
     # 🔴 2026-10-29 事实记录 (不受调试器/env 影响): 每次节点被真正调用就往
     #   zmax_data/ss_live/actuator_calls.log 追加一行。用来回答"右键运行节点到底有没有
     #   走到这个函数"—— 有日志=走到了(问题在断点绑定), 没日志=根���没调用(问题在 GUI 分派)。

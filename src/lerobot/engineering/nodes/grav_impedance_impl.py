@@ -44,7 +44,6 @@ def _unit(v):
 
 
 def run(ctx):
-    _brk("grav")          # ZMAX_DEBUG_BREAK=grav 时停在这里
     log = ctx.get("log")
     root = ctx.get("root") or _REPO_ROOT
     live = os.path.join(root, "zmax_data", "ss_live")

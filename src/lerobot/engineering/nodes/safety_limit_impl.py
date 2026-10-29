@@ -69,7 +69,6 @@ def guard_pose(pose, cur_mm=None):
 
 
 def run(ctx):
-    _brk("limit")          # ZMAX_DEBUG_BREAK=limit 时停在这里
     log = ctx.get("log")
     try:
         import numpy as np
