@@ -103,8 +103,24 @@ def brk(tag=""):
         (只停一次是为了不把 10Hz/每帧的节点刷成无限暂停; 想每次都停就显式设 tag)
     每个 tag 首次到达时打一行状态 (停/未停 + 原因) —— 让人能从日志判断断点到底走没走到。
     """
-    spec = os.environ.get("ZMAX_DEBUG_BREAK", "")
     _key = tag or "-"
+    # 🔴 2026-10-29 最硬的开关: 存在 zmax_data/ss_live/BREAK 就无条件 breakpoint()
+    #   (不判断 env, 不判断 debugpy 是否连通 —— 用来判定"代码到没到"和"调试器有没接管")
+    _HERE = os.path.abspath(__file__)
+    # nodes → engineering → lerobot → src → zmax (5 层, 别少一层: 少一层会指到 src/zmax_data 而永远不命中)
+    _RT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(_HERE)))))
+    _FLAG = os.path.join(_RT, "zmax_data", "ss_live", "BREAK")
+    if os.path.exists(_FLAG):
+        if "flag:" + _key not in _ANNOUNCED:
+            _ANNOUNCED.add("flag:" + _key)
+            try:
+                print("🔴 [brk:%s] 命中文件开关 %s → 停" % (_key, _FLAG), flush=True)
+            except Exception:                                              # noqa: BLE001
+                pass
+        breakpoint()
+        return
+
+    spec = os.environ.get("ZMAX_DEBUG_BREAK", "")
 
     def _say(msg):
         if _key in _ANNOUNCED:

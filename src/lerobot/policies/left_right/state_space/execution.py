@@ -16,17 +16,30 @@ _SAID_BRK = set()
 
 
 def _brk(tag=""):
-    """🎯 代码内置断点 (2026-10-29 老倪「右键进源码, 断点还不好使」的兜底)。
+    """🔴 三种触发方式, 从硬到软 (2026-10-29 老倪「断点进不去」):
 
-    本模块被 library._ss_import / engine._load 按文件路径动态加载, VSCode 的 UI 断点在这种
-    模块上未必绑得住; 这条不靠绑定 —— 命中就调 breakpoint(), debugpy 接管、停在 VSCode。
-
-      · 显式: ZMAX_DEBUG_BREAK=1/*/all 全停; =tag1,tag2 按 tag 停
-      · 自动: 没设 env 但调试器已连接 ⇒ 每个 tag 只停第一次 (不把 10Hz 刷成无限暂停)
-    首次到达必打一行 (停/不停 + 原因), 日志里能看到"到底走没走到这儿"。
-    内联实现 (不从 lerobot.engineering 导入): 那个包反向 import 本模块, 会成环。
+      ① 文件开关 (最硬, 不判断 env / 不判断 debugpy 是否连通):
+           touch ~/zmax/zmax_data/ss_live/BREAK
+         存在就**无条件** breakpoint() —— VSCode 调试会话里由 debugpy 接管, 停; 无调试器时进 pdb。
+         若连这条都不停, 就证明 debugpy 根本没接管这个进程, 与代码无关 (换 tools/dbg_actuator.py)。
+      ② ZMAX_DEBUG_BREAK=1/*/all 全停; =tag1,tag2 按 tag 停
+      ③ 调试器已连接 + 未设 env ⇒ 每个 tag 只停第一次 (不把 10Hz 刷成无限暂停)
     """
     import os as _os
+    _HERE = _os.path.abspath(__file__)
+    _ROOT = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.dirname(
+        _os.path.dirname(_HERE)))))
+    _FLAG = _os.path.join(_ROOT, "zmax_data", "ss_live", "BREAK")
+    if _os.path.exists(_FLAG):
+        if "flag:" + (tag or "-") not in _SAID_BRK:
+            _SAID_BRK.add("flag:" + (tag or "-"))
+            try:
+                print("🔴 [brk:%s] 命中文件开关 %s → 停" % (tag or "-", _FLAG), flush=True)
+            except Exception:                                              # noqa: BLE001
+                pass
+        breakpoint()
+        return
+
     _spec = _os.environ.get("ZMAX_DEBUG_BREAK", "")
     _key = "ex:" + (tag or "-")
 
