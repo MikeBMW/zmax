@@ -12,18 +12,55 @@ import numpy as np
 
 
 class RobotExecutor:
-    """🤖 机器人执行器 — 接收物理指令执行"""
+    """🤖 机器人执行器 — 接收物理指令执行
 
-    def __init__(self, n_joints=6):
+    🔴 2026-10-29 老倪:「def execute 原样返回? 没用就删掉啊」 —— 原来 execute() 就是
+    `return np.asarray(u, dtype=float)`, 一个纯恒等函数: 执行器这一环在链路上什么都不做,
+    却撑着画布 params.source_symbol / _EXTERNAL_LOC 源码锚点 / verification t_act_dim·t_act_pass
+    两条判据 —— 典型的"占着位置不干活"。判定: 不删 (删了链路少一环, 锚点与判据全要连带改),
+    改成真执行器该做的三件事, 且**输出数值一字不改** (零回归):
+      ① NaN/Inf 拦截: 出现即整条指令归零 (执行器不敢把脏数往外送), 标 valid=False
+      ② 通道范围: |u| > _LIMIT 记 clip_hint —— 真裁剪仍归 🛡 安全执行边界 sslimit (不越权)
+      ③ 变化率: |u − u_prev| > max_rate 记 over_rate (物理上臂跟不上, 是异常信号不是误差)
+    校验结果落在 `last_check`, 节点把它带进 out1.exec_check —— 看得见, 不是口号。
+    """
+
+    _LIMIT = 1.0          # 归一化通道范围 (再往外归 sslimit 的 safety_limit=0.6 裁)
+    _LAST = None          # 上一拍指令 (类级: 每个节点每拍 new 一次实例, 实例级存不住)
+
+    def __init__(self, n_joints=6, max_rate=0.35):
         # 🔧 2026-10-14 修 (真源一致性): 原写 `n_joints=7` + 注释"7 轴冗余臂 (Sawyer)";
         #   本平台真机是珞石 Z700 = **6 轴** (config/calib/zmax_calib.json 的 robot.dof=6),
         #   Sawyer 注释是早期遗留。全仓检索确认: 该属性除了这里赋值**没有任何消费点**
         #   (execute() 只做 np.asarray(u)), 所以改成与真机一致的 6 —— 不影响行为, 只去掉误导。
         self.n_joints = n_joints  # 珞石 Z700 · 6 轴 (未被消费的登记属性)
+        self.max_rate = float(max_rate)   # 每拍最大指令变化 (归一化单位/拍)
+        self.last_check = {"valid": True, "clip_hint": [], "over_rate": [], "why": []}
 
     def execute(self, u):
-        """执行物理指令 → 返回执行结果 (关节/末端状态变化)"""
-        return np.asarray(u, dtype=float)
+        """执行物理指令 → 校验后的可执行指令 (数值原样; 校验结论在 self.last_check)。"""
+        a = np.asarray(u, dtype=float).ravel()
+        chk = {"valid": True, "clip_hint": [], "over_rate": [], "why": [], "n": int(a.size)}
+        # ① NaN/Inf: 脏数不往外送
+        if not np.isfinite(a).all():
+            chk.update(valid=False, why=chk["why"] + ["指令含 NaN/Inf → 整条归零"])
+            a = np.zeros_like(a)
+        # ② 通道范围 (只记不裁, 裁剪权在 sslimit)
+        for i, v in enumerate(a):
+            if abs(float(v)) > self._LIMIT:
+                chk["clip_hint"].append([i, round(float(v), 4)])
+        # ③ 变化率: 物理上臂跟不上 (NaN 归零后不再算 —— 否则"归零"本身会被误报成轴跳变)
+        prev = RobotExecutor._LAST
+        if chk["valid"] and prev is not None and prev.shape == a.shape:
+            d = np.abs(a - prev)
+            over = np.where(d > self.max_rate)[0]
+            if over.size:
+                chk["over_rate"] = [[int(i), round(float(d[i]), 4)] for i in over]
+                chk["why"] = chk["why"] + ["变化率超 %.2f/拍: 轴 %s"
+                                           % (self.max_rate, [int(i) for i in over])]
+        RobotExecutor._LAST = a.copy()
+        self.last_check = chk
+        return a
 
 
 class PhysicalWorld:

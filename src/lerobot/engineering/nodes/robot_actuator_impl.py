@@ -37,18 +37,22 @@ def run(ctx):
                              "src": "execution.py:PhysicalWorld", "t": time.time(),
                              "real_send": False, "note": "纯计算·零下发 (下发只走 l2_daemon+8793 授权)"}}
         u_sat = _SS_STATE.get("u_sat", np.zeros(4))
-        u_vec = ex.RobotExecutor().execute(np.asarray(u_sat, dtype=float))
+        _ex = ex.RobotExecutor()                       # 🔴 2026-10-29: 实例留住, 校验结论要带出去
+        u_vec = _ex.execute(np.asarray(u_sat, dtype=float))
+        _chk = getattr(_ex, "last_check", None) or {}
         if np.ndim(u_vec) == 0:
             u_vec = np.zeros(4)
         _SS_STATE["u_prev"] = np.asarray(u_vec, dtype=float)[:3]
         if log:
             log(f"🤖 机器人执行器 (真实): execute(u_sat={np.round(u_sat,3)}) → 指令={np.round(u_vec,4)} "
-                f"(execution.py)")
+                f"(execution.py) · 校验 {'通过' if _chk.get('valid', True) else '拦下'} "
+                f"clip={_chk.get('clip_hint') or '-'} over_rate={_chk.get('over_rate') or '-'}")
         # 🔴 2026-10-29: out1 = 本拍真算出的指令 + 显式零下发声明, 下游(页面/台账)可直接消费
         return {"out1": {"kind": "actuator", "u_sat": [round(float(x), 5) for x in np.asarray(u_sat, dtype=float).ravel()[:4]],
                          "u_cmd": [round(float(x), 6) for x in np.asarray(u_vec, dtype=float).ravel()[:4]],
                          "n": int(np.asarray(u_vec).size), "src": "execution.py:RobotExecutor.execute",
                          "t": time.time(), "real_send": False,
+                         "exec_check": _chk,          # NaN/范围/变化率 三项校验真结果 (不是恒等透传)
                          "note": "纯计算·零下发 (下发只走 l2_daemon+8793 授权)"}}
     except Exception as e:
         if log:
