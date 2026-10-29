@@ -40,22 +40,34 @@ r = m.train(
     verbose=True,
     plots=False,
 )
-best = os.path.join("outputs/yolo_gold", NAME, "weights", "best.pt")
+# ultralytics 的 runs 目录被 settings 指到 external/...，不能硬编码 outputs/ 路径
+best = os.path.join(str(getattr(r, "save_dir", "") or ""), "weights", "best.pt")
 print("\n=== 训练完成 ===")
-print("best:", os.path.abspath(best), "存在:", os.path.exists(best))
+print("best:", best, "存在:", os.path.exists(best))
 
-# 训练后真推理验证（不是只看 mAP，要看真图检出）
+# 训练后真推理验证: **必须同时测分布内和分布外**
+# 只测 val 会被数据泄漏骗 (train/val 同场景微扰时 mAP 能到 0.99, 上线直接 0 检出)
 if os.path.exists(best):
-    v = YOLO(best)
     import glob
-    vals = sorted(glob.glob("data/datasets/yolo_gold/images/val/*.png"))[:10]
-    n_hit, confs = 0, []
-    for p in vals:
-        rr = v.predict(p, imgsz=640, conf=0.25, verbose=False)[0]
-        if len(rr.boxes):
-            n_hit += 1
-            confs.append(float(rr.boxes.conf.max()))
-    print(f"\n真推理验证: {n_hit}/{len(vals)} 张有检出")
-    if confs:
-        print(f"  置信度 中位 {sorted(confs)[len(confs)//2]:.3f} "
-              f"范围 {min(confs):.3f}~{max(confs):.3f}")
+    v = YOLO(best)
+
+    def _probe(tag, pattern, n=12):
+        fs = sorted(glob.glob(pattern))[:n]
+        if not fs:
+            print(f"  {tag}: 无图")
+            return None
+        hit, confs = 0, []
+        for p in fs:
+            rr = v.predict(p, imgsz=IMGSZ, conf=0.25, verbose=False)[0]
+            if len(rr.boxes):
+                hit += 1
+                confs.append(float(rr.boxes.conf.max()))
+        med = sorted(confs)[len(confs) // 2] if confs else 0.0
+        print(f"  {tag}: {hit}/{len(fs)} 检出 · 置信中位 {med:.3f}")
+        return hit / len(fs)
+
+    print("\n=== 真推理验证 (分布内 val 高不代表可用) ===")
+    _probe("分布内 val      ", "data/datasets/yolo_gold/images/val/*.png")
+    _probe("分布外 aoi_v4   ", "zmax_data/aoi_v4/snapshots/*/*.png")
+    _probe("分布外 judge    ", "zmax_data/gold_collect_20261020/judge/*.png")
+    print("  ⚠ 分布外检出率 <50% ⇒ 视为不可上线, 不得进默认档")
