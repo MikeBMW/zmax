@@ -187,6 +187,11 @@ def reset():
 def _pub_ar(o1, u, seg_t, el):
     if not _AR_PUB:
         return
+    # 🔴 2026-10-29 老倪「走了几成是什么」: 原写法直接把 `el - seg_t0`(本段已过**秒数**)
+    #   当 0~1 比例透出去, 只是被 min/max 砍到 [0,1] —— 段时长中位数 0.3s, 页面按
+    #   `a+(b-a)*u` 拿到 0.15 就画 15%, 实际已走一半 ⇒ 虚拟臂每段只走 30% 就跳下一段,
+    #   看着一顿一顿。这里补归一化, 与 uph_tact_impl._pub_ar 同口径。
+    u = (u / seg_t) if seg_t > 1e-9 else 1.0
     try:
         d = {"t": time.time(), "t_str": time.strftime("%H:%M:%S"), "src": "ss_plan_long",
              "task_id": o1.get("task_id"), "seq": o1.get("seq"), "mod": o1.get("mod"),
