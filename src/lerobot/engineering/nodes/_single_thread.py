@@ -27,6 +27,15 @@ def enabled():
 def enforce(log=None):
     """把运行期还能改的线程池压到 1, 返回实测值 (不是声称)。重复调用只做一次。"""
     if not enabled():
+        # 🔴 2026-10-29: 启动时把真实状态打出来 —— 老倪查断点/单线程时, 先要能一眼看出
+        #   "env 到底有没有进进程" (实测曾出现 launch.json 的 env 一项都没进进程的情况)
+        if not _DONE.get("said_off"):
+            _DONE["said_off"] = True
+            print("🔓 单线程闸: 未启用 (ZMAX_SINGLE_THREAD=%r / ZMAX_MULTI_THREAD=%r) · "
+                  "ZMAX_DEBUG_BREAK=%r · OMP=%r"
+                  % (os.environ.get("ZMAX_SINGLE_THREAD"), os.environ.get("ZMAX_MULTI_THREAD"),
+                     os.environ.get("ZMAX_DEBUG_BREAK"), os.environ.get("OMP_NUM_THREADS")),
+                  flush=True)
         return {"enabled": False, "why": "ZMAX_SINGLE_THREAD!=1"}
     if _DONE["v"] is not None:
         return _DONE["v"]
@@ -58,10 +67,16 @@ def enforce(log=None):
                 ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
                  "NUMEXPR_NUM_THREADS", "TORCH_NUM_THREADS", "VECLIB_MAXIMUM_THREADS")}
     _DONE["v"] = r
-    if log:
-        log("🔒 单线程执行闸: torch=%s interop=%s cv2=%s · 进程线程 %d · 主线程 %s"
+    _msg = ("🔒 单线程闸: torch=%s interop=%s cv2=%s · 进程线程 %d · ZMAX_DEBUG_BREAK=%r"
             % (r.get("torch"), r.get("torch_interop"), r.get("cv2"),
-               r.get("py_threads"), r.get("main")))
+               r.get("py_threads"), os.environ.get("ZMAX_DEBUG_BREAK")))
+    if log:
+        log(_msg)
+    else:
+        try:
+            print(_msg, flush=True)
+        except Exception:                                                  # noqa: BLE001
+            pass
     return r
 
 
@@ -71,34 +86,53 @@ def in_caller_thread():
 
 
 _SEEN = set()          # 没设 env 时的"首次停"去重 (否则 10Hz 每帧都停, 界面直接死)
+_ANNOUNCED = set()     # 每个 tag 只播报一次"到达/未停"，避免刷屏
 
 
 def brk(tag=""):
     """🎯 代码内置断点 — 不依赖 debugpy 对动态加载模块的文件:行绑定。
 
     老倪 2026-10-29「右键进源码, 断点还是不进」实证结论:
-      ① 右键「运行节点」的调用路径确实会走到执行器 (模拟实测: execute 被调用, 日志正常打)
-      ② 但当时调试进程 /proc/<pid>/environ 里 ZMAX_DEBUG_BREAK / ZMAX_SINGLE_THREAD 全空
-         ⇒ launch.json 的 env 没进进程 (VSCode 用缓存旧配置), brk() 一次都没执行
+      ① 右键「运行节点」的调用路径确实会走到执行器 (模拟实测: execute 被调用, 日志正常打;
+         StateSpaceSim.run 实测 execute 被调 369 次)
+      ② 但调试进程 /proc/<pid>/environ 里 ZMAX_DEBUG_BREAK / ZMAX_SINGLE_THREAD 全空
+         ⇒ launch.json 的 env 没进进程 (VSCode 用的不是这份 launch 配置), brk() 一次都没执行
     所以两种触发方式并存, 后者不需要任何 env:
       · 显式: ZMAX_DEBUG_BREAK=1/*/all 全停; =tag1,tag2 按 tag 停
       · 自动: 没设 env 但调试器已连接 (F5 起的会话) ⇒ **每个 tag 只停第一次**
         (只停一次是为了不把 10Hz/每帧的节点刷成无限暂停; 想每次都停就显式设 tag)
+    每个 tag 首次到达时打一行状态 (停/未停 + 原因) —— 让人能从日志判断断点到底走没走到。
     """
     spec = os.environ.get("ZMAX_DEBUG_BREAK", "")
+    _key = tag or "-"
+
+    def _say(msg):
+        if _key in _ANNOUNCED:
+            return
+        _ANNOUNCED.add(_key)
+        try:
+            print("🔴 [brk:%s] %s" % (_key, msg), flush=True)
+        except Exception:                                              # noqa: BLE001
+            pass
+
     if spec:
         if spec in ("1", "*", "all") or (tag and tag in spec.split(",")):
+            _say("命中 ZMAX_DEBUG_BREAK=%r → 停" % spec)
             breakpoint()
+        else:
+            _say("ZMAX_DEBUG_BREAK=%r 不含本 tag → 不停" % spec)
         return
     # 未设 env: 调试会话里每个 tag 自动停一次 —— 让"想调试"这件事不依赖 launch.json 是否生效
-    _key = tag or "-"
     if _key in _SEEN:
         return
     try:
         import debugpy                                                  # noqa: PLC0415
-        if not debugpy.is_client_connected():
-            return
+        _conn = bool(debugpy.is_client_connected())
     except Exception:                                                   # noqa: BLE001
+        _conn = False
+    if not _conn:
+        _say("到达, 但调试器未连接 → 不停 (env 也没设)")
         return
     _SEEN.add(_key)
+    _say("调试器已连接 + 未设 env → 首次停")
     breakpoint()

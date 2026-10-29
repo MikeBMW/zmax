@@ -12,6 +12,7 @@ import numpy as np
 
 
 _SEEN_BRK = set()
+_SAID_BRK = set()
 
 
 def _brk(tag=""):
@@ -22,24 +23,41 @@ def _brk(tag=""):
 
       · 显式: ZMAX_DEBUG_BREAK=1/*/all 全停; =tag1,tag2 按 tag 停
       · 自动: 没设 env 但调试器已连接 ⇒ 每个 tag 只停第一次 (不把 10Hz 刷成无限暂停)
+    首次到达必打一行 (停/不停 + 原因), 日志里能看到"到底走没走到这儿"。
     内联实现 (不从 lerobot.engineering 导入): 那个包反向 import 本模块, 会成环。
     """
     import os as _os
     _spec = _os.environ.get("ZMAX_DEBUG_BREAK", "")
+    _key = "ex:" + (tag or "-")
+
+    def _say(msg):
+        if _key in _SAID_BRK:
+            return
+        _SAID_BRK.add(_key)
+        try:
+            print("🔴 [brk:%s] %s" % (tag or "-", msg), flush=True)
+        except Exception:                                                  # noqa: BLE001
+            pass
+
     if _spec:
         if _spec in ("1", "*", "all") or (tag and tag in _spec.split(",")):
+            _say("命中 ZMAX_DEBUG_BREAK=%r → 停" % _spec)
             breakpoint()
+        else:
+            _say("ZMAX_DEBUG_BREAK=%r 不含本 tag → 不停" % _spec)
         return
-    _key = "ex:" + (tag or "-")
     if _key in _SEEN_BRK:
         return
     try:
         import debugpy as _dp
-        if not _dp.is_client_connected():
-            return
+        _conn = bool(_dp.is_client_connected())
     except Exception:                                                      # noqa: BLE001
+        _conn = False
+    if not _conn:
+        _say("到达, 但调试器未连接 → 不停 (env 也没设)")
         return
     _SEEN_BRK.add(_key)
+    _say("调试器已连接 + 未设 env → 首次停")
     breakpoint()
 
 
