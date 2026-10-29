@@ -5531,10 +5531,18 @@ def _vscode_launch_cfg(root: str) -> dict:
         "version": "0.2.0",
         "configurations": [
             # 🚀 默认 F5 (2026-08-31 老倪: attach 找不到 → 全新启动调试进程)
+            # 🔴 2026-10-29 老倪「550B 单线程 debug + 每层断点」: 这里原来 env={} ⇒ 右键「打开 VSCode」
+            #   用模板重写 launch.json 后, 手改的 env 全部消失, F5 起来的进程 /proc/<pid>/environ 里
+            #   ZMAX_SINGLE_THREAD / ZMAX_DEBUG_BREAK 一项都没有 (实测多次踩)。单线程/550B 写进模板才留得住。
+            #   断点: brk() 在调试会话里每个 tag 首次自动停; 要每次都停就在这加 "ZMAX_DEBUG_BREAK": "actuator"
+            #   要关单线程(跑基准/批量推理) 就把 ZMAX_SINGLE_THREAD 换成 ZMAX_MULTI_THREAD=1
             {"name": "🚀 全新调试进程 (studio.py)", "type": "python", "request": "launch",
              "program": _os.path.join(root, "tools", "gui", "studio.py"), "python": _py(),
              "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-             "env": {}},
+             "env": {"OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1",
+                     "NUMEXPR_NUM_THREADS": "1", "VECLIB_MAXIMUM_THREADS": "1", "TORCH_NUM_THREADS": "1",
+                     "MALLOC_ARENA_MAX": "2", "ZMAX_SINGLE_THREAD": "1", "ZMAX_DEBUG_MODE": "1",
+                     "ZMAX_PRODUCT": "550B", "PYTHONUNBUFFERED": "1"}},
             {"name": "🔌 Attach 现有控制台 (5678)", "type": "python", "request": "attach",
              "connect": {"host": "127.0.0.1", "port": 5678}, "justMyCode": False},
             {"name": "工具脚本 (lerobot-venv)", "type": "python", "request": "launch",
