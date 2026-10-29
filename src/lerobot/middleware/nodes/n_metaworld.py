@@ -3,8 +3,8 @@
 
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← (工程外注入/无上游)
-    out out1  → swds, ssintact_dec, ssskill, ssintact, ss_l5, ssmode, ssyolo, ssbypv, sstactile, n_dsvl, ssvlm, ssllm_in, n_realscene
-    out out2  → sssensor, ssplan, ssuph
+    out out1  → ssintact, ssvlm, ssyolo, sstactile, ssbypv, ssllm_in, ssskill, ssmode, ssintact_dec, n_dsvl, swds, n_realscene, ss_l5
+    out out2  → sssensor, ssuph, ssplan
     out out3  → ss_seg
 
 输出 / 输入代码:

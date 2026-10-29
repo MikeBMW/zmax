@@ -6,7 +6,7 @@
     in  in2   ← ssz700
     in  in3   ← ssreason
     in  in4   ← n_vlm_llm
-    out out1  → n_l2_muscle, sssk2, sssk3, sssk4, sssk5, sssk6, sssk7, sssk8, n_skill_dict
+    out out1  → n_skill_dict, n_l2_muscle, sssk2, sssk3, sssk4, sssk5, sssk6, sssk7, sssk8
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)

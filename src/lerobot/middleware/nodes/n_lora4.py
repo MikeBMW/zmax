@@ -2,7 +2,7 @@
 """🎛 L4 · INTACT LoRA 微调 (接在意图解码器后 · 冻结原权重 · 只调 ΔW=(α/r)BA)  ·  节点 ss_lora_l4 · L4
 
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
-    in  in1   ← ssz700, ssintact_dec, ss_l5
+    in  in1   ← ssz700, ss_l5, ssintact_dec
     in  in2   ← n_intent_direct
     out out1  → ssintact, ssmani_exp
     out out2  → ssmani_c

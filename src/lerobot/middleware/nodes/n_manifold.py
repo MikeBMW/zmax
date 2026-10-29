@@ -8,7 +8,7 @@
     in  in4   ← sslat
     in  in5   ← ss_moe
     in  in6   ← n_calib_mani
-    out out1  → ssintact_dec, n_intent_direct
+    out out1  → n_intent_direct, ssintact_dec
     out out2  → ssmani_exp
     out out3  → ssmani_c
     out out4  → ssmani_p

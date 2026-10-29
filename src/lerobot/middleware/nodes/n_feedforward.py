@@ -2,7 +2,7 @@
 """⚡ 前馈加速器  ·  节点 ssff
 
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
-    in  in1   ← ss_mem_l2, sscap, ssobs
+    in  in1   ← ss_mem_l2, ssobs, sscap
     in  in2   ← ssdec
     out out1  → ssff_hist, ssff_hist
     out out2  → sssched

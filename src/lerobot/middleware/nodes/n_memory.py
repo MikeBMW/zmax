@@ -6,7 +6,7 @@
     in  in5   ← n_eng_mem
     in  in6   ← n_vlm_llm
     in  in7   ← n_mem_links
-    out out1  → ss_mem_l4, ss_mem_l3, ss_mem_l2, ssllm, ssreason, ssfeat
+    out out1  → ssllm, ssreason, ss_mem_l4, ss_mem_l3, ss_mem_l2, ssfeat
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)

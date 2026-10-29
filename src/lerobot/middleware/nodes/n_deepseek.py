@@ -6,7 +6,7 @@
     in  in2   ← ssllm_in
     in  in3   ← n_web_agent
     in  in4   ← ss_seg
-    out out1  → n_board_frame, n_vlm_llm, n_hil
+    out out1  → n_vlm_llm, n_board_frame, n_hil
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)

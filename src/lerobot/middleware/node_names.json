@@ -130,5 +130,6 @@
   "策略": "policy",
   "世界": "world"
  },
- "ssplan": "longplan"
+ "ssplan": "longplan",
+ "n_geoplan": "geodesic"
 }

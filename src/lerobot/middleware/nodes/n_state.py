@@ -3,7 +3,7 @@
 
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← sssensor
-    out out1  → ss_moe, ssreason, ssff, ssvideo, n_geoplan
+    out out1  → ssff, ssreason, ssvideo, ss_moe, n_geoplan
     out out2  → ssest
     out out3  → ss_mani_eng
 

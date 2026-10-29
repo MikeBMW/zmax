@@ -2,7 +2,7 @@
 """🤖 机器人执行器  ·  节点 ssact
 
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
-    in  in1   ← n_exec, ssbypv, ssplan
+    in  in1   ← ssbypv, n_exec, ssplan
     out out1  → ssworld
 
 输出 / 输入代码:
@@ -11,7 +11,7 @@
 话题 =  ss.node.ssact.<port>
 
 实现绑定: registry key=`ss_act` · src/lerobot/policies/left_right/state_space/execution.py:class RobotExecutor
-执行口径: EXEC_MODE=act · PURE=False (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
+执行口径: EXEC_MODE=act · PURE=True (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
 """
 
 NODE_ID = 'ssact'
@@ -28,10 +28,10 @@ PORT_LABELS = {}
 IMPL_KEY = 'ss_act'
 SOURCE = 'src/lerobot/policies/left_right/state_space/execution.py'
 SOURCE_SYMBOL = 'class RobotExecutor'
-PARAMS = {'state_space': True, 'desc': '[基础·分段小模型] 机器人执行器 (机械臂/夹爪): 接收物理指令执行', 'source': 'src/lerobot/policies/left_right/state_space/execution.py', 'source_symbol': 'class RobotExecutor', 'ar_real_sw': True, 'ar_scene': True, 'real_auth': False, 'sw_hint': '左=AR场景(开=控左右臂/关=控真机) · 右=真机(开=授权下发/关=不发) 默认都关'}
+PARAMS = {'state_space': True, 'desc': '[基础·分段小模型] 机器人执行器 (机械臂/夹爪): 接收物理指令执行', 'source': 'src/lerobot/policies/left_right/state_space/execution.py', 'source_symbol': 'class RobotExecutor', 'ar_real_sw': True, 'ar_scene': True, 'real_auth': False, 'sw_hint': '左=AR场景(开=控左右臂/关=控真机) · 右=真机(开=授权下发/关=不发) 默认都关', 'pure_verified': True}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = False
+PURE = True
 LAST_STATUS = ""
 
 

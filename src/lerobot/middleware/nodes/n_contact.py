@@ -2,7 +2,7 @@
 """🧮 接触流形 · 导航地图 (e∥进度/e⊥偏离)  ·  节点 ssmani_c
 
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
-    in  in1   ← ss2d3d, ssmani_exp, ssvlm
+    in  in1   ← ssvlm, ss2d3d, ssmani_exp
     in  in2   ← ss_mani_eng, ss_lora_l4
     in  in3   ← n_calib_mani
     out out1  → ssvideo, ssdec

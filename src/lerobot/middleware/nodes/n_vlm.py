@@ -2,11 +2,11 @@
 """🧠 VLM 通用视觉编码器 (SmolVLA)  ·  节点 ssvlm
 
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
-    in  in1   ← sscap, ssdata
+    in  in1   ← ssdata, sscap
     in  in2   ← ss_seg
     in  in3   ← ssyolo
     in  in4   ← ss_lora_l3
-    out out1  → ss_moe, sslat, ssmani_exp, ssdec, ssmani_c, ssmani_p
+    out out1  → ssmani_exp, ssmani_c, ssmani_p, ssdec, sslat, ss_moe
     out out2  → ss_grav_h
 
 输出 / 输入代码:

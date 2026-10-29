@@ -3,6 +3,7 @@
 
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ssdata
+    in  in2   ← ssyolo
     out out1  → ssact
 
 输出 / 输入代码:
@@ -21,7 +22,7 @@ TYPE = 'model'
 EXEC_MODE = 'pure'
 
 # 输入端口 (从总线取) / 输出端口 (发到总线) —— 与工程 JSON 的连线一一对应
-PORTS_IN = ['in1']
+PORTS_IN = ['in1', 'in2']
 PORTS_OUT = ['out1']
 PORT_LABELS = {}
 

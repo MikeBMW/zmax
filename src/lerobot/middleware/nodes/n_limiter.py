@@ -4,8 +4,10 @@
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← sssched
     in  in2   ← ssphys
-    out out1  → n_exec, sssk1, sssk2, sssk3, sssk4, sssk5, sssk6, sssk7, sssk8
+    in  in3   ← n_geoplan
+    out out1  → sssk1, sssk2, sssk3, sssk4, sssk5, sssk6, sssk7, sssk8, n_exec
     out out2  → ss_grav_h
+    out out3  → n_moveit
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)
@@ -23,8 +25,8 @@ TYPE = 'system'
 EXEC_MODE = 'act'
 
 # 输入端口 (从总线取) / 输出端口 (发到总线) —— 与工程 JSON 的连线一一对应
-PORTS_IN = ['in1', 'in2']
-PORTS_OUT = ['out1', 'out2']
+PORTS_IN = ['in1', 'in2', 'in3']
+PORTS_OUT = ['out1', 'out2', 'out3']
 PORT_LABELS = {}
 
 IMPL_KEY = 'ss_limit'

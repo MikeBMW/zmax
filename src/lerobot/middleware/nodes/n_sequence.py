@@ -3,7 +3,7 @@
 
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ss_mem_share
-    out out1  → sssched, n_mem_links, ss_mem_field
+    out out1  → ss_mem_field, sssched, n_mem_links
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)

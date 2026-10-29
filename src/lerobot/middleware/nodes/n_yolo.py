@@ -2,8 +2,8 @@
 """🎯 YOLO 目标检测  ·  节点 ssyolo
 
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
-    in  in1   ← ss_l5, ssdata
-    out out1  → n_board_frame, swds, ss2d3d, ssaoi, ssvlm, ss_seg
+    in  in1   ← ssdata, ss_l5
+    out out1  → ssvlm, ss2d3d, ssaoi, swds, n_board_frame, ss_seg, ssplan
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)
@@ -11,7 +11,7 @@
 话题 =  ss.node.ssyolo.<port>
 
 实现绑定: registry key=`ss_yolo` · src/lerobot/policies/yolo_3d/yolo_state_aligner.py:class YoloStateAligner
-执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
+执行口径: EXEC_MODE=pure · PURE=True (口径已逐一验证 ⇒ 允许计算面真跑)
 """
 
 NODE_ID = 'ssyolo'
@@ -28,10 +28,10 @@ PORT_LABELS = {}
 IMPL_KEY = 'ss_yolo'
 SOURCE = 'src/lerobot/policies/yolo_3d/yolo_state_aligner.py'
 SOURCE_SYMBOL = 'class YoloStateAligner'
-PARAMS = {'model': 'yolov8s', 'classes': 'peg/hole/hand', 'state_space': True, 'source': 'src/lerobot/policies/yolo_3d/yolo_state_aligner.py', 'desc': '[基础·分段小模型] 感知层·B1 目标识别定位: YOLO 检测光模块/插座/料盘/缺陷等 22 个目标 (类别/位姿/方向, 指标含 mAP/推理时间); 双击=目标清单, 右下角导出=Excel', 'detection_targets': True, 'source_symbol': 'class YoloStateAligner'}
+PARAMS = {'model': 'yolov8s', 'classes': 'peg/hole/hand', 'state_space': True, 'source': 'src/lerobot/policies/yolo_3d/yolo_state_aligner.py', 'desc': '[基础·分段小模型] 感知层·B1 目标识别定位: YOLO 检测光模块/插座/料盘/缺陷等 22 个目标 (类别/位姿/方向, 指标含 mAP/推理时间); 双击=目标清单, 右下角导出=Excel', 'detection_targets': True, 'source_symbol': 'class YoloStateAligner', 'pure_verified': True}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = False
+PURE = True
 LAST_STATUS = ""
 
 

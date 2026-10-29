@@ -2,7 +2,7 @@
 """🧲 总装机记忆 · 势场联络 (L2/L3/L4 势场 → 意图 −∇Φ)  ·  节点 ss_mem_field · L2
 
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
-    in  in1   ← ss_mem_l2, ss_mem_l3, ss_mem_l4
+    in  in1   ← ss_mem_l4, ss_mem_l3, ss_mem_l2
     out out1  → sssched
 
 输出 / 输入代码:

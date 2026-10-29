@@ -5,7 +5,7 @@
     in  in1   ← ss_mem_share, n_hil
     in  in2   ← ssllm_in
     in  in5   ← n_vlm_llm
-    out out1  → n_intent_bundle, sssched
+    out out1  → sssched, n_intent_bundle
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)

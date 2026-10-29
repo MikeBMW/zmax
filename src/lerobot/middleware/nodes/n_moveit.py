@@ -2,8 +2,8 @@
 """运动规划  ·  节点 n_moveit
 
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
-    in  in1   ← sssk1, sssk2, sssk3, sssk4
-    in  in2   ← ssdec, sssk5, sssk6, sssk7, sssk8
+    in  in1   ← sssk1, sssk2, sssk3, sssk4, sslimit
+    in  in2   ← sssk5, sssk6, sssk7, sssk8, ssdec
     in  in3   ← ss_grav_h
     out out1  → n_exec
 

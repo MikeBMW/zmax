@@ -2,9 +2,9 @@
 """📐 2D→3D 解算  ·  节点 ss2d3d
 
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
-    in  in1   ← n_board_frame, ssyolo
+    in  in1   ← ssyolo, n_board_frame
     in  in2   ← ss_seg
-    out out1  → sssensor, ssmani_exp, sscalib, ssmani_c, ssmani_p, ss3d_view
+    out out1  → ssmani_exp, ssmani_c, ssmani_p, sscalib, ss3d_view, sssensor
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)

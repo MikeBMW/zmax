@@ -2,7 +2,7 @@
 """🧭 动作调制器  ·  节点 sssched
 
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
-    in  in1   ← ss_mem_l2, ss_mem_l3, n_board_frame, n_l2_muscle, ss_mem_field, ssreason
+    in  in1   ← ss_mem_field, ss_mem_l3, ss_mem_l2, n_board_frame, n_l2_muscle, ssreason
     in  in2   ← n_intent_direct
     in  in3   ← ssllm
     in  in4   ← ss_mani_eng
