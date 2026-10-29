@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 """🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)  ·  节点 ss_mani_eng
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← sssensor, n_vlm_llm
     in  in2   ← ssobs
     in  in3   ← sscalib
     in  in4   ← sslat
     in  in5   ← ss_moe
     in  in6   ← n_calib_mani
-    out out1  → n_intent_direct, ssintact_dec
+    out out1  → ssintact_dec, n_intent_direct
     out out2  → ssmani_exp
     out out3  → ssmani_c
     out out4  → ssmani_p

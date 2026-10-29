@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)  ·  节点 swworld
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← swintact
     in  in2   ← ssworld, n_realscene
     out out1  → swds

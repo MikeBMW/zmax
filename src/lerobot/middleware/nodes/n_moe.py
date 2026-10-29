@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """🧬 元数据MOE门控路由  ·  节点 ss_moe
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ssobs
     in  in2   ← ssvlm
     out out1  → ssmani_exp

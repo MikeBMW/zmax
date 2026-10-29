@@ -944,7 +944,12 @@ function drawModBox(g){
   g.setLineDash([]);
   // 标签
   const bx=MOD3.box2d||[0,0,0,0];
-  const lab=LOCKED?('🔒 光模块 3D · 定主 · '+(MOD3.dims_mm||[]).map(v=>v.toFixed(0)).join('×')+'mm'
+  // 🔀 帧源: render = AR 工位渲染帧 (550A 仿真): 只有 2D 框, 没有真机标定所以不报 3D 尺寸/距离
+  const REND = MOD3.mode==='render';
+  const lab=REND
+    ? ('🖼 AR渲染帧 · 2D检测 '+(MOD3.ok?('conf '+(MOD3.conf||0).toFixed(2)+' · '+(MOD3.n||0)+'框'):'(本帧未检出)')
+       +' · '+((MOD3.result_age_s||0).toFixed(1))+'s前 · 无3D(渲染帧无标定)')
+    : LOCKED?('🔒 光模块 3D · 定主 · '+(MOD3.dims_mm||[]).map(v=>v.toFixed(0)).join('×')+'mm'
       +(MOD3.live&&MOD3.live.ok?'':' · (实时检测未出框, 框按定主坐标显示)'))
     :(STALE?('⚠ 陈旧框 · '+((MOD3.result_age_s||0).toFixed(0))+'s 前 · 当前帧未检出目标')
     :('光模块 3D · '+(MOD3.dims_mm||[]).map(v=>v.toFixed(0)).join('×')+'mm · d='+(MOD3.dist_mm||0).toFixed(0)+'mm'));

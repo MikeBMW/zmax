@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """🧭 能力档位  ·  节点 sscap · L2
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ssmode
-    out out1  → ssintact, ssvlm, ssff, swintact
+    out out1  → swintact, ssintact, ssvlm, ssff
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)

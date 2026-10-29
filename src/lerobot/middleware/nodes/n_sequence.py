@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """🚀 L3 · 长程序列规划 (记忆: 海马体)  ·  节点 ss_mem_l3 · L3
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ss_mem_share
-    out out1  → ss_mem_field, sssched, n_mem_links
+    out out1  → sssched, n_mem_links, ss_mem_field
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)

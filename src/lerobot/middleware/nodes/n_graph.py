@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """🔗 跨层连接 · 记忆图谱  ·  节点 n_mem_links
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ss_mem_l2
     in  in2   ← ss_mem_l3
     in  in3   ← ss_mem_l4

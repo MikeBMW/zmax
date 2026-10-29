@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """🔮 自适应状态估计器  ·  节点 ssest
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ssobs
     out out1  → sspred
     out out2  → ssinnov

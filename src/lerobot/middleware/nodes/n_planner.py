@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """🧠 长程序列规划器 (场景理解驱动)  ·  节点 ssllm
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ss_mem_share, n_hil
     in  in2   ← ssllm_in
     in  in5   ← n_vlm_llm
-    out out1  → sssched, n_intent_bundle
+    out out1  → n_intent_bundle, sssched
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)

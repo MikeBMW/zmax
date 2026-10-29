@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)  ·  节点 ssmani_exp
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
-    in  in1   ← ssvlm, ss_lora_l4
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+    in  in1   ← ss_lora_l4, ssvlm
     in  in2   ← ss2d3d
     in  in4   ← ss_moe
     in  in5   ← ss_mani_eng

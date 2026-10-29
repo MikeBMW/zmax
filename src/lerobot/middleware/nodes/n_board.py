@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """📐 板坐标系定位 (工序坐标系·免手眼)  ·  节点 n_board_frame
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ssyolo, ssz700
     in  in3   ← n_dsvl
     out out1  → ss_mem_share, ss2d3d, sssched

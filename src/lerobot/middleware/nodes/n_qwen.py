@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """👁 视觉语言大模型 · 场景理解 (Qwen2.5/3-VL)  ·  节点 n_vlm_llm
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in4   ← n_dsvl
-    out out1  → ssllm, ssreason, ssskill, ssintact_dec, ss_mem_share, ss_mani_eng
+    out out1  → ss_mani_eng, ssintact_dec, ss_mem_share, ssllm, ssreason, ssskill
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)

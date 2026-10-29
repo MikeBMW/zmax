@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """🖥 Z700 真机信号 (全信号观测 · 物理世界输出)  ·  节点 ssz700
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← (工程外注入/无上游)
-    out out1  → ssllm_in, ssskill, ssintact_dec, n_board_frame, ss_lora_l4, ss_lora_l3
+    out out1  → ss_lora_l3, ss_lora_l4, ssintact_dec, ssskill, n_board_frame, ssllm_in
     out out2  → ss_grav_h
 
 输出 / 输入代码:

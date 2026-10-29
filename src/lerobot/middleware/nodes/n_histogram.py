@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """🧠 前馈激活直方图  ·  节点 ssff_hist
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ssff
     in  in2   ← ssff
     out out1  → (未被下游读取)

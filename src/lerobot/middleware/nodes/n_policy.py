@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """🎯 INTACT 插拔策略 · 光模块抓取插入 (本域微调 · 零搜索)  ·  节点 swintact
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← swds
     in  in2   ← ssintact
     in  in3   ← sscap

@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """🧠 总装记忆中枢 (前额叶总装 · 三层协同)  ·  节点 ss_mem_share
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← n_board_frame
     in  in5   ← n_eng_mem
     in  in6   ← n_vlm_llm
     in  in7   ← n_mem_links
-    out out1  → ssllm, ssreason, ss_mem_l4, ss_mem_l3, ss_mem_l2, ssfeat
+    out out1  → ss_mem_l4, ss_mem_l3, ss_mem_l2, ssllm, ssreason, ssfeat
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)

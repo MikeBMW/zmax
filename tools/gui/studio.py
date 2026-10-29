@@ -14002,8 +14002,28 @@ class StudioMainWindow(QMainWindow):
         self._vscode_autostart_after_open("加载工程文件")
 
     def _open_ss_canvas_cmd(self):
+        # 🐛 2026-10-29 实测: 画布页是**懒创建**的 ⇒ 新起的进程里 self.simulink 还是 None,
+        #   旧代码静默什么都不做 ⇒ 命令通道发 ss_canvas "没反应"(窗口停在首页)。
+        #   这里补懒创建 + 失败可见, 命令才真的能跳过去。
+        if getattr(self, "simulink", None) is None:
+            try:
+                self._init_simulink()
+            except Exception as e:                                          # noqa: BLE001
+                print("⚠️ ss_canvas: 建画布失败: %s: %s" % (type(e).__name__, e), flush=True)
+                return
         if getattr(self, "simulink", None) is not None:
             self.simulink.open_state_space()
+            # 🐛 2026-10-29 实测: open_state_space() 只"把画布刷成该文件", **不切页** ⇒ 命令通道
+            #   发了 ss_canvas 但窗口还停在首页。这里补切到画布页 (与工具栏「状态空间」按钮同一落点)。
+            # ⚠️ 不能用 modules["simulink"]: 那是**索引快照**, 页面增删后会漂 (实测切到了数据空间页)。
+            #    正解是按**控件本体**反查索引 (stack.indexOf(self.simulink))。
+            _idx = self.stack.indexOf(self.simulink)
+            try:
+                if _idx >= 0:
+                    self.stack.setCurrentWidget(self.simulink)
+                    print("🧮 已切到状态空间画布 (stack[%d] %s)" % (_idx, self.stack.currentWidget().__class__.__name__), flush=True)
+            except Exception as e:                                          # noqa: BLE001
+                print("⚠️ ss_canvas: 切页失败: %s: %s" % (type(e).__name__, e), flush=True)
 
     def _focus_seg_cmd(self):
         """🧩 把画布跳到「🧩 开放词汇分割 (SAM3)」节点 (老倪 2026-10-14: 画布太大找不到节点)。

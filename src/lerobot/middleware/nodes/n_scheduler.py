@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """🧭 动作调制器  ·  节点 sssched
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
-    in  in1   ← ss_mem_field, ss_mem_l3, ss_mem_l2, n_board_frame, n_l2_muscle, ssreason
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+    in  in1   ← ss_mem_l2, ss_mem_l3, n_board_frame, n_l2_muscle, ss_mem_field, ssreason
     in  in2   ← n_intent_direct
     in  in3   ← ssllm
     in  in4   ← ss_mani_eng
@@ -10,6 +10,7 @@
     in  in6   ← ssff
     in  in7   ← ss_moe
     in  in8   ← ssinnov
+    in  in9   ← n_geoplan
     out out1  → sslimit
     out out2  → ss_grav_h
 
@@ -29,7 +30,7 @@ TYPE = 'system'
 EXEC_MODE = 'pure'
 
 # 输入端口 (从总线取) / 输出端口 (发到总线) —— 与工程 JSON 的连线一一对应
-PORTS_IN = ['in1', 'in2', 'in3', 'in4', 'in5', 'in6', 'in7', 'in8']
+PORTS_IN = ['in1', 'in2', 'in3', 'in4', 'in5', 'in6', 'in7', 'in8', 'in9']
 PORTS_OUT = ['out1', 'out2']
 PORT_LABELS = {'out1': 'out1'}
 

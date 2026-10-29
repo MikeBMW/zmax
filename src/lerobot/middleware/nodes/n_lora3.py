@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """🎛 L3 · SmolVLA LoRA 微调 · 接入中  ·  节点 ss_lora_l3 · L3
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ssz700, ss_l5
     out out1  → ssvlm
 

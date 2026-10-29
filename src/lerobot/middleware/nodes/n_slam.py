@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """📡 融合定位建图  ·  节点 sssensor
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ssdata
     in  in2   ← ss2d3d
     in  in3   ← sstactile
@@ -34,7 +34,7 @@ PORT_LABELS = {}
 IMPL_KEY = 'ss_sensor'
 SOURCE = 'src/lerobot/policies/left_right/state_space/perception.py'
 SOURCE_SYMBOL = 'def fuse_sensors'
-PARAMS = {'state_space': True, 'desc': '[基础·分段小模型·建图] 📡 融合定位建图 = 视觉与触觉融合: 视觉(YOLO目标检测→2D→3D 坐标) + 触觉感知(4D 力/接触) + 外观质量 → 统一状态空间 (43D obs, 供 L2/L3/L4/L5 消费); 新增建图能力: 专用实现 src/lerobot/manifold/localization_mapping.py (ORB 视觉前端 + 机器人位姿真源 tcp_pose + 关键帧/地图点/回环 + 自动加载 auto_start)', 'source': 'src/lerobot/policies/left_right/state_space/perception.py', 'source_symbol': 'def fuse_sensors', 'fuse': '视觉 ⊕ 触觉 ⊕ 外观质量'}
+PARAMS = {'state_space': True, 'desc': '[基础·分段小模型·建图] 📡 融合定位建图 = 视觉与触觉融合: 视觉(YOLO目标检测→2D→3D 坐标) + 触觉感知(4D 力/接触) + 外观质量 → 统一状态空间 (43D obs, 供 L2/L3/L4/L5 消费); 新增建图能力: 专用实现 src/lerobot/manifold/localization_mapping.py (ORB 视觉前端 + 机器人位姿唯一依据 tcp_pose + 关键帧/地图点/回环 + 自动加载 auto_start)', 'source': 'src/lerobot/policies/left_right/state_space/perception.py', 'source_symbol': 'def fuse_sensors', 'fuse': '视觉 ⊕ 触觉 ⊕ 外观质量'}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

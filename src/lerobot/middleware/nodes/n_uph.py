@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """🏭 UPH 节拍循环器  ·  节点 ssuph
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ssdata
     out out1  → (未被下游读取)
 

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """🎯 Flow-Matching Action Head (DiT)  ·  节点 ssdec
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
-    in  in1   ← ssvlm, ss_lora_l4
-    in  in5   ← ssmani_c, ssmani_p, sslat
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+    in  in1   ← ss_lora_l4, ssvlm
+    in  in5   ← sslat, ssmani_c, ssmani_p
     out out1  → ssff, n_moveit
     out out2  → ss_grav_h
 

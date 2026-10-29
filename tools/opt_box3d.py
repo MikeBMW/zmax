@@ -23,7 +23,19 @@ import numpy as np
 REPO = os.path.expanduser("~/zmax")
 HAND_EYE = os.path.join(REPO, "models", "handeye_state.json")
 REAL_CAL = os.path.join(REPO, "models", "real_cam_calib.json")
-YOLO_PT = os.path.join(REPO, "models", "yolo_peg_live.pt")
+YOLO_PT = os.path.join(REPO, "models", "yolo_peg_live.pt")      # 真机域 (D405 腕相机视角)
+YOLO_PT_AR = os.path.join(REPO, "models", "yolo_ar_peg.pt")     # AR 渲染域 (AR 工位机位训, holdout mAP50 0.995)
+# 🔀 帧源与权重必须成对: 真机帧 → yolo_peg_live.pt · AR 渲染帧(8802) → yolo_ar_peg.pt
+#    拿 D405 权重看 AR 渲染帧 = 链通了但 0 框 (实测, 见 runtime.py 同一注释)
+#    口径唯一真源在 tools/det_src.py (两条链共用), 这里跟随它以免两处各写一份权重名。
+try:
+    import sys as _sys
+    _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import det_src as _DS
+    YOLO_PT = os.path.join(REPO, _DS.MAP["real"]["weights"])
+    YOLO_PT_AR = os.path.join(REPO, _DS.MAP["render"]["weights"])
+except Exception:                                                # noqa: BLE001
+    pass
 
 # 光模块外形 (SFP 类, 直立插在料盘里: 长轴竖直)。画面里宽高比实测 27/122 = 0.22,
 # 与 13.4/56.5 = 0.24 吻合 ⇒ 长轴当 56.5mm 用。可用环境变量覆盖。
@@ -34,6 +46,7 @@ MOD_T_MM = float(os.environ.get("ZMAX_MOD_T_MM", "8.5"))      # 厚度
 CONF_MIN = float(os.environ.get("ZMAX_MOD_CONF", "0.25"))
 
 _YOLO = None
+_YOLO_MAP = {}                              # 权重路径 → YOLO 实例 (切换帧源时不重装权重)
 _YOLO_LOCK = threading.Lock()
 _LAST = {"d_mm": None, "t": 0.0}          # 上一次"未裁切"的有效距离(框贴边时沿用)
 _CONT = {"d_mm": None, "h_px": None, "w_px": None, "base_mm": None, "t": 0.0}   # 连续性闸: 上一次被接受的观测
@@ -44,13 +57,21 @@ _PATCH_F = os.environ.get("ZMAX_MOD_PATCH", "/dev/shm/mod3_patch.png")   # 上�
 det_name_fallback = "peg"               # 模板接住时沿用的类名(与在役权重同口径)
 
 
-def _yolo():
+def _yolo(path=None):
+    """按权重路径缓存 YOLO 实例 —— 切帧源(真机↔AR渲染)时只切权重, 不重装(装一次 ~900ms)。"""
+    p = os.path.abspath(str(path or YOLO_PT))
     global _YOLO
     with _YOLO_LOCK:
-        if _YOLO is None:
+        inst = _YOLO_MAP.get(p)
+        if inst is None:
             from ultralytics import YOLO
-            _YOLO = YOLO(YOLO_PT)
-        return _YOLO
+            if not os.path.isfile(p):
+                raise FileNotFoundError("权重不存在: %s" % p)
+            inst = YOLO(p)
+            _YOLO_MAP[p] = inst
+            if p == os.path.abspath(YOLO_PT):
+                _YOLO = inst               # 兼容老代码/老调用点
+        return inst
 
 
 
@@ -221,9 +242,13 @@ def _refine_extent(img_bgr, x1, y1, x2, y2, gap_max=3, frac=0.32, max_extend=100
     return nx1, top, nx2, bot, "扩 %s→%s" % ((y1, y2), (top, bot))
 
 
-def detect_boxes(img_bgr, conf=CONF_MIN):
-    """返回 [{name, conf, xyxy}] —— 在役权重 (peg / OPT_Gold)。"""
-    m = _yolo()
+def detect_boxes(img_bgr, conf=CONF_MIN, weights=None):
+    """返回 [{name, conf, xyxy}] —— weights 不给就用真机域在役权重 (peg / OPT_Gold)。
+
+    长时任务/AR 渲染帧调用点必须显式给 weights (真机 yolo_peg_live.pt · AR 渲染 yolo_ar_peg.pt),
+    否则就是"链通了但 0 框"。
+    """
+    m = _yolo(weights)
     # 🔴 2026-10-18: imgsz 960→640 + 默认 CPU(实测 60ms; GPU 7ms 但 fork 后不能复用 CUDA 上下文)
     # 之前慢的真正原因不是 imgsz, 是**每个请求都在子进程里重新 YOLO(...) 装载权重(~900ms)** ⇒ 见 warm()
     r = m.predict(img_bgr, conf=conf, imgsz=int(os.environ.get("ZMAX_YOLO_IMGSZ", "640")),

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """🤖 机器人执行器  ·  节点 ssact
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
-    in  in1   ← ssbypv, n_exec
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+    in  in1   ← n_exec, ssbypv, ssplan
     out out1  → ssworld
 
 输出 / 输入代码:
@@ -34,55 +34,6 @@ PARAMS = {'state_space': True, 'desc': '[基础·分段小模型] 机器人执�
 PURE = False
 LAST_STATUS = ""
 
-# 🔴 2026-10-29 老倪「要让 plan 真的喂动作执行器, 现在执行器节点联通的是 AR 场景」
-#   事实: 画布上 ssplan 原来**零出边**(out1 没人接), 执行器 in1 只接 n_exec/ssbypv ⇒ plan 段到不了执行器。
-#   现在: ssplan.out1 → ssact.in1, 执行器在 AR 场景(exec_switches.ar_scene=1 且 real_auth=0)下把 plan 段
-#   接过来、落成执行指令 zmax_data/ss_live/ar_exec.json (页面只认这一份), 并回写 out1 供总线取证。
-#   真机零指令: 只要 real_auth 没开就绝不写 FIFO/l2_daemon, 只写渲染用文件。
-import json as _json
-import os as _os
-import time as _time
-
-_DATA = _os.environ.get("ZMAX_DATA_DIR") or _os.path.join(_os.path.expanduser("~"), "zmax", "zmax_data")
-_SW_F = _os.path.join(_DATA, "ss_live", "exec_switches.json")
-_EXEC_F = _os.path.join(_DATA, "ss_live", "ar_exec.json")
-
-
-def _ar_scene_on():
-    """AR 场景 = 执行器左开关开 且 真机开关关 (两者都从 exec_switches.json 读, 不自己造)。"""
-    try:
-        with open(_SW_F, encoding="utf-8") as fh:
-            d = _json.load(fh)
-        return bool(d.get("ar_scene")) and not bool(d.get("real_auth"))
-    except Exception:                                                # noqa: BLE001
-        return False
-
-
-def _publish_ar_exec(seg):
-    """plan 段 → AR 执行指令(落盘, 页面唯一依据)。返回 payload 或 None。"""
-    try:
-        a, b = seg.get("a"), seg.get("b")
-        if not (isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)) and len(a) >= 3 and len(b) >= 3):
-            return None
-        out = {"t": _time.time(), "t_str": _time.strftime("%H:%M:%S"), "src": "ssact",
-               "from": "ssplan.out1", "mode": "ar_scene",
-               "seq": seg.get("seq"), "kind": seg.get("kind"), "label": seg.get("label"),
-               "a": list(a)[:3], "b": list(b)[:3],
-               "u": round(min(1.0, max(0.0, float(seg.get("u") or 0.0))), 4),
-               "mod": seg.get("mod"), "hole": seg.get("hole"),
-               "elapsed_s": seg.get("elapsed_s"), "t_left": seg.get("t_left"),
-               "mt_id": seg.get("mt_id"), "mt_name": seg.get("mt_name"),
-               "mt_i": seg.get("mt_i"), "mt_n": seg.get("mt_n"),
-               "batch": seg.get("batch"), "task_id": seg.get("task_id")}
-        _os.makedirs(_os.path.dirname(_EXEC_F), exist_ok=True)
-        tmp = _EXEC_F + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as fh:
-            _json.dump(out, fh, ensure_ascii=False)
-        _os.replace(tmp, _EXEC_F)
-        return out
-    except Exception:                                                # noqa: BLE001
-        return None
-
 
 def manifest():
     """给画布/面板: 这个节点的输入输出与实现位置。"""
@@ -109,17 +60,8 @@ def compute(ctx):
     PURE=False 时只做直通 (数据面), 不调用真实现 —— 避免未验证/未授权的节点被自动执行。
     """
     global LAST_STATUS
-    # 🔴 AR 场景: plan 段 → 执行器 (这一段在 PURE=False 之前, 否则永远只是直通, 等于没接)
-    seg = (ctx.get("in1") or {}).get("value") if isinstance(ctx, dict) else None
-    if isinstance(seg, dict) and seg.get("a") and seg.get("b") and _ar_scene_on():
-        out = _publish_ar_exec(seg)
-        if out:
-            LAST_STATUS = ("实现执行 (AR场景 · plan段→ar_exec.json · seq=%s %s · u=%.2f · 真机零指令)"
-                           % (out.get("seq"), out.get("kind"), out.get("u") or 0))
-            return {"out1": out}
     if not PURE:
-        LAST_STATUS = ("直通 (PURE=False: 只走数据面)" if not isinstance(seg, dict)
-                       else "直通 (AR开关未知/真机授权, 不接 plan 段)")
+        LAST_STATUS = "直通 (PURE=False: 只走数据面)"
         return _passthrough(ctx)
     try:
         from lerobot.engineering import registry as _reg

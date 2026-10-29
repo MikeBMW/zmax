@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """运动规划  ·  节点 n_moveit
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← sssk1, sssk2, sssk3, sssk4
-    in  in2   ← sssk5, sssk6, sssk7, sssk8, ssdec
+    in  in2   ← ssdec, sssk5, sssk6, sssk7, sssk8
     in  in3   ← ss_grav_h
     out out1  → n_exec
 
@@ -12,7 +12,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.n_moveit.<port>
 
-实现绑定: registry key=`n_moveit`
+实现绑定: registry key=`n_moveit` · src/lerobot/engineering/nodes/plan_impl.py:def run
 执行口径: EXEC_MODE=act · PURE=False (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
 """
 

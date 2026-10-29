@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)  ·  节点 ss_mem_l4 · L4
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ss_mem_share
-    out out1  → ss_mem_field, n_mem_links
+    out out1  → n_mem_links, ss_mem_field
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)

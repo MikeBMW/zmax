@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """🙋 HIL 人机在环 · 状态↔指示  ·  节点 n_hil
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← n_dsvl
     out out1  → ssllm
 

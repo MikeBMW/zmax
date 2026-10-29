@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """🧬 技能词典 · L2 动作基  ·  节点 n_skill_dict · L2
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ssskill
     out out1  → ss_mem_l2
 

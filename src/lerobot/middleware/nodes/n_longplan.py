@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """🧩 长程元任务编排器 (Plan)  ·  节点 ssplan
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ssdata
-    out out1  → (未被下游读取)
+    out out1  → ssact
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)

@@ -42,6 +42,12 @@ NODES = {
     "n_mem_links":     ("MemoryLinks",       "跨层连接",            {}),
     # 📚 2026-10-18 老倪: 「将 moveit 节点更改为 plan 节点」—— out1 现在是**段表** (PlanSegments)
     "n_moveit":        ("PlanSegments",     "运动规划 (plan)",     {}),
+    # 🧩 ssplan 一直在画布上但表里漏了 ⇒ 生成器整体报缺节点 (2026-10-29 补)
+    "ssplan":          ("MetaTaskSegment",  "长程元任务段",        {"out1": "MetaTaskSegment",
+                                                                     "out2": "MetaTaskProgress",
+                                                                     "out3": "MetaTaskBeat"}),
+    # 🧭 2026-10-29 老倪定序: 运动规划(状态空间测地线块) 与前馈 MLP 并列 → 加权 → 调制
+    "n_geoplan":       ("GeodesicGuidance", "测地线规划引导",      {"out1": "GuidancePose", "out2": "PlanChunk"}),
     # 📚 2026-10-18 老倪: 「l2_daemon 也要做一个节点，我要看到」—— 执行器出口: 命令/结果
     "n_exec":          ("Exec",             "动作执行器 (l2_daemon)", {"out1": "ActuationCommand", "out2": "ExecResult"}),
     "n_realscene":     ("RealSceneOverlay",  "真实场景叠加",        {}),
@@ -80,7 +86,7 @@ NODES = {
     "ssintact":        ("IntactPolicy",      "INTACT 策略",         {}),
     "ssintact_dec":    ("IntactIntent",      "INTACT 意图解码",     {}),
     "sslat":           ("LatentManifold",    "潜空-流形",           {}),
-    "sslimit":         ("SafetyLimit",       "安全执行边界",        {}),
+    "sslimit":         ("SafetyLimit",       "安全执行边界",        {"out3": "GuidancePose"}),   # out3 = 守护后的位姿 (供运动规划)
     "ssllm":           ("L3Planner",         "L3 长程序列规划",     {}),
     "ssllm_in":        ("TaskInstruction",   "任务指令",            {}),
     "ssmani_c":        ("ContactManifold",   "接触流形",            {}),

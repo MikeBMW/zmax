@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """📚 工程记忆 · 技能与经验库  ·  节点 n_eng_mem
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← (工程外注入/无上游)
     out out1  → ss_mem_share, n_web_agent
 

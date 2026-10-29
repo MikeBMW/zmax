@@ -79,6 +79,26 @@ def build_mjcf() -> str:
     px, py, pz = sz(pan)
     pzlo = min(pan["p1"][2], pan["p2"][2])
 
+    # ── ar3d 场景家具: 与 tools/web/tcp-ar.html 的 FLR/CHS/TAB 常数逐项对齐 ──
+    #   FLR: 地面 z=-0.750 · CHS: 箱体 0.600(x)×0.800(y)×680 体 + 70 轮, y 中心 0.25, 顶板 z=0
+    #   TAB: 桌 x 0.35..0.95, y -0.55..1.05 (1600 长), 板厚 0.030, 顶面 z=0, 腿 45mm 落地
+    geo3d = []
+    geo3d.append('<geom name="chassis" type="box" pos="0 0.25 -0.355" size="0.300 0.400 0.325" '
+                 'rgba="0.11 0.15 0.19 1"/>')
+    geo3d.append('<geom name="chassis_top" type="box" pos="0 0.25 -0.012" size="0.300 0.400 0.012" '
+                 'rgba="0.19 0.25 0.31 1"/>')
+    for _i, (_wx, _wy) in enumerate([(0.243, 0.02), (0.243, 0.48), (-0.243, 0.02), (-0.243, 0.48)]):
+        geo3d.append('<geom name="wheel%d" type="cylinder" pos="%.3f %.3f -0.680" size="0.070 0.030" '
+                     'quat="0.70711 0.70711 0 0" rgba="0.05 0.05 0.06 1"/>' % (_i, _wx, _wy))
+    # ⚠ 桌面用**中性灰**而不是 ar3d 的棕色: 棕色 (0.48 0.37 0.27) 过 sRGB 后 R-B=41/G-B=20,
+    #   正好卡进 gold_mask 判据 ⇒ 整块桌面被当成"金色模块", 真值框/标定/2D→3D 全被污染
+    #   (实测 gold_px 25594、框贴画面边)。几何仍与 ar3d 桌面完全一致, 只换颜色。
+    geo3d.append('<geom name="bench" type="box" pos="0.65 0.25 -0.015" size="0.300 0.800 0.015" '
+                 'rgba="0.34 0.34 0.36 1"/>')
+    for _i, (_lx, _ly) in enumerate([(0.375, -0.525), (0.925, -0.525), (0.375, 1.025), (0.925, 1.025)]):
+        geo3d.append('<geom name="leg%d" type="box" pos="%.3f %.3f -0.375" size="0.0225 0.0225 0.375" '
+                     'rgba="0.29 0.31 0.34 1"/>' % (_i, _lx, _ly))
+
     geos = []
     # 台面
     geos.append('<geom name="table" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f 0.015" '
@@ -95,6 +115,10 @@ def build_mjcf() -> str:
         geos.append('<geom name="pan_%s" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f %.4f" '
                     'rgba="0.10 0.10 0.11 1"/>'
                     % (suf, gx, gy, (pzlo + pzlo + 0.04) / 2, sx, sy, 0.02))
+    # 垫块: 料盘底(0.10) 与 ar3d 桌面(z=0) 之间的 100mm 支撑 (否则料盘悬空, 看着位置就不对)
+    geos.append('<geom name="pan_riser" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f %.4f" '
+                'rgba="0.22 0.24 0.27 1"/>'
+                % (pcx, pcy, pzlo / 2.0, px + 0.02, py + 0.02, max(0.01, pzlo / 2.0)))
     # 槽位（凹槽参照物，不挡模块）
     for k, s in enumerate(slots[:6]):
         scx, scy, scz = ctr(s)
@@ -114,13 +138,25 @@ def build_mjcf() -> str:
     </body>""" % tuple(gold_pos)
 
     # 双臂：6 轴 + 夹爪。source: seven_dof_arm.xml（hinge + motor），连杆缩到工位尺度
-    def arm(side, base_x, base_y, sign):
+    def arm(side, base_x, base_y, base_z):
+        # 🔴 2026-10-29: `sign` 原来**没用到** ⇒ 左右臂运动学完全一致, 都朝 -x 伸,
+        #    R 基座在料盘右侧(0.78)朝 -x 正好够到料盘; L 基座在左侧(0.26)朝 -x 却伸向场外
+        #    (实测 L 腕 TCP 停 x=-0.09, IK 给料盘上的目标只能解出多圈怪解, 执行端跟不过去 150mm+)。
+        #    ⇒ 用 sign 把 L 臂绕 x 镜像 (带 x 分量的轴取反), 两臂都朝向料盘。
         segs = [(0.00, 0.06, "0 0 1"), (0.16, 0.18, "0 1 0"), (0.0, 0.18, "1 0 0"),
                 (0.0, 0.15, "0 1 0"), (0.0, 0.12, "1 0 0"), (0.0, 0.10, "0 1 0")]
+
+        def _ax(a):
+            return a                      # 不做轴取反 (会把 y 一起反掉, 实测 L 腕落到 y=-0.147 场外)
+
+        # 🔴 2026-10-29 改口径: 两臂按**真机布局**装在箱体顶板 (z=0), 沿 y 并排 x=0, y=0 / y=0.5
+        #    (tools/web/tcp-ar.html CHS: 两臂原心 y=0 与 y=+0.5, 箱体顶板 = 两臂安装面 = z=0)。
+        #    之前两臂摆在料盘两侧 x=0.26/0.78 且 z=pzlo(0.10) —— 那是自己造的工位, 与 ar3d 不一致。
+        #    两臂运动学相同、都朝 +x 伸, 不再需要镜像。
         out = []
-        out.append('<body name="%s_link0" pos="%.4f %.4f %.4f">' % (side, base_x, base_y, pzlo))
-        out.append('  <joint name="%s_j0" type="hinge" axis="0 0 1" range="-170 170" '
-                   'armature="0.02" damping="3"/>' % side)
+        out.append('<body name="%s_link0" pos="%.4f %.4f %.4f">' % (side, base_x, base_y, base_z))
+        out.append('  <joint name="%s_j0" type="hinge" axis="%s" range="-170 170" '
+                   'armature="0.02" damping="3"/>' % (side, _ax("0 0 1")))
         out.append('  <geom name="%s_g0" type="cylinder" size="0.045 0.05" pos="0 0 0.05" '
                    'rgba="0.34 0.36 0.41 1"/>' % side)
         parent = "%s_link0" % side
@@ -129,7 +165,7 @@ def build_mjcf() -> str:
             nm = "%s_link%d" % (side, i)
             out.append('  <body name="%s" pos="0 0 %.4f">' % (nm, segs[i - 1][1]))
             out.append('    <joint name="%s_j%d" type="hinge" axis="%s" range="-170 170" '
-                       'armature="0.02" damping="3"/>' % (side, i, ax))
+                       'armature="0.02" damping="3"/>' % (side, i, _ax(ax)))
             out.append('    <geom name="%s_g%d" type="capsule" fromto="0 0 0 0 0 %.4f" '
                        'size="0.022" rgba="0.44 0.47 0.52 1"/>' % (side, i, ln))
             parent = nm
@@ -186,7 +222,10 @@ def build_mjcf() -> str:
     acts = []
     for side in ("L", "R"):
         for i in range(6):
-            acts.append('    <position name="%s_act%d" joint="%s_j%d" kp="60" kv="6" '
+            # 🔴 2026-10-29: kp 60/kv 6 在"远伸位姿"有 24~34mm 重力静差 (实测: 目标 TCP 误差
+            #   34.2mm), 引擎链按 8~15mm 判据永远到不了。真机重复定位 ±0.02mm、刚度远高于此,
+            #   调到 kp=300/kv=20 后同一姿态静差 7.1mm (为原值的 1/5), 不靠调松判据过。
+            acts.append('    <position name="%s_act%d" joint="%s_j%d" kp="300" kv="20" '
                         'ctrlrange="-170 170"/>' % (side, i, side, i))
         for f in ("a", "b"):
             acts.append('    <position name="%s_act_f%s" joint="%s_f%s" kp="40" kv="4" '
@@ -206,7 +245,8 @@ def build_mjcf() -> str:
   <worldbody>
     <light pos="%(lx).4f %(ly).4f %(lz).4f" dir="0 0 -1" diffuse="0.9 0.9 0.95" specular="0.25 0.25 0.25"/>
     <light pos="%(l2x).4f %(l2y).4f %(l2z).4f" dir="0.3 0.7 -1" diffuse="0.4 0.4 0.45"/>
-    <geom name="floor" type="plane" pos="0 0 0" size="3 3 0.05" material="grid"/>
+    <geom name="floor" type="plane" pos="0 0 -0.750" size="3 3 0.05" material="grid"/>
+%(geo3d)s
 %(cam)s
 %(geos)s
 %(box)s
@@ -220,9 +260,9 @@ def build_mjcf() -> str:
 </mujoco>
 """ % {"W": W, "H": H, "lx": pcx, "ly": pcy, "lz": pzlo + 1.3,
        "l2x": pcx - 0.5, "l2y": pcy - 0.5, "l2z": pzlo + 1.0,
-       "cam": cam_body, "geos": "\n    ".join(geos), "module": module, "box": _box,
-       "armL": arm("L", pcx - 0.26, pcy - 0.14, +1),
-       "armR": arm("R", pcx + 0.26, pcy - 0.14, -1),
+       "cam": cam_body, "geos": "\n    ".join(geos), "geo3d": "\n    ".join(geo3d), "module": module, "box": _box,
+       "armL": arm("L", 0.0, 0.50, 0.0),
+       "armR": arm("R", 0.0, 0.00, 0.0),
        "acts": "\n".join(acts)}
 
 
@@ -317,8 +357,10 @@ class ArMujocoEnv:
         #    ctrl=0 ⇒ 臂竖直朝上 (实测 TCP z=0.89), 与料盘(z=0.112)相距 0.836m,
         #    远超臂展 0.73m ⇒ 永远进不了"接近"阶段 ⇒ _peg_cur 恒 None ⇒ dist 恒 9.9。
         #    下列角度 = 按「基座→料盘」实际方位搜出来的可行解 (实测 TCP 落在料盘 0.14m 内)。
+        # L 臂基座已绕 z 转 180° (它原来朝场外); 同一组前伸角会让它横在机位与料盘之间
+        # ⇒ L 的 home 用竖直位 (全 0), 实测不挡画面; R 保持前伸俯身对料盘。
         _HOME = {"R": [0.50, 1.60, -2.60, -0.45, 0.0, 0.0],
-                 "L": [0.50, 1.60, -2.60, -0.45, 0.0, 0.0]}
+                 "L": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}
         for side, ang in _HOME.items():
             for i, v in enumerate(ang):
                 jid = mj.mj_name2id(self.model, mj.mjtObj.mjOBJ_JOINT, "%s_j%d" % (side, i))

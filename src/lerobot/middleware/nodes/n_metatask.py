@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """🧾 元任务预测 (驱动扭矩 → 元任务预测值)  ·  节点 n_intent_direct
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ss_mani_eng
     out out1  → sssched, ss_lora_l4
 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """🎯 INTACT (L4) · 工作安全 + 物理世界导航  ·  节点 ssintact · L4
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ssdata
     in  in2   ← sssensor
     in  in4   ← sscap

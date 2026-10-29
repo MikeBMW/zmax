@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """🧮 标定层 · 引力-斥力-动作  ·  节点 sscalib
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ss2d3d
     out out1  → sslat
     out out2  → ss_mani_eng

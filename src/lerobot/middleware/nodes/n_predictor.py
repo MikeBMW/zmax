@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """📈 先验动力学预测器  ·  节点 sspred
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ssest
     out out1  → ssinnov
 

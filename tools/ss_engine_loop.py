@@ -578,6 +578,20 @@ class Loop:
             return {}
         img = self._pick_frame()
         if img is None:
+            # 🔴 2026-10-29: 帧取不到也必须留痕。原来静默 return {} ⇒ 切到 real 而相机不在位时,
+            #   l2_det.json 停在切源前那份(看着像"还在用旧源"), 现场完全看不出是帧源问题。
+            try:
+                _p = "/dev/shm/l2_det.json"
+                _tmp = _p + ".tmp"
+                with open(_tmp, "w", encoding="utf-8") as _f:
+                    json.dump({"t": time.time(), "t_str": time.strftime("%H:%M:%S"),
+                               "src": "L2:detect.yolo", "img": self.pipe_img_url, "n": 0,
+                               "det": {}, "ms": None,
+                               "err": "帧取不到 (该路相机/渲染源不在位): %s" % self.pipe_img_url},
+                              _f, ensure_ascii=False)
+                os.replace(_tmp, _p)
+            except Exception:                                                # noqa: BLE001
+                pass
             return {}
         obs39 = np.asarray(state, float).ravel()[:39]
         t0 = time.perf_counter()

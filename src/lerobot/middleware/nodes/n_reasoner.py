@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """🔍 异常推理器 (LLM)  ·  节点 ssreason
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ss_mem_share
     in  in2   ← ssobs
     in  in4   ← n_vlm_llm

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """🧩 开放词汇分割 (SAM3 分割anything)  ·  节点 ss_seg
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ssdata
     in  in2   ← ss_l5
     in  in3   ← ssyolo

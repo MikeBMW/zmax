@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """🧿 DeepSeek-V4-Flash · 场景理解 (L5 大模型主路)  ·  节点 n_dsvl · L5
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ssdata
     in  in2   ← ssllm_in
     in  in3   ← n_web_agent
     in  in4   ← ss_seg
-    out out1  → n_vlm_llm, n_board_frame, n_hil
+    out out1  → n_board_frame, n_vlm_llm, n_hil
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)
@@ -31,7 +31,7 @@ PORT_LABELS = {}
 IMPL_KEY = 'n_dsvl'
 SOURCE = 'src/lerobot/policies/left_right/state_space/scene_vlm.py'
 SOURCE_SYMBOL = 'class SceneVLM (provider=deepseek)'
-PARAMS = {'state_space': True, 'vlm_llm': True, 'model': 'deepseek-flash (DeepSeek-V4.1-Flash, Vision ✓, 本机 key 已配)', 'desc': '[L5 大模型主路] DeepSeek-V4-Flash (API · 支持 Vision): 场景判读/工序纠错 → 结构化落 data/scene/scene_state.json, 喂 L3 规划/技能编排与 L4 意图解码; 本地兜底 = smolvlm2-500m (HuggingFaceTB/SmolVLM2-500M, 权重在 ~/.cache/huggingface, GPU 单帧编码); 双路优先级 SS_VLM_PROVIDER > DeepSeek(flash) > 本地 worker', 'source': 'src/lerobot/policies/left_right/state_space/scene_vlm.py', 'source_symbol': 'class SceneVLM (provider=deepseek)', 'provider': 'deepseek-v4-flash', 'fallback': 'smolvlm2-500m (本地)'}
+PARAMS = {'state_space': True, 'vlm_llm': True, 'model': 'deepseek-flash (DeepSeek-V4.1-Flash, Vision ✓, 本机 key 已配)', 'desc': '[L5 大模型主路] DeepSeek-V4-Flash (API · 支持 Vision): 场景判读/工序纠错 → 结构化落 data/scene/scene_state.json, 喂 L3 规划/技能编排与 L4 意图解码; 本地保障 = smolvlm2-500m (HuggingFaceTB/SmolVLM2-500M, 权重在 ~/.cache/huggingface, GPU 单帧编码); 双路优先级 SS_VLM_PROVIDER > DeepSeek(flash) > 本地 worker', 'source': 'src/lerobot/policies/left_right/state_space/scene_vlm.py', 'source_symbol': 'class SceneVLM (provider=deepseek)', 'provider': 'deepseek-v4-flash', 'fallback': 'smolvlm2-500m (本地)'}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

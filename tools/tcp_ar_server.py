@@ -49,6 +49,7 @@ import laptop_cam_solve as LS                                                   
 import traj_display as TD
 import fence_store as FS     # 🧱 3D 围栏(长方体/直线) 唯一依据 + 碰撞判定
 import opt_box3d as OB3      # 🔍 光模块 3D 框 (2D 检测 → 相机系立方体 → 基座系 + 像素投影)                       # noqa: E402                                                        # noqa: E402
+import det_src as DS         # 🔀 检测输入帧源唯一真源 (真机帧 ⇄ AR 渲染帧) + 权重配对
 
 try:                                      # 🔍 工控机 AOI 客户端 (10082 金手指 / 10083 表面)
     import aoi_link as AOI
@@ -1479,6 +1480,15 @@ class H(BaseHTTPRequestHandler):
                 self._json({"ok": True, "stats": _ss_stats()})
             elif p == "/api/l5/understand":     # 🥽 L5 层 deepseek VL 理解当前底图(抓帧→子进程桥→引擎 L5)
                 self._json(l5_understand(qs.get("c") or None, hint=(qs.get("hint") or "")))
+            elif p == "/api/det_src":           # 🔀 检测输入帧源实况 (真机帧 / AR 渲染帧)
+                if qs.get("set"):
+                    _set = _det_src_set(qs.get("set"))
+                    _st = _det_src_payload()
+                    _st["set_ok"] = _set.get("ok")
+                    _st["set_err"] = _set.get("err")
+                    self._json(_st)
+                else:
+                    self._json(_det_src_payload())
             elif p == "/api/tcp":
                 self._json(read_tcp())
             elif p == "/api/robot_state":        # 🤖 机器人状态机 (是否在插拔 ⇒ 页面顶部一眼看到)
@@ -3102,6 +3112,9 @@ def _mod3_write(r, frame_b=None):
                 prev = json.load(f)
         except Exception:                                                   # noqa: BLE001
             prev = None
+        # 🔴 帧源刚切过 ⇒ 绝对不许沿用上一源的框 (否则页面显示"A 源的框 + B 源的报错", 看着A执行B)
+        if prev and str(prev.get("det_src") or "") != str(r.get("det_src") or ""):
+            prev = None
         if not (prev and prev.get("ok")):
             r["ts"] = time.time()
             r["t"] = time.strftime("%H:%M:%S")
@@ -3128,18 +3141,124 @@ def _mod3_write(r, frame_b=None):
     os.replace(_tmp, MOD3_STATE)
 
 
+# ── 🔀 输入帧源开关 (2026-10-29 老倪: 550C 看真机 ⇒ 真机帧; 550A 在仿真 AR 上跑 ⇒ 渲染后的帧给 YOLO) ──
+#   真源: 环境变量 ZMAX_MOD3_SRC > zmax_data/runtime/det_src.json#src > auto
+#   每拍重读 (常驻进程只在启动时解一次源 = 假跟随, 见 integration-level-audit 形态 #14)
+#   🔴 帧源与权重必须成对: real → models/yolo_peg_live.pt · render → models/yolo_ar_peg.pt
+MOD3_SRC_FILE = DS.SRC_FILE
+MOD3_RENDER_URL = DS.MAP["render"]["frame_url"]
+
+
+def _det_src_want():
+    """配置里要什么: auto|real|render —— 口径统一在 tools/det_src.py (两条链共用一份)。"""
+    return DS.want()
+
+
+def _render_frame_get(timeout=6.0):
+    """取 AR 工位场景渲染帧 (8802)。取不到就回空 —— 不拿旧帧冒充。"""
+    try:
+        import urllib.request
+        with urllib.request.urlopen(DS.MAP["render"]["frame_url"], timeout=timeout) as r:
+            return r.read()
+    except Exception:                                                       # noqa: BLE001
+        return b""
+
+
+def _det_src_set(src):
+    """写帧源 (真源文件, 检测线程每拍重读 ⇒ 不用重启服务)。"""
+    return DS.set_src(src)
+
+
+def _det_src_payload():
+    """当前帧源实况: 想要哪个 / 实际跑哪个 / 权重 / 帧源 / 帧龄 (给人核对, 不猜)。"""
+    try:
+        with open(MOD3_STATE, encoding="utf-8") as f:
+            st = json.load(f)
+    except Exception:                                                       # noqa: BLE001
+        st = {}
+    _age = None
+    try:
+        _age = round(time.time() - os.path.getmtime(MOD3_STATE), 2)
+    except Exception:                                                       # noqa: BLE001
+        pass
+    _rs = {}
+    try:
+        import urllib.request
+        with urllib.request.urlopen(MOD3_RENDER_URL.rsplit("/", 1)[0] + "/status.json",
+                                    timeout=3) as r:
+            _rs = json.loads(r.read().decode("utf-8", "ignore") or "{}")
+    except Exception as e:                                                  # noqa: BLE001
+        _rs = {"ok": False, "err": "%s: %s" % (type(e).__name__, e)}
+    return {"ok": True, "want": _det_src_want(),
+            "running": st.get("det_src"), "frame_src": st.get("frame_src"),
+            "weights": st.get("weights"), "n": st.get("n"), "ok_det": st.get("ok"),
+            "stale": st.get("stale"), "err": st.get("err"), "result_age_s": _age,
+            "src_file": MOD3_SRC_FILE, "render_8802": _rs,
+            "policy": "real→yolo_peg_live.pt(真机D405域) · render→yolo_ar_peg.pt(AR渲染域) · "
+                      "auto=真机帧可取且不陈旧则 real, 否则 render"}
+
+
 def _mod3_worker(period=0.15):
+    """每拍: 解帧源 → 抓帧 → YOLO(与源同域的权重) → 结果写 /dev/shm/mod3_latest.json。
+
+    real   = 臂相机原始 JPEG (= 页面看到的那一路, 渲染不在其中) → OB3.build 出 2D+3D
+    render = 8802 的 AR 工位渲染帧 → AR 渲染域权重出 2D 框 (渲染相机无真机标定 ⇒ 不硬算 3D)
+    auto   = 真机帧可取且不陈旧就用 real, 否则回落 render
+    """
     while True:
+        _want = _det_src_want()
         try:
-            _b, _src = frame_bytes("arm")
-            _img = cv2.imdecode(np.frombuffer(_b, np.uint8), cv2.IMREAD_COLOR)
-            if _img is not None:
-                _r = OB3.build(_img, read_tcp())
-                _r.update({"frame_src": _src, "frame_bytes": len(_b), "edges": OB3.EDGES,
-                           "ts": time.time(), "t": time.strftime("%H:%M:%S")})
-                _mod3_write(_r, _b)
-        except Exception:                                                   # noqa: BLE001
-            pass
+            _b, _lab = frame_bytes("arm")
+            _real_ok = bool(_b) and _b[:2] == b"\xff\xd8" and ("上一张" not in str(_lab))
+            _src = _want
+            if _src == "auto":
+                _src = "real" if _real_ok else "render"
+            if _src == "render":
+                _rb = _render_frame_get()
+                _img = cv2.imdecode(np.frombuffer(_rb, np.uint8), cv2.IMREAD_COLOR) if _rb else None
+                if _img is not None:
+                    _dets = OB3.detect_boxes(_img, weights=OB3.YOLO_PT_AR)
+                    _best = max(_dets, key=lambda d: float(d.get("conf") or 0)) if _dets else None
+                    _r = {"ok": bool(_dets), "dets": _dets, "n": len(_dets),
+                          "boxes": [d.get("xyxy") for d in _dets],
+                          "box2d": (_best or {}).get("xyxy"),   # 页面 drawOv 认这个字段画框
+                          "conf": (_best or {}).get("conf"),
+                          "mode": "render",                     # 页面据此标「渲染帧·2D」
+                          "det_src": "render:8802",
+                          "frame_src": "render:8802 AR工位渲染帧(960x720)",
+                          "weights": os.path.basename(OB3.YOLO_PT_AR),
+                          "shape3d": "渲染帧无真机标定 ⇒ 只出 2D 框, 不做 2D→3D"}
+                    if not _dets:
+                        _r["err"] = "本帧未检出光模块 (AR 渲染域权重)"
+                    _r.update({"ts": time.time(), "t": time.strftime("%H:%M:%S"),
+                               "frame_bytes": len(_rb), "edges": getattr(OB3, "EDGES", None)})
+                    _mod3_write(_r, _rb)
+                else:
+                    # 渲染源没帧也**不许**拿真机帧顶替 (那就不是"渲染后给 YOLO"了)
+                    _mod3_write({"ok": False, "det_src": "render:8802", "frame_src": "render:8802",
+                                 "weights": os.path.basename(OB3.YOLO_PT_AR),
+                                 "err": "AR 渲染帧取不到 (8802 无帧): 帧源已切 render, 不拿真机帧顶替"
+                                        if _rb == b"" else "AR 渲染帧解不开"},
+                                None)
+            else:
+                _img = cv2.imdecode(np.frombuffer(_b, np.uint8), cv2.IMREAD_COLOR) if _b else None
+                if _img is None:
+                    _mod3_write({"ok": False, "det_src": "real:arm", "frame_src": _lab,
+                                 "weights": os.path.basename(OB3.YOLO_PT),
+                                 "err": "真机帧取不到 (相机不在位/未出图): 帧源已切 real 就等它, "
+                                        "要仿真请设 ZMAX_MOD3_SRC=render"}, None)
+                else:
+                    _r = OB3.build(_img, read_tcp())
+                    _r.update({"frame_src": _lab, "frame_bytes": len(_b), "edges": OB3.EDGES,
+                               "det_src": "real:arm", "weights": os.path.basename(OB3.YOLO_PT),
+                               "ts": time.time(), "t": time.strftime("%H:%M:%S")})
+                    _mod3_write(_r, _b)
+        except Exception as _e:                                             # noqa: BLE001
+            try:
+                _mod3_write({"ok": False, "err": "检测线程异常: %s: %s" % (type(_e).__name__, _e),
+                             "det_src": "?"}, None)
+            except Exception:                                               # noqa: BLE001
+                pass
         time.sleep(period)
 
 

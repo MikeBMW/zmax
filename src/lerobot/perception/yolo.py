@@ -109,24 +109,53 @@ class YoloPerception:
               f"({len(self.names)} 类)")
 
     # ── B1 目标识别定位 (2D 检测) ──
-    def detect(self, img, conf=0.4, classes=None):
+    def detect(self, img, conf=0.4, classes=None, already_bgr=False):
         """图像 → 检测结果 {cls: {box, conf, cx, cy}}
-        img: RGB uint8 (H,W,3) 或 0~1 float"""
+
+        img: **RGB** uint8 (H,W,3) 或 0~1 float —— 默认按 RGB 处理, 内部转 BGR (ultralytics 口径)。
+        already_bgr=True: 调用方已经给了 cv2 读出来的 BGR (imdecode/imread), 不要再转一次。
+        ⚠ 2026-10-29 实测: AR 渲染帧上同一帧两种口径差很大 —— 正确口径 conf 0.895 框 87x46;
+          多转一次 (BGR 当 RGB) 只剩 0.3 左右且框小到 <600px ⇒ 位置全部错。
+        """
         if img is None or getattr(img, "size", 0) == 0:
             return {}
         if img.dtype != np.uint8:
             img = (img * 255).astype(np.uint8)
         # 🐛 ultralytics 内部用 BGR (记忆坑: RGB 检测失败)
         import cv2
-        img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        img_bgr = img if already_bgr else cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
         res = self.model.predict(img_bgr, conf=conf, classes=classes,
                                  verbose=False)[0]
         out = {}
         for b in res.boxes:
             cls = res.names[int(b.cls)]
             x1, y1, x2, y2 = [float(v) for v in b.xyxy[0]]
-            out[cls] = {"box": [x1, y1, x2, y2], "conf": float(b.conf[0]),
-                        "cx": (x1 + x2) / 2, "cy": (y1 + y2) / 2}
+            cand = {"box": [x1, y1, x2, y2], "conf": float(b.conf[0]),
+                    "cx": (x1 + x2) / 2, "cy": (y1 + y2) / 2}
+            # 🔴 同类多框原来被"最后一个覆盖" ⇒ 低分小框把高分大框顶掉
+            #    (实测 AR 帧: 模块 0.898 被 0.055 的碎框覆盖, 下游拿到的框只有 70x44 且错位)
+            if cls not in out or cand["conf"] > out[cls]["conf"]:
+                out[cls] = cand
+        return out
+
+    def detect_all(self, img, conf=0.4, classes=None, already_bgr=False):
+        """同一帧的**全部**检测框 (不按类别折叠) → [{cls, conf, box, cx, cy}]。
+
+        多目标/同类多实例场景必须用这个; `detect()` 每类只留最高分那一个。
+        """
+        if img is None or getattr(img, "size", 0) == 0:
+            return []
+        if img.dtype != np.uint8:
+            img = (img * 255).astype(np.uint8)
+        import cv2
+        img_bgr = img if already_bgr else cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        res = self.model.predict(img_bgr, conf=conf, classes=classes, verbose=False)[0]
+        out = []
+        for b in res.boxes:
+            x1, y1, x2, y2 = [float(v) for v in b.xyxy[0]]
+            out.append({"cls": res.names[int(b.cls)], "conf": float(b.conf[0]),
+                        "box": [x1, y1, x2, y2], "cx": (x1 + x2) / 2, "cy": (y1 + y2) / 2})
+        out.sort(key=lambda d: -d["conf"])
         return out
 
     # ── B2 空间位姿感知 (2D → 3D 反投影) ──

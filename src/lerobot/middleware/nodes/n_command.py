@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """📝 任务指令 · MES/自然语言  ·  节点 ssllm_in
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ssdata
     in  in3   ← ssz700
     out out1  → n_dsvl, ssllm

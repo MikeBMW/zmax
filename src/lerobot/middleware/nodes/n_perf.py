@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """🧮 性能流形 · 耦合代价 (V_p/η)  ·  节点 ssmani_p
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
-    in  in1   ← ssvlm, ss2d3d, ssmani_exp
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+    in  in1   ← ss2d3d, ssmani_exp, ssvlm
     in  in2   ← ss_mani_eng, ss_lora_l4
     out out1  → ssvideo, ssdec
 

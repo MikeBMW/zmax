@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """🛠 L3 技能序列编排  ·  节点 ssskill · L3
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ssdata
     in  in2   ← ssz700
     in  in3   ← ssreason
     in  in4   ← n_vlm_llm
-    out out1  → n_skill_dict, n_l2_muscle, sssk2, sssk3, sssk4, sssk5, sssk6, sssk7, sssk8
+    out out1  → n_l2_muscle, sssk2, sssk3, sssk4, sssk5, sssk6, sssk7, sssk8, n_skill_dict
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)

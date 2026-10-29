@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """🌐 Web 智能体桥 · 远程提示词  ·  节点 n_web_agent
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← n_eng_mem
     out out1  → n_dsvl
 

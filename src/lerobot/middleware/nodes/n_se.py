@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """🌍 万有引力 · SE(3) 几何阻抗 + H=K+U (力场仲裁)  ·  节点 ss_grav_h
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ssvlm
     in  in2   ← ssintact
     in  in3   ← ssdec

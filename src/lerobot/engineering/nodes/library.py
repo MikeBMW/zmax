@@ -3175,6 +3175,15 @@ def node_moveit(ctx):
     from .plan_impl import run as _plan_run
     return _plan_run(ctx)
 
+def node_geoplan(ctx):
+    """🧭 测地线块规划 — 薄壳: 真实现 nodes/geo_plan_impl.py::run
+
+    obs43 → ManifoldEngine.project → 目标点 → compute_geodesic(H) → readout 解码 → 块[H,4]。
+    只出块, 不下发; 引擎/权重/目标缺失一律 ok=False 如实上报 (不出空块冒充)。
+    """
+    from .geo_plan_impl import run as _geo_run
+    return _geo_run(ctx)
+
 def node_exec(ctx):
     """⚙️ 动作执行器 (l2_daemon) — 真执行函数: 读执行器真值状态与最近事件 (本节点**不下发**任何动作)。 —— 薄壳: 真实现已迁到 nodes/exec_dispatch_impl.py::run (2026-10-28 执行链外迁)"""
     from .exec_dispatch_impl import run as _run
@@ -3480,7 +3489,11 @@ _reg("n_web_agent", ["Web 智能体桥", "远程提示词", "web agent", "web_ag
 _ARM_DIR = os.path.join(_paths.REPO_ROOT, "src", "lerobot", "arm")
 
 _EXTERNAL_LOC["n_moveit"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "plan_impl.py"),
-                             132, "def run")     # 🧭 2026-10-28: 规划正文迁出 registry 大文件, 落点 = plan_impl.py::run
+                             132, "def run")
+# 🧭 2026-10-29 老倪定序: 「状态空间 → 运动规划 ‖ 前馈MLP → 加权 → 调制 → 安全 → 技能派发 → 执行器」
+#   这里的「运动规划」= 状态空间**测地线块规划** (与前馈并列、在加权之前), 与 n_moveit(MoveIt, 技能之后) 是两件事
+_EXTERNAL_LOC["n_geoplan"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "geo_plan_impl.py"),
+                             123, "def run")   # 2026-10-29: 加了 _quat_from_rot ⇒ def run 从 93 移到 123 (改文件后必须回读行号)     # 🧭 2026-10-28: 规划正文迁出 registry 大文件, 落点 = plan_impl.py::run
 _EXTERNAL_LOC["ss_limit"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "safety_limit_impl.py"),
                              16, "def run")     # 2026-10-28 执行链外迁
 _EXTERNAL_LOC["ss_grav_h"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "grav_impedance_impl.py"),
@@ -3498,6 +3511,8 @@ _EXTERNAL_LOC["yolo_tactile"] = (os.path.join(os.path.dirname(os.path.abspath(__
 _EXTERNAL_LOC["n_hil"] = (os.path.join(_SS_DIR, "hil_bridge.py"), 157, "build_snapshot")  # 行号按真源实测(2026-09-29)
 
 _reg("n_moveit", ["MoveIt", "运动规划", "moveit"], "🧭 运动规划 (plan) — 原子技能意图 + 安全限制 → 段表(PlanSegments); rule 确定性分段(抬升→横移→下落), 起点=真机TCP真值, 只规划不下发 (源码 nodes/plan_impl.py)", node_moveit)
+_reg("n_geoplan", ["测地线规划引导", "测地线块规划", "GeodesicGuidance", "geodesic", "块规划", "3D引导"],
+     "🧭 测地线规划引导 — obs43 → 潜空间测地线(H 步) → ① out1 = 3D 引导位姿 (视觉3D 孔口/模块 + hover 40mm, pos_mm/quat/进给轴/余弦校验) 给运动规划 ② out2 = 块[H,4] 给加权; 只规划不下发 (源码 nodes/geo_plan_impl.py)", node_geoplan)
 _reg("n_exec", ["执行器", "l2_daemon", "下发", "dispatch", "闸"], "⚙️ 动作执行器 (L2 收口 · 授权/闸/到位) — 段表→实时闸→下发→等真位→台账; 唯一能碰执行器的一层 (源码 tools/l2_daemon.py); 节点实现 nodes/exec_dispatch_impl.py", node_exec)
 
 _reg("n_hil", ["HIL", "人机在环", "human in the loop", "hil", "在环"],

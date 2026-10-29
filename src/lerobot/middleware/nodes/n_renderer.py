@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """🧪 光模块插拔 · 环境渲染图像源 (Z-MAX 引擎逐帧真图)  ·  节点 swds
 
-工程连线 (真源 flows/state_space_obs.json —— 端口就是从这些线推出来的):
-    in  in2   ← swworld, ssdata
+工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
+    in  in2   ← ssdata, swworld
     in  in3   ← ssyolo
     out out1  → swintact
 
