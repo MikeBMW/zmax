@@ -90,12 +90,21 @@ def run(ctx):
                     "why": g["why"], "clipped": g["clipped"], "pose_mm": g["pose_mm"]}
         if "边界" in name:
             u = _SS_STATE.get("u", np.zeros(4))
+            _u_in = np.asarray(u, dtype=float).ravel()[:4]
             u_sat = _ss_import("safety").saturate(np.asarray(u, dtype=float), limit=0.6)
             _SS_STATE["u_sat"] = np.asarray(u_sat, dtype=float)
+            _clip_n = int(np.sum(np.abs(np.asarray(u_sat, dtype=float).ravel()[:4] - _u_in) > 1e-9))
             if log:
-                log(f"🛡 安全执行边界 (真实): saturate(u={np.round(u,3)}, limit=0.6) → "
-                    f"u_sat={np.round(u_sat,3)} (safety.py)")
-            return True
+                log(f"🛡 安全执行边界 (真实): saturate(u={np.round(_u_in,3)}, limit=0.6) → "
+                    f"u_sat={np.round(u_sat,3)} (safety.py) · 被裁 {_clip_n} 维 · "
+                    f"u_src={_SS_STATE.get('u_src','(无)')}")
+            # 🔴 2026-10-29 接口对齐: 原来 return True ⇒ 壳判「非 dict → 直通」⇒ 下游拿不到业务字段
+            return {"kind": "safety_limit",
+                    "u_in": [round(float(x), 6) for x in _u_in],
+                    "u_sat": [round(float(x), 6) for x in np.asarray(u_sat, dtype=float).ravel()[:4]],
+                    "limit": 0.6, "clipped_dims": _clip_n,
+                    "u_src": _SS_STATE.get("u_src"), "u_degraded": _SS_STATE.get("u_degraded"),
+                    "src": "safety.py saturate (纯数值, 不下发真机)"}
         cog = _ss_import("cognition")
         u_ff = _SS_STATE.get("u_ff", np.zeros(4))
         cp = _SS_STATE.get("contact_p", 0.1)

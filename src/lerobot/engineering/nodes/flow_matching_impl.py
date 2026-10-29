@@ -186,6 +186,20 @@ def run(ctx):
             "domain_gap": "训练域=metaworld 渲染 128×128; 推理域=AR 真机相机 —— 域不同, 不按训练成绩解读",
             "t": float(ck.get("ts") or time.time()),
         }
+        # 🔴 2026-10-29 300UPH 链路补口 —— **action 断链的真因**:
+        #   L3 名义动作此前只写 out1.nominal_L3 落盘, 从不写 _SS_STATE["u"]。
+        #   而 sslimit 读的是 _SS_STATE["u"] ⇒ 永远 zeros ⇒ u_sat=zeros ⇒ ssact u_cmd=zeros。
+        #   也就是说: 模型算得再对, 臂也拿不到 —— 全链只有 ssdec 有真值, 执行侧恒 0。
+        try:
+            from .library import _SS_STATE as _SST
+            import numpy as _np
+            _SST["u"] = _np.asarray(nominal, dtype=float).ravel()[:4]
+            _SST["u_src"] = str(nominal_src)
+            _SST["u_degraded"] = bool(degraded)
+            _SST["u_ts"] = float(time.time())
+        except Exception as _e:                                              # noqa: BLE001
+            if log:
+                log(f"⚠️ L3 写 _SS_STATE[u] 失败: {type(_e).__name__}: {_e}")
         out2 = {
             "layer": "L3",
             "vec": delta if delta is not None else nominal[:3],
