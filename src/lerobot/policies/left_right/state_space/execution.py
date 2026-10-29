@@ -11,7 +11,7 @@
 import numpy as np
 
 
-_SEEN_BRK = set()
+_LAST_STOP = {}        # tag → 上次真停的 monotonic 时间 (按时间间隔去重, 不是"只停一次")
 _SAID_BRK = set()
 
 
@@ -59,7 +59,10 @@ def _brk(tag=""):
         else:
             _say("ZMAX_DEBUG_BREAK=%r 不含本 tag → 不停" % _spec)
         return
-    if _key in _SEEN_BRK:
+    # 未设 env: 调试会话里按时间间隔停 (每轮运行都能停一次, 又不会刷死界面)
+    import time as _tm                                                   # noqa: PLC0415
+    _now = _tm.monotonic()
+    if _now - _LAST_STOP.get(_key, -1e9) < 1.5:
         return
     try:
         import debugpy as _dp
@@ -69,8 +72,8 @@ def _brk(tag=""):
     if not _conn:
         _say("到达, 但调试器未连接 → 不停 (env 也没设)")
         return
-    _SEEN_BRK.add(_key)
-    _say("调试器已连接 + 未设 env → 首次停")
+    _LAST_STOP[_key] = _now
+    _say("调试器已连接 + 未设 env → 停 (之后每 1.5s 最多一次)")
     breakpoint()
 
 

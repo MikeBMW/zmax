@@ -87,6 +87,8 @@ def in_caller_thread():
 
 _SEEN = set()          # 没设 env 时的"首次停"去重 (否则 10Hz 每帧都停, 界面直接死)
 _ANNOUNCED = set()     # 每个 tag 只播报一次"到达/未停"，避免刷屏
+_LAST_STOP = {}        # tag → 上次真停的 monotonic 时间 (按时间间隔去重, 不是"只停一次")
+_GAP = float(os.environ.get("ZMAX_BREAK_GAP", "1.5"))   # 同一 tag 两次停的最小间隔(秒)
 
 
 def brk(tag=""):
@@ -138,8 +140,13 @@ def brk(tag=""):
         else:
             _say("ZMAX_DEBUG_BREAK=%r 不含本 tag → 不停" % spec)
         return
-    # 未设 env: 调试会话里每个 tag 自动停一次 —— 让"想调试"这件事不依赖 launch.json 是否生效
-    if _key in _SEEN:
+    # 未设 env: 调试会话里按时间间隔停 —— 让"想调试"这件事不依赖 launch.json 是否生效。
+    # 🔴 2026-10-29 老倪「启动能进, 运行之后不进」: 原来这里是 _SEEN 去重 ⇒ 每个 tag 一辈子只停
+    #   一次, 启动时停完就再也不停了。改成时间窗: 距上次真停 ≥ _GAP 秒就再停一次。
+    #   这样"每一轮运行都能停一次", 又不会因为引擎一轮调 369 次而把界面刷死。
+    import time as _tm                                                   # noqa: PLC0415
+    _now = _tm.monotonic()
+    if _now - _LAST_STOP.get(_key, -1e9) < _GAP:
         return
     try:
         import debugpy                                                  # noqa: PLC0415
@@ -149,6 +156,13 @@ def brk(tag=""):
     if not _conn:
         _say("到达, 但调试器未连接 → 不停 (env 也没设)")
         return
-    _SEEN.add(_key)
-    _say("调试器已连接 + 未设 env → 首次停")
+    _LAST_STOP[_key] = _now
+    if _key not in _ANNOUNCED:
+        _ANNOUNCED.add(_key)
+        try:
+            print("🔴 [brk:%s] 调试器已连接 + 未设 env → 停 "
+                  "(之后每 %.1fs 最多停一次; 想每次都停设 ZMAX_DEBUG_BREAK=%s)"
+                  % (_key, _GAP, _key), flush=True)
+        except Exception:                                              # noqa: BLE001
+            pass
     breakpoint()
