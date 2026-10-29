@@ -5685,8 +5685,14 @@ def node_ss_mani_eng(ctx):
         import importlib.util as _ilu
         import numpy as np
         path = os.path.join(_MANIFOLD_DIR, "manifold_engine.py")
-        spec = _ilu.spec_from_file_location("lerobot.manifold.manifold_engine", path)
+        _mn = "lerobot.manifold.manifold_engine"
+        spec = _ilu.spec_from_file_location(_mn, path)
         m = _ilu.module_from_spec(spec)
+        # 🔴 2026-10-29 老倪「流形引擎断点在哪里 / 这里进不去」: 少了这一行, pydevd 按模块名在
+        #   sys.modules 里找不到这个文件 ⇒ manifold_engine.py 里**所有断点都绑不上**
+        #   (函数照跑, VSCode 不停, 也不报错)。旁边的 prime_structure 一直有注册, 这里漏了。
+        import sys as _sys_mani
+        _sys_mani.modules[_mn] = m
         spec.loader.exec_module(m)
         mod = ctx.get("module")
         tr = getattr(mod, "_ss_tr", None) if mod is not None else None
@@ -6079,8 +6085,14 @@ def node_ss_calib_mani(ctx):
 
         # ② 流形引擎 (真件) + 权威规格
         path = os.path.join(_MANIFOLD_DIR, "manifold_engine.py")
-        spec = _ilu.spec_from_file_location("lerobot.manifold.manifold_engine", path)
+        _mn = "lerobot.manifold.manifold_engine"
+        spec = _ilu.spec_from_file_location(_mn, path)
         m = _ilu.module_from_spec(spec)
+        # 🔴 2026-10-29 老倪「流形引擎断点在哪里 / 这里进不去」: 少了这一行, pydevd 按模块名在
+        #   sys.modules 里找不到这个文件 ⇒ manifold_engine.py 里**所有断点都绑不上**
+        #   (函数照跑, VSCode 不停, 也不报错)。旁边的 prime_structure 一直有注册, 这里漏了。
+        import sys as _sys_mani
+        _sys_mani.modules[_mn] = m
         spec.loader.exec_module(m)
         msp = m.manifold_M_spec()
         dt = float(g.get("dt") or 0.01)      # 控制周期: 配置中心有就按它, 没有就 0.01 (如实标注)

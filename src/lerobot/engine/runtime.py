@@ -207,6 +207,7 @@ def _load_simreal_manifold():
                 _m = importlib.util.spec_from_file_location("_mani_real", p)
                 if _m is not None:
                     _mod = importlib.util.module_from_spec(_m)
+                    sys.modules["_mani_real"] = _mod   # 🔴 pydevd 按模块名解析文件, 不注册断点绑不上
                     _m.loader.exec_module(_mod)
                     return _mod
     except Exception:
