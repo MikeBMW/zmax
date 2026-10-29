@@ -144,29 +144,12 @@ def brk(tag=""):
         else:
             _say("ZMAX_DEBUG_BREAK=%r 不含本 tag → 不停" % spec)
         return
-    # 未设 env: 调试会话里按时间间隔停 —— 让"想调试"这件事不依赖 launch.json 是否生效。
-    # 🔴 2026-10-29 老倪「启动能进, 运行之后不进」: 原来这里是 _SEEN 去重 ⇒ 每个 tag 一辈子只停
-    #   一次, 启动时停完就再也不停了。改成时间窗: 距上次真停 ≥ _GAP 秒就再停一次。
-    #   这样"每一轮运行都能停一次", 又不会因为引擎一轮调 369 次而把界面刷死。
-    import time as _tm                                                   # noqa: PLC0415
-    _now = _tm.monotonic()
-    if _now - _LAST_STOP.get(_key, -1e9) < _GAP:
-        return
-    try:
-        import debugpy                                                  # noqa: PLC0415
-        _conn = bool(debugpy.is_client_connected())
-    except Exception:                                                   # noqa: BLE001
-        _conn = False
-    if not _conn:
-        _say("到达, 但调试器未连接 → 不停 (env 也没设)")
-        return
-    _LAST_STOP[_key] = _now
-    if _key not in _ANNOUNCED:
-        _ANNOUNCED.add(_key)
-        try:
-            print("🔴 [brk:%s] 调试器已连接 + 未设 env → 停 "
-                  "(之后每 %.1fs 最多停一次; 想每次都停设 ZMAX_DEBUG_BREAK=%s)"
-                  % (_key, _GAP, _key), flush=True)
-        except Exception:                                              # noqa: BLE001
-            pass
-    breakpoint()
+    # 未设 env: **只记录不停** —— 2026-10-29 老倪「又卡死了, 断点用鼠标点不到了」:
+    #   GUI 主线程一 breakpoint() 整界面就冻结, 鼠标点不动, 连打新断点都做不了。
+    #   所以默认值必须是"不打扰": 想停只有两条显式路 ——
+    #     ① touch zmax_data/ss_live/BREAK (上面已处理, 无条件停)
+    #     ② ZMAX_DEBUG_BREAK=actuator (每次停) / =1 (全停)
+    #   UI 断点已能正常绑定 (library/_ss_import 与 engine/_load 都改回 spec + sys.modules),
+    #   日常调试点红点就够, 不需要这里替他自动停。
+    _say("到达 (默认不停; 想停设 ZMAX_DEBUG_BREAK=%s 或 touch zmax_data/ss_live/BREAK)" % _key)
+    return

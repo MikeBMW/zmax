@@ -73,22 +73,10 @@ def _brk(tag=""):
         else:
             _say("ZMAX_DEBUG_BREAK=%r 不含本 tag → 不停" % _spec)
         return
-    # 未设 env: 调试会话里按时间间隔停 (每轮运行都能停一次, 又不会刷死界面)
-    import time as _tm                                                   # noqa: PLC0415
-    _now = _tm.monotonic()
-    if _now - _LAST_STOP.get(_key, -1e9) < 1.5:
-        return
-    try:
-        import debugpy as _dp
-        _conn = bool(_dp.is_client_connected())
-    except Exception:                                                      # noqa: BLE001
-        _conn = False
-    if not _conn:
-        _say("到达, 但调试器未连接 → 不停 (env 也没设)")
-        return
-    _LAST_STOP[_key] = _now
-    _say("调试器已连接 + 未设 env → 停 (之后每 1.5s 最多一次)")
-    breakpoint()
+    # 未设 env: **只记录不停** (GUI 主线程一 breakpoint() 就整界面冻结, 鼠标点不动)。
+    # 想停: touch zmax_data/ss_live/BREAK 或 ZMAX_DEBUG_BREAK=actuator / 1
+    _say("到达 (默认不停; 想停设 ZMAX_DEBUG_BREAK=%s 或 touch zmax_data/ss_live/BREAK)" % _key)
+    return
 
 
 class RobotExecutor:
