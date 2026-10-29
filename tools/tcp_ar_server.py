@@ -1028,6 +1028,33 @@ def _ar_play_payload() -> dict:
         return {}
 
 
+def _ar_exec_payload() -> dict:
+    """🤖 机器人执行器 → AR 渲染 的执行指令 (plan 段经执行器节点转发)
+
+    唯一依据: zmax_data/ss_live/ar_exec.json (ssact 节点在 AR 场景下由 ssplan.out1 段写出)
+    口径: 页面优先读这一份(证明"plan → 执行器 → 页面"这条链真的在跑); 过期则回落 /api/ar/cmd。
+    """
+    import json as _j
+    import os as _o
+    import time as _t
+    f = _o.path.expanduser("~/zmax/zmax_data/ss_live/ar_exec.json")
+    try:
+        age = _t.time() - _o.path.getmtime(f)
+        with open(f, encoding="utf-8") as fh:
+            d = _j.load(fh)
+        out = {"ok": True, "age_s": round(age, 2), "fresh": age <= AR_CMD_FRESH_S,
+               "src": d.get("src"), "from": d.get("from"), "mode": d.get("mode"),
+               "seq": d.get("seq"), "mod": d.get("mod"), "kind": d.get("kind"),
+               "label": d.get("label"), "a": d.get("a"), "b": d.get("b"), "u": d.get("u"),
+               "hole": d.get("hole"), "t_str": d.get("t_str"), "t_left": d.get("t_left"),
+               "elapsed_s": d.get("elapsed_s"), "task_id": d.get("task_id"),
+               "mt_id": d.get("mt_id"), "mt_name": d.get("mt_name"),
+               "mt_i": d.get("mt_i"), "mt_n": d.get("mt_n"), "batch": d.get("batch")}
+        return out
+    except Exception as e:                                           # noqa: BLE001
+        return {"ok": False, "fresh": False, "err": "%s: %s" % (type(e).__name__, e)}
+
+
 def _ar_cmd_payload() -> dict:
     """🥽 状态空间 → AR 场景 的机器人驱动指令 (只用于**渲染虚拟臂**, 永不产生真机下发)
 
@@ -1438,6 +1465,8 @@ class H(BaseHTTPRequestHandler):
                 self._json(_ar_mode_payload())
             elif p == "/api/ar/cmd":            # 🥽 状态空间 → AR 虚拟臂驱动指令(只渲染, 不下发真机)
                 self._json(_ar_cmd_payload())
+            elif p == "/api/ar/exec":           # 🤖 机器人执行器(AR场景) → AR 渲染指令: plan 段经执行器节点转发
+                self._json(_ar_exec_payload())
             elif p == "/api/ar/meta":            # 🧩 AR 元任务组合(配置中心 TASK-07-AOI) + 当前执行到哪
                 self._json(_ar_meta_payload())
             elif p == "/api/ar/vision":          # 🎯 产品愿景 (最后一厘米) + AR 计数口径

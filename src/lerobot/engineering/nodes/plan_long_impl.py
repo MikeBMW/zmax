@@ -236,6 +236,9 @@ def run(ctx=None):
 
     o1 = {"task_id": _S["task_id"], "seq": seg.get("seq"), "kind": seg.get("kind"),
           "label": seg.get("label"), "a": seg.get("a"), "b": seg.get("b"), "t": seg_t,
+          # 🔴 2026-10-29: 段内累计时间也进 out1 —— 执行器(ssact)转发给页面时, 页面要用它
+          #   区分"同一段动作在第几件"(14 件里 a/b 端点会撞), 缺了会取错件的手里/孔状态。
+          "elapsed_s": round(el, 2),
           "t_in_seg": round(el - seg_t0, 3), "t_left": round(left, 3),
           "mod": cur_mod, "hole": seg.get("hole"),
           "mt_id": seg.get("mt_id"), "mt_name": seg.get("mt_name"),
