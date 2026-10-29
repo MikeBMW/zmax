@@ -214,9 +214,26 @@ plan 侧 (`plan_impl.py`) 吃 `in1={"obs":"光模块·当前"}` / `{"point":"obs
 - 节点 real 源 → `cam_rs.png` 123182s 陈旧 + `T_base_cam`/`plane_z` 未标定 ⇒ 0 点, gaps 三条如实写盘
 - 人工 base_link 点 (verified=true, conf .92) → plan 11 段, 末段 `abs_mm` = 该点; 验证完**删文件**不留假观测
 
-🔴 **`ss_yolo` 壳是 `PURE=False`** ⇒ 常驻循环 (`prj.step`) 里只直通不执行实现; 要让它在流水线里真跑,
-要么 GUI 单步/双击走 `engineering.runtime.execute_node_logic`, 要么给它一个低频宿主循环 (≥0.5Hz 级以上别开 ——
-metaworld 渲染重), 真机源建议 `ZMAX_L2_SRC=real` 低频常驻。
+🔴 **`ss_yolo` 壳是 `PURE=False`** ⇒ 常驻循环 (`prj.step`) 里只直通不执行实现; 要让它在流水线里真跑:
+① 画布节点 `params.pure_verified=true` (经 `flows.save_canvas` 写) ② 跑 `tools/gen_middleware_nodes.py`
+③ **实现必须 `return {port: 值}` (dict)** —— `return True/False` 会被壳判成「实现返回非 dict → 直通」,
+   PURE=True 也照样不动, traces 里永远只有「直通」。
+④ 10Hz 常驻循环里别每拍都做重推理: 用**节流+契约回放** —— 每 `ZMAX_L2_PERIOD_S`(实测 0.5s) 真跑一次,
+   其余拍返回上次契约的拷贝(多一个 `cached_ago_s`), 下游每拍都有值、耗时从 37ms 降到 0.9ms。
+   实测稳态: 真推理拍 37ms / 回放拍 0.9ms, `canvas_loop.json` 三节点全部「实现执行」。
+
+### 🔴 生成器会因「模块单词撞名」把别人的壳整个覆盖 (2026-10-29 实测)
+`spec.module_name` = `node_names.json` 的 id→单词; 没登记的节点按名字里的中文关键词派生
+(「测地线规划引导」→ `planner`) ⇒ 与 `ssllm` 的 `planner` 撞车, `n_planner.py` 被新节点**整个覆盖**,
+原节点(`🧠 长程序列规划器`, PURE=True)悄悄失去自己的壳, 而生成器只报「写 N · 删 M」。
+**落法**: 加节点后先跑一次唯一性检查 (`collections.Counter(s.module_name for s in specs)`),
+撞名就在 `node_names.json` 里**显式登记**新节点 (`"n_geoplan": "geodesic"`) 再重生成;
+验收 = `grep '^NODE_ID' n_*.py` 无重复 + 每个文件的 PURE/NODE_ID 与改前逐文件比对(别只看总数)。
+
+### 🔴 契约透传的顺序坑: `_pub_ar()` 读 `o1["vision"]`, 赋值必须在它之前
+给 `out1` 加新字段时, 先看有没有下游写盘函数(如 `_pub_ar` → `ar_cmd.json`)在同一函数里**提前**读 o1:
+先 `_pub_ar(...)` 再 `o1["vision"]=...` ⇒ 文件里永远 `vision: null`, 而 out1 是有值的(看探针会以为没问题)。
+判据要读**落盘产物**(`ar_cmd.json` 的 `vision` 字段), 不能只读节点返回值。
 
 ## 🔴 Plan 节点必须自己算段表 (tools 脚本降为薄壳) — 2026-10-28
 
@@ -384,6 +401,33 @@ metaworld 渲染 = **MuJoCo** 离屏渲染器 (`env.render()`; 无 X11 用 `MUJO
   (所以默认锁成数据面), 不是它真会动。真机执行只有 `tools/l2_daemon.py` 一条路 (FIFO → 授权 → 逐段闸 → 550C),
   画布节点没有硬件句柄、不碰 FIFO、不查授权 ⇒ 安全开关的消费点必须在 `l2_daemon._auth_guard()`,
   写在节点 compute 里就是装饰。
+
+### 🔴 恒等/空壳实现撑着锚点与判据时: 补真职责, 不删
+
+`def execute(self, u): return np.asarray(u, dtype=float)` —— 执行器这一环什么也没做, 却撑着四处:
+画布 `params.source_symbol` (右键「打开源代码」锚点) · `_EXTERNAL_LOC` · `verification_layer` 的两条判据 · registry 注册。
+用户问「没用就删掉啊」时先做引用面普查再答, 别顺着直觉删:
+
+```bash
+grep -rn "<ClassName>" --include=*.py src/ tools/ config/ | grep -v "\.bak\|_archive"
+```
+
+处置按「删的代价 vs 补的收益」选, 通常是后者:
+
+1. **补真职责 + 数值零回归**(首选): 让它做这一环本来就该做的校验, 输出值一字不改 ⇒ 不需要对照实验就能留在默认档。
+   执行器三件事: NaN/Inf 拦截(整条归零 + `valid=False`) · 通道范围**只记不裁**(裁剪权归安全边界节点, 不越权) ·
+   变化率 `|u − u_prev| > max_rate` 记 `over_rate`(物理上臂跟不上, 是异常信号不是误差)。
+   结论挂 `last_check` 并由节点带进 `out1` + 日志一并行 —— 看得见才叫真干。
+   逐项验证: NaN / 超范围 / 大跳变各造一例, 每个只触发自己那一项; 再加「正常输入 out 与改前逐位相同」当零回归闸。
+   🔴 顺序坑: NaN 归零后**不要再算变化率**, 否则「归零」本身被记成轴跳变, 两件事在日志里混成一件。
+2. **真删**: 要连改四处(画布 `source_symbol` · `_EXTERNAL_LOC` · 判据 · registry docstring), 缺一处就是悬空引用
+   (右键报「该节点未配置源码映射」/ 判据报「Lx无符号」)。
+
+判据名字会泄底: `t_act_pass` 的断言文本是「指令透传有限」—— **一条判据只验 shape/finite 时, 它守的不是功能**,
+是在守「这行代码还在」。遇到这种判据先怀疑这一环是不是空的。
+
+🔴 指令全 0 别记在执行器头上: `_SS_STATE["u_sat"]` 由 🛡 安全执行边界 `sslimit` 写入, 该节点 `PURE=False` 时不写
+⇒ 单跑执行器恒 `[0,0,0,0]`。查「指令为什么是 0」要沿写点回找到源节点, 不是改执行器。
 - 判一拍干了什么用 CLI, 别靠 GUI 点击: `tools/mw_project.py node <id>` · `mw_project.py step`, 或
   `load_project() → prj.step() → [n for n in prj.nodes.values() if n.spec.id=='<id>'][0].last_status`。
   ⚠️ `Node` 只有 `spec.id` / `last_status` / `last_routed` / `module` —— **没有** `.id` / `.last_outs`, 猜属性会断探针。
@@ -1072,6 +1116,211 @@ for k in z700_internal gain_schedule; do echo -n "$k="; grep -c "$k" $C; done   
 - 定位移植办法（换名/换顺序都能用）：用旧画布 build 一份临时库 `--db /tmp/old.db`，把
   `fn_id → name` 映射出来，再去重写 notes，别手工数序号。
 
+## L3 接入: 分层力四层对齐 + 节点真跑 (2026-10-29 实测)
+
+老倪口径: **L2 是基础输出, L3 是加权修正**; 万有引力节点的力要能对齐 L2/L3/L4/L5。
+
+### 1. 分层力只有一个真源: `tools/layer_forces.py`
+- 每层自己的取数路径: L2=`chunk_latest.ff[0]` / L3=`chunk_latest.chunk[0]` / L4=`torque_live.metric_M÷m_ref×ff` / L5=`l5_scene_vec.json`。
+- 权重与单位换算只在 `config/calib/layer_forces.json` (`w`/`k`/`m_ref`/`max_age_s`), **每次调用热读**, 不缓存。
+- 🔴 `state_space_energy.py` 里另有一套 `LAYER_SHARE={L2:0.30,L3:0.25,L4:0.30,L5:0.15}` 把总力按份额切 ——
+  与 `w={L2:1.0,L3:0.3,L4:0.55,L5:0.35}` 归一化后完全不同。两套并存时"分层力"必错一半。
+  看到 `F_l = s_l·K·ξ_e` 就是份额切分(每层同向只缩幅度), 看到 `F_合=Σ w_l·k_l·v_l` 才是分层真算。
+- 缺层必须如实标 `vec=None/gaps`, **不许拿上层量填充** (L5 未接入时的正确输出是缺, 不是 0 冒充有数)。
+
+### 2. 节点"实现执行"的判定只看返回值类型
+- 壳里 `isinstance(res, dict)` 决定真跑/直通; `_NodeOut(dict)` 子类算通过。
+- `return (True, "...")` / `return True` ⇒ **PURE=True 也照样直通**, 且不报错。改节点先看它 return 什么。
+- 等价占位最常见形态: 打印一堆配置 + `return (True, msg)`。右键源码落到的位置若是 `policies/` 下的模型类而非 `nodes/*_impl.py`,
+  基本可以断定这个节点没在执行链上 (把它改成薄壳转调 `nodes/<name>_impl.py` 才算接入)。
+
+### 3. 派生指标不许和别人的周期写抢同一个文件
+- `hamiltonian.json` 由 `ss_engine_loop` 每周期原子写; 节点再写同一份 ⇒ 实测"文件时有时无 layers"。
+- 落点: 派生结果单独 `gravity_layers.json`, 写 `.tmp` 后 `os.replace` 原子换。
+- 🔴 落盘 `except: pass` 是隐形杀手: 文件不更新而日志一切正常。必须 `except as e: log(...)`。
+- 诊断顺序: `stat -c %Y` 看 age → 文件 keys 与代码 `update()` 的键对不上 ⇒ 先怀疑"另一个写入者", `grep -rn '<文件名>' --include=*.py .` 找全(别只看 src/ tools/)。
+
+### 4. systemd drop-in 没有 `[Service]` 段头 = 整段被静默忽略
+- 症状: `systemctl cat` 里能看到新行, 但进程环境还是旧值, 重启没用。
+- 真相只在 `/proc/<MainPID>/environ`; `systemctl show -p Environment` 显示的是合并后的旧值, 会骗人。
+- drop-in 必须首行 `[Service]`; 同变量后者覆盖前者(按文件名排序, `zz-*.conf` 排最后)。
+
+### 5. 势场缺维的隐坑: `ξ_e` 的 z 恒为 0
+- 旧代码 `tgt=[光模块_x, 光模块_y, pos[2]]` ⇒ `ξ_e[2]≡0`, 势场只在 xy 平面,
+  插入/下降阶段最关键的 z 误差被整段忽略, 分层力夹角算出来 86~98° 全否决。
+- 修法: z 取 `光模块_z` (缺省回落), 并在输出里带 `xi_e_axes` 标明真参与的轴 —— 不然"全否决"会被当成算法结论。
+- 层受控判据(横向>60° veto)只在**两侧实况同源**时才有意义: 输出里必须同时带
+  `trace_stage`/`chunk_stage`/`dt_s`/`stage_same`, 否则势场侧与模型侧混着算, 夹角是垃圾。
+
+### 6. 把真模型接进 L3 节点 (SmolVLA+LEW, 2026-10-29 实测)
+
+老倪: 「用上这个模型, 正式启用, 用到 AR 场景, 保证接口对齐, 节点真实代码」。
+
+- **先找已有的跑通实现, 不另写一套**: `engine/runtime.py::RealStateSpaceSim._l3_forward` 里每条注释都是
+  实测换来的教训 (128×128 LANCZOS 不是 64、tasks.parquet 原串不是硬编码、post 反归一化缺则动作全错、
+  device_processor 写死 cuda 会让无卡机整段失败、类级缓存、失败熔断)。新节点抄口径, 只换观测来源。
+- **ckpt 选"跑通过全链"那一版**: `smolvla_lew_v10_1h/004000`, 不是 `v8/030000` (旧模型 → 成绩无法归因)。
+- **耗时两段差极大**: 冷加载 22s (含 HF 首次拉 SmolVLM2-500M), 稳态前向 10~13ms (cuda)。
+  所以 10Hz 常驻循环里**必须异步**: 后台线程真推 → 节点每拍立即返回最近结果 + `age_s`/`busy`,
+  否则首拍就把循环卡 22s。`infer_ms` 偶发 600ms 是 GPU 争用, 不是代码问题。
+- **metaworld obs 39 维的精确结构** (接真机/AR 观测必须知道):
+  `hstack((curr18, prev18, goal3))`, 其中 `curr = hand_xyz(3) + gripper(1) + obj1(pos3+quat4) + obj2(pos3+quat4)`。
+  真机/AR 能对上的只有手爪与两物体**位置** ⇒ 实填 31/39, 缺的 8 维是四元数。
+  输出里必须带 `fill_ratio`/`missing_dims`/`missing_note`, 不得用 0 冒充观测。
+- **接了模型还要改下游取数**: 模型接进节点后, 万有引力那边的 L3 若还读 `chunk_latest.chunk[0]`
+  (测地线几何解码), 等于模型白接 —— 力里根本不是模型的。要改 `tools/layer_forces.py` 的 L3 取数:
+  `l3_latest.json` 的 `nominal_L3` 优先, 超时/降级才回落到 chunk[0], 并把真实 src 写出来。
+  验收看 `gravity_layers.json` 的 L3.src 里有没有模型名 + infer_ms。
+- **降级必须显式**: 无帧/无观测/熔断 ⇒ `degraded=true` + `degraded_why`, nominal 回落测地线;
+  另带 `domain_gap` 说明训练域(渲染 128×128)与推理域(真机相机)不同, 不按训练成绩解读。
+
+### 7. L4 层“接入”的三处真断点 + 流形引擎族 (2026-10-29 实测)
+
+老倪: 「L4 层, 正式接入, 流形引擎要真正接入运行」。病根不是算法没写, 是三处断点叠加:
+
+| 断点 | 现象 | 真因 |
+|---|---|---|
+| 只认 GUI 态 | 常驻循环里 L4 节点从不执行 | 取数写 `module._ss_tr`, 无 GUI module 就 `return False` |
+| 返回 bool | PURE=True 也判“实现返回非 dict → 直通” | 实现 `return True` |
+| 壳只取端口名 | `out` 恒为空 dict | `{k:v for k,v in res.items() if k in PORTS_OUT}`, 业务字典被过滤光 |
+
+- **统一帧真源**: 写一个 `_ss_frame(ctx)` —— `module._ss_tr` → `ss_traj_last.json`(真实 episode
+  obs[N][43]+u_exec_vec), **帧号取 `engine_latest.idx`**。不取同一个索引的话, 画布节点与引擎常驻循环
+  两边各算各的, 数字对不上还查不出原因。
+  obs[43] 切片: hand 0:3 · grip 3 · obj1 4:7 · obj1quat 7:11 · obj2 11:14 · obj2quat 14:18 · prev 18:36 · goal 36:39。
+- **壳模板两行修** (改 `tools/gen_middleware_nodes.py` 后重生成, 不要手改 80 个生成物):
+  ① 调实现前补 `ctx` 元信息 `name/params/id` —— 同一个实现服务多个节点时靠 `ctx["name"]` 分派
+  (如 `node_ss_mani` 同时服务 `ssmani_c`/`ssmani_p`), 不补就永远走错分支;
+  ② `res` 里没有任何端口名时 ⇒ 整块当首端口值发出, 不能过滤成空。
+- **慢节点内部节流, 不要拉出白名单**: `n_calib_mani` 单次 300~320ms (ManifoldEngine project/navigate/
+  feedback 全跑), 10Hz 每拍跑会掉 3 帧。在节点内缓存 + `ZMAX_L4_CALIB_PERIOD_S`(默认 5s) 节流,
+  命中缓存时返回 `cached=true/cache_age_s` —— 接口仍每拍有值, 且说得清“这是新算的还是回放”。
+- **`_ret(ok)` 类闭包容易只返回半个世界**: 流形引擎的几何/健康/扭矩 (`_mani_geo`) 算了却没进返回值,
+  下游拿不到。改返回字典时逐项核对“算了的量是否都带出去了”, 变量可能未定义时用 `try/except NameError`。
+- **L4 数据流进 L3 的验收点**: 看下游节点 out 里有没有 L4 字段 (如 `ssdec.out1.l4_in.in5` 的
+  `contact_manifold/progress_m/axis`)。连线通 ≠ 节点消费; 节点没读 `ctx[in端口]` 就是假接入。
+- **条件通道要先看权里有没有**: `action_head.ensure_l4_cond` 是懒创建 (`scale=0.02` 随机投影),
+  ckpt 未训练该通道 ⇒ 把 L4 条件强喂给模型 = 给动作加随机扰动。正确做法: 透传 + 标
+  `l4_cond_injected=false` + 写清原因, 等真训练后再开。
+- **回答"是不是真的 L4 给 L3 给 L2 串起来了"要跑全链入端口探针, 不能看连线、也不能看执行顺序**:
+  同一拍按 `prj.step` 返回序打印每个节点的 `in` 与 `in_age`, 再与画布 links 逐条对:
+  `v is None` = 这一拍没有值 · `age_s == -1` = 从未有过值 · `age 0.x` + dict = 刚送到。
+  三种"空"必须分开报: **没连线** / **连了但上游没跑**(不在 `ZMAX_CANVAS_ONLY` 白名单, 从没发布过) /
+  **上游跑了但这拍没取值**。实测形态: 拓扑序 ≠ 业务层序 (L2 的规划节点可能排在 L4 前面),
+  "L4→L3→L2"这种级联只能靠**入端口真有值**来证 —— 顺序看起来对不算证据。
+
+## 在控制台里断点单步 (launch 配置 + 先认准是哪条链)
+
+用户说「用 VSCode 跑控制台, 是不是单线程 / 我要在每层打断点」时, 按序办五件:
+
+1. **先认链, 再下断点**。同一个「状态空间工程」有两条执行路径, 断点下错一条永远不停:
+   - 「▶ 运行」→ 闭环总装 (`RealStateSpaceSim`, 真身在 `src/lerobot/engine/`) ⇒ 断点落引擎/六层模块;
+   - 「⏭ 单步 / 数据总线」→ `middleware` 工程 `prj.step()` ⇒ 断点落 `nodes/library.py::node_*(ctx)`
+     及它转调的 `nodes/*_impl.py::run(ctx)`。
+   两链共用同一份画布; 先定他点是哪个按钮, 或两条都给出。
+2. **launch 的 env 分两类, 缺一类就白调**:
+   - 计算线程数 (`OMP/MKL/OPENBLAS/NUMEXPR/VECLIB/TORCH` + `MALLOC_ARENA_MAX`): 控制台可能在解释器
+     早期自己灌一遍 (引导段查 `os.environ.get("ZMAX_SINGLE_THREAD")`), 显式写不算错;
+   - **档位/调试标识 (`ZMAX_PRODUCT` / `ZMAX_DEBUG_MODE`) —— 控制台不会补**, 而深调试档门按它放行。
+     不设 = "单线程但进不了深调试档", 深调试器/`--pdb` 直接拒跑。
+   `env: {}` 的 launch 看起来能正常启动, 其实靠兜底走了非调试档 —— 别拿"窗口起来了"当"单线程+可深调试已验"。
+   🔴 **手改 `.vscode/launch.json` 会被模板整份重写**: `simulink_module._vscode_launch_cfg()` 是唯一模板,
+   右键「打开 VSCode / 进入源码」就拿它重写该文件; 模板里那条 env 若是 `{}`, 你刚加的十几项当场消失,
+   进程 `/proc/<pid>/environ` 全空, 而 patch/diff 当时是成功的、文件里也看不到任何异常。
+   铁律: **只改模板** → 用模板重新生成 launch.json → **回读盘上文件确认字段在**。模板自己的注释就写着这个历史教训。
+3. **每拍都会命中**: 画布由 QTimer 驱动 (约 10Hz), 断点一开就连续停。用工具栏 ⏭单步, 或直接走
+   `tools/node_debug.py --node X --step / --pdb / --src`。
+4. **下断点前停常驻服务** (`zmax-ss-canvas-loop` / `zmax-ss-engine-loop`): 它们每拍重写 `ss_live/*.json`,
+   你停在断点上时文件还在变 ⇒ 单步看到的数与盘上不一致 (与「冻源判据」同一根因, 这里只需先 stop)。
+5. 🔴 **动态加载的模块: 必须 `spec_from_file_location` + 注册 `sys.modules`, 不要 `exec(compile())`。**
+   `exec` 造的模块 `__spec__` / `__loader__` 皆 None: 首次加载按 `co_filename` 能绑上 (所以"第一次能停"),
+   但用户**取消断点再添加**时, pydevd 要按 loader 重新定位文件、重建 code object —— 没有 loader 就
+   **静默不绑、也不报错**。用户原话「取消断点后, 再断点, 就进不了这个断点了」说的就是这个,
+   不是代码没执行。正确写法 (三处统一: 引擎 `runtime._load` · `sim._load` · 注册表 `_ss_import`):
+   ```python
+   spec = importlib.util.spec_from_file_location(mod_name, path)
+   m = importlib.util.module_from_spec(spec)
+   sys.modules[mod_name] = m        # pydevd 按模块名解析文件; dataclass 也要查这里
+   spec.loader.exec_module(m)
+   ```
+   验收四件: `m.__spec__ is not None` · `type(m.__spec__.loader).__name__ == 'SourceFileLoader'` ·
+   在 `sys.modules` 里 · `F.__code__.co_filename` 与文件绝对路径逐字相同。`exec(compile())` 只留作降级**并打告警**。
+   同一个仓库常有多套加载器, **逐个修**, 修一个不等于都修了。详见 `references/breakpoint-does-not-hit.md` §8。
+5b. **断点还是不进: 按这个阶梯查, 每一步都能一票否决 (别猜、别反复重启)**
+   ⓪ **先证"代码跑在哪个进程"** —— 最常被跳过、也最常是真因: 业务代码可能只跑在 systemd 常驻服务
+      (`zmax-ss-canvas-loop` / `zmax-ss-engine-loop`) 里, 而用户 F5 起的是**另一个** GUI 进程, 只负责显示。
+      这个进程里那段代码从没执行过, 断点必然不命中, 重启多少次都一样。
+      判据三件一起看: `py-spy dump --pid <GUI pid>` 主线程栈里有没有业务函数 (全在 `paintEvent → 画图函数`
+      就是只在重绘) · 界面自己的状态字样 ("未运行 / 没点 ▶ 运行") · 活真源 mtime 的写入者是不是你的 pid。
+      处置: 停常驻服务 → 让 GUI 自己跑一轮 (调试档下可自动跑一轮, 见下)。
+   ① `/proc/<pid>/environ` 里 `ZMAX_*` / `PYDEVD_*` / `OMP_*` 全空 ⇒ 启动配置没进进程
+      (多半是下面第 2 条的模板覆盖), 断点与代码都无关;
+   ② `ps -o lstart= -p <pid>` vs `git log -1 --format=%ci` —— 进程更早 ⇒ 跑的是旧代码;
+   ③ 同名文件常有 staging / external / `.bak` 副本 (如 `execution.py` 三份) —— 断点打在副本上永不命中,
+      `find . -name <file> -not -path './.git/*'` 后按 mtime 与关键符号挑真身;
+   ④ **行号漂移会静默废掉断点**: 改动被调函数所在文件, 它的行号整体后移 (同一个 `def execute` 从 59 一路
+      挪到 118) ⇒ 用户按旧行号打的点落在注释/空行上, pdb 只回 `*** Blank or comment` 且**根本不设断点**,
+      而 UI 上红点还在。每次改完报一次 `F.__code__.co_firstlineno`, 答复里给"def 在第 N 行 / 首句可执行第 N+k 行"。
+      `pdb` 的 `b file:line` 必须是**绝对路径**且与 `co_filename` 逐字相同, 相对路径静默不命中。
+      调试器报 `frozen modules ... may miss breakpoints` ⇒ 走 `pythonArgs: ["-X","frozen_modules=off"]`
+      (Python 扩展字段; `args` 是给程序的不管用) + env `PYDEVD_DISABLE_FILE_VALIDATION=1`。
+   ⑤ **先证明调用链走到, 再谈断点**: 在函数入口无条件 append 一行 (pid+时间戳) 到
+      `ss_live/<who>_calls.log`, 跑真实入口后 `wc -l` / `sort -u` 看。这是唯一能一句话回答
+      "跑没跑、哪个 pid 跑的"的取证, 不受调试器 / env / 文件开关影响。**没有它不要说"改好了"**。
+      右键「运行节点」实测链路 = `_state_space_run_node` → `_ss_ensure_trace()`(有缓存就复用)
+      + `execute_node_logic`(真执行节点函数); `StateSpaceSim.run` 一轮会调 `RobotExecutor.execute` 数百次。
+      🔴 但这条链自己有两处会把执行掐死, 现象都是"点了右键什么都没发生", 与"没接线"完全分不清:
+      `tr is None → return`(引擎轨迹拿不到就整条中止) 与 `except Exception: pass`(节点抛异常静默吞掉)。
+      轨迹只该负责显示 I/O, 不该决定节点跑不跑; 节点执行的 except 必须打日志 + traceback。
+5c. **代码内置断点 `brk(tag)`: UI 断点不可靠时的兜底 (不依赖文件:行绑定)**
+   - 显式: `ZMAX_DEBUG_BREAK=1|*|all` 全停; `=tag1,tag2` 按 tag 精确匹配 (tag 是关键字, **不是**节点中文名子串);
+   - 关掉: `ZMAX_BREAK_OFF=1` (日常跑不想被内置断点打扰); 文件开关 `touch ss_live/BREAK` 仍优先 ——
+     那是人主动开的, 语义就是"我要停";
+   - 🔴 **用户会问「我没在这行打断点, 怎么每次都停」**: `brk()` 停在断点函数里时, VSCode 高亮的是
+     **下一条将执行的语句**, 所以看起来停在 `a = np.asarray(...)` 这种普通赋值行。这不是 UI 断点生效,
+     而是上一行的 `_brk()`; 这恰恰是"链路真通了"的证据, 交付时先把这一句说清楚再给开关;
+   - 自动: 未设 env 但调试器已连接 ⇒ **按时间窗停** (默认 1.5s, `ZMAX_BREAK_GAP` 可调), 不能"只停第一次":
+     一轮引擎几百次调用可能在 0.5~1s 内跑完, 去重成"一辈子一次"会让用户看到"启动能进、运行之后不进" ——
+     那是去重策略的锅, 不是断点绑定的锅。窗口内跳过是为了不让 10Hz/每帧的节点把界面刷死。
+   - 检测"有没有调试器"别只信 `debugpy.is_client_connected()` (VSCode 走 `--connect` 反向连接时未必为 True),
+     可退化为 `"pydevd" in sys.modules` 或 `sys.gettrace() is not None`。
+   - 🔴 **每个 tag 首次到达必打一行**「停 / 不停 + 原因」, 三种结论必须分得清:
+     `到达, 但调试器未连接 → 不停` · `ZMAX_DEBUG_BREAK='x' 不含本 tag → 不停` · `调试器已连接 + 未设 env → 首次停`。
+     没有这一行就永远分不清「没走到」与「走到了但没停」—— 这是排障里最贵的一次误判;
+   - 被按路径动态加载的模块内联同一套 (不能反向 import 项目包, 会成环);
+   - 🔴 **兜底断点自己的路径上溯层数按文件所在目录数, 少一层就静默全废**: `src/lerobot/engineering/nodes/`
+     要 5 层到仓库根, `src/lerobot/policies/left_right/state_space/` 要 **6** 层 —— 少一层指到 `src/zmax_data/`,
+     文件开关与记账文件全部写到不存在的目录, 再被 `except: pass` 吞掉 = 看着代码在、行为零效果。
+     铁律: 写据点的兜底分支出错必须留痕 (print/日志/计数), 不要 silent pass; 写完立刻造一次真实调用证明文件产出了。
+   - 单线程闸启动时打印 `ZMAX_SINGLE_THREAD` / `ZMAX_DEBUG_BREAK` / `OMP_NUM_THREADS` 的**真实取值**,
+     且启用与未启用两种态都打 —— 一眼看出 env 到底进没进进程, 省掉一轮"日志里什么都没有"。
+6. **"除 GUI 外所有节点单线程"要三层, env 只是一层**:
+   - 解释器早期的 `OMP/MKL/OPENBLAS/NUMEXPR/VECLIB/TORCH=1` 只压 BLAS 线程池, 而且只对**尚未初始化**的池生效。
+   - torch 自己的 intra-op/inter-op 池必须**运行期** `torch.set_num_threads(1)` + `set_num_interop_threads(1)`;
+     OpenCV 走 `cv2.setNumThreads(1)`。落法: 节点包里一个模块级闸 (`nodes/_single_thread.py`: `enforce()` 压一次并
+     返回**实测值**, `enabled()` 供调用侧分叉), `library.py` import 时调一次即覆盖所有节点实现。
+   - 🔴 **节点代码里显式起的线程 env 完全管不到**: 异步推理节点(每拍起 `l3-smolvla` 之类后台线程)在单线程模式下
+     必须改走**同步**分支, 并把 `mode="sync (...)"` 写进输出 —— 否则人在 MainThread 停住、算却在别的线程跑,
+     断点停不住, 也说不清几个线程在算。
+   - **判单线程看计算线程, 不看 `/proc/<pid>/task` 条数**: GUI 的 Qt 线程照旧在(用户要的就是"除了显示的 GUI"),
+     第三方库也会留监视线程(如 transformers 加载进度条带的 `tqdm_monitor`)。判据 =
+     `torch.get_num_threads()==1` 且节点执行点 `threading.current_thread() is threading.main_thread()`。
+   - 同步化的代价写进交付: 从"N 秒周期回放"变成"每拍真算"(实测 14~15ms/拍), 首拍要吃模型加载(约 22s)。
+     这是可观察性的代价, 不是性能提升。
+   - 留逃生口 `ZMAX_MULTI_THREAD=1` 给基准/批量推理, 不做静默切换。
+7. **"能不能每个节点单步"必须全量普查, 不能抽查**: 跑 `scripts/sweep_all_nodes_step.py`
+   (逐节点 `prj.step(only=[id])`), 分三类报数 —— **实现执行 / 直通 PURE=False / 异常**。
+   实测口径: 80 节点 → 11 真算 / 69 直通 / 0 异常, 慢节点单列(YOLO 首载 ~3.9s · 标定类 ~0.4s)。
+   `params.pure_verified=false` 的节点单步只是数据面直通, 要它们真算须**逐个改实现**, 不是调档位开关;
+   "能点得动"不是答案, 这三个数才是。
+   GUI ⏭单步 语义: 首点先跑**整条引擎轨迹**, 之后每点一次按拓扑序走一个节点并从轨迹快照取该节点真实 I/O
+   (与 ▶运行 同源, 不会双轨); 节点集按 `节点档位 <= 当前档` 过滤, 并排除背景行/能力档位开关(单步会触发切档副作用)/
+   观察器与质量门(单步会弹窗); 走完一轮再点会重跑引擎 —— 想跳任意单个节点用右键「运行节点」。
+
+**找锚点不靠记行号** (行号会漂): `grep -n "^def node_<名>" …/nodes/library.py` → 看它转调哪个
+`*_impl.py::run` → 再看实现里调哪个算法类方法 (`grep -n "def <方法>" src/lerobot/manifold/*.py`)。
+断点下在**算法类方法**那层才能单步进数学; 只下在 `node_*(ctx)` 上只看得到取数/落盘。
+
 ## 验证清单
 ```bash
 # 架构自检 (迁移后新增, 6 项: 逻辑在包里/JSON 真源/档位契约/GUI 壳一致/档位索引)
@@ -1090,6 +1339,8 @@ L5「能力档位 → 点运行 → 自动标注 → 自动训练 → 重启自�
 `references/mcd-param-node-design.md`(完整方案: 仓库 `docs/design/manifold_mcd_master_param_M_20261009.md`)。
 把画布连接关系落成**可查注册表**(报文/信号/Tx-Rx/单位量程)的口径与三个坑:
 `references/message-signal-db.md`。
+断点不进 / "点了没反应" 的四层只读取证 (窗口清单 → 界面 OCR → py-spy 主线程栈 → /proc 与记账文件):
+`references/breakpoint-does-not-hit.md`。
 给节点接**实时数据源** (live JSON → 数据空间 Trace, 含 Tx/Rx 归属链路的四件套与 Rx 空行被丢弃的坑):
 同文件 §8。
 仿真 `v_ff` 能不能算位姿/能算多准、四层速度里哪层是模型输出、桥接到真机的限速与姿态缺口、

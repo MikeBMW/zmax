@@ -696,6 +696,33 @@ description: Use when 改 8797/ar 页的轨迹按钮·执行链·围栏避让规
   ② 页面到底吃谁的输出(本节)。两层都要改, 只改一层就是假接入。
 - 交付口径必须同时说清“谁做了执行”: 执行器现在做的是“接段 → 落执行指令 → 回写总线”,
   `a/b/u → 6 轴` 的逆解仍在页面(`arCmdSolve`), 物理引擎(`ssworld`)那条仍是直通 —— 别让人误以为已经闭环。
+- 🔴 **「AR 场景给机器人输出什么」的定式答法 = 0 条指令** (被问过, 别答成“输出轨迹/输出动动作”):
+  登记处 `tools/ar300_config.py` 的 FN-PLAT-76/77 写死 `{"scene":"AR 仿真双臂","real_cmd":False}`
+  + 判据行「只写渲染指令 ar_cmd.json, **真机零指令**」, `plan_long_impl.py:19` / `uph_tact_impl.py:13` 同样注明。
+  真正给机器人下指令是另一条链 (L2 收口 → `zmax-l2-daemon` → 39071 → Orin 39061 → 珞石), **不读 ar_cmd**。
+  ⇒ 所以「AR 段表跑出 316~337 UPH」只能表述为**节拍能力**, 不能说成真实产出;
+  旁证: 问这件事时 `zmax_data/runtime/tcp_pose/latest.json` 与 `zmax_data/tcp_out/latest.json` 都不存在。
+- 🔴 **算 UPH 数件必须用 `mod`, 不能用 `batch`**: `batch` 是**批次号**(`plan_long_impl.py` 里 `batch += 1` 每轮一次,
+  共 8 轮), 拿它当件数会算出 ~204 UPH 的假低值并据此误报“没到 300”; 件号是 `mod`(1..14 循环)。
+  正确口径: 采样 `mod` 切换次数 / 时间窗 —— 实测 139.1s 换 13 次 ⇒ 10.7s/件 = **337 UPH**,
+  与名义段表 14 件/159.43s = 316 UPH 落在同一区间。
+- 🔴 **`u` 是「本段已过秒数」不是 0~1 比例**(`plan_long_impl._pub_ar` 收到 `el-seg_t0` 后只做
+  `min(1.0,max(0.0,u))` 就当比例透出去; 同名的 `uph_tact_impl._pub_ar` 一开始就是 `t_in_seg/seg_t`, 是对的)。
+  页面按 `a+(b-a)*u` 画 ⇒ 段时长中位数 0.3s 时每段只走完 **30%** 就跳到下段起点, 虚拟臂看着一顿一顿。
+  **一眼判据(不用读代码): `u + t_left == t_seg` ⇒ u 的单位是秒; 是比例则该成立 `u + t_left/t_seg == 1`。**
+  实测修前 `u=0.1659 / t_seg=0.3 / t_left=0.134`(真实进度 55.3%, 页面画 16.6%); 归一化后
+  `u=0.7929` vs `(0.3-0.062)/0.3=0.793`, 差 0.000。修在 `_pub_ar` 入口一行 `u = u/seg_t`,
+  改完必须 `sudo systemctl restart zmax-ss-canvas-loop`(节点代码在常驻循环进程里, 不重启还是旧的)。
+
+### 🗣 回答「这东西输出的是什么数据」的定式(被用户用「说人话」催过)
+- **先一句人话, 再决定要不要展开**: 这条链的答案就是「起点坐标 / 终点坐标 / 走完多少」三个数,
+  页面自己按进度插值再逆解, 关节角不是下发来的。开口先给这句; 用户追问细节再上字段表。
+  一上来铺 5 列字段表 + 三种出口 + IK 术语, 他会直接回「你到底发的是啥啊, 说人话」。
+- 🔴 **不许把「设计意图」当「实际数据」报**: 我按字段名把 `u` 讲成「走了几成」, 而代码里写的是秒 ——
+  描述任何字段语义前, 先在真数据上验单位(见上条 `u+t_left==t_seg` 判据), 或直接读赋值那一行,
+  不要从名字/注释推断。**注释说的是应该怎样, 代码才是实际发了什么。**
+- 报「某个数是 0 / 没有」之前先分清是**设计如此**还是**故障**: 本链路「真机零指令」`real_cmd=False` 是登记处
+  写死的设计, 说成"还没接"会让他以为要修; 旁证是 `tcp_pose/latest.json`、`tcp_out/latest.json` 都不存在。
 
 ### 🦾 左右臂各自跟谁: 右臂=plan 段(页面逆解), 左臂=本地时钟段表
 回答「某条臂是不是 plan 规划的」必须分三层给, 一句「是/不是」都会答错:
@@ -715,6 +742,32 @@ description: Use when 改 8797/ar 页的轨迹按钮·执行链·围栏避让规
   ② `_pub_ar` 加 `a_l/b_l/u_l` ③ 页面 `arCmdSolve` 对左臂同法插值+逆解(左臂系 `off=[0,.5,0]`, 先减偏移)。
 - 元任务层其实双臂都有(`ar_meta_tasks.json` 的 MT-06 左臂供料 / MT-07 双手交接, `/api/ar/meta` 的 `lanes`
   也画两条轨道) ⇒ 正确口径是「**元任务层并行、命令流单臂**」, 别答成「系统没有左臂任务」。
+
+## 🦾 「右臂不动」先分清是哪条右臂 / 哪条链
+
+老倪说「右臂」时**默认指 AR 场景里的仿真双臂**, 不是产线那台珞石真机。认错对象会把排查带进
+estop/授权/手动模式那条岔路(那是真机的事, 与 AR 画面零关系), 现场只会回一句「我说的是 AR场景的虚拟右臂」。
+开口问清成本极低, 猜错要重跑一整轮。
+
+四条臂/三条链, 按端口分诊(全部只读):
+
+| 现象 | 真源 | 一行判据 |
+|---|---|---|
+| 页面三维里那条紫色仿真右臂不动 | `ar_cmd.json`(10Hz) → 页面 `arCmdSolve` 逆解 → `PREV.q` | `cat zmax_data/ss_live/ar_cmd.json` 两次看 `seq/elapsed_s` 是否推进 + `systemctl is-active zmax-ss-canvas-loop` |
+| 页面里那条静止的真机右臂 | `tcp_out/latest.json` 关节角 | **本来就静止**(设计如此, 按钮叫「右臂_真机」), 不是故障 |
+| 8802 渲染帧里的 mujoco 双臂不动 | `/state.json#truth` 的 `tcpL/tcpR` | `curl 127.0.0.1:8802/status.json` 看 `ok/n/gold_px/err` |
+| 真机珞石臂不动 | 8793 授权 + 前置(estop/manual) | `curl 127.0.0.1:8793/ctl/status` → `motion_armed` / `power` / `mode` |
+
+- 🔴 **调断点停了常驻引擎 = AR 页面双臂立刻冻住**: 为了让断点有代码可停而 stop
+  `zmax-ss-canvas-loop` / `zmax-ss-engine-loop` 之后, `ar_cmd.json` 停更、页面「🧠 状态空间」拨开也没数据可走 ⇒
+  用户看到的就是「双臂不动 / 状态空间驱动失效」。**停引擎前必须先说清这条副作用**, 调完立刻 start 回去并核
+  `ar_cmd.json` 的 mtime 在跳(memory 里"停服务让调试进程独占"那条只适用于纯调试, 不适用于他同时在看的 AR 场景)。
+- 🔴 **`/api/sim_insert` 只是段表定义**(392 段 / 159.43s), 不是播放状态 —— 拿它判「动没动」永远看不出所以然;
+  播放态在页面变量里(`INSP.on/raf/simT`、`PLANT`、`ARCMD`、`SSMODE`)。
+- ⚠️ `document.getElementById('bInsp').onclick === null` **不代表没绑处理器** —— 页面走的是 `addEventListener`。
+  判「点了没反应」要读状态对象和 canvas 像素, 不是读 `onclick`; 一次误判能把排查引到根本不存在的事件绑定 bug 上。
+- 550C(`.70`, `ssh intel`)上也有一份 8797, **与本机各自独立、数据不互通**; 要在 550C 上看 AR 场景得在 550C 上
+  单独把 `zmax-ss-canvas-loop` 与渲染站拉起来, 本机修好不影响它。
 
 ## 按钮语义 (他明确要求过的)
 
@@ -1075,6 +1128,29 @@ ar3d 里搭好的场景(段表 JSON)要真跑在 550C 上时, 不是把段表原
   或者先跟老倪确认放宽 MAX_SEG(要改 550C 侧代码 + 重启)。
 - 产出: `zmax_data/runtime/traj/plan_550c/index.json` + 每个 plan 一个文件; plan 里保留 `bridge` 标记, 让 550C 侧能区分
   生产动作与空走(速度/审计口径不同)。
+
+## 🧪 8805 AR 执行站: 平顺度判据 + L2 全链 (2026-10-29)
+
+老倪反复报「右臂不平顺」。判「平顺」必须先排除**采样别名**, 否则会去改根本不存在的 PD 过冲:
+- 硬指标 = **指令流**, 不是采样出来的速度: 渲染站 `/state.json.ctl` 记 `{n,hz,dmax,nfast,gapmax}`
+  (每次 `/control` 的关节变化)。实测 `dmax=0.70°`、`>1.2° 的 0 次` ⇒ 指令本身连续, PD 没冲。
+- 曾经的误判: 采样算到 1.2~1.9m/s「猛冲」, 真因是渲染站 `--hz 8` ⇒ **/state.json 真值 125ms 才刷一帧**,
+  350mm/s × 0.125s = 44mm 台阶。任何「单点最大位移 / 峰值速度」在低刷新率源上都是伪指标。
+- 修法: 渲染站 `--phys-hz 50 --render-hz 20` 解耦 (真值每拍更新, 出图按 render-hz 复用上一帧),
+  真值刷新 8.5 → 16~21Hz; close 每拍出图, ar3d 每 3 拍。
+- 顿挫的真正来源是**段间硬停**: 一轮 1504 样本只有 230 在动 (15%) ⇒ 85% 时间在「判到位→起下一步」。
+  UPH 顺是因为整条段表按 `u=t_in_seg/seg_t` 连续回放。要做成一样, 只能把 6 段合成一条连续轨迹
+  (段末 corner blending + 到点只记录不硬停), 不是继续优化单段内部。
+
+L2 全链 (`tools/ss_l2_chain.py`, 8805 站每采样点跑):
+- `L2_ORDER` 17 个节点顺序跑, 每个记账 `calls/ms/ok/note`, `/api/l2` GET 看状态、POST 逐节点开关
+  (`{"node":"sspred","on":false}` / `{"all":true}` / `{"reset":true}`), 落盘
+  `config/platform/l2_chain_switches.json` (config 是软链 ⇒ 不在 git, 要进状态快照)。
+- 没有数据源的节点**如实 `ok=false` + why** (sstactile 无触觉源), 不许用固定值冒充运行;
+  ssest/sspred/ssinnov 用 alpha-beta 滤波 + 常速度外推 (真算), ss_mem_l2 比对段表 `sim_insert.json` 模板
+  (模板单位是 **mm**, 与 m 混用会得到 50 万 mm 的"距离"), ssaoi 吃当拍帧统计 (mean/det_n), 不冒充 AOI 服务。
+- 指令点取用顺序: 预测位姿 > 估计 > 实测; 但**只在与轨迹点同侧且偏差 <8mm 时采用**, 外推跑偏退回轨迹点。
+- 加节点到 `StationChain` 一律走 `self._l2 = ss_l2_chain.L2Chain(self)` 懒建, 别在 `tick()` 里写平行实现。
 
 ## 多机一致性
 - 550C 上没有 `planned_traj.json`(规划在 550B 做); `named?k=square` 要能退回 `plan_latest.json`

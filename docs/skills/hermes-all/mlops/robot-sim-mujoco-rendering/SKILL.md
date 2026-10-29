@@ -211,6 +211,13 @@ runtime 只认具名对象和固定索引，缺一个就 KeyError 四档全挂�
 `视觉估值落进 `_vis`/`_peg_cur`（不再是 None）` → `距离是真实值不是哨兵` → `多档终点毫米级`。
 哪一步第一次出现 None/哨兵，就在那一步往上一层查。
 
+🔴 **“视觉已采信、距离却还是哨兵”的第一嫌疑：`getattr(obj, "k", fallback)` 在属性“存在但为 None”时不回落**。
+运行时写的是 `pg = getattr(self, "_peg_cur", self.geom["peg_grasp"])`，而 `_peg_cur` 是**一开始就初始化成 None 的成员**
+⇒ getattr 拿到 None，fallback 永远用不上，下游恒返 `9.9` 哨兵。现象是 `_vis["peg"]` 已经有值、检出也 6/6，
+距离却一字不变 —— 非常像视觉链路没通，容易往错的方向查半天。
+判别：把 `_vis` / `_peg_cur` / `geom[...]` **三个一起打印**（都有值却用不上 ⇒ 就是它）；
+修法是调用处改 `getattr(...) or fallback` 或显式 `if x is None`，**不要去改视觉层**。
+
 ## 关联
 
 - 肌肉记忆标杆必须绑定摆放指纹 (布局变则失效关快通道) — 见 user-owned zmax-muscle-memory 坑 8。

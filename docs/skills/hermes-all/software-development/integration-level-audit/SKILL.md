@@ -21,6 +21,28 @@ trigger: "Use when the user asks「X 集成进去了么 / 真的接上了么 / �
 
 **结论公式: 组件能单步真跑 ≠ 它进了那条每帧执行链。**
 
+🔴 **审计第一步是先定“哪套系统”**。同一个词在不同链上指不同东西，先确认现场开着的是哪个页面/端口、它读的是哪个数据源，
+再选判据。实测「右臂不动」就有四套完全不同的对象: ① 仿真站的 mujoco 双臂 (看 `/state.json#truth.tcpR` + `/status.json` 的 `ok/n`)
+② 可视化页的 URDF 臂 (看 `/api/tcp` 的 `age_s/stale` + 位姿桥活没活) ③ 真机珞石臂
+(看 `/ctl/status` 的 `power/operation/mode` + 授权 + 位姿真值双采 mtime)
+④ **同一个页面里并排的两条臂** —— 仿真臂 (`ar_cmd.json` 段表 → 页面自己的逆解，驱动力是常驻引擎)
+与真机臂 (`tcp_out/latest.json` 关节角，**设计上就是静的**)。
+拿错一套的判据跑一整轮，结论全是废的，而用户一眼就知道你问错了东西 —— **先花 30 秒定边界，再开工**。
+
+🔴 **验收口径：用户在这个上下文里说「右臂/左臂」默认指 AR 页上的仿真双臂**，不是产线那台真机。
+答错对象会把你带进 estop/授权/手动模式那条岔路 (那些是真机的事，与 AR 画面零关系)，现场只会回一句
+「我说的是 AR场景的虚拟右臂」。判据顺序: ① `cat zmax_data/ss_live/ar_cmd.json` 两次看 `seq/elapsed_s` 是否推进 +
+`systemctl is-active zmax-ss-canvas-loop` ② `curl 127.0.0.1:8797/api/ar/mode` 的 `ar_scene/fresh` +
+页面状态对象 (`SSMODE`/`ARCMD`/`PLANT`，**不是** 按钮的 `onclick` —— 页面走 `addEventListener`)
+③ 才是 `/api/tcp` 与真机 `/ctl/status`。
+🔴 **为调试断点停常驻引擎 = 这条链立刻冻住**: `stop zmax-ss-canvas-loop/zmax-ss-engine-loop` 后
+`ar_cmd.json` 停更，页面「状态空间」拨开也没数据 ⇒ 用户看到的就是「状态空间驱动的双臂不动」。
+停之前先说清这个副作用，调完立刻 `start` 回去并回读 `ar_cmd.json` mtime 在跳。
+
+🔴 **“不动”先查生产端健康，再查消费者参数**。产品输出为零/冻结时，优先看**上游是否根本没在出东西**
+(`ok:false` + `n=0` + 真值字段为空)，而不是先怀疑动作数值/算法。把一个“上游没启动”报成“action 不对”，
+会把用户带去看一整天的调参。
+
 ## 四级阶梯 (逐级给证据, 别跳级, 别含糊)
 
 | 级 | 名称 | 判据 (全部可查) |
@@ -294,6 +316,115 @@ DB 的 `canvas_links` 行可能 `src/dst` 全 NULL (build 缺陷) —— 拿它�
    结论句: 「X 在场景里真跑(Hz + 栈 + 权重), 但**不是**画布那个节点在跑 —— 节点是壳」; 不许用"节点已接入"糊过去。
    要把壳改成真接入时 **别 `PURE=True` 自己再加载一份权重** (8G 显存要抢、相机 UVC 单占要 EBUSY):
    让实现**复用 worker 的产物文件**, 再 `PURE=True` + 加白名单 + 输出端口接下游, 这样节点上是真数据且不重复推理。
+
+25. **恒等函数/空转节点: 占着位置不干活, 但删不得**: `def execute(self, u): return np.asarray(u)` 这类
+    "看着在链路上"的一环, 实测进→出逐位相同、直接调连对象都是同一个(没做任何处理)。它不产生语义, 却常撑着四处引用:
+    画布 `params.source_symbol`(右键打开源代码锚点) · `_EXTERNAL_LOC[<key>]` · 验证判据(名字往往就叫
+    `t_act_pass`/指令透传) · registry docstring。直接删 = 锚点悬空 + 判据红 + 画布参数指向不存在的符号。
+    处置: **不删, 让它干真活, 但先保证数值零回归**(零回归就不需要对照实验)。执行器类缺的正是它本该做的事:
+    ① NaN/Inf 拦截(脏数归零 + `valid=False`) ② 通道范围**只记不裁**(裁剪权留在上游安全边界, 不越权)
+    ③ 变化率超限(`|u−u_prev|>rate` 记为异常信号, 不是误差)。
+    三条纪律: (a) **NaN 归零后不要再算变化率** —— 否则"归零"本身会被误报成轴跳变;
+    (b) 校验结论必须进返回值/日志(如 `out1.exec_check`), 只写进实例属性等于没做;
+    (c) 验零回归用**原有判据重跑**(它本来只断言 shape+finite), 不许把数值改动混进来。
+    一句话: 空壳的价值在"接口位", 不在"恒等式" —— 要么给它物理意义, 要么删掉并同步四处锚点; 两者都不做是最坏的。
+
+26. **动态加载的模块断点不绑定 (断点不停≠代码没跑)**: 加载器必须 `spec_from_file_location` +
+    `module_from_spec` + `exec_module` **并注册 `sys.modules`** —— pydevd 按模块名回查文件来绑断点,
+    不注册则**该文件里所有断点全废**, 而函数照跑、日志照打、界面不报错。判据一行:
+    `mod.__spec__ is not None and mod.__name__ in sys.modules`。
+    🔴 `exec(compile(...))` 造的模块 `__spec__/__loader__` 都是 None: **首次**按 co_filename 能绑,
+    **取消断点再添加就静默失效**(pydevd 要靠 loader 重新定位文件) ⇒ exec 只能当降级路径且必须打可读告警。
+    🔴 **一个仓库里常有多个加载器**: 引擎侧 `_load()` 修好了不代表节点侧 `_ss_import()` 也修了;
+    更隐蔽的是某个被 spec 加载的**单个文件**漏了注册(实测流形引擎两处加载器都没注册, 该文件断点全废),
+    而旁边的模块一直有注册 ⇒ 只按“加载方式”抽查会漏。
+    `grep -rn "spec_from_file_location\|exec(compile" src/ tools/` 全列, 逐个确认有 `sys.modules[名] = 模块`。
+    第二层原因同在: 同一文件名在 `src/` · `external/` · `staging_*/` 下可能有 **3 份副本**, 断点打在副本上
+    永远不命中 ⇒ 先 `find . -name <file>.py` 列出全部, 用 `fn.__code__.co_filename == os.path.realpath(真身)`
+    逐字比对, 并确认模块 `__spec__ is None`(exec 加载)。
+    第三层: **三套入口的断点位置不同**, 各打一个就能看出用户走的是哪条链:
+    ① `▶运行(真实化)` 走引擎 `RealStateSpaceSim` → 打 `engine/runtime.py` 的**调用点**;
+    ② GUI 右键「运行节点」→ `_state_space_run_node` → `node_logic.execute_node_logic` → 注册函数,
+    这条是**真调用** (打 `nodes/*_impl.py` 的 `run(ctx)` 能停);
+    ③ GUI `⏭单步` **不重新调用节点函数** —— 它先 `_ss_ensure_trace()` 跑完整条引擎轨迹(有缓存,
+    `force=False` 时直接复用), 之后逐节点只打印轨迹里该节点的 I/O 快照 ⇒ 在 `run()` 里打断点、点 ⏭单步
+    可能一次都不停, **别据此判“代码没跑到”**; 要真跑要么点右键运行节点、要么 `_ss_ensure_trace(force=True)`;
+    ④ 常驻循环/无头探针走中间件 `prj.step(only=[...])`, 那才是真 step 节点壳。
+    🔴 GUI 右键那条把 `execute_node_logic` 包在 `try/except: pass` 里 —— 节点实现抛异常时界面**零提示**,
+    “点了没反应”先给这个 except 加一行可读日志, 不然会在“断点是不是没绑”上白转几轮。
+    🔴 **第四层 (最便宜, 先查): env 根本没进进程**。
+    `tr '\0' '\n' < /proc/<调试进程pid>/environ | grep -E 'ZMAX_|OMP_|TORCH_'` 为空
+    ⇒ launch.json 的 `env` 没生效(编辑器用缓存旧配置), 一切靠 env 的断点开关一次都没打开 ——
+    此时“断点不进”与代码路径、加载器全都无关。修 = `Developer: Reload Window` + 重启调试;
+    别靠读 launch.json 文件“确认已配置”, 文件对 ≠ 进程里有。同层还有一条: `ps -o lstart= -p <pid>`
+    与改过的文件 `stat -c %y` 比 —— 进程早于改码就是跑旧代码(Python 不热加载)。
+    🔴 **不要用代码内置断点做兜底**(内置 `brk(tag)` 命中就调 `breakpoint()`): 它会和用户自己打的红点抢,
+    而且停住时 **Qt 事件循环停转** (py-sty 现场 `wait → _do_wait_suspend`) ⇒ 画布点不动、**新断点也点不了**,
+    用户只能先杀进程。用户明确要求“不要干扰我 debug”——已经埋进去的要**全部删除**,
+    光把默认改成“只记录不停”不够(日志还在刷就等于还在干扰)。要单步看变量用**独立命令行 pdb 入口**
+    (`python -m pdb -c "b <file>:<line>" -c c tools/dbg_x.py <节点id>`), 不碰 GUI 进程、不影响已打的断点。
+    🔴 **断点能不能停, 按这四层从上到下排**(任何一层不满足都静默不命中):
+    ① 代码有没执行 —— 用**记账文件**判(函数首行 append 时间/pid/参数), 不用断点判;
+       缓存/队列会让整段逻辑这一拍不跑 (实测动作队列 `n_action_steps=7` ⇒ 一次推理管 7 拍, 只看断点像“永远不进”);
+    ② 这一行是不是可执行语句 —— `def` 签名行 / docstring 行 / `return` 行**都绑不上**
+       (实测同文件: 1186 def 不进、1188 docstring 不进、1200 赋值能停、1302 方法调用能停、1303 `return rec` 不停);
+    ③ 模块绑没绑 (见 26); ④ 进程对不对 —— 代码可能跑在**常驻服务进程**, 断点打在 F5 起的 GUI 进程
+       (判据: 记账文件里的 pid 与调试进程 pid 不同; `py-spy dump` 看到主线程在画界面)。想停就得让调试进程
+       成为唯一执行者, 且调试模式启动后**自动跑一次引擎** —— 否则“没有代码在跑”, 红点无处可停。
+    🔴 **绝不拿中文节点名做子串匹配**: `"actuator" in "🤖 机器人执行器"` 恒为 False —— 开关看着设了、
+    其实永不命中, 还会让你误判“代码没跑到”。要打 tag 就用英文短名且每层一个;
+    被按路径动态加载的模块里要**内联实现** (从上层包 import 会成环)。
+    第五层: 自写 `sys.settrace` 行追踪会**覆盖 debugpy 的 tracer** ⇒ 断点全不命中;
+    这类 tracer 必须先判 `debugpy.is_client_connected()` 为真就直接调目标函数、不做 settrace。
+
+### 让 GUI 调试进程真单线程 (除显示层外)
+
+用户要求“除了显示的 GUI, 所有节点都单线程运行”时, **三层一起做**, 只设 env 只覆盖第一层:
+
+1. **BLAS 层 (只能在解释器早期设)**: `OMP/MKL/OPENBLAS/NUMEXPR/VECLIB/TORCH_NUM_THREADS=1` +
+   `MALLOC_ARENA_MAX=2`, 必须在**任何 numpy/torch 导入之前**写进 `os.environ`; 事后
+   `torch.set_num_threads()` 改不了 OpenBLAS/MKL 已建的线程池。把这段兜底放在 GUI 脚本顶部,
+   桌面双击与调试器启动就同口径 —— 不依赖 launch 配置是否真的生效。
+2. **运行期线程池**: `torch.set_num_threads(1)` + `set_num_interop_threads(1)` + `cv2.setNumThreads(1)`
+   (env 只管首次初始化, 已有实例必须 set)。做成幂等 `enforce()` 挂在节点注册模块的模块级 ——
+   一处覆盖全部节点, 并**返回实测值**(`torch.get_num_threads()`/`cv2.getNumThreads()`) 而不是声称。
+3. **节点自己起的线程**: `grep -rn "ThreadPoolExecutor\|threading.Thread\|multiprocessing" nodes/ manifold/ middleware/`。
+   推理/重活的异步封装 (如 `infer_async` 起 `*-worker`) 在单线程模式必须走**同步分支**,
+   否则“人在主线程停住、算在别处跑”, 单步与断点同时失效; 输出里标 `mode="sync"` 让下游看出这拍是真算还是回放。
+
+验收: `torch.get_num_threads()==1` 且 `threading.current_thread() is threading.main_thread()` 为真。
+**口径**: GUI 的 Qt 线程仍在, 所以 `/proc/<pid>/task` 总数不会是 1 —— 判“节点是否单线程”看**计算线程**,
+不看进程线程总数; 第三方库自带的监视线程 (如 tqdm) 也不算。留逃生口 `ZMAX_MULTI_THREAD=1`
+(跑基准/批量推理), 不做静默切换。
+
+27. **"每节点都能单步" ≠ "每节点都真算" —— 报两个数**:
+```python
+prj = load_project()
+for nid in list(prj.nodes.keys()):
+    t = prj.step(only=[nid])[0]      # status: 实现执行 / 直通 (PURE=False: 只走数据面) / 异常
+```
+    同一声明周期里报: 实现执行 N · 直通 M · 异常 0 · >200ms 慢节点(首次加载权量会到秒级)。
+    真算取决于 `params.pure_verified` **且**实现返回 dict。
+    🔴 **壳会把业务字字典过滤成空**: 生成器模板 `{k:v for k,v in res.items() if k in PORTS_OUT}` ——
+    实现返回 `{M, ok, progress}` 这类业务键(不含 `out1/out2`) 就被滤光, 下游永远拿 None;
+    兜底 = 一个端口名都没命中时**整块当首端口值发出**。
+
+28. **`PURE=True` 不是充分条件: 实现还会被三处卡死 (返回 bool / 内部抛异常 / 模型侧硬闸)**。
+    审计“X 用上了没有”时, `PURE` 只是第一道; 逐层给证: ① `PURE` 现在是什么 (恒 False / env 开关);
+    ② `compute()` 里 `fn(_mctx)` 的**返回值类型** —— 实现 `return True/False` 会被壳当“非 dict”而走直通,
+    必须返回业务字典; ③ 实现内部抛异常时壳会把它降成“实现异常 → 直通”, 看起来和“没接”一模一样,
+    所以要把 `status` 与 `out1` 的真内容一起报 (out1 里是产品块/入参回显 = 它根本没算)。
+    🔴 **模型侧硬闸是第三层, 而且它会拒绝而不是降级**: ckpt 训练时开了额外通道 (实例: skill 通道),
+    推理时缺那路输入就 `raise ValueError("checkpoint was trained with a … but … was not provided")` ⇒
+    节点整体失效。正解是**构造那个侧通道**(实测 24 维: 阶段 one-hot + 控制量, 宁缺的 L2 场分量留 0 不伪造),
+    不是关闸、不是放宽、也不是回到直通。
+    取证顺序: 先**绕开节点直接调策略入口** (`service.run_once(...)` / `model(x)`) 跑通一次并贴 chunk/u_ff 真值,
+    再回节点跑一次对同样的字段, 两处一致才算接上。
+    开 PURE 必须**同时给反向开关** (env) 并默认安全值, 且要报**两个耗时**: 冷启(加载权重) 与稳态单次 ——
+    实测 INTACT 冷启 9.7s / 热态 32ms (可以每拍跑), SmolVLA L3 冷启 22.7s / 878ms (10Hz 塞不进, 只能交周期异步)。
+    这两个数决定“能不能进默认档”, 不带它们上就是拍脑袋。
+    口径: 即使模型真跑了, 也要单独报**它的输出有没有下游消费者** —— 实例: 意图解码的 `l4_cond` 192 维真值
+    到达 L3 端口, 但 L3 ckpt 未训该通道 ⇒ `l4_cond_injected=false`, 对动作数值无因果贡献, 只能说“到位未生效”。
 
 ## 「X 机器是不是已经部署完了 / 整套工程都在里面没有」—— 四面取证
 

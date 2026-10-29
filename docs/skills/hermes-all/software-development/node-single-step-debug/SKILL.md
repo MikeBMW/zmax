@@ -34,6 +34,35 @@ description: Use when 节点要能单步调试或判据因活真源时红时绿�
 `ZMAX_DEBUG_BREAK=1`）· `--src`（打印每环节绝对路径+行号，`code -g file:line` 直接断点）· `--all --json`。
 档位门：**深调试只在调试档**（如 550B `dev_profile.vscode_debug`），其它档位跑 `--trace` 要真拦（exit≠0）。
 
+## 1d. 断点不命中: 按"能不能重新绑定"分四类查 (2026-10-29 一次性踩全)
+排查顺序固定, 每类都有实测判据, 不要凭感觉改:
+1. **def 签名行 / docstring 行 / return 行都不要打断点**。这三类都不是可执行语句:
+   `def step(self, ...` 在 pdb 里报 `*** Blank or comment` 或不触发; `return rec` 被 CPython
+   和上一行合进同一 line table 也容易漏。实测 manifold_engine.py: 1186(def) 不进、1188(docstring)
+   不进、1200(self._evolve) 能停、1302(self.history.append) 能停、1303(return rec) 不停。
+   **断函数体第一条真实语句**, 用 `co_firstlineno` 只能拿到 def 行, 要再往下找。
+5. **缓存/队列会让代码看起来"没被执行"**。例: SmolVLA+LEW 的 predict_action 只在
+   `select_action` 的动作队列空时才跑 (modeling_smolvla_lew.py:537 `if len(self._queues[ACTION])==0`),
+   `n_action_steps=7` ⇒ 一次推理管 7 拍, 之后 6 拍走 popleft。断点像"永远不进"。
+   判据: 断在 select_action 入口看 `len(self._queues[ACTION])`; 要每拍真推理就清队列
+   (`SS_L3_NO_CACHE=1`)。同类还有引擎轨迹缓存 `_ss_ensure_trace(force=False)`。
+2. **模块必须 spec_from_file_location + 注册 sys.modules**。`exec(compile())` 造的模块
+   `__spec__/__loader__` 都是 None: 首次按 co_filename 能绑, **取消断点再添加就静默失效**
+   (pydevd 要按 loader 重新定位文件)。判据: `mod.__spec__ is not None and mod.__name__ in sys.modules`。
+3. **这个 debugpy 版本没有编译 frame eval** (`_pydevd_frame_eval/*.so` 为空 ⇒
+   PYDEVD_USE_FRAME_EVAL 只能 NO) ⇒ 对**已加载**模块运行时加断点无效。要命中的话让模块
+   重新编译: 运行前清 `library._SS_MODS` + sys.modules 里的 `state_space.*`/`ss_real.*`。
+4. **代码到底跑没跑, 用记账文件判定**, 不要用断点判定。在疑似被调用的函数首行 append
+   一行 (时间/pid/tag) 到 `zmax_data/ss_live/*.log`, 跑一次看有没有新增。
+   另有两条路径陷阱: 路径上溯层数算错(execution.py 在 state_space/ 下要 **6** 层到仓库根,
+   nodes/ 下只要 5 层) + `except: pass` 会把"写日志失败"伪装成"代码没执行"。
+
+## 1e. GUI 里 breakpoint() 会冻死整个界面
+停住时 Qt 事件循环停转 ⇒ 画布点不动、新断点也点不了 (py-spy 现场:
+`wait → _do_wait_suspend (pydevd.py:2268)`)。所以: 内置断点默认**只记录不停**,
+要停必须显式 (文件开关 / ZMAX_DEBUG_BREAK); 要看变量用命令行 pdb 通道
+(`python -m pdb -c "b <file>:<line>" -c c tools/dbg_actuator.py <节点id>`), GUI 不受影响。
+
 ## 2. 坑（都踩过）
 - **参考方向不同源 ⇒ 假偏差**：自由空间段的“误差方向”是 `阶段目标−末端`，拿“工件头−孔位”当参考会把
   cos≈1.0 算成 cos≈0.56。参考必须**照抄被校函数的内部规则**（同一 `_error()`/同一行）。

@@ -41,6 +41,94 @@ metadata:
 5. **生产实例上只取证，不下断点**: `tail` 日志（含原始日志尾）、服务自己的回执接口、
    `py-spy dump --pid <pid>`（不暂停进程）。
 
+## 断点不命中的完整分诊链（按顺序跑，每步都能独立证伪）
+
+“断点不进”有四层原因，**先证进程，再证代码，最后才改配置**。跳过前两层去改 launch/env，会陷入
+“改配置 → 让用户重启 → 还是不进”的死循环（本项目连改五轮 launch/env/加载方式都没解决，真因是第一层）。
+
+### ① 代码跑在哪个进程（最常见）
+GUI 显示“未运行 / 没点 ▶ 运行”，而 `ss_live/engine_latest.json` 的 mtime 每 0.1s 在刷 —— 刷新者是
+**systemd 常驻服务**，不是用户 F5 起的 GUI。断点打在 GUI 进程里 ⇒ 永不可能命中。
+
+```bash
+systemctl is-active <loop 服务名>
+python -c "import os,time;print(round(time.time()-os.path.getmtime('zmax_data/ss_live/engine_latest.json'),2))"
+tail -3 zmax_data/ss_live/actuator_calls.log     # 节点入口写的「时间 + pid」
+```
+
+正向取证: 在节点入口加一行**每次调用 append 时间+pid** 的日志（本仓 `zmax_data/ss_live/actuator_calls.log`）。
+判读要带一条限制: 这种埋点只覆盖**走那个入口**的路径。引擎里常见的直连调用
+（如 `u_vec = self.execr.execute(u_sat)`）根本不经过节点实现文件 ⇒ **日志为空不等于 execute 没被调**，
+只能证明“那个入口没走”。要证“函数真被调过”，用 py-spy 棨或在该函数自己里埋点。
+
+要它跑: 先停常驻服务，再在界面点 ▶ 运行/右键运行节点。不想每次靠人记得点，就在调试模式下
+**启动自动跑一次业务代码**（本仓 `ZMAX_DEBUG_MODE=1` 时 GUI 建完窗口后调一次仿真启动函数，
+`ZMAX_AUTO_RUN=0` 可关）—— 这是把“断点不进”真正关掉的那一步，只改配置永远到不了。
+窗口往往是**异步建好**的，所以用 QTimer 每秒轮询 `app.allWidgets()` 找带目标方法的实例（上限约 60 次），
+一次性 `singleShot` 会在窗口存在前就执行并落空。
+验收口径: 自动跑后日志里出现 `[brk:<tag>] 到达` 或 py-spy 栈里出现该函数。
+调试完把常驻服务 start 回来（`sudo systemctl start <loop 服务名>`），别让生产循环一直停着。
+
+### ② 这个进程此刻在干什么
+```bash
+sudo py-spy dump --pid <pid>
+```
+MainThread 栈只有 `paintEvent → _sphere` 这类绘制代码、没有任何 `run/execute/step` ⇒ 进程里没有节点在执行
+（同时它 `active+gil` 还在持续算，界面反而显得“有数据在动”，最具误导性）。栈里出现 `pydevd_*` 线程是调试器
+自己的，不要误判。
+
+### ③ 断点本身（三个机械陷阱，都与“断点有没有坏”无关）
+- **行号漂移**: 反复编辑同一文件会把函数整体后移几十行，用户留在旧行号上的断点落在注释/空行 ⇒
+  解释器**根本不会设置它**（pdb 只回 `*** Blank or comment`），界面红点还在、跑起来永不停。
+  交付时必须报**当前** `def` 行与第一条可执行语句行，并明说“旧断点已失效”。
+- **launch.json 被 GUI 自己整份重写**: 手改 `.vscode/launch.json` 加 env，用户下一次右键「打开源码」就被
+  模板函数覆盖回默认（本仓模板在 `simulink_module._vscode_launch_cfg`）。要加 env 只能**改模板再让模板重生成**；
+  判据是起进程后读 `/proc/<pid>/environ` 与 `cmdline`，不是看 json 里写了什么。
+- **frozen modules**: debugpy 自报 `frozen modules … may make the debugger miss breakpoints`。Python 3.11 起
+  必须在 launch 配置里给 `pythonArgs: ["-X","frozen_modules=off"]`（`args` 是给程序的，不生效）+
+  env `PYDEVD_DISABLE_FILE_VALIDATION=1`。
+- **加载器没注册 `sys.modules`**: pydevd 按**模块名**在 `sys.modules` 里定位文件。用
+  `spec_from_file_location` + `module_from_spec` + `exec_module` 但漏了 `sys.modules[name] = m`，
+  该文件里**所有断点静默失效**（函数照跑、不报错、界面红点还在）。同一仓库常有的模块注册了、有的漏了 ——
+  逐个核，别假设“同一个 repo 的加载方式都一样”。自查:
+  `python -c "import sys;sys.path.insert(0,'src');<触发一次节点>;print('<模块名>' in sys.modules)"`。
+- **`exec(compile())` 造的模块**: `__spec__`/`__loader__` 都是 None。首次加载能按 `co_filename` 绑上，
+  一旦**取消再添加**断点，pydevd 没有 loader 可重新定位 ⇒ 静默不绑。要能反复绑就必须 spec 加载。
+- **debugpy 没编译 frame eval**: `find <debugpy>/_vendored/pydevd/_pydevd_frame_eval -name "*.so"` 为空
+  ⇒ `PYDEVD_USE_FRAME_EVAL=NO` ⇒ **不能对已加载模块在运行时加/删断点**，只在 compile 那一刻注入。
+  对策: 每次运行前清模块缓存（`library._SS_MODS` 与 `sys.modules` 里的 `state_space.*`/`ss_real.*`）
+  强制重编译，新断点在编译时被注入；代价几十 ms。两个入口都要清: ▶运行 与 右键运行节点。
+
+### ④ 验证“能不能停”只有两条硬口径
+```bash
+python -m pdb -c "b /abs/path/file.py:LINE" -c c -c "p 变量" tools/<跑一次节点的脚本>.py
+```
+- 路径必须**绝对**（相对路径匹配不上 `co_filename`），行号必须落在可执行语句。
+- 动态 `exec(compile(src, path, "exec"))` 加载的模块 **pdb 能停、debugpy 的 UI 断点未必** —— 两者要分开证，
+  别拿 pdb 停住了就宣布 VSCode 也能停。
+
+兜底断点用**文件开关**而不是 env: `touch <仓库>/zmax_data/ss_live/BREAK` ⇒ 代码里 `os.path.exists()` 无条件
+`breakpoint()`。它不依赖 env、不依赖 `debugpy.is_client_connected()`，是唯一能区分“代码没到”与“调试器没接管”的开关。
+三个必做:
+- **路径层级按该文件实际深度数，不要套别的文件**: `nodes/x.py` 上溯 5 层到仓库根，但
+  `policies/left_right/state_space/x.py` 要 **6** 层。套错一层就指到 `src/` 下不存在的目录 ⇒ 开关和记账
+  文件全部静默失效。算完立刻打印真实路径核对一次。
+- **用完立刻删**: 常驻服务里的同一节点也会被停住，整条循环卡死。
+- **写据点的兜底分支不许 `except: pass`**: 路径算错 + 静默吞异常 = 表现成“代码没执行”，排查代价极高。
+  至少落一行日志，或让路径算错本身可见。
+
+**默认值必须是“只记录不停”**: GUI 主线程一 `breakpoint()`，Qt 事件循环停转 —— 界面冻结、鼠标点不动，
+连新断点都点不了（py-spy 栈顶会显示 `_do_wait_suspend (pydevd.py)`）。代码内置断点只作**显式**通道
+（文件开关 / `ZMAX_DEBUG_BREAK`），默认只打印“到达”一行。去重也不能用“一辈子只停一次”的集合 ——
+那样第一次停完就永不再停（现场表现为“启动能进、再运行不进”）；要按**运行轮次/时间窗**去重。
+要看变量用终端 pdb 通道，GUI 不受影响。
+
+### 交付口径
+每次说“改好了”都附**一条可复现命令 + 它的真实输出**。没跑 pdb、没看 py-spy 栈就说“还没验证”，
+不说“应该能停”。一个未验证的“已修复”被否一次，用户之后会要求把每个结论重新证明一遍。
+
+命令清单与判据见 `references/breakpoint-not-hitting.md`。
+
 ## 三步配方
 
 ### ① 离线台（零风险，日常首选）
@@ -155,3 +243,7 @@ FIFO 文件存在、权限对、mtime 正常 —— 全都不代表有人读。�
 - 离线台要读**真实状态文件**（不是内存缓存），否则算出来的目标与线上不一致。
 - 用户在 VSCode 里按 F5 调试 GUI 时，断点下在执行器文件上是必然不命中的 —— 先解释进程归属，
   再给配好的 launch 配置，别先让用户去"重启试试"。
+- **别只用“日志/端口正常”证明节点在跑**: 界面数据可能来自另一个进程写的文件。要证“我要调的那段代码在这个
+  pid 里执行过”，只有两种证据: 该 pid 打出的调用日志，或 py-spy 栈里出现那个函数。
+- **“用户说都重启了好几次”= 停止让他重试**: 改成自己去取证（`/proc/<pid>/environ` · `py-spy dump` ·
+  `wmctrl -l` + 截图 OCR · 写 pid 到调用日志）。让用户反复重启而不给出新证据，是在消耗信任。

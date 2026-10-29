@@ -154,6 +154,59 @@ pip download --only-binary :all: --python-version 3.12 --implementation cp --abi
 ```
 验收不能只看安装退出码: `python -c 'import <包>; print(<入口类>)'` + 真实用一次(如从本地目录 `local_files_only` 加载权重)都要过。
 
+## 4d. `active` ≠ 健康: 构造失败会一直重试到天荒地老
+
+常见的一类假活: **进程在、端口在听、`is-active` 回 `active`，但服务内部的“构造”一直失败**。
+只要构造包在 `while True + sleep(3)` 里、而错误只是记进一个状态字段，systemd 就永远不会 `failed`，
+`NRestarts` 也不涨 —— 从外面只能看到“服务好好的、就是一帧也不出”。
+
+实测签名 (渲染类服务):
+
+```
+/status.json  {"ok": false, "n": 0, "gold_px": 0, "err": "构造失败(3s 后重试): FatalError: gladLoadGL error"}
+下游真值       tcpL = []  tcpR = []            # 全空
+systemctl      active                          # 完全看不出问题
+```
+
+🔴 **“无限重试”不等于自愈**: 需求是个**一次性授权**而不是“等一下就会好”的东西时，错过就永远补不上。
+典型 = 需要图形会话的服务 (`DISPLAY=:0` + GLFW/OpenGL/相机): unit 在 `multi-user.target` 阶段就起来了，
+那时**桌面会话还没把 X 授权给服务进程** ⇒ 拿不到 GL 上下文 ⇒ 一直重试。开机 3.5 小时零产物。
+
+定式排查顺序（别先去改业务）:
+1. **看业务自检字段**，不看 `is-active`: `curl -s 127.0.0.1:<port>/status.json` 的 `ok/err/n` + 下游真值文件是否为空;
+2. **区分“环境没就绪”与“驱动/硬件坏了”**: 用**同一个 venv + 同一个 DISPLAY** 在交互 shell 里重跑那一小步
+   (例: 建一个最小 mujoco `Renderer`、或直接开一次 GL 上下文) 应成功 ⇒ GL/GPU/驱动没问题，
+   是**服务进程拿不到上下文**; 顺带 `nvidia-smi` 看显存/占用排除“被别的进程占着”；
+3. **重启一次并回读业务字段**: `sudo systemctl restart <unit>` → `ok:true` · 计数 `n` 递增 · 标定/健康字段有值 · 下游真值非空，
+   才算真恢复（`is-active=active` 不算）；
+4. **装看门狗，别只指望 `Restart=always`** —— 它永远不触发，因为进程永远不退出。
+
+看门狗定式 (`<unit>-watchdog.service` + `.timer`，实测可用):
+
+```ini
+# .service — Type=oneshot, ExecStart 指向仓库里的脚本 (三件套同前)
+# .timer  — OnBootSec=120 (给桌面会话/依赖留时间), OnUnitActiveSec=60, AccuracySec=5s
+```
+
+脚本只读业务自检，不发任何业务指令，判两个条件 (任一满足 `STRIKES=3` 次才动手):
+
+| 条件 | 含义 |
+|---|---|
+| `ok != true` 且 `err` 非空，连续 N 次 | 构造一直失败 (本例: GL 上下文) |
+| 计数 `n` 连续 N 次没前进 | 进程在、渲染/采集线程死了 (第二种假活) |
+
+纪律: ① **只读 `/status.json`**，绝不碰 `/control`/下发接口（看门狗自己不能变成执行者）;
+② **要 N 次确认**，不要一次失败就重启（瞬时光帧/慢启动会被误杀）;
+③ **重启后回读** `ok/n` 并打出来，回读不过就返回非 0（让 timer 日志里能看到持续失败）;
+④ 状态文件放 `/run/<name>_wd.json`（重启机自动清），记 `bad/last_n/same_n/restarts/last_restart`;
+⑤ 正常态跑一次应只打印一行 `ok n=... ` 且**不重启** —— 这是验收的第一步。
+
+补充: 依赖图形会话的 unit 最好同时加 `After=graphical-session.target`（能减少抢跑），
+但**不能只靠它** —— 用户可能从未登录图形会话，看门狗才是兜底。
+
+🔴 **报给用户的顺序**: 这类故障现场的话是「**某个东西一动不动**」，极易被归因成“动作值不对/算法没算”。
+所以先报**生产端健康**（`ok/n/err` + 下游真值是否为空），再谈动作数値 —— 且要明确说“这不是下游参数的问题”。
+
 ## 5. 交付口径 (用户拿它当结果看)
 - 报告只写四样: **磁盘上的文件路径** · **`is-enabled/is-active` 真值** · **日志/台账一行真输出** · **回滚一条命令**。
 - 不许写"已配置完成/已优化"而无数字; 未实测的东西标明"未证明"。
