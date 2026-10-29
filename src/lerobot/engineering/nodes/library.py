@@ -3718,6 +3718,9 @@ def _ar_aoi_publish(sig, log=None):
         return {"ok": False}
 
 
+_SURF_DOWN_UNTIL = 0.0          # 10083 不可达冷却到期时刻 (Pitfall: 不在线时每次连通超时 1s 拖死节拍)
+
+
 def _surface_bypass(log=None):
     """🆕 2026-10-19 老倪「10083服务, 可以在4060上旁路运行」:
     表面相机旁路 —— 本机(4060) 通过 HTTP 从工控机 10083 取同一帧, 自己搜矩形刚体 → 摆正
@@ -3729,6 +3732,28 @@ def _surface_bypass(log=None):
       仍在过曝(实测 5000us: 整帧 mean 16.25/暗部94.7%, 模块 mean 153.9/死白16.68%)。
     """
     try:
+        import time as _t
+        global _SURF_DOWN_UNTIL
+        if _t.time() < _SURF_DOWN_UNTIL:
+            _cache = {"ok": False, "verdict": "unavailable",
+                      "why": "10083 已知不可达 (冷却中, 不重复探)", "cached_down": True}
+            _YOLO_CACHE["surface_aoi"] = _cache
+            return _cache
+        # 快速探活 0.25s: 不在线就立刻降级, 不把 1s 连通超时摊到每一拍 (300UPH 每件 12s 预算)
+        import socket as _sock
+        _host = os.environ.get("ZMAX_AOI_SURFACE_HOST", "192.168.23.23")
+        try:
+            _c = _sock.create_connection((_host, 10083), timeout=0.25)
+            _c.close()
+        except OSError as _e:
+            _SURF_DOWN_UNTIL = _t.time() + 60.0
+            _cache = {"ok": False, "verdict": "unavailable",
+                      "why": f"{_host}:10083 不可达 ({type(_e).__name__}), 60s 内不再探",
+                      "cached_down": True}
+            _YOLO_CACHE["surface_aoi"] = _cache
+            if log:
+                log(f"🌑 表面 10083 旁路: {_cache['why']} — 金手指主路不受影响")
+            return _cache
         from lerobot.policies.yolo_3d.surface_optical import SurfaceOpticalQuality
         sq = SurfaceOpticalQuality()
         sres = sq.run()
