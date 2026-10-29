@@ -69,22 +69,41 @@ def make_data(seed=0, d_vis=D_VIS, n=N_SAMPLES):
     return Z, X
 
 
+def _pick_dev(torch):
+    """🥚 加速器选择: 显式 SS_M3_DEV 优先, 否则 xpu > cpu。
+
+    实测(2026-10-30)同一颗 yolo IR: GPU 1.61ms / NPU 2.85ms / CPU 78.88ms
+    ⇒ CPU 比 GPU 慢 49 倍。此前本进化器全程默认 CPU, 单代 683.9s, 而 Arc B390
+    一直 in_use=false。xpu 不可用才回落 cpu, 并打印实际设备(不静默)。
+    """
+    d = os.environ.get("SS_M3_DEV", "").strip()
+    if d:
+        return d
+    try:
+        if torch.xpu.is_available():
+            return "xpu"
+    except Exception:                                                    # noqa: BLE001
+        pass
+    return "cpu"
+
+
 def evaluate(hp):
     """按超参建方案3 模型, 训 steps 步, 算适应度。"""
     try:
         import torch
         build_m3_jepa, collapse_score = _import_m3()
         torch.manual_seed(int(hp["seed"]))
+        dev = _pick_dev(torch)
         m = build_m3_jepa(d_vis=D_VIS, d_geo=6, d_e=int(hp["d_e"]),
-                          n_layers=int(hp["n_layers"]))
+                          n_layers=int(hp["n_layers"])).to(dev)
         Z, X = make_data(seed=int(hp["seed"]) % 100)
-        Zt = torch.from_numpy(Z)
-        Xt = torch.from_numpy(X)
+        Zt = torch.from_numpy(Z).to(dev)
+        Xt = torch.from_numpy(X).to(dev)
         opt = torch.optim.AdamW(m.parameters(), lr=float(hp["lr"]))
         bs = int(min(hp["batch"], len(Z)))
         last = None
         for _ in range(int(hp["steps"])):
-            idx = torch.randint(0, len(Z), (bs,))
+            idx = torch.randint(0, len(Z), (bs,)).to(dev)
             o = m(Zt[idx], Xt[idx], tau=float(hp["tau"]),
                   lam_align=float(hp["lam_align"]),
                   lam_geo2img=float(hp["lam_g2i"]))
@@ -115,6 +134,7 @@ def evaluate(hp):
                 "img2geo": float(sc["img2geo"]), "geo2img": float(sc["geo2img"]),
                 "adv": float(pos - neg), "pos": pos, "neg": neg,
                 "loss": float(o["loss"]),
+                "device": str(dev),
                 "n_params": sum(p.numel() for p in m.parameters())}
     except Exception as e:                                             # noqa: BLE001
         import traceback
