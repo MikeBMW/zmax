@@ -106,6 +106,10 @@ def brk(tag=""):
     每个 tag 首次到达时打一行状态 (停/未停 + 原因) —— 让人能从日志判断断点到底走没走到。
     """
     _key = tag or "-"
+    # 🔴 2026-10-29: 显式关掉机制 (日常跑不想被内置断点打扰时设 ZMAX_BREAK_OFF=1)。
+    #   注意: 文件开关 BREAK 仍然优先 (那是人主动 touch 的, 语义就是"我要停")。
+    if os.environ.get("ZMAX_BREAK_OFF") == "1":
+        return
     # 🔴 2026-10-29 最硬的开关: 存在 zmax_data/ss_live/BREAK 就无条件 breakpoint()
     #   (不判断 env, 不判断 debugpy 是否连通 —— 用来判定"代码到没到"和"调试器有没接管")
     _HERE = os.path.abspath(__file__)

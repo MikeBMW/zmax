@@ -26,6 +26,8 @@ def _brk(tag=""):
       ③ 调试器已连接 + 未设 env ⇒ 每个 tag 只停第一次 (不把 10Hz 刷成无限暂停)
     """
     import os as _os
+    if _os.environ.get("ZMAX_BREAK_OFF") == "1":      # 日常跑不想被内置断点打扰
+        return
     _HERE = _os.path.abspath(__file__)
     # state_space → left_right → policies → lerobot → src → zmax (6 层!)
     # 少一层会指到 /home/ubuntu/zmax/src 而永远不命中 —— 文件开关和到达记账都会静默失效。
