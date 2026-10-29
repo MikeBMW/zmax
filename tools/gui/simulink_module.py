@@ -8842,12 +8842,40 @@ class SimulinkModule(QWidget):
         self._ss_step_tr = tr
         return tr
 
+    def _exec_node_logic(self, node, label="运行节点"):
+        """🔴 真实执行节点逻辑 (断点从这里进)。异常必须可见 —— 原来 except: pass 把
+        '节点根本没执行' 伪装成 '执行了但没输出', 是断点查不出来的主因 (2026-10-29 老倪)。"""
+        try:
+            from node_logic import execute_node_logic
+            return execute_node_logic(self, node, label=label)
+        except Exception as _e:                                            # noqa: BLE001
+            import traceback
+            self._log("⚠️ 节点逻辑执行失败: %s: %s" % (type(_e).__name__, _e))
+            try:
+                self._log("   " + traceback.format_exc().strip().splitlines()[-1])
+            except Exception:                                              # noqa: BLE001
+                pass
+            return None
+
     def _state_space_run_node(self, node, keep_active=True):
         """🧮 状态空间画布 右键「运行节点」 = 引擎同源 (2026-08-31 老倪: 单步/运行/右键三统一)
         显示该节点在引擎轨迹的真实 I/O — 不再走 node_logic 壳逻辑 + 预先固定模拟值"""
         tr = self._ss_ensure_trace()
         if tr is None:
-            self._log("⚠️ 引擎轨迹不可用 — 右键运行节点中止")
+            # 🔴 2026-10-29: 引擎轨迹拿不到也必须执行节点逻辑。原来这里是 _log + return ⇒ 右键
+            #   "运行节点"什么都没跑, 调试器断点永远不进 (实测 actuator_calls.log 零调用)。轨迹只负责显示。
+            self._log("⚠️ 引擎轨迹不可用 — 仍执行节点逻辑 (仅跳过 I/O 快照显示)")
+            node["status"] = "running"
+            _it = self._items.get(node["id"])
+            if _it:
+                _it.update()
+            self.canvas._scene.update()
+            self._exec_node_logic(node, label="运行节点")
+            node["status"] = "step_active" if keep_active else "success"
+            if _it:
+                _it.update()
+            self.canvas._scene.update()
+            self._refresh_status()
             return
         # 节点在画布序中的位置 → 轨迹帧 (与单步逐步映射同款, 同节点右键/单步看到同一帧)
         order = [n for n in self.nodes if n.get("type") != "row_bg"]
@@ -8868,11 +8896,8 @@ class SimulinkModule(QWidget):
         self.canvas._scene.update()
         self._log(f"▶ 运行节点 [{node['name']}] · 引擎同源 · t={_t:.2f}s")
         # 🐛 2026-08-31 老倪: 右键运行节点也真实执行节点逻辑 (断点可进, 与单步/▶运行一致)
-        try:
-            from node_logic import execute_node_logic
-            execute_node_logic(self, node, label="运行节点")
-        except Exception:
-            pass
+        # 🔴 2026-10-29: 异常不再静默吞 —— 否则"没执行"和"执行了没输出"看起来一样, 断点查不出来
+        self._exec_node_logic(node, label="运行节点")
         io = snap.get(node.get("name", ""))
         if io:
             outs = io.get("out", [])
