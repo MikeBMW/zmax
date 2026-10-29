@@ -274,6 +274,12 @@ curl -s "https://open.feishu.cn/open-apis/im/v1/messages/<message_id>" -H "Autho
 - 已踩过的开放平台侧限制: 频率限制 `9499` 要退避重试 · 图片上限约 10MB(`image_type=message`) ·
   **视频必须 `msg_type=media`**(用 `file` 会回 `230055`)。
 - 从 gateway 自身会话里发重启类命令会被 SIGTERM 传播杀掉进程 —— 生命周期命令要另开 shell 发。
+- **群内回读**: `./gui-venv311/bin/python tools/feishu_check_messages.py --n 3` (GET `/im/v1/messages`,
+  `container_id_type=chat`) 直接列出该会话最近消息 + `deleted` + 时刻 ⇒ 交付时拿"回读到的 message_id + 发送时刻"
+  当证据, 顺带能发现同一内容发了两遍(重发后要主动告知用户并提议撤回早的那条)。
+- **转贴别人/别的会话的收工报告前先核磁盘**: 用户把一份"已保存/成果"总结贴过来要同步时, 先 `git log --oneline -3`
+  + `ls -l` 核对里面每个 commit id、文件路径真的存在再原样转发; 数字对不上要当场指出
+  (例: `dist_min_mm` 是全程最小距陶、`done=false` 时不能说"到位")。
 
 ### When user says "你怎么不回答？" / "你得回复啊"
 

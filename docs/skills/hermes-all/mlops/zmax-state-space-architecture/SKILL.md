@@ -616,6 +616,59 @@ xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py [--level L2|L3|L4]
 全过程 (判据代码骨架、实测数字、报警注入法、归属单链、统一库、刷新性能、**L2-only 收口与闸门顺序**) →
 `references/trace-signal-panel-consistency.md` §1–§17
 
+## 📡 「现在的状态空间数据是什么」怎么读 (现场活数据地图)
+
+用户会边跑边问「现在当前的统一状态空间数据是什么」/「状态数据进前馈加速器了么」。这些量全在文件里,
+**先读文件再回答** (帧龄是最硬的"在跑"判据), 不许凭上一轮跑完的印象:
+
+1. **文件地图** (`zmax_data/ss_live/`, 帧龄 <1s 才算活): `engine_latest.json` 主记录
+   (cycle / **p** / action / chunk / skill闸 / z_latent / confidence) · `chunk_latest.json`
+   (chunk / ff / λ / u 四组) · `skill_dispatch.json` (8 段 action) · `skill_latest.json` (闸计数 + 逐段 mps) ·
+   `exec_state.json` (执行端 phase/transport) · `ar_exec.json` (AR 段) · `canvas_loop.json` (本拍跑了哪些节点)。
+   历史: `/dev/shm/zmax_ss_engine/engine_<场景>.jsonl` (逐周期, 十几 MB 级)。
+2. **4D `p` ≠ 39D obs**: `provider=traj` 的常驻 loop 里 `p` 是 **4 维** (x,y,z,grip), 取自
+   `ss_episode_latest.npz` 的**回放帧**; tap 里**没有 39D** (39D 只在 `runtime` 那条链由
+   `env._get_obs()[:39]` 产生)。报"状态向量"必须先报维度, 否则等于把回放 4 维冒充 39 维观测。
+3. **`canvas_loop.json` 的 `only` / `n_ran` 才是"哪些节点在跑"**: 实测 79 节点里只跑
+   `ssplan/ssact/ssyolo` 三个 ⇒ 前馈/状态估计/校正那些节点**不在跑**。"画布上有这个节点"证明不了它在本拍执行。
+4. **前馈在块流水线里, 不是 `parallel.py` 那个类**: 常驻 loop 用 `ManifoldEngine`(本身无 u_ff) +
+   `ss_chunk_pipeline`, 前馈 = `FeedforwardAccelerator` (左脑 MLP `models/ss_left_brain.npz`, 实测 `loaded=True`)。
+   读法: `ff_mode="hold(单拍前馈保持)"` ⇒ 只在当前 obs 上算一次、保持 H 拍 (没接 `dyn` 就没有逐拍滚动);
+   **`u` 不等于 `(1−λ)·ff+λ·chunk`** —— 之后还过逐拍调制器 (mod_tags) + 安全限幅 (实测 xyz 模长恰 0.12、
+   grip 0.6), 裸公式只用来验方向与量级。`parallel.py` 的 `u=w_ff·u_ff+(1−w_ff)·u_fb` 调度器在**另一条链**:
+   回答前先确认是哪条 loop, 否则会把没跑的那个类说成"在算"。
+5. **可信度要连着来源报**: `z_source` 里写着"回退内建 PCA / 本帧不是 L4 潜表示"时, `z_latent` 与
+   `confidence` (实测 0.0179) / `anomaly` (1.0) 都是兜底产物 —— 不许说成"模型算出来的低置信"。
+6. **检测值进状态空间有两条路, 别混着说** (YOLO 对齐契约, 对 `yolo_state_aligner.align_obs` 逐行):
+   `[4:7]=光模块` + `[22:25]=上一拍光模块` + `[36:39]=hole` —— **不是** `[18:21]`(那是 prev_hand, 旧版 bug,
+   源码注释已标红), 也不是 `fuse_sensors` 那份 obs43 的 `7-9`(两套张量口径不同, 先确认是哪份)。
+   而 `align_obs` **只在训练/离线对齐里跑**; 在役 `runtime` 走 `_peg_cur = _vis["peg"]`
+   (`detect_3d` 输出, 接近期遮挡冻结), 仿真里 obs 的 `[4:7]/[36:39]` 仍是 env 真值。
+   所以「检测值进没进状态空间」必须分两答: 控制路径进了 / obs 数组没被原地替换 —— 不许笼统说"已替换 obs"。
+
+7. **「动作调制器有作用么」→ 它是四件事, 不只是削幅** (`cognition.ActionModulator.decide`, 实测量):
+   `u = u_ff + k_fb·u_fb`(**相加**, 不是凸组合) → ①**残差否决** `residual>veto_th(2.0)` ⇒ u=0,
+   前 2 拍 `否决: 减速/重试`、第 `max_veto(3)` 次起 `异常: 连续否决`; ②**阶段限速**经 InertiaLimiter 五约束
+   (速度/加速度/加加速度/动量质量率/位移), 实测 0.350→0.150 m/s 且 `why=加加速度`; ③**v_min 会抬速**
+   (防末端磨蹭): 0.0461→0.1531 m/s —— 别只讲"削"就漏了这一半; ④夹爪归状态机锁存。
+   元任务门控 `ZMAX_META_GATE=0` 默认关, 别当它在起作用。长跑口径看 `skill_latest.json` 的
+   `闸_拍数/闸_不可行拍/闸_削因` (实测 55.5% 的拍被削, 削因几乎全是速度)。
+   短算例里 `gate_cuts={}` 全"可行"很正常: u_ff 在技能层已按 v_cap 限过 —— 不是闸没用。
+8. **闸的上一拍速度/加速度会跨步残留**: `InertiaLimiter` 拿 `mod._g_v/_g_a` 比加速度/加加速度,
+   换段/新一步时它们还是旧值 ⇒ **本段第一拍被旧方向拖** (实测 8mm 小步首拍 `u_sat` 反指目标,
+   看起来像 IK 解错)。规则: 每步开头清 (`mod._g_v=_g_a=None, gate=None, veto_count=0`),
+   实涋前三步到位 6.9/2.9/2.4mm → 5.3/0.8/1.4mm。
+9. **原子技能在链上有两个身份, 顺序不一样 —— 回答"谁在谁前面"前先分清**:
+   · 身份 A = 段目标/期望速度的产出方, 在调制器**之前** (runtime: `_skill_ff()` → `sched.decide()`
+     → 夹爪锁存 → `safety.saturate`);
+   · 身份 B = 安全后动作的分发口, 在安全**之后** (块流水线: 规划 → 前馈 → λ加权 → 调制 → 安全 → 技能派发)。
+   用户说"安全 → 原子技能"时指的是 B; 说"技能出动作"是 A。两个接口 (`skills/atomic_skills.py`):
+   `next_target(ctx, points, spec, with_phys, cur)` → `{stage,ref,off,xyz,tol_m,v_cap,...}` ·
+   `command(ctx, x, k, v_cap)` → `{u,target,err_m,reached,rule,src}`。
+   **`ctx` 就是感知/渲染数据的入口**: `{peg, table_z, hole_mouth, head_off}`;
+   ref 表: SK01/SK02 = `peg + [0,0,hover_h]` (0.09 / 0.05, v_cap 0.35 / 0.12) · SK06 = `hole_mouth + hover`(0.02)。
+   即: 技能自己定义目标, plan 只出段序 —— 切换会改几何基线, 必须整轮重测。
+
 ## 关键文件
 - src/lerobot/engine/runtime.py (闭环总装 `RealStateSpaceSim`, 4240 行零 Qt; 原 `tools/gui/state_space_sim_real.py`,
   那边现在只剩别名 shim `sys.modules[__name__] = 真身`。**三层身份别混**: 总装 runtime ≠ 流形引擎节点

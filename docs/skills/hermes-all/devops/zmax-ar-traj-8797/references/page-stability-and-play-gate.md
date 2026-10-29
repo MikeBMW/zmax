@@ -59,3 +59,46 @@ if(VR.auto){ VR.auto=false; vrFitBox(); }
 
 - 页面必须**自报状态**: 顶部横幅写清 拨杆=开/关 · 是否跟随 · `seq` · 帧龄; 用户读不出就等于没状态。
 - 报告时给**能复现的判据**, 不要"改好了"三个字: 相机 `tgt/dist` 不变 + `seq` 推进 + 侧栏 y 恒定 + 侧栏高不变。
+
+## 6. 切换驱动源必须"字段对等": 动作对、状态全丢
+
+同一套动作在这页上有**两个播放器**:
+- 本地时钟 `plantAt(PLANT.simT)` —— 「全流程 UPH」「🔁 插拔全流程」用;
+- 服务端信号 `plantAtAR()` —— 左栏「状态空间」拨杆 + `▶ 跟随` 用。
+
+`plantAtAR()` 只写 `PREV.q / PREV.M`（臂怎么动），**不碰 `INSP.*`**；而手里那颗模块、源盘剩余、孔占用、
+`📷 检测` 标注、良品/NG 落盘全在 `INSP.*` 里，且**只有** `inspStep()`（全流程播放器）会写。
+⇒ 现场原话是「开状态空间以后右臂就把光模块掉了 / 看着有动作但手里没东西」。
+判据: 跟随模式 `INSP.carry` 恒 false、`INSP.si` 不动 —— 这就是空手走轨迹。
+
+定式三处一起改, 少一处仍然空手:
+1. `plantAtAR()` 里按 `a/b` 端点匹配段表, 写 `INSP.carry = (u<0.5 ? carry_from : carry_to)`,
+   并补 `INSP.si / holeOcc / holeT / pickedK / doneK / curCheck`（真源 = 段表自带的 `carry_from/carry_to/check`,
+   与全流程读的是同一份 `sim_insert`)。
+2. 绘制闸从 `if(INSP.on)` 放宽到 `(INSP.on || SSMODE.on)` —— 模块/孔/分拣那一整块都在这道闸里。
+3. 拨开关与点 `▶ 跟随` 时调 `inspEnsure()`: **只 fetch `/api/sim_insert` + `inspPrepare()`, 不 `inspPlay()`**。
+   新标签页没点过「全流程 UPH」时 `INSP.plan` 是空数组, 光有状态同步代码也取不到真源。
+
+🔴 同一段动作在一批 14 件里**重复出现** ⇒ 端点会撞多个候选。定位"第几件"必须用服务端 `elapsed_s` 落在
+哪一段累计时间 (`cum[i-1] <= el < cum[i]`); 只按端点取第一个匹配会拿到别的件的孔占用/手上有货状态。
+
+自验 (真浏览器 `browser_console`, 不要离屏截图): 拨杆 → `▶ 跟随` → `setInterval(250ms)` 采样
+`{carry, si, kind, u, x: PREV.M['tool1'].t[0]}` 存 `window.__CS`, 读回后断言三件事:
+`carry` 出现 0→1→0 的切换、`si` 递增、`tool1` 位移 >100mm。实测 30s/119 采样: carry=1 占 90、段 46→117、
+x 扫 454mm、孔占用 3→2 —— 只报"改好了"不算过。
+同时把 `carry / ssi / hold` 加进 `/api/ar_diag` 的自报字段, 以后现场"手里有没有货"直接看数。
+
+## 7. 双臂问题要按"层"回答: 编排层并行, 命令流单臂
+
+被问「左右臂是 plan 节点规划的吗」时, 先分清四件事再答:
+- `plan_long_impl.py`（`ssplan`）**只发段、不发关节角**: payload 的 `a/b/u/elapsed_s/mt_id/mt_i/batch`,
+  `q`/`q_l` 恒 null。关节角是页面 `arCmdSolve()` 用 `a+b*u` 插值再 `ikTool1` 逆解出来的 ⇒
+  "规划"发生在浏览器侧; 要让服务端出 q 得在 `_pub_ar` 里加 IK。
+- 它**也不算几何**: 段坐标来自 `sim_insert.json`(392 段 / 159.43s)，节点自算与磁盘表逐段一致才算"真执行",
+  不一致就回退磁盘表并把差异写进 status。
+- **左臂根本不在 plan 的命令流里**: `plan_long_impl.py` 搜 `MT-06|lane|left|transport` 零命中; 左臂播的是
+  `sim_transport.json`（离线一次性生成, 3.0 s/件），由页面本地时钟 `transPlay()` 驱动, 与 `ar_cmd` 无关。
+  payload 里 `q_l`（`tcp_ar_server` 透传）永远是 null = 双臂钩子留了没实现。
+- **但编排层知道左手**: `ar_meta_tasks.json` 有 `MT-06 左臂供料` / `MT-07 双手交接`, `/api/ar/meta` 的 lanes
+  也画了左右手两条轨道 ⇒ 结论必须说成"**元任务层并行、命令流单臂, 断在 plan_long 这一层**",
+  不要说成"没做双臂"。

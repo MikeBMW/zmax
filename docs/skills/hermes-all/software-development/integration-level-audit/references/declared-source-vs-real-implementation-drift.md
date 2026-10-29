@@ -10,7 +10,12 @@
 ```
 ① 节点自声明 params.source (+ params.source_symbol 按符号现搜行号)
    └ 相对路径按**仓库根** join; 可能写成描述式: "路径 · 符号" / "路径 符号" / "路径 --flag" (要拆!)
-   └ 若只落到 GUI 壳文件 → 应让位给 ②
+   └ 🔴 **节点自声明是最高优先, 不会"让位给 ②"** (`open_target.resolve_open_target` 里 `_impl_from_dict()`
+     先跑, 且 spec 查到也仍以它为准): 实现搬了家、注册表 `_EXTERNAL_LOC` 已改对, 只要画布 JSON 的
+     `params.source` 还是旧文件, 右键就**必然**落到旧文件(常是常驻进程的 `def main`)——症状是"打开的代码
+     里全是 mkfifo / 探针 / 单实例"这种和节点毫无关系的启动逻辑。
+   └ 判据: `grep -c '<该符号>' <落点文件>` 为 0 = 指向错; 且对比 `_EXTERNAL_LOC[key]` 与 `params.source`
+     两条路径不一致 ⇒ 就是漂移, 不是工具坏。
 ② 注册表 match_node(名字) → _EXTERNAL_LOC[key] (真实外部实现)
    ⚠️ match_node 是**最长关键字**匹配, 不是注册顺序
 ③ 都没命中 → 退回壳文件自身 → 用户观感"没跳"
@@ -36,6 +41,30 @@
 写入前**自动备份**原文件 (`*.bak_<ts>`) → 用**与原写入方相同的序列化格式**写回
 (如 GUI 自己就是 `json.dump(..., ensure_ascii=False, indent=2)`, 别引入第二种格式) →
 改完复跑体检对比数字 (体检可定位数应上升、"落到壳文件"数应下降)。
+
+## 实现搬家后要同步的四处 (漏一处就跳错文件)
+
+迁移节点的真实现时, 只改注册表是不够的 —— 同一个"源码在哪"有**四份声明**, 任一份留旧值都会让右键跳错:
+
+| # | 位置 | 字段 |
+|---|---|---|
+| 1 | `flows/<画布>.json` 的 `nodes[].params` | `source` + `source_symbol` (**最高优先, 必改**) |
+| 2 | `src/lerobot/middleware/nodes/<n_id>.py` | `SOURCE` / `SOURCE_SYMBOL` |
+| 3 | 同一个文件的 `PARAMS` 字典 | 里面的 `source` / `source_symbol` (生成器从这里回填) |
+| 4 | `engineering/nodes/library.py` 的 `_EXTERNAL_LOC[key]` | 实现路径 (通常最早被改对, 别以为它对了就完了) |
+
+同时把**常驻进程**与**节点实现**分开标注 (例: 加 `params.dispatcher = tools/<x>_daemon.py`),
+否则下一轮又会有人把 daemon 的 `main()` 当成节点实现。
+
+验收一条命令 (不用开 GUI, 走的就是右键那条解析):
+```bash
+PYTHONPATH=src python3 -c "
+import json; from lerobot.middleware import open_target as ot
+d=json.load(open('flows/<画布>.json')); n=[x for x in d['nodes'] if x['id']=='<nid>'][0]
+r=ot.resolve_open_target(n); print(r['path'], r['line'], '|', r['impl_path'], r['impl_line'])"
+```
+要看到 **节点模块 + 真实现在两个不同文件**, 且 `impl_line` 指向那个符号所在行 (第 1 行 = `source_symbol` 没生效)。
+GUI 侧改了画布 JSON ⇒ 画布在启动时读进内存, **重开画布/控制台后才变**; 别拿源码 grep 当"用户已经看到新落点"。
 
 ## 报告口径 (老倪式)
 

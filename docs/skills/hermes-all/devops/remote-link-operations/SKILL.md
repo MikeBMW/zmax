@@ -9,6 +9,22 @@ platforms: [linux]
 
 # 远端链路运维：跳板 / 反向隧道 / 双模切换
 
+## ssh 在 agent 里「无输出 + exit 130」——先加 `</dev/null`，别急着改配置
+
+从非 tty 会话发 `ssh host 'cmd'` 时 ssh 会等 stdin；终端包装把它当挂起直接中断，
+表现是**一点输出都没有、exit 130**，看着像断网/认证失败，其实链路是通的。
+
+```bash
+ssh -n intel 'hostname' </dev/null 2>&1    # ✅ 稳定
+ssh intel 'hostname'                       # ❌ 空输出 + 130
+```
+
+判别顺序：① `echo local-ok` 确认本地 shell 正常；② `ssh -n host 'echo hi' </dev/null`；
+③ 只有 ② 也失败才去查 IP / 公钥 / 端口。**①② 没过就改 ssh config 或换 IP 是误判**——
+曾把「stdin 卡住」当成「ECS 挂了」，白折腾一轮。
+
+远端 CPU 满载（500%+）时建连也慢，用 `-o ConnectTimeout=10`，别裸 `timeout 40 ssh`。
+
 适用：本机要够到内网设备（Orin/工控机/训练机），入口只有「跳板机 + 设备自建反向隧道」，或本机能插网卡直连
 同一网段。症状形态：位姿/画面/推流全断、端口能连但 SSH 不通、unit 显示 active 却没反应。
 

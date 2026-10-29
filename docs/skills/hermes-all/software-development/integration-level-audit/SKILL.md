@@ -108,6 +108,32 @@ DB 的 `canvas_links` 行可能 `src/dst` 全 NULL (build 缺陷) —— 拿它�
 **"在动"要落到消费者才叫进链**: 前馈 `u_ff`(v_ff) 的消费方是 `cognition.decide(u_ff, u_fb)` → 阶段限速/安全边界 →
 `ss_action`; 与 plan 节点 (MoveIt 只规划不执行) 是两条线。回答时把"显示链通 / 执行链通"分开报, 别用一个话题名拍死。
 
+## 四档一次跑通取证 (`run_all_models.py --caps l2,l3,l4,l5`)
+
+用户问「**所有层模型可以跑通了么**」时的硬证据 = 逐档真跑 + 逐档调用计数, 不是读代码说有接线:
+
+```bash
+./gui-venv311/bin/python tools/run_all_models.py --caps l2,l3,l4,l5 --steps 20 --seed 104
+# 证据落盘 reports/run_all_models_<ts>.json
+```
+
+汇总表每档给五列: 终点mm · YOLO帧/检出 · MLP真身 · INTACT真推理 · 墙钟s。读法固定:
+
+- **每帧真推理**看 `YOLO帧/检出`: 帧数 == 步数 (20 步 = 20 帧), 检出/帧 ≈ 目标数。
+- **只有 L4 档该有两列非零**: `MLP真身` 与 `INTACT真推理` 都 **== 步数** (20/20) 才算每步真调;
+  少于步数就是有步被守卫拦了, 要查 `_intact_stats.gate_pass/refused`。
+- **L2/L3/L5 那两列 = 0 是正常** (`CAP_ENV` 里这三档没 set `SS_INTACT/SS_USE_MLP`),
+  别把 0 报成"失败", 也别把 L4 的 20 反推成"四层都在跑"。
+- `done=False` 在 20 步属正常 (完整任务约 150 步), 报口径要写清步数, 不说"没跑通"。
+
+🔴 **四档同时报同一个 FileNotFoundError ⇒ 先验路径常量, 别逐个档查逻辑**。
+实测: `runtime.py` 的 `_REPO = dirname(__file__) + "../.."` 算出 `<repo>/src` (应为 `<repo>`),
+于是 `_yolo_dir = _REPO + "src/lerobot/..."` 拼成 `<repo>/src/src/lerobot/...`, 四档 100% 挂。
+判据: 报错路径里出现**重复段** (`src/src` · `tools/tools`) ⇒ 100% 是 `..` 层数算错, 与各档逻辑无关。
+修法: 从 `__file__` 数清层级 (`<repo>/src/lerobot/engine/runtime.py` → `<repo>` 是**三级**),
+并确认该常量下挂的**所有**资源都在同一层 —— `runs/` `outputs/` `src/` 都在仓库根才成立;
+只对得上其中几个就说明不能靠改层数, 要改成按包 `__path__` 定位。
+
 ## 回答模板 (老倪认这种结构)
 
 > 「节点级已集成: 注册 / 单步真跑 / 防假闸 三项都有实测 (贴数字)。
@@ -227,6 +253,23 @@ DB 的 `canvas_links` 行可能 `src/dst` 全 NULL (build 缺陷) —— 拿它�
    ② 两帧像素差留收敛容差 (文字块低通收敛 0.3% 属正常, 阈值取 0.5%); ③ 运行后同一判据反向必须变。
    三处都要有: 力/数值 · 姿态轴/表盘 · 动画相位。
 
+22. **"有线但没跑" / "跑了但没读到" —— 拓扑、调度、消费代码三层各自都能断**: 用户要"把 A 真的接进 B"时,
+    只加一条连线就交 ⇒ 三成假接入里最容易中的两种:
+    ① **调度断**: 连线在拓扑里, 但常驻循环只跑白名单节点 (`ZMAX_CANVAS_ONLY=...`) ⇒ B 那一拍根本没 step,
+       现象是"图上连着、下游一点都不认";
+    ② **消费断**: B 的外壳 `compute()` 先 `if not PURE: return _passthrough(ctx)` 才轮到实现 ⇒
+       实现里读 `ctx['in1']` 永远读不到, 日志/轨迹只显示"直通"。
+    取证三样一起看 (缺一样就不能说接上了): `canvas_loop.json` 的 `only/n_ran/traces[].status` ·
+    下游落盘产物的 `age` · 消费端自报的"驱动源"字段 (例: 页面 `ARCMD.drv` 变成下游节点名)。
+    反向证据同样要给: 边界没越 — 如仍在"真机零指令"时下发 FIFO 的 mtime 未变、授权开关未被代写。
+    具体接线与消费代码的落法见 `state-space-canvas-engineering` 的"让 A 真的喂 B = 三件套"。
+
+24. **层计数器只记 `ok/src/ms` ⇒ "跑起来了"不等于"检出了"**: 检测层 0 检出时 `ok=True` 照样成立,
+    拿它汇报"L2 已接入并在检测"是假证。判据必须落到**条数**: 把 `len(det)` 同时写进 trace 和一份
+    外发 json (`/dev/shm/<layer>_det.json`), 0 就是 0。合格口径是一次给两样:
+    `n=1 · 帧龄 0.1s · 权重名`; 只有 `ok=True` 单列不算。外发那份顺带解决第二件事 ——
+    下游画布节点**复用这次推理**即可, 不必 `PURE=True` 自己再加载一份权重 (8G 显存里两份模型互挤)。
+
 🔴 **判"接口/节点不存在"之前先核 ROS 域**：域不对会让存在的实体**全部凭空消失** (假阴性)。
 实测同一个容器里 `ROS_DOMAIN_ID=42`，在默认域 0 下扫也是"空"，结论"没有 action"完全错。
 凡是要下"不存在/没接"的结论，先 `echo $ROS_DOMAIN_ID` 对齐域；**action 类话题还默认隐藏，
@@ -238,6 +281,19 @@ DB 的 `canvas_links` 行可能 `src/dst` 全 NULL (build 缺陷) —— 拿它�
    另: **节点参数里的维度是那一版训练脚本的值, 以权重为准** (实测节点写 128/128/64, 反推权重是 256/256/128)。
    修法三档降级: ①引擎在跑 ⇒ 回读引擎那一路的真值 ②否则自己加载权重跑一次 ③都没有 ⇒ `return False` + 写明缺什么。
    裸权重 (无对应训练脚本) 怎么反推结构、怎么体检、怎么接成潜通道: `references/weights-without-source-and-latent-channel.md`。
+
+23. **同一能力有两个载体: 画布节点是壳, 真推理在常驻服务的内置 worker**。用户问"X 节点真的接入这个场景了么",
+   三样一起答, 别只查一边:
+   ① **画布节点**: `PURE=False` ⇒ `compute()` 只 `_passthrough`; 再加不在 `ZMAX_CANVAS_ONLY` 白名单 ⇒ 既不推理也不在链上。
+   此时连线齐全是**声明**, 不是数据流 (节点入端口的源节点也不在白名单 ⇒ 端口上没值)。
+   ② **真载体**: `grep -n 'Thread(target=_\w*worker'` 找常驻服务里起的后台线程; 取证两件 =
+   **落盘 Hz**(对产物 `st_mtime` 每 0.1s 采样 10~15s 数变化) + **`py-spy dump --pid <svc> | grep <worker>` 抓到栈**。
+   🔴 线程名不可靠: `/proc/<pid>/task/*/comm` 常全是 `python`, 拿它"没看到 worker 线程"下结论是假阴性。
+   ③ **权重与页面取数点**: `readlink -f models/<在役权量>` 看清是哪一版权重; 页面 fetch 的那个 `/api/...`
+   回读 `ok / age_s / stale / err` —— `ok=false` 且 err 写"没检出"时, 链是通的、模型是漏检, 两件事分开报。
+   结论句: 「X 在场景里真跑(Hz + 栈 + 权重), 但**不是**画布那个节点在跑 —— 节点是壳」; 不许用"节点已接入"糊过去。
+   要把壳改成真接入时 **别 `PURE=True` 自己再加载一份权重** (8G 显存要抢、相机 UVC 单占要 EBUSY):
+   让实现**复用 worker 的产物文件**, 再 `PURE=True` + 加白名单 + 输出端口接下游, 这样节点上是真数据且不重复推理。
 
 ## 「X 机器是不是已经部署完了 / 整套工程都在里面没有」—— 四面取证
 
@@ -319,10 +375,33 @@ L2/L3 过了(确实每帧被调用)之后, 还有一层常被追问: **它吃的
   在线系统一直在动 ⇒ 按帧对齐才下结论, 对不齐就说"未对齐", 不硬凑。
 - 详见 `references/runtime-model-input-observability.md`; 可重跑闸 `scripts/verify_model_input_same_source.py`。
 
+## 「这是真正在推理么?」(VLM / 云端大模型) = 解析路径 + 内容依赖 + 与像素真值交叉
+
+用户问某能力"是真模型还是写死的"时, 代码里有 `requests.post` 不算答完。四步, 顺序固定:
+
+1. **让引擎自报走哪条路, 别读 env 猜**: 实例 `SceneVLM().status()` → `{path: http|local, provider, model}`,
+   `available()` → `(bool, why)`。同类实现常是**三条路 + 一条 `rule` 兜底**(显式 URL/key · 自带 key 的云端 · 本地 worker),
+   必须点名**当前生效那条**, 并说明兜底在什么条件下接管 —— 有降级路径不是缺陷, 不说明才是。
+2. **内容依赖双图对照 (最硬的一条)**: 同一入口跑**两张明显不同的真图**, 比输出(框数/标签/角度/构图描述)。
+   逐字不同 ⇒ 真看图; 雷同或与图无关 ⇒ 模板回显, 判假。只看一次成功输出区分不了这两者。
+3. **与独立像素真值交叉**: 走**现场端点**跑当前那一帧, 把模型文字与你自己已测得的像素状态对账
+   (快照 mean≈5/std≈0.9 ⇒ 模型应说"全黑")。模型如实说"看不清"是**加分项**(证明它读的是这一帧),
+   别因为"没读到东西"就报失败; 反过来黑帧却描述出托盘和光模块 = 幻觉, 直接判假。
+4. **触发方式与耗时**: 分清「点一次一帧」(按钮 fetch、无 `setInterval`) 与「每帧/定时推理」。
+   按需调用**不能**当实时检测层汇报; 单次耗时给区间(同一模型两次可差一个数量级, 取决于 API 排队)。
+
+汇报模板: 「真推理 · 路径 `http:deepseek-flash` · 双图输出不同(3 框 / 2 框) · 现场帧读出"全黑"与像素真值一致 ·
+按需一帧不是每帧 · 单次 8~68s」。另必答**失败面**: 无 key / 断网 / 本地权重不在盘时, 是回 `rule` 摘要
+(要标 `src=rule`) 还是 `ok=False`; 桥接层如实透出 `ok=False`、下游写 `null` 而不是 0, 才算"不冒充"。
+端侧权重目录不存在时只能报"本地离线路径不可用", **不能拿云端跑通说成端侧也行**。
+
 ## 参考
 
 - `references/weights-without-source-and-latent-channel.md` — 只有权重没有训练脚本时的反推法 (报错即规格 / LayerNorm vs Linear /
   gate 类型) + 先体检帧再判模型 + 接成"第三潜通道"的验收四件套 (strict 对齐 · 引擎回读 · 一致性 · 零回归)。
+- `references/declared-source-vs-real-implementation-drift.md` — 右键「打开源代码」跳错文件的漂移审计:
+  节点自声明的 `params.source` **最高优先**(不会让位给注册表) ⇒ 实现搬家后必须同步四处 (`flows` params ·
+  `SOURCE/SOURCE_SYMBOL` · `PARAMS` · `_EXTERNAL_LOC`) + 一条 `resolve_open_target` 验收命令。
 - `references/canvas-node-vs-channel-placement.md` — 「这个能力挂在哪个节点 / 该不该塞进 X 节点」的定位与评审法:
   库文件真路径与 0 字节空壳、`params.source` 定节点、连线读 flow JSON、同一个词盖住意图层与力层的辨别,
   以及把控制律放进生成式策略节点前必查的四条 (量纲/频率/反馈源/版本口径)。

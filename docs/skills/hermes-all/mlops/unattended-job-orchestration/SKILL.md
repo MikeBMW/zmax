@@ -93,6 +93,19 @@ exit 0
 
 ## 陷阱
 
+- 🔴 **`nohup python x.py > run.log 2>&1` 日志长时间空白 ≠ 任务卡住 —— Python 非 tty 输出是块缓冲**:
+  stdout 重定向到文件时不走行缓冲, 要等缓冲满(~8KB)才落盘 ⇒ 起跑后几分钟到几十分钟日志里一行都没有,
+  极像 hang, 于是去 kill/重启, 把跑到一半的活自己废掉(实测就这么白等了好几轮)。
+  - 起后台长任务**一律 `python -u`**(或 `PYTHONUNBUFFERED=1`), 让日志可实时观测; 已经起错的别急着重启 ——
+    进程结束时会一次性刷出全部输出, 直接等它。
+  - **判活别只看日志**: 同时看 `ps -eo pid,etime,%cpu,cmd`(`%CPU` 500%+ = 真在算) 和产物侧文件
+    (ledger / 结果 json / `*.reported`)的 mtime。**日志空但 CPU 高 ⇒ 就是在算**。
+  - **读结果优先读落盘产物**(ledger、结果 json、收尾的 `__RESULT__` 行), 不要把 stdout 日志当结果通道 ——
+    它既是缓冲的, 也会被上面"别用 grep 抠进度"那条再坑一次。
+- **带包内相对 import 的模块搬到另一台机: 必须整包传, 单文件必挂**:
+  `from .sibling import …` 在目标机找不到兄弟模块 ⇒ `ModuleNotFoundError: No module named '<sibling>'`,
+  报错只提兄弟名、不提调用者, 看着像缺三方依赖。做法: `tar czf - -C <repo> src/<pkg>/<name>` **整目录**过去 →
+  `python -m py_compile` → **真跑最小一代/一步**再装常驻单元; 没跑通就装 systemd, 只会留一串 restart。
 - **跨机哨兵: 探活失败 ≠ 任务结束**。任务在别的机器上跑时, `ssh` 返回非零可能是"进程没了"也可能是
   "SSH/跳板断了" —— `except: return False` 会把后者当成前者, 守护于是静默跳过一次该做的判断,
   日志还写着"没有 report ⇒ 不切换"(看起来像指标没过闸)。探活必须三态, `unknown` 按 **alive** 处理,

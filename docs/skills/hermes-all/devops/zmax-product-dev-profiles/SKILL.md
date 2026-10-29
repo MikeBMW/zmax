@@ -57,7 +57,11 @@ tooltip 显示「算力用法 / 推理→哪台+原因 / 训练 / 本次动作�
    stdin=DEVNULL (否则 GUI 线程里会卡住)。
 4. **systemd scope 里的进程 /proc/<pid>/environ 可能读不到** (权限/硬化) ⇒ 验证单线程口径走
    `vscode_launch.launch_env('550B')` 打印实际会传的 env (OMP/MKL/OPENBLAS/TORCH=1), 别拿 /proc 读不到当没设。
-5. **550C 的算力在远端**: `hardware_ok()` 对 C 档永远 True (本机只是操作端), intel 通不通看 `compute.intel_online`;
+5. **550A 训练有界验证先看卡**: 在役服务(ss_engine_loop 1.7G + fw_render + ss_local_infer + intact_worker ≈2.6G)占卡时,
+   L4 `+trainer.limit_train_batches=5` 也会 `Tried to allocate 32.00 MiB` OOM (需 ≈5.1G 连续); 开机后卡上仅 ~0.7G 时三层全过。
+   另: L3 配置 `log_freq=10` > 5 步 ⇒ 日志里**没有 loss 行**, 要数字就复制生成的 yaml 把 log_freq 改 1 (别改生成器),
+   与在役服务共存时 `--l3-batch 2`。
+6. **550C 的算力在远端**: `hardware_ok()` 对 C 档永远 True (本机只是操作端), intel 通不通看 `compute.intel_online`;
    550A/550B 挂在 intel 上才是真缺口 (判据 ⑤ 用 `ZMAX_HOST_HW=intel` 钉住)。
 
 ## 档位↔硬件绑定 (2026-10-21 老倪定稿)

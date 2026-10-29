@@ -498,6 +498,12 @@ description: Use when 改 8797/ar 页的轨迹按钮·执行链·围栏避让规
   再 `start_sim()` 断言三样全复原。页面侧同口径: 把同一格式 start/stop 写进 `ar_play.json`, 2s 轮询内 `PLANT.on` 1→0、`PREV.on` 收掉。
 - 🔴 **“点了没反应”先证主线程, 再谈按钮逻辑**: 实测控制台主线程被后台太阳系视图的 60ms 全量重绘吃满 100%,
   点击事件根本进不了 handler —— 改四轮业务分支/加超时兜底全是白做。判据与修法见 `pyqt5-gui-development` §18b。
+- 🔴 **L4/管线的输入帧 URL 是单元里的常量, 端口被别的服务占了就静默 404**: 实测 `--l4-frame-url
+  http://127.0.0.1:8799/frame.png` 落在 `zmax-dashboard`(同占 8799, 只服务 `/dashboard.json`) ⇒ 回 **9 字节 404 页**;
+  引擎照跑、日志正常、模型拿空帧"盲跑"。判据: `curl -o /tmp/f.png -w '%{http_code} %{size_download}'` +
+  `cv2.imread(...).shape is None`; 修 = 渲染服换空闲端口 + 改 unit 里的 URL + `daemon-reload` 再 restart。
+  选端口前用 `ss -ltnp` 排(容器占的端口在 `ss` 里没有进程名 ⇒ 看不出被谁占, 换一个就行)。
+  ⇒ "HTTP 200/字节>0" 不算通, **能解码且帧龄在跳**才算。
 - 汇报时把三条路分开讲, 别顺着「点了没反应」去改页面:
   ① 画布 ▶ 运行 = 仿真/训练链 ② ar3d 自动播放 = 常驻循环 + `ar_cmd` ③ 真机执行 = 8793 授权 + 起点闸。
 - 🔴 **CSV/GUI 改动不会立刻生效**: `simulink_module.py` 是控制台进程内的代码, 在役控制台不重启就还是旧的。
@@ -667,6 +673,48 @@ description: Use when 改 8797/ar 页的轨迹按钮·执行链·围栏避让规
 - **“它到底真跑了没有”看 `zmax_data/ss_live/canvas_loop.json`**: 里面 `t_str/hz/only/tick/n_ran/cost_ms/traces`,
   `traces[].status` 是 `实现执行` 才算真实现被调(若是 `直通(PURE=False…)`/`实现未注册` 则节点在空转,
   此时 ar_cmd 还可能由别的写者留着旧帧)。实测正常态: `hz=10 · only=['ssplan'] · n_ran=1 · cost≈7ms · status=实现执行`。
+
+### 🏭 UPH 浮层「不见了」与 AR 模式下的产出计数
+- 🔴 **浮层只会被“启动它的那个函数”显示 ⇒ 一热重载/切模式就消失**: `uphBox` 只在 `plantStart()` 里
+  `display:block`、`plantStop()` 里连小胶囊一起 `display:none`, 而页面有 60s 跟版自校(`arBuildStale` 自动 reload)
+  ⇒ 播放态复位后浮层连同“展开入口”一起没了, 用户只说「上边的 UPH 窗口怎么不显示了」。
+  定式: **每个能进该模式的入口都负责让它可见** —— `ssFollowStart()`(点 ▶ 跟随)、`inspEnsure()`(拨开关加载段表)
+  都要把浮层立起来; 未播放时至少留一个**可点开的小胶囊**(`🏭 UPH 300 ▸ 点开看节拍`), 点一下就展开。
+  自验: 开页 → 拨开关(未跟随) ⇒ 胶囊在; 点 ▶ 跟随 30s ⇒ `box display=block`、产出递增、MT 行在走。
+- 🔴 **状态空间给的是“轮内第几件”(`mod` 1..14, 每轮归零), 不能当累计产出**: 直接拿它当 units
+  ⇒ 实时 UPH 每 159s 转一圈就归零/算成 0。累计口径 = `轮数×14 + mod`, 轮数在 `mod` 回头时 +1。
+  判据: 跑过一轮(≈160s)后产出单调不减。
+
+### 🔀 驱动源分层: 页面优先吃“执行器节点”的输出, 再回落 plan 直发
+- 把 plan 段接进执行器后, **页面必须改吃执行器那份**, 否则“plan → 执行器 → 页面”只是嘴上说的:
+  服务端加只读端点(如 `/api/ar/exec`, 读执行器落盘文件, 回 `{ok,fresh,age_s,src,from,...}`),
+  页面 `_arFetch()` 先试它、不 fresh 才回落 `/api/ar/cmd`;
+- 🔴 **把本次驱动源写进一个可读字段**(如 `ARCMD.drv="🤖 执行器节点(ssact)"`), 并加进 `/api/ar_diag` 上报 ——
+  这是“谁在驱臂”的唯一现场证据; 只改 fetch 顺序不加这个字段, 现场没法自报。
+- 用户问「动作执行器节点接的是 AR 场景, 能不能让 plan 真的喂它」时, 先分清两层再动手:
+  ① 画布拓扑与循环白名单(见 `state-space-canvas-engineering` 的“让 A 真的喂 B = 三件套”)
+  ② 页面到底吃谁的输出(本节)。两层都要改, 只改一层就是假接入。
+- 交付口径必须同时说清“谁做了执行”: 执行器现在做的是“接段 → 落执行指令 → 回写总线”,
+  `a/b/u → 6 轴` 的逆解仍在页面(`arCmdSolve`), 物理引擎(`ssworld`)那条仍是直通 —— 别让人误以为已经闭环。
+
+### 🦾 左右臂各自跟谁: 右臂=plan 段(页面逆解), 左臂=本地时钟段表
+回答「某条臂是不是 plan 规划的」必须分三层给, 一句「是/不是」都会答错:
+① 命令流谁写(`ar_cmd` 的 `src`) ② 段几何哪张表 ③ 页面拿什么驱动那条臂。
+- **右臂**: `ar_cmd` 只有 `a/b/u`(**从不发 q**)。页面 `arCmdPoll` → `arCmdSolve()` 每 100ms 按 `a+(b-a)*u`
+  插值再 `ikTool1()` 逆解成 6 轴 → `PREV.q`。所以口径是「编排在 plan 节点(`ss_plan_long`)、几何在
+  `sim_insert_plan.py`/`sim_insert.json`、逆解在浏览器」。
+- 🔴 **别看到 `ar_cmd.q == null` 就断言「页面没被 plan 驱动」** —— q 是页面自己逆解的, 服务端从来不写。
+  判「臂真跟着 plan」看三样: `ar_cmd.seq/elapsed_s` 按 1× 推进 · 用户那页 diag `ss=1 plant=1 local=0` ·
+  画布 `cv` 在变。⚠ `cv` 变**不等于右臂在动**: `plantStep` 里 `if(!TRANS.playing) transPlay()` 在 isAR
+  判断**之前**执行, 左臂一直在播 ⇒ 光看 cv 会把左臂的动作当成右臂。
+- **左臂**: 播 `zmax_data/runtime/traj/sim_transport.json`(静态段表, `sim_transport_plan.py` 一次性生成)
+  + 页面本地时钟 `transPlay()`。`plan_long_impl.py` 里 grep `MT-06|left|左手|lane|transport` **零命中**
+  —— 节点内部没有左手通道, 所以它不可能发左臂。
+- `q_l` 是留给左手的载荷字段(`tcp_ar_server` 透传), 但 `plan_long` 从不写 ⇒ 恒 null。接左臂要三件:
+  ① 段表并入 `plan_long` 并按同一时间基推进(左 3.0 / 右 11.42 s/件 ⇒ L 侧自然空等)
+  ② `_pub_ar` 加 `a_l/b_l/u_l` ③ 页面 `arCmdSolve` 对左臂同法插值+逆解(左臂系 `off=[0,.5,0]`, 先减偏移)。
+- 元任务层其实双臂都有(`ar_meta_tasks.json` 的 MT-06 左臂供料 / MT-07 双手交接, `/api/ar/meta` 的 `lanes`
+  也画两条轨道) ⇒ 正确口径是「**元任务层并行、命令流单臂**」, 别答成「系统没有左臂任务」。
 
 ## 按钮语义 (他明确要求过的)
 
@@ -931,6 +979,15 @@ ssh orin 'ros2 topic info -v /robot/tcp_pose'         # Publisher count: 0 = ROS
   114 → 删后 **0**, 而 tol=18 还剩 379(抗锯齿 + 撞色元素), 会看着像没删干净。
 
 ### 🥽 YOLO 框住的是「手上那颗」还是「盘里那颗」: 看 base 的 z, 不看像素位置
+
+> 🔴 **ar3d 画面上的检测框来自 8797 内置的 `_mod3_worker`(每 0.15s 取臂帧 → `OB3.build` → 写
+> `/dev/shm/mod3_latest.json`), 不是画布那个「🎯 YOLO 目标检测」节点**: 后者 `PURE=False` 且不在
+> `ZMAX_CANVAS_ONLY` 白名单 ⇒ 一行前向都不跑。用户问“YOLO 真的接了么”要分两层答(判据与取证模板见
+> `integration-level-audit` 假接入形态 #23)。
+> 排查“画面上没有框”: `curl /api/module3d` 看 `ok / err / result_age_s / stale` —— `ok=false` +
+> `err="画面里没检出目标 (在役权重 peg/OPT_Gold)"` = 链通、模型漏检(数据问题), 别去改接线;
+> 确认 worker 在跑: 对 `mod3_latest.json` 的 `st_mtime` 每 0.1s 采样 12s 算 Hz(实测 3.75Hz) +
+> `py-spy dump --pid <svc> | grep _mod3_worker`。线程 `comm` 全是 `python`, 拿它下“没在跑”的结论是假阴性。
 - 俯视下两者的视线会重叠: 实测料盘 7号位投影 (191,246) **正好落在**手上那颗模块的框内(框 [176,167,201,265]),
   按像素判断必然认错。
 - 判据 = `/api/module3d` 的 `corners_base_mm` 的 **z 区间**: 实测 323~332mm(台面 127) ⇒ 空中那颗

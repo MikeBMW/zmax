@@ -100,6 +100,23 @@ metadata:
   ⇒ `{port: {value, age_s, fresh}}`, **没有 `params` 键** ⇒ 任何 `ctx.get("params")` 取参数在引擎里**恒为空、静默走默认值"
   (GUI 双击演示会传 params ⇒ 本地自测完全看不出来, 到引擎里才发现"用户改了参数没反应")。
   取上游值的写法 = `(ctx.get("in1") or {}).get("value")`; 取参数/入边/共享态要写 **参数→入边→共享态→默认** 三级回落。
+  🔴 **让 A 真的喂 B = 三件套, 少一件就是装饰线** (实测: plan 段要喂进机器人执行器):
+  ① **画布连线** `A.out1 → B.in1` (改前 `cp` 备份 JSON, 加后回读确认出边存在);
+  ② **常驻循环白名单**: `zmax-ss-canvas-loop` 的 `ZMAX_CANVAS_ONLY` 只 step 列出的节点 ——
+     加了线但 B 不在白名单, 那一拍 B 根本不跑, 现象是"连线在、下游不认"; 支持逗号
+     (`ZMAX_CANVAS_ONLY=ssplan,ssact`, 走 drop-in `Environment=`), 判据读
+     `zmax_data/ss_live/canvas_loop.json` 的 `only` / `n_ran` / `cost_ms` / `traces[].status`;
+  ③ 🔴 **消费实现必须在外壳早返回之前取输入**: 壳 `compute()` 里 `if not PURE: return _passthrough(ctx)`
+     在调用实现**之前** ⇒ 只在实现里读 `ctx['in1']` 等于永远读不到 (PURE=False 的节点尤其)。
+     要真消费就在那句之前拦: `seg=(ctx.get('in1') or {}).get("value")`, 命中条件就干真活并
+     `return {"out1": out}` + 在 `LAST_STATUS` 写明"由哪一层驱动", 这样 traces 里读到的是"实现执行…"
+     而不是"直通"。安全类节点还要在这里守规矩: 授权没开只写渲染/观察用文件, 绝不写下发 FIFO。
+  ④ 段类信号要带**段内累计时间**(`elapsed_s`): 14 件循环里同一段 a/b 端点会撞, 少了它消费端无法
+     判断"这是第几件", 手里/孔位状态会错位 (计划节点 `out1` 就要一起给, 别只在写文件那条路补)。
+  验证四证(缺一条就是没接上): ① `canvas_loop.json` 两节点都在、下游 status 是"实现执行…"
+  ② 下游落盘产物 `age < 1s` ③ 服务端只读端点 `fresh=true` 且带 `src/from` ④ 消费端自己的"驱动源"
+  字段真变成下游节点; 再加一条反向证据证明没越界 —— 如真机零指令时 `zmax_data/l2_cmd.fifo` 的 mtime 未变。
+
   "输入不通"的三处断点 (外壳 `PURE=False` / 实现 `return True` 非 dict / 写 `_SS_STATE` 没人读) 与
   不靠 GUI 的 trace 判据 (必须先 `systemctl stop zmax-ss-canvas-loop`, 否则读到的 trace 是常驻循环的):
   `references/wiring-contract-and-rewire.md` §8。

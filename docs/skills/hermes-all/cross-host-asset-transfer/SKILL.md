@@ -79,7 +79,21 @@ ssh host 'pip install --no-index --find-links /home/x/wheels312 <pkg>'
 **单次 43~64s**, 同模型在 4060 上是 0.4s 级 —— 无 GPU 目标机的结论只能是"静态/离线可用",
 要实时必须换量化/NPU 后端, 别把"跑通了"说成"能上线"。
 
-## 4. 收尾
+## 4. 自动补齐单元的四个静默坑 (资产"看起来已齐"代价最高)
+
+- 🔴 **"已齐"判据必须看内容, 不能 `test -d`**: 对**空目录**也成立 ⇒ 补齐服务每轮报「资产已齐, 无需动作」,
+  而目标机上那个目录是空的。判据改成 `ls <dir>/* >/dev/null` + 关键文件名/大小, 或直接 sha256 对账。
+- 🔴 **systemd 单元没写 `User=` 就以 root 跑**: root 上通常没有目标机的 authorized_key ⇒ 每轮
+  `Permission denied (publickey,password)`, 而同一台机上普通用户 ssh 是通的。判据 = 同一条 ssh 命令
+  普通用户过、`sudo` 不过。修法 `User=<有密钥的用户>` + `Group=` + `Environment=HOME=/home/<user>`,
+  **别给 root 装 key**(换机就丢)。另外把日志文件 `chown` 给该用户, 否则 `tee` 报 Permission denied。
+- 🔴 **`push "$(dirname "$FILE")"` 会推整个目录**: 只想推一个权重却把整个 checkpoints 目录(实测 12.16GB/355 文件)
+  全送过去。推单文件用 `rsync -a <file> host:<dir>/`, 推目录才带尾斜杠。
+- 🔴 **别人(含子代理/旧工单)报「缺某权重」先自己 ls+du+sha 复核**: 按文件时间戳判断是否早已在位
+  (实测被报缺的两份权重分别是一个月前/三天前就在目标机上), 误判会让你重复推 GB 级数据。
+- `/health` 200 只证明**服务在**, 不证明**资产齐**(进程起来了、模型文件没到位也照样 ok) —— 两件事分开报。
+
+## 5. 收尾
 
 - 旧链路上的传输任务(中转脚本/后台 rsync)按 **PID** 停: `pgrep -af` 看清父子再 `kill -TERM <pid>`。
   `pkill -f <脚本名>` 会匹配到执行它的那条 shell 命令行(名字就在里面), 把自己一起 SIGTERM 掉

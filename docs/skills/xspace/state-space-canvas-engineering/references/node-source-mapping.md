@@ -18,9 +18,35 @@
 (症状: 修好"中间件 SOURCE + 注册表"两层之后, 用户仍报同一个弹窗 —— 只可能是拿 id 去盘上找的那一步失败。)
 
 因此修复点在 `spec.py` / `open_target.py` 的兜底链,
-不是往画布 JSON 里塞 params:
-往 JSON 里塞会被 GUI 内存里的旧副本覆盖(用户一保存画布就没了),
-而这两份代码不会被画布保存冲掉。
+不是临时往节点里塞 params:
+用户在界面上改参数后随画布保存下来的 `params` **是持久的**(它们本来就住在 `flows/state_space_obs.json` 里),
+而只在内存里临时塞的 params 会被 GUI 旧副本覆盖。
+
+## 🔴 迁移实现后必须回改画布 JSON 的 `params.source` (2026-10-29 实测)
+
+第 1 层最优先 ⇒ **画布 JSON 里那份 `params.source` 是决定右键落点的那个值**。
+执行链外迁 (`library.py` → `nodes/<功能>_impl.py`) 时如果只改了 `_EXTERNAL_LOC` 与中间件 `SOURCE`,
+画布节点 params 还写着旧文件, 用户右键就会跳到**那个旧文件里的某个函数**, 而它往往属于另一个程序 ——
+实测症状: 动作执行器节点右键跳到 `tools/l2_daemon.py` 的 `def main()`
+(`_single_instance` / `unlink+mkfifo` / ssh 链路探针 = 常驻 FIFO 下发进程的入口),
+用户当场问「动作执行器的代码怎么跑到这里来了?」。
+
+**迁移一个节点实现的完整四处**: ① `nodes/<功能>_impl.py` 正文 ② `library.py` 薄壳 ③ `_EXTERNAL_LOC[key]`
+④ 中间件 `nodes/n_<单词>.py` 的 `SOURCE/SOURCE_SYMBOL` + `PARAMS`
+⑤ **画布真源该节点的 `params.source` / `params.source_symbol`** (走 `save_canvas`, 或改 JSON 后回读)。
+旧文件如果是另一个真实程序(常驻进程/脚本), 别删它的引用含义 —— 加一个 `params.dispatcher` 把它标成
+「下发进程(不是本节点实现)」, 让后来的人一眼看出两条链的区别。
+
+判据(改完立刻跑, 不要靠右键目检):
+```bash
+cd ~/zmax && PYTHONPATH=src python3 - <<'PY'
+import json; from lerobot.middleware import open_target as ot
+d=json.load(open('flows/state_space_obs.json'))
+n=[x for x in d['nodes'] if x.get('id')=='<节点id>'][0]
+print(ot.resolve_open_target(n))   # impl_path 必须是新实现, impl_line 是 def run 那一行
+PY
+```
+
 
 ## 两层兜底(都已实现)
 
@@ -72,6 +98,28 @@
 
 **收尾别漏**: registry 说明里标「节点实现 nodes/<impl>.py」时别把已有 `(源码 xxx.py)` 顶掉, 现写法是追加 `; 节点实现 …`;
 `registry.get(key)['fn']` 仍是那个薄壳名字 (`node_xxx`) 属正常 —— 源码落点看 `resolve_open_target` 的 `impl_path`。
+
+## 把 tools 脚本的「生成本体」迁成节点实现 (build + 薄壳 CLI)
+
+场景: 节点的输入是某个 tools 脚本预烤的成品 (段表/索引/配置投影) ⇒ 节点只是"播放器", 用户会说
+「这是 tool 在算, 不是节点在算」。改法是把生成本体搬进节点侧模块, 工具降为薄壳 CLI。
+
+1. 新模块 `nodes/<功能>_plan.py` 放本体, 暴露两个入口:
+   - `build()` 纯计算, **不写盘、不下发**, 返回 dict (含 `cfg_sha = sha1(真源内容)[:12]`);
+   - `write(out, path)` 才落盘 (工具/对拍用), 写时带上 `cfg_sha`。
+2. 机械搬: 按行切片保留原脚本的模块级常量 + helper, 把 `def main():` 改名 `def build():`, 末尾 `return out`
+   替掉原来的 `json.dump` + `print` 块。别手抄 400 行 —— 手抄必引入差异, 且差异会在"改了配置但段表没变"时才暴露。
+3. 根目录常量要重算: 原脚本 `REPO = dirname(dirname(__file__))`, 挪到 `src/lerobot/engineering/nodes/` 后是**上溯四层**。
+4. 节点侧 `_self_plan()`: 先 `build()`; 与磁盘成品**同 cfg_sha** 时逐段对拍 (段数/kind/t/端点), 不一致或异常 ⇒
+   回退磁盘成品并在状态里写 `src=self | self(配置已变) | disk(原因)`。对拍闸的细节见
+   `derived-store-staleness-gating` 的「真源从预烤成品换成运行时现算」。
+5. 缓存 key 带上真源 mtime 或指纹, 否则改配置不重算。
+6. 工具变薄壳: `from ...nodes.<功能>_plan import build, write` + 打印人看得懂的编排。
+
+验收 = ①自算 vs 原成品逐段差量 (端点 ≤0.01mm、kind/时长 0 处差) ②现场节拍不掉 (例如 300UPH) ③改配置后自算跟着变且不被回退。
+
+⚠️ 整文件重写会被工具拒掉 (`stale write`: 该文件本会话只 patch 过/只读过部分) ⇒ 先把旧文件 `cp` 到 scratch 当备份、
+`rm` 掉原路径, 再 `write_file` 写新内容 —— 既留住旧实现可回退, 又避免"拿记忆里的旧版覆盖磁盘上的真实内容"。
 
 ## 自检(改完必跑, 不要只看一个节点)
 

@@ -144,8 +144,15 @@ git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这
 4. **开机自启清单**: 逐个 `systemctl is-active/is-enabled` (含 `systemctl --user` 的 GUI 服务),
    把 enabled 的服务列给他 —— 并且要真的 **enabled**, 本次手工 `setsid nohup` 起的服务要补 unit
    (否则重启就没了, 而他会以为还在)。
+   🔴 **`is-enabled` 不是二值: `static` / `indirect` / `disabled` 都等于“开机不会起”** —— 那份清单里
+   `active` 但 `static` 的 (无 `[Install]` 段) 当时在跑只是被人/`systemctl start` 拉起来的, 必须归到
+   "开机后手动跑" 那一类; 权威名单用 `systemctl list-unit-files --state=enabled --no-legend '<前缀>*'`。
+   **`oneshot` 单元完成后 `is-active` 回 `inactive` 是正常态**, 不是挂了 —— 报之前先看 `Type=`;
+   把它当异常会让用户开机后看到 inactive 又白查一轮。
 5. **关机影响面必须先讲**: 哪些公网/远程链路跑在这台机器上 (隧道、反代、docker 里的 ROS 节点),
    一关机就死; 哪些在别的机器上, 不受影响。让他出门前就知道了, 不要等他到了现场才发现 502。
+   顺带报**本机哪些服务一关就没人顶**: 消息通道/网关、各 87xx 页面与推流、FIFO 执行器 daemon ——
+   这几项列清楚比一句“服务会停”有用得多。
 6. **把"开机后必须手动跑一次"的东西单独列出来**, 别混进 enabled 服务清单里：
    本仓 `tools/boot_restore.sh` **没有开机自启**(不在 systemd unit、也不在 crontab) —— 它才是补起
    l5_live_mark / vl_safety_monitor / 深度源 / 实时标注器的入口 ⇒ 台账上写一句「重启后手动
@@ -172,6 +179,23 @@ git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这
 
 隧道不稳时不要下结论“机器挂了”: `sshpass ... -J <jump> ssh -o ConnectTimeout=25` 报
 `Connection timed out during banner exchange` 就加重试（2~3 次、间隔 3 s）—— 实测第二次同一条命令就通了。
+
+### ⑥ 同步飞书 (成果外发) · 发之前先看有没有发过
+
+```bash
+cd ~/zmax && ./gui-venv311/bin/python tools/feishu_send.py --text "【标题】日期 …"
+./gui-venv311/bin/python tools/feishu_check_messages.py --n 3      # 回读
+```
+- 通道自带换 token (不走 gateway 缓存), 凭据读 `~/.hermes/.env` 的 `FEISHU_APP_ID/SECRET`; 默认会话 = `DEFAULT_CHAT` (dataworld/静界 报告群)。
+  仓里只有**这一个** `oc_` id ⇒ 要发别处必须用户给 `oc_`, 不要猜。
+- 🔴 **200 + message_id 不是送达证据**: 必须 `feishu_check_messages.py --n 3` 回读到正文开头 + `deleted: false` + 时间,
+  报告里报 message_id 与回读时间两件。
+- 🔴 **同一份成果只发一次**: 用户再说一句「同步飞书」时, **先回读** —— 看到同标题已在 X 时间送达, 就回答已在,
+  不要盲发第二遍(群里会出现两条一样的, 他天天在看)。只有他明确说"重发"才再发, 并在回复里点名"现在两条了, 要不要撤回早的"。
+- 消息结构固定四段: **已保存(commit sha + 产物/证据路径) → 本轮成果(实测数字, 一条一个数) → 就绪判定 → 提醒**, 末尾加一句边界
+  (如「全程零真机指令」)。不写排查过程, 不复述对话。
+- 发之前先自查每个数字的出处: 报告里的 commit sha/文件体积/目录是否存在, 用 `git log --oneline -3`、`ls -l` 校一遍再发 ——
+  并行 session 会把 HEAD 往前推, 拿记忆里的号写进群就是假汇报。
 
 ## 改完号的判据：只认「五处一致」，不认 integrity_check 全绿
 
