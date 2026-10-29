@@ -36,6 +36,7 @@ from __future__ import annotations
 import os
 import time
 from .library import _REPO_ROOT
+from ._single_thread import brk as _brk
 
 _USE = "ZMAX_L3_SMOLVLA"          # =0 回退到测地线块 (默认 1 = 正式启用)
 
@@ -87,6 +88,7 @@ def _l4_in_summary(ctx):
 
 
 def run(ctx):
+    _brk("l3")          # ZMAX_DEBUG_BREAK=l3 时停在这里
     log = ctx.get("log")
     root = ctx.get("root") or _REPO_ROOT
     live = os.path.join(root, "zmax_data", "ss_live")

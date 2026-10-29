@@ -11,6 +11,23 @@
 import numpy as np
 
 
+def _brk(tag=""):
+    """🎯 代码内置断点 (2026-10-29 老倪「右键进源码, 断点还不好使」的兜底)。
+
+    本模块是被 library._ss_import / engine._load 按文件路径动态加载的, VSCode 的 UI 断点
+    在动态加载模块上未必绑得住; 这条不靠绑定 —— 命中 ZMAX_DEBUG_BREAK 就调 breakpoint(),
+    debugpy 会接管并在 VSCode 里停在这一行。
+    ZMAX_DEBUG_BREAK=1 / actuator / actuator,grav · 不设则完全不执行。
+    (内联实现, 不从 lerobot.engineering 导入: 那个包会反向 import 本模块, 有循环导入风险)
+    """
+    import os as _os
+    _spec = _os.environ.get("ZMAX_DEBUG_BREAK", "")
+    if not _spec:
+        return
+    if _spec in ("1", "*", "all") or (tag and tag in _spec.split(",")):
+        breakpoint()
+
+
 class RobotExecutor:
     """🤖 机器人执行器 — 接收物理指令执行
 
@@ -39,6 +56,7 @@ class RobotExecutor:
 
     def execute(self, u):
         """执行物理指令 → 校验后的可执行指令 (数值原样; 校验结论在 self.last_check)。"""
+        _brk("actuator")          # ZMAX_DEBUG_BREAK=actuator 时停在这里 (UI 断点绑不住就用这条)
         a = np.asarray(u, dtype=float).ravel()
         chk = {"valid": True, "clip_hint": [], "over_rate": [], "why": [], "n": int(a.size)}
         # ① NaN/Inf: 脏数不往外送

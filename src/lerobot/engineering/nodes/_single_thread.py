@@ -68,3 +68,24 @@ def enforce(log=None):
 def in_caller_thread():
     """节点是否就在主调用线程里执行 (单线程模式下恒 True; 有后台线程时能一眼看出来)。"""
     return threading.current_thread() is threading.main_thread()
+
+
+def brk(tag=""):
+    """🎯 代码内置断点 — VSCode 的 UI 断点在动态加载模块上绑不住时的兜底。
+
+    老倪 2026-10-29「右键进入源码, 断点怎么还不好使」: UI 断点是否命中取决于 debugpy 能否把
+    "文件:行" 绑到已加载的模块上 (spec_from_file_location 加载的模块历史上绑不住)。
+    这条不依赖绑定: 环境变量命中就调 breakpoint() —— debugpy 会接管 sys.breakpointhook,
+    在 VSCode 里停在**这一行**, 调用栈、局部变量都在。
+
+    用法 (env 里设, 不用改代码):
+      ZMAX_DEBUG_BREAK=1              → 所有打了 brk() 的地方都停 (最啰嗦)
+      ZMAX_DEBUG_BREAK=actuator       → 只停执行器 (RobotExecutor.execute)
+      ZMAX_DEBUG_BREAK=actuator,grav  → 停多个, 逗号分隔
+    不设 = 完全不执行 (生产零影响, 也不多一次函数调用外的开销)。
+    """
+    spec = os.environ.get("ZMAX_DEBUG_BREAK", "")
+    if not spec:
+        return
+    if spec in ("1", "*", "all") or (tag and tag in spec.split(",")):
+        breakpoint()

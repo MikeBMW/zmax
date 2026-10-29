@@ -20,6 +20,7 @@
 from __future__ import annotations
 import os                                    # 正文里 os.path.join 用 (原在 library 模块级)
 from .library import _HAM_CACHE, _NodeOut, _REPO_ROOT   # 与 registry 共用同一份运行时状态 (同源)
+from ._single_thread import brk as _brk
 
 _LAYERS = ("L2", "L3", "L4", "L5")
 _ROLE = {"L2": "基础输出(前馈 MLP)", "L3": "加权修正(动作头 chunk)",
@@ -43,6 +44,7 @@ def _unit(v):
 
 
 def run(ctx):
+    _brk("grav")          # ZMAX_DEBUG_BREAK=grav 时停在这里
     log = ctx.get("log")
     root = ctx.get("root") or _REPO_ROOT
     live = os.path.join(root, "zmax_data", "ss_live")

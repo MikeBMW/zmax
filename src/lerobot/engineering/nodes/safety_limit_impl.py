@@ -18,6 +18,7 @@ from .library import _SS_STATE, _ss_import   # 与 registry 共用同一份运�
 #        所以这里加一条「位姿守护」: 工作空间包围盒 + 单步位移上限 + 台面高度下限,
 #        通过就原样透传 (带 why), 不通过就**夹到边界**并标明 clipped —— 不静默放行、也不假报 ok。
 import os as _os
+from ._single_thread import brk as _brk
 
 WS_M = {"x": (0.15, 1.05), "y": (-0.65, 1.15), "z": (0.005, 0.95)}      # 工作空间 (m, base_link)
 STEP_MAX_MM = float(_os.environ.get("ZMAX_POSE_GUARD_STEP_MM", "45"))    # 与执行器单步同口径
@@ -68,6 +69,7 @@ def guard_pose(pose, cur_mm=None):
 
 
 def run(ctx):
+    _brk("limit")          # ZMAX_DEBUG_BREAK=limit 时停在这里
     log = ctx.get("log")
     try:
         import numpy as np

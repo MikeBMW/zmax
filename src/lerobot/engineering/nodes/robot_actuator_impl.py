@@ -12,9 +12,11 @@
 from __future__ import annotations
 import time
 from .library import _SS_STATE, _ss_import   # 与 registry 共用同一份运行时状态 (同源)
+from ._single_thread import brk as _brk
 
 
 def run(ctx):
+    _brk("act")          # ZMAX_DEBUG_BREAK=act 时停在这里
     log = ctx.get("log")
     try:
         import numpy as np
