@@ -104,14 +104,29 @@ def layer_forces():
                 (chunk or {}).get("ff_mode"), (chunk or {}).get("cycle"))
             note2 = "前馈加速器 MLP 输出 (m/s)"
 
-    # ── L3 动作头: chunk_latest.chunk[0][:3] (单步动作, m/s 当量) ──────────
-    v3, src3, note3 = None, "缺 L3: chunk_latest.json 无 chunk[0]", ""
-    _ch = (chunk or {}).get("chunk") or []
-    if _ch:
-        v3 = _vec3(_ch[0])
-        if v3:
-            src3 = "chunk_latest.chunk[0][:3] · chunk_src=%s" % str((chunk or {}).get("chunk_src"))[:60]
-            note3 = "动作头输出 (m/s 当量)"
+    # ── L3 加权修正: **SmolVLA+LEW 模型前向**(正式启用) 优先, 测地线块仅作回落 ──
+    #   老倪 2026-10-29「SmolVLA+LEW L3 层 用上这个模型, 正式启用」⇒ L3 的力必须来自模型输出,
+    #   不能还用测地线规划 (那是几何解码, 不是 L3 模型)。模型不可用 ⇒ 回落并如实换 src。
+    v3, src3, note3 = None, "缺 L3: 无模型输出也无 chunk[0]", ""
+    _l3, _l3age = _j("l3_latest.json")
+    _l3o = ((_l3 or {}).get("out1") or {}) if isinstance(_l3, dict) else {}
+    _nom = _vec3(_l3o.get("nominal_L3"))
+    if _nom and _l3o.get("degraded") is not True and (_l3age is not None
+                                                    and _l3age <= float(c["max_age_s"])):
+        v3 = _nom
+        _mdl = (_l3o.get("model") or {})
+        src3 = "SmolVLA+LEW 前向 (%s) · infer=%sms · 龄%.2fs" % (
+            str(_mdl.get("ck") or "?").split("/")[-3] if _mdl.get("ck") else "?",
+            _mdl.get("infer_ms"), _l3age)
+        note3 = "L3 模型输出 (加权修正来源, m/s 当量)"
+    else:
+        _ch = (chunk or {}).get("chunk") or []
+        if _ch:
+            _c3 = _vec3(_ch[0])
+            if _c3:
+                v3 = _c3
+                src3 = "回落: 测地线 chunk[0][:3] · %s" % str((chunk or {}).get("chunk_src"))[:52]
+                note3 = "动作头输出 (m/s 当量) — 模型未就绪时回落"
 
     # ── L4 流形引擎: 度量张量 M 作用在(规划 − 前馈)的执行差上 ───────────────
     #    F = M̂ · Δu ,  M̂ = M/M_ref (标量度量, 唯一依据 torque_live.metric_M / engine_latest.M)
