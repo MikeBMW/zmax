@@ -40,7 +40,10 @@ SOURCE_SYMBOL = 'class ManifoldEngine'
 PARAMS = {'state_space': True, 'manifold_engine': True, 'kind': 'real', 'role': 'L4 核心内核 — 高维状态→低维流形, 流形上 表征/投影/度量/导航/反馈', 'api': 'project() · navigate() · gradient_flow() · feedback_update() · step() · query()', 'pipeline': '编码(Encoder/PCA) → 投影(ManifoldProjector) → 度量+梯度(MetricCalculator) → 导航(Navigator 测地线) → 反馈(FeedbackLoop 有界)', 'manifolds_ready': 'euclidean · sphere · torus · so3 · se3 · su2 · latent_flat', 'manifolds_planned': 'calabi_yau(Ricci-flat 度量未实现) · hyperbolic(未实现) — 仅登记, 不造数', 'source': 'src/lerobot/manifold/manifold_engine.py', 'source_symbol': 'class ManifoldEngine', 'reuse': 'su2.py(群) · lie_intent.py(SO3/SE3) · manifold_layer.py(接触/性能势能) · fiber_bundle.py(提升) — 复用既有真件', 'measured': '端到端 0.056ms/帧 · 投影 0.019ms · 测地线T=16 0.24ms · 约束违例 1.1e-16 · 上限 ~3500Hz (真跑引擎轨迹实测)', 'spec_target': '延迟<10ms · 投影<1ms · 测地线<50ms · >100Hz — 全部达标', 'caveat': '解码器(岭回归)只在标定分布内可信 (训练段逐维相关 0.76~0.94; 未见段 R² 负) → 跨段须重标定', 'desc': 'L4 核心内核: 把高维状态自动约束为低维流形, 在流形上做测地线导航/梯度流/有界反馈; 输出意图与动作建议', 'core': True, 'core_color': '#FFC53D', 'core_role': '系统核心 (流形引擎)', 'pure_verified': True}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = True
+import os as _os
+# 🧪 2026-10-30 流形引擎有效性对照实验: 关掉它跑一组基线, 与开着同口径比。
+#   ZMAX_MANI_ENG_OFF=1 ⇒ 直通 (n_manifold 不调用 manifold_engine), 段表/执行链完全不变。
+PURE = _os.environ.get("ZMAX_MANI_ENG_OFF", "0") != "1"
 LAST_STATUS = ""
 
 
