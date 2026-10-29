@@ -116,9 +116,22 @@ def run(ctx):
             obs, obs_meta = SL.build_obs39(root, log)
             img, img_meta = SL.fetch_ar_frame()
             if obs is not None and img is not None:
-                act, m_meta = SL.infer_async(
-                    img, obs, root, log,
-                    min_period_s=float(os.environ.get("ZMAX_L3_PERIOD_S", "1.5")))
+                # 🔒 2026-10-29 老倪「550B 单线程模式, 除 GUI 外所有节点都单线程运行」:
+                #   默认走 infer_async = 起 "l3-smolvla" 后台线程 ⇒ 断点停不住、线程数说不清。
+                #   单线程模式改同步: 本线程内算完再往下, 一次一拍、可单步、可断点。
+                try:
+                    from . import _single_thread as _ST
+                    _single = _ST.enabled()
+                except Exception:                                          # noqa: BLE001
+                    _single = os.environ.get("ZMAX_SINGLE_THREAD", "") == "1"
+                if _single:
+                    act, m_meta = SL.infer(img, obs, root, log)
+                    m_meta = dict(m_meta or {})
+                    m_meta["mode"] = "sync (ZMAX_SINGLE_THREAD=1 · 不起线程)"
+                else:
+                    act, m_meta = SL.infer_async(
+                        img, obs, root, log,
+                        min_period_s=float(os.environ.get("ZMAX_L3_PERIOD_S", "1.5")))
             else:
                 m_meta = {"err": "观测或图像缺失", "obs_err": obs_meta.get("err"),
                           "img_err": img_meta.get("err")}

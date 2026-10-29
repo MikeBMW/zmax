@@ -4071,6 +4071,15 @@ _EXTERNAL_LOC["ss_lat"] = (os.path.join(_CALIB_DIR_LOC, "calibration_layer.py"),
 #   对准代价/效率曲面. 回路外几何分析元层, 与标定层同款: 不参与推理/不加安全通道)
 _MANIFOLD_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "manifold")
 
+# 🔒 单线程执行闸 (2026-10-29 老倪: 「550B VSCode 变成单线程模式, 除了显示的 GUI, 其它所有 node 节点全都单线程运行」)
+#   解释器早期的 BLAS env 由 studio.py:38-59 / vscode_launch.py 灌; 这里压运行期还能改的 torch/cv2,
+#   并记录实测线程数。节点侧也据此走同步分支 (不起后台线程), 见 flow_matching_impl。
+try:
+    from . import _single_thread as _SINGLE_THREAD        # noqa: PLC0415
+    _SINGLE_THREAD.enforce()
+except Exception:                                        # noqa: BLE001
+    _SINGLE_THREAD = None
+
 # ── 🧮 L4 统一帧真源 (2026-10-29 老倪「L4 层正式接入, 流形引擎要真正接入运行」) ─────────
 #   问题: L4 节点原来只认 GUI 播放态 `module._ss_tr`, 常驻循环 (无 GUI module) 里一律 return False
 #         ⇒ 画布上 19 个 L4 节点在引擎常驻循环里**一次都没跑过**。
