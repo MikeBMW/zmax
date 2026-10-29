@@ -35,7 +35,11 @@ SOURCE_SYMBOL = 'def run_once('
 PARAMS = {'desc': '[L4 策略] INTACT (zju3dv/INTACT-JEPA, MIT) 意图-动作: 共享 local/goal 动作律 + 四槽语法 [z, m_t, z⊙m_t, A(a_{t-1})] → 一次前向直接出 action chunk (**零候选搜索**, 无 CEM); **数据源直接接入 metaworld** (MT1 peg-insert-side-v3, 真渲染帧 224² + 39D 现场读); 🧩 **三路入线口径** (2026-09-16 老倪「L2 应与 L4 兼容」): in1 = 数据源真帧+39D; in2 = L2 感知融合状态 (YOLO→2D→3D→融合定位建图, L4 引擎路径 vision=True 时生效); in3 = L2 前馈蒸馏 MLP 的 u_ff (L4 档 SS_USE_MLP=1 时真身参与, 否则装配期被解析覆盖); 输出 → 意图解码器 ssintact_dec → L3; 实现 src/lerobot/policies/intact/modeling_intact.py (2026-09-13 从 manifold/intact_node 迁移) · 设计 docs/design/zmax_l4_intact_policy.md\n\n🗂 代码落位 (v5.5.43 编排已下沉 policy 层): 编排 service.py (run_once) · 策略壳 modeling_intact.py · 节点 runtime/node.py', 'expert': True, 'state_space': True, 'intact': True, 'data_source': 'metaworld', 'decoder': 'ssintact_dec', 'source': 'src/lerobot/policies/intact/service.py', 'source_symbol': 'def run_once(', 'source_note': '编排 service.py (run_once) · 策略壳 modeling_intact.py · 节点 runtime/node.py'}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = False
+# 🔴 2026-10-29 老倪「INTACT 模型用上了没有」: 原来恒 False ⇒ 直通, 真实现一行不执行。
+#   实测模型可用 (trained=True · chunk=(8,8) · 热态 32ms/次 · 首拍加载 ~9.7s), 改为默认开;
+#   ZMAX_INTACT_OFF=1 可退回直通 (例如只想过数据面时不加载模型)。
+import os as _os
+PURE = _os.environ.get("ZMAX_INTACT_OFF", "0") != "1"
 LAST_STATUS = ""
 
 

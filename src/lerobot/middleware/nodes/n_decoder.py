@@ -35,7 +35,11 @@ SOURCE_SYMBOL = 'def run_once('
 PARAMS = {'desc': '[L4 → L3] INTACT 意图解码器 (src/lerobot/policies/intact/decoder.py): **两路输出**: ①→DiT 的 L3 条件 (未标定不注入) ②→流形专家预测器的意图 m_int (z_t 口径用; 活跃 z7 口径下当门控) · 把 INTACT 的意图/潜空间解码成 L3 能吃的条件 —— ① u_ff 先验 4D (量纲逆运算 act×K_ACT, K_ACT 现读引擎源码, 无需标定) ② L3 流形条件向量 (需标定 models/intact_l3_map.json, 未标定则**拒绝返回并计数**, 不预先固定映射 = 不假接入); 所在 L4 行 = 只在 L4 档执行, L3 档链路逐位不变\n\n🗂 代码落位 (v5.5.43 编排已下沉 policy 层): 编排 service.py (run_once) · 解码 decoder.py · 桥 runtime/model_adapter.py', 'expert': True, 'state_space': True, 'decoder': True, 'source': 'src/lerobot/policies/intact/service.py', 'source_symbol': 'def run_once(', 'source_note': '编排 service.py (run_once) · 解码 decoder.py · 桥 runtime/model_adapter.py'}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = False
+# 🔴 2026-10-29 老倪「INTACT 模型用上了没有」: 原来恒 False ⇒ 直通, 解码器一行不执行。
+#   解码走 service.run_once(decode=True), 与策略节点共用同一次真推理口径;
+#   ZMAX_INTACT_OFF=1 退回直通。
+import os as _os
+PURE = _os.environ.get("ZMAX_INTACT_OFF", "0") != "1"
 LAST_STATUS = ""
 
 

@@ -877,6 +877,36 @@ def _intact_service(root: str):
         _INTACT_SVC["svc"] = _m.get_service(root)
     return _INTACT_SVC["svc"]
 
+def _intact_skill_ctx(ctx, stage=""):
+    """构造 24 维 skill_ctx —— ckpt 带 skill 通道 (skill_dim>0), 缺了模型侧硬闸直接 raise。
+
+    布局 [stage13 | L2_w8 | d_perp | arc_frac | grip] (policies/intact/skill_ctx.py)。
+    这里只给相位 + 夹爪 (process=None): L2 势场在节点侧没有, 不伪造 w 分量。
+    """
+    try:
+        import numpy as np
+        from lerobot.policies.intact.skill_ctx import build_skill_ctx
+    except Exception:                                                      # noqa: BLE001
+        return None
+    obs = None
+    for k in ("in1", "in2", "in3"):
+        v = (ctx.get(k) or {}).get("value") if isinstance(ctx.get(k), dict) else None
+        if isinstance(v, dict):
+            obs = v.get("obs39") or v.get("obs") or v.get("state")
+        elif isinstance(v, (list, tuple)) and len(v) >= 3:
+            obs = v
+        if obs is not None:
+            break
+    try:
+        x = list(np.asarray(obs, dtype=float).ravel()[:3]) if obs is not None else [0.0, 0.0, 0.0]
+    except Exception:                                                      # noqa: BLE001
+        x = [0.0, 0.0, 0.0]
+    try:
+        return build_skill_ctx(None, x, str(stage or "下降"), 0.0)
+    except Exception:                                                      # noqa: BLE001
+        return None
+
+
 def node_intact(ctx):
     """🎯 INTACT 策略 (L4) — 零搜索 意图→动作 (**数据源直接接入 metaworld**)
 
@@ -887,16 +917,27 @@ def node_intact(ctx):
       · 数据源   = metaworld 真环境 (MT1 peg-insert-side-v3, 真渲染帧 224² + 39D 现场读)
       · 编排     = src/lerobot/policies/intact/service.py (本节点只调它, 自己不碰桥/证据)
     双击 → 真跑一步并打印诊断; 模型未就绪诚实标 trained=False (绝不返回假动作冒称成功)。
+
+    🔴 2026-10-29 老倪「INTACT 模型用上了没有」: 原来返回 True ⇒ 壳判"非 dict" → 直通,
+    下游永远拿不到东西; 而且 run_once 不传 skill_ctx ⇒ ckpt 的 skill 通道硬闸直接 raise
+    ("checkpoint was trained with a skill channel (skill_dim>0) but info['skill_ctx'] was not
+    provided")。现在补 skill_ctx + 返回真业务字典 (实测热态 32ms/次, 首拍加载 ~9.7s)。
     """
-    log = ctx["log"]
+    log = ctx.get("log") or (lambda *a, **k: None)
     root = ctx.get("root") or _paths.REPO_ROOT
     try:
         svc = _intact_service(root)
-        svc.run_once(stage="", decode=False, log=log)
-        return True
+        sk = _intact_skill_ctx(ctx, "")
+        rep = svc.run_once(stage="", decode=False, skill_ctx=sk,
+                           write_evidence=False, log=log)
+        _d = dict(rep.diagnostics or {})
+        return {"kind": "intact", "trained": bool(rep.trained), "policy": str(rep.policy),
+                "chunk_shape": list(rep.chunk_shape), "source": str(rep.source),
+                "ckpt": _d.get("ckpt_realpath"), "ckpt_bytes": _d.get("ckpt_bytes"),
+                "skill_ctx_dim": (int(sk.size) if sk is not None else 0)}
     except Exception as e:
         log(f"❌ INTACT 节点执行失败: {type(e).__name__}: {e}")
-        return False
+        return {"kind": "intact", "trained": False, "err": "%s: %s" % (type(e).__name__, e)}
 
 def node_intact_dec(ctx):
     """🎯 INTACT 意图解码器 (L4 → L3) — 把 L4 的意图/潜空间解码成 L3 能吃的条件。
@@ -909,22 +950,40 @@ def node_intact_dec(ctx):
     L3 侧消费: 引擎 SS_L4_INTACT=1 时按权重 w 注入 (w=0 / 未设 = 与现状**逐位相同**)。
     ⚙️ 实现已下沉 policy 层: lerobot/policies/intact/service.py (IntactIntentService.run_once)
     """
-    log = ctx["log"]
+    log = ctx.get("log") or (lambda *a, **k: None)
     mod = ctx.get("module")
     root = ctx.get("root") or _paths.REPO_ROOT
     try:
         svc = _intact_service(root)
-        rep = svc.run_once(stage=str(ctx.get("stage") or ""), decode=True,
+        _stage = str(ctx.get("stage") or "")
+        sk = _intact_skill_ctx(ctx, _stage)
+        rep = svc.run_once(stage=_stage, decode=True, skill_ctx=sk,
                            write_evidence=True, log=log)
         if mod is not None:
             try:
                 mod._intact_dec = rep.to_panel()
-            except Exception:
+            except Exception:                                              # noqa: BLE001
                 pass
-        return True
+        _d = dict(rep.diagnostics or {})
+        _cond = rep.l4_cond
+        try:
+            import numpy as _np
+            _cond = [round(float(x), 5) for x in _np.asarray(_cond, dtype=float).ravel()[:8]] \
+                if _cond is not None else None
+        except Exception:                                                  # noqa: BLE001
+            _cond = None
+        return {"kind": "intact_dec", "trained": bool(rep.trained), "policy": str(rep.policy),
+                "u_ff": [round(float(x), 6) for x in (rep.u_ff if rep.u_ff is not None else [])],
+                "u_ff_source": str(rep.u_ff_source or ""),
+                "l4_cond_head8": _cond,
+                "l4_cond_dim": (int(_np.asarray(rep.l4_cond).size) if rep.l4_cond is not None else 0),
+                "weight": (float(rep.weight) if rep.weight is not None else 0.0),
+                "reason": str(rep.reason or ""),
+                "chunk_shape": list(rep.chunk_shape), "source": str(rep.source),
+                "ckpt": _d.get("ckpt_realpath")}
     except Exception as e:
         log(f"❌ INTACT 解码器执行失败: {type(e).__name__}: {e}")
-        return False
+        return {"kind": "intact_dec", "trained": False, "err": "%s: %s" % (type(e).__name__, e)}
 
 # ── 🌍 L4 · SW 仿真世界引擎链 (INTACT cube · stable-world, 2026-09-13 老倪) ──
 #   数据源(渲染图像) → INTACT 策略(cube 论文权重 零搜索) → 硬件层(stable-world 引擎 动作真下发)
