@@ -11,21 +11,36 @@
 import numpy as np
 
 
+_SEEN_BRK = set()
+
+
 def _brk(tag=""):
     """🎯 代码内置断点 (2026-10-29 老倪「右键进源码, 断点还不好使」的兜底)。
 
-    本模块是被 library._ss_import / engine._load 按文件路径动态加载的, VSCode 的 UI 断点
-    在动态加载模块上未必绑得住; 这条不靠绑定 —— 命中 ZMAX_DEBUG_BREAK 就调 breakpoint(),
-    debugpy 会接管并在 VSCode 里停在这一行。
-    ZMAX_DEBUG_BREAK=1 / actuator / actuator,grav · 不设则完全不执行。
-    (内联实现, 不从 lerobot.engineering 导入: 那个包会反向 import 本模块, 有循环导入风险)
+    本模块被 library._ss_import / engine._load 按文件路径动态加载, VSCode 的 UI 断点在这种
+    模块上未必绑得住; 这条不靠绑定 —— 命中就调 breakpoint(), debugpy 接管、停在 VSCode。
+
+      · 显式: ZMAX_DEBUG_BREAK=1/*/all 全停; =tag1,tag2 按 tag 停
+      · 自动: 没设 env 但调试器已连接 ⇒ 每个 tag 只停第一次 (不把 10Hz 刷成无限暂停)
+    内联实现 (不从 lerobot.engineering 导入): 那个包反向 import 本模块, 会成环。
     """
     import os as _os
     _spec = _os.environ.get("ZMAX_DEBUG_BREAK", "")
-    if not _spec:
+    if _spec:
+        if _spec in ("1", "*", "all") or (tag and tag in _spec.split(",")):
+            breakpoint()
         return
-    if _spec in ("1", "*", "all") or (tag and tag in _spec.split(",")):
-        breakpoint()
+    _key = "ex:" + (tag or "-")
+    if _key in _SEEN_BRK:
+        return
+    try:
+        import debugpy as _dp
+        if not _dp.is_client_connected():
+            return
+    except Exception:                                                      # noqa: BLE001
+        return
+    _SEEN_BRK.add(_key)
+    breakpoint()
 
 
 class RobotExecutor:

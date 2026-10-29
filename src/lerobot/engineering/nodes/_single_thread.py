@@ -70,22 +70,35 @@ def in_caller_thread():
     return threading.current_thread() is threading.main_thread()
 
 
+_SEEN = set()          # 没设 env 时的"首次停"去重 (否则 10Hz 每帧都停, 界面直接死)
+
+
 def brk(tag=""):
-    """🎯 代码内置断点 — VSCode 的 UI 断点在动态加载模块上绑不住时的兜底。
+    """🎯 代码内置断点 — 不依赖 debugpy 对动态加载模块的文件:行绑定。
 
-    老倪 2026-10-29「右键进入源码, 断点怎么还不好使」: UI 断点是否命中取决于 debugpy 能否把
-    "文件:行" 绑到已加载的模块上 (spec_from_file_location 加载的模块历史上绑不住)。
-    这条不依赖绑定: 环境变量命中就调 breakpoint() —— debugpy 会接管 sys.breakpointhook,
-    在 VSCode 里停在**这一行**, 调用栈、局部变量都在。
-
-    用法 (env 里设, 不用改代码):
-      ZMAX_DEBUG_BREAK=1              → 所有打了 brk() 的地方都停 (最啰嗦)
-      ZMAX_DEBUG_BREAK=actuator       → 只停执行器 (RobotExecutor.execute)
-      ZMAX_DEBUG_BREAK=actuator,grav  → 停多个, 逗号分隔
-    不设 = 完全不执行 (生产零影响, 也不多一次函数调用外的开销)。
+    老倪 2026-10-29「右键进源码, 断点还是不进」实证结论:
+      ① 右键「运行节点」的调用路径确实会走到执行器 (模拟实测: execute 被调用, 日志正常打)
+      ② 但当时调试进程 /proc/<pid>/environ 里 ZMAX_DEBUG_BREAK / ZMAX_SINGLE_THREAD 全空
+         ⇒ launch.json 的 env 没进进程 (VSCode 用缓存旧配置), brk() 一次都没执行
+    所以两种触发方式并存, 后者不需要任何 env:
+      · 显式: ZMAX_DEBUG_BREAK=1/*/all 全停; =tag1,tag2 按 tag 停
+      · 自动: 没设 env 但调试器已连接 (F5 起的会话) ⇒ **每个 tag 只停第一次**
+        (只停一次是为了不把 10Hz/每帧的节点刷成无限暂停; 想每次都停就显式设 tag)
     """
     spec = os.environ.get("ZMAX_DEBUG_BREAK", "")
-    if not spec:
+    if spec:
+        if spec in ("1", "*", "all") or (tag and tag in spec.split(",")):
+            breakpoint()
         return
-    if spec in ("1", "*", "all") or (tag and tag in spec.split(",")):
-        breakpoint()
+    # 未设 env: 调试会话里每个 tag 自动停一次 —— 让"想调试"这件事不依赖 launch.json 是否生效
+    _key = tag or "-"
+    if _key in _SEEN:
+        return
+    try:
+        import debugpy                                                  # noqa: PLC0415
+        if not debugpy.is_client_connected():
+            return
+    except Exception:                                                   # noqa: BLE001
+        return
+    _SEEN.add(_key)
+    breakpoint()
