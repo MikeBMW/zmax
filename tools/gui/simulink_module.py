@@ -8860,6 +8860,11 @@ class SimulinkModule(QWidget):
     def _state_space_run_node(self, node, keep_active=True):
         """🧮 状态空间画布 右键「运行节点」 = 引擎同源 (2026-08-31 老倪: 单步/运行/右键三统一)
         显示该节点在引擎轨迹的真实 I/O — 不再走 node_logic 壳逻辑 + 预先固定模拟值"""
+        # 🔴 右键单节点也清缓存: 取消/重加断点后右键能重新绑定 (见 _ss_drop_mods 说明)
+        try:
+            self._ss_drop_mods()
+        except Exception:                                                  # noqa: BLE001
+            pass
         tr = self._ss_ensure_trace()
         if tr is None:
             # 🔴 2026-10-29: 引擎轨迹拿不到也必须执行节点逻辑。原来这里是 _log + return ⇒ 右键
@@ -16421,10 +16426,39 @@ class SimulinkModule(QWidget):
         except Exception:
             pass
 
+    def _ss_drop_mods(self):
+        """清六层 state_space 模块缓存 —— 让 pydevd 在下次运行重新 compile 时注入新断点。
+
+        🔴 2026-10-29 老倪「断点取消后, 又打断点, 进不了」: pydevd 只在模块 compile 时把断点
+        注入字节码; 这个 debugpy 版本没有 _pydevd_frame_eval(*.so 不存在), 对已加载模块在运行时
+        加断点是静默失效。清缓存强制重新编译 ⇒ 取消/重加的断点下一次运行就能停。
+        同时清 ss_real.* (engine/runtime.py 的六层控制器) 与 state_space.* (library._ss_import)。
+        """
+        import sys as _sys
+        try:
+            from lerobot.engineering.nodes import library as _LIB
+            _LIB._SS_MODS.clear()
+        except Exception:                                                  # noqa: BLE001
+            pass
+        for _k in [k for k in list(_sys.modules)
+                   if k.startswith("state_space.") or k.startswith("ss_real.")]:
+            _sys.modules.pop(_k, None)
+
     def _start_state_space_sim(self):
         """🧮 状态空间真实仿真 (2026-08-18 老倪: state_space_sim.py 六层源码引擎)
         引擎 500 步纯 numpy <0.1s 快跑 → 收集时间序列 → QTimer 动画逐节点执行
         + 每轮打印真实数值 (距离/残差/接触概率/阶段), 完成自动汇总"""
+        # 🔴 2026-10-29 老倪「断点取消后, 又打断点, 进不了」—— 机制与修法:
+        #   pydevd 在 **模块 compile 那一刻** 把断点注入字节码。这个 debugpy 版本没编译
+        #   _pydevd_frame_eval (目录里没有 .so), 所以对**已加载**的模块在运行时加断点不生效:
+        #   取消再添加 = 静默不绑, 不报错。这跟文件路径/spec/loader 都无关。
+        #   修法: 每次点 ▶运行 先清掉六层模块缓存, 让它重新 compile —— 新断点在编译时被注入,
+        #   于是"取消 → 重新打断点 → 再运行"就能停。代价是每轮多几十 ms 编译, 可接受。
+        try:
+            self._ss_drop_mods()
+            self._log("🔁 已清六层模块缓存 — 新加的断点下一次运行生效")
+        except Exception as _e:                                            # noqa: BLE001
+            self._log("⚠️ 清模块缓存失败(不影响运行): %s: %s" % (type(_e).__name__, _e))
         self._ui_run_publish(True)           # 2026-10-19: 点 ▶ 运行 (快演档) 也发运行态
         # 🕹 v3.4.7 老倪: 点画布 ▶运行后 3D 视图被画布覆盖 — 运行开始把可见 3D 窗口拉前,
         #   3D 逐帧同步画布信号时用户看得见 (窗口仍可被点回, 不置顶不抢画布焦点)
