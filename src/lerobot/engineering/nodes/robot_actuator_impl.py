@@ -10,6 +10,7 @@
 本文件正文与迁移前逐字一致 (仅补显式 import 与文件头)。
 """
 from __future__ import annotations
+import time
 from .library import _SS_STATE, _ss_import   # 与 registry 共用同一份运行时状态 (同源)
 
 
@@ -30,7 +31,11 @@ def run(ctx):
                     gd = "?"
                 log(f"🌍 物理世界 (真实): total_mass={w.total_mass}kg · 广义质量≈{gd} · "
                     f"7自由度 (execution.py)")
-            return True
+            # 🔴 2026-10-29: 返回 dict 才落成「实现执行」; 纯计算, 零下发
+            return {"out1": {"kind": "physical_world", "total_mass": float(getattr(w, "total_mass", 0.0)),
+                             "gen_mass_diag": [float(x) for x in (gd if isinstance(gd, (list,)) else [])],
+                             "src": "execution.py:PhysicalWorld", "t": time.time(),
+                             "real_send": False, "note": "纯计算·零下发 (下发只走 l2_daemon+8793 授权)"}}
         u_sat = _SS_STATE.get("u_sat", np.zeros(4))
         u_vec = ex.RobotExecutor().execute(np.asarray(u_sat, dtype=float))
         if np.ndim(u_vec) == 0:
@@ -39,8 +44,13 @@ def run(ctx):
         if log:
             log(f"🤖 机器人执行器 (真实): execute(u_sat={np.round(u_sat,3)}) → 指令={np.round(u_vec,4)} "
                 f"(execution.py)")
-        return True
+        # 🔴 2026-10-29: out1 = 本拍真算出的指令 + 显式零下发声明, 下游(页面/台账)可直接消费
+        return {"out1": {"kind": "actuator", "u_sat": [round(float(x), 5) for x in np.asarray(u_sat, dtype=float).ravel()[:4]],
+                         "u_cmd": [round(float(x), 6) for x in np.asarray(u_vec, dtype=float).ravel()[:4]],
+                         "n": int(np.asarray(u_vec).size), "src": "execution.py:RobotExecutor.execute",
+                         "t": time.time(), "real_send": False,
+                         "note": "纯计算·零下发 (下发只走 l2_daemon+8793 授权)"}}
     except Exception as e:
         if log:
             log(f"⚠️ 执行层真实执行失败: {e}")
-        return False
+        return {"out1": None}

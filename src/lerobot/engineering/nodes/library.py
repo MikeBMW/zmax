@@ -3541,6 +3541,17 @@ def node_ss_yolo(ctx):
     源码: yolo_state_aligner.py (YoloStateAligner / detect_3d / align) — 右键源码与真实执行同源, 断点可进
     🐛 2026-09-01: 原执行 detection_targets.py 清单(≠右键源码 yolo_state_aligner.py) → 断点永不命中"""
     log = ctx.get("log")
+    import json as _json
+    _now = time.monotonic()
+    # 🔴 2026-10-29 老倪: 「节点必须实际运行, 接口必须对齐」——
+    #   常驻循环 10Hz 每拍都做 metaworld 渲染太重, 用节流: 每 ZMAX_L2_PERIOD_S 秒真推理一次,
+    #   其余拍**回放上次契约**(字段一模一样, 只多 cached_ago_s), 保证下游每拍都有值。
+    _per = float(os.environ.get("ZMAX_L2_PERIOD_S", "0.5"))
+    _c = _YOLO_CACHE.get("l2_out") or {}
+    if _c.get("payload") is not None and (_now - float(_c.get("t") or 0.0)) < _per:
+        _o = dict(_c["payload"])
+        _o["cached_ago_s"] = round(_now - float(_c.get("t") or 0.0), 3)
+        return {"out1": _o}
     try:
         import numpy as np
         _meta, _d2 = {}, None
@@ -3587,11 +3598,29 @@ def node_ss_yolo(ctx):
             elif aligned is not None:
                 log(f"   39D 对齐 (align 真实执行): hand={np.round(aligned[0:3],3)} · "
                     f"光模块={np.round(aligned[4:7],3)} · hole={np.round(aligned[36:39],3)}")
-        return True
+        # 🔴 2026-10-29: 返回 dict 才能被壳认成「实现执行」(返回 True/False 会落成 "实现返回非 dict → 直通")
+        #   out1 = 刚写盘的 vision_points 契约**原文** ⇒ 下游拿到的就是契约本身, 口径不可能漂。
+        _payload = {}
+        _op = locals().get("_path")
+        if _op and os.path.exists(_op):
+            try:
+                with open(_op, encoding="utf-8") as _fh:
+                    _payload = _json.load(_fh)
+            except Exception:                                            # noqa: BLE001
+                _payload = {}
+        if not isinstance(_payload, dict) or not _payload:
+            _payload = {"t": time.time(), "frame": (_meta or {}).get("frame"),
+                        "verified": False, "units": "mm", "points": {},
+                        "n_points": 0, "src": _src,
+                        "gaps": list((_meta or {}).get("gaps") or [])}
+        _payload["src_kind"] = _src
+        _payload["cached_ago_s"] = 0.0
+        _YOLO_CACHE["l2_out"] = {"t": _now, "payload": _payload}
+        return {"out1": _payload}
     except Exception as e:
         if log:
             log(f"⚠️ YOLO 目标检测真实执行失败: {e}")
-        return False
+        return {"out1": None}
 
 _reg("ss_yolo", ["YOLO", "目标检测"],
      "🎯 YOLO 目标检测 — 真实执行: YOLO detect_3d + align 替换 39D 段 (源码 yolo_state_aligner.py; 双击=清单, 📥按钮=Excel导出)",

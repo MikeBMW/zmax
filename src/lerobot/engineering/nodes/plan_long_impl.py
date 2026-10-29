@@ -193,7 +193,9 @@ def _pub_ar(o1, u, seg_t, el):
              "kind": o1.get("kind"), "label": o1.get("label"), "a": o1.get("a"), "b": o1.get("b"),
              "u": round(min(1.0, max(0.0, u)), 4), "t_seg": seg_t, "t_left": o1.get("t_left"),
              "elapsed_s": round(el, 2), "mt_id": o1.get("mt_id"), "mt_name": o1.get("mt_name"),
-             "mt_i": o1.get("mt_i"), "mt_n": o1.get("mt_n"), "batch": o1.get("batch")}
+             "mt_i": o1.get("mt_i"), "mt_n": o1.get("mt_n"), "batch": o1.get("batch"),
+             # 🔴 2026-10-29: 视觉观测点同拍带给页面/执行器 (接口对齐; 误差/gaps 原样透出, 不美化)
+             "vision": o1.get("vision")}
         os.makedirs(os.path.dirname(_AR_CMD), exist_ok=True)
         tmp = _AR_CMD + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
@@ -205,9 +207,29 @@ def _pub_ar(o1, u, seg_t, el):
 
 def run(ctx=None):
     global LAST_STATUS
+    # 🔴 2026-10-29 老倪: 「L2 节点输出必须能被 plan 接管, 接口必须对齐, 可以带误差」——
+    #   in2 ← 🎯 YOLO 目标检测 (ssyolo.out1, 画布闭环反馈线)。本节点把它**原样透传**到 out1/out3.vision,
+    #   不因 verified=false / conf 低就丢字段: 谁要用谁自己判(下游/页面能看到 gaps 与 conf)。
+    _visv = ((ctx or {}).get("in2") or {}).get("value")
+    _vis = None
+    if isinstance(_visv, dict):
+        _pts = _visv.get("points") if isinstance(_visv.get("points"), dict) else {}
+        _confs = [p.get("conf") for p in _pts.values() if isinstance(p, dict) and p.get("conf") is not None]
+        _vis = {
+            "frame": _visv.get("frame"),
+            "verified": bool(_visv.get("verified")),
+            "n_points": len(_pts),
+            "conf_max": (round(max(_confs), 3) if _confs else None),
+            "gaps": list(_visv.get("gaps") or (_visv.get("source") or {}).get("gaps") or []),
+            "src_kind": _visv.get("src_kind"),
+            "age_s": (round(max(0.0, time.time() - float(_visv["t"])), 3) if _visv.get("t") else None),
+            "cached_ago_s": _visv.get("cached_ago_s"),
+            "points": {k: {"pos_mm": v.get("pos_mm"), "conf": v.get("conf")}
+                       for k, v in _pts.items() if isinstance(v, dict)},
+        }
     segs, cum = _load()
     if not segs:
-        return {"out1": None, "out2": None, "out3": None}
+        return {"out1": None, "out2": None, "out3": {"vision": _vis}}
 
     now = time.monotonic()
     if _S["t0"] is None:
@@ -246,6 +268,18 @@ def run(ctx=None):
     LAST_STATUS = ("元任务 %s %s (%d/%d) · 第%s段 %s"
                    % (seg.get("mt_id"), seg.get("mt_name"), seg.get("mt_i"), _S["n_mt"],
                       seg.get("seq"), seg.get("kind")))
+    _vis_use = _vis          # 段 + 同拍视觉状态一起给执行器/页面 (接口对齐, 误差如实带)
+    o1["vision"] = _vis_use
+    # 🔴 2026-10-29 可选开关: 让 plan 真**用**视觉点 (默认关 ⇒ 300UPH 的配置槽位路径一字不变)
+    #   开启后 out1 带 goal/goal_src/goal_conf/goal_frame, 下游可直接拿视觉点当目标;
+    #   允许 verified=false / conf 低 —— 误差如实带出去, 由消费方按自己的闸判定。
+    if os.environ.get("ZMAX_PLAN_USE_VISION", "0") == "1" and _vis and _vis.get("n_points"):
+        _pv = (_vis.get("points") or {}).get("光模块·当前") or {}
+        if _pv.get("pos_mm"):
+            o1["goal"] = [round(float(x), 2) for x in _pv["pos_mm"]]
+            o1["goal_src"] = "vision_points:光模块·当前"
+            o1["goal_conf"] = _pv.get("conf")
+            o1["goal_frame"] = _vis.get("frame")
     _pub_ar(o1, el - seg_t0, seg_t, el)
     return {
         "out1": o1,
@@ -257,5 +291,6 @@ def run(ctx=None):
                  "uph_target": _S["uph_target"],
                  "uph_capability": round(3600.0 / max(_S["tact"], 0.1), 1),
                  "speed_factor": _SPEED, "seg_index": _S["i"], "n_segs": len(segs),
-                 "task_id": _S["task_id"], "verified": _S["verified"]},
+                 "task_id": _S["task_id"], "verified": _S["verified"],
+                 "vision": _vis},
     }
