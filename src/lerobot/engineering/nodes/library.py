@@ -2636,7 +2636,9 @@ def node_ss_s2(ctx):
             if log:
                 log(f"🔮 状态估计器 (真实): predict→{np.round(latent_pred,4)} · "
                     f"update(K·(z−x̂₋))→latent={np.round(latent,4)} (parallel.py AdaptiveStateEstimator)")
-            return True
+            return {"out1": {"kind": "state_est", "latent": [float(x) for x in np.asarray(latent).ravel()],
+                             "latent_pred": [float(x) for x in np.asarray(latent_pred).ravel()]},
+                    "out2": None, "ok": True}
         accel = par.FeedforwardAccelerator()
         u_ff = accel.forward(obs43)
         # 🧠 2026-09-08 老倪目检实锤: 域外布局 forward 走解析守卫 → probe 空 → 直方图无数据。
@@ -2662,11 +2664,16 @@ def node_ss_s2(ctx):
                     f"(parallel.py; obs: 手{_p['obs']['hand']}→目标{_p['obs']['target']} d={_p['obs']['d_h']})")
             else:
                 log(f"⚡ 前馈加速器 (真实): forward(obs43) → u_ff={np.round(u_ff,3)} (parallel.py)")
-        return True
+        return {"out1": {"kind": "ff_probe", "probe": (accel.probe if isinstance(accel.probe, dict) else {})},
+                "out2": {"kind": "u_ff", "layer": "L2", "role": "前馈建议动作",
+                         "u_ff": [round(float(x), 6) for x in np.asarray(u_ff).ravel()],
+                         "w_ff": float((ctx.get("params") or {}).get("w_ff", 0.3)),
+                         "source": "parallel.py FeedforwardAccelerator"},
+                "ok": True}
     except Exception as e:
         if log:
             log(f"⚠️ 并行处理层真实执行失败: {e}")
-        return False
+        return {"out1": None, "out2": None, "ok": False, "error": str(e)}
 
 _FF_HIST_WIN = None  # 🧠 前馈激活直方图窗口 (全局单实例, 主线程)
 
@@ -3719,6 +3726,128 @@ def _ar_aoi_publish(sig, log=None):
 
 
 _SURF_DOWN_UNTIL = 0.0          # 10083 不可达冷却到期时刻 (Pitfall: 不在线时每次连通超时 1s 拖死节拍)
+_GOLD_DOWN_UNTIL = 0.0          # 10082 不可达冷却到期时刻 (同一套降级策略)
+
+
+def _gold_bypass(log=None):
+    """🆕 2026-10-30 金手指(10082) 同源搬运转发 —— 让状态空间与工控机功能一模一样。
+
+    与 _surface_bypass 的差别: 表面是"同一份 surface_judge 在本机重算", 金手指**不能**重算 ——
+    它的真判决是工控机上的 YOLO(bestgf05088.pt.enc, imgsz=960, 吃同帧派生 960 方图), 本机没有那份权重,
+    所以这里只做**搬运**: 判决/缺陷数/推理ms 一律取 GET /last_result, 几何取 GET /crop_info。
+    绝不本机重算、绝不编数(404「尚无检测结果」⇒ 判决=2 未检, 不许填 0 冒充 OK)。
+
+    · 探活 0.25s + 60s 冷却, 与表面旁路同一套降级策略 —— 10082 不在线时不拖 300UPH 节拍。
+    · 话题键名照注册表 config/topics/ar_aoi_signals.json 的「AOI·金手指 (工控机 10082)」组。
+    """
+    try:
+        import time as _t
+        import json as _json
+        import urllib.request as _urq
+        global _GOLD_DOWN_UNTIL
+        if _t.time() < _GOLD_DOWN_UNTIL:
+            _cache = {"ok": False, "verdict": "unavailable", "code": 2,
+                      "why": "10082 已知不可达 (冷却中, 不重复探)", "cached_down": True}
+            _YOLO_CACHE["gold_aoi"] = _cache
+            return _cache
+        import socket as _sock
+        _host = os.environ.get("ZMAX_AOI_GOLD_HOST", "192.168.23.23")
+        try:
+            _c = _sock.create_connection((_host, 10082), timeout=0.25)
+            _c.close()
+        except OSError as _e:
+            _GOLD_DOWN_UNTIL = _t.time() + 60.0
+            _cache = {"ok": False, "verdict": "unavailable", "code": 2,
+                      "why": f"{_host}:10082 不可达 ({type(_e).__name__}), 60s 内不再探",
+                      "cached_down": True}
+            _YOLO_CACHE["gold_aoi"] = _cache
+            if log:
+                log(f"🌑 金手指 10082 旁路: {_cache['why']} — 本机几何体检那一路不受影响")
+            return _cache
+
+        def _get(path, timeout=1.2):
+            _req = _urq.Request(f"http://{_host}:10082{path}",
+                                headers={"User-Agent": "zmax-probe"})   # 不带 UA 会被服务丢掉
+            try:
+                with _urq.urlopen(_req, timeout=timeout) as _r:
+                    return _json.loads(_r.read().decode("utf-8", "replace"))
+            except _urq.HTTPError as _he:
+                # 404「尚无检测结果」是合法形态(本轮没触发拍照), 不是故障 —— 别报成"读取失败"
+                try:
+                    return _json.loads(_he.read().decode("utf-8", "replace"))
+                except Exception:                                      # noqa: BLE001
+                    return {"code": _he.code, "msg": f"HTTP {_he.code}"}
+
+        lr, ci = None, None
+        try:
+            lr = _get("/last_result", 1.5)
+        except Exception as _e:                                        # noqa: BLE001
+            lr = {"code": 404, "msg": f"读取失败 {type(_e).__name__}"}
+        try:
+            ci = _get("/crop_info", 1.2)
+        except Exception as _e:                                        # noqa: BLE001
+            ci = {"code": 404, "msg": f"读取失败 {type(_e).__name__}"}
+
+        # 判决: 工控机真值直搬; 没有结果就是"未检", 不是 OK
+        _has = int(lr.get("code") or 0) == 200
+        _v = str(lr.get("verdict") or "").upper()
+        _code = 2 if not _has else (1 if _v in ("NG", "FAIL", "BAD") else 0)
+        _jd = (ci.get("judge") or {}) if isinstance(ci, dict) else {}
+        _nb = ci.get("bbox") or _jd.get("bbox") or []
+        res = {
+            "ok": _has,
+            "kind": "gold_aoi",
+            "verdict": (_v or ("未检" if _code == 2 else "OK")),
+            "code": _code,
+            "defects": lr.get("count"),
+            "infer_ms": lr.get("ms"),
+            "detect_type": lr.get("detect_type"),
+            "n_keys": _jd.get("n_keys"),
+            "pitch_px": _jd.get("lattice_pitch_px") or _jd.get("pitch"),
+            "angle_deg": ci.get("angle"),
+            "kept_rows": _jd.get("kept_rows") or _jd.get("key_row_span"),
+            "bbox": list(_nb)[:4] if _nb else None,
+            "judge_ver": _jd.get("ver") or ci.get("judge_ver"),
+            "gold_file": lr.get("topview"),
+            "model_input": lr.get("model_input"),
+            "src": f"工控机 {_host}:10082 (/last_result + /crop_info, 同源搬运)",
+            "why": (None if _has else (lr.get("msg") or "尚无检测结果")),
+        }
+        _YOLO_CACHE["gold_aoi"] = res
+
+        # 发话题: 只写本轮真有值的键 (缺的不写, 不填 0 冒充)
+        _sig = {"AOI.判决": float(_code)}
+        if res.get("defects") is not None:
+            _sig["AOI.缺陷数"] = float(res["defects"])
+        if res.get("infer_ms") is not None:
+            _sig["AOI.推理_ms"] = float(res["infer_ms"])
+        if res.get("n_keys") is not None:
+            _sig["AOI.金手指根数"] = float(res["n_keys"])
+        if res.get("angle_deg") is not None:
+            _sig["AOI.倾角_deg"] = float(res["angle_deg"])
+        if _nb and len(_nb) >= 4:
+            _x, _y, _w, _h = [float(v) for v in list(_nb)[:4]]
+            _sig["AOI.矩形中心_x"] = _x
+            _sig["AOI.矩形中心_y"] = _y
+            _sig["AOI.矩形宽_px"] = _w
+            _sig["AOI.矩形高_px"] = _h
+        _sig["AOI.拍照_epoch"] = float(_t.time())
+        _ar_aoi_publish(_sig, log)
+
+        if log:
+            if _has:
+                log(f"🎯 金手指 10082 同源判决: {res['verdict']} · 缺陷 {res.get('defects')} · "
+                    f"推理 {res.get('infer_ms')}ms · 根数 {res.get('n_keys')} · 倾角 {res.get('angle_deg')} "
+                    f"(judge_ver={res.get('judge_ver')})")
+            else:
+                log(f"⏸ 金手指 10082 同源判决: 未检 — {res.get('why')} (判决=2, 不冒充 OK)")
+            log(f"   金手指话题已发出 ({len(_sig)} 个): "
+                + " · ".join("%s=%g" % (k.split(".")[-1], v) for k, v in sorted(_sig.items())))
+        return res
+    except Exception as e:                                             # noqa: BLE001
+        if log:
+            log(f"⚠️ 金手指 10082 旁路失败 (不影响本机几何体检): {type(e).__name__}: {e}")
+        return None
 
 
 def _surface_bypass(log=None):
@@ -3837,6 +3966,7 @@ def node_ss_aoi(ctx):
             log(f"🔍 光学质量检测 (真实图像处理): {qc.summarize(res)} (quality_check.py)")
             log(f"🔍 AOI 话题已发出 ({len(_sig)} 个): " + " · ".join("%s=%g" % (k.split('.')[-1], v)
                                                                   for k, v in sorted(_sig.items())))
+        _gold_bypass(log)             # 🆕 10082 金手指同源搬运转发 (工控机 YOLO 真判决)
         _surface_bypass(log)          # 🆕 10083 表面旁路 (4060 本机), 失败不影响金手指那一路
         # 🔴 2026-10-29 接口对齐: 原来 return bool ⇒ 壳判定「实现返回非 dict → 直通」⇒ 下游
         #    ssplan/ssdec 拿不到 AOI 判决。改为发业务字典 (与 INTACT 节点同一口径)。

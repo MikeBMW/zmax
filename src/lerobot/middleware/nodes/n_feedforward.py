@@ -33,7 +33,10 @@ SOURCE_SYMBOL = 'class FeedforwardAccelerator'
 PARAMS = {'state_space': True, 'ff_accel': True, 'w_ff': 0.3, 'desc': '[基础·分段小模型] 前馈加速器 (原左脑 MLP): 快路径 — obs→建议动作 u_ff (权重 30%)', 'source': 'src/lerobot/policies/left_right/state_space/parallel.py', 'source_symbol': 'class FeedforwardAccelerator', '_port_labels': {'out1': '🔍 激活探针 (隐层激活 → 直方图)', 'out2': '⚡ u_ff 建议动作 (L2 MLP 快通道, 4D)'}}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = False
+import os as _os
+# 2026-10-30 INTACT→AR 接入评估: 默认保持直通(不破坏已验收的 300UPH),
+# ZMAX_FF_ON=1 才真跑前馈, 便于 A/B 量化 w_ff=0.3 对 action 的影响。
+PURE = _os.environ.get("ZMAX_FF_ON", "0") == "1"
 LAST_STATUS = ""
 
 

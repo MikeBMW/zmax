@@ -40,7 +40,9 @@ SOURCE_SYMBOL = 'def decide'
 PARAMS = {'state_space': True, 'action_modulator': True, 'desc': '[基础·分段小模型] 动作调制器 (原状态机, 握有否决权): 6阶段状态机 + 否决权 + 按阶段动作融合 (力控插入)', 'source': 'src/lerobot/policies/left_right/state_space/cognition.py', 'source_symbol': 'def decide', '_port_labels': {'out1': 'out1'}}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = False
+import os as _os
+# 2026-10-30 INTACT→AR 接入评估: 默认直通(不破坏 300UPH), ZMAX_SCHED_ON=1 才真跑动作调制。
+PURE = _os.environ.get("ZMAX_SCHED_ON", "0") == "1"
 LAST_STATUS = ""
 
 
