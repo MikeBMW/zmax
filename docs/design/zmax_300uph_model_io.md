@@ -80,19 +80,51 @@ ss_grav_h.out1 ► n_moveit.in3    力场裁剪后动作
 ss_grav_h.out2 ► n_exec.in3      u(6)=[F;M] 力/力矩 → L2 收口（标签注明**默认关**）
 ```
 
-**实测结论**：`ssact.u_cmd = [0,0,0,0]`。真实位移走的是 `ssplan` 的段表（绝对坐标 a/b），模型输出（L3 nominal / L4 流形 / INTACT u_ff）**没有一条进入最终位移**。
+**实测结论（2026-10-29 修复后）**：`ssact.u_cmd = [-0.034, -0.0774, -0.0072, 0.6]`，不再是全 0。
+
+修了两处断链：
+
+1. **`_SS_STATE["u"]` 全仓库没人写** —— L3 只把 `nominal_L3` 落盘，从不写运行时状态；
+   `sslimit` 读 `_SS_STATE.get("u", zeros)` ⇒ 永远 zeros ⇒ `u_sat=zeros` ⇒ `ssact u_cmd=zeros`。
+   修：`flow_matching_impl.run` 输出前写 `_SS_STATE[u]/u_src/u_degraded/u_ts`。
+2. **`sslimit` 双闸** —— `n_limiter.PURE=False` + `safety_limit_impl return True`（非 dict ⇒ 壳又判直通）。
+   修：PURE 默认开（`ZMAX_LIMIT_OFF=1` 退）+ 返回业务字典。
+
+实测：
+
+    ssdec    172.1 ms  nominal_L3 = [-0.033999, -0.077432, -0.007174, 1.1]
+    sslimit   26.8 ms  u_sat      = [-0.033999, -0.077432, -0.007174, 0.6]  clipped_dims=1
+    ssact      9.2 ms  u_cmd      = [-0.033999, -0.077432, -0.007174, 0.6]  real_send=false
+
+第 4 维 1.1 被 0.6 限幅 —— 安全边界真的在起作用。
+安全口径不变：sslimit 只做数值饱和不下发；真机仍需 8793 授权，由 n_exec/ssact 收口。
+
+## 2b. AOI 旁路（2026-10-29 接入）
+
+`ssaoi` → `n_inspection` PURE 默认开；真实现 = 本机 `quality_check.AOIQualityChecker.check`
+（图像处理缺陷检测，不依赖 .23 远程服务）+ `_surface_bypass` 走 10083。
+
+实测输出（无真值但有输出、接口对齐）：
+
+    kind=aoi · pass=False · verdict=gaps_washed · scratch=58 · blob=14
+    defect_n=72 · items=6 · focus=446.6 · gray_dev=39.1 · edge_frac=0.0427
+
+性能：冷 8042ms → **热 11.3ms**（10083 不在线时 0.25s 探活短路 + 60s 冷却）。
+注：`.23` 整机不在线，远程 10082/10083 模型旁路等它上线才能接；当前用本机图像处理口径，接口已对齐。
 
 ---
 
-## 3. 到 300UPH 的断点（按影响排序）
+## 3. 到 300UPH 的断点（按影响排序 · 2026-10-29 现状）
 
-1. **`ssintact` 冷启 11.6s** —— 每件预算 12s，一次冷加载就吃掉一整件。热态 32ms 可接受，必须预热常驻。
-2. **`ssyolo` 单拍 5.1s** —— 感知占 42% 预算；且 `verified=false`，视觉真值未闭环。
-3. **`n_calib_mani` 923ms** —— 已内部节流 5s/次，但单次仍近 1s。
-4. **7 个关键节点 PURE=False**：`sslimit`（→无 u_sat）、`ssff`、`n_exec`、`ssaoi`、`ss2d3d`、`sssensor`、L5 三个。链路在"数据面直通"，模型不参与。
-5. **L3→action 无因果**：`l4_cond_injected=false`（ckpt 未训该通道），L3 的 `nominal_L3` 只到 MoveIt 分支，不进 ssact。
-6. **段表 392 段全部 `arm=none`** —— 左臂只按"等效时间 3.0s/循环"计入速度剖面，**没有自己的段**。这是"左右手臂都动"的直接缺口：现在只有右臂在动。
-7. **AOI 未接入** —— `ssaoi` 空壳，工控机 10082/10083 的检测模型完全没有旁路进来。
+1. ~~`ssintact` 冷启 11.6s~~ → 热态 32ms；冷启只在第一拍付，常驻引擎预热即可。
+2. ~~`ssyolo` 单拍 5.1s~~ → **热态 7.5ms**（冷启 4.9s = 对齐器加载 3.7s + 首推理 1.15s）。
+3. **`n_calib_mani` 923ms** —— 已内部节流 5s/次，单次仍近 1s，属可接受但不参与每拍。
+4. **仍未开的 PURE**：`ssff`、`n_exec`、`ss2d3d`、`sssensor`、L5 三个（`sslimit`/`ssaoi` 已开）。
+5. **L4→L3 无因果**：`l4_cond_injected=false`（ckpt 未训该通道，`ensure_l4_cond` 是 scale=0.02 随机投影）。
+6. **段表 392 段全部 `arm=none`** —— 左臂只按"等效时间 3.0s/循环"计入速度剖面，**没有自己的段**。
+   这是"左右手臂都动"的直接缺口：现在只有右臂在动。
+7. ~~AOI 未接入~~ → 已接（本机图像处理口径）；`.23` 远程 10082/10083 待其上线。
+8. **L5 全直通**：`ss_l5` / `n_dsvl` / `n_vlm_llm` 都不参与，场景理解没进链路。
 
 ---
 
