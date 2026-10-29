@@ -4071,6 +4071,87 @@ _EXTERNAL_LOC["ss_lat"] = (os.path.join(_CALIB_DIR_LOC, "calibration_layer.py"),
 #   对准代价/效率曲面. 回路外几何分析元层, 与标定层同款: 不参与推理/不加安全通道)
 _MANIFOLD_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "manifold")
 
+# ── 🧮 L4 统一帧真源 (2026-10-29 老倪「L4 层正式接入, 流形引擎要真正接入运行」) ─────────
+#   问题: L4 节点原来只认 GUI 播放态 `module._ss_tr`, 常驻循环 (无 GUI module) 里一律 return False
+#         ⇒ 画布上 19 个 L4 节点在引擎常驻循环里**一次都没跑过**。
+#   修法: 一条统一回退链 —— ① module._ss_tr (GUI 播放中, 原行为不变)
+#         ② data/database/zmax/sources/canvas/ss_traj_last.json
+#            (真实 episode ss_episode_latest.npz: obs[400][43] + u_exec_vec[400][4], 不是自造)
+#         帧索引取 zmax_data/ss_live/engine_latest.json 的 idx ⇒ 画布节点与流形引擎常驻循环
+#         **看同一帧** (否则两边各算各的, 数对不上还查不出原因)。
+#   obs[43] 的切片 (metaworld 同构): hand=0:3 · grip=3 · obj1=4:7 · obj1quat=7:11 · obj2=11:14
+#         · obj2quat=14:18 · prev=18:36 · goal=36:39 · 余 3~4 维为参考速度。
+_SS_FRAME_CACHE = {"key": None, "d": None}
+
+
+def _ss_traj_files():
+    """读 ss_traj_last.json (带 mtime 缓存)。返回 (dict|None, src_str)。"""
+    import json as _j
+    p = os.path.join(_REPO_ROOT, "data", "database", "zmax", "sources", "canvas", "ss_traj_last.json")
+    try:
+        st = os.stat(p)
+        key = (st.st_mtime, st.st_size)
+        if _SS_FRAME_CACHE["key"] != key:
+            with open(p, encoding="utf-8") as fh:
+                _SS_FRAME_CACHE.update({"key": key, "d": _j.load(fh)})
+        return _SS_FRAME_CACHE["d"], str((_SS_FRAME_CACHE["d"] or {}).get("src") or "")[:90]
+    except Exception:                                                        # noqa: BLE001
+        return None, ""
+
+
+def _ss_engine_idx():
+    """流形引擎常驻循环当前帧号 (engine_latest.idx) — 两边看同一帧的唯一依据。"""
+    import json as _j
+    try:
+        with open(os.path.join(_REPO_ROOT, "zmax_data", "ss_live", "engine_latest.json"),
+                  encoding="utf-8") as fh:
+            return int(_j.load(fh).get("idx") or 0)
+    except Exception:                                                        # noqa: BLE001
+        return 0
+
+
+def _ss_frame(ctx=None):
+    """当前帧 (统一口径)。返回 dict(idx,t,stage,hand,peg_head,target,v,n,src,from) 或 None。"""
+    import numpy as _np
+    mod = (ctx or {}).get("module")
+    tr = getattr(mod, "_ss_tr", None) if mod is not None else None
+    if tr is not None and tr.get("t"):
+        try:
+            idx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
+            return {"idx": idx, "t": float(tr["t"][idx]),
+                    "stage": str(tr["stage"][idx]).replace("阶段 ", ""),
+                    "hand": _np.asarray(tr["x"][idx], dtype=float),
+                    "peg_head": _np.asarray(tr["peg_head"][idx], dtype=float),
+                    "target": _np.asarray(tr["target"][idx], dtype=float),
+                    "v": (_np.asarray(tr["v_vec"][idx], dtype=float) if tr.get("v_vec") else _np.zeros(3)),
+                    "n": len(tr["t"]), "src": "module._ss_tr (GUI 播放)", "from": "module"}
+        except Exception:                                                    # noqa: BLE001
+            pass
+    d, src = _ss_traj_files()
+    if not d or not d.get("obs"):
+        return None
+    try:
+        obs = _np.asarray(d["obs"], dtype=float)
+        u = _np.asarray(d.get("u_exec_vec") or [], dtype=float)
+        n = int(obs.shape[0])
+        idx = max(0, min(_ss_engine_idx(), n - 1))
+        row = obs[idx]
+        # 阶段: 优先 trace_live (AR 场景真值), 否则按帧号落在八阶段表里
+        stage = ""
+        try:
+            import json as _j
+            with open(os.path.join(_REPO_ROOT, "zmax_data", "ss_live", "trace_live.json"),
+                      encoding="utf-8") as fh:
+                stage = str((_j.load(fh) or {}).get("阶段") or "")
+        except Exception:                                                    # noqa: BLE001
+            stage = ""
+        return {"idx": idx, "t": float(idx) * 0.1, "stage": stage,
+                "hand": row[0:3], "peg_head": row[11:14], "target": row[36:39],
+                "v": (u[idx][:3] if u.ndim == 2 and u.shape[0] > idx else _np.zeros(3)),
+                "n": n, "src": "ss_traj_last.json ← %s" % (src or "?"), "from": "file"}
+    except Exception:                                                        # noqa: BLE001
+        return None
+
 def node_ss_atomic(ctx):
     """🧩 原子技能层 (2026-09-07 老倪: 决策层与执行层之间加技能模板层)
     机制: 8 个原子技能 (SK01-08) = 固定轨迹模板; 决策层 (动作调制器状态机经安全边界)
@@ -4197,20 +4278,15 @@ def node_ss_mani(ctx):
         m = _ilu.module_from_spec(spec)
         spec.loader.exec_module(m)
         name = ctx.get("name", "")
-        # 当前运行状态: 画布播放中从 module._ss_tr 取当前步 (与 node_ss_calib 同映射)
-        mod = ctx.get("module")
-        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
-        if tr is None or not tr.get("t"):
+        # 当前帧真源: GUI 播放态 module._ss_tr → 无 GUI 时 ss_traj_last.json (L4 统一帧, 见 _ss_frame)
+        fr = _ss_frame(ctx)
+        if fr is None:
             if log:
-                log("⚠️ 流形层: 无引擎轨迹 — 先点 ▶ 运行状态空间 (轨迹是数据真源)")
+                log("⚠️ 流形层: 无帧真源 — GUI 播放态与 ss_traj_last.json 都取不到")
             return False
-        idx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
-        stage = str(tr["stage"][idx]).replace("阶段 ", "")
-        hand = np.asarray(tr["x"][idx], dtype=float)
-        peg_head = np.asarray(tr["peg_head"][idx], dtype=float)
-        target = np.asarray(tr["target"][idx], dtype=float)
-        v = np.asarray(tr["v_vec"][idx], dtype=float) if tr.get("v_vec") else np.zeros(3)
-        _SS_STATE["mani_frame"] = {"idx": idx, "stage": stage}
+        idx, stage = int(fr["idx"]), fr["stage"]
+        hand, peg_head, target, v = fr["hand"], fr["peg_head"], fr["target"], fr["v"]
+        _SS_STATE["mani_frame"] = {"idx": idx, "stage": stage, "src": fr["src"], "from": fr["from"]}
         if "接触" in name:
             cm = m.ContactManifold()
             r = cm.decompose(hand, peg_head, target, v, stage)
@@ -4225,7 +4301,7 @@ def node_ss_mani(ctx):
                        "在锥内" if _lc.get("inside_cone") else "越锥(已投影)",
                        float(_lc.get("phi_c") or 0.0)))
             if log:
-                log(f"🧮 接触流形 (真实·t={tr['t'][idx]:.2f}s {stage}): {cm.summarize(r)}")
+                log(f"🧮 接触流形 (真实·t={fr['t']:.2f}s {stage} · {fr['from']}帧{idx}): {cm.summarize(r)}")
                 if r["axis"] is not None:
                     log(f"   通道轴 â={np.round(r['axis'],3)} · 切向进度 "
                         f"‖e∥‖={r['progress']:.4f}m · 法向偏离 ‖e⊥‖={r['risk']:.4f}m "
@@ -4233,7 +4309,18 @@ def node_ss_mani(ctx):
                 else:
                     log(f"   自由空间 (转移段无接触约束) · ‖e‖={r['progress']:.4f}m · "
                         f"V̇={r['Vdot']:.3e}")
-            return True
+            return _NodeOut({
+                "kind": "contact_manifold", "layer": "L4", "ok": True,
+                "stage": stage, "idx": idx, "t": round(float(fr["t"]), 3),
+                "frame_src": fr["src"], "frame_from": fr["from"],
+                "axis": (None if r.get("axis") is None else [float(x) for x in r["axis"]]),
+                "progress_m": float(r.get("progress") or 0.0),
+                "risk_m": float(r.get("risk") or 0.0),
+                "risk_th_m": float(r.get("risk_th") or 0.0),
+                "Vdot": float(r.get("Vdot") or 0.0),
+                "summary": str(cm.summarize(r)),
+                "src": "src/lerobot/manifold/manifold_layer.py::ContactManifold.decompose",
+            })
         if "性能" in name:
             _ll2 = _SS_STATE.get("lora_l4") or {}
             _lp = _ll2.get("performance") or {}
@@ -4245,9 +4332,18 @@ def node_ss_mani(ctx):
             r = pm.evaluate(peg_head, stage=stage)
             _SS_STATE["perf_mani"] = r
             if log:
-                log(f"🧮 性能流形 (真实·t={tr['t'][idx]:.2f}s {stage}): {pm.summarize(r)}")
+                log(f"🧮 性能流形 (真实·t={fr['t']:.2f}s {stage} · {fr['from']}帧{idx}): {pm.summarize(r)}")
                 log(f"   修正方向 ∇V_p={np.round(r['grad'],4)} (最优对准 = 沿 −∇ 下山到 δ→0)")
-            return True
+            return _NodeOut({
+                "kind": "perf_manifold", "layer": "L4", "ok": True,
+                "stage": stage, "idx": idx, "t": round(float(fr["t"]), 3),
+                "frame_src": fr["src"], "frame_from": fr["from"],
+                "V_p": float(r.get("V_p") or 0.0),
+                "eta": float(r.get("eta") or 0.0),
+                "grad": ([float(x) for x in r["grad"]] if r.get("grad") is not None else []),
+                "summary": str(pm.summarize(r)),
+                "src": "src/lerobot/manifold/manifold_layer.py::PerformanceManifold.evaluate",
+            })
         if log:
             log("⚠️ 流形层: 节点名未识别接触/性能分派")
         return False
@@ -5469,9 +5565,25 @@ def node_ss_mani_eng(ctx):
     log = ctx.get("log")
 
     def _ret(ok):
-        """返回**结果字典** (含 ok=本节点真跑成功与否, 与改造前的 True/False 同义)。"""
-        _d = dict(_prod if isinstance(_prod, dict) else {})
+        """返回**结果字典** (含 ok=本节点真跑成功与否, 与改造前的 True/False 同义)。
+
+        2026-10-29: 原来只带产品标识块 (_prod), 几何/健康/扭矩算完却没进返回值 ⇒ 下游拿不到。
+        现在把 _mani_geo (dim/mode/min_eig/det_g/kappa/tau/H) 一并带出; 变量未定义时安全降级。
+        """
+        try:
+            _d = dict(_prod if isinstance(_prod, dict) else {})
+        except NameError:                                                    # noqa: BLE001
+            _d = {}
         _d["ok"] = bool(ok)
+        try:
+            if isinstance(_mani_geo, dict):
+                _d["mani_geo"] = dict(_mani_geo)
+                for _k in ("dim", "mode", "scale", "min_eig", "det_g", "kappa",
+                           "geodesic_dev", "tau", "H", "H_metric", "H_vitality"):
+                    if _k in _mani_geo:
+                        _d[_k] = _mani_geo[_k]
+        except NameError:                                                    # noqa: BLE001
+            _d["mani_geo"] = None
         return _NodeOut(_d)
 
     # ⓪ 🆕 2026-10-12 老倪: 「主参数 M 的功能, 要由**流形引擎节点**实现, 通过一个结构, 承接要实现的功能」。
@@ -5546,11 +5658,26 @@ def node_ss_mani_eng(ctx):
         spec.loader.exec_module(m)
         mod = ctx.get("module")
         tr = getattr(mod, "_ss_tr", None) if mod is not None else None
+        _tsrc, _tidx = "module._ss_tr (GUI 播放)", None
+        if tr is not None and tr.get("t"):
+            _tidx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
+        else:
+            # L4 统一帧回退 (2026-10-29 老倪「流形引擎要真正接入运行」):
+            #   常驻循环没有 GUI module, 原来这里直接 return False ⇒ 流形引擎核心一次没跑过。
+            #   回退到真实 episode 轨迹 (obs[400][43] + u_exec_vec[400][4]), 帧号跟 engine_latest.idx 同步。
+            _d, _srcf = _ss_traj_files()
+            _ob = (_d or {}).get("obs")
+            if _ob:
+                _n = len(_ob)
+                tr = {"t": [i * 0.1 for i in range(_n)], "obs": _ob,
+                      "u_exec_vec": (_d or {}).get("u_exec_vec") or []}
+                _tidx = max(0, min(_ss_engine_idx(), _n - 1))
+                _tsrc = "ss_traj_last.json ← %s" % (_srcf or "?")
         if tr is None or not tr.get("t"):
             if log:
-                log("⚠️ 流形引擎: 无引擎轨迹 — 先点 ▶ 运行状态空间 (轨迹是数据真源, 不造状态)")
+                log("⚠️ 流形引擎: 无帧真源 — GUI 播放态与 ss_traj_last.json 都取不到 (不造状态)")
             return _ret(False)                       # 产品标识/结构理解已在上面真跑出 (照旧返回)
-        idx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
+        idx = _tidx if _tidx is not None else 0
         O = np.asarray(tr["obs"], dtype=float)
         if O.ndim != 2 or O.shape[1] < 43:
             if log:
@@ -5771,6 +5898,17 @@ _EXTERNAL_LOC["ss_energy"] = (os.path.join(_MANIFOLD_DIR, "energy_manifold.py"),
 def node_ss_calib_mani(ctx):
     """🧮 流形引擎标定 — 主参数 M (状态空间结构参数/等效惯量): 同一场 有惯性 vs 过阻尼 两臂真跑"""
     log = ctx.get("log")
+    # 🔴 2026-10-29: 本节点单次 300~320ms (ManifoldEngine project/navigate/feedback 全跑 + 配置装载),
+    #   10Hz 常驻循环里每拍跑会掉 3 帧 ⇒ 内部节流 (默认 5s 一次真算, 其间返回上次结果并标 cached/age)。
+    #   要每次真算: ZMAX_L4_CALIB_PERIOD_S=0
+    _cache = _SS_STATE.get("calib_mani_cache")
+    _per = float(os.environ.get("ZMAX_L4_CALIB_PERIOD_S", "5") or 0)
+    if _cache and _per > 0:
+        _agec = time.time() - float(_cache.get("t") or 0)
+        if _agec < _per:
+            _v = dict(_cache.get("v") or {})
+            _v.update({"cached": True, "cache_age_s": round(_agec, 2), "cache_period_s": _per})
+            return _NodeOut(_v)
 
     # ①e 🆕 2026-10-12 老倪设计: **主参数 M 是张量** —— 度量张量 g_ij(x) = M · G_ij(x) (det G = 1)。
     #   真源实现 src/lerobot/manifold/metric_field.py; 本节点真跑给出几何量 (正定性/联络/曲率/测地线)。
@@ -5918,12 +6056,22 @@ def node_ss_calib_mani(ctx):
         mod = ctx.get("module")
         tr = getattr(mod, "_ss_tr", None) if mod is not None else None
         O, idx = None, 0
+        _usrc = "module._ss_tr (GUI 播放)"
         if tr is not None and tr.get("t"):
             O = np.asarray(tr["obs"], dtype=float)
             if O.ndim == 2 and O.shape[1] >= 43 and len(tr["t"]) > 0:
                 idx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
             else:
                 O = None
+        if O is None:
+            # L4 统一帧回退 (2026-10-29): 常驻循环无 GUI module, 用真实 episode 轨迹文件
+            _d, _srcf = _ss_traj_files()
+            _ob = (_d or {}).get("obs")
+            if _ob:
+                _O = np.asarray(_ob, dtype=float)
+                if _O.ndim == 2 and _O.shape[1] >= 43:
+                    O, idx = _O, max(0, min(_ss_engine_idx(), _O.shape[0] - 1))
+                    _usrc = "ss_traj_last.json ← %s" % (_srcf or "?")
         real = O is not None
 
         if real:      # 真引擎帧 (su2 流形): 编码→投影→梯度流 → 取力
@@ -5932,7 +6080,12 @@ def node_ss_calib_mani(ctx):
             ck = os.path.join(_REPO_ROOT, "models", "manifold_engine.npz")
             loaded = eng.load(ck)
             if not loaded:
-                U = np.asarray(tr.get("u_exec_vec") or np.zeros((len(O), 4)), dtype=float)[:len(O), :4]
+                # 拟合用的动作列: GUI 播放态 tr → 无 GUI 时同一份轨迹文件 (都不造假)
+                _uu = (tr or {}).get("u_exec_vec")
+                if not _uu:
+                    _dd, _ = _ss_traj_files()
+                    _uu = (_dd or {}).get("u_exec_vec")
+                U = np.asarray(_uu if _uu else np.zeros((len(O), 4)), dtype=float)[:len(O), :4]
                 eng.fit(O[:, :43], U)
             goal = eng.project(O[-1, :43])["p"]              # 目标 = 末帧收敛态 (真值锚)
             eng.goal_point = goal
@@ -5998,7 +6151,20 @@ def node_ss_calib_mani(ctx):
             log(f"   ⑥ 可写口: tools/zmax_params.py --m <值> [--inertia on|off] → config/calib/zmax_manifold.json")
             log(f"   ⑦ {msp['not_free_param']}")
             log("   🔒 只读旁路: 只标定/对比, 不下发动作 (动作须人工授权)")
-        return True
+        _ret_v = {
+            "kind": "calib_mani", "layer": "L4", "ok": True,
+            "M": M, "M_used": _M_used, "inertia": bool(inertia), "dt": dt,
+            "range": rng, "unit": str(unit)[:60], "param_src": src, "wrote": bool(wrote),
+            "frame_real": bool(real), "frame_idx": idx, "frame_desc": frame,
+            "frame_src": (_usrc if real else "无引擎轨迹 → 合成势场小实验 (如实标注)"),
+            "dx_overdamped": d_od, "dx_inertial": d_in, "momentum": mom,
+            "goal": (None if goal is None else np.asarray(goal).ravel().tolist()[:8]),
+            "cap_step": _cap, "clips": _clip,
+            "cached": False,
+            "src": "src/lerobot/manifold/manifold_engine.py::ManifoldEngine (project/gradient_flow/_evolve)",
+        }
+        _SS_STATE["calib_mani_cache"] = {"t": time.time(), "v": dict(_ret_v)}
+        return _NodeOut(_ret_v)
     except Exception as e:                                                      # noqa: BLE001
         if log:
             log(f"⚠️ 流形引擎标定失败: {type(e).__name__}: {e}")

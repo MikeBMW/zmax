@@ -57,6 +57,35 @@ def _vec(a, n=4):
         return None
 
 
+def _l4_in_summary(ctx):
+    """把画布入端口上的 L4 数据摘出来 (in1: 潜空间 z/L4 条件; in5: 接触/性能流形坐标)。
+
+    只做**透传**, 不注入模型: ckpt 里没有训练 l4_cond 通道 (action_head.ensure_l4_cond 是懒创建,
+    权重随机 scale=0.02), 喂进去等于给动作加随机扰动 ⇒ 输出里如实标 l4_cond_injected=false。
+    """
+    out = {}
+    for port in ("in1", "in5"):
+        item = ctx.get(port)
+        val = item.get("value") if isinstance(item, dict) else None
+        if not isinstance(val, dict):
+            out[port] = None
+            continue
+        keep = {}
+        for k in ("kind", "layer", "progress_m", "risk_m", "risk_th_m", "Vdot",
+                  "V_p", "eta", "tau", "M", "H", "stage", "idx", "ok", "frame_from"):
+            if k in val:
+                keep[k] = val[k]
+        for k in ("grad", "axis", "vec"):
+            a = val.get(k)
+            if isinstance(a, (list, tuple)) and a:
+                keep[k] = [round(float(y), 5) for y in a[:3] if isinstance(y, (int, float))]
+        if not keep:
+            keep = {"keys": sorted(val.keys())[:8]}
+        keep["_age_s"] = (item.get("age_s") if isinstance(item, dict) else None)
+        out[port] = keep
+    return out
+
+
 def run(ctx):
     log = ctx.get("log")
     root = ctx.get("root") or _REPO_ROOT
@@ -124,6 +153,11 @@ def run(ctx):
             "base_L2": ff, "nominal_L3": nominal, "delta": delta,
             "nominal_src": nominal_src, "degraded": degraded, "degraded_why": why,
             "geodesic_ref": ch,                       # 测地线块: 只作对照
+            "l4_in": _l4_in_summary(ctx),
+            "l4_cond_injected": False,
+            "l4_cond_note": ("L4 数据已从画布入端口透传 (in1 潜空间/L4条件, in5 接触·性能流形坐标); "
+                             "未注入模型 —— ckpt 未训练 l4_cond 通道 (action_head.ensure_l4_cond 懒创建=随机投影), "
+                             "强喂会给动作加随机扰动"),
             "sub_ref": (u0 if u0 else None),
             "model": _model,
             "obs39": {k: obs_meta.get(k) for k in
