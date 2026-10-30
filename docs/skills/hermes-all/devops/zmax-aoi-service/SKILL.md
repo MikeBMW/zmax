@@ -264,6 +264,23 @@ gui-venv311/bin/python tools/station_cmd.py "powershell -NoProfile -EncodedComma
 - 口径差异要知道: 工控机判据图**不拉伸短边**(键高仅 78/332 px, 上下留黑边), 老街口是 3× 纵向拉伸(看着更大)
   ⇒ 切口径后现场可能说"怎么变小了"; 要放大就做**纯显示**放大(不动口径)。
 
+## 🆕 金手指(10082) 同源搬运转发 · 状态空间与工控机「功能一模一样」的正解 (2026-10-30)
+
+- **缺口实证**: 注册表 `config/topics/ar_aoi_signals.json` 的「AOI·金手指 (工控机 10082)」**12 健**、
+  `tools/ar_aoi_bus.py` 的 `SPEC` 也登记了, **但全仓没有任何生产者** ⇒ live 里 AOI 健恒 0。
+  状态空间那边只有 `quality_check.py AOIQualityChecker`(纯几何阈值), 拿不到工控机 YOLO 判决。
+- **正解不是在本机重算**: 金手指真判决是工控机 YOLO(`bestgf05088.pt.enc`, imgsz=960, 吃同帧派生 960 方图),
+  本机没有那份权重 ⇒ 只能**搬运**: 判决/缺陷数/推理_ms 取 `GET /last_result`,
+  根数/节距/倾角/bbox/judge_ver 取 `GET /crop_info`。
+- 实现 `library.py::_gold_bypass()`, 由 `node_ss_aoi` 调, 放在 `_surface_bypass` **之前**。
+  与表面不同的是: 表面是「同一份 surface_judge 在本机重算」, 金手指是「搬运工控机真值」——两种同源, 别混。
+- 🔴 `404「尚无检测结果」` = 未检 ⇒ 判决=2, **绞不填 0 冒充 OK**; 话题只写本轮真有值的健(缺的不写)。
+- 🔴 读 live 文件用 `d["s"]`, **不是 `d["signals"]`** —— 用错会看到"只有 6 个顶层健"而误判成「没写进去」。
+- 🔴 造测试数据必须清干净: 用本机假服务灌判决验证搬运后, 那批健会留在总线里冒充工控机真值 ⇒ 删除 + 留 `.bak_fake_*`。
+  硬件无关验证姿势: 本机 10082 起假 HTTP + `ZMAX_AOI_GOLD_HOST=127.0.0.1` ⇒ 能硬证映射(0/1/2)与字段搬运。
+- 🔴 同一条链上第二个病(INTACT 那类): `node_ss_s2`(ssff) 原来 `return True/False` ⇒ 壳判
+  「实现返回非 dict → 直通」⇒ 即使 `ZMAX_FF_ON=1` 也不生效。必须返回业务字典, `out2` = u_ff。
+
 ## 🆕 实时看画面: 别走带判据渲染的取图口 —— 用 `/preview.jpg` (2026-10-12, 现场「刷新5秒多, 要小于1秒」)
 
 **根因(全部实测)**: `GET /picture?kind=origin&grab=1` 每帧都跑完整 `GrabAndSaveImage` ——

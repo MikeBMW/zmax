@@ -91,6 +91,48 @@ for i, s in enumerate(prs.slides, 1):
 同时打 `6.88 - (top+height)`（表格底距页脚），< 0.2 in 就要抬行或减行。
 另可回读 `has_table` 的 row×col、pictures 数、`notes_slide` 文字，确认“真是原生对象而不是图”。
 
+### 4.1 形状断言过了不等于渲染过了（必补的一道）
+
+形状几何与渲染是两回事：`add_table` 的 row height 是**最小值**，需要换行的单元格会把行撑高。
+实测一张声明 `y=6.06 + 总高 1.20 = 7.26` 的表，完全落在 7.5 页内、越界断言全绿，
+渲染后最后一个字已经压在 6.90 的页脚线上。**判交付看页图，不看 shape。**
+
+```python
+def last_ink(png, footer_y=6.90, dpi=None, skip_left=0.22, skip_right_from=11.05, skip_right_y=6.86):
+    im = np.asarray(Image.open(png).convert("L")); h, w = im.shape
+    dpi = dpi or w / 13.333
+    core = im[:, int(skip_left*dpi):].copy()
+    core[:] = core                                     # 只取正文区
+    core[int(footer_y*dpi):, :] = 255                  # 掩掉整条页脚带
+    rows = np.nonzero((core < 200).sum(axis=1) > 0)[0]
+    return rows.max() / dpi if len(rows) else 0.0
+# 判据：last_ink < 页脚线 - 0.03 in
+```
+
+两个必须预置的假信号（不掩就会每页都报、报到麻木）：
+
+| 假信号 | 成因 | 处法 |
+|---|---|---|
+| “左边缘大面积着墨” | 0.16 in 宽的品牌装饰竖条贯穿全高 | 扫正文前 `skip_left` 掩掉左侧 0.2~0.22 in |
+| “正文压到 7.1x in” | 页脚注文字本身就落在页脚线下 0.2 in，被当成正文 | 掩掉 `y ≥ footer_y` 整条带（不是只掩右侧页码区） |
+
+两者都是结构性装饰，与内容无关；把它们做进扫描器常量，比每次人工看一遍“哦那是页脚”可靠。
+
+### 4.2 版面挤爆时先改内容，不要一直压行高
+
+页底只剩两三行纯数字的冗余小表，压 `row_h` 是下策（压到底还是压线，且行高低于 0.3 in 后中文会贴格线）。
+正解是**降维**：删掉表，换成「小标题 + 一行文字（用 · 分隔）」——信息一点不少，版面立刻松，
+而且这行字用户可以直接选中复制。表格只留给“每行都要单独寻址/追溯”的真明细。
+
+### 4.3 自写 layout helper 的可选参数要判空
+
+`card(title=None, …)` 这类“引用块/无标题卡片”写法很常见，但 helper 里若无条件
+`txt(..., title, ...)`，文本 setter 里对 `None` 做 `re.split` 会直接
+`TypeError: expected string or bytes-like object, got 'NoneType'`，**整个生成脚本中断**
+（报错位置在 helper 内部的 setter，不在调用处，第一眼看不出是自己传了 None）。
+定式：`if title: txt(...); yy += 0.28`，`if body:` 同理；同时保证标题存在时
+后续元素原位（不要在 `yy` 上双重累加，否则改了判空逻辑会让所有已有卡片正文往下滑一行）。
+
 ## 5. 服务端预览（pptx → 页图）
 
 - 子进程转：`soffice --headless --convert-to pdf --outdir <cache> <pptx>` → `pdftoppm -r 110 -png`，带 timeout；

@@ -414,6 +414,17 @@ for nid in list(prj.nodes.keys()):
     ② `compute()` 里 `fn(_mctx)` 的**返回值类型** —— 实现 `return True/False` 会被壳当“非 dict”而走直通,
     必须返回业务字典; ③ 实现内部抛异常时壳会把它降成“实现异常 → 直通”, 看起来和“没接”一模一样,
     所以要把 `status` 与 `out1` 的真内容一起报 (out1 里是产品块/入参回显 = 它根本没算)。
+    🔴 **`status=实现执行` 不能当成功证据 —— 端口可能全是 null**。实现返回的 dict 里端口键都在、
+    但值全 `None` 时, 壳照样标「实现执行」。所以 `status` 只能证明“壳调了实现且回的是 dict”,
+    **不能证明算出了东西**。判据必须三项齐: 端口值**是不是那块数据** · **是不是 None** · **是不是上游透传值**
+    (开闸前后 `out2` 从“上游 payload”变成“自己算的 u_ff”才是真生效)。
+    实测代价: 一版 A/B 报出的 64.3ms 全来自这个失败分支(内部异常已兜底成 null 端口), 拆穿后同对比是 51.9ms。
+    ⇒ 报 A/B 前先确认两侧端口值**不同类**, 只比耗时等于把失败当性能。
+    🔴 **numpy 对象进返回 dict 会连炸两层, 而且错误文案指错地方**: ① 直接放 `float32` 报
+    “不可 JSON 序列化”; ② 加 `default=float` 后对 **ndarray** 报 `only 0-dimensional arrays can be
+    converted to Python scalars` ⇒ 壳 step 抛异常、整节点作废。转换必须按类型分流:
+    `ndarray→tolist()` · `np.generic→item()` · 其他 `float()` · 兜底 `str()`; 别用 `default=float` 一把梭。
+    模型体检类 dict (`probe`/`stats`/`debug`) 最容易带 numpy —— 往外抛之前统一转一遍。
     🔴 **模型侧硬闸是第三层, 而且它会拒绝而不是降级**: ckpt 训练时开了额外通道 (实例: skill 通道),
     推理时缺那路输入就 `raise ValueError("checkpoint was trained with a … but … was not provided")` ⇒
     节点整体失效。正解是**构造那个侧通道**(实测 24 维: 阶段 one-hot + 控制量, 宁缺的 L2 场分量留 0 不伪造),

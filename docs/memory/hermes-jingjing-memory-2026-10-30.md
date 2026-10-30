@@ -1,4 +1,4 @@
-远程: 本机USB产线网卡enx00e04c0c32a0=192.168.23.50(直通.66=Orin 22+39061开/.23=AOI 10082-83/.160=珞石控制器REACHABLE; .19/.70不通); WiFi 10.163.146.78/23出口; 执行腿=bridge39071→Orin39061(/health sdk=true); .23无ssh
+远程: USB网卡⇒本机.23.50→Orin tashan@.23.66 + 工控机.23.23; 拔⇒仅热点Mike .43.181→.43.19(ssh orin-wifi)。ECS永久禁用: 已删orin-ecs, l2_daemon ZMAX_ORIN_SSH=tashan@.23.66; 技能走ssh/运动走bridge39071
 §
 NTP回拨8h(勿动RTC)→用monotonic; 判活判'未来时间戳'; cron ticker卡死→watchdog.timer
 §
