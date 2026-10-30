@@ -79,8 +79,29 @@ exec(compile(src, m.__file__, "exec"), m.__dict__)      # co_filename = 真实�
 
 失败再退回 spec 加载并打一行提示 (不静默改变语义)。加载完自证:
 `m.__name__ in sys.modules` · `cls.method.__code__.co_filename == os.path.abspath(path)`。
-`state_space_sim_real._load` 早已是这个写法, `state_space_sim._load` 直到 2026-10-17 才补齐 ——
-**看到同类 `spec_from_file_location` 就顺手对齐**, 别等下次再问一遍。
+
+**但这仍不是终点 (2026-10-31 升级)**: `exec(compile(src, 真路径, "exec"))` 只保证 `co_filename` 对,
+而 pydevd 对**没走 `builtins.__import__`** 的模块仍可能不绑; 单独补 `sys.modules[name]=m` 也救不了
+(注册只让 pydevd 按名找文件, 不触发注入)。正解是让它就是正常 import ——
+本仓统一入口 `lerobot/engineering/modload.py::load(name, path)`: 先 `importlib.import_module`
+(自动探 sys.path, 名字≠文件名 / `tools/` 脚本 / 包内模块都能解析, 旧名登记别名), 失败才退 spec 并记进
+`SPEC_LOADED` 台账。**看到同类 `spec_from_file_location` 就换成 `modload.load()`**, 别只改一个文件。
+
+## ⑤ 源码落点不是"改行号"就完事 (2026-10-31)
+
+用户报"右键进来的这份代码不运行/断点不进", 真正的链路有三层, 改错一层等于没改:
+
+1. **注册函数的真实位置** = `registry.get(key)["fn"].__code__.co_filename` (包装函数, 常在 `nodes/library.py`)。
+2. **右键打开的位置** = `sourceview.get_node_location(key)` → `_EXTERNAL_LOC`。它是**显示层**, 可以指向
+   完全不同的实现文件; 两者不一致是常态。
+3. **显示层还会二次解析**: 拿到映射行后按 `行首 startswith(symbol)` 搜**第一处** `def`/`class` 并覆盖行号
+   ⇒ 把 `_EXTERNAL_LOC` 行号校准到 return 也无效。修法: 行落在函数体内就直接用; 否则按符号找定义再取首条 return。
+   同一 key 的 `_EXTERNAL_LOC` 写两遍时**后者胜** (`grep -c` 先数)。
+
+验收不看文档看数据: `tools/verify_node_breakpoints.py --write` 逐节点给 (打开位置 · 该文件是否真执行 ·
+打开函数的每个 return · 本次命中几处), 判定分级 `PASS / NEED-INPUT / SUBPROC / FAIL-BIND / FAIL-NORET`;
+`tools/fix_node_source_loc.py --apply` 按**真执行行**回写落点。两个坑: 空输入会早退 (第二轮喂合成输入)、
+有节点 `QWidget()` 无 QApplication 直接 SIGABRT 审计进程 (先 `QT_QPA_PLATFORM=offscreen` + 建 QApplication)。
 
 调试器无关的兜底 (断点绑定失败也能拿到"到底跑了没"):
 

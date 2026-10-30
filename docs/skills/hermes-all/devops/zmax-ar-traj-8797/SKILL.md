@@ -723,6 +723,18 @@ description: Use when 改 8797/ar 页的轨迹按钮·执行链·围栏避让规
   不要从名字/注释推断。**注释说的是应该怎样, 代码才是实际发了什么。**
 - 报「某个数是 0 / 没有」之前先分清是**设计如此**还是**故障**: 本链路「真机零指令」`real_cmd=False` 是登记处
   写死的设计, 说成"还没接"会让他以为要修; 旁证是 `tcp_pose/latest.json`、`tcp_out/latest.json` 都不存在。
+- 🔴 **他说「说人话, 用完整的句子, 谁, 是什么, 什么时间, 怎样, 在那里」时, 这是格式命令不是抱怨**:
+  换掉的不是内容而是**载体** —— 表格/字段清单/代码块先收起来, 一段话里必须能读到五样:
+  ① 谁(哪条臂、哪个进程、虚拟还是真机) ② 是什么(一句完整动作描述) ③ 什么时间(具体时刻 + 帧龄/秒数)
+  ④ 怎样(机制一句: 谁每多少毫秒写哪个文件 → 谁读 → 谁插值/逆解) ⑤ 在哪里(端口 / 文件绝对路径)。
+  五样齐了再把他能复制的命令放最后。先铺表格再"人话总结"= 他会再骂一次。
+- 🔴 **被问「具体发的 action 指令是什么」= 给一条原始 JSON 原文 + 把 a/b/u 解成物理量**, 不要给自己的字段表:
+  ① 原文字节直接用(`ar_cmd.json` 里 `_pub_ar` 落的那份, 不是 `/api/ar/cmd` 包过的外壳);
+  ② 算出 `位移向量 b-a` / `直线长度` / `页面此刻画的点 a+(b-a)*u` / `段时长与剩余`;
+  ③ 点明 **`q` 不存在**(文件里没这个字段, 接口回 null, 关节角是页面逆解) —— 不然他会以为漏发了关节角;
+  ④ 给写者**文件:行号**(`plan_long_impl.py:_pub_ar` 319-354, 调用点 552) 与文件 mtime 距现在几秒;
+  ⑤ 最后一句分链: 这条只喂画面, 真机链是另一份(带 `abs_mm` 的 FIFO 段表), 一个字节未下发。
+  自洽校验: `a+(b-a)*u` 算出的点必须落在 a→b 连线上且 `u∈[0,1]`, 与 `t_left/t_seg` 不矛盾(S 曲线平滑后 u≠时间比)。
 
 ### 🦾 左右臂各自跟谁: 右臂=plan 段(页面逆解), 左臂=本地时钟段表
 回答「某条臂是不是 plan 规划的」必须分三层给, 一句「是/不是」都会答错:
@@ -743,6 +755,28 @@ description: Use when 改 8797/ar 页的轨迹按钮·执行链·围栏避让规
 - 元任务层其实双臂都有(`ar_meta_tasks.json` 的 MT-06 左臂供料 / MT-07 双手交接, `/api/ar/meta` 的 `lanes`
   也画两条轨道) ⇒ 正确口径是「**元任务层并行、命令流单臂**」, 别答成「系统没有左臂任务」。
 
+## 👀 「动作指令给我看」= 采样指令流 + 一张真渲染图, 并当场声明它不等于真机
+
+用户把 `http://<本机>:8797/ar3d` 甩过来 +「机器人动作指令, 给我看」时, 要的是**看得见的推进**, 不是字段表:
+- 采 10 拍打成一行一段的实录(`elapsed_s / seq / kind / label / u / t_seg / MT i/n`), 让他一眼看出
+  「槽5上方 → 抓起 → 孔1孔口 → 拔孔3 → 金手指检测」是连续在走的;
+- 附一条**他自己能复制的**采样命令(否则他得等你再采一次):
+  ```bash
+  while :; do curl -s http://127.0.0.1:8797/api/ar/cmd | python3 -c "import json,sys;d=json.load(sys.stdin);print(d['t_str'],d['seq'],d['kind'],d['label'],d['mt_id'],d['mt_i'],'/',d['mt_n'])"; sleep 1; done
+  ```
+- 同时给一句链路口径: `src=ss_plan_long` 写 `ar_cmd.json` → 页面逆解驱动**虚拟双臂**, 真机零指令
+  (`real_cmd=False` 是登记处写死的); 要真机动是另一条链(8793 授权 + 39071→Orin 39061)。
+- 判「在跑」只认 `seq/elapsed_s` 推进 + `fresh=true`, 不认按钮是否蓝、也不认 `kind/label` 字样。
+- 要给一张页面图时(他要"看画面"):
+  ```bash
+  mkdir -p ~/shots && chromium --headless=new --no-sandbox --use-angle=swiftshader \
+    --window-size=1600,1000 --virtual-time-budget=15000 --screenshot=$HOME/shots/ar3d.png http://127.0.0.1:8797/ar3d
+  ```
+  🔴 **目标目录不许在点目录下**: 写 `~/.hermes/cache/...` 会 `Failed to write file … Permission denied (13)` 且退出码 2
+  (snap 沙箱不授予隐藏目录), 之前那些 "--headless 截图坏了" 的判断都是这条。写 `~/shots/` 即成功。
+  出图后用 PIL 数 `unique_colors / mean_lum / dark_ratio`(实测 1932 色 / 40.7 / 0.164)确认不是黑屏再交付;
+  纯 CLI 会话里图只能给绝对路径, 不要写 MEDIA: 标签。
+
 ## 🦾 「右臂不动」先分清是哪条右臂 / 哪条链
 
 老倪说「右臂」时**默认指 AR 场景里的仿真双臂**, 不是产线那台珞石真机。认错对象会把排查带进
@@ -756,7 +790,7 @@ estop/授权/手动模式那条岔路(那是真机的事, 与 AR 画面零关系
 | 页面三维里那条紫色仿真右臂不动 | `ar_cmd.json`(10Hz) → 页面 `arCmdSolve` 逆解 → `PREV.q` | `cat zmax_data/ss_live/ar_cmd.json` 两次看 `seq/elapsed_s` 是否推进 + `systemctl is-active zmax-ss-canvas-loop` |
 | 页面里那条静止的真机右臂 | `tcp_out/latest.json` 关节角 | **本来就静止**(设计如此, 按钮叫「右臂_真机」), 不是故障 |
 | 8802 渲染帧里的 mujoco 双臂不动 | `/state.json#truth` 的 `tcpL/tcpR` | `curl 127.0.0.1:8802/status.json` 看 `ok/n/gold_px/err` |
-| 真机珞石臂不动 | 8793 授权 + 前置(estop/manual) | `curl 127.0.0.1:8793/ctl/status` → `motion_armed` / `power` / `mode` |
+| 真机珞石臂不动 | 8793 授权 + 前置(estop/manual) | `curl 127.0.0.1:8793/ctl/status` → `motion_armed` / `power` / `mode`; **判活看 `robot.src` + `robot.age_s`, 不看 `robot.ok`** —— 断网时它照样回 `ok:true`, 但 `src="topic_cache(…起停更)"`、`age_s` 上百万秒(实测 31 天), `tcp.xyz` 同样是陈旧值; 拿它算"臂在哪/能不能动"必然全错 |
 
 - 🔴 **调断点停了常驻引擎 = AR 页面双臂立刻冻住**: 为了让断点有代码可停而 stop
   `zmax-ss-canvas-loop` / `zmax-ss-engine-loop` 之后, `ar_cmd.json` 停更、页面「🧠 状态空间」拨开也没数据可走 ⇒

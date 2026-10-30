@@ -94,6 +94,17 @@ src/lerobot/engineering/
   显示同一段 = 缺映射或映射指向同符号。验证: `get_external_source(key)` 首行应为各自类名,
   不是 `def node_ss_s2`。
 - 改 node_logic.py / _EXTERNAL_LOC 后必须重启 studio.py (旧进程跑旧代码)。
+- 🔴 **`get_node_location` 会用符号串自己再搜一遍并覆盖行号**: 读到 `_EXTERNAL_LOC` 后按
+  `行首 startswith(symbol)` 找第一处 `def`/`class` ⇒ 只把映射行号校准到 return **完全无效**, 右键永远弹回函数头,
+  用户看到的就是"右键进来的这段代码不运行"。现行口径: 映射行落在函数体内就直接用, 否则按符号找定义再取首条 return。
+  自证: `sv.get_node_location(match_node(节点名))` 返回的行必须是 return 行。
+- 🔴 **同一个 key 的 `_EXTERNAL_LOC` 可能写了两遍**(实测 5 个), 后者静默覆盖前者 ⇒ 改前一条是死改动。
+  改之前 `grep -c '_EXTERNAL_LOC\["<key>"\]'`, 重复的只留最后一条。
+- 落点/断点逐个节点的验收入口 (不再靠手工抽查):
+  `tools/verify_node_breakpoints.py --write` (每节点: 打开位置、该文件是否真执行、return 命中数) ·
+  `tools/fix_node_source_loc.py --apply` (用真执行行把落点改到 return) ·
+  `tools/model_ledger.py` (L2~L5 每个模型真加载一行台账: 存在/大小/耗时/参数量/设备)。
+  模型加载一律经 `lerobot/engineering/model_log.py::note()`, 失败也打一行带原因。
 
 ## 调试铁律
 1. **"预定义还是预测"类问题 → 追字段的写入者**: 谁构造 obs / 谁写 [36:39] (感知层?

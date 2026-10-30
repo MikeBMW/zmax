@@ -1246,6 +1246,11 @@ for k in z700_internal gain_schedule; do echo -n "$k="; grep -c "$k" $C; done   
    验收四件: `m.__spec__ is not None` · `type(m.__spec__.loader).__name__ == 'SourceFileLoader'` ·
    在 `sys.modules` 里 · `F.__code__.co_filename` 与文件绝对路径逐字相同。`exec(compile())` 只留作降级**并打告警**。
    同一个仓库常有多套加载器, **逐个修**, 修一个不等于都修了。详见 `references/breakpoint-does-not-hit.md` §8。
+   §10/§11 是同一阶梯的后两手: 进程错位(UI 断点挂在只重绘的 GUI 进程上) 与 pdb 打动态加载模块
+   (相对文件名 not found / def 行参数未绑定)。用户说「你都给我调试好, 我看着」时直接走 §10 修法 3:
+  起一个 attach 就绪的调试进程(`scripts/run_canvas_loop_debug.sh`) 并用
+   `scripts/dap_probe_breakpoint.py --path <abs> --line <N>` **自己先证一遍断点能停**(verified + stopped + 调用栈),
+   再让他按 F5; 别把"服务重启了/代码改了"当修好的证据。
 5b. **断点还是不进: 按这个阶梯查, 每一步都能一票否决 (别猜、别反复重启)**
    ⓪ **先证"代码跑在哪个进程"** —— 最常被跳过、也最常是真因: 业务代码可能只跑在 systemd 常驻服务
       (`zmax-ss-canvas-loop` / `zmax-ss-engine-loop`) 里, 而用户 F5 起的是**另一个** GUI 进程, 只负责显示。

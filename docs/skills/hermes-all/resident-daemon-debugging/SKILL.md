@@ -41,6 +41,46 @@ metadata:
 5. **生产实例上只取证，不下断点**: `tail` 日志（含原始日志尾）、服务自己的回执接口、
    `py-spy dump --pid <pid>`（不暂停进程）。
 
+## 断点静默不绑: 动态加载的节点模块 (2026-10-31 实测)
+
+**症状**: 红点在、代码确实在跑、永远不停, 且无任何报错; pdb 能停、VSCode 不停。
+
+**四个叠在一起的根因**:
+1. 模块用 `spec_from_file_location(...).loader.exec_module(m)` 或 `exec(compile(...))` 直装 ——
+   绕开 `builtins.__import__`, pydevd 的导入钩子看不到该文件, 编译期不注入断点;
+   本机 debugpy 又没编 `_pydevd_frame_eval/*.so`, 运行时补绑也失效。
+2. `_EXTERNAL_LOC` 把"右键源码"指到 **class/def 头那一行** —— class 体只在 import 时执行一次,
+   断点永远不中。用户看到的就是"我右键进来的这段代码不运行"。
+3. **显示层还会拿符号串自己再搜一遍**: `sourceview.get_node_location` 读到映射后, 又用
+   `行首 startswith(symbol)` 搜**第一处** `def`/`class` 并覆盖行号 ⇒ 只把 `_EXTERNAL_LOC` 的行号校准到 return
+   **完全无效**, 右键永远弹回函数头。修法: 映射行号落在函数体内就直接用它; 不在才按符号找定义、再取该函数
+   第一条 return。改完必须**在真进程里现取一次**判据: `sourceview.get_node_location(key)` 返回的必须是 return 行。
+4. 同一个 key 的 `_EXTERNAL_LOC` 在一份文件里**可能写了好几遍**, 后一条静默覆盖前一条 ⇒ 改前面那条是死改动。
+   改之前先数: `grep -c '_EXTERNAL_LOC\["<key>"\]'`; 重复的只保留最后一条 (运行时口径), 其余删掉。
+
+**修法**:
+- 加载统一走 `lerobot/engineering/modload.py::load(name, path)`: 先 `importlib.import_module`
+  (自动探 sys.path + 注册别名, 名字≠文件名也能解析), 失败才退 spec 并打印原因;
+  兜底时记进 `SPEC_LOADED` 台账, 验证工具据此判"这个文件绑不上"。
+- `tools/fix_node_source_loc.py --apply`: 用**真执行行**记录把落点改到该节点实现函数的 return 行。
+
+**批量替换 spec 三行块的坑**: 原块通常是 `spec = spec_from_file_location(...)` 紧跟
+`m = module_from_spec(spec)`, 下游全用 `m.xxx()`; 机械替换只改首行 ⇒ `spec` 成了模块对象而下游仍用 `m`
+⇒ NameError, 而节点实现外面普遍 `except Exception → 直通`, 现场表现是"节点没执行、连日志都没有"。
+每个块替换完都要核对**变量名与下游一致**(`m`/`qc`/`bm`/`_m`), 再 `py_compile` + 真跑一拍。
+
+**终端必须有模型台账** (用户问的是"到底加载了没"): 每个模型真加载后打一行
+`[模型] L2 YOLO 目标检测 ← <路径> · 存在=是 · 6.2MB · 加载 OK · 0.14s · 类别 …`;
+统一用 `lerobot/engineering/model_log.py::note(layer,name,path,ok,detail,elapsed)`, 同一 (层,名,路径) 只打一次,
+**失败也打一行带原因**, 不许静默。
+
+**验证工具** (改完必跑):
+- `tools/verify_node_breakpoints.py --write` → 每节点: 打开位置、该文件是否真被执行、return 命中数
+- `tools/model_ledger.py` → L2/L3/L4/L5 每个模型真加载一行台账 (存在?/大小/耗时/参数量/设备)
+
+**辅助坑**: 部分节点会 `QWidget()` —— 无 QApplication 直接 SIGABRT 审计进程;
+验证脚本开头要 `QT_QPA_PLATFORM=offscreen` 并建一个 `QApplication` 实例。
+
 ## 断点不命中的完整分诊链（按顺序跑，每步都能独立证伪）
 
 “断点不进”有四层原因，**先证进程，再证代码，最后才改配置**。跳过前两层去改 launch/env，会陷入
@@ -61,6 +101,32 @@ tail -3 zmax_data/ss_live/actuator_calls.log     # 节点入口写的「时间 +
 （如 `u_vec = self.execr.execute(u_sat)`）根本不经过节点实现文件 ⇒ **日志为空不等于 execute 没被调**，
 只能证明“那个入口没走”。要证“函数真被调过”，用 py-spy 棨或在该函数自己里埋点。
 
+**同一个埋点文件里 pid 一直在变 = 节点在“每次新的进程”里跑** (点一次运行/单步起一个子进程, 或每次 F5 一个新
+debuggee)。此时断点绑在哪个旧会话上都不会命中; 对策是让调试配置**直接 launch 节点宿主脚本**
+(本仓 `tools/dbg_actuator.py`: 只跑一拍指定节点就退出), 而不是 launch GUI/常驻服务。
+带真输入也在这里解决: `ZMAX_DBG_U="0.12,-0.05,0.30,0.0"` 注入 u_sat, 否则停在 execute 里看到的全是 0。
+注意节点顺序: 先跑 `sslimit` 会重算 u_sat 把注入值覆盖成 0, 要喂真指令就**只跑 `ssact`**。
+
+**py-spy 读到的那条栈不一定是“F5 起的那个程序”**: debugpy 的 `--multiprocess` 会把它派生的**子进程**也挂上
+调试器, 子进程 cmdline 同样是 `pydevd.py … --file <子脚本>`。GUI 启动时后台线程拉起的 `model_autoload.py`
+就这样被当成主调试进程 (实际 GUI 本体是父进程, 栈应在 Qt 事件循环里)。认主调三条, 别只看一条:
+
+```bash
+for p in /proc/[0-9]*; do c=$( { tr '\0' ' ' < $p/cmdline; } 2>/dev/null ) || continue;
+  case "$c" in *pydevd*|*debugpy*launcher*) echo "${p#/proc/} ppid=$(awk '{print $4}' $p/stat)";
+    tr '\0' '\n' < $p/cmdline | tail -2;; esac; done   # 启动器 cmdline 尾部路径 = 真正 launch 的 program
+wmctrl -lp | grep -i <GUI 标题>          # 窗口属主 pid = GUI 本体
+sed -n 's/.*pid=\([0-9]*\).*/\1/p' zmax_data/ss_live/actuator_calls.log | sort | uniq -c | sort -rn | head
+```
+
+三条读数合起来才下结论: “目标 pid 在调用日志里计数 **0**” ⇒ 这个进程从没执行过该节点, 断点放它上面毫无意义;
+历史上出现过的十几个 pid 说明节点宿主一直在换 (GUI 各版本 / 常驻循环 / 单次脚本), 所以调试配置要指向
+**会执行该节点的那个入口**, 而不是“当前开着的任何 GUI”。
+
+**F5 默认跑 launch.json 的「第一条」**: 列表顺序就是默认行为。按模板重生成 launch.json (条数从 1 变十几条)
+等于把默认程序换掉, 用户按 F5 会多起一个他没想到的进程。要让断点落在本次任务上, 就把那条配置放**列表第一位**,
+其余位置不动; 然后回读 (`json.load` 打印条数 + `names[0]`) 报给用户, 别只说“加好了”。
+
 要它跑: 先停常驻服务，再在界面点 ▶ 运行/右键运行节点。不想每次靠人记得点，就在调试模式下
 **启动自动跑一次业务代码**（本仓 `ZMAX_DEBUG_MODE=1` 时 GUI 建完窗口后调一次仿真启动函数，
 `ZMAX_AUTO_RUN=0` 可关）—— 这是把“断点不进”真正关掉的那一步，只改配置永远到不了。
@@ -77,6 +143,26 @@ MainThread 栈只有 `paintEvent → _sphere` 这类绘制代码、没有任何 
 （同时它 `active+gil` 还在持续算，界面反而显得“有数据在动”，最具误导性）。栈里出现 `pydevd_*` 线程是调试器
 自己的，不要误判。
 
+**栈里出现 `socket.connect → httpcore → huggingface_hub.list_repo_tree → from_pretrained` ⇒ 不是断点问题, 是调试会话
+在启动阶段就卡在拉权重/网络**。这一拍根本没走完 ⇒ 后面的节点(含你要停的那个)永远轮不到, `actuator_calls.log`
+里也就没有它的 pid —— 表现和“断点没绑”一模一样。先证网络再谈断点:
+
+```bash
+curl -m 6 -so /dev/null -w '%{http_code}/%{time_total}s\n' https://huggingface.co   # 000 = 不通
+ss -tnp | grep <pid> | grep SYN-SENT                                                # 卡在 TCP 握手
+```
+
+修法: 调试配置的 `env` 加 `HF_HUB_OFFLINE=1` + `TRANSFORMERS_OFFLINE=1`（离线只读本地缓存, 跳过 `list_repo_tree`
+那次网络调用）。实测对比: 离线 `AutoProcessor` 0.14s、VLM 507M 权重 0.6s, 在线则一直挂住。
+验收: 用同一组 env 手动跑那条循环 60~90s, `actuator_calls.log` 出现**该进程自己的 pid**（每拍一条）
+⇒ 那一拍真走完了, 断点才有目标; 只有先确认“这一拍走完”, 才有资格说“断点绑不上”。
+
+**“一直加载 / 日志刷屏”先查共享源文件有没有被每拍重写**: 无条件的调试 print 每拍一条只是表象, 放大器是
+消费者每 N 秒判定“源文件变了”就整份重载（模型/配置/节点全重建）⇒ 每拍都打印, 看起来永不停止。判据:
+`stat -c %Y <源文件>` 连续采样几次 + `ls -t <归档目录> | wc -l` —— mtime 每几秒变、归档数每拍 +1 ⇒ 有写者
+在**每拍整份重写**。修法: 写回幂等（值没变就只改内存、不落盘、不归档）, 调试打印挂到训练态或 env 开关
+（如 `SS_L3_DEBUG=1`）; 归档爆量时保留最近 N 份即可（本项目曾堆到 1.4 万份 / 1.9G）。
+
 ### ③ 断点本身（三个机械陷阱，都与“断点有没有坏”无关）
 - **行号漂移**: 反复编辑同一文件会把函数整体后移几十行，用户留在旧行号上的断点落在注释/空行 ⇒
   解释器**根本不会设置它**（pdb 只回 `*** Blank or comment`），界面红点还在、跑起来永不停。
@@ -87,19 +173,30 @@ MainThread 栈只有 `paintEvent → _sphere` 这类绘制代码、没有任何 
 - **frozen modules**: debugpy 自报 `frozen modules … may make the debugger miss breakpoints`。Python 3.11 起
   必须在 launch 配置里给 `pythonArgs: ["-X","frozen_modules=off"]`（`args` 是给程序的，不生效）+
   env `PYDEVD_DISABLE_FILE_VALIDATION=1`。
-- **加载器没注册 `sys.modules`**: pydevd 按**模块名**在 `sys.modules` 里定位文件。用
-  `spec_from_file_location` + `module_from_spec` + `exec_module` 但漏了 `sys.modules[name] = m`，
-  该文件里**所有断点静默失效**（函数照跑、不报错、界面红点还在）。同一仓库常有的模块注册了、有的漏了 ——
-  逐个核，别假设“同一个 repo 的加载方式都一样”。自查:
+- **加载器连 `sys.modules` 都没注册**: 连补偿都做不到(pydevd 按模块名定位文件)。但注册上也**仍然不够** ——
+  见下一条“动态加载”。同一仓库常有的模块注册了、有的漏了, 逐个核, 别假设“同一个 repo 的加载方式都一样”。自查:
   `python -c "import sys;sys.path.insert(0,'src');<触发一次节点>;print('<模块名>' in sys.modules)"`。
-- **`exec(compile())` 造的模块**: `__spec__`/`__loader__` 都是 None。首次加载能按 `co_filename` 绑上，
-  一旦**取消再添加**断点，pydevd 没有 loader 可重新定位 ⇒ 静默不绑。要能反复绑就必须 spec 加载。
+- **模块是“动态加载”的（不是 `import` 进来的）= 该文件里断点必然静默失效**: `spec_from_file_location`
+  + `loader.exec_module(m)` 与 `exec(compile(...))` 都**绕开 `builtins.__import__`**，pydevd 的导入钩子
+  看不到这个文件 ⇒ 编译那一刻不注入；debugpy 没编 frame eval（下一条）⇒ 运行时也补不上。表现: 红点在、
+  跑起来永不停、函数照跑不报错。**注册 `sys.modules[name]` 救不了** —— 那只让 pydevd 按名找到文件,
+  不触发注入。判据（最快）: 加载后打印 `type(Obj).__module__` —— `state_space.execution` 这种 = 走的动态
+  路径, 断点不会绑; `lerobot.policies.left_right.state_space.execution` 这种 = 走正常 import, 能绑。
+  修法: 加载器改成正常 import —— `sys.path` 里放 `src/`, `importlib.import_module("<pkg>.state_space.<mod>")`,
+  再把旧名登记成别名 `sys.modules["state_space.<mod>"] = m` 给按旧名取模块的代码用; 同时把“运行前清模块
+  缓存”那处的前缀列表补上新名（否则清不到）。改不了加载器就在**静态 import 的调用点**下断点:
+  本仓 `src/lerobot/engineering/nodes/robot_actuator_impl.py:55` (`u_vec = _ex.execute(...)`),
+  停在那里能看 `u_sat`(入参) / 走一行拿 `u_vec`(出参) / `_chk`(校验结论), 与进入 execute 等价。
 - **debugpy 没编译 frame eval**: `find <debugpy>/_vendored/pydevd/_pydevd_frame_eval -name "*.so"` 为空
   ⇒ `PYDEVD_USE_FRAME_EVAL=NO` ⇒ **不能对已加载模块在运行时加/删断点**，只在 compile 那一刻注入。
   对策: 每次运行前清模块缓存（`library._SS_MODS` 与 `sys.modules` 里的 `state_space.*`/`ss_real.*`）
   强制重编译，新断点在编译时被注入；代价几十 ms。两个入口都要清: ▶运行 与 右键运行节点。
 
 ### ④ 验证“能不能停”只有两条硬口径
+
+**别用裸 DAP 客户端去验 `debugpy --listen` 的断点**: 手搓 DAP 客户端会得到 `setBreakpoints → "Server is not available"`
+(必须先 attach), 而 `attach` 带 processId 会走 gdb 注入 (`ptrace: No such process`), processId=null 又报
+`issubclass() arg 1 must be a class`。这条路径只证明“客户端写错了”, 不证明断点好坏。用下面两条:
 ```bash
 python -m pdb -c "b /abs/path/file.py:LINE" -c c -c "p 变量" tools/<跑一次节点的脚本>.py
 ```
@@ -245,5 +342,13 @@ FIFO 文件存在、权限对、mtime 正常 —— 全都不代表有人读。�
   再给配好的 launch 配置，别先让用户去"重启试试"。
 - **别只用“日志/端口正常”证明节点在跑**: 界面数据可能来自另一个进程写的文件。要证“我要调的那段代码在这个
   pid 里执行过”，只有两种证据: 该 pid 打出的调用日志，或 py-spy 栈里出现那个函数。
-- **“用户说都重启了好几次”= 停止让他重试**: 改成自己去取证（`/proc/<pid>/environ` · `py-spy dump` ·
+- 「用户说都重启了好几次」= 停止让他重试: 改成自己去取证（`/proc/<pid>/environ` · `py-spy dump` ·
   `wmctrl -l` + 截图 OCR · 写 pid 到调用日志）。让用户反复重启而不给出新证据，是在消耗信任。
+- **用户问「为什么 X 也在运行」先读 launch.json 列表 + 认启动器的 program**: 重生成/重排 `launch.json` 之后 F5 未必
+  换成你要的那条 —— VSCode 记住的是下拉里**上次选中**的配置, 顺序只在“从未选过”时才算默认。判断实际跑的是哪条,
+  只看 launcher cmdline 尾部的 program 路径(`tr '\0' '\n' < /proc/<pid>/cmdline | tail -3`)与 `wmctrl -lp` 的窗口属主 pid,
+  不要用列表顺序推断, 也不要去猜用户点了什么。交付时说清“下拉里要选哪条”, 别只说“我把它放第一位了”。
+- **`linux` 上重启控制台用既有 unit, 别手搓 python**: `systemctl --user restart zmax-studio`
+  (`ExecStart=tools/gui/launch_studio.sh`) —— 启动脚本里 `unset QT_QPA_PLATFORM` + `export QT_QPA_PLATFORM=xcb`
+  是踩过坑写进去的: 在同一个 shell 里跑过离屏判据(`QT_QPA_PLATFORM=offscreen`)后继承下去, GUI 会“进程活着、
+  日志正常、就是没有窗口”。重启后验三条: unit `active` · `wmctrl -l` 有窗口 · `/tmp/studio_launch.log` 尾部无 Traceback。
