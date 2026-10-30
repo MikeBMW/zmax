@@ -26,7 +26,13 @@ def rb_ff_forward(npz_path=None, probe=None):
     RightBrainWM (modeling_left_right.py): enc 2层 ReLU → pred_next + contact_head(sigmoid)。
     pred_next 输出为归一化空间 (导出时实测, next_raw=False) → 反归一化 *ss+sm 回 raw。
     """
-    d = np.load(npz_path or NPZ_DEFAULT)
+    _p = npz_path or NPZ_DEFAULT
+    d = np.load(_p)
+    try:                                     # 📋 模型台账 (终端可见: 加载了什么、在不在、多大)
+        from lerobot.engineering.model_log import note as _note
+        _note("L3", "右脑 WorldModel", _p, True, detail="npz 蒸馏权重 (enc2层ReLU+contact头)")
+    except Exception:                                                    # noqa: BLE001
+        pass
     W = {k: d[k] for k in ("W_e0", "b_e0", "W_e1", "b_e1", "W_p", "b_p", "W_c", "b_c")}
     sm = d["sm"] if "sm" in d else None
     ss = d["ss"] if "ss" in d else None

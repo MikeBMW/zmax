@@ -5536,23 +5536,63 @@ def _vscode_launch_cfg(root: str) -> dict:
             #   ZMAX_SINGLE_THREAD / ZMAX_DEBUG_BREAK 一项都没有 (实测多次踩)。单线程/550B 写进模板才留得住。
             #   断点: brk() 在调试会话里每个 tag 首次自动停; 要每次都停就在这加 "ZMAX_DEBUG_BREAK": "actuator"
             #   要关单线程(跑基准/批量推理) 就把 ZMAX_SINGLE_THREAD 换成 ZMAX_MULTI_THREAD=1
+            # 🔴 2026-10-30 老倪「断点还是没有进入」—— execute 的断点只可能停在这条里, 所以放第一条
+            #   (F5 没选配置时跑的就是列表第一条; 之前 launch.json 只剩 ss_canvas_loop 一条,
+            #    这次按模板重生成后默认会回到 studio.py, 所以把这条提到最前)。
+            #   为什么优先级要高: 真跑 execute 的宿主进程一直不定 —— actuator_calls.log 里同一个
+            #   节点历史上换过十几个 pid (2584986 / 464578 / 1614168 / 214062 / 279901 …), 而当前
+            #   这只 studio.py 调试进程 (pid 162982) 在日志里出现 **0 次** ⇒ 在它上面打断点,
+            #   只要界面那次"运行"没走到 ssact 就永远不停。这条直接跑节点宿主 tools/dbg_actuator.py:
+            #   只跑一拍 ssact 就退出。断点**打在** src/lerobot/engineering/nodes/robot_actuator_impl.py:55
+            #   (`u_vec = _ex.execute(...)`) —— 这个文件走正常 `from .robot_actuator_impl import run`,
+            #   pydevd 能绑; 而 execution.py 是 _ss_import 用 spec.loader.exec_module 直装的, 不经
+            #   builtins.__import__ ⇒ pydevd 的导入钩子看不到它 ⇒ 编译时不注入断点; 本机 debugpy 又缺
+            #   _pydevd_frame_eval/*.so ⇒ 运行时也补绑不上。这就是 111 行红点永远不亮的原因。
+            #   停在 55 就能看全三件事: u_sat (输入) → F10 → u_vec (输出) / _chk (校验结论)。
+            #   ZMAX_DBG_U 喂一条真指令, 否则 u 恒 0 看不出校验在干什么。
+            {"name": "🎯 断点 · 机器人执行器 execute (单次·注入指令)", "type": "python", "request": "launch",
+             "program": _os.path.join(root, "tools", "dbg_actuator.py"), "python": _py(),
+             "args": ["ssact"], "pythonArgs": ["-X", "frozen_modules=off"],
+             "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+             "env": {"ZMAX_DBG_U": "0.12,-0.05,0.30,0.0", "ZMAX_SINGLE_THREAD": "1",
+                     "PYTHONUNBUFFERED": "1", "PYDEVD_DISABLE_FILE_VALIDATION": "1",
+                     "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"}},
             # 🔴 2026-10-29 断点不命中的官方原因 (debugpy 自己吐的警告):
             #   "It seems that frozen modules are being used, which may make the debugger miss breakpoints.
             #    Please pass -Xfrozen_modules=off to python to disable frozen modules."
             #   Python 3.11 把 importlib 等编成 frozen bytecode, debugpy 按 "文件:行" 定位就漏;
             #   pythonArgs 把 -X frozen_modules=off 传给解释器 (这是 Python 扩展的正式字段, args 不行)。
             #   PYDEVD_DISABLE_FILE_VALIDATION=1 同时关掉它的文件校验, 双保险。
-            {"name": "🚀 全新调试进程 (studio.py)", "type": "python", "request": "launch",
-             "program": _os.path.join(root, "tools", "gui", "studio.py"), "python": _py(),
-             "pythonArgs": ["-X", "frozen_modules=off"],
-             "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-             "env": {"OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1",
-                     "NUMEXPR_NUM_THREADS": "1", "VECLIB_MAXIMUM_THREADS": "1", "TORCH_NUM_THREADS": "1",
-                     "MALLOC_ARENA_MAX": "2", "ZMAX_SINGLE_THREAD": "1", "ZMAX_DEBUG_MODE": "1",
-                     "ZMAX_PRODUCT": "550B", "PYTHONUNBUFFERED": "1",
-                     "PYDEVD_DISABLE_FILE_VALIDATION": "1"}},
+            # 🔴 2026-10-30 老倪「那把全新调试进程删掉」—— 整机 GUI 调试配置已从模板移除 (F5 默认落到第一条
+            #   执行器配置, 不再顺手拉起一个 studio.py 实例)。要临时恢复整机 GUI 调试, 把下面这条加回
+            #   configurations 即可 (env 口径与删掉的一致, 单线程 550B + frozen_modules 关闭):
+            #   {"name": "🚀 全新调试进程 (studio.py)", "type": "python", "request": "launch",
+            #    "program": _os.path.join(root, "tools", "gui", "studio.py"), "python": _py(),
+            #    "pythonArgs": ["-X", "frozen_modules=off"], "cwd": root,
+            #    "console": "integratedTerminal", "justMyCode": False,
+            #    "env": {"ZMAX_SINGLE_THREAD": "1", "ZMAX_DEBUG_MODE": "1", "ZMAX_PRODUCT": "550B",
+            #            "PYTHONUNBUFFERED": "1", "PYDEVD_DISABLE_FILE_VALIDATION": "1"}}
             {"name": "🔌 Attach 现有控制台 (5678)", "type": "python", "request": "attach",
              "connect": {"host": "127.0.0.1", "port": 5678}, "justMyCode": False},
+            # 状态空间常驻循环 (画布 10Hz 真跑, 单步/断点看每个节点) — 原先是手改 launch.json 加的,
+            #   右键「打开 VSCode」会被模板抹掉, 2026-10-30 收进模板。
+            {"name": "🧪 断点 · 状态空间常驻循环 (ss_canvas_loop)", "type": "python", "request": "launch",
+             "program": _os.path.join(root, "tools", "ss_canvas_loop.py"), "python": _py(),
+             "pythonArgs": ["-X", "frozen_modules=off"],
+             "cwd": root, "console": "integratedTerminal", "justMyCode": False,
+             "env": {"ZMAX_CANVAS_ONLY": "ssyolo,sslimit,ssplan,ssdec,ss_grav_h,ssmani_c,ssmani_p,n_calib_mani,ss_mani_eng,ssact",
+                       "ZMAX_L2_PERIOD_S": "0.5",
+                       "ZMAX_LOOP_MAX_TICKS": "600",
+                       "ZMAX_LOOP_EVIDENCE": "0",
+                       "ZMAX_LOOP_BEAT_S": "0",
+                       "ZMAX_SS_CHAIN": "1",
+                     "ZMAX_CANVAS_HZ": "10", "ZMAX_UPH_AR_PUB": "1", "ZMAX_YOLO_SHARE": "1",
+                     "PYTHONUNBUFFERED": "1", "PYDEVD_DISABLE_FILE_VALIDATION": "1",
+                     # 🔴 2026-10-30 实测: 本机 HF 不通 (curl 000, 进程卡在 SYN-SENT 到 31.13.95.48:443),
+                     #   SmolVLA 的 AutoProcessor/AutoModel 会走 list_repo_tree 硬等网络 ⇒ 循环第一个节点就
+                     #   卡死, ssact 永远轮不到 (表现为"断点又不进")。离线模式读本地缓存: 实测 processor 0.14s、
+                     #   VLM 507M 权重 0.6s 加载完成。要在线下权重时临时去掉这两个 key。
+                     "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"}},
             {"name": "工具脚本 (lerobot-venv)", "type": "python", "request": "launch",
              "program": "${file}",
              "python": _os.path.expanduser("~/zmax/venvs/lerobot-venv/bin/python"),
@@ -16441,7 +16481,8 @@ class SimulinkModule(QWidget):
         except Exception:                                                  # noqa: BLE001
             pass
         for _k in [k for k in list(_sys.modules)
-                   if k.startswith("state_space.") or k.startswith("ss_real.")]:
+                   if k.startswith("state_space.") or k.startswith("ss_real.")
+                   or k.startswith("lerobot.policies.left_right.state_space.")]:
             _sys.modules.pop(_k, None)
 
     def _start_state_space_sim(self):

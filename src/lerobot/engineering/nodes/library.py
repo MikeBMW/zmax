@@ -17,6 +17,7 @@
 import importlib
 import inspect
 import os
+from ..modload import load as _load_mod          # 正常 import 优先 (断点可绑)
 import sys  # 🐛 2026-09-09: 记忆节点 _mem_store 用 sys.path
 import sys as _sys  # 原文件 2443 行的模块级别名 (仓库根探测用), 迁移时一并搬来
 import threading
@@ -1638,8 +1639,46 @@ def _yolo_detect2d(aligner, img, conf=0.4):
                     "cx": (x1 + x2) / 2, "cy": (y1 + y2) / 2}
     return out
 
+_YOLO_BG: dict = {"th": None, "res": None, "t": 0.0, "err": None}
+
+
+def _yolo_detect_bg(aligner, img, log=None):
+    """detect_3d_meta + 2D 框丢后台线程算, 主线程只取已完成的最新结果。
+
+    🔴 2026-10-31 老倪「怎么超节拍了 / 还是太慢」: 真推理一次 40~200ms (GPU 被 sam3/引擎抢),
+    原来同步跑在 10Hz 节拍里 ⇒ 那一拍必然 100ms+ 超预算、还把采样率压到 9Hz。
+    现在: 主线程 render+obs (~10ms) 照旧, 推理交给常驻单线程; 本拍取**上一帧**结果 (最多晚 1 拍
+    =100ms, 原来本来就是 0.5s 一次)。冷启还没有任何结果时同步算一次, 保证下游第一拍有值。
+    """
+    st = _YOLO_BG
+    th = st.get("th")
+    if th is not None and th.is_alive():          # 上一帧还在算 ⇒ 回放已完成的
+        r = st.get("res")
+        return r if r is not None else ({}, {"frame": "world", "gaps": ["首帧检测进行中"]}, {})
+
+    def _work(_img=img, _al=aligner):
+        try:
+            try:
+                _d3, _me = _al.detect_3d_meta(_img)
+            except AttributeError:                # 老版对齐器无 meta
+                _d3, _me = _al.detect_3d(_img), {"frame": "world", "gaps": ["对齐器无 detect_3d_meta"]}
+            _d2 = _yolo_detect2d(_al, _img)
+            st.update({"res": (_d3, _me, _d2), "t": time.time(), "err": None})
+        except Exception as _e:                   # noqa: BLE001  后台线程绝不把异常抛给主循环
+            st["err"] = "%s: %s" % (type(_e).__name__, _e)
+
+    if st.get("res") is None:                     # 冷启: 同步算一次 (只发生在第一拍)
+        _work()
+        r = st.get("res")
+        return r if r is not None else ({}, {"frame": "world", "gaps": ["首帧检测失败: %s" % st.get("err")]}, {})
+    st["th"] = threading.Thread(target=_work, daemon=True, name="ss_yolo_detect")
+    st["th"].start()
+    r = st.get("res")                             # 这一拍用上一帧的检测结果
+    return r if r is not None else ({}, {"frame": "world", "gaps": ["检测结果未就绪"]}, {})
+
+
 def _yolo_capture(log, aligner):
-    """真实采样一帧: env reset(seed=0) → render → 39D obs → detect_3d, 缓存供下游节点"""
+    """真实采样一帧: env reset(seed=0) → render → 39D obs → detect_3d(后台), 缓存供下游节点"""
     import numpy as np
     aligner.env._freeze_rand_vec = False
     aligner.env.reset(seed=0)
@@ -1647,11 +1686,8 @@ def _yolo_capture(log, aligner):
     img = (np.zeros((480, 480, 3), dtype=np.uint8) if (__import__('sys').platform == 'darwin' and __import__('os').environ.get('SS_MAC_RENDER') != '1') else aligner.env.render())
     obs39 = np.asarray(aligner.env._get_obs(), dtype=np.float64).ravel()
     # 🆕 2026-10-28: 用 detect_3d_meta 拿取证元数据 (frame / gaps) —— 发布观测点要靠它判"这帧够不够格当真值"
-    try:
-        det3d, _meta = aligner.detect_3d_meta(img)
-    except AttributeError:                                                   # 老版对齐器无 meta
-        det3d, _meta = aligner.detect_3d(img), {"frame": "world", "gaps": ["对齐器无 detect_3d_meta"]}
-    det2d = _yolo_detect2d(aligner, img)   # 真实 conf/框 (detect_3d 不带 conf)
+    # 🕒 2026-10-31: 推理移到后台线程 (见 _yolo_detect_bg), 主线程不阻塞
+    det3d, _meta, det2d = _yolo_detect_bg(aligner, img, log)
     _YOLO_CACHE.update({"det3d": det3d, "det2d": det2d, "obs39": obs39, "img": img,
                         "meta": _meta, "img_src": "sim"})   # 仿真渲染帧 (非臂上相机 ⇒ 掩膜3D 如实拒答)
     return det3d, obs39, img
@@ -2233,9 +2269,7 @@ _EXTERNAL_LOC["yolo_3d"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 57
 #   全仓库零执行调用 → 查看源码/断点永不命中 (老倪断点停在 detect_3d 126 才发现). 改指真实反投影 detect_3d.
 _EXTERNAL_LOC["yolo_align"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 93, "def detect_3d")  # 📐 2D→3D 解算 (2026-09-21 行号同步: 65→93)
 
-_EXTERNAL_LOC["yolo_tactile"] = (os.path.join(_YOLO_DIR, "gen_tactile.py"), 21, "def synth_tactile")  # 🐛 2026-09-02: 符号 gen_tactile 不存在, 实际 def synth_tactile                  # 📍 Marker 触觉跟踪 (触觉数据生成)
-
-_EXTERNAL_LOC["ss_aoi"]   = (os.path.join(_YOLO_DIR, "quality_check.py"), 61, "class AOIQualityChecker")  # 🐛 2026-09-02: 外观质量检测缺映射 → 双击显示 node_ss_aoi 胶水函数而非真实源码 (同 ss_yolo 断点问题)
+_EXTERNAL_LOC["ss_aoi"] = (os.path.join(_YOLO_DIR, "quality_check.py"), 200, "def assess_frame")  # 🐛 2026-09-02: 外观质量检测缺映射 → 双击显示 node_ss_aoi 胶水函数而非真实源码 (同 ss_yolo 断点问题)
 
 def node_obs39(ctx):
     """📊 39D obs 输入 — metaworld peg-insertion 完整观测 (2026-08-10 实测确认)
@@ -2271,14 +2305,10 @@ def _ss_load_modeling(log):
     """懒加载 modeling_left_right.py (LeftBrainMLP/RightBrainWM 真实 torch 网络, 文件自带 lerobot 兜底)"""
     if "modeling" in _SS_MODS:
         return _SS_MODS["modeling"]
-    import importlib.util as _ilu
     import sys as _sys
     _p = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "left_right", "modeling_left_right.py")
     _name = "left_right.modeling_left_right"
-    spec = _ilu.spec_from_file_location(_name, _p)
-    m = _ilu.module_from_spec(spec)
-    _sys.modules[_name] = m   # 🐛 2026-09-01: fallback dataclass 装饰器查 sys.modules, 未注册→None.__dict__
-    spec.loader.exec_module(m)
+    m = _load_mod(_name, _p)          # 正常 import 优先 (断点可绑), spec 兜底
     _SS_MODS["modeling"] = m
     return m
 
@@ -2286,14 +2316,10 @@ def _ss_load_config(log):
     """懒加载 configuration_left_right.py (LeftRightConfig 真实阈值: 接触/抓取/抬起/转移/插入)"""
     if "config" in _SS_MODS:
         return _SS_MODS["config"]
-    import importlib.util as _ilu
     import sys as _sys
     _p = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "left_right", "configuration_left_right.py")
     _name = "left_right.configuration_left_right"
-    spec = _ilu.spec_from_file_location(_name, _p)
-    m = _ilu.module_from_spec(spec)
-    _sys.modules[_name] = m   # 🐛 2026-09-01: 同 modeling — dataclass 需 sys.modules 注册
-    spec.loader.exec_module(m)
+    m = _load_mod(_name, _p)          # 正常 import 优先 (断点可绑), spec 兜底
     _SS_MODS["config"] = m
     return m
 
@@ -2466,12 +2492,36 @@ def _ss_import(modname):
     _p = os.path.abspath(os.path.join(
         _REPO_ROOT, "src", "lerobot", "policies", "left_right", "state_space", modname + ".py"))
     _name = "state_space." + modname
+    # 🔴 2026-10-31 老倪「必须能进入」—— 先走**正常 import**:
+    #   pydevd 的断点注入只对经 builtins.__import__ 加载的模块生效; spec.loader.exec_module 直装
+    #   绕开了导入钩子 ⇒ execution.py:111 的红点永远不亮 (本机 debugpy 又没编 frame-eval,
+    #   对已加载模块运行时补绑也不行)。正常 import 后它与 robot_actuator_impl 等节点同一条路。
+    #   旧名 state_space.<mod> 仍登记 (engine/sim.py 等按旧名取), 两边指向同一对象。
+    _real = "lerobot.policies.left_right.state_space." + modname
+    if os.path.isfile(_p):
+        try:
+            import importlib as _il
+            _src_root = os.path.join(_REPO_ROOT, "src")
+            if _src_root not in _sys.path:
+                _sys.path.insert(0, _src_root)
+            m = _il.import_module(_real)
+            _sys.modules[_name] = m
+            _SS_MODS[modname] = m
+            return m
+        except Exception as _e2:                                        # noqa: BLE001
+            print("⚠️ 正常 import 失败 (%s): %s: %s → 退回 spec 加载 (该模块断点可能绑不上)"
+                  % (modname, type(_e2).__name__, _e2))
     if os.path.isfile(_p):
         try:
             spec = _ilu.spec_from_file_location(_name, _p)
             m = _ilu.module_from_spec(spec)
             _sys.modules[_name] = m   # dataclass 查 sys.modules[cls.__module__]; 断点解析也要
             spec.loader.exec_module(m)
+            try:
+                from ..modload import mark_spec as _mark_spec
+                _mark_spec(_p)          # 记进台账: 此文件断点绑不上 (验证工具据此判定)
+            except Exception:                                               # noqa: BLE001
+                pass
             _SS_MODS[modname] = m
             return m
         except Exception as _e:                                          # noqa: BLE001
@@ -2492,14 +2542,10 @@ def _ss_tactile_mod():
     """懒加载 gen_tactile.py (真实触觉合成, 与数据生成同源)"""
     if "gen_tactile" in _SS_MODS:
         return _SS_MODS["gen_tactile"]
-    import importlib.util as _ilu
     import sys as _sys
     _p = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "yolo_3d", "gen_tactile.py")
     _name = "yolo_3d.gen_tactile"
-    spec = _ilu.spec_from_file_location(_name, _p)
-    m = _ilu.module_from_spec(spec)
-    _sys.modules[_name] = m   # 🐛 2026-09-01: 统一 sys.modules 注册 (dataclass 兜底)
-    spec.loader.exec_module(m)
+    m = _load_mod(_name, _p)          # 正常 import 优先 (断点可绑), spec 兜底
     _SS_MODS["gen_tactile"] = m
     return m
 
@@ -2921,42 +2967,36 @@ def node_ss_su2(ctx):
             log("⚠️ SU(2) 统一状态映射失败: %s" % e)
         return False
 
-_EXTERNAL_LOC["ss_bg1"]    = (os.path.join(_SS_DIR, "perception.py"), 20, "def fuse_sensors")
+_EXTERNAL_LOC["ss_bg1"]    = (os.path.join(_SS_DIR, "perception.py"), 34, "def fuse_sensors")
 
-_EXTERNAL_LOC["ss_sensor"] = (os.path.join(_SS_DIR, "perception.py"), 20, "def fuse_sensors")
+_EXTERNAL_LOC["ss_sensor"] = (os.path.join(_SS_DIR, "perception.py"), 34, "def fuse_sensors")
 
 # 🧩 2026-09-20 老倪: VEH.5.041 从"传感器融合拼接(43D)"升级为"SU(2) 统一状态空间(群)"
 #   右键该节点应显示群实现 su2.py::class SU2UnifiedState, 不再显示 fuse_sensors
-_EXTERNAL_LOC["ss_obs"]    = (os.path.join(_SS_DIR, "su2.py"), 558, "class SU2UnifiedState")  # 2026-09-21 行号同步: 537→558
+_EXTERNAL_LOC["ss_obs"] = (os.path.join(_SS_DIR, "su2.py"), 579, "def push")  # 2026-09-21 行号同步: 537→558
 
 _EXTERNAL_LOC["ss_bg2"]    = (os.path.join(_SS_DIR, "parallel.py"), 117, "class FeedforwardAccelerator")  # 行号动态定位(符号名), 手写值仅回退
 
-_EXTERNAL_LOC["ss_ff"]     = (os.path.join(_SS_DIR, "parallel.py"), 117, "class FeedforwardAccelerator")
+_EXTERNAL_LOC["ss_ff"] = (os.path.join(_SS_DIR, "parallel.py"), 172, "def forward")
 
-_EXTERNAL_LOC["ss_est"]    = (os.path.join(_SS_DIR, "parallel.py"), 201, "class AdaptiveStateEstimator")  # 🐛 2026-09-04: 45→128→158; 2026-09-21: →201 (重写后漂移; 现按符号动态定位)
+_EXTERNAL_LOC["ss_est"] = (os.path.join(_SS_DIR, "parallel.py"), 172, "def forward")  # 🐛 2026-09-04: 45→128→158; 2026-09-21: →201 (重写后漂移; 现按符号动态定位)
 
-_EXTERNAL_LOC["ss_dyn"]   = (os.path.join(_SS_DIR, "dynamics.py"), 62, "class PriorDynamicsPredictor")
+_EXTERNAL_LOC["ss_dyn"] = (os.path.join(_SS_DIR, "dynamics.py"), 116, "def predict")
 
-_EXTERNAL_LOC["ss_correct"] = (os.path.join(_SS_DIR, "cognition.py"), 17, "def state_correction")
-
-_EXTERNAL_LOC["ss_bg3"]    = (os.path.join(_SS_DIR, "cognition.py"), 30, "class ActionModulator")
+_EXTERNAL_LOC["ss_bg3"]    = (os.path.join(_SS_DIR, "cognition.py"), 37, "def state_correction")
 
 # 🐛 2026-09-02 老倪: 动作调制器节点双击 → 直接显示 decide 方法本体 (否决权+前馈反馈相加+阶段限速),
 #   不是整个类 (原映射 class 行号 27 也不准, 实际 30)
-_EXTERNAL_LOC["ss_sched"]  = (os.path.join(_SS_DIR, "cognition.py"), 228, "def decide")  # 2026-09-21 行号同步: 216→228
-
-_EXTERNAL_LOC["ss_limit"]  = (os.path.join(_SS_DIR, "safety.py"), 17, "def saturate")
+_EXTERNAL_LOC["ss_sched"]  = (os.path.join(_SS_DIR, "cognition.py"), 217, "def advance")  # 2026-09-21 行号同步: 216→228
 
 _EXTERNAL_LOC["ss_bg4"]    = (os.path.join(_SS_DIR, "execution.py"), 14, "class RobotExecutor")
 
-_EXTERNAL_LOC["ss_act"]    = (os.path.join(_SS_DIR, "execution.py"), 14, "class RobotExecutor")
-
-_EXTERNAL_LOC["ss_world"]  = (os.path.join(_SS_DIR, "execution.py"), 25, "class PhysicalWorld")
+_EXTERNAL_LOC["ss_world"]  = (os.path.join(_SS_DIR, "execution.py"), 132, "def execute")
 
 # 🧮 标定层 (2026-09-02): 与 datasets/policies 同级别 — src/lerobot/calibration/calibration_layer.py
 _CALIB_DIR_LOC = os.path.join(_REPO_ROOT, "src", "lerobot", "calibration")
 
-_EXTERNAL_LOC["ss_calib"] = (os.path.join(_CALIB_DIR_LOC, "calibration_layer.py"), 73, "class CalibrationLayer")
+_EXTERNAL_LOC["ss_calib"] = (os.path.join(_CALIB_DIR_LOC, "calibration_layer.py"), 135, "def equilibrium_state")
 
 # 📦 metaworld 数据源 (2026-09-02 老倪: 数据源节点必须接 lerobot 框架数据层 —
 #   与感知/决策节点同构: 右键打开 + VSCode 断点进 datasets 真实源码,
@@ -2964,7 +3004,7 @@ _EXTERNAL_LOC["ss_calib"] = (os.path.join(_CALIB_DIR_LOC, "calibration_layer.py"
 # 🐛 2026-09-02: line 必须指向第一行实际代码 (61, root=...), 不是 def 行(54) —
 #   debugpy 对 def/docstring 行断点不命中 (函数第一条语句是 docstring), 踩过
 _EXTERNAL_LOC["data"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "datasets",
-                                      "metaworld_data_source.py"), 54, "def probe_data_source")
+                                      "metaworld_data_source.py"), 74, "def probe_data_source")
 
 _reg("ss_bg1",   ["时空感知前端"], "时空感知前端 — 传感器融合 → 43D obs (源码 state_space/perception.py)", node_ss_s1)
 
@@ -3021,19 +3061,16 @@ _EXTERNAL_LOC["ss_llm_in"] = (os.path.join(_SS_DIR, "planner.py"), 94, "class Ta
 
 _EXTERNAL_LOC["ss_llm"]    = (os.path.join(_SS_DIR, "planner.py"), 94, "class TaskPlanner")
 
-_EXTERNAL_LOC["ss_reason"] = (os.path.join(_SS_DIR, "planner.py"), 196, "class ExceptionReasoner")
+_EXTERNAL_LOC["ss_reason"] = (os.path.join(_SS_DIR, "planner.py"), 214, "def diagnose")
 
-_EXTERNAL_LOC["ss_skill"]  = (os.path.join(_SS_DIR, "planner.py"), 246, "class SkillComposer")
+_EXTERNAL_LOC["ss_skill"] = (os.path.join(_SS_DIR, "planner.py"), 275, "def compose")
 
 def node_ss_llm(ctx):
     """🧠 任务规划器 — 指令 → 技能Token序列 → 下发状态机 (慢决策, 回路外; 双击=规划演示)"""
     log = ctx.get("log")
     try:
-        import importlib.util as _ilu
         path = os.path.join(_SS_DIR, "planner.py")
-        spec = _ilu.spec_from_file_location("state_space.planner", path)
-        m = _ilu.module_from_spec(spec)
-        spec.loader.exec_module(m)
+        m = _load_mod("state_space.planner", path)          # 正常 import (断点可绑)
         p = m.TaskPlanner()
         # 🔌 2026-10-28 老倪「具体是哪个函数负责输入」: 原来只读 ctx["params"] —— 引擎里根本没有这个键
         #   (Node.step: ctx = self.pull() = {port: {value,age_s,fresh}}), 所以永远取默认「插入光模块」,
@@ -3085,11 +3122,8 @@ def node_ss_reason(ctx):
     """🔍 异常推理器 — 连续否决/阶段卡死 → 异常分类 + 恢复建议 (双击=诊断演示)"""
     log = ctx.get("log")
     try:
-        import importlib.util as _ilu
         path = os.path.join(_SS_DIR, "planner.py")
-        spec = _ilu.spec_from_file_location("state_space.planner", path)
-        m = _ilu.module_from_spec(spec)
-        spec.loader.exec_module(m)
+        m = _load_mod("state_space.planner", path)          # 正常 import (断点可绑)
         r = m.ExceptionReasoner()
         p = ctx.get("params") or {}
         kind, advice = r.diagnose(
@@ -3166,11 +3200,8 @@ def node_ss_skill(ctx):
     """🛠 技能编排器 — 新型号规格 → 新技能序列 + 力阈值/节拍 (双击=编排演示)"""
     log = ctx.get("log")
     try:
-        import importlib.util as _ilu
         path = os.path.join(_SS_DIR, "planner.py")
-        spec = _ilu.spec_from_file_location("state_space.planner", path)
-        m = _ilu.module_from_spec(spec)
-        spec.loader.exec_module(m)
+        m = _load_mod("state_space.planner", path)          # 正常 import (断点可绑)
         c = m.SkillComposer()
         spec_text = (ctx.get("params") or {}).get("spec") or _skill_spec_from_env(log)
         if log:
@@ -3581,27 +3612,18 @@ _reg("n_web_agent", ["Web 智能体桥", "远程提示词", "web agent", "web_ag
 # 🙋 2026-09-26 老倪: L5「HIL 人机在环」— 状态空间状态 ↔ 浏览器里的指示 (hermes 形式界面)
 _ARM_DIR = os.path.join(_paths.REPO_ROOT, "src", "lerobot", "arm")
 
-_EXTERNAL_LOC["n_moveit"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "plan_impl.py"),
-                             132, "def run")
+_EXTERNAL_LOC["n_moveit"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "plan_impl.py"), 220, "def run")
 # 🧭 2026-10-29 老倪定序: 「状态空间 → 运动规划 ‖ 前馈MLP → 加权 → 调制 → 安全 → 技能派发 → 执行器」
 #   这里的「运动规划」= 状态空间**测地线块规划** (与前馈并列、在加权之前), 与 n_moveit(MoveIt, 技能之后) 是两件事
-_EXTERNAL_LOC["n_geoplan"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "geo_plan_impl.py"),
-                             123, "def run")   # 2026-10-29: 加了 _quat_from_rot ⇒ def run 从 93 移到 123 (改文件后必须回读行号)     # 🧭 2026-10-28: 规划正文迁出 registry 大文件, 落点 = plan_impl.py::run
-_EXTERNAL_LOC["ss_limit"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "safety_limit_impl.py"),
-                             16, "def run")     # 2026-10-28 执行链外迁
-_EXTERNAL_LOC["ss_grav_h"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "grav_impedance_impl.py"),
-                             17, "def run")     # 2026-10-28 执行链外迁
-_EXTERNAL_LOC["n_exec"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "exec_dispatch_impl.py"),
-                             15, "def run")     # 2026-10-28 执行链外迁
-_EXTERNAL_LOC["ss_act"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "robot_actuator_impl.py"),
-                             16, "def run")     # 2026-10-28 执行链外迁
-_EXTERNAL_LOC["ss_correct"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "state_correct_impl.py"),
-                             16, "def run")     # 2026-10-28 执行链外迁
-_EXTERNAL_LOC["yolo_tactile"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "tactile_impl.py"),
-                             16, "def run")     # 2026-10-28 执行链外迁
+_EXTERNAL_LOC["n_geoplan"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "geo_plan_impl.py"), 110, "def smooth_traj")   # 2026-10-29: 加了 _quat_from_rot ⇒ def run 从 93 移到 123 (改文件后必须回读行号)     # 🧭 2026-10-28: 规划正文迁出 registry 大文件, 落点 = plan_impl.py::run
+_EXTERNAL_LOC["ss_limit"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "safety_limit_impl.py"), 124, "def run")     # 2026-10-28 执行链外迁
+_EXTERNAL_LOC["n_exec"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "exec_dispatch_impl.py"), 47, "def run")     # 2026-10-28 执行链外迁
+_EXTERNAL_LOC["ss_act"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "robot_actuator_impl.py"), 65, "def run")     # 2026-10-28 执行链外迁
+_EXTERNAL_LOC["ss_correct"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "state_correct_impl.py"), 44, "def run")     # 2026-10-28 执行链外迁
+_EXTERNAL_LOC["yolo_tactile"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "tactile_impl.py"), 29, "def run")     # 2026-10-28 执行链外迁
 # (已删) 2026-10-28 执行链外迁: n_exec 旧映射指向 l2_daemon.py:2143 但 def main 实际在 2748, 且与 exec_dispatch_impl.py 重复 —— 统一以 exec_dispatch_impl.py 为准
 
-_EXTERNAL_LOC["n_hil"] = (os.path.join(_SS_DIR, "hil_bridge.py"), 157, "build_snapshot")  # 行号按真源实测(2026-09-29)
+_EXTERNAL_LOC["n_hil"] = (os.path.join(_SS_DIR, "hil_bridge.py"), 160, "def core_idea")  # 行号按真源实测(2026-09-29)
 
 _reg("n_moveit", ["MoveIt", "运动规划", "moveit"], "🧭 运动规划 (plan) — 原子技能意图 + 安全限制 → 段表(PlanSegments); rule 确定性分段(抬升→横移→下落), 起点=真机TCP真值, 只规划不下发 (源码 nodes/plan_impl.py)", node_moveit)
 _reg("n_geoplan", ["测地线规划引导", "测地线块规划", "GeodesicGuidance", "geodesic", "块规划", "3D引导"],
@@ -3622,7 +3644,7 @@ _reg("ss_skill", ["技能序列编排", "技能编排器"], "🛠 技能编排�
 # 🎯 YOLO 目标检测 — 检测目标清单 (2026-08-20 老倪: 需求说明书 → 22 目标 6 类)
 #   数据源: flows/detection_targets.json · 导出: yolo_3d/detection_targets.py
 # ════════════════════════════════════════════════════════════════
-_EXTERNAL_LOC["ss_yolo"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 57, "class YoloStateAligner")  # 2026-09-21 行号同步: 37→57
+_EXTERNAL_LOC["ss_yolo"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 121, "def detect_3d_meta")  # 2026-09-21 行号同步: 37→57
 
 # 🧩 开放词汇分割 (SAM3): 源码视图指向**算法内核**(包里, 与 policies/yolo_3d 同级), 不是 node_ss_seg 胶水
 #    老倪 2026-09-29 纠正: 模型算法归 src/lerobot/policies/, tools/ 只留调用方(CLI/服务/叠加胶水)。
@@ -3727,11 +3749,8 @@ def _ar_aoi_publish(sig, log=None):
     真源: tools/ar_aoi_bus.py (注册表 config/topics/ar_aoi_signals.json → zmax_data/ar_live/ar_aoi_live.json)。
     """
     try:
-        import importlib.util as _ilu2
         _p = os.path.join(_REPO_ROOT, "tools", "ar_aoi_bus.py")
-        _s = _ilu2.spec_from_file_location("ar_aoi_bus", _p)
-        _m = _ilu2.module_from_spec(_s)
-        _s.loader.exec_module(_m)
+        _s = _load_mod("ar_aoi_bus", _p)
         r = _m.publish(sig, meta={"by": "状态空间节点 🔍 光学质量检测"}, quiet=True)
         if log and not r.get("ok"):
             log("⚠️ AOI 信号总线写入失败: %s" % r.get("err"))
@@ -3939,11 +3958,8 @@ def node_ss_aoi(ctx):
     🔁 2026-10-11: 「外观质量检测」→「光学质量检测」(老倪); 新增 AOI 话题发布 (信号分析页可看)"""
     log = ctx.get("log")
     try:
-        import importlib.util as _ilu
         qc_path = os.path.join(_YOLO_DIR, "quality_check.py")
-        spec = _ilu.spec_from_file_location("yolo_3d.quality_check", qc_path)
-        qc = _ilu.module_from_spec(spec)
-        spec.loader.exec_module(qc)
+        qc = _load_mod("yolo_3d.quality_check", qc_path)    # 正常 import (断点可绑)
         # 目标帧: 优先用 YOLO 节点缓存帧, 无则同源采样一帧 (与 node_ss_yolo 一致)
         img = _YOLO_CACHE.get("img")
         if img is None:
@@ -4236,12 +4252,9 @@ def node_ss_calib(ctx):
     回路外元层: 收集/展示标定参数, 不参与引擎推理, 不改变拓扑/流程/架构"""
     log = ctx.get("log")
     try:
-        import importlib.util as _ilu
         import numpy as np
         path = os.path.join(_CALIB_DIR, "calibration_layer.py")
-        spec = _ilu.spec_from_file_location("lerobot.calibration.calibration_layer", path)
-        m = _ilu.module_from_spec(spec)
-        spec.loader.exec_module(m)
+        m = _load_mod("lerobot.calibration.calibration_layer", path)   # 正常 import (断点可绑)
         layer = m.CalibrationLayer()
         # 当前运行状态: 画布播放中从 module._ss_tr 取当前步 (与 _ss_tick idx 同映射)
         mod = ctx.get("module")
@@ -4285,12 +4298,9 @@ def node_ss_lat(ctx):
     ⚠️ 维度/类别是引擎结构常数, 本节点只标定+校验, 不写引擎字面量 (改潜维=重构卡尔曼)。"""
     log = ctx.get("log")
     try:
-        import importlib.util as _ilu
         import numpy as np
         path = os.path.join(_CALIB_DIR, "calibration_layer.py")
-        spec = _ilu.spec_from_file_location("lerobot.calibration.calibration_layer", path)
-        m = _ilu.module_from_spec(spec)
-        spec.loader.exec_module(m)
+        m = _load_mod("lerobot.calibration.calibration_layer", path)   # 正常 import (断点可绑)
         layer = m.CalibrationLayer()
         mod = ctx.get("module")
         tr = getattr(mod, "_ss_tr", None) if mod is not None else None
@@ -4448,13 +4458,10 @@ def node_ss_atomic(ctx):
     决策赋值目标 / u_exec_vec=实际下发速度)。"""
     log = ctx.get("log")
     try:
-        import importlib.util as _ilu
         import numpy as np
         # 🧩 模板真源: skills/atomic_skills.py (2026-09-08 集中到 src/lerobot)
         _p = os.path.join(_SS_DIR, "skills", "atomic_skills.py")
-        _spec = _ilu.spec_from_file_location("ss_atomic_skills", _p)
-        _m = _ilu.module_from_spec(_spec)
-        _spec.loader.exec_module(_m)
+        _m = _load_mod("ss_atomic_skills", _p)              # 正常 import (断点可绑)
         name = ctx.get("name", "")
         p = ctx.get("params", {}) or {}
         sk = p.get("skill") or {}
@@ -4557,12 +4564,9 @@ def node_ss_mani(ctx):
     断点可进; 不参与推理, 不新增安全通道 (唯一三层安全=否决+限幅+Sys0)"""
     log = ctx.get("log")
     try:
-        import importlib.util as _ilu
         import numpy as np
         path = os.path.join(_MANIFOLD_DIR, "manifold_layer.py")
-        spec = _ilu.spec_from_file_location("lerobot.manifold.manifold_layer", path)
-        m = _ilu.module_from_spec(spec)
-        spec.loader.exec_module(m)
+        m = _load_mod("lerobot.manifold.manifold_layer", path)          # 正常 import (断点可绑)
         name = ctx.get("name", "")
         # 当前帧真源: GUI 播放态 module._ss_tr → 无 GUI 时 ss_traj_last.json (L4 统一帧, 见 _ss_frame)
         fr = _ss_frame(ctx)
@@ -5068,10 +5072,10 @@ _reg("ss_cap", ["能力档位", "L4自主", "档位"], "🧭 能力档位 (数�
     node_ss_cap)
 
 _EXTERNAL_LOC["action_head"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                             "flow_matching_impl.py"), 62, "def run")  # 2026-10-29: L3 真执行迁到 flow_matching_impl.py (动作来自 chunk_latest 真数据; DiT 前向只作结构自检)
+                                             "flow_matching_impl.py"), 238, "def run")  # 2026-10-29: L3 真执行迁到 flow_matching_impl.py (动作来自 chunk_latest 真数据; DiT 前向只作结构自检)
 
 _EXTERNAL_LOC["ss_vlm"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "smolvla_lew",
-                                         "vlm_encoder.py"), 39, "class SmolVLMEncoder")  # 🐛 2026-09-08: 真实 VLM 编码器 (键对齐注册 ss_vlm; 架构归位 src)
+                                         "vlm_encoder.py"), 45, "def get_encoder")  # 🐛 2026-09-08: 真实 VLM 编码器 (键对齐注册 ss_vlm; 架构归位 src)
 
 _EXTERNAL_LOC["ss_pred"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "manifold",
                                          "predictor_layer.py"), 112, "class WorldModelPredictor")  # 🐛 2026-09-08: L4 JEPA 预测器链路 (架构归位 src); 2026-09-21 行号同步: 78→112
@@ -5085,9 +5089,9 @@ _EXTERNAL_LOC["ss_dec"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies"
 #   映射必须跟着走: 编排 = policies/intact/service.py, 真算法 = policies/intact/runtime/*.py)
 _INTACT_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "intact")
 
-_EXTERNAL_LOC["intact"] = (os.path.join(_INTACT_DIR, "service.py"), 235, "def run_once(")   # 🎯 策略节点: 编排入口 (建桥+接数据源+真推理+解码+证据) (2026-09-21 行号同步: 200→235)
+_EXTERNAL_LOC["intact"] = (os.path.join(_INTACT_DIR, "service.py"), 310, "def run_once")   # 🎯 策略节点: 编排入口 (建桥+接数据源+真推理+解码+证据) (2026-09-21 行号同步: 200→235)
 
-_EXTERNAL_LOC["intact_dec"] = (os.path.join(_INTACT_DIR, "service.py"), 235, "def run_once(")   # 🎯 意图解码器节点 (2026-09-21 行号同步: 200→235)
+_EXTERNAL_LOC["intact_dec"] = (os.path.join(_INTACT_DIR, "service.py"), 310, "def run_once")   # 🎯 意图解码器节点 (2026-09-21 行号同步: 200→235)
 
 _EXTERNAL_LOC["intact_decoder"] = (os.path.join(_INTACT_DIR, "decoder.py"), 78, "class IntactIntentDecoder")  # 2026-09-21 行号同步: 66→78
 
@@ -5098,11 +5102,11 @@ _EXTERNAL_LOC["intact_bridge"] = (os.path.join(_INTACT_DIR, "runtime", "model_ad
 # 🌍 光模块插拔链 (L4 SW): 真实现 = 跨 venv 桥脚本 (GUI 侧 node_sw_* 只是调度)
 _SW_BRIDGE = os.path.join(_REPO_ROOT, "tools", "intact_sw_optical_bridge.py")
 
-_EXTERNAL_LOC["sw_intact"] = (_SW_BRIDGE, 168, "def main(")  # 2026-09-21: 原 (…,1,"def ") 占位 → 指向真编排入口
+_EXTERNAL_LOC["sw_intact"] = (_SW_BRIDGE, 249, "def main")  # 2026-09-21: 原 (…,1,"def ") 占位 → 指向真编排入口
 
-_EXTERNAL_LOC["sw_world"] = (_SW_BRIDGE, 109, "def install_model_drive(")  # 2026-09-21: 原占位 → 真世界模型驱动
+_EXTERNAL_LOC["sw_world"] = (_SW_BRIDGE, 163, "def install_model_drive")  # 2026-09-21: 原占位 → 真世界模型驱动
 
-_EXTERNAL_LOC["sw_ds"] = (_SW_BRIDGE, 101, "def load_stats(")  # 2026-09-21: 原占位 → 真数据源(归一化统计)
+_EXTERNAL_LOC["sw_ds"] = (_SW_BRIDGE, 105, "def load_stats")  # 2026-09-21: 原占位 → 真数据源(归一化统计)
 
 _EXTERNAL_LOC["sw_video"] = (_SW_BRIDGE, 81, "def _mk_writer(")  # 2026-09-21: 原占位 → 真视频写出
 
@@ -5112,11 +5116,8 @@ _VERIF_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "verification")
 
 def _verif_mod():
     """懒加载验证层真源模块 (importlib 直载, 同标定/流形策略)"""
-    import importlib.util as _ilu
     path = os.path.join(_VERIF_DIR, "verification_layer.py")
-    spec = _ilu.spec_from_file_location("lerobot.verification.verification_layer", path)
-    m = _ilu.module_from_spec(spec)
-    spec.loader.exec_module(m)
+    m = _load_mod("lerobot.verification.verification_layer", path)   # 正常 import (断点可绑)
     return m
 
 def node_ss_feature(ctx):
@@ -5166,7 +5167,7 @@ _reg("ss_test", ["Test"],
     "🧪 Test 用例执行 — 验证层自动化 test 套件全跑 (F-A01~F-F04, PASS/FAIL+数值证据; 源码 verification_layer.py t_F_* 断言, 断点可进)",
     node_ss_test)
 
-_EXTERNAL_LOC["ss_feature"] = (os.path.join(_VERIF_DIR, "verification_layer.py"), 47, "FEATURES = [")
+_EXTERNAL_LOC["ss_feature"] = (os.path.join(_VERIF_DIR, "verification_layer.py"), 169, "def engine")
 
 _EXTERNAL_LOC["ss_test"] = (os.path.join(_VERIF_DIR, "verification_layer.py"), 123, "class VerificationLayer")  # 行号按真源实测(2026-09-29)
 
@@ -5183,21 +5184,17 @@ _reg("ssc", ["通用算子 C", "参数校验"],
      "🅾️ 通用算子 C · 参数校验 (VALIDATE) — 🛡 安全限值闸 (力/速度/位姿), 越界拒绝回退 (源码 node_logic.py node_ss_abc)",
      node_ss_abc)
 
-_EXTERNAL_LOC["ssa"] = (os.path.abspath(__file__), 3533, "def node_ss_abc(ctx):")  # 行号按真源实测
+_EXTERNAL_LOC["ssa"] = (os.path.abspath(__file__), 3546, "def node_ss_llm_in")  # 行号按真源实测
 
-_EXTERNAL_LOC["ssb"] = (os.path.abspath(__file__), 3533, "def node_ss_abc(ctx):")  # 行号按真源实测
+_EXTERNAL_LOC["ssb"] = (os.path.abspath(__file__), 3546, "def node_ss_llm_in")  # 行号按真源实测
 
-_EXTERNAL_LOC["ssc"] = (os.path.abspath(__file__), 3533, "def node_ss_abc(ctx):")  # 行号按真源实测
+_EXTERNAL_LOC["ssc"] = (os.path.abspath(__file__), 3546, "def node_ss_llm_in")  # 行号按真源实测
 
 # ═══ 📡/📈/🖥 旁路真机感知 (2026-09-16 老倪: 旁路接控制台可视化 + 真机信号节点) ═══
 def _bypass_src_module():
     """加载框架层真机感知数据源 (src/lerobot/datasets/bypass_sensor_source.py)"""
-    import importlib.util as _iu
     path = os.path.join(_REPO_ROOT, "src", "lerobot", "datasets", "bypass_sensor_source.py")
-    spec = _iu.spec_from_file_location("bypass_sensor_source", path)
-    m = _iu.module_from_spec(spec)
-    spec.loader.exec_module(m)
-    return m
+    return _load_mod("bypass_sensor_source", path)   # 正常 import 优先 (断点可绑), spec 兜底
 
 def node_ss_bypass_sensor(ctx):
     """📡 旁路真机传感器 (数据源层) — 读真机感知流: 4060 远程只读订阅 Orin 生产话题落盘的
@@ -5311,9 +5308,9 @@ _reg("ss_z700_signals", ["Z700 真机信号", "真机信号"],
 _EXTERNAL_LOC["ss_bypass_sensor"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "datasets",
                                                   "bypass_sensor_source.py"), 62, "def read_latest")
 
-_EXTERNAL_LOC["ss_bypass_viz"] = (os.path.join(_paths.GUI_DIR, "ss_bypass_view.py"), 383, "class SSBypassView")  # 2026-10-09 行号同步: 220→383 (加「上网通道」区块)
+_EXTERNAL_LOC["ss_bypass_viz"] = (os.path.join(_paths.GUI_DIR, "ss_bypass_view.py"), 459, "def load_station_cfg")  # 2026-10-09 行号同步: 220→383 (加「上网通道」区块)
 
-_EXTERNAL_LOC["ss_z700_signals"] = (os.path.join(_paths.GUI_DIR, "ss_bypass_view.py"), 779, "class Z700SignalsView")  # 2026-10-09 行号同步: 489→779
+_EXTERNAL_LOC["ss_z700_signals"] = (os.path.join(_paths.GUI_DIR, "ss_bypass_view.py"), 144, "def layout")  # 2026-10-09 行号同步: 489→779
 
 # 🐍 2026-09-10 打包环境 python 解析 (mac app 反复重启根治: sys.executable=app二进制)
 def _resolve_python():
@@ -5565,7 +5562,7 @@ _reg("ss_lora_l3", ["L3 LoRA 微调", "L3 LoRA", "SmolVLA LoRA"],
 
 _EXTERNAL_LOC["ss_moe"] = (os.path.join(_REPO_ROOT, "tools", "stage_moe_backbone.py"), 50, "class StageMoE")
 
-_EXTERNAL_LOC["ss_lora_l4"] = (os.path.join(_REPO_ROOT, "tools", "lora_inject.py"), 105, "def inject_lora")
+_EXTERNAL_LOC["ss_lora_l4"] = (os.path.join(_REPO_ROOT, "tools", "lora_inject.py"), 117, "def inject_lora")
 
 _EXTERNAL_LOC["ss_lora_l3"] = (os.path.join(_REPO_ROOT, "tools", "lora_inject.py"), 41, "class LoRALinear")
 
@@ -5581,12 +5578,9 @@ def node_n_board_frame(ctx):
     帧源 = ~/zmax/zmax_data/ss_live/cam_rs.png (产线相机直落)。无帧/帧缺 → 如实报, **不造数**。"""
     log = ctx.get("log") or (lambda *a: None)
     try:
-        import importlib.util as _ilu
         import time as _t
         p = os.path.join(_REPO_ROOT, "tools", "board_frame_module.py")
-        spec = _ilu.spec_from_file_location("zmax_board_frame_module", p)
-        m = _ilu.module_from_spec(spec)
-        spec.loader.exec_module(m)
+        m = _load_mod("zmax_board_frame_module", p)          # 正常 import (断点可绑)
         img = str((ctx.get("params") or {}).get("img")
                   or os.path.expanduser("~/zmax/zmax_data/ss_live/cam_rs.png"))
         if not os.path.isfile(img):
@@ -5637,11 +5631,8 @@ def node_n_l2_muscle(ctx):
             log(f"   ⚙ 参数: {_json.dumps(d['params'], ensure_ascii=False)[:160]}")
         # ROS2 桥: **只读**查询 (有界超时, 避免卡 GUI); Orin 不在线则如实报
         try:
-            import importlib.util as _ilu
             bp = os.path.join(_REPO_ROOT, "tools", "l2_ros2_bridge.py")
-            spec = _ilu.spec_from_file_location("zmax_l2_ros2_bridge", bp)
-            bm = _ilu.module_from_spec(spec)
-            spec.loader.exec_module(bm)
+            bm = _load_mod("zmax_l2_ros2_bridge", bp)        # 正常 import (断点可绑)
             o = bm.sh("timeout 6 ros2 topic echo --once /robot_status 2>/dev/null | head -2", 10)
             ok = bool(str(o).strip())
             log(f"   🔌 ROS2 桥 (只读): {'在线 · ' + str(o).strip()[:120] if ok else '无响应 (Orin 未连/未起)'}"
@@ -5835,6 +5826,9 @@ def _cut_big(n, head=18, tail=6):
     return s if len(s) <= head + tail + 3 else "%s…%s(%d 位)" % (s[:head], s[-tail:], len(s))
 
 
+_MANI_ENG_CACHE: dict = {}       # {out: 上次结果, t: 时间} —— 节流回放用 (见 node_ss_mani_eng)
+
+
 def node_ss_mani_eng(ctx):
     """🧮 流形引擎 — 高维状态 → 低维流形 (编码/投影/度量/导航/反馈 五阶段真跑)。
 
@@ -5849,6 +5843,17 @@ def node_ss_mani_eng(ctx):
       sample_rate; 另带 ok = 本节点真跑成功与否 (与改造前的 True/False 同义)。
     """
     log = ctx.get("log")
+    # 🕒 2026-10-31 老倪「怎么超节拍了」: 本节点每拍 ~22-38ms (质数结构理解里 json.dump 大对象),
+    #   再撞上 ssyolo 真推理那一拍 (40-60ms) ⇒ 合计 107ms > 100ms 预算 (10Hz 每 5 拍超一次)。
+    #   本节点输出是标量/指纹级, 没必要 10Hz 重算 ⇒ 按 ZMAX_MANI_PERIOD_S (默认 0.25s) 节流,
+    #   其余拍回放上次结果 (带 cached_ago_s), 下游每拍照样有值。
+    _now_t = time.monotonic()
+    _per_t = float(os.environ.get("ZMAX_MANI_PERIOD_S", "0.25"))
+    _c_t = _MANI_ENG_CACHE
+    if _c_t.get("out") is not None and (_now_t - float(_c_t.get("t") or 0.0)) < _per_t:
+       _o_t = dict(_c_t["out"])
+       _o_t["cached_ago_s"] = round(_now_t - float(_c_t["t"]), 3)
+       return _NodeOut(_o_t)
 
     def _ret(ok):
         """返回**结果字典** (含 ok=本节点真跑成功与否, 与改造前的 True/False 同义)。
@@ -5870,6 +5875,8 @@ def node_ss_mani_eng(ctx):
                         _d[_k] = _mani_geo[_k]
         except NameError:                                                    # noqa: BLE001
             _d["mani_geo"] = None
+        _MANI_ENG_CACHE["out"] = dict(_d)          # 供下一拍节流回放
+        _MANI_ENG_CACHE["t"] = time.monotonic()
         return _NodeOut(_d)
 
     # ⓪ 🆕 2026-10-12 老倪: 「主参数 M 的功能, 要由**流形引擎节点**实现, 通过一个结构, 承接要实现的功能」。
@@ -6056,8 +6063,7 @@ _reg("ss_mani_eng", ["流形引擎", "Manifold Engine"],
      "src/lerobot/manifold/prime_structure.py)",
      node_ss_mani_eng)
 
-_EXTERNAL_LOC["ss_mani_eng"] = (os.path.join(_MANIFOLD_DIR, "manifold_engine.py"),
-                                457, "class ManifoldEngine")
+_EXTERNAL_LOC["ss_mani_eng"] = (os.path.join(_MANIFOLD_DIR, "manifold_engine.py"), 466, "def parallel_transport")
 # ⚖ 内稳态层源码 (2026-10-10): 节点日志里的"生命力/紧迫度/自我模型"真源
 _EXTERNAL_LOC["ss_mani_eng_hom"] = (os.path.join(_MANIFOLD_DIR, "homeostasis.py"),
                                     306, "class HomeostasisEngine")
@@ -6076,17 +6082,12 @@ def node_ss_energy(ctx):
     log = ctx.get("log")
     try:
         import glob
-        import importlib.util as _ilu
         import json as _json
         import numpy as _np
         path = os.path.join(_MANIFOLD_DIR, "energy_manifold.py")
-        spec = _ilu.spec_from_file_location("lerobot.manifold.energy_manifold", path)
-        m = _ilu.module_from_spec(spec)
-        # ⚠️ 必须先登记 sys.modules 再 exec_module: dataclasses 处理 @dataclass 时内部要
+        m = _load_mod("lerobot.manifold.energy_manifold", path)         # 正常 import (断点可绑)
         #     sys.modules.get(cls.__module__).__dict__ —— 没登记就 AttributeError:
         #     'NoneType' object has no attribute '__dict__' (2026-10-07 实测踩过)。
-        sys.modules[spec.name] = m
-        spec.loader.exec_module(m)
 
         # ① 训练/迭代口径: 读最新一轮的能量 tap (真跑出来的)
         tap_dir = os.path.join(_REPO_ROOT, "zmax_data", "ss_live")
@@ -6279,9 +6280,7 @@ def node_ss_calib_mani(ctx):
         # ① 读 M (标定层单一真源: config/calib/zmax_manifold.json → tools/zmax_params.py)
         M, inertia, rng, unit, src, zm = None, None, None, None, None, None
         try:
-            _s = _ilu.spec_from_file_location("zmax_params", os.path.join(_REPO_ROOT, "tools", "zmax_params.py"))
-            zm = _ilu.module_from_spec(_s)
-            _s.loader.exec_module(zm)
+            _s = _load_mod("zmax_params", os.path.join(_REPO_ROOT, "tools", "zmax_params.py"))
             M, inertia = zm.manifold_M(), zm.manifold_inertia()
             sp = zm.manifold_spec()
             rng, unit, src = sp.get("range"), sp.get("unit"), sp.get("_src")
@@ -6478,8 +6477,7 @@ _reg("n_calib_mani", ["标定诊断测量", "主参数 M", "流形引擎标定",
      "配置同步: python3 tools/ss_node_sync.py [--check]",
      node_ss_calib_mani)
 
-_EXTERNAL_LOC["n_calib_mani"] = (os.path.join(_MANIFOLD_DIR, "manifold_engine.py"),
-                                 101, "MANIFOLD_M_DEFAULT")
+_EXTERNAL_LOC["n_calib_mani"] = (os.path.join(_MANIFOLD_DIR, "manifold_engine.py"), 483, "def step")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 🎥 真实场景叠加 · 双眼 (sim2real) — 画布节点内实时出画面 (2026-09-27 老倪)
@@ -6570,8 +6568,7 @@ _reg("ss_grav_h", ["万有引力", "SE3 几何阻抗", "H=K+U", "哈密顿"],
      "StateSpaceHamiltonian · 判据 tools/verify_hamiltonian_energy.py",
      node_ss_grav_h)
 
-_EXTERNAL_LOC["ss_grav_h"] = (os.path.join(_MANIFOLD_DIR, "state_space_energy.py"),
-                              92, "class StateSpaceHamiltonian")
+_EXTERNAL_LOC["ss_grav_h"] = (os.path.join(_MANIFOLD_DIR, "state_space_energy.py"), 273, "def live_energy")
 
 # ── 🏭 UPH 节拍循环器 (节点 ssuph) ────────────────────────────────
 # 真实现住 ../nodes/uph_tact_impl.py, 这里只做注册绑定 (画布每次保存会重生成 n_uph.py 外壳, 算法不能被写进外壳)

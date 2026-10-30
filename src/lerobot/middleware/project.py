@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 
 
@@ -47,6 +48,20 @@ class Project:
                                "in": {}, "out": {}, "sent": {}})
         self.n_steps += 1
         self.last_traces = traces
+        # 🔎 2026-10-31 老倪「Call Stack 按画布顺序」: 调用栈只能反映真实调用 (本类是 for 循环逐个调,
+        #   所以栈里一次只有一个节点)。这里把**本拍真实执行顺序**落盘, 调试时和 Call Stack 对照:
+        #   帧名 = compute_<节点文件> → 看栈顶那一帧, 就知道在画布顺序的第几步。
+        #   ZMAX_SS_CHAIN=1 才写 (默认不写盘)。
+        if os.environ.get("ZMAX_SS_CHAIN") == "1":
+            try:
+                with open("/tmp/ss_chain.txt", "w", encoding="utf-8") as _f:
+                    _f.write("tick=%d  %s\n" % (self.n_steps, time.strftime("%H:%M:%S")))
+                    for _i, _t in enumerate(traces, 1):
+                        _f.write("%2d  %-10s %-22s %7.2fms  %s\n"
+                                 % (_i, _t.get("id"), _t.get("name"), _t.get("ms") or 0.0,
+                                    _t.get("status")))
+            except Exception:                                              # noqa: BLE001
+                pass
         return traces
 
     def run(self, n=1, dt=0.0):

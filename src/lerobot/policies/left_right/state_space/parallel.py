@@ -38,6 +38,11 @@ def load_npz_weights(npz_path):
     """加载蒸馏 MLP 权重 npz → (W[4], b[4], sm, ss, am, astd); 结果模块级缓存"""
     if npz_path not in _NPZ_CACHE:
         d = np.load(npz_path)
+        try:                                 # 📋 模型台账
+            from lerobot.engineering.model_log import note as _note
+            _note("L3", "前馈加速器 MLP", npz_path, True, detail="4 层 MLP 蒸馏权重")
+        except Exception:                                                # noqa: BLE001
+            pass
         _NPZ_CACHE[npz_path] = ([d[f"W{i}"] for i in range(4)], [d[f"b{i}"] for i in range(4)],
                                 d["sm"], d["ss"], d["am"], d["astd"])
     return _NPZ_CACHE[npz_path]

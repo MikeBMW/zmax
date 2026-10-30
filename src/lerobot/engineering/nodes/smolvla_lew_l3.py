@@ -57,7 +57,7 @@ _CAM_ORDER = ("local", "arm", "gold", "surface")     # 优先本机在线那路;
 
 # 类级缓存 (进程内只加载一次) / 熔断标记
 _CACHE = {"pol": None, "pre": None, "post": None, "dev": None, "ck": None, "task": None,
-          "load_ms": None, "failed": None, "n_infer": 0, "t_prev_curr": None}
+          "load_ms": None, "failed": None, "failed_t": 0.0, "n_infer": 0, "t_prev_curr": None}
 
 
 # ─────────────────────────────────────────────────────────── 观测构造
@@ -159,7 +159,11 @@ def fetch_ar_frame(prefer=("local",), timeout=3.0):
 # ─────────────────────────────────────────────────────────── 模型加载 (口径照 _l3_forward)
 def _load_policy(root, log=None, dev=None):
     """懒加载 + 类级缓存 + 熔断。返回 (pol, pre, post, dev, meta)。失败返回 (None,...,meta)。"""
-    if _CACHE["failed"] is not None and os.environ.get("SS_L3_FORCE_RETRY") != "1":
+    # 🐛 2026-10-31 老倪「还是循环」(u 一直是 0): 原来是**永久熔断** —— 只要第一次加载赶上
+    #   CUDA OOM (机器上同时跑了两个画布循环 + sam3, 8G 显存占满), 之后每拍都判"已熔断",
+    #   策略永远不加载、u 恒为 0, 看着就像循环空转。改成冷却重试: 隔 SS_L3_RETRY_S 秒 (默认 60) 再试。
+    if _CACHE["failed"] is not None and os.environ.get("SS_L3_FORCE_RETRY") != "1" \
+            and (time.time() - float(_CACHE.get("failed_t") or 0)) < float(os.environ.get("SS_L3_RETRY_S", "60")):
         return None, None, None, None, {"err": "已熔断: %s" % _CACHE["failed"],
                                         "hint": "SS_L3_FORCE_RETRY=1 重试或重启进程"}
     if _CACHE["pol"] is not None:
@@ -199,6 +203,13 @@ def _load_policy(root, log=None, dev=None):
         task = os.environ.get("SS_L3_TASK", task or _TASK_DEFAULT)
         _CACHE.update({"pol": pol, "pre": pre, "post": post, "dev": _dev, "ck": ck,
                        "task": task, "load_ms": round((time.monotonic() - t0) * 1000, 1)})
+        try:                                 # 📋 模型台账: 终端一行说清 L3 到底加载了没
+            from lerobot.engineering.model_log import note as _note
+            _n_par = sum(p.numel() for p in pol.parameters()) / 1e6
+            _note("L3", "SmolVLA+LEW 策略", ck, True, elapsed=time.monotonic() - t0,
+                  detail="参数量 %.0fM · 设备 %s · 指令 %r" % (_n_par, _dev, task[:28]))
+        except Exception:                                                # noqa: BLE001
+            pass
         if log:
             try:
                 rel = os.path.relpath(ck, root)
@@ -210,6 +221,13 @@ def _load_policy(root, log=None, dev=None):
                                       "task": task, "dev": _dev}
     except Exception as e:                                                   # noqa: BLE001
         _CACHE["failed"] = "%s: %s" % (type(e).__name__, e)
+        _CACHE["failed_t"] = time.time()          # 冷却计时起点 (见 _load_policy 开头)
+        try:                                 # 📋 台账也要如实记"没加载"
+            from lerobot.engineering.model_log import note as _note
+            _note("L3", "SmolVLA+LEW 策略", ck if "ck" in dir() else "", False,
+                  detail="加载失败 → %s" % _CACHE["failed"][:60])
+        except Exception:                                                # noqa: BLE001
+            pass
         if log:
             log("⚠️ L3 SmolVLA 加载失败 (已熔断, 后续拍不再重试): %s" % _CACHE["failed"])
         return None, None, None, None, {"err": _CACHE["failed"]}
@@ -225,7 +243,9 @@ def infer(img, obs39, root, log=None):
         import torch
         from PIL import Image
         sz = int(os.environ.get("SS_L3_IMGSZ", str(_IMGSZ_DEFAULT)))
-        im = np.asarray(Image.fromarray(np.asarray(img)).resize((sz, sz), Image.LANCZOS))
+        # 🐛 2026-10-31: np.asarray(PIL) 拿到的缓冲是**只读**的 ⇒ torch.from_numpy 报
+        #   "non-writable tensor ... undefined behavior" 刷屏。np.array(copy=True) 显式复制成可写。
+        im = np.array(Image.fromarray(np.asarray(img)).resize((sz, sz), Image.LANCZOS), dtype=np.uint8, copy=True)
         it = torch.from_numpy(im).permute(2, 0, 1).float().unsqueeze(0) / 255.0
         st = torch.from_numpy(np.asarray(obs39, dtype=np.float32)).unsqueeze(0)
         batch = {"observation.image": it.to(dev), "observation.state": st.to(dev),

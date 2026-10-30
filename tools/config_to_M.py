@@ -494,6 +494,18 @@ def write_into_node(spec: dict, root: str | None = None, dry: bool = False) -> d
     if dry:
         return {"ok": True, "dry": True, "node": node.get("id"), "would_write": changed}
     params.update(want)
+    # 🔴 2026-10-31 老倪「怎么加载的这么慢 / 一直加载」的真因就在下面两行:
+    #   原来每调一次都刷新 m_loaded_at → 整份画布 flows.save_canvas() 重写 + 归档一份备份。
+    #   本节点在画布循环里**每拍**执行 ⇒ 画布文件每 ~6s 被改写一次 ⇒ mtime 变 ⇒ 所有消费者
+    #   (控制台画布、tools/ss_canvas_loop、调试会话) 每 6s 重新 load_project + 重挂 8 项配置,
+    #   节拍从 10Hz 掉到 0.2Hz, _archive 目录几小时堆几千个快照。
+    #   修法: 值(m_* 实际内容)没变就不写盘、不归档, 只把审计哈希作为幂等判据。
+    _ts = "m_loaded_at"
+    if not [k for k in changed if k != _ts] and params.get("m_audit_sha") == spec["audit_sha"]:
+        _cv = getattr(flows, "CANVAS", "") or ""
+        return {"ok": True, "node": node.get("id"), "written": [], "backup": "",
+                "skipped": "值未变 → 不写画布(免每拍重载)", "loaded_at": params.get(_ts, ""),
+                "canvas": os.path.relpath(_cv, ROOT) if _cv else ""}
     p, bak = flows.save_canvas(d, reason="config_to_M")
     d2, probs2 = flows.load_canvas()
     n2 = _find_node(d2)

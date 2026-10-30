@@ -63,7 +63,14 @@ class YoloStateAligner:
         #   用 sim 源包住 env → 既有仿真调用 (node_logic / state_space_sim_real / tools)
         #   行为逐位不变 (零回退)。
         self.source = source if source is not None else SimFrameSource(env)
+        _t0 = __import__("time").time()
         self.model = YOLO(weights)
+        try:                                 # 📋 模型台账 (终端可见: 权重在哪、在不在、多大、耗时)
+            from lerobot.engineering.model_log import note as _note
+            _note("L2", "YOLO 目标检测", weights, True, elapsed=__import__("time").time() - _t0,
+                  detail="ultralytics 权重 · 类别 %d" % len(getattr(self.model, "names", {}) or {}))
+        except Exception:                                                # noqa: BLE001
+            pass
         # 🏷️ 2026-09-04 老倪: YOLO 检测类别名业务化 — peg(插销, 训练类名遗留) → 光模块。
         #   覆写底层 model.names (顶层 .names 赋值不生效, 实测) 后, 检测结果 res.names/cls、
         #   det3d 键、GUI 画框标签 (state_space_sim_real _vis["boxes"]) 全走业务名。

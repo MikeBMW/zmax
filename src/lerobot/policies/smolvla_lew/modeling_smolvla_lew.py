@@ -459,8 +459,11 @@ class SmolVLALewPolicy(PreTrainedPolicy):
         actions_tensor = batch.get(ACTION)
         # 🚨 2026-10-01: 训练时必须真带 action, 否则下游静默把动作损失记 0(见 forward 的同名闸)
         if actions_tensor is None:
-            print(f"[l3-debug] ⚠️ 批里没有动作字段 '{ACTION}' | training={getattr(self, 'training', None)}"
-                  f" | 本批字段: {sorted(batch.keys())[:14]}", flush=True)
+            # 🔴 2026-10-31 老倪「没完没了了」: 这行原来无条件打, 推理(training=False)时每拍一条 ⇒ 刷屏。
+            #   推理本来就不带 action (action 只是训练监督), 不是异常 ⇒ 默认静音, 需要时 SS_L3_DEBUG=1。
+            if getattr(self, "training", False) or os.environ.get("SS_L3_DEBUG", "0") == "1":
+                print(f"[l3-debug] ⚠️ 批里没有动作字段 '{ACTION}' | training={getattr(self, 'training', None)}"
+                      f" | 本批字段: {sorted(batch.keys())[:14]}", flush=True)
             if getattr(self, "training", False):
                 raise RuntimeError(
                     f"训练批里没有动作字段 '{ACTION}' ⇒ 会让动作头静默不训练。本批实际字段: {sorted(batch.keys())}")

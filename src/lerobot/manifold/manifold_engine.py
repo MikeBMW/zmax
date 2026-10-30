@@ -231,6 +231,12 @@ class Encoder:
         if not os.path.isfile(path):
             return False
         d = np.load(path)
+        try:                                 # 📋 模型台账
+            from lerobot.engineering.model_log import note as _note
+            _note("L4", "流形引擎 (mu/W)", path, True,
+                  detail="latent=%s · n_fit=%s" % (d["latent_dim"], d["n_fit"]))
+        except Exception:                                                # noqa: BLE001
+            pass
         self.mu, self.W = d["mu"], d["W"]
         self.latent_dim, self.n_fit = int(d["latent_dim"]), int(d["n_fit"])
         return True

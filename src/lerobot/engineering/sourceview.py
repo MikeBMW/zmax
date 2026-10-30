@@ -14,6 +14,44 @@ from . import paths as _paths
 from .registry import NODE_LOGIC, NODE_ORDER, _SOURCE_CACHE, logic_globals as _logic_globals, home_file as _home_file
 
 
+_FUNC_CACHE: dict = {}
+
+
+def _func_spans(path: str):
+    """[(函数名, 起始行, 结束行, [return 行])] — 按文件 mtime 缓存。"""
+    import ast
+    try:
+        mt = os.path.getmtime(path)
+    except OSError:
+        return []
+    hit = _FUNC_CACHE.get(path)
+    if hit and hit[0] == mt:
+        return hit[1]
+    spans = []
+    try:
+        tree = ast.parse(open(path, encoding="utf-8", errors="ignore").read())
+        for n in ast.walk(tree):
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                spans.append((n.name, n.lineno, getattr(n, "end_lineno", n.lineno),
+                              sorted({r.lineno for r in ast.walk(n) if isinstance(r, ast.Return)})))
+    except Exception:                                                        # noqa: BLE001
+        spans = []
+    _FUNC_CACHE[path] = (mt, spans)
+    return spans
+
+
+def _line_in_func(path: str, line: int) -> bool:
+    return any(a <= line <= b for _n, a, b, _r in _func_spans(path))
+
+
+def _first_return_after(path: str, def_line: int) -> int:
+    """def 所在函数的第一条 return 行; 没有就回 def 行。"""
+    for _n, a, b, rets in _func_spans(path):
+        if a == def_line and rets:
+            return rets[0]
+    return def_line
+
+
 def _ext_loc():
     """外部源码位置映射 (真源在 nodes/library.py 的 _EXTERNAL_LOC)"""
     return _logic_globals().get("_EXTERNAL_LOC", {}) or {}
@@ -46,20 +84,23 @@ def get_node_location(key):
     # 📂 外部源码映射优先 (left_right 等真实实现不在 node_logic.py, 2026-08-10)
     ext = _ext_loc().get(key)
     if ext:
-        line = ext[1]
-        # 🐛 2026-09-04 静静: 手写行号随源码改动漂移 (parallel.py 重写后 class
-        #   FeedforwardAccelerator 21→71, 右键跳到 import 区=看起来"没跳") →
-        #   有符号名时按文件现搜, 动态定位一劳永逸; 搜不到回退手写行号。
-        if len(ext) > 2 and ext[2]:
-            try:
-                _sym = ext[2]
-                with open(ext[0], encoding="utf-8", errors="ignore") as _f:
-                    for _i, _ln in enumerate(_f, 1):
-                        if _ln.lstrip().startswith(_sym):
-                            line = _i
-                            break
-            except Exception:
-                pass
+        line = int(ext[1] or 0)
+        # 🔴 2026-10-31 老倪「右键要定位到实际上这个节点 return 处」:
+        #   旧逻辑按符号串搜**第一处** def/class → 永远落在函数头上 (class 行只在 import 时执行一次,
+        #   断点永不中), 而且会盖掉 _EXTERNAL_LOC 里已经校准好的行号。
+        #   现在: ① 映射行号本身落在函数体内 ⇒ 就用它 (fix_node_source_loc 已把它校准到 return 行);
+        #         ② 不在函数体内 (老数据/常量行) ⇒ 才按符号找定义, 并取该定义内第一条 return。
+        if not _line_in_func(ext[0], line):
+            _sym = ext[2] if len(ext) > 2 else None
+            if _sym:
+                try:
+                    with open(ext[0], encoding="utf-8", errors="ignore") as _f:
+                        for _i, _ln in enumerate(_f, 1):
+                            if _ln.lstrip().startswith(_sym):
+                                line = _first_return_after(ext[0], _i)
+                                break
+                except Exception:
+                    pass
         return ext[0], line, False
     fn = info["fn"]
     modified = key in _SOURCE_CACHE

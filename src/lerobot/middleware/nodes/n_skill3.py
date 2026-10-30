@@ -55,7 +55,7 @@ def _passthrough(ctx):
     return outs
 
 
-def compute(ctx):
+def compute_n_skill3(ctx):
     """一个周期: ctx 来自总线 → 返回要发回总线的输出。
 
     PURE=False 时只做直通 (数据面), 不调用真实现 —— 避免未验证/未授权的节点被自动执行。
@@ -99,3 +99,8 @@ def compute(ctx):
     except Exception as e:                                          # noqa: BLE001
         LAST_STATUS = "实现异常(%s: %s) → 直通" % (type(e).__name__, e)
         return _passthrough(ctx)
+
+
+# 🔎 2026-10-31 老倪「Call Stack 要能看出是哪个画布节点」: 真名是 compute_n_skill3 (帧名可见),
+#   中间件接口名仍叫 compute (Node.compute 找 module.compute, 别名保持兼容)。
+compute = compute_n_skill3

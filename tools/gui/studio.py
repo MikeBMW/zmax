@@ -51,9 +51,15 @@ try:
                 "MALLOC_ARENA_MAX": "2", "MKL_NUM_THREADS": "1", "NUMEXPR_NUM_THREADS": "1",
                 "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "PYTHONUNBUFFERED": "1",
                 "TORCH_NUM_THREADS": "1", "VECLIB_MAXIMUM_THREADS": "1",
-                "ZMAX_DEBUG_MODE": "1", "ZMAX_SINGLE_THREAD": "1",
+                "ZMAX_SINGLE_THREAD": "1",
             }
         for _k, _v in _ST_ENV.items():
+            # 🐢 2026-10-31 老倪「打开控制台这么慢」: 这里原来把 ZMAX_DEBUG_MODE=1 也一起钉上,
+            #   于是**每次双击/服务启动都算调试模式** → studio.py 末尾自动跑一遍状态空间引擎
+            #   (前馈加速器 MLP 真身执行 1500+ 步, 还抢主线程) ⇒ 主窗口 5.5s 能出来, 但页面建完要 25~36s。
+            #   调试模式只由显式 env 触发 (VSCode 的 vscode_launch 会设), 普通启动不再进。
+            if _k == "ZMAX_DEBUG_MODE":
+                continue
             os.environ[_k] = str(_v)
 except Exception:                                                      # noqa: BLE001
     pass
@@ -10113,6 +10119,13 @@ class HardwareModule(SubModuleWidget):
     def _log(self, msg):
         ts = time.strftime("%H:%M:%S")
         self.log.append(f"  [{ts}] {msg}")
+        # 🪵 2026-10-31 老倪「怎么退出了 / 点了没反应」: 原来日志只进 GUI 控件, 命令行看不到
+        #   (排查时只能靠猜)。这里同时追加到文件, 退出/崩溃也留证据。
+        try:
+            with open("/tmp/zmax_gui_log.txt", "a", encoding="utf-8") as _f:
+                _f.write("[%s] %s\n" % (ts, msg))
+        except Exception:                                                     # noqa: BLE001
+            pass
 
 
 

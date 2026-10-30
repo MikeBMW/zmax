@@ -61,8 +61,16 @@ class VLMVisionEncoder:
             return
         import torch                                                  # noqa: PLC0415
         from transformers import AutoModelForImageTextToText, AutoProcessor   # noqa: PLC0415
+        _t0 = __import__("time").time()
         self._proc = AutoProcessor.from_pretrained(self.mid)
         mdl = AutoModelForImageTextToText.from_pretrained(self.mid, dtype=torch.float32).eval()
+        try:                                 # 📋 模型台账 (L5 视觉编码塔: 真加载才打印)
+            from lerobot.engineering.model_log import note as _note
+            _n_par = sum(p.numel() for p in mdl.parameters()) / 1e6
+            _note("L5", "SmolVLM2 视觉编码", self.mid, True, elapsed=__import__("time").time() - _t0,
+                  detail="参数量 %.0fM · 设备 %s" % (_n_par, getattr(self, "_device", "cpu")))
+        except Exception:                                                # noqa: BLE001
+            pass
         core = getattr(mdl, "model", mdl)
         vis = getattr(core, "vision_model", None) or getattr(core, "vision_tower", None)
         if vis is None:
