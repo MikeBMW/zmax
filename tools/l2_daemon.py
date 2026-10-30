@@ -31,18 +31,39 @@ def _pick_orin_host() -> str:
     `tashan@192.168.23.66` ⇒ 位姿流与所有下发全断(日志只报 "No route to host")。
     现口径: 直连 22 端口 2s 内握手成功就用直连; 否则退回 ssh 别名(经 ECS 跳板, ~/.ssh/config 的 `orin`)。
     测试点只探 TCP 22, 不下发任何指令。
+
+    🔴 2026-10-30 老倪「关闭夹爪不好使」根因: drop-in 把 ZMAX_ORIN_SSH 钉成 **`orin-ecs`**(已弃用的阿里云
+       跳板), 技能指令全写进那条通道, ssh 反复 `Connection timed out during banner exchange`
+       ⇒ 夹爪/松开等技能静默失效(运动不受影响, 因为它走 bridge)。而直连 `tashan@192.168.23.66` 实测 0.318s。
+       修法: env 只当**候选之一**(支持逗号分隔), 逐个做 TCP 探活后再用; 全都不通才退回别名。
+       另: 已弃用 ECS 不再作为默认回退 —— 用户 2026-10-27 明确「以后没有 ECS」。
     """
-    ip = os.environ.get("ZMAX_ORIN_IP", "192.168.23.66")
-    force = os.environ.get("ZMAX_ORIN_SSH")
-    if force:
-        return force
+    cands = []
+    for _e in (os.environ.get("ZMAX_ORIN_SSH") or "").split(","):
+        _e = _e.strip()
+        if _e and _e not in cands:
+            cands.append(_e)
+    for _ip in (os.environ.get("ZMAX_ORIN_IP", "192.168.23.66"), "192.168.43.19"):
+        _h = "tashan@" + _ip
+        if _h not in cands:
+            cands.append(_h)
     try:
         import socket
-        s = socket.create_connection((ip, 22), timeout=2.0)
-        s.close()
-        return "tashan@" + ip
+        for _c in cands:
+            # 别名(不含 @)没法探 TCP ⇒ 交给 ssh 自己连; 直连必须先证明 22 端口通
+            if "@" not in _c:
+                continue
+            _ip = _c.split("@", 1)[1]
+            try:
+                s = socket.create_connection((_ip, 22), timeout=2.0)
+                s.close()
+                return _c
+            except Exception:                                                # noqa: BLE001
+                continue
     except Exception:                                                        # noqa: BLE001
-        return "orin"
+        pass
+    # 全都不通: 明确报出来, 别再悄悄走已死的 ECS
+    return os.environ.get("ZMAX_ORIN_SSH_FALLBACK", "").strip() or "tashan@192.168.23.66"
 
 
 HOST = _pick_orin_host()
