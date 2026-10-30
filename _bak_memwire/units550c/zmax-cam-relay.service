@@ -1,0 +1,15 @@
+[Unit]
+Description=ZMAX Cam Relay (8901)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/intel/zmax_web_svc
+ExecStart=/usr/bin/python3 /home/intel/zmax_web_svc/cam_relay.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

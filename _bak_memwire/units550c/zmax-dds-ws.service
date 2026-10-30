@@ -1,0 +1,15 @@
+[Unit]
+Description=ZMAX DDS WebSocket Gateway (39062)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/intel/zmax_web
+ExecStart=/usr/bin/python3 /home/intel/zmax_web/dds_ws_gateway.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

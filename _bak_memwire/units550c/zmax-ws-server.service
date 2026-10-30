@@ -1,0 +1,16 @@
+[Unit]
+Description=ZMAX Team Chat WebSocket Server (8765)
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/home/intel/zmax_web
+ExecStart=/usr/bin/python3 /home/intel/zmax_web/ws-server.py --port 8765
+Restart=always
+RestartSec=3
+StandardOutput=append:/var/log/zmax-ws-server.log
+StandardError=append:/var/log/zmax-ws-server.log
+
+[Install]
+WantedBy=multi-user.target

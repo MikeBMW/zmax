@@ -1,0 +1,19 @@
+[Unit]
+Description=ZMAX WS-Bus Relay (DDS 跨网 web 中继, :39064)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=intel
+Group=intel
+Environment=HOME=/home/intel
+Type=simple
+Environment=ZMAX_WS_BUS_TOKEN=WUYv39O6a6x7jkhW7kF-h7eB
+ExecStart=/usr/bin/python3 /home/intel/zmax_web_svc/zmax_ws_bus.py --host 127.0.0.1 --port 39064 --token ${ZMAX_WS_BUS_TOKEN}
+Restart=always
+RestartSec=3
+StandardOutput=append:/var/log/zmax-ws-bus.log
+StandardError=append:/var/log/zmax-ws-bus.log
+
+[Install]
+WantedBy=multi-user.target

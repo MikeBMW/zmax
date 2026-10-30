@@ -1,0 +1,15 @@
+[Unit]
+Description=ZMAX Relay (39053)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/intel/zmax_relay
+ExecStart=/usr/bin/python3 /home/intel/zmax_relay/zmax_relay.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
