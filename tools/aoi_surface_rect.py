@@ -56,7 +56,18 @@ def surface_roi(bgr, area_lo=0.005, area_hi=0.75, min_fill=0.45, keep_top=4, asp
     #   可分的物理特征: 夹具是**整列贯穿**(列亮>800px, 占 2048 高的 60%+), 模块只有 ~440px 高。
     #   ⇒ 按"贯穿列"找到夹具左界, 把 ROI 截到模块侧。好帧(o_sync)没有贯穿列 ⇒ 行为完全不变。
     _col = (g >= 180).astype(np.uint8).sum(axis=0)
-    _below = _col > int(0.39 * H)
+    # 🔴 2026-10-30 老倪「你的标记不是模块的轮廓」根因: 原判据只看「本列亮像素数 > 0.39H」(=799px),
+    #   而**竖放的光模块长边本身就有 1395px** ⇒ 模块把自己判成了夹具, ROI 被截到 x=1335,
+    #   模块(x≈1300~1680)被切掉大半, 剩下的碎块成了 743x110/fill 0.52 的横条(实测)。
+    #   实测该帧: 命中 306 列, 其中真正贯穿(y跨度≥0.9H)的列 = **0**。
+    #   ⇒ 夹具的本质是「整列贯穿」= 亮像素 y 跨度接近满高, 不是"数量多"。
+    #   双条件 AND: 保留原语义(贯穿) + 排除竖放模块(只占自己那一段 58~69%H)。
+    _rows = np.arange(H)[:, None]
+    _b = (g >= 180)
+    _y0 = np.where(_b, _rows, H).min(axis=0)
+    _y1 = np.where(_b, _rows, -1).max(axis=0)
+    _yspan = np.where(_y1 >= 0, _y1 - _y0 + 1, 0)
+    _below = (_col > int(0.39 * H)) & (_yspan >= int(0.90 * H))
     _run = 0; _xc = W
     for _x in range(W):
         if _below[_x]:
