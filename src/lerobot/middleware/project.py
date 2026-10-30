@@ -36,7 +36,11 @@ class Project:
             if nd is None:
                 continue
             try:
-                traces.append(nd.step())
+                _t0 = time.perf_counter()
+                _tr = nd.step()
+                if isinstance(_tr, dict):                      # 🧠 逐节点耗时 (回路预算取证用)
+                    _tr["ms"] = round((time.perf_counter() - _t0) * 1000.0, 2)
+                traces.append(_tr)
             except Exception as e:                                     # noqa: BLE001
                 traces.append({"id": nid, "name": getattr(nd.spec, "name", nid),
                                "status": "step 异常(%s: %s)" % (type(e).__name__, e),

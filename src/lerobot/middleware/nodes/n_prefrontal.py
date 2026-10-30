@@ -25,13 +25,13 @@ PORTS_IN = ['in1']
 PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
-IMPL_KEY = 'ss_world'
+IMPL_KEY = 'ss_mem_l4'   # 🔴 2026-10-30 修正漂移: 原来指 ss_world(→node_ss_exec), 不是 L4 记忆实现
 SOURCE = ''
 SOURCE_SYMBOL = ''
 PARAMS = {'state_space': True}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = False
+PURE = True    # 🧠 2026-10-30 记忆层接入: 安全记忆 L4 真执行 (读安全包络+写feed)
 LAST_STATUS = ""
 
 

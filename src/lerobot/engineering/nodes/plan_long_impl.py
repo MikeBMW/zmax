@@ -30,6 +30,130 @@ _PLAN = os.path.join(_ROOT, "zmax_data", "runtime", "traj", "sim_insert.json")
 _AR_CMD = os.path.join(_ROOT, "zmax_data", "ss_live", "ar_cmd.json")
 _SPEED = float(os.environ.get("ZMAX_UPH_SPEED", "1.0"))
 _AR_PUB = os.environ.get("ZMAX_UPH_AR_PUB", "0") == "1"
+# 🧠 记忆层接入 (2026-10-30): L2 肌肉 / L3 流程工艺 / L4 安全 → 本节点的动作输出
+_MEM_ON = os.environ.get("ZMAX_PLAN_MEM", "1") == "1"
+_TACT_TARGET = float(os.environ.get("ZMAX_UPH_TACT_TARGET", "11.9"))   # 300UPH = 12.0s/件, 留 0.1s 余量
+# ❗段间连续只兜「小缝」: 段表里 400~900mm 的跳是换件/重新定位, 线性插值会变成超速扫掠 (实测 905mm 一跳)
+_BLEND_MAX_MM = float(os.environ.get("ZMAX_MEM_BLEND_MAX_MM", "60"))
+# 🧠 2026-10-30 实测: 一段到下一段「跨件/换位」有 10 处缺口 (最大 564mm), 段表没给过渡时间。
+#   开 ZMAX_MEM_TRAVEL=1 就把缺口按 travel 速度补进后一段的时长 ⇒ 视觉/真机都连续, 不超速。
+#   代价: 每圈多 ~7.7s ⇒ UPH 307→~293 (物理下限, 不许为了达标超速)
+_TRAVEL_ON = os.environ.get("ZMAX_MEM_TRAVEL", "1") == "1"
+_MEM_S = {"ok": False, "kl2": {}, "l4": {}, "l3": {}, "t_eff": None, "cum2": None,
+          "scale": 1.0, "prev_b": None, "seg_t_switch": None, "n_jump": 0,
+          "jump_mm": [], "big_jump_mm": [], "cyc0": None, "err": ""}
+
+
+def _mf():
+    """记忆桥 (缺席则 None ⇒ 全程标称, 零回退)"""
+    if not _MEM_ON:
+        return None
+    try:
+        from lerobot.memory import mem_feed                                  # noqa: PLC0415
+        return mem_feed
+    except Exception as e:                                                   # noqa: BLE001
+        _MEM_S["err"] = "%s: %s" % (type(e).__name__, e)
+        return None
+
+
+def _smooth(u):
+    """五次 S 曲线 (C2, 首末速 0): u∈[0,1] ⇒ 钟形速度包络"""
+    u = 0.0 if u < 0.0 else (1.0 if u > 1.0 else u)
+    return u * u * u * (u * (u * 6.0 - 15.0) + 10.0)
+
+
+def _mem_timing(segs):
+    """L2 肌肉记忆(实测比例) + L4 安全(限速) ⇒ 每段有效时长 t_eff 与累计 cum2
+
+    · 每段 t_eff = t × kl2[kind] (固化标杆: 实测比段表慢就多给时间, 快就少给)
+    · 再按 L4 v_cap 兜底: t_eff ≥ 段长/v_cap (不许超速)
+    · 整圈时间归一到 tact 目标 (300UPH = 12.0s/件, 目标取 11.9s 留余量)
+    """
+    mf = _mf()
+    _MEM_S.update(ok=False, kl2={}, l4={}, l3={}, err="")
+    if mf is None:
+        _MEM_S["t_eff"] = [float(s.get("t") or 0.0) for s in segs]
+        _MEM_S["cum2"] = None
+        return
+    try:
+        f = mf.feed() if hasattr(mf, "feed") else {}
+        l4 = dict(mf.safety() or {})
+        if isinstance((f or {}).get("l4"), dict):
+            l4.update({k: v for k, v in f["l4"].items() if v is not None})
+        v_cap = float(l4.get("v_cap_mm_s") or 700.0)
+        kinds = sorted({str(s.get("kind")) for s in segs})
+        kl2 = {}
+        for k in kinds:
+            tt = [float(s.get("t") or 0) for s in segs if str(s.get("kind")) == k]
+            kl2[k] = mf.bench_kind(k, sum(tt) / max(len(tt), 1)) if hasattr(mf, "bench_kind") else {"k": 1.0}
+        cont = float(l4.get("continuity_mm") or 1.0)
+        gaps = [0.0]
+        for i in range(1, len(segs)):
+            pb, ca = segs[i - 1].get("b"), segs[i].get("a")
+            if not pb or not ca:
+                gaps.append(0.0)
+                continue
+            g = sum((float(x) - float(y)) ** 2 for x, y in zip(pb, ca)) ** 0.5
+            gaps.append(g if g > cont else 0.0)
+        v_travel = float(os.environ.get("ZMAX_MEM_TRAVEL_MM_S") or v_cap)
+        # 🔴 2026-10-30 实测坑: 段被 tick 量化 (6Hz ⇒ 每段都比标称多 ~半拍 83ms) ⇒ kl2 系统性 >1
+        #   (move 实测 0.51s vs 标称 0.40s ⇒ kl2=1.27)。用中位数归一去掉公共偏置, 只留 kind 之间的相对快慢。
+        if kl2:
+            _ks = sorted(float((v or {}).get("k") or 1.0) for v in kl2.values())
+            _med = _ks[len(_ks) // 2] or 1.0
+            if _med > 0:
+                for k, v in list(kl2.items()):
+                    v = dict(v or {})
+                    v["k_raw"] = v.get("k")
+                    v["k"] = round(float(v.get("k") or 1.0) / _med, 4)
+                    kl2[k] = v
+            # L2 只负责「段之间怎么分配时间」, 不负责「一圈总共多长」(那是 L3 节拍的事):
+            # 再把比例整体缩放到 Σt·k = Σt ⇒ 记忆成熟度不会把整圈撑长 (550C 曾因此 294 vs 550A 302)
+            _tot = sum(float(s.get("t") or 0.0) for s in segs) or 1.0
+            _totk = sum(float(s.get("t") or 0.0) * float((kl2.get(str(s.get("kind"))) or {}).get("k") or 1.0)
+                        for s in segs) or 1.0
+            _r = _tot / _totk
+            for k, v in list(kl2.items()):
+                v = dict(v or {})
+                v["k"] = round(max(0.85, min(1.25, float(v.get("k") or 1.0) * _r)), 4)
+                kl2[k] = v
+        t_eff = []
+        for i, s in enumerate(segs):
+            t0 = float(s.get("t") or 0.0)
+            kk = float((kl2.get(str(s.get("kind"))) or {}).get("k") or 1.0)
+            te = t0 * kk
+            a, b = s.get("a") or [0, 0, 0], s.get("b") or [0, 0, 0]
+            dist = sum((float(x) - float(y)) ** 2 for x, y in zip(a, b)) ** 0.5
+            if dist > 1e-6:
+                te = max(te, dist / v_cap)          # 限速兜底 (速度 ≤ v_cap)
+            if _TRAVEL_ON and gaps[i] > 0.0:
+                te += gaps[i] / max(v_travel, 1.0)  # 跨件过渡时间 (连续化的物理预算)
+            t_eff.append(max(1e-3, te))
+        _MEM_S["gap_mm"] = gaps
+        _MEM_S["travel_s"] = round(sum(g / max(v_travel, 1.0) for g in gaps), 3)
+        _MEM_S.update(ok=True, kl2=kl2, l4=l4, t_eff=t_eff, cum2=None)
+        _MEM_S["scale"] = 1.0
+        _MEM_S["l3"] = dict((f or {}).get("l3") or {})
+    except Exception as e:                                                   # noqa: BLE001
+        _MEM_S.update(ok=False, err="%s: %s" % (type(e).__name__, e))
+        _MEM_S["t_eff"] = [float(s.get("t") or 0.0) for s in segs]
+
+
+def _t_axis(segs, n_mods):
+    """时间轴: 段表 t (或 L2 修正后的 t_eff) → 累计; 整圈归一 to tact 目标"""
+    t = _MEM_S.get("t_eff") or [float(s.get("t") or 0.0) for s in segs]
+    cum, acc = [], 0.0
+    for x in t:
+        acc += float(x)
+        cum.append(acc)
+    _MEM_S["cum2"] = cum
+    # 整圈 wall 目标 = tact × 件数; el 用 scale 缩放 ⇒ 实际件节拍 = 目标
+    tt = _TACT_TARGET * max(1, int(n_mods or 1))
+    # 🔴 只有 acc < 目标节拍 时才放慢 (scale<1); acc 已超目标 ⇒ scale=1 跑物理下限,
+    #    绝不为凑 300UPH 把 el 拉快 (那会让每段速度超过 v_cap = 假节拍)
+    _MEM_S["scale"] = max(0.05, min(1.0, acc / max(tt, 0.1))) if acc > 0 else 1.0
+    _MEM_S["acc_s"] = round(acc, 3)
+    return cum
 
 _S = {"segs": None, "cum": None, "i": 0, "t0": None, "round": 0,
       "mtime": (0.0, 0.0), "tact": 12.0, "uph_target": 300, "n_mods": 0,
@@ -176,7 +300,15 @@ def _load():
               uph_target=int(seg_doc.get("uph_target") or 300), n_mods=len(cyc),
               mod_cum=mod_cum, task_id=meta.get("task_id") or "TASK-07-AOI",
               verified=bool(meta.get("verified")), n_mt=mt_i)
-    LAST_STATUS = "元任务配置已展开: %d 元任务 / %d 段 (与段表逐段一致)" % (mt_i, len(segs))
+    # 🧠 记忆层接入: L2 实测比例 + L4 限速 → t_eff; 整圈归一 to 300UPH 目标节拍
+    _mem_timing(segs)
+    _S["cum_eff"] = _t_axis(segs, len(cyc))
+    _MEM_S.update(prev_b=None, seg_t_switch=None, n_jump=0, jump_mm=[], big_jump_mm=[])
+    _k0 = " · 记忆 L2 k=%s · L4 v_cap=%.0f" % (
+        {k: round(float((v or {}).get("k") or 1.0), 3) for k, v in (_MEM_S.get("kl2") or {}).items()},
+        float(_MEM_S.get("l4", {}).get("v_cap_mm_s") or 0.0)) if _MEM_S.get("ok") else " · 记忆未接(标称)"
+    LAST_STATUS = ("元任务配置已展开: %d 元任务 / %d 段 (与段表逐段一致)%s"
+                   % (mt_i, len(segs), _k0))
     return segs, cum
 
 
@@ -184,23 +316,37 @@ def reset():
     _S.update(i=0, t0=None)
 
 
-def _pub_ar(o1, u, seg_t, el):
+def _pub_ar(o1, u_ratio, seg_t, el, a_eff=None, sm=False, mem=None):
     if not _AR_PUB:
         return
     # 🔴 2026-10-29 老倪「走了几成是什么」: 原写法直接把 `el - seg_t0`(本段已过**秒数**)
     #   当 0~1 比例透出去, 只是被 min/max 砍到 [0,1] —— 段时长中位数 0.3s, 页面按
     #   `a+(b-a)*u` 拿到 0.15 就画 15%, 实际已走一半 ⇒ 虚拟臂每段只走 30% 就跳下一段,
     #   看着一顿一顿。这里补归一化, 与 uph_tact_impl._pub_ar 同口径。
-    u = (u / seg_t) if seg_t > 1e-9 else 1.0
+    # 🧠 2026-10-30 L4 安全记忆: 段内按五次 S 曲线给 u (首末速 0 ⇒ 速度钟形, 无阶跃)
+    u = (u_ratio if u_ratio is not None else 1.0)
+    u = 0.0 if u < 0.0 else (1.0 if u > 1.0 else u)
+    if sm:
+        u = _smooth(u)
+    # 🧠 L4 段间连续: 上一段终点 ≠ 本段起点时, 起点改用当前实际位置 (a_raw 保真, 页面按 a_raw 认段)
+    a_pub = list(o1.get("a") or [])
+    a_raw = None
+    if a_eff is not None:
+        a_raw = list(o1.get("a") or [])
+        a_pub = list(a_eff)
     try:
         d = {"t": time.time(), "t_str": time.strftime("%H:%M:%S"), "src": "ss_plan_long",
              "task_id": o1.get("task_id"), "seq": o1.get("seq"), "mod": o1.get("mod"),
-             "kind": o1.get("kind"), "label": o1.get("label"), "a": o1.get("a"), "b": o1.get("b"),
-             "u": round(min(1.0, max(0.0, u)), 4), "t_seg": seg_t, "t_left": o1.get("t_left"),
+             "kind": o1.get("kind"), "label": o1.get("label"), "a": a_pub, "b": o1.get("b"),
+             "u": round(u, 4), "t_seg": seg_t, "t_left": o1.get("t_left"),
              "elapsed_s": round(el, 2), "mt_id": o1.get("mt_id"), "mt_name": o1.get("mt_name"),
              "mt_i": o1.get("mt_i"), "mt_n": o1.get("mt_n"), "batch": o1.get("batch"),
              # 🔴 2026-10-29: 视觉观测点同拍带给页面/执行器 (接口对齐; 误差/gaps 原样透出, 不美化)
              "vision": o1.get("vision")}
+        if a_raw is not None:
+            d["a_raw"] = a_raw
+        if mem:
+            d["mem"] = mem
         os.makedirs(os.path.dirname(_AR_CMD), exist_ok=True)
         tmp = _AR_CMD + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
@@ -239,19 +385,109 @@ def run(ctx=None):
     now = time.monotonic()
     if _S["t0"] is None:
         _S["t0"] = now
-    el = (now - _S["t0"]) * _SPEED
-    while _S["i"] < len(segs) and el >= cum[_S["i"]]:
+        _MEM_S["cyc0"] = now
+    cum_t = _S.get("cum_eff") or cum
+    mem_on = bool(_MEM_S.get("ok"))
+    scale = float(_MEM_S.get("scale") or 1.0) if mem_on else 1.0
+    # 🧠 L3 流程工艺记忆: 整圈时间归一 (scale) ⇒ 件节拍 = tact 目标 (300UPH ≤12.0s)
+    el = (now - _S["t0"]) * _SPEED * scale
+    while _S["i"] < len(segs) and el >= cum_t[_S["i"]]:
         _S["i"] += 1
     if _S["i"] >= len(segs):                       # 一轮走完 → 循环(流水线不停)
+        # ── 🧠 L3 流程工艺记忆: 这一圈的真实墙钟节拍入库 (下一圈按它校正) ──
+        wall = now - float(_MEM_S.get("cyc0") or now)
+        n_mods = int(_S["n_mods"] or 1)
+        tact_live = wall / max(n_mods, 1)
+        _mf_obj = _mf()
+        jm = _MEM_S.get("jump_mm") or []
+        bj = _MEM_S.get("big_jump_mm") or []
+        if _mf_obj is not None:
+            try:
+                _mf_obj.record_cycle({
+                    "t": time.strftime("%Y-%m-%d %H:%M:%S"), "round": int(_S["round"]) + 1,
+                    "task_id": _S["task_id"], "wall_s": round(wall, 2), "n_mods": n_mods,
+                    "tact_s": round(tact_live, 3), "uph": round(3600.0 / max(tact_live, 1e-3), 1),
+                    "uph_target": _S["uph_target"], "tact_target": _TACT_TARGET,
+                    "segs": len(segs), "scale": round(scale, 4),
+                    "acc_s": _MEM_S.get("acc_s"), "travel_s": _MEM_S.get("travel_s"),
+                    "travel_jumps": sum(1 for g in (_MEM_S.get("gap_mm") or []) if (g or 0) > 0),
+                    "kl2": {k: round(float((v or {}).get("k") or 1.0), 3)
+                            for k, v in (_MEM_S.get("kl2") or {}).items()},
+                    "jumps": len(jm), "jump_max_mm": (round(max(jm), 1) if jm else 0.0),
+                    "big_jumps": len(bj), "big_jump_max_mm": (round(max(bj), 1) if bj else 0.0),
+                    # 判据对 300UPH 口径 (tact ≤ 3600/uph_target), 不对内部目标 _TACT_TARGET 判:
+                    #   travel 补时间后物理下限就是 11.98s/件 (300.5UPH), 拿 11.7 判会永远 False
+                    "ok": tact_live <= (3600.0 / max(int(_S["uph_target"] or 300), 1)) + 1e-6,
+                    "src": "ss_plan_long.run (真实圈墙钟, 非名义)"})
+                if jm and max(jm) > 1.0:      # 🧠 L4 安全记忆: 已兜住的小缝硬跳
+                    _mf_obj.record_violation(
+                        "jump", max(jm), cap=float((_MEM_S.get("l4") or {}).get("dv_cap_mm_s") or 0),
+                        note="段间小缝硬跳 → 已用 a:=上一段终点 连续化")
+                if bj:                          # 大跳只记账 (不插值, 交给段表换位语义)
+                    _mf_obj.record_violation(
+                        "jump", max(bj), cap=float((_MEM_S.get("l4") or {}).get("dv_cap_mm_s") or 0),
+                        note="段间大跳(换位) → 不连续化, 记录供 L4 学习上限")
+            except Exception:                                              # noqa: BLE001
+                pass
         _S["i"] = 0
         _S["t0"] = now
         _S["round"] += 1
         el = 0.0
+        # 🧠 L2 肌肉记忆: 上一圈已固化新样本 ⇒ 重算标杆比例/时间轴 (下一圈按固化后的标杆跑)
+        try:
+            _mem_timing(segs)
+            _S["cum_eff"] = _t_axis(segs, n_mods)
+            cum_t = _S.get("cum_eff") or cum
+            scale = float(_MEM_S.get("scale") or 1.0) if _MEM_S.get("ok") else 1.0
+            mem_on = bool(_MEM_S.get("ok"))
+        except Exception:                                                  # noqa: BLE001
+            pass
+        _MEM_S.update(cyc0=now, jump_mm=[], big_jump_mm=[], seg_t_switch=None, i_seg=None, prev_b=None)
 
     seg = segs[_S["i"]]
+    i_now = _S["i"]
     seg_t = float(seg.get("t") or 0.0)
-    seg_t0 = cum[_S["i"]] - seg_t
-    left = max(0.0, cum[_S["i"]] - el)
+    te = float(cum_t[i_now] - (cum_t[i_now - 1] if i_now > 0 else 0.0)) or seg_t
+    seg_t0 = cum_t[i_now] - te
+    left = max(0.0, cum_t[i_now] - el)
+    # ── 🧠 L2 肌肉记忆: 段切换 ⇒ 上一段的**真实墙钟时长**入固化库 (换算回段表时间基) ──
+    if _MEM_S.get("i_seg") != i_now:
+        prev_i = _MEM_S.get("i_seg")
+        t_sw = _MEM_S.get("seg_t_switch")
+        if prev_i is not None and 0 <= prev_i < len(segs) and t_sw:
+            _mf_obj = _mf()
+            if _mf_obj is not None:
+                ps = segs[prev_i]
+                try:
+                    _mf_obj.record_segment(
+                        ps.get("kind"), (now - t_sw) * _SPEED * scale,
+                        float(ps.get("t") or 0.0), label=str(ps.get("label") or ""),
+                        flush=True)
+                except Exception:                                          # noqa: BLE001
+                    pass
+        _MEM_S["i_seg"] = i_now
+        _MEM_S["seg_t_switch"] = now
+        # ── 🧠 L4 安全记忆: 段间连续 —— 起点改成上一段终点 (差 > continuity_mm 才算硬跳) ──
+        prev_b = _MEM_S.get("prev_b")
+        a_blend, dj = None, 0.0
+        if prev_b and seg.get("a"):
+            dj = sum((float(x) - float(y)) ** 2 for x, y in zip(prev_b, seg["a"])) ** 0.5
+            _l4 = _MEM_S.get("l4") or {}
+            _vcap = float(_l4.get("v_cap_mm_s") or 700.0)
+            _gaps = _MEM_S.get("gap_mm") or []
+            _budgeted = bool(_TRAVEL_ON and i_now < len(_gaps) and (_gaps[i_now] or 0) > 0)
+            if dj > float(_l4.get("continuity_mm") or 1.0):
+                if _budgeted or (dj <= _BLEND_MAX_MM and (dj / max(te, 1e-3)) <= _vcap):
+                    a_blend = list(prev_b)                       # 小缝: 连续化 (不超速)
+                    _MEM_S.setdefault("jump_mm", []).append(dj)
+                else:
+                    # 大跳 = 段表本来就要换位 ⇒ 不插值 (否则 905mm/0.4s = 2260mm/s 超速扫掠)
+                    _MEM_S.setdefault("big_jump_mm", []).append(dj)
+        _MEM_S["a_blend"] = a_blend
+        _MEM_S["blend_mm"] = round(dj, 1)
+    a_blend = _MEM_S.get("a_blend")
+    if seg.get("b"):
+        _MEM_S["prev_b"] = list(seg["b"])
     done = 0
     for th in (_S["mod_cum"] or []):
         if el >= th:
@@ -285,7 +521,41 @@ def run(ctx=None):
             o1["goal_src"] = "vision_points:光模块·当前"
             o1["goal_conf"] = _pv.get("conf")
             o1["goal_frame"] = _vis.get("frame")
-    _pub_ar(o1, el - seg_t0, seg_t, el)
+    # 🧠 记忆层取证块: 每拍随 ar_cmd 发出 (L2 标杆比例 / L3 节拍 / L4 安全包络 + 本段生效值)
+    mem_block = None
+    if mem_on:
+        try:
+            _l4 = _MEM_S.get("l4") or {}
+            _last = (_mf().last_cycle() if _mf() is not None else {}) or {}
+            mem_block = {
+                "ok": True,
+                "l2": {"src": "data/memory/ar_muscle.json",
+                       "kl2": {k: round(float((v or {}).get("k") or 1.0), 3)
+                               for k, v in (_MEM_S.get("kl2") or {}).items()},
+                       "kind_n": {k: int((v or {}).get("n") or 0) for k, v in (_MEM_S.get("kl2") or {}).items()}},
+                "l3": {"src": "data/memory/ar_cycles.jsonl",
+                       "scale": round(scale, 4), "tact_target": _TACT_TARGET,
+                       "tact_last": _last.get("tact_s"), "uph_last": _last.get("uph"),
+                       "cycle_ok": _last.get("ok"), "n_cycles": _last.get("round")},
+                "l4": {"src": "data/memory/ar_safety.json",
+                       "v_cap_mm_s": float(_l4.get("v_cap_mm_s") or 0),
+                       "dv_cap_mm_s": float(_l4.get("dv_cap_mm_s") or 0),
+                       "smooth": int(_l4.get("smooth") or 0),
+                       "jumps_this_cycle": len(_MEM_S.get("jump_mm") or [])},
+                "seg_t_raw": round(seg_t, 3), "seg_t_eff": round(te, 3),
+                "acc_s": _MEM_S.get("acc_s"), "travel_s": _MEM_S.get("travel_s"),
+                "blend_mm": float(_MEM_S.get("blend_mm") or 0.0),
+                "u_ratio": round(max(0.0, min(1.0, (el - seg_t0) / max(te, 1e-9))), 4),
+            }
+        except Exception:                                                  # noqa: BLE001
+            mem_block = {"ok": False, "err": _MEM_S.get("err")}
+    _pub_ar(o1, (el - seg_t0) / max(te, 1e-9), te, el, a_eff=a_blend,
+            sm=bool((_MEM_S.get("l4") or {}).get("smooth") or 0), mem=mem_block)
+    _last_c = {}
+    try:
+        _last_c = (_mf().last_cycle() if _mf() is not None else {}) or {}
+    except Exception:                                                      # noqa: BLE001
+        pass
     return {
         "out1": o1,
         "out2": {"mt_id": seg.get("mt_id"), "mt_name": seg.get("mt_name"),
@@ -297,5 +567,11 @@ def run(ctx=None):
                  "uph_capability": round(3600.0 / max(_S["tact"], 0.1), 1),
                  "speed_factor": _SPEED, "seg_index": _S["i"], "n_segs": len(segs),
                  "task_id": _S["task_id"], "verified": _S["verified"],
+                 # 🧠 记忆层真实生效值 (逐层可对账)
+                 "mem": mem_block,
+                 "mem_l2_kl2": mem_block["l2"]["kl2"] if mem_block else None,
+                 "mem_l3_tact_last": _last_c.get("tact_s"),
+                 "mem_l3_uph_last": _last_c.get("uph"),
+                 "mem_l4": (mem_block or {}).get("l4"),
                  "vision": _vis},
     }

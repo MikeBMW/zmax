@@ -3002,7 +3002,9 @@ function plantAtAR(){
     const P=(typeof INSP!=='undefined' && INSP.plan)||[];
     if(P.length){
       const _k=function(v){ return Array.isArray(v)?(v[0].toFixed(1)+','+v[1].toFixed(1)+','+v[2].toFixed(1)):''; };
-      const ka=_k(d.a)+'|'+_k(d.b);
+      // 🧠 2026-10-30 L4 安全记忆: ar_cmd 的 a 已被连续化 (a:=上一段终点, 消除单帧瞬移),
+      //   段表原始起点在 a_raw ⇒ 认段/手里状态一律用 a_raw||a, 否则 14 件会认错件。
+      const ka=_k(d.a_raw||d.a)+'|'+_k(d.b_raw||d.b);
       // ⚠ 同一段动作在 14 件里重复出现 ⇒ 端点会撞多个候选, 必须用服务端 elapsed_s 落进哪段累计时间
       //   来定位是"第几圈的第几个", 否则手里有货/孔占用会取到别的件。
       if(!plantAtAR._cum || plantAtAR._cum.n!==P.length){

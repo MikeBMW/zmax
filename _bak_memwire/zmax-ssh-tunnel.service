@@ -1,0 +1,26 @@
+[Unit]
+Description=Z-MAX 云↔550C 反向隧道 (云 127.0.0.1:18790 → 本机 nginx:8081)
+Documentation=file:///home/intel/zmax_web/README-migration.md
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+# 走 22 端口 (阿里云安全组只开 22/80/443); 只绑云端 127.0.0.1, 不暴露公网
+ExecStart=/usr/bin/ssh -N -T \
+  -i /root/.ssh/id_ed25519 \
+  -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=15 \
+  -o ServerAliveCountMax=3 \
+  -o StrictHostKeyChecking=no \
+  -o TCPKeepAlive=yes \
+  -R 127.0.0.1:18790:127.0.0.1:8081 \
+  root@47.93.88.143
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

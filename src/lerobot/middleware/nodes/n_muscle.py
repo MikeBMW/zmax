@@ -32,7 +32,7 @@ SOURCE_SYMBOL = ''
 PARAMS = {'state_space': True}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = False
+PURE = True    # 🧠 2026-10-30 记忆层接入: 肌肉记忆 L2 真执行 (只读台账+写feed, 无设备动作)
 LAST_STATUS = ""
 
 

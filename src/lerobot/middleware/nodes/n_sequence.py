@@ -31,7 +31,7 @@ SOURCE_SYMBOL = ''
 PARAMS = {'state_space': True}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = False
+PURE = True    # 🧠 2026-10-30 记忆层接入: 流程工艺记忆 L3 真执行 (读圈台账+写feed)
 LAST_STATUS = ""
 
 

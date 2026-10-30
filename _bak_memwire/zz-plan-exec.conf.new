@@ -1,0 +1,15 @@
+[Service]
+# 2026-10-29 老倪「L4 层, 正式接入, 流形引擎要真正接入运行」
+#   L2: ssplan/ssact/ssyolo (基础输出·执行收口)
+#   L3: ssdec (SmolVLA+LEW 加权修正) → ss_grav_h.in3
+#   L4: ss_mani_eng(流形引擎核心) · ssmani_c(接触流形) · ssmani_p(性能流形) · n_calib_mani(主参数M·5s节流)
+#   帧真源: GUI 播放态 module._ss_tr → 无 GUI 时 ss_traj_last.json (真实 episode obs43), 帧号跟 engine_latest.idx
+# 2026-10-30 老倪「将记忆层实际接入状态空间, 保证 AR 场景 300UPH, 从肌肉记忆L2 → 流程工艺L3 → 安全记忆L4」
+#   + ss_mem_l2 (肌肉记忆: 段实测标杆 → 段时长分配)
+#   + ss_mem_l3 (流程工艺记忆: 每圈真实节拍/UPH → 整圈时间归一, 锁 300UPH)
+#   + ss_mem_l4 (安全记忆: v_cap/Δv + S曲线 + 段间连续化 → 平顺 & 不超速)
+#   三层每拍写 /dev/shm/zmax_mem/feed.json, plan 每拍读 ⇒ 记忆真的改变动作 (不是显示)
+Environment=ZMAX_CANVAS_ONLY=ssplan,ssact,ssyolo,ssdec,ss_grav_h,ssmani_c,ssmani_p,n_calib_mani,ss_mani_eng,ss_mem_l2,ss_mem_l3,ss_mem_l4
+Environment=ZMAX_YOLO_SHARE=1
+Environment=ZMAX_PLAN_MEM=1
+Environment=ZMAX_UPH_TACT_TARGET=11.9

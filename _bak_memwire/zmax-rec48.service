@@ -1,0 +1,26 @@
+[Unit]
+Description=Z-MAX 真机动作记录器 48Hz (只读: 订阅 ROS + 抓 8812, 绝不下发)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=intel
+Group=intel
+# ROS 环境必须靠 bash -lc 载入, 否则 rclpy 找不到
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && exec python3 /home/intel/zmax_550c/tools/zmax_rec48.py'
+Environment=PYTHONUNBUFFERED=1
+Environment=ROS_DOMAIN_ID=0
+Environment=REC48_ROOT=/home/intel/zmax_map/rec48
+Environment=REC48_FRAME_URL=http://127.0.0.1:8812/frame.jpg
+Environment=REC48_PLAN=/home/intel/zmax_550c/zmax_data/ss_live/ar_cmd.json
+Environment=REC48_EP_SEC=300
+Environment=REC48_MAX_GB=120
+Environment=REC48_FRAME_HZ_MOVE=5
+Environment=REC48_FRAME_HZ_IDLE=0.5
+Restart=always
+RestartSec=3
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

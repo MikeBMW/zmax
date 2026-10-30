@@ -1,0 +1,23 @@
+[Unit]
+Description=Z-MAX 550C 时间戳记录器 — 图像+位姿持续落盘 (只读, 零机器人指令)
+Documentation=file:///home/intel/zmax_550c/tools/ts_recorder.py
+After=network-online.target zmax-gs-ros-bridge.service
+Wants=zmax-gs-ros-bridge.service
+
+[Service]
+Type=simple
+User=intel
+Group=intel
+Environment=HOME=/home/intel
+Environment=REC_ROOT=/home/intel/zmax_map/rec
+Environment=REC_HZ=2.0
+Environment=REC_MAX_GB=20
+Environment=REC_STATUS=/dev/shm/zmax_rec/status.json
+ExecStart=/usr/bin/python3 -u /home/intel/zmax_550c/tools/ts_recorder.py
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -112,13 +112,15 @@ def main():
             n_tick += 1
             keepalive_switch()                 # 🔄 AR 开关续期(只续 ar_scene), 防 1800s 过期导致双臂不动
             if n_tick % STATE_EVERY == 0:
-                brief = [{"id": t.get("id"), "status": t.get("status"),
+                brief = [{"id": t.get("id"), "status": t.get("status"), "ms": t.get("ms"),
                           "out": {k: (v if not isinstance(v, (list, dict)) else "[%s]" % type(v).__name__)
                                   for k, v in (t.get("out") or {}).items()}}
                          for t in traces]
                 write_state({"t": time.time(), "t_str": time.strftime("%H:%M:%S"),
                              "ok": True, "hz": HZ, "only": ONLY, "tick": n_tick,
                              "cost_ms": round(cost * 1000, 1),
+                             "budget_ms": round(1000.0 / HZ, 1),
+                             "over_budget": bool(cost > 1.0 / HZ),
                              "n_nodes": len(prj.nodes), "n_ran": len(traces),
                              "traces": brief, "err": ""})
             dt = 1.0 / HZ - cost

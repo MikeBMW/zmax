@@ -1,0 +1,24 @@
+[Unit]
+Description=Z-MAX 记忆层常驻监控 (只读判据 · 监控+自主进化 · 零机器人指令)
+After=network-online.target zmax-ss-canvas-loop.service zmax-ts-recorder.service
+Wants=zmax-ss-canvas-loop.service
+
+[Service]
+Type=simple
+User=intel
+Group=intel
+Environment=HOME=/home/intel
+Environment=WATCH_ROOT=/home/intel/zmax_550c
+Environment=WATCH_PERIOD_S=15
+Environment=WATCH_ROW_S=60
+Environment=WATCH_UPH_MIN=300
+Environment=WATCH_TACT_MAX=12.0
+Environment=WATCH_COST_MS=100
+ExecStart=/usr/bin/python3 -u /home/intel/zmax_550c/tools/zmax_mem_watch.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

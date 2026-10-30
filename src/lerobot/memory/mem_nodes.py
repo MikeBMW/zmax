@@ -31,12 +31,50 @@ def _sys_mem():
         from memory_store import memory_store
         return memory_store
 
+
+# ══════════════════════════════════════════════════════════════════
+# 🧠 2026-10-30 记忆层接入状态空间 (老倪: L2 肌肉 → L3 流程工艺 → L4 安全)
+#   本三个节点进常驻回路白名单, 每拍把**记忆视图**写 /dev/shm/zmax_mem/feed.json,
+#   plan 节点 (ssplan) 每拍读它并**真的改变动作** (段时长/限速/S曲线/段间连续).
+#   铁律: 读按 mtime 缓存 · 写变化才刷 · 写失败不断回路 · 共享记忆写入节流 60s (10Hz 下不许churn)
+# ══════════════════════════════════════════════════════════════════
+_FEED_DUE = {}
+_LAST = {}          # 每层最近一次发出的记忆视图 (节流期间原样复用, 下游/取证仍拿到值)
+
+
+def _mf_feed():
+    """记忆桥模块 (缺席 ⇒ None, 节点退化成只读日志, 绝不影响回路)"""
+    try:
+        from lerobot.memory import mem_feed
+        return mem_feed
+    except Exception:
+        try:
+            import sys as _s, os as _o
+            _s.path.insert(0, _o.path.join(_o.path.dirname(_o.path.dirname(_o.path.dirname(
+                _o.path.abspath(__file__)))), "src"))
+            from lerobot.memory import mem_feed
+            return mem_feed
+        except Exception:
+            return None
+
+
+def _due(key, secs):
+    """节流: 同一 key 至少隔 secs 秒才允许再写一次 (共享记忆 json 不许 10Hz 刷)"""
+    import time as _t
+    now = _t.time()
+    if now - float(_FEED_DUE.get(key) or 0.0) < secs:
+        return False
+    _FEED_DUE[key] = now
+    return True
+
+
 def node_ss_mem_l2(ctx):
     """🔧 L2 记忆 · 肌肉记忆 — 读真实固化库 muscle_memory.json: 固化技能/命中/模式"""
     log = ctx.get("log")
     try:
         st = _sys_mem()
-        lib = st.muscle_lib() if st else {}
+        _mf0 = _mf_feed()
+        lib = (_mf0.muscle_lib() if _mf0 is not None else (st.muscle_lib() if st else {}))
         skills = lib.get("skills") or lib.get("库") or {}
         if isinstance(skills, dict):
             items = [(k, (v.get("hits") if isinstance(v, dict) else v)) for k, v in list(skills.items())[:8]]
@@ -44,22 +82,40 @@ def node_ss_mem_l2(ctx):
             items = []
         n_s = len(skills) if hasattr(skills, "__len__") else 0
         mode = lib.get("mode") or lib.get("_mode") or "off"
+        # 🧠 2026-10-30 接入: 每拍把「固化标杆视图」写热通道 → plan 每拍读它分配段时长
+        _mf = _mf_feed()
+        if _mf is not None:
+            am = _mf.ar_muscle() or {}
+            bench = {k: {"n": int((v or {}).get("n") or 0),
+                         "mean_t": (v or {}).get("mean_t"),
+                         "plan_t": (v or {}).get("plan_t")}
+                     for k, v in (am.get("kinds") or {}).items()}
+            _out = {"n_skills": n_s, "mode": mode, "bench": bench,
+                    "total_segs": int(am.get("total_segs") or 0),
+                    "src": "ar_muscle.json (plan 实测段时长) + muscle_memory.json"}
+            _LAST["l2"] = _out
+            if _due("l2_pub", 1.0):                 # 1Hz 刷热通道 (3s 内算新鲜, 省 tick 预算)
+                _mf.publish("l2", _out)
+            if log:
+                _ready = [k for k, v in bench.items() if v["n"] >= 3]
+                log(f"    ⮕ 接入状态空间: 固化标杆 {len(bench)} 类 / 可信 {len(_ready)} 类 "
+                    f"({', '.join(_ready[:6])}) → write /dev/shm/zmax_mem/feed.json#l2")
         if log:
             log(f"🔧 L2 记忆 · 肌肉记忆: 固化技能 {n_s} 项 · 模式 {mode} (🧠生物映射: 小脑/脊髓 — DMP式标杆回放)")
             for k, v in items:
                 log(f"    · {k}: 命中 {v}")
             log("   语义: 重复动作≥3 次成功 → 标杆固化 → 快通道直通 (跳过精算, 安全链保留)")
             log("   总装: L3 规划取此标杆编排长链; 总装中枢汇总上报大模型层")
-            # ⮕ 输出: 下行条目入共享 (供调度/技能行检索标杆)
+            # ⮕ 输出: 下行条目入共享 (供调度/技能行检索标杆) — 10Hz 回路里节流 60s
             try:
-                if st:
+                if st and _due("l2_put", 60):
                     st.put("l2", "out", {
                         "time": __import__("time").strftime("%H:%M:%S"),
                         "固化技能": n_s, "模式": mode, "建议": "标杆直通可用" if n_s else "练习中 (≥3次成功固化)",
                     }, cap=20)
             except Exception:
                 pass
-        return True
+        return _out if isinstance(locals().get("_out"), dict) else True
     except Exception as e:
         if log:
             log(f"⚠️ L2 记忆读取失败: {e}")
@@ -70,8 +126,25 @@ def node_ss_mem_l3(ctx):
     log = ctx.get("log")
     try:
         st = _sys_mem()
-        mem = st.load() if st else {}
+        _mf0 = _mf_feed()
+        mem = (_mf0.shared() if _mf0 is not None else (st.load() if st else {}))
         flows = (mem.get("l3", {}) or {}).get("flows") or []
+        # 🧠 2026-10-30 接入: 每拍把「流程工艺视图 (最近一圈真实节拍/UPH/段序)」写热通道
+        _mf = _mf_feed()
+        if _mf is not None:
+            lc = _mf.last_cycle() or {}
+            _out = {"n_flows": len(flows), "flow_id": lc.get("round"),
+                    "task_id": lc.get("task_id"), "tact_last": lc.get("tact_s"),
+                    "uph_last": lc.get("uph"), "cycle_ok": lc.get("ok"),
+                    "segs": lc.get("segs"), "scale": lc.get("scale"),
+                    "kl2": lc.get("kl2"),
+                    "src": "ar_cycles.jsonl (每圈真实墙钟) + shared_memory.l3.flows"}
+            _LAST["l3"] = _out
+            if _due("l3_pub", 1.0):
+                _mf.publish("l3", _out)
+            if log:
+                log(f"    ⮕ 接入状态空间: 最近一圈 tact={lc.get('tact_s')}s "
+                    f"UPH={lc.get('uph')} ok={lc.get('ok')} → feed.json#l3")
         if log:
             if flows:
                 f0 = flows[-1]
@@ -81,9 +154,9 @@ def node_ss_mem_l3(ctx):
                 stg = f0.get("stages") or []
                 log(f"    段路径 ({len(stg)}): {' → '.join(str(s)[:8] for s in stg[-12:])}")
                 log(f"    mani 预测残差均值: {f0.get('mani_mae')} · z RMSE: {f0.get('z_rmse')}")
-                # ⮕ 输出: 最近走通流程下行 (供调度/规划检索)
+                # ⮕ 输出: 最近走通流程下行 (供调度/规划检索) — 10Hz 回路节流 60s
                 try:
-                    if st:
+                    if st and _due("l3_put", 60):
                         st.put("l3", "out", {
                             "time": __import__("time").strftime("%H:%M:%S"),
                             "seed": f0.get("seed"), "done": f0.get("done"),
@@ -95,7 +168,7 @@ def node_ss_mem_l3(ctx):
             else:
                 log("🚀 L3 记忆 · 长程规划: 暂无流程经验 — 跑一轮真实化后自动入库")
             log("   语义: 每轮 13 段状态机路径/成败/质量指标 → 规划器检索'上次怎么走通的'")
-        return True
+        return _out if isinstance(locals().get("_out"), dict) else True
     except Exception as e:
         if log:
             log(f"⚠️ L3 记忆读取失败: {e}")
@@ -106,9 +179,27 @@ def node_ss_mem_l4(ctx):
     log = ctx.get("log")
     try:
         st = _sys_mem()
-        mem = st.load() if st else {}
+        _mf0 = _mf_feed()
+        mem = (_mf0.shared() if _mf0 is not None else (st.load() if st else {}))
         preds = (mem.get("l4", {}) or {}).get("predict") or []
         recs = (mem.get("l4", {}) or {}).get("recover") or []
+        # 🧠 2026-10-30 接入: 每拍把「安全记忆包络」写热通道 → plan 用它限速/S曲线/段间连续
+        _mf = _mf_feed()
+        if _mf is not None:
+            sf = _mf.safety() or {}
+            _out = {"v_cap_mm_s": sf.get("v_cap_mm_s"), "dv_cap_mm_s": sf.get("dv_cap_mm_s"),
+                    "smooth": int(sf.get("smooth") or 0),
+                    "continuity_mm": sf.get("continuity_mm"),
+                    "jumps": sf.get("jumps"), "n_jump": int(sf.get("n_jump") or 0),
+                    "overspeed": int(sf.get("overspeed") or 0),
+                    "src": "ar_safety.json (违规累积→上限) + shared_memory.l4"}
+            _LAST["l4"] = _out
+            if _due("l4_pub", 1.0):
+                _mf.publish("l4", _out)
+            if log:
+                log(f"    ⮕ 接入状态空间: v_cap={sf.get('v_cap_mm_s')}mm/s · "
+                    f"Δv_cap={sf.get('dv_cap_mm_s')}mm/s · S曲线={int(sf.get('smooth') or 0)} · "
+                    f"硬跳记录 {int(sf.get('n_jump') or 0)} 次 → feed.json#l4")
         if log:
             if preds:
                 p0 = preds[-1]
@@ -118,9 +209,9 @@ def node_ss_mem_l4(ctx):
                 if recs:
                     r0 = recs[-1]
                     log(f"    恢复经验: {r0.get('event')} → {r0.get('action')} ({r0.get('n')}次)")
-                # ⮕ 输出: 预测质量下行 (筹划建议给流形导航)
+                # ⮕ 输出: 预测质量下行 (筹划建议给流形导航) — 10Hz 回路节流 60s
                 try:
-                    if st and preds:
+                    if st and preds and _due("l4_put", 60):
                         st.put("l4", "out", {
                             "time": __import__("time").strftime("%H:%M:%S"),
                             "seed": preds[-1].get("seed"), "mae": preds[-1].get("mae"),
@@ -131,7 +222,7 @@ def node_ss_mem_l4(ctx):
             else:
                 log("🏆 L4 记忆 · 筹划: 暂无 — 真实化完成后 predictor 残差自动入库")
             log("   语义: 预测流形误差/恢复动作选择 → 筹划下一步 (失败回退不放弃)")
-        return True
+        return _out if isinstance(locals().get("_out"), dict) else True
     except Exception as e:
         if log:
             log(f"⚠️ L4 记忆读取失败: {e}")
@@ -154,7 +245,7 @@ def node_ss_mem_share(ctx):
                 "取总装条目作上下文, 高层决策回写 (信息总装非参数共享)")
             # ⮕ 输出: 组装总装上下文 → 写 meta.context (任务规划器/异常推理器消费)
             try:
-                if st:
+                if st and _due("share_put", 60):
                     _ctx = (f"任务 {meta.get('task')} 档位 {meta.get('cap')} | "
                             f"L2固化{sum((s.get('l2') or {}).values())}项 | "
                             f"L3流程{sum((s.get('l3') or {}).values()) or 0}轮 | "
