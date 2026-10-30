@@ -527,8 +527,10 @@ cd /home/ubuntu/zmax && bash tools/start_station_stream.sh --check    # 只看�
 
 ### 9b-3. 推流某格「帧号在涨但画面纯黑」= 相机被 EC/UVC 隐私开关关掉, 不是取流代码 (2026-10-14 实测)
 
-症状与 §9b 的 v4l2 卡死**要分开判**: 那条是帧号冻住; 这条是 **frames_served 正常递增(实测 5fps)而画面全黑**。
-判据按顺序量三个数:
+**不要用"帧号是否递增"来区分这两条** —— 隐私开关关着时**帧号也会冻住**(实测 `frames_served` 停在 175 不再涨、
+`age_s` 单调增长、快照 `mean 5.5 / std 1.0`), 与 v4l2 卡死的外观完全一样。判据只用两条硬证据:
+①推流服务自己的 `/snapshot/<格>.jpg` 的 `mean/std`(黑帧 ⇒ 隐私/供电层) ②`privacy` 与 `camera_power` 的实读值;
+帧号只回答"有没有在出帧", 定不了责。判据按顺序量三个数:
 ```bash
 # ① 画面本身(别只看字节数): 纯黑 = mean≈0 且 std≈0
 ffmpeg -hide_banner -loglevel error -f v4l2 -i /dev/video2 -frames:v 8 -y /tmp/x.jpg   # 挑一个空闲节点, 绕开推流进程
@@ -696,6 +698,9 @@ journalctl -b -1 --no-pager | grep "user@1000.service: Consumed"            # �
 **②b 同一个脚本的 ① 进程行也会假绿 (2026-10-15 重启后实测)。** `check` 报 `✓ l5_live_mark pid 60798`,
 2 分钟后该 pid 已不存在、`pgrep -af l5_live_mark` 为空、`zmax_data/l5live/l5_live_mark.out` **根本不存在**(启动器从没跑过)
 ⇒ `check` 的 ✓ 只能读成"取样那一刻有进程", 复核一律用**现场 `pgrep -af` + 输出文件 mtime/存在性**双证。
+同类假绿在 `local` 分支也出现: 打印 `· 推流服务已在跑` 只说明端口上那个 pid 还在, 实测同一刻该格
+`stalled=true / frames 冻结 / 快照 mean 5.5`(相机隐私开关关着) —— 推流**在役判据只认帧号递增 + 快照不是黑帧**(§9b-3),
+不看启动器那句"已在跑"。
 (好事是 `local` 分支里的 `pgrep -f "[l]5_live_mark_run.sh"` 判重是准的: 缺了就 `bash tools/boot_restore.sh local` 一句补回,
 实测补后守护 shell + `tools/l5_live_mark.py` 双进程在跑。)
 **本机那 5 个手工进程(含 l5_live_mark)没有任何 cron keepalive**, 只有 `@reboot` 的 l2/vl 两条 ⇒ 重启后不自愈,
@@ -774,12 +779,21 @@ NTP 约 30s 后才拨正 ⇒ **在回拨前写下的任何时间戳(文件 mtime
 hermes cron status                      # ✗ No gateway is running 时别照它下结论(见上)
 systemctl is-active hermes-gateway      # host 级单元; 不要用 pgrep -f 'gateway run' 判活(见 §9i①)
 hermes cron tick                        # 不依赖网关 ticker, 立刻把"过点"的任务点一遍(补火)
-hermes gateway restart                  # 让 ticker 在正时钟下重起 —— 实测重启后 60s 一次, 恢复正常
+sudo systemctl restart hermes-gateway    # 让 ticker 在正时钟下重起 —— 实测重启后 60s 一次, 恢复正常
+# ⚠️ 别用 `sudo hermes gateway restart`: 报 "restart requires root", 而 sudo 下跑 hermes CLI 又掉了
+#   venv ⇒ `ModuleNotFoundError: No module named 'ruamel'`(看着像安装坏了, 其实是用系统 python 跑 CLI)。
+#   重启 host 网关一律 `sudo systemctl restart hermes-gateway`(单元 ExecStart 自带绝对 venv 路径)。
+#   复核: `hermes cron status` 要报 `✓ Gateway is running` + `Ticker heartbeat: Ns ago`,
+#   且 systemctl 的 ExecMainPID 已是新 pid(旧 pid 存活 ≠ 重启成功)。
 ```
 - **独立哨兵**(装在 systemd user timer 里, 不在 cron 里): `~/.hermes/scripts/cron_ticker_watchdog.sh`
   + `~/.config/systemd/user/hermes-cron-ticker-watchdog.{service,timer}`(每 5 分钟, `loginctl Linger=yes` 才随开机起)。
   三条判据任一命中就重启 gateway(30 分钟限流): ①心跳过期 >600s ②心跳在"未来" >120s ③有 enabled 任务的
   `next_run_at` 过点 >300s。健康时**一个字都不打**; 出动作才写 `~/.hermes/logs/cron_ticker_watchdog.log`。
+  🔴 **日志里是 `ticker 异常(...) 但没找到 gateway 进程 ⇒ 不动手` ⇒ 哨兵自己瞎了**: 它按 `pgrep` 找网关(见 §9i①),
+  而网关活着它也认不到 ⇒ 偏钟时这道独立防线**静默失效**, 心跳照样冻在"未来"。看到这行就人工
+  `sudo systemctl restart hermes-gateway`; 顺手把哨兵的判活改成 `systemctl is-active hermes-gateway`(system 级),
+  否则下次开机同样空转(判据: 事后 `hermes cron status` 的 heartbeat 应为个位数秒)。
   两个分支都要真跑一遍验证(用一个假心跳文件 + 改掉副本里的路径 + `HERMES=/bin/true` 的副本试, 别拿真脚本试重启)。
 - `@reboot` 的重算脚本(`~/.hermes/scripts/hermes_cron_reclock.sh`)只重排 `next_run`, **修不了已经卡死的 ticker**;
   现在它在末尾量一次开机时钟偏差, 偏了(>60s)就调上面那个哨兵复核。

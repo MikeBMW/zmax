@@ -281,6 +281,29 @@ curl -s "https://open.feishu.cn/open-apis/im/v1/messages/<message_id>" -H "Autho
   + `ls -l` 核对里面每个 commit id、文件路径真的存在再原样转发; 数字对不上要当场指出
   (例: `dist_min_mm` 是全程最小距陶、`done=false` 时不能说"到位")。
 
+## 多机部署 / 换 app 接管: 一个 app 只能一台机在跑
+
+- **同一个 app 只允许一条 WebSocket 生效**。把同一 app 的 `.env` 配到第二台机, 飞书事件会被任一台接走
+  ⇒ 消息丢一半, 而且分不清是谁答的。接管顺序固定: 新机配好并验到 `state=connected` → **旧机 `hermes gateway stop` 让位**;
+  两台都在线期间, "某台答了" 不能当稳定行为报给用户。
+- **`config.yaml` 里的 `platforms.feishu.app_id` / `app_secret` 覆盖 `.env`**。换 app 时只改 `.env` 会静默无效
+  (gateway 仍以旧 app 上线)。两处一起改, 或把 config 里的 `app_secret` 删掉只留 `.env`(600)。
+- **换 app 的核对三连**(缺一条不算换对): `POST /auth/v3/tenant_access_token/internal`(凭据有效) →
+  `GET /bot/v3/info` 看 `bot.app_name`/`open_id` 是不是目标机器人 → `GET /im/v1/chats` 看目标群在不在列表里。
+  `state=connected` 只证明连上了飞书, 不证明连的是对的那个 app。
+- **不要把 secret 打出来**: 排查时 `grep -A4 "feishu:"` / `cat config.yaml` 会把明文 `app_secret` 带进对话和日志。
+  只打印 `app_id`, secret 一律 `sed -E 's/(app_secret:).*/\1 [REDACTED]/'` 后再看。
+- **别人(同事/另一台机)交接 app 凭据走文件, 不走聊天**: 让对方在自己机器上
+  `printf 'FEISHU_APP_ID=%s\nFEISHU_APP_SECRET=%s\n' '<id>' '<secret>' > ~/.hermes/feishu_<name>.env && chmod 600 ...`,
+  本机读文件合并进 `.env`, 全程不回显。
+- **跨网段交接由能连到目标机的那台落地**: 接管方在办公网、目标机在产线内网时, 让对方扫网找机器是徒劳的
+  (扫 500 个地址也只有一个网段的 SSH)。让对端只负责"准备凭据文件 + 之后停掉自己", 落地与验证由有链路的一侧做。
+- **远端跑 hermes 用绝对路径** `~/.local/bin/hermes …`: 非登录 shell 里 `hermes` 常 `command not found`,
+  不代表没装。
+- **接管后要停掉旧机上的同名 cron**: 同一份状态报告在很多台机各有一条定时任务时, 接管后 `hermes cron pause <id>`
+  旧的, 否则群里同一内容发两遍(用户会当成"两台都在抢")。回读验证时注意 cron 投递是 `msg_type=post`, body 里是
+  `{"title","content"}` 而不是 `text` —— 取不到 text 不等于没发出去, 要按 `title` + `create_time` 核。
+
 ### When user says "你怎么不回答？" / "你得回复啊"
 
 1. Check group membership (chat list API)

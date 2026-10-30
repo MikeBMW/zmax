@@ -293,7 +293,33 @@ grep -q GTK_IM_MODULE ~/.bashrc || echo -e '\nexport GTK_IM_MODULE=ibus\nexport 
    **绕过：`git fetch --depth=1 origin main`**（URL 参数不同，绕开它的 pack 缓存），实测一步拉到新 sha。
    也可先 `git update-ref -d refs/remotes/origin/main` 清掉陈旧引用再取。
 
-⇒ 逐步命令、判据与升级后核对清单见 `references/hermes-self-upgrade.md`。
+⇒ 逐步命令、判据与升级后核对清单见 `references/hermes-self-upgrade.md`.
+
+## 迁移 Hermes 到另一台主机（搬 agent，不是灾后恢复）
+
+目标不是"文件拷过去了", 而是**新主机上 gateway 常驻在跑、平台真能收发**。完整配方见
+`references/hermes-host-migration.md`。四条会让人误报"已迁完"的坑:
+
+- 🔴 **state.db 绝不能直接 scp 活库**: 边写边拷得到"看着完整但打不开"的库(`file is not a database` /
+  `structural corruption`); 而且**换掉 state.db 后旧 `-shm`/`-wal`/`*.lock` 会让报错继续**, 必须一并移走。
+  正确做法 = 停服务 → `sqlite3` 的 `.backup()` 热拷 → 两侧都跑 `pragma integrity_check` + 对齐 `sessions` 表行数。
+- 🔴 **`gateway run` 临时跑会自己退出**: `gateway.unmanaged_idle_exit_seconds` 默认 600, 表现是
+  "迁完了过一会儿就不在线"。必须 `hermes gateway install`(用户级 unit + linger), 再核 `Active: active (running)` + `enabled`。
+- 🔴 **一个平台 app 只能有一个消费者**: 老主机的 gateway 要 `disable --now` 并删 wants 软链;
+  只 `kill` 进程会被 unit 拉回来(pid 变了就是证据)。拷 `.env` 时**剔掉平台凭据**, 别把老机的 app 带到新机上。
+- 🔴 **入站默认是拒绝**: 日志出现 `No env user allowlists configured … will deny` = 消息到了也被丢,
+  外部表现就是"平台对话数永远是 0"。补 `FEISHU_ALLOWED_USERS=<user_id,…>`(或 `GATEWAY_ALLOW_ALL_USERS=true`)后重启。
+  `Channel directory built: 0 target(s)` **不是故障**, 别拿它当根因。
+
+验收分三层, 只验第一层等于没验: **出站**(用 tenant_access_token 往群里发一条) → **入站**(该 `platform=` 的对话数在涨)
+→ **能力**(新机上一次真实推理有输出)。入站这一层只能由真人发一条消息验, 机器人收不到自己发的消息。
+
+关老主机前还要先审隐藏依赖(不会写在任何清单里):
+```bash
+pgrep -af "ssh -R|autossh|frpc"      # 常见 ssh -R 把新机本地服务挂到老机端口上
+ss -tnp | grep <老主机IP>            # 老机 nginx 可能 proxy_pass 到那条隧道
+```
+命中就意味着"老机一关, 那条对外链路就断", 要在交付口径里单独说明。
 
 ## Step-by-Step Recovery
 

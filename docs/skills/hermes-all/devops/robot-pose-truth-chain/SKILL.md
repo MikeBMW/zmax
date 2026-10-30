@@ -109,6 +109,28 @@ fetch /status → [x,y,z,rx,ry,rz] → rpy→quat(ZYX) → 写 tmp → os.replac
 - 🔴 中继不能只在文件不存在时写、也不能带自己的小缓存; 真值的时间戳必须来自**本次**读到的那一帧。
 - 判据顺序固定: 先 `stat` 文件龄 + `drift` 与桥比对, 再看下游日志 —— 倒着查会把中继问题当执行器问题。
 
+## 从 ROS 话题全速采真值 (48Hz 只读记录器)
+
+要「学动作」先要**同频度、同字段**的真值样本。HTTP 桥那份 `/pose` 是快照，轮询到 2Hz 就丢 96% 信号
+(实测单拍位移 243mm ⇒ 严重混叠)。直订 ROS 才能拿到 48Hz 轨迹。
+
+1. **先逐话题量频率，别按名字假设**: `ros2 topic hz <话题>` 一条一条量。实测同一台机上
+   `/joint_states` **静默**(仿真壳留下的空话题)、真关节在 `/robot/joint_states`(45Hz) 与 `/real_joint_states`(61Hz)，
+   `/gripper_pos` 12Hz，`/robot/tcp_pose` 47.9Hz。订到空话题时不会报错，只会字段永远 `None`。
+2. **解释器与 env**: `rclpy` 在系统 `python3`(ROS 发行版)；systemd unit 的 `ExecStart` 必须
+   `/bin/bash -lc 'source /opt/ros/<distro>/setup.bash && exec python3 …'`，否则 import 失败；
+   且 `ROS_DOMAIN_ID` 要显式给(与产线一致)。**不要**用装 torch 的那个 venv( numpy 冲突)。
+3. **QoS 用 BEST_EFFORT 订阅**(`qos_profile_sensor_data`): 发布端是传感器 QoS 时，RELIABLE 订阅收不到任何消息。
+4. **采集器必须自证频率**: 每 5s 写一份 `status.json` = 每话题**实测 Hz** + 行数 + 图-位姿 skew，
+   判据 `pose≥40Hz / joints≥40Hz / frames>0 / skew<25ms`。
+   🔴 **没有 `status.json` 就是主循环没跑到**，哪怕 `systemctl is-active` 是 active、帧与计划文件也在长
+   (实测回调里一个计数器 key 写错 ⇒ KeyError 打穿主线程、systemd 反复重启 `NRestarts=16`，
+   而其余子线程照写盘 ⇒ 看上去“在跑”)。先 `systemctl show -p NRestarts` + 前台跑 12s 看 traceback，
+   再看数据。
+5. **字段集决定能不能学策略**: 只有末端位姿 = 只能做记录/回放；要训动作必须 pose + 全关节位置/速度 + 夹爪 + 当时下发的计划段。
+   落盘按集分片(5min)、图按运动门控(动 5Hz / 静 0.5Hz，实测 2Hz 全量写一天≈30GB)、超量删最老集。
+6. **图-位姿对齐用本机墙钟捕图时刻** + 单独记 ROS header 漂移(实测控制器时钟快 51s)；skew 正常 1~13ms。
+
 ## 坑
 - 🔴 **单位: `tcp_out/latest.json` 的 `x/y/z` 是「米」(SDK 口径), 而段表/执行器要的是「mm」** ——
   拿真值直接做几何规划不乘 1000, 起点就变成 `0.66, -0.03, 0.29`“mm”, 规划器以为臂在原点附近,

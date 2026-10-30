@@ -33,6 +33,21 @@ metadata:
   否则白等一小时。
 - 传之前先确认大小与目标盘剩余空间(`df -h`), 权重 3GB 级别不算小。
 
+### 方向: 让"要收的那台"主动去拉, 不要反向往里推
+
+公司/产线网的**入站**连接会触发安全检查, 出站不会。所以搬数据时让目标机出站直连源机的公网地址:
+```bash
+# 目标机生成密钥; 公钥从"有源机权限的那台机器"追加进源机 authorized_keys(不用两边直连)
+ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519
+# 目标机主动拉: 出站, 不进站
+rsync -a --partial --inplace -e "ssh -i ~/.ssh/id_ed25519" root@<src-ip>:/path/f ./
+```
+- **别为此架反向隧道(frp / `ssh -R`)**: 那会让源机的连接反向穿进内网, 既是安全问题又白搭一层。
+  源机有公网 IP 时, 目标机出站 SSH 直连就够了 —— 先测 `timeout 8 bash -c 'cat < /dev/null > /dev/tcp/<src-ip>/22'` 再谈方案。
+- 速率上限 = **源机出网带宽**, 不是链路质量。实测云主机出网 0.38MB/s(≈3Mbps), 2.2GB 需 ~95 分钟 ——
+  按实测速率报 ETA, 别按"局域网的 100MB/s"承诺。
+- 长传输用 `setsid nohup rsync ... < /dev/null > log 2>&1 &` 脱离会话, 否则跑它的会话一结束就断。
+
 ## 2. 依赖必须按"目标机的 Python 版本"抓
 
 在有外网的那台机器上把**整棵依赖树**抓成轮子, 目标机只做 `--no-index` 安装:
@@ -69,7 +84,9 @@ ssh host 'pip install --no-index --find-links /home/x/wheels312 <pkg>'
 
 ## 3. 验收三证 (少一条不算完成)
 
-1. **字节数/校验**: 目标机 `stat -c %s` 与源侧一致(或 sha256 对账), 不看 rsync 退出码就完事。
+1. **逐文件校验, 不信 rsync 退出码**: 源侧给了 `MD5SUMS.txt` 就逐条对账; 被中断过的 rsync 会留下
+   **大小看着正常、内容已损坏**的半截文件(实测 24MB 包 MD5 不符, 且 rsync 自己没报错)
+   ⇒ 只删那一个文件重拉, 不要整批重传。没有清单时至少 `stat -c %s` 对齐字节数。
 2. **import**: 目标机跑 `python -c 'import <pkg>; from <pkg> import <关键类>; print(<pkg>.__version__)'`。
 3. **真跑**: 喂一份真数据跑一次, 记录耗时与输出数值(例: 参数规模 / 加载秒数 / 单次推理秒数)。
    只说"跑通了"不算证据; 目标是给出能让别人复核的数。
@@ -99,3 +116,53 @@ ssh host 'pip install --no-index --find-links /home/x/wheels312 <pkg>'
   `pkill -f <脚本名>` 会匹配到执行它的那条 shell 命令行(名字就在里面), 把自己一起 SIGTERM 掉
   (表现为 exit -15 且后续命令全未执行)。
 - 大文件不入 git: 权重/压缩包留数据盘或目标机, 仓库里只放清单与校验和。
+
+## 6. 部署一个子系统(代码 + unit)到另一台主机
+
+目标不是"push 完", 而是目标机上的服务真按新代码跑。顺序固定:
+
+1. **先摸目标机版本与路径**: `sha256sum`/`git log -1` 与本地比。目标可能是几天前的旧基线
+   (整个文件都不一样 ⇒ 整文件覆盖, 别硬套 patch), 也可能是 `~/zmax` → `~/zmax_550c` 这类软链 ——
+   软链存在时代码里 `expanduser("~/zmax")` 才安全, 否则改用仓库根解析 (env → 包位置 → 向上找 `src/lerobot` + `tools`)。
+2. **先备份目标机原文件**: `tar czf <bak>/pre_deploy_$(date +%H%M).tgz <这些文件>`, 回滚靠它。
+3. **逐文件传 + `sudo install`**: `rsync -a <file> host:/tmp/_deploy/` 再
+   `sudo install -o <user> -g <user> -m 644 /tmp/_deploy/<file> <目标路径>`。
+   直接 `rsync --delete` 进工作树会把属主/权限变成调用者, 还可能误删目标机独有文件。
+4. **逐文件 sha256 对账** (源 vs 目标), 不信 rsync 退出码。
+5. **systemd drop-in 单独装, 别用 `cp A || install B` 的 fallback 链**: 源路径写错时 fallback 会拿一个
+   截断/只剩几行的临时文件把原 drop-in 覆盖掉 —— 服务照样 active, 但 env 静默回落到 base 值
+   (白名单/开关全丢)。正确做法: 一次 `install -m 644 <完整 conf>` 进 drop-in 目录, 再
+   `daemon-reload` + `systemctl show <unit> -p Environment | tr ' ' '\n' | grep <KEY>` **逐条核 env**, 最后 restart。
+   `is-active`=active 不能证明新 env 生效: base 单元的值也让服务 active。
+6. **加节点/加服务的验收**: 看运行态台账里的节点数、逐节点状态 (`实现执行` vs `直通`)、单拍耗时预算,
+   以及新台账文件在不在长 —— 进程起来不算完成。
+7. **部署前确认这台机没有该链路的执行消费者**: `grep -rl <输出文件> tools/ src/` + 看 `actuator_calls.log`
+   是否存在/在长。否则"部署一个规划器"可能等于"开始给机器人下指令"。
+
+## 7. 整站 web 迁到内网主机(nginx+php+mysql+多服务+反向隧道)
+
+目标机在内网 NAT 后、源站有公网 IP 时, 拓扑固定为: 公网 nginx 只做 TLS 终结 + 反代到隧道,
+站点与所有后端服务搬进内网机。判据是**逐条 URL 对拍**, 不是"传完了"。
+
+- **先取"现网基线"再动手**: 迁移前把现网 URL 的状态码+字节数记下来。否则会把源站本来就有的
+  故障(实测 `/index.php/z-max/` 500, 原因是插件缺文件, 两侧 `class_exists` 都 false)误判成迁移引入。
+  对拍表里"两侧同为 500/404"就是合格。
+- **传输没完成前不许判"页面通了"**: 半截 rsync 的 WP 会 500,
+  报 `wp-settings.php` 里某个 `require` 打不开(实测缺 `wp-includes/pomo/mo.php`) ⇒ 等 `SITE_DONE` 再验。
+- **安全组只开 22/80/443 时不要用 frp 7000**: 用 `ssh -N -R 127.0.0.1:<port>:127.0.0.1:<本地端口>`
+  做反向隧道, 绑 127.0.0.1 不用改 `GatewayPorts`; 写成 `Restart=always` 的 unit, 加
+  `ServerAliveInterval=15` + `ExitOnForwardFailure=yes`。判活看云端 `ss -tnp | grep <port>`,
+  出现 CLOSE-WAIT 就是隧道断了(curl 000), 要连隧道一起纳入自愈。
+- **nginx 装完必须 reload**: vhost 是在 nginx 启动之后才 install 的, 不 reload 不监听新端口
+  (现象: `ss -ltn` 有 80 没有 8081, curl 000)。改完配置 `nginx -t && systemctl reload nginx`;
+  reload 不生效时 `restart`。
+- **403 先查目录穿越权限**: 站点放 `/home/<user>/web` 时, `www-data` 需要父目录 `o+x`
+  (`chmod o+x /home/<user>`), 否则整站 403 而 error.log 只写 Permission denied。
+- **php-fpm socket 名必须取自 pool 真值**: vhost 里写 `php8.3-fpm.sock`、pool 实际 listen
+  `/run/php/php-fpm.sock` ⇒ fastcgi 000/502。`grep ^listen /etc/php/*/fpm/pool.d/www.conf` 后再 sed vhost。
+- **WordPress 的 home/siteurl 若是 http, 内网直测会 302 到 https**: 预验时带 `-H "X-Forwarded-Proto: https"`,
+  或直接在公网入口验。别把 302 当故障。
+- **切流脚本自带自检+回滚**: `nginx -t` 不过或站点根 ≠200 就 `cp` 回旧配置 + reload, 旧的另存 `.bak`;
+  验收后大文件(模型/视频)可留源站直出(单独的 `location ^~ /models/` root 本地), 免得为 2GB 等几小时隧道。
+- **数据面也要搬**: MySQL 用同库名同账号(密码从目标应用的配置里取, 不回显), 导入后 `select count(*)` 对账;
+  文件服务的归档目录(如 relay 的 archive/data)只搬脚本会得到空数据, 要单独报"接口 200 但内容空"。

@@ -1,4 +1,4 @@
-远程: USB网卡⇒本机.23.50→Orin tashan@.23.66 + 工控机.23.23; 拔⇒仅热点Mike .43.181→.43.19(ssh orin-wifi)。ECS永久禁用: 已删orin-ecs, l2_daemon ZMAX_ORIN_SSH=tashan@.23.66; 技能走ssh/运动走bridge39071
+远程: USB网卡(本机.23.50)→Orin tashan@.23.66 + 工控机.23.23 + intel550C.23.70; 网卡拔⇒仅wifi无常通路; 技能走ssh/运动走bridge39071
 §
 NTP回拨8h(勿动RTC)→用monotonic; 判活判'未来时间戳'; cron ticker卡死→watchdog.timer
 §
@@ -20,7 +20,7 @@ YOLO在役=软链yolo_peg_live.pt; 瓶颈=数据; 相机独占⇒检测同进程
 §
 真机: rt后必下电; move_*不下电; 30s勿重发; collision=False; 执行腿=bridge(4060 l2_daemon→39071隧道→Orin 39061); 段表须带abs_mm; 550C不在执行链
 §
-引擎记忆五层L2/L3/L4+Qwen(SS_MACRO),势场喂obs[0:3]; 含H-JEPA-MR几何分支+SE3阻抗(u=+Kξ−Bξ̇+F_d,符号必+; 分量序[ρ;ω]非[ω;v])
+引擎记忆五层L2/L3/L4+Qwen(SS_MACRO),势场喂obs[0:3]; H-JEPA-MR几何分支+SE3阻抗(u=+Kξ−Bξ̇+F_d; 分量序[ρ;ω])
 §
 真源calib.json→zmax_params.py; 训练=joint_train_all.py --only L4,L3,L2
 §
@@ -30,7 +30,7 @@ L5规划器/safety=left_right/state_space/{planner,safety}.py; INTACT须常驻
 §
 LoRA需merge(否则零动作伪装):merge_lora_ckpt.py
 §
-ECS已弃(老倪2026-10-27:以后没有ECS); 资产=产线网卡直连192.168.23.x rsync或U盘, 禁走跳板; 对外访问(手机/大屏)需新入口待定
+ECS=仅web入口(TLS+反代127.0.0.1:18790+frp); 站点已搬550C(nginx:8081+php8.3+mysql xSpace+7服务,已对拍), 切流待点头(/root/switch550c.sh回滚); 资产走产线直连/U盘
 §
 GPU掉载主因=每步CPU>计算→静音日志+workers↑
 §
@@ -42,7 +42,7 @@ GPU掉载主因=每步CPU>计算→静音日志+workers↑
 §
 动作授权只从8793; 代发前先授权
 §
-位姿真源=tcp_out/latest.json(全0=陈旧; 采样器崩时 zmax-pose-relay 从 Orin 桥搬)
+位姿真源=tcp_out/latest.json(全0=陈旧; 崩则zmax-pose-relay从Orin桥搬)
 §
 运动安全: 速度mm/s 1~1000; 前置idle+automatic; 腿上限须重启容器; 清79免授权; 新点位老倪先做; 台账INCIDENT-INDEX.md; 要碰撞先agent_all_stop; 插入力≤40N
 §
@@ -67,3 +67,5 @@ AR=8797: 底图4相机=8791(arm/gold/surface)+本机D435; /api/cams·/snap/<k>.j
 tool0读heartbeat.pose.flange(禁手推R,y差251mm); precheck需扣连杆半径(肘r78)+<20mm FAIL; 手臂相机围栏无此项盲区
 §
 MoveIt起点须SDK直采(禁手推)
+§
+rec48=48Hz只读记录器待部署(tcp_pose+joints+夹爪+8812); 建图缺RealSense
