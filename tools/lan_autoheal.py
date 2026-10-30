@@ -25,9 +25,11 @@ CFG = os.path.join(HOME, ".ssh", "config")
 MODE_F = os.path.join(HOME, ".hermes", "cache", "scratch", "lan_mode")
 LOG = os.path.join(HOME, ".hermes", "cache", "scratch", "lan_autoheal.log")
 UNITS = ["zmax-orin-sdk-fwd.service", "zmax-orin-d405-tunnel.service",
-         "zmax-intel-gsrender-tunnel.service", "zmax-intel-cam-tunnel.service"]
+         "zmax-intel-gsrender-tunnel.service", "zmax-intel-cam-tunnel.service",
+         "zmax-orin-move-fwd.service"]
 LAN_IP, LAN_PORT = "192.168.23.66", "22"
-ECS_IP, ECS_PORT = "39.102.211.79", "22022"
+# 2026-10-31: 老倪「不要用 ECS」⇒ 无产线网卡时回退到手机热点上的 Orin (Host orin-wifi 同址).
+WIFI_IP, WIFI_PORT = "192.168.43.19", "22"
 
 
 def say(msg):
@@ -103,13 +105,15 @@ def main():
         cur = "remote"
 
     if want != cur:
-        ok, detail = set_host_orin(*(LAN_IP, LAN_PORT) if want == "lan" else (ECS_IP, ECS_PORT))
+        ok, detail = set_host_orin(*(LAN_IP, LAN_PORT) if want == "lan" else (WIFI_IP, WIFI_PORT))
         if not ok:
             say("⚠ 切 %s 失败: %s (网卡=%s)" % (want, detail, iface))
             return 1
         open(MODE_F, "w", encoding="utf-8").write(want)
         say("→ 切到 %s: Host orin = %s (网卡=%s)" % (want, detail, iface or "none"))
         run("sudo systemctl daemon-reload", 30)
+        # 上次掉线时这些 unit 可能已进 failed(重启过快被 systemd 拉黑)，先清标记再拉，否则插回网卡也不起
+        run("sudo systemctl reset-failed %s" % " ".join(UNITS), 20)
         r = run("sudo systemctl restart %s" % " ".join(UNITS), 90)
         if r.returncode != 0:
             say("  ⚠ 重启隧道有非零退出: %s" % (r.stderr or r.stdout)[:160].replace("\n", " "))

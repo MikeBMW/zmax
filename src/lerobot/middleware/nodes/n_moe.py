@@ -28,7 +28,8 @@ PORTS_IN = ['in1', 'in2']
 PORTS_OUT = ['out1', 'out2', 'out3']
 PORT_LABELS = {}
 
-IMPL_KEY = ''
+IMPL_KEY = 'ss_moe'   # 2026-10-31: 原来写'' ⇒ "直通(实现未注册)" 永远不进真实现, 断点不可能命中。
+                      # registry 里 ss_moe 一直存在 (nodes/library.py::node_ss_moe, 7 阶段硬先验门控)
 SOURCE = 'tools/stage_moe_backbone.py'
 SOURCE_SYMBOL = 'class StageMoE'
 PARAMS = {'desc': '[L4 认知主干 · 数据空间根的元数据层 2026-10-13 老倪改名] 元数据MOE门控路由: ① 元数据 = 整个系统的数据库根服务 (基础核心组成; 玻色子型=场/连续量, 费米子型=离散实体), ② 数据空间每个 topic = 由元数据组合成的原子/分子/有机物 (映射规则表), ③ 全息系统 = 整体算子可由 topic 子集复现 (实测秩/误差), ④ 硬先验门控路由 = 7 阶段→7 专家 1:1 (单射), 实现源码 tools/meta_moe_router.py; 原 7 专家 SigLIP 768d 冻结主干 + skill_ctx 阶段概率路由能力保留', 'source': 'tools/stage_moe_backbone.py', 'source_symbol': 'class StageMoE', 'status': '在役 (2026-09-26 会话四: 修 8 阶段覆盖 + 零回退逐位同; ckpt 真加载 7 专家)', 'todo': True, 'ckpt': 'zmax_data/stable-wm-cache/checkpoints/stage_moe/moe.pt (351MB)', 'meta_layer_src': 'tools/meta_moe_router.py', 'renamed_from': '阶段专家MOE门控路由', 'renamed_at': '2026-10-13'}

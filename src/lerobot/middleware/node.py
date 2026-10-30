@@ -15,9 +15,13 @@
 from __future__ import annotations
 
 import importlib
+import os
 import time
 
 from .bus import topic as _topic
+
+# 被 ZMAX_NODE_PURE_ALL 调试闸覆写成 PURE=True 的节点模块全名 (审计/取证用)
+NODE_PURE_FLIPPED = set()
 
 
 class Node:
@@ -32,13 +36,29 @@ class Node:
 
     # ── 装配 ──────────────────────────────────────────────────────────
     def _load_module(self):
-        """导入生成出来的节点模块 (missing 不炸: 用内置直通, 并在 status 里写明)。"""
+        """导入生成出来的节点模块 (missing 不炸: 用内置直通, 并在 status 里写明)。
+
+        🔬 全局调试闸 (2026-10-31 老倪「所有画布节点都要可以进断点」):
+            节点模块的铁律是 ``if not PURE: return 直通``——PURE=False 的 59 个节点
+            永远不调用 IMPL_KEY 对应的真实现, 于是**断点不可能命中**。
+            置 ZMAX_NODE_PURE_ALL=1 ⇒ 加载时把该模块的 PURE 覆写成 True,
+            80 个节点一律走计算面, 任意节点都能断在真实现里。
+            默认关闭(产线安全); 只影响本进程内节点, 不动文件、不动设备下发
+            (真机动作走 l2_daemon + 8793 授权, 与这里无关)。
+        """
         name = "lerobot.middleware.nodes.%s" % self.spec.module_name
         try:
-            return importlib.import_module(name)
+            mod = importlib.import_module(name)
         except Exception as e:                                        # noqa: BLE001
             self.last_status = "模块缺失: %s (%s)" % (name, e)
             return None
+        if os.environ.get("ZMAX_NODE_PURE_ALL", "0") == "1" and getattr(mod, "PURE", None) is not True:
+            try:
+                setattr(mod, "PURE", True)   # compute_* 每拍按模块全局读 PURE ⇒ 下一拍即生效
+                NODE_PURE_FLIPPED.add(name)
+            except Exception:                                        # noqa: BLE001
+                pass
+        return mod
 
     def topic(self, port):
         # 话题名以工程库 mw_topic 为准 (落库真源); 库不可用时才回落到字符串拼法
@@ -74,14 +94,45 @@ class Node:
         return sent
 
     # ── 计算 (模块可覆盖) ─────────────────────────────────────────────
+    def _make_log(self):
+        """给实现用的 ctx['log']: 去重(同文 30s 一次) + 前缀节点 id。
+
+        2026-10-31: 库里的实现普遍写 `log = ctx["log"]` 然后 `if log: log(...)`,
+        而 step() 的 ctx 只有端口 ⇒ 一调就 KeyError('log'), 节点看着"实现异常→直通",
+        断点能进但永远在异常分支上 (实测 ss2d3d/ssmode/sstactile/swds/swintact/swvideo/swworld)。
+        这里给一个安全的默认实现, 不改任何一个节点的口径。
+        """
+        last = {"t": 0.0, "msg": ""}
+
+        def _log(msg):
+            s = str(msg)
+            now = time.time()
+            if s == last["msg"] and now - last["t"] < 30.0:
+                return
+            last.update(t=now, msg=s)
+            print("[%s] %s" % (self.spec.id, s[:300]), flush=True)
+
+        return _log
+
     def compute(self, ctx):
         if self.module is not None and hasattr(self.module, "compute"):
+            # 实现约定: ctx[port] = {"value",...}; "log" 是可选便捷键 (见 _make_log)
+            ctx = dict(ctx)
+            ctx.setdefault("log", self._make_log())
             try:
                 outs = self.module.compute(ctx)
                 if isinstance(outs, dict):
                     self.last_status = getattr(self.module, "LAST_STATUS", "compute")
                     return outs
                 self.last_status = "compute 返回非 dict → 直通"
+            except KeyError as e:                                     # noqa: BLE001
+                _k = str(e).strip("'\"")
+                if _k == "module":
+                    # 控制台型实现 (library.py 里的老 node_*) 要运行时对象 ctx["module"] (带 on_xxx() 方法);
+                    # 画布循环里没有这个对象, 也不该造假 ⇒ 如实标注, 不静默直通。
+                    self.last_status = "实现是控制台型(需 ctx['module'] 运行时对象), 画布循环不提供 → 直通"
+                else:
+                    self.last_status = "compute 异常(KeyError: %s) → 直通" % _k
             except Exception as e:                                    # noqa: BLE001
                 self.last_status = "compute 异常(%s: %s) → 直通" % (type(e).__name__, e)
         else:

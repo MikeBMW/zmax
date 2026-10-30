@@ -17,6 +17,8 @@
 执行口径: EXEC_MODE=act · PURE=False (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
 """
 
+import os
+
 NODE_ID = 'n_exec'
 NAME = '⚙️ 动作执行器 (L2 收口 · 授权/闸/到位)'
 LAYER = 'L2'
@@ -34,7 +36,11 @@ SOURCE_SYMBOL = 'def run'
 PARAMS = {'layer': 'L2', 'role': 'execution sink (唯一能碰执行器的一层)', 'impl': 'src/lerobot/engineering/nodes/exec_dispatch_impl.py', 'fifo': 'zmax_data/l2_cmd.fifo', 'leg': 'sdk (本机直连, ZMAX_L2_FORCE_J=1 ⇒ MoveJ)', 'safety': '授权 epoch · guard_box 包络 · z_floor · 天花板 · 抬升闸 · VL 快层', 'source': 'src/lerobot/engineering/nodes/exec_dispatch_impl.py', 'source_symbol': 'def run', 'state_file': 'zmax_data/ss_live/exec_state.json', 'events_file': 'zmax_data/ss_live/exec_events.jsonl', 'notes': '节点实现只读真值(exec_state.json/exec_events.jsonl), 不下发; 段表下发在常驻进程 tools/l2_daemon.py (FIFO zmax_data/l2_cmd.fifo + 8793 授权 + 闸)', 'dispatcher': 'tools/l2_daemon.py'}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = False
+# 2026-10-31: 原来写死 False ⇒ 无论加不加进白名单, compute_n_l2 都在第一行直通返回,
+#   exec_dispatch_impl.run() 不会被调用, 断点永远不进 (老倪问"怎么没有进入断点")。
+#   改成环境开关: 默认仍 False(产线安全, 不动设备); 调试时 ZMAX_N_EXEC_PURE=1 ⇒ 真调实现。
+#   实现本身只读 exec_state.json / exec_events.jsonl, 不下发, 所以 D=1 是安全的。
+PURE = os.environ.get("ZMAX_N_EXEC_PURE", "0") == "1"
 LAST_STATUS = ""
 
 

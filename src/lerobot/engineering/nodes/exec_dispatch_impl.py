@@ -43,5 +43,15 @@ def run(ctx):
         out["last_events"] = tail
     except Exception:
         pass
-    print("[执行器节点] " + _json.dumps(out, ensure_ascii=False)[:400])
+    # 2026-10-31: 白名单里带上 n_exec 后这个节点每拍(10Hz)都跑, 直打一行会把终端刷满
+    #   (老倪「不允许再有 tick」)。改成: 状态键变了立刻打 + 最长 5s 一行心跳; 调试时仍看得到每段变化。
+    _k = (out.get("phase"), out.get("seg"), out.get("n_seg"), out.get("target"),
+          out.get("blocked_by"), out.get("state_error"))
+    _now = _time.time()
+    if _k != _PRINT_LAST["k"] or _now - _PRINT_LAST["t"] >= 5.0:
+        _PRINT_LAST.update(k=_k, t=_now)
+        print("[执行器节点] " + _json.dumps(out, ensure_ascii=False)[:400])
     return out
+
+
+_PRINT_LAST = {"k": None, "t": 0.0}
