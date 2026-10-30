@@ -366,7 +366,7 @@ def _crop_metrics(canvas, bgr, ratio, offset):
 #   亮度分不开, 只能靠 ROI 右界拦住(实测台面从 x≈1820 起, 故右界取 1815)。
 # 估倾角双法互校: (a) 上边缘滑窗最直段直线 (b) ROI 掩膜 minAreaRect —— 两法差 >1.5° 就判失败,
 #   宁可回退全幅也不硬裁(实测整条拟合残差 ±100px 是脏的, 只有中段直线干净)。
-JUDGE_ROI = (330, 960, 1815, 1440)          # 外框(右界只当保障 —— 正常走"上边缘竖直台阶"收紧到模块本体)
+JUDGE_ROI = (330, 960, 1815, 1440)          # 外框(右界只当兜底 —— 正常走"上边缘竖直台阶"收紧到模块本体)
 JUDGE_TH_BAR = 200                          # 过曝条(模块壳体)阈值
 JUDGE_TH_MOD = 170                          # 模块并集阈值(放宽: 含左端灰青连接器头, 实测灰 ~187)
 JUDGE_CANVAS = (1400, 300)                  # 判据图定尺(宽,高) —— 模块水平居中, 背景灰填充
@@ -395,7 +395,7 @@ def _judge_th_levels(g, x0, y0, x1, y1):
     """本帧的 (背景电平, 亮条电平, 亮条阈值, 模块阈值) —— 不再吃固定 200/170。
 
     为什么: 表面判据 v12.1 是靠"找过曝亮条(掩膜)→取上边缘/台阶"量厚度的。相机把曝光降下来(修过曝)
-    时, 画面里就没有 ≥200 的亮条了 ⇒ 判据整条垮掉。所以阈值必须**跟着本帧走**, 而不是预先固定一个
+    时, 画面里就没有 ≥200 的亮条了 ⇒ 判据整条垮掉。所以阈值必须**跟着本帧走**, 而不是写死一个
     "只对过曝帧成立"的数。返回的 th 在 abs 模式下就是老常量 ⇒ 老行为逐位可复现。
     """
     side = np.concatenate([g[y0:y1, x0:x0 + 30].ravel(), g[y0:y1, x1 - 30:x1].ravel()])
@@ -418,7 +418,7 @@ def _judge_bg_level(g, x0, y0, x1, y1):
 def _judge_top_edge(g, xa, xb, ya, yb, th=None, min_run=40):
     """逐列取"模块上边缘"点: 该列里第一个亮像素(要求该列亮像素数≥min_run, 排除噪点)。
 
-    th=None ⇒ 用老常量 JUDGE_TH_BAR(仅保障); 判据主路一律显式传**本帧算出的**阈值。
+    th=None ⇒ 用老常量 JUDGE_TH_BAR(仅兜底); 判据主路一律显式传**本帧算出的**阈值。
     """
     if th is None:
         th = JUDGE_TH_BAR
@@ -453,7 +453,19 @@ def render_judge_surface(bgr):
     #   ⇒ 先按贯穿列把 ROI 右界收到夹具左界; ROI 内没有贯穿列时行为完全不变。
     try:
         _col = (g >= 180).astype(np.uint8).sum(axis=0)
-        _below = _col > int(0.39 * H)
+        # 🔴 2026-10-30 (4060 侧实测 + 产线 /crop_info 自报 fixture_clamp_x=1334 印证):
+        #   原判据只看「本列亮像素数 > 0.39*H」(=799px/2048), 而**竖放的光模块长边本身就有 1395px**
+        #   ⇒ 模块把自己判成了夹具, ROI 右界被收到 x≈1334, 模块(x≈1300~1680)被切掉大半,
+        #   于是判据图框的不是模块轮廓、judge.ok=false。
+        #   夹具的本质是「整列贯穿」= 亮像素 **y 跨度**接近满高, 不是"数量多"。
+        #   实测该帧: 原判据命中 306 列, 其中真正贯穿(y跨度>=0.9H)的列 = 0。
+        #   ⇒ 加 y 跨度条件; 真夹具仍命中(贯穿列 y跨度≈H), 竖放模块(只占 58~69%H)不再误判。
+        _rows = np.arange(H).reshape(-1, 1)
+        _hit = (g >= 180)
+        _y0c = np.where(_hit, _rows, H).min(axis=0)
+        _y1c = np.where(_hit, _rows, -1).max(axis=0)
+        _span = np.where(_y1c >= 0, _y1c - _y0c + 1, 0)
+        _below = (_col > int(0.39 * H)) & (_span >= int(0.90 * H))
         _run = 0
         for _x in range(W):
             if _below[_x]:
@@ -758,7 +770,7 @@ def _detect_worker_loop():
         topview_path, origin_path, detect_type = (list(item) + [None] * 3)[:3]
         try:
             if not topview_path or not os.path.exists(topview_path):
-                print("  ⚠️ 跳过一项: 模型输入图已不在(%s) —— 不把不存在的路径提供给检测器" % topview_path)
+                print("  ⚠️ 跳过一项: 模型输入图已不在(%s) —— 不把不存在的路径喂给检测器" % topview_path)
                 continue
             t0 = time.time()
             result = detector.detect(topview_path, detect_type=detect_type)
@@ -882,31 +894,40 @@ def _apply_expo(us, gain, save=False):
     """
     global EXPOSURE_US, GAIN_DB, EXPO_SRC
     with _EXPO_LOCK:
-        us = float(us)
+        # 🛑 2026-10-30 老倪「降低曝光」实测: us 低于相机下限会让 SDK 在 native 层直接崩(3000 把 10083 打崩,
+        #   端口消失), Python 的 try/except 兜不住 ⇒ 必须在下发前夹住。
+        _us_in = float(us)
+        us = max(3500.0, min(200000.0, _us_in))
         gain = float(gain)
         res = {"us": us, "gain": gain, "ok": False, "us_ok": False, "gain_ok": False,
                "reopened": False, "cam_open": bool(_cam_open), "reason": ""}
+        if us != _us_in:
+            res["reason"] = "us 已夹取到安全范围 [3500, 200000] (收到 %.0f)" % _us_in
         if not _cam_open:
-            res["reason"] = "相机未打开: 参数已记住, 首次取帧初始化相机时生效"
+            res["reason"] = (res["reason"] + " · " if res["reason"] else "") + \
+                            "相机未打开: 参数已记住, 首次取帧初始化相机时生效"
         else:
             def _try():
                 a = _set_float("ExposureTime", us)
                 b = _set_float("Gain", gain, alts=(gain * 2, int(gain), 0.0, 2.0, 8.0))
                 return a, b
-            a, b = _try()
-            if not (a and b):
-                try:
-                    StopGrabbing()
-                    time.sleep(0.2)
-                except Exception:
-                    pass
-                a2, b2 = _try()
-                try:
-                    StartGrabbing()
-                except Exception:
-                    pass
-                res["reopened"] = True
-                a, b = bool(a or a2), bool(b or b2)
+            # 🔒 必须与抓帧互斥: 之前只加了 _EXPO_LOCK(只管改参数自己), 抓图线程仍能同时碰相机
+            #   ⇒ 实测 us=8000 时 Connection reset, 进程被打崩。这里用抓帧那把 _cam_lock 串起来。
+            with _cam_lock:
+                a, b = _try()
+                if not (a and b):
+                    try:
+                        StopGrabbing()
+                        time.sleep(0.2)
+                    except Exception:
+                        pass
+                    a2, b2 = _try()
+                    try:
+                        StartGrabbing()
+                    except Exception:
+                        pass
+                    res["reopened"] = True
+                    a, b = bool(a or a2), bool(b or b2)
             res["us_ok"], res["gain_ok"] = bool(a), bool(b)
             res["ok"] = bool(a and b)
             if not res["ok"]:
