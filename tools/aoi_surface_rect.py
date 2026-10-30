@@ -27,6 +27,9 @@ import numpy as np
 __all__ = ["surface_roi", "surface_judge", "overlay_box"]
 
 
+_SURF_OUT_LOCK = None       # 🔒 判据图输出尺寸锁 (w,h): 首个合格帧算定后恒定, 治"一会大一会小"
+
+
 def _prep(gray):
     clahe = cv2.createCLAHE(2.0, (8, 8))
     return cv2.GaussianBlur(clahe.apply(gray), (5, 5), 0)
@@ -167,6 +170,55 @@ def _profile_extent(gray, x0, x1, y0, y1, k=2.5, cap=0.40, band=None):
                             "grow_px": [dl, dr, dt, db], "grow_cap_px": [cap_lr, cap_lr, cap_tb, cap_tb]}
 
 
+def _fine_deskew(img, min_deg=0.25, pad_frac=0.08):
+    """残余微调: 粗旋转后模块长边仍可能差 ~1°(实测 -1.11°)。
+
+    用模块自身最小外接矩形的角度做一次小角度补旋 —— 只补 <45° 的残余,
+    先按比例加黑边再转, 避免四角被裁掉。返回 (新图, 补旋角度)。
+    """
+    try:
+        h, w = img.shape[:2]
+        pad = int(max(h, w) * pad_frac)
+        p = cv2.copyMakeBorder(img, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=(0, 0, 0))
+        g = cv2.cvtColor(p, cv2.COLOR_BGR2GRAY) if p.ndim == 3 else p
+        th, bw = cv2.threshold(g, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        bw = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8))
+        cs, _ = cv2.findContours(bw, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not cs:
+            return img, 0.0
+        c = max(cs, key=cv2.contourArea)
+        (_cx, _cy), (rw, rh), ang = cv2.minAreaRect(c)
+        a = ang if rw >= rh else ang + 90.0
+        while a > 45.0:
+            a -= 90.0
+        while a < -45.0:
+            a += 90.0
+        if abs(a) < min_deg:
+            return p[pad:pad + h, pad:pad + w], a
+        M = cv2.getRotationMatrix2D((p.shape[1] / 2.0, p.shape[0] / 2.0), a, 1.0)
+        out = cv2.warpAffine(p, M, (p.shape[1], p.shape[0]), flags=cv2.INTER_LINEAR,
+                             borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0))
+        return out, a
+    except Exception:                                                             # noqa: BLE001
+        return img, 0.0
+
+
+def _surface_out_lock(cw, ch, out_long):
+    """🔒 输出尺寸锁 (2026-10-30 老倪「图像要稳住」「不要一会变大一会变小」)。
+
+    现象: ch 来自每帧搜到的矩形高度(实测 375~440 波动), 再按 max(crop) 缩到 out_long=1400
+    ⇒ 输出高度 301/355 来回变, 肉眼就是"一会变大一会变小"。
+    做法: 首个合格帧算定 (out_w, out_h), 之后**恒定**; 每帧把裁剪块等比"装进"这个画布(只缩不放),
+    居中留黑边。尺寸不再随搜索抖动。
+    """
+    global _SURF_OUT_LOCK
+    if _SURF_OUT_LOCK is None:
+        ow = int(out_long or cw)
+        oh = max(1, int(round(ch * ow / float(max(1, cw)))))
+        _SURF_OUT_LOCK = (ow, oh)
+    return _SURF_OUT_LOCK
+
+
 def surface_judge(bgr, out_long=None, min_fill=0.45, return_overlay=True, expand=True):
     """搜索 → **纯旋转摆正** → 按真实像素尺寸裁剪。返回 (crop|None, overlay|None, meta)。
 
@@ -221,11 +273,26 @@ def surface_judge(bgr, out_long=None, min_fill=0.45, return_overlay=True, expand
     meta["crop_size_raw"] = [cw, ch]
     meta["no_stretch"] = bool(meta["out_size"] == [cw, ch] and "resize" not in str(meta.get("notes", "")))
     meta["expand_px"] = [cw - int(round(rect["w"])), ch - int(round(rect["h"]))]
-    if out_long and max(crop.shape[:2]) > out_long:
-        s = out_long / float(max(crop.shape[:2]))
-        crop = cv2.resize(crop, (int(crop.shape[1] * s), int(crop.shape[0] * s)), interpolation=cv2.INTER_AREA)
+    # 🎯 残余微调: 粗旋转后长边仍差 ~1°(实测 -1.11°) ⇒ 用模块自身角度补旋一次
+    crop, _fine = _fine_deskew(crop)
+    meta["fine_deskew_deg"] = round(float(_fine), 3)
+    if out_long:
+        # 🔒 尺寸锁 + 等比装进固定画布 (只缩不放, 居中留边) —— 治"一会变大一会变小"
+        ow, oh = _surface_out_lock(cw, ch, out_long)
+        iw, ih = max(1, int(ow * 0.96)), max(1, int(oh * 0.92))     # 留边, 模块不贴边不切头尾
+        s = min(iw / float(crop.shape[1]), ih / float(crop.shape[0]), 1.0)
+        if s < 1.0:
+            crop = cv2.resize(crop, (max(1, int(round(crop.shape[1] * s))),
+                                     max(1, int(round(crop.shape[0] * s)))),
+                              interpolation=cv2.INTER_AREA)
+            meta["no_stretch"] = False      # 走了 resize ⇒ 有插值, 这才是真拉伸
+        canvas = np.zeros((oh, ow, 3), np.uint8)
+        _y0 = max(0, (oh - crop.shape[0]) // 2)
+        _x0 = max(0, (ow - crop.shape[1]) // 2)
+        canvas[_y0:_y0 + crop.shape[0], _x0:_x0 + crop.shape[1]] = crop
+        crop = canvas
+        meta["locked_out"] = [ow, oh]
         meta["scaled_to"] = [int(crop.shape[1]), int(crop.shape[0])]
-        meta["no_stretch"] = False      # 走了 resize ⇒ 有插值, 这才是真拉伸
     return crop, ov, meta
 
 
