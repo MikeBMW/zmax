@@ -37,7 +37,7 @@ _lock = threading.Lock()
 _snap = {"pose": None, "pose_t": 0.0, "joints": None, "joints_t": 0.0,
          "rjoints": None, "rjoints_t": 0.0,
          "grip": None, "grip_t": 0.0, "move_t": 0.0, "last_xyz": None}
-_stats = {"pose": 0, "joint": 0, "grip": 0, "frame": 0, "plan": 0, "skew": []}
+_stats = {"pose": 0, "joints": 0, "rjoints": 0, "grip": 0, "frame": 0, "plan": 0, "skew": []}
 
 
 def _now():
@@ -159,7 +159,9 @@ def _mk_joint_cb(key):
                           "vel": [round(v, 4) for v in msg.velocity] if msg.velocity else [],
                           "estamp": {"s": st.sec, "n": st.nanosec}}
             _snap[key + "_t"] = t
-            _stats["joint" if key == "joints" else key] += 1
+            _stats[key] = _stats.get(key, 0) + 1
+            if key != "joints":
+                _stats["joints"] += 1
     return cb
 
 
@@ -238,7 +240,7 @@ def main():
 
     rclpy.init()
     node = rclpy.create_node("zmax_rec48")
-    node.create_subscription(JointState, "/joint_states", _mk_joint_cb("joints"), qos_profile_sensor_data)
+    node.create_subscription(JointState, "/robot/joint_states", _mk_joint_cb("joints"), qos_profile_sensor_data)
     node.create_subscription(JointState, "/real_joint_states", _mk_joint_cb("rjoints"), qos_profile_sensor_data)
     node.create_subscription(Float32, "/gripper_pos", on_grip, qos_profile_sensor_data)
     print("[rec48] 订阅就绪, 输出 %s" % _EP.dir, flush=True)
