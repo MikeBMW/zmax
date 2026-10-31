@@ -25,41 +25,9 @@ import sys
 _H = {"d": None, "err": None, "n": 0, "last": None}
 
 
-def under_debugger() -> bool:
-    """当前进程是否挂着调试器 (VSCode/pydevd 或任何 sys.settrace 的 tracer)。"""
-    try:
-        if "pydevd" in sys.modules or "pydevd_frame_eval" in sys.modules:
-            return True
-        return sys.gettrace() is not None
-    except Exception:                                  # noqa: BLE001
-        return False
-
-
 def enabled() -> bool:
-    """显式开 (ZMAX_DISPATCH_INPROC=1) 或**调试器已挂** —— 调试时你要的就是单进程内可断点。"""
-    return str(os.environ.get("ZMAX_DISPATCH_INPROC", "")).strip() in ("1", "true", "yes", "on") \
-        or under_debugger()
-
-
-def _isolate_live() -> str:
-    """调试模式且未显式指定 LIVE: 用隔离目录 (拷一份真 chunk 进去), 绝不写生产 zmax_data/ss_live。"""
-    import shutil
-    import tempfile
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    prod = os.path.join(root, "zmax_data", "ss_live")
-    dbg = os.path.join(tempfile.gettempdir(), "zmax_dbg_live")
-    os.makedirs(dbg, exist_ok=True)
-    for _f in ("chunk_latest.json", "trace_live.json"):
-        src = os.path.join(prod, _f)
-        dst = os.path.join(dbg, _f)
-        try:
-            if os.path.exists(src) and (not os.path.exists(dst) or os.path.getmtime(src) > os.path.getmtime(dst)):
-                shutil.copy2(src, dst)
-        except Exception:                              # noqa: BLE001
-            pass
-    os.environ.setdefault("ZMAX_LIVE_DIR", dbg)
-    os.environ.setdefault("ZMAX_SHM_DIR", os.path.join(tempfile.gettempdir(), "zmax_dbg_shm"))
-    return dbg
+    """显式开 (ZMAX_DISPATCH_INPROC=1)。默认关 —— 生产只有一个写者 (systemd 派发单元)。"""
+    return str(os.environ.get("ZMAX_DISPATCH_INPROC", "")).strip() in ("1", "true", "yes", "on")
 
 
 def dispatcher():
@@ -70,8 +38,6 @@ def dispatcher():
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         if os.path.join(root, "tools") not in sys.path:
             sys.path.insert(0, os.path.join(root, "tools"))
-        if under_debugger() and not str(os.environ.get("ZMAX_LIVE_DIR", "")).strip():
-            _H["live"] = _isolate_live()               # 调试: 隔离目录, 不碰生产
         import ss_skill_dispatch as _sd              # noqa: PLC0415
 
         _H["d"] = _sd.Dispatcher(hz=float(os.environ.get("ZMAX_DISPATCH_HZ", "10")))

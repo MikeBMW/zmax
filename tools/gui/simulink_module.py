@@ -7350,18 +7350,6 @@ class SimulinkModule(QWidget):
     def _tick(self):
         """定时器驱动连续仿真"""
         self.step_sim()
-        # 🧩 550B 单进程调试 (老倪 2026-10-31「断点没有进入」): 画布"▶ 运行"时若开了
-        #   ZMAX_DISPATCH_INPROC=1, 就在**本进程**里跑一拍技能派发 ⇒ 红点打在 SKxx.clamp 真会停。
-        #   默认关: 未设 env 时 tick() 立刻返回 None, 生产行为零变化。
-        try:
-            import sys as _sys
-            _tools = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools")
-            if _tools not in _sys.path:
-                _sys.path.insert(0, _tools)
-            import dispatch_inproc as _di            # noqa: PLC0415
-            _di.tick()
-        except Exception:                                       # noqa: BLE001
-            pass
         if self._sim_t >= self._sim_t_end:
             self.stop_sim()
 

@@ -7,12 +7,12 @@
   「由状态空间的节点实现」要成立, 必须有一个常驻进程按拍跑画布节点。本脚本就是它。
 
 白名单 (重要):
-  ZMAX_CANVAS_ONLY=ssuph         只跑这些节点(逗号分隔)。空 = 跑全部可执行节点。
+  (无白名单: 每拍跑画布里的全部节点 —— 老倪 2026-10-31「所有节点都要运行」)
   默认 **不跑全部** —— 画布里多数节点 PURE=True 会真调模型/硬件, 逐节点验过再把 id 加进白名单。
 
 用法:
-  ZMAX_CANVAS_ONLY=ssuph ./gui-venv311/bin/python tools/ss_canvas_loop.py
-  ZMAX_CANVAS_ONLY=ssuph,ssllm ZMAX_CANVAS_HZ=10 ...
+  ZMAX_CANVAS_HZ=10 ./gui-venv311/bin/python tools/ss_canvas_loop.py
+  ZMAX_CANVAS_HZ=10 ...
 
 产物:
   zmax_data/ss_live/canvas_loop.json   每拍摘要(帧龄/节点状态/最后一拍 trace)
@@ -44,7 +44,8 @@ except Exception:                                       # noqa: BLE001
 CANVAS = os.path.join(ROOT, "data", "database", "zmax", "sources", "canvas",
                       "state_space_obs.json")
 STATE = os.path.join(ROOT, "zmax_data", "ss_live", "canvas_loop.json")
-ONLY = [x.strip() for x in (os.environ.get("ZMAX_CANVAS_ONLY") or "").split(",") if x.strip()]
+# 🔴 2026-10-31 老倪「为什么要白名单? 早就要求所有节点都要运行」⇒ 白名单**已删除**:
+#   本循环每拍跑画布里的全部节点 (prj.step() 不传 only)。不再读 ZMAX_CANVAS_ONLY。
 HZ = max(0.5, float(os.environ.get("ZMAX_CANVAS_HZ") or "10"))
 STATE_EVERY = max(1, int(HZ))                 # 约 1s 落一次状态
 
@@ -105,7 +106,7 @@ def write_state(d):
 
 
 def main():
-    log("画布常驻循环启动 · HZ=%.1f · 白名单=%s" % (HZ, ONLY or "全部(危险,不建议)"))
+    log("画布常驻循环启动 · HZ=%.1f · 全部节点都跑 (无白名单)" % HZ)
     prj, mtime, n_tick, last_err = None, 0.0, 0, ""
     _last_ev = [None]              # 上一行证据的 (段,件) —— 只在变化时打 (见 ✅ 行)
     while True:
@@ -116,19 +117,12 @@ def main():
                 t0 = time.monotonic()
                 prj = load_project()
                 mtime = mt
-                log("加载画布: %d 节点 / %d 连线 (%.2fs) 白名单生效=%s"
-                    % (len(prj.nodes), len(prj.order), time.monotonic() - t0, bool(ONLY)))
+                log("加载画布: %d 节点 / %d 连线 (%.2fs) · 全部节点执行"
+                    % (len(prj.nodes), len(prj.order), time.monotonic() - t0))
             t0 = time.monotonic()
-            traces = prj.step(only=ONLY or None)
+            traces = prj.step()                     # 全部节点都跑 (老倪 2026-10-31: 不许白名单)
             cost = time.monotonic() - t0
             n_tick += 1
-            # 🧩 技能派发同进程 (老倪 2026-10-31「技能没有进入断点」): 调试这个画布循环时,
-            #   SKxx.clamp 就在本进程这一拍里执行 ⇒ 红点会停。生产 (无调试器/无 env) 立刻返回 None。
-            try:
-                import dispatch_inproc as _di      # noqa: PLC0415
-                _di.tick()
-            except Exception:                       # noqa: BLE001
-                pass
             keepalive_switch()                 # 🔄 AR 开关续期(只续 ar_scene), 防 1800s 过期导致双臂不动
             # 💓 心跳: 终端每 ~5s 一行 (tick/耗时/节点数) —— 没有心跳时"安静"会被误读成"卡住"
             # 💓 2026-10-31 老倪「不允许再有 tick」: 心跳默认**关**。要开就设 ZMAX_LOOP_BEAT_S=5
@@ -178,7 +172,7 @@ def main():
             if _max_t and n_tick >= _max_t:
                 log("🏁 已跑满 %d 拍 (ZMAX_LOOP_MAX_TICKS) → 正常结束, 不再检测" % _max_t)
                 write_state({"t": time.time(), "t_str": time.strftime("%H:%M:%S"), "ok": True,
-                             "hz": HZ, "only": ONLY, "tick": n_tick, "cost_ms": round(cost * 1000, 1),
+                             "hz": HZ, "only": [], "tick": n_tick, "cost_ms": round(cost * 1000, 1),
                              "budget_ms": round(1000.0 / HZ, 1), "over_budget": False,
                              "n_nodes": len(prj.nodes), "n_ran": len(traces), "traces": [],
                              "err": "", "done": True})
@@ -192,7 +186,7 @@ def main():
                                   for k, v in (t.get("out") or {}).items()}}
                          for t in traces]
                 write_state({"t": time.time(), "t_str": time.strftime("%H:%M:%S"),
-                             "ok": True, "hz": HZ, "only": ONLY, "tick": n_tick,
+                             "ok": True, "hz": HZ, "only": [], "tick": n_tick,
                              "cost_ms": round(cost * 1000, 1),
                              "budget_ms": round(1000.0 / HZ, 1),
                              "over_budget": bool(cost > 1.0 / HZ),
@@ -209,7 +203,7 @@ def main():
                 log("循环异常 → 1s 后重建: " + msg)
                 last_err = msg
             write_state({"t": time.time(), "t_str": time.strftime("%H:%M:%S"),
-                         "ok": False, "hz": HZ, "only": ONLY, "tick": n_tick,
+                         "ok": False, "hz": HZ, "only": [], "tick": n_tick,
                          "err": msg})
             prj = None
             time.sleep(1.0)
