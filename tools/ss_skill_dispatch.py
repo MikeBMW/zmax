@@ -201,6 +201,14 @@ class Dispatcher:
         self._sk_cache = {}
         self.n_gate_skill = 0        # 走"技能对象自己的调用口"的拍数 (本段有技能类)
         self.n_gate_stage = 0        # 走"同段唯一依据闸"的拍数 (本段没有技能类: 拔出/AOI转移/AOI检测/回程)
+        # 🧭/⚖ 计数 (2026-10-31: 技能类自带算式, 派发器自己记账, 不再读公共闸实例)
+        self.n_kin = 0               # 运动学闸实际调用拍数
+        self.n_dyn = 0               # 动力学闸实际调用拍数
+        self.n_all = 0               # 过闸总拍数 (对账用)
+        self.cut_n = {"速度": 0, "加速度": 0, "加加速度": 0, "动量/质量率": 0, "位移": 0}
+        self.kin_cut_n = {"速度": 0, "加速度": 0, "加加速度": 0, "位移": 0}
+        self.dyn_cut_n = {"动量/质量率": 0}
+        self.n_force_over = 0
         self.last_v = {s_: np.zeros(3) for s_ in STAGES}
         self.last_a = {s_: np.zeros(3) for s_ in STAGES}
         # ⚖ 加速度唯一依据: 块边界算一次并**保留到下一块** (老倪 2026-10-15「信号分析里要看到 a 加速度」)。
@@ -242,6 +250,22 @@ class Dispatcher:
         else:
             r = self.lim.limit(st, action, v_prev=self.last_v.get(st), a_prev=self.last_a.get(st))
             self.n_gate_stage += 1
+        # 🧭/⚖ 计数收口 (2026-10-31 技能类自带算式后): 以技能自己 return 的调用标记对账,
+        #   不再从公共闸实例里读 —— 技能那条路已经**不再经过** InertiaLimiter。
+        self.n_kin += int(r.get("kin_called") or 0)
+        self.n_dyn += int(r.get("dyn_called") or 0)
+        self.n_all += 1
+        for _w in str(r.get("why") or "").split("+"):
+            if _w and _w != "可行":
+                self.cut_n[_w] = self.cut_n.get(_w, 0) + 1
+        for _w in str(r.get("kin_why") or "").split("+"):
+            if _w and _w not in ("可行", "未派发"):
+                self.kin_cut_n[_w] = self.kin_cut_n.get(_w, 0) + 1
+        if str(r.get("dyn_why") or "") not in ("", "可行", "未派发"):
+            for _w in str(r.get("dyn_why")).split("+"):
+                self.dyn_cut_n[_w] = self.dyn_cut_n.get(_w, 0) + 1
+        if float(r.get("f_need_N") or 0.0) > float((r.get("phys") or {}).get("F_max") or 0.0) * DT:
+            self.n_force_over += 1
         v = np.asarray(r["u"], float)[:3]
         self.last_a[st] = (v - self.last_v.get(st, np.zeros(3))) / DT
         self.last_v[st] = v
@@ -269,6 +293,13 @@ class Dispatcher:
                 self.last_v[_act] = np.zeros(3)
                 self.last_a[_act] = np.zeros(3)
                 self._last_p.pop(_act, None)
+                # 技能自己记的段行程也要清 (它现在自带算式, 不复位就会跨段累加)
+                try:
+                    _sk0 = self._skill(_act)
+                    if _sk0 is not None:
+                        _sk0.travel_m = 0.0
+                except Exception:                                          # noqa: BLE001
+                    pass
                 if _prev:
                     self.last_v[_prev] = np.zeros(3)
                     self.last_a[_prev] = np.zeros(3)
@@ -310,7 +341,7 @@ class Dispatcher:
                           "phys": dict(limits_for(st) or {})}
             # ⚖ 老倪 2026-10-15: 信号分析要看到 x y z v a 等物理值 ⇒ 逐拍把这些量算出来落盘
             _a_n = float(self.a_blk.get(st, 0.0))                     # mm/s² (块间速度变化率, 保留到下一块)
-            _s_mm = float(self.lim.travel.get(st, 0.0)) * 1000.0       # 本段累计行程 mm
+            _s_mm = float((_p or {}).get("s_travel") or 0.0) * 1000.0   # 本段累计行程 mm (技能自己算的)
             out[st] = {"stage": st, "action": _p["u"], "step": step, "ts": now,
                        "在职": 1 if _on else 0,
                        "age_s": round(now - float(c["ts"]), 4), "n": self.skill_n.get(st, 0),
@@ -332,18 +363,17 @@ class Dispatcher:
                 "切换次数": self.n_switch,
                 # ⚖ 过闸计数 (可观察): 技能调用口拍数 + 无技能段拍数 + 闸门累计拍数与削因
                 "过闸_技能拍": self.n_gate_skill, "过闸_段闸拍": self.n_gate_stage,
-                "闸_拍数": int(getattr(self.lim, "n", 0)),
-                "闸_削因": dict(getattr(self.lim, "n_cut", {}) or {}),
-                "闸_不可行拍": int(sum((getattr(self.lim, "n_cut", {}) or {}).values())),
+                "闸_拍数": self.n_all,
+                "闸_削因": dict(self.cut_n),
+                "闸_不可行拍": int(sum(self.cut_n.values())),
                 # 🧭 运动学约束 / ⚖ 动力学约束 分闸计数 (老倪 2026-10-31「都要真正调用」):
                 #   拍数必须都 == 闸_拍数 (没有一拍绕过任何一条闸); 削因各记各的。
-                "运动学闸_拍": int(getattr(self.lim, "n_kin", 0)),
-                "动力学闸_拍": int(getattr(self.lim, "n_dyn", 0)),
-                "运动学削因": dict((getattr(self.lim, "kin", None) and self.lim.kin.n_cut) or {}),
-                "动力学削因": dict((getattr(self.lim, "dyn", None) and self.lim.dyn.n_cut) or {}),
-                "动力学_力超限拍": int(getattr(getattr(self.lim, "dyn", None), "n_force", 0)),
-                "两条闸对账": ("一致" if int(getattr(self.lim, "n_kin", 0)) == int(getattr(self.lim, "n", -1))
-                              == int(getattr(self.lim, "n_dyn", -2)) else "❌ 拍数不一致")}
+                "运动学闸_拍": self.n_kin,
+                "动力学闸_拍": self.n_dyn,
+                "运动学削因": dict(self.kin_cut_n),
+                "动力学削因": dict(self.dyn_cut_n),
+                "动力学_力超限拍": self.n_force_over,
+                "两条闸对账": ("一致" if self.n_kin == self.n_all == self.n_dyn else "❌ 拍数不一致")}
         for st in STAGES:
             v = out.get(st)
             flat["%s_mps" % st] = (_norm(v["action"]) if v else -1.0)

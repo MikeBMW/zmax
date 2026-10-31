@@ -333,29 +333,101 @@ class SK01Approach(AtomicSkill):
     ctrl = {"gripper": "张开", "v_cap": 0.35, "v_min": 0.12}
     source = "state_space_sim_real.STAGE_APPROACH_H / cognition.STAGE_V_CAP"
 
-    # ⚖ 物理模型调用 (真语句, 不是注释): 本段每拍动作 → 五式闸
-    #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
-    #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
+    # ══════════════════════════════════════════════════════════════════════════
+    # 本技能的约束 — 数字全写在这里 (真源 config/calib/zmax_skill_physics.json · 段=接近)
+    #   加速度上限取真源 a (标定值优先, 无标定才用牛顿二定律 F/m): 4.166667 m/s²
+    # ══════════════════════════════════════════════════════════════════════════
+    DT_S      = 0.1            # 每拍 0.1 s
+    M_KG      = 1.2            # 运动质量 kg (未夹持)
+    F_MAX_N   = 5.0            # 允许力 N (④ 动力量)
+    A_MAX     = 4.166667       # ② 加速度上限 m/s² (真源 a 标定值; = F/m = 5.0/1.20)
+    V_CAP     = 0.35           # ① 速度上限 m/s
+    V_MIN     = 0.12           # 最小速度 (低于它算到位, 不追)
+    JERK_MAX  = 15.0           # ③ 加加速度上限 m/s³
+    S_STEP    = 0.035          # ⑤ 单拍位移上限 m (= V_CAP × dt)
+    S_MAX     = 0.6            # ⑤ 本段行程上限 m
+    DMDT_MAX  = 0.1            # ④ 质量变化率上限 kg/s
+
     def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
-        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。
+        """运动学 ①②③⑤ + 动力学 ④ —— 逐条算, 算出来的就是下发动作。
 
-        🔴 2026-10-31 老倪「这个 clamp 也没有断点啊」⇒ 拆成两步写, 为的是断点:
-           在 `return r` 那行打红点, 调试器里直接看得到 r 的全部字段
-           (u / v_req / err / why / kin_why / dyn_why / phys), 而不是只剩一个 return 表达式。
-           行为逐位不变 (同一调用、同一返回)。
+        u 请求动作 [vx,vy,vz,夹爪] · v_prev/a_prev 上一拍速度/加速度 (缺省当 0)
+        返回 u(下发) v_req(请求) err(被削的量) why(哪条削的) phys(本段数字)
         """
-        r = self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
-        return r
+        import numpy as np                                  # 局部导入 (本模块按需加载, 不强制 numpy)
+        dt = self.DT_S if dt is None else float(dt)
+        m, F_max = self.M_KG, self.F_MAX_N
+        u_req = np.asarray(u, dtype=float).ravel().copy()
+        v = u_req[:3].copy()                                # 只约束平移 3 维, 夹爪原样下发
+        v0 = np.zeros(3) if v_prev is None else np.asarray(v_prev, dtype=float).ravel()[:3].copy()
+        a0 = np.zeros(3) if a_prev is None else np.asarray(a_prev, dtype=float).ravel()[:3].copy()
+        why = []
 
-    # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
-    #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
-    #   ② 速度←加速度: v = ∫a dt   ,  ‖Δv‖ ≤ a_max·dt, a_max = F_max/m   (牛顿二定律)
-    #   ③ 加加速度:    a = ∫j dt   ,  ‖Δa‖ ≤ jerk_max·dt       (伺服带宽有限, 不许阶跃)
-    #   ④ 动量/质量率: p = m·v     ,  ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取建立/释放时质量在变)
-    #   ⑤ 惯量:        F = m·a     ⇒  a = F/m
-    #   带本段真实数字的方程: SK01Approach.show_phys()
-    phys_note = '未夹持 m=1.20kg · F=5N 通用力 · dm/dt=0.1 ⇒ ①(±0.35m/s)+②(4.17m/s²)绑; ④ 非绑定'
+        # ① 速度: ‖v‖ ≤ V_CAP (超了等比缩小, 方向不变)
+        n_v = float(np.linalg.norm(v))
+        if n_v > self.V_CAP > 0:
+            v = v * (self.V_CAP / n_v)
+            why.append("速度")
 
+        # ② 加速度: 每拍速度变化 ‖v−v0‖ ≤ A_MAX·dt (A_MAX 就是真源标定的那个加速度)
+        a_max = self.A_MAX
+        a_lim = a_max * dt
+        dv = v - v0
+        n_dv = float(np.linalg.norm(dv))
+        if n_dv > a_lim > 0:
+            v = v0 + dv * (a_lim / n_dv)
+            why.append("加速度")
+
+        # ③ 加加速度: 每拍加速度变化 ‖Δa‖ ≤ JERK_MAX·dt (不许阶跃, 伺服带宽有限)
+        a_new = (v - v0) / dt
+        da = a_new - a0
+        j_lim = self.JERK_MAX * dt
+        n_da = float(np.linalg.norm(da))
+        if n_da > j_lim > 0:
+            a_new = a0 + da * (j_lim / n_da)
+            v = v0 + a_new * dt
+            why.append("加加速度")
+        kin_why = "+".join(why) or "可行"
+
+        # ④ 动力学: 动量/质量率 ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取/释放时质量在变)
+        _dmdt = self.DMDT_MAX if dmdt is None else float(dmdt)
+        dv = v - v0
+        f_lim = F_max * dt
+        f_need = m * dv + v * (_dmdt * dt)
+        n_f = float(np.linalg.norm(f_need))
+        dyn_why = []
+        if n_f > f_lim > 0:
+            v = v0 + dv * (f_lim / max(n_f, 1e-9))
+            dyn_why.append("动量/质量率")
+            why.append("动量/质量率")
+
+        # ⑤ 位移: 单拍 ‖v‖·dt ≤ S_STEP; 本段累计 > S_MAX 只报不杀
+        d_step = float(np.linalg.norm(v)) * dt
+        if self.S_STEP > 0 and d_step > self.S_STEP * (1.0 + 1e-12):
+            v = v * (self.S_STEP / max(d_step, 1e-12))
+            why.append("位移")
+        self.travel_m = float(getattr(self, "travel_m", 0.0)) + float(np.linalg.norm(v)) * dt
+        over = int(self.S_MAX > 0 and self.travel_m > self.S_MAX * (1.0 + 1e-9))
+
+        # 收口: 下发动作 / 被削掉的偏差 / 本段数字
+        u_out = u_req.copy()
+        u_out[:3] = v
+        err = u_req[:3] - v
+        e_norm = float(np.linalg.norm(err))
+        return {"u": [float(x) for x in u_out],
+                "v_req": [float(x) for x in u_req[:3]],
+                "err": [float(x) for x in err], "err_norm": round(e_norm, 8),
+                "big": int(e_norm > 0.05),
+                "why": "+".join(why) or "可行",
+                "kin_why": kin_why,
+                "dyn_why": "+".join(dyn_why) or "可行",
+                "phys": {"m": round(m, 4), "F_max": F_max, "v_cap": self.V_CAP, "v_min": self.V_MIN,
+                         "a_max": round(a_max, 4), "jerk_max": round(self.JERK_MAX, 3),
+                         "dmdt_max": _dmdt, "s_step": self.S_STEP, "s_max": self.S_MAX, "dt": dt,
+                         "src": self.source,
+                         "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
+                "s_travel": round(self.travel_m, 6), "over_travel": over,
+                "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
 
 class SK02Align(AtomicSkill):
     """② 对位 — 光模块上方精对位 (更低悬停, 准备垂直下刀)"""
@@ -371,29 +443,101 @@ class SK02Align(AtomicSkill):
     ctrl = {"gripper": "张开", "v_cap": 0.12, "v_min": 0.04}
     source = "state_space_sim_real.STAGE_ALIGN_H"
 
-    # ⚖ 物理模型调用 (真语句, 不是注释): 本段每拍动作 → 五式闸
-    #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
-    #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
+    # ══════════════════════════════════════════════════════════════════════════
+    # 本技能的约束 — 数字全写在这里 (真源 config/calib/zmax_skill_physics.json · 段=对位)
+    #   加速度上限取真源 a (标定值优先, 无标定才用牛顿二定律 F/m): 4.166667 m/s²
+    # ══════════════════════════════════════════════════════════════════════════
+    DT_S      = 0.1            # 每拍 0.1 s
+    M_KG      = 1.2            # 运动质量 kg (未夹持)
+    F_MAX_N   = 5.0            # 允许力 N (④ 动力量)
+    A_MAX     = 4.166667       # ② 加速度上限 m/s² (真源 a 标定值; = F/m = 5.0/1.20)
+    V_CAP     = 0.12           # ① 速度上限 m/s
+    V_MIN     = 0.04           # 最小速度 (低于它算到位, 不追)
+    JERK_MAX  = 5.142857       # ③ 加加速度上限 m/s³
+    S_STEP    = 0.012          # ⑤ 单拍位移上限 m (= V_CAP × dt)
+    S_MAX     = 0.06           # ⑤ 本段行程上限 m
+    DMDT_MAX  = 0.1            # ④ 质量变化率上限 kg/s
+
     def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
-        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。
+        """运动学 ①②③⑤ + 动力学 ④ —— 逐条算, 算出来的就是下发动作。
 
-        🔴 2026-10-31 老倪「这个 clamp 也没有断点啊」⇒ 拆成两步写, 为的是断点:
-           在 `return r` 那行打红点, 调试器里直接看得到 r 的全部字段
-           (u / v_req / err / why / kin_why / dyn_why / phys), 而不是只剩一个 return 表达式。
-           行为逐位不变 (同一调用、同一返回)。
+        u 请求动作 [vx,vy,vz,夹爪] · v_prev/a_prev 上一拍速度/加速度 (缺省当 0)
+        返回 u(下发) v_req(请求) err(被削的量) why(哪条削的) phys(本段数字)
         """
-        r = self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
-        return r
+        import numpy as np                                  # 局部导入 (本模块按需加载, 不强制 numpy)
+        dt = self.DT_S if dt is None else float(dt)
+        m, F_max = self.M_KG, self.F_MAX_N
+        u_req = np.asarray(u, dtype=float).ravel().copy()
+        v = u_req[:3].copy()                                # 只约束平移 3 维, 夹爪原样下发
+        v0 = np.zeros(3) if v_prev is None else np.asarray(v_prev, dtype=float).ravel()[:3].copy()
+        a0 = np.zeros(3) if a_prev is None else np.asarray(a_prev, dtype=float).ravel()[:3].copy()
+        why = []
 
-    # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
-    #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
-    #   ② 速度←加速度: v = ∫a dt   ,  ‖Δv‖ ≤ a_max·dt, a_max = F_max/m   (牛顿二定律)
-    #   ③ 加加速度:    a = ∫j dt   ,  ‖Δa‖ ≤ jerk_max·dt       (伺服带宽有限, 不许阶跃)
-    #   ④ 动量/质量率: p = m·v     ,  ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取建立/释放时质量在变)
-    #   ⑤ 惯量:        F = m·a     ⇒  a = F/m
-    #   带本段真实数字的方程: SK02Align.show_phys()
-    phys_note = '未夹持 m=1.20kg · F=5N · v 收到 0.12m/s ⇒ ①+③(jerk 5.1)绑; ④ 非绑定'
+        # ① 速度: ‖v‖ ≤ V_CAP (超了等比缩小, 方向不变)
+        n_v = float(np.linalg.norm(v))
+        if n_v > self.V_CAP > 0:
+            v = v * (self.V_CAP / n_v)
+            why.append("速度")
 
+        # ② 加速度: 每拍速度变化 ‖v−v0‖ ≤ A_MAX·dt (A_MAX 就是真源标定的那个加速度)
+        a_max = self.A_MAX
+        a_lim = a_max * dt
+        dv = v - v0
+        n_dv = float(np.linalg.norm(dv))
+        if n_dv > a_lim > 0:
+            v = v0 + dv * (a_lim / n_dv)
+            why.append("加速度")
+
+        # ③ 加加速度: 每拍加速度变化 ‖Δa‖ ≤ JERK_MAX·dt (不许阶跃, 伺服带宽有限)
+        a_new = (v - v0) / dt
+        da = a_new - a0
+        j_lim = self.JERK_MAX * dt
+        n_da = float(np.linalg.norm(da))
+        if n_da > j_lim > 0:
+            a_new = a0 + da * (j_lim / n_da)
+            v = v0 + a_new * dt
+            why.append("加加速度")
+        kin_why = "+".join(why) or "可行"
+
+        # ④ 动力学: 动量/质量率 ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取/释放时质量在变)
+        _dmdt = self.DMDT_MAX if dmdt is None else float(dmdt)
+        dv = v - v0
+        f_lim = F_max * dt
+        f_need = m * dv + v * (_dmdt * dt)
+        n_f = float(np.linalg.norm(f_need))
+        dyn_why = []
+        if n_f > f_lim > 0:
+            v = v0 + dv * (f_lim / max(n_f, 1e-9))
+            dyn_why.append("动量/质量率")
+            why.append("动量/质量率")
+
+        # ⑤ 位移: 单拍 ‖v‖·dt ≤ S_STEP; 本段累计 > S_MAX 只报不杀
+        d_step = float(np.linalg.norm(v)) * dt
+        if self.S_STEP > 0 and d_step > self.S_STEP * (1.0 + 1e-12):
+            v = v * (self.S_STEP / max(d_step, 1e-12))
+            why.append("位移")
+        self.travel_m = float(getattr(self, "travel_m", 0.0)) + float(np.linalg.norm(v)) * dt
+        over = int(self.S_MAX > 0 and self.travel_m > self.S_MAX * (1.0 + 1e-9))
+
+        # 收口: 下发动作 / 被削掉的偏差 / 本段数字
+        u_out = u_req.copy()
+        u_out[:3] = v
+        err = u_req[:3] - v
+        e_norm = float(np.linalg.norm(err))
+        return {"u": [float(x) for x in u_out],
+                "v_req": [float(x) for x in u_req[:3]],
+                "err": [float(x) for x in err], "err_norm": round(e_norm, 8),
+                "big": int(e_norm > 0.05),
+                "why": "+".join(why) or "可行",
+                "kin_why": kin_why,
+                "dyn_why": "+".join(dyn_why) or "可行",
+                "phys": {"m": round(m, 4), "F_max": F_max, "v_cap": self.V_CAP, "v_min": self.V_MIN,
+                         "a_max": round(a_max, 4), "jerk_max": round(self.JERK_MAX, 3),
+                         "dmdt_max": _dmdt, "s_step": self.S_STEP, "s_max": self.S_MAX, "dt": dt,
+                         "src": self.source,
+                         "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
+                "s_travel": round(self.travel_m, 6), "over_travel": over,
+                "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
 
 class SK03Descend(AtomicSkill):
     """③ 下降 — 张爪垂直下刀包住光模块身 (触到即停)"""
@@ -410,29 +554,101 @@ class SK03Descend(AtomicSkill):
     ctrl = {"gripper": "张开 (到位前不闭 — 状态锁存非比例)", "v_cap": 0.09}
     source = "state_space_sim_real.STAGE_DESCEND_H / _z_stall"
 
-    # ⚖ 物理模型调用 (真语句, 不是注释): 本段每拍动作 → 五式闸
-    #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
-    #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
+    # ══════════════════════════════════════════════════════════════════════════
+    # 本技能的约束 — 数字全写在这里 (真源 config/calib/zmax_skill_physics.json · 段=下降)
+    #   加速度上限取真源 a (标定值优先, 无标定才用牛顿二定律 F/m): 4.166667 m/s²
+    # ══════════════════════════════════════════════════════════════════════════
+    DT_S      = 0.1            # 每拍 0.1 s
+    M_KG      = 1.2            # 运动质量 kg (未夹持)
+    F_MAX_N   = 5.0            # 允许力 N (④ 动力量)
+    A_MAX     = 4.166667       # ② 加速度上限 m/s² (真源 a 标定值; = F/m = 5.0/1.20)
+    V_CAP     = 0.09           # ① 速度上限 m/s
+    V_MIN     = 0.0            # 最小速度 (低于它算到位, 不追)
+    JERK_MAX  = 3.857143       # ③ 加加速度上限 m/s³
+    S_STEP    = 0.009          # ⑤ 单拍位移上限 m (= V_CAP × dt)
+    S_MAX     = 0.05           # ⑤ 本段行程上限 m
+    DMDT_MAX  = 0.1            # ④ 质量变化率上限 kg/s
+
     def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
-        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。
+        """运动学 ①②③⑤ + 动力学 ④ —— 逐条算, 算出来的就是下发动作。
 
-        🔴 2026-10-31 老倪「这个 clamp 也没有断点啊」⇒ 拆成两步写, 为的是断点:
-           在 `return r` 那行打红点, 调试器里直接看得到 r 的全部字段
-           (u / v_req / err / why / kin_why / dyn_why / phys), 而不是只剩一个 return 表达式。
-           行为逐位不变 (同一调用、同一返回)。
+        u 请求动作 [vx,vy,vz,夹爪] · v_prev/a_prev 上一拍速度/加速度 (缺省当 0)
+        返回 u(下发) v_req(请求) err(被削的量) why(哪条削的) phys(本段数字)
         """
-        r = self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
-        return r
+        import numpy as np                                  # 局部导入 (本模块按需加载, 不强制 numpy)
+        dt = self.DT_S if dt is None else float(dt)
+        m, F_max = self.M_KG, self.F_MAX_N
+        u_req = np.asarray(u, dtype=float).ravel().copy()
+        v = u_req[:3].copy()                                # 只约束平移 3 维, 夹爪原样下发
+        v0 = np.zeros(3) if v_prev is None else np.asarray(v_prev, dtype=float).ravel()[:3].copy()
+        a0 = np.zeros(3) if a_prev is None else np.asarray(a_prev, dtype=float).ravel()[:3].copy()
+        why = []
 
-    # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
-    #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
-    #   ② 速度←加速度: v = ∫a dt   ,  ‖Δv‖ ≤ a_max·dt, a_max = F_max/m   (牛顿二定律)
-    #   ③ 加加速度:    a = ∫j dt   ,  ‖Δa‖ ≤ jerk_max·dt       (伺服带宽有限, 不许阶跃)
-    #   ④ 动量/质量率: p = m·v     ,  ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取建立/释放时质量在变)
-    #   ⑤ 惯量:        F = m·a     ⇒  a = F/m
-    #   带本段真实数字的方程: SK03Descend.show_phys()
-    phys_note = '未夹持 m=1.20kg · 触到即停 ⇒ ①(0.09m/s)+③绑; 段行程 s_max=0.05 收紧(=对位悬停高度)'
+        # ① 速度: ‖v‖ ≤ V_CAP (超了等比缩小, 方向不变)
+        n_v = float(np.linalg.norm(v))
+        if n_v > self.V_CAP > 0:
+            v = v * (self.V_CAP / n_v)
+            why.append("速度")
 
+        # ② 加速度: 每拍速度变化 ‖v−v0‖ ≤ A_MAX·dt (A_MAX 就是真源标定的那个加速度)
+        a_max = self.A_MAX
+        a_lim = a_max * dt
+        dv = v - v0
+        n_dv = float(np.linalg.norm(dv))
+        if n_dv > a_lim > 0:
+            v = v0 + dv * (a_lim / n_dv)
+            why.append("加速度")
+
+        # ③ 加加速度: 每拍加速度变化 ‖Δa‖ ≤ JERK_MAX·dt (不许阶跃, 伺服带宽有限)
+        a_new = (v - v0) / dt
+        da = a_new - a0
+        j_lim = self.JERK_MAX * dt
+        n_da = float(np.linalg.norm(da))
+        if n_da > j_lim > 0:
+            a_new = a0 + da * (j_lim / n_da)
+            v = v0 + a_new * dt
+            why.append("加加速度")
+        kin_why = "+".join(why) or "可行"
+
+        # ④ 动力学: 动量/质量率 ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取/释放时质量在变)
+        _dmdt = self.DMDT_MAX if dmdt is None else float(dmdt)
+        dv = v - v0
+        f_lim = F_max * dt
+        f_need = m * dv + v * (_dmdt * dt)
+        n_f = float(np.linalg.norm(f_need))
+        dyn_why = []
+        if n_f > f_lim > 0:
+            v = v0 + dv * (f_lim / max(n_f, 1e-9))
+            dyn_why.append("动量/质量率")
+            why.append("动量/质量率")
+
+        # ⑤ 位移: 单拍 ‖v‖·dt ≤ S_STEP; 本段累计 > S_MAX 只报不杀
+        d_step = float(np.linalg.norm(v)) * dt
+        if self.S_STEP > 0 and d_step > self.S_STEP * (1.0 + 1e-12):
+            v = v * (self.S_STEP / max(d_step, 1e-12))
+            why.append("位移")
+        self.travel_m = float(getattr(self, "travel_m", 0.0)) + float(np.linalg.norm(v)) * dt
+        over = int(self.S_MAX > 0 and self.travel_m > self.S_MAX * (1.0 + 1e-9))
+
+        # 收口: 下发动作 / 被削掉的偏差 / 本段数字
+        u_out = u_req.copy()
+        u_out[:3] = v
+        err = u_req[:3] - v
+        e_norm = float(np.linalg.norm(err))
+        return {"u": [float(x) for x in u_out],
+                "v_req": [float(x) for x in u_req[:3]],
+                "err": [float(x) for x in err], "err_norm": round(e_norm, 8),
+                "big": int(e_norm > 0.05),
+                "why": "+".join(why) or "可行",
+                "kin_why": kin_why,
+                "dyn_why": "+".join(dyn_why) or "可行",
+                "phys": {"m": round(m, 4), "F_max": F_max, "v_cap": self.V_CAP, "v_min": self.V_MIN,
+                         "a_max": round(a_max, 4), "jerk_max": round(self.JERK_MAX, 3),
+                         "dmdt_max": _dmdt, "s_step": self.S_STEP, "s_max": self.S_MAX, "dt": dt,
+                         "src": self.source,
+                         "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
+                "s_travel": round(self.travel_m, 6), "over_travel": over,
+                "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
 
 class SK04Grasp(AtomicSkill):
     """④ 抓取 — 闭合夹爪深夹 (夹持锁存, 抬起前随动验证)"""
@@ -449,29 +665,101 @@ class SK04Grasp(AtomicSkill):
     ctrl = {"gripper": "闭合锁存 (抓取及之后恒闭合)", "v_cap": 0.04}
     source = "cognition.ActionModulator(grasp_th=0.50) / GRASP_SAT"
 
-    # ⚖ 物理模型调用 (真语句, 不是注释): 本段每拍动作 → 五式闸
-    #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
-    #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
+    # ══════════════════════════════════════════════════════════════════════════
+    # 本技能的约束 — 数字全写在这里 (真源 config/calib/zmax_skill_physics.json · 段=抓取)
+    #   加速度上限取真源 a (标定值优先, 无标定才用牛顿二定律 F/m): 9.375000 m/s²
+    # ══════════════════════════════════════════════════════════════════════════
+    DT_S      = 0.1            # 每拍 0.1 s
+    M_KG      = 1.28           # 运动质量 kg (夹持建立中)
+    F_MAX_N   = 12.0           # 允许力 N (④ 动力量)
+    A_MAX     = 9.375          # ② 加速度上限 m/s² (真源 a 标定值; = F/m = 12.0/1.28)
+    V_CAP     = 0.04           # ① 速度上限 m/s
+    V_MIN     = 0.0            # 最小速度 (低于它算到位, 不追)
+    JERK_MAX  = 2.25           # ③ 加加速度上限 m/s³
+    S_STEP    = 0.004          # ⑤ 单拍位移上限 m (= V_CAP × dt)
+    S_MAX     = 0.006          # ⑤ 本段行程上限 m
+    DMDT_MAX  = 0.5            # ④ 质量变化率上限 kg/s
+
     def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
-        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。
+        """运动学 ①②③⑤ + 动力学 ④ —— 逐条算, 算出来的就是下发动作。
 
-        🔴 2026-10-31 老倪「这个 clamp 也没有断点啊」⇒ 拆成两步写, 为的是断点:
-           在 `return r` 那行打红点, 调试器里直接看得到 r 的全部字段
-           (u / v_req / err / why / kin_why / dyn_why / phys), 而不是只剩一个 return 表达式。
-           行为逐位不变 (同一调用、同一返回)。
+        u 请求动作 [vx,vy,vz,夹爪] · v_prev/a_prev 上一拍速度/加速度 (缺省当 0)
+        返回 u(下发) v_req(请求) err(被削的量) why(哪条削的) phys(本段数字)
         """
-        r = self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
-        return r
+        import numpy as np                                  # 局部导入 (本模块按需加载, 不强制 numpy)
+        dt = self.DT_S if dt is None else float(dt)
+        m, F_max = self.M_KG, self.F_MAX_N
+        u_req = np.asarray(u, dtype=float).ravel().copy()
+        v = u_req[:3].copy()                                # 只约束平移 3 维, 夹爪原样下发
+        v0 = np.zeros(3) if v_prev is None else np.asarray(v_prev, dtype=float).ravel()[:3].copy()
+        a0 = np.zeros(3) if a_prev is None else np.asarray(a_prev, dtype=float).ravel()[:3].copy()
+        why = []
 
-    # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
-    #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
-    #   ② 速度←加速度: v = ∫a dt   ,  ‖Δv‖ ≤ a_max·dt, a_max = F_max/m   (牛顿二定律)
-    #   ③ 加加速度:    a = ∫j dt   ,  ‖Δa‖ ≤ jerk_max·dt       (伺服带宽有限, 不许阶跃)
-    #   ④ 动量/质量率: p = m·v     ,  ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取建立/释放时质量在变)
-    #   ⑤ 惯量:        F = m·a     ⇒  a = F/m
-    #   带本段真实数字的方程: SK04Grasp.show_phys()
-    phys_note = '夹持建立 m 1.20→1.28 · F=12N(夹爪最大夹持力) · **dm/dt=0.5kg/s ⇒ ④ 真绑定** (动量变化要付得起)'
+        # ① 速度: ‖v‖ ≤ V_CAP (超了等比缩小, 方向不变)
+        n_v = float(np.linalg.norm(v))
+        if n_v > self.V_CAP > 0:
+            v = v * (self.V_CAP / n_v)
+            why.append("速度")
 
+        # ② 加速度: 每拍速度变化 ‖v−v0‖ ≤ A_MAX·dt (A_MAX 就是真源标定的那个加速度)
+        a_max = self.A_MAX
+        a_lim = a_max * dt
+        dv = v - v0
+        n_dv = float(np.linalg.norm(dv))
+        if n_dv > a_lim > 0:
+            v = v0 + dv * (a_lim / n_dv)
+            why.append("加速度")
+
+        # ③ 加加速度: 每拍加速度变化 ‖Δa‖ ≤ JERK_MAX·dt (不许阶跃, 伺服带宽有限)
+        a_new = (v - v0) / dt
+        da = a_new - a0
+        j_lim = self.JERK_MAX * dt
+        n_da = float(np.linalg.norm(da))
+        if n_da > j_lim > 0:
+            a_new = a0 + da * (j_lim / n_da)
+            v = v0 + a_new * dt
+            why.append("加加速度")
+        kin_why = "+".join(why) or "可行"
+
+        # ④ 动力学: 动量/质量率 ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取/释放时质量在变)
+        _dmdt = self.DMDT_MAX if dmdt is None else float(dmdt)
+        dv = v - v0
+        f_lim = F_max * dt
+        f_need = m * dv + v * (_dmdt * dt)
+        n_f = float(np.linalg.norm(f_need))
+        dyn_why = []
+        if n_f > f_lim > 0:
+            v = v0 + dv * (f_lim / max(n_f, 1e-9))
+            dyn_why.append("动量/质量率")
+            why.append("动量/质量率")
+
+        # ⑤ 位移: 单拍 ‖v‖·dt ≤ S_STEP; 本段累计 > S_MAX 只报不杀
+        d_step = float(np.linalg.norm(v)) * dt
+        if self.S_STEP > 0 and d_step > self.S_STEP * (1.0 + 1e-12):
+            v = v * (self.S_STEP / max(d_step, 1e-12))
+            why.append("位移")
+        self.travel_m = float(getattr(self, "travel_m", 0.0)) + float(np.linalg.norm(v)) * dt
+        over = int(self.S_MAX > 0 and self.travel_m > self.S_MAX * (1.0 + 1e-9))
+
+        # 收口: 下发动作 / 被削掉的偏差 / 本段数字
+        u_out = u_req.copy()
+        u_out[:3] = v
+        err = u_req[:3] - v
+        e_norm = float(np.linalg.norm(err))
+        return {"u": [float(x) for x in u_out],
+                "v_req": [float(x) for x in u_req[:3]],
+                "err": [float(x) for x in err], "err_norm": round(e_norm, 8),
+                "big": int(e_norm > 0.05),
+                "why": "+".join(why) or "可行",
+                "kin_why": kin_why,
+                "dyn_why": "+".join(dyn_why) or "可行",
+                "phys": {"m": round(m, 4), "F_max": F_max, "v_cap": self.V_CAP, "v_min": self.V_MIN,
+                         "a_max": round(a_max, 4), "jerk_max": round(self.JERK_MAX, 3),
+                         "dmdt_max": _dmdt, "s_step": self.S_STEP, "s_max": self.S_MAX, "dt": dt,
+                         "src": self.source,
+                         "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
+                "s_travel": round(self.travel_m, 6), "over_travel": over,
+                "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
 
 class SK05Lift(AtomicSkill):
     """⑤ 抬起 — 垂直提起光模块离台 (随动验证夹持是否真建立)"""
@@ -487,29 +775,101 @@ class SK05Lift(AtomicSkill):
     ctrl = {"gripper": "闭合保持", "v_cap": 0.30, "v_min": 0.10}
     source = "state_space_sim_real.STAGE_LIFT / GRASP_SLIP_MM"
 
-    # ⚖ 物理模型调用 (真语句, 不是注释): 本段每拍动作 → 五式闸
-    #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
-    #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
+    # ══════════════════════════════════════════════════════════════════════════
+    # 本技能的约束 — 数字全写在这里 (真源 config/calib/zmax_skill_physics.json · 段=抬起)
+    #   加速度上限取真源 a (标定值优先, 无标定才用牛顿二定律 F/m): 3.703704 m/s²
+    # ══════════════════════════════════════════════════════════════════════════
+    DT_S      = 0.1            # 每拍 0.1 s
+    M_KG      = 1.35           # 运动质量 kg (已夹持)
+    F_MAX_N   = 5.0            # 允许力 N (④ 动力量)
+    A_MAX     = 3.703704       # ② 加速度上限 m/s² (真源 a 标定值; = F/m = 5.0/1.35)
+    V_CAP     = 0.3            # ① 速度上限 m/s
+    V_MIN     = 0.1            # 最小速度 (低于它算到位, 不追)
+    JERK_MAX  = 12.857143      # ③ 加加速度上限 m/s³
+    S_STEP    = 0.03           # ⑤ 单拍位移上限 m (= V_CAP × dt)
+    S_MAX     = 0.16           # ⑤ 本段行程上限 m
+    DMDT_MAX  = 0.1            # ④ 质量变化率上限 kg/s
+
     def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
-        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。
+        """运动学 ①②③⑤ + 动力学 ④ —— 逐条算, 算出来的就是下发动作。
 
-        🔴 2026-10-31 老倪「这个 clamp 也没有断点啊」⇒ 拆成两步写, 为的是断点:
-           在 `return r` 那行打红点, 调试器里直接看得到 r 的全部字段
-           (u / v_req / err / why / kin_why / dyn_why / phys), 而不是只剩一个 return 表达式。
-           行为逐位不变 (同一调用、同一返回)。
+        u 请求动作 [vx,vy,vz,夹爪] · v_prev/a_prev 上一拍速度/加速度 (缺省当 0)
+        返回 u(下发) v_req(请求) err(被削的量) why(哪条削的) phys(本段数字)
         """
-        r = self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
-        return r
+        import numpy as np                                  # 局部导入 (本模块按需加载, 不强制 numpy)
+        dt = self.DT_S if dt is None else float(dt)
+        m, F_max = self.M_KG, self.F_MAX_N
+        u_req = np.asarray(u, dtype=float).ravel().copy()
+        v = u_req[:3].copy()                                # 只约束平移 3 维, 夹爪原样下发
+        v0 = np.zeros(3) if v_prev is None else np.asarray(v_prev, dtype=float).ravel()[:3].copy()
+        a0 = np.zeros(3) if a_prev is None else np.asarray(a_prev, dtype=float).ravel()[:3].copy()
+        why = []
 
-    # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
-    #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
-    #   ② 速度←加速度: v = ∫a dt   ,  ‖Δv‖ ≤ a_max·dt, a_max = F_max/m   (牛顿二定律)
-    #   ③ 加加速度:    a = ∫j dt   ,  ‖Δa‖ ≤ jerk_max·dt       (伺服带宽有限, 不许阶跃)
-    #   ④ 动量/质量率: p = m·v     ,  ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取建立/释放时质量在变)
-    #   ⑤ 惯量:        F = m·a     ⇒  a = F/m
-    #   带本段真实数字的方程: SK05Lift.show_phys()
-    phys_note = '已夹持 m=1.35kg(夹爪1.2+件0.15) · F=5N · 段行程 s_max=0.16(STAGE_LIFT) ⇒ ①+②绑'
+        # ① 速度: ‖v‖ ≤ V_CAP (超了等比缩小, 方向不变)
+        n_v = float(np.linalg.norm(v))
+        if n_v > self.V_CAP > 0:
+            v = v * (self.V_CAP / n_v)
+            why.append("速度")
 
+        # ② 加速度: 每拍速度变化 ‖v−v0‖ ≤ A_MAX·dt (A_MAX 就是真源标定的那个加速度)
+        a_max = self.A_MAX
+        a_lim = a_max * dt
+        dv = v - v0
+        n_dv = float(np.linalg.norm(dv))
+        if n_dv > a_lim > 0:
+            v = v0 + dv * (a_lim / n_dv)
+            why.append("加速度")
+
+        # ③ 加加速度: 每拍加速度变化 ‖Δa‖ ≤ JERK_MAX·dt (不许阶跃, 伺服带宽有限)
+        a_new = (v - v0) / dt
+        da = a_new - a0
+        j_lim = self.JERK_MAX * dt
+        n_da = float(np.linalg.norm(da))
+        if n_da > j_lim > 0:
+            a_new = a0 + da * (j_lim / n_da)
+            v = v0 + a_new * dt
+            why.append("加加速度")
+        kin_why = "+".join(why) or "可行"
+
+        # ④ 动力学: 动量/质量率 ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取/释放时质量在变)
+        _dmdt = self.DMDT_MAX if dmdt is None else float(dmdt)
+        dv = v - v0
+        f_lim = F_max * dt
+        f_need = m * dv + v * (_dmdt * dt)
+        n_f = float(np.linalg.norm(f_need))
+        dyn_why = []
+        if n_f > f_lim > 0:
+            v = v0 + dv * (f_lim / max(n_f, 1e-9))
+            dyn_why.append("动量/质量率")
+            why.append("动量/质量率")
+
+        # ⑤ 位移: 单拍 ‖v‖·dt ≤ S_STEP; 本段累计 > S_MAX 只报不杀
+        d_step = float(np.linalg.norm(v)) * dt
+        if self.S_STEP > 0 and d_step > self.S_STEP * (1.0 + 1e-12):
+            v = v * (self.S_STEP / max(d_step, 1e-12))
+            why.append("位移")
+        self.travel_m = float(getattr(self, "travel_m", 0.0)) + float(np.linalg.norm(v)) * dt
+        over = int(self.S_MAX > 0 and self.travel_m > self.S_MAX * (1.0 + 1e-9))
+
+        # 收口: 下发动作 / 被削掉的偏差 / 本段数字
+        u_out = u_req.copy()
+        u_out[:3] = v
+        err = u_req[:3] - v
+        e_norm = float(np.linalg.norm(err))
+        return {"u": [float(x) for x in u_out],
+                "v_req": [float(x) for x in u_req[:3]],
+                "err": [float(x) for x in err], "err_norm": round(e_norm, 8),
+                "big": int(e_norm > 0.05),
+                "why": "+".join(why) or "可行",
+                "kin_why": kin_why,
+                "dyn_why": "+".join(dyn_why) or "可行",
+                "phys": {"m": round(m, 4), "F_max": F_max, "v_cap": self.V_CAP, "v_min": self.V_MIN,
+                         "a_max": round(a_max, 4), "jerk_max": round(self.JERK_MAX, 3),
+                         "dmdt_max": _dmdt, "s_step": self.S_STEP, "s_max": self.S_MAX, "dt": dt,
+                         "src": self.source,
+                         "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
+                "s_travel": round(self.travel_m, 6), "over_travel": over,
+                "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
 
 class SK06Transfer(AtomicSkill):
     """⑥ 转移 — 持光模块平移至孔口上方 (悬高 2cm, 对准插孔)"""
@@ -526,29 +886,101 @@ class SK06Transfer(AtomicSkill):
     ctrl = {"gripper": "闭合保持", "v_cap": 0.35, "v_min": 0.12}
     source = "cognition.INSERT_HOVER / sim_real align_th"
 
-    # ⚖ 物理模型调用 (真语句, 不是注释): 本段每拍动作 → 五式闸
-    #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
-    #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
+    # ══════════════════════════════════════════════════════════════════════════
+    # 本技能的约束 — 数字全写在这里 (真源 config/calib/zmax_skill_physics.json · 段=转移)
+    #   加速度上限取真源 a (标定值优先, 无标定才用牛顿二定律 F/m): 3.703704 m/s²
+    # ══════════════════════════════════════════════════════════════════════════
+    DT_S      = 0.1            # 每拍 0.1 s
+    M_KG      = 1.35           # 运动质量 kg (已夹持)
+    F_MAX_N   = 5.0            # 允许力 N (④ 动力量)
+    A_MAX     = 3.703704       # ② 加速度上限 m/s² (真源 a 标定值; = F/m = 5.0/1.35)
+    V_CAP     = 0.35           # ① 速度上限 m/s
+    V_MIN     = 0.12           # 最小速度 (低于它算到位, 不追)
+    JERK_MAX  = 15.0           # ③ 加加速度上限 m/s³
+    S_STEP    = 0.035          # ⑤ 单拍位移上限 m (= V_CAP × dt)
+    S_MAX     = 0.6            # ⑤ 本段行程上限 m
+    DMDT_MAX  = 0.1            # ④ 质量变化率上限 kg/s
+
     def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
-        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。
+        """运动学 ①②③⑤ + 动力学 ④ —— 逐条算, 算出来的就是下发动作。
 
-        🔴 2026-10-31 老倪「这个 clamp 也没有断点啊」⇒ 拆成两步写, 为的是断点:
-           在 `return r` 那行打红点, 调试器里直接看得到 r 的全部字段
-           (u / v_req / err / why / kin_why / dyn_why / phys), 而不是只剩一个 return 表达式。
-           行为逐位不变 (同一调用、同一返回)。
+        u 请求动作 [vx,vy,vz,夹爪] · v_prev/a_prev 上一拍速度/加速度 (缺省当 0)
+        返回 u(下发) v_req(请求) err(被削的量) why(哪条削的) phys(本段数字)
         """
-        r = self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
-        return r
+        import numpy as np                                  # 局部导入 (本模块按需加载, 不强制 numpy)
+        dt = self.DT_S if dt is None else float(dt)
+        m, F_max = self.M_KG, self.F_MAX_N
+        u_req = np.asarray(u, dtype=float).ravel().copy()
+        v = u_req[:3].copy()                                # 只约束平移 3 维, 夹爪原样下发
+        v0 = np.zeros(3) if v_prev is None else np.asarray(v_prev, dtype=float).ravel()[:3].copy()
+        a0 = np.zeros(3) if a_prev is None else np.asarray(a_prev, dtype=float).ravel()[:3].copy()
+        why = []
 
-    # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
-    #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
-    #   ② 速度←加速度: v = ∫a dt   ,  ‖Δv‖ ≤ a_max·dt, a_max = F_max/m   (牛顿二定律)
-    #   ③ 加加速度:    a = ∫j dt   ,  ‖Δa‖ ≤ jerk_max·dt       (伺服带宽有限, 不许阶跃)
-    #   ④ 动量/质量率: p = m·v     ,  ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取建立/释放时质量在变)
-    #   ⑤ 惯量:        F = m·a     ⇒  a = F/m
-    #   带本段真实数字的方程: SK06Transfer.show_phys()
-    phys_note = '已夹持 m=1.35kg · F=5N · 空中快移 v=0.35 ⇒ ①+jerk(15.0)绑; 段行程用 POS_LIMIT 包络 0.6(工位跳度待现场标)'
+        # ① 速度: ‖v‖ ≤ V_CAP (超了等比缩小, 方向不变)
+        n_v = float(np.linalg.norm(v))
+        if n_v > self.V_CAP > 0:
+            v = v * (self.V_CAP / n_v)
+            why.append("速度")
 
+        # ② 加速度: 每拍速度变化 ‖v−v0‖ ≤ A_MAX·dt (A_MAX 就是真源标定的那个加速度)
+        a_max = self.A_MAX
+        a_lim = a_max * dt
+        dv = v - v0
+        n_dv = float(np.linalg.norm(dv))
+        if n_dv > a_lim > 0:
+            v = v0 + dv * (a_lim / n_dv)
+            why.append("加速度")
+
+        # ③ 加加速度: 每拍加速度变化 ‖Δa‖ ≤ JERK_MAX·dt (不许阶跃, 伺服带宽有限)
+        a_new = (v - v0) / dt
+        da = a_new - a0
+        j_lim = self.JERK_MAX * dt
+        n_da = float(np.linalg.norm(da))
+        if n_da > j_lim > 0:
+            a_new = a0 + da * (j_lim / n_da)
+            v = v0 + a_new * dt
+            why.append("加加速度")
+        kin_why = "+".join(why) or "可行"
+
+        # ④ 动力学: 动量/质量率 ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取/释放时质量在变)
+        _dmdt = self.DMDT_MAX if dmdt is None else float(dmdt)
+        dv = v - v0
+        f_lim = F_max * dt
+        f_need = m * dv + v * (_dmdt * dt)
+        n_f = float(np.linalg.norm(f_need))
+        dyn_why = []
+        if n_f > f_lim > 0:
+            v = v0 + dv * (f_lim / max(n_f, 1e-9))
+            dyn_why.append("动量/质量率")
+            why.append("动量/质量率")
+
+        # ⑤ 位移: 单拍 ‖v‖·dt ≤ S_STEP; 本段累计 > S_MAX 只报不杀
+        d_step = float(np.linalg.norm(v)) * dt
+        if self.S_STEP > 0 and d_step > self.S_STEP * (1.0 + 1e-12):
+            v = v * (self.S_STEP / max(d_step, 1e-12))
+            why.append("位移")
+        self.travel_m = float(getattr(self, "travel_m", 0.0)) + float(np.linalg.norm(v)) * dt
+        over = int(self.S_MAX > 0 and self.travel_m > self.S_MAX * (1.0 + 1e-9))
+
+        # 收口: 下发动作 / 被削掉的偏差 / 本段数字
+        u_out = u_req.copy()
+        u_out[:3] = v
+        err = u_req[:3] - v
+        e_norm = float(np.linalg.norm(err))
+        return {"u": [float(x) for x in u_out],
+                "v_req": [float(x) for x in u_req[:3]],
+                "err": [float(x) for x in err], "err_norm": round(e_norm, 8),
+                "big": int(e_norm > 0.05),
+                "why": "+".join(why) or "可行",
+                "kin_why": kin_why,
+                "dyn_why": "+".join(dyn_why) or "可行",
+                "phys": {"m": round(m, 4), "F_max": F_max, "v_cap": self.V_CAP, "v_min": self.V_MIN,
+                         "a_max": round(a_max, 4), "jerk_max": round(self.JERK_MAX, 3),
+                         "dmdt_max": _dmdt, "s_step": self.S_STEP, "s_max": self.S_MAX, "dt": dt,
+                         "src": self.source,
+                         "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
+                "s_travel": round(self.travel_m, 6), "over_travel": over,
+                "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
 
 class SK07Insert(AtomicSkill):
     """⑦ 插入 — 毫米级解析伺服精插 (两段式: 垂直对心→水平推入孔底)"""
@@ -566,29 +998,101 @@ class SK07Insert(AtomicSkill):
     ctrl = {"gripper": "闭合保持 (力控推入)", "v_cap": 0.085, "v_min": 0.02}
     source = "sim_real insert_depth=0.006 / cognition.STAGE_V_MIN 插入"
 
-    # ⚖ 物理模型调用 (真语句, 不是注释): 本段每拍动作 → 五式闸
-    #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
-    #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
+    # ══════════════════════════════════════════════════════════════════════════
+    # 本技能的约束 — 数字全写在这里 (真源 config/calib/zmax_skill_physics.json · 段=插入)
+    #   加速度上限取真源 a (标定值优先, 无标定才用牛顿二定律 F/m): 1.481481 m/s²
+    # ══════════════════════════════════════════════════════════════════════════
+    DT_S      = 0.1            # 每拍 0.1 s
+    M_KG      = 1.35           # 运动质量 kg (已夹持)
+    F_MAX_N   = 2.0            # 允许力 N (④ 动力量)
+    A_MAX     = 1.481481       # ② 加速度上限 m/s² (真源 a 标定值; = F/m = 2.0/1.35)
+    V_CAP     = 0.085          # ① 速度上限 m/s
+    V_MIN     = 0.0            # 最小速度 (低于它算到位, 不追)
+    JERK_MAX  = 3.642857       # ③ 加加速度上限 m/s³
+    S_STEP    = 0.0085         # ⑤ 单拍位移上限 m (= V_CAP × dt)
+    S_MAX     = 0.02           # ⑤ 本段行程上限 m
+    DMDT_MAX  = 0.1            # ④ 质量变化率上限 kg/s
+
     def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
-        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。
+        """运动学 ①②③⑤ + 动力学 ④ —— 逐条算, 算出来的就是下发动作。
 
-        🔴 2026-10-31 老倪「这个 clamp 也没有断点啊」⇒ 拆成两步写, 为的是断点:
-           在 `return r` 那行打红点, 调试器里直接看得到 r 的全部字段
-           (u / v_req / err / why / kin_why / dyn_why / phys), 而不是只剩一个 return 表达式。
-           行为逐位不变 (同一调用、同一返回)。
+        u 请求动作 [vx,vy,vz,夹爪] · v_prev/a_prev 上一拍速度/加速度 (缺省当 0)
+        返回 u(下发) v_req(请求) err(被削的量) why(哪条削的) phys(本段数字)
         """
-        r = self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
-        return r
+        import numpy as np                                  # 局部导入 (本模块按需加载, 不强制 numpy)
+        dt = self.DT_S if dt is None else float(dt)
+        m, F_max = self.M_KG, self.F_MAX_N
+        u_req = np.asarray(u, dtype=float).ravel().copy()
+        v = u_req[:3].copy()                                # 只约束平移 3 维, 夹爪原样下发
+        v0 = np.zeros(3) if v_prev is None else np.asarray(v_prev, dtype=float).ravel()[:3].copy()
+        a0 = np.zeros(3) if a_prev is None else np.asarray(a_prev, dtype=float).ravel()[:3].copy()
+        why = []
 
-    # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
-    #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
-    #   ② 速度←加速度: v = ∫a dt   ,  ‖Δv‖ ≤ a_max·dt, a_max = F_max/m   (牛顿二定律)
-    #   ③ 加加速度:    a = ∫j dt   ,  ‖Δa‖ ≤ jerk_max·dt       (伺服带宽有限, 不许阶跃)
-    #   ④ 动量/质量率: p = m·v     ,  ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取建立/释放时质量在变)
-    #   ⑤ 惯量:        F = m·a     ⇒  a = F/m
-    #   带本段真实数字的方程: SK07Insert.show_phys()
-    phys_note = '已夹持 m=1.35kg · **F=2N 金手指保护 ⇒ a_max 只有 1.48m/s²(②最紧)** · 段行程 0.02≈孔深 ⇒ ②+⑤ 绑'
+        # ① 速度: ‖v‖ ≤ V_CAP (超了等比缩小, 方向不变)
+        n_v = float(np.linalg.norm(v))
+        if n_v > self.V_CAP > 0:
+            v = v * (self.V_CAP / n_v)
+            why.append("速度")
 
+        # ② 加速度: 每拍速度变化 ‖v−v0‖ ≤ A_MAX·dt (A_MAX 就是真源标定的那个加速度)
+        a_max = self.A_MAX
+        a_lim = a_max * dt
+        dv = v - v0
+        n_dv = float(np.linalg.norm(dv))
+        if n_dv > a_lim > 0:
+            v = v0 + dv * (a_lim / n_dv)
+            why.append("加速度")
+
+        # ③ 加加速度: 每拍加速度变化 ‖Δa‖ ≤ JERK_MAX·dt (不许阶跃, 伺服带宽有限)
+        a_new = (v - v0) / dt
+        da = a_new - a0
+        j_lim = self.JERK_MAX * dt
+        n_da = float(np.linalg.norm(da))
+        if n_da > j_lim > 0:
+            a_new = a0 + da * (j_lim / n_da)
+            v = v0 + a_new * dt
+            why.append("加加速度")
+        kin_why = "+".join(why) or "可行"
+
+        # ④ 动力学: 动量/质量率 ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取/释放时质量在变)
+        _dmdt = self.DMDT_MAX if dmdt is None else float(dmdt)
+        dv = v - v0
+        f_lim = F_max * dt
+        f_need = m * dv + v * (_dmdt * dt)
+        n_f = float(np.linalg.norm(f_need))
+        dyn_why = []
+        if n_f > f_lim > 0:
+            v = v0 + dv * (f_lim / max(n_f, 1e-9))
+            dyn_why.append("动量/质量率")
+            why.append("动量/质量率")
+
+        # ⑤ 位移: 单拍 ‖v‖·dt ≤ S_STEP; 本段累计 > S_MAX 只报不杀
+        d_step = float(np.linalg.norm(v)) * dt
+        if self.S_STEP > 0 and d_step > self.S_STEP * (1.0 + 1e-12):
+            v = v * (self.S_STEP / max(d_step, 1e-12))
+            why.append("位移")
+        self.travel_m = float(getattr(self, "travel_m", 0.0)) + float(np.linalg.norm(v)) * dt
+        over = int(self.S_MAX > 0 and self.travel_m > self.S_MAX * (1.0 + 1e-9))
+
+        # 收口: 下发动作 / 被削掉的偏差 / 本段数字
+        u_out = u_req.copy()
+        u_out[:3] = v
+        err = u_req[:3] - v
+        e_norm = float(np.linalg.norm(err))
+        return {"u": [float(x) for x in u_out],
+                "v_req": [float(x) for x in u_req[:3]],
+                "err": [float(x) for x in err], "err_norm": round(e_norm, 8),
+                "big": int(e_norm > 0.05),
+                "why": "+".join(why) or "可行",
+                "kin_why": kin_why,
+                "dyn_why": "+".join(dyn_why) or "可行",
+                "phys": {"m": round(m, 4), "F_max": F_max, "v_cap": self.V_CAP, "v_min": self.V_MIN,
+                         "a_max": round(a_max, 4), "jerk_max": round(self.JERK_MAX, 3),
+                         "dmdt_max": _dmdt, "s_step": self.S_STEP, "s_max": self.S_MAX, "dt": dt,
+                         "src": self.source,
+                         "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
+                "s_travel": round(self.travel_m, 6), "over_travel": over,
+                "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
 
 class SK07Place(AtomicSkill):
     """⑦ 放入 (摆盘链 mode=tray) — 把光模块下放进 tray 槽位并释放 (替代插拔链的 SK07Insert)
@@ -611,29 +1115,101 @@ class SK07Place(AtomicSkill):
     ctrl = {"gripper": "闭合保持 → 触底开爪释放", "v_cap": 0.06, "v_min": 0.015}
     source = "cognition.ActionModulator TRAY_MODE/PLACE_IDX + sim_scene_def tray 槽位真源"
 
-    # ⚖ 物理模型调用 (真语句, 不是注释): 本段每拍动作 → 五式闸
-    #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
-    #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
+    # ══════════════════════════════════════════════════════════════════════════
+    # 本技能的约束 — 数字全写在这里 (真源 config/calib/zmax_skill_physics.json · 段=放入)
+    #   加速度上限取真源 a (标定值优先, 无标定才用牛顿二定律 F/m): 1.481481 m/s²
+    # ══════════════════════════════════════════════════════════════════════════
+    DT_S      = 0.1            # 每拍 0.1 s
+    M_KG      = 1.35           # 运动质量 kg (已夹持)
+    F_MAX_N   = 2.0            # 允许力 N (④ 动力量)
+    A_MAX     = 1.481481       # ② 加速度上限 m/s² (真源 a 标定值; = F/m = 2.0/1.35)
+    V_CAP     = 0.06           # ① 速度上限 m/s
+    V_MIN     = 0.0            # 最小速度 (低于它算到位, 不追)
+    JERK_MAX  = 2.571429       # ③ 加加速度上限 m/s³
+    S_STEP    = 0.006          # ⑤ 单拍位移上限 m (= V_CAP × dt)
+    S_MAX     = 0.6            # ⑤ 本段行程上限 m
+    DMDT_MAX  = 0.5            # ④ 质量变化率上限 kg/s
+
     def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
-        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。
+        """运动学 ①②③⑤ + 动力学 ④ —— 逐条算, 算出来的就是下发动作。
 
-        🔴 2026-10-31 老倪「这个 clamp 也没有断点啊」⇒ 拆成两步写, 为的是断点:
-           在 `return r` 那行打红点, 调试器里直接看得到 r 的全部字段
-           (u / v_req / err / why / kin_why / dyn_why / phys), 而不是只剩一个 return 表达式。
-           行为逐位不变 (同一调用、同一返回)。
+        u 请求动作 [vx,vy,vz,夹爪] · v_prev/a_prev 上一拍速度/加速度 (缺省当 0)
+        返回 u(下发) v_req(请求) err(被削的量) why(哪条削的) phys(本段数字)
         """
-        r = self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
-        return r
+        import numpy as np                                  # 局部导入 (本模块按需加载, 不强制 numpy)
+        dt = self.DT_S if dt is None else float(dt)
+        m, F_max = self.M_KG, self.F_MAX_N
+        u_req = np.asarray(u, dtype=float).ravel().copy()
+        v = u_req[:3].copy()                                # 只约束平移 3 维, 夹爪原样下发
+        v0 = np.zeros(3) if v_prev is None else np.asarray(v_prev, dtype=float).ravel()[:3].copy()
+        a0 = np.zeros(3) if a_prev is None else np.asarray(a_prev, dtype=float).ravel()[:3].copy()
+        why = []
 
-    # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
-    #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
-    #   ② 速度←加速度: v = ∫a dt   ,  ‖Δv‖ ≤ a_max·dt, a_max = F_max/m   (牛顿二定律)
-    #   ③ 加加速度:    a = ∫j dt   ,  ‖Δa‖ ≤ jerk_max·dt       (伺服带宽有限, 不许阶跃)
-    #   ④ 动量/质量率: p = m·v     ,  ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取建立/释放时质量在变)
-    #   ⑤ 惯量:        F = m·a     ⇒  a = F/m
-    #   带本段真实数字的方程: SK07Place.show_phys()
-    phys_note = '已夹持 m=1.35kg · F=2N 不压伤 · **开爪释放 dm/dt=0.5 ⇒ ④ 绑定** · 段行程 0.06(放下行)'
+        # ① 速度: ‖v‖ ≤ V_CAP (超了等比缩小, 方向不变)
+        n_v = float(np.linalg.norm(v))
+        if n_v > self.V_CAP > 0:
+            v = v * (self.V_CAP / n_v)
+            why.append("速度")
 
+        # ② 加速度: 每拍速度变化 ‖v−v0‖ ≤ A_MAX·dt (A_MAX 就是真源标定的那个加速度)
+        a_max = self.A_MAX
+        a_lim = a_max * dt
+        dv = v - v0
+        n_dv = float(np.linalg.norm(dv))
+        if n_dv > a_lim > 0:
+            v = v0 + dv * (a_lim / n_dv)
+            why.append("加速度")
+
+        # ③ 加加速度: 每拍加速度变化 ‖Δa‖ ≤ JERK_MAX·dt (不许阶跃, 伺服带宽有限)
+        a_new = (v - v0) / dt
+        da = a_new - a0
+        j_lim = self.JERK_MAX * dt
+        n_da = float(np.linalg.norm(da))
+        if n_da > j_lim > 0:
+            a_new = a0 + da * (j_lim / n_da)
+            v = v0 + a_new * dt
+            why.append("加加速度")
+        kin_why = "+".join(why) or "可行"
+
+        # ④ 动力学: 动量/质量率 ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取/释放时质量在变)
+        _dmdt = self.DMDT_MAX if dmdt is None else float(dmdt)
+        dv = v - v0
+        f_lim = F_max * dt
+        f_need = m * dv + v * (_dmdt * dt)
+        n_f = float(np.linalg.norm(f_need))
+        dyn_why = []
+        if n_f > f_lim > 0:
+            v = v0 + dv * (f_lim / max(n_f, 1e-9))
+            dyn_why.append("动量/质量率")
+            why.append("动量/质量率")
+
+        # ⑤ 位移: 单拍 ‖v‖·dt ≤ S_STEP; 本段累计 > S_MAX 只报不杀
+        d_step = float(np.linalg.norm(v)) * dt
+        if self.S_STEP > 0 and d_step > self.S_STEP * (1.0 + 1e-12):
+            v = v * (self.S_STEP / max(d_step, 1e-12))
+            why.append("位移")
+        self.travel_m = float(getattr(self, "travel_m", 0.0)) + float(np.linalg.norm(v)) * dt
+        over = int(self.S_MAX > 0 and self.travel_m > self.S_MAX * (1.0 + 1e-9))
+
+        # 收口: 下发动作 / 被削掉的偏差 / 本段数字
+        u_out = u_req.copy()
+        u_out[:3] = v
+        err = u_req[:3] - v
+        e_norm = float(np.linalg.norm(err))
+        return {"u": [float(x) for x in u_out],
+                "v_req": [float(x) for x in u_req[:3]],
+                "err": [float(x) for x in err], "err_norm": round(e_norm, 8),
+                "big": int(e_norm > 0.05),
+                "why": "+".join(why) or "可行",
+                "kin_why": kin_why,
+                "dyn_why": "+".join(dyn_why) or "可行",
+                "phys": {"m": round(m, 4), "F_max": F_max, "v_cap": self.V_CAP, "v_min": self.V_MIN,
+                         "a_max": round(a_max, 4), "jerk_max": round(self.JERK_MAX, 3),
+                         "dmdt_max": _dmdt, "s_step": self.S_STEP, "s_max": self.S_MAX, "dt": dt,
+                         "src": self.source,
+                         "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
+                "s_travel": round(self.travel_m, 6), "over_travel": over,
+                "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
 
 class SK08Complete(AtomicSkill):
     """⑧ 完成 — 插入到位, 本轮任务结束 (mode=full 续拔出/AOI 链)"""
@@ -649,30 +1225,101 @@ class SK08Complete(AtomicSkill):
     ctrl = {"gripper": "闭合保持", "v_cap": 0.02}
     source = "cognition.ActionModulator STAGES[完成]"
 
-    # ⚖ 物理模型调用 (真语句, 不是注释): 本段每拍动作 → 五式闸
-    #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
-    #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
+    # ══════════════════════════════════════════════════════════════════════════
+    # 本技能的约束 — 数字全写在这里 (真源 config/calib/zmax_skill_physics.json · 段=完成)
+    #   加速度上限取真源 a (标定值优先, 无标定才用牛顿二定律 F/m): 1.481481 m/s²
+    # ══════════════════════════════════════════════════════════════════════════
+    DT_S      = 0.1            # 每拍 0.1 s
+    M_KG      = 1.35           # 运动质量 kg (已夹持)
+    F_MAX_N   = 2.0            # 允许力 N (④ 动力量)
+    A_MAX     = 1.481481       # ② 加速度上限 m/s² (真源 a 标定值; = F/m = 2.0/1.35)
+    V_CAP     = 0.02           # ① 速度上限 m/s
+    V_MIN     = 0.0            # 最小速度 (低于它算到位, 不追)
+    JERK_MAX  = 2.25           # ③ 加加速度上限 m/s³
+    S_STEP    = 0.002          # ⑤ 单拍位移上限 m (= V_CAP × dt)
+    S_MAX     = 0.002          # ⑤ 本段行程上限 m
+    DMDT_MAX  = 0.1            # ④ 质量变化率上限 kg/s
+
     def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
-        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。
+        """运动学 ①②③⑤ + 动力学 ④ —— 逐条算, 算出来的就是下发动作。
 
-        🔴 2026-10-31 老倪「这个 clamp 也没有断点啊」⇒ 拆成两步写, 为的是断点:
-           在 `return r` 那行打红点, 调试器里直接看得到 r 的全部字段
-           (u / v_req / err / why / kin_why / dyn_why / phys), 而不是只剩一个 return 表达式。
-           行为逐位不变 (同一调用、同一返回)。
+        u 请求动作 [vx,vy,vz,夹爪] · v_prev/a_prev 上一拍速度/加速度 (缺省当 0)
+        返回 u(下发) v_req(请求) err(被削的量) why(哪条削的) phys(本段数字)
         """
-        r = self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
-        return r
+        import numpy as np                                  # 局部导入 (本模块按需加载, 不强制 numpy)
+        dt = self.DT_S if dt is None else float(dt)
+        m, F_max = self.M_KG, self.F_MAX_N
+        u_req = np.asarray(u, dtype=float).ravel().copy()
+        v = u_req[:3].copy()                                # 只约束平移 3 维, 夹爪原样下发
+        v0 = np.zeros(3) if v_prev is None else np.asarray(v_prev, dtype=float).ravel()[:3].copy()
+        a0 = np.zeros(3) if a_prev is None else np.asarray(a_prev, dtype=float).ravel()[:3].copy()
+        why = []
 
-    # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
-    #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
-    #   ② 速度←加速度: v = ∫a dt   ,  ‖Δv‖ ≤ a_max·dt, a_max = F_max/m   (牛顿二定律)
-    #   ③ 加加速度:    a = ∫j dt   ,  ‖Δa‖ ≤ jerk_max·dt       (伺服带宽有限, 不许阶跃)
-    #   ④ 动量/质量率: p = m·v     ,  ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取建立/释放时质量在变)
-    #   ⑤ 惯量:        F = m·a     ⇒  a = F/m
-    #   带本段真实数字的方程: SK08Complete.show_phys()
-    phys_note = '已夹持 m=1.35kg · F=2N 保持 · v=0.02 ⇒ ①最紧; 段行程 0.002(终点判据)'
+        # ① 速度: ‖v‖ ≤ V_CAP (超了等比缩小, 方向不变)
+        n_v = float(np.linalg.norm(v))
+        if n_v > self.V_CAP > 0:
+            v = v * (self.V_CAP / n_v)
+            why.append("速度")
 
+        # ② 加速度: 每拍速度变化 ‖v−v0‖ ≤ A_MAX·dt (A_MAX 就是真源标定的那个加速度)
+        a_max = self.A_MAX
+        a_lim = a_max * dt
+        dv = v - v0
+        n_dv = float(np.linalg.norm(dv))
+        if n_dv > a_lim > 0:
+            v = v0 + dv * (a_lim / n_dv)
+            why.append("加速度")
 
+        # ③ 加加速度: 每拍加速度变化 ‖Δa‖ ≤ JERK_MAX·dt (不许阶跃, 伺服带宽有限)
+        a_new = (v - v0) / dt
+        da = a_new - a0
+        j_lim = self.JERK_MAX * dt
+        n_da = float(np.linalg.norm(da))
+        if n_da > j_lim > 0:
+            a_new = a0 + da * (j_lim / n_da)
+            v = v0 + a_new * dt
+            why.append("加加速度")
+        kin_why = "+".join(why) or "可行"
+
+        # ④ 动力学: 动量/质量率 ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取/释放时质量在变)
+        _dmdt = self.DMDT_MAX if dmdt is None else float(dmdt)
+        dv = v - v0
+        f_lim = F_max * dt
+        f_need = m * dv + v * (_dmdt * dt)
+        n_f = float(np.linalg.norm(f_need))
+        dyn_why = []
+        if n_f > f_lim > 0:
+            v = v0 + dv * (f_lim / max(n_f, 1e-9))
+            dyn_why.append("动量/质量率")
+            why.append("动量/质量率")
+
+        # ⑤ 位移: 单拍 ‖v‖·dt ≤ S_STEP; 本段累计 > S_MAX 只报不杀
+        d_step = float(np.linalg.norm(v)) * dt
+        if self.S_STEP > 0 and d_step > self.S_STEP * (1.0 + 1e-12):
+            v = v * (self.S_STEP / max(d_step, 1e-12))
+            why.append("位移")
+        self.travel_m = float(getattr(self, "travel_m", 0.0)) + float(np.linalg.norm(v)) * dt
+        over = int(self.S_MAX > 0 and self.travel_m > self.S_MAX * (1.0 + 1e-9))
+
+        # 收口: 下发动作 / 被削掉的偏差 / 本段数字
+        u_out = u_req.copy()
+        u_out[:3] = v
+        err = u_req[:3] - v
+        e_norm = float(np.linalg.norm(err))
+        return {"u": [float(x) for x in u_out],
+                "v_req": [float(x) for x in u_req[:3]],
+                "err": [float(x) for x in err], "err_norm": round(e_norm, 8),
+                "big": int(e_norm > 0.05),
+                "why": "+".join(why) or "可行",
+                "kin_why": kin_why,
+                "dyn_why": "+".join(dyn_why) or "可行",
+                "phys": {"m": round(m, 4), "F_max": F_max, "v_cap": self.V_CAP, "v_min": self.V_MIN,
+                         "a_max": round(a_max, 4), "jerk_max": round(self.JERK_MAX, 3),
+                         "dmdt_max": _dmdt, "s_step": self.S_STEP, "s_max": self.S_MAX, "dt": dt,
+                         "src": self.source,
+                         "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
+                "s_travel": round(self.travel_m, 6), "over_travel": over,
+                "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
 # ── 技能注册表 (插装 8 段; 顺序 = 状态机推进序) ──
 SKILLS = [SK01Approach, SK02Align, SK03Descend, SK04Grasp,
           SK05Lift, SK06Transfer, SK07Insert, SK08Complete]
