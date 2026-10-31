@@ -110,7 +110,7 @@
   <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
   <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
      style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-29 r66 · 🧩 plan 段 → 🤖 机器人执行器(AR场景) → 页面: 页面优先吃执行器输出 /api/ar/exec, 执行器没跑才回落 plan 直发 · 手里模块/孔占用/检测同步 · 真机零指令</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-31 r67 · 包络可一键隐藏 · 🧩 plan 段 → 🤖 机器人执行器(AR场景) → 页面: 页面优先吃执行器输出 /api/ar/exec, 执行器没跑才回落 plan 直发 · 手里模块/孔占用/检测同步 · 真机零指令</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -307,6 +307,11 @@
          (停用后三维视图和 AR 叠加都不画, 但配置里还在, 再点一下就回来) -->
     <div class="row" style="margin-top:6px" id="rowBoxes"></div>
     <div class="row" style="margin-top:6px" id="rowLines"></div>
+    <!-- 🫥 2026-10-31 老倪「包络轮廓太多了, 增加一个按钮, 全都隐藏」: 技能包络默认不画, 需要时一键显示 -->
+    <div class="row" style="margin-top:6px" id="rowCor">
+      <span class="tag" style="background:#30363d99">原子技能包络</span>
+      <button class="sm" id="btnCor" onclick="corToggleAll()">🫥 全部隐藏 (0)</button>
+    </div>
     <!-- 📍 轨迹点序列行 (type=points): 不参与避让判定 ⇒ 画成粗实线也不会自我阻挡 -->
     <div class="row" style="margin-top:6px" id="rowPts"></div>
     <pre id="pNamed" style="white-space:pre-wrap;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px;font-size:12px;margin:6px 0 0;max-height:110px;overflow:auto">五条轨迹都关着 —— 点按钮(变蓝)就在三维视图显示, 再点一下隐藏</pre>
@@ -1298,6 +1303,20 @@ function _setP(prefix,p){ _fset(prefix+'X'+(prefix==='f'?'1':'1'),p[0]*1000); }
 function fillP1(p){ _fset('fX1',p[0]*1000); _fset('fY1',p[1]*1000); _fset('fZ1',p[2]*1000); }
 function fillP2(p){ _fset('fX2',p[0]*1000); _fset('fY2',p[1]*1000); _fset('fZ2',p[2]*1000); }
 
+// 🫥 原子技能包络 (id 前缀 COR-) 的显示开关 —— 老倪 2026-10-31「包络轮廓太多了, 全都隐藏」
+//   默认隐藏: 1288 条母线画上去把画面压死了; 点按钮才显示, 服务端配置一条不动。
+let CORSHOW=false;
+function corCount(){ try{ return FENCES.filter(it=>String(it.id||'').startsWith('COR-')).length; }catch(e){ return 0; } }
+function paintCorBtn(){
+  const b=document.getElementById('btnCor'); if(!b) return;
+  const n=corCount();
+  b.className='sm'+(CORSHOW?' on':'');
+  b.textContent=(CORSHOW?'👁 包络显示中 ':'🫥 全部隐藏 ')+'('+n+')';
+  b.title=CORSHOW?('点一下: 把 '+n+' 条技能包络线在视图里全部隐藏 (配置仍保留)')
+                 :('点一下: 显示全部 '+n+' 条技能包络线 (实际轨迹的扫掠包络)');
+}
+function corToggleAll(){ CORSHOW=!CORSHOW; paintCorBtn(); try{ drawVR(); }catch(e){} }
+
 async function fencePost(path,obj){
   const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj||{})}).then(x=>x.json());
   if(!r.ok) { $('pFence').textContent='❌ '+(r.err||'失败'); }
@@ -1318,7 +1337,7 @@ async function loadFences(){
     if($('fMargin') && document.activeElement!==$('fMargin')) $('fMargin').value=Math.round(FMARGIN);
     $('tFence').textContent=FENCES.length+' 个';
     $('tFence').className='tag'+(FENCES.length?' on':'');
-    renderFenceList(); paintFenceBtns(); drawVR();
+    renderFenceList(); paintFenceBtns(); paintCorBtn(); drawVR();
   }catch(e){ $('pFence').textContent='围栏读失败: '+e; }
 }
 // 🧱 第四行(围栏盒) / 第五行(直线): 按 /api/fence 唯一依据生成按钮, 点一下=启用/停用
@@ -1343,13 +1362,14 @@ function paintFenceBtns(){
     }
   };
   mk($('rowBoxes'), '围栏盒', FENCES.filter(i=>i.type==='box'));
-  mk($('rowLines'), '直线', FENCES.filter(i=>i.type==='line'));
+  mk($('rowLines'), '直线', FENCES.filter(i=>i.type==='line' && !String(i.id||'').startsWith('COR-')));
   mk($('rowPts'), '轨迹点', FENCES.filter(i=>i.type==='points'));
 }
 function renderFenceList(){
   const box=$('fList'); if(!box) return;
+  const _fs=FENCES.filter(it=>!String(it.id||'').startsWith('COR-'));
   if(!FENCES.length){ box.innerHTML='<div style="font-size:12px;color:#8b949e">还没有元素。上面填两点 → ➕ 添加元素。</div>'; return; }
-  box.innerHTML=FENCES.map(it=>{
+  box.innerHTML=_fs.map(it=>{
     const p1=it.p1.map(v=>Math.round(v*1000)), p2=it.p2.map(v=>Math.round(v*1000));
     if(it.type==='points'){          // 📍 轨迹点序列 (显示/留档用, 不参与碰撞)
       const n=(it.pts||[]).length;
@@ -1441,7 +1461,7 @@ async function fenceSaveEdit(){
   if(r.ok){ $('pFence').textContent='✅ 已保存 '+r.item.name; FEDIT=null; $('fEditSave').disabled=true; }
 }
 function drawFences(g,pr){
-  const items=FENCES.filter(it=>it.enabled);
+  const items=FENCES.filter(it=>it.enabled && (CORSHOW || !String(it.id||'').startsWith('COR-')));
   if(!items.length) return;
   const mg=FMARGIN/1000;
   for(const it of items){
@@ -1468,7 +1488,9 @@ function drawFences(g,pr){
       g.strokeStyle=it.color; g.lineWidth=3; g.globalAlpha=0.95;
       g.beginPath(); g.moveTo(A.u,A.v); g.lineTo(B.u,B.v); g.stroke();
       g.globalAlpha=1;
-      [A,B].forEach((q,k)=>{ g.fillStyle=it.color; g.beginPath(); g.arc(q.u,q.v,4,0,Math.PI*2); g.fill();
+      const _isCor=String(it.id||'').startsWith('COR-');
+      [A,B].forEach((q,k)=>{ g.fillStyle=it.color; g.beginPath(); g.arc(q.u,q.v,_isCor?2:4,0,Math.PI*2); g.fill();
+        if(_isCor) return;                                  // 包络线太多 ⇒ 不写 A/B 文字
         g.fillStyle='#c9d1d9'; g.font='11px monospace';
         g.fillText((k?'B ':'A ')+it.name, q.u+6, q.v-5); });
       continue;
