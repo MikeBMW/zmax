@@ -110,7 +110,7 @@
   <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
   <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
      style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-31 r67 · 包络可一键隐藏 · 🧩 plan 段 → 🤖 机器人执行器(AR场景) → 页面: 页面优先吃执行器输出 /api/ar/exec, 执行器没跑才回落 plan 直发 · 手里模块/孔占用/检测同步 · 真机零指令</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-31 r68 · 包络可一键隐藏/按技能逐个开关 · 🧩 plan 段 → 🤖 机器人执行器(AR场景) → 页面: 页面优先吃执行器输出 /api/ar/exec, 执行器没跑才回落 plan 直发 · 手里模块/孔占用/检测同步 · 真机零指令</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -311,6 +311,9 @@
     <div class="row" style="margin-top:6px" id="rowCor">
       <span class="tag" style="background:#30363d99">原子技能包络</span>
       <button class="sm" id="btnCor" onclick="corToggleAll()">🫥 全部隐藏 (0)</button>
+    </div>
+    <div class="row" style="margin-top:4px" id="rowCorSkills"></div>
+    <div style="display:none">
     </div>
     <!-- 📍 轨迹点序列行 (type=points): 不参与避让判定 ⇒ 画成粗实线也不会自我阻挡 -->
     <div class="row" style="margin-top:6px" id="rowPts"></div>
@@ -1305,17 +1308,40 @@ function fillP2(p){ _fset('fX2',p[0]*1000); _fset('fY2',p[1]*1000); _fset('fZ2',
 
 // 🫥 原子技能包络 (id 前缀 COR-) 的显示开关 —— 老倪 2026-10-31「包络轮廓太多了, 全都隐藏」
 //   默认隐藏: 1288 条母线画上去把画面压死了; 点按钮才显示, 服务端配置一条不动。
-let CORSHOW=false;
-function corCount(){ try{ return FENCES.filter(it=>String(it.id||'').startsWith('COR-')).length; }catch(e){ return 0; } }
+let CORSET = new Set();                 // 哪些技能的包络要画 (空 = 全隐藏)
+const COR_SK_ORDER = ['SK01','SK02','SK03','SK04','SK05','SK06','SK07','SK08'];
+const COR_SK_NAME = {SK01:'接近',SK02:'对位',SK03:'下降',SK04:'抓取',
+                     SK05:'抬起',SK06:'转移',SK07:'插入',SK08:'完成'};
+function corIsCor(it){ return String((it&&it.id)||'').startsWith('COR-'); }
+function corSkillOf(it){ const a=String(it.id||'').split('-'); return a.length>1?a[1]:''; }
+function corCount(sk){ return FENCES.filter(it=>corIsCor(it) && (!sk || corSkillOf(it)===sk)).length; }
+function corShown(it){ return corIsCor(it) ? CORSET.has(corSkillOf(it)) : true; }
 function paintCorBtn(){
-  const b=document.getElementById('btnCor'); if(!b) return;
-  const n=corCount();
-  b.className='sm'+(CORSHOW?' on':'');
-  b.textContent=(CORSHOW?'👁 包络显示中 ':'🫥 全部隐藏 ')+'('+n+')';
-  b.title=CORSHOW?('点一下: 把 '+n+' 条技能包络线在视图里全部隐藏 (配置仍保留)')
-                 :('点一下: 显示全部 '+n+' 条技能包络线 (实际轨迹的扫掠包络)');
+  const b=document.getElementById('btnCor');
+  const all=COR_SK_ORDER.filter(k=>corCount(k)>0);
+  const on=all.filter(k=>CORSET.has(k)).length;
+  if(b){
+    b.className='sm'+(on?' on':'');
+    b.textContent=(on?('👁 全部显示中 '):'🫥 全部隐藏 ')+'('+corCount()+')';
+    b.title=(on?'点一下: 把 '+corCount()+' 条技能包络线全部隐藏 (配置仍保留)'
+               :'点一下: 显示全部 '+corCount()+' 条技能包络线');
+  }
+  const host=document.getElementById('rowCorSkills'); if(!host) return;
+  host.innerHTML='';
+  all.forEach(k=>{                                  // 每个技能一条轨迹 → 一个按钮
+    const bb=document.createElement('button');
+    bb.className='sm'+(CORSET.has(k)?' on':'');
+    bb.textContent=(CORSET.has(k)?'▣ ':'□ ')+k+' '+COR_SK_NAME[k]+' ('+corCount(k)+')';
+    bb.title=(CORSET.has(k)?'点一下隐藏 ':'点一下显示 ')+k+' '+COR_SK_NAME[k]+' 的包络线';
+    bb.onclick=()=>{ if(CORSET.has(k)) CORSET.delete(k); else CORSET.add(k); paintCorBtn(); try{ drawVR(); }catch(e){} };
+    host.appendChild(bb);
+  });
 }
-function corToggleAll(){ CORSHOW=!CORSHOW; paintCorBtn(); try{ drawVR(); }catch(e){} }
+function corToggleAll(){
+  const all=COR_SK_ORDER.filter(k=>corCount(k)>0);
+  if(all.every(k=>CORSET.has(k))) CORSET.clear(); else all.forEach(k=>CORSET.add(k));
+  paintCorBtn(); try{ drawVR(); }catch(e){}
+}
 
 async function fencePost(path,obj){
   const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj||{})}).then(x=>x.json());
@@ -1461,7 +1487,7 @@ async function fenceSaveEdit(){
   if(r.ok){ $('pFence').textContent='✅ 已保存 '+r.item.name; FEDIT=null; $('fEditSave').disabled=true; }
 }
 function drawFences(g,pr){
-  const items=FENCES.filter(it=>it.enabled && (CORSHOW || !String(it.id||'').startsWith('COR-')));
+  const items=FENCES.filter(it=>it.enabled && corShown(it));
   if(!items.length) return;
   const mg=FMARGIN/1000;
   for(const it of items){
