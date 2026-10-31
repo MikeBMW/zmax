@@ -63,6 +63,7 @@ def group_polys(segs):
     """按真实段分组 → 8 条技能的多折线集合 (每条折线 = 一次真实机动)。"""
     groups = {k: [] for k in ORDER}
     tsum = {k: 0.0 for k in ORDER}
+    vneed = {k: 0.0 for k in ORDER}          # 该技能里最快那一段的"节拍要求速度" m/s
     for s in segs:
         kind = str(s.get("kind") or "")
         label = str(s.get("label") or "")
@@ -89,7 +90,10 @@ def group_polys(segs):
             B = [A[0], A[1], A[2] - 1.0]
         groups[st].append([A, B])
         tsum[st] += t
-    return groups, tsum
+        _L = sum((B[k] - A[k]) ** 2 for k in range(3)) ** 0.5
+        if t > 1e-6 and _L > 0:
+            vneed[st] = max(vneed[st], (_L / 1000.0) / t)
+    return groups, tsum, vneed
 
 
 def build_all(tact_s=None):
@@ -99,15 +103,20 @@ def build_all(tact_s=None):
     if not segs:
         print("⛔ plan 段表为空 ⇒ 不造通道")
         return None
-    groups, tsum = group_polys(segs)
+    groups, tsum, vneed = group_polys(segs)
     corrs = {}
     for st in ORDER:
         polys = groups.get(st) or []
         if not polys:
             continue
         tact = float(tact_s) if tact_s else (tsum[st] / max(1, len(polys)))
-        corrs[st] = C.build_polys(st, polys, r_mm=R_MM[st], tact_s=tact)
+        # 🕐 节拍驱动的速度上限: 该段真实最快机动要求 × 1.15 余量, 夹在 [0.35, 1.2] m/s
+        #    自由段(接近/转移/抬起)会放到 0.6~1.0; 精细段(对位/下降/插入/抓取)本来需求就低, 仍是慢速
+        v_cap_st = min(1.2, max(0.35, vneed[st] * 1.15 if vneed[st] else 0.35))
+        corrs[st] = C.build_polys(st, polys, r_mm=R_MM[st], tact_s=tact,
+                                  v_cap=v_cap_st, s_step_m=v_cap_st * 0.1)
         corrs[st]["n_poly"] = len(polys)
+        corrs[st]["v_need"] = round(vneed[st], 4)
     return {"schema": "zmax.ss_skill_corridor/3", "built_at": time.strftime("%Y-%m-%d %H:%M:%S"),
             "source": "plan_long_impl._S['segs'] (AR 按拍段表)",
             "note": "轴心=每段真实 a→b; 半径=工具/工件外廓 ⇒ 外表面=实际轨迹包络面",

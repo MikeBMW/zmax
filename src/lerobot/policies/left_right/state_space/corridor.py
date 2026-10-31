@@ -193,7 +193,8 @@ def closest_on_polys(polys, pos):
     return best
 
 
-def build_polys(stage, polys_mm, *, r_mm=None, v_cap=0.35, a_max=4.166667, tact_s=None, dt=0.1):
+def build_polys(stage, polys_mm, *, r_mm=None, v_cap=0.35, a_max=4.166667, tact_s=None, dt=0.1,
+                s_step_m=None):
     """一条技能 = 多段**实际机动**的包络集合 (例如 14 次下降各在一个槽位)。
 
     通道 = ∪ 每条实际折线的扫掠包络; 机器人任何一次该动作都只能落在自己的那条管子里。
@@ -215,7 +216,8 @@ def build_polys(stage, polys_mm, *, r_mm=None, v_cap=0.35, a_max=4.166667, tact_
     v_along_cap = float(v_cap)
     if tact and tact > 0:
         v_along_cap = min(v_along_cap, (L / 1000.0) / tact)
-    s_tick = 0.035 * 1000.0
+    # 单拍行程: 缺省 = 段速度上限 × dt (节拍要求快 ⇒ 单拍就得给够, 否则恒被单拍闸削)
+    s_tick = (float(s_step_m) * 1000.0) if s_step_m else 0.035 * 1000.0
     if tact and tact > 0:
         s_tick = min(s_tick, max(0.2, L / max(1.0, tact / dt)))
     a, b = polys[0][0], polys[-1][-1]

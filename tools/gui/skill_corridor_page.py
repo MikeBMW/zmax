@@ -75,6 +75,7 @@ class SkillCorridorPage(QWidget):
         head.addStretch(1)
         for txt, slot in (("🔄 刷新", self.refresh),
                           ("🛠 重算通道 (并写 AR 边界)", self.rebuild),
+                          ("⏱ 300 UPH 验收 (按顺序过通道)", self.uph_check),
                           ("📋 复制 TSV", self.copy_tsv)):
             b = QPushButton(txt)
             b.setCursor(Qt.PointingHandCursor)
@@ -253,6 +254,34 @@ class SkillCorridorPage(QWidget):
             self.refresh()
         except Exception as e:                                            # noqa: BLE001
             self._say(f"❌ 重算失败: {type(e).__name__}: {e}", C_BAD)
+
+    def uph_check(self):
+        """按顺序把 392 段逐段过通道, 算实际节拍与 UPH (真算, 与 ss_uph_300_check.py 同源)。"""
+        try:
+            import importlib.util as ilu
+            p = os.path.join(ROOT, "tools", "ss_uph_300_check.py")
+            spec = ilu.spec_from_file_location("zmax_uph_check", p)
+            mod = ilu.module_from_spec(spec)
+            assert spec and spec.loader
+            spec.loader.exec_module(mod)
+            segs, tact, corrs = mod.load()
+            rows, _ = mod.run_once(segs, corrs)
+            by, tp, ta, slow, per_piece, uph = mod.summarize(rows, tact)
+            ok = uph >= 300
+            self._say("%s 按顺序过通道: 段数 %d · 计划 %.2fs → 实测 %.2fs (慢 %.1f%%)"
+                      % ("✅" if ok else "❌", len(rows), tp, ta, 100 * (slow - 1)), C_OK if ok else C_BAD)
+            for st in STAGES:
+                d = by.get(st)
+                if not d:
+                    continue
+                c = corrs.get(st) or {}
+                self._say("   %s %-6s %3d 次 · 计划 %6.2fs → 实测 %6.2fs · v上限 %.3f m/s"
+                          % (SK_ID.get(st, ''), st, d["n"], d["tp"], d["ta"],
+                             float(c.get("v_along_cap") or 0)), C_TXT)
+            self._say("   ⇒ 节拍 %.2fs/件 · UPH %.0f · %s"
+                      % (per_piece, uph, "达到 300" if ok else "低于 300, 需放宽速度上限"), C_OK if ok else C_BAD)
+        except Exception as e:                                            # noqa: BLE001
+            self._say("❌ 验收失败: %s: %s" % (type(e).__name__, e), C_BAD)
 
     def copy_tsv(self):
         try:
