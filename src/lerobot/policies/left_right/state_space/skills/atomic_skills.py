@@ -337,8 +337,15 @@ class SK01Approach(AtomicSkill):
     #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
     #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
     def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
-        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。"""
-        return self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
+        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。
+
+        🔴 2026-10-31 老倪「这个 clamp 也没有断点啊」⇒ 拆成两步写, 为的是断点:
+           在 `return r` 那行打红点, 调试器里直接看得到 r 的全部字段
+           (u / v_req / err / why / kin_why / dyn_why / phys), 而不是只剩一个 return 表达式。
+           行为逐位不变 (同一调用、同一返回)。
+        """
+        r = self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
+        return r
 
     # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
     #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
@@ -368,8 +375,15 @@ class SK02Align(AtomicSkill):
     #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
     #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
     def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
-        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。"""
-        return self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
+        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。
+
+        🔴 2026-10-31 老倪「这个 clamp 也没有断点啊」⇒ 拆成两步写, 为的是断点:
+           在 `return r` 那行打红点, 调试器里直接看得到 r 的全部字段
+           (u / v_req / err / why / kin_why / dyn_why / phys), 而不是只剩一个 return 表达式。
+           行为逐位不变 (同一调用、同一返回)。
+        """
+        r = self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
+        return r
 
     # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
     #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
@@ -400,8 +414,15 @@ class SK03Descend(AtomicSkill):
     #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
     #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
     def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
-        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。"""
-        return self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
+        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。
+
+        🔴 2026-10-31 老倪「这个 clamp 也没有断点啊」⇒ 拆成两步写, 为的是断点:
+           在 `return r` 那行打红点, 调试器里直接看得到 r 的全部字段
+           (u / v_req / err / why / kin_why / dyn_why / phys), 而不是只剩一个 return 表达式。
+           行为逐位不变 (同一调用、同一返回)。
+        """
+        r = self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
+        return r
 
     # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
     #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
@@ -432,8 +453,15 @@ class SK04Grasp(AtomicSkill):
     #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
     #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
     def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
-        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。"""
-        return self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
+        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。
+
+        🔴 2026-10-31 老倪「这个 clamp 也没有断点啊」⇒ 拆成两步写, 为的是断点:
+           在 `return r` 那行打红点, 调试器里直接看得到 r 的全部字段
+           (u / v_req / err / why / kin_why / dyn_why / phys), 而不是只剩一个 return 表达式。
+           行为逐位不变 (同一调用、同一返回)。
+        """
+        r = self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
+        return r
 
     # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
     #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
@@ -463,8 +491,15 @@ class SK05Lift(AtomicSkill):
     #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
     #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
     def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
-        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。"""
-        return self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
+        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。
+
+        🔴 2026-10-31 老倪「这个 clamp 也没有断点啊」⇒ 拆成两步写, 为的是断点:
+           在 `return r` 那行打红点, 调试器里直接看得到 r 的全部字段
+           (u / v_req / err / why / kin_why / dyn_why / phys), 而不是只剩一个 return 表达式。
+           行为逐位不变 (同一调用、同一返回)。
+        """
+        r = self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
+        return r
 
     # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
     #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
@@ -495,8 +530,15 @@ class SK06Transfer(AtomicSkill):
     #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
     #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
     def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
-        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。"""
-        return self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
+        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。
+
+        🔴 2026-10-31 老倪「这个 clamp 也没有断点啊」⇒ 拆成两步写, 为的是断点:
+           在 `return r` 那行打红点, 调试器里直接看得到 r 的全部字段
+           (u / v_req / err / why / kin_why / dyn_why / phys), 而不是只剩一个 return 表达式。
+           行为逐位不变 (同一调用、同一返回)。
+        """
+        r = self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
+        return r
 
     # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
     #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
@@ -528,8 +570,15 @@ class SK07Insert(AtomicSkill):
     #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
     #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
     def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
-        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。"""
-        return self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
+        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。
+
+        🔴 2026-10-31 老倪「这个 clamp 也没有断点啊」⇒ 拆成两步写, 为的是断点:
+           在 `return r` 那行打红点, 调试器里直接看得到 r 的全部字段
+           (u / v_req / err / why / kin_why / dyn_why / phys), 而不是只剩一个 return 表达式。
+           行为逐位不变 (同一调用、同一返回)。
+        """
+        r = self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
+        return r
 
     # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
     #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
@@ -566,8 +615,15 @@ class SK07Place(AtomicSkill):
     #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
     #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
     def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
-        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。"""
-        return self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
+        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。
+
+        🔴 2026-10-31 老倪「这个 clamp 也没有断点啊」⇒ 拆成两步写, 为的是断点:
+           在 `return r` 那行打红点, 调试器里直接看得到 r 的全部字段
+           (u / v_req / err / why / kin_why / dyn_why / phys), 而不是只剩一个 return 表达式。
+           行为逐位不变 (同一调用、同一返回)。
+        """
+        r = self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
+        return r
 
     # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
     #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
@@ -597,8 +653,15 @@ class SK08Complete(AtomicSkill):
     #   老倪 2026-10-15:「原子技能, 哪里是调用物理模型的?」⇒ 类体里就能看到这一条;
     #   实现落在基类 AtomicSkill.apply_physics → physics_constraints.InertiaLimiter.limit。
     def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
-        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。"""
-        return self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
+        """⚖ 本段动作过物理模型 (①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移)。
+
+        🔴 2026-10-31 老倪「这个 clamp 也没有断点啊」⇒ 拆成两步写, 为的是断点:
+           在 `return r` 那行打红点, 调试器里直接看得到 r 的全部字段
+           (u / v_req / err / why / kin_why / dyn_why / phys), 而不是只剩一个 return 表达式。
+           行为逐位不变 (同一调用、同一返回)。
+        """
+        r = self.apply_physics(u, dt=dt, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt)
+        return r
 
     # ⚖ 物理模型 (五式, 与闸门 physics_constraints ①..⑤ 一一对应; 数值取真源, 类里不抄数字)
     #   ① 位移←速度:  s = ∫v dt   ,  ‖v‖·dt ≤ s_step          (单拍位移封顶, 段累计 ≤ s_max)
