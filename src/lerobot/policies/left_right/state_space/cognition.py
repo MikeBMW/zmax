@@ -148,6 +148,13 @@ class ActionModulator:
         # 按被夹物体尺寸标定, 写死 0.8 会永远等不到"夹持建立"而卡在抓取阶段。
         self.grasp_th = grasp_th
         self.stage_idx = 0
+        self.skill_calls = {}       # 段 → 本段技能 clamp 真调用次数 (2026-10-31: 引擎每步过技能)
+        self._sk_objs = {}          # 段 → 技能对象 (惰性, 与图层派发同一份 atomic_skills)
+        # 技能是否必进链路 (2026-10-31 老倪: 所有技能的 return 都要能进断点)
+        #   ZMAX_SKILL_GATE=1 ⇒ 动作采用技能输出 (实测会让接近段变慢卡段, 未证明提升不进默认档)
+        #   注意: 技能**无论如何每步都真执行** (断点必进); 这个开关只管"动作听谁的"。
+        self.skill_gate_on = os.environ.get("ZMAX_SKILL_GATE", "0").strip().lower() in ("1", "true", "yes", "on")
+        self.skill_gate_dt = float(os.environ.get("ZMAX_SKILL_GATE_DT") or 0.1)
         self.veto_count = 0
         self.history = []               # 阶段切换历史 [(stage, reason)]
         # 🐛 2026-09-06 静静: 转移→插入只看水平 dh, 会切在 peg 头低于孔口时 → 斜插顶孔沿
@@ -196,6 +203,83 @@ class ActionModulator:
             self._goto(target_idx, reason)
             return True
         return False
+
+    def _skill_for_stage(self, st):
+        """段名 → 技能对象 (惰性缓存)。没对应技能类 (拔出/AOI转移/AOI检测/回程/放下) 返回 None。"""
+        if st in self._sk_objs:
+            return self._sk_objs[st]
+        obj = None
+        try:
+            from lerobot.policies.left_right.state_space.skills.atomic_skills import skill_for  # noqa: PLC0415
+            cls = skill_for(st)
+            obj = cls() if cls is not None else None
+        except Exception:                                                  # noqa: BLE001
+            obj = None
+        self._sk_objs[st] = obj
+        return obj
+
+    def skill_step(self, u_req, stage=None, token=None):
+        """公共技能过闸口 (2026-10-31 老倪「全程你操作」): 所有控制路径交出动作前都过当段技能。
+
+        调用方: 解析链 decide()、模型直驱 (_direct_act → env.step)、画布节点
+        (dispatch_inproc.step_stage)。该段有技能类 ⇒ **真调 clamp** (断点/return 必进),
+        并把结果记进 skill_calls/gate; 是否采用技能输出由 ZMAX_SKILL_GATE 决定
+        (默认 0 ⇒ 返回 None, 调用方动作逐位不变)。
+
+        token = 时间步号: 同一拍内 decide 与 env.step 两处都调本函数时只执行一次
+        (否则技能行程/削因会一拍记两次)。调用方不给 token 时用引擎写好的 _skill_tok。
+        """
+        _tok = token if token is not None else getattr(self, "_skill_tok", None)
+        if _tok is not None and _tok == getattr(self, "_last_skill_tok", None):
+            return None
+        st = stage or self.stage()
+        sk = self._skill_for_stage(st)
+        if sk is None:
+            return None
+        try:
+            r = sk.clamp(np.asarray(u_req, dtype=float).reshape(-1), dt=self.skill_gate_dt,
+                         v_prev=self._g_v, a_prev=self._g_a)
+        except Exception:                                                  # noqa: BLE001
+            return None
+        self._last_skill_tok = _tok
+        self.skill_calls[st] = self.skill_calls.get(st, 0) + 1
+        self.gate = r
+        # 🖨 每段第一次真执行 → 终端打一行 (老倪这边: 不靠断点也能一眼看到技能在跑)
+        _seen = getattr(self, "_sk_announced", None)
+        if _seen is None:
+            _seen = self._sk_announced = set()
+        if st not in _seen:
+            _seen.add(st)
+            print("🎯 技能真执行: %s · %s.clamp → |u|=%.3f m/s · 削因 %s"
+                  % (st, type(sk).__name__,
+                     float(np.linalg.norm(np.asarray(r.get("u") or [0, 0, 0], dtype=float)[:3])),
+                     r.get("why") or ""), flush=True)
+        # 🧾 取证落盘 (老倪「断点全都进不去」时用数据说话): 每一拍技能真执行都留一行,
+        #    跑完看 zmax_data/ss_live/skill_calls.log 就知道到底是"没执行"还是"调试器没停"。
+        if os.environ.get("ZMAX_SKILL_LOG", "1") != "0":
+            try:
+                import json as _json
+                import time as _t
+                _lp = os.environ.get("ZMAX_SKILL_LOG_PATH")
+                if not _lp:
+                    _d = os.path.dirname(os.path.abspath(__file__))
+                    for _ in range(8):                       # 往上找仓库根: 同时有 src/tools/zmax_data 的那层
+                        if (os.path.isdir(os.path.join(_d, "zmax_data"))
+                                and os.path.isdir(os.path.join(_d, "src"))
+                                and os.path.isdir(os.path.join(_d, "tools"))):
+                            break
+                        _d = os.path.dirname(_d)
+                    _lp = os.path.join(os.environ.get("ZMAX_LIVE_DIR") or os.path.join(_d, "zmax_data", "ss_live"),
+                                       "skill_calls.log")
+                with open(_lp, "a", encoding="utf-8") as _fh:
+                    _fh.write(_json.dumps({"t": round(_t.time(), 3), "pid": os.getpid(),
+                                           "stage": st, "cls": type(sk).__name__,
+                                           "tok": _tok, "why": r.get("why"),
+                                           "err_mm": round(float(r.get("err_norm") or 0.0) * 1000.0, 3)},
+                                          ensure_ascii=False) + "\n")
+            except Exception:                                              # noqa: BLE001
+                pass
+        return r if self.skill_gate_on else None
 
     def advance(self, contact_p=None, dist_h=None, gripper=None, depth=None,
                 d_xy=None, lifted=None, at_grasp_pose=False, grasp_force=None,
@@ -289,11 +373,19 @@ class ActionModulator:
         #   limiter 存在 ⇒ **经过原子技能 SK01-08 + 物理约束闸** (五条约束, 单点削, 出削因/偏差)
         #   limiter=None ⇒ 旧行为: 按 STAGE_V_CAP 等比缩放 (零回归对照臂)
         cap = self.v_cap.get(st)
-        if self.limiter is not None:
-            _v0 = self._g_v if self._g_v is not None else np.zeros(3)
-            _a0 = self._g_a if self._g_a is not None else np.zeros(3)
+        _v0 = self._g_v if self._g_v is not None else np.zeros(3)
+        _a0 = self._g_a if self._g_a is not None else np.zeros(3)
+        # 🔴 2026-10-31 老倪「所有技能的 return 都没进入, 必须马上进入这些技能的断点」:
+        #   原来技能只在 ZMAX_L2_GATE=1 时才进链路 (默认 0 ⇒ limiter=None ⇒ 走等比缩放,
+        #   SK01-08 的 clamp/return 一拍都不执行)。现在:**该段有技能类就一定走技能**,
+        #   与 L2 闸开关解耦 (ZMAX_SKILL_GATE=0 可关回旧路)。Δ 用标定口径 0.1s
+        #   (config/calib/zmax_skill_physics.json 的 dt; s_step=v·dt 就是按它算的),
+        #   要物理步口径给 ZMAX_SKILL_GATE_DT=0.02。
+        _use = self.skill_step(u, st)      # 每步真调技能 (断点/return 必进); gate 关 ⇒ None
+        if _use is not None or self.limiter is not None:
             try:
-                _g = self.limiter.limit(st, u, v_prev=_v0, a_prev=_a0, dt=self.gate_dt)
+                _g = _use if _use is not None else self.limiter.limit(
+                    st, u, v_prev=_v0, a_prev=_a0, dt=self.gate_dt)
                 u = np.asarray(_g["u"], dtype=float)
                 self.gate = _g
                 _vnew = np.asarray(u[:3], dtype=float).copy()
@@ -312,7 +404,8 @@ class ActionModulator:
                     u = u * (cap / n)
                     n = cap
         else:
-            self.gate = None
+            # gate 关: 动作仍走下面的等比缩放 (逐位不变); 技能结果已在 skill_step 里写进 self.gate
+            pass
             n = float(np.linalg.norm(u[:3])) if u.ndim else abs(float(u))
             if cap is not None and n > cap > 0:
                 u = u * (cap / n)              # 等比缩放: 保方向, 只削速度

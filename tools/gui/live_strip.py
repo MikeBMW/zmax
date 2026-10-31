@@ -17,7 +17,7 @@ import os
 import sys
 import time
 
-from PyQt5.QtCore import QProcess, QTimer
+from PyQt5.QtCore import QProcess, QTimer, pyqtSignal
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -29,6 +29,10 @@ C_WHITE, C_GREEN, C_RED, C_GOLD = "#e6edf3", "#00d4aa", "#ff6b6b", "#ffc857"
 class LiveStrip(QFrame):
     """实时数据条 —— 子进程跑只读工具, 定时把 JSON 摘要贴上来 (带采集时间)。"""
 
+    # 2026-10-31 老倪「怎么有 subprocess」: cmd 也可以直接给一个**函数**(同进程取数),
+    #   结果从这个信号回主线程 (Qt 跨线程 emit 自动排队), 不再起 python 子进程。
+    data_ready = pyqtSignal(object)
+
     def __init__(self, title, cmd, fmt, interval_s=10, parent=None):
         super().__init__(parent)
         self._title = title
@@ -36,9 +40,11 @@ class LiveStrip(QFrame):
         self._fmt = fmt
         self._interval = max(2, int(interval_s))
         self._proc = None
+        self._busy = False
         self._buf = b""
         self._last_ok = None
         self._last_at = None
+        self.data_ready.connect(self._on_data_ready)
 
         self.setStyleSheet("background:%s; border:1px solid %s; border-radius:8px;" % (C_BG2, C_BORDER))
         lay = QHBoxLayout(self)
@@ -74,6 +80,29 @@ class LiveStrip(QFrame):
 
     # ── 采集 ────────────────────────────────────────────────────────────────
     def refresh(self):
+        if callable(self._cmd):
+            # 同进程取数: 排到唯一工程线程, 结果经 data_ready 回主线程 (无子进程)
+            if self._busy:
+                return
+            self._busy = True
+
+            def _work(_self=self):
+                try:
+                    payload, err = self._cmd(), None
+                except Exception as e:                                      # noqa: BLE001
+                    payload, err = None, "%s: %s" % (type(e).__name__, e)
+                try:
+                    self.data_ready.emit((payload, err))
+                except Exception:                                           # noqa: BLE001
+                    pass
+
+            try:
+                from zmax_thread import zmax_thread as _ZT
+                _ZT.submit(_work)
+            except Exception:                                               # noqa: BLE001
+                _work()
+            return
+
         if self._proc is not None:
             return                                     # 上一轮还没回, 不叠进程
         self._buf = b""
@@ -159,6 +188,22 @@ class LiveStrip(QFrame):
             if payload is None and err is None:
                 err = "工具没输出 JSON (exit=%s)" % code
         try:
+            self._apply(payload, err, code)
+        except Exception:                                                   # noqa: BLE001
+            pass
+
+
+    def _on_data_ready(self, pack):
+        """同进程取数回到主线程 (payload, err)。"""
+        self._busy = False
+        try:
+            payload, err = pack
+        except Exception:                                                       # noqa: BLE001
+            payload, err = None, "payload 解析失败"
+        self._apply(payload, err, 0)
+
+    def _apply(self, payload, err, code):
+        try:
             summary, detail, ok = self._fmt(payload, err)
         except Exception as e:                                             # noqa: BLE001
             summary, detail, ok = "格式化失败: %s" % e, "", False
@@ -171,10 +216,8 @@ class LiveStrip(QFrame):
             self._last_at = time.strftime("%H:%M:%S")
             self.lbl_at.setText("采集 %s" % self._last_at)
         else:
-            # 失败不掩盖: 红字 + 保留上次值参考
-            self.lbl_at.setText(("上次 %s" % self._last_at) if self._last_at else "")
+            self.lbl_at.setText((("上次 %s" % self._last_at) if self._last_at else ""))
         self._after_payload(payload)
-
 
     def _after_payload(self, payload):
         """采集回调结束后的钩子 (LiveStrip 无动作, LiveTable 拿去填表)。"""

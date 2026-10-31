@@ -49,6 +49,11 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
+# 🔒 550B 单线程 (严格执行 · 老倪 2026-10-31「按现在的单线程逻辑严格执行」):
+#   引擎是功能逻辑, 只允许一条线程; 开关在导入推理栈**之前**钉死, 不依赖 systemd/shell。
+if os.environ.get("ZMAX_MULTI_THREAD", "").strip().lower() not in ("1", "true", "yes", "on"):
+    os.environ["ZMAX_SINGLE_THREAD"] = "1"
+
 TAP_DIR = os.environ.get("ZMAX_SS_ENGINE_TAP_DIR") or "/dev/shm/zmax_ss_engine"
 TAP_MAX_MB = float(os.environ.get("ZMAX_SS_ENGINE_TAP_MAX_MB") or 32)
 LIVE_DIR = os.path.join(ROOT, "zmax_data", "ss_live")
@@ -747,12 +752,12 @@ class Loop:
                 chunk_rec["stage_name"] = _sn
             except Exception as e:                                           # noqa: BLE001
                 chunk_rec = {"ok": False, "reason": "%s: %s" % (type(e).__name__, str(e)[:120])}
-        # 🧩 2026-10-31 老倪「550B 调试都在一个进程里」: 开了 ZMAX_DISPATCH_INPROC=1 就由**本进程**
-        #   跑一拍技能派发 (同一个 Dispatcher/同一份 chunk/同一个物理闸) ⇒ 红点能停在
-        #   SK01Approach.clamp / AtomicSkill.apply_physics / InertiaLimiter.limit。默认关, 生产零变化。
+        # 🧩 2026-10-31 老倪「把 SK01~SK08 运行在状态空间这个进程里, 别再独立派发了」:
+        #   派发宿主只有一个 = 状态空间画布常驻循环 (ss_canvas_loop). 本循环显式报上自己的名字,
+        #   dispatch_inproc 认 owner 不符就**不派发** ⇒ 不会出现两个进程抢写 skill_phys.json。
         try:
             import dispatch_inproc as _dip                                    # noqa: PLC0415
-            _dip.tick()
+            _dip.tick("ss_engine_loop")
         except Exception:                                                    # noqa: BLE001
             pass
         # ⚖ 物理偏差: 读技能闸的唯一依据 → 大偏差走"融合定位 → 顶层补偿"

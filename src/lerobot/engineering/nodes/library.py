@@ -25,6 +25,10 @@ import time
 
 from .. import paths as _paths
 from ..registry import NODE_LOGIC, NODE_ORDER, _SOURCE_CACHE, register as _reg, match_node, set_logic_globals
+# 🧵 2026-10-31 老倪「550B 功能逻辑只能有一个线程, 左侧线程不要跳」:
+#   重量级节点 (YOLO 检测 / VLM 场景理解) 原来自己起 worker ⇒ 实现在 worker 里跑, 断点跳到别的线程。
+#   单线程模式下改由 spawn_or_inline 当场算完 (断点恒在主线程), 多线程模式行为不变。
+from ..thread_policy import spawn_or_inline as _spawn_or_inline
 
 _LOGIC_FILE = _paths.LOGIC_FILE   # 兼容旧名 (仓库根探测的起点)
 
@@ -1671,9 +1675,9 @@ def _yolo_detect_bg(aligner, img, log=None):
         _work()
         r = st.get("res")
         return r if r is not None else ({}, {"frame": "world", "gaps": ["首帧检测失败: %s" % st.get("err")]}, {})
-    st["th"] = threading.Thread(target=_work, daemon=True, name="ss_yolo_detect")
-    st["th"].start()
-    r = st.get("res")                             # 这一拍用上一帧的检测结果
+    # 🧵 550B 单线程: 当场算完再返回 (断点停在主线程, 下游拿的是**这一拍**的检测)
+    st["th"] = _spawn_or_inline("ss_yolo_detect", _work)
+    r = st.get("res")                             # 单线程: 本拍结果 / 多线程: 上一帧结果
     return r if r is not None else ({}, {"frame": "world", "gaps": ["检测结果未就绪"]}, {})
 
 
@@ -2987,7 +2991,7 @@ _EXTERNAL_LOC["ss_bg3"]    = (os.path.join(_SS_DIR, "cognition.py"), 37, "def st
 
 # 🐛 2026-09-02 老倪: 动作调制器节点双击 → 直接显示 decide 方法本体 (否决权+前馈反馈相加+阶段限速),
 #   不是整个类 (原映射 class 行号 27 也不准, 实际 30)
-_EXTERNAL_LOC["ss_sched"]  = (os.path.join(_SS_DIR, "cognition.py"), 217, "def advance")  # 2026-09-21 行号同步: 216→228
+_EXTERNAL_LOC["ss_sched"] = (os.path.join(_REPO_ROOT, "src/lerobot/engineering/nodes/library.py"), 2833, "def node_ss_s3")   # 🎯 2026-10-31 落点校准: 原来指到本路径不调用的函数 ⇒ 断点永不命中
 
 _EXTERNAL_LOC["ss_bg4"]    = (os.path.join(_SS_DIR, "execution.py"), 14, "class RobotExecutor")
 
@@ -3563,7 +3567,8 @@ def _vlm_ask_async(mode, image, ctx, log, fresh_s=8.0):
             if log:
                 log("⚠️ 场景理解异常: %s: %s" % (type(e).__name__, e))
 
-    _th.Thread(target=_work, daemon=True).start()
+    # 🧵 550B 单线程: 当场调完再返回 (断点停在主线程; 单线程下"pending"不会残留成调用中)
+    _spawn_or_inline("ss_vlm", _work)
     return st
 
 def node_ss_llm_in(ctx):
@@ -3614,7 +3619,7 @@ _reg("n_eng_mem", ["工程记忆", "技能与经验库"], "📚 工程记忆 · 
 _reg("n_dsvl", ["DeepSeek", "视觉语言", "VLM 判读"], "🧿 DeepSeek-V4-Flash 视觉语言 (人机在环) — 场景判读+建议; 右键=判读结果窗口 (源码 scene_vlm.py)", node_dsvl)
 
 # 🌐 2026-09-25 老倪: L5「Web 智能体桥」— web 上的 agent 用提示词远程调用状态空间**只读功能** (源码 web_agent_bridge.py)
-_EXTERNAL_LOC["n_web_agent"] = (os.path.join(_SS_DIR, "web_agent_bridge.py"), 93, "class WebAgentBridge")  # 行号按真源实测(2026-09-29)
+_EXTERNAL_LOC["n_web_agent"] = (os.path.join(_REPO_ROOT, "src/lerobot/engineering/nodes/library.py"), 3399, "def node_web_agent")   # 🎯 2026-10-31 落点校准: 原来指到本路径不调用的函数 ⇒ 断点永不命中
 
 _reg("n_web_agent", ["Web 智能体桥", "远程提示词", "web agent", "web_agent", "网页智能体"],
      "🌐 Web 智能体桥 · 远程提示词 — web agent 提示词 → 只读功能派发(状态/画布/报告/记忆/技能/仿真/网络/AOI/真机只读/飞书) → 回执到 web; 动作类提示词一律拒答 (源码 web_agent_bridge.py)", node_web_agent)
@@ -3625,11 +3630,11 @@ _ARM_DIR = os.path.join(_paths.REPO_ROOT, "src", "lerobot", "arm")
 _EXTERNAL_LOC["n_moveit"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "plan_impl.py"), 220, "def run")
 # 🧭 2026-10-29 老倪定序: 「状态空间 → 运动规划 ‖ 前馈MLP → 加权 → 调制 → 安全 → 技能派发 → 执行器」
 #   这里的「运动规划」= 状态空间**测地线块规划** (与前馈并列、在加权之前), 与 n_moveit(MoveIt, 技能之后) 是两件事
-_EXTERNAL_LOC["n_geoplan"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "geo_plan_impl.py"), 110, "def smooth_traj")   # 2026-10-29: 加了 _quat_from_rot ⇒ def run 从 93 移到 123 (改文件后必须回读行号)     # 🧭 2026-10-28: 规划正文迁出 registry 大文件, 落点 = plan_impl.py::run
+_EXTERNAL_LOC["n_geoplan"] = (os.path.join(_REPO_ROOT, "src/lerobot/engineering/nodes/library.py"), 3323, "def node_geoplan")   # 🎯 2026-10-31 落点校准: 原来指到本路径不调用的函数 ⇒ 断点永不命中
 _EXTERNAL_LOC["ss_limit"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "safety_limit_impl.py"), 124, "def run")     # 2026-10-28 执行链外迁
 
-_EXTERNAL_LOC["ss_dyn_gate"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "constraint_gates_impl.py"), 107, "def run")   # 2026-10-31 ⚖ 动力学约束闸 (运动学+动力学 真跑)
-_EXTERNAL_LOC["n_exec"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "exec_dispatch_impl.py"), 47, "def run")     # 2026-10-28 执行链外迁
+_EXTERNAL_LOC["ss_dyn_gate"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "constraint_gates_impl.py"), 187, "def run")   # 2026-10-31 ⚖ 动力学约束闸 (运动学+动力学 真跑)
+_EXTERNAL_LOC["n_exec"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "exec_dispatch_impl.py"), 54, "def run")     # 2026-10-28 执行链外迁
 _EXTERNAL_LOC["ss_act"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "robot_actuator_impl.py"), 65, "def run")     # 2026-10-28 执行链外迁
 _EXTERNAL_LOC["ss_correct"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "state_correct_impl.py"), 44, "def run")     # 2026-10-28 执行链外迁
 _EXTERNAL_LOC["yolo_tactile"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "tactile_impl.py"), 29, "def run")     # 2026-10-28 执行链外迁
@@ -4363,7 +4368,7 @@ _reg("ss_lat", ["潜空间", "潜空", "潜空-流形"],
     "🧮 潜空-流形 — 潜空间/世界模型流形标定 (原「潜空间 · 世界模型流形标定」): 维度(latent_dim 4D=位置3+预测力1)/类别(manifold_kind flat-linear, flow_kind const-vel)/速度场 prior_A; PCA 实测观测有效维 vs 标定; 潜坐标+速度场取引擎轨迹真实量; 输入含 L4 流形(接触/性能)连线 (地图导航视角; 源码 calibration_layer.py LATENT_CALIB)",
     node_ss_lat)
 
-_EXTERNAL_LOC["ss_lat"] = (os.path.join(_CALIB_DIR_LOC, "calibration_layer.py"), 55, "LATENT_CALIB")
+_EXTERNAL_LOC["ss_lat"] = (os.path.join(_REPO_ROOT, "src/lerobot/engineering/nodes/library.py"), 4327, "def node_ss_lat")   # 🎯 2026-10-31 落点校准: 原来指到本路径不调用的函数 ⇒ 断点永不命中
 
 # 🧮 流形层 (2026-09-03 老倪: 光模块精密插拔 = 高维状态空间的低维流形 —
 #   接触流形=插拔安全通道(沿流形推进=测地线, 偏离→引脚弯曲), 性能流形=光耦合
@@ -4491,6 +4496,22 @@ def node_ss_atomic(ctx):
         tgt = np.asarray(tr["target"][idx], dtype=float) if tr.get("target") else np.zeros(3)
         u = np.asarray(tr["u_exec_vec"][idx], dtype=float) if tr.get("u_exec_vec") else np.zeros(4)
         act = bool(stg and stage_now == stg)
+        # 🧭 2026-10-31 老倪「按照连线, 强制保持数据功能与连线一致」:
+        #   连线上这个节点被激活 ⇒ **真跑一次本段技能的 clamp** (以前只打日志 = 线连着但不执行,
+        #   SK01 的 clamp 一拍都没进过, 断点当然不进)。结果带 why/err_norm, 沿 sssk → ssphys 的线往下走。
+        _gate = None
+        if act:
+            try:
+                import sys as _sys
+                _tp = os.path.join(_REPO_ROOT, "tools")
+                if _tp not in _sys.path:
+                    _sys.path.insert(0, _tp)
+                import dispatch_inproc as _dpi
+                _gate = _dpi.step_stage(stg, np.asarray(u[:3], dtype=float))
+            except Exception as _e:                                          # noqa: BLE001
+                _gate = None
+                if log:
+                    log(f"⚠️ 原子技能 {name}: 调 clamp 失败 {type(_e).__name__}: {_e}")
         if log:
             if _tpl is not None:
                 log(f"🧩 模板 {tpl} {_tpl.name}: {_tpl.desc}")
@@ -4498,6 +4519,11 @@ def node_ss_atomic(ctx):
             if act:
                 log(f"🧩 原子技能 ▶ {name} 激活 · 模板{tpl} (决策层选定「{stg}」→ 模板实例化快速执行) · "
                     f"决策实时赋值: 目标 {np.round(tgt[:3], 3)} · 执行速度 u={np.round(u[:3], 3)} m/s")
+                if _gate:
+                    log("   ⚖ 过闸 → |u|=%.3f m/s · 偏差 %.1f mm/s · 削因 %s · f_need=%.3f N" % (
+                        float(np.linalg.norm(np.asarray(_gate.get("u") or [0, 0, 0], dtype=float))),
+                        float(_gate.get("err_norm") or 0.0) * 1000.0,
+                        _gate.get("why") or "", float(_gate.get("f_need_N") or 0.0)))
             else:
                 log(f"🧩 原子技能 {name} 待命 · 模板{tpl} (当前阶段 {stage_now or '—'}, 未调用)")
         return True
@@ -4695,7 +4721,7 @@ for _skid, _ln, _sym in _SK_EXT_LOC:
     _EXTERNAL_LOC[_skid] = (os.path.join(_SS_DIR, "skills", "atomic_skills.py"), _ln, _sym)
 
 # 右键源码映射: 两 key 各挂独立符号 (防"两节点显示同一段"坑)
-_EXTERNAL_LOC["ss_mani_c"] = (os.path.join(_MANIFOLD_DIR, "manifold_layer.py"), 65, "class ContactManifold")
+_EXTERNAL_LOC["ss_mani_c"] = (os.path.join(_REPO_ROOT, "src/lerobot/engineering/nodes/library.py"), 4656, "def node_ss_mani")   # 🎯 2026-10-31 落点校准: 原来指到本路径不调用的函数 ⇒ 断点永不命中
 
 _EXTERNAL_LOC["ss_mani_p"] = (os.path.join(_MANIFOLD_DIR, "manifold_layer.py"), 154, "class PerformanceManifold")
 
@@ -5668,8 +5694,7 @@ _reg("n_l2_muscle", ["肌肉记忆技能库", "光模块抓放循环"],
 _EXTERNAL_LOC["n_board_frame"] = (os.path.join(_REPO_ROOT, "tools", "board_frame_module.py"),
                                   11, "def run(")
 
-_EXTERNAL_LOC["n_l2_muscle"] = (os.path.join(_REPO_ROOT, "tools", "l2_ros2_bridge.py"),
-                                81, "def run_step(")
+_EXTERNAL_LOC["n_l2_muscle"] = (os.path.join(_REPO_ROOT, "src/lerobot/engineering/nodes/library.py"), 5660, "def node_n_l2_muscle")   # 🎯 2026-10-31 落点校准: 原来指到本路径不调用的函数 ⇒ 断点永不命中
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 🧮 流形引擎 (Manifold Engine) — L4 核心内核 (2026-09-24 老倪架构升级)
@@ -6075,7 +6100,7 @@ _reg("ss_mani_eng", ["流形引擎", "Manifold Engine"],
      "src/lerobot/manifold/prime_structure.py)",
      node_ss_mani_eng)
 
-_EXTERNAL_LOC["ss_mani_eng"] = (os.path.join(_MANIFOLD_DIR, "manifold_engine.py"), 466, "def parallel_transport")
+_EXTERNAL_LOC["ss_mani_eng"] = (os.path.join(_REPO_ROOT, "src/lerobot/engineering/nodes/library.py"), 5897, "def node_ss_mani_eng")   # 🎯 2026-10-31 落点校准: 原来指到本路径不调用的函数 ⇒ 断点永不命中
 # ⚖ 内稳态层源码 (2026-10-10): 节点日志里的"生命力/紧迫度/自我模型"真源
 _EXTERNAL_LOC["ss_mani_eng_hom"] = (os.path.join(_MANIFOLD_DIR, "homeostasis.py"),
                                     306, "class HomeostasisEngine")
@@ -6581,6 +6606,9 @@ _reg("ss_grav_h", ["万有引力", "SE3 几何阻抗", "H=K+U", "哈密顿"],
      node_ss_grav_h)
 
 _EXTERNAL_LOC["ss_grav_h"] = (os.path.join(_MANIFOLD_DIR, "state_space_energy.py"), 273, "def live_energy")
+
+# 🎯 2026-10-31 老倪「所有断点都要进入」: 补齐无映射节点的落点 (真跑命中的那一行)
+_EXTERNAL_LOC["sssk1"] = (os.path.join(_REPO_ROOT, "src/lerobot/engineering/nodes/library.py"), 4493, "def node_ss_atomic")   # 🎯 2026-10-31 新增落点 (原无映射, 断点在别处永不命中)
 
 # ── 🏭 UPH 节拍循环器 (节点 ssuph) ────────────────────────────────
 # 真实现住 ../nodes/uph_tact_impl.py, 这里只做注册绑定 (画布每次保存会重生成 n_uph.py 外壳, 算法不能被写进外壳)

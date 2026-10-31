@@ -19,7 +19,7 @@ import time
 
 _LOG = os.environ.get("ZMAX_LOOP_LOG", "/tmp/ss_canvas_loop.log")
 _VERBOSE = str(os.environ.get("ZMAX_LOOP_VERBOSE", "0")).strip().lower() in ("1", "true", "yes", "on")
-_PER_S = max(0.2, float(os.environ.get("ZMAX_LOOP_TERM_LINES", "2") or 2))
+_PER_S = max(0.0, float(os.environ.get("ZMAX_LOOP_TERM_LINES", "0") or 0))
 _WIN = 1.0
 
 
@@ -29,6 +29,7 @@ class _Throttle(object):
         self._sink = sink
         self._win_t0 = time.monotonic()
         self._win_n = 0
+        self._sum_t = time.monotonic()
         self._last = None
         self._dup = 0
         self._dropped = 0
@@ -37,9 +38,11 @@ class _Throttle(object):
     def _emit(self, line):
         now = time.monotonic()
         if now - self._win_t0 >= _WIN:
-            if self._dropped:
+            # 省略统计最多 10s 一行 (0 行/秒时也不会变成"每秒一行"的刷屏)
+            if self._dropped and now - self._sum_t >= 10.0:
                 self._real.write("   … %d 行已省略 (全量: %s)\n" % (self._dropped, _LOG))
                 self._dropped = 0
+                self._sum_t = now
             self._win_t0, self._win_n = now, 0
         if self._win_n < _PER_S:
             self._win_n += 1

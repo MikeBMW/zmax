@@ -170,23 +170,28 @@ class _Fetcher(QThread):
     def stop(self):
         self._stop.set()
 
+    def poll_once(self):
+        """取一次数, 结果投进 self.out (主线程消费)。线程版与 zmax 工程线程共用同一段逻辑。"""
+        t0 = time.time()
+        try:
+            req = urllib.request.Request(self.url, headers={"Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=self.timeout) as r:
+                body = r.read(262144)
+            obj = json.loads(body.decode("utf-8", "replace"))
+            if isinstance(obj, dict):
+                self.out.append((True, obj, time.time()))
+            else:
+                self.out.append((False, "not-a-dict", time.time()))
+        except Exception as e:                                  # 读失败静默降级
+            self.out.append((False, "%s: %s" % (type(e).__name__, e), time.time()))
+        # 只留最近 2 条, 防无界增长
+        del self.out[:-2]
+        return max(0.05, self.interval - (time.time() - t0))
+
     def run(self):
         while not self._stop.is_set():
-            t0 = time.time()
-            try:
-                req = urllib.request.Request(self.url, headers={"Accept": "application/json"})
-                with urllib.request.urlopen(req, timeout=self.timeout) as r:
-                    body = r.read(262144)
-                obj = json.loads(body.decode("utf-8", "replace"))
-                if isinstance(obj, dict):
-                    self.out.append((True, obj, time.time()))
-                else:
-                    self.out.append((False, "not-a-dict", time.time()))
-            except Exception as e:                                  # 读失败静默降级
-                self.out.append((False, "%s: %s" % (type(e).__name__, e), time.time()))
-            # 只留最近 2 条, 防无界增长
-            del self.out[:-2]
-            self._stop.wait(max(0.05, self.interval - (time.time() - t0)))
+            wait = self.poll_once()
+            self._stop.wait(wait)
 
 
 # ============================================================
@@ -243,7 +248,18 @@ class StatusPanel(QWidget):
         self._worker = None
         if poll:
             self._worker = _Fetcher(self.url, self._queue, interval=self.POLL_MS / 1000.0, parent=self)
-            self._worker.start()
+            # 🧵 2026-10-31 老倪「就两个线程」: 单线程档不起这条 QThread,
+            #   改由唯一工程线程 zmax 每 POLL_MS 调一次 poll_once() 往同一个 self._queue 投结果,
+            #   主线程的 _tick 定时器照旧消费 (界面刷新路径一字未改)。
+            if os.environ.get("ZMAX_SINGLE_THREAD") == "1":
+                try:
+                    from zmax_thread import zmax_thread as _ZT
+                    _ZT.every("status_panel:%s" % self.url, self.POLL_MS / 1000.0,
+                              self._worker.poll_once)
+                except Exception:                                       # noqa: BLE001
+                    self._worker.start()
+            else:
+                self._worker.start()
             self._timer = QTimer(self)
             self._timer.timeout.connect(self._tick)
             self._timer.start(self.POLL_MS)

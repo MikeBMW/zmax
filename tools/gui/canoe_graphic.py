@@ -1778,7 +1778,12 @@ class CanoeGraphicWidget(QWidget):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
         self._timer.start(int(1000 / UI_FPS))
-        self._autostart()
+        # 🧵 2026-10-31 老倪「单线程, 马上重构」: 原来一进页面就 _autostart() ——
+        #   它同时起 3 条采样线程 (HostJsonSource / RosTopicSource / DataSpaceTraceSource)
+        #   外加一条 CatalogWorker (读 Orin 话题目录) = 4 条线程, 哪怕你根本没勾任何信号。
+        #   单线程档: 不自动起, 等你点「▶ 采样开始」(那一下本来就是你要它干活) —— 页面照样能看。
+        if os.environ.get("ZMAX_SINGLE_THREAD") != "1":
+            self._autostart()
 
     # ─────────── UI ───────────
     def _btn(self, text, tip="", color=C_BLUE, checkable=False):

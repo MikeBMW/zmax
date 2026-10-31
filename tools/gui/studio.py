@@ -55,7 +55,13 @@ import tempfile  # 🐛 2026-08-28: Windows exe 无 /tmp → 打点日志改 tem
 #   必须放在 BLAS 初始化之前: 事后 torch.set_num_threads() 只改 torch, 改不了 OpenBLAS/MKL 已建的线程池。
 #   留 `ZMAX_MULTI_THREAD=1` 逃生口(要跑基准/批量推理时显式关单线程)。
 try:
-    if os.environ.get("ZMAX_SINGLE_THREAD", "") != "1" and os.environ.get("ZMAX_MULTI_THREAD", "") != "1":
+    # 🔴 2026-10-31 实测 bug (老倪「你现在还有 25 个线程, 你也没改啊」):
+    #   原来这里写成 `if ZMAX_SINGLE_THREAD != "1" and ZMAX_MULTI_THREAD != "1":` ——
+    #   VSCode 调试配置 (launch.json) 已经带了 ZMAX_SINGLE_THREAD=1 ⇒ **整块被跳过**,
+    #   OMP/OPENBLAS/MKL/GDAL 的线程数从来没灌进进程。后果: /proc/<pid>/task 里
+    #   5×python:traceq0 (OpenMP) + 5×python:gdrv0 (GDAL) + sh0/disk$0 照样建池, 45 条线程。
+    #   ⇒ 现在: 只要不是显式 ZMAX_MULTI_THREAD=1, 这些数字**一律灌**, 与谁拉起进程无关。
+    if os.environ.get("ZMAX_MULTI_THREAD", "") != "1":
         try:
             from vscode_launch import SINGLE_THREAD_ENV as _ST_ENV      # 同目录, 与 VSCode 启动同源
         except Exception:                                              # noqa: BLE001
@@ -73,6 +79,18 @@ try:
             if _k == "ZMAX_DEBUG_MODE":
                 continue
             os.environ[_k] = str(_v)
+        # 老倪 2026-10-31「单线程, 马上重构」: 这几个是 GDAL/OpenMP 自己的池开关, 上面那份名单没有,
+        #   缺了它们 gdrv0/traceq0 线程照建 (实测 10 条)。用 setdefault: 用户显式设过就不覆盖。
+        for _k, _v in (("GDAL_NUM_THREADS", "1"), ("OMP_WAIT_POLICY", "PASSIVE"),
+                       ("KMP_BLOCKTIME", "0"), ("KMP_DUPLICATE_LIB_OK", "TRUE"),
+                       # Intel OpenMP(libiomp) 自己的池: 只给 OMP_NUM_THREADS 不够,
+                       # 实测仍建 3×traceq0 + 3×gdrv0 ⇒ 再用线程上限 + 关亲和 + 关动态
+                       ("KMP_NUM_THREADS", "1"), ("OMP_THREAD_LIMIT", "1"),
+                       ("KMP_AFFINITY", "disabled"), ("MKL_DYNAMIC", "FALSE"),
+                       # 🧵 tqdm 自带一条 monitor 线程, 单线程档不要它
+                       ("TQDM_DISABLE", "1")):
+            os.environ.setdefault(_k, _v)
+        os.environ["ZMAX_SINGLE_THREAD"] = "1"
 except Exception:                                                      # noqa: BLE001
     pass
 import json
@@ -1022,29 +1040,34 @@ class SystemSidebar(QFrame):
 
     def _build(self):
         layout = QVBoxLayout()
-        layout.setSpacing(8)                      # 卡片间距统一 8px (老倪: 距离要均匀)
-        layout.setContentsMargins(12, 16, 12, 16)
+        layout.setSpacing(6)                      # 卡片间距统一 (2026-10-31 老倪: 左上角太空旷 ⇒ 上紧一档)
+        # 🧹 2026-10-31 老倪「左上角、返回首页上面的空间太空旷了, 只有一个版本显示 ⇒ 空间减少, 只要显示版本」:
+        #   原来上边距 16 + 行高按 19px 字撑开 + 行距 8 ⇒ 那一块只放个版本号却占了约 60px 高。
+        #   现在: 上边距 8 · 版本字 13px · 行距 6 ⇒ 同一条信息, 高度压到约 30px, 空出来的都给下面卡片。
+        layout.setContentsMargins(12, 8, 12, 10)
 
         # 标题行: 精简为「◀ 收起 + 版本号」一行 (2026-08-06 老倪: 大标题太黑看不清
         # 还占地方 → 品牌信息提升到菜单栏, 侧栏只留功能按钮)
         logo_row = QHBoxLayout()
         logo_row.setSpacing(6)
         btn_collapse = QPushButton("◀")
-        btn_collapse.setFixedWidth(34)
+        btn_collapse.setFixedSize(26, 20)         # 2026-10-31: 收起键跟着压小 (原来 34 宽, 一列只有它一块厚)
         btn_collapse.setToolTip("隐藏左侧栏, 内容区占满 (再点左缘 ▶ 展开)")
         btn_collapse.setStyleSheet(f"""
             QPushButton {{ background:{C_CARD}; color:{C_BLUE}; border:1px solid {C_BORDER};
-                           border-radius:4px; font-size:15px; font-weight:700; padding:2px 0; }}
+                           border-radius:4px; font-size:11px; font-weight:700; padding:0; }}
             QPushButton:hover {{ border-color:{C_BLUE}; }}
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.50.758")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.50.760")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.ensurePolished()                     # 先套上样式再量字, 否则 sizeHint 按默认字体算
         ver.setToolTip("版本号在此 (侧栏品牌位)\n"
                        "顶栏标题 = 产品标识「XSpace ZMAX <产品号>」, 与配置中心产品配置同源 (config/platform/zmax_product.json)\n"
                        "断点调试: VSCode F5「🚀 全新调试进程」= 同一份 studio.py 新实例; F5 目标与本实例同源 (md5 已自检)")
-        ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:19px; font-weight:600;")
+        # 🧹 2026-10-31 老倪「只要显示版本即可」: 19px → 13px, 行高固定 20 ⇒ 这一行不再撑出大片空白
+        ver.setStyleSheet(f"color:{C_WHITE}; background:transparent; border:none; font-size:13px; font-weight:600;")
+        ver.setFixedHeight(20)
         logo_row.addWidget(ver)
         logo_row.addStretch()
         layout.addLayout(logo_row)
@@ -2702,6 +2725,23 @@ class _StatusLightFetcher(QThread):
             while waited < self.interval and not self._stop:
                 time.sleep(0.1)
                 waited += 0.1
+
+    def fetch_once(self):
+        """跑一次取数 (**不依赖本对象 run 循环**), 供唯一工程线程调用。
+
+        2026-10-31 老倪「怎么有 subprocess」: 原来这里是 `subprocess.run([python, status_lights.py --json])`
+        —— 每 2s 起一个 python 子进程, 调试时 Call Stack 里会多出一个进程/线程、断点也跟着跳。
+        现在**同进程直接调** `status_lights.collect()`: 一次函数调用, 没有子进程。
+        """
+        try:
+            _tdir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools")
+            if _tdir not in sys.path:
+                sys.path.insert(0, _tdir)
+            import status_lights as _sl
+            return True, _sl.collect()
+        except Exception as e:                                                  # noqa: BLE001
+            _light_log("%s: %s" % (e.__class__.__name__, e))
+        return False, None
 
     def stop(self):                                                             # noqa: A003
         self._stop = True
@@ -8756,7 +8796,12 @@ class HardwareModule(SubModuleWidget):
             except Exception:                                               # noqa: BLE001
                 pass  # Orin 不在线也不崩溃
 
-        _th.Thread(target=_warm_ssh, name="warm_ssh", daemon=True).start()
+        # 🧵 2026-10-31 老倪「就两个线程」: 预热 ssh 从独立线程改成工程线程上的排队任务
+        try:
+            from zmax_thread import zmax_thread as _ZT_SSH
+            _ZT_SSH.submit(_warm_ssh)
+        except Exception:                                                   # noqa: BLE001
+            _th.Thread(target=_warm_ssh, name="warm_ssh", daemon=True).start()
         
         self.sim = get_simulator("sim")
         self._selected_device = "overview"
@@ -8773,7 +8818,10 @@ class HardwareModule(SubModuleWidget):
             self._ws_poll.timeout.connect(self._drain_ws_queue)
             self._ws_poll.start(100)
             from relay_middleware import WSClient
-            self._ws = WSClient(on_status=self._on_ws_status)
+            # 🧵 2026-10-31 老倪「就两个线程」: WS 客户端原来构造即起 `zmax-ws-client` 线程。
+            #   单线程档不自动连 (Orin 状态仍由 HTTP 轮询经工程线程拿), 要实时推送再显式 start。
+            self._ws = WSClient(on_status=self._on_ws_status,
+                                autostart=(os.environ.get("ZMAX_SINGLE_THREAD") != "1"))
         except Exception:
             self._ws = None  # 中间件不可用不影响硬件页
         
@@ -10897,8 +10945,17 @@ class MonitorModule(SubModuleWidget):
         #   ⇒ 监控页置顶挂「远程/大屏 · 同源」实采表: 18 个端点(本机服务/Orin/工控机AOI/ECS公网)
         #     逐项状态+帧龄+过期标记, 并对报告同一事实的多个端点做同源判定(过期源判"不可比")。
         if LiveTable is not None:
-            self._live_rm = LiveTable("🌐 远程监控 · 同源 (实采)",
-                                      ["tools/remote_monitor_aggregate.py", "--json"],
+            # 2026-10-31 老倪「怎么有 subprocess」: 原来每 60s 起一个 python 子进程跑
+            #   remote_monitor_aggregate.py --json。现在改成同进程取数 (函数), 由 zmax 工程线程执行,
+            #   结果经 data_ready 回主线程 —— 没有子进程, 也不多线程。
+            def _rm_collect():
+                _td = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools")
+                if _td not in sys.path:
+                    sys.path.insert(0, _td)
+                import remote_monitor_aggregate as _rma
+                return _rma.collect(_rma._build_catalog())
+
+            self._live_rm = LiveTable("🌐 远程监控 · 同源 (实采)", _rm_collect,
                                       fmt_remote, rows_remote, interval_s=60, max_rows=40)
             bl.addWidget(self._live_rm)
             self._live_rm_tbl = self._live_rm._build_table_into(bl)
@@ -11193,8 +11250,18 @@ class MonitorModule(SubModuleWidget):
     def _refresh_orin_status(self):
         """轮询 ECS 获取 Orin 部署/推理状态 (CICD 状态反馈)
         2026-08-05 改后台线程 — 原主线程同步 requests.get(timeout=5),
-        Orin 离线/端点慢时每 5s 阻塞 UI 一次 → 控制台卡顿根因之一"""
+        Orin 离线/端点慢时每 5s 阻塞 UI 一次 → 控制台卡顿根因之一
+
+        2026-10-31 老倪「单线程, 马上重构」: 原来每调一次就新起一条线程,
+        ECS 慢时 5s 定时器叠上超时线程 ⇒ 实测同刻 4 条 `_work` 线程挂在 requests 上。
+        现在: 单飞 (in-flight) —— 上一个没回来就不发新的, 稳态**永远只有 1 条**。
+        """
         import threading
+
+        if os.environ.get("ZMAX_SINGLE_THREAD") == "1":
+            if getattr(self, "_orin_busy", False):
+                return
+            self._orin_busy = True
 
         def _work():
             try:
@@ -11207,7 +11274,17 @@ class MonitorModule(SubModuleWidget):
                 _oneshot(self, 0, lambda s=st: self._apply_orin_status(s))
             except Exception:
                 pass
+            finally:
+                self._orin_busy = False
 
+        # 🧵 单线程档: 这条请求排到唯一工程线程 zmax 上跑, 不再自有线程
+        if os.environ.get("ZMAX_SINGLE_THREAD") == "1":
+            try:
+                from zmax_thread import zmax_thread as _ZT
+                _ZT.submit(_work)
+                return
+            except Exception:                                                   # noqa: BLE001
+                pass
         threading.Thread(target=_work, daemon=True).start()
 
     def _apply_orin_status(self, st):
@@ -12459,6 +12536,8 @@ class StudioMainWindow(QMainWindow):
         self._set_console_title()
         # 🐛 2026-09-01 老倪: 调试自检 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.50.760: v5.50.760: 技能断点真能停 — 修三处根因(VSCode launch 把 --steps 塞进 pythonArgs 导致 debuggee 起不来 + 画布数据源=AR场景时 ▶运行 只走 AR 播放不进引擎 + 代码内调试钩子误停), 断点改回由 VSCode gutter 管理
+        # v5.50.759: 控制台左上角「← 返回首页」上方那块只放版本号却占约 60px: 版本字 19px→13px、行高固定 20px、收起键 34→26 宽、上边距 16→8、行距 8→6 ⇒ 该块压到约 30px, 只显示版本号 (V5.50.759)。  同轮: ① VSCode 调试配置改为启动整个 GUI (tools/gui/studio.py · 550B 单线程), 不再起 ss_canvas_loop; launch.json 与模板 simulink_module._vscode_launch_cfg 同步。 ② 技能派发 SK01~SK08 改由状态空间进程 (ss_canvas_loop) 每拍在进程内执行 (tools/dispatch_inproc.py 单一宿主), 独立派发单元 zmax-ss-skill-dispatch 停用; ss_skill_dispatch.py 默认拒绝独立启动 (须 --standalone)。
         # v5.50.758: v5.50.758: 市场分析(1000台/100场景/三方1:1:1)与 2027 模型分层策略(四层·H-JEPA事件靶·三刀解耦·配置中心)落仓; ar3d 4孔交替插拔+双相机AOI+UPH浮层/中键平移; 根因=年销量口径改人力替代口径、模型分工按时间尺度×资产属性重划
         # v5.50.757: 3DGS 采集轨迹自主动作化 + PSNR 同协议口径: 机械臂自跑恒定z纯平移弧线(19路点/末端719mm/全程z=0.4303不变/净空自检最差67.1mm)绕标定板拍一圈, 结构上不可能碰上横梁下台面; 留出改连续25%(8段留2)后同协议对照 旧数据10.41→新数据15.18dB(+4.77), 但留出−训练间隙2.97→2.68几乎不变⇒提升来自成像一致性(去畸变只编一次+匀速无拖影)而非外推能力; depth初始化在少帧(202帧)时+0.61dB/快2.5×, 多帧(635帧)时−0.2~−0.4dB⇒增益随帧数, 不能一句话结案
         # v5.50.756: 3DGS 自主进化修复: evaluate() 漏 SYCL 零交集(nnz=0)保护⇒每次自训 400 步必崩(IndexError shapes [0],[0,2]); 修后 1801 帧新数据自动建库+自动开训验证通过。竞品 PPT 12 个图表全改 PowerPoint 原生对象(右键编辑数据可改)
@@ -13427,7 +13506,7 @@ class StudioMainWindow(QMainWindow):
         #   ⇒ 状态栏右下角那组控件 (_latency_label「延迟: xx ms」+ _engine_status「● 本地就绪」+
         #      _engine_combo「ACT (Local · 1ms)」) 整组删除, 不再建、不再挂到状态栏。
         #      保留 sb.showMessage(...) 的一行总览, 界面上不再有这组无用读数 (引擎实际由画布/工程配置决定)。
-        sb.showMessage("Z-MAX v5.50.758  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.50.760  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🔴 2026-10-12 老倪(定规矩): 「点开启动图标后, 3D场景不要自动启动, 我要先检查任务配置, 然后启动工程」
         #   本段以下所有自动开窗/自动运行**一律只在显式 env 下触发**(ZMAX_AUTO_*), 正常双击图标时:
@@ -15401,6 +15480,22 @@ class StudioMainWindow(QMainWindow):
         self._light_fetcher.got.connect(self._on_light_state)
         if _dbg_attached():
             print("🐞 调试模式: 状态灯采样线程未启动 (渲染定时器保留)", flush=True)
+        elif os.environ.get("ZMAX_SINGLE_THREAD") == "1":
+            # 🧵 2026-10-31 老倪「就两个线程: MainThread(GUI) + zmax(工程)」:
+            #   状态灯不再开 QThread —— 挪到唯一工程线程上每 2s 跑一次, 结果仍回主线程刷新。
+            def _lights_task(_self=self):
+                try:
+                    ok, payload = _self._light_fetcher.fetch_once()
+                    if ok:
+                        _oneshot(_self, 0, lambda p=payload: _self._on_light_state(p))
+                except Exception:                                       # noqa: BLE001
+                    pass
+
+            try:
+                from zmax_thread import zmax_thread as _ZT
+                _ZT.every("status_lights", 2.0, _lights_task)
+            except Exception:                                           # noqa: BLE001
+                self._light_fetcher.start()
         else:
             self._light_fetcher.start()
         self._light_timer = QTimer(self)
@@ -15834,7 +15929,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.50.758</b> · 多模态动作专家<br>
+<b>Z-MAX v5.50.760</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>
@@ -16194,25 +16289,39 @@ def main():
     #   QApplication 前强制清除, 恢复 PyQt5 自带插件路径 (对任何来源的污染都有效)。
     os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH", None)
     app = QApplication(sys.argv)
+    # 🔧 2026-10-31 老倪「就两个线程。MainThread 是 GUI, zmax 是工程线程」:
+    #   进程里唯一的第二条线程 —— 所有周期活/阻塞 IO (状态灯、Orin 状态、采样源、信号监听…) 都排到它身上。
+    try:
+        from zmax_thread import zmax_thread as _ZT_BOOT
+        _ZT_BOOT.start()
+        print("🔧 工程线程 zmax 已启动 (唯一工作线程; 界面上只会有 MainThread + zmax)", flush=True)
+    except Exception as _e_zt:                                                  # noqa: BLE001
+        print("⚠️ 工程线程启动失败: %s" % _e_zt, flush=True)
     print("⏱ 启动计时：解释器起 + 模块级 import + QApplication 就绪，用了 %.2f 秒。"
           % (_time.time() - _BOOT_T0), flush=True)
-    # 🥽 2026-10-19 老倪「要走这条(内嵌浏览器)」: 启动 3s 后后台把 AR 窗口建好,
-    #    **并且把页面先预载进隐藏窗口**(页面 hidden 时只 1s 一帧保活, 不刷 8797)
-    #    ⇒ 第一次点 AR = show + 补一帧(实测 0.077s), 不再"白屏好久"(见 ar_web_window.prewarm 注释)。
-    #    失败(没装/没 GL)就静默跳过, 点 AR 时自动回退外部浏览器。
-    try:
-        from PyQt5.QtCore import QTimer as _QT_ar
+    # 🥽 AR 内嵌窗口 —— 2026-10-31 老倪「单线程, 单线程, 马上重构」:
+    #   ❌ 原来这里启动 3s 后**自动** prewarm (后台把 AR 窗口和 Chromium 页面建好)。
+    #      实测代价: 只要 prewarm 过, 进程里就多出 Chromium 的一整套线程
+    #      (ThreadPoolSingl/Foreg ×4, Chrome_IOThread, NetworkService, VizCompositorTh, sandbox_ipc_thr …),
+    #      /proc/<pid>/task 从 2 条变成 39~45 条 —— 就是老倪在 Call Stack 里看到的那一堆。
+    #   ✅ 改: 不预载。窗口只在**第一次点 🥽AR** 时才建 (ar_web_window.prewarm 保留给点击路径用),
+    #      控制台常态 = 主线程 + Qt 的 1 条 DBus 线程, 不再拖一套 Chromium。
+    #      代价: 首次点 AR 会有约 1s 建窗时间 (原来靠预载省掉的), 这个代价换单线程, 值。
+    #      要恢复预载: ZMAX_AR_PREWARM=1。
+    if os.environ.get("ZMAX_AR_PREWARM", "0") == "1":
+        try:
+            from PyQt5.QtCore import QTimer as _QT_ar
 
-        def _ar_prewarm():
-            try:
-                import ar_web_window as _aw_ar
-                _aw_ar.prewarm()
-            except Exception:                                               # noqa: BLE001
-                pass
+            def _ar_prewarm():
+                try:
+                    import ar_web_window as _aw_ar
+                    _aw_ar.prewarm()
+                except Exception:                                           # noqa: BLE001
+                    pass
 
-        _QT_ar.singleShot(3000, _ar_prewarm)
-    except Exception:                                                       # noqa: BLE001
-        pass
+            _QT_ar.singleShot(3000, _ar_prewarm)
+        except Exception:                                                   # noqa: BLE001
+            pass
     # 🔇 2026-10-17 老倪: 「Could not parse stylesheet of object QPushButton(...) 这是什么? 不要显示这个无用信息」
     #    真根因已修 (veh6_config_page._btn 裸声明后面拼选择器 ⇒ 每次 repolish 解析失败);
     #    这里再兜一层: 以后哪张表写坏了也不许刷终端; 其他 Qt 消息照常打印。
@@ -16244,10 +16353,21 @@ def main():
         #    (仍在主线程, 由 _oneshot 触发 —— 铁律: metaworld/gymnasium→cv2 的 import 链必须主线程且 QApplication 之后)。
         def _yolo_warm():
             _yp_t0 = _time.time()
+            # 🧵 2026-10-31 老倪「就两个线程」: ultralytics 的遥测上报会在 import 后自起一条
+            #   `_post` 线程 (Events.__call__ → Thread(...))。这里先把它掐掉, 再预热 import。
+            try:
+                import ultralytics.utils.events as _uev
+                _uev.Events.__call__ = lambda self, *a, **k: None
+            except Exception:                                               # noqa: BLE001
+                pass
             _nl._yolo_prepare_imports()   # 主线程: import 依赖链 (首次几秒, 之后缓存)
             print("⏱ 启动计时：YOLO 依赖链预热 import，用了 %.2f 秒 (已在主窗口显示之后)。"
                   % (_time.time() - _yp_t0), flush=True)
-            _th.Thread(target=lambda: _nl._yolo_ensure_aligner(None), daemon=True).start()
+            # 🧵 2026-10-31 老倪「单线程, 马上重构」: 这段原来再起一条线程去预加载 aligner 权重,
+            #   顺手把 ultralytics 的遥测上报线程 (_post) 也带起来了。单线程档: 不预热,
+            #   第一次真检测时再加载 (代价 = 首次检测多几百 ms)。
+            if os.environ.get("ZMAX_SINGLE_THREAD") != "1":
+                _th.Thread(target=lambda: _nl._yolo_ensure_aligner(None), daemon=True).start()
     except Exception:
         pass
     # 🐛 2026-08-20 Segfault 根治: 禁用 D-Bus session bus (消除 10s 重连孤儿 QObject).
@@ -16593,6 +16713,18 @@ def main():
         _al_py = os.path.join(_repo_al, "gui-venv311", "bin", "python")
         _al_js = os.path.join(_repo_al, "tools", "model_autoload.py")
         if os.environ.get("ZMAX_AUTOLOAD", "1") != "0" and os.path.exists(_al_py) and os.path.exists(_al_js):
+            # 🧵 2026-10-31 老倪「怎么有 subprocess?」: 调试会话里不再自动起这个 python 子进程
+            #   (它会自己起一堆线程/占 8GB 卡, 断点/单步时就是干扰)。要它在调试时也跑: ZMAX_AUTOLOAD_IN_DEBUG=1。
+            _dbg_on = False
+            try:
+                import sys as _sys_al
+                _dbg_on = (_sys_al.gettrace() is not None) or ("pydevd" in _sys_al.modules
+                                                               and _sys_al.gettrace() is not None)
+            except Exception:                                               # noqa: BLE001
+                _dbg_on = False
+            _skip_al = bool(_dbg_on and os.environ.get("ZMAX_AUTOLOAD_IN_DEBUG", "0") != "1")
+            if _skip_al:
+                print("🧿 调试会话: 跳过模型自动加载子进程 (ZMAX_AUTOLOAD_IN_DEBUG=1 可强制)", flush=True)
             # ⚠️ 2026-10-08: 原先写 os.path.join(os.environ.get("ZMAX_DATA", "/home/ubuntu/zmax/zmax_data"), "model_autoload")
             #   —— 这种"expanduser('~') + 'zmax_data' **分开拼**"是第 4 种写法, 前面按绝对路径/`~/x`/`$HOME/x`
             #   三种写法做的家目录整合**扫不到它** ⇒ 家目录里又被 mkdir 出一个孤立的 zmax_data(代码修正后仍会复发)。
@@ -16602,7 +16734,8 @@ def main():
             _al_log = os.path.join(_al_dir, "startup_%s.log" % time.strftime("%Y%m%d_%H%M%S"))
             _sp_al.Popen([_al_py, _al_js], cwd=_repo_al, start_new_session=True,
                          stdout=open(_al_log, "a"), stderr=_sp_al.STDOUT,
-                         env=dict(os.environ, ZMAX_AUTOLOAD_DEEP=os.environ.get("ZMAX_AUTOLOAD_DEEP", "1")))
+                         env=dict(os.environ, ZMAX_AUTOLOAD_DEEP=os.environ.get("ZMAX_AUTOLOAD_DEEP", "1"))
+                         ) if not _skip_al else None
             print("🧿 重启自动加载: L2 YOLO / L3 SmolVLA / L4 INTACT 后台子进程已启动 → %s" % _al_log,
                   flush=True)
     except Exception as _e:                                                     # noqa: BLE001
@@ -16641,7 +16774,32 @@ def main():
                 time.sleep(6.0)                    # 保障: 主线程 6s 内没退就硬退(仍不 abort)
                 os._exit(0)
 
-        _th.Thread(target=_watch_sig, daemon=True).start()
+        def _watch_sig_once():
+            """非阻塞版: 有信号就读 1 字节并走退出流程, 没有就立刻返回 (不占线程、不堵队列)。"""
+            try:
+                import select
+                if not select.select([_rq], [], [], 0)[0]:
+                    return
+                _b = os.read(_rq, 1)
+            except Exception:                                              # noqa: BLE001
+                return
+            if not _b:
+                return
+            print("📴 收到信号 %d → 正常关闭界面后退出" % _b[0], flush=True)
+            _ASK["quit"] = True
+            try:
+                import threading as _thx
+                _thx.Timer(6.0, lambda: os._exit(0)).start()               # 兜底硬退 (定时器不是工作线程)
+            except Exception:                                              # noqa: BLE001
+                pass
+
+        # 🧵 2026-10-31 老倪「就两个线程」: 信号监听不再自开线程, 改成 zmax 工程线程上的
+        #   非阻塞单拍轮询 (select 0 超时) —— 原来那版是阻塞读, 塞进队列会把整条线程堵死。
+        try:
+            from zmax_thread import zmax_thread as _ZT_SIG
+            _ZT_SIG.every("signal", 0.5, _watch_sig_once)
+        except Exception:                                                  # noqa: BLE001
+            _th.Thread(target=_watch_sig, daemon=True).start()
 
         def _poll_quit():
             if _ASK["quit"]:

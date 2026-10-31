@@ -259,20 +259,29 @@ class _Fetcher(threading.Thread):
     def stop(self):
         self._stop.set()
 
+    def poll_once(self):
+        """取一次数投进队列 (线程版与 zmax 工程线程共用; 2026-10-31 单线程档由 zmax 线程调)。"""
+        inv, st = {}, {}
+        try:
+            # 2026-10-31 老倪「怎么有 subprocess」: 原来 subprocess 起 model_inventory.py --json,
+            #   改成同进程 import 调 build() —— 每 5s 一个 python 子进程的噪声/断点干扰没有了。
+            _tdir = os.path.join(ROOT, "tools")
+            if _tdir not in sys.path:
+                sys.path.insert(0, _tdir)
+            import model_inventory as _mi
+            inv = _mi.build() or {}
+        except Exception as e:                                                        # noqa: BLE001
+            inv = {"_err": "%s: %s" % (type(e).__name__, e)}
+        try:
+            with urllib.request.urlopen(STATUS_URL, timeout=1.2) as r:
+                st = json.loads(r.read(262144).decode("utf-8", "replace"))
+        except Exception:                                                             # noqa: BLE001
+            st = {}
+        self.out.put((inv, st, time.time(), self._runtime(inv)))
+
     def run(self):
         while not self._stop.is_set():
-            inv, st = {}, {}
-            try:
-                r = subprocess.run(INV_CMD, cwd=ROOT, capture_output=True, text=True, timeout=120)
-                inv = json.loads(r.stdout) if r.returncode == 0 and r.stdout.strip().startswith("{") else {}
-            except Exception as e:                                                        # noqa: BLE001
-                inv = {"_err": "%s: %s" % (type(e).__name__, e)}
-            try:
-                with urllib.request.urlopen(STATUS_URL, timeout=1.2) as r:
-                    st = json.loads(r.read(262144).decode("utf-8", "replace"))
-            except Exception:                                                             # noqa: BLE001
-                st = {}
-            self.out.put((inv, st, time.time(), self._runtime(inv)))
+            self.poll_once()
             self._stop.wait(self.interval)
 
     def _runtime(self, inv=None):
@@ -318,7 +327,15 @@ class ModelEnginePanel(QWidget):
         self._build()
         if poll:
             self._fetcher = _Fetcher(self._q, interval)
-            self._fetcher.start()
+            # 🧵 2026-10-31 老倪「就两个线程」: 单线程档不起这条 Thread, 由 zmax 工程线程周期调 poll_once。
+            if os.environ.get("ZMAX_SINGLE_THREAD") == "1":
+                try:
+                    from zmax_thread import zmax_thread as _ZT
+                    _ZT.every("model_engine", float(interval), self._fetcher.poll_once)
+                except Exception:                                               # noqa: BLE001
+                    self._fetcher.start()
+            else:
+                self._fetcher.start()
             self._t = QTimer(self)
             self._t.timeout.connect(self._drain)
             self._t.start(600)

@@ -1,10 +1,51 @@
 {
   "folders": [
-    { "name": "框架  (~/zmax/src/lerobot)", "path": "src/lerobot" },
-    { "name": "控制台  (~/zmax/tools/gui)", "path": "tools/gui" },
-    { "name": "文档  (~/zmax/docs)", "path": "docs" },
-    { "name": "工程  (/home/ubuntu/zmax)", "path": "." }
+    {
+      "name": "框架  (~/zmax/src/lerobot)",
+      "path": "src/lerobot"
+    },
+    {
+      "name": "控制台  (~/zmax/tools/gui)",
+      "path": "tools/gui"
+    },
+    {
+      "name": "文档  (~/zmax/docs)",
+      "path": "docs"
+    },
+    {
+      "name": "工程  (/home/ubuntu/zmax)",
+      "path": "."
+    }
   ],
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "🧪 断点 · 整个 GUI (studio.py · 550B 单线程)",
+        "type": "python",
+        "request": "launch",
+        "program": "/home/ubuntu/zmax/tools/gui/studio.py",
+        "python": "/home/ubuntu/zmax/gui-venv311/bin/python",
+        "pythonArgs": [
+          "-X",
+          "frozen_modules=off"
+        ],
+        "cwd": "/home/ubuntu/zmax/tools/gui",
+        "console": "integratedTerminal",
+        "justMyCode": false,
+        "env": {
+          "DISPLAY": ":0",
+          "QT_QPA_PLATFORM": "xcb",
+          "ZMAX_SINGLE_THREAD": "1",
+          "ZMAX_BREAK_SKILL": "1",
+          "PYTHONUNBUFFERED": "1",
+          "PYDEVD_DISABLE_FILE_VALIDATION": "1",
+          "HF_HUB_OFFLINE": "1",
+          "TRANSFORMERS_OFFLINE": "1"
+        }
+      }
+    ]
+  },
   "settings": {
     "window.title": "${activeEditorLong}${separator}${appName}",
     "breadcrumbs.enabled": true,

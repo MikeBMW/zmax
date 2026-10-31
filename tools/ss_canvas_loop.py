@@ -29,6 +29,13 @@ SRC = os.path.join(ROOT, "src")
 if SRC not in sys.path:
     sys.path.insert(0, SRC)
 
+# 🔒 550B 单线程 (严格执行 · 老倪 2026-10-31「按现在的单线程逻辑严格执行, 别扯以前的 worker」):
+#   功能逻辑 (画布节点 / 推理 / 技能派发 / 物理闸) 只允许**一条线程**。
+#   开关必须在**导入推理栈之前**钉死 —— 不依赖 systemd unit、不依赖 shell 有没有 export,
+#   与 studio.py 的早期自钉同一口径。要跑多线程 (550A/550C 压测) 显式给 ZMAX_MULTI_THREAD=1。
+if os.environ.get("ZMAX_MULTI_THREAD", "").strip().lower() not in ("1", "true", "yes", "on"):
+    os.environ["ZMAX_SINGLE_THREAD"] = "1"
+
 from lerobot.middleware import load_project          # noqa: E402
 
 # 🔇 老倪 2026-10-31「每次运行，你都刷屏」: 节点实现每拍各打一行, 10Hz 糊屏。
@@ -40,6 +47,16 @@ try:
     loop_quiet.install()
 except Exception:                                       # noqa: BLE001
     loop_quiet = None
+
+# 🧩 2026-10-31 老倪「把 SK01~SK08 运行在状态空间这个进程里, 别再独立派发了。550B 必须是这样。」
+#   技能派发**由本进程每拍自己跑**: 同一个 Dispatcher 类 / 同一份 chunk_latest.json / 同一个物理闸
+#   ⇒ 断点就停在 SK01Approach.clamp 这类函数里 (原来它在独立 systemd 单元 60Hz 那个进程, 永远命不中)。
+#   归属只认一个宿主: dispatch_inproc.owner() (默认 ss_canvas_loop); 引擎回路那份调 tick 会被拒。
+try:
+    import dispatch_inproc                              # noqa: E402
+except Exception as _e:                                 # noqa: BLE001
+    dispatch_inproc = None
+    print("⚠️ 技能派发模块加载失败 (%s: %s) ⇒ 本进程不派发" % (type(_e).__name__, _e), flush=True)
 
 CANVAS = os.path.join(ROOT, "data", "database", "zmax", "sources", "canvas",
                       "state_space_obs.json")
@@ -107,6 +124,12 @@ def write_state(d):
 
 def main():
     log("画布常驻循环启动 · HZ=%.1f · 全部节点都跑 (无白名单)" % HZ)
+    _dsp_ok = dispatch_inproc is not None and dispatch_inproc.enabled("ss_canvas_loop")
+    log("🧩 技能派发: %s (pid %d%s)"
+        % ("本进程内每拍派发 SK01~SK08" if _dsp_ok else "未启用",
+           os.getpid(),
+           "" if _dsp_ok else " · owner=%s · ZMAX_DISPATCH_INPROC=0?" % (
+               dispatch_inproc.owner() if dispatch_inproc else "—")))
     prj, mtime, n_tick, last_err = None, 0.0, 0, ""
     _last_ev = [None]              # 上一行证据的 (段,件) —— 只在变化时打 (见 ✅ 行)
     while True:
@@ -124,6 +147,10 @@ def main():
             cost = time.monotonic() - t0
             n_tick += 1
             keepalive_switch()                 # 🔄 AR 开关续期(只续 ar_scene), 防 1800s 过期导致双臂不动
+            # 🧩 技能派发 (SK01~SK08) —— 本进程内跑, 不再有独立派发进程。
+            #   内部自己 try/except: 派发失败只记一行, 绝不拖垮画布循环。
+            if dispatch_inproc is not None:
+                dispatch_inproc.tick("ss_canvas_loop")
             # 💓 心跳: 终端每 ~5s 一行 (tick/耗时/节点数) —— 没有心跳时"安静"会被误读成"卡住"
             # 💓 2026-10-31 老倪「不允许再有 tick」: 心跳默认**关**。要开就设 ZMAX_LOOP_BEAT_S=5
             #   (单位秒); 设 0 或不设 = 一行 tick 都不打。加载/报错/跑满结束照常打。
@@ -191,6 +218,8 @@ def main():
                              "budget_ms": round(1000.0 / HZ, 1),
                              "over_budget": bool(cost > 1.0 / HZ),
                              "n_nodes": len(prj.nodes), "n_ran": len(traces),
+                             # 🧩 技能派发归属 (SK01~SK08 在本进程内): 验收看这里 pid/拍数/在职技能
+                             "dispatch": (dispatch_inproc.status() if dispatch_inproc is not None else None),
                              "traces": brief, "err": ""})
             # 🕒 2026-10-31: 原来 dt 只扣了 prj.step 的耗时, 没扣本拍杂项 (keepalive/心跳/写状态 ~7ms)
             #   ⇒ 实测只有 9.3Hz (每拍 107ms)。改成按**整拍墙钟**结算, 稳定 10Hz。

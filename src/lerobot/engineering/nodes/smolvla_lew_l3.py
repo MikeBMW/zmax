@@ -45,6 +45,9 @@ import time
 import urllib.request
 
 import numpy as np
+# 🧵 550B 单线程 (老倪 2026-10-31「功能逻辑只能有一个线程, 断点都要进入」):
+#   L3 前向原来固定丢到 l3-smolvla 线程 ⇒ 断点跳线程。单线程模式下当场算完。
+from ..thread_policy import spawn_or_inline as _spawn_or_inline
 
 _REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))          # src/lerobot/engineering/nodes → repo
@@ -326,10 +329,10 @@ def infer_async(img, obs39, root, log=None, min_period_s=1.5):
                 _ASYNC["err"] = "%s: %s" % (type(e).__name__, e)
                 _ASYNC["t_done"] = time.monotonic()
 
-        th = threading.Thread(target=_job, name="l3-smolvla", daemon=True)
+        # 🧵 单线程: 当场算完 (断点停在本拍主线程); 多线程: 起 worker 并回放上一轮结果
+        th = _spawn_or_inline("l3-smolvla", _job)
         _ASYNC["thread"] = th
-        th.start()
-        busy = True
+        busy = bool(th is not None and th.is_alive())
     elif not busy:
         _ASYNC["n_skip"] = int(_ASYNC["n_skip"]) + 1
 

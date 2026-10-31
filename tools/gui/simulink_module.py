@@ -5530,47 +5530,30 @@ def _vscode_launch_cfg(root: str) -> dict:
     return {
         "version": "0.2.0",
         "configurations": [
-            # 🚀 默认 F5 (2026-08-31 老倪: attach 找不到 → 全新启动调试进程)
-            # 🔴 2026-10-29 老倪「550B 单线程 debug + 每层断点」: 这里原来 env={} ⇒ 右键「打开 VSCode」
-            #   用模板重写 launch.json 后, 手改的 env 全部消失, F5 起来的进程 /proc/<pid>/environ 里
-            #   ZMAX_SINGLE_THREAD / ZMAX_DEBUG_BREAK 一项都没有 (实测多次踩)。单线程/550B 写进模板才留得住。
-            #   断点: brk() 在调试会话里每个 tag 首次自动停; 要每次都停就在这加 "ZMAX_DEBUG_BREAK": "actuator"
-            #   要关单线程(跑基准/批量推理) 就把 ZMAX_SINGLE_THREAD 换成 ZMAX_MULTI_THREAD=1
-            # 🔴 2026-10-30 老倪「断点还是没有进入」—— execute 的断点只可能停在这条里, 所以放第一条
-            #   (F5 没选配置时跑的就是列表第一条; 之前 launch.json 只剩 ss_canvas_loop 一条,
-            #    这次按模板重生成后默认会回到 studio.py, 所以把这条提到最前)。
-            #   为什么优先级要高: 真跑 execute 的宿主进程一直不定 —— actuator_calls.log 里同一个
-            #   节点历史上换过十几个 pid (2584986 / 464578 / 1614168 / 214062 / 279901 …), 而当前
-            #   这只 studio.py 调试进程 (pid 162982) 在日志里出现 **0 次** ⇒ 在它上面打断点,
-            #   只要界面那次"运行"没走到 ssact 就永远不停。这条直接跑节点宿主 tools/dbg_actuator.py:
-            #   只跑一拍 ssact 就退出。断点**打在** src/lerobot/engineering/nodes/robot_actuator_impl.py:55
-            #   (`u_vec = _ex.execute(...)`) —— 这个文件走正常 `from .robot_actuator_impl import run`,
-            #   pydevd 能绑; 而 execution.py 是 _ss_import 用 spec.loader.exec_module 直装的, 不经
-            #   builtins.__import__ ⇒ pydevd 的导入钩子看不到它 ⇒ 编译时不注入断点; 本机 debugpy 又缺
-            #   _pydevd_frame_eval/*.so ⇒ 运行时也补绑不上。这就是 111 行红点永远不亮的原因。
-            #   停在 55 就能看全三件事: u_sat (输入) → F10 → u_vec (输出) / _chk (校验结论)。
-            #   ZMAX_DBG_U 喂一条真指令, 否则 u 恒 0 看不出校验在干什么。
-            # 状态空间常驻循环 (画布 10Hz 真跑, 单步/断点看每个节点) — 原先是手改 launch.json 加的,
-            #   右键「打开 VSCode」会被模板抹掉, 2026-10-30 收进模板。
-            {"name": "🧪 断点 · 状态空间常驻循环 (ss_canvas_loop)", "type": "python", "request": "launch",
-             "program": _os.path.join(root, "tools", "ss_canvas_loop.py"), "python": _py(),
+            # 🚀 默认 F5 = **整个 GUI** (老倪 2026-10-31: 「调试的配置, 不要 loop, 要启动整个 GUI」)
+            #   原来这条是 🧪 ss_canvas_loop (画布常驻循环)。他要在调试器里看到的是**界面本体**:
+            #   主窗口/配置中心/状态空间工程/信号分析这些页面的代码, 而不是一个后台 10Hz 循环。
+            #   启动口径照 tools/gui/launch_studio.sh 抄 (不许凭记忆重建 argv):
+            #     cwd=tools/gui · program=studio.py · DISPLAY=:0 · QT_QPA_PLATFORM=xcb
+            #   550B 单线程: ZMAX_SINGLE_THREAD=1 (studio.py 早期本来也会自己灌同一份, 这里写明便于肉眼核对;
+            #     要跑基准/批量推理改 ZMAX_MULTI_THREAD=1)。
+            #   ⚠️ 不设 ZMAX_DEBUG_MODE: 它会让 GUI 建完窗口再自动跑一遍状态空间引擎 (页面建完 25~36s),
+            #     调试界面本身时不需要; 真要看引擎就单独跑 node_debug/单拍入口。
+            #   frozen_modules=off: Python 3.11+ 不给它, debugpy 会对 frozen modules 漏断点。
+            #   HF_HUB_OFFLINE/TRANSFORMERS_OFFLINE: 本机 HF 常不通, 在线加载会卡在 list_repo_tree (SYN-SENT)
+            #     ⇒ 调试会话在启动阶段就僵住, 表现为"断点根本不进"。
+            {"name": "🧪 断点 · 整个 GUI (studio.py · 550B 单线程)", "type": "python", "request": "launch",
+             "program": _os.path.join(root, "tools", "gui", "studio.py"), "python": _py(),
              "pythonArgs": ["-X", "frozen_modules=off"],
-             "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-             "env": {"ZMAX_CANVAS_ONLY": "ssplan,ssact,ssyolo,ssdec,sslimit,ssphys,ss_grav_h,ssmani_c,ssmani_p,n_calib_mani,ss_mani_eng",
-                       "ZMAX_L2_PERIOD_S": "0.5",
-                       "ZMAX_LOOP_MAX_TICKS": "0",
-                       "ZMAX_LOOP_EVIDENCE": "0",
-                       "ZMAX_LOOP_BEAT_S": "0",
-                       "ZMAX_SS_CHAIN": "1",
-                     "ZMAX_CANVAS_HZ": "10", "ZMAX_UPH_AR_PUB": "1", "ZMAX_YOLO_SHARE": "1",
+             "cwd": _os.path.join(root, "tools", "gui"), "console": "integratedTerminal",
+             "justMyCode": False,
+             "env": {"DISPLAY": ":0", "QT_QPA_PLATFORM": "xcb",
+                     "ZMAX_SINGLE_THREAD": "1",
                      "PYTHONUNBUFFERED": "1", "PYDEVD_DISABLE_FILE_VALIDATION": "1",
-                     # 🔴 2026-10-30 实测: 本机 HF 不通 (curl 000, 进程卡在 SYN-SENT 到 31.13.95.48:443),
-                     #   SmolVLA 的 AutoProcessor/AutoModel 会走 list_repo_tree 硬等网络 ⇒ 循环第一个节点就
-                     #   卡死, ssact 永远轮不到 (表现为"断点又不进")。离线模式读本地缓存: 实测 processor 0.14s、
-                     #   VLM 507M 权重 0.6s 加载完成。要在线下权重时临时去掉这两个 key。
                      "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"}},
         ],
     }
+
 
 
 # ════════ 🎥 2026-10-25 中央相机 (Intel USB) 与「谁负责起推流」 ════════

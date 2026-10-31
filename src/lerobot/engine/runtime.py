@@ -2808,6 +2808,9 @@ class RealStateSpaceSim:
         for step in range(int(max_steps)):
             # 🎥 2026-09-17: 当前步号随渲染帧一起发布 (GUI 输入图像窗口显示"与运行同步 · step=N")
             self._live_step = step
+            # 🔴 2026-10-31: 本拍 token —— decide 与 env.step 两处都会过技能, 同一拍只算一次
+            if getattr(self, "sched", None) is not None:
+                self.sched._skill_tok = step
             # 🎯 2026-09-17: 每步发布"光模块 vs 插槽"真值量 (阶段/已进孔深度/横向偏差)
             #   → /tmp/ss_live_frame.json 里可查 (老倪"最后没插进槽"这类问题用数据说话, 不靠目测)
             if step % 5 == 0:
@@ -2847,6 +2850,18 @@ class RealStateSpaceSim:
                     self.log("🦾 重夹窗口结束 → 继续任务 (不走回退)")
             else:
                 act[3] = GRIP_CLOSE if u_vec[3] > 0.5 else GRIP_OPEN
+            # 🔴 2026-10-31 老倪「全程你操作」: 模型直驱这条路 (act → env.step) 原先完全绕开
+            #   动作调制与技能 ⇒ 跑 L4/INTACT 直驱时 9 个技能的 clamp 一次都不执行, 断点永不进。
+            #   交出动作前过一遍「当段技能」: 断点必进, 结果记 skill_calls/gate;
+            #   动作只在 ZMAX_SKILL_GATE=1 时才被技能输出替换 (默认 0 ⇒ 直驱逐位不变)。
+            try:
+                _sched_dd = getattr(self, "sched", None)
+                if _sched_dd is not None:
+                    _sr = _sched_dd.skill_step(act)
+                    if _sr is not None:
+                        act = np.clip(np.asarray(_sr.get("u"), dtype=float).ravel()[:4], -1.0, 1.0)
+            except Exception:                                              # noqa: BLE001
+                pass
             try:
                 env.step(act)
             except ValueError:

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import time
 import uuid
@@ -28,6 +29,10 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if os.path.join(ROOT, "src") not in __import__("sys").path:
     __import__("sys").path.insert(0, os.path.join(ROOT, "src"))
+
+# 🔒 550B 单线程 (严格执行): 派发/物理闸属功能逻辑, 只允许一条线程; 导入推理栈前钉死。
+if os.environ.get("ZMAX_MULTI_THREAD", "").strip().lower() not in ("1", "true", "yes", "on"):
+    os.environ["ZMAX_SINGLE_THREAD"] = "1"
 from lerobot.policies.left_right.state_space.physics_constraints import (InertiaLimiter,   # noqa: E402
                                                                        limits_for)
 # ⚖ 技能号 ↔ 阶段: 唯一依据 = 技能库的类 (code/stage 类属性), 不在这里手写编号
@@ -196,6 +201,9 @@ class Dispatcher:
         #   (肌肉记忆留参考), 在职=0 且**不调 clamp**。改后判据: 在职数=1 · 闸拍数 480/s→60/s ·
         #   在职技能的动作/偏差与改前逐位一致 (不调 = 不改数, 只去掉旧值空转).
         self.active = None          # 当前在职技能 (段名)
+        self._cand = None           # 状态判出的候选段 (抖动保护: 连续 2 块才切)
+        self._cand_n = 0
+        self.stage_src = ""         # 在职称谓的来源: 状态判定 or 块 stage_idx (取证用)
         self.n_switch = 0           # 换技能次数 (判据: 8 段轮一遍才切换)
         self._last_p = {}           # 段 → 上一次在职时过闸的结果 (不在职时原样沿用, 不重算)
         self._sk_cache = {}
@@ -229,12 +237,89 @@ class Dispatcher:
         except Exception:                                                  # noqa: BLE001
             return None
 
+    # ── 🧭 按状态选技能 (老倪 2026-10-31「插拔任务肯定有接近的状态, 根据状态选择原子技能」) ──
+    def _state_stage(self):
+        """从**真实状态**判定当前该跑哪个原子技能; 判不出来返回 (None, "")。
+
+        为什么要有这一条: 原来在职技能只跟 chunk 的 `stage_idx` 走 —— 规划块一停/卡在一段,
+        在职就永远钉在那一段 (实测停在「插入」, 断点下在 SK01 的 clamp 永远不进,
+        但真实状态明明还在「接近/对位」)。这里改成状态说话:
+          视野点 (vision_points.json: hand / 光模块 / hole) + 夹爪指令 ⇒
+          手↔件水平距离 & 高度 & 夹持 & 手↔孔对位 ⇒ 8 段里到底是哪一段。
+        取不到新鲜视野/位姿 ⇒ 返回 None, 调用方退回 chunk 的 stage_idx (行为与改前一致)。
+        """
+        try:
+            vp_path = os.path.join(LIVE, "vision_points.json")
+            with open(vp_path, encoding="utf-8") as fh:
+                vp = json.load(fh)
+            pts = vp.get("points") or {}
+            age = time.time() - float(vp.get("t") or 0)
+            if age > float(os.environ.get("ZMAX_VISION_STALE_S", "60")):
+                return None, ""
+            p_hand = (pts.get("hand") or {}).get("pos_mm")
+            p_peg = ((pts.get("光模块·当前") or pts.get("peg") or {}).get("pos_mm"))
+            p_hole = (pts.get("hole") or {}).get("pos_mm")
+            if not p_hand or not p_peg:
+                return None, ""
+            hx, hy, hz = (float(v) for v in p_hand[:3])
+            gx, gy, gz = (float(v) for v in p_peg[:3])
+            d_xy = math.hypot(hx - gx, hy - gy)          # 手↔件 水平距离 (mm)
+            dz = hz - gz                                  # 手高于件 (mm)
+            dxy_hole = None
+            if p_hole:
+                dxy_hole = math.hypot(hx - float(p_hole[0]), hy - float(p_hole[1]))
+            # 夹爪: 用最近一次派发动作的第 4 分量 (0 开 / 1 合)
+            grip = 0.0
+            try:
+                for _st, _v in (self.cur or {}).items():
+                    _a = (_v or {}).get("action") or []
+                    if len(_a) >= 4:
+                        grip = max(grip, float(_a[3]))
+            except Exception:                                              # noqa: BLE001
+                pass
+            st, why = None, ""
+            # 夹持判定阈值 0.8 = 状态机同一口径 (grip>0.8 才算夹持建立; 0.6 那种半闭不算)
+            if grip < 0.8:
+                if d_xy > 60:
+                    st, why = "接近", "手↔件 d_xy=%.0fmm>60 · 未夹持" % d_xy
+                elif d_xy > 20:
+                    st, why = "对位", "手↔件 d_xy=%.0fmm (20~60) · 未夹持" % d_xy
+                elif dz > 10:
+                    st, why = "下降", "已对中 d_xy=%.0fmm · 手高于件 %.0fmm" % (d_xy, dz)
+                else:
+                    st, why = "抓取", "贴到抓握位 d_xy=%.0fmm dz=%.0fmm · 夹爪待合" % (d_xy, dz)
+            else:
+                if dz < 80:
+                    st, why = "抬起", "已夹持(grip=%.2f) · 提离 %.0fmm" % (grip, dz)
+                elif dxy_hole is not None and dxy_hole > 25:
+                    st, why = "转移", "已夹持 · 手↔孔 d_xy=%.0fmm>25 (空中搬运)" % dxy_hole
+                elif dxy_hole is not None and dxy_hole <= 25:
+                    st, why = "插入", "已夹持 · 孔对中 d_xy=%.0fmm" % dxy_hole
+                else:
+                    st, why = "转移", "已夹持 · 无孔点"
+            return st, why
+        except Exception:                                                   # noqa: BLE001
+            return None, ""
+
     def _skill(self, st):
         """按段名取技能**对象** (缓存) —— 段名→技能类的映射来自 atomic_skills 类属性, 不自己编号。"""
         if st not in self._sk_cache:
             _c = skill_for(st)
             self._sk_cache[st] = _c() if _c is not None else None
         return self._sk_cache[st]
+
+    def step_stage(self, st, u_req):
+        """🧭 画布节点调用口 (2026-10-31): 让「这一段」的技能此刻**真跑一次 clamp**。
+
+        为什么要它: 画布上 sssk1~8 有连线, 但节点原来只做回放 (只打日志, 不调 clamp) ⇒
+        「数据功能与连线不一致」: 线连着 ①接近, 实际一拍都没执行过 SK01, 断点自然不进。
+        现在节点激活时走这里 ⇒ 连线 = 执行 = 断点, 三者同一处 (atomic_skills 的 clamp 行)。
+        """
+        a = np.asarray(u_req, float).reshape(-1)
+        if a.size < 3 or st not in STAGES:
+            return None
+        self._activate(st)                     # 谁被节点调用, 谁就是在职技能 (单一在职)
+        return self._phys(st, a[:3])
 
     def _phys(self, st, action):
         """⚖ 进技能的 action 先过物理闸 (惯性/加速度/加加速度/动量率/位移) —— 过不去就削出偏差 error。
@@ -271,6 +356,30 @@ class Dispatcher:
         self.last_v[st] = v
         return r
 
+    def _activate(self, _act):
+        """切换在职技能 (唯一在职): 清惯性/段行程, 计数换段。"""
+        if _act is None or _act == self.active:
+            return
+        _prev = self.active
+        self.active = _act
+        self.n_switch += 1
+        try:
+            self.lim.reset_stage(_act)
+        except Exception:                                                  # noqa: BLE001
+            pass
+        self.last_v[_act] = np.zeros(3)
+        self.last_a[_act] = np.zeros(3)
+        self._last_p.pop(_act, None)
+        try:
+            _sk0 = self._skill(_act)
+            if _sk0 is not None:
+                _sk0.travel_m = 0.0
+        except Exception:                                                  # noqa: BLE001
+            pass
+        if _prev:
+            self.last_v[_prev] = np.zeros(3)
+            self.last_a[_prev] = np.zeros(3)
+
     def cycle(self) -> dict:
         d = self._chunk()
         now = time.time()
@@ -280,29 +389,24 @@ class Dispatcher:
             u = d.get("u") or []
             si = int(d.get("stage_idx") or 0)
             # 🧭 调度: 本块的当前阶段 = 唯一在职技能 (换段才切换, 其余技能不参与本拍)
-            _act = STAGES[min(len(STAGES) - 1, max(0, si))]
-            if _act != self.active:
-                _prev = self.active
-                self.active = _act
-                self.n_switch += 1
-                # 换技能: 清掉该技能上一拍的惯性/段行程 (不能拿别的段的 v/a 当自己的)
-                try:
-                    self.lim.reset_stage(_act)
-                except Exception:                                          # noqa: BLE001
-                    pass
-                self.last_v[_act] = np.zeros(3)
-                self.last_a[_act] = np.zeros(3)
-                self._last_p.pop(_act, None)
-                # 技能自己记的段行程也要清 (它现在自带算式, 不复位就会跨段累加)
-                try:
-                    _sk0 = self._skill(_act)
-                    if _sk0 is not None:
-                        _sk0.travel_m = 0.0
-                except Exception:                                          # noqa: BLE001
-                    pass
-                if _prev:
-                    self.last_v[_prev] = np.zeros(3)
-                    self.last_a[_prev] = np.zeros(3)
+            #    老倪 2026-10-31「根据状态选择原子技能」: **先看真实状态** (手↔件/手↔孔/夹持),
+            #    判得出就用状态段; 判不出 (没新鲜视野) 才退回 chunk 的 stage_idx。
+            #    抖动保护: 状态段连续 2 块一致才切, 否则保持当前在职。
+            _st_state, _why_state = self._state_stage()
+            if _st_state and _st_state in STAGES:
+                if _st_state == self.active:
+                    self._cand, self._cand_n = None, 0
+                else:
+                    if _st_state == self._cand:
+                        self._cand_n += 1
+                    else:
+                        self._cand, self._cand_n = _st_state, 1
+                _act = _st_state if (self.active is None or self._cand_n >= 2) else self.active
+                self.stage_src = "状态: %s (%s)" % (_st_state, _why_state)
+            else:
+                _act = STAGES[min(len(STAGES) - 1, max(0, si))]
+                self.stage_src = "块 %s (idx=%d)" % (d.get("stage") or "", si)
+            self._activate(_act)
             got = []
             for i, a in enumerate(u):
                 st = STAGES[min(len(STAGES) - 1, si + i)]
@@ -319,6 +423,23 @@ class Dispatcher:
                 self.t_blk[st] = now
             self.reset_n += 1
             self.last_got = got
+        # 🧭 每拍按状态校正在职 (块停了/卡在某一段, 也要跟着真实状态走)
+        #    老倪 2026-10-31「插拔任务肯定有接近的状态 ⇒ 根据状态选择原子技能」。
+        #    没有新鲜视野点时 _state_stage() 返回 None, 这里什么都不做 (沿用块的选择)。
+        if os.environ.get("ZMAX_STAGE_BY_STATE", "1") != "0" and self.active is not None:
+            _s2, _w2 = self._state_stage()
+            if _s2 and _s2 in STAGES:
+                if _s2 == self.active:
+                    self._cand, self._cand_n = None, 0
+                else:
+                    if _s2 == self._cand:
+                        self._cand_n += 1
+                    else:
+                        self._cand, self._cand_n = _s2, 1
+                    if self._cand_n >= 2:                     # 连续 2 拍才切, 防抖
+                        self.stage_src = "状态: %s (%s)" % (_s2, _w2)
+                        self._activate(_s2)
+                        self._cand, self._cand_n = None, 0
         # 队内推进: 按经过时间把每技能的当前拍往前推
         out = {}
         for st, c in list(self.cur.items()):
@@ -360,6 +481,7 @@ class Dispatcher:
                 "派发帧龄_s": 0.0, "块帧龄_s": round(now - (self._chunk_ts or now), 3),
                 # 🧭 单射调度 (2026-10-31): 在职技能唯一 / 切换计数 / 闸只对在职技能计时
                 "在职技能": self.active or "", "在职数": (1 if self.active else 0),
+                "在职依据": self.stage_src,
                 "切换次数": self.n_switch,
                 # ⚖ 过闸计数 (可观察): 技能调用口拍数 + 无技能段拍数 + 闸门累计拍数与削因
                 "过闸_技能拍": self.n_gate_skill, "过闸_段闸拍": self.n_gate_stage,
@@ -439,7 +561,9 @@ class Dispatcher:
                 "m_kg": _pk("m"), "f_max": _pk("F_max", "F"),
                 "calib": str(_q.get("calib") or ""),
             }
-        _ph["skills"]["_元"] = {"派发帧龄_s": 0.0, "块帧龄_s": flat["块帧龄_s"], "n": self.n}
+        _ph["skills"]["_元"] = {"派发帧龄_s": 0.0, "块帧龄_s": flat["块帧龄_s"], "n": self.n,
+                                # 🧭 2026-10-31: 在职技能是怎么选出来的 (状态判定 / 块 stage_idx) —— 一眼可审计
+                                "在职技能": self.active or "", "在职依据": self.stage_src}
         _atomic_json(os.path.join(LIVE, "skill_phys.json"), _ph)
         # ⚖ 偏差唯一依据: 小偏差 → 🧪 状态校正器 (修正误差); 大偏差 → 📡 融合定位 → 🧮 流形引擎 (顶层补偿)
         #   每个技能各一份 (带物理上限与削因), 下游按 big 分流 —— 这是"误差反馈"的唯一出口, 不另开通道。
@@ -484,7 +608,21 @@ def main():
     ap.add_argument("--hz", type=float, default=60.0)
     ap.add_argument("--seconds", type=float, default=0.0)
     ap.add_argument("--once", action="store_true")
+    ap.add_argument("--standalone", action="store_true",
+                    help="允许独立进程派发 (默认拒绝: 550B 口径 = 技能在状态空间进程内跑)")
     a = ap.parse_args()
+    # 🧩 2026-10-31 老倪「把 SK01~SK08 运行在状态空间这个进程里, 别再独立派发了。550B 必须是这样。」
+    #   独立派发 = 断点永远命不中的那个进程 (SK01~SK08 的 clamp 在那里跑, 你 debug 的画布循环里没有),
+    #   而且它和画布循环同写 skill_phys.json ⇒ 双写者。所以默认**拒绝启动**, 只有显式 --standalone
+    #   或 ZMAX_DISPATCH_STANDALONE=1 才允许 (仅排查/对照用)。--once 是单拍调试口, 照旧可用。
+    _standalone = a.standalone or str(os.environ.get("ZMAX_DISPATCH_STANDALONE", "")).strip() in ("1", "true", "yes", "on")
+    if not (a.once or _standalone):
+        print("⛔ 独立技能派发已停用: SK01~SK08 由状态空间进程 (tools/ss_canvas_loop.py, pid 见 "
+              "canvas_loop.json 的 dispatch.pid) 每拍派发。\n"
+              "   · 要单拍看结果: 本脚本加 --once\n"
+              "   · 真要独立跑(排查): 加 --standalone 或 ZMAX_DISPATCH_STANDALONE=1\n"
+              "   · systemd 单元 zmax-ss-skill-dispatch.service 应保持 stopped/disabled", flush=True)
+        return 0
     dp = Dispatcher(hz=a.hz)
     if a.once:
         print(json.dumps(dp.cycle(), ensure_ascii=False, indent=1))

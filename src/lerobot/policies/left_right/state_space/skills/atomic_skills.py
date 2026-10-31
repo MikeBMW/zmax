@@ -414,9 +414,15 @@ class SK01Approach(AtomicSkill):
         u_out[:3] = v
         err = u_req[:3] - v
         e_norm = float(np.linalg.norm(err))
-        return {"u": [float(x) for x in u_out],
-                "v_req": [float(x) for x in u_req[:3]],
-                "err": [float(x) for x in err], "err_norm": round(e_norm, 8),
+        # 🔴 2026-10-31 老倪「技能 return 的断点全都进不去」:
+        #   原来 return/_out 里直接写列表推导 [float(x) for x in ...] —— 推导式是**独立 code object**,
+        #   它自己的首行号就是这一行 ⇒ 调试器(和 pdb)会停在 <listcomp> 帧, 看起来"断点没进到 clamp"。
+        #   现在把三个列表先算出来 (纯本函数语句), 断点下在 _out = { 这行就**稳停在 clamp() 帧**。
+        _u_list = [float(x) for x in u_out]
+        _v_list = [float(x) for x in u_req[:3]]
+        _e_list = [float(x) for x in err]
+        _out = {"u": _u_list, "v_req": _v_list,
+                "err": _e_list, "err_norm": round(e_norm, 8),
                 "big": int(e_norm > 0.05),
                 "why": "+".join(why) or "可行",
                 "kin_why": kin_why,
@@ -428,6 +434,7 @@ class SK01Approach(AtomicSkill):
                          "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
                 "s_travel": round(self.travel_m, 6), "over_travel": over,
                 "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
+        return _out
 
 class SK02Align(AtomicSkill):
     """② 对位 — 光模块上方精对位 (更低悬停, 准备垂直下刀)"""
@@ -524,9 +531,15 @@ class SK02Align(AtomicSkill):
         u_out[:3] = v
         err = u_req[:3] - v
         e_norm = float(np.linalg.norm(err))
-        return {"u": [float(x) for x in u_out],
-                "v_req": [float(x) for x in u_req[:3]],
-                "err": [float(x) for x in err], "err_norm": round(e_norm, 8),
+        # 🔴 2026-10-31 老倪「技能 return 的断点全都进不去」:
+        #   原来 return/_out 里直接写列表推导 [float(x) for x in ...] —— 推导式是**独立 code object**,
+        #   它自己的首行号就是这一行 ⇒ 调试器(和 pdb)会停在 <listcomp> 帧, 看起来"断点没进到 clamp"。
+        #   现在把三个列表先算出来 (纯本函数语句), 断点下在 _out = { 这行就**稳停在 clamp() 帧**。
+        _u_list = [float(x) for x in u_out]
+        _v_list = [float(x) for x in u_req[:3]]
+        _e_list = [float(x) for x in err]
+        _out = {"u": _u_list, "v_req": _v_list,
+                "err": _e_list, "err_norm": round(e_norm, 8),
                 "big": int(e_norm > 0.05),
                 "why": "+".join(why) or "可行",
                 "kin_why": kin_why,
@@ -538,6 +551,7 @@ class SK02Align(AtomicSkill):
                          "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
                 "s_travel": round(self.travel_m, 6), "over_travel": over,
                 "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
+        return _out
 
 class SK03Descend(AtomicSkill):
     """③ 下降 — 张爪垂直下刀包住光模块身 (触到即停)"""
@@ -635,9 +649,15 @@ class SK03Descend(AtomicSkill):
         u_out[:3] = v
         err = u_req[:3] - v
         e_norm = float(np.linalg.norm(err))
-        return {"u": [float(x) for x in u_out],
-                "v_req": [float(x) for x in u_req[:3]],
-                "err": [float(x) for x in err], "err_norm": round(e_norm, 8),
+        # 🔴 2026-10-31 老倪「技能 return 的断点全都进不去」:
+        #   原来 return/_out 里直接写列表推导 [float(x) for x in ...] —— 推导式是**独立 code object**,
+        #   它自己的首行号就是这一行 ⇒ 调试器(和 pdb)会停在 <listcomp> 帧, 看起来"断点没进到 clamp"。
+        #   现在把三个列表先算出来 (纯本函数语句), 断点下在 _out = { 这行就**稳停在 clamp() 帧**。
+        _u_list = [float(x) for x in u_out]
+        _v_list = [float(x) for x in u_req[:3]]
+        _e_list = [float(x) for x in err]
+        _out = {"u": _u_list, "v_req": _v_list,
+                "err": _e_list, "err_norm": round(e_norm, 8),
                 "big": int(e_norm > 0.05),
                 "why": "+".join(why) or "可行",
                 "kin_why": kin_why,
@@ -649,6 +669,7 @@ class SK03Descend(AtomicSkill):
                          "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
                 "s_travel": round(self.travel_m, 6), "over_travel": over,
                 "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
+        return _out
 
 class SK04Grasp(AtomicSkill):
     """④ 抓取 — 闭合夹爪深夹 (夹持锁存, 抬起前随动验证)"""
@@ -746,9 +767,15 @@ class SK04Grasp(AtomicSkill):
         u_out[:3] = v
         err = u_req[:3] - v
         e_norm = float(np.linalg.norm(err))
-        return {"u": [float(x) for x in u_out],
-                "v_req": [float(x) for x in u_req[:3]],
-                "err": [float(x) for x in err], "err_norm": round(e_norm, 8),
+        # 🔴 2026-10-31 老倪「技能 return 的断点全都进不去」:
+        #   原来 return/_out 里直接写列表推导 [float(x) for x in ...] —— 推导式是**独立 code object**,
+        #   它自己的首行号就是这一行 ⇒ 调试器(和 pdb)会停在 <listcomp> 帧, 看起来"断点没进到 clamp"。
+        #   现在把三个列表先算出来 (纯本函数语句), 断点下在 _out = { 这行就**稳停在 clamp() 帧**。
+        _u_list = [float(x) for x in u_out]
+        _v_list = [float(x) for x in u_req[:3]]
+        _e_list = [float(x) for x in err]
+        _out = {"u": _u_list, "v_req": _v_list,
+                "err": _e_list, "err_norm": round(e_norm, 8),
                 "big": int(e_norm > 0.05),
                 "why": "+".join(why) or "可行",
                 "kin_why": kin_why,
@@ -760,6 +787,7 @@ class SK04Grasp(AtomicSkill):
                          "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
                 "s_travel": round(self.travel_m, 6), "over_travel": over,
                 "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
+        return _out
 
 class SK05Lift(AtomicSkill):
     """⑤ 抬起 — 垂直提起光模块离台 (随动验证夹持是否真建立)"""
@@ -856,9 +884,15 @@ class SK05Lift(AtomicSkill):
         u_out[:3] = v
         err = u_req[:3] - v
         e_norm = float(np.linalg.norm(err))
-        return {"u": [float(x) for x in u_out],
-                "v_req": [float(x) for x in u_req[:3]],
-                "err": [float(x) for x in err], "err_norm": round(e_norm, 8),
+        # 🔴 2026-10-31 老倪「技能 return 的断点全都进不去」:
+        #   原来 return/_out 里直接写列表推导 [float(x) for x in ...] —— 推导式是**独立 code object**,
+        #   它自己的首行号就是这一行 ⇒ 调试器(和 pdb)会停在 <listcomp> 帧, 看起来"断点没进到 clamp"。
+        #   现在把三个列表先算出来 (纯本函数语句), 断点下在 _out = { 这行就**稳停在 clamp() 帧**。
+        _u_list = [float(x) for x in u_out]
+        _v_list = [float(x) for x in u_req[:3]]
+        _e_list = [float(x) for x in err]
+        _out = {"u": _u_list, "v_req": _v_list,
+                "err": _e_list, "err_norm": round(e_norm, 8),
                 "big": int(e_norm > 0.05),
                 "why": "+".join(why) or "可行",
                 "kin_why": kin_why,
@@ -870,6 +904,7 @@ class SK05Lift(AtomicSkill):
                          "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
                 "s_travel": round(self.travel_m, 6), "over_travel": over,
                 "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
+        return _out
 
 class SK06Transfer(AtomicSkill):
     """⑥ 转移 — 持光模块平移至孔口上方 (悬高 2cm, 对准插孔)"""
@@ -967,9 +1002,15 @@ class SK06Transfer(AtomicSkill):
         u_out[:3] = v
         err = u_req[:3] - v
         e_norm = float(np.linalg.norm(err))
-        return {"u": [float(x) for x in u_out],
-                "v_req": [float(x) for x in u_req[:3]],
-                "err": [float(x) for x in err], "err_norm": round(e_norm, 8),
+        # 🔴 2026-10-31 老倪「技能 return 的断点全都进不去」:
+        #   原来 return/_out 里直接写列表推导 [float(x) for x in ...] —— 推导式是**独立 code object**,
+        #   它自己的首行号就是这一行 ⇒ 调试器(和 pdb)会停在 <listcomp> 帧, 看起来"断点没进到 clamp"。
+        #   现在把三个列表先算出来 (纯本函数语句), 断点下在 _out = { 这行就**稳停在 clamp() 帧**。
+        _u_list = [float(x) for x in u_out]
+        _v_list = [float(x) for x in u_req[:3]]
+        _e_list = [float(x) for x in err]
+        _out = {"u": _u_list, "v_req": _v_list,
+                "err": _e_list, "err_norm": round(e_norm, 8),
                 "big": int(e_norm > 0.05),
                 "why": "+".join(why) or "可行",
                 "kin_why": kin_why,
@@ -981,6 +1022,7 @@ class SK06Transfer(AtomicSkill):
                          "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
                 "s_travel": round(self.travel_m, 6), "over_travel": over,
                 "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
+        return _out
 
 class SK07Insert(AtomicSkill):
     """⑦ 插入 — 毫米级解析伺服精插 (两段式: 垂直对心→水平推入孔底)"""
@@ -1079,9 +1121,15 @@ class SK07Insert(AtomicSkill):
         u_out[:3] = v
         err = u_req[:3] - v
         e_norm = float(np.linalg.norm(err))
-        return {"u": [float(x) for x in u_out],
-                "v_req": [float(x) for x in u_req[:3]],
-                "err": [float(x) for x in err], "err_norm": round(e_norm, 8),
+        # 🔴 2026-10-31 老倪「技能 return 的断点全都进不去」:
+        #   原来 return/_out 里直接写列表推导 [float(x) for x in ...] —— 推导式是**独立 code object**,
+        #   它自己的首行号就是这一行 ⇒ 调试器(和 pdb)会停在 <listcomp> 帧, 看起来"断点没进到 clamp"。
+        #   现在把三个列表先算出来 (纯本函数语句), 断点下在 _out = { 这行就**稳停在 clamp() 帧**。
+        _u_list = [float(x) for x in u_out]
+        _v_list = [float(x) for x in u_req[:3]]
+        _e_list = [float(x) for x in err]
+        _out = {"u": _u_list, "v_req": _v_list,
+                "err": _e_list, "err_norm": round(e_norm, 8),
                 "big": int(e_norm > 0.05),
                 "why": "+".join(why) or "可行",
                 "kin_why": kin_why,
@@ -1093,6 +1141,7 @@ class SK07Insert(AtomicSkill):
                          "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
                 "s_travel": round(self.travel_m, 6), "over_travel": over,
                 "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
+        return _out
 
 class SK07Place(AtomicSkill):
     """⑦ 放入 (摆盘链 mode=tray) — 把光模块下放进 tray 槽位并释放 (替代插拔链的 SK07Insert)
@@ -1196,9 +1245,15 @@ class SK07Place(AtomicSkill):
         u_out[:3] = v
         err = u_req[:3] - v
         e_norm = float(np.linalg.norm(err))
-        return {"u": [float(x) for x in u_out],
-                "v_req": [float(x) for x in u_req[:3]],
-                "err": [float(x) for x in err], "err_norm": round(e_norm, 8),
+        # 🔴 2026-10-31 老倪「技能 return 的断点全都进不去」:
+        #   原来 return/_out 里直接写列表推导 [float(x) for x in ...] —— 推导式是**独立 code object**,
+        #   它自己的首行号就是这一行 ⇒ 调试器(和 pdb)会停在 <listcomp> 帧, 看起来"断点没进到 clamp"。
+        #   现在把三个列表先算出来 (纯本函数语句), 断点下在 _out = { 这行就**稳停在 clamp() 帧**。
+        _u_list = [float(x) for x in u_out]
+        _v_list = [float(x) for x in u_req[:3]]
+        _e_list = [float(x) for x in err]
+        _out = {"u": _u_list, "v_req": _v_list,
+                "err": _e_list, "err_norm": round(e_norm, 8),
                 "big": int(e_norm > 0.05),
                 "why": "+".join(why) or "可行",
                 "kin_why": kin_why,
@@ -1210,6 +1265,7 @@ class SK07Place(AtomicSkill):
                          "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
                 "s_travel": round(self.travel_m, 6), "over_travel": over,
                 "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
+        return _out
 
 class SK08Complete(AtomicSkill):
     """⑧ 完成 — 插入到位, 本轮任务结束 (mode=full 续拔出/AOI 链)"""
@@ -1306,9 +1362,15 @@ class SK08Complete(AtomicSkill):
         u_out[:3] = v
         err = u_req[:3] - v
         e_norm = float(np.linalg.norm(err))
-        return {"u": [float(x) for x in u_out],
-                "v_req": [float(x) for x in u_req[:3]],
-                "err": [float(x) for x in err], "err_norm": round(e_norm, 8),
+        # 🔴 2026-10-31 老倪「技能 return 的断点全都进不去」:
+        #   原来 return/_out 里直接写列表推导 [float(x) for x in ...] —— 推导式是**独立 code object**,
+        #   它自己的首行号就是这一行 ⇒ 调试器(和 pdb)会停在 <listcomp> 帧, 看起来"断点没进到 clamp"。
+        #   现在把三个列表先算出来 (纯本函数语句), 断点下在 _out = { 这行就**稳停在 clamp() 帧**。
+        _u_list = [float(x) for x in u_out]
+        _v_list = [float(x) for x in u_req[:3]]
+        _e_list = [float(x) for x in err]
+        _out = {"u": _u_list, "v_req": _v_list,
+                "err": _e_list, "err_norm": round(e_norm, 8),
                 "big": int(e_norm > 0.05),
                 "why": "+".join(why) or "可行",
                 "kin_why": kin_why,
@@ -1320,6 +1382,7 @@ class SK08Complete(AtomicSkill):
                          "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
                 "s_travel": round(self.travel_m, 6), "over_travel": over,
                 "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
+        return _out
 # ── 技能注册表 (插装 8 段; 顺序 = 状态机推进序) ──
 SKILLS = [SK01Approach, SK02Align, SK03Descend, SK04Grasp,
           SK05Lift, SK06Transfer, SK07Insert, SK08Complete]
@@ -1376,6 +1439,8 @@ if __name__ == "__main__":
             print("         本段: %s" % s.get("phys_note", ""))
 
 
+
+
 # ── stage → 技能类 索引 (派发链按阶段找技能对象, 不自己编号) ─────────────────────────
 def _index_by_stage():
     out = {}
@@ -1386,6 +1451,12 @@ def _index_by_stage():
 
 
 SKILL_BY_STAGE = _index_by_stage()
+
+# 🔴 2026-10-31 老倪「所有技能的 return 都没进入」:
+#   摆盘链 转移→放入 的落点是 STAGES[11] =「放下」(PLACE_IDX=11), 而技能类声明的段名是「放入」,
+#   ⇒ skill_for("放下") 返回 None ⇒ 落件段走通用闸, SK07Place 的 return 一拍都不执行 (断点永不进)。
+#   显式别名: 放下 ⇔ 放入 是同一段工艺的两个叫法, 用同一个类 (同一份算式/同一条断点)。
+SKILL_BY_STAGE.setdefault("放下", SKILL_BY_STAGE.get("放入"))
 
 
 def bind_limiter(lim):
