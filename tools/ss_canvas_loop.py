@@ -122,6 +122,13 @@ def main():
             traces = prj.step(only=ONLY or None)
             cost = time.monotonic() - t0
             n_tick += 1
+            # 🧩 技能派发同进程 (老倪 2026-10-31「技能没有进入断点」): 调试这个画布循环时,
+            #   SKxx.clamp 就在本进程这一拍里执行 ⇒ 红点会停。生产 (无调试器/无 env) 立刻返回 None。
+            try:
+                import dispatch_inproc as _di      # noqa: PLC0415
+                _di.tick()
+            except Exception:                       # noqa: BLE001
+                pass
             keepalive_switch()                 # 🔄 AR 开关续期(只续 ar_scene), 防 1800s 过期导致双臂不动
             # 💓 心跳: 终端每 ~5s 一行 (tick/耗时/节点数) —— 没有心跳时"安静"会被误读成"卡住"
             # 💓 2026-10-31 老倪「不允许再有 tick」: 心跳默认**关**。要开就设 ZMAX_LOOP_BEAT_S=5

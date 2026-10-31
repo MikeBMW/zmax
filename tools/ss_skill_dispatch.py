@@ -281,6 +281,18 @@ class Dispatcher:
             si = int(d.get("stage_idx") or 0)
             # 🧭 调度: 本块的当前阶段 = 唯一在职技能 (换段才切换, 其余技能不参与本拍)
             _act = STAGES[min(len(STAGES) - 1, max(0, si))]
+            # 🐞 调试专用: ZMAX_DEBUG_STAGE=接近 ⇒ 强制这一拍由那个技能在职 (否则单射调度下,
+            #   你给 SK01 打的断点只有在块走到"接近"时才停, 别的拍它本就不执行)。生产不设此 env。
+            _dbg_st = str(os.environ.get("ZMAX_DEBUG_STAGE") or "").strip()
+            if _dbg_st in STAGES:
+                _act = _dbg_st
+                # 强制在职的段若不在本块里 (块只覆盖 stage_idx..7): 造一条调试用请求,
+                # 保证这一拍真的执行该技能 —— 否则红点还是不会停 (没动作就没 clamp 调用)。
+                if _act not in self.cur:
+                    _p0 = limits_for(_act)
+                    _vc = float(_p0.get("v_cap") or _p0.get("v") or 0.1)
+                    self.cur[_act] = {"action": [0.0, 0.0, -_vc, 1.0], "step": 0, "ts": now,
+                                      "stage": _act, "block_ts": self._chunk_ts, "dbg_synth": 1}
             if _act != self.active:
                 _prev = self.active
                 self.active = _act
