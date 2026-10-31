@@ -548,7 +548,8 @@ CARD_BORDER = {"zmax": "#d9a441",    # 金 · 产品
                "sys1": "#2fbf9f",    # 青玉 · 动作
                "sys0": "#e06c75",    # 珊瑚 · 执行
                "spec": "#7fa650",    # 草绿 · 配置面
-               "params": "#b0b7c3"}  # 银 · 数据面 (都避开蓝色)
+               "params": "#b0b7c3", # 银 · 数据面 (都避开蓝色)
+               "skillcorr": "#4cc9f0"}  # 天蓝 · 原子技能约束通道
 # 2026-10-09 老倪: 「改成白色背景? 对比度太大, 不用白底」⇒ 卡面回深色 (比侧栏底略亮一点, 块边界靠彩色边框区分)
 C_CARD_FACE   = "#1f2733"   # 卡面深灰蓝 (深色, 非白底)
 C_CARD_FACE_H = "#27313f"   # 悬停
@@ -1161,6 +1162,16 @@ class SystemSidebar(QFrame):
         )
         self.params_card.clicked.connect(self.layer_clicked.emit)
         layout.addWidget(self.params_card)
+
+        # 🧭 2026-10-31 老倪: 「在左侧增加原子技能约束, 每个操作我都要检查」
+        #   一张卡进 8 段技能的 3D 约束通道页 (半径/轴长/节拍预算/当前偏差/逐段检查)
+        self.skillcorr_card = SystemLayerCard(
+            "skillcorr", "🧭 原子技能约束", "SK01-08 · 3D 约束通道",
+            CARD_BORDER["skillcorr"],
+            "8 段通达半径/轴长/节拍预算 · 逐段「检查」看动作是否被关回通道 · 边界已画到 AR 场景",
+        )
+        self.skillcorr_card.clicked.connect(self.layer_clicked.emit)
+        layout.addWidget(self.skillcorr_card)
 
         # 🧹 2026-10-15 老倪: 「控制台左下角的 0.5.2 lerobot 这写字符串, 删掉」
         #  ⇒ 原「0.5.2-zmax.1.0.1 / LeRobot · Z-MAX」标签整块移除 (版本号仍见菜单栏右侧品牌行与「关于」框)
@@ -13441,6 +13452,20 @@ class StudioMainWindow(QMainWindow):
             print("[param_center] 参数中心页挂载失败: %r" % (_e2,))
             self.pc = None
 
+        # 🧭 原子技能约束页 (2026-10-31)
+        self.skillcorr = None
+        try:
+            from skill_corridor_page import SkillCorridorPage as _SCP
+
+            def _mk_scp():
+                self.skillcorr = _SCP()
+                return self.skillcorr
+            _lazy("skillcorr", _mk_scp)
+            _bt("skillcorr 原子技能约束(占位)")
+        except Exception as _e3:
+            print("[skill_corridor_page] 原子技能约束页挂载失败: %r" % (_e3,))
+            self.skillcorr = None
+
         root.addWidget(self.stack, 1)
         # 📊 vv5.16.36 (2026-10-01 老倪「硬件/在役模型版本/推理训练状态/3DGS 资产都推到 8796 服务,
         #   放在窗口左下角, 用红绿灯·状态条·进度条, 不要占太大面积, 不要很多文字, 我要看状态」):
@@ -14988,6 +15013,16 @@ class StudioMainWindow(QMainWindow):
 
         # 📋 2026-10-09 老倪: 「点击 Z-MAX / System 2 / System 1 / System 0 方块 → 清晰打开功能清单」
         #   ⇒ 四张卡统一进「功能清单」页并选中对应页签 (旧功能页从清单页里一键进, 能力不丢)
+        if target == "skillcorr" and getattr(self, "skillcorr", None):
+            self.modules["skillcorr"] = self.stack.indexOf(self.skillcorr)
+            self.stack.setCurrentWidget(self.skillcorr)
+            try:
+                self.skillcorr.refresh()
+            except Exception:                                          # noqa: BLE001
+                pass
+            self.statusBar().showMessage("● 原子技能约束  |  SK01-08 通道半径/轴长/节拍预算  |  "
+                                         "逐段「检查」验证动作被关回通道", 4000)
+            return
         if target in ("params", "pc") and getattr(self, "pc", None):
             self.modules["params"] = self.stack.indexOf(self.pc)
             self.stack.setCurrentWidget(self.pc)

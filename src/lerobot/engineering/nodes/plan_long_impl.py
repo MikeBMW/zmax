@@ -378,9 +378,32 @@ def run(ctx=None):
             "points": {k: {"pos_mm": v.get("pos_mm"), "conf": v.get("conf")}
                        for k, v in _pts.items() if isinstance(v, dict)},
         }
+    # 🔴 2026-10-31 老倪: 「技能节点的信号必须传入 plan 节点」——
+    #   in3 = 🛠 L3 技能序列编排 · in4..in11 = ①..⑧ 原子技能 (sssk1..8) 的动作/物理结果。
+    #   口径: **只收下 + 原样透传到 out1/out3.skills, 不参与控制** (当前段表仍由元任务组合驱动);
+    #   以后标定好了直接把这批信号当目标用, 不需要重接线。
+    #   环境开关 ZMAX_PLAN_USE_SKILL=1 才让 plan 真按技能动作走 (默认关 ⇒ 现有行为一字不变)。
+    _skills = {}
+    for _pk, _pn in (("in4", "①接近"), ("in5", "②对位"), ("in6", "③下降"), ("in7", "④抓取"),
+                     ("in8", "⑤抬起"), ("in9", "⑥转移"), ("in10", "⑦插入"), ("in11", "⑧完成")):
+        _d = (((ctx or {}).get(_pk) or {}).get("value"))
+        if not isinstance(_d, dict):
+            continue
+        _skills[_pn] = {
+            "stage": _d.get("stage"), "active": _d.get("active"),
+            "u": _d.get("u"), "v_req": _d.get("v_req"),
+            "err_norm": _d.get("err_norm"), "why": _d.get("why"),
+            "f_need_N": _d.get("f_need_N"), "over_travel": _d.get("over_travel"),
+        }
+    _seq = (((ctx or {}).get("in3") or {}).get("value"))
+    _skill_use = (os.environ.get("ZMAX_PLAN_USE_SKILL", "0") == "1")
+    _skill_blk = {"n_in": len(_skills), "from": "sssk1..sssk8.out2 + ssskill.out1",
+                  "used_for_control": bool(_skill_use), "skills": _skills,
+                  "seq_type": (type(_seq).__name__ if _seq is not None else None)}
+
     segs, cum = _load()
     if not segs:
-        return {"out1": None, "out2": None, "out3": {"vision": _vis}}
+        return {"out1": {"skills": _skill_blk}, "out2": None, "out3": {"vision": _vis, "skills": _skill_blk}}
 
     now = time.monotonic()
     if _S["t0"] is None:
@@ -511,6 +534,7 @@ def run(ctx=None):
                       seg.get("seq"), seg.get("kind")))
     _vis_use = _vis          # 段 + 同拍视觉状态一起给执行器/页面 (接口对齐, 误差如实带)
     o1["vision"] = _vis_use
+    o1["skills"] = _skill_blk
     # 🔴 2026-10-29 可选开关: 让 plan 真**用**视觉点 (默认关 ⇒ 300UPH 的配置槽位路径一字不变)
     #   开启后 out1 带 goal/goal_src/goal_conf/goal_frame, 下游可直接拿视觉点当目标;
     #   允许 verified=false / conf 低 —— 误差如实带出去, 由消费方按自己的闸判定。
@@ -562,7 +586,7 @@ def run(ctx=None):
                  "mt_i": seg.get("mt_i"), "mt_total": _S["n_mt"],
                  "batch": seg.get("batch"), "mod": cur_mod, "done": done, "total": _S["n_mods"],
                  "uph_live": (round(uph, 1) if uph else None)},
-        "out3": {"elapsed_s": round(el, 2), "round": _S["round"], "tact_s": round(_S["tact"], 2),
+        "out3": {"elapsed_s": round(el, 2), "skills": _skill_blk, "round": _S["round"], "tact_s": round(_S["tact"], 2),
                  "uph_target": _S["uph_target"],
                  "uph_capability": round(3600.0 / max(_S["tact"], 0.1), 1),
                  "speed_factor": _SPEED, "seg_index": _S["i"], "n_segs": len(segs),

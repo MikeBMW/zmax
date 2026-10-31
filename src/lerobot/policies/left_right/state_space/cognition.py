@@ -218,6 +218,27 @@ class ActionModulator:
         self._sk_objs[st] = obj
         return obj
 
+    @staticmethod
+    def _corridor_mod():
+        """按**文件路径**加载 corridor.py。
+
+        引擎把 cognition.py 当顶层模块 importlib 加载 (父包名是 ss_real), 所以
+        `from . import corridor` 会去找 ss_real.corridor ⇒ ModuleNotFoundError。
+        这里用 spec_from_file_location 固定同一份文件, 全进程只加载一次。
+        """
+        import sys as _sys
+        m = _sys.modules.get("zmax_skill_corridor")
+        if m is not None:
+            return m
+        import importlib.util as _ilu
+        import os as _os
+        p = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "corridor.py")
+        spec = _ilu.spec_from_file_location("zmax_skill_corridor", p)
+        m = _ilu.module_from_spec(spec)
+        _sys.modules["zmax_skill_corridor"] = m
+        spec.loader.exec_module(m)
+        return m
+
     def skill_step(self, u_req, stage=None, token=None):
         """公共技能过闸口 (2026-10-31 老倪「全程你操作」): 所有控制路径交出动作前都过当段技能。
 
@@ -243,6 +264,20 @@ class ActionModulator:
             return None
         self._last_skill_tok = _tok
         self.skill_calls[st] = self.skill_calls.get(st, 0) + 1
+        # 🔵 3D 约束通道 (老倪 2026-10-31): 技能算完的动作用**AR 场景真 3D 坐标**再投影一次,
+        #   把每一拍都关进该段的通道 (轴 A→B, 半径 r, 节拍预算)。通道真源 tools/ss_corridor_build.py
+        #   写的 zmax_data/ss_live/skill_corridors.json; 没有通道/没有 3D ⇒ 原样放行 (如实, 不编)。
+        #   ZMAX_CORRIDOR=0 可关 (对照用)。
+        try:
+            _corr = self._corridor_mod()  # noqa: PLC0415
+            _u_c, _ci = _corr.apply(st, list(r.get("u") or [0, 0, 0, 0]), dt=self.skill_gate_dt)
+            if _ci is not None:
+                r = dict(r)
+                r["u"] = [float(x) for x in _u_c]
+                r["corridor"] = _ci
+        except Exception as _e:                                          # noqa: BLE001
+            r = dict(r)
+            r["corridor"] = {"error": "%s: %s" % (type(_e).__name__, _e)}
         self.gate = r
         # 🖨 每段第一次真执行 → 终端打一行 (老倪这边: 不靠断点也能一眼看到技能在跑)
         _seen = getattr(self, "_sk_announced", None)
@@ -272,10 +307,15 @@ class ActionModulator:
                     _lp = os.path.join(os.environ.get("ZMAX_LIVE_DIR") or os.path.join(_d, "zmax_data", "ss_live"),
                                        "skill_calls.log")
                 with open(_lp, "a", encoding="utf-8") as _fh:
+                    _c = r.get("corridor") or {}
                     _fh.write(_json.dumps({"t": round(_t.time(), 3), "pid": os.getpid(),
                                            "stage": st, "cls": type(sk).__name__,
                                            "tok": _tok, "why": r.get("why"),
-                                           "err_mm": round(float(r.get("err_norm") or 0.0) * 1000.0, 3)},
+                                           "err_mm": round(float(r.get("err_norm") or 0.0) * 1000.0, 3),
+                                           "cor": ({"dev_mm": _c.get("dev_mm"), "r_mm": _c.get("r_mm"),
+                                                    "why": _c.get("why"), "in": _c.get("in_channel"),
+                                                    "err": _c.get("error")}
+                                                   if _c else None)},
                                           ensure_ascii=False) + "\n")
             except Exception:                                              # noqa: BLE001
                 pass
