@@ -747,6 +747,14 @@ class Loop:
                 chunk_rec["stage_name"] = _sn
             except Exception as e:                                           # noqa: BLE001
                 chunk_rec = {"ok": False, "reason": "%s: %s" % (type(e).__name__, str(e)[:120])}
+        # 🧩 2026-10-31 老倪「550B 调试都在一个进程里」: 开了 ZMAX_DISPATCH_INPROC=1 就由**本进程**
+        #   跑一拍技能派发 (同一个 Dispatcher/同一份 chunk/同一个物理闸) ⇒ 红点能停在
+        #   SK01Approach.clamp / AtomicSkill.apply_physics / InertiaLimiter.limit。默认关, 生产零变化。
+        try:
+            import dispatch_inproc as _dip                                    # noqa: PLC0415
+            _dip.tick()
+        except Exception:                                                    # noqa: BLE001
+            pass
         # ⚖ 物理偏差: 读技能闸的唯一依据 → 大偏差走"融合定位 → 顶层补偿"
         try:
             _se = self._skill_err()

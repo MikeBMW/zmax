@@ -36,7 +36,7 @@ from lerobot.policies.left_right.state_space.skills.atomic_skills import (  # no
 CODE_BY_STAGE = {}
 for _c in list(SKILLS) + list(SKILLS_TRAY):
     CODE_BY_STAGE.setdefault(_c.stage, _c.code)          # SK07 插拔链=插入 / 摆盘链=放入 (同号两支)
-LIVE = os.path.join(ROOT, "zmax_data", "ss_live")
+LIVE = os.environ.get("ZMAX_LIVE_DIR") or os.path.join(ROOT, "zmax_data", "ss_live")
 SHM = os.environ.get("ZMAX_SHM_DIR", "/dev/shm/zmax_ss_engine")
 STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
 DT = 0.1                      # 块内每拍时长 (与回路 10Hz 同口径)
@@ -430,8 +430,9 @@ class Dispatcher:
         flat["末端偏差"] = (out[list(out)[-1]]["err_norm"] if out else -1.0)
         self.n += 1
         if self.n % max(1, int(self.hz * 10)) == 1:
-            print("[%s] 派发 #%d · 块 %d 个 · 技能 %d 个在职 · 块帧龄 %.2fs"
-                  % (time.strftime("%H:%M:%S"), self.n, self.reset_n, len(out), flat["块帧龄_s"]), flush=True)
+            print("[%s] 派发 #%d · 块 %d 个 · 在职 %s (共 %d 段) · 块帧龄 %.2fs"
+                  % (time.strftime("%H:%M:%S"), self.n, self.reset_n, self.active or "-", len(out),
+                     flat["块帧龄_s"]), flush=True)
         return flat
 
     def run(self, seconds: float = 0.0):
