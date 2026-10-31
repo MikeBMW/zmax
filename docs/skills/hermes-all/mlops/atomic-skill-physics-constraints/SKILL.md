@@ -85,6 +85,40 @@ metadata:
 - 取证: `tools/verify_skill_physics_calls.py` (判据 12 条: 类体内真调用 / 基类收口 / 超限真削 /
   合法不削 / 每拍过闸 / 技能口 / 批次同一闸 / 计数落盘)。
 
+## 🧭 运动学约束 / ⚖ 动力学约束 分家 (2026-10-31 老倪定稿)
+
+老倪: 「后面的 接近、对位 这些技能, 要符合运动学约束; 物理约束这个要改成动力学约束; 都要真正调用」。
+
+- **分类 (按"与质量力有无关系"切, 不是按 1~5 顺序切)**: 🧭 运动学 = ①速度 ②加速度 ③加加速度 ⑤位移/行程
+  (`KinematicLimiter`); ⚖ 动力学 = ④动量/质量变化率 (`DynamicLimiter`)。技能类 `clamp()` → `apply_physics()`
+  → `InertiaLimiter.limit()` 仍是**唯一削点**, 内部按 ①②③④⑤ 原序调两条闸 (先 kin ①②③, 再 dyn ④, 再 kin ⑤)。
+  拆分**必须零数值回归**: `tools/verify_kin_dyn_split.py` 拿 HEAD 旧实现逐拍比对 (实测 600 拍 0 差异)。
+- **"都要真正调用"的判据只有一种: 分闸计数 == 总拍数**。`InertiaLimiter` 暴露 `n_kin/n_dyn`,
+  dispatch 每拍落 `运动学闸_拍/动力学闸_拍/两条闸对账`, 节点实现落 `ss_live/constraint_gate.json` 的 `gate_n`。
+  只报"总削因"永远看不出哪条闸跑没跑。
+- **报削因要分闸**: `运动学削因 {速度/加速度/加加速度/位移}` 与 `动力学削因 {动量/质量率}` 分开列;
+  实测常态是速度先绑 (8 段全过, 对位/下降/抓取/插入/完成 被削), 而**动力学至今 0 次** ⇒
+  如实说"已实装每拍检查, 但不是绑定约束", 不要说"动力学约束在拦"。
+- **画布那个「⚖ 物理约束闸」曾经是假节点**: `middleware/nodes/n_constraint.py` 里 `IMPL_KEY='n_exec'`
+  (指向动作执行器!) 且 `PURE=False` ⇒ 每拍只 `_passthrough`, 从没裁过东西。改真 = 三件套:
+  ① `IMPL_KEY='ss_dyn_gate'` + `PURE=True`; ② registry 注册 `_reg("ss_dyn_gate", ["动力学约束","物理约束"], …)`
+  指向 `nodes/constraint_gates_impl.py::run` (+ `_EXTERNAL_LOC` 行号); ③ 画布节点改名/改 params 后
+  **同步四处映射**: `middleware/nodes/_index.py` 的 `BY_NAME`(新名要加, 旧名保留兼容)、`cn_names.py`、
+  `middleware/attribution.py`、`tools/gen_topic_types.py` 的 `NODES`。漏 `BY_NAME` = 节点丢了壳, 静默回落直通。
+- 画布循环白名单漏 `sslimit`/`ssphys` 时, 现象与"没接线"一模一样; 改完必须 `daemon-reload` + restart,
+  判据读 `/proc/<pid>/environ` (不是 `systemctl show`)。
+
+### 🔴 无外网会把整条链冻住 (最容易被误判成"模型/节点坏了")
+`huggingface_hub` 拉 `chat_template.jinja` 的 HEAD 请求在断网机上会 5 次退避重试 ⇒
+引擎循环整段阻塞 (`engine_latest.json`/`chunk_latest.json` 停更, 实测 3 小时), 节点侧表现为 L3 永远
+`降级: 测地线块 (模型未就绪)` / `n_done=0`。修法: 给 `zmax-ss-engine-loop` 与 `zmax-ss-canvas-loop`
+各加一台 drop-in `Environment=HF_HUB_OFFLINE=1` / `TRANSFORMERS_OFFLINE=1` (权重本机已有), 重启后
+实测 `infer=12ms`、`n_done` 开始涨、块帧龄 0.05s。**先查块帧龄, 再怪闸/模型**。
+
+### 节点实现里找 `zmax_data/ss_live` 不许用"上溯第 N 层"
+仓库里存在假目录 `src/zmax_data/ss_live` (历史脚本少上溯一层建的), 按层数走会先命中它 ⇒
+`chunk_latest.json 读不到` 而文件明明在。按**仓库根标记**找: 同一层同时有 `tools/` `config/` `zmax_data/ss_live`。
+
 ## 把闸搬进"关键路径"(u_ff → SK 段包络 → 仿真器), 而不是只做旁路观测
 
 派发服务里的闸是**旁路**: 削出来的偏差写文件给状态校正器, 引擎的 `u` 根本没被削过。

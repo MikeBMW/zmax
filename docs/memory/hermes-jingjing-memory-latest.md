@@ -30,13 +30,13 @@ L5规划器/safety=left_right/state_space/{planner,safety}.py; INTACT须常驻
 §
 LoRA需merge(否则零动作伪装):merge_lora_ckpt.py
 §
-ECS=仅web入口(TLS+反代127.0.0.1:18790+frp); 站点已搬550C(nginx:8081+php8.3+mysql xSpace+7服务,已对拍), 切流待点头(/root/switch550c.sh回滚); 资产走产线直连/U盘
+ECS=仅web入口(TLS+反代+frp); 站点已搬550C(nginx:8081+php8.3+mysql,已对拍), 切流待点头; 资产走产线直连/U盘
 §
 GPU掉载主因=每步CPU>计算→静音日志+workers↑
 §
 工程根~/zmax=独立仓库(MikeBMW/zmax); zmax_data=模型+数据+HF+secrets/zmax.env; 训练带HF_HOME
 §
-控制台禁反复重启GUI
+禁自行重启任何GUI/服务/进程, 只可停不可起; 重启须用户点名
 §
 我=主节点(工控机+Orin); AOI.23.23=10082/10083(禁84/85); 更新=aoi_remote_deploy.py
 §
@@ -68,4 +68,6 @@ tool0读heartbeat.pose.flange(禁手推R,y差251mm); precheck需扣连杆半径(
 §
 MoveIt起点须SDK直采(禁手推)
 §
-rec48=48Hz只读记录器待部署(tcp_pose+joints+夹爪+8812); 建图缺RealSense
+rec48=48Hz只读记录器待部署; 建图缺RealSense
+§
+反刷屏: 回答≤两行(先人话); 启动/常驻循环输出默认静音落日志(file全量可查)

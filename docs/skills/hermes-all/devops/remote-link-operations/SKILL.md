@@ -257,6 +257,37 @@ Host <dev>-jump
 验收：`ss -ltn` 见到各 `-L` 口 · `curl 127.0.0.1:<桥口>/status` 200 · `NRestarts` 隔 20s 不涨。
 把 ECS 这一跳加进去后**每段动作指令多一跳**，段表/位姿的往返会慢一点；产线网卡回来后应切回直连。
 
+## 9f. 重启/断链后「unit 永远 failed 不再自愈」——两个必查点
+
+链路断上几分钟，systemd 会把反复失败的隧道 unit **拉黑成 failed**：`NRestarts` 停在某个值、日志末尾一句
+`Start request repeated too quickly`。之后网卡/热点回来它**也不会自己起**，`reset-failed` 才解开。
+症状容易被误读成"网卡还没回来"，于是白等半天。
+
+```bash
+systemctl list-units 'zmax-*' --state=failed --no-legend   # 先看有没有 failed（不是看 activating）
+systemctl show -p NRestarts -p SubState <unit>             # activating/auto-restart = 还在重试；failed = 已放弃
+```
+
+修法（一次做完，长期免维护）：给所有等远端的长连 unit 加 drop-in 取消速率限制，靠 `RestartSec` 退避：
+```ini
+# /etc/systemd/system/<unit>.service.d/startlimit.conf
+[Unit]
+StartLimitIntervalSec=0
+[Service]
+Restart=always
+RestartSec=10
+```
+`RestartSec` 要 ≥ ssh 的 `ConnectTimeout`，否则一秒一次空转刷日志。
+
+🔴 **第二个更隐蔽：override 里的 ssh 别名被删了 ⇒ 255 无限重启，且和链路好坏无关。**
+本例 `zmax-orin-move-fwd` 的 `override.conf` 把 ExecStart 写死成 `orin-ecs`，而 `~/.ssh/config` 里的
+`Host orin-ecs` 早已删掉（老倪「以后不要用 ECS」）⇒ 日志 `Could not resolve hostname orin-ecs`，
+无论网卡在不在都起不来。**看到 `status=255` 第一件事是 `grep -n ExecStart` 读 override 用的那个别名还在不在**，
+而不是去查网络。别名统一成 `<dev>`（见 §3），由 Autoheal 改 config 那一处来切 IP。
+
+顺带：`LAN/remote` 双模脚本里的「remote 回退地址」也要跟着拓扑更新（ECS 停用后应指向手机热点上的设备 IP），
+否则切回 remote 等于把 HostName 改成一个没人应答的公网 IP。
+
 ## 9e. 跳板机需要口令时：三跳 ProxyCommand 写成一个本地脚本
 
 场景：本机只能到跳板 **22**（反向口如 22022 被云安全组/运营商挡，从本机超时），而跳板机上做 `-W` 的目标

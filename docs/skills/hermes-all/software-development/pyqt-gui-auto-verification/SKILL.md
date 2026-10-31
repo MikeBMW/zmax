@@ -9,6 +9,11 @@ description: Use when PyQt5 GUI 自动取证测试 — 驱动真实窗口截图�
 Z-MAX 仓库具体入口/机制见 `references/zmax-studio-automation.md`;
 断言写法 / 证据采集 / 禁词类判据的坑见 `references/assertion-and-evidence-pitfalls.md`。
 
+> 🔴 **用户在用桌面时, 禁止抢焦点/抢鼠标。** 反复 `wmctrl -i -a` 抬窗 + `xdotool mousemove/click` 会打断他正在做的事,
+> 实测投诉原话就是「别反复跳窗口, 别抢鼠标」。取证手段按此优先级选: ①离屏/进程内 (`widget.grab()`、`QTest.sendEvent`)
+> ②只读取证 (产物文件 mtime、状态 json、已有截图的 OCR) ③应用自己的命令通道 ④**最后一次**真抬窗 + 点击, 只做一次,
+> 做完立即放手并把窗口还给用户; 需要连点几次时就别点 —— 让用户自己点, 你只给命令与判据。
+
 ## 通用工作流
 1. 环境: PyQt5 venv; 有 DISPLAY 用 X (3D/GL 窗口才能渲染), 无则 `QT_QPA_PLATFORM=offscreen` (3D/GL 项会失败 — 诚实记录 FAIL, 别假装)
 2. 构造应用: `app = QApplication.instance() or QApplication([])` (模块可被 import 复用, 顶层建 app 也无妨; 无 widget 前可后建)
@@ -177,6 +182,11 @@ Z-MAX 仓库具体入口/机制见 `references/zmax-studio-automation.md`;
 4. **别把"应用自己的导航命令文件"当验收驱动**: `echo <page> > /tmp/<app>_nav_cmd` 这类通道可能**被杀掉当次就消失、
    日志里一行不写** ⇒ 你以它为前提的截图/断言全是在错误页上做的（自己却不知道）。要么用第 1 条的离屏证据,
    要么真按坐标点。通道不工作本身当一条 bug 报给用户, **不要用反复重启去赌它能通**。
+   判「▶ / 运行 到底真跑没跑」的硬证据是**这次动作的产物文件 mtime** (本仓
+   `data/database/zmax/sources/canvas/ss_traj_last.json`), 不是窗口标题/状态栏文案 —— 标题从
+   「⚪ 未运行 — 点 ▶运行 启动」变成「[画布]」也可能只是切了页。另: GUI 的 `_log()` 常只 append 到控件,
+   命令行一点也看不到 ⇒ 排查前先给它加一个文件 sink (`/tmp/<app>_gui_log.txt`, `try/except` 包住), 但要重启才生效,
+   别在“看不到日志”时反复猜原因。
 5. 交付时说清验到了哪层: 「控件离屏渲染已验 + 代码/判据已验」与「真窗口里已点开看到」是两句话,
    没拍到就不说拍到了。
 

@@ -13,6 +13,7 @@ metadata:
 # 状态空间画布工程 (改节点/连线/拓扑的安全做法)
 
 > 深度参考: `references/node-source-mapping-and-run-button.md` — 节点右键「打开源代码」三层解析（节点 params.source → 中间件 SOURCE → registry file:line，id 失配也能开）；画布「▶ 运行/■ 停止」按钮点亮、写点只读拦截、stop_sim 先解播放态。
+> 常驻循环「卡住 / 太慢 / 空转 / 反复检测 / 停不下来」类投诉的判别与性能口径（心跳 + **按件变化**打的证据行、画布每拍重写→自激重载、dt 结算少扣杂项、白名单漏节点→u 恒 0、模型加载永久熔断、跑够即停与干净退出）：`references/canvas-loop-runtime-observability.md`。
 
 ## When to Use
 - 用户要求"加一个节点""把它接到 X 后面""所有 Y 都要进 Z 节点""整理连线/不要交叉/删掉不相关节点"。
@@ -374,8 +375,11 @@ metaworld 渲染 = **MuJoCo** 离屏渲染器 (`env.render()`; 无 X11 用 `MUJO
 2. **留别名 shim, 不用 `from ... import *`**: 老路径留 ~30 行 `sys.modules[__name__] = _runtime`(先 `sys.path.insert(0, <repo>/src)`)。
    星号转发会把模块级全局(`SS_LIVE_FRAME`/`_SS_STATE`)复制成第二份 ⇒ 读写各走一份 = 假一致;
    别名替换后老写法 `import state_space_sim_real` / `from state_space_sim_real import X` 拿到**真身同一对象**, 类身份与 isinstance 不变。
-3. **`__file__` 相对根推断必须全换**: 这类文件常有 6~9 处 `dirname×3(__file__)` 去拼 `models/`、`tools/`、`src/lerobot/...`,
+4. **`__file__` 相对根推断必须全换**: 这类文件常有 6~9 处 `dirname×3(__file__)` 去拼 `models/`、`tools/`、`src/lerobot/...`,
    层级一变全指到 `src/lerobot`。改成一个**按标记向上找**的 `_repo_root()`(同一目录下同时有 `src/lerobot` 与 `tools`), 并把数量写进验收。
+   🔴 仓库里确实存在**假目录** `src/zmax_data/ss_live/`(历史上溯少一层建出来的), 任何"向上第 N 层"都会先命中它
+   ⇒ 节点实现要取 `zmax_data/ss_live` 时, 判据必须是**同层同时有 `tools/` 与 `zmax_data/ss_live`**,
+   否则读到的永远是空目录/旧目录, 而 `chunk_latest.json` 的 FileNotFound 还会被 except 吞成一行日志。
 4. **加位置判据** `tools/verify_engine_location.py`: 真身在 `src/` · `tools/gui` 只剩 shim(≤40 行、无实现体) · 零 Qt ·
    两条 import 同一对象 · `_repo_root()` 命中仓库根 · `tools/` 与六层源码目录定位可用 · 类身份一致。
 
@@ -428,6 +432,24 @@ grep -rn "<ClassName>" --include=*.py src/ tools/ config/ | grep -v "\.bak\|_arc
 
 🔴 指令全 0 别记在执行器头上: `_SS_STATE["u_sat"]` 由 🛡 安全执行边界 `sslimit` 写入, 该节点 `PURE=False` 时不写
 ⇒ 单跑执行器恒 `[0,0,0,0]`。查「指令为什么是 0」要沿写点回找到源节点, 不是改执行器。
+同理**常驻循环白名单 `ZMAX_CANVAS_ONLY` 必须含 `sslimit`** —— 漏了它, 循环里 YOLO 在检测、plan 在出段、执行器每拍 execute(0),
+现象正是「一直循环什么都不动」; 改白名单时模板 (`simulink_module._vscode_launch_cfg`) 与 `.vscode/launch.json` 要同时改。
+🔴 **三处白名单会漂移, 判据只能读进程环境**: 模板与 `.vscode/launch.json` 里已有 `sslimit`, 而 systemd drop-in
+(`/etc/systemd/system/zmax-ss-canvas-loop.service.d/zz-*.conf`) 没有 ⇒ 常驻循环缺这一拍, 画布上节点在、saturate 从没被调。
+查法固定: `tr '\0' '\n' < /proc/$(systemctl show -p MainPID --value zmax-ss-canvas-loop)/environ | grep ZMAX_CANVAS_ONLY`
+(别 `systemctl show -p Environment`, 那是合并视图, 会显示成"配好了"); 改完 `daemon-reload` + restart, 判据 =
+`canvas_loop.json` 的 `only/n_ran` 含它 + traces 里 `sslimit` 状态为「实现执行」+ journal 有 `🛡 安全执行边界 (真实)` 行。
+
+🔴 **常驻服务/模型加载必须显式离线, 否则断网时整条链静默停更**: 无外网时 `huggingface_hub` 会对
+`chat_template.jinja` 之类文件做 HEAD 重试(5 次退避), 进程**不报错、只阻塞** ⇒ `engine_latest.json` /
+`chunk_latest.json` 停更几小时, 画布侧看到的是「L3 降级: 测地线块 (模型未就绪)」「n_done=0」「GPU 利用率 8%」,
+而 sslimit/ssphys 仍每拍在削一个**陈旧的块**(验收会假绿)。判别: `stat -c %y zmax_data/ss_live/engine_latest.json`
++ `constraint_gate.json` 的 `block_age_s`(几小时 = 停更); 修法 = 给该 unit 加 drop-in
+`HF_HUB_OFFLINE=1` + `TRANSFORMERS_OFFLINE=1`(实测重启后块龄 0.05s、模型从「降级」变真动作)。
+别指望"权重已缓存就不会联网" —— 缓存命中前它先联网查版本。
+顺序天然正确(不用加线): `topo_order` 按节点 (y,x) 排, 实测 ssdec 在 sslimit 之前、ssact 在其后 ⇒ `u` 是当拍新值,
+`u_sat` 被 ssact 直接消费。`u_src=降级: 测地线块 (模型未就绪)` 时 saturate 也在真跑, 但限的是回落量 ——
+要证明限幅不是橡皮章, 另跑一次同实现灌超幅值 (`[0.9,-0.8,0.65,0.2]` → `[0.6,-0.6,0.6,0.2]`, 被裁 3 维), 别只报"被裁 0 维"。
 - 判一拍干了什么用 CLI, 别靠 GUI 点击: `tools/mw_project.py node <id>` · `mw_project.py step`, 或
   `load_project() → prj.step() → [n for n in prj.nodes.values() if n.spec.id=='<id>'][0].last_status`。
   ⚠️ `Node` 只有 `spec.id` / `last_status` / `last_routed` / `module` —— **没有** `.id` / `.last_outs`, 猜属性会断探针。
@@ -925,7 +947,7 @@ for k in z700_internal gain_schedule; do echo -n "$k="; grep -c "$k" $C; done   
 | 手工拼命令重启控制台 | GUI 起不来 / 窗口不出现（缺 `XAUTHORITY`/`XDG_RUNTIME_DIR`/DBUS） | 用仓库启动器 `tools/gui/launch_studio.sh`（自带环境 + 防重复实例）；或从旧进程复用环境：`cat /proc/<pid>/cmdline` + `tr '\0' '\n' < /proc/<pid>/environ \| grep -E '^(DISPLAY\|XAUTHORITY\|XDG_RUNTIME_DIR)='` 后再启 |
 | 子代理起的控制台随它退出而死 | 交付验收时 GUI 是死的（用户那边"打不开"） | 常驻进程必须**脱离**启动（`setsid nohup … </dev/null &`，或 terminal `background=true, persist_on_release=true`）；父会话在子代理交付后**重验进程还在**，不在就自己重起 |
 | 用 `pgrep -f "tools/gui/studio.py"` 判活 | 会命中**自己的 shell 命令行**（命令串里就含这个模式）⇒ 假"在跑" | 用脚本自带的精确模式 `pgrep -f "gui-venv311/bin/python studio.py"`，或 `ps -eo pid,cmd \| grep "[s]tudio.py"` |
-| 用 `pkill -f <模式>` 杀进程（内联在命令里） | **连自己的 shell 一起杀**：模式匹配到当前命令行 ⇒ 命令输出戛然而止、后续步骤全没跑（比误判"在跑"更狠，本次实测把自己 shell 杀了，两条 `set -e` 脚本都断在半路） | 杀进程用 `pgrep -x <精确进程名> \| xargs -r sudo kill`（`-x` 只匹配进程名），或整段写成 `/tmp/*.sh` 再 `bash` 执行，别内联 `pkill -f` |
+| 用 `pkill -f <模式>` 杀进程（内联在命令里） | **连自己的 shell 一起杀**：模式匹配到当前命令行 ⇒ 命令输出戛然而止、后续步骤全没跑（比误判"在跑"更狠，本次实测把自己 shell 杀了，两条 `set -e` 脚本都断在半路）；**还会顺手杀掉用户在 VSCode 里 F5 起的同一个脚本会话**, 他那边表现为"又卡住了"而实际进程已死 | 杀进程用 `pgrep -x <精确进程名> \| xargs -r sudo kill`（`-x` 只匹配进程名）、按 pid `kill`, 或整段写成 `/tmp/*.sh` 再 `bash` 执行，别内联 `pkill -f` |
 | 扫描 `/proc/*/cmdline` 自己找 pid 的长驻进程（`for p in /proc/[0-9]*; do case "$cmd" in *tools/x.py*)`） | 同样会命中**自己这条 bash 命令** ⇒ kill 掉自己，工具调用直接 `exit -15`，后面的重启/验证全没执行 | 常驻服务启动时写 pidfile/lock：**从 pidfile 读 pid**，再在 python 里核对 `/proc/<pid>/cmdline` 确实是它，然后 kill；不要在 shell 循环里按子串匹配进程 |
 | 判据用 `abs(req_x - x) < 1e-6` 当"页面设的值真用上了" | 速度/步长链上有单位换算与限速闸，两者天然不等；若 req 取的是**限速后**的值，这条断言永远假绿 | 按**同一定义域**比：页面 `req_speed_mm_s` 对 `speed_mm_s_actual`，detail 打全四段值（页面/原始 units/限速后 units/实际 mm/s）；见 `references/message-signal-db.md` §10 |
 
@@ -1358,7 +1380,10 @@ MoveIt 容器已退出) 与 **仿真基座系≠真机基座系 (差 ~0.7m，只
 
 **① 改名必须同步的映射 (画布节点名 = 数据总线通道名, 漏一处即静默挂不上)**:
 `data_world.MODULE_ORDER` · `simulink_module.SS_MODULE_TO_NAME` + 右键分支 · `state_space_sim` io 发布表 ·
-`registry._reg` 注册关键字(**加新名时保留旧名**, 老工程/老 .proj 仍能开) · `gui/aoi_inspect_console.py` 标题 ·
+`registry._reg` 注册关键字(**加新名时保留旧名**, 老工程/老 .proj 仍能开) ·
+**`middleware/nodes/_index.py::BY_NAME`(画布节点名 → 中间件壳, 新名不登记 ⇒ 匹配不到壳、节点静默落直通)** ·
+`middleware/nodes/n_<单词>.py` 里的 `NAME` · `tools/gen_topic_types.py::NODES` 的中文标签 ·
+`middleware/nodes/cn_names.py` · 其它按字面查节点名的脚本(审计/判据里 `grep "<旧名>"` 必须归零) `gui/aoi_inspect_console.py` 标题 ·
 `src/lerobot/verification/node_func_tree.py`(网页功能清单真源) · `yolo_perception` · `status_panel` 大屏模型名 ·
 `model_feature`(能力特征库 B 条目) · **能力名的真正上游**: `config/platform/zmax_platform.json`(capability_ref/module_refs)
 + `config/platform/zmax_perf_spec.json`(+ `defaults/` 副本) + `data/database/<产品>/sources/feature.dbc`(`BO_ Bx …`) → 跑 `tools/mcd_build.py` 重生成。

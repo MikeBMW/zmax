@@ -34,7 +34,49 @@ description: Use when 节点要能单步调试或判据因活真源时红时绿�
 `ZMAX_DEBUG_BREAK=1`）· `--src`（打印每环节绝对路径+行号，`code -g file:line` 直接断点）· `--all --json`。
 档位门：**深调试只在调试档**（如 550B `dev_profile.vscode_debug`），其它档位跑 `--trace` 要真拦（exit≠0）。
 
+## 1d-1. `def` 行不是"永不进", 而是"只在 import 那一瞬间进 module 帧" (2026-10-31 实测修正)
+断在 `def run(ctx=None)` 这一行时, pdb 会把断点绑到**模块级**代码的同一行:
+第一个停在 `plan_impl.py(186)<module>()` —— 那是 import 时 def 语句被执行, **不是进了 run()**;
+模块已 import 过就再也不停。用户看到的"这行进不去"就是这种。
+判据对: 断函数体**第一条真实语句** (`out = {...}` / `st = json.load(...)`), 停的位置必须是
+`file(N)run()` 而不是 `file(N)<module>()`。`global X` 也不算可执行语句。
+
+## 1d-2. 所有节点都能断点的总闸 (ZMAX_NODE_PURE_ALL)
+59/80 个节点模块写的是 `PURE = False` ⇒ `compute_*()` 首行 `return _passthrough(ctx)`, 真实现永不调用。
+在 `middleware/node.py::_load_module` 加了全局闸: `ZMAX_NODE_PURE_ALL=1` ⇒ 导入时 `setattr(mod,'PURE',True)`,
+80 个节点一律走计算面。配套: `ZMAX_CANVAS_ONLY=""` (空=跑全部) + 低 Hz; VSCode 配置
+「🔬 断点 · 任意画布节点」已就位。
+验收工具: `tools/node_breakpoint_audit.py` —— 包装 registry 真函数计数, **逐节点单独走一拍**,
+判据只看"真函数被没被调", 不看状态文案。实测 80 节点 79 通, 剩下一个是 `IMPL_KEY = ''`
+(registry 里其实有同名 key) ⇒ 补上 `IMPL_KEY` 即 80/80。
+跑这个审计必须建 `QT_QPA_PLATFORM=offscreen` + `QApplication([])`, 否则遇 QWidget 节点
+Qt 直接 qFatal 整进程退出(无 traceback, 看着像卡死); 且结果要**逐行即时打 + 落 jsonl**,
+不能攒到最后一次输出。
+
 ## 1d. 断点不命中: 按"能不能重新绑定"分四类查 (2026-10-29 一次性踩全)
+
+## 1d-0. 画布节点先查两道闸 (2026-10-31 实测, 比什么都靠前)
+画布节点的 `run(ctx)` 不进断点，九成不是调试器问题，是**节点根本没被调用**。两道闸依次查：
+1. **白名单**: `tools/ss_canvas_loop.py` 只跑 `ZMAX_CANVAS_ONLY` 里的 id（.vscode/launch.json 的 env 里写死）。
+   判据：`zmax_data/ss_live/canvas_loop.json` 的 `only` 数组 + `n_ran`（实测 80 节点只跑 9 个 ⇒ `n_exec` 没在名单里）。
+   不在名单 ⇒ `prj.step()` 直接跳过该节点，断点不可能命中。
+2. **节点 PURE 开关**: 节点模块里 `PURE = False` 时 `compute_*()` 第一行就 `return _passthrough(ctx)`，
+   **永远不调 `IMPL_KEY` 对应的真实现**（如 `n_l2.py` 的 n_exec → `exec_dispatch_impl.py::run`），
+   trace 里 status 写得很清楚：`直通 (PURE=False: 只走数据面)`。
+   即使把 id 加进白名单也只看到直通 ⇒ 必须把 PURE 变成环境开关（默认关=产线安全，调试置 1）。
+
+```bash
+# 一步定性: 该节点到底跑了什么
+python -c "import sys;sys.path.insert(0,'src');from lerobot.middleware import load_project;
+print(load_project().step(only=['<node_id>'])[0]['status'])"
+```
+
+🔴 **剪贴片段的行号 ≠ 文件行号**: 用户贴的 `run(ctx)` 从第 1 行算起，真文件前面还有 11 行文件头（
+`def run` 实测在第 15 行）⇒ 照片段打第 9 行落在 docstring 里，pdb 报 `Breakpoint 1 at ...:9` 但永不停。
+**先 `grep -n 'def run' <真文件>` 对行号**，再断函数体第一条真实语句（跨 `try:` 时断 `try` 内第一行，
+那里变量还没赋值，`p <var>` 报 NameError 是正常的，说明确实停在赋值之前）。
+
+跑得动不等于停了：验证断点用 `-c "c" -c "n" -c "p <局部变量>"`，能打印出变量值 = 真停在该函数帧里。
 排查顺序固定, 每类都有实测判据, 不要凭感觉改:
 1. **def 签名行 / docstring 行 / return 行都不要打断点**。这三类都不是可执行语句:
    `def step(self, ...` 在 pdb 里报 `*** Blank or comment` 或不触发; `return rec` 被 CPython

@@ -127,6 +127,10 @@ git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这
    而 `git status` 干净只说明"没有未提交改动", **不代表只有我在动这个仓**。两件事必做:
    ① 本地领先远端(`## main...origin/main [ahead N]`)的提交要 push, 别让工作留在本机等关机;
    ② 报告里点名"这几条不是我提的 + 它们做了什么", 不揽功, 也不要把别人没做完的改动当已完成汇报。
+   🔴 **`git status` 看不见被 .gitignore 的配置**: 本轮改的 `.vscode/launch.json` 这类调试/启动配置压根不入库
+   ⇒ 对你改过的每个路径跑 `git check-ignore -v <path>`, 命中的 `cp` 一份进 `zmax_data/ss_live/<name>.bak-<date>`,
+   报告里给绝对路径; 否则关完机这份"下次能复现"的配置没有任何副本。
+   commit+push 之后补一条 `sync`, 再关机 (写缓存/挂载未落地的风险与"已保存"的说法直接冲突)。
 2. **状态快照** (这才是数据): 进 `data/database/zmax/archive/state_<date>_preoff/` 拷 `sources/config` 全量、
    `zmax_engineering.db`、`zmax_space.proj`、`config_meta.json`, 再拷一份 `/etc/systemd/system/zmax-*.service`
    + `~/.config/systemd/user/zmax-*.service` (下次重建环境靠它); 最后 `tar czf archive/zmax_state_<ts>.tar.gz`,
@@ -161,6 +165,10 @@ git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这
 7. **已知在崩的东西先定性, 并说清它重启后依旧会崩**（实测两容器 `RuntimeError: network: network connection`
    = 本机没接产线网、连不上机器人控制器）⇒ 否则开机后他一眼看到 `Restarting` 就当成新故障又查一轮。
    同时点名**另一台机器上没在跑的节点**(如 Orin 的取流节点)不会因本机重启而回来。
+8. **关机这一步 hand off 给用户, 不要承诺"我来关"**: `shutdown`/`reboot` 在 agent 的 unconditional
+   blocklist 上, 任何审批模式(--yolo / approvals.mode=off / cron approve)都绕不过 ⇒ 你的交付边界是
+   "数据保存完 + 把命令交给他自己敲", 报告里直接给 `sudo shutdown -h now`。
+   收尾顺序固定: commit+push 回读 sha → 被 .gitignore 的配置单独 `cp` 备份 → `sync` 落盘 → 给关机命令。
 
 ### ⑤ 「同步 550 ABC」= 两端逐字节对齐，方向靠 sha + diff 判
 
