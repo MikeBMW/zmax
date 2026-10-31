@@ -191,6 +191,13 @@ class Dispatcher:
         #   闸实例**绑给技能调用口** (bind_limiter) ⇒ 技能类里的 clamp() 与派发链/信号分析共用同一实例,
         #   段累计行程与削因计数才不会两处各记一半; 计数见下 (判据用它证「拍数 == 过闸次数」)。
         bind_limiter(self.lim)
+        # 🧭 2026-10-31 老倪「不应该有个调度节点负责调用某一个技能么」→ 单射调度:
+        #   每拍**只有一个在职技能** (= 块当前阶段), 只有它过物理闸; 其余 7 个保持上一次认领的那一拍
+        #   (肌肉记忆留参考), 在职=0 且**不调 clamp**。改后判据: 在职数=1 · 闸拍数 480/s→60/s ·
+        #   在职技能的动作/偏差与改前逐位一致 (不调 = 不改数, 只去掉旧值空转).
+        self.active = None          # 当前在职技能 (段名)
+        self.n_switch = 0           # 换技能次数 (判据: 8 段轮一遍才切换)
+        self._last_p = {}           # 段 → 上一次在职时过闸的结果 (不在职时原样沿用, 不重算)
         self._sk_cache = {}
         self.n_gate_skill = 0        # 走"技能对象自己的调用口"的拍数 (本段有技能类)
         self.n_gate_stage = 0        # 走"同段唯一依据闸"的拍数 (本段没有技能类: 拔出/AOI转移/AOI检测/回程)
@@ -248,6 +255,23 @@ class Dispatcher:
             self._chunk_ts = float(d.get("ts") or 0)
             u = d.get("u") or []
             si = int(d.get("stage_idx") or 0)
+            # 🧭 调度: 本块的当前阶段 = 唯一在职技能 (换段才切换, 其余技能不参与本拍)
+            _act = STAGES[min(len(STAGES) - 1, max(0, si))]
+            if _act != self.active:
+                _prev = self.active
+                self.active = _act
+                self.n_switch += 1
+                # 换技能: 清掉该技能上一拍的惯性/段行程 (不能拿别的段的 v/a 当自己的)
+                try:
+                    self.lim.reset_stage(_act)
+                except Exception:                                          # noqa: BLE001
+                    pass
+                self.last_v[_act] = np.zeros(3)
+                self.last_a[_act] = np.zeros(3)
+                self._last_p.pop(_act, None)
+                if _prev:
+                    self.last_v[_prev] = np.zeros(3)
+                    self.last_a[_prev] = np.zeros(3)
             got = []
             for i, a in enumerate(u):
                 st = STAGES[min(len(STAGES) - 1, si + i)]
@@ -272,17 +296,29 @@ class Dispatcher:
             # 块内推进由"块序号"决定: 当前拍 = 认领时那一拍 + 经过拍数 (上限 7)
             step = min(c["step"] + max(0, adv), 7)
             _req = c["action"]
-            _p = self._phys(st, _req)
+            _on = (st == self.active)
+            if _on:
+                _p = self._phys(st, _req)          # ← 只有在职技能过物理闸 (60Hz)
+                self._last_p[st] = _p
+            else:
+                # 不在职: 原样沿用上一次在职时的闸后结果 —— 不重算、不改数、不计数
+                _p = self._last_p.get(st)
+                if _p is None:
+                    _p = {"u": list(_req), "v_req": list(_req), "err": [0.0, 0.0, 0.0],
+                          "err_norm": 0.0, "big": 0, "why": "未派发",
+                          "kin_why": "未派发", "dyn_why": "未派发",
+                          "phys": dict(limits_for(st) or {})}
             # ⚖ 老倪 2026-10-15: 信号分析要看到 x y z v a 等物理值 ⇒ 逐拍把这些量算出来落盘
             _a_n = float(self.a_blk.get(st, 0.0))                     # mm/s² (块间速度变化率, 保留到下一块)
             _s_mm = float(self.lim.travel.get(st, 0.0)) * 1000.0       # 本段累计行程 mm
             out[st] = {"stage": st, "action": _p["u"], "step": step, "ts": now,
+                       "在职": 1 if _on else 0,
                        "age_s": round(now - float(c["ts"]), 4), "n": self.skill_n.get(st, 0),
                        "block_ts": c.get("block_ts"),
                        # ⚖ 物理闸口径: 请求值/可执行值/偏差/大偏差/哪条约束削的 + 该技能物理上限
                        "req": [round(float(x), 6) for x in _p["v_req"]],
                        "err": [round(float(x), 6) for x in _p["err"]], "err_norm": _p["err_norm"],
-                       "big": _p["big"], "why": _p["why"], "phys": _p["phys"],
+                       "big": (_p["big"] if _on else 0), "why": _p["why"], "phys": _p["phys"],
                        # 🧭/⚖ 2026-10-31 老倪「接近、对位要符合运动学约束; 物理约束改成动力学约束;
                        #   都要真正调用」—— 每拍分开记两条闸各自削了什么 (同一份 _p, 不另算)。
                        "kin_why": _p.get("kin_why", ""), "dyn_why": _p.get("dyn_why", ""),
@@ -291,6 +327,9 @@ class Dispatcher:
             _atomic_json(os.path.join(SHM, "skill_%d_%s.json" % (STAGES.index(st), st)), out[st])
         flat = {"ts": now, "n": self.n, "reset_n": self.reset_n,
                 "派发帧龄_s": 0.0, "块帧龄_s": round(now - (self._chunk_ts or now), 3),
+                # 🧭 单射调度 (2026-10-31): 在职技能唯一 / 切换计数 / 闸只对在职技能计时
+                "在职技能": self.active or "", "在职数": (1 if self.active else 0),
+                "切换次数": self.n_switch,
                 # ⚖ 过闸计数 (可观察): 技能调用口拍数 + 无技能段拍数 + 闸门累计拍数与削因
                 "过闸_技能拍": self.n_gate_skill, "过闸_段闸拍": self.n_gate_stage,
                 "闸_拍数": int(getattr(self.lim, "n", 0)),
@@ -341,7 +380,7 @@ class Dispatcher:
                 return -1.0
             _pv = isinstance(_pose.get("x"), (int, float)) and float(_pose.get("x")) != -1.0
             _ph["skills"][_code] = {
-                "stage": _st, "在职": 1 if _v else 0,
+                "stage": _st, "在职": (1 if (_v and _v.get("在职")) else 0),
                 "step": (_v["step"] if _v else -1),
                 # 位置 = **当前 TCP 真值**, 与"这个技能此刻是否在派发(在职)"无关:
                 # 老倪 2026-10-17「抓取的 x 位置一直不变」—— 原来 在职=0 就填 -1, 8 条里 5 条恒为 -1,
@@ -379,7 +418,7 @@ class Dispatcher:
               "req": {st: v.get("req") for st, v in out.items()},
               "u": {st: v.get("action") for st, v in out.items()},
               "err_norm": {st: v.get("err_norm") for st, v in out.items()},
-              "big": {st: v.get("big") for st, v in out.items()},
+              "big": {st: (v.get("big") if v.get("在职") else 0) for st, v in out.items()},
               "why": {st: v.get("why") for st, v in out.items()},
               "phys": {st: v.get("phys") for st, v in out.items()},
               "big_stage": next((st for st, v in out.items() if v.get("big")), ""),
