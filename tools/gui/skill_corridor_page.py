@@ -30,7 +30,7 @@ TRACE = os.path.join(LIVE, "trace_live.json")
 STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
 SK_ID = {"接近": "SK01", "对位": "SK02", "下降": "SK03", "抓取": "SK04",
          "抬起": "SK05", "转移": "SK06", "插入": "SK07", "完成": "SK08"}
-HDR = ["段", "技能", "半径 mm", "轴长 mm", "节拍 s", "轴向 v 上限", "单拍 mm",
+HDR = ["段", "技能", "半径 mm", "包络长 mm", "机动数", "节拍 s", "轴向 v 上限", "单拍 mm",
        "当前偏差 mm", "状态", "操作"]
 
 C_BG = "#0d1117"
@@ -84,8 +84,8 @@ class SkillCorridorPage(QWidget):
             head.addWidget(b)
         v.addLayout(head)
 
-        self.hint = QLabel("通道半径来自工艺间隙/标定 (corridor.DEFAULT_R_MM), 节拍来自 UPH; "
-                           "勾完点「检查」看动作有没有被切外+回中。")
+        self.hint = QLabel("通道 = 实际轨迹的扫掠包络: 轴心取自 AR 场景真在跑的轨迹 "
+                           "(sim_transport.json), 半径 = 工具/工件外廓; 点「检查」看越界动作有没有被切外+回中。")
         self.hint.setStyleSheet(f"color:{C_DIM};font-size:12px;")
         v.addWidget(self.hint)
 
@@ -109,23 +109,35 @@ class SkillCorridorPage(QWidget):
 
     # ── 数据 ───────────────────────────────────────────────────────────
     def _pos_mm(self):
+        """当前末端 mm —— 必须与通道同源: AR 帧 (ar_cmd / ar_exec 的 b), 不用 trace_live
+        (那是另一路话题, 坐标系不同, 拿它比会差好几百 mm)。"""
+        import time as _t
+        for name, key in (("ar_cmd", "b"), ("ar_exec", "b")):
+            p = os.path.join(LIVE, "%s.json" % name)
+            try:
+                if _t.time() - os.path.getmtime(p) > 86400:   # 同一帧系, 允许跨天; 只拒明显旧档
+                    continue
+                d = json.load(open(p, encoding="utf-8")) or {}
+                v = d.get(key)
+                if isinstance(v, (list, tuple)) and len(v) >= 3:
+                    _age = _t.time() - os.path.getmtime(p)
+                    return ([float(v[0]), float(v[1]), float(v[2])], d,
+                            "%s 帧龄 %.0fs" % (name, _age) if _age > 120 else None)
+            except Exception:                                              # noqa: BLE001
+                continue
         try:
-            if time.time() - os.path.getmtime(TRACE) > 60:
-                return None, None, "trace_live 过期 (>60s)"
             t = json.load(open(TRACE, encoding="utf-8")) or {}
-            e, m = t.get("末端"), t.get("光模块")
-            if not (isinstance(e, (list, tuple)) and len(e) >= 3):
-                return None, None, "trace 无 末端"
-            E = [float(x) * 1000.0 for x in e[:3]]
-            P = [float(x) * 1000.0 for x in m[:3]] if isinstance(m, (list, tuple)) and len(m) >= 3 else None
-            return E, P, None
-        except Exception as e:                                            # noqa: BLE001
+            e = t.get("末端")
+            if isinstance(e, (list, tuple)) and len(e) >= 3:
+                return [float(x) * 1000.0 for x in e[:3]], t, "trace_live (不同坐标系, 仅参考)"
+        except Exception as e:                                             # noqa: BLE001
             return None, None, repr(e)
+        return None, None, "无 AR 指令 (ar_cmd/ar_exec 都没有)"
 
     def _corridors(self):
         try:
             d = json.load(open(CORR, encoding="utf-8")) or {}
-            return d.get("corridors") or {}, d.get("built_at"), d.get("tact_s")
+            return d.get("corridors") or {}, d.get("built_at"), (d.get("tact_tab_s") or d.get("tact_s"))
         except Exception:                                                 # noqa: BLE001
             return {}, None, None
 
@@ -154,6 +166,7 @@ class SkillCorridorPage(QWidget):
             vals = [st, SK_ID.get(st, ""),
                     ("%.2f" % c["r_mm"]) if c else "—",
                     ("%.2f" % c["L_mm"]) if c else "—",
+                    (str(c.get("n_poly") or 1)) if c else "—",
                     ("%.2f" % c["tact_s"]) if c.get("tact_s") else "—",
                     ("%.4f" % c["v_along_cap"]) if c else "—",
                     ("%.2f" % c["s_tick_mm"]) if c else "—",
@@ -172,7 +185,7 @@ class SkillCorridorPage(QWidget):
             b.clicked.connect(lambda _=False, _st=st: self.check(_st))
             self.tbl.setCellWidget(i, len(HDR) - 1, b)
             self._rows.append([str(x) for x in vals])
-        src = ("通道建于 %s · 节拍 %ss/段" % (built_at, tact)) if built_at else "通道未生成 (点「🛠 重算通道」)"
+        src = ("通道建于 %s · 段表节拍 %ss/件" % (built_at, tact)) if built_at else "通道未生成 (点「🛠 重算通道」)"
         pos = "末端 %s" % ([round(x, 1) for x in E] if E else "无")
         self.hint.setText("%s · 3D 坐标: %s%s" % (src, pos, ("  ⚠️ " + why) if why else ""))
 
@@ -191,18 +204,27 @@ class SkillCorridorPage(QWidget):
         else:
             pos = E
         # 故意越界: 从通道轴外 3r 处、以 0.30 m/s 朝外速度冲
-        off = [c["e1"][k] * c["r_mm"] * 3.0 for k in range(3)]
-        pos_bad = [pos[k] + off[k] for k in range(3)]
+        k_mul, pos_bad = 3.0, None
+        while k_mul <= 40:
+            off = [c["e1"][k] * c["r_mm"] * k_mul for k in range(3)]
+            pos_bad = [pos[k] + off[k] for k in range(3)]
+            try:
+                _, _i0 = C.project_stage(stage, [0, 0, 0, 0], pos_bad, c)
+                if not _i0.get("in_channel"):
+                    break
+            except Exception:                                          # noqa: BLE001
+                break
+            k_mul += 1.0
         u_bad = [c["e1"][0] * 0.30, c["e1"][1] * 0.30, c["e1"][2] * 0.30, 0.0]
         u_out, info = C.project_stage(stage, u_bad, pos_bad, c)
         ok = ("横向切外" in info["why"]) and (info["step_mm"] <= info["s_tick_mm"] + 1e-6
                                              or "单拍行程" in info["why"])
         self._say(("✅ " if ok else "❌ ") + f"{stage} ({SK_ID.get(stage,'')}) 检查",
                   C_OK if ok else C_BAD)
-        self._say("  通道: r=%.2fmm L=%.2fmm 轴=%s" % (c["r_mm"], c["L_mm"],
-                                                     [round(x, 3) for x in c["axis"]]))
-        self._say("  越界输入: dev=%.2fmm (超 %.2fmm) u_in=%s" %
-                  (info["dev_mm"], info["excess_mm"], [round(x, 3) for x in u_bad[:3]]))
+        self._say("  通道: r=%.2fmm 总长%.1fmm %d 次真实机动" %
+                  (c["r_mm"], c["L_mm"], c.get("n_poly") or 1))
+        self._say("  越界输入: 外移 %.0fr · dev=%.2fmm (超 %.2fmm) u_in=%s" %
+                  (k_mul, info["dev_mm"], info["excess_mm"], [round(x, 3) for x in u_bad[:3]]))
         self._say("  过闸输出: u_out=%s · 单拍 %.2fmm (限额 %.2fmm)" %
                   ([round(x, 3) for x in u_out[:3]], info["step_mm"], info["s_tick_mm"]))
         self._say("  削因: %s ⇒ %s" % (info["why"], "动作被关回通道" if ok else "没被关住, 需查通道/参数"))

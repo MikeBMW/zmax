@@ -122,6 +122,111 @@ def build(stage, a_mm, b_mm, *, v_cap=0.35, a_max=4.166667, jerk_max=15.0,
     }
 
 
+def poly_axis(pts):
+    """折线通道: 返回 (总长 mm, 段轴列表)。pts 为 mm 点列。"""
+    segs = []
+    L = 0.0
+    for i in range(len(pts) - 1):
+        d = _sub(pts[i + 1], pts[i])
+        n = _norm(d)
+        if n < 1e-9:
+            continue
+        segs.append((pts[i], _unit(d), n))
+        L += n
+    return L, segs
+
+
+def closest_on_poly(pts, pos):
+    """pos 到折线的最近点: 返回 (dev_mm, s_mm, axis_of_seg)。s 沿折线累计。"""
+    L, segs = poly_axis(pts)
+    best = (1e18, 0.0, _unit(_sub(pts[-1], pts[0])) if len(pts) > 1 else (0.0, 0.0, 1.0))
+    acc = 0.0
+    for p0, ax, n in segs:
+        rel = _sub(pos, p0)
+        t = max(0.0, min(n, _dot(rel, ax)))
+        d = _norm(_sub(rel, _mul(ax, t)))
+        if d < best[0]:
+            best = (d, acc + t, ax)
+        acc += n
+    return best
+
+
+def build_poly(stage, pts_mm, *, r_mm=None, v_cap=0.35, a_max=4.166667, tact_s=None,
+               dmdt=0.1, m_kg=1.2, f_max_n=5.0, dt=0.1):
+    """按**实际轨迹折线**建通道: pts 是这台机器真实走过的点 (不是编的端到端直线)。
+
+    通道 = 折线的扫掠包络: 轴心 = 实际轨迹, 半径 = 工具/工件外廓 (r_mm)。
+    这样"通道外表面"就是实际运动轨迹的包络面, 机器人只能在这个面内跑。
+    """
+    _raw = [[float(p[0]), float(p[1]), float(p[2])] for p in pts_mm]
+    pts = [_raw[0]]                              # 去重相邻同点 (零长度段会让端环基向量退化成 0)
+    for q in _raw[1:]:
+        if _norm(_sub(q, pts[-1])) > 1e-6:
+            pts.append(q)
+    if len(pts) < 2:
+        raise ValueError("折线至少 2 个不同点")
+    L, segs = poly_axis(pts)
+    axis = _unit(_sub(pts[-1], pts[0]))
+    r = float(r_override if (r_override := r_mm) is not None else radius_mm(stage))
+    tact = float(tact_s) if tact_s else None
+    v_along_cap = float(v_cap)
+    if tact and tact > 0:
+        v_along_cap = min(v_along_cap, (L / 1000.0) / tact)
+    s_tick = 0.035 * 1000.0
+    if tact and tact > 0:
+        ticks = max(1.0, tact / dt)
+        s_tick = min(s_tick, L / ticks)
+    e1, e2 = _perp_basis(axis)
+    return {"stage": stage, "pts": pts, "n_seg": len(segs), "a": pts[0], "b": pts[-1],
+            "axis": list(axis), "e1": list(e1), "e2": list(e2), "L_mm": round(L, 3),
+            "r_mm": r, "tact_s": tact, "v_cap": v_cap, "a_max": a_max,
+            "v_along_cap": round(v_along_cap, 5), "s_tick_mm": round(s_tick, 3), "dt": dt}
+
+
+def closest_on_polys(polys, pos):
+    """pos 到**多条**折线(同一技能的全部实际机动)的最近点: 返回 (dev_mm, s_mm, axis, k)。"""
+    best = (1e18, 0.0, (0.0, 0.0, 1.0), 0)
+    for k, pts in enumerate(polys):
+        d, s, ax = closest_on_poly(pts, pos)
+        if d < best[0]:
+            best = (d, s, ax, k)
+    return best
+
+
+def build_polys(stage, polys_mm, *, r_mm=None, v_cap=0.35, a_max=4.166667, tact_s=None, dt=0.1):
+    """一条技能 = 多段**实际机动**的包络集合 (例如 14 次下降各在一个槽位)。
+
+    通道 = ∪ 每条实际折线的扫掠包络; 机器人任何一次该动作都只能落在自己的那条管子里。
+    """
+    polys = []
+    for pts in polys_mm:
+        clean = [[float(p[0]), float(p[1]), float(p[2])] for p in pts]
+        ded = [clean[0]]
+        for q in clean[1:]:
+            if _norm(_sub(q, ded[-1])) > 1e-6:
+                ded.append(q)
+        if len(ded) >= 2:
+            polys.append(ded)
+    if not polys:
+        raise ValueError("没有有效折线")
+    L = sum(poly_axis(pl)[0] for pl in polys)
+    r = float(r_mm if r_mm is not None else radius_mm(stage))
+    tact = float(tact_s) if tact_s else None
+    v_along_cap = float(v_cap)
+    if tact and tact > 0:
+        v_along_cap = min(v_along_cap, (L / 1000.0) / tact)
+    s_tick = 0.035 * 1000.0
+    if tact and tact > 0:
+        s_tick = min(s_tick, max(0.2, L / max(1.0, tact / dt)))
+    a, b = polys[0][0], polys[-1][-1]
+    axis = _unit(_sub(b, a))
+    e1, e2 = _perp_basis(axis)
+    return {"stage": stage, "polys": polys, "n_poly": len(polys), "a": a, "b": b,
+            "pts": polys[0], "axis": list(axis), "e1": list(e1), "e2": list(e2),
+            "L_mm": round(L, 3), "r_mm": r, "tact_s": tact, "v_cap": v_cap, "a_max": a_max,
+            "v_along_cap": round(v_along_cap, 5), "s_tick_mm": round(s_tick, 3), "dt": dt}
+
+
 def edges(corr, n_side=4):
     """通道边界线 (给 AR 场景画): 轴 1 条 + 四边 n_side 条。返回 [(p1_mm, p2_mm, kind)]"""
     a, b = corr["a"], corr["b"]
@@ -141,14 +246,36 @@ def project_stage(stage, u, pos_mm, corr, *, dt=None, v_prev=None):
     """
     dt = float(dt or corr.get("dt") or 0.1)
     v = [float(u[0]), float(u[1]), float(u[2])]
-    a = corr["a"]
-    ax = corr["axis"]
     r = float(corr["r_mm"])
     L = float(corr["L_mm"])
-    rel = _sub(pos_mm, a)
-    s = _dot(rel, ax)                                  # 轴向已走 (mm)
-    lat = _sub(rel, _mul(ax, s))                       # 横向偏差矢量 (mm)
-    dev = _norm(lat)
+    if corr.get("polys"):                              # 🔵 多段实际机动的包络集合
+        dev, s, ax, _k = closest_on_polys(corr["polys"], pos_mm)
+        pts_best = corr["polys"][_k]
+        acc, cp = 0.0, pts_best[0]
+        for p0, axx, n in poly_axis(pts_best)[1]:
+            if s <= acc + n + 1e-9:
+                cp = _add(p0, _mul(axx, max(0.0, min(n, s - acc))))
+                ax = axx
+                break
+            acc += n
+        lat = _sub(pos_mm, cp)
+    elif corr.get("pts"):                              # 🔵 折线包络通道 (实际轨迹)
+        dev, s, ax = closest_on_poly(corr["pts"], pos_mm)
+        acc, cp = 0.0, corr["pts"][0]
+        for p0, axx, n in poly_axis(corr["pts"])[1]:
+            if s <= acc + n + 1e-9:
+                cp = _add(p0, _mul(axx, max(0.0, min(n, s - acc))))
+                ax = axx
+                break
+            acc += n
+        lat = _sub(pos_mm, cp)
+    else:                                              # 直线通道 (旧口径, 兼容)
+        a = corr["a"]
+        ax = corr["axis"]
+        rel = _sub(pos_mm, a)
+        s = _dot(rel, ax)                                  # 轴向已走 (mm)
+        lat = _sub(rel, _mul(ax, s))                       # 横向偏差矢量 (mm)
+        dev = _norm(lat)
     why = []
     v_along = _dot(v, ax)
     v_lat = _sub(v, _mul(ax, v_along))

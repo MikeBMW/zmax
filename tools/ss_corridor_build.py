@@ -1,28 +1,34 @@
 #!/usr/bin/env python3
-"""原子技能 · 3D 约束通道 构建器 (AR 场景用)
+"""原子技能 · 3D 约束通道 = **实际轨迹的扫掠包络** (AR 场景用)
 
-老倪 2026-10-31: 「你现在有 AR 动画仿真/UPH 节拍/每拍实际仿真动作/上升接近等状态和实际坐标;
-根据 3D 坐标 + 动作状态 + 节拍, 调整运动学与动力学约束, 让每个原子动作都被约束在有效通道内;
-把每个原子技能的通道边界画到 AR 场景里。」
+老倪 2026-10-31: 「你的约束, 是实际轨迹的包络外表面 —— 只能让机器人在你的约束之内运行。」
+              「为什么离机器人很远?」
 
-做的事 (一条命令):
-  ① 读 3D 真坐标: zmax_data/ss_live/trace_live.json 的 末端 / 光模块 (m, AR 场景同源)
-  ② 按 8 段工艺几何造通道 (轴 A→B, 半径 r, 长度 L), 数字与 atomic_skills.clamp 同一套
-     (v_cap/a_max/jerk/s_step 取自 config/calib/zmax_skill_physics.json, 缺则用技能类常量)
-  ③ 节拍 (tact_s) 参与: ticks=tact/dt, 轴向速度 ≤ L/tact, 单拍行程 ≤ min(s_step, L/ticks)
-  ④ 落盘 zmax_data/ss_live/skill_corridors.json  ← 技能过闸每拍读它 (同一真源)
-  ⑤ 落盘 AR 场景边界线 zmax_data/ar_rs/fences.json (id=COR-SKxx, 轴 1 + 四边 4 条)
+错在哪 (前两版):
+  v1 拿 trace_live 的 末端/光模块 (另一路话题, -78/641/188 mm) 当锚点, 又自己拼 "模块上方 90mm"
+     这类端点 ⇒ 通道画在别处, 离 AR 里机器人一米多远。
+  v2 换 sim_transport.json (490/922/350 那套槽位盒) —— 也不是 AR 页面按拍驱动的段表。
+
+这一版只认真在跑的那条轨迹:
+  唯一依据 = plan_long_impl 的段表 (_S["segs"], 392 段; AR 页面按拍驱动的 a→b 就是它,
+             页面 /api/ar/cmd 也是同一个 plan 节点写的)
+  轴心 = 每段真实的 a→b (不自己编端点); 同一种动作的**每一次机动**各一条管子
+  半径 r = 该动作允许的外廓 (工具/夹爪/工件半径 + 间隙)
+  ⇒ 通道外表面 = 实际轨迹的扫掠包络面; 机器人跑不出这个面。
+
+技能分组 (按真实段 kind/label):
+  接近 = move·「上方」     对位 = move·「孔口」     下降 = down       抓取 = grip
+  抬起 = up               转移 = move·「行进高度」  插入 = insert+pull 完成 = release
 
 用法:
-  python tools/ss_corridor_build.py                 # 建 8 条 + 写 AR 边界
-  python tools/ss_corridor_build.py --tact 1.2      # 指定节拍 (s/段)
-  python tools/ss_corridor_build.py --check 插入     # 只算一条, 打印边界与被削原因 (不改文件)
-  python tools/ss_corridor_build.py --json          # 只打印 json
+  python3 tools/ss_corridor_build.py                 # 重算 8 段 + 写 AR 管道线
+  python3 tools/ss_corridor_build.py --check 插入     # 单段自检 (轨迹点在内/越界被切外)
+  python3 tools/ss_corridor_build.py --tact 1.43     # 覆盖节拍 (缺省用段表真实 t)
 """
 from __future__ import annotations
 
-import argparse
 import json
+import math
 import os
 import sys
 import time
@@ -30,159 +36,221 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
-from lerobot.policies.left_right.state_space import corridor as C  # noqa: E402
+OUT = os.path.join(ROOT, "zmax_data", "ss_live", "skill_corridors.json")
+FENCES = os.path.join(ROOT, "zmax_data", "ar_rs", "fences.json")
 
-LIVE = os.path.join(ROOT, "zmax_data", "ss_live")
-CORR_JSON = os.path.join(LIVE, "skill_corridors.json")
-PHYS_JSON = os.path.join(ROOT, "config", "calib", "zmax_skill_physics.json")
-AR_FENCES = os.path.join(ROOT, "zmax_data", "ar_rs", "fences.json")
-
-# 段名 → 技能类常量里的键 (真源 config/calib/zmax_skill_physics.json 段名同此)
-STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
-SK_ID = {"接近": "SK01", "对位": "SK02", "下降": "SK03", "抓取": "SK04",
-         "抬起": "SK05", "转移": "SK06", "插入": "SK07", "完成": "SK08"}
+# 每段包络半径 (mm): 搬移 = 工具外廓 25mm; 越靠孔口越收紧 ⇒ 管子越贴轨迹
+R_MM = {"接近": 25.0, "对位": 8.0, "下降": 6.0, "抓取": 3.0,
+        "抬起": 25.0, "转移": 25.0, "插入": 3.0, "完成": 6.0}
+ORDER = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
+SK = {"接近": "SK01", "对位": "SK02", "下降": "SK03", "抓取": "SK04",
+      "抬起": "SK05", "转移": "SK06", "插入": "SK07", "完成": "SK08"}
 
 
-def _live_points():
-    """末端 / 光模块 (mm)。取不到就返回 None (如实, 不编坐标)。"""
-    p = os.path.join(LIVE, "trace_live.json")
-    try:
-        t = json.load(open(p, encoding="utf-8")) or {}
-    except Exception:                                                      # noqa: BLE001
-        return None, None, {}
-    e, m = t.get("末端"), t.get("光模块")
-    if not (isinstance(e, (list, tuple)) and len(e) >= 3):
-        return None, None, t
-    E = [float(e[0]) * 1000.0, float(e[1]) * 1000.0, float(e[2]) * 1000.0]
-    P = None
-    if isinstance(m, (list, tuple)) and len(m) >= 3:
-        P = [float(m[0]) * 1000.0, float(m[1]) * 1000.0, float(m[2]) * 1000.0]
-    return E, P or [x + 40.0 for x in E], t
+def _mm(p):
+    return [round(float(p[0]), 3), round(float(p[1]), 3), round(float(p[2]), 3)]
 
 
-def _phys(stage):
-    """段约束数字: 真源 json 优先, 缺项用技能类常量 (与 clamp 同源)。"""
-    base = dict(v_cap=0.35, a_max=4.166667, jerk_max=15.0, s_step_m=0.035, dt=0.1)
-    try:
-        d = json.load(open(PHYS_JSON, encoding="utf-8"))
-        seg = (d.get("skills") or d.get("segments") or d).get(stage) or {}
-        for k_src, k_dst in (("v_cap", "v_cap"), ("a", "a_max"), ("a_max", "a_max"),
-                             ("jerk", "jerk_max"), ("jerk_max", "jerk_max"),
-                             ("s_step", "s_step_m"), ("s_step_m", "s_step_m"), ("dt", "dt")):
-            if seg.get(k_src) is not None:
-                base[k_dst] = float(seg[k_src])
-    except Exception:                                                      # noqa: BLE001
-        pass
-    return base
+def seg_table():
+    """取 plan 节点真实的段表 (AR 页面就是按它按拍动画)。"""
+    from lerobot.engineering.nodes import plan_long_impl as P
+
+    P.run({})
+    return list(P._S.get("segs") or []), float(P._S.get("tact") or 0.0)
 
 
-def _targets(stage, E, P):
-    """按工艺几何给 8 段造 A→B (mm)。"""
-    up = lambda z: [P[0], P[1], P[2] + z]                                # noqa: E731
-    return {
-        "接近": (E, up(90.0)),
-        "对位": (E, [P[0], P[1], E[2]]),
-        "下降": (E, up(10.0)),
-        "抓取": (E, [E[0], E[1], E[2] - 0.5]),
-        "抬起": (E, [E[0], E[1], E[2] + 80.0]),
-        "转移": (E, [P[0] + 60.0, P[1], P[2] + 40.0]),
-        "插入": (E, [P[0], P[1], P[2]]),
-        "完成": (E, [E[0], E[1], E[2] + 0.5]),
-    }[stage]
+def group_polys(segs):
+    """按真实段分组 → 8 条技能的多折线集合 (每条折线 = 一次真实机动)。"""
+    groups = {k: [] for k in ORDER}
+    tsum = {k: 0.0 for k in ORDER}
+    for s in segs:
+        kind = str(s.get("kind") or "")
+        label = str(s.get("label") or "")
+        a, b = s.get("a"), s.get("b")
+        if not (isinstance(a, (list, tuple)) and isinstance(b, (list, tuple))):
+            continue
+        A, B = _mm(a), _mm(b)
+        t = float(s.get("t") or 0.0)
+        if kind == "move":
+            st = "转移" if "行进高度" in label else ("对位" if "孔口" in label else "接近")
+        elif kind == "down":
+            st = "下降"
+        elif kind == "grip":
+            st = "抓取"
+        elif kind == "up":
+            st = "抬起"
+        elif kind in ("insert", "pull"):
+            st = "插入"
+        elif kind == "release":
+            st = "完成"
+        else:
+            continue
+        if A == B:                                    # 零位移段 (夹爪/检测) ⇒ 1mm 微段占位
+            B = [A[0], A[1], A[2] - 1.0]
+        groups[st].append([A, B])
+        tsum[st] += t
+    return groups, tsum
 
 
 def build_all(tact_s=None):
-    E, P, trace = _live_points()
-    if E is None:
-        print("⛔ 没有 3D 真坐标 (zmax_data/ss_live/trace_live.json 缺 末端) ⇒ 不造通道, 不编坐标")
+    from lerobot.policies.left_right.state_space import corridor as C
+
+    segs, tact_tab = seg_table()
+    if not segs:
+        print("⛔ plan 段表为空 ⇒ 不造通道")
         return None
-    out = {}
-    for st in STAGES:
-        a, b = _targets(st, E, P)
-        ph = _phys(st)
-        corr = C.build(st, a, b, v_cap=ph["v_cap"], a_max=ph["a_max"], jerk_max=ph["jerk_max"],
-                       s_step_m=ph["s_step_m"], dt=ph["dt"], tact_s=tact_s)
-        corr["pos_src"] = "trace_live.末端/光模块"
-        out[st] = corr
-    return {"schema": "zmax-skill-corridors", "version": "1.0",
-            "built_at": time.strftime("%F %T"), "pos_src": "trace_live.json",
-            "trace_stage": trace.get("阶段"), "tact_s": tact_s,
-            "corridors": out}
+    groups, tsum = group_polys(segs)
+    corrs = {}
+    for st in ORDER:
+        polys = groups.get(st) or []
+        if not polys:
+            continue
+        tact = float(tact_s) if tact_s else (tsum[st] / max(1, len(polys)))
+        corrs[st] = C.build_polys(st, polys, r_mm=R_MM[st], tact_s=tact)
+        corrs[st]["n_poly"] = len(polys)
+    return {"schema": "zmax.ss_skill_corridor/3", "built_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "source": "plan_long_impl._S['segs'] (AR 按拍段表)",
+            "note": "轴心=每段真实 a→b; 半径=工具/工件外廓 ⇒ 外表面=实际轨迹包络面",
+            "seg_total": len(segs), "tact_tab_s": tact_tab, "tact_s": tact_s,
+            "corridors": corrs}
+
+
+# ── AR: 每次真实机动画一根管子 (两条母线贴着 r 外廓 + 两端横档) ──────────
+def _unit(v):
+    n = math.sqrt(sum(x * x for x in v)) or 1.0
+    return [x / n for x in v]
+
+
+def _add(a, b, k=1.0):
+    return [a[0] + b[0] * k, a[1] + b[1] * k, a[2] + b[2] * k]
+
+
+def _perp(u):
+    a = [1.0, 0.0, 0.0] if abs(u[0]) < 0.9 else [0.0, 1.0, 0.0]
+    e1 = _unit([u[1] * a[2] - u[2] * a[1], u[2] * a[0] - u[0] * a[2], u[0] * a[1] - u[1] * a[0]])
+    e2 = _unit([u[1] * e1[2] - u[2] * e1[1], u[2] * e1[0] - u[0] * e1[2], u[0] * e1[1] - u[1] * e1[0]])
+    return e1, e2
+
+
+def _line(fid, name, p1, p2, color, note=""):
+    return {"id": fid, "type": "line", "name": name,
+            "p1": [round(x / 1000.0, 6) for x in p1], "p2": [round(x / 1000.0, 6) for x in p2],
+            "color": color, "enabled": True, "no_collision": True, "note": note}
 
 
 def write_ar_fences(doc):
-    """把通道边界写进 AR 场景围栏文件 (页面本来就渲染 line/box)。"""
-    items = []
     try:
-        old = json.load(open(AR_FENCES, encoding="utf-8")) or {}
-        items = [it for it in (old.get("items") or []) if not str(it.get("id", "")).startswith("COR-")]
-    except Exception:                                                      # noqa: BLE001
-        pass
-    at = time.strftime("%F %T")
-    for st, corr in (doc.get("corridors") or {}).items():
-        sid = SK_ID.get(st, st)
-        for i, (p1, p2, kind) in enumerate(C.edges(corr)):
-            items.append({
-                "id": f"COR-{sid}-{'axis' if kind == 'axis' else f'e{i}'}",
-                "type": "line",
-                "name": f"约束通道 {sid} {st} {'轴' if kind == 'axis' else f'边{i}'} "
-                        f"(r={corr['r_mm']}mm L={corr['L_mm']}mm)",
-                "p1": [round(x / 1000.0, 5) for x in p1],
-                "p2": [round(x / 1000.0, 5) for x in p2],
-                "color": "#7ee787" if kind == "axis" else "#3fb950",
-                "enabled": True,
-                "note": f"技能约束通道 · 节拍 {corr.get('tact_s')}s/段 · 单拍 ≤{corr.get('s_tick_mm')}mm",
-                "at": at,
-            })
-    doc2 = {"items": items, "margin_mm": 0, "at": at, "src": "tools/ss_corridor_build.py"}
-    os.makedirs(os.path.dirname(AR_FENCES), exist_ok=True)
-    tmp = AR_FENCES + ".tmp"
-    json.dump(doc2, open(tmp, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    os.replace(tmp, AR_FENCES)
-    return len([i for i in items if str(i.get("id", "")).startswith("COR-")])
+        cur = json.load(open(FENCES, encoding="utf-8")) or {}
+    except Exception:                                                     # noqa: BLE001
+        cur = {}
+    items = [it for it in (cur.get("items") or []) if not str(it.get("id", "")).startswith("COR-")]
+    n = 0
+    for st in ORDER:
+        c = (doc.get("corridors") or {}).get(st)
+        if not c:
+            continue
+        r, sid = float(c["r_mm"]), SK[st]
+        note = "%s 包络 r=%.1fmm · %d 次机动 · 节拍 %.2fs" % (st, r, c.get("n_poly") or 1, c.get("tact_s") or 0)
+        for j, pts in enumerate(c.get("polys") or []):
+            for i in range(len(pts) - 1):
+                p0, p1 = pts[i], pts[i + 1]
+                if sum((p1[k] - p0[k]) ** 2 for k in range(3)) < 1e-9:
+                    continue
+                u = _unit([p1[k] - p0[k] for k in range(3)])
+                e1, _e2 = _perp(u)
+                for k, off in enumerate((e1, [-x for x in e1])):
+                    items.append(_line("COR-%s-p%d-s%de%d" % (sid, j, i, k),
+                                       "包络 %s #%d 母线%d-%d" % (sid, j + 1, i + 1, k + 1),
+                                       _add(p0, off, r), _add(p1, off, r), "#2ea043", note))
+                    n += 1
+            for tag, (p, q) in (("s", (pts[0], pts[1])), ("e", (pts[-1], pts[-2]))):
+                u = _unit([p[k] - q[k] for k in range(3)])
+                e1, _e2 = _perp(u)
+                items.append(_line("COR-%s-p%d-%scap" % (sid, j, tag), "包络 %s #%d 端环" % (sid, j + 1),
+                                   _add(p, e1, r), _add(p, [-x for x in e1], r), "#2ea043", note))
+                n += 1
+    doc_f = dict(cur)
+    doc_f["items"] = items
+    doc_f["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    doc_f["src"] = "tools/ss_corridor_build.py (实际轨迹包络)"
+    os.makedirs(os.path.dirname(FENCES), exist_ok=True)
+    tmp = FENCES + ".tmp"
+    json.dump(doc_f, open(tmp, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    os.replace(tmp, FENCES)
+    return n
+
+
+# ── 自检 ────────────────────────────────────────────────────────────────
+def check(doc, stage):
+    from lerobot.policies.left_right.state_space import corridor as C
+
+    c = (doc.get("corridors") or {}).get(stage)
+    if not c:
+        print("没有该段通道:", stage)
+        return 2
+    polys, r = c["polys"], float(c["r_mm"])
+    print("%s (%s): %d 次真实机动 · 总长 %.2fmm · r=%.1fmm · 节拍 %.2fs"
+          % (stage, SK[stage], len(polys), c["L_mm"], r, c.get("tact_s") or 0))
+    worst = 0.0
+    for pts in polys:
+        for p in pts:
+            worst = max(worst, C.closest_on_polys(polys, p)[0])
+    print("  ① 全部轨迹点到最近轴心最大距离 = %.6f mm (应为 0)" % worst)
+    p0 = polys[0][0]
+    _, info = C.project_stage(stage, [0, 0, 0, 0], p0, c)
+    print("  ② 轨迹起点: in_channel=%s dev=%.4fmm" % (info["in_channel"], info["dev_mm"]))
+    u = _unit([polys[0][-1][k] - p0[k] for k in range(3)])
+    e1, _e2 = _perp(u)
+    k_mul = 3.0
+    bad = _add(p0, e1, r * k_mul)
+    while C.closest_on_polys(polys, bad)[0] <= r and k_mul < 40:   # 通道是并集: 逐级外移直到真在外面
+        k_mul += 1.0
+        bad = _add(p0, e1, r * k_mul)
+    u_out, info2 = C.project_stage(stage, [e1[0] * .3, e1[1] * .3, e1[2] * .3, 0.0], bad, c)
+    print("  ③ 越界 %.0fr: dev=%.2f 超 %.2fmm ⇒ u_out=%s · 削因 %s"
+          % (k_mul, info2["dev_mm"], info2["excess_mm"], [round(x, 3) for x in u_out[:3]], info2["why"]))
+    ok = worst < 1e-6 and info["in_channel"] and (not info2["in_channel"]) and ("切外" in info2["why"])
+    print("  判定:", "✅ 轴心=实际轨迹, 越界被关回" if ok else "❌ 需查")
+    return 0 if ok else 1
 
 
 def table(doc):
-    print(f"{'段落':<6}{'技能':<6}{'半径mm':>8}{'轴长mm':>9}{'节拍s':>7}{'轴向v上限':>11}{'单拍mm':>8}")
-    for st, c in (doc.get("corridors") or {}).items():
-        print(f"{st:<6}{SK_ID.get(st, ''):<6}{c['r_mm']:>8.2f}{c['L_mm']:>9.2f}"
-              f"{(c.get('tact_s') or 0):>7.2f}{c['v_along_cap']:>11.4f}{c['s_tick_mm']:>8.2f}")
+    print("  段     技能   机动数  总长mm   半径mm  节拍s  轴向v上限  单拍mm")
+    for st in ORDER:
+        c = (doc.get("corridors") or {}).get(st)
+        if not c:
+            continue
+        print("  %-4s  %-6s %4d  %8.1f  %6.1f  %6.2f  %9.4f  %6.2f"
+              % (st, SK[st], c.get("n_poly") or 1, c["L_mm"], c["r_mm"],
+                 c.get("tact_s") or 0, c["v_along_cap"], c["s_tick_mm"]))
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--tact", type=float, default=None,
-                    help="每段节拍 s (缺省按实测 UPH 314 → 11.47s/件 ÷ 8 段 = 1.43s)")
-    ap.add_argument("--check", default=None, help="只算一段, 打印边界/越界判定 (不写文件)")
-    ap.add_argument("--json", action="store_true", help="只打印 json")
-    a = ap.parse_args()
-    tact = a.tact if a.tact else 1.43
-    if a.check:
-        E, P, _ = _live_points()
-        if E is None:
-            print("⛔ 没有 3D 真坐标"); return 2
-        ab = _targets(a.check, E, P)
-        ph = _phys(a.check)
-        corr = C.build(a.check, ab[0], ab[1], v_cap=ph["v_cap"], a_max=ph["a_max"],
-                       jerk_max=ph["jerk_max"], s_step_m=ph["s_step_m"], dt=ph["dt"], tact_s=tact)
-        u = [0.30, 0.0, 0.05, 0.0]
-        uo, info = C.project_stage(a.check, u, [E[0] + corr["r_mm"] * 3, E[1], E[2]], corr)
-        print(json.dumps({"corridor": corr, "u_in": u, "u_out": uo, "info": info},
-                         ensure_ascii=False, indent=1))
-        return 0
+    tact, stage = None, None
+    argv = sys.argv[1:]
+    i = 0
+    while i < len(argv):
+        if argv[i] == "--tact" and i + 1 < len(argv):
+            tact = float(argv[i + 1]); i += 2
+        elif argv[i] == "--check" and i + 1 < len(argv):
+            stage = argv[i + 1]; i += 2
+        elif argv[i] in ("-h", "--help"):
+            print(__doc__); return 0
+        else:
+            i += 1
     doc = build_all(tact_s=tact)
     if doc is None:
         return 2
-    if a.json:
-        print(json.dumps(doc, ensure_ascii=False, indent=1)); return 0
-    os.makedirs(LIVE, exist_ok=True)
-    json.dump(doc, open(CORR_JSON + ".tmp", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-    os.replace(CORR_JSON + ".tmp", CORR_JSON)
+    if stage:
+        return check(doc, stage)
+    os.makedirs(os.path.dirname(OUT), exist_ok=True)
+    json.dump(doc, open(OUT + ".tmp", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    os.replace(OUT + ".tmp", OUT)
     n = write_ar_fences(doc)
+    print("包络通道 · 源 %s · 段表节拍 %.2fs/件" % (doc["source"], doc["tact_tab_s"]))
     table(doc)
-    print(f"\n✅ 通道真源: {CORR_JSON}  (8 段)")
-    print(f"✅ AR 边界线: {AR_FENCES}  (新增/更新 COR-* 共 {n} 条: 每段 轴1+四边4)")
-    print(f"   节拍口径: {tact}s/段 (可 --tact 覆盖; UPH 314 实测 11.47s/件 ÷ 8)")
+    print("→ 真源 %s" % OUT)
+    print("→ AR 管道线 %d 条 → %s" % (n, FENCES))
     return 0
 
 
