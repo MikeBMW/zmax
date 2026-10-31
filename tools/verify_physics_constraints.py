@@ -13,7 +13,7 @@
   ③ 现场: skill_error.json 帧龄 <1s · 每技能有 请求/可行/偏差/削因/大偏差 · 计数在涨
   ④ 偏差→状态校正器: state_correction(err=...) 真把偏差并进校正结果 (有 err 与无 err 结果不同且差值 == w·err)
   ⑤ 大偏差→融合定位→流形引擎顶层补偿: 定位不新鲜 ⇒ 拒绝; 定位新鲜+持续≥3拍 ⇒ 补偿 2mm 且累计增长; 累计到顶 ⇒ 停手
-  ⑥ 画布: ⚖物理约束闸节点在 · 12 条新连线在 (8 技能→闸 + 可行→安全边界 + 小偏差→校正器 + 大偏差→融合定位) ·
+  ⑥ 画布: ⚖动力学约束闸节点在 · 12 条新连线在 (8 技能→闸 + 可行→安全边界 + 小偏差→校正器 + 大偏差→融合定位) ·
      流形引擎那条边标签写实
   ⑦ 轨迹键: engine_latest 有 skill闸.* 与 顶层补偿_* (信号分析可画)
   ⑧ 零回归: 引擎 action 照旧 4 维 + 五个服务 active
@@ -169,11 +169,11 @@ except Exception as ex:                                                         
     chk("顶层补偿探针", False, ex)
 
 # ── ⑥ 画布 ──────────────────────────────────────────────────────────────────
-print("⑥ 画布: ⚖物理约束闸 + 12 条连线 + 流形引擎那条边写实")
+print("⑥ 画布: ⚖动力学约束闸 + 12 条连线 + 流形引擎那条边写实")
 try:
     d = json.load(open(os.path.realpath(os.path.join(REPO, "flows", "state_space_obs.json")), encoding="utf-8"))
     N = {n["id"]: n for n in d["nodes"]}
-    chk("⚖物理约束闸 节点在", "ssphys" in N, N.get("ssphys", {}).get("name"))
+    chk("⚖动力学约束闸 节点在", "ssphys" in N, N.get("ssphys", {}).get("name"))
     _to_gate = [l for l in d["links"] if l["t"] == "ssphys" and str(l["f"]).startswith("sssk")]
     chk("8 个技能 → 物理闸 (8 条)", len(_to_gate) == 8, len(_to_gate))
     chk("物理闸 → 安全执行边界 (可行动作)", any(l["f"] == "ssphys" and l["t"] == "sslimit" for l in d["links"]))

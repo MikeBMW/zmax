@@ -8,7 +8,7 @@
 
 输出 (可复制进报告):
   ① 技能级盘查表: m / F_max / v_cap / a_max=F/m / jerk_max / dm·dt⁻¹ + 四条约束 + 物理量唯一依据
-  ② 画布口径一致性: 画布 ⚖物理约束闸 节点 params.skills 与代码唯一依据逐字段一致 (防"界面上写一套、代码跑另一套")
+  ② 画布口径一致性: 画布 ⚖动力学约束闸 节点 params.skills 与代码唯一依据逐字段一致 (防"界面上写一套、代码跑另一套")
   ③ 现场闸门统计: skill_error.json 的削因计数 + 每技能最近请求/可行/偏差/大偏差
   ④ 判定: 9 个技能全部带 4 条约束 ⇒ 通过; 缺任何一条 ⇒ 红。
 """
@@ -43,7 +43,7 @@ for r in rows:
 
 # ② 画布口径一致
 print("\n" + "-" * 118)
-print("② 画布口径一致性 (⚖物理约束闸 节点 params.skills vs 代码唯一依据)")
+print("② 画布口径一致性 (⚖动力学约束闸 节点 params.skills vs 代码唯一依据)")
 try:
     d = json.load(open(os.path.realpath(os.path.join(REPO, "flows", "state_space_obs.json")), encoding="utf-8"))
     node = next((n for n in d["nodes"] if n["id"] == "ssphys"), None)

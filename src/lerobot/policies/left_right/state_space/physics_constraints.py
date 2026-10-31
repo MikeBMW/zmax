@@ -179,44 +179,45 @@ def limits_for(stage, dt=0.1, override=None):
     return p
 
 
-class InertiaLimiter:
-    """⚖ 惰性/质量率闸: 进技能的动作先过物理, 过不去就削出偏差 error。"""
+# ── 🧭 运动学约束 / ⚖ 动力学约束 分工 (2026-10-31 老倪: 「接近、对位这些技能要符合运动学约束;
+#    物理约束这个要改成动力学约束; 都要真正调用」) ─────────────────────────────────────────
+#   🧭 运动学 = 只与几何/时间有关, 与质量力无关: ①速度 ②加速度 ③加加速度 ⑤位移(速度的积分)
+#   ⚖ 动力学 = 与质量/力/动量有关: ④动量/质量变化率 |m·Δv + v·Δm| ≤ F_max·dt (F_max 按段取, 金手指 ≤2N)
+#   两条闸**每拍各调一次**(各自计数 n / n_cut, dispatch 逐拍对账), 由 InertiaLimiter 按 ①②③④⑤
+#   原序编排 ⇒ 输出与拆分前**逐位相同**(回归判据 tools/verify_kin_dyn_split.py)。
+KIN_CUTS = ("速度", "加速度", "加加速度", "位移")
+DYN_CUTS = ("动量/质量率",)
 
-    def __init__(self, dt=0.1, big_err=None):
+
+def _skip_env():
+    """消融开关 (默认空集 = 全开, 行为逐位不变): ZMAX_GATE_SKIP="加加速度,位移"。"""
+    return {s.strip() for s in os.environ.get("ZMAX_GATE_SKIP", "").split(",") if s.strip()}
+
+
+class KinematicLimiter:
+    """🧭 运动学约束闸: ①速度 ②加速度 ③加加速度 ⑤单拍位移/段累计行程 (不看 m / F)。"""
+
+    def __init__(self, dt=0.1):
         self.dt = float(dt)
-        self.big_err = float(big_err if big_err is not None else BIG_ERR)
-        self.n = 0
-        self.n_cut = {k: 0 for k in ("速度", "加速度", "加加速度", "动量/质量率", "位移")}
-        self.last = None
-        self.travel = {}            # 各段**累计行程** m (换段自动清零) — ⑤ 位移约束用
+        self.n = 0                                   # 本闸被调用拍数
+        self.n_cut = {k: 0 for k in KIN_CUTS}
+        self.travel = {}                             # 各段累计行程 m (换段清零)
         self._travel_stage = None
-        self.n_over = 0             # 行程超上限的拍数 (只报不杀, 见 ⑤)
-        self.n_clamp = 0            # 标定值被上下限夹回的次数 (取证) 
-        self.n_unknown = 0          # 段名不在真源里的拍数 (静默降级 → 现在可见)
-        # 🧪 诊断开关 (2026-10-16): ZMAX_GATE_SKIP="加加速度,位移" 跳过指定约束做消融;
-        #   默认空集 = 五条全开, 行为与加开关前**逐位相同**。
-        self.skip = {s.strip() for s in os.environ.get("ZMAX_GATE_SKIP", "").split(",") if s.strip()}
+        self.n_over = 0                              # 行程超上限拍数 (只报不杀)
+        self.last = None
+        self.skip = _skip_env()
 
     def reset_stage(self, stage=None):
-        """手动清某段 (或全部) 累计行程。"""
         if stage is None:
             self.travel = {}
             self._travel_stage = None
         else:
             self.travel.pop(str(stage), None)
 
-    def limit(self, stage, u_req, v_prev=None, a_prev=None, m=None, dmdt=None, dt=None):
-        """把请求动作裁成**物理可行**的动作, 并给出被裁掉的偏差。
-
-        只动前 3 维 (x,y,z 平移速度); 第 4 维 (夹爪 0/1) 原样透传 (它不是运动学量)。
-        """
-        p = limits_for(stage, dt=dt or self.dt)
-        if m is not None:
-            p["m"] = float(m)
-            p["a_max"] = float(p["F"]) / max(1e-6, float(p["m"]))
-        _dmdt = float(p["dmdt"] if dmdt is None else dmdt)
-        u = np.asarray(u_req, dtype=float).ravel().copy()
-        v = u[:3].copy()
+    def limit(self, stage, v_req, v_prev=None, a_prev=None, p=None, dt=None):
+        """①②③ 速度/加速度/加加速度。返回 (v, why, p, v0); p 由调用方给则与动力学共用同一份上限。"""
+        p = p if p is not None else limits_for(stage, dt=dt or self.dt)
+        v = np.asarray(v_req, dtype=float).ravel().copy()
         v0 = (np.zeros(3) if v_prev is None else np.asarray(v_prev, dtype=float).ravel()[:3].copy())
         a0 = (np.zeros(3) if a_prev is None else np.asarray(a_prev, dtype=float).ravel()[:3].copy())
         why = []
@@ -225,33 +226,31 @@ class InertiaLimiter:
         if "速度" not in self.skip and n > p["v"] > 0:
             v = v * (p["v"] / n)
             why.append("速度")
-        # ② 加速度上限 (F = m·a)
+        # ② 加速度上限 (a_max = F/m 或标定 a)
         dv = v - v0
         a_lim = p["a_max"] * p["dt"]
         n_dv = float(np.linalg.norm(dv))
         if "加速度" not in self.skip and n_dv > a_lim > 0:
             v = v0 + dv * (a_lim / n_dv)
             why.append("加速度")
-        # ③ 加加速度上限 (平顺: 不许在本拍把加速度整个翻过来)
+        # ③ 加加速度上限 (平顺性: 本拍不能把加速度整个翻过来)
         a_new = (v - v0) / p["dt"]
         da = a_new - a0
-        # 🧪 诊断: ZMAX_GATE_JERK_X 对 jerk 上限做倍率 (默认 1.0 = 逐位不变)。
-        #   实测 (seed104 真物理): jerk 闸全开时插入失败 (-2.3mm), 关掉即恢复 (64.3mm) —
-        #   jerk_max 标定值与毫米级插孔的微修正需求冲突, 倍率用来找可用值。
         j_lim = p["jerk_max"] * p["dt"] * float(os.environ.get("ZMAX_GATE_JERK_X") or 1.0)
         n_da = float(np.linalg.norm(da))
         if "加加速度" not in self.skip and n_da > j_lim > 0:
             a_new = a0 + da * (j_lim / n_da)
             v = v0 + a_new * p["dt"]
             why.append("加加速度")
-        # ④ 动量/质量变化率: |m·Δv + v·Δm| ≤ F_max·dt
-        f_lim = p["F"] * p["dt"]
-        f_need = p["m"] * (v - v0) + v * (_dmdt * p["dt"])
-        n_f = float(np.linalg.norm(f_need))
-        if "动量/质量率" not in self.skip and n_f > f_lim > 0:
-            v = v0 + (v - v0) * (f_lim / max(n_f, 1e-9))
-            why.append("动量/质量率")
-        # ⑤ 位移: ‖v‖·dt ≤ s_step (单拍位移封顶) + 段累计行程 ≤ s_max (位置 = 速度的积分)
+        self.n += 1
+        for w in why:
+            self.n_cut[w] = self.n_cut.get(w, 0) + 1
+        self.last = {"v": [float(x) for x in v], "why": "+".join(why) or "可行"}
+        return v, why, p, v0
+
+    def displace(self, stage, v, p):
+        """⑤ 位移: ‖v‖·dt ≤ s_step (单拍封顶) + 段累计行程 ≤ s_max (只报不杀)。返回 (v, why, over, s)。"""
+        why = []
         s_step = float(p.get("s_step") or 0.0)
         if s_step > 0:
             d_now = float(np.linalg.norm(v)) * p["dt"]
@@ -260,13 +259,111 @@ class InertiaLimiter:
                 why.append("位移")
         _key = str(stage)
         if _key != self._travel_stage:
-            self._travel_stage = _key            # 换段 ⇒ 该段行程从 0 起算
+            self._travel_stage = _key
             self.travel[_key] = 0.0
         self.travel[_key] = self.travel.get(_key, 0.0) + float(np.linalg.norm(v)) * p["dt"]
         s_max = float(p.get("s_max") or 0.0)
         over = int(s_max > 0 and self.travel[_key] > s_max * (1.0 + 1e-9))
         if over:
             self.n_over += 1
+        for w in why:
+            self.n_cut[w] = self.n_cut.get(w, 0) + 1
+        return v, why, over, float(self.travel[_key])
+
+    def stats(self):
+        return {"n": self.n, "n_cut": dict(self.n_cut), "dt": self.dt,
+                "travel_m": {k: round(v, 6) for k, v in self.travel.items()},
+                "n_over_travel": self.n_over}
+
+
+class DynamicLimiter:
+    """⚖ 动力学约束闸: ④ |m·Δv + v·Δm| ≤ F_max·dt (抓取/释放时质量在变; F_max 按段取)。"""
+
+    def __init__(self, dt=0.1):
+        self.dt = float(dt)
+        self.n = 0
+        self.n_cut = {k: 0 for k in DYN_CUTS}
+        self.n_force = 0          # 力需求峰值超 F_max 的拍数 (诊断, 与削拍同源)
+        self.last = None
+        self.skip = _skip_env()
+
+    def reset_stage(self, stage=None):
+        return None
+
+    def limit(self, stage, v, v0, p, dmdt=None, dt=None):
+        """返回 (v, why, f_need_norm)。只动前 3 维 (平移), 第 4 维夹爪不是动力学量。"""
+        _dt = float(p.get("dt") or dt or self.dt)
+        _dmdt = float(p.get("dmdt") if dmdt is None else dmdt)
+        v = np.asarray(v, dtype=float).ravel().copy()
+        v0 = np.asarray(v0, dtype=float).ravel()[:3].copy()
+        f_lim = p["F"] * _dt
+        f_need = p["m"] * (v - v0) + v * (_dmdt * _dt)
+        n_f = float(np.linalg.norm(f_need))
+        why = []
+        if "动量/质量率" not in self.skip and n_f > f_lim > 0:
+            v = v0 + (v - v0) * (f_lim / max(n_f, 1e-9))
+            why.append("动量/质量率")
+            self.n_cut["动量/质量率"] += 1
+        if n_f > f_lim > 0:
+            self.n_force += 1
+        self.n += 1
+        self.last = {"f_need_N": round(n_f, 6), "F_max_N": float(p["F"]), "why": "+".join(why) or "可行"}
+        return v, why, n_f
+
+    def stats(self):
+        return {"n": self.n, "n_cut": dict(self.n_cut), "n_force_over": self.n_force, "dt": self.dt}
+
+
+class InertiaLimiter:
+    """⚖ 技能动作总闸: 🧭 运动学(①②③⑤) + ⚖ 动力学(④) 按 ①②③④⑤ 原序编排, 每拍两条闸都真调。"""
+
+    def __init__(self, dt=0.1, big_err=None):
+        self.dt = float(dt)
+        self.big_err = float(big_err if big_err is not None else BIG_ERR)
+        self.kin = KinematicLimiter(dt=self.dt)       # 🧭 运动学约束 (v/a/jerk/位移)
+        self.dyn = DynamicLimiter(dt=self.dt)         # ⚖ 动力学约束 (动量/质量率/力)
+        self.n = 0
+        self.n_cut = {k: 0 for k in ("速度", "加速度", "加加速度", "动量/质量率", "位移")}
+        self.last = None
+        self.travel = self.kin.travel                 # 与运动学闸共用同一份段行程 (单点记账)
+        self._travel_stage = None
+        self.n_over = 0
+        self.n_clamp = 0
+        self.n_unknown = 0
+        self.n_kin = 0                                # 🧭 运动学闸实际调用次数
+        self.n_dyn = 0                                # ⚖ 动力学闸实际调用次数
+        self.skip = self.kin.skip
+
+    def reset_stage(self, stage=None):
+        """手动清某段 (或全部) 累计行程。"""
+        self.kin.reset_stage(stage)
+        self.dyn.reset_stage(stage)
+        self._travel_stage = self.kin._travel_stage
+
+    def limit(self, stage, u_req, v_prev=None, a_prev=None, m=None, dmdt=None, dt=None):
+        """把请求动作裁成**物理可行**的动作, 并给出被裁掉的偏差。
+
+        🧭 运动学闸先削 ①②③, ⚖ 动力学闸再削 ④, 🧭 运动学闸收尾 ⑤ —— 与拆分前同一顺序、同一算式。
+        只动前 3 维 (x,y,z 平移速度); 第 4 维 (夹爪 0/1) 原样透传 (它不是运动学量)。
+        """
+        p = limits_for(stage, dt=dt or self.dt)
+        if m is not None:
+            p["m"] = float(m)
+            p["a_max"] = float(p["F"]) / max(1e-6, float(p["m"]))
+        _dmdt = float(p["dmdt"] if dmdt is None else dmdt)
+        u = np.asarray(u_req, dtype=float).ravel().copy()
+        # ① ② ③ —— 🧭 运动学约束
+        v, why, p, v0 = self.kin.limit(stage, u[:3], v_prev=v_prev, a_prev=a_prev, p=p)
+        self.n_kin += 1
+        # ④ —— ⚖ 动力学约束
+        v, why_f, _n_f = self.dyn.limit(stage, v, v0, p, dmdt=_dmdt)
+        self.n_dyn += 1
+        why = why + why_f
+        # ⑤ —— 🧭 运动学约束 (位移是速度的积分)
+        v, why_s, over, s_travel = self.kin.displace(stage, v, p)
+        why = why + why_s
+        self.n_over = self.kin.n_over
+        self._travel_stage = self.kin._travel_stage
         u[:3] = v
         err = np.asarray(u_req, dtype=float).ravel()[:3] - v
         e_norm = float(np.linalg.norm(err))
@@ -281,15 +378,18 @@ class InertiaLimiter:
                "v_req": [float(x) for x in np.asarray(u_req, dtype=float).ravel()[:3]],
                "err": [float(x) for x in err], "err_norm": round(e_norm, 8),
                "big": int(e_norm > self.big_err), "why": "+".join(why) or "可行",
+               "kin_why": "+".join(why[:len(why) - len(why_s)]) or "可行",
+               "dyn_why": "+".join(why_f) or "可行",
                "phys": {"m": round(float(p["m"]), 4), "F_max": float(p["F"]), "v_cap": float(p["v"]),
                         "v_min": float(p.get("v_min") or 0.0),
                         "a_max": round(float(p["a_max"]), 4), "jerk_max": round(float(p["jerk_max"]), 3),
-                        "dmdt_max": _dmdt, "s_step": float(s_step), "s_max": float(s_max),
+                        "dmdt_max": _dmdt, "s_step": float(p.get("s_step") or 0.0),
+                        "s_max": float(p.get("s_max") or 0.0),
                         "dt": float(p["dt"]), "src": p["src"],
                         "calib": p.get("calib_src_kind"), "bounds": p.get("bounds") or {},
                         "clamps": p.get("clamps") or [],
                         "unknown_stage": int(p.get("unknown_stage") or 0)},
-               "s_travel": round(float(self.travel[_key]), 6), "over_travel": over,
+               "s_travel": round(float(s_travel), 6), "over_travel": over,
                "unknown_stage": int(p.get("unknown_stage") or 0)}
         self.last = out
         return out
@@ -307,7 +407,11 @@ class InertiaLimiter:
                          "标定真源": q.get("calib_src_kind", ""), "上下限": q.get("bounds") or {},
                          "运行期夹回": q.get("clamps") or [],
                          "段名登记": ("已登记" if not q.get("unknown_stage") else "❌ 未登记(静默降级)"),
-                         "约束": "①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移", "真源": p["src"]})
+                         "运动学约束": "①速度 ②加速度 ③加加速度 ⑤位移",
+                         "动力学约束": "④动量/质量率 (F_max 按段)",
+                         # 兼容既有判据/报告 (它们按这一条字符串查 ①②③④)
+                         "约束": "①速度 ②加速度 ③加加速度 ④动量/质量率 ⑤位移",
+                         "真源": p["src"]})
         return rows
 
     def bounds(self, stage):
@@ -319,6 +423,8 @@ class InertiaLimiter:
                 "travel_m": {k: round(v, 6) for k, v in self.travel.items()},
                 "n_over_travel": self.n_over, "n_clamp": self.n_clamp,
                 "n_unknown_stage": self.n_unknown,
+                "运动学闸": self.kin.stats(), "动力学闸": self.dyn.stats(),
+                "n_gate_kin": self.n_kin, "n_gate_dyn": self.n_dyn,
                 "calib_src": limits_for("接近").get("calib_src_kind")}
 
 

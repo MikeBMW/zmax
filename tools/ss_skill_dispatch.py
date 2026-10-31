@@ -283,6 +283,9 @@ class Dispatcher:
                        "req": [round(float(x), 6) for x in _p["v_req"]],
                        "err": [round(float(x), 6) for x in _p["err"]], "err_norm": _p["err_norm"],
                        "big": _p["big"], "why": _p["why"], "phys": _p["phys"],
+                       # 🧭/⚖ 2026-10-31 老倪「接近、对位要符合运动学约束; 物理约束改成动力学约束;
+                       #   都要真正调用」—— 每拍分开记两条闸各自削了什么 (同一份 _p, 不另算)。
+                       "kin_why": _p.get("kin_why", ""), "dyn_why": _p.get("dyn_why", ""),
                        "a_mms2": _a_n, "s_mm": _s_mm,
                        "skill": CODE_BY_STAGE.get(st, "")}
             _atomic_json(os.path.join(SHM, "skill_%d_%s.json" % (STAGES.index(st), st)), out[st])
@@ -292,7 +295,16 @@ class Dispatcher:
                 "过闸_技能拍": self.n_gate_skill, "过闸_段闸拍": self.n_gate_stage,
                 "闸_拍数": int(getattr(self.lim, "n", 0)),
                 "闸_削因": dict(getattr(self.lim, "n_cut", {}) or {}),
-                "闸_不可行拍": int(sum((getattr(self.lim, "n_cut", {}) or {}).values()))}
+                "闸_不可行拍": int(sum((getattr(self.lim, "n_cut", {}) or {}).values())),
+                # 🧭 运动学约束 / ⚖ 动力学约束 分闸计数 (老倪 2026-10-31「都要真正调用」):
+                #   拍数必须都 == 闸_拍数 (没有一拍绕过任何一条闸); 削因各记各的。
+                "运动学闸_拍": int(getattr(self.lim, "n_kin", 0)),
+                "动力学闸_拍": int(getattr(self.lim, "n_dyn", 0)),
+                "运动学削因": dict((getattr(self.lim, "kin", None) and self.lim.kin.n_cut) or {}),
+                "动力学削因": dict((getattr(self.lim, "dyn", None) and self.lim.dyn.n_cut) or {}),
+                "动力学_力超限拍": int(getattr(getattr(self.lim, "dyn", None), "n_force", 0)),
+                "两条闸对账": ("一致" if int(getattr(self.lim, "n_kin", 0)) == int(getattr(self.lim, "n", -1))
+                              == int(getattr(self.lim, "n_dyn", -2)) else "❌ 拍数不一致")}
         for st in STAGES:
             v = out.get(st)
             flat["%s_mps" % st] = (_norm(v["action"]) if v else -1.0)
@@ -300,6 +312,9 @@ class Dispatcher:
             flat["%s_请求_mps" % st] = (_norm(v["req"]) if v and v.get("req") else -1.0)   # 前馈/块给的请求值
             flat["%s_偏差_mps" % st] = (float(v.get("err_norm") or 0.0) if v else -1.0)     # ⚖ 物理不可行偏差
             flat["%s_可行" % st] = (0 if (v or {}).get("why") not in (None, "可行") else 1)  # 1=原样可行 0=被削
+            # 🧭/⚖ 分闸判据: 1 = 该闸这一拍削了本段动作 (信号分析可直接画)
+            flat["%s_运动学_削" % st] = (0 if (v or {}).get("kin_why") not in (None, "", "可行") else 1)
+            flat["%s_动力学_削" % st] = (0 if (v or {}).get("dyn_why") not in (None, "", "可行") else 1)
         _atomic_json(os.path.join(LIVE, "skill_latest.json"), flat)
         # ⚖ 原子技能物理量唯一依据 (老倪 2026-10-15「所有原子技能都要有 topic 输出, 信号分析里看到 x y z v a」):
         #   每个技能一份 —— 数值/偏差/物理上限全部来自上面刚过的物理闸 (_p), 不另算一份;
@@ -346,6 +361,9 @@ class Dispatcher:
                 "err_mms": (float(_v["err_norm"]) * 1000.0 if _v else -1.0),   # 削出的偏差 mm/s
                 "big": (_v["big"] if _v else 0),
                 "why": ((_v or {}).get("why") or ""),
+                # 🧭/⚖ 分闸留痕: 这个技能的拍被运动学闸削了哪条 / 被动力学闸削了哪条
+                "kin_why": ((_v or {}).get("kin_why") or ""),
+                "dyn_why": ((_v or {}).get("dyn_why") or ""),
                 "v_cap": _pk("v_cap", "v"), "a_max": _pk("a_max", "a_cal"),
                 "jerk_max": _pk("jerk_max", "jerk"),
                 "s_step": _pk("s_step"), "s_max": _pk("s_max", "s"),

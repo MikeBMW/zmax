@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""⚖ 物理约束 · 惯性/质量率闸 (SK01-08)  ·  节点 ssphys
+"""⚖ 动力学约束  ·  节点 ssphys
 
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← sssk1
@@ -19,12 +19,12 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ssphys.<port>
 
-实现绑定: registry key=`n_exec` · src/lerobot/policies/left_right/state_space/physics_constraints.py::InertiaLimiter.limit
-执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
+实现绑定: registry key=`ss_dyn_gate` · src/lerobot/policies/left_right/state_space/physics_constraints.py::InertiaLimiter.limit
+执行口径: EXEC_MODE=pure · PURE=True (2026-10-31: 真跑 🧭运动学+⚖动力学两条闸, 见 nodes/constraint_gates_impl.py)
 """
 
 NODE_ID = 'ssphys'
-NAME = '⚖ 物理约束 · 惯性/质量率闸 (SK01-08)'
+NAME = '⚖ 动力学约束'
 LAYER = ''
 TYPE = 'model'
 EXEC_MODE = 'pure'
@@ -34,13 +34,13 @@ PORTS_IN = ['in1', 'in2', 'in3', 'in4', 'in5', 'in6', 'in7', 'in8']
 PORTS_OUT = ['out1', 'out2', 'out3']
 PORT_LABELS = {}
 
-IMPL_KEY = 'n_exec'
-SOURCE = 'src/lerobot/policies/left_right/state_space/physics_constraints.py::InertiaLimiter.limit'
+IMPL_KEY = 'ss_dyn_gate'
+SOURCE = 'src/lerobot/policies/left_right/state_space/physics_constraints.py::DynamicLimiter.limit'
 SOURCE_SYMBOL = ''
-PARAMS = {'state_space': True, 'physics_gate': True, 'desc': '[基础·分段小模型] 原子技能物理闸: 进技能的 action 先过 ①速度 ②加速度 ③加加速度 ④动量/质量变化率 ⑤位移 五条约束 (每技能自带 m/F/v/a/s/jerk/dm·dt⁻¹, 数值+物理上下限唯一依据 config/calib/zmax_skill_physics.json) ⇒ 削出偏差 error; 小偏差 → 状态校正器, 大偏差 → 融合定位 → 流形引擎顶层补偿', 'source': 'src/lerobot/policies/left_right/state_space/physics_constraints.py::InertiaLimiter.limit', 'skills': {'接近': {'m_kg': 1.2, 'F_max_N': 5.0, 'v_cap_mps': 0.35, 'a_max_mps2': 4.1667, 'jerk_max_mps3': 15.0, 'dmdt_max_kg_s': 0.1, 's_step_m': 0.035, 's_max_m': 0.6, '标定唯一依据': '唯一依据(config/calib/zmax_skill_physics.json)', '唯一依据': '未夹持(只剩夹爪 1.2kg) · F=FORCE_LIMIT 5N'}, '对位': {'m_kg': 1.2, 'F_max_N': 5.0, 'v_cap_mps': 0.12, 'a_max_mps2': 4.1667, 'jerk_max_mps3': 5.143, 'dmdt_max_kg_s': 0.1, 's_step_m': 0.012, 's_max_m': 0.06, '标定唯一依据': '唯一依据(config/calib/zmax_skill_physics.json)', '唯一依据': '未夹持 · F=FORCE_LIMIT 5N'}, '下降': {'m_kg': 1.2, 'F_max_N': 5.0, 'v_cap_mps': 0.09, 'a_max_mps2': 4.1667, 'jerk_max_mps3': 3.857, 'dmdt_max_kg_s': 0.1, 's_step_m': 0.009, 's_max_m': 0.05, '标定唯一依据': '唯一依据(config/calib/zmax_skill_physics.json)', '唯一依据': '未夹持 · F=FORCE_LIMIT 5N (触到即停)'}, '抓取': {'m_kg': 1.28, 'F_max_N': 12.0, 'v_cap_mps': 0.04, 'a_max_mps2': 9.375, 'jerk_max_mps3': 2.25, 'dmdt_max_kg_s': 0.5, 's_step_m': 0.004, 's_max_m': 0.006, '标定唯一依据': '唯一依据(config/calib/zmax_skill_physics.json)', '唯一依据': '夹持建立 m 1.20→1.35 · F=夹爪最大夹持力 12N'}, '抬起': {'m_kg': 1.35, 'F_max_N': 5.0, 'v_cap_mps': 0.3, 'a_max_mps2': 3.7037, 'jerk_max_mps3': 12.857, 'dmdt_max_kg_s': 0.1, 's_step_m': 0.03, 's_max_m': 0.16, '标定唯一依据': '唯一依据(config/calib/zmax_skill_physics.json)', '唯一依据': '已夹持 1.35kg · F=FORCE_LIMIT 5N'}, '转移': {'m_kg': 1.35, 'F_max_N': 5.0, 'v_cap_mps': 0.35, 'a_max_mps2': 3.7037, 'jerk_max_mps3': 15.0, 'dmdt_max_kg_s': 0.1, 's_step_m': 0.035, 's_max_m': 0.6, '标定唯一依据': '唯一依据(config/calib/zmax_skill_physics.json)', '唯一依据': '已夹持 · 平移 · F=FORCE_LIMIT 5N'}, '插入': {'m_kg': 1.35, 'F_max_N': 2.0, 'v_cap_mps': 0.085, 'a_max_mps2': 1.4815, 'jerk_max_mps3': 3.643, 'dmdt_max_kg_s': 0.1, 's_step_m': 0.0085, 's_max_m': 0.02, '标定唯一依据': '唯一依据(config/calib/zmax_skill_physics.json)', '唯一依据': '已夹持 · **金手指保护 ≤2N** (过盈段力控)'}, '完成': {'m_kg': 1.35, 'F_max_N': 2.0, 'v_cap_mps': 0.02, 'a_max_mps2': 1.4815, 'jerk_max_mps3': 2.25, 'dmdt_max_kg_s': 0.1, 's_step_m': 0.002, 's_max_m': 0.002, '标定唯一依据': '唯一依据(config/calib/zmax_skill_physics.json)', '唯一依据': '已夹持 · 保持 · ≤2N'}, '放入': {'m_kg': 1.35, 'F_max_N': 2.0, 'v_cap_mps': 0.06, 'a_max_mps2': 1.4815, 'jerk_max_mps3': 2.571, 'dmdt_max_kg_s': 0.5, 's_step_m': 0.006, 's_max_m': 0.6, '标定唯一依据': '唯一依据(config/calib/zmax_skill_physics.json)', '唯一依据': '摆盘链第7段 · 触底开爪释放 · ≤2N 不压伤'}}, 'big_err_mps': 0.05}
+PARAMS = {'state_space': True, 'physics_gate': True, 'kinematic_gate': True, 'dynamics_gate': True, 'desc': '[基础·分段小模型] ⚖ 动力学约束闸 (前置 🧭 运动学约束): 接近/对位…等技能的动作先过 ①速度 ②加速度 ③加加速度 ⑤位移 (运动学, 由技能类 clamp 真调) 再过 ④动量/质量变化率 (动力学, F_max 按段) (每技能自带 m/F/v/a/s/jerk/dm·dt⁻¹, 数值+物理上下限唯一依据 config/calib/zmax_skill_physics.json) ⇒ 削出偏差 error; 小偏差 → 状态校正器, 大偏差 → 融合定位 → 流形引擎顶层补偿', 'source': 'src/lerobot/policies/left_right/state_space/physics_constraints.py::DynamicLimiter.limit', 'skills': {'接近': {'m_kg': 1.2, 'F_max_N': 5.0, 'v_cap_mps': 0.35, 'a_max_mps2': 4.1667, 'jerk_max_mps3': 15.0, 'dmdt_max_kg_s': 0.1, 's_step_m': 0.035, 's_max_m': 0.6, '标定唯一依据': '唯一依据(config/calib/zmax_skill_physics.json)', '唯一依据': '未夹持(只剩夹爪 1.2kg) · F=FORCE_LIMIT 5N'}, '对位': {'m_kg': 1.2, 'F_max_N': 5.0, 'v_cap_mps': 0.12, 'a_max_mps2': 4.1667, 'jerk_max_mps3': 5.143, 'dmdt_max_kg_s': 0.1, 's_step_m': 0.012, 's_max_m': 0.06, '标定唯一依据': '唯一依据(config/calib/zmax_skill_physics.json)', '唯一依据': '未夹持 · F=FORCE_LIMIT 5N'}, '下降': {'m_kg': 1.2, 'F_max_N': 5.0, 'v_cap_mps': 0.09, 'a_max_mps2': 4.1667, 'jerk_max_mps3': 3.857, 'dmdt_max_kg_s': 0.1, 's_step_m': 0.009, 's_max_m': 0.05, '标定唯一依据': '唯一依据(config/calib/zmax_skill_physics.json)', '唯一依据': '未夹持 · F=FORCE_LIMIT 5N (触到即停)'}, '抓取': {'m_kg': 1.28, 'F_max_N': 12.0, 'v_cap_mps': 0.04, 'a_max_mps2': 9.375, 'jerk_max_mps3': 2.25, 'dmdt_max_kg_s': 0.5, 's_step_m': 0.004, 's_max_m': 0.006, '标定唯一依据': '唯一依据(config/calib/zmax_skill_physics.json)', '唯一依据': '夹持建立 m 1.20→1.35 · F=夹爪最大夹持力 12N'}, '抬起': {'m_kg': 1.35, 'F_max_N': 5.0, 'v_cap_mps': 0.3, 'a_max_mps2': 3.7037, 'jerk_max_mps3': 12.857, 'dmdt_max_kg_s': 0.1, 's_step_m': 0.03, 's_max_m': 0.16, '标定唯一依据': '唯一依据(config/calib/zmax_skill_physics.json)', '唯一依据': '已夹持 1.35kg · F=FORCE_LIMIT 5N'}, '转移': {'m_kg': 1.35, 'F_max_N': 5.0, 'v_cap_mps': 0.35, 'a_max_mps2': 3.7037, 'jerk_max_mps3': 15.0, 'dmdt_max_kg_s': 0.1, 's_step_m': 0.035, 's_max_m': 0.6, '标定唯一依据': '唯一依据(config/calib/zmax_skill_physics.json)', '唯一依据': '已夹持 · 平移 · F=FORCE_LIMIT 5N'}, '插入': {'m_kg': 1.35, 'F_max_N': 2.0, 'v_cap_mps': 0.085, 'a_max_mps2': 1.4815, 'jerk_max_mps3': 3.643, 'dmdt_max_kg_s': 0.1, 's_step_m': 0.0085, 's_max_m': 0.02, '标定唯一依据': '唯一依据(config/calib/zmax_skill_physics.json)', '唯一依据': '已夹持 · **金手指保护 ≤2N** (过盈段力控)'}, '完成': {'m_kg': 1.35, 'F_max_N': 2.0, 'v_cap_mps': 0.02, 'a_max_mps2': 1.4815, 'jerk_max_mps3': 2.25, 'dmdt_max_kg_s': 0.1, 's_step_m': 0.002, 's_max_m': 0.002, '标定唯一依据': '唯一依据(config/calib/zmax_skill_physics.json)', '唯一依据': '已夹持 · 保持 · ≤2N'}, '放入': {'m_kg': 1.35, 'F_max_N': 2.0, 'v_cap_mps': 0.06, 'a_max_mps2': 1.4815, 'jerk_max_mps3': 2.571, 'dmdt_max_kg_s': 0.5, 's_step_m': 0.006, 's_max_m': 0.6, '标定唯一依据': '唯一依据(config/calib/zmax_skill_physics.json)', '唯一依据': '摆盘链第7段 · 触底开爪释放 · ≤2N 不压伤'}}, 'big_err_mps': 0.05}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = False
+PURE = True
 LAST_STATUS = ""
 
 

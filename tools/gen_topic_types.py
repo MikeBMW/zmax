@@ -94,7 +94,7 @@ NODES = {
     "ssmani_p":        ("PerformanceManifold", "性能流形",          {}),
     "ssmode":          ("RunMode",           "训练/推理档",         {}),
     "ssobs":           ("UnifiedState",      "SU(2) 统一状态",      {}),
-    "ssphys":          ("PhysicsGuard",      "物理约束",            {}),
+    "ssphys":          ("PhysicsGuard",      "动力学约束",          {}),
     "sspred":          ("DynamicsPrediction", "先验动力学预测",     {}),
     "ssreason":        ("AnomalyReasoning",  "异常推理",            {}),
     "sssched":         ("ActionModulator",   "动作调制",            {"out1": "ModulatedAction"}),

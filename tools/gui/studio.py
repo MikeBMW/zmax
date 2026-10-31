@@ -18,6 +18,18 @@ import time as _time
 #   后面几处关键节点各自打一行耗时, 老倪的启动日志里就能直接看到慢在哪一段。
 _BOOT_T0 = _time.time()
 
+# 🔇 2026-10-31 老倪:「启动的时候，别刷屏」「你看终端，刷屏那么多无效信息」
+#   实测一次启动 stdout 365 行(📌/📚/⏱ 三行一组重复 3 遍 + 各页面自述), 有用的只有末尾两行。
+#   这里进程一启动就把 stdout 换成静音闸: 启动期所有播报照写 /tmp/zmax_boot.log, 终端不刷;
+#   主窗口 show() 之后 release() 放开 ⇒ 终端只剩「已就绪 + 首个界面」两行。
+#   stderr 不动 ⇒ 崩了照样看得见 traceback。ZMAX_BOOT_VERBOSE=1 完全恢复旧行为。
+try:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from boot_quiet import install as _bq_install, release as _bq_release   # noqa: E402
+    _bq_install()
+except Exception:                                                           # noqa: BLE001
+    _bq_install = _bq_release = None
+
 # 🔴 2026-09-27 老倪: 「点了场景叠加什么都没打开」的**真根因**(实测复现):
 #   控制台从终端/服务启动时会带 `DBUS_SESSION_BUS_ADDRESS=disabled:`(本机实测就是这样),
 #   而本机 chromium 是 **snap** —— 它要能连会话 D-Bus 才能让 snapd 建好 cgroup,
@@ -16407,6 +16419,12 @@ def main():
             win.show()
             win.raise_()
             win.activateWindow()
+            # 🔇 主窗口已经上屏 ⇒ 放开 stdout, 终端只剩「就绪 + 首个界面」两行 (启动期全部在 /tmp/zmax_boot.log)
+            try:
+                if _bq_release is not None:
+                    _bq_release()
+            except Exception:                                               # noqa: BLE001
+                pass
             print("⏱ 启动计时：控制台主窗口已经显示出来，从进程启动算起一共用了 %.2f 秒。"
                   % (_time.time() - _BOOT_T0), flush=True)
             # 📌 2026-10-19 老倪: 「第一眼应该是主控制台的界面」⇒ 把**实际落到的页**印出来 (可核对, 不自述)

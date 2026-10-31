@@ -3,7 +3,7 @@
 
 老倪：「u_ff 经过 接近/对位 等原子技能节点，再给仿真器，可以么」
 —— 改完后闸就在**引擎关键路径上**每拍真算（`cognition.ActionModulator.decide` →
-`physics_constraints.InertiaLimiter.limit`），画布上的 ①..⑧ SK 节点 / ⚖物理约束闸
+`physics_constraints.InertiaLimiter.limit`），画布上的 ①..⑧ SK 节点 / ⚖动力学约束闸
 显示的就是**同一次调用**的结果，不再读技能派发服务那份旁路副本。
 
 真源文件：`zmax_data/ss_live/skill_gate.json`（引擎 5Hz 落盘，

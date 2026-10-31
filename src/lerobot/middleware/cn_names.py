@@ -64,7 +64,7 @@ NODE_CN = {
     "ssmani_p": "性能流形",
     "ssmode": "运行档",
     "ssobs": "统一状态",
-    "ssphys": "物理约束",
+    "ssphys": "动力学约束",
     "sspred": "动力学",
     "ssreason": "异常推理",
     "sssched": "动作调制",

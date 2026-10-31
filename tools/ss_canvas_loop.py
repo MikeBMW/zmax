@@ -31,6 +31,16 @@ if SRC not in sys.path:
 
 from lerobot.middleware import load_project          # noqa: E402
 
+# 🔇 老倪 2026-10-31「每次运行，你都刷屏」: 节点实现每拍各打一行, 10Hz 糊屏。
+#   装上降噪: 终端 ≤2 行/秒 + 连续重复合并, 全量照写 /tmp/ss_canvas_loop.log;
+#   ZMAX_LOOP_VERBOSE=1 恢复原样, ZMAX_LOOP_TERM_LINES=N 改每秒行数。
+try:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import loop_quiet                                   # noqa: E402
+    loop_quiet.install()
+except Exception:                                       # noqa: BLE001
+    loop_quiet = None
+
 CANVAS = os.path.join(ROOT, "data", "database", "zmax", "sources", "canvas",
                       "state_space_obs.json")
 STATE = os.path.join(ROOT, "zmax_data", "ss_live", "canvas_loop.json")

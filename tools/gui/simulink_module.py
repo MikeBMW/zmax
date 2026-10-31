@@ -5550,37 +5550,13 @@ def _vscode_launch_cfg(root: str) -> dict:
             #   _pydevd_frame_eval/*.so ⇒ 运行时也补绑不上。这就是 111 行红点永远不亮的原因。
             #   停在 55 就能看全三件事: u_sat (输入) → F10 → u_vec (输出) / _chk (校验结论)。
             #   ZMAX_DBG_U 喂一条真指令, 否则 u 恒 0 看不出校验在干什么。
-            {"name": "🎯 断点 · 机器人执行器 execute (单次·注入指令)", "type": "python", "request": "launch",
-             "program": _os.path.join(root, "tools", "dbg_actuator.py"), "python": _py(),
-             "args": ["ssact"], "pythonArgs": ["-X", "frozen_modules=off"],
-             "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-             "env": {"ZMAX_DBG_U": "0.12,-0.05,0.30,0.0", "ZMAX_SINGLE_THREAD": "1",
-                     "PYTHONUNBUFFERED": "1", "PYDEVD_DISABLE_FILE_VALIDATION": "1",
-                     "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"}},
-            # 🔴 2026-10-29 断点不命中的官方原因 (debugpy 自己吐的警告):
-            #   "It seems that frozen modules are being used, which may make the debugger miss breakpoints.
-            #    Please pass -Xfrozen_modules=off to python to disable frozen modules."
-            #   Python 3.11 把 importlib 等编成 frozen bytecode, debugpy 按 "文件:行" 定位就漏;
-            #   pythonArgs 把 -X frozen_modules=off 传给解释器 (这是 Python 扩展的正式字段, args 不行)。
-            #   PYDEVD_DISABLE_FILE_VALIDATION=1 同时关掉它的文件校验, 双保险。
-            # 🔴 2026-10-30 老倪「那把全新调试进程删掉」—— 整机 GUI 调试配置已从模板移除 (F5 默认落到第一条
-            #   执行器配置, 不再顺手拉起一个 studio.py 实例)。要临时恢复整机 GUI 调试, 把下面这条加回
-            #   configurations 即可 (env 口径与删掉的一致, 单线程 550B + frozen_modules 关闭):
-            #   {"name": "🚀 全新调试进程 (studio.py)", "type": "python", "request": "launch",
-            #    "program": _os.path.join(root, "tools", "gui", "studio.py"), "python": _py(),
-            #    "pythonArgs": ["-X", "frozen_modules=off"], "cwd": root,
-            #    "console": "integratedTerminal", "justMyCode": False,
-            #    "env": {"ZMAX_SINGLE_THREAD": "1", "ZMAX_DEBUG_MODE": "1", "ZMAX_PRODUCT": "550B",
-            #            "PYTHONUNBUFFERED": "1", "PYDEVD_DISABLE_FILE_VALIDATION": "1"}}
-            {"name": "🔌 Attach 现有控制台 (5678)", "type": "python", "request": "attach",
-             "connect": {"host": "127.0.0.1", "port": 5678}, "justMyCode": False},
             # 状态空间常驻循环 (画布 10Hz 真跑, 单步/断点看每个节点) — 原先是手改 launch.json 加的,
             #   右键「打开 VSCode」会被模板抹掉, 2026-10-30 收进模板。
             {"name": "🧪 断点 · 状态空间常驻循环 (ss_canvas_loop)", "type": "python", "request": "launch",
              "program": _os.path.join(root, "tools", "ss_canvas_loop.py"), "python": _py(),
              "pythonArgs": ["-X", "frozen_modules=off"],
              "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-             "env": {"ZMAX_CANVAS_ONLY": "ssyolo,sslimit,ssplan,ssdec,ss_grav_h,ssmani_c,ssmani_p,n_calib_mani,ss_mani_eng,ssact",
+             "env": {"ZMAX_CANVAS_ONLY": "ssplan,ssact,ssyolo,ssdec,sslimit,ssphys,ss_grav_h,ssmani_c,ssmani_p,n_calib_mani,ss_mani_eng",
                        "ZMAX_L2_PERIOD_S": "0.5",
                        "ZMAX_LOOP_MAX_TICKS": "600",
                        "ZMAX_LOOP_EVIDENCE": "0",
@@ -5593,77 +5569,6 @@ def _vscode_launch_cfg(root: str) -> dict:
                      #   卡死, ssact 永远轮不到 (表现为"断点又不进")。离线模式读本地缓存: 实测 processor 0.14s、
                      #   VLM 507M 权重 0.6s 加载完成。要在线下权重时临时去掉这两个 key。
                      "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"}},
-            {"name": "工具脚本 (lerobot-venv)", "type": "python", "request": "launch",
-             "program": "${file}",
-             "python": _os.path.expanduser("~/zmax/venvs/lerobot-venv/bin/python"),
-             "cwd": root, "console": "integratedTerminal", "justMyCode": False},
-            # ── 🎯 INTACT L4 (2026-09-13) ──
-            {"name": "🎯 INTACT L4 · policy 层调试 (service.py E2E)", "type": "python", "request": "launch",
-             "program": _os.path.join(root, "tools/intact_service_e2e.py"), "python": _py(),
-             "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-             "env": {"STABLEWM_HOME": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/zmax/external/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "INTACT_KEEP_INPUT": "1", "MUJOCO_GL": "egl"}},
-            {"name": "🎯 INTACT L4 · GUI 节点路径 (node_intact_dec)", "type": "python", "request": "launch",
-             "program": _os.path.join(root, "tools/intact_gui_node_check.py"), "python": _py(),
-             "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-             "env": {"STABLEWM_HOME": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/zmax/external/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "QT_QPA_PLATFORM": "offscreen"}},
-            {"name": "🔬 INTACT L4 · 模型侧单步 (INTACT venv, 真输入重放)", "type": "python", "request": "launch",
-             "program": _os.path.join(root, "tools/intact_worker_debug.py"),
-             "python": "/home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python",
-             "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-             "env": {"STABLEWM_HOME": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/zmax/external/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "MUJOCO_GL": "egl"}},
-            {"name": "🌍 INTACT L4 · 光模块插拔链 (真物理桥)", "type": "python", "request": "launch",
-             "program": _os.path.join(root, "tools/intact_sw_optical_bridge.py"), "python": _py(),
-             "args": ["--task", "optical_insert", "--seeds", "0,1", "--mode", "insert", "--max-steps", "900", "--device", "cpu", "--policy", "intact_l4_current"],
-             "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-             "env": {"STABLEWM_HOME": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "LOCAL_DATASET_DIR": "/home/ubuntu/zmax/zmax_data/stable-wm-cache", "INTACT_REPO": "/home/ubuntu/zmax/external/INTACT-JEPA", "INTACT_POLICY": "intact_l4_current", "INTACT_DEVICE": "cpu", "INTACT_RUNTIME": "root", "INTACT_KEEP_INPUT": "1", "PYOPENGL_PLATFORM": "egl", "MUJOCO_GL": "egl"}},
-            # ── 🌀 流形引擎 (2026-10-14 老倪: 「流形引擎是全系统的核心」——F5 就能进 step 断点) ──
-            #   断点打 src/lerobot/manifold/manifold_engine.py:697(入口) / 699(M 生效点) / 733(可观察量) / 750
-            {"name": "🌀 流形引擎 · 自检 (step 断点必停)", "type": "python", "request": "launch",
-             "program": _os.path.join(root, "src", "lerobot", "manifold", "manifold_engine.py"),
-             "python": _py(), "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-             "env": {}},
-            {"name": "🌀 流形引擎 · 状态快照 (--state)", "type": "python", "request": "launch",
-             "program": _os.path.join(root, "src", "lerobot", "manifold", "manifold_engine.py"),
-             "python": _py(), "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-             "args": ["--state"], "env": {}},
-            {"name": "🌀 流形引擎 · 内稳态演示 (--hom-demo)", "type": "python", "request": "launch",
-             "program": _os.path.join(root, "src", "lerobot", "manifold", "manifold_engine.py"),
-             "python": _py(), "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-             "args": ["--hom-demo"], "env": {}},
-            {"name": "🌀 流形引擎 · 能量层自检 (energy_manifold --selftest)", "type": "python", "request": "launch",
-             "program": _os.path.join(root, "src", "lerobot", "manifold", "energy_manifold.py"),
-             "python": _py(), "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-             "args": ["--selftest"], "env": {}},
-            # ⚠️ 调试前先停常驻单元, 否则单写入器锁会拒绝第二个发布器:
-            #    sudo systemctl stop zmax-ss-engine-loop     (调完: sudo systemctl start …)
-            {"name": "🌀 流形引擎 · 常驻周期循环 (先停服务; step 断点每周期停)", "type": "python", "request": "launch",
-             "program": _os.path.join(root, "tools", "ss_engine_loop.py"),
-             "python": _py(), "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-             "args": ["run", "--hz", "10"], "env": {"ZMAX_SS_ENGINE_HZ": "10"}},
-            {"name": "🌀 流形引擎 · 常驻循环 · 单轮取证 (once)", "type": "python", "request": "launch",
-             "program": _os.path.join(root, "tools", "ss_engine_loop.py"),
-             "python": _py(), "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-             "args": ["once"], "env": {}},
-            # ── 🧮 配置导入 (2026-10-14 老倪: 「必须能进入这个断点」) ──
-            #   断点打 src/lerobot/engineering/config_import.py:186  db = _read_db(...)
-            {"name": "🧮 配置导入 · 唯一依据+工程库读 (config_import · 断点 186 必停)", "type": "python", "request": "launch",
-             "program": _os.path.join(root, "src", "lerobot", "engineering", "config_import.py"),
-             "python": _py(), "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-             "env": {}},
-            {"name": "🧮 配置导入 · 读+写回画布节点 (--node n_calib_mani)", "type": "python", "request": "launch",
-             "program": _os.path.join(root, "src", "lerobot", "engineering", "config_import.py"),
-             "python": _py(), "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-             "args": ["--node", "n_calib_mani"], "env": {}},
-            # ── 🅱 550B 标定版 · 单线程 debug (2026-10-21 老倪: 「550B … 打开工程自动起 VSCode 的状态空间工程 …
-            #    省资源 … 标定档不需要那么多并行/多线程, 面向清晰单线程逻辑的 debug 模式」) ──
-            #   单线程口径唯一依据 = tools/gui/vscode_launch.py::SINGLE_THREAD_ENV (判据逐键核)
-            {"name": "🅱 550B 标定版 · 单线程 debug (状态空间工程)", "type": "python", "request": "launch",
-             "program": _os.path.join(root, "tools", "gui", "simulink_module.py"),
-             "python": _py(), "cwd": root, "console": "integratedTerminal", "justMyCode": False,
-             "env": {"OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1",
-                     "NUMEXPR_NUM_THREADS": "1", "VECLIB_MAXIMUM_THREADS": "1", "TORCH_NUM_THREADS": "1",
-                     "MALLOC_ARENA_MAX": "2", "ZMAX_SINGLE_THREAD": "1", "ZMAX_DEBUG_MODE": "1",
-                     "ZMAX_PRODUCT": "550B", "PYTHONUNBUFFERED": "1"}},
         ],
     }
 

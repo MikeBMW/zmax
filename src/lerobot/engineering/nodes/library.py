@@ -3038,6 +3038,16 @@ _reg("ss_sched", ["动作调制器"], "🧭 动作调制器 — 8阶段状态机
 
 _reg("ss_limit", ["安全执行边界"], "🛡 安全执行边界 — 饱和限幅 (速度/力/位置上限, 源码 safety.py saturate); 节点实现 nodes/safety_limit_impl.py", node_ss_s3)
 
+# ⚖ 2026-10-31 老倪「接近、对位这些技能要符合运动学约束; 物理约束这个要改成动力学约束; 都要真正调用」
+#   原来画布「⚖ 物理约束」节点 IMPL_KEY 误绑 n_exec (动作执行器) 且 PURE=False ⇒ 每拍只直通, 从没真裁过。
+#   现在它绑本 key: 每拍取块动作 → 🧭 KinematicLimiter(①②③⑤) → ⚖ DynamicLimiter(④) → 可行动作/偏差。
+def node_ss_constraint_gate(ctx):
+    """⚖ 动力学约束闸 (前置运动学约束真跑) — 薄壳: 真实现 nodes/constraint_gates_impl.py::run"""
+    from .constraint_gates_impl import run as _run
+    return _run(ctx)
+
+_reg("ss_dyn_gate", ["动力学约束", "物理约束"], "⚖ 动力学约束 — 每拍真调 🧭 运动学(①速度②加速度③加加速度⑤位移) + ⚖ 动力学(④动量/质量变化率) 两条闸 (源码 physics_constraints.KinematicLimiter/DynamicLimiter); 节点实现 nodes/constraint_gates_impl.py", node_ss_constraint_gate)
+
 _reg("ss_bg4",   ["物理闭环"], "执行层 · 物理闭环 — 执行器→物理世界→z_k 反馈 (源码 state_space/execution.py)", node_ss_exec)
 
 _reg("ss_act",   ["机器人执行器"], "🤖 机器人执行器 — 机械臂/夹爪接收物理指令执行 (源码 execution.py RobotExecutor)", node_ss_exec)
@@ -3617,6 +3627,8 @@ _EXTERNAL_LOC["n_moveit"] = (os.path.join(os.path.dirname(os.path.abspath(__file
 #   这里的「运动规划」= 状态空间**测地线块规划** (与前馈并列、在加权之前), 与 n_moveit(MoveIt, 技能之后) 是两件事
 _EXTERNAL_LOC["n_geoplan"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "geo_plan_impl.py"), 110, "def smooth_traj")   # 2026-10-29: 加了 _quat_from_rot ⇒ def run 从 93 移到 123 (改文件后必须回读行号)     # 🧭 2026-10-28: 规划正文迁出 registry 大文件, 落点 = plan_impl.py::run
 _EXTERNAL_LOC["ss_limit"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "safety_limit_impl.py"), 124, "def run")     # 2026-10-28 执行链外迁
+
+_EXTERNAL_LOC["ss_dyn_gate"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "constraint_gates_impl.py"), 107, "def run")   # 2026-10-31 ⚖ 动力学约束闸 (运动学+动力学 真跑)
 _EXTERNAL_LOC["n_exec"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "exec_dispatch_impl.py"), 47, "def run")     # 2026-10-28 执行链外迁
 _EXTERNAL_LOC["ss_act"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "robot_actuator_impl.py"), 65, "def run")     # 2026-10-28 执行链外迁
 _EXTERNAL_LOC["ss_correct"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "state_correct_impl.py"), 44, "def run")     # 2026-10-28 执行链外迁
