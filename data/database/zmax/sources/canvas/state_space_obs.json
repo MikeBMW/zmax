@@ -501,13 +501,15 @@
    "params": {
     "state_space": true,
     "desc": "[基础·分段小模型] 机器人执行器 (机械臂/夹爪): 接收物理指令执行",
-    "source": "src/lerobot/policies/left_right/state_space/execution.py",
-    "source_symbol": "class RobotExecutor",
+    "source": "/home/ubuntu/zmax/src/lerobot/engineering/nodes/robot_actuator_impl.py",
+    "source_symbol": "u_vec = _ex.execute(",
     "ar_real_sw": true,
     "ar_scene": true,
     "real_auth": false,
     "sw_hint": "左=AR场景(开=控左右臂/关=控真机) · 右=真机(开=授权下发/关=不发) 默认都关",
-    "pure_verified": true
+    "pure_verified": true,
+    "break_line": 96,
+    "break_note": "执行指令行: u_vec = _ex.execute(u_sat) — 断这里就能看到本拍指令"
    },
    "inputs": [
     "in1"
@@ -814,7 +816,7 @@
    "color": "#58a6ff",
    "params": {
     "src_switch": true,
-    "src_state": "AR场景",
+    "src_state": "插拔场景",
     "source": "metaworld",
     "task": "peg-insert-side-v3",
     "frames": 4800,

@@ -26,8 +26,8 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'ss_act'
-SOURCE = 'src/lerobot/policies/left_right/state_space/execution.py'
-SOURCE_SYMBOL = 'class RobotExecutor'
+SOURCE = '/home/ubuntu/zmax/src/lerobot/engineering/nodes/robot_actuator_impl.py'
+SOURCE_SYMBOL = 'u_vec = _ex.execute('
 PARAMS = {'state_space': True, 'desc': '[基础·分段小模型] 机器人执行器 (机械臂/夹爪): 接收物理指令执行', 'source': 'src/lerobot/policies/left_right/state_space/execution.py', 'source_symbol': 'class RobotExecutor', 'ar_real_sw': True, 'ar_scene': True, 'real_auth': False, 'sw_hint': '左=AR场景(开=控左右臂/关=控真机) · 右=真机(开=授权下发/关=不发) 默认都关', 'pure_verified': True}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现

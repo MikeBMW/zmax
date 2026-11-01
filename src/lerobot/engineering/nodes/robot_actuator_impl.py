@@ -80,6 +80,19 @@ def run(ctx):
                              "real_send": False, "note": "纯计算·零下发 (下发只走 l2_daemon+8793 授权)"}}
         u_sat = _SS_STATE.get("u_sat", np.zeros(4))
         _ex = ex.RobotExecutor()                       # 🔴 2026-10-29: 实例留住, 校验结论要带出去
+        # 🎯 2026-11-01 老倪「右键打开源码要有断点, 在 VSCode 里我要看到执行指令」:
+        #   停在这里时 u_sat 已绑定, 下一行 u_vec 就是**真正下发的执行指令**。
+        #   只在显式 ZMAX_BREAK_EXEC=1 时停 (GUI 里 breakpoint() 会冻界面 ⇒ 只在 CLI/调试档用)。
+        if _os.getenv("ZMAX_BREAK_EXEC") == "1":
+            # 走 debugpy 的原生断点: VSCode 里会真的停在调试器 UI 上 (变量面板能看 u_sat)
+            try:
+                import debugpy as _dbg                       # noqa: PLC0415
+                if _dbg.is_client_connected():
+                    _dbg.breakpoint()
+                else:
+                    breakpoint()                             # noqa: T100
+            except Exception:                                # noqa: BLE001
+                breakpoint()                                 # noqa: T100
         u_vec = _ex.execute(np.asarray(u_sat, dtype=float))
         _chk = getattr(_ex, "last_check", None) or {}
         if np.ndim(u_vec) == 0:

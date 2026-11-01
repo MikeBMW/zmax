@@ -23,8 +23,14 @@ co_filename + 行号在解释器里挂 trace —— 同一份代码, 一定能�
   2) 一条命令直接停到那里并打印现场 (不看交互)
      ./gui-venv311/bin/python -m pdb -c "b /home/ubuntu/zmax/src/lerobot/policies/left_right/state_space/execution.py:111" -c c -c l -c "p u" -c "p self.last_check" -c q tools/dbg_actuator.py
 
-  3) 断在节点入口 (robot_actuator_impl.run)
-     ./gui-venv311/bin/python -m pdb -c "b robot_actuator_impl.py:18" -c c -c l -c "p ctx.keys()" -c q tools/dbg_actuator.py
+  3) 断在节点的「执行指令」那一行 (2026-11-01 老倪: 右键打开源码就要落在这一行)
+     ./gui-venv311/bin/python -m pdb \
+       -c "b /home/ubuntu/zmax/src/lerobot/engineering/nodes/robot_actuator_impl.py:96" \
+       -c c -c "p u_sat" -c n -c "p u_vec" -c q tools/dbg_actuator.py ssact
+     ↑ 96 = `u_vec = _ex.execute(u_sat)`; 停住时 u_sat 已绑定, 下一行 u_vec 就是下发指令
+
+  4) VSCode: 配置「DEBUG-EXEC-96 机器人执行器·执行指令」+ 行 96 断点
+     (GUI 里 breakpoint() 会冻界面 ⇒ 只有 ZMAX_BREAK_EXEC=1 才停, 默认不停)
 
 换节点: 改下面 NODES 里要跑哪个。
 """
