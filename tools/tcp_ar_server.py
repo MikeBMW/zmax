@@ -1078,13 +1078,38 @@ def _ar_cmd_payload() -> dict:
             _ex = _c.get("exec") or {}
             _b = _pl.get("b") or (_ex.get("b") if isinstance(_ex, dict) else None)
             _a = _pl.get("a")
+            # 🔴 2026-11-01 老倪「还是乱动」真因: 链里 plan(n_moveit) 的分区**每拍重规划一次**
+            #   (它的目标跟着执行器每小步在动) ⇒ 页面拿着"每 3~5 秒换一份、且从第 1 段起"的段表,
+            #   臂就在几个目标之间来回甩。执行器(ssact)那份 ar_cmd.json 才是**真实在执行的连续序列**
+            #   (拔出→抬起→转移→AOI→…), 所以驱动几何改成优先用执行器那一路, plan 只作预告(plan_*)。
+            _eka = _ekb = _eu = None
+            _ekind = _elabel = _eseq = None
+            _ef = _o.path.expanduser("~/zmax/zmax_data/ss_live/ar_cmd.json")
+            try:
+                if _t.time() - _o.path.getmtime(_ef) <= AR_CMD_FRESH_S:
+                    with open(_ef, encoding="utf-8") as _eh:
+                        _ed = _j.load(_eh) or {}
+                    if _ed.get("a") and _ed.get("b"):
+                        _eka, _ekb = _ed.get("a"), _ed.get("b")
+                        _eu = _ed.get("u")
+                        _ekind, _elabel, _eseq = _ed.get("kind"), _ed.get("label"), _ed.get("seq")
+            except Exception:                                            # noqa: BLE001
+                pass
+            if _eka and _ekb:
+                _a, _b = _eka, _ekb
             if _b and _a:
                 _out = {"ok": True, "age_s": round(_agec, 2), "fresh": True,
                         "src": "chain:" + str(_pl.get("_src") or "n_moveit") +
                                ("+ssact" if _ex else ""),
-                        "chain": True, "seq": _c.get("seq"), "kind": _pl.get("seg_kind") or "plan",
-                        "label": _pl.get("label"), "a": _a, "b": _b,
-                        "u": _pl.get("u") or 0.0, "q": None, "q_l": None,
+                        "chain": True, "seq": _eseq if _eseq is not None else _c.get("seq"),
+                        "kind": (_ekind or _pl.get("seg_kind") or "plan"),
+                        "label": (_elabel or _pl.get("label")), "a": _a, "b": _b,
+                        "u": (_eu if (_eka and _ekb and _eu is not None) else (_pl.get("u") or 0.0)),
+                        "drive": ("exec:ssact" if _eka and _ekb else "plan:n_moveit"),
+                        "plan_label": _pl.get("label"), "plan_seg_i": _pl.get("seg_i"),
+                        "plan_n": _pl.get("n"), "plan_u": _pl.get("u"),
+                        "plan_id": _pl.get("plan_id"),
+                        "q": None, "q_l": None,
                         "t_str": _c.get("ts"), "t_seg": None, "t_left": None, "elapsed_s": None,
                         "task_id": None, "mt_id": None, "mt_name": None, "mt_i": None,
                         "mt_n": None, "batch": None,
