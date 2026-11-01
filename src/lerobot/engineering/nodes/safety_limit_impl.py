@@ -74,9 +74,10 @@ def run(ctx):
         import numpy as np
         name = ctx.get("name", "")
         # 🛡 位姿守护支路: 上游 (测地线规划引导) 把位姿放进 in2 ⇒ 校验后原样/截断往下传
-        _in2 = ctx.get("in2")
+        _in2 = ctx.get("in3") or ctx.get("in2")      # 连线: 测地线引导 out1 → 本节点 in3
         _pv = _in2.get("value") if isinstance(_in2, dict) else None
-        if isinstance(_pv, dict) and (_pv.get("tcp") or _pv.get("pos") or _pv.get("xyz")):
+        # 位姿守护只归「安全边界」那一路; 调制器不抢 (它 in2 接的是元任务预测, 不是位姿)
+        if ("调制器" not in name) and isinstance(_pv, dict) and (_pv.get("tcp") or _pv.get("pos") or _pv.get("xyz")):
             _cur = (_SS_STATE.get("tcp_mm") if isinstance(_SS_STATE.get("tcp_mm"), (list, tuple)) else None)
             g = guard_pose(_pv, cur_mm=_cur)
             _SS_STATE["guide_pose"] = g
@@ -89,7 +90,19 @@ def run(ctx):
                                              "src": "安全位姿守护 (工作空间/单步/台面)"},
                     "why": g["why"], "clipped": g["clipped"], "pose_mm": g["pose_mm"]}
         if "边界" in name:
-            u = _SS_STATE.get("u", np.zeros(4))
+            # 端口优先: 连线 sssched.out1 → sslimit.in1 (调制器的输出必须真的被限幅, 不能只读模块状态)
+            _pin1 = (ctx.get("in1") or {}).get("value") if isinstance(ctx.get("in1"), dict) else ctx.get("in1")
+            _u_port = None
+            if isinstance(_pin1, dict):
+                _u_port = _pin1.get("u") or _pin1.get("u_sat") or _pin1.get("u_ff")
+            elif isinstance(_pin1, (list, tuple)) and _pin1 and isinstance(_pin1[0], (int, float)):
+                _u_port = list(_pin1)
+            if _u_port is not None and len(_u_port) >= 3:
+                u = np.asarray(_u_port, dtype=float).ravel()[:4]
+                _SS_STATE["u_src"] = "in1(动作调制器)"
+            else:
+                u = _SS_STATE.get("u", np.zeros(4))
+                _SS_STATE.setdefault("u_src", "SS_STATE.u")
             _u_in = np.asarray(u, dtype=float).ravel()[:4]
             u_sat = _ss_import("safety").saturate(np.asarray(u, dtype=float), limit=0.6)
             _SS_STATE["u_sat"] = np.asarray(u_sat, dtype=float)
@@ -118,23 +131,85 @@ def run(ctx):
                              "u_src": _SS_STATE.get("u_src"), "u_degraded": _SS_STATE.get("u_degraded"),
                              "src": "safety.py saturate (纯数值, 不下发真机)"},
                     "out3": _lim}
+        # ── 🧭 动作调制器 (2026-11-01 老倪「在 AR 场景有效果么 / 按建议执行, 确保 300uph」) ────
+        #   旧实现: 只读模块级 _SS_STATE, 九路端口一个不认, 末尾 return True ⇒ 壳判「非 dict」直通,
+        #           所以 PURE 打开也是"假执行"。现在: 端口优先, 读不到才退回 _SS_STATE,
+        #           关键输入全缺 ⇒ 明确回退直通并给 why; 输出业务字典 (out1=调制结果, out2=取证)。
         cog = _ss_import("cognition")
-        u_ff = _SS_STATE.get("u_ff", np.zeros(4))
-        cp = _SS_STATE.get("contact_p", 0.1)
-        res = _SS_STATE.get("residual", np.zeros(4))
-        r = float(np.linalg.norm(res))
-        u_fb = np.concatenate([np.clip(0.5 * np.asarray(res, dtype=float)[:3], -0.5, 0.5), [0.0]])
+
+        def _pick(port, keys):
+            """从端口载荷里按候选键取数值向量/标量 (各家载荷口径不同, 只认明确字段)。"""
+            pv = ctx.get(port)
+            v = pv.get("value") if isinstance(pv, dict) else pv
+            if isinstance(v, (list, tuple)) and v and isinstance(v[0], (int, float)):
+                return [float(x) for x in v], port
+            if isinstance(v, dict):
+                for k in keys:
+                    x = v.get(k)
+                    if isinstance(x, (list, tuple)) and x and isinstance(x[0], (int, float)):
+                        return [float(y) for y in x], "%s.%s" % (port, k)
+                    if isinstance(x, (int, float)):
+                        return [float(x)], "%s.%s" % (port, k)
+            return None, ""
+
+        _ports = {"u_ff": "", "u_fb": "", "cp": "", "residual": ""}
+        u_ff, _p = _pick("in6", ("u", "vec", "chunk0", "a", "best"))      # ⚡ 前馈加速器
+        if u_ff:
+            _ports["u_ff"] = _p
+        else:
+            u_ff, _p = _pick("in9", ("chunk0", "u", "vec", "a"))          # 🧭 测地线块 (老倪 11-01 接的 in9)
+            _ports["u_ff"] = _p or ""
+        u_fb, _pf = _pick("in8", ("u_fb", "residual", "res", "err", "u"))  # 🧪 状态校正器
+        res_v, _pr = _pick("in8", ("residual", "res", "err", "u"))
+        cp, _pc = _pick("in4", ("contact_p", "p_contact", "cp"))           # 🧮 流形引擎
+        if cp is None:
+            cp, _pc = _pick("in5", ("contact_p", "p", "score"))            # 🔍 AOI
+        _ports.update({"u_fb": _pf or "", "residual": _pr or "", "cp": _pc or ""})
+
+        if not u_ff:
+            # 关键输入缺: 不装"已生效", 明确直通并交代缺哪路
+            _why = "缺前馈 (in6 前馈加速器 / in9 测地线块 都没有数值) ⇒ 直通, 调制器未生效"
+            if log:
+                log("🧭 动作调制器: %s" % _why)
+            return {"out1": {"kind": "modulator_skipped", "why": _why, "u": None,
+                             "src": "cognition.ActionModulator (未调用)"},
+                    "out2": {"ok": False, "why": _why, "ports": _ports}}
+
+        u_ff = np.asarray(u_ff, dtype=float).ravel()
+        if u_ff.size < 4:
+            u_ff = np.concatenate([u_ff, np.zeros(4 - u_ff.size)])
+        u_ff = u_ff[:4]
+        u_fb = np.asarray(u_fb if u_fb else np.zeros(4), dtype=float).ravel()
+        u_fb = (np.concatenate([u_fb, np.zeros(4 - u_fb.size)]) if u_fb.size < 4 else u_fb)[:4]
+        _cp = float(np.asarray(cp, float).ravel()[0]) if cp else float(_SS_STATE.get("contact_p", 0.1))
+        _res = res_v if res_v is not None else _SS_STATE.get("residual", np.zeros(4))
+        r = float(np.linalg.norm(np.asarray(_res, dtype=float).ravel()[:3]))
+
         mod = cog.ActionModulator()
-        u, stage = mod.decide(np.asarray(u_ff, dtype=float), u_fb, float(cp), r)
+        u, stage = mod.decide(np.asarray(u_ff, dtype=float), u_fb, _cp, r)
         if np.ndim(u) == 0:
             u = np.zeros(4)
         u = np.asarray(u, dtype=float).copy()
         u[3] = mod.gripper_cmd(u_ff[3])
-        _SS_STATE.update({"u": u, "stage": stage})
+        if not np.all(np.isfinite(u)):
+            return {"out1": {"kind": "modulator_nan", "why": "输出非有限值 ⇒ 拒用", "u": None},
+                    "out2": {"ok": False, "ports": _ports}}
+        _n_req = float(np.linalg.norm(u_ff[:3]))
+        _n_out = float(np.linalg.norm(u[:3]))
+        _k = (_n_out / _n_req) if _n_req > 1e-9 else 1.0
+        _dir = float((u[:3] / _n_out) @ (u_ff[:3] / _n_req)) if (_n_out > 1e-9 and _n_req > 1e-9) else 0.0
+        _SS_STATE.update({"u": u, "stage": stage, "u_ff": u_ff})
         if log:
-            log(f"🧭 动作调制器 (真实): decide(u_ff,u_fb,cp={cp:.2f},r={r:.3f}) → 阶段「{stage}」· "
-                f"u={np.round(u,3)} (cognition.py)")
-        return True
+            log(f"🧭 动作调制器 (真实): 阶段「{stage}」· u_ff={np.round(u_ff[:3],3)}({_ports['u_ff'] or '缺'}) "
+                f"→ u={np.round(u[:3],3)} · 幅度×{_k:.2f} · 方向余弦 {_dir:.3f} · 夹爪 {u[3]:.2f}")
+        return {"out1": {"kind": "modulator", "u": [round(float(x), 6) for x in u],
+                         "u_ff": [round(float(x), 6) for x in u_ff],
+                         "stage": stage, "amp_ratio": round(_k, 4), "dir_cos": round(_dir, 3),
+                         "contact_p": round(_cp, 4), "residual": round(r, 4),
+                         "src": "cognition.ActionModulator.decide (端口 in6/in9→in8→in4/in5)"},
+                "out2": {"ok": True, "ports": _ports,
+                         "gripper": round(float(u[3]), 4),
+                         "rule": "①否决(残差) ②前馈+反馈相加 ③按阶段限速(只削幅不改方向) ④元任务门控(默认关)"}}
     except Exception as e:
         if log:
             log(f"⚠️ 认知决策层真实执行失败: {e}")

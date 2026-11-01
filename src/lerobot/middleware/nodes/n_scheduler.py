@@ -20,7 +20,8 @@
 话题 =  ss.node.sssched.<port>
 
 实现绑定: registry key=`ss_sched` · src/lerobot/policies/left_right/state_space/cognition.py:def decide
-执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
+执行口径: EXEC_MODE=act · PURE=True (2026-11-01 老倪「按你的建议执行」: 九路端口已接进 decide,
+          缺前馈时明确回退直通并给 why —— 判据 tools/verify_modulator_ports.py)
 """
 
 NODE_ID = 'sssched'
@@ -40,7 +41,7 @@ SOURCE_SYMBOL = 'def decide'
 PARAMS = {'state_space': True, 'action_modulator': True, 'desc': '[基础·分段小模型] 动作调制器 (原状态机, 握有否决权): 6阶段状态机 + 否决权 + 按阶段动作融合 (力控插入)', 'source': 'src/lerobot/policies/left_right/state_space/cognition.py', 'source_symbol': 'def decide', '_port_labels': {'out1': 'out1'}}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = False
+PURE = True
 LAST_STATUS = ""
 
 
