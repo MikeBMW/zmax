@@ -6,7 +6,7 @@
 
 > 本清单逐项给出：**配置名 / 值或范围 / 唯一依据文件与键路径 / 单位 / 消费代码位置**。
 > 凡在役系统扫描（扫描时点 **2026-10-13 07:37:17**）可得者标注扫描值；凡唯一依据无实测值者标注「**待实测**」并给出取数命令。
-> 全量扫描件（机读）另存：`docs/1-天枢-产品边界/deliverables/全系统配置清单_5.50.B.md` / `.json`。
+> 全量扫描件（机读）另存：`docs/1-天枢-产品边界/deliverables/7-配置与测试/全系统配置清单_5.50.B.md` / `.json`。
 
 ---
 
@@ -18,7 +18,7 @@
 | 版本号同步位 | 5.50.1 | `tools/gui/version_sync.py` → `zmax_ver` | — | `tools/gui/docs_sync.py`（`version`/`zmax_version` 两键） |
 | VERSION.md 记载 | 5.50.1（最新条目） | `VERSION.md` 版本历史表首行 | — | 人工/交付文档引用 |
 | git HEAD | `6462c27` | 仓库 git | — | `tools/delivery/gen_config_inventory.py` |
-| 交付版号段 | 5.50.A / 5.50.B / 5.50.C | `docs/1-天枢-产品边界/deliverables/版本策略_5.50.A_B_C.md` | — | 交付文档 |
+| 交付版号段 | 5.50.A / 5.50.B / 5.50.C | `docs/1-天枢-产品边界/deliverables/1-产品方案/版本策略_5.50.A_B_C.md` | — | 交付文档 |
 
 ---
 
@@ -167,7 +167,7 @@
 ```bash
 # 重新扫描生成全系统配置清单（每个数可回读）
 gui-venv311/bin/python tools/delivery/gen_config_inventory.py --ver 5.50.B
-# 产物: docs/1-天枢-产品边界/deliverables/全系统配置清单_5.50.B.md / .json
+# 产物: docs/1-天枢-产品边界/deliverables/7-配置与测试/全系统配置清单_5.50.B.md / .json
 ```
 
 > 本文档中的配置值均可由上述命令或对应唯一依据文件键路径回读复核；扫描时点不同，动态项（活跃任务/帧率/指纹）以当次回读为准。

@@ -3,7 +3,7 @@
 """导出「工程操作手册 (Working Instruction)」—— 三档性能等级 A/B/C。
 
 唯一依据: tools/spec/eng_profiles.json (与配置中心「工程配置」页同一份数据, 不复制真相)
-产出: docs/1-天枢-产品边界/deliverables/工程操作手册_三档_A_B_C.md
+产出: docs/1-天枢-产品边界/deliverables/8-工程手册/工程操作手册_三档_A_B_C.md
 
 用法:
     python3 tools/export_wi_doc.py            # 生成/覆盖

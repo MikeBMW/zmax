@@ -65,12 +65,12 @@
 
 | 序号 | 交付物 | 形式/路径 | 状态 |
 |:--|:---|:---|:---|
-| 1 | 功能说明（5.50.B） | `docs/1-天枢-产品边界/deliverables/功能说明_Z-MAX_5.50.B_20261013.md` | 已交付 |
-| 2 | 全系统配置清单（5.50.B） | `docs/1-天枢-产品边界/deliverables/全系统配置清单_Z-MAX_5.50.B_20261013.md`（+ 机读件 `全系统配置清单_5.50.B.{md,json}`） | 已交付 |
-| 3 | 供应商 SOR（本文） | `docs/1-天枢-产品边界/deliverables/SOR_Z-MAX_5.50.B_20261013.md` | 已交付 |
-| 4 | 项目立项文档（5.50.B） | `docs/1-天枢-产品边界/deliverables/立项文档_Z-MAX_5.50.B_20261013.md` | 已交付 |
-| 5 | 版本策略 | `docs/1-天枢-产品边界/deliverables/版本策略_5.50.A_B_C.md` | 已交付 |
-| 6 | 交付文档包汇总索引 | `docs/1-天枢-产品边界/deliverables/INDEX_5.50.B.md` | 已交付 |
+| 1 | 功能说明（5.50.B） | `docs/1-天枢-产品边界/deliverables/1-产品方案/功能说明_Z-MAX_5.50.B_20261013.md` | 已交付 |
+| 2 | 全系统配置清单（5.50.B） | `docs/1-天枢-产品边界/deliverables/7-配置与测试/全系统配置清单_Z-MAX_5.50.B_20261013.md`（+ 机读件 `全系统配置清单_5.50.B.{md,json}`） | 已交付 |
+| 3 | 供应商 SOR（本文） | `docs/1-天枢-产品边界/deliverables/3-供应商SOR/SOR_Z-MAX_5.50.B_20261013.md` | 已交付 |
+| 4 | 项目立项文档（5.50.B） | `docs/1-天枢-产品边界/deliverables/6-立项与协议/立项文档_Z-MAX_5.50.B_20261013.md` | 已交付 |
+| 5 | 版本策略 | `docs/1-天枢-产品边界/deliverables/1-产品方案/版本策略_5.50.A_B_C.md` | 已交付 |
+| 6 | 交付文档包汇总索引 | `docs/1-天枢-产品边界/deliverables/1-产品方案/INDEX_5.50.B.md` | 已交付 |
 | 7 | 性能指标体系 | 唯一依据 `config/platform/zmax_perf_spec.json`（6 组 58 条 + 8 标准） | 唯一依据在册 |
 | 8 | 主参数 M 与健康度配置 | 唯一依据 `config/calib/zmax_manifold.json` · `config/calib/zmax_health.json` | 唯一依据在册 |
 | 9 | 判据脚本集 | `tools/verify_{metric_main_param,engine_loop,config_to_M,node_cfg_import,ss_bus_topics}.py` | 已真跑（23/20/51/15/14 PASS） |

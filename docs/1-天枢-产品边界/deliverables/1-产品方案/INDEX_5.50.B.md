@@ -12,30 +12,30 @@
 
 | # | 文档 | 编号 | 文件 | 适读对象 |
 |:--|:---|:---|:---|:---|
-| 1 | 功能说明（5.50.B） | ZMAX-FUNC-20261013 | `docs/1-天枢-产品边界/deliverables/功能说明_Z-MAX_5.50.B_20261013.md` | 客户 / 供应商 / 内部 |
-| 2 | 全系统配置清单（5.50.B） | ZMAX-CFGL-20261013 | `docs/1-天枢-产品边界/deliverables/全系统配置清单_Z-MAX_5.50.B_20261013.md` | 客户 / 供应商 / 运维 |
-| 3 | 供应商 SOR（5.50.B） | ZMAX-SOR-20261013 | `docs/1-天枢-产品边界/deliverables/SOR_Z-MAX_5.50.B_20261013.md` | 供应商 / 整机厂 |
-| 4 | 项目立项文档（5.50.B） | ZMAX-CHTR-20261013 | `docs/1-天枢-产品边界/deliverables/立项文档_Z-MAX_5.50.B_20261013.md` | 内部 / 评审 |
-| 5 | 版本策略（5.50.A/B/C） | ZMAX-VSEM-20261013 | `docs/1-天枢-产品边界/deliverables/版本策略_5.50.A_B_C.md` | 内部 / 客户 |
-| 6 | 本索引 | ZMAX-IDX-5.50.B-20261013 | `docs/1-天枢-产品边界/deliverables/INDEX_5.50.B.md` | 全部 |
+| 1 | 功能说明（5.50.B） | ZMAX-FUNC-20261013 | `docs/1-天枢-产品边界/deliverables/1-产品方案/功能说明_Z-MAX_5.50.B_20261013.md` | 客户 / 供应商 / 内部 |
+| 2 | 全系统配置清单（5.50.B） | ZMAX-CFGL-20261013 | `docs/1-天枢-产品边界/deliverables/7-配置与测试/全系统配置清单_Z-MAX_5.50.B_20261013.md` | 客户 / 供应商 / 运维 |
+| 3 | 供应商 SOR（5.50.B） | ZMAX-SOR-20261013 | `docs/1-天枢-产品边界/deliverables/3-供应商SOR/SOR_Z-MAX_5.50.B_20261013.md` | 供应商 / 整机厂 |
+| 4 | 项目立项文档（5.50.B） | ZMAX-CHTR-20261013 | `docs/1-天枢-产品边界/deliverables/6-立项与协议/立项文档_Z-MAX_5.50.B_20261013.md` | 内部 / 评审 |
+| 5 | 版本策略（5.50.A/B/C） | ZMAX-VSEM-20261013 | `docs/1-天枢-产品边界/deliverables/1-产品方案/版本策略_5.50.A_B_C.md` | 内部 / 客户 |
+| 6 | 本索引 | ZMAX-IDX-5.50.B-20261013 | `docs/1-天枢-产品边界/deliverables/1-产品方案/INDEX_5.50.B.md` | 全部 |
 
 **配套机读/历史件**
 
 | 文件 | 说明 |
 |:---|:---|
-| `docs/1-天枢-产品边界/deliverables/全系统配置清单_5.50.B.md` / `.json` | 在役系统扫描件（由 `tools/delivery/gen_config_inventory.py` 生成，每个数可回读） |
-| `docs/1-天枢-产品边界/deliverables/功能说明_5.50.A.md` | 5.50.A 原型产品发布版功能说明（上一号段） |
-| `docs/1-天枢-产品边界/deliverables/全系统配置清单_5.50.A.md` / `.json` | 5.50.A 扫描件 |
+| `docs/1-天枢-产品边界/deliverables/7-配置与测试/全系统配置清单_5.50.B.md` / `.json` | 在役系统扫描件（由 `tools/delivery/gen_config_inventory.py` 生成，每个数可回读） |
+| `docs/1-天枢-产品边界/deliverables/1-产品方案/功能说明_5.50.A.md` | 5.50.A 原型产品发布版功能说明（上一号段） |
+| `docs/1-天枢-产品边界/deliverables/7-配置与测试/全系统配置清单_5.50.A.md` / `.json` | 5.50.A 扫描件 |
 | `docs/1-天枢-产品边界/{原型验证测试报告,任务配置单,功能清单,项目立项文档,供应商SOR}_Z-MAX_20261012.md` | 2026-10-12 首批交付文档 |
 
 **2026-10-13 追加导出（配置中心现取 · 摆盘项目）**
 
 | # | 文档 | 文件 | 唯一依据 | 备注 |
 |:--|:---|:---|:---|:---|
-| A | 全系统总配置清单（刷新） | `docs/1-天枢-产品边界/deliverables/全系统配置清单_5.50.B.md` / `.json` | 在役系统扫描 + 单一工程库 | 新增「配置关联性」章（links 389 · param_links 1767 · 任务关联 7）；画布口径修正为被绑定方 89 节点/184 连线 |
-| B | 供应商外发 SOR · 摆盘 TASK-06-TRAY | `docs/1-天枢-产品边界/deliverables/供应商SOR_摆盘_TASK-06-TRAY_5.50.B_20261013.md` / `.docx` / `.json` / `.manifest.json` | 单一工程库 + `config/tasks/tasks.json` + `config/platform/zmax_perf_spec.json` + 项目档案 PROJ-TH-TRAY | 章节 1–15 + 附录 A–G；新增 附录 E 配置表关联性（需求↔配置项追溯矩阵）· 附录 F 架构兼容性 · 附录 G 任务迁移。**md 为 Word 版原序渲染（同源同内容，自动同步）** |
+| A | 全系统总配置清单（刷新） | `docs/1-天枢-产品边界/deliverables/7-配置与测试/全系统配置清单_5.50.B.md` / `.json` | 在役系统扫描 + 单一工程库 | 新增「配置关联性」章（links 389 · param_links 1767 · 任务关联 7）；画布口径修正为被绑定方 89 节点/184 连线 |
+| B | 供应商外发 SOR · 摆盘 TASK-06-TRAY | `docs/1-天枢-产品边界/deliverables/3-供应商SOR/供应商SOR_摆盘_TASK-06-TRAY_5.50.B_20261013.md` / `.docx` / `.json` / `.manifest.json` | 单一工程库 + `config/tasks/tasks.json` + `config/platform/zmax_perf_spec.json` + 项目档案 PROJ-TH-TRAY | 章节 1–15 + 附录 A–G；新增 附录 E 配置表关联性（需求↔配置项追溯矩阵）· 附录 F 架构兼容性 · 附录 G 任务迁移。**md 为 Word 版原序渲染（同源同内容，自动同步）** |
 | C | SOR 导出器（可复跑到最新） | `tools/sor_export.py` | — | 复跑：`gui-venv311/bin/python tools/sor_export.py --project PROJ-TH-TRAY --task TASK-06-TRAY --json` |
-| D | 交付包（飞书发送件） | `docs/1-天枢-产品边界/deliverables/Z-MAX_交付文档_摆盘TASK-06-TRAY_5.50.B_20261013.zip` + `README_交付包_摆盘TASK-06-TRAY_5.50.B.md` | — | 7 件打包（117,518 B · sha256 `f9049c6e…`）；README = 包内说明 + 已证明/未证明两段 + 复核命令 |
+| D | 交付包（飞书发送件） | `_cleanup_20261101/deliverables_tiers_20261101/Z-MAX_交付文档_摆盘TASK-06-TRAY_5.50.B_20261013.zip`（已归档，可按 md/json 重打包） + `README_交付包_摆盘TASK-06-TRAY_5.50.B.md` | — | 7 件打包（117,518 B · sha256 `f9049c6e…`）；README = 包内说明 + 已证明/未证明两段 + 复核命令 |
 
 > 交付分工口径（本批明确）：**供应商研制摆盘作业具身模型（L3）· 我方做工程集成与收口（L2 执行链接入 / 几何真值 / 安全红线）**。见 SOR 第 2.1 节交付分工表。
 

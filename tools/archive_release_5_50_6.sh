@@ -66,7 +66,7 @@ cd "$DST" || exit 1
   echo ""
   echo "- 归档时间: $(date '+%Y-%m-%d %H:%M:%S')"
   echo "- 开发版: 5.50.6 (tools/gui/update_checker.py::CURRENT_VERSION)"
-  echo "- 交付版: 5.50.C (量产交付版; 见 docs/1-天枢-产品边界/deliverables/版本策略_5.50.A_B_C.md)"
+  echo "- 交付版: 5.50.C (量产交付版; 见 docs/1-天枢-产品边界/deliverables/1-产品方案/版本策略_5.50.A_B_C.md)"
   echo "- 本轮主题: 功能级 topic 输入输出实测 + 两场景交付文档(配置模板) + 供应商 SOR×2 + 合作协议"
   echo "- 目录: tools/(本轮代码) · config/(唯一依据快照) · canvas/(画布) · evidence/(判据输出) · reports/(真跑证据) · docs/(交付文档)"
   echo ""

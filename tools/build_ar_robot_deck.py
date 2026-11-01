@@ -21,7 +21,7 @@ from PIL import Image
 
 REPO = "/home/ubuntu/zmax"
 FIG = os.path.join(REPO, "docs/6-开阳-工程落地/figs_ar_robot")
-OUT = os.path.join(REPO, "docs/1-天枢-产品边界/deliverables/AR场景机器人方案_5.50.C_20261101.pptx")
+OUT = os.path.join(REPO, "docs/1-天枢-产品边界/deliverables/2-机器人方案/AR场景机器人方案_5.50.C_20261101.pptx")
 
 INK = RGBColor(0x14, 0x18, 0x1F); SUB = RGBColor(0x5B, 0x64, 0x72)
 GOLD = RGBColor(0xC9, 0xA2, 0x27); SOFT = RGBColor(0xF6, 0xF7, 0xF9)

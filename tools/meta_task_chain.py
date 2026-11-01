@@ -44,7 +44,7 @@ TRAJ = os.path.join(ROOT, "data/database/zmax/sources/canvas/ss_traj_last.json")
 ROADMAP = os.path.join(ROOT, "config/eval/iteration_roadmap.json")
 PHYS = os.path.join(ROOT, "config/calib/zmax_skill_physics.json")
 REPORT_DIR = os.path.join(ROOT, "reports/meta_task_chain")
-DOC_OUT = os.path.join(ROOT, "docs/1-天枢-产品边界/deliverables/元任务总体设计_v5.50.736.md")
+DOC_OUT = os.path.join(ROOT, "docs/1-天枢-产品边界/deliverables/1-产品方案/元任务总体设计_v5.50.736.md")
 
 VERSION = "5.50.736"
 

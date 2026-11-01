@@ -19,7 +19,7 @@ from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 
 REPO = "/home/ubuntu/zmax"
-OUT = os.path.join(REPO, "docs/1-天枢-产品边界/deliverables/Z-MAX产品解决方案_5.50.C_20261101.pptx")
+OUT = os.path.join(REPO, "docs/1-天枢-产品边界/deliverables/1-产品方案/Z-MAX产品解决方案_5.50.C_20261101.pptx")
 
 INK   = RGBColor(0x14, 0x18, 0x1F)
 SUB   = RGBColor(0x5B, 0x64, 0x72)

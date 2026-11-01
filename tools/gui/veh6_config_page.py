@@ -3730,7 +3730,7 @@ class ConfigCenterPage(QWidget):
     # ══════════════════════════════════════════════════════════════════════════
     # ⚙️ 工程配置 · 按性能等级 A/B/C (老倪 2026-10-28: 「根据性能等级, 进行工程配置,
     #    要有操作手册 working instruction, 保证能够工程实现」)
-    #    唯一依据: tools/spec/eng_profiles.json —— 与 docs/1-天枢-产品边界/deliverables/工程操作手册_三档_A_B_C.md 同源
+    #    唯一依据: tools/spec/eng_profiles.json —— 与 docs/1-天枢-产品边界/deliverables/8-工程手册/工程操作手册_三档_A_B_C.md 同源
     # ══════════════════════════════════════════════════════════════════════════
     def _eng_profile_block(self, th):
         import subprocess as _sp
@@ -4157,7 +4157,7 @@ class ConfigCenterPage(QWidget):
         _b_mt = _btn("📄 元任务计划 (Word/PDF)", th)
         _b_mt.setToolTip("导出「元任务开发计划 · 项目立项书」\n"
                          "元任务 = 每个功能 + 该功能全部配置参数 (打散到可独立开发的粒度)\n"
-                         "产物: docs/1-天枢-产品边界/deliverables/元任务开发计划_2026-10_2027-12.md / .docx / .pdf\n"
+                         "产物: docs/1-天枢-产品边界/deliverables/6-立项与协议/元任务开发计划_2026-10_2027-12.md / .docx / .pdf\n"
                          "数据源: config_meta.json(74 功能) + tasks.json(7 任务) + "
                          "ss_task_binding.json + 画布(89 节点) —— 出文档前先跑一致性校验")
         _b_mt.setStyleSheet(_b_mt.styleSheet() + ";font-weight:bold;")
@@ -6288,7 +6288,7 @@ class ConfigCenterPage(QWidget):
             ("📊 导出成本分析 PPT (10 页)", self._export_deck_ppt,
              "调 tools/build_cost_deck.py 现算三档目标成本与降本缺口 (10 页, 只算成本不写销售价), 写 zmax_data/deliverables"),
             ("📄 导出立项报告 (MD + DOCX)", self._export_project_report,
-             "写出 docs/1-天枢-产品边界/deliverables/项目立项报告_双臂协作工位.md 与 .docx, 数字现算"),
+             "写出 docs/1-天枢-产品边界/deliverables/6-立项与协议/项目立项报告_双臂协作工位.md 与 .docx, 数字现算"),
             ("📊 导出市场分成 (CSV)", self._export_split_csv,
              "三档 × 三阶段分成与回本, 可直接给财务"),
         ):

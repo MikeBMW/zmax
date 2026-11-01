@@ -6,7 +6,7 @@
 改售价上限、免费期或阶段参数后重跑本脚本即同步。
 
 跑法: python3 tools/gen_project_report.py [--md-only]
-输出: docs/1-天枢-产品边界/deliverables/项目立项报告_双臂协作工位.md / .docx
+输出: docs/1-天枢-产品边界/deliverables/6-立项与协议/项目立项报告_双臂协作工位.md / .docx
 """
 import json
 import os

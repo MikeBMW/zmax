@@ -134,7 +134,7 @@
 | `docs/7-瑶光-记录追溯/memory/hermes-jingjing-memory-2026-09-15.md` | 1 |
 | `docs/7-瑶光-记录追溯/memory/hermes-jingjing-user-2026-09-07.md` | 1 |
 | `docs/3-天玑-能力功能/skills/xspace/github-actions-ci/references/failed-job-rerun-and-log-forensics.md` | 1 |
-| `docs/1-天枢-产品边界/deliverables/功能说明_5.50.A.md` | 1 |
+| `docs/1-天枢-产品边界/deliverables/1-产品方案/功能说明_5.50.A.md` | 1 |
 | `docs/7-瑶光-记录追溯/memory/hermes-jingjing-memory-2026-10-19.md` | 1 |
 | `docs/7-瑶光-记录追溯/memory/hermes-jingjing-memory-2026-09-01.md` | 1 |
 | `docs/7-瑶光-记录追溯/memory/hermes-jingjing-memory-2026-09-14.md` | 1 |
