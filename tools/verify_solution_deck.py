@@ -100,11 +100,11 @@ except Exception as e:
 P, L = sim['plan'], sim['loop']
 cum, t = [], 0.0
 for s in P:
-    cum.append(round(t, 2)); t += s['t']
+    cum.append(t); t += s['t']            # 不预先舍入: 与页面 loop.tact_s 口径一致
 i0 = next(i for i, s in enumerate(P) if s['k'] == L['ks'][0])
 i1 = max(i for i, s in enumerate(P) if s['k'] == L['ks'][1])
-loop_dur = round(cum[i1] + P[i1]['t'] - cum[i0], 2)
-tact = loop_dur / L['mods']
+loop_dur = round(cum[i1] + P[i1]['t'] - cum[i0], 3)
+tact = (cum[i1] + P[i1]['t'] - cum[i0]) / L['mods']
 uph = 3600 / tact
 ins_end, grip_t = {}, {}
 for i, s in enumerate(P):
@@ -167,11 +167,43 @@ check('料盘 3 组 × 14 槽 + 废料盘', '槽口 36×42 共 %d 个 / 盘面 %
     n_slots, sorted(tray_sizes), len(trays)),
     ['3 组 × 14 槽 + 废料盘', '266 × 393'], 'ar_station.xml')
 # 节拍
-check('稳态循环', '%.2f s / %d 件 = %.3f s/件 = %.0f UPH' % (loop_dur, L['mods'], tact, uph),
-      ['%.2f s' % loop_dur, '%.3f s' % tact, '%d UPH' % round(uph)], sim_src)
+check('稳态循环', '%.3f s / %d 件 = %.3f s/件 = %.0f UPH' % (loop_dur, L['mods'], tact, uph),
+      ['%.3f s / %d 件' % (loop_dur, L['mods']), '%.3f s/件' % tact, '%d UPH' % round(uph)], sim_src)
 check('停留 dwell', '%.2f ~ %.2f s' % (min(dwells), max(dwells)),
       ['%.2f ~ %.2f s' % (min(dwells), max(dwells))], sim_src)
-check('目标节拍', '300 UPH = 12.0 s/件, 余量 %.2f s' % (12.0 - tact), ['300', '12 s'], 'order ar_300uph')
+check('目标节拍', '300 UPH = 12.0 s/件, 余量 %.3f s' % (12.0 - tact),
+      ['300', '12 s', '余量 %.3f s' % (12.0 - tact)], 'order ar_300uph')
+
+# 段表动作块 (与甘特页/总览页同一套解析: tools/build_uph300_gantt.build)
+sys.path.insert(0, ROOT + '/tools')
+from build_uph300_gantt import build as _gantt_build          # noqa: E402
+R = _gantt_build(sim)
+win = [b for b in R['blocks'] if b[2] >= R['base'] - 1e-6 and b[3] <= R['base'] + R['dur'] + 1e-6]
+
+
+def _ph(kind):
+    xs = sorted(b[3] - b[2] for b in win if b[0] == kind)
+    return xs
+
+
+pu, ao, pl, pi = _ph('pull'), _ph('aoi'), _ph('place'), _ph('insert')
+occ = sum(b[3] - b[2] for b in win)
+gap = R['dur'] - occ
+check('单件动作块 拔/AOI/落盘/补插',
+      '拔 %.2f~%.2f AOI %.2f 落盘 %.2f~%.2f 补插 %.2f~%.2f' % (
+          pu[0], pu[-1], sum(ao) / len(ao), pl[0], pl[-1], pi[0], pi[-1]),
+      ['拔 %.2f~%.2f' % (pu[0], pu[-1]), '落盘 %.2f~%.2f' % (pl[0], pl[-1]),
+       '补插 1 颗/件 %.2f~%.2f' % (pi[0], pi[-1])], '段表 blocks')
+check('右臂块内作业', '%.2f s / %.3f s = %.0f%%' % (occ, R['dur'], 100.0 * occ / R['dur']),
+      ['%.2f s / 循环 %.3f s' % (occ, R['dur']), '%.0f%%' % (100.0 * occ / R['dur'])], '段表 blocks')
+check('块间走位', '%.3f s/件 (循环 %.2f s)' % (gap / R['mods'], gap),
+      ['块间走位 %.2f s/件' % (gap / R['mods'])], '段表 blocks')
+check('稳态窗口动作块数', '窗口内 %d 块 = %d 拔 + %d AOI + %d 落盘 + %d 补插' % (
+    len(win), len(pu), len(ao), len(pl), len(pi)),
+      ['%d 个动作块' % len(win)], '段表 blocks (窗口 [base, base+dur])')
+check('设备孔', '%d 个孔, 孔距 %.0f mm, device_box_mm %s' % (
+    len(sim['holes']), sim.get('hole_pitch_mm') or 0, sim.get('device_box_mm')),
+      ['%d 个设备孔' % len(sim['holes'])], sim_src)
 # L2
 check('L2 节点数 / 真算数', '画布七带 %d 个(逻辑 %d), PURE=True %d' % (n_l2, n_logic, n_pure),
       ['%d 个节点' % n_l2], 'canvas 七带 + n_*.py')
@@ -211,4 +243,16 @@ for item, truth, needle, st, src in results:
     print('%-*s %-5s 真源: %-34s PPT需含: %s  [%s]' % (w, item, st, truth[:34], needle[:26], src))
 print('-' * (w + 78))
 print('结果: %d PASS / %d FAIL' % (len(results) - bad, bad))
+
+# 自洽闸: 册里写的「N 项 / N PASS / N FAIL」必须等于本次实跑 (放在 summary 之后, 不进 results, 避免自指)
+claim = re.search(r'（(\d+) 项逐条回真源重算；当前 (\d+) PASS / (\d+) FAIL）', PPT_TEXT)
+want = (len(results), len(results) - bad, bad)
+if not claim:
+    print('自检口径 ✗ 册内未写项数/结果, 实跑 %d 项 %d PASS / %d FAIL' % want)
+    sys.exit(1)
+got = tuple(int(x) for x in claim.groups())
+if got != want:
+    print('自检口径 ✗ 册写 %s, 实跑 %s' % (got, want))
+    sys.exit(1)
+print('自检口径 ✓ 册写 %s = 实跑' % (got,))
 sys.exit(1 if bad else 0)

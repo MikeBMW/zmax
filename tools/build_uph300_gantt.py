@@ -48,21 +48,23 @@ def fetch():
 def build(d):
     P, L = d['plan'], d['loop']
     cum, t = [], 0.0
-    for s in P:
-        cum.append(round(t, 2)); t += s['t']
+    for s in P:                      # 不预先四舍五入: 段表 t 累加后再定小数, 避免 45.87/4 与页面 11.468 差 1ms
+        cum.append(t); t += s['t']
     total = round(t, 2)
     i0 = next(i for i, s in enumerate(P) if s['k'] == L['ks'][0])
     i1 = max(i for i, s in enumerate(P) if s['k'] == L['ks'][1])
-    base = cum[i0]
-    dur = round(cum[i1] + P[i1]['t'] - base, 3)
+    base = round(cum[i0], 3)
+    dur_raw = cum[i1] + P[i1]['t'] - cum[i0]
+    dur = round(dur_raw, 3)
     mods = int(L['mods'])
-    tact = dur / mods
+    tact = dur_raw / mods
 
+    # 动作块 = 全轮绝对时间 (与 cum 同一坐标, 页面窗口按 [base, base+dur] 切)
     def rel(i):
-        return round(cum[i] - base, 3)
+        return round(cum[i], 3)
 
     def relend(i):
-        return round(cum[i] + P[i]['t'] - base, 3)
+        return round(cum[i] + P[i]['t'], 3)
 
     # ---- 动作块 (全轮绝对时间) ----
     blocks, i = [], 0
@@ -188,9 +190,9 @@ def draw(slide, R, X0, Y0, W, H, t0, t1, takt_lines=False, band=None, markers=Fa
                      '%.1fs' % (k * R['tact']), size=6.5, color=C_DIM, align=PP_ALIGN.CENTER)
             k += 1
 
-    # 左臂上料
-    k = 0
-    while k * R['tact'] + FEED_S <= t1 + 1e-6:
+    # 左臂上料: slot 起点 = n × tact (绝对时间), 窗口切换时同样按绝对坐标取可见段
+    k = max(0, int(t0 // R['tact']) - 1)
+    while k * R['tact'] < t1 + 1e-6:
         a = max(k * R['tact'], t0)
         b = min(k * R['tact'] + FEED_S, t1)
         if b > a:
@@ -228,7 +230,7 @@ def slide_round(pr, R):
              'AR3D 节拍甘特 · 一轮 %d 件 / %.2f s（含模块孔内停留）' % (len(R['done']), R['total']),
              size=17.5, bold=True)
     add_text(s, 0.55, 0.60, 12.3, 0.32,
-             '真源 GET /api/sim_insert（cfg_sha %s · %d 段）；蓝底 = 页面稳态循环 %.2f s / %d 件 → %.3f s/件。'
+             '真源 GET /api/sim_insert（cfg_sha %s · %d 段）；蓝底 = 页面稳态循环 %.3f s / %d 件 → %.3f s/件。'
              '灰色虚线条 = 模块插到位到夹住待测的停留（dwell），与其它件的拔/AOI/落盘并行，不单独占节拍。' % (
                  R['d'].get('cfg_sha', '—'), R['n_segs'], R['dur'], R['mods'], R['tact']),
              size=7.6, color=C_DIM)
@@ -238,13 +240,14 @@ def slide_round(pr, R):
 
     dw = [b - a for _, a, b in R['dwell']]
     add_text(s, 0.55, 5.60, 12.3, 0.30,
-             '停留 dwell 实测 %.2f ~ %.2f s（配置 %.2f ~ %.2f s）　14 件全部落在窗口内：首件贴下限、mod4 贴上限' % (
+             '停留 dwell（段表 plan 计算）%.2f ~ %.2f s（配置 %.2f ~ %.2f s）　14 件全部落在窗口内：首件贴下限、mod4 贴上限' % (
                  min(dw), max(dw), R['d'].get('dwell_min_s', 0), R['d'].get('dwell_max_s', 0)),
              size=9, color=C_TXT)
     add_text(s, 0.55, 5.96, 12.3, 1.0,
              '为什么必须画停留：光模块插进孔后不立刻拔，要在孔内坐一段时间再取出去做 AOI —— 这是流程约束，不是空等。'
              '上排(上料)与灰条(停留)都是并行的；真正吃节拍的是右臂四件事：拔 → AOI → 落盘 → 补插。'
-             '蓝底窗口内 4 件走完 45.87 s 后无缝回到第 1 件，所以 UPH 由该窗口决定，而不是首轮 159.43 s。',
+             '蓝底窗口内 %d 件走完 %.3f s 后无缝回到第 1 件，所以 UPH 由该窗口决定，而不是首轮 %.2f s。' % (
+                 R['mods'], R['dur'], R['total']),
              size=8, color=C_DIM)
 
 
@@ -277,7 +280,7 @@ def slide_loop(pr, R):
     s = pr.slides.add_slide(pr.slide_layouts[6])
     dur, tact = R['dur'], R['tact']
     add_text(s, 0.55, 0.18, 12.3, 0.40,
-             '稳态循环放大 · %.2f s / %d 件 = %.3f s/件（%.0f UPH，目标 300）' % (dur, R['mods'], tact, R['uph']),
+             '稳态循环放大 · %.3f s / %d 件 = %.3f s/件（%.0f UPH，目标 300）' % (dur, R['mods'], tact, R['uph']),
              size=17.5, bold=True)
     add_text(s, 0.55, 0.60, 12.3, 0.32,
              '窗口 = 页面 plantCtx（loop.ks=[%d,%d]）；细红线 = 每件 %.3f s 节拍线。灰虚线条为跨窗口的停留，'
@@ -287,20 +290,36 @@ def slide_loop(pr, R):
     draw(s, R, 2.45, 1.36, 8.95, 3.85, R['base'], R['base'] + dur,
          takt_lines=True, band=None, markers=False)
 
-    occ = sum(b[3] - b[2] for b in R['blocks'] if b[2] >= R['base'] and b[3] <= R['base'] + dur)
+    # 窗口内动作块 (blocks 为全轮绝对时间, 与 draw 同一坐标): 净作业/块间走位/逐块时长全部现算
+    win = [b for b in R['blocks'] if b[2] >= R['base'] - 1e-6 and b[3] <= R['base'] + dur + 1e-6]
+
+    def ph(kind):
+        xs = [b[3] - b[2] for b in win if b[0] == kind]
+        return (min(xs), max(xs), sum(xs) / len(xs)) if xs else (0.0, 0.0, 0.0)
+
+    pu, ao, pl, ins = ph('pull'), ph('aoi'), ph('place'), ph('insert')
+    occ = sum(b[3] - b[2] for b in win)
+    gap = dur - occ
+    # 块间走位里最长的一段 = 拔完到首张 AOI 图: 逐段取段表 label
+    gm = [seg['t'] for seg in R['d']['plan'] if (seg.get('label') or '').startswith('→ 金手指点1')]
     dw = [b - a for _, a, b in R['dwell']]
     add_text(s, 0.55, 5.50, 12.3, 0.34,
-             '右臂净作业 %.2f s / 循环 %.2f s（%.0f%%）　节拍 %.3f s → %.0f UPH（300 = 12 s，余量 %.2f s）　'
+             '右臂净作业（段表动作块）%.2f s / 循环 %.3f s（%.0f%%）　节拍 %.3f s → %.0f UPH（300 = 12 s，余量 %.3f s）　'
              '停留 %.2f~%.2f s 与作业并行' % (
                  occ, dur, 100.0 * occ / dur, tact, R['uph'], 12.0 - tact, min(dw), max(dw)),
              size=9, color=C_TXT)
     add_text(s, 0.55, 5.90, 12.3, 1.05,
-             '时间账（每件）：拔 1.78 → AOI 4.20 → 落盘 1.77 = 7.75 s；两件成对落盘后再补插 2 颗（各 2.70~2.98 s）摊 1.41 s/件'
-             '⇒ 右臂有效 9.16 s + 移动/衔接 2.31 s = 节拍 11.467 s。\n'
-             '停留不是空闲：模块必须坐够 dwell_min 9.85 s 才能拔（首件 9.86 s 刚好卡线），而 mod4/mod6 已到 33.11 s ≈ 配置上限 33.1 s —— '
+             '时间账（每件，稳态窗口 %d 个动作块逐块求和）：拔 %.2f~%.2f → AOI %.2f → 落盘 %.2f~%.2f → 补插 %.2f~%.2f s'
+             '（1 颗/件）= 块内 %.3f s/件；块间走位 %.3f s/件（其中 → 金手指点1 段 %.2f s/件，AOI 块从第一张图起算）'
+             '⇒ 块内 %.3f + 走位 %.3f = 节拍 %.3f s。\n'
+             '停留不是空闲：模块必须坐够 dwell_min %.2f s 才能拔（首件 %.2f s 刚好卡线），而 mod4/mod6 已到 %.2f s ≈ 配置上限 %.1f s —— '
              '4 孔轮转把停留用满了，AOI 一旦变慢就会破上限；这也是提节拍前必须先看的一条约束。\n'
              '口径：%.0f UPH 是段表理论值（段内匀速 + 段间无缝衔接，未计加减速）：直线段速度峰值 %.0f mm/s、中位 %.0f mm/s。'
              '要「保证 300」必须真机连续 ≥30 件实测循环 + AOI 耗时 P95，当前真机零指令，未实测。' % (
+                 len(win), pu[0], pu[1], ao[2], pl[0], pl[1], ins[0], ins[1], occ / R['mods'],
+                 gap / R['mods'], sum(gm) / len(gm) if gm else 0.0,
+                 occ / R['mods'], gap / R['mods'], tact,
+                 R['d'].get('dwell_min_s', 0), min(dw), max(dw), R['d'].get('dwell_max_s', 0),
                  R['uph'], _vmax(R), _vmed(R)),
              size=8.5, color=C_DIM)
 
