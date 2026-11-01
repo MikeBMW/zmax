@@ -78,9 +78,20 @@ def _sim_pose():
         with open(_AR_CMD, encoding="utf-8") as fh:
             d = json.load(fh)
         b = d.get("b") or d.get("tcp")
+        a = d.get("a")
         if not b:
             return None, None
         age = time.time() - float(d.get("t") or 0)
+        # 🔴 2026-11-01 老倪「动作变形」真因①: 原来直接拿段的**终点** b 当"当前末端",
+        #   等于把"我要去哪"当成"我在哪"。AR 页在段内走 u∈[0,1], 规划却每拍从终点起算
+        #   ⇒ 起点每拍跳一次 ⇒ 段表每拍换一份(n 在 21/22/26/40 之间乱跳)。
+        #   改为: 有 a 就按段内进度 u 插值 = 臂此刻真实所在的位置。
+        if a and len(a) >= 3:
+            try:
+                _u = min(1.0, max(0.0, float(d.get("u") or 0.0)))
+                return [float(a[i]) + (float(b[i]) - float(a[i])) * _u for i in range(3)], age
+            except Exception:                                               # noqa: BLE001
+                pass
         return [float(b[0]), float(b[1]), float(b[2])], age
     except Exception:                                                       # noqa: BLE001
         return None, None
@@ -353,6 +364,47 @@ def _segments(start, goal, lim):
     return segs[:MAX_SEGS]
 
 
+# ── 段表推进 (2026-11-01 老倪「动作变形」真因②) ─────────────────────────────
+# 原来每次 run() 只发 segs[0] 且 u 恒 0.0 ⇒ AR 页每拍都从"第一段起点"重新拉一次臂,
+# 关节被反复拉锯, 画面就是"动作变形/抽搐"。改成: 一份段表认一个 plan_id,
+# 按时间推进「第几段 + 段内进度 u」, 只有目标真的变了才重规划。
+_PLAN = {"id": 0, "segs": [], "goal": None, "t0": 0.0, "dur": [], "tot": 0.0}
+_SEG_V = {"lift": 1000.0, "move": 1000.0, "down": 300.0, "pull": 300.0, "insert": 300.0}
+
+
+def _seg_dur(s):
+    """段时长(秒): 按段长/名义速度, 零长度加工序段给 0.12s 地板。"""
+    v = float(_SEG_V.get(str(s.get("kind")), 300.0))
+    ln = float(s.get("len_mm") or 0.0)
+    return max(0.12, (ln / v) if ln > 0 else 0.12)
+
+
+def _plan_tick(segs, goal_plan, now):
+    """返回 (当前段, 段序号, 段内进度 u, plan_id, 段数, 已用秒)。"""
+    gl = [round(float(v), 2) for v in goal_plan]
+    dgl = 0.0
+    if _PLAN["goal"] is not None:
+        dgl = max(abs(gl[i] - _PLAN["goal"][i]) for i in range(3))
+    done = (_PLAN["segs"] and (now - _PLAN["t0"]) > _PLAN["tot"] + 0.6)
+    if (not _PLAN["segs"]) or dgl > 2.0 or done:
+        _PLAN.update({"id": int(_PLAN["id"]) + 1, "segs": list(segs), "goal": gl,
+                      "t0": now, "dur": [_seg_dur(x) for x in segs]})
+        _PLAN["tot"] = sum(_PLAN["dur"])
+    S, D = _PLAN["segs"], _PLAN["dur"]
+    if not S:
+        return None, 0, 0.0, _PLAN["id"], 0, 0.0
+    el = max(0.0, now - _PLAN["t0"])
+    cum = 0.0
+    idx = len(S) - 1
+    for i, dd in enumerate(D):
+        if el <= cum + dd:
+            idx = i
+            u = min(1.0, max(0.0, (el - cum) / dd)) if dd > 0 else 1.0
+            return S[idx], idx + 1, u, _PLAN["id"], len(S), round(el, 3)
+        cum += dd
+    return S[-1], len(S), 1.0, _PLAN["id"], len(S), round(el, 3)
+
+
 # ── 节点入口 (registry / middleware 都调它) ─────────────────────────────────
 def run(ctx=None):
     """一个周期: 起点(真值) + 目标(意图) + 安全限制 → 段表。只规划，不下发。"""
@@ -499,14 +551,24 @@ def run(ctx=None):
     # 🥽 2026-11-01 老倪「要真接入 AR 场景」: 段表直接进 AR 链分区 (页面/接口读它)
     try:
         from ..exec import ar_bridge as _arb
-        _cur = segs[0] if segs else None
-        _arb.update("plan", {
-            "kind": "plan", "n": len(segs),
-            "seg_i": (_cur or {}).get("i"), "seg_kind": (_cur or {}).get("kind"),
-            "a": (_cur or {}).get("a"), "b": (_cur or {}).get("b"),
-            "u": 0.0, "label": "段 %s/%s %s" % ((_cur or {}).get("i"), len(segs), (_cur or {}).get("kind")),
-            "total_mm": out.get("total_mm"), "pose_src": pose_src,
-        }, src="n_moveit")
+        _cur, _si, _u, _pid, _nseg, _el = _plan_tick(segs, goal_plan, time.time())
+        # 对外报的段表也跟推进器同一份 (否则消费者看到的 n 每拍在跳)
+        if _PLAN["segs"]:
+            out["segments"] = _PLAN["segs"]
+            out["n"] = len(_PLAN["segs"])
+            out["total_mm"] = round(sum(s.get("len_mm") or 0 for s in _PLAN["segs"]), 1)
+        out["plan_id"] = _pid
+        out["seg_i"] = _si
+        out["u"] = round(_u, 4)
+        if not os.environ.get("ZMAX_PLAN_NOWRITE"):
+            _arb.update("plan", {
+                "kind": "plan", "n": _nseg, "plan_id": _pid,
+                "seg_i": _si, "seg_kind": (_cur or {}).get("kind"),
+                "a": (_cur or {}).get("a"), "b": (_cur or {}).get("b"),
+                "u": round(_u, 4), "elapsed_s": _el,
+                "label": "段 %s/%s %s" % (_si, _nseg, (_cur or {}).get("kind")),
+                "total_mm": out.get("total_mm"), "pose_src": pose_src,
+            }, src="n_moveit")
     except Exception:                                                    # noqa: BLE001
         pass
     LAST_STATUS = ("段表 %d 段 / %.0fmm · 起点年龄 %.2fs · 单步≤%.0fmm 向下≤%.0fmm"
