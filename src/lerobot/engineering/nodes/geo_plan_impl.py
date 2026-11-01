@@ -23,6 +23,7 @@
 """
 from __future__ import annotations
 
+import json
 import math
 import os
 import time
@@ -393,6 +394,22 @@ def ideal_run(ctx=None):
             "cycle_s": doc["cycle_s"], "tact_s": doc["tact_s"], "uph": doc["uph"],
             "ok300": doc["ok300"], "src": "geo_ideal(测地线引导·理想档)"}
     out2 = {"H": h, "chunk": cur["chunk"], "seg_i": cur["i"], "kind": cur["kind"]}
+    # 📄 落一份可观测产物 (常驻循环里没有日志行也能核对: 龄/段号/UPH 实时)
+    try:
+        _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__))))))   # src/lerobot/engineering/nodes/ → 仓库根
+        _p = os.path.join(_root, "zmax_data", "ss_live", "geo_ideal_live.json")
+        _tmp = _p + ".tmp"
+        with open(_tmp, "w", encoding="utf-8") as _fh:
+            json.dump({"ts": time.time(), "t_str": time.strftime("%H:%M:%S"),
+                       "seg_i": cur["i"], "seg_n": doc["n_seg"], "kind": cur["kind"],
+                       "label": cur["label"], "u": round(u, 4), "tcp": out1["tcp"],
+                       "cycle_s": doc["cycle_s"], "tact_s": doc["tact_s"], "uph": doc["uph"],
+                       "ok300": doc["ok300"], "src": "geo_ideal(测地线引导·理想档)"},
+                      _fh, ensure_ascii=False)
+        os.replace(_tmp, _p)
+    except Exception:                                                       # noqa: BLE001
+        pass
     return {"out1": {"value": out1, "age_s": 0.0, "fresh": True},
             "out2": {"value": out2, "age_s": 0.0, "fresh": True},
             "ok": True, "ideal": True, "cycle_s": doc["cycle_s"], "tact_s": doc["tact_s"],
