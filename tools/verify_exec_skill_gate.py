@@ -27,7 +27,7 @@ def ck(tag, name, ok, detail=""):
 
 
 def load_daemon():
-    p = os.path.join(ROOT, "tools", "l2_daemon.py")
+    p = os.path.join(ROOT, "src", "lerobot", "engineering", "exec", "daemon.py")  # 2026-11-01 迁进工程
     spec = importlib.util.spec_from_file_location("zmax_l2_daemon_probe", p)
     m = importlib.util.module_from_spec(spec)
     sys.modules["zmax_l2_daemon_probe"] = m
@@ -92,7 +92,7 @@ def main() -> int:
        "→ %.1f mm/s · src=%s" % (sp5, info5.get("src")))
 
     # ⑧ 收口处真挂了闸 (静态: chan_send 内有调用, 且在下发腿之前)
-    src = open(os.path.join(ROOT, "tools", "l2_daemon.py"), encoding="utf-8").read()
+    src = open(os.path.join(ROOT, "src", "lerobot", "engineering", "exec", "daemon.py"), encoding="utf-8").read()
     _i_ch = src.index("def chan_send(")
     _i_gate = src.find("_speed_gated, _skg = _skill_gate(", _i_ch)
     _i_leg = src.find("_bridge_send(call, target, quat, speed)", _i_ch)

@@ -30,6 +30,34 @@ def run(ctx):
     except Exception:                                                      # noqa: BLE001
         pass
     log = ctx.get("log")
+    # 🧭 2026-11-01 老倪「l2_daemon 不能脱离状态空间工程, 放机器人执行器节点比较合理?」
+    #   结论落在本节点: **执行契约 (段表/闸序/回执) 归这里声明**, 常驻进程仍在 exec/daemon.py。
+    #   回执 = 只读 (每拍都可调); 下发 = 必须显式 (ctx["dispatch_segs"]), 画布每拍绝不自动发。
+    try:
+        from ..exec import contract as _CT
+    except Exception:                                                      # noqa: BLE001
+        try:
+            import importlib as _il
+            _CT = _il.import_module("lerobot.engineering.exec.contract")
+        except Exception:                                                  # noqa: BLE001
+            _CT = None
+    if _CT is not None:
+        _name0 = str(ctx.get("name") or "")
+        if ctx.get("dispatch_segs"):
+            _r = _CT.dispatch(ctx["dispatch_segs"], speed_mm_s=ctx.get("speed_mm_s"),
+                              dry=bool(ctx.get("dry")), stage=ctx.get("stage"))
+            if log:
+                log("🤖 机器人执行器 (契约下发): %s" % _r)
+            return {"out1": dict(_r, kind="exec_dispatch", contract="v1", src="exec.contract.dispatch")}
+        if (not ctx.get("in1")) or ctx.get("contract"):
+            _rc = _CT.receipt()
+            if log:
+                log("🤖 机器人执行器 (契约回执): phase=%s seg=%s/%s residual=%s age=%ss"
+                    % (_rc.get("phase"), _rc.get("seg"), _rc.get("n_seg"),
+                       _rc.get("residual_mm"), _rc.get("age_s")))
+            return {"out1": dict(_rc, kind="exec_receipt", contract="v1",
+                                 gate_order=[g[0] for g in _CT.GATE_ORDER],
+                                 src="exec.contract.receipt")}
     try:
         import numpy as np
         name = ctx.get("name", "")
@@ -67,7 +95,9 @@ def run(ctx):
                          "n": int(np.asarray(u_vec).size), "src": "execution.py:RobotExecutor.execute",
                          "t": time.time(), "real_send": False,
                          "exec_check": _chk,          # NaN/范围/变化率 三项校验真结果 (不是恒等透传)
-                         "note": "纯计算·零下发 (下发只走 l2_daemon+8793 授权)"}}
+                         "note": "纯计算·零下发 (下发只走 exec/daemon.py + 8793 授权)",
+                         "contract": ("v1" if _CT is not None else "missing"),
+                         "gate_order": ([g[0] for g in _CT.GATE_ORDER] if _CT is not None else [])}}
     except Exception as e:
         if log:
             log(f"⚠️ 执行层真实执行失败: {e}")

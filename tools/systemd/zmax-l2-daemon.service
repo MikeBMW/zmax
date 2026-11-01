@@ -18,7 +18,7 @@ Environment=ZMAX_MOVE_BRIDGE_URL=http://127.0.0.1:39071
 Environment=ZMAX_ORIN_SSH=orin
 # 启动别等 ssh 探针(最长 60 轮): 执行腿=bridge, 不依赖 ssh; 否则 FIFO 迟迟不建 ⇒ 页面点了全落空
 Environment=ZMAX_SKIP_CHAN_PROBE=1
-ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/l2_daemon.py
+ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/src/lerobot/engineering/exec/daemon.py
 Restart=always
 RestartSec=5
 KillSignal=SIGTERM
