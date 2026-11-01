@@ -5846,10 +5846,19 @@ def node_n_l2_muscle(ctx):
         if d.get("params"):
             log(f"   ⚙ 参数: {_json.dumps(d['params'], ensure_ascii=False)[:160]}")
         # ROS2 桥: **只读**查询 (有界超时, 避免卡 GUI); Orin 不在线则如实报
+        # 🚦 2026-11-01: 原每拍都跑 `timeout 6 ros2 topic echo` (上限 10s), Orin 不在位时整圈被它吃掉
+        #   (py-spy 15 次采样 8 次停在本节点) ⇒ 常驻循环里按节拍查询 (ZMAX_L2M_EVERY_S, 默认 30s), 超时 3s。
+        _now = time.time()
+        _in_loop = bool(os.environ.get("ZMAX_CANVAS_HZ"))
+        _every = float(os.environ.get("ZMAX_L2M_EVERY_S") or (30.0 if _in_loop else 0.0))
+        if _now - _L2M_CACHE["t"] < _every:
+            return True
+        _L2M_CACHE["t"] = _now
         try:
             bp = os.path.join(_REPO_ROOT, "tools", "l2_ros2_bridge.py")
             bm = _load_mod("zmax_l2_ros2_bridge", bp)        # 正常 import (断点可绑)
-            o = bm.sh("timeout 6 ros2 topic echo --once /robot_status 2>/dev/null | head -2", 10)
+            o = bm.sh("timeout 3 ros2 topic echo --once /robot_status 2>/dev/null | head -2",
+                      float(os.environ.get("ZMAX_L2M_TIMEOUT_S") or 4.0))
             ok = bool(str(o).strip())
             log(f"   🔌 ROS2 桥 (只读): {'在线 · ' + str(o).strip()[:120] if ok else '无响应 (Orin 未连/未起)'}"
                 f" · 桥文件 {os.path.basename(bp)}")
@@ -5860,6 +5869,8 @@ def node_n_l2_muscle(ctx):
     except Exception as e:                                                     # noqa: BLE001
         log(f"⚠️ L2 肌肉记忆技能库失败: {type(e).__name__}: {e}")
         return False
+
+_L2M_CACHE = {"t": -1e9}     # 💪 L2 肌肉记忆 ROS2 查询上次时刻 (节拍闸, 见函数内注释)
 
 _reg("n_board_frame", ["板坐标系定位", "工序坐标系", "免手眼"],
      "📐 板坐标系定位 — 真机帧→板检测+YOLO→模块在板坐标 (x,y)mm; 绕开手拖位姿精度 (源码 tools/board_frame_module.py::run)",
