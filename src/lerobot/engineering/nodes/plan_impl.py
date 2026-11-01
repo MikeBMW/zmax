@@ -417,7 +417,14 @@ def run(ctx=None):
         out.update({"ok": False, "reason": tgt.get("error"), "backend": "rule", "segments": [], "n": 0})
         print("[plan 节点] " + LAST_STATUS)
         return out
-    if goal and str((tgt or {}).get("frame") or "base_link") != "base_link":
+    # 🔀 SIM/AR 档 (ZMAX_PLAN_SIM_POSE=1): 起点就是 AR 虚拟末端(sim 系), 目标也是 sim_base
+    #   ⇒ 两边同系, 不算混用。真机档 (sim 关) 仍然只认 base_link, 这条豁免不生效。
+    _gf = str((tgt or {}).get("frame") or "base_link")
+    if goal and _gf != "base_link" and not (_sim_on() and _gf == "sim_base"):
+        _ = None
+    if goal and _gf != "base_link" and _sim_on() and _gf == "sim_base":
+        out["frame_note"] = "SIM 档: 起点=AR 虚拟末端(sim 系) 与目标 sim_base 同系"
+    if goal and str((tgt or {}).get("frame") or "base_link") != "base_link" and not (_sim_on() and _gf == "sim_base"):
         LAST_STATUS = ("目标点在 %s 系, 起点是真机 base_link ⇒ 不混用坐标系, 不出段表"
                        % (tgt or {}).get("frame"))
         out.update({"ok": False, "reason": "frame_mismatch", "backend": "rule", "segments": [], "n": 0})
