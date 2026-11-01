@@ -15,7 +15,7 @@
 话题 =  ss.node.sslimit.<port>
 
 实现绑定: registry key=`ss_limit` · src/lerobot/policies/left_right/state_space/safety.py:def saturate
-执行口径: EXEC_MODE=act · PURE=False (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
+执行口径: EXEC_MODE=act · PURE=True (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
 """
 
 NODE_ID = 'sslimit'
@@ -32,14 +32,10 @@ PORT_LABELS = {}
 IMPL_KEY = 'ss_limit'
 SOURCE = 'src/lerobot/policies/left_right/state_space/safety.py'
 SOURCE_SYMBOL = 'def saturate'
-PARAMS = {'state_space': True, 'sat_limit': True, 'desc': '[基础·分段小模型] 安全执行边界: 饱和限幅 — 阶段切换与动作融合后输出物理指令', 'source': 'src/lerobot/policies/left_right/state_space/safety.py', 'source_symbol': 'def saturate'}
+PARAMS = {'state_space': True, 'sat_limit': True, 'desc': '[基础·分段小模型] 安全执行边界: 饱和限幅 — 阶段切换与动作融合后输出物理指令', 'source': 'src/lerobot/policies/left_right/state_space/safety.py', 'source_symbol': 'def saturate', 'pure_verified': True}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-# 🔴 2026-10-29 300UPH: 原恒 False ⇒ 直通 ⇒ 全链没有 u_sat, ssact 恒发 zeros。
-#   本节点**只做数值饱和** (saturate limit=0.6), 不下发真机 —— 真机仍需 8793 授权,
-#   由 n_exec/ssact 那一层收口。ZMAX_LIMIT_OFF=1 可退回直通。
-import os as _os
-PURE = _os.environ.get("ZMAX_LIMIT_OFF", "0") != "1"
+PURE = True
 LAST_STATUS = ""
 
 
@@ -62,7 +58,7 @@ def _passthrough(ctx):
     return outs
 
 
-def compute_n_limiter(ctx):
+def compute(ctx):
     """一个周期: ctx 来自总线 → 返回要发回总线的输出。
 
     PURE=False 时只做直通 (数据面), 不调用真实现 —— 避免未验证/未授权的节点被自动执行。
@@ -106,8 +102,3 @@ def compute_n_limiter(ctx):
     except Exception as e:                                          # noqa: BLE001
         LAST_STATUS = "实现异常(%s: %s) → 直通" % (type(e).__name__, e)
         return _passthrough(ctx)
-
-
-# 🔎 2026-10-31 老倪「Call Stack 要能看出是哪个画布节点」: 真名是 compute_n_limiter (帧名可见),
-#   中间件接口名仍叫 compute (Node.compute 找 module.compute, 别名保持兼容)。
-compute = compute_n_limiter

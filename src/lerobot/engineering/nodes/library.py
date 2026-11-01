@@ -4490,7 +4490,13 @@ def node_ss_atomic(ctx):
         if tr is None or not tr.get("t"):
             if log:
                 log(f"🧩 原子技能 {name} · {tpl}: 无引擎轨迹 — 先点 ▶ 运行状态空间")
-            return False
+            # 2026-11-01: 无轨迹也要给**带类型的帧** (active=False), 否则下游 in4 拿到 None
+            #   ⇒ 运动规划看不出"技能没激活"和"技能没接线"的区别 (两种都是空)。
+            _t0 = float(time.time())
+            return {"out1": {"kind": "skill_act", "skill": tpl, "stage": stg, "active": False,
+                             "target": None, "reason": "no_engine_trace", "name": name, "t": _t0},
+                    "out2": {"kind": "skill_gate", "skill": tpl, "stage": stg,
+                             "f_need_N": None, "reason": "no_engine_trace", "t": _t0}}
         idx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
         stage_now = str(tr["stage"][idx]).replace("阶段 ", "").split("·")[0].strip()
         tgt = np.asarray(tr["target"][idx], dtype=float) if tr.get("target") else np.zeros(3)
@@ -4526,7 +4532,24 @@ def node_ss_atomic(ctx):
                         _gate.get("why") or "", float(_gate.get("f_need_N") or 0.0)))
             else:
                 log(f"🧩 原子技能 {name} 待命 · 模板{tpl} (当前阶段 {stage_now or '—'}, 未调用)")
-        return True
+        # 🧭 2026-11-01 老倪「plan 的上游是技能, 端口必须对正, 真执行」:
+        #   原来本函数只 return True ⇒ 壳子拿到非 dict ⇒ out1/out2 恒空 ⇒
+        #   连到 运动规划(in4) 的 8 根线传的全是空值 (线在, 值没有 = 假接线)。
+        #   现按端口语义给出: out1 = 技能动作 (含 target[mm] 供规划用) / out2 = 过闸结果。
+        _tgt_mm = [round(float(x) * 1000.0, 3) for x in np.asarray(tgt, dtype=float).ravel()[:3]]
+        _u4 = [round(float(x), 6) for x in np.asarray(u, dtype=float).ravel()[:4]]
+        out1 = {"kind": "skill_act", "skill": tpl, "stage": stg, "active": bool(act),
+                "target": _tgt_mm, "target_unit": "mm(base_link)",
+                "u": _u4, "u_unit": "m/s(与引擎 u_exec_vec 同口径)",
+                "gate": _gate, "name": name, "t": float(time.time())}
+        out2 = {"kind": "skill_gate", "skill": tpl, "stage": stg,
+                "f_need_N": (_gate or {}).get("f_need_N"),
+                "u_gate": (_gate or {}).get("u"), "why": (_gate or {}).get("why"),
+                "err_mm": (round(float((_gate or {}).get("err_norm") or 0.0) * 1000.0, 3)
+                           if _gate else None),
+                "saturated": bool(_gate and (_gate.get("why") or "").strip() not in ("", "pass")),
+                "t": float(time.time())}
+        return {"out1": out1, "out2": out2}
     except Exception as e:
         if log:
             log(f"⚠️ 原子技能层执行失败: {e}")

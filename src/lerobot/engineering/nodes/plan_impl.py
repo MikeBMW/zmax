@@ -11,8 +11,12 @@
 
 真源 (只读):
   起点 = zmax_data/rokae_sdk/tcp_out/latest.json   (真机 TCP 真值, 采样器 50Hz 写: x/y/z + ts)
-  目标 = ctx["in1"]                                ({"tcp":[x,y,z]} / {"pos":[..]} / [x,y,z])
+  目标 = ctx["in1"]                                ({"tcp":[x,y,z]} / {"pos":[..]} / [x,y,z] / 点名/槽号/观测点)
   安全 = ctx["in2"]                                ({"max_step_mm":50,"max_down_mm":20,...})
+  势场 = ctx["in3"]                                (ss_grav_h.out1: {"dir","mag","main","layers"})
+  技能 = ctx["in4".."in11"]                         (8 个原子技能 sssk1~8.out1, ①~⑧ 一一对应)
+       · 技能是 plan 的**上游** (老倪 2026-11-01 端口对正): in4 缺目标时才作目标点, in1 显式目标优先;
+       · 势场力真读: |F| ≥ force_veto_mag ⇒ 拒出段表; 否则沿 −F 给目标点做有界偏置 (避高势区)。
 
 口径 (实测过、写在台账里的那套):
   · 起点年龄 > ZMAX_PLAN_STALE_S(默认 2s) ⇒ **拒出段表**，如实报 stale —— 绝不拿旧位姿规划；
@@ -139,6 +143,119 @@ def _limits(ctx):
             "down": float(v.get("max_down_mm") or DEF_DOWN)}
 
 
+# ── 输入: 技能动作 (in4) / 势场力 (in3) ────────────────────────────────────
+# 老倪 2026-11-01: 「plan 的上游是技能, 端口必须对正, 真读势场力, 真执行」——
+#   此前画布把 8 个技能的 out1(动作) 接在 in1(目标点)/in2(安全) 上, 语义错位;
+#   而本文件只读 in1/in2, in3(势场) 的线是装饰线。现按端口语义重新对正:
+#     in1 目标点 (工程点/槽/观测点/裸坐标)   · 显式目标优先
+#     in2 安全约束 ({max_step_mm, max_down_mm})
+#     in3 势场力 (ss_grav_h.out1: {dir, mag, main, layers}) → 目标点安全偏置 + 力过大否决
+#     in4 技能动作 (sssk*.out1: {skill, stage, active, target[mm], u, gate}) → 缺 in1 时作目标点
+_CAL = os.path.join(_ROOT, "config", "calib", "zmax_calib.json")
+_PCFG = {"mtime": None, "d": {}}
+
+
+def _pcfg():
+    """工程配置 config/calib/zmax_calib.json:plan_node (mtime 热重载, 缺段回落默认)。"""
+    try:
+        m = os.path.getmtime(_CAL)
+    except OSError:
+        return _PCFG["d"]
+    if _PCFG["mtime"] != m:
+        try:
+            with open(_CAL, encoding="utf-8") as fh:
+                _PCFG["d"] = (json.load(fh).get("plan_node") or {})
+            _PCFG["mtime"] = m
+        except Exception:                                                    # noqa: BLE001
+            return _PCFG["d"]
+    return _PCFG["d"]
+
+
+SK_PORTS = ("in4", "in5", "in6", "in7", "in8", "in9", "in10", "in11")
+_MV = {"t": 0.0, "v": None}
+
+
+def _moveit_probe():
+    """MoveIt 可用性探针 · TTL 缓存 (ZMAX_PLAN_MOVEIT_TTL_S, 默认 10s)。
+
+    实测 MoveItPlan.plan() = 50.7ms/次 —— 探针不是规划, 每拍跑等于白吃半拍预算。
+    """
+    ttl = float(os.environ.get("ZMAX_PLAN_MOVEIT_TTL_S", "10") or 0)
+    now = time.time()
+    if _MV["v"] is not None and (now - _MV["t"]) < ttl:
+        d = dict(_MV["v"])
+        d["cached_age_s"] = round(now - _MV["t"], 1)
+        return d
+    try:
+        from lerobot.arm.arm_control import MoveItPlan                    # noqa: PLC0415
+        v = MoveItPlan.plan([0, 0, 0], [0, 0, 0])
+    except Exception as e:                                                   # noqa: BLE001
+        v = {"available": False, "note": "读不到 MoveItPlan: %s" % type(e).__name__}
+    _MV.update(t=now, v=v)
+    return v
+
+
+def _skill_act(ctx):
+    """in4..in11 = ①..⑧ 原子技能 → 选**当前生效的那一个** ({pos:[mm], stage, skill, active, u, gate})。
+
+    为什么要按端口分线: 8 个技能如果合流到同一个 in4, 中间件"后写覆盖" ⇒ 永远只剩 ⑧ 的帧。
+    分端口后每个技能有独立话题, 这里按 (active, t) 选: 先取 active=True 的, 都没有则取最新一帧。
+    """
+    best = None
+    frames = []
+    for p in SK_PORTS:
+        v = ((ctx or {}).get(p) or {}).get("value")
+        if not isinstance(v, dict) or v.get("kind") != "skill_act":
+            continue
+        frames.append((p, v))
+        pos = _as_point(v.get("target")) if v.get("target") is not None else None
+        item = {"pos": pos, "stage": v.get("stage"), "skill": v.get("skill"),
+                "active": bool(v.get("active")), "u": v.get("u"), "gate": v.get("gate"),
+                "port": p, "ts": float(v.get("t") or 0.0),
+                "reason": v.get("reason"), "src": "in4..in11(技能动作)"}
+        key = (1 if item["active"] else 0, item["ts"])
+        if best is None or key > best[0]:
+            best = (key, item)
+    if best is None:
+        return None
+    out = dict(best[1])
+    out["n_frames"] = len(frames)
+    out["active_ports"] = [f[0] for f in frames if f[1].get("active")]
+    return out
+
+
+def _force(ctx):
+    """in3: 势场力 → {"vec":[3], "mag", "main", "layers", "allow"} ; 无给 None。
+
+    ss_grav_h.out1 = {kind:force_corrected, dir(单位向量), mag(速度当量 m/s), main, layers, allow}
+    ⇒ 力度量一律取 mag, 方向取 dir; 若上游直接给 F 向量也认。
+    """
+    v = ((ctx or {}).get("in3") or {}).get("value")
+    if not isinstance(v, dict):
+        return None
+    vec = v.get("F") if isinstance(v.get("F"), (list, tuple)) else None
+    mag = v.get("mag")
+    d = v.get("dir")
+    if vec is None and isinstance(d, (list, tuple)) and len(d) >= 3:
+        try:
+            vec = [float(d[0]), float(d[1]), float(d[2])]
+        except Exception:                                                    # noqa: BLE001
+            vec = None
+    if vec is not None and mag is not None:
+        try:
+            vec = [vec[i] * float(mag) for i in range(3)]
+        except Exception:                                                    # noqa: BLE001
+            pass
+    if mag is None and vec is not None:
+        mag = (sum(float(x) ** 2 for x in vec[:3])) ** 0.5
+    if vec is None and mag is None:
+        return None
+    return {"vec": ([round(float(x), 6) for x in vec[:3]] if vec else None),
+            "mag": (round(float(mag), 6) if mag is not None else None),
+            "main": v.get("main"), "layers": v.get("layers"), "allow": v.get("allow"),
+            "src": "in3(势场力 ss_grav_h.out1)"}
+
+
 # ── 确定性分段 (rule 后端) ──────────────────────────────────────────────────
 def _split(a, b, cap):
     """把 a→b 按长度上限 cap 均分，返回 [(起, 终), …]（不含起点的重复）。"""
@@ -186,7 +303,7 @@ def _segments(start, goal, lim):
 def run(ctx=None):
     """一个周期: 起点(真值) + 目标(意图) + 安全限制 → 段表。只规划，不下发。"""
     global LAST_STATUS
-    out = {"node": "n_moveit", "impl": "nodes/plan_impl.py:run"}
+    out: dict = {"node": "n_moveit", "impl": "nodes/plan_impl.py:run"}
     start, age = _tcp_now()
     if start:
         out["start"] = [round(v, 2) for v in start]
@@ -195,17 +312,36 @@ def run(ctx=None):
     goal = (tgt or {}).get("pos") if isinstance(tgt, dict) else None
     lim = _limits(ctx)
     out["limits"] = lim
+    # 端口对正: in4 技能动作 / in3 势场力 (老倪 2026-11-01)
+    skl = _skill_act(ctx)
+    frc = _force(ctx)
+    cfg = _pcfg()
+    if skl is not None:
+        out["skill"] = {"skill": skl.get("skill"), "stage": skl.get("stage"),
+                        "active": skl.get("active"), "port": skl.get("port"),
+                        "n_frames": skl.get("n_frames"), "active_ports": skl.get("active_ports"),
+                        "reason": skl.get("reason"), "src": skl.get("src"),
+                        "f_need_N": ((skl.get("gate") or {}) or {}).get("f_need_N"),
+                        "u_norm": (round(float(sum(float(x) ** 2 for x in (skl.get("u") or [])[:3]) ** 0.5), 6)
+                                   if isinstance(skl.get("u"), (list, tuple)) else None)}
+    if frc is not None:
+        out["force"] = {"mag": frc.get("mag"), "vec": frc.get("vec"), "main": frc.get("main"),
+                        "layers": frc.get("layers"), "src": frc.get("src")}
+    # 目标优先级: in1 显式目标点 > in4 技能 target (技能是 plan 的上游)
+    if not goal and skl is not None and skl.get("pos"):
+        goal = list(skl["pos"])
+        tgt = {"pos": goal, "frame": "base_link", "src": "in4(技能 target)",
+               "name": skl.get("skill"), "ts": None}
+        out.update({"goal_src": "in4(技能 target)", "goal_frame": "base_link",
+                    "goal_name": skl.get("skill")})
     if isinstance(tgt, dict) and tgt.get("pos"):
         out.update({"goal_src": tgt.get("src"), "goal_frame": tgt.get("frame"),
                     "goal_name": tgt.get("name"), "goal_ts": tgt.get("ts"),
                     "goal_conf": tgt.get("conf"), "goal_err_mm": tgt.get("err_mm")})
 
-    # moveit 只报可用性 (MoveItPlan.plan 是探针, 不冒充能规划)
-    try:
-        from lerobot.arm.arm_control import MoveItPlan                    # noqa: PLC0415
-        out["moveit"] = MoveItPlan.plan([0, 0, 0], [0, 0, 0])
-    except Exception as e:                                                   # noqa: BLE001
-        out["moveit"] = {"available": False, "note": "读不到 MoveItPlan: %s" % type(e).__name__}
+    # moveit 只报可用性 (MoveItPlan.plan 是探针, 不冒充能规划) —— 带 TTL 缓存:
+    #   实测该探针 50.7ms/次, 10Hz 循环里每拍跑会白吃半拍预算 (画布 loop 本就 220~310ms)。
+    out["moveit"] = _moveit_probe()
 
     # ① 起点不可用 / 陈旧 ⇒ 拒出段表 (不许拿旧位姿规划)
     if not start:
@@ -264,9 +400,36 @@ def run(ctx=None):
                     "note": "in1 没给目标 ⇒ 段表为空"})
         print("[plan 节点] " + LAST_STATUS)
         return out
-    # ③ 真出段表
-    segs = _segments(start, goal, lim)
-    out.update({"ok": True, "backend": "rule", "goal": [round(v, 2) for v in goal],
+    # ③ 势场力: 力过大 ⇒ 否决; 否则沿合力反方向给目标点做有界安全偏置
+    goal_plan = list(goal)
+    if frc is not None:
+        _fm = float(frc.get("mag") or 0.0)
+        _veto = abs(float(cfg.get("force_veto_mag", 1.0) or 0.0))
+        if _veto > 0 and _fm >= _veto:
+            LAST_STATUS = ("势场力过大 (|F|=%.3f ≥ %.3f m/s 当量, 主力 %s) ⇒ 不出段表"
+                           % (_fm, _veto, frc.get("main")))
+            out.update({"ok": False, "reason": "force_veto", "segments": [], "n": 0,
+                        "force_bias_mm": None})
+            print("[plan 节点] " + LAST_STATUS)
+            return out
+        _sc = float(cfg.get("force_bias_mm_per_unit", 50.0) or 0.0)
+        _cap = abs(float(cfg.get("force_bias_max_mm", 20.0) or 0.0))
+        _vec = frc.get("vec") or [0.0, 0.0, 0.0]
+        _bias = [-float(_vec[i]) * _sc for i in range(3)]
+        _bn = (_bias[0] ** 2 + _bias[1] ** 2 + _bias[2] ** 2) ** 0.5
+        if _bn > _cap > 0:
+            _bias = [b * _cap / _bn for b in _bias]
+            _bn = _cap
+        goal_plan = [goal_plan[i] + _bias[i] for i in range(3)]
+        out["force_bias_mm"] = {
+            "bias": [round(b, 3) for b in _bias], "norm_mm": round(_bn, 3),
+            "scale_mm_per_unit": _sc, "cap_mm": _cap,
+            "goal_raw": [round(v, 2) for v in goal],
+            "goal_biased": [round(v, 2) for v in goal_plan],
+            "why": "沿势场合力反方向退让 (避高势区) · 有界", "src": "in3(势场力)"}
+    # ③' 真出段表
+    segs = _segments(start, goal_plan, lim)
+    out.update({"ok": True, "backend": "rule", "goal": [round(v, 2) for v in goal_plan],
                 "segments": segs, "n": len(segs),
                 "total_mm": round(sum(s["len_mm"] for s in segs), 1),
                 "note": "确定性分段(抬升→横移→下落) · 只规划, 不动真机"})

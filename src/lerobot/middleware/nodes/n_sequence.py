@@ -31,7 +31,7 @@ SOURCE_SYMBOL = ''
 PARAMS = {'state_space': True}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = True    # 🧠 2026-10-30 记忆层接入: 流程工艺记忆 L3 真执行 (读圈台账+写feed)
+PURE = False
 LAST_STATUS = ""
 
 
@@ -54,7 +54,7 @@ def _passthrough(ctx):
     return outs
 
 
-def compute_n_sequence(ctx):
+def compute(ctx):
     """一个周期: ctx 来自总线 → 返回要发回总线的输出。
 
     PURE=False 时只做直通 (数据面), 不调用真实现 —— 避免未验证/未授权的节点被自动执行。
@@ -98,8 +98,3 @@ def compute_n_sequence(ctx):
     except Exception as e:                                          # noqa: BLE001
         LAST_STATUS = "实现异常(%s: %s) → 直通" % (type(e).__name__, e)
         return _passthrough(ctx)
-
-
-# 🔎 2026-10-31 老倪「Call Stack 要能看出是哪个画布节点」: 真名是 compute_n_sequence (帧名可见),
-#   中间件接口名仍叫 compute (Node.compute 找 module.compute, 别名保持兼容)。
-compute = compute_n_sequence

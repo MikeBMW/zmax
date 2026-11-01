@@ -40,9 +40,7 @@ SOURCE_SYMBOL = 'def decide'
 PARAMS = {'state_space': True, 'action_modulator': True, 'desc': '[基础·分段小模型] 动作调制器 (原状态机, 握有否决权): 6阶段状态机 + 否决权 + 按阶段动作融合 (力控插入)', 'source': 'src/lerobot/policies/left_right/state_space/cognition.py', 'source_symbol': 'def decide', '_port_labels': {'out1': 'out1'}}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-import os as _os
-# 2026-10-30 INTACT→AR 接入评估: 默认直通(不破坏 300UPH), ZMAX_SCHED_ON=1 才真跑动作调制。
-PURE = _os.environ.get("ZMAX_SCHED_ON", "0") == "1"
+PURE = False
 LAST_STATUS = ""
 
 
@@ -65,7 +63,7 @@ def _passthrough(ctx):
     return outs
 
 
-def compute_n_scheduler(ctx):
+def compute(ctx):
     """一个周期: ctx 来自总线 → 返回要发回总线的输出。
 
     PURE=False 时只做直通 (数据面), 不调用真实现 —— 避免未验证/未授权的节点被自动执行。
@@ -109,8 +107,3 @@ def compute_n_scheduler(ctx):
     except Exception as e:                                          # noqa: BLE001
         LAST_STATUS = "实现异常(%s: %s) → 直通" % (type(e).__name__, e)
         return _passthrough(ctx)
-
-
-# 🔎 2026-10-31 老倪「Call Stack 要能看出是哪个画布节点」: 真名是 compute_n_scheduler (帧名可见),
-#   中间件接口名仍叫 compute (Node.compute 找 module.compute, 别名保持兼容)。
-compute = compute_n_scheduler

@@ -99,12 +99,25 @@ def run(ctx):
                     f"u_sat={np.round(u_sat,3)} (safety.py) · 被裁 {_clip_n} 维 · "
                     f"u_src={_SS_STATE.get('u_src','(无)')}")
             # 🔴 2026-10-29 接口对齐: 原来 return True ⇒ 壳判「非 dict → 直通」⇒ 下游拿不到业务字段
-            return {"kind": "safety_limit",
-                    "u_in": [round(float(x), 6) for x in _u_in],
-                    "u_sat": [round(float(x), 6) for x in np.asarray(u_sat, dtype=float).ravel()[:4]],
-                    "limit": 0.6, "clipped_dims": _clip_n,
-                    "u_src": _SS_STATE.get("u_src"), "u_degraded": _SS_STATE.get("u_degraded"),
-                    "src": "safety.py saturate (纯数值, 不下发真机)"}
+            # 🆕 2026-11-01 老倪「plan 的上游端口必须对正」: out1 = 限幅结果, **out3 = 规划安全约束**
+            #   (单步/向下限 = 执行器守卫 GATE 同一口径, 不再让 plan 自己写死 50/20)
+            try:
+                from lerobot.arm.arm_control import GATE as _GATE          # noqa: PLC0415
+                _lim = {"max_step_mm": float(_GATE.get("max_step_mm") or 50.0),
+                        "max_down_mm": float(_GATE.get("max_down_mm") or 20.0),
+                        "require_idle": bool(_GATE.get("require_idle", True)),
+                        "require_power_on": bool(_GATE.get("require_power_on", True)),
+                        "src": "arm_control.GATE (执行器守卫同一口径)"}
+            except Exception as _ge:                                        # noqa: BLE001
+                _lim = {"max_step_mm": 50.0, "max_down_mm": 20.0,
+                        "src": "默认 (读 GATE 失败: %s)" % type(_ge).__name__}
+            return {"out1": {"kind": "safety_limit",
+                             "u_in": [round(float(x), 6) for x in _u_in],
+                             "u_sat": [round(float(x), 6) for x in np.asarray(u_sat, dtype=float).ravel()[:4]],
+                             "limit": 0.6, "clipped_dims": _clip_n,
+                             "u_src": _SS_STATE.get("u_src"), "u_degraded": _SS_STATE.get("u_degraded"),
+                             "src": "safety.py saturate (纯数值, 不下发真机)"},
+                    "out3": _lim}
         cog = _ss_import("cognition")
         u_ff = _SS_STATE.get("u_ff", np.zeros(4))
         cp = _SS_STATE.get("contact_p", 0.1)

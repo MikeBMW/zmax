@@ -25,13 +25,13 @@ PORTS_IN = ['in1']
 PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
-IMPL_KEY = 'ss_mem_l4'   # 🔴 2026-10-30 修正漂移: 原来指 ss_world(→node_ss_exec), 不是 L4 记忆实现
+IMPL_KEY = 'ss_world'
 SOURCE = ''
 SOURCE_SYMBOL = ''
 PARAMS = {'state_space': True}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = True    # 🧠 2026-10-30 记忆层接入: 安全记忆 L4 真执行 (读安全包络+写feed)
+PURE = False
 LAST_STATUS = ""
 
 
@@ -54,7 +54,7 @@ def _passthrough(ctx):
     return outs
 
 
-def compute_n_prefrontal(ctx):
+def compute(ctx):
     """一个周期: ctx 来自总线 → 返回要发回总线的输出。
 
     PURE=False 时只做直通 (数据面), 不调用真实现 —— 避免未验证/未授权的节点被自动执行。
@@ -98,8 +98,3 @@ def compute_n_prefrontal(ctx):
     except Exception as e:                                          # noqa: BLE001
         LAST_STATUS = "实现异常(%s: %s) → 直通" % (type(e).__name__, e)
         return _passthrough(ctx)
-
-
-# 🔎 2026-10-31 老倪「Call Stack 要能看出是哪个画布节点」: 真名是 compute_n_prefrontal (帧名可见),
-#   中间件接口名仍叫 compute (Node.compute 找 module.compute, 别名保持兼容)。
-compute = compute_n_prefrontal

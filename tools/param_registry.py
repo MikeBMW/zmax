@@ -224,12 +224,25 @@ _DYN_SPEC = {
     "hold_v_cap_mm_s": {"cn": "保持段漂移速度上限", "unit": "mm/s", "min": 0.0, "max": 50.0},
 }
 
+# 🆕 2026-11-01: 运动规划节点 (n_moveit) 的势场力口径 — in3 真读, 目标点偏置/否决
+_PLAN_SPEC = {
+    "force_bias_mm_per_unit": {"cn": "势场力→目标偏置系数", "unit": "mm/(m/s)", "min": 0.0, "max": 500.0,
+                               "impact": "势场合力每 1 m/s 当量把目标点推开的毫米数; 改大→绕得更远更保守"},
+    "force_bias_max_mm": {"cn": "目标偏置上限", "unit": "mm", "min": 0.0, "max": 100.0,
+                          "impact": "单次规划最多把目标点推开多少; 0=不偏置"},
+    "force_veto_mag": {"cn": "势场否决阈值", "unit": "m/s 当量", "min": 0.0, "max": 10.0,
+                       "impact": "|F| ≥ 该值 ⇒ 拒绝出段表 (高势区不规划); 0=关闭否决"},
+}
+
 
 def _dyn_extra(ref):
-    if not str(ref).startswith("dyn_limits."):
-        return None
-    tail = str(ref).rsplit(".", 1)[-1]
-    return _DYN_SPEC.get(tail)
+    r = str(ref)
+    if r.startswith("dyn_limits."):
+        return _DYN_SPEC.get(r.rsplit(".", 1)[-1])
+    # 🆕 2026-11-01 老倪「端口必须对正」: 运动规划节点的势场力参数 (plan_node)
+    if r.startswith("plan_node."):
+        return _PLAN_SPEC.get(r.rsplit(".", 1)[-1])
+    return None
 
 
 def scan_calib():

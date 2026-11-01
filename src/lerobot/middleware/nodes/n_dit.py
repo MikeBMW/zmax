@@ -4,7 +4,7 @@
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ssvlm, ss_lora_l4
     in  in5   ← ssmani_c, ssmani_p, sslat
-    out out1  → ssff, n_moveit
+    out out1  → ssff
     out out2  → ss_grav_h
 
 输出 / 输入代码:
@@ -56,7 +56,7 @@ def _passthrough(ctx):
     return outs
 
 
-def compute_n_dit(ctx):
+def compute(ctx):
     """一个周期: ctx 来自总线 → 返回要发回总线的输出。
 
     PURE=False 时只做直通 (数据面), 不调用真实现 —— 避免未验证/未授权的节点被自动执行。
@@ -100,8 +100,3 @@ def compute_n_dit(ctx):
     except Exception as e:                                          # noqa: BLE001
         LAST_STATUS = "实现异常(%s: %s) → 直通" % (type(e).__name__, e)
         return _passthrough(ctx)
-
-
-# 🔎 2026-10-31 老倪「Call Stack 要能看出是哪个画布节点」: 真名是 compute_n_dit (帧名可见),
-#   中间件接口名仍叫 compute (Node.compute 找 module.compute, 别名保持兼容)。
-compute = compute_n_dit
