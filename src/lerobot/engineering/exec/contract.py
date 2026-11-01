@@ -156,6 +156,13 @@ def dispatch(segs, speed_mm_s=None, dry=False, stage=None):
         return {"ok": False, "sent": 0, "blocked_by": "段表不合规", "bad": bad[:5]}
     if dry:
         return {"ok": True, "sent": 0, "dry": True, "n": len(segs), "epoch": epoch}
+    # 新一轮下发 ⇒ 清执行器的变化率账 (否则第一拍拿上一次运行末拍做差分, 必误报)
+    try:
+        import importlib as _il
+        _ex = _il.import_module("lerobot.policies.left_right.state_space.execution")
+        _ex.RobotExecutor.reset("contract.dispatch 新下发")
+    except Exception:                                                    # noqa: BLE001
+        pass
     sent = 0
     try:
         with open(p["fifo"], "w", encoding="utf-8") as f:

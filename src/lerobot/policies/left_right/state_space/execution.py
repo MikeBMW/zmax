@@ -80,6 +80,12 @@ def _brk(tag=""):
     return
 
 
+
+import os
+
+import threading
+
+import time
 class RobotExecutor:
     """🤖 机器人执行器 — 接收物理指令执行
 
@@ -95,7 +101,24 @@ class RobotExecutor:
     """
 
     _LIMIT = 1.0          # 归一化通道范围 (再往外归 sslimit 的 safety_limit=0.6 裁)
-    _LAST = None          # 上一拍指令 (类级: 每个节点每拍 new 一次实例, 实例级存不住)
+    # 上一拍指令必须**跨实例**共享: 节点每拍都会 new 一个 RobotExecutor, 放实例上等于每拍清零。
+    # 🔴 2026-11-01 老倪「修」—— 但共享不能无脑共享:
+    #   ① 跨线程: 画布线程 + GUI/调试线程会同时进来 ⇒ 加锁, 否则两个线程各写一半
+    #   ② 跨轮次: 上一轮最后拍留在这里, 下一轮第一拍拿它差分 ⇒ 必误报"变化率超限"
+    #      ⇒ 记 rstamp, 间隔 > _RATE_STALE_S(默认 2s) 视为新周期, **不判变化率**并在 why 说明
+    _LAST = None
+    _LAST_T = 0.0
+    _RATE_STALE_S = float(os.environ.get("ZMAX_RATE_STALE_S", "2.0"))
+    _LOCK = threading.Lock()
+
+    @classmethod
+    def reset(cls, why=""):
+        """显式清账: 新一轮/换臂/调试重跑时调一次, 避免拿上一轮末拍做差分。"""
+        with cls._LOCK:
+            cls._LAST = None
+            cls._LAST_T = 0.0
+            cls._LAST_WHY = why or "reset()"
+        return True
 
     def __init__(self, n_joints=6, max_rate=0.35):
         # 🔧 2026-10-14 修 (真源一致性): 原写 `n_joints=7` + 注释"7 轴冗余臂 (Sawyer)";
@@ -119,15 +142,29 @@ class RobotExecutor:
             if abs(float(v)) > self._LIMIT:
                 chk["clip_hint"].append([i, round(float(v), 4)])
         # ③ 变化率: 物理上臂跟不上 (NaN 归零后不再算 —— 否则"归零"本身会被误报成轴跳变)
-        prev = RobotExecutor._LAST
-        if chk["valid"] and prev is not None and prev.shape == a.shape:
-            d = np.abs(a - prev)
-            over = np.where(d > self.max_rate)[0]
-            if over.size:
-                chk["over_rate"] = [[int(i), round(float(d[i]), 4)] for i in over]
-                chk["why"] = chk["why"] + ["变化率超 %.2f/拍: 轴 %s"
-                                           % (self.max_rate, [int(i) for i in over])]
-        RobotExecutor._LAST = a.copy()
+        _now = time.time()
+        chk["cycle"] = "seq"
+        with RobotExecutor._LOCK:
+            prev, prev_t = RobotExecutor._LAST, RobotExecutor._LAST_T
+            _gap = (_now - prev_t) if prev_t else 0.0
+            if not chk["valid"]:
+                pass                                     # 已归零, 不参与差分
+            elif prev is None:
+                chk["cycle"] = "首个指令"
+            elif prev.shape != a.shape:
+                chk["cycle"] = "维度变化(%d→%d) ⇒ 不判变化率" % (prev.size, a.size)
+            elif _gap > RobotExecutor._RATE_STALE_S:
+                # 上一拍是别的轮次/上次运行留下的 ⇒ 拿它差分没有物理意义
+                chk["cycle"] = "新周期(间隔 %.2fs>%.1fs) ⇒ 不判变化率" % (_gap, RobotExecutor._RATE_STALE_S)
+            else:
+                d = np.abs(a - prev)
+                over = np.where(d > self.max_rate)[0]
+                if over.size:
+                    chk["over_rate"] = [[int(i), round(float(d[i]), 4)] for i in over]
+                    chk["why"] = chk["why"] + ["变化率超 %.2f/拍: 轴 %s"
+                                               % (self.max_rate, [int(i) for i in over])]
+            RobotExecutor._LAST = a.copy()
+            RobotExecutor._LAST_T = _now
         self.last_check = chk
         return a
 
