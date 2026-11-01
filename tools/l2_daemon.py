@@ -2614,6 +2614,122 @@ def _bridge_send(call, target=None, quat=None, speed=None, _no_split=False):
     return _ok
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 🧩 原子技能约束复核 (2026-11-01 老倪「补上」)
+#   背景: 五条约束 (v/a/jerk/单拍位移/行程) 在仿真派发链每拍 clamp, 但真机下发链
+#   (本文件) 原来只调 next_target 算目标点, **一处 clamp 都没有** ⇒ 真机上等于没有约束。
+#   这里在下发收口补一道: 按该阶段的技能类常量反推允许速度, 超了就降速 (不改方向/目标点),
+#   并写取证到 zmax_data/ss_live/exec_skill_gate.jsonl。开关 ZMAX_EXEC_SKILL_GATE=0 关。
+# ══════════════════════════════════════════════════════════════════════════════
+_SKILL_GATE_ON = (os.environ.get("ZMAX_EXEC_SKILL_GATE", "1").strip().lower() not in ("0", "false", "no", "off"))
+_SKG_LOG = os.path.join(REPO, "zmax_data", "ss_live", "exec_skill_gate.jsonl")
+_SKG = {"n": 0, "cut": 0, "skip": 0, "last": {}}
+
+
+def _stage_of_call(call, stage=None):
+    """判这一段属于哪个技能阶段: 显式 spec > 调用语义 (ros/axis/kind) > rosk 名。"""
+    if stage:
+        return str(stage)
+    if isinstance(call, dict):
+        for k in ("stage", "phase"):
+            if call.get(k):
+                return str(call[k])
+        ros = str(call.get("ros") or "").lower()
+        ax = str(call.get("axis") or "").lower()
+        if "insert" in ros:
+            return "插入"
+        if "pull" in ros:
+            return "拔出"
+        if "grip" in ros:
+            return "抓取"
+        if ros == "line_rel":
+            if ax.endswith("_pos") and ax.startswith("z"):
+                return "抬起"
+            if ax.endswith("_neg") and ax.startswith("z"):
+                return "下降"
+            return "转移"
+        if ros == "line_abs":
+            return "转移"
+    return ""
+
+
+def _skill_gate(call, target=None, speed=None, stage=None):
+    """下发前按技能约束复核速度 ⇒ (speed_out_mm_s, info)。
+
+    · 无阶段 / 找不到技能类 / 关闸 ⇒ 原样返回 (info 说明为什么没管)
+    · 超限 ⇒ 降速到允许值 (只降速度, 方向与目标点不动), 并落取证
+    """
+    try:
+        if not _SKILL_GATE_ON:
+            return speed, {"applied": False, "why": "ZMAX_EXEC_SKILL_GATE=0 (老口径)"}
+        st = _stage_of_call(call, stage)
+        if not st:
+            _SKG["skip"] += 1
+            return speed, {"applied": False, "why": "无阶段可判 ⇒ 跳过 (不静默假装管过)"}
+        _m = _atomic_skills()
+        _fn = getattr(_m, "skill_for", None) if _m is not None else None
+        cls = _fn(st) if callable(_fn) else None
+        if cls is None:
+            _SKG["skip"] += 1
+            return speed, {"applied": False, "why": "阶段「%s」没有技能类" % st}
+        _sp_req = speed
+        if _sp_req is None and isinstance(call, dict):
+            _sp_req = call.get("speed") or call.get("speed_mm_s") or call.get("vel")
+        if _sp_req is None:
+            # chan_send 不传 speed 时, 腿按 ZMAX_L2_MM_S (默认 60mm/s) 走 ⇒ 按这个口径复核
+            try:
+                _sp_req = float(os.environ.get("ZMAX_L2_MM_S") or 60.0)
+            except Exception:                                            # noqa: BLE001
+                _sp_req = 60.0
+        _v_req = float(_sp_req) / 1000.0
+        dt = float(getattr(cls, "DT_S", 0.1) or 0.1)
+        v_cap = float(getattr(cls, "V_CAP", 0.0) or 0.0)
+        a_max = float(getattr(cls, "A_MAX", 0.0) or 0.0)
+        j_max = float(getattr(cls, "JERK_MAX", 0.0) or 0.0)
+        s_step = float(getattr(cls, "S_STEP", 0.0) or 0.0)
+        # 段速硬闸只取两条 (顶速 + 单拍位移): 这两条是「速度本身」的约束, 与腿内斜坡无关。
+        # 加速度/加加速度属于**斜坡过程**, 腿在执行器内部自己斜坡, daemon 不能假装按拍改它 ⇒
+        #   只把「从静止加到该速度需要多久」算出来记进取证 (ramp_s), 不据此降速
+        #   (否则 抬起 会被误削到 128mm/s, 把一个正常段速判成违规)。
+        lim = {"V_CAP": v_cap, "S_STEP/DT": (s_step / dt if dt else 0.0)}
+        lim = {k: v for k, v in lim.items() if v > 0}
+        _ramp = 0.0
+        if a_max > 0:
+            _ramp += _v_req / a_max                      # 匀速斜坡 (受 A_MAX)
+        if j_max > 0:
+            _ramp += (_v_req / (j_max ** 0.5)) * 0.5 if j_max > 0 else 0.0   # jerk 限制附加时间 (估)
+        if not lim:
+            _SKG["skip"] += 1
+            return speed, {"applied": False, "why": "技能类没有可用常量"}
+        _k, _v_allow = min(lim.items(), key=lambda kv: kv[1])
+        info = {"applied": True, "stage": st, "skill": getattr(cls, "code", ""),
+                "v_req_mm_s": round(_v_req * 1000, 3), "src": ("arg" if speed is not None else "call/env"), "v_allow_mm_s": round(_v_allow * 1000, 3),
+                "bottleneck": _k, "limits": {a: round(b * 1000, 3) for a, b in lim.items()},
+                "ramp_s": round(_ramp, 3), "A_MAX": a_max, "JERK_MAX": j_max}
+        _SKG["n"] += 1
+        if _v_req > _v_allow + 1e-9:
+            _SKG["cut"] += 1
+            _SKG["last"] = info
+            info["cut"] = True
+            info["from"] = round(float(_sp_req), 3)
+            speed = round(_v_allow * 1000.0, 3)
+            log("🧩 技能约束复核: 阶段「%s」(%s) 速度 %.2f → %.2f mm/s (瓶颈 %s: %.2f mm/s)"
+                % (st, getattr(cls, "code", ""), info["from"], speed, _k, _v_allow * 1000.0))
+            try:
+                os.makedirs(os.path.dirname(_SKG_LOG), exist_ok=True)
+                with open(_SKG_LOG, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(dict(info, t=time.time(), at=time.strftime("%H:%M:%S")),
+                                       ensure_ascii=False) + "\n")
+            except Exception:                                            # noqa: BLE001
+                pass
+        else:
+            info["cut"] = False
+        return speed, info
+    except Exception as e:                                               # noqa: BLE001
+        log("⚠️ 技能约束复核异常(放行不拦): %s: %s" % (type(e).__name__, str(e)[:60]))
+        return speed, {"applied": False, "why": "异常: %s" % type(e).__name__}
+
+
 def chan_send(call, intent_desc=None, target=None, quat=None, speed=None):
     """下发一条 ROS2 调用; 通道死了就重建并重试一次 (别让技能静默失效)。
 
@@ -2634,6 +2750,14 @@ def chan_send(call, intent_desc=None, target=None, quat=None, speed=None):
         _note_block("真动授权·8793 手动控制台", "%s | 本条=%s" % (_a_why, str(call)[:60]))
         return False
     _mark_dispatch(_CUR.get("skill") or str(call)[:40], "运动", str(call)[:100])
+    # 🧩 原子技能约束复核 (真机链唯一一处; ZMAX_EXEC_SKILL_GATE=0 回老口径)
+    _speed_gated, _skg = _skill_gate(call, target=target, speed=speed,
+                                     stage=((call or {}).get("stage") if isinstance(call, dict) else None))
+    if isinstance(_skg, dict) and _skg.get("applied") and _skg.get("cut"):
+        speed = _speed_gated                       # 降速直接进腿 (bridge: _bridge_send(..., speed))
+        _note_block("技能约束复核", "阶段「%s」%.1f→%.1f mm/s (瓶颈 %s)"
+                    % (_skg.get("stage"), _skg.get("from", 0.0), _skg.get("v_allow_mm_s", 0.0),
+                       _skg.get("bottleneck")))
     _is_grip = bool(intent_desc) and ("gripper" in call or "L2.grip_" in call or "grip_open" in call or "grip_close" in call)
     if _is_grip:
         log("🎯 夹爪类动作 ⇒ 免意图等待(非臂运动), 仍过快层反射闸门: %s" % intent_desc)
