@@ -24,7 +24,7 @@ SUMMARY = (
     "新鲜度; 保存样本时写入 `annotations.jsonl.truth` + 侧车 `sessions/<会>/truth.jsonl`, `--build` 聚合 `dataset/truth.jsonl`; "
     "**按 metaworld 39D 段位对齐** ([0:3]hand=[TCP真值], [4:7]光模块=TCP+R·夹具偏移, [7:11]peg_quat, [36:39]hole=示教goal) —— "
     "夹具偏移/示教几何未标定时**填 null + 原因, 不编造**; 窗口加 1Hz 真值行 (实测 TCP=[0.43678,0.32978,0.222018] base_link, age 0.02s)。"
-    "⑤**机器人动作自动标注 (设计+数学核)**: `docs/design/real_autolabel_by_robot_motion.md` — 机器人自己当标定物: 探针运动(夹着模块走9~12位姿, "
+    "⑤**机器人动作自动标注 (设计+数学核)**: `docs/6-开阳-工程落地/real_autolabel_by_robot_motion.md` — 机器人自己当标定物: 探针运动(夹着模块走9~12位姿, "
     "图像差分取运动域中心当模块像素, 配对用**两帧TCP中点**消除半采样周期偏置) → DLT 解 3x4 投影矩阵 P(=K·[R|t], 已含手眼外参) → 批量把 "
     "真值投影成 YOLO 框; `tools/real_autolabel.py --selftest` 全绿 (rms 1.4e-13 · 还原内参 fx610.000/fy607.000/cx318/cy242 · "
     "1px噪声→0.811px · 薄片绕光轴转90°框 14.5x37.5→37.7x14.4 正确互换); 诚实边界: 模块尺寸/夹具偏移/孔口点需现场量或示教, 自动标注**不得当 val**。"

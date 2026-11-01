@@ -28,7 +28,7 @@ def compare():
     """跑对比, 返回 (mse_improve_pct, success)"""
     r = run(f"PYTHONPATH=src .venv/bin/python tools/act_compare.py "
             f"--baseline {BASELINE} --candidate {CANDIDATE} --dataset {DATASET} "
-            f"--report docs/CICD_COMPARE_auto.json --n-eps 10")
+            f"--report docs/6-开阳-工程落地/ops/CICD_COMPARE_auto.json --n-eps 10")
     if r.returncode != 0:
         print(f"❌ 对比失败: {r.stderr[-300:]}")
         return None, False

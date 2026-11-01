@@ -41,12 +41,12 @@ done
 echo "  + evidence/criteria_output.txt"
 
 echo "=== ④ 文档 (交付版 5.50.C / 开发版 5.50.6) ==="
-for f in docs/deliverables/交付文档_摆盘_TASK-06-TRAY_* docs/deliverables/交付文档_插拔_TASK-01-FW_* \
-         docs/deliverables/SOR_供应商要求_摆盘_TASK-06-TRAY_* docs/deliverables/SOR_供应商要求_插拔_TASK-01-FW_* \
-         docs/deliverables/SOR_供应商要求_插拔类_TASK-01-FW_TASK-05-ATS_* \
-         docs/deliverables/SOR-OM-ROBOT_摆盘完整版_* \
-         docs/deliverables/合作协议_机器人数据平台与解决方案_* docs/deliverables/两场景验收报告_* \
-         docs/deliverables/功能topic_输入输出测试报告_* docs/deliverables/全系统配置清单_* ; do
+for f in docs/1-天枢-产品边界/交付文档_摆盘_TASK-06-TRAY_* docs/1-天枢-产品边界/交付文档_插拔_TASK-01-FW_* \
+         docs/1-天枢-产品边界/SOR_供应商要求_摆盘_TASK-06-TRAY_* docs/1-天枢-产品边界/SOR_供应商要求_插拔_TASK-01-FW_* \
+         docs/1-天枢-产品边界/SOR_供应商要求_插拔类_TASK-01-FW_TASK-05-ATS_* \
+         docs/1-天枢-产品边界/SOR-OM-ROBOT_摆盘完整版_* \
+         docs/1-天枢-产品边界/合作协议_机器人数据平台与解决方案_* docs/1-天枢-产品边界/两场景验收报告_* \
+         docs/1-天枢-产品边界/功能topic_输入输出测试报告_* docs/1-天枢-产品边界/全系统配置清单_* ; do
   [ -f "$f" ] && { cp "$f" "$DST/docs/"; }
 done
 # 配置单 (第二份 SOR 的配置唯一依据): 每任务只留最新一批 (md+json), 避免多批时间戳堆叠
@@ -66,7 +66,7 @@ cd "$DST" || exit 1
   echo ""
   echo "- 归档时间: $(date '+%Y-%m-%d %H:%M:%S')"
   echo "- 开发版: 5.50.6 (tools/gui/update_checker.py::CURRENT_VERSION)"
-  echo "- 交付版: 5.50.C (量产交付版; 见 docs/deliverables/版本策略_5.50.A_B_C.md)"
+  echo "- 交付版: 5.50.C (量产交付版; 见 docs/1-天枢-产品边界/deliverables/版本策略_5.50.A_B_C.md)"
   echo "- 本轮主题: 功能级 topic 输入输出实测 + 两场景交付文档(配置模板) + 供应商 SOR×2 + 合作协议"
   echo "- 目录: tools/(本轮代码) · config/(唯一依据快照) · canvas/(画布) · evidence/(判据输出) · reports/(真跑证据) · docs/(交付文档)"
   echo ""

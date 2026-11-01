@@ -1,6 +1,6 @@
 [Unit]
 Description=Z-MAX 开放词汇分割服务 SAM3 (L2 感知原语, 127.0.0.1:8796)
-Documentation=file:/home/ubuntu/zmax/docs/design/sam3_open_vocab_seg_L2_20260929.md
+Documentation=file:/home/ubuntu/zmax/docs/4-天权-模型算法/sam3_open_vocab_seg_L2_20260929.md
 After=network-online.target
 Wants=network-online.target
 

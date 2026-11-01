@@ -24,7 +24,7 @@ import time
 # ⚠️ link_value(画布连线)的 IDL 类型目前在 tools/gui/dds_link_bus.py 里, 而 zmax_node 靠
 #    `from dds_link_bus import LinkValue` 注册它 ⇒ 本进程必须把 tools/gui 加进 sys.path,
 #    否则 TOPICS 里没有 link_value, 连线话题就发不出去/订阅不到。
-#    收口计划: 该类型应搬到 src/lerobot/dataspace/ 下(见 docs/design/global_data_space_mapping_*.md §7)。
+#    收口计划: 该类型应搬到 src/lerobot/dataspace/ 下(见 docs/6-开阳-工程落地/global_data_space_mapping_*.md §7)。
 REPO = os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax")
 for p in (REPO, os.path.join(REPO, "src"), "/home/ubuntu/zmax/dds", os.path.join(REPO, "tools/gui")):
     if p not in sys.path:

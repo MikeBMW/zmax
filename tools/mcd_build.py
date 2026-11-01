@@ -247,7 +247,7 @@ PARAM_SPEC = [
          affects=["ssfeat"], feature=["C1"],
          judge="实测 <4mm 判过 (F-A02)"),
     dict(id="perf.cycle_s", cn="节拍指标", domain="性能配置", grade="G2",
-         src="docs/feature_dbc_spec.md + io_trace", read=None,
+         src="docs/7-瑶光-记录追溯/notes/feature_dbc_spec.md + io_trace", read=None,
          unit="s", rng=[0, 60], dflt=6.0, perm="readonly",
          affects=["ssfeat"], feature=["C6"],
          judge="≤6s (宏微复合口径)"),

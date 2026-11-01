@@ -22,7 +22,7 @@
     ④ 轨迹几何: θ(t) 演化 + 轴漂移 (流形上是否跑在"管道"里)
 
 用法:
-  python tools/manifold_train_view.py --steps 240 --out docs/manifold_view.json
+  python tools/manifold_train_view.py --steps 240 --out docs/7-瑶光-记录追溯/notes/manifold_view.json
   python tools/manifold_train_view.py --selftest        # 只测纯数学(不需引擎/GPU)
 """
 import argparse

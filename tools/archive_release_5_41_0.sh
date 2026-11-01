@@ -14,7 +14,7 @@ cp -f tools/gui/ss_dreamview.py tools/gui/dreamview_scene_edit.py "$DST/gui/"
 cp -f tools/tests/test_sim_real_3d_scene_view.py tools/tests/test_scene_pick_link.py \
       tools/bump_version.py tools/archive_release_5_41_0.sh "$DST/tools/" 2>/dev/null
 mkdir -p "$DST/tools/tests"; cp -f tools/tests/test_sim_real_3d_scene_view.py tools/tests/test_scene_pick_link.py "$DST/tools/tests/"
-cp -f VERSION.md docs/design/v5.41.0_summary.txt "$DST/docs/" 2>/dev/null
+cp -f VERSION.md docs/7-瑶光-记录追溯/v5.41.0_summary.txt "$DST/docs/" 2>/dev/null
 ls "$DST/gui" | sed 's/^/  gui: /'
 ls "$DST/tools/tests" | sed 's/^/  tests: /'
 
@@ -71,8 +71,8 @@ mkdir -p "$DST/evidence/scripts"; cp -f "$A"/scripts/*.py "$DST/evidence/scripts
 tail -8 "$DST/evidence/judges.txt" | sed 's/^/  /'
 
 echo "=== ⑥ 文档 ==="
-cp -f reports/关机交接_2026-10-10_晚.md docs/notes/2026-10-10_handoff_晚.md "$DST/reports/" 2>/dev/null
-cp -f docs/notes/2026-10-10_handoff.md docs/design/v5.40.2_summary.txt "$DST/docs/" 2>/dev/null
+cp -f reports/关机交接_2026-10-10_晚.md docs/7-瑶光-记录追溯/notes/2026-10-10_handoff_晚.md "$DST/reports/" 2>/dev/null
+cp -f docs/7-瑶光-记录追溯/notes/2026-10-10_handoff.md docs/6-开阳-工程落地/v5.40.2_summary.txt "$DST/docs/" 2>/dev/null
 ls "$DST/reports" "$DST/docs" | sed 's/^/  /'
 
 echo "=== ⑦ MANIFEST + sha256 ==="

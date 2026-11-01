@@ -1469,7 +1469,7 @@ def run_stages(sk, spec, chan, pts):
             env_ok, env_msg = env_model.check_target(pl["pos"])
         except Exception as _e:                                                  # noqa: BLE001
             env_ok, env_msg = True, "环境模型不可用(%s)" % str(_e)[:50]
-        # 🛡🛡 爬升闸(2026-10-01 碰撞事故, 见 docs/INCIDENT-20261001-traverse-height-collision.md)
+        # 🛡🛡 爬升闸(2026-10-01 碰撞事故, 见 docs/7-瑶光-记录追溯/incidents/INCIDENT-20261001-traverse-height-collision.md)
         #   事故实况: 多段转移把"高位横移"高度写成与起点无关的绝对量(目标点 z+180mm) ⇒ 臂从起点再抬 217mm
         #   到 z=0.549 横移 194mm ⇒ 撞(日志里环境校验还写着"✅ 包络内")。现场规矩: 升高不要超过 10cm。
         #   ⚠️ 环境包络校验**不能**替代本闸 —— 包络由历史运动数据拟合, 只代表"臂去过哪儿", 不代表"那儿没东西"。

@@ -2,7 +2,7 @@
 # 提交并推送 v5.15.7 (DDS 全局数据空间 + 服务修复 + 版本同步 + 交接单)
 set -u
 cd /home/ubuntu/zmax || exit 1
-git add VERSION.md docs/HANDOVER_20260926.md \
+git add VERSION.md docs/7-瑶光-记录追溯/incidents/HANDOVER_20260926.md \
         dds/ss_types.py dds/zmax_node.py dds/zmax_types.py \
         tools/zmax_dds_ss_daemon.py tools/zmax_dds_ss_verify.py \
         tools/fix_services_to_main.sh tools/archive_release_5_15_7.sh \

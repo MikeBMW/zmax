@@ -234,7 +234,7 @@ def collect_probes():
     p["hil_audit"] = (os.path.isfile(ha), "reports/hil_instructions.jsonl 在" if os.path.isfile(ha) else "缺")
     # 部署审计
     da = os.path.join(REPO, "docs", "deploy_audit.jsonl")
-    p["deploy_audit"] = (os.path.isfile(da), "docs/deploy_audit.jsonl 在" if os.path.isfile(da) else "缺")
+    p["deploy_audit"] = (os.path.isfile(da), "docs/6-开阳-工程落地/deploy_audit.jsonl 在" if os.path.isfile(da) else "缺")
     # 报告盘点
     reps = glob.glob(os.path.join(REPO, "reports", "*.json"))
     p["reports_dir"] = (len(reps) > 0, "reports/*.json %d 个" % len(reps))
@@ -346,7 +346,7 @@ def build_slices(sources, probes, live, mode_topics_live):
         "model_inventory.reports: %d 条(训练 run 的 steps/samples/artifact)" % len(mi.get("reports") or []))
     add("模型引擎", "模型_部署审计", "deploy_cmd", "zmax::DeployCommand", "cmd",
         "ECS/控制台(人工晋级)", ["4060/Orin 部署执行"], TQ("deploy_cmd"),
-        P("deploy_audit"), "docs/deploy_audit.jsonl " + ("在" if P("deploy_audit")[0] else "缺(S7 部署门 unknown)"))
+        P("deploy_audit"), "docs/6-开阳-工程落地/deploy_audit.jsonl " + ("在" if P("deploy_audit")[0] else "缺(S7 部署门 unknown)"))
 
     # ═══════════════ C. 场景 (scene_edit + canvas) ═══════════════
     se = sources.get("scene_edit", {}).get("data") or {}

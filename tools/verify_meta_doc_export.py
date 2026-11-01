@@ -23,7 +23,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, os.path.join(ROOT, "tools", "gui"))
 
-OUT = os.path.join(ROOT, "docs/deliverables")
+OUT = os.path.join(ROOT, "docs/1-天枢-产品边界/deliverables")
 BASE = "元任务开发计划_2026-10_2027-12"
 FILES = [os.path.join(OUT, BASE + e) for e in (".md", ".docx", ".pdf")]
 PASS, FAIL = [], []
@@ -61,7 +61,7 @@ print("   任务配置页按钮:", " | ".join(names))
 mt_btns = [b for b in btns if "元任务计划" in b.text()]
 chk("任务配置页有「元任务计划 (Word/PDF)」按钮", bool(mt_btns))
 if mt_btns:
-    chk("按钮提示写明产物路径", "docs/deliverables" in (mt_btns[0].toolTip() or ""),
+    chk("按钮提示写明产物路径", "docs/1-天枢-产品边界/deliverables" in (mt_btns[0].toolTip() or ""),
         (mt_btns[0].toolTip() or "")[:60].replace("\n", " "))
 
 print("\n=== ③④ 注册表接线 ===")
@@ -95,7 +95,7 @@ chk("导出耗时合理(<200s)", dt < 200, f"{dt:.1f}s")
 print("\n=== ⑥ 底部结果面板 ===")
 out = getattr(page, "out", None)
 txt = out.toPlainText() if out is not None else ""
-chk("结果面板给出产物绝对路径", ("docs/deliverables" in txt) or ("元任务开发计划" in txt),
+chk("结果面板给出产物绝对路径", ("docs/1-天枢-产品边界/deliverables" in txt) or ("元任务开发计划" in txt),
     (txt or "")[:120].replace("\n", " "))
 chk("结果面板含一致性结论", "一致性" in txt or "PASS" in txt or "通过" in txt,
     " ".join([ln for ln in txt.split("\n") if "一致" in ln or "PASS" in ln][:1]))

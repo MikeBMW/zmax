@@ -23,7 +23,7 @@ cp -f src/lerobot/verification/capability_levels.py "$DST/src/" 2>/dev/null
 cp -f tools/gui/node_logic.py "$DST/src/" 2>/dev/null
 cp -f flows/state_space_obs.json "$DST/docs/canvas_state_space_obs_snapshot.json" 2>/dev/null
 # ③ 文档
-cp -f VERSION.md docs/HANDOVER_20260926.md docs/TASK_LEDGER_20260925.md "$DST/docs/" 2>/dev/null
+cp -f VERSION.md docs/7-瑶光-记录追溯/incidents/HANDOVER_20260926.md docs/7-瑶光-记录追溯/incidents/TASK_LEDGER_20260925.md "$DST/docs/" 2>/dev/null
 # ④ 证据 (本日报告/台账/预检)
 cp -f reports/sys_maintenance_20260925.md reports/net_perf_optimize_20260925.md \
       reports/dns_net_maintenance_20260925.json reports/sys_maintenance_20260925.md "$DST/reports/" 2>/dev/null

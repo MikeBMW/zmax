@@ -2,7 +2,7 @@
 """🧠 INTACT 节点 (L4 层) — 【已迁移】兼容转发层。
 
 2026-09-13 老倪: "将 L4 节点的 INTACT 代码迁移到 src/lerobot 的 policies 文件夹"。
-实现已整体迁至 **`lerobot.policies.intact`** (lint 见 docs/design/zmax_l4_intact_policy.md):
+实现已整体迁至 **`lerobot.policies.intact`** (lint 见 docs/4-天权-模型算法/zmax_l4_intact_policy.md):
   · 真算法      → lerobot/policies/intact/runtime/   (桥/契约/数据源/机器人IO/自检)
   · lerobot 策略 → lerobot/policies/intact/modeling_intact.py  (IntactPolicy)
   · L4→L3 解码   → lerobot/policies/intact/decoder.py           (IntactIntentDecoder)

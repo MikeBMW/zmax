@@ -52,7 +52,7 @@ DOCS = [
     ("outputs/project_docs", "*PRJ*"),
     ("outputs/sor", "SOR-*"),
 ]
-PERF = "docs/deliverables/摆盘性能对账_5.50.758"
+PERF = "docs/1-天枢-产品边界/摆盘性能对账_5.50.758"
 
 
 def sha(p):

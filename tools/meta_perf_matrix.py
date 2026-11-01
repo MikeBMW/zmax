@@ -30,7 +30,7 @@
 
 产出:
   · zmax_data/eval/meta_perf_matrix.json        机器可读台账 (含唯一依据 sha256 + 生成时刻 + 帧龄)
-  · docs/eval/元任务性能物理值全链验证_v5.50.735.md  报告 (人读)
+  · docs/5-玉衡-指标验收/eval/元任务性能物理值全链验证_v5.50.735.md  报告 (人读)
   · --feishu                                    把摘要推到飞书 (tools/feishu_send.py)
 
 用法:
@@ -64,7 +64,7 @@ LIVE_SP = os.path.join(ROOT, "zmax_data/ss_live/skill_phys.json")
 LIVE_GATE = os.path.join(ROOT, "zmax_data/ss_live/skill_latest.json")
 RUNS = os.path.join(ROOT, "zmax_data/task_runs")
 OUT_JSON = os.path.join(ROOT, "zmax_data/eval/meta_perf_matrix.json")
-OUT_MD = os.path.join(ROOT, "docs/eval/元任务性能物理值全链验证_v5.50.735.md")
+OUT_MD = os.path.join(ROOT, "docs/5-玉衡-指标验收/eval/元任务性能物理值全链验证_v5.50.735.md")
 
 PHYS_KEYS = ("v", "v_min", "a", "s", "s_step", "jerk", "m", "F", "dmdt")
 

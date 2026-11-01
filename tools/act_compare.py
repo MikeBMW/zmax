@@ -8,7 +8,7 @@
 用法:
   python3 tools/act_compare.py --baseline outputs/train/act_metaworld/checkpoints/000300/pretrained_model \
     --candidate outputs/train/act_closed_loop_v110/checkpoints/002000/pretrained_model \
-    --report docs/CICD_COMPARE_v1.1.0.html
+    --report docs/6-开阳-工程落地/ops/CICD_COMPARE_v1.1.0.html
 """
 import argparse, json, time, torch
 import numpy as np
@@ -118,7 +118,7 @@ if __name__ == "__main__":
     ap.add_argument("--baseline", required=True)
     ap.add_argument("--candidate", required=True)
     ap.add_argument("--dataset", default="data/metaworld_mt50")
-    ap.add_argument("--report", default="docs/CICD_COMPARE_v1.1.0.html")
+    ap.add_argument("--report", default="docs/6-开阳-工程落地/ops/CICD_COMPARE_v1.1.0.html")
     ap.add_argument("--n-eps", type=int, default=10)
     args = ap.parse_args()
 

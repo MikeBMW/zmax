@@ -263,7 +263,7 @@ def node_ss_mem_share(ctx):
 
 # ══════════════════════════════════════════════════════════════════
 # 🧠🧬 S1 意图丛节点 (2026-09-10 老倪: 三层能力共享 — 记忆图谱连接层)
-#   设计: docs/design/zmax_intent_bundle_3layer.md
+#   设计: docs/4-天权-模型算法/zmax_intent_bundle_3layer.md
 #   真源: src/lerobot/memory/memory_graph.py (links / recall / 技能词典 / 意图直读)
 # ══════════════════════════════════════════════════════════════════
 def _mg():

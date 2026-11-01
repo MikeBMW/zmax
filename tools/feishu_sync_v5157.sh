@@ -12,7 +12,7 @@ MSG1='【静静同步 · v5.15.7 收尾 2026-09-26】
 ⑤ DeepSeek 确认：账号可用 deepseek-flash / deepseek-v4-pro，仓库配的 deepseek-flash 就是 V4.1-Flash 最新版（无需切换）；文本+视觉双路 HTTP 200（视觉对真机判据图返回真实描述）；实测单次约 122s → 异步旁路 + 本地 smolvlm2 保障必须保留。
 
 二、同步内容
-· 任务：台账 docs/TASK_LEDGER_20260925.md + 交接单 docs/HANDOVER_20260926.md（待现场 8 项在内）
+· 任务：台账 docs/7-瑶光-记录追溯/incidents/TASK_LEDGER_20260925.md + 交接单 docs/7-瑶光-记录追溯/incidents/HANDOVER_20260926.md（待现场 8 项在内）
 · 记忆+技能：已同步到仓库并 push（52 技能 / 记忆备份 2026-09-26）
 · 数据：归档 ~/zmax/zmax_data/release_5.15.6_20260926（138 文件 5.0M）+ release_5.15.7_20260926（19 文件 304K，含 DDS 类型/守护/取证日志），均带 MANIFEST + sha256
 · 版本：v5.15.7（6 处唯一依据同步），commit adb14eb2 已 push

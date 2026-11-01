@@ -76,7 +76,7 @@ def main() -> int:
         print("  %s :10083" % name if port == 10083 else "  %s :10082" % name)
         for k, v in row.items():
             print("     %-16s %s" % (k, v))
-    patch = os.path.join(R, "docs/patch/opt_surface_10083_add_picture_route.md")
+    patch = os.path.join(R, "docs/6-开阳-工程落地/patch/opt_surface_10083_add_picture_route.md")
     has_patch = os.path.isfile(patch)
     out["a3"]["交接单"] = {"文件": os.path.relpath(patch, R) if has_patch else None, "存在": has_patch,
                           "行数": len(open(patch, encoding="utf-8").read().splitlines()) if has_patch else 0,

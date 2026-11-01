@@ -76,7 +76,7 @@ echo "=== ④ MANIFEST ==="
   echo "- data/ : 轨迹模板 + 真机实测轨迹 + 跟随日志(jsonl)"
   echo "- logs/ : 跟随/录制运行日志"
   echo "- evidence/measured_20261018.md : 全部实测数字"
-  echo "- docs/VERSION.md"
+  echo "- docs/6-开阳-工程落地/release/VERSION.md"
 } > "$DST/MANIFEST.md"
 
 cd "$DST" && find . -type f ! -name sha256sums.txt -print0 | sort -z | xargs -0 sha256sum > sha256sums.txt

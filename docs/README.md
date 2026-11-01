@@ -1,33 +1,41 @@
-# docs 目录说明
+# docs 目录 · 北斗七星阵
 
-一句话：**15 个目录，6 类**。按「干什么用」找，不按时间找。
+七个文件夹，与**配置中心七阵同源**（唯一依据 `tools/gui/ss_seven_stars.py`）：
+一 天枢定边界 · 二 天璇定作业 · 三 天玑定能力 · 四 天权定算法 · 五 玉衡定指标 · 六 开阳定落地 · 七 瑶光定记录。
 
-## 一、分类
+## 七个文件夹
 
-| 类 | 目录 | 放什么 | 现状 |
-|---|---|---|---|
-| **① 方案与架构** | `design/` | 技术方案、架构、算法说明、接线方案、配置规范（含 `design/diagrams/` 图） | 143 件 |
-| **② 验收与评测** | `eval/` · `test-reports/` | 评测结论、对比数据、正式测试报告（F02/F03/F04、MASTER-TEST-REPORT） | 21 + 11 件 |
-| **③ 对外交付** | `deliverables/` · `patents/` | 给客户/集成商/供应商的成稿（含 `deliverables/outreach/` 立项资料）、专利文件 | 80 + 25 件 |
-| **④ 运行与运维** | `ops/` · `patch/` · `web/` | 部署/运维手册、现场补丁片段、页面与状态 JSON | 20 + 7 + 8 件 |
-| **⑤ 记录与复盘** | `notes/` · `incidents/` · `memory/` | 交接/收工记录、事故台账、工程记忆 | 66 + 31 + 136 件 |
-| **⑥ 参考与快照** | `source/` · `data_snapshots/` · `skills/` · `release/` | 上游框架文档、数据快照、技能导出、版本 changelog | 93 + 50M + 29M + 18 件 |
+| 星 | 文件夹 | 定什么 | 放什么 | 文件数 |
+|---|---|---|---|---|
+| 一 天枢·贪狼 | `1-天枢-产品边界/` | **定边界** | 产品形态与等级、硬件平台、技术协议、SOR 供应商要求、交付包、专利、竞品 | 109 |
+| 二 天璇·巨门 | `2-天璇-作业任务/` | **定作业** | 任务与工序、AOI/AR 场景、产线 12 工位、抓取放置流程、插拔状态机 | 20 |
+| 三 天玑·禄存 | `3-天玑-能力功能/` | **定能力** | 功能单元、特征库、原子技能、能力清单，以及 Hermes 技能库镜像（`skills/`） | 2727 |
+| 四 天权·文曲 | `4-天权-模型算法/` | **定算法** | 模型与训练、策略、流形引擎、感知算法、INTACT/L4、LoRA、数据空间 | 38 |
+| 五 玉衡·廉贞 | `5-玉衡-指标验收/` | **定指标** | 性能与节拍、评测分析、实验结论（含负样本）、正式测试报告（`test-reports/`） | 40 |
+| 六 开阳·武曲 | `6-开阳-工程落地/` | **定落地** | 架构与接线、参数与配置、部署运维（`ops/`）、现场补丁（`patch/`）、接口规范、数据地图、状态快照（`data_snapshots/`）、发行记录（`release/`） | 619 |
+| 七 瑶光·破军 | `7-瑶光-记录追溯/` | **定记录** | 交接与收工、事故台账（`incidents/INCIDENT-INDEX.md`）、复盘、版本小结、工程记忆（`memory/`） | 259 |
 
-根目录只留三个入口文件：`INCIDENT-INDEX.md`（→ `incidents/` 的软链）· `PIPELINE_STATE.json`（CI/CD 状态）· `deploy_audit.jsonl`（部署审计）。
+合计 3812 份。**没有第八个文件夹** —— 与配置中心一致。
 
-## 二、新文档放哪
+## 新文档放哪（一句话判定）
 
-| 你写的是 | 放 |
-|---|---|
-| 某个功能/接线的技术方案 | `design/` |
-| 一次评测/对比/压测的结论 | `eval/` |
-| 正式测试报告 | `test-reports/` |
-| 给客户看的成稿（手册/清单/报告） | `deliverables/` |
-| 部署步骤、运维命令、现场补丁 | `ops/` 或 `patch/` |
-| 今天的收工/交接/复盘 | `notes/` |
-| 事故、险情、被拦下的动作 | `incidents/`（并更新 `INCIDENT-INDEX.md`） |
+1. 说**卖什么、边界在哪** → 天枢
+2. 说**这道工序怎么干** → 天璇
+3. 说**某个功能/技能怎么用** → 天玑
+4. 说**模型怎么训、怎么算** → 天权
+5. 说**多少秒、多少毫米、达标没有** → 玉衡
+6. 说**接口怎么接、参数在哪、怎么部署** → 开阳
+7. 说**谁在什么时候做了什么、出了什么事** → 瑶光
 
-## 三、命名
+判不准看**主司**：一份文档只归一颗星；找不到归属，说明它还没想清楚。
+
+## 三条只读规矩
+
+1. `3-天玑-能力功能/skills/` 与 `7-瑶光-记录追溯/memory/` 是 `~/.hermes` 的**镜像** —— 要改改源（`tools/sync_hermes_to_repo.sh`），别在 docs 里改。`memory/` 还被 `src/lerobot/memory/eng_memory.py` 真读，别改名。
+2. `6-开阳-工程落地/data_snapshots/` 是**证据快照**，按日期冻结，只增不改。
+3. `5-玉衡-指标验收/test-reports/` 的 `MASTER-TEST-REPORT.md`、`F03-orin-inference-test.md` 被 `verification_layer.py` 按路径校验，**缺文件即判 FAIL**。
+
+## 命名
 
 ```
 方案    <主题>_<YYYYMMDD>.md          例: PLAN_NODE_PORT_ALIGN_20261101.md
@@ -37,21 +45,18 @@
 快照    data_snapshots/<YYYYMMDD>_<版本>_<主题>/
 ```
 
-## 四、三条只读规矩
-
-1. `memory/` 被 `src/lerobot/memory/eng_memory.py` 真读 —— **别改名、别挪目录**，加文件可以。
-2. `data_snapshots/` 只增不改（历史证据），要删先确认无脚本引用。
-3. `test-reports/` 的 `MASTER-TEST-REPORT.md`、`F03-orin-inference-test.md` 被 `verification_layer.py` 按路径校验，**缺文件即判 FAIL**。
-
-## 五、找不到东西时
+## 查找
 
 ```bash
 cd /home/ubuntu/zmax
-ls docs/*/ -d                                  # 15 个目录
+ls docs/*/ -d                                  # 七颗星
 find docs -name '*<关键词>*' -type f           # 按名找
 grep -rl '<关键词>' docs --include=*.md        # 按内容找
-find docs -mtime -7 -name '*.md' | sort        # 最近一周动过的
+find docs -mtime -7 -name '*.md' | sort        # 最近一周
 ```
 
-已知：部分**历史交付件与数据快照**里写的 `docs/AOI_*.md`、`docs/AR_*.md` 等路径，已归位到 `design/` 或 `notes/`；
-那些文件按日期冻结不再改，按文件名 `find docs -name` 即可定位。
+## 迁移说明（2026-11-01）
+
+原 15 个目录（`design/` `deliverables/` `patents/` `eval/` `test-reports/` `ops/` `patch/` `web/` `release/` `source/` `data_snapshots/` `diagrams/` `skills/` `notes/` `incidents/` `memory/`）
+按七星归位：代码侧 2300+ 处路径引用已全量改写并逐条核过存在性，旧路径 `0` 残留。
+事故台账唯一真源在 `7-瑶光-记录追溯/incidents/INCIDENT-INDEX.md`。

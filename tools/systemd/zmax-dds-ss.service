@@ -1,6 +1,6 @@
 [Unit]
 Description=Z-MAX 全局数据空间发布守护 (状态空间真实数据源 → DDS, 受遥测模式控制)
-Documentation=file:/home/ubuntu/zmax/docs/design/global_data_space_mapping_20260929.md
+Documentation=file:/home/ubuntu/zmax/docs/6-开阳-工程落地/global_data_space_mapping_20260929.md
 After=network-online.target
 Wants=network-online.target
 

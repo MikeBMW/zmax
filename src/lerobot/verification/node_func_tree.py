@@ -514,7 +514,7 @@ NODE_TREE = {
                  ("常量与引擎同源", "auto", "t_world_const", ""),
                  ("约束无冲突", "auto", "t_world_noconf", ""),
                  ("场景布局可复现", "auto", "t_world_seed", ""),
-                 ("设计文档一致", "manual", None, "对照 docs/closed_loop_realization_design.md 常量表"),
+                 ("设计文档一致", "manual", None, "对照 docs/7-瑶光-记录追溯/notes/closed_loop_realization_design.md 常量表"),
                  ("跨进程可复现", "manual", None, "同 seed 两次运行初始布局一致"),
              ]},
             {"fid": "FNaccept01", "name": "插入验收·最终指标", "desc": "物理世界在插入作业结束后判定能否成功: done 完成标志须为真, 插入阶段耗时须小于 0.5 秒, 最终横向错位须小于 0.5 毫米, 三项须在 12 组扰动集上全部成立; 插深剩余量与横向错位的波形见仿真波形面板对应数据格及底部验收摘要。",

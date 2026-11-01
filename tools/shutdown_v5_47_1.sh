@@ -3,7 +3,7 @@
 set -uo pipefail
 cd /home/ubuntu/zmax
 REPO=$(pwd)
-SNAP="$REPO/docs/data_snapshots/2026-10-11_关机收尾_v5.47.1"
+SNAP="$REPO/docs/6-开阳-工程落地/2026-10-11_关机收尾_v5.47.1"
 ARC="$REPO/zmax_data/release_5.47.1_20261011"
 rm -rf "$SNAP" "$ARC"; mkdir -p "$SNAP" "$ARC"
 

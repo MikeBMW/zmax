@@ -38,7 +38,7 @@ cp -f /tmp/hil_local.log "$DST/evidence/hil_local_api.log" 2>/dev/null
 ls "$DST/evidence" | wc -l | sed 's/^/  证据文件: /'
 
 echo "=== ④ 文档 ==="
-cp -f VERSION.md docs/STATION_6PANEL_20260927.md "$DST/docs/" 2>/dev/null
+cp -f VERSION.md docs/7-瑶光-记录追溯/notes/STATION_6PANEL_20260927.md "$DST/docs/" 2>/dev/null
 cp -f /tmp/bump_summary_fix2[012].txt "$DST/docs/" 2>/dev/null
 
 echo "=== ⑤ 现场数据快照 ==="

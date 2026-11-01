@@ -34,8 +34,8 @@ mkdir -p "$DST/data/shots"
 cp -f data/deliver/surface_*.png data/deliver/*deglare*.png "$DST/data/shots/" 2>/dev/null
 cp -f data/deliver/surface_expo_ab.json data/deliver/surface_expo_why.json "$DST/data/" 2>/dev/null
 cp -f reports/ab_engine_geometry.json "$DST/data/" 2>/dev/null
-cp -f docs/eval/流形引擎几何完备性_20261019.md \
-      "docs/eval/550A_全量pipeline_度规约束与分层_2026-10-19.md" "$DST/docs/" 2>/dev/null
+cp -f docs/5-玉衡-指标验收/eval/流形引擎几何完备性_20261019.md \
+      "docs/5-玉衡-指标验收/eval/550A_全量pipeline_度规约束与分层_2026-10-19.md" "$DST/docs/" 2>/dev/null
 
 echo "=== ③ 证据 (实测数字) ==="
 {

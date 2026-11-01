@@ -5,7 +5,7 @@
 老倪 2026-09-19: 「当前的工程记忆, 要同步到大模型层的总装记忆节点」(与飞书端商量好)
 
 工程记忆 = 三类真实文件的汇总 (只读, 不改任何源文件):
-  ① 跨端同步记忆  docs/memory/*.md      (我这边 ↔ 飞书端 共用的记忆/同步文档)
+  ① 跨端同步记忆  docs/7-瑶光-记录追溯/*.md      (我这边 ↔ 飞书端 共用的记忆/同步文档)
   ② Hermes 记忆    ~/.hermes/memories/*.md  (MEMORY/USER — 会话间的持久记忆)
   ③ 技能库        ~/.hermes/skills/**/SKILL.md (可复用流程 = 工程经验)
 
@@ -66,9 +66,9 @@ class EngMemory:
 
     # ── ① 收集 (真读文件) ──
     def collect(self) -> dict:
-        docs = sorted([os.path.join(self.repo, "docs", "memory", f)
-                       for f in os.listdir(os.path.join(self.repo, "docs", "memory"))
-                       if f.endswith(".md")]) if os.path.isdir(os.path.join(self.repo, "docs", "memory")) else []
+        docs = sorted([os.path.join(self.repo, "docs", "7-瑶光-记录追溯", "memory", f)
+                       for f in os.listdir(os.path.join(self.repo, "docs", "7-瑶光-记录追溯", "memory"))
+                       if f.endswith(".md")]) if os.path.isdir(os.path.join(self.repo, "docs", "7-瑶光-记录追溯", "memory")) else []
         mems = sorted([os.path.join(self.hermes, "memories", f)
                        for f in os.listdir(os.path.join(self.hermes, "memories"))
                        if f.endswith(".md")]) if os.path.isdir(os.path.join(self.hermes, "memories")) else []
@@ -114,7 +114,7 @@ class EngMemory:
             skill_sections += len(re.findall(r"^## ", _read(p), flags=re.M))
         newest = max(files, key=lambda x: x["mtime"]) if files else None
         return {
-            "docs_memory": [f for f in files if "/docs/memory/" in f["path"]],
+            "docs_memory": [f for f in files if "/docs/7-瑶光-记录追溯/" in f["path"]],
             "hermes_memory": [f for f in files if "/memories/" in f["path"]],
             "skills": [f for f in files if f["path"].endswith("/SKILL.md")],
             "l2_skills": l2_skills, "l2_skill_files": l2_files,
@@ -146,7 +146,7 @@ class EngMemory:
                     "llm": bool(os.environ.get("SS_MACRO_LLM_URL"))}
         store.setdefault("version", 1)
         store["engineering"] = {
-            "source": ("docs/memory/*.md + ~/.hermes/memories/*.md + ~/.hermes/skills/**/SKILL.md"
+            "source": ("docs/7-瑶光-记录追溯/*.md + ~/.hermes/memories/*.md + ~/.hermes/skills/**/SKILL.md"
                        " + data/skills/l2_atomic/registry.json (机器人可执行技能库) + data/skills/l2_muscle/*.json"),
             "l2_skills": snap.get("l2_skills", []),
             "l2_muscle": snap.get("l2_muscle", []),

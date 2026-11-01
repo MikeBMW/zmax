@@ -16,8 +16,8 @@ cp -f tools/gui/aoi_inspect_console.py tools/bump_version.py tools/studio_ctl.sh
 cp -f src/lerobot/policies/yolo_3d/aoi_head.py "$DST/src/" 2>/dev/null
 cp -f src/lerobot/memory/eng_memory.py "$DST/src/" 2>/dev/null
 # ③ 文档 (版本历史/交接单/方案/两份现场补丁)
-cp -f VERSION.md docs/HANDOVER_20260924_AOI.md docs/design/aoi_quality_head_and_console_20260924.md "$DST/docs/" 2>/dev/null
-cp -f docs/patch/opt_surface_10083_add_picture_route.md docs/patch/opt_10082_gold_stretch_2x.md "$DST/docs/" 2>/dev/null
+cp -f VERSION.md docs/7-瑶光-记录追溯/incidents/HANDOVER_20260924_AOI.md docs/2-天璇-作业任务/aoi_quality_head_and_console_20260924.md "$DST/docs/" 2>/dev/null
+cp -f docs/6-开阳-工程落地/patch/opt_surface_10083_add_picture_route.md docs/6-开阳-工程落地/patch/opt_10082_gold_stretch_2x.md "$DST/docs/" 2>/dev/null
 # ④ 证据 (验证 JSON + 半自动对照 + 交互动线图)
 ls -t reports/opt_camera_verify_*.json 2>/dev/null | head -3 | xargs -r -I{} cp -f {} "$DST/reports/"
 cp -f reports/teach_point_verify.json reports/aoi_console_state.json reports/aoi_roi.json \

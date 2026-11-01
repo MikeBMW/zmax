@@ -1,6 +1,6 @@
 [Unit]
 Description=Z-MAX DDS 硬件汇聚器 (DDS→relay)
-Documentation=file:/home/ubuntu/zmax/docs/design/global_data_space_mapping_20260929.md
+Documentation=file:/home/ubuntu/zmax/docs/6-开阳-工程落地/global_data_space_mapping_20260929.md
 After=network-online.target
 Wants=network-online.target
 

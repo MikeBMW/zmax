@@ -13,7 +13,7 @@
 用法:
   python3 tools/feishu_check_messages.py                      # 列最近 20 条 + 标出我发的
   python3 tools/feishu_check_messages.py --n 40
-  python3 tools/feishu_check_messages.py --download file_v3_xxx /tmp/back.zip --compare docs/deliverables/X.zip
+  python3 tools/feishu_check_messages.py --download file_v3_xxx /tmp/back.zip --compare docs/1-天枢-产品边界/X.zip
 """
 from __future__ import annotations
 

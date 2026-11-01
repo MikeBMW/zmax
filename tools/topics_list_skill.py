@@ -9,7 +9,7 @@
 
 用法:
   ./gui-venv311/bin/python tools/topics_list_skill.py            # 打到屏幕
-  ./gui-venv311/bin/python tools/topics_list_skill.py --md       # 写 docs/design/atomic_skill_topics_20261015.md
+  ./gui-venv311/bin/python tools/topics_list_skill.py --md       # 写 docs/3-天玑-能力功能/atomic_skill_topics_20261015.md
 """
 from __future__ import annotations
 
@@ -148,7 +148,7 @@ def build() -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--md", action="store_true", help="写入 docs/design/atomic_skill_topics_20261015.md")
+    ap.add_argument("--md", action="store_true", help="写入 docs/3-天玑-能力功能/atomic_skill_topics_20261015.md")
     a = ap.parse_args()
     txt = build()
     if a.md:

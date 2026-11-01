@@ -25,8 +25,8 @@ cp -f tools/bump_version.py tools/studio_ctl.sh "$DST/tools/" 2>/dev/null
 ls -t reports/canvas_level_audit_*.md 2>/dev/null | head -2 | xargs -r -I{} cp -f {} "$DST/reports/"
 ls -t reports/canvas_level_audit_*.json 2>/dev/null | head -2 | xargs -r -I{} cp -f {} "$DST/reports/"
 # ⑤ 文档
-cp -f VERSION.md docs/TASK_LEDGER_20260924.md "$DST/docs/" 2>/dev/null
-cp -f docs/design/canvas_layout_forward_20260924.md "$DST/docs/" 2>/dev/null
+cp -f VERSION.md docs/7-瑶光-记录追溯/incidents/TASK_LEDGER_20260924.md "$DST/docs/" 2>/dev/null
+cp -f docs/6-开阳-工程落地/canvas_layout_forward_20260924.md "$DST/docs/" 2>/dev/null
 # ⑥ 哨兵清单留档 (清理前后对照: 删 9 条, 留 9 条)
 cp -f "$HOME/.hermes/cron.yaml" "$DST/docs/cron_after_cleanup.yaml" 2>/dev/null
 

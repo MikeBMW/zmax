@@ -10,7 +10,7 @@
   ★ 活跃   : 该任务 == config/ss_task_binding.json 的 active_task (绑定唯一依据, 唯一)
   ○ 未激活 : 该任务**配置切换过 或 跑过验证** ⇒ 配置已就绪, 切过去就能干活
              证据 = ① 激活台账 config/task_state_ledger.json 有记录
-                    ② 该任务的运行报告 (docs/data_snapshots/*/任务运行报告_<TASK>*.json 等)
+                    ② 该任务的运行报告 (docs/6-开阳-工程落地/*/任务运行报告_<TASK>*.json 等)
                     ③ zmax_data/task_runs/<TASK>/* 有产物
   — 无配置 : 上面都没有 ⇒ 还没开始
 
@@ -39,8 +39,8 @@ STATE_NONE = "— 无配置"
 CELL = {STATE_ACTIVE: STATE_ACTIVE, STATE_INACTIVE: STATE_INACTIVE, STATE_NONE: STATE_NONE}
 
 EVIDENCE_GLOBS = (
-    "docs/data_snapshots/*/任务运行报告_%s*.json",
-    "docs/data_snapshots/*/%s*/运行报告.json",
+    "docs/6-开阳-工程落地/*/任务运行报告_%s*.json",
+    "docs/6-开阳-工程落地/*/%s*/运行报告.json",
     "zmax_data/task_runs/%s/*.json",
     "zmax_data/task_runs/%s/*.npz",
 )

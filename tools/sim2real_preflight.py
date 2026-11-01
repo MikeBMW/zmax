@@ -147,7 +147,7 @@ def main() -> int:
     R["needs_site"] = [
         {"item": "任何真机动作授权", "why": "老倪红线: 未授权不下发 (本次全程零下发, 只读)"},
         {"item": "AOI 首轮标定 (金手指/外观缺陷框选)", "why": "数据集现 0 标注框 (4 张 960×960 图已同源)"},
-        {"item": "10083 表面相机 /picture 路由", "why": "实测仍 404 (补丁 docs/patch/opt_surface_10083_add_picture_route.md 已交现场)"},
+        {"item": "10083 表面相机 /picture 路由", "why": "实测仍 404 (补丁 docs/6-开阳-工程落地/patch/opt_surface_10083_add_picture_route.md 已交现场)"},
         {"item": "10082 拉长口径 短边×2 + 裁减对齐 score≥0.95", "why": "现场侧服务改造"},
         {"item": "2D→3D 标定采集 (哨兵 paused)", "why": "需在场摆件; box3d_live_box.json ok=false"},
         {"item": "T_base_cam / plane_z 现场测量", "why": "真机 3D 最后两环"},

@@ -7,7 +7,7 @@
 3. 适配保证   — 无 adapter 用平台默认适配器 (观测→动作直通)
 4. 验证保证   — 冒烟测试出动作才成功, 否则回滚注册
 
-模型包标准: docs/third_party_model_spec.md
+模型包标准: docs/4-天权-模型算法/third_party_model_spec.md
 """
 import json
 import os
@@ -53,7 +53,7 @@ def validate_package(path):
 
         mf = os.path.join(pkg_dir, "manifest.json")
         if not os.path.exists(mf):
-            return False, ["缺少 manifest.json (标准格式见 docs/third_party_model_spec.md)"]
+            return False, ["缺少 manifest.json (标准格式见 docs/4-天权-模型算法/third_party_model_spec.md)"]
         try:
             m = json.load(open(mf, encoding="utf-8"))
         except Exception as ex:

@@ -35,7 +35,7 @@ ALLOW = re.compile(r"(PLACEHOLDER|example\.com|\*\*\*|<TOKEN>|\$\{?ZMAX_|\$env:|
 # 注意 (2026-10-09 收口): 白名单从整棵 `src/lerobot/` 改窄到**只跳过确有假阳性的那一个 vendored 子树**。
 #   整棵跳过会把本仓自有代码 (= src/lerobot/engineering/, 如 canvas_publish.py 的 ECS token) 一起漏掉 ⇒ 扫不到。
 #   实测 src/lerobot/ 下仅 policies/multi_task_dit 的两处 `sk-` 开头长串假阳性, 故只白名单它。
-ALLOWPATH = re.compile(r"^(docs/source/|src/lerobot/policies/multi_task_dit/|docs/skills/hermes-all/.+/references/|node_modules/|gui-venv)")
+ALLOWPATH = re.compile(r"^(docs/6-开阳-工程落地/|src/lerobot/policies/multi_task_dit/|docs/3-天玑-能力功能/skills/hermes-all/.+/references/|node_modules/|gui-venv)")
 
 
 def files(staged):

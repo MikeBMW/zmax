@@ -18,7 +18,7 @@
     ⑧ ss_mem_l3 → ss_mem_share   流程记忆 → 总装                          ✓
     ⑨ ss_mem_l4 → ss_mem_share   筹划记忆 → 总装                          ✓
     ⑩ n_mem_links → ss_mem_share 记忆图谱 links → 总装                    ✓
-    ⑪ n_eng_mem → ss_mem_share   **工程记忆 (docs/memory + 技能库) → 总装**  ⚙(新节点)
+    ⑪ n_eng_mem → ss_mem_share   **工程记忆 (docs/7-瑶光-记录追溯/memory + 技能库) → 总装**  ⚙(新节点)
     ⑫ ss_mem_l2/3/4 → n_mem_links 三层记忆 → 记忆图谱 (建链)                ✓
   意图/技能词典层 (原先全悬空)
     ⑬ ssskill → n_skill_dict     新技能注册 → 技能词典                     ✓(代码唯一依据 memory_graph)
@@ -59,7 +59,7 @@ NEW_NODES = [
      "inputs": ["in1"], "outputs": ["out1"],
      "params": {
          "state_space": True, "eng_memory": True,
-         "desc": ("工程记忆 = docs/memory/*.md (跨端同步记忆) + Hermes 记忆 (MEMORY/USER) + 技能库清单; "
+         "desc": ("工程记忆 = docs/7-瑶光-记录追溯/*.md (跨端同步记忆) + Hermes 记忆 (MEMORY/USER) + 技能库清单; "
                   "读真实文件 → 汇总条数/落盘时间 → 同步进 🧠总装记忆中枢 (顶层宏观记忆, macro_memory.uplink)"),
          "source": "src/lerobot/memory/eng_memory.py · collect/sync_to_macro",
          "source_symbol": "class EngMemory"}},
@@ -77,7 +77,7 @@ NEW_LINKS = [
     ("lkmem2", "ss_mem_l3", "ss_mem_share", "流程记忆 (跨段序列) → 总装", "in2"),
     ("lkmem3", "ss_mem_l4", "ss_mem_share", "筹划记忆 (预测/恢复) → 总装", "in3"),
     ("lkmem4", "n_mem_links", "ss_mem_share", "记忆图谱 links → 总装", "in4"),
-    ("lkmem5", "n_eng_mem", "ss_mem_share", "工程记忆 (docs/memory+技能) → 总装", "in5"),
+    ("lkmem5", "n_eng_mem", "ss_mem_share", "工程记忆 (docs/7-瑶光-记录追溯/memory+技能) → 总装", "in5"),
     ("lkmem6", "ss_mem_l2", "n_mem_links", "L2 记忆 → 图谱建链", "in1"),
     ("lkmem7", "ss_mem_l3", "n_mem_links", "L3 记忆 → 图谱建链", "in2"),
     ("lkmem8", "ss_mem_l4", "n_mem_links", "L4 记忆 → 图谱建链", "in3"),

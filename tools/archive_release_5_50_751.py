@@ -25,7 +25,7 @@ CODE = [
     "tools/peg_d435_collect.py",
     "tools/peg_d435_train.py",
     "tools/insert_force_advance.py",
-    "docs/INCIDENT-INDEX.md",
+    "docs/7-瑶光-记录追溯/incidents/INCIDENT-INDEX.md",
     "VERSION.md",
     "data/skills/l2_atomic/registry.json",
     "data/skills/l2_atomic/taught_points.json",
@@ -121,7 +121,7 @@ def main() -> int:
 - `tools/rokae/insert_sdk_fc.py`: 新增 unload_after_stop() 自动卸力 · 预静止闸(残留 MoveL 队列) · --mode scan 力扫描找孔
 - `tools/ar_aoi_bus.py`: 节流下限 0.5s→0.05s · DDS 降频+缓存 · 原子写 tmp 按 pid 唯一 ⇒ 波形 0.5Hz→6.3Hz
 - `tools/gui/canoe_graphic.py`: CORE_SIGNALS 16 条(六维力全量)
-- `docs/INCIDENT-INDEX.md`: INC-20261020-02/03/04
+- `docs/7-瑶光-记录追溯/incidents/INCIDENT-INDEX.md`: INC-20261020-02/03/04
 
 ## 目录
 - `tools/ gui/ docs/ data/` 本轮改过的代码与注册表(不是整仓)

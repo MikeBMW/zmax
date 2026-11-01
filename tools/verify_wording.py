@@ -5,7 +5,7 @@
 老倪 2026-10-28: 「全局搜索, 整个工程, 文档, 不要出现 重新生成 唯一依据 预先固定 这样的口语, 不要有 AI 的味道」
 
 扫描范围: tools / docs / config / web 的源码与文档, 外加三件对外产物 (PPT / 立项报告 MD / 工程手册 MD)。
-排除: 备份 (.bak)、历史快照 (docs/data_snapshots)、本脚本的规则表、数据与日志目录。
+排除: 备份 (.bak)、历史快照 (docs/6-开阳-工程落地/data_snapshots)、本脚本的规则表、数据与日志目录。
 
 跑法: gui-venv311/bin/python tools/verify_wording.py
 """
@@ -32,8 +32,8 @@ SKIP_DIR = {".git", "node_modules", "__pycache__", "gui-venv311", "venv", ".venv
             "zmax_data", "reports", "logs", "data", "_deck_png", "图片库", "data_snapshots"}
 ARTIFACTS = [
     "/home/ubuntu/zmax_data/deliverables/双臂协作工位_成本结构与市场分成预期.pptx",
-    os.path.join(ROOT, "docs", "deliverables", "项目立项报告_双臂协作工位.md"),
-    os.path.join(ROOT, "docs", "deliverables", "工程操作手册_三档_A_B_C.md"),
+    os.path.join(ROOT, "docs", "1-天枢-产品边界", "deliverables", "项目立项报告_双臂协作工位.md"),
+    os.path.join(ROOT, "docs", "1-天枢-产品边界", "deliverables", "工程操作手册_三档_A_B_C.md"),
 ]
 
 

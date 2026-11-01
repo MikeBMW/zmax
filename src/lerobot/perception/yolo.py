@@ -72,7 +72,7 @@ def default_weights_path() -> str:
     解析顺序: 环境变量 → `$ZMAX_DATA/models/weights/yolov8s.pt`(默认约定) → 仓库根 → 家目录旧路径(遗留兼容)。
     🐛 2026-09-30 修 (老倪: 「怎么还有 yolo 模型呢?」): 原来按「__file__ 上溯四级」硬拼 `/home/ubuntu/yolov8s.pt`
        —— 那是工程迁移期在家目录留的兼容软链, 真身在数据盘, 仓库根还有一份 22.5MB 重复实物。
-       口径 = 模型只留数据盘一份 (`docs/notes/model-paths.md` 的默认下载路径约定), 代码按路径解析, 不在根上堆模型文件。
+       口径 = 模型只留数据盘一份 (`docs/7-瑶光-记录追溯/notes/model-paths.md` 的默认下载路径约定), 代码按路径解析, 不在根上堆模型文件。
     注意: 在役的检测权重不是它 —— 是 `models/yolo_peg_live.pt` (真机域微调); 本函数只是"未指定 weights 时"的兜底。
     """
     env = os.environ.get("ZMAX_YOLO_WEIGHTS") or os.environ.get("SS_YOLO_WEIGHTS")

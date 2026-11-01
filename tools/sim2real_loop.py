@@ -218,7 +218,7 @@ def step6_deploy(deploy: bool, targets=None) -> dict:
             info["current_target"] = os.path.realpath(cur)
         r["switches"].append(info)
     r["note"] = ("--deploy 未给: 只打印当前在役指针 (切换须显式 --deploy + 目标路径; "
-                 "切换前请确认判闸已过, 见 docs/design/handoff 的在役口径)")
+                 "切换前请确认判闸已过, 见 docs/7-瑶光-记录追溯/handoff 的在役口径)")
     return r
 
 

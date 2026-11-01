@@ -114,9 +114,9 @@ def main():
     chk("四层在役模型名与主控台模型矩阵同源", all(m in _txt for m in _mx if m), " · ".join(_mx))
 
     print("\n═══ ⑨⑩ 导出产物 (md+docx) 与同源核对 ═══")
-    _md = [f for f in os.listdir(os.path.join(ROOT, "docs", "patents")) if f.endswith(".md")]
-    _dx = [f for f in os.listdir(os.path.join(ROOT, "docs", "patents")) if f.endswith(".docx")]
-    _idx = os.path.join(ROOT, "docs", "patents", "00_专利申请渠道清单.md")
+    _md = [f for f in os.listdir(os.path.join(ROOT, "docs", "1-天枢-产品边界", "patents")) if f.endswith(".md")]
+    _dx = [f for f in os.listdir(os.path.join(ROOT, "docs", "1-天枢-产品边界", "patents")) if f.endswith(".docx")]
+    _idx = os.path.join(ROOT, "docs", "1-天枢-产品边界", "patents", "00_专利申请渠道清单.md")
     chk("12 件 md + 12 件 docx + 总览清单都落地", len(_md) >= len(pats) + 1 and len(_dx) >= len(pats) and os.path.exists(_idx),
         "md %d · docx %d · 清单 %s" % (len(_md), len(_dx), os.path.exists(_idx)))
     _itxt = open(_idx, encoding="utf-8").read() if os.path.exists(_idx) else ""

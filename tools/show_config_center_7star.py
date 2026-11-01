@@ -23,7 +23,7 @@ def main() -> int:
     import veh6_config_page as V
 
     dst = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
-        ROOT, "docs", "data_snapshots", "20261015_config_center_seven_stars")
+        ROOT, "docs", "6-开阳-工程落地", "data_snapshots", "20261015_config_center_seven_stars")
     os.makedirs(dst, exist_ok=True)
 
     app = QApplication.instance() or QApplication([])

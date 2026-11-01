@@ -14,7 +14,7 @@
   · 硬指标仍写明 **成功率 ≥99% · 节拍 ≤3.5s**; 任务唯一依据未定义节拍的一律如实写「唯一依据未定义」。
 
 用法: gui-venv311/bin/python tools/delivery/gen_sor_multi.py --tasks TASK-01-FW,TASK-05-ATS --ver 5.50.C
-产物: docs/deliverables/SOR_供应商要求_插拔类_TASK-01-FW_TASK-05-ATS_<ver>.md + .docx
+产物: docs/1-天枢-产品边界/SOR_供应商要求_插拔类_TASK-01-FW_TASK-05-ATS_<ver>.md + .docx
 """
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, os.path.join(ROOT, "tools", "delivery"))
 from gen_contract_pack import blocks_sor, render_md, render_docx  # noqa: E402
 
-DLV = os.path.join(ROOT, "docs", "deliverables")
+DLV = os.path.join(ROOT, "docs", "1-天枢-产品边界", "deliverables")
 SHEET = os.path.join(ROOT, "outputs", "config_sheets")
 
 

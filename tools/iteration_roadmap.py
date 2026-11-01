@@ -41,7 +41,7 @@
   · defaults/config/eval/iteration_roadmap.json  同上的**可版本控制镜像** (config/ 是 data/ 下软链, 被 gitignore)
   · zmax_data/eval/iteration_roadmap.json     运行台账 (定义 + verification + vs_baseline + entry + comparison)
   · zmax_data/eval/iteration_roadmap.md       同内容 Markdown (评估分析区迭代验证用)
-  · docs/eval/迭代路线图_v<版本>.md            同内容 Markdown (仓库惯例的人读报告落点, 可版本控制)
+  · docs/5-玉衡-指标验收/迭代路线图_v<版本>.md            同内容 Markdown (仓库惯例的人读报告落点, 可版本控制)
 
 用法:
   ./gui-venv311/bin/python tools/iteration_roadmap.py            # 生成 定义 + 台账 + 报告
@@ -72,9 +72,9 @@ DEF_OUT = os.path.join(ROOT, "config/eval/iteration_roadmap.json")
 OUT_JSON = os.path.join(ROOT, "zmax_data/eval/iteration_roadmap.json")
 OUT_MD = os.path.join(ROOT, "zmax_data/eval/iteration_roadmap.md")
 # 可版本控制的镜像 (config/ 是 data/ 下的软链, 被 .gitignore 覆盖 ⇒ 定义另存一份进 defaults/;
-# 人读报告按仓库惯例落在 docs/eval/, 与 meta_perf_matrix/eval_analysis 同处)
+# 人读报告按仓库惯例落在 docs/5-玉衡-指标验收/, 与 meta_perf_matrix/eval_analysis 同处)
 MIRROR_DEF = os.path.join(ROOT, "defaults/config/eval/iteration_roadmap.json")
-DOC = os.path.join(ROOT, "docs/eval/迭代路线图_v%s.md" % EA.VERSION.lstrip("v"))
+DOC = os.path.join(ROOT, "docs/5-玉衡-指标验收/迭代路线图_v%s.md" % EA.VERSION.lstrip("v"))
 
 GENERATED_BY = "tools/iteration_roadmap.py"
 

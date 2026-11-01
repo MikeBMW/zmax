@@ -1,0 +1,426 @@
+---
+name: feishu-gateway
+description: "Set up Feishu/Lark gateway for Hermes Agent from scratch."
+version: 1.0.0
+author: Hermes Agent
+tags: [feishu, lark, gateway, websocket, hermes-setup, platform-config]
+---
+
+# Feishu Gateway Setup for Hermes Agent
+
+## 🆕 99991663 复发处置 (2026-09-23 实测): agent 无法自己重启 → 用直推兜底 + 让人重启
+
+症状复现: gateway.log 里 `response ready` → `[Feishu] Sending response` → `Send failed: [99991663]
+Invalid access token`。三步诊断 (只读, 60 秒):
+```bash
+# ① 换 token (凭据是否有效)  ② 带新 token 手动发 (网络/发送路径) ③ 我的 cgroup vs gateway 的 cgroup
+python3 ~/.hermes/scripts/feishu_notify.py "🤖 自检"     # 现成脚本: 内部就是 ①+②, 打印 code/message_id
+cat /proc/self/cgroup ; pid=$(pgrep -f 'hermes_cli.main gateway run' | head -1); cat /proc/$pid/cgroup
+```
+2026-09-23 实测: ①code=0 ②code=0 success (群里真收到) → 凭据/网络都好 ⇒ **gateway 进程内 token 缓存过期**。
+
+**重启路径: 先试再说"不行"** —— 从 CLI 会话里 `sudo systemctl restart hermes-gateway` 实测可用
+(重启后日志出现干净的 `Previous gateway exited cleanly` → `✓ feishu connected`; 加 systemd drop-in 重启同样可行)。
+只有运行时真的回绝了命令文本(cron job 里带 gateway 生命周期命令、或从 gateway 自身会话里发起)才需要转人工 ——
+别不试就直接告诉用户"agent 自己重启不了"。
+
+**兜底(推荐同时做)**: `~/.hermes/scripts/feishu_notify.py` 直连开放平台发送 (每次自换 token, 不过 gateway),
+哨兵脚本用它推送 → 即使 gateway token 死了, 训练/巡逻结果照样进群。两者并存无冲突。
+
+## 用 sentinel + 直推交付结果 (推荐模式)
+```python
+import sys; sys.path.insert(0, os.path.expanduser("~/.hermes/scripts"))
+import feishu_notify;  feishu_notify.send("简报文本", "oc_...")   # 返回 {"ok":True,"code":0,"message_id":"om_..."}
+```
+cron 侧用 `no_agent=True` + `deliver='local'`, 由脚本自己决定发不发(无变化就静默) → 不依赖 gateway 通道。
+
+
+Use when: A fresh Hermes Agent install needs Feishu/Lark connectivity — no prior config exists, `.env` has no FEISHU vars, and `platforms.feishu` is not in `config.yaml`. This covers the **fresh-install setup** path, distinct from troubleshooting an existing connection.
+
+> For **troubleshooting** an existing Feishu gateway that's failing, load the `hermes-feishu-troubleshooting` skill from the repo's `docs/3-天玑-能力功能/skills/shared/` directory.
+
+## Prerequisites
+
+Before starting, you need from the user:
+- **FEISHU_APP_ID** — e.g. `cli_a87851ffe46b500d`
+- **FEISHU_APP_SECRET** — The corresponding secret string
+
+The user must also have:
+- Created a Feishu app at [open.feishu.cn](https://open.feishu.cn)
+- Enabled **Bot capability** in the app
+- Granted permissions: `im:message`, `im:message:send_as_bot`, `im:resource`, `im:chat`, `im:chat:readonly`
+- Subscribed to event `im.message.receive_v1` (WebSocket mode)
+- Published the app (permissions only take effect after publishing)
+
+## Setup Procedure
+
+### Step 1 — Install dependencies
+
+Hermes's Feishu adapter needs `lark-oapi`. The Hermes venv uses `python -m pip` (not pip from the system).
+
+```bash
+# Check if already installed
+~/.hermes/hermes-agent/venv/bin/python -c "import lark_oapi; print('OK')" && \
+  ~/.hermes/hermes-agent/venv/bin/python -c "import websockets; print('OK')"
+
+# Install lark-oapi if missing
+~/.hermes/hermes-agent/venv/bin/python -m pip install lark-oapi
+# websockets is usually bundled with Hermes already
+```
+
+**Key trap**: Do NOT use `pip3 install` (installs to system Python, Hermes won't see it). Do NOT use the venv's own `pip` (it doesn't exist — the venv was created by `uv`). Use `/path/to/hermes/venv/bin/python -m pip install`.
+
+### Step 2 — Configure environment variables
+
+Add Feishu credentials and gateway settings to `~/.hermes/.env`:
+
+```bash
+cat >> ~/.hermes/.env << 'ENVEOF'
+
+# Feishu Gateway
+FEISHU_APP_ID=cli_xxx
+FEISHU_APP_SECRET=secret_xxx
+FEISHU_DOMAIN=feishu
+FEISHU_CONNECTION_MODE=websocket
+FEISHU_ALLOW_ALL_USERS=true
+GATEWAY_ALLOW_ALL_USERS=true
+ENVEOF
+```
+
+**Variable reference:**
+
+| Variable | Required | Value | Purpose |
+|----------|----------|-------|---------|
+| `FEISHU_APP_ID` | ✅ | `cli_xxx` | Feishu app ID from open platform |
+| `FEISHU_APP_SECRET` | ✅ | `secret_xxx` | Feishu app secret |
+| `FEISHU_DOMAIN` | ✅ | `feishu` or `lark` | `feishu` for China, `lark` for international |
+| `FEISHU_CONNECTION_MODE` | ✅ | `websocket` or `webhook` | `websocket` is preferred for real-time |
+| `FEISHU_ALLOW_ALL_USERS` | ❌ | `true` or `false` | Allow all Feishu users to send messages to the bot |
+| `GATEWAY_ALLOW_ALL_USERS` | ❌ | `true` or `false` | Allow all gateway users (superset of FEISHU_ALLOW_ALL_USERS) |
+| `FEISHU_ALLOWED_USERS` | ❌ | `ou_xxx,ou_yyy` | Comma-separated open IDs for white-list (also needed for approval card clicks) |
+
+**⚠️ Critical distinction**: `GATEWAY_ALLOW_ALL_USERS=true` only opens **message receiving**. The **command approval card click** event uses a separate authorization path that still requires `FEISHU_ALLOWED_USERS`. If a user can message the bot but gets `[Feishu] Unauthorized approval click` when tapping an approval card, add their `open_id` (from error logs) to `FEISHU_ALLOWED_USERS`.
+
+### Step 3 — Enable the Feishu platform
+
+```bash
+# This adds platforms.feishu.enabled: true to config.yaml
+hermes config set platforms.feishu.enabled true
+
+# Verify
+grep -A3 'feishu' ~/.hermes/config.yaml
+# Expected:
+#   feishu:
+#     enabled: true
+```
+
+**Why this step matters**: Without `platforms.feishu.enabled: true`, the Feishu adapter is never loaded and `check_fn` returns `False` — the gateway starts but Feishu tools silently don't appear.
+
+### Step 4 — Start the gateway
+
+```bash
+# Run in background (for long-lived connections)
+hermes gateway run
+```
+
+This is a long-lived process (server/daemon pattern). Do NOT use foreground `&` — use `terminal(background=true)`.
+
+### Step 5 — Verify the connection
+
+Wait 5 seconds then check the logs:
+
+```bash
+sleep 5
+grep -i "feishu\|connected" ~/.hermes/logs/gateway.log
+```
+
+**Success signals:**
+```
+[Feishu] Connected in websocket mode (feishu)
+✓ feishu connected
+Gateway running with 1 platform(s)
+```
+
+**Failure patterns:**
+
+| Log message | Likely cause | Fix |
+|-------------|--------------|-----|
+| No Feishu lines at all | Platform not enabled | Re-check Step 3 |
+| `ModuleNotFoundError: No module named 'lark_oapi'` | Dep missing | Re-check Step 1 |
+| `Failed to connect` / `WebSocket error` | Wrong App ID/Secret, or app not published | Verify credentials, publish app in Feishu console |
+| `[Feishu] Unauthorized approval click` | User's open_id not in ALLOWED_USERS | Add to `FEISHU_ALLOWED_USERS` |
+| `check_fn _check_feishu returned False` | Platform not enabled or dep missing | Check Steps 1 + 3 |
+
+## Verifying Message Flow (Beyond Connection)
+
+After the gateway logs "✓ feishu connected", verify the bot can **actually receive and send messages**. Connection ≠ delivery.
+
+### Check which groups the bot is actually in
+
+The bot only receives messages from groups it is a member of:
+
+```bash
+TOKEN=$(curl -s -X POST 'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal' \
+  -H 'Content-Type: application/json' \
+  -d '{"app_id":"cli_xxx","app_secret":"secret_xxx"}' | \
+  python3 -c "import sys,json; print(json.load(sys.stdin).get('tenant_access_token',''))")
+
+curl -s "https://open.feishu.cn/open-apis/im/v1/chats?page_size=20" \
+  -H "Authorization: Bearer $TOKEN" | \
+  python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+for i in d.get('data',{}).get('items',[]):
+  print(f'chat_id={i[\"chat_id\"]} | name={i[\"name\"]} | members={i.get(\"member_count\",\"?\")}')
+"
+```
+
+If the target group doesn't appear, the bot **is not a member** and won't receive messages.
+
+### Why bot is connected but not replying
+
+| Symptom | Likely cause | User translation |
+|---------|-------------|------------------|
+| ✓ connected but no messages arrive | Bot not in target group | 机器人没进群 |
+| Bot in group but ignores messages | `im.message.receive_v1` not subscribed | 飞书开放平台没勾选事件 |
+| All messages fail silently | App not published | 权限只在发布后生效 |
+| Bot receives DM but not group msgs | Bot added via user-link, not group settings | App links add PEOPLE; bots need Group→Robots→Add |
+| Bot IS in group, DM works, but group @-mentions never answered | Group message receive not effective in open platform: `im.message.receive_v1` event not re-saved / version not re-published (permissions may show as granted but events still don't fire) | Re-save/add `接收消息 im.message.receive_v1` in 事件订阅 + create & publish new version |
+| **DM works, group never replies, subscription CONFIRMED present (user says "之前能回复，崩溃恢复后就不行了")** | **Local admission gate: `FEISHU_GROUP_POLICY` unset → defaults to `allowlist`; empty `FEISHU_ALLOWED_USERS` → ALL group messages rejected in-adapter with only a DEBUG log line** | **Add `FEISHU_GROUP_POLICY=open` (or populate `FEISHU_ALLOWED_USERS`) to `~/.hermes/.env`, then restart gateway from a SEPARATE shell** |
+
+**Key**: App invite links (`applink.feishu.cn/client/chat/chatter/add_by_link?link_token=...`) invite people, not bots. Bots must be added via **Group Settings → Robots → Add Robot**. When added correctly, the gateway logs `[Feishu] Bot added to chat: oc_xxx`.
+
+### ⚠️ DM works but group @-mentions never answered — full evidence chain
+
+**FIRST: check the LOCAL admission gate before touching the open platform.** Proven 2026-08-01: bot in group, real @-mention, subscription confirmed on open.feishu.cn, DM flows — yet group events died. Root cause was 100% local: `~/.hermes/.env` lost `FEISHU_GROUP_POLICY` in a crash recovery, and the adapter defaults it to **`allowlist`**. With `FEISHU_ALLOWED_USERS` empty, `_allow_group_message()` returns False for every group message → `_admit()` returns `group_policy_rejected` → **only a DEBUG log line**, invisible in gateway.log. DMs keep working because `FEISHU_ALLOW_ALL_USERS=true` bypasses the gate for p2p.
+
+Local-gate checklist (do these before the API chain below):
+1. `grep -E "FEISHU_GROUP_POLICY|FEISHU_ALLOWED_USERS|FEISHU_ALLOW_ALL_USERS" ~/.hermes/.env` — missing policy var = the bug. **After any crash recovery, verify these survived** (recovery often rebuilds .env from a template that omits them).
+2. Fix: `echo 'FEISHU_GROUP_POLICY=open' >> ~/.hermes/.env` (or `FEISHU_ALLOWED_USERS=ou_xxx` for a whitelist).
+3. Restart gateway **from a separate shell** — `hermes gateway restart` cannot run from inside the gateway process (SIGTERM propagates; Hermes blocks it with "cannot restart or stop the gateway from inside the gateway process"). Use `systemd-run` (root), a one-shot cron entry, or ask the user to run it.
+4. Re-test with a fresh group @-mention, then `grep -i "Inbound" ~/.hermes/logs/gateway.log`.
+
+Only if the env gate is confirmed open/allowlisted AND the user's open-id is allowed do you proceed to the open-platform evidence chain below.
+
+**Open-platform evidence chain** (use only after the local gate is ruled out):
+
+This is the tricky case: bot is confirmed in the group, user correctly @-mentions it, gateway is online, DM messages flow — yet group events never arrive. **Do NOT assume the bot-add method is wrong; verify with the open-platform API first.**
+
+Evidence chain (each step either confirms or rules out a cause):
+
+1. **Check gateway log for group events**: `grep -i "Inbound" ~/.hermes/logs/gateway.log` — if only DM chat_ids appear and the group's `oc_xxx` never shows, events are not being pushed at all (server-side issue, not gateway code).
+2. **Confirm bot membership**: `GET /open-apis/im/v1/chats` — group must appear in the list. (Rules out "not in group".)
+3. **Confirm the user really @-mentioned the bot**: `GET /open-apis/im/v1/messages/{message_id}` — inspect `mentions[]`: `name` must equal the bot name (e.g. `xspace`) and `id` is the bot's open_id. Text containing "静静" without a real mention doesn't trigger events. (Rules out "wrong @".)
+4. **Check what the app actually subscribes to**: `GET /open-apis/application/v6/applications/{app_id}?lang=zh_cn` — look at `callback_info.subscribed_callbacks`. If it lists only `card.action.trigger` (card events) and NOT the message receive event, the group-message subscription is not effective server-side. Also confirm scopes include `im:message.group_at_msg:readonly` / `im:message.group_msg`.
+5. **Compare against a working bot in the same group** (e.g. another app's bot): if the other bot receives & replies to group messages, the group itself is fine — the difference is per-app event subscription config.
+6. **Send-path sanity check**: `POST /open-apis/im/v1/messages?receive_id_type=chat_id` with the group chat_id — if sending works but receiving doesn't, it's purely the receive-side subscription.
+
+**Fix** (user-side, 2 min on open.feishu.cn): 事件订阅 → add/re-save `接收消息 im.message.receive_v1` → confirm `获取群组中用户@机器人消息` permission granted → **创建版本并发布** (permissions/events only take effect after publishing a new version). Then have the user @ the bot in the group again and re-check step 1.
+
+Full working command sequence (token + all 4 API calls): see `references/group-receive-debugging.md`.
+
+### 「我从飞书发消息但没反应」——先分清 没推到 / 被门控丢了 / 发错了地方
+
+群里**策略已是 `open` 也仍然默认要求被 @**（adapter `require_mention` 默认 True）：不带 @ 的群消息被
+`_admit()` 拒成 `bot_not_mentioned`，**只写 DEBUG**，gateway.log 里零痕迹 ⇒ 看起来像网关死了，其实是设计。
+要免 @：给该群配 `platforms.feishu.extra.group_rules`，或让用户 @ 机器人 / 走私聊（私聊不受 @ 门控，最干净的对照）。
+群里有多个机器人时 @ 必须命中本 app（群里出现 4 个机器人是常态）：`GET /open-apis/bot/v3/info` 取
+`app_name`/`open_id`，再核对消息详情里的 `mentions[].id.open_id`；@ 了别的机器人 = 本 app 一个事件都收不到。
+
+三个判据（按此序，都不需要猜）：
+1. **事件到底有没有推到适配器** → `~/.hermes/feishu_seen_message_ids.json`（`{"message_ids": {om_…: 本机 epoch}}`）。
+   去重发生在 admission **之前** ⇒ **被拒的消息也在里面**；落盘在 disconnect。让用户发一条 → 重启 gateway
+   （强制落盘）→ 文件里多了新 id = 推送通、问题在本地门控；一条不增 = 事件根本没推到这台机器。
+2. **拒绝原因** → 临时 systemd drop-in 把 ExecStart 换成 `… gateway run -vv`（DEBUG 只进 journald），
+   `journalctl -u hermes-gateway | grep -a 'dropping inbound event'`；查完删 drop-in + daemon-reload + 重启。
+   同一份 journal 里的 `[Lark] connected to wss://msg-frontier.feishu.cn/ws/v2?…` 顺带证明连的是 feishu 前沿。
+3. **飞书侧对账** → `GET /im/v1/messages?container_id_type=chat&container_id=<chat>` **会返回人类发的消息**
+   （别以为只有机器人自己的；`sender.id_type=app_id` 是机器人、`open_id` 是人）。群/私聊都要查
+   （`/im/v1/chats` 列出机器人所在全部会话）。群最新消息时间早于用户声称的发送时间 ⇒ 那些消息没进这个会话，
+   先怀疑发错会话/别的租户，别先怀疑本机。
+
+网关活体状态（不重启，只看平台层）：往 `~/.hermes/gateway.sock` 写 `{"verb":"status"}\n`，回 JSON 里
+`platforms.feishu.state=connected` / `needs_attention` / `active_agents`。协议键是 `verb`（用 `cmd` 会被回
+`unknown verb: None` + supported_verbs）。注意：**状态 connected ≠ 入站事件在流动**，必须用上面第 1 条判据复核。
+
+### Proactive send test
+
+```bash
+TOKEN=$(curl -s -X POST 'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal' \
+  -H 'Content-Type: application/json' \
+  -d '{"app_id":"cli_xxx","app_secret":"secret_xxx"}' | \
+  python3 -c "import sys,json; print(json.load(sys.stdin).get('tenant_access_token',''))")
+
+curl -s -X POST "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"receive_id":"oc_xxx","msg_type":"text","content":"{\"text\":\"🤖 Gateway test: bot is online\"}"}'
+```
+
+### 直推要**回读服务端**才算发出去 (message_id 回读)
+
+`code=0` / `success` 只证明开放平台受理了, **不证明消息进群且还在**。发完立刻回读一条:
+```bash
+curl -s "https://open.feishu.cn/open-apis/im/v1/messages/<message_id>" -H "Authorization: Bearer $TOKEN"
+# 判据: code=0 · deleted:false · body 文本与发出的一致
+```
+- 交付结果给用户时, 以"回读到的 `message_id` + 发送时刻"当证据, **不要拿自己的"已发送"当证据**。
+- 本机仓库另有支支脚本 `tools/feishu_send.py`(同样每次自换 token ⇒ 免疫 gateway 进程内 token
+  缓存过期的 99991663), 支持 `"文本"` 与 `--image <图> --text <说明>` 两种, `--chat <oc_…>` 换会话,
+  `--dry-run` 只自检不发; 输出 `{ok, code, message_id, http, attempts}`, 失败自动换新 token 重试一次。
+  图片要两跳(先 `POST /im/v1/images` 拿 `image_key`, 再发 `msg_type=image`)。
+- 目标会话标识从 gateway 维护的 `~/.hermes/channel_directory.json` 取(群与私聊都在里面), **别写死在脚本里**;
+  凭据只存 `~/.hermes/.env` 的 `FEISHU_APP_ID/FEISHU_APP_SECRET`, **不进仓库**。
+- 已踩过的开放平台侧限制: 频率限制 `9499` 要退避重试 · 图片上限约 10MB(`image_type=message`) ·
+  **视频必须 `msg_type=media`**(用 `file` 会回 `230055`)。
+- 从 gateway 自身会话里发重启类命令会被 SIGTERM 传播杀掉进程 —— 生命周期命令要另开 shell 发。
+- **群内回读**: `./gui-venv311/bin/python tools/feishu_check_messages.py --n 3` (GET `/im/v1/messages`,
+  `container_id_type=chat`) 直接列出该会话最近消息 + `deleted` + 时刻 ⇒ 交付时拿"回读到的 message_id + 发送时刻"
+  当证据, 顺带能发现同一内容发了两遍(重发后要主动告知用户并提议撤回早的那条)。
+- **转贴别人/别的会话的收工报告前先核磁盘**: 用户把一份"已保存/成果"总结贴过来要同步时, 先 `git log --oneline -3`
+  + `ls -l` 核对里面每个 commit id、文件路径真的存在再原样转发; 数字对不上要当场指出
+  (例: `dist_min_mm` 是全程最小距陶、`done=false` 时不能说"到位")。
+
+## 多机部署 / 换 app 接管: 一个 app 只能一台机在跑
+
+- **同一个 app 只允许一条 WebSocket 生效**。把同一 app 的 `.env` 配到第二台机, 飞书事件会被任一台接走
+  ⇒ 消息丢一半, 而且分不清是谁答的。接管顺序固定: 新机配好并验到 `state=connected` → **旧机 `hermes gateway stop` 让位**;
+  两台都在线期间, "某台答了" 不能当稳定行为报给用户。
+- **`config.yaml` 里的 `platforms.feishu.app_id` / `app_secret` 覆盖 `.env`**。换 app 时只改 `.env` 会静默无效
+  (gateway 仍以旧 app 上线)。两处一起改, 或把 config 里的 `app_secret` 删掉只留 `.env`(600)。
+- **换 app 的核对三连**(缺一条不算换对): `POST /auth/v3/tenant_access_token/internal`(凭据有效) →
+  `GET /bot/v3/info` 看 `bot.app_name`/`open_id` 是不是目标机器人 → `GET /im/v1/chats` 看目标群在不在列表里。
+  `state=connected` 只证明连上了飞书, 不证明连的是对的那个 app。
+- **不要把 secret 打出来**: 排查时 `grep -A4 "feishu:"` / `cat config.yaml` 会把明文 `app_secret` 带进对话和日志。
+  只打印 `app_id`, secret 一律 `sed -E 's/(app_secret:).*/\1 [REDACTED]/'` 后再看。
+- **别人(同事/另一台机)交接 app 凭据走文件, 不走聊天**: 让对方在自己机器上
+  `printf 'FEISHU_APP_ID=%s\nFEISHU_APP_SECRET=%s\n' '<id>' '<secret>' > ~/.hermes/feishu_<name>.env && chmod 600 ...`,
+  本机读文件合并进 `.env`, 全程不回显。
+- **跨网段交接由能连到目标机的那台落地**: 接管方在办公网、目标机在产线内网时, 让对方扫网找机器是徒劳的
+  (扫 500 个地址也只有一个网段的 SSH)。让对端只负责"准备凭据文件 + 之后停掉自己", 落地与验证由有链路的一侧做。
+- **远端跑 hermes 用绝对路径** `~/.local/bin/hermes …`: 非登录 shell 里 `hermes` 常 `command not found`,
+  不代表没装。
+- **接管后要停掉旧机上的同名 cron**: 同一份状态报告在很多台机各有一条定时任务时, 接管后 `hermes cron pause <id>`
+  旧的, 否则群里同一内容发两遍(用户会当成"两台都在抢")。回读验证时注意 cron 投递是 `msg_type=post`, body 里是
+  `{"title","content"}` 而不是 `text` —— 取不到 text 不等于没发出去, 要按 `title` + `create_time` 核。
+
+### When user says "你怎么不回答？" / "你得回复啊"
+
+1. Check group membership (chat list API)
+2. Verify `im.message.receive_v1` is subscribed AND app is published
+3. Restart gateway (WebSocket reconnection clears stale state)
+4. Tell the user the specific action needed, not just the technical limitation
+
+## Gateway Lifecycle Management
+
+```bash
+# Check if gateway is running
+hermes gateway status
+
+# Stop the gateway
+hermes gateway stop
+
+# Restart (hot reload)
+hermes gateway restart
+
+# View full logs
+cat ~/.hermes/logs/gateway.log | tail -50
+
+# Persistent run (survives terminal close)
+tmux new -s hermes 'hermes gateway run'
+```
+
+### "飞书又不好使了" — gateway 进程死了 (2026-08-02 实测)
+
+**症状**: 群里发消息无响应, 但 `~/.hermes/logs/gateway.log` 最后写入时间已停滞 (无新日志)。
+
+**诊断顺序**:
+1. `ls -lt ~/.hermes/logs/gateway.log` — 时间戳停滞 = gateway 已死或断连
+2. `ps aux | grep "gateway run"` — 无进程 = gateway 进程根本没在跑 (日志文件时间戳 + 进程双重确认)
+3. `cat ~/.hermes/logs/gateway-exit-diag.log` — 显示历史启动是独立进程 (`hermes gateway run`, stdin_is_tty:false), 证明 gateway 不是主 CLI 进程的一部分, 崩溃/重启后不会自动拉起
+
+**根因**: gateway 是**独立守护进程**, 手动启动后无人监管 — WSL 重启、进程被杀后不会自愈。这是"又不好使"反复出现的真正原因 (区别于 .env 丢 FEISHU_GROUP_POLICY 的群拦截问题)。
+
+**即时修复**: `~/.local/bin/hermes gateway run --replace` (background=true)。`--replace` 会替换任何现有实例 — 从 CLI 会话直接跑没问题, 因为 CLI 会话不是 gateway 进程。验证: 日志出现 `[Feishu] Connected in websocket mode` + `✓ feishu connected`。
+
+**根治 — systemd 用户服务 (Restart=always, 崩溃/开机自动拉起)**:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cat > ~/.config/systemd/user/hermes-gateway.service << 'EOF'
+[Unit]
+Description=Hermes Agent Gateway (Feishu/Telegram/etc)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/home/<user>/.local/bin/hermes gateway run --replace
+Restart=always
+RestartSec=5
+Environment=HOME=/home/<user>
+WorkingDirectory=/home/<user>
+
+[Install]
+WantedBy=default.target
+EOF
+systemctl --user daemon-reload && systemctl --user enable --now hermes-gateway
+systemctl --user status hermes-gateway --no-pager
+```
+
+- `ExecStart` 必须带 `--replace`, 否则 systemd 启动与手动实例并存会出问题; 换用 systemd 管理后手动起的旧实例会被自动替换
+- systemd 拉起后 gateway 日志仍写 `~/.hermes/logs/gateway.log`, 验证方式不变
+- 注意: 直接跑 `~/.hermes/hermes-agent/hermes` (源码入口) 会用系统 python 报 `ModuleNotFoundError: No module named 'dotenv'` — 必须用 `~/.local/bin/hermes` 启动器 (它走 venv)
+
+### "飞书又不好使了" — systemd 时代排查 (2026-08-05 实测, WSL 重启后)
+
+systemd 服务接管后 (Restart=always), WSL/OS 重启时 gateway **会自动拉起** — 大部分"飞书又不好使"是用户检查时服务刚重启/连接未建立, 不是故障。诊断顺序 (全只读, 30 秒):
+
+1. `systemctl --user is-active hermes-gateway` → active; 再看 `systemctl --user status hermes-gateway` 的 `Active: active (running) since <时间>` — since 是刚重启的系统时间 = WSL 刚重启过, 服务已自动恢复。
+2. `journalctl --user -u hermes-gateway --since "10 min ago" | grep -c "connected to wss"` — ≥1 即健康; 连接行 `[Lark] connected to wss://msg-frontier.feishu.cn/ws/v2?...` = 在线。⚠️ **systemd 管理后日志走 journald, 不走 gateway.log** — 服务单元 `StandardOutput/StandardError=journal`, `ls -lt ~/.hermes/logs/gateway.log` 时间戳停滞是假象, 别据此判死。
+3. `grep -E "^FEISHU" ~/.hermes/.env` — 确认 `FEISHU_GROUP_POLICY=open` / `FEISHU_ALLOW_ALL_USERS=true` 在重启后没丢 (崩溃恢复重建 .env 曾丢过, 见上方 evidence chain)。
+4. **良性噪音别当错误**: 日志里 `receive message loop exit, err: sent 1000 (OK); then received 1000 (OK) bye` + `websockets.exceptions.ConnectionClosedOK` traceback = 进程终止时的正常 WS 关闭, 不是故障; 真正的失败 = journal 里压根没有 "connected to wss" 行。
+5. systemd 在管时**不要手动再起一个 gateway 实例** (会与 systemd 实例抢 WS 连接) — 自愈交给 Restart=always; `hermes gateway run --replace` 手动补救只在 systemd 单元缺失/disabled 时用。
+
+### 记忆同步: CLI 端更新后, 飞书端要强制刷新 (2026-08-09 实测)
+
+用户说"飞书端记忆要同步"时的处理: CLI 和 gateway 同 profile 时记忆文件**本来就共享** — `~/.hermes/memories/MEMORY.md` + `USER.md` (无 `~/.hermes/profiles/` 目录 = default profile, 两边读写同一份, 无分叉)。`memory` 工具写入即时落盘, 但 **gateway 长驻进程的进行中会话不会热刷新已注入的记忆** — 飞书端静静表现得记忆旧 = 会话缓存, 不是文件不同步。
+
+强制同步 = 重启 gateway (systemd 管): `systemctl --user restart hermes-gateway`, 新会话重新读记忆文件。验证: `systemctl --user is-active hermes-gateway` = active, 且 `~/.hermes/gateway_state.json` 中 `gateway_state=running` + `platforms.feishu.state=connected`。
+
+注意: CLI 会话里可以放心重启 (CLI 不是 gateway 进程); 从飞书会话内部不行 (SIGTERM 传播, 见上文)。
+
+## Known Limitations
+
+### 🚫 Bot cannot access user's personal files
+
+The Feishu bot (tenant_access_token) **cannot** access files, documents, or slides stored in a user's personal Feishu Drive space, even when a direct sharing URL is provided. This includes:
+
+- `/file/` — uploaded files (PDFs, images, documents)
+- `/slides/` — Feishu presentations
+- `/docs/` — Feishu documents
+- `/sheets/` — Feishu spreadsheets
+- `/bitable/` — Feishu base tables
+
+**Why**: The bot's token only has drive scope for resources shared with the bot application, resources in the bot's own space, or resources in a shared space the bot is a member of. User-owned personal files require user-level OAuth.
+
+The `drive/v1/metas/batch_query` API returns `code: 0` with empty metas for inaccessible files — it succeeds silently but returns no data, which is confusing.
+
+**Workaround**: Ask the user to post the file/document **in a group chat where the bot is a member**. The bot receives message events from group chats and can process attachments shared via the `im.message.receive_v1` event. Files shared directly to the bot via DM also work.
+
+**Example user-facing response when user shares a Feishu link:**
+```
+这个文件在你的个人空间里，机器人没有访问权限。
+请在飞书群里发一下，我就能收到了。
+或者直接把内容贴过来也行。
+```
+
+### 🎯 Bot cannot view attendance, calendar, or other sensitive user data
+
+The tenant_access_token also lacks user-level scopes (e.g., `attendance:attendance`, `calendar:calendar`). For any resource requiring `user_access_token`, the gateway needs a Feishu OAuth user authorization flow — which is not currently implemented in the Hermes Feishu adapter.
+
+## Related Skills
+
+- `multi-agent-project-recovery` — post-crash recovery (includes credential restore section)
+- `hermes-agent` — configuring CLI, models, and general Hermes setup
+- `github-auth` — restoring GitHub tokens alongside Feishu creds

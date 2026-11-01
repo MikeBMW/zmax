@@ -7,7 +7,7 @@
 双击机制:
   ① 画布 flow (flows/pipeline_closure.json) 的 node.params.status
      → pending/running/success/failed → 画布自动上色 (running=#00d4aa 高亮)
-  ② CICD 控制台 (每 2s 轮询) 读 docs/PIPELINE_STATE.json 的 stages[*].status
+  ② CICD 控制台 (每 2s 轮询) 读 docs/6-开阳-工程落地/PIPELINE_STATE.json 的 stages[*].status
 
 2026-09-23 静静升级 (老倪: "仿真端保证完整 pipeline 运行"):
   · 输入不再是零图/零 obs —— 真帧 = 引擎渲染帧, 真 obs39 = 引擎真实观测

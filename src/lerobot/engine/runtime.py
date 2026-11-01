@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""state_space_sim_real.py — R0 物理真实化闭环 (2026-09-04 静静, 设计见 docs/closed_loop_realization_design.md)
+"""state_space_sim_real.py — R0 物理真实化闭环 (2026-09-04 静静, 设计见 docs/7-瑶光-记录追溯/notes/closed_loop_realization_design.md)
 
 六层控制器 (perception/parallel/cognition/dynamics/safety/execution 源码 importlib 加载, 同引擎)
   指令 → metaworld peg-insert-side-v3 env.step 真实物理 (接触/夹持/插入动力学)
@@ -155,7 +155,7 @@ def _intact_ready() -> str:
     """INTACT (zju3dv/INTACT-JEPA) 就绪度: 'True' / 'False(原因)'。
 
     只做静态探测 (仓库/venv/依赖), **不 spawn 推理进程** —— 真调路径是画布节点
-    (node_logic.node_intact) 或 docs/design/zmax_intact_node.md 的 S3 适配。
+    (node_logic.node_intact) 或 docs/4-天权-模型算法/zmax_intact_node.md 的 S3 适配。
     """
     if "v" in _INTACT_READY_CACHE:
         return _INTACT_READY_CACHE["v"]

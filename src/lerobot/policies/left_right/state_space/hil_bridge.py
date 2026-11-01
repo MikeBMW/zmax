@@ -357,7 +357,7 @@ def handle_instruction(text, snap=None):
             os.remove(p)
         return ("▶️ 已清暂停标。", "resume")
     if "待办" in t or "任务" in t:
-        return ("📋 待办见 docs/TASK_LEDGER_20260925.md 会话六/七; 离线可做: 事件头可视化接入 · 事件头驱动 L2 收口 · "
+        return ("📋 待办见 docs/7-瑶光-记录追溯/incidents/TASK_LEDGER_20260925.md 会话六/七; 离线可做: 事件头可视化接入 · 事件头驱动 L2 收口 · "
                 "同源数据扩到 300 段; 现场: Orin 上行清单 · AOI 标注 · 10083 /picture", "todo")
     return ("🤔 收到「%s」, 但我把它归到**未识别指示**。可用: 解释 / 状态 / 阶段=对位 / 暂停 / 恢复 / 待办。"
             "(涉及真机动作的指示一律不执行, 会记为待授权)" % t[:60], "unknown")

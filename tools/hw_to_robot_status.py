@@ -4,7 +4,7 @@
 
 老倪 2026-09-25: "app要显示4060的显存占用"
 
-APP = docs/web/robot-monitor.html, 它从 **mac 分支** 的 docs/web/robot-status.json 读数据。
+APP = docs/6-开阳-工程落地/web/robot-monitor.html, 它从 **mac 分支** 的 docs/6-开阳-工程落地/web/robot-status.json 读数据。
 本脚本: 采集 4060 真实硬件 → 合并进该 JSON 的 `hardware` 段 → (可选)推到 mac 分支。
 ★ 只写真实数据; 采不到 = null（不编造）; 自测节点拒绝。
 
@@ -22,7 +22,7 @@ import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "tools"))
-JSON_F = os.path.join(REPO, "docs", "web", "robot-status.json")
+JSON_F = os.path.join(REPO, "docs", "6-开阳-工程落地", "web", "robot-status.json")
 DDS_F = "/home/ubuntu/zmax/zmax_data/stable-wm-cache/reports/dds_latest.json"
 
 
@@ -129,7 +129,7 @@ def merge(push=False):
                               "未上报（需小芳在她 Mac 跑 mac_hw_report.py --dds）")))
     if push:
         cmds = [
-            "git -C %s add docs/web/robot-status.json" % REPO,
+            "git -C %s add docs/6-开阳-工程落地/web/robot-status.json" % REPO,
             "git -C %s -c user.email=agent@zmax -c user.name=Hermes commit -q -m "
             "'chore(hw): 更新 4060 硬件/显存占用到 APP 数据文件'" % REPO,
             "git -C %s -c http.sslVerify=false push origin HEAD:mac" % REPO,

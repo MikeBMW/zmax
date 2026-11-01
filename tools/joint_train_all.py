@@ -53,7 +53,7 @@ PY_INTACT = os.path.join(INTACT, ".venv", "bin", "python")
 PY_LEROBOT = "/home/ubuntu/zmax/venvs/lerobot-venv/bin/python"
 LORA_MOD = os.path.join(ROOT, "tools", "lora_inject.py")
 
-# 在役权重 (续训起点; 与 docs/design/handoff_*.md 口径一致)
+# 在役权重 (续训起点; 与 docs/7-瑶光-记录追溯/handoff_*.md 口径一致)
 L4_INIT = os.path.join(CACHE, "checkpoints", "intact_goal_optical_insert_v6d9_s3072", "weights_epoch_1.pt")
 L3_CKPT = os.path.join(ROOT, "outputs", "train", "smolvla_lew_sim", "checkpoints", "000300")
 L2_BASE = os.path.join(ROOT, "models", "yolo_peg_live.pt")

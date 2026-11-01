@@ -466,7 +466,7 @@ def cat_i(r: Rep):
               "true", os.path.relpath(p, ROOT), 1)
         if d.get("steps") is not None:
             r.add(cat, "%s 步数" % nm, d.get("steps"), "步", "—", "—", "同上", 1)
-    ev = sorted(glob.glob(os.path.join(ROOT, "docs/data_snapshots/*/切换验证台账_*.json")),
+    ev = sorted(glob.glob(os.path.join(ROOT, "docs/6-开阳-工程落地/*/切换验证台账_*.json")),
                 key=lambda p: os.path.getmtime(p), reverse=True)
     for p in ev[:1]:
         d = jload(p, [])

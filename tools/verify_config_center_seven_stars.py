@@ -368,7 +368,7 @@ def main() -> int:
         page.resize(1680, 940)
         page.tabs.setCurrentIndex(page._tab_index_by_title("功能配置"))
         _app.processEvents()
-        _dst = os.path.join(ROOT, "docs", "data_snapshots", "20261015_config_center_seven_stars")
+        _dst = os.path.join(ROOT, "docs", "6-开阳-工程落地", "data_snapshots", "20261015_config_center_seven_stars")
         os.makedirs(_dst, exist_ok=True)
         page.star_banner.w.grab().save(os.path.join(_dst, "banner_天玑_功能性能模型.png"))
         page.grab().save(os.path.join(_dst, "config_center_full.png"))

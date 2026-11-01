@@ -41,7 +41,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB = os.path.join(ROOT, "data/database/zmax")
 SRC = os.path.join(DB, "sources", "config")
 CANVAS = os.path.join(ROOT, "src/lerobot/engineering/flows/state_space_obs.json")
-DEFAULT_OUT = os.path.join(ROOT, "docs/deliverables")
+DEFAULT_OUT = os.path.join(ROOT, "docs/1-天枢-产品边界/deliverables")
 
 # 用户指定优先级：摆盘(TASK-06-TRAY) + 插拔(TASK-01-FW) 优先
 PRIORITY_TASKS = ["TASK-06-TRAY", "TASK-01-FW"]

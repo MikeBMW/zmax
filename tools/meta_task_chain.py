@@ -21,7 +21,7 @@
   --layer L3                  形成并核验 L3 元任务
   --layer L4                  形成 L4 配置工单
   --all --doc                 四层全跑 + 出总体设计文档 (含文档中心登记)
-  --json <path> --md <path>   另存报告 (默认写 docs/eval/ 与 reports/meta_task_chain/)
+  --json <path> --md <path>   另存报告 (默认写 docs/5-玉衡-指标验收/ 与 reports/meta_task_chain/)
 """
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ TRAJ = os.path.join(ROOT, "data/database/zmax/sources/canvas/ss_traj_last.json")
 ROADMAP = os.path.join(ROOT, "config/eval/iteration_roadmap.json")
 PHYS = os.path.join(ROOT, "config/calib/zmax_skill_physics.json")
 REPORT_DIR = os.path.join(ROOT, "reports/meta_task_chain")
-DOC_OUT = os.path.join(ROOT, "docs/deliverables/元任务总体设计_v5.50.736.md")
+DOC_OUT = os.path.join(ROOT, "docs/1-天枢-产品边界/deliverables/元任务总体设计_v5.50.736.md")
 
 VERSION = "5.50.736"
 
@@ -284,7 +284,7 @@ def build_doc(l2, pm, skl, l3, l3ctx, wo):
     A("| 配置 | 该功能启用/关闭的参数与开关 (instance) | `config_meta.json::fields.parameters/declared_flags` |")
     A("| 执行入口 | 真代码文件/节点 (不是伪代码) | `code_file` / 画布节点 id |")
     A("| 验收指标 | 归属迭代阶段的性能指标 + 目标值 | `config/eval/iteration_roadmap.json` |")
-    A("| 证据 | 判据脚本 + 报告 (可复核) | `tools/verify_*.py` + `docs/eval/*.md` |")
+    A("| 证据 | 判据脚本 + 报告 (可复核) | `tools/verify_*.py` + `docs/5-玉衡-指标验收/*.md` |")
     A("")
     A("### Phase %s 的 L2 元任务 (共 %d 条, 配置驱动生成)" % (pm.get("phase", "0"), len(l2)))
     A("")
@@ -398,11 +398,11 @@ def np_norm(a):
 
 
 def register_doc_center(path):
-    """登记到文档中心索引 (docs/DOCUMENT-TOPOLOGY.md 有则追加, 幂等)"""
-    topo = os.path.join(ROOT, "docs/notes/DOCUMENT-TOPOLOGY.md")
+    """登记到文档中心索引 (docs/7-瑶光-记录追溯/notes/DOCUMENT-TOPOLOGY.md 有则追加, 幂等)"""
+    topo = os.path.join(ROOT, "docs/7-瑶光-记录追溯/notes/DOCUMENT-TOPOLOGY.md")
     rel = os.path.relpath(path, ROOT)
     if not os.path.isfile(topo):
-        return False, "无 docs/notes/DOCUMENT-TOPOLOGY.md"
+        return False, "无 docs/7-瑶光-记录追溯/notes/DOCUMENT-TOPOLOGY.md"
     s = open(topo, encoding="utf-8").read()
     if rel in s:
         return True, "已在文档中心索引"

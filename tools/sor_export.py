@@ -706,10 +706,10 @@ def build(system="sys1", task_id="TASK-06-TRAY"):
               "python3 tools/ss_task_bind.py --check && python3 tools/engineering_db.py check", size=10)
     # ───────── 附录 H/I/J: 性能配置与验收 (2026-10-13 老倪: 「要保证…成功率>99%、节拍<3.5s 的硬性要求 …
     #   主参数M要合理, 可被测量 … 要可操作, 可被验证」) ─────────
-    # 数字来源 = docs/deliverables/摆盘性能对账_<VER>.json (由 tools/delivery/gen_tray_perf_report.py
+    # 数字来源 = docs/1-天枢-产品边界/摆盘性能对账_<VER>.json (由 tools/delivery/gen_tray_perf_report.py
     # 从唯一依据现取现算: 配置单 targets/overrides · 真跑产物 judges · 主参数M唯一依据 · 扭矩判据报告)。
     # ⚠️ 本文档**不手写性能数字**: 取不到就如实标缺, 不许拿概念值充数 (老倪铁律)。
-    _pf = os.path.join(ROOT, "docs", "deliverables", "摆盘性能对账_%s.json" % _VER_STR)
+    _pf = os.path.join(ROOT, "docs", "1-天枢-产品边界", "deliverables", "摆盘性能对账_%s.json" % _VER_STR)
     PERF = {}
     try:
         with open(_pf, encoding="utf-8") as _f:

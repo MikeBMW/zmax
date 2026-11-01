@@ -3,7 +3,7 @@
 把 [zju3dv/INTACT-JEPA](https://github.com/zju3dv/INTACT-JEPA)（INTACT: Isomorphic Intent-to-Action
 Learning for Search-Free World Models, MIT）在本机跑成**一条命令、幂等、可无人值守**的流程，
 并作为状态空间 L4 层「🧠 INTACT 意图-动作」节点的后端
-（节点封装见 `src/lerobot/manifold/intact_node/`，设计见 `docs/design/zmax_intact_node.md`）。
+（节点封装见 `src/lerobot/manifold/intact_node/`，设计见 `docs/4-天权-模型算法/zmax_intact_node.md`）。
 
 ## 一键运行
 

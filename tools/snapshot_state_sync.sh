@@ -7,7 +7,7 @@
 # (同口径首发 2026-10-11 — 见 tools/finalize_data_sync.sh; 本脚本是它的二次版, 数字全部当场实测)
 #
 # 产出:
-#   docs/data_snapshots/<DATE>_状态同步_<VER>_.../   (人读快照 + 判据原始输出 + 通道取证)
+#   docs/6-开阳-工程落地/<DATE>_状态同步_<VER>_.../   (人读快照 + 判据原始输出 + 通道取证)
 #   zmax_data/release_sync_<DATE>_<VER>/             (归档 + MANIFEST.sha256)
 #
 # 用法: bash tools/snapshot_state_sync.sh            # 采+建快照, 不提交
@@ -24,7 +24,7 @@ if [ -z "${SNAP_VER:-}" ]; then
 fi
 VER="${SNAP_VER:-v5.50.735}"
 LABEL="状态同步_${VER}_元任务性能物理值全链+场景迭代+球面归一化"
-SNAP="$ROOT/docs/data_snapshots/${DATE}_${LABEL}"
+SNAP="$ROOT/docs/6-开阳-工程落地/${DATE}_${LABEL}"
 ARC="$ROOT/zmax_data/release_sync_${DATE}_${VER}"
 PY="$ROOT/gui-venv311/bin/python"
 mkdir -p "$SNAP" "$ARC"
@@ -34,12 +34,12 @@ echo "📦 采集中 → ${SNAP#*/}"
 bash tools/sync_hermes_to_repo.sh --no-push > "$SNAP/sync_hermes.txt" 2>&1
 MEM_SHA=$(sha256sum ~/.hermes/memories/MEMORY.md | cut -d' ' -f1)
 USER_SHA=$(sha256sum ~/.hermes/memories/USER.md | cut -d' ' -f1)
-BMEM_SHA=$(sha256sum docs/memory/hermes-jingjing-memory-2026-10-16.md 2>/dev/null | cut -d' ' -f1)
-BUSER_SHA=$(sha256sum docs/memory/hermes-jingjing-user-2026-10-16.md 2>/dev/null | cut -d' ' -f1)
+BMEM_SHA=$(sha256sum docs/7-瑶光-记录追溯/memory/hermes-jingjing-memory-2026-10-16.md 2>/dev/null | cut -d' ' -f1)
+BUSER_SHA=$(sha256sum docs/7-瑶光-记录追溯/memory/hermes-jingjing-user-2026-10-16.md 2>/dev/null | cut -d' ' -f1)
 N_LOCAL=$(find ~/.hermes/skills -name SKILL.md | wc -l)
-N_ALL=$(find docs/skills/hermes-all -name SKILL.md | wc -l)
-N_XSPACE=$(find docs/skills/xspace -name SKILL.md | wc -l)
-diff ~/.hermes/memories/MEMORY.md docs/memory/hermes-jingjing-memory-2026-10-16.md > "$SNAP/memory_diff.txt" 2>&1
+N_ALL=$(find docs/3-天玑-能力功能/skills/hermes-all -name SKILL.md | wc -l)
+N_XSPACE=$(find docs/3-天玑-能力功能/skills/xspace -name SKILL.md | wc -l)
+diff ~/.hermes/memories/MEMORY.md docs/7-瑶光-记录追溯/memory/hermes-jingjing-memory-2026-10-16.md > "$SNAP/memory_diff.txt" 2>&1
 MEM_DIFF=$([ -s "$SNAP/memory_diff.txt" ] && echo "有差异" || echo "无差异(逐行一致)")
 {
   echo "记忆同步 (老倪: 一点不能丢)"
@@ -49,7 +49,7 @@ MEM_DIFF=$([ -s "$SNAP/memory_diff.txt" ] && echo "有差异" || echo "无差异
   echo "  USER.md         本地 sha256 ${USER_SHA} / 备份 ${BUSER_SHA}"
   echo "技能同步"
   echo "  本地技能 ${N_LOCAL} · hermes-all 全量镜像 ${N_ALL} · xspace 关键镜像 ${N_XSPACE}"
-  echo "  缺失项: $(printf '%s\n' "$(comm -23 <(find ~/.hermes/skills -name SKILL.md | sed "s|$HOME/.hermes/skills/||;s|/SKILL.md||" | sort) <(find docs/skills/hermes-all -name SKILL.md | sed 's|docs/skills/hermes-all/||;s|/SKILL.md||' | sort) | tr '\n' ' ')")"
+  echo "  缺失项: $(printf '%s\n' "$(comm -23 <(find ~/.hermes/skills -name SKILL.md | sed "s|$HOME/.hermes/skills/||;s|/SKILL.md||" | sort) <(find docs/3-天玑-能力功能/skills/hermes-all -name SKILL.md | sed 's|docs/3-天玑-能力功能/skills/hermes-all/||;s|/SKILL.md||' | sort) | tr '\n' ' ')")"
 } | tee "$SNAP/memory_skills_sync.txt"
 
 # ── ② 飞书端「场景叠加任务」公网通道端到端取证 (不信返回值, 当场回读)
@@ -93,11 +93,11 @@ echo "  公网状态: HTTP $(curl -s -o /dev/null -w '%{http_code}' --max-time 2
 
 # ── ⑥ git 唯一依据点 + 台账
 { echo "commit: $(git rev-parse --short HEAD)"; echo "tag: $(git describe --tags --abbrev=0 2>/dev/null)"; echo "branch: $(git rev-parse --abbrev-ref HEAD)"; echo "at: $(date '+%F %T')"; } > "$SNAP/git_ref.txt"
-cp -f docs/eval/元任务性能物理值全链验证_v5.50.735.md "$SNAP/" 2>/dev/null
-cp -f docs/eval/Phase0_L2速度反馈延迟_全测_v5.50.735.md "$SNAP/" 2>/dev/null
-cp -f docs/eval/归一化球面实现方案_落地_v5.50.735.md "$SNAP/" 2>/dev/null
-cp -f docs/eval/评估分析页_场景迭代面板_v5.50.735.md "$SNAP/" 2>/dev/null
-cp -f docs/memory/hermes-jingjing-memory-2026-10-16.md "$SNAP/" 2>/dev/null
+cp -f docs/5-玉衡-指标验收/eval/元任务性能物理值全链验证_v5.50.735.md "$SNAP/" 2>/dev/null
+cp -f docs/5-玉衡-指标验收/eval/Phase0_L2速度反馈延迟_全测_v5.50.735.md "$SNAP/" 2>/dev/null
+cp -f docs/5-玉衡-指标验收/eval/归一化球面实现方案_落地_v5.50.735.md "$SNAP/" 2>/dev/null
+cp -f docs/5-玉衡-指标验收/eval/评估分析页_场景迭代面板_v5.50.735.md "$SNAP/" 2>/dev/null
+cp -f docs/7-瑶光-记录追溯/memory/hermes-jingjing-memory-2026-10-16.md "$SNAP/" 2>/dev/null
 
 # ── ⑦ 归档 + MANIFEST
 rm -rf "$ARC"; mkdir -p "$ARC"; cp -f "$SNAP"/* "$ARC"/ 2>/dev/null

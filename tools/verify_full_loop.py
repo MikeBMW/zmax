@@ -5,7 +5,7 @@
 老倪 2026-09-22: "加速整体数据闭环 ... 全局验证通过系统. 保证快速性, 稳定性, 准确性"
 
 与 audit_full_chain (各层单独可用) 的区别: 本脚本验证**层间真连通** (数据真从上层流到下层)。
-链路 (对齐 docs/design/architecture_layers_v511.md 的真机链路, 仿真侧跑):
+链路 (对齐 docs/6-开阳-工程落地/architecture_layers_v511.md 的真机链路, 仿真侧跑):
   L5 指令 ──► 技能序列 (planner)
           ──► L4 安全闸门 (gate: 每个技能是否允许)
           ──► L4 INTACT 零搜索动作块 (chunk)

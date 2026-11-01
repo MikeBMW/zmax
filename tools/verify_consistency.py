@@ -99,7 +99,7 @@ def main():
                 except Exception:                                               # noqa: BLE001
                     pass
     allt = " ".join(allt)
-    rep = open(os.path.join(ROOT, "docs", "deliverables", "项目立项报告_双臂协作工位.md"), encoding="utf-8").read()
+    rep = open(os.path.join(ROOT, "docs", "1-天枢-产品边界", "deliverables", "项目立项报告_双臂协作工位.md"), encoding="utf-8").read()
     for k in "ABC":
         t = TG[k]
         chk("③ %s 单套成本 %.1f 万 表/PPT/报告一致" % (k, t["cost_total"] / 1e4),
@@ -143,7 +143,7 @@ def main():
         w.rollout_msg.text().splitlines()[0] if w.rollout_msg.text() else "")
     w._export_project_report()
     chk("⑥ 按「导出立项报告」真写文件", "✅" in w.rollout_msg.text(), w.rollout_msg.text()[:40])
-    csvp = os.path.join(ROOT, "docs", "deliverables", "市场分成_三档三阶段.csv")
+    csvp = os.path.join(ROOT, "docs", "1-天枢-产品边界", "deliverables", "市场分成_三档三阶段.csv")
     w._export_split_csv()
     rows = list(csv.reader(open(csvp, encoding="utf-8-sig")))
     chk("⑥ 按「导出市场分成」真写 CSV 三阶段三档",

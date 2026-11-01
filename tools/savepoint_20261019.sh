@@ -22,7 +22,7 @@ cp -f zmax_data/l5_loop/state.json "$DST/data/l5_loop_state.json" 2>/dev/null
 cp -f zmax_data/ss_live/l5_scene_vec.json "$DST/data/" 2>/dev/null
 cp -f zmax_data/eval/orbital_state_verify.json "$DST/data/" 2>/dev/null
 cp -f zmax_data/release_5.50.746_20261019/MANIFEST.md "$DST/data/release_5.50.746_MANIFEST.md" 2>/dev/null
-cp -f docs/data_snapshots/20261019_solar_state/*.png "$DST/shots/" 2>/dev/null
+cp -f docs/6-开阳-工程落地/20261019_solar_state/*.png "$DST/shots/" 2>/dev/null
 
 echo "=== ③ 证据 ==="
 {

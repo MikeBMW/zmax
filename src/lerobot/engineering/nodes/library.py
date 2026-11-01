@@ -3401,7 +3401,7 @@ def node_web_agent(ctx):
 def node_ss_eng_mem(ctx):
     """📚 工程记忆 · 技能与经验库 → 🧠 总装记忆中枢 (老倪 2026-09-19: 与飞书端商量好, 工程记忆同步到总装)
 
-    读**真实文件**: docs/memory/*.md (跨端同步记忆) + ~/.hermes/memories/*.md (Hermes 记忆) +
+    读**真实文件**: docs/7-瑶光-记录追溯/*.md (跨端同步记忆) + ~/.hermes/memories/*.md (Hermes 记忆) +
     ~/.hermes/skills/**/SKILL.md (技能库) → 汇总条数/最新更新 → 追加式同步进顶层宏观记忆
     (macro_memory.engineering, 幂等指纹去重 + 原子写 + 回读校验)。
     """
@@ -3614,7 +3614,7 @@ _reg("ss_bg5",   ["大模型层"], "大模型层 · 云端任务规划 — 慢�
 
 _reg("ss_llm_in", ["任务指令"], "📝 任务指令 — MES 工单/自然语言 → 任务规划器 (源码 planner.py)", node_ss_llm_in)
 
-_reg("n_eng_mem", ["工程记忆", "技能与经验库"], "📚 工程记忆 · 技能与经验库 — docs/memory + Hermes 记忆 + 技能库 → 同步进总装记忆 (源码 eng_memory.py)", node_ss_eng_mem)
+_reg("n_eng_mem", ["工程记忆", "技能与经验库"], "📚 工程记忆 · 技能与经验库 — docs/7-瑶光-记录追溯/memory + Hermes 记忆 + 技能库 → 同步进总装记忆 (源码 eng_memory.py)", node_ss_eng_mem)
 
 _reg("n_dsvl", ["DeepSeek", "视觉语言", "VLM 判读"], "🧿 DeepSeek-V4-Flash 视觉语言 (人机在环) — 场景判读+建议; 右键=判读结果窗口 (源码 scene_vlm.py)", node_dsvl)
 

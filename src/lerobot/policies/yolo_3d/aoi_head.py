@@ -3,7 +3,7 @@
 
 需求: 「外观质量检测节点 … 是 YOLO 模型的一个**新的质量检测任务头**, 你来设计任务头训练方案」
 
-设计 (详见 docs/design/aoi_quality_head_and_console_20260924.md):
+设计 (详见 docs/2-天璇-作业任务/aoi_quality_head_and_console_20260924.md):
   · **一个头, 两个角色**: 定位类框给 ROI (图像定位/拉伸) + 缺陷类框给缺陷 (金手指/外观划伤)
   · **两级级联**: 全帧跑定位类 → 取金手指/本体/光口 ROI → 裁剪拉伸到判据分辨率 → ROI 内跑缺陷类
   · **兜底诚实**: 无权重/无检出 → 启发式 AOIQualityChecker 出判决表, 明标 `source="heuristic"`

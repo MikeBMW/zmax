@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""现场数据快照 (小版本迭代第①步: data/ 被 gitignore, 必须拷进 docs/data_snapshots/)
+"""现场数据快照 (小版本迭代第①步: data/ 被 gitignore, 必须拷进 docs/6-开阳-工程落地/)
 
-老倪口径: 「保存数据，小版本迭代」⇒ 把本轮唯一依据/证据拷进 docs/data_snapshots/<日期>_<主题>/,
+老倪口径: 「保存数据，小版本迭代」⇒ 把本轮唯一依据/证据拷进 docs/6-开阳-工程落地/<日期>_<主题>/,
 生成 README + sha256, 之后才改版本号/提交。
 """
 from __future__ import annotations
@@ -16,7 +16,7 @@ import time
 
 ROOT = "/home/ubuntu/zmax"
 TOPIC = "20261014_L4_latent_chain"
-DST = os.path.join(ROOT, "docs", "data_snapshots", TOPIC)
+DST = os.path.join(ROOT, "docs", "6-开阳-工程落地", "data_snapshots", TOPIC)
 
 ITEMS = [
     ("data/database/zmax/sources/canvas/state_space_obs.json", "画布唯一依据 (LoRA 入链 + 元任务预测接 LoRA)"),

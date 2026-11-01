@@ -13,8 +13,8 @@
   ss_infer     ← 推理服务 /health (model/latency/infer_count)      http://127.0.0.1:8790/health
   train_prog   ← 训练日志最新步数 (train_*.log / web_job_*.log)
   ss_diag      ← 推理延时 + relay/APP 数据龄 + GPU 利用率 + 健康度
-  ss_state     ← 状态空间/流形快照 JSON (docs/manifold_view.json 等)
-  ss_canvas    ← 画布节点状态 (docs/PIPELINE_STATE.json)
+  ss_state     ← 状态空间/流形快照 JSON (docs/7-瑶光-记录追溯/notes/manifold_view.json 等)
+  ss_canvas    ← 画布节点状态 (docs/6-开阳-工程落地/PIPELINE_STATE.json)
   ss_calib     ← 标定唯一依据 (zmax_robot_spec/calib.json)
   ss_test      ← 测试/自检结果 JSON (若有)
   hw_state     ← nvidia-smi + /proc（硬件, 已有发布端; 这里保障补一条）
@@ -120,7 +120,7 @@ def src_ss_diag():
 
 def src_ss_state():
     """状态空间/流形快照"""
-    for cand in ("docs/manifold_view.json", "docs/state_view.json", "static-wm/reports/manifold_view.json"):
+    for cand in ("docs/7-瑶光-记录追溯/notes/manifold_view.json", "docs/state_view.json", "static-wm/reports/manifold_view.json"):
         p = os.path.join(REPO, cand)
         if os.path.isfile(p):
             try:
@@ -139,7 +139,7 @@ def src_ss_state():
 
 def src_ss_canvas():
     """画布/流水线节点状态"""
-    p = os.path.join(REPO, "docs/PIPELINE_STATE.json")
+    p = os.path.join(REPO, "docs/6-开阳-工程落地/PIPELINE_STATE.json")
     if not os.path.isfile(p):
         return []
     try:

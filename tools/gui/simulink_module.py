@@ -2438,7 +2438,7 @@ class CICDWorker(QThread):
 # ════════════════════════════════════════════════════════════════
 # 三阶段渐进式训练管线面板 (老倪策略 2026-08-02)
 #   Stage1 MetaWorld 仿真训练 → Stage2 Sim-to-Real 零样本测试 → Stage3 Orin 微调
-#   自动流转, steps 可配置, 状态读 docs/PIPELINE_STATE.json
+#   自动流转, steps 可配置, 状态读 docs/6-开阳-工程落地/PIPELINE_STATE.json
 # ════════════════════════════════════════════════════════════════
 class PipelinePanel(QDialog):
     STAGE_DEFS = {

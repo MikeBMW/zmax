@@ -42,7 +42,7 @@ def _prev_canvas():
         r = subprocess.run(["git", "-C", ROOT, "show", ref], capture_output=True, text=True)
         if r.returncode == 0 and r.stdout.lstrip().startswith("{"):
             return json.loads(r.stdout)
-    snaps = sorted(glob.glob(os.path.join(ROOT, "docs", "data_snapshots", "*", "canvas_state_space_obs.json")),
+    snaps = sorted(glob.glob(os.path.join(ROOT, "docs", "6-开阳-工程落地", "data_snapshots", "*", "canvas_state_space_obs.json")),
                    key=os.path.getmtime)          # 按时间取最新一次存档 (不是字典序)
     if snaps:
         print("ℹ️ '改之前' 取自存档: %s" % os.path.relpath(snaps[-1], ROOT))

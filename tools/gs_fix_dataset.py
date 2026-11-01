@@ -6,7 +6,7 @@
         T_cam2world = T_base2tcp                    ← 错
      正确: 相机在臂上, 差一个手眼外参
         T_cam2world = T_cam2tool @ inv(T_base2tcp)   ← 对
-     依据: docs/notes/CALIB-20260921-handeye.md 写的是 T_cam_base = inv(G·X),
+     依据: docs/7-瑶光-记录追溯/notes/CALIB-20260921-handeye.md 写的是 T_cam_base = inv(G·X),
            等价于 T_cam2base = X @ inv(G), 其中 X = T_cam2tool, G = T_base2tcp
 
   2. 内参: 用的是焦距默认值 768

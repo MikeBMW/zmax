@@ -833,7 +833,7 @@ DOC_SCRIPTS = {
     "patent":    ("专利交底书 · 一键导出 (每功能一份 · Word + PDF)", "export_patent_draft.py", ["--all"]),
 }
 DOC_DIRS = ["outputs/docs_bundle", "outputs/project_docs", "outputs/sor", "outputs/agreements",
-            "docs/deliverables"]
+            "docs/1-天枢-产品边界/deliverables"]
 
 
 # ── 文档配置 (2026-10-10 老倪: 左侧栏增加文档配置, 内置窗口直接看生成的文档, 数据统一保证一致性) ──
@@ -3730,7 +3730,7 @@ class ConfigCenterPage(QWidget):
     # ══════════════════════════════════════════════════════════════════════════
     # ⚙️ 工程配置 · 按性能等级 A/B/C (老倪 2026-10-28: 「根据性能等级, 进行工程配置,
     #    要有操作手册 working instruction, 保证能够工程实现」)
-    #    唯一依据: tools/spec/eng_profiles.json —— 与 docs/deliverables/工程操作手册_三档_A_B_C.md 同源
+    #    唯一依据: tools/spec/eng_profiles.json —— 与 docs/1-天枢-产品边界/deliverables/工程操作手册_三档_A_B_C.md 同源
     # ══════════════════════════════════════════════════════════════════════════
     def _eng_profile_block(self, th):
         import subprocess as _sp
@@ -4157,7 +4157,7 @@ class ConfigCenterPage(QWidget):
         _b_mt = _btn("📄 元任务计划 (Word/PDF)", th)
         _b_mt.setToolTip("导出「元任务开发计划 · 项目立项书」\n"
                          "元任务 = 每个功能 + 该功能全部配置参数 (打散到可独立开发的粒度)\n"
-                         "产物: docs/deliverables/元任务开发计划_2026-10_2027-12.md / .docx / .pdf\n"
+                         "产物: docs/1-天枢-产品边界/deliverables/元任务开发计划_2026-10_2027-12.md / .docx / .pdf\n"
                          "数据源: config_meta.json(74 功能) + tasks.json(7 任务) + "
                          "ss_task_binding.json + 画布(89 节点) —— 出文档前先跑一致性校验")
         _b_mt.setStyleSheet(_b_mt.styleSheet() + ";font-weight:bold;")
@@ -4725,7 +4725,7 @@ class ConfigCenterPage(QWidget):
         _bp2.setToolTip("全量 74 条功能的专利渠道 (主挂/关联/唯一依据符号) 复制到剪贴板")
         _bp2.clicked.connect(self._copy_patent_channels)
         _bp3 = _btn("📤 导出全部专利 (md+docx)", th)
-        _bp3.setToolTip("12 件专利申请文件全部导出到 docs/patents/ (与 SOR/立项/协议同一交付目录体系)")
+        _bp3.setToolTip("12 件专利申请文件全部导出到 docs/1-天枢-产品边界/ (与 SOR/立项/协议同一交付目录体系)")
         _bp3.clicked.connect(lambda: self._export_patent(single=False))
         for _b in (_bp1, _bp2, _bp3):
             _pr.addWidget(_b)
@@ -4789,7 +4789,7 @@ class ConfigCenterPage(QWidget):
                          th["C_GRAY"], 9))
         _rows = []
         for p in reg.get("patents", []):
-            _out = os.path.join("docs", "patents")
+            _out = os.path.join("docs", "1-天枢-产品边界", "patents")
             _base = "%s_%s" % (p["pat_id"], m._safe(p["title"])[:48])
             _md = os.path.join(ROOT, _out, _base + ".md")
             _dx = os.path.join(ROOT, _out, _base + ".docx")
@@ -4812,7 +4812,7 @@ class ConfigCenterPage(QWidget):
         _b2 = _btn("📤 导出选中 (md+docx)", th)
         _b2.clicked.connect(lambda: self._export_patent(single=True))
         _b3 = _btn("📤 导出全部专利", th)
-        _b3.setToolTip("12 件全部导出 md + docx + 渠道总览清单 → docs/patents/")
+        _b3.setToolTip("12 件全部导出 md + docx + 渠道总览清单 → docs/1-天枢-产品边界/")
         _b3.clicked.connect(lambda: self._export_patent(single=False))
         _b4 = _btn("📋 复制功能↔专利渠道清单", th)
         _b4.setToolTip("74 条功能逐条的专利渠道 (主挂/关联) 复制到剪贴板 → 可直接粘进 Excel/评审表")
@@ -4911,8 +4911,8 @@ class ConfigCenterPage(QWidget):
             for p in reg.get("patents", []):
                 if p["pat_id"] == pid:
                     base = "%s_%s" % (pid, m._safe(p["title"])[:48])
-                    md = os.path.join(ROOT, "docs", "patents", base + ".md")
-                    dx = os.path.join(ROOT, "docs", "patents", base + ".docx")
+                    md = os.path.join(ROOT, "docs", "1-天枢-产品边界", "patents", base + ".md")
+                    dx = os.path.join(ROOT, "docs", "1-天枢-产品边界", "patents", base + ".docx")
                     if os.path.exists(md):
                         out["md"], out["mtime"] = md, os.path.getmtime(md)
                     if os.path.exists(dx):
@@ -6288,7 +6288,7 @@ class ConfigCenterPage(QWidget):
             ("📊 导出成本分析 PPT (10 页)", self._export_deck_ppt,
              "调 tools/build_cost_deck.py 现算三档目标成本与降本缺口 (10 页, 只算成本不写销售价), 写 zmax_data/deliverables"),
             ("📄 导出立项报告 (MD + DOCX)", self._export_project_report,
-             "写出 docs/deliverables/项目立项报告_双臂协作工位.md 与 .docx, 数字现算"),
+             "写出 docs/1-天枢-产品边界/deliverables/项目立项报告_双臂协作工位.md 与 .docx, 数字现算"),
             ("📊 导出市场分成 (CSV)", self._export_split_csv,
              "三档 × 三阶段分成与回本, 可直接给财务"),
         ):
@@ -6351,7 +6351,7 @@ class ConfigCenterPage(QWidget):
             import csv
             r = self._rollout_data()
             d = self._tier_data()
-            out = os.path.join(ROOT, "docs", "deliverables", "市场分成_三档三阶段.csv")
+            out = os.path.join(ROOT, "docs", "1-天枢-产品边界", "deliverables", "市场分成_三档三阶段.csv")
             os.makedirs(os.path.dirname(out), exist_ok=True)
             with open(out, "w", newline="", encoding="utf-8-sig") as f:
                 wr = csv.writer(f)
@@ -7388,7 +7388,7 @@ class ConfigCenterPage(QWidget):
                     _c2 = _pcm2.coverage()
                     L.append("   四类文档同页同级: SOR / 项目立项 / 合作协议 / **专利 (%d 件)** —— 导出+预览同一通道"
                              % _c2["n_patent"])
-                    L.append("   专利渠道: %d/%d 条功能已挂 · 唯一依据 %s · 产物 docs/patents/"
+                    L.append("   专利渠道: %d/%d 条功能已挂 · 唯一依据 %s · 产物 docs/1-天枢-产品边界/"
                              % (_c2["covered"], _c2["total_fn"], _c2["src"]))
                 except Exception:                                                       # noqa: BLE001
                     pass

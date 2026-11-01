@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""snapshot_media_index.py — 盘点 docs/data_snapshots 里的大文件, 生成/刷新 MEDIA-INDEX.md。
+"""snapshot_media_index.py — 盘点 docs/6-开阳-工程落地/data_snapshots 里的大文件, 生成/刷新 MEDIA-INDEX.md。
 
 口径 (老倪 Git 精简): 图/大二进制**不进代码库** (.gitignore 挡入库), 库里只留可复核清单。
 所以这份清单是从**工作区**扫出来的 (不是 `git ls-files` —— 那些文件已不入库), 每行给
@@ -16,7 +16,7 @@ import os
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SNAP = os.path.join(ROOT, "docs", "data_snapshots")
+SNAP = os.path.join(ROOT, "docs", "6-开阳-工程落地", "data_snapshots")
 OUT = os.path.join(SNAP, "MEDIA-INDEX.md")
 SKIP_EXT = {".md", ".json", ".py", ".sh", ".txt", ".csv", ".html", ".js", ".css", ".patch", ".diff"}
 

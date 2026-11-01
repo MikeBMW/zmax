@@ -1,6 +1,6 @@
 [Unit]
 Description=Z-MAX 流形引擎驱动扭矩发布器 (唯一依据 M × −∇Φ → ss_torque, 10Hz 常驻)
-Documentation=file:/home/ubuntu/zmax/docs/design/global_data_space_mapping_20260929.md
+Documentation=file:/home/ubuntu/zmax/docs/6-开阳-工程落地/global_data_space_mapping_20260929.md
 After=network-online.target
 Wants=network-online.target
 # 为什么不带前置依赖: 扭矩只依赖标定唯一依据 config/calib/zmax_manifold.json + 当前状态, 不依赖机器人在线。

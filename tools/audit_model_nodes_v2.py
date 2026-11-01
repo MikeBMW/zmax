@@ -10,7 +10,7 @@ v2 分三类, 各按各的判据:
   B. 计算/技能节点: 必须 (文件存在 + 符号命中) — 无权重可言
   C. 其他模型节点: 只要求可定位
 
-输出: reports/model_nodes_v2.json + docs/design/space_model_nodes_load_map.md (覆盖 v1 产物)
+输出: reports/model_nodes_v2.json + docs/4-天权-模型算法/space_model_nodes_load_map.md (覆盖 v1 产物)
 """
 from __future__ import annotations
 import json

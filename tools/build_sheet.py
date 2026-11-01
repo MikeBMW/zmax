@@ -19,7 +19,7 @@
 
 唯一依据 (只读):
     flows/scenes_5jobs.json                        5 个作业场景 (对象坐标/穴位/步骤/性能目标)
-    docs/orin-grasp-place-workflow.md              抓取放置工序实测判据 (抓取力/插入深度/容错/安全)
+    docs/2-天璇-作业任务/orin-grasp-place-workflow.md              抓取放置工序实测判据 (抓取力/插入深度/容错/安全)
     config/calib/zmax_calib.json                   站点工程配置真值
     feature.dbc                                    A1 自主流转 / A2 工位对接 / C4 翻转取放 / C5 双臂协同
 
@@ -105,7 +105,7 @@ RECIPE_STEPS = [
 
 # ── Sys-0 安全 (站点级, 任何工单不得覆盖) ──
 SAFETY = [
-    dict(id="sf.estop", cn="急停检查", judge="动前/动中常闭", src="docs/orin-grasp-place-workflow.md#Sys-0"),
+    dict(id="sf.estop", cn="急停检查", judge="动前/动中常闭", src="docs/2-天璇-作业任务/orin-grasp-place-workflow.md#Sys-0"),
     dict(id="sf.force", cn="力阈值 Fz", judge=">5N 即停", src="同上"),
     dict(id="sf.joint", cn="关节限位", judge="±3rad", src="同上"),
     dict(id="sf.light_curtain", cn="光幕检测", judge="遮挡即停", src="同上"),

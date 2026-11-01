@@ -110,7 +110,7 @@ try:
     p.show()                      # 不 show() 时布局是陈旧的, 截出来不是真实画面
     for _ in range(8):
         app.processEvents()
-    out = os.path.join(ROOT, "docs/eval/task_meta_link_TASK-07-AOI.png")
+    out = os.path.join(ROOT, "docs/5-玉衡-指标验收/eval/task_meta_link_TASK-07-AOI.png")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     i = p._tab_index_by_title("任务配置")
     p.tabs.setCurrentIndex(i)

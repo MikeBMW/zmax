@@ -67,11 +67,11 @@
         {"k": "意图决策周期", "sym": "T_dec", "v": "101 ms (9.9 Hz)", "tool": "决策入口→动作出口时间戳 P50/P95", "basis": "稳态零搜索实测口径", "layer": "L4", "src": "config/platform/zmax_perf_spec.json"},
         {"k": "意图动作维", "sym": "a ∈ R^n · s ∈ R^m", "v": "8 维动作 · 24 维技能条件", "tool": "读 ckpt 配置 + 逐维下发-实测比例回归", "basis": "ckpt intent_actor.action_dim / skill_dim", "layer": "L4", "src": "zmax_data/stable-wm-cache/checkpoints/intact_l4_current/config.json#intent_actor"},
         {"k": "否决响应时间", "sym": "t_veto = n·T_dec", "v": "3 × 101 ms = 303 ms (连续 3 次否决转异常)", "tool": "注入越界指令, 计时到转异常/停机", "basis": "planner max_veto=3 分层否决", "layer": "L4", "src": "src/lerobot/policies/left_right/state_space/planner.py"},
-        {"k": "急停停机时间 (目标)", "sym": "t_stop", "v": "≤1.0 s (未实测, 需现场演练)", "tool": "高速段按急停, 编码器记录停止位移与耗时", "basis": "ISO 13850 急停 · 目标 PL d", "layer": "L4", "src": "docs/incidents/INCIDENT-INDEX.md"},
+        {"k": "急停停机时间 (目标)", "sym": "t_stop", "v": "≤1.0 s (未实测, 需现场演练)", "tool": "高速段按急停, 编码器记录停止位移与耗时", "basis": "ISO 13850 急停 · 目标 PL d", "layer": "L4", "src": "docs/7-瑶光-记录追溯/incidents/INCIDENT-INDEX.md"},
         {"k": "安全力/速度上限", "sym": "F_lim · v_lim", "v": "5.0 N · 1000 mm/s (超限饱和/拒发)", "tool": "力传感器 + 速度监控读回, 逐级加载到阈值", "basis": "safety 收口 · ISO/TS 15066 简化", "layer": "L4", "src": "src/lerobot/policies/left_right/state_space/safety.py:12"},
         {"k": "重规划时延上限", "sym": "T_plan,max", "v": "300 s (超时回退规则规划)", "tool": "规划请求→返回时间戳; 断网演练验回退", "basis": "L5 超时口径 · 失败降级路径", "layer": "L5", "src": "tools/spec/model_links.json#external"},
         {"k": "场景理解分辨率", "sym": "I · f", "v": "224×224 px · 3 帧输入", "tool": "读 ckpt encoder.image_size + 帧率统计", "basis": "INTACT 视觉编码输入", "layer": "L4", "src": "zmax_data/stable-wm-cache/checkpoints/intact_l4_current/config.json#encoder"},
-        {"k": "自主恢复成功率 (待测)", "sym": "R_rec", "v": "未实测 (需 N≥30 次异常注入)", "tool": "异常注入台架: 断电/急停/遮挡/超时 各 10 次统计", "basis": "目标 PL d 验证项", "layer": "L4+L5", "src": "docs/incidents/INCIDENT-INDEX.md"}
+        {"k": "自主恢复成功率 (待测)", "sym": "R_rec", "v": "未实测 (需 N≥30 次异常注入)", "tool": "异常注入台架: 断电/急停/遮挡/超时 各 10 次统计", "basis": "目标 PL d 验证项", "layer": "L4+L5", "src": "docs/7-瑶光-记录追溯/incidents/INCIDENT-INDEX.md"}
       ]
     }
   ]

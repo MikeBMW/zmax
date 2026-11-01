@@ -13,9 +13,9 @@ cp -f reports/moe_bypass_20260924.json reports/dense_bypass_20260924.json \
       reports/manifold_engine_bench.json "$DST/reports/" 2>/dev/null
 cp -f reports/canvas_level_audit_*.md reports/canvas_level_audit_*.json "$DST/reports/" 2>/dev/null
 cp -f reports/web/*.html reports/web/*.md "$DST/web/" 2>/dev/null
-cp -f docs/design/manifold_engine_20260924.md docs/design/moe_dense_engine_bypass_20260924.md \
-      docs/design/canvas_layout_forward_20260924.md docs/design/lora_align_ab_20260924.md \
-      docs/TASK_LEDGER_20260924.md VERSION.md "$DST/docs/" 2>/dev/null
+cp -f docs/4-天权-模型算法/manifold_engine_20260924.md docs/4-天权-模型算法/moe_dense_engine_bypass_20260924.md \
+      docs/6-开阳-工程落地/canvas_layout_forward_20260924.md docs/5-玉衡-指标验收/lora_align_ab_20260924.md \
+      docs/7-瑶光-记录追溯/incidents/TASK_LEDGER_20260924.md VERSION.md "$DST/docs/" 2>/dev/null
 cp -f flows/state_space_obs.json "$DST/canvas/" 2>/dev/null
 cp -f $(ls -t flows/state_space_obs.json.bak_* 2>/dev/null | head -2) "$DST/canvas/" 2>/dev/null
 cp -f tools/moe_engine_bypass.py tools/moe_holdout_persistence.py tools/obs_step_delta.py \

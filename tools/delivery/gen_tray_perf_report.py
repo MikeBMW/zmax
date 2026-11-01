@@ -6,7 +6,7 @@
                  主参数M要合理, 可被测量 … 要可操作, 可被验证」
 
 纪律(与全工程一致): **每个数字现取现算**, 不手写; 取不到就写「未标定/未测」, 不许拿概念值充数。
-输出: docs/deliverables/摆盘性能对账_<ver>.json / .md
+输出: docs/1-天枢-产品边界/摆盘性能对账_<ver>.json / .md
 用法: gui-venv311/bin/python tools/delivery/gen_tray_perf_report.py [--task TASK-06-TRAY] [--ver 5.50.5]
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ import sys
 from datetime import datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DOCS = os.path.join(ROOT, "docs", "deliverables")
+DOCS = os.path.join(ROOT, "docs", "1-天枢-产品边界", "deliverables")
 BINDING = os.path.join(ROOT, "config", "ss_task_binding.json")
 NPZ = os.path.join(ROOT, "reports", "tray_place_latest.npz")
 MANIFOLD = os.path.join(ROOT, "config", "calib", "zmax_manifold.json")

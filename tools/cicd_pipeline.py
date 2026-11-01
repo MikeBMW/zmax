@@ -13,7 +13,7 @@ Z-MAX ACT 三阶段渐进式训练管线 (老倪策略 2026-08-02)
   python3 tools/cicd_pipeline.py status                             # 查看状态
   python3 tools/cicd_pipeline.py test --steps1 20 --steps3 20       # 最少迭代验证通过链路
 
-状态文件: docs/PIPELINE_STATE.json — GUI 三阶段面板读取显示
+状态文件: docs/6-开阳-工程落地/PIPELINE_STATE.json — GUI 三阶段面板读取显示
 """
 import argparse, json, os, re, shutil, subprocess, sys, time
 from pathlib import Path

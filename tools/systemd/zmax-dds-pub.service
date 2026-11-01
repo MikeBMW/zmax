@@ -1,6 +1,6 @@
 [Unit]
 Description=Z-MAX DDS 4060 硬件发布端 (hw_state/train_prog/heartbeat)
-Documentation=file:/home/ubuntu/zmax/docs/design/global_data_space_mapping_20260929.md
+Documentation=file:/home/ubuntu/zmax/docs/6-开阳-工程落地/global_data_space_mapping_20260929.md
 After=network-online.target
 Wants=network-online.target
 

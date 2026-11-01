@@ -4,7 +4,7 @@
 
 ① 画布左上角不能留 "L4专家自主功能" 残字 → 停用带 ssbg6 直接移除
 ② 🧿 DeepSeek-VL 节点必须留在原位置可见 → 大模型层锚定坐标 (图深度重排会把它顶到 x=7400)
-③ 画布不能出现 "右侧输出连左侧输入" → 右→左边从画布剔除, 语义存 docs/design/feedback-edges-v510.json
+③ 画布不能出现 "右侧输出连左侧输入" → 右→左边从画布剔除, 语义存 docs/6-开阳-工程落地/feedback-edges-v510.json
 """
 import json
 import os
@@ -54,7 +54,7 @@ def main():
             print("   ↩ 复跑保边: %s → %s (%s)" % (_f, _t, _lab))
     json.dump(d, open(FLOW, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print("节点 %d → %d (移除停用带 %d)" % (before_n, len(d["nodes"]), before_n - len(d["nodes"])))
-    print("连线 %d → %d (剔除右→左 %d · 存 docs/design/feedback-edges-v510.json)" % (before_l, len(keep), len(back)))
+    print("连线 %d → %d (剔除右→左 %d · 存 docs/6-开阳-工程落地/feedback-edges-v510.json)" % (before_l, len(keep), len(back)))
     print("🧿 n_dsvl 位置:", nd["n_dsvl"]["x"], nd["n_dsvl"]["y"], "· 👁 n_vlm_llm:", nd["n_vlm_llm"]["x"], nd["n_vlm_llm"]["y"])
 
 

@@ -25,7 +25,7 @@
 用法:
   gui-venv311/bin/python tools/delivery/gen_scene_acceptance.py [--ver 5.50.5] [--quick]
 输出:
-  docs/deliverables/两场景验收报告_<ver>.md / .json
+  docs/1-天枢-产品边界/两场景验收报告_<ver>.md / .json
 """
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ import time
 from datetime import datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-OUTDIR = os.path.join(ROOT, "docs", "deliverables")
+OUTDIR = os.path.join(ROOT, "docs", "1-天枢-产品边界", "deliverables")
 PY = os.path.join(ROOT, "gui-venv311", "bin", "python")
 TASKS = [("TASK-01-FW", "插拔"), ("TASK-06-TRAY", "摆盘")]
 

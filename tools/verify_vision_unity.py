@@ -188,7 +188,7 @@ def main():
         #   三阶段/回本/人工口径断言随册删除; 这些口径仍留在立项报告(下一段逐条核)与 rollout_model。
         from rollout_model import build_rollout
         R = build_rollout()["phases"]
-        rep = os.path.join(ROOT, "docs", "deliverables", "项目立项报告_双臂协作工位.md")
+        rep = os.path.join(ROOT, "docs", "1-天枢-产品边界", "deliverables", "项目立项报告_双臂协作工位.md")
         chk("⑦ 立项报告 MD 存在", os.path.exists(rep), rep)
         if os.path.exists(rep):
             txt = open(rep, encoding="utf-8").read()
@@ -199,13 +199,13 @@ def main():
             chk("⑦ 立项报告只给建议利润空间, 不预先固定售价", ("建议报价区间" in txt) and ("建议利润空间" in txt), "已核")
             chk("⑦ 立项报告不出现任何密钥值", not any(x in txt for x in ("sk-", "api_key=", "token=", "password=")), "已核")
         chk("⑦ 立项报告 DOCX 存在",
-            os.path.exists(os.path.join(ROOT, "docs", "deliverables", "项目立项报告_双臂协作工位.docx")), "已核")
+            os.path.exists(os.path.join(ROOT, "docs", "1-天枢-产品边界", "deliverables", "项目立项报告_双臂协作工位.docx")), "已核")
         # 真按按钮: 调导出方法, 看文件是否实际生成来且回显 ✅
         before = os.path.getmtime(rep) if os.path.exists(rep) else 0
         w._export_project_report()
         chk("⑦ 按「导出立项报告」实际生成文件", os.path.exists(rep) and os.path.getmtime(rep) >= before
             and "✅" in w.rollout_msg.text(), w.rollout_msg.text()[:60].replace("\n", " / "))
-        csvp = os.path.join(ROOT, "docs", "deliverables", "市场分成_三档三阶段.csv")
+        csvp = os.path.join(ROOT, "docs", "1-天枢-产品边界", "deliverables", "市场分成_三档三阶段.csv")
         w._export_split_csv()
         chk("⑦ 按「导出市场分成」实际生成 CSV", os.path.exists(csvp) and "✅" in w.rollout_msg.text(),
             w.rollout_msg.text()[:60].replace("\n", " / "))

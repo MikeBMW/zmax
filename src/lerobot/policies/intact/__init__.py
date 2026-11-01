@@ -18,7 +18,7 @@
   · modeling_intact.py       lerobot 策略外壳 (IntactPolicy: select_action / predict_intent)
   · decoder.py               L4 → L3 意图解码器 (u_ff 先验 + 流形条件; 未标定诚实拒绝)
 
-连线 (docs/design/zmax_l4_intact_policy.md):
+连线 (docs/4-天权-模型算法/zmax_l4_intact_policy.md):
   metaworld 数据源 → IntactPolicy → IntactIntentDecoder → L3 (SmolVLA-Lew VLM+DiT)
 """
 from . import runtime as runtime

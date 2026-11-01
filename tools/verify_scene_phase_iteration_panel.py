@@ -20,7 +20,7 @@
   ⑫ 不留痕: 判据自己不改唯一依据 (除 ⑨ 由工具重新生成唯一依据; 前后**语义字段**必须一致)
 
 用法: cd /home/ubuntu/zmax && ./gui-venv311/bin/python tools/verify_scene_phase_iteration_panel.py
-      [--shot-dir docs/data_snapshots/<dir>]   # 顺手出离屏真渲染截图
+      [--shot-dir docs/6-开阳-工程落地/<dir>]   # 顺手出离屏真渲染截图
 """
 from __future__ import annotations
 

@@ -31,7 +31,7 @@ PY
 # ② 只带代码与出厂骨架 (不带 data/ 实例数据、模型权重、大交付件)
 tar --exclude='__pycache__' --exclude='*.pyc' --exclude='.git' --exclude='dist' --exclude='data' \
     --exclude='external' --exclude='*.bak_*' --exclude='.venv*' --exclude='gui-venv*' \
-    --exclude='docs/data_snapshots' --exclude='reports' --exclude='logs' --exclude='*.db' \
+    --exclude='docs/6-开阳-工程落地/data_snapshots' --exclude='reports' --exclude='logs' --exclude='*.db' \
     -cf - \
     tools src dds defaults flows config/pyproject.toml pyproject.toml README.md VERSION.md 2>/dev/null \
     | tar -xf - -C "$STAGE/zmax-console" || true

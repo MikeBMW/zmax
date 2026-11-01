@@ -21,11 +21,11 @@ OLD = {"/home/ubuntu/zmax": "/home/ubuntu/zmax",
 FORK = "/home/ubuntu/zmax/external/lerobot-smolvla-lew"
 SKIP_DIR = {".git", "__pycache__", "node_modules", ".venv", "venv", "gui-venv311",
             "outputs", ".mypy_cache", ".pytest_cache", ".ruff_cache", "site-packages"}
-# 不动的地方: reports/ 是历史取证记录(改写等于篡改证据); docs/skills + docs/memory 是 ~/.hermes 的镜像
+# 不动的地方: reports/ 是历史取证记录(改写等于篡改证据); docs/3-天玑-能力功能/skills + docs/7-瑶光-记录追溯/memory 是 ~/.hermes 的镜像
 # (改了下次同步会被覆盖, 要改就改源), 以及 .git 指针文件与脚本自身
 SKIP_PREFIX = (os.path.join(ROOT, "reports") + os.sep,
-               os.path.join(ROOT, "docs", "skills") + os.sep,
-               os.path.join(ROOT, "docs", "memory") + os.sep)
+               os.path.join(ROOT, "docs", "3-天玑-能力功能", "skills") + os.sep,
+               os.path.join(ROOT, "docs", "7-瑶光-记录追溯", "memory") + os.sep)
 SKIP_FILES = {os.path.join(ROOT, ".git"), os.path.abspath(__file__)}
 BIN_EXT = {".pt", ".pth", ".h5", ".npz", ".npy", ".png", ".jpg", ".jpeg", ".webp", ".gif",
            ".mp4", ".mov", ".avi", ".pdf", ".zip", ".tar", ".gz", ".zst", ".pptx", ".docx",

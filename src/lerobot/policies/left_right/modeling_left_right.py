@@ -221,7 +221,7 @@ class LeftRightPolicy(PreTrainedPolicy):
     # ── P3: 动作级指标量测 (2026-08-10, 大屏监督方案) ──
     def _measure_metrics(self, obs, contact_p, st_prev, act):
         """记录当前阶段的实际量测指标 → self.metrics (大屏 API 上报用)
-        指标与 docs/factory_fine_ops_supervision.md 的 8 状态指标表一致"""
+        指标与 docs/6-开阳-工程落地/factory_fine_ops_supervision.md 的 8 状态指标表一致"""
         hand, peg, hole = self._get_pose(obs)
         d_hp = float(np.linalg.norm(hand - peg))
         d_ph = float(np.linalg.norm(peg - hole))

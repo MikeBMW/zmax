@@ -347,7 +347,7 @@ def rewrite_repo_refs(apply_):
     """仓库**内**的老路径字面量改写(排除 .git/大目录/技能镜像/报告/venv)。
 
     老倪口径「保证代码一致性」: 代码里不该再出现 /home/ubuntu/<老名>。
-    改前整树 tar 备份; docs/skills|docs/memory 是 ~/.hermes 的镜像 ⇒ 跳过(要改改源)。
+    改前整树 tar 备份; docs/3-天玑-能力功能/skills|docs/7-瑶光-记录追溯/memory 是 ~/.hermes 的镜像 ⇒ 跳过(要改改源)。
     """
     ex = ("--exclude-dir=.git --exclude-dir=reports --exclude-dir=zmax_data --exclude-dir=external "
           "--exclude-dir=venvs --exclude-dir=toolchains --exclude-dir=hermes --exclude-dir=hermes-all "
@@ -357,7 +357,7 @@ def rewrite_repo_refs(apply_):
     pats = [o for o, _ in m]
     r = sh("grep -rlZ %s -e %s ." % (ex, " -e ".join("'%s'" % p for p in pats)), timeout=420)
     files = [f for f in (r.stdout or "").split("\0") if f and os.path.isfile(f)]
-    files = [f for f in files if not f.startswith("./docs/skills/") and not f.startswith("./docs/memory/")]
+    files = [f for f in files if not f.startswith("./docs/3-天玑-能力功能/") and not f.startswith("./docs/7-瑶光-记录追溯/")]
     files = [f for f in files if "homecons" not in os.path.basename(f)]      # 别改改写器自己
     if not files:
         return [], 0

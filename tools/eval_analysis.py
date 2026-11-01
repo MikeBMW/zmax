@@ -38,7 +38,7 @@ HISTORY = os.path.join(EVAL_DIR, "eval_history.jsonl")
 BASE_DIR = os.path.join(ROOT, "config", "eval")
 VERSION = "v5.50.735"                    # 版本号不自主升级 (老倪指定); 基线 = 本版
 BASELINE = os.path.join(BASE_DIR, "baseline_%s.json" % VERSION.replace(".", "_"))
-DOC = os.path.join(ROOT, "docs", "eval", "评估分析报告_%s.md" % VERSION)
+DOC = os.path.join(ROOT, "docs", "5-玉衡-指标验收", "eval", "评估分析报告_%s.md" % VERSION)
 
 # 证据面板 (老倪点名的四件工具 + 唯一依据帧龄)
 EV = {

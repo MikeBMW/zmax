@@ -42,9 +42,9 @@ gui-venv311/bin/python tools/verify_version_sync.py --offline > "$DST/evidence/v
 sed 's/^/  /' "$DST/evidence/refs.txt"
 
 echo "=== ④ 文档 ==="
-cp -f VERSION.md docs/design/STANDARD_STARTUP_FLOW_20261012.md "$DST/docs/" 2>/dev/null
-mkdir -p "$DST/docs/skills"; cp -f docs/skills/hermes-all/software-development/zmax-console/references/standard-open-flow.md \
-      "$DST/docs/skills/standard-open-flow.md" 2>/dev/null
+cp -f VERSION.md docs/6-开阳-工程落地/STANDARD_STARTUP_FLOW_20261012.md "$DST/docs/" 2>/dev/null
+mkdir -p "$DST/docs/3-天玑-能力功能/skills"; cp -f docs/3-天玑-能力功能/skills/hermes-all/software-development/zmax-console/references/standard-open-flow.md \
+      "$DST/docs/3-天玑-能力功能/standard-open-flow.md" 2>/dev/null
 
 echo "=== ⑤ MANIFEST + sha256 ==="
 ( cd "$DST" && find . -type f ! -name sha256sums.txt ! -name MANIFEST.md -print0 | sort -z | xargs -0 sha256sum > sha256sums.txt )

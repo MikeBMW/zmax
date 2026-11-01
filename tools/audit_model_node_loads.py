@@ -10,7 +10,7 @@
   3. 在源文件里扫描**模型加载类调用** (from_pretrained / torch.load / ultralytics YOLO( /
      AutoModel* / hf_hub_download / stable_worldmodel / INTACT load_pretrained / np.load 权重 ...)
   4. 输出: 每节点的 file:line (可直接 `code -g file:line` 打开) + 命中的加载 API + 代码片段
-  5. 落盘 reports/model_nodes_load_map.json + 人类可读 docs/design/space_model_nodes_load_map.md
+  5. 落盘 reports/model_nodes_load_map.json + 人类可读 docs/4-天权-模型算法/space_model_nodes_load_map.md
 
 判据: 文件存在 + symbol 命中 + ≥1 条真实加载调用 (否则标 ❌ 并在报告里点出来, 不粉饰)
 """

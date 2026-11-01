@@ -18,7 +18,7 @@ import time
 
 ROOT = "/home/ubuntu/zmax"
 REP = os.path.join(ROOT, "reports")
-OUT = os.path.join(ROOT, "docs/eval")
+OUT = os.path.join(ROOT, "docs/5-玉衡-指标验收/eval")
 
 
 def latest(pattern):

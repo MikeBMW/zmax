@@ -51,13 +51,13 @@ ls "$DST/evidence" | sed 's/^/  /'
 
 echo "=== ⑥ 文档 ==="
 cp -f VERSION.md "$DST/docs/" 2>/dev/null
-cp -f docs/design/manifold_mcd_master_param_M_20261009.md \
-      docs/design/veh6_config_center_mcd_20261009.md \
-      docs/design/veh6_config_center_operation_20261009.md \
-      docs/design/veh6_task_config_20261009.md \
-      docs/design/model_zoo_config_matching_20261009.md \
-      docs/design/robot_build_sheet_loading_unloading_20261009.md \
-      docs/design/ss_task_binding_20261009.md "$DST/docs/" 2>/dev/null
+cp -f docs/4-天权-模型算法/manifold_mcd_master_param_M_20261009.md \
+      docs/6-开阳-工程落地/veh6_config_center_mcd_20261009.md \
+      docs/6-开阳-工程落地/veh6_config_center_operation_20261009.md \
+      docs/2-天璇-作业任务/veh6_task_config_20261009.md \
+      docs/4-天权-模型算法/model_zoo_config_matching_20261009.md \
+      docs/6-开阳-工程落地/robot_build_sheet_loading_unloading_20261009.md \
+      docs/2-天璇-作业任务/ss_task_binding_20261009.md "$DST/docs/" 2>/dev/null
 ls "$DST/docs" | wc -l | sed 's/^/  文档: /'
 
 echo "=== ⑦ MANIFEST + sha256 ==="

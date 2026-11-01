@@ -3,7 +3,7 @@
 set -uo pipefail
 cd /home/ubuntu/zmax
 REPO=$(pwd)
-SNAP="$REPO/docs/data_snapshots/2026-10-11_v5.42.0_配置驱动功能切换+场景叠加"
+SNAP="$REPO/docs/6-开阳-工程落地/2026-10-11_v5.42.0_配置驱动功能切换+场景叠加"
 ARC="$REPO/zmax_data/release_5.42.0_20261011"
 mkdir -p "$SNAP" "$ARC"
 
@@ -50,7 +50,7 @@ echo
 echo "═══ ② 归档包: ${ARC#$REPO/} ═══"
 rm -rf "$ARC"/*; mkdir -p "$ARC"
 cp -f "$SNAP"/* "$ARC"/ 2>/dev/null
-cp -f docs/notes/v5.42.0_配置驱动功能切换_20261010.md "$ARC/" 2>/dev/null
+cp -f docs/7-瑶光-记录追溯/notes/v5.42.0_配置驱动功能切换_20261010.md "$ARC/" 2>/dev/null
 cp -f reports/tray_place_judge_20261010_181505.png "$ARC/" 2>/dev/null
 mkdir -p "$ARC/README"
 cat > "$ARC/README/README.md" <<'EOF'
@@ -60,7 +60,7 @@ cat > "$ARC/README/README.md" <<'EOF'
 - 代码: commit 见 git_ref.txt · tag v5.42.0
 - 真跑判据: ss_task_run_TASK-01-FW_latest.json (686 步 success=True) · ss_task_run_TASK-06-TRAY_latest.json (3/3 合格)
 - 飞书端场景叠加: overlay_channel_verify.txt (公网 /ov/ 通道 4 条 200 + POST 403) · overlay_live_public.json
-- 同步: docs/skills/xspace + docs/skills/hermes-all (215 技能) · docs/memory/hermes-jingjing-{memory,user}-2026-10-11.md
+- 同步: docs/3-天玑-能力功能/skills/xspace + docs/3-天玑-能力功能/skills/hermes-all (215 技能) · docs/7-瑶光-记录追溯/hermes-jingjing-{memory,user}-2026-10-11.md
 - 校验: MANIFEST.sha256
 EOF
 ( cd "$ARC" && find . -type f ! -name 'MANIFEST.sha256' -print0 | sort -z | xargs -0 sha256sum > MANIFEST.sha256 )

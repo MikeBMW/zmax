@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """🧠 INTACT 节点 (L4 层) — zju3dv/INTACT-JEPA 能力封装。
 
-设计: docs/design/zmax_intact_node.md
+设计: docs/4-天权-模型算法/zmax_intact_node.md
 对外: IntactNode.set_data_source / set_goal / attach_robot / step
 """
 from .contracts import (DEFAULT_FEATURE_LAYOUT, FEATURE_LAYOUTS, HISTORY_SIZE, IMG_SIZE,

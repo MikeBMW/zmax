@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ============================================================
 # sync_hermes_to_repo.sh — 静静技能+记忆 完整同步到 GitHub 仓库
-# 老倪要求 (2026-08-28): 技能完整镜像到 docs/skills/, 记忆一点不能丢, 每次都要备份
+# 老倪要求 (2026-08-28): 技能完整镜像到 docs/3-天玑-能力功能/, 记忆一点不能丢, 每次都要备份
 #
 # 功能:
-#   1. zmax-console 全家 (SKILL.md + references/ + scripts/ + templates/) 镜像到 docs/skills/xspace/zmax-console/
-#   2. 其他关键技能 (mlops 训练类 + github 工作流类) 镜像到 docs/skills/xspace/
-#   3. 记忆文件 (MEMORY.md + USER.md) 备份到 docs/memory/hermes-jingjing-{日期}.md + 最新副本
+#   1. zmax-console 全家 (SKILL.md + references/ + scripts/ + templates/) 镜像到 docs/3-天玑-能力功能/skills/xspace/zmax-console/
+#   2. 其他关键技能 (mlops 训练类 + github 工作流类) 镜像到 docs/3-天玑-能力功能/skills/xspace/
+#   3. 记忆文件 (MEMORY.md + USER.md) 备份到 docs/7-瑶光-记录追溯/hermes-jingjing-{日期}.md + 最新副本
 #   4. 更新 manifest.json (技能数/最后同步时间)
 #   5. commit + push (带 sslVerify=false, 走 ghproxy)
 #
@@ -19,8 +19,8 @@ cd "$(dirname "$0")/.."   # 仓库根目录
 REPO_ROOT=$(pwd)
 SKILLS_SRC="$HOME/.hermes/skills"
 MEM_SRC="$HOME/.hermes/memories"
-DEST_SKILLS="$REPO_ROOT/docs/skills/xspace"
-DEST_MEM="$REPO_ROOT/docs/memory"
+DEST_SKILLS="$REPO_ROOT/docs/3-天玑-能力功能/skills/xspace"
+DEST_MEM="$REPO_ROOT/docs/7-瑶光-记录追溯/memory"
 TODAY=$(date +%Y-%m-%d)
 NOW=$(date +"%Y-%m-%d %H:%M:%S")
 NO_PUSH=0
@@ -87,11 +87,11 @@ for rel in "${SYNC_LIST[@]}"; do
 done
 
 # ── 2b. 技能全量镜像 (2026-09-30 起: 新工程仓库 MikeBMW/zmax 收全量, 不再只挑关键路径) ──
-echo "  → 技能全量镜像 docs/skills/hermes-all/ ..."
+echo "  → 技能全量镜像 docs/3-天玑-能力功能/skills/hermes-all/ ..."
 rsync -a --delete --exclude='__pycache__' --exclude='*.pyc' --exclude='*.log' \
-      --exclude='node_modules/' --exclude='.git/' --exclude='*.lock' "$SKILLS_SRC"/ "$REPO_ROOT/docs/skills/hermes-all"/
-find "$REPO_ROOT/docs/skills/hermes-all" -type f -size +300k -delete    # 大图/PDF 模板不进库
-echo "    hermes-all: $(find "$REPO_ROOT/docs/skills/hermes-all" -name SKILL.md | wc -l) 个技能"
+      --exclude='node_modules/' --exclude='.git/' --exclude='*.lock' "$SKILLS_SRC"/ "$REPO_ROOT/docs/3-天玑-能力功能/skills/hermes-all"/
+find "$REPO_ROOT/docs/3-天玑-能力功能/skills/hermes-all" -type f -size +300k -delete    # 大图/PDF 模板不进库
+echo "    hermes-all: $(find "$REPO_ROOT/docs/3-天玑-能力功能/skills/hermes-all" -name SKILL.md | wc -l) 个技能"
 
 # ── 3. 记忆备份 (一点不能丢) ──
 echo "  → 记忆备份..."
@@ -112,7 +112,7 @@ SKILL_COUNT=$(find "$DEST_SKILLS" -name SKILL.md | wc -l)
 python3 - "$NOW" "$SKILL_COUNT" <<'PYEOF'
 import json, sys, os
 now, cnt = sys.argv[1], int(sys.argv[2])
-p = "docs/skills/manifest.json"
+p = "docs/3-天玑-能力功能/skills/manifest.json"
 m = {"updated": now[:10]}
 if os.path.exists(p):
     try: m = json.load(open(p))
@@ -130,15 +130,15 @@ PYEOF
 
 # ── 5. commit + push ──
 cd "$REPO_ROOT"
-git add docs/skills/ docs/memory/ 2>/dev/null || true
+git add docs/3-天玑-能力功能/ docs/7-瑶光-记录追溯/ 2>/dev/null || true
 if git diff --cached --quiet; then
   echo "✅ 无变更 (技能/记忆与仓库一致)"
 else
   git commit -m "sync: Hermes 技能+记忆同步 (${TODAY}) — zmax-console 全家 + 关键技能 + 记忆备份
 
-- docs/skills/xspace/zmax-console/: zmax-console 技能全家 (SKILL.md + references + scripts + templates)
-- docs/skills/xspace/: 关键 mlops/github/devops 技能镜像
-- docs/memory/hermes-jingjing-*-${TODAY}.md: 记忆每日备份 (MEMORY.md + USER.md)
+- docs/3-天玑-能力功能/skills/xspace/zmax-console/: zmax-console 技能全家 (SKILL.md + references + scripts + templates)
+- docs/3-天玑-能力功能/skills/xspace/: 关键 mlops/github/devops 技能镜像
+- docs/7-瑶光-记录追溯/hermes-jingjing-*-${TODAY}.md: 记忆每日备份 (MEMORY.md + USER.md)
 - manifest.json: xspace 技能数/同步时间更新" >/dev/null
   echo "  ✅ commit: $(git log --oneline -1)"
   if [ "$NO_PUSH" = "0" ]; then

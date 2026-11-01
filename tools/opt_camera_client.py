@@ -6,7 +6,7 @@
   · 10082 金手指: OPT-CC1-GG50 · SN D265250070 · 路由 /picture(?kind=topview|origin, ?grab=1, ?meta=1)
                   /crop_info /region /last_result /capture_detect   (实测 Orin→工控机 0.82ms)
   · 10083 表面  : OPT-CC1-C050-GG3-00 · SN D265250099 · **只有 /capture_detect** → 拿不到图
-                  (缺口, 需工控机侧加一条 /picture 路由: docs/patch/opt_surface_10083_add_picture_route.md)
+                  (缺口, 需工控机侧加一条 /picture 路由: docs/6-开阳-工程落地/patch/opt_surface_10083_add_picture_route.md)
 
 纪律 (老倪红线):
   · 调用 = **真拍产线台照片** → `grab=True` 必须显式传入; 默认只读 (probe/last_result/取已落盘图)

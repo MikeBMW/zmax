@@ -76,7 +76,7 @@ echo "=== ④ MANIFEST ==="
   echo "- data/ : 模块几何真值(module_calib_ref.json) + 放回位点(taught_points) + D435 光流位姿 + 绿框冻结值"
   echo "- logs/ : 放回运动/松爪/标定采集日志"
   echo "- evidence/measured_$(date +%Y%m%d).md : 全部实测数字"
-  echo "- docs/VERSION.md"
+  echo "- docs/6-开阳-工程落地/release/VERSION.md"
 } > "$DST/MANIFEST.md"
 
 cd "$DST" && find . -type f ! -name sha256sums.txt -print0 | sort -z | xargs -0 sha256sum > sha256sums.txt

@@ -20,7 +20,7 @@
   venvs/dds-venv/bin/python tools/verify_feature_io.py [--seconds 6] [--json-only]
 产物:
   reports/feature_io_test.json          (机器可读: 逐功能 + 逐 typed 话题 + 汇总)
-  docs/deliverables/功能topic_输入输出测试报告_<ver>.md
+  docs/1-天枢-产品边界/功能topic_输入输出测试报告_<ver>.md
 """
 from __future__ import annotations
 
@@ -270,7 +270,7 @@ def main():
 
 def render_md(snap):
     ver = snap["ver"]
-    out = os.path.join(ROOT, "docs", "deliverables", "功能topic_输入输出测试报告_%s.md" % ver)
+    out = os.path.join(ROOT, "docs", "1-天枢-产品边界", "deliverables", "功能topic_输入输出测试报告_%s.md" % ver)
     L = []
     A = L.append
     A("# 功能 topic 输入/输出 实测报告 · %s" % ver)

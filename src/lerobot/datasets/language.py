@@ -195,7 +195,7 @@ def validate_camera_field(style: str | None, camera: str | None) -> None:
 # through :class:`LeRobotDatasetMetadata.tools` (with these constants as
 # fallback when the dataset doesn't declare any). Implementations live
 # under :mod:`lerobot.tools` (one file per tool); see
-# ``docs/source/tools.mdx`` for the authoring guide.
+# ``docs/6-开阳-工程落地/source/tools.mdx`` for the authoring guide.
 
 SAY_TOOL_SCHEMA: dict = {
     "type": "function",

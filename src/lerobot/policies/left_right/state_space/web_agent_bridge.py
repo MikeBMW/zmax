@@ -152,8 +152,8 @@ class WebAgentBridge:
     def f_memory(self, arg: str = "") -> dict:
         """记忆层: Hermes 记忆/用户档 + 工程记忆(md) 条数与最新时间 + 共享快照要点"""
         mem = os.path.expanduser("~/.hermes/memories")
-        md = sorted([f for f in os.listdir(os.path.join(REPO, "docs", "memory"))
-                     if f.endswith(".md")]) if os.path.isdir(os.path.join(REPO, "docs", "memory")) else []
+        md = sorted([f for f in os.listdir(os.path.join(REPO, "docs", "7-瑶光-记录追溯", "memory"))
+                     if f.endswith(".md")]) if os.path.isdir(os.path.join(REPO, "docs", "7-瑶光-记录追溯", "memory")) else []
         out = {"hermes_memory_files": sorted(os.listdir(mem))[:5] if os.path.isdir(mem) else [],
                "eng_memory_md": len(md), "eng_memory_latest": md[-3:]}
         try:
@@ -171,7 +171,7 @@ class WebAgentBridge:
             pass
         # 共享快照要点: 供 web/xspace 直接读, 不必去翻 77 个 md
         try:
-            p = os.path.join(REPO, "docs", "memory", "hermes-jingjing-memory-latest.md")
+            p = os.path.join(REPO, "docs", "7-瑶光-记录追溯", "memory", "hermes-jingjing-memory-latest.md")
             txt = open(p, encoding="utf-8").read()
             out["shared_snapshot_chars"] = len(txt)
             out["shared_snapshot_head"] = txt[:420]

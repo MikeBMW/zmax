@@ -29,7 +29,7 @@ if os.path.join(REPO, "src") not in sys.path:
     sys.path.insert(0, os.path.join(REPO, "src"))
 
 # ⚠️ 待收口(老倪: 逻辑代码只能有一个 CICD 路径): DDS 类型/Node 目前在仓库外
-#    /home/ubuntu/zmax/dds/{ss_types,zmax_types,zmax_node}.py —— 见 docs/design/global_data_space_mapping_*.md
+#    /home/ubuntu/zmax/dds/{ss_types,zmax_types,zmax_node}.py —— 见 docs/6-开阳-工程落地/global_data_space_mapping_*.md
 DDS_DIR = os.environ.get("ZMAX_DDS_DIR", "/home/ubuntu/zmax/dds")
 for _p in (DDS_DIR, os.path.join(REPO, "tools", "gui")):
     # tools/gui 也要加: link_value(画布连线)类型还住在 tools/gui/dds_link_bus.py(待收口)

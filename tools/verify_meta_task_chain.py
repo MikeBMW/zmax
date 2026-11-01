@@ -157,10 +157,10 @@ def main():
         "L2=%d · L3=%d · L4=%d" % (len(l2), len(l3), len(wo)))
     chk("D3 文档里逐技能执行记录是真的 (含 16 行技能链 + 削因统计)",
         txt.count("| `SK") >= 16 and "不可行" in txt, "SK 行数 %d" % txt.count("| `SK"))
-    topo = os.path.join(ROOT, "docs/notes/DOCUMENT-TOPOLOGY.md")
-    chk("D4 文档中心已登记 (docs/notes/DOCUMENT-TOPOLOGY.md 含该文档路径)",
+    topo = os.path.join(ROOT, "docs/7-瑶光-记录追溯/notes/DOCUMENT-TOPOLOGY.md")
+    chk("D4 文档中心已登记 (docs/7-瑶光-记录追溯/notes/DOCUMENT-TOPOLOGY.md 含该文档路径)",
         os.path.isfile(topo) and "元任务总体设计_v5.50.736.md" in open(topo, encoding="utf-8").read(),
-        "docs/notes/DOCUMENT-TOPOLOGY.md")
+        "docs/7-瑶光-记录追溯/notes/DOCUMENT-TOPOLOGY.md")
     chk("D5 口径说明在 (在役对照与本次执行帧不同源, 如实写出来)",
         "口径说明" in txt and "不同源" in txt, "④ 章口径说明")
     chk("D6 飞书发送通道就位 (文档 + 报告群)", os.path.isfile(os.path.join(ROOT, "tools/feishu_send_file.py")) and

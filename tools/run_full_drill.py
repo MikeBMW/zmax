@@ -247,7 +247,7 @@ def closure_run(steps, seed, vote=False):
     if vote:
         cmd.append("--vote")
     r = _run(cmd, timeout=1200)
-    st = _j("docs/PIPELINE_STATE.json", {}) or {}
+    st = _j("docs/6-开阳-工程落地/PIPELINE_STATE.json", {}) or {}
     r["state"] = st
     m = re.search(r"引擎闭环: done=(\w+) · (\d+) 步 · 最小插入距 ([\d.]+)mm · L4真推理(\d+)次"
                   r" · 融合(\d+)帧 · L2收口否决(\d+)\(([^)]*)\)", r.get("out", ""))

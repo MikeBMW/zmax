@@ -370,7 +370,7 @@ class LeRobotDatasetMetadata:
         working out of the box.
 
         Implementations live under :mod:`lerobot.tools` (one file per
-        tool); see ``docs/source/tools.mdx`` for the authoring guide.
+        tool); see ``docs/6-开阳-工程落地/source/tools.mdx`` for the authoring guide.
         """
         declared = self.info.tools
         if declared:

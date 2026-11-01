@@ -1,6 +1,6 @@
 [Unit]
 Description=Z-MAX 数据闭环证据采集器 (九环节 → loop.json, 供控制台/网页读)
-Documentation=file:/home/ubuntu/zmax/docs/design/global_data_space_mapping_20260929.md
+Documentation=file:/home/ubuntu/zmax/docs/6-开阳-工程落地/global_data_space_mapping_20260929.md
 After=network-online.target
 Wants=network-online.target
 

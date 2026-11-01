@@ -174,7 +174,7 @@ def main():
     print("📊 编排汇总 (%.0fs)" % (time.time() - t0))
     for k, v in results.items():
         print("  %-6s %s" % (k, "✅" if v else "❌"))
-    print("  状态已落盘 → docs/PIPELINE_STATE.json（画布/控制台可轮询）")
+    print("  状态已落盘 → docs/6-开阳-工程落地/PIPELINE_STATE.json（画布/控制台可轮询）")
     print("=" * 78)
     return 0 if all(results.values()) else 2
 

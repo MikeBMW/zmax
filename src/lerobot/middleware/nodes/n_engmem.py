@@ -28,7 +28,7 @@ PORT_LABELS = {}
 IMPL_KEY = 'n_eng_mem'
 SOURCE = 'src/lerobot/memory/eng_memory.py · collect/sync_to_macro'
 SOURCE_SYMBOL = 'class EngMemory'
-PARAMS = {'state_space': True, 'eng_memory': True, 'desc': '工程记忆 = docs/memory/*.md (跨端同步记忆) + Hermes 记忆 (MEMORY/USER) + 技能库清单; 读真实文件 → 汇总条数/落盘时间 → 同步进 🧠总装记忆中枢 (顶层宏观记忆, macro_memory.uplink)', 'source': 'src/lerobot/memory/eng_memory.py · collect/sync_to_macro', 'source_symbol': 'class EngMemory'}
+PARAMS = {'state_space': True, 'eng_memory': True, 'desc': '工程记忆 = docs/7-瑶光-记录追溯/*.md (跨端同步记忆) + Hermes 记忆 (MEMORY/USER) + 技能库清单; 读真实文件 → 汇总条数/落盘时间 → 同步进 🧠总装记忆中枢 (顶层宏观记忆, macro_memory.uplink)', 'source': 'src/lerobot/memory/eng_memory.py · collect/sync_to_macro', 'source_symbol': 'class EngMemory'}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

@@ -27,7 +27,7 @@ import sys
 
 ROOT = "/home/ubuntu/zmax"
 J = os.path.join(ROOT, "zmax_data/eval/meta_perf_matrix.json")
-MD = os.path.join(ROOT, "docs/eval/元任务性能物理值全链验证_v5.50.735.md")
+MD = os.path.join(ROOT, "docs/5-玉衡-指标验收/eval/元任务性能物理值全链验证_v5.50.735.md")
 
 rows = []
 

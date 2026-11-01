@@ -100,11 +100,11 @@ sed 's/^/  /' "$DST/evidence/refs.txt"
 
 echo "=== ④ 文档 ==="
 cp -f VERSION.md "$DST/docs/" 2>/dev/null
-cp -f docs/skills/hermes-all/software-development/zmax-console/references/config-sheet-and-scene-colors.md \
+cp -f docs/3-天玑-能力功能/skills/hermes-all/software-development/zmax-console/references/config-sheet-and-scene-colors.md \
       "$DST/docs/zmax-console-config-sheet-and-scene-colors.md" 2>/dev/null
 
 mkdir -p "$DST/deliverables"
-cp -f docs/deliverables/*.md "$DST/deliverables/" 2>/dev/null
+cp -f docs/1-天枢-产品边界/*.md "$DST/deliverables/" 2>/dev/null
 
 cp -f reports/sil_engine_*.json "$DST/reports/" 2>/dev/null
 echo "=== ⑤ MANIFEST + sha256 ==="

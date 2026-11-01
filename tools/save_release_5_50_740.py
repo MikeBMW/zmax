@@ -3,7 +3,7 @@
 """save_release_5_50_740.py — 保存数据 + 归档 v5.50.740 (沿用 archive_release_* 约定)
 
 产出两处:
-  docs/data_snapshots/<date>_状态同步_v5.50.740_<主题>/   判据实跑输出 + git ref + 变更说明
+  docs/6-开阳-工程落地/<date>_状态同步_v5.50.740_<主题>/   判据实跑输出 + git ref + 变更说明
   zmax_data/release_5.50.740_<date>/                     代码/唯一依据/证据 + MANIFEST.md + sha256sums.txt
 """
 import hashlib
@@ -19,7 +19,7 @@ PY = os.path.join(ROOT, "gui-venv311", "bin", "python")
 VER = "v5.50.740"
 DAY = time.strftime("%Y%m%d")
 TOPIC = "核心归位到src+调试停跳+跨平台打包+三产品同步"
-SNAP = os.path.join(ROOT, "docs", "data_snapshots", f"{DAY}_状态同步_{VER}_{TOPIC}")
+SNAP = os.path.join(ROOT, "docs", "6-开阳-工程落地", "data_snapshots", f"{DAY}_状态同步_{VER}_{TOPIC}")
 REL = os.path.join(ROOT, "zmax_data", f"release_5.50.740_{DAY}")
 
 JUDGES = [

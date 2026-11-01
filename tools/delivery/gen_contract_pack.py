@@ -4,12 +4,12 @@
 解决方案采购)。同一唯一依据渲染 md + docx, 内容块结构唯一 (md 不是第二份真相)。
 
 唯一依据: outputs/config_sheets/配置单_<task>_latest.json · reports/feature_io_test.json ·
-      docs/deliverables/两场景验收报告_<ver>.json · engineering_db(capability_dbc/product_features) ·
+      docs/1-天枢-产品边界/两场景验收报告_<ver>.json · engineering_db(capability_dbc/product_features) ·
       config/topics/scene_tags.json · src/lerobot/dataspace/topics.py
 
 用法: gui-venv311/bin/python tools/delivery/gen_contract_pack.py --ver 5.50.5
-产物: docs/deliverables/SOR_供应商要求_<场景>_TASK-xx_<ver>.md/.docx
-      docs/deliverables/合作协议_机器人数据平台与解决方案_<ver>.md/.docx
+产物: docs/1-天枢-产品边界/SOR_供应商要求_<场景>_TASK-xx_<ver>.md/.docx
+      docs/1-天枢-产品边界/合作协议_机器人数据平台与解决方案_<ver>.md/.docx
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, "src"))
-DLV = os.path.join(ROOT, "docs", "deliverables")
+DLV = os.path.join(ROOT, "docs", "1-天枢-产品边界", "deliverables")
 SCENES = {"TASK-06-TRAY": "摆盘", "TASK-01-FW": "插拔", "TASK-05-ATS": "插接"}
 
 
@@ -55,7 +55,7 @@ def blocks_sor(task, ver):
     sheet = _j(os.path.join(ROOT, "outputs", "config_sheets", "配置单_%s_latest.json" % task), {}) or {}
     st = sheet.get("任务") or {}
     canvas = sheet.get("画布") or {}
-    acc = (_j(os.path.join(ROOT, "docs", "deliverables", "两场景验收报告_%s.json" % ver), {}) or {}).get("sections") or {}
+    acc = (_j(os.path.join(ROOT, "docs", "1-天枢-产品边界", "deliverables", "两场景验收报告_%s.json" % ver), {}) or {}).get("sections") or {}
     io = _j(os.path.join(ROOT, "reports", "feature_io_test.json"), {}) or {}
     tray, ins, v = acc.get("perf_tray") or {}, acc.get("perf_insert") or {}, acc.get("verdict") or {}
     scn = (_j(os.path.join(ROOT, "config", "topics", "scene_tags.json"), {}) or {}).get("scenes") or []
@@ -171,7 +171,7 @@ def blocks_sor(task, ver):
 
 
 def blocks_agreement(ver):
-    acc = (_j(os.path.join(ROOT, "docs", "deliverables", "两场景验收报告_%s.json" % ver), {}) or {}).get("sections") or {}
+    acc = (_j(os.path.join(ROOT, "docs", "1-天枢-产品边界", "deliverables", "两场景验收报告_%s.json" % ver), {}) or {}).get("sections") or {}
     v = acc.get("verdict") or {}
     io = _j(os.path.join(ROOT, "reports", "feature_io_test.json"), {}) or {}
     sheet_t = _j(os.path.join(ROOT, "outputs", "config_sheets", "配置单_TASK-06-TRAY_latest.json"), {}) or {}

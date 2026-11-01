@@ -241,9 +241,9 @@ def s6_publish():
 
 def s7_deploy():
     """S7 部署: 审计台账最后一条指令"""
-    p = os.path.join(REPO, "docs/deploy_audit.jsonl")
+    p = os.path.join(REPO, "docs/6-开阳-工程落地/deploy_audit.jsonl")
     if not os.path.exists(p):
-        return _res("unknown", "没有 docs/deploy_audit.jsonl")
+        return _res("unknown", "没有 docs/6-开阳-工程落地/deploy_audit.jsonl")
     last = None
     with open(p, encoding="utf-8") as f:
         for ln in f:

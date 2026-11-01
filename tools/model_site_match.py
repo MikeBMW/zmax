@@ -12,7 +12,7 @@
     models/active_models.json                      在役指针唯一依据 (L2/L3/L4)
     config/calib/zmax_calib.json                   站点工程配置真值
     feature.dbc                                    能力 ID 合法性 (capabilities 必须存在)
-    docs/third_party_model_spec.md                 模型包 manifest v1 (理想唯一依据: 每个模型包自带)
+    docs/4-天权-模型算法/third_party_model_spec.md                 模型包 manifest v1 (理想唯一依据: 每个模型包自带)
 
 输出:
     config/mcd/match_matrix.json                   兼容矩阵 (机器可读)

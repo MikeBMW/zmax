@@ -220,7 +220,7 @@ class VerificationLayer:
         import numpy as np
         fn = getattr(self, "t_" + fid.replace("-", "_"), None)
         if fn is None:
-            self.log(f"  ⚠️ 未知用例 {fid} (或为手动项, 见 docs/state_space_feature_list.md)")
+            self.log(f"  ⚠️ 未知用例 {fid} (或为手动项, 见 docs/3-天玑-能力功能/state_space_feature_list.md)")
             return None, "manual/unknown"
         try:
             detail = fn(np)
@@ -3015,7 +3015,7 @@ class VerificationLayer:
     #   195 条原「手动验收」(GUI 目测/交互/真机) 全部转自动:
     #   可视化/总线/3D/Scope/日志 类 → 断言其背后数据源真实 (io_trace/引擎序列/
     #   源码映射/真实渲染), 不依赖人眼; 真机/产线对照 类 → 断言验收记录文件在位
-    #   (docs/test-reports + references, 记录缺失即 FAIL, 不造假)。
+    #   (docs/5-玉衡-指标验收/test-reports + references, 记录缺失即 FAIL, 不造假)。
     #   映射注册表 MANUAL_AUTO 见模块底部; run_tree / GUI / test_acceptance_run.py
     #   共用 — manual 有映射即按 auto 真跑。
     # ══════════════════════════════════════════════════════════════
@@ -3102,13 +3102,13 @@ class VerificationLayer:
     def t_auto_docs_records(self, np):
         """真机/产线/设计对照: 验收记录文件在位 (缺即 FAIL, 不造假)"""
         recs = [
-            ("docs/test-reports/MASTER-TEST-REPORT.md", ["通过率", "F03"], "总测试报告"),
-            ("docs/test-reports/F03-orin-inference-test.md", ["Orin", "延迟"], "Orin 端侧推理验收"),
-            ("docs/test-reports/F04-hardware-adaptation-test.md", ["硬件", "适配"], "硬件适配验收"),
-            ("docs/closed_loop_realization_design.md", ["真实物理", "分层"], "闭环真实化设计"),
-            ("docs/skills/xspace/zmax-console/references/calibration-layer-attraction-repulsion-2026-09-02.md", ["引力", "斥力"], "标定三域记录"),
-            ("docs/skills/xspace/zmax-console/references/vscode-breakpoint-4pits-yolo-prewarm-2026-09-02.md", ["断点", "预热"], "断点/预热记录"),
-            ("docs/skills/xspace/zmax-console/references/real-run-gui-integration-2026-09-04.md", ["真实化"], "真实化集成记录"),
+            ("docs/5-玉衡-指标验收/test-reports/MASTER-TEST-REPORT.md", ["通过率", "F03"], "总测试报告"),
+            ("docs/5-玉衡-指标验收/test-reports/F03-orin-inference-test.md", ["Orin", "延迟"], "Orin 端侧推理验收"),
+            ("docs/5-玉衡-指标验收/test-reports/F04-hardware-adaptation-test.md", ["硬件", "适配"], "硬件适配验收"),
+            ("docs/7-瑶光-记录追溯/notes/closed_loop_realization_design.md", ["真实物理", "分层"], "闭环真实化设计"),
+            ("docs/3-天玑-能力功能/skills/xspace/zmax-console/references/calibration-layer-attraction-repulsion-2026-09-02.md", ["引力", "斥力"], "标定三域记录"),
+            ("docs/3-天玑-能力功能/skills/xspace/zmax-console/references/vscode-breakpoint-4pits-yolo-prewarm-2026-09-02.md", ["断点", "预热"], "断点/预热记录"),
+            ("docs/3-天玑-能力功能/skills/xspace/zmax-console/references/real-run-gui-integration-2026-09-04.md", ["真实化"], "真实化集成记录"),
         ]
         bad = []
         for rel, needles, note in recs:

@@ -8,7 +8,7 @@
 #
 """🧠 INTACT 配置 (L4 层) — zju3dv/INTACT-JEPA 意图-动作策略。
 
-设计: docs/design/zmax_l4_intact_policy.md
+设计: docs/4-天权-模型算法/zmax_l4_intact_policy.md
 实现: modeling_intact.py (lerobot 策略外壳) + runtime/ (真算法: 跨 venv 子进程桥)
 
 与 lerobot 其它策略的差异 (必须显式知道):

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """snapshot_20261014_fullflow7.py — 7 任务全流程闭环 现场快照 (验收留证)。
 
-把这一轮**真跑**的关键产物拷进 docs/data_snapshots/20261014_fullflow7/, 并生成 README (逐件 sha256 +
+把这一轮**真跑**的关键产物拷进 docs/6-开阳-工程落地/20261014_fullflow7/, 并生成 README (逐件 sha256 +
 重建命令)。红线: 大文件 (run7_full.log 900KB / 数据集 / ckpt / 工程库) **不进库**, 只留 sha256 + 绝对路径 + 重建命令。
 
 用法: python3 tools/snapshot_20261014_fullflow7.py [--run reports/fullflow7/<ts>]
@@ -17,7 +17,7 @@ import os
 import shutil
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DST = os.path.join(ROOT, "docs", "data_snapshots", "20261014_fullflow7")
+DST = os.path.join(ROOT, "docs", "6-开阳-工程落地", "data_snapshots", "20261014_fullflow7")
 
 
 def sha256(p: str, cap: int = 40 * 1024 * 1024) -> str:

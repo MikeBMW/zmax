@@ -1,6 +1,6 @@
 [Unit]
 Description=Z-MAX 流形引擎常驻周期循环 (ManifoldEngine.step 每周期真调 → ss_engine, 10Hz)
-Documentation=file:/home/ubuntu/zmax/docs/design/global_data_space_mapping_20260929.md
+Documentation=file:/home/ubuntu/zmax/docs/6-开阳-工程落地/global_data_space_mapping_20260929.md
 After=network-online.target zmax-dds-ss.service
 Wants=network-online.target
 

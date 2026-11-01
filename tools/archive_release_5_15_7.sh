@@ -17,7 +17,7 @@ cp -f /tmp/zmax_dds_ss.log "$DST/reports/zmax_dds_ss_daemon.log" 2>/dev/null
 cp -f /tmp/check_deepseek_latest.py /tmp/probe_deepseek_vision.py "$DST/reports/" 2>/dev/null
 cp -f /tmp/dds_services_after_fix.txt "$DST/reports/" 2>/dev/null
 # ③ 文档
-cp -f VERSION.md docs/DDS-TELEMETRY-ARCHITECTURE.md docs/HANDOVER_20260926.md docs/TASK_LEDGER_20260925.md "$DST/docs/" 2>/dev/null
+cp -f VERSION.md docs/DDS-TELEMETRY-ARCHITECTURE.md docs/7-瑶光-记录追溯/incidents/HANDOVER_20260926.md docs/7-瑶光-记录追溯/incidents/TASK_LEDGER_20260925.md "$DST/docs/" 2>/dev/null
 
 cd "$DST" || exit 1
 {

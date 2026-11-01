@@ -133,7 +133,7 @@ PLAN_ENTRY = '''    "ar_aoi": dict(
         model_ref={"layer": "L5",
                    "program": "Automated Optical Inspection 自动光学检测 · L5 自主进化程序",
                    "entry": "tools/l5_plan_and_gen.py + tools/aoi_link.py (工控机 10082/10083 客户端)",
-                   "charter": "docs/L5_AUTONOMOUS_EVOLUTION.md",
+                   "charter": "docs/7-瑶光-记录追溯/notes/L5_AUTONOMOUS_EVOLUTION.md",
                    "node": "🔍 光学质量检测 (画布节点 · 发出 AOI 全部话题)",
                    "capability": "BO_ B5 光学质量检测"},
         note="AOI: AR 实拍底图 + 工控机 AOI 联合检查 (金手指 10082 / 表面 10083) + 光模块检测 + 相机系 3D 位姿; "

@@ -6,8 +6,8 @@
 且老倪会逐条追问"这个数怎么来的"。本脚本逐项从**在役系统**读取, 每项都带来源。
 
 输出:
-  docs/deliverables/全系统配置清单_<ver>.md
-  docs/deliverables/全系统配置清单_<ver>.json
+  docs/1-天枢-产品边界/全系统配置清单_<ver>.md
+  docs/1-天枢-产品边界/全系统配置清单_<ver>.json
 
 用法: python tools/delivery/gen_config_inventory.py [--ver 5.50.A] [--repo /home/ubuntu/zmax]
 """
@@ -195,9 +195,9 @@ def main() -> int:
     inv["sections"]["技能与文档"] = {
         "技能数": len(glob.glob(os.path.expanduser("~/.hermes/skills/**/SKILL.md"), recursive=True)),
         "docs 目录": {
-            "data_snapshots": len(glob.glob(os.path.join(R, "docs/data_snapshots/*"))),
-            "deliverables": [os.path.basename(p) for p in sorted(glob.glob(os.path.join(R, "docs/deliverables/*")))],
-            "design": [os.path.basename(p) for p in sorted(glob.glob(os.path.join(R, "docs/design/*")))],
+            "data_snapshots": len(glob.glob(os.path.join(R, "docs/6-开阳-工程落地/*"))),
+            "deliverables": [os.path.basename(p) for p in sorted(glob.glob(os.path.join(R, "docs/1-天枢-产品边界/*")))],
+            "design": [os.path.basename(p) for p in sorted(glob.glob(os.path.join(R, "docs/6-开阳-工程落地/*")))],
         },
     }
 
@@ -248,9 +248,9 @@ def main() -> int:
     }
     inv["sections"]["配置关联性"] = trace
 
-    os.makedirs(os.path.join(R, "docs/deliverables"), exist_ok=True)
-    md = os.path.join(R, "docs/deliverables/全系统配置清单_%s.md" % a.ver)
-    js = os.path.join(R, "docs/deliverables/全系统配置清单_%s.json" % a.ver)
+    os.makedirs(os.path.join(R, "docs/1-天枢-产品边界/deliverables"), exist_ok=True)
+    md = os.path.join(R, "docs/1-天枢-产品边界/全系统配置清单_%s.md" % a.ver)
+    js = os.path.join(R, "docs/1-天枢-产品边界/全系统配置清单_%s.json" % a.ver)
     with open(js, "w", encoding="utf-8") as f:
         json.dump(inv, f, ensure_ascii=False, indent=2)
 

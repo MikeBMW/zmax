@@ -6,7 +6,7 @@
 robot_driver 没跑) ⇒ L2.lissa_search 回执 `waiting for service to become available...`、位移 0.00mm。
 老倪选 B: 用 xCoreSDK 力控原语现场实现同一套算法。
 
-配方抄产线 `/lissajous_force_search` (docs/.../l2-force-insert-and-verification.md §一, 不猜):
+配方抄产线 `/lissajous_force_search` (docs/3-天玑-能力功能/skills/hermes-all/devops/real-machine-skill-solidification/references/l2-force-insert-and-verification.md §一, 不猜):
     frame_type = tool · plane = XY · cartesian_desired_force = [0,0,6,0,0,0] (6N 沿工具 Z)
     lissajous: 6mm@3Hz + 4mm@2Hz, 相位差 π/2 · 搜索盒 ±10mm · 超时 8s · 先标定力传感器
 SDK 对应原语 (xCoreSDK __init__.pyi):

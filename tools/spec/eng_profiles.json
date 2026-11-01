@@ -409,7 +409,7 @@
     "A/B 档全部安全项",
     "目标安全等级 PL d (ISO 13849): 当前未认证 ⇒ 不得对外宣称达标",
     "认证前必须完成: 急停链验证 / 安全门互锁 / 危险动作授权 / 异常演练各 1 次并留证",
-    "危险动作前 agent_all_stop 保障; 台账写 docs/incidents/INCIDENT-INDEX.md"
+    "危险动作前 agent_all_stop 保障; 台账写 docs/7-瑶光-记录追溯/incidents/INCIDENT-INDEX.md"
    ],
    "wi": [
     {
@@ -464,7 +464,7 @@
      "id": "C7",
      "title": "安全等级证据清单",
      "need": "onsite",
-     "cmd": "cat docs/incidents/INCIDENT-INDEX.md | head -20",
+     "cmd": "cat docs/7-瑶光-记录追溯/incidents/INCIDENT-INDEX.md | head -20",
      "expect": "有台账条目",
      "fail": "空 ⇒ 认证无从谈起; 目标 PL d 只能写「目标」不能写「已达」"
     },

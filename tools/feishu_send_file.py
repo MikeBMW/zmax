@@ -9,8 +9,8 @@
   4. 打印 message_id (供回读核验)
 
 用法:
-  python3 tools/feishu_send_file.py docs/deliverables/a.md [b.md ...]
-  python3 tools/feishu_send_file.py --zip            # 把 docs/deliverables/*.md 打包成一个 zip 再发
+  python3 tools/feishu_send_file.py docs/1-天枢-产品边界/a.md [b.md ...]
+  python3 tools/feishu_send_file.py --zip            # 把 docs/1-天枢-产品边界/*.md 打包成一个 zip 再发
   python3 tools/feishu_send_file.py --text "文件说明" a.md
   python3 tools/feishu_send_file.py --dry-run a.md   # 只换 token / 只打包, 不发
 凭据: ~/.hermes/.env 的 FEISHU_APP_ID / FEISHU_APP_SECRET; 默认会话 FEISHU_REPORT_CHAT_ID。
@@ -110,16 +110,16 @@ def main() -> int:
     ap.add_argument("--chat", default=os.path.expanduser(load_env().get("FEISHU_REPORT_CHAT_ID", DEFAULT_CHAT)))
     ap.add_argument("--text", default="")
     ap.add_argument("--text-file", default="", help="文字结论从文件读 (多行说明避免 shell 转义出错)")
-    ap.add_argument("--zip", action="store_true", help="打包 docs/deliverables/*.md 为一个 zip 再发")
+    ap.add_argument("--zip", action="store_true", help="打包 docs/1-天枢-产品边界/*.md 为一个 zip 再发")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
     if a.text_file:
         a.text = open(os.path.expanduser(a.text_file), encoding="utf-8").read().strip()
     files = list(a.files)
     if a.zip:
-        out = "docs/deliverables/Z-MAX_交付文档包_%s.zip" % __import__("time").strftime("%Y%m%d")
+        out = "docs/1-天枢-产品边界/Z-MAX_交付文档包_%s.zip" % __import__("time").strftime("%Y%m%d")
         with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
-            for p in sorted(glob.glob("docs/deliverables/*.md")):
+            for p in sorted(glob.glob("docs/1-天枢-产品边界/*.md")):
                 z.write(p, os.path.basename(p))
         print(json.dumps({"zipped": out, "n": len(zipfile.ZipFile(out).namelist())}, ensure_ascii=False))
         files.append(out)

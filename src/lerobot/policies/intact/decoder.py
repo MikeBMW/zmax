@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """🎯 INTACT 意图解码器 (L4 → L3) — 把 INTACT 输出解码成 L3 可消费的条件。
 
-设计 (docs/design/zmax_l4_intact_policy.md §4):
+设计 (docs/4-天权-模型算法/zmax_l4_intact_policy.md §4):
   INTACT 输出 = ① action chunk [H,4] (metaworld act 空间 ±1) ② 潜空间 z_t/z_goal
                 ③ 意图 (goal_displacement = z_goal − z_t) ④ 诊断 (零搜索/延迟/意图范数)
   解码成 L3 能用的两类条件:

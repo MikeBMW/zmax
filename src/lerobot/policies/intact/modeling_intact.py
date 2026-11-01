@@ -8,7 +8,7 @@
 #
 """🧠 INTACT 策略 (L4) — lerobot 策略外壳，真算法在 runtime/ (跨 venv 子进程桥)。
 
-架构 (docs/design/zmax_l4_intact_policy.md):
+架构 (docs/4-天权-模型算法/zmax_l4_intact_policy.md):
     metaworld 数据源 (runtime/metaworld_source.py, 真渲染帧 + 39D)
       → IntactPolicy.select_action / predict_action_chunk   (零搜索 意图→动作, 真权重)
       → IntactIntentDecoder                                  (L4 → L3 条件: u_ff 先验 + 流形条件)

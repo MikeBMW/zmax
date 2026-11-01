@@ -134,7 +134,7 @@
    "precision": "tool0 读 heartbeat.pose.flange",
    "latency": "30s 内勿重发同一指令",
    "guard": "超限拒发 · 奇异区改道 · 要碰撞先 agent_all_stop",
-   "src": "docs/incidents/INCIDENT-INDEX.md"
+   "src": "docs/7-瑶光-记录追溯/incidents/INCIDENT-INDEX.md"
   },
   {
    "domain": "感知·相机",

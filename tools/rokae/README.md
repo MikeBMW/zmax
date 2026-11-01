@@ -17,7 +17,7 @@ sudo docker run --rm --network host -v $PWD:/sdk -w /sdk ros:humble-ros-base pyt
 | `probe_sdk_all.py` | SDK 93 个接口全列 | 判断某能力(如力矩限位)SDK 到底有没有 |
 | `gravity_torque_check.py` | (离线, 不需要机器人) 用 URDF 算当前姿态的**重力模型力矩**并与实测并列 | 判"传感器 vs 模型"是否自洽 |
 
-判据经验(2026-09-22 实证, 详见 `docs/design/real_machine_j5_torque_diagnosis_20260922.md`):
+判据经验(2026-09-22 实证, 详见 `docs/6-开阳-工程落地/real_machine_j5_torque_diagnosis_20260922.md`):
 - **竖直轴(本机 J1)的重力力矩在任何姿态恒为 0** ⇒ 它读数非 0 就说明是传感器零点/外部力, 与重力无关
 - FK 必须自校: 用 URDF 算出的末端位置与控制器 `cartPosture` 差 ≤ 几 mm 才可用该模型做判据
 - 报"力矩超限"时先分清: **真实负载大** vs **读数基线贴门槛** (本机 J5 静止 21.93 vs 限值 22.000)

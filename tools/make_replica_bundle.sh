@@ -20,7 +20,7 @@ for d in tools src/lerobot/policies src/lerobot/manifold flows config; do
 done
 mkdir -p "$STAGE/lerobot-smolvla-lew/data" "$STAGE/lerobot-smolvla-lew/docs"
 cp "$REPO/data/memory_layers.json" "$STAGE/lerobot-smolvla-lew/data/" 2>/dev/null || true
-cp "$REPO/docs/PIPELINE_STATE.json" "$STAGE/lerobot-smolvla-lew/docs/" 2>/dev/null || true
+cp "$REPO/docs/6-开阳-工程落地/PIPELINE_STATE.json" "$STAGE/lerobot-smolvla-lew/docs/" 2>/dev/null || true
 
 # 关键权重 (含 config.json)
 for ck in backbone_cont unified_aug intact_l4_current joint_v5; do
@@ -28,7 +28,7 @@ for ck in backbone_cont unified_aug intact_l4_current joint_v5; do
 done
 
 cp /tmp/replica_manifest.json "$STAGE/" 2>/dev/null || true
-[ -f "$REPO/docs/REPLICA_SOP.md" ] && cp "$REPO/docs/REPLICA_SOP.md" "$STAGE/" || true
+[ -f "$REPO/docs/6-开阳-工程落地/ops/REPLICA_SOP.md" ] && cp "$REPO/docs/6-开阳-工程落地/ops/REPLICA_SOP.md" "$STAGE/" || true
 
 # 清 __pycache__
 find "$STAGE" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true

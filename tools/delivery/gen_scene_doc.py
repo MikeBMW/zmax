@@ -13,12 +13,12 @@
 唯一依据 (全部现取, 不手写):
   outputs/config_sheets/配置单_<task>_latest.json      任务/画布/参数注册表/标定唯一依据/点位台账
   reports/feature_io_test.json                         功能 topic 输入输出实测
-  docs/deliverables/两场景验收报告_<ver>.json            性能实测与判定
+  docs/1-天枢-产品边界/两场景验收报告_<ver>.json            性能实测与判定
   data/database/zmax/zmax_engineering.db               能力清单(31)/产品特征KPI/模块↔能力
   config/topics/scene_tags.json · config/ss_task_binding.json · config/platform/zmax_perf_spec.json
 
 用法: gui-venv311/bin/python tools/delivery/gen_scene_doc.py --task TASK-06-TRAY --ver 5.50.5
-产物: docs/deliverables/交付文档_<场景>_<task>_<ver>.md (+ .json)
+产物: docs/1-天枢-产品边界/交付文档_<场景>_<task>_<ver>.md (+ .json)
 """
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ def _sheet(task):
 
 
 def _acceptance(ver):
-    p = os.path.join(ROOT, "docs", "deliverables", "两场景验收报告_%s.json" % ver)
+    p = os.path.join(ROOT, "docs", "1-天枢-产品边界", "deliverables", "两场景验收报告_%s.json" % ver)
     return _j(p, {}) or {}
 
 
@@ -335,7 +335,7 @@ def main():
     d = build(a.task, a.ver)
     md = render(d)
     name = SCENES[a.task][0]
-    out_md = os.path.join(ROOT, "docs", "deliverables", "交付文档_%s_%s_%s.md" % (name, a.task, a.ver))
+    out_md = os.path.join(ROOT, "docs", "1-天枢-产品边界", "deliverables", "交付文档_%s_%s_%s.md" % (name, a.task, a.ver))
     out_js = out_md[:-3] + ".json"
     with open(out_md, "w", encoding="utf-8") as f:
         f.write(md)

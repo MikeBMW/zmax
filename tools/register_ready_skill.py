@@ -25,7 +25,7 @@ WL = os.path.join(ROOT, "data/skills/l2_atomic/ctl_abs_skills.json")
 SID = "L2.goto_ready"
 NAME = "🎯 回到准备点"
 POINT = "准备点"
-# 🛡 2026-10-01 碰撞教训(见 docs/INCIDENT-20261001-traverse-height-collision.md):
+# 🛡 2026-10-01 碰撞教训(见 docs/7-瑶光-记录追溯/incidents/INCIDENT-20261001-traverse-height-collision.md):
 #   横移高度**必须相对目标点就近有界**, 不能写成"目标点z+180" —— 那会让臂从起点凭空再抬 200mm+ 顶到横梁风险区。
 #   现场规矩「升高不要超过 10cm」⇒ 取 50mm(到目标点正上方 50mm 再垂直下落, 最低限度满足"先到上方再下落")。
 TRAVERSE_DZ = 50.0     # 平移段所在高度 = 准备点 z + 50mm

@@ -28,7 +28,7 @@ cp -f zmax_data/ss_live/engine_latest.json zmax_data/ss_live/torque_live.json "$
 cp -f zmax_data/ss_live/ui_run.json zmax_data/ss_live/trace_live.json "$DST/data/" 2>/dev/null
 cp -f zmax_data/eval/orbital_state_verify.json "$DST/data/" 2>/dev/null
 mkdir -p "$DST/data/solar_shots"
-cp -f docs/data_snapshots/20261019_solar_state/*.png "$DST/data/solar_shots/" 2>/dev/null
+cp -f docs/6-开阳-工程落地/20261019_solar_state/*.png "$DST/data/solar_shots/" 2>/dev/null
 
 echo "=== ③ 证据 (实测数字) ==="
 {
@@ -79,7 +79,7 @@ echo "=== ④ MANIFEST ==="
   echo "- tools/ gui/ src/ : 本轮代码"
   echo "- data/ : layer_forces.json(权重) + force_field.json + chunk/engine/torque/ui_run/trace 快照 + 判据落盘 + solar_shots/(太阳系截图)"
   echo "- evidence/measured_$(date +%Y%m%d).md : 全部实测数字"
-  echo "- docs/VERSION.md"
+  echo "- docs/6-开阳-工程落地/release/VERSION.md"
   echo
   echo "## 已知缺口"
   echo "- L5 没有持续的场景矢量唯一依据 (VL 只按需跑; 相机 arm 目前无帧) ⇒ 界面标「缺 L5」"

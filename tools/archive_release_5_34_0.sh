@@ -48,10 +48,10 @@ echo "=== ⑤ 实测证据 ==="
 tail -6 "$DST/evidence/judges.txt" | sed 's/^/  /'
 
 echo "=== ⑥ 文档 ==="
-cp -f VERSION.md docs/design/v5.34.0_summary.txt docs/design/v5.33.0_summary.txt docs/design/v5.33.2_summary.txt \
-      docs/design/v5.32.0_summary.txt docs/design/v5.31.0_summary.txt docs/design/v5.30.0_summary.txt \
-      docs/design/param_registry_20261009.md docs/design/platform_engineering_db_20261009.md "$DST/docs/" 2>/dev/null
-cp -f docs/data_snapshots/2026-10-09_v5.34.0_侧栏UI定版/README.md "$DST/docs/data_snapshot_README.md" 2>/dev/null
+cp -f VERSION.md docs/7-瑶光-记录追溯/v5.34.0_summary.txt docs/7-瑶光-记录追溯/v5.33.0_summary.txt docs/7-瑶光-记录追溯/v5.33.2_summary.txt \
+      docs/7-瑶光-记录追溯/v5.32.0_summary.txt docs/7-瑶光-记录追溯/v5.31.0_summary.txt docs/7-瑶光-记录追溯/v5.30.0_summary.txt \
+      docs/6-开阳-工程落地/param_registry_20261009.md docs/6-开阳-工程落地/platform_engineering_db_20261009.md "$DST/docs/" 2>/dev/null
+cp -f docs/6-开阳-工程落地/data_snapshots/2026-10-09_v5.34.0_侧栏UI定版/README.md "$DST/docs/data_snapshot_README.md" 2>/dev/null
 ls "$DST/docs" | wc -l | sed 's/^/  文档: /'
 
 echo "=== ⑦ MANIFEST + sha256 ==="

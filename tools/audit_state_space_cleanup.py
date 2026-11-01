@@ -74,9 +74,9 @@ def main() -> int:
         print("      (无)")
 
     print("\n⑤ 任务面盘点:")
-    print("   · 台账: docs/TASK_LEDGER_20260925.md (%d 段会话)" %
-          sh("grep -c '^## 2026' docs/TASK_LEDGER_20260925.md").count and
-          sh("grep -c '^## 2026' docs/TASK_LEDGER_20260925.md"))
+    print("   · 台账: docs/7-瑶光-记录追溯/incidents/TASK_LEDGER_20260925.md (%d 段会话)" %
+          sh("grep -c '^## 2026' docs/7-瑶光-记录追溯/incidents/TASK_LEDGER_20260925.md").count and
+          sh("grep -c '^## 2026' docs/7-瑶光-记录追溯/incidents/TASK_LEDGER_20260925.md"))
     svc = sh("systemctl list-units --type=service --state=running --no-legend 'zmax*' 'ss-*' 'aoi*' 2>/dev/null | awk '{print $1}' | tr '\\n' ' '")
     print("   · 在役服务: %s" % svc)
     print("   · cron 任务:")

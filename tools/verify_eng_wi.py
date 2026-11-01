@@ -6,7 +6,7 @@
   1) 唯一依据完整: 三档各有 硬件/软件/标定/安全/WI, 每条 WI 都有 命令+期望+失败处理
   2) 命令真跑: need=local 的每一步**现场执行**, 输出必须匹配 expect (不是嘴上说能跑)
   3) 界面真出: 工程配置页有 A/B/C 切换、四张表、每步「▶ 跑」按钮, 点了状态真的变 ✅
-  4) 文档同源: docs/deliverables/工程操作手册_三档_A_B_C.md 的步骤与唯一依据一致
+  4) 文档同源: docs/1-天枢-产品边界/deliverables/工程操作手册_三档_A_B_C.md 的步骤与唯一依据一致
 
 跑法: QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/verify_eng_wi.py
 """
@@ -20,7 +20,7 @@ sys.path[:0] = [os.path.join(ROOT, "tools"), os.path.join(ROOT, "tools", "gui")]
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 SPEC = os.path.join(ROOT, "tools", "spec", "eng_profiles.json")
-DOC = os.path.join(ROOT, "docs", "deliverables", "工程操作手册_三档_A_B_C.md")
+DOC = os.path.join(ROOT, "docs", "1-天枢-产品边界", "deliverables", "工程操作手册_三档_A_B_C.md")
 
 PASS, FAIL = [], []
 
@@ -143,7 +143,7 @@ def main():
             app.processEvents()
             txt = QApplication.clipboard().text()
             chk("③ 复制本档 WI 真进剪贴板", txt.count("\n") >= 6 and "B1" in txt, "行数 %d" % txt.count("\n"))
-        tab.widget().grab().save(os.path.join(ROOT, "docs/eval/config_eng_profile_B.png")) if hasattr(tab, "widget") else tab.grab().save(os.path.join(ROOT, "docs/eval/config_eng_profile_B.png"))
+        tab.widget().grab().save(os.path.join(ROOT, "docs/5-玉衡-指标验收/eval/config_eng_profile_B.png")) if hasattr(tab, "widget") else tab.grab().save(os.path.join(ROOT, "docs/5-玉衡-指标验收/eval/config_eng_profile_B.png"))
 
     # ── 4) 文档同源
     chk("④ 操作手册存在", os.path.exists(DOC), os.path.relpath(DOC, ROOT))

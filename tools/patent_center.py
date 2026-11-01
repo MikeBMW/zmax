@@ -14,12 +14,12 @@
     内容由编写稿 (`config/patents/drafts/*.json`) 定稿成唯一依据 registry。
   · **数据真实**: 文档里的统计数字**全部现算** (工程库 functions / product_features / canvas_nodes + 模型矩阵),
     不预先固定; 每件专利再附它挂的功能条目与唯一依据符号 (可直接点到代码), 保证"能落地"。
-  · **文档同级**: 输出的 md/docx 与 SOR/项目立项/合作协议同目录 (`docs/deliverables`)、同入口 (配置中心·文档配置页)。
+  · **文档同级**: 输出的 md/docx 与 SOR/项目立项/合作协议同目录 (`docs/1-天枢-产品边界/deliverables`)、同入口 (配置中心·文档配置页)。
 
 用法:
     ./gui-venv311/bin/python tools/patent_center.py --coverage          # 渠道覆盖核对 (74/74)
     ./gui-venv311/bin/python tools/patent_center.py --build             # 编写稿 → 唯一依据 registry
-    ./gui-venv311/bin/python tools/patent_center.py --export all        # 导出 md+docx 到 docs/patents
+    ./gui-venv311/bin/python tools/patent_center.py --export all        # 导出 md+docx 到 docs/1-天枢-产品边界/patents
     ./gui-venv311/bin/python tools/patent_center.py --preview ZMP-2026-001
     ./gui-venv311/bin/python tools/patent_center.py --json              # 给 GUI 用
 """
@@ -35,8 +35,8 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REG_J = os.path.join(ROOT, "config", "patents", "patent_registry.json")
 DRAFT_DIR = os.path.join(ROOT, "config", "patents", "drafts")
-OUT_DIR = os.path.join(ROOT, "docs", "patents")
-DELIV_DIR = os.path.join(ROOT, "docs", "deliverables")
+OUT_DIR = os.path.join(ROOT, "docs", "1-天枢-产品边界", "patents")
+DELIV_DIR = os.path.join(ROOT, "docs", "1-天枢-产品边界", "deliverables")
 DB = os.path.join(ROOT, "data", "database", "zmax", "zmax_engineering.db")
 
 
@@ -352,7 +352,7 @@ def main():
     ap.add_argument("--export", nargs="?", const="all", help="导出 all 或某件 pat_id")
     ap.add_argument("--preview", help="打印某件专利正文")
     ap.add_argument("--json", action="store_true", help="输出 JSON (给 GUI)")
-    ap.add_argument("--out", default=None, help="导出目录 (默认 docs/patents)")
+    ap.add_argument("--out", default=None, help="导出目录 (默认 docs/1-天枢-产品边界/patents)")
     a = ap.parse_args()
     if a.build:
         r = build_registry(True)

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# 采集本轮 (v5.50.71→v5.50.72) 现场数据 → docs/data_snapshots/20261015_visual_evidence_caliber/
+# 采集本轮 (v5.50.71→v5.50.72) 现场数据 → docs/6-开阳-工程落地/20261015_visual_evidence_caliber/
 # 只读取证: 帧/阈值表/大屏 fullflow 段/飞书消息 id/链路状态。不写业务文件。
 set -u
 cd /home/ubuntu/zmax
-DST=docs/data_snapshots/20261015_visual_evidence_caliber
+DST=docs/6-开阳-工程落地/20261015_visual_evidence_caliber
 mkdir -p "$DST"
 
 # ① 链路状态 (产线是否可达)
