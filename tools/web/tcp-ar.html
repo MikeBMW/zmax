@@ -3361,6 +3361,38 @@ function _arFetch(){
     });
   });
 }
+// 🧩 2026-11-01 L2 全节点联通器 → AR 旁路标注面板 (只读展示)
+//   数据来自 /api/ar/cmd 的 l2 分区 ← zmax_data/ss_live/ar_cmd_chain.json 的 annot 分区
+//   ← tools/l2_full_chain.py 把画布 L2 七带 31 个节点按连线拓扑跑一拍后写入。
+//   不含任何真机下发; 只显示"哪些节点真算/直通、每拍耗时、工程配置点位、工艺编排来源"。
+var L2BOX=null, L2T=0;
+function arL2Dom(){
+  if(L2BOX) return L2BOX;
+  var d=document.createElement('div');
+  d.id='l2Box';
+  d.style.cssText='position:fixed;right:10px;bottom:10px;z-index:61;max-width:430px;background:rgba(13,17,23,.94);'
+   +'border:1px solid #238636;border-radius:10px;padding:8px 10px;font:11px/1.55 ui-monospace,monospace;color:#c9d1d9;'
+   +'box-shadow:0 6px 24px rgba(0,0,0,.5);display:none';
+  document.body.appendChild(d); L2BOX=d; return d;
+}
+function arL2Paint(d){
+  var L=(d&&d.l2)||null, el=arL2Dom();
+  if(!L||!L.summary){ el.style.display='none'; return; }
+  var sm=L.summary||{}, pts=L.points||{}, pr=L.process||{};
+  var ns=(L.nodes||[]).slice().sort(function(a,b){return (b.ms||0)-(a.ms||0);}).slice(0,4);
+  var h=[];
+  h.push('<b style="color:#3fb950">L2 全链 '+sm.nodes+' 节点 → AR 标注</b> <span style="color:#8b949e">'+ (L.t_str||'') +'</span>');
+  h.push('真算 ok '+sm.ok+' / 直通或异常 '+sm.err+' · 每拍 '+Math.round((sm.wall_ms||0))+' ms');
+  h.push('工艺编排 '+(pr.name||pr.node||'—')+' · '+(pr.ok?'ok':'不可用')+' · chunk '+(pr.chunk_n||0)
+        +' <span style="color:#8b949e">'+String(pr.status||'').slice(0,42)+'</span>');
+  h.push('工程配置点位 '+(pts.ok?pts.n:'缺')+' 个 ('+(pts.frame||'')+')');
+  h.push('最慢节点: '+ns.map(function(n){return (n.id||'')+' '+Math.round(n.ms||0)+'ms';}).join(' · '));
+  el.innerHTML=h.join('<br>'); el.style.display='block';
+}
+function arL2Poll(){
+  fetch('/api/ar/cmd').then(function(r){return r.json();}).then(arL2Paint).catch(function(){});
+}
+setInterval(arL2Poll, 3000); setTimeout(arL2Poll, 1200);
 function arCmdPoll(){
   _arFetch().then(function(d){
     ARCMD.on=!!d.ok; ARCMD.fresh=!!d.fresh; ARCMD.d=d; ARCMD.age=d.age_s; ARCMD.ts=Date.now();

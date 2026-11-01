@@ -1091,6 +1091,13 @@ def _ar_cmd_payload() -> dict:
                         "pose_src": _pl.get("pose_src"),
                         "exec_u": _ex.get("u"), "exec_u_sat": _ex.get("u_sat"),
                         "exec_src": _ex.get("src_file")}
+                # 🧩 L2 全节点联通器的旁路标注 (ar_cmd_chain.json 的 annot 分区):
+                #    只读展示, 不参与驱动; 缺失就不给这个键, 页面也不画。
+                _l2 = _c.get("annot") or {}
+                if _l2:
+                    _out["l2"] = {"ok": True, "src": _l2.get("src"), "t_str": _l2.get("ts"),
+                                  "summary": _l2.get("summary"), "points": _l2.get("points"),
+                                  "process": _l2.get("process"), "nodes": _l2.get("nodes")}
                 _out["play"] = _ar_play_payload()
                 return _out
     except Exception:                                                    # noqa: BLE001

@@ -114,22 +114,23 @@ for i, s in enumerate(P):
         grip_t[s['mod']] = round(cum[i], 2)
 dwells = [round(grip_t[m] - ins_end[m], 2) for m in sorted(ins_end) if m in grip_t]
 
-# ---------- 6. L2 节点真源 ----------
-canvas = json.load(open(ROOT + '/data/database/zmax/sources/canvas/state_space_obs.json', encoding='utf-8'))['nodes']
+# ---------- 6. L2 节点真源 (严格按画布七带, 名称逐字) ----------
+canvas_all = json.load(open(ROOT + '/data/database/zmax/sources/canvas/state_space_obs.json', encoding='utf-8'))['nodes']
+bands = {n['id']: n for n in canvas_all if n['type'] == 'row_bg'}
 idx = open(ROOT + '/src/lerobot/middleware/nodes/_index.py', encoding='utf-8').read()
-n_l2, n_pure = 0, 0
-for n in canvas:
-    if n['type'] == 'row_bg' or not (2972 <= n['y'] < 6490) or n['id'] == 'ssworld':
-        continue
-    m = re.search(r'["\']%s["\']\s*:\s*["\']([^"\']+)' % re.escape(n['id']), idx)
-    if not m:
-        continue
-    f = ROOT + '/src/lerobot/middleware/nodes/%s.py' % m.group(1).split('.')[-1]
-    if not os.path.exists(f):
-        continue
-    n_l2 += 1
-    if re.search(r'^PURE\s*=\s*True', open(f, encoding='utf-8').read(), re.M):
-        n_pure += 1
+L2_BANDS = ['row_mem_l2', 'ssbg0', 'ssbg1', 'ssbg2', 'ssbg3', 'ssbg_skill', 'ssbg4']
+l2_nodes = []
+for bid in L2_BANDS:
+    b = bands[bid]
+    for n in canvas_all:
+        if n['type'] != 'row_bg' and b['y'] <= n['y'] < b['y'] + b['h']:
+            m = re.search(r'["\']%s["\']\s*:\s*["\']([^"\']+)' % re.escape(n['id']), idx)
+            f = ROOT + '/src/lerobot/middleware/nodes/%s.py' % (m.group(1).split('.')[-1] if m else '')
+            pure = bool(re.search(r'^PURE\s*=\s*True', open(f, encoding='utf-8').read(), re.M)) if os.path.exists(f) else False
+            l2_nodes.append(dict(id=n['id'], name=n['name'], band=bid, pure=pure))
+n_l2 = len(l2_nodes)
+n_pure = sum(1 for n in l2_nodes if n['pure'])
+n_logic = sum(1 for n in l2_nodes if n['id'] != 'ssworld')
 
 # ---------- 7. 逐项比对 ----------
 # 工位尺寸
@@ -172,7 +173,12 @@ check('停留 dwell', '%.2f ~ %.2f s' % (min(dwells), max(dwells)),
       ['%.2f ~ %.2f s' % (min(dwells), max(dwells))], sim_src)
 check('目标节拍', '300 UPH = 12.0 s/件, 余量 %.2f s' % (12.0 - tact), ['300', '12 s'], 'order ar_300uph')
 # L2
-check('L2 节点数 / 真算数', '%d 个, PURE=True %d' % (n_l2, n_pure), ['%d 个逻辑节点' % n_l2], 'canvas + n_*.py')
+check('L2 节点数 / 真算数', '画布七带 %d 个(逻辑 %d), PURE=True %d' % (n_l2, n_logic, n_pure),
+      ['%d 个节点' % n_l2], 'canvas 七带 + n_*.py')
+missing = [n['name'] for n in l2_nodes if n['name'] not in PPT_TEXT]
+results.append(('L2 节点名称逐字一致', '%d 个名称' % n_l2,
+                ('缺 %d 个: %s' % (len(missing), ' / '.join(missing[:3]))) if missing else '全部命中',
+                'PASS' if not missing else 'FAIL', 'canvas state_space_obs.json'))
 
 # ---------- 8. 输出 ----------
 w = max(len(r[0]) for r in results) + 2

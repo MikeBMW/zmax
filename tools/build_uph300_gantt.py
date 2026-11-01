@@ -17,7 +17,7 @@ from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE, MSO_CONNECTOR
 from pptx.enum.dml import MSO_LINE_DASH_STYLE
 
-DECK = '/home/ubuntu/zmax/docs/1-天枢-产品边界/deliverables/2-机器人方案/机器人整机三视图与技术参数_5.50.C_20261101.pptx'
+DECK = '/home/ubuntu/zmax_data/deliveries/母版/机器人整机内容源_5.50.C.pptx'
 META = '/home/ubuntu/zmax/docs/1-天枢-产品边界/deliverables/2-机器人方案/甘特_300UPH_数据源.json'
 API = 'http://127.0.0.1:8797/api/sim_insert'
 DISK = '/home/ubuntu/zmax/zmax_data/runtime/traj/sim_insert.json'
@@ -248,6 +248,31 @@ def slide_round(pr, R):
              size=8, color=C_DIM)
 
 
+def _vmax(R):
+    return _vspd(R)[0]
+
+
+def _vmed(R):
+    return _vspd(R)[1]
+
+
+def _vspd(R):
+    """窗口内直线段速度: 峰值 / 中位 (mm/s), 逐段 |b-a|/t"""
+    import math
+    P, lo, hi = R['d']['plan'], R['base'], R['base'] + R['dur']
+    t, sp = 0.0, []
+    for seg in P:
+        a0, a1 = t, t + seg['t']
+        t = a1
+        if a1 < lo or a0 > hi:
+            continue
+        a, b = seg.get('a'), seg.get('b')
+        if a and b and seg['t'] > 0:
+            sp.append(math.dist(a, b) / seg['t'])
+    sp.sort()
+    return (sp[-1] if sp else 0.0), (sp[len(sp) // 2] if sp else 0.0)
+
+
 def slide_loop(pr, R):
     s = pr.slides.add_slide(pr.slide_layouts[6])
     dur, tact = R['dur'], R['tact']
@@ -273,7 +298,10 @@ def slide_loop(pr, R):
              '时间账（每件）：拔 1.78 → AOI 4.20 → 落盘 1.77 = 7.75 s；两件成对落盘后再补插 2 颗（各 2.70~2.98 s）摊 1.41 s/件'
              '⇒ 右臂有效 9.16 s + 移动/衔接 2.31 s = 节拍 11.467 s。\n'
              '停留不是空闲：模块必须坐够 dwell_min 9.85 s 才能拔（首件 9.86 s 刚好卡线），而 mod4/mod6 已到 33.11 s ≈ 配置上限 33.1 s —— '
-             '4 孔轮转把停留用满了，AOI 一旦变慢就会破上限；这也是提节拍前必须先看的一条约束。',
+             '4 孔轮转把停留用满了，AOI 一旦变慢就会破上限；这也是提节拍前必须先看的一条约束。\n'
+             '口径：%.0f UPH 是段表理论值（段内匀速 + 段间无缝衔接，未计加减速）：直线段速度峰值 %.0f mm/s、中位 %.0f mm/s。'
+             '要「保证 300」必须真机连续 ≥30 件实测循环 + AOI 耗时 P95，当前真机零指令，未实测。' % (
+                 R['uph'], _vmax(R), _vmed(R)),
              size=8.5, color=C_DIM)
 
 

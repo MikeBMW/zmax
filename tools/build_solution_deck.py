@@ -12,8 +12,9 @@ from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE
 
 ROOT = '/home/ubuntu/zmax'
+ROOT_DATA = '/home/ubuntu/zmax_data'
 DIR = ROOT + '/docs/1-天枢-产品边界/deliverables/2-机器人方案'
-SRC_DECK = DIR + '/机器人整机三视图与技术参数_5.50.C_20261101.pptx'
+SRC_DECK = ROOT_DATA + '/deliveries/母版/机器人整机内容源_5.50.C.pptx'
 NEW_DECK = DIR + '/Z-MAX机器人整机解决方案_5.50.C_20261101.pptx'
 
 C_TXT = RGBColor(0x0F, 0x17, 0x2A)
@@ -63,9 +64,15 @@ def sources():
     # L2 节点
     canvas = json.load(open(ROOT + '/data/database/zmax/sources/canvas/state_space_obs.json', encoding='utf-8'))['nodes']
     idx = open(ROOT + '/src/lerobot/middleware/nodes/_index.py', encoding='utf-8').read()
+    bands = {n['id']: n for n in canvas if n['type'] == 'row_bg'}
+    L2B = ['row_mem_l2', 'ssbg0', 'ssbg1', 'ssbg2', 'ssbg3', 'ssbg_skill', 'ssbg4']
     n_l2 = n_pure = 0
+    band_cnt = []
+    for bid in L2B:
+        b = bands[bid]
+        band_cnt.append((b['name'], len([x for x in canvas if x['type'] != 'row_bg' and b['y'] <= x['y'] < b['y'] + b['h']])))
     for n in canvas:
-        if n['type'] == 'row_bg' or not (2972 <= n['y'] < 6490) or n['id'] == 'ssworld':
+        if n['type'] == 'row_bg' or not any(bands[b]['y'] <= n['y'] < bands[b]['y'] + bands[b]['h'] for b in L2B):
             continue
         m = re.search(r'["\']%s["\']\s*:\s*["\']([^"\']+)' % re.escape(n['id']), idx)
         if not m:
@@ -77,7 +84,7 @@ def sources():
                 n_pure += 1
     return dict(spec=spec, J=J, mass=mass, CHS=CHS, TAB=TAB, TCAM=TCAM, slots=slots, trays=trays,
                 sim=sim, dur=dur, mods=L['mods'], tact=tact, uph=3600 / tact,
-                dwell=(min(dw), max(dw)), n_l2=n_l2, n_pure=n_pure)
+                dwell=(min(dw), max(dw)), n_l2=n_l2, n_pure=n_pure, n_logic=n_l2 - 1, band_cnt=band_cnt)
 
 
 def add_text(slide, x, y, w, h, text, size=10, bold=False, color=C_TXT, align=PP_ALIGN.LEFT,
@@ -163,7 +170,8 @@ def slide_overview(pr, S):
             '孔内停留 %.2f~%.2f s，与作业并行不占节拍' % S['dwell'],
         ]),
         ('③ 感知与决策（L2）', C_PUR, [
-            '%d 个逻辑节点：记忆 2 / 感知 6 / 融合 2 / 小模型 5 / 决策 2 / 技能与收口 12 / 执行 1' % S['n_l2'],
+            '画布七带 %d 个节点：记忆 2 / 感知 6 / 融合 2 / 小模型 5 / 决策 2 / 技能库 12 / 执行 2' % S['n_l2'],
+            '名称逐字照抄画布，未改写（含 🌍物理世界 环境实体）',
             'PURE=True 真算 %d 个，其余只走数据面（表内逐个标注）' % S['n_pure'],
             '感知：YOLO 22 类 · AOI 判据 · 触觉 4D · 板坐标 · 2D→3D · SAM3',
             '融合：43D 统一状态 → SU(2) 群元素',
@@ -215,7 +223,8 @@ def slide_accept(pr, S):
         ('工位尺寸', '台面 1600×600×30 高 750 · 箱体 600×800×750 · 轮 Ø150 · 臂距 500',
          'AR3D 场景常量（TAB / CHS / LARM）', 'tools/web/tcp-ar.html'),
         ('料盘', '3 组 × 14 槽 + 废料盘（42 槽口 36×42，z=117.5）', '场景 XML 逐个槽口 geom 计数', 'zmax_data/ar_mujoco/ar_station.xml'),
-        ('L2 能力', '%d 个逻辑节点，PURE=True %d 个' % (S['n_l2'], S['n_pure']), '画布 L2 七条带 + 节点 PARAMS/PURE',
+        ('L2 能力', '七带 %d 个节点(逻辑 %d)，PURE=True %d' % (S['n_l2'], S['n_logic'], S['n_pure']),
+         '画布 L2 七条带逐带取节点(名称逐字) + PARAMS/PURE',
          'state_space_obs.json + n_*.py'),
     ]
     gx, gy = 0.55, 1.02
