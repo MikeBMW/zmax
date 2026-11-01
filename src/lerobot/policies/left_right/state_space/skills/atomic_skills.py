@@ -461,7 +461,9 @@ class AtomicSkill:
             if cur is None:
                 return None
             _ax = str((spec or {}).get("axis") or r.get("axis") or "z_pos")
-            _d = float((spec or {}).get("d_m") or 0.0)
+            # 行程来源优先级: 调用参数 > 技能 TARGET 声明 > 技能 params (pull_out_m 等) > 0
+            _d = float((spec or {}).get("d_m") or r.get("d_m") or cls.params.get("d_m")
+                       or cls.params.get("pull_out_m") or 0.0)
             _v = np.asarray(cur, dtype=float).ravel()[:3].copy()
             _i = {"x": 0, "y": 1, "z": 2}.get(_ax[0].lower(), 2)
             _sgn = -1.0 if _ax.lower().endswith("neg") else 1.0
@@ -561,6 +563,7 @@ class SK01Approach(AtomicSkill):
     ctrl = {"gripper": "张开", "v_cap": 0.35, "v_min": 0.12}
     source = "state_space_sim_real.STAGE_APPROACH_H / cognition.STAGE_V_CAP"
 
+    phys_note = "本段=接近: v_cap=0.350 m/s · a_max=4.167 m/s² · 单拍位移 s_step=0.0350 m (全部取真源 config/calib/zmax_skill_physics.json 的 value; 类里不另存一份数字)。"
     # ══════════════════════════════════════════════════════════════════════════
     # 本技能的约束 — 数字全写在这里 (真源 config/calib/zmax_skill_physics.json · 段=接近)
     #   加速度上限取真源 a (标定值优先, 无标定才用牛顿二定律 F/m): 4.166667 m/s²
@@ -679,6 +682,7 @@ class SK02Align(AtomicSkill):
     ctrl = {"gripper": "张开", "v_cap": 0.12, "v_min": 0.04}
     source = "state_space_sim_real.STAGE_ALIGN_H"
 
+    phys_note = "本段=对位: v_cap=0.120 m/s · a_max=4.167 m/s² · 单拍位移 s_step=0.0120 m (全部取真源 config/calib/zmax_skill_physics.json 的 value; 类里不另存一份数字)。"
     # ══════════════════════════════════════════════════════════════════════════
     # 本技能的约束 — 数字全写在这里 (真源 config/calib/zmax_skill_physics.json · 段=对位)
     #   加速度上限取真源 a (标定值优先, 无标定才用牛顿二定律 F/m): 4.166667 m/s²
@@ -798,6 +802,7 @@ class SK03Descend(AtomicSkill):
     ctrl = {"gripper": "张开 (到位前不闭 — 状态锁存非比例)", "v_cap": 0.09}
     source = "state_space_sim_real.STAGE_DESCEND_H / _z_stall"
 
+    phys_note = "本段=下降: v_cap=0.090 m/s · a_max=4.167 m/s² · 单拍位移 s_step=0.0090 m (全部取真源 config/calib/zmax_skill_physics.json 的 value; 类里不另存一份数字)。"
     # ══════════════════════════════════════════════════════════════════════════
     # 本技能的约束 — 数字全写在这里 (真源 config/calib/zmax_skill_physics.json · 段=下降)
     #   加速度上限取真源 a (标定值优先, 无标定才用牛顿二定律 F/m): 4.166667 m/s²
@@ -917,6 +922,7 @@ class SK04Grasp(AtomicSkill):
     ctrl = {"gripper": "闭合锁存 (抓取及之后恒闭合)", "v_cap": 0.04}
     source = "cognition.ActionModulator(grasp_th=0.50) / GRASP_SAT"
 
+    phys_note = "本段=抓取: v_cap=0.040 m/s · a_max=9.375 m/s² · 单拍位移 s_step=0.0040 m (全部取真源 config/calib/zmax_skill_physics.json 的 value; 类里不另存一份数字)。"
     # ══════════════════════════════════════════════════════════════════════════
     # 本技能的约束 — 数字全写在这里 (真源 config/calib/zmax_skill_physics.json · 段=抓取)
     #   加速度上限取真源 a (标定值优先, 无标定才用牛顿二定律 F/m): 9.375000 m/s²
@@ -1035,6 +1041,7 @@ class SK05Lift(AtomicSkill):
     ctrl = {"gripper": "闭合保持", "v_cap": 0.30, "v_min": 0.10}
     source = "state_space_sim_real.STAGE_LIFT / GRASP_SLIP_MM"
 
+    phys_note = "本段=抬起: v_cap=0.300 m/s · a_max=3.704 m/s² · 单拍位移 s_step=0.0300 m (全部取真源 config/calib/zmax_skill_physics.json 的 value; 类里不另存一份数字)。"
     # ══════════════════════════════════════════════════════════════════════════
     # 本技能的约束 — 数字全写在这里 (真源 config/calib/zmax_skill_physics.json · 段=抬起)
     #   加速度上限取真源 a (标定值优先, 无标定才用牛顿二定律 F/m): 3.703704 m/s²
@@ -1154,6 +1161,7 @@ class SK06Transfer(AtomicSkill):
     ctrl = {"gripper": "闭合保持", "v_cap": 0.35, "v_min": 0.12}
     source = "cognition.INSERT_HOVER / sim_real align_th"
 
+    phys_note = "本段=转移: v_cap=0.350 m/s · a_max=3.704 m/s² · 单拍位移 s_step=0.0350 m (全部取真源 config/calib/zmax_skill_physics.json 的 value; 类里不另存一份数字)。"
     # ══════════════════════════════════════════════════════════════════════════
     # 本技能的约束 — 数字全写在这里 (真源 config/calib/zmax_skill_physics.json · 段=转移)
     #   加速度上限取真源 a (标定值优先, 无标定才用牛顿二定律 F/m): 3.703704 m/s²
@@ -1274,6 +1282,7 @@ class SK07Insert(AtomicSkill):
     ctrl = {"gripper": "闭合保持 (力控推入)", "v_cap": 0.085, "v_min": 0.02}
     source = "sim_real insert_depth=0.006 / cognition.STAGE_V_MIN 插入"
 
+    phys_note = "本段=插入: v_cap=0.085 m/s · a_max=1.481 m/s² · 单拍位移 s_step=0.0085 m (全部取真源 config/calib/zmax_skill_physics.json 的 value; 类里不另存一份数字)。"
     # ══════════════════════════════════════════════════════════════════════════
     # 本技能的约束 — 数字全写在这里 (真源 config/calib/zmax_skill_physics.json · 段=插入)
     #   加速度上限取真源 a (标定值优先, 无标定才用牛顿二定律 F/m): 1.481481 m/s²
@@ -1401,6 +1410,7 @@ class SK07Place(AtomicSkill):
     ctrl = {"gripper": "闭合保持 → 触底开爪释放", "v_cap": 0.06, "v_min": 0.015}
     source = "cognition.ActionModulator TRAY_MODE/PLACE_IDX + sim_scene_def tray 槽位真源"
 
+    phys_note = "本段=放入: v_cap=0.060 m/s · a_max=1.481 m/s² · 单拍位移 s_step=0.0060 m (全部取真源 config/calib/zmax_skill_physics.json 的 value; 类里不另存一份数字)。"
     # ══════════════════════════════════════════════════════════════════════════
     # 本技能的约束 — 数字全写在这里 (真源 config/calib/zmax_skill_physics.json · 段=放入)
     #   加速度上限取真源 a (标定值优先, 无标定才用牛顿二定律 F/m): 1.481481 m/s²
@@ -1519,6 +1529,7 @@ class SK08Complete(AtomicSkill):
     ctrl = {"gripper": "闭合保持", "v_cap": 0.02}
     source = "cognition.ActionModulator STAGES[完成]"
 
+    phys_note = "本段=完成: v_cap=0.020 m/s · a_max=1.481 m/s² · 单拍位移 s_step=0.0020 m (全部取真源 config/calib/zmax_skill_physics.json 的 value; 类里不另存一份数字)。"
     # ══════════════════════════════════════════════════════════════════════════
     # 本技能的约束 — 数字全写在这里 (真源 config/calib/zmax_skill_physics.json · 段=完成)
     #   加速度上限取真源 a (标定值优先, 无标定才用牛顿二定律 F/m): 1.481481 m/s²
@@ -1622,6 +1633,209 @@ class SK08Complete(AtomicSkill):
                 "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
         self.corridor_dbg()                        # 🛑 本技能的断点 (F9 打这一行/VSCode 直接停)
         return self.corridor_finish(_out)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# full 模式 4 段技能 (SK09-12) — 2026-11-01
+#   insert/tray 之外的完整工艺链: 完成 → 拔出 → AOI转移 → AOI检测 → 回程 → 放下
+#   这 4 段过去只有物理量配置 (config/calib/zmax_skill_physics.json) 和段名,
+#   没有技能类 ⇒ skill_for() 返回 None ⇒ 一律走通用闸, 技能 return/断点永不进。
+#   现在补类: 数字全部由 config/calib/zmax_skill_physics.json 生成, clamp 与 SK01-08 同一套算式。
+# ══════════════════════════════════════════════════════════════════════════════
+class _StageClamp(AtomicSkill):
+    """共用 clamp (①②③④⑤ 逐条算) — 与 SK01-08 的 clamp 逐字同一套算式, 只有数字按本段取。"""
+
+    def clamp(self, u, dt=None, v_prev=None, a_prev=None, dmdt=None):
+        """运动学 ①②③⑤ + 动力学 ④ —— 逐条算, 算出来的就是下发动作。
+
+        u 请求动作 [vx,vy,vz,夹爪] · v_prev/a_prev 上一拍速度/加速度 (缺省当 0)
+        返回 u(下发) v_req(请求) err(被削的量) why(哪条削的) phys(本段数字)
+        """
+        import numpy as np                                  # 局部导入 (本模块按需加载, 不强制 numpy)
+        dt = self.DT_S if dt is None else float(dt)
+        m, F_max = self.M_KG, self.F_MAX_N
+        u_req = np.asarray(u, dtype=float).ravel().copy()
+        v = u_req[:3].copy()                                # 只约束平移 3 维, 夹爪原样下发
+        v0 = np.zeros(3) if v_prev is None else np.asarray(v_prev, dtype=float).ravel()[:3].copy()
+        a0 = np.zeros(3) if a_prev is None else np.asarray(a_prev, dtype=float).ravel()[:3].copy()
+        why = []
+
+        # ① 速度: ‖v‖ ≤ V_CAP (超了等比缩小, 方向不变)
+        n_v = float(np.linalg.norm(v))
+        if n_v > self.V_CAP > 0:
+            v = v * (self.V_CAP / n_v)
+            why.append("速度")
+
+        # ② 加速度: 每拍速度变化 ‖v−v0‖ ≤ A_MAX·dt (A_MAX 就是真源标定的那个加速度)
+        a_max = self.A_MAX
+        a_lim = a_max * dt
+        dv = v - v0
+        n_dv = float(np.linalg.norm(dv))
+        if n_dv > a_lim > 0:
+            v = v0 + dv * (a_lim / n_dv)
+            why.append("加速度")
+
+        # ③ 加加速度: 每拍加速度变化 ‖Δa‖ ≤ JERK_MAX·dt (不许阶跃, 伺服带宽有限)
+        a_new = (v - v0) / dt
+        da = a_new - a0
+        j_lim = self.JERK_MAX * dt
+        n_da = float(np.linalg.norm(da))
+        if n_da > j_lim > 0:
+            a_new = a0 + da * (j_lim / n_da)
+            v = v0 + a_new * dt
+            why.append("加加速度")
+        kin_why = "+".join(why) or "可行"
+
+        # ④ 动力学: 动量/质量率 ‖m·Δv + v·Δm‖ ≤ F_max·dt (抓取/释放时质量在变)
+        _dmdt = self.DMDT_MAX if dmdt is None else float(dmdt)
+        dv = v - v0
+        f_lim = F_max * dt
+        f_need = m * dv + v * (_dmdt * dt)
+        n_f = float(np.linalg.norm(f_need))
+        dyn_why = []
+        if n_f > f_lim > 0:
+            v = v0 + dv * (f_lim / max(n_f, 1e-9))
+            dyn_why.append("动量/质量率")
+            why.append("动量/质量率")
+
+        # ⑤ 位移: 单拍 ‖v‖·dt ≤ S_STEP; 本段累计 > S_MAX 只报不杀
+        d_step = float(np.linalg.norm(v)) * dt
+        if self.S_STEP > 0 and d_step > self.S_STEP * (1.0 + 1e-12):
+            v = v * (self.S_STEP / max(d_step, 1e-12))
+            why.append("位移")
+        self.travel_m = float(getattr(self, "travel_m", 0.0)) + float(np.linalg.norm(v)) * dt
+        over = int(self.S_MAX > 0 and self.travel_m > self.S_MAX * (1.0 + 1e-9))
+
+        # 收口: 下发动作 / 被削掉的偏差 / 本段数字
+        u_out = u_req.copy()
+        u_out[:3] = v
+        err = u_req[:3] - v
+        e_norm = float(np.linalg.norm(err))
+        # 🔴 2026-10-31 老倪「技能 return 的断点全都进不去」:
+        #   原来 return/_out 里直接写列表推导 [float(x) for x in ...] —— 推导式是**独立 code object**,
+        #   它自己的首行号就是这一行 ⇒ 调试器(和 pdb)会停在 <listcomp> 帧, 看起来"断点没进到 clamp"。
+        #   现在把三个列表先算出来 (纯本函数语句), 断点下在 _out = { 这行就**稳停在 clamp() 帧**。
+        _u_list = [float(x) for x in u_out]
+        _v_list = [float(x) for x in u_req[:3]]
+        _e_list = [float(x) for x in err]
+        _out = {"u": _u_list, "v_req": _v_list,
+                "err": _e_list, "err_norm": round(e_norm, 8),
+                "big": int(e_norm > 0.05),
+                "why": "+".join(why) or "可行",
+                "kin_why": kin_why,
+                "dyn_why": "+".join(dyn_why) or "可行",
+                "phys": {"m": round(m, 4), "F_max": F_max, "v_cap": self.V_CAP, "v_min": self.V_MIN,
+                         "a_max": round(a_max, 4), "jerk_max": round(self.JERK_MAX, 3),
+                         "dmdt_max": _dmdt, "s_step": self.S_STEP, "s_max": self.S_MAX, "dt": dt,
+                         "src": self.source,
+                         "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
+                "s_travel": round(self.travel_m, 6), "over_travel": over,
+                "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
+        self.corridor_dbg()                        # 🛑 本技能的断点 (F9 打这一行/VSCode 直接停)
+        return self.corridor_finish(_out)
+
+
+class SK09Pull(_StageClamp):
+    """夹持件沿孔轴向上退出 45mm (独立限速 60mm/s, 不与插入共用速度)"""
+    code = "SK09"
+    TARGET = {"ref": "rel", "axis": "z_pos", "d_m": 0.045}   # 退出 45mm (真源 s=0.045)
+    stage = "拔出"
+    name = "⑨ 拔出"
+    desc = "夹持件沿孔轴向上退出 45mm (独立限速 60mm/s, 不与插入共用速度)"
+    goal = "已插入件 → 退出孔口 (退出行程 ≥ pull_out_m 判完成)"
+    params = {"pull_out_m": 0.045, "release_after": "退出后保持夹持, 由 SK08 放下"}
+    evidence = "退出位移 ≥ pull_out_m 且孔口无拖拽 (力/位移双判)"
+    ctrl = {"gripper": "闭合保持 (退出全程不松)", "v_cap": 0.06, "v_min": 0.02}
+    source = "config/calib/zmax_skill_physics.json · 段=拔出 (v/a/jerk/s/s_step/m/F/dmdt 逐项取 value)"
+    phys_note = "本段=拔出: 速度上限取真源 v(0.06 m/s, 独立 60mm/s 物理限), 加速度=a 标定值, 行程 s=pull_out_m(0.045 m) ⇒ 单拍位移 ≤ s_step。"
+
+    DT_S      = 0.1          # 每拍 s
+    M_KG      = 1.35         # 运动质量 kg
+    F_MAX_N   = 5.0          # 允许力 N
+    A_MAX     = 3.703704     # ② 加速度上限 m/s²
+    V_CAP     = 0.06         # ① 速度上限 m/s
+    V_MIN     = 0.02         # 最小速度 (低于它算到位)
+    JERK_MAX  = 2.571429     # ③ 加加速度上限 m/s³
+    S_STEP    = 0.006        # ⑤ 单拍位移上限 m
+    S_MAX     = 0.045        # ⑤ 本段行程上限 m
+    DMDT_MAX  = 0.1          # ④ 质量变化率上限 kg/s
+
+class SK10AoiTransfer(_StageClamp):
+    """把件从取料侧搬到 AOI 检测位 (快速大行程段, 600mm 级)"""
+    code = "SK10"
+    TARGET = {"ref": "point"}
+    stage = "AOI转移"
+    name = "⑩ AOI转移"
+    desc = "把件从取料侧搬到 AOI 检测位 (快速大行程段, 600mm 级)"
+    goal = "件 → AOI 检测位点位 (xy 容差 1mm)"
+    params = {"point": "aoi_pose", "xy_tol_m": 0.001}
+    evidence = "到位残差 ≤ 1mm 且姿态偏差 ≤ 1°"
+    ctrl = {"gripper": "闭合保持", "v_cap": 0.3, "v_min": 0.1}
+    source = "config/calib/zmax_skill_physics.json · 段=AOI转移 (v/a/jerk/s/s_step/m/F/dmdt 逐项取 value)"
+    phys_note = "本段=AOI转移: 快速搬运段 ⇒ v=0.30 m/s、jerk 放宽到 12.86 m/s³ (真源 a/jerk 分别取值), 单拍位移 s_step=0.030 m。"
+
+    DT_S      = 0.1          # 每拍 s
+    M_KG      = 1.35         # 运动质量 kg
+    F_MAX_N   = 5.0          # 允许力 N
+    A_MAX     = 3.703704     # ② 加速度上限 m/s²
+    V_CAP     = 0.3          # ① 速度上限 m/s
+    V_MIN     = 0.1          # 最小速度 (低于它算到位)
+    JERK_MAX  = 12.857143    # ③ 加加速度上限 m/s³
+    S_STEP    = 0.03         # ⑤ 单拍位移上限 m
+    S_MAX     = 0.6          # ⑤ 本段行程上限 m
+    DMDT_MAX  = 0.1          # ④ 质量变化率上限 kg/s
+
+class SK11AoiInspect(_StageClamp):
+    """在 AOI 检测位做毫米级微进给并保持静止, 由 8793/10082/10083 服务出判据"""
+    code = "SK11"
+    TARGET = {"ref": "point"}
+    stage = "AOI检测"
+    name = "⑪ AOI检测"
+    desc = "在 AOI 检测位做毫米级微进给并保持静止, 由 8793/10082/10083 服务出判据"
+    goal = "件 → 检测工位 (静止保持, 检测期间零位移)"
+    params = {"point": "aoi_pose", "dwell_s": 1.5, "detect_api": "/aoi/gold|/aoi/surface"}
+    evidence = "静止保持 + 检测服务返回 verdict (ok/ng) 才算本段完成"
+    ctrl = {"gripper": "闭合保持", "v_cap": 0.05, "v_min": 0.0}
+    source = "config/calib/zmax_skill_physics.json · 段=AOI检测 (v/a/jerk/s/s_step/m/F/dmdt 逐项取 value)"
+    phys_note = "本段=AOI检测: 微进给段 ⇒ v=0.05 m/s、单拍 0.005 m、行程 0.03 m; 静止保持期间速度必须压到 v_min 以下 (真源 v_min=0.0)。"
+
+    DT_S      = 0.1          # 每拍 s
+    M_KG      = 1.35         # 运动质量 kg
+    F_MAX_N   = 5.0          # 允许力 N
+    A_MAX     = 3.703704     # ② 加速度上限 m/s²
+    V_CAP     = 0.05         # ① 速度上限 m/s
+    V_MIN     = 0.0          # 最小速度 (低于它算到位)
+    JERK_MAX  = 2.25         # ③ 加加速度上限 m/s³
+    S_STEP    = 0.005        # ⑤ 单拍位移上限 m
+    S_MAX     = 0.03         # ⑤ 本段行程上限 m
+    DMDT_MAX  = 0.1          # ④ 质量变化率上限 kg/s
+
+class SK12Return(_StageClamp):
+    """检测完把件送回取放位/原点 (与 AOI转移同速, 大行程)"""
+    code = "SK12"
+    TARGET = {"ref": "point"}
+    stage = "回程"
+    name = "⑫ 回程"
+    desc = "检测完把件送回取放位/原点 (与 AOI转移同速, 大行程)"
+    goal = "件 → 回程目标点 (xy 容差 1mm)"
+    params = {"point": "home_pose", "xy_tol_m": 0.001}
+    evidence = "到位残差 ≤ 1mm"
+    ctrl = {"gripper": "闭合保持", "v_cap": 0.3, "v_min": 0.1}
+    source = "config/calib/zmax_skill_physics.json · 段=回程 (v/a/jerk/s/s_step/m/F/dmdt 逐项取 value)"
+    phys_note = "本段=回程: 与 AOI转移 同参数 (v=0.30 m/s, jerk=12.86 m/s³), 单拍 0.030 m。"
+
+    DT_S      = 0.1          # 每拍 s
+    M_KG      = 1.35         # 运动质量 kg
+    F_MAX_N   = 5.0          # 允许力 N
+    A_MAX     = 3.703704     # ② 加速度上限 m/s²
+    V_CAP     = 0.3          # ① 速度上限 m/s
+    V_MIN     = 0.1          # 最小速度 (低于它算到位)
+    JERK_MAX  = 12.857143    # ③ 加加速度上限 m/s³
+    S_STEP    = 0.03         # ⑤ 单拍位移上限 m
+    S_MAX     = 0.6          # ⑤ 本段行程上限 m
+    DMDT_MAX  = 0.1          # ④ 质量变化率上限 kg/s
+
+
 # ── 技能注册表 (插装 8 段; 顺序 = 状态机推进序) ──
 SKILLS = [SK01Approach, SK02Align, SK03Descend, SK04Grasp,
           SK05Lift, SK06Transfer, SK07Insert, SK08Complete]
@@ -1636,13 +1850,23 @@ SKILLS_TRAY = [SK01Approach, SK02Align, SK03Descend, SK04Grasp,
 SKILL_BY_STAGE = {cls.stage: cls for cls in SKILLS}
 SKILL_BY_STAGE.update({cls.stage: cls for cls in SKILLS_TRAY})   # 追加「放入」(键不冲突)
 # code → 技能
+# 🧩 full 链 (2026-11-01): 完成 → 拔出 → AOI转移 → AOI检测 → 回程 → 放下
+SKILLS_FULL = [SK01Approach, SK02Align, SK03Descend, SK04Grasp, SK05Lift, SK06Transfer,
+               SK08Complete, SK09Pull, SK10AoiTransfer, SK11AoiInspect, SK12Return, SK07Place]
+SKILL_BY_STAGE.update({cls.stage: cls for cls in SKILLS_FULL})
+SKILLS_FULL_CODES = SKILLS_FULL
 SKILL_BY_CODE = {cls.code: cls for cls in SKILLS}
 SKILL_BY_CODE_TRAY = {cls.code: cls for cls in SKILLS_TRAY}
 
 
 def skills_for_mode(mode="insert"):
     """按任务模式取技能链: tray(摆盘) → SK07 是「放入」; 其它 → SK07 是「插入」"""
-    return list(SKILLS_TRAY if str(mode).lower() == "tray" else SKILLS)
+    _m = str(mode).lower()
+    if _m == "tray":
+        return list(SKILLS_TRAY)
+    if _m == "full":
+        return list(SKILLS_FULL)
+    return list(SKILLS)
 
 
 def list_skills(mode="insert"):

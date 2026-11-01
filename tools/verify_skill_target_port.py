@@ -145,10 +145,11 @@ def main() -> int:
 
     # ── ⑤ 缺上下文/未知段不假数 ─────────────────────────────────────────
     n_none = sum(1 for st in stages if SK.skill_for(st).next_target(ctx={}) is None)
-    unknown = SK.skill_for("拔出")                     # 13 段里没有技能类的段
+    unknown = SK.skill_for("不存在的段XYZ")              # 真·没有技能类的段 (2026-11-01: 拔出 已有 SK09Pull)
+    _now_has = SK.skill_for("拔出") is not None      # 补类后 拔出 必须有态射
     ck("⑤缺上下文/未知段返回 None (不编 0 目标)",
-       n_none == len(stages) and unknown is None,
-       f"空上下文下 8/8 段均返回 None? {n_none == len(stages)} · 未知段态射={unknown}")
+       n_none == len(stages) and unknown is None and _now_has,
+       f"空上下文下 8/8 段均返回 None? {n_none == len(stages)} · 未知段态射={unknown} · 拔出有新类={_now_has}")
 
     # ── ⑥ 真机点位解析: 无 atomic 字段的技能行为不变 ─────────────────────
     reg = json.load(open(os.path.join(REPO, "data/skills/l2_atomic/registry.json"), encoding="utf-8"))

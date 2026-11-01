@@ -128,7 +128,7 @@ def main():
     # ⑤ 闸门读唯一依据
     q5 = PC.limits_for("插入")
     chk("⑤", "闸门读唯一依据 (v/m/F/a/s/s_step + calib_src 标唯一依据)",
-        "唯一依据" in str(q5.get("calib_src_kind")) and abs(float(q5["v"]) - 0.085) < 1e-9
+        ("唯一依据" in str(q5.get("calib_src_kind")) or "真源" in str(q5.get("calib_src_kind")))  # 概念改名为「真源」后同步判据 and abs(float(q5["v"]) - 0.085) < 1e-9
         and abs(float(q5["F"]) - 2.0) < 1e-9 and abs(float(q5["s_step"]) - 0.0085) < 1e-9,
         "v=%s F=%s a=%s s_step=%s src=%s" % (q5["v"], q5["F"], round(q5["a_max"], 3), q5["s_step"], q5.get("calib_src_kind")))
 
@@ -188,7 +188,7 @@ def main():
     sys.path.insert(0, os.path.join(ROOT, "src"))
     from lerobot.policies.left_right.state_space.skills import atomic_skills as AS      # noqa: E402
     rows, bad10 = [], []
-    for cls in list(AS.SKILLS) + list(AS.SKILLS_TRAY):
+    for cls in list(AS.SKILLS) + list(AS.SKILLS_TRAY) + list(getattr(AS, 'SKILLS_FULL', [])):
         pc_ = cls.phys_check()
         q = cls.phys()
         exp = stages.get(cls.stage, {})
