@@ -389,10 +389,22 @@ def ideal_run(ctx=None):
             break
     u = 0.0 if cur["t"] <= 0 else min(1.0, max(0.0, (el - cur["t0"]) / cur["t"]))
     pos = [cur["a"][i] + (cur["b"][i] - cur["a"][i]) * u for i in range(3)]
-    out1 = {"tcp": [round(v, 2) for v in pos], "seg_i": cur["i"], "seg_n": doc["n_seg"],
-            "kind": cur["kind"], "label": cur["label"], "u": round(u, 4),
+    # 🧾 老倪 2026-11-01「规划引导只要发出工艺动作即可」:
+    #   本节点对外的主口径 = **工艺动作** (第几步/什么动作/中文名/去哪/耗时/进度),
+    #   不是 3D 位姿。tcp 只留作参考字段 (渲染/核对用), 下游按工艺动作推进。
+    out1 = {"step_i": cur["i"], "step_n": doc["n_seg"],
+            "action": cur["kind"], "label": cur["label"],
+            "target_mm": [round(float(v), 2) for v in cur["b"]],
+            "t_seg": cur["t"], "t0": cur["t0"], "u": round(u, 4),
+            "carry": cur.get("carry_to"),
             "cycle_s": doc["cycle_s"], "tact_s": doc["tact_s"], "uph": doc["uph"],
-            "ok300": doc["ok300"], "src": "geo_ideal(测地线引导·理想档)"}
+            "ok300": doc["ok300"],
+            "craft": {"craft_action": "%d/%d %s" % (cur["i"], doc["n_seg"], cur["label"] or cur["kind"]),
+                      "action": cur["kind"], "target": [round(float(v), 2) for v in cur["b"]],
+                      "dur_s": cur["t"], "prog": round((cur["t0"] + u * cur["t"]) / max(1e-9, doc["cycle_s"]), 4)},
+            "tcp": [round(v, 2) for v in pos],
+            "seg_i": cur["i"], "seg_n": doc["n_seg"], "kind": cur["kind"],
+            "src": "geo_ideal(测地线引导·工艺动作)"}
     out2 = {"H": h, "chunk": cur["chunk"], "seg_i": cur["i"], "kind": cur["kind"]}
     # 📄 落一份可观测产物 (常驻循环里没有日志行也能核对: 龄/段号/UPH 实时)
     try:
@@ -402,8 +414,11 @@ def ideal_run(ctx=None):
         _tmp = _p + ".tmp"
         with open(_tmp, "w", encoding="utf-8") as _fh:
             json.dump({"ts": time.time(), "t_str": time.strftime("%H:%M:%S"),
-                       "seg_i": cur["i"], "seg_n": doc["n_seg"], "kind": cur["kind"],
-                       "label": cur["label"], "u": round(u, 4), "tcp": out1["tcp"],
+                       "step_i": cur["i"], "step_n": doc["n_seg"], "action": cur["kind"],
+                       "label": cur["label"], "u": round(u, 4),
+                       "target_mm": out1["target_mm"], "t_seg": cur["t"],
+                       "craft_action": out1["craft"]["craft_action"],
+                       "prog": out1["craft"]["prog"],
                        "cycle_s": doc["cycle_s"], "tact_s": doc["tact_s"], "uph": doc["uph"],
                        "ok300": doc["ok300"], "src": "geo_ideal(测地线引导·理想档)"},
                       _fh, ensure_ascii=False)
@@ -432,10 +447,12 @@ def run(ctx=None):
         out = ideal_run(ctx)
         try:
             c = _craft(ctx)
-            out["craft"] = {"step": c.get("out1"), "progress": c.get("out2"),
-                            "event": c.get("out3"), "err": c.get("err")}
-            if isinstance(out["out1"].get("value"), dict) and isinstance(c.get("out1"), dict):
-                out["out1"]["value"]["craft"] = c["out1"]
+            # ⚠️ 别覆盖 out1.craft: 理想档的 craft 就是**本节点发出的工艺动作** (主口径)。
+            #   工艺引擎 (sched_impl) 的结果另放 craft_engine, 两件事分开看。
+            out["craft_engine"] = {"step": c.get("out1"), "progress": c.get("out2"),
+                                   "event": c.get("out3"), "err": c.get("err")}
+            if isinstance(c.get("out1"), dict):
+                out["out1"]["value"]["craft_engine"] = c["out1"]
         except Exception as _e:                                         # noqa: BLE001
             out["craft"] = {"err": str(_e)[:120]}
         globals()["LAST_STATUS"] = out.get("status") or ""
