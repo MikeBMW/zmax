@@ -153,11 +153,11 @@ def run(ctx):
             return None, ""
 
         _ports = {"u_ff": "", "u_fb": "", "cp": "", "residual": ""}
-        u_ff, _p = _pick("in6", ("u", "vec", "chunk0", "a", "best"))      # ⚡ 前馈加速器
+        u_ff, _p = _pick("in6", ("u_ff", "u", "vec", "chunk0", "a", "best"))   # ⚡ 前馈加速器 (真字段是 u_ff)
         if u_ff:
             _ports["u_ff"] = _p
         else:
-            u_ff, _p = _pick("in9", ("chunk0", "u", "vec", "a"))          # 🧭 测地线块 (老倪 11-01 接的 in9)
+            u_ff, _p = _pick("in9", ("chunk0", "u_ff", "u", "vec", "a"))      # 🧭 测地线块 (老倪 11-01 接的 in9)
             _ports["u_ff"] = _p or ""
         u_fb, _pf = _pick("in8", ("u_fb", "residual", "res", "err", "u"))  # 🧪 状态校正器
         res_v, _pr = _pick("in8", ("residual", "res", "err", "u"))

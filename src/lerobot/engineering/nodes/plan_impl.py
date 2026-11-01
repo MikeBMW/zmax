@@ -45,6 +45,30 @@ LAST_STATUS = ""
 
 
 # ── 真值 / 输入 ─────────────────────────────────────────────────────────────
+SIM_POSE = os.environ.get("ZMAX_PLAN_SIM_POSE", "0").strip() in ("1", "true", "on", "yes")
+_POSE_SRC = "tcp(real)"     # 最近一次 _tcp_now() 实际用的位姿来源 (真机真值 / AR 虚拟末端)
+_AR_CMD = os.path.join(_ROOT, "zmax_data", "ss_live", "ar_cmd.json")
+
+
+def _sim_pose():
+    """AR 场景的**虚拟末端** (来自 AR 指令文件的 b 点) —— 只在 ZMAX_PLAN_SIM_POSE=1 时用。
+
+    🧭 2026-11-01 老倪「要真接入」: AR 场景的位姿真值是渲染侧给出的虚拟臂末端, 与真机真值
+    两条独立来源。这里只在显式开 SIM_POSE 时回落, 输出里标 pose_src=sim(ar) + sim=True,
+    真机下发侧 (l2_daemon) 有自己的授权闸与真值闸, 不受这个开关影响。
+    """
+    try:
+        with open(_AR_CMD, encoding="utf-8") as fh:
+            d = json.load(fh)
+        b = d.get("b") or d.get("tcp")
+        if not b:
+            return None, None
+        age = time.time() - float(d.get("t") or 0)
+        return [float(b[0]), float(b[1]), float(b[2])], age
+    except Exception:                                                       # noqa: BLE001
+        return None, None
+
+
 def _tcp_now():
     """真机当前 TCP 末端的 (x,y,z, age_s)，单位统一成 **mm**；读不到给 (None, None)。
 
@@ -56,8 +80,21 @@ def _tcp_now():
             d = json.load(fh)
         age = time.time() - float(d.get("ts") or 0)
         p = [float(d.get("x")) * 1000.0, float(d.get("y")) * 1000.0, float(d.get("z")) * 1000.0]
+        global _POSE_SRC
+        if SIM_POSE and age > STALE_S:
+            _p2, _a2 = _sim_pose()
+            if _p2 is not None:
+                _POSE_SRC = "sim(ar虚拟末端)"
+                return _p2, _a2
+        _POSE_SRC = "tcp(real)"
         return p, age
     except Exception:                                                       # noqa: BLE001
+        if SIM_POSE:
+            _p2, _a2 = _sim_pose()
+            if _p2 is not None:
+                globals()["_POSE_SRC"] = "sim(ar虚拟末端)"
+                return _p2, _a2
+        globals()["_POSE_SRC"] = "无"
         return None, None
 
 
@@ -305,8 +342,10 @@ def run(ctx=None):
     global LAST_STATUS
     out: dict = {"node": "n_moveit", "impl": "nodes/plan_impl.py:run"}
     start, age = _tcp_now()
+    pose_src = _POSE_SRC
     if start:
         out["start"] = [round(v, 2) for v in start]
+        out["pose_src"] = pose_src
         out["start_age_s"] = (round(age, 2) if age is not None else None)
     tgt = _target(ctx)
     goal = (tgt or {}).get("pos") if isinstance(tgt, dict) else None
@@ -433,6 +472,19 @@ def run(ctx=None):
                 "segments": segs, "n": len(segs),
                 "total_mm": round(sum(s["len_mm"] for s in segs), 1),
                 "note": "确定性分段(抬升→横移→下落) · 只规划, 不动真机"})
+    # 🥽 2026-11-01 老倪「要真接入 AR 场景」: 段表直接进 AR 链分区 (页面/接口读它)
+    try:
+        from ..exec import ar_bridge as _arb
+        _cur = segs[0] if segs else None
+        _arb.update("plan", {
+            "kind": "plan", "n": len(segs),
+            "seg_i": (_cur or {}).get("i"), "seg_kind": (_cur or {}).get("kind"),
+            "a": (_cur or {}).get("a"), "b": (_cur or {}).get("b"),
+            "u": 0.0, "label": "段 %s/%s %s" % ((_cur or {}).get("i"), len(segs), (_cur or {}).get("kind")),
+            "total_mm": out.get("total_mm"), "pose_src": pose_src,
+        }, src="n_moveit")
+    except Exception:                                                    # noqa: BLE001
+        pass
     LAST_STATUS = ("段表 %d 段 / %.0fmm · 起点年龄 %.2fs · 单步≤%.0fmm 向下≤%.0fmm"
                    % (len(segs), out["total_mm"], (age or 0.0), lim["step"], lim["down"]))
     out["status"] = LAST_STATUS

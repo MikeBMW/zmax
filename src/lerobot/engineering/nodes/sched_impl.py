@@ -55,9 +55,16 @@ def _repo() -> str:
     env = (os.environ.get("ZMAX_REPO") or "").strip()
     if env and os.path.isdir(env):
         return os.path.abspath(env)
+    # 先认 .git (仓库根唯一判据); 再看 zmax_data —— 只认**两者之一都不在 src/ 里的**那层,
+    # 否则 src/zmax_data 这类残留会把仓库根算成 src/ (元任务配置就找不到了)。
     p = os.path.dirname(os.path.abspath(__file__))
     for _ in range(8):
-        if os.path.isdir(os.path.join(p, "zmax_data")):
+        if os.path.isdir(os.path.join(p, ".git")):
+            return p
+        p = os.path.dirname(p)
+    p = os.path.dirname(os.path.abspath(__file__))
+    for _ in range(8):
+        if os.path.isdir(os.path.join(p, "zmax_data")) and not p.rstrip("/").endswith("/src"):
             return p
         p = os.path.dirname(p)
     return "/home/ubuntu/zmax"

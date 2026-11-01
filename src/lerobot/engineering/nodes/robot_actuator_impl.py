@@ -102,6 +102,17 @@ def run(ctx):
             log(f"🤖 机器人执行器 (真实): execute(u_sat={np.round(u_sat,3)}) → 指令={np.round(u_vec,4)} "
                 f"(execution.py) · 校验 {'通过' if _chk.get('valid', True) else '拦下'} "
                 f"clip={_chk.get('clip_hint') or '-'} over_rate={_chk.get('over_rate') or '-'}")
+        # 🥽 2026-11-01「要真接入 AR 场景」: 本拍真算出的执行指令进 AR 链的 exec 分区
+        try:
+            from ..exec import ar_bridge as _arb
+            _arb.update("exec", {"kind": "exec",
+                                 "u": [round(float(x), 6) for x in np.asarray(u_vec, dtype=float).ravel()[:4]],
+                                 "u_sat": [round(float(x), 5) for x in np.asarray(u_sat, dtype=float).ravel()[:4]],
+                                 "check": {"valid": bool(_chk.get("valid", True)),
+                                           "over_rate": _chk.get("over_rate") or []},
+                                 "src_file": "execution.py:RobotExecutor.execute"}, src="ssact")
+        except Exception:                                                # noqa: BLE001
+            pass
         # 🔴 2026-10-29: out1 = 本拍真算出的指令 + 显式零下发声明, 下游(页面/台账)可直接消费
         return {"out1": {"kind": "actuator", "u_sat": [round(float(x), 5) for x in np.asarray(u_sat, dtype=float).ravel()[:4]],
                          "u_cmd": [round(float(x), 6) for x in np.asarray(u_vec, dtype=float).ravel()[:4]],

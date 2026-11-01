@@ -4493,8 +4493,54 @@ def node_ss_atomic(ctx):
             # 2026-11-01: 无轨迹也要给**带类型的帧** (active=False), 否则下游 in4 拿到 None
             #   ⇒ 运动规划看不出"技能没激活"和"技能没接线"的区别 (两种都是空)。
             _t0 = float(time.time())
-            return {"out1": {"kind": "skill_act", "skill": tpl, "stage": stg, "active": False,
-                             "target": None, "reason": "no_engine_trace", "name": name, "t": _t0},
+            # 🧭 2026-11-01 老倪「技能必须真正执行」: 没有引擎轨迹 ≠ 不能算目标。
+            #   技能模板的 next_target() 能从**真源点位库** (config/points/cell_points.json) 算本段目标,
+            #   这是真算 (不是编造的形状); 引擎轨迹只影响 clamp/trace, 不影响目标点解析。
+            _tgt, _src, _why = None, "", ""
+            try:
+                import json as _js2
+                _d = os.path.dirname(os.path.abspath(__file__))
+                while _d != os.path.dirname(_d) and not os.path.isdir(os.path.join(_d, ".git")):
+                    _d = os.path.dirname(_d)
+                _pp = os.path.join(_d, "config", "points", "cell_points.json")
+                _raw = _js2.load(open(_pp, encoding="utf-8"))
+                # 点位库 → next_target 要的 {name:{"pos":[3]}} + 几何 ctx
+                _pts, _geo = {}, {}
+                for _it in (_raw.get("slots") or []):
+                    _pts[_it["name"]] = {"pos": _it["pos"]}
+                for _it in (_raw.get("holes") or []):
+                    _pts["%s_mouth" % _it["name"]] = {"pos": _it["mouth"]}
+                    _pts["%s_insert" % _it["name"]] = {"pos": _it["insert"]}
+                    _geo.setdefault("hole", _it["insert"])
+                    _geo.setdefault("hole_mouth", _it["mouth"])
+                for _it in (_raw.get("sides") or []) + (_raw.get("scrap") or []):
+                    _pts[_it["name"]] = {"pos": _it["pos"]}
+                if isinstance(_raw.get("golden"), list):
+                    _pts["golden"] = {"pos": _raw["golden"]}
+                    _geo.setdefault("table_z", float(_raw["golden"][2]))
+                _peg = _SS_STATE.get("peg") or _SS_STATE.get("peg_xyz")
+                if _peg is not None:
+                    _geo["peg"] = list(np.asarray(_peg, dtype=float).ravel()[:3])
+                    _geo.setdefault("head_off", [0.0, 0.0, 0.0])
+                _cur = _SS_STATE.get("pos") or _SS_STATE.get("tcp") or None
+                # 段→点位名 (技能语义 ↔ 点位库名): 抓取系看料位, 插入系看孔口/孔底
+                _code = str(tpl)
+                _MAP = {"SK01": "槽1", "SK02": "槽1", "SK03": "槽1", "SK04": "槽1", "SK05": "槽1",
+                        "SK06": "孔1_mouth", "SK07": "孔1_insert", "SK08": "孔1_insert"}
+                _spec = {"point": _MAP[_code]} if _code in _MAP else None
+                if _spec and _spec["point"] not in _pts:
+                    _spec = None
+                _tn = _tpl.next_target(ctx=_geo or None, points=_pts, spec=_spec, cur=_cur)
+                if _tn:
+                    _tgt = [round(float(x), 3) for x in _tn["xyz"]]
+                    _src = "next_target[%s] ref=%s" % (_tn.get("src") or "taught", _tn.get("ref"))
+            except Exception as _e:                                       # noqa: BLE001
+                _why = "%s: %s" % (type(_e).__name__, str(_e)[:60])
+            return {"out1": {"kind": "skill_act", "skill": tpl, "stage": stg,
+                             "active": _tgt is not None and bool(stg),
+                             "target": _tgt, "target_src": _src,
+                             "reason": ("target_only_no_trace" if _tgt else "no_engine_trace"),
+                             "why": _why, "name": name, "t": _t0},
                     "out2": {"kind": "skill_gate", "skill": tpl, "stage": stg,
                              "f_need_N": None, "reason": "no_engine_trace", "t": _t0}}
         idx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))

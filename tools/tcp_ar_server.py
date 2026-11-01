@@ -1066,6 +1066,35 @@ def _ar_cmd_payload() -> dict:
     import json as _j
     import os as _o
     import time as _t
+    # 🥽 2026-11-01 老倪「要真接入 AR 场景」: 优先读**执行链**产物 (规划引导→…→机器人执行器),
+    #   链上节点每拍各写自己的分区; 链没产出/过期 ⇒ 回落老推进器的 ar_cmd.json (页面不会卡死)。
+    _fc = _o.path.expanduser("~/zmax/zmax_data/ss_live/ar_cmd_chain.json")
+    try:
+        _agec = _t.time() - _o.path.getmtime(_fc)
+        if _agec <= AR_CMD_FRESH_S:
+            with open(_fc, encoding="utf-8") as fh:
+                _c = _j.load(fh) or {}
+            _pl = _c.get("plan") or {}
+            _ex = _c.get("exec") or {}
+            _b = _pl.get("b") or (_ex.get("b") if isinstance(_ex, dict) else None)
+            _a = _pl.get("a")
+            if _b and _a:
+                _out = {"ok": True, "age_s": round(_agec, 2), "fresh": True,
+                        "src": "chain:" + str(_pl.get("_src") or "n_moveit") +
+                               ("+ssact" if _ex else ""),
+                        "chain": True, "seq": _c.get("seq"), "kind": _pl.get("seg_kind") or "plan",
+                        "label": _pl.get("label"), "a": _a, "b": _b,
+                        "u": _pl.get("u") or 0.0, "q": None, "q_l": None,
+                        "t_str": _c.get("ts"), "t_seg": None, "t_left": None, "elapsed_s": None,
+                        "task_id": None, "mt_id": None, "mt_name": None, "mt_i": None,
+                        "mt_n": None, "batch": None,
+                        "pose_src": _pl.get("pose_src"),
+                        "exec_u": _ex.get("u"), "exec_u_sat": _ex.get("u_sat"),
+                        "exec_src": _ex.get("src_file")}
+                _out["play"] = _ar_play_payload()
+                return _out
+    except Exception:                                                    # noqa: BLE001
+        pass
     f = _o.path.expanduser("~/zmax/zmax_data/ss_live/ar_cmd.json")
     try:
         age = _t.time() - _o.path.getmtime(f)

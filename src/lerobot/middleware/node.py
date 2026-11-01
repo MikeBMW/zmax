@@ -52,7 +52,14 @@ class Node:
         except Exception as e:                                        # noqa: BLE001
             self.last_status = "模块缺失: %s (%s)" % (name, e)
             return None
-        if os.environ.get("ZMAX_NODE_PURE_ALL", "0") == "1" and getattr(mod, "PURE", None) is not True:
+        # 🧭 2026-11-01 老倪「画布节点是工程图纸, 是指令, 必须严格执行」
+        #   口径反转: **默认真执行** (PURE=True), 除非显式关。
+        #     ZMAX_NODE_PURE_ALL=0    ⇒ 全部直通 (旧口径/产线应急回退)
+        #     ZMAX_NODE_PURE_OFF=a,b  ⇒ 只让这几个直通 (逐个关, 不牵连)
+        #     ZMAX_NODE_PURE_IDS=a,b  ⇒ 只让这几个真执行 (其余直通, 细粒度调试)
+        _off = {x.strip() for x in (os.environ.get("ZMAX_NODE_PURE_OFF", "") or "").split(",") if x.strip()}
+        _all_on = os.environ.get("ZMAX_NODE_PURE_ALL", "1").strip() not in ("0", "false", "no", "off")
+        if _all_on and self.spec.id not in _off and getattr(mod, "PURE", None) is not True:
             try:
                 setattr(mod, "PURE", True)   # compute_* 每拍按模块全局读 PURE ⇒ 下一拍即生效
                 NODE_PURE_FLIPPED.add(name)

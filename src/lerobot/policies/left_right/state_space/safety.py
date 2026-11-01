@@ -15,5 +15,14 @@ POS_LIMIT = 0.6     # 位置/动作幅值上限
 
 
 def saturate(u, limit=POS_LIMIT):
-    """饱和限幅: clip(u, −limit, +limit)"""
-    return np.clip(np.asarray(u, dtype=float), -limit, limit)
+    """饱和限幅: 只裁**平移 3 维**; 夹爪通道按 [0,1] 单独裁。
+
+    🔴 2026-11-01 老倪「要真接入」实测抓到的真 bug: 原来整条 clip(−0.6,0.6) 把夹爪 1.1 裁成 0.6
+    ⇒ 夹紧力被悄悄砍掉一半, 且夹爪本就不是速度量 (0=张 1=夹)。
+    """
+    a = np.asarray(u, dtype=float).ravel().copy()
+    if a.size >= 3:
+        a[:3] = np.clip(a[:3], -limit, limit)
+    if a.size >= 4:
+        a[3] = float(np.clip(a[3], 0.0, 1.0))
+    return a
