@@ -3428,7 +3428,7 @@ function arIdealUi(){
   b.style.cssText='position:fixed;left:10px;top:10px;z-index:70;background:rgba(13,17,23,.94);border:1px solid #d29922;'
    +'border-radius:9px;padding:7px 11px;font:12px/1.5 ui-monospace,monospace;color:#f0c674;cursor:pointer;'
    +'box-shadow:0 6px 20px rgba(0,0,0,.5);user-select:none';
-  b.textContent='⚡ 理想档回放 (44.69s / 112段)';
+  b.textContent='⚡ 理想档回放 (112 段 · 按本节拍)';
   b.onclick=function(){ ARIDEAL.on?arIdealStop():(ARIDEAL.plan.length?arIdealRun():arIdealLoad()); };
   document.body.appendChild(b);
   var h=document.createElement('div');
