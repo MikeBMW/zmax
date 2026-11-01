@@ -22,7 +22,7 @@ TYPE = 'model'
 EXEC_MODE = 'act'
 
 # 输入端口 (从总线取) / 输出端口 (发到总线) —— 与工程 JSON 的连线一一对应
-PORTS_IN = ['in1']
+PORTS_IN = ['in1', 'in2']
 PORTS_OUT = ['out1', 'out2']
 PORT_LABELS = {}
 

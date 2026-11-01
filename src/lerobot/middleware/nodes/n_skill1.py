@@ -2,7 +2,8 @@
 """① 接近 · SK01  ·  节点 sssk1
 
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
-    in  in2   ← sslimit
+    in  in1   ← sslimit (限幅后动作)
+    in  in2   ← ssskill (这一段跑什么)
     out out1  → n_moveit
     out out2  → ssphys
 
@@ -22,7 +23,7 @@ TYPE = 'model'
 EXEC_MODE = 'act'
 
 # 输入端口 (从总线取) / 输出端口 (发到总线) —— 与工程 JSON 的连线一一对应
-PORTS_IN = ['in2']
+PORTS_IN = ['in1', 'in2']
 PORTS_OUT = ['out1', 'out2']
 PORT_LABELS = {}
 
