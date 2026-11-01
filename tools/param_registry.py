@@ -204,6 +204,34 @@ def _spec_of(pid, extra=None):
 
 
 # ── 扫描: 五类数字 ────────────────────────────────────────────────────────
+# 🆕 2026-11-01 老倪「运动学/动力学约束要可配置」: config/calib/zmax_calib.json:dyn_limits
+#   这些数字是 plan 发布路径的直接闸值 (v/a/jerk/通道半径), 必须在参数中心能改、有单位、有范围。
+_DYN_SPEC = {
+    "v_cap_mm_s": {"cn": "速度上限 v_cap", "unit": "mm/s", "min": 1.0, "max": 2000.0,
+                   "impact": "该技能的发布速度上限; 改大→更快但超出通道/节拍预算"},
+    "a_max_mm_s2": {"cn": "加速度上限 a_max", "unit": "mm/s²", "min": 50.0, "max": 20000.0,
+                    "impact": "起停段加速度上限 (=F/m); 改大→起停更猛, 冲击变大"},
+    "jerk_max_mm_s3": {"cn": "加加速度上限 jerk", "unit": "mm/s³", "min": 100.0, "max": 100000.0,
+                       "impact": "起停段 jerk 上限 (实测 P99×4); 改小→更顺但更慢"},
+    "r_mm": {"cn": "约束通道半径 r", "unit": "mm", "min": 1.0, "max": 200.0,
+             "impact": "几何通道半径 (实际轨迹扫掠外廓); 改小→约束更严"},
+    "profile_mode": {"cn": "剖面口径", "unit": "-", "choices": [0, 1, 2], "default": 1,
+                     "impact": "0=linear 全线性 / 1=stopgo 只在起停段做 jerk 受限 (折中) / 2=scurve 每段启停"},
+    "jerk_stopgo_only": {"cn": "jerk 只限起停段", "unit": "-", "choices": [0, 1], "default": 1,
+                         "impact": "1=段间连续段不限 jerk (保 UPH)"},
+    "v_zero_mm_s": {"cn": "视为静止的速度门限", "unit": "mm/s", "min": 0.0, "max": 50.0},
+    "static_gap_mm": {"cn": "起停判定位置缝隙", "unit": "mm", "min": 0.0, "max": 100.0},
+    "hold_v_cap_mm_s": {"cn": "保持段漂移速度上限", "unit": "mm/s", "min": 0.0, "max": 50.0},
+}
+
+
+def _dyn_extra(ref):
+    if not str(ref).startswith("dyn_limits."):
+        return None
+    tail = str(ref).rsplit(".", 1)[-1]
+    return _DYN_SPEC.get(tail)
+
+
 def scan_calib():
     out = []
     for path in (CALIB, MANIFOLD):
@@ -214,7 +242,8 @@ def scan_calib():
                 continue
             if isinstance(v, (dict, list)):
                 for ref, val in _walk(v, str(k)):
-                    out.append(_mk("calib:%s" % ref, ref, val, rel, "json:%s" % ref, "calib"))
+                    out.append(_mk("calib:%s" % ref, ref, val, rel, "json:%s" % ref, "calib",
+                                   extra=_dyn_extra(ref)))
             elif isinstance(v, (int, float, bool)) or v is None:
                 out.append(_mk("calib:%s" % k, k, v, rel, "json:%s" % k, "calib"))
     return out

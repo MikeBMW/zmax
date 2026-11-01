@@ -556,11 +556,122 @@ def reset():
 #   原来只在执行侧 dispatch→skill_phys 跑, AR 链只有「一圈一次」的段时长闸 (慢变化)。
 #   这里把每拍闸接进 plan 的发布路径: 发布前按本段 v_cap 限住 u 的增量 ⇒ 页面上真的被技能约束管住。
 _CLAMP = {"t": 0.0, "u": 0.0, "seq": None, "u_nom": 0.0, "clip": 0, "n": 0, "v_cap": 0.0,
-          "L": 0.0, "v_nom": 0.0, "lag": 0.0}
+          "L": 0.0, "v_nom": 0.0, "lag": 0.0, "src": "gate", "stopgo": False, "mode": 1}
 # 🧱 动力学二阶限幅 (a/jerk) 开关 + 状态: 关 ZMAX_PLAN_DYN=0 回到只限速的老口径
 _DYN_ON = os.environ.get("ZMAX_PLAN_DYN", "1") == "1"
 _DYN = {"v": 0.0, "aa": 0.0, "seq": None, "clip_a": 0, "clip_j": 0, "n": 0}
 _SK_CODE = {}
+
+
+# 🧱 2026-11-01 老倪「约束要来自真实世界 · 可测 · 可观察 · 工程配置参数」
+#   唯一真源 = config/calib/zmax_calib.json:dyn_limits (37 个可写数字, 参数中心可见可改),
+#   溯源 = config/calib/zmax_dyn_provenance.json (每条数字 = 哪个实测/物理量算来的)。
+#   改配置免重启 (按 mtime 热读)。
+_CALIB = os.path.join(_ROOT, "config", "calib", "zmax_calib.json")
+_DCFG = {"mtime": 0.0, "d": {}, "src": "未接"}
+_STOPGO = {}
+
+
+def _dyn_cfg():
+    """热读工程配置里的 dyn_limits 块 (改文件即生效)。"""
+    try:
+        if not os.path.isfile(_CALIB):
+            return {}
+        mt = os.path.getmtime(_CALIB)
+        if mt != _DCFG["mtime"]:
+            with open(_CALIB, encoding="utf-8") as fh:
+                d = (json.load(fh) or {}).get("dyn_limits") or {}
+            _DCFG.update(d=d, mtime=mt,
+                         src="calib:dyn_limits@%s" % time.strftime("%m-%d %H:%M", time.localtime(mt)))
+            _STOPGO.clear()
+        return _DCFG["d"] or {}
+    except Exception:                                              # noqa: BLE001
+        return {}
+
+
+def _dyn_lim(stage, g):
+    """本段 v/a/jerk 上限 (m/s / m/s² / m/s³) + 来源标记: 优先工程配置, 缺 ⇒ 闸后表。"""
+    st = ((_dyn_cfg().get("stages") or {}).get(str(stage or "")) or {})
+    if st.get("v_cap_mm_s"):
+        return (float(st["v_cap_mm_s"]) / 1000.0, float(st.get("a_max_mm_s2") or 0) / 1000.0,
+                float(st.get("jerk_max_mm_s3") or 0) / 1000.0, "calib")
+    return (float(g.get("v_cap") or 0) / 1000.0, float(g.get("a_cap") or 0) / 1000.0,
+            float(g.get("j_cap") or 0) / 1000.0, "gate")
+
+
+def _stopgo(i):
+    """本段是否「起停段」(端点有静止): 相邻段零位移(夹爪/检测)、位置不连续 > static_gap、首末段。
+    结果按段号缓存, 换配置时清空。"""
+    segs = _S.get("segs") or []
+    if i is None or not segs:
+        return False
+    i = int(i)
+    hit = _STOPGO.get(i)
+    if hit is not None:
+        return hit
+    pol = _dyn_cfg().get("policy") or {}
+    gap = float(pol.get("static_gap_mm") or 3.0)
+
+    def _L(k):
+        a = segs[k].get("a") or []
+        b = segs[k].get("b") or []
+        try:
+            return math.dist([float(x) for x in a], [float(x) for x in b])
+        except Exception:                                          # noqa: BLE001
+            return 0.0
+
+    def _jump(k1, k2, end1="b", key2="a"):
+        p = segs[k1].get(end1) or []
+        q = segs[k2].get(key2) or []
+        try:
+            return math.dist([float(x) for x in p], [float(x) for x in q]) > gap
+        except Exception:                                          # noqa: BLE001
+            return False
+
+    # stopgo_mode 0 = 折中 (只认**工件边界**: 首末段 / 位置不连续) —— 夹爪、AOI 驻留这类
+    #   静止邻段不算起停, 段间按连续运动走, 保住 UPH; 1 = 严 (任何静止邻段都算起停)
+    mode = int(pol.get("stopgo_mode") if pol.get("stopgo_mode") is not None else 0)
+    start = i == 0 or _jump(i - 1, i) or (mode == 1 and _L(i - 1) <= 1.0)
+    end = i >= len(segs) - 1 or _jump(i, i + 1) or (mode == 1 and _L(i + 1) <= 1.0)
+    _STOPGO[i] = bool(start or end)
+    return _STOPGO[i]
+
+
+_HOLD = {"i": None, "t0": 0.0, "s": 0.0, "n": 0}
+
+
+def _hold_seg(i, now):
+    """起停段 u 还没走到 0.995 ⇒ 压住不换段, 让 jerk 受限的加减速真的走完。
+
+    · 只对「起停段」且 profile_mode=1 生效; 连续段/静态段/关闸一律不 hold (零回归)
+    · 兜底: 单段最多 hold 3× 段时长, 防呆死
+    """
+    if i is None or not _DYN_ON:
+        return False
+    pol = _dyn_cfg().get("policy") or {}
+    try:
+        if int(pol.get("profile_mode") if pol.get("profile_mode") is not None else 1) != 1:
+            return False
+    except Exception:                                              # noqa: BLE001
+        return False
+    if _CLAMP.get("seq") is None or not _stopgo(i):
+        return False
+    if float(_CLAMP.get("u") or 0.0) >= 0.995:
+        return False
+    ct = _S.get("cum_eff") or _S.get("cum") or []
+    try:
+        te = float(ct[i] - (ct[i - 1] if i > 0 else 0.0)) or 0.3
+    except Exception:                                              # noqa: BLE001
+        te = 0.3
+    if _HOLD.get("i") != i:
+        _HOLD.update(i=i, t0=now)
+        _HOLD["n"] += 1
+    if now - float(_HOLD["t0"]) > 3.0 * te:
+        return False
+    _HOLD["s"] = round(float(_HOLD["s"]) + 0.1, 2)                  # 累计被压住的时间 (≈10Hz 一拍)
+    _S["hold_s"] = _HOLD["s"]
+    _S["hold_n"] = _HOLD["n"]
+    return True
 
 
 def _skill_code(stage):
@@ -578,18 +689,18 @@ def _skill_code(stage):
 
 
 def _skill_clamp(u, o1, a_pub=None):
-    """按当前段 gate 的 v_cap / a_cap / j_cap 逐拍限速限加加速度, 返回允许发布的 u。
+    """按本段 v/a/jerk 上限逐拍收口发布进度 u (单调向前, 换段/超时重锚)。
 
-    · v_cap: 单拍位移 ≤ v_cap·dt (老口径, 保留)
-    · a_cap / j_cap: 2026-11-01 老倪「动力学约束有效么」—— 之前这两个只在 plan_gate_corridor
-      里定**段时长**, 发布信号本身是线性/S 曲线插值 ⇒ 段首 0→v_cap 一步到位, 实测 a 峰 6.4×、
-      jerk 峰 4~5× 上限。这里改成对**发布信号**本身做二阶限幅 (v→a→jerk)，关闸 ZMAX_PLAN_DYN=0。
-    单调向前, 换段/超时重锚。
+    上限来源 (2026-11-01 老倪「约束要来自真实世界 · 可测 · 可观察 · 工程配置参数」):
+      · 唯一真源 `config/calib/zmax_calib.json:dyn_limits` (tools/ss_dyn_calibrate.py 从
+        通道 v_cap / 物理 F=m·a / 实测 jerk P99 生成, 参数中心 37 个可写数字)
+      · 缺配 ⇒ 回退闸后表 `gate.v_cap/a_cap/j_cap`
+    剖面 profile_mode: 1=stopgo (默认, 折中) — 只在**起停段**做 a/jerk 受限加减速并让末端收敛到 0,
+    段间连续段保持恒速 (v 仍受限), 不牺牲 UPH; 2=scurve/0=linear 不下发二阶限幅。
     """
     g = _gate_info(_S.get("i")) or {}
-    v_cap = float(g.get("v_cap") or 0.0) / 1000.0            # mm/s → m/s
-    a_cap = float(g.get("a_cap") or 0.0) / 1000.0            # mm/s² → m/s²
-    j_cap = float(g.get("j_cap") or 0.0) / 1000.0            # mm/s³ → m/s³
+    stage = _skill_stage(o1.get("kind"), o1.get("label"))
+    v_cap, a_cap, j_cap, lsrc = _dyn_lim(stage, g)             # m/s, m/s², m/s³
     a = a_pub if isinstance(a_pub, (list, tuple)) and len(a_pub) == 3 else (o1.get("a") or [])
     b = o1.get("b") or []
     if v_cap <= 0.0 or len(a) != 3 or len(b) != 3:
@@ -601,37 +712,71 @@ def _skill_clamp(u, o1, a_pub=None):
     if L <= 1e-6:
         return u
     now = time.time()
-    seq = o1.get("seq")
+    # ⚠️ o1["seq"] 是**发布计数器**(每写一次 +1), 不能当段身份 —— 用它当 key 会导致每拍都"换段重锚",
+    #    限幅整体失效 (实测 v 冲到上限 1.8×)。段身份 = 技能 + 端点坐标。
+    seq = (str(stage or ""),) + tuple(round(float(x), 2) for x in (list(a) + list(b)))
     dt = now - float(_CLAMP["t"] or now)
     _CLAMP["n"] += 1
-    _CLAMP["v_cap"], _CLAMP["L"] = v_cap * 1000.0, L
+    _CLAMP["v_cap"], _CLAMP["L"], _CLAMP["src"] = v_cap * 1000.0, L, lsrc
     if 0.0 < dt < 0.01:
         # 同一拍内重复调用 (发布路径+预览路径挨着来): 不重锚, 也**不能原样放行** ——
         # 放行会让这一笔绕开限速 (实测一次就冲出去 3.4 倍上限)。冻结在上次发布的 u。
         return float(_CLAMP["u"])
     if seq != _CLAMP["seq"] or dt <= 0.0 or dt > 0.5:
         _CLAMP.update({"t": now, "u": u, "seq": seq})
-        _DYN.update(seq=seq, v=0.0, aa=0.0)
-        return u
+        # 段切换时速度/加速度要**接着来**: 连续段 (转移→接近) 物理上不停, 归零会造出 0→v 假加速,
+        # 实测 jerk 因此冲到上限 5.9×; 只有起停段才是真静止 (v=a=0)。
+        _sg = _stopgo(_S.get("i"))
+        keep_v = 0.0 if _sg else min(float(_DYN.get("v") or 0.0), v_cap)
+        keep_a = 0.0 if _sg else float(_DYN.get("aa") or 0.0)
+        _DYN.update(seq=seq, v=keep_v, aa=keep_a)
+        # ⚠️ 新段第一拍**也要限**: 原来直接放行 u, 一拍就能跳 87mm ⇒ 分析器把这一跳当速度,
+        #   下一拍反算出的 a/jerk 直接冲到上限 7×。这里从 0 起算, 按 v·dt 放行。
+        _CLAMP["u"] = 0.0
+        _CLAMP["t"] = now
+    pol = (_dyn_cfg().get("policy") or {})
+    mode = int(pol.get("profile_mode") if pol.get("profile_mode") is not None else 1)
+    stopgo = _stopgo(_S.get("i"))
+    jerk_on = _DYN_ON and L > 1.0 and (mode == 2 or (mode == 1 and stopgo))
+    # 限幅器按 j_eff = j_cap·safety 工作: 离散拍上 a 的交接会有 ~1.5× 实测超调 (dt 抖动),
+    # 留安全系数才能保证**实测** jerk 不越配置上限 (代价: 爬坡略慢, 由 config 的 jerk_safety 定)。
+    if jerk_on and j_cap > 0.0:
+        j_cap = j_cap * float(pol.get("jerk_safety") if pol.get("jerk_safety") is not None else 0.7)
+    _CLAMP["stopgo"], _CLAMP["mode"] = bool(stopgo), mode
     # ① 速度: 名义速度 (m/s)
     v_nom = (u - float(_CLAMP["u"])) * L / 1000.0 / max(dt, 1e-6)
     v_new = min(v_nom, v_cap)
     _CLAMP["v_nom"] = round(v_nom, 4)
-    if _DYN_ON and L > 1.0:
+    if jerk_on:
         v_prev, a_prev = (float(_DYN["v"]), float(_DYN["aa"])) if _DYN["seq"] == seq else (0.0, 0.0)
-        # ② 加速度: |Δv| ≤ a_cap·dt (起步从 0 爬, 不许一步到巡航)
+        # ④ 起停段末端: 按「a、jerk 都有限」的**制动距离**提前收油, 让末端正好 v→0。
+        #    只用 sqrt(2a·rem) 会刹不住 (a/jerk 受限) ⇒ u 撞到 1.0 被截断 ⇒ 实测 a 阶跃、jerk 冲 6~13×。
+        if stopgo and a_cap > 0.0:
+            rem_m = max(0.0, (1.0 - float(_CLAMP["u"])) * L) / 1000.0
+            k1 = 1.0 / (2.0 * a_cap)
+            k2 = (a_cap / (2.0 * j_cap)) if j_cap > 0.0 else 0.0
+            v_brake = (-k2 + math.sqrt(k2 * k2 + 4.0 * k1 * rem_m)) / (2.0 * k1)
+            v_new = min(v_new, max(0.0, v_brake))
+        # ② 加速度: |Δv| ≤ a_cap·dt —— 加速和**减速**两个方向都限, 否则末端收敛会造出超额减速
+        v_lo, v_hi = 0.0, v_cap
         if a_cap > 0.0:
-            v_new = max(v_prev - a_cap * dt, min(v_prev + a_cap * dt, v_new))
-        a_new = (v_new - v_prev) / max(dt, 1e-6)
+            v_lo, v_hi = max(0.0, v_prev - a_cap * dt), min(v_cap, v_prev + a_cap * dt)
+        v_new = min(max(v_new, v_lo), v_hi)
         # ③ 加加速度: |Δa| ≤ j_cap·dt ⇒ 加速度本身也要爬, 再回代速度
+        a_raw = (v_new - v_prev) / max(dt, 1e-6)
+        a_new = a_raw
         if j_cap > 0.0:
-            a_new = max(a_prev - j_cap * dt, min(a_prev + j_cap * dt, a_new))
-            v_new = v_prev + a_new * dt
-            _DYN["clip_j"] += int(abs(a_new) < abs((v_new - v_prev) / max(dt, 1e-6)) - 1e-9)
+            a_new = max(a_prev - j_cap * dt, min(a_prev + j_cap * dt, a_raw))
+            if abs(a_new - a_raw) > 1e-9:
+                _DYN["clip_j"] += 1
+            v_new = min(max(v_prev + a_new * dt, v_lo), v_hi)
+            a_new = (v_new - v_prev) / max(dt, 1e-6)
         if a_cap > 0.0 and abs(a_new) > a_cap + 1e-9:
             _DYN["clip_a"] += 1
         v_new = max(0.0, min(v_cap, v_new))
         _DYN.update(seq=seq, v=v_new, aa=a_new, n=_DYN.get("n", 0) + 1)
+    else:
+        _DYN.update(seq=seq, v=v_new, aa=0.0)
     u_max = float(_CLAMP["u"]) + (v_new * dt * 1000.0) / L
     if u > u_max + 1e-9:
         _CLAMP["clip"] += 1
@@ -732,7 +877,11 @@ def _pub_ar(o1, u_ratio, seg_t, el, a_eff=None, sm=False, mem=None):
                     "dyn": {"on": _DYN_ON, "v": round(float(_DYN["v"]), 4),
                             "a": round(float(_DYN["aa"]), 3), "v_nom": _CLAMP.get("v_nom"),
                             "a_cap": _g.get("a_cap"), "j_cap": _g.get("j_cap"),
-                            "clip_a": int(_DYN["clip_a"]), "clip_j": int(_DYN["clip_j"])}}
+                            "clip_a": int(_DYN["clip_a"]), "clip_j": int(_DYN["clip_j"]),
+                            "profile": int(_CLAMP.get("mode", 1)),          # 1=stopgo 折中
+                            "stopgo": bool(_CLAMP.get("stopgo")),           # 本段是起停段?
+                            "cfg": _CLAMP.get("src", "gate"),                # 上限来自 工程配置/闸后表
+                            "cfg_src": _DCFG.get("src")}}
             except Exception:                                      # noqa: BLE001
                 pass
         os.makedirs(os.path.dirname(_AR_CMD), exist_ok=True)
@@ -803,6 +952,8 @@ def run(ctx=None):
     # 🧠 L3 流程工艺记忆: 整圈时间归一 (scale) ⇒ 件节拍 = tact 目标 (300UPH ≤12.0s)
     el = (now - _S["t0"]) * _SPEED * scale
     while _S["i"] < len(segs) and el >= cum_t[_S["i"]]:
+        if _hold_seg(_S["i"], now):
+            break                                   # 起停段还在爬/刹 → 先不换段 (折中方案的代价)
         _S["i"] += 1
     if _S["i"] >= len(segs):                       # 一轮走完 → 循环(流水线不停)
         # ── 🧠 L3 流程工艺记忆: 这一圈的真实墙钟节拍入库 (下一圈按它校正) ──
