@@ -3400,6 +3400,9 @@ def node_exec(ctx):
     from .exec_dispatch_impl import run as _run
     return _run(ctx)
 
+_HIL_CACHE = {"t": -1e9}      # 🙋 HIL 节点最近一次真正上报的时刻 (节拍闸, 见函数内注释)
+
+
 def node_hil(ctx):
     """🙋 HIL 人机在环 · 状态↔指示 — 状态空间状态发 ECS web, 并取回人的指示 (2026-09-26)
 
@@ -3416,13 +3419,23 @@ def node_hil(ctx):
         for _x in (_SS_DIR, os.path.abspath(os.path.join(_SS_DIR, "..", "..", "..", ".."))):
             if _x not in _s.path:
                 _s.path.insert(0, _x)
+        # 🚦 2026-11-01: 本节点原每拍都往 datadrive.world 打 HTTPS (timeout=15s) + 拉一次指示 (12s),
+        #   实测 py-spy 十次采样有九次卡在 urlopen 的 connect 里 ⇒ 整圈被它吃掉, 链产物 >3s 就被
+        #   AR 接口判过期 (AR_CMD_FRESH_S=3.0), 页面回落老推进器。改成**按节拍上报**: 常驻循环里
+        #   最少间隔 ZMAX_HIL_EVERY_S (默认 15s) 才真发一次, 单次超时压到 1.5s; GUI 手动档不受限。
+        _now = time.time()
+        _in_loop = bool(os.environ.get("ZMAX_CANVAS_HZ"))
+        _every = float(os.environ.get("ZMAX_HIL_EVERY_S") or (15.0 if _in_loop else 0.0))
+        if _now - _HIL_CACHE["t"] < _every:
+            return True
+        _HIL_CACHE["t"] = _now
         from lerobot.policies.left_right.state_space.hil_bridge import build_snapshot, poll_instructions
         snap = build_snapshot()
         req = _u.Request("https://datadrive.world/api/relay/hil/state", data=_j.dumps(snap).encode(),
                          headers={"Content-Type": "application/json"}, method="POST")
-        with _u.urlopen(req, timeout=15) as r:
+        with _u.urlopen(req, timeout=float(os.environ.get("ZMAX_HIL_TIMEOUT_S") or 1.5)) as r:
             pub = _j.loads(r.read().decode() or "{}")
-        inst = poll_instructions()
+        inst = {} if _in_loop else poll_instructions()      # 指示轮询由 8795 HIL API 常驻负责
         if log:
             s2 = snap["snapshot"]
             log("🙋 HIL 人机在环: 状态已上报(ok=%s) · 阶段=%s 帧龄=%ss · 事件头 %s"
