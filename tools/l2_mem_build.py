@@ -219,6 +219,65 @@ def collect_ledger():
     return kinds, _rel(p), _sha(p)
 
 
+# ─────────────────────────────────────────── 6. 理想轨迹库 (可调用)
+def collect_trajs(champs, skills):
+    """理想轨迹 = 三段来源, 统一成 {id, kind, skill, frames, dt, path/u, executable, src, sha}:
+
+      sim_champ   仿真固化标杆的整段 u/x 序列 (可预览/可做前馈参考, 不是真机坐标 → executable=False)
+      taught      现场示教技能的「点位序列」(真机 tcp pos+quat, executable=True)
+      spline      示教 4 点做五次插值的稠密路径 (config/aoi/side_path.json, 75 点, executable=True)
+      demo_file   手把手录制文件 (索引不复制: 路径+行数+sha, executable=True 按文件回放)
+    """
+    trajs = {}
+    # (a) 仿真标杆
+    for k, b in champs.items():
+        seed, stage = (k.split("|") + ["", ""])[:2]
+        trajs["SIM:%s|%s" % (seed, stage)] = {
+            "id": "SIM:%s|%s" % (seed, stage), "kind": "sim_champ", "skill": "", "stage": stage,
+            "frames": len(b.get("champ_u") or []), "dt": 0.05,
+            "path": (b.get("champ_x") or [])[:400], "u": (b.get("champ_u") or [])[:400],
+            "executable": False, "exec_note": "仿真归一化序列, 给人看/给前馈参考; 真机走示教或稠密路径",
+            "n_ok": b.get("n_ok"), "src": "data/muscle_memory.json", "at": _now(),
+        }
+    # (b) 示教技能的点位序列
+    for sid, s in skills.items():
+        pts = s.get("points") or []
+        if not pts:
+            continue
+        trajs["REAL:%s" % sid] = {
+            "id": "REAL:%s" % sid, "kind": "taught", "skill": sid, "stage": "",
+            "frames": len(pts), "dt": None,
+            "path": [{"name": p.get("name"), "pos": p.get("pos"), "quat": p.get("quat")} for p in pts],
+            "u": [], "executable": True, "exec_note": "点位序列: move_line 逐点下发 (真机示教真值)",
+            "src": s.get("src"), "sha": s.get("sha"), "at": _now(),
+        }
+    # (c) AOI 侧面稠密路径
+    p = os.path.join(ROOT, "config/aoi/side_path.json")
+    d = _j(p, {}) or {}
+    if d.get("trajectory"):
+        trajs["REAL:SCN-07-AOI|side_path"] = {
+            "id": "REAL:SCN-07-AOI|side_path", "kind": "spline", "skill": "L2.MUSCLE.AOI_SIDE_SCAN",
+            "stage": "", "frames": len(d["trajectory"]), "dt": 0.05,
+            "path": d["trajectory"], "u": [], "executable": True,
+            "exec_note": "五次插值稠密点 (%s), 逐帧 move_line" % (d.get("interp") or ""),
+            "src": _rel(p), "sha": _sha(p), "at": _now(),
+        }
+    # (d) 手把手录制文件 (索引, 不复制)
+    for f in ("zmax_data/demo_pose_193713.txt", "zmax_data/demo_grip_193713.txt"):
+        fp = os.path.join(ROOT, f)
+        if not os.path.exists(fp):
+            continue
+        n = sum(1 for _ in open(fp, "rb"))
+        trajs["REAL:DEMO:%s" % os.path.basename(f).replace(".txt", "")] = {
+            "id": "REAL:DEMO:%s" % os.path.basename(f).replace(".txt", ""), "kind": "demo_file",
+            "skill": "L2.MUSCLE.DEMO_RELEARN", "stage": "", "frames": n, "dt": None,
+            "path": [], "u": [], "executable": True,
+            "exec_note": "录制文件索引 (%d 行, 按文件回放, 不复制进库)" % n,
+            "src": _rel(fp), "sha": _sha(fp), "at": _now(),
+        }
+    return trajs
+
+
 # ─────────────────────────────────────────── main
 def main():
     ap = argparse.ArgumentParser()
@@ -233,11 +292,14 @@ def main():
     champs, champ_src = collect_champs()
     ledger, ledger_src, ledger_sha = collect_ledger()
     n_cd = collect_cards(cards, seqs, ledger)
+    trajs = collect_trajs(champs, skills)
 
     print("技能 %d 条 (原子 %d + 组合 %d + 示教 %d)" % (len(skills), n_at, n_cp, n_mu))
     print("点位 %d 个 (示教库 %d)" % (len(points), n_pt))
     print("工艺卡 %d 张 · 编排序列 %d 份" % (len(cards), len(seqs)))
     print("标杆 %d 桶 (并集: %s)" % (len(champs), ", ".join("%s=%d" % (x["file"], x["buckets"]) for x in champ_src)))
+    n_exec = sum(1 for v in trajs.values() if v.get("executable"))
+    print("理想轨迹 %d 条 (真机可下发 %d · 仿真标杆 %d)" % (len(trajs), n_exec, len(trajs) - n_exec))
     print("台账 %d 类 · 最差 ratio %.2f" % (len(ledger),
                                         max([v["ratio"] for v in ledger.values() if v["ratio"]] or [0])))
     if a.dry:
@@ -258,6 +320,7 @@ def main():
     S.put_seqs(seqs, writer="ss_mem_l2", mode="replace")
     S.put_champs(champs, writer="ss_mem_l2")
     S.put_ledger(ledger, writer="ss_mem_l2", src=ledger_src)
+    S.put_trajs(trajs, writer="ss_mem_l2")
     idx = S.index()
     print("落库 → %s  计数 %s" % (_rel(S.STORE), idx.get("counts")))
     print("指纹 %s" % json.dumps({k: v["sha"] for k, v in idx["banks"].items()}, ensure_ascii=False))

@@ -118,6 +118,15 @@ def main():
     same = len({frozenset(v) for v in sets.values()}) == 1
     chk("标杆三份收敛", same, " ".join("%s=%d" % (k, len(v)) for k, v in sets.items()))
 
+    # ⑥b 理想轨迹库 (可调用)
+    tr = S.trajs()
+    n_ex = sum(1 for v in tr.values() if v.get("executable"))
+    t1 = S.traj("REAL:L2.MUSCLE.OPEG_CYCLE.v1") or {}
+    t2 = S.traj("REAL:SCN-07-AOI|side_path") or {}
+    chk("理想轨迹库", len(tr) >= 30 and n_ex >= 5 and t1.get("path") and (t2.get("frames") or 0) > 50,
+        "%d 条 · 真机可下发 %d · 示教 %s%d帧 · AOI稠密 %d点"
+        % (len(tr), n_ex, t1.get("id"), t1.get("frames") or 0, t2.get("frames") or 0))
+
     # ⑦ 节点真读
     ns = importlib.import_module("lerobot.middleware.nodes.n_skills")
     nm = importlib.import_module("lerobot.middleware.nodes.n_muscle")
@@ -126,7 +135,8 @@ def main():
     chk("n_l2_muscle 真读", ns.PURE and o1.get("技能库") == st["skills"], "PURE=%s 技能库=%s" % (ns.PURE, o1.get("技能库")))
     ops = (o2.get("ops") or {})
     chk("ss_mem_l2 真读", nm.PURE and ops.get("cards") == st["cards"] and ops.get("champs") == st["champs"],
-        "PURE=%s cards=%s points=%s champs=%s" % (nm.PURE, ops.get("cards"), ops.get("points"), ops.get("champs")))
+        "PURE=%s cards=%s points=%s champs=%s trajs=%s"
+        % (nm.PURE, ops.get("cards"), ops.get("points"), ops.get("champs"), ops.get("trajs")))
     iface = (ns.compute({"in1": {"value": {"skill": "L2.lift"}}}) or {}).get("out1", {}).get("iface") or {}
     chk("节点按 id 查询", iface.get("id") == "L2.lift" and iface.get("ros"), "L2.lift ros=%s 参数=%d"
         % (iface.get("ros"), len(iface.get("params") or [])))

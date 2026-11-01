@@ -38,6 +38,7 @@ BANKS = {
     "seq": os.path.join(STORE, "ops_seq.json"),
     "champs": os.path.join(STORE, "champs.json"),
     "ledger": os.path.join(STORE, "ledger.json"),
+    "traj": os.path.join(STORE, "traj.json"),
     "index": os.path.join(STORE, "index.json"),
 }
 WRITERS = ("n_l2_muscle", "ss_mem_l2")     # 只有这两个记忆节点能落库
@@ -86,7 +87,7 @@ def _reindex(writer):
     """index.json = 库的目录 + 指纹 + 计数 (其它节点/大屏只看这一份)。"""
     idx = {"version": 1, "built_at": time.strftime("%Y-%m-%d %H:%M:%S"),
            "root": STORE, "banks": {}, "counts": {}, "writer": writer}
-    for name in ("skills", "points", "cards", "seq", "champs", "ledger"):
+    for name in ("skills", "points", "cards", "seq", "champs", "ledger", "traj"):
         p = BANKS[name]
         if not os.path.exists(p):
             continue
@@ -116,6 +117,8 @@ def _count(name):
         return len(d.get("buckets") or {})
     if name == "ledger":
         return len((d.get("kinds") or {}))
+    if name == "traj":
+        return len(d.get("trajs") or {})
     return 0
 
 
@@ -200,6 +203,24 @@ def champ(seed, stage):
     return (cu or None), (cx or None)
 
 
+def trajs(kind=None, skill=None):
+    """理想轨迹库: 每条的帧数/来源/是否可直接下发。"""
+    d = _read("traj").get("trajs") or {}
+    out = {}
+    for k, v in d.items():
+        if kind and str(v.get("kind")) != str(kind):
+            continue
+        if skill and str(v.get("skill")) != str(skill):
+            continue
+        out[k] = v
+    return out
+
+
+def traj(tid):
+    """按 id 取一条理想轨迹 (frames/path/u/executable/src)。"""
+    return trajs().get(tid)
+
+
 def measured(kind):
     """实测台账: {n, mean_t, plan_t, ratio} —— 计划值来自段表, 实测来自真跑。"""
     k = (_read("ledger").get("kinds") or {}).get(str(kind)) or {}
@@ -222,7 +243,7 @@ def stats():
             worst = (k, r)
     return {"skills": c.get("skills", 0), "skill_kinds": kinds,
             "cards": c.get("cards", 0), "points": c.get("points", 0),
-            "seqs": c.get("seq", 0), "champs": c.get("champs", 0),
+            "seqs": c.get("seq", 0), "champs": c.get("champs", 0), "trajs": c.get("traj", 0),
             "ledger_kinds": c.get("ledger", 0),
             "worst_ratio": worst, "built_at": idx.get("built_at"),
             "sha": {k: v.get("sha") for k, v in (idx.get("banks") or {}).items()}}
@@ -254,6 +275,10 @@ def query(q):
             return champ(*v) if isinstance(v, (list, tuple)) and len(v) == 2 else None
         if k == "champs":
             return champs()
+        if k == "traj":
+            return traj(v)
+        if k == "trajs":
+            return trajs(**(v or {})) if isinstance(v, dict) else trajs()
         if k == "measured":
             return measured(v)
         if k == "seq":
@@ -315,6 +340,12 @@ def put_seqs(entries, writer, mode="merge"):
 def put_champs(buckets, writer):
     d = {"version": 1, "buckets": buckets}
     _write("champs", d, writer)
+
+
+def put_trajs(entries, writer, mode="replace"):
+    d = {"version": 1, "trajs": entries if mode == "replace" else
+         dict((_read("traj").get("trajs") or {}), **entries)}
+    _write("traj", d, writer)
 
 
 def put_ledger(kinds, writer, src=""):

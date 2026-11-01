@@ -126,12 +126,48 @@ def _load_skill(spec):
             "steps": s.get("steps") or [], "verify": s.get("verify") or {}}
 
 
+def _run_traj(a):
+    """理想轨迹回放: 从 L2 记忆库按 id 取, 校验帧数/来源, 可下发就逐点下发 (dry 只打印)。"""
+    sys.path.insert(0, os.path.join(REPO, "src"))
+    from lerobot.memory import l2_store as _S
+    t = _S.traj(a.traj)
+    if not t:
+        print("❌ 轨迹不存在: %s (库里 %d 条, 用 --list-traj 看)" % (a.traj, len(_S.trajs())))
+        return 2
+    print("🧠 理想轨迹 %s | %s | 帧 %d | 可下发=%s | 源 %s"
+          % (t["id"], t["kind"], t.get("frames") or 0, "是" if t.get("executable") else "否(参考)", t.get("src")))
+    print("   语义: %s" % (t.get("exec_note") or ""))
+    path = t.get("path") or []
+    if not t.get("executable"):
+        print("   前 5 帧 (归一化): %s" % json.dumps((t.get("u") or path)[:5], ensure_ascii=False)[:300])
+        return 0
+    if not path:
+        print("   ⚠️ 该轨迹是文件索引 (%d 行), 按文件回放: %s" % (t.get("frames") or 0, t.get("src")))
+        return 0
+    for i, pt in enumerate(path[:3], 1):
+        pos = pt.get("pos") or (pt.get("position") if isinstance(pt, dict) else pt)
+        quat = pt.get("quat") or (pt.get("quaternion") if isinstance(pt, dict) else None)
+        q = ("[%.6f, %.6f, %.6f, %.6f]" % tuple(quat)) if quat else "[0,0,0,1]"
+        print("   %d) %-10s pos=[%.4f, %.4f, %.4f] quat=%s" % (i, str(pt.get("name") or "")[:10],
+                                                              pos[0], pos[1], pos[2], q))
+        if a.dry_run:
+            _cmd = ('{speed: %d, pose: {position: {x: %.6f, y: %.6f, z: %.6f}, '
+                    'orientation: {x: %.6f, y: %.6f, z: %.6f, w: %.6f}}}') % (
+                        30, pos[0], pos[1], pos[2], *(quat or [0, 0, 0, 1]))
+            print('      timeout 90 ros2 service call /move_line interfaces/srv/TargetPose "%s"' % _cmd)
+    print("   … 共 %d 帧 (只回放前 3 帧作核对, 全量请用技能调用)" % len(path))
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--skill", default="data/skills/l2_muscle/光模块_抓放循环_v1.json")
+    ap.add_argument("--traj", default="", help="按 id 回放 L2 记忆库里的理想轨迹 (例: REAL:L2.MUSCLE.OPEG_CYCLE.v1)")
     ap.add_argument("--cycles", type=int, default=1)
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
+    if a.traj:
+        return _run_traj(a)
     skill = _load_skill(a.skill)
     logp = os.path.expanduser("~/zmax/zmax_data/l2_muscle_run_%s.jsonl" % time.strftime("%Y%m%d_%H%M%S"))
     logf = open(logp, "w", encoding="utf-8")

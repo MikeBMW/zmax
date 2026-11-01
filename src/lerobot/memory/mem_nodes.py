@@ -111,7 +111,8 @@ def node_ss_mem_l2(ctx):
                     "src": "l2_store (ops_cards/ops_points/champs/ledger) + ar_muscle.json 实测"}
             if _ST:
                 _out.update({"ops": {"cards": _ST.get("cards"), "points": _ST.get("points"),
-                                     "champs": _ST.get("champs"), "ledger": _ST.get("ledger_kinds")},
+                                     "champs": _ST.get("champs"), "ledger": _ST.get("ledger_kinds"),
+                                     "trajs": _ST.get("trajs")},
                              "worst_ratio": _ST.get("worst_ratio"), "built_at": _ST.get("built_at"),
                              "sha": (_ST.get("sha") or {}).get("cards")})
             if _extra:
