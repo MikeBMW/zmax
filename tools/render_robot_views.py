@@ -111,7 +111,7 @@ def world_tris(T, meshes):
 
 
 # ── 光栅化 ──────────────────────────────────────────────────────────────
-def render(tris, view_rot, size=(1400, 1700), ss=2, bg=1.0, elevate=0.0):
+def render(tris, view_rot, size=(1400, 1700), ss=2, bg=1.0, elevate=0.0, colors=None):
     """正交投影 + z-buffer。view_rot: 3x3, 把世界坐标转到相机坐标 (相机看 +Z 往里)。"""
     W, H = size[0] * ss, size[1] * ss
     R = view_rot
@@ -141,14 +141,10 @@ def render(tris, view_rot, size=(1400, 1700), ss=2, bg=1.0, elevate=0.0):
     nl[nl == 0] = 1
     n = n / nl[:, None]
     shade = 0.30 + 0.70 * np.abs(n @ L)
-    base = np.array([0.72, 0.74, 0.78])          # 工业浅灰
-    accent = np.array([0.16, 0.18, 0.22])        # 深色关节
-    cols = (base[None, :] * shade[:, None])
-    # 前三个 link 用深色, 关节感
-    dark = np.zeros(len(tri), bool)
-    n_base = len(tri)
-    dark[:] = False
-    cols[dark] = cols[dark] * 0.55 + accent * 0.45
+    if colors is None:
+        base = np.array([0.72, 0.74, 0.78])      # 工业浅灰
+        colors = np.tile(base, (len(tri), 1))
+    cols = colors * shade[:, None]
 
     px = to_px(xy.reshape(-1, 2)).reshape(-1, 3, 2)
     for i in range(len(tri)):
@@ -194,7 +190,8 @@ def rot_cam(azimuth_deg, elev_deg):
     Rz = np.array([[math.cos(a), math.sin(a), 0], [-math.sin(a), math.cos(a), 0], [0, 0, 1]])
     Rx = np.array([[1, 0, 0], [0, math.cos(e), math.sin(e)], [0, -math.sin(e), math.cos(e)]])
     # 交换: 让相机 z 对应世界水平方向, 用于 z-buffer 深度
-    S = np.array([[0, 1, 0], [0, 0, 1], [1, 0, 0]], float)
+    # 相机 x→世界 y, 相机 y→世界 −z (保证 +Z 在图像上方, 否则整张图上下颠倒)
+    S = np.array([[0, 1, 0], [0, 0, -1], [1, 0, 0]], float)
     return Rx @ S @ Rz
 
 
