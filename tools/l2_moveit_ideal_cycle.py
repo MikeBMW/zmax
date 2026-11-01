@@ -41,7 +41,7 @@ def fetch():
 
 def ideal_t(d, kind, v_fast=1000.0, a_fast=2000.0, v_slow=300.0, a_slow=1000.0):
     """理想剖面时间: 长段梯形 / 短段三角。down·insert 走慢档。"""
-    slow = kind in ('down', 'insert')
+    slow = kind in ('down', 'insert', 'pull')   # 拔模块不能 1000mm/s, 与 AR 页面同口径
     v = v_slow if slow else v_fast
     a = a_slow if slow else a_fast
     if d <= 1e-9:

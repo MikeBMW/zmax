@@ -3407,7 +3407,110 @@ function arCmdPoll(){
 }
 setInterval(arCmdPoll, 100); arCmdPoll();      // 10Hz: 一段≈0.4s, 每段能拿到 ~4 次更新
 
+
+// ⚡ 2026-11-01 固定轨迹「理想档」回放 (老倪: 按 fixed_cycle.json 回放到 AR, 看清 112 段时序对不对)
+//   几何: /api/sim_insert 的段表 a/b (sim_base·mm, 与 config/points/cell_points.json 同源)
+//   时序: 页面本地按理想剖面重算 —— 长段 t=d/v+v/a (梯形), 短段 t=2√(d/a) (三角);
+//         抬升/横移 v=1000 mm/s a=4000 mm/s²; 下落/插入 v=300 a=2000;
+//         零位移段 (检测/停驻 a==b) 原样保留段表 t —— 不是运动时间, 不压。
+//   只驱动渲染用的虚拟臂 (PREV.q/M), 不下发、不碰真机; 人点了按钮才跑。
+var ARIDEAL={on:false, plan:[], cum:[], total:0, t0:0, seg:-1, frames:0, uph:0, tact:0, cycle:0};
+function _idT(d,k){
+  var slow=(k==='down'||k==='insert'||k==='pull');
+  var v=slow?300:1000, a=slow?2000:4000;
+  if(!(d>0)) return null;
+  return (d>v*v/a)? (d/v+v/a) : (2*Math.sqrt(d/a));
+}
+function arIdealUi(){
+  if(document.getElementById('idealBtn')) return;
+  var b=document.createElement('div');
+  b.id='idealBtn';
+  b.style.cssText='position:fixed;left:10px;top:10px;z-index:70;background:rgba(13,17,23,.94);border:1px solid #d29922;'
+   +'border-radius:9px;padding:7px 11px;font:12px/1.5 ui-monospace,monospace;color:#f0c674;cursor:pointer;'
+   +'box-shadow:0 6px 20px rgba(0,0,0,.5);user-select:none';
+  b.textContent='⚡ 理想档回放 (44.69s / 112段)';
+  b.onclick=function(){ ARIDEAL.on?arIdealStop():(ARIDEAL.plan.length?arIdealRun():arIdealLoad()); };
+  document.body.appendChild(b);
+  var h=document.createElement('div');
+  h.id='idealHud';
+  h.style.cssText='position:fixed;left:10px;top:44px;z-index:70;display:none;max-width:430px;background:rgba(13,17,23,.94);'
+   +'border:1px solid #30363d;border-radius:9px;padding:7px 10px;font:11px/1.55 ui-monospace,monospace;color:#c9d1d9';
+  document.body.appendChild(h);
+}
+function arIdealLoad(){
+  var b=document.getElementById('idealBtn'); if(b) b.textContent='⚡ 载入段表…';
+  fetch('/api/sim_insert').then(function(r){return r.json();}).then(function(D){
+    var P=D.plan||[], L=(D.loop||{}), ks=L.ks||[2,3];
+    var i0=-1,i1=-1;
+    for(var i=0;i<P.length;i++){ if(P[i].k===ks[0]&&i0<0) i0=i; if(P[i].k===ks[1]) i1=i; }
+    if(i0<0||i1<i0){ if(b) b.textContent='⚡ 取不到循环窗口'; return; }
+    var W=P.slice(i0,i1+1), segs=[], t=0;
+    for(var j=0;j<W.length;j++){
+      var s=W[j], a=s.a, bpt=s.b;
+      var dlen=(a&&bpt)?Math.sqrt(Math.pow(bpt[0]-a[0],2)+Math.pow(bpt[1]-a[1],2)+Math.pow(bpt[2]-a[2],2)):0;
+      var dt=_idT(dlen, s.kind); if(dt===null) dt=+s.t||0.2;
+      segs.push({a:a,b:bpt,t:dt,kind:s.kind,label:s.label});
+      t+=dt;
+    }
+    ARIDEAL.plan=segs; ARIDEAL.cycle=t; ARIDEAL.tact=t/4; ARIDEAL.uph=3600/ARIDEAL.tact;
+    var c=0, arr=[]; for(var k=0;k<segs.length;k++){ c+=segs[k].t; arr.push(c); }
+    ARIDEAL.cum=arr; ARIDEAL.total=c;
+    if(b) b.textContent='⚡ 理想档回放 ('+c.toFixed(2)+'s / '+segs.length+'段)';
+    arIdealRun();
+  }).catch(function(){ if(b) b.textContent='⚡ 段表拉取失败'; });
+}
+function arIdealRun(){
+  arIdealUi();
+  ARIDEAL.on=true; ARIDEAL.t0=performance.now(); ARIDEAL.seg=-1; ARIDEAL.frames=0;
+  var b=document.getElementById('idealBtn'); if(b){ b.textContent='⏹ 停止回放'; b.style.borderColor='#3fb950'; }
+  var h=document.getElementById('idealHud'); if(h) h.style.display='block';
+  requestAnimationFrame(arIdealFrame);
+}
+function arIdealStop(){
+  ARIDEAL.on=false;
+  var b=document.getElementById('idealBtn'); if(b){ b.textContent='⚡ 理想档回放 ('+ARIDEAL.total.toFixed(2)+'s / '+ARIDEAL.plan.length+'段)'; b.style.borderColor='#d29922'; }
+  var h=document.getElementById('idealHud'); if(h) h.textContent+='  · 已停';
+}
+function arIdealFrame(){
+  if(!ARIDEAL.on) return;
+  var el=(performance.now()-ARIDEAL.t0)/1000;
+  if(el>=ARIDEAL.total){ el=ARIDEAL.total; }
+  var i=0; while(i<ARIDEAL.cum.length-1 && el>ARIDEAL.cum[i]) i++;
+  var s=ARIDEAL.plan[i], t0=(i>0?ARIDEAL.cum[i-1]:0);
+  var u=Math.min(1, Math.max(0,(el-t0)/Math.max(1e-6,s.t)));
+  if(s.a && s.b){
+    var pos=[s.a[0]+(s.b[0]-s.a[0])*u, s.a[1]+(s.b[1]-s.a[1])*u, s.a[2]+(s.b[2]-s.a[2])*u];
+    var q0=(PREV.q&&PREV.q.length>=6)?PREV.q:((TCP&&TCP.ok&&TCP.joints)?TCP.joints.slice(0,6):[0,-0.35,0,-1.35,0,0.3]);
+    var r=ikTool1([pos[0]/1000,pos[1]/1000,pos[2]/1000], q0);
+    if(r&&r.q){
+      var out=r.q.slice(0,6), mx=0;
+      for(var j=0;j<6;j++) mx=Math.max(mx,Math.abs(out[j]-q0[j]));
+      var limj=3.0*Math.PI/180;
+      if(mx>limj){ var kk=limj/mx; for(var j2=0;j2<6;j2++) out[j2]=q0[j2]+(out[j2]-q0[j2])*kk; }
+      PREV.q=out; PREV.on=true; PREV.M=urdfFK(out);
+      ARIDEAL.q=out.slice(); ARIDEAL.ikErr=(r.err_mm!=null?r.err_mm:null);   // 供自检: 关节是否真在被驱动
+    }
+    ARIDEAL.seg=i; ARIDEAL.frames++;
+    var h=document.getElementById('idealHud');
+    if(h) h.innerHTML='段 '+String(i+1).padStart(3,' ')+'/'+ARIDEAL.plan.length
+      +' · '+s.kind+(s.label?(' · '+s.label):'')
+      +'<br>理想档 循环 '+ARIDEAL.cycle.toFixed(2)+' s / 4 件 → 节拍 '+ARIDEAL.tact.toFixed(3)
+      +' s/件 → '+ARIDEAL.uph.toFixed(0)+' UPH'
+      +'<br>进度 '+el.toFixed(2)+' / '+ARIDEAL.total.toFixed(2)+' s · 帧 '+ARIDEAL.frames
+      +'<br>终点 '+JSON.stringify(s.b);
+  }
+  if(el>=ARIDEAL.total){ ARIDEAL.on=false;
+    var b=document.getElementById('idealBtn'); if(b){ b.textContent='⚡ 重播 (完成 '+ARIDEAL.total.toFixed(2)+'s)'; b.style.borderColor='#3fb950'; }
+    return;
+  }
+  requestAnimationFrame(arIdealFrame);
+}
+arIdealUi();
+
 function plantAtAR(){
+  // ⚡ 理想档回放接管时, 实况 cmd 不许抢 PREV.q (否则两股驱动打架)
+  if(typeof ARIDEAL!=='undefined' && ARIDEAL.on) return;
+
   const d=ARCMD.d||{};
   // 🧈 60fps 续跑: 每帧按本地时间在**当前段内**前进, 再关节限速逼近 ⇒ 2.5Hz 数据也画得连续。
   //   (原来只有 10Hz 轮询里解一次 IK, 然后直接赋值 ⇒ 画面 91% 的帧静止、剩下的是瞬移)
