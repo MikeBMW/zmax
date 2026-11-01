@@ -3453,6 +3453,9 @@ def node_hil(ctx):
             log("❌ HIL 桥执行失败: %s: %s" % (type(e).__name__, str(e)[:120]))
         return False
 
+_WA_CACHE = {"t": -1e9}      # 🌐 Web 智能体桥上次轮询时刻 (节拍闸, 见函数内注释)
+
+
 def node_web_agent(ctx):
     """🌐 Web 智能体桥 · 远程提示词 — 拉取 web agent 提示词 → **只读功能白名单**派发 → 回执
 
@@ -3466,11 +3469,19 @@ def node_web_agent(ctx):
         import sys as _s
         if _SS_DIR not in _s.path:
             _s.path.insert(0, _SS_DIR)
+        # 🚦 2026-11-01: 每拍 poll_once(timeout=8) 会在链路慢时把整圈吃掉 (py-spy 实测停在 urlopen)
+        #    ⇒ 常驻循环里按节拍轮询 (ZMAX_WEBAGENT_EVERY_S, 默认 10s), 超时压到 2s。
+        _now = time.time()
+        _in_loop = bool(os.environ.get("ZMAX_CANVAS_HZ"))
+        _every = float(os.environ.get("ZMAX_WEBAGENT_EVERY_S") or (10.0 if _in_loop else 0.0))
+        if _now - _WA_CACHE["t"] < _every:
+            return True
+        _WA_CACHE["t"] = _now
         from web_agent_bridge import WebAgentBridge
         b = WebAgentBridge()
         if log:
             log("🌐 Web 智能体桥: 轮询 ECS 中转 /agent/prompt → 只读功能派发 → 回执")
-        r = b.poll_once(timeout=8)
+        r = b.poll_once(timeout=float(os.environ.get("ZMAX_WEBAGENT_TIMEOUT_S") or 2.0))
         items = r.get("processed") or []
         if log:
             log(f"  ← 本轮处理 {len(items)} 条 (游标={r.get('cursor')} · 队列待处理 {r.get('pending', 0)})")
