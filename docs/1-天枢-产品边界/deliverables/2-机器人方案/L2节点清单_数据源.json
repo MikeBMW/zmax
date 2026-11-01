@@ -1,0 +1,312 @@
+[
+ {
+  "id": "n_l2_muscle",
+  "name": "💪 L2 肌肉记忆技能库 (光模块抓放循环)",
+  "band": "row_mem_l2",
+  "band_name": "🔧 L2 记忆 · 肌肉记忆 (固化标杆 → 快速直通)",
+  "desc": "L2 肌肉记忆: 对准→下降→夹紧(force40)→抬起; 由 L3 序列调用, 经 l2_ros2_bridge(ROS2) 转发 Orin",
+  "src": "n_skills.py",
+  "pure": "False",
+  "y": 3012
+ },
+ {
+  "id": "ss_mem_l2",
+  "name": "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)",
+  "band": "row_mem_l2",
+  "band_name": "🔧 L2 记忆 · 肌肉记忆 (固化标杆 → 快速直通)",
+  "desc": "小脑·标杆回放：吃 ss_mem_share + n_skill_dict，回放固化标杆并出 ss_mem_field（n_muscle.py 文件头原文）",
+  "src": "n_muscle.py",
+  "pure": "False",
+  "y": 3012
+ },
+ {
+  "id": "sstactile",
+  "name": "🖐 触觉感知",
+  "band": "ssbg0",
+  "band_name": "🔧 L2 基础辅助功能 · 分段感知 (检测/触觉/2D→3D/质量)",
+  "desc": "[基础·分段小模型] 夹爪开度+接触力 (metaworld 真值) → 4D 触觉 [grasp/contact/dir]",
+  "src": "src/lerobot/policies/yolo_3d/gen_tactile.py",
+  "pure": "False",
+  "y": 3446
+ },
+ {
+  "id": "ssyolo",
+  "name": "🎯 YOLO 目标检测",
+  "band": "ssbg0",
+  "band_name": "🔧 L2 基础辅助功能 · 分段感知 (检测/触觉/2D→3D/质量)",
+  "desc": "[基础·分段小模型] 感知层·B1 目标识别定位: YOLO 检测光模块/插座/料盘/缺陷等 22 个目标 (类别/位姿/方向, 指标含 mAP/推理时间); 双击=目标清单, 右下角导出=Excel",
+  "src": "src/lerobot/policies/yolo_3d/yolo_state_aligner.py",
+  "pure": "True",
+  "y": 3446
+ },
+ {
+  "id": "ssaoi",
+  "name": "🔍 光学质量检测",
+  "band": "ssbg0",
+  "band_name": "🔧 L2 基础辅助功能 · 分段感知 (检测/触觉/2D→3D/质量)",
+  "desc": "[基础·分段小模型] 感知层·B5 外观质量检测 (AOI): 金手指划痕/端面脏污/外观缺陷判定 → 上报监控 (良率支撑)。【2026-09-20 接线·v4.2 几何】原始图 → 状态空间区域检测/伺服引导: ①区域检测 GET /region?grab=1 = 原始图坐标系的**金手指区域**(只含焊盘排, 实测~1455x70; 不含下方实心金带与塑料亮边沿) + 对焦清晰度 focus ②触发检测 POST /capture_detect (异步, 判决只打工控机终端) ③规范化裁剪 GET /picture?kind=crop = **金手指纵向拉长到 960x960 方图**(与 imgsz=960 对齐, 喂 YOLO); GET /picture?kind=natural = 原比例 1455x70(目检); GET /crop_info = 指标(残余倾角/金覆盖/高亮占比) ④对准+对焦伺服 L2.aoi_gold_align → tools/aoi_gold_servo.py (区域偏差→L2小步进; 沿光轴退火找 focus 峰值; 默认 dry-run) 【2026-10-08 取像参数与「根数不稳」真根因 · 已并进 yolo_3d/quality_check.py::AOIQualityChecker】① 这台金手指相机(SN D265250070, OPT-LCRT1500)出厂**自动曝光/自动增益是开着的** ⇒ 对 ExposureTime/Gain 的写入一律 rv=100100010 **静默失败**, 文件里的 10000us 从未生效; ② 相机于是拉 ~94ms 超长曝光硬扛 ⇒ 恒定过曝(条带 20~32% 像素≥250) ⇒ 金手指之间的暗缝被糊白**桥接**成一条宽亮段 ⇒ 判据图上根数 19/21/22 反复; 画面发糊同源(**不是对焦** —— 该机手动定焦, 软件里没有对焦节点); ③ 处方(顺序不可换, 逐条 rv=0 实测): ExposureAuto→Off → GainAuto→Off → ExposureTime → Gain → Gamma; **禁用「停采集→写→恢复采集」**(实测 StartGrabbing 卡死, 整路相机死掉); ④ 定值: 曝光 20000us × 增益 8.0(扫档: 片p50=206 / 缝p10=49, 对比度157 vs 其它档 33~34; 曝光仅自动档 1/5 ⇒ 更锐); 范围 曝光1~1e7us · 增益1.33~16.38(写1.0会被拒) · Gamma 0~3.999; ⑤ 现场光源偏暗是客观事实(10000us 下整幅均值仅16, 最亮区94, 要~9倍补偿) ⇒ 先查灯, 程序侧用「高增益+短曝光」换锐度; ⑥ 同一次挖出的判据渲染 bug: 局部变量 `gate` 覆盖了同名参数 dict ⇒ 暗帧必抛 AttributeError, 判据图整个报错(已改名 edge_gate); ⑦ 用法: AOIQualityChecker().assess_frame(帧) → ok / too_dark / overexposed / gaps_washed + 还差几倍(need_x); 取像参数不健康时 check() **不报 PASS**(参数错的帧上谈缺陷判定没有意义)。自检: gui-venv311/bin/python src/lerobot/policies/yolo_3d/quality_check.py 【产线/调试分工 (2026-10-08)】产线程序跑在工控机 192.168.23.23(10082 金手指/10083 表面), 改产线必须经 tools/aoi_remote_deploy.py(哈希核对+失败回滚); 调试程序跑在本节点: 本仓库 tools/aoi/ 里的同名副本 + quality_check.py::AOIQualityChecker(取像参数/画面健康度/缺陷判据三类逻辑都在这个类里); 两边对齐用 tools/aoi/production_sync.py status|verify|diff|pull。",
+  "src": "n_inspection.py",
+  "pure": "False",
+  "y": 3446
+ },
+ {
+  "id": "n_board_frame",
+  "name": "📐 板坐标系定位 (工序坐标系·免手眼)",
+  "band": "ssbg0",
+  "band_name": "🔧 L2 基础辅助功能 · 分段感知 (检测/触觉/2D→3D/质量)",
+  "desc": "真机帧 → 板检测(20点/反色/排镜像) → 模块射线∩板平面 → 模块在板坐标(x,y)mm。绕开手拖位姿精度限制; 精度~1mm(图像决定)。",
+  "src": "tools/board_frame_module.py",
+  "pure": "False",
+  "y": 3446
+ },
+ {
+  "id": "ss2d3d",
+  "name": "📐 2D→3D 解算",
+  "band": "ssbg0",
+  "band_name": "🔧 L2 基础辅助功能 · 分段感知 (检测/触觉/2D→3D/质量)",
+  "desc": "[基础·分段小模型] 感知层·B2 空间位姿感知: YOLO 2D框中心 + 相机反投影 → 目标 3D 坐标 → 增强 43D 状态向量",
+  "src": "src/lerobot/policies/yolo_3d/yolo_state_aligner.py",
+  "pure": "False",
+  "y": 3446
+ },
+ {
+  "id": "ss_seg",
+  "name": "🧩 开放词汇分割 (SAM3 分割anything)",
+  "band": "ssbg0",
+  "band_name": "🔧 L2 基础辅助功能 · 分段感知 (检测/触觉/2D→3D/质量)",
+  "desc": "L2 基础感知(与 🎯YOLO 内链): 吃 YOLO 的框 + **同帧原图** → 每个目标出像素级掩膜(轮廓/面积/质心/越界), 再掩膜→base 3D(中心/足印/朝向); 也支持 L5 给的文本概念。",
+  "src": "tools/sam3_seg.py",
+  "pure": "False",
+  "y": 3576
+ },
+ {
+  "id": "sssensor",
+  "name": "📡 融合定位建图",
+  "band": "ssbg1",
+  "band_name": "🔧 L2 基础辅助功能 · 感知融合 (传感器 → 43D 状态)",
+  "desc": "[基础·分段小模型·建图] 📡 融合定位建图 = 视觉与触觉融合: 视觉(YOLO目标检测→2D→3D 坐标) + 触觉感知(4D 力/接触) + 外观质量 → 统一状态空间 (43D obs, 供 L2/L3/L4/L5 消费); 新增建图能力: 专用实现 src/lerobot/manifold/localization_mapping.py (ORB 视觉前端 + 机器人位姿唯一依据 tcp_pose + 关键帧/地图点/回环 + 自动加载 auto_start)",
+  "src": "src/lerobot/policies/left_right/state_space/perception.py",
+  "pure": "False",
+  "y": 4004
+ },
+ {
+  "id": "ssobs",
+  "name": "🧩 SU(2) 统一状态空间 (二阶特殊酉群)",
+  "band": "ssbg1",
+  "band_name": "🔧 L2 基础辅助功能 · 感知融合 (传感器 → 43D 状态)",
+  "desc": "[统一状态·群] SU(2) 二阶特殊酉群: 原 43D 统一状态向量降为群里的 L2 输入块; 全部层(L2/L3/L4/L5)与全部节点数据按有界映射律映成群元素, 群乘法=层合成(不可交换=层间耦合), 反演剥离读每层贡献; 群恒等元 ⇔ 场景收敛",
+  "src": "src/lerobot/policies/left_right/state_space/su2.py",
+  "pure": "False",
+  "y": 4004
+ },
+ {
+  "id": "ssest",
+  "name": "🔮 自适应状态估计器",
+  "band": "ssbg2",
+  "band_name": "🔧 L2 基础辅助功能 · 分段控制小模型 (估计/预测/校正/前馈)",
+  "desc": "[基础·分段小模型] 自适应状态估计器 (教学卡尔曼, A/K/B 标定; 2026-09-06 修正: 非右脑 — 训练右脑=前向世界模型, 真权重在📈先验动力学预测器)",
+  "src": "src/lerobot/policies/left_right/state_space/parallel.py",
+  "pure": "False",
+  "y": 4438
+ },
+ {
+  "id": "sspred",
+  "name": "📈 先验动力学预测器",
+  "band": "ssbg2",
+  "band_name": "🔧 L2 基础辅助功能 · 分段控制小模型 (估计/预测/校正/前馈)",
+  "desc": "[基础·分段小模型] 先验动力学预测器: 预测 next_obs — 训练右脑 WorldModel 真权重接入点 (contact_of/next位置, models/ss_right_brain.npz); 线性 A·x+B·u 为守卫回退",
+  "src": "src/lerobot/policies/left_right/state_space/dynamics.py",
+  "pure": "False",
+  "y": 4438
+ },
+ {
+  "id": "ssff",
+  "name": "⚡ 前馈加速器",
+  "band": "ssbg2",
+  "band_name": "🔧 L2 基础辅助功能 · 分段控制小模型 (估计/预测/校正/前馈)",
+  "desc": "[基础·分段小模型] 前馈加速器 (原左脑 MLP): 快路径 — obs→建议动作 u_ff (权重 30%)",
+  "src": "src/lerobot/policies/left_right/state_space/parallel.py",
+  "pure": "False",
+  "y": 4438
+ },
+ {
+  "id": "n_geoplan",
+  "name": "🧭 测地线规划引导",
+  "band": "ssbg2",
+  "band_name": "🔧 L2 基础辅助功能 · 分段控制小模型 (估计/预测/校正/前馈)",
+  "desc": "obs43 → ManifoldEngine.project(潜空间) → 目标点(本段目标槽 obs[36:39]) → navigator.compute_geodesic(H 步, 指数映射+slerp) → readout ridge 解码(限幅) → 块 chunk[H,4]。与块流水线 tools/ss_chunk_pipeline.py::_chunk 逐行同源; 只出块, 不下发、不碰授权。注意: 与 n_moveit (MoveIt 关节空间规划, 在原子技能之后) 不是同一个节点。源码 src/lerobot/engineering/nodes/geo_plan_impl.py",
+  "src": "src/lerobot/engineering/nodes/geo_plan_impl.py",
+  "pure": "False",
+  "y": 4438
+ },
+ {
+  "id": "ssinnov",
+  "name": "🧪 状态校正器",
+  "band": "ssbg2",
+  "band_name": "🔧 L2 基础辅助功能 · 分段控制小模型 (估计/预测/校正/前馈)",
+  "desc": "[基础·分段小模型] 状态校正器: 残差 r = z_k − ĥ(x̂ₖ₋) & 接触概率 — 卡尔曼更新核心",
+  "src": "src/lerobot/policies/left_right/state_space/cognition.py",
+  "pure": "False",
+  "y": 4438
+ },
+ {
+  "id": "sssched",
+  "name": "🧭 动作调制器",
+  "band": "ssbg3",
+  "band_name": "🔧 L2 基础辅助功能 · 状态机决策 (动作调制 · 安全限幅)",
+  "desc": "[基础·分段小模型] 动作调制器 (原状态机, 握有否决权): 6阶段状态机 + 否决权 + 按阶段动作融合 (力控插入)",
+  "src": "src/lerobot/policies/left_right/state_space/cognition.py",
+  "pure": "True",
+  "y": 4872
+ },
+ {
+  "id": "ss_grav_h",
+  "name": "🌍 万有引力 · SE(3) 几何阻抗 + H=K+U (力场仲裁)",
+  "band": "ssbg3",
+  "band_name": "🔧 L2 基础辅助功能 · 状态机决策 (动作调制 · 安全限幅)",
+  "desc": "万有引力=势场: 每层动作只保留沿 −∇U 的分量(横向>60°否决), 输出 u=[F;M] 与能量 H=K+U; 被动性由 Ḣ=−ξᵀBξ 结构保证",
+  "src": "src/lerobot/manifold/state_space_energy.py",
+  "pure": "True",
+  "y": 4984
+ },
+ {
+  "id": "sslimit",
+  "name": "🛡 安全执行边界 (饱和限幅)",
+  "band": "ssbg_skill",
+  "band_name": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+  "desc": "[基础·分段小模型] 安全执行边界: 饱和限幅 — 阶段切换与动作融合后输出物理指令",
+  "src": "src/lerobot/policies/left_right/state_space/safety.py",
+  "pure": "True",
+  "y": 5306
+ },
+ {
+  "id": "sssk1",
+  "name": "① 接近 · SK01",
+  "band": "ssbg_skill",
+  "band_name": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+  "desc": "[基础·分段小模型] 原子技能 ① 接近 (SK01): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+  "src": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
+  "pure": "True",
+  "y": 5306
+ },
+ {
+  "id": "sssk7",
+  "name": "⑦ 插入 · SK07",
+  "band": "ssbg_skill",
+  "band_name": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+  "desc": "[基础·分段小模型] 原子技能 ⑦ 插入 (SK07): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+  "src": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
+  "pure": "True",
+  "y": 5306
+ },
+ {
+  "id": "n_moveit",
+  "name": "运动规划",
+  "band": "ssbg_skill",
+  "band_name": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+  "desc": "原子技能意图 + 安全限制 → 段表 PlanSegments；只规划永不动作（plan_impl.py 文件头原文）",
+  "src": "src/lerobot/engineering/nodes/plan_impl.py",
+  "pure": "True",
+  "y": 5306
+ },
+ {
+  "id": "sssk2",
+  "name": "② 对位 · SK02",
+  "band": "ssbg_skill",
+  "band_name": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+  "desc": "[基础·分段小模型] 原子技能 ② 对位 (SK02): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+  "src": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
+  "pure": "True",
+  "y": 5436
+ },
+ {
+  "id": "sssk8",
+  "name": "⑧ 完成 · SK08",
+  "band": "ssbg_skill",
+  "band_name": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+  "desc": "[基础·分段小模型] 原子技能 ⑧ 完成 (SK08): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+  "src": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
+  "pure": "True",
+  "y": 5436
+ },
+ {
+  "id": "n_exec",
+  "name": "⚙️ 动作执行器 (L2 收口 · 授权/闸/到位)",
+  "band": "ssbg_skill",
+  "band_name": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+  "desc": "L2 收口：读 l2_daemon 真值状态与最近事件做授权/闸/到位判定，不造数不下发（n_l2.py 文件头原文）",
+  "src": "src/lerobot/engineering/nodes/exec_dispatch_impl.py",
+  "pure": "False",
+  "y": 5460
+ },
+ {
+  "id": "sssk3",
+  "name": "③ 下降 · SK03",
+  "band": "ssbg_skill",
+  "band_name": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+  "desc": "[基础·分段小模型] 原子技能 ③ 下降 (SK03): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+  "src": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
+  "pure": "True",
+  "y": 5566
+ },
+ {
+  "id": "ssphys",
+  "name": "⚖ 动力学约束",
+  "band": "ssbg_skill",
+  "band_name": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+  "desc": "[基础·分段小模型] ⚖ 动力学约束 (前置 🧭 运动学约束): 接近/对位/下降/抓取/抬起/转移/插入/完成 的动作先过 ①速度 ②加速度 ③加加速度 ⑤位移 (运动学 = KinematicLimiter, 由每个技能类 clamp() 真调)再过 ④动量/质量变化率 (动力学 = DynamicLimiter, F_max 按段取: 插入/完成 ≤2N 保护金手指)⇒ 削出偏差 error; 小偏差 → 状态校正器, 大偏差 → 融合定位 → 流形引擎顶层补偿。数值+物理上下限唯一依据 config/calib/zmax_skill_physics.json; 每拍两条闸各自计数, 判据见 ss_live/constraint_gate.json",
+  "src": "src/lerobot/policies/left_right/state_space/physics_constraints.py::DynamicLimiter.limit",
+  "pure": "False",
+  "y": 5620
+ },
+ {
+  "id": "sssk4",
+  "name": "④ 抓取 · SK04",
+  "band": "ssbg_skill",
+  "band_name": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+  "desc": "[基础·分段小模型] 原子技能 ④ 抓取 (SK04): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+  "src": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
+  "pure": "True",
+  "y": 5696
+ },
+ {
+  "id": "sssk5",
+  "name": "⑤ 抬起 · SK05",
+  "band": "ssbg_skill",
+  "band_name": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+  "desc": "[基础·分段小模型] 原子技能 ⑤ 抬起 (SK05): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+  "src": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
+  "pure": "True",
+  "y": 5826
+ },
+ {
+  "id": "sssk6",
+  "name": "⑥ 转移 · SK06",
+  "band": "ssbg_skill",
+  "band_name": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+  "desc": "[基础·分段小模型] 原子技能 ⑥ 转移 (SK06): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器",
+  "src": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
+  "pure": "True",
+  "y": 5956
+ },
+ {
+  "id": "ssact",
+  "name": "🤖 机器人执行器",
+  "band": "ssbg4",
+  "band_name": "🔧 L2 基础辅助功能 · 执行层 (执行器 → 物理闭环)",
+  "desc": "[基础·分段小模型] 机器人执行器 (机械臂/夹爪): 接收物理指令执行",
+  "src": "/home/ubuntu/zmax/src/lerobot/engineering/nodes/robot_actuator_impl.py",
+  "pure": "True",
+  "y": 6236
+ },
+ {
+  "id": "ssworld",
+  "name": "🌍 物理世界",
+  "band": "ssbg4",
+  "band_name": "🔧 L2 基础辅助功能 · 执行层 (执行器 → 物理闭环)",
+  "desc": "[基础·分段小模型] 物理世界: 执行结果 → 传感器反馈 z_k → 卡尔曼校正闭环",
+  "src": "src/lerobot/policies/left_right/state_space/execution.py",
+  "pure": "False",
+  "y": 6236
+ }
+]

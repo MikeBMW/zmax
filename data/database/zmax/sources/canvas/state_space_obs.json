@@ -2257,7 +2257,7 @@
      "工程库": "data/database/zmax/zmax_engineering.db"
     },
     "cfg_snapshot": {
-     "loaded_at": "2026-11-01 17:54:01",
+     "loaded_at": "2026-11-01 21:23:53",
      "files_total": 8,
      "files_ok": 8,
      "orders": 12,
@@ -2321,7 +2321,7 @@
      "口径": "一个状态空间工程承载全部任务; 任务=配方段子集+参数覆盖"
     },
     "source_symbol": "def import_config_files(",
-    "cfg_loaded_at": "2026-11-01 17:54:01",
+    "cfg_loaded_at": "2026-11-01 21:23:53",
     "cfg_files": [
      {
       "name": "总工程文件",
@@ -2332,7 +2332,7 @@
      {
       "name": "任务绑定",
       "rel": "config/ss_task_binding.json",
-      "sha256": "023e1f10315c3ca7",
+      "sha256": "81d172ebc789b4a2",
       "exists": true
      },
      {
@@ -3343,7 +3343,7 @@
    "f": "sslimit",
    "t": "sssk1",
    "f_port": "out1",
-   "t_port": "in1",
+   "t_port": "in2",
    "label": "🛡 限幅后控制 → ① 接近 SK01"
   },
   {
@@ -3919,56 +3919,56 @@
    "f": "ssskill",
    "t": "sssk2",
    "f_port": "out1",
-   "t_port": "in2",
-   "label": "这一段跑什么 → 技能 sssk2 in2"
+   "t_port": "in1",
+   "label": "技能序列 → 原子技能"
   },
   {
    "id": "lk0924_ssskill_sssk3_in1",
    "f": "ssskill",
    "t": "sssk3",
    "f_port": "out1",
-   "t_port": "in2",
-   "label": "这一段跑什么 → 技能 sssk3 in2"
+   "t_port": "in1",
+   "label": "技能序列 → 原子技能"
   },
   {
    "id": "lk0924_ssskill_sssk4_in1",
    "f": "ssskill",
    "t": "sssk4",
    "f_port": "out1",
-   "t_port": "in2",
-   "label": "这一段跑什么 → 技能 sssk4 in2"
+   "t_port": "in1",
+   "label": "技能序列 → 原子技能"
   },
   {
    "id": "lk0924_ssskill_sssk5_in1",
    "f": "ssskill",
    "t": "sssk5",
    "f_port": "out1",
-   "t_port": "in2",
-   "label": "这一段跑什么 → 技能 sssk5 in2"
+   "t_port": "in1",
+   "label": "技能序列 → 原子技能"
   },
   {
    "id": "lk0924_ssskill_sssk6_in1",
    "f": "ssskill",
    "t": "sssk6",
    "f_port": "out1",
-   "t_port": "in2",
-   "label": "这一段跑什么 → 技能 sssk6 in2"
+   "t_port": "in1",
+   "label": "技能序列 → 原子技能"
   },
   {
    "id": "lk0924_ssskill_sssk7_in1",
    "f": "ssskill",
    "t": "sssk7",
    "f_port": "out1",
-   "t_port": "in2",
-   "label": "这一段跑什么 → 技能 sssk7 in2"
+   "t_port": "in1",
+   "label": "技能序列 → 原子技能"
   },
   {
    "id": "lk0924_ssskill_sssk8_in1",
    "f": "ssskill",
    "t": "sssk8",
    "f_port": "out1",
-   "t_port": "in2",
-   "label": "这一段跑什么 → 技能 sssk8 in2"
+   "t_port": "in1",
+   "label": "技能序列 → 原子技能"
   },
   {
    "id": "lk0924_sssensor_ss_mani_eng",
@@ -4117,57 +4117,57 @@
    "f": "sssk1",
    "t": "n_moveit",
    "f_port": "out1",
-   "t_port": "in4",
-   "label": "1 技能动作 → 运动规划 in4"
+   "t_port": "in1",
+   "label": "技能轨迹 → MoveIt 规划/执行"
   },
   {
    "f": "sssk2",
    "t": "n_moveit",
    "f_port": "out1",
-   "t_port": "in5",
-   "label": "2 技能动作 → 运动规划 in5"
+   "t_port": "in1",
+   "label": "技能轨迹 → MoveIt 规划/执行"
   },
   {
    "f": "sssk3",
    "t": "n_moveit",
    "f_port": "out1",
-   "t_port": "in6",
-   "label": "3 技能动作 → 运动规划 in6"
+   "t_port": "in1",
+   "label": "技能轨迹 → MoveIt 规划/执行"
   },
   {
    "f": "sssk4",
    "t": "n_moveit",
    "f_port": "out1",
-   "t_port": "in7",
-   "label": "4 技能动作 → 运动规划 in7"
+   "t_port": "in1",
+   "label": "技能轨迹 → MoveIt 规划/执行"
   },
   {
    "f": "sssk5",
    "t": "n_moveit",
    "f_port": "out1",
-   "t_port": "in8",
-   "label": "5 技能动作 → 运动规划 in8"
+   "t_port": "in2",
+   "label": "技能轨迹 → MoveIt 规划/执行"
   },
   {
    "f": "sssk6",
    "t": "n_moveit",
    "f_port": "out1",
-   "t_port": "in9",
-   "label": "6 技能动作 → 运动规划 in9"
+   "t_port": "in2",
+   "label": "技能轨迹 → MoveIt 规划/执行"
   },
   {
    "f": "sssk7",
    "t": "n_moveit",
    "f_port": "out1",
-   "t_port": "in10",
-   "label": "7 技能动作 → 运动规划 in10"
+   "t_port": "in2",
+   "label": "技能轨迹 → MoveIt 规划/执行"
   },
   {
    "f": "sssk8",
    "t": "n_moveit",
    "f_port": "out1",
-   "t_port": "in11",
-   "label": "8 技能动作 → 运动规划 in11"
+   "t_port": "in2",
+   "label": "技能轨迹 → MoveIt 规划/执行"
   },
   {
    "f": "sslimit",
@@ -4658,8 +4658,8 @@
    "f": "sslimit",
    "f_port": "out3",
    "t": "n_moveit",
-   "t_port": "in2",
-   "label": "🛡 规划安全约束 → 运动规划 in2 (单步/向下限)"
+   "t_port": "in1",
+   "label": "守护后位姿 → 运动规划"
   },
   {
    "id": "lk_ssyolo_plan_vis",
@@ -4668,14 +4668,6 @@
    "t": "ssplan",
    "t_port": "in2",
    "label": "L2 视觉3D 观测点 (vision_points 契约) → 长程编排 (闭环反馈: 感知回灌规划, 带 conf/gaps)"
-  },
-  {
-   "id": "lkskill_sk1",
-   "f": "ssskill",
-   "f_port": "out1",
-   "t": "sssk1",
-   "t_port": "in2",
-   "label": "这一段跑什么 → 技能 sssk1 in2"
   }
  ],
  "params_note": ""
