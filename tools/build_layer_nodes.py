@@ -253,7 +253,32 @@ def main():
                     x += w
                 y += 0.34
             continue
-        lay_panorama(pr, layer, title, note, nodes, bands, band_ids)
+        if layer == 'L2':                     # L2: 两页连线图 (内部 + 层外) 代替原全景页, 后面接功能表
+            import l2_wiring
+            _c = l2_wiring.counts()
+            s1 = pr.slides.add_slide(pr.slide_layouts[6])       # 标题先写, 保证大纲/首框就是标题
+            add_text(s1, 0.50, 0.13, 12.4, 0.32,
+                     'L2 层连线 · %d 个功能节点 / %d 条内部连线（画布 links 逐条）+ L3 入口 %d 个节点 / %d 条连线'
+                     % (_c['l2_nodes'], _c['l2_edges'], _c['l3_nodes'], _c['l3_edges']),
+                     size=15, bold=True)
+            add_text(s1, 0.50, 0.50, 12.4, 0.40,
+                     '读法：左→右 = 数据流方向（记忆 → 感知 → 融合 → 小模型 → 决策 → 技能 → 执行）；每带标题括号里 = 该带节点数 · 发出连线数。'
+                     '顶部 L3 只放与 L2 真有连线的 3 个节点（VLM 编码器 / 长程规划记忆 / Flow-Matching 动作头）——'
+                     'L3 的 VLM 编码收 L2 感知的 token（青虚线），动作头与前馈/规划接通（橙实线）。',
+                     size=7.2, color=C_DIM, spacing=1.1)
+            i1 = l2_wiring.draw_core_page(s1)
+            s2 = pr.slides.add_slide(pr.slide_layouts[6])
+            add_text(s2, 0.50, 0.13, 12.4, 0.32,
+                     'L2 ↔ 层外节点连线 · %d 个节点 / %d 条连线（L5 / L4 / 数据源 / 可视化 / 层外）'
+                     % (_c['ext_nodes'], _c['ext_edges']), size=15, bold=True)
+            add_text(s2, 0.50, 0.50, 12.4, 0.30,
+                     '只画与 L2 真有连线的层外节点，一条不漏；右侧 L2 节点按被连条数排序；箭头 = 数据流向。'
+                     '参数级细节见后续功能表。', size=7.2, color=C_DIM)
+            i2 = l2_wiring.draw_ext_page(s2)
+            print('L2 连线页: 内部 %d 条 / L3 %d 条 / 层外 %d 节点 %d 条' % (
+                i1['l2_edges'], i1['l3_edges'], i2['ext_nodes'], i2['ext_edges']))
+        else:
+            lay_panorama(pr, layer, title, note, nodes, bands, band_ids)
         if len(nodes) > 20:
             half = (len(nodes) + 1) // 2
             lay_table(pr, layer, nodes[:half], 1, 2)

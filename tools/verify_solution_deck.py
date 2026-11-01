@@ -212,6 +212,20 @@ results.append(('L2 节点名称逐字一致', '%d 个名称' % n_l2,
                 ('缺 %d 个: %s' % (len(missing), ' / '.join(missing[:3]))) if missing else '全部命中',
                 'PASS' if not missing else 'FAIL', 'canvas state_space_obs.json'))
 
+# L2 连线页 (2026-11-02) —— 内部连线 / L3 入口 / 层外节点, 计数与画布 links 同源
+try:
+    sys.path.insert(0, ROOT + '/tools')
+    from l2_wiring import counts as _l2c                     # noqa: E402
+    _c = _l2c()
+    check('L2 连线页 · 内部连线', 'L2↔L2 %d 条' % _c['l2_edges'],
+          ['L2 内部连线 %d 条' % _c['l2_edges']], 'canvas links (L2↔L2)')
+    check('L2 连线页 · L3 入口', 'L3↔L2 %d 条 / %d 个节点' % (_c['l3_edges'], _c['l3_nodes']),
+          ['L3↔L2 连线 %d 条' % _c['l3_edges']], 'canvas links (L3↔L2)')
+    check('L2 连线页 · 层外节点', '%d 个节点 / %d 条连线' % (_c['ext_nodes'], _c['ext_edges']),
+          ['层外节点 %d 个 / 连线 %d 条' % (_c['ext_nodes'], _c['ext_edges'])], 'canvas links (layer外)')
+except Exception as _e:                                       # noqa: BLE001
+    results.append(('L2 连线页', '可解析', '%s' % _e, 'FAIL', 'l2_wiring'))
+
 # L5 / L4 / L3 层节点 (2026-11-01 新增页) —— 名称逐字 + 每层数量
 try:
     sys.path.insert(0, ROOT + '/tools')
@@ -228,8 +242,8 @@ try:
                         'PASS' if not _miss else 'FAIL', 'canvas state_space_obs.json'))
 except Exception as _e:                                                  # noqa: BLE001
     results.append(('L3/L4/L5 层页', '可解析', ['%s' % _e], 'FAIL', 'build_layer_nodes'))
-results.append(('总页数', '18 页 (封面+总览+15 层/结构/甘特+验收)',
-                ['%d' % len(pr.slides._sldIdLst)], 'PASS' if len(pr.slides._sldIdLst) == 18 else 'FAIL',
+results.append(('总页数', '19 页 (封面+总览+结构/甘特+L2 连线 2 页+各层表+验收)',
+                ['%d' % len(pr.slides._sldIdLst)], 'PASS' if len(pr.slides._sldIdLst) == 19 else 'FAIL',
                 'pptx 实际页数'))
 
 # ---------- 8. 输出 ----------
