@@ -72,6 +72,16 @@ STATE_EVERY = max(1, int(HZ))                 # 约 1s 落一次状态
 #   段与段之间插一次「只跑 plan/执行器」的快拍 ⇒ 全量语义不动, 但 ar_cmd 能到 10~20Hz。
 FAST_ONLY = [s for s in (os.environ.get("ZMAX_LOOP_FAST_ONLY") or "ssplan,ssact").split(",") if s]
 FAST_HZ = float(os.environ.get("ZMAX_LOOP_FAST_HZ") or "20")
+# 🐢 慢车道 (2026-11-01): 重节点 (INTACT 解码 9s / HIL 5s / 技能库 4s / YOLO 1.6s …)
+#   不许每拍都跑, 否则一次全量 pass 25s, 10Hz 拍子直接崩。默认每 30 拍跑一次全的,
+#   其余拍子跳过这些节点 (它们的状态保持上一拍结果)。
+SLOW_IDS = [x.strip() for x in (os.environ.get("ZMAX_SLOW_IDS") or "").split(",") if x.strip()]
+SLOW_EVERY = max(1, int(os.environ.get("ZMAX_SLOW_EVERY") or "30"))
+FULL_EVERY = max(1, int(os.environ.get("ZMAX_FULL_EVERY") or "30"))
+# 核心链: 每一拍都要跑 (状态空间 → 工艺动作 → 限幅 → 调制 → 规划 → 执行 → 物理)
+CORE_IDS = [x.strip() for x in (os.environ.get("ZMAX_CORE_IDS") or
+            "ssobs,n_geoplan,ssff,ssest,sssched,sslimit,ssphys,ss_grav_h,"
+            "n_moveit,n_exec,ssact,ssworld,ssuph,ssplan").split(",") if x.strip()]
 CHUNK_N = max(1, int(os.environ.get("ZMAX_LOOP_CHUNK") or "12"))
 
 
@@ -131,6 +141,8 @@ def write_state(d):
 
 
 def main():
+    log("🐢 慢车道: 每 %d 拍跑全量(慢节点 %s 每 %d 拍一次) · 其余拍只跑核心链 %s"
+        % (FULL_EVERY, ",".join(SLOW_IDS) or "无", SLOW_EVERY, ",".join(CORE_IDS)))
     log("画布常驻循环启动 · HZ=%.1f · 全部节点都跑 (无白名单 · 每段%d个) · 快车道 %s @ %.0fHz"
         % (HZ, CHUNK_N, ",".join(FAST_ONLY) or "关", FAST_HZ))
     _dsp_ok = dispatch_inproc is not None and dispatch_inproc.enabled("ss_canvas_loop")
@@ -157,8 +169,18 @@ def main():
             # 🚀 逐段跑全量节点(顺序不变), 段间插快拍 ⇒ ar_cmd 保持 10~20Hz
             _chunks = [prj.order[i:i + CHUNK_N] for i in range(0, len(prj.order), CHUNK_N)]
             traces = []
+            # 🐢 慢车道: 每 FULL_EVERY 拍跑一遍**全量**; 其余拍子只跑核心链 (ZMAX_CORE_IDS) ——
+            #   全系统贯通后节点真的在算 (之前是直通), 一次全量 pass 25s, 10Hz 拍子撑不住。
+            #   非全量拍子仍会跑核心链, 所以 AR/工艺动作不中断; 全量拍子保证每个节点都不会饿死。
+            _full_now = (n_tick % FULL_EVERY == 0)
             for _ci, _ch in enumerate(_chunks):
-                traces.extend(prj.step(only=_ch))   # 全部节点都跑 (老倪 2026-10-31: 不许白名单)
+                if _full_now:
+                    _run = _ch if not SLOW_IDS else [x for x in _ch if x not in SLOW_IDS]
+                else:
+                    _run = [x for x in _ch if x in CORE_IDS]
+                    if not _run:
+                        continue
+                traces.extend(prj.step(only=_run))
                 if FAST_ONLY and _ci < len(_chunks) - 1:
                     _nowf = time.monotonic()
                     if _nowf >= _next_fast[0]:
