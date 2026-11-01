@@ -3644,7 +3644,7 @@ _EXTERNAL_LOC["n_hil"] = (os.path.join(_SS_DIR, "hil_bridge.py"), 160, "def core
 
 _reg("n_moveit", ["MoveIt", "运动规划", "moveit"], "🧭 运动规划 (plan) — 原子技能意图 + 安全限制 → 段表(PlanSegments); rule 确定性分段(抬升→横移→下落), 起点=真机TCP真值, 只规划不下发 (源码 nodes/plan_impl.py)", node_moveit)
 _reg("n_geoplan", ["测地线规划引导", "测地线块规划", "GeodesicGuidance", "geodesic", "块规划", "3D引导"],
-     "🧭 测地线规划引导 — obs43 → 潜空间测地线(H 步) → ① out1 = 3D 引导位姿 (视觉3D 孔口/模块 + hover 40mm, pos_mm/quat/进给轴/余弦校验) 给运动规划 ② out2 = 块[H,4] 给加权; 只规划不下发 (源码 nodes/geo_plan_impl.py)", node_geoplan)
+     "🧭 测地线规划引导 — **负责工艺规划**: ① 工艺步骤 (元任务/第几步/L2 真实到位才推进; 引擎 nodes/sched_impl.py) ② 3D 引导位姿 (视觉3D 孔口/模块 + hover 40mm, pos_mm/quat/进给轴/余弦校验) 给运动规划 ② out2 = 块[H,4] 给加权; 只规划不下发 (源码 nodes/geo_plan_impl.py)", node_geoplan)
 _reg("n_exec", ["执行器", "l2_daemon", "下发", "dispatch", "闸"], "⚙️ 动作执行器 (L2 收口 · 授权/闸/到位) — 段表→实时闸→下发→等真位→台账; 唯一能碰执行器的一层 (源码 tools/l2_daemon.py); 节点实现 nodes/exec_dispatch_impl.py", node_exec)
 
 _reg("n_hil", ["HIL", "人机在环", "human in the loop", "hil", "在环"],
@@ -6637,6 +6637,7 @@ _EXTERNAL_LOC["sssk1"] = (os.path.join(_REPO_ROOT, "src/lerobot/engineering/node
 # 真实现住 ../nodes/uph_tact_impl.py, 这里只做注册绑定 (画布每次保存会重生成 n_uph.py 外壳, 算法不能被写进外壳)
 from . import uph_tact_impl as _uph_impl                      # noqa: E402
 from . import plan_long_impl as _planlong_impl                # noqa: E402
+from . import sched_impl as _sched_impl                      # noqa: E402  (工艺引擎, 由 n_geoplan 调用)
 
 _reg("ss_plan_long", ["长程元任务编排器", "元任务编排器", "长程任务", "元任务组合"],
      "🧩 长程元任务编排器 (Plan) — 读配置中心 TASK-07-AOI 的元任务组合(ar_meta_tasks.json), "

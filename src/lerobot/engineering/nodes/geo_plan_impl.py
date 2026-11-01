@@ -36,6 +36,11 @@ H_DEF = int(os.environ.get("ZMAX_GEOPLAN_H", "8"))
 _ENG = None
 _ENG_ERR = ""
 
+# 🧭 工艺规划 (老倪 2026-11-01「测地线规划引导负责工艺规划」): 本节点每拍算
+#   "现在该做哪个元任务的哪一步", 与 3D 引导位姿一起 output; 引擎纯逻辑, 不碰硬件。
+_CRAFT = {"err": "未调用"}
+
+
 
 def _engine():
     """懒加载 ManifoldEngine (单例)。失败不抛, 记错误文本由 run() 如实上报。"""
@@ -165,7 +170,19 @@ def _quat_from_rot(flat):
     return [round(float(v / n), 5) for v in q] if n > 1e-9 else None
 
 
-def run(ctx=None):
+def _craft(ctx=None):
+    """工艺步骤 (元任务/第几步/推进判决) —— 委托工艺引擎 sched_impl.run(), 失败不拖垮引导。"""
+    global _CRAFT
+    try:
+        from . import sched_impl as _S
+        o = _S.run(ctx or {})
+        _CRAFT = {"out1": o.get("out1"), "out2": o.get("out2"), "out3": o.get("out3")}
+    except Exception as exc:                                            # noqa: BLE001
+        _CRAFT = {"err": "%s: %s" % (type(exc).__name__, exc)}
+    return _CRAFT
+
+
+def _run_guides(ctx=None):
     """一个周期: obs43 → 测地线块 [H,4]。只规划, 不下发。"""
     out = {"node": "n_geoplan", "impl": "nodes/geo_plan_impl.py:run", "h": H_DEF}
     obs = _obs(ctx)
@@ -257,6 +274,24 @@ def run(ctx=None):
                 "value": {"tcp": [round(float(v) * 1000.0, 1) for v in guide_pos],
                           "frame": "base_link",
                           "src": "测地线规划引导 (视觉3D + 测地线方向)"}})
+    return out
+
+
+def run(ctx=None):
+    """🧭 测地线规划引导 = 3D 引导位姿 + 块 + **工艺步骤** (老倪 2026-11-01: 本节点负责工艺规划)。
+
+    三条输出一起出, 下游各取所需:
+      · out1.value.tcp     → 运动规划 n_moveit 认的引导位姿 (mm)
+      · out2 (chunk)       → 加权/动作调制器
+      · out1.craft         → 工艺步骤: 元任务/第几步/推进判决 (来自工艺引擎 sched_impl)
+    工艺引擎坏了不影响引导位姿 (craft.err 明示, 不静默丢)。
+    """
+    out = _run_guides(ctx)
+    c = _craft(ctx)
+    out["craft"] = {"step": c.get("out1"), "progress": c.get("out2"),
+                    "event": c.get("out3"), "err": c.get("err")}
+    if isinstance(out.get("value"), dict) and isinstance(c.get("out1"), dict):
+        out["value"]["craft"] = c["out1"]
     return out
 
 
