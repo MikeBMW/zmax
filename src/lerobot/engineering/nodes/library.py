@@ -2865,6 +2865,10 @@ def node_ss_ff_attrib(ctx):
             if log:
                 log("🎯 归因分工: 无探针数据 — 先运行 ⚡前馈加速器节点")
             return False
+        if not _gui_host_ok():          # 🪟 常驻循环/CLI: 只算数据, 建窗会让 Qt ABRT 打死循环
+            if log:
+                log("🎯 归因分工 (无窗档): 常驻循环/CLI 不开窗 · 探针数据已在 ff_probe 里")
+            return True
         global _FF_ATTR_WIN
         _win = getattr(ctx.get("module"), "_ff_attr_win", None)   # 优先 module 侧单例 (双击同窗)
         if _win is None:
@@ -5410,9 +5414,15 @@ def node_ss_bypass_sensor(ctx):
         return False
 
 def node_ss_bypass_viz(ctx):
-    """📈 旁路实时可视化 (可视化层观察器) — 当前阶段 / 残差 / 接触概率 曲线 (500ms 实时刷新)"""
+    """📈 旁路实时可视化 (可视化层观察器) — 当前阶段 / 残差 / 接触概率 曲线 (500ms 实时刷新)
+
+    🪟 无窗档 (常驻循环/CLI): 只推进数据, 不开窗 —— 建窗会让 Qt ABRT 打死整个 canvas loop。"""
     log = ctx.get("log")
     module = ctx.get("module")
+    if not _gui_host_ok():
+        if log:
+            log("📈 旁路实时可视化: 无窗档 (常驻循环/CLI) ⇒ 本拍只跑数据, 不开窗")
+        return True
     try:
         import ss_bypass_view                      # 同目录 (tools/gui)
         win = getattr(module, "_bypass_view_win", None) if module is not None else None
@@ -5446,6 +5456,12 @@ def node_ss_z700_signals(ctx):
     (TCP 位姿+四元数 / 六关节位置速度 / 六维力力矩 / 夹爪 / 触觉 / 机器人状态 / 产线阶段)"""
     log = ctx.get("log")
     module = ctx.get("module")
+    if not _gui_host_ok():
+        # 🪟 2026-11-01: 本节点本就是"显示层", 但常驻循环没有 QApplication/不在主线程 ⇒
+        #   在这里建窗会让 Qt 直接 ABRT 打死整个 canvas loop (faulthandler 实测: 本行 → ss_bypass_view:1370)
+        if log:
+            log("🖥 Z700 真机信号: 无窗档 (常驻循环/CLI) ⇒ 本拍只跑数据, 不开窗")
+        return True, "Z700 真机信号 (无窗档)"
     try:
         import ss_bypass_view
         win = getattr(module, "_z700_signals_win", None) if module is not None else None
