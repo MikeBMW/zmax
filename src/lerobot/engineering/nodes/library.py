@@ -2781,9 +2781,36 @@ _FF_HIST_WIN = None  # 🧠 前馈激活直方图窗口 (全局单实例, 主线
 
 _FF_ATTR_WIN = None  # 🎯 归因分工窗口 (全局单实例)
 
+
+def _gui_host_ok() -> bool:
+    """这个进程现在能不能**开窗**?
+
+    2026-11-01 实测 (faulthandler 抓栈): 常驻循环 `ss_canvas_loop` 每启动 ~1min 就被
+      QWidget: Must construct a QApplication before a QWidget → Fatal Python error: Aborted
+      (栈: node_ss_ff_hist → library.py:2800 → tools/gui/ff_hist_view.py:46 __init__)
+    打死一轮 (NRestarts=1), 链随之断拍 —— 一个"看一眼直方图"的窗口把整条执行链带崩了。
+    判据三条, 任一不满足就**只算数据不开窗**: ①主线程 ②有 QApplication ③没设 ZMAX_NO_GUI。
+    """
+    if os.environ.get("ZMAX_NO_GUI", "").strip().lower() in ("1", "true", "on", "yes"):
+        return False
+    import threading as _th
+    if _th.current_thread() is not _th.main_thread():
+        return False
+    try:
+        import importlib.util as _ilu
+        if _ilu.find_spec("PyQt5") is None:
+            return False
+        from PyQt5 import QtWidgets as _QW
+        return _QW.QApplication.instance() is not None
+    except Exception:                                                       # noqa: BLE001
+        return False
+
+
 def node_ss_ff_hist(ctx):
     """🧠 前馈激活直方图 — 读 ⚡前馈加速器探针 (ff_probe) → 三层 512 激活分布直方图
-    引线: ⚡前馈加速器 → 本节点 (数据经 _SS_STATE['ff_probe'] 流通)"""
+    引线: ⚡前馈加速器 → 本节点 (数据经 _SS_STATE['ff_probe'] 流通)
+
+    🪟 窗口只在 GUI 宿主里开; 常驻循环/CLI 只算数据 (否则 Qt ABRT 会把整个循环打死)。"""
     log = ctx.get("log")
     try:
         import numpy as np   # 🐛 2026-09-09: 漏 import → 单步报 name 'np' is not defined
@@ -2792,6 +2819,13 @@ def node_ss_ff_hist(ctx):
             if log:
                 log("🧠 前馈激活: 无探针数据 — 先运行 ⚡前馈加速器节点 (▶运行或单步)")
             return False
+        _ls = probe.get("layers") or []
+        _act = " · ".join(f"L{i+1}:{l.get('active', 0)}/512" for i, l in enumerate(_ls))
+        if not _gui_host_ok():
+            if log:
+                log(f"🧠 前馈激活直方图 (无窗档): [{_act}] · u_ff={np.round(probe.get('u_ff', []), 3)} "
+                    f"· 常驻循环/CLI 不开窗 (防 Qt ABRT 打死循环)")
+            return True
         global _FF_HIST_WIN
         _win = getattr(ctx.get("module"), "_ff_hist_win", None)   # 优先 module 侧单例 (双击同窗)
         if _win is None:
