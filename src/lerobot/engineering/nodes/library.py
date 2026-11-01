@@ -1174,7 +1174,14 @@ def _sw_start(root: str, log, episodes: int = 3):
 
 def _sw_wait(status_path: str, pred, timeout: float, log, tag: str) -> dict:
     """轮询 status.json 直到 pred(状态) 为真 (桥真跑, 不伪造);
-    桥进程若已死则立刻返回 (附 bridge.log 尾部) — 不空等超时"""
+    桥进程若已死则立刻返回 (附 bridge.log 尾部) — 不空等超时。
+
+    ⏳ 常驻循环(异步档)不等待: 直接返回当前态, 由下游如实标注"未到"。
+    """
+    if _sw_async():
+        _last = _sw_status(status_path)
+        log(f"   ⏳ {tag}: 异步档 ⇒ 不等待 · 当前 stage={_last.get('stage')} step={_last.get('step')}")
+        return _last
     t0 = time.time()
     last = {}
     while time.time() - t0 < timeout:
@@ -1200,9 +1207,23 @@ def _sw_wait(status_path: str, pred, timeout: float, log, tag: str) -> dict:
     log(f"   ⚠️ {tag}: 等待 {timeout:.0f}s 超时 (最后 stage={last.get('stage')})")
     return last
 
+def _sw_async() -> bool:
+    """常驻循环里 L4 数据源桥是**长跑**的 (1800 步真推理, 几分钟到几十分钟)。
+
+    2026-11-01 实测: `node_sw_ds` 等桥跑完 (SW_CHAIN_TIMEOUT=2400s) ⇒ 整个 canvas loop 的
+    10Hz 拍被这一个节点占住 ⇒ ar_cmd/ar_cmd_chain 全部停在 19:18:37 不动, AR 侧表现为"指令停了"。
+    判据: 循环由 ZMAX_CANVAS_HZ 标识 (systemd 单元里设的) ⇒ 异步档; GUI 手动点 ▶ 没有该 env ⇒ 仍阻塞等结果。
+    显式开关 SW_ASYNC=1/0 可覆盖。
+    """
+    v = os.environ.get("SW_ASYNC")
+    if v is None:
+        v = "1" if os.environ.get("ZMAX_CANVAS_HZ") else "0"
+    return str(v).strip().lower() in ("1", "true", "on", "yes")
+
+
 def node_sw_ds(ctx):
     """🧪 L4 数据源 — INTACT 环境渲染图像 (stable-world 逐帧渲染真图)
-    本节点负责启动桥并**等到桥跑完**(顺序链上后续节点直接读终态, 避免竞态)"""
+    本节点负责启动桥; 常驻循环里**不阻塞**(异步档), GUI 手动档仍等到桥跑完"""
     log = ctx["log"]
     root = str(ctx.get("root") or os.getcwd())
     ok, st, fr, vd = _sw_start(root, log)
@@ -1213,6 +1234,11 @@ def node_sw_ds(ctx):
         else "stable-world swm/OGBCube-v0"
     log(f"📦 数据源 [L4·{'光模块插拔' if tsk == 'optical_insert' else 'cube'}]: 环境渲染图像 "
         f"(224×224 RGB, EGL 离屏渲染) · 环境={_env} · 帧 spool: {fr}")
+    if _sw_async():                                   # 常驻循环: 不占拍, 下游读当前态
+        _cur = _sw_status(st)
+        log(f"   ⏳ 异步档(常驻循环): 桥在跑 不阻塞本拍 · stage={_cur.get('stage')} "
+            f"step={_cur.get('step')} 真推理={_cur.get('model_calls')}")
+        return True
     t0 = time.time()
     last = {}
     _budget = float(os.environ.get("SW_CHAIN_TIMEOUT", "2400"))
