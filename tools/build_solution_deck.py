@@ -154,7 +154,7 @@ def slide_cover(pr, S):
              'Z-MAX  ·  5.50.C  ·  机器人整机解决方案  ·  内部评审版', size=9, color=C_DIM)
 
 
-def slide_overview(pr, S, total_pages=None):
+def slide_overview(pr, S, total_pages=None, l2_pages=None):
     s = pr.slides.add_slide(pr.slide_layouts[6])
     add_text(s, 0.55, 0.22, 12.3, 0.40, '方案总览 · 一台工作站要解决的四件事', size=19, bold=True)
     add_text(s, 0.55, 0.66, 12.3, 0.32,
@@ -215,8 +215,11 @@ def slide_overview(pr, S, total_pages=None):
                  S['tact'], 3.0, S['n_l2'], S['n_logic']), size=10, color=C_TXT, line_spacing=1.3)
     add_text(s, 0.55, 5.95, 12.3, 1.2,
              '读册顺序：第 3~7 页 = 整机几何与结构（三视图 / 尺寸表 / URDF 参数）；第 8~9 页 = 节拍甘特（一轮全览 + 稳态放大）；'
-             '第 10~18 页 = L5/L4/L3/L2 四层节点（L2 两页连线图 + 各层功能表）；第 %d 页 = 验收口径、复核方式与未闭环项。'
-             % (total_pages or 19),
+             '第 10~18 页 = L5/L4/L3/L2 四层节点（L2 两页连线图 + 各层功能表）；'
+             '%s第 %d 页 = 验收口径、复核方式与未闭环项。'
+             % (('第 %d~%d 页 = L2 逐节点（从末端输出节点往前，每点一页：功能定义/输入/输出/参数/实现）；第 %d 页 = L2 节拍测试报告；'
+                 % (l2_pages[0], l2_pages[1], l2_pages[2])) if l2_pages else '',
+                (total_pages or 19)),
              size=9, color=C_DIM, line_spacing=1.3)
 
 
@@ -289,11 +292,14 @@ def main():
     pr = Presentation(SRC_DECK)
     n0 = len(pr.slides._sldIdLst)
     slide_cover(pr, S)
-    slide_overview(pr, S, total_pages=n0 + 3)
+    import l2_chain_pages as _C2
+    _nl2 = len(_C2.l2_nodes()[1])
+    slide_overview(pr, S, total_pages=n0 + 3 + _nl2 + 1, l2_pages=(19, 19 + _nl2 - 1, 19 + _nl2))
     hint = slide_accept(pr, S)
     # 原 0..n0-1 保持原序; 新增 3 页在 n0, n0+1, n0+2
     order = [n0, n0 + 1] + list(range(0, n0)) + [n0 + 2]
     reorder(pr, order)
+    _C2.add_block(pr)                      # L2 逐节点页 (末端→上游) + 节拍测试报告
     pr.save(NEW_DECK)
 
     # 验收页那句「N 项 / N PASS」由 verifier 现跑后写回, 不手填 (跑两轮: 写回后项数若有变化再对齐一次)

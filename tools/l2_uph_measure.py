@@ -52,6 +52,44 @@ def run_l2(seed):
             "muscle_log": [l for l in logs if "肌肉记忆快通道" in l][:2]}
 
 
+
+# ───────────────────────────────────────────────── 节拍核算 (页面/自检共用同一函数)
+def compute(d=None, led=None):
+    """段表 + 台账 → 每件节拍两口径 (计划 / 实测)。页面与自检都调这个, 不许各写一套。
+
+    实测口径: 段表每段 t × (台账 mean_t ÷ 段表同类平均计划 t) —— 保留每段的几何差异,
+    只把「这一类段实测比计划慢多少」乘回去。
+    """
+    d = d or plan_from_api()
+    plan = d["plan"]
+    if led is None:
+        led = json.load(open(os.path.join(ROOT, "data/memory/ar_muscle.json"), encoding="utf-8"))["kinds"]
+    win = [x for x in plan if x.get("mod") in (1, 2, 3, 4)]
+    nmod = len({x.get("mod") for x in win}) or 1
+    by = collections.defaultdict(lambda: {"t": 0.0, "n": 0})
+    for x in win:
+        a = by[x["kind"]]
+        a["t"] += float(x["t"])
+        a["n"] += 1
+    ratio = {}
+    for k, a in by.items():
+        mean_plan = a["t"] / a["n"] if a["n"] else 0
+        m = (led.get(k) or {}).get("mean_t")
+        ratio[k] = (m / mean_plan) if (m and mean_plan) else 1.0
+    tp = sum(a["t"] for a in by.values()) / nmod
+    tm = sum(a["t"] * ratio[k] for k, a in by.items()) / nmod
+    rows = []
+    for k, a in by.items():
+        rows.append({"kind": k, "plan_per_pc": a["t"] / nmod, "meas_per_pc": a["t"] * ratio[k] / nmod,
+                     "delta": a["t"] * (ratio[k] - 1) / nmod, "segs_per_pc": a["n"] / nmod,
+                     "n": (led.get(k) or {}).get("n"), "mean_t": (led.get(k) or {}).get("mean_t"),
+                     "ratio": ratio[k]})
+    rows.sort(key=lambda r: -r["delta"])
+    return {"plan_tact": tp, "meas_tact": tm, "uph_plan": 3600.0 / tp, "uph_meas": 3600.0 / tm,
+            "target_tact": TARGET_TACT, "gap": tm - TARGET_TACT, "rows": rows,
+            "n_seg": len(win), "n_mod": nmod, "loop": d.get("loop") or {}, "ratio": ratio}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=104)

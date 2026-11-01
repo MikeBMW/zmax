@@ -242,9 +242,79 @@ try:
                         'PASS' if not _miss else 'FAIL', 'canvas state_space_obs.json'))
 except Exception as _e:                                                  # noqa: BLE001
     results.append(('L3/L4/L5 层页', '可解析', ['%s' % _e], 'FAIL', 'build_layer_nodes'))
-results.append(('总页数', '19 页 (封面+总览+结构/甘特+L2 连线 2 页+各层表+验收)',
-                ['%d' % len(pr.slides._sldIdLst)], 'PASS' if len(pr.slides._sldIdLst) == 19 else 'FAIL',
-                'pptx 实际页数'))
+# ---------- 7b. L2 逐节点页 + 节拍测试报告 (2026-11-02) ----------
+try:
+    sys.path.insert(0, ROOT + '/tools')
+    import l2_chain_pages as _C
+    _nodes, _l2, _links = _C.l2_nodes()
+    _order, _out, _in = _C.chain_order(_l2, _links)
+    _want = 19 + len(_order) + 1
+    results.append(('总页数', '%d 页 (19 + L2 逐节点 %d + 节拍报告 1)' % (_want, len(_order)),
+                    ['%d' % len(pr.slides._sldIdLst)],
+                    'PASS' if len(pr.slides._sldIdLst) == _want else 'FAIL', 'pptx 实际页数'))
+    # 每点一页: 标题里的编号/节点 id 与逆序一致
+    _titles = {}
+    for _i, _s in enumerate(pr.slides, 1):
+        _full = "\n".join(sh.text_frame.text for sh in _s.shapes if sh.has_text_frame)
+        _m = re.search(r'L2 链路 (\d+)/(\d+) · ', _full)
+        if _m:
+            _titles[int(_m.group(1))] = (_i, _full)
+    _miss_pg = [k for k in range(1, len(_order) + 1) if k not in _titles]
+    results.append(('L2 逐节点页数', '%d 个节点 = %d 页' % (len(_order), len(_order)),
+                    ['%d 页' % len(_titles)], 'PASS' if not _miss_pg else 'FAIL',
+                    'canvas L2 带 + 反向 BFS'))
+    # 顺序: 第 1 页必须是"无 L2 下游"的末端节点, 且顺序与反向 BFS 逐位一致
+    _ids = []
+    for k in range(1, len(_order) + 1):
+        _t = _titles.get(k, (0, ''))[1]
+        _ids.append(_t.split('·', 1)[0].strip())
+    _bad_order = [(_i + 1, _order[_i], _titles.get(_i + 1, (0, ''))[1][-30:])
+                  for _i in range(len(_order)) if _order[_i] not in _titles.get(_i + 1, (0, ''))[1]]
+    # 末端 = 离源头最远的输出节点 (画布有反馈回路, 不能只看"无下游")
+    _sink_ok = (_order[0] in _titles.get(1, (0, ''))[1]) if _titles.get(1) else False
+    results.append(('L2 顺序从末端开始', '第 1 页 = 无下游节点 (%s) · 逐位 %d' % (_order[0], len(_order) - len(_bad_order)),
+                    ['L2 链路 01/%d' % len(_order)], 'PASS' if (_sink_ok and not _bad_order) else 'FAIL',
+                    'canvas links 反向 BFS'))
+    # 输入/输出条数 = 画布连线条数 (逐页核)
+    _bad_io = []
+    for k, _nid in enumerate(_order, 1):
+        _pg = _titles.get(k)
+        if not _pg:
+            _bad_io.append(_nid + ':缺页'); continue
+        _t = _pg[1]
+        _ni = len([x for x in _links if x.get('t') == _nid])
+        _no = len([x for x in _links if x.get('f') == _nid])
+        _mi = re.search(r'输入（(\d+) 条连线', _t)
+        _mo = re.search(r'输出（(\d+) 条连线', _t)
+        if not (_mi and _mo and int(_mi.group(1)) == _ni and int(_mo.group(1)) == _no):
+            _bad_io.append('%s(%s/%s vs %d/%d)' % (_nid, _mi.group(1) if _mi else '?',
+                                                   _mo.group(1) if _mo else '?', _ni, _no))
+    results.append(('L2 节点页输入输出对账', '%d 个节点逐页 vs 画布连线' % len(_order),
+                    ['异常 %d' % len(_bad_io)], 'PASS' if not _bad_io else 'FAIL',
+                    'canvas links (f/t)'))
+    # 节拍测试报告页: 两口径都在, 且数字与 compute() 现算一致 (台账用建页时冻结的库内快照)
+    import l2_uph_measure as _U
+    from lerobot.memory import l2_store as _S2
+    _led = json.loads(json.dumps(_S2._read('ledger').get('kinds') or {}))
+    _c = _U.compute(led=_led or None)
+    _tp, _tm = _c["plan_tact"], _c["meas_tact"]
+    _pt = ''
+    for _s2 in pr.slides:
+        _all = "\n".join(sh.text_frame.text for sh in _s2.shapes if sh.has_text_frame)
+        if _all.lstrip().startswith('L2 节拍测试报告'):      # 标题页, 不是总览里提一句
+            _pt = _all
+            break
+    _m1 = re.search(r'计划口径（段表 t）：([\d.]+) s/件 → (\d+) UPH', _pt)
+    _m2 = re.search(r'实测口径（× 台账 mean_t/同类计划均值）：([\d.]+) s/件 → (\d+) UPH', _pt)
+    _ok_t = bool(_m1 and _m2 and abs(float(_m1.group(1)) - _tp) < 0.02
+                 and abs(float(_m2.group(1)) - _tm) < 0.02
+                 and int(_m1.group(2)) == round(3600 / _tp) and int(_m2.group(2)) == round(3600 / _tm))
+    results.append(('节拍测试报告页', '计划 %.3f/实测 %.3f s/件 现算' % (_tp, _tm),
+                    ['计划口径 %.3f' % _tp, '实测口径 %.3f' % _tm],
+                    'PASS' if _ok_t else 'FAIL', '段表 + AR 台账'))
+except Exception as _e:                                                  # noqa: BLE001
+    results.append(('L2 逐节点页', '可解析', ['%s' % _e], 'FAIL', 'l2_chain_pages'))
+    results.append(('总页数', '19 + L2 节点页 + 1', ['%d' % len(pr.slides._sldIdLst)], 'FAIL', 'pptx'))
 
 # ---------- 8. 输出 ----------
 w = max(len(r[0]) for r in results) + 2
