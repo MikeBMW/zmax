@@ -180,6 +180,26 @@ results.append(('L2 节点名称逐字一致', '%d 个名称' % n_l2,
                 ('缺 %d 个: %s' % (len(missing), ' / '.join(missing[:3]))) if missing else '全部命中',
                 'PASS' if not missing else 'FAIL', 'canvas state_space_obs.json'))
 
+# L5 / L4 / L3 层节点 (2026-11-01 新增页) —— 名称逐字 + 每层数量
+try:
+    sys.path.insert(0, ROOT + '/tools')
+    from build_layer_nodes import load_nodes as _ln, LAYERS as _LY
+    for _layer, _bands, _title, _note in _LY:
+        _nodes, _ = _ln(_bands)
+        _norm = lambda t: t.replace('−', '-')     # PPT_TEXT 已把 U+2212 归一, 比对也要归一同一边
+        _miss = [n['name'] for n in _nodes if _norm(n['name']) not in PPT_TEXT]
+        results.append(('%s 层节点数' % _layer, '画布 %d 个' % len(_nodes),
+                        ['%d 个节点' % len(_nodes)], 'PASS' if len(_nodes) > 0 else 'FAIL',
+                        'canvas %s' % '+'.join(_bands)))
+        results.append(('%s 节点名称逐字一致' % _layer, '%d 个名称' % len(_nodes),
+                        ('缺 %d 个: %s' % (len(_miss), ' / '.join(_miss[:3]))) if _miss else '全部命中',
+                        'PASS' if not _miss else 'FAIL', 'canvas state_space_obs.json'))
+except Exception as _e:                                                  # noqa: BLE001
+    results.append(('L3/L4/L5 层页', '可解析', ['%s' % _e], 'FAIL', 'build_layer_nodes'))
+results.append(('总页数', '18 页 (封面+总览+15 层/结构/甘特+验收)',
+                ['%d' % len(pr.slides._sldIdLst)], 'PASS' if len(pr.slides._sldIdLst) == 18 else 'FAIL',
+                'pptx 实际页数'))
+
 # ---------- 8. 输出 ----------
 w = max(len(r[0]) for r in results) + 2
 print('检查 %d 项 · PPT: %s' % (len(results), os.path.basename(DECK)))
