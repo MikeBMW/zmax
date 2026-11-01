@@ -61,7 +61,9 @@ d = json.load(open(CMD, encoding="utf-8"))
 need = ("seq", "mod", "kind", "a", "b", "u", "t_seg", "src")
 miss = [k for k in need if d.get(k) is None]
 ck(not miss, "① ar_cmd.json 字段齐全", "缺=%s src=%s" % (miss or "无", d.get("src")))
-ck(d.get("src") == "ss_uph_tact", "① 指令来源=节点 ss_uph_tact", str(d.get("src")))
+# 唯一写者: 2026-11-01 起 owner=plan (ZMAX_AR_OWNER), uph_tact 只在非 plan 口径下写 ⇒ 两个都算合法来源
+ck(d.get("src") in ("ss_uph_tact", "ss_plan_long"), "① 指令来源=画布 plan 节点 (ss_plan_long/ss_uph_tact)",
+   str(d.get("src")))
 
 ck(len(set(seqs)) > 8, "② 段序号在推进", "采到 %d 个不同 seq (max=%s)" % (len(set(seqs)), max(seqs)))
 ck(all(0.0 <= float(u) <= 1.0 for u in us if u is not None), "② 段内进度 u 恒在 [0,1]",
