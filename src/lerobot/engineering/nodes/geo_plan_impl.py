@@ -23,7 +23,9 @@
 """
 from __future__ import annotations
 
+import math
 import os
+import time
 
 import numpy as np
 
@@ -277,6 +279,129 @@ def _run_guides(ctx=None):
     return out
 
 
+# ── 理想规划档 (2026-11-01 老倪: 「再从测地线规划引导节点给出理想规划, 保证300UPH, 保证L2的设计逻辑」)
+#   现场没有 obs43 落盘 ⇒ 正常档 _run_guides 出不来 (ok=False, 直通)。
+#   理想档不假装吃了 obs43: 几何取**执行器同一生成器** cycle_plan 的稳态段表 (与「全流程 UPH」逐段一致),
+#   段内用 S² 大圆测地线采样出块 chunk[H,4] —— 输出仍走本节点的口语义 out1(引导位姿)/out2(块),
+#   下游 sslimit/sssched 不用改。时序按理想剖面重计时 (抬升/横移 1000, 下落/插入/拔 300)。
+IV_FAST, IA_FAST = 1000.0, 4000.0
+IV_SLOW, IA_SLOW = 300.0, 2000.0
+IPROC = ("insert", "grip", "release")
+_IDEAL_CACHE = {"ts": 0.0, "doc": None}
+
+
+def _ideal_on(ctx=None):
+    """是否走理想档: ctx.params.ideal 或环境变量 ZMAX_GEO_IDEAL=1。"""
+    try:
+        pr = (ctx or {}).get("params") or {}
+        if str((pr.get("ideal") if isinstance(pr, dict) else "")).lower() in ("1", "true", "on", "yes"):
+            return True
+    except Exception:                                                   # noqa: BLE001
+        pass
+    return os.environ.get("ZMAX_GEO_IDEAL", "0").strip().lower() in ("1", "true", "on", "yes")
+
+
+def _seg_time(d_mm, kind):
+    slow = kind in ("down", "insert", "pull")
+    v, a = (IV_SLOW, IA_SLOW) if slow else (IV_FAST, IA_FAST)
+    if d_mm <= 1e-9:
+        return 0.0
+    if d_mm > v * v / a:
+        return d_mm / v + v / a
+    return 2.0 * math.sqrt(d_mm / a)
+
+
+def _geodesic_s2(a, b, h):
+    """S² 大圆测地线: 方向 slerp + 半径线性 ⇒ 段内 h 个引导点 (mm)。"""
+    ra = math.sqrt(sum(x * x for x in a)) or 1.0
+    rb = math.sqrt(sum(x * x for x in b)) or 1.0
+    ua = [x / ra for x in a]
+    ub = [x / rb for x in b]
+    dot = max(-1.0, min(1.0, sum(x * y for x, y in zip(ua, ub))))
+    om = math.acos(dot)
+    out = []
+    for i in range(h):
+        t = 0.0 if h == 1 else i / (h - 1)
+        r = ra + (rb - ra) * t
+        if om < 1e-6:
+            d = ua
+        else:
+            s1 = math.sin((1 - t) * om) / math.sin(om)
+            s2 = math.sin(t * om) / math.sin(om)
+            d = [s1 * x + s2 * y for x, y in zip(ua, ub)]
+        n = math.sqrt(sum(x * x for x in d)) or 1.0
+        out.append([d[0] / n * r, d[1] / n * r, d[2] / n * r])
+    return out
+
+
+def build_ideal_plan(h=8, refresh=60.0):
+    """理想规划段表 (几何=执行器同一 cycle_plan 稳态窗口, 时序=理想剖面)。缓存 refresh 秒。"""
+    now = time.time()
+    if _IDEAL_CACHE["doc"] and now - _IDEAL_CACHE["ts"] < refresh:
+        return _IDEAL_CACHE["doc"]
+    from . import cycle_plan as _cp                                           # noqa: PLC0415
+    doc = _cp.build()
+    P = doc.get("plan") or doc.get("segments") or []
+    L = doc.get("loop") or {}
+    ks = L.get("ks") or [2, 3]
+    # ⚠️ 段表里的 'k' 是**轮次号**(1,2,3…), loop.ks 比的是它; 动作类型在 'kind' —— 别混。
+    kk = lambda s: s.get("k")                                                 # noqa: E731
+    i0 = next(i for i, s in enumerate(P) if kk(s) == ks[0])
+    i1 = max(i for i, s in enumerate(P) if kk(s) == ks[1])
+    W = P[i0:i1 + 1]
+    mods = int(L.get("mods") or 4)
+    segs, clock = [], 0.0
+    for s in W:
+        kind = s.get("kind") or "move"
+        a, b = s.get("a"), s.get("b")
+        d = math.dist(a, b) if (a and b) else 0.0
+        t = float(s.get("t") or 0.0) if (kind in IPROC or d <= 1e-9) else _seg_time(d, kind)
+        pts = _geodesic_s2(a, b, h) if d > 1e-9 else [[a[0], a[1], a[2]] for _ in range(h)]
+        chunk = [[round(p[0], 2), round(p[1], 2), round(p[2], 2),
+                  round(t * (i / (h - 1)), 4) if h > 1 else 0.0] for i, p in enumerate(pts)]
+        segs.append(dict(i=len(segs) + 1, kind=kind, label=s.get("label"), a=a, b=b,
+                         len_mm=round(d, 1), t=round(t, 3), t0=round(clock, 3),
+                         src_t=round(float(s.get("t") or 0.0), 3), chunk=chunk))
+        clock += t
+    tact = clock / mods if mods else clock
+    doc = dict(ok=True, src="cycle_plan.build() 稳态窗口 loop.ks=%s" % (ks,),
+               model=dict(v_fast=IV_FAST, a_fast=IA_FAST, v_slow=IV_SLOW, a_slow=IA_SLOW, H=h),
+               cycle_s=round(clock, 3), tact_s=round(tact, 4),
+               uph=round(3600.0 / tact, 1) if tact else 0.0, mods=mods, n_seg=len(segs),
+               move_s=round(sum(x["t"] for x in segs if x["kind"] not in IPROC), 3),
+               proc_s=round(sum(x["t"] for x in segs if x["kind"] in IPROC), 3),
+               ok300=bool(tact and 3600.0 / tact >= 300.0), margin_s=round(12.0 - tact, 4),
+               segs=segs)
+    _IDEAL_CACHE.update(ts=now, doc=doc)
+    return doc
+
+
+def ideal_run(ctx=None):
+    """理想档一个周期: 按时间取当前段 → out1 引导位姿, out2 块 chunk[H,4]。只规划不下发。"""
+    h = int(((ctx or {}).get("params") or {}).get("H") or 8)
+    doc = build_ideal_plan(h=h)
+    el = time.time() % max(1e-6, doc["cycle_s"])          # 循环内相位
+    cur = doc["segs"][-1]
+    for s in doc["segs"]:
+        if el <= s["t0"] + s["t"]:
+            cur = s
+            break
+    u = 0.0 if cur["t"] <= 0 else min(1.0, max(0.0, (el - cur["t0"]) / cur["t"]))
+    pos = [cur["a"][i] + (cur["b"][i] - cur["a"][i]) * u for i in range(3)]
+    out1 = {"tcp": [round(v, 2) for v in pos], "seg_i": cur["i"], "seg_n": doc["n_seg"],
+            "kind": cur["kind"], "label": cur["label"], "u": round(u, 4),
+            "cycle_s": doc["cycle_s"], "tact_s": doc["tact_s"], "uph": doc["uph"],
+            "ok300": doc["ok300"], "src": "geo_ideal(测地线引导·理想档)"}
+    out2 = {"H": h, "chunk": cur["chunk"], "seg_i": cur["i"], "kind": cur["kind"]}
+    return {"out1": {"value": out1, "age_s": 0.0, "fresh": True},
+            "out2": {"value": out2, "age_s": 0.0, "fresh": True},
+            "ok": True, "ideal": True, "cycle_s": doc["cycle_s"], "tact_s": doc["tact_s"],
+            "uph": doc["uph"], "ok300": doc["ok300"], "n_seg": doc["n_seg"],
+            "status": "理想规划 %d 段 · 循环 %.2f s · 节拍 %.3f s/件 · %.0f UPH %s"
+                      % (doc["n_seg"], doc["cycle_s"], doc["tact_s"], doc["uph"],
+                         "≥300 ✓" if doc["ok300"] else "<300 ✗")}
+
+
 def run(ctx=None):
     """🧭 测地线规划引导 = 3D 引导位姿 + 块 + **工艺步骤** (老倪 2026-11-01: 本节点负责工艺规划)。
 
@@ -286,6 +411,18 @@ def run(ctx=None):
       · out1.craft         → 工艺步骤: 元任务/第几步/推进判决 (来自工艺引擎 sched_impl)
     工艺引擎坏了不影响引导位姿 (craft.err 明示, 不静默丢)。
     """
+    if _ideal_on(ctx):
+        out = ideal_run(ctx)
+        try:
+            c = _craft(ctx)
+            out["craft"] = {"step": c.get("out1"), "progress": c.get("out2"),
+                            "event": c.get("out3"), "err": c.get("err")}
+            if isinstance(out["out1"].get("value"), dict) and isinstance(c.get("out1"), dict):
+                out["out1"]["value"]["craft"] = c["out1"]
+        except Exception as _e:                                         # noqa: BLE001
+            out["craft"] = {"err": str(_e)[:120]}
+        globals()["LAST_STATUS"] = out.get("status") or ""
+        return out
     out = _run_guides(ctx)
     c = _craft(ctx)
     out["craft"] = {"step": c.get("out1"), "progress": c.get("out2"),
