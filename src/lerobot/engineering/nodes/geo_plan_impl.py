@@ -68,6 +68,10 @@ def _engine():
 def _obs(ctx):
     """从 ctx 取 obs43: ctx['in1'] 可以是 list/np.array(43) 或 {'obs':[...]} 或 {'state':[...]}"""
     v = (ctx or {}).get("in1")
+    # 🔴 2026-11-01 实测: 常驻循环给的是 ctx[port] = {"value":…, "age_s":…, "fresh":…},
+    #   原来只认 {"obs":…} 直塞 ⇒ 永远报"无 obs43 输入", 这条引导链一直空转。
+    if isinstance(v, dict) and "value" in v:
+        v = v.get("value")
     if isinstance(v, dict):
         v = v.get("obs") or v.get("state") or v.get("vec")
     if v is None:
