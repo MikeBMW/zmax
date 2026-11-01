@@ -2857,7 +2857,19 @@ class RealStateSpaceSim:
             try:
                 _sched_dd = getattr(self, "sched", None)
                 if _sched_dd is not None:
-                    _sr = _sched_dd.skill_step(act)
+                    # 3D 坐标 (基座/引擎系) + 本段目标 ⇒ 技能自带的圆柱通道用**同系活通道**:
+                    # 轴 = 当前末端 → 本段目标, 半径/节拍取真源同一份数字 ⇒ 仿真与真机都不串系。
+                    _pm = [float(v) * 1000.0 for v in np.asarray(self.x, dtype=float).ravel()[:3]]
+                    try:
+                        _tg = [float(v) * 1000.0
+                               for v in np.asarray(self._stage_target(), dtype=float).ravel()[:3]]
+                    except Exception:                                      # noqa: BLE001
+                        _tg = None
+                    try:
+                        _sched_dd._pos_mm, _sched_dd._target_mm = _pm, _tg
+                    except Exception:                                      # noqa: BLE001
+                        pass
+                    _sr = _sched_dd.skill_step(act, pos_mm=_pm, target_mm=_tg)
                     if _sr is not None:
                         act = np.clip(np.asarray(_sr.get("u"), dtype=float).ravel()[:4], -1.0, 1.0)
             except Exception:                                              # noqa: BLE001

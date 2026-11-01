@@ -110,7 +110,7 @@
   <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
   <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
      style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-10-31 r71 · 包络可隐藏/按技能开关/跟随播放/🔴全流程·插入仿真·生产演练执行前红轮廓 · 🧩 plan 段 → 🤖 机器人执行器(AR场景) → 页面: 页面优先吃执行器输出 /api/ar/exec, 执行器没跑才回落 plan 直发 · 手里模块/孔占用/检测同步 · 真机零指令</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-11-01 r87 · 🧈 右臂平顺(实测: 会动的段里静止帧 91%→8% · 单帧最大位移 690.7mm→40.7mm · 单关节 48.7°→3.0°): 段内按本地时间 60fps 前进 + 段末按 392 段表续接 + 600mm/s 限速 + IK 单帧 3° 限幅 · 圆柱通道 r=10mm(通道里那些矩形=场景立方体, 「🧊 只看通道」可关) · 包络按当前动作/当前光模块 · plan 段 → 执行器节点 → 页面(优先 /api/ar/exec) · 真机零指令</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -213,7 +213,8 @@
       <span id="tIns" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
   </div>
   <button id="panChip" style="position:fixed;left:16px;top:96px;z-index:55;display:none;background:rgba(13,17,23,.92);border:1px solid #30363d;color:#8b949e;border-radius:14px;padding:4px 10px;font:11px/1.3 ui-monospace,monospace;cursor:pointer" title="中键平移后视角会一直保持; 点这里恢复到自动取景中心">🖱 视角已平移</button>
-  <button id="uphPill" style="position:fixed;left:50%;transform:translateX(-50%);top:10px;z-index:60;display:none;background:rgba(13,17,23,.94);border:1px solid #2f81f7;color:#3fb950;border-radius:16px;padding:5px 14px;font:12px/1 ui-monospace,monospace;cursor:pointer">🏭 UPH 300 ▸</button>
+  <button id="uphPill" style="position:fixed;left:50%;transform:translateX(-50%);top:10px;z-index:60;display:none;background:rgba(13,17,23,.94);border:1px solid #2f81f7;color:#3fb950;border-radius:16px;padding:5px 10px 5px 14px;font:12px/1 ui-monospace,monospace;cursor:pointer"><span id="uphPillT">🏭 UPH 300 ▸</span><span id="uphPillX" title="彻底隐藏(想再看回来就点『🏭 全流程 UPH』)" style="margin-left:8px;padding:0 3px;color:#8b949e">✕</span></button>
+  <button id="uphChip" style="position:fixed;left:16px;top:10px;z-index:60;display:none;background:rgba(13,17,23,.94);border:1px solid #2f81f7;color:#3fb950;border-radius:8px;padding:3px 7px;font:13px/1 ui-monospace,monospace;cursor:pointer" title="300UPH 窗口已收起 · 点开">🏭</button>
   <div id="uphBox" style="position:fixed;left:50%;transform:translateX(-50%);top:10px;z-index:60;display:none;background:rgba(13,17,23,.94);border:1px solid #2f81f7;border-radius:10px;padding:8px 12px;font:12px/1.5 ui-monospace,monospace;color:#c9d1d9;box-shadow:0 6px 24px rgba(0,0,0,.5);min-width:430px">
     <div style="font-size:13px;color:#58a6ff;font-weight:700;margin-bottom:2px;display:flex;justify-content:space-between;align-items:center;gap:10px">
       <span>🏭 全流程并行 · 上料摆盘 + 插拔检测 + 下料分拣</span>
@@ -312,7 +313,11 @@
       <span class="tag" style="background:#30363d99">原子技能包络</span>
       <button class="sm" id="btnCor" onclick="corToggleAll()">🫥 全部隐藏 (0)</button>
       <button class="sm" id="btnCorFollow" onclick="corFollowToggle()" title="按顺序: 播放到哪一段, 就只显示那一段所属技能的约束包络">🔗 跟随播放</button>
-      <button class="sm on" id="btnCorPre" onclick="corPreToggle()" title="每个动作执行前, 用它所属技能的约束通道红轮廓标出来 (不受隐藏开关影响)">🔴 预执行约束</button>
+      <button class="sm on" id="btnCorPre" onclick="corPreToggle()" title="每个动作执行前, 用它所属技能的约束通道标出来 (不受隐藏开关影响)">🔴 预执行约束</button>
+      <button class="sm on" id="btnCorTube" onclick="corTubeToggle()" title="约束通道画成圆柱体: 半透明管壁(边界) + 两端截面圆环 + 黄线(理想轨迹); 关掉=只画线框">🧊 管状通道</button>
+      <button class="sm" id="btnCorAlpha" onclick="corAlphaCycle()" title="管壁透明度">🌫 透明 22%</button>
+      <button class="sm" id="btnCorGain" onclick="corGainCycle()" title="显示放大: 通道真值半径现为 80mm(2026-11-01 放宽), 默认 ×1 就是真值; 放大只放大画面, 数值不变(标签写的是真值)">🔍 显示 ×1</button>
+      <button class="sm" id="btnCorOnly" onclick="corOnlyToggle()" title="只看通道: 临时把围栏盒/料盘/插孔/工件这些立方体都关掉(纯显示, 不改配置), 通道里就不会有别的矩形">🧊 只看通道</button>
     </div>
     <div class="row" style="margin-top:4px" id="rowCorSkills"></div>
     <div style="display:none">
@@ -1314,6 +1319,78 @@ let CORSET = new Set();                 // 哪些技能的包络要画 (空 = �
 let CORFOLLOW=false;
 const PRE_SK_CH={SK01:'SK01 接近',SK02:'SK02 对位',SK03:'SK03 下降',SK04:'SK04 抓取',SK05:'SK05 抬起',SK06:'SK06 转移',SK07:'SK07 插入',SK08:'SK08 完成'};
 let CORPRE=true;          // 🔴 预执行约束: 每个动作执行前, 把它所属技能的包络用红轮廓画出来
+// 🧊 2026-11-01 老倪「为什么每个技能的约束都是一个矩形? 应该是围绕理想轨迹的圆柱通道, 要透明, 既看得到理想轨迹又看得到边界」
+//    ⇒ 圆柱渲染: 轴=这一段理想轨迹, 半径=该组包络 r(配置真值); 半透明管壁 + 两端截面圆环(边界) + 中线(理想轨迹)。
+let COR_TUBE=true;        // true=管状(半透明体) / false=线框(只画 4 根母线)
+// 🧊 2026-11-01 老倪「圆柱通道里还有个矩形, 这是干什么的」⇒ 那不是通道, 是场景里的立方体(围栏盒/料盘/插孔/工件)。
+//    「只看通道」= 临时把所有非包络的盒子关掉(纯显示, 不动配置), 只剩管子+中线, 看通道时不被盒子挡住。
+let COR_ONLY=false;
+let COR_ALPHA=0.22;       // 管壁透明度
+// 🔍 显示放大: 真值半径是物理间隙(抓取 3mm / 接近 25mm), 按原尺寸画在屏幕上只有 1~2px ⇒ 看不清。
+//    放大只放大**画面**(数值不变), 标签里同时写真值, 不许拿显示尺寸当结论。
+let COR_GAIN=1;
+function _v3sub(a,b){ return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
+function _v3len(a){ return Math.hypot(a[0],a[1],a[2]); }
+function _v3nrm(a){ const n=_v3len(a)||1; return [a[0]/n,a[1]/n,a[2]/n]; }
+function _v3cross(a,b){ return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+function corBasis(u){
+  const ref=Math.abs(u[0])<0.9 ? [1,0,0] : [0,1,0];
+  const e1=_v3nrm(_v3cross(u,ref));
+  return [e1, _v3nrm(_v3cross(u,e1))];
+}
+// 圆柱通道: 先铺半透明管壁(相邻母线间四边形), 再画两端截面圆环, 最后画中线(理想轨迹)
+function drawCorTube(g, pr, A, B, r, opt){
+  opt=opt||{};
+  const gain=(opt.gain!=null?opt.gain:COR_GAIN)||1;
+  const rDraw=r*gain;
+  const N=opt.n||24, col=opt.col||'#ff2d20', al=(opt.alpha!=null?opt.alpha:COR_ALPHA);
+  const L=_v3len(_v3sub(B,A)); if(!(L>1e-6) || !(rDraw>0)) return 0;
+  const u=_v3nrm(_v3sub(B,A)); const b=corBasis(u); const e1=b[0], e2=b[1];
+  const ring=function(P){
+    const out=[];
+    for(let i=0;i<N;i++){ const th=2*Math.PI*i/N, c=Math.cos(th), s=Math.sin(th);
+      out.push(pr([P[0]+rDraw*(c*e1[0]+s*e2[0]), P[1]+rDraw*(c*e1[1]+s*e2[1]), P[2]+rDraw*(c*e1[2]+s*e2[2])])); }
+    return out; };
+  const RA=ring(A), RB=ring(B);
+  for(let i=0;i<N;i++) if(!RA[i]||!RB[i]) return 0;
+  // 取证用: 记下这一刻画的 3D 圆环(半径/垂直性可由外部复核)
+  window.__PRE_GEO__={A:A,B:B,r:r,rDraw:rDraw,gain:gain,N:N,ringA3:vRing3(A),ringB3:vRing3(B),
+                      scrA:RA.map(p=>({u:Math.round(p.u),v:Math.round(p.v)})),
+                      scrB:RB.map(p=>({u:Math.round(p.u),v:Math.round(p.v)})),
+                      alpha:al, tube:(opt.tube!==false)};
+  function vRing3(P){ const out=[]; for(let i=0;i<N;i++){ const th=2*Math.PI*i/N,c=Math.cos(th),s=Math.sin(th);
+      out.push([P[0]+rDraw*(c*e1[0]+s*e2[0]), P[1]+rDraw*(c*e1[1]+s*e2[1]), P[2]+rDraw*(c*e1[2]+s*e2[2])]); } return out; }
+  g.save();
+  if(opt.tube!==false){
+    g.globalAlpha=al; g.fillStyle=col; g.strokeStyle=col; g.lineWidth=0.8;
+    for(let i=0;i<N;i++){ const j=(i+1)%N;
+      g.beginPath(); g.moveTo(RA[i].u,RA[i].v); g.lineTo(RB[i].u,RB[i].v);
+      g.lineTo(RB[j].u,RB[j].v); g.lineTo(RA[j].u,RA[j].v); g.closePath(); g.fill(); }
+  } else {
+    g.globalAlpha=Math.min(1, al*2.2); g.strokeStyle=col; g.lineWidth=1.1;
+    for(let i=0;i<4;i++){ const k=Math.round(i*N/4)%N;
+      g.beginPath(); g.moveTo(RA[k].u,RA[k].v); g.lineTo(RB[k].u,RB[k].v); g.stroke(); }
+  }
+  // 边界: 两端截面圆环(边界约束的"口")
+  g.globalAlpha=Math.min(1, al*3.4); g.lineWidth=1.7; g.strokeStyle=col;
+  [RA,RB].forEach(function(R){ g.beginPath();
+    R.forEach(function(p,i){ if(i) g.lineTo(p.u,p.v); else g.moveTo(p.u,p.v); });
+    g.closePath(); g.stroke(); });
+  // 理想轨迹: 不透明中线(在管子里, 透过管壁还看得见)
+  const PA=pr(A), PB=pr(B);
+  if(PA&&PB){
+    g.globalAlpha=1; g.lineWidth=2.4; g.setLineDash([]);
+    g.shadowColor='rgba(255,45,32,.8)'; g.shadowBlur=5;
+    g.strokeStyle='#ffd166';                          // 黄线=理想轨迹, 与红色边界分开看
+    g.beginPath(); g.moveTo(PA.u,PA.v); g.lineTo(PB.u,PB.v); g.stroke();
+    g.shadowBlur=0;
+    g.fillStyle='#ffd166';
+    g.beginPath(); g.arc(PA.u,PA.v,2.8,0,Math.PI*2); g.fill();
+    g.beginPath(); g.arc(PB.u,PB.v,2.8,0,Math.PI*2); g.fill();
+  }
+  g.restore();
+  return N;
+}
 let PRE_SK=null, PRE_LABEL='';   // 马上要执行的那一段: 技能 + 动作名                       // 🔗 按顺序: 播放到哪段 ⇒ 只显示该段技能的包络
 function corSkillOfSeg(d){
   const kind=String((d&&d.kind)||''), label=String((d&&d.label)||'');
@@ -1337,13 +1414,73 @@ function corPreMark(d){
   const lab=String((d&&d.label)||'');
   if(sk===PRE_SK && lab===PRE_LABEL) return;
   PRE_SK=sk; PRE_LABEL=lab;
+  try{ paintCorBtn(); }catch(e){}          // 按钮上标出"当前要执行的是哪一组"
 }
 function corPreFromSeg(d){ corPreMark(d); try{ drawVR(); }catch(e){} }
+// 当前这一段对应哪一条多折线(p<j>) —— 端环线(scap/ecap)的中点就是该次机动的真实起终点, 取离当前点最近的一条
+function corPrePolyIdx(R){
+  try{
+    const seg=(typeof INSP!=='undefined' && INSP && INSP.plan && INSP.si!=null)?INSP.plan[INSP.si]:null;
+    let P=null;
+    if(seg && seg.a && seg.a.length>=3) P=[seg.a[0]/1000, seg.a[1]/1000, seg.a[2]/1000];
+    else if(typeof TCP!=='undefined' && TCP && TCP.ok) P=[TCP.x, TCP.y, TCP.z];
+    if(!P) return null;
+    const mid=it=>[(+it.p1[0]+ +it.p2[0])/2, (+it.p1[1]+ +it.p2[1])/2, (+it.p1[2]+ +it.p2[2])/2];
+    const caps={};
+    R.forEach(it=>{ const m=String(it.id).match(/-p(\d+)-/); if(m && /-[se]cap$/.test(String(it.id))){
+      (caps[+m[1]]=caps[+m[1]]||[]).push(mid(it)); } });
+    const dNear=function(j){ if(!caps[j]) return null;
+      let bd=1e9; caps[j].forEach(Q=>{ const d=Math.hypot(Q[0]-P[0],Q[1]-P[1],Q[2]-P[2]); if(d<bd) bd=d; });
+      return bd; };
+    // ① 按"这一技能在段表里的第几次机动"直接对号(plan 段序与 p<j> 同序) —— 确定、不靠猜
+    if(seg && typeof INSP!=='undefined' && INSP && INSP.plan){
+      let occ=0;
+      for(let i=0;i<=INSP.si && i<INSP.plan.length;i++) if(corSkillOfSeg(INSP.plan[i])===PRE_SK) occ++;
+      const j=occ-1, d=dNear(j);
+      if(j>=0 && d!=null && d<0.008) return j;         // 8mm 内对得上 ⇒ 就是这一条
+    }
+    // ② 对不上(段表与包络不同源) ⇒ 取几何最近的那一条
+    let best=null, bd=1e9;
+    Object.keys(caps).forEach(function(k){ const d=dNear(+k); if(d!=null && d<bd){ bd=d; best=+k; } });
+    return best;
+  }catch(e){ return null; }
+}
 function corPreToggle(){
   CORPRE=!CORPRE;
   const b=document.getElementById('btnCorPre');
   if(b) b.className='sm'+(CORPRE?' on':'');
   if(!CORPRE){ PRE_SK=null; PRE_LABEL=''; window.__PRE_LINES__=0; }
+  try{ drawVR(); }catch(e){}
+}
+// 🧊 管状/线框切换 + 透明度
+function corTubeToggle(){
+  COR_TUBE=!COR_TUBE;
+  const b=document.getElementById('btnCorTube');
+  if(b) b.className='sm'+(COR_TUBE?' on':'');
+  try{ drawVR(); }catch(e){}
+}
+function corOnlyToggle(){
+  COR_ONLY=!COR_ONLY;
+  const b=document.getElementById('btnCorOnly');
+  if(b) b.className='sm'+(COR_ONLY?' on':'');
+  try{ drawVR(); }catch(e){}
+}
+function corGainCycle(){
+  const seq=[1, 2, 3, 5];
+  const i=Math.max(0, seq.indexOf(COR_GAIN));
+  COR_GAIN=seq[(i+1)%seq.length];
+  const b=document.getElementById('btnCorGain');
+  if(b){ b.textContent='🔍 显示 ×'+COR_GAIN; b.className='sm'+(COR_GAIN!==1?' on':''); }
+  try{ var _bg=document.getElementById('btnCorGain'); if(_bg){ _bg.textContent='🔍 显示 ×'+COR_GAIN; _bg.className='sm'+(COR_GAIN!==1?' on':''); } }catch(e){}
+  try{ drawVR(); }catch(e){}
+}
+function corAlphaCycle(){
+  const seq=[0.35, 0.22, 0.12, 0.06];
+  const i=Math.max(0, seq.findIndex(v=>Math.abs(v-COR_ALPHA)<0.001));
+  COR_ALPHA=seq[(i+1)%seq.length];
+  const b=document.getElementById('btnCorAlpha');
+  if(b){ b.textContent='🌫 透明 '+Math.round(COR_ALPHA*100)+'%';
+         b.className='sm'+(COR_ALPHA!==0.22?' on':''); }
   try{ drawVR(); }catch(e){}
 }
 function corFollowToggle(){
@@ -1367,17 +1504,23 @@ function paintCorBtn(){
   const on=all.filter(k=>CORSET.has(k)).length;
   if(b){
     b.className='sm'+(on?' on':'');
-    b.textContent=(on?('👁 全部显示中 '):'🫥 全部隐藏 ')+'('+corCount()+')';
+    // 🔴 2026-11-01: 没全显示时如实说清"现在只画当前动作那一组" —— 针对性不能靠猜
+    const _live = (typeof PLANT!=='undefined' && PLANT.on) || (typeof SSMODE!=='undefined' && SSMODE.on && SSMODE.follow);
+    b.textContent=(on?('👁 全部显示中 '):'🫥 全部隐藏 ')+'('+corCount()+')'
+                 +(!on && _live && PRE_SK ? ' · 只画 '+(PRE_SK_CH[PRE_SK]||PRE_SK) : '');
     b.title=(on?'点一下: 把 '+corCount()+' 条技能包络线全部隐藏 (配置仍保留)'
-               :'点一下: 显示全部 '+corCount()+' 条技能包络线');
+               :'点一下: 显示全部 '+corCount()+' 条技能包络线 (平常只画即将执行的那一组)');
   }
   const host=document.getElementById('rowCorSkills'); if(!host) return;
   host.innerHTML='';
   all.forEach(k=>{                                  // 每个技能一条轨迹 → 一个按钮
     const bb=document.createElement('button');
+    const isPre=(k===PRE_SK);
     bb.className='sm'+(CORSET.has(k)?' on':'');
-    bb.textContent=(CORSET.has(k)?'▣ ':'□ ')+k+' '+COR_SK_NAME[k]+' ('+corCount(k)+')';
-    bb.title=(CORSET.has(k)?'点一下隐藏 ':'点一下显示 ')+k+' '+COR_SK_NAME[k]+' 的包络线';
+    if(isPre){ bb.style.borderColor='#f85149'; bb.style.color='#ff9f9a'; }
+    bb.textContent=(isPre?'🔴 ':(CORSET.has(k)?'▣ ':'□ '))+k+' '+COR_SK_NAME[k]+' ('+corCount(k)+')';
+    bb.title=(isPre?'即将执行的就是这一组 (三维里红轮廓) · ':'')+(CORSET.has(k)?'点一下隐藏 ':'点一下显示 ')
+             +k+' '+COR_SK_NAME[k]+' 的包络线';
     bb.onclick=()=>{ if(CORSET.has(k)) CORSET.delete(k); else CORSET.add(k); paintCorBtn(); try{ drawVR(); }catch(e){} };
     host.appendChild(bb);
   });
@@ -1534,33 +1677,53 @@ async function fenceSaveEdit(){
 function drawFences(g,pr){
   // 🔴 预执行约束层: 马上要执行的那个动作所属技能的包络, 红轮廓, 永远画在最上面
   //    (不受"全部隐藏"/按技能开关影响 —— 老倪要的是"执行前必须看见这条约束")
-  if(CORPRE && PRE_SK){
-    const R=FENCES.filter(it=>it.enabled && String(it.id||'').startsWith('COR-')
+  // 🔴 2026-11-01 老倪「拿起哪个光模块, 就显示那个光模块的约束通道」:
+  //   同一个技能(如 SK01 接近)在整表里有十几次机动(每个号位一次), 全画=几百条 → 只看**当前这一段**那一次。
+  //   依据: 每条多折线 p<j> 的端环线中点就是该次机动的真实起点/终点; 拿当前段的 a 点(或当前 TCP)最近的那条。
+  const _execLive = (typeof PLANT!=='undefined' && PLANT.on) || (typeof SSMODE!=='undefined' && SSMODE.on && SSMODE.follow);
+  if(CORPRE && PRE_SK && _execLive){
+    let R=FENCES.filter(it=>it.enabled && String(it.id||'').startsWith('COR-')
                              && String(it.id).split('-')[1]===PRE_SK && it.type==='line');
-    g.save(); g.globalAlpha=1; g.strokeStyle='#ff2d20'; g.lineWidth=2.6; g.setLineDash([]);
-    g.shadowColor='rgba(255,45,32,.85)'; g.shadowBlur=6;
-    let n=0, first=null;
-    for(const it of R){
-      const A=pr(it.p1), B=pr(it.p2); if(!A||!B) continue;
-      g.beginPath(); g.moveTo(A.u,A.v); g.lineTo(B.u,B.v); g.stroke(); n++;
-      if(!first) first=A;
+    const pj=corPrePolyIdx(R);
+    if(pj!=null) R=R.filter(it=>String(it.id).indexOf('-p'+pj+'-')>=0);
+    window.__PRE_POLY__=pj;
+    const _s0=(typeof INSP!=='undefined' && INSP && INSP.plan && INSP.si!=null)?INSP.plan[INSP.si]:null;
+    const _nm=((R[0]&&(R[0].note||''))+' '+(R[0]&&(R[0].name||'')))||'';
+    const _rMm=parseFloat((_nm.match(/r=([0-9.]+)mm/)||[])[1]||'0')||0;
+    // 🧊 通道 = 圆柱体: 轴 = 这一段理想轨迹 a→b, 半径 = 该组包络半径(配置真值), 半透明面 + 亮边 + 中线
+    let A=null, B=null;
+    if(_s0 && _s0.a && _s0.a.length>=3 && _s0.b && _s0.b.length>=3){ A=_s0.a.map(v=>v/1000); B=_s0.b.map(v=>v/1000); }
+    else if(pj!=null){
+      R.forEach(it=>{ const m=String(it.id).match(/-p(\d+)-/); if(!m || +m[1]!==pj) return;
+        const mid=[(+it.p1[0]+ +it.p2[0])/2,(+it.p1[1]+ +it.p2[1])/2,(+it.p1[2]+ +it.p2[2])/2];
+        if(/-scap$/.test(it.id)) A=mid; else if(/-ecap$/.test(it.id)) B=mid; });
     }
-    g.restore();
-    window.__PRE_LINES__=n;
-    for(const it of R){                                  // 红点: 通道轴两端 (让"包络"看起来是根管子)
-      const A=pr(it.p1), B=pr(it.p2); if(!A||!B) continue;
-      g.fillStyle='#ff2d20'; g.beginPath(); g.arc(A.u,A.v,2.6,0,Math.PI*2); g.fill();
-      g.beginPath(); g.arc(B.u,B.v,2.6,0,Math.PI*2); g.fill();
+    let drew=0;
+    if(A && B && _rMm>0) drew=drawCorTube(g, pr, A, B, _rMm/1000,
+                                          {col:'#ff2d20', alpha:COR_ALPHA, tube:COR_TUBE});
+    if(!drew){                                     // 线框模式 / 拿不到几何 ⇒ 退回原来的母线画法
+      g.save(); g.globalAlpha=1; g.strokeStyle='#ff2d20'; g.lineWidth=2.6; g.setLineDash([]);
+      g.shadowColor='rgba(255,45,32,.85)'; g.shadowBlur=6;
+      for(const it of R){ const p=pr(it.p1), q=pr(it.p2); if(!p||!q) continue;
+        g.beginPath(); g.moveTo(p.u,p.v); g.lineTo(q.u,q.v); g.stroke(); }
+      g.restore();
     }
-    if(first){
-      const _nm=(R[0]&&R[0].name)||''; const _r=(_nm.match(/r=([0-9.]+)mm/)||[])[1];
-      const txt='🔴 即将执行 · '+(PRE_SK_CH[PRE_SK]||PRE_SK)+' 约束'+( _r?(' r='+_r+'mm'):'')+' · '+PRE_LABEL;
+    window.__PRE_LINES__=R.length;
+    window.__PRE_TUBE__=drew;
+    const pt=A?pr(A):(R.length?pr(R[0].p1):null);
+    if(pt){
+      const _mod=(_s0 && _s0.mod!=null)?_s0.mod:null;
+      const _L=(A&&B)?Math.round(Math.hypot(A[0]-B[0],A[1]-B[1],A[2]-B[2])*1000):null;
+      const txt='🔴 即将执行 · '+(PRE_SK_CH[PRE_SK]||PRE_SK)
+                +( _rMm?(' 通道 r='+_rMm.toFixed(1)+'mm'+(COR_GAIN!==1?('(画×'+COR_GAIN+')'):'')):'')
+                +(_L!=null?(' · 理想轨迹 '+_L+'mm'):'')
+                +(_mod!=null?(' · 光模块 #'+_mod):'')+' · '+PRE_LABEL;
       g.font='bold 12px monospace'; const w=g.measureText(txt).width;
-      g.fillStyle='rgba(0,0,0,.72)'; g.fillRect(first.u+8, first.v-20, w+10, 16);
-      g.fillStyle='#ff6b5e'; g.fillText(txt, first.u+13, first.v-8);
+      g.fillStyle='rgba(0,0,0,.72)'; g.fillRect(pt.u+8, pt.v-20, w+10, 16);
+      g.fillStyle='#ff6b5e'; g.fillText(txt, pt.u+13, pt.v-8);
     }
   }
-  const items=FENCES.filter(it=>it.enabled && corShown(it));
+  const items=FENCES.filter(it=>it.enabled && corShown(it) && !(COR_ONLY && !corIsCor(it)));
   if(!items.length) return;
   const mg=FMARGIN/1000;
   for(const it of items){
@@ -3005,6 +3168,12 @@ function ssPaint(){
   if(b){ b.style.display = SSMODE.on ? '' : 'none';
          b.textContent = SSMODE.follow ? '⏸ 停跟随' : '▶ 跟随';
          b.classList.toggle('on',!!SSMODE.follow); }
+  // 🔴 2026-11-01 老倪「没有接入状态空间也可以看约束通道轮廓, 但只显示要执行的那个动作, 不能全都显示」
+  //    ⇒ 这排常显(不再随拨杆消失); "针对哪一个"由 PRE_SK 说话 —— 红线/通道只画**即将执行那段所属技能**那一组,
+  //      其余技能默认不画(CORSET 空 = 不铺全网), 手动点某个 SK 才单独看那一组。
+  var rc=document.getElementById('rowCor'), rk=document.getElementById('rowCorSkills');
+  if(rc) rc.style.display = '';
+  if(rk) rk.style.display = '';
   ssHintPaint();
 }
 // 拨到开 = 只**接入**(订阅 ar_cmd: 显示 seq/帧龄/段/元任务), 三维一帧都不动
@@ -3020,8 +3189,8 @@ function inspEnsure(cb){
     if(d&&d.ok){ inspPrepare(d); INSP.on=true; INSP.playing=false;
       // 🔴 2026-10-29: 段表就位但没在播时, 给一个可点的小胶囊(否则 UPH 窗口"凭空消失", 用户只能问)
       var pb=document.getElementById('uphPill');
-      if(pb && document.getElementById('uphBox').style.display==='none'){
-        pb.textContent='🏭 UPH '+Math.round(UPH_TARGET)+' ▸ 点开看节拍'; pb.style.display='block'; uphPlace();
+      if(pb && document.getElementById('uphBox').style.display==='none' && !PLANT.hudHidden){
+        uphPillText('🏭 UPH '+Math.round(UPH_TARGET)+' ▸ 点开看节拍'); pb.style.display='block'; uphPlace();
       }
       cb&&cb(); }
   }).catch(function(){ INSP.loading=false; });
@@ -3042,7 +3211,7 @@ function ssFollowStart(){
   //   UPH 浮层原来只在 plantStart()(本地全流程)里显示, 状态空间跟随不显示;
   //   而页面跟版自动刷新会把 PLANT.on 复位 ⇒ 窗口连小胶囊一起消失, 看着就是"坏了"。
   //   跟随也是在跑节拍(件号来自状态空间节点的 mod), 窗口必须一起出来。
-  if($('uphBox')){ $('uphBox').style.display='block'; uphPlace(); }
+  if($('uphBox') && !PLANT.hudHidden){ $('uphBox').style.display='block'; if($('uphChip')) $('uphChip').style.display='none'; uphPlace(); }
   if($('uphPill')) $('uphPill').style.display='none';
   try{ plantHud(); }catch(e){}
   ssPaint();
@@ -3060,6 +3229,8 @@ function ssToggle(){
   if(typeof arViewSet==='function') arViewSet(!!(SSMODE.on&&SSMODE.follow));
   if(typeof arModePoll==='function') arModePoll();     // 顶部横幅/真机臂口径立刻对齐
 }
+// 开机就把口径摆对: 默认没接入 ⇒ 原子技能约束那排不出现(ssPaint 只管切换时, 初值是 HTML 里写死的)
+try{ ssPaint(); }catch(e){}
 function ssRunToggle(){
   if(!SSMODE.on) return;
   if(SSMODE.follow) ssFollowStop(); else ssFollowStart();
@@ -3076,16 +3247,104 @@ function ssRunToggle(){
   if(b) b.addEventListener('click',function(){ ssRunToggle(); });
 })();
 const ARCMD={on:false,fresh:false,d:null,q:null,ts:0,age:null,seq:null};
-function arCmdSolve(d){
+// 🧈 AR 平滑器 —— 老倪 2026-11-01「AR场景右臂动作不平顺」的真因(实测, 不是猜):
+//   ① 指令流只有 **2.5 Hz**(画布循环一拍跑 80 个节点, 278ms/拍), 而段表段长中位 0.3s
+//      ⇒ 一段连一拍都拿不到, 页面看到的是一段一个点;
+//   ② 页面原来 `PREV.q = ARCMD.q` 直接赋值 ⇒ 每次更新都是一次瞬移(实测 239 帧里 218 帧完全静止、
+//      21 帧单帧位移 >20mm、20 帧 >100mm、**单帧最大 690.7mm / 单关节 48.7°**)。
+//   ⇒ 两招一起上: (a) 段内按**本地时间**前进(u 外推, 60fps 有运动可言);
+//                  (b) 关节**限速**逼近(默认 150°/s, 单帧 ≤1.5°) 把换段/缺口吸收成快速滑动。
+const ARSM={k:'',u0:0,t0:0,ts:0.3,p:null,pt_t:0,v_cap:600,min_mm:0.6,dt:0,clamped:0,lag_mm:0,ik_ms:0,ik_n:0};
+function arCmdU(d){
+  const ts=Math.max(0.05,+d.t_seg||0.3), u=Math.min(1.2,Math.max(0,+d.u||0));
+  // 采样身份: 只要换了一个新采样(段/seq/u 变了)才重锚 t0; 同一条采样被重复读到就继续外推。
+  //   原来每帧都重锚 ⇒ el 恒为 0, u 永远不前进(实测 69% 帧仍然静止), 这是踩过的坑。
+  const k=[d.kind||'',d.seq,d.u,d.mt_id||'',(d.a||[]).join(','),(d.b||[]).join(',')].join('|');
+  const now=performance.now();
+  if(k!==ARSM.k){ ARSM.k=k; ARSM.u0=u; ARSM.t0=now; ARSM.ts=ts; }
+  const el=Math.max(0,(now-ARSM.t0)/1000);
+  return Math.min(2.2, Math.max(0, ARSM.u0 + el/ARSM.ts));   // 允许越过段末一点点(由 arPointTarget 续接)
+}
+function arQStep(q){ return q; }               // (保留空壳, 平顺改由 arPointStep 做)
+// 🎯 笛卡尔限速: 段表里有 619mm/0.3s(≈2 m/s)的段, 照原速播就是"猛冲+一顿"。
+//    做法: 画点按 v_cap(默认 600mm/s)逼近目标点 ⇒ 每帧位移 ≤10mm, 多余时间靠"稍微落后一点"吸收。
+function arPointStep(tm){
+  const now=performance.now();
+  const dt=Math.min(0.25,Math.max(0.001,(now-ARSM.pt_t)/1000)); ARSM.pt_t=now; ARSM.dt=dt;
+  if(!ARSM.p || ARSM.p.length!==3){ ARSM.p=tm.slice(); return ARSM.p.slice(); }
+  const dx=tm[0]-ARSM.p[0], dy=tm[1]-ARSM.p[1], dz=tm[2]-ARSM.p[2];
+  const n=Math.hypot(dx,dy,dz), step=Math.max(ARSM.min_mm, ARSM.v_cap*dt);
+  if(n>step){ const k=step/n; ARSM.p[0]+=dx*k; ARSM.p[1]+=dy*k; ARSM.p[2]+=dz*k; ARSM.clamped=1; ARSM.lag_mm=n-step; }
+  else { ARSM.p=tm.slice(); ARSM.clamped=0; ARSM.lag_mm=0; }
+  return ARSM.p.slice();
+}
+function arCmdSolve(d, light){
   if(!d||!d.a||!d.b) return null;
-  try{ corFollowFromSeg(d); }catch(e){}   // 🔗 按顺序: 换段就把该技能的包络亮出来
-  try{ corPreFromSeg(d); }catch(e){}      // 🔴 预执行: 这个动作的约束先画成红轮廓
-  const a=d.a, b=d.b, u=Math.min(1,Math.max(0,+d.u||0));
-  const tm=[a[0]+(b[0]-a[0])*u, a[1]+(b[1]-a[1])*u, a[2]+(b[2]-a[2])*u];      // mm
+  if(!light){
+    try{ corFollowFromSeg(d); }catch(e){}   // 🔗 按顺序: 换段就把该技能的包络亮出来
+    try{ corPreFromSeg(d); }catch(e){}      // 🔴 预执行: 这个动作的约束先画成红轮廓
+  }
+  const tm0=arPointTarget(d);               // 🔴 段内按本地时间前进 + 段末按段表续接(不等下一拍)
+  const tm=arPointStep(tm0);                // 🎯 限速后的画点(默认 600mm/s)
   let q=(PREV.q&&PREV.q.length>=6)?PREV.q.slice()
         :((TCP&&TCP.ok&&TCP.joints&&TCP.joints.length>=6)?TCP.joints.slice(0,6):[0,-0.35,0,-1.35,0,0.3]);
+  const _t0=performance.now();
   const r=ikTool1([tm[0]/1000,tm[1]/1000,tm[2]/1000], q);
-  return (r&&r.q)?r.q:null;
+  ARSM.ik_ms=performance.now()-_t0; ARSM.ik_n++;
+  if(!r||!r.q) return null;
+  // 🔒 关节限幅(最后一道): IK 偶尔换解支 ⇒ 单帧单关节跳 10°+(实测 tcp 单帧 99.8mm)。
+  //   超过 3°/帧(≈180°/s)就把整条关节增量等比缩回去 —— 方向不变, 只是这一帧走不满。
+  const pq=(q&&q.length>=6)?q:null;
+  if(pq){
+    let mx=0;
+    for(let i=0;i<6;i++) mx=Math.max(mx,Math.abs(r.q[i]-pq[i]));
+    const limj=3.0*Math.PI/180;
+    if(mx>limj){ const kk=limj/mx, out=[]; for(let i=0;i<6;i++) out.push(pq[i]+(r.q[i]-pq[i])*kk); ARSM.ik_clamp=(ARSM.ik_clamp||0)+1; return out; }
+  }
+  return r.q;
+}
+// 🪜 段末续接: 采样只有 2.5Hz, 而段长中位 0.3s ⇒ 段末到下一拍之间本来会"停住等一下"。
+//    页面自己有整张段表(/api/sim_insert 392 段), 就在本地把下一段接上去, 静止帧才真的消失。
+function arPlanEnsure(){
+  if(ARSM.plan || ARSM.planReq) return;
+  ARSM.planReq=1;
+  fetch('/api/sim_insert').then(function(r){return r.json();}).then(function(d){
+    const P=(d&&(d.plan||d.segs||d.segments))||[];
+    if(P.length && P[0].a && P[0].b){ ARSM.plan=P; }
+  }).catch(function(){});
+}
+function arPlanIdx(d){
+  const P=ARSM.plan; if(!P) return -1;
+  const eq=function(x,y){ return x&&y&&Math.abs(x[0]-y[0])<0.6&&Math.abs(x[1]-y[1])<0.6&&Math.abs(x[2]-y[2])<0.6; };
+  for(let i=0;i<P.length;i++){ if(eq(P[i].a,d.a)&&eq(P[i].b,d.b)) return i; }
+  // 兜底: 精确匹配失败(段表与执行器改过字段/取整)时按 a 点最近挑一条, 半径 50mm 内才认
+  let best=-1, bd=1e9;
+  for(let i=0;i<P.length;i++){
+    const q=P[i].a; if(!q) continue;
+    const dd=Math.hypot(q[0]-d.a[0],q[1]-d.a[1],q[2]-d.a[2]);
+    if(dd<bd){ bd=dd; best=i; }
+  }
+  return (bd<=50)?best:-1;
+}
+function arPointTarget(d){
+  const a=d.a, b=d.b, ts=Math.max(0.05,+d.t_seg||0.3), u=arCmdU(d);
+  let p=[a[0]+(b[0]-a[0])*Math.min(1,u), a[1]+(b[1]-a[1])*Math.min(1,u), a[2]+(b[2]-a[2])*Math.min(1,u)];
+  if(u<=1.0) return p;
+  // 超出本段: 按段表往后续, 最多续 1.2*ts 秒(免得跑飞)
+  arPlanEnsure();
+  if(ARSM.planIdx==null || ARSM.planIdx<0 || ARSM.planK!==ARSM.k){ ARSM.planIdx=arPlanIdx(d); ARSM.planK=ARSM.k; }
+  const P=ARSM.plan;
+  if(!P || ARSM.planIdx<0) return p;
+  let over=(u-1.0)*ts, cap=3.0, i=ARSM.planIdx;   // 最多续 3s(够吃掉 2.5Hz 的 0.4s 空档), 信号过期就不续
+  if(ARCMD.age!=null && ARCMD.age>1.2) return p;
+  while(over>0 && cap>0 && i+1<P.length){
+    const q=P[++i], qa=q.a, qb=q.b, qt=Math.max(0.05,+q.t||0.3);
+    const take=Math.min(over,qt); const uu=Math.max(0,Math.min(1,take/qt));
+    p=[qa[0]+(qb[0]-qa[0])*uu, qa[1]+(qb[1]-qa[1])*uu, qa[2]+(qb[2]-qa[2])*uu];
+    over-=take; cap-=take;
+    ARSM.chainSeg=(ARSM.chainSeg||0)+1;
+  }
+  return p;
 }
 // 🔴 2026-10-29 老倪「要让 plan 真的喂动作执行器」: 页面优先吃**执行器节点**的输出
 //   (ssplan.out1 → ssact.in1 → zmax_data/ss_live/ar_exec.json → /api/ar/exec),
@@ -3118,7 +3377,10 @@ setInterval(arCmdPoll, 100); arCmdPoll();      // 10Hz: 一段≈0.4s, 每段能
 
 function plantAtAR(){
   const d=ARCMD.d||{};
-  if(ARCMD.q){ PREV.on=true; PREV.q=ARCMD.q; PREV.M=urdfFK(ARCMD.q); }
+  // 🧈 60fps 续跑: 每帧按本地时间在**当前段内**前进, 再关节限速逼近 ⇒ 2.5Hz 数据也画得连续。
+  //   (原来只有 10Hz 轮询里解一次 IK, 然后直接赋值 ⇒ 画面 91% 的帧静止、剩下的是瞬移)
+  if(d && d.a && d.b){ try{ const qf=arCmdSolve(d, true); if(qf) ARCMD.q=qf; }catch(e){} }
+  if(ARCMD.q){ PREV.on=true; PREV.q=arQStep(ARCMD.q); PREV.M=urdfFK(PREV.q); }
   // 🔴 2026-10-29 老倪: 「点全流程UPH 右臂能拿起光模块, 开状态空间就看不到手里那颗了」
   //   根因: 手里模块/源盘剩余/孔占用/检测标注 全靠 INSP.*, 而 INSP.* 只有全流程播放器(inspStep)在写,
   //   plantAtAR 只写 PREV.q ⇒ 臂在走但空手。真源改回段表自身(carry_from/carry_to + check),
@@ -3248,7 +3510,7 @@ function plantHud(){
       +(100*PLANT.feedS/lp.tact).toFixed(0)+'%) · 不良率 '+(NG_RATIO*100).toFixed(1)+'% ⇒ 良率 '
       +(100-NG_RATIO*100).toFixed(1)+'%(每 '+Math.round(1/NG_RATIO)+' 件 1 件不良, NG 进废料盘)');
   if(g('uphPill') && g('uphPill').style.display!=='none'){
-    g('uphPill').textContent='🏭 UPH '+Math.round(lp.uph)+' · 实时 '+((live==null)?'预热':live)+' · 良率 '+yl.toFixed(1)+'% ▸';
+    uphPillText('🏭 UPH '+Math.round(lp.uph)+' · 实时 '+((live==null)?'预热':live)+' · 良率 '+yl.toFixed(1)+'% ▸');
   }
   set('tIns','全流程运行中 · 运行 '+mm+'分'+(ss<10?'0':'')+ss+'秒 · 产出 '+PLANT.units+' 件(良 '+PLANT.ok+'/NG '+PLANT.ng
       +') · 实时 UPH '+((live==null)?'预热中':live)+' · 稳态 '+Math.round(lp.uph)+' · 真机没动');
@@ -3308,15 +3570,38 @@ if($('panChip')) $('panChip').addEventListener('click', function(){
   this.style.display='none'; drawVR();
 });
 
-// UPH 浮层位置: 居中于「可见区域」(右侧节拍栏 392px 会让窗口中心偏右)
+// UPH 浮层位置: 居中于「真正空出来的那条带子」
+//   🔴 2026-11-01 老倪: 「300UPH 的位置要对中, 不要遮挡了左侧边栏」
+//   原算法只减了右侧节拍栏(392px): 1280 宽时窗口左沿落在 229px, 压在 300px 宽的左栏 #vrRail 上。
+//   现在左边界 = 左栏右沿, 右边界 = 右侧栏左沿, 在带子正中; 宽度也夹在带子里(不再靠 min-width 430 硬撑)。
+function uphFree(){
+  const vr=document.getElementById('vrRail');
+  let L=0;
+  if(vr){ const cs=getComputedStyle(vr), r=vr.getBoundingClientRect();
+    if(cs.display!=='none' && r.width>0 && r.right<window.innerWidth*0.6) L=r.right+8; }
+  const tw=document.getElementById('tactWrap');
+  let R=window.innerWidth;
+  if(tw){ const cs=getComputedStyle(tw), r=tw.getBoundingClientRect();
+    if(cs.display!=='none' && r.width>0 && r.left>L+120) R=r.left-8; }
+  // 两栏把页面挤没了(手机竖屏/窄窗) ⇒ 退回整屏居中, 至少不留负宽度
+  if(R-L<260){ L=0; R=window.innerWidth; }
+  return {L:L, R:R};
+}
 function uphPlace(){
-  const b=document.getElementById('uphBox'); if(!b) return;
-  const tp=document.getElementById('tactPanel');
-  const ovw=(tp && !tp.classList.contains('hide')) ? tp.offsetWidth : 0;
-  b.style.left=((window.innerWidth-ovw)/2)+'px';
-  b.style.maxWidth=Math.max(300, window.innerWidth-ovw-24)+'px';
-  const pl=document.getElementById('uphPill');
-  if(pl) pl.style.left=((window.innerWidth-ovw)/2)+'px';
+  const f=uphFree(), c=(f.L+f.R)/2, w=Math.max(240, f.R-f.L-8);
+  ['uphBox','uphPill'].forEach(function(id){
+    const b=document.getElementById(id); if(!b) return;
+    b.style.left=c+'px'; b.style.maxWidth=w+'px';
+  });
+  const bx=document.getElementById('uphBox');
+  if(bx) bx.style.minWidth=Math.min(430, w)+'px';   // 窄屏允许缩, 不越过左栏
+  const ch=document.getElementById('uphChip');      // 收起后的 🏭 方块: 贴左栏右侧, 不压左栏按钮
+  if(ch){ ch.style.left=(f.L+8)+'px'; ch.style.top='10px'; }
+}
+function uphPillText(t){
+  const s=document.getElementById('uphPillT');
+  if(s) s.textContent=t;
+  else { const p=document.getElementById('uphPill'); if(p) p.textContent=t; }
 }
 window.addEventListener('resize', uphPlace);
 
@@ -3336,6 +3621,8 @@ function plantStart(){
   PLANT.target=INSP.uphTarget||UPH_TARGET;
   PLANT.lp=null;
   INSP.on=true; INSP.playing=false;
+  PLANT.hudHidden=false;                 // 人点『🏭 全流程 UPH』= 要看浮层, 之前按 ✕ 收起的也放出来
+  if($('uphChip')) $('uphChip').style.display='none';
   if($('uphBox')){ $('uphBox').style.display='block'; uphPlace(); }
   if($('bPlant')){ $('bPlant').classList.add('on'); $('bPlant').textContent='⏸ 停全流程'; }
   const lp=plantCtx();
@@ -3360,6 +3647,8 @@ function plantStop(){
   if($('uphBox')) $('uphBox').style.display='none';
   if($('uphPill')) $('uphPill').style.display='none';
   if($('bPlant')){ $('bPlant').classList.remove('on'); $('bPlant').textContent='🏭 全流程 UPH'; }
+  PRE_SK=null; PRE_LABEL=''; window.__PRE_LINES__=0;   // 停了就没有"即将执行" ⇒ 红通道收掉(只跟当前动作, 不留残影)
+  try{ drawVR(); }catch(e){}
   if($('tIns')) $('tIns').textContent='全流程已停 · 共 '+PLANT.units+' 件(良 '+PLANT.ok+' / NG '+PLANT.ng+') · 真机没动';
 }
 
@@ -3376,15 +3665,44 @@ function plantToggle(){
   }).catch(function(e){ INSP.loading=false; if($('tIns')) $('tIns').textContent='网络错: '+e.message; });
 }
 if($('bPlant')) $('bPlant').addEventListener('click', plantToggle);
-// 彻底隐藏 → 收成顶部小胶囊; 点胶囊恢复
+// 窗口上的 ✕ → 收成顶部小胶囊(状态不丢); 胶囊上的 ✕ → 连胶囊一起收成左边 🏭 小方块
 if($('uphHide')) $('uphHide').addEventListener('click', function(){
+  PLANT.hudHidden=false;
   if($('uphBox')) $('uphBox').style.display='none';
+  if($('uphChip')) $('uphChip').style.display='none';
   if($('uphPill')) $('uphPill').style.display='block';
+  uphPlace();
 });
-if($('uphPill')) $('uphPill').addEventListener('click', function(){
+// 🚫 2026-11-01 老倪「300UPH 要可以隐藏」⇒ 胶囊上的 ✕: 窗口和胶囊一起收掉, 只留左上一个 🏭 小方块。
+//    之前那版收掉后没有任何入口回来(全流程 UPH 在跑的时候点一下是"停"), 看起来就是"窗口没有了" —— 现在留 🏭 可点回来。
+function uphHudHide(){
+  PLANT.hudHidden=true;
+  if($('uphBox')) $('uphBox').style.display='none';
+  if($('uphPill')) $('uphPill').style.display='none';
+  if($('uphChip')) $('uphChip').style.display='block';
+  uphPlace();
+}
+function uphHudShow(){
+  PLANT.hudHidden=false;
+  if($('uphChip')) $('uphChip').style.display='none';
   if($('uphBox')){ $('uphBox').style.display='block'; uphPlace(); }
   if($('uphPill')) $('uphPill').style.display='none';
+}
+window.uphHudHide=uphHudHide; window.uphHudShow=uphHudShow;
+if($('uphPillX')) $('uphPillX').addEventListener('click', function(ev){
+  ev.stopPropagation(); ev.preventDefault(); uphHudHide();
 });
+if($('uphChip')) $('uphChip').addEventListener('click', uphHudShow);
+if($('uphPill')) $('uphPill').addEventListener('click', uphHudShow);
+// 🔴 2026-11-01 老倪「找回来 300UPH 的窗口」: 页面一打开就把窗口摆出来(没在跑时显示目标 300 + 空数据),
+//    不再"要点过全流程/拨过拨杆才出现"。按过 ✕ 收起的(hudHidden)不自动弹, 只留 🏭 方块。
+setTimeout(function(){
+  try{
+    const bx=$('uphBox'), pl=$('uphPill');
+    if(!PLANT.hudHidden && bx && getComputedStyle(bx).display==='none'
+       && (!pl || getComputedStyle(pl).display==='none')) uphHudShow();
+  }catch(e){}
+}, 900);
 // 收起/展开 UPH 详情(只隐藏明细, 不停流程)
 if($('uphFold')) $('uphFold').addEventListener('click', function(){
   const b=$('uphBody'), f=$('uphFold');
@@ -3892,24 +4210,11 @@ function arModeApply(d){
     PLANT._lastPlayTs = _pl.ts;
     if(PLANT.on || PREV.on){ ssFollowStop(); PLANT.userStop=true; drawVR(); }
   }
-  var b = document.getElementById('arBanner');
-  if(on){
-    if(!b){
-      b=document.createElement('div'); b.id='arBanner';
-      b.style.cssText='position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:99999;'
-        +'padding:9px 18px;border-radius:12px;background:rgba(122,72,232,.94);color:#fff;'
-        +'font:600 14px/1.35 system-ui,sans-serif;box-shadow:0 6px 22px rgba(0,0,0,.5);'
-        +'pointer-events:none;white-space:nowrap;letter-spacing:.3px';
-      document.body.appendChild(b);
-    }
-    b.textContent='🥽 AR 场景 · 由状态空间画布控制左右臂 · 真机不下发'
-                 + (SSMODE.on ? (SSMODE.follow ? ' · 拨杆=开·跟随中 · ' : ' · 拨杆=开·已接入未跟随(点 ▶ 跟随 才动) · ')
-                              : ' · 未接入执行信号(拨左栏 🧠 状态空间)')
-                 + ssSigShort()
-                 + (ARMODE.real_auth ? '' : ' · 真机开关=关')
-                 + (ARMODE.age==null?'':' · 开关帧龄 '+Math.round(ARMODE.age)+'s');
-    b.style.display='block';
-  } else if(b){ b.style.display='none'; }
+  // 🚫 2026-11-01 老倪: 「上边那一行粉色背景的字去掉, 那个 AR场景 xxx」⇒ 顶部横幅整个撤掉。
+  //    AR 开关状态不靠横幅表达了: 左栏 🧠 状态空间 拨杆 + 臂侧按钮(右臂_真机/仿真)仍在, 状态照样可见。
+  //    历史横幅若已被打过补丁的旧页塞进 DOM, 这里顺手清掉, 免得刷页后残留。
+  var _oldB = document.getElementById('arBanner');
+  if(_oldB && _oldB.parentNode) _oldB.parentNode.removeChild(_oldB);
   if(on===ARMODE.on) return;                 // 只在跳变时动视图
   ARMODE.on = on;
   arViewSet(on);                             // 真机臂/仿真臂路由(与左栏拨杆同一份实现)

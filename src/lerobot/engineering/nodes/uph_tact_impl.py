@@ -71,8 +71,16 @@ def reset():
 
 
 def _pub_ar(o1, t_in_seg, seg_t, el):
-    """当前段 → AR 虚拟臂渲染指令。只渲染, 不下发真机。"""
+    """当前段 → AR 虚拟臂渲染指令。只渲染, 不下发真机。
+
+    🔴 2026-11-01 老倪「右臂不平顺」真因之一: 本节点与 plan_long_impl **同时写** ar_cmd.json,
+    两个节点各自的时间轴/段序交替覆盖同一文件 ⇒ 页面上手臂来回跳 (实测 25s 采样里
+    u 有的来自 ss_uph_tact、有的来自 ss_plan_long, t_seg 与闸后时长只有 19% 对得上)。
+    唯一写者 = ZMAX_AR_OWNER (默认 plan) ⇒ 本节点默认闭嘴。
+    """
     if not _AR_PUB:
+        return
+    if os.environ.get("ZMAX_AR_OWNER", "plan") == "plan":
         return
     try:
         u = (t_in_seg / seg_t) if seg_t > 0 else 1.0

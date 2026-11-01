@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import time
 
@@ -28,6 +29,75 @@ _ROOT = os.path.expanduser("~/zmax")
 _META = os.path.join(_ROOT, "data", "database", "zmax", "sources", "config", "tasks", "ar_meta_tasks.json")
 _PLAN = os.path.join(_ROOT, "zmax_data", "runtime", "traj", "sim_insert.json")
 _AR_CMD = os.path.join(_ROOT, "zmax_data", "ss_live", "ar_cmd.json")
+
+# 🧱 2026-11-01 老倪「要接上 动手」: 把「运动学通道(r_mm) + 动力学(v/a/jerk) + 拐角限速」
+#   真压进 plan 的段时长。闸后表由 tools/plan_gate_corridor.py 算 (可复算可对拍),
+#   真源 = skill_corridors.json(8 阶段 r/v_cap/a_max) + config/calib/zmax_skill_physics.json(jerk)。
+#   plan 只吃「闸后 t + 逐段闸参数」, 几何仍用自算/磁盘段表 ⇒ 不影响 _self_plan 对拍。
+_GATED = os.path.join(_ROOT, "zmax_data", "runtime", "traj", "sim_insert_gated.json")
+_GATE_ON = os.environ.get("ZMAX_PLAN_GATE", "1") == "1"
+_GATE = {"rows": None, "mtime": 0.0, "n": 0, "src": "未接"}
+
+# 🚀 规划速度档位 (2026-11-01 老倪「必须上300」): 过渡阶段提速 + 空载跨件飞行速度
+_SPEED_JSON = os.path.join(_ROOT, "config", "calib", "zmax_plan_speed.json")
+_SPD = {"mtime": 0.0, "d": {}}
+
+
+def _speed_profile():
+    """读 config/calib/zmax_plan_speed.json (改档位免重启: 按 mtime 热读)"""
+    try:
+        if not os.path.isfile(_SPEED_JSON):
+            return _SPD["d"]
+        mt = os.path.getmtime(_SPEED_JSON)
+        if mt != _SPD["mtime"]:
+            _SPD["d"] = json.load(open(_SPEED_JSON, encoding="utf-8")) or {}
+            _SPD["mtime"] = mt
+        return _SPD["d"]
+    except Exception:                                                  # noqa: BLE001
+        return _SPD["d"]
+
+
+def _gate_rows(n_seg):
+    """读闸后段表 → 逐段 {t, r_mm, v_cap, a_cap, j_cap, stage, bound_by}; 段数不符 ⇒ None"""
+    if not _GATE_ON:
+        _GATE.update(rows=None, src="闸关闭(ZMAX_PLAN_GATE=0)")
+        return None
+    if not os.path.isfile(_GATED):
+        _GATE.update(rows=None, src="无闸后表(先跑 tools/plan_gate_corridor.py --write)")
+        return None
+    try:
+        mt = os.path.getmtime(_GATED)
+        if _GATE["rows"] is None or mt != _GATE["mtime"]:
+            d = json.load(open(_GATED, encoding="utf-8"))
+            pl = d.get("plan") or []
+            rows = []
+            for s in pl:
+                g = s.get("gate") or {}
+                rows.append({"t": float(s.get("t") or 0.0), "t_in": float(s.get("t_in") or 0.0),
+                             "stage": g.get("stage"), "r_mm": g.get("r_mm"),
+                             "v_cap": g.get("v_cap"), "a_cap": g.get("a_cap"),
+                             "j_cap": g.get("j_cap"), "bound_by": g.get("bound_by"),
+                             "corner_s": g.get("corner_s")})
+            _GATE.update(rows=rows, mtime=mt, n=len(rows),
+                         src="闸后表 %s (%d 段)" % (time.strftime("%m-%d %H:%M", time.localtime(mt)), len(rows)))
+        if _GATE["n"] != int(n_seg):
+            _GATE["src"] = "闸后表段数不符 %d≠%d ⇒ 本圈不用" % (_GATE["n"], int(n_seg))
+            return None
+        return _GATE["rows"]
+    except Exception as e:                                            # noqa: BLE001
+        _GATE.update(rows=None, src="闸后表读失败: %s: %s" % (type(e).__name__, e))
+        return None
+
+
+def _gate_info(i):
+    """当前段(i)的闸参数 —— 透给 ar_cmd, 页面/执行器同一口径"""
+    r = _GATE.get("rows")
+    if not r or i is None:
+        return None
+    try:
+        return r[int(i)]
+    except Exception:                                                 # noqa: BLE001
+        return None
 _SPEED = float(os.environ.get("ZMAX_UPH_SPEED", "1.0"))
 _AR_PUB = os.environ.get("ZMAX_UPH_AR_PUB", "0") == "1"
 # 🧠 记忆层接入 (2026-10-30): L2 肌肉 / L3 流程工艺 / L4 安全 → 本节点的动作输出
@@ -72,8 +142,20 @@ def _mem_timing(segs):
     mf = _mf()
     _MEM_S.update(ok=False, kl2={}, l4={}, l3={}, err="")
     if mf is None:
-        _MEM_S["t_eff"] = [float(s.get("t") or 0.0) for s in segs]
+        gated0 = _gate_rows(len(segs))
+        te0, ng0 = [], 0
+        for i, s in enumerate(segs):
+            t = float(s.get("t") or 0.0)
+            if gated0 is not None and i < len(gated0):
+                tg = float(gated0[i].get("t") or 0.0)
+                if tg > t:
+                    t = tg
+                    ng0 += 1
+            te0.append(max(1e-3, t))
+        _MEM_S["t_eff"] = te0
         _MEM_S["cum2"] = None
+        _MEM_S["gate"] = {"on": gated0 is not None, "src": _GATE.get("src"),
+                          "n_stretched": ng0, "n_seg": len(segs), "note": "记忆未接, 仍走闸"}
         return
     try:
         f = mf.feed() if hasattr(mf, "feed") else {}
@@ -95,7 +177,9 @@ def _mem_timing(segs):
                 continue
             g = sum((float(x) - float(y)) ** 2 for x, y in zip(pb, ca)) ** 0.5
             gaps.append(g if g > cont else 0.0)
-        v_travel = float(os.environ.get("ZMAX_MEM_TRAVEL_MM_S") or v_cap)
+        v_travel = float(os.environ.get("ZMAX_MEM_TRAVEL_MM_S")
+                         or (_speed_profile().get("travel_mm_s") or 0)
+                         or v_cap)
         # 🔴 2026-10-30 实测坑: 段被 tick 量化 (6Hz ⇒ 每段都比标称多 ~半拍 83ms) ⇒ kl2 系统性 >1
         #   (move 实测 0.51s vs 标称 0.40s ⇒ kl2=1.27)。用中位数归一去掉公共偏置, 只留 kind 之间的相对快慢。
         if kl2:
@@ -118,6 +202,8 @@ def _mem_timing(segs):
                 v["k"] = round(max(0.85, min(1.25, float(v.get("k") or 1.0) * _r)), 4)
                 kl2[k] = v
         t_eff = []
+        gated = _gate_rows(len(segs))
+        n_gate = 0
         for i, s in enumerate(segs):
             t0 = float(s.get("t") or 0.0)
             kk = float((kl2.get(str(s.get("kind"))) or {}).get("k") or 1.0)
@@ -128,7 +214,15 @@ def _mem_timing(segs):
                 te = max(te, dist / v_cap)          # 限速兜底 (速度 ≤ v_cap)
             if _TRAVEL_ON and gaps[i] > 0.0:
                 te += gaps[i] / max(v_travel, 1.0)  # 跨件过渡时间 (连续化的物理预算)
+            # 🧱 运动学通道 + 动力学 + 拐角限速 (老倪 2026-11-01「要接上」)
+            if gated is not None and i < len(gated):
+                tg = float(gated[i].get("t") or 0.0)
+                if tg > te:
+                    te = tg
+                    n_gate += 1
             t_eff.append(max(1e-3, te))
+        _MEM_S["gate"] = {"on": gated is not None, "src": _GATE.get("src"),
+                          "n_stretched": n_gate, "n_seg": len(segs)}
         _MEM_S["gap_mm"] = gaps
         _MEM_S["travel_s"] = round(sum(g / max(v_travel, 1.0) for g in gaps), 3)
         _MEM_S.update(ok=True, kl2=kl2, l4=l4, t_eff=t_eff, cum2=None)
@@ -316,8 +410,66 @@ def reset():
     _S.update(i=0, t0=None)
 
 
+# 🧱 2026-11-01 老倪「按你的建议执行」: 八道技能 clamp 里**每拍**那一半 (单拍位移/限速)
+#   原来只在执行侧 dispatch→skill_phys 跑, AR 链只有「一圈一次」的段时长闸 (慢变化)。
+#   这里把每拍闸接进 plan 的发布路径: 发布前按本段 v_cap 限住 u 的增量 ⇒ 页面上真的被技能约束管住。
+_CLAMP = {"t": 0.0, "u": 0.0, "seq": None, "u_nom": 0.0, "clip": 0, "n": 0, "v_cap": 0.0, "L": 0.0}
+_SK_CODE = {}
+
+
+def _skill_code(stage):
+    """stage → 技能码 (SK01..SK08), 取自 zmax_skill_physics.json 的 skills 表。"""
+    if not _SK_CODE:
+        try:
+            with open(os.path.join(_ROOT, "config", "calib", "zmax_skill_physics.json"),
+                      encoding="utf-8") as fh:
+                for it in (json.load(fh).get("skills") or []):
+                    if isinstance(it, dict) and it.get("stage"):
+                        _SK_CODE[str(it["stage"])] = it.get("code")
+        except Exception:                                          # noqa: BLE001
+            pass
+    return _SK_CODE.get(str(stage or ""), None)
+
+
+def _skill_clamp(u, o1):
+    """按当前段 gate.v_cap 逐拍限速, 返回允许发布的 u (单调向前, 换段/超时重锚)。"""
+    g = _gate_info(_S.get("i")) or {}
+    v_cap = float(g.get("v_cap") or 0.0)
+    a = o1.get("a") or []
+    b = o1.get("b") or []
+    if v_cap <= 0.0 or len(a) != 3 or len(b) != 3:
+        return u
+    try:
+        L = math.dist([float(x) for x in a], [float(x) for x in b])
+    except Exception:                                              # noqa: BLE001
+        return u
+    if L <= 1e-6:
+        return u
+    now = time.time()
+    seq = o1.get("seq")
+    dt = now - float(_CLAMP["t"] or now)
+    _CLAMP["n"] += 1
+    _CLAMP["v_cap"], _CLAMP["L"] = v_cap, L
+    if 0.0 < dt < 0.01:
+        # 同一拍内重复调用 (发布路径+预览路径挨着来): 不重锚、不限速, 否则 dt≈0 ⇒ 进度被冻住
+        return u
+    if seq != _CLAMP["seq"] or dt <= 0.0 or dt > 0.5:
+        _CLAMP.update({"t": now, "u": u, "seq": seq})
+        return u
+    u_max = float(_CLAMP["u"]) + (v_cap * dt) / L
+    if u > u_max + 1e-9:
+        _CLAMP["clip"] += 1
+        _CLAMP["u_nom"] = round(u, 4)
+        u = max(float(_CLAMP["u"]), min(1.0, u_max))
+    _CLAMP.update({"t": now, "u": u})
+    return u
+
+
 def _pub_ar(o1, u_ratio, seg_t, el, a_eff=None, sm=False, mem=None):
     if not _AR_PUB:
+        return
+    # 唯一写者闸 (2026-11-01): 与 uph_tact_impl 抢写同一 ar_cmd.json 会让手臂来回跳
+    if os.environ.get("ZMAX_AR_OWNER", "plan") != "plan":
         return
     # 🔴 2026-10-29 老倪「走了几成是什么」: 原写法直接把 `el - seg_t0`(本段已过**秒数**)
     #   当 0~1 比例透出去, 只是被 min/max 砍到 [0,1] —— 段时长中位数 0.3s, 页面按
@@ -328,6 +480,12 @@ def _pub_ar(o1, u_ratio, seg_t, el, a_eff=None, sm=False, mem=None):
     u = 0.0 if u < 0.0 else (1.0 if u > 1.0 else u)
     if sm:
         u = _smooth(u)
+    # 🧱 每拍技能约束 (单拍位移 ≤ v_cap·dt) — 发布前收口, 越界则只放行到允许的进度
+    _u_nom = u
+    try:
+        u = _skill_clamp(u, o1)
+    except Exception:                                              # noqa: BLE001
+        pass
     # 🧠 L4 段间连续: 上一段终点 ≠ 本段起点时, 起点改用当前实际位置 (a_raw 保真, 页面按 a_raw 认段)
     a_pub = list(o1.get("a") or [])
     a_raw = None
@@ -347,6 +505,25 @@ def _pub_ar(o1, u_ratio, seg_t, el, a_eff=None, sm=False, mem=None):
             d["a_raw"] = a_raw
         if mem:
             d["mem"] = mem
+        # 🧱 本段的闸参数 (通道半径/限速/加速度/加加速度/受限原因) —— 页面与执行器同一口径
+        _g = _gate_info(_S.get("i"))
+        if _g:
+            d["gate"] = {"stage": _g.get("stage"), "r_mm": _g.get("r_mm"),
+                         "v_cap": _g.get("v_cap"), "a_cap": _g.get("a_cap"),
+                         "j_cap": _g.get("j_cap"), "bound_by": _g.get("bound_by"),
+                         "t_gate": round(float(_g.get("t") or 0.0), 4),
+                         "t_in": round(float(_g.get("t_in") or 0.0), 4)}
+            d["cor_r_mm"] = _g.get("r_mm")
+            # 每拍技能闸取证: 技能码 / 限速 / 段长 / 已削次数 / 本拍名义 vs 实发
+            try:
+                d["gate"]["skill"] = {
+                    "code": _skill_code(_g.get("stage")), "v_cap": _CLAMP["v_cap"],
+                    "L_mm": round(float(_CLAMP["L"]), 1), "clip": int(_CLAMP["clip"]),
+                    "n": int(_CLAMP["n"]), "u_nom": round(float(_u_nom), 4),
+                    "u_pub": round(float(u), 4),
+                    "cut": bool(abs(float(_u_nom) - float(u)) > 1e-6)}
+            except Exception:                                      # noqa: BLE001
+                pass
         os.makedirs(os.path.dirname(_AR_CMD), exist_ok=True)
         tmp = _AR_CMD + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:

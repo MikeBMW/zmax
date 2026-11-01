@@ -58,6 +58,18 @@ class Node:
                 NODE_PURE_FLIPPED.add(name)
             except Exception:                                        # noqa: BLE001
                 pass
+        # 🎛 2026-11-01 老倪「按你的建议执行」: 只点亮指定的几个节点 (不整片打开 59 个)
+        #   ZMAX_NODE_PURE_IDS=ss2d3d,sssensor ⇒ 只有这些 id 的计算面开, 其余保持直通。
+        #   用处: 把 2D→3D / 融合 逐个别点起来验成本, 一拍超预算就单独关掉, 不牵连其它节点。
+        _ids = os.environ.get("ZMAX_NODE_PURE_IDS", "").strip()
+        if _ids:
+            _want = {x.strip() for x in _ids.split(",") if x.strip()}
+            if self.spec.id in _want and getattr(mod, "PURE", None) is not True:
+                try:
+                    setattr(mod, "PURE", True)
+                    NODE_PURE_FLIPPED.add(name)
+                except Exception:                                    # noqa: BLE001
+                    pass
         return mod
 
     def topic(self, port):

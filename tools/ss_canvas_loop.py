@@ -66,6 +66,14 @@ STATE = os.path.join(ROOT, "zmax_data", "ss_live", "canvas_loop.json")
 HZ = max(0.5, float(os.environ.get("ZMAX_CANVAS_HZ") or "10"))
 STATE_EVERY = max(1, int(HZ))                 # 约 1s 落一次状态
 
+# 🚀 快车道 (2026-11-01 老倪「右臂不平顺…同意」):
+#   全量一拍要跑 80 个节点 ≈ 278ms ⇒ ar_cmd 只有 2.5Hz, 而段表段长中位 0.3s ⇒ AR 画面一顿一顿。
+#   办法: 把**全量节点按原顺序切成若干段**逐段跑(顺序不变, 每个节点仍每圈只跑一次),
+#   段与段之间插一次「只跑 plan/执行器」的快拍 ⇒ 全量语义不动, 但 ar_cmd 能到 10~20Hz。
+FAST_ONLY = [s for s in (os.environ.get("ZMAX_LOOP_FAST_ONLY") or "ssplan,ssact").split(",") if s]
+FAST_HZ = float(os.environ.get("ZMAX_LOOP_FAST_HZ") or "20")
+CHUNK_N = max(1, int(os.environ.get("ZMAX_LOOP_CHUNK") or "12"))
+
 
 def log(msg):
     print("[%s] %s" % (time.strftime("%H:%M:%S"), msg), flush=True)
@@ -123,7 +131,8 @@ def write_state(d):
 
 
 def main():
-    log("画布常驻循环启动 · HZ=%.1f · 全部节点都跑 (无白名单)" % HZ)
+    log("画布常驻循环启动 · HZ=%.1f · 全部节点都跑 (无白名单 · 每段%d个) · 快车道 %s @ %.0fHz"
+        % (HZ, CHUNK_N, ",".join(FAST_ONLY) or "关", FAST_HZ))
     _dsp_ok = dispatch_inproc is not None and dispatch_inproc.enabled("ss_canvas_loop")
     log("🧩 技能派发: %s (pid %d%s)"
         % ("本进程内每拍派发 SK01~SK08" if _dsp_ok else "未启用",
@@ -132,6 +141,8 @@ def main():
                dispatch_inproc.owner() if dispatch_inproc else "—")))
     prj, mtime, n_tick, last_err = None, 0.0, 0, ""
     _last_ev = [None]              # 上一行证据的 (段,件) —— 只在变化时打 (见 ✅ 行)
+    _next_fast = [0.0]             # 🚀 快车道下次允许的时刻
+    _fast_n = [0]                  # 快拍计数(取证用)
     while True:
         try:
             t_iter = time.monotonic()          # 本拍真正起点 (含 keepalive/心跳/写状态的杂项开销)
@@ -143,7 +154,20 @@ def main():
                 log("加载画布: %d 节点 / %d 连线 (%.2fs) · 全部节点执行"
                     % (len(prj.nodes), len(prj.order), time.monotonic() - t0))
             t0 = time.monotonic()
-            traces = prj.step()                     # 全部节点都跑 (老倪 2026-10-31: 不许白名单)
+            # 🚀 逐段跑全量节点(顺序不变), 段间插快拍 ⇒ ar_cmd 保持 10~20Hz
+            _chunks = [prj.order[i:i + CHUNK_N] for i in range(0, len(prj.order), CHUNK_N)]
+            traces = []
+            for _ci, _ch in enumerate(_chunks):
+                traces.extend(prj.step(only=_ch))   # 全部节点都跑 (老倪 2026-10-31: 不许白名单)
+                if FAST_ONLY and _ci < len(_chunks) - 1:
+                    _nowf = time.monotonic()
+                    if _nowf >= _next_fast[0]:
+                        try:
+                            prj.step(only=FAST_ONLY)      # 只跑 plan/执行器, 1~2ms
+                            _next_fast[0] = _nowf + 1.0 / max(0.5, FAST_HZ)
+                            _fast_n[0] += 1
+                        except Exception:                 # noqa: BLE001
+                            pass
             cost = time.monotonic() - t0
             n_tick += 1
             keepalive_switch()                 # 🔄 AR 开关续期(只续 ar_scene), 防 1800s 过期导致双臂不动
@@ -201,7 +225,9 @@ def main():
                 write_state({"t": time.time(), "t_str": time.strftime("%H:%M:%S"), "ok": True,
                              "hz": HZ, "only": [], "tick": n_tick, "cost_ms": round(cost * 1000, 1),
                              "budget_ms": round(1000.0 / HZ, 1), "over_budget": False,
-                             "n_nodes": len(prj.nodes), "n_ran": len(traces), "traces": [],
+                             "n_nodes": len(prj.nodes), "n_ran": len(traces),
+                             "fast_only": FAST_ONLY, "fast_hz": FAST_HZ, "fast_n": _fast_n[0], "chunk_n": CHUNK_N,
+                             "traces": [],
                              "err": "", "done": True})
                 # 🔴 不能裸 return: 解释器正常退出会去析构 mujoco/EGL + 后台推理线程,
                 #   实测报 "FATAL: exception not rethrown" 并 dumped core。这里直接 _exit。
@@ -218,6 +244,7 @@ def main():
                              "budget_ms": round(1000.0 / HZ, 1),
                              "over_budget": bool(cost > 1.0 / HZ),
                              "n_nodes": len(prj.nodes), "n_ran": len(traces),
+                             "fast_only": FAST_ONLY, "fast_hz": FAST_HZ, "fast_n": _fast_n[0], "chunk_n": CHUNK_N,
                              # 🧩 技能派发归属 (SK01~SK08 在本进程内): 验收看这里 pid/拍数/在职技能
                              "dispatch": (dispatch_inproc.status() if dispatch_inproc is not None else None),
                              "traces": brief, "err": ""})

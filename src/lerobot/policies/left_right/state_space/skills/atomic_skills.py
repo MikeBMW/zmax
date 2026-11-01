@@ -173,6 +173,234 @@ class AtomicSkill:
         return self.limiter().limit(self.stage, u, v_prev=v_prev, a_prev=a_prev, dmdt=dmdt, dt=dt)
 
     # ══════════════════════════════════════════════════════════════════════════
+    # 🔵 3D 约束通道 (圆柱) —— **每个技能自带自己那根管子** (2026-11-01 老倪)
+    #   老倪: 「把这个原子技能的通道 · 圆柱体 · 运动学约束的功能, 迁移到状态空间工程,
+    #          要在每个技能里, 我要用代码调试, 进入断点」
+    #   之前: 通道在 cognition.skill_step() 收口处统一套一次 (一个点, 九个技能共用) ⇒
+    #        调试只能断在 cognition 里, 看不出"哪个技能过的是哪根管子", 也没有技能自己的半径。
+    #   现在: 数据真源**不变** (zmax_data/ss_live/skill_corridors.json ← tools/ss_corridor_build.py),
+    #        但读取/投影的调用点下沉到**每个技能的 clamp() 末尾**:
+    #            `return self.corridor_finish(_out)`
+    #        断点打这一行就停在**这个技能自己的**通道里; 半径按段取
+    #        (接近 25 / 对位 8 / 下降 6 / 抓取 3 / 抬起 25 / 转移 25 / 插入 3 / 完成 6 mm)。
+    #   管道几何 = 圆柱: 轴 = 该段真实轨迹折线, 半径 = 工艺间隙 —— 与 AR 页的圆环管壁同一份数据,
+    #   所以页面上看到的管子就是代码里正在约束的那一根。
+    CORRIDOR_STAGE = None          # 通道真源里的段名; None ⇒ 用 cls.stage (段名不统一时子类覆盖)
+    CORRIDOR_R_MM = None           # 半径覆盖 mm; None ⇒ 用真源 r_mm (标定后由 json 说话)
+    # 零位移技能 (夹爪开合那类): plan 里该段 a==b, 没有运动就没有"运动通道" —— 如实标, 不造管子
+    CORRIDOR_ZERO_MOTION = False
+
+    @classmethod
+    def _corridor_mod(cls):
+        """取通道算法模块 corridor.py (与 cognition 同一份, 固定模块名复用缓存)。"""
+        import sys as _sys
+        m = _sys.modules.get("zmax_skill_corridor")
+        if m is not None:
+            return m
+        import importlib.util as _ilu
+        import os as _os
+        p = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "corridor.py")
+        spec = _ilu.spec_from_file_location("zmax_skill_corridor", p)
+        if spec is None or spec.loader is None:
+            raise ImportError("无法加载通道模块: %s" % p)
+        m = _ilu.module_from_spec(spec)
+        _sys.modules["zmax_skill_corridor"] = m
+        spec.loader.exec_module(m)
+        return m
+
+    @classmethod
+    def corridor(cls):
+        """本技能的圆柱通道 (读真源, 不现算): {stage,r_mm,L_mm,n_poly,axis,a,b,v_along_cap,s_tick_mm}。
+
+        没有真源 ⇒ None (**不编一根假管子**); cls.CORRIDOR_R_MM 可覆盖半径 (标定/实验用)。
+        """
+        st = cls.CORRIDOR_STAGE or cls.stage
+        corr = (cls._corridor_mod().load_corridors() or {}).get(st)
+        if not corr:
+            return None
+        if cls.CORRIDOR_R_MM is not None:
+            corr = dict(corr)
+            corr["r_mm"] = float(cls.CORRIDOR_R_MM)
+        return corr
+
+    def __repr__(self):
+        """调试用可读表示 —— 没有它, 调试器里 `p self` 只会打 `<...SK03Descend object at 0x7f...>`,
+        除了类名和内存地址什么也看不到 (老倪 2026-11-01 现场问「你这是输出的什么」)。
+        只读不写, 自己绝不许抛异常 (调试器会在任意时刻调它)。
+        """
+        try:
+            _r = None
+            try:
+                _c = type(self).corridor() or {}
+                _r = _c.get("r_mm")
+            except Exception:                                              # noqa: BLE001
+                _r = None
+            _pos = getattr(self, "pos_mm", None)
+            _ps = ("(%.0f,%.0f,%.0f)mm" % tuple(float(x) for x in list(_pos)[:3])) if _pos is not None else "—"
+            return "<%s %s %s r=%smm pos=%s travel=%.0fmm>" % (
+                type(self).__name__, self.code, self.stage,
+                ("%.1f" % _r) if isinstance(_r, (int, float)) else "—",
+                _ps, float(getattr(self, "travel_m", 0.0) or 0.0) * 1000.0)
+        except Exception:                                                  # noqa: BLE001
+            return "<%s>" % type(self).__name__
+
+    @staticmethod
+    def debugger_attached():
+        """有调试器挂着吗 (VSCode/debugpy/pdb)。
+
+        实测: `python -m pdb` 下 `sys.gettrace()` 是 **None**, 但调用帧的 `f_trace` 是
+        `Bdb.trace_dispatch` ⇒ 必须**沿调用栈查 f_trace**, 只查 gettrace() 会漏判 (踩过)。
+        """
+        import sys
+        try:
+            if sys.gettrace() is not None:
+                return True
+            fr, n = sys._getframe(1), 0
+            while fr is not None and n < 40:
+                if getattr(fr, "f_trace", None) is not None:
+                    return True
+                fr, n = fr.f_back, n + 1
+            m = sys.modules.get("debugpy")
+            if m is not None:
+                try:
+                    return bool(m.is_client_connected())
+                except Exception:                                          # noqa: BLE001
+                    return True
+        except Exception:                                                  # noqa: BLE001
+            return False
+        return False
+
+    def corridor_dbg(self):
+        """🛑 断点本身 (不是注释): 本技能过通道前停一下。
+
+        触发条件 (任意一条):
+          ① `ZMAX_CORRIDOR_BREAK=1` / 技能号(`SK03`) / 段名(`下降`) ⇒ **每次都停**
+          ② 有调试器挂着 (VSCode F5 / `python -m pdb` / debugpy) ⇒ 每个技能本进程**停一次**
+             (`ZMAX_CORRIDOR_BREAK_FIRST=0` 可关掉这个自动停)
+        生产运行 (无调试器、无 env) 一律不停 —— 不会把引擎挂住。
+        """
+        import os
+        import sys
+        env = os.environ.get("ZMAX_CORRIDOR_BREAK")
+        if env == "0":
+            return
+        if env in ("1", self.code, self.stage):
+            breakpoint()
+            return
+        if env:
+            return                                   # 指定了别的技能/段 ⇒ 本技能不停
+        if os.environ.get("ZMAX_CORRIDOR_BREAK_FIRST", "1") == "0":
+            return
+        # ② 自动: 调试器挂着就停 (每技能本进程一次)。判据三选一 + 必须有终端,
+        #    否则 CI/pytest 里 breakpoint() 会去读 stdin 把进程挂住。
+        if not sys.stdin.isatty():
+            return
+        attached = AtomicSkill.debugger_attached()
+        if attached:
+            key = (type(self).__name__, os.getpid())
+            if key not in AtomicSkill._DBG_STOPPED:
+                AtomicSkill._DBG_STOPPED.add(key)
+                breakpoint()
+
+    _DBG_STOPPED = set()
+
+    def corridor_reset(self):
+        """段切换时清掉活通道的锚点 (轴必须固定在**本段起点**, 不能每拍跟着当前位姿重锚)。"""
+        self._cor_a = None
+
+    def corridor_finish(self, out, pos_mm=None, dt=None, target_mm=None):
+        """🔵 收口最后一关 (每个 clamp 末尾调): 把本技能动作投影进**本技能的圆柱通道**。
+
+        · 轴向: 轴向越界归零; v_along ≤ min(v_cap, L/tact) —— 节拍参与约束
+        · 横向: 偏出 r ⇒ 切掉向外分量 + 补回中速度 (不是等比缩小, 缩减不回中)
+        · 单拍: ‖v‖·dt ≤ s_tick
+
+        几何来源两个, 同一个投影算法:
+          ① 真源包络 (zmax_data/ss_live/skill_corridors.json): 轴 = 每条历史机动的真实折线 (基座/AR 系)
+          ② 本帧活通道 `corridor.build(stage, 当前位置, 本段目标)`: 轴 = 理想轨迹 cur→target
+             —— 调用方给的坐标是什么系, 它就是什么系 (仿真/真机都不串系), 只在 ① 系不对时启用
+        返回 out (补 "corridor"); 通道缺失/关掉/ZMAX_CORRIDOR=0 ⇒ 原样返回 (不编)。
+        调试: ZMAX_CORRIDOR_BREAK=1|SK03|下降 ⇒ 停在本函数的断点 (pdb/debugpy 都行)。
+        """
+        import os
+        if os.environ.get("ZMAX_CORRIDOR", "1") == "0":
+            return out
+        try:
+            corr = self.corridor()
+            if not corr:
+                out = dict(out)
+                if self.CORRIDOR_ZERO_MOTION:
+                    out["corridor"] = {"skill": self.code, "stage": self.CORRIDOR_STAGE or self.stage,
+                                       "n/a": "零位移段 (夹爪开合), 没有运动通道"}
+                else:
+                    out["corridor"] = {"skill": self.code, "stage": self.CORRIDOR_STAGE or self.stage,
+                                       "error": "无通道真源 (zmax_data/ss_live/skill_corridors.json 缺该段)"}
+                return out
+            _m = self._corridor_mod()
+            if pos_mm is None:
+                pos_mm = getattr(self, "pos_mm", None) or _m._live_pos_mm()
+            if pos_mm is None:
+                out = dict(out)
+                out["corridor"] = {"skill": self.code, "stage": corr.get("stage"), "r_mm": corr.get("r_mm"),
+                                   "no_pos": 1,
+                                   "error": "无 3D 坐标 (trace_live 缺/过期, 或它是仿真坐标系) ⇒ 本拍不过通道"}
+                return out
+            _dt = dt if dt is not None else getattr(self, "DT_S", None)
+            # ── 几何来源 (同一个投影算法, 只是管子怎么来不同) ────────────────────────
+            #   ① 有本段目标 ⇒ 活通道: 轴 = 当前末端 → 本段目标 (与调用方同坐标系, 仿真/真机都不串系)
+            #   ② 没有目标 ⇒ 真源包络: 轴 = 该技能每条历史机动的真实折线 (基座/AR 系)
+            _tgt = target_mm if target_mm is not None else getattr(self, "target_mm", None)
+            _t3 = [float(x) for x in list(_tgt)[:3]] if _tgt is not None else None
+            geo, _mode = corr, "stored"
+            if _t3 is not None:
+                # 🔴 轴必须锚在**本段起点**: 拿"当前位姿→目标"每拍重算的话, 横向偏差恒为 0,
+                #    管子等于没约束 (实测: 这样算出来 dev 全程 0.0mm)。起点在段首拍锁定, 段内不动。
+                if getattr(self, "_cor_a", None) is None:
+                    self._cor_a = [float(x) for x in pos_mm[:3]]
+                try:
+                    _live = _m.build(corr.get("stage"), self._cor_a, _t3,
+                                     v_cap=float(corr.get("v_cap") or 0.35),
+                                     a_max=float(corr.get("a_max") or 4.166667),
+                                     dt=float(_dt or 0.1), tact_s=corr.get("tact_s"),
+                                     r_mm=float(corr.get("r_mm") or 10.0),
+                                     s_step_m=float(corr.get("s_tick_mm") or 35.0) / 1000.0)
+                    if float(_live.get("L_mm") or 0.0) > 0.5:
+                        geo, _mode = _live, "live"
+                except Exception:                                          # noqa: BLE001
+                    geo, _mode = corr, "stored"
+            u_out, info = _m.project_stage(corr.get("stage"), out.get("u"), pos_mm, geo, dt=_dt)
+            info["mode"] = _mode
+            if _mode == "live":
+                info["target_mm"] = [round(x, 3) for x in list(_t3 or [])]
+            else:
+                # 🚧 用真源包络时必查坐标系: 它建于机器人基座/AR 坐标 (plan mm, x≈650),
+                #    仿真的末端是 (34,611,127) —— 拿错系会 dev 半米到一米, 那不是"偏出管子"。
+                #    判据 dev > max(100mm, 8·r): 单次机动只有几十 mm, 8 倍半径以外只能是串系 ⇒ 不套。
+                _lim = max(100.0, 8.0 * float(corr.get("r_mm") or 0.0))
+                if float(info.get("dev_mm") or 0.0) > _lim:
+                    out = dict(out)
+                    out["corridor"] = {"skill": self.code, "stage": corr.get("stage"),
+                                       "r_mm": corr.get("r_mm"), "dev_mm": info.get("dev_mm"),
+                                       "frame_mismatch": 1, "lim_mm": round(_lim, 1),
+                                       "pos_mm": [round(float(x), 1) for x in pos_mm[:3]],
+                                       "error": "坐标不在通道坐标系 (偏离 %.0fmm > %.0fmm) ⇒ 本拍不过通道"
+                                                % (float(info.get("dev_mm") or 0.0), _lim)}
+                    return out
+            info["skill"] = self.code
+            info["pos_mm"] = [round(float(x), 3) for x in pos_mm[:3]]
+            out = dict(out)
+            out["u"] = [float(x) for x in u_out]
+            out["corridor"] = info
+            if not info.get("in_channel"):
+                _w = out.get("why") or ""
+                out["why"] = "通道·越界" if _w in ("", "可行") else (_w + "+通道·越界")
+            return out
+        except Exception as e:                                              # noqa: BLE001
+            out = dict(out)
+            out["corridor"] = {"skill": self.code, "error": "%s: %s" % (type(e).__name__, e)}
+            return out
+
+    # ══════════════════════════════════════════════════════════════════════════
     # 🎯 执行口: **本段目标位姿** (单一真源, 2026-10-16)
     #   老倪: 「这些原子任务都有输出么? 最终的 MoveIt 是怎么选择实际的原子任务动作的」
     #   ⇒ 技能类必须能**输出目标**, 而不是只把别人给的动作削一遍。规则写在类属性 TARGET 里
@@ -434,7 +662,8 @@ class SK01Approach(AtomicSkill):
                          "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
                 "s_travel": round(self.travel_m, 6), "over_travel": over,
                 "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
-        return _out
+        self.corridor_dbg()                        # 🛑 本技能的断点 (F9 打这一行/VSCode 直接停)
+        return self.corridor_finish(_out)
 
 class SK02Align(AtomicSkill):
     """② 对位 — 光模块上方精对位 (更低悬停, 准备垂直下刀)"""
@@ -551,7 +780,8 @@ class SK02Align(AtomicSkill):
                          "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
                 "s_travel": round(self.travel_m, 6), "over_travel": over,
                 "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
-        return _out
+        self.corridor_dbg()                        # 🛑 本技能的断点 (F9 打这一行/VSCode 直接停)
+        return self.corridor_finish(_out)
 
 class SK03Descend(AtomicSkill):
     """③ 下降 — 张爪垂直下刀包住光模块身 (触到即停)"""
@@ -669,7 +899,8 @@ class SK03Descend(AtomicSkill):
                          "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
                 "s_travel": round(self.travel_m, 6), "over_travel": over,
                 "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
-        return _out
+        self.corridor_dbg()                        # 🛑 本技能的断点 (F9 打这一行/VSCode 直接停)
+        return self.corridor_finish(_out)
 
 class SK04Grasp(AtomicSkill):
     """④ 抓取 — 闭合夹爪深夹 (夹持锁存, 抬起前随动验证)"""
@@ -787,7 +1018,8 @@ class SK04Grasp(AtomicSkill):
                          "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
                 "s_travel": round(self.travel_m, 6), "over_travel": over,
                 "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
-        return _out
+        self.corridor_dbg()                        # 🛑 本技能的断点 (F9 打这一行/VSCode 直接停)
+        return self.corridor_finish(_out)
 
 class SK05Lift(AtomicSkill):
     """⑤ 抬起 — 垂直提起光模块离台 (随动验证夹持是否真建立)"""
@@ -904,7 +1136,8 @@ class SK05Lift(AtomicSkill):
                          "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
                 "s_travel": round(self.travel_m, 6), "over_travel": over,
                 "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
-        return _out
+        self.corridor_dbg()                        # 🛑 本技能的断点 (F9 打这一行/VSCode 直接停)
+        return self.corridor_finish(_out)
 
 class SK06Transfer(AtomicSkill):
     """⑥ 转移 — 持光模块平移至孔口上方 (悬高 2cm, 对准插孔)"""
@@ -1022,7 +1255,8 @@ class SK06Transfer(AtomicSkill):
                          "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
                 "s_travel": round(self.travel_m, 6), "over_travel": over,
                 "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
-        return _out
+        self.corridor_dbg()                        # 🛑 本技能的断点 (F9 打这一行/VSCode 直接停)
+        return self.corridor_finish(_out)
 
 class SK07Insert(AtomicSkill):
     """⑦ 插入 — 毫米级解析伺服精插 (两段式: 垂直对心→水平推入孔底)"""
@@ -1141,7 +1375,8 @@ class SK07Insert(AtomicSkill):
                          "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
                 "s_travel": round(self.travel_m, 6), "over_travel": over,
                 "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
-        return _out
+        self.corridor_dbg()                        # 🛑 本技能的断点 (F9 打这一行/VSCode 直接停)
+        return self.corridor_finish(_out)
 
 class SK07Place(AtomicSkill):
     """⑦ 放入 (摆盘链 mode=tray) — 把光模块下放进 tray 槽位并释放 (替代插拔链的 SK07Insert)
@@ -1153,6 +1388,8 @@ class SK07Place(AtomicSkill):
     # 🎯 目标: 点位库的摆放点 (真机点位上下文; 仿真无点位库时返回 None)
     TARGET = {"ref": "point", "off_key": None}
     stage = "放入"          # 摆盘链里对应状态机的「放下」段 (ActionModulator.PLACE_IDX)
+    # 🔵 通道: 放入 = 松爪+离开, plan 里没有独立位移段 ⇒ 零位移, 无运动通道 (如实标, 不造管子)
+    CORRIDOR_ZERO_MOTION = True
     name = "⑦ 放入"
     desc = "件吊到目标槽位上方 → 垂直下放到槽底 → 开爪释放 (低速触底, 不压伤)"
     goal = "光模块中心 → tray 槽位中心 (z = 内底顶面 + 件半高 0.016m)"
@@ -1265,7 +1502,8 @@ class SK07Place(AtomicSkill):
                          "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
                 "s_travel": round(self.travel_m, 6), "over_travel": over,
                 "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
-        return _out
+        self.corridor_dbg()                        # 🛑 本技能的断点 (F9 打这一行/VSCode 直接停)
+        return self.corridor_finish(_out)
 
 class SK08Complete(AtomicSkill):
     """⑧ 完成 — 插入到位, 本轮任务结束 (mode=full 续拔出/AOI 链)"""
@@ -1382,7 +1620,8 @@ class SK08Complete(AtomicSkill):
                          "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
                 "s_travel": round(self.travel_m, 6), "over_travel": over,
                 "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
-        return _out
+        self.corridor_dbg()                        # 🛑 本技能的断点 (F9 打这一行/VSCode 直接停)
+        return self.corridor_finish(_out)
 # ── 技能注册表 (插装 8 段; 顺序 = 状态机推进序) ──
 SKILLS = [SK01Approach, SK02Align, SK03Descend, SK04Grasp,
           SK05Lift, SK06Transfer, SK07Insert, SK08Complete]

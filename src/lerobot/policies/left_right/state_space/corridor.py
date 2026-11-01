@@ -21,22 +21,23 @@ from __future__ import annotations
 import math
 import os
 
-# 每段的通道半径 (mm) —— 工艺间隙/标定留白; 标定好后由 config/calib/zmax_corridor.json 覆盖
+# 每段的通道半径 (mm) —— 老倪 2026-11-01 定: 末端执行器可通行通道 = **半径 10mm**, 所有段统一;
+# 标定后可由 config/calib/zmax_corridor.json 覆盖 (ZMAX_CORRIDOR_CALIB 指过去)。
 DEFAULT_R_MM = {
-    "接近": 25.0,
-    "对位": 8.0,
-    "下降": 4.0,
-    "抓取": 2.0,
-    "抬起": 25.0,
-    "转移": 20.0,
-    "插入": 1.5,
-    "拔出": 3.0,
-    "AOI转移": 20.0,
-    "AOI检测": 10.0,
-    "回程": 25.0,
-    "放下": 4.0,
-    "放入": 4.0,
-    "完成": 5.0,
+    "接近": 80.0,
+    "对位": 80.0,
+    "下降": 80.0,
+    "抓取": 80.0,
+    "抬起": 80.0,
+    "转移": 80.0,
+    "插入": 80.0,
+    "拔出": 80.0,
+    "AOI转移": 80.0,
+    "AOI检测": 80.0,
+    "回程": 80.0,
+    "放下": 80.0,
+    "放入": 80.0,
+    "完成": 80.0,
 }
 
 
@@ -384,7 +385,12 @@ def apply(stage, u, pos_mm=None, *, dt=None, enabled=None):
 def _live_pos_mm():
     """当前末端 3D 坐标 (mm) —— 与 AR 场景同源: zmax_data/ss_live/trace_live.json 的 末端 (m)。
 
-    取不到返回 None (如实退回, 不编坐标)。文件 mtime 用单调钟判新鲜 (NTP 回拨安全)。
+    取不到返回 None (如实退回, 不编坐标)。
+    🔴 坐标系闸 (2026-11-01 实测): trace_live 的 `src` 会写明来源, 仿真 (metaworld) 的末端
+       ≈ (34, 611, 127) mm, 而通道真源是**机器人基座/AR 坐标** (plan mm, x≈650) —— 两个系差半米到一米。
+       拿仿真坐标过通道 ⇒ 九个技能全部被误判越界 (实测 dev 560~960mm), 所以这里只认**基座系**来源:
+       src 里出现 metaworld / 仿真 / episode ⇒ 返回 None (通道在本帧不适用), 不用错坐标硬套。
+       真机侧 (base_link) 或调用方显式传 pos_mm 不受影响。
     """
     try:
         import json
@@ -397,6 +403,9 @@ def _live_pos_mm():
         if time.time() - os.path.getmtime(p) > 30.0:
             return None
         t = json.load(open(p, encoding="utf-8")) or {}
+        _src = str(t.get("src") or "").lower()
+        if ("metaworld" in _src) or ("仿真" in _src) or ("episode" in _src):
+            return None
         e = t.get("末端") or t.get("tcp") or t.get("end")
         if not (isinstance(e, (list, tuple)) and len(e) >= 3):
             return None

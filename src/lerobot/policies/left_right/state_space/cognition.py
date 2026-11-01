@@ -177,6 +177,13 @@ class ActionModulator:
     def _goto(self, idx, reason):
         self.stage_idx = idx
         self.history.append((self.STAGES[idx], reason))
+        # 🔵 段切换 ⇒ 清掉各技能活通道的锚点 (轴必须锚在本段起点, 不能跨段复用上一段的轴)
+        try:
+            for _s in (self._sk_objs or {}).values():
+                if _s is not None and hasattr(_s, "corridor_reset"):
+                    _s.corridor_reset()
+        except Exception:                                                  # noqa: BLE001
+            pass
 
     def gripper_cmd(self, u_ff_g=0.0, keep_closed=False):
         """夹爪指令归状态机 (与操作视频状态机一致: 接近/对位/下降 张开, 抓取起闭合并保持)
@@ -239,7 +246,7 @@ class ActionModulator:
         spec.loader.exec_module(m)
         return m
 
-    def skill_step(self, u_req, stage=None, token=None):
+    def skill_step(self, u_req, stage=None, token=None, pos_mm=None, target_mm=None):
         """公共技能过闸口 (2026-10-31 老倪「全程你操作」): 所有控制路径交出动作前都过当段技能。
 
         调用方: 解析链 decide()、模型直驱 (_direct_act → env.step)、画布节点
@@ -257,6 +264,21 @@ class ActionModulator:
         sk = self._skill_for_stage(st)
         if sk is None:
             return None
+        # 🔵 通道要用 3D 坐标: 调用方给了就用 (引擎传当前末端 mm), 没给才回落到 trace_live.json
+        if pos_mm is None:
+            pos_mm = getattr(self, "_pos_mm", None)
+        if pos_mm is not None:
+            try:
+                sk.pos_mm = [float(x) for x in pos_mm[:3]]
+            except Exception:                                              # noqa: BLE001
+                pass
+        if target_mm is None:
+            target_mm = getattr(self, "_target_mm", None)
+        if target_mm is not None:
+            try:
+                sk.target_mm = [float(x) for x in target_mm[:3]]
+            except Exception:                                              # noqa: BLE001
+                pass
         try:
             r = sk.clamp(np.asarray(u_req, dtype=float).reshape(-1), dt=self.skill_gate_dt,
                          v_prev=self._g_v, a_prev=self._g_a)
@@ -264,20 +286,21 @@ class ActionModulator:
             return None
         self._last_skill_tok = _tok
         self.skill_calls[st] = self.skill_calls.get(st, 0) + 1
-        # 🔵 3D 约束通道 (老倪 2026-10-31): 技能算完的动作用**AR 场景真 3D 坐标**再投影一次,
-        #   把每一拍都关进该段的通道 (轴 A→B, 半径 r, 节拍预算)。通道真源 tools/ss_corridor_build.py
-        #   写的 zmax_data/ss_live/skill_corridors.json; 没有通道/没有 3D ⇒ 原样放行 (如实, 不编)。
-        #   ZMAX_CORRIDOR=0 可关 (对照用)。
-        try:
-            _corr = self._corridor_mod()  # noqa: PLC0415
-            _u_c, _ci = _corr.apply(st, list(r.get("u") or [0, 0, 0, 0]), dt=self.skill_gate_dt)
-            if _ci is not None:
+        # 🔵 3D 约束通道 (2026-11-01 老倪: 下沉到**每个技能里**)
+        #   技能 clamp() 末尾已经调 self.corridor_finish(_out) 过了通道 ⇒ 这里**不再套一次**
+        #   (套两次会把回中速度再投影一遍, 而且断点永远停在 cognition 而不是具体技能)。
+        #   只有老版本技能对象没带 corridor 字段时, 才在这里兜底投影一次。
+        if r.get("corridor") is None:
+            try:
+                _corr = self._corridor_mod()  # noqa: PLC0415
+                _u_c, _ci = _corr.apply(st, list(r.get("u") or [0, 0, 0, 0]), dt=self.skill_gate_dt)
+                if _ci is not None:
+                    r = dict(r)
+                    r["u"] = [float(x) for x in _u_c]
+                    r["corridor"] = _ci
+            except Exception as _e:                                          # noqa: BLE001
                 r = dict(r)
-                r["u"] = [float(x) for x in _u_c]
-                r["corridor"] = _ci
-        except Exception as _e:                                          # noqa: BLE001
-            r = dict(r)
-            r["corridor"] = {"error": "%s: %s" % (type(_e).__name__, _e)}
+                r["corridor"] = {"error": "%s: %s" % (type(_e).__name__, _e)}
         self.gate = r
         # 🖨 每段第一次真执行 → 终端打一行 (老倪这边: 不靠断点也能一眼看到技能在跑)
         _seen = getattr(self, "_sk_announced", None)
