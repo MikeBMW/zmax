@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import sys
 import time
 
 _ROOT = os.path.expanduser("~/zmax")
@@ -55,6 +56,147 @@ def _speed_profile():
         return _SPD["d"]
     except Exception:                                                  # noqa: BLE001
         return _SPD["d"]
+
+
+# 🧱 2026-11-01 老倪「状态空间 技能约束通道 要真有效 接入 plan 节点」:
+#   之前 plan 只吃到 r_mm 这个**数字**(算段时长), 几何通道本身没进发布路径 ⇒ 通道=画了条线。
+#   现在发布前把**段端点 + 每拍点**夹进该技能真实通道 (切外+回中到管壁); 越界量/回中量/技能码
+#   写进 ar_cmd.gate.cor。页面按 d.a/d.b 动画 ⇒ 画出来的就是通道内的轨迹, 且有取证可查。
+#   真源 = zmax_data/ss_live/skill_corridors.json (tools/ss_corridor_build.py 建/改半径重跑)。
+_COR_ON = os.environ.get("ZMAX_PLAN_CORRIDOR", "1") == "1"
+_COR_PATH = os.path.join(_ROOT, "zmax_data", "ss_live", "skill_corridors.json")
+_COR = {"mtime": 0.0, "d": {}, "mod": None, "src": "未接"}
+_FIT = {}                     # (seq, stage) → 段端点贴合结果 (同一段只算一次)
+_TICK = {"dev_max": 0.0, "cut": 0, "n": 0, "seq": None}
+
+
+def _corridor_mod():
+    """按路径加载 corridor.py (固定模块名 ⇒ 与技能侧同一份算法, 不写第二套)。"""
+    if _COR["mod"] is not None:
+        return _COR["mod"] or None
+    try:
+        import importlib.util as ilu
+        p = os.path.join(_ROOT, "src", "lerobot", "policies", "left_right",
+                         "state_space", "corridor.py")
+        m = sys.modules.get("zmax_skill_corridor")
+        if m is None:
+            spec = ilu.spec_from_file_location("zmax_skill_corridor", p)
+            m = ilu.module_from_spec(spec)
+            sys.modules["zmax_skill_corridor"] = m
+            spec.loader.exec_module(m)
+        _COR["mod"] = m
+    except Exception as e:                                             # noqa: BLE001
+        _COR["mod"] = False
+        _COR["src"] = "通道模块加载失败: %s: %s" % (type(e).__name__, e)
+    return _COR["mod"] or None
+
+
+def _cor(stage):
+    """stage → 该技能的通道 (按 mtime 热读); 没有该技能通道 ⇒ None。"""
+    if not _COR_ON:
+        return None
+    m = _corridor_mod()
+    if m is None:
+        return None
+    try:
+        if not os.path.isfile(_COR_PATH):
+            _COR["src"] = "无通道真源(先跑 tools/ss_corridor_build.py)"
+            return None
+        mt = os.path.getmtime(_COR_PATH)
+        if mt != _COR["mtime"]:
+            _COR["d"] = m.load_corridors(_COR_PATH) or {}
+            _COR["mtime"] = mt
+            _COR["src"] = "通道真源 %s (%d 技能)" % (
+                time.strftime("%m-%d %H:%M", time.localtime(mt)), len(_COR["d"]))
+        return (_COR["d"] or {}).get(str(stage or ""))
+    except Exception as e:                                             # noqa: BLE001
+        _COR["src"] = "通道读失败: %s: %s" % (type(e).__name__, e)
+        return None
+
+
+def _skill_stage(kind, label):
+    """段 (kind,label) → 原子技能段名 —— 与 tools/ss_corridor_build.group_polys 同一规则。"""
+    kind = str(kind or "")
+    label = str(label or "")
+    if kind == "move":
+        return "转移" if "行进高度" in label else ("对位" if "孔口" in label else "接近")
+    return {"down": "下降", "grip": "抓取", "up": "抬起", "insert": "插入",
+            "pull": "插入", "release": "完成"}.get(kind)
+
+
+def _cor_fit(o1):
+    """段端点夹进通道 (每段一次, 按 seq 缓存): 返回 (a, b, info, corr) 或 None。"""
+    if not _COR_ON:
+        return None
+    stage = _skill_stage(o1.get("kind"), o1.get("label"))
+    a = list(o1.get("a") or [])
+    b = list(o1.get("b") or [])
+    if len(a) != 3 or len(b) != 3:
+        return None
+    if not stage:
+        # 📷 零位移的检测/保持段 (AOI 金手指/侧面): 没有技能通道, 但也不许飘 ——
+        #   用「保持点通道」(轴 1mm, 半径取本段闸 r): 实际点偏离保持点 > r 就会被夹回。
+        if math.dist([float(x) for x in a], [float(x) for x in b]) > 1e-6:
+            return None
+        r_g = float((_gate_info(_S.get("i")) or {}).get("r_mm") or 0.0)
+        if r_g <= 0.0:
+            return None
+        stage = "保持"
+        corr = {"polys": [[a, [a[0], a[1], a[2] - 1.0]]], "r_mm": r_g, "L_mm": 1.0,
+                "stage": "保持", "dt": 0.1}
+    else:
+        corr = _cor(stage)
+    if not corr:
+        return None
+    key = (o1.get("seq"), stage, tuple(round(float(x), 3) for x in a + b))
+    hit = _FIT.get(key)
+    if hit is not None:
+        return hit
+    m = _corridor_mod()
+    a2, ia = m.clamp_into(corr, a)
+    b2, ib = m.clamp_into(corr, b)
+    why = []
+    if not ia["in_channel"]:
+        why.append("起点" + str(ia["why"]))
+    if not ib["in_channel"]:
+        why.append("终点" + str(ib["why"]))
+    info = {"stage": stage, "skill": _skill_code(stage), "r_mm": corr.get("r_mm"),
+            "a_in": ia["in_channel"], "b_in": ib["in_channel"],
+            "dev_a": ia["dev_mm"], "dev_b": ib["dev_mm"],
+            "moved_mm": round(float(ia["moved_mm"]) + float(ib["moved_mm"]), 3),
+            "why": "+".join(why) or "通道内", "cut": bool(why)}
+    if len(_FIT) > 4000:
+        _FIT.clear()
+    _FIT[key] = (a2, b2, info, corr)
+    return _FIT[key]
+
+
+def _cor_pub(o1, corr, a_fit, b_fit, u):
+    """每拍: 发布点必须落在通道内 —— 越界则把 u 二分收回到管内最大进度。"""
+    m = _corridor_mod()
+    seq = o1.get("seq")
+    if _TICK["seq"] != seq:
+        _TICK.update(seq=seq, dev_max=0.0, cut=0, n=0)
+    p = [a_fit[i] + (b_fit[i] - a_fit[i]) * u for i in range(3)]
+    _p2, info = m.clamp_into(corr, p)
+    _TICK["n"] += 1
+    if info["dev_mm"] > _TICK["dev_max"]:
+        _TICK["dev_max"] = info["dev_mm"]
+    if info["in_channel"]:
+        return u, {"dev_mm": info["dev_mm"], "in": True, "cut": False,
+                   "n": _TICK["n"], "dev_max": round(_TICK["dev_max"], 3)}
+    lo, hi = 0.0, u
+    for _ in range(7):
+        mid = 0.5 * (lo + hi)
+        q = [a_fit[i] + (b_fit[i] - a_fit[i]) * mid for i in range(3)]
+        if m.clamp_into(corr, q)[1]["in_channel"]:
+            lo = mid
+        else:
+            hi = mid
+    _TICK["cut"] += 1
+    return lo, {"dev_mm": info["dev_mm"], "in": False, "cut": True,
+                "u_nom": round(u, 4), "u_fit": round(lo, 4),
+                "n": _TICK["n"], "dev_max": round(_TICK["dev_max"], 3)}
 
 
 def _gate_rows(n_seg):
@@ -492,19 +634,42 @@ def _pub_ar(o1, u_ratio, seg_t, el, a_eff=None, sm=False, mem=None):
     if a_eff is not None:
         a_raw = list(o1.get("a") or [])
         a_pub = list(a_eff)
+    b_pub = list(o1.get("b") or [])
+    # 🧱 几何通道 (真有效): 段端点夹进技能通道 (每段一次) + 每拍发布点核在内 (关闸/无通道 ⇒ 原样)
+    _cor_info = None
+    try:
+        _fit = _cor_fit(o1)
+        if _fit:
+            _a_fit, _b_fit, _seg, _corr = _fit
+            if a_eff is not None:                       # 实际起点也必须在管内
+                _a_fit = _corridor_mod().clamp_into(_corr, a_pub)[0]
+            a_pub, b_pub = list(_a_fit), list(_b_fit)
+            u, _u_tick = _cor_pub(o1, _corr, a_pub, b_pub, u)
+            _cor_info = dict(_seg)
+            if _u_tick:
+                _cor_info["tick"] = _u_tick
+            _cor_info["u_pub"] = round(float(u), 4)
+    except Exception:                                              # noqa: BLE001
+        _cor_info = None
     try:
         d = {"t": time.time(), "t_str": time.strftime("%H:%M:%S"), "src": "ss_plan_long",
              "task_id": o1.get("task_id"), "seq": o1.get("seq"), "mod": o1.get("mod"),
-             "kind": o1.get("kind"), "label": o1.get("label"), "a": a_pub, "b": o1.get("b"),
+             "kind": o1.get("kind"), "label": o1.get("label"), "a": a_pub, "b": b_pub,
              "u": round(u, 4), "t_seg": seg_t, "t_left": o1.get("t_left"),
              "elapsed_s": round(el, 2), "mt_id": o1.get("mt_id"), "mt_name": o1.get("mt_name"),
              "mt_i": o1.get("mt_i"), "mt_n": o1.get("mt_n"), "batch": o1.get("batch"),
              # 🔴 2026-10-29: 视觉观测点同拍带给页面/执行器 (接口对齐; 误差/gaps 原样透出, 不美化)
              "vision": o1.get("vision")}
+        _b_org = o1.get("b")
+        if isinstance(_b_org, (list, tuple)) and len(_b_org) == 3 and \
+                any(abs(float(_b_org[i]) - float(b_pub[i])) > 1e-6 for i in range(3)):
+            d["b_raw"] = list(_b_org)       # 被通道夹回来的原始目标 (取证用, 不覆盖)
         if a_raw is not None:
             d["a_raw"] = a_raw
         if mem:
             d["mem"] = mem
+        if _cor_info and "gate" not in d:
+            d["cor"] = _cor_info          # 无闸后表时也要能看到通道取证
         # 🧱 本段的闸参数 (通道半径/限速/加速度/加加速度/受限原因) —— 页面与执行器同一口径
         _g = _gate_info(_S.get("i"))
         if _g:
@@ -514,6 +679,10 @@ def _pub_ar(o1, u_ratio, seg_t, el, a_eff=None, sm=False, mem=None):
                          "t_gate": round(float(_g.get("t") or 0.0), 4),
                          "t_in": round(float(_g.get("t_in") or 0.0), 4)}
             d["cor_r_mm"] = _g.get("r_mm")
+            # 🧱 几何通道取证: 技能码 / 半径 / 段端点偏差 / 是否被夹回 / 每拍偏差与削次数
+            if _cor_info:
+                d["gate"]["cor"] = _cor_info
+                d["gate"]["cor"]["src"] = _COR.get("src")
             # 每拍技能闸取证: 技能码 / 限速 / 段长 / 已削次数 / 本拍名义 vs 实发
             try:
                 d["gate"]["skill"] = {

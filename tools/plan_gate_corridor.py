@@ -54,6 +54,17 @@ KIND2STAGE = {
     "side": "AOI检测",
 }
 
+def stage_of(kind, label):
+    """段 → 技能阶段名。move 段必须按 label 细分 (孔口=对位 / 行进高度=转移 / 其余=接近),
+    与 tools/ss_corridor_build.group_polys 同一规则 —— 之前只按 kind 把**所有** move 当成转移,
+    提速档把 1596mm/s 也套到 14 段孔口对位 (真值 350) 上, 口径不一致。"""
+    kind = str(kind or "move")
+    if kind == "move":
+        lab = str(label or "")
+        return "转移" if "行进高度" in lab else ("对位" if "孔口" in lab else "接近")
+    return KIND2STAGE.get(kind, "转移")
+
+
 A_PEAK_K = 5.7726      # 对称S曲线: a_peak = K·L/T² (K=32/√3/... = 5.7735)
 J_PEAK_K = 60.0        # j_peak = 60·L/T³ (最小 jerk 的 S 曲线)
 
@@ -151,7 +162,7 @@ def gate(segs, lims, srcs, corner_on=True):
         d = [float(b[k]) - float(a[k]) for k in range(3)]
         dist.append(math.sqrt(sum(x * x for x in d)))
         dirs.append(_unit(d) if dist[-1] > 1e-6 else [0.0, 0.0, 0.0])
-        st = KIND2STAGE.get(str(s.get("kind") or "move"), "转移")
+        st = stage_of(s.get("kind"), s.get("label"))
         lim_of.append((st, lims.get(st) or {}))
     # ---- 拐角: 允许通过速度 ----
     corners = []

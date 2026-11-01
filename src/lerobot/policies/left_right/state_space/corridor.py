@@ -242,6 +242,52 @@ def edges(corr, n_side=4):
     return out
 
 
+def closest_point(polys, pos):
+    """pos 到**多折线**通道的最近点 —— 返回 (cp, dev_mm, ax, s_mm, k)。
+
+    cp = 轴心上的最近点 (3D), 与 `closest_on_polys` 同一份算法, 供「把点拉回管壁内」用:
+    plan 节点要把段端点/逐拍点夹进通道时, 需要**点**而不是只给偏差。
+    """
+    dev, s, ax, k = closest_on_polys(polys, pos)
+    best = polys[k]
+    acc, cp = 0.0, best[0]
+    for p0, axx, n in poly_axis(best)[1]:
+        if s <= acc + n + 1e-9:
+            cp = _add(p0, _mul(axx, max(0.0, min(n, s - acc))))
+            ax = axx
+            break
+        acc += n
+    return cp, dev, ax, s, k
+
+
+def clamp_into(corr, pos_mm, *, r_mm=None):
+    """把一个 3D 点夹进通道: 管内原样返回, 管外拉到**管壁** (切外+回中)。
+
+    返回 (pos_out, info): info = {in_channel, dev_mm, excess_mm, r_mm, moved_mm,
+    why: "管壁回中"|"通道内"}。plan 节点发布段端点/逐拍点前调用它。
+    """
+    r = float(r_mm if r_mm is not None else corr.get("r_mm") or 0.0)
+    pos = [float(p) for p in pos_mm]
+    if corr.get("polys"):
+        dev, s, ax, k = closest_on_polys(corr["polys"], pos)
+        cp = closest_point(corr["polys"], pos)[0]
+    elif corr.get("pts"):
+        dev = closest_on_poly(corr["pts"], pos)[0]
+        cp = closest_point([corr["pts"]], pos)[0]
+    else:
+        return pos, {"in_channel": True, "dev_mm": 0.0, "excess_mm": 0.0, "r_mm": r,
+                     "moved_mm": 0.0, "why": "无通道"}
+    if r <= 0 or dev <= r:
+        return pos, {"in_channel": True, "dev_mm": round(dev, 3), "excess_mm": 0.0,
+                     "r_mm": r, "moved_mm": 0.0, "why": "通道内"}
+    # 从 pos 沿 (cp-pos) 方向走到离轴 r 处 = 管壁 (绝不穿到对面去)
+    k_ratio = (dev - r) / dev if dev > 1e-9 else 1.0
+    out = [pos[i] + (cp[i] - pos[i]) * k_ratio for i in range(3)]
+    moved = _norm(_sub(pos, out))
+    return out, {"in_channel": False, "dev_mm": round(dev, 3), "excess_mm": round(dev - r, 3),
+                 "r_mm": r, "moved_mm": round(moved, 3), "why": "横向切外+回中到管壁"}
+
+
 def project_stage(stage, u, pos_mm, corr, *, dt=None, v_prev=None):
     """把动作 (m/s, 前三维) 投影进通道。返回 (u_out, info)。
 
@@ -252,25 +298,10 @@ def project_stage(stage, u, pos_mm, corr, *, dt=None, v_prev=None):
     r = float(corr["r_mm"])
     L = float(corr["L_mm"])
     if corr.get("polys"):                              # 🔵 多段实际机动的包络集合
-        dev, s, ax, _k = closest_on_polys(corr["polys"], pos_mm)
-        pts_best = corr["polys"][_k]
-        acc, cp = 0.0, pts_best[0]
-        for p0, axx, n in poly_axis(pts_best)[1]:
-            if s <= acc + n + 1e-9:
-                cp = _add(p0, _mul(axx, max(0.0, min(n, s - acc))))
-                ax = axx
-                break
-            acc += n
+        cp, dev, ax, s, _k = closest_point(corr["polys"], pos_mm)
         lat = _sub(pos_mm, cp)
     elif corr.get("pts"):                              # 🔵 折线包络通道 (实际轨迹)
-        dev, s, ax = closest_on_poly(corr["pts"], pos_mm)
-        acc, cp = 0.0, corr["pts"][0]
-        for p0, axx, n in poly_axis(corr["pts"])[1]:
-            if s <= acc + n + 1e-9:
-                cp = _add(p0, _mul(axx, max(0.0, min(n, s - acc))))
-                ax = axx
-                break
-            acc += n
+        cp, dev, ax, s, _k = closest_point([corr["pts"]], pos_mm)
         lat = _sub(pos_mm, cp)
     else:                                              # 直线通道 (旧口径, 兼容)
         a = corr["a"]
