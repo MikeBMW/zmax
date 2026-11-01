@@ -56,7 +56,7 @@ Read §2 above, then `AGENTS.md` "Architecture", then open `src/lerobot/policies
 
 ## 4. SO-101 end-to-end cheat-sheet
 
-Full details in [`docs/source/so101.mdx`](./docs/source/so101.mdx) and [`docs/source/il_robots.mdx`](./docs/source/il_robots.mdx). Minimum commands in order. Confirm arms are assembled + powered before issuing.
+Full details in [`docs/6-开阳-工程落地/source/so101.mdx`](./docs/6-开阳-工程落地/source/so101.mdx) and [`docs/6-开阳-工程落地/source/il_robots.mdx`](./docs/6-开阳-工程落地/source/il_robots.mdx). Minimum commands in order. Confirm arms are assembled + powered before issuing.
 
 **4.1 Install**
 
@@ -232,7 +232,7 @@ Match the policy to the user's **GPU memory** and **time budget**. Numbers below
 
 All policies typically train for **5–10 epochs** (see §7).
 
-> **Human-facing version:** the [Compute Hardware Guide](./docs/source/hardware_guide.mdx) reuses the table below and adds a cloud-GPU tier guide and a Hugging Face Jobs pointer.
+> **Human-facing version:** the [Compute Hardware Guide](./docs/6-开阳-工程落地/source/hardware_guide.mdx) reuses the table below and adds a cloud-GPU tier guide and a Hugging Face Jobs pointer.
 
 | Policy      | Batch | Update (ms) | Peak GPU mem (GB) | Best for                                                                                         |
 | ----------- | ----: | ----------: | ----------------: | ------------------------------------------------------------------------------------------------ |
@@ -255,7 +255,7 @@ All policies typically train for **5–10 epochs** (see §7).
 - **12–16 GB VRAM (4070/4080, A4000):** → `smolvla` with defaults, or `act`/`diffusion` with larger batch. `pi0`/`pi05`/`wall_x`/`xvla` feasible only with small batch + gradient accumulation.
 - **24+ GB VRAM (3090/4090/A5000):** → any policy. Prefer `smolvla` (unfrozen) for multi-task; `act` for single-task grasp-and-place (still often the best ROI). Could experiment with `pi0` or `pi05` or `xvla`
 - **80 GB (A100/H100):** → any, with healthy batch. `pi05`, `xvla`, `wall_x` become comfortable.
-- **CPU only:** → don't train here. Use Google Colab (see [`docs/source/notebooks.mdx`](./docs/source/notebooks.mdx)) or a rented GPU.
+- **CPU only:** → don't train here. Use Google Colab (see [`docs/6-开阳-工程落地/source/notebooks.mdx`](./docs/6-开阳-工程落地/source/notebooks.mdx)) or a rented GPU.
 
 ---
 
@@ -367,8 +367,8 @@ lerobot-eval \
 
 - Use `--policy.path=outputs/train/.../checkpoints/<step>/pretrained_model` for local checkpoints.
 - `--eval.n_episodes` should be ≥ 50 for a stable success-rate estimate.
-- Available envs live in `src/lerobot/envs/`. See [`docs/source/libero.mdx`](./docs/source/libero.mdx), [`metaworld.mdx`](./docs/source/metaworld.mdx), [`robocasa.mdx`](./docs/source/robocasa.mdx), [`vlabench.mdx`](./docs/source/vlabench.mdx) for specific benchmarks.
-- To add a new benchmark, see [`docs/source/adding_benchmarks.mdx`](./docs/source/adding_benchmarks.mdx) and [`envhub.mdx`](./docs/source/envhub.mdx).
+- Available envs live in `src/lerobot/envs/`. See [`docs/6-开阳-工程落地/source/libero.mdx`](./docs/6-开阳-工程落地/source/libero.mdx), [`metaworld.mdx`](./docs/6-开阳-工程落地/source/metaworld.mdx), [`robocasa.mdx`](./docs/6-开阳-工程落地/source/robocasa.mdx), [`vlabench.mdx`](./docs/6-开阳-工程落地/source/vlabench.mdx) for specific benchmarks.
+- To add a new benchmark, see [`docs/6-开阳-工程落地/source/adding_benchmarks.mdx`](./docs/6-开阳-工程落地/source/adding_benchmarks.mdx) and [`envhub.mdx`](./docs/6-开阳-工程落地/source/envhub.mdx).
 
 ### 8.2b Dockerfiles for benchmark eval
 
@@ -405,8 +405,8 @@ Single-task grasp-and-place with 50 clean episodes: ACT should reach **> 70% suc
 
 ## 9. Further reading & resources
 
-- **Getting started:** [`installation.mdx`](./docs/source/installation.mdx) · [`il_robots.mdx`](./docs/source/il_robots.mdx) · [What makes a good dataset](https://huggingface.co/blog/lerobot-datasets)
-- **Per-policy docs:** browse [`docs/source/*.mdx`](./docs/source/) (policies, hardware, benchmarks, advanced training).
+- **Getting started:** [`installation.mdx`](./docs/6-开阳-工程落地/source/installation.mdx) · [`il_robots.mdx`](./docs/6-开阳-工程落地/source/il_robots.mdx) · [What makes a good dataset](https://huggingface.co/blog/lerobot-datasets)
+- **Per-policy docs:** browse [`docs/6-开阳-工程落地/*.mdx`](./docs/6-开阳-工程落地/) (policies, hardware, benchmarks, advanced training).
 - **Community:** [Discord](https://discord.com/invite/s3KuuzsPFb) · [Hub `LeRobot` tag](https://huggingface.co/datasets?other=LeRobot) · [Dataset visualizer](https://huggingface.co/spaces/lerobot/visualize_dataset)
 
 > Keep this file current. If you learn a rule that would prevent a class of user mistakes, add it here and in [`AGENTS.md`](./AGENTS.md).

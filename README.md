@@ -35,7 +35,7 @@ python3 tools/instance_init.py --link data/database/zmax
 python3 tools/engineering_db.py build && python3 tools/instance_init.py --check
 ```
 
-规范全文见 [`docs/notes/platform_vs_instance.md`](docs/notes/platform_vs_instance.md)。
+规范全文见 [`docs/7-瑶光-记录追溯/notes/platform_vs_instance.md`](docs/7-瑶光-记录追溯/notes/platform_vs_instance.md)。
 
 ## 运行环境与路径约定
 
@@ -43,7 +43,7 @@ python3 tools/engineering_db.py build && python3 tools/instance_init.py --check
 - 代码内所有绝对路径都以此前缀开头：`/home/ubuntu/zmax/tools/...`。批量统一脚本见 `tools/ns_unify_paths.py`。
 - 数据/运行产物不在本仓库：`/home/ubuntu/zmax/zmax_data/`（模型权重、数据集原料、备份、运行产物）。
 - **模型/数据默认落盘路径**（`ZMAX_DATA/models`、`zmax_data/hf_cache`、`zmax_data/stable-wm-cache`）见
-  [`docs/notes/model-paths.md`](docs/notes/model-paths.md)；清单是机器可读的 `tools/zmax_assets.json`。
+  [`docs/7-瑶光-记录追溯/notes/model-paths.md`](docs/7-瑶光-记录追溯/notes/model-paths.md)；清单是机器可读的 `tools/zmax_assets.json`。
 
 ## 首次 clone 之后（新机器初始化）
 
@@ -61,7 +61,7 @@ bash tools/zmax_bootstrap.sh --secrets  # ⑥ (按需) 生成密钥占位文件,
 **已经下载过的一律不重下**，只建软链把约定路径接上。`--apply` 只增不改不删。
 
 基线能恢复到什么程度、哪些东西搬不动（现场标定真值 / 厂商 SDK / 训练产物 / 密钥）：
-见 [`docs/notes/restore_matrix.md`](docs/notes/restore_matrix.md)。
+见 [`docs/7-瑶光-记录追溯/notes/restore_matrix.md`](docs/7-瑶光-记录追溯/notes/restore_matrix.md)。
 
 ## 入库守卫（提交前必跑）
 
