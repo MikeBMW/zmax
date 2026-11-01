@@ -42,7 +42,7 @@ gui-venv311/bin/python tools/verify_version_sync.py --offline > "$DST/evidence/v
 sed 's/^/  /' "$DST/evidence/refs.txt"
 
 echo "=== ④ 文档 ==="
-cp -f VERSION.md docs/STANDARD_STARTUP_FLOW_20261012.md "$DST/docs/" 2>/dev/null
+cp -f VERSION.md docs/design/STANDARD_STARTUP_FLOW_20261012.md "$DST/docs/" 2>/dev/null
 mkdir -p "$DST/docs/skills"; cp -f docs/skills/hermes-all/software-development/zmax-console/references/standard-open-flow.md \
       "$DST/docs/skills/standard-open-flow.md" 2>/dev/null
 
