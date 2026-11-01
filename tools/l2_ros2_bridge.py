@@ -105,13 +105,34 @@ def run_step(step, skill, logf, dry=False):
     return rec
 
 
+def _load_skill(spec):
+    """技能定义: 传 id 就去 L2 记忆库查 (唯一真源), 传路径才读文件 (兼容老调用)。"""
+    p = os.path.join(REPO, spec)
+    if os.path.exists(p):
+        return json.load(open(p, encoding="utf-8"))
+    sys.path.insert(0, os.path.join(REPO, "src"))
+    from lerobot.memory import l2_store as _S
+    s = _S.skill(spec)
+    if not s:
+        raise SystemExit("技能不存在: %s (既不是文件, 也不在 L2 记忆库)" % spec)
+    pts = {(x.get("name") or ""): {"pos": x.get("pos"), "quat": x.get("quat"), "desc": ""}
+           for x in (s.get("points") or [])}
+    for k, v in (_S.points() or {}).items():
+        if k.endswith("@%s" % spec) or (k in pts):
+            pts[k.split("@")[0]] = {"pos": v.get("pos"), "quat": v.get("quat"), "desc": v.get("desc", "")}
+    print("📚 从 L2 记忆库取技能: %s (%s) · 点位 %d" % (s.get("id"), s.get("name"), len(pts)))
+    return {"id": s.get("id"), "name": s.get("name"), "params": {p["name"]: p.get("default")
+            for p in (s.get("params") or []) if p.get("name")}, "points": pts,
+            "steps": s.get("steps") or [], "verify": s.get("verify") or {}}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--skill", default="data/skills/l2_muscle/光模块_抓放循环_v1.json")
     ap.add_argument("--cycles", type=int, default=1)
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
-    skill = json.load(open(os.path.join(REPO, a.skill), encoding="utf-8"))
+    skill = _load_skill(a.skill)
     logp = os.path.expanduser("~/zmax/zmax_data/l2_muscle_run_%s.jsonl" % time.strftime("%Y%m%d_%H%M%S"))
     logf = open(logp, "w", encoding="utf-8")
     print("L2 技能: %s | 步/轮 %d | 轮数 %d | dry=%s" % (skill["id"], len(skill["steps"]), a.cycles, a.dry_run))

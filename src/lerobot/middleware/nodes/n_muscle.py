@@ -12,7 +12,7 @@
 话题 =  ss.node.ss_mem_l2.<port>
 
 实现绑定: registry key=`ss_mem_l2`
-执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
+执行口径: EXEC_MODE=pure · PURE=True (2026-11-02 起真算: 输出 = 操作库视图/按需查询; 不动机械臂)
 """
 
 NODE_ID = 'ss_mem_l2'
@@ -29,10 +29,14 @@ PORT_LABELS = {}
 IMPL_KEY = 'ss_mem_l2'
 SOURCE = ''
 SOURCE_SYMBOL = ''
-PARAMS = {'state_space': True}
+PARAMS = {'state_space': True, 'layer': 'L2', 'store': 'data/memory/l2_store',
+          'banks': ['ops_cards (工艺卡/工艺编排)', 'ops_points (固定轨迹点)', 'ops_seq (段序列+节拍口径)',
+                    'champs (固化标杆)', 'ledger (实测台账)'],
+          'desc': 'L2 肌肉记忆操作: 固定轨迹点 + 工艺编排好的工艺卡 + 固化标杆 + 实测台账 的唯一持有者; 其它节点只调 l2_store 查询',
+          'write': '仅本节点写 (writer=ss_mem_l2); 建库/刷新: tools/l2_mem_build.py'}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = False
+PURE = True
 LAST_STATUS = ""
 
 

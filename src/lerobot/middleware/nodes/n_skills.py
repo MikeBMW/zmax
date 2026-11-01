@@ -11,7 +11,8 @@
 话题 =  ss.node.n_l2_muscle.<port>
 
 实现绑定: registry key=`n_l2_muscle`
-执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
+执行口径: EXEC_MODE=pure · PURE=True (2026-11-02 起真算: 输出 = 技能库摘要/单技能接口查询;
+        运动仍由 L3→l2_ros2_bridge 下发, 本节点不动作, 只供查询)
 """
 
 NODE_ID = 'n_l2_muscle'
@@ -28,10 +29,14 @@ PORT_LABELS = {}
 IMPL_KEY = 'n_l2_muscle'
 SOURCE = ''
 SOURCE_SYMBOL = ''
-PARAMS = {'kind': 'real', 'real': True, 'skill': 'data/skills/l2_muscle/光模块_抓放循环_v1.json', 'bridge': 'tools/l2_ros2_bridge.py', 'layer': 'L2', 'desc': 'L2 肌肉记忆: 对准→下降→夹紧(force40)→抬起; 由 L3 序列调用, 经 l2_ros2_bridge(ROS2) 转发 Orin'}
+PARAMS = {'kind': 'real', 'real': True, 'layer': 'L2', 'store': 'data/memory/l2_store/skills.json',
+          'bridge': 'tools/l2_ros2_bridge.py',
+          'desc': 'L2 肌肉记忆技能库: 技能点定义 + 功能接口 (ros/参数 schema/判据/步骤) 的唯一持有者; 其它节点只调 l2_store 查询',
+          'scope': '原子技能 99 (l2_atomic registry) + 组合 3 + 现场示教 5 (抓放循环/抓取右/演示学习/重学/AOI侧扫)',
+          'write': '仅本节点写 (writer=n_l2_muscle); 建库/刷新: tools/l2_mem_build.py'}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = False
+PURE = True
 LAST_STATUS = ""
 
 
@@ -62,6 +67,26 @@ def compute(ctx):
     global LAST_STATUS
     if not PURE:
         LAST_STATUS = "直通 (PURE=False: 只走数据面)"
+        return _passthrough(ctx)
+    # 🧠 2026-11-02 (老倪): 技能库 = 本节点独占的库。真算 = 回库查询, 不动作。
+    #   入参 in1 = {"skill": "L2.lift"} / {"card": "SCN-01-FW"} / {"point": ...} / {} 取摘要
+    try:
+        from lerobot.memory import l2_store as _S
+        st = _S.stats()
+        out = {"技能库": st.get("skills"), "分类": st.get("skill_kinds"),
+               "built_at": st.get("built_at"), "sha": (st.get("sha") or {}).get("skills")}
+        _q = ((ctx.get("in1") or {}).get("value") or {})
+        if isinstance(_q, dict):
+            if _q.get("skill"):
+                out["iface"] = _S.query({"iface": _q["skill"]})
+                out["found"] = bool(out["iface"])
+            for _k in ("card", "point", "champ", "measured", "seq"):
+                if _q.get(_k) is not None:
+                    out[_k] = _S.query({_k: _q[_k]})
+        LAST_STATUS = "技能库查询 (%d 条 · 分类 %s)" % (st.get("skills") or 0, st.get("skill_kinds"))
+        return {"out1": out}
+    except Exception as e:                                          # noqa: BLE001
+        LAST_STATUS = "技能库查询异常(%s: %s) → 直通" % (type(e).__name__, e)
         return _passthrough(ctx)
     try:
         from lerobot.engineering import registry as _reg

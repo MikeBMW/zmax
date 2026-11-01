@@ -608,15 +608,25 @@ def build_move(sk, spec, pts, cur=None, curq=None):
 #   设计口径: 每阶段"下发后必须用真值等到位"才允许进下一阶段(判完成只看真值);
 #   阶段之间不碰夹爪 —— "全程不松爪"由技能定义里没有 gripper 步骤来保证(执行层不自己发明动作)。
 def _load_points():
-    """点位库: 演示学习轨迹点 + L2 传授点库 (同名以传授点库为准)"""
+    """点位库: L2 记忆库 (唯一真源) + 演示学习轨迹点 + L2 传授点库 (同名以记忆库为准)"""
     pts = {}
+    # 🧠 2026-11-02 记忆库收口: 固定轨迹点只从 L2 记忆库查 (其它节点不直读原始 json)
+    try:
+        from lerobot.memory import l2_store as _S
+        for _n, _v in (_S.points() or {}).items():
+            if _n.startswith("__recipe__:") or not _v.get("pos"):
+                continue
+            pts.setdefault(_n, {k: _v[k] for k in ("pos", "quat", "desc") if _v.get(k) is not None})
+    except Exception as _e:                                                # noqa: BLE001
+        log("⚠️ L2 记忆库点位读取失败(回退原库): %s" % _e)
     for _pf in ("data/skills/l2_muscle/光模块_抓放_演示学习_v1.json",
                 "data/skills/l2_atomic/taught_points.json",
                 # 🚀 2026-10-01: 老倪现场记的「空间1~7」(8793 空间点控件写这个库), 供 L2.goto_spaceN 用
                 "data/skills/l2_atomic/space_points.json"):
         try:
             with open(os.path.join(REPO, _pf), encoding="utf-8") as _f:
-                pts.update(json.load(_f).get("points", {}))
+                for _n, _v in (json.load(_f).get("points", {}) or {}).items():
+                    pts.setdefault(_n, _v)          # 记忆库没有的才补 (记忆库优先)
         except Exception as _e:                                              # noqa: BLE001
             log("点位库 %s 读取失败(跳过): %s" % (_pf, _e))
     return pts
