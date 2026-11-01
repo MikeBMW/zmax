@@ -555,7 +555,11 @@ def reset():
 # 🧱 2026-11-01 老倪「按你的建议执行」: 八道技能 clamp 里**每拍**那一半 (单拍位移/限速)
 #   原来只在执行侧 dispatch→skill_phys 跑, AR 链只有「一圈一次」的段时长闸 (慢变化)。
 #   这里把每拍闸接进 plan 的发布路径: 发布前按本段 v_cap 限住 u 的增量 ⇒ 页面上真的被技能约束管住。
-_CLAMP = {"t": 0.0, "u": 0.0, "seq": None, "u_nom": 0.0, "clip": 0, "n": 0, "v_cap": 0.0, "L": 0.0}
+_CLAMP = {"t": 0.0, "u": 0.0, "seq": None, "u_nom": 0.0, "clip": 0, "n": 0, "v_cap": 0.0,
+          "L": 0.0, "v_nom": 0.0, "lag": 0.0}
+# 🧱 动力学二阶限幅 (a/jerk) 开关 + 状态: 关 ZMAX_PLAN_DYN=0 回到只限速的老口径
+_DYN_ON = os.environ.get("ZMAX_PLAN_DYN", "1") == "1"
+_DYN = {"v": 0.0, "aa": 0.0, "seq": None, "clip_a": 0, "clip_j": 0, "n": 0}
 _SK_CODE = {}
 
 
@@ -573,11 +577,20 @@ def _skill_code(stage):
     return _SK_CODE.get(str(stage or ""), None)
 
 
-def _skill_clamp(u, o1):
-    """按当前段 gate.v_cap 逐拍限速, 返回允许发布的 u (单调向前, 换段/超时重锚)。"""
+def _skill_clamp(u, o1, a_pub=None):
+    """按当前段 gate 的 v_cap / a_cap / j_cap 逐拍限速限加加速度, 返回允许发布的 u。
+
+    · v_cap: 单拍位移 ≤ v_cap·dt (老口径, 保留)
+    · a_cap / j_cap: 2026-11-01 老倪「动力学约束有效么」—— 之前这两个只在 plan_gate_corridor
+      里定**段时长**, 发布信号本身是线性/S 曲线插值 ⇒ 段首 0→v_cap 一步到位, 实测 a 峰 6.4×、
+      jerk 峰 4~5× 上限。这里改成对**发布信号**本身做二阶限幅 (v→a→jerk)，关闸 ZMAX_PLAN_DYN=0。
+    单调向前, 换段/超时重锚。
+    """
     g = _gate_info(_S.get("i")) or {}
-    v_cap = float(g.get("v_cap") or 0.0)
-    a = o1.get("a") or []
+    v_cap = float(g.get("v_cap") or 0.0) / 1000.0            # mm/s → m/s
+    a_cap = float(g.get("a_cap") or 0.0) / 1000.0            # mm/s² → m/s²
+    j_cap = float(g.get("j_cap") or 0.0) / 1000.0            # mm/s³ → m/s³
+    a = a_pub if isinstance(a_pub, (list, tuple)) and len(a_pub) == 3 else (o1.get("a") or [])
     b = o1.get("b") or []
     if v_cap <= 0.0 or len(a) != 3 or len(b) != 3:
         return u
@@ -591,18 +604,40 @@ def _skill_clamp(u, o1):
     seq = o1.get("seq")
     dt = now - float(_CLAMP["t"] or now)
     _CLAMP["n"] += 1
-    _CLAMP["v_cap"], _CLAMP["L"] = v_cap, L
+    _CLAMP["v_cap"], _CLAMP["L"] = v_cap * 1000.0, L
     if 0.0 < dt < 0.01:
-        # 同一拍内重复调用 (发布路径+预览路径挨着来): 不重锚、不限速, 否则 dt≈0 ⇒ 进度被冻住
-        return u
+        # 同一拍内重复调用 (发布路径+预览路径挨着来): 不重锚, 也**不能原样放行** ——
+        # 放行会让这一笔绕开限速 (实测一次就冲出去 3.4 倍上限)。冻结在上次发布的 u。
+        return float(_CLAMP["u"])
     if seq != _CLAMP["seq"] or dt <= 0.0 or dt > 0.5:
         _CLAMP.update({"t": now, "u": u, "seq": seq})
+        _DYN.update(seq=seq, v=0.0, aa=0.0)
         return u
-    u_max = float(_CLAMP["u"]) + (v_cap * dt) / L
+    # ① 速度: 名义速度 (m/s)
+    v_nom = (u - float(_CLAMP["u"])) * L / 1000.0 / max(dt, 1e-6)
+    v_new = min(v_nom, v_cap)
+    _CLAMP["v_nom"] = round(v_nom, 4)
+    if _DYN_ON and L > 1.0:
+        v_prev, a_prev = (float(_DYN["v"]), float(_DYN["aa"])) if _DYN["seq"] == seq else (0.0, 0.0)
+        # ② 加速度: |Δv| ≤ a_cap·dt (起步从 0 爬, 不许一步到巡航)
+        if a_cap > 0.0:
+            v_new = max(v_prev - a_cap * dt, min(v_prev + a_cap * dt, v_new))
+        a_new = (v_new - v_prev) / max(dt, 1e-6)
+        # ③ 加加速度: |Δa| ≤ j_cap·dt ⇒ 加速度本身也要爬, 再回代速度
+        if j_cap > 0.0:
+            a_new = max(a_prev - j_cap * dt, min(a_prev + j_cap * dt, a_new))
+            v_new = v_prev + a_new * dt
+            _DYN["clip_j"] += int(abs(a_new) < abs((v_new - v_prev) / max(dt, 1e-6)) - 1e-9)
+        if a_cap > 0.0 and abs(a_new) > a_cap + 1e-9:
+            _DYN["clip_a"] += 1
+        v_new = max(0.0, min(v_cap, v_new))
+        _DYN.update(seq=seq, v=v_new, aa=a_new, n=_DYN.get("n", 0) + 1)
+    u_max = float(_CLAMP["u"]) + (v_new * dt * 1000.0) / L
     if u > u_max + 1e-9:
         _CLAMP["clip"] += 1
         _CLAMP["u_nom"] = round(u, 4)
         u = max(float(_CLAMP["u"]), min(1.0, u_max))
+        _CLAMP["lag"] = round(float(u_max) - float(u), 5)        # 被动力闸拖住的量 (给 hold 用)
     _CLAMP.update({"t": now, "u": u})
     return u
 
@@ -622,12 +657,6 @@ def _pub_ar(o1, u_ratio, seg_t, el, a_eff=None, sm=False, mem=None):
     u = 0.0 if u < 0.0 else (1.0 if u > 1.0 else u)
     if sm:
         u = _smooth(u)
-    # 🧱 每拍技能约束 (单拍位移 ≤ v_cap·dt) — 发布前收口, 越界则只放行到允许的进度
-    _u_nom = u
-    try:
-        u = _skill_clamp(u, o1)
-    except Exception:                                              # noqa: BLE001
-        pass
     # 🧠 L4 段间连续: 上一段终点 ≠ 本段起点时, 起点改用当前实际位置 (a_raw 保真, 页面按 a_raw 认段)
     a_pub = list(o1.get("a") or [])
     a_raw = None
@@ -635,6 +664,14 @@ def _pub_ar(o1, u_ratio, seg_t, el, a_eff=None, sm=False, mem=None):
         a_raw = list(o1.get("a") or [])
         a_pub = list(a_eff)
     b_pub = list(o1.get("b") or [])
+    # 🧱 每拍技能约束 (单拍位移 ≤ v_cap·dt + a/jerk 升降幅) — 发布前收口。
+    #   🔴 必须用**发布出去的起点** (a_eff 混合后) 算段长: 用原始 a 会把实际行程算短,
+    #   实测 blend 段 L_eff/L_raw≈1.4 ⇒ 真实速度超上限 40% (v 951 vs cap 724mm/s)。
+    _u_nom = u
+    try:
+        u = _skill_clamp(u, o1, a_pub)
+    except Exception:                                              # noqa: BLE001
+        pass
     # 🧱 几何通道 (真有效): 段端点夹进技能通道 (每段一次) + 每拍发布点核在内 (关闸/无通道 ⇒ 原样)
     _cor_info = None
     try:
@@ -690,7 +727,12 @@ def _pub_ar(o1, u_ratio, seg_t, el, a_eff=None, sm=False, mem=None):
                     "L_mm": round(float(_CLAMP["L"]), 1), "clip": int(_CLAMP["clip"]),
                     "n": int(_CLAMP["n"]), "u_nom": round(float(_u_nom), 4),
                     "u_pub": round(float(u), 4),
-                    "cut": bool(abs(float(_u_nom) - float(u)) > 1e-6)}
+                    "cut": bool(abs(float(_u_nom) - float(u)) > 1e-6),
+                    # 🧱 动力学: 本拍发出的速度/加速度 (m/s, m/s²) + 累计被 a/jerk 削的次数
+                    "dyn": {"on": _DYN_ON, "v": round(float(_DYN["v"]), 4),
+                            "a": round(float(_DYN["aa"]), 3), "v_nom": _CLAMP.get("v_nom"),
+                            "a_cap": _g.get("a_cap"), "j_cap": _g.get("j_cap"),
+                            "clip_a": int(_DYN["clip_a"]), "clip_j": int(_DYN["clip_j"])}}
             except Exception:                                      # noqa: BLE001
                 pass
         os.makedirs(os.path.dirname(_AR_CMD), exist_ok=True)
@@ -919,8 +961,17 @@ def run(ctx=None):
             }
         except Exception:                                                  # noqa: BLE001
             mem_block = {"ok": False, "err": _MEM_S.get("err")}
+    # 🧱 剖面口径 (2026-11-01 动力学实测): 闸是**连续梯形**剖面 (v_lim ≤ v_cap, 段间不停) 定时间,
+    #   但发布用的是**每段启停的五次 S 曲线** (峰值 1.875×平均) ⇒ 实测 v 峰 1.8×、a 1.5×、jerk 4~5× 超限。
+    #   默认 linear (与闸同一剖面: 恒速 = L/T ≤ v_lim), 要老的 S 曲线动效设 ZMAX_PLAN_PROFILE=scurve。
+    _prof = os.environ.get("ZMAX_PLAN_PROFILE", "linear").lower()
+    _sm = bool((_MEM_S.get("l4") or {}).get("smooth") or 0)
+    if _prof in ("scurve", "smooth", "s"):
+        _sm = True
+    elif _prof in ("linear", "lin", "trap", "trapezoid"):
+        _sm = False
     _pub_ar(o1, (el - seg_t0) / max(te, 1e-9), te, el, a_eff=a_blend,
-            sm=bool((_MEM_S.get("l4") or {}).get("smooth") or 0), mem=mem_block)
+            sm=_sm, mem=mem_block)
     _last_c = {}
     try:
         _last_c = (_mf().last_cycle() if _mf() is not None else {}) or {}
