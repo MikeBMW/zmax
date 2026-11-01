@@ -98,7 +98,14 @@ def compute(ctx):
                 # (2026-10-29: 流形引擎族就是这样, 原来 out 恒为空, 下游永远拿不到)
                 _out = {PORTS_OUT[0]: res}
             return _out
-        LAST_STATUS = "实现返回非 dict → 直通"
+        # 🔴 2026-11-01 全系统贯通实测: 很多实现返回 ndarray/float/bool
+        #   (如 safety.saturate 返回限幅后向量, 标定返回 M), 原来一律当"非 dict"丢掉
+        #   ⇒ 上游算出来、下游永远收不到, 65 个节点里 6 条连线真有值。
+        #   非 None 的一律当首端口的值发出去, 不再吞结果。
+        if res is not None:
+            LAST_STATUS = "实现执行 (非 dict 结果 → %s)" % PORTS_OUT[0]
+            return {PORTS_OUT[0]: res}
+        LAST_STATUS = "实现返回 None → 直通"
         return _passthrough(ctx)
     except Exception as e:                                          # noqa: BLE001
         LAST_STATUS = "实现异常(%s: %s) → 直通" % (type(e).__name__, e)

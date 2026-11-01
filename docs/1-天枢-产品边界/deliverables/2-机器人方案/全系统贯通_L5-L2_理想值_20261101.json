@@ -1,0 +1,1723 @@
+{
+ "ts": "2026-11-01 22:26:51",
+ "t": 1793543211.2187948,
+ "layers": [
+  {
+   "layer": "L5",
+   "desc": "🧠 大模型层 · 任务/编排/记忆中枢 (回路外慢决策)",
+   "nodes": 14,
+   "links": 18,
+   "ok": 13,
+   "ms": 7660.6,
+   "ideal": {
+    "task": "TASK-07-AOI",
+    "uph_target": 300,
+    "cycle_s": 45.054,
+    "tact_s": 11.2636,
+    "batch": 4,
+    "deadline_s": 12.0,
+    "craft_steps": 112,
+    "craft_src": "geo_plan_impl.build_ideal_plan",
+    "note": "理想意图: 按工艺动作表跑 4 件/循环, 每件 ≤12s"
+   }
+  },
+  {
+   "layer": "L4",
+   "desc": "🏆 L4 专家自主功能 · 标定与流形世界模型",
+   "nodes": 16,
+   "links": 26,
+   "ok": 7,
+   "ms": 10788.2,
+   "ideal": {
+    "allow": true,
+    "v_max_mm_s": 1000,
+    "a_max_mm_s2": 4000,
+    "safety": "pass",
+    "world_model": "ideal",
+    "note": "理想约束: 全段在允许速度/加速度域内"
+   }
+  },
+  {
+   "layer": "L3",
+   "desc": "🚀 L3 高级自动功能 · VLM 编码 + Flow-Matching",
+   "nodes": 4,
+   "links": 2,
+   "ok": 2,
+   "ms": 17.1,
+   "ideal": {
+    "plan_n": 112,
+    "plan_src": "geo_ideal",
+    "progress": 0.0065,
+    "batch": 4,
+    "note": "理想计划: 112 步段表, 4 件/循环"
+   }
+  },
+  {
+   "layer": "L2",
+   "desc": "🔧 L2 基础辅助功能 (分段感知→融合→控制→决策→技能→执行)",
+   "nodes": 31,
+   "links": 65,
+   "ok": 8,
+   "ms": 6837.0,
+   "ideal": {
+    "dim": 43,
+    "step_i": 81,
+    "action": "move",
+    "label": "→ 金手指点1"
+   }
+  }
+ ],
+ "side": {
+  "ssdata": {
+   "ok": true,
+   "status": "实现异常(KeyError: 'module') → 直通"
+  },
+  "ssmode": {
+   "ok": true,
+   "status": "实现异常(KeyError: 'log') → 直通"
+  },
+  "sscap": {
+   "ok": true,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  "ssuph": {
+   "ok": true,
+   "status": "实现执行"
+  },
+  "ssz700": {
+   "ok": true,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  "n_realscene": {
+   "ok": true,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  "ssfeat": {
+   "ok": true,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  "ssbypv": {
+   "ok": true,
+   "status": "实现执行 (非 dict 结果 → bypass_out)"
+  },
+  "ssff_hist": {
+   "ok": true,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  "ssvideo": {
+   "ok": true,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  "swds": {
+   "ok": true,
+   "status": "实现异常(KeyError: 'log') → 直通"
+  },
+  "ssvideo2": {
+   "ok": true,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  "ss3d_view": {
+   "ok": true,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  "swvideo": {
+   "ok": true,
+   "status": "实现异常(KeyError: 'log') → 直通"
+  }
+ },
+ "uph": {
+  "cycle_s": 45.054,
+  "tact_s": 11.2636,
+  "uph": 319.6,
+  "ok300": true,
+  "margin_s": 0.736,
+  "batch": 4,
+  "segs": 112
+ },
+ "connect": {
+  "nodes": 79,
+  "core_nodes": 65,
+  "core_links": 171,
+  "carried": 72,
+  "dangling": 99,
+  "dangling_list": [
+   {
+    "f": "swintact",
+    "f_port": "out1",
+    "t": "swworld",
+    "t_port": "in1",
+    "f_name": "🎯 INTACT 插拔策略 · 光模块抓取插入 (本域微调 · 零搜索)",
+    "t_name": "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)",
+    "f_layer": "L4",
+    "t_layer": "L4"
+   },
+   {
+    "f": "ssllm",
+    "f_port": "out1",
+    "t": "sssched",
+    "t_port": "in3",
+    "f_name": "🧠 长程序列规划器 (场景理解驱动)",
+    "t_name": "🧭 动作调制器",
+    "f_layer": "L5",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ss_mem_l4",
+    "f_port": "out1",
+    "t": "ss_mem_field",
+    "t_port": "in1",
+    "f_name": "🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)",
+    "t_name": "🧲 总装机记忆 · 势场联络 (L2/L3/L4 势场 → 意图 −∇Φ)",
+    "f_layer": "L4",
+    "t_layer": "L4"
+   },
+   {
+    "f": "ss_mem_l3",
+    "f_port": "out1",
+    "t": "ss_mem_field",
+    "t_port": "in1",
+    "f_name": "🚀 L3 · 长程序列规划 (记忆: 海马体)",
+    "t_name": "🧲 总装机记忆 · 势场联络 (L2/L3/L4 势场 → 意图 −∇Φ)",
+    "f_layer": "L3",
+    "t_layer": "L4"
+   },
+   {
+    "f": "ss_mem_l3",
+    "f_port": "out1",
+    "t": "sssched",
+    "t_port": "in1",
+    "f_name": "🚀 L3 · 长程序列规划 (记忆: 海马体)",
+    "t_name": "🧭 动作调制器",
+    "f_layer": "L3",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ssdec",
+    "f_port": "out1",
+    "t": "ssff",
+    "t_port": "in2",
+    "f_name": "🎯 Flow-Matching Action Head (DiT)",
+    "t_name": "⚡ 前馈加速器",
+    "f_layer": "L3",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ss_mem_l2",
+    "f_port": "out1",
+    "t": "ss_mem_field",
+    "t_port": "in1",
+    "f_name": "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)",
+    "t_name": "🧲 总装机记忆 · 势场联络 (L2/L3/L4 势场 → 意图 −∇Φ)",
+    "f_layer": "L2",
+    "t_layer": "L4"
+   },
+   {
+    "f": "ss_mem_l2",
+    "f_port": "out1",
+    "t": "ssff",
+    "t_port": "in1",
+    "f_name": "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)",
+    "t_name": "⚡ 前馈加速器",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ss_mem_l2",
+    "f_port": "out1",
+    "t": "sssched",
+    "t_port": "in1",
+    "f_name": "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)",
+    "t_name": "🧭 动作调制器",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ssyolo",
+    "f_port": "out1",
+    "t": "ssvlm",
+    "t_port": "in3",
+    "f_name": "🎯 YOLO 目标检测",
+    "t_name": "🧠 VLM 通用视觉编码器 (SmolVLA)",
+    "f_layer": "L2",
+    "t_layer": "L3"
+   },
+   {
+    "f": "ssyolo",
+    "f_port": "out1",
+    "t": "ss2d3d",
+    "t_port": "in1",
+    "f_name": "🎯 YOLO 目标检测",
+    "t_name": "📐 2D→3D 解算",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ssyolo",
+    "f_port": "out1",
+    "t": "ssaoi",
+    "t_port": "in1",
+    "f_name": "🎯 YOLO 目标检测",
+    "t_name": "🔍 光学质量检测",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ssaoi",
+    "f_port": "out1",
+    "t": "sssched",
+    "t_port": "in5",
+    "f_name": "🔍 光学质量检测",
+    "t_name": "🧭 动作调制器",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ssest",
+    "f_port": "out1",
+    "t": "sspred",
+    "t_port": "in1",
+    "f_name": "🔮 自适应状态估计器",
+    "t_name": "📈 先验动力学预测器",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ssest",
+    "f_port": "out2",
+    "t": "ssinnov",
+    "t_port": "in1",
+    "f_name": "🔮 自适应状态估计器",
+    "t_name": "🧪 状态校正器",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sssched",
+    "f_port": "out1",
+    "t": "sslimit",
+    "t_port": "in1",
+    "f_name": "🧭 动作调制器",
+    "t_name": "🛡 安全执行边界 (饱和限幅)",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ssact",
+    "f_port": "out1",
+    "t": "ssworld",
+    "t_port": "in1",
+    "f_name": "🤖 机器人执行器",
+    "t_name": "🌍 物理世界",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ssworld",
+    "f_port": "out1",
+    "t": "ssinnov",
+    "t_port": "in3",
+    "f_name": "🌍 物理世界",
+    "t_name": "🧪 状态校正器",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sslimit",
+    "f_port": "out1",
+    "t": "sssk1",
+    "t_port": "in2",
+    "f_name": "🛡 安全执行边界 (饱和限幅)",
+    "t_name": "① 接近 · SK01",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ss_mem_l2",
+    "f_port": "out1",
+    "t": "n_mem_links",
+    "t_port": "in1",
+    "f_name": "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)",
+    "t_name": "🔗 跨层连接 · 记忆图谱",
+    "f_layer": "L2",
+    "t_layer": "L5"
+   },
+   {
+    "f": "ss_mem_l3",
+    "f_port": "out1",
+    "t": "n_mem_links",
+    "t_port": "in2",
+    "f_name": "🚀 L3 · 长程序列规划 (记忆: 海马体)",
+    "t_name": "🔗 跨层连接 · 记忆图谱",
+    "f_layer": "L3",
+    "t_layer": "L5"
+   },
+   {
+    "f": "ss_mem_l4",
+    "f_port": "out1",
+    "t": "n_mem_links",
+    "t_port": "in3",
+    "f_name": "🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)",
+    "t_name": "🔗 跨层连接 · 记忆图谱",
+    "f_layer": "L4",
+    "t_layer": "L5"
+   },
+   {
+    "f": "ss_mani_eng",
+    "f_port": "out1",
+    "t": "n_intent_direct",
+    "t_port": "in1",
+    "f_name": "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
+    "t_name": "🧾 元任务预测 (驱动扭矩 → 元任务预测值)",
+    "f_layer": "L4",
+    "t_layer": "L4"
+   },
+   {
+    "f": "ssllm",
+    "f_port": "out1",
+    "t": "n_intent_bundle",
+    "t_port": "in1",
+    "f_name": "🧠 长程序列规划器 (场景理解驱动)",
+    "t_name": "🧠 意图丛 · 四槽语法",
+    "f_layer": "L5",
+    "t_layer": "L5"
+   },
+   {
+    "f": "ssintact",
+    "f_port": "out1",
+    "t": "swintact",
+    "t_port": "in2",
+    "f_name": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
+    "t_name": "🎯 INTACT 插拔策略 · 光模块抓取插入 (本域微调 · 零搜索)",
+    "f_layer": "L4",
+    "t_layer": "L4"
+   },
+   {
+    "f": "ssworld",
+    "f_port": "out1",
+    "t": "swworld",
+    "t_port": "in2",
+    "f_name": "🌍 物理世界",
+    "t_name": "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)",
+    "f_layer": "L2",
+    "t_layer": "L4"
+   },
+   {
+    "f": "ssyolo",
+    "f_port": "out1",
+    "t": "n_board_frame",
+    "t_port": "in1",
+    "f_name": "🎯 YOLO 目标检测",
+    "t_name": "📐 板坐标系定位 (工序坐标系·免手眼)",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ssff",
+    "f_port": "out2",
+    "t": "sssched",
+    "t_port": "in6",
+    "f_name": "⚡ 前馈加速器",
+    "t_name": "🧭 动作调制器",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ssmani_c",
+    "f_port": "out1",
+    "t": "ssdec",
+    "t_port": "in5",
+    "f_name": "🧮 接触流形 · 导航地图 (e∥进度/e⊥偏离)",
+    "t_name": "🎯 Flow-Matching Action Head (DiT)",
+    "f_layer": "L4",
+    "t_layer": "L3"
+   },
+   {
+    "f": "ssmani_p",
+    "f_port": "out1",
+    "t": "ssdec",
+    "t_port": "in5",
+    "f_name": "🧮 性能流形 · 耦合代价 (V_p/η)",
+    "t_name": "🎯 Flow-Matching Action Head (DiT)",
+    "f_layer": "L4",
+    "t_layer": "L3"
+   },
+   {
+    "f": "ss_moe",
+    "f_port": "out2",
+    "t": "sssched",
+    "t_port": "in7",
+    "f_name": "🧬 元数据MOE门控路由",
+    "t_name": "🧭 动作调制器",
+    "f_layer": "L4",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sssensor",
+    "f_port": "out2",
+    "t": "ss_mani_eng",
+    "t_port": "in1",
+    "f_name": "📡 融合定位建图",
+    "t_name": "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
+    "f_layer": "L2",
+    "t_layer": "L4"
+   },
+   {
+    "f": "sscalib",
+    "f_port": "out2",
+    "t": "ss_mani_eng",
+    "t_port": "in3",
+    "f_name": "🧮 标定层 · 引力-斥力-动作",
+    "t_name": "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
+    "f_layer": "L4",
+    "t_layer": "L4"
+   },
+   {
+    "f": "sslat",
+    "f_port": "out2",
+    "t": "ss_mani_eng",
+    "t_port": "in4",
+    "f_name": "🧮 潜空-流形",
+    "t_name": "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
+    "f_layer": "L4",
+    "t_layer": "L4"
+   },
+   {
+    "f": "ss_moe",
+    "f_port": "out3",
+    "t": "ss_mani_eng",
+    "t_port": "in5",
+    "f_name": "🧬 元数据MOE门控路由",
+    "t_name": "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
+    "f_layer": "L4",
+    "t_layer": "L4"
+   },
+   {
+    "f": "ss_mani_eng",
+    "f_port": "out1",
+    "t": "ssintact_dec",
+    "t_port": "in1",
+    "f_name": "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
+    "t_name": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
+    "f_layer": "L4",
+    "t_layer": "L4"
+   },
+   {
+    "f": "ss_mani_eng",
+    "f_port": "out2",
+    "t": "ssmani_exp",
+    "t_port": "in5",
+    "f_name": "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
+    "t_name": "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)",
+    "f_layer": "L4",
+    "t_layer": "L4"
+   },
+   {
+    "f": "ss_mani_eng",
+    "f_port": "out3",
+    "t": "ssmani_c",
+    "t_port": "in2",
+    "f_name": "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
+    "t_name": "🧮 接触流形 · 导航地图 (e∥进度/e⊥偏离)",
+    "f_layer": "L4",
+    "t_layer": "L4"
+   },
+   {
+    "f": "ss_mani_eng",
+    "f_port": "out4",
+    "t": "ssmani_p",
+    "t_port": "in2",
+    "f_name": "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
+    "t_name": "🧮 性能流形 · 耦合代价 (V_p/η)",
+    "f_layer": "L4",
+    "t_layer": "L4"
+   },
+   {
+    "f": "ss_mani_eng",
+    "f_port": "out5",
+    "t": "sssched",
+    "t_port": "in4",
+    "f_name": "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
+    "t_name": "🧭 动作调制器",
+    "f_layer": "L4",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sstactile",
+    "f_port": "out1",
+    "t": "sssensor",
+    "t_port": "in3",
+    "f_name": "🖐 触觉感知",
+    "t_name": "📡 融合定位建图",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ssaoi",
+    "f_port": "out1",
+    "t": "sssensor",
+    "t_port": "in4",
+    "f_name": "🔍 光学质量检测",
+    "t_name": "📡 融合定位建图",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "n_moveit",
+    "f_port": "out1",
+    "t": "n_exec",
+    "t_port": "in1",
+    "f_name": "运动规划",
+    "t_name": "⚙️ 动作执行器 (L2 收口 · 授权/闸/到位)",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sssk1",
+    "f_port": "out1",
+    "t": "n_moveit",
+    "t_port": "in1",
+    "f_name": "① 接近 · SK01",
+    "t_name": "运动规划",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sssk2",
+    "f_port": "out1",
+    "t": "n_moveit",
+    "t_port": "in1",
+    "f_name": "② 对位 · SK02",
+    "t_name": "运动规划",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sssk3",
+    "f_port": "out1",
+    "t": "n_moveit",
+    "t_port": "in1",
+    "f_name": "③ 下降 · SK03",
+    "t_name": "运动规划",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sssk4",
+    "f_port": "out1",
+    "t": "n_moveit",
+    "t_port": "in1",
+    "f_name": "④ 抓取 · SK04",
+    "t_name": "运动规划",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sssk5",
+    "f_port": "out1",
+    "t": "n_moveit",
+    "t_port": "in2",
+    "f_name": "⑤ 抬起 · SK05",
+    "t_name": "运动规划",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sssk6",
+    "f_port": "out1",
+    "t": "n_moveit",
+    "t_port": "in2",
+    "f_name": "⑥ 转移 · SK06",
+    "t_name": "运动规划",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sssk7",
+    "f_port": "out1",
+    "t": "n_moveit",
+    "t_port": "in2",
+    "f_name": "⑦ 插入 · SK07",
+    "t_name": "运动规划",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sssk8",
+    "f_port": "out1",
+    "t": "n_moveit",
+    "t_port": "in2",
+    "f_name": "⑧ 完成 · SK08",
+    "t_name": "运动规划",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sslimit",
+    "f_port": "out1",
+    "t": "sssk2",
+    "t_port": "in1",
+    "f_name": "🛡 安全执行边界 (饱和限幅)",
+    "t_name": "② 对位 · SK02",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sslimit",
+    "f_port": "out1",
+    "t": "sssk3",
+    "t_port": "in1",
+    "f_name": "🛡 安全执行边界 (饱和限幅)",
+    "t_name": "③ 下降 · SK03",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sslimit",
+    "f_port": "out1",
+    "t": "sssk4",
+    "t_port": "in1",
+    "f_name": "🛡 安全执行边界 (饱和限幅)",
+    "t_name": "④ 抓取 · SK04",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sslimit",
+    "f_port": "out1",
+    "t": "sssk5",
+    "t_port": "in1",
+    "f_name": "🛡 安全执行边界 (饱和限幅)",
+    "t_name": "⑤ 抬起 · SK05",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sslimit",
+    "f_port": "out1",
+    "t": "sssk6",
+    "t_port": "in1",
+    "f_name": "🛡 安全执行边界 (饱和限幅)",
+    "t_name": "⑥ 转移 · SK06",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sslimit",
+    "f_port": "out1",
+    "t": "sssk7",
+    "t_port": "in1",
+    "f_name": "🛡 安全执行边界 (饱和限幅)",
+    "t_name": "⑦ 插入 · SK07",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sslimit",
+    "f_port": "out1",
+    "t": "sssk8",
+    "t_port": "in1",
+    "f_name": "🛡 安全执行边界 (饱和限幅)",
+    "t_name": "⑧ 完成 · SK08",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ssdec",
+    "f_port": "out1",
+    "t": "n_moveit",
+    "t_port": "in2",
+    "f_name": "🎯 Flow-Matching Action Head (DiT)",
+    "t_name": "运动规划",
+    "f_layer": "L3",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ss_l5",
+    "f_port": "out2",
+    "t": "ss_lora_l3",
+    "t_port": "in1",
+    "f_name": "🧿 L5 · 视觉语言自动标注 → L2/L3/L4 监督 → 自动训练",
+    "t_name": "🎛 L3 · SmolVLA LoRA 微调 · 接入中",
+    "f_layer": "L5",
+    "t_layer": "L3"
+   },
+   {
+    "f": "ss_l5",
+    "f_port": "out3",
+    "t": "ssyolo",
+    "t_port": "in1",
+    "f_name": "🧿 L5 · 视觉语言自动标注 → L2/L3/L4 监督 → 自动训练",
+    "t_name": "🎯 YOLO 目标检测",
+    "f_layer": "L5",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sscalib",
+    "f_port": "out3",
+    "t": "n_calib_mani",
+    "t_port": "in1",
+    "f_name": "🧮 标定层 · 引力-斥力-动作",
+    "t_name": "🧮 标定诊断测量 · 主参数 M (状态空间结构参数 · 等效惯量)",
+    "f_layer": "L4",
+    "t_layer": "L4"
+   },
+   {
+    "f": "sslat",
+    "f_port": "out3",
+    "t": "n_calib_mani",
+    "t_port": "in2",
+    "f_name": "🧮 潜空-流形",
+    "t_name": "🧮 标定诊断测量 · 主参数 M (状态空间结构参数 · 等效惯量)",
+    "f_layer": "L4",
+    "t_layer": "L4"
+   },
+   {
+    "f": "n_calib_mani",
+    "f_port": "out1",
+    "t": "ss_mani_eng",
+    "t_port": "in6",
+    "f_name": "🧮 标定诊断测量 · 主参数 M (状态空间结构参数 · 等效惯量)",
+    "t_name": "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
+    "f_layer": "L4",
+    "t_layer": "L4"
+   },
+   {
+    "f": "n_calib_mani",
+    "f_port": "out2",
+    "t": "ssmani_c",
+    "t_port": "in3",
+    "f_name": "🧮 标定诊断测量 · 主参数 M (状态空间结构参数 · 等效惯量)",
+    "t_name": "🧮 接触流形 · 导航地图 (e∥进度/e⊥偏离)",
+    "f_layer": "L4",
+    "t_layer": "L4"
+   },
+   {
+    "f": "n_calib_mani",
+    "f_port": "out3",
+    "t": "ssmani_exp",
+    "t_port": "in6",
+    "f_name": "🧮 标定诊断测量 · 主参数 M (状态空间结构参数 · 等效惯量)",
+    "t_name": "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)",
+    "f_layer": "L4",
+    "t_layer": "L4"
+   },
+   {
+    "f": "ss_l5",
+    "f_port": "out4",
+    "t": "ss_seg",
+    "t_port": "in2",
+    "f_name": "🧿 L5 · 视觉语言自动标注 → L2/L3/L4 监督 → 自动训练",
+    "t_name": "🧩 开放词汇分割 (SAM3 分割anything)",
+    "f_layer": "L5",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ss_seg",
+    "f_port": "out2",
+    "t": "ssvlm",
+    "t_port": "in2",
+    "f_name": "🧩 开放词汇分割 (SAM3 分割anything)",
+    "t_name": "🧠 VLM 通用视觉编码器 (SmolVLA)",
+    "f_layer": "L2",
+    "t_layer": "L3"
+   },
+   {
+    "f": "ssyolo",
+    "f_port": "out1",
+    "t": "ss_seg",
+    "t_port": "in3",
+    "f_name": "🎯 YOLO 目标检测",
+    "t_name": "🧩 开放词汇分割 (SAM3 分割anything)",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ss_seg",
+    "f_port": "out2",
+    "t": "n_dsvl",
+    "t_port": "in4",
+    "f_name": "🧩 开放词汇分割 (SAM3 分割anything)",
+    "t_name": "🧿 DeepSeek-V4-Flash · 场景理解 (L5 大模型主路)",
+    "f_layer": "L2",
+    "t_layer": "L5"
+   },
+   {
+    "f": "ssintact_dec",
+    "f_port": "out1",
+    "t": "ss_lora_l4",
+    "t_port": "in1",
+    "f_name": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
+    "t_name": "🎛 L4 · INTACT LoRA 微调 (接在意图解码器后 · 冻结原权重 · 只调 ΔW=(α/r)BA)",
+    "f_layer": "L4",
+    "t_layer": "L4"
+   },
+   {
+    "f": "ss_lora_l4",
+    "f_port": "out2",
+    "t": "ssmani_c",
+    "t_port": "in2",
+    "f_name": "🎛 L4 · INTACT LoRA 微调 (接在意图解码器后 · 冻结原权重 · 只调 ΔW=(α/r)BA)",
+    "t_name": "🧮 接触流形 · 导航地图 (e∥进度/e⊥偏离)",
+    "f_layer": "L4",
+    "t_layer": "L4"
+   },
+   {
+    "f": "ss_lora_l4",
+    "f_port": "out3",
+    "t": "ssmani_p",
+    "t_port": "in2",
+    "f_name": "🎛 L4 · INTACT LoRA 微调 (接在意图解码器后 · 冻结原权重 · 只调 ΔW=(α/r)BA)",
+    "t_name": "🧮 性能流形 · 耦合代价 (V_p/η)",
+    "f_layer": "L4",
+    "t_layer": "L4"
+   },
+   {
+    "f": "ss_lora_l4",
+    "f_port": "out4",
+    "t": "ssdec",
+    "t_port": "in1",
+    "f_name": "🎛 L4 · INTACT LoRA 微调 (接在意图解码器后 · 冻结原权重 · 只调 ΔW=(α/r)BA)",
+    "t_name": "🎯 Flow-Matching Action Head (DiT)",
+    "f_layer": "L4",
+    "t_layer": "L3"
+   },
+   {
+    "f": "ssinnov",
+    "f_port": "out2",
+    "t": "sssensor",
+    "t_port": "in5",
+    "f_name": "🧪 状态校正器",
+    "t_name": "📡 融合定位建图",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sssk1",
+    "f_port": "out2",
+    "t": "ssphys",
+    "t_port": "in1",
+    "f_name": "① 接近 · SK01",
+    "t_name": "⚖ 动力学约束",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sssk2",
+    "f_port": "out2",
+    "t": "ssphys",
+    "t_port": "in2",
+    "f_name": "② 对位 · SK02",
+    "t_name": "⚖ 动力学约束",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sssk3",
+    "f_port": "out2",
+    "t": "ssphys",
+    "t_port": "in3",
+    "f_name": "③ 下降 · SK03",
+    "t_name": "⚖ 动力学约束",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sssk4",
+    "f_port": "out2",
+    "t": "ssphys",
+    "t_port": "in4",
+    "f_name": "④ 抓取 · SK04",
+    "t_name": "⚖ 动力学约束",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sssk5",
+    "f_port": "out2",
+    "t": "ssphys",
+    "t_port": "in5",
+    "f_name": "⑤ 抬起 · SK05",
+    "t_name": "⚖ 动力学约束",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sssk6",
+    "f_port": "out2",
+    "t": "ssphys",
+    "t_port": "in6",
+    "f_name": "⑥ 转移 · SK06",
+    "t_name": "⚖ 动力学约束",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sssk7",
+    "f_port": "out2",
+    "t": "ssphys",
+    "t_port": "in7",
+    "f_name": "⑦ 插入 · SK07",
+    "t_name": "⚖ 动力学约束",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sssk8",
+    "f_port": "out2",
+    "t": "ssphys",
+    "t_port": "in8",
+    "f_name": "⑧ 完成 · SK08",
+    "t_name": "⚖ 动力学约束",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ssphys",
+    "f_port": "out1",
+    "t": "sslimit",
+    "t_port": "in2",
+    "f_name": "⚖ 动力学约束",
+    "t_name": "🛡 安全执行边界 (饱和限幅)",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ssphys",
+    "f_port": "out2",
+    "t": "ssinnov",
+    "t_port": "in4",
+    "f_name": "⚖ 动力学约束",
+    "t_name": "🧪 状态校正器",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ssphys",
+    "f_port": "out3",
+    "t": "sssensor",
+    "t_port": "in6",
+    "f_name": "⚖ 动力学约束",
+    "t_name": "📡 融合定位建图",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "n_exec",
+    "f_port": "out1",
+    "t": "ssact",
+    "t_port": "in1",
+    "f_name": "⚙️ 动作执行器 (L2 收口 · 授权/闸/到位)",
+    "t_name": "🤖 机器人执行器",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sslimit",
+    "f_port": "out1",
+    "t": "n_exec",
+    "t_port": "in2",
+    "f_name": "🛡 安全执行边界 (饱和限幅)",
+    "t_name": "⚙️ 动作执行器 (L2 收口 · 授权/闸/到位)",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "n_exec",
+    "f_port": "out2",
+    "t": "ssinnov",
+    "t_port": "in5",
+    "f_name": "⚙️ 动作执行器 (L2 收口 · 授权/闸/到位)",
+    "t_name": "🧪 状态校正器",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ssvlm",
+    "f_port": "out2",
+    "t": "ss_grav_h",
+    "t_port": "in1",
+    "f_name": "🧠 VLM 通用视觉编码器 (SmolVLA)",
+    "t_name": "🌍 万有引力 · SE(3) 几何阻抗 + H=K+U (力场仲裁)",
+    "f_layer": "L3",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ssintact",
+    "f_port": "out2",
+    "t": "ss_grav_h",
+    "t_port": "in2",
+    "f_name": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
+    "t_name": "🌍 万有引力 · SE(3) 几何阻抗 + H=K+U (力场仲裁)",
+    "f_layer": "L4",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ssdec",
+    "f_port": "out2",
+    "t": "ss_grav_h",
+    "t_port": "in3",
+    "f_name": "🎯 Flow-Matching Action Head (DiT)",
+    "t_name": "🌍 万有引力 · SE(3) 几何阻抗 + H=K+U (力场仲裁)",
+    "f_layer": "L3",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sssched",
+    "f_port": "out2",
+    "t": "ss_grav_h",
+    "t_port": "in4",
+    "f_name": "🧭 动作调制器",
+    "t_name": "🌍 万有引力 · SE(3) 几何阻抗 + H=K+U (力场仲裁)",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sslimit",
+    "f_port": "out2",
+    "t": "ss_grav_h",
+    "t_port": "in5",
+    "f_name": "🛡 安全执行边界 (饱和限幅)",
+    "t_name": "🌍 万有引力 · SE(3) 几何阻抗 + H=K+U (力场仲裁)",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ss_grav_h",
+    "f_port": "out1",
+    "t": "n_moveit",
+    "t_port": "in3",
+    "f_name": "🌍 万有引力 · SE(3) 几何阻抗 + H=K+U (力场仲裁)",
+    "t_name": "运动规划",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "ss_grav_h",
+    "f_port": "out2",
+    "t": "n_exec",
+    "t_port": "in3",
+    "f_name": "🌍 万有引力 · SE(3) 几何阻抗 + H=K+U (力场仲裁)",
+    "t_name": "⚙️ 动作执行器 (L2 收口 · 授权/闸/到位)",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "n_geoplan",
+    "f_port": "out2",
+    "t": "sssched",
+    "t_port": "in9",
+    "f_name": "🧭 测地线规划引导",
+    "t_name": "🧭 动作调制器",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "n_geoplan",
+    "f_port": "out1",
+    "t": "sslimit",
+    "t_port": "in3",
+    "f_name": "🧭 测地线规划引导",
+    "t_name": "🛡 安全执行边界 (饱和限幅)",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   },
+   {
+    "f": "sslimit",
+    "f_port": "out3",
+    "t": "n_moveit",
+    "t_port": "in1",
+    "f_name": "🛡 安全执行边界 (饱和限幅)",
+    "t_name": "运动规划",
+    "f_layer": "L2",
+    "t_layer": "L2"
+   }
+  ]
+ },
+ "nodes": [
+  {
+   "layer": "L5",
+   "band": "🧠 大模型层 · 任务/编排/记忆中枢 (回路外慢决策)",
+   "name": "📝 任务指令 · MES/自然语言",
+   "mod": "n_command",
+   "ok": true,
+   "ms": 0.08,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L5",
+   "band": "🧠 大模型层 · 任务/编排/记忆中枢 (回路外慢决策)",
+   "name": "🙋 HIL 人机在环 · 状态↔指示",
+   "mod": "n_hil",
+   "ok": true,
+   "ms": 5211.75,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L5",
+   "band": "🧠 大模型层 · 任务/编排/记忆中枢 (回路外慢决策)",
+   "name": "🔍 异常推理器 (LLM)",
+   "mod": "n_reasoner",
+   "ok": true,
+   "ms": 0.07,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L5",
+   "band": "🧠 大模型层 · 任务/编排/记忆中枢 (回路外慢决策)",
+   "name": "🛠 L3 技能序列编排",
+   "mod": "n_composer",
+   "ok": true,
+   "ms": 2.78,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L5",
+   "band": "🧠 大模型层 · 任务/编排/记忆中枢 (回路外慢决策)",
+   "name": "🧬 技能词典 · L2 动作基",
+   "mod": "n_lexicon",
+   "ok": true,
+   "ms": 170.86,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L5",
+   "band": "🧠 大模型层 · 任务/编排/记忆中枢 (回路外慢决策)",
+   "name": "🔗 跨层连接 · 记忆图谱",
+   "mod": "n_graph",
+   "ok": true,
+   "ms": 113.92,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L5",
+   "band": "🧠 大模型层 · 任务/编排/记忆中枢 (回路外慢决策)",
+   "name": "📚 工程记忆 · 技能与经验库",
+   "mod": "n_engmem",
+   "ok": true,
+   "ms": 102.22,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L5",
+   "band": "🧠 大模型层 · 任务/编排/记忆中枢 (回路外慢决策)",
+   "name": "🌐 Web 智能体桥 · 远程提示词",
+   "mod": "n_webagent",
+   "ok": true,
+   "ms": 2055.07,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L5",
+   "band": "🧠 大模型层 · 任务/编排/记忆中枢 (回路外慢决策)",
+   "name": "🧿 L5 · 视觉语言自动标注 → L2/L3/L4 监督 → 自动训练",
+   "mod": "n_labeler",
+   "ok": true,
+   "ms": 0.31,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L5",
+   "band": "🧠 大模型层 · 任务/编排/记忆中枢 (回路外慢决策)",
+   "name": "🧿 DeepSeek-V4-Flash · 场景理解 (L5 大模型主路)",
+   "mod": "n_deepseek",
+   "ok": true,
+   "ms": 0.1,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L5",
+   "band": "🧠 大模型层 · 任务/编排/记忆中枢 (回路外慢决策)",
+   "name": "👁 视觉语言大模型 · 场景理解 (Qwen2.5/3-VL)",
+   "mod": "n_qwen",
+   "ok": true,
+   "ms": 0.04,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L5",
+   "band": "🧠 大模型层 · 任务/编排/记忆中枢 (回路外慢决策)",
+   "name": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
+   "mod": "n_memory",
+   "ok": true,
+   "ms": 0.04,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L5",
+   "band": "🧠 大模型层 · 任务/编排/记忆中枢 (回路外慢决策)",
+   "name": "🧠 长程序列规划器 (场景理解驱动)",
+   "mod": "n_planner",
+   "ok": false,
+   "ms": 3.14,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L5",
+   "band": "🧠 大模型层 · 任务/编排/记忆中枢 (回路外慢决策)",
+   "name": "🧠 意图丛 · 四槽语法",
+   "mod": "n_bundle",
+   "ok": true,
+   "ms": 0.02,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L4",
+   "band": "🏆 L4 记忆 · 筹划 (世界模型预测/恢复策略入库)",
+   "name": "🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)",
+   "mod": "n_prefrontal",
+   "ok": false,
+   "ms": 0.85,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L4",
+   "band": "🏆 L4 记忆 · 筹划 (世界模型预测/恢复策略入库)",
+   "name": "🧲 总装机记忆 · 势场联络 (L2/L3/L4 势场 → 意图 −∇Φ)",
+   "mod": "n_potential",
+   "ok": true,
+   "ms": 964.25,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L4",
+   "band": "🏆 L4 专家自主功能 · 标定与流形世界模型",
+   "name": "🧮 标定层 · 引力-斥力-动作",
+   "mod": "n_calib",
+   "ok": true,
+   "ms": 0.43,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L4",
+   "band": "🏆 L4 专家自主功能 · 标定与流形世界模型",
+   "name": "🧮 潜空-流形",
+   "mod": "n_latent",
+   "ok": true,
+   "ms": 0.07,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L4",
+   "band": "🏆 L4 专家自主功能 · 标定与流形世界模型",
+   "name": "🧬 元数据MOE门控路由",
+   "mod": "n_moe",
+   "ok": true,
+   "ms": 87.98,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L4",
+   "band": "🏆 L4 专家自主功能 · 标定与流形世界模型",
+   "name": "🧾 元任务预测 (驱动扭矩 → 元任务预测值)",
+   "mod": "n_metatask",
+   "ok": true,
+   "ms": 239.12,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L4",
+   "band": "🏆 L4 专家自主功能 · 标定与流形世界模型",
+   "name": "🧮 性能流形 · 耦合代价 (V_p/η)",
+   "mod": "n_perf",
+   "ok": false,
+   "ms": 0.82,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L4",
+   "band": "🏆 L4 专家自主功能 · 标定与流形世界模型",
+   "name": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
+   "mod": "n_intact",
+   "ok": false,
+   "ms": 168.02,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L4",
+   "band": "🏆 L4 专家自主功能 · 标定与流形世界模型",
+   "name": "🎯 INTACT 插拔策略 · 光模块抓取插入 (本域微调 · 零搜索)",
+   "mod": "n_policy",
+   "ok": false,
+   "ms": 0.02,
+   "status": "空输出(端口无值): 实现异常(KeyError: 'log') → 直通"
+  },
+  {
+   "layer": "L4",
+   "band": "🏆 L4 专家自主功能 · 标定与流形世界模型",
+   "name": "🧮 标定诊断测量 · 主参数 M (状态空间结构参数 · 等效惯量)",
+   "mod": "n_inertia",
+   "ok": false,
+   "ms": 103.71,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L4",
+   "band": "🏆 L4 专家自主功能 · 标定与流形世界模型",
+   "name": "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
+   "mod": "n_manifold",
+   "ok": false,
+   "ms": 10.83,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L4",
+   "band": "🏆 L4 专家自主功能 · 标定与流形世界模型",
+   "name": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
+   "mod": "n_decoder",
+   "ok": false,
+   "ms": 9002.73,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L4",
+   "band": "🏆 L4 专家自主功能 · 标定与流形世界模型",
+   "name": "🎛 L4 · INTACT LoRA 微调 (接在意图解码器后 · 冻结原权重 · 只调 ΔW=(α/r)BA)",
+   "mod": "n_lora4",
+   "ok": true,
+   "ms": 208.22,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L4",
+   "band": "🏆 L4 专家自主功能 · 标定与流形世界模型",
+   "name": "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)",
+   "mod": "n_jepa",
+   "ok": true,
+   "ms": 0.02,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L4",
+   "band": "🏆 L4 专家自主功能 · 标定与流形世界模型",
+   "name": "🧮 接触流形 · 导航地图 (e∥进度/e⊥偏离)",
+   "mod": "n_contact",
+   "ok": false,
+   "ms": 0.89,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L4",
+   "band": "🏆 L4 专家自主功能 · 标定与流形世界模型",
+   "name": "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)",
+   "mod": "n_physics",
+   "ok": false,
+   "ms": 0.02,
+   "status": "空输出(端口无值): 实现异常(KeyError: 'log') → 直通"
+  },
+  {
+   "layer": "L3",
+   "band": "🚀 L3 记忆 · 长程规划 (跨段技能序列 入库)",
+   "name": "🚀 L3 · 长程序列规划 (记忆: 海马体)",
+   "mod": "n_sequence",
+   "ok": false,
+   "ms": 1.67,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L3",
+   "band": "🚀 L3 高级自动功能 · VLM 编码 + Flow-Matching",
+   "name": "🎛 L3 · SmolVLA LoRA 微调 · 接入中",
+   "mod": "n_lora3",
+   "ok": true,
+   "ms": 0.33,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L3",
+   "band": "🚀 L3 高级自动功能 · VLM 编码 + Flow-Matching",
+   "name": "🧠 VLM 通用视觉编码器 (SmolVLA)",
+   "mod": "n_vlm",
+   "ok": true,
+   "ms": 0.01,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L3",
+   "band": "🚀 L3 高级自动功能 · VLM 编码 + Flow-Matching",
+   "name": "🎯 Flow-Matching Action Head (DiT)",
+   "mod": "n_dit",
+   "ok": false,
+   "ms": 15.06,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 记忆 · 肌肉记忆 (固化标杆 → 快速直通)",
+   "name": "💪 L2 肌肉记忆技能库 (光模块抓放循环)",
+   "mod": "n_skills",
+   "ok": true,
+   "ms": 4019.73,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 记忆 · 肌肉记忆 (固化标杆 → 快速直通)",
+   "name": "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)",
+   "mod": "n_muscle",
+   "ok": false,
+   "ms": 162.76,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 分段感知 (检测/触觉/2D→3D/质量)",
+   "name": "🖐 触觉感知",
+   "mod": "n_tactile",
+   "ok": false,
+   "ms": 0.16,
+   "status": "空输出(端口无值): 实现异常(KeyError: 'log') → 直通"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 分段感知 (检测/触觉/2D→3D/质量)",
+   "name": "🎯 YOLO 目标检测",
+   "mod": "n_yolo",
+   "ok": false,
+   "ms": 1586.44,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 分段感知 (检测/触觉/2D→3D/质量)",
+   "name": "🔍 光学质量检测",
+   "mod": "n_inspection",
+   "ok": false,
+   "ms": 511.04,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 分段感知 (检测/触觉/2D→3D/质量)",
+   "name": "📐 板坐标系定位 (工序坐标系·免手眼)",
+   "mod": "n_board",
+   "ok": true,
+   "ms": 14.23,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 分段感知 (检测/触觉/2D→3D/质量)",
+   "name": "📐 2D→3D 解算",
+   "mod": "n_unproject",
+   "ok": true,
+   "ms": 0.02,
+   "status": "实现异常(KeyError: 'log') → 直通"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 分段感知 (检测/触觉/2D→3D/质量)",
+   "name": "🧩 开放词汇分割 (SAM3 分割anything)",
+   "mod": "n_sam3",
+   "ok": true,
+   "ms": 442.42,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 感知融合 (传感器 → 43D 状态)",
+   "name": "📡 融合定位建图",
+   "mod": "n_slam",
+   "ok": true,
+   "ms": 41.89,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 感知融合 (传感器 → 43D 状态)",
+   "name": "🧩 SU(2) 统一状态空间 (二阶特殊酉群)",
+   "mod": "n_state",
+   "ok": true,
+   "ms": 1.2,
+   "status": "理想 43D: 步 31/112 move · 320 UPH · e=38.0mm"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 分段控制小模型 (估计/预测/校正/前馈)",
+   "name": "🔮 自适应状态估计器",
+   "mod": "n_estimator",
+   "ok": false,
+   "ms": 0.36,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 分段控制小模型 (估计/预测/校正/前馈)",
+   "name": "📈 先验动力学预测器",
+   "mod": "n_predictor",
+   "ok": true,
+   "ms": 1.33,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 分段控制小模型 (估计/预测/校正/前馈)",
+   "name": "⚡ 前馈加速器",
+   "mod": "n_feedforward",
+   "ok": false,
+   "ms": 2.47,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 分段控制小模型 (估计/预测/校正/前馈)",
+   "name": "🧭 测地线规划引导",
+   "mod": "n_geodesic",
+   "ok": false,
+   "ms": 0.88,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 分段控制小模型 (估计/预测/校正/前馈)",
+   "name": "🧪 状态校正器",
+   "mod": "n_corrector",
+   "ok": true,
+   "ms": 0.44,
+   "status": "实现执行 (非 dict 结果 → out1)"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 状态机决策 (动作调制 · 安全限幅)",
+   "name": "🧭 动作调制器",
+   "mod": "n_scheduler",
+   "ok": false,
+   "ms": 1.3,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 状态机决策 (动作调制 · 安全限幅)",
+   "name": "🌍 万有引力 · SE(3) 几何阻抗 + H=K+U (力场仲裁)",
+   "mod": "n_se",
+   "ok": false,
+   "ms": 2.22,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+   "name": "🛡 安全执行边界 (饱和限幅)",
+   "mod": "n_limiter",
+   "ok": false,
+   "ms": 0.47,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+   "name": "① 接近 · SK01",
+   "mod": "n_skill1",
+   "ok": false,
+   "ms": 1.01,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+   "name": "⑦ 插入 · SK07",
+   "mod": "n_skill7",
+   "ok": false,
+   "ms": 0.15,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+   "name": "运动规划",
+   "mod": "n_moveit",
+   "ok": false,
+   "ms": 41.38,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+   "name": "② 对位 · SK02",
+   "mod": "n_skill2",
+   "ok": false,
+   "ms": 0.42,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+   "name": "⑧ 完成 · SK08",
+   "mod": "n_skill8",
+   "ok": false,
+   "ms": 0.27,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+   "name": "⚙️ 动作执行器 (L2 收口 · 授权/闸/到位)",
+   "mod": "n_l2",
+   "ok": false,
+   "ms": 0.42,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+   "name": "③ 下降 · SK03",
+   "mod": "n_skill3",
+   "ok": false,
+   "ms": 0.27,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+   "name": "⚖ 动力学约束",
+   "mod": "n_constraint",
+   "ok": false,
+   "ms": 1.5,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+   "name": "④ 抓取 · SK04",
+   "mod": "n_skill4",
+   "ok": false,
+   "ms": 0.21,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+   "name": "⑤ 抬起 · SK05",
+   "mod": "n_skill5",
+   "ok": false,
+   "ms": 0.15,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 原子技能库 SK01-08 + 通用算子",
+   "name": "⑥ 转移 · SK06",
+   "mod": "n_skill6",
+   "ok": false,
+   "ms": 0.14,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 执行层 (执行器 → 物理闭环)",
+   "name": "🤖 机器人执行器",
+   "mod": "n_actuator",
+   "ok": false,
+   "ms": 0.97,
+   "status": "空输出(端口无值): 实现执行"
+  },
+  {
+   "layer": "L2",
+   "band": "🔧 L2 基础辅助功能 · 执行层 (执行器 → 物理闭环)",
+   "name": "🌍 物理世界",
+   "mod": "n_world",
+   "ok": false,
+   "ms": 0.15,
+   "status": "空输出(端口无值): 实现执行"
+  }
+ ]
+}
