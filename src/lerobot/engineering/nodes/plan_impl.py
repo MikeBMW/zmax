@@ -45,9 +45,26 @@ LAST_STATUS = ""
 
 
 # ── 真值 / 输入 ─────────────────────────────────────────────────────────────
-SIM_POSE = os.environ.get("ZMAX_PLAN_SIM_POSE", "0").strip() in ("1", "true", "on", "yes")
-_POSE_SRC = "tcp(real)"     # 最近一次 _tcp_now() 实际用的位姿来源 (真机真值 / AR 虚拟末端)
+# 🔀 2026-11-01 死机复产 + 老倪「要真接入」: SIM_POSE 从**启动时读一次**改成**每拍读**
+#    (env 优先, 其次运行期开关文件 zmax_data/ss_live/plan_mode.json 的 {"sim_pose": true})
+#    原因: 常驻循环的环境变量在 systemd 单元里, 改档要重启服务; 而现场通/不通会来回切,
+#    远程无产线网卡时不该让"运动规划"整条链停在第 5 环 (起点陈旧 ⇒ 不出段表 ⇒ AR 无指令)。
+#    真机下发侧的授权闸/真值闸不受此开关影响, 输出仍标 pose_src(真机真值 vs AR 虚拟末端)。
+def _sim_on() -> bool:
+    v = os.environ.get("ZMAX_PLAN_SIM_POSE")
+    if v is None:
+        try:
+            with open(_MODE_FILE, encoding="utf-8") as fh:
+                v = (json.load(fh) or {}).get("sim_pose")
+        except Exception:                                                   # noqa: BLE001
+            v = None
+    return str(v if v is not None else "0").strip().lower() in ("1", "true", "on", "yes")
+
+
+_MODE_FILE = os.path.join(_ROOT, "zmax_data", "ss_live", "plan_mode.json")
 _AR_CMD = os.path.join(_ROOT, "zmax_data", "ss_live", "ar_cmd.json")
+SIM_POSE = _sim_on()         # 兼容老引用 (导入时的快照, 判据只看 _sim_on())
+_POSE_SRC = "tcp(real)"     # 最近一次 _tcp_now() 实际用的位姿来源 (真机真值 / AR 虚拟末端)
 
 
 def _sim_pose():
@@ -81,7 +98,7 @@ def _tcp_now():
         age = time.time() - float(d.get("ts") or 0)
         p = [float(d.get("x")) * 1000.0, float(d.get("y")) * 1000.0, float(d.get("z")) * 1000.0]
         global _POSE_SRC
-        if SIM_POSE and age > STALE_S:
+        if _sim_on() and age > STALE_S:
             _p2, _a2 = _sim_pose()
             if _p2 is not None:
                 _POSE_SRC = "sim(ar虚拟末端)"
@@ -89,7 +106,7 @@ def _tcp_now():
         _POSE_SRC = "tcp(real)"
         return p, age
     except Exception:                                                       # noqa: BLE001
-        if SIM_POSE:
+        if _sim_on():
             _p2, _a2 = _sim_pose()
             if _p2 is not None:
                 globals()["_POSE_SRC"] = "sim(ar虚拟末端)"

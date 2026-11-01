@@ -1320,6 +1320,15 @@ def node_sw_video(ctx):
     if d.get("honest_note"):
         log(f"   ⚠️ {d.get('honest_note')}")
     try:                                                        # 实况窗 (lazy Qt, CLI 下跳过)
+        # 🔴 2026-11-01: 常驻循环 (ss_canvas_loop) 在**工作线程**里真跑节点, 这里建 QWidget 会让
+        #   Qt 直接 ABRT ("QWidget: Must construct a QApplication before a QWidget"),
+        #   整个 canvas loop 被 systemd 判 core-dump 重启 (实测 19:17:40 abrt, NRestarts=1),
+        #   链随之断拍 ⇒ AR 侧看到的就是"指令停了"。窗口只许在主线程开。
+        import threading as _th
+        if _th.current_thread() is not _th.main_thread():
+            return True
+        if os.environ.get("ZMAX_NO_GUI", "").strip() in ("1", "true", "on", "yes"):
+            return True
         import importlib.util as _ilu
         if _ilu.find_spec("PyQt5") is None:
             return True
