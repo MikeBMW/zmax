@@ -1888,6 +1888,46 @@ def node_yolo_3d(ctx):
 #   外参/深度 = 作弊), 而是: 感知给的 YOLO 2D 框 + 机器人**自身**位姿 → Box3DSolver 自监督解出 3D。
 #   机器人位姿 (TCP/四元数) 在真机是编码器、在仿真是 env 里机器人的状态 —— 都是"机器人自己的状态",
 #   合法; **模块的真值位置 (obs[7:10] / env 的 _pc) 一律不读**, 只用于事后打分。
+def _yolo_pose_extra(classes=("peg", "module", "光模块")):
+    """模块姿态 (quat/size_mm) 的合法来源: 解算器已拟合 + 当拍 TCP 四元数。
+
+    缺任一个就返回 None —— 不写 [0,0,0,1] 冒充"正着放"。调用方只在非 None 时传给契约。
+    """
+    try:
+        import json as _j
+        _st = os.path.join(_box3d_repo_root(), "models", "box3d_state.json")
+        if not os.path.exists(_st):
+            return None
+        with open(_st, encoding="utf-8") as _fh:
+            _d = _j.load(_fh)
+        if isinstance(_d.get("checks"), dict):
+            _d = _d["checks"]
+        _fit = _d.get("fit_joint") or _d.get("fit") or _d
+        _rrel, _size = _fit.get("rrel_deg"), _fit.get("size_mm")
+        if not _rrel or not _size or _fit.get("degenerate"):
+            return None
+        _q = None
+        _tp = os.environ.get("ZMAX_TCP_LATEST") or os.path.join(
+            _box3d_repo_root(), "zmax_data", "tcp_out", "latest.json")
+        for _p in (_tp,):
+            if os.path.exists(_p):
+                with open(_p, encoding="utf-8") as _fh:
+                    _t = _j.load(_fh)
+                for _k in ("quat", "quaternion"):
+                    if isinstance(_t.get(_k), (list, tuple)) and len(_t[_k]) == 4:
+                        _q = [float(v) for v in _t[_k]]
+                        break
+        if _q is None:
+            # 有尺寸没姿态: 只给 size_mm, 不给 quat (点位照旧可用)
+            return {_c: {"size_mm": [float(v) for v in _size],
+                         "src": "size_only:解算自标定"} for _c in classes}
+        from . import vision_points as _vp
+        _pz = _vp.pose_from_gripper(_q, _rrel, size_mm=_size)
+        return {_c: _pz for _c in classes}
+    except Exception:                                                     # noqa: BLE001
+        return None
+
+
 def _box3d_repo_root():
     """仓库根: 优先用本文件(下方定义的)_REPO_ROOT, 未定义时按路径推 (本函数可能先于它被调用)"""
     try:
@@ -3803,7 +3843,8 @@ def node_ss_yolo(ctx):
                 det3d, _d2, _meta,
                 cam=("真机相机帧" if _src == "real" else "metaworld渲染帧"),
                 kind=("ss_yolo_node_real" if _src == "real" else "ss_yolo_node"),
-                note="canvas node 🎯 YOLO 目标检测 (%s 源)" % _src)
+                note="canvas node 🎯 YOLO 目标检测 (%s 源)" % _src,
+                pose=_yolo_pose_extra())
             if log:
                 log("📍 3D 观测点已发布 → %s · frame=%s · verified=%s · %d 点%s"
                     % (os.path.basename(_path), _meta.get("frame"), _verified, _np_,

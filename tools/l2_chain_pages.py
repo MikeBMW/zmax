@@ -33,6 +33,10 @@ from pptx.enum.text import PP_ALIGN, MSO_ANCHOR                       # noqa: E4
 from pptx.enum.shapes import MSO_SHAPE, MSO_CONNECTOR               # noqa: E402
 from pptx.oxml.ns import qn                                          # noqa: E402
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from l2_node_prose import PROSE as _PROSE
+from l2_node_ar import AR_PROSE as _AR                            # noqa: E402
+
 CANVAS = os.path.join(ROOT, "data/database/zmax/sources/canvas/state_space_obs.json")
 C_TXT = RGBColor(0x1F, 0x2A, 0x37)
 C_DIM = RGBColor(0x5B, 0x6B, 0x7C)
@@ -44,6 +48,20 @@ C_UP_FILL = RGBColor(0xF1, 0xF4, 0xF7)
 C_DN_FILL = RGBColor(0xF1, 0xF4, 0xF7)
 C_BOXLINE = RGBColor(0xC2, 0xCC, 0xD6)
 C_ON = RGBColor(0x2E, 0xA0, 0x4E)
+C_SUB = RGBColor(0x44, 0x51, 0x60)
+
+
+def _rect(s, x, y, w, h, fill, line=None, shape=MSO_SHAPE.RECTANGLE):
+    sh = s.shapes.add_shape(shape, Inches(x), Inches(y), Inches(w), Inches(h))
+    sh.fill.solid()
+    sh.fill.fore_color.rgb = fill
+    if line is None:
+        sh.line.fill.background()
+    else:
+        sh.line.color.rgb = line
+        sh.line.width = Pt(1)
+    sh.shadow.inherit = False
+    return sh
 C_OFF = RGBColor(0x9A, 0xA4, 0xAE)
 
 
@@ -121,7 +139,13 @@ PIN_POS = {"ssphys": 5,
            # 2026-11-02 老倪: 「状态校正器提到 18/31」
            "ssinnov": 18,
            # 2026-11-02 老倪: 「先验动力学预测提到 19/31」
-           "sspred": 19}
+           "sspred": 19,
+           # 2026-11-02 老倪: 「自适应状态估计器放到 20/31, 其它节点顺延」
+           "ssest": 20,
+           # 2026-11-02 老倪: 「测地线规划引导放到 21/31」
+           "n_geoplan": 21,
+           # 2026-11-02 老倪: 「统一状态空间放到 22/31」
+           "ssobs": 22}
 
 _MAIN_POS = ("动作命令", "真下发", "段表", "plan → exec", "到位", "命令")
 _SIDE_NEG = ("只喂渲染", "旁路", "回显", "上网通道", "默认关", "proxy", "AR 场景")
@@ -295,9 +319,10 @@ def _box(s, x, y, w, h, head, sub="", port="", size=7.4, fill=None, line=None, h
              (sub, C_DIM, False)]
     tot = len(port) + len(head) + 2          # 首行字数: 超框就缩字号, 不截断名字
     if tot > 24:
-        size = size * 0.74
+        size = size * 0.80
     elif tot > 18:
-        size = size * 0.86
+        size = size * 0.90
+    size = max(size, 9.6)                    # 盒子里最小 9.6pt: 再挤就换行/截字, 不许缩到看不清
     first = True
     for txt, col, bold in parts:
         if not txt:
@@ -308,7 +333,7 @@ def _box(s, x, y, w, h, head, sub="", port="", size=7.4, fill=None, line=None, h
         p.alignment = PP_ALIGN.CENTER
         r = p.add_run()
         r.text = txt
-        r.font.size = Pt(size if bold else size - 1.0)
+        r.font.size = Pt(size if bold else max(size - 1.0, 9.0))
         r.font.bold = bold
         r.font.color.rgb = col
         r.font.name = "Microsoft YaHei"
@@ -325,6 +350,100 @@ def _line(s, x1, y1, x2, y2, arrow=False, color=None, w=1.0):
         end = ln.makeelement(qn("a:tailEnd"), {"type": "triangle", "w": "sm", "len": "sm"})
         ln.append(end)
     return conn
+
+
+def _port_cn(port):
+    """端口名换成人话: in1 -> 输入1, out2 -> 输出2 (其它原样)。"""
+    t = str(port or "")
+    if t.startswith("in"):
+        return "输入" + t[2:]
+    if t.startswith("out"):
+        return "输出" + t[3:]
+    return t
+
+
+def _strip_icon(name):
+    """去掉节点名前面的图标与标点, 供叙述文字里直接念出名字。"""
+    t = str(name or "")
+    i = 0
+    while i < len(t) and not (t[i].isalnum() or ("\u4e00" <= t[i] <= "\u9fff")):
+        i += 1                      # 只跳图标与标点; 碰到字母/数字/汉字就停 —— "YOLO 目标检测" 不许被削成 "目标检测"
+    return t[i:].strip() or t
+
+
+def _io_prose(ins, outs, nodes):
+    """把上下游接成一句人话: 谁给它什么、它把结果交给谁。"""
+    def _names(keys):
+        out = []
+        for kk in keys:
+            nm = _strip_icon(nodes.get(kk, {}).get("name") or kk)
+            if nm and nm not in out:
+                out.append(nm)
+        return out
+    up = _names([k.get("f") for k in ins])
+    dn = _names([k.get("t") for k in outs])
+    s = "在整条链上，它上游接着 %d 路信号" % len(ins)
+    if up:
+        s += "，主要来自%s%s" % ("、".join(up[:3]), ("等 %d 个节点" % len(up)) if len(up) > 3 else "")
+    s += "；下游把结果交给"
+    s += ("%s%s。" % ("、".join(dn[:3]), ("等 %d 个节点" % len(dn)) if len(dn) > 3 else "")) if dn else "（无下游）。"
+    return s
+
+
+_LOOP_TRACE = None
+
+
+def _loop_trace():
+    """常驻循环最近一拍里每个节点的实际状态与耗时 (读不到就返回空表)。"""
+    global _LOOP_TRACE
+    if _LOOP_TRACE is not None:
+        return _LOOP_TRACE
+    _LOOP_TRACE = {}
+    try:
+        d = json.load(open(os.path.join(ROOT, "zmax_data/ss_live/canvas_loop.json"), encoding="utf-8"))
+        for t in d.get("traces") or []:
+            _LOOP_TRACE[t.get("id")] = (t.get("status") or "", t.get("ms"))
+    except Exception:                                                   # noqa: BLE001
+        pass
+    return _LOOP_TRACE
+
+
+# 少数节点的"算没算"不能只看实现开关: 真正的计算发生在别处, 逐页如实写
+LIVE_OVERRIDE = {
+    "n_exec": ("运行实况：授权核对、逐段闸门与到位判断都在常驻执行进程里完成；"
+               "画布上的这一页只读取执行回执（段号、到位、残差）再交给下游，自身不下发动作。"),
+}
+
+
+def _side_sentence(keys, nodes, head):
+    """把上游/下游列成一句: 接哪几个节点、几条连线 (名字取自画布, 不写端口代号)。"""
+    names = []
+    for kk in keys:
+        nm = _strip_icon(nodes.get(kk, {}).get("name") or kk)
+        if nm and nm not in names:
+            names.append(nm)
+    if not names:
+        return head % 0 + "（无连线）。"
+    shown = "、".join(names[:4])
+    more = (" 等 %d 个节点" % len(names)) if len(names) > 4 else ""
+    return head % len(keys) + shown + more + "。"
+
+
+def _live_prose(nid, pure):
+    """如实说明这一拍算没算: 有实测读实测, 没实测按实现开关说清。"""
+    if nid in LIVE_OVERRIDE:
+        return LIVE_OVERRIDE[nid]
+    st, ms = _loop_trace().get(nid, ("", None))
+    cost = ("实测 %.2f 毫秒，约占 100 毫秒控制周期的 %.1f%%" % (ms, ms / 1.0)) if isinstance(ms, (int, float)) else None
+    ran = "实现执行" in st or "理想" in st
+    if pure is True and ran:
+        return "运行实况：这一拍真实执行了内部算法" + ("，" + cost if cost else "") + "，不构成节拍瓶颈。"
+    if pure is True and not ran:
+        return "运行实况：内部算法已实现，本拍未进入常驻循环的调度清单（测量时该拍未排到它）。"
+    if pure is False and ran:
+        return ("运行实况：这一拍只做数据转发" + ("，耗时 " + cost.replace("实测 ", "") if cost else "")
+                + "；内部算法在这一环尚未启用。")
+    return "运行实况：内部算法尚未接入常驻循环，这一环目前只按连线把数据交给下游。"
 
 
 def _moveit_status():
@@ -377,13 +496,13 @@ def _switch_band(s, y0, params):
     st = _switch_state()
     _panel(s, 0.5, y0, 12.33, 1.36)
     _txt(s, 0.66, y0 + 0.07, 11.9, 0.22,
-         "🎛 与画布同一对开关 · 真源 zmax_data/ss_live/exec_switches.json（%s）"
-         % ("新鲜" if st["fresh"] else "⚠ 已过期/读不到"), size=8.4, bold=True, color=C_ACC)
+         "🎛 与画布同一对开关 · 状态取自 zmax_data/ss_live/exec_switches.json（%s）"
+         % ("新鲜" if st["fresh"] else "⚠ 已过期/读不到"), size=9.6, bold=True, color=C_ACC)
     rows = [
         ("AR 场景开关", st["ar"], "开 ⇒ 页面进 AR 模式: 双臂按 ar_cmd_chain 的 exec 分区走帧(exec_src=ssact, 10Hz) · 可与真机开关同时开",
          "关 ⇒ 页面退出 AR 模式(不再消费渲染指令) · 真机通路不受它影响"),
         ("真机开关", st["real"], "开 ⇒ 8793 授权窗口打开, 指令真下发（画布每拍绝不自动发; 与 AR 开关互不互斥）",
-         "关 ⇒ 零下发：与 out1.real_send=false 一致, 只算不发"),
+         "关 ⇒ 零下发：与配置项 real_send=false 一致, 只算不发"),
     ]
     for i, (lab, on, tx_on, tx_off) in enumerate(rows):
         yy = y0 + 0.38 + i * 0.44
@@ -391,140 +510,161 @@ def _switch_band(s, y0, params):
         _txt(s, 1.50, yy - 0.03, 1.5, 0.24, lab, size=9.4, bold=True)
         _txt(s, 2.98, yy - 0.03, 0.5, 0.24, "开" if on else "关", size=9.4, bold=True,
              color=C_ON if on else C_WARN)
-        _txt(s, 3.52, yy - 0.02, 9.15, 0.24, _cut(tx_on if on else tx_off, 64), size=8.0,
+        _txt(s, 3.52, yy - 0.02, 9.15, 0.26, _cut(tx_on if on else tx_off, 56), size=9.2,
              color=C_TXT if on else C_DIM)
     _txt(s, 0.66, y0 + 1.30 - 0.02, 11.9, 0.20,
          "开关状态时间 %s · 来源 %s · 刷新龄 %s · 两开关独立, 可同时开"
          % (st["t_str"] or "-", st["src"],
-            ("%.0f s" % st["age"]) if st["age"] is not None else "-"), size=7.0, color=C_DIM)
+            ("%.0f s" % st["age"]) if st["age"] is not None else "-"), size=9.0, color=C_DIM)
 
 
-def node_page(pr, nid, k, total, nodes, l2, links, out_l2, in_l2):
-    """节点页: 一句话功能 + 输入输出块图 (块 = 节点, 线 = 画布连线, 箭头指向数据流向)。"""
+# ── 节点在 300 件/小时里的角色: 分类来自链路结构 + 常驻循环实测, 不是形容词
+UPH_KEY = {"ssworld", "ssact", "n_exec", "n_moveit", "ssphys", "sslimit", "ssched",
+           "ss_grav_h", "ssff", "ssest", "n_geoplan", "ssobs"}
+UPH_SKILL = {"sssk1", "sssk2", "sssk3", "sssk4", "sssk5", "sssk6", "sssk7", "sssk8"}
+UPH_MEM = {"ss_mem_l2", "n_l2_muscle"}
+UPH_SENSE = {"sssensor", "ssaoi", "ssyolo", "ss2d3d", "ss_seg", "sstactile"}
+UPH_SIDE = {"ssinnov", "sspred"}
+
+
+def _uph_note(nid, ms=None, tact=11.468):
+    """一句话说清这个节点跟 300 件/小时的关系: 关键路径 / 记忆直通 / 感知泛化 / 旁路校核。"""
+    if nid in UPH_KEY:
+        if isinstance(ms, (int, float)):
+            return ("节拍角色：关键路径。每拍实测 %.2f 毫秒，占 100 毫秒控制周期的 %.0f%%；"
+                    "单件 11.47 秒由段表决定，它不额外加时，但省不掉。" % (ms, ms))
+        return "节拍角色：关键路径。每拍都在算，单件时间由段表决定，它不额外加时。"
+    if nid in UPH_SKILL:
+        return ("节拍角色：固定轨迹的一段。记忆直通时按段表回放，不查视觉；"
+                "八段动作串起来就是 11.47 秒一件。")
+    if nid in UPH_MEM:
+        return ("节拍角色：300 件/小时的地板。没有感知时靠它按标杆直通走完全程"
+                "（按段表 11.49 秒/件 = 每小时 313 件）。")
+    if nid in UPH_SENSE:
+        return ("节拍角色：不进记忆路径。换件、来料偏位、姿态超差时才由它接管，"
+                "代价是台账每件 17.17 秒；没有它这条线只能干一种件。")
+    return ("节拍角色：旁路校核。参与上一拍的残差与预测，不进快通道，不占单件时间；"
+            "它的作用体现在换件后的收敛速度上。")
+
+
+def _elbow(s, x0, y0, x1, y1, xb, color=C_ACC, w=1.0, arrow=True):
+    """折线连接: 水平出 → 竖直走 → 水平进, 每条连线一根, 不用母线合并。"""
+    _line(s, x0, y0, xb, y0, w=w, color=color)
+    _line(s, xb, y0, xb, y1, w=w, color=color)
+    _line(s, xb, y1, x1, y1, w=w, color=color, arrow=arrow)
+
+
+def _iface_items(keys, nodes, side):
+    """把一端连线写成「上游名 · 标签」的接口清单, 供页面左下/右下说明。"""
+    out = []
+    for k2 in keys:
+        other = k2.get("f") if side == "in" else k2.get("t")
+        nm = _cut(_upname(other, nodes), 10)
+        lab = _cut(k2.get("label") or "", 12)
+        out.append("%s·%s" % (nm, lab) if lab else nm)
+    return out
+
+
+def node_page(pr, nid, k, total, nodes, l2, links, out_l2, in_l2,
+              layer="基础层", prose=None, ar=None, uph=None):
+    """节点页 v4（老倪 2026-11-02 定版）:
+
+        上: 功能描述（做什么 / 怎么算, 11~12pt）
+        中: 功能框图 —— 左输入、右输出、中间本节点；**每个输入一根线**, 扇入到节点左沿的独立锚点
+        下: 左下 = 输入接口描述, 右下 = 输出接口描述（名称·标签, 9.5pt）
+    """
     n = nodes[nid]
     mod, mi = _mod_info(nid)
-    name = str(mi.get("NAME") or n.get("name") or nid)
-    pure = mi.get("PURE")
-    ports_in = mi.get("PORTS_IN") or []
-    ports_out = mi.get("PORTS_OUT") or []
+    name = re.sub(r"^L\d\s*·\s*", "", _strip_icon(str(mi.get("NAME") or n.get("name") or nid))).strip()
     params = mi.get("PARAMS") or (n.get("params") or {})
-
     ins = [k2 for k2 in links if k2.get("t") == nid]
     outs = [k2 for k2 in links if k2.get("f") == nid]
+    st, ms = _loop_trace().get(nid, ("", None))
 
     s = _slide(pr)
-    _txt(s, 0.5, 0.14, 12.3, 0.34, "L2 链路 %02d/%d · %s · %s" % (k, total, _cut(name, 40), nid),
-         size=15, bold=True)
-    desc = (params.get("desc") if isinstance(params, dict) else None) \
-        or (n.get("params") or {}).get("desc") or "（该节点无 desc，见实现文件头）"
-    _txt(s, 0.5, 0.48, 12.3, 0.26, _cut(desc, 70), size=9.2)
-    _txt(s, 0.5, 0.74, 12.3, 0.22,
-         "%s · %s/%s · 执行口径 %s · PURE %s · 端口 in %d / out %d"
-         % (nid, (mi.get("LAYER") or "L2"), (mi.get("TYPE") or n.get("type") or "-"),
-            (mi.get("EXEC_MODE") or "-"), ("真算" if pure else ("直通" if pure is False else "无实现")),
-            len(ports_in), len(ports_out)), size=7.4, color=C_DIM)
+    _rect(s, 0, 0, 0.12, 7.5, C_ACC, shape=MSO_SHAPE.RECTANGLE)
+    _txt(s, 0.82, 0.24, 11.7, 0.24, "%s · 第 %d / %d 位 · 输入 %d 条 / 输出 %d 条"
+         % (layer, k, total, len(ins), len(outs)), size=10.5, bold=True, color=C_ACC)
+    _txt(s, 0.82, 0.48, 11.7, 0.46, _cut(name, 44), size=21, bold=True)
+    _rect(s, 0.82, 1.10, 1.5, 0.05, C_ACC, shape=MSO_SHAPE.RECTANGLE)
+    _rect(s, 2.32, 1.12, 10.2, 0.012, RGBColor(0xD3, 0xD9, 0xE1), shape=MSO_SHAPE.RECTANGLE)
 
-    # ── 块图几何 (三列: 上游 | 本节点 | 下游); 带开关的节点(机器人执行器)下方留开关带
-    SW = bool(isinstance(params, dict) and params.get("ar_real_sw"))
-    MEMB = nid in SK_NODES                     # 🧠 技能页: 下方横带给记忆输入/补偿
-    A0, A1 = 1.28, (4.55 if (SW or MEMB) else 6.28)
-    UX, UW = 0.55, 3.75                     # 上游列
-    NX, NW = 4.80, 3.55                     # 本节点
-    DX, DW = 8.82, 3.95                     # 下游列
-    BUS_L, BUS_R = 4.55, 8.58               # 两条母线
-    cap = 8                                 # 每侧最多画 8 个块, 其余折成一行文字
-    _txt(s, UX, A0 - 0.24, UW, 0.22, "输入（%d 条连线 · 端口 ← 上游）" % len(ins), size=8.6, bold=True, color=C_ACC)
-    _txt(s, DX, A0 - 0.24, DW, 0.22, "输出（%d 条连线 · 端口 → 下游）" % len(outs), size=8.6, bold=True, color=C_ACC)
+    role, method = (prose or _PROSE).get(nid, ("", ""))
+    if not role:
+        role = _cut((params.get("desc") if isinstance(params, dict) else "")
+                    or (n.get("params") or {}).get("desc") or "", 150)
+    AR = (ar or _AR).get(nid, "")
 
-    def _col(items, x, w, side):
-        """画一列的块 + 支线, 返回 (每块中心 y 列表, 末块下方 y)。"""
-        ys = []
-        n_show = min(len(items), cap)
+    # ── 上: 功能描述（压到 1.6 in 以内, 给框图让出 2.9 in）
+    _txt(s, 0.82, 1.18, 11.7, 0.56, role, size=11.5, spacing=1.20)
+    if method:
+        _txt(s, 0.82, 1.78, 11.7, 0.56, method, size=10.5, spacing=1.18, color=C_SUB)
+    _txt(s, 0.82, 2.38, 11.7, 0.22, (uph or {}).get(nid) or _uph_note(nid, ms), size=9.6, color=C_DIM)
+
+    # ── 中: 功能框图（左输入 / 中节点 / 右输出, 每根线单独画）
+    TOP, BOT = 2.90, 5.72
+    CX, CW2 = 4.90, 3.45                     # 中间节点框
+    cy = (TOP + BOT) / 2
+    NH = 1.16
+    _box(s, CX, cy - NH / 2, CW2, NH, _cut(name, 18), "第 %d 位 · 共 %d 个" % (k, total), "",
+         size=11.0, fill=RGBColor(0xDF, 0xEE, 0xF6), line=C_ACC)
+
+    def column(items, side):
+        """画一侧的盒子并逐根回到中间节点, 返回是否画了内容。"""
         if not items:
-            _txt(s, x + 0.1, (A0 + A1) / 2 - 0.12, w - 0.2, 0.24, "（无连线）", size=7.2, color=C_DIM)
-            return ys, A0
-        slot = (A1 - A0) / max(n_show + (1 if len(items) > cap else 0), 1)
-        bh = min(0.62, slot - 0.06)
-        for i, k2 in enumerate(items[:cap]):
-            cy = A0 + slot * (i + 0.5)
-            ys.append(cy)
-            if side == "up":
-                up = k2.get("f")
-                port = k2.get("t_port") or ""
-                _box(s, x, cy - bh / 2, w, bh, _cut(_upname(up, nodes), 22),
-                     _cut(k2.get("label") or "", 16), port, fill=C_UP_FILL, line=RGBColor(0xC2, 0xCC, 0xD6))
-                _line(s, x + w, cy, BUS_L, cy, arrow=True, w=1.4, color=C_ACC)
+            yy = cy - 0.14
+            _txt(s, (0.86 if side == "in" else 9.14), yy, 3.2, 0.24,
+                 "（没有%s）" % ("输入" if side == "in" else "输出"), size=9.6, color=C_DIM)
+            return
+        n_i = len(items)
+        band = BOT - TOP
+        pitch = min(0.34, band / n_i)
+        bh = min(0.28, pitch * 0.80)
+        fs = max(9.0, min(9.6, bh * 72 * 0.56))
+        x0 = 0.86 if side == "in" else 9.10
+        w0 = 3.30
+        # 锚点在节点框上的分布
+        spread = min(NH - 0.14, 0.105 * n_i)
+        for i2, k2 in enumerate(items):
+            y = TOP + pitch * (i2 + 0.5) - bh / 2
+            nm = _cut(_upname(k2.get("f") if side == "in" else k2.get("t"), nodes), 13)
+            _box(s, x0, y, w0, bh, nm, "", "", size=fs,
+                 fill=C_UP_FILL if side == "in" else C_DN_FILL, line=RGBColor(0xC2, 0xCC, 0xD6))
+            ay = cy - spread / 2 + (spread * (i2 + 0.5) / max(n_i, 1))
+            if side == "in":                                  # 一根线对一个输入, 直线扇入, 不用母线
+                _line(s, x0 + w0, y + bh / 2, CX, ay, arrow=True, color=C_ACC, w=1.0)
             else:
-                dn = k2.get("t")
-                port = k2.get("f_port") or ""
-                _box(s, x, cy - bh / 2, w, bh, _cut(_upname(dn, nodes), 24),
-                     _cut(k2.get("label") or "", 16), port, fill=C_DN_FILL, line=RGBColor(0xC2, 0xCC, 0xD6))
-                _line(s, BUS_R, cy, x, cy, arrow=True, w=1.4, color=C_ACC)
-        if len(items) > cap:
-            _txt(s, x + 0.1, A0 + slot * (cap + 0.5) - 0.11, w - 0.2, 0.22,
-                 "… 另 %d 条" % (len(items) - cap), size=7.0, color=C_DIM)
-        return ys, A0 + slot * len(ys)
+                _line(s, CX + CW2, ay, x0, y + bh / 2, arrow=True, color=C_ACC, w=1.0)
 
-    up_y, up_end = _col(ins, UX, UW, "up")
-    dn_y, dn_end = _col(outs, DX, DW, "dn")
+    column(ins, "in")
+    column(outs, "out")
+    _txt(s, 0.86, TOP - 0.24, 3.3, 0.2, "输入 · %d 条" % len(ins), size=9.4, bold=True, color=C_ACC)
+    _txt(s, 9.10, TOP - 0.24, 3.3, 0.2, "输出 · %d 条" % len(outs), size=9.4, bold=True, color=C_ACC)
 
-    cy_mid = (A0 + A1) / 2
-    nh = 1.55
-    _box(s, NX, cy_mid - nh / 2, NW, nh, _cut(name, 26), "L2 · %s" % (mi.get("TYPE") or n.get("type") or "-"),
-         nid, size=10.5, fill=RGBColor(0xDF, 0xEE, 0xF6), line=C_ACC)
-    # 两侧母线 + 箭头 (汇入本节点 / 从本节点发出)
-    if up_y:
-        _line(s, BUS_L, min(up_y), BUS_L, max(up_y), w=1.2, color=C_ACC)
-        _line(s, BUS_L, cy_mid, NX, cy_mid, arrow=True, w=1.4, color=C_ACC)
-    if dn_y:
-        _line(s, BUS_R, min(dn_y), BUS_R, max(dn_y), w=1.2, color=C_ACC)
-        _line(s, NX + NW, cy_mid, BUS_R, cy_mid, arrow=True, w=1.4, color=C_ACC)
-    _txt(s, BUS_L - 0.34, cy_mid - 0.34, 0.32, 0.22, "in", size=7.0, color=C_DIM, align=PP_ALIGN.RIGHT)
-    _txt(s, NX + NW + 0.02, cy_mid - 0.36, 0.32, 0.22, "out", size=7.0, color=C_DIM)
+    # ── 下: 左下输入接口 / 右下输出接口
+    def iface(x, lab, items, side):
+        _txt(s, x, 5.80, 5.6, 0.22, "%s接口（%d 条）" % (lab, len(items)), size=9.8, bold=True,
+             color=C_ACC)
+        if not items:
+            _txt(s, x, 6.04, 5.6, 0.22, "没有%s连线。" % lab, size=9.2, color=C_DIM)
+            return
+        txts = _iface_items(items, nodes, side)
+        head = "、".join(txts[:8])
+        if len(txts) > 8:
+            head += " 等 %d 条" % len(txts)
+        _txt(s, x, 6.02, 5.6, 0.60, head, size=9.2, spacing=1.18, color=C_TXT)
 
-    # ── 页脚: 实现位置 + 参数 (只留能核对的几项)
-    if MEMB:
-        _mem_panel(s, 0.55, A1 + 0.10, 12.22, 1.48, mi)
-        FY = 6.12
-    elif SW:
-        _switch_band(s, A1 + 0.12, params)
-        FY = 6.12
-    else:
-        FY = A1 + 0.10
-    kv = []
-    if isinstance(params, dict):
-        for kk, vv in params.items():
-            if kk in ("desc", "source", "source_symbol"):
-                continue
-            kv.append("%s=%s" % (kk, _cut(vv, 22) if not isinstance(vv, (dict, list)) else "<%d 项>" % len(vv)))
-            if len(kv) >= 3:
-                break
-    _txt(s, 0.5, FY, 12.3, 0.24,
-         "实现 = %s:%s · 话题 = ss.node.%s.<port>%s"
-         % (_cut(mi.get("SOURCE") or "（无实现文件绑定）", 58), mi.get("SOURCE_SYMBOL") or "",
-            nid, (" · 参数 " + " · ".join(kv)) if kv else ""), size=7.2, color=C_DIM)
-    _txt(s, 0.5, FY + 0.26, 12.3, 0.24,
-         "链路位置：逆序第 %d 位（1 = 最后输出端） · L2 内上游 %d / 下游 %d · L2 共 %d 个节点"
-         % (k, len(in_l2[nid]), len(out_l2[nid]), total), size=7.2, color=C_DIM)
-    if nid == "n_moveit":                       # 🧭 后端真值行: MoveIt 容器最近一轮 + 会不会接管
-        st2 = _moveit_status()
-        if st2.get("ok"):
-            line = ("后端 = MoveIt（接管段表） · 最近一轮 age %.1fs · %s 点 / %.1fs / 终点误差 %smm / 关节总行程 %srad"
-                    % (st2.get("age_s") or 0, st2.get("n_points"), st2.get("plan_time_s") or 0,
-                       st2.get("end_err_mm"), st2.get("joint_total_rad")))
-            col = C_ON
-        elif st2.get("age_s") is not None:
-            line = ("后端 = rule（回退） · MoveIt 最近一轮 age %.1fs · %s 点 / %.1fs / 终点误差 %smm / 关节总行程 %srad ⇒ %s"
-                    % (st2.get("age_s") or 0, st2.get("n_points"), st2.get("plan_time_s") or 0,
-                       st2.get("end_err_mm"), st2.get("joint_total_rad"), _cut(st2.get("why") or "", 52)))
-            col = C_WARN
-        else:
-            line = "后端 = rule（回退） · MoveIt: %s" % _cut(st2.get("why") or "不可用", 80)
-            col = C_WARN
-        _txt(s, 0.5, FY + 0.52, 12.3, 0.22, line, size=7.2, color=col)
-    if nid == "n_moveit":                       # 📋 实际段表 (实跑快照, 段表是这页唯一真正的输出物)
-        _seg_table(s, 8.88, 4.34, 3.85)
+    iface(0.82, "输入", ins, "in")
+    iface(6.86, "输出", outs, "out")
 
+    _txt(s, 0.82, 6.66, 11.7, 0.22, "AR 验证：%s" % _cut(AR, 96), size=9.4, color=C_SUB)
+    _txt(s, 0.82, 6.92, 11.7, 0.20,
+         "计算代码 %s 中的 %s · %s" % (_cut(mi.get("SOURCE") or "（尚未绑定实现文件）", 50),
+                                     mi.get("SOURCE_SYMBOL") or "对应函数",
+                                     _live_prose(nid, mi.get("PURE"))[:52]),
+         size=9.0, color=C_DIM)
+    _txt(s, 0.82, 7.16, 10.4, 0.20, "Z-MAX · %s %d/%d · %s" % (layer, k, total, nid),
+         size=9.0, color=C_DIM)
     return s
 
 
@@ -782,8 +922,7 @@ def tact_page(pr):
     from lerobot.memory import l2_store as S
     r = U.run_l2(104)
     live = json.load(open(os.path.join(ROOT, "data/memory/ar_muscle.json"), encoding="utf-8"))
-    # 口径冻结: 页面数字与自检读同一份台账快照 (台账是活数据, 不冻结就会"值变了文案没变")
-    # labels 必须一起冻结 —— 实测口径用逐段同 label 的实测均值, 只冻 kind 均值就对不上了
+    # 冻结: 页面数字与自检读同一份台账快照 (台账是活数据, 不冻结就会"值变了文案没变")
     S.put_ledger({k: {"n": v.get("n"), "mean_t": v.get("mean_t"), "plan_t": v.get("plan_t"),
                       "labels": v.get("labels") or {},
                       "ratio": (round(v["mean_t"] / v["plan_t"], 3) if (v.get("mean_t") and v.get("plan_t")) else None)}
@@ -791,7 +930,7 @@ def tact_page(pr):
     c = U.compute(led=live.get("kinds") or {})
     k = K.analyse(d=U.plan_from_api(), led=live.get("kinds") or {})
     tp, tm, st, sm = c["plan_tact"], c["meas_tact"], c["uph_plan"], c["uph_meas"]
-    st_i, sm_i = round(st), round(sm)        # 页内整数 UPH 与自检 round() 同一取整, 不许一个截断一个四舍五入
+    st_i, sm_i = round(st), round(sm)
     rows = c["rows"]
     need = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入"]
     miss = [x for x in need if x not in r["stages"]]
@@ -800,61 +939,57 @@ def tact_page(pr):
     c123 = cm["C1+C2+C3"]
     c1234 = cm["C1+C2+C3+C4"]
     fmo = k["fit_move"] or {}
+    ok_all = r["done"] and not miss
 
     s = _slide(pr)
-    _txt(s, 0.5, 0.16, 12.3, 0.34, "L2 节拍测试报告 · 独立运行%s · 300 UPH：计划口径达标 / 实测口径未达标" % ("通过" if (r["done"] and not miss) else "未通过"), size=15, bold=True)
-    _txt(s, 0.5, 0.52, 12.3, 0.26,
-         "真源：引擎 cap=l2 实跑（seed 104，不带 L3 编排）+ 段表 GET /api/sim_insert（%d 段）+ AR 台账逐 label 实测（建页时冻结快照，命中 %d/%d）"
-         % (c["n_seg"], c["label_hit"], c["n_seg"]), size=7.8, color=C_DIM)
+    _rect(s, 0, 0, 0.12, 7.5, C_ACC, shape=MSO_SHAPE.RECTANGLE)
+    _txt(s, 0.82, 0.26, 11.7, 0.24, "节拍测试 · 基础层独立运行", size=10.5, bold=True, color=C_ACC)
+    _txt(s, 0.82, 0.52, 11.7, 0.9,
+         "基础层自己就能跑完一件：按段表 %.2f 秒/件，按台账 %.2f 秒/件" % (tp, tm),
+         size=23, bold=True, spacing=1.15)
+    _rect(s, 0.82, 1.46, 1.5, 0.05, C_ACC, shape=MSO_SHAPE.RECTANGLE)
+    _rect(s, 2.32, 1.48, 10.2, 0.012, RGBColor(0xD3, 0xD9, 0xE1), shape=MSO_SHAPE.RECTANGLE)
 
-    _panel(s, 0.5, 0.86, 5.05, 2.05)
-    _txt(s, 0.65, 0.94, 4.8, 0.24, "① L2 独立运行（七段闭环）", size=9, bold=True, color=C_ACC)
-    _txt(s, 0.65, 1.20, 4.8, 1.6,
-         "· done = %s · %d 步 · 快通道接管 %d 帧\n· 阶段：%s\n· 判据：七段全走 %s\n· 语义：无 L3 编排也能跑完整件循环"
-         % (r["done"], r["steps"], r["mm_hits"], " → ".join(r["stages"]),
-            "（缺 %s）" % miss if miss else "✅"),
-         size=8.4, spacing=1.22)
+    items = [("%d" % r["steps"], "步", "一轮跑完", "随机种子 104"),
+             ("%d" % r["mm_hits"], "帧", "快通道接管", "肌肉记忆直通"),
+             ("%.2f" % tp, "秒 / 件", "按段表计时", "每小时 %d 件" % st_i),
+             ("%.2f" % tm, "秒 / 件", "按台账实测", "每小时 %d 件" % sm_i)]
+    w = (11.69 - 3 * 0.24) / 4
+    for i2, (val, unit, lab, note) in enumerate(items):
+        x = 0.82 + i2 * (w + 0.24)
+        _rect(s, x, 1.72, w, 1.24, RGBColor(0xF2, 0xF5, 0xF9), shape=MSO_SHAPE.RECTANGLE)
+        _rect(s, x, 1.72, 0.05, 1.24, C_ACC, shape=MSO_SHAPE.RECTANGLE)
+        _txt(s, x + 0.22, 1.82, w - 0.36, 0.44, val, size=26, bold=True)
+        _txt(s, x + 0.22, 2.26, w - 0.36, 0.22, unit, size=10.5, bold=True, color=C_ACC)
+        _txt(s, x + 0.22, 2.48, w - 0.36, 0.22, lab, size=10.5, bold=True)
+        _txt(s, x + 0.22, 2.70, w - 0.36, 0.22, note, size=9.5, color=C_DIM)
 
-    _panel(s, 5.75, 0.86, 7.08, 2.05)
-    _txt(s, 5.9, 0.94, 6.8, 0.24, "② 节拍两口径（同一份段表 · 每件 %d 段）" % (c["n_seg"] // c["n_mod"]), size=9, bold=True, color=C_ACC)
-    _txt(s, 5.9, 1.20, 6.8, 1.6,
-         "· 计划口径（段表 t）：%.3f s/件 → %d UPH  %s\n· 实测口径（逐段同 label 台账 mean_t）：%.3f s/件 → %d UPH  %s\n· 目标 300 UPH ⇒ ≤ 12.000 s/件；实测口径差 %+.3f s/件\n· 段表原值：%.3f s / %s 件（tact_s %.3f）"
-         % (tp, st_i, "✅" if st >= 300 else "❌", tm, sm_i, "✅" if sm >= 300 else "❌",
-            c["gap"], c["loop"].get("dur", 0), c["loop"].get("mods", 0), c["loop"].get("tact_s", 0)),
-         size=8.4, spacing=1.22)
-
-    _panel(s, 0.5, 3.05, 12.33, 2.24)
-    _txt(s, 0.65, 3.13, 12.0, 0.24, "③ 余量归因（每件增量，按吃掉节拍的多少排序）", size=9, bold=True, color=C_ACC)
-    y = 3.42
-    for xx, ww, hh in ((0.70, 1.5, "段类"), (2.20, 1.6, "计划/件 (s)"), (3.85, 1.6, "实测/件 (s)"),
-                       (5.50, 1.4, "增量 (s)"), (6.95, 1.3, "段数/件"), (8.30, 2.6, "台账 mean_t (s)"),
-                       (10.95, 1.7, "实测/计划")):
-        _txt(s, xx, y, ww, 0.2, hh, size=7.6, bold=True, color=C_DIM)
-    for i, row in enumerate(rows[:7]):
-        yy = y + 0.24 + i * 0.205
-        col = C_WARN if row["delta"] > 0.5 else C_TXT
-        _txt(s, 0.70, yy, 1.4, 0.2, row["kind"], size=7.4, color=col)
-        _txt(s, 2.20, yy, 1.6, 0.2, "%.3f" % row["plan_per_pc"], size=7.4, color=col)
-        _txt(s, 3.85, yy, 1.6, 0.2, "%.3f" % row["meas_per_pc"], size=7.4, color=col)
-        _txt(s, 5.50, yy, 1.4, 0.2, "%+.3f" % row["delta"], size=7.4, color=col)
-        _txt(s, 6.95, yy, 1.3, 0.2, "%.1f" % row["segs_per_pc"], size=7.4, color=col)
-        _txt(s, 8.30, yy, 2.6, 0.2, "%.3f" % (row["mean_t"] or 0), size=7.4, color=C_DIM)
-        _txt(s, 10.95, yy, 1.7, 0.2, "×%.2f" % row["ratio"], size=7.4, color=col)
-
-    _panel(s, 0.5, 5.38, 12.33, 1.80, fill=RGBColor(0xFD, 0xF3, 0xF1), line=C_WARN)
-    _txt(s, 0.65, 5.46, 12.0, 0.24, "④ 结论与保 300 UPH 的收口路径（数字全部现算，不是估百分比）", size=9, bold=True, color=C_WARN)
-    _txt(s, 0.65, 5.72, 12.0, 1.42,
-         "· L2 能独立运行（七段闭环 %s）；300 UPH 只在计划口径成立（%d UPH），按台账同 label 实测代回是 %d UPH，差 %+.2f s/件。\n"
-         "· 余量不在「臂慢」：move 每段固定开销 %.2f s 是段边界加减速（等效速度 %.0f mm/s），检测独占 %.2f s/件（%d 段 AOI）。\n"
-         "· 三条收口：C1 段间连续化 −%.2f（每件 %.0f 处×%.2f s）、C2 双相机并检 −%.2f、C3 插拔提速 −%.2f ⇒ %.2f s/件 = %d UPH，仍差 %+.2f。\n"
-         "· 再做到 C4 抬升加速度（up/down 每件 %.0f 段×0.20 = −%.2f）⇒ %.2f s/件 = %d UPH；C4 需先确认控制器加速度上限，真机未验证。复现：tools/l2_uph_closure.py"
-         % ("✅" if (r["done"] and not miss) else "❌", st_i, sm_i, c["gap"],
-            fmo.get("c_s") or 0, fmo.get("v_mm_s") or 0, k["ao_s"], k["ao_n"] // c["n_mod"],
-            lv["C1_连续化"]["save"], lv["C1_连续化"]["n"], (fmo.get("c_s") or 0) * 0.6,
-            lv["C2_检测并行"]["save"], lv["C3_插拔提速"]["save"], c123["tact_s"], round(c123["uph"]),
-            c123["tact_s"] - 12.0, lv["C4_抬升加速度"]["n"], lv["C4_抬升加速度"]["save"],
-            c1234["tact_s"], round(c1234["uph"])),
-         size=7.4, spacing=1.16)
+    y = 3.18
+    lines = [
+        "七段动作一步不缺：%s，%s。不接上层编排，基础层自己也能走完整件取放。"
+        % (" → ".join(r["stages"]), "全部走完" if ok_all else "缺 %s" % "、".join(miss)),
+        "两本账差 %+.3f 秒/件：按段表 %.3f 秒/件（每小时 %d 件，达标），把台账实测代回是 %.3f 秒/件（每小时 %d 件，未达标）。"
+        % (c["gap"], tp, st_i, tm, sm_i),
+        "差在哪：每个段边界的加减速固定多花 %.2f 秒（等效 %.0f 毫米/秒），外观检测独占 %.2f 秒/件（%d 段检测）。不是机械臂慢。"
+        % (fmo.get("c_s") or 0, fmo.get("v_mm_s") or 0, k["ao_s"], k["ao_n"] // c["n_mod"]),
+        "三条收口后 %.2f 秒/件 = 每小时 %d 件（仍差 %+.2f 秒）；再加抬升加速度到 %.2f 秒/件 = 每小时 %d 件，"
+        "这一条需要先确认控制器加速度上限，真机还没验证，不写进承诺。"
+        % (c123["tact_s"], round(c123["uph"]), c123["tact_s"] - 12.0,
+           c1234["tact_s"], round(c1234["uph"])),
+    ]
+    for t in lines:
+        _txt(s, 0.82, y, 0.22, 0.3, "•", size=12, bold=True, color=C_ACC)
+        _txt(s, 1.06, y, 11.4, 0.56, t, size=11.5, spacing=1.24)
+        y += 0.66
+    _txt(s, 0.82, 6.30, 11.7, 0.24,
+         "30 个基础节点的节拍角色：关键路径 %d 个（每拍实测毫秒）· 固定轨迹 %d 段 · 记忆 %d 个（无感知直通的地板）"
+         "· 感知 %d 个（换件才接管）· 旁路校核 %d 个 —— 逐页写在每个节点页的「节拍角色」一栏。"
+         % (len(UPH_KEY), len(UPH_SKILL), len(UPH_MEM), len(UPH_SENSE), len(UPH_SIDE)),
+         size=10.0, color=C_TXT)
+    _txt(s, 0.82, 6.62, 11.7, 0.24,
+         "数据来源：基础层档位独立实跑（种子 104）+ 段表接口 %d 段 + 台账同动作标签实测（命中 %d/%d 段）"
+         % (c["n_seg"], c["label_hit"], c["n_seg"]), size=9.5, color=C_DIM)
+    _txt(s, 0.82, 6.92, 11.7, 0.22, "Z-MAX · 5.50.C-R5 · 节拍测试报告", size=9.0, color=C_DIM)
     return s
 
 
@@ -866,7 +1001,7 @@ def add_block(pr, verbose=True):
     # 验收页 = 现存最后一页 (总览里也提到"验收口径", 不能按关键词搜)
     accept_idx = n0 - 1
     _first = [sh.text_frame.text for sh in pr.slides[accept_idx].shapes if sh.has_text_frame]
-    if not any("验收口径 · 复核方式" in t for t in _first):
+    if not any("验收方式 · 数字复核" in t for t in _first):
         accept_idx = None
         for i, s in enumerate(pr.slides):
             if any(sh.has_text_frame and sh.text_frame.text.startswith("验收口径 · 复核方式")

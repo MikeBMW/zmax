@@ -244,8 +244,8 @@ def draw_core_page(slide, note=''):
         add_text(slide, c.x + 0.05, c.y, c.w - 0.10, c.h, c.name, size=5.8, color=C_TXT)
 
     add_text(slide, 0.50, 6.88, 12.4, 0.22,
-             '合计 %d 个节点 · L2 内部连线 %d 条 · L3↔L2 连线 %d 条（橙实线 L3→L2 / 青虚线 L2→L3）· 全部逐条取自画布 links；'
-             '线走行间沟、压在框下不挡字；名称逐字照抄画布。%s' % (len(cells), len(l2_edges), n_cross, note),
+             '合计 %d 个节点 · 基础层内部 %d 条连线 · 层间 %d 条（橙实线为上层到基础层，青虚线为反向）；'
+             '连线逐条取自画布，走行间空隙、压在框下不挡字，名称照画布原样。%s' % (len(cells), len(l2_edges), n_cross, note),
              size=6.8, color=C_DIM)
     return dict(l2_nodes=len(cells), l2_edges=len(l2_edges), l3_nodes=len(l3_cells),
                 l3_edges=n_cross, segs=nseg)

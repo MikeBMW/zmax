@@ -35,7 +35,7 @@ def main():
     #   ⚠️ 这几条是「语义关键边」: 剔除后节点会变断头 → 下面**剔除之后**再补回 (顺序不能反)
     RESTORE = [("ssinnov", "sssched", "↩ 反馈 · contact+残差 → 动作调制 (u_fb)", "in8"),
                ("ssintact_dec", "n_intent_direct", "Δz → 意图直读", "in1"),
-               ("ssz700", "n_board_frame", "真机帧 → 板检测 (20 圆点)", "in1")]
+               ]
     back = [l for l in d["links"] if l["f"] in nd and l["t"] in nd
             and nd[l["f"]].get("type") != "row_bg" and nd[l["t"]].get("type") != "row_bg"
             and nd[l["f"]]["x"] >= nd[l["t"]]["x"]]

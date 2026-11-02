@@ -27,8 +27,8 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'ss_mem_l2'
-SOURCE = ''
-SOURCE_SYMBOL = ''
+SOURCE = 'src/lerobot/memory/mem_nodes.py'
+SOURCE_SYMBOL = 'node_ss_mem_l2'
 PARAMS = {'state_space': True, 'layer': 'L2', 'store': 'data/memory/l2_store',
           'banks': ['ops_cards (工艺卡/工艺编排)', 'ops_points (固定轨迹点)', 'ops_seq (段序列+节拍口径)',
                     'champs (固化标杆)', 'ledger (实测台账)'],

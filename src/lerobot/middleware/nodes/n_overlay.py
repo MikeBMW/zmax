@@ -26,8 +26,8 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'n_realscene_live'
-SOURCE = ''
-SOURCE_SYMBOL = ''
+SOURCE = 'src/lerobot/engineering/nodes/library.py'
+SOURCE_SYMBOL = 'node_realscene_live'
 PARAMS = {}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现

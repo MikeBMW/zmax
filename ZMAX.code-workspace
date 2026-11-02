@@ -15,6 +15,12 @@
     {
       "name": "工程  (/home/ubuntu/zmax)",
       "path": "."
+    },
+    {
+      "path": "gui-venv311/lib/python3.11/site-packages/ultralytics"
+    },
+    {
+      "path": "src/lerobot/policies/yolo_3d"
     }
   ],
   "launch": {

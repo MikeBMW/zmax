@@ -27,8 +27,8 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'n_l2_muscle'
-SOURCE = ''
-SOURCE_SYMBOL = ''
+SOURCE = 'src/lerobot/engineering/nodes/library.py'
+SOURCE_SYMBOL = 'node_n_l2_muscle'
 PARAMS = {'kind': 'real', 'real': True, 'layer': 'L2', 'store': 'data/memory/l2_store/skills.json',
           'bridge': 'tools/l2_ros2_bridge.py',
           'desc': 'L2 肌肉记忆技能库: 技能点定义 + 功能接口 (ros/参数 schema/判据/步骤) 的唯一持有者; 其它节点只调 l2_store 查询',

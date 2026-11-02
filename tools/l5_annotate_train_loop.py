@@ -797,15 +797,31 @@ def stage_L2(st: dict, sup: dict, epochs: int, ts: str) -> dict:
                 "labels_assert": _lab, "dataset_used": {"root": root, "mode": "槽位" if use_slot else "监督"},
                 "reason": ("数据集为空 (labels train=%s val=%s 全 0) → **拒绝启动训练** "
                            "(避免在空集上训出空模型还报成功); 先修标注/映射" % (_lab["train"], _lab["val"]))}
+    # 🎯 2026-11-02 实测修正: 训练集太小时「从 COCO 重训」= 灾难性遗忘。
+    #   本轮 24 张 / 30 框 上用 --base none 重训 52 轮 → 同验证集 mAP50 0.0022,
+    #   而在役权重 0.9950 (差 450 倍)。所以低于门槛一律改成从在役权重热启动。
+    _live_w = os.path.join(ROOT, "models", "yolo_peg_live.pt")
+    _n_tr = int(_lab["train"]["nonzero"] or 0)
+    _small = _n_tr < 300
+    _base = (_live_w if (_small and os.path.isfile(_live_w)) else "none")
     r = run_stage_cmd("L2_full", [
         PY, os.path.join(ROOT, "tools", "yolo_annot_train.py"),
-        "--root", root, "--data", data, "--base", "none",
-        "--epochs", str(epochs), "--imgsz", "640", "--batch", "8", "--workers", "2",
+        "--root", root, "--data", data, "--base", _base,
+        "--epochs", str(min(epochs, 20) if _small else epochs), "--imgsz", "640", "--batch", "8", "--workers", "2",
+        # 小样本: 低学习率 + 冻结骨干, 否则几十轮就把在役权重训坏 (实测 mAP 0.9950 → 0.0009)
+        *(["--lr0", "0.0005", "--freeze", "10"] if _small else []),
         "--name", "l5full_%s" % ts, "--project", "outputs/yolo_annot_l5",
         "--live-eval", "0", "--verify", "4",
     ], os.path.join(WORK, "L2_full.log"), st=st,
         env_extra={"ZMAX_L5_SUPERVISION": os.path.join(sup.get("supdir") or SUP_ROOT,
                                                        "l3_supervision.jsonl")})
+    # 🐛 2026-11-02: L2_full.log 是单一覆盖文件, 下一次运行就抹掉上一次的崩溃栈 (实测两次
+    #   epoch 53/56 崩溃的 traceback 已无法回溯)。每次运行留一份带时间戳的副本。
+    try:
+        import shutil as _sh
+        _sh.copy2(os.path.join(WORK, "L2_full.log"), os.path.join(WORK, "L2_full_%s.log" % ts))
+    except Exception:                                                   # noqa: BLE001
+        pass
     r["dataset_used"] = {"root": root, "n_boxes": slot_n if use_slot else None,
                          "mode": ("槽位 14 类 (TCP真值+标定链投影)" if use_slot
                                   else "L5 监督标注 (VLM 场景理解; 无槽位记录时的退路)")}
@@ -832,13 +848,18 @@ def stage_L2(st: dict, sup: dict, epochs: int, ts: str) -> dict:
     _n_box_verify = None
     for l in _vlines:
         if "真推理验证" in l and "→" in l:
-            try:
-                _n_box_verify = int(l.split("→")[1].strip().split()[0])
-            except Exception:                                               # noqa: BLE001
-                pass
+            # 🐛 2026-11-02 实测: 实际输出是「val 抽样 4 张 → 共检出 4 框 · 平均 conf 0.803」,
+            #   老解析取 → 后面第一个词 = "共检出" → int() 失败 → 判 0 框 → 把好模型判成失败。
+            #   改为正则抓「→ … 数字 … 框」。
+            import re as _re
+            _m = _re.search(r"→\s*(?:共检出\s*)?(\d+)\s*框", l)
+            if _m:
+                _n_box_verify = int(_m.group(1))
     r["post_train_verify"] = {"n_boxes": _n_box_verify, "lines": _vlines[:6]}
     r["ok"] = bool(r["rc"] == 0 and r["artifact_ok"] and (_n_box_verify or 0) > 0)
-    r["mode"] = "全量训练 (--base none → 从 COCO 预训练重训, 非域适应微调)"
+    r["mode"] = (("微调 (从在役权重热启动 %s; 训练集 %d 张 < 300 张门槛 → 不做全量重训)"
+                  % (os.path.basename(_base), _n_tr)) if _base != "none"
+                 else "全量训练 (--base none → 从 COCO 预训练重训, 非域适应微调)")
     if not r["ok"]:
         if r["rc"] != 0 or not r["artifact_ok"]:
             r["reason"] = "rc=%s · best.pt 在位=%s" % (r["rc"], r["artifact_ok"])

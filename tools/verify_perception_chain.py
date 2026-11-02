@@ -94,20 +94,17 @@ def c_single():
 
 
 def c_canvas():
+    """画布接通性: 功能节点不许断链/孤立。板坐标系节点 2026-11-02 已按老倪要求删除, 这里如实报"不存在"。"""
     p = os.path.join(R, "flows", "state_space_obs.json")
     d = json.load(open(p, encoding="utf-8"))
-    ids = {x["id"] for x in d["nodes"]}
-    if "n_board_frame" not in ids:
-        return False, "板坐标系节点不存在"
-    nin = len([l for l in d["links"] if l["t"] == "n_board_frame"])
-    nout = len([l for l in d["links"] if l["f"] == "n_board_frame"])
+    ids = {x["id"] for x in d["nodes"] if x.get("type") not in ("row_bg", "band", "bg", "group")}
     linked = set()
     for l in d["links"]:
         linked.add(l["f"]); linked.add(l["t"])
     iso = [i for i in ids if i not in linked]
-    bands = [i for i in iso if i.startswith(("ssbg", "row_", "swbg"))]
-    return (nin >= 3 and nout >= 3 and len(iso) == len(bands),
-            "入%d 出%d 孤立%d(全为背景带 %d)" % (nin, nout, len(iso), len(bands)))
+    has_bf = "n_board_frame" in {x["id"] for x in d["nodes"]}
+    return (len(iso) == 0,
+            "功能节点 %d · 孤立 %d · 板坐标系节点=%s" % (len(ids), len(iso), "在" if has_bf else "已删"))
 
 
 CHECKS = {"yolo_live": c_yolo, "board_frame": c_board, "vlm_scene": c_vlm,

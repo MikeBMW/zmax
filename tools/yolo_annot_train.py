@@ -124,6 +124,10 @@ def main():
     ap.add_argument("--cache", action="store_true", default=True, help="缓存图像 (小数据集提速)")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--lr0", type=float, default=0.0,
+                    help="初始学习率; 0=用 ultralytics 默认 (小样本微调要显式压低, 否则灾难性遗忘)")
+    ap.add_argument("--freeze", type=int, default=0,
+                    help="冻结前 N 层 (小样本微调建议 10); 0=不冻结")
     ap.add_argument("--live-eval", type=int, default=30,
                     help="训练后在**新鲜真机帧**上评测 (0=跳过). 交付门槛: 与在役权重同口径对照")
     ap.add_argument("--live-frames", type=int, default=40, help="采多少张新鲜真机帧做评测")
@@ -192,10 +196,16 @@ def main():
     # ── 3. 训练 ──
     t0 = time.time()
     model = YOLO(base)
+    _extra = {}
+    if a.lr0 > 0:
+        _extra["lr0"] = a.lr0
+        _extra["lrf"] = 0.01
+    if a.freeze > 0:
+        _extra["freeze"] = a.freeze
     model.train(data=yml, epochs=a.epochs, imgsz=a.imgsz, batch=a.batch, device=dev,
                 project=a.project, name=a.name, workers=a.workers, verbose=True,
                 exist_ok=True, plots=True,
-                patience=a.patience, cos_lr=a.cos_lr, cache=a.cache, seed=a.seed)
+                patience=a.patience, cos_lr=a.cos_lr, cache=a.cache, seed=a.seed, **_extra)
     dt = time.time() - t0
 
     # ── 4. 找 best.pt + 真推理验证 ──

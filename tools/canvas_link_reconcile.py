@@ -42,7 +42,7 @@ for _k, _v in (("STABLEWM_HOME", "/home/ubuntu/zmax/zmax_data/stable-wm-cache"),
 CONTAINER = {"n_eng_mem", "n_mem_links", "n_skill_dict", "n_intent_bundle", "n_intent_direct",
              "ssmode", "sscap", "ss_mem_share", "ss_mem_l2", "ss_mem_l3", "ss_mem_l4",
              "ss_mem_field", "ssllm", "ssskill", "ssreason", "ssllm_in", "n_dsvl", "n_vlm_llm",
-             "n_board_frame", "ss_moe", "ss_lora_l4", "ss_lora_l3"}
+             "ss_moe", "ss_lora_l4", "ss_lora_l3"}
 TERMINAL = {"ssbypv", "ssff_hist", "ssvideo", "ss3d_view", "ssvideo2", "sstest", "ssfeat",
             "swvideo", "swds"}
 SOURCE = {"ssdata", "ssz700"}

@@ -43,7 +43,7 @@ ENGINE_FILES = [os.path.join(GUI, "state_space_sim_real.py"), os.path.join(GUI, 
 # 语义容器/标注类 (记忆·图谱·词典·丛·档位·直读 — 设计上不产运行时 io)
 SEMANTIC_KEYS = {"ss_mem_share", "ss_mem_l2", "ss_mem_l3", "ss_mem_l4", "ss_mem_field",
                  "ss_mem_links", "ss_skill_dict", "ss_intent_bundle", "ss_intent_direct",
-                 "ss_cap", "n_eng_mem", "n_vlm_llm", "n_dsvl", "n_board_frame"}
+                 "ss_cap", "n_eng_mem", "n_vlm_llm", "n_dsvl"}
 # 终端/交互类 (播放·波形·3D·直方图·测试/清单·模式开关) — 合法终端, 不是缺陷
 TERMINAL_KEYS = {"ss_scope", "ss_video", "ss_ff_hist", "ss_3d_view", "ss_video2", "sstest",
                  "ssfeat", "sw_video", "sw_ds", "mode_switch", "ssbypv", "ssvideo", "ssff_hist"}

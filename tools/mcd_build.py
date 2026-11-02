@@ -179,7 +179,7 @@ PARAM_SPEC = [
     dict(id="cam.K", cn="相机内参矩阵", domain="工程配置", grade="G3",
          src="config/calib/zmax_calib.json#camera.K", read=("calib", "camera.K"),
          unit="px", rng=None, dflt=None, perm="field",
-         affects=["ssyolo", "ss2d3d", "n_board_frame"], feature=["B1", "B2"],
+         affects=["ssyolo", "ss2d3d"], feature=["B1", "B2"],
          judge="9 元素 · fx/fy>0 · 与 models/real_cam_calib.json 一致"),
     dict(id="cam.dist", cn="畸变系数", domain="工程配置", grade="G3",
          src="config/calib/zmax_calib.json#camera.dist", read=("calib", "camera.dist"),

@@ -27,8 +27,8 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'ss_video'
-SOURCE = ''
-SOURCE_SYMBOL = ''
+SOURCE = 'src/lerobot/engineering/nodes/library.py'
+SOURCE_SYMBOL = 'node_ss_video'
 PARAMS = {'state_space': True, 'state_space_rollout': True, 'desc': '操作视频: 双击打开 metaworld 训练后 rollout 视频对比窗口 (多模型同步播放)', 'viz_kind': 'video'}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现

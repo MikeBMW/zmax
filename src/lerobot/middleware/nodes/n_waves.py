@@ -29,8 +29,8 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'ss_scope'
-SOURCE = ''
-SOURCE_SYMBOL = ''
+SOURCE = 'src/lerobot/engineering/nodes/library.py'
+SOURCE_SYMBOL = 'node_ss_scope'
 PARAMS = {'state_space': True, 'state_space_scope': True, 'desc': '仿真波形: 双击显示最近一次仿真波形 (距离/前馈/残差/接触概率 + 阶段切换标注)', 'viz_kind': 'scope'}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现

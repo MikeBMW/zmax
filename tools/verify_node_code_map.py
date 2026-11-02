@@ -16,7 +16,6 @@ BACKBONE = {
     "ss2d3d": "tools/perception_chain_real.py:pixel_to_board",
     "n_dsvl": "tools/perception_chain_real.py:ask_deepseek_vl",
     "n_vlm_llm": "tools/perception_chain_real.py:ask_deepseek_vl",
-    "n_board_frame": "tools/board_frame_module.py:build_board_frame",
     "n_l2_muscle": "data/skills/l2_atomic/registry.json + tools/l2_daemon.py",
     "n_eng_mem": "data/skills/l2_muscle/",
     "ssff": "tools/gui/state_space_sim_real.py:前馈MLP(SS_USE_MLP)",

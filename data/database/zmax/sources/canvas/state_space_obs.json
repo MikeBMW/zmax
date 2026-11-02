@@ -555,7 +555,9 @@
     "state_space": true,
     "state_space_scope": true,
     "desc": "仿真波形: 双击显示最近一次仿真波形 (距离/前馈/残差/接触概率 + 阶段切换标注)",
-    "viz_kind": "scope"
+    "viz_kind": "scope",
+    "source": "src/lerobot/engineering/nodes/library.py · node_ss_scope",
+    "source_symbol": "node_ss_scope"
    },
    "inputs": [
     "in1",
@@ -580,7 +582,9 @@
     "state_space": true,
     "state_space_rollout": true,
     "desc": "操作视频: 双击打开 metaworld 训练后 rollout 视频对比窗口 (多模型同步播放)",
-    "viz_kind": "video"
+    "viz_kind": "video",
+    "source": "src/lerobot/engineering/nodes/library.py · node_ss_video",
+    "source_symbol": "node_ss_video"
    },
    "inputs": [
     "in1",
@@ -674,7 +678,7 @@
    "type": "model",
    "icon": "🔍",
    "x": 2530,
-   "y": 3446,
+   "y": 3700,
    "w": 280,
    "h": 110,
    "inputs": [
@@ -793,7 +797,9 @@
      "defect_rules": "AOIQualityChecker.check() → DET-AOI-01~04",
      "self_test": "gui-venv311/bin/python src/lerobot/policies/yolo_3d/quality_check.py",
      "align": "python3 tools/aoi/production_sync.py status|verify|diff|pull"
-    }
+    },
+    "source": "src/lerobot/engineering/nodes/library.py · node_ss_aoi",
+    "source_symbol": "node_ss_aoi"
    }
   },
   {
@@ -815,7 +821,7 @@
    "params": {
     "src_switch": true,
     "src_state": "AR场景",
-    "source": "metaworld",
+    "source": "src/lerobot/engineering/nodes/library.py · node_metaworld_data",
     "task": "peg-insert-side-v3",
     "frames": 4800,
     "state_dim": 39,
@@ -823,7 +829,8 @@
     "policy": "left_right",
     "run_env": true,
     "state_space": true,
-    "desc": "[数据源层] 运行环境数据源: 仿真(metaworld 39D/4D 演示) ⇄ 真机(4060 远程只读订阅 Orin: TCP位姿+姿态/六关节/六维力/夹爪/机器人状态/图像) — 点节点上的「仿真/真机」拨钮或右键菜单切换; 双击=按当前模式运行真实模型 (🚀训练/📷推理)"
+    "desc": "[数据源层] 运行环境数据源: 仿真(metaworld 39D/4D 演示) ⇄ 真机(4060 远程只读订阅 Orin: TCP位姿+姿态/六关节/六维力/夹爪/机器人状态/图像) — 点节点上的「仿真/真机」拨钮或右键菜单切换; 双击=按当前模式运行真实模型 (🚀训练/📷推理)",
+    "source_symbol": "node_metaworld_data"
    }
   },
   {
@@ -844,7 +851,9 @@
    "params": {
     "mode": "train",
     "state_space": true,
-    "desc": "[基础·分段小模型] 运行模式选择 (三态, 双击循环切换): 📷推理=加载真实模型 rollout / 🚀训练=训练真实模型(仿真 metaworld) / 🎯真机数据L2训练=边干边学闭环 (真机帧采集+自动标注 → 训练 → 新鲜帧同口径对照 → 有提升才上在役)。选🎯后点「▶ 运行」即按真实数据开训 (相机标定未就绪时只走伪标注, 如实标注 gap)"
+    "desc": "[基础·分段小模型] 运行模式选择 (三态, 双击循环切换): 📷推理=加载真实模型 rollout / 🚀训练=训练真实模型(仿真 metaworld) / 🎯真机数据L2训练=边干边学闭环 (真机帧采集+自动标注 → 训练 → 新鲜帧同口径对照 → 有提升才上在役)。选🎯后点「▶ 运行」即按真实数据开训 (相机标定未就绪时只走伪标注, 如实标注 gap)",
+    "source": "src/lerobot/engineering/nodes/library.py · node_mode_switch",
+    "source_symbol": "node_mode_switch"
    }
   },
   {
@@ -1176,8 +1185,7 @@
    "color": "#b98cff",
    "inputs": [
     "in1",
-    "in2",
-    "in3"
+    "in2"
    ],
    "outputs": [
     "out1",
@@ -1207,8 +1215,7 @@
    "icon": "🧩",
    "color": "#b98cff",
    "inputs": [
-    "in1",
-    "in3"
+    "in1"
    ],
    "outputs": [
     "out1",
@@ -1238,8 +1245,7 @@
    "icon": "🧩",
    "color": "#b98cff",
    "inputs": [
-    "in1",
-    "in3"
+    "in1"
    ],
    "outputs": [
     "out1",
@@ -1269,8 +1275,7 @@
    "icon": "🧩",
    "color": "#b98cff",
    "inputs": [
-    "in1",
-    "in3"
+    "in1"
    ],
    "outputs": [
     "out1",
@@ -1300,8 +1305,7 @@
    "icon": "🧩",
    "color": "#b98cff",
    "inputs": [
-    "in1",
-    "in3"
+    "in1"
    ],
    "outputs": [
     "out1",
@@ -1331,8 +1335,7 @@
    "icon": "🧩",
    "color": "#b98cff",
    "inputs": [
-    "in1",
-    "in3"
+    "in1"
    ],
    "outputs": [
     "out1",
@@ -1362,8 +1365,7 @@
    "icon": "🧩",
    "color": "#b98cff",
    "inputs": [
-    "in1",
-    "in3"
+    "in1"
    ],
    "outputs": [
     "out1",
@@ -1393,8 +1395,7 @@
    "icon": "🧩",
    "color": "#b98cff",
    "inputs": [
-    "in1",
-    "in3"
+    "in1"
    ],
    "outputs": [
     "out1",
@@ -1560,7 +1561,9 @@
     "desc": "[数据源层·能力档位] 单击圆钮直选 / 双击循环: L2 基础(插装成功) → L3 +smolvla(插→拔→AOI→放回全链) → L4 +流形预测世界模型(失败自主恢复直到完成) → L5 大模型视觉语言自动标注(L2/L3/L4 监督数据) + 标注完成自动启动训练(L2 YOLO 全量 / L3 SmolVLA LoRA / L4 INTACT LoRA→merge)。档位驱动 ▶运行 任务链。",
     "state_space": true,
     "cap_level": "L2",
-    "cap_switch": true
+    "cap_switch": true,
+    "source": "src/lerobot/engineering/nodes/library.py · node_ss_cap",
+    "source_symbol": "node_ss_cap"
    },
    "inputs": [
     "in1"
@@ -1575,15 +1578,10 @@
    "w": 280,
    "h": 110,
    "params": {
-    "state_space": true
-   },
-   "inputs": [
-    "in1",
-    "in2"
-   ],
-   "outputs": [
-    "out1"
-   ]
+    "state_space": true,
+    "source": "src/lerobot/memory/mem_nodes.py · node_ss_mem_l2",
+    "source_symbol": "node_ss_mem_l2"
+   }
   },
   {
    "id": "ss_mem_l3",
@@ -1594,7 +1592,9 @@
    "w": 280,
    "h": 110,
    "params": {
-    "state_space": true
+    "state_space": true,
+    "source": "src/lerobot/memory/mem_nodes.py · node_ss_mem_l3",
+    "source_symbol": "node_ss_mem_l3"
    }
   },
   {
@@ -1606,7 +1606,9 @@
    "w": 280,
    "h": 110,
    "params": {
-    "state_space": true
+    "state_space": true,
+    "source": "src/lerobot/memory/mem_nodes.py · node_ss_mem_l4",
+    "source_symbol": "node_ss_mem_l4"
    }
   },
   {
@@ -1633,7 +1635,9 @@
    "w": 280,
    "h": 110,
    "params": {
-    "state_space": true
+    "state_space": true,
+    "source": "src/lerobot/memory/mem_nodes.py · node_ss_mem_share",
+    "source_symbol": "node_ss_mem_share"
    },
    "inputs": [
     "in1",
@@ -1641,8 +1645,7 @@
     "in3",
     "in4",
     "in5",
-    "in6",
-    "in7"
+    "in6"
    ]
   },
   {
@@ -1897,25 +1900,6 @@
    }
   },
   {
-   "id": "n_board_frame",
-   "type": "condition",
-   "name": "📐 板坐标系定位 (工序坐标系·免手眼)",
-   "x": 3260,
-   "y": 3446,
-   "w": 280,
-   "h": 110,
-   "params": {
-    "kind": "real",
-    "real": true,
-    "dock": "board_frame",
-    "source": "tools/board_frame_module.py",
-    "desc": "真机帧 → 板检测(20点/反色/排镜像) → 模块射线∩板平面 → 模块在板坐标(x,y)mm。绕开手拖位姿精度限制; 精度~1mm(图像决定)。",
-    "out": "模块在板坐标系 (x,y) mm · 离板面 mm · 板距 m · conf"
-   },
-   "icon": "📐",
-   "color": "#d4a800"
-  },
-  {
    "id": "n_l2_muscle",
    "type": "model",
    "name": "💪 L2 肌肉记忆技能库 (光模块抓放循环)",
@@ -1931,7 +1915,9 @@
     "skill": "data/skills/l2_muscle/光模块_抓放循环_v1.json",
     "bridge": "tools/l2_ros2_bridge.py",
     "layer": "L2",
-    "desc": "L2 肌肉记忆: 对准→下降→夹紧(force40)→抬起; 由 L3 序列调用, 经 l2_ros2_bridge(ROS2) 转发 Orin"
+    "desc": "L2 肌肉记忆: 对准→下降→夹紧(force40)→抬起; 由 L3 序列调用, 经 l2_ros2_bridge(ROS2) 转发 Orin",
+    "source": "src/lerobot/engineering/nodes/library.py · node_n_l2_muscle",
+    "source_symbol": "node_n_l2_muscle"
    }
   },
   {
@@ -2196,7 +2182,11 @@
    ],
    "outputs": [
     "out1"
-   ]
+   ],
+   "params": {
+    "source": "src/lerobot/engineering/nodes/library.py · node_realscene_live",
+    "source_symbol": "node_realscene_live"
+   }
   },
   {
    "id": "ss_l5",
@@ -2225,7 +2215,9 @@
     "annotator": "tools/auto_annotate.py",
     "trainer": "tools/joint_train_all.py",
     "lora_inject": "tools/lora_inject.py",
-    "lora_merge": "tools/merge_lora_ckpt.py"
+    "lora_merge": "tools/merge_lora_ckpt.py",
+    "source": "src/lerobot/engineering/nodes/library.py · node_l5_loop",
+    "source_symbol": "node_l5_loop"
    }
   },
   {
@@ -2273,14 +2265,14 @@
      "工程库": "data/database/zmax/zmax_engineering.db"
     },
     "cfg_snapshot": {
-     "loaded_at": "2026-11-02 10:05:31",
+     "loaded_at": "2026-11-02 21:18:25",
      "files_total": 8,
      "files_ok": 8,
      "orders": 12,
      "tasks": 8,
      "active_task": "TASK-07-AOI",
-     "params_total": 112,
-     "params_ready": 93,
+     "params_total": 116,
+     "params_ready": 97,
      "params_gap": 19,
      "mcd_schema": "",
      "project": "zmax_space.proj",
@@ -2337,18 +2329,18 @@
      "口径": "一个状态空间工程承载全部任务; 任务=配方段子集+参数覆盖"
     },
     "source_symbol": "def import_config_files(",
-    "cfg_loaded_at": "2026-11-02 10:05:31",
+    "cfg_loaded_at": "2026-11-02 21:18:25",
     "cfg_files": [
      {
       "name": "总工程文件",
       "rel": "data/database/zmax/zmax_space.proj",
-      "sha256": "0a0dcc4d9277040c",
+      "sha256": "55c1d13c41df53e5",
       "exists": true
      },
      {
       "name": "任务绑定",
       "rel": "config/ss_task_binding.json",
-      "sha256": "480fe29fe4fa4a7f",
+      "sha256": "43bf60545fcd6e75",
       "exists": true
      },
      {
@@ -2360,13 +2352,13 @@
      {
       "name": "MCD描述",
       "rel": "config/mcd/zmax_mcd.json",
-      "sha256": "63258344950d1b62",
+      "sha256": "5c83df076735be89",
       "exists": true
      },
      {
       "name": "参数注册表",
       "rel": "config/mcd/param_registry.json",
-      "sha256": "03a5f2d98f4d2e05",
+      "sha256": "fffb72e4689d3854",
       "exists": true
      },
      {
@@ -2569,9 +2561,9 @@
   {
    "id": "ss_seg",
    "type": "model",
-   "name": "🧩 开放词汇分割 (SAM3 分割anything)",
+   "name": "🧩 SAM3分割",
    "x": 2530,
-   "y": 3576,
+   "y": 3446,
    "w": 280,
    "h": 110,
    "icon": "🧩",
@@ -2582,7 +2574,7 @@
     "open_vocabulary": true,
     "kind": "real",
     "layer": "L2",
-    "role": "L2 感知原语 — 一帧 + 概念提示词(文本/框/点) → 该概念的**所有实例掩膜**(像素级); 与 L2-A01 YOLO 同级(框→轮廓, 固定类→开放词汇)",
+    "role": "L2 感知原语 — 一帧 + 概念提示词(文本/框/点) → 该概念的**所有实例掩膜**(像素级); 与 YOLO 同级(框→轮廓, 固定类→开放词汇)",
     "intent_from": "L5 (VLM/人/工单给概念; 本节点不自造概念)",
     "model": "facebook/sam3 (848M: 共享视觉编码 + DETR 检测器 + SAM2 式跟踪器)",
     "engine": "transformers Sam3Model / Sam3Processor (本机 transformers 5.16.1) + 权重=HF 逐文件镜像(官方 gated, 用镜像)",
@@ -3675,54 +3667,6 @@
    "label": "DeepSeek-V4-Flash 判读结果 → 场景理解层 (人机在环)"
   },
   {
-   "id": "lkbdf159",
-   "f": "ssyolo",
-   "t": "n_board_frame",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "YOLO 2D 框 → 射线 (L2 感知)"
-  },
-  {
-   "id": "lkbdf161",
-   "f": "n_dsvl",
-   "t": "n_board_frame",
-   "f_port": "out1",
-   "t_port": "in3",
-   "label": "VL 场景判读 → 工序纠错 (L3 理解)"
-  },
-  {
-   "id": "lkbdf162",
-   "f": "n_board_frame",
-   "t": "ss_mem_share",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "模块位姿 → 总装记忆"
-  },
-  {
-   "id": "lkbdf163",
-   "f": "n_board_frame",
-   "t": "ss2d3d",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "板坐标系 3D 定位 → 3D 框/目标点"
-  },
-  {
-   "id": "lkbdf164",
-   "f": "n_board_frame",
-   "t": "sssched",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "工序坐标系目标 → 动作调制"
-  },
-  {
-   "id": "lkrs_ssz700_n_board_frame",
-   "f": "ssz700",
-   "t": "n_board_frame",
-   "f_port": "out1",
-   "t_port": "in1",
-   "label": "真机帧 → 板检测 (20 圆点)"
-  },
-  {
    "id": "lkl2m3",
    "f": "n_l2_muscle",
    "t": "sssched",
@@ -4684,70 +4628,6 @@
    "t": "ssplan",
    "t_port": "in2",
    "label": "L2 视觉3D 观测点 (vision_points 契约) → 长程编排 (闭环反馈: 感知回灌规划, 带 conf/gaps)"
-  },
-  {
-   "id": "1",
-   "f": "ss_mem_l2",
-   "f_port": "out1",
-   "t": "sssk1",
-   "t_port": "in3",
-   "label": "🧠 记忆赋能: 本段通道 r/L/单拍 + 标杆 + 点位"
-  },
-  {
-   "id": "2",
-   "f": "ss_mem_l2",
-   "f_port": "out1",
-   "t": "sssk2",
-   "t_port": "in3",
-   "label": "🧠 记忆赋能: 本段通道 r/L/单拍 + 标杆 + 点位"
-  },
-  {
-   "id": "3",
-   "f": "ss_mem_l2",
-   "f_port": "out1",
-   "t": "sssk3",
-   "t_port": "in3",
-   "label": "🧠 记忆赋能: 本段通道 r/L/单拍 + 标杆 + 点位"
-  },
-  {
-   "id": "4",
-   "f": "ss_mem_l2",
-   "f_port": "out1",
-   "t": "sssk4",
-   "t_port": "in3",
-   "label": "🧠 记忆赋能: 本段通道 r/L/单拍 + 标杆 + 点位"
-  },
-  {
-   "id": "5",
-   "f": "ss_mem_l2",
-   "f_port": "out1",
-   "t": "sssk5",
-   "t_port": "in3",
-   "label": "🧠 记忆赋能: 本段通道 r/L/单拍 + 标杆 + 点位"
-  },
-  {
-   "id": "6",
-   "f": "ss_mem_l2",
-   "f_port": "out1",
-   "t": "sssk6",
-   "t_port": "in3",
-   "label": "🧠 记忆赋能: 本段通道 r/L/单拍 + 标杆 + 点位"
-  },
-  {
-   "id": "7",
-   "f": "ss_mem_l2",
-   "f_port": "out1",
-   "t": "sssk7",
-   "t_port": "in3",
-   "label": "🧠 记忆赋能: 本段通道 r/L/单拍 + 标杆 + 点位"
-  },
-  {
-   "id": "8",
-   "f": "ss_mem_l2",
-   "f_port": "out1",
-   "t": "sssk8",
-   "t_port": "in3",
-   "label": "🧠 记忆赋能: 本段通道 r/L/单拍 + 标杆 + 点位"
   }
  ],
  "params_note": ""

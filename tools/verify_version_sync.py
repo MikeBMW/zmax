@@ -43,9 +43,9 @@ SYNC_LOCS = [
      r'CURRENT_VERSION = "(v?\d+\.\d+\.\d+)"', "自动更新当前版本"),
     ("version_sync.py:zmax_ver", "tools/gui/version_sync.py",
      r'zmax_ver = "(v?\d+\.\d+\.\d+)"', "版本同步面板显示(不带 v)"),
-    ("docs_sync.py:\"version\"", "tools/gui/docs_sync.py",
-     r'"version": "(v?\d+\.\d+\.\d+)"', "文档站版本键"),
-    ("docs_sync.py:\"zmax_version\"", "tools/gui/docs_sync.py",
+    ("docs_sync.py:\"version\"", "src/lerobot/ops/docs_sync.py",
+     r'"version": "(v?\d+\.\d+\.\d+)"', "文档站版本键 (真身在 src/ops, tools/gui 只是兼容层)"),
+    ("docs_sync.py:\"zmax_version\"", "src/lerobot/ops/docs_sync.py",
      r'"zmax_version": "(v?\d+\.\d+\.\d+)"', "文档站 zmax 版本键"),
     # bump 工具会同步它, 但 VERSION.md 清单未列 —— 老门自己就是判据, 必须一起改
     ("integrity_check.py:EXPECTED_VERSION", "tools/ci/integrity_check.py",

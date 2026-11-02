@@ -912,7 +912,11 @@ def run(ctx=None):
             "src_kind": _visv.get("src_kind"),
             "age_s": (round(max(0.0, time.time() - float(_visv["t"])), 3) if _visv.get("t") else None),
             "cached_ago_s": _visv.get("cached_ago_s"),
-            "points": {k: {"pos_mm": v.get("pos_mm"), "conf": v.get("conf")}
+            # 🆕 2026-11-03: 姿态/尺寸一起透传, 否则下游永远拿到的只有点
+            #   (原实现只投影 pos_mm/conf, 上面 goal_quat 那段会恒为空 —— 实测踩到)
+            "points": {k: {kk: v.get(kk) for kk in
+                           ("pos_mm", "conf", "quat", "size_mm", "pose_src", "pose_frame")
+                           if v.get(kk) is not None}
                        for k, v in _pts.items() if isinstance(v, dict)},
         }
     # 🔴 2026-10-31 老倪: 「技能节点的信号必须传入 plan 节点」——
@@ -1084,6 +1088,15 @@ def run(ctx=None):
             o1["goal_src"] = "vision_points:光模块·当前"
             o1["goal_conf"] = _pv.get("conf")
             o1["goal_frame"] = _vis.get("frame")
+            # 姿态随目标一起下发 (2026-11-03): 有 quat 才带, 没有就明确不给,
+            # 下游据此决定"能否做朝向对齐"。size_mm 同理, 供夹爪开合预估。
+            if _pv.get("quat"):
+                o1["goal_quat"] = [float(x) for x in _pv["quat"]]
+                o1["goal_quat_src"] = _pv.get("pose_src")
+                o1["goal_quat_frame"] = _pv.get("pose_frame") or _vis.get("frame")
+            if _pv.get("size_mm"):
+                o1["goal_size_mm"] = [float(x) for x in _pv["size_mm"]]
+            o1["goal_has_pose"] = bool(_pv.get("quat"))
     # 🧠 记忆层取证块: 每拍随 ar_cmd 发出 (L2 标杆比例 / L3 节拍 / L4 安全包络 + 本段生效值)
     mem_block = None
     if mem_on:

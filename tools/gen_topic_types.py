@@ -31,7 +31,6 @@ OUT = ROOT / "config" / "platform" / "dds_topic_types.json"
 # 节点 → (语义英文词干, 中文名, 出口语义覆盖)
 #   说明: 词干要能一眼看出"这条数据是什么", 所以按节点的**功能**取名, 不按节点 id。
 NODES = {
-    "n_board_frame":   ("BoardFrame",        "板坐标系定位",        {}),
     "n_calib_mani":    ("CalibDiag",         "标定诊断测量",        {}),
     "n_dsvl":          ("SceneUnderstanding", "DeepSeek 场景理解",  {}),
     "n_eng_mem":       ("EngineeringMemory", "工程记忆",            {}),

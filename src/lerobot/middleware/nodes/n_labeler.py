@@ -29,8 +29,8 @@ PORTS_OUT = ['out1', 'out2', 'out3', 'out4']
 PORT_LABELS = {}
 
 IMPL_KEY = 'l5_loop'
-SOURCE = ''
-SOURCE_SYMBOL = ''
+SOURCE = 'src/lerobot/engineering/nodes/library.py'
+SOURCE_SYMBOL = 'node_l5_loop'
 PARAMS = {'state_space': True, 'l5_loop': True, 'l5_capability_level': True, 'orchestrator': 'tools/l5_annotate_train_loop.py', 'annotator': 'tools/auto_annotate.py', 'trainer': 'tools/joint_train_all.py', 'lora_inject': 'tools/lora_inject.py', 'lora_merge': 'tools/merge_lora_ckpt.py'}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现

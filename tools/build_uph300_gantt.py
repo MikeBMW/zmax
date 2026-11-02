@@ -230,7 +230,7 @@ def slide_round(pr, R):
              'AR3D 节拍甘特 · 一轮 %d 件 / %.2f s（含模块孔内停留）' % (len(R['done']), R['total']),
              size=17.5, bold=True)
     add_text(s, 0.55, 0.60, 12.3, 0.32,
-             '真源 GET /api/sim_insert（cfg_sha %s · %d 段）；蓝底 = 页面稳态循环 %.3f s / %d 件 → %.3f s/件。'
+             '数据取自 AR3D 页面同一接口（配置指纹 %s · %d 段）；蓝底 = 稳态循环 %.3f 秒 / %d 件 → %.3f 秒/件。'
              '灰色虚线条 = 模块插到位到夹住待测的停留（dwell），与其它件的拔/AOI/落盘并行，不单独占节拍。' % (
                  R['d'].get('cfg_sha', '—'), R['n_segs'], R['dur'], R['mods'], R['tact']),
              size=7.6, color=C_DIM)
@@ -246,7 +246,7 @@ def slide_round(pr, R):
     add_text(s, 0.55, 5.96, 12.3, 1.0,
              '为什么必须画停留：光模块插进孔后不立刻拔，要在孔内坐一段时间再取出去做 AOI —— 这是流程约束，不是空等。'
              '上排(上料)与灰条(停留)都是并行的；真正吃节拍的是右臂四件事：拔 → AOI → 落盘 → 补插。'
-             '蓝底窗口内 %d 件走完 %.3f s 后无缝回到第 1 件，所以 UPH 由该窗口决定，而不是首轮 %.2f s。' % (
+             '蓝底窗口内 %d 件走完 %.3f 秒后无缝回到第 1 件，所以产能由这个窗口决定，而不是首轮 %.2f 秒。' % (
                  R['mods'], R['dur'], R['total']),
              size=8, color=C_DIM)
 
@@ -280,7 +280,7 @@ def slide_loop(pr, R):
     s = pr.slides.add_slide(pr.slide_layouts[6])
     dur, tact = R['dur'], R['tact']
     add_text(s, 0.55, 0.18, 12.3, 0.40,
-             '稳态循环放大 · %.3f s / %d 件 = %.3f s/件（%.0f UPH，目标 300）' % (dur, R['mods'], tact, R['uph']),
+             '稳态循环放大 · %.3f 秒 / %d 件 = %.3f 秒/件（每小时 %.0f 件，设计目标 300 件）' % (dur, R['mods'], tact, R['uph']),
              size=17.5, bold=True)
     add_text(s, 0.55, 0.60, 12.3, 0.32,
              '窗口 = 页面 plantCtx（loop.ks=[%d,%d]）；细红线 = 每件 %.3f s 节拍线。灰虚线条为跨窗口的停留，'
@@ -304,7 +304,7 @@ def slide_loop(pr, R):
     gm = [seg['t'] for seg in R['d']['plan'] if (seg.get('label') or '').startswith('→ 金手指点1')]
     dw = [b - a for _, a, b in R['dwell']]
     add_text(s, 0.55, 5.50, 12.3, 0.34,
-             '右臂净作业（段表动作块）%.2f s / 循环 %.3f s（%.0f%%）　节拍 %.3f s → %.0f UPH（300 = 12 s，余量 %.3f s）　'
+             '右臂净作业（段表动作块）%.2f 秒 / 循环 %.3f 秒（%.0f%%）　节拍 %.3f 秒 → 每小时 %.0f 件（目标 12 秒/件，余量 %.3f 秒）　'
              '停留 %.2f~%.2f s 与作业并行' % (
                  occ, dur, 100.0 * occ / dur, tact, R['uph'], 12.0 - tact, min(dw), max(dw)),
              size=9, color=C_TXT)
@@ -314,7 +314,7 @@ def slide_loop(pr, R):
              '⇒ 块内 %.3f + 走位 %.3f = 节拍 %.3f s。\n'
              '停留不是空闲：模块必须坐够 dwell_min %.2f s 才能拔（首件 %.2f s 刚好卡线），而 mod4/mod6 已到 %.2f s ≈ 配置上限 %.1f s —— '
              '4 孔轮转把停留用满了，AOI 一旦变慢就会破上限；这也是提节拍前必须先看的一条约束。\n'
-             '口径：%.0f UPH 是段表理论值（段内匀速 + 段间无缝衔接，未计加减速）：直线段速度峰值 %.0f mm/s、中位 %.0f mm/s。'
+             '说明：每小时 %.0f 件是按段表算出来的理论值（段内匀速、段间无缝衔接，未计加减速）：直线段速度峰值 %.0f 毫米/秒、中位 %.0f 毫米/秒。'
              '要「保证 300」必须真机连续 ≥30 件实测循环 + AOI 耗时 P95，当前真机零指令，未实测。' % (
                  len(win), pu[0], pu[1], ao[2], pl[0], pl[1], ins[0], ins[1], occ / R['mods'],
                  gap / R['mods'], sum(gm) / len(gm) if gm else 0.0,

@@ -18,7 +18,7 @@
 """
 
 NODE_ID = 'ss_seg'
-NAME = '🧩 开放词汇分割 (SAM3 分割anything)'
+NAME = '🧩 SAM3分割'
 LAYER = ''
 TYPE = 'model'
 EXEC_MODE = 'pure'

@@ -130,6 +130,18 @@ def load_nodes(band_ids):
     return out, bands
 
 
+_HUMAN = (("层间链接 links", "层间连线"), ("真源", "来源文件"), ("口径", "计算方式"), ("UPH", "件/小时"),
+          ("PURE", "内部算法"), ("in1", "输入1"), ("in2", "输入2"), ("in3", "输入3"),
+          ("out1", "输出1"), ("out2", "输出2"), ("out3", "输出3"))
+
+
+def human(t):
+    """把节点自述里的内部说法换成人话(只在显示层替换, 不改节点代码与画布)。"""
+    for a, b in _HUMAN:
+        t = (t or "").replace(a, b)
+    return t
+
+
 def short(desc, n=54):
     d = re.sub(r'^\[[^\]]*\]\s*', '', desc or '').strip()
     for sep in ('；', ';', '。', '，'):
@@ -150,7 +162,7 @@ def reset_deck(pr, keep=7):
 def lay_panorama(pr, layer, title, note, nodes, bands, band_ids, top_only=False, height=None):
     s = pr.slides.add_slide(pr.slide_layouts[6])
     add_text(s, 0.50, 0.18, 12.4, 0.34,
-             '%s 层全景 · %d 个节点（名称逐字照抄画布）' % (layer, len(nodes)), size=16, bold=True)
+             '%s 层功能全景 · %d 个节点，名称与画布一致' % (layer, len(nodes)), size=16, bold=True)
     add_text(s, 0.50, 0.54, 12.4, 0.42, note, size=8.0, color=C_DIM, spacing=1.15)
     y = 0.98
     CW, GAP, CH, PER = 1.746, 0.05, 0.40, 7
@@ -185,12 +197,13 @@ def lay_panorama(pr, layer, title, note, nodes, bands, band_ids, top_only=False,
 def lay_table(pr, layer, chunk, part, total_parts, y0=0.82):
     s = pr.slides.add_slide(pr.slide_layouts[6])
     add_text(s, 0.42, 0.16, 12.5, 0.32,
-             '%s 层节点功能表（%d/%d）· %d 个节点逐条' % (layer, part, total_parts, len(chunk)), size=15, bold=True)
+             '%s 层功能说明表（%d/%d）· 逐节点' % (layer, part, total_parts), size=15, bold=True)
     add_text(s, 0.42, 0.50, 12.5, 0.22,
-             '节点名 = 画布原名逐字；功能 = 节点实现 PARAMS["desc"] 首句；实现 = SOURCE 文件 + PURE 是否真算。',
+             '每一行是一个功能节点：名称照画布原样，说明取该节点代码里写的第一句功能描述，'
+             '最后一列给出它的计算代码位置，以及内部算法在当前这一拍是否真的参与运算。',
              size=7.4, color=C_DIM)
-    cols = [('画布带', 1.75), ('节点（画布原名）', 3.20), ('节点 ID', 1.16),
-            ('功能（节点实现原文首句）', 4.40), ('实现文件 / PURE', 1.55)]
+    cols = [('所属功能带', 1.75), ('节点名称', 3.20), ('节点代号', 1.16),
+            ('这个节点负责什么（取自代码里的功能说明）', 4.40), ('计算代码 / 内部算法', 1.55)]
     gx, gy, rowh = 0.42, y0, 0.315 if len(chunk) > 10 else 0.40
     x = gx
     for name, w in cols:
@@ -206,7 +219,9 @@ def lay_table(pr, layer, chunk, part, total_parts, y0=0.82):
                         .replace('L3 高级自动功能 · ', '').replace('L3 记忆 · ', '记忆 · ')
                         .replace('L4 专家自主功能 · ', '').replace('L4 记忆 · ', '记忆 · ')
                         .replace('🧠 大模型层 · ', ''),
-                n['name'], n['id'], short(n['desc']), '%s / %s' % (os.path.basename(n['src']), n['pure'])]
+                n['name'], n['id'], human(short(n['desc'])),
+                '%s ／ %s' % (os.path.basename(n['src']),
+                              '内部算法参与运算' if n['pure'] == 'True' else '本拍仅转发数据')]
         for j, (cname, w) in enumerate(cols):
             box(s, x, y, w, rowh, fill, C_LINE, MSO_SHAPE.RECTANGLE)
             col = C_TXT
@@ -231,8 +246,8 @@ def main():
         if layer == 'L3':                     # 只有 4 个节点: 全景 + 表放一页
             s, yend = lay_panorama(pr, layer, title, note, nodes, bands, band_ids)
             # 同一页下半部分放功能表
-            cols = [('节点（画布原名）', 3.30), ('节点 ID', 1.10), ('功能（节点实现原文首句）', 6.20),
-                    ('实现 / PURE', 1.46)]
+            cols = [('节点名称', 3.30), ('节点代号', 1.10), ('这个节点负责什么（取自代码里的功能说明）', 6.20),
+                    ('计算代码 / 内部算法', 1.46)]
             gy = max(yend + 0.12, 3.2)
             x = 0.50
             for name, w in cols:
@@ -244,7 +259,9 @@ def main():
             for i, n in enumerate(nodes):
                 x = 0.50
                 fill = RGBColor(0xF7, 0xF9, 0xFC) if i % 2 == 0 else RGBColor(0xFF, 0xFF, 0xFF)
-                vals = [n['name'], n['id'], short(n['desc'], 78), '%s / %s' % (os.path.basename(n['src']), n['pure'])]
+                vals = [n['name'], n['id'], human(short(n['desc'], 78)),
+                        '%s ／ %s' % (os.path.basename(n['src']),
+                                      '内部算法参与运算' if n['pure'] == 'True' else '本拍仅转发数据')]
                 for j, (cname, w) in enumerate(cols):
                     box(s, x, y, w, 0.34, fill, C_LINE, MSO_SHAPE.RECTANGLE)
                     add_text(s, x + 0.05, y + 0.02, w - 0.09, 0.30, vals[j], size=6.8, bold=(j == 0),
@@ -258,7 +275,7 @@ def main():
             _c = l2_wiring.counts()
             s1 = pr.slides.add_slide(pr.slide_layouts[6])       # 标题先写, 保证大纲/首框就是标题
             add_text(s1, 0.50, 0.13, 12.4, 0.32,
-                     'L2 层连线 · %d 个功能节点 / %d 条内部连线（画布 links 逐条）+ L3 入口 %d 个节点 / %d 条连线'
+                     '基础层内部连线 · %d 个功能节点之间共 %d 条连线，另有 %d 个上层节点接入（%d 条连线）'
                      % (_c['l2_nodes'], _c['l2_edges'], _c['l3_nodes'], _c['l3_edges']),
                      size=15, bold=True)
             add_text(s1, 0.50, 0.50, 12.4, 0.40,
