@@ -108,9 +108,30 @@ def _scc(nodes_set, out):
     return comp
 
 
+_MAIN_POS = ("动作命令", "真下发", "段表", "plan → exec", "到位", "命令")
+_SIDE_NEG = ("只喂渲染", "旁路", "回显", "上网通道", "默认关", "proxy", "AR 场景")
+
+
+def _link_score(k):
+    """主信号流优先: in1 主线 + 动作/真下发/段表 ⇒ 加分; 只喂渲染/旁路/可选项 ⇒ 减分。"""
+    lab = str(k.get("label") or "")
+    sc = 0
+    if k.get("t_port") == "in1":
+        sc += 2
+    if any(x in lab for x in _MAIN_POS):
+        sc += 3
+    if any(x in lab for x in _SIDE_NEG):
+        sc -= 3
+    return sc
+
+
 def chain_order(l2, links):
-    """末端优先: SCC 压缩成 DAG → 按「离源头最远」分层 → 同层按画布 y/x 排。
-    反馈边 (回路) 落在同一 SCC 内, 不再破坏顺序。"""
+    """逆序主链优先: 从末端(无 L2 下游)出发, 每步先走「主输入」, 再走旁支。
+
+    老倪 2026-11-02: 「机器人执行器之前, 应该是动作执行器」—— 也就是页序必须按**信号流主线**排
+    (物理世界 ← 机器人执行器 ← 动作执行器 ← 运动规划 ← …), 不许按坐标/深度把技能支线插进来。
+    画布 y/x 只做主输入的并列 tie-break; 一个节点都没漏: 主链走完再补旁支(同规则 DFS)。
+    """
     nodes, _, _ = l2_nodes()
     out_l2 = {n: set() for n in l2}
     in_l2 = {n: set() for n in l2}
@@ -120,6 +141,7 @@ def chain_order(l2, links):
             out_l2[f].add(t)
             in_l2[t].add(f)
 
+    # 深度 = 离源头最长路径 (SCC 压缩, 回路不参与分层) —— 只用来选「从哪开始」和补旁支顺序
     comps = _scc(l2, out_l2)
     cid = {v: i for i, c in enumerate(comps) for v in c}
     cout = {i: set() for i in range(len(comps))}
@@ -127,25 +149,48 @@ def chain_order(l2, links):
         for w in ws:
             if cid[v] != cid[w]:
                 cout[cid[v]].add(cid[w])
-
-    # 最长路径深度 (源 = 无入边的分量, 深度 0)
     cin = {i: set() for i in range(len(comps))}
     for i, ws in cout.items():
         for w in ws:
             cin[w].add(i)
-    depth = {i: 0 for i in range(len(comps))}
-    changed = True
-    while changed:                                    # DAG 上松弛即可
-        changed = False
+    dep = {i: 0 for i in range(len(comps))}
+    for _ in range(len(comps)):
         for i in sorted(cout):
-            d = max([depth[j] + 1 for j in cin[i]], default=depth[i])
-            if d != depth[i]:
-                depth[i] = d
-                changed = True
-    order_comps = sorted(range(len(comps)), key=lambda i: (-depth[i], -min(nodes[v]["y"] for v in comps[i])))
-    order = []
-    for i in order_comps:
-        order.extend(sorted(comps[i], key=lambda v: (-nodes[v]["y"], -nodes[v]["x"])))
+            dep[i] = max([dep[j] + 1 for j in cin[i]], default=dep[i])
+
+    ups = {}
+    for k in links:
+        f, t = k.get("f"), k.get("t")
+        if f in l2 and t in l2:
+            ups.setdefault(t, []).append(k)
+
+    def _key(k):
+        v = k.get("f")
+        return (-_link_score(k), -(nodes[v]["y"] if v in nodes else 0),
+                -(nodes[v]["x"] if v in nodes else 0))
+
+    order, seen = [], set()
+
+    def _walk(n):
+        if n in seen:
+            return
+        seen.add(n)
+        order.append(n)
+        for k in sorted(ups.get(n, []), key=_key):
+            _walk(k.get("f"))
+
+    # ① 主链起点 = 「最后输出端」: L2 下游只剩反馈边(↩ 观测反馈)的节点 (= 物理世界)
+    fb_only = []
+    for n in l2:
+        downs = [k for k in links if k.get("f") == n and k.get("t") in l2]
+        if all(("反馈" in str(k.get("label") or "")) or str(k.get("label") or "").startswith("↩")
+               for k in downs):
+            fb_only.append(n)
+    starts = sorted(fb_only, key=lambda v: (-dep[cid[v]], -(nodes[v]["y"] if v in nodes else 0), v))
+    starts += sorted([v for v in l2 if v not in fb_only],
+                     key=lambda v: (-dep[cid[v]], -(nodes[v]["y"] if v in nodes else 0), v))
+    for n in starts:
+        _walk(n)
     return order, out_l2, in_l2
 
 
