@@ -1185,7 +1185,8 @@
    "color": "#b98cff",
    "inputs": [
     "in1",
-    "in2"
+    "in2",
+    "in3"
    ],
    "outputs": [
     "out1",
@@ -1215,7 +1216,8 @@
    "icon": "🧩",
    "color": "#b98cff",
    "inputs": [
-    "in1"
+    "in1",
+    "in3"
    ],
    "outputs": [
     "out1",
@@ -1245,7 +1247,8 @@
    "icon": "🧩",
    "color": "#b98cff",
    "inputs": [
-    "in1"
+    "in1",
+    "in3"
    ],
    "outputs": [
     "out1",
@@ -1275,7 +1278,8 @@
    "icon": "🧩",
    "color": "#b98cff",
    "inputs": [
-    "in1"
+    "in1",
+    "in3"
    ],
    "outputs": [
     "out1",
@@ -1305,7 +1309,8 @@
    "icon": "🧩",
    "color": "#b98cff",
    "inputs": [
-    "in1"
+    "in1",
+    "in3"
    ],
    "outputs": [
     "out1",
@@ -1335,7 +1340,8 @@
    "icon": "🧩",
    "color": "#b98cff",
    "inputs": [
-    "in1"
+    "in1",
+    "in3"
    ],
    "outputs": [
     "out1",
@@ -1365,7 +1371,8 @@
    "icon": "🧩",
    "color": "#b98cff",
    "inputs": [
-    "in1"
+    "in1",
+    "in3"
    ],
    "outputs": [
     "out1",
@@ -1395,7 +1402,8 @@
    "icon": "🧩",
    "color": "#b98cff",
    "inputs": [
-    "in1"
+    "in1",
+    "in3"
    ],
    "outputs": [
     "out1",
@@ -1645,7 +1653,8 @@
     "in3",
     "in4",
     "in5",
-    "in6"
+    "in6",
+    "in7"
    ]
   },
   {
@@ -4628,6 +4637,70 @@
    "t": "ssplan",
    "t_port": "in2",
    "label": "L2 视觉3D 观测点 (vision_points 契约) → 长程编排 (闭环反馈: 感知回灌规划, 带 conf/gaps)"
+  },
+  {
+   "id": "1",
+   "f": "ss_mem_l2",
+   "f_port": "out1",
+   "t": "sssk1",
+   "t_port": "in3",
+   "label": "🧠 记忆赋能: 本段通道 r/L/单拍 + 标杆 + 点位"
+  },
+  {
+   "id": "2",
+   "f": "ss_mem_l2",
+   "f_port": "out1",
+   "t": "sssk2",
+   "t_port": "in3",
+   "label": "🧠 记忆赋能: 本段通道 r/L/单拍 + 标杆 + 点位"
+  },
+  {
+   "id": "3",
+   "f": "ss_mem_l2",
+   "f_port": "out1",
+   "t": "sssk3",
+   "t_port": "in3",
+   "label": "🧠 记忆赋能: 本段通道 r/L/单拍 + 标杆 + 点位"
+  },
+  {
+   "id": "4",
+   "f": "ss_mem_l2",
+   "f_port": "out1",
+   "t": "sssk4",
+   "t_port": "in3",
+   "label": "🧠 记忆赋能: 本段通道 r/L/单拍 + 标杆 + 点位"
+  },
+  {
+   "id": "5",
+   "f": "ss_mem_l2",
+   "f_port": "out1",
+   "t": "sssk5",
+   "t_port": "in3",
+   "label": "🧠 记忆赋能: 本段通道 r/L/单拍 + 标杆 + 点位"
+  },
+  {
+   "id": "6",
+   "f": "ss_mem_l2",
+   "f_port": "out1",
+   "t": "sssk6",
+   "t_port": "in3",
+   "label": "🧠 记忆赋能: 本段通道 r/L/单拍 + 标杆 + 点位"
+  },
+  {
+   "id": "7",
+   "f": "ss_mem_l2",
+   "f_port": "out1",
+   "t": "sssk7",
+   "t_port": "in3",
+   "label": "🧠 记忆赋能: 本段通道 r/L/单拍 + 标杆 + 点位"
+  },
+  {
+   "id": "8",
+   "f": "ss_mem_l2",
+   "f_port": "out1",
+   "t": "sssk8",
+   "t_port": "in3",
+   "label": "🧠 记忆赋能: 本段通道 r/L/单拍 + 标杆 + 点位"
   }
  ],
  "params_note": ""
