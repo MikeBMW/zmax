@@ -11,6 +11,12 @@ import os
 import sys
 import time
 
+# 🆕 2026-11-03: 节点级 SU(2) 映射的**真数据源**。每次真跑完一个节点, 把它这一拍的返回值按节点名
+#   留一份 (只做记录, 不改执行语义)。此前 node_ss_su2 读 getattr(mod, "_ss_io_frame"), 但全仓库
+#   无人写这个属性 ⇒ encode_nodes 永远吃空帧, 节点级映射形同没接 (静默)。
+LAST_OUT: dict = {}          # {节点名: 最近一次真实输出 dict}
+LAST_OUT_T: dict = {}        # {节点名: 时间戳 (monotonic 秒)}
+
 from .registry import NODE_LOGIC, match_node
 
 def _trace_exec(fn, ctx, log):
@@ -197,6 +203,14 @@ def execute_node_logic(module, node, label=None, trace=None, demo=False):
         _out = _trace_exec(info["fn"], ctx, getattr(module, "_log", None))
     else:
         _out = info["fn"](ctx)
+    # 🆕 2026-11-03: 留一份本拍真实输出给节点级 SU(2) 映射 (见文件头 LAST_OUT 注释)。
+    #   只认 dict (壳约定: 返回 dict 才算「实现执行」); 不吞异常、不改返回值。
+    try:
+        if isinstance(_out, dict):
+            LAST_OUT[name] = _out
+            LAST_OUT_T[name] = time.monotonic()
+    except Exception:                                                # noqa: BLE001
+        pass
     try:
         from .layer_calls import touch as _lc_touch
         _lc_touch(key, name)

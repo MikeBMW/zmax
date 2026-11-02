@@ -2640,14 +2640,40 @@ def _ss_env_obs(log):
     return obs39, img
 
 def _ss_ensure_obs43(log):
-    """真实 43D obs: metaworld 39D + 触觉合成 → fuse_sensors (perception.py), 缓存供下游"""
+    """真实 43D obs: metaworld 39D + 触觉合成 → fuse_sensors (perception.py), 缓存供下游
+
+    🆕 2026-11-03 (老倪: 「YOLO 输出怎么进统一状态空间」): 39D 的 **hand / 光模块 / hole 三段
+    优先用 YOLO 对齐结果** (_YOLO_CACHE["aligned39"] —— 🎯 YOLO 节点里 align() 的真实产出),
+    只有没有新鲜检测时才退回 metaworld env 真值。此前 aligned39 只写不读 (全仓库无消费者)
+    ⇒ 画布 L2 块吃的一直是 env 真值, 真机 YOLO 只到 vision_points/plan, 等于没进统一状态。
+    新鲜度闸: SS_ALIGN_MAX_AGE_S (默认 3s); 用哪一路如实写进 _SS_STATE["obs43_src"], 不冒充。
+    """
     import numpy as np
-    if "obs43" in _SS_STATE:
+    _al = _YOLO_CACHE.get("aligned39")
+    _al_t = float(_YOLO_CACHE.get("aligned39_t") or 0.0)
+    _age = (time.time() - _al_t) if _al_t else 1e9
+    _max_age = float(os.environ.get("SS_ALIGN_MAX_AGE_S", "3"))
+    _src = "yolo" if (_al is not None and len(np.asarray(_al).ravel()) >= 39 and _age <= _max_age) else "env"
+    if _SS_STATE.get("obs43") is not None and _SS_STATE.get("obs43_src") == _src:
         return _SS_STATE["obs43"]
-    obs39, _img = _ss_env_obs(log)
+    try:
+        obs39, _img = _ss_env_obs(log)          # 骨架 (关节/双帧等结构槽)
+    except Exception as _e:                                              # noqa: BLE001
+        if _src != "yolo":
+            raise
+        # env 起不来但检测新鲜 ⇒ 用 0 骨架 + 检测三段, 并在日志里说清 (不假装完整观测)
+        obs39 = np.zeros(39, dtype=np.float64)
+        if log:
+            log("⚠️ 43D: env 骨架不可用 (%s: %s) → 0 骨架 + YOLO 三段" % (type(_e).__name__, _e))
+    if _src == "yolo":
+        obs39 = np.asarray(_al, dtype=np.float64).ravel()[:39].copy()    # align 已替换三段
     tac = np.asarray(_ss_tactile_mod().synth_tactile(obs39.reshape(1, 39))).reshape(4)
     obs43 = _ss_import("perception").fuse_sensors(obs39, np.zeros(6), tac)
-    _SS_STATE.update({"obs43": obs43, "obs39": obs39})
+    _SS_STATE.update({"obs43": obs43, "obs39": obs39, "obs43_src": _src})
+    if log:
+        log("📊 43D obs 组装 (%s 源): hand=%s 光模块=%s hole=%s · 触觉=%s"
+            % (_src, np.round(obs39[0:3], 3), np.round(obs39[4:7], 3),
+               np.round(obs39[36:39], 3), np.round(tac, 2)))
     return obs43
 
 def _seg_mask3d_obs(max_age_s=3.0):
@@ -3034,6 +3060,55 @@ def _ss_su2_frame(mod, log=None):
                 fr["contact_p"] = float(o[40])
     return fr
 
+_SS_FRAME_SRC = {"src": "空帧 (无 io 快照/无节点输出)"}
+
+
+def _ss_node_frame(mod=None, log=None):
+    """本拍各节点的真实输出 → encode_nodes 认的帧格式 {节点: {"out": [(label, value)]}}。
+
+    真源: `engineering.runtime.LAST_OUT` —— 每个节点**真跑完**那一刻留的返回值 (2026-11-03 起;
+    此前这里读 getattr(mod, "_ss_io_frame"), 而全仓库无人写它 ⇒ 节点级映射每帧都是空帧)。
+    兼容: 模块上真有 `_ss_io_frame` (引擎 io_trace 形态) 时照样认。
+    📐 2D→3D 解算 节点返回 True 不是 dict ⇒ 单独从 _YOLO_CACHE["box3d"] / aligned39 补两个语义槽
+    (peg 3D / hole 3D); 取不到就不补, 该节点如实落单位元 (不编造)。
+    """
+    frame = dict(getattr(mod, "_ss_io_frame", None) or {})
+    _SS_FRAME_SRC["src"] = "mod._ss_io_frame" if frame else "空帧 (无 io 快照/无节点输出)"
+    # ① 画布真源: 引擎最后一帧 io 快照 (simulink_module.self._tr["io_trace"], 标签与 NODE_SPECS 同口径)
+    if not frame:
+        try:
+            _tr = getattr(mod, "_ss_tr", None) or getattr(mod, "_tr", None) or {}
+            _io = _tr.get("io_trace") or []
+            if _io:
+                _i = int(getattr(mod, "_ss_round", 0) or 0)
+                frame = dict((_io[max(0, min(_i, len(_io) - 1))][1]) or {})
+                _SS_FRAME_SRC["src"] = "引擎 io 快照 (_ss_tr[io_trace] 第 %d 帧)" % _i
+        except Exception:                                                # noqa: BLE001
+            pass
+    try:
+        from .. import runtime as _rt
+        for _n, _o in list(getattr(_rt, "LAST_OUT", {}).items()):
+            if str(_n).startswith("🧩 SU(2)") or not isinstance(_o, dict):
+                continue
+            pairs = [(str(_k), _v) for _k, _v in _o.items()]
+            if pairs and _n not in frame:
+                frame[_n] = {"out": pairs}
+    except Exception:                                                    # noqa: BLE001
+        pass
+    try:
+        import numpy as _np
+        _p3 = (_YOLO_CACHE.get("box3d") or {}).get("p3")
+        _al39 = _YOLO_CACHE.get("aligned39")
+        _t = float(_YOLO_CACHE.get("aligned39_t") or 0.0)
+        if _p3 is not None and _al39 is not None and (time.time() - _t) <= 3.0:
+            frame["📐 2D→3D 解算"] = {"out": [
+                ("peg 3D", [float(v) for v in _np.asarray(_p3).ravel()[:3]]),
+                ("hole 3D", [float(v) for v in _np.asarray(_al39).ravel()[36:39]])]}
+    except Exception:                                                    # noqa: BLE001
+        pass
+    return frame
+
+
 def node_ss_su2(ctx):
     """🧩 SU(2) 统一状态空间 — 真实执行 su2.py::SU2UnifiedState (群映射, 非拼接)
 
@@ -3056,6 +3131,27 @@ def node_ss_su2(ctx):
         else:
             obs43 = _ss_ensure_obs43(log)
         frame = _ss_su2_frame(mod, log)
+        # 🧠 L5 层真输入 (2026-11-03): DeepSeek 意图 → frame["L5_intent"] (3 维, 基座系方向)。
+        #   l5_intent 内部单飞+TTL 缓存, **不阻塞节拍**; 没有结果就不写这个字段 ⇒ L5 落单位元
+        #   (su2.encode_layer 本来就这么写: 未接入 = 单位元, 不编造), 但这里会把"为什么没有"打进日志。
+        _l5 = None
+        try:
+            _stage = None
+            try:
+                _tr0 = getattr(mod, "_ss_tr", None) or {}
+                _st0 = _tr0.get("stage") or []
+                if _st0:
+                    _stage = str(_st0[min(int(getattr(mod, "_ss_round", 0) or 0), len(_st0) - 1)])
+            except Exception:                                            # noqa: BLE001
+                _stage = None
+            _l5 = _ss_import("l5_intent").intent(
+                obs43, {**frame, "stage": _stage or frame.get("stage")})
+            if _l5 and _l5.get("vec"):
+                frame = {**frame, "L5_intent": [float(v) for v in _l5["vec"]]}
+                _SS_STATE["l5_intent"] = _l5
+        except Exception as _e:                                          # noqa: BLE001
+            if log:
+                log("⚠️ L5 大模型意图不可用 (%s: %s) → L5 层落单位元" % (type(_e).__name__, _e))
         st = _SS_STATE.get("_su2_state")
         if st is None:
             st = su2.SU2UnifiedState(log=None)
@@ -3065,15 +3161,27 @@ def node_ss_su2(ctx):
         _SS_STATE["su2_layers"] = layers
         _SS_STATE["su2_readout"] = u
         try:
-            nodes = su2.encode_nodes(getattr(mod, "_ss_io_frame", None) or {})
+            _nf = _ss_node_frame(mod, log)
+            nodes = su2.encode_nodes(_nf) if _nf else {}
             if nodes:
                 _SS_STATE["su2_nodes"] = nodes
+                _SS_STATE["su2_nodes_src"] = "%s, %d 节点" % (_SS_FRAME_SRC.get("src"), len(nodes))
         except Exception:                                               # noqa: BLE001
             pass
         if log:
             log("🧩 SU(2) 统一状态空间 (二阶特殊酉群): %s" % u["readout"])
             for L in ("L2", "L3", "L4", "L5"):
                 log("   %s %s" % (L, layers[L].describe()))
+            if _l5:
+                log("   🧠 L5 源=%s conf=%s · 意图=%s · why=%s · age=%ss · 时延=%sms%s"
+                    % (_l5.get("src"), _l5.get("conf"), _l5.get("vec"), _l5.get("why"),
+                       _l5.get("age_s"), _l5.get("latency_ms"),
+                       " · ⚠️与孔位方向不符(cos=%.2f)" % _l5["cos_vs_to_hole"]
+                       if _l5.get("suspicious") and _l5.get("cos_vs_to_hole") is not None else
+                       (" · cos(指向孔)=%.2f" % _l5["cos_vs_to_hole"]
+                        if _l5.get("cos_vs_to_hole") is not None else "")))
+            else:
+                log("   🧠 L5 意图: 暂无新鲜结果 (DeepSeek 后台单飞, 实测 60~130s/次) → 该层为单位元")
             log("   群反演剥离: 残余 θ=%.2e (≈0 ⇒ 分解自洽) · 主导层=%s · 层间不可交换 L2|L4=%.4f"
                 % (u["layer_peel"]["_residual"]["theta"], u["dominant_layer"],
                    u["noncommutativity"].get("L2|L4", 0.0)))
@@ -3834,6 +3942,8 @@ def node_ss_yolo(ctx):
             aligned = aligner.align(obs39, det3d)
         if aligned is not None:
             _YOLO_CACHE["aligned39"] = aligned
+            # 🆕 2026-11-03: 打时间戳 —— 下游 43D 组装 (_ss_ensure_obs43) 要按新鲜度决定吃不吃它
+            _YOLO_CACHE["aligned39_t"] = time.time()
         # 🆕 2026-10-28 老倪: L2 感知节点→plan 的唯一交界 = vision_points.json (由本节点写, 不由脚本写)
         try:
             from . import vision_points as _vp

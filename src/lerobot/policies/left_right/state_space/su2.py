@@ -325,7 +325,8 @@ def encode_layer(L: str, frame: dict, obs43=None) -> SU2Element:
         return SU2Element.from_rotvec(bounded_rotvec(
             [g("u_sat"), g("contact_p"), 1.0 - g("mani_eta")], LAYER_GAIN["L4"]))
     if L == "L5":
-        # 大模型层: 意图向量 (intent). 引擎无 LLM → 空向量 → 单位元(诚实: 未接入)
+        # 大模型层: 意图向量 = frame["L5_intent"], 由 l5_intent.py (DeepSeek) 写入 (3 维, 基座系方向)。
+        #   没有新鲜结果时该字段不写 ⇒ 单位元 (诚实: 这一拍没有 L5 意图, 不编造)
         intent = frame.get("L5_intent") or []
         if not intent:
             return SU2Element.identity()
@@ -407,11 +408,18 @@ def understand(scene: SU2Element, layers: dict) -> dict:
 #   ("obserr",)                 用 43D obs 直接算 光模块头−孔位 几何误差
 NODE_SPECS = {
     "📦 metaworld 数据源":  ("slice", "状态流", 0, 3),
-    "🎯 YOLO 目标检测":      ("diff", "peg 检测框", "hole 检测框"),
+    # 2026-11-03: 节点输出早已改成 vision_points 契约 (out1.points → {"光模块·当前","hole": {pos_mm}}),
+    #   旧 spec 取 "peg 检测框"/"hole 检测框" 两个标签 —— 契约里根本没有 ⇒ node_vector 取空
+    #   ⇒ 该节点每帧落成单位元 (静默假接入, 实测 no_numeric_output 命中)。现按契约取, mm→米
+    #   (与 obs43_geometry 同单位), 旧标签只作回退。
+    "🎯 YOLO 目标检测":      ("ptsdiff", "光模块·当前", "hole"),
     "📐 2D→3D 解算":        ("diff", "peg 3D", "hole 3D"),
     "🖐 触觉感知":          ("vec", "触觉 4D", 3),
     "🔍 外观质量检测":      ("vec", "质量门", 3),
     "📡 传感器融合":        ("obserr",),
+    # 画布实际节点名是「融合定位建图」(引擎 io 快照 key) —— 旧 spec 只有「传感器融合」这个名字,
+    # 真节点取不到 → 每帧单位元。同名同义, 直接别名到 obserr (43D → 几何误差)。
+    "📡 融合定位建图":      ("obserr",),
     "⚡ 前馈加速器":        ("vec", "前馈指令", 3),
     "🔮 自适应状态估计器":  ("vec", "先验估计", 3),
     "📈 先验动力学预测器":  ("vec", "预测 next_obs", 3),
@@ -465,6 +473,34 @@ def node_vector(node: str, out: dict, obs43=None) -> np.ndarray:
                 break
         return np.asarray(vals[:3], dtype=float)
     kind = spec[0]
+    if kind == "ptsdiff":
+        # vision_points 契约: out 里任一带 "points" 的 dict → {名称: {pos_mm:[x,y,z]}} (毫米)
+        pts = None
+        for val in out.values():
+            if isinstance(val, dict) and isinstance(val.get("points"), dict):
+                pts = val["points"]
+                break
+        if pts:
+            def _p3(nm):
+                rec = pts.get(nm) or {}
+                v = (rec.get("pos_mm") if isinstance(rec, dict) else None) or []
+                try:
+                    a = np.asarray(v, dtype=float).reshape(-1)[:3]
+                except Exception:                                       # noqa: BLE001
+                    return np.zeros(0)
+                return a if a.size == 3 else np.zeros(0)
+            a, b = _p3(spec[1]), _p3(spec[2])
+            if a.size == 3 and b.size == 3:
+                return (a - b) / 1000.0            # mm → 米 (与 obs43_geometry 同单位)
+        # 回退①: 引擎 io 快照的 3D 标签 (米) —— lerobot.engine.runtime: "peg 3D (detect_3d)" /
+        #        lerobot.engine.sim: "peg 3D 坐标"; 优先于 2D 框 (框是像素, 不是几何量)
+        for _la, _lb in (("peg 3D", "hole 3D"), ("peg 检测框", "hole 检测框")):
+            a = np.asarray(_pick(out, _la)[:3], dtype=float)
+            b = np.asarray(_pick(out, _lb)[:3], dtype=float)
+            if a.size and b.size:
+                n = max(a.size, b.size, 3)
+                return np.pad(a, (0, n - a.size)) - np.pad(b, (0, n - b.size))
+        return np.zeros(0)
     if kind == "vec":
         return np.asarray(_pick(out, spec[1])[:spec[2]], dtype=float)
     if kind == "slice":
@@ -483,7 +519,8 @@ def node_vector(node: str, out: dict, obs43=None) -> np.ndarray:
         return np.asarray([x[0] for x in vv if x], dtype=float)
     if kind == "obserr":
         if obs43 is None:
-            o = _pick(out, "观测 obs")
+            # 引擎 io 快照里这个槽叫 "obs 43D"; 老帧可能叫 "观测 obs" —— 两种都认, 取不到就空
+            o = _pick(out, "观测 obs") or _pick(out, "obs 43D") or _pick(out, "obs")
             obs43 = np.asarray(o, dtype=float) if len(o) >= 39 else None
         return obs43_geometry(obs43) if obs43 is not None else np.zeros(0)
     return np.zeros(0)
