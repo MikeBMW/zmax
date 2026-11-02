@@ -29,8 +29,9 @@ sys.path.insert(0, os.path.join(ROOT, "tools", "gui"))
 
 from pptx.util import Inches, Pt                                    # noqa: E402
 from pptx.dml.color import RGBColor                                 # noqa: E402
-from pptx.enum.text import PP_ALIGN                                 # noqa: E402
-from pptx.enum.shapes import MSO_SHAPE                              # noqa: E402
+from pptx.enum.text import PP_ALIGN, MSO_ANCHOR                       # noqa: E402
+from pptx.enum.shapes import MSO_SHAPE, MSO_CONNECTOR               # noqa: E402
+from pptx.oxml.ns import qn                                          # noqa: E402
 
 CANVAS = os.path.join(ROOT, "data/database/zmax/sources/canvas/state_space_obs.json")
 C_TXT = RGBColor(0x1F, 0x2A, 0x37)
@@ -39,6 +40,9 @@ C_ACC = RGBColor(0x1F, 0x6F, 0x8B)
 C_BG = RGBColor(0xEE, 0xF4, 0xF8)
 C_WARN = RGBColor(0xB0, 0x3A, 0x2E)
 C_OK = RGBColor(0x1E, 0x7A, 0x46)
+C_UP_FILL = RGBColor(0xF1, 0xF4, 0xF7)
+C_DN_FILL = RGBColor(0xF1, 0xF4, 0xF7)
+C_BOXLINE = RGBColor(0xC2, 0xCC, 0xD6)
 
 
 def _canvas():
@@ -198,7 +202,61 @@ def _layer_of(nid, nodes, l2):
     return "层外"
 
 
+def _box(s, x, y, w, h, head, sub="", port="", size=7.4, fill=None, line=None, head_color=C_TXT):
+    """方框 = 一个节点 (块图里的一个块)。head=节点名, sub=连线说明, port=端口名。"""
+    sh = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(x), Inches(y), Inches(w), Inches(h))
+    sh.adjustments[0] = 0.10
+    sh.fill.solid()
+    sh.fill.fore_color.rgb = fill or C_BG
+    if line is None:
+        sh.line.fill.background()
+    else:
+        sh.line.color.rgb = line
+        sh.line.width = Pt(0.9)
+    sh.shadow.inherit = False
+    tf = sh.text_frame
+    tf.word_wrap = True
+    tf.margin_left = tf.margin_right = Inches(0.05)
+    tf.margin_top = tf.margin_bottom = Inches(0.01)
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    parts = [("  ".join(x for x in (port, head) if x), head_color, True),
+             (sub, C_DIM, False)]
+    tot = len(port) + len(head) + 2          # 首行字数: 超框就缩字号, 不截断名字
+    if tot > 24:
+        size = size * 0.74
+    elif tot > 18:
+        size = size * 0.86
+    first = True
+    for txt, col, bold in parts:
+        if not txt:
+            continue
+        p = tf.paragraphs[0] if first else tf.add_paragraph()
+        first = False
+        p.line_spacing = 1.0
+        p.alignment = PP_ALIGN.CENTER
+        r = p.add_run()
+        r.text = txt
+        r.font.size = Pt(size if bold else size - 1.0)
+        r.font.bold = bold
+        r.font.color.rgb = col
+        r.font.name = "Microsoft YaHei"
+    return sh
+
+
+def _line(s, x1, y1, x2, y2, arrow=False, color=None, w=1.0):
+    """连线: 直线 (块图的母线/支线), arrow=True 时末端加三角箭头。"""
+    conn = s.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, Inches(x1), Inches(y1), Inches(x2), Inches(y2))
+    conn.line.color.rgb = color or RGBColor(0x6B, 0x7A, 0x8C)
+    conn.line.width = Pt(w)
+    if arrow:
+        ln = conn.line._get_or_add_ln()
+        end = ln.makeelement(qn("a:tailEnd"), {"type": "triangle", "w": "sm", "len": "sm"})
+        ln.append(end)
+    return conn
+
+
 def node_page(pr, nid, k, total, nodes, l2, links, out_l2, in_l2):
+    """节点页: 一句话功能 + 输入输出块图 (块 = 节点, 线 = 画布连线, 箭头指向数据流向)。"""
     n = nodes[nid]
     mod, mi = _mod_info(nid)
     name = str(mi.get("NAME") or n.get("name") or nid)
@@ -211,68 +269,89 @@ def node_page(pr, nid, k, total, nodes, l2, links, out_l2, in_l2):
     outs = [k2 for k2 in links if k2.get("f") == nid]
 
     s = _slide(pr)
-    _txt(s, 0.5, 0.16, 12.3, 0.34, "L2 链路 %02d/%d · %s · %s" % (k, total, _cut(name, 40), nid),
+    _txt(s, 0.5, 0.14, 12.3, 0.34, "L2 链路 %02d/%d · %s · %s" % (k, total, _cut(name, 40), nid),
          size=15, bold=True)
-    _txt(s, 0.5, 0.52, 12.3, 0.26,
-         "%s · %s/%s · 执行口径 %s / PURE=%s · 端口 in %d / out %d · 画布连线 in %d / out %d"
+    desc = (params.get("desc") if isinstance(params, dict) else None) \
+        or (n.get("params") or {}).get("desc") or "（该节点无 desc，见实现文件头）"
+    _txt(s, 0.5, 0.48, 12.3, 0.26, _cut(desc, 70), size=9.2)
+    _txt(s, 0.5, 0.74, 12.3, 0.22,
+         "%s · %s/%s · 执行口径 %s · PURE %s · 端口 in %d / out %d"
          % (nid, (mi.get("LAYER") or "L2"), (mi.get("TYPE") or n.get("type") or "-"),
             (mi.get("EXEC_MODE") or "-"), ("真算" if pure else ("直通" if pure is False else "无实现")),
-            len(ports_in), len(ports_out), len(ins), len(outs)),
-         size=7.8, color=C_DIM)
+            len(ports_in), len(ports_out)), size=7.4, color=C_DIM)
 
-    # 左: 功能定义 + 参数
-    _panel(s, 0.5, 0.86, 6.25, 3.55)
-    _txt(s, 0.65, 0.94, 5.95, 0.24, "功能定义（节点 PARAMS['desc'] 原文）", size=9, bold=True, color=C_ACC)
-    desc = params.get("desc") if isinstance(params, dict) else None
-    desc = desc or (n.get("params") or {}).get("desc") or "（该节点无 desc，见实现文件头）"
-    _txt(s, 0.65, 1.20, 5.95, 3.10, _cut(desc, 700), size=8.2, spacing=1.18)
+    # ── 块图几何 (三列: 上游 | 本节点 | 下游)
+    A0, A1 = 1.28, 6.28                     # 块图纵向范围
+    UX, UW = 0.55, 3.75                     # 上游列
+    NX, NW = 4.80, 3.55                     # 本节点
+    DX, DW = 8.82, 3.95                     # 下游列
+    BUS_L, BUS_R = 4.55, 8.58               # 两条母线
+    cap = 8                                 # 每侧最多画 8 个块, 其余折成一行文字
+    _txt(s, UX, A0 - 0.24, UW, 0.22, "输入（%d 条连线 · 端口 ← 上游）" % len(ins), size=8.6, bold=True, color=C_ACC)
+    _txt(s, DX, A0 - 0.24, DW, 0.22, "输出（%d 条连线 · 端口 → 下游）" % len(outs), size=8.6, bold=True, color=C_ACC)
 
-    _panel(s, 0.5, 4.52, 6.25, 2.30)
-    _txt(s, 0.65, 4.60, 5.95, 0.24, "参数 / 实现位置", size=9, bold=True, color=C_ACC)
+    def _col(items, x, w, side):
+        """画一列的块 + 支线, 返回 (每块中心 y 列表, 末块下方 y)。"""
+        ys = []
+        n_show = min(len(items), cap)
+        if not items:
+            _txt(s, x + 0.1, (A0 + A1) / 2 - 0.12, w - 0.2, 0.24, "（无连线）", size=7.2, color=C_DIM)
+            return ys, A0
+        slot = (A1 - A0) / max(n_show + (1 if len(items) > cap else 0), 1)
+        bh = min(0.62, slot - 0.06)
+        for i, k2 in enumerate(items[:cap]):
+            cy = A0 + slot * (i + 0.5)
+            ys.append(cy)
+            if side == "up":
+                up = k2.get("f")
+                port = k2.get("t_port") or ""
+                _box(s, x, cy - bh / 2, w, bh, _cut(_upname(up, nodes), 22),
+                     _cut(k2.get("label") or "", 16), port, fill=C_UP_FILL, line=RGBColor(0xC2, 0xCC, 0xD6))
+                _line(s, x + w, cy, BUS_L, cy, w=0.9)
+            else:
+                dn = k2.get("t")
+                port = k2.get("f_port") or ""
+                _box(s, x, cy - bh / 2, w, bh, _cut(_upname(dn, nodes), 24),
+                     _cut(k2.get("label") or "", 16), port, fill=C_DN_FILL, line=RGBColor(0xC2, 0xCC, 0xD6))
+                _line(s, BUS_R, cy, x, cy, w=0.9)
+        if len(items) > cap:
+            _txt(s, x + 0.1, A0 + slot * (cap + 0.5) - 0.11, w - 0.2, 0.22,
+                 "… 另 %d 条" % (len(items) - cap), size=7.0, color=C_DIM)
+        return ys, A0 + slot * len(ys)
+
+    up_y, up_end = _col(ins, UX, UW, "up")
+    dn_y, dn_end = _col(outs, DX, DW, "dn")
+
+    cy_mid = (A0 + A1) / 2
+    nh = 1.55
+    _box(s, NX, cy_mid - nh / 2, NW, nh, _cut(name, 26), "L2 · %s" % (mi.get("TYPE") or n.get("type") or "-"),
+         nid, size=10.5, fill=RGBColor(0xDF, 0xEE, 0xF6), line=C_ACC)
+    # 两侧母线 + 箭头 (汇入本节点 / 从本节点发出)
+    if up_y:
+        _line(s, BUS_L, min(up_y), BUS_L, max(up_y), w=1.2, color=C_ACC)
+        _line(s, BUS_L, cy_mid, NX, cy_mid, arrow=True, w=1.4, color=C_ACC)
+    if dn_y:
+        _line(s, BUS_R, min(dn_y), BUS_R, max(dn_y), w=1.2, color=C_ACC)
+        _line(s, NX + NW, cy_mid, BUS_R, cy_mid, arrow=True, w=1.4, color=C_ACC)
+    _txt(s, BUS_L - 0.34, cy_mid - 0.34, 0.32, 0.22, "in", size=7.0, color=C_DIM, align=PP_ALIGN.RIGHT)
+    _txt(s, NX + NW + 0.02, cy_mid - 0.36, 0.32, 0.22, "out", size=7.0, color=C_DIM)
+
+    # ── 页脚: 实现位置 + 参数 (只留能核对的几项)
     kv = []
     if isinstance(params, dict):
         for kk, vv in params.items():
-            if kk in ("desc",):
+            if kk in ("desc", "source", "source_symbol"):
                 continue
-            if isinstance(vv, (dict, list)):
-                kv.append("%s = <%s %d 项>" % (kk, type(vv).__name__, len(vv)))
-            else:
-                kv.append("%s = %s" % (kk, _cut(vv, 46)))
-            if len(kv) >= 9:
+            kv.append("%s=%s" % (kk, _cut(vv, 22) if not isinstance(vv, (dict, list)) else "<%d 项>" % len(vv)))
+            if len(kv) >= 3:
                 break
-    impl = "%s:%s" % (_cut(mi.get("SOURCE") or "（无实现文件绑定）", 58), mi.get("SOURCE_SYMBOL") or "")
-    kv.append("实现 = " + _cut(impl, 76))
-    kv.append("话题 = ss.node.%s.<port>" % nid)
-    _txt(s, 0.65, 4.86, 5.95, 1.86, "\n".join("· " + x for x in kv), size=7.6, spacing=1.14)
-
-    # 右: 输入 / 输出
-    _panel(s, 6.95, 0.86, 5.88, 3.55)
-    _txt(s, 7.10, 0.94, 5.6, 0.24, "输入（%d 条连线 · 端口 ← 上游）" % len(ins), size=9, bold=True, color=C_ACC)
-    lines = []
-    for k2 in ins[:13]:
-        up = k2.get("f")
-        lines.append("[%s] ← %s · %s%s" % (k2.get("t_port") or "-", _cut(_upname(up, nodes), 26),
-                                          _layer_of(up, nodes, l2), (" · " + _cut(k2.get("label"), 12)) if k2.get("label") else ""))
-    if len(ins) > 13:
-        lines.append("… 另 %d 条" % (len(ins) - 13))
-    _txt(s, 7.10, 1.20, 5.6, 3.12, "\n".join("· " + x for x in lines) or "· （无输入连线）", size=7.6, spacing=1.16)
-
-    _panel(s, 6.95, 4.52, 5.88, 2.30)
-    _txt(s, 7.10, 4.60, 5.6, 0.24, "输出（%d 条连线 · 端口 → 下游）" % len(outs), size=9, bold=True, color=C_ACC)
-    ols = []
-    for k2 in outs[:12]:
-        dn = k2.get("t")
-        ols.append("[%s] → %s · %s" % (k2.get("f_port") or "-", _cut(_upname(dn, nodes), 24),
-                                       _layer_of(dn, nodes, l2)))
-    if len(outs) > 12:
-        ols.append("… 另 %d 条" % (len(outs) - 12))
-    _txt(s, 7.10, 4.86, 5.6, 1.86, "\n".join("· " + x for x in ols) or "· （无输出连线 · 末端节点）",
-         size=7.6, spacing=1.14)
-
-    _txt(s, 0.5, 6.92, 12.3, 0.34,
-         "链路位置：逆序第 %d 位（1 = 最后输出端） · L2 内上游 %d / 下游 %d · 本节点在 L2 %d 个节点里"
-         % (k, len(in_l2[nid]), len(out_l2[nid]), total),
-         size=7.8, color=C_DIM)
+    _txt(s, 0.5, A1 + 0.10, 12.3, 0.24,
+         "实现 = %s:%s · 话题 = ss.node.%s.<port>%s"
+         % (_cut(mi.get("SOURCE") or "（无实现文件绑定）", 58), mi.get("SOURCE_SYMBOL") or "",
+            nid, (" · 参数 " + " · ".join(kv)) if kv else ""), size=7.2, color=C_DIM)
+    _txt(s, 0.5, A1 + 0.36, 12.3, 0.24,
+         "链路位置：逆序第 %d 位（1 = 最后输出端） · L2 内上游 %d / 下游 %d · L2 共 %d 个节点"
+         % (k, len(in_l2[nid]), len(out_l2[nid]), total), size=7.2, color=C_DIM)
     return s
 
 
