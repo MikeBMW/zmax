@@ -204,7 +204,15 @@ def collect_champs():
             cur = merged.get(k)
             if cur is None or (v.get("n_ok") or 0) > (cur.get("n_ok") or 0):
                 merged[k] = {"n_ok": v.get("n_ok"), "champ_u": v.get("champ_u"),
-                             "champ_x": v.get("champ_x"), "io": v.get("io")}
+                             "champ_x": v.get("champ_x"), "io": v.get("io"),
+                             # 2026-11-02 老倪「桶键要补工艺点维度」: 标杆帧实测是归一化/相对量
+                             # (io.entry≈[0.005,0.601,0.195]), 不是 base_link 也不是 sim_base mm,
+                             # 且不带点位名 ⇒ **无法**定位到槽/孔, 只能标 scene|stage。不许硬编点位。
+                             "frame": "归一化(仿真/相对; 非 base_link, 非 sim_base mm)",
+                             "points_ref": None,
+                             "why_no_points": "标杆帧无点名义 + 非物理坐标 ⇒ 定位不到槽/孔; 工艺点级请查 traj REAL:* 与 corridors"}
+
+    return merged, used
     return merged, used
 
 
@@ -244,11 +252,44 @@ def collect_trajs(champs, skills):
         pts = s.get("points") or []
         if not pts:
             continue
+        # 🔴 2026-11-02: 示教轨迹原来是 dt=None 的"裸点位" ⇒ 只能逐点 move_line, 节拍靠执行器猜。
+        #   现回真源读每个点的 t_demo_s / dwell_s, 算出量内时序 (duration + 每段 dt),
+        #   并保留点名 (home/slot/safe/align/grasp/up1...) —— 那是唯一能对上"工艺点"的字段。
+        raw = _j(os.path.join(ROOT, s.get("src") or ""), {}) or {}
+        rawp = raw.get("points") if isinstance(raw.get("points"), dict) else {}
+        t_list, dt_list, timing = [], [], "none"
+        names = [p.get("name") for p in pts]
+        for i, p in enumerate(pts):
+            rp = rawp.get(p.get("name")) or {}
+            if rp.get("t_demo_s") is not None:
+                t_list.append(float(rp["t_demo_s"]))
+                timing = "t_demo_s"
+            elif t_list:
+                t_list.append(None)
+        if timing == "t_demo_s":
+            t_list = [t for t in t_list if t is not None]
+            dt_list = [round(t_list[i + 1] - t_list[i], 3) for i in range(len(t_list) - 1)]
+        else:
+            for p in pts:
+                rp = rawp.get(p.get("name")) or {}
+                d = rp.get("dwell_s")
+                if d is not None:
+                    dt_list.append(round(float(d), 3))
+                    timing = "dwell_s"
+            if dt_list and sum(1 for x in dt_list if x > 60) > len(dt_list) / 2:
+                dt_list, timing = [], "none"
+        good = [x for x in dt_list if 0 < x <= 60]
         trajs["REAL:%s" % sid] = {
             "id": "REAL:%s" % sid, "kind": "taught", "skill": sid, "stage": "",
-            "frames": len(pts), "dt": None,
+            "frames": len(pts), "dt": (sorted(good)[len(good) // 2] if good else None),
+            "timed": bool(good), "timing_src": timing,
+            "duration_s": (round(sum(good), 3) if good else None),
+            "dt_list": dt_list, "t_s": (t_list if timing == "t_demo_s" else None),
+            "point_names": names,
             "path": [{"name": p.get("name"), "pos": p.get("pos"), "quat": p.get("quat")} for p in pts],
-            "u": [], "executable": True, "exec_note": "点位序列: move_line 逐点下发 (真机示教真值)",
+            "u": [], "executable": True,
+            "exec_note": ("点位序列 + 时序(%s): 按 dt 逐点 move_line, 可复现节拍" % timing if good else
+                          "点位序列 (无时序): move_line 逐点下发, 节拍由执行器定 (真机示教真值)"),
             "src": s.get("src"), "sha": s.get("sha"), "at": _now(),
         }
     # (c) AOI 侧面稠密路径
@@ -279,6 +320,130 @@ def collect_trajs(champs, skills):
 
 
 # ─────────────────────────────────────────── main
+# ─────────────────────────────────────────── 8. 约束通道 (每个工艺点一条)
+# 🔴 键的语义 = 「从哪个工艺点 → 到哪个工艺点 | 阶段」。
+#   2026-11-02 实测: 阶段名不能决定点位 —— 对位/插入/完成 都发生在**孔**上 (对位=孔口上方 340→278),
+#   接近/下降/抓取/抬起 在**槽**上 (240→218 / 218→118 / 抬 118→218), 转移 是 槽→孔。
+#   早期按"阶段→固定点位"归组 ⇒ 抓取系 5 段全落进孔, end_err 62~222mm; 现按每条机动自己的起终点认点。
+
+
+def collect_corridors():
+    """🧊 约束通道库 —— 老倪 2026-11-02「固定轨迹/固定工艺 ⇒ 技能应预先有每个工艺点的通道数据」。
+
+    真源: zmax_data/ss_live/skill_corridors.json (实跑机动折线) + config/points/cell_points.json (点位几何)。
+    键 = 起点工艺点->终点工艺点|阶段 (工艺点认法: 水平距离 ≤25mm 就近槽位/孔口/孔底)。
+    每段两级:
+      real  该起终点组合有实跑机动 ⇒ axis=真实折线, L=均值, n_poly=次数
+      geom  没有实跑 ⇒ axis=点位几何 + 本阶段同形段的中位 z 偏置 (标 geom, 不是实测)
+    """
+    import numpy as np
+    cp = _j(os.path.join(ROOT, "config/points/cell_points.json")) or {}
+    cpath = os.path.join(ROOT, "zmax_data/ss_live/skill_corridors.json")
+    cj = _j(cpath) or {}
+    sha = _sha(cpath)
+    sp = {s["name"]: np.asarray(s["pos"], float) for s in (cp.get("slots") or [])}
+    hp = {h["name"]: {"mouth": np.asarray(h["mouth"], float),
+                      "insert": np.asarray(h["insert"], float)} for h in (cp.get("holes") or [])}
+    if not sp or not hp or not cj.get("corridors"):
+        return {}, {}
+
+    def _near(p, cand, cap, xy=True):
+        bn, bd = None, 1e18
+        for n, q in cand.items():
+            dd = np.asarray(q, float) - np.asarray(p, float)
+            d = float(np.linalg.norm(dd[:2])) if xy else float(np.linalg.norm(dd))
+            if d < bd:
+                bn, bd = n, d
+        return (bn if bd <= cap else None), bd
+
+    def _lbl(pt):
+        """认这是哪个工艺点: 槽X / 孔Y (含落在孔口还是孔底) / None。"""
+        s_, d_ = _near(pt, sp, 25.0)
+        if s_:
+            return s_, "slot", sp[s_]
+        for ref in ("mouth", "insert"):
+            h_, hd = _near(pt, {n: v[ref] for n, v in hp.items()}, 25.0)
+            if h_:
+                return h_, "hole", hp[h_][ref]
+        return None, None, None
+
+    out, stats, shapes = {}, {}, {}
+    for stage, c in (cj.get("corridors") or {}).items():
+        r = float(c.get("r_mm") or 0.0)
+        s_tick = float(c.get("s_tick_mm") or 0.0)
+        v_al = float(c.get("v_along_cap") or 0.0)
+        tact = c.get("tact_s")
+        groups = {}
+        for poly in (c.get("polys") or []):
+            P = np.asarray(poly, float)
+            if P.ndim != 2 or len(P) < 2:
+                continue
+            ls, ts, ps = _lbl(P[0])
+            le, te, pe = _lbl(P[-1])
+            if not ls or not le:
+                continue
+            key = "%s->%s|%s" % (ls, le, stage)
+            g = groups.setdefault(key, {"n": 0, "L": 0.0, "best": None, "err": 1e18,
+                                        "ls": ls, "le": le, "ts": ts, "te": te,
+                                        "dzs": [], "dze": []})
+            g["n"] += 1
+            g["L"] += float(np.sum(np.linalg.norm(np.diff(P, axis=0), axis=1)))
+            g["dzs"].append(float(P[0][2] - ps[2]))
+            g["dze"].append(float(P[-1][2] - pe[2]))
+            miss = float(np.linalg.norm((P[-1] - pe)[:2]))
+            if miss < g["err"]:
+                g["err"], g["best"] = miss, P
+        for key, g in groups.items():
+            out[key] = {"key": key, "stage": stage, "from": g["ls"], "to": g["le"],
+                        "kind": "real", "zero_travel": bool(g["L"] / max(1, g["n"]) < 1.0),
+                        "r_mm": r, "L_mm": round(g["L"] / max(1, g["n"]), 2), "n_poly": g["n"],
+                        "s_tick_mm": s_tick, "v_along_cap": v_al, "tact_s": tact,
+                        "axis": [[round(float(x), 2) for x in q] for q in g["best"]],
+                        "end_err_mm": round(g["err"], 2),
+                        "src": _rel(cpath), "sha": sha, "at": _now()}
+            sh = (g["ts"], g["te"])
+            shapes.setdefault((stage, sh), {"dzs": [], "dze": [], "r_mm": r,
+                                            "s_tick_mm": s_tick, "v_along_cap": v_al, "tact_s": tact,
+                                            "n": 0})
+            sh_ = shapes[(stage, sh)]
+            sh_["dzs"] += g["dzs"]
+            sh_["dze"] += g["dze"]
+            sh_["n"] += g["n"]
+        stats[stage] = True
+
+    # 几何补: 按本阶段出现过的"形状"(槽→槽 / 槽→孔 / 孔→孔) 铺满所有工艺点组合
+    n_geom = 0
+    for (stage, (ts, te)), sh in shapes.items():
+        dzs = float(np.median(sh["dzs"])) if sh["dzs"] else 0.0
+        dze = float(np.median(sh["dze"])) if sh["dze"] else 0.0
+        if ts == "slot" and te == "slot":
+            combos = [(a, a) for a in sp]
+        elif ts == "slot" and te == "hole":
+            combos = [(a, b) for a in sp for b in hp]
+        else:
+            combos = [(b, b) for b in hp]
+        for ls, le in combos:
+            key = "%s->%s|%s" % (ls, le, stage)
+            if key in out:
+                continue
+            ps = sp[ls]
+            pe = hp[le]["insert"] if stage == "完成" else (hp[le]["mouth"] if te == "hole" else sp[le])
+            a = np.array([ps[0], ps[1], ps[2] + dzs], float)
+            b = np.array([pe[0], pe[1], pe[2] + dze], float)
+            L = float(np.linalg.norm(b - a))
+            out[key] = {"key": key, "stage": stage, "from": ls, "to": le, "kind": "geom",
+                        "zero_travel": bool(L < 1.0),
+                        "r_mm": sh["r_mm"], "L_mm": round(L, 2), "n_poly": 0,
+                        "s_tick_mm": sh["s_tick_mm"], "v_along_cap": sh["v_along_cap"],
+                        "tact_s": sh["tact_s"],
+                        "axis": [[round(float(x), 2) for x in a], [round(float(x), 2) for x in b]],
+                        "end_err_mm": None,
+                        "src": "config/points/cell_points.json + %s" % _rel(cpath),
+                        "sha": sha, "at": _now()}
+            n_geom += 1
+    return out, {"stages": len(stats), "real": len(out) - n_geom, "geom": n_geom}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry", action="store_true")
@@ -293,6 +458,7 @@ def main():
     ledger, ledger_src, ledger_sha = collect_ledger()
     n_cd = collect_cards(cards, seqs, ledger)
     trajs = collect_trajs(champs, skills)
+    corrs, corr_meta = collect_corridors()
 
     print("技能 %d 条 (原子 %d + 组合 %d + 示教 %d)" % (len(skills), n_at, n_cp, n_mu))
     print("点位 %d 个 (示教库 %d)" % (len(points), n_pt))
@@ -300,6 +466,8 @@ def main():
     print("标杆 %d 桶 (并集: %s)" % (len(champs), ", ".join("%s=%d" % (x["file"], x["buckets"]) for x in champ_src)))
     n_exec = sum(1 for v in trajs.values() if v.get("executable"))
     print("理想轨迹 %d 条 (真机可下发 %d · 仿真标杆 %d)" % (len(trajs), n_exec, len(trajs) - n_exec))
+    print("约束通道 %d 条 (实跑 %d + 几何推导 %d · %d 阶段 · 键=起点->终点|阶段)"
+          % (len(corrs), corr_meta.get("real", 0), corr_meta.get("geom", 0), corr_meta.get("stages", 0)))
     print("台账 %d 类 · 最差 ratio %.2f" % (len(ledger),
                                         max([v["ratio"] for v in ledger.values() if v["ratio"]] or [0])))
     if a.dry:
@@ -321,6 +489,7 @@ def main():
     S.put_champs(champs, writer="ss_mem_l2")
     S.put_ledger(ledger, writer="ss_mem_l2", src=ledger_src)
     S.put_trajs(trajs, writer="ss_mem_l2")
+    S.put_corridors(corrs, writer="ss_mem_l2")
     idx = S.index()
     print("落库 → %s  计数 %s" % (_rel(S.STORE), idx.get("counts")))
     print("指纹 %s" % json.dumps({k: v["sha"] for k, v in idx["banks"].items()}, ensure_ascii=False))

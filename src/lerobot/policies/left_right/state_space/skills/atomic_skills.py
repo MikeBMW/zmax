@@ -308,6 +308,56 @@ class AtomicSkill:
         """段切换时清掉活通道的锚点 (轴必须固定在**本段起点**, 不能每拍跟着当前位姿重锚)。"""
         self._cor_a = None
 
+    _MEM_DB = None
+    _MEM_TAB = {"接近": ("槽", "槽"), "下降": ("槽", "槽"), "抓取": ("槽", "槽"), "抬起": ("槽", "槽"),
+                "转移": ("槽", "孔"), "对位": ("孔", "孔"), "插入": ("孔", "孔"), "完成": ("孔", "孔")}
+
+    @classmethod
+    def mem_limits(cls):
+        """🧠 本段在 L2 记忆库里的通道限额 (只读库; 库不可用/关闸 → None)。
+
+        取法: 与方案册同口径 —— 先按技能语义挑形状 (抓取系 槽→槽 / 转移 槽→孔 / 对位·插入·完成 孔→孔),
+        再取该形状里**实跑次数最多**的那条 (kind=real 优先), 不用 geom 冒充实测。
+        返回 {key, r_mm, L_mm, v_along_cap, s_tick_m, tact_s, kind} 或 None。
+        """
+        import os as _os, json as _js
+        if _os.environ.get("ZMAX_MEM_EN", "1") in ("0", "false", "False", "off"):
+            return None
+        if AtomicSkill._MEM_DB is None:
+            _db = {}
+            try:
+                _here = _os.path.dirname(_os.path.abspath(__file__))
+                # 仓库根 = 往上找到带 .git 的那层 (写死 dirname 层数必错: 本文件在 src/lerobot/... 深 6 层)
+                _d = _here
+                while _d != _os.path.dirname(_d) and not _os.path.isdir(_os.path.join(_d, ".git")):
+                    _d = _os.path.dirname(_d)
+                _p = _os.environ.get("ZMAX_L2_STORE") or _os.path.join(_d, "data/memory/l2_store/corridors.json")
+                _d = _js.load(open(_p, encoding="utf-8")).get("corridors") or {}
+                for _k, _v in _d.items():
+                    _db.setdefault(str(_v.get("stage") or ""), []).append(_v)
+            except Exception:                                    # noqa: BLE001
+                _db = {}
+            AtomicSkill._MEM_DB = _db
+        _lst = AtomicSkill._MEM_DB.get(str(cls.stage)) or []
+        if not _lst:
+            return None
+        _ps, _pe = cls._MEM_TAB.get(str(cls.stage), ("槽", "槽"))
+
+        def _ok(v):
+            _f, _t = str(v.get("from") or ""), str(v.get("to") or "")
+            return _f.startswith(_ps) and (_t.startswith(_pe) or _t == "-")
+
+        _pool = [v for v in _lst if v.get("kind") == "real" and _ok(v)] or \
+                [v for v in _lst if _ok(v)] or _lst
+        _best = max(_pool, key=lambda v: (v.get("kind") == "real", v.get("n_poly") or 0))
+        return {"key": _best.get("key"), "kind": _best.get("kind"),
+                "r_mm": _best.get("r_mm"), "L_mm": _best.get("L_mm"),
+                "v_along_cap": _best.get("v_along_cap"),
+                "s_tick_m": (float(_best.get("s_tick_mm") or 0.0) / 1000.0) or None,
+                "tact_s": _best.get("tact_s"),
+                "champ_n_ok": None,
+                "src": "data/memory/l2_store/corridors.json"}
+
     def corridor_finish(self, out, pos_mm=None, dt=None, target_mm=None):
         """🔵 收口最后一关 (每个 clamp 末尾调): 把本技能动作投影进**本技能的圆柱通道**。
 
@@ -327,6 +377,19 @@ class AtomicSkill:
             return out
         try:
             corr = self.corridor()
+            # 🧠 记忆赋能 (2026-11-02 老倪): 工艺点级通道给的节拍预算/单拍限额**只收紧不放松**
+            #   真源 data/memory/l2_store/corridors.json (corridor 的代表条目, 与方案册同口径)。
+            #   ZMAX_MEM_EN=0 ⇒ 不叠加, 输出与不打补丁前逐位相同 (A/B 用)。
+            _mem = self.mem_limits()
+            if corr and _mem:
+                corr = dict(corr)
+                _cands = [x for x in (corr.get("v_along_cap"), _mem.get("v_along_cap")) if x]
+                if _cands:
+                    corr["v_along_cap"] = min(float(x) for x in _cands)
+                _cands2 = [x for x in (corr.get("s_tick_mm"), _mem.get("s_tick_mm")) if x]
+                if _cands2:
+                    corr["s_tick_mm"] = min(float(x) for x in _cands2)
+                corr["mem"] = _mem
             if not corr:
                 out = dict(out)
                 if self.CORRIDOR_ZERO_MOTION:

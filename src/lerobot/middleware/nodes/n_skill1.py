@@ -7,6 +7,8 @@
     out out1  → n_moveit
     out out2  → ssphys
 
+    in  in3   ← ss_mem_l2 (🧠 记忆赋能: 本段通道 r/L/单拍 + 标杆 + 点位)
+
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
@@ -23,7 +25,7 @@ TYPE = 'model'
 EXEC_MODE = 'act'
 
 # 输入端口 (从总线取) / 输出端口 (发到总线) —— 与工程 JSON 的连线一一对应
-PORTS_IN = ['in1', 'in2']
+PORTS_IN = ['in1', 'in2', 'in3']
 PORTS_OUT = ['out1', 'out2']
 PORT_LABELS = {}
 

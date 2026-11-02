@@ -2396,7 +2396,7 @@ function drawVR(){
     const W=larmXform(), t1=LARMFK['tool1'];
     // 姿态用固定抓取姿态(模块长度∥世界X, 厚度朝下), 不跟 FK 的腕部朝向 ——
     // 老倪: 「光模块都是平行于x轴摆放…你的 tool1 模块头也是与世界坐标系的x轴平行的」
-    const R=_m3mul(W.R, R_GRASP);
+    const R=_m3mul(W.R, attR());
     const AX=_cols(R);
     const O=[0,1,2].map(i=> W.R[i][0]*t1.t[0]+W.R[i][1]*t1.t[1]+W.R[i][2]*t1.t[2]+W.t[i]);
     drawModuleAt(g, pr, O, AX, TRANS.carry?'#a3e635':'#ff8c1a', TRANS.carry?'#65a30d':'#ffc457');
@@ -2635,6 +2635,47 @@ function _solveN(A,b,n){                                 // 高斯消元(部分�
 // 来源: zmax_data/ar_rs/module_calib_ref.json 的 quat [w,x,y,z]=[0.728266,0.022327,0.684847,0.010713]
 //   ⇒ 实测第三列 [0.9980,-0.0178,0.0610] ≈ +X, 与老倪说的"长度方向平行 x 轴"一致
 var R_GRASP=[[0,0,1],[0,1,0],[-1,0,0]];
+// 🧭 2026-11-02 老倪「只有位置, 能保证姿态么」: 模块姿态优先吃**段表 quat**, 死值只作回落与标定基准。
+//   映射 M = R_calib⁻¹·R_GRASP ⇒ 在标定姿态下与老倪认可的那条“长度∥X / 厚度朝下”**完全重合**,
+//   别的姿态按段表走(差异在页脚标出来, 不偷偷改)。?att=const 可强制回死值做对照。
+var R_CAL=[[1,0,0],[0,1,0],[0,0,1]], R_MAP=[[1,0,0],[0,1,0],[0,0,1]];
+var ARATT={q:null,src:'',dev:null,forced:false};
+function quatToR(q){                       // [x,y,z,w] → 3x3
+  var x=q[0],y=q[1],z=q[2],w=q[3];
+  return [[1-2*(y*y+z*z), 2*(x*y-z*w), 2*(x*z+y*w)],
+          [2*(x*y+z*w), 1-2*(x*x+z*z), 2*(y*z-x*w)],
+          [2*(x*z-y*w), 2*(y*z+x*w), 1-2*(x*x+y*y)]];
+}
+function attInit(){
+  var qc=[0.728266,0.022327,0.684847,0.010713];   // module_calib_ref.json: [w,x,y,z]
+  R_CAL=quatToR([qc[1],qc[2],qc[3],qc[0]]);
+  R_MAP=_m3mul(_m3T(R_CAL), R_GRASP);
+  try{ if((new URLSearchParams(location.search)).get('att')==='const') ARATT.forced=true; }catch(e){}
+}
+function attR(){ return (ARATT.q && !ARATT.forced) ? _m3mul(quatToR(ARATT.q), R_MAP) : R_GRASP; }
+function attDevDeg(q){                     // 与死值姿态的夹角(度): 只用于标注, 不参与决策
+  try{
+    var R=_m3mul(quatToR(q), R_MAP);
+    var tr=R[0][0]*(R_GRASP[0][0])+R[0][1]*R_GRASP[0][1]+R[0][2]*R_GRASP[0][2];   // col0 · col0
+    var tr2=R[1][0]*(R_GRASP[1][0])+R[1][1]*R_GRASP[1][1]+R[1][2]*R_GRASP[1][2];
+    var tr3=R[2][0]*(R_GRASP[2][0])+R[2][1]*R_GRASP[2][1]+R[2][2]*R_GRASP[2][2];
+    var c=Math.max(-1,Math.min(1,(tr+tr2+tr3-1)/2));
+    return Math.acos(c)*180/Math.PI;
+  }catch(e){ return null; }
+}
+var ATTDIV=null;
+function attPaint(){
+  if(!ATTDIV){
+    var d=document.createElement('div'); d.id='attTag';
+    d.style.cssText='position:fixed;left:10px;bottom:10px;z-index:60;background:rgba(13,17,23,.9);'
+      +'border:1px solid #30363d;border-radius:6px;padding:3px 8px;font:11px/1.5 ui-monospace,monospace;color:#c9d1d9;';
+    document.body.appendChild(d); ATTDIV=d;
+  }
+  var s='姿态: '+(ARATT.q&&!ARATT.forced? ('段表('+(ARATT.src||'quat')+')') : (ARATT.forced?'死值(?att=const)':'死值常量 · 段表无 quat'));
+  if(ARATT.dev!=null) s+=' · 与死值差 '+ARATT.dev.toFixed(1)+'°';
+  ATTDIV.textContent=s;
+}
+attInit();
 // ↑ 精确轴对齐版本(列 = tool1 的 X/Y/Z 轴): X(厚度)∥−Z 朝下 · Y(宽度)∥+Y · Z(长度)∥+X
 //   原来用实测 quat 反算的矩阵带 3.5° 残差, 看着"没跟光模块平行"——老倪要的是完全重合, 这里给死值
 
@@ -3396,6 +3437,11 @@ setInterval(arL2Poll, 3000); setTimeout(arL2Poll, 1200);
 function arCmdPoll(){
   _arFetch().then(function(d){
     ARCMD.on=!!d.ok; ARCMD.fresh=!!d.fresh; ARCMD.d=d; ARCMD.age=d.age_s; ARCMD.ts=Date.now();
+    // 🧭 段表姿态: 有 quat 且新鲜就用它摆模块, 否则回落死值 (页脚 chip 标来源)
+    try{
+      var q=(d&&d.ok&&d.fresh&&d.quat&&d.quat.length===4)?d.quat.map(Number):null;
+      ARATT.q=q; ARATT.src=(d&&d.quat_src)||''; ARATT.dev=q?attDevDeg(q):null; attPaint();
+    }catch(e){}
     ARCMD.seq=d.seq; ARCMD.mod=d.mod;
     if(d.ok&&d.fresh){ const q=arCmdSolve(d); if(q) ARCMD.q=q; }
     else { ARCMD.q=null; }

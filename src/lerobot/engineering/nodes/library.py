@@ -4681,10 +4681,37 @@ def node_ss_atomic(ctx):
         #   现按端口语义给出: out1 = 技能动作 (含 target[mm] 供规划用) / out2 = 过闸结果。
         _tgt_mm = [round(float(x) * 1000.0, 3) for x in np.asarray(tgt, dtype=float).ravel()[:3]]
         _u4 = [round(float(x), 6) for x in np.asarray(u, dtype=float).ravel()[:4]]
+        # 🧠 2026-11-02 老倪「L2 记忆节点应该给技能赋能」: 每拍把**本段记忆**带在 out1 上
+        #   (工艺点通道 key/r/L/节拍 + 标杆命中) —— in3 有记忆包就用它, 没有就现查 l2_store, 两边同一份真源。
+        _mem = None
+        try:
+            _in3 = (ctx.get("in3") or {}).get("value") if isinstance(ctx.get("in3"), dict) else None
+            if isinstance(_in3, dict) and _in3.get("key"):
+                _mem = _in3
+            else:
+                from lerobot.memory import l2_store as _LS
+                _tab = {"接近": ("槽", "槽"), "下降": ("槽", "槽"), "抓取": ("槽", "槽"), "抬起": ("槽", "槽"),
+                        "转移": ("槽", "孔"), "对位": ("孔", "孔"), "插入": ("孔", "孔"), "完成": ("孔", "孔")}
+                _ps, _pe = _tab.get(stg, ("槽", "槽"))
+                _lst = [v for v in (_LS.corridors() or {}).values() if v.get("stage") == stg]
+                _okv = lambda v: str(v.get("from") or "").startswith(_ps) and \
+                    (str(v.get("to") or "").startswith(_pe) or v.get("to") == "-")
+                _pool = [v for v in _lst if v.get("kind") == "real" and _okv(v)] or \
+                        [v for v in _lst if _okv(v)] or _lst
+                if _pool:
+                    _b = max(_pool, key=lambda v: (v.get("kind") == "real", v.get("n_poly") or 0))
+                    _ck = [k for k in (_LS.champs() or {}) if k.endswith("|" + stg)]
+                    _mem = {"key": _b.get("key"), "kind": _b.get("kind"), "r_mm": _b.get("r_mm"),
+                            "L_mm": _b.get("L_mm"), "s_tick_mm": _b.get("s_tick_mm"),
+                            "v_along_cap": _b.get("v_along_cap"), "tact_s": _b.get("tact_s"),
+                            "champ_n_ok": sum(int(((_LS.champs() or {}).get(k) or {}).get("n_ok") or 0) for k in _ck),
+                            "src": "data/memory/l2_store/corridors.json"}
+        except Exception:                                            # noqa: BLE001
+            _mem = None
         out1 = {"kind": "skill_act", "skill": tpl, "stage": stg, "active": bool(act),
                 "target": _tgt_mm, "target_unit": "mm(base_link)",
                 "u": _u4, "u_unit": "m/s(与引擎 u_exec_vec 同口径)",
-                "gate": _gate, "name": name, "t": float(time.time())}
+                "mem": _mem, "gate": _gate, "name": name, "t": float(time.time())}
         out2 = {"kind": "skill_gate", "skill": tpl, "stage": stg,
                 "f_need_N": (_gate or {}).get("f_need_N"),
                 "u_gate": (_gate or {}).get("u"), "why": (_gate or {}).get("why"),

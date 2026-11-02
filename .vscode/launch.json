@@ -2,52 +2,15 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "DEBUG-EXEC-96 机器人执行器·执行指令 (robot_actuator_impl.py:96)",
-      "type": "python",
-      "request": "launch",
-      "program": "/home/ubuntu/zmax/tools/dbg_actuator.py",
-      "args": ["ssact"],
-      "python": "/home/ubuntu/zmax/gui-venv311/bin/python",
-      "pythonArgs": ["-X", "frozen_modules=off"],
-      "cwd": "/home/ubuntu/zmax",
-      "console": "integratedTerminal",
-      "stopOnEntry": false,
-      "justMyCode": false,
-      "env": {
-        "PYTHONPATH": "/home/ubuntu/zmax/src",
-        "PYTHONUNBUFFERED": "1",
-        "PYDEVD_DISABLE_FILE_VALIDATION": "1",
-        "ZMAX_SINGLE_THREAD": "1",
-        "ZMAX_DBG_U": "0.10,0.20,0.30,0.40"
-      }
-    },
-    {
-      "name": "DEBUG-EXEC-96B 同一条·换指令值看变化率",
-      "type": "python",
-      "request": "launch",
-      "program": "/home/ubuntu/zmax/tools/dbg_actuator.py",
-      "args": ["ssact"],
-      "python": "/home/ubuntu/zmax/gui-venv311/bin/python",
-      "pythonArgs": ["-X", "frozen_modules=off"],
-      "cwd": "/home/ubuntu/zmax",
-      "console": "integratedTerminal",
-      "stopOnEntry": false,
-      "justMyCode": false,
-      "env": {
-        "PYTHONPATH": "/home/ubuntu/zmax/src",
-        "PYTHONUNBUFFERED": "1",
-        "PYDEVD_DISABLE_FILE_VALIDATION": "1",
-        "ZMAX_SINGLE_THREAD": "1",
-        "ZMAX_DBG_U": "0.90,-0.90,0.30,0.40"
-      }
-    },
-    {
-      "name": "GUIBREAK-550B 整个 GUI (studio.py · 单线程)",
+      "name": "🧪 断点 · 整个 GUI (studio.py · 550B 单线程)",
       "type": "python",
       "request": "launch",
       "program": "/home/ubuntu/zmax/tools/gui/studio.py",
       "python": "/home/ubuntu/zmax/gui-venv311/bin/python",
-      "pythonArgs": ["-X", "frozen_modules=off"],
+      "pythonArgs": [
+        "-X",
+        "frozen_modules=off"
+      ],
       "cwd": "/home/ubuntu/zmax/tools/gui",
       "console": "integratedTerminal",
       "justMyCode": false,
@@ -58,8 +21,7 @@
         "PYTHONUNBUFFERED": "1",
         "PYDEVD_DISABLE_FILE_VALIDATION": "1",
         "HF_HUB_OFFLINE": "1",
-        "TRANSFORMERS_OFFLINE": "1",
-        "ZMAX_CORRIDOR": "1"
+        "TRANSFORMERS_OFFLINE": "1"
       }
     }
   ]

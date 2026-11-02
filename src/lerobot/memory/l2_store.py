@@ -39,6 +39,8 @@ BANKS = {
     "champs": os.path.join(STORE, "champs.json"),
     "ledger": os.path.join(STORE, "ledger.json"),
     "traj": os.path.join(STORE, "traj.json"),
+    # 🧊 2026-11-02 老倪「技能应预先有每个工艺点的约束通道数据, 直接调肌肉记忆」⇒ 通道入第 8 个库
+    "corridors": os.path.join(STORE, "corridors.json"),
     "index": os.path.join(STORE, "index.json"),
 }
 WRITERS = ("n_l2_muscle", "ss_mem_l2")     # 只有这两个记忆节点能落库
@@ -87,7 +89,7 @@ def _reindex(writer):
     """index.json = 库的目录 + 指纹 + 计数 (其它节点/大屏只看这一份)。"""
     idx = {"version": 1, "built_at": time.strftime("%Y-%m-%d %H:%M:%S"),
            "root": STORE, "banks": {}, "counts": {}, "writer": writer}
-    for name in ("skills", "points", "cards", "seq", "champs", "ledger", "traj"):
+    for name in ("skills", "points", "cards", "seq", "champs", "ledger", "traj", "corridors"):
         p = BANKS[name]
         if not os.path.exists(p):
             continue
@@ -119,6 +121,8 @@ def _count(name):
         return len((d.get("kinds") or {}))
     if name == "traj":
         return len(d.get("trajs") or {})
+    if name == "corridors":
+        return len(d.get("corridors") or {})
     return 0
 
 
@@ -244,9 +248,28 @@ def stats():
     return {"skills": c.get("skills", 0), "skill_kinds": kinds,
             "cards": c.get("cards", 0), "points": c.get("points", 0),
             "seqs": c.get("seq", 0), "champs": c.get("champs", 0), "trajs": c.get("traj", 0),
+            "corridors": c.get("corridors", 0),
             "ledger_kinds": c.get("ledger", 0),
             "worst_ratio": worst, "built_at": idx.get("built_at"),
             "sha": {k: v.get("sha") for k, v in (idx.get("banks") or {}).items()}}
+
+
+def corridors(kind=None):
+    """约束通道全表 (键 = 起点->终点|阶段); kind: real(实跑) / geom(几何推导)。"""
+    d = (_read("corridors").get("corridors") or {})
+    if not kind:
+        return d
+    return {k: v for k, v in d.items() if str(v.get("kind")) == str(kind)}
+
+
+def corridor(frm, to, stage):
+    """按工艺点取通道 (肌肉记忆直查入口): corridor("槽3", "孔2", "转移")。
+
+    键语义 = 起点工艺点->终点工艺点|阶段 (2026-11-02: 阶段名不能决定点位 —
+    对位/插入/完成 在孔上, 接近/下降/抓取 在槽上, 转移 是 槽→孔)。
+    """
+    d = _read("corridors").get("corridors") or {}
+    return d.get("%s->%s|%s" % (frm, to, stage)) or d.get("%s|%s|%s" % (frm, to, stage))
 
 
 def query(q):
@@ -275,6 +298,10 @@ def query(q):
             return champ(*v) if isinstance(v, (list, tuple)) and len(v) == 2 else None
         if k == "champs":
             return champs()
+        if k == "corridor":
+            return (corridor(*v) if isinstance(v, (list, tuple)) and len(v) == 3 else corridors())
+        if k == "corridors":
+            return corridors(v if isinstance(v, str) else None)
         if k == "traj":
             return traj(v)
         if k == "trajs":
@@ -346,6 +373,12 @@ def put_trajs(entries, writer, mode="replace"):
     d = {"version": 1, "trajs": entries if mode == "replace" else
          dict((_read("traj").get("trajs") or {}), **entries)}
     _write("traj", d, writer)
+
+
+def put_corridors(entries, writer, mode="replace"):
+    d = {"version": 1, "corridors": entries if mode == "replace" else
+         dict((_read("corridors").get("corridors") or {}), **entries)}
+    _write("corridors", d, writer)
 
 
 def put_ledger(kinds, writer, src=""):

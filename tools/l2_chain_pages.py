@@ -108,6 +108,21 @@ def _scc(nodes_set, out):
     return comp
 
 
+# 🔧 手工页序锚点 (老倪 2026-11-02: 「动力学约束放到 05/31, 重排 PPT」)
+#   自动排序按信号流主线走; 但"物理可行闸"必须排在技能支线之前呈现 (技能是它的上游, 但表现形式是旁支)。
+#   锚点只搬指定节点, 其余节点保持相对顺序不变 ⇒ 不改别人的先后, 只钉这一个位置。
+PIN_POS = {"ssphys": 5,
+           "sssk1": 6, "sssk2": 7, "sssk3": 8, "sssk4": 9,
+           "sssk5": 10, "sssk6": 11, "sssk7": 12, "sssk8": 13,
+           # 2026-11-02 老倪: 「万有引力节点提前到 16/31, 其它节点顺延」
+           "ss_grav_h": 16,
+           # 2026-11-02 老倪: 「前馈加速器提前到 17/31」
+           "ssff": 17,
+           # 2026-11-02 老倪: 「状态校正器提到 18/31」
+           "ssinnov": 18,
+           # 2026-11-02 老倪: 「先验动力学预测提到 19/31」
+           "sspred": 19}
+
 _MAIN_POS = ("动作命令", "真下发", "段表", "plan → exec", "到位", "命令")
 _SIDE_NEG = ("只喂渲染", "旁路", "回显", "上网通道", "默认关", "proxy", "AR 场景")
 
@@ -191,7 +206,17 @@ def chain_order(l2, links):
                      key=lambda v: (-dep[cid[v]], -(nodes[v]["y"] if v in nodes else 0), v))
     for n in starts:
         _walk(n)
-    return order, out_l2, in_l2
+    return _apply_pins(order), out_l2, in_l2
+
+
+def _apply_pins(order):
+    """按 PIN_POS 把指定节点搬到 1-based 目标位, 其余相对顺序不变。"""
+    for nid, pos in sorted(PIN_POS.items(), key=lambda kv: kv[1]):
+        if nid not in order:
+            continue
+        order.pop(order.index(nid))
+        order.insert(max(0, min(len(order), int(pos) - 1)), nid)
+    return order
 
 
 # ───────────────────────────────────────────── 画页小工具
@@ -401,7 +426,8 @@ def node_page(pr, nid, k, total, nodes, l2, links, out_l2, in_l2):
 
     # ── 块图几何 (三列: 上游 | 本节点 | 下游); 带开关的节点(机器人执行器)下方留开关带
     SW = bool(isinstance(params, dict) and params.get("ar_real_sw"))
-    A0, A1 = 1.28, (4.55 if SW else 6.28)
+    MEMB = nid in SK_NODES                     # 🧠 技能页: 下方横带给记忆输入/补偿
+    A0, A1 = 1.28, (4.55 if (SW or MEMB) else 6.28)
     UX, UW = 0.55, 3.75                     # 上游列
     NX, NW = 4.80, 3.55                     # 本节点
     DX, DW = 8.82, 3.95                     # 下游列
@@ -427,13 +453,13 @@ def node_page(pr, nid, k, total, nodes, l2, links, out_l2, in_l2):
                 port = k2.get("t_port") or ""
                 _box(s, x, cy - bh / 2, w, bh, _cut(_upname(up, nodes), 22),
                      _cut(k2.get("label") or "", 16), port, fill=C_UP_FILL, line=RGBColor(0xC2, 0xCC, 0xD6))
-                _line(s, x + w, cy, BUS_L, cy, w=0.9)
+                _line(s, x + w, cy, BUS_L, cy, arrow=True, w=1.4, color=C_ACC)
             else:
                 dn = k2.get("t")
                 port = k2.get("f_port") or ""
                 _box(s, x, cy - bh / 2, w, bh, _cut(_upname(dn, nodes), 24),
                      _cut(k2.get("label") or "", 16), port, fill=C_DN_FILL, line=RGBColor(0xC2, 0xCC, 0xD6))
-                _line(s, BUS_R, cy, x, cy, w=0.9)
+                _line(s, BUS_R, cy, x, cy, arrow=True, w=1.4, color=C_ACC)
         if len(items) > cap:
             _txt(s, x + 0.1, A0 + slot * (cap + 0.5) - 0.11, w - 0.2, 0.22,
                  "… 另 %d 条" % (len(items) - cap), size=7.0, color=C_DIM)
@@ -457,7 +483,10 @@ def node_page(pr, nid, k, total, nodes, l2, links, out_l2, in_l2):
     _txt(s, NX + NW + 0.02, cy_mid - 0.36, 0.32, 0.22, "out", size=7.0, color=C_DIM)
 
     # ── 页脚: 实现位置 + 参数 (只留能核对的几项)
-    if SW:
+    if MEMB:
+        _mem_panel(s, 0.55, A1 + 0.10, 12.22, 1.48, mi)
+        FY = 6.12
+    elif SW:
         _switch_band(s, A1 + 0.12, params)
         FY = 6.12
     else:
@@ -493,12 +522,257 @@ def node_page(pr, nid, k, total, nodes, l2, links, out_l2, in_l2):
             line = "后端 = rule（回退） · MoveIt: %s" % _cut(st2.get("why") or "不可用", 80)
             col = C_WARN
         _txt(s, 0.5, FY + 0.52, 12.3, 0.22, line, size=7.2, color=col)
+    if nid == "n_moveit":                       # 📋 实际段表 (实跑快照, 段表是这页唯一真正的输出物)
+        _seg_table(s, 8.88, 4.34, 3.85)
+
     return s
+
+
+# ───────────────────────────────────────────── 技能页「记忆输入 / 补偿」面板
+SK_NODES = ("sssk1", "sssk2", "sssk3", "sssk4", "sssk5", "sssk6", "sssk7", "sssk8")
+_MEMC, _CORD, _CHMD, _MSHA = {}, None, None, ""
+
+
+def _mem_db():
+    """读 L2 记忆库 (corridors / champs / sha) —— 页面上的通道与标杆全部来自这里, 不在建页时造数。"""
+    global _CORD, _CHMD, _MSHA
+    if _CORD is None:
+        from lerobot.memory import l2_store as _S
+        _CORD = _S.corridors()
+        _CHMD = _S.champs()
+        st = _S.stats()
+        _MSHA = (st.get("sha") or {}).get("corridors") or "-"
+    return _CORD, _CHMD
+
+
+def _mem_stats():
+    """从实测日志尾部聚合每段通道偏差与削因 (真值; 日志 GB 级 ⇒ 只读尾 4MB)。"""
+    if _MEMC:
+        return _MEMC
+    p = os.path.join(ROOT, "zmax_data/ss_live/skill_calls.log")
+    agg = {}
+    try:
+        size = os.path.getsize(p)
+        with open(p, "rb") as f:
+            f.seek(max(0, size - (4 << 20)))
+            lines = f.read().decode("utf-8", "ignore").splitlines()[1:]
+        for ln in lines:
+            if '"stage"' not in ln:
+                continue
+            try:
+                d = json.loads(ln)
+            except Exception:                                        # noqa: BLE001
+                continue
+            st = str(d.get("stage") or "")
+            if not st:
+                continue
+            a = agg.setdefault(st, {"n": 0, "dev": [], "out": 0, "why": {}})
+            a["n"] += 1
+            cor = d.get("cor") or {}
+            dv = cor.get("dev_mm")
+            if dv is not None:
+                a["dev"].append(float(dv))
+                if cor.get("in") is False:
+                    a["out"] += 1
+            w = str(d.get("why") or "")
+            for t in ("速度", "加速度", "加加速度", "动量/质量率", "位移", "通道"):
+                if t in w:
+                    a["why"][t] = a["why"].get(t, 0) + 1
+    except Exception:                                                # noqa: BLE001
+        pass
+    for st, a in agg.items():
+        dv = sorted(a["dev"])
+        a["dev_p50"] = dv[len(dv) // 2] if dv else None
+        a["dev_max"] = dv[-1] if dv else None
+        a["dev_n"] = len(dv)
+    _MEMC.update(agg)
+    return _MEMC
+
+
+def _mem_panel(s, x, y, w, h, mi):
+    """技能页下方横带: 左=记忆输入 (通道/标杆/点位), 右=补偿 (偏差回中/物理闸削/去向/回填)。"""
+    cor, ch = _mem_db()
+    params = mi.get("PARAMS") or {}
+    stage = str((params.get("skill") or {}).get("stage") or "")
+    if not stage:
+        return
+    sh = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(x), Inches(y), Inches(w), Inches(h))
+    sh.adjustments[0] = 0.03
+    sh.fill.solid()
+    sh.fill.fore_color.rgb = RGBColor(0xF7, 0xFB, 0xF7)
+    sh.line.color.rgb = RGBColor(0x9C, 0xC9, 0x9C)
+    sh.line.width = Pt(0.9)
+    sh.shadow.inherit = False
+    tf = sh.text_frame
+    tf.word_wrap = True
+    tf.margin_left = tf.margin_right = Inches(0.08)
+    tf.margin_top = tf.margin_bottom = Inches(0.05)
+
+    def row(txt, size=7.6, col=C_TXT, bold=False):
+        par = tf.paragraphs[0] if not tf.paragraphs[0].runs else tf.add_paragraph()
+        par.alignment = PP_ALIGN.LEFT
+        par.line_spacing = 0.98
+        r = par.add_run()
+        r.text = txt
+        r.font.size = Pt(size)
+        r.font.bold = bold
+        r.font.color.rgb = col
+
+    real = [v for v in cor.values() if v.get("stage") == stage and v.get("kind") == "real"]
+    geom = [v for v in cor.values() if v.get("stage") == stage and v.get("kind") == "geom"]
+    # 代表条目按**技能语义**挑形状: 抓取系=槽→槽, 转移=槽→孔, 对位/插入/完成=孔→孔
+    #   (不按 n_poly 最大挑: 接近 在计划里既有"槽上悬停"也有"飞到孔上方", 用后者会让人以为 SK01 是搬运)
+    _SHAPE = {"接近": ("槽", "槽"), "下降": ("槽", "槽"), "抓取": ("槽", "槽"), "抬起": ("槽", "槽"),
+              "转移": ("槽", "孔"), "对位": ("孔", "孔"), "插入": ("孔", "孔"), "完成": ("孔", "孔")}
+    _ps, _pe = _SHAPE.get(stage, ("槽", "槽"))
+
+    def _match(v):
+        fr, to = str(v.get("from") or ""), str(v.get("to") or "")
+        return fr.startswith(_ps) and (to.startswith(_pe) or to == "-")
+
+    _pool = [v for v in real if _match(v)] or [v for v in geom if _match(v)] or real or geom
+    best = max(_pool, key=lambda v: (v.get("kind") == "real", v.get("n_poly") or 0)) if _pool else None
+    ckeys = [k for k in ch if k.endswith("|" + stage)]
+    n_ok = sum(int((ch.get(k) or {}).get("n_ok") or 0) for k in ckeys)
+    mt = _mem_stats().get(stage) or {}
+
+    row("🧠 记忆输入（L2 记忆库 · 通道 sha %s）" % _MSHA, 8.2, C_OK, True)
+    if best:
+        ax = best.get("axis") or []
+        row("通道 %s（%s）· r=%smm · L=%smm · 单拍≤%smm · 轴速≤%.3fm/s · 节拍%.2fs"
+            % (best.get("key"), "实跑" if best.get("kind") == "real" else "几何推导",
+               best.get("r_mm"), best.get("L_mm"), best.get("s_tick_mm"),
+               float(best.get("v_along_cap") or 0), float(best.get("tact_s") or 0)))
+        if ax:
+            row("　轴 %s → %s · 本阶段通道 %d 条（实跑 %d / 几何 %d）· 标杆 %d 桶命中 %d · 点位 71 带 quat / 容差 2mm"
+                % (_pt(ax[0]), _pt(ax[-1]), len(real) + len(geom), len(real), len(geom), len(ckeys), n_ok),
+                size=7.2, col=C_DIM)
+    else:
+        row("通道: 本阶段在记忆库无条目（缺失, 不许当 0）", 7.6, C_WARN)
+        row("　标杆 %d 桶命中 %d · 点位 71 带 quat" % (len(ckeys), n_ok), 7.2, C_DIM)
+
+    row("━━ 补偿 ━━", 7.8, RGBColor(0x22, 0x66, 0x88), True)
+    if mt.get("dev_n"):
+        _msg = ("通道: 偏差 p50 %.1fmm · max %.1fmm · 越界 %d/%d 拍 ⇒ 向外归零 + 补回中（不是等比缩）"
+                % (mt["dev_p50"], mt["dev_max"], mt["out"], mt["dev_n"]))
+        if (mt["dev_p50"] or 0) > 100:
+            _msg += "　⚠️>100mm 多为坐标系不同源(仿真 trace vs 基座通道), 按 dev>max(100,8r) 判串系并跳过"
+        row(_msg)
+    else:
+        row("通道: 本轮实测日志尾部无该段记录（不填假数）", 7.6, C_DIM)
+    why = (mt.get("why") or {})
+    top = " · ".join("%s %d 拍" % (k, v) for k, v in sorted(why.items(), key=lambda kv: -kv[1])[:3])
+    row("物理闸: %s" % (top or "本轮无削") + "　｜　去向: 小偏差→🧪 状态校正器(out2) · ‖e‖>50mm→📡 融合定位(out3)")
+    row("姿态: 段表 quat 逐段下发 · 到位判据 位置≤2mm 且 姿态≤0.5° 连续两次 · 姿态真值缺 ⇒ 不认到位",
+        size=7.2, col=C_DIM)
+    row("回填: 每次实跑 end_err / 节拍 → 标杆 n_ok 与台账（越跑越准）", size=7.2, col=C_DIM)
 
 
 def _upname(nid, nodes):
     n = nodes.get(nid) or {}
     return str(n.get("name") or nid)
+
+
+# ───────────────────────────────────────────── 实际段表块 (运动规划页)
+SEG_SNAP = os.path.join(ROOT, "zmax_data/runtime/plan/plan_sample_nmoveit.json")
+
+
+def _nfmt(v):
+    """坐标数字压缩: 1 位小数, 整数不带 .0 (段表要在一行里放得下)。"""
+    try:
+        s = "%.1f" % float(v)
+    except Exception:                                                # noqa: BLE001
+        return str(v)
+    return s[:-2] if s.endswith(".0") else s
+
+
+def _pt(p):
+    return "(%s)" % ",".join(_nfmt(x) for x in (p or [])[:3])
+
+
+def _seg_table(s, x, y, w):
+    """运动规划页的「实际段表」块: 读实跑快照 (plan_impl.run() 产物), 不在这里造数。
+
+    老倪 2026-11-02「把实际段表在运动规划这页写出来」—— 段表是这页唯一真正的输出物,
+    所以贴真值: 段号/类型/起点→终点/长度, 首尾 + 截断事实, 全部来自快照文件。
+    版面: 贴在 out 箭头下方空白区 (输出侧), 不压 n_moveit 框也不压页脚; 每行固定高度, 禁折行叠字。
+    """
+    try:
+        with open(SEG_SNAP, encoding="utf-8") as f:
+            sn = json.load(f)
+    except Exception as e:                                           # noqa: BLE001
+        _txt(s, x, y, w, 0.3, "实际段表: 快照缺失 (%s)" % type(e).__name__, size=7.2, color=C_WARN)
+        return
+    segs = sn.get("segs") or []
+    if not segs:
+        _txt(s, x, y, w, 0.3, "实际段表: 快照为空", size=7.2, color=C_WARN)
+        return
+    lim = sn.get("limits") or {}
+    _panel(s, x - 0.05, y - 0.05, w + 0.10, 2.02, fill=RGBColor(0xF7, 0xFA, 0xFC), line=RGBColor(0xC2, 0xCC, 0xD6))
+    # L1 标题
+    _txt(s, x, y, w, 0.20,
+         "实际段表 · 实跑快照 %s · %s · %d 段 / %.1f mm"
+         % (str(sn.get("t_str") or "")[5:], sn.get("backend") or "-", len(segs), float(sn.get("total_mm") or 0)),
+         size=7.6, bold=True, color=C_OK)
+    y += 0.21
+    # L2 起点 → 目标 (来源写清: 真机真值 / AR 虚拟末端)
+    _ps = "AR虚拟末端" if str(sn.get("pose_src") or "").startswith("sim") else "真机真值"
+    _txt(s, x, y, w, 0.17,
+         "起点 %s %s → %s %s" % (_pt(segs[0].get("a")), _ps,
+                                 sn.get("goal_name") or "目标", _pt(sn.get("goal"))),
+         size=6.8, color=C_DIM)
+    y += 0.18
+    # L3 约束 + 时长口径
+    _txt(s, x, y, w, 0.17,
+         "单步≤%.0f / 向下≤%.0f mm · 上限 %d 段 · t 全落 0.12 s 地板 ⇒ AR 回放 %.2f s"
+         % (lim.get("step_mm", 50), lim.get("down_mm", 20), lim.get("max_segs", 40),
+            sum(float(g.get("t") or 0) for g in segs)),
+         size=6.8, color=C_DIM)
+    y += 0.19
+    # 表头
+    for cx, cw, h in ((x, 0.26, "段"), (x + 0.26, 0.50, "类型"),
+                      (x + 0.76, 2.36, "起点 → 终点 (mm)"), (x + 3.12, 0.68, "长度mm")):
+        _txt(s, cx, y, cw, 0.17, h, size=6.8, bold=True, color=C_ACC)
+    y += 0.18
+    show = segs[:2] + segs[-2:] if len(segs) > 4 else segs
+    rowh = 0.17
+    for i, sg in enumerate(show):
+        if len(segs) > 4 and i == 2:            # 中间省略标记 (独立一行, 不与表头抢位)
+            _txt(s, x, y, w, 0.16, "… 共 %d 段 (%s)" % (len(segs), _kinds(segs)), size=6.6, color=C_DIM)
+            y += rowh
+        for cx, cw, val, colr in ((x, 0.26, str(sg.get("i")), C_TXT),
+                                  (x + 0.26, 0.50, str(sg.get("kind")), C_TXT),
+                                  (x + 0.76, 2.36, "%s→%s" % (_pt(sg.get("a")), _pt(sg.get("b"))), C_TXT),
+                                  (x + 3.12, 0.68, _nfmt(sg.get("len_mm")), C_DIM)):
+            _txt(s, cx, y, cw, 0.16, val, size=7.0, color=colr)
+        y += rowh
+    # 姿态 (2026-11-02 起段表不再只有位置): 四元数 + 来源 + 判据
+    y += 0.03
+    _q1 = segs[0].get("quat")
+    if _q1 and len(_q1) == 4:
+        _txt(s, x, y, w, 0.16,
+             "每段 quat=[%s] · 源 %s"
+             % (",".join("%.3f" % float(v) for v in _q1), sn.get("quat_src") or "-"),
+             size=6.4, color=C_OK)
+        y += 0.155
+    _txt(s, x, y, w, 0.28,
+         "判据: 位置≤2mm 且 姿态≤0.5° 连续两次; 姿态真值缺 ⇒ 不认到位",
+         size=6.2, color=C_DIM)
+    y += 0.20
+    # 截断事实 (红): 目标没到就直说
+    if sn.get("truncated"):
+        _txt(s, x, y, w, 0.17,
+             "⛔ 上限 %d 段截断：目标 z=%s 未到达, 止于 z=%s"
+             % (lim.get("max_segs", 40), _nfmt((sn.get("goal") or [0, 0, 0])[2]),
+                _nfmt((segs[-1].get("b") or [0, 0, 0])[2])),
+             size=6.8, color=C_WARN)
+
+
+def _kinds(segs):
+    c = {}
+    for g in segs:
+        c[g.get("kind")] = c.get(g.get("kind"), 0) + 1
+    return " · ".join("%s %d" % (k, v) for k, v in sorted(c.items(), key=lambda kv: -kv[1]))
 
 
 # ───────────────────────────────────────────── 节拍测试报告页
