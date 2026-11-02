@@ -43,6 +43,8 @@ C_OK = RGBColor(0x1E, 0x7A, 0x46)
 C_UP_FILL = RGBColor(0xF1, 0xF4, 0xF7)
 C_DN_FILL = RGBColor(0xF1, 0xF4, 0xF7)
 C_BOXLINE = RGBColor(0xC2, 0xCC, 0xD6)
+C_ON = RGBColor(0x2E, 0xA0, 0x4E)
+C_OFF = RGBColor(0x9A, 0xA4, 0xAE)
 
 
 def _canvas():
@@ -255,6 +257,68 @@ def _line(s, x1, y1, x2, y2, arrow=False, color=None, w=1.0):
     return conn
 
 
+def _switch_state():
+    """两个开关的真值: 优先画布开关写出的 zmax_data/ss_live/exec_switches.json (5 分钟内算新鲜),
+    否则回落画布节点 params (ar_scene / real_auth)。"""
+    f = os.path.join(ROOT, "zmax_data/ss_live/exec_switches.json")
+    try:
+        import time as _t
+        d = json.load(open(f, encoding="utf-8"))
+        age = _t.time() - float(d.get("t") or 0)
+        return {"ar": bool(d.get("ar_scene")), "real": bool(d.get("real_auth")),
+                "age": age, "t_str": d.get("t_str"), "src": d.get("src") or "exec_switches.json",
+                "fresh": age < 300, "from": "exec_switches.json"}
+    except Exception as _e:                                              # noqa: BLE001
+        return {"ar": False, "real": False, "age": None, "t_str": "-",
+                "src": "读不到 (%s)" % type(_e).__name__, "fresh": False, "from": "none"}
+
+
+def _toggle(s, x, y, on, w=0.68, h=0.26):
+    """拨杆开关: 胶囊 + 白色圆钮 (开=绿钮在右, 关=灰钮在左)。"""
+    pill = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(x), Inches(y), Inches(w), Inches(h))
+    pill.adjustments[0] = 0.5
+    pill.fill.solid()
+    pill.fill.fore_color.rgb = C_ON if on else C_OFF
+    pill.line.fill.background()
+    pill.shadow.inherit = False
+    kd = h - 0.05
+    kn = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(x + (w - kd - 0.025) if on else x + 0.025),
+                            Inches(y + 0.025), Inches(kd), Inches(kd))
+    kn.fill.solid()
+    kn.fill.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+    kn.line.fill.background()
+    kn.shadow.inherit = False
+
+
+def _switch_band(s, y0, params):
+    """画布 🤖 机器人执行器 上那对开关 (AR 场景 / 真机), 状态不手填: 读 exec_switches.json。"""
+    st = _switch_state()
+    _panel(s, 0.5, y0, 12.33, 1.36)
+    _txt(s, 0.66, y0 + 0.07, 11.9, 0.22,
+         "🎛 与画布同一对开关 · 真源 zmax_data/ss_live/exec_switches.json（%s）"
+         % ("新鲜" if st["fresh"] else "⚠ 已过期/读不到"), size=8.4, bold=True, color=C_ACC)
+    rows = [
+        ("AR 场景开关", st["ar"], "开 ⇒ 左右臂走 AR 渲染（ar_cmd_chain.json 的 exec 分区, exec_src=ssact, 10Hz）· 真机不动",
+         "关 ⇒ 断开 AR, 走真机通路（真机开关=关时照旧不下发）"),
+        ("真机开关", st["real"], "开 ⇒ 允许真机下发（仍须 8793 工位授权 + l2_daemon 回执, 画布每拍绝不自动发）",
+         "关 ⇒ 零下发：与 out1.real_send=false 一致, 只算不发"),
+    ]
+    for i, (lab, on, tx_on, tx_off) in enumerate(rows):
+        yy = y0 + 0.38 + i * 0.44
+        _toggle(s, 0.70, yy, on)
+        _txt(s, 1.50, yy - 0.03, 1.5, 0.24, lab, size=9.4, bold=True)
+        _txt(s, 2.98, yy - 0.03, 0.5, 0.24, "开" if on else "关", size=9.4, bold=True,
+             color=C_ON if on else C_WARN)
+        _txt(s, 3.52, yy - 0.02, 9.15, 0.24, _cut(tx_on if on else tx_off, 64), size=8.0,
+             color=C_TXT if on else C_DIM)
+    hint = params.get("sw_hint") if isinstance(params, dict) else ""
+    _txt(s, 0.66, y0 + 1.30 - 0.02, 11.9, 0.20,
+         "开关状态时间 %s · 来源 %s · 刷新龄 %s%s"
+         % (st["t_str"] or "-", st["src"],
+            ("%.0f s" % st["age"]) if st["age"] is not None else "-",
+            (" · " + _cut(hint, 40)) if hint else ""), size=7.0, color=C_DIM)
+
+
 def node_page(pr, nid, k, total, nodes, l2, links, out_l2, in_l2):
     """节点页: 一句话功能 + 输入输出块图 (块 = 节点, 线 = 画布连线, 箭头指向数据流向)。"""
     n = nodes[nid]
@@ -280,8 +344,9 @@ def node_page(pr, nid, k, total, nodes, l2, links, out_l2, in_l2):
             (mi.get("EXEC_MODE") or "-"), ("真算" if pure else ("直通" if pure is False else "无实现")),
             len(ports_in), len(ports_out)), size=7.4, color=C_DIM)
 
-    # ── 块图几何 (三列: 上游 | 本节点 | 下游)
-    A0, A1 = 1.28, 6.28                     # 块图纵向范围
+    # ── 块图几何 (三列: 上游 | 本节点 | 下游); 带开关的节点(机器人执行器)下方留开关带
+    SW = bool(isinstance(params, dict) and params.get("ar_real_sw"))
+    A0, A1 = 1.28, (4.55 if SW else 6.28)
     UX, UW = 0.55, 3.75                     # 上游列
     NX, NW = 4.80, 3.55                     # 本节点
     DX, DW = 8.82, 3.95                     # 下游列
@@ -337,6 +402,11 @@ def node_page(pr, nid, k, total, nodes, l2, links, out_l2, in_l2):
     _txt(s, NX + NW + 0.02, cy_mid - 0.36, 0.32, 0.22, "out", size=7.0, color=C_DIM)
 
     # ── 页脚: 实现位置 + 参数 (只留能核对的几项)
+    if SW:
+        _switch_band(s, A1 + 0.12, params)
+        FY = 6.12
+    else:
+        FY = A1 + 0.10
     kv = []
     if isinstance(params, dict):
         for kk, vv in params.items():
@@ -345,11 +415,11 @@ def node_page(pr, nid, k, total, nodes, l2, links, out_l2, in_l2):
             kv.append("%s=%s" % (kk, _cut(vv, 22) if not isinstance(vv, (dict, list)) else "<%d 项>" % len(vv)))
             if len(kv) >= 3:
                 break
-    _txt(s, 0.5, A1 + 0.10, 12.3, 0.24,
+    _txt(s, 0.5, FY, 12.3, 0.24,
          "实现 = %s:%s · 话题 = ss.node.%s.<port>%s"
          % (_cut(mi.get("SOURCE") or "（无实现文件绑定）", 58), mi.get("SOURCE_SYMBOL") or "",
             nid, (" · 参数 " + " · ".join(kv)) if kv else ""), size=7.2, color=C_DIM)
-    _txt(s, 0.5, A1 + 0.36, 12.3, 0.24,
+    _txt(s, 0.5, FY + 0.26, 12.3, 0.24,
          "链路位置：逆序第 %d 位（1 = 最后输出端） · L2 内上游 %d / 下游 %d · L2 共 %d 个节点"
          % (k, len(in_l2[nid]), len(out_l2[nid]), total), size=7.2, color=C_DIM)
     return s
