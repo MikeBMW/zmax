@@ -1114,6 +1114,9 @@ def _ar_cmd_payload() -> dict:
                         "task_id": None, "mt_id": None, "mt_name": None, "mt_i": None,
                         "mt_n": None, "batch": None,
                         "pose_src": _pl.get("pose_src"),
+                        # 🧭 2026-11-02 段表姿态 (老倪「只有位置, 能保证姿态么」): 有就下发, 页面据此摆模块
+                        "quat": (_pl.get("quat") or (_ex.get("quat") if isinstance(_ex, dict) else None)),
+                        "quat_src": (_pl.get("quat_src") or (_ex.get("quat_src") if isinstance(_ex, dict) else None)),
                         "exec_u": _ex.get("u"), "exec_u_sat": _ex.get("u_sat"),
                         "exec_src": _ex.get("src_file")}
                 # 🧩 L2 全节点联通器的旁路标注 (ar_cmd_chain.json 的 annot 分区):
@@ -1137,6 +1140,7 @@ def _ar_cmd_payload() -> dict:
                "kind": d.get("kind"), "label": d.get("label"),
                "a": d.get("a"), "b": d.get("b"), "u": d.get("u"),
                "q": d.get("q"), "q_l": d.get("q_l"), "t_str": d.get("t_str"),
+               "quat": d.get("quat"), "quat_src": d.get("quat_src") or d.get("src"),
                "t_seg": d.get("t_seg"), "t_left": d.get("t_left"),
                "elapsed_s": d.get("elapsed_s"),
                # 🧩 2026-10-28: 长程元任务归属 (Plan 节点 ss_plan_long 写) —— 让页面/取证能看到

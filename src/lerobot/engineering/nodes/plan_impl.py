@@ -65,6 +65,7 @@ _MODE_FILE = os.path.join(_ROOT, "zmax_data", "ss_live", "plan_mode.json")
 _AR_CMD = os.path.join(_ROOT, "zmax_data", "ss_live", "ar_cmd.json")
 SIM_POSE = _sim_on()         # 兼容老引用 (导入时的快照, 判据只看 _sim_on())
 _POSE_SRC = "tcp(real)"     # 最近一次 _tcp_now() 实际用的位姿来源 (真机真值 / AR 虚拟末端)
+_POSE_Q = None              # 最近一次 _tcp_now() 读到的起点姿态 [x,y,z,w] (归一); 读不到 None
 
 
 def _sim_pose():
@@ -108,7 +109,8 @@ def _tcp_now():
             d = json.load(fh)
         age = time.time() - float(d.get("ts") or 0)
         p = [float(d.get("x")) * 1000.0, float(d.get("y")) * 1000.0, float(d.get("z")) * 1000.0]
-        global _POSE_SRC
+        global _POSE_SRC, _POSE_Q
+        _POSE_Q = _quat_ok([d.get("qx"), d.get("qy"), d.get("qz"), d.get("qw")])
         if _sim_on() and age > STALE_S:
             _p2, _a2 = _sim_pose()
             if _p2 is not None:
@@ -158,6 +160,36 @@ def _ps():
     return PS
 
 
+def _quat_ok(q):
+    """四元数整形: 4 分量 → 归一化 [x,y,z,w]; 缺分量/全零给 None (宁可没有, 不发坏姿态)。"""
+    try:
+        if not isinstance(q, (list, tuple)) or len(q) != 4:
+            return None
+        v = [float(x) for x in q]
+    except Exception:                                                       # noqa: BLE001
+        return None
+    n = sum(x * x for x in v) ** 0.5
+    if n < 1e-6:
+        return None
+    return [x / n for x in v]
+
+
+def _goal_quat(tgt):
+    """段表要带的**目标姿态** + 来源。优先级: in1 显式 > 点位示教 > 起点真值(保持当前)。
+
+    老倪 2026-11-02「只有位置, 能保证姿态么」—— 之前段表只有 a/b, 姿态全靠执行器
+    "保持当前", 到位判定也只比位置。这里把姿态做成段表的显式字段, 让下游能判、能显示。
+    """
+    if isinstance(tgt, dict):
+        q = _quat_ok(tgt.get("quat"))
+        if q:
+            return q, str(tgt.get("quat_src") or "point(示教)")
+    q = _quat_ok(_POSE_Q)
+    if q:
+        return q, "start(起点真值·保持)"
+    return None, "none"
+
+
 def _target(ctx, start_frame="base_link"):
     """目标点: 优先按**工程配置里的点名/槽号**取 (§老倪 2026-10-28), 也接受裸坐标。
 
@@ -170,6 +202,7 @@ def _target(ctx, start_frame="base_link"):
     v = ((ctx or {}).get("in1") or {}).get("value")
     if isinstance(v, dict):
         frame = v.get("frame") or start_frame
+        _q_in = _quat_ok(v.get("quat"))            # in1 显式四元数优先 (调用方指定姿态)
         _obs = v.get("obs")
         if not _obs and isinstance(v.get("point"), str) and v["point"].startswith("obs:"):
             _obs = v["point"][4:]
@@ -178,13 +211,17 @@ def _target(ctx, start_frame="base_link"):
             if not p:
                 return {"error": "obs_not_found", "want": _obs, "frame": frame}
             return {"pos": p["pos_mm"], "frame": p["frame"], "src": p["src"], "name": p["name"],
-                    "ts": p.get("ts"), "conf": p.get("conf"), "err_mm": p.get("err_mm"), "is_obs": True}
+                    "ts": p.get("ts"), "conf": p.get("conf"), "err_mm": p.get("err_mm"), "is_obs": True,
+                    "quat": _q_in or p.get("quat"),
+                    "quat_src": "in1(显式)" if _q_in else "point(示教)"}
         if v.get("point"):
             p = PS.find(v["point"], frame=frame)
             if not p:
                 return {"error": "point_not_found", "want": v["point"], "frame": frame}
             return {"pos": p["pos_mm"], "frame": p["frame"], "src": p["src"],
-                    "name": p["name"], "ts": p.get("ts")}
+                    "name": p["name"], "ts": p.get("ts"),
+                    "quat": _q_in or p.get("quat"),
+                    "quat_src": "in1(显式)" if _q_in else "point(示教)"}
         if v.get("slot") is not None:
             try:
                 p = PS.slot(int(v["slot"]), frame=frame)
@@ -193,10 +230,14 @@ def _target(ctx, start_frame="base_link"):
             if not p:
                 return {"error": "slot_not_found", "want": v["slot"], "frame": frame}
             return {"pos": p["pos_mm"], "frame": p["frame"], "src": p["src"],
-                    "name": p["name"], "ts": p.get("ts")}
+                    "name": p["name"], "ts": p.get("ts"),
+                    "quat": _q_in or p.get("quat"),
+                    "quat_src": "in1(显式)" if _q_in else "point(示教)"}
     r = _as_point(v)
     if r:
-        return {"pos": r, "frame": start_frame, "src": "in1(裸坐标)", "name": None, "ts": None}
+        return {"pos": r, "frame": start_frame, "src": "in1(裸坐标)", "name": None, "ts": None,
+                "quat": _q_in if isinstance(v, dict) else None,
+                "quat_src": "in1(显式)" if (isinstance(v, dict) and _q_in) else "none"}
     return None
 
 
@@ -333,8 +374,11 @@ def _split(a, b, cap):
              [a[i] + d[i] * (k + 1) / n for i in range(3)]) for k in range(n)]
 
 
-def _segments(start, goal, lim):
-    """抬升 → 横移 → 下落 → 对位。第三分量 = 高度(mm)，与段表/画布口径一致。"""
+def _segments(start, goal, lim, quat=None, quat_src="none"):
+    """抬升 → 横移 → 下落 → 对位。第三分量 = 高度(mm)，与段表/画布口径一致。
+
+    每段都带 ``quat``(目标姿态 [x,y,z,w]) 与 ``quat_src`` —— 段表不再只有位置。
+    """
     x0, y0, z0 = start
     x1, y1, z1 = goal
     segs = []
@@ -343,6 +387,8 @@ def _segments(start, goal, lim):
         segs.append({"i": len(segs) + 1, "kind": kind,
                      "a": [round(v, 2) for v in a], "b": [round(v, 2) for v in b],
                      "abs_mm": [round(v, 2) for v in b],
+                     "quat": ([round(v, 6) for v in quat] if quat else None),
+                     "quat_src": quat_src,
                      "len_mm": round(((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2
                                       + (b[2] - a[2]) ** 2) ** 0.5, 2)})
 
@@ -373,7 +419,11 @@ _SEG_V = {"lift": 1000.0, "move": 1000.0, "down": 300.0, "pull": 300.0, "insert"
 
 
 def _seg_dur(s):
-    """段时长(秒): 按段长/名义速度, 零长度加工序段给 0.12s 地板。"""
+    """段时长(秒): MoveIt 规划自带 t (按段长分摊的参数化时长) 优先; 否则按段长/名义速度。
+    零长度加工序段给 0.12s 地板。"""
+    t = s.get("t")
+    if t:
+        return max(0.12, float(t))
     v = float(_SEG_V.get(str(s.get("kind")), 300.0))
     ln = float(s.get("len_mm") or 0.0)
     return max(0.12, (ln / v) if ln > 0 else 0.12)
@@ -542,12 +592,46 @@ def run(ctx=None):
             "goal_raw": [round(v, 2) for v in goal],
             "goal_biased": [round(v, 2) for v in goal_plan],
             "why": "沿势场合力反方向退让 (避高势区) · 有界", "src": "in3(势场力)"}
-    # ③' 真出段表
-    segs = _segments(start, goal_plan, lim)
-    out.update({"ok": True, "backend": "rule", "goal": [round(v, 2) for v in goal_plan],
+    # ③' 真出段表 —— 后端选择 (老倪 2026-11-02「那就用, 真接上」):
+    #   ZMAX_PLAN_BACKEND=moveit|rule|auto(默认) · moveit 只在"容器里最新一轮规划新鲜 + 成功 + 绕行合理"时接管,
+    #   否则回退 rule (确定性抬-移-落), 绝不拿旧规划/远路冒充。
+    _gq, _gq_src = _goal_quat(tgt)          # 🧭 段表态姿: 显式 > 示教 > 起点保持
+    segs = _segments(start, goal_plan, lim, quat=_gq, quat_src=_gq_src)
+    _backend = "rule"
+    _mv = None
+    try:
+        from . import moveit_backend as _mb
+        _mv = _mb.snapshot()
+    except Exception as _e:                                              # noqa: BLE001
+        _mv = {"ok": False, "why": "moveit_backend 导入/读取失败 (%s)" % type(_e).__name__}
+    _want = (os.environ.get("ZMAX_PLAN_BACKEND") or "auto").strip().lower()
+    if _want == "rule":
+        _mv = dict(_mv or {}, ok=False, why="ZMAX_PLAN_BACKEND=rule ⇒ 强制规则后端")
+    if _mv and _mv.get("ok") and _mv.get("segs") and _want in ("auto", "moveit"):
+        segs = _mv["segs"]
+        # MoveIt 只给关节轨迹位置: 姿态按同一口径补齐, 缺哪段补哪段 (不覆盖已带的)
+        for _sg in segs:
+            if not _sg.get("quat"):
+                _sg["quat"] = ([round(v, 6) for v in _gq] if _gq else None)
+                _sg["quat_src"] = _gq_src
+        _backend = "moveit"
+    out["moveit"] = {
+        "backend": _backend,
+        "ok": bool(_mv and _mv.get("ok")), "why": (None if _mv is None else _mv.get("why")),
+        "age_s": (None if _mv is None else _mv.get("age_s")),
+        "n_points": (None if _mv is None else _mv.get("n_points")),
+        "plan_time_s": (None if _mv is None else _mv.get("plan_time_s")),
+        "end_err_mm": (None if _mv is None else _mv.get("end_err_mm")),
+        "fk_start_diff_mm": (None if _mv is None else _mv.get("fk_start_diff_mm")),
+        "total_mm": (None if _mv is None else _mv.get("total_mm")),
+        "src": "zmax_data/runtime/moveit_plan/live_plan_latest.json", "probe": _moveit_probe(),
+    }
+    out.update({"ok": True, "backend": _backend, "goal": [round(v, 2) for v in goal_plan],
+                "goal_quat": ([round(v, 6) for v in _gq] if _gq else None), "quat_src": _gq_src,
                 "segments": segs, "n": len(segs),
                 "total_mm": round(sum(s["len_mm"] for s in segs), 1),
-                "note": "确定性分段(抬升→横移→下落) · 只规划, 不动真机"})
+                "note": ("MoveIt 规划 (RRTConnect · IK/FK · 带时间参数) · 只规划, 不动真机" if _backend == "moveit"
+                         else "确定性分段(抬升→横移→下落) · 只规划, 不动真机")})
     # 🥽 2026-11-01 老倪「要真接入 AR 场景」: 段表直接进 AR 链分区 (页面/接口读它)
     try:
         from ..exec import ar_bridge as _arb
@@ -568,6 +652,7 @@ def run(ctx=None):
                 "u": round(_u, 4), "elapsed_s": _el,
                 "label": "段 %s/%s %s" % (_si, _nseg, (_cur or {}).get("kind")),
                 "total_mm": out.get("total_mm"), "pose_src": pose_src,
+                "quat": (_cur or {}).get("quat"), "quat_src": (_cur or {}).get("quat_src") or _gq_src,
             }, src="n_moveit")
     except Exception:                                                    # noqa: BLE001
         pass

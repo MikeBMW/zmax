@@ -100,11 +100,11 @@ except Exception as e:
 P, L = sim['plan'], sim['loop']
 cum, t = [], 0.0
 for s in P:
-    cum.append(round(t, 2)); t += s['t']
+    cum.append(t); t += s['t']            # 不预先舍入: 与页面 loop.tact_s 口径一致
 i0 = next(i for i, s in enumerate(P) if s['k'] == L['ks'][0])
 i1 = max(i for i, s in enumerate(P) if s['k'] == L['ks'][1])
-loop_dur = round(cum[i1] + P[i1]['t'] - cum[i0], 2)
-tact = loop_dur / L['mods']
+loop_dur = round(cum[i1] + P[i1]['t'] - cum[i0], 3)
+tact = (cum[i1] + P[i1]['t'] - cum[i0]) / L['mods']
 uph = 3600 / tact
 ins_end, grip_t = {}, {}
 for i, s in enumerate(P):
@@ -167,11 +167,43 @@ check('料盘 3 组 × 14 槽 + 废料盘', '槽口 36×42 共 %d 个 / 盘面 %
     n_slots, sorted(tray_sizes), len(trays)),
     ['3 组 × 14 槽 + 废料盘', '266 × 393'], 'ar_station.xml')
 # 节拍
-check('稳态循环', '%.2f s / %d 件 = %.3f s/件 = %.0f UPH' % (loop_dur, L['mods'], tact, uph),
-      ['%.2f s' % loop_dur, '%.3f s' % tact, '%d UPH' % round(uph)], sim_src)
+check('稳态循环', '%.3f s / %d 件 = %.3f s/件 = %.0f UPH' % (loop_dur, L['mods'], tact, uph),
+      ['%.3f s / %d 件' % (loop_dur, L['mods']), '%.3f s/件' % tact, '%d UPH' % round(uph)], sim_src)
 check('停留 dwell', '%.2f ~ %.2f s' % (min(dwells), max(dwells)),
       ['%.2f ~ %.2f s' % (min(dwells), max(dwells))], sim_src)
-check('目标节拍', '300 UPH = 12.0 s/件, 余量 %.2f s' % (12.0 - tact), ['300', '12 s'], 'order ar_300uph')
+check('目标节拍', '300 UPH = 12.0 s/件, 余量 %.3f s' % (12.0 - tact),
+      ['300', '12 s', '余量 %.3f s' % (12.0 - tact)], 'order ar_300uph')
+
+# 段表动作块 (与甘特页/总览页同一套解析: tools/build_uph300_gantt.build)
+sys.path.insert(0, ROOT + '/tools')
+from build_uph300_gantt import build as _gantt_build          # noqa: E402
+R = _gantt_build(sim)
+win = [b for b in R['blocks'] if b[2] >= R['base'] - 1e-6 and b[3] <= R['base'] + R['dur'] + 1e-6]
+
+
+def _ph(kind):
+    xs = sorted(b[3] - b[2] for b in win if b[0] == kind)
+    return xs
+
+
+pu, ao, pl, pi = _ph('pull'), _ph('aoi'), _ph('place'), _ph('insert')
+occ = sum(b[3] - b[2] for b in win)
+gap = R['dur'] - occ
+check('单件动作块 拔/AOI/落盘/补插',
+      '拔 %.2f~%.2f AOI %.2f 落盘 %.2f~%.2f 补插 %.2f~%.2f' % (
+          pu[0], pu[-1], sum(ao) / len(ao), pl[0], pl[-1], pi[0], pi[-1]),
+      ['拔 %.2f~%.2f' % (pu[0], pu[-1]), '落盘 %.2f~%.2f' % (pl[0], pl[-1]),
+       '补插 1 颗/件 %.2f~%.2f' % (pi[0], pi[-1])], '段表 blocks')
+check('右臂块内作业', '%.2f s / %.3f s = %.0f%%' % (occ, R['dur'], 100.0 * occ / R['dur']),
+      ['%.2f s / 循环 %.3f s' % (occ, R['dur']), '%.0f%%' % (100.0 * occ / R['dur'])], '段表 blocks')
+check('块间走位', '%.3f s/件 (循环 %.2f s)' % (gap / R['mods'], gap),
+      ['块间走位 %.2f s/件' % (gap / R['mods'])], '段表 blocks')
+check('稳态窗口动作块数', '窗口内 %d 块 = %d 拔 + %d AOI + %d 落盘 + %d 补插' % (
+    len(win), len(pu), len(ao), len(pl), len(pi)),
+      ['%d 个动作块' % len(win)], '段表 blocks (窗口 [base, base+dur])')
+check('设备孔', '%d 个孔, 孔距 %.0f mm, device_box_mm %s' % (
+    len(sim['holes']), sim.get('hole_pitch_mm') or 0, sim.get('device_box_mm')),
+      ['%d 个设备孔' % len(sim['holes'])], sim_src)
 # L2
 check('L2 节点数 / 真算数', '画布七带 %d 个(逻辑 %d), PURE=True %d' % (n_l2, n_logic, n_pure),
       ['%d 个节点' % n_l2], 'canvas 七带 + n_*.py')
@@ -179,6 +211,20 @@ missing = [n['name'] for n in l2_nodes if n['name'] not in PPT_TEXT]
 results.append(('L2 节点名称逐字一致', '%d 个名称' % n_l2,
                 ('缺 %d 个: %s' % (len(missing), ' / '.join(missing[:3]))) if missing else '全部命中',
                 'PASS' if not missing else 'FAIL', 'canvas state_space_obs.json'))
+
+# L2 连线页 (2026-11-02) —— 内部连线 / L3 入口 / 层外节点, 计数与画布 links 同源
+try:
+    sys.path.insert(0, ROOT + '/tools')
+    from l2_wiring import counts as _l2c                     # noqa: E402
+    _c = _l2c()
+    check('L2 连线页 · 内部连线', 'L2↔L2 %d 条' % _c['l2_edges'],
+          ['L2 内部连线 %d 条' % _c['l2_edges']], 'canvas links (L2↔L2)')
+    check('L2 连线页 · L3 入口', 'L3↔L2 %d 条 / %d 个节点' % (_c['l3_edges'], _c['l3_nodes']),
+          ['L3↔L2 连线 %d 条' % _c['l3_edges']], 'canvas links (L3↔L2)')
+    check('L2 连线页 · 层外节点', '%d 个节点 / %d 条连线' % (_c['ext_nodes'], _c['ext_edges']),
+          ['层外节点 %d 个 / 连线 %d 条' % (_c['ext_nodes'], _c['ext_edges'])], 'canvas links (layer外)')
+except Exception as _e:                                       # noqa: BLE001
+    results.append(('L2 连线页', '可解析', '%s' % _e, 'FAIL', 'l2_wiring'))
 
 # L5 / L4 / L3 层节点 (2026-11-01 新增页) —— 名称逐字 + 每层数量
 try:
@@ -196,9 +242,93 @@ try:
                         'PASS' if not _miss else 'FAIL', 'canvas state_space_obs.json'))
 except Exception as _e:                                                  # noqa: BLE001
     results.append(('L3/L4/L5 层页', '可解析', ['%s' % _e], 'FAIL', 'build_layer_nodes'))
-results.append(('总页数', '18 页 (封面+总览+15 层/结构/甘特+验收)',
-                ['%d' % len(pr.slides._sldIdLst)], 'PASS' if len(pr.slides._sldIdLst) == 18 else 'FAIL',
-                'pptx 实际页数'))
+# ---------- 7b. L2 逐节点页 + 节拍测试报告 (2026-11-02) ----------
+try:
+    sys.path.insert(0, ROOT + '/tools')
+    import l2_chain_pages as _C
+    _nodes, _l2, _links = _C.l2_nodes()
+    _order, _out, _in = _C.chain_order(_l2, _links)
+    _want = 19 + len(_order) + 1
+    results.append(('总页数', '%d 页 (19 + L2 逐节点 %d + 节拍报告 1)' % (_want, len(_order)),
+                    ['%d' % len(pr.slides._sldIdLst)],
+                    'PASS' if len(pr.slides._sldIdLst) == _want else 'FAIL', 'pptx 实际页数'))
+    # 每点一页: 标题里的编号/节点 id 与逆序一致
+    _titles = {}
+    for _i, _s in enumerate(pr.slides, 1):
+        _full = "\n".join(sh.text_frame.text for sh in _s.shapes if sh.has_text_frame)
+        _m = re.search(r'L2 链路 (\d+)/(\d+) · ', _full)
+        if _m:
+            _titles[int(_m.group(1))] = (_i, _full)
+    _miss_pg = [k for k in range(1, len(_order) + 1) if k not in _titles]
+    results.append(('L2 逐节点页数', '%d 个节点 = %d 页' % (len(_order), len(_order)),
+                    ['%d 页' % len(_titles)], 'PASS' if not _miss_pg else 'FAIL',
+                    'canvas L2 带 + 反向 BFS'))
+    # 顺序: 第 1 页必须是"无 L2 下游"的末端节点, 且顺序与反向 BFS 逐位一致
+    _ids = []
+    for k in range(1, len(_order) + 1):
+        _t = _titles.get(k, (0, ''))[1]
+        _ids.append(_t.split('·', 1)[0].strip())
+    _bad_order = [(_i + 1, _order[_i], _titles.get(_i + 1, (0, ''))[1][-30:])
+                  for _i in range(len(_order)) if _order[_i] not in _titles.get(_i + 1, (0, ''))[1]]
+    # 末端 = 离源头最远的输出节点 (画布有反馈回路, 不能只看"无下游")
+    _sink_ok = (_order[0] in _titles.get(1, (0, ''))[1]) if _titles.get(1) else False
+    results.append(('L2 顺序从末端开始', '第 1 页 = 无下游节点 (%s) · 逐位 %d' % (_order[0], len(_order) - len(_bad_order)),
+                    ['L2 链路 01/%d' % len(_order)], 'PASS' if (_sink_ok and not _bad_order) else 'FAIL',
+                    'canvas links 反向 BFS'))
+    # 输入/输出条数 = 画布连线条数 (逐页核)
+    _bad_io = []
+    for k, _nid in enumerate(_order, 1):
+        _pg = _titles.get(k)
+        if not _pg:
+            _bad_io.append(_nid + ':缺页'); continue
+        _t = _pg[1]
+        _ni = len([x for x in _links if x.get('t') == _nid])
+        _no = len([x for x in _links if x.get('f') == _nid])
+        _mi = re.search(r'输入（(\d+) 条连线', _t)
+        _mo = re.search(r'输出（(\d+) 条连线', _t)
+        if not (_mi and _mo and int(_mi.group(1)) == _ni and int(_mo.group(1)) == _no):
+            _bad_io.append('%s(%s/%s vs %d/%d)' % (_nid, _mi.group(1) if _mi else '?',
+                                                   _mo.group(1) if _mo else '?', _ni, _no))
+    results.append(('L2 节点页输入输出对账', '%d 个节点逐页 vs 画布连线' % len(_order),
+                    ['异常 %d' % len(_bad_io)], 'PASS' if not _bad_io else 'FAIL',
+                    'canvas links (f/t)'))
+    # 节拍测试报告页: 两口径都在, 且数字与 compute() 现算一致 (台账用建页时冻结的库内快照)
+    import l2_uph_measure as _U
+    from lerobot.memory import l2_store as _S2
+    _led = json.loads(json.dumps(_S2._read('ledger').get('kinds') or {}))
+    _c = _U.compute(led=_led or None)
+    _tp, _tm = _c["plan_tact"], _c["meas_tact"]
+    _pt = ''
+    for _s2 in pr.slides:
+        _all = "\n".join(sh.text_frame.text for sh in _s2.shapes if sh.has_text_frame)
+        if _all.lstrip().startswith('L2 节拍测试报告'):      # 标题页, 不是总览里提一句
+            _pt = _all
+            break
+    _m1 = re.search(r'计划口径（段表 t）：([\d.]+) s/件 → (\d+) UPH', _pt)
+    _m2 = re.search(r'实测口径（逐段同 label 台账 mean_t）：([\d.]+) s/件 → (\d+) UPH', _pt)
+    _ok_t = bool(_m1 and _m2 and abs(float(_m1.group(1)) - _tp) < 0.02
+                 and abs(float(_m2.group(1)) - _tm) < 0.02
+                 and int(_m1.group(2)) == round(3600 / _tp) and int(_m2.group(2)) == round(3600 / _tm))
+    results.append(('节拍测试报告页', '计划 %.3f/实测 %.3f s/件 现算' % (_tp, _tm),
+                    ['计划口径 %.3f' % _tp, '实测口径 %.3f' % _tm],
+                    'PASS' if _ok_t else 'FAIL', '段表 + AR 台账(逐 label)'))
+    # 收口路径行: 三个杠杆/两段组合必须与 l2_uph_closure.analyse() 现算一致 (同一份冻结台账)
+    import l2_uph_closure as _K
+    _k = _K.analyse(led=_led or None)
+    _cm = {x["name"]: x for x in _k["combos"]}
+    _a, _b = _cm["C1+C2+C3"], _cm["C1+C2+C3+C4"]
+    _need = ['C1_连续化', 'C2_检测并行', 'C3_插拔提速', 'C4_抬升加速度']
+    _miss_lv = [k for k in _need if ('−%.2f' % _k["levers"][k]["save"]) not in _pt]
+    _ok_c = (not _miss_lv
+             and ('%.2f s/件 = %d UPH' % (_a["tact_s"], round(_a["uph"]))) in _pt
+             and ('%.2f s/件 = %d UPH' % (_b["tact_s"], round(_b["uph"]))) in _pt)
+    results.append(('节拍收口路径', 'C1+C2+C3 %.2f s/件 · +C4 %.2f s/件 现算' % (_a["tact_s"], _b["tact_s"]),
+                    ['杠杆缺口 %d' % len(_miss_lv), 'C1+C2+C3 %.2f' % _a["tact_s"],
+                     'C1+C2+C3+C4 %.2f' % _b["tact_s"]],
+                    'PASS' if _ok_c else 'FAIL', 'l2_uph_closure.analyse'))
+except Exception as _e:                                                  # noqa: BLE001
+    results.append(('L2 逐节点页', '可解析', ['%s' % _e], 'FAIL', 'l2_chain_pages'))
+    results.append(('总页数', '19 + L2 节点页 + 1', ['%d' % len(pr.slides._sldIdLst)], 'FAIL', 'pptx'))
 
 # ---------- 8. 输出 ----------
 w = max(len(r[0]) for r in results) + 2
@@ -211,4 +341,16 @@ for item, truth, needle, st, src in results:
     print('%-*s %-5s 真源: %-34s PPT需含: %s  [%s]' % (w, item, st, truth[:34], needle[:26], src))
 print('-' * (w + 78))
 print('结果: %d PASS / %d FAIL' % (len(results) - bad, bad))
+
+# 自洽闸: 册里写的「N 项 / N PASS / N FAIL」必须等于本次实跑 (放在 summary 之后, 不进 results, 避免自指)
+claim = re.search(r'（(\d+) 项逐条回真源重算；当前 (\d+) PASS / (\d+) FAIL）', PPT_TEXT)
+want = (len(results), len(results) - bad, bad)
+if not claim:
+    print('自检口径 ✗ 册内未写项数/结果, 实跑 %d 项 %d PASS / %d FAIL' % want)
+    sys.exit(1)
+got = tuple(int(x) for x in claim.groups())
+if got != want:
+    print('自检口径 ✗ 册写 %s, 实跑 %s' % (got, want))
+    sys.exit(1)
+print('自检口径 ✓ 册写 %s = 实跑' % (got,))
 sys.exit(1 if bad else 0)

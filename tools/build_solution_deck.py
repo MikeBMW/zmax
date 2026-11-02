@@ -4,7 +4,7 @@
   新增 封面 / 方案总览 / 验收口径与边界 三页, 重排为解决方案叙事, 另存为新文件名。
 所有数字由 sources() 现算(URDF / tcp-ar.html / ar_station.xml / /api/sim_insert / 画布), 不手填。
 """
-import json, re, os, math, urllib.request
+import json, re, os, math, sys, urllib.request
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
@@ -47,13 +47,21 @@ def sources():
     except Exception:
         sim = json.load(open(ROOT + '/zmax_data/runtime/traj/sim_insert.json', encoding='utf-8'))
     P, L = sim['plan'], sim['loop']
+    # 节拍/动作块: 与甘特页共用同一套段表解析 (tools/build_uph300_gantt.build), 不另写一份算法
+    sys.path.insert(0, ROOT + '/tools')
+    from build_uph300_gantt import build as _gantt_build
+    R = _gantt_build(sim)
+    win = [b for b in R['blocks'] if b[2] >= R['base'] - 1e-6 and b[3] <= R['base'] + R['dur'] + 1e-6]
+
+    def _ph(kind):
+        xs = [b[3] - b[2] for b in win if b[0] == kind]
+        return (min(xs), max(xs), sum(xs) / len(xs)) if xs else (0.0, 0.0, 0.0)
+
+    occ = sum(b[3] - b[2] for b in win)
+    dur, tact = R['dur'], R['tact']
     cum, t = [], 0.0
     for s in P:
-        cum.append(round(t, 2)); t += s['t']
-    i0 = next(i for i, s in enumerate(P) if s['k'] == L['ks'][0])
-    i1 = max(i for i, s in enumerate(P) if s['k'] == L['ks'][1])
-    dur = round(cum[i1] + P[i1]['t'] - cum[i0], 2)
-    tact = dur / L['mods']
+        cum.append(t); t += s['t']
     ins_end, grip_t = {}, {}
     for i, s in enumerate(P):
         if s['kind'] == 'release' and s.get('at') == 'hole' and s.get('hole') is not None:
@@ -84,6 +92,8 @@ def sources():
                 n_pure += 1
     return dict(spec=spec, J=J, mass=mass, CHS=CHS, TAB=TAB, TCAM=TCAM, slots=slots, trays=trays,
                 sim=sim, dur=dur, mods=L['mods'], tact=tact, uph=3600 / tact,
+                occ=occ, gap=dur - occ,
+                phase=dict(pull=_ph('pull'), aoi=_ph('aoi'), place=_ph('place'), insert=_ph('insert')),
                 dwell=(min(dw), max(dw)), n_l2=n_l2, n_pure=n_pure, n_logic=n_l2 - 1, band_cnt=band_cnt)
 
 
@@ -119,13 +129,14 @@ def slide_cover(pr, S):
     box(s, 0, 0, 13.333, 1.55, RGBColor(0x0B, 0x1B, 0x2B), shape=MSO_SHAPE.RECTANGLE)
     add_text(s, 0.75, 0.34, 11.9, 0.52, 'Z-MAX 光模块上下料双臂工作站 · 整机解决方案', size=27, bold=True,
              color=RGBColor(0xFF, 0xFF, 0xFF))
-    add_text(s, 0.78, 0.95, 11.9, 0.40, 'XMS5-R800 ×2 ｜ 300 UPH ｜ L2 全节点能力 ｜ 场景实测几何与节拍',
+    add_text(s, 0.78, 0.95, 11.9, 0.40, 'XMS5-R800 ×2 ｜ 300 UPH ｜ L2 全节点能力 ｜ AR3D 场景几何 · 段表节拍（真机零指令）',
              size=13, color=RGBColor(0x9C, 0xD3, 0xE6))
     add_text(s, 0.78, 1.95, 11.8, 0.36, '方案版本 5.50.C　·　2026-11-01　·　编制依据（全部可回溯到真源文件）',
              size=11.5, bold=True, color=C_ACC)
     rows = [
         ('整机与工位几何', '厂家 URDF（config/robot/zmax_robot_spec.json）＋ AR3D 场景常量 tools/web/tcp-ar.html ＋ ar_station.xml'),
-        ('节拍与产能', 'AR3D 页面同源接口 GET /api/sim_insert（392 段逐段计时，稳态循环 45.87 s / 4 件）'),
+        ('节拍与产能', 'AR3D 页面同源接口 GET /api/sim_insert（%d 段逐段计时，稳态循环 %.3f s / %d 件）'
+         % (S['sim'].get('n_segs', len(S['sim']['plan'])), S['dur'], S['mods'])),
         ('L2 能力清单', '状态空间画布 state_space_obs.json ＋ src/lerobot/middleware/nodes/n_*.py 的 NAME / desc / PURE / SOURCE'),
         ('自检', 'tools/verify_solution_deck.py —— 把本册每个关键数回真源重算后比对'),
     ]
@@ -143,7 +154,7 @@ def slide_cover(pr, S):
              'Z-MAX  ·  5.50.C  ·  机器人整机解决方案  ·  内部评审版', size=9, color=C_DIM)
 
 
-def slide_overview(pr, S):
+def slide_overview(pr, S, total_pages=None, l2_pages=None):
     s = pr.slides.add_slide(pr.slide_layouts[6])
     add_text(s, 0.55, 0.22, 12.3, 0.40, '方案总览 · 一台工作站要解决的四件事', size=19, bold=True)
     add_text(s, 0.55, 0.66, 12.3, 0.32,
@@ -152,6 +163,7 @@ def slide_overview(pr, S):
 
     CHS, TAB, TCAM = S['CHS'], S['TAB'], S['TCAM']
     tab_len = round((TAB['x1'] - TAB['x0']) * 1000)
+    PH = S['phase']
     cards = [
         ('① 整机构成与工位', C_ACC, [
             '双臂 XMS5-R800 ×2，本体 %.3f kg/台（双臂 %.3f kg）' % (S['mass'], S['mass'] * 2),
@@ -163,10 +175,12 @@ def slide_overview(pr, S):
                 TCAM['r'] * 1000, TCAM['tilt'], S['J'][0]['origin_xyz'][2] * 1000, TCAM['fovH'], TCAM['fovV']),
         ]),
         ('② 节拍与产能', C_GRN, [
-            '稳态循环 %.2f s / %d 件 → 节拍 %.3f s/件' % (S['dur'], S['mods'], S['tact']),
-            '折算 %.0f UPH，目标 300（12 s/件），余量 %.2f s/件' % (S['uph'], 12.0 - S['tact']),
-            '单件动作：拔 1.78 → AOI 4.20 → 落盘 1.77 s',
-            '每两件补插 2 颗（2.70~2.98 s/颗），右臂净占用 92%',
+            '稳态循环 %.3f s / %d 件 → 节拍 %.3f s/件' % (S['dur'], S['mods'], S['tact']),
+            '折算 %.0f UPH，目标 300（12 s/件），余量 %.3f s/件' % (S['uph'], 12.0 - S['tact']),
+            '单件块：拔 %.2f~%.2f → AOI %.2f → 落盘 %.2f~%.2f s' % (
+                PH['pull'][0], PH['pull'][1], PH['aoi'][2], PH['place'][0], PH['place'][1]),
+            '补插 1 颗/件 %.2f~%.2f s；右臂块内 %.0f%%，块间走位 %.2f s/件' % (
+                PH['insert'][0], PH['insert'][1], 100.0 * S['occ'] / S['dur'], S['gap'] / S['mods']),
             '孔内停留 %.2f~%.2f s，与作业并行不占节拍' % S['dwell'],
         ]),
         ('③ 感知与决策（L2）', C_PUR, [
@@ -196,20 +210,25 @@ def slide_overview(pr, S):
 
     add_text(s, 0.55, 4.95, 12.3, 0.9,
              '一句话：两台 800 mm 臂在一张 1600×600 的台面上、围绕 3 组 14 槽料盘和 4 个设备孔轮转，'
-             '右臂把「拔→检→放」串成 11.467 s 的节拍，左臂用 3.0 s/件补料，节拍由右臂决定；'
-             'L2 层 30 个节点负责让每一段动作都有真值、有否决权、有兜底。', size=10, color=C_TXT, line_spacing=1.3)
+             '右臂把「拔→检→放→补插」串成 %.3f s 的节拍，左臂用 %.1f s/件补料，节拍由右臂决定；'
+             'L2 层 %d 个节点（含 1 个环境实体，逻辑 %d 个）负责让每一段动作都有真值、有否决权、有兜底。' % (
+                 S['tact'], 3.0, S['n_l2'], S['n_logic']), size=10, color=C_TXT, line_spacing=1.3)
     add_text(s, 0.55, 5.95, 12.3, 1.2,
              '读册顺序：第 3~7 页 = 整机几何与结构（三视图 / 尺寸表 / URDF 参数）；第 8~9 页 = 节拍甘特（一轮全览 + 稳态放大）；'
-             '第 10~12 页 = L2 30 个节点数据流与功能表；第 13 页 = 验收口径、复核方式与未闭环项。',
+             '第 10~18 页 = L5/L4/L3/L2 四层节点（L2 两页连线图 + 各层功能表）；'
+             '%s第 %d 页 = 验收口径、复核方式与未闭环项。'
+             % (('第 %d~%d 页 = L2 逐节点（从末端输出节点往前，每点一页：功能定义/输入/输出/参数/实现）；第 %d 页 = L2 节拍测试报告；'
+                 % (l2_pages[0], l2_pages[1], l2_pages[2])) if l2_pages else '',
+                (total_pages or 19)),
              size=9, color=C_DIM, line_spacing=1.3)
 
 
 def slide_accept(pr, S):
     s = pr.slides.add_slide(pr.slide_layouts[6])
     add_text(s, 0.55, 0.20, 12.3, 0.40, '验收口径 · 复核方式 · 边界与未闭环', size=19, bold=True)
-    add_text(s, 0.55, 0.62, 12.3, 0.30,
-             '自检工具：gui-venv311/bin/python tools/verify_solution_deck.py（22 项逐条回真源重算；当前 22 PASS / 0 FAIL）',
-             size=8.8, color=C_DIM)
+    hint = add_text(s, 0.55, 0.62, 12.3, 0.30,
+                    '自检工具：gui-venv311/bin/python tools/verify_solution_deck.py（逐项回真源重算；本节数字由该脚本现跑后写回）',
+                    size=8.8, color=C_DIM)
 
     hdr = ['指标 / 参数', '本册数值', '口径（怎么算出来的）', '复核位置']
     rows = [
@@ -256,6 +275,7 @@ def slide_accept(pr, S):
              '⑤FOV 87°×58° 是页面模板常量（RealSense 口径），不是本机标定值。\n'
              '变更纪律：任何数字要改，先改真源（URDF / 场景 XML / 段表 / 节点代码），再重跑 build 脚本与 verify 脚本，'
              '不直接改 PPT 文本。', size=9, color=C_DIM, line_spacing=1.3)
+    return hint
 
 
 def reorder(pr, order):
@@ -272,15 +292,37 @@ def main():
     pr = Presentation(SRC_DECK)
     n0 = len(pr.slides._sldIdLst)
     slide_cover(pr, S)
-    slide_overview(pr, S)
-    slide_accept(pr, S)
+    import l2_chain_pages as _C2
+    _nl2 = len(_C2.l2_nodes()[1])
+    slide_overview(pr, S, total_pages=n0 + 3 + _nl2 + 1, l2_pages=(19, 19 + _nl2 - 1, 19 + _nl2))
+    hint = slide_accept(pr, S)
     # 原 0..n0-1 保持原序; 新增 3 页在 n0, n0+1, n0+2
     order = [n0, n0 + 1] + list(range(0, n0)) + [n0 + 2]
     reorder(pr, order)
+    _C2.add_block(pr)                      # L2 逐节点页 (末端→上游) + 节拍测试报告
     pr.save(NEW_DECK)
+
+    # 验收页那句「N 项 / N PASS」由 verifier 现跑后写回, 不手填 (跑两轮: 写回后项数若有变化再对齐一次)
+    import subprocess
+    cmd = [ROOT + '/gui-venv311/bin/python', ROOT + '/tools/verify_solution_deck.py', NEW_DECK]
+    for _ in range(2):
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=300).stdout
+        m = re.search(r'检查 (\d+) 项', out)
+        k = re.search(r'结果: (\d+) PASS / (\d+) FAIL', out)
+        if not (m and k):
+            print('verify 未产出统计, 跳过写回:\n' + out[-500:])
+            break
+        txt = ('自检工具：gui-venv311/bin/python tools/verify_solution_deck.py（%s 项逐条回真源重算；当前 %s PASS / %s FAIL）'
+               % (m.group(1), k.group(1), k.group(2)))
+        if hint.text_frame.text == txt:
+            break
+        hint.text_frame.paragraphs[0].runs[0].text = txt
+        pr.save(NEW_DECK)
+
     print('解决方案页数 %d（原 %d + 新增 3）→ %s' % (len(pr.slides._sldIdLst), n0, os.path.basename(NEW_DECK)))
-    print('节拍 %.3f s/件 · %.0f UPH · dwell %.2f~%.2f · L2 %d 节点(PURE %d) · 质量 %.3f kg' % (
-        S['tact'], S['uph'], S['dwell'][0], S['dwell'][1], S['n_l2'], S['n_pure'], S['mass']))
+    print('节拍 %.3f s/件 · %.0f UPH · dwell %.2f~%.2f · L2 %d 节点(PURE %d) · 质量 %.3f kg · 右臂块内 %.1f%%' % (
+        S['tact'], S['uph'], S['dwell'][0], S['dwell'][1], S['n_l2'], S['n_pure'], S['mass'],
+        100.0 * S['occ'] / S['dur']))
 
 
 if __name__ == '__main__':

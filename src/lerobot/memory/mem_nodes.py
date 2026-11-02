@@ -84,6 +84,22 @@ def node_ss_mem_l2(ctx):
         mode = lib.get("mode") or lib.get("_mode") or "off"
         # 🧠 2026-10-30 接入: 每拍把「固化标杆视图」写热通道 → plan 每拍读它分配段时长
         _mf = _mf_feed()
+        # 🧠 2026-11-02 记忆库收口 (老倪): 操作/点位/工艺卡/标杆/台账 一律从 L2 记忆库读,
+        #   本节点 = 唯一的"操作库"持有者; 其它节点只调 l2_store.query 查询, 不直读原始 json。
+        _ST, _extra = None, {}
+        try:
+            from lerobot.memory import l2_store as _S
+            _ST = _S.stats()
+            _Q = ((ctx.get("in1") or {}).get("value") or {})
+            if isinstance(_Q, dict):
+                for _k in ("card", "point", "champ", "measured", "seq", "iface", "skill"):
+                    if _Q.get(_k) is not None:
+                        _extra[_k] = _S.query({_k: _Q[_k]})
+            n_s = int(_ST.get("cards") or 0)          # 操作库条目 = 工艺卡
+            mode = "L2库"
+        except Exception as _se:                                  # noqa: BLE001
+            if log:
+                log(f"⚠️ L2 记忆库读取失败 ({_se}) → 回退旧库视图")
         if _mf is not None:
             am = _mf.ar_muscle() or {}
             bench = {k: {"n": int((v or {}).get("n") or 0),
@@ -92,7 +108,17 @@ def node_ss_mem_l2(ctx):
                      for k, v in (am.get("kinds") or {}).items()}
             _out = {"n_skills": n_s, "mode": mode, "bench": bench,
                     "total_segs": int(am.get("total_segs") or 0),
-                    "src": "ar_muscle.json (plan 实测段时长) + muscle_memory.json"}
+                    "src": "l2_store (ops_cards/ops_points/champs/ledger) + ar_muscle.json 实测"}
+            if _ST:
+                _out.update({"ops": {"cards": _ST.get("cards"), "points": _ST.get("points"),
+                                     "corridors": _ST.get("corridors"),
+                                     "trajs_timed": sum(1 for v in (_S.trajs() or {}).values() if v.get("timed")),
+                                     "champs": _ST.get("champs"), "ledger": _ST.get("ledger_kinds"),
+                                     "trajs": _ST.get("trajs")},
+                             "worst_ratio": _ST.get("worst_ratio"), "built_at": _ST.get("built_at"),
+                             "sha": (_ST.get("sha") or {}).get("cards")})
+            if _extra:
+                _out.update(_extra)
             _LAST["l2"] = _out
             if _due("l2_pub", 1.0):                 # 1Hz 刷热通道 (3s 内算新鲜, 省 tick 预算)
                 _mf.publish("l2", _out)

@@ -109,7 +109,8 @@ class LivePlanner(Node):
         return [p.position.x, p.position.y, p.position.z,
                 p.orientation.x, p.orientation.y, p.orientation.z, p.orientation.w]
 
-    def plan(self, start_joints, xyz, quat, planner="RRTConnect", tries=10, allow_s=5.0):
+    def plan(self, start_joints, xyz, quat, planner="RRTConnect", tries=10, allow_s=5.0,
+             goal_joints=None):
         self._wait(self.mp_cli, "/plan_kinematic_path")
         req = GetMotionPlan.Request()
         ms = req.motion_plan_request
@@ -124,6 +125,24 @@ class LivePlanner(Node):
         rs.joint_state.position = [float(v) for v in start_joints.values()]
         ms.start_state = rs
         con = Constraints()
+        if goal_joints:
+            # 🔴 2026-11-02: 位姿目标会让 move_group 随机采样 IK 解, 常常接到"另一支"(J1 翻 180°)。
+            #   用 seed=当前关节算出的 IK 解锁成**关节空间目标** ⇒ 目标唯一, 不会再跑去远端支。
+            for nm, val in goal_joints.items():
+                jc = JointConstraint()
+                jc.joint_name = nm
+                jc.position = float(val)
+                jc.tolerance_above = 0.01
+                jc.tolerance_below = 0.01
+                jc.weight = 1.0
+                con.joint_constraints.append(jc)
+            ms.goal_constraints = [con]
+            fut = self.mp_cli.call_async(req)
+            rclpy.spin_until_future_complete(self, fut, timeout_sec=60.0)
+            res = fut.result()
+            if res is None or res.motion_plan_response.error_code.val != 1:
+                return None, (res.motion_plan_response.error_code.val if res else None)
+            return res.motion_plan_response.trajectory.joint_trajectory, 1
         pc = PositionConstraint()
         pc.header.frame_id = self.base
         pc.link_name = "tool1"
@@ -230,7 +249,21 @@ def main():
                 # 每轮都重算 IK 会白烧算力; 只有目标变了才重算 (上面 gkey 判定)
                 fk0 = n.fk(sj)
                 d0 = math.dist(fk0[:3], [float(x) for x in (rq.get("tcp") or goal)][:3]) if fk0 else -1.0
-                traj, code = n.plan(sj, goal, gq)
+                traj, code = n.plan(sj, goal, gq, goal_joints=goal_joints)
+                # 🧪 2026-11-02 诊断: FK(起关节) 的姿态 vs 请求里的 tcp_quat 夹角
+                #   用来判"IK 选到另一支"到底是姿态约定差 180°(控制器 tool1 vs URDF tool1) 还是别的原因。
+                _qang = None
+                try:
+                    _rq_q = rq.get("tcp_quat")
+                    if fk0 and _rq_q and len(_rq_q) == 4:
+                        _a = [float(v) for v in fk0[3:7]]
+                        _b = [float(v) for v in _rq_q]
+                        _d = abs(sum(x * y for x, y in zip(_a, _b)))
+                        _na = (sum(x * x for x in _a) ** 0.5) or 1e-9
+                        _nb = (sum(x * x for x in _b) ** 0.5) or 1e-9
+                        _qang = math.degrees(2.0 * math.acos(max(-1.0, min(1.0, _d / (_na * _nb)))))
+                except Exception:                                        # noqa: BLE001
+                    _qang = None
                 rec = {"ts": time.time(), "source": "moveit_plan_only(live)",
                        "group": a.group, "base_frame": a.base,
                        "start_joints": jpos, "goal_xyz": goal, "goal_quat": gq,
@@ -238,6 +271,10 @@ def main():
                        "fk_start_pos_err_mm": round(d0 * 1000.0, 3) if d0 >= 0 else -1.0,
                        "req_ts": rq.get("ts"), "frame_age_s": (time.time() - float(rq["ts"]))
                        if rq.get("ts") else -1.0}
+                if fk0:
+                    rec["fk_start_quat"] = [round(float(v), 6) for v in fk0[3:7]]
+                if _qang is not None:
+                    rec["quat_angle_deg"] = round(_qang, 2)
                 if traj is None or code != 1:
                     rec["n_points"] = -1
                     rec["plan_time_s"] = -1.0
@@ -269,9 +306,10 @@ def main():
                                               ("同源闸不过: FK(真关节)与真机 TCP 差 %.1fmm (>5mm), "
                                                "关节零位/符号口径与 URDF 不同 → 只可当设计态轨迹"
                                                % (d0 * 1000.0)))
-                    _log("✓ %d 关节路点 / %d TCP 路点 · 终点误差 %.2fmm · 时长 %.2fs · FK起点差 %.1fmm"
+                    _log("✓ %d 关节路点 / %d TCP 路点 · 终点误差 %.2fmm · 时长 %.2fs · FK起点差 %.1fmm · 姿态差 %s°"
                          % (len(pts), len(tcp), rec.get("end_err_mm", -1), rec["plan_time_s"],
-                            d0 * 1000.0 if d0 >= 0 else -1))
+                            d0 * 1000.0 if d0 >= 0 else -1,
+                            ("%.1f" % _qang) if _qang is not None else "?"))
                 with open(a.jsonl, "a", encoding="utf-8") as f:
                     f.write(json.dumps(rec, ensure_ascii=False) + "\n")
                 with open(a.latest, "w", encoding="utf-8") as f:

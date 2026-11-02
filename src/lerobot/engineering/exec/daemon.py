@@ -608,15 +608,25 @@ def build_move(sk, spec, pts, cur=None, curq=None):
 #   设计口径: 每阶段"下发后必须用真值等到位"才允许进下一阶段(判完成只看真值);
 #   阶段之间不碰夹爪 —— "全程不松爪"由技能定义里没有 gripper 步骤来保证(执行层不自己发明动作)。
 def _load_points():
-    """点位库: 演示学习轨迹点 + L2 传授点库 (同名以传授点库为准)"""
+    """点位库: L2 记忆库 (唯一真源) + 演示学习轨迹点 + L2 传授点库 (同名以记忆库为准)"""
     pts = {}
+    # 🧠 2026-11-02 记忆库收口: 固定轨迹点只从 L2 记忆库查 (其它节点不直读原始 json)
+    try:
+        from lerobot.memory import l2_store as _S
+        for _n, _v in (_S.points() or {}).items():
+            if _n.startswith("__recipe__:") or not _v.get("pos"):
+                continue
+            pts.setdefault(_n, {k: _v[k] for k in ("pos", "quat", "desc") if _v.get(k) is not None})
+    except Exception as _e:                                                # noqa: BLE001
+        log("⚠️ L2 记忆库点位读取失败(回退原库): %s" % _e)
     for _pf in ("data/skills/l2_muscle/光模块_抓放_演示学习_v1.json",
                 "data/skills/l2_atomic/taught_points.json",
                 # 🚀 2026-10-01: 老倪现场记的「空间1~7」(8793 空间点控件写这个库), 供 L2.goto_spaceN 用
                 "data/skills/l2_atomic/space_points.json"):
         try:
             with open(os.path.join(REPO, _pf), encoding="utf-8") as _f:
-                pts.update(json.load(_f).get("points", {}))
+                for _n, _v in (json.load(_f).get("points", {}) or {}).items():
+                    pts.setdefault(_n, _v)          # 记忆库没有的才补 (记忆库优先)
         except Exception as _e:                                              # noqa: BLE001
             log("点位库 %s 读取失败(跳过): %s" % (_pf, _e))
     return pts
@@ -731,10 +741,23 @@ def build_pose_rot(sk, spec, cur, curq):
 
 
 def _quat_angle_deg(a, b):
-    """两个四元数之间的夹角(度) —— 用真值判"到底转了多少" """
+    """两个四元数 [x,y,z,w] 之间的夹角(度) —— 用真值判"到底转了多少"。
+
+    2026-11-02: 加固 —— 缺分量/全零/非数值一律给 None (老调用方只看数值, None 不会被当真值);
+    按模长归一化后取 |dot|, 避免未归一四元数把角度算成噪声。
+    """
     import math
-    d = abs(sum(float(x) * float(y) for x, y in zip(a, b)))
-    return math.degrees(2.0 * math.acos(max(-1.0, min(1.0, d))))
+    try:
+        if not a or not b or len(a) != 4 or len(b) != 4:
+            return None
+        na = sum(float(x) ** 2 for x in a) ** 0.5
+        nb = sum(float(x) ** 2 for x in b) ** 0.5
+        if na < 1e-6 or nb < 1e-6:
+            return None
+        d = abs(sum(float(x) * float(y) for x, y in zip(a, b)) / (na * nb))
+        return math.degrees(2.0 * math.acos(max(-1.0, min(1.0, d))))
+    except Exception:                                                       # noqa: BLE001
+        return None
 
 
 def run_rot_chunks(sk, spec, sid, chan):
@@ -1291,31 +1314,80 @@ def plan_stage(sk, st, pts, spec, cur):
             "dir": _dir, "lin": lin, "call": call, "speed": sp}
 
 
-def wait_arrive(target, tol_mm=2.0, timeout_s=30.0, fail_check=None):
+WAIT_LAST = {"angle_deg": None, "att": "unchecked", "src": None, "why": ""}
+ARRIVE_TOL_DEG = float(os.environ.get("ZMAX_ARRIVE_TOL_DEG", "0.5"))
+
+
+
+def wait_arrive(target, tol_mm=2.0, timeout_s=30.0, fail_check=None, target_q=None, tol_deg=None):
     """等到位: **只看真值**(直读 /robot/tcp_pose; 读不到才退常驻缓存), 连续两次落进容差算停稳。
     返回 (ok, 最近偏差mm, 位姿来源)。绝不用 success / 计时来判完成 —— 老倪: 判完成只看真值。
     fail_check: 可选回调 —— 返回非空字符串即**当场中止**(腿已拒/已报错, 不必再空等窗口)。
-    2026-10-13 加: 被腿拒时原来要空等满窗口(实测 ~130s)才返回, 现场连点全堵在队里。"""
+    2026-10-13 加: 被腿拒时原来要空等满窗口(实测 ~130s)才返回, 现场连点全堵在队里。
+
+    2026-11-02 老倪「只有位置, 能保证姿态么」: 加**姿态判据** ——
+      · 段表带 quat 时 (target_q) 必须位置+姿态双满足才认到位 (姿态容差 tol_deg, 默认 0.5°, 环境变量
+        ZMAX_ARRIVE_TOL_DEG);
+      · 目标有姿态但当场读不到姿态真值 ⇒ 位置判定照旧, 但 WAIT_LAST["att"]="unverified",
+        调用方必须把它写进日志/回执 (**不许当成"姿态已验"**);
+      · 不给 target_q = 老行为 (只判位置), 逐字不变。
+    """
+    global WAIT_LAST
+    tol_deg = ARRIVE_TOL_DEG if tol_deg is None else float(tol_deg)
+    # 姿态真值读不到时: 默认 fail-closed (不认到位, 报 unverified); 现场要按位置放行才开这个开关
+    _failopen = str(os.environ.get("ZMAX_ARRIVE_ATT_FAILOPEN", "0")).strip().lower() in ("1", "true", "on", "yes")
     t0, best, src = time.time(), None, "none"
+    last_ang, att_state = None, ("unchecked" if target_q is None else "pending")
+    WAIT_LAST = {"angle_deg": None, "att": att_state, "src": None, "why": ""}
+
+    def _sample():
+        """取一次真值 → (p, e, ang, src)。e=最大轴偏差mm; ang=姿态夹角(度)或 None。"""
+        p, q, s = _pose_best()
+        if not p:
+            return None, None, None, s
+        e = max(abs(p[i] - target[i]) * 1000.0 for i in range(3))
+        ang = _quat_angle_deg(q, target_q) if (target_q is not None and q) else None
+        return p, e, ang, s
+
     while time.time() - t0 < timeout_s:
         if fail_check:
             _why = fail_check()
             if _why:
+                WAIT_LAST.update(att="aborted", why=str(_why), angle_deg=last_ang)
                 return False, best, "腿拒:" + str(_why)
-        p, _q, src = _pose_best()
+        p, e, ang, src = _sample()
         if p:
-            e = max(abs(p[i] - target[i]) * 1000.0 for i in range(3))
             best = e if best is None else min(best, e)
-            if e <= tol_mm:
+            if ang is not None:
+                last_ang = ang
+            pos_ok = e <= tol_mm
+            att_ok = ((target_q is None) or (ang is not None and ang <= tol_deg)
+                      or (ang is None and _failopen))
+            if pos_ok and att_ok:
                 time.sleep(0.5)
-                p2, _q2, src2 = _pose_best()
+                p2, e2, ang2, src2 = _sample()
                 if p2:
-                    e2 = max(abs(p2[i] - target[i]) * 1000.0 for i in range(3))
-                    if e2 <= tol_mm:
+                    if ang2 is not None:
+                        last_ang = ang2
+                    pos_ok2 = e2 <= tol_mm
+                    att_ok2 = ((target_q is None) or (ang2 is not None and ang2 <= tol_deg)
+                               or (ang2 is None and _failopen))
+                    if pos_ok2 and att_ok2:
+                        WAIT_LAST = {"angle_deg": (round(last_ang, 3) if last_ang is not None else None),
+                                     "att": ("unchecked" if target_q is None else
+                                             ("ok" if last_ang is not None else "unverified")),
+                                     "src": src2, "why": ""}
                         return True, e2, src2
+        # 目标带姿态但真值里没有姿态 ⇒ 显式标"未验", 不冒充
+        if target_q is not None and p and ang is None:
+            att_state = "unverified"
+        else:
+            att_state = ("unchecked" if target_q is None else "pending")
+        WAIT_LAST.update(att=att_state, angle_deg=last_ang, src=src)
         time.sleep(0.5)
+    WAIT_LAST.update(att=("unverified" if att_state == "unverified" else "out_of_tol"),
+                     angle_deg=last_ang, src=src, why="timeout")
     return False, best, src
-
 
 def _stage_timeout(st, lin_mm, speed):
     """等一阶段的**时间上限** —— 按距离和速度估, 不预先固定。
@@ -1615,21 +1687,27 @@ def run_stages(sk, spec, chan, pts):
             % (i, n, st.get("note", ""), pl["name"], pl["dx"], pl["dy"], pl["dz"], pl["dir"], pl["lin"], _to))
         # 🚚 2026-10-13: 腿当场拒(前置条件/50102/50113)就**立刻**停, 不再空等到位窗口跑满 ——
         #    否则一次被拒白等 ~130s, 现场连点几下全堵在队里(表现为"又不动了")。
+        # 🧭 2026-11-02: 段表带 quat ⇒ 位置+姿态双判据 (姿态容差 ZMAX_ARRIVE_TOL_DEG, 默认 0.5°)
         ok, err, psrc = wait_arrive(pl["pos"], float(st.get("tol_mm", 2.0)), _to,
                                     fail_check=lambda: (_LEG_FAIL["why"]
-                                                        if _LEG_FAIL["t"] >= _t_send else None))
+                                                        if _LEG_FAIL["t"] >= _t_send else None),
+                                    target_q=pl.get("quat"))
         if not ok:
             if str(psrc or "").startswith("腿拒:"):
                 _raw = str(psrc)[3:]
                 log("🛑 阶段 %d/%d 被**腿当场拒**(不再空等到位窗口 %.0fs) → 中止剩余阶段, 绝不重发\n"
                     "     腿的原话: %s" % (i, n, _to, _raw[:200]))
                 return "🛑 阶段 %d 被腿拒: %s" % (i, _raw[:160])
-            log("🛑 阶段 %d/%d 未在 %.0fs 内到位(最近偏差 %s mm, 位姿来源 %s) → 中止剩余阶段, 绝不重发; "
+            log("🛑 阶段 %d/%d 未在 %.0fs 内到位(最近偏差 %s mm, 姿态 Δ%s°/%s, 位姿来源 %s) → 中止剩余阶段, 绝不重发; "
                 "⚠️ 已下发的指令不会撤回, 臂可能仍在走 —— 以真值判定, 别重复点"
-                % (i, n, _to, ("%.1f" % err) if err is not None else "无真值", psrc))
+                % (i, n, _to, ("%.1f" % err) if err is not None else "无真值",
+                   ("%.2f" % WAIT_LAST["angle_deg"]) if WAIT_LAST.get("angle_deg") is not None else "无真值",
+                   WAIT_LAST.get("att") or "-", psrc))
             return "🛑 阶段 %d 未到位, 已中止(见日志)" % i
-        log("✅ 阶段 %d/%d 到位 · 真值偏差 %.1fmm (来源 %s) · 夹爪未动"
-            % (i, n, err if err is not None else -1.0, psrc))
+        log("✅ 阶段 %d/%d 到位 · 真值偏差 %.1fmm · 姿态 Δ%s°(%s) (来源 %s) · 夹爪未动"
+            % (i, n, err if err is not None else -1.0,
+               ("%.2f" % WAIT_LAST["angle_deg"]) if WAIT_LAST.get("angle_deg") is not None else "无真值",
+               WAIT_LAST.get("att") or "-", psrc))
         time.sleep(float(st.get("dwell_s", 1.0)))
     return "✅ 全部 %d 阶段完成" % n
 
@@ -2053,10 +2131,13 @@ AR_SW_FRESH_S = 1800.0          # 与 tcp_ar_server.AR_SW_FRESH_S 同口径: 控
 def _ar_scene_gate():
     """🎛 画布 🤖 机器人执行器 的 AR 开关 (2026-10-27 老倪: 「开了就是进 AR 场景控制左右臂」)
 
-    AR=开 ⇒ 左右臂走 ar3d 仿真, **真机一律不动**; AR=关 ⇒ 才走真机通路(仍要过 ctl_auth)。
+    ⚠ 2026-11-02 老倪:「两个开关可以同时打开」⇒ **默认不再拦真机**:
+        AR=开 只表示页面进 AR 模式(渲染链被消费), 真机通路只看真机开关/ctl_auth。
+       需要旧行为(AR=开 ⇒ 真机一律不动)时置 ZMAX_AR_HARDVETO=1 临时开回来。
     唯一依据: 画布 params.ar_scene → 控制台写 zmax_data/ss_live/exec_switches.json。
-    文件缺失或过期(>120s, 说明控制台没在发布) ⇒ 视为 AR=关, 不拦 —— 不能让画布失联把现场锁死。
     """
+    if os.environ.get("ZMAX_AR_HARDVETO", "0").strip() not in ("1", "true", "yes", "on"):
+        return None
     try:
         f = os.path.expanduser("~/zmax/zmax_data/ss_live/exec_switches.json")
         if time.time() - os.path.getmtime(f) > AR_SW_FRESH_S:
@@ -2064,7 +2145,7 @@ def _ar_scene_gate():
         with open(f, encoding="utf-8") as fh:
             d = json.load(fh)
         if d.get("ar_scene"):
-            return ("🛑 AR 场景开关=开 (画布 🤖 机器人执行器) ⇒ 真机不动, 只走 ar3d 仿真左右臂; "
+            return ("🛑 AR 场景开关=开 (画布 🤖 机器人执行器 · ZMAX_AR_HARDVETO=1) ⇒ 真机不动, 只走 ar3d 仿真左右臂; "
                     "要动真机先把 AR 开关点关")
     except Exception:                       # noqa: BLE001  —— 读不到不拦(fail-open 仅限这一道)
         return None
