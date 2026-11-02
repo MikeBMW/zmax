@@ -267,7 +267,7 @@ def _switch_state():
         age = _t.time() - float(d.get("t") or 0)
         return {"ar": bool(d.get("ar_scene")), "real": bool(d.get("real_auth")),
                 "age": age, "t_str": d.get("t_str"), "src": d.get("src") or "exec_switches.json",
-                "fresh": age < 300, "from": "exec_switches.json"}
+                "fresh": age < 1800, "from": "exec_switches.json"}
     except Exception as _e:                                              # noqa: BLE001
         return {"ar": False, "real": False, "age": None, "t_str": "-",
                 "src": "读不到 (%s)" % type(_e).__name__, "fresh": False, "from": "none"}
@@ -298,9 +298,9 @@ def _switch_band(s, y0, params):
          "🎛 与画布同一对开关 · 真源 zmax_data/ss_live/exec_switches.json（%s）"
          % ("新鲜" if st["fresh"] else "⚠ 已过期/读不到"), size=8.4, bold=True, color=C_ACC)
     rows = [
-        ("AR 场景开关", st["ar"], "开 ⇒ 左右臂走 AR 渲染（ar_cmd_chain.json 的 exec 分区, exec_src=ssact, 10Hz）· 真机不动",
-         "关 ⇒ 断开 AR, 走真机通路（真机开关=关时照旧不下发）"),
-        ("真机开关", st["real"], "开 ⇒ 允许真机下发（仍须 8793 工位授权 + l2_daemon 回执, 画布每拍绝不自动发）",
+        ("AR 场景开关", st["ar"], "开 ⇒ 页面进 AR 模式: 双臂按 ar_cmd_chain 的 exec 分区走帧(exec_src=ssact, 10Hz) · 可与真机开关同时开",
+         "关 ⇒ 页面退出 AR 模式(不再消费渲染指令) · 真机通路不受它影响"),
+        ("真机开关", st["real"], "开 ⇒ 8793 授权窗口打开, 指令真下发（画布每拍绝不自动发; 与 AR 开关互不互斥）",
          "关 ⇒ 零下发：与 out1.real_send=false 一致, 只算不发"),
     ]
     for i, (lab, on, tx_on, tx_off) in enumerate(rows):
@@ -311,12 +311,10 @@ def _switch_band(s, y0, params):
              color=C_ON if on else C_WARN)
         _txt(s, 3.52, yy - 0.02, 9.15, 0.24, _cut(tx_on if on else tx_off, 64), size=8.0,
              color=C_TXT if on else C_DIM)
-    hint = params.get("sw_hint") if isinstance(params, dict) else ""
     _txt(s, 0.66, y0 + 1.30 - 0.02, 11.9, 0.20,
-         "开关状态时间 %s · 来源 %s · 刷新龄 %s%s"
+         "开关状态时间 %s · 来源 %s · 刷新龄 %s · 两开关独立, 可同时开"
          % (st["t_str"] or "-", st["src"],
-            ("%.0f s" % st["age"]) if st["age"] is not None else "-",
-            (" · " + _cut(hint, 40)) if hint else ""), size=7.0, color=C_DIM)
+            ("%.0f s" % st["age"]) if st["age"] is not None else "-"), size=7.0, color=C_DIM)
 
 
 def node_page(pr, nid, k, total, nodes, l2, links, out_l2, in_l2):

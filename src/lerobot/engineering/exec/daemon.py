@@ -2063,10 +2063,13 @@ AR_SW_FRESH_S = 1800.0          # 与 tcp_ar_server.AR_SW_FRESH_S 同口径: 控
 def _ar_scene_gate():
     """🎛 画布 🤖 机器人执行器 的 AR 开关 (2026-10-27 老倪: 「开了就是进 AR 场景控制左右臂」)
 
-    AR=开 ⇒ 左右臂走 ar3d 仿真, **真机一律不动**; AR=关 ⇒ 才走真机通路(仍要过 ctl_auth)。
+    ⚠ 2026-11-02 老倪:「两个开关可以同时打开」⇒ **默认不再拦真机**:
+        AR=开 只表示页面进 AR 模式(渲染链被消费), 真机通路只看真机开关/ctl_auth。
+       需要旧行为(AR=开 ⇒ 真机一律不动)时置 ZMAX_AR_HARDVETO=1 临时开回来。
     唯一依据: 画布 params.ar_scene → 控制台写 zmax_data/ss_live/exec_switches.json。
-    文件缺失或过期(>120s, 说明控制台没在发布) ⇒ 视为 AR=关, 不拦 —— 不能让画布失联把现场锁死。
     """
+    if os.environ.get("ZMAX_AR_HARDVETO", "0").strip() not in ("1", "true", "yes", "on"):
+        return None
     try:
         f = os.path.expanduser("~/zmax/zmax_data/ss_live/exec_switches.json")
         if time.time() - os.path.getmtime(f) > AR_SW_FRESH_S:
@@ -2074,7 +2077,7 @@ def _ar_scene_gate():
         with open(f, encoding="utf-8") as fh:
             d = json.load(fh)
         if d.get("ar_scene"):
-            return ("🛑 AR 场景开关=开 (画布 🤖 机器人执行器) ⇒ 真机不动, 只走 ar3d 仿真左右臂; "
+            return ("🛑 AR 场景开关=开 (画布 🤖 机器人执行器 · ZMAX_AR_HARDVETO=1) ⇒ 真机不动, 只走 ar3d 仿真左右臂; "
                     "要动真机先把 AR 开关点关")
     except Exception:                       # noqa: BLE001  —— 读不到不拦(fail-open 仅限这一道)
         return None
