@@ -373,7 +373,11 @@ _SEG_V = {"lift": 1000.0, "move": 1000.0, "down": 300.0, "pull": 300.0, "insert"
 
 
 def _seg_dur(s):
-    """段时长(秒): 按段长/名义速度, 零长度加工序段给 0.12s 地板。"""
+    """段时长(秒): MoveIt 规划自带 t (按段长分摊的参数化时长) 优先; 否则按段长/名义速度。
+    零长度加工序段给 0.12s 地板。"""
+    t = s.get("t")
+    if t:
+        return max(0.12, float(t))
     v = float(_SEG_V.get(str(s.get("kind")), 300.0))
     ln = float(s.get("len_mm") or 0.0)
     return max(0.12, (ln / v) if ln > 0 else 0.12)
@@ -542,12 +546,39 @@ def run(ctx=None):
             "goal_raw": [round(v, 2) for v in goal],
             "goal_biased": [round(v, 2) for v in goal_plan],
             "why": "沿势场合力反方向退让 (避高势区) · 有界", "src": "in3(势场力)"}
-    # ③' 真出段表
+    # ③' 真出段表 —— 后端选择 (老倪 2026-11-02「那就用, 真接上」):
+    #   ZMAX_PLAN_BACKEND=moveit|rule|auto(默认) · moveit 只在"容器里最新一轮规划新鲜 + 成功 + 绕行合理"时接管,
+    #   否则回退 rule (确定性抬-移-落), 绝不拿旧规划/远路冒充。
     segs = _segments(start, goal_plan, lim)
-    out.update({"ok": True, "backend": "rule", "goal": [round(v, 2) for v in goal_plan],
+    _backend = "rule"
+    _mv = None
+    try:
+        from . import moveit_backend as _mb
+        _mv = _mb.snapshot()
+    except Exception as _e:                                              # noqa: BLE001
+        _mv = {"ok": False, "why": "moveit_backend 导入/读取失败 (%s)" % type(_e).__name__}
+    _want = (os.environ.get("ZMAX_PLAN_BACKEND") or "auto").strip().lower()
+    if _want == "rule":
+        _mv = dict(_mv or {}, ok=False, why="ZMAX_PLAN_BACKEND=rule ⇒ 强制规则后端")
+    if _mv and _mv.get("ok") and _mv.get("segs") and _want in ("auto", "moveit"):
+        segs = _mv["segs"]
+        _backend = "moveit"
+    out["moveit"] = {
+        "backend": _backend,
+        "ok": bool(_mv and _mv.get("ok")), "why": (None if _mv is None else _mv.get("why")),
+        "age_s": (None if _mv is None else _mv.get("age_s")),
+        "n_points": (None if _mv is None else _mv.get("n_points")),
+        "plan_time_s": (None if _mv is None else _mv.get("plan_time_s")),
+        "end_err_mm": (None if _mv is None else _mv.get("end_err_mm")),
+        "fk_start_diff_mm": (None if _mv is None else _mv.get("fk_start_diff_mm")),
+        "total_mm": (None if _mv is None else _mv.get("total_mm")),
+        "src": "zmax_data/runtime/moveit_plan/live_plan_latest.json", "probe": _moveit_probe(),
+    }
+    out.update({"ok": True, "backend": _backend, "goal": [round(v, 2) for v in goal_plan],
                 "segments": segs, "n": len(segs),
                 "total_mm": round(sum(s["len_mm"] for s in segs), 1),
-                "note": "确定性分段(抬升→横移→下落) · 只规划, 不动真机"})
+                "note": ("MoveIt 规划 (RRTConnect · IK/FK · 带时间参数) · 只规划, 不动真机" if _backend == "moveit"
+                         else "确定性分段(抬升→横移→下落) · 只规划, 不动真机")})
     # 🥽 2026-11-01 老倪「要真接入 AR 场景」: 段表直接进 AR 链分区 (页面/接口读它)
     try:
         from ..exec import ar_bridge as _arb

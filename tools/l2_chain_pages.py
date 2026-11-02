@@ -302,6 +302,18 @@ def _line(s, x1, y1, x2, y2, arrow=False, color=None, w=1.0):
     return conn
 
 
+def _moveit_status():
+    """运动规划页的真源行: 容器里 MoveIt 最近一轮规划 + 节点会不会用它 (与 plan_impl 同一判据)。"""
+    try:
+        if os.path.join(ROOT, "src") not in sys.path:
+            sys.path.insert(0, os.path.join(ROOT, "src"))
+        from lerobot.engineering.nodes import moveit_backend as _MB
+        s = _MB.snapshot() or {}
+        return s
+    except Exception as _e:                                              # noqa: BLE001
+        return {"ok": False, "why": "读不到 moveit_backend (%s)" % type(_e).__name__}
+
+
 def _switch_state():
     """两个开关的真值: 优先画布开关写出的 zmax_data/ss_live/exec_switches.json (5 分钟内算新鲜),
     否则回落画布节点 params (ar_scene / real_auth)。"""
@@ -465,6 +477,22 @@ def node_page(pr, nid, k, total, nodes, l2, links, out_l2, in_l2):
     _txt(s, 0.5, FY + 0.26, 12.3, 0.24,
          "链路位置：逆序第 %d 位（1 = 最后输出端） · L2 内上游 %d / 下游 %d · L2 共 %d 个节点"
          % (k, len(in_l2[nid]), len(out_l2[nid]), total), size=7.2, color=C_DIM)
+    if nid == "n_moveit":                       # 🧭 后端真值行: MoveIt 容器最近一轮 + 会不会接管
+        st2 = _moveit_status()
+        if st2.get("ok"):
+            line = ("后端 = MoveIt（接管段表） · 最近一轮 age %.1fs · %s 点 / %.1fs / 终点误差 %smm / 关节总行程 %srad"
+                    % (st2.get("age_s") or 0, st2.get("n_points"), st2.get("plan_time_s") or 0,
+                       st2.get("end_err_mm"), st2.get("joint_total_rad")))
+            col = C_ON
+        elif st2.get("age_s") is not None:
+            line = ("后端 = rule（回退） · MoveIt 最近一轮 age %.1fs · %s 点 / %.1fs / 终点误差 %smm / 关节总行程 %srad ⇒ %s"
+                    % (st2.get("age_s") or 0, st2.get("n_points"), st2.get("plan_time_s") or 0,
+                       st2.get("end_err_mm"), st2.get("joint_total_rad"), _cut(st2.get("why") or "", 52)))
+            col = C_WARN
+        else:
+            line = "后端 = rule（回退） · MoveIt: %s" % _cut(st2.get("why") or "不可用", 80)
+            col = C_WARN
+        _txt(s, 0.5, FY + 0.52, 12.3, 0.22, line, size=7.2, color=col)
     return s
 
 
