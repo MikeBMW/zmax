@@ -55,10 +55,11 @@ def run_l2(seed):
 
 # ───────────────────────────────────────────────── 节拍核算 (页面/自检共用同一函数)
 def compute(d=None, led=None):
-    """段表 + 台账 → 每件节拍两口径 (计划 / 实测)。页面与自检都调这个, 不许各写一套。
+    """段表 + 台账 → 每件节拍两口径 (计划 / 实测)。页面、自检、收口核算都调这个, 不许各写一套。
 
-    实测口径: 段表每段 t × (台账 mean_t ÷ 段表同类平均计划 t) —— 保留每段的几何差异,
-    只把「这一类段实测比计划慢多少」乘回去。
+    实测口径 (最严同源): 每一段都用台账里**同 label** 的实测 mean_t; 该 label 台账没有才回落到
+    同 kind 均值, 并记 label_hit 覆盖率。不同 label 的段几何不同, 拿 kind 均值去乘是错口径
+    (会把 17mm 的短移和 619mm 的长移按同一慢速比缩放)。
     """
     d = d or plan_from_api()
     plan = d["plan"]
@@ -66,28 +67,30 @@ def compute(d=None, led=None):
         led = json.load(open(os.path.join(ROOT, "data/memory/ar_muscle.json"), encoding="utf-8"))["kinds"]
     win = [x for x in plan if x.get("mod") in (1, 2, 3, 4)]
     nmod = len({x.get("mod") for x in win}) or 1
-    by = collections.defaultdict(lambda: {"t": 0.0, "n": 0})
+    by = collections.defaultdict(lambda: {"plan": 0.0, "real": 0.0, "n": 0})
+    hit = 0
     for x in win:
+        lb = (led.get(x["kind"]) or {}).get("labels") or {}
+        e = lb.get(x.get("label") or "")
+        if e:
+            real, hit = float(e["mean_t"]), hit + 1
+        else:
+            real = float((led.get(x["kind"]) or {}).get("mean_t") or x["t"])
         a = by[x["kind"]]
-        a["t"] += float(x["t"])
-        a["n"] += 1
-    ratio = {}
-    for k, a in by.items():
-        mean_plan = a["t"] / a["n"] if a["n"] else 0
-        m = (led.get(k) or {}).get("mean_t")
-        ratio[k] = (m / mean_plan) if (m and mean_plan) else 1.0
-    tp = sum(a["t"] for a in by.values()) / nmod
-    tm = sum(a["t"] * ratio[k] for k, a in by.items()) / nmod
+        a["plan"] += float(x["t"]); a["real"] += real; a["n"] += 1
+    tp = sum(a["plan"] for a in by.values()) / nmod
+    tm = sum(a["real"] for a in by.values()) / nmod
     rows = []
     for k, a in by.items():
-        rows.append({"kind": k, "plan_per_pc": a["t"] / nmod, "meas_per_pc": a["t"] * ratio[k] / nmod,
-                     "delta": a["t"] * (ratio[k] - 1) / nmod, "segs_per_pc": a["n"] / nmod,
+        rows.append({"kind": k, "plan_per_pc": a["plan"] / nmod, "meas_per_pc": a["real"] / nmod,
+                     "delta": (a["real"] - a["plan"]) / nmod, "segs_per_pc": a["n"] / nmod,
                      "n": (led.get(k) or {}).get("n"), "mean_t": (led.get(k) or {}).get("mean_t"),
-                     "ratio": ratio[k]})
+                     "ratio": (a["real"] / a["plan"]) if a["plan"] else 1.0})
     rows.sort(key=lambda r: -r["delta"])
     return {"plan_tact": tp, "meas_tact": tm, "uph_plan": 3600.0 / tp, "uph_meas": 3600.0 / tm,
             "target_tact": TARGET_TACT, "gap": tm - TARGET_TACT, "rows": rows,
-            "n_seg": len(win), "n_mod": nmod, "loop": d.get("loop") or {}, "ratio": ratio}
+            "n_seg": len(win), "n_mod": nmod, "label_hit": hit, "loop": d.get("loop") or {},
+            "ratio": {r["kind"]: r["ratio"] for r in rows}}
 
 
 def main():
@@ -110,35 +113,26 @@ def main():
         out["l2_ok"] = bool(r["done"] and not missing)
 
     d = plan_from_api()
-    plan, loop = d["plan"], d.get("loop") or {}
-    led = json.load(open(os.path.join(ROOT, "data/memory/ar_muscle.json"), encoding="utf-8"))["kinds"]
+    # 口径统一: 只有 compute() 一套算法, main 不再另写一份 (旧版 main 用台账 plan_t 当分母, 台账 plan_t
+    # 是"最后一条样本的 plan_t", 会随引擎每段漂移 ⇒ 同一份数据能算出 150 或 200 UPH 两个值)
+    c = compute(d=d)
+    plan, loop = d["plan"], c["loop"]
+    tact_p, tact_m = c["plan_tact"], c["meas_tact"]
+    uph_p, uph_m = c["uph_plan"], c["uph_meas"]
+    agg = {r["kind"]: [r["plan_per_pc"], r["meas_per_pc"], r["segs_per_pc"]] for r in c["rows"]}
+    gaps = [(r["kind"], r["delta"]) for r in c["rows"]]
 
-    def ratio(k):
-        m, p = (led.get(k) or {}).get("mean_t"), (led.get(k) or {}).get("plan_t")
-        return (m / p) if (m and p) else 1.0
-
-    win = [s for s in plan if s.get("mod") in (1, 2, 3, 4)]
-    n_mod = len({s.get("mod") for s in win}) or 1
-    tp = sum(float(s["t"]) for s in win)
-    tm = sum(float(s["t"]) * ratio(s["kind"]) for s in win)
-    tact_p, tact_m = tp / n_mod, tm / n_mod
-    uph_p, uph_m = 3600.0 / tact_p, 3600.0 / tact_m
-
-    agg = collections.defaultdict(lambda: [0.0, 0.0, 0])
-    for s in win:
-        x = agg[s["kind"]]; x[0] += float(s["t"]) / n_mod; x[1] += float(s["t"]) * ratio(s["kind"]) / n_mod; x[2] += 1
-    gaps = sorted(((k, v[1] - v[0]) for k, v in agg.items()), key=lambda x: -x[1])
-
-    print("\nB. 节拍 / UPH (段表 %d 段 · 窗口 %d 件 · 每件 %d 段)" % (len(plan), n_mod, len(win) // n_mod))
+    print("\nB. 节拍 / UPH (段表 %d 段 · 窗口 %d 件 · 每件 %d 段 · label 同源 %d/%d)"
+          % (len(plan), c["n_mod"], c["n_seg"] // c["n_mod"], c["label_hit"], c["n_seg"]))
     print("   计划口径: %.3f s/件 → %d UPH   (段表本身: %.3fs / %s 件, tact_s=%.3f)"
           % (tact_p, uph_p, loop.get("dur", 0), loop.get("mods", 0), loop.get("tact_s", 0)))
-    print("   实测口径: %.3f s/件 → %d UPH   (AR 台账 mean_t 代回每段)"
+    print("   实测口径: %.3f s/件 → %d UPH   (逐段同 label 台账 mean_t 代回)"
           % (tact_m, uph_m))
     print("   目标 300 UPH ⇒ ≤ %.3f s/件 · 实测口径差 %+.3f s/件" % (TARGET_TACT, tact_m - TARGET_TACT))
     print("   余量归因 (每件增量, 谁吃掉的):")
     for k, g in gaps[:5]:
         print("      %-8s %+.3f s   (计划 %.2f → 实测 %.2f, %d 段/件)"
-              % (k, g, agg[k][0], agg[k][1], agg[k][2] // n_mod))
+              % (k, g, agg[k][0], agg[k][1], agg[k][2]))
     out.update({"tact_plan": round(tact_p, 4), "uph_plan": round(uph_p, 1),
                 "tact_measured": round(tact_m, 4), "uph_measured": round(uph_m, 1),
                 "target_tact": TARGET_TACT, "gap_s_per_pc": round(tact_m - TARGET_TACT, 4),

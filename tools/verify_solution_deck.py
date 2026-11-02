@@ -305,13 +305,27 @@ try:
             _pt = _all
             break
     _m1 = re.search(r'计划口径（段表 t）：([\d.]+) s/件 → (\d+) UPH', _pt)
-    _m2 = re.search(r'实测口径（× 台账 mean_t/同类计划均值）：([\d.]+) s/件 → (\d+) UPH', _pt)
+    _m2 = re.search(r'实测口径（逐段同 label 台账 mean_t）：([\d.]+) s/件 → (\d+) UPH', _pt)
     _ok_t = bool(_m1 and _m2 and abs(float(_m1.group(1)) - _tp) < 0.02
                  and abs(float(_m2.group(1)) - _tm) < 0.02
                  and int(_m1.group(2)) == round(3600 / _tp) and int(_m2.group(2)) == round(3600 / _tm))
     results.append(('节拍测试报告页', '计划 %.3f/实测 %.3f s/件 现算' % (_tp, _tm),
                     ['计划口径 %.3f' % _tp, '实测口径 %.3f' % _tm],
-                    'PASS' if _ok_t else 'FAIL', '段表 + AR 台账'))
+                    'PASS' if _ok_t else 'FAIL', '段表 + AR 台账(逐 label)'))
+    # 收口路径行: 三个杠杆/两段组合必须与 l2_uph_closure.analyse() 现算一致 (同一份冻结台账)
+    import l2_uph_closure as _K
+    _k = _K.analyse(led=_led or None)
+    _cm = {x["name"]: x for x in _k["combos"]}
+    _a, _b = _cm["C1+C2+C3"], _cm["C1+C2+C3+C4"]
+    _need = ['C1_连续化', 'C2_检测并行', 'C3_插拔提速', 'C4_抬升加速度']
+    _miss_lv = [k for k in _need if ('−%.2f' % _k["levers"][k]["save"]) not in _pt]
+    _ok_c = (not _miss_lv
+             and ('%.2f s/件 = %d UPH' % (_a["tact_s"], round(_a["uph"]))) in _pt
+             and ('%.2f s/件 = %d UPH' % (_b["tact_s"], round(_b["uph"]))) in _pt)
+    results.append(('节拍收口路径', 'C1+C2+C3 %.2f s/件 · +C4 %.2f s/件 现算' % (_a["tact_s"], _b["tact_s"]),
+                    ['杠杆缺口 %d' % len(_miss_lv), 'C1+C2+C3 %.2f' % _a["tact_s"],
+                     'C1+C2+C3+C4 %.2f' % _b["tact_s"]],
+                    'PASS' if _ok_c else 'FAIL', 'l2_uph_closure.analyse'))
 except Exception as _e:                                                  # noqa: BLE001
     results.append(('L2 逐节点页', '可解析', ['%s' % _e], 'FAIL', 'l2_chain_pages'))
     results.append(('总页数', '19 + L2 节点页 + 1', ['%d' % len(pr.slides._sldIdLst)], 'FAIL', 'pptx'))

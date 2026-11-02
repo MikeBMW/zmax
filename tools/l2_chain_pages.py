@@ -284,25 +284,34 @@ def _upname(nid, nodes):
 # ───────────────────────────────────────────── 节拍测试报告页
 def tact_page(pr):
     import l2_uph_measure as U
+    import l2_uph_closure as K
     from lerobot.memory import l2_store as S
     r = U.run_l2(104)
     live = json.load(open(os.path.join(ROOT, "data/memory/ar_muscle.json"), encoding="utf-8"))
     # 口径冻结: 页面数字与自检读同一份台账快照 (台账是活数据, 不冻结就会"值变了文案没变")
+    # labels 必须一起冻结 —— 实测口径用逐段同 label 的实测均值, 只冻 kind 均值就对不上了
     S.put_ledger({k: {"n": v.get("n"), "mean_t": v.get("mean_t"), "plan_t": v.get("plan_t"),
+                      "labels": v.get("labels") or {},
                       "ratio": (round(v["mean_t"] / v["plan_t"], 3) if (v.get("mean_t") and v.get("plan_t")) else None)}
                   for k, v in (live.get("kinds") or {}).items()}, writer="ss_mem_l2", src=live.get("src", ""))
     c = U.compute(led=live.get("kinds") or {})
+    k = K.analyse(d=U.plan_from_api(), led=live.get("kinds") or {})
     tp, tm, st, sm = c["plan_tact"], c["meas_tact"], c["uph_plan"], c["uph_meas"]
+    st_i, sm_i = round(st), round(sm)        # 页内整数 UPH 与自检 round() 同一取整, 不许一个截断一个四舍五入
     rows = c["rows"]
     need = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入"]
     miss = [x for x in need if x not in r["stages"]]
+    lv = k["levers"]
+    cm = {x["name"]: x for x in k["combos"]}
+    c123 = cm["C1+C2+C3"]
+    c1234 = cm["C1+C2+C3+C4"]
+    fmo = k["fit_move"] or {}
 
     s = _slide(pr)
-    _txt(s, 0.5, 0.16, 12.3, 0.34, "L2 节拍测试报告 · 独立运行%s · 300 UPH：计划口径达标 / 实测口径未达标"
-         % ("通过" if (r["done"] and not miss) else "未通过"), size=15, bold=True)
+    _txt(s, 0.5, 0.16, 12.3, 0.34, "L2 节拍测试报告 · 独立运行%s · 300 UPH：计划口径达标 / 实测口径未达标" % ("通过" if (r["done"] and not miss) else "未通过"), size=15, bold=True)
     _txt(s, 0.5, 0.52, 12.3, 0.26,
-         "真源：引擎 cap=l2 实跑（seed 104，不带 L3 编排）+ 段表 GET /api/sim_insert（%d 段）+ AR 台账 mean_t（建页时冻结快照）"
-         % c["n_seg"], size=7.8, color=C_DIM)
+         "真源：引擎 cap=l2 实跑（seed 104，不带 L3 编排）+ 段表 GET /api/sim_insert（%d 段）+ AR 台账逐 label 实测（建页时冻结快照，命中 %d/%d）"
+         % (c["n_seg"], c["label_hit"], c["n_seg"]), size=7.8, color=C_DIM)
 
     _panel(s, 0.5, 0.86, 5.05, 2.05)
     _txt(s, 0.65, 0.94, 4.8, 0.24, "① L2 独立运行（七段闭环）", size=9, bold=True, color=C_ACC)
@@ -315,19 +324,19 @@ def tact_page(pr):
     _panel(s, 5.75, 0.86, 7.08, 2.05)
     _txt(s, 5.9, 0.94, 6.8, 0.24, "② 节拍两口径（同一份段表 · 每件 %d 段）" % (c["n_seg"] // c["n_mod"]), size=9, bold=True, color=C_ACC)
     _txt(s, 5.9, 1.20, 6.8, 1.6,
-         "· 计划口径（段表 t）：%.3f s/件 → %d UPH  %s\n· 实测口径（× 台账 mean_t/同类计划均值）：%.3f s/件 → %d UPH  %s\n· 目标 300 UPH ⇒ ≤ 12.000 s/件；实测口径差 %+.3f s/件\n· 段表原值：%.3f s / %s 件（tact_s %.3f）"
-         % (tp, st, "✅" if st >= 300 else "❌", tm, sm, "✅" if sm >= 300 else "❌",
+         "· 计划口径（段表 t）：%.3f s/件 → %d UPH  %s\n· 实测口径（逐段同 label 台账 mean_t）：%.3f s/件 → %d UPH  %s\n· 目标 300 UPH ⇒ ≤ 12.000 s/件；实测口径差 %+.3f s/件\n· 段表原值：%.3f s / %s 件（tact_s %.3f）"
+         % (tp, st_i, "✅" if st >= 300 else "❌", tm, sm_i, "✅" if sm >= 300 else "❌",
             c["gap"], c["loop"].get("dur", 0), c["loop"].get("mods", 0), c["loop"].get("tact_s", 0)),
          size=8.4, spacing=1.22)
 
-    _panel(s, 0.5, 3.05, 12.33, 2.36)
+    _panel(s, 0.5, 3.05, 12.33, 2.24)
     _txt(s, 0.65, 3.13, 12.0, 0.24, "③ 余量归因（每件增量，按吃掉节拍的多少排序）", size=9, bold=True, color=C_ACC)
     y = 3.42
     for xx, ww, hh in ((0.70, 1.5, "段类"), (2.20, 1.6, "计划/件 (s)"), (3.85, 1.6, "实测/件 (s)"),
                        (5.50, 1.4, "增量 (s)"), (6.95, 1.3, "段数/件"), (8.30, 2.6, "台账 mean_t (s)"),
                        (10.95, 1.7, "实测/计划")):
         _txt(s, xx, y, ww, 0.2, hh, size=7.6, bold=True, color=C_DIM)
-    for i, row in enumerate(rows[:9]):
+    for i, row in enumerate(rows[:7]):
         yy = y + 0.24 + i * 0.205
         col = C_WARN if row["delta"] > 0.5 else C_TXT
         _txt(s, 0.70, yy, 1.4, 0.2, row["kind"], size=7.4, color=col)
@@ -338,16 +347,20 @@ def tact_page(pr):
         _txt(s, 8.30, yy, 2.6, 0.2, "%.3f" % (row["mean_t"] or 0), size=7.4, color=C_DIM)
         _txt(s, 10.95, yy, 1.7, 0.2, "×%.2f" % row["ratio"], size=7.4, color=col)
 
-    _panel(s, 0.5, 5.52, 12.33, 1.66, fill=RGBColor(0xFD, 0xF3, 0xF1), line=C_WARN)
-    _txt(s, 0.65, 5.60, 12.0, 0.24, "④ 结论与保 300 的条件（如实）", size=9, bold=True, color=C_WARN)
-    top3 = "、".join("%s（%+.2f s）" % (x["kind"], x["delta"]) for x in rows[:3])
-    _txt(s, 0.65, 5.86, 12.0, 1.26,
-         "· L2 能独立运行（七段闭环 %s）；300 UPH 只在计划口径成立（%d UPH），按现场实测段时长代回是 %d UPH，差 %+.2f s/件。\n"
-         "· 吃掉余量的是 %s —— 必须用现场参数收敛：move 的路径/速度、up/down 的抬升行程与加速度、pull 的 0.30 s 计划值明显乐观。\n"
-         "· 判据：段类实测均值回落到计划值 ×1.15 以内 ⇒ 12 s/件可达；当前 move ×%.2f / up ×%.2f / pull ×%.2f。复现：tools/l2_uph_measure.py"
-         % ("✅" if (r["done"] and not miss) else "❌", st, sm, c["gap"], top3,
-            c["ratio"].get("move", 0), c["ratio"].get("up", 0), c["ratio"].get("pull", 0)),
-         size=7.9, spacing=1.2)
+    _panel(s, 0.5, 5.38, 12.33, 1.80, fill=RGBColor(0xFD, 0xF3, 0xF1), line=C_WARN)
+    _txt(s, 0.65, 5.46, 12.0, 0.24, "④ 结论与保 300 UPH 的收口路径（数字全部现算，不是估百分比）", size=9, bold=True, color=C_WARN)
+    _txt(s, 0.65, 5.72, 12.0, 1.42,
+         "· L2 能独立运行（七段闭环 %s）；300 UPH 只在计划口径成立（%d UPH），按台账同 label 实测代回是 %d UPH，差 %+.2f s/件。\n"
+         "· 余量不在「臂慢」：move 每段固定开销 %.2f s 是段边界加减速（等效速度 %.0f mm/s），检测独占 %.2f s/件（%d 段 AOI）。\n"
+         "· 三条收口：C1 段间连续化 −%.2f（每件 %.0f 处×%.2f s）、C2 双相机并检 −%.2f、C3 插拔提速 −%.2f ⇒ %.2f s/件 = %d UPH，仍差 %+.2f。\n"
+         "· 再做到 C4 抬升加速度（up/down 每件 %.0f 段×0.20 = −%.2f）⇒ %.2f s/件 = %d UPH；C4 需先确认控制器加速度上限，真机未验证。复现：tools/l2_uph_closure.py"
+         % ("✅" if (r["done"] and not miss) else "❌", st_i, sm_i, c["gap"],
+            fmo.get("c_s") or 0, fmo.get("v_mm_s") or 0, k["ao_s"], k["ao_n"] // c["n_mod"],
+            lv["C1_连续化"]["save"], lv["C1_连续化"]["n"], (fmo.get("c_s") or 0) * 0.6,
+            lv["C2_检测并行"]["save"], lv["C3_插拔提速"]["save"], c123["tact_s"], round(c123["uph"]),
+            c123["tact_s"] - 12.0, lv["C4_抬升加速度"]["n"], lv["C4_抬升加速度"]["save"],
+            c1234["tact_s"], round(c1234["uph"])),
+         size=7.4, spacing=1.16)
     return s
 
 
