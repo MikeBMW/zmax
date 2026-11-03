@@ -73,26 +73,39 @@ class Frames:
         return self.f[int(i) % len(self.f)]
 
 
-def build_pcond(states, log=print):
-    """流形引擎 p (四元数) → 3 维 rotvec, 作为 L4 条件的物理载体。"""
-    from lerobot.manifold.manifold_engine import ManifoldEngine
-    eng = ManifoldEngine()
-    out = np.zeros((len(states), 3), dtype=np.float32)
-    for i, s in enumerate(states):
-        x = np.zeros(43, dtype=np.float32)
-        x[:min(39, len(s))] = s[:39]
-        try:
-            rec = eng.step(x, 0.1)
-            p = np.asarray(rec.get("p") or [1, 0, 0, 0], dtype=np.float64).ravel()[:4]
-            p = p / (np.linalg.norm(p) or 1.0)
-            w, v = float(p[0]), np.asarray(p[1:4], dtype=np.float64)
-            ang = 2.0 * np.arctan2(np.linalg.norm(v), abs(w))
-            ax = v / (np.linalg.norm(v) or 1.0)
-            out[i] = (ax * ang)[:3]
-        except Exception:                                              # noqa: BLE001
-            pass
-        if (i + 1) % 500 == 0:
-            log("  p_cond %d/%d" % (i + 1, len(states)))
+def build_pcond(states, eps=None, log=print):
+    """L4 条件 = **旋转意图**: 目标四元数 × 当前四元数的逆 → 3 维旋转向量 (S³ 上的误差方向)。
+
+    来源: 数据集 state[7:11] 是真四元数 (范数恒为 1.000, 实测), 目标取每 episode 末帧姿态。
+    这条量回答"还要往哪转", 与 state 里的当前姿态不是同一个量 (是误差/意图), 有独立信息。
+    """
+    st = np.asarray(states, dtype=np.float64)
+    q = st[:, 7:11].copy()
+    q /= (np.linalg.norm(q, axis=1, keepdims=True) + 1e-12)
+    n = len(q)
+    goal = np.zeros_like(q)
+    if eps is None:
+        goal[:] = q[-1]                                   # 无 episode 标签: 用末帧
+    else:
+        for e in np.unique(eps):
+            m = np.asarray(eps) == e
+            goal[m] = q[np.where(m)[0][-1]]
+    out = np.zeros((n, 3), dtype=np.float32)
+    for i in range(n):
+        # 相对旋转 r = conj(q_cur) * q_goal  (wxyz)
+        w1, v1 = q[i, 0], q[i, 1:4]
+        w2, v2 = goal[i, 0], goal[i, 1:4]
+        w = w1 * w2 + float(v1 @ v2)
+        v = w1 * v2 - w2 * v1 - np.cross(v1, v2)
+        if w < 0:                                          # 取短弧
+            w, v = -w, -v
+        nv = np.linalg.norm(v)
+        if nv < 1e-12:
+            continue
+        ang = 2.0 * np.arctan2(nv, max(w, 0.0))
+        out[i] = (v / nv) * ang
+    log("  p_cond: 非零 %d/%d | |rotvec| 中位 %.4f rad" % (int((np.abs(out).sum(1) > 1e-9).sum()), n,
+                                                          float(np.median(np.linalg.norm(out, axis=1)))))
     return out
 
 
@@ -131,7 +144,7 @@ def main():
     proj.weight.requires_grad_(True)
 
     vf = Frames(d["video"])
-    pcond = build_pcond(d["state"])
+    pcond = build_pcond(d["state"], d["ep"])
     torch.set_grad_enabled(True)
 
     def encode(sel):
@@ -149,13 +162,28 @@ def main():
                                              [ex["lang"] for ex in examples])
         st = torch.from_numpy(np.stack([ex["state"] for ex in examples])).to(dev).float()
         act = torch.from_numpy(np.stack([ex["action"] for ex in examples])).to(dev).float()
-        return emb.detach(), st, act
+        return emb.detach().float(), st.float(), act.float()   # SigLIP 出 bf16, 统一 fp32 才能接 action_head
+
+    CACHE = {}
+
+    def precompute(sel):
+        """一次性把每帧编码成 conditioning tokens 缓存 (编码段只跑一遍)。"""
+        E, S, A = [], [], []
+        B0 = 8          # 16 帧编码会 OOM (SigLIP 激活), 8 帧实测可行
+        for b0 in range(0, len(sel), B0):
+            e, s_, a_ = encode(sel[b0:b0 + B0])
+            E.append(e.cpu()); S.append(s_.cpu()); A.append(a_.cpu())
+            if (b0 // B0) % 10 == 0:
+                print("  编码 %d/%d" % (b0 + len(sel[b0:b0 + B0]), len(sel)))
+        CACHE["E"] = torch.cat(E); CACHE["S"] = torch.cat(S); CACHE["A"] = torch.cat(A)
+        print("预编码完成 %s | %.0f MB" % (tuple(CACHE["E"].shape), CACHE["E"].numel() * 4 / 1e6))
 
     def train_step(sel):
-        emb, st, act = encode(sel)
+        E, S, A = CACHE["E"], CACHE["S"], CACHE["A"]
+        ti = torch.from_numpy(np.asarray(sel))
+        emb = E[ti].to(dev); st = S[ti].to(dev); act = A[ti].to(dev)
         pc = torch.from_numpy(pcond[sel]).to(dev)
-        loss = head(conditioning_tokens=emb, actions=act, state=st, p_cond=pc)
-        return loss
+        return head(conditioning_tokens=emb, actions=act, state=st, p_cond=pc)
 
     def infer_rmse(sel, zero_cond=False):
         """第三段评估: 走推理路径 (numpy) 拿动作, 与真值比。"""
@@ -188,8 +216,11 @@ def main():
     tr, va = idx[:cut], idx[cut:]
     print("train %d / val %d" % (len(tr), len(va)))
 
+    precompute(idx)                       # 编码只跑一遍, 之后训练只过 DiT
+    va_eval = va[:160]                    # 评估走推理路径更慢, 取子集
+
     opt = torch.optim.Adam([proj.weight], lr=a.lr)
-    base = infer_rmse(va, zero_cond=True)
+    base = infer_rmse(va_eval, zero_cond=True)
     print("基线 (p_cond=0) val RMSE = %.6f" % base)
 
     for ep in range(a.epochs):
@@ -204,8 +235,8 @@ def main():
             torch.nn.utils.clip_grad_norm_([proj.weight], 1.0)
             opt.step()
             run += float(loss); nb += 1
-        v1 = infer_rmse(va, zero_cond=False)
-        v0 = infer_rmse(va, zero_cond=True)
+        v1 = infer_rmse(va_eval, zero_cond=False)
+        v0 = infer_rmse(va_eval, zero_cond=True)
         print("epoch %d | train loss %.6f | val RMSE(cond) %.6f | val RMSE(zero) %.6f | vs 基线 %+.2f%%"
               % (ep + 1, run / max(1, nb), v1, v0, (v1 - base) / base * 100))
 
