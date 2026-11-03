@@ -130,7 +130,7 @@ class SU2TrajBall(QWidget):
         self.btn_mode = QPushButton("S³")
         self.btn_mode.setFixedWidth(64)
         self.btn_mode.setToolTip("切换视图: S³=四维球面真实轨迹 · S²=Bloch(只看向哪根轴) · "
-                                "经线=规范化形状(赤道→北极, 同轴=同一条经线)")
+                                "经线=循环形状(南极→北极 正向 / 北极→南极 返回, 换右邻经线)")
         self.btn_mode.setStyleSheet(self._btn_css())
         self.btn_mode.clicked.connect(self.toggle_mode)
         bl.addWidget(self.btn_mode)
@@ -226,79 +226,92 @@ class SU2TrajBall(QWidget):
         self.canvas.update()
 
     # ── 规范化轨迹 (老倪: 「能不能规范成一条经线, 从赤道到北极」) ─────────────
-    def canon_points(self):
-        """把轨迹**规范化**成球面坐标 (纬度=进度, 经度=轴向)。
+    # ── 规范化「操作循环」: 南极 → 北极 (正向) / 北极 → 南极 (返回, 右邻经线) ──────
+    #   老倪 2026-11-03: 「每次起点定义为南极点, 终点定义为北极点, 沿一条经线做正向操作;
+    #   再从北极返回南极点 (标识: 从终点返回起点), 但是另一条经线 —— 相邻两条;
+    #   每次操作都沿一条经线从南极去北极, 返回沿右侧相邻经线, 周而复始, 循环工作。」
+    #   实现: 轨迹先切成**操作段** (增量旋转反向 / 换轴 ⇒ 新的一段); 第 j 段:
+    #     · 经度 lon_j = lon0 + j·Δ  (每次都换到右边相邻的一条经线, Δ 默认 20°)
+    #     · 偶数 j = 正向: 纬度 −90° → +90° (南极→北极)
+    #     · 奇数 j = 返回: 纬度 +90° → −90° (北极→南极)
+    #   所以屏幕上永远是"一根经线从上到下/从下到上", 相邻经线并排, 一圈一圈往右排。
+    MERIDIAN_STEP_DEG = 20.0
 
-        物理含义: 每个点相对起点的旋转 r_i = q_i ⊗ q_0⁻¹ 有 (角度 a_i, 轴 u_i)。
-          · 纬度 lat_i = 90° · a_i / a_max   ⇒ 赤道(0°)→北极(90°) 就是"转了多少"的进度
-          · 经度 lon_i = 有符号角(u_i, u_ref) ⇒ 同一根轴 = 同一条经线, 换轴才换经线
-        所以单轴旋转画出来是**严丝合缝的一条经线 (赤道→北极)**; 多轴混合才会分叉, 分叉多少
-        就用"规范性偏差 RMS"给数字 (不糊)。
-        ⚠ 角度接近 0 时旋转轴是病态的 (r≈单位元 ⇒ v≈0, 方向纯噪声) ⇒ 这些点**继承最近的有效轴**,
-          否则会在起点附近甩出一大段假经度 (第一版就踩了, 单轴 90° 测出经度跨度 90°)。
-        """
+    def cycle_points(self):
         tr = self.traj
         if len(tr) < 2:
             return None
-        q0 = _canon(tr[0])
-        q0i = np.array([q0[0], -q0[1], -q0[2], -q0[3]])
-        angs, axes = [], []
-        for q in tr:
-            r = _canon(_qmul(q0i, _canon(q)))
+        # ① 切成操作段: 增量旋转与上一段方向相反 (点积<0) 或轴向偏 >25° ⇒ 新段
+        sweeps, cur = [], {"vecs": [], "angles": [], "axis": None}
+        prev_u = None
+        for i in range(1, len(tr)):
+            r = _canon(_qmul(np.array([tr[i - 1][0], -tr[i - 1][1], -tr[i - 1][2], -tr[i - 1][3]]),
+                             _canon(tr[i])))
             v = r[1:]
             n = float(np.linalg.norm(v))
-            angs.append(2.0 * math.atan2(n, float(abs(r[0]))))
-            axes.append((v / n) if n > 1e-6 else None)          # 病态轴先标 None
-        good = [i for i, a in enumerate(axes) if a is not None]
-        if not good:
+            a = 2.0 * math.atan2(n, float(abs(r[0])))
+            if n < 1e-6 or a < 1e-9:
+                continue                                   # 这一步没动: 跳过 (别当换段)
+            u = v / n
+            if cur["axis"] is None:
+                cur["axis"] = u
+            else:
+                same_axis = float(np.dot(u, cur["axis"])) > math.cos(math.radians(25))
+                same_dir = (prev_u is None) or float(np.dot(u, prev_u)) > 0
+                if not same_axis or not same_dir:
+                    if cur["angles"]:
+                        sweeps.append(cur)
+                    cur = {"vecs": [], "angles": [], "axis": u}
+            cur["vecs"].append(u)
+            cur["angles"].append(a)
+            prev_u = u
+        if cur["angles"]:
+            sweeps.append(cur)
+        if not sweeps:
             return None
-        # 有效轴按角度加权 ⇒ 主轴 (整段转向的代表轴)
-        wsum = np.zeros(3)
-        for i in good:
-            wsum += angs[i] * axes[i]
-        u_ref = wsum / np.linalg.norm(wsum) if np.linalg.norm(wsum) > 1e-9 else axes[good[-1]]
-        # 病态点继承"最近的有效轴"
-        for i in range(len(axes)):
-            if axes[i] is None:
-                k = min(good, key=lambda j: abs(j - i))
-                axes[i] = axes[k]
-        # π 附近轴的正负号是同一旋转的两种写法 (q 与 −q) ⇒ 按连续性定号, 否则经度会整段甩到对面
-        amb = 0
-        for i in range(1, len(axes)):
-            if abs(angs[i] - math.pi) < 0.15:
-                if float(np.dot(axes[i], axes[i - 1])) < 0:
-                    axes[i] = -axes[i]
-                amb += 1
-        a_max = max(angs) if max(angs) > 1e-9 else 1.0
-        ref_dir = self._lon_ref(u_ref)
-        pts, lons, lats = [], [], []
-        for a, u in zip(angs, axes):
-            c = float(np.clip(np.dot(u, u_ref), -1, 1))
-            nrm = np.cross(u_ref, u)
-            nn = float(np.linalg.norm(nrm))
-            off = math.atan2(nn, c)                                    # 与主轴夹角
-            sign = 1.0
-            if nn > 1e-12:
-                sign = 1.0 if float(np.dot(nrm / nn, ref_dir)) >= 0 else -1.0
-            lon = math.degrees(off) * sign
-            lat = 90.0 * min(1.0, a / a_max)
-            lons.append(lon); lats.append(lat)
-            la, lo = math.radians(lat), math.radians(lon)
-            pts.append(np.array([math.cos(la) * math.cos(lo), math.cos(la) * math.sin(lo), math.sin(la)]))
-        # 圆周统计: 经度是角度, 直接 max−min 会在 ±180° 处把同一根经线算成 180° 跨度
-        _lr = np.radians(np.asarray(lons, float))
-        _R = float(np.hypot(np.cos(_lr).mean(), np.sin(_lr).mean()))
-        circ_std = math.degrees(math.sqrt(max(0.0, -2.0 * math.log(max(_R, 1e-12)))))
-        _mean = math.degrees(math.atan2(float(np.sin(_lr).mean()), float(np.cos(_lr).mean())))
-        span = 2.0 * max([abs(((v - _mean + 180) % 360) - 180) for v in lons] or [0.0])
-        lons = [((v + 180) % 360) - 180 for v in lons]          # 归一到 (-180,180]
-        dev = float(np.sqrt(np.mean([v * v for v in lons])))    # 规范度: 相对主经线的 RMS 偏离
-        _ = circ_std
-        return {"pts": pts, "lon": lons, "lat": lats, "a_max": a_max,
-                "a_total": float(sum(angs)), "u_ref": u_ref, "dev_deg": dev,
-                "lat_end": lats[-1], "near_pi": amb, "span_deg": span, "circ_std": circ_std}
+        # ② 每段 → 一条经线上的南北极往返
+        out, lon0 = [], 8.0
+        for j, sw in enumerate(sweeps):
+            tot = float(sum(sw["angles"])) or 1e-9
+            acc, pts, lats = 0.0, [], []
+            forward = (j % 2 == 0)
+            lon = lon0 + j * self.MERIDIAN_STEP_DEG
+            lon = ((lon + 180) % 360) - 180
+            # 进度用"走这一步之前"的累计角 ⇒ 首点正好落在极点上 (南极/北极), 末点补一个 pr=1 收在另一极
+            for a in list(sw["angles"]) + [0.0]:
+                pr = acc / tot
+                lat = -90.0 + 180.0 * pr if forward else 90.0 - 180.0 * pr
+                lats.append(lat)
+                la, lo = math.radians(lat), math.radians(lon)
+                pts.append(np.array([math.cos(la) * math.cos(lo), math.cos(la) * math.sin(lo), math.sin(la)]))
+                acc += a
+            dev = 0.0
+            if sw["axis"] is not None:
+                dev = float(np.degrees(math.acos(max(-1.0, min(1.0, abs(float(np.dot(sw["vecs"][-1], sw["vecs"][0])))
+                                                                  if sw["vecs"] else 1.0)))))
+            out.append({"j": j, "forward": forward, "lon": lon, "lat0": lats[0] if lats else None,
+                        "lat1": lats[-1] if lats else None, "pts": pts, "lats": lats,
+                        "angle_deg": math.degrees(tot), "axis_dev_deg": dev,
+                        "n": len(pts), "axis": sw["axis"]})
+        return {"sweeps": out, "n_sweeps": len(out),
+                "n_cycles": (len(out) + 1) // 2,
+                "cur": out[-1], "meridian_step": self.MERIDIAN_STEP_DEG}
 
-    @staticmethod
+    def canon_points(self):
+        """兼容旧名: 返回循环结构的扁平点列 (给旧调用方)。"""
+        cp = self.cycle_points()
+        if not cp:
+            return None
+        pts = [p for sw in cp["sweeps"] for p in sw["pts"]]
+        lats = [v for sw in cp["sweeps"] for v in sw["lats"]]
+        return {"pts": pts, "lat": lats, "lat_end": lats[-1] if lats else 0.0,
+                "dev_deg": max((sw["axis_dev_deg"] for sw in cp["sweeps"]), default=0.0),
+                "span_deg": 0.0, "circ_std": 0.0, "n_sweeps": cp["n_sweeps"],
+                "n_cycles": cp["n_cycles"], "a_max": 1.0, "a_total": 0.0,
+                "u_ref": cp["cur"]["axis"] if cp["cur"]["axis"] is not None else np.array([0, 0, 1.0]),
+                "near_pi": 0}
+
+
     def _lon_ref(u_ref):
         """给主轴定一个固定的经度参考方向 (与 u_ref 垂直), 保证同一根轴经度符号稳定。"""
         t = np.array([0.0, 0, 1.0])
@@ -316,7 +329,7 @@ class SU2TrajBall(QWidget):
 
     MODE_SEQ = ("S3", "S2", "CANON")
     MODE_TITLE = {"S3": "S³ 立体投影", "S2": "S² Bloch (只看向哪根轴)",
-                  "CANON": "规范化经线 (赤道→北极)"}
+                  "CANON": "循环经线 (南极→北极 / 北极→南极)"}
     MODE_TAG = {"S3": "S³", "S2": "S²", "CANON": "经线"}
 
     def toggle_mode(self):
@@ -414,7 +427,7 @@ class _Canvas(QWidget):
         p.drawText(8, int(H - 6),
                    {"S3": "S³ 立体投影 p=(x,y,z)/(1.05−w) · 拖动旋转 · 滚轮缩放",
                     "S2": "S² Bloch (v/|v|) · 只看「绕哪根轴」",
-                    "CANON": "规范化经线: 纬度=转了多少(0→90°) · 经度=轴向(同轴=同一条经线)"}[h.mode])
+                    "CANON": "每次操作: 一根经线 南极→北极 (正向) · 返回: 右侧相邻经线 北极→南极 · 周而复始"}[h.mode])
 
         # ══ 规范化经线视图: 赤道 → 北极 ══
         if h.mode == "CANON":
@@ -473,64 +486,67 @@ class _Canvas(QWidget):
         p.end()
 
     def _paint_canon(self, p, cx, cy, R):
-        """球 + 赤道 + 主经线 + 刻度(0/30/60/90) + 规范化轨迹 (赤道→北极)。"""
-        from PyQt5.QtCore import QPointF
-        # 赤道
-        p.setPen(QPen(QColor("#3a4252"), 1.4))
-        eq = []
-        for k in range(73):
-            t = 2 * math.pi * k / 72
-            eq.append(self._proj((math.cos(t), math.sin(t), 0.0)))
+        """循环规范视图: 南极→北极 (正向, 一条经线) / 北极→南极 (返回, 右邻经线)。"""
+        cp = self.host.cycle_points()
+        # 赤道 (虚线) + 南北极
+        p.setPen(QPen(QColor("#2f3b4a"), 1.0, Qt.DashLine))
+        eq = [self._proj((math.cos(2 * math.pi * k / 72), math.sin(2 * math.pi * k / 72), 0.0))
+              for k in range(73)]
         for i in range(1, len(eq)):
             p.drawLine(int(eq[i - 1][0]), int(eq[i - 1][1]), int(eq[i][0]), int(eq[i][1]))
-        # 主经线 (经度 0)
-        p.setPen(QPen(QColor("#2f3b4a"), 1.2, Qt.DashLine))
-        mer = [self._proj((math.cos(math.radians(l)), 0.0, math.sin(math.radians(l))))
-               for l in range(-90, 91, 5)]
-        for i in range(1, len(mer)):
-            p.drawLine(int(mer[i - 1][0]), int(mer[i - 1][1]), int(mer[i][0]), int(mer[i][1]))
-        # 刻度 0/30/60/90 (纬度)
-        p.setFont(QFont("Consolas", 8))
-        for lat in (0, 30, 60, 90):
-            x, y, _ = self._proj((math.cos(math.radians(lat)), 0.0, math.sin(math.radians(lat))))
-            p.setPen(QPen(QColor("#4a5566"), 1.2))
-            p.drawLine(int(x - 4), int(y), int(x + 4), int(y))
-            p.setPen(QColor(DIM))
-            p.drawText(int(x + 6), int(y) + 3, "%d°" % lat)
-        # 北极 (目标) 与赤道 (起点) 标签
-        xn, yn, _ = self._proj((0.0, 0.0, 1.0))
-        p.setPen(QColor("#8b949e"))
-        p.drawText(int(xn) + 8, int(yn) - 6, "北极 90°=转到位")
-        xq, yq, _ = self._proj((1.0, 0.0, 0.0))
-        p.drawText(int(xq) + 6, int(yq) + 12, "赤道 0°=起点")
-
-        cp = self.host.canon_points()
+        for vec, lab, col in (((0.0, 0, -1.0), "南极 −90° (起点)", "#58a6ff"),
+                              ((0.0, 0, 1.0), "北极 +90° (终点)", "#d29922")):
+            x, y, _ = self._proj(vec)
+            p.setPen(QPen(QColor(col), 2.0))
+            p.setBrush(QColor(col))
+            p.drawEllipse(int(x - 5), int(y - 5), 10, 10)
+            p.setBrush(Qt.NoBrush)
+            p.setPen(QColor(col))
+            p.drawText(int(x) + 8, int(y) + (14 if vec[2] < 0 else -6), lab)
         if not cp:
             p.setPen(QColor(DIM))
-            p.drawText(int(cx) - 60, int(cy) + 20, "空态: 轨迹点不足")
+            p.drawText(int(cx) - 70, int(cy) + 20, "空态: 轨迹点不足")
             return
-        pts = cp["pts"]
-        n = len(pts)
-        for i in range(1, n):
-            a = 50 + int(190 * i / n)
-            p.setPen(QPen(QColor(88, 166, 255, a), 1.8))
-            x0, y0, _ = self._proj(pts[i - 1])
-            x1, y1, _ = self._proj(pts[i])
-            p.drawLine(int(x0), int(y0), int(x1), int(y1))
-        xc, yc, _ = self._proj(pts[-1])
-        p.setPen(QPen(QColor(NOW), 2.0))
-        p.setBrush(QColor(NOW))
-        p.drawEllipse(int(xc - 5), int(yc - 5), 10, 10)
-        # 读数: 规范性偏差 + 进度
+        # 每条操作段的一条经线 (正向蓝 / 返回橙), 当前段加粗
+        for sw in cp["sweeps"]:
+            col = QColor("#58a6ff") if sw["forward"] else QColor("#d29922")
+            cur = (sw is cp["cur"])
+            col.setAlpha(230 if cur else 70)
+            p.setPen(QPen(col, 2.0 if cur else 1.0))
+            mer = []
+            for lat in range(-90, 91, 5):
+                la, lo = math.radians(lat), math.radians(sw["lon"])
+                mer.append(self._proj((math.cos(la) * math.cos(lo), math.cos(la) * math.sin(lo), math.sin(la))))
+            for i in range(1, len(mer)):
+                p.drawLine(int(mer[i - 1][0]), int(mer[i - 1][1]), int(mer[i][0]), int(mer[i][1]))
+        # 轨迹 (按段上色) + 方向箭头
+        for sw in cp["sweeps"]:
+            pts = sw["pts"]
+            col = QColor("#58a6ff") if sw["forward"] else QColor("#d29922")
+            for i in range(1, len(pts)):
+                a = 90 + int(150 * i / max(1, len(pts)))
+                c2 = QColor(col); c2.setAlpha(a)
+                p.setPen(QPen(c2, 1.8))
+                x0, y0, _ = self._proj(pts[i - 1])
+                x1, y1, _ = self._proj(pts[i])
+                p.drawLine(int(x0), int(y0), int(x1), int(y1))
+            if pts:
+                x1, y1, _ = self._proj(pts[-1])
+                p.setPen(QPen(col, 2.2))
+                p.setBrush(col)
+                p.drawEllipse(int(x1 - 4), int(y1 - 4), 8, 8)
+        cur = cp["cur"]
+        # 读数
         p.setPen(QColor(FG))
-        p.drawText(8, 14, "规范性偏差 RMS=%.1f° 经度跨度=%.1f° 进度=%.1f°" %
-                   (cp["dev_deg"], cp["span_deg"], cp["lat_end"]))
+        p.drawText(8, 14, "循环 %d · 操作 %d 段 · 当前第 %d 段 %s · 经线 %+.0f°" %
+                   (cp["n_cycles"], cp["n_sweeps"], cur["j"] + 1,
+                    "正向 南极→北极" if cur["forward"] else "返回 北极→南极", cur["lon"]))
         p.setPen(QColor(DIM))
-        p.drawText(8, 28, "归一化分母 a_max=%.1f° 累计角=%.1f° 主轴=(%.2f,%.2f,%.2f)" %
-                   (math.degrees(cp["a_max"]), math.degrees(cp["a_total"]), *cp["u_ref"]))
-        if cp["dev_deg"] < 1.0:
-            p.setPen(QColor(NOW))
-            p.drawText(8, 42, "✔ 单轴: 正好一条经线 (赤道→北极)")
+        p.drawText(8, 28, "本段纬度 %.0f°→%.0f° · 转角 %.1f° · 轴稳定度偏差 %.2f° · 相邻经线间隔 %.0f°" %
+                   (cur["lat0"] or 0.0, cur["lat1"] or 0.0, cur["angle_deg"],
+                    cur["axis_dev_deg"], cp["meridian_step"]))
+        p.setPen(QColor("#6b7686"))
+        p.drawText(8, 42, "蓝=正向(南→北) 橙=返回(北→南) · 每次操作换一条右侧相邻经线 · 周而复始")
 
     # 交互
     def mousePressEvent(self, e):
