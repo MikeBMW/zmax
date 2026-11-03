@@ -58,7 +58,6 @@ LEVELS_INDEX = {
         ("ss_mem_l4", "🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)", 'ss_world', "library.py", 'node_ss_exec'),
         ("ss_mem_field", "🧲 总装机记忆 · 势场联络 (L2/L3/L4 势场 → 意图 −∇Φ)", 'ss_mem_field', "mem_nodes.py", 'node_ss_mem_field'),
         ("ss_mem_share", "🧠 总装记忆中枢 (前额叶总装 · 三层协同)", 'ss_mem_share', "mem_nodes.py", 'node_ss_mem_share'),
-        ("n_intent_bundle", "🧠 意图丛 · 四槽语法", 'ss_intent_bundle', "mem_nodes.py", 'node_ss_intent_bundle'),
         ("n_intent_direct", "🧾 元任务预测 (驱动扭矩 → 元任务预测值)", 'ss_intent_direct', "mem_nodes.py", 'node_ss_intent_direct'),
         ("ss_lora_l4", "🎛 L4 · INTACT LoRA 微调 (接在意图解码器后 · 冻结原权重 · 只调 ΔW=(α/r)BA)", 'ss_lora_l4', "library.py", 'node_ss_lora_l4'),
         ("ss_mani_eng", "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)", 'ss_mani_eng', "library.py", 'node_ss_mani_eng'),

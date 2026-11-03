@@ -74,9 +74,9 @@ T = {t['id']: t for t in COST['tiers']}
 NODES, L2SET, LINKS = LC.l2_nodes()
 ORDER = list(LC.chain_order(L2SET, LINKS)[0])
 
-_N_L4 = len(L345._level_ids('L4'))   # 认知层节点页: 跟随画布, 不写死
-_N_L5 = len(L345._level_ids('L5'))   # 任务层同上
-_N_L3 = len(L345._level_ids('L3'))
+_N_L4 = len([x for x in L345._level_ids('L4') if x not in L345.NO_PAGE])   # 认知层节点页: 跟随画布, 不写死
+_N_L5 = len([x for x in L345._level_ids('L5') if x not in L345.NO_PAGE])   # 任务层同上
+_N_L3 = len([x for x in L345._level_ids('L3') if x not in L345.NO_PAGE])
 _NP_TOTAL = len(ORDER) + _N_L3 + _N_L4 + _N_L5
 _WANT_PAGES = 13 + 7 + _NP_TOTAL + 3 + 3 + 1
 chk('页数', _WANT_PAGES, len(pages) == _WANT_PAGES, '%d 页' % len(pages),

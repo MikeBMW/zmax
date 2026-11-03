@@ -47,9 +47,13 @@ def _level_ids(lv):
     return [x[0] for x in LEVELS_INDEX[lv] if x[0] in nodes]
 
 
+NO_PAGE = {"sscap", "ss_mem_share"}   # 配置/汇聚类节点(能力档位·总装记忆中枢): 留在画布与链路里, 不占册子独立页
+
+
 def _ordered(lv, ids, links):
     """层内页序: 链路拓扑序 + PIN_HEAD 钉死前几位 (层首页与逐节点页共用, 两处必须同源)。"""
     order, _, _ = LC.chain_order(set(ids), links)
+    order = [x for x in order if x not in NO_PAGE]
     _pinned = [x for x in (PIN_HEAD.get(lv) or ()) if x in order]
     if _pinned:
         order = _pinned + [x for x in order if x not in _pinned]
