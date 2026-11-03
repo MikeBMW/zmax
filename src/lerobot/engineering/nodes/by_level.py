@@ -68,7 +68,6 @@ LEVELS_INDEX = {
         ("ssllm_in", "📝 任务指令 · MES/自然语言", 'ss_llm_in', "library.py", 'node_ss_llm_in'),
         ("ssllm", "🧠 长程序列规划器 (场景理解驱动)", 'ss_llm', "library.py", 'node_ss_llm'),
         ("ssreason", "🔍 异常推理器 (LLM)", 'ss_reason', "library.py", 'node_ss_reason'),
-        ("n_skill_dict", "🧬 技能词典 · L2 动作基", 'ss_skill_dict', "mem_nodes.py", 'node_ss_skill_dict'),
         ("n_mem_links", "🔗 跨层连接 · 记忆图谱", 'ss_mem_links', "mem_nodes.py", 'node_ss_mem_links'),
         ("n_eng_mem", "📚 工程记忆 · 技能与经验库", 'n_eng_mem', "library.py", 'node_ss_eng_mem'),
         ("n_vlm_llm", "👁 视觉语言大模型 · 场景理解 (Qwen2.5/3-VL)", 'n_dsvl', "library.py", 'node_dsvl'),
