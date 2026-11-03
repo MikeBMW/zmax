@@ -967,6 +967,14 @@ class MasterParamMView(QWidget):
         self.module = module
         # 仓库根 = tools/gui/model_tree.py 往上三层 (少一层会把唯一依据/工具路径拼错, 体检真踩到过)
         self._root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        # 🔎 2026-11-03 老倪「右侧栏的字有些小」: 本页基准字号 +1pt (显式写了 font-size 的子控件
+        #   已在下面各自调到 12/13px; 这里兜住没写字号的那些标签/按钮), 不动全局其它页面。
+        try:
+            _f = self.font()
+            _f.setPointSizeF(max(9.5, _f.pointSizeF() + 1.0))
+            self.setFont(_f)
+        except Exception:                                                        # noqa: BLE001
+            pass
         # 2026-10-16 看图: 小窗口 (392×492) 下视图被裁到 ~150px ⇒ "标签可见、球一个都看不见"。
         # 正解: 整页套 QScrollArea (内部控件保住自己的 minimumHeight, 装不下就滚, 不再被裁)。
         lay0 = QVBoxLayout(self)
@@ -1093,13 +1101,13 @@ class MasterParamMView(QWidget):
             _b.setFixedHeight(22)
             _b.setToolTip("M=%g (%s) —— 点一下填入, 再点「✏️ 写 M」才落唯一依据" % (_gm, _gn))
             _b.setStyleSheet("QPushButton{background:#161b22;color:#c9d1d9;border:1px solid #30363d;"
-                             "border-radius:4px;padding:0 5px;font-size:11px;}"
+                             "border-radius:4px;padding:0 5px;font-size:12px;}"
                              "QPushButton:hover{background:#21262d;color:#e6edf3;}")
             _b.clicked.connect(lambda _=False, v=_gm: self.sp_M.setValue(v))
             mr.addWidget(_b)
             self._gear_btns.append(_b)
         self.lbl_minfo = QLabel("M 唯一依据/在役读数加载中…")
-        self.lbl_minfo.setStyleSheet("color:#8b949e;font-size:11px;font-family:Consolas,monospace;"
+        self.lbl_minfo.setStyleSheet("color:#8b949e;font-size:12px;font-family:Consolas,monospace;"
                                      "background:transparent;")
         self.lbl_minfo.setMinimumWidth(80)
         mr.addWidget(self.lbl_minfo, 1)
@@ -1136,7 +1144,7 @@ class MasterParamMView(QWidget):
         except Exception as _e:
             self.viz = QLabel("🌐 流形引擎可视化不可用: %s: %s" % (type(_e).__name__, _e))
             self.viz.setWordWrap(True)
-            self.viz.setStyleSheet("color:#f85149;font-size:11px;background:transparent;")
+            self.viz.setStyleSheet("color:#f85149;font-size:12px;background:transparent;")
         try:
             self.viz.setMinimumHeight(150)      # 🐛 原 470 ⇒ 布局被"最小高"顶死, 太阳系被压成一条 (2026-10-16)
         except Exception:
@@ -1158,7 +1166,7 @@ class MasterParamMView(QWidget):
         except Exception as _e2:
             self.orbital = QLabel("🪐 球心引力架构视图不可用: %s: %s" % (type(_e2).__name__, _e2))
             self.orbital.setWordWrap(True)
-            self.orbital.setStyleSheet("color:#f85149;font-size:11px;background:transparent;")
+            self.orbital.setStyleSheet("color:#f85149;font-size:12px;background:transparent;")
         self.viz_stack = QStackedWidget()
         self.viz_stack.setMinimumHeight(150)     # 🪐 伸缩项: 下限 150 (窗口再矮也不会挤掉表)
         self.viz_stack.setMaximumHeight(620)     # 上限 620 (别把它拉成一张空图)
@@ -1181,7 +1189,7 @@ class MasterParamMView(QWidget):
         except Exception as _e3:                                                 # noqa: BLE001
             self.su2_ball = QLabel("🎯 SU(2) 轨迹球不可用: %s: %s" % (type(_e3).__name__, _e3))
             self.su2_ball.setWordWrap(True)
-            self.su2_ball.setStyleSheet("color:#f85149;font-size:11px;background:transparent;")
+            self.su2_ball.setStyleSheet("color:#f85149;font-size:12px;background:transparent;")
         self.viz_stack.addWidget(self.su2_ball)     # 2 = 🎯 SU(2) 轨迹球
         try:
             self.su2_ball.hiddenChanged.connect(self._su2_changed)
@@ -1191,20 +1199,47 @@ class MasterParamMView(QWidget):
         self.cmb_viz_view.addItems(["🧊 流形几何 · 四面板", "🪐 球心引力架构 · 太阳系"])
         self.cmb_viz_view.setToolTip("切换可视化视图 (都在本页; 数据同源: engine_latest / ss_traj_last / "
                                      "torque_live / skill_* / 画布 state_space_obs.json 真连线)")
-        self.cmb_viz_view.setStyleSheet("QComboBox{background:#161b22;color:#e6edf3;border:1px solid #30363d;"
-                                        "border-radius:3px;padding:0 4px;font-size:11px;}")
+        # 🔎 2026-11-03 老倪: 「视图里面的下拉菜单字太小, 背景白字体白, 看不到选项」
+        #   根因: 只给 QComboBox 本体写了深色 QSS, **弹层 QAbstractItemView 没写** ⇒ 走系统默认
+        #   (浅底 + 浅字)。这里把弹层也写死深色, 并且用 palette 再兜一层 (有些平台弹层不吃 QSS)。
+        self.cmb_viz_view.setStyleSheet(
+            "QComboBox{background:#161b22;color:#e6edf3;border:1px solid #30363d;border-radius:4px;"
+            "padding:2px 6px;font-size:13px;min-height:26px;}"
+            "QComboBox:hover{border-color:#1f6feb;}"
+            "QComboBox::drop-down{width:18px;border:none;}"
+            "QComboBox QAbstractItemView{background:#161b22;color:#e6edf3;border:1px solid #30363d;"
+            "outline:0;font-size:13px;selection-background-color:#1f6feb;selection-color:#ffffff;}"
+            "QComboBox QAbstractItemView::item{min-height:28px;padding:3px 8px;}")
+        try:
+            from PyQt5.QtGui import QPalette, QFont
+            _v = self.cmb_viz_view.view()
+            _pal = _v.palette()
+            _pal.setColor(QPalette.Base, QColor("#161b22"))
+            _pal.setColor(QPalette.AlternateBase, QColor("#1c2129"))
+            _pal.setColor(QPalette.Text, QColor("#e6edf3"))
+            _pal.setColor(QPalette.WindowText, QColor("#e6edf3"))
+            _pal.setColor(QPalette.Highlight, QColor("#1f6feb"))
+            _pal.setColor(QPalette.HighlightedText, QColor("#ffffff"))
+            _v.setPalette(_pal)
+            _v.setFont(QFont(_v.font().family(), 11))
+            _v.setMinimumWidth(300)
+            self.cmb_viz_view.setMinimumHeight(28)
+        except Exception:                                                        # noqa: BLE001
+            pass
         self.cmb_viz_view.currentIndexChanged.connect(self._switch_viz_view)
         # 🪐 2026-10-16: **人点的**才落盘 (程序化切换不写, 见 ui_state_put 头上的说明)
         self.cmb_viz_view.activated.connect(
             lambda *_: ui_state_put(MPARAM_VIZ_KEY, self.cmb_viz_view.currentIndex()))
         _vrow = QHBoxLayout(); _vrow.setContentsMargins(0, 0, 0, 0); _vrow.setSpacing(3)
-        _vrow.addWidget(QLabel("视图"), 0)
+        _lbl_view = QLabel("视图")
+        _lbl_view.setStyleSheet("color:#c9d1d9;font-size:13px;")
+        _vrow.addWidget(_lbl_view, 0)
         self.btn_su2 = QPushButton("🎯")
         self.btn_su2.setCheckable(True)
         self.btn_su2.setFixedWidth(26)
         self.btn_su2.setToolTip("SU(2) 轨迹球窗口: 按下=显示, 弹起=完全隐藏 (选择会被记住)")
         self.btn_su2.setStyleSheet("QPushButton{background:#21262d;color:#c9d1d9;border:1px solid #30363d;"
-                                  "border-radius:3px;font-size:11px;}"
+                                  "border-radius:3px;font-size:12px;}"
                                   "QPushButton:checked{background:#1f6feb;color:#fff;}")
         self.btn_su2.clicked.connect(self._toggle_su2)
         _vrow.addWidget(self.btn_su2, 0)
@@ -1253,7 +1288,7 @@ class MasterParamMView(QWidget):
         except Exception as _e_gr:                                               # noqa: BLE001
             self.gravity = None
             _lb = QLabel("🌍 万有引力: 表建不起来 (%s)" % _e_gr)
-            _lb.setStyleSheet("color:#f85149;font-size:11px;")
+            _lb.setStyleSheet("color:#f85149;font-size:12px;")
             self.tabs.addTab(_lb, "🌍 万有引力")
         # 🌀 2026-10-25 老倪: 「在主参数的下部，增加在相空间 phase space 中绘制运动轨迹的视图；
         #   纵轴 p 动量、横轴 Θ 位置，每个流线是相空间的轨迹」
@@ -1265,7 +1300,7 @@ class MasterParamMView(QWidget):
         except Exception as _e_ph:                                              # noqa: BLE001
             self.phase = None
             _lb2 = QLabel("🌀 相空间: 建不起来 (%s)" % _e_ph)
-            _lb2.setStyleSheet("color:#f85149;font-size:11px;")
+            _lb2.setStyleSheet("color:#f85149;font-size:12px;")
             self.tabs.addTab(_lb2, "🌀 相空间 (Θ,p)")
         # 页签条: 只有 1 页时藏起来(省 26px, 原口径); 有 2 页就必须露出来, 否则第二页点不到
         self.tabs.tabBar().setVisible(self.tabs.count() > 1)
@@ -1302,7 +1337,7 @@ class MasterParamMView(QWidget):
         self.lbl_cmd.setWordWrap(True)
         self.lbl_cmd.setMaximumHeight(20)       # 🗜 命令回显留一行 (高度让给太阳系/表)
         self.lbl_cmd.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.lbl_cmd.setStyleSheet("color:#7ee787;font-size:11px;font-family:Consolas,monospace;"
+        self.lbl_cmd.setStyleSheet("color:#7ee787;font-size:12px;font-family:Consolas,monospace;"
                                    "background:#0d1117;border:1px solid #21262d;border-radius:5px;padding:6px;")
         lay.addWidget(self.lbl_cmd)
         self.refresh()
@@ -1820,7 +1855,7 @@ class MasterParamMView(QWidget):
             self.lbl_minfo.setText(line if len(line) <= 118 else line[:115] + "…")
             _same_src = src_M is not None and abs(M_now - src_M) < 1e-9
             self.lbl_minfo.setStyleSheet(
-                "color:%s;font-size:11px;font-family:Consolas,monospace;background:transparent;"
+                "color:%s;font-size:12px;font-family:Consolas,monospace;background:transparent;"
                 % ("#3fb950" if _same_src else "#d29922"))
             # 悬浮里给全套 (含实测档位表 + 引力口径), 界面只留一行不挤
             _rows = self._m_gravi.get("rows") or []

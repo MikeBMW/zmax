@@ -16029,6 +16029,14 @@ def _build_global_qss():
         /* 🎨 2026-09-29 老倪「没有横向拖动的拖动条」——实测根因: 滚动条太细(8px)+手柄太暗,
            现场看不出能不能拖; 横向条此前**根本没有规则**(走 Qt 默认)。统一加粗到 14px +
            高对比手柄 (蓝), 两个方向都有: 一眼看得见, 鼠标能抓住拖。 */
+        /* 🔎 2026-11-03 老倪「下拉菜单背景白、字体也白, 看不到选项」——
+           根因类: 很多 QComboBox 只给本体写了深色 QSS, **弹层 QAbstractItemView 没写** ⇒ 弹层走
+           系统浅色底, 字还是浅色 ⇒ 白底白字。这里在全局兜一层 (任何页面漏写都不会再看不见),
+           同时把弹层字号提到 13px / 行高 26px (他说"字太小")。 */
+        QComboBox QAbstractItemView {{ background: {C_BG2}; color: {C_WHITE}; border: 1px solid {C_BORDER};
+            outline: 0; font-size: 13px; selection-background-color: #1f6feb; selection-color: #ffffff; }}
+        QComboBox QAbstractItemView::item {{ min-height: 26px; padding: 2px 8px; }}
+        QComboBox QAbstractItemView::item:selected {{ background: #1f6feb; color: #ffffff; }}
         QScrollBar:vertical {{ background: {C_BG2}; width: 14px; margin: 0; border-left: 1px solid {C_BORDER}; }}
         QScrollBar::handle:vertical {{ background: {C_BLUE}; border-radius: 5px; min-height: 28px; }}
         QScrollBar::handle:vertical:hover {{ background: {C_BLUE}; border: 1px solid {C_WHITE}; }}
