@@ -920,6 +920,8 @@ class RunConfigWidget(QWidget):
 #   程序化 setCurrentIndex (开机回选 / 判据脚本 verify_*.py) **不写盘**, 否则跑一次判据就把偏好刷成四面板。
 UI_CFG_ORG, UI_CFG_APP = "ZMAX", "studio"
 MPARAM_VIZ_KEY = "mparam/viz_view"      # 🧮 主参数 M 页: 0=🧊 几何四面板 · 1=🪐 球心引力架构
+MPARAM_SU2_KEY = "mparam/su2_ball"      # 🎯 2026-11-03: SU(2) 轨迹球是否显示 (0=完全隐藏)
+MPARAM_SU2_PREV_KEY = "mparam/su2_prev"  # 🎯 隐藏前看的是哪个视图 (0=四面板 1=太阳系), 还原用
 MPARAM_SPLIT_KEY = "mparam/split_top"   # 🌍 2026-10-16 老倪: 「上下也要可以用鼠标调整大小」⇒ 上半(太阳系)高度(px)也落盘
 
 
@@ -1164,6 +1166,27 @@ class MasterParamMView(QWidget):
         # 🐛 原来 100/470 互相打架 ⇒ 统一 150 (页面不滚, 高度差由这块吸收; 表永远整块可见)
         self.viz_stack.addWidget(self.viz)          # 0 = 🧊 几何四面板 (默认, 不改变既有观感)
         self.viz_stack.addWidget(self.orbital)      # 1 = 🪐 球心引力架构
+        # ── 🎯 SU(2) 轨迹球 (老倪 2026-11-03: 「四元数把三维旋转映射成四维球面上的一段滑动轨迹,
+        #    在主参数增加这个 SU2 球的轨迹窗口; 这个窗口要可以完全隐藏」) ──
+        #    S³ 立体投影 + 记忆基准点 + 当前点; 数据只认 quat_truth_calls.jsonl (无数据=空态, 不画假点)
+        try:
+            try:
+                from tools.gui.su2_traj_ball import SU2TrajBall
+            except Exception:
+                _gdir3 = os.path.dirname(os.path.abspath(__file__))
+                if _gdir3 not in sys.path:
+                    sys.path.insert(0, _gdir3)
+                from su2_traj_ball import SU2TrajBall
+            self.su2_ball = SU2TrajBall(root=self._root)
+        except Exception as _e3:                                                 # noqa: BLE001
+            self.su2_ball = QLabel("🎯 SU(2) 轨迹球不可用: %s: %s" % (type(_e3).__name__, _e3))
+            self.su2_ball.setWordWrap(True)
+            self.su2_ball.setStyleSheet("color:#f85149;font-size:11px;background:transparent;")
+        self.viz_stack.addWidget(self.su2_ball)     # 2 = 🎯 SU(2) 轨迹球
+        try:
+            self.su2_ball.hiddenChanged.connect(self._su2_changed)
+        except Exception:                                                        # noqa: BLE001
+            pass
         self.cmb_viz_view = QComboBox()
         self.cmb_viz_view.addItems(["🧊 流形几何 · 四面板", "🪐 球心引力架构 · 太阳系"])
         self.cmb_viz_view.setToolTip("切换可视化视图 (都在本页; 数据同源: engine_latest / ss_traj_last / "
@@ -1176,6 +1199,15 @@ class MasterParamMView(QWidget):
             lambda *_: ui_state_put(MPARAM_VIZ_KEY, self.cmb_viz_view.currentIndex()))
         _vrow = QHBoxLayout(); _vrow.setContentsMargins(0, 0, 0, 0); _vrow.setSpacing(3)
         _vrow.addWidget(QLabel("视图"), 0)
+        self.btn_su2 = QPushButton("🎯")
+        self.btn_su2.setCheckable(True)
+        self.btn_su2.setFixedWidth(26)
+        self.btn_su2.setToolTip("SU(2) 轨迹球窗口: 按下=显示, 弹起=完全隐藏 (选择会被记住)")
+        self.btn_su2.setStyleSheet("QPushButton{background:#21262d;color:#c9d1d9;border:1px solid #30363d;"
+                                  "border-radius:3px;font-size:11px;}"
+                                  "QPushButton:checked{background:#1f6feb;color:#fff;}")
+        self.btn_su2.clicked.connect(self._toggle_su2)
+        _vrow.addWidget(self.btn_su2, 0)
         _vrow.addWidget(self.cmb_viz_view, 1)
         lay.addLayout(_vrow)
         # 🌍 2026-10-16 老倪: 太阳系下面那张「万有引力」表要看得全 (原来 2:1 ⇒ 表只剩 ~460px, 右下角总合力
@@ -1183,6 +1215,12 @@ class MasterParamMView(QWidget):
         # 🪐 2026-10-16 老倪: 「主参数的太阳系, 不是你关机前的状态」⇒ 开机按存值回选 (关机前是太阳系就还是太阳系)
         # 🪐 2026-10-19 老倪「之前的太阳系，怎么没有了？」: 默认值原来是 0(四面板), 而 QSettings 里存的也是 0
         #   ⇒ 开机看到的是四面板, 他以为太阳系被删了。太阳系是他要盯的主视图 ⇒ 默认 1。
+        try:
+            self._su2_shown = bool(ui_state_get(MPARAM_SU2_KEY, 1))
+            self._apply_su2_visible(self._su2_shown, first=True)
+            self.btn_su2.setChecked(self._su2_shown)
+        except Exception:                                                        # noqa: BLE001
+            pass
         _want = ui_state_get(MPARAM_VIZ_KEY, 1)
         if 0 <= _want < self.cmb_viz_view.count() and _want != self.cmb_viz_view.currentIndex():
             self.cmb_viz_view.setCurrentIndex(_want)     # 走 _switch_viz_view: 切 stack + 重读唯一依据
@@ -1440,6 +1478,52 @@ class MasterParamMView(QWidget):
             pass
         return super().eventFilter(obj, ev)
 
+    # ── 🎯 SU(2) 轨迹球 显示/完全隐藏 ────────────────────────────────────────
+    def _apply_su2_visible(self, show, first=False):
+        """show=False ⇒ 窗口完全隐藏 + 从下拉里摘掉这一项 (不留残影); 记住之前看的是哪个视图。"""
+        self._su2_shown = bool(show)
+        try:
+            if show:
+                if self.cmb_viz_view.count() < 3:
+                    self.cmb_viz_view.addItem("🎯 SU(2) 轨迹球 · S³")
+                self.su2_ball.set_hidden(False, emit=False)
+                if first:
+                    pass
+            else:
+                cur = self.cmb_viz_view.currentIndex()
+                prev = max(0, min(1, ui_state_get(MPARAM_SU2_PREV_KEY, 1)))
+                if cur >= 2:                      # 隐藏时正看着球 ⇒ 退回之前那个视图
+                    self.cmb_viz_view.setCurrentIndex(prev)
+                while self.cmb_viz_view.count() > 2:
+                    self.cmb_viz_view.removeItem(self.cmb_viz_view.count() - 1)
+                self.su2_ball.set_hidden(True, emit=False)
+            self.btn_su2.setChecked(self._su2_shown)
+            self.btn_su2.setText("🎯" if self._su2_shown else "🎯·")
+        except Exception:                                                        # noqa: BLE001
+            pass
+
+    def _su2_changed(self, hidden):
+        """球上点「⬇ 隐藏」⇒ 完全收起并落盘。"""
+        self._apply_su2_visible(not bool(hidden))
+        ui_state_put(MPARAM_SU2_KEY, 0 if hidden else 1)
+        try:
+            self._fit_heights()
+        except Exception:                                                        # noqa: BLE001
+            pass
+
+    def _toggle_su2(self):
+        want = not bool(getattr(self, "_su2_shown", True))
+        if not want:                    # 隐藏前记住"人当时在看哪个视图", 下次隐藏还能退回同一个
+            cur = self.cmb_viz_view.currentIndex()
+            ui_state_put(MPARAM_SU2_PREV_KEY, cur if cur < 2
+                         else max(0, min(1, ui_state_get(MPARAM_SU2_PREV_KEY, 1))))
+        self._apply_su2_visible(want)
+        ui_state_put(MPARAM_SU2_KEY, 1 if want else 0)
+        try:
+            self._fit_heights()
+        except Exception:                                                        # noqa: BLE001
+            pass
+
     def _switch_viz_view(self, idx):
         """🧊 几何四面板 ⟷ 🪐 球心引力架构 (同一页切换; 切到谁就把谁当唯一依据重读一遍)。"""
         try:
@@ -1448,6 +1532,11 @@ class MasterParamMView(QWidget):
             self._scroll_to_table()          # 换了视图高度差很大 ⇒ 再翻到底 (表照旧整块可见)
         except Exception:                                                        # noqa: BLE001
             return
+        if int(idx) == 2 and hasattr(self, "su2_ball") and hasattr(self.su2_ball, "reload"):
+            try:
+                self.su2_ball.reload()
+            except Exception:                                                    # noqa: BLE001
+                pass
         if int(idx) == 1 and hasattr(self, "orbital") and hasattr(self.orbital, "refresh"):
             try:
                 self.orbital.refresh()
