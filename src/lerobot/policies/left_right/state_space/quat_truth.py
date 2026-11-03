@@ -35,6 +35,9 @@ SKILLS = os.path.join(REPO, "data", "memory", "l2_store", "skills.json")
 LIVE_DIR = os.path.join(os.environ.get("ZMAX_DATA", os.path.join(REPO, "zmax_data")), "ss_live")
 TRUTH_JSON = os.path.join(LIVE_DIR, "quat_truth.json")
 CALLS_LOG = os.path.join(LIVE_DIR, "quat_truth_calls.jsonl")
+HEAD_DIR = os.path.join(os.environ.get("ZMAX_DATA", os.path.join(REPO, "zmax_data")), "quat_head")
+HEAD_CKPT = os.path.join(HEAD_DIR, "quat_head.pt")
+HEAD_REPORT = os.path.join(HEAD_DIR, "report.json")
 
 # 技能轴向 → 单位向量 (工具 z 轴要指向哪)
 AXIS_VEC = {
@@ -143,6 +146,53 @@ def truth_q(skill_id, axis=None):
 
 
 # ── ② 感知补偿 + ③ 势函数/万有引力 ─────────────────────────────────────────
+def head_available() -> bool:
+    """训练出来的姿态估计头是否可用 —— 只有训练报告 ok(每档都不输基线) 且没被显式关掉才用。"""
+    if os.environ.get("SS_QUAT_HEAD", "").strip() == "0":
+        return False
+    try:
+        with open(HEAD_REPORT, encoding="utf-8") as f:
+            rep = json.load(f)
+        return bool(rep.get("ok")) and os.path.isfile(HEAD_CKPT)
+    except Exception:                                                      # noqa: BLE001
+        return False
+
+
+_HEAD = None
+
+
+def _head_predict(q_t, q_m, w, valid):
+    """记忆真值+测量+新鲜度 → 训练头估计的姿态 (加载失败返回 None, 由调用方回退解析解)。"""
+    global _HEAD
+    try:
+        if _HEAD is None:
+            import torch
+            import torch.nn as nn
+
+            class _H(nn.Module):
+                def __init__(self):
+                    super().__init__()
+                    self.net = nn.Sequential(nn.Linear(10, 256), nn.SiLU(), nn.Linear(256, 256),
+                                             nn.SiLU(), nn.Linear(256, 128), nn.SiLU(), nn.Linear(128, 4))
+
+                def forward(self, x):
+                    q = self.net(x)
+                    return q / q.norm(dim=1, keepdim=True).clamp_min(1e-9)
+
+            m = _H()
+            m.load_state_dict(torch.load(HEAD_CKPT, map_location="cpu")["state"])
+            m.eval()
+            _HEAD = (m, torch)
+        m, torch = _HEAD
+        x = torch.tensor([[*(q_t if q_m is None else q_t), *(q_m if q_m is not None else np.zeros(4)),
+                           float(w), 0.0 if q_m is None else 1.0]], dtype=torch.float32)
+        with torch.no_grad():
+            q = m(x)[0].numpy().astype(float)
+        return pc.canonical(q)
+    except Exception:                                                      # noqa: BLE001
+        return None
+
+
 def observe(skill_id=None, *, axis=None, meas_q=None, meas_age_s=None, ttl_s=2.0,
             alpha=GAIN_ALPHA, k=K_POT, log=True) -> dict:
     """一次观测: (记忆真值) ⊕ (感知测量) → 融合姿态 + 偏差 + 势 + 引力方向。
@@ -161,6 +211,12 @@ def observe(skill_id=None, *, axis=None, meas_q=None, meas_age_s=None, ttl_s=2.0
             w = float(np.clip(1.0 - age / max(ttl_s, 1e-9), 0.0, 1.0))
             innov_deg = float(np.degrees(np.linalg.norm(pc.rotvec_from_q(rel_q(q_t, q_m)))))  # 物理角
             q_f = pc.slerp(q_t, q_m, w * float(np.clip(alpha, 0.0, 1.0)))
+    src_fuse = "analytic:slerp"
+    q_an = q_f.copy()
+    if head_available():
+        _qh = _head_predict(q_t, None if w <= 0 else pc.canonical(meas_q), w, meas_q is not None)
+        if _qh is not None:
+            q_f, src_fuse = _qh, "head:mlp(quat_head.pt)"
     err = np.asarray(pc.rotvec_from_q(rel_q(q_t, q_f)), float)
     err_deg = float(np.degrees(np.linalg.norm(err)))
     V = 0.5 * float(k) * float(np.radians(err_deg)) ** 2                   # ½kθ² (θ 用弧度)
@@ -170,7 +226,8 @@ def observe(skill_id=None, *, axis=None, meas_q=None, meas_age_s=None, ttl_s=2.0
     out = {
         "skill": skill_id, "axis": axis, "src_truth": src,
         "q_truth": [float(x) for x in q_t], "q_fused": [float(x) for x in q_f],
-        "w_meas": round(w, 4), "alpha": alpha,
+        "w_meas": round(w, 4), "alpha": alpha, "src_fuse": src_fuse,
+        "q_analytic": [float(x) for x in q_an],
         "innovation_deg": None if innov_deg is None else round(innov_deg, 4),
         "err_deg": round(err_deg, 4), "V": round(V, 8),
         "gravity": [round(float(x), 6) for x in grav],      # 指向真值 (S³ 测地线切向), 幅值=θ
