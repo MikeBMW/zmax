@@ -26,8 +26,7 @@ PIN_HEAD = {"L4": ("ss_mani_eng",      # 1 流形引擎
                    "ss_lora_l4",       # 3 INTACT LoRA 微调
                    "ssmani_exp",       # 4 流形专家预测器
                    "ssmani_c",         # 5 接触流形
-                   "ssmani_p",         # 6 性能流形
-                   "ssintact")}        # 7 INTACT 安全导航
+                   "ssmani_p")}        # 6 性能流形
 
 LAYER_META = {
     "L3": (P.L3_NAME, "决策层：五个节点把「这一件要做什么」变成一串能执行的动作",

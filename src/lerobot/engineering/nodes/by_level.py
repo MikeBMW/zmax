@@ -52,7 +52,6 @@ LEVELS_INDEX = {
         ("ssmani_c", "🧮 接触流形 · 导航地图 (e∥进度/e⊥偏离)", 'ss_mani_c', "library.py", 'node_ss_mani'),
         ("ssmani_p", "🧮 性能流形 · 耦合代价 (V_p/η)", 'ss_mani_p', "library.py", 'node_ss_mani'),
         ("sslat", "🧮 潜空-流形", 'ss_lat', "library.py", 'node_ss_lat'),
-        ("ssintact", "🎯 INTACT (L4) · 工作安全 + 物理世界导航", 'intact', "library.py", 'node_intact'),
         ("ssintact_dec", "🎯 INTACT 意图解码器 (L4 → L3 条件)", 'intact_dec', "library.py", 'node_intact_dec'),
         ("ssmani_exp", "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)", 'ss_pred', "library.py", 'node_ss_pred'),
         ("sscap", "🧭 能力档位", 'ss_cap', "library.py", 'node_ss_cap'),
