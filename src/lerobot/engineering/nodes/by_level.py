@@ -89,8 +89,6 @@ LEVELS_INDEX = {
         ("ss3d_view", "🧭 3D 视图", 'ss_3d_view', "library.py", 'node_ss_3d_view'),
         ("ssbypv", "📈 旁路实时可视化 (当前阶段/残差/接触概率)", 'ss_bypass_viz', "library.py", 'node_ss_bypass_viz'),
         ("ssz700", "🖥 Z700 真机信号 (全信号观测 · 物理世界输出)", 'ss_z700_signals', "library.py", 'node_ss_z700_signals'),
-        ("swds", "🧪 光模块插拔 · 环境渲染图像源 (Z-MAX 引擎逐帧真图)", 'sw_ds', "library.py", 'node_sw_ds'),
-        ("swvideo", "🎬 插拔渲染视频 (从 Z-MAX 引擎取出 · 实况窗)", 'sw_video', "library.py", 'node_sw_video'),
         ("n_realscene", "🎥 真实场景叠加 · 双眼 (sim2real)", 'n_realscene_live', "library.py", 'node_realscene_live'),
         ("ssuph", "🏭 UPH 节拍循环器", 'ss_uph', "uph_tact_impl.py", 'run'),
         ("ssplan", "🧩 长程元任务编排器 (Plan)", 'ss_plan_long', "plan_long_impl.py", 'run'),

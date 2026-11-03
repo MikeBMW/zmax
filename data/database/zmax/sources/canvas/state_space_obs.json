@@ -1741,28 +1741,6 @@
    ]
   },
   {
-   "id": "swds",
-   "type": "data",
-   "name": "🧪 光模块插拔 · 环境渲染图像源 (Z-MAX 引擎逐帧真图)",
-   "x": 9940,
-   "y": 7228,
-   "w": 330,
-   "h": 120,
-   "icon": "🧪",
-   "color": "#2e8b57",
-   "params": {
-    "desc": "[L4 数据源] Z-MAX 引擎逐帧渲染真图 (224×224 RGB, 来自 RealStateSpaceSim · metaworld peg-insert-side-v3 + MUJOCO_GL=egl 离屏渲染), 由 tools/intact_sw_optical_bridge.py 写 spool/*.jpg + status.json + status.jsonl; 真图判据 frame_std>5 (实测 ~56)",
-    "sw_bridge": true,
-    "kind": "render_frames",
-    "source": "tools/intact_sw_optical_bridge.py --spool",
-    "source_symbol": "def "
-   },
-   "inputs": [
-    "in2",
-    "in3"
-   ]
-  },
-  {
    "id": "swintact",
    "type": "model",
    "name": "🎯 INTACT 插拔策略 · 光模块抓取插入 (本域微调 · 零搜索)",
@@ -1807,24 +1785,6 @@
     "in2"
    ],
    "band": "ssbg7"
-  },
-  {
-   "id": "swvideo",
-   "type": "data",
-   "name": "🎬 插拔渲染视频 (从 Z-MAX 引擎取出 · 实况窗)",
-   "x": 9940,
-   "y": 7358,
-   "w": 330,
-   "h": 120,
-   "icon": "🎬",
-   "color": "#d29922",
-   "params": {
-    "desc": "[L4 可视化·回路外观察器] 从 Z-MAX 引擎取出的渲染视频 (480², 10fps): 模型直驱在环录像(打标真模型/真推理次数/模型输出/插入深度) + 同 seed 解析链对照 (插入 / 插→拔→AOI 全链) + 合集, 存 reports/intact_sw/video; 双击开互动查看器看任意帧信号 (不参与自动运行链)",
-    "viz_kind": "sw_video",
-    "sw_bridge": true,
-    "source": "tools/intact_sw_optical_bridge.py --video-dir",
-    "source_symbol": "def "
-   }
   },
   {
    "id": "n_eng_mem",
@@ -2274,7 +2234,7 @@
      "工程库": "data/database/zmax/zmax_engineering.db"
     },
     "cfg_snapshot": {
-     "loaded_at": "2026-11-03 06:51:18",
+     "loaded_at": "2026-11-03 14:57:18",
      "files_total": 8,
      "files_ok": 8,
      "orders": 12,
@@ -2338,18 +2298,18 @@
      "口径": "一个状态空间工程承载全部任务; 任务=配方段子集+参数覆盖"
     },
     "source_symbol": "def import_config_files(",
-    "cfg_loaded_at": "2026-11-03 06:51:18",
+    "cfg_loaded_at": "2026-11-03 14:57:18",
     "cfg_files": [
      {
       "name": "总工程文件",
       "rel": "data/database/zmax/zmax_space.proj",
-      "sha256": "90e380f58fc9e81e",
+      "sha256": "f0e75f7c8d2efb4f",
       "exists": true
      },
      {
       "name": "任务绑定",
       "rel": "config/ss_task_binding.json",
-      "sha256": "c2adccd646130848",
+      "sha256": "37c40e449ad05c06",
       "exists": true
      },
      {
@@ -2954,22 +2914,6 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "↩ 反馈: 动作块 (零搜索)"
-  },
-  {
-   "id": "lksw3",
-   "f": "swworld",
-   "t": "swds",
-   "f_port": "out1",
-   "t_port": "in2",
-   "label": "渲染回流 (闭环)"
-  },
-  {
-   "id": "lksw4",
-   "f": "swworld",
-   "t": "swvideo",
-   "f_port": "out2",
-   "t_port": "in1",
-   "label": "SW 渲染视频 (3D)"
   },
   {
    "id": "lkild1",
@@ -3590,7 +3534,7 @@
   {
    "id": "lkbr_env",
    "f": "ssdata",
-   "t": "swds",
+   "t": "swworld",
    "f_port": "out1",
    "t_port": "in2",
    "label": "数据源场景/规格 → 环境渲染"
@@ -3613,7 +3557,7 @@
   },
   {
    "id": "lkbr_vid",
-   "f": "swvideo",
+   "f": "swworld",
    "t": "ssvideo2",
    "f_port": "out1",
    "t_port": "in2",
@@ -3630,7 +3574,7 @@
   {
    "id": "lkbr_yolo",
    "f": "ssyolo",
-   "t": "swds",
+   "t": "swworld",
    "f_port": "out1",
    "t_port": "in3",
    "label": "检测目标清单 → 渲染标注"
@@ -3877,7 +3821,7 @@
   },
   {
    "id": "lk0924_swds_swintact_in1",
-   "f": "swds",
+   "f": "swworld",
    "t": "swintact",
    "f_port": "out1",
    "t_port": "in1",
