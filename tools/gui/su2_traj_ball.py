@@ -61,6 +61,15 @@ def _canon(q):
     return -q if q[0] < 0 else q
 
 
+def _qmul(a, b):
+    aw, ax, ay, az = (float(v) for v in a)
+    bw, bx, by, bz = (float(v) for v in b)
+    return np.array([aw * bw - ax * bx - ay * by - az * bz,
+                     aw * bx + ax * bw + ay * bz - az * by,
+                     aw * by - ax * bz + ay * bw + az * bx,
+                     aw * bz + ax * by - ay * bx + az * bw])
+
+
 def _slerp(a, b, t):
     a, b = _canon(a), _canon(b)
     d = float(np.dot(a, b))
@@ -95,7 +104,7 @@ class SU2TrajBall(QWidget):
         self.cur = None                     # 当前 q_fused
         self.mem = None                     # 记忆基准 q_truth
         self.meta = {}                      # err_deg / V / w / src
-        self.mode = "S3"                    # S3 | S2
+        self.mode = "S3"                    # S3 | S2 | CANON(规范化经线: 赤道→北极)
         self.az, self.el, self.zoom = 0.65, 0.35, 1.0
         self._drag = None
         self._hidden_by_user = False
@@ -118,9 +127,10 @@ class SU2TrajBall(QWidget):
         self.lbl_src = QLabel("源: 等待 quat_truth …")
         self.lbl_src.setStyleSheet("color:%s;font-size:10px;background:transparent;" % DIM)
         bl.addWidget(self.lbl_src, 1)
-        self.btn_mode = QPushButton("S³/S²")
-        self.btn_mode.setFixedWidth(56)
-        self.btn_mode.setToolTip("S³=四维球面轨迹(含转多少) · S²=Bloch球(只看向哪根轴)")
+        self.btn_mode = QPushButton("S³")
+        self.btn_mode.setFixedWidth(64)
+        self.btn_mode.setToolTip("切换视图: S³=四维球面真实轨迹 · S²=Bloch(只看向哪根轴) · "
+                                "经线=规范化形状(赤道→北极, 同轴=同一条经线)")
         self.btn_mode.setStyleSheet(self._btn_css())
         self.btn_mode.clicked.connect(self.toggle_mode)
         bl.addWidget(self.btn_mode)
@@ -141,6 +151,16 @@ class SU2TrajBall(QWidget):
         self.canvas = _Canvas(self)
         lay.addWidget(self.canvas, 1)
 
+        # 默认看「规范化经线」(老倪 2026-11-03: 「规范成某一条经线, 从赤道到北极」), 上次选择会被记住
+        try:
+            from PyQt5.QtCore import QSettings
+            _m = str(QSettings("ZMAX", "studio").value("mparam/su2_mode", "CANON"))
+            if _m in self.MODE_SEQ:
+                self.mode = _m
+                self.lbl_hd.setText("🎯 SU(2) 轨迹球 · " + self.MODE_TITLE[self.mode])
+                self.btn_mode.setText(self.MODE_TAG[self.mode])
+        except Exception:                                                      # noqa: BLE001
+            pass
         self._timer = QTimer(self)
         self._timer.setInterval(1500)
         self._timer.timeout.connect(self.reload)
@@ -205,16 +225,112 @@ class SU2TrajBall(QWidget):
         self.lbl_src.setText("源: quat_truth · %d 次观测 · %s" % (len(rows), last.get("src_fuse") or "-"))
         self.canvas.update()
 
+    # ── 规范化轨迹 (老倪: 「能不能规范成一条经线, 从赤道到北极」) ─────────────
+    def canon_points(self):
+        """把轨迹**规范化**成球面坐标 (纬度=进度, 经度=轴向)。
+
+        物理含义: 每个点相对起点的旋转 r_i = q_i ⊗ q_0⁻¹ 有 (角度 a_i, 轴 u_i)。
+          · 纬度 lat_i = 90° · a_i / a_max   ⇒ 赤道(0°)→北极(90°) 就是"转了多少"的进度
+          · 经度 lon_i = 有符号角(u_i, u_ref) ⇒ 同一根轴 = 同一条经线, 换轴才换经线
+        所以单轴旋转画出来是**严丝合缝的一条经线 (赤道→北极)**; 多轴混合才会分叉, 分叉多少
+        就用"规范性偏差 RMS"给数字 (不糊)。
+        ⚠ 角度接近 0 时旋转轴是病态的 (r≈单位元 ⇒ v≈0, 方向纯噪声) ⇒ 这些点**继承最近的有效轴**,
+          否则会在起点附近甩出一大段假经度 (第一版就踩了, 单轴 90° 测出经度跨度 90°)。
+        """
+        tr = self.traj
+        if len(tr) < 2:
+            return None
+        q0 = _canon(tr[0])
+        q0i = np.array([q0[0], -q0[1], -q0[2], -q0[3]])
+        angs, axes = [], []
+        for q in tr:
+            r = _canon(_qmul(q0i, _canon(q)))
+            v = r[1:]
+            n = float(np.linalg.norm(v))
+            angs.append(2.0 * math.atan2(n, float(abs(r[0]))))
+            axes.append((v / n) if n > 1e-6 else None)          # 病态轴先标 None
+        good = [i for i, a in enumerate(axes) if a is not None]
+        if not good:
+            return None
+        # 有效轴按角度加权 ⇒ 主轴 (整段转向的代表轴)
+        wsum = np.zeros(3)
+        for i in good:
+            wsum += angs[i] * axes[i]
+        u_ref = wsum / np.linalg.norm(wsum) if np.linalg.norm(wsum) > 1e-9 else axes[good[-1]]
+        # 病态点继承"最近的有效轴"
+        for i in range(len(axes)):
+            if axes[i] is None:
+                k = min(good, key=lambda j: abs(j - i))
+                axes[i] = axes[k]
+        # π 附近轴的正负号是同一旋转的两种写法 (q 与 −q) ⇒ 按连续性定号, 否则经度会整段甩到对面
+        amb = 0
+        for i in range(1, len(axes)):
+            if abs(angs[i] - math.pi) < 0.15:
+                if float(np.dot(axes[i], axes[i - 1])) < 0:
+                    axes[i] = -axes[i]
+                amb += 1
+        a_max = max(angs) if max(angs) > 1e-9 else 1.0
+        ref_dir = self._lon_ref(u_ref)
+        pts, lons, lats = [], [], []
+        for a, u in zip(angs, axes):
+            c = float(np.clip(np.dot(u, u_ref), -1, 1))
+            nrm = np.cross(u_ref, u)
+            nn = float(np.linalg.norm(nrm))
+            off = math.atan2(nn, c)                                    # 与主轴夹角
+            sign = 1.0
+            if nn > 1e-12:
+                sign = 1.0 if float(np.dot(nrm / nn, ref_dir)) >= 0 else -1.0
+            lon = math.degrees(off) * sign
+            lat = 90.0 * min(1.0, a / a_max)
+            lons.append(lon); lats.append(lat)
+            la, lo = math.radians(lat), math.radians(lon)
+            pts.append(np.array([math.cos(la) * math.cos(lo), math.cos(la) * math.sin(lo), math.sin(la)]))
+        # 圆周统计: 经度是角度, 直接 max−min 会在 ±180° 处把同一根经线算成 180° 跨度
+        _lr = np.radians(np.asarray(lons, float))
+        _R = float(np.hypot(np.cos(_lr).mean(), np.sin(_lr).mean()))
+        circ_std = math.degrees(math.sqrt(max(0.0, -2.0 * math.log(max(_R, 1e-12)))))
+        _mean = math.degrees(math.atan2(float(np.sin(_lr).mean()), float(np.cos(_lr).mean())))
+        span = 2.0 * max([abs(((v - _mean + 180) % 360) - 180) for v in lons] or [0.0])
+        lons = [((v + 180) % 360) - 180 for v in lons]          # 归一到 (-180,180]
+        dev = float(np.sqrt(np.mean([v * v for v in lons])))    # 规范度: 相对主经线的 RMS 偏离
+        _ = circ_std
+        return {"pts": pts, "lon": lons, "lat": lats, "a_max": a_max,
+                "a_total": float(sum(angs)), "u_ref": u_ref, "dev_deg": dev,
+                "lat_end": lats[-1], "near_pi": amb, "span_deg": span, "circ_std": circ_std}
+
+    @staticmethod
+    def _lon_ref(u_ref):
+        """给主轴定一个固定的经度参考方向 (与 u_ref 垂直), 保证同一根轴经度符号稳定。"""
+        t = np.array([0.0, 0, 1.0])
+        if abs(float(np.dot(t, u_ref))) > 0.95:
+            t = np.array([1.0, 0, 0])
+        d = np.cross(u_ref, t)
+        n = np.linalg.norm(d)
+        return d / n if n > 1e-12 else np.array([1.0, 0, 0])
+
     def set_trail(self, quats, mem=None):
         self.traj = [_canon(q) for q in (quats or [])]
         self.cur = self.traj[-1] if self.traj else None
         self.mem = _canon(mem) if mem is not None else None
         self.canvas.update()
 
+    MODE_SEQ = ("S3", "S2", "CANON")
+    MODE_TITLE = {"S3": "S³ 立体投影", "S2": "S² Bloch (只看向哪根轴)",
+                  "CANON": "规范化经线 (赤道→北极)"}
+    MODE_TAG = {"S3": "S³", "S2": "S²", "CANON": "经线"}
+
     def toggle_mode(self):
-        self.mode = "S2" if self.mode == "S3" else "S3"
-        self.lbl_hd.setText("🎯 SU(2) 轨迹球 · " +
-                            ("S³ 立体投影" if self.mode == "S3" else "S² Bloch (只看向哪根轴)"))
+        i = self.MODE_SEQ.index(self.mode) if self.mode in self.MODE_SEQ else 0
+        self.mode = self.MODE_SEQ[(i + 1) % len(self.MODE_SEQ)]
+        self.lbl_hd.setText("🎯 SU(2) 轨迹球 · " + self.MODE_TITLE[self.mode])
+        self.btn_mode.setText(self.MODE_TAG[self.mode])
+        try:
+            from PyQt5.QtCore import QSettings
+            _q = QSettings("ZMAX", "studio")
+            _q.setValue("mparam/su2_mode", self.mode)
+            _q.sync()
+        except Exception:                                                      # noqa: BLE001
+            pass
         self.canvas.update()
 
     # ── 完全隐藏 ────────────────────────────────────────────────────────────
@@ -295,8 +411,16 @@ class _Canvas(QWidget):
             p.drawText(int(x1) + 2, int(y1) - 2, lab)
         p.setPen(QColor("#6b7686"))
         p.setFont(QFont("Consolas", 8))
-        p.drawText(8, int(H - 6), ("S³ 立体投影 p=(x,y,z)/(1.05−w) · 拖动旋转 · 滚轮缩放"
-                                   if h.mode == "S3" else "S² Bloch (v/|v|)"))
+        p.drawText(8, int(H - 6),
+                   {"S3": "S³ 立体投影 p=(x,y,z)/(1.05−w) · 拖动旋转 · 滚轮缩放",
+                    "S2": "S² Bloch (v/|v|) · 只看「绕哪根轴」",
+                    "CANON": "规范化经线: 纬度=转了多少(0→90°) · 经度=轴向(同轴=同一条经线)"}[h.mode])
+
+        # ══ 规范化经线视图: 赤道 → 北极 ══
+        if h.mode == "CANON":
+            self._paint_canon(p, int(cx), int(cy), R)
+            p.end()
+            return
 
         # 轨迹 (按时间渐变蓝→亮)
         tr = h.traj
@@ -347,6 +471,66 @@ class _Canvas(QWidget):
             p.setPen(QColor(DIM))
             p.drawText(int(cx - 70), int(cy), "空态: 等 quat_truth 观测 (不画假点)")
         p.end()
+
+    def _paint_canon(self, p, cx, cy, R):
+        """球 + 赤道 + 主经线 + 刻度(0/30/60/90) + 规范化轨迹 (赤道→北极)。"""
+        from PyQt5.QtCore import QPointF
+        # 赤道
+        p.setPen(QPen(QColor("#3a4252"), 1.4))
+        eq = []
+        for k in range(73):
+            t = 2 * math.pi * k / 72
+            eq.append(self._proj((math.cos(t), math.sin(t), 0.0)))
+        for i in range(1, len(eq)):
+            p.drawLine(int(eq[i - 1][0]), int(eq[i - 1][1]), int(eq[i][0]), int(eq[i][1]))
+        # 主经线 (经度 0)
+        p.setPen(QPen(QColor("#2f3b4a"), 1.2, Qt.DashLine))
+        mer = [self._proj((math.cos(math.radians(l)), 0.0, math.sin(math.radians(l))))
+               for l in range(-90, 91, 5)]
+        for i in range(1, len(mer)):
+            p.drawLine(int(mer[i - 1][0]), int(mer[i - 1][1]), int(mer[i][0]), int(mer[i][1]))
+        # 刻度 0/30/60/90 (纬度)
+        p.setFont(QFont("Consolas", 8))
+        for lat in (0, 30, 60, 90):
+            x, y, _ = self._proj((math.cos(math.radians(lat)), 0.0, math.sin(math.radians(lat))))
+            p.setPen(QPen(QColor("#4a5566"), 1.2))
+            p.drawLine(int(x - 4), int(y), int(x + 4), int(y))
+            p.setPen(QColor(DIM))
+            p.drawText(int(x + 6), int(y) + 3, "%d°" % lat)
+        # 北极 (目标) 与赤道 (起点) 标签
+        xn, yn, _ = self._proj((0.0, 0.0, 1.0))
+        p.setPen(QColor("#8b949e"))
+        p.drawText(int(xn) + 8, int(yn) - 6, "北极 90°=转到位")
+        xq, yq, _ = self._proj((1.0, 0.0, 0.0))
+        p.drawText(int(xq) + 6, int(yq) + 12, "赤道 0°=起点")
+
+        cp = self.host.canon_points()
+        if not cp:
+            p.setPen(QColor(DIM))
+            p.drawText(int(cx) - 60, int(cy) + 20, "空态: 轨迹点不足")
+            return
+        pts = cp["pts"]
+        n = len(pts)
+        for i in range(1, n):
+            a = 50 + int(190 * i / n)
+            p.setPen(QPen(QColor(88, 166, 255, a), 1.8))
+            x0, y0, _ = self._proj(pts[i - 1])
+            x1, y1, _ = self._proj(pts[i])
+            p.drawLine(int(x0), int(y0), int(x1), int(y1))
+        xc, yc, _ = self._proj(pts[-1])
+        p.setPen(QPen(QColor(NOW), 2.0))
+        p.setBrush(QColor(NOW))
+        p.drawEllipse(int(xc - 5), int(yc - 5), 10, 10)
+        # 读数: 规范性偏差 + 进度
+        p.setPen(QColor(FG))
+        p.drawText(8, 14, "规范性偏差 RMS=%.1f° 经度跨度=%.1f° 进度=%.1f°" %
+                   (cp["dev_deg"], cp["span_deg"], cp["lat_end"]))
+        p.setPen(QColor(DIM))
+        p.drawText(8, 28, "归一化分母 a_max=%.1f° 累计角=%.1f° 主轴=(%.2f,%.2f,%.2f)" %
+                   (math.degrees(cp["a_max"]), math.degrees(cp["a_total"]), *cp["u_ref"]))
+        if cp["dev_deg"] < 1.0:
+            p.setPen(QColor(NOW))
+            p.drawText(8, 42, "✔ 单轴: 正好一条经线 (赤道→北极)")
 
     # 交互
     def mousePressEvent(self, e):
