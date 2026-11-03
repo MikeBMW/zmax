@@ -16034,8 +16034,8 @@ def _build_global_qss():
            系统浅色底, 字还是浅色 ⇒ 白底白字。这里在全局兜一层 (任何页面漏写都不会再看不见),
            同时把弹层字号提到 13px / 行高 26px (他说"字太小")。 */
         QComboBox QAbstractItemView {{ background: {C_BG2}; color: {C_WHITE}; border: 1px solid {C_BORDER};
-            outline: 0; font-size: 13px; selection-background-color: #1f6feb; selection-color: #ffffff; }}
-        QComboBox QAbstractItemView::item {{ min-height: 26px; padding: 2px 8px; }}
+            outline: 0; font-size: 12px; selection-background-color: #1f6feb; selection-color: #ffffff; }}
+        QComboBox QAbstractItemView::item {{ min-height: 24px; padding: 2px 8px; }}
         QComboBox QAbstractItemView::item:selected {{ background: #1f6feb; color: #ffffff; }}
         QScrollBar:vertical {{ background: {C_BG2}; width: 14px; margin: 0; border-left: 1px solid {C_BORDER}; }}
         QScrollBar::handle:vertical {{ background: {C_BLUE}; border-radius: 5px; min-height: 28px; }}

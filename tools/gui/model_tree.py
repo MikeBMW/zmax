@@ -967,14 +967,9 @@ class MasterParamMView(QWidget):
         self.module = module
         # 仓库根 = tools/gui/model_tree.py 往上三层 (少一层会把唯一依据/工具路径拼错, 体检真踩到过)
         self._root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        # 🔎 2026-11-03 老倪「右侧栏的字有些小」: 本页基准字号 +1pt (显式写了 font-size 的子控件
-        #   已在下面各自调到 12/13px; 这里兜住没写字号的那些标签/按钮), 不动全局其它页面。
-        try:
-            _f = self.font()
-            _f.setPointSizeF(max(9.5, _f.pointSizeF() + 1.0))
-            self.setFont(_f)
-        except Exception:                                                        # noqa: BLE001
-            pass
+        # 🔎 2026-11-03: 先按"右侧栏字小"放大过一档, 老倪看完说"字有些太大" ⇒ 收回: 只保留
+        #   页内 11px→12px 与下拉 12px, 页面基准字号不再加 pt (回到原来的 12pt)。
+        pass
         # 2026-10-16 看图: 小窗口 (392×492) 下视图被裁到 ~150px ⇒ "标签可见、球一个都看不见"。
         # 正解: 整页套 QScrollArea (内部控件保住自己的 minimumHeight, 装不下就滚, 不再被裁)。
         lay0 = QVBoxLayout(self)
@@ -1204,12 +1199,12 @@ class MasterParamMView(QWidget):
         #   (浅底 + 浅字)。这里把弹层也写死深色, 并且用 palette 再兜一层 (有些平台弹层不吃 QSS)。
         self.cmb_viz_view.setStyleSheet(
             "QComboBox{background:#161b22;color:#e6edf3;border:1px solid #30363d;border-radius:4px;"
-            "padding:2px 6px;font-size:13px;min-height:26px;}"
+            "padding:2px 6px;font-size:12px;min-height:26px;}"
             "QComboBox:hover{border-color:#1f6feb;}"
             "QComboBox::drop-down{width:18px;border:none;}"
             "QComboBox QAbstractItemView{background:#161b22;color:#e6edf3;border:1px solid #30363d;"
-            "outline:0;font-size:13px;selection-background-color:#1f6feb;selection-color:#ffffff;}"
-            "QComboBox QAbstractItemView::item{min-height:28px;padding:3px 8px;}")
+            "outline:0;font-size:12px;selection-background-color:#1f6feb;selection-color:#ffffff;}"
+            "QComboBox QAbstractItemView::item{min-height:24px;padding:2px 8px;}")
         try:
             from PyQt5.QtGui import QPalette, QFont
             _v = self.cmb_viz_view.view()
@@ -1234,13 +1229,19 @@ class MasterParamMView(QWidget):
         _lbl_view = QLabel("视图")
         _lbl_view.setStyleSheet("color:#c9d1d9;font-size:13px;")
         _vrow.addWidget(_lbl_view, 0)
-        self.btn_su2 = QPushButton("🎯")
+        # 🐛 2026-11-03 老倪「SU2 球隐藏后就不见了」: 原来按钮只有 26px 宽、只写一个 🎯,
+        #   藏起来之后没人知道去哪儿点回来 ⇒ 改成**带字**的开关: 藏着时写「🎯 显示球」(亮蓝框),
+        #   显示时写「🎯 球 开」; 宽度自适应文字, 不会被挤没。
+        self.btn_su2 = QPushButton("🎯 球 开")
         self.btn_su2.setCheckable(True)
-        self.btn_su2.setFixedWidth(26)
-        self.btn_su2.setToolTip("SU(2) 轨迹球窗口: 按下=显示, 弹起=完全隐藏 (选择会被记住)")
-        self.btn_su2.setStyleSheet("QPushButton{background:#21262d;color:#c9d1d9;border:1px solid #30363d;"
-                                  "border-radius:3px;font-size:12px;}"
-                                  "QPushButton:checked{background:#1f6feb;color:#fff;}")
+        self.btn_su2.setMinimumWidth(78)   # 「🎯 显示球」也要完整显示, 不许省略
+        self.btn_su2.setToolTip("SU(2) 轨迹球窗口开关: 点一下=完全隐藏, 再点=显示回来 (选择会被记住)")
+        self.btn_su2.setStyleSheet(
+            "QPushButton{background:#21262d;color:#c9d1d9;border:1px solid #30363d;"
+            "border-radius:3px;font-size:12px;padding:2px 6px;}"
+            "QPushButton:hover{background:#30363d;color:#e6edf3;}"
+            "QPushButton:checked{background:#1f6feb;color:#ffffff;border-color:#1f6feb;}"
+            "QPushButton:!checked{background:#0d1117;color:#58a6ff;border:1px solid #1f6feb;}")
         self.btn_su2.clicked.connect(self._toggle_su2)
         _vrow.addWidget(self.btn_su2, 0)
         _vrow.addWidget(self.cmb_viz_view, 1)
@@ -1533,7 +1534,7 @@ class MasterParamMView(QWidget):
                     self.cmb_viz_view.removeItem(self.cmb_viz_view.count() - 1)
                 self.su2_ball.set_hidden(True, emit=False)
             self.btn_su2.setChecked(self._su2_shown)
-            self.btn_su2.setText("🎯" if self._su2_shown else "🎯·")
+            self.btn_su2.setText("🎯 球 开" if self._su2_shown else "🎯 显示球")
         except Exception:                                                        # noqa: BLE001
             pass
 
