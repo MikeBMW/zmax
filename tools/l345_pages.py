@@ -47,7 +47,7 @@ def _level_ids(lv):
     return [x[0] for x in LEVELS_INDEX[lv] if x[0] in nodes]
 
 
-NO_PAGE = {"sscap", "ss_mem_share", "ss_mem_l4"}   # 配置/汇聚类节点(能力档位·总装记忆中枢): 留在画布与链路里, 不占册子独立页
+NO_PAGE = set()   # 画布已合并这三个节点, 不再需要页级屏蔽   # 配置/汇聚类节点(能力档位·总装记忆中枢): 留在画布与链路里, 不占册子独立页
 LC.SKIP_IDS = set(NO_PAGE)           # 模块导入即生效: 基础层 add_block 同样屏蔽
 
 
