@@ -75,7 +75,9 @@ NODES, L2SET, LINKS = LC.l2_nodes()
 ORDER = list(LC.chain_order(L2SET, LINKS)[0])
 
 _N_L4 = len(L345._level_ids('L4'))   # 认知层节点页: 跟随画布, 不写死
-_NP_TOTAL = len(ORDER) + 5 + _N_L4 + 11
+_N_L5 = len(L345._level_ids('L5'))   # 任务层同上
+_N_L3 = len(L345._level_ids('L3'))
+_NP_TOTAL = len(ORDER) + _N_L3 + _N_L4 + _N_L5
 _WANT_PAGES = 13 + 7 + _NP_TOTAL + 3 + 3 + 1
 chk('页数', _WANT_PAGES, len(pages) == _WANT_PAGES, '%d 页' % len(pages),
     '前置13(含轨迹页) + 母版7 + 节点%d + 层首3 + 收尾3 + 节拍1' % _NP_TOTAL)
@@ -182,7 +184,7 @@ chk('形状不出页面', '0 个越界', not out, '%d 个越界' % len(out), '�
 node_pages = [p['no'] for p in pages if p['text'].startswith('基础层 · 第')]
 chk('基础层节点页页数', len(ORDER), len(node_pages) == len(ORDER),
     '%d 页 %s' % (len(node_pages), node_pages[:3]), 'l2_chain_pages.chain_order')
-for _lv, _cn, _want in (('L3', '决策层', 5), ('L4', '认知层', _N_L4), ('L5', '任务层', 11)):
+for _lv, _cn, _want in (('L3', '决策层', _N_L3), ('L4', '认知层', _N_L4), ('L5', '任务层', _N_L5)):
     _ps = [p['no'] for p in pages if p['text'].startswith(_cn + ' · 第')]
     chk('%s节点页页数' % _cn, _want, len(_ps) == _want, '%d 页' % len(_ps),
         'by_level.LEVELS_INDEX')
