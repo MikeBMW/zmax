@@ -3152,6 +3152,43 @@ def node_ss_su2(ctx):
         except Exception as _e:                                          # noqa: BLE001
             if log:
                 log("⚠️ L5 大模型意图不可用 (%s: %s) → L5 层落单位元" % (type(_e).__name__, _e))
+        # 🧩 四元数真值 (记忆基准) + 感知补偿 (2026-11-03 策略): L2 用**精确四元数**, 不走 tanh 压缩
+        #   真值 = 记忆技能库轴向 (data/memory/l2_store/skills.json) + 离线 IK 验证过的 yaw;
+        #   补偿 = obs43 的 光模块→孔位 方向 (新鲜才参与, 过期 w=0, 不拿旧测量当新证据);
+        #   输出 = q_fused 给群/流形/规划, 并写 quat_truth_latest.json 供下游消费。
+        try:
+            import numpy as _np
+            _qt = _ss_import("quat_truth")
+            _axis, _meas_q, _age = "z_pos", None, None
+            _src = str(_SS_STATE.get("obs43_src") or "")
+            try:
+                if obs43 is not None and len(obs43) >= 39:
+                    _e = _np.asarray(obs43[4:7], float) - _np.asarray(obs43[36:39], float)
+                    _n = float(_np.linalg.norm(_e))
+                    if _n > 1e-9:
+                        _d = -_e                                    # 插入方向 = 孔位−光模块
+                        if abs(_d[0]) >= abs(_d[2]):
+                            _axis = "x_pos" if _d[0] >= 0 else "x_neg"
+                        else:
+                            _axis = "z_pos" if _d[2] >= 0 else "z_neg"
+                        _meas_q = _qt.q_for_axis(-_e / _n)          # 插入方向 = 孔位−光模块
+                        _age = 0.0 if _src.startswith("yolo") else None
+            except Exception:                                        # noqa: BLE001
+                pass
+            _qr = _qt.observe(axis=_axis, meas_q=_meas_q, meas_age_s=_age)
+            frame = {**frame, "L2_quat": list(_qr["q_fused"])}
+            _SS_STATE["quat_truth"] = _qr
+            try:
+                _qt.write_contract(_qr)
+            except Exception:                                        # noqa: BLE001
+                pass
+            if log and int(getattr(mod, "_ss_round", 0) or 0) % 20 == 0:
+                log("🧩 四元数真值: 轴=%s 偏差 %.3f° 势 V=%.6f 测量权重 %.2f 引力|%.4f| 源=%s"
+                    % (_qr["axis"], _qr["err_deg"], _qr["V"], _qr["w_meas"],
+                       float(_np.linalg.norm(_qr["gravity"])), _src or "obs43"))
+        except Exception as _e:                                      # noqa: BLE001
+            if log:
+                log("⚠️ 四元数真值层不可用 (%s: %s) → L2 回 43D 误差指示器" % (type(_e).__name__, _e))
         st = _SS_STATE.get("_su2_state")
         if st is None:
             st = su2.SU2UnifiedState(log=None)

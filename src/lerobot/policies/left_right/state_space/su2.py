@@ -313,6 +313,11 @@ def encode_layer(L: str, frame: dict, obs43=None) -> SU2Element:
     def g(k, d=0.0):
         return _scalar(frame.get(k, d), d)
     if L == "L2":
+        # 2026-11-03 策略: 若上游给了**精确四元数** (quat_truth: 记忆真值+感知补偿), 就用它,
+        #   不再走 tanh 压缩 (压缩是多对一, 当尺子会失真); 没给才回 43D 误差指示器。
+        _q = frame.get("L2_quat")
+        if _q is not None and len(list(_q)) == 4:
+            return SU2Element(*[float(v) for v in _q])
         if obs43 is None:
             return SU2Element.identity()
         return encode_obs43(obs43, LAYER_GAIN["L2"])
