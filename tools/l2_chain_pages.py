@@ -605,12 +605,12 @@ def node_page(pr, nid, k, total, nodes, l2, links, out_l2, in_l2,
     TOP, BOT = 2.90, 5.72
     CX, CW2 = 4.90, 3.45                     # 中间节点框
     cy = (TOP + BOT) / 2
-    NH = 1.16
+    NH = 1.30
     _box(s, CX, cy - NH / 2, CW2, NH, _cut(name, 18), "第 %d 位 · 共 %d 个" % (k, total), "",
          size=11.0, fill=RGBColor(0xDF, 0xEE, 0xF6), line=C_ACC)
 
     def column(items, side):
-        """画一侧的盒子并逐根回到中间节点, 返回是否画了内容。"""
+        """画一侧的盒子并逐根接到中间节点: 水平出 → 阶梯竖直 → 水平入 (三段正交, 不斜扎成扇)。"""
         if not items:
             yy = cy - 0.14
             _txt(s, (0.86 if side == "in" else 9.14), yy, 3.2, 0.24,
@@ -618,23 +618,30 @@ def node_page(pr, nid, k, total, nodes, l2, links, out_l2, in_l2,
             return
         n_i = len(items)
         band = BOT - TOP
-        pitch = min(0.34, band / n_i)
-        bh = min(0.28, pitch * 0.80)
-        fs = max(9.0, min(9.6, bh * 72 * 0.56))
+        pitch = min(0.52, band / n_i)
+        bh = min(0.34, pitch * 0.78)
+        fs = max(9.2, min(10.0, bh * 72 * 0.58))
         x0 = 0.86 if side == "in" else 9.10
         w0 = 3.30
-        # 锚点在节点框上的分布
-        spread = min(NH - 0.14, 0.105 * n_i)
+        spread = min(NH - 0.12, max(0.30, 0.175 * n_i))   # 节点左/右沿上的独立锚点, 最小 12.6pt 间隔
+        step = 0.055                                       # 阶梯间距: 同侧多根竖线错开, 不叠成一条
         for i2, k2 in enumerate(items):
             y = TOP + pitch * (i2 + 0.5) - bh / 2
-            nm = _cut(_upname(k2.get("f") if side == "in" else k2.get("t"), nodes), 13)
+            nm = _cut(_upname(k2.get("f") if side == "in" else k2.get("t"), nodes), 18)
             _box(s, x0, y, w0, bh, nm, "", "", size=fs,
                  fill=C_UP_FILL if side == "in" else C_DN_FILL, line=RGBColor(0xC2, 0xCC, 0xD6))
             ay = cy - spread / 2 + (spread * (i2 + 0.5) / max(n_i, 1))
-            if side == "in":                                  # 一根线对一个输入, 直线扇入, 不用母线
-                _line(s, x0 + w0, y + bh / 2, CX, ay, arrow=True, color=C_ACC, w=1.0)
+            yc = y + bh / 2
+            if side == "in":
+                xm = CX - 0.26 - step * (n_i - 1 - i2)
+                _line(s, x0 + w0, yc, xm, yc, color=C_ACC, w=1.0)
+                _line(s, xm, yc, xm, ay, color=C_ACC, w=1.0)
+                _line(s, xm, ay, CX, ay, arrow=True, color=C_ACC, w=1.0)
             else:
-                _line(s, CX + CW2, ay, x0, y + bh / 2, arrow=True, color=C_ACC, w=1.0)
+                xm = CX + CW2 + 0.26 + step * (n_i - 1 - i2)
+                _line(s, CX + CW2, ay, xm, ay, color=C_ACC, w=1.0)
+                _line(s, xm, ay, xm, yc, color=C_ACC, w=1.0)
+                _line(s, xm, yc, x0, yc, arrow=True, color=C_ACC, w=1.0)
 
     column(ins, "in")
     column(outs, "out")

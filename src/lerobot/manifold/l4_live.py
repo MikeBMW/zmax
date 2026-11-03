@@ -19,7 +19,9 @@ import urllib.request
 import numpy as np
 
 ROOT_DEFAULT = "/home/ubuntu/zmax"
-FRAME_URL_DEFAULT = "http://127.0.0.1:8791/snapshot/local2.jpg"
+FRAME_URL_DEFAULT = "http://127.0.0.1:8791/snapshot/local.jpg"    # 🐛 2026-11-03: 原 local2.jpg
+# 实测 503 (local2 走 8812 中央相机代理, 那路没起) ⇒ L4 潜空间 0/4537 成功。8791 现役有帧的是
+# /snapshot/local.jpg (640×480, 200/6KB) 与 /snapshot/overlay_local.jpg; arm 路依赖 Orin (不通时 503)。
 
 
 def fetch_frame(url: str, timeout: float = 4.0):

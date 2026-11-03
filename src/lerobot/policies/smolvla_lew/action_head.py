@@ -211,6 +211,11 @@ class SmolVLALewActionHead(nn.Module):
         #   诚实标注: 该投影**未训练**(小随机初始化) —— 通道真实参与前向(可消融验证), 增益需后续训练。
         self.l4_cond_proj: nn.Linear | None = None
         self.l4_cond_dim = 0
+        # 🧩 2026-11-03 引擎预测四元数(p_cond, 3 维) → 条件 token 的 **零初始化 residual 投影**:
+        #   初始权重全 0 ⇒ 输出恒 0 ⇒ 不传/未训练时与原路径逐位相同(零回退);
+        #   且**不改** l4_cond_proj 的输入维度 ⇒ 已训练的 token 投影不被重建冲掉。
+        self.p_cond_proj: nn.Linear | None = None
+        self.p_cond_dim = 0
         # 条件 token 必须与 conditioning_tokens 同宽 (= DiT 的 cross_attention_dim, 实测 960;
         # 曾误用 inner_dim=768 → RuntimeError: Expected size 960 but got size 768)
         self.cross_attention_dim = int(cross_attention_dim)
@@ -285,10 +290,54 @@ class SmolVLALewActionHead(nn.Module):
         self.l4_cond_proj = lin
         self.l4_cond_dim = int(dim)
 
-    def apply_l4_cond(self, conditioning_tokens: torch.Tensor, l4_cond) -> torch.Tensor:
-        """L4 条件向量 → 额外条件 token 拼到 conditioning_tokens 尾部 (None → 原样返回, 零改动)。"""
-        if l4_cond is None:
+    def ensure_p_cond(self, dim: int, out_dim: int | None = None, device=None, dtype=None) -> None:
+        """保证 p_cond 投影存在 (懒创建, **零初始化** ⇒ 未训练时输出 0, 通道在但零回退)。"""
+        _out = int(out_dim or self.cross_attention_dim)
+        if (self.p_cond_proj is not None and self.p_cond_proj.in_features == int(dim)
+                and self.p_cond_proj.out_features == _out):
+            return
+        _dev = device if device is not None else self.future_tokens.weight.device
+        _dt = dtype if dtype is not None else self.future_tokens.weight.dtype
+        lin = nn.Linear(int(dim), _out, bias=False).to(device=_dev, dtype=_dt)
+        with torch.no_grad():
+            lin.weight.zero_()                       # ← 零初始化: 初始恒等回退
+        self.p_cond_proj = lin
+        self.p_cond_dim = int(dim)
+
+    def apply_p_cond(self, cond_token: torch.Tensor, p_cond) -> torch.Tensor:
+        """把 p_cond(3) 经零初始化投影**加**到已存在的条件 token 上 (不改维度、不新建 token)。
+
+        p_cond=None ⇒ 原样返回。训练前权重全 0 ⇒ 加的是 0 ⇒ 与原路径逐位相同。
+        """
+        if p_cond is None:
+            return cond_token
+        c = torch.as_tensor(p_cond, dtype=cond_token.dtype, device=cond_token.device)
+        if c.ndim == 1:
+            c = c[None]
+        if c.shape[0] == 1 and cond_token.shape[0] > 1:
+            c = c.expand(cond_token.shape[0], -1)
+        if (self.p_cond_proj is None or self.p_cond_proj.in_features != int(c.shape[-1])
+                or self.p_cond_proj.out_features != int(cond_token.shape[-1])):
+            self.ensure_p_cond(int(c.shape[-1]), out_dim=int(cond_token.shape[-1]),
+                               device=cond_token.device, dtype=cond_token.dtype)
+        return cond_token + self.p_cond_proj(c)[:, None, :]
+
+    def apply_l4_cond(self, conditioning_tokens: torch.Tensor, l4_cond, p_cond=None) -> torch.Tensor:
+        """L4 条件向量 → 额外条件 token 拼到 conditioning_tokens 尾部 (None → 原样返回, 零改动)。
+
+        p_cond: 🧩 引擎预测四元数 (3 维 S³ 旋转向量)。给了就经零初始化投影加到 **l4_cond 那个 token**
+        上 (没有 l4_cond 时单独加一个 token); 不改 l4_cond_proj 的输入维度。
+        """
+        if l4_cond is None and p_cond is None:
             return conditioning_tokens
+        # l4_cond 缺失但给了 p_cond: 单独出一个 token (零初始化 ⇒ 初始 0, 不扰动)
+        if l4_cond is None:
+            return torch.cat([conditioning_tokens,
+                              self.apply_p_cond(torch.zeros(conditioning_tokens.shape[0], 1,
+                                                            conditioning_tokens.shape[-1],
+                                                            dtype=conditioning_tokens.dtype,
+                                                            device=conditioning_tokens.device),
+                                                p_cond)], dim=1)
         c = torch.as_tensor(l4_cond, dtype=conditioning_tokens.dtype, device=conditioning_tokens.device)
         if c.ndim == 1:
             c = c[None]
@@ -298,7 +347,11 @@ class SmolVLALewActionHead(nn.Module):
                 or self.l4_cond_proj.out_features != int(conditioning_tokens.shape[-1])):
             self.ensure_l4_cond(int(c.shape[-1]), out_dim=int(conditioning_tokens.shape[-1]),
                                 device=conditioning_tokens.device, dtype=conditioning_tokens.dtype)
-        return torch.cat([conditioning_tokens, self.l4_cond_proj(c)[:, None, :]], dim=1)
+        # 🧩 p_cond 作为零初始化残差**加到同一个** l4 token 上 (维度不变 ⇒ 已训练投影不重建)
+        tok = self.l4_cond_proj(c)[:, None, :]
+        if p_cond is not None:
+            tok = self.apply_p_cond(tok, p_cond)
+        return torch.cat([conditioning_tokens, tok], dim=1)
 
     def _build_inputs(
         self,
@@ -326,6 +379,7 @@ class SmolVLALewActionHead(nn.Module):
         state: torch.Tensor | None = None,
         action_is_pad: torch.Tensor | None = None,
         l4_cond: torch.Tensor | None = None,          # 🎯 L4→L3 条件 (None = 与改造前逐位相同)
+        p_cond: torch.Tensor | None = None,           # 🧩 引擎预测四元数条件 (零初始化 ⇒ 回退)
     ) -> torch.Tensor:
         noise = torch.randn_like(actions)
         t = self.sample_time(actions.shape[0], actions.device, actions.dtype)
@@ -334,7 +388,7 @@ class SmolVLALewActionHead(nn.Module):
         t_discretized = (t * self.config.action_num_timestep_buckets).long()
 
         hidden_states = self._build_inputs(conditioning_tokens, noisy_actions, state, t_discretized)
-        _ct = self.apply_l4_cond(conditioning_tokens, l4_cond)
+        _ct = self.apply_l4_cond(conditioning_tokens, l4_cond, p_cond)
         pred = self.model(
             hidden_states=hidden_states,
             encoder_hidden_states=_ct,
@@ -356,9 +410,10 @@ class SmolVLALewActionHead(nn.Module):
         conditioning_tokens: torch.Tensor,
         state: torch.Tensor | None = None,
         l4_cond: torch.Tensor | None = None,          # 🎯 L4→L3 条件 (None = 与改造前逐位相同)
+        p_cond: torch.Tensor | None = None,           # 🧩 引擎预测四元数条件 (零初始化 ⇒ 回退)
     ) -> torch.Tensor:
         batch_size = conditioning_tokens.shape[0]
-        _ct = self.apply_l4_cond(conditioning_tokens, l4_cond)
+        _ct = self.apply_l4_cond(conditioning_tokens, l4_cond, p_cond)
         actions = torch.randn(
             batch_size,
             self.action_horizon,

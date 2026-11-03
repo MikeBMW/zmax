@@ -20,6 +20,15 @@ C_DIM = LC.C_DIM
 C_SUB = LC.C_SUB
 C_ACC = LC.C_ACC
 
+# 认知层前几位钉死: 流形引擎第 1, INTACT 意图解码器第 2 (其余保持链路拓扑序)
+PIN_HEAD = {"L4": ("ss_mani_eng",      # 1 流形引擎
+                   "ssintact_dec",     # 2 INTACT 意图解码器
+                   "ss_lora_l4",       # 3 INTACT LoRA 微调
+                   "ssmani_exp",       # 4 流形专家预测器
+                   "ssmani_c",         # 5 接触流形
+                   "ssmani_p",         # 6 性能流形
+                   "ssintact")}        # 7 INTACT 安全导航
+
 LAYER_META = {
     "L3": (P.L3_NAME, "决策层：五个节点把「这一件要做什么」变成一串能执行的动作",
            "这一层不碰像素也不下发动作，只决定顺序、条件与参数。它跑在架构的最前面，"
@@ -39,11 +48,20 @@ def _level_ids(lv):
     return [x[0] for x in LEVELS_INDEX[lv] if x[0] in nodes]
 
 
+def _ordered(lv, ids, links):
+    """层内页序: 链路拓扑序 + PIN_HEAD 钉死前几位 (层首页与逐节点页共用, 两处必须同源)。"""
+    order, _, _ = LC.chain_order(set(ids), links)
+    _pinned = [x for x in (PIN_HEAD.get(lv) or ()) if x in order]
+    if _pinned:
+        order = _pinned + [x for x in order if x not in _pinned]
+    return order
+
+
 def layer_intro_page(pr, lv):
     """层首页: 一句话结论 + 三行要点 + 节点表 (名称 / 负责什么 / 入出条数)。"""
     nodes, _, links = LC.l2_nodes()
     ids = _level_ids(lv)
-    order, _, _ = LC.chain_order(set(ids), links)
+    order = _ordered(lv, ids, links)
     name_cn, title, summary = LAYER_META[lv]
 
     s = LC._slide(pr)
@@ -90,7 +108,7 @@ def add_layers(pr, layers=("L3", "L4", "L5"), verbose=True):
     made = {}
     for lv in layers:
         ids = set(_level_ids(lv))
-        order, _, _ = LC.chain_order(ids, links)
+        order = _ordered(lv, ids, links)
         layer_intro_page(pr, lv)
         for k, nid in enumerate(order, 1):
             LC.node_page(pr, nid, k, len(order), nodes, ids, links, None, None,

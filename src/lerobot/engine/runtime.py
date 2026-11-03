@@ -1319,7 +1319,7 @@ class RealStateSpaceSim:
             return g["peg_head0"] - off          # 光模块头落回初始位 (放件, 随后开爪)
         return self._goal_p() - off                                     # 插入/完成: 光模块头到终点
 
-    def _l3_forward(self, visual39, l4_cond=None, tag="L3"):
+    def _l3_forward(self, visual39, l4_cond=None, tag="L3", p_cond=None):
         """🧠 2026-09-10 L3 真执行 (老倪: 模型当执行者) — SmolVLA-Lew 策略真实前向
         输入: 渲染帧 (480×480, 与训练同源) + 39D 视觉状态 → 输出 4D 动作
         用: 引擎 SS_L3=1 时 xyz 由模型出 (gripper 仍由状态机管 — 模型二值回归不准)
@@ -1433,7 +1433,7 @@ class RealStateSpaceSim:
                      "task": os.environ.get("SS_L3_TASK", getattr(self, "_l3_task_str", "metaworld 光模块插拔"))}
             batch = self._l3_pre(batch)
             with torch.no_grad():
-                _pred = self._l3_pol.select_action(batch, l4_cond=l4_cond)
+                _pred = self._l3_pol.select_action(batch, l4_cond=l4_cond, p_cond=p_cond)
                 # 🎯 2026-09-10 关键修正 (接管卡死"转移2318帧"的真根因):
                 #   模型输出在**归一化空间** (policy 配置 ACTION=MIN_MAX), 必须用
                 #   post-processor 反归一化才能当真实动作执行。缺这一步 → 归一化值(-1~1)
@@ -1480,7 +1480,10 @@ class RealStateSpaceSim:
         st["beta"] = float(os.environ.get("SS_L4_DIT_BETA", "0.5"))
         try:
             o = visual39 if visual39 is not None else self._obs39()
-            act = self._l3_forward(o, l4_cond=np.asarray(l4_cond, dtype=np.float32), tag="L4→DiT")
+            # 🧩 引擎预测四元数 → 同一颗 DiT 的条件 token (零初始化残差; 未训练=零回退)
+            _pc = getattr(self, "_l4_p_cond", None)
+            act = self._l3_forward(o, l4_cond=np.asarray(l4_cond, dtype=np.float32), tag="L4→DiT",
+                                   p_cond=(None if _pc is None else np.asarray(_pc, dtype=np.float32)))
         except Exception as e:                                                   # noqa: BLE001
             st["err"] = f"{type(e).__name__}: {e}"
             st["src"] = "异常"
@@ -1557,6 +1560,42 @@ class RealStateSpaceSim:
         return u
 
     # ── 🎯 INTACT 意图解码器 → L3 (2026-09-13 老倪: metaworld 数据源 → INTACT → decoder → L3) ──
+    def _read_engine_p_next(self, fresh_s: float = 2.0):
+        """🧩 读流形引擎 (tools/ss_engine_loop.py) 落盘的 p_next 四元数, 带帧龄闸。
+
+        为什么要读文件: 流形引擎是**独立进程** (10Hz 常驻), 它的 p_next 是"沿梯度走一步后的预测点";
+        本地重算等于造第二套预测, 与那条链不一致。陈旧 (>fresh_s) ⇒ 返回 None, 由调用方标"未提供",
+        绝不拿旧点冒充当拍预测。
+        """
+        import json as _json                                           # noqa: PLC0415
+        import os as _os                                               # noqa: PLC0415
+        import time as _time                                           # noqa: PLC0415
+        _rp = self.__class__.__module__                                # 兜底: 从模块路径推工程根
+        _cand = []
+        try:
+            _cand.append(_os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", "..", "..")))
+        except Exception:                                              # noqa: BLE001
+            pass
+        _cand.append(getattr(self, "root", "") or "")
+        for _base in _cand:
+            if not _base:
+                continue
+            _p = _os.path.join(_base, "zmax_data", "ss_live", "engine_latest.json")
+            try:
+                _age = _time.time() - _os.path.getmtime(_p)
+                if _age > fresh_s:
+                    continue
+                with open(_p, encoding="utf-8") as _f:
+                    _d = _json.load(_f)
+                _q = _d.get("p_next") or []
+                if len(_q) == 4:
+                    _a = np.asarray(_q, dtype=np.float64)
+                    if float(np.linalg.norm(_a)) > 1e-9:
+                        return _a
+            except Exception:                                          # noqa: BLE001
+                continue
+        return None
+
     def _l4_intact_u_ff(self, stage=""):
         """L4 一路: 每 receding chunk 真推理一次 → **意图解码器** → u_ff (引擎 u 空间) + L3 条件。
 
@@ -1597,8 +1636,20 @@ class RealStateSpaceSim:
                 st["err"] = f"{type(e).__name__}: {e}"
                 st["src"] = "analytic(L4 推理异常)"
                 return None
-            d = self._l4_dec.decode(out, stage=stage)
+            # 🧩 2026-11-03 引擎预测的四元数当条件: 读流形引擎 (ss_engine_loop) 落盘的 p_next,
+            #   带帧龄闸 (超过 2s 视为陈旧 ⇒ 不传, 不拿旧点冒充预测); 传了 decoder 才出 p_cond。
+            _pc = None
+            try:
+                _pc = self._read_engine_p_next()
+            except Exception:                                          # noqa: BLE001
+                _pc = None
+            st["p_cond"] = ("engine(p_next)" if _pc is not None else "未提供(无新鲜 p_next)")
+            d = self._l4_dec.decode(out, stage=stage, p_cond=_pc)
             self._l4_cond = d.l3_cond
+            # 🧩 2026-11-03 引擎预测四元数 → 条件 (3 维 S³ 旋转向量); 下游(DiT/预测器)按需消费
+            self._l4_p_cond = getattr(d, "p_cond", None)
+            st["p_cond_dim"] = (int(np.asarray(self._l4_p_cond).size)
+                                if self._l4_p_cond is not None else 0)
             # 🎯 2026-09-14 L4→DiT 条件通道 (192 维意图单位向量; 无需标定)
             self._l4_dit_cond = getattr(d, "l4_cond", None)
             # ══════════════════════════════════════════════════════════════════

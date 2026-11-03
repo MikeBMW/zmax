@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass
 
@@ -73,6 +74,11 @@ class DecodedIntent:
     m_int: np.ndarray | None = None
     m_int_source: str = ""
     m_int_weight: float = 0.0
+    # 🧩 2026-11-03 (老倪: 引擎预测的四元数当条件给 INTACT): 引擎 p_next → S³ 旋转向量 (3 维)
+    #   与 l4_cond 并列的第二条条件通道。**无需标定**(它就是几何量, 不做映射), 但**生效**要消费方
+    #   (DiT token / 预测器) 自己学会用它 —— 未接时如实标 "未消费", 不当成已生效。
+    p_cond: np.ndarray | None = None
+    p_cond_source: str = ""
 
 
 class IntactIntentDecoder:
@@ -116,8 +122,12 @@ class IntactIntentDecoder:
             self.reason = f"标定文件读取失败: {type(e).__name__}: {e}"
 
     # ── 主入口 ──
-    def decode(self, out, stage: str = "", cfg=None) -> DecodedIntent:
-        """out: IntactOutput (node.step 的返回); stage: 引擎当前阶段名; cfg: IntactConfig (可选)。"""
+    def decode(self, out, stage: str = "", cfg=None, p_cond=None) -> DecodedIntent:
+        """out: IntactOutput (node.step 的返回); stage: 引擎当前阶段名; cfg: IntactConfig (可选)。
+
+        p_cond: 🧩 引擎预测的四元数 (4,) —— 传了就换算成 S³ 旋转向量 (3,) 带出为条件
+        (`DecodedIntent.p_cond`), 与 l4_cond 并列; 不传 = 原行为逐位不变。
+        """
         excluded = tuple(cfg.l3_exclude_stages) if cfg is not None and hasattr(cfg, "l3_exclude_stages") \
             else self.excluded_stages
         w_max = float(getattr(cfg, "l3_prior_weight", 0.3)) if cfg is not None else 0.3
@@ -166,10 +176,31 @@ class IntactIntentDecoder:
             m_w = 0.0
         else:
             m_w = float(w)
+        # ⑥ 🧩 引擎预测的四元数 → S³ 旋转向量 (几何量, 无需标定; 双覆盖统一取 w≥0 代表)
+        p_c, p_src = None, "未提供"
+        if p_cond is not None:
+            _q = np.asarray(p_cond, dtype=np.float64).ravel()
+            if _q.size == 4 and np.all(np.isfinite(_q)):
+                _n = float(np.linalg.norm(_q))
+                if _n > 1e-9:
+                    _q = _q / _n
+                    if _q[0] < 0:
+                        _q = -_q
+                    _v = _q[1:]
+                    _s = float(np.linalg.norm(_v))
+                    if _s > 1e-9:
+                        p_c = _v / _s * (2.0 * math.atan2(_s, float(_q[0])))
+                    else:
+                        p_c = np.zeros(3, dtype=np.float64)
+                    p_src = "engine(p_next→rotvec) · 待下游消费(未接=不生效)"
+            else:
+                p_src = "拒绝(四元数非法)"
         return DecodedIntent(u_ff=u, u_ff_source=u_ff_src, l3_cond=cond,
                              l3_cond_source=cond_src, weight=w, reason=reason,
                              l4_cond=l4c, l4_cond_source=l4src,
-                             m_int=m_int, m_int_source=m_src, m_int_weight=m_w)
+                             m_int=m_int, m_int_source=m_src, m_int_weight=m_w,
+                             p_cond=(None if p_c is None else np.asarray(p_c, dtype=np.float64)),
+                             p_cond_source=p_src)
 
     def _intent_cond(self, out) -> tuple[np.ndarray | None, str]:
         """意图增量 δ=z_goal−z_t → 单位向量 (L4→L3 条件; 无需标定, 每帧真值)。"""

@@ -1190,9 +1190,27 @@ class ManifoldEngine:
         return out
 
     def step(self, state: np.ndarray, potential_fn=None, dt: float = 0.01,
-             sensor_residual: np.ndarray | None = None) -> dict:
-        """单步: 编码→投影→梯度流→导航步→解码动作→(可选)反馈修正"""
+             sensor_residual: np.ndarray | None = None,
+             p_override: np.ndarray | None = None) -> dict:
+        """单步: 编码→投影→梯度流→导航步→解码动作→(可选)反馈修正
+
+        p_override: 🧩 外部状态点 (统一状态空间的四元数) —— 传了就用它当本拍状态点 p,
+        替代 project 出来的那个; 不传 = 原行为逐位不变。⚠ 实测代价见 reports/p_vs_q_action.json:
+        用 q_exec 当解码点会让动作留出 RMSE 从 0.045 升到 0.395 (8.7×), 因为 z 仍来自 43D 编码
+        而 readout 是按 p 拟合的 ⇒ 只建议用于 phi/判据/导航这类**几何**用途, 不要盲开。
+        """
         r = self.project(state)
+        if p_override is not None:
+            _pe = np.asarray(p_override, float).ravel()
+            if _pe.size == 4:
+                _n = float(np.linalg.norm(_pe))
+                if np.isfinite(_n) and _n > 1e-9:
+                    r = dict(r)
+                    r["p"] = _pe / _n                       # 单位化: 保证落在 S³
+                    r["p_source"] = "external(统一状态空间)"
+                    # project() 已把内部点设为它自己算的 p; gradient_flow() 读的是这个缓存,
+                    # 不同步 ⇒ 注入只影响导航/解码, 势与梯度仍走旧点 (假生效)。
+                    self.current_manifold_point = r["p"]
         gf = self.gradient_flow(potential_fn)
         # 🧭 对称轨道先算 (本拍要拿它指导动作; 观测失败不阻塞主链路)
         orb = None
@@ -1275,6 +1293,8 @@ class ManifoldEngine:
         if a.size:
             self._a_prev = np.asarray(a, float).copy()
         rec = {"state": np.asarray(state, float).ravel(), "p": r["p"], "p_next": p_new,
+               # 🧩 状态点来源: project=引擎自己投影 (默认) / external=统一状态空间注入
+               "p_source": r.get("p_source", "project"),
                # 🧠 潜表示来源必须随每步带出 (否则上下游只能"看到跑"，看不到喝的是哪条编码链)
                "z_source": r.get("z_source"), "z_dim": int(np.asarray(r["z"]).size),
                "z": r["z"], "phi": gf["phi"], "grad": gf["grad"], "action": a,

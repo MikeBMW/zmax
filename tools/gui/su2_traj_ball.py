@@ -25,9 +25,11 @@
 """
 from __future__ import annotations
 
+import glob
 import json
 import math
 import os
+import time
 
 import numpy as np
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
@@ -49,6 +51,11 @@ _ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__))
 LIVE = os.path.join(os.environ.get("ZMAX_DATA", os.path.join(_ROOT, "zmax_data")), "ss_live")
 CALLS = os.path.join(LIVE, "quat_truth_calls.jsonl")
 LATEST = os.path.join(LIVE, "quat_truth_latest.json")
+# ▶运行 = ss_engine_loop (10Hz) 把每拍 p=SU(2) 四元数写进 /dev/shm 的 tap。
+# 画布 ssobs 节点的 quat_truth observe 只在节点被逐点执行时才写 ⇒ 光点运行不会新增
+# ⇒ 轨迹球必须以运行流为首选源, 否则永远停在旧轨迹/空态。
+RUN_TAP_DIR = os.environ.get("ZMAX_SS_ENGINE_TAP_DIR") or "/dev/shm/zmax_ss_engine"
+RUN_TAP_FRESH_S = 5.0
 
 
 # ── 四元数小工具 (独立于引擎, 面板可单独跑) ─────────────────────────────────
@@ -174,7 +181,48 @@ class SU2TrajBall(QWidget):
                 "QPushButton:hover{background:#30363d;color:#e6edf3;}")
 
     # ── 数据 ────────────────────────────────────────────────────────────────
+    def load_run_stream(self):
+        """① 运行流 (首选): ss_engine_loop 的 tap, 10Hz 每拍 p=SU(2) 四元数。
+        返回 True 表示已用运行流填充 traj/cur; 流陈旧(>5s)或不存在 ⇒ False 走真值源。"""
+        try:
+            taps = [p for p in glob.glob(os.path.join(RUN_TAP_DIR, "engine_*.jsonl"))
+                    if os.path.getsize(p) > 0]
+            if not taps:
+                return False
+            tap = max(taps, key=os.path.getmtime)
+            age = time.time() - os.path.getmtime(tap)
+            if age > RUN_TAP_FRESH_S:                       # 没在跑: 那条流不算数
+                return False
+            rows = []
+            with open(tap, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        d = json.loads(line)
+                    except Exception:                       # noqa: BLE001
+                        continue
+                    q = d.get("p")
+                    if isinstance(q, (list, tuple)) and len(q) == 4:
+                        rows.append((q, d.get("cycle"), d.get("ts_str")))
+            if not rows:
+                return False
+            quats = [_canon(q) for q, _c, _t in rows[-120:]]
+            self.traj, self.cur, self.mem = quats, quats[-1], None
+            c, ts_s = rows[-1][1], rows[-1][2]
+            self.meta = {"src": os.path.basename(tap), "age_s": round(age, 2),
+                         "cycle": c, "ts": ts_s, "n": len(rows)}
+            self.lbl_src.setText("源: 运行流 %s · cycle %s · %d 拍 · 帧龄 %.1fs"
+                                 % (os.path.basename(tap), c, len(rows), age))
+            self.canvas.update()
+            return True
+        except Exception:                                   # noqa: BLE001
+            return False
+
     def reload(self):
+        if self.load_run_stream():                          # ▶运行 后的活真源
+            return
         rows = []
         try:
             with open(os.path.join(self.root, "zmax_data", "ss_live", "quat_truth_calls.jsonl"),

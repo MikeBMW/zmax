@@ -73,6 +73,8 @@ CALIB = os.path.join(ROOT, "config", "calib", "zmax_manifold.json")
 CKPT = os.path.join(ROOT, "models", "manifold_engine.npz")
 STATE_DIM = 43
 LATENT = 16
+# 🧩 统一状态空间的四元数是否当引擎状态点 (默认关: 实测当解码点动作误差 8.7×)
+_P_FROM_UNIFIED = (os.environ.get("ZMAX_SS_P_FROM_UNIFIED") or "").strip().lower() in ("1", "true", "yes", "on")
 ACTION_DIM = 4
 
 
@@ -736,7 +738,25 @@ class Loop:
             self._hj_retry += 1
             self._attach_hjepa()
         t0 = time.perf_counter()
-        rec = self.eng.step(np.asarray(state, float), dt=self.dt)
+        # 🧩 统一状态空间的四元数当引擎状态点 (ZMAX_SS_P_FROM_UNIFIED=1 才开; 默认关)
+        #   实测代价: 当**解码点**会让动作留出 RMSE 0.045→0.395 (8.7×, reports/p_vs_q_action.json),
+        #   所以默认不替; 打开后 engine_latest 的 p_source 会写 external, 一眼可辨, 不会假报成 project。
+        _p_ov = None
+        if _P_FROM_UNIFIED:
+            try:
+                if getattr(self, "_su2", None) is None:
+                    from lerobot.policies.left_right.state_space import su2 as _su2   # noqa: PLC0415
+                    self._su2 = _su2
+                _si, _sn = self._chunk_stage()
+                _lay = self._su2.encode_layers({"stage": _sn}, np.asarray(state, float))
+                _u = _lay["L2"]
+                _p_ov = np.array([_u.w, _u.x, _u.y, _u.z], float)
+            except Exception as _e:                                              # noqa: BLE001
+                _p_ov = None
+                if self.n % 300 == 0:
+                    _log("⚠️ 统一状态空间四元数注入失败 (%s: %s) ⇒ 本拍用 project 的 p"
+                         % (type(_e).__name__, str(_e)[:70]))
+        rec = self.eng.step(np.asarray(state, float), dt=self.dt, p_override=_p_ov)
         ms = (time.perf_counter() - t0) * 1000.0
         self.n += 1
         # 🧩 动作块流水线 (老倪 2026-10-15; ZMAX_CHUNK_H<=1 不进): 引擎出块 → 前馈序列 → 加权 → 逐拍调制
@@ -805,7 +825,7 @@ class Loop:
         p = np.asarray(rec.get("p"), float).ravel()
         a = np.asarray(rec.get("action"), float).ravel()
         _orb = rec.get("orbit") or {}          # 🧭 引擎给的对称轨道预测/破缺判读
-        return {
+        d = {
             "ts": time.time(), "ts_str": time.strftime("%F %T"), "cycle": self.n,
             "hz": self.hz, "ms": round(ms, 3), "dt": self.dt,
             "provider": self.src_key, "source": self.traj.get("src") or "",
@@ -839,6 +859,12 @@ class Loop:
             # 🧠 潜表示来源 (老倪 2026-10-14「VLM 视觉编码器是输入」): 本周期喝的到底是哪条编码链 +
             #   实际用的潜坐标。pca=内建拟合; l4=VLM 视觉编码器→黎曼度规约束 (带帧龄)。两者都在 tap 里可核。
             "z_source": str(rec.get("z_source") or ""),
+            "p_source": str(rec.get("p_source") or ""),
+            # 🧩 引擎对本拍沿梯度走一步后的预测点 (四元数) —— 给 INTACT 当条件的那个量
+            #   ⚠ rec["p_next"] 是 ndarray, 不能写 `or []` (真值歧义 ⇒ 整周期异常), 用显式 None 判断
+            "p_next": [round(float(x), 6) for x in
+                       (list(np.asarray(rec["p_next"], float).ravel())
+                        if rec.get("p_next") is not None else [])],
             "z_latent": [round(float(x), 6) for x in (rec.get("z") if rec.get("z") is not None else [])],
             "encoder": ("l4" if self.l4 is not None else "pca"),
             "t_encode_ms": float(rec.get("t_encode_ms") or 0.0),
@@ -873,6 +899,41 @@ class Loop:
             "break_refresh_n": int(len(self.break_refresh)),
             "pipe_on": bool(self.pipe is not None),
         }
+        # 🧩 2026-11-03 老倪原则落地「逻辑条件 → 流形潜空间 → 预测 S³ 轨迹 → 三维 ω」:
+        #   与既有链路**并联** (不改 p/phi/action 任何一个既有键), 只追加 s3 一路;
+        #   只算不下发 (真机执行必须走现场授权), 结果落 s3_chain_latest.json + s3_chain_run.jsonl。
+        try:
+            from lerobot.manifold.s3_chain import S3Chain                   # noqa: PLC0415
+            if getattr(self, "s3", None) is None:
+                self.s3 = S3Chain(dt=self.dt, horizon=8,
+                                  omega_max=float(os.environ.get("ZMAX_S3_OMEGA_MAX", "1.0")))
+            _si, _sn = self._chunk_stage()
+            _fr = {"stage": _sn, "u_sat": float(np.linalg.norm(a))}
+            _s3 = self.s3.step(_fr, np.asarray(state, float), eng=self.eng)
+            _s3["stage"] = _sn
+            _s3["inputs_note"] = ("L3/L4 输入项 (mani_*/接触/效能) 本回路未提供 ⇒ scene 层部分退化; "
+                                  "exec 路 (U_L2 几何误差, 来自 43D obs) 完整")
+            d["s3"] = _s3
+            try:
+                _sfx = "" if getattr(self, "inst", "main") == "main" else "_%s" % self.inst
+                _p = os.path.join(LIVE_DIR, "s3_chain_latest%s.json" % _sfx)
+                _atomic_json(_p, {k: _s3.get(k) for k in
+                                  ("ok", "ts", "cycle", "stage", "exec_q", "exec_theta_deg",
+                                   "scene_q", "scene_theta_deg", "predict", "predict_next",
+                                   "decode", "latent", "inputs_note", "ms")})
+                _q = os.path.join(LIVE_DIR, "s3_chain_run%s.jsonl" % _sfx)
+                with io.open(_q, "a", encoding="utf-8") as _fh:
+                    _fh.write(json.dumps({"ts": _s3.get("ts"), "cycle": self.n, "stage": _sn,
+                                          "exec_theta_deg": _s3.get("exec_theta_deg"),
+                                          "scene_theta_deg": _s3.get("scene_theta_deg"),
+                                          "omega0": ((_s3.get("decode") or {}).get("omega_norm_rad_s") or [0])[0],
+                                          "eta_s": (_s3.get("predict") or {}).get("eta_s"),
+                                          "ms": _s3.get("ms")}, ensure_ascii=False) + "\n")
+            except Exception:                                                # noqa: BLE001
+                pass
+        except Exception as _e:                                              # noqa: BLE001
+            d["s3"] = {"ok": False, "why": "%s: %s" % (type(_e).__name__, str(_e)[:100])}
+        return d
 
     def emit(self, d: dict) -> None:
         os.makedirs(os.path.dirname(self.tap_path), exist_ok=True)

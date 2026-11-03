@@ -116,9 +116,20 @@ def theta_so3(q) -> float:
 
 
 def s3_angle(q0, q1) -> float:
-    """S³ 上两点夹角 (0..π/2) —— 乘 2 才是物理转角。这就是尺子的刻度关系。"""
-    a, b = canonical(q0), canonical(q1)
-    return float(np.arccos(np.clip(float(np.dot(a, b)), -1.0, 1.0)))
+    """S³ 上两点夹角 (0..π/2) —— 乘 2 才是物理转角。这就是尺子的刻度关系。
+
+    🐛 2026-11-03 实测修正: 原来先 `canonical()` 再点乘, 但 canonical 的"w≥0"规则在 **w≈0 附近
+    不唯一** —— 同一点的两个符号表示可能都满足 w>0 (实测 q=[0.0036,-0.545,-0.826,-0.143] 与
+    [-0.0087,+0.558,+0.817,+0.145] 点积 −0.9998), 于是算成 178.9° (×2=357.8°) 的假巨角。
+    距离必须直接商掉双覆盖: 用 |⟨q0,q1⟩| ⇒ 恒在 [0,π/2], 与 w 的符号无关 (与 SU2Element.distance_fs 同式)。
+    """
+    a = np.asarray(q0, dtype=float).reshape(4)
+    b = np.asarray(q1, dtype=float).reshape(4)
+    na, nb = float(np.linalg.norm(a)), float(np.linalg.norm(b))
+    if na < 1e-15 or nb < 1e-15:
+        raise ValueError("零四元数不是旋转")
+    d = abs(float(np.dot(a / na, b / nb)))
+    return float(np.arccos(np.clip(d, 0.0, 1.0)))
 
 
 def path(seq, n_per_seg=8):
