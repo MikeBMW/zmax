@@ -299,9 +299,9 @@ def main():
     nf = len(pr.slides._sldIdLst) - n0
 
     import l2_chain_pages as _C2
+    import l345_pages as _C345                   # 先导入: 注入 LC.SKIP_IDS, 基础层节点页同样屏蔽
     _C2.add_block(pr)                             # 基础层 30 页 + 节拍测试报告 1 页
-    import l345_pages as _C345
-    _C345.add_layers(pr)                          # 决策层 5 + 认知层 18 + 任务层 11 页
+    _C345.add_layers(pr)                          # 决策层 + 认知层 + 任务层节点页
     import deck_close as _CC
     _CC.build_close(pr)                           # 完整性 / 300 件三前提 / 引擎有效性 3 页
     order = list(range(n0, n0 + nf)) + list(range(0, n0)) + \

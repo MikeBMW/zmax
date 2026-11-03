@@ -565,8 +565,11 @@ def _iface_items(keys, nodes, side):
     return out
 
 
+SKIP_IDS = set()   # 画册统一屏蔽的节点 id (由 l345_pages.NO_PAGE 注入)
+
+
 def node_page(pr, nid, k, total, nodes, l2, links, out_l2, in_l2,
-              layer="基础层", prose=None, ar=None, uph=None):
+              layer="基础层", prose=None, ar=None, uph=None, skip=None):
     """节点页 v4（老倪 2026-11-02 定版）:
 
         上: 功能描述（做什么 / 怎么算, 11~12pt）
@@ -579,6 +582,8 @@ def node_page(pr, nid, k, total, nodes, l2, links, out_l2, in_l2,
     params = mi.get("PARAMS") or (n.get("params") or {})
     ins = [k2 for k2 in links if k2.get("t") == nid]
     outs = [k2 for k2 in links if k2.get("f") == nid]
+    # 注: NO_PAGE/SKIP_IDS 只控制"是否单独出页"; 上下游连线照实画 ——
+    # 抹掉引用会让下游页变成"输入 0 条"的孤页, 反而失真。
     st, ms = _loop_trace().get(nid, ("", None))
 
     s = _slide(pr)
@@ -1015,6 +1020,8 @@ def add_block(pr, verbose=True):
                    for sh in s.shapes):
                 accept_idx = i
 
+    if SKIP_IDS:                       # 画册不展示的节点: 基础层也不为它单独出页
+        order = [x for x in order if x not in SKIP_IDS]
     made = []
     for k, nid in enumerate(order, 1):
         node_page(pr, nid, k, len(order), nodes, l2, links, out_l2, in_l2)

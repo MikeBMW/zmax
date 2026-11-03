@@ -48,6 +48,7 @@ def _level_ids(lv):
 
 
 NO_PAGE = {"sscap", "ss_mem_share"}   # 配置/汇聚类节点(能力档位·总装记忆中枢): 留在画布与链路里, 不占册子独立页
+LC.SKIP_IDS = set(NO_PAGE)           # 模块导入即生效: 基础层 add_block 同样屏蔽
 
 
 def _ordered(lv, ids, links):
@@ -115,7 +116,8 @@ def add_layers(pr, layers=("L3", "L4", "L5"), verbose=True):
         layer_intro_page(pr, lv)
         for k, nid in enumerate(order, 1):
             LC.node_page(pr, nid, k, len(order), nodes, ids, links, None, None,
-                         layer=LAYER_META[lv][0], prose=P.PROSE, ar=P.AR, uph=P.UPH)
+                         layer=LAYER_META[lv][0], prose=P.PROSE, ar=P.AR, uph=P.UPH,
+                         skip=NO_PAGE)
         made[lv] = order
         if verbose:
             print("%s %s: %d 个节点页 + 1 层首页" % (lv, LAYER_META[lv][0], len(order)))
