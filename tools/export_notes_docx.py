@@ -7,8 +7,8 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from pptx import Presentation
 
-SRC = "/home/ubuntu/zmax/zmax_data/deliverables/20261104/Z-MAX总技术手册_5.50.D-M1.pptx"
-OUT = "/home/ubuntu/zmax/zmax_data/deliverables/20261104/Z-MAX总技术手册_演讲备注讲稿_288页.docx"
+SRC = "/home/ubuntu/zmax/zmax_data/deliverables/20261104/Z-MAX以世界模型为核心的状态空间工程_5.50.D-M2.pptx"
+OUT = "/home/ubuntu/zmax/zmax_data/deliverables/20261104/Z-MAX以世界模型为核心的状态空间工程_演讲备注讲稿_288页.docx"
 
 pr = Presentation(SRC)
 doc = Document()
@@ -20,7 +20,7 @@ for s in doc.sections:
     s.top_margin = Cm(2.0); s.bottom_margin = Cm(2.0)
     s.left_margin = Cm(2.2); s.right_margin = Cm(2.2)
 
-h = doc.add_heading("Z-MAX 精细操作机器人 · 总技术手册 5.50.D-M1", level=0)
+h = doc.add_heading("以世界模型为核心的状态空间工程 · 技术手册 5.50.D-M2", level=0)
 h.alignment = WD_ALIGN_PARAGRAPH.CENTER
 p = doc.add_paragraph("演讲备注讲稿（288 页 · 可照念）")
 p.alignment = WD_ALIGN_PARAGRAPH.CENTER
