@@ -21,6 +21,7 @@ import deck_content1, deck_content2, deck_content3, deck_content4   # noqa: E402
 import deck_content5, deck_content6                                 # noqa: E402
 import prod_content1, prod_content2, prod_content3                   # noqa: E402
 import manual_wm                                                     # noqa: E402
+from speaker_notes import note_for                                    # noqa: E402
 import deck_lib as L                                                 # noqa: E402
 
 DECK = "Z-MAX 精细操作机器人 · 总技术手册 5.50.D-M1"
@@ -126,14 +127,15 @@ def build(out_path: str) -> int:
 
     # 封面 + 导读
     idx += 1
-    L.cover(pr, "Z-MAX 精细操作机器人",
+    _cv = L.cover(pr, "Z-MAX 精细操作机器人",
             "总技术手册 · 整机 × 能力分级 × 技术白皮书 三本合一",
             ["版本 5.50.D-M1　编制 2026-11-04",
              "来源：整机解决方案 5.50.C-R5（82 页）、技术白皮书 5.50.C-R6（209 页）、能力分级产品册 5.50.D-R1（72 页）",
              "口径：在役 / 在研 / 规划 / 试运行四态标注；每个数字可回溯到 reports/ 与交付物。"])
+    _cv.notes_slide.notes_text_frame.text = note_for(0, 0, {"k": "cover"})
 
     idx += 1
-    L.bullets(pr, idx, DECK, "导读", "这本手册怎么读：十篇，一条从整机到立项的线",
+    _dv = L.bullets(pr, idx, DECK, "导读", "这本手册怎么读：十篇，一条从整机到立项的线",
               [("① 整机与产品定义", "第 1 篇：机器长什么样、怎么干活、节拍从哪来（含 55 个节点方框图）。"),
                ("② 世界模型对标", "第 5 篇：NVIDIA/Google/OpenAI/李飞飞/Meta 五条路线横向对比，为什么选 JEPA 分层（H-JEPA），UPH>1000 的账。"),
                ("② 能力与产品", "第 2 篇：能力分五级 C1-C5，型号分五档 F1-F5，客户按级买。"),
@@ -143,6 +145,10 @@ def build(out_path: str) -> int:
                ("⑥ 生意与立项", "第 7-8 篇：成本与回本、交付验收、12 个月路线与决策点。")],
               sub="读者可以只读第 2 篇（选型）或第 5 篇（要看证据时），但结论都回扣到第 1 篇的整机定义",
               note="页码连续；篇内编号为“篇.序”，与原三本册的章节号不同，原文引用以标题为准。")
+    _dv.notes_slide.notes_text_frame.text = (
+        "这本手册十篇，建议这样讲：先讲第一篇整机，让大家有画面感；"
+        "再讲第二篇能力分级，把“客户买哪一档”说清楚；第三篇技术底座和第五篇世界模型对标，是给技术听众的硬货；"
+        "第六、七篇是证据，第八篇算账，第九篇立项。时间紧就跳过第四篇技术史和第十篇附录。")
 
     used = set()
     cur_part = None
@@ -160,49 +166,56 @@ def build(out_path: str) -> int:
             seq = 0
             name, desc = PARTS[part]
             idx += 1
-            L.section(pr, part, name, desc,
+            s = L.section(pr, part, name, desc,
                       [f"{p:02d} · {t}" for p, t in sorted(PARTS.items()) if p == part][:1]
                       + [x for x in ()])
+            s.notes_slide.notes_text_frame.text = note_for(0, part, {"k": "section", "t": name})
         seq += 1
         ch = f"{part}.{seq:02d}"
         idx += 1
+        _note = ""
         k = e["k"]
         if k == "bullets":
-            L.bullets(pr, idx, DECK, ch, title, e["items"], sub=e.get("sub", ""),
+            s = L.bullets(pr, idx, DECK, ch, title, e["items"], sub=e.get("sub", ""),
                       note=e.get("note", ""), size=e.get("size", 15))
         elif k == "formula":
-            L.formula(pr, idx, DECK, ch, title, e["lines"], sub=e.get("sub", ""), note=e.get("note", ""))
+            s = L.formula(pr, idx, DECK, ch, title, e["lines"], sub=e.get("sub", ""), note=e.get("note", ""))
         elif k == "table":
-            L.table(pr, idx, DECK, ch, title, e["headers"], e["rows"], sub=e.get("sub", ""),
+            s = L.table(pr, idx, DECK, ch, title, e["headers"], e["rows"], sub=e.get("sub", ""),
                     note=e.get("note", ""), col_w=e.get("col_w"), size=e.get("size", 12))
         elif k == "timeline":
-            L.timeline(pr, idx, DECK, ch, title, e["events"], sub=e.get("sub", ""), note=e.get("note", ""))
+            s = L.timeline(pr, idx, DECK, ch, title, e["events"], sub=e.get("sub", ""), note=e.get("note", ""))
         elif k == "layers":
-            L.layers(pr, idx, DECK, ch, title, e["rows"], sub=e.get("sub", ""), note=e.get("note", ""))
+            s = L.layers(pr, idx, DECK, ch, title, e["rows"], sub=e.get("sub", ""), note=e.get("note", ""))
         elif k == "cards":
-            L.cards(pr, idx, DECK, ch, title, e["items"], sub=e.get("sub", ""),
+            s = L.cards(pr, idx, DECK, ch, title, e["items"], sub=e.get("sub", ""),
                     note=e.get("note", ""), cols=e.get("cols", 2))
         elif k == "bigstat":
-            L.bigstat(pr, idx, DECK, ch, title, e["stats"], sub=e.get("sub", ""), note=e.get("note", ""))
+            s = L.bigstat(pr, idx, DECK, ch, title, e["stats"], sub=e.get("sub", ""), note=e.get("note", ""))
         elif k == "figures":
-            L.figures(pr, idx, DECK, ch, title, e["items"], sub=e.get("sub", ""),
+            s = L.figures(pr, idx, DECK, ch, title, e["items"], sub=e.get("sub", ""),
                       note=e.get("note", ""), cols=e.get("cols", 2))
         elif k == "funcmap":
-            L.funcmap(pr, idx, DECK, ch, title, e["rows"],
+            s = L.funcmap(pr, idx, DECK, ch, title, e["rows"],
                       left_title=e.get("left_title", "输入"), left_items=e.get("left_items", ()),
                       right_title=e.get("right_title", "输出"), right_items=e.get("right_items", ()),
                       sub=e.get("sub", ""), note=e.get("note", ""))
         elif k == "nodeblock":
-            L.nodeblock(pr, idx, DECK, ch, title, e["name"], e["ins"], e["outs"],
+            s = L.nodeblock(pr, idx, DECK, ch, title, e["name"], e["ins"], e["outs"],
                         desc=e.get("desc", ""), tick=e.get("tick", ""), code=e.get("code", ""),
                         sub=e.get("sub", ""))
         else:
             raise SystemExit(f"unknown kind: {k}")
+        try:
+            s.notes_slide.notes_text_frame.text = note_for(seq, part, e)
+        except Exception as exc:                                        # noqa: BLE001
+            print("notes fail", idx, exc)
 
     idx += 1
-    L.quote(pr, idx, DECK, "",
+    _qt = L.quote(pr, idx, DECK, "",
             "把“能干什么”说清楚，再把“凭什么说能干”举证清楚——这本手册的两个动作，也是产品的两个动作。",
             "Z-MAX 精细操作机器人 · 总技术手册 5.50.D-M1")
+    _qt.notes_slide.notes_text_frame.text = note_for(0, 10, {"k": "quote"})
 
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     pr.save(out_path)
