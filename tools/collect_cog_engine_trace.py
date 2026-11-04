@@ -47,7 +47,7 @@ def main() -> int:
     from state_space_sim_real import RealStateSpaceSim                # noqa: PLC0415
 
     modes = [m.strip() for m in a.modes.split(",") if m.strip()]
-    OBS, ACT, EP, ST, MD = [], [], [], [], []
+    OBS, ACT, EP, ST, MD, FR = [], [], [], [], [], []
     t0 = time.time()
     for i in range(a.episodes):
         mode = modes[i % len(modes)]
@@ -64,6 +64,11 @@ def main() -> int:
         OBS.append(obs)
         ACT.append(act)
         EP.append(np.full(n, i, np.int32))
+        # 💪 力通道 (sim.run 每步 tr["force"] = force_norm∈[0,1]) — 之前没存 ⇒ 训练数据力全 0
+        fr = np.asarray(tr.get("force", []), np.float32).reshape(-1)
+        if fr.shape[0] != n:
+            fr = np.resize(fr, n) if fr.size else np.zeros(n, np.float32)
+        FR.append(fr)
         ST.append(np.array([stage_id(s) for s in tr["stage"]], np.int32))
         MD.append(np.full(n, modes.index(mode), np.int8))
         print("  段%d/%d mode=%-6s 帧=%-4d 阶段序列=%s 夹爪闭合=%s" %
@@ -80,6 +85,7 @@ def main() -> int:
         f.create_dataset("ep_idx", data=np.concatenate(EP))
         f.create_dataset("stage_id", data=np.concatenate(ST))
         f.create_dataset("mode", data=np.concatenate(MD))
+        f.create_dataset("force", data=np.concatenate(FR).astype(np.float32))   # 💪 力通道 [0,1]
         f.create_dataset("variant_id", data=np.concatenate(EP))     # 与 ep_idx 同 (按段划分留出)
         f.attrs["source"] = "engine trace (state_space_sim_real)"
         f.attrs["modes"] = ",".join(modes)

@@ -820,7 +820,7 @@
    "color": "#58a6ff",
    "params": {
     "src_switch": true,
-    "src_state": "AR场景",
+    "src_state": "插拔场景",
     "source": "src/lerobot/engineering/nodes/library.py · node_metaworld_data",
     "task": "peg-insert-side-v3",
     "frames": 4800,
@@ -997,6 +997,54 @@
    }
   },
   {
+   "id": "ss_mani_eng",
+   "type": "model",
+   "name": "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
+   "x": 5020,
+   "y": 1716,
+   "w": 340,
+   "h": 130,
+   "icon": "🧮",
+   "color": "#7bdcb5",
+   "params": {
+    "state_space": true,
+    "manifold_engine": true,
+    "kind": "real",
+    "role": "L4 核心内核 — 高维状态→低维流形, 流形上 表征/投影/度量/导航/反馈",
+    "api": "project() · navigate() · gradient_flow() · feedback_update() · step() · query()",
+    "pipeline": "编码(Encoder/PCA) → 投影(ManifoldProjector) → 度量+梯度(MetricCalculator) → 导航(Navigator 测地线) → 反馈(FeedbackLoop 有界)",
+    "manifolds_ready": "euclidean · sphere · torus · so3 · se3 · su2 · latent_flat",
+    "manifolds_planned": "calabi_yau(Ricci-flat 度量未实现) · hyperbolic(未实现) — 仅登记, 不造数",
+    "source": "src/lerobot/manifold/manifold_engine.py",
+    "source_symbol": "class ManifoldEngine",
+    "reuse": "su2.py(群) · lie_intent.py(SO3/SE3) · manifold_layer.py(接触/性能势能) · fiber_bundle.py(提升) — 复用既有真件",
+    "measured": "端到端 0.056ms/帧 · 投影 0.019ms · 测地线T=16 0.24ms · 约束违例 1.1e-16 · 上限 ~3500Hz (真跑引擎轨迹实测)",
+    "spec_target": "延迟<10ms · 投影<1ms · 测地线<50ms · >100Hz — 全部达标",
+    "caveat": "解码器(岭回归)只在标定分布内可信 (训练段逐维相关 0.76~0.94; 未见段 R² 负) → 跨段须重标定",
+    "desc": "L4 核心内核: 把高维状态自动约束为低维流形, 在流形上做测地线导航/梯度流/有界反馈; 输出意图与动作建议",
+    "core": true,
+    "core_color": "#FFC53D",
+    "core_role": "系统核心 (流形引擎)",
+    "pure_verified": true
+   },
+   "inputs": [
+    "in1",
+    "in2",
+    "in3",
+    "in4",
+    "in5",
+    "in6"
+   ],
+   "outputs": [
+    "out1",
+    "out2",
+    "out3",
+    "out4",
+    "out5"
+   ],
+   "actions": []
+  },
+  {
    "type": "model",
    "icon": "🧮",
    "color": "#58a6ff",
@@ -1063,7 +1111,7 @@
    "actions": [],
    "w": 280,
    "h": 110,
-   "x": 4280,
+   "x": 4336,
    "y": 1586,
    "id": "sslat",
    "name": "🧮 潜空-流形",
@@ -1741,6 +1789,28 @@
    ]
   },
   {
+   "id": "swds",
+   "type": "data",
+   "name": "🧪 光模块插拔 · 环境渲染图像源 (Z-MAX 引擎逐帧真图)",
+   "x": 9940,
+   "y": 7228,
+   "w": 330,
+   "h": 120,
+   "icon": "🧪",
+   "color": "#2e8b57",
+   "params": {
+    "desc": "[L4 数据源] Z-MAX 引擎逐帧渲染真图 (224×224 RGB, 来自 RealStateSpaceSim · metaworld peg-insert-side-v3 + MUJOCO_GL=egl 离屏渲染), 由 tools/intact_sw_optical_bridge.py 写 spool/*.jpg + status.json + status.jsonl; 真图判据 frame_std>5 (实测 ~56)",
+    "sw_bridge": true,
+    "kind": "render_frames",
+    "source": "tools/intact_sw_optical_bridge.py --spool",
+    "source_symbol": "def "
+   },
+   "inputs": [
+    "in2",
+    "in3"
+   ]
+  },
+  {
    "id": "swintact",
    "type": "model",
    "name": "🎯 INTACT 插拔策略 · 光模块抓取插入 (本域微调 · 零搜索)",
@@ -1785,6 +1855,24 @@
     "in2"
    ],
    "band": "ssbg7"
+  },
+  {
+   "id": "swvideo",
+   "type": "data",
+   "name": "🎬 插拔渲染视频 (从 Z-MAX 引擎取出 · 实况窗)",
+   "x": 9940,
+   "y": 7358,
+   "w": 330,
+   "h": 120,
+   "icon": "🎬",
+   "color": "#d29922",
+   "params": {
+    "desc": "[L4 可视化·回路外观察器] 从 Z-MAX 引擎取出的渲染视频 (480², 10fps): 模型直驱在环录像(打标真模型/真推理次数/模型输出/插入深度) + 同 seed 解析链对照 (插入 / 插→拔→AOI 全链) + 合集, 存 reports/intact_sw/video; 双击开互动查看器看任意帧信号 (不参与自动运行链)",
+    "viz_kind": "sw_video",
+    "sw_bridge": true,
+    "source": "tools/intact_sw_optical_bridge.py --video-dir",
+    "source_symbol": "def "
+   }
   },
   {
    "id": "n_eng_mem",
@@ -1916,7 +2004,7 @@
     "out1",
     "out2"
    ],
-   "x": 4620,
+   "x": 4672,
    "y": 1586
   },
   {
@@ -1968,54 +2056,6 @@
    ],
    "x": 1950,
    "y": 2578
-  },
-  {
-   "id": "ss_mani_eng",
-   "type": "model",
-   "name": "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
-   "x": 5020,
-   "y": 1716,
-   "w": 340,
-   "h": 130,
-   "icon": "🧮",
-   "color": "#7bdcb5",
-   "params": {
-    "state_space": true,
-    "manifold_engine": true,
-    "kind": "real",
-    "role": "L4 核心内核 — 高维状态→低维流形, 流形上 表征/投影/度量/导航/反馈",
-    "api": "project() · navigate() · gradient_flow() · feedback_update() · step() · query()",
-    "pipeline": "编码(Encoder/PCA) → 投影(ManifoldProjector) → 度量+梯度(MetricCalculator) → 导航(Navigator 测地线) → 反馈(FeedbackLoop 有界)",
-    "manifolds_ready": "euclidean · sphere · torus · so3 · se3 · su2 · latent_flat",
-    "manifolds_planned": "calabi_yau(Ricci-flat 度量未实现) · hyperbolic(未实现) — 仅登记, 不造数",
-    "source": "src/lerobot/manifold/manifold_engine.py",
-    "source_symbol": "class ManifoldEngine",
-    "reuse": "su2.py(群) · lie_intent.py(SO3/SE3) · manifold_layer.py(接触/性能势能) · fiber_bundle.py(提升) — 复用既有真件",
-    "measured": "端到端 0.056ms/帧 · 投影 0.019ms · 测地线T=16 0.24ms · 约束违例 1.1e-16 · 上限 ~3500Hz (真跑引擎轨迹实测)",
-    "spec_target": "延迟<10ms · 投影<1ms · 测地线<50ms · >100Hz — 全部达标",
-    "caveat": "解码器(岭回归)只在标定分布内可信 (训练段逐维相关 0.76~0.94; 未见段 R² 负) → 跨段须重标定",
-    "desc": "L4 核心内核: 把高维状态自动约束为低维流形, 在流形上做测地线导航/梯度流/有界反馈; 输出意图与动作建议",
-    "core": true,
-    "core_color": "#FFC53D",
-    "core_role": "系统核心 (流形引擎)",
-    "pure_verified": true
-   },
-   "inputs": [
-    "in1",
-    "in2",
-    "in3",
-    "in4",
-    "in5",
-    "in6"
-   ],
-   "outputs": [
-    "out1",
-    "out2",
-    "out3",
-    "out4",
-    "out5"
-   ],
-   "actions": []
   },
   {
    "id": "n_web_agent",
@@ -2234,7 +2274,7 @@
      "工程库": "data/database/zmax/zmax_engineering.db"
     },
     "cfg_snapshot": {
-     "loaded_at": "2026-11-03 14:57:18",
+     "loaded_at": "2026-11-03 17:00:48",
      "files_total": 8,
      "files_ok": 8,
      "orders": 12,
@@ -2298,18 +2338,18 @@
      "口径": "一个状态空间工程承载全部任务; 任务=配方段子集+参数覆盖"
     },
     "source_symbol": "def import_config_files(",
-    "cfg_loaded_at": "2026-11-03 14:57:18",
+    "cfg_loaded_at": "2026-11-03 17:00:48",
     "cfg_files": [
      {
       "name": "总工程文件",
       "rel": "data/database/zmax/zmax_space.proj",
-      "sha256": "f0e75f7c8d2efb4f",
+      "sha256": "f1a64c0bc792f599",
       "exists": true
      },
      {
       "name": "任务绑定",
       "rel": "config/ss_task_binding.json",
-      "sha256": "37c40e449ad05c06",
+      "sha256": "6d82752a7ee8fee7",
       "exists": true
      },
      {
@@ -2914,6 +2954,22 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "↩ 反馈: 动作块 (零搜索)"
+  },
+  {
+   "id": "lksw3",
+   "f": "swworld",
+   "t": "swds",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": "渲染回流 (闭环)"
+  },
+  {
+   "id": "lksw4",
+   "f": "swworld",
+   "t": "swvideo",
+   "f_port": "out2",
+   "t_port": "in1",
+   "label": "SW 渲染视频 (3D)"
   },
   {
    "id": "lkild1",
@@ -3534,7 +3590,7 @@
   {
    "id": "lkbr_env",
    "f": "ssdata",
-   "t": "swworld",
+   "t": "swds",
    "f_port": "out1",
    "t_port": "in2",
    "label": "数据源场景/规格 → 环境渲染"
@@ -3557,7 +3613,7 @@
   },
   {
    "id": "lkbr_vid",
-   "f": "swworld",
+   "f": "swvideo",
    "t": "ssvideo2",
    "f_port": "out1",
    "t_port": "in2",
@@ -3574,7 +3630,7 @@
   {
    "id": "lkbr_yolo",
    "f": "ssyolo",
-   "t": "swworld",
+   "t": "swds",
    "f_port": "out1",
    "t_port": "in3",
    "label": "检测目标清单 → 渲染标注"
@@ -3821,7 +3877,7 @@
   },
   {
    "id": "lk0924_swds_swintact_in1",
-   "f": "swworld",
+   "f": "swds",
    "t": "swintact",
    "f_port": "out1",
    "t_port": "in1",

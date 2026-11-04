@@ -377,3 +377,6 @@ docs/data_snapshots/*/*.db
 
 # 一次性探针脚本（真机 SDK 试参用，不留库）
 tools/rokae/*_tmp.py
+
+# LibreOffice 打开文档时的临时锁文件
+.~lock.*#
