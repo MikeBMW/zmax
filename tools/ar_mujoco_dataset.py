@@ -192,11 +192,17 @@ def main():
     ap.add_argument("--gen", action="store_true")
     ap.add_argument("--n", type=int, default=240)
     ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument("--out", default="", help="输出目录 (默认 zmax_data/ar_mujoco/ds); 进化按代隔离时必须给")
+    ap.add_argument("--val-frac", type=float, default=0.0,
+                    help=">0 时从本代里划出该比例做 val 并写到 <out>/data_val.yaml (同源但不相交)")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
     if a.selftest:
         return _selftest()
     if a.gen:
+        global DS
+        if a.out:
+            DS = os.path.abspath(a.out)
         m = gen(n=a.n, seed=a.seed)
         print("生成 → %s" % DS)
         print("  %s" % m["stats"])

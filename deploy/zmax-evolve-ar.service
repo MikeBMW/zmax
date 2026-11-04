@@ -1,0 +1,28 @@
+[Unit]
+Description=Z-MAX 550A AR 场景自主进化 (自造数据→训练L2→同源评测→择优晋级→飞书)
+Documentation=file:/home/ubuntu/zmax/tools/evolve_ar_world.py
+After=network-online.target zmax-ar-render.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/zmax
+Environment=ZMAX_ROOT=/home/ubuntu/zmax
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/run/user/1000/gdm/Xauthority
+Environment=MUJOCO_GL=glfw
+Environment=HF_HUB_OFFLINE=1
+Environment=TRANSFORMERS_OFFLINE=1
+Environment=PYTHONUNBUFFERED=1
+# rounds=0 ⇒ 无限；每代间隔 1800s（≈34min/代）。训练前停画布回路让显存，训完自动起回。
+ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/evolve_ar_world.py \
+  --rounds 0 --n 200 --clutter 4 --epochs 20 --batch 8 --margin 0.004 \
+  --fullflow 0 --pipeline 0 --free-gpu 1 --cooldown 1800
+Restart=always
+RestartSec=90
+StandardOutput=append:/var/log/zmax-evolve-ar.log
+StandardError=append:/var/log/zmax-evolve-ar.log
+
+[Install]
+WantedBy=multi-user.target
