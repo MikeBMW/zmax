@@ -46,7 +46,10 @@ def fuse_sensors(rgbd_feats, force_6d, tactile_marker, K_obs=1.0, dim=LEGACY_OBS
     if int(dim) != OBS_DIM:
         raise ValueError("dim 只支持 %d (标准) 或 %d (兼容), 收到 %s"
                          % (OBS_DIM, LEGACY_OBS_DIM, dim))
-    from .unified_state55 import UnifiedState55D
+    try:
+        from .unified_state55 import UnifiedState55D          # 包内正常路径
+    except ImportError:                                      # 端侧按文件加载 (无包 __init__ 依赖)
+        from unified_state55 import UnifiedState55D
     us = UnifiedState55D(k_obs=K_obs)
     return us.fuse(rgbd_feats, tactile_marker, extra=extra)
 

@@ -23,8 +23,23 @@ import numpy as np
 ROOT = os.environ.get("ZMAX_ROOT", "/home/ubuntu/zmax")
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
-from lerobot.policies.left_right.state_space import perception as PC          # noqa: E402
-from lerobot.policies.left_right.state_space import unified_state55 as U      # noqa: E402
+try:                                                                          # 正常 (550A)
+    from lerobot.policies.left_right.state_space import perception as PC      # noqa: E402
+    from lerobot.policies.left_right.state_space import unified_state55 as U  # noqa: E402
+except Exception as _e:                                                       # 端侧 (550C: 包 __init__ 依赖缺失)
+    import importlib.util                                                     # noqa: PLC0415
+    _d = os.path.join(ROOT, "src/lerobot/policies/left_right/state_space")
+    print("⚠️ 包导入失败 (%s) → 按文件路径加载 %s" % (type(_e).__name__, _d))
+
+    def _load(name, path):
+        sp = importlib.util.spec_from_file_location(name, path)
+        m = importlib.util.module_from_spec(sp)
+        sys.modules[name] = m
+        sp.loader.exec_module(m)
+        return m
+
+    U = _load("unified_state55", os.path.join(_d, "unified_state55.py"))
+    PC = _load("perception55", os.path.join(_d, "perception.py"))
 
 CKPT = os.path.join(ROOT, "models/manifold_engine.npz")
 
@@ -91,46 +106,53 @@ def main() -> int:
     ok_all &= c4["ok"]
     rep["cases"]["engine_43_vs_55"] = c4
 
-    # ⑤ 测地线梯度 (torch)
-    import torch
-    q1 = torch.tensor([[1.0, 0, 0, 0]], requires_grad=True)
-    q2 = torch.tensor([[1.0, 0, 0, 0]])
-    d_atan = U.geodesic_distance(q1, q2).sum()
-    d_atan.backward()
-    g_atan = float(q1.grad.abs().max())
-    q3 = torch.tensor([[1.0, 0, 0, 0]], requires_grad=True)
-    dot = (q3 * q2).sum(-1).abs().clamp(0, 1)
-    d_acos = (2.0 * torch.acos(dot)).sum()
-    d_acos.backward()
-    g_acos = float(q3.grad.abs().max())
-    c5 = {"ok": bool(np.isfinite(g_atan) and d_atan.item() < 1e-6),
-          "atan2_grad_max": g_atan, "atan2_value": float(d_atan),
-          "acos_grad_max": g_acos, "acos_value": float(d_acos),
-          "note": "q1=q2: acos 形式梯度 NaN/inf, atan2 形式有限 ⇒ 训练不会首步炸"}
-    ok_all &= c5["ok"]
-    rep["cases"]["geodesic"] = c5
+    # ⑤ 测地线梯度 (torch) —— 无 torch 的端侧机 (550C Intel) 跳过并明记, 不当失败也不假装通过
+    try:
+        import torch                                                       # noqa: PLC0415
+    except Exception as e:                                                 # noqa: BLE001
+        rep["cases"]["geodesic"] = {"ok": None, "skipped": "本机无 torch (%s)" % str(e)[:60]}
+        rep["cases"]["slerp"] = {"ok": None, "skipped": "本机无 torch"}
+        torch = None
+    if torch is not None:
+        q1 = torch.tensor([[1.0, 0, 0, 0]], requires_grad=True)
+        q2 = torch.tensor([[1.0, 0, 0, 0]])
+        d_atan = U.geodesic_distance(q1, q2).sum()
+        d_atan.backward()
+        g_atan = float(q1.grad.abs().max())
+        q3 = torch.tensor([[1.0, 0, 0, 0]], requires_grad=True)
+        dot = (q3 * q2).sum(-1).abs().clamp(0, 1)
+        d_acos = (2.0 * torch.acos(dot)).sum()
+        d_acos.backward()
+        g_acos = float(q3.grad.abs().max())
+        c5 = {"ok": bool(np.isfinite(g_atan) and d_atan.item() < 1e-6),
+              "atan2_grad_max": g_atan, "atan2_value": float(d_atan),
+              "acos_grad_max": g_acos, "acos_value": float(d_acos),
+              "note": "q1=q2: acos 形式梯度 NaN/inf, atan2 形式有限 ⇒ 训练不会首步炸"}
+        ok_all &= c5["ok"]
+        rep["cases"]["geodesic"] = c5
 
-    # ⑥ SLERP 三分支
-    a = torch.tensor([[1.0, 0, 0, 0]], requires_grad=True)
-    b_same = torch.tensor([[1.0, 0, 0, 0]])
-    b_opp = torch.tensor([[-1.0, 0, 0, 0]])                 # 双覆盖 (θ=π 退化)
-    b_far = torch.tensor([[0.0, 0, 0, 1.0]])                # 90°
-    out = {}
-    for nm, b in (("same", b_same), ("opposite", b_opp), ("90deg", b_far)):
-        q = U.slerp_step(a, b, 0.25)
-        s = q.sum()
-        s.backward(retain_graph=True)
-        out[nm] = {"norm": float(q.norm()), "value": [round(float(x), 6) for x in q[0]],
-                   "grad_max": float(a.grad.abs().max()) if a.grad is not None else None,
-                   "grad_finite": bool(a.grad is not None and torch.isfinite(a.grad).all())}
-        a.grad = None
-    mid = U.slerp_step(torch.tensor([[1.0, 0, 0, 0]]), b_far, 0.5)
-    c6 = {"ok": all(v["grad_finite"] and abs(v["norm"] - 1) < 1e-6 for v in out.values())
-          and bool(np.isfinite(float(mid.sum()))),
-          "branches": out, "mid_norm": float(mid.norm()),
-          "note": "θ→0 用线性插值极限, θ→π 先取反 q_target; 分母先加 eps 再除 (不是 where 掩盖)"}
-    ok_all &= c6["ok"]
-    rep["cases"]["slerp"] = c6
+        # ⑥ SLERP 三分支
+        a = torch.tensor([[1.0, 0, 0, 0]], requires_grad=True)
+        b_same = torch.tensor([[1.0, 0, 0, 0]])
+        b_opp = torch.tensor([[-1.0, 0, 0, 0]])                 # 双覆盖 (θ=π 退化)
+        b_far = torch.tensor([[0.0, 0, 0, 1.0]])                # 90°
+        out = {}
+        for nm, b in (("same", b_same), ("opposite", b_opp), ("90deg", b_far)):
+            q = U.slerp_step(a, b, 0.25)
+            s = q.sum()
+            s.backward(retain_graph=True)
+            out[nm] = {"norm": float(q.norm()), "value": [round(float(x), 6) for x in q[0]],
+                       "grad_max": float(a.grad.abs().max()) if a.grad is not None else None,
+                       "grad_finite": bool(a.grad is not None and torch.isfinite(a.grad).all())}
+            a.grad = None
+        mid = U.slerp_step(torch.tensor([[1.0, 0, 0, 0]]), b_far, 0.5)
+        c6 = {"ok": all(v["grad_finite"] and abs(v["norm"] - 1) < 1e-6 for v in out.values())
+              and bool(np.isfinite(float(mid.sum()))),
+              "branches": out, "mid_norm": float(mid.norm()),
+              "note": "θ→0 用线性插值极限, θ→π 先取反 q_target; 分母先加 eps 再除 (不是 where 掩盖)"}
+        ok_all &= c6["ok"]
+        rep["cases"]["slerp"] = c6
+
 
     # ⑦ 兼容回归
     c7 = {"ok": PC.OBS_DIM == 55 and PC.LEGACY_OBS_DIM == 43 and PC.fuse_sensors(
@@ -141,7 +163,11 @@ def main() -> int:
     ok_all &= c7["ok"]
     rep["cases"]["compat"] = c7
 
+    for _k, _v in rep["cases"].items():
+        if _v.get("ok") is False:
+            ok_all = False
     rep["ok"] = bool(ok_all)
+    rep["skipped"] = [k for k, v in rep["cases"].items() if v.get("ok") is None]
     od = os.path.join(ROOT, "reports", "state55")
     os.makedirs(od, exist_ok=True)
     jp = os.path.join(od, rep["ts"].replace(":", "") + ".json")
