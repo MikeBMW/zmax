@@ -71,7 +71,8 @@ PROJ = os.path.join(ROOT, "data", "database", "zmax", "zmax_space.proj")
 BINDING = os.path.join(ROOT, "config", "ss_task_binding.json")
 CALIB = os.path.join(ROOT, "config", "calib", "zmax_manifold.json")
 CKPT = os.path.join(ROOT, "models", "manifold_engine.npz")
-STATE_DIM = 43
+LEGACY_STATE_DIM = 39          # 视觉与本体最小口径 (老轨迹/老实时源的下限)
+STATE_DIM = int(os.environ.get("ZMAX_STATE_DIM", "55"))   # 55D 标准 (39+4+12); 老轨迹 43 维由编码器补 0 适配
 LATENT = 16
 # 🧩 统一状态空间的四元数是否当引擎状态点 (默认关: 实测当解码点动作误差 8.7×)
 _P_FROM_UNIFIED = (os.environ.get("ZMAX_SS_P_FROM_UNIFIED") or "").strip().lower() in ("1", "true", "yes", "on")
@@ -172,9 +173,14 @@ def read_traj(path: str) -> dict | None:
         arr = np.asarray(obs, dtype=float)
     except Exception:                                                        # noqa: BLE001
         return None
-    if arr.ndim != 2 or arr.shape[1] < STATE_DIM:
+    if arr.ndim != 2 or arr.shape[1] < LEGACY_STATE_DIM:
         return None
-    return {"obs": arr, "u": d.get("u_exec_vec"), "t": d.get("t"),
+    # 55D 升级: 老轨迹是 43 维 (39 视觉 + 4 触觉) ⇒ 尾部补 0 到 STATE_DIM。
+    #   数学上与原轨迹逐位等价 (编码器扩展维零行), 不许因为"维度不够"就空转。
+    obs_dim_from = int(arr.shape[1])
+    if arr.shape[1] < STATE_DIM:
+        arr = np.pad(arr, ((0, 0), (0, STATE_DIM - arr.shape[1])))
+    return {"obs": arr, "obs_dim_from": obs_dim_from, "u": d.get("u_exec_vec"), "t": d.get("t"),
             "saved_at": str(d.get("saved_at") or ""), "scene": str(d.get("scene") or ""),
             "task_id": str(d.get("task_id") or ""), "src": str(d.get("src") or ""),
             "path": path, "mtime": os.path.getmtime(path)}
@@ -201,6 +207,8 @@ def read_state_file(path: str) -> dict | None:
     obs = d.get("obs") or d.get("state")
     try:
         v = np.asarray(obs, dtype=float).ravel()
+        if v.size and v.size < STATE_DIM:                      # 老 43 维实时源 → 补 0 到 55
+            v = np.pad(v, (0, STATE_DIM - v.size))
     except Exception:                                                        # noqa: BLE001
         return None
     if v.size < STATE_DIM:
@@ -897,6 +905,10 @@ class Loop:
                        (list(np.asarray(rec["p_next"], float).ravel())
                         if rec.get("p_next") is not None else [])],
             "z_latent": [round(float(x), 6) for x in (rec.get("z") if rec.get("z") is not None else [])],
+            # 🧮 55D 统一状态空间口径 (升级可对账: 老标定 43 → 补 12 维零行)
+            "state_dim": int(STATE_DIM),
+            "calib_pad": getattr(self.eng, "calib_pad", None) if self.eng is not None else None,
+            "encoder_conform": getattr(getattr(self.eng, "encoder", None), "conform_note", "") if self.eng is not None else "",
             # 🧭 SE(3) 7 维位姿预测 (6 维 ξ → 群指数 → [x,y,z,qw,qx,qy,qz]); 未接/失败时是 {}/ok=False 带原因
             "se3_pose": (rec.get("se3_pose") if isinstance(rec.get("se3_pose"), dict) else {}),
             "encoder": ("l4" if self.l4 is not None else "pca"),

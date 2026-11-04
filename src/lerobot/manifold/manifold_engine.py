@@ -197,6 +197,8 @@ class Encoder:
         self.W: np.ndarray | None = None          # (N, n) 主方向
         self.lift = None                          # 可选 FiberConnection (有标定文件时)
         self.n_fit = 0
+        self.conform_note = ""                    # 最近一次维度适配口径 (43↔55)
+        self.conform_count = 0
 
     def fit(self, X: np.ndarray) -> dict:
         X = np.asarray(X, float)
@@ -214,20 +216,40 @@ class Encoder:
                 "explained_var": [round(float(v), 4) for v in var[:n]],
                 "explained_var_sum": round(float(var[:n].sum()), 4)}
 
+    # 维度自适配: 43↔55 这类升级/回落, 尾巴补 0 或裁掉, **语义不变**; 改动写在 conform_note
+    #   · 补 0 的数学依据: (x₅₅ − [μ₄₃,0]) @ [W₄₃; 0ᵀ] = (x₄₃ − μ₄₃) @ W₄₃ ⇒ z 逐位不变
+    #   · 裁尾的数学依据: 老编码器只吃前 N 维 ⇒ 扩展维无论有没有数据都进不去 (必须明写, 不静默)
+    def conform(self, x: np.ndarray) -> np.ndarray:
+        x = np.asarray(x, float)
+        if self.mu is None:
+            return x
+        n_w = int(self.mu.size)
+        single = x.ndim == 1
+        X = x.reshape(1, -1) if single else x
+        if X.shape[1] != n_w:
+            if X.shape[1] < n_w:
+                X = np.pad(X, ((0, 0), (0, n_w - X.shape[1])))
+                self.conform_note = "%d→%d (尾部补 0)" % (x.shape[-1], n_w)
+            else:
+                X = X[:, :n_w]
+                self.conform_note = "%d→%d (扩展维未进编码器)" % (x.shape[-1], n_w)
+            self.conform_count = int(getattr(self, "conform_count", 0)) + 1
+        return X[0] if single else X
+
     # 形态: (N,) / (B,N)
     def encode(self, x: np.ndarray) -> np.ndarray:
-        x = np.asarray(x, float)
         if self.W is None or self.mu is None:
             raise RuntimeError("编码器未拟合 (先 fit 或 load)")
-        single = x.ndim == 1
-        X = x[None] if single else x
+        X = self.conform(x)
+        single = np.asarray(x).ndim == 1
+        X = np.atleast_2d(X)
         z = (X - self.mu) @ self.W
         return z[0] if single else z
 
     def save(self, path: str) -> None:
         np.savez(path, mu=self.mu, W=self.W, latent_dim=self.latent_dim, n_fit=self.n_fit)
 
-    def load(self, path: str) -> bool:
+    def load(self, path: str, state_dim: int | None = None) -> bool:
         if not os.path.isfile(path):
             return False
         d = np.load(path)
@@ -237,8 +259,15 @@ class Encoder:
                   detail="latent=%s · n_fit=%s" % (d["latent_dim"], d["n_fit"]))
         except Exception:                                                # noqa: BLE001
             pass
-        self.mu, self.W = d["mu"], d["W"]
+        self.mu, self.W = np.asarray(d["mu"], float), np.asarray(d["W"], float)
         self.latent_dim, self.n_fit = int(d["latent_dim"]), int(d["n_fit"])
+        # 🔧 43→55 升级: 老标定只覆盖前 43 维 ⇒ 扩展维按 0 行/0 均值补齐 (逐位不扰动)
+        if state_dim is not None and int(state_dim) > self.mu.size:
+            k = int(state_dim) - self.mu.size
+            self.mu = np.concatenate([self.mu, np.zeros(k)])
+            self.W = np.vstack([self.W, np.zeros((k, self.W.shape[1]))])
+            self.conform_note = "老标定 %d 维 → 补齐 %d 维 (扩展维零初始化)" % (self.mu.size - k, int(state_dim))
+        self.state_dim = int(self.mu.size)
         return True
 
 
@@ -573,7 +602,7 @@ class ManifoldEngine:
     """流形引擎核心类 — 编码/投影/度量/导航/反馈 五件套 + 全阶段延迟实测"""
 
     def __init__(self, manifold_type: str = "sphere", latent_dim: int = 16,
-                 state_dim: int = 43, action_dim: int = 4, gain: float = 0.3,
+                 state_dim: int = 55, action_dim: int = 4, gain: float = 0.3,
                  max_step: float = 0.05, manifold_M: float = MANIFOLD_M_DEFAULT,
                  inertia: bool = False, homeostasis: bool = True,
                  latent_provider=None, latent_provider_note: str = "",
@@ -1068,8 +1097,21 @@ class ManifoldEngine:
         if not os.path.isfile(path):
             return False
         d = np.load(path, allow_pickle=False)
-        self.encoder.mu, self.encoder.W = d["mu"], d["W"]
+        # 55D 升级: 老标定文件只有 43 维 ⇒ 补齐到引擎声明的 state_dim (扩展维零初始化, z 逐位不变)
+        _sd = int(getattr(self, "state_dim", 0) or 0)
+        _mu, _W = np.asarray(d["mu"], float), np.asarray(d["W"], float)
+        if _sd and _sd > _mu.size:
+            _k = _sd - _mu.size
+            _mu = np.concatenate([_mu, np.zeros(_k)])
+            _W = np.vstack([_W, np.zeros((_k, _W.shape[1]))])
+            self.calib_pad = {"from": int(_mu.size - _k), "to": _sd,
+                              "note": "扩展 %d 维零初始化 (沉睡), 前 %d 维语义不变" % (_k, _mu.size - _k)}
+        elif _sd and _sd < _mu.size:
+            _mu, _W = _mu[:_sd], _W[:_sd, :]
+            self.calib_pad = {"from": int(_mu.size), "to": _sd, "note": "标定被裁到 state_dim"}
+        self.encoder.mu, self.encoder.W = _mu, _W
         self.encoder.latent_dim, self.encoder.n_fit = int(d["latent_dim"]), int(d["n_fit"])
+        self.encoder.state_dim = int(_mu.size)
         self.manifold_type = str(d["manifold_type"]) if "manifold_type" in d else self.manifold_type
         self.projector = ManifoldProjector(self.manifold_type)
         self.metric = MetricCalculator(self.manifold_type,
