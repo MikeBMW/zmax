@@ -20,6 +20,7 @@ sys.path.insert(0, "/home/ubuntu/zmax/tools")
 import deck_content1, deck_content2, deck_content3, deck_content4   # noqa: E402
 import deck_content5, deck_content6                                 # noqa: E402
 import prod_content1, prod_content2, prod_content3                   # noqa: E402
+import manual_wm                                                     # noqa: E402
 import deck_lib as L                                                 # noqa: E402
 
 DECK = "Z-MAX 精细操作机器人 · 总技术手册 5.50.D-M1"
@@ -31,11 +32,13 @@ PARTS = {
     2: ("能力分级与产品矩阵", "五级能力 C1-C5 的定义与判据，型号族 F1-F5 的配置、选型与交付边界。"),
     3: ("技术底座", "五层引擎、力控三段压入、世界模型接管、记忆、安全闸、三机分工与接口契约。"),
     4: ("技术史与成熟度", "1948-2026：从状态空间方程到 JEPA 与 VLA；每条路线的成熟证据与失效模式。"),
-    5: ("实证", "V6 单一 autograd 图、三张消融表、引擎 A/B 接管、节拍与精度实测。"),
-    6: ("真机演练与自进化", "干跑报文与红线、AR 场景色标、进化闭环一轮实测。"),
-    7: ("经济性与交付", "单件成本、回本、TCO、报价结构、四件套与能力证书、验收七步。"),
-    8: ("立项与路线图", "12 个月四阶段、六个里程碑、资源与预算、风险、D1-D4 决策点。"),
-    9: ("附录", "能力词典、指标口径、证据索引、公式与参考文献、术语与版本记录。"),
+    5: ("世界模型：流派对标与本工程的选择",
+        "NVIDIA/Google/OpenAI/李飞飞/Meta 五条主线的技术基因与优劣、自动驾驶的经验、八维对比表，以及 H-JEPA 分层架构与 UPH>1000 的账。"),
+    6: ("实证", "V6 单一 autograd 图、三张消融表、引擎 A/B 接管、节拍与精度实测。"),
+    7: ("真机演练与自进化", "干跑报文与红线、AR 场景色标、进化闭环一轮实测。"),
+    8: ("经济性与交付", "单件成本、回本、TCO、报价结构、四件套与能力证书、验收七步。"),
+    9: ("立项与路线图", "12 个月四阶段、六个里程碑、资源与预算、风险、D1-D4 决策点。"),
+    10: ("附录", "能力词典、指标口径、证据索引、公式与参考文献、术语与版本记录。"),
 }
 
 # 旧章节首段 → 新篇号
@@ -45,13 +48,13 @@ MAP = {
     "0.55": 1,   # 55 个节点方框图（content6）
     "1": 4, "2": 4,      # 技术史 / 成熟度
     "3": 3,              # 分层工程
-    "4": 5,              # 实证
-    "5": 6,              # 演练与自进化
-    "6": 7,              # 原型与交付
-    "7": 9,              # 附录
+    "4": 6,              # 实证
+    "5": 7,              # 演练与自进化
+    "6": 8,              # 原型与交付
+    "7": 10,             # 附录
 }
 # 产品册（按来源模块区分，避免与上面同号冲突）
-PROD_MAP = {"1": 2, "2": 2, "3": 2, "4": 3, "5": 5, "6": 7, "7": 7, "8": 8}
+PROD_MAP = {"1": 2, "2": 2, "3": 2, "4": 3, "5": 6, "6": 8, "7": 8, "8": 9}
 
 
 def _norm(t: str) -> str:
@@ -86,7 +89,8 @@ def collect():
     for mod_idx, (mod, is_prod) in enumerate(
             ((deck_content1, False), (deck_content5, False), (deck_content6, False),
              (deck_content2, False), (deck_content3, False), (deck_content4, False),
-             (prod_content1, True), (prod_content2, True), (prod_content3, True))):
+             (prod_content1, True), (prod_content2, True), (prod_content3, True),
+             (manual_wm, False))):
         for e in mod.CONTENT:
             if e["k"] in ("cover", "section", "quote"):
                 continue
@@ -96,8 +100,11 @@ def collect():
             if any(mod.__name__.split(".")[-1] == m and _t.startswith(t[:24]) for m, t in SKIP):
                 continue
             ch = e.get("ch") or ""
+            if mod.__name__.endswith("manual_wm"):      # 世界模型篇: 全部落在第 5 篇
+                out.append((5, mod_idx, ch.split(" ")[0] or "9", e))
+                continue
             if re.match(r"^([A-Z])\s", ch) or re.match(r"^附录", ch):
-                out.append((9, mod_idx, "7", e))
+                out.append((10, mod_idx, "7", e))
                 continue
             num = _first_num(ch, e.get("t", ""))
             head = num.split(".")[0]
@@ -126,8 +133,9 @@ def build(out_path: str) -> int:
              "口径：在役 / 在研 / 规划 / 试运行四态标注；每个数字可回溯到 reports/ 与交付物。"])
 
     idx += 1
-    L.bullets(pr, idx, DECK, "导读", "这本手册怎么读：九篇，一条从整机到立项的线",
+    L.bullets(pr, idx, DECK, "导读", "这本手册怎么读：十篇，一条从整机到立项的线",
               [("① 整机与产品定义", "第 1 篇：机器长什么样、怎么干活、节拍从哪来（含 55 个节点方框图）。"),
+               ("② 世界模型对标", "第 5 篇：NVIDIA/Google/OpenAI/李飞飞/Meta 五条路线横向对比，为什么选 JEPA 分层（H-JEPA），UPH>1000 的账。"),
                ("② 能力与产品", "第 2 篇：能力分五级 C1-C5，型号分五档 F1-F5，客户按级买。"),
                ("③ 技术底座", "第 3 篇：五层引擎、力控、接管、记忆、安全闸、接口。"),
                ("④ 技术来路", "第 4 篇：七十年技术史与成熟度判定，说明为什么选潜空间预测。"),
@@ -141,7 +149,7 @@ def build(out_path: str) -> int:
     seq = 0
     for part, mod_idx, num, e in entries:
         title = e.get("t") or e.get("title") or ""
-        if part == 9 and mod_idx >= 6:            # 产品册的附录, 与白皮书附录区分
+        if part == 10 and mod_idx >= 6:           # 产品册的附录, 与白皮书附录区分
             title = "产品册｜" + title
         key = _norm(title)
         if key in used:
