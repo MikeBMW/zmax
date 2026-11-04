@@ -88,6 +88,20 @@ def main() -> int:
                  "verdict": "真 VLM 编码" if latent_real else "回退内建 PCA (未打通)",
                  "engine_cycle": eng.get("cycle")})
 
+    # 引擎级: SE(3) 7 维位姿预测 (6 维 ξ → 群指数 → 7 数)
+    sp = eng.get("se3_pose") or {}
+    if sp:
+        ok_sp = bool(sp.get("ok")) and len(sp.get("pose7_pred") or []) == 7
+        verdict = ("在链 · 7 数 ‖q‖=%.6f · 1步残差 %s" % (
+            float(sp.get("quat_norm") or 0),
+            json.dumps(sp.get("residual_1step") or sp.get("residual") or "未产生", ensure_ascii=False))
+            if ok_sp else ("守卫生效 (未编数据): %s" % str(sp.get("why") or "未出数")[:80]))
+    else:
+        ok_sp, verdict = False, "未接 (SE3_POSE_HEAD=0)"
+    rows.append({"model": "SE(3) 7 维位姿预测 (6维ξ→指数映射)", "layer": "se3_pose",
+                 "ok": ok_sp, "src": sp.get("mode", ""), "n": len(sp.get("pose7_pred") or []),
+                 "verdict": verdict, "na": (not bool(sp))})
+
     # 引擎级: 动作块 / 扭矩
     ch = eng.get("chunk") or {}
     rows.append({"model": "L3 动作块 (chunk → 执行口)", "layer": "chunk", "ok": bool(ch),

@@ -624,6 +624,14 @@ class ManifoldEngine:
             self.se3_gravity_w = float(os.environ.get("SE3_GRAVITY_W", "0") or 0.0)
         except Exception:                                                    # noqa: BLE001
             self.se3_gravity_w = 0.0
+        # 🧭 SE(3) 流形引擎 · 7 维位姿预测通道 (老倪 2026-11-04「这个算法做到流形引擎里」)
+        #   网络只吐 6 维 se(3) 增量 ξ=[ρ;φ], 由 se3_pose_head 指数映射成群增量 →
+        #   T_next = T·exp(ξ^) → 7 维 [x,y,z,qw,qx,qy,qz]。四元数**从不**被网络直接预测。
+        #   默认未接 ⇒ 零回归; 接上后 rec["se3_pose"] 每周期给预测 7 数 + 测地线残差。
+        self.se3_pose_provider = None
+        self.se3_pose_note = ""
+        self._z_last = None                        # 本周期潜表示 (给 7 维预测头当输入)
+        self._sp_prev_pred = None                  # 上一周期预测 (用于 1 步前向残差对账)
         self._z_fallback = ""                      # 编码模型缺新鲜输入时的回退留痕 (明写, 不静默)
         # ── 几何完备性开关 (2026-10-19) — 默认两个都关 ⇒ 与旧版逐位相同 ──
         #   ① phi_metric : 势函数换成**各度规自身距离** Φ=½·d_M(q,goal)²
@@ -787,6 +795,87 @@ class ManifoldEngine:
         except Exception as e:                                               # noqa: BLE001
             return {"ok": False, "why": "%s: %s" % (type(e).__name__, str(e)[:120]),
                     "note": self.se3_gravity_note}
+
+    def set_se3_pose_provider(self, provider, note: str = "") -> dict:
+        """接入/摘除 **SE(3) 7 维位姿预测头** (老倪 2026-11-04)。
+
+        provider = callable(z=<本周期潜表示>) → dict 或 可调用体不带参:
+          {ok, pose7_pred[7], xi[6] ([ρ;φ]), pose7_true[7]?, mode, weights, quat_norm, ...}
+        分工: 本通道给**预测的位姿**(看世界往哪走); se3_gravity 给**力**(推); hjepa_mr 给几何残差。
+        返回变更留痕 (provider=None ⇒ 零回归)。
+        """
+        prev = self.se3_pose_note
+        self.se3_pose_provider = provider
+        self.se3_pose_note = str(note or "")
+        self._sp_prev_pred = None
+        return {"provider": "SE(3) 7 维位姿预测" if provider is not None else "未接 (零回归)",
+                "note_prev": prev, "note": self.se3_pose_note}
+
+    def _se3_pose_read(self):
+        """取一帧 7 维位姿预测, 并做三条硬校验 (不合规就报 ok=False, 不静默放过)。
+
+          ① 四元数必须 ‖q‖≈1 (网络直吐 4 数会偏, 这里当场量)
+          ② 6 维 ξ 必须有限 (NaN/inf 直接判失败)
+          ③ 若有真值: 报 SE(3) 测地线残差 (旋转 rad/deg + 平移 mm), 并且**上一周期**的预测
+             与本周期真值对账 (1 步前向误差) —— 这才是"预测准不准"的真口径。
+        """
+        if self.se3_pose_provider is None:
+            return None
+        try:
+            # provider 既可只用潜表示, 也可用本周期状态 (obs) —— 训练侧用 obs→PCA 就更需要 state
+            try:
+                out = self.se3_pose_provider(z=self._z_last, state=self.current_state)
+            except TypeError:
+                try:
+                    out = self.se3_pose_provider(z=self._z_last)
+                except TypeError:
+                    out = self.se3_pose_provider()
+        except Exception as e:                                               # noqa: BLE001
+            return {"ok": False, "why": "%s: %s" % (type(e).__name__, str(e)[:160]),
+                    "note": self.se3_pose_note}
+        if not isinstance(out, dict) or not out.get("ok", True):
+            return {"ok": False, "why": str((out or {}).get("why") or "未知"),
+                    "note": self.se3_pose_note}
+        try:
+            from lerobot.manifold import se3_pose_head as H
+            pred = np.asarray(out.get("pose7_pred", []), float).ravel()
+            if pred.size != 7:
+                return {"ok": False, "why": "pose7_pred 维数=%d (必须 7)" % pred.size,
+                        "note": self.se3_pose_note}
+            qn = float(np.linalg.norm(pred[3:7]))
+            pred[3:7] = H.quat_normalize(pred[3:7])
+            xi = np.asarray(out.get("xi", np.zeros(6)), float).ravel()[:6]
+            finite = bool(np.all(np.isfinite(xi)) and np.all(np.isfinite(pred)))
+            rec = {"ok": bool(finite), "pose7_pred": [round(float(v), 6) for v in pred],
+                   "xi": [round(float(v), 6) for v in xi], "xi_order": H.XI_ORDER,
+                   "quat_norm": round(qn, 9),
+                   "quat_norm_ok": bool(abs(qn - 1.0) < 1e-6),
+                   "mode": out.get("mode", "group"), "weights": out.get("weights", ""),
+                   "trained": bool(out.get("trained", False)),
+                   "t_head_ms": out.get("t_head_ms"),
+                   "pose_src": out.get("pose_src", ""), "note": self.se3_pose_note}
+            if not finite:
+                rec["ok"] = False
+                rec["why"] = "ξ 或 pose7 含 NaN/inf"
+            # 与真值对账 (provider 给了真值才做)
+            true7 = out.get("pose7_true")
+            if true7 is None:
+                true7 = out.get("pose7_prev_true")
+            # provider 自己算的 1 步前向残差 (上一拍预测 vs 本拍真值) 也要透出去
+            for k in ("residual_1step", "residual_mean_20", "domain", "dt_note", "xi_scale"):
+                if k in out:
+                    rec[k] = out[k]
+            if true7 is not None:
+                t7 = np.asarray(true7, float).ravel()
+                if t7.size == 7:
+                    d = H.pose_distance(pred, t7)
+                    rec["residual"] = {"rot_deg": round(d["rot_deg"], 4),
+                                       "trans_mm": round(d["trans_m"] * 1e3, 4),
+                                       "se3": round(d["se3"], 6)}
+            return rec
+        except Exception as e:                                               # noqa: BLE001
+            return {"ok": False, "why": "%s: %s" % (type(e).__name__, str(e)[:160]),
+                    "note": self.se3_pose_note}
 
     def _hjepa_mr_read(self):
         """取一帧几何分支输出 + 流形动力学预测残差。
@@ -1020,6 +1109,7 @@ class ManifoldEngine:
         else:
             z = self.encoder.encode(np.asarray(state, float).reshape(-1))
         t1 = time.perf_counter()
+        self._z_last = np.asarray(z, float).ravel()      # 给 SE(3) 7 维预测头当输入
         p, resid, meta = self.projector.project(z)
         t2 = time.perf_counter()
         self.current_state = np.asarray(state, float).reshape(-1)
@@ -1325,6 +1415,10 @@ class ManifoldEngine:
         _sg = self._se3_gravity_read()
         if _sg is not None:
             rec["se3_gravity"] = _sg
+        # 🧭 SE(3) 7 维位姿预测 (6 维 ξ → 指数映射 → 7 数)
+        _sp = self._se3_pose_read()
+        if _sp is not None:
+            rec["se3_pose"] = _sp
         self.history.append({"p": r["p"].tolist(), "phi": gf["phi"], "anomaly": r["anomaly"]})
         return rec
 

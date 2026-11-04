@@ -397,7 +397,7 @@ class Loop:
     def __init__(self, hz: float, state_file: str | None, traj_path: str, inertia: bool,
                  encoder: str = "pca", l4_hz: float = 1.0, l4_url: str = "",
                  pipe: bool = False, pipe_every: int = 5, pipe_img: str = "",
-                 su2_tangent: bool = True) -> None:
+                 su2_tangent: bool = True, se3_pose_head: bool = False) -> None:
         self.dt = 1.0 / max(1e-6, float(hz))
         self.hz = float(hz)
         self.encoder = str(encoder or "pca")
@@ -405,6 +405,9 @@ class Loop:
         self.l4_url = l4_url
         self.l4 = None
         self.hjepa = None            # 🧠 H-JEPA 三层潜空间通道 (--encoder hjepa, 老倪 2026-10-22 A)
+        # 🧭 SE(3) 7 维位姿预测通道 (老倪 2026-11-04): 6 维 ξ → 指数映射 → [x,y,z,qw,qx,qy,qz]
+        self.se3_pose_head = bool(se3_pose_head)
+        self.se3_pose = "pending" if self.se3_pose_head else None
         self._hj_retry = 0
         self._state_now = None       # 本周期真值 state (H-JEPA 的 state7 取它前 7 维, 非零填充)
         # 🧠 多层 pipeline (L5→MEM→L2→L4→L3 依次真跑)
@@ -489,6 +492,33 @@ class Loop:
         except Exception as e:                                                   # noqa: BLE001
             _log("⚠️ L4 接入异常 (%s: %s) ⇒ 退回内建 PCA" % (type(e).__name__, str(e)[:90]))
             self.l4 = None
+
+    def _attach_se3_pose(self) -> None:
+        """🧭 SE(3) 7 维位姿预测头接进引擎 (rec["se3_pose"])。
+
+        只在 --se3-pose-head / SE3_POSE_HEAD=1 时接; 接不上就明写原因, 引擎照常跑 (零回归)。
+        头只在**预测**侧: 不改动作、不下发、不碰授权链。
+        """
+        if self.eng is None or not getattr(self, "se3_pose_head", False):
+            return
+        if not isinstance(getattr(self, "se3_pose", None), str):
+            return
+        try:
+            from se3_pose_provider import Se3PoseProvider          # tools/ 在 sys.path 里
+            prov = Se3PoseProvider()
+            if not prov.ok_load:
+                _log("⚠️ SE(3) 7 维预测头接不上 (%s) ⇒ 本通道不接, 引擎照常" % prov.why)
+                self.se3_pose = None
+                return
+            self.se3_pose = prov
+            self.eng.set_se3_pose_provider(prov, "SE(3) 6维ξ→群指数→7维位姿 · 权重 %s"
+                                           % os.path.basename(prov.ckpt_path))
+            _log("🧭 SE(3) 7 维位姿预测已接入: 权重 %s · PCA %s 维 · 位姿源 %s"
+                 % (os.path.relpath(prov.ckpt_path, ROOT), prov.mu.size,
+                    os.path.relpath(prov.pose_path, ROOT)))
+        except Exception as e:                                              # noqa: BLE001
+            self.se3_pose = None
+            _log("⚠️ SE(3) 7 维预测接入异常 (%s: %s) ⇒ 该通道不接" % (type(e).__name__, str(e)[:120]))
 
     def _hjepa_state7(self):
         """H-JEPA 的 state7: 优先本周期真值; 首周期还没走到 step 时用轨迹唯一依据末帧 (都是真数据)。"""
@@ -685,6 +715,7 @@ class Loop:
                                                             su2_tangent=self.su2_tangent)
                 self._attach_encoder()
                 self._attach_pipeline()
+                self._attach_se3_pose()
                 self.idx = 0
                 _log("🧮 引擎就位: %s · 源=%s (%d 帧) · M=%.4f (键 %s) · su2切投影=%s · 工程 %s · 任务 %s"
                      % (self.calib_note, self.src_key, len(new["obs"]), self.M, self.M_key,
@@ -866,6 +897,8 @@ class Loop:
                        (list(np.asarray(rec["p_next"], float).ravel())
                         if rec.get("p_next") is not None else [])],
             "z_latent": [round(float(x), 6) for x in (rec.get("z") if rec.get("z") is not None else [])],
+            # 🧭 SE(3) 7 维位姿预测 (6 维 ξ → 群指数 → [x,y,z,qw,qx,qy,qz]); 未接/失败时是 {}/ok=False 带原因
+            "se3_pose": (rec.get("se3_pose") if isinstance(rec.get("se3_pose"), dict) else {}),
             "encoder": ("l4" if self.l4 is not None else "pca"),
             "t_encode_ms": float(rec.get("t_encode_ms") or 0.0),
             "t_project_ms": float(rec.get("t_project_ms") or 0.0),
@@ -1153,6 +1186,9 @@ def main() -> int:
     ap.add_argument("--l4-frame-url", default=os.environ.get("ZMAX_L4_FRAME_URL") or "",
                     help="L4 视觉编码器的帧 URL (空=用内建帧源)")
     # 🧠 老倪 2026-10-14「所有层按 pipeline 依次全都运行推理」
+    ap.add_argument("--se3-pose-head", dest="se3_pose_head", action="store_true",
+                    default=str(os.environ.get("SE3_POSE_HEAD", "0")).lower() in ("1", "true", "yes", "on"),
+                    help="接 SE(3) 7 维位姿预测头 (6 维 ξ→指数映射→7 数, rec['se3_pose']); 默认关=零回归")
     ap.add_argument("--pipeline", action="store_true",
                     default=bool(os.environ.get("ZMAX_SS_PIPELINE")),
                     help="每 N 周期按序真跑整条 pipeline L5→MEM→L2→L4→L3 (所有层真推理)")
@@ -1172,7 +1208,7 @@ def main() -> int:
     lp = Loop(hz=a.hz, state_file=a.state_file, traj_path=a.traj, inertia=a.inertia,
               encoder=a.encoder, l4_hz=a.l4_hz, l4_url=a.l4_frame_url,
               pipe=a.pipeline, pipe_every=a.pipe_every, pipe_img=a.pipe_img,
-              su2_tangent=a.su2_tangent)
+              su2_tangent=a.su2_tangent, se3_pose_head=a.se3_pose_head)
     # `run --seconds N` 必须真按 N 收 (实测踩过: 恒传 0 ⇒ --seconds 被忽略, 一直跑)
     rc = lp.run(seconds=(a.seconds if a.cmd == "run" else 1.0), once=(a.cmd == "once"),
                 lock=not a.no_lock)
