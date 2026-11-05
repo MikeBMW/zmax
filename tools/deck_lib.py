@@ -303,11 +303,13 @@ def bigstat(pr, idx, deck, chapter, title, stats, sub="", note=""):
     _header(s, chapter, title, sub)
     n = len(stats)
     cw = Inches(11.8) / n
+    _mx = max(len(str(s[0])) for s in stats)
+    _vs = 40 if _mx <= 5 else (32 if _mx <= 7 else 26)
     for i, (val, label) in enumerate(stats):
         x = Inches(0.8) + Emu(int(cw * i))
         _rect(s, x, Inches(2.5), cw - Inches(0.25), Inches(2.4), PANEL)
         _p(_tb(s, x + Inches(0.2), Inches(2.75), cw - Inches(0.65), Inches(0.9))[1],
-           val, 40, ACCENT, True, space_after=0, first=True, align=PP_ALIGN.CENTER)
+           val, _vs, ACCENT, True, space_after=0, first=True, align=PP_ALIGN.CENTER)
         _p(_tb(s, x + Inches(0.3), Inches(3.85), cw - Inches(0.85), Inches(0.8))[1],
            label, 12, TEXT, space_after=0, first=True, align=PP_ALIGN.CENTER)
     if note:

@@ -5,7 +5,7 @@
  "sim": {
   "by": "Hermes",
   "ts": "2026-09-23 13:59:30",
-  "last_update": "2026-10-14 22:26:49",
+  "last_update": "2026-11-04 22:08:09",
   "closure": "done",
   "last_run": {
    "seed": 104,
@@ -48,7 +48,7 @@
     "desc": "任务分解 → 阶段/技能序列 + 变体方向生成",
     "status": "success",
     "layer": "L5",
-    "ts": "2026-10-14 22:25:45"
+    "ts": "2026-11-04 22:08:05"
    },
    "inputs": [
     {
@@ -79,7 +79,7 @@
     "desc": "L2肌肉/L3流程/L4工作/宏观 → 跨层检索与注入",
     "status": "success",
     "layer": "MEM",
-    "ts": "2026-10-14 22:25:45"
+    "ts": "2026-11-04 22:08:05"
    },
    "inputs": [
     {
@@ -108,9 +108,9 @@
    "params": {
     "impl": "detect.yolo",
     "desc": "YOLO 2D → 3D 反投影 → 反馈一致性",
-    "status": "success",
+    "status": "failed",
     "layer": "L2",
-    "ts": "2026-10-14 22:25:45"
+    "ts": "2026-11-04 22:08:06"
    },
    "inputs": [
     {
@@ -139,9 +139,9 @@
    "params": {
     "impl": "node.unified",
     "desc": "统一主干(SigLIP+四头) 多模型可仲裁",
-    "status": "success",
+    "status": "failed",
     "layer": "L4",
-    "ts": "2026-10-14 22:26:16"
+    "ts": "2026-11-04 22:08:09"
    },
    "inputs": [
     {
@@ -170,9 +170,9 @@
    "params": {
     "impl": "dispatch.k_act",
     "desc": "动作块 → u_ff (量纲逆运算 act×K_ACT)",
-    "status": "success",
+    "status": "failed",
     "layer": "L3",
-    "ts": "2026-10-14 22:26:16"
+    "ts": "2026-11-04 22:08:09"
    },
    "inputs": [
     {
@@ -201,9 +201,9 @@
    "params": {
     "impl": "closure",
     "desc": "真机执行 → 采集回流 → 闭环完成判定",
-    "status": "success",
+    "status": "running",
     "layer": "EXEC",
-    "ts": "2026-10-14 22:26:49"
+    "ts": "2026-11-04 22:08:09"
    },
    "inputs": [
     {

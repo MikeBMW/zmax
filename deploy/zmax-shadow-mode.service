@@ -1,0 +1,21 @@
+[Unit]
+Description=Z-MAX 影子模式 (只读真机图像+位姿 → 自标定/建图, 断链自持不退出)
+Documentation=file:///home/ubuntu/zmax/tools/shadow_mode_550c.py
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/zmax
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/ubuntu/zmax/gui-venv311/bin/python /home/ubuntu/zmax/tools/shadow_mode_550c.py --tag live
+Restart=always
+RestartSec=5
+# 断网/拔网卡时也要活着: 不做网络前置判死
+StartLimitIntervalSec=0
+StandardOutput=append:/home/ubuntu/zmax/zmax_data/logs/shadow_550c.log
+StandardError=append:/home/ubuntu/zmax/zmax_data/logs/shadow_550c.log
+
+[Install]
+WantedBy=multi-user.target
