@@ -16464,7 +16464,49 @@ def _kill_orphan_l5(include_own=False):
     return killed
 
 
+def _seed_config_from_defaults():
+    """把包内 defaults/config/* 补到 <仓库根>/config/ (目标不存在才写, 绝不覆盖现场改过的)。
+
+    🔴 2026-11-08 小静静: 源码里 `config/` 是软链(zmax_data/config), 打包后没有 ⇒ 冻结包跑到
+       「打开总工程」的任务绑定/参数注册表时一律"文件不存在"。defaults/config 是仓库里跟踪的那份,
+       随包带出去后在这里补齐。
+    """
+    try:
+        mp = getattr(sys, "_MEIPASS", "") or ""
+        import project_file as _pj
+        dst_root = os.path.join(_pj.repo_root(), "config")
+        srcs = []
+        if mp:
+            srcs.append(os.path.join(mp, "defaults", "config"))
+        srcs.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))), "defaults", "config"))
+        import shutil as _sh
+        n = 0
+        for src in srcs:
+            if not os.path.isdir(src):
+                continue
+            for dirpath, _dirs, files in os.walk(src):
+                rel = os.path.relpath(dirpath, src)
+                dst_dir = os.path.join(dst_root, rel) if rel != "." else dst_root
+                os.makedirs(dst_dir, exist_ok=True)
+                for fn in files:
+                    d = os.path.join(dst_dir, fn)
+                    if not os.path.exists(d):
+                        try:
+                            _sh.copy2(os.path.join(dirpath, fn), d)
+                            n += 1
+                        except Exception:                                   # noqa: BLE001
+                            pass
+        if n:
+            print("📦 已从包内 defaults/config 补齐 %d 个配置文件 → %s" % (n, dst_root))
+        return n
+    except Exception as _e:                                                 # noqa: BLE001
+        print("⚠️ 补配置文件失败(不影响启动): %r" % (_e,))
+        return -1
+
+
 def main():
+    _seed_config_from_defaults()
     _install_thread_guard()          # 🐞 调试期线程异常只落盘, 不抢断点焦点
     # 🐛 2026-08-30 老倪: VSCode attach 断点调试 — 启动即监听 5678, 不阻塞
     # (F5 attach 到现有控制台即可断点单步, 无需再启动一个控制台实例)

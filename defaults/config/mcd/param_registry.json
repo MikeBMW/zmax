@@ -1,81 +1,3681 @@
 {
-  "_meta": {
-    "schema": "zmax-param-registry/1.0",
-    "generated_at": "",
-    "doc": ""
+ "_meta": {
+  "schema": "zmax-param-registry/1.0",
+  "generated_at": "2026-11-02 20:16:48",
+  "doc": "参数注册表 (扁平): 域×级×权限×就绪度。唯一依据只读, 本表由 tools/mcd_build.py 生成。"
+ },
+ "params": [
+  {
+   "id": "cam.K",
+   "cn": "相机内参矩阵",
+   "domain": "工程配置",
+   "grade": "G3",
+   "src": "config/calib/zmax_calib.json#camera.K",
+   "read": [
+    "calib",
+    "camera.K"
+   ],
+   "unit": "px",
+   "rng": null,
+   "dflt": null,
+   "perm": "field",
+   "affects": [
+    "ssyolo",
+    "ss2d3d"
+   ],
+   "feature": [
+    "B1",
+    "B2"
+   ],
+   "judge": "9 元素 · fx/fy>0 · 与 models/real_cam_calib.json 一致",
+   "value": [
+    394.0623474121094,
+    0.0,
+    318.443603515625,
+    0.0,
+    393.472412109375,
+    238.658447265625,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "ready": true
   },
-  "params": [],
-  "summary": {
-    "by_domain": {
-      "工程配置": 0,
-      "性能配置": 0,
-      "功能配置": 0,
-      "模型配置": 0
-    },
-    "by_grade": {
-      "G3": 0,
-      "G2": 0,
-      "G0": 0,
-      "G1": 0,
-      "G4": 0
-    },
-    "by_perm": {
-      "field": 0,
-      "auth": 0,
-      "readonly": 0,
-      "version": 0
-    },
-    "ready": 0,
-    "gaps": []
+  {
+   "id": "cam.dist",
+   "cn": "畸变系数",
+   "domain": "工程配置",
+   "grade": "G3",
+   "src": "config/calib/zmax_calib.json#camera.dist",
+   "read": [
+    "calib",
+    "camera.dist"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "field",
+   "affects": [
+    "ss2d3d"
+   ],
+   "feature": [
+    "B2"
+   ],
+   "judge": "plumb_bob 5 元素",
+   "value": [
+    -0.0539163276553154,
+    0.057097118347883224,
+    0.00034414068795740604,
+    0.0009524741326458752,
+    -0.01931513287127018
+   ],
+   "ready": true
   },
-  "feature_dbc": {
-    "nodes": [],
-    "caps": [],
-    "combos": {
-      "JOB_MODEL": 0,
-      "GUIDE_MODEL": 0,
-      "SCHED_MODEL": 0,
-      "PERCEPT_MODEL": 0,
-      "THIRD_PARTY": 0
+  {
+   "id": "T_base_cam",
+   "cn": "基座→相机 外参",
+   "domain": "工程配置",
+   "grade": "G3",
+   "src": "config/calib/zmax_calib.json#T_base_cam.value",
+   "read": [
+    "calib",
+    "T_base_cam.value"
+   ],
+   "unit": "m/rad",
+   "rng": null,
+   "dflt": null,
+   "perm": "field",
+   "affects": [
+    "ss2d3d",
+    "n_realscene",
+    "overlay"
+   ],
+   "feature": [
+    "B2"
+   ],
+   "judge": "4x4 刚体 · 与板坐标系定位互校验 (rmse<2mm)",
+   "value": null,
+   "ready": false,
+   "reason": "现场未标定/未示教"
+  },
+  {
+   "id": "plane_z",
+   "cn": "台面高度 (工作平面)",
+   "domain": "工程配置",
+   "grade": "G3",
+   "src": "config/calib/zmax_calib.json#plane_z.value",
+   "read": [
+    "calib",
+    "plane_z.value"
+   ],
+   "unit": "m",
+   "rng": null,
+   "dflt": null,
+   "perm": "field",
+   "affects": [
+    "ss2d3d",
+    "robot_vision_3d"
+   ],
+   "feature": [
+    "B2"
+   ],
+   "judge": "现场量一次 (夹爪或塞尺) · 与真机 TCP 实测台面高一致",
+   "value": null,
+   "ready": false,
+   "reason": "现场未标定/未示教"
+  },
+  {
+   "id": "depth_scale",
+   "cn": "仿真单目深度尺度",
+   "domain": "工程配置",
+   "grade": "G2",
+   "src": "config/calib/zmax_calib.json#depth_scale.value",
+   "read": [
+    "calib",
+    "depth_scale.value"
+   ],
+   "unit": "-",
+   "rng": [
+    0.5,
+    1.5
+   ],
+   "dflt": 0.9616,
+   "perm": "auth",
+   "affects": [
+    "ss2d3d"
+   ],
+   "feature": [
+    "B2"
+   ],
+   "judge": "探针实测均值 ±5% (真机走 RealSense 米制深度, 不用本项)",
+   "value": 0.9616,
+   "ready": true
+  },
+  {
+   "id": "cell_geometry.points",
+   "cn": "工位几何示教点",
+   "domain": "工程配置",
+   "grade": "G3",
+   "src": "config/calib/zmax_calib.json#cell_geometry.points",
+   "read": [
+    "calib",
+    "cell_geometry.points"
+   ],
+   "unit": "m",
+   "rng": null,
+   "dflt": null,
+   "perm": "field",
+   "affects": [
+    "ss2d3d",
+    "n_moveit"
+   ],
+   "feature": [
+    "A2",
+    "C2"
+   ],
+   "judge": "peg_head/goal/aoi 三点齐 · 零运动示教 (ss_geom_calib.py)",
+   "value": {
+    "source": "现场示教",
+    "frame": "base_link",
+    "points": {
+     "peg_head": {
+      "x": 0.6488389463511,
+      "y": 0.4982892129791298,
+      "z": 0.11037982390078135,
+      "quat": [
+       -0.7392296131646807,
+       0.0034473480612690066,
+       -0.6733873441857849,
+       null
+      ],
+      "by": "静静(读远端 /robot/tcp_pose)",
+      "note": "夹具夹着光模块的抓握点(=一号位); 2026-09-27 15:57 零运动",
+      "ts_str": "2026-09-27 15:58:12"
+     },
+     "hole": {
+      "x": 0.7575107508864591,
+      "y": 0.2278741391370651,
+      "z": 0.19007693969714473,
+      "quat": [
+       0.7337883192216774,
+       0.012557698316948973,
+       0.679224309854309,
+       null
+      ],
+      "by": "静静(读远端 /robot/tcp_pose 真值)",
+      "note": "孔口(老倪现场: 正在孔边上, 未插入) — 对应仿真 hole(-0.1685,0.4623,0.1309)",
+      "ts_str": "2026-09-27 16:09:01"
+     },
+     "goal": {
+      "x": 0.798439013580901,
+      "y": 0.22787501556965978,
+      "z": 0.19007731173345108,
+      "quat": [
+       0.7337871451160551,
+       0.01255713136625071,
+       0.679225604416949,
+       null
+      ],
+      "by": "静静(读远端 /robot/tcp_pose 真值)",
+      "note": "插入终点(老倪现场: 插到底) — 对应仿真 goal(-0.2345,0.4623,0.1309)",
+      "ts_str": "2026-09-27 16:13:00"
+     },
+     "hole_retract": {
+      "x": 0.7504527477801244,
+      "y": 0.22787243950840597,
+      "z": 0.19003598286840723,
+      "quat": [
+       0.7338124739948487,
+       0.012562035544190914,
+       0.6791981546473468,
+       null
+      ],
+      "by": "静静(读远端 TCP 真值)",
+      "note": "退出后在孔边(自动模式切换完成); 老倪 2026-09-27 现场",
+      "ts_str": "2026-09-27 16:15:24"
+     }
     },
-    "cap_domains": {
-      "A": 0,
-      "B": 0,
-      "C": 0,
-      "D": 0,
-      "E": 0,
-      "F": 0,
-      "G": 0,
-      "H": 0
+    "validated": true,
+    "version": 1
+   },
+   "ready": true
+  },
+  {
+   "id": "robot.dof",
+   "cn": "机器人自由度",
+   "domain": "工程配置",
+   "grade": "G0",
+   "src": "config/calib/zmax_calib.json#robot.dof",
+   "read": [
+    "calib",
+    "robot.dof"
+   ],
+   "unit": "-",
+   "rng": [
+    6,
+    7
+   ],
+   "dflt": 6,
+   "perm": "readonly",
+   "affects": [
+    "ssact",
+    "sssensor",
+    "moveit"
+   ],
+   "feature": [
+    "B4"
+   ],
+   "judge": "=6 (XMS5-R800) · 与 urdf 一致",
+   "value": 6,
+   "ready": true
+  },
+  {
+   "id": "tool_payload.mass_kg",
+   "cn": "末端负载质量",
+   "domain": "工程配置",
+   "grade": "G2",
+   "src": "config/calib/zmax_calib.json#tool_payload.mass_kg",
+   "read": [
+    "calib",
+    "tool_payload.mass_kg"
+   ],
+   "unit": "kg",
+   "rng": [
+    0,
+    5
+   ],
+   "dflt": 1.51,
+   "perm": "auth",
+   "affects": [
+    "ssact",
+    "real_arm_motion"
+   ],
+   "feature": [
+    "C3"
+   ],
+   "judge": "与控制器负载参数一致 (否则力控前馈偏)",
+   "value": 1.51,
+   "ready": true
+  },
+  {
+   "id": "control_tcp.offset_xyz_m",
+   "cn": "控制 TCP 偏移",
+   "domain": "工程配置",
+   "grade": "G3",
+   "src": "config/calib/zmax_calib.json#control_tcp.offset_xyz_m",
+   "read": [
+    "calib",
+    "control_tcp.offset_xyz_m"
+   ],
+   "unit": "m",
+   "rng": null,
+   "dflt": null,
+   "perm": "field",
+   "affects": [
+    "ssact",
+    "n_moveit",
+    "teach_points"
+   ],
+   "feature": [
+    "C1",
+    "C2"
+   ],
+   "judge": "std≤2mm 且姿态偏差≤1° (多帧反解 verdict=刚体一致)",
+   "value": [
+    -0.015875,
+    0.015293,
+    0.260422
+   ],
+   "ready": true
+  },
+  {
+   "id": "M",
+   "cn": "流形引擎主参数 (等效惯量尺度)",
+   "domain": "性能配置",
+   "grade": "G0",
+   "src": "config/calib/zmax_manifold.json#M",
+   "read": [
+    "manifold",
+    "M"
+   ],
+   "unit": "无量纲 (等效惯量尺度)",
+   "rng": [
+    0.0,
+    8.0
+   ],
+   "dflt": 1.0,
+   "perm": "auth",
+   "affects": [
+    "ss_mani_eng",
+    "ssmani_c",
+    "ssmani_exp",
+    "n_calib_mani"
+   ],
+   "feature": [
+    "D2"
+   ],
+   "judge": "零回归: inertia=false 或 M=default ⇒ 逐位同旧一阶过阻尼; 有惯性时须 ΔV<0",
+   "value": 3.643,
+   "ready": true
+  },
+  {
+   "id": "M.inertia",
+   "cn": "有惯性二阶演化开关",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/calib/zmax_manifold.json#inertia",
+   "read": [
+    "manifold",
+    "inertia"
+   ],
+   "unit": "bool",
+   "rng": [
+    0,
+    1
+   ],
+   "dflt": false,
+   "perm": "auth",
+   "affects": [
+    "ss_mani_eng"
+   ],
+   "feature": [
+    "D2"
+   ],
+   "judge": "false=默认零回归; 打开后动量 ‖v‖ 有界且末端不过冲",
+   "value": false,
+   "ready": true
+  },
+  {
+   "id": "safety.saturate",
+   "cn": "动作饱和限幅",
+   "domain": "性能配置",
+   "grade": "G1",
+   "src": "src/lerobot/policies/left_right/safety.py (saturate)",
+   "read": null,
+   "unit": "-",
+   "rng": [
+    0.0,
+    0.6
+   ],
+   "dflt": 0.6,
+   "perm": "readonly",
+   "affects": [
+    "sslimit",
+    "ssact"
+   ],
+   "feature": [
+    "C3"
+   ],
+   "judge": "红线: 只允许收紧, 放宽须现场一次性授权",
+   "value": null,
+   "ready": false,
+   "reason": "唯一依据非文件 (在役源码常量或权重) — 未做文件级描述"
+  },
+  {
+   "id": "safety.veto_th",
+   "cn": "残差否决阈值",
+   "domain": "性能配置",
+   "grade": "G1",
+   "src": "src/lerobot/policies/left_right/cognition.py (veto)",
+   "read": null,
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "sssched"
+   ],
+   "feature": [
+    "C3"
+   ],
+   "judge": "红线: 逐轴 corr<0.5 全 veto 的收口闸, 不许放宽",
+   "value": null,
+   "ready": false,
+   "reason": "唯一依据非文件 (在役源码常量或权重) — 未做文件级描述"
+  },
+  {
+   "id": "perf.D_INSERT_mm",
+   "cn": "插深终到误差指标",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "src/lerobot/verification/verification_layer.py#F-A02",
+   "read": null,
+   "unit": "mm",
+   "rng": [
+    0,
+    20
+   ],
+   "dflt": 4.0,
+   "perm": "readonly",
+   "affects": [
+    "ssfeat"
+   ],
+   "feature": [
+    "C1"
+   ],
+   "judge": "实测 <4mm 判过 (F-A02)",
+   "value": null,
+   "ready": false,
+   "reason": "唯一依据非文件 (在役源码常量或权重) — 未做文件级描述"
+  },
+  {
+   "id": "perf.cycle_s",
+   "cn": "节拍指标",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "docs/7-瑶光-记录追溯/notes/feature_dbc_spec.md + io_trace",
+   "read": null,
+   "unit": "s",
+   "rng": [
+    0,
+    60
+   ],
+   "dflt": 6.0,
+   "perm": "readonly",
+   "affects": [
+    "ssfeat"
+   ],
+   "feature": [
+    "C6"
+   ],
+   "judge": "≤6s (宏微复合口径)",
+   "value": null,
+   "ready": false,
+   "reason": "唯一依据非文件 (在役源码常量或权重) — 未做文件级描述"
+  },
+  {
+   "id": "feature.combo",
+   "cn": "能力组合 (feature.dbc CM_)",
+   "domain": "功能配置",
+   "grade": "G2",
+   "src": "feature.dbc#CM_",
+   "read": [
+    "dbc",
+    "combos"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": "JOB_MODEL 默认组合",
+   "perm": "auth",
+   "affects": [
+    "sscap",
+    "ssfeat",
+    "整机能力"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "组合内每条能力都有实现节点 (match_node 非 None); 冲突=0",
+   "value": {
+    "JOB_MODEL": [
+     "A1",
+     "A2",
+     "A4",
+     "B1",
+     "B2",
+     "B3",
+     "B4",
+     "C1",
+     "C2",
+     "C3",
+     "C4",
+     "C5",
+     "C6",
+     "D1",
+     "D3",
+     "E1",
+     "E2",
+     "E3",
+     "F1",
+     "F2",
+     "G1",
+     "G2",
+     "G3",
+     "G4",
+     "H1",
+     "H3"
+    ],
+    "GUIDE_MODEL": [
+     "B1",
+     "B2",
+     "B4",
+     "D1",
+     "D2",
+     "G1"
+    ],
+    "SCHED_MODEL": [
+     "C1",
+     "D3",
+     "G2",
+     "G4",
+     "H1"
+    ],
+    "PERCEPT_MODEL": [
+     "B1",
+     "B2",
+     "B4",
+     "B5",
+     "G1"
+    ],
+    "THIRD_PARTY": []
+   },
+   "ready": true
+  },
+  {
+   "id": "feature.cap_level",
+   "cn": "能力档位",
+   "domain": "功能配置",
+   "grade": "G2",
+   "src": "flows/state_space_obs.json#sscap.params.cap_level",
+   "read": null,
+   "unit": "L2/L3/L4/L5",
+   "rng": null,
+   "dflt": "L2",
+   "perm": "auth",
+   "affects": [
+    "sscap",
+    "全链"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "档位契约必须满足 (levels.check(): 该档节点全有逻辑 key, 缺口=0)",
+   "value": null,
+   "ready": false,
+   "reason": "未接线 (本项需实现期补唯一依据)"
+  },
+  {
+   "id": "feature.dbc_version",
+   "cn": "能力库版本",
+   "domain": "功能配置",
+   "grade": "G4",
+   "src": "feature.dbc#VERSION",
+   "read": null,
+   "unit": "-",
+   "rng": null,
+   "dflt": "1.0",
+   "perm": "version",
+   "affects": [
+    "全模型"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "入库 git, 演进可追溯",
+   "value": null,
+   "ready": false,
+   "reason": "未接线 (本项需实现期补唯一依据)"
+  },
+  {
+   "id": "model.arch_mode",
+   "cn": "架构模式 (Sys-11 / Sys-11+12)",
+   "domain": "模型配置",
+   "grade": "G2",
+   "src": "tools/gui/studio.py#ConfigModule.mode_group",
+   "read": null,
+   "unit": "-",
+   "rng": null,
+   "dflt": "Sys-11+12",
+   "perm": "auth",
+   "affects": [
+    "训练链",
+    "L2/L3/L4"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "切模态后 VLM/ActionHead/世界模型 参数组可用性一致",
+   "value": null,
+   "ready": false,
+   "reason": "未接线 (本项需实现期补唯一依据)"
+  },
+  {
+   "id": "model.cfg_spec",
+   "cn": "Lerobot 标准参数总表 (6 类)",
+   "domain": "模型配置",
+   "grade": "G2",
+   "src": "tools/gui/studio.py#ConfigModule.cfg_spec",
+   "read": [
+    "cfgspec",
+    null
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "auth",
+   "affects": [
+    "ACT",
+    "SmolVLA",
+    "VLA-JEPA"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "三模型逐行可比; 导出 Excel 与表内逐位一致",
+   "value": [
+    {
+     "group": "🏗 模型架构",
+     "params": [
+      "backbone 主干",
+      "backbone 参数量",
+      "backbone 输出维度",
+      "action head",
+      "head 隐藏维度",
+      "VAE 潜变量"
+     ]
+    },
+    {
+     "group": "📷 视觉编码",
+     "params": [
+      "camera 输入",
+      "图像归一化",
+      "触觉输入",
+      "obs 观测步数"
+     ]
+    },
+    {
+     "group": "🎮 动作解码",
+     "params": [
+      "chunk size",
+      "动作维度",
+      "动作归一化",
+      "动作块预测"
+     ]
+    },
+    {
+     "group": "⚙️ 训练超参",
+     "params": [
+      "训练步数",
+      "batch size",
+      "学习率",
+      "warmup",
+      "optimizer"
+     ]
+    },
+    {
+     "group": "📊 数据/预处理",
+     "params": [
+      "数据集格式",
+      "episode 数",
+      "采样频率"
+     ]
+    },
+    {
+     "group": "🚀 推理/部署",
+     "params": [
+      "推理频率",
+      "显存需求",
+      "端侧部署"
+     ]
     }
+   ],
+   "ready": true
   },
-  "capability_map": [],
-  "levels": {
+  {
+   "id": "model.ckpt_l2",
+   "cn": "L2 在役权重 (YOLO)",
+   "domain": "模型配置",
+   "grade": "G4",
+   "src": "models/yolo_peg_live.pt (软链) → tools/model_inventory.py#L2 active",
+   "read": [
+    "model",
+    "L2"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "version",
+   "affects": [
+    "ssyolo"
+   ],
+   "feature": [
+    "B1"
+   ],
+   "judge": "软链目标存在 · 版本台账可追溯 (yolo_weights_lineage)",
+   "value": "/home/ubuntu/zmax/external/lerobot-smolvla-lew/runs/detect/outputs/yolo_annot/annot_0919_1814/weights/best.pt",
+   "ready": true
+  },
+  {
+   "id": "model.ckpt_l3",
+   "cn": "L3 在役权重 (SmolVLA)",
+   "domain": "模型配置",
+   "grade": "G4",
+   "src": "tools/model_inventory.py#L3 active",
+   "read": [
+    "model",
+    "L3"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "version",
+   "affects": [
+    "ssvlm",
+    "ssdec"
+   ],
+   "feature": [
+    "C1"
+   ],
+   "judge": "LoRA 必须 merge 后才算生效 (否则零动作伪装)",
+   "value": "/home/ubuntu/zmax/external/lerobot-smolvla-lew/outputs/train/smolvla_lew_v10_1h/checkpoints/004000/pretrained_model",
+   "ready": true
+  },
+  {
+   "id": "model.ckpt_l4",
+   "cn": "L4 在役权重 (INTACT)",
+   "domain": "模型配置",
+   "grade": "G4",
+   "src": "tools/model_inventory.py#L4 active",
+   "read": [
+    "model",
+    "L4"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "version",
+   "affects": [
+    "ssintact",
+    "swintact"
+   ],
+   "feature": [
+    "C1"
+   ],
+   "judge": "反归一化按 ckpt 训练集同源 · 稳态延迟 <120ms",
+   "value": "/home/ubuntu/zmax/zmax_data/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6r11_s3072/weights_epoch_2.pt",
+   "ready": true
+  },
+  {
+   "id": "model.ckpt_l5",
+   "cn": "L5 在役权重 (DeepSeek/本地 VLM merged)",
+   "domain": "模型配置",
+   "grade": "G4",
+   "src": "tools/model_inventory.py#L5 active",
+   "read": [
+    "model",
+    "L5"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "version",
+   "affects": [
+    "n_dsvl",
+    "ssllm"
+   ],
+   "feature": [
+    "C1"
+   ],
+   "judge": "merged 产物存在 (adapter 未 merge 不算在役)",
+   "value": "/home/ubuntu/zmax/zmax_data/models/l5_vlm_merged_20261014_141727/model.safetensors",
+   "ready": true
+  },
+  {
+   "id": "model.train_state",
+   "cn": "L2~L5 训练/推理状态 (每层在役/候选/训练中)",
+   "domain": "模型配置",
+   "grade": "G2",
+   "src": "tools/model_inventory.py --json (training[] + models[]) + 8796 /status/all",
+   "read": [
+    "model",
+    "status"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "🧠 模型引擎窗口"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "四层各有判定 · 训练中必须带 step/total · 与 nvidia-smi 进程一致 (无可信训练进程则 training=[] )",
+   "value": {
     "L2": {
-      "name": "基础功能 (分段感知 · 融合 · 小模型控制 · 状态机 · 原子技能 · 执行)",
-      "must": []
+     "在役": "L2 · YOLO 光模块检测 (真机域在役)",
+     "本层产物数": 5,
+     "最近训练": "无训练记录",
+     "训练中": "否"
     },
     "L3": {
-      "name": "连续功能 (长程序列规划 · 技能编排 · 海马体记忆 · VLM+Flow-Matching)",
-      "must": []
+     "在役": "L3 · SmolVLA+LEW 策略 (在役运行时 ckpt)",
+     "本层产物数": 3,
+     "最近训练": "无训练记录",
+     "训练中": "否"
     },
     "L4": {
-      "name": "自主安全功能 (工作安全 + 物理世界导航 · 档位 · 流形世界模型 · 筹划)",
-      "must": []
+     "在役": "L4 · INTACT-JEPA 意图-动作 (在役稳定指针)",
+     "本层产物数": 3,
+     "最近训练": "无训练记录",
+     "训练中": "否"
     },
     "L5": {
-      "name": "场景理解 + 自动标注 (大模型层 · 任务/编排/记忆中枢)",
-      "must": []
+     "在役": "L5 · SmolVLM 本地视觉语言模型 (merged 可部署)",
+     "本层产物数": 3,
+     "最近训练": "20261014_141727 · 20 步",
+     "训练中": "否"
     }
+   },
+   "ready": true
   },
-  "diagnostics": {
-    "assertions_total": 0,
-    "assertions_auto": 0,
-    "by_level": {
-      "L2": 0,
-      "L3": 0,
-      "L4": 0
-    },
-    "codes": []
+  {
+   "id": "model.train_entry",
+   "cn": "逐层训练入口 (引擎窗口 ▶ 按钮执行的命令)",
+   "domain": "模型配置",
+   "grade": "G2",
+   "src": "tools/joint_train_all.py --only L2|L3|L4|L5",
+   "read": [
+    "model",
+    "entry"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "auth",
+   "affects": [
+    "训练链"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "每条命令可 --dry-run 过环境检查; 执行后必须产出 ckpt 或明确报错",
+   "value": {
+    "L2": "tools/joint_train_all.py --only L2 --yolo-epochs 1",
+    "L3": "tools/joint_train_all.py --only L3 --steps 20",
+    "L4": "tools/joint_train_all.py --only L4 --steps 20",
+    "L5": "tools/joint_train_all.py --only L5 --l5-steps 20 --l5-merge"
+   },
+   "ready": true
+  },
+  {
+   "id": "model.third_party",
+   "cn": "第三方模型接入 (POD)",
+   "domain": "模型配置",
+   "grade": "G4",
+   "src": "feature.dbc#BU_ THIRD_PARTY",
+   "read": null,
+   "unit": "-",
+   "rng": null,
+   "dflt": "未接入",
+   "perm": "version",
+   "affects": [
+    "平台容器"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "登记 BU_ + 勾选 CM_ + 对齐 SG_ 三步齐",
+   "value": null,
+   "ready": false,
+   "reason": "未接线 (本项需实现期补唯一依据)"
+  },
+  {
+   "id": "model.sam3_base",
+   "cn": "SAM3 官方基座权重 (未在役)",
+   "domain": "模型配置",
+   "grade": "G3",
+   "src": "zmax_data/models/sam3_hf/model.safetensors",
+   "read": [
+    "matrix",
+    "SAM3|基座路径"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "L2 感知",
+    "SAM3 服务 8796"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "文件必须存在 (848M, sha256 已落)",
+   "value": "zmax_data/models/sam3_hf/model.safetensors",
+   "ready": true
+  },
+  {
+   "id": "model.sam3_adapter",
+   "cn": "SAM3 适配器 (annot_v1 · 未证明提升)",
+   "domain": "模型配置",
+   "grade": "G3",
+   "src": "outputs/sam3_finetune/annot_v1/lora_adapter/adapter_model.safetensors",
+   "read": [
+    "matrix",
+    "SAM3|适配器路径"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "SAM3 服务 8796 (ZMAX_SAM3_ADAPTER)"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "默认不装 (纯基座); 装载走 ZMAX_SAM3_ADAPTER, 键数须 256 张量全匹配",
+   "value": "outputs/sam3_finetune/annot_v1/lora_adapter/adapter_model.safetensors",
+   "ready": true
+  },
+  {
+   "id": "model.sam3_state",
+   "cn": "SAM3 档位状态",
+   "domain": "模型配置",
+   "grade": "G2",
+   "src": "http://127.0.0.1:8796/status/all (state)",
+   "read": [
+    "matrix",
+    "SAM3|状态"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "L2 收口",
+    "模型引擎窗口"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "必须如实=候选; 未证明提升不许写 in_service",
+   "value": "候选",
+   "ready": true
+  },
+  {
+   "id": "model.candidate_l2",
+   "cn": "L2 候选产物 (未在役, 唯一依据现算)",
+   "domain": "模型配置",
+   "grade": "G4",
+   "src": "tools/model_inventory.py#L2 非在役条目",
+   "read": [
+    "matrix",
+    "L2|候选模型"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "模型引擎窗口"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "逐个来自磁盘真产物; 无候选写'无' (不编)",
+   "value": "最新训练产物 · SAM3基座848M · SAM3适配器annot_v1(未证明提升)",
+   "ready": true
+  },
+  {
+   "id": "model.cand_reason_l2",
+   "cn": "L2 候选未切在役的判据",
+   "domain": "模型配置",
+   "grade": "G3",
+   "src": "http://127.0.0.1:8796/status/all (note_short)",
+   "read": [
+    "matrix",
+    "L2|候选判据"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "模型配置",
+    "交付口径"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "有产物无 A/B ⇒ 写'产物未评估'; 有 A/B ⇒ 写实测 Δ (不夸)",
+   "value": "r600 候选·未切在役 · 候选: 增益<1%且掩膜退化",
+   "ready": true
+  },
+  {
+   "id": "model.candidate_l3",
+   "cn": "L3 候选产物 (未在役, 唯一依据现算)",
+   "domain": "模型配置",
+   "grade": "G4",
+   "src": "tools/model_inventory.py#L3 非在役条目",
+   "read": [
+    "matrix",
+    "L3|候选模型"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "模型引擎窗口"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "逐个来自磁盘真产物; 无候选写'无' (不编)",
+   "value": "最新LoRA-merged产物",
+   "ready": true
+  },
+  {
+   "id": "model.cand_reason_l3",
+   "cn": "L3 候选未切在役的判据",
+   "domain": "模型配置",
+   "grade": "G3",
+   "src": "http://127.0.0.1:8796/status/all (note_short)",
+   "read": [
+    "matrix",
+    "L3|候选判据"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "模型配置",
+    "交付口径"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "有产物无 A/B ⇒ 写'产物未评估'; 有 A/B ⇒ 写实测 Δ (不夸)",
+   "value": "r600 候选·未切在役",
+   "ready": true
+  },
+  {
+   "id": "model.candidate_l4",
+   "cn": "L4 候选产物 (未在役, 唯一依据现算)",
+   "domain": "模型配置",
+   "grade": "G4",
+   "src": "tools/model_inventory.py#L4 非在役条目",
+   "read": [
+    "matrix",
+    "L4|候选模型"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "模型引擎窗口"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "逐个来自磁盘真产物; 无候选写'无' (不编)",
+   "value": "最新续训/LoRA产物",
+   "ready": true
+  },
+  {
+   "id": "model.cand_reason_l4",
+   "cn": "L4 候选未切在役的判据",
+   "domain": "模型配置",
+   "grade": "G3",
+   "src": "http://127.0.0.1:8796/status/all (note_short)",
+   "read": [
+    "matrix",
+    "L4|候选判据"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "模型配置",
+    "交付口径"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "有产物无 A/B ⇒ 写'产物未评估'; 有 A/B ⇒ 写实测 Δ (不夸)",
+   "value": "r600 候选·未切在役",
+   "ready": true
+  },
+  {
+   "id": "model.candidate_l5",
+   "cn": "L5 候选产物 (未在役, 唯一依据现算)",
+   "domain": "模型配置",
+   "grade": "G4",
+   "src": "tools/model_inventory.py#L5 非在役条目",
+   "read": [
+    "matrix",
+    "L5|候选模型"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "模型引擎窗口"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "逐个来自磁盘真产物; 无候选写'无' (不编)",
+   "value": "最新LoRAadapter",
+   "ready": true
+  },
+  {
+   "id": "model.cand_reason_l5",
+   "cn": "L5 候选未切在役的判据",
+   "domain": "模型配置",
+   "grade": "G3",
+   "src": "http://127.0.0.1:8796/status/all (note_short)",
+   "read": [
+    "matrix",
+    "L5|候选判据"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "模型配置",
+    "交付口径"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "有产物无 A/B ⇒ 写'产物未评估'; 有 A/B ⇒ 写实测 Δ (不夸)",
+   "value": "产物未评估(尚无 A/B 判据)",
+   "ready": true
+  },
+  {
+   "id": "model.in_service_l2",
+   "cn": "L2 在役模型 (唯一依据现算)",
+   "domain": "模型配置",
+   "grade": "G2",
+   "src": "tools/model_config_matrix.py#L2|在役模型",
+   "read": [
+    "matrix",
+    "L2|在役模型"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "🧠 模型引擎窗口",
+    "🖥 模型引擎页"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "与 8796 /status/all 的 layer==L2 且 state=in_service 一致",
+   "value": "YOLO 检测 + 2D→3D 解算 (真机域在役)",
+   "ready": true
+  },
+  {
+   "id": "model.last_train_l2",
+   "cn": "L2 最近一次训练 (真训时间戳)",
+   "domain": "模型配置",
+   "grade": "G4",
+   "src": "tools/model_inventory.py#L2 last_train",
+   "read": [
+    "matrix",
+    "L2|最近训练"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "训练链"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "时间戳来自真产物 mtime; 无产物写'无训练记录' (不编时间)",
+   "value": "2026-10-14 14:26:36",
+   "ready": true
+  },
+  {
+   "id": "model.ss_node_l2",
+   "cn": "L2 状态空间承载节点",
+   "domain": "模型配置",
+   "grade": "G3",
+   "src": "src/lerobot/engineering/flows/state_space_obs.json",
+   "read": [
+    "matrix",
+    "L2|状态空间节点"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "状态空间画布"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "节点必须真在画布上 (按节点 id 判定, 不靠名字猜)",
+   "value": "🎯 YOLO 目标检测",
+   "ready": true
+  },
+  {
+   "id": "model.ss_topic_l2",
+   "cn": "L2 状态空间输出话题",
+   "domain": "模型配置",
+   "grade": "G3",
+   "src": "状态空间画布节点 id → ss/<id>/out",
+   "read": [
+    "matrix",
+    "L2|输出话题"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "DDS/话题"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "话题名与画布节点 id 对得上 (逐字一致)",
+   "value": "ss/ssyolo/out",
+   "ready": true
+  },
+  {
+   "id": "model.in_service_l3",
+   "cn": "L3 在役模型 (唯一依据现算)",
+   "domain": "模型配置",
+   "grade": "G2",
+   "src": "tools/model_config_matrix.py#L3|在役模型",
+   "read": [
+    "matrix",
+    "L3|在役模型"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "🧠 模型引擎窗口",
+    "🖥 模型引擎页"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "与 8796 /status/all 的 layer==L3 且 state=in_service 一致",
+   "value": "SmolVLA+LEW 长程规划 (在役运行时 ckpt)",
+   "ready": true
+  },
+  {
+   "id": "model.last_train_l3",
+   "cn": "L3 最近一次训练 (真训时间戳)",
+   "domain": "模型配置",
+   "grade": "G4",
+   "src": "tools/model_inventory.py#L3 last_train",
+   "read": [
+    "matrix",
+    "L3|最近训练"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "训练链"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "时间戳来自真产物 mtime; 无产物写'无训练记录' (不编时间)",
+   "value": "2026-10-14 08:09:33",
+   "ready": true
+  },
+  {
+   "id": "model.ss_node_l3",
+   "cn": "L3 状态空间承载节点",
+   "domain": "模型配置",
+   "grade": "G3",
+   "src": "src/lerobot/engineering/flows/state_space_obs.json",
+   "read": [
+    "matrix",
+    "L3|状态空间节点"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "状态空间画布"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "节点必须真在画布上 (按节点 id 判定, 不靠名字猜)",
+   "value": "🧠 VLM 通用视觉编码器 (SmolVLA) · 🎛 L3 · SmolVLA LoRA 微调 · 接入中",
+   "ready": true
+  },
+  {
+   "id": "model.ss_topic_l3",
+   "cn": "L3 状态空间输出话题",
+   "domain": "模型配置",
+   "grade": "G3",
+   "src": "状态空间画布节点 id → ss/<id>/out",
+   "read": [
+    "matrix",
+    "L3|输出话题"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "DDS/话题"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "话题名与画布节点 id 对得上 (逐字一致)",
+   "value": "ss/ssvlm/out ss/ss_lora_l3/out",
+   "ready": true
+  },
+  {
+   "id": "model.in_service_l4",
+   "cn": "L4 在役模型 (唯一依据现算)",
+   "domain": "模型配置",
+   "grade": "G2",
+   "src": "tools/model_config_matrix.py#L4|在役模型",
+   "read": [
+    "matrix",
+    "L4|在役模型"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "🧠 模型引擎窗口",
+    "🖥 模型引擎页"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "与 8796 /status/all 的 layer==L4 且 state=in_service 一致",
+   "value": "INTACT-JEPA 意图-动作 (在役稳定指针)",
+   "ready": true
+  },
+  {
+   "id": "model.last_train_l4",
+   "cn": "L4 最近一次训练 (真训时间戳)",
+   "domain": "模型配置",
+   "grade": "G4",
+   "src": "tools/model_inventory.py#L4 last_train",
+   "read": [
+    "matrix",
+    "L4|最近训练"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "训练链"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "时间戳来自真产物 mtime; 无产物写'无训练记录' (不编时间)",
+   "value": "2026-10-14 14:22:37",
+   "ready": true
+  },
+  {
+   "id": "model.ss_node_l4",
+   "cn": "L4 状态空间承载节点",
+   "domain": "模型配置",
+   "grade": "G3",
+   "src": "src/lerobot/engineering/flows/state_space_obs.json",
+   "read": [
+    "matrix",
+    "L4|状态空间节点"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "状态空间画布"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "节点必须真在画布上 (按节点 id 判定, 不靠名字猜)",
+   "value": "🎯 INTACT (L4) · 工作安全 + 物理世界导航 · 🎯 INTACT 意图解码器 (L4 → L3 条件)",
+   "ready": true
+  },
+  {
+   "id": "model.ss_topic_l4",
+   "cn": "L4 状态空间输出话题",
+   "domain": "模型配置",
+   "grade": "G3",
+   "src": "状态空间画布节点 id → ss/<id>/out",
+   "read": [
+    "matrix",
+    "L4|输出话题"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "DDS/话题"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "话题名与画布节点 id 对得上 (逐字一致)",
+   "value": "ss/ssintact/out ss/ssintact_dec/out",
+   "ready": true
+  },
+  {
+   "id": "model.in_service_l5",
+   "cn": "L5 在役模型 (唯一依据现算)",
+   "domain": "模型配置",
+   "grade": "G2",
+   "src": "tools/model_config_matrix.py#L5|在役模型",
+   "read": [
+    "matrix",
+    "L5|在役模型"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "🧠 模型引擎窗口",
+    "🖥 模型引擎页"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "与 8796 /status/all 的 layer==L5 且 state=in_service 一致",
+   "value": "DeepSeek 视觉规划 (L5 大模型主路)",
+   "ready": true
+  },
+  {
+   "id": "model.last_train_l5",
+   "cn": "L5 最近一次训练 (真训时间戳)",
+   "domain": "模型配置",
+   "grade": "G4",
+   "src": "tools/model_inventory.py#L5 last_train",
+   "read": [
+    "matrix",
+    "L5|最近训练"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "训练链"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "时间戳来自真产物 mtime; 无产物写'无训练记录' (不编时间)",
+   "value": "2026-10-14 14:17:27",
+   "ready": true
+  },
+  {
+   "id": "model.ss_node_l5",
+   "cn": "L5 状态空间承载节点",
+   "domain": "模型配置",
+   "grade": "G3",
+   "src": "src/lerobot/engineering/flows/state_space_obs.json",
+   "read": [
+    "matrix",
+    "L5|状态空间节点"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "状态空间画布"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "节点必须真在画布上 (按节点 id 判定, 不靠名字猜)",
+   "value": "👁 视觉语言大模型 · 场景理解 (Qwen2.5/3-VL) · 🧿 DeepSeek-V4-Flash · 场景理解 (L5 大模型主路)",
+   "ready": true
+  },
+  {
+   "id": "model.ss_topic_l5",
+   "cn": "L5 状态空间输出话题",
+   "domain": "模型配置",
+   "grade": "G3",
+   "src": "状态空间画布节点 id → ss/<id>/out",
+   "read": [
+    "matrix",
+    "L5|输出话题"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "DDS/话题"
+   ],
+   "feature": [
+    "G1"
+   ],
+   "judge": "话题名与画布节点 id 对得上 (逐字一致)",
+   "value": "ss/n_vlm_llm/out ss/n_dsvl/out",
+   "ready": true
+  },
+  {
+   "id": "perf.RP_pose",
+   "cn": "位姿可重复性 RP (末端)",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.RP_pose",
+   "read": [
+    "perf_spec",
+    "perf.RP_pose"
+   ],
+   "unit": "mm",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "FN-SYS1-31",
+    "BO_C1 完整作业执行"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "A 运动学与机械性能 (机器人学口径)",
+   "stage": "DVT",
+   "std": "ISO 9283",
+   "how": "ISO 9283: 同一指令位姿 + 同向 + 同负载 30 次循环, RP = 均值偏差的 ±3σ (点内/点间取大)",
+   "target": "≤0.10 (设计目标; 工艺容差 1mm 的 1/10)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 ISO 9283 · ISO 9283: 同一指令位姿 + 同向 + 同负载 30 次循环, RP = 均值偏差的 ±3σ (点内/点间取大)",
+   "value": "≤0.10 (设计目标; 工艺容差 1mm 的 1/10)",
+   "ready": true
+  },
+  {
+   "id": "perf.AP_pose",
+   "cn": "位姿准确度 AP (末端)",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.AP_pose",
+   "read": [
+    "perf_spec",
+    "perf.AP_pose"
+   ],
+   "unit": "mm",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "FN-SYS1-31",
+    "BO_C1 完整作业执行"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "A 运动学与机械性能 (机器人学口径)",
+   "stage": "PVT",
+   "std": "ISO 9283",
+   "how": "ISO 9283: 指令位姿与实到位姿均值之差 (含系统偏差)",
+   "target": "≤0.50",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 ISO 9283 · ISO 9283: 指令位姿与实到位姿均值之差 (含系统偏差)",
+   "value": "≤0.50",
+   "ready": true
+  },
+  {
+   "id": "perf.RP_angle",
+   "cn": "姿态可重复性 (绕末端轴)",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.RP_angle",
+   "read": [
+    "perf_spec",
+    "perf.RP_angle"
+   ],
+   "unit": "°",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_C4 灵活翻转取放"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "A 运动学与机械性能 (机器人学口径)",
+   "stage": "DVT",
+   "std": "ISO 9283",
+   "how": "同 RP 口径, 角度分量取 ±3σ",
+   "target": "≤0.10 (工艺角容差 1° 的 1/10)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 ISO 9283 · 同 RP 口径, 角度分量取 ±3σ",
+   "value": "≤0.10 (工艺角容差 1° 的 1/10)",
+   "ready": true
+  },
+  {
+   "id": "perf.res_joint",
+   "cn": "关节分辨率 (最小可控增量)",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.res_joint",
+   "read": [
+    "perf_spec",
+    "perf.res_joint"
+   ],
+   "unit": "°",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_C6 宏微复合作业"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "A 运动学与机械性能 (机器人学口径)",
+   "stage": "EVT",
+   "std": "ISO 9787",
+   "how": "单轴点动最小步: 编码器分辨率 ÷ 减速比; 末端分辨率 = 关节分辨率 × 雅可比 ||J||",
+   "target": "≤0.001 (编码器/减速比导出)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 EVT · 口径 ISO 9787 · 单轴点动最小步: 编码器分辨率 ÷ 减速比; 末端分辨率 = 关节分辨率 × 雅可比 ||J||",
+   "value": "≤0.001 (编码器/减速比导出)",
+   "ready": true
+  },
+  {
+   "id": "perf.res_tcp",
+   "cn": "末端(微动)分辨率",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.res_tcp",
+   "read": [
+    "perf_spec",
+    "perf.res_tcp"
+   ],
+   "unit": "µm",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_C6 宏微复合作业",
+    "BO_A2 工位精准对接"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "A 运动学与机械性能 (机器人学口径)",
+   "stage": "DVT",
+   "std": "-",
+   "how": "微动级最小指令步对应的末端位移 (宏微复合节点口径)",
+   "target": "≤20 (宏微复合: 宏臂走粗 + 微动走细)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 - · 微动级最小指令步对应的末端位移 (宏微复合节点口径)",
+   "value": "≤20 (宏微复合: 宏臂走粗 + 微动走细)",
+   "ready": true
+  },
+  {
+   "id": "perf.backlash",
+   "cn": "反向间隙 (回差)",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.backlash",
+   "read": [
+    "perf_spec",
+    "perf.backlash"
+   ],
+   "unit": "mm",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_C1 完整作业执行"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "A 运动学与机械性能 (机器人学口径)",
+   "stage": "DVT",
+   "std": "ISO 230-2",
+   "how": "ISO 230-2 双向定位: 同一点正反向到达读数之差均值",
+   "target": "≤0.05",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 ISO 230-2 · ISO 230-2 双向定位: 同一点正反向到达读数之差均值",
+   "value": "≤0.05",
+   "ready": true
+  },
+  {
+   "id": "perf.lift_repeat",
+   "cn": "升降轴重复定位精度",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.lift_repeat",
+   "read": [
+    "perf_spec",
+    "perf.lift_repeat"
+   ],
+   "unit": "mm",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_A3 举升高度调节"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "A 运动学与机械性能 (机器人学口径)",
+   "stage": "EVT",
+   "std": "ISO 230-2",
+   "how": "ISO 230-2: 全行程 5 个目标位往返 5 次, 单向重复定位取 ±3σ",
+   "target": "≤0.02 (结构设计值, 0–450mm 全行程)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 EVT · 口径 ISO 230-2 · ISO 230-2: 全行程 5 个目标位往返 5 次, 单向重复定位取 ±3σ",
+   "value": "≤0.02 (结构设计值, 0–450mm 全行程)",
+   "ready": true
+  },
+  {
+   "id": "perf.settle",
+   "cn": "整定时间 (到位稳定)",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.settle",
+   "read": [
+    "perf_spec",
+    "perf.settle"
+   ],
+   "unit": "ms",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_C1 完整作业执行",
+    "BO_F1 本地实时作业"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "A 运动学与机械性能 (机器人学口径)",
+   "stage": "DVT",
+   "std": "ISO 9283 附录",
+   "how": "阶跃指令后末端残差首次进入并保持在容差带内的时间; 超调 ≤10%",
+   "target": "≤300 (残差进入 ±0.05mm 并保持)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 ISO 9283 附录 · 阶跃指令后末端残差首次进入并保持在容差带内的时间; 超调 ≤10%",
+   "value": "≤300 (残差进入 ±0.05mm 并保持)",
+   "ready": true
+  },
+  {
+   "id": "perf.stiff",
+   "cn": "末端静刚度 (受力位移)",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.stiff",
+   "read": [
+    "perf_spec",
+    "perf.stiff"
+   ],
+   "unit": "mm/N",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_C2 精细对位",
+    "BO_C1 完整作业执行"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "A 运动学与机械性能 (机器人学口径)",
+   "stage": "DVT",
+   "std": "-",
+   "how": "末端施加 5N 侧向/垂向力, 激光跟踪或百分表读位移",
+   "target": "≤0.02 (5N 侧向力下末端位移)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 - · 末端施加 5N 侧向/垂向力, 激光跟踪或百分表读位移",
+   "value": "≤0.02 (5N 侧向力下末端位移)",
+   "ready": true
+  },
+  {
+   "id": "perf.sync_dual",
+   "cn": "双臂同步误差",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.sync_dual",
+   "read": [
+    "perf_spec",
+    "perf.sync_dual"
+   ],
+   "unit": "mm",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_C5 双臂协同作业"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "A 运动学与机械性能 (机器人学口径)",
+   "stage": "DVT",
+   "std": "-",
+   "how": "双臂协同轨迹 (如翻转/对接) 逐采样点相对位姿偏差最大值",
+   "target": "≤0.20 (协同轨迹瞬时相对偏差)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 - · 双臂协同轨迹 (如翻转/对接) 逐采样点相对位姿偏差最大值",
+   "value": "≤0.20 (协同轨迹瞬时相对偏差)",
+   "ready": true
+  },
+  {
+   "id": "perf.payload_ratio",
+   "cn": "负载-自重复合比",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.payload_ratio",
+   "read": [
+    "perf_spec",
+    "perf.payload_ratio"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "FN-SYS1-31"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "A 运动学与机械性能 (机器人学口径)",
+   "stage": "EVT",
+   "std": "-",
+   "how": "额定负载 ÷ 实际末端+工件质量",
+   "target": "单臂额定 7kg / 实需 5kg ⇒ 余量 ≥1.4×",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 EVT · 口径 - · 额定负载 ÷ 实际末端+工件质量",
+   "value": "单臂额定 7kg / 实需 5kg ⇒ 余量 ≥1.4×",
+   "ready": true
+  },
+  {
+   "id": "perf.envelope",
+   "cn": "单臂作业半径",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.envelope",
+   "read": [
+    "perf_spec",
+    "perf.envelope"
+   ],
+   "unit": "mm",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_A3 举升高度调节",
+    "BO_C1 完整作业执行"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "A 运动学与机械性能 (机器人学口径)",
+   "stage": "EVT",
+   "std": "-",
+   "how": "肩轴心到最远料位的直线距离 + 姿态可达性抽样 (统计不可达料位 = 0)",
+   "target": "≥988 (达标即覆盖 30 槽料盘与 Tray 全位)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 EVT · 口径 - · 肩轴心到最远料位的直线距离 + 姿态可达性抽样 (统计不可达料位 = 0)",
+   "value": "≥988 (达标即覆盖 30 槽料盘与 Tray 全位)",
+   "ready": true
+  },
+  {
+   "id": "perf.handeye_res",
+   "cn": "手眼标定残差",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.handeye_res",
+   "read": [
+    "perf_spec",
+    "perf.handeye_res"
+   ],
+   "unit": "mm",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_B2 空间位姿感知",
+    "BO_A2 工位精准对接"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "B 视觉与测量链 (定位/分辨率/时延)",
+   "stage": "EVT",
+   "std": "-",
+   "how": "标定靶 ≥12 位姿, 靶心重投影/闭环残差 RMS; 超限判标定失效须重标",
+   "target": "≤2.0 (TSAI 闭环现测 1.74)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 EVT · 口径 - · 标定靶 ≥12 位姿, 靶心重投影/闭环残差 RMS; 超限判标定失效须重标",
+   "value": "≤2.0 (TSAI 闭环现测 1.74)",
+   "ready": true
+  },
+  {
+   "id": "perf.vis_repeat",
+   "cn": "腕部相机定位重复性 (1σ)",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.vis_repeat",
+   "read": [
+    "perf_spec",
+    "perf.vis_repeat"
+   ],
+   "unit": "mm",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_B1 目标识别定位"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "B 视觉与测量链 (定位/分辨率/时延)",
+   "stage": "DVT",
+   "std": "ISO 9283 (视觉分量)",
+   "how": "工件静置, 连拍 ≥50 帧解算位姿, 取 1σ 与极差",
+   "target": "≤0.15 @300mm 工作距离",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 ISO 9283 (视觉分量) · 工件静置, 连拍 ≥50 帧解算位姿, 取 1σ 与极差",
+   "value": "≤0.15 @300mm 工作距离",
+   "ready": true
+  },
+  {
+   "id": "perf.vis_scale",
+   "cn": "视觉空间分辨率 (像素当量)",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.vis_scale",
+   "read": [
+    "perf_spec",
+    "perf.vis_scale"
+   ],
+   "unit": "mm/px",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_B1 目标识别定位"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "B 视觉与测量链 (定位/分辨率/时延)",
+   "stage": "EVT",
+   "std": "-",
+   "how": "标定板已知间距 ÷ 像素数; 亚像素用边缘拟合 (0.05px 量级)",
+   "target": "≤0.25 @300mm; 亚像素插值后 ≤0.05",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 EVT · 口径 - · 标定板已知间距 ÷ 像素数; 亚像素用边缘拟合 (0.05px 量级)",
+   "value": "≤0.25 @300mm; 亚像素插值后 ≤0.05",
+   "ready": true
+  },
+  {
+   "id": "perf.depth_noise",
+   "cn": "深度测量噪声 (D405)",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.depth_noise",
+   "read": [
+    "perf_spec",
+    "perf.depth_noise"
+   ],
+   "unit": "mm",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_B2 空间位姿感知"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "B 视觉与测量链 (定位/分辨率/时延)",
+   "stage": "EVT",
+   "std": "-",
+   "how": "平面目标连拍 ≥100 帧, 深度残差 1σ; **原始单位 = 0.1mm (D405)**",
+   "target": "≤0.5 @300mm (滤波后)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 EVT · 口径 - · 平面目标连拍 ≥100 帧, 深度残差 1σ; **原始单位 = 0.1mm (D405)**",
+   "value": "≤0.5 @300mm (滤波后)",
+   "ready": true
+  },
+  {
+   "id": "perf.pose6d_ang",
+   "cn": "6D 位姿角度分辨率",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.pose6d_ang",
+   "read": [
+    "perf_spec",
+    "perf.pose6d_ang"
+   ],
+   "unit": "°",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_B2 空间位姿感知",
+    "BO_C4 灵活翻转取放"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "B 视觉与测量链 (定位/分辨率/时延)",
+   "stage": "DVT",
+   "std": "-",
+   "how": "已知角度台阶 (0.05°/0.1°) 工件, 解算角分辨能力",
+   "target": "≤0.10",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 - · 已知角度台阶 (0.05°/0.1°) 工件, 解算角分辨能力",
+   "value": "≤0.10",
+   "ready": true
+  },
+  {
+   "id": "perf.latency_e2e",
+   "cn": "端到端时延 (采图→位姿输出)",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.latency_e2e",
+   "read": [
+    "perf_spec",
+    "perf.latency_e2e"
+   ],
+   "unit": "ms",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_F1 本地实时作业",
+    "BO_B2 空间位姿感知"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "B 视觉与测量链 (定位/分辨率/时延)",
+   "stage": "DVT",
+   "std": "-",
+   "how": "打时间戳: 采集时刻 → 位姿消息发布时刻; 取 P95; 负帧龄一律拒用",
+   "target": "≤50 (帧龄须随帧标注)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 - · 打时间戳: 采集时刻 → 位姿消息发布时刻; 取 P95; 负帧龄一律拒用",
+   "value": "≤50 (帧龄须随帧标注)",
+   "ready": true
+  },
+  {
+   "id": "perf.slot_accuracy",
+   "cn": "料位识别准确率",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.slot_accuracy",
+   "read": [
+    "perf_spec",
+    "perf.slot_accuracy"
+   ],
+   "unit": "%",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_B1 目标识别定位"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "B 视觉与测量链 (定位/分辨率/时延)",
+   "stage": "PVT",
+   "std": "-",
+   "how": "12+ 型号 × 满/缺/错位样本集, 混淆矩阵逐类召回",
+   "target": "≥99.9 (含缺料/错位/异物判态)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 - · 12+ 型号 × 满/缺/错位样本集, 混淆矩阵逐类召回",
+   "value": "≥99.9 (含缺料/错位/异物判态)",
+   "ready": true
+  },
+  {
+   "id": "perf.illum_range",
+   "cn": "照度适应性",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.illum_range",
+   "read": [
+    "perf_spec",
+    "perf.illum_range"
+   ],
+   "unit": "lx",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_B1 目标识别定位"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "B 视觉与测量链 (定位/分辨率/时延)",
+   "stage": "DVT",
+   "std": "-",
+   "how": "可调光源扫照度, 记录定位漂移与识别率跌落点",
+   "target": "300–1500 照度区间内定位漂移 ≤0.15mm",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 - · 可调光源扫照度, 记录定位漂移与识别率跌落点",
+   "value": "300–1500 照度区间内定位漂移 ≤0.15mm",
+   "ready": true
+  },
+  {
+   "id": "perf.insert_depth_res",
+   "cn": "插入深度控制分辨率",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.insert_depth_res",
+   "read": [
+    "perf_spec",
+    "perf.insert_depth_res"
+   ],
+   "unit": "mm",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_C2 精细对位",
+    "BO_C6 宏微复合作业"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "C 电口 (金手指) 精细插装",
+   "stage": "DVT",
+   "std": "-",
+   "how": "微动级最小可控步 + 力位混合闭环的深度分辨率",
+   "target": "≤0.02",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 - · 微动级最小可控步 + 力位混合闭环的深度分辨率",
+   "value": "≤0.02",
+   "ready": true
+  },
+  {
+   "id": "perf.D_INSERT_mm",
+   "cn": "插深终到误差 (现有指标 F-A02)",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.D_INSERT_mm",
+   "read": [
+    "perf_spec",
+    "perf.D_INSERT_mm"
+   ],
+   "unit": "mm",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_C2 精细对位"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "C 电口 (金手指) 精细插装",
+   "stage": "PVT",
+   "std": "-",
+   "how": "插入到位后深度指令与实到之差; 判据收敛路径: 早期宽松档 4mm → PVT 0.3mm",
+   "target": "≤0.30 (现口径 <4mm)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 - · 插入到位后深度指令与实到之差; 判据收敛路径: 早期宽松档 4mm → PVT 0.3mm",
+   "value": "≤0.30 (现口径 <4mm)",
+   "ready": true
+  },
+  {
+   "id": "perf.force_res",
+   "cn": "力控分辨率",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.force_res",
+   "read": [
+    "perf_spec",
+    "perf.force_res"
+   ],
+   "unit": "N",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_C2 精细对位"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "C 电口 (金手指) 精细插装",
+   "stage": "DVT",
+   "std": "-",
+   "how": "力传感器/电流估计的最小可辨力差 (静态标定 + 噪声 3σ)",
+   "target": "≤0.5",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 - · 力传感器/电流估计的最小可辨力差 (静态标定 + 噪声 3σ)",
+   "value": "≤0.5",
+   "ready": true
+  },
+  {
+   "id": "perf.force_overshoot",
+   "cn": "插装力超调",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.force_overshoot",
+   "read": [
+    "perf_spec",
+    "perf.force_overshoot"
+   ],
+   "unit": "%",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_C2 精细对位",
+    "BO_C1 完整作业执行"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "C 电口 (金手指) 精细插装",
+   "stage": "DVT",
+   "std": "-",
+   "how": "力-位移曲线峰值 ÷ 稳态值 - 1; 含末端接触瞬间",
+   "target": "≤15 (峰值/稳态)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 - · 力-位移曲线峰值 ÷ 稳态值 - 1; 含末端接触瞬间",
+   "value": "≤15 (峰值/稳态)",
+   "ready": true
+  },
+  {
+   "id": "perf.contact_pressure",
+   "cn": "金手指接触压力上限 (不划伤)",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.contact_pressure",
+   "read": [
+    "perf_spec",
+    "perf.contact_pressure"
+   ],
+   "unit": "N",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_C2 精细对位",
+    "BO_B5 光学质量检测"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "C 电口 (金手指) 精细插装",
+   "stage": "PVT",
+   "std": "-",
+   "how": "插入全程力上限限幅; 插后镀层目检 (IEC 61300-3-35 类比划痕判据, 划痕=0); **上限须端子/镀层厂家给定**",
+   "target": "待定 (按最小可行力作业)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 - · 插入全程力上限限幅; 插后镀层目检 (IEC 61300-3-35 类比划痕判据, 划痕=0); **上限须端子/镀层厂家给定**",
+   "value": null,
+   "ready": false,
+   "reason": "目标值待定 (需按工件/工艺规格确认)"
+  },
+  {
+   "id": "perf.mate_align_repeat",
+   "cn": "端子对位重复性",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.mate_align_repeat",
+   "read": [
+    "perf_spec",
+    "perf.mate_align_repeat"
+   ],
+   "unit": "mm",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_A2 工位精准对接",
+    "BO_C2 精细对位"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "C 电口 (金手指) 精细插装",
+   "stage": "DVT",
+   "std": "ISO 9283 (对位分量)",
+   "how": "对已有端子连插 ≥30 次, 记录横向偏差 3σ",
+   "target": "X/Y 各 ≤0.05 (3σ)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 ISO 9283 (对位分量) · 对已有端子连插 ≥30 次, 记录横向偏差 3σ",
+   "value": "X/Y 各 ≤0.05 (3σ)",
+   "ready": true
+  },
+  {
+   "id": "perf.mate_angle_repeat",
+   "cn": "对插姿态角偏差",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.mate_angle_repeat",
+   "read": [
+    "perf_spec",
+    "perf.mate_angle_repeat"
+   ],
+   "unit": "°",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_C4 灵活翻转取放",
+    "BO_C2 精细对位"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "C 电口 (金手指) 精细插装",
+   "stage": "DVT",
+   "std": "-",
+   "how": "对插前姿态与端子轴心夹角, 连插 30 次取 3σ",
+   "target": "≤0.10 (绕插轴/俯仰)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 - · 对插前姿态与端子轴心夹角, 连插 30 次取 3σ",
+   "value": "≤0.10 (绕插轴/俯仰)",
+   "ready": true
+  },
+  {
+   "id": "perf.force_curve_consistency",
+   "cn": "插装力-位移曲线一致性",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.force_curve_consistency",
+   "read": [
+    "perf_spec",
+    "perf.force_curve_consistency"
+   ],
+   "unit": "corr",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_C2 精细对位",
+    "BO_E2 边学边练"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "C 电口 (金手指) 精细插装",
+   "stage": "PVT",
+   "std": "-",
+   "how": "每次插装力-位移曲线与标杆模板的相关系数; 低于阈值判异常并停线告警",
+   "target": "≥0.90 (与标杆模板相关)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 - · 每次插装力-位移曲线与标杆模板的相关系数; 低于阈值判异常并停线告警",
+   "value": "≥0.90 (与标杆模板相关)",
+   "ready": true
+  },
+  {
+   "id": "perf.mate_life",
+   "cn": "插拔寿命 (工件端)",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.mate_life",
+   "read": [
+    "perf_spec",
+    "perf.mate_life"
+   ],
+   "unit": "次",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_C2 精细对位"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "C 电口 (金手指) 精细插装",
+   "stage": "DVT",
+   "std": "-",
+   "how": "同一端子反复插拔, 每 100 次检查镀层/接触电阻; 按 ISO 端子寿命档定",
+   "target": "待定 (≥500 次不劣化)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 - · 同一端子反复插拔, 每 100 次检查镀层/接触电阻; 按 ISO 端子寿命档定",
+   "value": null,
+   "ready": false,
+   "reason": "目标值待定 (需按工件/工艺规格确认)"
+  },
+  {
+   "id": "perf.coplanarity",
+   "cn": "端子共面度容差 (可插件)",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.coplanarity",
+   "read": [
+    "perf_spec",
+    "perf.coplanarity"
+   ],
+   "unit": "mm",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_B5 光学质量检测"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "C 电口 (金手指) 精细插装",
+   "stage": "DVT",
+   "std": "-",
+   "how": "工件端子共面度抽样测量, 与插入成功率回归, 定出容差上限",
+   "target": "待定 (由工件公差给出)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 - · 工件端子共面度抽样测量, 与插入成功率回归, 定出容差上限",
+   "value": null,
+   "ready": false,
+   "reason": "目标值待定 (需按工件/工艺规格确认)"
+  },
+  {
+   "id": "perf.face_gap",
+   "cn": "光纤端面非接触安全间隙",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.face_gap",
+   "read": [
+    "perf_spec",
+    "perf.face_gap"
+   ],
+   "unit": "mm",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_C2 精细对位"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "D 光口 · 光纤 · 光耦合",
+   "stage": "DVT",
+   "std": "IEC 61300-3-35",
+   "how": "作业路径最近点间隙仿真 + 现场激光位移复核; 端面接触计数须为 0",
+   "target": "≥0.5 (端面禁止任何接触; 触面 = 判废)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 IEC 61300-3-35 · 作业路径最近点间隙仿真 + 现场激光位移复核; 端面接触计数须为 0",
+   "value": "≥0.5 (端面禁止任何接触; 触面 = 判废)",
+   "ready": true
+  },
+  {
+   "id": "perf.fiber_bend_r",
+   "cn": "光纤最小弯曲半径 (作业中)",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.fiber_bend_r",
+   "read": [
+    "perf_spec",
+    "perf.fiber_bend_r"
+   ],
+   "unit": "mm",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "FN-SYS1-31",
+    "BO_C1 完整作业执行"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "D 光口 · 光纤 · 光耦合",
+   "stage": "DVT",
+   "std": "-",
+   "how": "抓取-转运-入槽全程最小曲率半径估算 (路径后处理) + 目检无折痕; 按成品线缆规格",
+   "target": "≥20 (动态) / ≥10 (静态)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 - · 抓取-转运-入槽全程最小曲率半径估算 (路径后处理) + 目检无折痕; 按成品线缆规格",
+   "value": "≥20 (动态) / ≥10 (静态)",
+   "ready": true
+  },
+  {
+   "id": "perf.conn_mate_force",
+   "cn": "光连接器对接力上限",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.conn_mate_force",
+   "read": [
+    "perf_spec",
+    "perf.conn_mate_force"
+   ],
+   "unit": "N",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_C2 精细对位"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "D 光口 · 光纤 · 光耦合",
+   "stage": "PVT",
+   "std": "-",
+   "how": "插接全程力上限限幅 + 力曲线记录比对",
+   "target": "待定 (按连接器规格, 超限判废)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 - · 插接全程力上限限幅 + 力曲线记录比对",
+   "value": null,
+   "ready": false,
+   "reason": "目标值待定 (需按工件/工艺规格确认)"
+  },
+  {
+   "id": "perf.aa_res_lin",
+   "cn": "有源耦合对准分辨率 (平移)",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.aa_res_lin",
+   "read": [
+    "perf_spec",
+    "perf.aa_res_lin"
+   ],
+   "unit": "µm",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_C6 宏微复合作业",
+    "BO_A2 工位精准对接"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "D 光口 · 光纤 · 光耦合",
+   "stage": "PVT",
+   "std": "-",
+   "how": "微动级最小可控位移 + 光功率-位移曲线分辨率",
+   "target": "≤1.0 (六轴微动级)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 - · 微动级最小可控位移 + 光功率-位移曲线分辨率",
+   "value": "≤1.0 (六轴微动级)",
+   "ready": true
+  },
+  {
+   "id": "perf.aa_res_ang",
+   "cn": "有源耦合对准分辨率 (角度)",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.aa_res_ang",
+   "read": [
+    "perf_spec",
+    "perf.aa_res_ang"
+   ],
+   "unit": "µrad",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_C6 宏微复合作业"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "D 光口 · 光纤 · 光耦合",
+   "stage": "PVT",
+   "std": "-",
+   "how": "角度台最小步 × 杠杆臂换算末端位移, 与功率梯度联合标定",
+   "target": "≤50",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 - · 角度台最小步 × 杠杆臂换算末端位移, 与功率梯度联合标定",
+   "value": "≤50",
+   "ready": true
+  },
+  {
+   "id": "perf.aa_search",
+   "cn": "对准搜索范围 (粗对准能力)",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.aa_search",
+   "read": [
+    "perf_spec",
+    "perf.aa_search"
+   ],
+   "unit": "mm",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_B2 空间位姿感知",
+    "BO_C6 宏微复合作业"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "D 光口 · 光纤 · 光耦合",
+   "stage": "PVT",
+   "std": "-",
+   "how": "从最坏初始偏差出发, 自动搜索收敛到目标功率所需范围",
+   "target": "±2 (平移) / ±5° (角度)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 - · 从最坏初始偏差出发, 自动搜索收敛到目标功率所需范围",
+   "value": "±2 (平移) / ±5° (角度)",
+   "ready": true
+  },
+  {
+   "id": "perf.il_target",
+   "cn": "插入损耗 IL",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.il_target",
+   "read": [
+    "perf_spec",
+    "perf.il_target"
+   ],
+   "unit": "dB",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_F1 本地实时作业",
+    "BO_C6 宏微复合作业"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "D 光口 · 光纤 · 光耦合",
+   "stage": "PVT",
+   "std": "IEC 61753",
+   "how": "光源+光功率计测插损; 装配后逐件记录, 超限判 NG",
+   "target": "≤0.5 (单点; 按成品规格)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 IEC 61753 · 光源+光功率计测插损; 装配后逐件记录, 超限判 NG",
+   "value": "≤0.5 (单点; 按成品规格)",
+   "ready": true
+  },
+  {
+   "id": "perf.il_repeat",
+   "cn": "耦合重复性 (逐件 IL 一致性)",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.il_repeat",
+   "read": [
+    "perf_spec",
+    "perf.il_repeat"
+   ],
+   "unit": "dB",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_C6 宏微复合作业",
+    "BO_E2 边学边练"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "D 光口 · 光纤 · 光耦合",
+   "stage": "PVT",
+   "std": "IEC 61753",
+   "how": "连续装 ≥20 件, IL 分布 1σ; 同时记录漂移趋势",
+   "target": "σ ≤0.10 (同型号连续 ≥20 件)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 IEC 61753 · 连续装 ≥20 件, IL 分布 1σ; 同时记录漂移趋势",
+   "value": "σ ≤0.10 (同型号连续 ≥20 件)",
+   "ready": true
+  },
+  {
+   "id": "perf.rl_target",
+   "cn": "回波损耗 RL",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.rl_target",
+   "read": [
+    "perf_spec",
+    "perf.rl_target"
+   ],
+   "unit": "dB",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_B5 光学质量检测"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "D 光口 · 光纤 · 光耦合",
+   "stage": "PVT",
+   "std": "IEC 61753",
+   "how": "回损仪或反射法测量, 按端面类型判定",
+   "target": "≥50 (UPC) / ≥60 (APC)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 IEC 61753 · 回损仪或反射法测量, 按端面类型判定",
+   "value": "≥50 (UPC) / ≥60 (APC)",
+   "ready": true
+  },
+  {
+   "id": "perf.opm_res",
+   "cn": "光功率监测分辨率/采样率",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.opm_res",
+   "read": [
+    "perf_spec",
+    "perf.opm_res"
+   ],
+   "unit": "dB/Hz",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_F1 本地实时作业"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "D 光口 · 光纤 · 光耦合",
+   "stage": "PVT",
+   "std": "-",
+   "how": "功率计最小分辨力 + 采样率; 对准搜索的判据精度直接受此约束",
+   "target": "≤0.05 / ≥? (需定功率计量程与刷新率)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 - · 功率计最小分辨力 + 采样率; 对准搜索的判据精度直接受此约束",
+   "value": "≤0.05 / ≥? (需定功率计量程与刷新率)",
+   "ready": true
+  },
+  {
+   "id": "perf.hold_drift",
+   "cn": "固化前保持漂移 (UV 窗口内)",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.hold_drift",
+   "read": [
+    "perf_spec",
+    "perf.hold_drift"
+   ],
+   "unit": "µm/s",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_C6 宏微复合作业"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "D 光口 · 光纤 · 光耦合",
+   "stage": "PVT",
+   "std": "-",
+   "how": "功率锁定后保持 N 秒, 记录末端位移与功率跌落",
+   "target": "≤0.5 (点胶→UV 固化期间位移漂移)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 - · 功率锁定后保持 N 秒, 记录末端位移与功率跌落",
+   "value": "≤0.5 (点胶→UV 固化期间位移漂移)",
+   "ready": true
+  },
+  {
+   "id": "perf.face_clean",
+   "cn": "端面洁净度 (颗粒/划痕)",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.face_clean",
+   "read": [
+    "perf_spec",
+    "perf.face_clean"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_B5 光学质量检测"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "D 光口 · 光纤 · 光耦合",
+   "stage": "PVT",
+   "std": "IEC 61300-3-35",
+   "how": "端面检测仪 (自动判面) 逐件检, 结果入良率台账",
+   "target": "颗粒 ≤5µm 无; 划痕按 IEC 61300-3-35",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 IEC 61300-3-35 · 端面检测仪 (自动判面) 逐件检, 结果入良率台账",
+   "value": "颗粒 ≤5µm 无; 划痕按 IEC 61300-3-35",
+   "ready": true
+  },
+  {
+   "id": "perf.cycle_s",
+   "cn": "单颗取放周期 CT (现有指标)",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.cycle_s",
+   "read": [
+    "perf_spec",
+    "perf.cycle_s"
+   ],
+   "unit": "s",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "FN-SYS1-31",
+    "TASK-06-TRAY"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "E 节拍 · 吞吐 · 可靠性",
+   "stage": "PVT",
+   "std": "-",
+   "how": "分阶段: PVT ≤3.15 s · DVT ≤8 s · EVT ≤20–25 s; CT 起止口径: 吸取离盘 → 下一位就位; 取中位数 + P95",
+   "target": "≤3.15 / ≤8 / ≤20–25 s",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 - · 分阶段: PVT ≤3.15 s · DVT ≤8 s · EVT ≤20–25 s; CT 起止口径: 吸取离盘 → 下一位就位; 取中位数 + P95",
+   "value": "≤3.15 / ≤8 / ≤20–25 s",
+   "ready": true
+  },
+  {
+   "id": "perf.cycle_split",
+   "cn": "CT 分段预算",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.cycle_split",
+   "read": [
+    "perf_spec",
+    "perf.cycle_split"
+   ],
+   "unit": "s",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_F1 本地实时作业",
+    "BO_C6 宏微复合作业"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "E 节拍 · 吞吐 · 可靠性",
+   "stage": "DVT",
+   "std": "-",
+   "how": "逐段上限: 取件 ≤0.8 / 转运 ≤1.0 / 对位 ≤0.6 / 插入 ≤0.5 / 判态 ≤0.25 s; 任一段超预算即定位瓶颈",
+   "target": "五段合计 ≤3.15 s",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 - · 逐段上限: 取件 ≤0.8 / 转运 ≤1.0 / 对位 ≤0.6 / 插入 ≤0.5 / 判态 ≤0.25 s; 任一段超预算即定位瓶颈",
+   "value": "五段合计 ≤3.15 s",
+   "ready": true
+  },
+  {
+   "id": "perf.uph",
+   "cn": "理论/实测产能 UPH",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.uph",
+   "read": [
+    "perf_spec",
+    "perf.uph"
+   ],
+   "unit": "颗/h",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "FN-SYS1-31"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "E 节拍 · 吞吐 · 可靠性",
+   "stage": "PVT",
+   "std": "-",
+   "how": "连续作业 ≥1h 计数; 与理论值比给效率口径",
+   "target": "PVT ≥1100 (理论 1142.9 × 效率 0.96)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 - · 连续作业 ≥1h 计数; 与理论值比给效率口径",
+   "value": "PVT ≥1100 (理论 1142.9 × 效率 0.96)",
+   "ready": true
+  },
+  {
+   "id": "perf.success_rate",
+   "cn": "取放成功率",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.success_rate",
+   "read": [
+    "perf_spec",
+    "perf.success_rate"
+   ],
+   "unit": "%",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "TASK-06-TRAY",
+    "BO_C1 完整作业执行"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "E 节拍 · 吞吐 · 可靠性",
+   "stage": "PVT",
+   "std": "-",
+   "how": "连续 ≥12 盘统计, 成功 = 无需人工干预完成入槽并判态通过; **人工干预即记不完整成功**",
+   "target": "≥99 (PVT) / ≥95 (DVT) / ≥90 (EVT)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 - · 连续 ≥12 盘统计, 成功 = 无需人工干预完成入槽并判态通过; **人工干预即记不完整成功**",
+   "value": "≥99 (PVT) / ≥95 (DVT) / ≥90 (EVT)",
+   "ready": true
+  },
+  {
+   "id": "perf.endurance",
+   "cn": "连续自主作业盘数",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.endurance",
+   "read": [
+    "perf_spec",
+    "perf.endurance"
+   ],
+   "unit": "盘",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "TASK-06-TRAY"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "E 节拍 · 吞吐 · 可靠性",
+   "stage": "PVT",
+   "std": "-",
+   "how": "连续周转盘作业不干预计数; 单日 ≥20h / 月 ≥28 天 作为长周期口径",
+   "target": "≥12 (PVT, 硬下限 ≥6)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 - · 连续周转盘作业不干预计数; 单日 ≥20h / 月 ≥28 天 作为长周期口径",
+   "value": "≥12 (PVT, 硬下限 ≥6)",
+   "ready": true
+  },
+  {
+   "id": "perf.changeover",
+   "cn": "换型时间",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.changeover",
+   "read": [
+    "perf_spec",
+    "perf.changeover"
+   ],
+   "unit": "min",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_G1 标准模型接入",
+    "BO_E2 边学边练"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "E 节拍 · 吞吐 · 可靠性",
+   "stage": "PVT",
+   "std": "-",
+   "how": "从停机到首件合格的时间 (12+ 型号间切换); 配方固化项 + 柔性项自适应",
+   "target": "≤30 (12+ 型号); 新型号学习 ≤3h",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 - · 从停机到首件合格的时间 (12+ 型号间切换); 配方固化项 + 柔性项自适应",
+   "value": "≤30 (12+ 型号); 新型号学习 ≤3h",
+   "ready": true
+  },
+  {
+   "id": "perf.mtbf",
+   "cn": "平均无故障时间 MTBF / MTTR",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.mtbf",
+   "read": [
+    "perf_spec",
+    "perf.mtbf"
+   ],
+   "unit": "h/h",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_G3 事件自动通知"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "E 节拍 · 吞吐 · 可靠性",
+   "stage": "PVT",
+   "std": "-",
+   "how": "长周期运行台账统计; 故障分级 (可自恢复 / 需人工)",
+   "target": "待定 (按 EVT 后可靠性数据定档)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 - · 长周期运行台账统计; 故障分级 (可自恢复 / 需人工)",
+   "value": null,
+   "ready": false,
+   "reason": "目标值待定 (需按工件/工艺规格确认)"
+  },
+  {
+   "id": "perf.anomaly_recovery",
+   "cn": "异常自恢复率",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.anomaly_recovery",
+   "read": [
+    "perf_spec",
+    "perf.anomaly_recovery"
+   ],
+   "unit": "%",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_E2 边学边练",
+    "BO_G3 事件自动通知"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "E 节拍 · 吞吐 · 可靠性",
+   "stage": "PVT",
+   "std": "-",
+   "how": "人为注入三类异常各 ≥20 次, 统计无人工干预恢复比例",
+   "target": "待定 (卡料/缺料/对位失败三类)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 - · 人为注入三类异常各 ≥20 次, 统计无人工干预恢复比例",
+   "value": null,
+   "ready": false,
+   "reason": "目标值待定 (需按工件/工艺规格确认)"
+  },
+  {
+   "id": "perf.UPH_target",
+   "cn": "目标产能 UPH",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.UPH_target",
+   "read": [
+    "perf_spec",
+    "perf.UPH_target"
+   ],
+   "unit": "件/h",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "TASK-07-AOI",
+    "FN-PLAT-76"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "E 节拍 · 吞吐 · 可靠性",
+   "stage": "DVT",
+   "std": "客户 SOR",
+   "how": "元任务 56 实例 / 392 段 / 159.43s 一轮 / 14 件 → 几何 315, 取 300 为设计目标",
+   "target": "= 300",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 客户 SOR · 元任务 56 实例 / 392 段 / 159.43s 一轮 / 14 件 → 几何 315, 取 300 为设计目标",
+   "value": "= 300",
+   "ready": true
+  },
+  {
+   "id": "perf.tact_target",
+   "cn": "目标节拍",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.tact_target",
+   "read": [
+    "perf_spec",
+    "perf.tact_target"
+   ],
+   "unit": "s/件",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "TASK-07-AOI",
+    "FN-PLAT-77"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "E 节拍 · 吞吐 · 可靠性",
+   "stage": "DVT",
+   "std": "内部",
+   "how": "3600/UPH; 一零件内 392/14 段的时间均值, 不含换盘与异常停线",
+   "target": "≤12.0 (几何 11.42)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 内部 · 3600/UPH; 一零件内 392/14 段的时间均值, 不含换盘与异常停线",
+   "value": "≤12.0 (几何 11.42)",
+   "ready": true
+  },
+  {
+   "id": "perf.double_arm_parallel",
+   "cn": "双臂并行度",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.double_arm_parallel",
+   "read": [
+    "perf_spec",
+    "perf.double_arm_parallel"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "TASK-07-AOI"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "E 节拍 · 吞吐 · 可靠性",
+   "stage": "DVT",
+   "std": "内部",
+   "how": "元任务并行判定: 同一时刻两臂各在自己的元任务序列上, 无共享资源争用",
+   "target": "左臂摆盘 + 右臂插拔/AOI 同时动作 (互不阻塞)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 内部 · 元任务并行判定: 同一时刻两臂各在自己的元任务序列上, 无共享资源争用",
+   "value": "左臂摆盘 + 右臂插拔/AOI 同时动作 (互不阻塞)",
+   "ready": true
+  },
+  {
+   "id": "perf.yield_target",
+   "cn": "目标良率",
+   "domain": "性能配置",
+   "grade": "G2",
+   "src": "config/platform/zmax_perf_spec.json#perf.yield_target",
+   "read": [
+    "perf_spec",
+    "perf.yield_target"
+   ],
+   "unit": "%",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "TASK-07-AOI",
+    "FN-SYS0-40"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "E 节拍 · 吞吐 · 可靠性",
+   "stage": "DVT",
+   "std": "IEC 61300-3-35",
+   "how": "AOI 五点全 OK 记良品; 金手指/侧面任一点 NG 走废料盘",
+   "target": "≥99 (12 OK / 14 件 NG 规则)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 IEC 61300-3-35 · AOI 五点全 OK 记良品; 金手指/侧面任一点 NG 走废料盘",
+   "value": "≥99 (12 OK / 14 件 NG 规则)",
+   "ready": true
+  },
+  {
+   "id": "perf.esd_surface",
+   "cn": "设备外壳表面电阻",
+   "domain": "性能配置",
+   "grade": "G1",
+   "src": "config/platform/zmax_perf_spec.json#perf.esd_surface",
+   "read": [
+    "perf_spec",
+    "perf.esd_surface"
+   ],
+   "unit": "Ω",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "FN-SYS1-33",
+    "BO_H1 安全红线"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "F 环境 · ESD · 洁净度 · 安全",
+   "stage": "EVT",
+   "std": "ANSI/ESD S20.20",
+   "how": "表面电阻测试仪按 ANSI/ESD S20.20 点位法测量, 多点取最不利值",
+   "target": "1×10^6 < X < 1×10^9",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 EVT · 口径 ANSI/ESD S20.20 · 表面电阻测试仪按 ANSI/ESD S20.20 点位法测量, 多点取最不利值",
+   "value": "1×10^6 < X < 1×10^9",
+   "ready": true
+  },
+  {
+   "id": "perf.esd_friction_v",
+   "cn": "摩擦电压",
+   "domain": "性能配置",
+   "grade": "G1",
+   "src": "config/platform/zmax_perf_spec.json#perf.esd_friction_v",
+   "read": [
+    "perf_spec",
+    "perf.esd_friction_v"
+   ],
+   "unit": "V",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "FN-SYS1-33"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "F 环境 · ESD · 洁净度 · 安全",
+   "stage": "EVT",
+   "std": "ANSI/ESD S20.20",
+   "how": "摩擦起电法: 标准布往复摩擦后即时测最大电压",
+   "target": "<70",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 EVT · 口径 ANSI/ESD S20.20 · 摩擦起电法: 标准布往复摩擦后即时测最大电压",
+   "value": "<70",
+   "ready": true
+  },
+  {
+   "id": "perf.esd_ground",
+   "cn": "系统接地电阻",
+   "domain": "性能配置",
+   "grade": "G1",
+   "src": "config/platform/zmax_perf_spec.json#perf.esd_ground",
+   "read": [
+    "perf_spec",
+    "perf.esd_ground"
+   ],
+   "unit": "Ω",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "FN-SYS1-33",
+    "BO_H1 安全红线"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "F 环境 · ESD · 洁净度 · 安全",
+   "stage": "EVT",
+   "std": "ANSI/ESD S20.20",
+   "how": "接地电阻测试仪逐点测, 记录点位图",
+   "target": "<1 (孤立导体/机架/仪表全接地)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 EVT · 口径 ANSI/ESD S20.20 · 接地电阻测试仪逐点测, 记录点位图",
+   "value": "<1 (孤立导体/机架/仪表全接地)",
+   "ready": true
+  },
+  {
+   "id": "perf.cleanliness",
+   "cn": "洁净度等级",
+   "domain": "性能配置",
+   "grade": "G1",
+   "src": "config/platform/zmax_perf_spec.json#perf.cleanliness",
+   "read": [
+    "perf_spec",
+    "perf.cleanliness"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_B5 光学质量检测"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "F 环境 · ESD · 洁净度 · 安全",
+   "stage": "PVT",
+   "std": "ISO 14644-1",
+   "how": "粒子计数器按 ISO 14644-1 采样, 作业区与端面检测关联; **等级需现场确认**",
+   "target": "待定 (光口区建议 ≥ISO 7 级)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 ISO 14644-1 · 粒子计数器按 ISO 14644-1 采样, 作业区与端面检测关联; **等级需现场确认**",
+   "value": null,
+   "ready": false,
+   "reason": "目标值待定 (需按工件/工艺规格确认)"
+  },
+  {
+   "id": "perf.temp_hum",
+   "cn": "工作温湿度",
+   "domain": "性能配置",
+   "grade": "G1",
+   "src": "config/platform/zmax_perf_spec.json#perf.temp_hum",
+   "read": [
+    "perf_spec",
+    "perf.temp_hum"
+   ],
+   "unit": "℃/%RH",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_C6 宏微复合作业"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "F 环境 · ESD · 洁净度 · 安全",
+   "stage": "DVT",
+   "std": "-",
+   "how": "现场环境记录仪连续采样 ≥24h",
+   "target": "待确认 (现场条件; 影响光耦合漂移)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 - · 现场环境记录仪连续采样 ≥24h",
+   "value": null,
+   "ready": false,
+   "reason": "目标值待定 (需按工件/工艺规格确认)"
+  },
+  {
+   "id": "perf.noise",
+   "cn": "噪声",
+   "domain": "性能配置",
+   "grade": "G1",
+   "src": "config/platform/zmax_perf_spec.json#perf.noise",
+   "read": [
+    "perf_spec",
+    "perf.noise"
+   ],
+   "unit": "dB(A)",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "FN-SYS1-31"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "F 环境 · ESD · 洁净度 · 安全",
+   "stage": "DVT",
+   "std": "ISO 11202",
+   "how": "距设备 1m、1.5m 高测 A 计权等效声压级",
+   "target": "待确认 (厂内 ≤75 建议)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 ISO 11202 · 距设备 1m、1.5m 高测 A 计权等效声压级",
+   "value": null,
+   "ready": false,
+   "reason": "目标值待定 (需按工件/工艺规格确认)"
+  },
+  {
+   "id": "perf.safety_pl",
+   "cn": "安全功能等级 (急停/安全门)",
+   "domain": "性能配置",
+   "grade": "G1",
+   "src": "config/platform/zmax_perf_spec.json#perf.safety_pl",
+   "read": [
+    "perf_spec",
+    "perf.safety_pl"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "BO_H1 安全红线",
+    "FN-SYS1-33"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "F 环境 · ESD · 洁净度 · 安全",
+   "stage": "PVT",
+   "std": "ISO 13849-1",
+   "how": "安全回路评估 (ISO 13849-1), 双通道 + 自检; 安全红线只读、无否决放宽权",
+   "target": "≥ PLd / Cat.3 (建议; 按现场风险评估定)",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 PVT · 口径 ISO 13849-1 · 安全回路评估 (ISO 13849-1), 双通道 + 自检; 安全红线只读、无否决放宽权",
+   "value": "≥ PLd / Cat.3 (建议; 按现场风险评估定)",
+   "ready": true
+  },
+  {
+   "id": "perf.power_air",
+   "cn": "供电/气源要求",
+   "domain": "性能配置",
+   "grade": "G1",
+   "src": "config/platform/zmax_perf_spec.json#perf.power_air",
+   "read": [
+    "perf_spec",
+    "perf.power_air"
+   ],
+   "unit": "-",
+   "rng": null,
+   "dflt": null,
+   "perm": "readonly",
+   "affects": [
+    "FN-SYS1-33"
+   ],
+   "feature": [],
+   "kind": "spec",
+   "group": "F 环境 · ESD · 洁净度 · 安全",
+   "stage": "DVT",
+   "std": "-",
+   "how": "现场实测电源容量(单相 220V)与气源压力波动范围, 记录最低工作压力; **电压/气源参数均待现场确认**",
+   "target": "AC 220V 单相 · 真空 0.4–0.6MPa",
+   "judge": "指标定义 (目标值即规格; 实测入口见 how) · 阶段 DVT · 口径 - · 现场实测电源容量(单相 220V)与气源压力波动范围, 记录最低工作压力; **电压/气源参数均待现场确认**",
+   "value": "AC 220V 单相 · 真空 0.4–0.6MPa",
+   "ready": true
   }
+ ],
+ "summary": {
+  "by_domain": {
+   "工程配置": 9,
+   "性能配置": 68,
+   "功能配置": 3,
+   "模型配置": 36
+  },
+  "by_grade": {
+   "G3": 20,
+   "G2": 70,
+   "G0": 2,
+   "G1": 10,
+   "G4": 14
+  },
+  "by_perm": {
+   "field": 6,
+   "auth": 9,
+   "readonly": 95,
+   "version": 6
+  },
+  "ready": 97,
+  "gaps": [
+   "T_base_cam",
+   "plane_z",
+   "safety.saturate",
+   "safety.veto_th",
+   "perf.D_INSERT_mm",
+   "perf.cycle_s",
+   "feature.cap_level",
+   "feature.dbc_version",
+   "model.arch_mode",
+   "model.third_party",
+   "perf.contact_pressure",
+   "perf.mate_life",
+   "perf.coplanarity",
+   "perf.conn_mate_force",
+   "perf.mtbf",
+   "perf.anomaly_recovery",
+   "perf.cleanliness",
+   "perf.temp_hum",
+   "perf.noise"
+  ]
+ },
+ "feature_dbc": {
+  "nodes": [
+   "JOB_MODEL",
+   "GUIDE_MODEL",
+   "SCHED_MODEL",
+   "PERCEPT_MODEL",
+   "THIRD_PARTY"
+  ],
+  "caps": [
+   "A1",
+   "A2",
+   "A3",
+   "A4",
+   "B1",
+   "B2",
+   "B3",
+   "B4",
+   "B5",
+   "C1",
+   "C2",
+   "C3",
+   "C4",
+   "C5",
+   "C6",
+   "D1",
+   "D2",
+   "D3",
+   "E1",
+   "E2",
+   "E3",
+   "F1",
+   "F2",
+   "F3",
+   "G1",
+   "G2",
+   "G3",
+   "G4",
+   "H1",
+   "H3"
+  ],
+  "combos": {
+   "JOB_MODEL": 26,
+   "GUIDE_MODEL": 6,
+   "SCHED_MODEL": 5,
+   "PERCEPT_MODEL": 5,
+   "THIRD_PARTY": 0
+  },
+  "cap_domains": {
+   "A": 4,
+   "B": 5,
+   "C": 6,
+   "D": 3,
+   "E": 3,
+   "F": 3,
+   "G": 4,
+   "H": 2
+  }
+ },
+ "capability_map": [
+  {
+   "cap": "A1",
+   "iface": "IN/OUT",
+   "domain": "A"
+  },
+  {
+   "cap": "A2",
+   "iface": "OUT",
+   "domain": "A"
+  },
+  {
+   "cap": "A3",
+   "iface": "OUT/CFG",
+   "domain": "A"
+  },
+  {
+   "cap": "A4",
+   "iface": "CFG",
+   "domain": "A"
+  },
+  {
+   "cap": "B1",
+   "iface": "IN",
+   "domain": "B"
+  },
+  {
+   "cap": "B2",
+   "iface": "IN",
+   "domain": "B"
+  },
+  {
+   "cap": "B3",
+   "iface": "IN",
+   "domain": "B"
+  },
+  {
+   "cap": "B4",
+   "iface": "IN/CFG",
+   "domain": "B"
+  },
+  {
+   "cap": "B5",
+   "iface": "IN/MON",
+   "domain": "B"
+  },
+  {
+   "cap": "C1",
+   "iface": "OUT",
+   "domain": "C"
+  },
+  {
+   "cap": "C2",
+   "iface": "CFG/OUT",
+   "domain": "C"
+  },
+  {
+   "cap": "C3",
+   "iface": "OUT/MON",
+   "domain": "C"
+  },
+  {
+   "cap": "C4",
+   "iface": "OUT",
+   "domain": "C"
+  },
+  {
+   "cap": "C5",
+   "iface": "OUT",
+   "domain": "C"
+  },
+  {
+   "cap": "C6",
+   "iface": "OUT",
+   "domain": "C"
+  },
+  {
+   "cap": "D1",
+   "iface": "GUIDE",
+   "domain": "D"
+  },
+  {
+   "cap": "D2",
+   "iface": "OUT",
+   "domain": "D"
+  },
+  {
+   "cap": "D3",
+   "iface": "MON",
+   "domain": "D"
+  },
+  {
+   "cap": "E1",
+   "iface": "TRAIN",
+   "domain": "E"
+  },
+  {
+   "cap": "E2",
+   "iface": "TRAIN",
+   "domain": "E"
+  },
+  {
+   "cap": "E3",
+   "iface": "EVAL",
+   "domain": "E"
+  },
+  {
+   "cap": "F1",
+   "iface": "DEPLOY",
+   "domain": "F"
+  },
+  {
+   "cap": "F2",
+   "iface": "DEPLOY",
+   "domain": "F"
+  },
+  {
+   "cap": "F3",
+   "iface": "SCHED",
+   "domain": "F"
+  },
+  {
+   "cap": "G1",
+   "iface": "IN/OUT",
+   "domain": "G"
+  },
+  {
+   "cap": "G2",
+   "iface": "MON",
+   "domain": "G"
+  },
+  {
+   "cap": "G3",
+   "iface": "MON",
+   "domain": "G"
+  },
+  {
+   "cap": "G4",
+   "iface": "MON/CFG",
+   "domain": "G"
+  },
+  {
+   "cap": "H1",
+   "iface": "CFG",
+   "domain": "H"
+  },
+  {
+   "cap": "H3",
+   "iface": "MON",
+   "domain": "H"
+  }
+ ],
+ "levels": {
+  "L2": {
+   "name": "基础功能 (分段感知 · 融合 · 小模型控制 · 状态机 · 原子技能 · 执行)",
+   "must": [
+    "分段感知(检测/触觉/2D→3D/质量)",
+    "传感器融合 → 43D 状态",
+    "估计/预测/校正/前馈",
+    "动作调制 + 安全限幅",
+    "原子技能 SK01-08 可执行",
+    "执行器 → 物理闭环",
+    "肌肉记忆 固化→直通"
+   ]
+  },
+  "L3": {
+   "name": "连续功能 (长程序列规划 · 技能编排 · 海马体记忆 · VLM+Flow-Matching)",
+   "must": [
+    "长程序列规划(场景理解驱动)",
+    "技能序列编排",
+    "跨段技能序列入库/复用",
+    "VLM 编码 + Flow-Matching 连续动作输出"
+   ]
+  },
+  "L4": {
+   "name": "自主安全功能 (工作安全 + 物理世界导航 · 档位 · 流形世界模型 · 筹划)",
+   "must": [
+    "工作安全(INTACT)",
+    "物理世界导航",
+    "能力档位切换",
+    "标定/流形世界模型",
+    "恢复策略/筹划入库",
+    "势场联络 (−∇Φ)"
+   ]
+  },
+  "L5": {
+   "name": "场景理解 + 自动标注 (大模型层 · 任务/编排/记忆中枢)",
+   "must": [
+    "视觉语言场景理解(VLM/DeepSeek)",
+    "自动标注 → 监督 L2/L3/L4",
+    "任务指令解析(MES/自然语言)",
+    "工程记忆/技能库",
+    "标注→自动训练闭环"
+   ]
+  }
+ },
+ "diagnostics": {
+  "assertions_total": 57,
+  "assertions_auto": 47,
+  "by_level": {
+   "L2": 38,
+   "L3": 8,
+   "L4": 11
+  },
+  "codes": [
+   {
+    "code": "MCD-E01",
+    "cn": "唯一依据陈旧 (帧龄超阈)",
+    "src": "frame_age"
+   },
+   {
+    "code": "MCD-E02",
+    "cn": "参数越界 (超出 range)",
+    "src": "CHARACTERISTIC.range"
+   },
+   {
+    "code": "MCD-E03",
+    "cn": "能力组合冲突 (同一参数被两条能力要求不同)",
+    "src": "feature.combo"
+   },
+   {
+    "code": "MCD-E04",
+    "cn": "断言失败 (features 红项)",
+    "src": "verification_layer"
+   },
+   {
+    "code": "MCD-E05",
+    "cn": "描述与在役读值不一致 (calib vs 运行时)",
+    "src": "CHARACTERISTIC.value"
+   }
+  ]
+ }
 }
