@@ -5876,7 +5876,10 @@ def main():
         _USBCFG["dev"] = int(args.usb_dev)
         _LOCAL_SRC["builtin_dev"] = int(args.local_dev)
         want = args.local_src if args.local_src in ("builtin", "usb") else _src_load()
-        if _src_dev(want) < 0:                     # 选中的那台不在位 ⇒ 退回内置 (不空转/不黑屏)
+        # 2026-11-07 修: kind=off 时 _src_dev() 恒 -1, 原逻辑会把它当"设备不在位"退回 builtin
+        #   ⇒ 用户把这一路让给微信/视频通话后, 任何一次 systemd 重启都立刻抢回 /dev/video0
+        #   (推流守护因此每 5 分钟判 ❌ 再重启一次)。off 必须原样保留。
+        if want != "off" and _src_dev(want) < 0:   # 选中的那台不在位 ⇒ 退回内置 (不空转/不黑屏)
             if want == "usb":
                 print(f"   ⚠ 上次选的是 USB 摄像头, 但按卡名 '{args.usb_name}' 现在没扫到 ⇒ 先按内置起"
                       f"（插上后在页面点 [USB] 即可切过去）", flush=True)

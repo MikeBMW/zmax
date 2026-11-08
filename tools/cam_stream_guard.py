@@ -179,10 +179,16 @@ def judge(cmd_devs, expect, st, local_key=RGB_KEY):
     if cmd_devs is None and st is None:
         return False, "8791 不可达且没有推流进程(推流没跑)"
     if local_src_off():
-        # 用户关了笔记本那一路 ⇒ 进程应当是 --no-local; 若仍在开本机摄像头, 重启纠正(把设备释放掉)
+        # 用户关了笔记本那一路 ⇒ 进程不该再打开本机摄像头。两种合法形态: 带 --no-local,
+        # 或压根没有 --local-dev(源=off, worker 空转)。只有真的给了 **非负设备号** 才判错。
+        # 2026-11-07 修: 原来只看 "没有 --no-local" 就判 ❌, 于是 off 档被误判成"仍占摄像头",
+        #   守卫每 5 分钟重启一次(且每次重启都会把摄像头抢回去)。
         if cmd_devs is not None and not cmd_devs.get("no-local"):
-            return False, ("用户已关闭笔记本那一路(kind=off), 但进程仍在按 local-dev=%s 开本机摄像头"
-                           " → 需按 off 重启释放" % cmd_devs.get("local-dev"))
+            _dev_off = cmd_devs.get("local-dev")
+            if _dev_off is not None and _dev_off >= 0:
+                return False, ("用户已关闭笔记本那一路(kind=off), 但进程仍在按 local-dev=%s 开本机摄像头"
+                               " → 需按 off 重启释放" % _dev_off)
+        expect = None      # off 档不校验设备号(本来就不该有)
     if expect:
         lo_e, l2_e = expect[0], expect[1]
         if cmd_devs is None:
