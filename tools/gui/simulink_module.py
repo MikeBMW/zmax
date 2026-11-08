@@ -4562,6 +4562,12 @@ class SimCanvas(QGraphicsView):
             _cs = _canvas_src_state(self.module)
             a_input = menu.addAction("打开输入图像 (%s)"
                                      % ("🧪 仿真 metaworld" if _cs == "仿真" else "🎥 真机 RealSense"))
+        # 🎥 2026-11-08 老倪: 旁路实时可视化节点 (viz_kind=bypass) 右键 → 视频输入
+        #   要看的是「实际送进 YOLO 的那一帧渲染图」: ▶运行中 = 引擎当前步渲染帧 (与 detect_3d 同帧),
+        #   引擎 idle = 静态初始帧 + 画面压横幅如实标注 (不假动)
+        a_bypin = None
+        if str(item.node.get("params", {}).get("viz_kind") or "") == "bypass":
+            a_bypin = menu.addAction("视频输入 (渲染帧 · 实际喂给 YOLO)")
         # 🔍 2026-09-24 老倪: 外观质量检测节点右键 → 打开**质量检测汇总终端**
         #   (金手指检查 / 外观划伤 / 光口端面 / 全帧扫描 · 图像定位+拉伸 · 缺陷框选标定 · 在线增量训练)
         #   与「打开输入图像」同款入口: 帧源跟随画布「🔀 数据源切换」
@@ -4662,6 +4668,18 @@ class SimCanvas(QGraphicsView):
             except Exception as _e:                                        # noqa: BLE001
                 try:
                     self.module._log(f"⚠️ 打开输入图像失败: {type(_e).__name__}: {_e}")
+                except Exception:                                          # noqa: BLE001
+                    pass
+        elif a_bypin is not None and chosen == a_bypin:
+            # 🎥 2026-11-08 老倪: 旁路可视化节点「视频输入」= **AR 场景渲染帧**
+            #   (8802 ArMujocoEnv 渲染 → _mod3_worker 解码 → yolo_ar_peg; 窗口读 /dev/shm/mod3_frame.jpg)
+            #   8802 没帧时窗口如实标「缺帧原因」, 不拿仿真/真机帧顶替
+            try:
+                from yolo_input_viewer import open_input_viewer
+                open_input_viewer(self, module=self.module, source="ar")
+            except Exception as _e:                                        # noqa: BLE001
+                try:
+                    self.module._log(f"⚠️ 打开视频输入失败: {type(_e).__name__}: {_e}")
                 except Exception:                                          # noqa: BLE001
                     pass
         elif a_aoi is not None and chosen == a_aoi:

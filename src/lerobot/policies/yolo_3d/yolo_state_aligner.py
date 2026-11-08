@@ -4,6 +4,48 @@
 这样仿真与真机同构: 真机也只有 YOLO 2D 检测, 没有模拟器直接给的 39D
 """
 import os, sys, numpy as np
+
+_DUMP_LAST = [0.0]          # 取证落盘节流 (monotonic)
+
+
+def _dump_input_frame(img_bgr, tag="sim", extra=None):
+    """🎥 把**真正喂给 predict 的 BGR 帧**落盘 — 旁路可视化右键「视频输入」跨进程取证用
+
+    /dev/shm/ss_yolo_in.jpg   = 模型实际输入 (已按训练方向旋转的帧, 即 YOLO 看到的那一张)
+    /dev/shm/ss_yolo_in.json  = 时间/序号/尺寸/md5/来源, 供窗口标"帧龄 + 同源核验"
+    设计红线: 取证链路上任何异常一律吞掉 —— 绝不允许影响检测主链; ZMAX_YOLO_DUMP=0 可关。
+    """
+    if os.environ.get("ZMAX_YOLO_DUMP", "1") == "0":
+        return
+    try:
+        import json, time as _t, hashlib, cv2
+        # 节流: 检测主链可能 10~30Hz 调这里, 取证只要 6~7Hz 就够看 → 省 CPU/内存
+        if _t.monotonic() - _DUMP_LAST[0] < 0.15:
+            return
+        _DUMP_LAST[0] = _t.monotonic()
+        d = os.environ.get("ZMAX_YOLO_DUMP_DIR", "/dev/shm")
+        arr = np.ascontiguousarray(img_bgr)
+        # PNG 无损: 窗口解出来的像素与模型输入**逐字节一致** → md5_px 可对账 (JPEG 会有损, 对不上)
+        ok, buf = cv2.imencode(".png", arr, [int(cv2.IMWRITE_PNG_COMPRESSION), 1])
+        if not ok:
+            return
+        jpg, tmp = os.path.join(d, "ss_yolo_in.png"), os.path.join(d, "ss_yolo_in.png.tmp")
+        with open(tmp, "wb") as f:
+            f.write(buf.tobytes())
+        os.replace(tmp, jpg)                       # 原子替换: 窗口永远读不到半张图
+        meta = {"t": _t.time(), "mono": _t.monotonic(), "shape": list(arr.shape),
+                "md5_file": hashlib.md5(buf.tobytes()).hexdigest()[:16],
+                "md5_px": hashlib.md5(arr.tobytes()).hexdigest()[:16],           # 模型输入(BGR)逐字节
+                "md5_rgb": hashlib.md5(np.ascontiguousarray(arr[:, :, ::-1]).tobytes()).hexdigest()[:16],
+                "src": str(tag), "pid": os.getpid()}
+        if extra:
+            meta.update(extra)
+        j2, t2 = os.path.join(d, "ss_yolo_in.json"), os.path.join(d, "ss_yolo_in.json.tmp")
+        with open(t2, "w") as f:
+            json.dump(meta, f)
+        os.replace(t2, j2)
+    except Exception:                                                      # noqa: BLE001
+        pass
 os.environ.setdefault("DISPLAY", ":0")
 os.environ.setdefault("MUJOCO_GL", "glfw")
 
@@ -148,6 +190,7 @@ class YoloStateAligner:
             img_bgr = cv2.cvtColor(np.ascontiguousarray(img_used), cv2.COLOR_RGB2BGR)
         else:
             img_bgr = np.ascontiguousarray(img_used)
+        _dump_input_frame(img_bgr, tag="frame:%s" % getattr(self.source, "kind", "?"))
         res = self.model.predict(img_bgr, conf=conf, verbose=False)[0]
         self._last_res = res
         self._last_img_rot = img_used
@@ -279,6 +322,8 @@ class YoloStateAligner:
         #   否则倒置图检测失效 (只检出 光模块); box 中心反投影前转回原始帧坐标
         img_rot = np.rot90(img, k=2)
         img_bgr = cv2.cvtColor(img_rot, cv2.COLOR_RGB2BGR)
+        # 🎥 2026-11-08: 落盘 YOLO 实际输入帧 (旁路可视化右键「视频输入」跨进程取证)
+        _dump_input_frame(img_bgr, tag="sim:metaworld-corner2")
         res = self.model.predict(img_bgr, conf=conf, verbose=False)[0]
         self._last_res = res          # 🐛 2026-09-04: 缓存本帧检测 (可视化画框用, 免二次 predict)
         self._last_img_rot = img_rot  # 同步缓存 rot90 帧 (画框坐标系一致)

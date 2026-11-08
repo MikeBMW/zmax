@@ -73,7 +73,7 @@ REAL_FILE_FRESH_S = float(os.environ.get("ZMAX_VIEWER_FILE_FRESH_S", "10"))
 # 💻 2026-09-17 老倪: 第三路输入源 = 本机内置摄像头 (UVC 直读, 不依赖 Orin/Docker)
 USBCAM_DEV = os.environ.get("ZMAX_USBCAM_DEV", "/dev/video0")
 USBCAM_FPS = int(os.environ.get("ZMAX_USBCAM_FPS", "15"))
-_SRC_IDX = {"real": 0, "sim": 1, "usbcam": 2}
+_SRC_IDX = {"real": 0, "sim": 1, "usbcam": 2, "ar": 3}
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ANNOT_ROOT = os.environ.get("ZMAX_ANNOT_ROOT", yad.ROOT_DEFAULT)
 _SSH = ["ssh", "-o", "ConnectTimeout=6", "-o", "StrictHostKeyChecking=no", ORIN]
@@ -257,6 +257,140 @@ def _engine_live_frame_consumed():
         pass
 
 
+def _ar_consumed_frame(max_age=3.0):
+    """AR 场景渲染帧 = L2 (tcp_ar_server._mod3_worker) 真正喂给 yolo_ar_peg 的那一帧
+
+    🎯 2026-11-08 老倪纠正: 旁路「视频输入」要看的是 **AR 场景的渲染帧**, 不是 metaworld 仿真渲染。
+    源就在 /dev/shm: mod3_frame.jpg = 那一帧本身, mod3_latest.json = 权重/检出框/帧龄/mode
+    (由 _mod3_write 在 detect_boxes 之后落盘) ⇒ 窗口显示的与实际推理同源, 不是另渲染一张。
+    无帧/过期 → None (调用方出占位图并明说, 绝不拿别的场景顶替)。
+    """
+    try:
+        import json, time as _t
+        st = os.environ.get("ZMAX_MOD3_STATE", "/dev/shm/mod3_latest.json")
+        fr = os.environ.get("ZMAX_MOD3_FRAME", "/dev/shm/mod3_frame.jpg")
+        if not (os.path.exists(st) and os.path.exists(fr)):
+            return None
+        with open(st) as f:
+            meta = json.load(f)
+        age = _t.time() - float(meta.get("ts") or 0)
+        if age < -5 or age > max_age:
+            return None
+        img = rgb_from_file(fr)
+        if img is None:
+            return None
+        return img, meta, age
+    except Exception:                                                      # noqa: BLE001
+        return None
+
+
+def _ar_overlay(rgb, meta, age):
+    """在 AR 渲染帧上画**实际检出的框** + 顶部说明条 (帧源/权重/检出数/帧龄)"""
+    try:
+        import cv2
+        out = np.ascontiguousarray(rgb).copy()
+        for bb in (meta.get("boxes") or []):
+            try:
+                x1, y1, x2, y2 = [int(round(float(v))) for v in bb[:4]]
+                cv2.rectangle(out, (x1, y1), (x2, y2), (60, 220, 90), 2)
+            except Exception:                                              # noqa: BLE001
+                pass
+        txt = "AR scene render 8802 -> %s | det=%s | age=%.2fs | %s" % (
+            os.path.basename(str(meta.get("weights") or "?")), meta.get("n"), age,
+            (meta.get("mode") or ""))
+        return _banner(out, txt)
+    except Exception:                                                      # noqa: BLE001
+        return rgb
+
+
+class _ArGrabber(threading.Thread):
+    """AR 场景渲染帧取帧线程 (只读 /dev/shm, 不碰 Qt)
+
+    🔗 链路: ArMujocoEnv 渲染 (8802) → _mod3_worker 解码成 BGR → yolo_ar_peg 推理
+             → _mod3_write 落 mod3_frame.jpg + mod3_latest.json  ← 本线程就读这里
+    """
+
+    def __init__(self, out_q, ):
+        super().__init__(daemon=True)
+        self.q = out_q
+        self.stop_flag = False
+
+    def _placeholder(self, text):
+        img = np.zeros((720, 960, 3), np.uint8)
+        img[:, :] = (16, 20, 26)
+        return _banner(img, text)
+
+    def _why(self):
+        try:
+            import json
+            with open(os.environ.get("ZMAX_MOD3_STATE", "/dev/shm/mod3_latest.json")) as f:
+                st = json.load(f)
+            return str(st.get("err") or ("结果过期 (ts=%s)" % st.get("t")))
+        except Exception:                                                  # noqa: BLE001
+            return "8802 渲染帧取不到"
+
+    def run(self):
+        while not self.stop_flag:
+            t0 = time.time()
+            try:
+                got = _ar_consumed_frame()
+                if got is None:
+                    why = self._why()
+                    img = self._placeholder("AR render frame MISSING: %s" % why)
+                    info = {"src": "ar:AR 场景渲染帧 (缺帧)", "shape": "960x720",
+                            "device": why, "step": 0, "age": 0.0,
+                            "engine": False, "consumed": False}
+                else:
+                    img, meta, age = got
+                    img = _ar_overlay(img, meta, age)
+                    info = {"src": "ar:AR 场景渲染帧 (%s)" % (meta.get("det_src") or "render:8802"),
+                            "shape": "%dx%d" % (img.shape[1], img.shape[0]),
+                            "device": "L2 实际输入 · 权重 %s · 帧龄 %.2fs · 检出 %s"
+                                      % (meta.get("weights") or "?", age,
+                                         meta.get("n") if meta.get("n") is not None else "—"),
+                            "step": 0, "age": age, "engine": True, "consumed": True}
+                try:
+                    self.q.put_nowait({"rgb": np.ascontiguousarray(img), "info": info})
+                except Exception:                                          # noqa: BLE001
+                    pass
+            except Exception as e:                                         # noqa: BLE001
+                try:
+                    self.q.put_nowait({"err": f"AR 取帧失败: {type(e).__name__}: {e}"})
+                except Exception:                                          # noqa: BLE001
+                    pass
+            dt = 0.08 - (time.time() - t0)
+            if dt > 0:
+                time.sleep(dt)
+
+
+def _consumed_frame(max_age=5.0):
+    """读**引擎真正喂给 YOLO 的那一帧** — 跨进程取证 (/dev/shm/ss_yolo_in.jpg + .json)
+
+    🎥 2026-11-08 老倪: 「旁路可视化层要看到实际传入的渲染之后的图像流」。
+    难点: 引擎/画布循环跑在**另一个进程**, GUI 拿不到它的内存帧 (同进程共享槽对不上)。
+    所以由 aligner 在 predict 前把那一帧原子落盘, 窗口直接读盘:
+    屏幕上看到的就是模型吃到的那一张, md5 可对账 (同源, 不是"另渲染一张给你看")。
+    帧太旧 (>max_age) → None, 窗口自己回退并如实标注, 绝不拿旧帧冒充实时。
+    """
+    try:
+        import json, time as _t
+        d = os.environ.get("ZMAX_YOLO_DUMP_DIR", "/dev/shm")
+        j2, jf = os.path.join(d, "ss_yolo_in.json"), os.path.join(d, "ss_yolo_in.png")
+        if not (os.path.exists(j2) and os.path.exists(jf)):
+            return None
+        with open(j2) as f:
+            meta = json.load(f)
+        age = _t.time() - float(meta.get("t") or 0)
+        if age < -5 or age > max_age:
+            return None
+        img = rgb_from_file(jf)
+        if img is None:
+            return None
+        return img, meta, age
+    except Exception:                                                      # noqa: BLE001
+        return None
+
+
 def _engine_viewer_wants(want):
     """告知引擎: 仿真实况窗口开/关 (关 → 非视觉档不再渲染, 零开销)"""
     try:
@@ -305,7 +439,22 @@ class _SimGrabber(threading.Thread):
         self.stop_flag = False
 
     def _grab_once(self, nl):
-        """取一帧 → (img, info); nl 可为 None (仅当不需要叠加检测时)"""
+        """取一帧 → (img, info); nl 可为 None (仅当不需要叠加检测时)
+
+        🎥 优先序 (2026-11-08 老倪「看实际传入的渲染帧」):
+          ① /dev/shm 里模型真正吃掉的那一帧 (跨进程, 与 predict 同源, md5 可对账)
+          ② 同进程引擎实况槽 (老倪在 GUI 里点 ▶运行 时)
+          ③ 静态初始帧 + 画面压横幅如实标注
+        """
+        _cons = _consumed_frame()
+        if _cons is not None:
+            img, _meta, _age = _cons
+            info = {"src": "shm:YOLO 实际输入帧 (%s)" % (_meta.get("src") or "?"),
+                    "shape": f"{img.shape[1]}x{img.shape[0]}",
+                    "device": "模型真正吃到的帧 · 同源 md5 %s · 帧龄 %.2fs · pid %s"
+                              % (_meta.get("md5_rgb") or _meta.get("md5_px") or "?", _age, _meta.get("pid") or "?"),
+                    "step": 0, "age": _age, "engine": True, "consumed": True}
+            return img, info
         _live = _engine_live_frame()
         al = None
         if _live is not None:
@@ -498,6 +647,7 @@ class YoloInputViewer(QtWidgets.QDialog):
         self._q: queue.Queue = queue.Queue(maxsize=6)
         self._sim: _SimGrabber | None = None
         self._cam: _CamGrabber | None = None           # 💻 本机摄像头取帧线程
+        self._ar: _ArGrabber | None = None             # 🎬 AR 场景渲染帧 (8802 → L2)
         self._last_sig = None
         self._sim_fps_t, self._sim_fps_n = time.time(), 0
         self._sim_fps = 0.0
@@ -525,7 +675,8 @@ class YoloInputViewer(QtWidgets.QDialog):
         self.cb = QtWidgets.QComboBox()
         self.cb.addItems(["🎥 真机 RealSense (Orin→ROS2 srv→Docker)",
                           "🧪 仿真渲染 (metaworld corner2)",
-                          f"💻 本机摄像头 (内置 UVC {USBCAM_DEV})"])
+                          f"💻 本机摄像头 (内置 UVC {USBCAM_DEV})",
+                          "🎬 AR 场景渲染帧 (8802 → L2 实际输入)"])
         self.cb.setCurrentIndex(_SRC_IDX.get(str(source), 0))
         self.cb.currentIndexChanged.connect(self._switch)
         top.addWidget(self.cb, 1)
@@ -841,6 +992,12 @@ class YoloInputViewer(QtWidgets.QDialog):
                 f"设备 {USBCAM_DEV} (内置 UVC, 可改 ZMAX_USBCAM_DEV=/dev/videoN)",
                 "这一路直读本机摄像头, 不经 Orin/Docker — 没连真机也能采真像素做标定/YOLO",
             ], tag="waiting-usbcam")
+        elif source == "ar":
+            self._show_placeholder([
+                "🎬 AR 场景渲染帧 · 等 L2 那一帧 …",
+                "链路: ArMujocoEnv 渲染 (8802) → _mod3_worker 解码 → yolo_ar_peg 推理 → /dev/shm/mod3_frame.jpg",
+                "8802 没帧时这里显示「缺帧」原因, 不拿仿真/真机帧顶替",
+            ], tag="waiting-ar")
         else:
             self._show_placeholder([
                 "🧪 仿唯一依据 · 等 metaworld 渲染帧 …",
@@ -859,6 +1016,9 @@ class YoloInputViewer(QtWidgets.QDialog):
         if self._sim is not None:
             self._sim.stop_flag = True
             self._sim = None
+        if self._ar is not None:                       # 🎬 AR 渲染帧线程收口
+            self._ar.stop_flag = True
+            self._ar = None
         if self._cam is not None:
             _old = self._cam
             _old.stop_flag = True
@@ -886,6 +1046,15 @@ class YoloInputViewer(QtWidgets.QDialog):
             self._sim.start()
             _engine_viewer_wants(True)      # 🎥 告诉引擎"有窗口在看实况" (非视觉档也节流渲染)
             self._log_line("仿唯一依据已启动 (metaworld corner2; ▶运行 中自动跟随引擎实况帧)")
+        elif _idx == 3:
+            # 🎬 2026-11-08 老倪: AR 场景渲染帧 (8802 渲染 → yolo_ar_peg → plan), 即 L2 真正吃的那一帧
+            self.source = "ar"
+            self._set_annot_root("real")
+            self._reset_view_for_source("ar")
+            self.btn.setEnabled(False)
+            self._ar = _ArGrabber(self._q)
+            self._ar.start()
+            self._log_line("🎬 AR 场景渲染帧源已启动 (/dev/shm/mod3_frame.jpg ← 8802 渲染 → yolo_ar_peg)")
         else:
             # 💻 本机内置摄像头 (UVC 直读) — 无 Orin/Docker 也能出真像素, 用于标定/YOLO 域适应
             self.source = "usbcam"
@@ -919,6 +1088,9 @@ class YoloInputViewer(QtWidgets.QDialog):
             self._sim.stop_flag = True
             self._sim = None
             _engine_viewer_wants(False)     # 🎥 窗口不看了 → 引擎恢复零开销 (非视觉档不再渲染)
+        if self._ar is not None:                                        # 🎬 AR 渲染帧线程收口
+            self._ar.stop_flag = True
+            self._ar = None
         if self._cam is not None:                                       # 💻 摄像头线程收口
             self._cam.stop_flag = True
             _ct = self._cam
