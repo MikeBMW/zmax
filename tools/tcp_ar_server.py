@@ -1943,7 +1943,15 @@ class H(BaseHTTPRequestHandler):
 
     # ── 数据 ────────────────────────────────────────────────
     def _traj(self):
-        d = json.loads(_get("/scene.json"))
+        # 🪟 2026-11-09 小静静实测: 没有 scene.json(没接产线/没 8791) 时 _get 抛 ⇒ 这里 500 ⇒
+        #   页面 refresh() 第一句就 await 这个接口, 一抛整个 refresh 停摆(TCP/SIM 全不更新, 页面没臂)。
+        #   取不到就给空轨迹 + ok=false, 绝不 500。
+        try:
+            d = json.loads(_get("/scene.json"))
+        except Exception as _e:                                          # noqa: BLE001
+            return {"ok": False, "err": "scene.json 取不到(%s): 轨迹层留空" % (type(_e).__name__,),
+                    "trace": [], "plan": [], "real": [], "real_n": 0,
+                    "trace_label": "", "plan_label": ""}
         arm = ((d.get("cameras") or {}).get("arm") or {})
         out = {"trace": [], "plan": [], "trace_label": "", "plan_label": ""}
         for b in arm.get("boxes") or []:

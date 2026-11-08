@@ -4388,6 +4388,22 @@ $('bSim').addEventListener('click', ()=>{
   try{ console.log('SIM bones', SIMON); }catch(e){}
 });
 setInterval(()=>{ if(SIMON) simBonesPull(); }, 200);
+// 🪟 2026-11-09 兜底看门狗: 上面那段自动开 SIM 写在 refresh() 里, 而 refresh() 一开头就
+//   await /api/traj —— 在没有 scene.json 的机器上它是 500 ⇒ 整个 refresh 抛进 catch ⇒
+//   /api/tcp 那段和自动开 SIM 永远不会执行(实测: SIMON 一直 false, 页面一条臂都没有)。
+//   这里用独立定时器判: 没真机位姿就自己开 SIM 骨骼层, 不依赖 refresh() 是否跑通。
+setInterval(()=>{
+  try{
+    if(SIMON) return;
+    const _tcpOk = (typeof TCP!=='undefined' && TCP && TCP.ok);
+    if(_tcpOk) return;
+    SIMON=true;
+    const _b=$('bSim'); if(_b){ _b.classList.add('on'); }
+    try{ VR.simArm=true; const _br=$('bArmR'); if(_br){ _br.classList.add('on'); _br.textContent='🦾 右臂_仿真'; } }catch(e){}
+    simBonesPull();
+    try{ console.log('[SIM] 无真机位姿 ⇒ 自动打开 SIM 骨骼层(8802)'); }catch(e){}
+  }catch(e){}
+}, 1500);
 $('bChs').addEventListener('click',()=>vrKeepCam(()=>{
   CHS.show=!CHS.show; $('bChs').classList.toggle('on',CHS.show); }));
 $('bTab').addEventListener('click',()=>vrKeepCam(()=>{
