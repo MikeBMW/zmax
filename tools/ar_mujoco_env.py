@@ -48,6 +48,55 @@ W, H = 960, 720
 #    单位都是**度**, 不是弧度。写 -3.0 3.0 会被解成 ±3°(jnt_range=[-0.0524,0.0524] rad),
 #    position actuator 只能把关节推到 ±3° ⇒ 臂几乎不动(实测 500 步才转 0.063 rad,
 #    TCP 恒在 z=0.888, 永远够不到料盘 ⇒ _peg_cur 恒 None ⇒ 终点 9900mm 哨兵)。
+def _equip_geoms():
+    """🎥 2026-11-08 老倪「渲染要和 AR 场景看到的一样, 数据要同步」
+
+    AR 页 (8797 /ar3d) 的 3D 里除了主料盘还有 左臂料盘/下料盘/废料盘/光模块插孔 等 enabled 盒子,
+    真源就是 `fence_store` (页面 /api/fence 同一份)。这里把它们建成**纯视觉 geom**:
+      · contype=0 conaffinity=0 → 不参与物理/碰撞, 不动双臂动力学与真值(判据不受影响)
+      · 跳过主料盘 pans[0] (那一个已经按真实结构建了, 再套一层盒子会把光模块盖住 → L2 直接瞎)
+      · 颜色一律冷灰蓝/近黑, 绝不用暖色/金色 (棕色会污染 gold_mask, 标定和 2D→3D 全废)
+      · 读不到 fence_store 就返回空串 (渲染照旧, 不因为页面没起就崩)
+    关掉: ZMAX_AR_FENCE=0
+    """
+    if os.environ.get("ZMAX_AR_FENCE", "1") == "0":
+        return ""
+    try:
+        import fence_store as FS
+        items = FS.listing().get("items") or []
+    except Exception:                                                      # noqa: BLE001
+        return ""
+    boxes = [b for b in items
+             if b.get("type") == "box" and b.get("p1") and b.get("p2") and b.get("enabled")]
+    # 主料盘: 与 build_mjcf 同口径 (第一个名字含"料盘"且不带"槽"的盒子)
+    pans = [b for b in boxes if "料盘" in str(b.get("name")) and "槽" not in str(b.get("name"))]
+    main = pans[0] if pans else None
+    if main:
+        boxes = [b for b in boxes if b is not main]
+    out, k = [], 0
+    for b in boxes:
+        if k >= 40:                     # 上限: 渲染耗时不能涨太多
+            break
+        nm = str(b.get("name") or "")
+        if nm.startswith("槽"):         # 槽位太多太碎, 不画 (主料盘自带槽)
+            continue
+        try:
+            p1 = [float(v) for v in b["p1"][:3]]
+            p2 = [float(v) for v in b["p2"][:3]]
+        except Exception:                                                  # noqa: BLE001
+            continue
+        c = [(p1[i] + p2[i]) / 2.0 for i in range(3)]
+        h = [abs(p1[i] - p2[i]) / 2.0 for i in range(3)]
+        if min(h) <= 0.0005 or max(h) > 1.2:
+            continue
+        rgba = "0.13 0.13 0.15 1" if "料盘" in nm else "0.34 0.44 0.56 0.9"
+        out.append('<geom name="eq%d" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f %.4f" '
+                   'rgba="%s" contype="0" conaffinity="0"/>'
+                   % (k, c[0], c[1], c[2], h[0], h[1], h[2], rgba))
+        k += 1
+    return "\n    ".join(out)
+
+
 def build_mjcf() -> str:
     """生成 AR 工位 MJCF。
 
@@ -249,6 +298,7 @@ def build_mjcf() -> str:
 %(geo3d)s
 %(cam)s
 %(geos)s
+%(equip)s
 %(box)s
 %(module)s
 %(armL)s
@@ -261,6 +311,7 @@ def build_mjcf() -> str:
 """ % {"W": W, "H": H, "lx": pcx, "ly": pcy, "lz": pzlo + 1.3,
        "l2x": pcx - 0.5, "l2y": pcy - 0.5, "l2z": pzlo + 1.0,
        "cam": cam_body, "geos": "\n    ".join(geos), "geo3d": "\n    ".join(geo3d), "module": module, "box": _box,
+       "equip": _equip_geoms(),
        "armL": arm("L", 0.0, 0.50, 0.0),
        "armR": arm("R", 0.0, 0.00, 0.0),
        "acts": "\n".join(acts)}
