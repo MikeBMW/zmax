@@ -140,10 +140,24 @@ def _open_product_dashboard(win=None):
             return False
 
     hosts = []
-    # ① 本机服务: 冻结包里自带 dashboard_server.py ⇒ 没起就自己拉起来 (老倪: 自己开产品大屏服务)
+    # ① 老倪 2026-11-08: 「产品大屏 = 跟静静一样的 http://<主脑>:8793/station」—— 先按 station 候选链探活;
+    #    顺手不再拉 8799 本机服务(那不是他要的那套: 8799 只有静态大屏页, 没有 6 路相机画面)。
     try:
         import local_services as _ls
-        _ls.ensure("dashboard_server.py", 8799, timeout=10.0)
+        _st = _ls.station_url(fallback=False)
+        if _st:
+            if os.name == "nt":
+                _sp = __import__("subprocess")
+                _sp.Popen(["cmd.exe", "/c", "start", "", _st])
+            else:
+                import webbrowser as _wb0
+                _wb0.open(_st)
+            if win is not None:
+                try:
+                    win.statusBar().showMessage("🖥 产品大屏 → %s" % _st, 10000)
+                except Exception:                                          # noqa: BLE001
+                    pass
+            return _st
     except Exception:                                                      # noqa: BLE001
         pass
     try:
@@ -16545,7 +16559,8 @@ def _single_instance_guard():
 def _autostart_local_services():
     """开机自启本机两个服务 (老倪 2026-11-08: 「自己开产品大屏服务, 自己开 ar3d 服务」)。
 
-    8799 产品大屏 / 8797 AR 3D —— 冻结包里自带的 stdlib-only 服务, 用包里解释器拉起来;
+    8797 AR 3D —— 冻结包里自带的 stdlib-only 服务, 用包里解释器拉起来;
+    (8799 只是本机静态大屏页, 老倪要的「产品大屏」是远端 8793/station ⇒ 不再自启 8799)
     已经起着就跳过。放后台线程, 不卡启动。
     """
     try:
@@ -16553,7 +16568,7 @@ def _autostart_local_services():
     except Exception as _e:                                                 # noqa: BLE001
         print("⚠️ 本机服务不可用 (local_services 导入失败): %r" % (_e,))
         return
-    for name, port in (("dashboard_server.py", 8799), ("tcp_ar_server.py", 8797)):
+    for name, port in (("tcp_ar_server.py", 8797),):
         try:
             ok, why = _ls.ensure(name, port, timeout=25.0)
             print("🛰 本机服务 %-22s :%d → %s" % (name, port, why))

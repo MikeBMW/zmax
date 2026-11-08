@@ -9972,12 +9972,14 @@ class SimulinkModule(QWidget):
         if os.name == "nt":
             try:
                 import local_services as _ls
-                _ok, _why = _ls.ensure("dashboard_server.py", 8799, timeout=10.0)
-                self._log("🖥 产品大屏(本机服务): %s" % _why)
+                # 产品大屏 = 8793/station (与主脑那台机器同一套 6 路同屏 + 手动控制区)。
+                # 老倪 2026-11-08: 「不是 8799 服务, 应该是跟静静一样的 http://<主脑>:8793/station」
+                _url = _ls.station_url()
+                self._log("🖥 产品大屏(8793/station): %s" % _url)
                 import webbrowser as _wb
-                _wb.open("http://127.0.0.1:8799/")
+                _wb.open(_url)
             except Exception as _e:                                          # noqa: BLE001
-                self._log("❌ 产品大屏(本机服务) 失败: %r" % (_e,))
+                self._log("❌ 产品大屏打开失败: %r" % (_e,))
             return
         """🛰 工位总览 (6 路同屏 + 右侧控制区) — 老倪 2026-09-27「那个网页怎么搞丢了?」
 
