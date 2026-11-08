@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import queue
 import sys
 import threading
 import time
@@ -62,6 +63,8 @@ STATE = {"png": b"", "n": 0, "ts": 0.0, "mean": None, "gold_px": 0, "box": None,
          "truth": {}, "calib": {}, "cmd": {}, "steps": 0,
          "views": {}}
 LOCK = threading.Lock()
+GL = threading.Lock()
+FREE_Q = queue.Queue(maxsize=8)   # 🎥 任意视角请求 (必须由渲染线程消费: EGL 上下文线程绑定)          # 🎥 按需任意视角渲染 与 主循环 共用 renderer ⇒ 必须串行
 CMD = {"mode": "idle", "L": None, "R": None, "gripL": None, "gripR": None, "ts": 0.0}
 ENV = {"env": None}          # render_loop 建好后放进来, 供 /ik 用
 
@@ -392,6 +395,7 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
             model, data = env.model, env.data
             env.reset()                                   # 双臂 home, 不留 0 位姿
             renderer = mujoco.Renderer(model, H, W)
+            ENV.update({"model": model, "data": data, "renderer": renderer})
             cams, cam0 = {}, {}
             for name, v in VIEWS.items():
                 c = mujoco.MjvCamera()
@@ -460,35 +464,36 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
             #   真值因此 125ms 才更新一帧, 末端 350mm/s 就成 44mm 的台阶 (采样看像 1.2m/s 猛冲)。
             #   这里把"出图"和"物理/真值"解耦: 真值每拍更新, 图按 render_hz 出, 中间复用上一帧。
             _do_render = (time.time() - _last_render) >= _rperiod
-            if _do_render:
-                _last_render = time.time()
-                views_out = dict(_views_cache or {})
-                # 只渲特写 (close) 每拍出图; 全景 (ar3d) 每 3 拍一次 —— 两路一起渲 ~60ms,
-                # 是出图帧率上不去的根因; 特写单路 ~20ms ⇒ 出图能到 25~30Hz。
-                _names = list(cams.keys())
-                if len(_names) > 1:
-                    _names = [_names[0]] + ([_names[1]] if (n % 3 == 0) else [])
-                for name in _names:
-                    c = cams[name]
-                    if jitter and mode != "sim":
-                        c.elevation = cam0[name][0] + 1.5 * np.cos(n / 7.0)
-                        c.azimuth = cam0[name][1] + 2.0 * np.sin(n / 24.0)
-                    else:
-                        c.elevation, c.azimuth = cam0[name]
-                    model.vis.global_.fovy = float(VIEWS[name].get("fovy", 45.0))
-                    renderer.update_scene(data, c)
-                    img = np.asarray(renderer.render())
-                    box, px = gold_box(gold_mask(img))
-                    ok, buf = cv2.imencode(".png", cv2.cvtColor(img, cv2.COLOR_RGB2BGR),
-                                           [cv2.IMWRITE_PNG_COMPRESSION, 3])
-                    if not ok:
-                        raise RuntimeError("png encode failed")
-                    views_out[name] = {"png": buf.tobytes(), "mean": round(float(img.mean()), 2),
-                                       "gold_px": px, "box": box, "shape": list(img.shape),
-                                       "ts": time.time()}
-                _views_cache = views_out
-            else:
-                views_out = _views_cache or {}
+            with GL:                      # 🔒 出图与按需自由视角串行 (renderer 非线程安全)
+                if _do_render:
+                    _last_render = time.time()
+                    views_out = dict(_views_cache or {})
+                    # 只渲特写 (close) 每拍出图; 全景 (ar3d) 每 3 拍一次 —— 两路一起渲 ~60ms,
+                    # 是出图帧率上不去的根因; 特写单路 ~20ms ⇒ 出图能到 25~30Hz。
+                    _names = list(cams.keys())
+                    if len(_names) > 1:
+                        _names = [_names[0]] + ([_names[1]] if (n % 3 == 0) else [])
+                    for name in _names:
+                        c = cams[name]
+                        if jitter and mode != "sim":
+                            c.elevation = cam0[name][0] + 1.5 * np.cos(n / 7.0)
+                            c.azimuth = cam0[name][1] + 2.0 * np.sin(n / 24.0)
+                        else:
+                            c.elevation, c.azimuth = cam0[name]
+                        model.vis.global_.fovy = float(VIEWS[name].get("fovy", 45.0))
+                        renderer.update_scene(data, c)
+                        img = np.asarray(renderer.render())
+                        box, px = gold_box(gold_mask(img))
+                        ok, buf = cv2.imencode(".png", cv2.cvtColor(img, cv2.COLOR_RGB2BGR),
+                                               [cv2.IMWRITE_PNG_COMPRESSION, 3])
+                        if not ok:
+                            raise RuntimeError("png encode failed")
+                        views_out[name] = {"png": buf.tobytes(), "mean": round(float(img.mean()), 2),
+                                           "gold_px": px, "box": box, "shape": list(img.shape),
+                                           "ts": time.time()}
+                    _views_cache = views_out
+                else:
+                    views_out = _views_cache or {}
             n += 1
             cl = views_out.get("close") or {}
             with LOCK:
@@ -501,12 +506,78 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
                               "gold_px": cl.get("gold_px"), "box": cl.get("box"),
                               "shape": cl.get("shape"),
                               "ms": round((time.time() - t0) * 1000, 1), "err": None})
+            # 🎥 任意视角请求: 必须在本线程渲染 (EGL 上下文线程绑定)
+            while True:
+                try:
+                    _rq = FREE_Q.get_nowait()
+                except Exception:                                          # noqa: BLE001
+                    break
+                try:
+                    _cc = mujoco.MjvCamera()
+                    _cc.lookat[:] = _rq["cam"]["lookat"]
+                    _cc.distance = _rq["cam"]["distance"]
+                    _cc.elevation = _rq["cam"]["elevation"]
+                    _cc.azimuth = _rq["cam"]["azimuth"]
+                    model.vis.global_.fovy = float(_rq["fovy"])
+                    renderer.update_scene(data, _cc)
+                    _im = np.asarray(renderer.render())
+                    _ok, _buf = cv2.imencode(".png", cv2.cvtColor(_im, cv2.COLOR_RGB2BGR),
+                                             [cv2.IMWRITE_PNG_COMPRESSION, 3])
+                    _rq["png"] = _buf.tobytes() if _ok else None
+                    _rq["err"] = None if _ok else "png encode failed"
+                except Exception as _e:                                    # noqa: BLE001
+                    _rq["err"] = "%s: %s" % (type(_e).__name__, _e)
+                finally:
+                    try:
+                        model.vis.global_.fovy = float(VIEWS["close"].get("fovy", 45.0))
+                    except Exception:                                      # noqa: BLE001
+                        pass
+                    _rq["ev"].set()
         except Exception as e:                                               # noqa: BLE001
             with LOCK:
                 STATE["err"] = "%s: %s" % (type(e).__name__, e)
         dt = period - (time.time() - t0)
         if dt > 0:
             time.sleep(dt)
+
+
+def render_free(qs, timeout=3.5):
+    """🎥 任意视角: GET /frame.png?az=&el=&dist=&tx=&ty=&tz=&fovy=
+
+    🔴 关键(实测): mujoco 的 EGL 上下文**绑定在渲染线程**, 在 HTTP 线程直接 render 会
+    `EGLError(EGL_BAD_ACCESS, eglMakeCurrent)` → 所以这里只投递请求, 由 render_loop 线程渲染,
+    结果经 Event 回传。默认值 = ar3d 全景机位; 只影响这一张图, 不动 STATE/标定/L2 那条链。
+    """
+    if ENV.get("renderer") is None or ENV.get("data") is None:
+        raise RuntimeError("渲染器未就绪 (env/renderer 未建)")
+
+    def _f(k, dv):
+        try:
+            return float((qs.get(k) or [dv])[0])
+        except Exception:                                                  # noqa: BLE001
+            return float(dv)
+
+    cam = {"lookat": [_f("tx", 0.70), _f("ty", 0.22), _f("tz", 0.14)],
+           "distance": max(0.05, _f("dist", 1.60)),
+           "elevation": max(-90.0, min(90.0, _f("el", -31.5))),
+           "azimuth": _f("az", -51.6)}
+    req = {"cam": cam, "fovy": max(5.0, min(120.0, _f("fovy", VIEWS["ar3d"]["fovy"]))),
+           "ev": threading.Event(), "png": None, "err": None}
+    try:
+        FREE_Q.put_nowait(req)
+    except queue.Full:              # 丢最老的, 保证最新视角能出
+        try:
+            FREE_Q.get_nowait()
+        except Exception:                                                  # noqa: BLE001
+            pass
+        FREE_Q.put_nowait(req)
+    if not req["ev"].wait(timeout):
+        raise RuntimeError("渲染线程忙/未出图 (超时 %.1fs)" % timeout)
+    if req["err"]:
+        raise RuntimeError(req["err"])
+    if not req["png"]:
+        raise RuntimeError("空帧")
+    return req["png"]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -540,6 +611,13 @@ class Handler(BaseHTTPRequestHandler):
         cam_name = (qs.get("cam") or ["close"])[0]
         if cam_name not in VIEWS:
             cam_name = "close"
+        if p in ("/", "/frame.png", "/frame.jpg") and any(
+                k in qs for k in ("az", "el", "dist", "tx", "ty", "tz", "fovy")):
+            try:
+                self._send(200, render_free(qs), "image/png")
+            except Exception as e:                                          # noqa: BLE001
+                self._send(503, ("free-cam: %s: %s" % (type(e).__name__, e)).encode(), "text/plain")
+            return
         if p in ("/", "/frame.png", "/frame.jpg"):
             b = (views.get(cam_name) or {}).get("png") or (st["png"] if cam_name == "close" else b"")
             if not b:

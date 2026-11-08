@@ -310,10 +310,31 @@ class _ArGrabber(threading.Thread):
              → _mod3_write 落 mod3_frame.jpg + mod3_latest.json  ← 本线程就读这里
     """
 
-    def __init__(self, out_q, ):
+    DEFAULTS = {"az": -51.6, "el": -31.5, "dist": 1.60, "tx": 0.70, "ty": 0.22, "tz": 0.14}
+
+    def __init__(self, out_q, free=False, cam=None):
         super().__init__(daemon=True)
         self.q = out_q
         self.stop_flag = False
+        self.free = bool(free)          # True = 任意视角 (8802 按需渲染, 明确不是 L2 输入)
+        self.cam = dict(self.DEFAULTS)
+        if cam:
+            self.cam.update({k: float(v) for k, v in cam.items() if k in self.DEFAULTS})
+
+    def _free_frame(self):
+        """任意视角: 直接问 8802 要一张 (az/el/dist/tgt)，不走 L2 那条链"""
+        import urllib.request
+        qs = "&".join("%s=%.4f" % (k, float(self.cam.get(k, dv))) for k, dv in self.DEFAULTS.items())
+        with urllib.request.urlopen("http://127.0.0.1:8802/frame.png?" + qs, timeout=4.0) as r:
+            b = r.read()
+        import cv2
+        img = cv2.imdecode(np.frombuffer(b, np.uint8), cv2.IMREAD_COLOR)
+        return None if img is None else np.ascontiguousarray(img[:, :, ::-1])
+
+    def _free_caption(self):
+        c = self.cam
+        return ("FREE VIEW 8802 | az=%.0f el=%.0f dist=%.2fm | NOT L2 input"
+                % (c["az"], c["el"], c["dist"]))
 
     def _placeholder(self, text):
         img = np.zeros((720, 960, 3), np.uint8)
@@ -333,6 +354,26 @@ class _ArGrabber(threading.Thread):
         while not self.stop_flag:
             t0 = time.time()
             try:
+                if self.free:
+                    rgb = self._free_frame()
+                    if rgb is None:
+                        img = self._placeholder("FREE VIEW 8802: 渲染帧取不到 (8802 未就绪)")
+                        info = {"src": "ar:自由视角 (取不到帧)", "shape": "960x720",
+                                "device": "8802 按需渲染失败", "step": 0, "age": 0.0,
+                                "engine": False, "consumed": False}
+                    else:
+                        img = _banner(rgb.copy(), self._free_caption())
+                        info = {"src": "ar:自由视角 (8802 按需渲染)", "shape": "%dx%d" % (img.shape[1], img.shape[0]),
+                                "device": self._free_caption(), "step": 0, "age": 0.0,
+                                "engine": True, "consumed": False, "free": True}
+                    try:
+                        self.q.put_nowait({"rgb": np.ascontiguousarray(img), "info": info})
+                    except Exception:                                      # noqa: BLE001
+                        pass
+                    dt = 0.12 - (time.time() - t0)
+                    if dt > 0:
+                        time.sleep(dt)
+                    continue
                 got = _ar_consumed_frame()
                 if got is None:
                     why = self._why()
@@ -719,6 +760,30 @@ class YoloInputViewer(QtWidgets.QDialog):
         self.btn.clicked.connect(self._toggle_chain)
         top.addWidget(self.btn)
         v.addLayout(top)
+        # 🎥 2026-11-08 老倪: AR 源加「任意视角」控件 —— 勾上自由视角后直接问 8802 要该机位的图
+        self._ar_free = None
+        self._ar_sliders = []
+        if str(source) == "ar":
+            top2 = QtWidgets.QHBoxLayout()
+            self._ar_free = QtWidgets.QCheckBox("自由视角 (8802 任意机位)")
+            top2.addWidget(self._ar_free)
+            for _nm, _lo, _hi, _dv in (("方位 az", -180, 180, -52),
+                                        ("俯仰 el", -89, 60, -32),
+                                        ("距离×100", 20, 300, 160)):
+                top2.addWidget(QtWidgets.QLabel(_nm))
+                _s = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+                _s.setRange(_lo, _hi)
+                _s.setValue(_dv)
+                _s.setMinimumWidth(90)
+                top2.addWidget(_s)
+                self._ar_sliders.append(_s)
+            self._ar_reset = QtWidgets.QPushButton("复位 = L2 输入帧")
+            top2.addWidget(self._ar_reset)
+            v.addLayout(top2)
+            self._ar_free.toggled.connect(self._ar_view_changed)
+            self._ar_reset.clicked.connect(self._ar_view_reset)
+            for _s in self._ar_sliders:
+                _s.valueChanged.connect(self._ar_view_changed)
 
         # ── 真值行 (老倪 2026-09-17: 「训练要有光模块距离/位置等信息…读出真值, 对齐 metaworld 数据」) ──
         #   真值 = 4060 侧 Docker 只读订阅 Orin /robot/tcp_pose 落盘的 state jsonl / status.json (单一来源
@@ -1071,6 +1136,28 @@ class YoloInputViewer(QtWidgets.QDialog):
             self._cam.start()
             self._log_line(f"💻 本机摄像头源已启动 ({USBCAM_DEV}, MJPG 1280x720 @{USBCAM_FPS}fps; "
                            f"数据根 {self.annot_root})")
+
+    def _ar_view_changed(self, *_a):
+        """自由视角控件 → 立刻把参数推到取帧线程 (不用重开窗口)"""
+        g = self._ar
+        if g is None or self._ar_free is None:
+            return
+        g.free = bool(self._ar_free.isChecked())
+        if len(self._ar_sliders) == 3:
+            g.cam.update({"az": float(self._ar_sliders[0].value()),
+                          "el": float(self._ar_sliders[1].value()),
+                          "dist": max(0.2, self._ar_sliders[2].value() / 100.0)})
+        if g.free:
+            self._log_line("🎥 自由视角: az=%.0f el=%.0f dist=%.2fm (8802 按需渲染 — 不是 L2 输入帧)"
+                           % (g.cam["az"], g.cam["el"], g.cam["dist"]))
+
+    def _ar_view_reset(self):
+        """复位: 回 L2 实际输入帧 (关闭自由视角)"""
+        if self._ar_free is not None:
+            self._ar_free.setChecked(False)
+        if self._ar is not None:
+            self._ar.free = False
+        self._log_line("↩ 已回 L2 实际输入帧 (8802 → yolo_ar_peg → /dev/shm/mod3_frame.jpg)")
 
     def _set_annot_root(self, source):
         """输入源切换 → 数据根/会话/类别表跟着切 (仿真 peg·hole·hand ‖ 真机 optical_module 分开存)"""
