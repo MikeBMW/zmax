@@ -506,6 +506,22 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
                               "gold_px": cl.get("gold_px"), "box": cl.get("box"),
                               "shape": cl.get("shape"),
                               "ms": round((time.time() - t0) * 1000, 1), "err": None})
+            # 🦾 仿真骨骼快照 (2026-11-08 老倪: AR 页要跟渲染同一份位姿数据)
+            _bones = {"ok": True, "ts": time.time(), "n": n, "L": [], "R": []}
+            for _side in ("L", "R"):
+                _sg = []
+                for _bi in range(model.nbody):
+                    _nm = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, _bi) or ""
+                    if not _nm.startswith(_side + "_"):
+                        continue
+                    _pa = int(model.body_parentid[_bi])
+                    if _pa <= 0:                       # link0 挂世界系, 当起点用
+                        continue
+                    _sg.append([[round(float(v), 4) for v in data.xpos[_pa]],
+                                [round(float(v), 4) for v in data.xpos[_bi]]])
+                _bones[_side] = _sg
+            with LOCK:
+                STATE["bones"] = _bones
             # 🎥 任意视角请求: 必须在本线程渲染 (EGL 上下文线程绑定)
             while True:
                 try:
@@ -624,6 +640,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(503, b"no frame yet", "text/plain")
                 return
             self._send(200, b, "image/png")
+            return
+        if p == "/bones.json":
+            self._json(st.get("bones") or {"ok": False, "why": "骨骼快照未生成 (渲染循环未跑)"})
             return
         if p == "/status.json":
             age = (time.time() - st["ts"]) if st["ts"] else None

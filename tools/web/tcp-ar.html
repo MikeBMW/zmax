@@ -267,6 +267,7 @@
       <button id="bChs" class="sm on" title="移动底盘箱体 600×800×750mm(本体680+轮Ø150露出70): 顶板 = 两臂安装面 = z=0, 与实验桌桌面平齐; 点一下隐藏">📦 箱体</button>
       <button id="bTab" class="sm on" title="实验桌(工作台) 1600×600×750mm + 45×45 铝型材框架: 四腿从地面通到上横梁底面, 顶框两根支撑梁垫在上横梁下、四个角码夹住它; 点一下隐藏">🧪 实验桌</button>
       <button id="bFlr" class="sm on" title="地面层 z=-750mm: 四轮与桌腿落地的那一层, 与 z=0 的 base 工作平面差 750; 点一下隐藏">🟫 地面</button>
+      <button id="bSim" class="sm" title="SIM 骨骼: 直接画 8802 渲染场景的 body_xpos 真值 (与渲染帧同一份数据), 不是 URDF 真机; 真机没上电时这才是"渲染里那台机器"">🦾 SIM骨骼</button>
     </div>
     <!-- 左臂位姿控制(左臂自身世界系): x y z 平移(mm) / a b c 姿态(deg), 参考 station 点动 -->
     <div id="cardLarm" style="margin-top:6px;border:1px solid #1f2b33;border-radius:8px;padding:6px 8px;background:#0d1418">
@@ -563,6 +564,7 @@ let URDF=null, LINKM={};   // 🦾 URDF 外形(点云+关节链) / 每帧正运�
 let PREV={on:false, M:null, q:null, err_mm:null, target:null};
 // 🧱 3D 围栏状态 (必须在这里声明: 初始化阶段 applyRot() 就会调 drawVR(), 晚声明会踩 TDZ 把整个脚本打死)
 let FENCES=[], FMARGIN=10, FPICK=false, FEDIT=null, FTYPE='box', VIEW=null, FDRAG=null;
+let SIMB=null, SIMON=false, SIMERR='', SIMTS=0;   // 🦾 8802 骨骼真值 (与渲染帧同源)
 let FSEL=null, FDR=null;      // 选中的围栏 / 正在拖拽的状态
 let CALIB=null, TRAJ={trace:[],plan:[]}, TCP=null, CAL_MODE=false, CAL_PTS=[], SHOW=false,
 // 🧭 命名轨迹 (轨迹1小红/2正方/3建图/4安全/5实时): 点从服务端 /api/traj/named 读工程配置唯一依据
@@ -2260,6 +2262,33 @@ function drawVR(){
   if(o1&&o2){g.strokeStyle='#8b949e';g.setLineDash([4,4]);g.beginPath();g.moveTo(o1.u,o1.v);g.lineTo(o2.u,o2.v);g.stroke();g.setLineDash([]);}
   if(o1){g.fillStyle='#c9d1d9';g.beginPath();g.arc(o1.u,o1.v,2.6,0,Math.PI*2);g.fill();
     g.fillStyle='#6b7a8d';g.font='10px monospace';g.fillText('O(0,0,0)',o1.u+5,o1.v+12);}
+  // 🦾 SIM 骨骼层 (2026-11-08 老倪 A 方案): 画 8802 渲染场景的 body_xpos 真值
+  //   与渲染帧同一份数据 ⇒ 页面里看到的机器人 = 渲染里那台, 不是 URDF 真机姿态
+  //   L 臂青 / R 臂橙, 末端标 SIM; 数据过期(>3s)或没开就整层不画(不拿旧骨头冒充)
+  if(SIMON && SIMB && SIMB.ok && (Date.now()/1000 - SIMTS) < 3){
+    for(const side of ['L','R']){
+      const segs = SIMB[side] || [];
+      const col = (side==='L') ? 'rgba(64,196,255,.95)' : 'rgba(255,176,64,.95)';
+      g.strokeStyle=col; g.lineWidth=4; g.lineCap='round';
+      let last=null;
+      for(const sg of segs){
+        const a=pr(sg[0]), b=pr(sg[1]);
+        if(!a||!b) continue;
+        g.beginPath(); g.moveTo(a.u,a.v); g.lineTo(b.u,b.v); g.stroke();
+        last=b;
+      }
+      // 关节球
+      g.fillStyle=col;
+      for(const sg of segs){ const a=pr(sg[0]); if(a){ g.beginPath(); g.arc(a.u,a.v,3.2,0,Math.PI*2); g.fill(); } }
+      if(last){ g.beginPath(); g.arc(last.u,last.v,5,0,Math.PI*2); g.fill();
+        g.fillStyle='#cfe9ff'; g.font='bold 11px monospace'; g.fillText('SIM '+side, last.u+7, last.v-7); }
+    }
+    g.fillStyle='rgba(140,200,255,.9)'; g.font='11px monospace';
+    g.fillText('🦾 SIM骨骼 ← 8802 渲染真值 · n='+(SIMB.n||'-'), 10, 16);
+  } else if(SIMON){
+    g.fillStyle='rgba(255,120,120,.9)'; g.font='11px monospace';
+    g.fillText('🦾 SIM骨骼: 取不到/已过期 '+(SIMERR||''), 10, 16);
+  }
   VIEW={eye:eye,R:R,U:U,fwd:fwd,F:F,CX:CX,CY:CY,pr:pr};   // 🖱 点图取点(反投影) / 鼠标选中命中测试
   // 🟫 地面层(轮底/桌腿 z=-0.750): 最先画(最远), 让箱子/桌子看着是站在这层上
   if(typeof FLR!=='undefined' && FLR.show) drawFloor(g, pr);
@@ -4343,6 +4372,22 @@ function drawTable(g,pr){
 $('bArmL').addEventListener('click',()=>vrKeepCam(()=>{ LARM.show=!LARM.show; paintLarm(); }));
 $('bCamTop').addEventListener('click',()=>vrKeepCam(()=>{
   TCAM.show=!TCAM.show; $('bCamTop').classList.toggle('on',TCAM.show); }));
+
+// 🦾 SIM 骨骼开关 + 200ms 拉一次 8802 真值 (与渲染帧同源)
+async function simBonesPull(){
+  try{
+    const r = await fetch('/api/sim_bones', {cache:'no-store'});
+    const j = await r.json();
+    if(j && j.ok){ SIMB=j; SIMTS=Date.now()/1000; SIMERR=''; }
+    else { SIMERR=(j&&(j.err||j.why))||'ok=false'; }
+  }catch(e){ SIMERR=String(e&&e.message||e); }
+}
+$('bSim').addEventListener('click', ()=>{
+  SIMON=!SIMON; $('bSim').classList.toggle('on',SIMON);
+  if(SIMON){ simBonesPull(); }
+  try{ console.log('SIM bones', SIMON); }catch(e){}
+});
+setInterval(()=>{ if(SIMON) simBonesPull(); }, 200);
 $('bChs').addEventListener('click',()=>vrKeepCam(()=>{
   CHS.show=!CHS.show; $('bChs').classList.toggle('on',CHS.show); }));
 $('bTab').addEventListener('click',()=>vrKeepCam(()=>{

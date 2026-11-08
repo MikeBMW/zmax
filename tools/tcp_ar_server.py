@@ -1556,6 +1556,17 @@ class H(BaseHTTPRequestHandler):
                     self._json(_det_src_payload())
             elif p == "/api/tcp":
                 self._json(read_tcp())
+            elif p == "/api/sim_bones":       # 🦾 仿真骨骼真值 (8802 /bones.json 同源, 给 /ar3d 画 SIM 层)
+                #   2026-11-08 老倪: 页面要看「和渲染同一份数据」的机器人 —— URDF 那条走真机 latest.json
+                #   (真机不上电就永远是旧姿态), 这一条直接取渲染场景的 body_xpos, 两边必然一致。
+                import urllib.request as _ur
+                try:
+                    with _ur.urlopen("http://127.0.0.1:8802/bones.json", timeout=3.0) as _r:
+                        _b = json.loads(_r.read().decode("utf-8"))
+                    _b["src"] = "8802 /bones.json (仿真实值 · 非 URDF)"
+                    self._json(_b)
+                except Exception as _e:                                     # noqa: BLE001
+                    self._json({"ok": False, "err": "%s: %s" % (type(_e).__name__, str(_e)[:160])})
             elif p == "/api/robot_state":        # 🤖 机器人状态机 (是否在插拔 ⇒ 页面顶部一眼看到)
                 #   唯一依据 = tools/robot_state.py (控制器三查 + 位姿 + 阶段文件), 本服务只做只读代发。
                 try:
