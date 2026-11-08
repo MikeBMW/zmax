@@ -2274,7 +2274,7 @@
      "工程库": "data/database/zmax/zmax_engineering.db"
     },
     "cfg_snapshot": {
-     "loaded_at": "2026-11-05 11:15:23",
+     "loaded_at": "2026-11-08 16:55:31",
      "files_total": 8,
      "files_ok": 8,
      "orders": 12,
@@ -2338,18 +2338,18 @@
      "口径": "一个状态空间工程承载全部任务; 任务=配方段子集+参数覆盖"
     },
     "source_symbol": "def import_config_files(",
-    "cfg_loaded_at": "2026-11-05 11:15:23",
+    "cfg_loaded_at": "2026-11-08 16:55:31",
     "cfg_files": [
      {
       "name": "总工程文件",
       "rel": "data/database/zmax/zmax_space.proj",
-      "sha256": "5613abd7a37349c1",
+      "sha256": "59ddf01e69a1dba6",
       "exists": true
      },
      {
       "name": "任务绑定",
       "rel": "config/ss_task_binding.json",
-      "sha256": "bf30ae0e6f9aaa46",
+      "sha256": "505a8007e028c5aa",
       "exists": true
      },
      {
