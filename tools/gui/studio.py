@@ -16542,10 +16542,34 @@ def _single_instance_guard():
         return False
 
 
+def _autostart_local_services():
+    """开机自启本机两个服务 (老倪 2026-11-08: 「自己开产品大屏服务, 自己开 ar3d 服务」)。
+
+    8799 产品大屏 / 8797 AR 3D —— 冻结包里自带的 stdlib-only 服务, 用包里解释器拉起来;
+    已经起着就跳过。放后台线程, 不卡启动。
+    """
+    try:
+        import local_services as _ls
+    except Exception as _e:                                                 # noqa: BLE001
+        print("⚠️ 本机服务不可用 (local_services 导入失败): %r" % (_e,))
+        return
+    for name, port in (("dashboard_server.py", 8799), ("tcp_ar_server.py", 8797)):
+        try:
+            ok, why = _ls.ensure(name, port, timeout=25.0)
+            print("🛰 本机服务 %-22s :%d → %s" % (name, port, why))
+        except Exception as _e:                                             # noqa: BLE001
+            print("⚠️ 本机服务 %s 失败: %r" % (name, _e))
+
+
 def main():
     _seed_config_from_defaults()
     if not _single_instance_guard():
         return 0
+    try:
+        import threading as _th
+        _th.Thread(target=_autostart_local_services, name="local-services", daemon=True).start()
+    except Exception:                                                       # noqa: BLE001
+        pass
     _install_thread_guard()          # 🐞 调试期线程异常只落盘, 不抢断点焦点
     # 🐛 2026-08-30 老倪: VSCode attach 断点调试 — 启动即监听 5678, 不阻塞
     # (F5 attach 到现有控制台即可断点单步, 无需再启动一个控制台实例)
