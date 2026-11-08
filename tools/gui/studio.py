@@ -59,7 +59,21 @@ def _run_helper_script_if_any():                      # noqa: C901
         if not os.path.isabs(target):
             target = os.path.join(os.getcwd(), target)
         if not os.path.exists(target):
-            return                                    # 找不到就交回正常启动, 不吞参数
+            # 🔴 2026-11-08 小静静实测: 子进程叫的是**相对路径** `tools/scene_edit.py`, 而 cwd 是安装根
+            #   (可执行文件同级), 脚本其实在 `_internal/tools/` ⇒ 这里找不到就交回正常启动 ⇒ 又起一个 GUI
+            #   (实测 5744 拉起 4216, 命令行就是 tools/scene_edit.py list --json; 这就是"多实例抢文件"的来源)。
+            #   冻结包里按 _MEIPASS 再找一次同名的 .py, 找到就同进程跑。
+            _mp = getattr(sys, "_MEIPASS", "") or ""
+            _rel = os.path.basename(target)
+            for _c in (os.path.join(_mp, _rel),
+                       os.path.join(_mp, "tools", _rel),
+                       os.path.join(_mp, "tools", "gui", _rel),
+                       os.path.join(_mp, "tools", "gen", _rel)):
+                if _mp and os.path.isfile(_c):
+                    target = _c
+                    break
+            if not os.path.exists(target):
+                return                                # 实在没有, 交回正常启动, 不吞参数
     # 窗口版 exe 的 sys.stdout 可能是 None, 但父进程是管道接的 ⇒ fd 还在, 包一层就能写
     if sys.stdout is None:
         try:
@@ -16505,8 +16519,33 @@ def _seed_config_from_defaults():
         return -1
 
 
+_INST_LOCK = None
+
+
+def _single_instance_guard():
+    """双击两次只留一个实例 (实测多实例会互相覆盖 canvas/config, 还会让启动变慢)。"""
+    import socket as _so
+    global _INST_LOCK
+    s = _so.socket(_so.AF_INET, _so.SOCK_STREAM)
+    try:
+        s.setsockopt(_so.SOL_SOCKET, _so.SO_REUSEADDR, 0)
+        s.bind(("127.0.0.1", 8795))
+        s.listen(1)
+        _INST_LOCK = s
+        return True
+    except OSError:
+        try:
+            s.close()
+        except Exception:                                                   # noqa: BLE001
+            pass
+        print("⚠️ 已经有一个 Z-MAX 控制台在运行 — 本实例直接退出 (避免两个实例抢同一份画布/配置)")
+        return False
+
+
 def main():
     _seed_config_from_defaults()
+    if not _single_instance_guard():
+        return 0
     _install_thread_guard()          # 🐞 调试期线程异常只落盘, 不抢断点焦点
     # 🐛 2026-08-30 老倪: VSCode attach 断点调试 — 启动即监听 5678, 不阻塞
     # (F5 attach 到现有控制台即可断点单步, 无需再启动一个控制台实例)
