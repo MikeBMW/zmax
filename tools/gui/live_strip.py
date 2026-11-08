@@ -105,6 +105,16 @@ class LiveStrip(QFrame):
 
         if self._proc is not None:
             return                                     # 上一轮还没回, 不叠进程
+        if getattr(sys, "frozen", False) and isinstance(self._cmd, (list, tuple)):
+            # 🔴 2026-11-08 冻结版(Windows .exe)专用: frozen 时 sys.executable 就是控制台自己,
+            #   用 QProcess 起 [脚本, --json] 等于把 GUI 主程序再跑一遍, 而它一进去又建 LiveStrip
+            #   ⇒ 无限自我递归 (实测 16s 内进程从 1 涨到 22, 永远出不了窗口)。
+            #   冻结包改为**同进程 runpy 执行**只读工具, 把 stdout 重定向后按 JSON 解析。
+            if self._busy:
+                return
+            self._busy = True
+            self._run_inproc()
+            return
         self._buf = b""
         p = QProcess()                                 # 不挂 parent: 由 self._proc 显式持有/销毁,
         self._proc = p                                 #   否则父控件先析构会 delete 掉还在跑的 QProcess →
@@ -157,6 +167,59 @@ class LiveStrip(QFrame):
             self._buf += bytes(p.readAllStandardOutput())
         except RuntimeError:                                               # C++ 对象已删, 忽略
             pass
+
+    def _run_inproc(self):
+        """冻结版: 同进程跑 [脚本, *args], 把它的 stdout 当 JSON 解析后回主线程 (不 spawn 自己)。"""
+        def _work(_self=self):
+            import contextlib as _ctx
+            import io as _io
+            import runpy
+            buf = _io.StringIO()
+            payload, err = None, None
+            old_argv = sys.argv
+            script = str(_self._cmd[0]).replace("/", os.sep)
+            path = script if os.path.isabs(script) else os.path.join(ROOT, script)
+            try:
+                if not os.path.exists(path):
+                    raise FileNotFoundError(path)
+                sys.argv = [path] + [str(a) for a in _self._cmd[1:]]
+                try:
+                    with _ctx.redirect_stdout(buf), _ctx.redirect_stderr(buf):
+                        runpy.run_path(path, run_name="__main__")
+                except SystemExit:
+                    pass                      # 工具用 sys.exit 收尾: 输出已在 buf 里
+            except Exception as e:                                     # noqa: BLE001
+                err = "%s: %s" % (type(e).__name__, e)
+            finally:
+                sys.argv = old_argv
+            if err is None:
+                txt = buf.getvalue().strip()
+                try:
+                    payload = json.loads(txt) if txt else None
+                    if payload is None:
+                        err = "工具没输出 JSON (in-proc)"
+                except Exception:                                          # noqa: BLE001
+                    a, b = txt.find("{"), txt.rfind("}")
+                    frag = txt[a:b + 1] if (a >= 0 and b > a) else ""
+                    if frag:
+                        try:
+                            payload = json.loads(frag)
+                        except Exception as e2:                            # noqa: BLE001
+                            err = "JSON 解析失败: %s" % e2
+                    if payload is None and err is None:
+                        err = "工具没输出 JSON (in-proc)"
+            try:
+                _self.data_ready.emit((payload, err))
+            except Exception:                                              # noqa: BLE001
+                pass
+
+        if not hasattr(self, "_live_ipt"):
+            import threading
+            self._live_ipt = threading.Thread(target=_work, name="live-strip-inproc", daemon=True)
+            self._live_ipt.start()
+        else:
+            import threading
+            threading.Thread(target=_work, name="live-strip-inproc", daemon=True).start()
 
     def _on_finished(self, code, _st=0):
         p = self.sender()
