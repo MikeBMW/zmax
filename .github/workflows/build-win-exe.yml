@@ -128,7 +128,15 @@ jobs:
           # 打包必须有一个真实文件, 否则 --add-data src/lerobot/engineering 里没有 state_space_obs.json
           # (v5.35.0 首轮就是这么挂的: 资产核验 "画布真源: 0" → exit 1)。
           mkdir -p src/lerobot/engineering/flows
-          cp -f defaults/canvas/state_space_obs.json src/lerobot/engineering/flows/state_space_obs.json
+          # 🔴 2026-11-08 小静静实测: 原来无条件拷 defaults/canvas/ 的**空骨架**(0 节点) ⇒ Windows 包装完打开总工程
+          #   也只看到空画布。仓库里 data/database/zmax/sources/canvas/ 才是真画布(94 节点) ⇒ 有就拷真的, 没有才用骨架。
+          if [ -f data/database/zmax/sources/canvas/state_space_obs.json ]; then
+            cp -f data/database/zmax/sources/canvas/state_space_obs.json src/lerobot/engineering/flows/state_space_obs.json
+            echo "canvas: 用仓库真画布"
+          else
+            cp -f defaults/canvas/state_space_obs.json src/lerobot/engineering/flows/state_space_obs.json
+            echo "canvas: 用空骨架(兜底)"
+          fi
           # 🏭 产品三档 (550A/550B/550C): 实例真源不在仓库里 ⇒ 出厂骨架必须随包, 否则全新安装选不出产品档
           python -c "import json;d=json.load(open('defaults/config/platform/zmax_product.json',encoding='utf-8'));print('factory products:',list(d.get('products',{}).keys()),'active:',d.get('active_product'));assert set(('550A','550B','550C'))<=set(d.get('products',{}))"
           python -c "import json;d=json.load(open('src/lerobot/engineering/flows/state_space_obs.json',encoding='utf-8'));print('canvas nodes (factory skeleton):',len(d.get('nodes',[])))"
@@ -485,7 +493,15 @@ jobs:
         run: |
           # 见 Windows job 同名步骤: 实例画布不随仓库走, 打包必须有真实文件, 否则 .app 里没有画布真源
           mkdir -p src/lerobot/engineering/flows
-          cp -f defaults/canvas/state_space_obs.json src/lerobot/engineering/flows/state_space_obs.json
+          # 🔴 2026-11-08 小静静实测: 原来无条件拷 defaults/canvas/ 的**空骨架**(0 节点) ⇒ Windows 包装完打开总工程
+          #   也只看到空画布。仓库里 data/database/zmax/sources/canvas/ 才是真画布(94 节点) ⇒ 有就拷真的, 没有才用骨架。
+          if [ -f data/database/zmax/sources/canvas/state_space_obs.json ]; then
+            cp -f data/database/zmax/sources/canvas/state_space_obs.json src/lerobot/engineering/flows/state_space_obs.json
+            echo "canvas: 用仓库真画布"
+          else
+            cp -f defaults/canvas/state_space_obs.json src/lerobot/engineering/flows/state_space_obs.json
+            echo "canvas: 用空骨架(兜底)"
+          fi
           python -c "import json;d=json.load(open('src/lerobot/engineering/flows/state_space_obs.json',encoding='utf-8'));print('canvas nodes (factory skeleton):',len(d.get('nodes',[])))"
 
       - name: Build .app with PyInstaller
