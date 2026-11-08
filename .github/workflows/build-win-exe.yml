@@ -57,10 +57,19 @@ jobs:
         shell: bash
         run: |
           VER="${{ steps.release_tag.outputs.tag }}"; VER="${VER#v}"
+          # 🔴 2026-11-09: workflow_dispatch 不传 tag 时默认 'dev-snapshot' ⇒ version_info.txt 里变成
+          #   filevers=(dev-snapshot,0,0,0) ⇒ PyInstaller exec 它直接 NameError: name 'dev' is not defined
+          #   ⇒ Windows .exe 构建整段失败。这里兜底: 不是 x.y.z 就回退 VERSION.md 里的真版本号。
+          case "$VER" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) VER=$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' VERSION.md | head -1) ;;
+          esac
+          echo "exe version = $VER"
           python -c "
           import sys
           ver = '$VER'.split('.')
           ver = (ver + ['0','0','0'])[:4]
+          ver = [(v if v.isdigit() else '0') for v in ver]
           tpl = '''VSVersionInfo(
             ffi=FixedFileInfo(filevers=(%s,%s,%s,%s), prodvers=(%s,%s,%s,%s), mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)),
             kids=[StringFileInfo([StringTable('040904B0', [
