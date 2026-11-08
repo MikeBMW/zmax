@@ -4893,6 +4893,19 @@ async function refresh(){
   try{ TCP=await fetch('/api/tcp').then(r=>r.json()); if(TCP&&TCP.ok){
     const _e=$('tTcp'); if(_e){ const _s='TCP 帧龄 '+TCP.age_s.toFixed(1)+'s'+((TCP.age_s>5)?' ⚠':''); if(_e.textContent!==_s) _e.textContent=_s; }
   } }catch(e){}
+  // 🪟 2026-11-09 老倪「windows 上 AR3D 怎么没有机器人的左右臂」:
+  //   这台机器没有真机位姿(/api/tcp ok=false) ⇒ 真机右臂那一层永远是空的, 页面上一条臂都看不到。
+  //   没有真机就自动打开「SIM 骨骼层」(8802 /bones.json, 左右臂青/橙) + 仿真右臂, 人不用再去点开关。
+  //   有真机的生产机 TCP.ok=true ⇒ 这里不动, 现场行为不变。
+  try{
+    if(!(TCP&&TCP.ok) && !SIMON && typeof simBonesPull==='function'){
+      SIMON=true;
+      const _b=$('bSim'); if(_b){ _b.classList.add('on'); }
+      VR.simArm=true;
+      const _br=$('bArmR'); if(_br){ _br.classList.add('on'); _br.textContent='🦾 右臂_仿真'; }
+      simBonesPull();
+    }
+  }catch(e){}
   if(CAM==='arm'){                       // 🔍 光模块 3D 框 (只在臂相机这一路拉)
     try{ MOD3=await fetch('/api/module3d').then(r=>r.json()); }catch(e){}
   } else { MOD3=null; }
