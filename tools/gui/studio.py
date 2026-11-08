@@ -18,6 +18,13 @@ import time as _time
 #   后面几处关键节点各自打一行耗时, 老倪的启动日志里就能直接看到慢在哪一段。
 _BOOT_T0 = _time.time()
 
+# 🔴 2026-11-09 小静静实测「AR3D 机器人不动, 画布在动」的真根因:
+#   AR 页面三维双臂只跟 zmax_data/ss_live/ar_cmd.json 走, 而画布 Plan 节点(plan_long_impl)
+#   写这个文件是**被环境变量闸住**的: _AR_PUB = (ZMAX_UPH_AR_PUB == "1")。Windows 的
+#   launch.vbs 以前不设 ⇒ 画布在跑, ar_cmd.json 一个字节都不写 ⇒ 8797 拿不到指令帧 ⇒ 画面不动。
+#   这里兜底默认开(生产机 systemd 里显式写 0, setdefault 不会盖它)。
+os.environ.setdefault("ZMAX_UPH_AR_PUB", "1")
+
 # 🔴 2026-11-08 小静静实测「打开总工程 = 集成式打开失败」的**真根因**:
 #   中文 Windows 的 sys.stdout/stderr 默认是 GBK(cp936)。代码里到处是 emoji 的 print
 #   (🗄 工程库已同步 / ⚠️ 同步失败 …), 在 GBK 上直接 UnicodeEncodeError ⇒ 把**整段业务**带崩:
@@ -16568,9 +16575,14 @@ def _autostart_local_services():
     except Exception as _e:                                                 # noqa: BLE001
         print("⚠️ 本机服务不可用 (local_services 导入失败): %r" % (_e,))
         return
-    for name, port in (("tcp_ar_server.py", 8797),):
+    for name, port, _extra in (("tcp_ar_server.py", 8797, ()),
+                               # 🦾 2026-11-09 老倪「AR3D 里怎么没有机器人」: 页面的双臂骨骼来自
+                               #   8802 /bones.json。这个服务没起 ⇒ SIM 层拿不到骨骼 ⇒ 场景里空着。
+                               #   没有 GL 时它会自动降级成「只出真值/骨骼」(见 ar_scene_render_server.py)。
+                               ("ar_scene_render_server.py", 8802,
+                                ("--port", "8802", "--hz", "8", "--phys-hz", "50", "--render-hz", "20"))):
         try:
-            ok, why = _ls.ensure(name, port, timeout=25.0)
+            ok, why = _ls.ensure(name, port, timeout=30.0, extra=_extra)
             print("🛰 本机服务 %-22s :%d → %s" % (name, port, why))
         except Exception as _e:                                             # noqa: BLE001
             print("⚠️ 本机服务 %s 失败: %r" % (name, _e))

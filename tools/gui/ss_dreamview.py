@@ -1301,10 +1301,19 @@ AR_PAGE_URL_LOOPBACK = "http://127.0.0.1:8793/ar"
 #   按钮就点到一个不存在的地址 ⇒ 日志里「⚠️ 页面地址: http://10.163.146.78:8793/ar」而页面无法打开。
 #   现在改成**点击时按当前默认路由网卡现算**(ZMAX_AR_URL 仍可覆盖), 换网/换热点不用改代码。
 def ar_page_url():
-    """8793/ar 入口(302→8797/ar); 主机在调用时现算, 不吃启动那一刻的网络。"""
+    """AR 页面入口: 本机有 AR 服务就开自己的(老倪 2026-11-09「按钮需要打开自己的服务」)。"""
     _env = os.environ.get("ZMAX_AR_URL")
     if _env:
         return _env
+    # ① 本机 8797 真在听 ⇒ 开本机 /ar3d(三维整屏)。Windows 冻结包自带 tcp_ar_server.py,
+    #    以前这里按 LAN IP + 8793 拼, 打到的是**主脑那台**的页(老倪: 怎么打开静静的服务了?)。
+    try:
+        import urllib.request as _u
+        with _u.urlopen("http://127.0.0.1:8797/api/cams", timeout=1.0) as _r:
+            if 200 <= int(getattr(_r, "status", 200) or 200) < 300:
+                return "http://127.0.0.1:8797/ar3d"
+    except Exception:                                                      # noqa: BLE001
+        pass
     _ip = _lan_ip()
     if not _ip or _ip.startswith("127."):
         return AR_PAGE_URL_LOOPBACK

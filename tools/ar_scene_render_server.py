@@ -394,7 +394,16 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
             env = ArMujocoEnv(render_mode="rgb_array", camera_name="corner2")
             model, data = env.model, env.data
             env.reset()                                   # 双臂 home, 不留 0 位姿
-            renderer = mujoco.Renderer(model, H, W)
+            # 🪟 2026-11-09 小静静实测: Windows 会话0/无桌面时 mujoco.Renderer 建不出来(WGL 无上下文,
+            #   'Renderer' object has no attribute '_mjr_context')。原来这里一抛 ⇒ 整个构造轮重试 ⇒
+            #   ENV 永不就位 ⇒ /bones.json 永远「未生成」 ⇒ AR3D 页面里**没有机器人**。
+            #   降级: 没有 GL 就只跑物理 + 骨骼真值(不出渲染帧), 页面照样能画双臂并跟 ar_cmd 走。
+            try:
+                renderer = mujoco.Renderer(model, H, W)
+            except Exception as _ge:                                     # noqa: BLE001
+                renderer = None
+                print("⚠ 无 GL 上下文 ⇒ 降级为「只出真值/骨骼」模式: %s: %s"
+                      % (type(_ge).__name__, _ge), flush=True)
             ENV.update({"model": model, "data": data, "renderer": renderer})
             cams, cam0 = {}, {}
             for name, v in VIEWS.items():
@@ -414,13 +423,14 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
             plane_z = float(data.geom_xpos[tid][2] + model.geom_size[tid][2]) if tid >= 0 else 0.10
             cx, cy = (float(base[0]), float(base[1])) if base is not None else (0.52, 0.35)
             calibs = {}
-            for name, c in cams.items():
-                calibs[name] = calibrate_camera(mujoco, model, data, renderer, qadr,
-                                                plane_z, cx, cy, c, name,
-                                                fovy=VIEWS[name].get("fovy", 45.0))
-                cl = calibs[name]
-                print("📐 标定[%s]: n=%s 残差中位 %s px" % (name, cl.get("n"), cl.get("res_px_med")),
-                      flush=True)
+            if renderer is not None:                 # 无 GL 没法标定(要渲染靶点) ⇒ 跳过, 不拦循环
+                for name, c in cams.items():
+                    calibs[name] = calibrate_camera(mujoco, model, data, renderer, qadr,
+                                                    plane_z, cx, cy, c, name,
+                                                    fovy=VIEWS[name].get("fovy", 45.0))
+                    cl = calibs[name]
+                    print("📐 标定[%s]: n=%s 残差中位 %s px" % (name, cl.get("n"), cl.get("res_px_med")),
+                          flush=True)
             with LOCK:
                 STATE.update({"err": None, "calib": calibs.get("close") or {},
                               "calibs": calibs, "plane_z": plane_z})
@@ -465,7 +475,7 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
             #   这里把"出图"和"物理/真值"解耦: 真值每拍更新, 图按 render_hz 出, 中间复用上一帧。
             _do_render = (time.time() - _last_render) >= _rperiod
             with GL:                      # 🔒 出图与按需自由视角串行 (renderer 非线程安全)
-                if _do_render:
+                if _do_render and renderer is not None:
                     _last_render = time.time()
                     views_out = dict(_views_cache or {})
                     # 只渲特写 (close) 每拍出图; 全景 (ar3d) 每 3 拍一次 —— 两路一起渲 ~60ms,

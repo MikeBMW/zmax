@@ -15457,8 +15457,18 @@ class SimulinkModule(QWidget):
                 import local_services as _ls
                 _ok, _why = _ls.ensure("tcp_ar_server.py", 8797, timeout=25.0)
                 self._log("🥽 AR 3D(本机服务): %s" % _why)
+                # 🦾 页面里的双臂骨骼来自本机 8802(/bones.json) —— 后台拉起来, 不拖慢开页面;
+                #   页面自己轮询 /api/sim_bones, 服务就位后机器人就出现(老倪 2026-11-09)。
+                try:
+                    import threading as _th
+                    _th.Thread(target=lambda: _ls.ensure(
+                        "ar_scene_render_server.py", 8802, timeout=30.0,
+                        extra=("--port", "8802", "--hz", "8", "--phys-hz", "50",
+                               "--render-hz", "20")), daemon=True).start()
+                except Exception:                                           # noqa: BLE001
+                    pass
                 import webbrowser as _wb
-                _wb.open("http://127.0.0.1:8797/ar")
+                _wb.open("http://127.0.0.1:8797/ar3d")
             except Exception as _e:                                          # noqa: BLE001
                 self._log("❌ AR 3D(本机服务) 失败: %r" % (_e,))
             return
