@@ -1061,7 +1061,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.50.768")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.50.770")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.ensurePolished()                     # 先套上样式再量字, 否则 sizeHint 按默认字体算
         ver.setToolTip("版本号在此 (侧栏品牌位)\n"
                        "顶栏标题 = 产品标识「XSpace ZMAX <产品号>」, 与配置中心产品配置同源 (config/platform/zmax_product.json)\n"
@@ -12547,6 +12547,7 @@ class StudioMainWindow(QMainWindow):
         self._set_console_title()
         # 🐛 2026-09-01 老倪: 调试自检 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.50.770: AR 自由视角/8802 任意视角框架 + SIM 骨骼真值层(/bones.json) + 摄像头 off 档不再被 builtin 抢回; 根因: 视角被锁定与 off 档被回退 = 用户操作无反应/设备被抢
         # v5.50.768: v5.50.768: 算力实测(550A/550C 三设备)+55D 端侧部署+BOM三档成本+手册M4(299页); 根因: 100ms 拍预算此前无实测依据, 成本档位与目标30/22/35万未对账
         # v5.50.767: 5.50.767：方案册从 51 页扩到 91 页，补齐 L3/L4/L5 与收尾三页。 ① 决策层 5 个节点、认知层 18 个、任务层 11 个，每个节点一页，与基础层 30 页同版面：上功能描述/中框图(每根连线一根线)/左下输入接口/右下输出接口/AR 验证一行/节拍角色一行；三层各加一页层首页(节点表)。 ② 新增收尾三页：状态空间完整性(79 节点 214 连线 现算)、每小时 300 件的三个前提、模型引擎有效性(14 权重可加载 / 推理 4.4ms / 7 个训练入口可编译)。 ③ 新增 tools/engine_probe.py 体检脚本、tools/l345_prose.py(34 节点文字)、tools/l345_pages.py、tools/deck_close.py。 ④ 修数据缺口：13 个节点(n_inspection/n_muscle/n_sequence/n_prefrontal/n_memory/n_skills/n_profile/n_labeler/n_waves/n_video/n_mode/n_overlay/n_metaworld)的 SOURCE/SOURCE_SYMBOL 原本是空的，现按真实函数补上，绑定实现从 66 提升到 78/79(余 1 个为外部 metaworld 包)。 ⑤ 页脚总数改成本册实际页数，前置页不再写死 51；节点标题截断从 26 字放宽到 44 字。 自检 58 项全过，压字体检 0/91。
         # v5.50.766: 5.50.766：基础层 30 页按老倪定版重排 —— 上=功能描述（做什么 11.5pt / 怎么算 10.5pt / 节拍角色 9.6pt），中=功能框图（左输入、右输出、中间本节点，每个输入一根独立连线扇入、每个输出一根扇出，不再用合并母线；盒子 9.0~9.6pt，多于 8 条自动加行距压缩），下=左下输入接口描述（名称·标签）、右下输出接口描述；AR 验证与代码位置压到页脚上方一行。连线数逐页核过：30 页连线数=输入+输出，无出界。自检 51 项全过，压字体检 0 页。
@@ -13539,7 +13540,7 @@ class StudioMainWindow(QMainWindow):
         #   ⇒ 状态栏右下角那组控件 (_latency_label「延迟: xx ms」+ _engine_status「● 本地就绪」+
         #      _engine_combo「ACT (Local · 1ms)」) 整组删除, 不再建、不再挂到状态栏。
         #      保留 sb.showMessage(...) 的一行总览, 界面上不再有这组无用读数 (引擎实际由画布/工程配置决定)。
-        sb.showMessage("Z-MAX v5.50.768  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.50.770  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🔴 2026-10-12 老倪(定规矩): 「点开启动图标后, 3D场景不要自动启动, 我要先检查任务配置, 然后启动工程」
         #   本段以下所有自动开窗/自动运行**一律只在显式 env 下触发**(ZMAX_AUTO_*), 正常双击图标时:
@@ -15972,7 +15973,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.50.768</b> · 多模态动作专家<br>
+<b>Z-MAX v5.50.770</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>
