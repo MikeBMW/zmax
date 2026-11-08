@@ -99,6 +99,69 @@ def _run_helper_script_if_any():                      # noqa: C901
 
 _run_helper_script_if_any()
 
+
+def _open_product_dashboard(win=None):
+    """🖥 产品大屏 (2026-11-08 重写): 候选链 TCP 探活 → 系统浏览器打开第一个通的。
+
+    原来写死公网 https://datadrive.world/factory-dashboard.html, 而 47.93.88.143:443 从产线/笔记本
+    都连不上(实测 TCP 直接 fail / 20s 超时) ⇒ 点开只有浏览器一直转 = 老倪说的"打不开"。
+    顺序: ZMAX_DASHBOARD_URL > 本机 127.0.0.1:8799 > config/ui/dashboard_hosts.json 登记的主机
+          > 产线默认 192.168.23.50:8799 > 公网。
+    绝不抛异常(调用方还兜一层): PyQt5 槽里抛异常会 qFatal 直接杀进程。
+    """
+    import socket as _sk
+    import subprocess as _sp
+    from urllib.parse import urlsplit as _us
+
+    def _tcp_ok(u, tmo=0.8):
+        try:
+            s = _us(u)
+            host = s.hostname or ""
+            port = s.port or (443 if s.scheme == "https" else 80)
+            if not host:
+                return False
+            with _sk.create_connection((host, port), timeout=tmo):
+                return True
+        except Exception:                                                  # noqa: BLE001
+            return False
+
+    hosts = []
+    try:
+        _root = os.environ.get("ZMAX_ROOT") or os.path.expanduser("~/zmax")
+        _cf = os.path.join(_root, "config", "ui", "dashboard_hosts.json")
+        if os.path.isfile(_cf):
+            import json as _json
+            with open(_cf, encoding="utf-8") as _f:
+                _raw = _json.load(_f)
+            for h in ((_raw.get("hosts") if isinstance(_raw, dict) else _raw) or []):
+                hosts.append(str(h))
+    except Exception:                                                      # noqa: BLE001
+        pass
+    if not hosts:
+        hosts = ["192.168.23.50:8799"]
+    cands = [u for u in ([os.environ.get("ZMAX_DASHBOARD_URL", ""), "http://127.0.0.1:8799/"]
+                         + ["http://%s/" % h if not str(h).startswith("http") else str(h) for h in hosts]
+                         + ["https://datadrive.world/factory-dashboard.html"]) if u]
+    url, tried = cands[-1], []
+    for u in cands:
+        tried.append(u)
+        if _tcp_ok(u):
+            url = u
+            break
+    if os.name == "nt":
+        _sp.Popen(["cmd.exe", "/c", "start", "", url])
+    else:
+        import webbrowser as _wb
+        _wb.open(url)
+    if win is not None:
+        try:
+            win.statusBar().showMessage("🖥 产品大屏 → %s%s" % (
+                url, "" if url == cands[0] else "   (回退链: %s)" % " → ".join(tried)), 10000)
+        except Exception:                                                  # noqa: BLE001
+            pass
+    return url
+
+
 # 🔇 2026-10-31 老倪:「启动的时候，别刷屏」「你看终端，刷屏那么多无效信息」
 #   实测一次启动 stdout 365 行(📌/📚/⏱ 三行一组重复 3 遍 + 各页面自述), 有用的只有末尾两行。
 #   这里进程一启动就把 stdout 换成静音闸: 启动期所有播报照写 /tmp/zmax_boot.log, 终端不刷;
@@ -15107,55 +15170,24 @@ class StudioMainWindow(QMainWindow):
         # 特殊指令：产品大屏 (2026-08-08 老倪: 打开工厂数字大屏)
         # 🐛 WSL 无 xdg-open → QDesktopServices.openUrl 失效 → 用 cmd.exe start (Windows 默认浏览器)
         if target == "website":
-            # 🔴 2026-11-08 老倪「产品大屏打不开」真因: 原来**写死**公网 https://datadrive.world/factory-dashboard.html,
-            #   而 47.93.88.143:443 从产线/笔记本都连不上(实测两台都 20s 超时, TCP 直接 fail) ⇒ 点开只有浏览器
-            #   一直在转, 看着就是"打不开"。大屏本身的数据源服务(8799 大屏页 / 8793 工位总览)**一直在本机跑**。
-            #   改成候选链: 环境变量 > 本机 8799 > 本机 LAN IP:8799 > 公网; 先做 TCP 探活(0.8s), 谁通开谁,
-            #   并把最后选中的 URL 写状态栏 —— 以后"打不开"一眼看出是网络还是服务。
-            import socket as _sk
-            import subprocess as _sp
-            from urllib.parse import urlsplit as _us
-
-            def _tcp_ok(u, tmo=0.8):
+            # 🔴 2026-11-08 老倪「点击产品大屏后程序崩溃」: PyQt5 里**槽函数抛异常 = qFatal 直接杀进程**
+            #   (不是弹框、不是忽略)。所以这个点击分支必须自己兜住所有异常 + 落盘, 绝不能往外冒。
+            try:
+                _open_product_dashboard(self)
+            except Exception as _e:                                        # noqa: BLE001
                 try:
-                    s = _us(u)
-                    host = s.hostname or ""
-                    port = s.port or (443 if s.scheme == "https" else 80)
-                    with _sk.create_connection((host, port), timeout=tmo):
-                        return True
+                    import traceback as _tb
+                    _ld = os.path.join(os.path.expanduser("~/zmax"), "zmax_data", "logs")
+                    os.makedirs(_ld, exist_ok=True)
+                    with open(os.path.join(_ld, "ui_error.log"), "a", encoding="utf-8") as _lf:
+                        _lf.write("\n===== %s 产品大屏 =====\n" % __import__("time").strftime("%F %T"))
+                        _lf.write(_tb.format_exc())
                 except Exception:                                          # noqa: BLE001
-                    return False
-
-            _lan = "127.0.0.1"
-            try:
-                _s = _sk.socket(_sk.AF_INET, _sk.SOCK_DGRAM)
-                _s.connect(("8.8.8.8", 80))          # 不真发包, 只为拿到出口网卡地址
-                _lan = _s.getsockname()[0]
-                _s.close()
-            except Exception:                                              # noqa: BLE001
-                pass
-            _cands = [u for u in (os.environ.get("ZMAX_DASHBOARD_URL", ""),
-                                  "http://127.0.0.1:8799/",
-                                  "http://%s:8799/" % _lan,
-                                  "https://datadrive.world/factory-dashboard.html") if u]
-            _url, _tried = _cands[-1], []
-            for _u in _cands:
-                _tried.append(_u)
-                if _tcp_ok(_u):
-                    _url = _u
-                    break
-            try:
-                if os.name == "nt":
-                    _sp.Popen(["cmd.exe", "/c", "start", "", _url])
-                else:
-                    import webbrowser as _wb
-                    _wb.open(_url)
-            except Exception:                                              # noqa: BLE001
-                import webbrowser as _wb
-                _wb.open(_url)
-            self.statusBar().showMessage("🖥 产品大屏 → %s%s" % (
-                _url, "" if _url == _cands[0] else "  (首选不通, 已按候选链回退: %s)" % " / ".join(_tried)),
-                9000)
+                    pass
+                try:
+                    self.statusBar().showMessage("⚠️ 产品大屏打开失败: %s" % _e, 8000)
+                except Exception:                                          # noqa: BLE001
+                    pass
             return
 
         # 📋 2026-10-09 老倪: 「点击 Z-MAX / System 2 / System 1 / System 0 方块 → 清晰打开功能清单」
