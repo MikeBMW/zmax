@@ -1,0 +1,849 @@
+{
+ "schema": "zmax-ar-meta-tasks/1.2",
+ "task_id": "TASK-07-AOI",
+ "generated_at": "2026-10-28 16:54:24",
+ "source_seg": "zmax_data/runtime/traj/sim_insert.json",
+ "verified": true,
+ "meta_tasks": [
+  {
+   "id": "MT-01",
+   "name": "右臂 · 上料槽取模块 → 插入目标孔 (受控插入 47mm)",
+   "hand": "R",
+   "hand_cn": "右手",
+   "layer": "L3-长程",
+   "segments": 9,
+   "actions": [
+    "move 移到 槽k 正上方",
+    "down 下降到 槽k",
+    "grip 夹爪闭合夹住模块",
+    "up 抓起抬升到安全高度",
+    "move 平移到 孔k 行进高度",
+    "move 对准 孔k 孔口",
+    "insert 受控插入 47mm 到底",
+    "release 松开让模块留在 孔k",
+    "up 退爪抬起到安全高度"
+   ],
+   "seg8": [
+    "1 取件",
+    "2 姿态准备",
+    "4 放置/插入"
+   ],
+   "prompt": "你站在 AR 场景的双臂工作站, 这只手是**右手**。走到 槽k 正上方→下降→夹住一颗光模块→抬起到安全高度→平移到 孔k 的行进高度→对准孔口→受控插入 47mm 到底→松开让模块留在孔内→退爪抬起。插入只准沿孔轴推进, 不允许侧向挤压。",
+   "source": "sim_insert.json 392 段 (右臂插拔循环, 段级实取)",
+   "in_392": true,
+   "occurrences": 14,
+   "t_s": 0.3,
+   "t_win": [
+    0,
+    2.834
+   ],
+   "dur": 2.834,
+   "targets": [
+    "槽1",
+    "孔1"
+   ],
+   "segs": [
+    {
+     "seq": 1,
+     "kind": "move",
+     "label": "→ 槽1 上方",
+     "target": "槽1",
+     "hand": "R",
+     "t": 0.3,
+     "t_end": 0.3
+    },
+    {
+     "seq": 2,
+     "kind": "down",
+     "label": "下降到 槽1",
+     "target": "槽1",
+     "hand": "R",
+     "t": 0.3,
+     "t_end": 0.6
+    },
+    {
+     "seq": 3,
+     "kind": "grip",
+     "label": "夹爪闭合",
+     "target": "槽1",
+     "hand": "R",
+     "t": 0.192,
+     "t_end": 0.792
+    },
+    {
+     "seq": 4,
+     "kind": "up",
+     "label": "抓起抬起",
+     "target": "槽1",
+     "hand": "R",
+     "t": 0.3,
+     "t_end": 1.092
+    },
+    {
+     "seq": 5,
+     "kind": "move",
+     "label": "→ 孔1 行进高度",
+     "target": "孔1",
+     "hand": "R",
+     "t": 0.65,
+     "t_end": 1.742
+    },
+    {
+     "seq": 6,
+     "kind": "move",
+     "label": "→ 孔1 孔口",
+     "target": "孔1",
+     "hand": "R",
+     "t": 0.3,
+     "t_end": 2.042
+    },
+    {
+     "seq": 7,
+     "kind": "insert",
+     "label": "插入 孔1 47mm",
+     "target": "孔1",
+     "hand": "R",
+     "t": 0.3,
+     "t_end": 2.342
+    },
+    {
+     "seq": 8,
+     "kind": "release",
+     "label": "松开(模块留在 孔1)",
+     "target": "孔1",
+     "hand": "R",
+     "t": 0.192,
+     "t_end": 2.534
+    },
+    {
+     "seq": 9,
+     "kind": "up",
+     "label": "退爪抬起",
+     "target": "孔1",
+     "hand": "R",
+     "t": 0.3,
+     "t_end": 2.834
+    }
+   ]
+  },
+  {
+   "id": "MT-02",
+   "name": "右臂 · 从孔内沿轴拔出模块 (47mm)",
+   "hand": "R",
+   "hand_cn": "右手",
+   "layer": "L3-长程",
+   "segments": 5,
+   "actions": [
+    "move 移到 孔k 正上方",
+    "down 下降到孔位",
+    "grip 在孔内夹住模块",
+    "pull 沿孔轴拔出 47mm",
+    "up 抬起到安全高度"
+   ],
+   "seg8": [
+    "5 拔出/取回"
+   ],
+   "prompt": "你站在 AR 场景的 AOI 工位, **右手**。走到待测 孔k 正上方→下降到孔位→在孔内夹住模块→沿孔轴垂直拔出 47mm→抬起到安全高度。拔出不许可斜拉, 避免损伤金手指。",
+   "source": "sim_insert.json 392 段 (右臂插拔循环, 段级实取)",
+   "in_392": true,
+   "occurrences": 14,
+   "t_s": 0.69,
+   "t_win": [
+    11.396,
+    13.178
+   ],
+   "dur": 1.782,
+   "targets": [
+    "孔1"
+   ],
+   "segs": [
+    {
+     "seq": 1,
+     "kind": "move",
+     "label": "→ 孔1 上方(拔)",
+     "target": "孔1",
+     "hand": "R",
+     "t": 0.69,
+     "t_end": 0.69
+    },
+    {
+     "seq": 2,
+     "kind": "down",
+     "label": "下降到 孔1 孔位",
+     "target": "孔1",
+     "hand": "R",
+     "t": 0.3,
+     "t_end": 0.99
+    },
+    {
+     "seq": 3,
+     "kind": "grip",
+     "label": "夹住(在孔内)",
+     "target": "孔1",
+     "hand": "R",
+     "t": 0.192,
+     "t_end": 1.182
+    },
+    {
+     "seq": 4,
+     "kind": "pull",
+     "label": "拔出 孔1 47mm",
+     "target": "孔1",
+     "hand": "R",
+     "t": 0.3,
+     "t_end": 1.482
+    },
+    {
+     "seq": 5,
+     "kind": "up",
+     "label": "拔出抬起",
+     "target": "孔1",
+     "hand": "R",
+     "t": 0.3,
+     "t_end": 1.782
+    }
+   ]
+  },
+  {
+   "id": "MT-03",
+   "name": "右臂 · 手持模块五点检测 (金手指点 + 侧面点0/1/2/3)",
+   "hand": "R",
+   "hand_cn": "右手",
+   "layer": "L2-检测",
+   "segments": 10,
+   "actions": [
+    "move 移到 金手指点",
+    "golden 金手指拍照判定",
+    "move 移到 侧面点0",
+    "side 侧面点0 拍照判定",
+    "move 移到 侧面点1",
+    "side 侧面点1 拍照判定",
+    "move 移到 侧面点2",
+    "side 侧面点2 拍照判定",
+    "move 移到 侧面点3",
+    "side 侧面点3 拍照判定"
+   ],
+   "seg8": [
+    "3 识别与工位对接"
+   ],
+   "prompt": "你**右手**拿着刚拔出的光模块: 先移到金手指检测点拍一张, 再依次移到侧面点 0/1/2/3 各拍一张。五个点全部拍完才算检测完成; 任意一点判 NG, 这颗模块按 NG 规则走废料, 不许混入良品。",
+   "source": "sim_insert.json 392 段 (右臂插拔循环, 段级实取)",
+   "in_392": true,
+   "occurrences": 14,
+   "t_s": 0.99,
+   "t_win": [
+    13.178,
+    18.368
+   ],
+   "dur": 5.19,
+   "targets": [
+    "金手指点",
+    "侧面点0",
+    "侧面点1",
+    "侧面点2",
+    "侧面点3"
+   ],
+   "segs": [
+    {
+     "seq": 6,
+     "kind": "move",
+     "label": "→ 金手指点1",
+     "target": "金手指点",
+     "hand": "R",
+     "t": 0.99,
+     "t_end": 0.99
+    },
+    {
+     "seq": 7,
+     "kind": "golden",
+     "label": "📷 金手指检测(AOI)",
+     "target": "金手指点",
+     "hand": "R",
+     "t": 0.8,
+     "t_end": 1.79
+    },
+    {
+     "seq": 8,
+     "kind": "move",
+     "label": "→ 侧面点0",
+     "target": "侧面点0",
+     "hand": "R",
+     "t": 0.5,
+     "t_end": 2.29
+    },
+    {
+     "seq": 9,
+     "kind": "side",
+     "label": "📷 侧面点0 检测(AOI)",
+     "target": "侧面点0",
+     "hand": "R",
+     "t": 0.5,
+     "t_end": 2.79
+    },
+    {
+     "seq": 10,
+     "kind": "move",
+     "label": "→ 侧面点1",
+     "target": "侧面点1",
+     "hand": "R",
+     "t": 0.3,
+     "t_end": 3.09
+    },
+    {
+     "seq": 11,
+     "kind": "side",
+     "label": "📷 侧面点1 检测(AOI)",
+     "target": "侧面点1",
+     "hand": "R",
+     "t": 0.5,
+     "t_end": 3.59
+    },
+    {
+     "seq": 12,
+     "kind": "move",
+     "label": "→ 侧面点2",
+     "target": "侧面点2",
+     "hand": "R",
+     "t": 0.3,
+     "t_end": 3.89
+    },
+    {
+     "seq": 13,
+     "kind": "side",
+     "label": "📷 侧面点2 检测(AOI)",
+     "target": "侧面点2",
+     "hand": "R",
+     "t": 0.5,
+     "t_end": 4.39
+    },
+    {
+     "seq": 14,
+     "kind": "move",
+     "label": "→ 侧面点3",
+     "target": "侧面点3",
+     "hand": "R",
+     "t": 0.3,
+     "t_end": 4.69
+    },
+    {
+     "seq": 15,
+     "kind": "side",
+     "label": "📷 侧面点3 检测(AOI)",
+     "target": "侧面点3",
+     "hand": "R",
+     "t": 0.5,
+     "t_end": 5.19
+    }
+   ]
+  },
+  {
+   "id": "MT-04",
+   "name": "右臂 · 良品放入下料盘空槽",
+   "hand": "R",
+   "hand_cn": "右手",
+   "layer": "L3-长程",
+   "segments": 4,
+   "actions": [
+    "move 移到 下料盘 槽k 上方",
+    "down 下降到槽位",
+    "release 松开模块",
+    "up 抬起脱离"
+   ],
+   "seg8": [
+    "6 分拣与回位"
+   ],
+   "prompt": "把手里这颗良品用**右手**移到下料盘空槽正上方→下降→松开放稳→抬起脱离。良品只能进下料盘。",
+   "source": "sim_insert.json 392 段 (右臂插拔循环, 段级实取)",
+   "in_392": true,
+   "occurrences": 12,
+   "t_s": 0.98,
+   "t_win": [
+    18.368,
+    20.14
+   ],
+   "dur": 1.772,
+   "targets": [
+    "下料盘 槽1"
+   ],
+   "segs": [
+    {
+     "seq": 16,
+     "kind": "move",
+     "label": "→ 下料盘 下槽1 上方",
+     "target": "下料盘 槽1",
+     "hand": "R",
+     "t": 0.98,
+     "t_end": 0.98
+    },
+    {
+     "seq": 17,
+     "kind": "down",
+     "label": "下降到 下料盘 下槽1",
+     "target": "下料盘 槽1",
+     "hand": "R",
+     "t": 0.3,
+     "t_end": 1.28
+    },
+    {
+     "seq": 18,
+     "kind": "release",
+     "label": "松开",
+     "target": "下料盘 槽1",
+     "hand": "R",
+     "t": 0.192,
+     "t_end": 1.472
+    },
+    {
+     "seq": 19,
+     "kind": "up",
+     "label": "抬起脱离",
+     "target": "下料盘 槽1",
+     "hand": "R",
+     "t": 0.3,
+     "t_end": 1.772
+    }
+   ]
+  },
+  {
+   "id": "MT-05",
+   "name": "右臂 · NG 放入废料盘",
+   "hand": "R",
+   "hand_cn": "右手",
+   "layer": "L3-长程",
+   "segments": 4,
+   "actions": [
+    "move 移到 废料盘上方",
+    "down 下降到废料盘",
+    "release 松开模块",
+    "up 抬起脱离"
+   ],
+   "seg8": [
+    "6 分拣与回位"
+   ],
+   "prompt": "把手里这颗判 NG 的模块用**右手**移到废料盘正上方→下降→松开放下→抬起脱离。NG 件一律进废料盘, 绝不允许混入下料盘良品堆。",
+   "source": "sim_insert.json 392 段 (右臂插拔循环, 段级实取)",
+   "in_392": true,
+   "occurrences": 2,
+   "t_s": 0.6,
+   "t_win": [
+    50.048,
+    51.44
+   ],
+   "dur": 1.392,
+   "targets": [
+    "废料盘"
+   ],
+   "segs": [
+    {
+     "seq": 35,
+     "kind": "move",
+     "label": "→ 废料盘(不良品) 上方",
+     "target": "废料盘",
+     "hand": "R",
+     "t": 0.6,
+     "t_end": 0.6
+    },
+    {
+     "seq": 36,
+     "kind": "down",
+     "label": "下降到 废料盘(不良品)",
+     "target": "废料盘",
+     "hand": "R",
+     "t": 0.3,
+     "t_end": 0.9
+    },
+    {
+     "seq": 37,
+     "kind": "release",
+     "label": "松开",
+     "target": "废料盘",
+     "hand": "R",
+     "t": 0.192,
+     "t_end": 1.092
+    },
+    {
+     "seq": 38,
+     "kind": "up",
+     "label": "抬起脱离",
+     "target": "废料盘",
+     "hand": "R",
+     "t": 0.3,
+     "t_end": 1.392
+    }
+   ]
+  },
+  {
+   "id": "MT-06",
+   "name": "左臂 · 周转盘取模块 → 摆入上料 Tray 空槽 (给右臂供料)",
+   "hand": "L",
+   "hand_cn": "左手",
+   "layer": "L3-长程",
+   "segments": 5,
+   "actions": [
+    "定位识别 上料 Tray 空槽位",
+    "取件 从周转盘夹取模块",
+    "转运对位 移到 槽k 上方",
+    "放入 松开放稳到 槽k",
+    "判态循环 复位等待下一件"
+   ],
+   "seg8": [
+    "0 料源与来料状态",
+    "1 取件"
+   ],
+   "prompt": "这只手是**左手**, 负责摆盘供料: 识别上料 Tray 的空槽位→从周转盘夹取一颗模块→转运到 槽k 上方→松开放稳→复位等下一件。左臂只供料不插拔; 放歪或未到位就不许交给右臂。",
+   "source": "tasks.json TASK-06-TRAY.steps (5 段) + 工单 BS-SCN-07-AOI goal「左臂摆盘」",
+   "in_392": false,
+   "occurrences": null,
+   "t_s": null,
+   "t_win": null,
+   "dur": null,
+   "targets": [
+    "上料Tray 槽k"
+   ],
+   "segs": [
+    {
+     "seq": 1,
+     "kind": "step",
+     "label": "定位识别",
+     "target": "上料Tray 槽k",
+     "hand": "L",
+     "t": 2.0,
+     "dur": null,
+     "t_end": null
+    },
+    {
+     "seq": 2,
+     "kind": "step",
+     "label": "取件",
+     "target": "上料Tray 槽k",
+     "hand": "L",
+     "t": 0.6,
+     "dur": null,
+     "t_end": null
+    },
+    {
+     "seq": 3,
+     "kind": "step",
+     "label": "转运对位",
+     "target": "上料Tray 槽k",
+     "hand": "L",
+     "t": 1.0,
+     "dur": null,
+     "t_end": null
+    },
+    {
+     "seq": 4,
+     "kind": "step",
+     "label": "放入",
+     "target": "上料Tray 槽k",
+     "hand": "L",
+     "t": 0.8,
+     "dur": null,
+     "t_end": null
+    },
+    {
+     "seq": 5,
+     "kind": "step",
+     "label": "判态循环",
+     "target": "上料Tray 槽k",
+     "hand": "L",
+     "t": 0.3,
+     "dur": null,
+     "t_end": null
+    }
+   ]
+  },
+  {
+   "id": "MT-07",
+   "name": "双手 · 供料/取料交接同步 (槽k 交接点, 一件 11.4s)",
+   "hand": "BOTH",
+   "hand_cn": "双手(协同)",
+   "layer": "L3-协同",
+   "segments": 0,
+   "actions": [
+    "左臂 放料完成 槽k",
+    "右臂 从 槽k 取料开始",
+    "双臂 节拍锁 一件 11.4s (300UPH)"
+   ],
+   "seg8": [
+    "7 节拍与循环"
+   ],
+   "prompt": "左右手交接: 左臂把模块放进 槽k 并确认到位后, 右臂才允许从 槽k 取料; 双臂并行但交接点互斥 (同一槽位同一时刻只有一只手), 整体节拍锁 11.4s/件 ⇒ 300UPH。",
+   "source": "工单 BS-SCN-07-AOI「双臂并行」+ 实测节拍 11.39s/件 (316.1 UPH)",
+   "in_392": false,
+   "occurrences": 14,
+   "t_s": null,
+   "t_win": null,
+   "dur": null,
+   "targets": [
+    "上料Tray 槽k",
+    "整机"
+   ],
+   "segs": [
+    {
+     "seq": 1,
+     "kind": "sync",
+     "label": "左臂放料完成 槽k",
+     "target": "上料Tray 槽k",
+     "hand": "L",
+     "t": null,
+     "t_end": null
+    },
+    {
+     "seq": 2,
+     "kind": "sync",
+     "label": "右臂从 槽k 取料开始",
+     "target": "上料Tray 槽k",
+     "hand": "R",
+     "t": null,
+     "t_end": null
+    },
+    {
+     "seq": 3,
+     "kind": "sync",
+     "label": "双臂节拍锁 11.4s/件",
+     "target": "整机",
+     "hand": "BOTH",
+     "t": 11.39,
+     "t_end": 11.39
+    }
+   ]
+  }
+ ],
+ "long_horizon": {
+  "uph_target": 300,
+  "tact_s": 11.42,
+  "segments_total": 392,
+  "round_total_s": 159.43,
+  "meta_count": 56,
+  "hands": {
+   "R": [
+    "MT-01",
+    "MT-02",
+    "MT-03",
+    "MT-04",
+    "MT-05"
+   ],
+   "L": [
+    "MT-06"
+   ],
+   "BOTH": [
+    "MT-07"
+   ]
+  },
+  "rounds": [
+   {
+    "template": "MT-01×4",
+    "meta_seq": [
+     "MT-01",
+     "MT-01",
+     "MT-01",
+     "MT-01"
+    ],
+    "count": 1,
+    "batches": [
+     1
+    ],
+    "segments": 36
+   },
+   {
+    "template": "MT-02 + MT-03 + MT-04 + MT-02 + MT-03 + MT-04 + MT-01×2",
+    "meta_seq": [
+     "MT-02",
+     "MT-03",
+     "MT-04",
+     "MT-02",
+     "MT-03",
+     "MT-04",
+     "MT-01",
+     "MT-01"
+    ],
+    "count": 4,
+    "batches": [
+     2,
+     4,
+     5,
+     6
+    ],
+    "segments": 56
+   },
+   {
+    "template": "MT-02 + MT-03 + MT-04 + MT-02 + MT-03 + MT-05 + MT-01×2",
+    "meta_seq": [
+     "MT-02",
+     "MT-03",
+     "MT-04",
+     "MT-02",
+     "MT-03",
+     "MT-05",
+     "MT-01",
+     "MT-01"
+    ],
+    "count": 1,
+    "batches": [
+     3
+    ],
+    "segments": 56
+   },
+   {
+    "template": "MT-02 + MT-03 + MT-05 + MT-02 + MT-03 + MT-04",
+    "meta_seq": [
+     "MT-02",
+     "MT-03",
+     "MT-05",
+     "MT-02",
+     "MT-03",
+     "MT-04"
+    ],
+    "count": 1,
+    "batches": [
+     7
+    ],
+    "segments": 38
+   },
+   {
+    "template": "MT-02 + MT-03 + MT-04 + MT-02 + MT-03 + MT-04",
+    "meta_seq": [
+     "MT-02",
+     "MT-03",
+     "MT-04",
+     "MT-02",
+     "MT-03",
+     "MT-04"
+    ],
+    "count": 1,
+    "batches": [
+     8
+    ],
+    "segments": 38
+   }
+  ],
+  "sequence_prompt": "长程任务(TASK-07-AOI · AR 场景 · 双臂): 左臂持续摆盘供料(MT-06); 右臂先装满 4 个孔(4×MT-01 取料插入); 之后每批 拔 2 个(MT-02) → 各做 AOI 五点检测(MT-03) → 良品进下料盘(MT-04)/NG 进废料盘(MT-05) → 再补插 2 个新模块(MT-01); 末批只拔不插(收尾)。左右手在 槽k 交接(MT-07), 同一槽位同一时刻只有一只手。全过程 392 段 / 159.43s / 14 件, 目标 300 UPH。任何一步 NG 一律走废料盘, 良品与 NG 分槽。"
+ },
+ "lanes": {
+  "cycle_s": 11.398,
+  "axis": "一件周期 11.40s (右臂稳态单件, 392 段表实取)",
+  "L": {
+   "arm": "L",
+   "label": "左手 · 摆盘供料",
+   "mt": [
+    "MT-06"
+   ],
+   "tact_s": 4.7,
+   "blocks": [
+    {
+     "mt": "MT-06",
+     "step": "定位识别",
+     "t0": 0.0,
+     "t1": 2.0,
+     "dur": 2.0
+    },
+    {
+     "mt": "MT-06",
+     "step": "取件",
+     "t0": 2.0,
+     "t1": 2.6,
+     "dur": 0.6
+    },
+    {
+     "mt": "MT-06",
+     "step": "转运对位",
+     "t0": 2.6,
+     "t1": 3.6,
+     "dur": 1.0
+    },
+    {
+     "mt": "MT-06",
+     "step": "放入",
+     "t0": 3.6,
+     "t1": 4.4,
+     "dur": 0.8
+    },
+    {
+     "mt": "MT-06",
+     "step": "判态循环",
+     "t0": 4.4,
+     "t1": 4.7,
+     "dur": 0.3
+    }
+   ],
+   "idle_from": 4.7,
+   "idle_note": "已供料, 等右臂从 槽k 取走"
+  },
+  "R": {
+   "arm": "R",
+   "label": "右手 · 插拔+AOI",
+   "tact_s": 11.398,
+   "mt": [
+    "MT-01",
+    "MT-02",
+    "MT-03",
+    "MT-04"
+   ],
+   "blocks": [
+    {
+     "mt": "MT-02",
+     "name": "右臂 · 从孔内沿轴拔出模块 (47mm)",
+     "hand": "R",
+     "t0": 0.0,
+     "t1": 1.852,
+     "dur": 1.852,
+     "targets": [
+      "孔1"
+     ],
+     "steps": 5
+    },
+    {
+     "mt": "MT-03",
+     "name": "右臂 · 手持模块五点检测 (金手指点 + 侧面点0/1/2/3)",
+     "hand": "R",
+     "t0": 1.852,
+     "t1": 6.992,
+     "dur": 5.14,
+     "targets": [
+      "金手指点",
+      "侧面点0",
+      "侧面点1",
+      "侧面点2",
+      "侧面点3"
+     ],
+     "steps": 10
+    },
+    {
+     "mt": "MT-04",
+     "name": "右臂 · 良品放入下料盘空槽",
+     "hand": "R",
+     "t0": 6.992,
+     "t1": 8.704,
+     "dur": 1.712,
+     "targets": [
+      "下料盘 槽1"
+     ],
+     "steps": 4
+    },
+    {
+     "mt": "MT-01",
+     "name": "右臂 · 上料槽取模块 → 插入目标孔 (受控插入 47mm)",
+     "hand": "R",
+     "t0": 8.704,
+     "t1": 11.398,
+     "dur": 2.694,
+     "targets": [
+      "槽1",
+      "孔1"
+     ],
+     "steps": 9
+    }
+   ]
+  },
+  "B": {
+   "arm": "BOTH",
+   "label": "双手 · 交接",
+   "mt": [
+    "MT-07"
+   ],
+   "at": 8.704,
+   "note": "右臂开始从 槽k 取料 = 交接点 (左臂 4.70s 放好, 空等 4.00s)"
+  }
+ }
+}
