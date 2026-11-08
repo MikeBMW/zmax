@@ -59,6 +59,22 @@ TRUTH_FILES = ("config/calib/zmax_calib.json", "config/calib/zmax_manifold.json"
 
 # ══════════════ 基础 ══════════════
 def repo_root():
+    """仓库根 (唯一依据的基准目录)。
+
+    🔴 2026-11-08 小静静实测: 冻结包里 `__file__` 在 `_internal/` 下, 原来按"上三级"算出的根
+      跟真实安装布局对不上 ⇒ `tools/ss_task_bind.py`、`config/ss_task_binding.json` 一律找不到
+      ("任务: 找不到 tools/ss_task_bind.py"), 集成式打开永远 ok=False。
+      冻结态改成**按特征目录探测**: 谁身上有 config/ 或 tools/ 就用谁(安装目录 → _MEIPASS → 上一级)。
+    """
+    if getattr(sys, "frozen", False):
+        base = os.path.dirname(os.path.abspath(__file__))
+        mp = getattr(sys, "_MEIPASS", "") or ""
+        cands = [os.path.dirname(os.path.dirname(base)), os.path.dirname(base), mp,
+                 os.path.dirname(mp) if mp else ""]
+        for p in cands:
+            if p and (os.path.isdir(os.path.join(p, "config")) or os.path.isdir(os.path.join(p, "tools"))):
+                return p
+        return base
     return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
@@ -595,7 +611,9 @@ def restore_calibration(proj, yes=False):
             bak = "%s.bak_%s" % (ap, time.strftime("%Y%m%d_%H%M%S"))
             shutil.copy2(ap, bak)
         tmp = ap + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
+        # 🔴 2026-11-08 小静静实测: 文本模式写盘在 Windows 会把 \n 变成 \r\n ⇒ 回读 sha256 跟存档对不上
+        #   (存档是 Linux 上按 \n 算的) ⇒ 标定段永远报 ❌, 整个「集成式打开」ok=False。钉死 newline="\n"。
+        with open(tmp, "w", encoding="utf-8", newline="\n") as f:
             json.dump(content, f, ensure_ascii=False, indent=1)
         os.replace(tmp, ap)                        # 只写这个目标文件, 不整表 sync
         after = sha256_file(ap)

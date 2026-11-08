@@ -18,6 +18,20 @@ import time as _time
 #   后面几处关键节点各自打一行耗时, 老倪的启动日志里就能直接看到慢在哪一段。
 _BOOT_T0 = _time.time()
 
+# 🔴 2026-11-08 小静静实测「打开总工程 = 集成式打开失败」的**真根因**:
+#   中文 Windows 的 sys.stdout/stderr 默认是 GBK(cp936)。代码里到处是 emoji 的 print
+#   (🗄 工程库已同步 / ⚠️ 同步失败 …), 在 GBK 上直接 UnicodeEncodeError ⇒ 把**整段业务**带崩:
+#     · flows.save_canvas() 里那句 print 一炸 → open_space 抛异常 → 弹「集成式打开失败」
+#     · SimulinkModule 初始化里 seed/打印一炸 → _init_simulink 每轮都失败 → 启动反复重试(每轮 10s)
+#   这里进程一起手就把 stdio 钉成 utf-8 + errors="replace": 显示不出来的字符替换掉, 绝不因为打印而失败。
+for _sn in ("stdout", "stderr"):
+    try:
+        _st = getattr(sys, _sn, None)
+        if _st is not None and hasattr(_st, "reconfigure"):
+            _st.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:                                                      # noqa: BLE001
+        pass
+
 
 # 🔴 2026-11-08 冻结版(Windows .exe)「双击没窗口、进程越跑越多」的**真根因修复**
 #   frozen 之后 sys.executable 就是控制台 exe 自己。代码里到处是
@@ -15020,6 +15034,16 @@ class StudioMainWindow(QMainWindow):
         except Exception as e:
             import traceback
             traceback.print_exc()
+            # 🔴 2026-11-08 小静静实测: 画布初始化每轮都要 10s, 失败后会被反复重试(实测 41 轮 ≈ 410s)
+            #   而异常只 print 到窗口版 exe 拿不到的 stdout ⇒ 谁都看不见。落盘一份, 下次直接看文件。
+            try:
+                _ld = os.path.join(os.path.expanduser("~/zmax"), "zmax_data", "logs")
+                os.makedirs(_ld, exist_ok=True)
+                with open(os.path.join(_ld, "init_error.log"), "a", encoding="utf-8") as _lf:
+                    _lf.write("\n===== %s pid=%s =====\n" % (__import__("time").strftime("%F %T"), os.getpid()))
+                    _lf.write(traceback.format_exc())
+            except Exception:                                              # noqa: BLE001
+                pass
             self.statusBar().showMessage(f"⚠️ Simulink 初始化失败: {e}", 5000)
 
     def _on_engine_change(self, idx):
