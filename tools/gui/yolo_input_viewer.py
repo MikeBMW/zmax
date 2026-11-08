@@ -779,11 +779,15 @@ class YoloInputViewer(QtWidgets.QDialog):
                 self._ar_sliders.append(_s)
             self._ar_reset = QtWidgets.QPushButton("复位 = L2 输入帧")
             top2.addWidget(self._ar_reset)
+            _hint = QtWidgets.QLabel("← 拖滑杆就换机位 (自动进自由视角; 复位回 L2 输入帧)")
+            _hint.setObjectName("ph")
+            top2.addWidget(_hint)
             v.addLayout(top2)
             self._ar_free.toggled.connect(self._ar_view_changed)
             self._ar_reset.clicked.connect(self._ar_view_reset)
             for _s in self._ar_sliders:
-                _s.valueChanged.connect(self._ar_view_changed)
+                # 2026-11-08 老倪「不能转换视角」→ 动滑杆就等于要看那个机位: 自动勾上自由视角
+                _s.valueChanged.connect(self._ar_slider_moved)
 
         # ── 真值行 (老倪 2026-09-17: 「训练要有光模块距离/位置等信息…读出真值, 对齐 metaworld 数据」) ──
         #   真值 = 4060 侧 Docker 只读订阅 Orin /robot/tcp_pose 落盘的 state jsonl / status.json (单一来源
@@ -1150,6 +1154,13 @@ class YoloInputViewer(QtWidgets.QDialog):
         if g.free:
             self._log_line("🎥 自由视角: az=%.0f el=%.0f dist=%.2fm (8802 按需渲染 — 不是 L2 输入帧)"
                            % (g.cam["az"], g.cam["el"], g.cam["dist"]))
+
+    def _ar_slider_moved(self, *_a):
+        """动滑杆 ⇒ 自动进自由视角 (不勾框直接拖滑杆以前毫无反应, 会被当成「不能转换视角」)"""
+        if self._ar_free is not None and not self._ar_free.isChecked():
+            self._ar_free.setChecked(True)          # 触发 toggled → _ar_view_changed
+            return
+        self._ar_view_changed()
 
     def _ar_view_reset(self):
         """复位: 回 L2 实际输入帧 (关闭自由视角)"""
