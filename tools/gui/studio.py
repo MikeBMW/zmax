@@ -18,6 +18,73 @@ import time as _time
 #   后面几处关键节点各自打一行耗时, 老倪的启动日志里就能直接看到慢在哪一段。
 _BOOT_T0 = _time.time()
 
+
+# 🔴 2026-11-08 冻结版(Windows .exe)「双击没窗口、进程越跑越多」的**真根因修复**
+#   frozen 之后 sys.executable 就是控制台 exe 自己。代码里到处是
+#   subprocess([sys.executable, "tools/xxx.py", ...]) —— 在源码环境里这是"借解释器跑个只读工具",
+#   在冻结包里等于**把 GUI 主程序再跑一遍**, 而主程序一进去又会调 tools/… ⇒ 无限自我递归。
+#   小静静实测(v5.50.770 免解包版): 16 秒内进程 1→22, 内存/CPU 一路涨, 永远出不了窗口。
+#   修法: 在**任何 Qt/页面导入之前**拦一刀 —— argv[1] 是 .py 脚本 / -c 代码 / -m 模块时,
+#         同进程执行它并把结果原样写到 stdout, 然后按它的退出码退出, 绝不继续启动 GUI。
+#   源码环境(未打包)完全不受影响: getattr(sys, "frozen", False) 为假直接返回。
+def _run_helper_script_if_any():                      # noqa: C901
+    if not getattr(sys, "frozen", False):
+        return
+    argv = [str(a) for a in sys.argv[1:]]
+    if not argv:
+        return
+    mode = "file"
+    if argv[0] == "-c":
+        mode, target = "code", (argv[1] if len(argv) > 1 else "")
+    elif argv[0] == "-m":
+        mode, target = "module", (argv[1] if len(argv) > 1 else "")
+    else:
+        target = argv[0].replace("\\", "/")
+        if not target.lower().endswith(".py"):
+            return                                    # 不是"借解释器", 走正常启动
+        if not os.path.isabs(target):
+            target = os.path.join(os.getcwd(), target)
+        if not os.path.exists(target):
+            return                                    # 找不到就交回正常启动, 不吞参数
+    # 窗口版 exe 的 sys.stdout 可能是 None, 但父进程是管道接的 ⇒ fd 还在, 包一层就能写
+    if sys.stdout is None:
+        try:
+            sys.stdout = os.fdopen(os.dup(1), "w", encoding="utf-8", errors="replace", buffering=1)
+        except Exception:                                              # noqa: BLE001
+            pass
+    if sys.stderr is None:
+        try:
+            sys.stderr = os.fdopen(os.dup(2), "w", encoding="utf-8", errors="replace", buffering=1)
+        except Exception:                                              # noqa: BLE001
+            pass
+    import runpy
+    rc = 0
+    try:
+        if mode == "file":
+            sys.argv = [target] + argv[1:]
+            runpy.run_path(target, run_name="__main__")
+        elif mode == "code":
+            sys.argv = ["-c"] + argv[2:]
+            exec(compile(target, "<frozen-exe -c>", "exec"), {"__name__": "__main__", "__builtins__": __builtins__})
+        else:
+            sys.argv = [target] + argv[2:]
+            runpy.run_module(target, run_name="__main__", alter_sys=True)
+    except SystemExit as e:
+        rc = e.code if isinstance(e.code, int) else (0 if e.code is None else 1)
+    except Exception:                                                  # noqa: BLE001
+        import traceback
+        traceback.print_exc()
+        rc = 1
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except Exception:                                                  # noqa: BLE001
+        pass
+    sys.exit(rc)
+
+
+_run_helper_script_if_any()
+
 # 🔇 2026-10-31 老倪:「启动的时候，别刷屏」「你看终端，刷屏那么多无效信息」
 #   实测一次启动 stdout 365 行(📌/📚/⏱ 三行一组重复 3 遍 + 各页面自述), 有用的只有末尾两行。
 #   这里进程一启动就把 stdout 换成静音闸: 启动期所有播报照写 /tmp/zmax_boot.log, 终端不刷;
