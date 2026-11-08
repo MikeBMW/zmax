@@ -1527,7 +1527,12 @@ def _flows_path(name):
     """
     if getattr(sys, "frozen", False):
         _mp = getattr(sys, "_MEIPASS", "") or ""
-        cands = [os.path.join(_mp, "flows", name)]
+        # 🔴 2026-11-08 Windows 包实测: 打包后 `src/…/flows/state_space_obs.json` 与 `flows/state_space_obs.json`
+        #   是**两份独立拷贝**(源码里是软链, 同一个文件)。写盘走 config_import.canvas_path() → 写的是 src 那份,
+        #   而这里原来只读 flows/ 那份 ⇒ 打开总工程后画布永远是 0 个节点(小静静实测, 工程文件里明明 94 节点)。
+        #   修法: 冻结态**先读 src 那份(可写的那份, 与写盘同源)**, flows/ 只作兜底。
+        cands = [os.path.join(_mp, "src", "lerobot", "engineering", "flows", name),
+                 os.path.join(_mp, "flows", name)]
     else:
         cands = [os.path.join(_repo_root_path(), "flows", name),
                  os.path.join("/home/ubuntu/zmax", "flows", name),
