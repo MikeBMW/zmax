@@ -126,6 +126,12 @@ def _open_product_dashboard(win=None):
             return False
 
     hosts = []
+    # ① 本机服务: 冻结包里自带 dashboard_server.py ⇒ 没起就自己拉起来 (老倪: 自己开产品大屏服务)
+    try:
+        import local_services as _ls
+        _ls.ensure("dashboard_server.py", 8799, timeout=10.0)
+    except Exception:                                                      # noqa: BLE001
+        pass
     try:
         _root = os.environ.get("ZMAX_ROOT") or os.path.expanduser("~/zmax")
         _cf = os.path.join(_root, "config", "ui", "dashboard_hosts.json")

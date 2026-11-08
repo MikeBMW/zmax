@@ -9967,6 +9967,18 @@ class SimulinkModule(QWidget):
             return False
 
     def open_station_page(self):
+        # 🔴 2026-11-08 老倪「我要一个完整功能的 windows 版本」: Windows 上没有 bash/snap/产线常驻服务,
+        #   这条分支用冻结包自带的 Python 把本机服务拉起来(没起才起), 再用默认浏览器打开。
+        if os.name == "nt":
+            try:
+                import local_services as _ls
+                _ok, _why = _ls.ensure("dashboard_server.py", 8799, timeout=10.0)
+                self._log("🖥 产品大屏(本机服务): %s" % _why)
+                import webbrowser as _wb
+                _wb.open("http://127.0.0.1:8799/")
+            except Exception as _e:                                          # noqa: BLE001
+                self._log("❌ 产品大屏(本机服务) 失败: %r" % (_e,))
+            return
         """🛰 工位总览 (6 路同屏 + 右侧控制区) — 老倪 2026-09-27「那个网页怎么搞丢了?」
 
         页面地址: http://<本机LAN>:8793/station (由 tools/cam_live_stream.py 服务)
@@ -15437,6 +15449,17 @@ class SimulinkModule(QWidget):
         self._l5_start_poll(1000)
 
     def open_ar_page(self):
+        # 🔴 2026-11-08 Windows 完整功能: 本机自带 tcp_ar_server.py(:8797) ⇒ 没起就拉起来再开页面
+        if os.name == "nt":
+            try:
+                import local_services as _ls
+                _ok, _why = _ls.ensure("tcp_ar_server.py", 8797, timeout=25.0)
+                self._log("🥽 AR 3D(本机服务): %s" % _why)
+                import webbrowser as _wb
+                _wb.open("http://127.0.0.1:8797/ar")
+            except Exception as _e:                                          # noqa: BLE001
+                self._log("❌ AR 3D(本机服务) 失败: %r" % (_e,))
+            return
         """🥽 工具栏「AR」: 打开 AR 页面 = http://10.163.146.78:8793/ar (浏览器直开)。
 
         老倪 2026-10-19: 「画布的 AR按钮, 也要换成 http://10.163.146.78:8793/ar」
@@ -15464,6 +15487,17 @@ class SimulinkModule(QWidget):
             return None
 
     def open_fiber_page(self):
+        # 🔴 2026-11-08 Windows 完整功能: 光纤工艺卡与 AR 同一个服务(8797), 没起就拉起来
+        if os.name == "nt":
+            try:
+                import local_services as _ls
+                _ok, _why = _ls.ensure("tcp_ar_server.py", 8797, timeout=25.0)
+                self._log("🔦 光纤(本机服务): %s" % _why)
+                import webbrowser as _wb
+                _wb.open("http://127.0.0.1:8797/autoLight")
+            except Exception as _e:                                          # noqa: BLE001
+                self._log("❌ 光纤(本机服务) 失败: %r" % (_e,))
+            return
         """🔦 工具栏「光纤」: 打开光纤端面检测工艺卡 = http://10.163.146.78:8797/autoLight。
 
         老倪 2026-10-22: 「还得增加 光纤 按钮, 自动打开 …/autoLight」。
