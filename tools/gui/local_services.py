@@ -96,8 +96,9 @@ def station_candidates() -> list:
     http://192.168.1.7:8793/station 服务」 —— 8799 只是本机静态大屏页(无相机), 现场要看的是
     8793 的 6 路同屏 + 手动控制区, 所以默认必须走 station。
 
-    顺序: 环境变量 ZMAX_STATION_URL / ZMAX_DASHBOARD_URL > config/ui/station_hosts.json
-          > config/ui/dashboard_hosts.json > 本机 127.0.0.1:8793 > 公网。
+    🔴 老倪 2026-11-09: 「按产品大屏按钮, 打开的还是 192.168.1.7:8793/station, 这不是你的 IP 么?
+       按钮要打开自己的服务」⇒ 顺序改成 **本机 127.0.0.1:8793 优先**, 本机没起/不通才退回
+       环境变量 > config/ui/station_hosts.json > dashboard_hosts.json > 公网(那台机器)。
     主机可以写 "ip:port" 或整条 URL; 路径统一补 /station。
     """
     out = []
@@ -115,6 +116,7 @@ def station_candidates() -> list:
         if u not in out:
             out.append(u)
 
+    _add("127.0.0.1:8793")            # ① 自己的服务最优先(Windows 冻结包会自起 cam_live_stream.py)
     _add(os.environ.get("ZMAX_STATION_URL", ""))
     _add(os.environ.get("ZMAX_DASHBOARD_URL", ""))
     root = os.environ.get("ZMAX_ROOT") or os.path.join(os.path.expanduser("~"), "zmax")

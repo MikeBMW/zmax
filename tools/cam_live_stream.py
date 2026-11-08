@@ -550,6 +550,9 @@ def _dev_other_holders(dev: int, me: int | None = None) -> list:
     """
     hit = []
     me = me or os.getpid()
+    # 🪟 Windows 没有 os.getuid / /proc ⇒ 这套「谁占着相机」的探测直接判空(不抛异常, 别把采集线程打死)
+    if not hasattr(os, "getuid"):
+        return hit
     uid = os.getuid()
     try:
         pids = [p for p in os.listdir("/proc") if p.isdigit()]
@@ -743,7 +746,10 @@ def url_cam_worker(url: str, fps_cap: float, frame_name: str = "local2",
 #   (2026-09-27 老倪: 「6 个窗口同时显示 + 留出控制区, 手动控制机器人 X Y Z 平动 / A B C 绕轴旋转」)
 # ══════════════════════════════════════════════════════════════════════════════
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # 同目录工具互导 (tools/*.py)
-SCENE_DIR = "/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene"
+# 🪟 2026-11-09: 原来写死 /home/ubuntu/... ⇒ Windows 上整页指向一个不存在的目录。
+#   改成按本仓库根推 (源码/冻结包都成立), 仍可用 ZMAX_SCENE_DIR 覆盖。
+SCENE_DIR = os.environ.get("ZMAX_SCENE_DIR") or os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "zmax_data", "ss_live", "zmax_scene")
 DEPTH_NPY = SCENE_DIR + "/depth_raw.npy"
 DEPTH_META = SCENE_DIR + "/depth_meta.json"
 TCP_JSON = SCENE_DIR + "/tcp_pose.json"          # 容器 ros_tcp_cache 20Hz 落盘

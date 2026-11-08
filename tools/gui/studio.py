@@ -147,8 +147,14 @@ def _open_product_dashboard(win=None):
             return False
 
     hosts = []
-    # ① 老倪 2026-11-08: 「产品大屏 = 跟静静一样的 http://<主脑>:8793/station」—— 先按 station 候选链探活;
-    #    顺手不再拉 8799 本机服务(那不是他要的那套: 8799 只有静态大屏页, 没有 6 路相机画面)。
+    # ① 老倪 2026-11-09: 「按钮要打开自己的服务」—— Windows 冻结包自带 cam_live_stream.py,
+    #    本机 8793 没有就自己拉起来(它就是 /station 那套 6 路同屏 + 手动控制区的服务端);
+    #    起不来/端口不通才退回环境变量里登记的那台机器。
+    try:
+        import local_services as _ls
+        _ls.ensure("cam_live_stream.py", 8793, timeout=20.0, extra=("--port", "8793"))
+    except Exception:                                                      # noqa: BLE001
+        pass
     try:
         import local_services as _ls
         _st = _ls.station_url(fallback=False)
@@ -16576,6 +16582,8 @@ def _autostart_local_services():
         print("⚠️ 本机服务不可用 (local_services 导入失败): %r" % (_e,))
         return
     for name, port, _extra in (("tcp_ar_server.py", 8797, ()),
+                               # 🖥 2026-11-09 老倪「产品大屏按钮要打开自己的服务」: 本机自带 station 服务
+                               ("cam_live_stream.py", 8793, ("--port", "8793")),
                                # 🦾 2026-11-09 老倪「AR3D 里怎么没有机器人」: 页面的双臂骨骼来自
                                #   8802 /bones.json。这个服务没起 ⇒ SIM 层拿不到骨骼 ⇒ 场景里空着。
                                #   没有 GL 时它会自动降级成「只出真值/骨骼」(见 ar_scene_render_server.py)。
