@@ -15083,8 +15083,55 @@ class StudioMainWindow(QMainWindow):
         # 特殊指令：产品大屏 (2026-08-08 老倪: 打开工厂数字大屏)
         # 🐛 WSL 无 xdg-open → QDesktopServices.openUrl 失效 → 用 cmd.exe start (Windows 默认浏览器)
         if target == "website":
+            # 🔴 2026-11-08 老倪「产品大屏打不开」真因: 原来**写死**公网 https://datadrive.world/factory-dashboard.html,
+            #   而 47.93.88.143:443 从产线/笔记本都连不上(实测两台都 20s 超时, TCP 直接 fail) ⇒ 点开只有浏览器
+            #   一直在转, 看着就是"打不开"。大屏本身的数据源服务(8799 大屏页 / 8793 工位总览)**一直在本机跑**。
+            #   改成候选链: 环境变量 > 本机 8799 > 本机 LAN IP:8799 > 公网; 先做 TCP 探活(0.8s), 谁通开谁,
+            #   并把最后选中的 URL 写状态栏 —— 以后"打不开"一眼看出是网络还是服务。
+            import socket as _sk
             import subprocess as _sp
-            _sp.Popen(["cmd.exe", "/c", "start", "", "https://datadrive.world/factory-dashboard.html"])
+            from urllib.parse import urlsplit as _us
+
+            def _tcp_ok(u, tmo=0.8):
+                try:
+                    s = _us(u)
+                    host = s.hostname or ""
+                    port = s.port or (443 if s.scheme == "https" else 80)
+                    with _sk.create_connection((host, port), timeout=tmo):
+                        return True
+                except Exception:                                          # noqa: BLE001
+                    return False
+
+            _lan = "127.0.0.1"
+            try:
+                _s = _sk.socket(_sk.AF_INET, _sk.SOCK_DGRAM)
+                _s.connect(("8.8.8.8", 80))          # 不真发包, 只为拿到出口网卡地址
+                _lan = _s.getsockname()[0]
+                _s.close()
+            except Exception:                                              # noqa: BLE001
+                pass
+            _cands = [u for u in (os.environ.get("ZMAX_DASHBOARD_URL", ""),
+                                  "http://127.0.0.1:8799/",
+                                  "http://%s:8799/" % _lan,
+                                  "https://datadrive.world/factory-dashboard.html") if u]
+            _url, _tried = _cands[-1], []
+            for _u in _cands:
+                _tried.append(_u)
+                if _tcp_ok(_u):
+                    _url = _u
+                    break
+            try:
+                if os.name == "nt":
+                    _sp.Popen(["cmd.exe", "/c", "start", "", _url])
+                else:
+                    import webbrowser as _wb
+                    _wb.open(_url)
+            except Exception:                                              # noqa: BLE001
+                import webbrowser as _wb
+                _wb.open(_url)
+            self.statusBar().showMessage("🖥 产品大屏 → %s%s" % (
+                _url, "" if _url == _cands[0] else "  (首选不通, 已按候选链回退: %s)" % " / ".join(_tried)),
+                9000)
             return
 
         # 📋 2026-10-09 老倪: 「点击 Z-MAX / System 2 / System 1 / System 0 方块 → 清晰打开功能清单」
