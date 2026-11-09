@@ -702,6 +702,13 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._send(200, b, "image/png")
             return
+        if p in ("/video", "/video.mjpg", "/stream", "/stream.mjpg") and \
+                "text/html" in (self.headers.get("Accept") or "") and \
+                (self.headers.get("Sec-Fetch-Dest") or "").lower() in ("document", ""):
+            # 🖱 浏览器地址栏直接开 /video 时给 HTML 外壳 —— raw multipart 的顶栏导航永远"加载中"
+            #   (实测浏览器一直转圈 ⇒ 老倪说的「video 网页打不开」)。<img src="/video"> 取流不受影响
+            #   (那种请求 Sec-Fetch-Dest=image)。
+            p = "/live"
         if p in ("/video", "/video.mjpg", "/stream", "/stream.mjpg"):
             # 🎬 2026-11-09 老倪: 「ar 场景渲染帧, 8802 输入还是跟原来一样 —— 把这个窗口直接做成
             #   http://10.163.146.76:8802/video 可以么?」⇒ 服务端直接推 MJPEG, 浏览器打开这个地址就是
