@@ -305,7 +305,16 @@ def build_mjcf() -> str:
     <body name="box" pos="%.4f %.4f %.4f">
       <site name="hole" pos="0 0 0" size="0.006" rgba="0.2 0.9 0.4 1"/>
       <site name="goal" pos="0 0 -0.010" size="0.005" rgba="0.9 0.9 0.2 1"/>
-    </body>""" % (_scx, _scy, max(slot0["p1"][2], slot0["p2"][2]))
+    </body>
+  <!-- 🎥 中央顶视相机 (老倪 2026-11-09「两个手臂中间的顶视相机还是没有」):
+       两臂(y=0 / y=0.5)之间的正上方, 壳体+镜头+短支架都归 group 3 (顶视时隐掉, 不挡料盘);
+       <camera name="cam_topmid"> 是真正的 MuJoCo 相机, 可被 /frame.png?cam=topmid 直接使用。 -->
+  <body name="cam_topmid_body" pos="0.55 0.25 0.98">
+    <geom name="cam_topmid_box" type="box" size="0.048 0.048 0.032" rgba="0.17 0.19 0.23 1" group="3" contype="0" conaffinity="0"/>
+    <geom name="cam_topmid_lens" type="cylinder" size="0.019 0.014" pos="0 0 -0.046" rgba="0.04 0.05 0.07 1" group="3" contype="0" conaffinity="0"/>
+    <geom name="cam_topmid_mount" type="box" size="0.010 0.010 0.075" pos="0.075 0 0.105" rgba="0.48 0.51 0.55 1" group="3" contype="0" conaffinity="0"/>
+    <camera name="cam_topmid" pos="0 0 -0.06" euler="0 0 0" fovy="70"/>
+  </body>""" % (_scx, _scy, max(slot0["p1"][2], slot0["p2"][2]))
 
     # 相机：名字必须叫 corner2（aligner 硬编码），放在料盘前上方俯视。
     # 🔴 xyaxes 必须**按几何算**，不能手写常数：手写 (0,0.35,0.94) 只给 20° 俯角，
