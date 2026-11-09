@@ -885,9 +885,9 @@ class Handler(BaseHTTPRequestHandler):
 <script>
 var t0=Date.now(),v=document.getElementById('v'),h=document.getElementById('h'),cam='预设机位';
 // pull-frame-v1: 每 100ms 拉一张 /frame.png?cam=ar3d ⇒ 右键=当前帧真图
-var FPS=10;function tick8802(){v.src='/frame.png?cam=ar3d&live=1&_='+Date.now();}
+var FPS=6;function tick8802(){v.src='/frame.png?cam=ar3d&live=1&_='+Date.now();}
 setInterval(tick8802,Math.round(1000/FPS));
-setInterval(function(){h.textContent='Z-MAX AR 8802 · PNG 10fps · '+(v.naturalWidth||0)+'×'+(v.naturalHeight||0)
+setInterval(function(){h.textContent='Z-MAX AR 8802 · PNG 6fps · '+(v.naturalWidth||0)+'×'+(v.naturalHeight||0)
  +' · 视角:'+cam+' · 已看 '+Math.round((Date.now()-t0)/1000)+'s · '+location.host+'/video';},500);
 setInterval(function(){fetch('/cam',{cache:'no-store'}).then(function(r){return r.json();}).then(function(j){
   cam = j.follow ? ('跟随 ar3d 页面 '+(j.age_s)+'s前') : '预设机位(页面没在推)';}).catch(function(){});},1500);
