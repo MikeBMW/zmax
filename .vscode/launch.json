@@ -23,6 +23,25 @@
         "HF_HUB_OFFLINE": "1",
         "TRANSFORMERS_OFFLINE": "1"
       }
+    },
+    {
+      "name": "🔌 Attach · L2 YOLO 输入链路 (8802 帧 · 5678)",
+      "type": "python",
+      "request": "attach",
+      "connect": {
+        "host": "127.0.0.1",
+        "port": 5678
+      },
+      "justMyCode": false,
+      "pathMappings": [
+        {
+          "localRoot": "/home/ubuntu/zmax",
+          "remoteRoot": "/home/ubuntu/zmax"
+        }
+      ],
+      "env": {
+        "PYDEVD_DISABLE_FILE_VALIDATION": "1"
+      }
     }
   ]
 }

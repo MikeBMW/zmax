@@ -196,16 +196,10 @@ def node_deploy(ctx):
 # ⑥ 推理 — Orin 推理服务状态
 # ════════════════════════════════════════════════════════════════
 def node_mode_switch(ctx):
-    """🔀 训练/推理模式开关 — 双击切换 train ⇄ infer, 激活路径金色高亮, 未激活灰显
-    数据流: 📦数据源 → 🔀开关 → 🚀训练 | 📷推理(rollout)
-    train → 训练节点激活(推理灰显); infer → 推理节点激活(训练灰显)
-    真实实现: simulink_module.py _toggle_mode / _apply_mode_highlight / paint(mode_active 灰显)"""
-    log = ctx["log"]
-    node = ctx.get("node", {})
-    p = node.get("params", {})
-    mode = p.get("mode", "train")
-    log(f"🔀 模式开关: 当前={'训练' if mode == 'train' else '推理'} (双击切换, 激活路径高亮)")
-    return True
+    """→ nodes/mode_switch.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .mode_switch import node_mode_switch as _impl
+    return _impl(ctx)
+
 
 def node_infer_rollout(ctx):
     """📷 推理 (rollout) — 加载最新双脑 checkpoint → 仿真插拔 rollout → 评估+视频
@@ -398,43 +392,10 @@ def node_infer(ctx):
 #   双击=切换激活; 右键=查看/修改数据选择逻辑
 # ════════════════════════════════════════════════════════════════
 def node_metaworld_data(ctx):
-    """📦 metaworld 数据 — 训练数据源选择"""
-    module = ctx["module"]
-    log = ctx["log"]
-    p = ctx["params"]
-    # === ✏️ 可修改区 START ===
-    source = p.get("source", "metaworld")   # metaworld(占位集) | orin(真实产线)
-    frames = p.get("frames", 696)           # 期望帧数 (展示用)
-    # 📂 真实数据层 (2026-09-02 老倪: 数据源必须接 lerobot 框架 src/lerobot/datasets/,
-    #   不是控制台模板 — 与传感器融合/前馈节点同构: 右键打开 + VSCode 断点都进 datasets 真实实现)
-    # 🐛 2026-09-02: 改用 exec(compile(src, 真实路径, "exec")) 加载 — spec_from_file_location
-    #   动态加载的模块 debugpy 不感知 (断点设置时文件未加载 → 绑定不生效, 实测 probe 执行了
-    #   但 62 行断点不命中); compile 带真实 filename → 函数 co_filename 指向真实文件,
-    #   debugpy 按路径查表必定命中 (同引擎 perception/cognition 断点行为)
-    try:
-        _p = os.path.join(_REPO_ROOT, "src", "lerobot", "datasets", "metaworld_data_source.py")
-        _ns = {"__file__": _p, "__name__": "lerobot.datasets.metaworld_data_source"}
-        with open(_p, encoding="utf-8") as _f:
-            _src = _f.read()
-        exec(compile(_src, _p, "exec"), _ns)
-        _probe = _ns.get("probe_data_source")
-        if _probe is None:
-            raise RuntimeError("数据层缺少 probe_data_source")
-        _info = _probe()
-        if log:
-            if _info:
-                log(f"📦 数据源: {source} · 真实仓库 {_info['path']} · "
-                    f"{_info['frames']}帧/{_info['episodes']}集 · {_info['label']} · "
-                    f"特征[{','.join(_info['features'])}]")
-            else:
-                log(f"📦 数据源: {source} · 本机无训练仓库 (仅画布占位) · 期望 {frames}帧")
-    except Exception as _e:
-        if log:
-            log(f"📦 数据源: {source} · 数据层探测失败: {_e}")
-    # 数据源策略: 想强制某来源训练, 在「训练」节点的 data_source 里改
-    # === ✏️ 可修改区 END ===
-    # 🔒 框架动作: 激活数据源 (勿改)
-    return module._toggle_source_ctx(ctx["name"])
+    """→ nodes/data.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .data import node_metaworld_data as _impl
+    return _impl(ctx)
+
 
 # ════════════════════════════════════════════════════════════════
 # 🖼 视觉主干 ResNet18 — 官方 ACT.backbone (特征提取)
@@ -507,14 +468,10 @@ def node_decoder(ctx):
 # 🎯 Action Head 4D — 官方 action_head (线性映射到动作空间)
 # ════════════════════════════════════════════════════════════════
 def node_action_head(ctx):
-    """🎯 Flow-Matching Action Head (DiT) — L3 加权修正 —— 薄壳: 真实现 nodes/flow_matching_impl.py::run
+    """→ nodes/action_head.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .action_head import node_action_head as _impl
+    return _impl(ctx)
 
-    老倪 2026-10-29: L2 是基础输出, L3 是加权修正。
-    动作来自真数据 chunk_latest.chunk[0]; 修正量 Δ=chunk−ff; DiT/StateSpaceActionHead 前向只作结构自检
-    (无训练权重, 不冒充推理); 产出 out1(名义动作) / out2(L3 力 → 万有引力 in3)。
-    """
-    from .flow_matching_impl import run as _run
-    return _run(ctx)
 
 # ════════════════════════════════════════════════════════════════
 # ⏳ Temporal Ensemble — 官方 ACTTemporalEnsembler (动作平滑)
@@ -945,50 +902,10 @@ def node_intact(ctx):
         return {"kind": "intact", "trained": False, "err": "%s: %s" % (type(e).__name__, e)}
 
 def node_intact_dec(ctx):
-    """🎯 INTACT 意图解码器 (L4 → L3) — 把 L4 的意图/潜空间解码成 L3 能吃的条件。
+    """→ nodes/intact_dec.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .intact_dec import node_intact_dec as _impl
+    return _impl(ctx)
 
-    老倪 2026-09-13 架构: metaworld 数据源 → INTACT 策略 (ssintact) → **本解码器** → L3。
-    两路输出 (每路都带来源标注, 失败不给假值):
-      A) u_ff 先验 (4D, 引擎 u 空间) —— 量纲逆运算 act×K_ACT (K_ACT 现读引擎源码), 无需标定
-      B) L3 条件向量 (流形坐标)     —— 需要标定映射 models/intact_l3_map.json;
-                                      未标定 → 拒绝返回并计数 (不写死映射 = 不假接入)
-    L3 侧消费: 引擎 SS_L4_INTACT=1 时按权重 w 注入 (w=0 / 未设 = 与现状**逐位相同**)。
-    ⚙️ 实现已下沉 policy 层: lerobot/policies/intact/service.py (IntactIntentService.run_once)
-    """
-    log = ctx.get("log") or (lambda *a, **k: None)
-    mod = ctx.get("module")
-    root = ctx.get("root") or _paths.REPO_ROOT
-    try:
-        svc = _intact_service(root)
-        _stage = str(ctx.get("stage") or "")
-        sk = _intact_skill_ctx(ctx, _stage)
-        rep = svc.run_once(stage=_stage, decode=True, skill_ctx=sk,
-                           write_evidence=True, log=log)
-        if mod is not None:
-            try:
-                mod._intact_dec = rep.to_panel()
-            except Exception:                                              # noqa: BLE001
-                pass
-        _d = dict(rep.diagnostics or {})
-        _cond = rep.l4_cond
-        try:
-            import numpy as _np
-            _cond = [round(float(x), 5) for x in _np.asarray(_cond, dtype=float).ravel()[:8]] \
-                if _cond is not None else None
-        except Exception:                                                  # noqa: BLE001
-            _cond = None
-        return {"kind": "intact_dec", "trained": bool(rep.trained), "policy": str(rep.policy),
-                "u_ff": [round(float(x), 6) for x in (rep.u_ff if rep.u_ff is not None else [])],
-                "u_ff_source": str(rep.u_ff_source or ""),
-                "l4_cond_head8": _cond,
-                "l4_cond_dim": (int(_np.asarray(rep.l4_cond).size) if rep.l4_cond is not None else 0),
-                "weight": (float(rep.weight) if rep.weight is not None else 0.0),
-                "reason": str(rep.reason or ""),
-                "chunk_shape": list(rep.chunk_shape), "source": str(rep.source),
-                "ckpt": _d.get("ckpt_realpath")}
-    except Exception as e:
-        log(f"❌ INTACT 解码器执行失败: {type(e).__name__}: {e}")
-        return {"kind": "intact_dec", "trained": False, "err": "%s: %s" % (type(e).__name__, e)}
 
 # ── 🌍 L4 · SW 仿真世界引擎链 (INTACT cube · stable-world, 2026-09-13 老倪) ──
 #   数据源(渲染图像) → INTACT 策略(cube 论文权重 零搜索) → 硬件层(stable-world 引擎 动作真下发)
@@ -2218,123 +2135,16 @@ def _box3d_pose(module, aligner=None):
     return (None, None, "无")
 
 def node_yolo_align(ctx):
-    """📐 2D→3D 解算 — 真实执行 (**2026-09-18 改造: 不作弊版**)
+    """→ nodes/yolo_align.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .yolo_align import node_yolo_align as _impl
+    return _impl(ctx)
 
-    输入: ① 感知给的 YOLO **2D 框** (_YOLO_CACHE['det2d'], 真检测结果)
-          ② 机器人**自身**位姿 (真机=编码器落盘 / 仿真=末端状态)
-    算法: Box3DSolver (自监督: 模块刚性夹持 ⇒ 中心=TCP+R·off; 未知 P 与 off 一起从数据里解)
-    输出: 光模块 3D → 39D 的 [4:7] 与 [22:25]
-    🚫 不读: env 的模块真值 (obs[7:10] / _pc) · aligner.detect_3d 的仿真内参/外参/深度
-    """
-    log = ctx["log"]
-    try:
-        det2d = _YOLO_CACHE.get("det2d") or {}
-        box = None
-        for k in ("光模块", "peg"):
-            if isinstance(det2d.get(k), dict) and det2d[k].get("box"):
-                box = [float(v) for v in det2d[k]["box"]]
-                break
-        if box is None:
-            if log:
-                log("📐 2D→3D: 本帧没有可用的 YOLO 2D 框 (先跑 🎯 YOLO 目标检测) — 不产出 3D")
-            return False
-        aligner = None
-        try:
-            aligner = _YOLO_ALIGNER
-        except Exception:                                                  # noqa: BLE001
-            pass
-        tcp, quat, psrc = _box3d_pose(ctx.get("module"), aligner)
-        if tcp is None:
-            if log:
-                log("📐 2D→3D: 拿不到机器人位姿 (真机旁路无数据 / 仿真无末端状态) — 不产出 3D")
-            return False
-        if quat is None:
-            if log:
-                log("📐 2D→3D: 有位置没姿态 → 现在用不了 (需要有姿态才能解 offset) — 攒数据跳过本帧")
-            return False
-        slv = _box3d_ensure(log)
-        r = slv.add(box, tcp, quat, meta={"img_wh": _YOLO_CACHE.get("img_shape")})
-        _BOX3D["n_seen"] += 1
-        if not slv.fitted and (len(slv.obs) >= 10) and (_BOX3D["n_seen"] % 5 == 0):
-            # 未知量按 2026-09-18 可辨识性实验: **R_rel 与 off 必须联合估** (不估 R_rel → off 被
-            # 歪斜吸收, 中心实测偏 76mm); **尺寸不联合解** (尺寸自由会退化, 实测中心偏 65mm)。
-            fit = slv.fit(use_rrel=True, use_scale=(getattr(slv, "K", None) is None))
-            if log:
-                log("📐 2D→3D: 自拟合 " + ("成功 " + str({k: fit[k] for k in ('n_fit', 'rms_px',
-                    'holdout_rms_px', 'off_mm', 'rrel_deg') if k in fit}) if fit.get("ok")
-                    else f"暂不拟合 ({fit.get('why')})"))
-            if fit.get("ok") and not fit.get("degenerate"):
-                slv.save(_box3d_state_path(), extra={"src": "node_logic.📐 2D→3D 解算 (自监督)",
-                                                     "handeye": getattr(slv, "T_cam_from_base", None)})
-        # ── 3D **边界框** (中心 + 姿态 + 尺寸 + 8 角点 + 反投影自检), 不只是中心点 ──
-        try:
-            b3 = slv.predict_box3d(box, tcp=tcp, quat=quat) if slv.fitted else None
-        except Exception as _e:                                            # noqa: BLE001
-            b3 = None
-            if log:
-                log(f"⚠️ 3D 边界框解算失败: {type(_e).__name__}: {_e}")
-        p3 = (b3.get("center") if (b3 and b3.get("ok")) else
-              (slv.predict_held(tcp, quat) if slv.fitted else None))
-        _BOX3D["box3d"] = b3 or {}
-        _BOX3D["last"] = {"box": box, "tcp": tcp, "quat": quat, "pose_src": psrc,
-                          "p3": p3, "fitted": bool(slv.fitted), "n_obs": len(slv.obs),
-                          "rms_px": slv.rms_px, "off_mm": (None if slv.off is None else
-                                                            [round(float(v) * 1000, 1) for v in slv.off]),
-                          "used_env_module_truth": False, "used_sim_geometry": False}
-        if p3 is None:
-            if log:
-                d = slv.diversity()
-                log(f"📐 2D→3D: 攒数据中 {len(slv.obs)} 帧 · 框={[round(v,1) for v in box]} · "
-                    f"位姿源={psrc} · {d['why']} — 还没标定, 本帧不产出假 3D")
-            return False
-        # 写 39D (光模块段): 与 align() 同段位约定
-        obs39 = _YOLO_CACHE.get("obs39")
-        out = None
-        if obs39 is not None:
-            import numpy as np
-            out = np.asarray(obs39, dtype=float).copy()
-            out[4:7] = p3
-            out[22:25] = p3
-            _YOLO_CACHE["obs39_aligned"] = out
-        _YOLO_CACHE["box3d"] = dict(_BOX3D["last"])
-        if log:
-            log(f"📐 2D→3D 解算(不作弊): 框{[round(v,1) for v in box]} + 位姿[{psrc}] "
-                f"→ 光模块 3D=[{p3[0]:.4f} {p3[1]:.4f} {p3[2]:.4f}]m "
-                f"(自监督标定 · {len(slv.obs)} 帧 · 拟合 {slv.rms_px:.2f}px · "
-                f"off={[round(float(v)*1000,1) for v in slv.off]}mm)")
-            if b3 and b3.get("ok"):
-                import numpy as np      # 局部导入 (本文件模块级不引 numpy)
-                _cs = np.asarray(b3["corners8"], float)
-                _sig = (b3.get("sigma_mm") or {}).get("total")
-                log(f"📐 **3D 边界框** ({b3['mode']}): 中心=[{p3[0]:.4f} {p3[1]:.4f} {p3[2]:.4f}]m · "
-                    f"尺寸={b3['size_mm']}mm({b3['size_src']}) · 8 角点范围 "
-                    f"x[{_cs[:,0].min():.3f},{_cs[:,0].max():.3f}] y[{_cs[:,1].min():.3f},{_cs[:,1].max():.3f}] "
-                    f"z[{_cs[:,2].min():.3f},{_cs[:,2].max():.3f}] · 反投影框 {b3.get('box2d_reproj')} "
-                    f"vs 检测 {b3.get('box2d_obs')} (IoU {b3.get('iou')}) · σ ±{_sig}mm")
-                for _g in (b3.get("gaps") or [])[:2]:
-                    log(f"   gap: {_g}")
-        # 仿真下允许**事后打分** (只记日志, 不进任何输出): 与 env 真值比一下
-        try:
-            env = getattr(aligner, "env", None)
-            if env is not None:
-                import numpy as np
-                truth = np.asarray(env._get_obs(), float).ravel()[4:7]
-                err = float(np.linalg.norm(np.asarray(p3) - truth)) * 1000
-                if log:
-                    log(f"📐 (只打分, 不入链路) 与仿真真值差 {err:.1f}mm")
-                _BOX3D["last"]["score_mm_vs_sim_truth"] = round(err, 2)
-        except Exception:                                                  # noqa: BLE001
-            pass
-        return True
-    except Exception as e:
-        if log:
-            log(f"⚠️ 2D→3D 解算(不作弊) 失败: {type(e).__name__}: {e}")
-        return False
 
 def node_yolo_tactile(ctx):
-    """📍 Marker 触觉跟踪 — 真实执行: gen_tactile.py synth_tactile 从 39D 合成 4D (夹持/接触/方向) —— 薄壳: 真实现已迁到 nodes/tactile_impl.py::run (2026-10-28 执行链外迁)"""
-    from .tactile_impl import run as _run
-    return _run(ctx)
+    """→ nodes/yolo_tactile.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .yolo_tactile import node_yolo_tactile as _impl
+    return _impl(ctx)
+
 
 _reg("yolo_3d",     ["YOLO 3D"], "🎯 YOLO 3D — 检测销钉/插孔/末端 → 2D→3D → 39D state (源码 yolo_3d/)", node_yolo_3d)
 
@@ -2880,146 +2690,17 @@ def _seg_mask3d_obs(max_age_s=3.0):
         return {}
 
 def node_ss_s1(ctx):
-    """融合定位建图 — 📡 视觉(YOLO→2D→3D) ⊕ 触觉(4D) ⊕ 外观质量: fuse_sensors() → 统一状态空间 43D (perception.py); 兼做建图 (manifold/localization_mapping.py)
-    🐛 2026-09-01 真实执行: 原 _ss_run 只打日志, perception.py 断点永不命中"""
-    log = ctx.get("log")
-    try:
-        import numpy as np
-        name = ctx.get("name", "")
-        if "状态向量" in name or "obs" in name.lower():
-            obs43 = _ss_ensure_obs43(log)
-            if log:
-                log(f"🧩 43D obs (真实): 39D 视觉 [0:39] + 触觉4D [39:43] · "
-                    f"grasp={obs43[39]:.3f} contact={obs43[40]:.3f} dir=({obs43[41]:.2f},{obs43[42]:.2f})")
-            return True
-        obs39, _img = _ss_env_obs(log)
-        tac = np.asarray(_ss_tactile_mod().synth_tactile(obs39.reshape(1, 39))).reshape(4)
-        # 🧩 SAM3 掩膜 3D → 融合 (2026-10-14: 先前"只算不用", 掩膜 3D 落在缓存里零消费者 = 老倪说的"悬着")
-        #   ① 掩膜可用 ⇒ 作**独立观测**入库 + 与框法**交叉校验**(偏差入状态), 参与融合质量判定;
-        #   ② 真要改写 3D 数值必须显式开闸 `ZMAX_FUSION_SEG=1` —— 未证明提升不进默认档。
-        seg_obs = _seg_mask3d_obs()
-        seg_dev_mm = None
-        if seg_obs:
-            _SS_STATE["seg_mask3d"] = seg_obs
-            try:
-                _o0 = seg_obs[sorted(seg_obs)[0]]
-                seg_dev_mm = float(np.linalg.norm(np.asarray([_o0["x"], _o0["y"]], float) -
-                                                 np.asarray(obs39[4:6], float))) * 1000.0
-                _SS_STATE["seg_mask3d_dev_mm"] = round(seg_dev_mm, 2)
-            except Exception:                                               # noqa: BLE001
-                seg_dev_mm = None
-            if os.environ.get("ZMAX_FUSION_SEG") == "1":
-                try:
-                    _o0 = seg_obs[sorted(seg_obs)[0]]
-                    obs39[4:6] = [float(_o0["x"]), float(_o0["y"])]
-                    if _o0.get("z_mm") is not None:
-                        obs39[6] = float(_o0["z_mm"]) / 1000.0
-                    _SS_STATE["seg_mask3d_used"] = sorted(seg_obs)[0]
-                except Exception:                                           # noqa: BLE001
-                    pass
-        else:
-            _SS_STATE.pop("seg_mask3d", None)
-            _SS_STATE.pop("seg_mask3d_dev_mm", None)
-        obs43 = _ss_import("perception").fuse_sensors(obs39, np.zeros(6), tac)
-        _SS_STATE.update({"obs43": obs43, "obs39": obs39})
-        if log:
-            log(f"📡 融合定位建图 (真实): 视觉39D ⊕ 触觉4D → 统一状态空间 43D · hand={np.round(obs39[0:3],3)} "
-                f"光模块={np.round(obs39[4:7],3)} hole={np.round(obs39[36:39],3)} · 触觉={np.round(tac,3)}")
-            if seg_obs:
-                _o0 = seg_obs[sorted(seg_obs)[0]]
-                _dev = ("-" if seg_dev_mm is None else "%.1fmm" % seg_dev_mm)
-                log("   🧩 SAM3 掩膜 3D 观测[%s] base=(%.3f,%.3f)m z=%smm 足印=%s 帧=%s · 与框法偏差 %s%s" % (
-                    sorted(seg_obs)[0], _o0["x"], _o0["y"],
-                    ("-" if _o0.get("z_mm") is None else "%.0f" % float(_o0["z_mm"])),
-                    (_o0.get("xy_size_mm") or "-"), (_o0.get("src") or "-"), _dev,
-                    (" · 已按 ZMAX_FUSION_SEG=1 填进 39D" if os.environ.get("ZMAX_FUSION_SEG") == "1" else "")))
-            else:
-                log("   🧩 SAM3 掩膜 3D 观测: 本帧无 (未跑分割 / 帧非臂上相机 / 掩膜已过期) — 融合走框法")
-        return True
-    except Exception as e:
-        if log:
-            log(f"⚠️ 融合定位建图真实执行失败: {e}")
-        return False
+    """→ nodes/ss_sensor.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_sensor import node_ss_s1 as _impl
+    return _impl(ctx)
+
 
 def node_ss_s2(ctx):
-    """并行处理层 — ⚡前馈加速器(FeedforwardAccelerator) / 🔮状态估计器(AdaptiveStateEstimator) (parallel.py)"""
-    log = ctx.get("log")
-    try:
-        import numpy as np
-        name = ctx.get("name", "")
-        par = _ss_import("parallel")
-        obs43 = _ss_ensure_obs43(log)
-        if "估计" in name:
-            est = par.AdaptiveStateEstimator()
-            act4 = np.concatenate([_SS_STATE.get("u_prev", np.zeros(3)), [0.0]])
-            lat = _SS_STATE.get("latent", obs43[:4])
-            latent_pred = est.predict(np.asarray(lat, dtype=float), act4)
-            # 🐛 2026-09-02 老倪: 估计器必须预测+校正闭环 — 原只 predict 没 update,
-            #   "自适应状态估计器"的卡尔曼校正(用观测 z_k 修正先验)根本没执行, 名不副实
-            obs39 = _SS_STATE.get("obs39")
-            if obs39 is None:
-                obs39, _ = _ss_env_obs(log)
-            z_k = np.concatenate([obs39[0:3], [obs39[3]]])   # 观测: 手位置 + 夹爪开度 (与 latent 同维)
-            latent = est.update(np.asarray(latent_pred, dtype=float), np.asarray(z_k, dtype=float))
-            _SS_STATE["latent"] = np.asarray(latent, dtype=float)
-            if log:
-                log(f"🔮 状态估计器 (真实): predict→{np.round(latent_pred,4)} · "
-                    f"update(K·(z−x̂₋))→latent={np.round(latent,4)} (parallel.py AdaptiveStateEstimator)")
-            return {"out1": {"kind": "state_est", "latent": [float(x) for x in np.asarray(latent).ravel()],
-                             "latent_pred": [float(x) for x in np.asarray(latent_pred).ravel()]},
-                    "out2": None, "ok": True}
-        accel = par.FeedforwardAccelerator()
-        u_ff = accel.forward(obs43)
-        # 🧠 2026-09-08 老倪目检实锤: 域外布局 forward 走解析守卫 → probe 空 → 直方图无数据。
-        #   补一次真 MLP 前向仅填探针 (诊断通道, 不参与控制) — 直方图展示真实 MLP 激活。
-        if not (accel.probe or {}).get("act_raw") and getattr(accel, "_ff", None) is not None:
-            try:
-                accel._ff(np.asarray(obs43[:39], dtype=np.float32))  # 覆盖探针 key+_seq 自增
-            except Exception:
-                pass
-        _SS_STATE["u_ff"] = np.asarray(u_ff, dtype=float)
-        _SS_STATE["ff_probe"] = accel.probe   # 🧠 探针缓存 (前馈激活直方图节点消费)
-        if log:
-            # 🧠 探针 (2026-09-04): 展示 MLP 在想什么 — 层活跃/能量 + 输出归因 top 单元
-            _p = accel.probe
-            if _p and "layers" in _p:
-                _ls = _p["layers"]
-                _act = " · ".join(f"L{i+1}:{l['active']}/{l['dim']}活 E={l['act_l2']:.1f}"
-                                  for i, l in enumerate(_ls))
-                _top = " · ".join(
-                    f"u{d+1}←单元{j}({c:+.3f})" for d in range(3)
-                    for j, c in _p["out_contrib"][d][:1])
-                log(f"⚡ 前馈加速器 (真实): u_ff={np.round(u_ff,3)} · 🧠[{_act}] · 归因 {_top} "
-                    f"(parallel.py; obs: 手{_p['obs']['hand']}→目标{_p['obs']['target']} d={_p['obs']['d_h']})")
-            else:
-                log(f"⚡ 前馈加速器 (真实): forward(obs43) → u_ff={np.round(u_ff,3)} (parallel.py)")
-        # ⚠️ 2026-10-30 实锤两连坑: ① 直接返回 accel.probe → float32 不可 JSON 序列化;
-        #   ② default=float 对 numpy **数组** 报 "only 0-dimensional arrays can be converted"。
-        #   ⇒ 必须按类型分流 (ndarray→tolist / np标量→item), 否则壳 step 抛异常整节点废掉。
-        import json as _js
+    """→ nodes/ss_est.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_est import node_ss_s2 as _impl
+    return _impl(ctx)
 
-        def _conv(o):
-            try:
-                if isinstance(o, np.ndarray):
-                    return o.tolist()
-                if isinstance(o, np.generic):
-                    return o.item()
-                return float(o)
-            except Exception:                                          # noqa: BLE001
-                return str(o)
 
-        _probe = accel.probe if isinstance(accel.probe, dict) else {}
-        _probe = _js.loads(_js.dumps(_probe, default=_conv))
-        return {"out1": {"kind": "ff_probe", "probe": _probe},
-                "out2": {"kind": "u_ff", "layer": "L2", "role": "前馈建议动作",
-                         "u_ff": [round(float(x), 6) for x in np.asarray(u_ff).ravel()],
-                         "w_ff": float((ctx.get("params") or {}).get("w_ff", 0.3)),
-                         "source": "parallel.py FeedforwardAccelerator"},
-                "ok": True}
-    except Exception as e:
-        if log:
-            log(f"⚠️ 并行处理层真实执行失败: {e}")
-        return {"out1": None, "out2": None, "ok": False, "error": str(e)}
 
 _FF_HIST_WIN = None  # 🧠 前馈激活直方图窗口 (全局单实例, 主线程)
 
@@ -3140,67 +2821,42 @@ def node_ss_ff_attrib(ctx):
         return False
 
 def node_ss_dyn(ctx):
-    """动力学预测-校正 — 📈先验动力学预测器(PriorDynamicsPredictor) / 🧪状态校正器(state_correction) —— 薄壳: 真实现已迁到 nodes/state_correct_impl.py::run (2026-10-28 执行链外迁)"""
-    from .state_correct_impl import run as _run
-    return _run(ctx)
+    """→ nodes/ss_correct.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_correct import node_ss_dyn as _impl
+    return _impl(ctx)
+
+
 
 def node_ss_s3(ctx):
-    """认知决策层 — 🧭动作调制器(ActionModulator.decide 8阶段状态机) / 🛡安全执行边界(saturate) —— 薄壳: 真实现已迁到 nodes/safety_limit_impl.py::run (2026-10-28 执行链外迁)"""
-    from .safety_limit_impl import run as _run
-    return _run(ctx)
+    """→ nodes/ss_limit.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_limit import node_ss_s3 as _impl
+    return _impl(ctx)
+
 
 def node_ss_exec(ctx):
-    """执行层 — 🤖机器人执行器(RobotExecutor.execute) / 🌍物理世界(PhysicalWorld 质量/惯量) —— 薄壳: 真实现已迁到 nodes/robot_actuator_impl.py::run (2026-10-28 执行链外迁)"""
-    from .robot_actuator_impl import run as _run
-    return _run(ctx)
+    """→ nodes/ss_world.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_world import node_ss_exec as _impl
+    return _impl(ctx)
+
+
 
 def node_ss_video(ctx):
-    """🎥 操作视频 — 双击打开 metaworld 训练后 rollout 视频对比窗口 (多模型同步播放)"""
-    module = ctx.get("module")
-    label = ctx.get("label", "")
-    if label == "▶运行":
-        # 🐛 2026-09-01 老倪: ▶运行动画播放中不自动弹窗 — 弹窗置顶(_show_nonmodal) +
-        #   断点暂停时主线程冻结 → 窗口关不掉 + "studio.py is not responding"; 双击才弹
-        log = ctx.get("log")
-        if log:
-            log("🎥 操作视频: 运行模式跳过弹窗 — 双击节点打开")
-        return True
-    if module and hasattr(module, "on_infer_video"):
-        module.on_infer_video()
-    return True
+    """→ nodes/ss_video.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_video import node_ss_video as _impl
+    return _impl(ctx)
+
 
 def node_ss_3d_view(ctx):
-    """🧭 3D 视图 — 打开 Apollo 风格 3D 分层视图 (可视化层观察器, 源=物理世界)
-    ▶运行 模式跳过弹窗 (同操作视频); 双击/右键运行 → 打开/置顶 3D 窗口"""
-    module = ctx.get("module")
-    label = ctx.get("label", "")
-    log = ctx.get("log")
-    if label == "▶运行":
-        if log:
-            log("🧭 3D 视图: 运行模式跳过弹窗 — 双击节点打开 (防断点冻结关不掉)")
-        return True
-    if module and hasattr(module, "open_ss_3d"):
-        module.open_ss_3d()
-        if log:
-            log("🧭 3D 视图: 已打开 (Apollo 风格分层视图, 与引擎/画布同源)")
-        return True
-    if log:
-        log("⚠️ 3D 视图: 无 module 上下文 (仅画布内双击/右键运行可用)")
-    return False
+    """→ nodes/ss_3d_view.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_3d_view import node_ss_3d_view as _impl
+    return _impl(ctx)
+
 
 def node_ss_scope(ctx):
-    """📊 仿真波形 — 双击显示最近一次状态空间仿真波形 (距离/残差/接触概率 + 阶段切换)"""
-    module = ctx.get("module")
-    label = ctx.get("label", "")
-    if label == "▶运行":
-        # 🐛 2026-09-01 老倪: 同 node_ss_video — 运行模式不弹窗, 双击节点才打开
-        log = ctx.get("log")
-        if log:
-            log("📊 仿真波形: 运行模式跳过弹窗 — 双击节点查看")
-        return True
-    if module and hasattr(module, "show_state_space_scope"):
-        module.show_state_space_scope()
-    return True
+    """→ nodes/ss_scope.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_scope import node_ss_scope as _impl
+    return _impl(ctx)
+
 
 # 外部源码位置: 语义key → (绝对路径, 行号兜底, 真实符号名)
 # ── 🧩 SU(2) 统一状态空间 (二阶特殊酉群) ─────────────────────────────────────
@@ -3288,124 +2944,10 @@ def _ss_node_frame(mod=None, log=None):
 
 
 def node_ss_su2(ctx):
-    """🧩 SU(2) 统一状态空间 — 真实执行 su2.py::SU2UnifiedState (群映射, 非拼接)
+    """→ nodes/ss_obs.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_obs import node_ss_su2 as _impl
+    return _impl(ctx)
 
-    L2(43D 几何误差) ⊗ L3(流形规划) ⊗ L4(安全动作) ⊗ L5(大模型意图) → 场景群元素;
-    输出: 状态方向 n̂ / 偏离角 θ / 收敛度|w| + 逐层剥离贡献 + 层间不可交换性 (全实测量)。
-
-    ctx["demo_light"]=True (▶运行 播放路径): **不冷加载** YOLO/metaworld, obs43 只取缓存
-    (_SS_STATE["obs43"]); 群运算是纯 numpy ~1ms, 不会卡播放 — 且**真实执行 su2.py**,
-    所以在 su2.py 里设的断点在 ▶运行 时也能命中 (2026-09-20 老倪: "运行后断点不进入")。
-    """
-    log = ctx.get("log")
-    light = bool(ctx.get("demo_light"))
-    try:
-        mod = ctx.get("module")
-        su2 = _ss_import("su2")
-        if light:
-            obs43 = _SS_STATE.get("obs43")          # 仅缓存, 不触发采样
-            if obs43 is None and log:
-                log("🧩 SU(2) (演示帧): L2 无缓存 obs43 → 该层为单位元 (不冷加载 YOLO/metaworld)")
-        else:
-            obs43 = _ss_ensure_obs43(log)
-        frame = _ss_su2_frame(mod, log)
-        # 🧠 L5 层真输入 (2026-11-03): DeepSeek 意图 → frame["L5_intent"] (3 维, 基座系方向)。
-        #   l5_intent 内部单飞+TTL 缓存, **不阻塞节拍**; 没有结果就不写这个字段 ⇒ L5 落单位元
-        #   (su2.encode_layer 本来就这么写: 未接入 = 单位元, 不编造), 但这里会把"为什么没有"打进日志。
-        _l5 = None
-        try:
-            _stage = None
-            try:
-                _tr0 = getattr(mod, "_ss_tr", None) or {}
-                _st0 = _tr0.get("stage") or []
-                if _st0:
-                    _stage = str(_st0[min(int(getattr(mod, "_ss_round", 0) or 0), len(_st0) - 1)])
-            except Exception:                                            # noqa: BLE001
-                _stage = None
-            _l5 = _ss_import("l5_intent").intent(
-                obs43, {**frame, "stage": _stage or frame.get("stage")})
-            if _l5 and _l5.get("vec"):
-                frame = {**frame, "L5_intent": [float(v) for v in _l5["vec"]]}
-                _SS_STATE["l5_intent"] = _l5
-        except Exception as _e:                                          # noqa: BLE001
-            if log:
-                log("⚠️ L5 大模型意图不可用 (%s: %s) → L5 层落单位元" % (type(_e).__name__, _e))
-        # 🧩 四元数真值 (记忆基准) + 感知补偿 (2026-11-03 策略): L2 用**精确四元数**, 不走 tanh 压缩
-        #   真值 = 记忆技能库轴向 (data/memory/l2_store/skills.json) + 离线 IK 验证过的 yaw;
-        #   补偿 = obs43 的 光模块→孔位 方向 (新鲜才参与, 过期 w=0, 不拿旧测量当新证据);
-        #   输出 = q_fused 给群/流形/规划, 并写 quat_truth_latest.json 供下游消费。
-        try:
-            import numpy as _np
-            _qt = _ss_import("quat_truth")
-            _axis, _meas_q, _age = "z_pos", None, None
-            _src = str(_SS_STATE.get("obs43_src") or "")
-            try:
-                if obs43 is not None and len(obs43) >= 39:
-                    _e = _np.asarray(obs43[4:7], float) - _np.asarray(obs43[36:39], float)
-                    _n = float(_np.linalg.norm(_e))
-                    if _n > 1e-9:
-                        _d = -_e                                    # 插入方向 = 孔位−光模块
-                        if abs(_d[0]) >= abs(_d[2]):
-                            _axis = "x_pos" if _d[0] >= 0 else "x_neg"
-                        else:
-                            _axis = "z_pos" if _d[2] >= 0 else "z_neg"
-                        _meas_q = _qt.q_for_axis(-_e / _n)          # 插入方向 = 孔位−光模块
-                        _age = 0.0 if _src.startswith("yolo") else None
-            except Exception:                                        # noqa: BLE001
-                pass
-            _qr = _qt.observe(axis=_axis, meas_q=_meas_q, meas_age_s=_age)
-            frame = {**frame, "L2_quat": list(_qr["q_fused"])}
-            _SS_STATE["quat_truth"] = _qr
-            try:
-                _qt.write_contract(_qr)
-            except Exception:                                        # noqa: BLE001
-                pass
-            if log and int(getattr(mod, "_ss_round", 0) or 0) % 20 == 0:
-                log("🧩 四元数真值: 轴=%s 偏差 %.3f° 势 V=%.6f 测量权重 %.2f 引力|%.4f| 源=%s"
-                    % (_qr["axis"], _qr["err_deg"], _qr["V"], _qr["w_meas"],
-                       float(_np.linalg.norm(_qr["gravity"])), _src or "obs43"))
-        except Exception as _e:                                      # noqa: BLE001
-            if log:
-                log("⚠️ 四元数真值层不可用 (%s: %s) → L2 回 43D 误差指示器" % (type(_e).__name__, _e))
-        st = _SS_STATE.get("_su2_state")
-        if st is None:
-            st = su2.SU2UnifiedState(log=None)
-            _SS_STATE["_su2_state"] = st
-        scene, layers, u = st.push(frame, obs43)
-        _SS_STATE["su2_scene"] = scene
-        _SS_STATE["su2_layers"] = layers
-        _SS_STATE["su2_readout"] = u
-        try:
-            _nf = _ss_node_frame(mod, log)
-            nodes = su2.encode_nodes(_nf) if _nf else {}
-            if nodes:
-                _SS_STATE["su2_nodes"] = nodes
-                _SS_STATE["su2_nodes_src"] = "%s, %d 节点" % (_SS_FRAME_SRC.get("src"), len(nodes))
-        except Exception:                                               # noqa: BLE001
-            pass
-        if log:
-            log("🧩 SU(2) 统一状态空间 (二阶特殊酉群): %s" % u["readout"])
-            for L in ("L2", "L3", "L4", "L5"):
-                log("   %s %s" % (L, layers[L].describe()))
-            if _l5:
-                log("   🧠 L5 源=%s conf=%s · 意图=%s · why=%s · age=%ss · 时延=%sms%s"
-                    % (_l5.get("src"), _l5.get("conf"), _l5.get("vec"), _l5.get("why"),
-                       _l5.get("age_s"), _l5.get("latency_ms"),
-                       " · ⚠️与孔位方向不符(cos=%.2f)" % _l5["cos_vs_to_hole"]
-                       if _l5.get("suspicious") and _l5.get("cos_vs_to_hole") is not None else
-                       (" · cos(指向孔)=%.2f" % _l5["cos_vs_to_hole"]
-                        if _l5.get("cos_vs_to_hole") is not None else "")))
-            else:
-                log("   🧠 L5 意图: 暂无新鲜结果 (DeepSeek 后台单飞, 实测 60~130s/次) → 该层为单位元")
-            log("   群反演剥离: 残余 θ=%.2e (≈0 ⇒ 分解自洽) · 主导层=%s · 层间不可交换 L2|L4=%.4f"
-                % (u["layer_peel"]["_residual"]["theta"], u["dominant_layer"],
-                   u["noncommutativity"].get("L2|L4", 0.0)))
-            log("   (43D obs = 群里的 L2 输入块; 其余节点数据按 NODE_SPECS 各自映射成群元素)")
-        return True
-    except Exception as e:                                              # noqa: BLE001
-        if log:
-            log("⚠️ SU(2) 统一状态映射失败: %s" % e)
-        return False
 
 _EXTERNAL_LOC["ss_bg1"]    = (os.path.join(_SS_DIR, "perception.py"), 34, "def fuse_sensors")
 
@@ -3482,9 +3024,10 @@ _reg("ss_limit", ["安全执行边界"], "🛡 安全执行边界 — 饱和限�
 #   原来画布「⚖ 物理约束」节点 IMPL_KEY 误绑 n_exec (动作执行器) 且 PURE=False ⇒ 每拍只直通, 从没真裁过。
 #   现在它绑本 key: 每拍取块动作 → 🧭 KinematicLimiter(①②③⑤) → ⚖ DynamicLimiter(④) → 可行动作/偏差。
 def node_ss_constraint_gate(ctx):
-    """⚖ 动力学约束闸 (前置运动学约束真跑) — 薄壳: 真实现 nodes/constraint_gates_impl.py::run"""
-    from .constraint_gates_impl import run as _run
-    return _run(ctx)
+    """→ nodes/ss_dyn_gate.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_dyn_gate import node_ss_constraint_gate as _impl
+    return _impl(ctx)
+
 
 _reg("ss_dyn_gate", ["动力学约束", "物理约束"], "⚖ 动力学约束 — 每拍真调 🧭 运动学(①速度②加速度③加加速度⑤位移) + ⚖ 动力学(④动量/质量变化率) 两条闸 (源码 physics_constraints.KinematicLimiter/DynamicLimiter); 节点实现 nodes/constraint_gates_impl.py", node_ss_constraint_gate)
 
@@ -3516,83 +3059,16 @@ _EXTERNAL_LOC["ss_reason"] = (os.path.join(_SS_DIR, "planner.py"), 214, "def dia
 _EXTERNAL_LOC["ss_skill"] = (os.path.join(_SS_DIR, "planner.py"), 275, "def compose")
 
 def node_ss_llm(ctx):
-    """🧠 任务规划器 — 指令 → 技能Token序列 → 下发状态机 (慢决策, 回路外; 双击=规划演示)"""
-    log = ctx.get("log")
-    try:
-        path = os.path.join(_SS_DIR, "planner.py")
-        m = _load_mod("state_space.planner", path)          # 正常 import (断点可绑)
-        p = m.TaskPlanner()
-        # 🔌 2026-10-28 老倪「具体是哪个函数负责输入」: 原来只读 ctx["params"] —— 引擎里根本没有这个键
-        #   (Node.step: ctx = self.pull() = {port: {value,age_s,fresh}}), 所以永远取默认「插入光模块」,
-        #   上游 ssllm_in / n_vlm_llm / ss_mem_share 四条入线一条都没被消费。现在三级回落:
-        #   ① 节点参数 instruction/task_input (GUI 演示可传) ② 入边 in1 (引擎真链路) ③ ssllm_in 写的共享态
-        _p = ctx.get("params") or {}
-        _ins_in = None
-        for _port in ("in1", "in2"):
-            _v = (ctx.get(_port) or {}).get("value")
-            if isinstance(_v, dict):
-                for _k in ("instruction", "task_input", "text", "cmd", "intent"):
-                    if _v.get(_k):
-                        _ins_in = str(_v[_k])
-                        break
-            elif isinstance(_v, str) and _v.strip():
-                _ins_in = _v.strip()
-            if _ins_in:
-                break
-        ins = (_p.get("instruction") or _p.get("task_input") or _ins_in
-               or _SS_STATE.get("instruction") or "插入光模块")
-        _ctx_txt = _llm_context_text()          # 场景理解 + 总装记忆上下文 (真实读, 取不到如实说)
-        if log and _ctx_txt:
-            log(f"   📥 规划上下文: {_ctx_txt[:200]}")
-        tokens = p.plan(ins)
-        names = []
-        for t in tokens:
-            for s in p.skills.values():
-                if s["tokens"]["id"] == t:
-                    names.append(s["name"])
-                    break
-        if log:
-            log(f"🧠 任务规划器: 「{ins}」 → 技能序列 (共 {len(tokens)} 步)")
-            for i, (t, nm) in enumerate(zip(tokens, names), 1):
-                log(f"   {i}. {t}  {nm}")
-            log(f"   📚 Token 序列已下发 🧭动作调制器 (慢决策 · 回路外, 状态机握否决权)")
-        # 🔌 2026-10-28: 原来 return True ⇒ 引擎判「实现返回非 dict → 直通」, out1 永远 None,
-        #   下游 sssched / ssuph 一条 token 都收不到。现在真发总线。
-        _outs = {"out1": {"instruction": ins, "tokens": tokens, "names": names,
-                          "n": len(tokens), "src": "TaskPlanner.plan", "t": time.time()}}
-        if log:
-            log(f"📤 已发 out1: {len(tokens)} 个技能 token {tokens[:4]}")
-        return _outs
-    except Exception as e:
-        if log:
-            log(f"⚠️ 任务规划器演示失败: {e}")
-        return {"out1": None}
+    """→ nodes/ss_llm.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_llm import node_ss_llm as _impl
+    return _impl(ctx)
+
 
 def node_ss_reason(ctx):
-    """🔍 异常推理器 — 连续否决/阶段卡死 → 异常分类 + 恢复建议 (双击=诊断演示)"""
-    log = ctx.get("log")
-    try:
-        path = os.path.join(_SS_DIR, "planner.py")
-        m = _load_mod("state_space.planner", path)          # 正常 import (断点可绑)
-        r = m.ExceptionReasoner()
-        p = ctx.get("params") or {}
-        kind, advice = r.diagnose(
-            stage=p.get("stage", "接近"),
-            residual=float(p.get("residual", 0.0)),
-            contact_p=float(p.get("contact_p", 0.5)),
-            dist_h=float(p.get("dist_h", 0.05)),
-            dwell_time=float(p.get("dwell_time", 0.0)),
-            veto_count=int(p.get("veto_count", 0)),
-            max_veto=int(p.get("max_veto", 3)))
-        if log:
-            log(f"🔍 异常推理器: 阶段={p.get('stage','接近')} 残差={p.get('residual',0.0)} "
-                f"接触概率={p.get('contact_p',0.5)}")
-            log(f"   → 诊断: {kind or '运行正常'} | {advice}")
-        return True
-    except Exception as e:
-        if log:
-            log(f"⚠️ 异常推理器演示失败: {e}")
-        return False
+    """→ nodes/ss_reason.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_reason import node_ss_reason as _impl
+    return _impl(ctx)
+
 
 def _skill_spec_from_env(log=None):
     """🛠 技能编排器的**环境输入** (老倪 2026-09-19: "环境数据要输入给技能编排层的大语言模型")
@@ -3647,30 +3123,10 @@ def _skill_spec_from_env(log=None):
     return spec
 
 def node_ss_skill(ctx):
-    """🛠 技能编排器 — 新型号规格 → 新技能序列 + 力阈值/节拍 (双击=编排演示)"""
-    log = ctx.get("log")
-    try:
-        path = os.path.join(_SS_DIR, "planner.py")
-        m = _load_mod("state_space.planner", path)          # 正常 import (断点可绑)
-        c = m.SkillComposer()
-        spec_text = (ctx.get("params") or {}).get("spec") or _skill_spec_from_env(log)
-        if log:
-            log(f"   📥 环境输入口径: 数据源/真机实况 (in1/in2) + 场景理解 + 宏观记忆建议 → 规格文本 "
-                f"(见 _skill_spec_from_env; 缺哪一路会如实打印)")
-        out = c.compose(spec_text)
-        if log:
-            log(f"🛠 技能编排器: 规格「{spec_text}」")
-            for i, t in enumerate(out["sequence"], 1):
-                log(f"   {i}. {t}")
-            pr = out["params"]
-            log(f"   ⚙ 参数: 力阈值 {pr.get('force_limit')}N · 节拍 {pr.get('tact_time')}s · "
-                f"插入深度 {pr.get('insert_depth')}m")
-            log(f"   📚 新技能序列已注册进 🧠任务规划器技能库")
-        return True
-    except Exception as e:
-        if log:
-            log(f"⚠️ 技能编排器演示失败: {e}")
-        return False
+    """→ nodes/ss_skill.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_skill import node_ss_skill as _impl
+    return _impl(ctx)
+
 
 def _llm_context_text():
     """🧠 任务规划器/🔍异常推理器的输入上下文: 场景理解 + 总装记忆条目 (真实读)"""
@@ -3699,122 +3155,37 @@ def _llm_context_text():
     return " | ".join(bits)
 
 def node_dsvl(ctx):
-    """🧿 DeepSeek-V4-Flash 视觉语言 (人机在环) — 后台线程判读当前画面, 结果写 _SS_STATE 并落盘
+    """→ nodes/n_dsvl.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .n_dsvl import node_dsvl as _impl
+    return _impl(ctx)
 
-    数据通道: 环境帧/引擎真图/真机帧 (in1~in3) + MES 工单 (in4) → 场景判读 → 场景理解层 👁 → LLM 层。
-    右键 = tools/gui/vlm_panel.py 判读结果窗口 (字段表/实时画面/历史)。
-    人机在环红线: 本节点只产出『判读+建议』, 不产生任何机械臂动作指令。
-    """
-    log = ctx.get("log")
-    try:
-        ins = _ctx_params(ctx).get("instruction", "插入光模块")
-        img, src, meta = _vlm_frame()
-        if img is None:
-            if log:
-                log("🧿 DeepSeek-V4-Flash: ⚠️ 无可用画面 (真机帧不在 / 仿真帧未采样) — 不判读")
-            return False
-        _cx = dict(_vlm_ctx(ctx), instruction=ins)
-        st = _vlm_ask_async("describe", img, _cx, log)
-        if log:
-            log(f"🧿 DeepSeek-V4-Flash (deepseek-flash · Vision): 画面 {meta.get('frame')} "
-                f"({meta.get('frame_src')}) → 场景判读 (后台线程); 右键本节点可打开判读结果窗口")
-            _sg = _cx.get("seg") or {}
-            if _sg:
-                log("   🧩 输入选项·开放词汇分割(SAM3): %d 实例 · 类别=%s · 选中 %s · 帧=%s%s → 已进判读上下文" % (
-                    _sg.get("n_instances", 0), (_sg.get("labels") or "-"), _sg.get("n_selected"),
-                    _sg.get("frame_src") or "-",
-                    (" · 掩膜3D %d 组" % len(_sg.get("mask3d_base") or {})) if _sg.get("mask3d_base") else ""))
-            else:
-                log("   🧩 输入选项·开放词汇分割(SAM3): 本帧无 (🖼 分割节点未跑 / 结果过期) — 判读只用画面")
-            r = (st or {}).get("result") or {}
-            if st.get("pending"):
-                log("   ⏳ 判读中 (Cold start 60~134s, 缓存命中 ~1s) — 结果下一拍显示")
-            elif r.get("ok"):
-                log(f"   ✅ {_vlm_brief(r.get('json'))}")
-            else:
-                log(f"   ⚠️ {r.get('why')}")
-        return True
-    except Exception as e:
-        if log:
-            log(f"⚠️ DeepSeek 判读节点失败: {type(e).__name__}: {e}")
-        return False
 
 def node_moveit(ctx):
-    """🧭 运动规划 (plan) 节点 —— 薄壳: 真实现已迁到 nodes/plan_impl.py::run
+    """→ nodes/n_moveit.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .n_moveit import node_moveit as _impl
+    return _impl(ctx)
 
-    老倪 2026-10-28: 「运动规划节点的源代码怎么能是 library.py 呢？应该是 plan 的代码」
-      ⇒ 规划正文(段表生成)搬到 src/lerobot/engineering/nodes/plan_impl.py, 这里只转调,
-        右键「打开源代码」经 _EXTERNAL_LOC 直接落到 plan_impl.py:def run。
-    """
-    from .plan_impl import run as _plan_run
-    return _plan_run(ctx)
 
 def node_geoplan(ctx):
-    """🧭 测地线块规划 — 薄壳: 真实现 nodes/geo_plan_impl.py::run
+    """→ nodes/n_geoplan.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .n_geoplan import node_geoplan as _impl
+    return _impl(ctx)
 
-    obs43 → ManifoldEngine.project → 目标点 → compute_geodesic(H) → readout 解码 → 块[H,4]。
-    只出块, 不下发; 引擎/权重/目标缺失一律 ok=False 如实上报 (不出空块冒充)。
-    """
-    from .geo_plan_impl import run as _geo_run
-    return _geo_run(ctx)
 
 def node_exec(ctx):
-    """⚙️ 动作执行器 (l2_daemon) — 真执行函数: 读执行器真值状态与最近事件 (本节点**不下发**任何动作)。 —— 薄壳: 真实现已迁到 nodes/exec_dispatch_impl.py::run (2026-10-28 执行链外迁)"""
-    from .exec_dispatch_impl import run as _run
-    return _run(ctx)
+    """→ nodes/n_exec.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .n_exec import node_exec as _impl
+    return _impl(ctx)
+
 
 _HIL_CACHE = {"t": -1e9}      # 🙋 HIL 节点最近一次真正上报的时刻 (节拍闸, 见函数内注释)
 
 
 def node_hil(ctx):
-    """🙋 HIL 人机在环 · 状态↔指示 — 状态空间状态发 ECS web, 并取回人的指示 (2026-09-26)
+    """→ nodes/n_hil.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .n_hil import node_hil as _impl
+    return _impl(ctx)
 
-    真源: src/lerobot/policies/left_right/state_space/hil_bridge.py
-    通道: /api/relay/hil/state (上行) + /agent/{prompt,reply} (下行, from=hil_web/hil_bridge)
-    红线: 动作类指示一律拒答并记为待授权; 本节点不下发任何真机动作
-    网页: https://datadrive.world/hil.html (hermes 形式聊天界面)
-    """
-    log = ctx.get("log")
-    try:
-        import json as _j
-        import sys as _s
-        import urllib.request as _u
-        for _x in (_SS_DIR, os.path.abspath(os.path.join(_SS_DIR, "..", "..", "..", ".."))):
-            if _x not in _s.path:
-                _s.path.insert(0, _x)
-        # 🚦 2026-11-01: 本节点原每拍都往 datadrive.world 打 HTTPS (timeout=15s) + 拉一次指示 (12s),
-        #   实测 py-spy 十次采样有九次卡在 urlopen 的 connect 里 ⇒ 整圈被它吃掉, 链产物 >3s 就被
-        #   AR 接口判过期 (AR_CMD_FRESH_S=3.0), 页面回落老推进器。改成**按节拍上报**: 常驻循环里
-        #   最少间隔 ZMAX_HIL_EVERY_S (默认 15s) 才真发一次, 单次超时压到 1.5s; GUI 手动档不受限。
-        _now = time.time()
-        _in_loop = bool(os.environ.get("ZMAX_CANVAS_HZ"))
-        _every = float(os.environ.get("ZMAX_HIL_EVERY_S") or (15.0 if _in_loop else 0.0))
-        if _now - _HIL_CACHE["t"] < _every:
-            return True
-        _HIL_CACHE["t"] = _now
-        from lerobot.policies.left_right.state_space.hil_bridge import build_snapshot, poll_instructions
-        snap = build_snapshot()
-        req = _u.Request("https://datadrive.world/api/relay/hil/state", data=_j.dumps(snap).encode(),
-                         headers={"Content-Type": "application/json"}, method="POST")
-        with _u.urlopen(req, timeout=float(os.environ.get("ZMAX_HIL_TIMEOUT_S") or 1.5)) as r:
-            pub = _j.loads(r.read().decode() or "{}")
-        inst = {} if _in_loop else poll_instructions()      # 指示轮询由 8795 HIL API 常驻负责
-        if log:
-            s2 = snap["snapshot"]
-            log("🙋 HIL 人机在环: 状态已上报(ok=%s) · 阶段=%s 帧龄=%ss · 事件头 %s"
-                % (pub.get("ok"), s2.get("stage"), s2.get("frame_age_s"),
-                   {k: v for k, v in (s2.get("events") or {}).items() if not k.startswith("_")}))
-            log("   ← 人的指示: 处理 %d 条 %s" % (inst.get("handled", 0), inst.get("items") or ""))
-            log("   网页 https://datadrive.world/hil.html (只读状态+软先验指示; 动作类拒答)")
-            # 📱 2026-09-27 老倪: 「从这个点, 我要通过 APP 跟状态空间交互」—— 手机入口挂在本节点上
-            log("   📱 手机 APP 现场页 http://10.163.146.78:8791/room (全看 6 路相机 + 远程操作 + 本节点交互)")
-            log("   本地 HIL API http://10.163.146.78:8795 (与本节点同一个大脑: build_snapshot/handle_instruction)")
-            log("   装包下载 http://10.163.146.78:8791/dl/ZMAX-Site.apk (App 长按屏幕可改地址)")
-        return True
-    except Exception as e:
-        if log:
-            log("❌ HIL 桥执行失败: %s: %s" % (type(e).__name__, str(e)[:120]))
-        return False
 
 _WA_CACHE = {"t": -1e9}      # 🌐 Web 智能体桥上次轮询时刻 (节拍闸, 见函数内注释)
 
@@ -3859,46 +3230,10 @@ def node_web_agent(ctx):
         return False
 
 def node_ss_eng_mem(ctx):
-    """📚 工程记忆 · 技能与经验库 → 🧠 总装记忆中枢 (老倪 2026-09-19: 与飞书端商量好, 工程记忆同步到总装)
+    """→ nodes/n_eng_mem.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .n_eng_mem import node_ss_eng_mem as _impl
+    return _impl(ctx)
 
-    读**真实文件**: docs/7-瑶光-记录追溯/*.md (跨端同步记忆) + ~/.hermes/memories/*.md (Hermes 记忆) +
-    ~/.hermes/skills/**/SKILL.md (技能库) → 汇总条数/最新更新 → 追加式同步进顶层宏观记忆
-    (macro_memory.engineering, 幂等指纹去重 + 原子写 + 回读校验)。
-    """
-    log = ctx.get("log")
-    try:
-        sys.path.insert(0, os.path.join(_REPO_ROOT, "src"))
-        from lerobot.memory.eng_memory import EngMemory                         # noqa: PLC0415
-        m = EngMemory(repo=_REPO_ROOT)
-        snap = m.collect()
-        c = snap["counts"]
-        if log:
-            log(f"📚 工程记忆 (真实文件): 同步文档 {c['docs_memory_files']} 篇 · "
-                f"Hermes 记忆 {c['hermes_memory_files']} 个 · 技能 {c['skills']} 条 "
-                f"(小节 {c['skill_sections']}) · 记忆条目 {c['memory_items(§)']} 条 · "
-                f"**机器人可执行技能 {c.get('l2_skills', 0)} 条**")
-            _l2 = snap.get("l2_skills") or []
-            _aoi = [s2.get("name") for s2 in _l2 if s2.get("group") == "AOI检测"]
-            if _aoi:
-                log(f"   🤖 可执行技能 (AOI检测组 {len(_aoi)} 条): " + " / ".join(_aoi[-4:]))
-            n = snap.get("newest") or {}
-            log(f"   最新: {n.get('mtime_str')} · {os.path.basename(n.get('path', ''))}")
-        r = m.sync_to_macro()
-        if log:
-            if r.get("ok"):
-                log(f"   ⮕ 已同步进 🧠总装记忆中枢 (macro_memory.engineering): "
-                    f"{'写入 %d 个文件条目' % r.get('added_files', 0) if r.get('wrote') else '内容未变(幂等跳过)'}"
-                    f" · llm={r.get('llm')}")
-                if r.get("note"):
-                    log(f"   ℹ️ {r['note']}")
-            else:
-                log(f"   ⚠️ 同步失败: {r.get('why')}")
-        _SS_STATE["eng_memory"] = {"counts": c, "ok": bool(r.get("ok")), "wrote": bool(r.get("wrote"))}
-        return bool(r.get("ok"))
-    except Exception as e:
-        if log:
-            log(f"⚠️ 工程记忆同步失败: {type(e).__name__}: {e}")
-        return False
 
 def node_ss_bg5(ctx):
     """大模型层背景行 — 云端任务规划 (慢决策 · 回路外)"""
@@ -4042,43 +3377,10 @@ def _vlm_ask_async(mode, image, ctx, log, fresh_s=8.0):
     return st
 
 def node_ss_llm_in(ctx):
-    """📝 任务指令 — MES 工单/自然语言 + **场景图 (环境通道)** → VLM 场景理解 → 任务规划器 (planner.py)
+    """→ nodes/ss_llm_in.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_llm_in import node_ss_llm_in as _impl
+    return _impl(ctx)
 
-    数据通道 (老倪 2026-09-19「增加一条从环境到本节点的数据通道, 这个节点要能看到场景」):
-      in1 = 场景图: 真机最新帧 (D405 旁路同刻) 或 仿真 metaworld 渲染帧, 由 _vlm_frame() 按可用性选
-      指令 = params.instruction (MES 工单 / 自然语言)
-    模型 = SceneVLM: 本地 Qwen2.5-VL-3B worker (无需 key) 或 SS_VLM_URL+SS_VLM_KEY (OpenAI 兼容 API)
-    输出 = _SS_STATE["scene_vlm"] (结构化场景) + _SS_STATE["llm_next_action"] (标定/操作建议) → 下游可读
-    🚫 无模型时只给**规则回退摘要**并如实标注 —— 不假装有视觉理解 (老倪红线)
-    """
-    log = ctx.get("log")
-    try:
-        # 🔌 2026-10-28: 画布参数键叫 task_input(见节点参数), 代码原来只认 instruction ⇒ 填了不生效
-        _cp = _ctx_params(ctx)
-        ins = _cp.get("instruction") or _cp.get("task_input") or "插入光模块"
-        _SS_STATE["instruction"] = ins
-        img, src, meta = _vlm_frame()
-        _VLM["img"] = dict({"src": src}, **meta)
-        if img is None:
-            if log:
-                log("📝 任务指令: 「%s」 → 已下发 🧠任务规划器 (planner.py) · ⚠️ 场景图通道无数据 "
-                    "(真机帧不在 / 仿真帧未采样)" % ins)
-            return True
-        st = _vlm_ask_async("describe", img, _vlm_ctx(ctx), log)
-        if log:
-            log("📝 任务指令: 「%s」 · 场景图 = %s (%s%s)" % (
-                ins, meta.get("frame"), meta.get("frame_src"),
-                (", 帧龄 %ss" % meta["frame_age_s"]) if meta.get("frame_age_s") is not None else ""))
-            r = (st or {}).get("result") or {}
-            if st.get("pending"):
-                log("   🖼🧠 已把场景图发给视觉大模型 (后台线程, 不阻塞画布) — 结果下一拍打印")
-            elif r.get("ok"):
-                log("   → 场景理解已就绪, 已下发 🧠任务规划器 (planner.py)")
-        return True
-    except Exception as e:
-        if log:
-            log("⚠️ 任务指令处理失败: %s" % e)
-        return False
 
 _reg("ss_bg5",   ["大模型层"], "大模型层 · 云端任务规划 — 慢决策, 回路外; 指令→技能Token→状态机 (源码 planner.py)", node_ss_bg5)
 
@@ -4139,97 +3441,10 @@ _EXTERNAL_LOC["ss_seg"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies"
                            148, "    def segment(self, img_bgr")     # 2026-10-01 同步 (适配器接入后行号 99→148)
 
 def node_ss_yolo(ctx):
-    """🎯 YOLO 目标检测 — 真实执行: metaworld 渲染帧 → YOLO detect_3d → align() 替换 39D 段
-    源码: yolo_state_aligner.py (YoloStateAligner / detect_3d / align) — 右键源码与真实执行同源, 断点可进
-    🐛 2026-09-01: 原执行 detection_targets.py 清单(≠右键源码 yolo_state_aligner.py) → 断点永不命中"""
-    log = ctx.get("log")
-    import json as _json
-    _now = time.monotonic()
-    # 🔴 2026-10-29 老倪: 「节点必须实际运行, 接口必须对齐」——
-    #   常驻循环 10Hz 每拍都做 metaworld 渲染太重, 用节流: 每 ZMAX_L2_PERIOD_S 秒真推理一次,
-    #   其余拍**回放上次契约**(字段一模一样, 只多 cached_ago_s), 保证下游每拍都有值。
-    _per = float(os.environ.get("ZMAX_L2_PERIOD_S", "0.5"))
-    _c = _YOLO_CACHE.get("l2_out") or {}
-    if _c.get("payload") is not None and (_now - float(_c.get("t") or 0.0)) < _per:
-        _o = dict(_c["payload"])
-        _o["cached_ago_s"] = round(_now - float(_c.get("t") or 0.0), 3)
-        return {"out1": _o}
-    try:
-        import numpy as np
-        _meta, _d2 = {}, None
-        _src = (os.environ.get("ZMAX_L2_SRC") or ctx.get("l2_src") or "sim").lower()
-        if _src == "real":
-            det3d, _d2, _meta = _yolo_capture_real(log)
-            obs39, aligned = None, None
-        elif _src == "ar":
-            # 🎥 AR 场景源 (老倪 2026-11-10): 8802 渲染帧 → 渲染域权重 → 针孔反投影
-            det3d, _d2, _meta = _yolo_capture_ar(log)
-            obs39, aligned = None, None
-        else:
-            aligner = _yolo_ensure_aligner(log)
-            det3d, obs39, _img = _yolo_capture(log, aligner)
-            aligned = aligner.align(obs39, det3d)
-        if aligned is not None:
-            _YOLO_CACHE["aligned39"] = aligned
-            # 🆕 2026-11-03: 打时间戳 —— 下游 43D 组装 (_ss_ensure_obs43) 要按新鲜度决定吃不吃它
-            _YOLO_CACHE["aligned39_t"] = time.time()
-        # 🆕 2026-10-28 老倪: L2 感知节点→plan 的唯一交界 = vision_points.json (由本节点写, 不由脚本写)
-        try:
-            from . import vision_points as _vp
-            _meta = _meta if _src in ("real", "ar") else (_YOLO_CACHE.get("meta") or {})
-            _d2 = _d2 if _src in ("real", "ar") else _YOLO_CACHE.get("det2d")
-            _path, _verified, _np_ = _vp.publish_from_det(
-                det3d, _d2, _meta,
-                cam=("真机相机帧" if _src == "real" else ("AR 场景帧 (8802)" if _src == "ar" else "metaworld渲染帧")),
-                kind=("ss_yolo_node_real" if _src == "real" else ("ss_yolo_node_ar" if _src == "ar" else "ss_yolo_node")),
-                note="canvas node 🎯 YOLO 目标检测 (%s 源)" % _src,
-                pose=_yolo_pose_extra())
-            if log:
-                log("📍 3D 观测点已发布 → %s · frame=%s · verified=%s · %d 点%s"
-                    % (os.path.basename(_path), _meta.get("frame"), _verified, _np_,
-                       (" · gaps=%s" % _meta.get("gaps")) if _meta.get("gaps") else ""))
-        except Exception as _e:                                               # noqa: BLE001
-            if log:
-                log("⚠️ 3D 观测点发布失败: %s: %s" % (type(_e).__name__, _e))
-        if log:
-            n = len(det3d)
-            det2d = _d2 if _src in ("real", "ar") else _YOLO_CACHE.get("det2d", {})
-            desc = " ".join(
-                f"{k}=[{v[0]:.3f},{v[1]:.3f},{v[2]:.3f}]"
-                + (f" conf={det2d[k]['conf']:.2f}" if k in det2d else "")
-                for k, v in sorted(det3d.items()))
-            log(f"🎯 YOLO 目标检测 (真实, {_src} 源): {n}/3 目标 · {desc}"
-                + ("" if _src == "real" else ""))
-            if _src in ("real", "ar"):
-                log("   2D: %s · 3D: %d 点%s" % (
-                    {k: round(v["conf"], 2) for k, v in (det2d or {}).items()}, len(det3d),
-                    "" if not _meta.get("gaps") else " · 缺证据 %s" % _meta.get("gaps")))
-            elif aligned is not None:
-                log(f"   39D 对齐 (align 真实执行): hand={np.round(aligned[0:3],3)} · "
-                    f"光模块={np.round(aligned[4:7],3)} · hole={np.round(aligned[36:39],3)}")
-        # 🔴 2026-10-29: 返回 dict 才能被壳认成「实现执行」(返回 True/False 会落成 "实现返回非 dict → 直通")
-        #   out1 = 刚写盘的 vision_points 契约**原文** ⇒ 下游拿到的就是契约本身, 口径不可能漂。
-        _payload = {}
-        _op = locals().get("_path")
-        if _op and os.path.exists(_op):
-            try:
-                with open(_op, encoding="utf-8") as _fh:
-                    _payload = _json.load(_fh)
-            except Exception:                                            # noqa: BLE001
-                _payload = {}
-        if not isinstance(_payload, dict) or not _payload:
-            _payload = {"t": time.time(), "frame": (_meta or {}).get("frame"),
-                        "verified": False, "units": "mm", "points": {},
-                        "n_points": 0, "src": _src,
-                        "gaps": list((_meta or {}).get("gaps") or [])}
-        _payload["src_kind"] = _src
-        _payload["cached_ago_s"] = 0.0
-        _YOLO_CACHE["l2_out"] = {"t": _now, "payload": _payload}
-        return {"out1": _payload}
-    except Exception as e:
-        if log:
-            log(f"⚠️ YOLO 目标检测真实执行失败: {e}")
-        return {"out1": None}
+    """→ nodes/ss_yolo.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_yolo import node_ss_yolo as _impl
+    return _impl(ctx)
+
 
 _reg("ss_yolo", ["YOLO", "目标检测"],
      "🎯 YOLO 目标检测 — 真实执行: YOLO detect_3d + align 替换 39D 段 (源码 yolo_state_aligner.py; 双击=清单, 📥按钮=Excel导出)",
@@ -4445,84 +3660,10 @@ def _surface_bypass(log=None):
 
 
 def node_ss_aoi(ctx):
-    """🔍 光学质量检测 — 真实执行: 目标帧 → quality_check.py AOIQualityChecker 图像处理缺陷检测,
-    并把 AOI 话题 (判决/缺陷数/划伤/污点/清晰度/灰度偏差/边缘占比/取像体检) 发到 AR/AOI 信号总线。
-    源码: policies/yolo_3d/quality_check.py (AOIQualityChecker.check) — 右键源码与真实执行同源, 断点可进
-    🐛 2026-09-02: 原只加载 detection_targets.json 清单 (无实际检测) → 改为真实帧图像处理检测
-    🔁 2026-10-11: 「外观质量检测」→「光学质量检测」(老倪); 新增 AOI 话题发布 (信号分析页可看)"""
-    log = ctx.get("log")
-    try:
-        qc_path = os.path.join(_YOLO_DIR, "quality_check.py")
-        qc = _load_mod("yolo_3d.quality_check", qc_path)    # 正常 import (断点可绑)
-        # 目标帧: 优先用 YOLO 节点缓存帧, 无则同源采样一帧 (与 node_ss_yolo 一致)
-        img = _YOLO_CACHE.get("img")
-        if img is None:
-            aligner = _yolo_ensure_aligner(log)
-            _, _, img = _yolo_capture(log, aligner)
-        checker = qc.AOIQualityChecker()
-        res = checker.check(img)
-        _YOLO_CACHE["aoi"] = res
-        # 🔍 发出 AOI 话题: 值全取自本轮真实检测结果 (quality_check.check 的字段), 缺的键不写
-        _sig = {"光学质量检测.判决": 0.0 if res.get("pass") else 1.0}
-        for _k, _f in (("光学质量检测.划伤数", "scratch"), ("光学质量检测.污点数", "blob"),
-                       ("光学质量检测.清晰度", "focus"), ("光学质量检测.灰度偏差", "gray_dev"),
-                       ("光学质量检测.边缘占比", "edge_frac")):
-            _v = res.get(_f)
-            if isinstance(_v, (int, float)):
-                _sig[_k] = float(_v)
-        if isinstance(res.get("scratch"), (int, float)) and isinstance(res.get("blob"), (int, float)):
-            _sig["光学质量检测.缺陷数"] = float(res["scratch"]) + float(res["blob"])
-        _qv = str(((res.get("quality") or {}).get("verdict") or "")).lower()
-        if _qv:
-            _sig["光学质量检测.取像体检"] = float({"ok": 0, "overexposed": 1, "too_dark": 2,
-                                                  "gaps_washed": 3}.get(_qv, 4))
-        _ar_aoi_publish(_sig, log)
-        # 取像参数 + 取像体检先上屏: 2026-10-08 实测教训 —— 参数不对(自动曝光开着)时谈缺陷判定没有意义
-        _q = res.get("quality") or {}
-        if log:
-            log(qc.AOIQualityChecker.camera_profile_line())
-            log(qc.AOIQualityChecker.production_profile_line())   # 产线在工控机 / 调试在本仓库(旁路关系)
-            if _q:
-                _mark = {"ok": "✅", "overexposed": "🔴", "too_dark": "🌑", "gaps_washed": "🌫️"}.get(_q.get("verdict"), "❔")
-                log(f"{_mark} 取像体检: {_q.get('verdict')} — {_q.get('why')}")
-        if log:
-            for it in res.get("items", []):
-                v = it["value"] if it["value"] is not None else it.get("note", "—")
-                log(f"🔍 {it['target_id']} {it['defect']}: {v} (判据 {it['threshold']}) → "
-                    f"{'✅' if it['pass'] else '❌'}")
-            log(f"🔍 光学质量检测 (真实图像处理): {qc.summarize(res)} (quality_check.py)")
-            log(f"🔍 AOI 话题已发出 ({len(_sig)} 个): " + " · ".join("%s=%g" % (k.split('.')[-1], v)
-                                                                  for k, v in sorted(_sig.items())))
-        _gold_bypass(log)             # 🆕 10082 金手指同源搬运转发 (工控机 YOLO 真判决)
-        _surface_bypass(log)          # 🆕 10083 表面旁路 (4060 本机), 失败不影响金手指那一路
-        # 🔴 2026-10-29 接口对齐: 原来 return bool ⇒ 壳判定「实现返回非 dict → 直通」⇒ 下游
-        #    ssplan/ssdec 拿不到 AOI 判决。改为发业务字典 (与 INTACT 节点同一口径)。
-        _items = []
-        for _it in (res.get("items") or [])[:12]:
-            _items.append({"id": _it.get("target_id"), "defect": _it.get("defect"),
-                           "value": _it.get("value"), "threshold": _it.get("threshold"),
-                           "pass": bool(_it.get("pass")),
-                           "note": _it.get("note")})
-        return {"kind": "aoi", "pass": bool(res.get("pass")),
-                "verdict": (_q.get("verdict") if _q else None),
-                "verdict_why": (_q.get("why") if _q else None),
-                "scratch": res.get("scratch"), "blob": res.get("blob"),
-                "focus": res.get("focus"), "gray_dev": res.get("gray_dev"),
-                "edge_frac": res.get("edge_frac"),
-                "defect_n": (int(res.get("scratch") or 0) + int(res.get("blob") or 0))
-                            if isinstance(res.get("scratch"), (int, float)) else None,
-                "items": _items,
-                "sig_n": len(_sig),
-                "src": "quality_check.AOIQualityChecker (本机图像处理)",
-                "remote": (f"10083 {(_AOI_REMOTE.get('surface') or '未接')}"
-                           if isinstance(globals().get("_AOI_REMOTE"), dict) else "10083 未接"),
-                "no_truth": True}
-    except Exception as e:
-        if log:
-            log(f"⚠️ 光学质量检测真实执行失败: {e}")
-        # 失败也要有输出 (老倪: 可以没有真值, 但必须有输出, 接口要对齐)
-        return {"kind": "aoi", "pass": None, "verdict": "unavailable",
-                "err": f"{type(e).__name__}: {e}", "items": [], "no_truth": True}
+    """→ nodes/ss_aoi.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_aoi import node_ss_aoi as _impl
+    return _impl(ctx)
+
 
 _reg("ss_aoi", ["光学质量检测", "外观质量检测"],
      "🔍 光学质量检测 — 真实执行: 目标帧 → quality_check.py 图像处理缺陷检测 + **发出 AOI 话题** "
@@ -4615,120 +3756,10 @@ def _seg_pick_per_box(insts: list, pairs: list) -> dict:
 
 
 def node_ss_seg(ctx):
-    """🧩 开放词汇分割 (SAM3 分割anything) — 真实执行: 一帧 + 提示 → 所有实例掩膜(像素级)
+    """→ nodes/ss_seg.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_seg import node_ss_seg as _impl
+    return _impl(ctx)
 
-    提示有两种来源 (**L2 内链两条, 都不自造数据**):
-      ① **YOLO 框提示 (默认, `prompt_src=yolo|auto`)**: 取 🎯 YOLO 目标检测缓存的框 + **同帧原图** →
-         每个目标出**像素级掩膜**(框只给"在哪", 掩膜才给"轮廓/边界/面积/质心") + 掩膜→base 3D。
-         ⇒ L2 基础感知: **YOLO 定位(快/固定类) → SAM3 分割细化(轮廓/开放词汇)**。
-      ② **文本概念提示 (`prompt_src=text`)**: 概念词由 L5 给 (本节点不自造概念); 实测真机域中文=0 实例、
-         英文只有部分词命中 ⇒ 兜底用。
-    真执行: POST 常驻分割服务 /seg (算法内核 src/lerobot/policies/sam3_seg/, 调用方 tools/sam3_seg.py)
-    返回: 每实例 掩膜多边形/面积/分数, 写进叠加规格 origin='seg' (kind=mask) → 叠加页/画布可见
-    ⚠️ 掩膜→3D 只对**臂上相机**成立: 仿真渲染帧 ⇒ 如实拒答(不拿真机手眼套仿真); 服务没起 → 如实报"""
-    log = ctx.get("log")
-    try:
-        import json as _json
-        import urllib.request as _ur
-        params = ctx.get("params") or {}
-        src = str(params.get("prompt_src") or os.environ.get("ZMAX_SEG_PROMPT_SRC", "auto")).lower()
-        cam = params.get("cam") or os.environ.get("ZMAX_SEG_CAM", "arm")
-        boxes = labels = frame_b64 = ysrc = None
-        if src in ("auto", "yolo"):
-            boxes, labels, frame_b64, ysrc = _seg_yolo_prompt()
-        if boxes:
-            # ① YOLO 框提示: 一次前向喂多个框 (框 = 视觉提示; 文本用中性词 "object" 当占位标签,
-            #    实例再按 IoU 贴回 YOLO 类名)。3D 只看帧来源: 只对**臂上相机**解 (仿真帧如实拒答)。
-            #    ⚠️ 实测: 同一组框会返回**多个候选掩膜** (阈值 0.5 下也可能 >1 个), 逐框取分数最高者为目标。
-            real_arm = (ysrc == "real:arm")
-            payload_obj = {"image_b64": frame_b64, "boxes": boxes, "texts": ["object"],
-                           "threshold": float(params.get("seg_threshold", 0.5)),
-                           "three_d": bool(params.get("three_d", True)) and real_arm,
-                           "write_spec": True, "cam": (cam if real_arm else "local"),
-                           "cam_name": (cam if real_arm else "local"),
-                           "note": "L2 内链: 🎯YOLO框 → 🧩SAM3掩膜 (%s)" % (ysrc or "?")}
-        else:
-            texts = params.get("texts") or params.get("prompt") or _SEG_DEFAULT_TEXTS
-            if isinstance(texts, str):
-                texts = [t.strip() for t in texts.split(",") if t.strip()]
-            payload_obj = {"cam": cam, "texts": texts, "three_d": bool(params.get("three_d", True)),
-                           "write_spec": True, "cam_name": cam,
-                           "note": "画布节点 node_ss_seg (L2 开放词汇分割 · 文本概念)"}
-        payload = _json.dumps(payload_obj).encode()
-        req = _ur.Request(_SEG_URL + "/seg", data=payload, headers={"Content-Type": "application/json"})
-        t0 = time.time()
-        with _ur.urlopen(req, timeout=float(params.get("timeout", 120))) as r:
-            res = _json.loads(r.read())
-        dt = (time.time() - t0) * 1000
-        if not res.get("ok"):
-            if log:
-                log(f"⚠️ 开放词汇分割: 服务返回失败 — {res.get('err') or res}")
-            return False
-        if boxes:
-            # 贴回 YOLO 类名 (几何配对, 不假设返回顺序) + 逐框选目标掩膜 + 掩膜级 3D 落缓存供下游用
-            insts = res.get("instances") or []
-            pairs = _seg_match_labels(insts, boxes, labels)
-            picked = _seg_pick_per_box(insts, pairs)
-            for i, (it, pr) in enumerate(zip(insts, pairs)):
-                it["label"] = pr["box_src"]
-                it["iou_yolo"] = pr["iou_yolo"]
-                it["selected"] = any(i == pi for pi, _ in picked.values())
-            mask3d = {}
-            for j, (i, pr) in picked.items():
-                it = insts[i]
-                c3 = it.get("c3d") or {}
-                if c3.get("ok"):
-                    mask3d[pr["box_src"]] = {"center_base": c3["center_base"], "z_mm": c3["z_mm"],
-                                             "xy_size_mm": c3["xy_size_mm"], "yaw_deg": c3["yaw_deg"],
-                                             "area_px": it.get("area_px"), "score": it.get("score"),
-                                             "iou_yolo": pr["iou_yolo"], "src": ysrc, "at": time.time()}
-            _SEG_CACHE.update({"res": res, "at": time.time(), "prompt": "yolo", "boxes": boxes,
-                               "labels": labels, "src": ysrc, "mask3d": mask3d, "dt_ms": dt,
-                               "n_candidates": len(insts), "n_selected": len(picked),
-                               "picked": {labels[j]: i for j, (i, _) in picked.items()}})
-            _YOLO_CACHE["seg_masks"] = {"instances": insts, "at": time.time(),
-                                        "n_yolo_boxes": len(boxes), "n_selected": len(picked), "src": ysrc}
-            _YOLO_CACHE["mask3d"] = mask3d
-        else:
-            _SEG_CACHE.update({"res": res, "at": time.time(), "prompt": "text",
-                               "texts": payload_obj.get("texts"), "cam": cam, "dt_ms": dt})
-        if log:
-            _n = res.get("count")
-            if boxes:
-                log(f"🧩 L2 内链 🎯YOLO框→🧩SAM3掩膜 (真实推理): 帧={res.get('src')} · "
-                    f"{res.get('ms')}ms(服务) / {dt:.0f}ms(端到端) · YOLO 框 {len(boxes)} 个 → "
-                    f"候选掩膜 {_n} 个 → 选中目标 {_SEG_CACHE.get('n_selected')} 个 · 帧来源={ysrc}")
-                for it in (res.get("instances") or [])[:8]:
-                    c3 = it.get("c3d") or {}
-                    extra = (f" · base中心=({c3['center_base'][0]:.3f},{c3['center_base'][1]:.3f},{c3['center_base'][2]:.3f})，"
-                             f"z={c3['z_mm']:.0f}mm 足印={c3['xy_size_mm'][0]:.1f}×{c3['xy_size_mm'][1]:.1f}mm "
-                             f"yaw={c3['yaw_deg']:.1f}°"
-                             if c3.get("ok") else (f" · 3D拒答: {c3.get('reason')}" if c3 else ""))
-                    log(f"   {'★' if it.get('selected') else '·'} [{it.get('label')}] (贴回YOLO IoU={it.get('iou_yolo')}) "
-                        f"score={it.get('score'):.3f} 面积={it.get('area_px')}px 轮廓={len(it.get('polys') or [])} 圈{extra}")
-            else:
-                log(f"🧩 开放词汇分割 (SAM3 真实推理 · 文本概念): 概念={payload_obj.get('texts')} · 帧={res.get('src')} · "
-                    f"{res.get('ms')}ms(服务) / {dt:.0f}ms(端到端) · 实例 {_n} 个")
-                for it in (res.get("instances") or [])[:8]:
-                    c3 = it.get("c3d") or {}
-                    extra = (f" · base中心=({c3['center_base'][0]:.3f},{c3['center_base'][1]:.3f},{c3['center_base'][2]:.3f})，"
-                             f"z={c3['z_mm']:.0f}mm 尺寸={c3['xy_size_mm'][0]:.1f}×{c3['xy_size_mm'][1]:.1f}mm"
-                             if c3.get("ok") else (f" · 3D拒答: {c3.get('reason')}" if c3 else ""))
-                    log(f"   {it.get('label')}: score={it.get('score'):.3f} 面积={it.get('area_px')}px "
-                        f"轮廓={len(it.get('polys') or [])} 圈{extra}")
-            if _n:
-                log("   → 已写入叠加规格 origin='seg' (kind=mask), 叠加页/工位总览刷新即见(品红轮廓+半透明填充)")
-            else:
-                log("   ℹ️ 这一帧没找到目标(不是执行失败) — 文本概念要现场试(英文); 已把该相机的 seg 掩膜清空")
-        # 口径: 链跑通(服务返回 ok) 就算成功 —— 0 个实例是**合法结果**, 不能当失败报(GUI 播放会误判)
-        return True
-    except Exception as e:
-        if log:
-            log(f"⚠️ 开放词汇分割真实执行失败: {type(e).__name__}: {e}")
-            if isinstance(e, OSError) or "refused" in str(e).lower() or "timed out" in str(e).lower():
-                log("   服务未在跑? 先起: python tools/sam3_seg.py --serve --port 8796 "
-                    "(SAM3 权重 ~1.7GB, 显存独占)")
-        return False
 
 
 _reg("ss_seg", ["开放词汇分割", "SAM3", "分割anything", "分割"],
@@ -4741,105 +3772,20 @@ _reg("ss_seg", ["开放词汇分割", "SAM3", "分割anything", "分割"],
 _CALIB_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "calibration")
 
 def node_ss_calib(ctx):
-    """🧮 标定层 — 引力(快速动作)/斥力(状态预测) 二分超参数 + 平衡点
-    源码: src/lerobot/calibration/calibration_layer.py (CalibrationLayer) — 与 datasets/policies 同级别
-    回路外元层: 收集/展示标定参数, 不参与引擎推理, 不改变拓扑/流程/架构"""
-    log = ctx.get("log")
-    try:
-        import numpy as np
-        path = os.path.join(_CALIB_DIR, "calibration_layer.py")
-        m = _load_mod("lerobot.calibration.calibration_layer", path)   # 正常 import (断点可绑)
-        layer = m.CalibrationLayer()
-        # 当前运行状态: 画布播放中从 module._ss_tr 取当前步 (与 _ss_tick idx 同映射)
-        mod = ctx.get("module")
-        stage, speed, residual, contact_p = "接近", 0.0, 0.0, 0.0
-        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
-        if tr is not None and tr.get("x") is not None and len(tr["x"]) > 0:
-            idx = int(min(getattr(mod, "_ss_round", 0), len(tr["t"]) - 1))
-            stage = str(tr["stage"][idx]).replace("阶段 ", "")
-            # 🐛 2026-09-03: tr["u_sat"] 存的是标量范数 (float), 不是向量 —
-            #   [:3] 索引 0-d 数组抛 "too many indices" (既有 bug, 被 try 吞)
-            _us = tr["u_sat"][idx] if "u_sat" in tr else tr.get("u_sat_vec", [0])[idx]
-            speed = float(np.linalg.norm(np.asarray(_us, dtype=float)) )
-            residual = float(tr["residual"][idx])
-            contact_p = float(tr["contact_p"][idx])
-        gap = layer.equilibrium_gap(stage, speed, residual, contact_p)
-        _SS_STATE["calib"] = {"layer": layer, "stage": stage, "gap": gap,
-                              "attr": layer.attr, "rep": layer.rep, "lat": layer.lat}
-        if log:
-            log(f"🧮 标定层 (真实): {layer.summarize(stage, speed, residual, contact_p)}")
-            log(f"   引力标定 (快速动作): Kp={layer.attr['Kp']} · 当前阶段速度上限 "
-                f"{layer.attr['stage_v_cap'].get(stage, '—')} m/s")
-            log(f"   斥力标定 (状态预测): K_kalman={layer.rep['K_kalman']} · 残差EMA={layer.rep['res_ema']} · "
-                f"接触增益={layer.rep['contact_gain']} · 否决阈值={layer.rep['veto_th']}")
-            log(f"   {layer.latent_summary()}")
-        return True
-    except Exception as e:
-        if log:
-            log(f"⚠️ 标定层执行失败: {e}")
-        return False
+    """→ nodes/ss_calib.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_calib import node_ss_calib as _impl
+    return _impl(ctx)
+
 
 _reg("ss_calib", ["标定层"],
      "🧮 标定层 — 引力(快速动作: Kp+阶段速度上限/下限) vs 斥力(状态预测: K_kalman+残差EMA+接触增益+否决阈值), 平衡偏差=|引力势−斥力势| (Drifting Models 反称场; 源码 calibration_layer.py)",
      node_ss_calib)
 
 def node_ss_lat(ctx):
-    """🧮 潜空间 — 世界模型预测流形的标定 (维度/类别/速度场) + 观测有效维实测
-    源码: src/lerobot/calibration/calibration_layer.py (LATENT_CALIB)
-    地图导航视角: 潜空间=流形地图, 世界模型=导航仪 (沿速度场 prior A·x+B·u 推演);
-    本节点 = 地图的几何标定 + 引擎校验: 对引擎轨迹 39D 观测做 PCA → 95% 方差有效维
-    (数据流形固有维实测) vs 标定 latent_dim; 潜坐标/速度场向量取引擎真实 latent/prior。
-    ⚠️ 维度/类别是引擎结构常数, 本节点只标定+校验, 不写引擎字面量 (改潜维=重构卡尔曼)。"""
-    log = ctx.get("log")
-    try:
-        import numpy as np
-        path = os.path.join(_CALIB_DIR, "calibration_layer.py")
-        m = _load_mod("lerobot.calibration.calibration_layer", path)   # 正常 import (断点可绑)
-        layer = m.CalibrationLayer()
-        mod = ctx.get("module")
-        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
-        if tr is None or not tr.get("t"):
-            if log:
-                log("⚠️ 潜空间: 无引擎轨迹 — 先点 ▶ 运行状态空间 (轨迹是数据真源)")
-            return False
-        idx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
-        stage = str(tr["stage"][idx]).replace("阶段 ", "")
-        # ── 潜坐标 (地图位置) + 速度场 (世界模型一步推演) — 引擎真实量 ──
-        lat = np.asarray(tr.get("corrected_vec", tr["latent_vec"])[idx], dtype=float)
-        lat_pred = np.asarray(tr["latent_vec"][idx], dtype=float)      # 估计器先验
-        prior = np.asarray(tr.get("prior_vec", np.zeros(4))[idx], dtype=float)
-        vel = prior - lat_pred                                          # 地图上速度场向量
-        # ── 观测流形有效维实测: 全轨迹 39D 视觉观测 PCA (95% 累积方差) ──
-        obs_all = np.asarray(tr["obs"], dtype=float)[:, :39]
-        X = obs_all - obs_all.mean(axis=0)
-        _, S, _ = np.linalg.svd(X, full_matrices=False)
-        var = S ** 2 / max(float((S ** 2).sum()), 1e-12)
-        cum = np.cumsum(var)
-        eff_dim = int(np.searchsorted(cum, 0.95) + 1) if len(cum) else 0
-        eff_dim99 = int(np.searchsorted(cum, 0.99) + 1) if len(cum) else 0
-        # ── 校验: 标定陈述 vs 引擎实测 ──
-        checks = []
-        checks.append(f"标定潜维 {layer.lat['latent_dim']}D vs 引擎潜状态实际 {lat.size}D"
-                      + (" ✓" if layer.lat["latent_dim"] == lat.size else " ✗ 标定过期"))
-        checks.append(f"观测流形 {layer.lat['state_dim']}D → 轨迹有效维 {eff_dim}D@95% / "
-                      f"{eff_dim99}D@99% (任务路径低维嵌入: 沿路径推进+夹爪; "
-                      f"孔位/姿态常量维无方差)")
-        _SS_STATE["latent_calib"] = {"idx": idx, "stage": stage, "latent": lat,
-                                     "prior": prior, "vel": vel,
-                                     "eff_dim": eff_dim, "eff_dim99": eff_dim99,
-                                     "lat": dict(layer.lat)}
-        if log:
-            log(f"🧮 潜空间 (真实·t={tr['t'][idx]:.2f}s {stage}): 潜坐标 (位置3+预测力1)="
-                f"{np.round(lat, 4)}")
-            log(f"   速度场 (世界模型一步推演 prior−x̂₋): {np.round(vel, 4)} · "
-                f"A={layer.lat['prior_A']:.1f} 恒速线性流形 ({layer.lat['flow_kind']})")
-            log(f"   PCA 校验: " + " · ".join(checks))
-            log(f"   标定: {layer.latent_summary()}")
-        return True
-    except Exception as e:
-        if log:
-            log(f"⚠️ 潜空间执行失败: {e}")
-        return False
+    """→ nodes/ss_lat.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_lat import node_ss_lat as _impl
+    return _impl(ctx)
+
 
 _reg("ss_lat", ["潜空间", "潜空", "潜空-流形"],
     "🧮 潜空-流形 — 潜空间/世界模型流形标定 (原「潜空间 · 世界模型流形标定」): 维度(latent_dim 4D=位置3+预测力1)/类别(manifold_kind flat-linear, flow_kind const-vel)/速度场 prior_A; PCA 实测观测有效维 vs 标定; 潜坐标+速度场取引擎轨迹真实量; 输入含 L4 流形(接触/性能)连线 (地图导航视角; 源码 calibration_layer.py LATENT_CALIB)",
@@ -4943,167 +3889,17 @@ def _ss_frame(ctx=None):
         return None
 
 def node_ss_atomic(ctx):
-    """🧩 原子技能层 (2026-09-07 老倪: 决策层与执行层之间加技能模板层)
-    机制: 8 个原子技能 (SK01-08) = 固定轨迹模板; 决策层 (动作调制器状态机经安全边界)
-    明确选定当前技能并**实时赋值** (阶段目标/速度), 技能模板被复制实例化 → 快速执行 →
-    直接输出执行指令给 🤖执行器。
-    模板权威源 = src/lerobot/.../state_space/skills/atomic_skills.py (SKILL_BY_CODE,
-    右键本节点看真实源码); 数据真源 = module._ss_tr 当前帧 (stage=当前技能 / target=
-    决策赋值目标 / u_exec_vec=实际下发速度)。"""
-    log = ctx.get("log")
-    try:
-        import numpy as np
-        # 🧩 模板真源: skills/atomic_skills.py (2026-09-08 集中到 src/lerobot)
-        _p = os.path.join(_SS_DIR, "skills", "atomic_skills.py")
-        _m = _load_mod("ss_atomic_skills", _p)              # 正常 import (断点可绑)
-        name = ctx.get("name", "")
-        p = ctx.get("params", {}) or {}
-        sk = p.get("skill") or {}
-        tpl = str(sk.get("template", "SK--"))
-        stg = str(sk.get("stage", ""))
-        _tpl = _m.SKILL_BY_CODE.get(tpl) or _m.SKILL_BY_STAGE.get(stg)
-        mod = ctx.get("module")
-        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
-        if tr is None or not tr.get("t"):
-            if log:
-                log(f"🧩 原子技能 {name} · {tpl}: 无引擎轨迹 — 先点 ▶ 运行状态空间")
-            # 2026-11-01: 无轨迹也要给**带类型的帧** (active=False), 否则下游 in4 拿到 None
-            #   ⇒ 运动规划看不出"技能没激活"和"技能没接线"的区别 (两种都是空)。
-            _t0 = float(time.time())
-            # 🧭 2026-11-01 老倪「技能必须真正执行」: 没有引擎轨迹 ≠ 不能算目标。
-            #   技能模板的 next_target() 能从**真源点位库** (config/points/cell_points.json) 算本段目标,
-            #   这是真算 (不是编造的形状); 引擎轨迹只影响 clamp/trace, 不影响目标点解析。
-            _tgt, _src, _why = None, "", ""
-            try:
-                import json as _js2
-                _d = os.path.dirname(os.path.abspath(__file__))
-                while _d != os.path.dirname(_d) and not os.path.isdir(os.path.join(_d, ".git")):
-                    _d = os.path.dirname(_d)
-                _pp = os.path.join(_d, "config", "points", "cell_points.json")
-                _raw = _js2.load(open(_pp, encoding="utf-8"))
-                # 点位库 → next_target 要的 {name:{"pos":[3]}} + 几何 ctx
-                _pts, _geo = {}, {}
-                for _it in (_raw.get("slots") or []):
-                    _pts[_it["name"]] = {"pos": _it["pos"]}
-                for _it in (_raw.get("holes") or []):
-                    _pts["%s_mouth" % _it["name"]] = {"pos": _it["mouth"]}
-                    _pts["%s_insert" % _it["name"]] = {"pos": _it["insert"]}
-                    _geo.setdefault("hole", _it["insert"])
-                    _geo.setdefault("hole_mouth", _it["mouth"])
-                for _it in (_raw.get("sides") or []) + (_raw.get("scrap") or []):
-                    _pts[_it["name"]] = {"pos": _it["pos"]}
-                if isinstance(_raw.get("golden"), list):
-                    _pts["golden"] = {"pos": _raw["golden"]}
-                    _geo.setdefault("table_z", float(_raw["golden"][2]))
-                _peg = _SS_STATE.get("peg") or _SS_STATE.get("peg_xyz")
-                if _peg is not None:
-                    _geo["peg"] = list(np.asarray(_peg, dtype=float).ravel()[:3])
-                    _geo.setdefault("head_off", [0.0, 0.0, 0.0])
-                _cur = _SS_STATE.get("pos") or _SS_STATE.get("tcp") or None
-                # 段→点位名 (技能语义 ↔ 点位库名): 抓取系看料位, 插入系看孔口/孔底
-                _code = str(tpl)
-                _MAP = {"SK01": "槽1", "SK02": "槽1", "SK03": "槽1", "SK04": "槽1", "SK05": "槽1",
-                        "SK06": "孔1_mouth", "SK07": "孔1_insert", "SK08": "孔1_insert"}
-                _spec = {"point": _MAP[_code]} if _code in _MAP else None
-                if _spec and _spec["point"] not in _pts:
-                    _spec = None
-                _tn = _tpl.next_target(ctx=_geo or None, points=_pts, spec=_spec, cur=_cur)
-                if _tn:
-                    _tgt = [round(float(x), 3) for x in _tn["xyz"]]
-                    _src = "next_target[%s] ref=%s" % (_tn.get("src") or "taught", _tn.get("ref"))
-            except Exception as _e:                                       # noqa: BLE001
-                _why = "%s: %s" % (type(_e).__name__, str(_e)[:60])
-            return {"out1": {"kind": "skill_act", "skill": tpl, "stage": stg,
-                             "active": _tgt is not None and bool(stg),
-                             "target": _tgt, "target_src": _src,
-                             "reason": ("target_only_no_trace" if _tgt else "no_engine_trace"),
-                             "why": _why, "name": name, "t": _t0},
-                    "out2": {"kind": "skill_gate", "skill": tpl, "stage": stg,
-                             "f_need_N": None, "reason": "no_engine_trace", "t": _t0}}
-        idx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
-        stage_now = str(tr["stage"][idx]).replace("阶段 ", "").split("·")[0].strip()
-        tgt = np.asarray(tr["target"][idx], dtype=float) if tr.get("target") else np.zeros(3)
-        u = np.asarray(tr["u_exec_vec"][idx], dtype=float) if tr.get("u_exec_vec") else np.zeros(4)
-        act = bool(stg and stage_now == stg)
-        # 🧭 2026-10-31 老倪「按照连线, 强制保持数据功能与连线一致」:
-        #   连线上这个节点被激活 ⇒ **真跑一次本段技能的 clamp** (以前只打日志 = 线连着但不执行,
-        #   SK01 的 clamp 一拍都没进过, 断点当然不进)。结果带 why/err_norm, 沿 sssk → ssphys 的线往下走。
-        _gate = None
-        if act:
-            try:
-                import sys as _sys
-                _tp = os.path.join(_REPO_ROOT, "tools")
-                if _tp not in _sys.path:
-                    _sys.path.insert(0, _tp)
-                import dispatch_inproc as _dpi
-                _gate = _dpi.step_stage(stg, np.asarray(u[:3], dtype=float))
-            except Exception as _e:                                          # noqa: BLE001
-                _gate = None
-                if log:
-                    log(f"⚠️ 原子技能 {name}: 调 clamp 失败 {type(_e).__name__}: {_e}")
-        if log:
-            if _tpl is not None:
-                log(f"🧩 模板 {tpl} {_tpl.name}: {_tpl.desc}")
-                log(f"   目标 {_tpl.goal} · 参数 {_tpl.params} · 推进 {_tpl.evidence}")
-            if act:
-                log(f"🧩 原子技能 ▶ {name} 激活 · 模板{tpl} (决策层选定「{stg}」→ 模板实例化快速执行) · "
-                    f"决策实时赋值: 目标 {np.round(tgt[:3], 3)} · 执行速度 u={np.round(u[:3], 3)} m/s")
-                if _gate:
-                    log("   ⚖ 过闸 → |u|=%.3f m/s · 偏差 %.1f mm/s · 削因 %s · f_need=%.3f N" % (
-                        float(np.linalg.norm(np.asarray(_gate.get("u") or [0, 0, 0], dtype=float))),
-                        float(_gate.get("err_norm") or 0.0) * 1000.0,
-                        _gate.get("why") or "", float(_gate.get("f_need_N") or 0.0)))
-            else:
-                log(f"🧩 原子技能 {name} 待命 · 模板{tpl} (当前阶段 {stage_now or '—'}, 未调用)")
-        # 🧭 2026-11-01 老倪「plan 的上游是技能, 端口必须对正, 真执行」:
-        #   原来本函数只 return True ⇒ 壳子拿到非 dict ⇒ out1/out2 恒空 ⇒
-        #   连到 运动规划(in4) 的 8 根线传的全是空值 (线在, 值没有 = 假接线)。
-        #   现按端口语义给出: out1 = 技能动作 (含 target[mm] 供规划用) / out2 = 过闸结果。
-        _tgt_mm = [round(float(x) * 1000.0, 3) for x in np.asarray(tgt, dtype=float).ravel()[:3]]
-        _u4 = [round(float(x), 6) for x in np.asarray(u, dtype=float).ravel()[:4]]
-        # 🧠 2026-11-02 老倪「L2 记忆节点应该给技能赋能」: 每拍把**本段记忆**带在 out1 上
-        #   (工艺点通道 key/r/L/节拍 + 标杆命中) —— in3 有记忆包就用它, 没有就现查 l2_store, 两边同一份真源。
-        _mem = None
-        try:
-            _in3 = (ctx.get("in3") or {}).get("value") if isinstance(ctx.get("in3"), dict) else None
-            if isinstance(_in3, dict) and _in3.get("key"):
-                _mem = _in3
-            else:
-                from lerobot.memory import l2_store as _LS
-                _tab = {"接近": ("槽", "槽"), "下降": ("槽", "槽"), "抓取": ("槽", "槽"), "抬起": ("槽", "槽"),
-                        "转移": ("槽", "孔"), "对位": ("孔", "孔"), "插入": ("孔", "孔"), "完成": ("孔", "孔")}
-                _ps, _pe = _tab.get(stg, ("槽", "槽"))
-                _lst = [v for v in (_LS.corridors() or {}).values() if v.get("stage") == stg]
-                _okv = lambda v: str(v.get("from") or "").startswith(_ps) and \
-                    (str(v.get("to") or "").startswith(_pe) or v.get("to") == "-")
-                _pool = [v for v in _lst if v.get("kind") == "real" and _okv(v)] or \
-                        [v for v in _lst if _okv(v)] or _lst
-                if _pool:
-                    _b = max(_pool, key=lambda v: (v.get("kind") == "real", v.get("n_poly") or 0))
-                    _ck = [k for k in (_LS.champs() or {}) if k.endswith("|" + stg)]
-                    _mem = {"key": _b.get("key"), "kind": _b.get("kind"), "r_mm": _b.get("r_mm"),
-                            "L_mm": _b.get("L_mm"), "s_tick_mm": _b.get("s_tick_mm"),
-                            "v_along_cap": _b.get("v_along_cap"), "tact_s": _b.get("tact_s"),
-                            "champ_n_ok": sum(int(((_LS.champs() or {}).get(k) or {}).get("n_ok") or 0) for k in _ck),
-                            "src": "data/memory/l2_store/corridors.json"}
-        except Exception:                                            # noqa: BLE001
-            _mem = None
-        out1 = {"kind": "skill_act", "skill": tpl, "stage": stg, "active": bool(act),
-                "target": _tgt_mm, "target_unit": "mm(base_link)",
-                "u": _u4, "u_unit": "m/s(与引擎 u_exec_vec 同口径)",
-                "mem": _mem, "gate": _gate, "name": name, "t": float(time.time())}
-        out2 = {"kind": "skill_gate", "skill": tpl, "stage": stg,
-                "f_need_N": (_gate or {}).get("f_need_N"),
-                "u_gate": (_gate or {}).get("u"), "why": (_gate or {}).get("why"),
-                "err_mm": (round(float((_gate or {}).get("err_norm") or 0.0) * 1000.0, 3)
-                           if _gate else None),
-                "saturated": bool(_gate and (_gate.get("why") or "").strip() not in ("", "pass")),
-                "t": float(time.time())}
-        return {"out1": out1, "out2": out2}
-    except Exception as e:
-        if log:
-            log(f"⚠️ 原子技能层执行失败: {e}")
-        return False
+    """→ nodes/sssk8.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .sssk8 import node_ss_atomic as _impl
+    return _impl(ctx)
+
+
+
+
+
+
+
+
 
 def node_ss_abc(ctx):
     """🅰️🅱️🅾️ 通用算子 A/B/C — L2 原子技能行最左侧的**万能节点** (2026-09-10 老倪)
@@ -5169,89 +3965,11 @@ def node_ss_abc(ctx):
         return False
 
 def node_ss_mani(ctx):
-    """🧮 流形层 — 接触流形 (插拔通道: 切向进度/法向偏离/V) ‖ 性能流形 (对准代价 V_p/η)
-    源码: src/lerobot/manifold/manifold_layer.py (ContactManifold / PerformanceManifold)
-    回路外元层: 从引擎轨迹当前帧取真实量 (obs/peg_head/target/v/stage) 实算,
-    断点可进; 不参与推理, 不新增安全通道 (唯一三层安全=否决+限幅+Sys0)"""
-    log = ctx.get("log")
-    try:
-        import numpy as np
-        path = os.path.join(_MANIFOLD_DIR, "manifold_layer.py")
-        m = _load_mod("lerobot.manifold.manifold_layer", path)          # 正常 import (断点可绑)
-        name = ctx.get("name", "")
-        # 当前帧真源: GUI 播放态 module._ss_tr → 无 GUI 时 ss_traj_last.json (L4 统一帧, 见 _ss_frame)
-        fr = _ss_frame(ctx)
-        if fr is None:
-            if log:
-                log("⚠️ 流形层: 无帧真源 — GUI 播放态与 ss_traj_last.json 都取不到")
-            return False
-        idx, stage = int(fr["idx"]), fr["stage"]
-        hand, peg_head, target, v = fr["hand"], fr["peg_head"], fr["target"], fr["v"]
-        _SS_STATE["mani_frame"] = {"idx": idx, "stage": stage, "src": fr["src"], "from": fr["from"]}
-        if "接触" in name:
-            cm = m.ContactManifold()
-            r = cm.decompose(hand, peg_head, target, v, stage)
-            _SS_STATE["contact_mani"] = r
-            # ⛓ 承接 L4 LoRA 节点算出的接触约束 (摩擦锥/穿透罚) —— 同一组数, 不另算一套
-            _ll = _SS_STATE.get("lora_l4") or {}
-            _lc = _ll.get("contact") or {}
-            if log and _lc:
-                log("   ⛓ 来自 L4 LoRA 节点的接触约束: f_n=%.3f ‖f_t‖=%.3f 锥余量 %.3f → %s · Φ_c=%.4g"
-                    % (float(_lc.get("f_n") or 0.0), float(_lc.get("f_t_norm") or 0.0),
-                       float(_lc.get("slack") or 0.0),
-                       "在锥内" if _lc.get("inside_cone") else "越锥(已投影)",
-                       float(_lc.get("phi_c") or 0.0)))
-            if log:
-                log(f"🧮 接触流形 (真实·t={fr['t']:.2f}s {stage} · {fr['from']}帧{idx}): {cm.summarize(r)}")
-                if r["axis"] is not None:
-                    log(f"   通道轴 â={np.round(r['axis'],3)} · 切向进度 "
-                        f"‖e∥‖={r['progress']:.4f}m · 法向偏离 ‖e⊥‖={r['risk']:.4f}m "
-                        f"(阈 {r['risk_th']}m) · V̇={r['Vdot']:.3e} (负=沿测地线收敛)")
-                else:
-                    log(f"   自由空间 (转移段无接触约束) · ‖e‖={r['progress']:.4f}m · "
-                        f"V̇={r['Vdot']:.3e}")
-            return _NodeOut({
-                "kind": "contact_manifold", "layer": "L4", "ok": True,
-                "stage": stage, "idx": idx, "t": round(float(fr["t"]), 3),
-                "frame_src": fr["src"], "frame_from": fr["from"],
-                "axis": (None if r.get("axis") is None else [float(x) for x in r["axis"]]),
-                "progress_m": float(r.get("progress") or 0.0),
-                "risk_m": float(r.get("risk") or 0.0),
-                "risk_th_m": float(r.get("risk_th") or 0.0),
-                "Vdot": float(r.get("Vdot") or 0.0),
-                "summary": str(cm.summarize(r)),
-                "src": "src/lerobot/manifold/manifold_layer.py::ContactManifold.decompose",
-            })
-        if "性能" in name:
-            _ll2 = _SS_STATE.get("lora_l4") or {}
-            _lp = _ll2.get("performance") or {}
-            if log and _lp:
-                log("   ⛓ 来自 L4 LoRA 节点的性能流形: V_p=%.4g · η=%.4f · 黎曼梯度范数 %.4g (g_p 度量)"
-                    % (float(_lp.get("V_p") or 0.0), float(_lp.get("eta") or 0.0),
-                       float(np.linalg.norm(np.asarray(_lp.get("riemann_grad") or [0.0], float)))))
-            pm = m.PerformanceManifold()
-            r = pm.evaluate(peg_head, stage=stage)
-            _SS_STATE["perf_mani"] = r
-            if log:
-                log(f"🧮 性能流形 (真实·t={fr['t']:.2f}s {stage} · {fr['from']}帧{idx}): {pm.summarize(r)}")
-                log(f"   修正方向 ∇V_p={np.round(r['grad'],4)} (最优对准 = 沿 −∇ 下山到 δ→0)")
-            return _NodeOut({
-                "kind": "perf_manifold", "layer": "L4", "ok": True,
-                "stage": stage, "idx": idx, "t": round(float(fr["t"]), 3),
-                "frame_src": fr["src"], "frame_from": fr["from"],
-                "V_p": float(r.get("V_p") or 0.0),
-                "eta": float(r.get("eta") or 0.0),
-                "grad": ([float(x) for x in r["grad"]] if r.get("grad") is not None else []),
-                "summary": str(pm.summarize(r)),
-                "src": "src/lerobot/manifold/manifold_layer.py::PerformanceManifold.evaluate",
-            })
-        if log:
-            log("⚠️ 流形层: 节点名未识别接触/性能分派")
-        return False
-    except Exception as e:
-        if log:
-            log(f"⚠️ 流形层执行失败: {e}")
-        return False
+    """→ nodes/ss_mani_p.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_mani_p import node_ss_mani as _impl
+    return _impl(ctx)
+
+
 
 _reg("ss_mani_c", ["接触流形"],
     "🧮 接触流形 — 插拔安全通道: 误差 e 沿通道轴分解 → 切向 e∥(测地线进度)/法向 e⊥(离流形漂移, 弯曲风险), V=½‖e‖², V̇=−e·v (源码 manifold_layer.py ContactManifold)",
@@ -5350,92 +4068,10 @@ def _ssah_ns():
         return _SSAH_NS
 
 def node_ss_vlm(ctx):
-    """🧠 VLM 通用视觉编码器 — GUI 薄壳 (算法全在 src, 老倪 2026-09-08)
+    """→ nodes/ss_vlm.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_vlm import node_ss_vlm as _impl
+    return _impl(ctx)
 
-    真实算法: src/lerobot/policies/smolvla_lew/vlm_encoder.py encode_stage() —
-    帧 → SmolVLM2 真实前向 → 潜空间 z ∈ R⁹⁶⁰ (首次触发后台加载 ~15s)。
-    本壳职责: 取当前阶段真实帧 → 转发 encode_stage → 呈现结果。播放 demo 不跑 (铁律)。"""
-    log = ctx.get("log")
-    try:
-        import numpy as np
-        mod = ctx.get("module")
-        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
-        if tr is None or not tr.get("t"):
-            # 🎥 无引擎轨迹 (常驻循环 / 没点 ▶) 时,VLM 也必须真跑: 吃 AR 场景当前帧做场景理解。
-            #   以前这里直接 return False → 整层 L3 在看戏, 技能编排器只能报「场景理解未就绪」。
-            img, _src, _meta = _vlm_frame()
-            if img is None:
-                if log:
-                    log("🧠 VLM: 无引擎轨迹且取不到 AR 帧 — 不假装看过现场")
-                return False
-            st = _vlm_ask_async("describe", img, _vlm_ctx(ctx), log)
-            r = (st or {}).get("result") or {}
-            ok = bool(r.get("ok"))
-            if log:
-                log("🧠 VLM 场景理解 (%s · %s · %sms): %s" % (
-                    _src, r.get("src") or "未返回", r.get("latency_ms"),
-                    _vlm_brief(r.get("json")) if ok else (r.get("why") or "无结果")))
-            return _NodeOut({
-                "kind": "scene_vlm", "layer": "L3", "ok": ok, "frame_src": _src,
-                "frame": _meta.get("frame"), "frame_age_s": _meta.get("frame_age_s"),
-                "src": "src/lerobot/policies/left_right/state_space/scene_vlm.py::SceneVLM.describe",
-                "latency_ms": r.get("latency_ms"), "scene": r.get("json"),
-            }) if "_NodeOut" in globals() else {"out1": r}
-        idx = min(int(getattr(mod, "_ss_round", 0) or 0), len(tr["t"]) - 1)
-        stage = str(tr["stage"][idx]).replace("阶段 ", "").split("·")[0].strip()
-        meta = tr.get("_meta") or {}
-        x = np.asarray(tr["x"][idx], dtype=float)
-        peg = np.asarray(tr["peg"][idx], dtype=float)
-        tgt = np.asarray(tr["target"][idx], dtype=float)
-        if log:
-            log(f"🧠 VLM 通用视觉编码器 [当前阶段={stage}]: token=图像帧+触觉+检测框")
-        # ① 真实编码 (算法在 src): 当前阶段真实帧 → encode_stage
-        kf = tr.get("key_frames") or {}
-        if kf and stage in kf:
-            try:
-                from PIL import Image
-                _ns = _vlm_encoder_ns()
-                cache = getattr(mod, "_vlm_cache", None)
-                if cache is None:
-                    cache = mod._vlm_cache = {}
-                r = _ns["encode_stage"](Image.fromarray(np.asarray(kf[stage])),
-                                        stage, cache, meta.get("seed", "?"))
-                if r.get("status") == "ok":
-                    if log:
-                        tag = " (缓存)" if r.get("cached") else " (真实前向, 非演示)"
-                        log(f"   ✅ VLM 真实编码 [阶段={stage}]{tag}: {r['model']} · "
-                            f"帧 {np.asarray(kf[stage]).shape[1]}x{np.asarray(kf[stage]).shape[0]} "
-                            f"→ {r['tokens']} token → z∈R{r['dim']} · "
-                            f"|z|={r['z_norm']:.1f} mean={r['z_mean']:.3f} std={r['z_std']:.3f} · "
-                            f"top活跃 {r['top5']} · {r['ms']}ms")
-                        log(f"   语义: 真实视觉特征 (预训练 SmolVLM 通用编码, 未微调) — "
-                            f"与几何潜空间关系由下游世界模型学习")
-                elif log:
-                    log(f"   ⏳ {r.get('msg', r.get('status'))}")
-            except Exception as _e:
-                if log:
-                    log(f"   ⚠️ VLM 编码异常: {_e}")
-        elif log:
-            log("   帧源: 本轮轨迹无真实帧 (key_frames 空) — 需 🎥真实化 R1 视觉运行; 引擎快演无帧")
-        # ② 几何潜空间对照 (教学注解, GUI 演示层)
-        if log:
-            z_vis = np.concatenate([x - tgt, x - peg, [float(tr["grasped"][idx])]])
-            log(f"   几何 z∈R⁷ (对照): 手→目标 {np.round(z_vis[:3], 4)} m · 手→工件 "
-                f"{np.round(z_vis[3:6], 4)} m · 夹持={z_vis[6]:.0f}")
-            if meta.get("mode") == "full" or any("AOI" in str(s) for s in tr.get("stage", [])):
-                af = np.asarray(meta.get("aoi_focus", [0.12, 0.62, 0.10]), dtype=float)
-                log(f"   🔍 场景目标识别: 光模块/插孔 + AOI 光学检测设备 (镜头工位 "
-                    f"{np.round(af, 2)}) — 插拔循环后对焦检测")
-            if meta.get("aoi_report"):
-                _ar = meta["aoi_report"]
-                log(f"   📷 AOI 检测报告: {'PASS' if _ar.get('ok') else 'FAIL'} "
-                    f"(残余深度 {_ar.get('insert_depth_min_mm')}mm · 力峰 {_ar.get('force_peak')})")
-            log("   ⚙️ 真实实现: src/lerobot/policies/smolvla_lew/vlm_encoder.py (encode_stage)")
-        return True
-    except Exception as e:
-        if log:
-            log(f"⚠️ VLM 编码失败: {e}")
-        return False
 
 # 🧠 JEPA 世界模型预测器加载 (2026-09-08 老倪 L4: predictor 链路归位 src)
 _PRED_NS = None
@@ -5460,82 +4096,10 @@ def _pred_ns():
         return _PRED_NS
 
 def node_ss_pred(ctx):
-    """🧠 世界模型预测器 (JEPA: 潜空间 → 流形 → 动作) — GUI 薄壳 (算法在 src)
+    """→ nodes/ss_pred.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_pred import node_ss_pred as _impl
+    return _impl(ctx)
 
-    真实算法: src/lerobot/manifold/predictor_layer.py —
-    LatentPredictor (z_t+a_t→z') → ManifoldReadout (z'→接触/性能流形坐标 6 维,
-    与引擎真值列对齐可监督训练) → decoder = StateSpaceActionHead (流形→4D 动作块)。"""
-    log = ctx.get("log")
-    try:
-        import numpy as np
-        import torch
-        mod = ctx.get("module")
-        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
-        if tr is None or not tr.get("t"):
-            if log:
-                log("🧠 世界模型预测器: 无引擎轨迹 — 先点 ▶ 运行 (真实化)")
-            return False
-        idx = min(int(getattr(mod, "_ss_round", 0) or 0), len(tr["t"]) - 1)
-        if log:
-            log("🧠 JEPA 世界模型预测器 [当前步]: encoder(z) → predictor → 接触/性能流形 → decoder 动作")
-        # ⛓ 老倪 2026-10-14: 本节点接在 🎛 L4 INTACT LoRA 微调**之后** ⇒ 条件必须真读它的输出
-        #    (接线≠被消费: 这里把上游 u_lora/度规步长读出来打进日志, 取不到就明写)
-        _ll = _SS_STATE.get("lora_l4") or {}
-        if log:
-            if _ll:
-                _pr = _ll.get("predictor") or {}
-                log("   ⛓ 条件来自 L4 LoRA 节点: ‖u_lora‖=%.4g · ‖Δu‖=%.4g/上限 %.4g%s · γ_eff=%.3f%s"
-                    % (float(np.linalg.norm(_ll.get("u_lora") or [])), float(_ll.get("du_norm") or 0.0),
-                       float(_ll.get("cap") or 0.0), " 已限幅" if _ll.get("clipped") else "",
-                       float(_ll.get("gate") or 0.0),
-                       "" if _ll.get("trained") else " · ⚠️ LoRA 未训练(恒等)"))
-                log("   ⛓ 本节点承接度规步长 ‖dz‖_g=%.4g (M·G 约束) ⇒ 沿测地线预测"
-                    % float(_pr.get("metric_norm") or 0.0))
-            else:
-                log("   ⚠️ 未取到 L4 LoRA 节点输出 (_SS_STATE['lora_l4'] 空) ⇒ 本步条件回退引擎潜坐标")
-        # ── ① 真实 WorldModelPredictor 结构 + 前向维度自检 (几何 z R⁷ 对照实例) ──
-        try:
-            _ns = _pred_ns()
-            WM = _ns["WorldModelPredictor"]
-            wm = WM(z_dim=7)
-            n_params = sum(p.numel() for p in wm.parameters())
-            x = np.asarray(tr["x"][idx], dtype=float)
-            peg = np.asarray(tr["peg"][idx], dtype=float)
-            tgt = np.asarray(tr["target"][idx], dtype=float)
-            z7 = np.concatenate([x - tgt, x - peg, [float(tr["grasped"][idx])]])
-            u = np.asarray(tr["u_ff"][idx], dtype=float).ravel()
-            a4 = u[:4] if u.size >= 4 else np.zeros(4)
-            zt = torch.from_numpy(z7.astype(np.float32)).unsqueeze(0)
-            at = torch.from_numpy(a4.astype(np.float32)).unsqueeze(0)
-            with torch.no_grad():
-                out = wm(zt, at)
-                # decoder 拼接 (真实 StateSpaceActionHead, 流形坐标 → 动作块)
-                AH = _ssah_ns()["StateSpaceActionHead"]
-                head = AH(input_dim=out["manifold"].shape[-1], action_dim=4, chunk_size=7)
-                acts = head(out["manifold"])
-            if log:
-                log(f"   ✅ WorldModelPredictor 真实类: {n_params:,} 参数 "
-                    f"(src/lerobot/manifold/predictor_layer.py)")
-                log(f"      JEPA 链路自检: z R⁷+a⁴ → z'→流形 {tuple(out['manifold'].shape)} "
-                    f"→ decoder → 动作块 {tuple(acts.shape)} (随机初始化, 训练后启用)")
-                log(f"      VLM z R⁹⁶⁰ 实例: 699,846 参数 (encode_stage 真实 z 接入后同构)")
-        except Exception as _e:
-            if log:
-                log(f"   ⚠️ Predictor 自检失败: {_e}")
-        # ── ② 当前帧流形真值 (引擎发布 — readout 监督真值列) ──
-        if log:
-            risk = float(tr["mani_risk"][idx]) if tr.get("mani_risk") else float("nan")
-            prog = float(tr["mani_progress"][idx]) if tr.get("mani_progress") else float("nan")
-            eta = float(tr["mani_eta"][idx]) if tr.get("mani_eta") else float("nan")
-            log(f"   流形真值 (监督列): 接触 [进度={prog:.4f} 风险={risk:.4f} V] · "
-                f"性能 [η={eta:.3f} rem d_perp] — readout 对齐 6 维回归")
-            log("   ⚙️ 真实实现: src/lerobot/manifold/predictor_layer.py "
-                "(LatentPredictor→ManifoldReadout)")
-        return True
-    except Exception as e:
-        if log:
-            log(f"⚠️ Predictor 执行失败: {e}")
-        return False
 
 def node_ss_cap(ctx):
     """🧭 能力档位 (数据源层) — L2 / L3 / L4 三档循环开关 (2026-09-08 老倪)
@@ -5862,76 +4426,16 @@ def node_ss_bypass_sensor(ctx):
         return False
 
 def node_ss_bypass_viz(ctx):
-    """📈 旁路实时可视化 (可视化层观察器) — 当前阶段 / 残差 / 接触概率 曲线 (500ms 实时刷新)
+    """→ nodes/ss_bypass_viz.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_bypass_viz import node_ss_bypass_viz as _impl
+    return _impl(ctx)
 
-    🪟 无窗档 (常驻循环/CLI): 只推进数据, 不开窗 —— 建窗会让 Qt ABRT 打死整个 canvas loop。"""
-    log = ctx.get("log")
-    module = ctx.get("module")
-    if not _gui_host_ok():
-        if log:
-            log("📈 旁路实时可视化: 无窗档 (常驻循环/CLI) ⇒ 本拍只跑数据, 不开窗")
-        return True
-    try:
-        import ss_bypass_view                      # 同目录 (tools/gui)
-        win = getattr(module, "_bypass_view_win", None) if module is not None else None
-        if win is None or getattr(win, "isVisible", lambda: False)() is False:
-            win = ss_bypass_view.SSBypassView(module)
-            if module is not None:
-                try:
-                    module._bypass_view_win = win
-                except Exception:
-                    pass
-        win.show()
-        win.raise_()
-        win.refresh()
-        if log:
-            from_ = (win.labs["stage"].text(), win.labs["residual"].text(), win.labs["contact_p"].text())
-            log(f"📈 旁路实时可视化: 已打开 (当前阶段={from_[0]} · 残差={from_[1]} · 接触概率={from_[2]})")
-        if log:
-            try:
-                # 上网通道最近一次结果 (旁路调试区块) — 取用并汇报成一行 (下面终端日志口径)
-                log("🛰 " + ss_bypass_view.net_channel_status_line())
-            except Exception:
-                pass
-        return True, "旁路可视化窗口"
-    except Exception as e:
-        if log:
-            log(f"📈 旁路可视化打开失败: {type(e).__name__}: {e}")
-        return False
 
 def node_ss_z700_signals(ctx):
-    """🖥 Z700 真机信号 (可视化层观察器) — 输入 = 🌍 物理世界 输出; 显示全部真机信号
-    (TCP 位姿+四元数 / 六关节位置速度 / 六维力力矩 / 夹爪 / 触觉 / 机器人状态 / 产线阶段)"""
-    log = ctx.get("log")
-    module = ctx.get("module")
-    if not _gui_host_ok():
-        # 🪟 2026-11-01: 本节点本就是"显示层", 但常驻循环没有 QApplication/不在主线程 ⇒
-        #   在这里建窗会让 Qt 直接 ABRT 打死整个 canvas loop (faulthandler 实测: 本行 → ss_bypass_view:1370)
-        if log:
-            log("🖥 Z700 真机信号: 无窗档 (常驻循环/CLI) ⇒ 本拍只跑数据, 不开窗")
-        return True, "Z700 真机信号 (无窗档)"
-    try:
-        import ss_bypass_view
-        win = getattr(module, "_z700_signals_win", None) if module is not None else None
-        if win is None or getattr(win, "isVisible", lambda: False)() is False:
-            win = ss_bypass_view.Z700SignalsView(module)
-            if module is not None:
-                try:
-                    module._z700_signals_win = win
-                except Exception:
-                    pass
-        win.show()
-        win.raise_()
-        win.refresh()
-        if log:
-            log(f"🖥 Z700 真机信号: 已打开 (TCP={win.labs['tcp_x'].text()},{win.labs['tcp_y'].text()},"
-                f"{win.labs['tcp_z'].text()} · 运行={win.labs['s_op'].text()} · "
-                f"旁路阶段={win.labs['b_stage'].text()})")
-        return True, "Z700 真机信号窗口"
-    except Exception as e:
-        if log:
-            log(f"🖥 Z700 真机信号打开失败: {type(e).__name__}: {e}")
-        return False
+    """→ nodes/ss_z700_signals.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_z700_signals import node_ss_z700_signals as _impl
+    return _impl(ctx)
+
 
 _reg("ss_bypass_sensor", ["旁路真机传感器", "真机传感器"], 
      "📡 旁路真机传感器 (数据源层) — 读真机感知流 (4060 远程只读 Orin), 双击切换画布数据源到真机旁路",
@@ -6031,162 +4535,16 @@ def node_ss_moe(ctx):
     return True
 
 def node_ss_lora_l4(ctx):
-    """🎛 L4 · INTACT LoRA 微调 (在役链路位置: INTACT 意图解码器 → **本节点** → 流形专家预测器)
+    """→ nodes/ss_lora_l4.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_lora_l4 import node_ss_lora_l4 as _impl
+    return _impl(ctx)
 
-    老倪 2026-10-14: 「不想动 INTACT 原始模型权重，只需要修改 LoRA 节点；元任务预测节点的输出也要
-    接到 INTACT LoRA 微调节点；然后向后连接流形专家预测器，以及接触流形、性能流形。」
-
-    数学 (src/lerobot/manifold/manifold_chain.py, 可单跑自检):
-      ① LoRA 层: u_lora = u_int + γ·Δu,  Δu = γ_eff·(α/r)·mean_j(B_j A_j φ)   ← 原权重 W0 **冻结**
-         γ_eff = g(元任务预测值)  (L4/L5 层元任务预测得分的焦点权重 ⇒ 增益)
-         限幅: ‖Δu‖ ≤ ρ·容量, 容量=(α/r)‖B_j‖_F‖A_j‖_F‖φ_j‖  (ρ=0.35, 可复核上界)
-      ② 流形专家预测器: ẑ = z − δ·g⁻¹∇Φ(z) + R(z,u_lora);  g=M·G(x), det G=1
-      ③ 接触流形约束: 法向/切向分解 + Coulomb 摩擦锥 (‖f_t‖≤μf_n, 越锥投影) + 穿透罚 Φ_c
-      ④ 性能流形约束: V_p=½δᵀWδ · η=exp(−V_p/σ²) · 黎曼梯度 g_p⁻¹∇V_p · 帕累托非劣闸
-    """
-    import json as _j
-    import os as _o7
-    import numpy as _np
-
-    log = ctx.get("log")
-    sys_path = _o7.path.join(_REPO_ROOT, "src")
-    if sys_path not in __import__("sys").path:
-        __import__("sys").path.insert(0, sys_path)
-    try:
-        from lerobot.manifold.manifold_chain import (ContactConstraint, L4Adapter,
-                                                     ManifoldExpert, PerformanceConstraint)
-    except Exception as e:                                                # noqa: BLE001
-        if log:
-            log(f"❌ L4 LoRA 链导入失败: {type(e).__name__}: {str(e)[:110]}")
-        return False
-
-    # ── ① 产物真源 (LoRA 包装 ckpt: 只有它含 lora_A/B; merged_* 已折叠=改了原权重, 不用) ──
-    ad = L4Adapter(_REPO_ROOT)
-    ok_a, note_a = ad.load()
-    if log:
-        log("🎛 L4 · INTACT LoRA 微调 (INTACT 意图解码器 → 本节点 → 流形专家预测器)")
-        log(f"   原权重: 冻结 (base.weight 不动) · 产物: {note_a}")
-
-    # ── ② 意图输入 u_int (真源优先级: 上游节点写入 > 引擎潜坐标 > 轨迹帧 > 无) ──
-    u_int, u_src = None, ""
-    st = _SS_STATE.get("lora_in") or {}
-    if isinstance(st, dict) and st.get("u_int"):
-        u_int = _np.asarray(st["u_int"], float); u_src = str(st.get("src") or "上游节点写入")
-    mod = ctx.get("module")
-    tr = getattr(mod, "_ss_tr", None) if mod is not None else None
-    if u_int is None:
-        me = _SS_STATE.get("mani_eng") or {}
-        z_eng = me.get("z") if isinstance(me, dict) else None
-        if z_eng is not None:
-            u_int = _np.asarray(z_eng, float); u_src = "流形引擎 L4 潜坐标 z"
-    def _has_tr(_t):        # tr["t"] 可能是 list 也可能是 ndarray ⇒ 不能用布尔真值判断 (实测 ambiguous)
-        try:
-            return bool(_t) and (len(_t.get("t")) > 0 if _t.get("t") is not None else False)
-        except Exception:                                                # noqa: BLE001
-            return False
-    if u_int is None and _has_tr(tr):
-        idx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
-        u_int = _np.asarray(tr["obs"][idx][:16], float) if tr.get("obs") else None
-        u_src = f"轨迹帧 obs[:16] (idx={idx})"
-    if u_int is None:
-        u_int = _np.zeros(16)
-        u_src = "无意图输入 (占位 0) ⇒ Δu 平凡"
-
-    # ── ③ 元任务预测值 (门控真源: zmax_data/ss_live/meta_pred.json) ──
-    meta_pred = None
-    mp_path = _o7.path.join(_REPO_ROOT, "zmax_data", "ss_live", "meta_pred.json")
-    if _o7.path.exists(mp_path):
-        try:
-            meta_pred = _j.load(open(mp_path, encoding="utf-8"))
-        except Exception:                                                 # noqa: BLE001
-            meta_pred = None
-
-    # ── ④ 链路一步: LoRA → 专家预测 → 接触流形 → 性能流形 ──
-    stage = str(_SS_STATE.get("mani_frame", {}).get("stage") or _SS_STATE.get("stage") or "")
-    r_lora = ad.forward(u_int, meta_pred, stage)
-    grad_phi = _np.asarray((_SS_STATE.get("mani_eng") or {}).get("grad") or _np.zeros(16), float)
-    expo = ManifoldExpert(M=float(_SS_STATE.get("M") or 3.643))
-    r_pred = expo.step(r_lora["u_lora"], grad_phi)
-    cc = ContactConstraint()
-    hand = f_vec = axis = v_vec = None
-    h_pen = 0.0
-    if _has_tr(tr):
-        idx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
-        try:
-            hand = _np.asarray(tr["x"][idx], float)
-            peg_head = _np.asarray(tr["peg_head"][idx], float)
-            target = _np.asarray(tr["target"][idx], float)
-            v_vec = _np.asarray(tr["v_vec"][idx], float) if tr.get("v_vec") else _np.zeros(3)
-            from lerobot.manifold.manifold_layer import ContactManifold  # noqa: PLC0415
-            cm = ContactManifold()
-            dec = cm.decompose(hand, peg_head, target, v_vec, stage)
-            axis = dec.get("axis")
-            f_vec = _np.concatenate([_np.asarray(dec.get("e_par", _np.zeros(3)), float),
-                                     _np.asarray(dec.get("e_perp", _np.zeros(3)), float)])[:3]
-        except Exception:                                                 # noqa: BLE001
-            pass
-    if axis is None:
-        axis = _np.array([1.0, 0.0, 0.0])
-    if f_vec is None:
-        f_vec = _np.asarray(r_lora["du"][:3], float)
-        f_src = "Δu 前 3 维 (无轨迹帧 ⇒ 无真实接触力, 如实)"
-    else:
-        f_src = "轨迹帧 e∥/e⊥ 合成 (真实几何误差作接触力输入)"
-    r_contact = cc.apply(f_vec, axis, v=v_vec, h=h_pen)
-    pc = PerformanceConstraint()
-    d_perf = None
-    if _has_tr(tr):
-        try:
-            d_perf = _np.asarray(tr["peg_head"][idx], float) - _np.asarray(tr["target"][idx], float)
-        except Exception:                                                 # noqa: BLE001
-            d_perf = None
-    r_perf = pc.evaluate(_np.zeros(3) if d_perf is None else d_perf)
-
-    # ── ⑤ 交给下游 (流形专家预测器/接触流形/性能流形 节点真读这里) ──
-    _SS_STATE["lora_l4"] = {
-        "u_int": r_lora["u_int"].tolist(), "u_lora": r_lora["u_lora"].tolist(),
-        "du_norm": r_lora["du_norm"], "capacity": r_lora["capacity"], "cap": r_lora["cap"],
-        "clipped": bool(r_lora["clipped"]), "trained": bool(r_lora["trained"]),
-        "gate": float(r_lora["gate"][0]), "src": r_lora["src"], "note": note_a,
-        "predictor": {"z_next": r_pred["z_next"].tolist(), "metric_norm": r_pred["metric_norm"]},
-        "contact": {k: (v.tolist() if hasattr(v, "tolist") else v) for k, v in r_contact.items()},
-        "performance": {k: (v.tolist() if hasattr(v, "tolist") else v) for k, v in r_perf.items()},
-    }
-    if log:
-        log(f"   意图输入 u_int: {u_src} · ‖u_int‖={float(_np.linalg.norm(r_lora['u_int'])):.4g}")
-        log("   " + ad.summary(r_lora))
-        log(f"   元任务预测门控: {r_lora['gate_note']}")
-        log("   " + expo.summary(r_pred))
-        log(f"   接触流形 [{f_src}]: " + cc.summary(r_contact))
-        log("   性能流形: " + pc.summary(r_perf) + ("" if d_perf is not None
-            else " ⚠️ 无轨迹帧 ⇒ δ=0 (平凡, 不是真性能)"))
-        if not r_lora["trained"]:
-            log("   ⚠️ 未训练/无产物 ⇒ Δu=0 (恒等, 零回归) —— 没有假装有微调")
-        else:
-            log("   ⏳ 待办: LoRA A/B 与统一主干/阶段专家同口径 A/B (留出集+平凡基线) 有提升才切在役指针")
-    return True
 
 def node_ss_lora_l3(ctx):
-    """🎛 L3 · SmolVLA LoRA 微调 — 真源 tools/lora_inject.py 注入 smolvla_lew
-    (VLM 注意力 + action expert), 训练产物 outputs/train/smolvla_lew_lora_*/checkpoints。"""
-    import glob
-    import os as _o6
-    log = ctx.get("log")
-    root = os.path.join(_REPO_ROOT, "outputs", "train")
-    runs = sorted(glob.glob(os.path.join(root, "smolvla_lew_lora_*")),
-                  key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0)
-    if log:
-        log("🎛 L3 · SmolVLA LoRA 微调: 注入 VLM 注意力 + action expert (flow-matching 头)")
-        if runs:
-            r = runs[-1]
-            ck = sorted(glob.glob(os.path.join(r, "checkpoints", "*")))
-            log(f"   最新产物: {os.path.basename(r)} · checkpoint {len(ck)} 个 "
-                f"({os.path.basename(ck[-1]) if ck else '缺'})")
-            log("   实测 (2026-09-24 存档): 200 步 / 3670s · loss 0.192 · action_loss 0.2368 · 显存 3.75GB (LoRA, batch2)")
-        else:
-            log("   产物: 缺")
-        log("   ⏳ 待办: 与统一主干/阶段专家 MOE 同口径评测 (留出集 + 平凡基线) 后才进默认档")
-    return True
+    """→ nodes/ss_lora_l3.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_lora_l3 import node_ss_lora_l3 as _impl
+    return _impl(ctx)
+
 
 _reg("ss_moe", ["阶段专家 MOE", "阶段专家MOE", "MOE 架构", "MOE架构"],
      "🧬 阶段专家 MOE (7 阶段专家 + 先验门控路由 · 建设中) — L4 认知预测主干改造",
@@ -6243,56 +4601,10 @@ def node_n_board_frame(ctx):
         return False
 
 def node_n_l2_muscle(ctx):
-    """💪 L2 肌肉记忆技能库 (光模块抓放循环) — 读**真实技能 JSON** + ROS2 桥**只读**状态。
-    真执行: data/skills/l2_muscle/*.json (技能定义) + tools/l2_ros2_bridge.py (仅查询)。
-    ⚠ 只读纪律: 本节点**不调** run_step/cmd_move → 不下发任何真机动作 (动作须人工授权)。"""
-    log = ctx.get("log") or (lambda *a: None)
-    try:
-        import glob as _g
-        import json as _json
-        pr = ctx.get("params") or {}
-        sk = str(pr.get("skill") or os.path.join(_REPO_ROOT, "data", "skills", "l2_muscle",
-                                                 "光模块_抓放循环_v1.json"))
-        if not os.path.isfile(sk):
-            cands = sorted(_g.glob(os.path.join(_REPO_ROOT, "data", "skills", "l2_muscle", "*.json")))
-            if not cands:
-                log("⚠ L2 肌肉记忆技能库: 无技能 JSON → 未固化任何标杆")
-                return False
-            sk = cands[0]
-        d = _json.load(open(sk, encoding="utf-8"))
-        steps = d.get("steps") or d.get("points") or []
-        log(f"💪 L2 肌肉记忆技能库 · {os.path.basename(sk)}")
-        log(f"   技能 {d.get('id')} · 层 {d.get('layer')} · 类型 {d.get('kind')} · 段数 {len(steps)}")
-        for i, s in enumerate(steps[:10], 1):
-            txt = s if isinstance(s, str) else " · ".join(
-                f"{k}={s[k]}" for k in list(s)[:4]) if isinstance(s, dict) else str(s)
-            log(f"   {i}. {txt}")
-        if d.get("params"):
-            log(f"   ⚙ 参数: {_json.dumps(d['params'], ensure_ascii=False)[:160]}")
-        # ROS2 桥: **只读**查询 (有界超时, 避免卡 GUI); Orin 不在线则如实报
-        # 🚦 2026-11-01: 原每拍都跑 `timeout 6 ros2 topic echo` (上限 10s), Orin 不在位时整圈被它吃掉
-        #   (py-spy 15 次采样 8 次停在本节点) ⇒ 常驻循环里按节拍查询 (ZMAX_L2M_EVERY_S, 默认 30s), 超时 3s。
-        _now = time.time()
-        _in_loop = bool(os.environ.get("ZMAX_CANVAS_HZ"))
-        _every = float(os.environ.get("ZMAX_L2M_EVERY_S") or (30.0 if _in_loop else 0.0))
-        if _now - _L2M_CACHE["t"] < _every:
-            return True
-        _L2M_CACHE["t"] = _now
-        try:
-            bp = os.path.join(_REPO_ROOT, "tools", "l2_ros2_bridge.py")
-            bm = _load_mod("zmax_l2_ros2_bridge", bp)        # 正常 import (断点可绑)
-            o = bm.sh("timeout 3 ros2 topic echo --once /robot_status 2>/dev/null | head -2",
-                      float(os.environ.get("ZMAX_L2M_TIMEOUT_S") or 4.0))
-            ok = bool(str(o).strip())
-            log(f"   🔌 ROS2 桥 (只读): {'在线 · ' + str(o).strip()[:120] if ok else '无响应 (Orin 未连/未起)'}"
-                f" · 桥文件 {os.path.basename(bp)}")
-            _SS_STATE["l2_muscle_ros2"] = ok
-        except Exception as e:                                                 # noqa: BLE001
-            log(f"   🔌 ROS2 桥 (只读): 查询失败 {type(e).__name__}")
-        return True
-    except Exception as e:                                                     # noqa: BLE001
-        log(f"⚠️ L2 肌肉记忆技能库失败: {type(e).__name__}: {e}")
-        return False
+    """→ nodes/n_l2_muscle.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .n_l2_muscle import node_n_l2_muscle as _impl
+    return _impl(ctx)
+
 
 _L2M_CACHE = {"t": -1e9}     # 💪 L2 肌肉记忆 ROS2 查询上次时刻 (节拍闸, 见函数内注释)
 
@@ -6480,226 +4792,10 @@ _MANI_ENG_CACHE: dict = {}       # {out: 上次结果, t: 时间} —— 节流�
 
 
 def node_ss_mani_eng(ctx):
-    """🧮 流形引擎 — 高维状态 → 低维流形 (编码/投影/度量/导航/反馈 五阶段真跑)。
+    """→ nodes/ss_mani_eng.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_mani_eng import node_ss_mani_eng as _impl
+    return _impl(ctx)
 
-    🏷 本节点同时是**产品标识**与**空间质数结构化理解能力**的输出口 (老倪 2026-10-13):
-      产品标识 (550A 原创版 / 550B 标定版 / 550C 量产版) 与版本段回读配置真源
-      config/platform/zmax_product.json 的 active_product; 能力集合由质数指纹给出唯一编码
-      (可逆分解, 无冗余); 当前发布指纹回读真源台账; 结构理解把"当前结构" (产品能力里的元数据
-      基元 + 本帧工序阶段) 与记忆库比对, 报出已知/未见 (未见结构 = 自主进化的输入); 并给
-      谱对称正则项 / 锚点稀疏度 / 采样课程当前值 (只读, 不改写度量张量)。
-      返回 dict (见 _mani_product_block): product_id / version_segment / cap_signature / fingerprint /
-      understand{signature,known,seen_structures,novel_events,evolution_input} / symmetry / anchor_* /
-      sample_rate; 另带 ok = 本节点真跑成功与否 (与改造前的 True/False 同义)。
-    """
-    log = ctx.get("log")
-    # 🕒 2026-10-31 老倪「怎么超节拍了」: 本节点每拍 ~22-38ms (质数结构理解里 json.dump 大对象),
-    #   再撞上 ssyolo 真推理那一拍 (40-60ms) ⇒ 合计 107ms > 100ms 预算 (10Hz 每 5 拍超一次)。
-    #   本节点输出是标量/指纹级, 没必要 10Hz 重算 ⇒ 按 ZMAX_MANI_PERIOD_S (默认 0.25s) 节流,
-    #   其余拍回放上次结果 (带 cached_ago_s), 下游每拍照样有值。
-    _now_t = time.monotonic()
-    _per_t = float(os.environ.get("ZMAX_MANI_PERIOD_S", "0.25"))
-    _c_t = _MANI_ENG_CACHE
-    if _c_t.get("out") is not None and (_now_t - float(_c_t.get("t") or 0.0)) < _per_t:
-       _o_t = dict(_c_t["out"])
-       _o_t["cached_ago_s"] = round(_now_t - float(_c_t["t"]), 3)
-       return _NodeOut(_o_t)
-
-    def _ret(ok):
-        """返回**结果字典** (含 ok=本节点真跑成功与否, 与改造前的 True/False 同义)。
-
-        2026-10-29: 原来只带产品标识块 (_prod), 几何/健康/扭矩算完却没进返回值 ⇒ 下游拿不到。
-        现在把 _mani_geo (dim/mode/min_eig/det_g/kappa/tau/H) 一并带出; 变量未定义时安全降级。
-        """
-        try:
-            _d = dict(_prod if isinstance(_prod, dict) else {})
-        except NameError:                                                    # noqa: BLE001
-            _d = {}
-        _d["ok"] = bool(ok)
-        try:
-            if isinstance(_mani_geo, dict):
-                _d["mani_geo"] = dict(_mani_geo)
-                for _k in ("dim", "mode", "scale", "min_eig", "det_g", "kappa",
-                           "geodesic_dev", "tau", "H", "H_metric", "H_vitality"):
-                    if _k in _mani_geo:
-                        _d[_k] = _mani_geo[_k]
-        except NameError:                                                    # noqa: BLE001
-            _d["mani_geo"] = None
-        _MANI_ENG_CACHE["out"] = dict(_d)          # 供下一拍节流回放
-        _MANI_ENG_CACHE["t"] = time.monotonic()
-        return _NodeOut(_d)
-
-    # ⓪ 🆕 2026-10-12 老倪: 「主参数 M 的功能, 要由**流形引擎节点**实现, 通过一个结构, 承接要实现的功能」。
-    #   ⇒ 本节点先消费**配置单映射出的主参数 M** (= 度量张量 g_ij(x)=M·G_ij(x) 的尺度), 真跑算:
-    #     ① 度量几何量 (dim/mode/独立分量/正定 min_eig/det g/联络 ‖Γ‖/曲率 κ=‖R‖)
-    #     ② 健康度 H (= 度量几何健康 × 内稳态生命力; 内稳态真跑 homeostasis.py)
-    #     ③ 扭矩 τ = M·‖Γ v v‖ (曲率回正力矩: 等效惯量 M × 测地线弯曲加速度; 各向同性 ⇒ Γ=0 ⇒ τ=0, 零回归)
-    # ── 🏷 产品标识 + 空间质数结构化理解 (真跑先出: 与轨迹无关, 任何返回路径都带上) ──
-    _g_metric = None
-    try:
-        import importlib.util as _ilu_me
-        import numpy as _np_me
-        _s_me = _ilu_me.spec_from_file_location("config_to_M", os.path.join(_REPO_ROOT, "tools", "config_to_M.py"))
-        _cm = _ilu_me.module_from_spec(_s_me)
-        sys.modules["config_to_M"] = _cm
-        _s_me.loader.exec_module(_cm)
-        _sp = _cm.compute_M()                                       # 配置单 → M (与主参数 M 节点同一映射函数)
-        import lerobot.manifold.metric_field as _MF
-        _mf = _MF.MetricField(dim=int(_sp["dim"]), scale=float(_sp["scale"]), mode=str(_sp["mode"]),
-                              diag=_sp["diag"], comps=_sp["components"], gain=_sp["gain"])
-        _okp, _mn, _detg = _mf.is_positive_definite()
-        _spec_g = _mf.spec()
-        _cr = _mf.curvature_report()
-        _kappa = float(_cr.get("‖R‖_F", 0.0))
-        _x0 = _np_me.zeros(int(_sp["dim"]))
-        _v0 = _np_me.zeros(int(_sp["dim"]))
-        _v0[0] = 1.0
-        _geo = _mf.geodesic_curve(_x0, _v0, steps=5, dt=0.05)[-1]
-        _dev = float(_np_me.linalg.norm(_geo - (_x0 + _v0 * 0.25)))
-        _g_metric = _mf.shape(_x0)                                  # 度量真值形状 → 谱对称正则项用 (只读)
-        _Gam = _mf.christoffel(_x0)
-        _tau = float(_sp["scale"]) * float(_np_me.linalg.norm(_np_me.einsum("kij,i,j->k", _Gam, _v0, _v0)))
-        _H_metric = 1.0 if (bool(_okp) and abs(float(_np_me.linalg.det(_mf.shape(_x0))) - 1.0) < 1e-9) else 0.0
-        try:
-            from lerobot.manifold.homeostasis import HomeostasisEngine as _HE
-            _H_vit = float((_HE().drive(dt=0.01) or {}).get("vitality", 1.0))
-        except Exception:                                                       # noqa: BLE001
-            _H_vit = None
-        _H = _H_metric * (_H_vit if _H_vit is not None else 1.0)
-        _mani_geo = {"task": _sp["task_id"], "dim": _sp["dim"], "mode": _sp["mode"], "scale": _sp["scale"],
-                     "min_eig": _mn, "det_g": _detg, "kappa": _kappa, "geodesic_dev": _dev, "tau": _tau,
-                     "H_metric": _H_metric, "H_vitality": _H_vit, "H": _H, "audit_sha": _sp["audit_sha"]}
-        _SS_STATE["mani_geo"] = _mani_geo
-        if log:
-            log("🧮 流形引擎 · 用主参数 M 算几何/健康/扭矩 (M ← 配置单 %s 映射, 审计 %s)"
-                % (_sp["task_id"], _sp["audit_sha"][:12]))
-            log("   ① 度量 g=M·G: dim=%d · mode=%s · 独立分量 %d · M=%.4g · 正定 %s (min_eig %.4g) · det g %.4g"
-                % (_spec_g["dim"], _spec_g["mode"], _spec_g["独立分量数"], _spec_g["尺度 M"],
-                   "✅" if _okp else "❌", _mn, _detg))
-            log("   ② κ (曲率) = ‖R‖_F = %.6g · 联络 ‖Γ‖_F = %.6g · 测地线偏离欧氏直线 %.4g"
-                " (常度量 gain=0 ⇒ Γ=0)" % (_kappa, float(_cr.get("‖Γ‖_F", 0.0)), _dev))
-            log("   ③ 健康度 H = %.4g (= 度量几何健康 %.3g × 内稳态生命力 %s)"
-                % (_H, _H_metric, ("%.5g" % _H_vit) if _H_vit is not None else "N/A"))
-            log("   ④ 扭矩 τ = M·‖Γ v v‖ = %.6g (曲率回正力矩: 等效惯量 M × 测地线弯曲加速度; 常度量⇒0)"
-                % _tau)
-    except Exception as _e:                                                     # noqa: BLE001
-        if log:
-            log("⚠️ 主参数 M 几何层不可用 (流形引擎续跑): %r" % (_e,))
-    # ── 🏷 产品标识 (550A/550B/550C) + 空间质数结构化理解能力: 真源回读, 与轨迹无关 ──
-    _mod_now = ctx.get("module") if isinstance(ctx, dict) else None
-    _step_now = int(getattr(_mod_now, "_ss_round", 0) or 0) or 1
-    _prod = _mani_product_block(ctx, log=log, g=_g_metric, step=_step_now)
-    _SS_STATE["mani_product"] = _prod                    # 进链路缓存: 画布/控制台/外部可读
-    if isinstance(ctx, dict):
-        ctx["mani_product"] = _prod                      # 调用方也能直接取 (不改其它节点契约)
-    try:
-        import importlib.util as _ilu
-        import numpy as np
-        path = os.path.join(_MANIFOLD_DIR, "manifold_engine.py")
-        _mn = "lerobot.manifold.manifold_engine"
-        spec = _ilu.spec_from_file_location(_mn, path)
-        m = _ilu.module_from_spec(spec)
-        # 🔴 2026-10-29 老倪「流形引擎断点在哪里 / 这里进不去」: 少了这一行, pydevd 按模块名在
-        #   sys.modules 里找不到这个文件 ⇒ manifold_engine.py 里**所有断点都绑不上**
-        #   (函数照跑, VSCode 不停, 也不报错)。旁边的 prime_structure 一直有注册, 这里漏了。
-        import sys as _sys_mani
-        _sys_mani.modules[_mn] = m
-        spec.loader.exec_module(m)
-        mod = ctx.get("module")
-        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
-        _tsrc, _tidx = "module._ss_tr (GUI 播放)", None
-        if tr is not None and tr.get("t"):
-            _tidx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
-        else:
-            # L4 统一帧回退 (2026-10-29 老倪「流形引擎要真正接入运行」):
-            #   常驻循环没有 GUI module, 原来这里直接 return False ⇒ 流形引擎核心一次没跑过。
-            #   回退到真实 episode 轨迹 (obs[400][43] + u_exec_vec[400][4]), 帧号跟 engine_latest.idx 同步。
-            _d, _srcf = _ss_traj_files()
-            _ob = (_d or {}).get("obs")
-            if _ob:
-                _n = len(_ob)
-                tr = {"t": [i * 0.1 for i in range(_n)], "obs": _ob,
-                      "u_exec_vec": (_d or {}).get("u_exec_vec") or []}
-                _tidx = max(0, min(_ss_engine_idx(), _n - 1))
-                _tsrc = "ss_traj_last.json ← %s" % (_srcf or "?")
-        if tr is None or not tr.get("t"):
-            if log:
-                log("⚠️ 流形引擎: 无帧真源 — GUI 播放态与 ss_traj_last.json 都取不到 (不造状态)")
-            return _ret(False)                       # 产品标识/结构理解已在上面真跑出 (照旧返回)
-        idx = _tidx if _tidx is not None else 0
-        O = np.asarray(tr["obs"], dtype=float)
-        if O.ndim != 2 or O.shape[1] < 43:
-            if log:
-                log(f"⚠️ 流形引擎: 轨迹 obs 维数 {O.shape} 不足 43 → 无法编码 (如实报, 不补造)")
-            return _ret(False)
-        eng = m.ManifoldEngine(manifold_type="su2", latent_dim=16, state_dim=43, action_dim=4)
-        ck = os.path.join(_REPO_ROOT, "models", "manifold_engine.npz")
-        loaded = eng.load(ck)
-        calib_note = f"标定 {os.path.basename(ck)}" if loaded else "未标定 → 用本段轨迹现场拟合"
-        if not loaded:
-            U = np.asarray(tr.get("u_exec_vec") or np.zeros((len(O), 4)), dtype=float)[:len(O), :4]
-            eng.fit(O[:, :43], U)
-        goal = eng.project(O[-1, :43])["p"]            # 目标 = 末帧收敛态 (真值锚, 非自选)
-        eng.goal_point = goal
-        r = eng.project(O[idx, :43])
-        gf = eng.gradient_flow()
-        p_next = eng.navigator.step(r["p"], gf["descent"], dt=0.01)
-        nav = eng.navigate(goal, T=16)
-        st = eng.step(O[idx, :43], dt=0.01)
-        fb = eng.feedback_update(O[min(idx + 1, len(O) - 1), :r["p"].size] -
-                                 O[idx, :r["p"].size])
-        lat = eng.latency_report()
-        meta = r["meta"]
-        hom = st.get("homeostasis")                              # ⚖ 内稳态 (2026-10-10)
-        _SS_STATE["mani_eng"] = {"p": r["p"].tolist(), "phi": gf["phi"], "conf": r["confidence"],
-                                 "anomaly": r["anomaly"], "action": st["action"].tolist(),
-                                 "residual": r["residual"], "drift": r["drift"], "idx": idx,
-                                 "hom": hom}
-        if hom:
-            eng.hom.write_state()                               # 快照落盘 → 画布/控制台/外部可读
-        if log:
-            reg = m.MANIFOLD_REGISTRY
-            ready = [k for k, v in reg.items() if v["status"] == "ready"]
-            log(f"🧮 流形引擎 · L4 核心内核 (帧 {idx}/{len(O)-1} · {calib_note})")
-            log(f"   流形 {eng.manifold_type} · 约束「{reg[eng.manifold_type]['constraint']}」· "
-                f"度量「{reg[eng.manifold_type]['metric']}」· 测地线「{reg[eng.manifold_type]['geodesic']}」"
-                f" · 状态 {reg[eng.manifold_type]['status']}")
-            log(f"   可用流形 {len(ready)}/{len(reg)}: {' · '.join(ready)}")
-            log(f"   未实现(如实登记): " + " · ".join(f"{k}({v.get('why','')[:22]})"
-                                                     for k, v in reg.items() if v["status"] != "ready"))
-            log(f"   ① 编码: {O.shape[1]}D → z({eng.encoder.latent_dim}D)  ② 投影: p={np.round(r['p'], 3)}"
-                + (f" · θ={meta.get('theta')} visibility={meta.get('visibility')}" if "theta" in meta else ""))
-            log(f"   ③ 约束违例 {r['residual']:.2e} · 投影改动 {r['drift']:.4f} · 置信 {r['confidence']:.3f}"
-                f" · 异常 {'是 ⚠' if r['anomaly'] else '否'}"
-                + (f" · 潜维补齐 {meta.get('need')}←{meta.get('got')}" if meta.get("latent_padded") else ""))
-            log(f"   ④ 势能 Φ={gf['phi']:.5f} · 梯度范数 {gf['norm']:.4f} (切空间 −∇Φ, 向收敛态)")
-            log(f"   ⑤ 测地线→收敛态: 长度 {nav['length']:.4f} · {nav['geodesic_kind']} · 终点误差 {nav['end_error']:.2e}"
-                f" · {nav.get('t_navigate_ms')}ms")
-            log(f"   ⑥ 动作建议 a={np.round(st['action'], 3)} ({st['decode_src']}) · "
-                f"有界反馈 ‖Δ‖={fb['norm']:.4f}{' (已限幅)' if fb['clamped'] else ''}")
-            log(f"   ⏱ 延迟: 编码 {lat.get('encode', {}).get('mean_ms')}ms · 投影 {lat.get('project', {}).get('mean_ms')}ms"
-                f" · 梯度 {lat.get('metric', {}).get('mean_ms')}ms · 测地线 {lat.get('navigate', {}).get('mean_ms')}ms"
-                f" · 端到端 {lat.get('total_mean_ms')}ms (上限 ~{lat.get('implied_max_hz')}Hz)")
-            if hom:
-                sd = hom["state"]; est = [k for k, v in (hom.get("estimated") or {}).items() if v]
-                log(f"   ⚖ 内稳态: 生命力 {hom['vitality']:.3f} · 模式 {hom['mode']} · "
-                    f"主导驱动 {hom['dominant']}({hom['dominant_urgency']:.3f})"
-                    + ("  ⛔危险(动作全零)" if hom["kind"] == "veto" else "")
-                    + ("  ⚠抢占" if hom["kind"] == "interrupt" else ""))
-                log(f"      身体: 能量 {sd['energy']:.3f} · 温度 {sd['temperature']:.3f} · 磨损 {sd['wear']:.3f}"
-                    f" · 姿态 {sd['balance']:.3f} · 对齐 {sd['alignment']:.3f}"
-                    f"   (无传感器仅按衰减外推: {'/'.join(est) or '无'})")
-                log(f"      紧迫度→行为权重 {hom['urgency']} · 动作调制 ×{hom['action_gain']:.3f}"
-                    f"{' (已调制)' if hom.get('modulated') else ' (未调制/死区)'} · "
-                    f"硬闸 {'开' if hom['is_critical'] else '关'}"
-                    + (f" · ♻去充电" if hom["mode"] == "recharge" else ""))
-                log(f"      快照落盘 zmax_data/ss_live/manifold_homeostasis.json (可被画布/控制台/DDS 切面读)")
-            log("   🔒 只读旁路: 结论进数据总线/日志, 不下发动作 (动作须人工授权)")
-        return _ret(True)
-    except Exception as e:                                                      # noqa: BLE001
-        if log:
-            log(f"⚠️ 流形引擎失败: {type(e).__name__}: {e}")
-        return _ret(False)
 
 _reg("ss_mani_eng", ["流形引擎", "Manifold Engine"],
      "🧮 流形引擎 【系统核心 · 画布上唯一琥珀金 ◉核心】— L4 核心内核: 高维状态→低维流形, "
@@ -6839,283 +4935,10 @@ _EXTERNAL_LOC["ss_energy"] = (os.path.join(_MANIFOLD_DIR, "energy_manifold.py"),
 #   ⚠ 只读旁路: 结论进 _SS_STATE/日志, **不下发动作** (动作须人工授权)。
 # ══════════════════════════════════════════════════════════════════════════════
 def node_ss_calib_mani(ctx):
-    """🧮 流形引擎标定 — 主参数 M (状态空间结构参数/等效惯量): 同一场 有惯性 vs 过阻尼 两臂真跑"""
-    log = ctx.get("log")
-    # 🔴 2026-10-29: 本节点单次 300~320ms (ManifoldEngine project/navigate/feedback 全跑 + 配置装载),
-    #   10Hz 常驻循环里每拍跑会掉 3 帧 ⇒ 内部节流 (默认 5s 一次真算, 其间返回上次结果并标 cached/age)。
-    #   要每次真算: ZMAX_L4_CALIB_PERIOD_S=0
-    _cache = _SS_STATE.get("calib_mani_cache")
-    _per = float(os.environ.get("ZMAX_L4_CALIB_PERIOD_S", "5") or 0)
-    if _cache and _per > 0:
-        _agec = time.time() - float(_cache.get("t") or 0)
-        if _agec < _per:
-            _v = dict(_cache.get("v") or {})
-            _v.update({"cached": True, "cache_age_s": round(_agec, 2), "cache_period_s": _per})
-            return _NodeOut(_v)
+    """→ nodes/n_calib_mani.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .n_calib_mani import node_ss_calib_mani as _impl
+    return _impl(ctx)
 
-    # ①e 🆕 2026-10-12 老倪设计: **主参数 M 是张量** —— 度量张量 g_ij(x) = M · G_ij(x) (det G = 1)。
-    #   真源实现 src/lerobot/manifold/metric_field.py; 本节点真跑给出几何量 (正定性/联络/曲率/测地线)。
-    mf = None
-    try:
-        import os as _os2
-        import numpy as _np2
-        import importlib as _il2
-        _mf2 = _il2.import_module("lerobot.manifold.metric_field")
-        mf = _mf2.MetricField.from_config(path=_os2.path.join(_REPO_ROOT, "config", "calib", "zmax_manifold.json"))
-        _sp = mf.spec()
-        _okp, _mn, _det = mf.is_positive_definite()
-        _cr = mf.curvature_report()
-        _x0 = _np2.zeros(mf.dim)
-        _v0 = _np2.zeros(mf.dim)
-        _v0[0] = 1.0
-        _lin = _x0 + _v0 * 0.25                                            # 欧氏直线 (对照)
-        _geo = mf.geodesic_curve(_x0, _v0, steps=5, dt=0.05)[-1]           # 真测地线
-        _dev = float(_np2.linalg.norm(_geo - _lin))
-        if log:
-            log("🧭 主参数 M = 度量张量 g_ij(x) = M·G_ij(x): dim=%d · mode=%s · 独立分量 %d · M=%.3g"
-                % (_sp["dim"], _sp["mode"], _sp["独立分量数"], _sp["尺度 M"]))
-            log("   正定: %s (min_eig %.4g · det g %.4g) · 曲率: %s"
-                % ("✅" if _okp else "❌", _mn, _det, ("‖Γ‖=%.3g ‖R‖=%.3g" % (_cr["‖Γ‖_F"], _cr["‖R‖_F"]))
-                   if _cr.get("full_tensor") else ("子空间抽样 ‖R‖=%.3g" % _cr["‖R‖_F"])))
-            log("   测地线 (v=e1, t=0.25): 度量走 %s vs 欧氏直线 %s → 偏离 %.4g (各向同性 ⇒ 0 = 零回归)"
-                % (_np2.round(_geo, 4).tolist(), _np2.round(_lin, 4).tolist(), _dev))
-    except Exception as _e:                                                 # noqa: BLE001
-        if log:
-            log("⚠️ 度量张量口径不可用 (退回标量 M): %r" % (_e,))
-    # ①f 🆕 2026-10-12 老倪: 「配置中心的参数, 要映射到主参数 M … 这个逻辑在**主参数 M 节点**实现, 主要是映射关系」。
-    #   ⇒ 本节点 = **配置单 → M 的映射关系** (唯一映射函数 tools/config_to_M.py::compute_M):
-    #     读配置单 (任务/注册表/MCD/绑定/快照/性能指标) → 按 R1~R5 显式映射表定 M →
-    #     写回本节点 params (m_metric/m_mapping/…) → 逐条打印**映射依据**(每条都带来源)。
-    try:
-        import importlib.util as _ilu_cm
-        _s_cm = _ilu_cm.spec_from_file_location("config_to_M", os.path.join(_REPO_ROOT, "tools", "config_to_M.py"))
-        _cm = _ilu_cm.module_from_spec(_s_cm)
-        sys.modules["config_to_M"] = _cm
-        _s_cm.loader.exec_module(_cm)
-        _spec_cm = _cm.compute_M((ctx.get("params") or {}).get("task") or None)      # 缺省=活跃配置单
-        _w_cm = _cm.write_into_node(_spec_cm)                                        # 写回本节点 params (记 m_*)
-        _SS_STATE["config_to_M"] = {"task": _spec_cm["task_id"], "dim": _spec_cm["dim"], "mode": _spec_cm["mode"],
-                                    "scale": _spec_cm["scale"], "diag": _spec_cm["diag"], "comps": _spec_cm["components"],
-                                    "gain": _spec_cm["gain"], "audit_sha": _spec_cm["audit_sha"],
-                                    "node_write_ok": bool(_w_cm.get("ok"))}
-        if log:
-            log("🧮 主参数 M ← 配置单 [%s] 的显式映射 (R1~R5 · 审计哈希 %s · 映射函数 tools/config_to_M.py::compute_M)"
-                % (_spec_cm["task_id"], _spec_cm["audit_sha"][:16]))
-            for _r in _spec_cm["mapping_table"]:
-                log("   [%s] %-16s = %-22s ⇐ %s"
-                    % (_r["id"], _r["target"], str(_r.get("value"))[:22], str(_r["source"])[:64]))
-                _ev = _r.get("evidence") if isinstance(_r.get("evidence"), list) else [_r.get("evidence")]
-                for _e2 in [x for x in _ev if x][:3]:
-                    log("        · %s" % str(_e2)[:104])
-                if _r.get("axis_tolerance"):
-                    for _a in _r["axis_order"]:
-                        log("        · 轴 %-3s ε=%-8.4g ⇐ %s"
-                            % (_a, _r["axis_tolerance"][_a], str(_r["tolerance_sources"][_a])[:66]))
-                if _r.get("input_sources"):
-                    for _k, _v in _r["input_sources"].items():
-                        log("        · 输入 %-10s ⇐ %s" % (_k, str(_v)[:66]))
-            log("   ⇒ 主参数 M = (dim=%d · mode=%s · scale=%.3g [能级 %s] · diag %s · gain %s)"
-                % (_spec_cm["dim"], _spec_cm["mode"], _spec_cm["scale"], _spec_cm["energy_level"],
-                   _spec_cm["diag"], _spec_cm["gain"]))
-            log("   📥 写回本节点 params: %s (键 %s)"
-                % ("✅" if _w_cm.get("ok") else "❌ " + str(_w_cm.get("err")), ",".join(_w_cm.get("written") or [])[:110]))
-            log("   🔗 「用 M 实现功能」在**流形引擎节点** (ss_mani_eng): 度量几何/健康度 H/扭矩 τ")
-    except Exception as _e:                                                 # noqa: BLE001
-        if log:
-            log("⚠️ 配置单→主参数 M 映射不可用 (不影响标量标定): %r" % (_e,))
-    try:
-        import importlib.util as _ilu
-        import numpy as np
-
-        # ① 读 M (标定层单一真源: config/calib/zmax_manifold.json → tools/zmax_params.py)
-        M, inertia, rng, unit, src, zm = None, None, None, None, None, None
-        try:
-            _s = _load_mod("zmax_params", os.path.join(_REPO_ROOT, "tools", "zmax_params.py"))
-            M, inertia = zm.manifold_M(), zm.manifold_inertia()
-            sp = zm.manifold_spec()
-            rng, unit, src = sp.get("range"), sp.get("unit"), sp.get("_src")
-        except Exception as _e:                                                 # noqa: BLE001
-            M, inertia, rng, unit, src = 1.0, False, [0.0, 8.0], "等效惯量尺度", f"默认 (读 zmax_params 失败: {_e})"
-
-        # ①c 🆕 2026-10-11 老倪: 「这个节点的代码要加载配置中心的**数据库文件, json文件, yaml文件**等, 直接指导模型工作」
-        #     全量装载 → 一份主参数引导快照 (config/cc_snapshot.json 同源, 可审计); 失败则如实退回单文件读 (零回归)
-        cc, g, _ccmod, _ccspec = {}, {}, None, ""
-        try:
-            _s3 = _ilu.spec_from_file_location("config_center_load",
-                                               os.path.join(_REPO_ROOT, "tools", "config_center_load.py"))
-            _ccmod = _ilu.module_from_spec(_s3)
-            _s3.loader.exec_module(_ccmod)
-            cc = _ccmod.build(write=True)          # 48 配置文件 (json/yaml) + 工程库 SQLite
-            g = cc.get("guide") or {}
-            _ccspec = _ccmod.spec(cc)
-            if g.get("M") is not None:
-                M = float(g["M"])                   # 主参数以配置中心装载值为准 (与标定真源同源)
-            if g.get("inertia") is not None:
-                inertia = bool(g["inertia"])
-        except Exception as _e:                                                 # noqa: BLE001
-            if log:
-                log("⚠️ 配置中心全量装载失败 → 退回单文件读 zmax_params: %s: %s" % (type(_e).__name__, _e))
-
-        # ①d 🆕 2026-10-12 老倪: 「这个配置中心的配置数据, 要写入状态空间的 标定诊断测量 主参数M 节点,
-        #     我右键打开这个节点, 要直接定位到, 导入配置文件的位置, 而且要能够运行, 要有能加载配置文件的逻辑」
-        #   ⇒ 本节点运行 = 真加载**配置文件真源** (8 项 json/proj 真源 + 工程库 SQLite + 工单) 并**写回本节点 params**
-        #   (cfg_entries / cfg_snapshot / cfg_loaded_at / cfg_files)。右键「打开源码」由节点 params.source +
-        #   source_symbol 直达导入函数 (src/lerobot/engineering/config_import.py::import_config_files)。
-        ci = {}
-        try:
-            import importlib as _il
-            _ci = _il.import_module("lerobot.engineering.config_import")
-            ci = _ci.load_config()              # 真加载 + 真写回 (print 逐文件清单)
-            if log:
-                _s = (ci.get("import") or {})
-                log("📥 配置导入: 真源 %s/%s · 工程库 %s · 参数 %s/%s 就绪 · 任务 %s · 活跃 %s · 工单 %s · 写回 %s"
-                    % (_s.get("files_ok"), _s.get("files_total"), "✅" if _s.get("db_ok") else "❌",
-                       _s.get("params_ready"), _s.get("params_total"), _s.get("tasks"),
-                       _s.get("active_task"), _s.get("orders"),
-                       "✅" if (ci.get("write") or {}).get("ok") else "❌"))
-                if _s.get("missing"):
-                    log("   ⚠️ 缺文件: %s" % ", ".join(_s["missing"]))
-        except Exception as _e:                                                 # noqa: BLE001
-            if log:
-                log("⚠️ 配置导入失败 (不影响主参数 M 标定): %r" % (_e,))
-
-        # ①b 可写口 (可选): 画布节点 params 带数值 write_M 且 zmax_params 可用 → 真写盘并复读
-        wrote = None
-        _wv = (ctx.get("params") or {}).get("write_M")
-        if _wv is not None and zm is not None:
-            wrote = zm.write_manifold_M(float(_wv), (ctx.get("params") or {}).get("inertia"))
-            M, inertia = wrote["M"], wrote["inertia"]
-
-        # ② 流形引擎 (真件) + 权威规格
-        path = os.path.join(_MANIFOLD_DIR, "manifold_engine.py")
-        _mn = "lerobot.manifold.manifold_engine"
-        spec = _ilu.spec_from_file_location(_mn, path)
-        m = _ilu.module_from_spec(spec)
-        # 🔴 2026-10-29 老倪「流形引擎断点在哪里 / 这里进不去」: 少了这一行, pydevd 按模块名在
-        #   sys.modules 里找不到这个文件 ⇒ manifold_engine.py 里**所有断点都绑不上**
-        #   (函数照跑, VSCode 不停, 也不报错)。旁边的 prime_structure 一直有注册, 这里漏了。
-        import sys as _sys_mani
-        _sys_mani.modules[_mn] = m
-        spec.loader.exec_module(m)
-        msp = m.manifold_M_spec()
-        dt = float(g.get("dt") or 0.01)      # 控制周期: 配置中心有就按它, 没有就 0.01 (如实标注)
-
-        mod = ctx.get("module")
-        tr = getattr(mod, "_ss_tr", None) if mod is not None else None
-        O, idx = None, 0
-        _usrc = "module._ss_tr (GUI 播放)"
-        if tr is not None and tr.get("t"):
-            O = np.asarray(tr["obs"], dtype=float)
-            if O.ndim == 2 and O.shape[1] >= 43 and len(tr["t"]) > 0:
-                idx = int(min(getattr(mod, "_ss_round", 0) or 0, len(tr["t"]) - 1))
-            else:
-                O = None
-        if O is None:
-            # L4 统一帧回退 (2026-10-29): 常驻循环无 GUI module, 用真实 episode 轨迹文件
-            _d, _srcf = _ss_traj_files()
-            _ob = (_d or {}).get("obs")
-            if _ob:
-                _O = np.asarray(_ob, dtype=float)
-                if _O.ndim == 2 and _O.shape[1] >= 43:
-                    O, idx = _O, max(0, min(_ss_engine_idx(), _O.shape[0] - 1))
-                    _usrc = "ss_traj_last.json ← %s" % (_srcf or "?")
-        real = O is not None
-
-        if real:      # 真引擎帧 (su2 流形): 编码→投影→梯度流 → 取力
-            eng = m.ManifoldEngine(manifold_type="su2", latent_dim=16, state_dim=43, action_dim=4,
-                                   manifold_M=M, inertia=bool(inertia))
-            ck = os.path.join(_REPO_ROOT, "models", "manifold_engine.npz")
-            loaded = eng.load(ck)
-            if not loaded:
-                # 拟合用的动作列: GUI 播放态 tr → 无 GUI 时同一份轨迹文件 (都不造假)
-                _uu = (tr or {}).get("u_exec_vec")
-                if not _uu:
-                    _dd, _ = _ss_traj_files()
-                    _uu = (_dd or {}).get("u_exec_vec")
-                U = np.asarray(_uu if _uu else np.zeros((len(O), 4)), dtype=float)[:len(O), :4]
-                eng.fit(O[:, :43], U)
-            goal = eng.project(O[-1, :43])["p"]              # 目标 = 末帧收敛态 (真值锚)
-            eng.goal_point = goal
-            r = eng.project(O[idx, :43])
-            gf = eng.gradient_flow()
-            frame = (f"引擎帧 {idx}/{len(O)-1} · 流形 {eng.manifold_type} · "
-                     f"{'标定 npz' if loaded else '本段轨迹现场拟合'}")
-        else:         # 无引擎轨迹 → 合成势场小实验 (与 M 同构; 如实标注, 不假装有真机帧)
-            eng = m.ManifoldEngine(manifold_type="euclidean", latent_dim=2, state_dim=2, action_dim=2,
-                                   manifold_M=M, inertia=bool(inertia))
-            goal = np.array([1.0, 0.0])
-            eng.goal_point = goal
-            r = eng.project(np.zeros(2))
-            gf = eng.gradient_flow()
-            frame = "无引擎轨迹 → 合成势场小实验 (如实标注, 非真机帧; 建议先点 ▶ 运行状态空间)"
-
-        # ③ 两臂: 过阻尼 (旧行为) vs 有惯性 (M 带动量) — 严格同一起点/同一场
-        p_od = eng.navigator.step(r["p"], gf["descent"], dt)     # 过阻尼 = 旧行为 (未改的 navigator)
-        _M_used = float(M) if (M is not None and float(M) > 0) else 1.0
-        eng.inertia, eng.M, eng.velocity = True, _M_used, None
-        p_in = eng._evolve(r["p"], gf["descent"], dt)
-        mom = 0.0 if eng.velocity is None else float(np.linalg.norm(eng.velocity))
-        d_od = float(np.linalg.norm(np.asarray(p_od, float) - np.asarray(r["p"], float)))
-        d_in = float(np.linalg.norm(np.asarray(p_in, float) - np.asarray(r["p"], float)))
-        _SS_STATE["calib_mani"] = {"M": M, "inertia_read": bool(inertia), "range": rng, "unit": unit,
-                                   "M_used": _M_used, "momentum": mom, "wrote": wrote,
-                                   "dx_overdamped": d_od, "dx_inertial": d_in,
-                                   "real_frame": real,
-                                   "goal": None if goal is None else np.asarray(goal).ravel().tolist()}
-        # ④ 🆕 配置中心的**限值/档位/几何**直接指导本次执行 (老倪: 配置要直接指导模型工作)
-        import re as _re
-        _lim, _cap, _clip = dict(g.get("limits") or {}), None, 0
-        _vmax = next((float(v) for k2, v in _lim.items()
-                      if _re.search(r"v_max|速度", str(k2)) and isinstance(v, (int, float))), None)
-        if _vmax:
-            _cap = float(_vmax) * float(dt)
-            _clip = int(d_od > _cap) + int(d_in > _cap)
-            d_od, d_in = min(d_od, _cap), min(d_in, _cap)
-        _SS_STATE["cc_guide"] = g
-        _SS_STATE["calib_mani"].update({"limits": _lim, "cap": _cap, "clips": _clip,
-                                        "cc_counts": cc.get("counts"), "cc_spec": _ccspec})
-        if log:
-            log("🧮 流形引擎标定 · L4 标定层 主参数 M (状态空间结构参数 / 等效惯量)")
-            log(f"   ① M = {M} (范围 {rng} · 单位「{str(unit)[:24]}…」· 真源 {src})"
-                + (f" · 本次真写盘 {wrote}" if wrote else ""))
-            if cc:
-                log("   📚 配置中心全量装载 → 本次模型执行: " + _ccspec)
-                _tk = g.get("task") or {}
-                log("      · 直接指导: 主参数 M=%s · 惯性 %s · dt=%ss · 限值 %s 项 %s · 档位开 %d (%s) · "
-                    "启用节点 %d · 几何 内参=%s 手眼=%s"
-                    % (g.get("M"), g.get("inertia"), dt, len(_lim), dict(list(_lim.items())[:3]),
-                       _tk.get("n_run_cfg_on", 0), ",".join(_tk.get("run_cfg_on") or [])[:60],
-                       _tk.get("n_enabled_nodes", 0), (g.get("geometry") or {}).get("has_K"),
-                       (g.get("geometry") or {}).get("has_handeye")))
-                log("      · 限值生效: %s" % (("步长按速度上限钳制 %d 次 (上限 %.6g/步)" % (_clip, _cap)) if _clip else
-                                              "本节点输出未触发限值 (无速度上限配置 ⇒ 不钳制, 力阈值见 limits)"))
-            log(f"   ② 现场读 inertia = {inertia} ({'有惯性二阶 a=F/M' if inertia else '过阻尼一阶 = 旧行为, 零回归'})"
-                f" · 数据 {frame}")
-            log(f"   ③ 同一起点/同一场两臂: 过阻尼 Δx={d_od:.6g} (速度∝力, 旧行为) vs "
-                f"有惯性 M={_M_used} Δx={d_in:.6g} (a=F/M, 动量 ‖v‖={mom:.6g}) → 差 {abs(d_in - d_od):.3g}")
-            log(f"   ④ 物理: {msp['physical']}")
-            log(f"   ⑤ 信息: {msp['information']}")
-            log(f"   ⑥ 可写口: tools/zmax_params.py --m <值> [--inertia on|off] → config/calib/zmax_manifold.json")
-            log(f"   ⑦ {msp['not_free_param']}")
-            log("   🔒 只读旁路: 只标定/对比, 不下发动作 (动作须人工授权)")
-        _ret_v = {
-            "kind": "calib_mani", "layer": "L4", "ok": True,
-            "M": M, "M_used": _M_used, "inertia": bool(inertia), "dt": dt,
-            "range": rng, "unit": str(unit)[:60], "param_src": src, "wrote": bool(wrote),
-            "frame_real": bool(real), "frame_idx": idx, "frame_desc": frame,
-            "frame_src": (_usrc if real else "无引擎轨迹 → 合成势场小实验 (如实标注)"),
-            "dx_overdamped": d_od, "dx_inertial": d_in, "momentum": mom,
-            "goal": (None if goal is None else np.asarray(goal).ravel().tolist()[:8]),
-            "cap_step": _cap, "clips": _clip,
-            "cached": False,
-            "src": "src/lerobot/manifold/manifold_engine.py::ManifoldEngine (project/gradient_flow/_evolve)",
-        }
-        _SS_STATE["calib_mani_cache"] = {"t": time.time(), "v": dict(_ret_v)}
-        return _NodeOut(_ret_v)
-    except Exception as e:                                                      # noqa: BLE001
-        if log:
-            log(f"⚠️ 流形引擎标定失败: {type(e).__name__}: {e}")
-        return False
 
 
 _reg("n_calib_mani", ["标定诊断测量", "主参数 M", "流形引擎标定", "流形标定", "主标定参数 M", "MCD", "配置收口", "Manifold Calibration"],
@@ -7135,17 +4958,10 @@ _EXTERNAL_LOC["n_calib_mani"] = (os.path.join(_MANIFOLD_DIR, "manifold_engine.py
 #   实现: module.start_canvas_live_overlay() 拉 8791 单帧快照 → 节点 video_pixmap/update
 # ══════════════════════════════════════════════════════════════════════════════
 def node_realscene_live(ctx):
-    """🎥 真实场景叠加 — 双击: 画布节点内实时显示叠加画面 (再双击一次 = 停)"""
-    module = ctx.get("module")
-    log = ctx.get("log")
-    if module is None or not hasattr(module, "toggle_canvas_live_overlay"):
-        if log:
-            log("⚠️ 场景叠加: 无 module 上下文 (仅画布内双击/工具栏按钮可用)")
-        return False
-    ok = module.toggle_canvas_live_overlay()
-    if log and not ok:
-        log("⚠️ 场景叠加: 未能出画面 — 先确认视频流 8791 在跑 (工具栏「🧩 场景叠加」或「📡 视频流」)")
-    return bool(ok)
+    """→ nodes/n_realscene_live.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .n_realscene_live import node_realscene_live as _impl
+    return _impl(ctx)
+
 
 _reg("n_realscene_live", ["真实场景叠加", "双眼叠加"],
      "🎥 真实场景叠加 · 双眼 (sim2real) — 双击: 画布节点内实时显示 8791 叠加画面 "
@@ -7155,28 +4971,11 @@ _reg("n_realscene_live", ["真实场景叠加", "双眼叠加"],
 # ─────────────────────────────────────────────────────────────────────────────
 # 🧿 L5 标注→训练闭环 (2026-09-28 老倪)
 # ─────────────────────────────────────────────────────────────────────────────
-def node_l5_loop(module=None, log=print, **kw):
-    """🧿 L5 标注→训练闭环 — 只读状态 (安全: 不在"节点逻辑"对话框里误触发长跑训练)
+def node_l5_loop(ctx):
+    """→ nodes/l5_loop.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .l5_loop import node_l5_loop as _impl
+    return _impl(ctx)
 
-    真正的启动入口 = 画布 🧭 能力档位节点选 **L5** + 点 ▶运行
-    (simulink_module.on_l5_annotate_train → 后台异步 subprocess
-     tools/l5_annotate_train_loop.py --run)。
-    真源: 标注 tools/auto_annotate.py(6 路实拍→VLM) → 监督数据
-          → 训练 tools/joint_train_all.py / tools/yolo_annot_train.py
-          → LoRA 合并 tools/merge_lora_ckpt.py
-    状态: ~/zmax/zmax_data/l5_loop/state.json (CLI 与画布徽章同源)
-    """
-    import json
-    p = "/home/ubuntu/zmax/zmax_data/l5_loop/state.json"
-    try:
-        st = json.load(open(p, encoding="utf-8"))
-    except Exception as e:                                                      # noqa: BLE001
-        log(f"🧿 L5 闭环: 尚无运行记录 ({p}: {type(e).__name__}) — 选 L5 档后点 ▶运行")
-        return False
-    log(f"🧿 L5 闭环: {st.get('status')} · 阶段 {st.get('stage')} · 完成 {st.get('stages_done')}")
-    for k, v in (st.get("results") or {}).items():
-        log(f"   {'✅' if v.get('ok') else '❌'} {k}: {v.get('reason') or v.get('secs')}")
-    return True
 
 _reg("l5_loop", ["L5 · 视觉语言自动标注", "L5 标注→训练", "标注→训练", "L5 档"],
      "🧿 L5 档 标注→训练闭环 — 选 L5 + 点 ▶运行: VLM 自动标注 6 路实拍 → L2/L3/L4 监督数据 → "
@@ -7243,3 +5042,45 @@ _reg("ss_uph", ["UPH 节拍循环器", "节拍循环器", "UPH循环", "节拍"]
 # ════════════════════════════════════════════════════════════════
 
 set_logic_globals(globals())
+
+# ════════════════════════════════════════════════════════════════════════════
+# 节点实现拆分收尾 (老倪 2026-11-10: 「是哪个节点, 就用哪个节点的名称」)
+#   真身 = nodes/<节点 key>.py;  本文件 = 共享运行时 + 薄壳。
+#   这里拿真身重注册一遍 registry ⇒ GUI「打开源代码」/ by_level / 断点都落到节点自己的文件,
+#   而不是这个 7000 行的注册表大文件。幂等: 没有 manifest 就什么都不做。
+# ════════════════════════════════════════════════════════════════════════════
+def _repoint_impls():
+    import importlib as _il
+    import json as _js
+    import os as _os
+    # ⚠️ 本模块的 NODE_LOGIC 可能被换过绑定 (实测 len=0, 真表在 registry 里),
+    #   所以一律直接问 registry, 不用本地名字。
+    from .. import registry as _rg
+    _mf = _os.path.join(_os.path.dirname(__file__), "impl_manifest.json")
+    if not _os.path.exists(_mf):
+        return 0
+    try:
+        with open(_mf, encoding="utf-8") as _f:
+            _man = _js.load(_f)
+    except Exception:                                                    # noqa: BLE001
+        return 0
+    _n = 0
+    for _key, _rec in _man.items():
+        try:
+            _m = _il.import_module(_rec["module"], __package__)
+            _fn = getattr(_m, _rec["func"])
+        except Exception as _e:                                          # noqa: BLE001
+            globals().setdefault("_REPOINT_ERR", {})[_key] = "%s: %s" % (type(_e).__name__, _e)
+            continue
+        _old = dict(_rg.NODE_LOGIC.get(_key) or {})
+        if not _old:
+            continue
+        _rg.register(_key, _old.get("match") or [], _old.get("doc") or "", _fn)
+        _n += 1
+    return _n
+
+
+try:
+    _rep = _repoint_impls()
+except Exception:                                                        # noqa: BLE001
+    _rep = 0
