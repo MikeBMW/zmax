@@ -445,6 +445,28 @@ def _apply_ctrl(mj, env, model, data, mujoco, cmd):
 _AC_LAST = {"t": 0.0, "deg": None, "err": None, "n": 0}
 
 
+def _page_cam(qs):
+    """页面机位 → MuJoCo 机位。
+
+    AR 页的 VR 世界是 **z 向下**(画布 2D 习惯): 实测页面 autoZoom 给的 tgt z = -0.065 在它自己
+    的坐标系里是"台面上方 65mm", 直接塞给 MuJoCo(z 向上) 会变成"台面下 65mm" ⇒ 画面看不到工位,
+    此前用"钉死目标点 + dist×0.65"打补丁, 结果两幅画面机位不同、看着像两个场景。
+    这里统一换算: z 取反, 距离限幅 0.8~3.0m。
+    """
+    d = dict(qs or {})
+    try:
+        if "tz" in d and d["tz"]:
+            d["tz"] = [str(-float(d["tz"][0]))]
+    except Exception:                                                    # noqa: BLE001
+        pass
+    try:
+        if "dist" in d and d["dist"]:
+            d["dist"] = [str(round(min(3.0, max(0.8, float(d["dist"][0]))), 3))]
+    except Exception:                                                    # noqa: BLE001
+        pass
+    return d
+
+
 def _ar_cmd_read(max_age=2.5):
     try:
         with open(os.path.join(ROOT, "zmax_data", "ss_live", "ar_cmd.json"), encoding="utf-8") as _f:
@@ -861,7 +883,7 @@ class Handler(BaseHTTPRequestHandler):
         if p in ("/", "/frame.png", "/frame.jpg") and any(
                 k in qs for k in ("az", "el", "dist", "tx", "ty", "tz", "fovy")):
             try:
-                self._send(200, render_free(qs), "image/png")
+                self._send(200, render_free(_page_cam(qs)), "image/png")
             except Exception as e:                                          # noqa: BLE001
                 self._send(503, ("free-cam: %s: %s" % (type(e).__name__, e)).encode(), "text/plain")
             return
@@ -877,14 +899,11 @@ class Handler(BaseHTTPRequestHandler):
                         #   页面 autoZoom 的 tgt/dist 是它自绘场景的尺度(实测 tgt z=-186mm 落在台面下、
                         #   dist 2.1m 把工位拍成一小块), 照搬 ⇒ 画面又暗又空, 老倪看着就是「不同步」。
                         #   实测: dist×0.5 + 预设 lookat ⇒ 内容占比 5%→18%, 均值 13→24。
-                        _cq = dict(_cq)
-                        # 目标点钉在工位中心偏上(双臂工作高度): 页面 autoZoom 的 tgt 会掉到台面下,
-                        #   pop 掉后用 render_free 的默认 tgt(0.70,0.22,0.14) 又会把上半屏留空
-                        #   —— 实测 tgt z 0.14→0.32, 亮像素占比 5.1%→6.7%。
-                        _cq["tx"], _cq["ty"], _cq["tz"] = ["0.52"], ["0.35"], ["0.32"]
-                        _pd = float((_cq.get("dist") or ["1.6"])[0])
-                        # 远近照页面(这才是"同焦"), 只做安全限幅; 目标点用预设(页面 autoZoom 的 tgt 会掉到台面下)
-                        _cq["dist"] = [str(round(min(2.6, max(0.6, _pd * 0.65)), 3))]   # 0.65: 8802 场景比画布小, 同焦会显得空(实测占比 2%→16%)
+                        # 🎯 2026-11-10 老倪「这两个场景的动作要同步」: 以前这里把页面的目标点**改掉**
+                        #   (钉死 0.52/0.35/0.32) 并把距离 ×0.65 ⇒ 两幅画面根本不是同一个机位,
+                        #   再怎么同步关节角, 看着也是"两个场景"。现在照搬页面机位, 只把 z 取反
+                        #   (页面坐标系 z 向下, MuJoCo z 向上), 距离做安全限幅。
+                        _cq = _page_cam(_cq)
                         b = render_free(_cq)
                 except Exception:                                        # noqa: BLE001
                     b = b""
