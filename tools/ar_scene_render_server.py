@@ -755,8 +755,10 @@ class Handler(BaseHTTPRequestHandler):
                         #   dist 2.1m 把工位拍成一小块), 照搬 ⇒ 画面又暗又空, 老倪看着就是「不同步」。
                         #   实测: dist×0.5 + 预设 lookat ⇒ 内容占比 5%→18%, 均值 13→24。
                         _cq = dict(_cq)
-                        for _k in ("tx", "ty", "tz"):
-                            _cq.pop(_k, None)
+                        # 目标点钉在工位中心偏上(双臂工作高度): 页面 autoZoom 的 tgt 会掉到台面下,
+                        #   pop 掉后用 render_free 的默认 tgt(0.70,0.22,0.14) 又会把上半屏留空
+                        #   —— 实测 tgt z 0.14→0.32, 亮像素占比 5.1%→6.7%。
+                        _cq["tx"], _cq["ty"], _cq["tz"] = ["0.52"], ["0.35"], ["0.32"]
                         _pd = float((_cq.get("dist") or ["1.6"])[0])
                         # 远近照页面(这才是"同焦"), 只做安全限幅; 目标点用预设(页面 autoZoom 的 tgt 会掉到台面下)
                         _cq["dist"] = [str(round(min(2.6, max(0.6, _pd * 0.65)), 3))]   # 0.65: 8802 场景比画布小, 同焦会显得空(实测占比 2%→16%)
