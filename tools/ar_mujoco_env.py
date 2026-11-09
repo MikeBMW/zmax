@@ -235,15 +235,20 @@ def build_mjcf() -> str:
         for k, _c in enumerate(_pc):
             _px, _py, _pz = [float(v) / 1000.0 for v in (_c.get("pos_mm") or [0, 0, 0])]
             _sx, _sy = [max(0.004, float(v) / 2000.0) for v in (_c.get("size_mm") or [36, 42, 15])[:2]]
+            # z 贴盘底上表面 (盘底 0.10 + 底厚 0.006 = 0.106, 片厚 2mm ⇒ 中心 0.107):
+            #   原来用 _pz-0.006=0.1115, 顶视能看到槽片与盘底之间 5.4mm 的缝 (像浮着)
             geos.append('<geom name="slot%d" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f 0.002" '
-                        'rgba="0.30 0.31 0.33 1" contype="0" conaffinity="0"/>'
-                        % (k, _px, _py, _pz - 0.006, _sx, _sy))
-    for k, s in enumerate(slots[:6]):
-        scx, scy, scz = ctr(s)
-        sx2, sy2, sz2 = sz(s)
-        geos.append('<geom name="fslot%d" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f 0.002" '
-                    'rgba="0.30 0.31 0.33 1" contype="0" conaffinity="0"/>'
-                    % (k, scx, scy, pzlo + 0.008, sx2, sy2))
+                        'rgba="0.45 0.46 0.48 1" contype="0" conaffinity="0"/>'
+                        % (k, _px, _py, 0.107, _sx, _sy))
+    # ❌ 去掉 fslot 复制: fences 的这 6 个槽与 place_cells 的 42 个槽是同一批 (主料盘),
+    #   两套片叠在 0.1081/0.107 会 z-fighting。有 place_cells 时只用那一套。
+    if not _pc:
+        for k, s in enumerate(slots[:6]):
+            scx, scy, scz = ctr(s)
+            sx2, sy2, sz2 = sz(s)
+            geos.append('<geom name="fslot%d" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f 0.002" '
+                        'rgba="0.45 0.46 0.48 1" contype="0" conaffinity="0"/>'
+                        % (k, scx, scy, pzlo + 0.008, sx2, sy2))
 
     # 光模块：**freejoint** 刚体（能被抓走，这是与静态场景的本质区别）
     gold_pos = [pcx, pcy, pzlo + 0.012]
@@ -379,7 +384,11 @@ def build_mjcf() -> str:
     <light pos="%(lx).4f %(ly).4f %(lz).4f" dir="0 0 -1" diffuse="1.35 1.35 1.4" specular="0.25 0.25 0.25"/>
     <light pos="%(l2x).4f %(l2y).4f %(l2z).4f" dir="0.3 0.7 -1" diffuse="0.55 0.55 0.6"/>
     <!-- 🔆 料盘补光 (2026-11-09): 槽唇 vs 盘面只有 11 灰阶, 槽内件看不出来 -->
-    <light pos="0.52 0.25 0.60" dir="0 0 -1" diffuse="0.75 0.75 0.78" specular="0.1 0.1 0.1"/>
+    <!-- 🎯 料盘补光: 原来只有一盏对着中盘(0.52,0.25), 中盘被打到 250/255, 左右两盘只有 77~115
+         ⇒ 顶视里左/右盘的 28 个槽"看不见"。改成每个有槽的盘上方各一盏, 亮度降到 0.45 避免过曝。 -->
+    <light pos="0.52 0.771 1.10" dir="0 0 -1" diffuse="0.45 0.45 0.48" specular="0.08 0.08 0.08"/>
+    <light pos="0.52 0.348 1.10" dir="0 0 -1" diffuse="0.45 0.45 0.48" specular="0.08 0.08 0.08"/>
+    <light pos="0.52 -0.076 1.10" dir="0 0 -1" diffuse="0.45 0.45 0.48" specular="0.08 0.08 0.08"/>
     <geom name="floor" type="plane" pos="0 0 -0.750" size="3 3 0.05" material="grid"/>
 %(geo3d)s
 %(cam)s
