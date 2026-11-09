@@ -334,11 +334,16 @@ def build_mjcf() -> str:
        两臂(y=0 / y=0.5)之间的正上方, 壳体+镜头+短支架都归 group 3 (顶视时隐掉, 不挡料盘);
        <camera name="cam_topmid"> 是真正的 MuJoCo 相机, 可被 /frame.png?cam=topmid 直接使用。 -->
   <body name="cam_topmid_body" pos="0.55 0.25 0.98">
-    <geom name="cam_topmid_box" type="box" size="0.048 0.048 0.032" rgba="0.17 0.19 0.23 1" group="3" contype="0" conaffinity="0"/>
-    <geom name="cam_topmid_lens" type="cylinder" size="0.019 0.014" pos="0 0 -0.046" rgba="0.04 0.05 0.07 1" group="3" contype="0" conaffinity="0"/>
+    <!-- 尺寸从 96mm 放大到 170×170×110mm: 在 ar3d 相机 (2.3m 距离/fov 69) 下 96mm 只有 22px,
+         老倪会说"还是没有"; 170mm 约 39px, 能看出是台相机。顶面浅灰、侧面深灰、镜头黑、加红色指示灯。 -->
+    <geom name="cam_topmid_box" type="box" size="0.085 0.085 0.055" rgba="0.20 0.23 0.28 1" group="3" contype="0" conaffinity="0"/>
+    <geom name="cam_topmid_cap" type="box" size="0.086 0.086 0.006" pos="0 0 0.060" rgba="0.62 0.65 0.70 1" group="3" contype="0" conaffinity="0"/>
+    <geom name="cam_topmid_ring" type="cylinder" size="0.040 0.010" pos="0 0 -0.062" rgba="0.45 0.48 0.52 1" group="3" contype="0" conaffinity="0"/>
+    <geom name="cam_topmid_lens" type="cylinder" size="0.028 0.020" pos="0 0 -0.082" rgba="0.02 0.03 0.05 1" group="3" contype="0" conaffinity="0"/>
+    <geom name="cam_topmid_led" type="sphere" size="0.010" pos="0.070 0 0.058" rgba="0.90 0.15 0.10 1" group="3" contype="0" conaffinity="0"/>
     <!-- 吊杆: 从壳体下沿一路接到下方 z=0.70 的上横梁 (equip3 横跨 y, x 0.4~0.6)。
          原来 150mm 短杆偏 75mm、横向 17mm 空气缝, 看着是根悬空小棍。 -->
-    <geom name="cam_topmid_mount" type="box" size="0.008 0.008 0.1225" pos="0.035 0 -0.1575" rgba="0.48 0.51 0.55 1" group="3" contype="0" conaffinity="0"/>
+    <geom name="cam_topmid_mount" type="box" size="0.012 0.012 0.115" pos="0.075 0 -0.170" rgba="0.55 0.58 0.62 1" group="3" contype="0" conaffinity="0"/>
     <camera name="cam_topmid" pos="0 0 -0.06" euler="0 0 0" fovy="70"/>
   </body>""" % (_scx, _scy, max(slot0["p1"][2], slot0["p2"][2]))
 
