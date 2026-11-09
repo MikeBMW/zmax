@@ -870,36 +870,10 @@ def _intact_skill_ctx(ctx, stage=""):
 
 
 def node_intact(ctx):
-    """🎯 INTACT 策略 (L4) — 零搜索 意图→动作 (**数据源直接接入 metaworld**)
+    """→ nodes/intact.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .intact import node_intact as _impl
+    return _impl(ctx)
 
-    老倪 2026-09-13: "将 INTACT 接入到 L4 层 … INTACT 代码迁移到 src/lerobot 的 policies 文件夹 …
-    数据源直接接入 metaworld, 输出接一个 decoder, 再进 L3"。
-      · 策略实现 = src/lerobot/policies/intact/ (modeling_intact.py · IntactPolicy)
-      · 桥       = src/lerobot/policies/intact/runtime/model_adapter.py (跨 venv 子进程 → INTACT-JEPA venv)
-      · 数据源   = metaworld 真环境 (MT1 peg-insert-side-v3, 真渲染帧 224² + 39D 现场读)
-      · 编排     = src/lerobot/policies/intact/service.py (本节点只调它, 自己不碰桥/证据)
-    双击 → 真跑一步并打印诊断; 模型未就绪诚实标 trained=False (绝不返回假动作冒称成功)。
-
-    🔴 2026-10-29 老倪「INTACT 模型用上了没有」: 原来返回 True ⇒ 壳判"非 dict" → 直通,
-    下游永远拿不到东西; 而且 run_once 不传 skill_ctx ⇒ ckpt 的 skill 通道硬闸直接 raise
-    ("checkpoint was trained with a skill channel (skill_dim>0) but info['skill_ctx'] was not
-    provided")。现在补 skill_ctx + 返回真业务字典 (实测热态 32ms/次, 首拍加载 ~9.7s)。
-    """
-    log = ctx.get("log") or (lambda *a, **k: None)
-    root = ctx.get("root") or _paths.REPO_ROOT
-    try:
-        svc = _intact_service(root)
-        sk = _intact_skill_ctx(ctx, "")
-        rep = svc.run_once(stage="", decode=False, skill_ctx=sk,
-                           write_evidence=False, log=log)
-        _d = dict(rep.diagnostics or {})
-        return {"kind": "intact", "trained": bool(rep.trained), "policy": str(rep.policy),
-                "chunk_shape": list(rep.chunk_shape), "source": str(rep.source),
-                "ckpt": _d.get("ckpt_realpath"), "ckpt_bytes": _d.get("ckpt_bytes"),
-                "skill_ctx_dim": (int(sk.size) if sk is not None else 0)}
-    except Exception as e:
-        log(f"❌ INTACT 节点执行失败: {type(e).__name__}: {e}")
-        return {"kind": "intact", "trained": False, "err": "%s: %s" % (type(e).__name__, e)}
 
 def node_intact_dec(ctx):
     """→ nodes/intact_dec.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
@@ -1139,189 +1113,28 @@ def _sw_async() -> bool:
 
 
 def node_sw_ds(ctx):
-    """🧪 L4 数据源 — INTACT 环境渲染图像 (stable-world 逐帧渲染真图)
-    本节点负责启动桥; 常驻循环里**不阻塞**(异步档), GUI 手动档仍等到桥跑完"""
-    log = ctx["log"]
-    root = str(ctx.get("root") or os.getcwd())
-    ok, st, fr, vd = _sw_start(root, log)
-    if not ok:
-        return False
-    tsk = _sw_task(root)
-    _env = "Z-MAX 引擎 RealStateSpaceSim (metaworld peg-insert-side-v3 真物理)" if tsk == "optical_insert" \
-        else "stable-world swm/OGBCube-v0"
-    log(f"📦 数据源 [L4·{'光模块插拔' if tsk == 'optical_insert' else 'cube'}]: 环境渲染图像 "
-        f"(224×224 RGB, EGL 离屏渲染) · 环境={_env} · 帧 spool: {fr}")
-    if _sw_async():                                   # 常驻循环: 不占拍, 下游读当前态
-        _cur = _sw_status(st)
-        log(f"   ⏳ 异步档(常驻循环): 桥在跑 不阻塞本拍 · stage={_cur.get('stage')} "
-            f"step={_cur.get('step')} 真推理={_cur.get('model_calls')}")
-        return True
-    t0 = time.time()
-    last = {}
-    _budget = float(os.environ.get("SW_CHAIN_TIMEOUT", "2400"))
-    while time.time() - t0 < _budget:
-        last = _sw_status(st)
-        if last.get("stage") == "done":
-            break
-        if not _sw_alive() and last.get("stage") not in ("done", "error"):
-            time.sleep(0.8)
-            last = _sw_status(st)
-            if last.get("stage") not in ("done", "error"):
-                log(f"   ❌ 桥进程异常退出 (stage={last.get('stage')}) → reports/intact_sw/bridge.log")
-                return False
-            break
-        _s = last.get("step")
-        if _s is not None and int(_s) % 25 == 0 and int(_s) != _SW_S.get("laststep"):
-            _SW_S["laststep"] = int(_s)
-            log(f"   ⏳ {last.get('stage')} … step={_s} std={last.get('frame_std')} "
-                f"阶段={last.get('stage_label')} 插入深度={last.get('insert_mm')}mm "
-                f"真推理={last.get('model_calls')}")
-        time.sleep(0.8)
-    n = len([x for x in os.listdir(fr) if x.endswith(".jpg")]) if os.path.isdir(fr) else 0
-    log(f"   ✅ 渲染帧 {n} 帧 (真图判据 frame_std={last.get('frame_std')} > 5) · "
-        f"回合 {last.get('ep_done')} · 起点 {last.get('eval_episodes')}@{last.get('start_steps')}"
-        f" · 累计真推理 {last.get('model_calls')} 次")
-    return True
+    """→ nodes/sw_ds.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .sw_ds import node_sw_ds as _impl
+    return _impl(ctx)
+
 
 def node_sw_intact(ctx):
-    """🎯 L4 中间策略 — INTACT (本域微调权重 · 零搜索 · 真模型在环)"""
-    log = ctx["log"]
-    root = str(ctx.get("root") or os.getcwd())
-    tsk = "光模块插拔" if _sw_task(root) == "optical_insert" else "cube"
-    _, fr, st, _ = _sw_paths(root)
-    d = _sw_wait(st, lambda s: bool(s.get("model_calls")), 300.0, log, "INTACT 策略")
-    if not d:
-        log("❌ INTACT 策略: 未拿到桥状态 (看 reports/intact_sw/bridge.log)")
-        return False
-    log(f"🎯 INTACT 策略 [L4·{tsk}]: ckpt={d.get('ckpt')}")
-    log(f"   权重文件 {d.get('ckpt_file')} · action_dim={d.get('action_dim')} · "
-        f"hist={d.get('hist_size')}")
-    log(f"   真推理 模型调用 {d.get('model_calls')} 次 · 零搜索={d.get('zero_search', True)} "
-        f"(candidate_action_steps=0)")
-    log(f"   末帧 模型输出(已反归一化 u)={d.get('action')} → 下发 env 动作={d.get('env_action')}")
-    log(f"   动作口径 {d.get('action_space')} · 统计 {d.get('stats')} (与权重同源, 非手写)")
-    return True
+    """→ nodes/sw_intact.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .sw_intact import node_sw_intact as _impl
+    return _impl(ctx)
+
 
 def node_sw_world(ctx):
-    """🌍 L4 硬件层 — Z-MAX 引擎 / stable-world (动作真下发 env.step)"""
-    log = ctx["log"]
-    root = str(ctx.get("root") or os.getcwd())
-    tsk = _sw_task(root)
-    _, fr, st, vd = _sw_paths(root)
-    d0 = _sw_status(st)
-    log(f"🌍 {'Z-MAX 引擎 (RealStateSpaceSim · metaworld 真物理)' if tsk == 'optical_insert' else 'SW 仿真世界引擎'}"
-        f" [L4]: env={d0.get('env', 'swm/OGBCube-v0')} · 动作真下发 env.step")
-    d = _sw_wait(st, lambda s: s.get("stage") == "done", 900.0, log, "SW 引擎")
-    if not d:
-        log("❌ 引擎: 超时无终态 (看 reports/intact_sw/bridge.log)")
-        return False
-    rows = d.get("rows") or []
-    nmod = len([r for r in rows if r.get("model")])
-    log(f"   引擎真跑 {d.get('steps')} 步 (模型在环) · 回合 {d.get('ep_done')} · "
-        f"模型真推理 {d.get('model_calls')} 次")
-    log(f"   解析链对照 (同 seed 同引擎, 可达性基线): {d.get('succ')}/{len(rows)} 成功 "
-        f"= {d.get('success_rate')}%")
-    for r in rows:
-        a = r.get("analytic") or {}
-        m = r.get("model") or {}
-        fc = (a.get("full_chain") or {})
-        log(f"     seed {r.get('seed')}: 解析链 done={a.get('done')} 插入={a.get('insert_mm')}mm"
-            + (f" · 全链(插→拔→AOI) done={fc.get('done')} aoi={fc.get('aoi_ok')}" if fc else "")
-            + (f" ‖ 模型直驱 done={m.get('done')} 插入={m.get('insert_mm')}mm "
-               f"真推理={m.get('model_calls')} 阶段末={str(m.get('stages'))[:60]}" if m else ""))
-    log(f"   模型直驱 (在环): {d.get('model_succ')}/{nmod} 成功 = {d.get('model_success_rate')}% · "
-        f"帧均值 std={d.get('frame_std')} (>5 真图)")
-    _pfx = "optical_insert_" if tsk == "optical_insert" else "cube_sw_"
-    _vs = sorted(x for x in os.listdir(vd) if x.endswith(".mp4") and x.startswith(_pfx))
-    log(f"   视频 ({len(_vs)} 个, 从引擎取出): " + (" · ".join(_vs[-4:]) or "尚未产出"))
-    if d.get("honest_note"):
-        log(f"   ⚠️ 诚实标注: {d.get('honest_note')}")
-    return True
+    """→ nodes/sw_world.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .sw_world import node_sw_world as _impl
+    return _impl(ctx)
+
 
 def node_sw_video(ctx):
-    """🎬 L4 可视化 — 从 stable world 取出的渲染视频 (实况窗 + 视频路径)"""
-    log = ctx["log"]
-    root = str(ctx.get("root") or os.getcwd())
-    _, fr, st, vd = _sw_paths(root)
-    d = _sw_status(st)
-    newest = None
-    try:
-        js = sorted([x for x in os.listdir(fr) if x.endswith(".jpg")])
-        newest = os.path.join(fr, js[-1]) if js else None
-    except Exception:
-        pass
-    vids = []
-    try:
-        vids = sorted([os.path.join(vd, x) for x in os.listdir(vd) if x.endswith(".mp4")])
-    except Exception:
-        pass
-    tsk = "光模块插拔" if _sw_task(root) == "optical_insert" else "cube"
-    log(f"🎬 渲染视频 [L4·{tsk}]: 逐帧实况 {newest} · 最新一帧 {d.get('frame_std')} std "
-        f"(>5 真图) · 阶段 {d.get('stage_label')} · 插入深度 {d.get('insert_mm')}mm")
-    log(f"   视频文件 ({len(vids)}): " + (" · ".join(os.path.basename(v) for v in vids[-4:])
-                                          or "尚未产出"))
-    if d.get("honest_note"):
-        log(f"   ⚠️ {d.get('honest_note')}")
-    try:                                                        # 实况窗 (lazy Qt, CLI 下跳过)
-        # 🔴 2026-11-01: 常驻循环 (ss_canvas_loop) 在**工作线程**里真跑节点, 这里建 QWidget 会让
-        #   Qt 直接 ABRT ("QWidget: Must construct a QApplication before a QWidget"),
-        #   整个 canvas loop 被 systemd 判 core-dump 重启 (实测 19:17:40 abrt, NRestarts=1),
-        #   链随之断拍 ⇒ AR 侧看到的就是"指令停了"。窗口只许在主线程开。
-        import threading as _th
-        if _th.current_thread() is not _th.main_thread():
-            return True
-        if os.environ.get("ZMAX_NO_GUI", "").strip() in ("1", "true", "on", "yes"):
-            return True
-        import importlib.util as _ilu
-        if _ilu.find_spec("PyQt5") is None:
-            return True
-        from PyQt5 import QtWidgets, QtGui, QtCore
-        app = QtWidgets.QApplication.instance()
-        if app is None:
-            return True
-        # 🎛 2026-09-13 老倪: 要能像 L2/L3 dreamview 一样互动看任意帧 → 优先开互动查看器
-        try:
-            import intact_signal_viewer as _iv
-            _vw = _iv.open_signal_viewer(os.path.dirname(fr))
-            if _vw is not None:
-                _vw.rescan(os.path.dirname(fr))
-                log("🎛 互动查看器已打开 — 拖时间轴/◀▶ 单帧, 任意帧的 画面+模型动作[0..3]+std+done+推理次数 同步显示")
-                return True
-        except Exception as _e:                     # 回落到简易实况窗 (不静默)
-            log(f"   (互动查看器不可用, 回落实况窗: {type(_e).__name__}: {_e})")
-        w = QtWidgets.QDialog()
-        w.setWindowTitle("🎬 SW 渲染视频 (stable-world) · L4")
-        lay = QtWidgets.QVBoxLayout(w)
-        lb = QtWidgets.QLabel("等待渲染帧 …")
-        lb.setMinimumSize(456, 456)
-        lb.setAlignment(QtCore.Qt.AlignCenter)
-        info = QtWidgets.QLabel("")
-        lay.addWidget(lb)
-        lay.addWidget(info)
-        timer = QtCore.QTimer(w)
+    """→ nodes/sw_video.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .sw_video import node_sw_video as _impl
+    return _impl(ctx)
 
-        def _tick():
-            js2 = []
-            try:
-                js2 = sorted([x for x in os.listdir(fr) if x.endswith(".jpg")])
-            except Exception:
-                pass
-            if js2:
-                pm = QtGui.QPixmap(os.path.join(fr, js2[-1]))
-                if not pm.isNull():
-                    lb.setPixmap(pm.scaled(lb.size(), QtCore.Qt.KeepAspectRatio,
-                                           QtCore.Qt.SmoothTransformation))
-                d2 = _sw_status(st)
-                info.setText(f"帧 {js2[-1]} · std={d2.get('frame_std')} · step={d2.get('step')} · "
-                             f"阶段={d2.get('stage')} · 成功 {d2.get('succ')}/{d2.get('ep_done')}")
-        timer.timeout.connect(_tick)
-        _tick()
-        timer.start(120)
-        w.resize(520, 560)
-        w.show()
-    except Exception as e:                                      # noqa: BLE001
-        log(f"   (实况窗跳过: {type(e).__name__}: {e})")
-    return True
 
 # ── 🔒 框架区: 注册表 (勿改) ──────────────────────────────────────
 _reg("sw_ds",      ["光模块插拔渲染图像源", "环境渲染图像源", "SW环境渲染图像源", "SW环境渲染"],
@@ -3148,43 +2961,10 @@ _WA_CACHE = {"t": -1e9}      # 🌐 Web 智能体桥上次轮询时刻 (节拍�
 
 
 def node_web_agent(ctx):
-    """🌐 Web 智能体桥 · 远程提示词 — 拉取 web agent 提示词 → **只读功能白名单**派发 → 回执
+    """→ nodes/n_web_agent.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .n_web_agent import node_web_agent as _impl
+    return _impl(ctx)
 
-    真源: src/lerobot/policies/left_right/state_space/web_agent_bridge.py::WebAgentBridge
-    通道: ECS 中转 /api/relay/agent/{prompt,reply,status} (游标式 append-only jsonl, 只读幂等)
-    红线 (老倪 2026-09-25): 提示词命中动作类关键词 → 拒答 + 记审计; 本节点**不下发任何机械臂动作**
-    可调功能 (能力语义): help/status/canvas/reports/memory/skills/sim/net/aoi/robot_read/feishu
-    """
-    log = ctx.get("log")
-    try:
-        import sys as _s
-        if _SS_DIR not in _s.path:
-            _s.path.insert(0, _SS_DIR)
-        # 🚦 2026-11-01: 每拍 poll_once(timeout=8) 会在链路慢时把整圈吃掉 (py-spy 实测停在 urlopen)
-        #    ⇒ 常驻循环里按节拍轮询 (ZMAX_WEBAGENT_EVERY_S, 默认 10s), 超时压到 2s。
-        _now = time.time()
-        _in_loop = bool(os.environ.get("ZMAX_CANVAS_HZ"))
-        _every = float(os.environ.get("ZMAX_WEBAGENT_EVERY_S") or (10.0 if _in_loop else 0.0))
-        if _now - _WA_CACHE["t"] < _every:
-            return True
-        _WA_CACHE["t"] = _now
-        from web_agent_bridge import WebAgentBridge
-        b = WebAgentBridge()
-        if log:
-            log("🌐 Web 智能体桥: 轮询 ECS 中转 /agent/prompt → 只读功能派发 → 回执")
-        r = b.poll_once(timeout=float(os.environ.get("ZMAX_WEBAGENT_TIMEOUT_S") or 2.0))
-        items = r.get("processed") or []
-        if log:
-            log(f"  ← 本轮处理 {len(items)} 条 (游标={r.get('cursor')} · 队列待处理 {r.get('pending', 0)})")
-            for it in items[:6]:
-                log(f"    #{it.get('seq')} [{it.get('func')}] {'✅' if it.get('ok') else '🚫'} {str(it.get('text'))[:70]}")
-            if not items:
-                log("  (无新提示词 — 桥已就绪; web 侧 POST /api/relay/agent/prompt 即达)")
-        return bool(r.get("ok", True))
-    except Exception as e:                                            # noqa: BLE001
-        if log:
-            log(f"❌ Web 智能体桥执行失败: {type(e).__name__}: {e}")
-        return False
 
 def node_ss_eng_mem(ctx):
     """→ nodes/n_eng_mem.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
@@ -4059,39 +3839,10 @@ def node_ss_pred(ctx):
 
 
 def node_ss_cap(ctx):
-    """🧭 能力档位 (数据源层) — L2 / L3 / L4 三档循环开关 (2026-09-08 老倪)
+    """→ nodes/ss_cap.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_cap import node_ss_cap as _impl
+    return _impl(ctx)
 
-    双击节点 = 切换档位 (L2 → L3 → L4 → L2…), 档位写 module._cap_level, ▶运行 按档位
-    配置任务链:
-      L2 基础: 插装成功光模块 (mode=insert 8 段, 解析+MLP 小模型)
-      L3 +smolvla: 插→拔→AOI 检测→放回 全链 (mode=full 13 段; VLM 真实编码在链)
-      L4 +流形预测世界模型: 失败自主恢复直到最终完成任务 (cap=l4 恢复预算 ×2,
-        引擎分级回退=恢复执行体; predictor 世界模型 = 流形专家预测器节点, 训练后给恢复方向)
-    """
-    log = ctx.get("log")
-    mod = ctx.get("module")
-    # 🐛 2026-09-09: 统一走 module._toggle_cap (写 node.params.cap_level + 画布重绘),
-    #   与单击 radio/双击节点同一条路径 — 避免只切内存档位而画布开关视觉不更新
-    if mod is not None and hasattr(mod, "_toggle_cap"):
-        try:
-            for _n in mod.nodes:
-                if _n.get("name") == ctx.get("name"):
-                    return mod._toggle_cap(_n)
-        except Exception:
-            pass
-    cur = getattr(mod, "_cap_level", "L2") if mod is not None else "L2"
-    nxt = {"L2": "L3", "L3": "L4", "L4": "L2"}.get(cur, "L2")
-    if mod is not None:
-        mod._cap_level = nxt
-    desc = {
-        "L2": "基础: 插装成功光模块 (insert 8 段)",
-        "L3": "+smolvla: 插→拔→AOI 检测→放回 全链 (full 13 段)",
-        "L4": "+世界模型: 失败自主恢复直到最终完成任务 (恢复预算×2)",
-    }
-    if log:
-        log(f"🧭 能力档位: {cur} → **{nxt}** [{desc[nxt]}]")
-        log(f"   下次 ▶运行 生效 (L4 需 🎥真实化; 引擎分级回退=恢复执行体, predictor 待训练给恢复方向)")
-    return (True, f"能力档位: {nxt} ({desc[nxt]})")
 
 def node_ss_dec(ctx):
     """🔄 潜空间 Decoder — 状态空间 ActionHead 真实结构 (标准 smolvla 算法, 2026-09-08)
