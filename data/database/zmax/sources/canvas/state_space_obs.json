@@ -829,14 +829,16 @@
     "policy": "left_right",
     "run_env": true,
     "state_space": true,
-    "desc": "[数据源层] 画布拨钮决定数据源: AR场景(8802 MuJoCo 渲染帧 · 真帧真深度) / 仿真(metaworld 39D) / 真机(4060 只读订阅 Orin)。选 AR 时本节点每拍真取 /frame.png?cam=ar3d 并写 _SS_STATE['data_source'], L2 YOLO 以画布为准 (10s 时效), systemd ZMAX_L2_SRC 只做兜底。",
+    "desc": "[数据源层] 画布拨钮决定数据源: AR场景(8802 MuJoCo 渲染帧 · 真帧真深度) / 仿真(metaworld 39D) / 真机(4060 只读订阅 Orin)。选 AR 时本节点每拍真取 /frame.png?cam=ar | 端口: out1=场景帧 out2=场景状态(关节/夹爪/相机) out3=图像句柄; PURE=True 走计算面真跑",
     "source_symbol": "node_metaworld_data",
     "cam": "ar3d",
     "src_kinds": [
      "ar",
      "metaworld",
      "orin"
-    ]
+    ],
+    "pure_verified": true,
+    "impl_key": "data"
    }
   },
   {

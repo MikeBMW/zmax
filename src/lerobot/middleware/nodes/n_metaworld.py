@@ -12,12 +12,12 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ssdata.<port>
 
-实现绑定: (未绑定注册表实现) · src/lerobot/middleware/nodes/impl/data.py · node_metaworld_data:node_metaworld_data
-执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
+实现绑定: registry key=`data` · src/lerobot/middleware/nodes/impl/data.py · node_metaworld_data:node_metaworld_data
+执行口径: EXEC_MODE=pure · PURE=True (口径已逐一验证 ⇒ 允许计算面真跑)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
    契约  src/lerobot/middleware/nodes/n_metaworld.py              ← 就是本文件
-   实现  src/lerobot/middleware/nodes/impl/_未绑定.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
+   实现  src/lerobot/middleware/nodes/impl/data.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
    算法  src/lerobot/middleware/nodes/impl/data.py · node_metaworld_data                                             ← 纯计算 (模型/几何/控制律)
    三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("ssdata")
 """
@@ -33,13 +33,13 @@ PORTS_IN = ['in1']
 PORTS_OUT = ['out1', 'out2', 'out3']
 PORT_LABELS = {}
 
-IMPL_KEY = ''
+IMPL_KEY = 'data'
 SOURCE = 'src/lerobot/middleware/nodes/impl/data.py · node_metaworld_data'
 SOURCE_SYMBOL = 'node_metaworld_data'
-PARAMS = {'src_switch': True, 'src_state': 'AR场景', 'source': 'src/lerobot/middleware/nodes/impl/data.py · node_metaworld_data', 'task': 'peg-insert-side-v3', 'frames': 4800, 'state_dim': 39, 'action_dim': 4, 'policy': 'left_right', 'run_env': True, 'state_space': True, 'desc': "[数据源层] 画布拨钮决定数据源: AR场景(8802 MuJoCo 渲染帧 · 真帧真深度) / 仿真(metaworld 39D) / 真机(4060 只读订阅 Orin)。选 AR 时本节点每拍真取 /frame.png?cam=ar3d 并写 _SS_STATE['data_source'], L2 YOLO 以画布为准 (10s 时效), systemd ZMAX_L2_SRC 只做兜底。", 'source_symbol': 'node_metaworld_data', 'cam': 'ar3d', 'src_kinds': ['ar', 'metaworld', 'orin']}
+PARAMS = {'src_switch': True, 'src_state': 'AR场景', 'source': 'src/lerobot/middleware/nodes/impl/data.py · node_metaworld_data', 'task': 'peg-insert-side-v3', 'frames': 4800, 'state_dim': 39, 'action_dim': 4, 'policy': 'left_right', 'run_env': True, 'state_space': True, 'desc': '[数据源层] 画布拨钮决定数据源: AR场景(8802 MuJoCo 渲染帧 · 真帧真深度) / 仿真(metaworld 39D) / 真机(4060 只读订阅 Orin)。选 AR 时本节点每拍真取 /frame.png?cam=ar | 端口: out1=场景帧 out2=场景状态(关节/夹爪/相机) out3=图像句柄; PURE=True 走计算面真跑', 'source_symbol': 'node_metaworld_data', 'cam': 'ar3d', 'src_kinds': ['ar', 'metaworld', 'orin'], 'pure_verified': True, 'impl_key': 'data'}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = False
+PURE = True
 LAST_STATUS = ""
 
 

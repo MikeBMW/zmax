@@ -1255,7 +1255,8 @@ _reg("neural_cerebellum", ["左脑 · 小脑", "小脑 (前馈)"], "🧠 左脑�
 
 _reg("neural_cortex", ["皮层 · 状态机"], "🧭 皮层·状态机 — contact+几何误差→阶段切换决策", node_neural_cortex)
 
-_reg("data",       ["metaworld 数据", "metaworld数据"], "📦 数据源选择", node_metaworld_data)
+_reg("data",       ["metaworld 数据", "metaworld数据", "AR场景 ⇄", "数据源 (AR场景"],
+     "📦 数据源选择 (AR场景/仿真/真机)", node_metaworld_data)
 
 _reg("resnet18",   ["ResNet18", "resnet18"], "🖼 视觉主干 — ACT.backbone", node_resnet18)
 
