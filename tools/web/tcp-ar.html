@@ -3345,6 +3345,8 @@ function ssFollowStop(){
 }
 function ssToggle(){
   if(SSMODE.on) ssDisconnect(); else ssConnect();
+  // 人手动拨过 = 尊重人的选择: 关掉后本会话不再自动接上 (开则清掉这条豁免)
+  try{ if(SSMODE.on) sessionStorage.removeItem('arAutoMirror'); else sessionStorage.setItem('arAutoMirror','off'); }catch(e){}
   ssPaint();
   if(typeof arViewSet==='function') arViewSet(!!(SSMODE.on&&SSMODE.follow));
   if(typeof arModePoll==='function') arModePoll();     // 顶部横幅/真机臂口径立刻对齐
@@ -3513,6 +3515,24 @@ function arL2Poll(){
   fetch('/api/ar/cmd').then(function(r){return r.json();}).then(arL2Paint).catch(function(){});
 }
 setInterval(arL2Poll, 3000); setTimeout(arL2Poll, 1200);
+// 🎯 自动镜像 ar_cmd (只读, 不启动任何播放/执行):
+//   目的是让 AR 页和 8802 渲染看到**同一组关节角**。8802 的结构性前提是页面在推 /armq;
+//   页面不跟随 ⇒ 8802 只能自己解 IK ⇒ 两边姿态分叉。会话内手动关闭一次就不再自动接。
+var AUTOMIRROR={busy:false,off:false};
+function autoMirrorMaybe(){
+  if(AUTOMIRROR.busy||AUTOMIRROR.off) return;
+  try{ if(sessionStorage.getItem('arAutoMirror')==='off'){ AUTOMIRROR.off=true; return; } }catch(e){}
+  if(typeof SSMODE==='undefined'||typeof ARCMD==='undefined') return;
+  if(!ARCMD.on||!ARCMD.fresh||!ARCMD.q) return;        // 等真信号, 不空转
+  AUTOMIRROR.busy=true;
+  try{
+    if(!SSMODE.on){ ssToggle(); }                       // 接上信号(只读)
+    if(SSMODE.on&&!SSMODE.follow){ ssFollowStart(); if(typeof arViewSet==='function') arViewSet(true); }
+    if(typeof ssPaint==='function') ssPaint();
+    if(typeof arModePoll==='function') arModePoll();
+    console.log('[AR] 自动镜像 ar_cmd: 页面与 8802 共用同一组关节角');
+  }catch(e){ AUTOMIRROR.busy=false; }
+}
 function arCmdPoll(){
   _arFetch().then(function(d){
     ARCMD.on=!!d.ok; ARCMD.fresh=!!d.fresh; ARCMD.d=d; ARCMD.age=d.age_s; ARCMD.ts=Date.now();
@@ -3528,6 +3548,10 @@ function arCmdPoll(){
     try{ if(typeof ssHintPaint==='function') ssHintPaint(); }catch(e){}
     // 🔴 不自动播放: 老倪 2026-10-28「我现在画布上也没有点击运行, 你怎么运行机器人了呢?」
     //    ⇒ 动画只能由人点「🏭 全流程 UPH」启动, 页面自己绝不 plantStart()
+    // 🎯 但「只读镜像」要自动接上 (2026-11-10 老倪: 「这两个场景的机器人动作要同步啊」):
+    //   8802 一直在按 ar_cmd 走, 页面却要人先拨「状态空间」再点「▶ 跟随」才动 ⇒ 两边必然不同步。
+    //   这里只做 **读信号照画**, 不 plantStart、不下发任何指令; 人手动关掉后本会话不再自动接。
+    try{ autoMirrorMaybe(); }catch(e){}
   }).catch(function(){ ARCMD.on=false; ARCMD.fresh=false; ARCMD.q=null; });
 }
 setInterval(arCmdPoll, 100); arCmdPoll();      // 10Hz: 一段≈0.4s, 每段能拿到 ~4 次更新
@@ -4503,7 +4527,10 @@ function mjPull(force){
   if(!MJ.on) return;
   if(document.hidden) return;                      // 后台标签页不拉(省渲染线程)
   const now=(typeof performance!=='undefined'?performance.now():Date.now());
-  if(!force && now-MJ.tLast<650) return;           // 650ms 下限 ≈1.5fps: 8802 每张要 ~90ms 渲染, 拉太快会把渲染线程压满 ⇒ 画面一卡一跳
+  // 跟随播放时收紧到 320ms: 底图是 8802 渲的、矢量臂是本页画的, 650ms 会让两者最多差 0.65s,
+  // 看着就是"两个场景不同步"。320ms ≈3fps, 8802 单张 ~90ms, 双缓冲下不会跳。
+  var _floor = (typeof SSMODE!=='undefined' && SSMODE.on && SSMODE.follow) ? 320 : 650;
+  if(!force && now-MJ.tLast<_floor) return;
   MJ.tLast=now; MJ.sent=mjParams();
   const host=(location.hostname||'127.0.0.1');
   MJ.url='http://'+host+':8802/frame.png?'+MJ.sent+'&_='+Math.round(now);
