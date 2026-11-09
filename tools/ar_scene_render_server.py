@@ -501,9 +501,27 @@ def _ar_cmd_ctrl(mujoco, env, model, data, d):
         _AC_LAST.update({"t": now, "deg": deg, "err": None, "n": _AC_LAST.get("n", 0) + 1})
     out = {"mode": "sim", "R": deg, "_src": "ar_cmd", "_label": d.get("label"),
            "_tgt_mm": [round(v * 1000, 1) for v in tgt]}
+    # 🦾 老倪 2026-11-10「/video 的左手怎么不动?」——
+    #   这条回退只解了右臂 (return 里没有 L), 一旦 AR 页不在推关节角 (armq 过期),
+    #   左臂就停在上一帧, 看着像"只有右手在动"。两台臂基座 y=0 / y=0.5,
+    #   左臂跟同一条相对运动 (平移 +500mm) 即可, 与 AR 页默认「左臂照抄右臂再平移 Y+500」同口径。
+    _lseed = _AC_LAST.get("degL")
+    try:
+        _tgtL = [tgt[0], tgt[1] + 0.5, tgt[2]]
+        _rl = ik_solve(mujoco, model, data, mujoco, "L", _tgtL, iters=60,
+                       seed_deg=_lseed if _lseed else None)
+        if _rl.get("ok"):
+            out["L"] = _rl["deg"]
+            _AC_LAST["degL"] = _rl["deg"]
+            _AC_LAST.pop("errL", None)
+        else:
+            _AC_LAST["errL"] = _rl.get("err") or "ik bad L"
+    except Exception as _e:                                               # noqa: BLE001
+        _AC_LAST["errL"] = "%s: %s" % (type(_e).__name__, _e)
     g = d.get("grip")
     if isinstance(g, (int, float)):
         out["gripR"] = float(g)
+        out["gripL"] = float(g)
     return out
 
 
