@@ -69,7 +69,10 @@ def _equip_geoms():
     boxes = [b for b in items
              if b.get("type") == "box" and b.get("p1") and b.get("p2") and b.get("enabled")]
     # 主料盘: 与 build_mjcf 同口径 (第一个名字含"料盘"且不带"槽"的盒子)
-    pans = [b for b in boxes if "料盘" in str(b.get("name")) and "槽" not in str(b.get("name"))]
+    # ⚠ `"槽" not in name` 会把 "下料盘(第三·14槽)" / "废料盘(不良品·无槽位)" 一起筛掉,
+    #   结果只建 2 个盘体, 另两个盘在顶视里是空的; 槽本体是以 "槽" 开头的条目, 只排除这种。
+    pans = [b for b in boxes
+            if "料盘" in str(b.get("name")) and not str(b.get("name")).startswith("槽")]
     main = pans[0] if pans else None
     if main:
         boxes = [b for b in boxes if b is not main]
@@ -121,7 +124,10 @@ def build_mjcf() -> str:
     boxes = [b for b in items if b.get("type") == "box" and b.get("p1") and b.get("p2")]
 
     # 料盘/槽位（结构件跳过：横梁 1.6m 会把台面盖死，见 ar_mujoco_scene 的实测注释）
-    pans = [b for b in boxes if "料盘" in str(b.get("name")) and "槽" not in str(b.get("name"))]
+    # ⚠ `"槽" not in name` 会把 "下料盘(第三·14槽)" / "废料盘(不良品·无槽位)" 一起筛掉,
+    #   结果只建 2 个盘体, 另两个盘在顶视里是空的; 槽本体是以 "槽" 开头的条目, 只排除这种。
+    pans = [b for b in boxes
+            if "料盘" in str(b.get("name")) and not str(b.get("name")).startswith("槽")]
     slots = [b for b in boxes if str(b.get("name")).startswith("槽")]
     if not pans:
         pans = [{"name": "pan", "p1": [0.39, 0.10, 0.10], "p2": [0.65, 0.50, 0.14]}]
@@ -189,21 +195,29 @@ def build_mjcf() -> str:
     geos.append('<geom name="table" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f 0.015" '
                 'rgba="0.32 0.32 0.35 1"/>' % (pcx, pcy, pzlo - 0.015, px + 0.10, py + 0.10))
     # 料盘：薄底 + 四壁（实心盒会把槽和模块包住 —— 实测过）
+    # 🔴 2026-11-09: 原来只建 pans[0] 一个盘体, 另外 3 个盘 (左臂盘/下料盘/废料盘) 只有 2mm 槽片悬空
+    #    ⇒ 顶视里"另外两个盘是纯色板、没有槽"。改成遍历所有盘。
     wall = 0.006
-    geos.append('<geom name="pan_bot" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f %.4f" '
-                'rgba="0.10 0.10 0.11 1"/>' % (pcx, pcy, pzlo + wall / 2, px, py, wall / 2))
-    for suf, gx, gy, sx, sy in (
-            ("w0", pcx, pan["p1"][1] + wall / 2, px, wall / 2),
-            ("w1", pcx, pan["p2"][1] - wall / 2, px, wall / 2),
-            ("w2", pan["p1"][0] + wall / 2, pcy, wall / 2, py),
-            ("w3", pan["p2"][0] - wall / 2, pcy, wall / 2, py)):
-        geos.append('<geom name="pan_%s" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f %.4f" '
-                    'rgba="0.10 0.10 0.11 1"/>'
-                    % (suf, gx, gy, (pzlo + pzlo + 0.04) / 2, sx, sy, 0.02))
-    # 垫块: 料盘底(0.10) 与 ar3d 桌面(z=0) 之间的 100mm 支撑 (否则料盘悬空, 看着位置就不对)
-    geos.append('<geom name="pan_riser" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f %.4f" '
-                'rgba="0.22 0.24 0.27 1"/>'
-                % (pcx, pcy, pzlo / 2.0, px + 0.02, py + 0.02, max(0.01, pzlo / 2.0)))
+    for _pi, _p in enumerate(pans):
+        _cx, _cy, _ = ctr(_p)
+        _sx, _sy, _ = sz(_p)
+        _lo = min(_p["p1"][2], _p["p2"][2])
+        _x0, _x1 = min(_p["p1"][0], _p["p2"][0]), max(_p["p1"][0], _p["p2"][0])
+        _y0, _y1 = min(_p["p1"][1], _p["p2"][1]), max(_p["p1"][1], _p["p2"][1])
+        geos.append('<geom name="pan_bot%d" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f %.4f" '
+                    'rgba="0.10 0.10 0.11 1"/>' % (_pi, _cx, _cy, _lo + wall / 2, _sx, _sy, wall / 2))
+        for _suf, _gx, _gy, _gzx, _gzy in (
+                ("w0", _cx, _y0 + wall / 2, _sx, wall / 2),
+                ("w1", _cx, _y1 - wall / 2, _sx, wall / 2),
+                ("w2", _x0 + wall / 2, _cy, wall / 2, _sy),
+                ("w3", _x1 - wall / 2, _cy, wall / 2, _sy)):
+            geos.append('<geom name="pan%d_%s" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f %.4f" '
+                        'rgba="0.10 0.10 0.11 1"/>'
+                        % (_pi, _suf, _gx, _gy, (_lo + _lo + 0.04) / 2, _gzx, _gzy, 0.02))
+        # 垫块: 料盘底(0.10) 与 ar3d 桌面(z=0) 之间的 100mm 支撑 (否则料盘悬空, 看着位置就不对)
+        geos.append('<geom name="pan_riser%d" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f %.4f" '
+                    'rgba="0.22 0.24 0.27 1"/>'
+                    % (_pi, _cx, _cy, _lo / 2.0, _sx + 0.02, _sy + 0.02, max(0.01, _lo / 2.0)))
     # 槽位（凹槽参照物，不挡模块）
     # 🔴 2026-11-09: 原来只画 fences 里前 6 个槽 ⇒ 顶视里"上料盘/下料盘/废料盘没有槽"看着像少东西。
     #    真源改用 place_cells.json (42 个槽, 覆盖 3 个有槽料盘, SAM3 实测 base mm)。
@@ -222,13 +236,13 @@ def build_mjcf() -> str:
             _px, _py, _pz = [float(v) / 1000.0 for v in (_c.get("pos_mm") or [0, 0, 0])]
             _sx, _sy = [max(0.004, float(v) / 2000.0) for v in (_c.get("size_mm") or [36, 42, 15])[:2]]
             geos.append('<geom name="slot%d" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f 0.002" '
-                        'rgba="0.05 0.05 0.06 1" contype="0" conaffinity="0"/>'
+                        'rgba="0.30 0.31 0.33 1" contype="0" conaffinity="0"/>'
                         % (k, _px, _py, _pz - 0.006, _sx, _sy))
     for k, s in enumerate(slots[:6]):
         scx, scy, scz = ctr(s)
         sx2, sy2, sz2 = sz(s)
         geos.append('<geom name="fslot%d" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f 0.002" '
-                    'rgba="0.05 0.05 0.06 1" contype="0" conaffinity="0"/>'
+                    'rgba="0.30 0.31 0.33 1" contype="0" conaffinity="0"/>'
                     % (k, scx, scy, pzlo + 0.008, sx2, sy2))
 
     # 光模块：**freejoint** 刚体（能被抓走，这是与静态场景的本质区别）
