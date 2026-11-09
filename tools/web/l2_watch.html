@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>L2 观测窗 · YOLO 正在看的那一帧 (AR close)</title>
+<style>
+  html,body{margin:0;background:#0b0f14;color:#c9d4e2;font:13px/1.5 ui-monospace,monospace}
+  #bar{display:flex;gap:14px;flex-wrap:wrap;padding:8px 12px;background:#111823;border-bottom:1px solid #1e2a38}
+  #bar b{color:#7fd1ff;font-weight:600}
+  #wrap{position:relative;display:inline-block;margin:10px 12px;line-height:0}
+  img,canvas{display:block;max-width:96vw;border:1px solid #24313f;background:#000}
+  canvas{position:absolute;left:0;top:0;border:0;pointer-events:none}
+  #stale{position:absolute;top:8px;left:8px;padding:2px 8px;border-radius:3px;background:#a11;color:#fff;display:none;line-height:1.5}
+  #det{margin:0 12px 16px}
+  #det b{color:#ffd479}
+  small{color:#6b7d91}
+  code{color:#9fe6a0}
+</style>
+</head>
+<body>
+<div id="bar">
+  <span>端点 <b id="url"></b></span>
+  <span>帧时 <b id="frame">–</b></span>
+  <span>字节 <b id="bytes">–</b></span>
+  <span>相机 <b id="cam">–</b></span>
+  <span>拉取 <b id="dt">–</b></span>
+  <span>刷新 <b id="hz">4Hz</b></span>
+</div>
+<div id="wrap">
+  <img id="im" alt="AR close frame">
+  <canvas id="cv"></canvas>
+  <div id="stale">画面 2s 没变</div>
+</div>
+<div id="det">检测：<b id="detline">–</b></div>
+<div style="padding:0 12px 14px"><small>
+  这张图就是 YOLO 感知节点每拍拉的 <code>GET /frame.png?cam=close</code>（服务端按 R_tcp 跟踪 + R_mod 朝向, dist 0.26m / fov 50° 现场渲染）；
+  框和坐标来自 <code>vision_points.json</code>（YOLO 节点写出的同一拍结果）。
+</small></div>
+<script>
+const Q = new URLSearchParams(location.search);
+const BASE = Q.get('base') || 'http://127.0.0.1:8802';
+const CAM = Q.get('cam') || 'close';
+const HZ = Math.max(1, Math.min(10, parseFloat(Q.get('hz') || '4')));
+const im = document.getElementById('im'), cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+document.getElementById('url').textContent = BASE + '/frame.png?cam=' + CAM;
+document.getElementById('hz').textContent = HZ + 'Hz';
+let lastSize = null, lastChange = Date.now(), lastDet = null;
+
+function draw(det) {
+  const nw = im.naturalWidth || 960, nh = im.naturalHeight || 720;
+  cv.width = nw; cv.height = nh;
+  cv.style.width = im.clientWidth + 'px'; cv.style.height = im.clientHeight + 'px';
+  ctx.clearRect(0, 0, nw, nh);
+  if (!det) return;
+  const d2 = det.det2d || {};
+  ctx.lineWidth = 3; ctx.font = 'bold 18px monospace';
+  for (const [k, v] of Object.entries(d2)) {
+    const b = v.box || []; if (b.length < 4) continue;
+    ctx.strokeStyle = '#3ce07a'; ctx.fillStyle = '#3ce07a';
+    ctx.strokeRect(b[0], b[1], b[2] - b[0], b[3] - b[1]);
+    const p = (det.points || {})[k] || {};
+    const pm = (p.pos_mm || []).map(x => (+x).toFixed(1)).join(',');
+    const txt = k + ' ' + (v.conf || 0).toFixed(2) + (pm ? '  [' + pm + ']mm' : '');
+    const w = ctx.measureText(txt).width + 10;
+    ctx.fillRect(b[0], Math.max(0, b[1] - 24), w, 22);
+    ctx.fillStyle = '#04120a'; ctx.fillText(txt, b[0] + 5, Math.max(16, b[1] - 7));
+  }
+}
+
+async function tick() {
+  const t0 = performance.now();
+  try {
+    const r = await fetch(BASE + '/frame.png?cam=' + CAM + '&_=' + Date.now(), {cache: 'no-store'});
+    const b = await r.blob();
+    im.src = URL.createObjectURL(b);
+    document.getElementById('bytes').textContent = b.size;
+    document.getElementById('dt').textContent = (performance.now() - t0).toFixed(0) + 'ms';
+    if (b.size !== lastSize) { lastSize = b.size; lastChange = Date.now(); }
+
+    const c = await (await fetch('/cam.json?_=' + Date.now(), {cache: 'no-store'})).json();
+    const k = c.cam || {};
+    document.getElementById('cam').textContent =
+      'az=' + (+k.az || 0).toFixed(1) + '° el=' + (+k.el || 0).toFixed(1) + '° dist=' + (+k.dist || 0).toFixed(2) + 'm' +
+      ' tgt=[' + (k.tgt || k.lookat || []).map(v => (+v).toFixed(2)).join(',') + ']';
+    document.getElementById('frame').textContent = k.ts ? new Date(k.ts * 1000).toLocaleTimeString() : '–';
+
+    const vp = await (await fetch('/vision_points.json?_=' + Date.now(), {cache: 'no-store'})).json().catch(() => null);
+    const age = vp && vp.t ? (Date.now() / 1000 - vp.t) : 999;
+    if (vp && age < 8 && Object.keys(vp.det2d || {}).length) {
+      lastDet = vp;
+      const items = Object.entries(vp.det2d).map(([n, v]) => n + ' ' + (+v.conf).toFixed(2));
+      document.getElementById('detline').textContent =
+        items.join(' · ') + ' · 拍于 ' + (vp.ts_str || '') + ' · 距现在 ' + age.toFixed(1) + 's';
+      draw(vp);
+    } else {
+      document.getElementById('detline').textContent = (vp ? ('本拍无检出 / 结果已 ' + age.toFixed(0) + 's 旧') : '还没有 vision_points.json');
+      draw(null);
+    }
+  } catch (e) {
+    document.getElementById('frame').textContent = '取帧失败: ' + e.message;
+  }
+  document.getElementById('stale').style.display = (Date.now() - lastChange > 2000) ? 'block' : 'none';
+  setTimeout(tick, 1000 / HZ);
+}
+im.addEventListener('load', () => { if (lastDet) draw(lastDet); });
+tick();
+</script>
+</body>
+</html>
