@@ -31,7 +31,8 @@
  /* 🎥 MuJoCo 同视角底图: 8802 的渲染帧贴在画布正下方(同一矩形, contain 等比), 画布转透明让图透上来。
     为什么不 drawImage 进画布: 8802 与本页不同源 ⇒ 会 taint canvas, 页面自己的 getImageData(autoZoomPlan)会抛。 */
  #vrcard{position:relative}
- #mjframe{position:absolute;display:none;pointer-events:none;object-fit:contain;z-index:0;border-radius:8px;background:#04070a}
+ #mjframe{position:absolute;display:none;pointer-events:none;object-fit:contain;z-index:0;border-radius:8px;background:#04070a;
+   filter:brightness(2.4) contrast(1.08) saturate(1.05)}  /* 🔆 8802 渲染帧欠曝(中位 17/255, 72% 像素<25): 提亮后料盘/机械臂才看得见; 只改显示, 不动渲染与标定 */
  #mjtag{position:absolute;left:14px;bottom:14px;z-index:3;display:none;background:#000b;border:1px solid #30363d;
         border-radius:6px;padding:4px 8px;font:11.5px/1.45 monospace;color:#9fd3ff;max-width:72%;
         word-break:break-all;pointer-events:auto;user-select:text}   /* 可选中复制: 模型(YOLO)吃的就是这条 URL */
