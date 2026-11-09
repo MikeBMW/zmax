@@ -3024,7 +3024,8 @@ def _vlm_frame():
         try:
             import numpy as _np
             from PIL import Image as _Im
-            fp = "/tmp/ss_vlm_frame_%d.png" % os.getpid()
+            import tempfile as _tf
+            fp = os.path.join(_tf.gettempdir(), "ss_vlm_frame_%d.png" % os.getpid())
             _Im.fromarray(_np.asarray(img, dtype=_np.uint8)).save(fp)
             meta.update({"frame_age_s": None, "frame_src": "仿真 metaworld 渲染帧",
                          "frame": os.path.basename(fp)})

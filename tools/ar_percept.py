@@ -208,9 +208,14 @@ def unproject_px(px, depth, p=None, win=3):
 
 
 def frame_path(arr):
-    """落盘给 VLM/节点用 (按进程+时间戳, 避免两个消费者互相覆盖)。"""
+    """落盘给 VLM/节点用 (按进程+时间戳, 避免两个消费者互相覆盖)。
+
+    ⚠ 不能用写死的 /tmp: Windows 工位机没有 /tmp (实测 FileNotFoundError: '/tmp\\ar_frame_*.png'),
+      要用 tempfile.gettempdir() —— 与 zmax 其它落盘同一口径。
+    """
+    import tempfile
     from PIL import Image
-    fp = os.path.join("/tmp", "ar_frame_%d.png" % os.getpid())
+    fp = os.path.join(tempfile.gettempdir(), "ar_frame_%d_%d.png" % (os.getpid(), int(time.time() * 1000) % 100000))
     Image.fromarray(np.asarray(arr, dtype=np.uint8)).save(fp)
     return fp
 
