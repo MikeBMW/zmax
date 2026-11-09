@@ -31,7 +31,8 @@
  /* 🎥 MuJoCo 同视角底图: 8802 的渲染帧贴在画布正下方(同一矩形, contain 等比), 画布转透明让图透上来。
     为什么不 drawImage 进画布: 8802 与本页不同源 ⇒ 会 taint canvas, 页面自己的 getImageData(autoZoomPlan)会抛。 */
  #vrcard{position:relative}
- #mjframe{position:absolute;display:none;pointer-events:none;object-fit:contain;z-index:0;border-radius:8px;background:#04070a}
+ #mjframe{position:absolute;display:none;pointer-events:none;object-fit:contain;z-index:0;border-radius:8px;background:#04070a;
+   filter:brightness(2.4) contrast(1.08) saturate(1.05)}  /* 🔆 8802 渲染帧欠曝(中位 17/255, 72% 像素<25): 提亮后料盘/机械臂才看得见; 只改显示, 不动渲染与标定 */
  #mjtag{position:absolute;left:14px;bottom:14px;z-index:3;display:none;background:#000b;border:1px solid #30363d;
         border-radius:6px;padding:4px 8px;font:11.5px/1.45 monospace;color:#9fd3ff;max-width:72%;
         word-break:break-all;pointer-events:auto;user-select:text}   /* 可选中复制: 模型(YOLO)吃的就是这条 URL */
@@ -2207,6 +2208,30 @@ function drawCfgPts(g, pr){
 loadCfgPts();
 setInterval(loadCfgPts, 10000);
 var DRWN=0;
+// 🎯 2026-11-09 关节角直传 (老倪: 「AR 场景的动作和 MuJoCo 的动作不一致」)
+//   两个求解器(页面 JS IK / 8802 Python IK)会落不同分支 ⇒ 同一 TCP 画出两种姿态。
+//   改成: 页面把**它自己算出的 6 轴角**推给 8802, 8802 只执行, 不再解 IK ⇒ 构造上一致。
+let _mjqT=0, _mjqN=0, _mjqErr=null;
+function mjPushQ(){
+  try{
+    const now=(typeof performance!=='undefined'?performance.now():Date.now());
+    if(now-_mjqT<100) return; _mjqT=now;
+    const d2r=180/Math.PI, conv=a=>a.map(v=>+(v*d2r).toFixed(2));
+    // 右臂姿态来源与画布一致: ① 页面 IK 结果 PREV.q ② 否则真机关节角 TCP.joints
+    //   (老倪 2026-11-09「右臂怎么没动」: 页面只有左臂位姿时 PREV.q 是 null, R 推的是空 ⇒ 渲染里右臂不动)
+    const tcpq=(typeof TCP!=='undefined'&&TCP&&TCP.ok&&TCP.joints)?conv(TCP.joints):null;
+    let Rq=(typeof PREV!=='undefined'&&PREV&&PREV.on&&PREV.q)?conv(PREV.q):tcpq;
+    // 左臂没有独立位姿时, 画布本身就是"照抄右臂", 这里也照抄
+    let Lq=(typeof LARM!=='undefined'&&LARM&&LARM.q)?conv(LARM.q):(Rq?Rq.slice():null);
+    if(!Rq&&Lq) Rq=Lq.slice();          // 只有左臂有姿态时, 右臂跟左臂 (画布同样没有右侧独立源)
+    if(!Rq&&!Lq) return;
+    const host=(location.hostname||'127.0.0.1');
+    fetch('http://'+host+':8802/armq',{method:'POST',mode:'no-cors',
+      headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({R:Rq,L:Lq,seq:++_mjqN})}).then(function(){_mjqErr=null;})
+      .catch(function(e){_mjqErr=String(e&&e.message||e);});
+  }catch(e){ _mjqErr=String(e&&e.message||e); }
+}
 function drawVR(){
   try{ DRWN++; }catch(e){}
   const c=$('vr'), g=c.getContext('2d');
@@ -3320,6 +3345,8 @@ function ssFollowStop(){
 }
 function ssToggle(){
   if(SSMODE.on) ssDisconnect(); else ssConnect();
+  // 人手动拨过 = 尊重人的选择: 关掉后本会话不再自动接上 (开则清掉这条豁免)
+  try{ if(SSMODE.on) sessionStorage.removeItem('arAutoMirror'); else sessionStorage.setItem('arAutoMirror','off'); }catch(e){}
   ssPaint();
   if(typeof arViewSet==='function') arViewSet(!!(SSMODE.on&&SSMODE.follow));
   if(typeof arModePoll==='function') arModePoll();     // 顶部横幅/真机臂口径立刻对齐
@@ -3328,6 +3355,8 @@ function ssToggle(){
 try{ ssPaint(); }catch(e){}
 function ssRunToggle(){
   if(!SSMODE.on) return;
+  // 人手动点「停跟随」= 本会话不再自动接; 点「跟随」= 清掉豁免
+  try{ if(SSMODE.follow) sessionStorage.setItem('arAutoMirror','off'); else sessionStorage.removeItem('arAutoMirror'); }catch(e){}
   if(SSMODE.follow) ssFollowStop(); else ssFollowStart();
   if(typeof arViewSet==='function') arViewSet(!!SSMODE.follow);
   if(typeof arModePoll==='function') arModePoll();
@@ -3488,6 +3517,26 @@ function arL2Poll(){
   fetch('/api/ar/cmd').then(function(r){return r.json();}).then(arL2Paint).catch(function(){});
 }
 setInterval(arL2Poll, 3000); setTimeout(arL2Poll, 1200);
+// 🎯 自动镜像 ar_cmd (只读, 不启动任何播放/执行):
+//   目的是让 AR 页和 8802 渲染看到**同一组关节角**。8802 的结构性前提是页面在推 /armq;
+//   页面不跟随 ⇒ 8802 只能自己解 IK ⇒ 两边姿态分叉。会话内手动关闭一次就不再自动接。
+var AUTOMIRROR={busy:false,off:false};
+function autoMirrorMaybe(){
+  if(AUTOMIRROR.off) return;
+  try{ if(sessionStorage.getItem('arAutoMirror')==='off'){ AUTOMIRROR.off=true; return; } }catch(e){}
+  if(typeof SSMODE==='undefined'||typeof ARCMD==='undefined') return;
+  if(!ARCMD.on||!ARCMD.fresh||!ARCMD.q) return;        // 等真信号, 不空转
+  // 🔁 自愈: 段间空档/画布循环重启会让 ar_cmd 停更新, 跟随自己会掉 (实测 follow=false 后不自愈,
+  //    页面就回到"画自己的陈旧姿态", 而 8802 继续按 ar_cmd 走 ⇒ 老倪看到的"两个场景不同步")
+  if(SSMODE.on && SSMODE.follow) return;               // 已经在跟, 不动
+  try{
+    if(!SSMODE.on){ ssToggle(); }                       // 接上信号(只读)
+    if(SSMODE.on&&!SSMODE.follow){ ssFollowStart(); if(typeof arViewSet==='function') arViewSet(true); }
+    if(typeof ssPaint==='function') ssPaint();
+    if(typeof arModePoll==='function') arModePoll();
+    console.log('[AR] 自动镜像 ar_cmd: 页面与 8802 共用同一组关节角');
+  }catch(e){}
+}
 function arCmdPoll(){
   _arFetch().then(function(d){
     ARCMD.on=!!d.ok; ARCMD.fresh=!!d.fresh; ARCMD.d=d; ARCMD.age=d.age_s; ARCMD.ts=Date.now();
@@ -3503,6 +3552,10 @@ function arCmdPoll(){
     try{ if(typeof ssHintPaint==='function') ssHintPaint(); }catch(e){}
     // 🔴 不自动播放: 老倪 2026-10-28「我现在画布上也没有点击运行, 你怎么运行机器人了呢?」
     //    ⇒ 动画只能由人点「🏭 全流程 UPH」启动, 页面自己绝不 plantStart()
+    // 🎯 但「只读镜像」要自动接上 (2026-11-10 老倪: 「这两个场景的机器人动作要同步啊」):
+    //   8802 一直在按 ar_cmd 走, 页面却要人先拨「状态空间」再点「▶ 跟随」才动 ⇒ 两边必然不同步。
+    //   这里只做 **读信号照画**, 不 plantStart、不下发任何指令; 人手动关掉后本会话不再自动接。
+    try{ autoMirrorMaybe(); }catch(e){}
   }).catch(function(){ ARCMD.on=false; ARCMD.fresh=false; ARCMD.q=null; });
 }
 setInterval(arCmdPoll, 100); arCmdPoll();      // 10Hz: 一段≈0.4s, 每段能拿到 ~4 次更新
@@ -4445,9 +4498,13 @@ function mjParams(){
   // 8802 VIEWS['ar3d'] 已经把这套换算钉好了(实测 1px): azimuth=deg(yaw), elevation=-deg(pitch), fovy=69.4
   const az=VR.yaw*180/Math.PI, el=-VR.pitch*180/Math.PI;
   const t=VR.tgt||[0,0,0];
+  // 📐 w/h: 画布实际宽高 ⇒ 8802 按同一画幅出图 (4:3 的帧放进 1.7:1 的画布, 横向视场会差三成)
+  let _w=0,_h=0;
+  try{ const c=$('vr'); if(c){ _w=Math.round(c.clientWidth)||0; _h=Math.round(c.clientHeight)||0; } }catch(e){}
   return 'az='+az.toFixed(1)+'&el='+el.toFixed(1)+'&dist='+VR.dist.toFixed(3)
        +'&tx='+t[0].toFixed(3)+'&ty='+t[1].toFixed(3)+'&tz='+t[2].toFixed(3)
-       +'&fovy='+MJ.fovy.toFixed(1);
+       +'&fovy='+MJ.fovy.toFixed(1)
+       +(_w&&_h?('&w='+_w+'&h='+_h):'');
 }
 function mjLayout(){
   const c=$('vr'), im=MJ.img, card=$('vrcard');
@@ -4458,8 +4515,12 @@ function mjLayout(){
 }
 function mjCamObj(){
   const az=VR.yaw*180/Math.PI, el=-VR.pitch*180/Math.PI, t=VR.tgt||[0,0,0];
-  return {az:+az.toFixed(2), el:+el.toFixed(2), dist:+VR.dist.toFixed(4),
+  // 📐 w/h 一起推: 直播窗口(live=1)按这个画幅出图, 否则回落到 960x720(4:3), 横向视场与画布差三成
+  let w=0,h=0; try{ const c=$('vr'); if(c){ w=Math.round(c.clientWidth)||0; h=Math.round(c.clientHeight)||0; } }catch(e){}
+  const o={az:+az.toFixed(2), el:+el.toFixed(2), dist:+VR.dist.toFixed(4),
           tx:+t[0].toFixed(4), ty:+t[1].toFixed(4), tz:+t[2].toFixed(4), fovy:+MJ.fovy.toFixed(1)};
+  if(w&&h){ o.w=w; o.h=h; }
+  return o;
 }
 let _camPushLast='', _camPushT=0;
 function mjPushCam(force){
@@ -4478,11 +4539,20 @@ function mjPull(force){
   if(!MJ.on) return;
   if(document.hidden) return;                      // 后台标签页不拉(省渲染线程)
   const now=(typeof performance!=='undefined'?performance.now():Date.now());
-  if(!force && now-MJ.tLast<400) return;           // 400ms 下限 ≈2.5fps: 相机一变立即拉, 场景在动也要持续刷新
+  // 跟随播放时收紧到 320ms: 底图是 8802 渲的、矢量臂是本页画的, 650ms 会让两者最多差 0.65s,
+  // 看着就是"两个场景不同步"。320ms ≈3fps, 8802 单张 ~90ms, 双缓冲下不会跳。
+  var _floor = (typeof SSMODE!=='undefined' && SSMODE.on && SSMODE.follow) ? 320 : 650;
+  if(!force && now-MJ.tLast<_floor) return;
   MJ.tLast=now; MJ.sent=mjParams();
   const host=(location.hostname||'127.0.0.1');
   MJ.url='http://'+host+':8802/frame.png?'+MJ.sent+'&_='+Math.round(now);
-  MJ.img.src=MJ.url;
+  // 🔴 双缓冲: 直接改 <img>.src 会先清空再加载 ⇒ 底图一闪一闪(老倪 2026-11-09「疯狂跳动」)。
+  //   先让离屏 Image 加载完, 再把可见 img 指过去, 中间始终显示上一帧。
+  const _pre=new Image();
+  _pre.onload=function(){ try{ MJ.img.src=MJ.url; }catch(e){} };
+  _pre.onerror=function(){ const t=document.getElementById('mjtag');
+    if(t) t.textContent='⚠ 8802 渲染帧取不到(服务没起/端口不通): '+MJ.url; };
+  _pre.src=MJ.url;
 }
 function mjToggle(){
   MJ.on=!MJ.on;
@@ -4509,6 +4579,8 @@ function mjToggle(){
   b.onclick=mjToggle;
   // 场景在动: 独立定时器持续要新帧(不依赖 drawVR 被谁触发), 400ms 下限在 mjPull 里
   setInterval(function(){ if(MJ.on) mjPull(false); }, 400);
+  // 🎯 关节角直传: 与画布同频推两臂 6 轴角 (100ms 节流), 让 8802 只执行不重新解 IK
+  setInterval(mjPushQ, 120);
   // 帧龄: 每秒刷一次(老倪口径: 画面自身要标帧龄, 否则旧图看不出来)
   setInterval(function(){
     if(!MJ.on||!tag) return;
@@ -4516,6 +4588,10 @@ function mjToggle(){
     const age=MJ.tLoad?((now-MJ.tLoad)/1000).toFixed(1):'—';
     tag.textContent='🎥 8802 同视角 · 取回 '+MJ.got+' · 帧龄 '+age+'s · '+MJ.url;
   }, 800);
+  // 🎥 2026-11-09 老倪 A 方案: 「画布开启 MuJoCo 同视角底图」⇒ 进页面就默认接上,
+  //   8802 渲染帧(按本页 az/el/dist/tgt 现场渲染)贴在画布底下, 矢量层叠在上面。
+  //   关掉用同一个按钮; 刷新后又回到开(这是默认口径, 不是记状态)。
+  if(!MJ.on){ try{ mjToggle(); }catch(e){} }
 })();
 
 // ═════ 🧭 位置细胞层 (2026-11-09 老倪: 「ar3d 是可视化的窗口, 工程配置里要有所有配置坐标」) ═════

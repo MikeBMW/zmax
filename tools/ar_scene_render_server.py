@@ -56,8 +56,25 @@ VIEWS = {
     # 全景: 位置/朝向/视距/目标点/焦距 全部照 tools/web/tcp-ar.html 的 VR 默认值
     #   yaw=-0.9rad pitch=0.55rad dist=1.6 tgt=[0.70,0.22,0.14] F=520px@960x720
     #   ⇒ azimuth=-51.6 elevation=-31.5 fovy=2*atan(360/520)=69.4 (同一套针孔模型, 画面才"一模一样")
-    "ar3d": {"lookat": [0.70, 0.22, 0.14], "distance": 1.60, "elevation": -31.5,
-             "azimuth": -51.6, "fovy": 69.4, "note": "全景: 与 AR 页 3D 同视角 (yaw-0.9 pitch0.55 d1.6 F520)"},
+    # 🔴 2026-11-09: 换真 URDF 臂后臂高 1.23m (旧缩尺链只 0.6m), 目标点还压在台面 0.14 会把腕部顶出画面。
+    #   目标点抬到臂身中部 0.50、距离放到 2.0 ⇒ 底座到腕都进画; 方向仍与 AR 页同一套 (yaw-0.9 pitch0.55)。
+    #   🔴 2026-11-09 二修: 两臂基座在 y=0 / y=0.5, 方位角 -51.6 正好与基线重合 ⇒ 近臂把远臂整个遮死;
+    #      目标点抬到 0.50 又让上方 30% 死黑。改方位 -72°(侧看, 两臂错开)、目标点落回臂身中部 0.36、距离 1.85。
+    #   🔴 2026-11-09 三修: 两臂基座在 y=0/0.5, 只有沿 x 轴看才能把两台分开 (方位 -51.6/-72 都沿 y ⇒ 叠一起)。
+    #      改方位 0° (正面), 俯角 -22°, 目标点 z0.30, 距离 1.75 ⇒ 两台底座各自可见。
+    #   🔴 2026-11-09 四修: 距离 1.75 时左臂腕/夹爪出画 (两臂不对称)。后拉到 2.25, 目标点抬到 0.42。
+    "ar3d": {"lookat": [0.55, 0.25, 0.42], "distance": 2.25, "elevation": -20.0,
+             "azimuth": 0.0, "fovy": 69.4, "note": "全景: 正面 (方位0) 两臂分开且腕部入画, 目标点 z0.42 d2.25"},
+    # 📷 顶视 (老倪 2026-11-09): 画布有「📷 顶视相机」, 8802 只有 close/ar3d 两个机位 ⇒ 补一个正俯视,
+    #   目标点压到台面高度 0.10, 俯角 -89° (留 1° 让 MuJoCo 的 up 向量有解), 视场压到 55° 看得清槽位。
+    # 顶视收紧 (2026-11-09): 原 1.75m/55° 时工位只占中间一条横带, 上下 60% 是棋盘地板
+    "top": {"lookat": [0.55, 0.235, 0.11], "distance": 1.55, "elevation": -89.0,
+            "azimuth": 0.0, "fovy": 50.0, "note": "顶视: 正俯视全工位 (台面/双臂基座/料盘同框)"},
+    # 🎥 中央顶视相机 (场景里两臂之间的实体相机 cam_topmid, 位于 z=0.92 正下视) 的等效机位
+    # 顶视相机 (与 MJCF 的 cam_topmid / AR 页 TCAM 同源): 立柱在两臂中线 x=0,y=0.25, 相机在 z≈0.356
+    # 俯 35° 朝 +X, 视场 58°; 视线与料盘平面 (z=0.14) 交点 (0.328,0.25,0.14), 距离 0.377
+    "topmid": {"lookat": [0.396, 0.25, 0.12], "distance": 0.366, "elevation": -35.0,
+               "azimuth": 0.0, "fovy": 58.0, "note": "顶视相机 D435 视角 (等效 MJCF cam_topmid)"},
 }
 STATE = {"png": b"", "n": 0, "ts": 0.0, "mean": None, "gold_px": 0, "box": None,
          "ms": None, "shape": None, "err": None, "mode": "idle",
@@ -94,7 +111,9 @@ def _cam_sync_read(max_age=6.0):
 
 
 def _cam_sync_write(payload, src=""):
-    d = {k: payload[k] for k in ("az", "el", "dist", "tx", "ty", "tz", "fovy") if k in payload}
+    # 📐 w/h 也要存: 页面画布是 1.7:1, 直播帧如果回落到 960x720(4:3), 横向视场就差三成 ——
+    #   与 AR 页底图同比例的前提是这里真的把画幅带下去。
+    d = {k: payload[k] for k in ("az", "el", "dist", "tx", "ty", "tz", "fovy", "w", "h") if k in payload}
     d["ts"] = time.time()
     d["src"] = src
     with _CAM_SYNC_LOCK:
@@ -420,6 +439,132 @@ def _apply_ctrl(mj, env, model, data, mujoco, cmd):
                 data.ctrl[aid] = 0.002 + 0.016 * g
 
 
+
+# ═════ 🔁 AR 场景同步 (老倪 2026-11-09: 「http://127.0.0.1:8802/video 不同步」) ═════
+#   8802 在 idle 时双臂是死的, 而 AR 页在按 ss_live/ar_cmd.json 走 (抓/插/拔/检测) ⇒ 两边画面自然对不上。
+#   这里让渲染循环在 idle 时读 ar_cmd(新鲜 ≤2.5s), 把右臂目标 a→b 按 u 插值, 用本服务的 IK 解成 6 个关节角,
+#   按 position actuator 下发 ⇒ 画面里的右臂和 AR 页同一个动作。解不出来就跳过(不假装同步, 页面上臂不动)。
+_AC_LAST = {"t": 0.0, "deg": None, "err": None, "n": 0}
+
+
+def _page_cam(qs):
+    """页面机位 → MuJoCo 机位。
+
+    AR 页的 VR 世界是 **z 向下**(画布 2D 习惯): 实测页面 autoZoom 给的 tgt z = -0.065 在它自己
+    的坐标系里是"台面上方 65mm", 直接塞给 MuJoCo(z 向上) 会变成"台面下 65mm" ⇒ 画面看不到工位,
+    此前用"钉死目标点 + dist×0.65"打补丁, 结果两幅画面机位不同、看着像两个场景。
+    这里统一换算: z 取反, 距离限幅 0.8~3.0m。
+    """
+    d = dict(qs or {})
+    try:
+        if "tz" in d and d["tz"]:
+            d["tz"] = [str(-float(d["tz"][0]))]
+    except Exception:                                                    # noqa: BLE001
+        pass
+    try:
+        if "dist" in d and d["dist"]:
+            d["dist"] = [str(round(min(3.0, max(0.8, float(d["dist"][0]))), 3))]
+    except Exception:                                                    # noqa: BLE001
+        pass
+    return d
+
+
+def _ar_cmd_read(max_age=2.5):
+    try:
+        with open(os.path.join(ROOT, "zmax_data", "ss_live", "ar_cmd.json"), encoding="utf-8") as _f:
+            d = json.load(_f)
+        if (time.time() - float(d.get("t") or 0)) > max_age:
+            return None
+        return d
+    except Exception:                                                    # noqa: BLE001
+        return None
+
+
+def _ar_cmd_ctrl(mujoco, env, model, data, d):
+    a, b = d.get("a"), d.get("b")
+    if not a or not b:
+        return None
+    try:
+        u = float(d.get("u") or 0.0)
+        tgt = [(float(a[i]) + u * (float(b[i]) - float(a[i]))) / 1000.0 for i in range(3)]
+    except Exception:                                                    # noqa: BLE001
+        return None
+    now = time.time()
+    deg = _AC_LAST.get("deg")
+    _AC_LAST["tgt"] = [round(v * 1000, 1) for v in tgt]
+    if not deg or (now - _AC_LAST["t"]) >= 0.12:
+        r = ik_solve(mujoco, model, data, mujoco, "R", tgt, iters=60, seed_deg=deg)
+        if not r.get("ok"):
+            _AC_LAST["err"] = r.get("err") or "ik bad"
+            return None
+        deg = r["deg"]
+        _AC_LAST.update({"t": now, "deg": deg, "err": None, "n": _AC_LAST.get("n", 0) + 1})
+    out = {"mode": "sim", "R": deg, "_src": "ar_cmd", "_label": d.get("label"),
+           "_tgt_mm": [round(v * 1000, 1) for v in tgt]}
+    g = d.get("grip")
+    if isinstance(g, (int, float)):
+        out["gripR"] = float(g)
+    return out
+
+
+# ═════ 🎯 关节角直传 (老倪 2026-11-09: 「AR 场景的动作和 MuJoCo 的动作不一致」) ═════
+#   根因: AR 页用**它自己的 IK** 解关节角画臂, 8802 用 Python 的 ik_solve 再解一遍 ⇒ 两个求解器
+#   落不同分支(肘上/肘下), 同一个 TCP 目标画出两种姿态。外形换真 URDF 后几何一致了, 但解不唯一。
+#   解法: 页面把它算出来的 6 个关节角直接推过来 (POST /armq), 8802 只做执行, 不再解 IK ⇒ 构造上一致。
+_MJQ_FILE = os.path.join(ROOT, "zmax_data", "ss_live", "ar_mj_q.json")
+
+
+def _apply_kin(mujoco, model, data, cmd):
+    """把页面推来的关节角**直接写进 qpos** (运动学跟随), 不靠 PD 伺服。
+
+    为什么不用 position actuator 跟: 真 URDF 链在 kp=300/1500 下都有 15° 级静差
+    (实测 j0/j1 各差 15.9°, 末端差 57~217mm), 画面上看就是"手臂没到画布那个姿态"。
+    AR 叠加要的是**同一组角 = 同一姿态**, 不是伺服精度; 光模块/工件的物理照常步进。
+    """
+    import numpy as np
+    n = 0
+    for side in ("L", "R"):
+        deg = cmd.get(side)
+        if not deg or len(deg) < 6:
+            continue
+        for k in range(6):
+            j = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "%s_j%d" % (side, k))
+            if j < 0:
+                continue
+            a = int(model.jnt_qposadr[j])
+            data.qpos[a] = float(np.radians(float(deg[k])))
+            v = int(model.jnt_dofadr[j])
+            data.qvel[v] = 0.0
+            aid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, "%s_act%d" % (side, k))
+            if aid >= 0:
+                data.ctrl[aid] = float(np.radians(float(deg[k])))
+            n += 1
+    return n
+
+
+def _armq_write(payload):
+    d = {"t": time.time(), "R": payload.get("R"), "L": payload.get("L"),
+         "gripL": payload.get("gripL"), "gripR": payload.get("gripR"),
+         "seq": payload.get("seq"), "src": payload.get("src") or "ar3d"}
+    os.makedirs(os.path.dirname(_MJQ_FILE), exist_ok=True)
+    tmp = _MJQ_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f)
+    os.replace(tmp, _MJQ_FILE)
+    return d
+
+
+def _armq_read(max_age=1.5):
+    try:
+        with open(_MJQ_FILE, encoding="utf-8") as f:
+            d = json.load(f)
+        if (time.time() - float(d.get("t") or 0)) > max_age:
+            return None
+        return d
+    except Exception:                                                    # noqa: BLE001
+        return None
+
+
 def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render_hz: float = 0.0):
     import cv2
     import mujoco
@@ -493,6 +638,38 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
         with LOCK:
             cmd = dict(CMD)
         mode = cmd.get("mode") or "idle"
+        # 🎯 关节角直传优先于一切外部 /control: 页面推来的角就是画布上那台臂的角,
+        #   8802 只执行 ⇒ 两边姿态逐帧一致 (两套 IK 各解一次必然有分支差)。
+        _mq0 = _armq_read()
+        if _mq0 and (_mq0.get("R") or _mq0.get("L")):
+            mode = "sim"
+            cmd = {"mode": "sim", "R": _mq0.get("R"), "L": _mq0.get("L"),
+                   "gripL": _mq0.get("gripL"), "gripR": _mq0.get("gripR"), "_kin": True}
+            with LOCK:
+                STATE["sync"] = {"src": "armq", "seq": _mq0.get("seq"),
+                                 "age_s": round(time.time() - float(_mq0.get("t") or 0), 2),
+                                 "hasL": bool(_mq0.get("L")), "hasR": bool(_mq0.get("R"))}
+        if mode == "idle":
+            # 🎯 最优: 页面直推关节角 (两臂, 与画布同一组角) ⇒ 不解 IK, 姿态与画布逐帧一致
+            _mq = _armq_read()
+            if _mq and (_mq.get("R") or _mq.get("L")):
+                mode = "sim"
+                cmd = {"mode": "sim", "R": _mq.get("R"), "L": _mq.get("L"),
+                       "gripL": _mq.get("gripL"), "gripR": _mq.get("gripR")}
+                with LOCK:
+                    STATE["sync"] = {"src": "armq", "seq": _mq.get("seq"),
+                                     "age_s": round(time.time() - float(_mq.get("t") or 0), 2),
+                                     "hasL": bool(_mq.get("L")), "hasR": bool(_mq.get("R"))}
+                _ac = None
+            else:
+                _ac = _ar_cmd_read() if mode == "idle" else None
+            if _ac is not None:
+                _c2 = _ar_cmd_ctrl(mujoco, env, model, data, _ac)
+                if _c2:
+                    mode, cmd = "sim", _c2
+                    with LOCK:
+                        STATE["sync"] = {"src": "ar_cmd", "label": _c2.get("_label"),
+                                         "tgt_mm": _c2.get("_tgt_mm"), "n": _AC_LAST.get("n")}
         try:
             if mode == "sim":
                 # 控制模式: 下指令 → 真跑物理 → 渲染 (臂真的动)
@@ -500,6 +677,10 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
                 _nstep = max(1, int(round(period / 0.002)))
                 for _ in range(_nstep):                 # period/2ms 拍 (物理与真值同频)
                     mujoco.mj_step(model, data)
+                if cmd.get("_kin"):
+                    # 🎯 页面推角就是真值: 步进后再写一次 qpos 并清速度, 保证渲染姿态==画布姿态
+                    _apply_kin(mujoco, model, data, cmd)
+                    mujoco.mj_forward(model, data)
             elif jitter and base is not None and qadr >= 0:
                 ph = n / 12.0
                 # 幅值 3mm (原 12/10mm): 画面"活"靠机位微抖就够了; 模块大幅漂移会让
@@ -531,7 +712,12 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
                         else:
                             c.elevation, c.azimuth = cam0[name]
                         model.vis.global_.fovy = float(VIEWS[name].get("fovy", 45.0))
-                        renderer.update_scene(data, c)
+                        # 顶视: 关掉 group 3 (设备/相机盒)。上横梁悬在料盘正上方, 不关就把料盘全盖住。
+                        # MjvOption 默认 geomgroup=[1,1,1,0,0,0] ⇒ group3 天生是关的!
+                        #   只写 geomgroup[3]=0 等于"永远是关", 设备/相机盒哪都看不见 (实测差 31 灰度)。
+                        _op = mujoco.MjvOption()
+                        _op.geomgroup[3] = 0 if (name == "top" or float(c.elevation) <= -70.0) else 1
+                        renderer.update_scene(data, c, _op)
                         img = np.asarray(renderer.render())
                         box, px = gold_box(gold_mask(img))
                         ok, buf = cv2.imencode(".png", cv2.cvtColor(img, cv2.COLOR_RGB2BGR),
@@ -584,9 +770,27 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
                     _cc.distance = _rq["cam"]["distance"]
                     _cc.elevation = _rq["cam"]["elevation"]
                     _cc.azimuth = _rq["cam"]["azimuth"]
+                    if _rq.get("track"):
+                        _tg = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, _rq["track"])
+                        if _tg >= 0:
+                            _cc.lookat[:] = data.geom_xpos[_tg]
+                            if _rq.get("face"):
+                                _fg = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, _rq["face"])
+                                if _fg >= 0:
+                                    _ax = data.geom_xmat[_fg].reshape(3, 3)[:, 0]
+                                    _ax = -_ax / (np.linalg.norm(_ax) + 1e-9)
+                                    _cc.azimuth = float(np.degrees(np.arctan2(_ax[1], _ax[0])))
+                                    _cc.elevation = float(np.degrees(np.arcsin(max(-1.0, min(1.0, _ax[2])))))
                     model.vis.global_.fovy = float(_rq["fovy"])
-                    renderer.update_scene(data, _cc)
-                    _im = np.asarray(renderer.render())
+                    # 任意视角也要遵守同一条: 俯角 <= -70° ⇒ 关掉设备/相机盒 (否则顶视被横梁盖死)
+                    _op2 = mujoco.MjvOption()
+                    _op2.geomgroup[3] = 0 if float(_cc.elevation) <= -70.0 else 1   # 默认是关的, 斜视要打开
+                    _sz2 = _rq.get("size")
+                    _rnd = renderer
+                    if _sz2 and (_sz2[0], _sz2[1]) != (int(renderer.height), int(renderer.width)):
+                        _rnd = _free_renderer(mujoco, model, _sz2[0], _sz2[1])
+                    _rnd.update_scene(data, _cc, _op2)
+                    _im = np.asarray(_rnd.render())
                     _ok, _buf = cv2.imencode(".png", cv2.cvtColor(_im, cv2.COLOR_RGB2BGR),
                                              [cv2.IMWRITE_PNG_COMPRESSION, 3])
                     _rq["png"] = _buf.tobytes() if _ok else None
@@ -605,6 +809,22 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
         dt = period - (time.time() - t0)
         if dt > 0:
             time.sleep(dt)
+
+
+_FREE_RND = {}
+
+
+def _free_renderer(mujoco, model, h, w):
+    """按画幅取一个缓存的离屏渲染器 (页面画布比例≠4:3 时用)。
+
+    同一个 EGL 上下文里多开 Renderer 只是多一组离屏缓冲, 代价 ~几 MB; 缓存住避免每帧重建。
+    """
+    key = (int(h), int(w))
+    r = _FREE_RND.get(key)
+    if r is None:
+        r = mujoco.Renderer(model, int(h), int(w))
+        _FREE_RND[key] = r
+    return r
 
 
 def render_free(qs, timeout=3.5):
@@ -627,8 +847,24 @@ def render_free(qs, timeout=3.5):
            "distance": max(0.05, _f("dist", 1.60)),
            "elevation": max(-90.0, min(90.0, _f("el", -31.5))),
            "azimuth": _f("az", -51.6)}
+    # 📐 画幅: 页面画布是 ~1.7:1, 8802 固定 960x720(4:3) ⇒ 同一个 fovy 下横向视场不同,
+    #    叠在一起左边料盘/台面会被"压"掉三成, 看着就是两个场景。这里按页面画布比例出图。
+    _sz = None
+    try:
+        if "w" in qs and "h" in qs:
+            # ⚠ 先算比例再限幅: 直接夹 w/h 会改掉比例 (1500x882 被夹成 1280x882 ⇒ 1.45 而不是 1.70)
+            _w = float(qs["w"][0]); _h = float(qs["h"][0])
+            if _w > 0 and _h > 0:
+                _ar = max(0.6, min(3.2, _w / _h))
+                _sz = (int(round(960.0 / _ar)), 960)       # 宽度统一 960, 高度按页面比例
+    except Exception:                                                      # noqa: BLE001
+        _sz = None
     req = {"cam": cam, "fovy": max(5.0, min(120.0, _f("fovy", VIEWS["ar3d"]["fovy"]))),
-           "ev": threading.Event(), "png": None, "err": None}
+           "size": _sz, "ev": threading.Event(), "png": None, "err": None,
+           # 🎯 跟物: "track"=把 lookat 钉到某个 geom 的世界位置; "face"=再让机位沿这个 geom 的
+           #    x 轴正视 (模块被两指夹住只有从模块侧面才看得见)。渲染线程里算 —— HTTP 线程拿不到 data。
+           "track": ((qs.get("track") or [None])[0]),
+           "face": ((qs.get("face") or [None])[0])}
     try:
         FREE_Q.put_nowait(req)
     except queue.Full:              # 丢最老的, 保证最新视角能出
@@ -680,20 +916,77 @@ class Handler(BaseHTTPRequestHandler):
         # 🎬 直播窗口默认看全景(ar3d) —— 「这个窗口」= AR 场景那个画面; 要料盘特写就 ?cam=close
         if p in ("/video", "/video.mjpg", "/stream", "/stream.mjpg") and not (qs.get("cam") or qs.get("c")):
             cam_name = "ar3d"
+        # 📷 顶视 (老倪 2026-11-09): 缓存帧里的 views["top"] 与实际取景不一致 (实测仍是斜视,
+        #   与 free-cam 正俯视差 74.5 灰度), 这里改成**现场按预设参数渲染**, 不再读缓存。
+        # 🦾 cam=close 现在是「右臂夹爪特写」: 机位跟着 R_tcp 走、正对光模块侧面。
+        #   (老倪 2026-11-10: 光模块在 ar3d 全景里只有 13x3 px, 判不了夹没夹住)
+        if cam_name == "close" and p in ("/", "/frame.png", "/frame.jpg"):
+            try:
+                self._send(200, render_free({"track": ["R_tcp"], "face": ["R_mod"], "dist": ["0.26"],
+                                             "fovy": ["50"], "az": ["0"], "el": ["0"]}), "image/png")
+            except Exception as e:                                          # noqa: BLE001
+                self._send(503, ("close: %s" % e).encode(), "text/plain")
+            return
+        if cam_name in ("top", "topmid") and p in ("/", "/frame.png", "/frame.jpg"):
+            _v = VIEWS[cam_name]
+            try:
+                self._send(200, render_free({
+                    "az": ["%.4f" % _v["azimuth"]], "el": ["%.4f" % _v["elevation"]],
+                    "dist": ["%.4f" % _v["distance"]],
+                    "tx": ["%.4f" % _v["lookat"][0]], "ty": ["%.4f" % _v["lookat"][1]],
+                    "tz": ["%.4f" % _v["lookat"][2]], "fovy": ["%.4f" % _v["fovy"]]}), "image/png")
+            except Exception as e:                                          # noqa: BLE001
+                self._send(503, ("top-view: %s" % e).encode(), "text/plain")
+            return
         if p in ("/", "/frame.png", "/frame.jpg") and any(
                 k in qs for k in ("az", "el", "dist", "tx", "ty", "tz", "fovy")):
             try:
-                self._send(200, render_free(qs), "image/png")
+                self._send(200, render_free(_page_cam(qs)), "image/png")
             except Exception as e:                                          # noqa: BLE001
                 self._send(503, ("free-cam: %s: %s" % (type(e).__name__, e)).encode(), "text/plain")
             return
         if p in ("/", "/frame.png", "/frame.jpg"):
-            b = (views.get(cam_name) or {}).get("png") or (st["png"] if cam_name == "close" else b"")
+            b = b""
+            if qs.get("live"):
+                # 👁 live=1: 直播窗口要的是「和 AR 页同一个机位」⇒ 有新鲜推来的相机就现场按它渲染。
+                #   不能拿 views[] 里的缓存帧 —— 那是预设机位, 老倪看到的就是「/video 与 AR 场景不同步」。
+                try:
+                    _cq = _cam_sync_read()
+                    if _cq:
+                        # 🎯 只信页面的**方向**(az/el), 目标点/距离换成 8802 自己的口径:
+                        #   页面 autoZoom 的 tgt/dist 是它自绘场景的尺度(实测 tgt z=-186mm 落在台面下、
+                        #   dist 2.1m 把工位拍成一小块), 照搬 ⇒ 画面又暗又空, 老倪看着就是「不同步」。
+                        #   实测: dist×0.5 + 预设 lookat ⇒ 内容占比 5%→18%, 均值 13→24。
+                        # 🎯 2026-11-10 老倪「这两个场景的动作要同步」: 以前这里把页面的目标点**改掉**
+                        #   (钉死 0.52/0.35/0.32) 并把距离 ×0.65 ⇒ 两幅画面根本不是同一个机位,
+                        #   再怎么同步关节角, 看着也是"两个场景"。现在照搬页面机位, 只把 z 取反
+                        #   (页面坐标系 z 向下, MuJoCo z 向上), 距离做安全限幅。
+                        _cq = _page_cam(_cq)
+                        b = render_free(_cq)
+                except Exception:                                        # noqa: BLE001
+                    b = b""
+            if not b:
+                b = (views.get(cam_name) or {}).get("png") or (st["png"] if cam_name == "close" else b"")
+            if not b and cam_name != "close":
+                # pull-frame-v1b: 直播窗口要的是"当前跟随机位的一张图" ⇒ 与 /video 同口径现场渲染,
+                #   否则页面没在推视角时这里只有 503 (老倪右键新标签打开就一片空白)
+                try:
+                    _cq = _cam_sync_read()
+                    b = render_free(_cq or {})
+                except Exception:                                        # noqa: BLE001
+                    b = b""
             if not b:
                 self._send(503, b"no frame yet", "text/plain")
                 return
             self._send(200, b, "image/png")
             return
+        if p in ("/video", "/video.mjpg", "/stream", "/stream.mjpg") and \
+                "text/html" in (self.headers.get("Accept") or "") and \
+                (self.headers.get("Sec-Fetch-Dest") or "").lower() in ("document", ""):
+            # 🖱 浏览器地址栏直接开 /video 时给 HTML 外壳 —— raw multipart 的顶栏导航永远"加载中"
+            #   (实测浏览器一直转圈 ⇒ 老倪说的「video 网页打不开」)。<img src="/video"> 取流不受影响
+            #   (那种请求 Sec-Fetch-Dest=image)。
+            p = "/live"
         if p in ("/video", "/video.mjpg", "/stream", "/stream.mjpg"):
             # 🎬 2026-11-09 老倪: 「ar 场景渲染帧, 8802 输入还是跟原来一样 —— 把这个窗口直接做成
             #   http://10.163.146.76:8802/video 可以么?」⇒ 服务端直接推 MJPEG, 浏览器打开这个地址就是
@@ -788,15 +1081,49 @@ class Handler(BaseHTTPRequestHandler):
 #w{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
 #v{max-width:100%;max-height:100%}
 #h{position:fixed;left:10px;top:8px;color:#79c0ff;font:bold 12px monospace;text-shadow:0 0 6px #000}
-</style><div id="h"></div><div id="w"><img id="v" src="/video?fps=12" alt="8802 render stream"></div>
+/* 📷 机位切换 (老倪 2026-11-09「8802/video 没有顶视相机」): 全景/顶视/特写 三个按钮, 不用改 URL */
+#c{position:fixed;right:10px;top:8px;display:flex;gap:6px;z-index:9}
+#c button{background:#12202e;color:#79c0ff;border:1px solid #2a4a66;border-radius:6px;
+  padding:5px 10px;font:bold 12px monospace;cursor:pointer}
+#c button.on{background:#1d6fdc;color:#fff;border-color:#4aa3ff}
+</style><div id="h"></div>
+<div id="c"><button data-v="ar3d" class="on">全景</button><button data-v="top">顶视</button><button data-v="topmid">中央顶视</button><button data-v="close">特写</button></div>
+<div id="w"><img id="v" src="/frame.png?cam=ar3d" alt="8802 render stream"></div>
 <script>
 var t0=Date.now(),v=document.getElementById('v'),h=document.getElementById('h'),cam='预设机位';
-setInterval(function(){h.textContent='Z-MAX AR 8802 · MJPEG '+(v.naturalWidth||0)+'×'+(v.naturalHeight||0)
- +' · 视角:'+cam+' · 已看 '+Math.round((Date.now()-t0)/1000)+'s · '+location.host+'/video';},500);
+// ?cam=top|close|ar3d 切机位 (老倪 2026-11-09「顶视相机」): /video?cam=top 就是正俯视
+var VIEW=(new URLSearchParams(location.search)).get('cam')||'ar3d';
+// 机位按钮: 点了就换 VIEW, 下一拍 fetch 自动用新机位 (不刷新页面)
+document.querySelectorAll('#c button').forEach(function(b){
+  if(b.getAttribute('data-v')===VIEW){ b.classList.add('on'); } else { b.classList.remove('on'); }
+  b.onclick=function(){
+    VIEW=b.getAttribute('data-v');
+    document.querySelectorAll('#c button').forEach(function(x){ x.classList.toggle('on', x===b); });
+  };
+});
+// pull-frame-v1: 每 100ms 拉一张 /frame.png?cam=ar3d ⇒ 右键=当前帧真图
+// 🔴 2026-11-09「8802/video 没有了」根因: 每拍改 <img>.src ⇒ 元素先进入 loading 态(0×0/透明),
+//   6fps × 每张 ~200ms 加载 ⇒ 几乎全程是 loading, 看着就是"没有画面"。
+//   改成 fetch 取 PNG → blob URL 换图 (已解码, 不会再走 loading), 旧 blob 立刻 revoke。
+var FPS=6, busy=false;   // ⚠ FPS 必须定义: 下面 setInterval 用 Math.round(1000/FPS), 少了它=每帧连发, 会把渲染线程打满
+function tick8802(){
+  if(busy) return; busy=true;
+  var u='/frame.png?cam='+VIEW+(VIEW==='ar3d'?'&live=1':'')+'&_='+Date.now();
+  fetch(u,{cache:'no-store'}).then(function(r){ return r.blob(); }).then(function(b){
+    var url=URL.createObjectURL(b), old=v.getAttribute('data-u');
+    v.src=url; v.setAttribute('data-u',url);
+    if(old){ try{ URL.revokeObjectURL(old); }catch(e){} }
+  }).catch(function(){}).then(function(){ busy=false; });
+}
+setInterval(tick8802,Math.round(1000/FPS));
+// ⚠ 角标定时器必须自带 setInterval(function(){ ... },500) 包裹 (上一版把这句吃掉, 整段脚本语法错 ⇒ 画面全停)
+setInterval(function(){h.textContent='Z-MAX AR 8802 · '+({ar3d:'全景',top:'顶视',topmid:'中央顶视',close:'特写'}[VIEW]||VIEW)
++' · PNG 6fps · '+(v.naturalWidth||0)+'×'+(v.naturalHeight||0)
++' · 视角:'+cam+' · 已看 '+Math.round((Date.now()-t0)/1000)+'s';},500);
 setInterval(function(){fetch('/cam',{cache:'no-store'}).then(function(r){return r.json();}).then(function(j){
   cam = j.follow ? ('跟随 ar3d 页面 '+(j.age_s)+'s前') : '预设机位(页面没在推)';}).catch(function(){});},1500);
 v.onerror=function(){h.textContent='流断了(8802 未起? 或通道数已满 3) · 10s 后自动重连';
- setTimeout(function(){v.src='/video?fps=12&_='+Date.now();},10000);};
+ setTimeout(function(){v.src='/frame.png?cam='+VIEW+(VIEW==='ar3d'?'&live=1':'')+'&_='+Date.now();},10000);};
 </script>""").encode("utf-8")
             self._send(200, _html, "text/html; charset=utf-8")
             return
@@ -820,6 +1147,8 @@ v.onerror=function(){h.textContent='流断了(8802 未起? 或通道数已满 3)
             age = (time.time() - st["ts"]) if st["ts"] else None
             cal = st.get("calibs") or {}
             self._json({"ok": st["err"] is None, "n": st["n"], "mode": st["mode"],
+                        "ac_err": _AC_LAST.get("err"),          # ar_cmd 驱动为什么没生效 (IK/取数)
+                        "ac_tgt": _AC_LAST.get("tgt"),
                         "age_s": round(age, 2) if age is not None else None,
                         "shape": st.get("shape"), "mean": st.get("mean"),
                         "gold_px": st.get("gold_px"), "box": st.get("box"), "ms": st.get("ms"),
@@ -923,6 +1252,15 @@ v.onerror=function(){h.textContent='流断了(8802 未起? 或通道数已满 3)
                 _d = _cam_sync_write(body or {}, src=str(self.headers.get("Origin") or ""))
                 self._json({"ok": True, "ts": round(_d.get("ts", 0), 3),
                             "cam": {k: _d.get(k) for k in ("az", "el", "dist", "tx", "ty", "tz", "fovy")}})
+            except Exception as e:                                           # noqa: BLE001
+                self._json({"ok": False, "err": "%s: %s" % (type(e).__name__, e)}, 400)
+            return
+        if p == "/armq":
+            # 🎯 AR 页直推 6 轴关节角(度) ⇒ 8802 只执行, 不再自己解 IK (两套 IK 会落不同分支)
+            try:
+                _d = _armq_write(body or {})
+                self._json({"ok": True, "ts": round(_d["t"], 3),
+                            "nR": len(_d.get("R") or []), "nL": len(_d.get("L") or [])})
             except Exception as e:                                           # noqa: BLE001
                 self._json({"ok": False, "err": "%s: %s" % (type(e).__name__, e)}, 400)
             return
