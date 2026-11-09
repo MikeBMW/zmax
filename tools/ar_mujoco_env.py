@@ -153,6 +153,12 @@ def build_mjcf() -> str:
     #   (实测 gold_px 25594、框贴画面边)。几何仍与 ar3d 桌面完全一致, 只换颜色。
     geo3d.append('<geom name="bench" type="box" pos="0.65 0.25 -0.015" size="0.300 0.800 0.015" '
                  'rgba="0.34 0.34 0.36 1"/>')
+    # 🖼 背景墙 (2026-11-09): 侧/正面取景时画面上半是纯黑虚空 (实测 47% 像素 <5 灰阶, 整片连通),
+    #   目检看不出"这是工位在房间里"。加两块暗灰竖板把背景兜住, 不动台面/料盘几何。
+    geo3d.append('<geom name="backdrop_x" type="box" pos="-1.05 0.25 0.55" size="0.02 2.0 1.30" '
+                 'rgba="0.16 0.17 0.20 1" contype="0" conaffinity="0"/>')
+    geo3d.append('<geom name="backdrop_y" type="box" pos="0.6 1.95 0.55" size="2.0 0.02 1.30" '
+                 'rgba="0.13 0.14 0.17 1" contype="0" conaffinity="0"/>')
     for _i, (_lx, _ly) in enumerate([(0.375, -0.525), (0.925, -0.525), (0.375, 1.025), (0.925, 1.025)]):
         geo3d.append('<geom name="leg%d" type="box" pos="%.3f %.3f -0.375" size="0.0225 0.0225 0.375" '
                      'rgba="0.29 0.31 0.34 1"/>' % (_i, _lx, _ly))
@@ -307,6 +313,8 @@ def build_mjcf() -> str:
   <worldbody>
     <light pos="%(lx).4f %(ly).4f %(lz).4f" dir="0 0 -1" diffuse="1.35 1.35 1.4" specular="0.25 0.25 0.25"/>
     <light pos="%(l2x).4f %(l2y).4f %(l2z).4f" dir="0.3 0.7 -1" diffuse="0.55 0.55 0.6"/>
+    <!-- 🔆 料盘补光 (2026-11-09): 槽唇 vs 盘面只有 11 灰阶, 槽内件看不出来 -->
+    <light pos="0.52 0.25 0.60" dir="0 0 -1" diffuse="0.75 0.75 0.78" specular="0.1 0.1 0.1"/>
     <geom name="floor" type="plane" pos="0 0 -0.750" size="3 3 0.05" material="grid"/>
 %(geo3d)s
 %(cam)s
