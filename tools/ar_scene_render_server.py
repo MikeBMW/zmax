@@ -690,6 +690,13 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
                                          "tgt_mm": _c2.get("_tgt_mm"), "n": _AC_LAST.get("n")}
         try:
             if mode == "sim":
+                # 📡 关节真值留档: 这一拍到底把哪组角写进了 qpos —— 页面要跟的就是它。
+                #   (页面自己解 IK + 8802 自己解 IK = 两套解, 必然有肘上/肘下分支差; 只留一套)
+                with LOCK:
+                    STATE["joints"] = {"R": cmd.get("R"), "L": cmd.get("L"),
+                                       "gripL": cmd.get("gripL"), "gripR": cmd.get("gripR"),
+                                       "src": cmd.get("_src") or ("armq" if cmd.get("_kin") else "ar_cmd"),
+                                       "ts": time.time(), "seq": cmd.get("seq")}
                 # 控制模式: 下指令 → 真跑物理 → 渲染 (臂真的动)
                 _apply_ctrl(mujoco, env, model, data, mujoco, cmd)
                 _nstep = max(1, int(round(period / 0.002)))
@@ -1229,12 +1236,28 @@ v.onerror=function(){h.textContent='流断了(8802 未起? 或通道数已满 3)
                 self._json({"follow": False, "why": "还没有页面推过相机(看的是预设机位)",
                             "path": _CAM_SYNC["path"]})
             return
+        if p == "/joints.json":
+            # 🤝 同步真源 (老倪 2026-11-10「要跟 /ar3d 一样, 动作同步」):
+            #   8802 每拍把写进 qpos 的角留档, AR 页拿这组角做 FK ⇒ 两边是同一组数, 不是两套 IK。
+            with LOCK:
+                _j = dict(STATE.get("joints") or {})
+            if _j.get("ts"):
+                _j["age_s"] = round(time.time() - _j["ts"], 3)
+                _j["fresh"] = _j["age_s"] <= 1.5
+            else:
+                _j = {"fresh": False, "why": "还没跑过 sim 拍"}
+            self._json(_j)
+            return
         if p == "/status.json":
             age = (time.time() - st["ts"]) if st["ts"] else None
             cal = st.get("calibs") or {}
             self._json({"ok": st["err"] is None, "n": st["n"], "mode": st["mode"],
                         "ac_err": _AC_LAST.get("err"),          # ar_cmd 驱动为什么没生效 (IK/取数)
                         "ac_tgt": _AC_LAST.get("tgt"),
+                        # 🔎 同步真源: src=armq 表示"页面推角, 8802 只执行"(逐帧同角);
+                        #   src=ar_cmd 表示回退(8802 自己解 IK, 可能与画布分支不同)。
+                        "sync": st.get("sync"),
+                        "gripL": st.get("gripL"), "gripR": st.get("gripR"),
                         "age_s": round(age, 2) if age is not None else None,
                         "shape": st.get("shape"), "mean": st.get("mean"),
                         "gold_px": st.get("gold_px"), "box": st.get("box"), "ms": st.get("ms"),
