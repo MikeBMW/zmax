@@ -772,8 +772,12 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
                     # 任意视角也要遵守同一条: 俯角 <= -70° ⇒ 关掉设备/相机盒 (否则顶视被横梁盖死)
                     _op2 = mujoco.MjvOption()
                     _op2.geomgroup[3] = 0 if float(_cc.elevation) <= -70.0 else 1   # 默认是关的, 斜视要打开
-                    renderer.update_scene(data, _cc, _op2)
-                    _im = np.asarray(renderer.render())
+                    _sz2 = _rq.get("size")
+                    _rnd = renderer
+                    if _sz2 and (_sz2[0], _sz2[1]) != (int(renderer.height), int(renderer.width)):
+                        _rnd = _free_renderer(mujoco, model, _sz2[0], _sz2[1])
+                    _rnd.update_scene(data, _cc, _op2)
+                    _im = np.asarray(_rnd.render())
                     _ok, _buf = cv2.imencode(".png", cv2.cvtColor(_im, cv2.COLOR_RGB2BGR),
                                              [cv2.IMWRITE_PNG_COMPRESSION, 3])
                     _rq["png"] = _buf.tobytes() if _ok else None
@@ -792,6 +796,22 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
         dt = period - (time.time() - t0)
         if dt > 0:
             time.sleep(dt)
+
+
+_FREE_RND = {}
+
+
+def _free_renderer(mujoco, model, h, w):
+    """按画幅取一个缓存的离屏渲染器 (页面画布比例≠4:3 时用)。
+
+    同一个 EGL 上下文里多开 Renderer 只是多一组离屏缓冲, 代价 ~几 MB; 缓存住避免每帧重建。
+    """
+    key = (int(h), int(w))
+    r = _FREE_RND.get(key)
+    if r is None:
+        r = mujoco.Renderer(model, int(h), int(w))
+        _FREE_RND[key] = r
+    return r
 
 
 def render_free(qs, timeout=3.5):
@@ -814,8 +834,20 @@ def render_free(qs, timeout=3.5):
            "distance": max(0.05, _f("dist", 1.60)),
            "elevation": max(-90.0, min(90.0, _f("el", -31.5))),
            "azimuth": _f("az", -51.6)}
+    # 📐 画幅: 页面画布是 ~1.7:1, 8802 固定 960x720(4:3) ⇒ 同一个 fovy 下横向视场不同,
+    #    叠在一起左边料盘/台面会被"压"掉三成, 看着就是两个场景。这里按页面画布比例出图。
+    _sz = None
+    try:
+        if "w" in qs and "h" in qs:
+            # ⚠ 先算比例再限幅: 直接夹 w/h 会改掉比例 (1500x882 被夹成 1280x882 ⇒ 1.45 而不是 1.70)
+            _w = float(qs["w"][0]); _h = float(qs["h"][0])
+            if _w > 0 and _h > 0:
+                _ar = max(0.6, min(3.2, _w / _h))
+                _sz = (int(round(960.0 / _ar)), 960)       # 宽度统一 960, 高度按页面比例
+    except Exception:                                                      # noqa: BLE001
+        _sz = None
     req = {"cam": cam, "fovy": max(5.0, min(120.0, _f("fovy", VIEWS["ar3d"]["fovy"]))),
-           "ev": threading.Event(), "png": None, "err": None}
+           "size": _sz, "ev": threading.Event(), "png": None, "err": None}
     try:
         FREE_Q.put_nowait(req)
     except queue.Full:              # 丢最老的, 保证最新视角能出

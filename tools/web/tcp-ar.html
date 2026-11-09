@@ -4498,9 +4498,13 @@ function mjParams(){
   // 8802 VIEWS['ar3d'] 已经把这套换算钉好了(实测 1px): azimuth=deg(yaw), elevation=-deg(pitch), fovy=69.4
   const az=VR.yaw*180/Math.PI, el=-VR.pitch*180/Math.PI;
   const t=VR.tgt||[0,0,0];
+  // 📐 w/h: 画布实际宽高 ⇒ 8802 按同一画幅出图 (4:3 的帧放进 1.7:1 的画布, 横向视场会差三成)
+  let _w=0,_h=0;
+  try{ const c=$('vr'); if(c){ _w=Math.round(c.clientWidth)||0; _h=Math.round(c.clientHeight)||0; } }catch(e){}
   return 'az='+az.toFixed(1)+'&el='+el.toFixed(1)+'&dist='+VR.dist.toFixed(3)
        +'&tx='+t[0].toFixed(3)+'&ty='+t[1].toFixed(3)+'&tz='+t[2].toFixed(3)
-       +'&fovy='+MJ.fovy.toFixed(1);
+       +'&fovy='+MJ.fovy.toFixed(1)
+       +(_w&&_h?('&w='+_w+'&h='+_h):'');
 }
 function mjLayout(){
   const c=$('vr'), im=MJ.img, card=$('vrcard');
