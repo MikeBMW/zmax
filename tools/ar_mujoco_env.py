@@ -346,6 +346,10 @@ def build_mjcf() -> str:
     <body name="cam_topmid_head" pos="0.072 0 0.3315" euler="0 35 0">
       <geom name="cam_topmid_tilt" type="box" size="0.0125 0.045 0.0125" pos="0 0 0.0125" rgba="0.10 0.13 0.17 1" group="3" contype="0" conaffinity="0"/>
       <geom name="cam_topmid_plate" type="box" size="0.0025 0.045 0.0125" pos="0.0145 0 0.0125" rgba="0.05 0.06 0.08 1" group="3" contype="0" conaffinity="0"/>
+      <!-- 背面标牌 (实测 AR 机位在 -X 侧, 看到的是 D435 背面: 深色机身贴在黑色料盘上只有 26×8px,
+           认不出是相机。加一块浅灰尾板 + 一道白标条, 从背面也能一眼看出是装在立柱上的相机) -->
+      <geom name="cam_topmid_back" type="box" size="0.0025 0.045 0.0125" pos="-0.0145 0 0.0125" rgba="0.72 0.75 0.79 1" group="3" contype="0" conaffinity="0"/>
+      <geom name="cam_topmid_stripe" type="box" size="0.0028 0.045 0.0025" pos="-0.0145 0 0.0225" rgba="0.95 0.96 0.98 1" group="3" contype="0" conaffinity="0"/>
       <!-- 前面板: 左 IR / RGB(蓝) / 右 IR / 红外投射器(红) -->
       <geom name="cam_topmid_ir0" type="cylinder" size="0.007 0.002" pos="0.0175 -0.031 0.0125" euler="0 90 0" rgba="0.04 0.05 0.06 1" group="3" contype="0" conaffinity="0"/>
       <geom name="cam_topmid_rgb" type="cylinder" size="0.007 0.002" pos="0.0175 0 0.0125" euler="0 90 0" rgba="0.12 0.31 0.85 1" group="3" contype="0" conaffinity="0"/>
