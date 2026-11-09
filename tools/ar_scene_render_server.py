@@ -768,6 +768,17 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
                     _cc.distance = _rq["cam"]["distance"]
                     _cc.elevation = _rq["cam"]["elevation"]
                     _cc.azimuth = _rq["cam"]["azimuth"]
+                    if _rq.get("track"):
+                        _tg = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, _rq["track"])
+                        if _tg >= 0:
+                            _cc.lookat[:] = data.geom_xpos[_tg]
+                            if _rq.get("face"):
+                                _fg = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, _rq["face"])
+                                if _fg >= 0:
+                                    _ax = data.geom_xmat[_fg].reshape(3, 3)[:, 0]
+                                    _ax = -_ax / (np.linalg.norm(_ax) + 1e-9)
+                                    _cc.azimuth = float(np.degrees(np.arctan2(_ax[1], _ax[0])))
+                                    _cc.elevation = float(np.degrees(np.arcsin(max(-1.0, min(1.0, _ax[2])))))
                     model.vis.global_.fovy = float(_rq["fovy"])
                     # 任意视角也要遵守同一条: 俯角 <= -70° ⇒ 关掉设备/相机盒 (否则顶视被横梁盖死)
                     _op2 = mujoco.MjvOption()
@@ -847,7 +858,11 @@ def render_free(qs, timeout=3.5):
     except Exception:                                                      # noqa: BLE001
         _sz = None
     req = {"cam": cam, "fovy": max(5.0, min(120.0, _f("fovy", VIEWS["ar3d"]["fovy"]))),
-           "size": _sz, "ev": threading.Event(), "png": None, "err": None}
+           "size": _sz, "ev": threading.Event(), "png": None, "err": None,
+           # 🎯 跟物: "track"=把 lookat 钉到某个 geom 的世界位置; "face"=再让机位沿这个 geom 的
+           #    x 轴正视 (模块被两指夹住只有从模块侧面才看得见)。渲染线程里算 —— HTTP 线程拿不到 data。
+           "track": ((qs.get("track") or [None])[0]),
+           "face": ((qs.get("face") or [None])[0])}
     try:
         FREE_Q.put_nowait(req)
     except queue.Full:              # 丢最老的, 保证最新视角能出
@@ -901,6 +916,15 @@ class Handler(BaseHTTPRequestHandler):
             cam_name = "ar3d"
         # 📷 顶视 (老倪 2026-11-09): 缓存帧里的 views["top"] 与实际取景不一致 (实测仍是斜视,
         #   与 free-cam 正俯视差 74.5 灰度), 这里改成**现场按预设参数渲染**, 不再读缓存。
+        # 🦾 cam=close 现在是「右臂夹爪特写」: 机位跟着 R_tcp 走、正对光模块侧面。
+        #   (老倪 2026-11-10: 光模块在 ar3d 全景里只有 13x3 px, 判不了夹没夹住)
+        if cam_name == "close" and p in ("/", "/frame.png", "/frame.jpg"):
+            try:
+                self._send(200, render_free({"track": ["R_tcp"], "face": ["R_mod"], "dist": ["0.26"],
+                                             "fovy": ["50"], "az": ["0"], "el": ["0"]}), "image/png")
+            except Exception as e:                                          # noqa: BLE001
+                self._send(503, ("close: %s" % e).encode(), "text/plain")
+            return
         if cam_name in ("top", "topmid") and p in ("/", "/frame.png", "/frame.jpg"):
             _v = VIEWS[cam_name]
             try:
