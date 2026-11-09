@@ -95,8 +95,30 @@ def main():
     ap.add_argument("--open", action="store_true")
     a = ap.parse_args()
     H.upstream = a.upstream
-    srv = ThreadingHTTPServer((a.host, a.port), H)
-    url = "http://127.0.0.1:%d/" % a.port
+    srv = None
+    _port = a.port
+    for _try in range(10):                       # 端口被占 (已有实例在跑) ⇒ 顺延, 别甩 traceback
+        try:
+            srv = ThreadingHTTPServer((a.host, _port), H)
+            break
+        except OSError as e:
+            if getattr(e, "errno", None) not in (98, 48):
+                raise
+            # 已经有一份在监听同一个口 ⇒ 直接开那个, 不再起第二份
+            try:
+                import urllib.request as _u
+                _u.urlopen("http://127.0.0.1:%d/" % _port, timeout=2).read(1)
+                url = "http://127.0.0.1:%d/" % _port
+                print("👁  已在运行: %s  (直接用它; 要换端口加 --port)" % url)
+                if a.open:
+                    webbrowser.open(url)
+                return
+            except Exception:                                             # noqa: BLE001
+                _port += 1
+                continue
+    if srv is None:
+        raise SystemExit("❌ 端口 %d..%d 都被占用" % (a.port, a.port + 9))
+    url = "http://127.0.0.1:%d/" % _port
     print("👁  L2 观测窗: %s   (上游 %s · 与 YOLO 同一个 /frame.png?cam=close)" % (url, a.upstream))
     if a.open:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()

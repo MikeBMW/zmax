@@ -17,7 +17,23 @@ import json
 import os
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.abspath(os.path.join(_HERE, "..", "..", "..", ".."))   # ~/zmax
+
+
+def _find_repo(start):
+    """仓库根: 往上找到同时有 src/lerobot 和 config 的那一层。
+
+    ⚠ 不许再用固定层数 (原 ".."×4): 本文件从 engineering/nodes/ 迁到 middleware/nodes/impl/
+      ⇒ 同样数 4 层落到 ~/zmax/src, 点位配置读不到 → 常驻循环 89 次重启 (2026-11-10 实测)。
+    """
+    d = start
+    for _ in range(8):
+        if os.path.isdir(os.path.join(d, "src", "lerobot")) and os.path.isdir(os.path.join(d, "config")):
+            return d
+        d = os.path.dirname(d)
+    return os.environ.get("ZMAX_ROOT") or os.path.expanduser("~/zmax")
+
+
+REPO = _find_repo(_HERE)
 OUT = os.environ.get("ZMAX_SI_OUT") or os.path.join(REPO, "zmax_data", "runtime", "traj", "sim_insert.json")
 
 # ── 点位真源 = 工程配置 (2026-10-28 老倪: 槽位/孔位必须从配置读, 代码里不许再留常量) ──
