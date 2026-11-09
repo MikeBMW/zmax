@@ -52,7 +52,7 @@ def key2layer() -> dict:
     if _KEY2LAYER is None:
         m: dict = {}
         try:
-            from .layers import by_level                              # noqa: PLC0415
+            from . import layers as by_level                              # noqa: PLC0415
             for lv, rows in (by_level.LEVELS_INDEX or {}).items():
                 for r in rows:
                     if len(r) > 2 and r[2]:

@@ -71,7 +71,7 @@ if __name__ == "__main__":
     import json as _j
     print(_j.dumps(summary(), ensure_ascii=False, indent=2))
 ''')
-open(os.path.join(REPO, "src/lerobot/engineering/layers/by_level.py"), "w", encoding="utf-8").write("".join(lines))
-print("生成:", os.path.join(REPO, "src/lerobot/engineering/layers/by_level.py"))
+open(os.path.join(REPO, "src/lerobot/engineering/layers.py"), "w", encoding="utf-8").write("".join(lines))
+print("生成:", os.path.join(REPO, "src/lerobot/engineering/layers.py"))
 for lv in ("L2", "L3", "L4", "L5", "meta"):
     print("  %-5s %2d 节点 · %2d 有逻辑" % (lv, len(out[lv]), len([r for r in out[lv] if r[2]])))

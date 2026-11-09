@@ -30,7 +30,7 @@ CANoe 概念 → 本系统:
 
 真源(不许另写一份):
   画布工程: src/lerobot/engineering/flows/state_space_obs.json   (89 节点 / 182 连线)
-  档位归属: src/lerobot/engineering/layers/by_level.py::LEVELS_INDEX
+  档位归属: src/lerobot/engineering/layers.py::LEVELS_INDEX
   话题注册: src/lerobot/dataspace/topics.py::TOPICS
 """
 import json
@@ -57,7 +57,7 @@ def _level_map():
         import sys
         if os.path.join(REPO, "src") not in sys.path:
             sys.path.insert(0, os.path.join(REPO, "src"))
-        from lerobot.engineering.layers.by_level import LEVELS_INDEX
+        from lerobot.engineering.layers import LEVELS_INDEX
         m = {}
         for lv, items in LEVELS_INDEX.items():
             for it in items:

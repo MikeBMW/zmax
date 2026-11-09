@@ -66,7 +66,7 @@ def registry_locations() -> dict:
 
 def layers() -> dict:
     sys.path.insert(0, str(SRC))
-    from lerobot.engineering.layers.by_level import LEVELS_INDEX
+    from lerobot.engineering.layers import LEVELS_INDEX
     out = {}
     for lv, rows in LEVELS_INDEX.items():
         for r in rows:

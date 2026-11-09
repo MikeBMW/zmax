@@ -85,7 +85,7 @@ def main():
 
     print("=== ⑥ 档位索引 nodes/by_level.py ===")
     try:
-        from lerobot.engineering.layers import by_level
+        from lerobot.engineering import layers as by_level
         s = by_level.summary()
         chk(sum(v["nodes"] for v in s.values()) > 0, "档位索引可用", str(s))
         if a.regen_by_level:

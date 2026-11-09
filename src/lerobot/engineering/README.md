@@ -21,8 +21,13 @@ src/lerobot/
 │       └── impl/ss_yolo.py            实现：取数 → 调算法 → 打标 (共享运行时 impl/shared_runtime.py)
 │
 └── engineering/                     ③ 分层设计 (L1~L5)  —— 没有 nodes/ 目录
-    ├── layers/by_level.py            L2/L3/L4/L5 各有哪些节点 (生成物)
-    ├── levels.py                     L2/L3/L4/L5 各自"必须还能干的事" + check()
+    ├── l1_robot/                     机器人接口   指令收口/执行/安全边界/物理闭环
+    ├── l2_basic/                     基础功能     分段感知→融合→估计→原子技能
+    ├── l3_advanced/                  高级功能     长程序列/技能编排/VLM+Flow-Matching
+    ├── l4_expert/                    专家功能     INTACT/导航/档位/流形世界模型/势场
+    ├── l5_human_sync/                人机同步     大模型理解/指令解析/自动标注/记忆
+    ├── layers.py                     汇总 (LEVELS_INDEX · keys_of · summary, 生成物)
+    ├── levels.py                     各层"必须还能干什么" + check()
     ├── registry.py                   key → 实现函数 + 文件/行号
     ├── runtime.py                    按拓扑序派发
     ├── sourceview.py                 源码定位 (get_node_location / get_node_triple)
@@ -54,6 +59,19 @@ src/lerobot/
 判断方法：**这段代码换个机器人还能用 → policies；换个传输协议要改 → middleware；
 只是把两者接起来并留下证据 → middleware/nodes/impl。engineering 里不放节点。**
 
+### 层义（老倪 2026-11-10 定，唯一口径）
+
+| 层 | 文件夹 | 含义 | 画布节点 |
+|---|---|---|---|
+| L1 | `l1_robot/` | 机器人接口 | 4（执行器/动作收口/安全边界/物理世界） |
+| L2 | `l2_basic/` | 基础功能 | 26 |
+| L3 | `l3_advanced/` | 高级功能 | 5 |
+| L4 | `l4_expert/` | 专家功能 | 19 |
+| L5 | `l5_human_sync/` | 人机同步 | 11 |
+
+层归属的唯一依据是 `levels.py` 的 `band_map()`（画布行带 + `OVERRIDE` 特例）；
+`tools/gen_layers.py` 把归属结果写进五个文件夹，别手改。
+
 ## 3. 节点实现按节点名分文件（2026-11-10）
 
 历史上 125 个 `node_*` 全塞在 `nodes/library.py`（7245 行、上千全局），registry 的 key 全指它 ⇒
@@ -78,7 +96,7 @@ registry                          157 key · 0 个不可调用
 
 | 文件 | 生成器 | 内容 |
 |---|---|---|
-| `nodes/by_level.py` | `tools/gen_by_level_index.py` | 档位 → (画布 id, 名称, key, 文件, 函数) |
+| `l1_robot/`…`l5_human_sync/` + `layers.py` | `tools/gen_layers.py` | 每层节点清单 + 层汇总索引 |
 | `middleware/nodes/n_*.py` + `_index.py` | `tools/gen_middleware_nodes.py` | 节点契约（端口/话题/实现绑定） |
 | `engineering/node_map.json` | `tools/gen_node_map.py` | 一节点三处：contract / impl / algo |
 | `nodes/impl_manifest.json` | `tools/node_split.py` | key → 实现模块（收尾重注册 registry 用） |
