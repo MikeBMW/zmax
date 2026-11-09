@@ -56,8 +56,10 @@ VIEWS = {
     # 全景: 位置/朝向/视距/目标点/焦距 全部照 tools/web/tcp-ar.html 的 VR 默认值
     #   yaw=-0.9rad pitch=0.55rad dist=1.6 tgt=[0.70,0.22,0.14] F=520px@960x720
     #   ⇒ azimuth=-51.6 elevation=-31.5 fovy=2*atan(360/520)=69.4 (同一套针孔模型, 画面才"一模一样")
-    "ar3d": {"lookat": [0.70, 0.22, 0.14], "distance": 1.60, "elevation": -31.5,
-             "azimuth": -51.6, "fovy": 69.4, "note": "全景: 与 AR 页 3D 同视角 (yaw-0.9 pitch0.55 d1.6 F520)"},
+    # 🔴 2026-11-09: 换真 URDF 臂后臂高 1.23m (旧缩尺链只 0.6m), 目标点还压在台面 0.14 会把腕部顶出画面。
+    #   目标点抬到臂身中部 0.50、距离放到 2.0 ⇒ 底座到腕都进画; 方向仍与 AR 页同一套 (yaw-0.9 pitch0.55)。
+    "ar3d": {"lookat": [0.62, 0.25, 0.50], "distance": 2.00, "elevation": -31.5,
+             "azimuth": -51.6, "fovy": 69.4, "note": "全景: 与 AR 页 3D 同视角 (目标点按真臂高度抬到 0.50)"},
 }
 STATE = {"png": b"", "n": 0, "ts": 0.0, "mean": None, "gold_px": 0, "box": None,
          "ms": None, "shape": None, "err": None, "mode": "idle",
