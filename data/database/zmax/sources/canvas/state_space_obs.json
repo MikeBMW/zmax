@@ -804,7 +804,7 @@
   },
   {
    "id": "ssdata",
-   "name": "📦 metaworld 数据源",
+   "name": "📦 数据源 (AR场景 ⇄ 仿真 ⇄ 真机)",
    "type": "hardware",
    "icon": "📦",
    "x": 240,
@@ -820,8 +820,8 @@
    "color": "#58a6ff",
    "params": {
     "src_switch": true,
-    "src_state": "插拔场景",
-    "source": "src/lerobot/engineering/nodes/library.py · node_metaworld_data",
+    "src_state": "AR场景",
+    "source": "src/lerobot/middleware/nodes/impl/data.py · node_metaworld_data",
     "task": "peg-insert-side-v3",
     "frames": 4800,
     "state_dim": 39,
@@ -829,8 +829,14 @@
     "policy": "left_right",
     "run_env": true,
     "state_space": true,
-    "desc": "[数据源层] 运行环境数据源: 仿真(metaworld 39D/4D 演示) ⇄ 真机(4060 远程只读订阅 Orin: TCP位姿+姿态/六关节/六维力/夹爪/机器人状态/图像) — 点节点上的「仿真/真机」拨钮或右键菜单切换; 双击=按当前模式运行真实模型 (🚀训练/📷推理)",
-    "source_symbol": "node_metaworld_data"
+    "desc": "[数据源层] 画布拨钮决定数据源: AR场景(8802 MuJoCo 渲染帧 · 真帧真深度) / 仿真(metaworld 39D) / 真机(4060 只读订阅 Orin)。选 AR 时本节点每拍真取 /frame.png?cam=ar3d 并写 _SS_STATE['data_source'], L2 YOLO 以画布为准 (10s 时效), systemd ZMAX_L2_SRC 只做兜底。",
+    "source_symbol": "node_metaworld_data",
+    "cam": "ar3d",
+    "src_kinds": [
+     "ar",
+     "metaworld",
+     "orin"
+    ]
    }
   },
   {
@@ -2274,7 +2280,7 @@
      "工程库": "data/database/zmax/zmax_engineering.db"
     },
     "cfg_snapshot": {
-     "loaded_at": "2026-11-09 17:45:44",
+     "loaded_at": "2026-11-10 06:40:40",
      "files_total": 8,
      "files_ok": 8,
      "orders": 12,
@@ -2338,18 +2344,18 @@
      "口径": "一个状态空间工程承载全部任务; 任务=配方段子集+参数覆盖"
     },
     "source_symbol": "def import_config_files(",
-    "cfg_loaded_at": "2026-11-09 17:45:44",
+    "cfg_loaded_at": "2026-11-10 06:40:40",
     "cfg_files": [
      {
       "name": "总工程文件",
       "rel": "data/database/zmax/zmax_space.proj",
-      "sha256": "720081ad17cde534",
+      "sha256": "7f33742cda30ad88",
       "exists": true
      },
      {
       "name": "任务绑定",
       "rel": "config/ss_task_binding.json",
-      "sha256": "8e2d28a81522f7eb",
+      "sha256": "54efeedee38376dd",
       "exists": true
      },
      {
