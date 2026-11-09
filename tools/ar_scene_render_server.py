@@ -479,6 +479,34 @@ def _ar_cmd_ctrl(mujoco, env, model, data, d):
 _MJQ_FILE = os.path.join(ROOT, "zmax_data", "ss_live", "ar_mj_q.json")
 
 
+def _apply_kin(mujoco, model, data, cmd):
+    """把页面推来的关节角**直接写进 qpos** (运动学跟随), 不靠 PD 伺服。
+
+    为什么不用 position actuator 跟: 真 URDF 链在 kp=300/1500 下都有 15° 级静差
+    (实测 j0/j1 各差 15.9°, 末端差 57~217mm), 画面上看就是"手臂没到画布那个姿态"。
+    AR 叠加要的是**同一组角 = 同一姿态**, 不是伺服精度; 光模块/工件的物理照常步进。
+    """
+    import numpy as np
+    n = 0
+    for side in ("L", "R"):
+        deg = cmd.get(side)
+        if not deg or len(deg) < 6:
+            continue
+        for k in range(6):
+            j = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "%s_j%d" % (side, k))
+            if j < 0:
+                continue
+            a = int(model.jnt_qposadr[j])
+            data.qpos[a] = float(np.radians(float(deg[k])))
+            v = int(model.jnt_dofadr[j])
+            data.qvel[v] = 0.0
+            aid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, "%s_act%d" % (side, k))
+            if aid >= 0:
+                data.ctrl[aid] = float(np.radians(float(deg[k])))
+            n += 1
+    return n
+
+
 def _armq_write(payload):
     d = {"t": time.time(), "R": payload.get("R"), "L": payload.get("L"),
          "gripL": payload.get("gripL"), "gripR": payload.get("gripR"),
@@ -581,7 +609,7 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
         if _mq0 and (_mq0.get("R") or _mq0.get("L")):
             mode = "sim"
             cmd = {"mode": "sim", "R": _mq0.get("R"), "L": _mq0.get("L"),
-                   "gripL": _mq0.get("gripL"), "gripR": _mq0.get("gripR")}
+                   "gripL": _mq0.get("gripL"), "gripR": _mq0.get("gripR"), "_kin": True}
             with LOCK:
                 STATE["sync"] = {"src": "armq", "seq": _mq0.get("seq"),
                                  "age_s": round(time.time() - float(_mq0.get("t") or 0), 2),
@@ -614,6 +642,10 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
                 _nstep = max(1, int(round(period / 0.002)))
                 for _ in range(_nstep):                 # period/2ms 拍 (物理与真值同频)
                     mujoco.mj_step(model, data)
+                if cmd.get("_kin"):
+                    # 🎯 页面推角就是真值: 步进后再写一次 qpos 并清速度, 保证渲染姿态==画布姿态
+                    _apply_kin(mujoco, model, data, cmd)
+                    mujoco.mj_forward(model, data)
             elif jitter and base is not None and qadr >= 0:
                 ph = n / 12.0
                 # 幅值 3mm (原 12/10mm): 画面"活"靠机位微抖就够了; 模块大幅漂移会让
