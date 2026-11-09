@@ -420,6 +420,51 @@ def _apply_ctrl(mj, env, model, data, mujoco, cmd):
                 data.ctrl[aid] = 0.002 + 0.016 * g
 
 
+
+# ═════ 🔁 AR 场景同步 (老倪 2026-11-09: 「http://127.0.0.1:8802/video 不同步」) ═════
+#   8802 在 idle 时双臂是死的, 而 AR 页在按 ss_live/ar_cmd.json 走 (抓/插/拔/检测) ⇒ 两边画面自然对不上。
+#   这里让渲染循环在 idle 时读 ar_cmd(新鲜 ≤2.5s), 把右臂目标 a→b 按 u 插值, 用本服务的 IK 解成 6 个关节角,
+#   按 position actuator 下发 ⇒ 画面里的右臂和 AR 页同一个动作。解不出来就跳过(不假装同步, 页面上臂不动)。
+_AC_LAST = {"t": 0.0, "deg": None, "err": None, "n": 0}
+
+
+def _ar_cmd_read(max_age=2.5):
+    try:
+        with open(os.path.join(ROOT, "zmax_data", "ss_live", "ar_cmd.json"), encoding="utf-8") as _f:
+            d = json.load(_f)
+        if (time.time() - float(d.get("t") or 0)) > max_age:
+            return None
+        return d
+    except Exception:                                                    # noqa: BLE001
+        return None
+
+
+def _ar_cmd_ctrl(mujoco, env, model, data, d):
+    a, b = d.get("a"), d.get("b")
+    if not a or not b:
+        return None
+    try:
+        u = float(d.get("u") or 0.0)
+        tgt = [(float(a[i]) + u * (float(b[i]) - float(a[i]))) / 1000.0 for i in range(3)]
+    except Exception:                                                    # noqa: BLE001
+        return None
+    now = time.time()
+    deg = _AC_LAST.get("deg")
+    if not deg or (now - _AC_LAST["t"]) >= 0.12:
+        r = ik_solve(mujoco, model, data, mujoco, "R", tgt, iters=60, seed_deg=deg)
+        if not r.get("ok"):
+            _AC_LAST["err"] = r.get("err") or "ik bad"
+            return None
+        deg = r["deg"]
+        _AC_LAST.update({"t": now, "deg": deg, "err": None, "n": _AC_LAST.get("n", 0) + 1})
+    out = {"mode": "sim", "R": deg, "_src": "ar_cmd", "_label": d.get("label"),
+           "_tgt_mm": [round(v * 1000, 1) for v in tgt]}
+    g = d.get("grip")
+    if isinstance(g, (int, float)):
+        out["gripR"] = float(g)
+    return out
+
+
 def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render_hz: float = 0.0):
     import cv2
     import mujoco
@@ -493,6 +538,16 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
         with LOCK:
             cmd = dict(CMD)
         mode = cmd.get("mode") or "idle"
+        if mode == "idle":
+            # 🔁 AR 场景同步: 没人给指令时就跟着 AR 页的 ar_cmd 走 (否则 8802 画面里双臂是死的)
+            _ac = _ar_cmd_read()
+            if _ac is not None:
+                _c2 = _ar_cmd_ctrl(mujoco, env, model, data, _ac)
+                if _c2:
+                    mode, cmd = "sim", _c2
+                    with LOCK:
+                        STATE["sync"] = {"src": "ar_cmd", "label": _c2.get("_label"),
+                                         "tgt_mm": _c2.get("_tgt_mm"), "n": _AC_LAST.get("n")}
         try:
             if mode == "sim":
                 # 控制模式: 下指令 → 真跑物理 → 渲染 (臂真的动)
