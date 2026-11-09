@@ -1809,7 +1809,7 @@ def _ar_frame(cam="ar3d", ttl=0.35):
 
 def _ar_yolo_weights():
     """在役 AR 权重 (渲染域微调) → 没有就退回真机权重并如实标注。"""
-    for rel in ("models/ar_yolo_v1.pt", "models/yolo_peg_live.pt"):
+    for rel in ("models/ar_yolo_v2.pt", "models/ar_yolo_v1.pt", "models/yolo_peg_live.pt"):
         fp = os.path.join(_REPO_ROOT, rel)
         if os.path.isfile(fp):
             return fp, rel
