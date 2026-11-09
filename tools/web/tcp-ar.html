@@ -2208,6 +2208,25 @@ function drawCfgPts(g, pr){
 loadCfgPts();
 setInterval(loadCfgPts, 10000);
 var DRWN=0;
+// 🎯 2026-11-09 关节角直传 (老倪: 「AR 场景的动作和 MuJoCo 的动作不一致」)
+//   两个求解器(页面 JS IK / 8802 Python IK)会落不同分支 ⇒ 同一 TCP 画出两种姿态。
+//   改成: 页面把**它自己算出的 6 轴角**推给 8802, 8802 只执行, 不再解 IK ⇒ 构造上一致。
+let _mjqT=0, _mjqN=0, _mjqErr=null;
+function mjPushQ(){
+  try{
+    const now=(typeof performance!=='undefined'?performance.now():Date.now());
+    if(now-_mjqT<100) return; _mjqT=now;
+    const d2r=180/Math.PI, conv=a=>a.map(v=>+(v*d2r).toFixed(2));
+    const Rq=(typeof PREV!=='undefined'&&PREV&&PREV.on&&PREV.q)?conv(PREV.q):null;
+    const Lq=(typeof LARM!=='undefined'&&LARM&&LARM.q)?conv(LARM.q):null;
+    if(!Rq&&!Lq) return;
+    const host=(location.hostname||'127.0.0.1');
+    fetch('http://'+host+':8802/armq',{method:'POST',mode:'no-cors',
+      headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({R:Rq,L:Lq,seq:++_mjqN})}).then(function(){_mjqErr=null;})
+      .catch(function(e){_mjqErr=String(e&&e.message||e);});
+  }catch(e){ _mjqErr=String(e&&e.message||e); }
+}
 function drawVR(){
   try{ DRWN++; }catch(e){}
   const c=$('vr'), g=c.getContext('2d');
@@ -4516,6 +4535,8 @@ function mjToggle(){
   b.onclick=mjToggle;
   // 场景在动: 独立定时器持续要新帧(不依赖 drawVR 被谁触发), 400ms 下限在 mjPull 里
   setInterval(function(){ if(MJ.on) mjPull(false); }, 400);
+  // 🎯 关节角直传: 与画布同频推两臂 6 轴角 (100ms 节流), 让 8802 只执行不重新解 IK
+  setInterval(mjPushQ, 120);
   // 帧龄: 每秒刷一次(老倪口径: 画面自身要标帧龄, 否则旧图看不出来)
   setInterval(function(){
     if(!MJ.on||!tag) return;
