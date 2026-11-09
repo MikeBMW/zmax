@@ -4516,6 +4516,10 @@ function mjToggle(){
     const age=MJ.tLoad?((now-MJ.tLoad)/1000).toFixed(1):'—';
     tag.textContent='🎥 8802 同视角 · 取回 '+MJ.got+' · 帧龄 '+age+'s · '+MJ.url;
   }, 800);
+  // 🎥 2026-11-09 老倪 A 方案: 「画布开启 MuJoCo 同视角底图」⇒ 进页面就默认接上,
+  //   8802 渲染帧(按本页 az/el/dist/tgt 现场渲染)贴在画布底下, 矢量层叠在上面。
+  //   关掉用同一个按钮; 刷新后又回到开(这是默认口径, 不是记状态)。
+  if(!MJ.on){ try{ mjToggle(); }catch(e){} }
 })();
 
 // ═════ 🧭 位置细胞层 (2026-11-09 老倪: 「ar3d 是可视化的窗口, 工程配置里要有所有配置坐标」) ═════
