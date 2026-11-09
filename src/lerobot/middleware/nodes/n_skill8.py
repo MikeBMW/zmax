@@ -3,10 +3,9 @@
 
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ssskill, sslimit
+    in  in3   ← ss_mem_l2
     out out1  → n_moveit
     out out2  → ssphys
-
-    in  in3   ← ss_mem_l2 (🧠 记忆赋能: 本段通道 r/L/单拍 + 标杆 + 点位)
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)
@@ -14,7 +13,13 @@
 话题 =  ss.node.sssk8.<port>
 
 实现绑定: registry key=`sssk8` · src/lerobot/policies/left_right/state_space/skills/atomic_skills.py:class SK08Complete
-执行口径: EXEC_MODE=act · PURE=True (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
+执行口径: EXEC_MODE=act · PURE=False (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
+
+⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
+   契约  src/lerobot/middleware/nodes/n_skill8.py              ← 就是本文件
+   实现  src/lerobot/engineering/nodes/sssk8.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
+   算法  src/lerobot/policies/left_right/state_space/skills/atomic_skills.py                                             ← 纯计算 (模型/几何/控制律)
+   三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("sssk8")
 """
 
 NODE_ID = 'sssk8'
@@ -24,17 +29,17 @@ TYPE = 'model'
 EXEC_MODE = 'act'
 
 # 输入端口 (从总线取) / 输出端口 (发到总线) —— 与工程 JSON 的连线一一对应
-PORTS_IN = ['in1', 'in2', 'in3']
+PORTS_IN = ['in1', 'in3']
 PORTS_OUT = ['out1', 'out2']
 PORT_LABELS = {}
 
 IMPL_KEY = 'sssk8'
 SOURCE = 'src/lerobot/policies/left_right/state_space/skills/atomic_skills.py'
 SOURCE_SYMBOL = 'class SK08Complete'
-PARAMS = {'state_space': True, 'skill_layer': True, 'skill': {'template': 'SK08', 'stage': '完成'}, 'desc': '[基础·分段小模型] 原子技能 ⑧ 完成 (SK08): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器', 'source': 'src/lerobot/policies/left_right/state_space/skills/atomic_skills.py', 'source_symbol': 'class SK08Complete', 'pure_verified': True}
+PARAMS = {'state_space': True, 'skill_layer': True, 'skill': {'template': 'SK08', 'stage': '完成'}, 'desc': '[基础·分段小模型] 原子技能 ⑧ 完成 (SK08): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器', 'source': 'src/lerobot/policies/left_right/state_space/skills/atomic_skills.py', 'source_symbol': 'class SK08Complete'}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = True
+PURE = False
 LAST_STATUS = ""
 
 
@@ -96,14 +101,7 @@ def compute(ctx):
                 # (2026-10-29: 流形引擎族就是这样, 原来 out 恒为空, 下游永远拿不到)
                 _out = {PORTS_OUT[0]: res}
             return _out
-        # 🔴 2026-11-01 全系统贯通实测: 很多实现返回 ndarray/float/bool
-        #   (如 safety.saturate 返回限幅后向量, 标定返回 M), 原来一律当"非 dict"丢掉
-        #   ⇒ 上游算出来、下游永远收不到, 65 个节点里 6 条连线真有值。
-        #   非 None 的一律当首端口的值发出去, 不再吞结果。
-        if res is not None:
-            LAST_STATUS = "实现执行 (非 dict 结果 → %s)" % PORTS_OUT[0]
-            return {PORTS_OUT[0]: res}
-        LAST_STATUS = "实现返回 None → 直通"
+        LAST_STATUS = "实现返回非 dict → 直通"
         return _passthrough(ctx)
     except Exception as e:                                          # noqa: BLE001
         LAST_STATUS = "实现异常(%s: %s) → 直通" % (type(e).__name__, e)

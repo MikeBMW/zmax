@@ -112,6 +112,32 @@ def get_node_location(key):
     return path, line, modified
 
 
+def get_node_triple(key_or_node_id):
+    """节点 → 三层位置 (契约 / 实现 / 算法)。
+
+    老倪 2026-11-10: 「engineering 是算法和 node 中间件的桥梁」——
+    一个节点天然落在三处文件, 右键只给一处就会让人以为实现丢了:
+      contract  middleware/nodes/n_xxx.py   端口/话题/执行口径 (调 registry)
+      impl      engineering/nodes/<key>.py   取数 → 调算法 → 打标
+      algo      policies/...                 纯算法
+    表由 tools/gen_node_map.py 生成 (engineering/node_map.json)。
+    """
+    import json as _json
+    import os as _os
+    _p = _os.path.join(_os.path.dirname(__file__), "node_map.json")
+    try:
+        with open(_p, encoding="utf-8") as _f:
+            _m = (_json.load(_f) or {}).get("nodes") or {}
+    except Exception:                                                    # noqa: BLE001
+        return {}
+    if key_or_node_id in _m:
+        return _m[key_or_node_id]
+    for _k, _v in _m.items():
+        if _v.get("impl_key") == key_or_node_id:
+            return _v
+    return {}
+
+
 def get_node_external_symbol(key):
     """外部源码映射的真实符号名 (VSCode 定位显示用) — 无映射返回 None"""
     ext = _ext_loc().get(key)

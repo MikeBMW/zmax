@@ -4,15 +4,21 @@
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ss_mem_share
     in  in2   ← n_skill_dict
-    out out1  → ss_mem_field, ssff, sssched, n_mem_links
+    out out1  → ss_mem_field, ssff, sssched, n_mem_links, sssk1, sssk2, sssk3, sssk4, sssk5, sssk6, sssk7, sssk8
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ss_mem_l2.<port>
 
-实现绑定: registry key=`ss_mem_l2`
-执行口径: EXEC_MODE=pure · PURE=True (2026-11-02 起真算: 输出 = 操作库视图/按需查询; 不动机械臂)
+实现绑定: registry key=`ss_mem_l2` · src/lerobot/memory/mem_nodes.py · node_ss_mem_l2:node_ss_mem_l2
+执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
+
+⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
+   契约  src/lerobot/middleware/nodes/n_muscle.py              ← 就是本文件
+   实现  src/lerobot/engineering/nodes/ss_mem_l2.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
+   算法  src/lerobot/memory/mem_nodes.py · node_ss_mem_l2                                             ← 纯计算 (模型/几何/控制律)
+   三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("ss_mem_l2")
 """
 
 NODE_ID = 'ss_mem_l2'
@@ -27,16 +33,12 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'ss_mem_l2'
-SOURCE = 'src/lerobot/memory/mem_nodes.py'
+SOURCE = 'src/lerobot/memory/mem_nodes.py · node_ss_mem_l2'
 SOURCE_SYMBOL = 'node_ss_mem_l2'
-PARAMS = {'state_space': True, 'layer': 'L2', 'store': 'data/memory/l2_store',
-          'banks': ['ops_cards (工艺卡/工艺编排)', 'ops_points (固定轨迹点)', 'ops_seq (段序列+节拍口径)',
-                    'champs (固化标杆)', 'ledger (实测台账)'],
-          'desc': 'L2 肌肉记忆操作: 固定轨迹点 + 工艺编排好的工艺卡 + 固化标杆 + 实测台账 的唯一持有者; 其它节点只调 l2_store 查询',
-          'write': '仅本节点写 (writer=ss_mem_l2); 建库/刷新: tools/l2_mem_build.py'}
+PARAMS = {'state_space': True, 'source': 'src/lerobot/memory/mem_nodes.py · node_ss_mem_l2', 'source_symbol': 'node_ss_mem_l2'}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = True
+PURE = False
 LAST_STATUS = ""
 
 
@@ -98,14 +100,7 @@ def compute(ctx):
                 # (2026-10-29: 流形引擎族就是这样, 原来 out 恒为空, 下游永远拿不到)
                 _out = {PORTS_OUT[0]: res}
             return _out
-        # 🔴 2026-11-01 全系统贯通实测: 很多实现返回 ndarray/float/bool
-        #   (如 safety.saturate 返回限幅后向量, 标定返回 M), 原来一律当"非 dict"丢掉
-        #   ⇒ 上游算出来、下游永远收不到, 65 个节点里 6 条连线真有值。
-        #   非 None 的一律当首端口的值发出去, 不再吞结果。
-        if res is not None:
-            LAST_STATUS = "实现执行 (非 dict 结果 → %s)" % PORTS_OUT[0]
-            return {PORTS_OUT[0]: res}
-        LAST_STATUS = "实现返回 None → 直通"
+        LAST_STATUS = "实现返回非 dict → 直通"
         return _passthrough(ctx)
     except Exception as e:                                          # noqa: BLE001
         LAST_STATUS = "实现异常(%s: %s) → 直通" % (type(e).__name__, e)

@@ -2,16 +2,9 @@
 """运动规划  ·  节点 n_moveit
 
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
-    in  in2   ← sslimit
+    in  in1   ← sssk1, sssk2, sssk3, sssk4, sslimit
+    in  in2   ← sssk5, sssk6, sssk7, sssk8, ssdec
     in  in3   ← ss_grav_h
-    in  in4   ← sssk1
-    in  in5   ← sssk2
-    in  in6   ← sssk3
-    in  in7   ← sssk4
-    in  in8   ← sssk5
-    in  in9   ← sssk6
-    in  in10  ← sssk7
-    in  in11  ← sssk8
     out out1  → n_exec
 
 输出 / 输入代码:
@@ -20,7 +13,13 @@
 话题 =  ss.node.n_moveit.<port>
 
 实现绑定: registry key=`n_moveit` · src/lerobot/engineering/nodes/plan_impl.py:def run
-执行口径: EXEC_MODE=act · PURE=True (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
+执行口径: EXEC_MODE=act · PURE=False (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
+
+⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
+   契约  src/lerobot/middleware/nodes/n_moveit.py              ← 就是本文件
+   实现  src/lerobot/engineering/nodes/n_moveit.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
+   算法  src/lerobot/engineering/nodes/plan_impl.py                                             ← 纯计算 (模型/几何/控制律)
+   三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("n_moveit")
 """
 
 NODE_ID = 'n_moveit'
@@ -30,17 +29,17 @@ TYPE = 'model'
 EXEC_MODE = 'act'
 
 # 输入端口 (从总线取) / 输出端口 (发到总线) —— 与工程 JSON 的连线一一对应
-PORTS_IN = ['in2', 'in3', 'in4', 'in5', 'in6', 'in7', 'in8', 'in9', 'in10', 'in11']
+PORTS_IN = ['in1', 'in2', 'in3']
 PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'n_moveit'
 SOURCE = 'src/lerobot/engineering/nodes/plan_impl.py'
 SOURCE_SYMBOL = 'def run'
-PARAMS = {'layer': 'L2', 'role': '意图/技能 → 段表 (规划); 不下发、不碰执行器', 'backends': ['orin_sdk_bridge (xCoreSDK 直连, 默认/效率优先)', 'ros2_srv (兼容现有 /move_pose)'], 'sdk_bridge': 'http://192.168.23.66:39061', 'controller': '192.168.23.160', 'safety': 'Δ守卫 · 向下限幅 · dry-run 默认 · 现场闸门', 'src': 'src/lerobot/arm/arm_control.py', 'parity': 'SDK vs ROS2 关节最大偏差 0.91 µrad (2026-09-26 实测)', 'bridge_vff': False, 'bridge_vff_cap_mms': 10.0, 'bridge_vff_deadband_mms': 3.0, 'bridge_vff_src': 'SS-EPI-CORNER 仿真 v_ff (只取方向)', 'bridge_vff_cap_hard_mms': 10.0, 'station_link': True, 'pure_verified': True}
+PARAMS = {'layer': 'L2', 'role': '意图/技能 → 段表 (规划); 不下发、不碰执行器', 'backends': ['orin_sdk_bridge (xCoreSDK 直连, 默认/效率优先)', 'ros2_srv (兼容现有 /move_pose)'], 'sdk_bridge': 'http://192.168.23.66:39061', 'controller': '192.168.23.160', 'safety': 'Δ守卫 · 向下限幅 · dry-run 默认 · 现场闸门', 'src': 'src/lerobot/arm/arm_control.py', 'parity': 'SDK vs ROS2 关节最大偏差 0.91 µrad (2026-09-26 实测)', 'bridge_vff': False, 'bridge_vff_cap_mms': 10.0, 'bridge_vff_deadband_mms': 3.0, 'bridge_vff_src': 'SS-EPI-CORNER 仿真 v_ff (只取方向)', 'bridge_vff_cap_hard_mms': 10.0, 'station_link': True}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
-PURE = True
+PURE = False
 LAST_STATUS = ""
 
 
@@ -102,14 +101,7 @@ def compute(ctx):
                 # (2026-10-29: 流形引擎族就是这样, 原来 out 恒为空, 下游永远拿不到)
                 _out = {PORTS_OUT[0]: res}
             return _out
-        # 🔴 2026-11-01 全系统贯通实测: 很多实现返回 ndarray/float/bool
-        #   (如 safety.saturate 返回限幅后向量, 标定返回 M), 原来一律当"非 dict"丢掉
-        #   ⇒ 上游算出来、下游永远收不到, 65 个节点里 6 条连线真有值。
-        #   非 None 的一律当首端口的值发出去, 不再吞结果。
-        if res is not None:
-            LAST_STATUS = "实现执行 (非 dict 结果 → %s)" % PORTS_OUT[0]
-            return {PORTS_OUT[0]: res}
-        LAST_STATUS = "实现返回 None → 直通"
+        LAST_STATUS = "实现返回非 dict → 直通"
         return _passthrough(ctx)
     except Exception as e:                                          # noqa: BLE001
         LAST_STATUS = "实现异常(%s: %s) → 直通" % (type(e).__name__, e)

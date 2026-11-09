@@ -12,6 +12,12 @@
 
 实现绑定: registry key=`n_dsvl` · src/lerobot/policies/left_right/state_space/scene_vlm.py:class SceneVLM
 执行口径: EXEC_MODE=act · PURE=False (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
+
+⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
+   契约  src/lerobot/middleware/nodes/n_qwen.py              ← 就是本文件
+   实现  src/lerobot/engineering/nodes/n_dsvl.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
+   算法  src/lerobot/policies/left_right/state_space/scene_vlm.py                                             ← 纯计算 (模型/几何/控制律)
+   三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("n_vlm_llm")
 """
 
 NODE_ID = 'n_vlm_llm'
@@ -93,14 +99,7 @@ def compute(ctx):
                 # (2026-10-29: 流形引擎族就是这样, 原来 out 恒为空, 下游永远拿不到)
                 _out = {PORTS_OUT[0]: res}
             return _out
-        # 🔴 2026-11-01 全系统贯通实测: 很多实现返回 ndarray/float/bool
-        #   (如 safety.saturate 返回限幅后向量, 标定返回 M), 原来一律当"非 dict"丢掉
-        #   ⇒ 上游算出来、下游永远收不到, 65 个节点里 6 条连线真有值。
-        #   非 None 的一律当首端口的值发出去, 不再吞结果。
-        if res is not None:
-            LAST_STATUS = "实现执行 (非 dict 结果 → %s)" % PORTS_OUT[0]
-            return {PORTS_OUT[0]: res}
-        LAST_STATUS = "实现返回 None → 直通"
+        LAST_STATUS = "实现返回非 dict → 直通"
         return _passthrough(ctx)
     except Exception as e:                                          # noqa: BLE001
         LAST_STATUS = "实现异常(%s: %s) → 直通" % (type(e).__name__, e)

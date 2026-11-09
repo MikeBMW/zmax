@@ -1,0 +1,1328 @@
+{
+ "layers": {
+  "engineering": "L1~L5 分层 + 注册表 + 派发 + 画布真源",
+  "engineering/nodes": "节点实现 (取数→算法→打标)",
+  "middleware/nodes": "节点契约 (端口/总线/执行口径)",
+  "policies": "算法 (纯计算)"
+ },
+ "nodes": {
+  "n_calib_mani": {
+   "algo": "src/lerobot/engineering/config_import.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_inertia.py:1",
+   "impl": "src/lerobot/engineering/nodes/n_calib_mani.py:24",
+   "impl_key": "n_calib_mani",
+   "layer": "L4",
+   "name": "🧮 标定诊断测量 · 主参数 M (状态空间结构参数 · 等效惯量)",
+   "ports_in": [
+    "in1",
+    "in2"
+   ],
+   "ports_out": [
+    "out1",
+    "out2",
+    "out3"
+   ],
+   "pure": true
+  },
+  "n_dsvl": {
+   "algo": "src/lerobot/policies/left_right/state_space/scene_vlm.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_deepseek.py:1",
+   "impl": "src/lerobot/engineering/nodes/n_dsvl.py:19",
+   "impl_key": "n_dsvl",
+   "layer": "L5",
+   "name": "🧿 DeepSeek-V4-Flash · 场景理解 (L5 大模型主路)",
+   "ports_in": [
+    "in1",
+    "in2",
+    "in3",
+    "in4"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "n_eng_mem": {
+   "algo": "src/lerobot/memory/eng_memory.py · collect/sync_to_macro:1",
+   "contract": "src/lerobot/middleware/nodes/n_engmem.py:1",
+   "impl": "src/lerobot/engineering/nodes/n_eng_mem.py:18",
+   "impl_key": "n_eng_mem",
+   "layer": "L5",
+   "name": "📚 工程记忆 · 技能与经验库",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "n_exec": {
+   "algo": "src/lerobot/engineering/nodes/exec_dispatch_impl.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_l2.py:1",
+   "impl": "src/lerobot/engineering/nodes/n_exec.py:10",
+   "impl_key": "n_exec",
+   "layer": "L2",
+   "name": "⚙️ 动作执行器 (L2 收口 · 授权/闸/到位)",
+   "ports_in": [
+    "in1",
+    "in2",
+    "in3"
+   ],
+   "ports_out": [
+    "out1",
+    "out2"
+   ],
+   "pure": false
+  },
+  "n_geoplan": {
+   "algo": "src/lerobot/engineering/nodes/geo_plan_impl.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_geodesic.py:1",
+   "impl": "src/lerobot/engineering/nodes/n_geoplan.py:10",
+   "impl_key": "n_geoplan",
+   "layer": "L2",
+   "name": "🧭 测地线规划引导",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1",
+    "out2"
+   ],
+   "pure": false
+  },
+  "n_hil": {
+   "algo": "src/lerobot/policies/left_right/state_space/hil_bridge.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_hil.py:1",
+   "impl": "src/lerobot/engineering/nodes/n_hil.py:18",
+   "impl_key": "n_hil",
+   "layer": "L5",
+   "name": "🙋 HIL 人机在环 · 状态↔指示",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "n_intent_bundle": {
+   "algo": "src/lerobot/memory/mem_nodes.py · node_ss_intent_bundle:1",
+   "contract": "src/lerobot/middleware/nodes/n_bundle.py:1",
+   "impl": "src/lerobot/memory/mem_nodes.py:307",
+   "impl_key": "ss_intent_bundle",
+   "layer": "L4",
+   "name": "🧠 意图丛 · 四槽语法",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "n_intent_direct": {
+   "algo": "tools/ss_meta_predict.py · node_ss_intent_direct (src/lerobot/memory/mem_nodes.py):1",
+   "contract": "src/lerobot/middleware/nodes/n_metatask.py:1",
+   "impl": "src/lerobot/memory/mem_nodes.py:408",
+   "impl_key": "ss_intent_direct",
+   "layer": "L4",
+   "name": "🧾 元任务预测 (驱动扭矩 → 元任务预测值)",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "n_l2_muscle": {
+   "algo": "src/lerobot/engineering/nodes/library.py · node_n_l2_muscle:1",
+   "contract": "src/lerobot/middleware/nodes/n_skills.py:1",
+   "impl": "src/lerobot/engineering/nodes/n_l2_muscle.py:20",
+   "impl_key": "n_l2_muscle",
+   "layer": "L2",
+   "name": "💪 L2 肌肉记忆技能库 (光模块抓放循环)",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "n_mem_links": {
+   "algo": "src/lerobot/memory/mem_nodes.py · node_ss_mem_links:1",
+   "contract": "src/lerobot/middleware/nodes/n_graph.py:1",
+   "impl": "src/lerobot/memory/mem_nodes.py:370",
+   "impl_key": "ss_mem_links",
+   "layer": "L5",
+   "name": "🔗 跨层连接 · 记忆图谱",
+   "ports_in": [
+    "in1",
+    "in2",
+    "in3"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "n_moveit": {
+   "algo": "src/lerobot/engineering/nodes/plan_impl.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_moveit.py:1",
+   "impl": "src/lerobot/engineering/nodes/n_moveit.py:10",
+   "impl_key": "n_moveit",
+   "layer": "L2",
+   "name": "运动规划",
+   "ports_in": [
+    "in1",
+    "in2",
+    "in3"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "n_realscene": {
+   "algo": "src/lerobot/engineering/nodes/library.py · node_realscene_live:1",
+   "contract": "src/lerobot/middleware/nodes/n_overlay.py:1",
+   "impl": "src/lerobot/engineering/nodes/n_realscene_live.py:10",
+   "impl_key": "n_realscene_live",
+   "layer": "meta",
+   "name": "🎥 真实场景叠加 · 双眼 (sim2real)",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "n_skill_dict": {
+   "algo": "src/lerobot/memory/mem_nodes.py · node_ss_skill_dict:1",
+   "contract": "src/lerobot/middleware/nodes/n_lexicon.py:1",
+   "impl": "src/lerobot/memory/mem_nodes.py:341",
+   "impl_key": "ss_skill_dict",
+   "layer": "L5",
+   "name": "🧬 技能词典 · L2 动作基",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "n_vlm_llm": {
+   "algo": "src/lerobot/policies/left_right/state_space/scene_vlm.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_qwen.py:1",
+   "impl": "src/lerobot/engineering/nodes/n_dsvl.py:19",
+   "impl_key": "n_dsvl",
+   "layer": "L5",
+   "name": "👁 视觉语言大模型 · 场景理解 (Qwen2.5/3-VL)",
+   "ports_in": [
+    "in4"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "n_web_agent": {
+   "algo": "src/lerobot/policies/left_right/state_space/web_agent_bridge.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_webagent.py:1",
+   "impl": "src/lerobot/engineering/nodes/n_web_agent.py:18",
+   "impl_key": "n_web_agent",
+   "layer": "L5",
+   "name": "🌐 Web 智能体桥 · 远程提示词",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "ss2d3d": {
+   "algo": "src/lerobot/policies/yolo_3d/yolo_state_aligner.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_unproject.py:1",
+   "impl": "src/lerobot/engineering/nodes/yolo_align.py:20",
+   "impl_key": "yolo_align",
+   "layer": "L2",
+   "name": "📐 2D→3D 解算",
+   "ports_in": [
+    "in1",
+    "in2"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "ss3d_view": {
+   "algo": "tools/gui/node_logic.py · node_ss_3d_view:1",
+   "contract": "src/lerobot/middleware/nodes/n_viewer.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_3d_view.py:10",
+   "impl_key": "ss_3d_view",
+   "layer": "meta",
+   "name": "🧭 3D 视图",
+   "ports_in": [
+    "in1",
+    "in2"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "ss_grav_h": {
+   "algo": "src/lerobot/manifold/state_space_energy.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_se.py:1",
+   "impl": "src/lerobot/engineering/nodes/library.py:4715",
+   "impl_key": "ss_grav_h",
+   "layer": null,
+   "name": "🌍 万有引力 · SE(3) 几何阻抗 + H=K+U (力场仲裁)",
+   "ports_in": [
+    "in1",
+    "in2",
+    "in3",
+    "in4",
+    "in5",
+    "in6"
+   ],
+   "ports_out": [
+    "out1",
+    "out2"
+   ],
+   "pure": true
+  },
+  "ss_l5": {
+   "algo": "src/lerobot/engineering/nodes/library.py · node_l5_loop:1",
+   "contract": "src/lerobot/middleware/nodes/n_labeler.py:1",
+   "impl": "src/lerobot/engineering/nodes/l5_loop.py:10",
+   "impl_key": "l5_loop",
+   "layer": "L5",
+   "name": "🧿 L5 · 视觉语言自动标注 → L2/L3/L4 监督 → 自动训练",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1",
+    "out2",
+    "out3",
+    "out4"
+   ],
+   "pure": false
+  },
+  "ss_lora_l3": {
+   "algo": "tools/lora_inject.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_lora3.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_lora_l3.py:16",
+   "impl_key": "ss_lora_l3",
+   "layer": "L3",
+   "name": "🎛 L3 · SmolVLA LoRA 微调 · 接入中",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "ss_lora_l4": {
+   "algo": "tools/lora_inject.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_lora4.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_lora_l4.py:16",
+   "impl_key": "ss_lora_l4",
+   "layer": "L4",
+   "name": "🎛 L4 · INTACT LoRA 微调 (接在意图解码器后 · 冻结原权重 · 只调 ΔW=(α/r)BA)",
+   "ports_in": [
+    "in1",
+    "in2"
+   ],
+   "ports_out": [
+    "out1",
+    "out2",
+    "out3",
+    "out4"
+   ],
+   "pure": false
+  },
+  "ss_mani_eng": {
+   "algo": "src/lerobot/manifold/manifold_engine.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_manifold.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_mani_eng.py:25",
+   "impl_key": "ss_mani_eng",
+   "layer": "L4",
+   "name": "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
+   "ports_in": [
+    "in1",
+    "in2",
+    "in3",
+    "in4",
+    "in5",
+    "in6"
+   ],
+   "ports_out": [
+    "out1",
+    "out2",
+    "out3",
+    "out4",
+    "out5"
+   ],
+   "pure": true
+  },
+  "ss_mem_field": {
+   "algo": "src/lerobot/memory/potential_field.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_potential.py:1",
+   "impl": "src/lerobot/memory/mem_nodes.py:511",
+   "impl_key": "ss_mem_field",
+   "layer": "L4",
+   "name": "🧲 总装机记忆 · 势场联络 (L2/L3/L4 势场 → 意图 −∇Φ)",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "ss_mem_l2": {
+   "algo": "src/lerobot/memory/mem_nodes.py · node_ss_mem_l2:1",
+   "contract": "src/lerobot/middleware/nodes/n_muscle.py:1",
+   "impl": "src/lerobot/memory/mem_nodes.py:71",
+   "impl_key": "ss_mem_l2",
+   "layer": "L2",
+   "name": "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)",
+   "ports_in": [
+    "in1",
+    "in2"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "ss_mem_l3": {
+   "algo": "src/lerobot/memory/mem_nodes.py · node_ss_mem_l3:1",
+   "contract": "src/lerobot/middleware/nodes/n_sequence.py:1",
+   "impl": "src/lerobot/memory/mem_nodes.py:150",
+   "impl_key": "ss_mem_l3",
+   "layer": "L3",
+   "name": "🚀 L3 · 长程序列规划 (记忆: 海马体)",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "ss_mem_l4": {
+   "algo": "src/lerobot/memory/mem_nodes.py · node_ss_mem_l4:1",
+   "contract": "src/lerobot/middleware/nodes/n_prefrontal.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_act.py:10",
+   "impl_key": "ss_world",
+   "layer": "L4",
+   "name": "🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "ss_mem_share": {
+   "algo": "src/lerobot/memory/mem_nodes.py · node_ss_mem_share:1",
+   "contract": "src/lerobot/middleware/nodes/n_memory.py:1",
+   "impl": "src/lerobot/memory/mem_nodes.py:257",
+   "impl_key": "ss_mem_share",
+   "layer": "L4",
+   "name": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
+   "ports_in": [
+    "in5",
+    "in6",
+    "in7"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "ss_seg": {
+   "algo": "tools/sam3_seg.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_sam3.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_seg.py:23",
+   "impl_key": "ss_seg",
+   "layer": "L2",
+   "name": "🧩 SAM3分割",
+   "ports_in": [
+    "in1",
+    "in2",
+    "in3"
+   ],
+   "ports_out": [
+    "out1",
+    "out2"
+   ],
+   "pure": false
+  },
+  "ssact": {
+   "algo": "src/lerobot/policies/left_right/state_space/execution.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_actuator.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_act.py:10",
+   "impl_key": "ss_act",
+   "layer": "L2",
+   "name": "🤖 机器人执行器",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": true
+  },
+  "ssaoi": {
+   "algo": "src/lerobot/engineering/nodes/library.py · node_ss_aoi:1",
+   "contract": "src/lerobot/middleware/nodes/n_inspection.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_aoi.py:23",
+   "impl_key": "ss_aoi",
+   "layer": "L2",
+   "name": "🔍 光学质量检测",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "ssbypv": {
+   "algo": "tools/gui/ss_bypass_view.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_bypass.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_bypass_viz.py:15",
+   "impl_key": "ss_bypass_viz",
+   "layer": "meta",
+   "name": "📈 旁路实时可视化 (当前阶段/残差/接触概率)",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "bypass_out"
+   ],
+   "pure": false
+  },
+  "sscalib": {
+   "algo": "src/lerobot/calibration/calibration_layer.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_calib.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_calib.py:18",
+   "impl_key": "ss_calib",
+   "layer": "L4",
+   "name": "🧮 标定层 · 引力-斥力-动作",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1",
+    "out2",
+    "out3"
+   ],
+   "pure": false
+  },
+  "sscap": {
+   "algo": "src/lerobot/engineering/nodes/library.py · node_ss_cap:1",
+   "contract": "src/lerobot/middleware/nodes/n_profile.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_cap.py:10",
+   "impl_key": "ss_cap",
+   "layer": "L4",
+   "name": "🧭 能力档位",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "ssdata": {
+   "algo": "src/lerobot/engineering/nodes/library.py · node_metaworld_data:1",
+   "contract": "src/lerobot/middleware/nodes/n_metaworld.py:1",
+   "impl": "src/lerobot/engineering/nodes/data.py:16",
+   "impl_key": "data",
+   "layer": "meta",
+   "name": "📦 metaworld 数据源",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1",
+    "out2",
+    "out3"
+   ],
+   "pure": false
+  },
+  "ssdec": {
+   "algo": "src/lerobot/policies/smolvla_lew/action_head.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_dit.py:1",
+   "impl": "src/lerobot/engineering/nodes/action_head.py:10",
+   "impl_key": "action_head",
+   "layer": "L3",
+   "name": "🎯 Flow-Matching Action Head (DiT)",
+   "ports_in": [
+    "in1",
+    "in5"
+   ],
+   "ports_out": [
+    "out1",
+    "out2"
+   ],
+   "pure": true
+  },
+  "ssest": {
+   "algo": "src/lerobot/policies/left_right/state_space/parallel.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_estimator.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_ff.py:18",
+   "impl_key": "ss_est",
+   "layer": "L2",
+   "name": "🔮 自适应状态估计器",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1",
+    "out2"
+   ],
+   "pure": false
+  },
+  "ssfeat": {
+   "algo": "src/lerobot/verification/verification_layer.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_feature.py:1",
+   "impl": "src/lerobot/engineering/nodes/library.py:4023",
+   "impl_key": "ss_feature",
+   "layer": null,
+   "name": "🧩 Feature 功能清单",
+   "ports_in": [
+    "in1",
+    "in2"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "ssff": {
+   "algo": "src/lerobot/policies/left_right/state_space/parallel.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_feedforward.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_ff.py:18",
+   "impl_key": "ss_ff",
+   "layer": "L2",
+   "name": "⚡ 前馈加速器",
+   "ports_in": [
+    "in1",
+    "in2"
+   ],
+   "ports_out": [
+    "out1",
+    "out2"
+   ],
+   "pure": false
+  },
+  "ssff_hist": {
+   "algo": "tools/gui/node_logic.py · node_ss_ff_hist:1",
+   "contract": "src/lerobot/middleware/nodes/n_histogram.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_ff_hist.py:17",
+   "impl_key": "ss_ff_hist",
+   "layer": "meta",
+   "name": "🧠 前馈激活直方图",
+   "ports_in": [
+    "in1",
+    "in2"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "ssinnov": {
+   "algo": "src/lerobot/policies/left_right/state_space/cognition.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_corrector.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_dyn.py:10",
+   "impl_key": "ss_correct",
+   "layer": "L2",
+   "name": "🧪 状态校正器",
+   "ports_in": [
+    "in1",
+    "in2",
+    "in3",
+    "in4",
+    "in5"
+   ],
+   "ports_out": [
+    "out1",
+    "out2"
+   ],
+   "pure": false
+  },
+  "ssintact": {
+   "algo": "src/lerobot/policies/intact/service.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_intact.py:1",
+   "impl": "src/lerobot/engineering/nodes/intact.py:17",
+   "impl_key": "intact",
+   "layer": "L4",
+   "name": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
+   "ports_in": [
+    "in1",
+    "in2",
+    "in4",
+    "in5"
+   ],
+   "ports_out": [
+    "out1",
+    "out2"
+   ],
+   "pure": false
+  },
+  "ssintact_dec": {
+   "algo": "src/lerobot/policies/intact/service.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_decoder.py:1",
+   "impl": "src/lerobot/engineering/nodes/intact_dec.py:17",
+   "impl_key": "intact_dec",
+   "layer": "L4",
+   "name": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
+   "ports_in": [
+    "in1",
+    "in3",
+    "in5",
+    "in6",
+    "in7"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "sslat": {
+   "algo": "src/lerobot/calibration/calibration_layer.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_latent.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_lat.py:18",
+   "impl_key": "ss_lat",
+   "layer": "L4",
+   "name": "🧮 潜空-流形",
+   "ports_in": [
+    "in1",
+    "in2"
+   ],
+   "ports_out": [
+    "out1",
+    "out2",
+    "out3"
+   ],
+   "pure": false
+  },
+  "sslimit": {
+   "algo": "src/lerobot/policies/left_right/state_space/safety.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_limiter.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_limit.py:10",
+   "impl_key": "ss_limit",
+   "layer": "L2",
+   "name": "🛡 安全执行边界 (饱和限幅)",
+   "ports_in": [
+    "in1",
+    "in2",
+    "in3"
+   ],
+   "ports_out": [
+    "out1",
+    "out2",
+    "out3"
+   ],
+   "pure": false
+  },
+  "ssllm": {
+   "algo": "src/lerobot/policies/left_right/state_space/planner.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_planner.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_llm.py:20",
+   "impl_key": "ss_llm",
+   "layer": "L5",
+   "name": "🧠 长程序列规划器 (场景理解驱动)",
+   "ports_in": [
+    "in1",
+    "in2",
+    "in5"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": true
+  },
+  "ssllm_in": {
+   "algo": "src/lerobot/policies/left_right/state_space/planner.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_command.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_llm_in.py:20",
+   "impl_key": "ss_llm_in",
+   "layer": "L5",
+   "name": "📝 任务指令 · MES/自然语言",
+   "ports_in": [
+    "in1",
+    "in3"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "ssmani_c": {
+   "algo": "src/lerobot/manifold/manifold_layer.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_contact.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_mani_c.py:20",
+   "impl_key": "ss_mani_c",
+   "layer": "L4",
+   "name": "🧮 接触流形 · 导航地图 (e∥进度/e⊥偏离)",
+   "ports_in": [
+    "in1",
+    "in2",
+    "in3"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": true
+  },
+  "ssmani_exp": {
+   "algo": "src/lerobot/manifold/predictor_layer.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_jepa.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_pred.py:17",
+   "impl_key": "ss_pred",
+   "layer": "L4",
+   "name": "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)",
+   "ports_in": [
+    "in1",
+    "in2",
+    "in4",
+    "in5",
+    "in6"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "ssmani_p": {
+   "algo": "src/lerobot/manifold/manifold_layer.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_perf.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_mani_c.py:20",
+   "impl_key": "ss_mani_p",
+   "layer": "L4",
+   "name": "🧮 性能流形 · 耦合代价 (V_p/η)",
+   "ports_in": [
+    "in1",
+    "in2"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": true
+  },
+  "ssmode": {
+   "algo": "src/lerobot/engineering/nodes/library.py · node_mode_switch:1",
+   "contract": "src/lerobot/middleware/nodes/n_mode.py:1",
+   "impl": "src/lerobot/engineering/nodes/mode_switch.py:10",
+   "impl_key": "mode_switch",
+   "layer": "meta",
+   "name": "🔀 训练/推理",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "ssobs": {
+   "algo": "src/lerobot/policies/left_right/state_space/su2.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_state.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_obs.py:20",
+   "impl_key": "ss_obs",
+   "layer": "L2",
+   "name": "🧩 SU(2) 统一状态空间 (二阶特殊酉群)",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1",
+    "out2",
+    "out3"
+   ],
+   "pure": false
+  },
+  "ssphys": {
+   "algo": "src/lerobot/policies/left_right/state_space/physics_constraints.py::DynamicLimiter.limit:1",
+   "contract": "src/lerobot/middleware/nodes/n_constraint.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_dyn_gate.py:10",
+   "impl_key": "ss_dyn_gate",
+   "layer": "L2",
+   "name": "⚖ 动力学约束",
+   "ports_in": [
+    "in1",
+    "in2",
+    "in3",
+    "in4",
+    "in5",
+    "in6",
+    "in7",
+    "in8"
+   ],
+   "ports_out": [
+    "out1",
+    "out2",
+    "out3"
+   ],
+   "pure": false
+  },
+  "ssplan": {
+   "algo": "src/lerobot/engineering/nodes/plan_long_impl.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_longplan.py:1",
+   "impl": "src/lerobot/engineering/nodes/plan_long_impl.py:896",
+   "impl_key": "ss_plan_long",
+   "layer": "meta",
+   "name": "🧩 长程元任务编排器 (Plan)",
+   "ports_in": [
+    "in1",
+    "in2"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": true
+  },
+  "sspred": {
+   "algo": "src/lerobot/policies/left_right/state_space/dynamics.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_predictor.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_dyn.py:10",
+   "impl_key": "ss_dyn",
+   "layer": "L2",
+   "name": "📈 先验动力学预测器",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "ssreason": {
+   "algo": "src/lerobot/policies/left_right/state_space/planner.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_reasoner.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_reason.py:17",
+   "impl_key": "ss_reason",
+   "layer": "L5",
+   "name": "🔍 异常推理器 (LLM)",
+   "ports_in": [
+    "in1",
+    "in2",
+    "in4"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "sssched": {
+   "algo": "src/lerobot/policies/left_right/state_space/cognition.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_scheduler.py:1",
+   "impl": "src/lerobot/engineering/nodes/library.py:2600",
+   "impl_key": "ss_sched",
+   "layer": null,
+   "name": "🧭 动作调制器",
+   "ports_in": [
+    "in1",
+    "in2",
+    "in3",
+    "in4",
+    "in5",
+    "in6",
+    "in7",
+    "in8",
+    "in9"
+   ],
+   "ports_out": [
+    "out1",
+    "out2"
+   ],
+   "pure": false
+  },
+  "sssensor": {
+   "algo": "src/lerobot/policies/left_right/state_space/perception.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_slam.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_sensor.py:21",
+   "impl_key": "ss_sensor",
+   "layer": "L2",
+   "name": "📡 融合定位建图",
+   "ports_in": [
+    "in1",
+    "in2",
+    "in3",
+    "in4",
+    "in5",
+    "in6"
+   ],
+   "ports_out": [
+    "out1",
+    "out2"
+   ],
+   "pure": false
+  },
+  "sssk1": {
+   "algo": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_skill1.py:1",
+   "impl": "src/lerobot/engineering/nodes/sssk1.py:20",
+   "impl_key": "sssk1",
+   "layer": "L2",
+   "name": "① 接近 · SK01",
+   "ports_in": [
+    "in2",
+    "in3"
+   ],
+   "ports_out": [
+    "out1",
+    "out2"
+   ],
+   "pure": false
+  },
+  "sssk2": {
+   "algo": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_skill2.py:1",
+   "impl": "src/lerobot/engineering/nodes/sssk1.py:20",
+   "impl_key": "sssk2",
+   "layer": "L2",
+   "name": "② 对位 · SK02",
+   "ports_in": [
+    "in1",
+    "in3"
+   ],
+   "ports_out": [
+    "out1",
+    "out2"
+   ],
+   "pure": false
+  },
+  "sssk3": {
+   "algo": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_skill3.py:1",
+   "impl": "src/lerobot/engineering/nodes/sssk1.py:20",
+   "impl_key": "sssk3",
+   "layer": "L2",
+   "name": "③ 下降 · SK03",
+   "ports_in": [
+    "in1",
+    "in3"
+   ],
+   "ports_out": [
+    "out1",
+    "out2"
+   ],
+   "pure": false
+  },
+  "sssk4": {
+   "algo": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_skill4.py:1",
+   "impl": "src/lerobot/engineering/nodes/sssk1.py:20",
+   "impl_key": "sssk4",
+   "layer": "L2",
+   "name": "④ 抓取 · SK04",
+   "ports_in": [
+    "in1",
+    "in3"
+   ],
+   "ports_out": [
+    "out1",
+    "out2"
+   ],
+   "pure": false
+  },
+  "sssk5": {
+   "algo": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_skill5.py:1",
+   "impl": "src/lerobot/engineering/nodes/sssk1.py:20",
+   "impl_key": "sssk5",
+   "layer": "L2",
+   "name": "⑤ 抬起 · SK05",
+   "ports_in": [
+    "in1",
+    "in3"
+   ],
+   "ports_out": [
+    "out1",
+    "out2"
+   ],
+   "pure": false
+  },
+  "sssk6": {
+   "algo": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_skill6.py:1",
+   "impl": "src/lerobot/engineering/nodes/sssk1.py:20",
+   "impl_key": "sssk6",
+   "layer": "L2",
+   "name": "⑥ 转移 · SK06",
+   "ports_in": [
+    "in1",
+    "in3"
+   ],
+   "ports_out": [
+    "out1",
+    "out2"
+   ],
+   "pure": false
+  },
+  "sssk7": {
+   "algo": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_skill7.py:1",
+   "impl": "src/lerobot/engineering/nodes/sssk1.py:20",
+   "impl_key": "sssk7",
+   "layer": "L2",
+   "name": "⑦ 插入 · SK07",
+   "ports_in": [
+    "in1",
+    "in3"
+   ],
+   "ports_out": [
+    "out1",
+    "out2"
+   ],
+   "pure": false
+  },
+  "sssk8": {
+   "algo": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_skill8.py:1",
+   "impl": "src/lerobot/engineering/nodes/sssk1.py:20",
+   "impl_key": "sssk8",
+   "layer": "L2",
+   "name": "⑧ 完成 · SK08",
+   "ports_in": [
+    "in1",
+    "in3"
+   ],
+   "ports_out": [
+    "out1",
+    "out2"
+   ],
+   "pure": false
+  },
+  "ssskill": {
+   "algo": "src/lerobot/policies/left_right/state_space/planner.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_composer.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_skill.py:18",
+   "impl_key": "ss_skill",
+   "layer": "L3",
+   "name": "🛠 L3 技能序列编排",
+   "ports_in": [
+    "in1",
+    "in2",
+    "in3",
+    "in4"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "sstactile": {
+   "algo": "src/lerobot/policies/yolo_3d/gen_tactile.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_tactile.py:1",
+   "impl": "src/lerobot/engineering/nodes/yolo_tactile.py:10",
+   "impl_key": "yolo_tactile",
+   "layer": "L2",
+   "name": "🖐 触觉感知",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "ssuph": {
+   "algo": "src/lerobot/engineering/nodes/uph_tact_impl.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_uph.py:1",
+   "impl": "src/lerobot/engineering/nodes/uph_tact_impl.py:101",
+   "impl_key": "ss_uph",
+   "layer": "meta",
+   "name": "🏭 UPH 节拍循环器",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": true
+  },
+  "ssvideo": {
+   "algo": "src/lerobot/engineering/nodes/library.py · node_ss_scope:1",
+   "contract": "src/lerobot/middleware/nodes/n_waves.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_scope.py:10",
+   "impl_key": "ss_scope",
+   "layer": "meta",
+   "name": "📊 仿真波形",
+   "ports_in": [
+    "in1",
+    "in2",
+    "in3",
+    "in4"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "ssvideo2": {
+   "algo": "src/lerobot/engineering/nodes/library.py · node_ss_video:1",
+   "contract": "src/lerobot/middleware/nodes/n_video.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_video.py:10",
+   "impl_key": "ss_video",
+   "layer": "meta",
+   "name": "🎥 操作视频",
+   "ports_in": [
+    "in1",
+    "in2"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "ssvlm": {
+   "algo": "src/lerobot/policies/smolvla_lew/vlm_encoder.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_vlm.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_vlm.py:20",
+   "impl_key": "ss_vlm",
+   "layer": "L3",
+   "name": "🧠 VLM 通用视觉编码器 (SmolVLA)",
+   "ports_in": [
+    "in1",
+    "in2",
+    "in3",
+    "in4"
+   ],
+   "ports_out": [
+    "out1",
+    "out2"
+   ],
+   "pure": false
+  },
+  "ssworld": {
+   "algo": "src/lerobot/policies/left_right/state_space/execution.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_world.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_act.py:10",
+   "impl_key": "ss_world",
+   "layer": "L4",
+   "name": "🌍 物理世界",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "ssyolo": {
+   "algo": "src/lerobot/policies/yolo_3d/yolo_state_aligner.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_yolo.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_yolo.py:22",
+   "impl_key": "ss_yolo",
+   "layer": "L2",
+   "name": "🎯 YOLO 目标检测",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": true
+  },
+  "ssz700": {
+   "algo": "tools/gui/ss_bypass_view.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_signals.py:1",
+   "impl": "src/lerobot/engineering/nodes/ss_z700_signals.py:15",
+   "impl_key": "ss_z700_signals",
+   "layer": "meta",
+   "name": "🖥 Z700 真机信号 (全信号观测 · 物理世界输出)",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1",
+    "out2"
+   ],
+   "pure": false
+  },
+  "swds": {
+   "algo": "tools/intact_sw_optical_bridge.py --spool:1",
+   "contract": "src/lerobot/middleware/nodes/n_renderer.py:1",
+   "impl": "src/lerobot/engineering/nodes/sw_ds.py:22",
+   "impl_key": "sw_ds",
+   "layer": "meta",
+   "name": "🧪 光模块插拔 · 环境渲染图像源 (Z-MAX 引擎逐帧真图)",
+   "ports_in": [
+    "in2",
+    "in3"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "swintact": {
+   "algo": "src/lerobot/policies/intact/runtime/node.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_policy.py:1",
+   "impl": "src/lerobot/engineering/nodes/sw_intact.py:18",
+   "impl_key": "sw_intact",
+   "layer": "L4",
+   "name": "🎯 INTACT 插拔策略 · 光模块抓取插入 (本域微调 · 零搜索)",
+   "ports_in": [
+    "in1",
+    "in2",
+    "in3"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "swvideo": {
+   "algo": "tools/intact_sw_optical_bridge.py --video-dir:1",
+   "contract": "src/lerobot/middleware/nodes/n_rollout.py:1",
+   "impl": "src/lerobot/engineering/nodes/sw_video.py:18",
+   "impl_key": "sw_video",
+   "layer": "meta",
+   "name": "🎬 插拔渲染视频 (从 Z-MAX 引擎取出 · 实况窗)",
+   "ports_in": [
+    "in1"
+   ],
+   "ports_out": [
+    "out1"
+   ],
+   "pure": false
+  },
+  "swworld": {
+   "algo": "tools/intact_sw_optical_bridge.py:1",
+   "contract": "src/lerobot/middleware/nodes/n_physics.py:1",
+   "impl": "src/lerobot/engineering/nodes/sw_world.py:19",
+   "impl_key": "sw_world",
+   "layer": "L4",
+   "name": "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)",
+   "ports_in": [
+    "in1",
+    "in2"
+   ],
+   "ports_out": [
+    "out1",
+    "out2"
+   ],
+   "pure": false
+  }
+ },
+ "note": "一节点三处: contract(契约/端口) · impl(编排实现) · algo(算法)。由 tools/gen_node_map.py 生成。"
+}

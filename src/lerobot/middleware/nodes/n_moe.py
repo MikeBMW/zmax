@@ -15,6 +15,12 @@
 
 实现绑定: (未绑定注册表实现) · tools/stage_moe_backbone.py:class StageMoE
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
+
+⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
+   契约  src/lerobot/middleware/nodes/n_moe.py              ← 就是本文件
+   实现  src/lerobot/engineering/nodes/_未绑定.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
+   算法  tools/stage_moe_backbone.py                                             ← 纯计算 (模型/几何/控制律)
+   三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("ss_moe")
 """
 
 NODE_ID = 'ss_moe'
@@ -28,7 +34,7 @@ PORTS_IN = ['in1', 'in2']
 PORTS_OUT = ['out1', 'out2', 'out3']
 PORT_LABELS = {}
 
-IMPL_KEY = 'ss_moe'   # 2026-11-01 补: registry 里 key 一直是 ss_moe, 模块没填导致节点永不进真实现
+IMPL_KEY = ''
 SOURCE = 'tools/stage_moe_backbone.py'
 SOURCE_SYMBOL = 'class StageMoE'
 PARAMS = {'desc': '[L4 认知主干 · 数据空间根的元数据层 2026-10-13 老倪改名] 元数据MOE门控路由: ① 元数据 = 整个系统的数据库根服务 (基础核心组成; 玻色子型=场/连续量, 费米子型=离散实体), ② 数据空间每个 topic = 由元数据组合成的原子/分子/有机物 (映射规则表), ③ 全息系统 = 整体算子可由 topic 子集复现 (实测秩/误差), ④ 硬先验门控路由 = 7 阶段→7 专家 1:1 (单射), 实现源码 tools/meta_moe_router.py; 原 7 专家 SigLIP 768d 冻结主干 + skill_ctx 阶段概率路由能力保留', 'source': 'tools/stage_moe_backbone.py', 'source_symbol': 'class StageMoE', 'status': '在役 (2026-09-26 会话四: 修 8 阶段覆盖 + 零回退逐位同; ckpt 真加载 7 专家)', 'todo': True, 'ckpt': 'zmax_data/stable-wm-cache/checkpoints/stage_moe/moe.pt (351MB)', 'meta_layer_src': 'tools/meta_moe_router.py', 'renamed_from': '阶段专家MOE门控路由', 'renamed_at': '2026-10-13'}
@@ -96,14 +102,7 @@ def compute(ctx):
                 # (2026-10-29: 流形引擎族就是这样, 原来 out 恒为空, 下游永远拿不到)
                 _out = {PORTS_OUT[0]: res}
             return _out
-        # 🔴 2026-11-01 全系统贯通实测: 很多实现返回 ndarray/float/bool
-        #   (如 safety.saturate 返回限幅后向量, 标定返回 M), 原来一律当"非 dict"丢掉
-        #   ⇒ 上游算出来、下游永远收不到, 65 个节点里 6 条连线真有值。
-        #   非 None 的一律当首端口的值发出去, 不再吞结果。
-        if res is not None:
-            LAST_STATUS = "实现执行 (非 dict 结果 → %s)" % PORTS_OUT[0]
-            return {PORTS_OUT[0]: res}
-        LAST_STATUS = "实现返回 None → 直通"
+        LAST_STATUS = "实现返回非 dict → 直通"
         return _passthrough(ctx)
     except Exception as e:                                          # noqa: BLE001
         LAST_STATUS = "实现异常(%s: %s) → 直通" % (type(e).__name__, e)

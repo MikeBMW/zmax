@@ -10,8 +10,14 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.sscap.<port>
 
-实现绑定: registry key=`ss_cap`
+实现绑定: registry key=`ss_cap` · src/lerobot/engineering/nodes/library.py · node_ss_cap:node_ss_cap
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
+
+⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
+   契约  src/lerobot/middleware/nodes/n_profile.py              ← 就是本文件
+   实现  src/lerobot/engineering/nodes/ss_cap.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
+   算法  src/lerobot/engineering/nodes/library.py · node_ss_cap                                             ← 纯计算 (模型/几何/控制律)
+   三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("sscap")
 """
 
 NODE_ID = 'sscap'
@@ -26,9 +32,9 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'ss_cap'
-SOURCE = 'src/lerobot/engineering/nodes/library.py'
+SOURCE = 'src/lerobot/engineering/nodes/library.py · node_ss_cap'
 SOURCE_SYMBOL = 'node_ss_cap'
-PARAMS = {'desc': '[数据源层·能力档位] 单击圆钮直选 / 双击循环: L2 基础(插装成功) → L3 +smolvla(插→拔→AOI→放回全链) → L4 +流形预测世界模型(失败自主恢复直到完成) → L5 大模型视觉语言自动标注(L2/L3/L4 监督数据) + 标注完成自动启动训练(L2 YOLO 全量 / L3 SmolVLA LoRA / L4 INTACT LoRA→merge)。档位驱动 ▶运行 任务链。', 'state_space': True, 'cap_level': 'L2', 'cap_switch': True}
+PARAMS = {'desc': '[数据源层·能力档位] 单击圆钮直选 / 双击循环: L2 基础(插装成功) → L3 +smolvla(插→拔→AOI→放回全链) → L4 +流形预测世界模型(失败自主恢复直到完成) → L5 大模型视觉语言自动标注(L2/L3/L4 监督数据) + 标注完成自动启动训练(L2 YOLO 全量 / L3 SmolVLA LoRA / L4 INTACT LoRA→merge)。档位驱动 ▶运行 任务链。', 'state_space': True, 'cap_level': 'L2', 'cap_switch': True, 'source': 'src/lerobot/engineering/nodes/library.py · node_ss_cap', 'source_symbol': 'node_ss_cap'}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False
@@ -93,14 +99,7 @@ def compute(ctx):
                 # (2026-10-29: 流形引擎族就是这样, 原来 out 恒为空, 下游永远拿不到)
                 _out = {PORTS_OUT[0]: res}
             return _out
-        # 🔴 2026-11-01 全系统贯通实测: 很多实现返回 ndarray/float/bool
-        #   (如 safety.saturate 返回限幅后向量, 标定返回 M), 原来一律当"非 dict"丢掉
-        #   ⇒ 上游算出来、下游永远收不到, 65 个节点里 6 条连线真有值。
-        #   非 None 的一律当首端口的值发出去, 不再吞结果。
-        if res is not None:
-            LAST_STATUS = "实现执行 (非 dict 结果 → %s)" % PORTS_OUT[0]
-            return {PORTS_OUT[0]: res}
-        LAST_STATUS = "实现返回 None → 直通"
+        LAST_STATUS = "实现返回非 dict → 直通"
         return _passthrough(ctx)
     except Exception as e:                                          # noqa: BLE001
         LAST_STATUS = "实现异常(%s: %s) → 直通" % (type(e).__name__, e)

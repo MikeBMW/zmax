@@ -14,9 +14,13 @@
 
 实现绑定: registry key=`ss_obs` · src/lerobot/policies/left_right/state_space/su2.py:class SU2UnifiedState
 执行口径: EXEC_MODE=view · PURE=False (数据面直通; 逐个验证口径后再置 True)
-"""
 
-import os
+⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
+   契约  src/lerobot/middleware/nodes/n_state.py              ← 就是本文件
+   实现  src/lerobot/engineering/nodes/ss_obs.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
+   算法  src/lerobot/policies/left_right/state_space/su2.py                                             ← 纯计算 (模型/几何/控制律)
+   三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("ssobs")
+"""
 
 NODE_ID = 'ssobs'
 NAME = '🧩 SU(2) 统一状态空间 (二阶特殊酉群)'
@@ -58,81 +62,12 @@ def _passthrough(ctx):
     return outs
 
 
-# 🧩 理想档 (2026-11-01 老倪「先让状态空间发出理想的值」):
-#   不在节点里另造一套 43D 语义 —— 直接调 engineering/nodes/ideal_obs.py,
-#   它把「工艺动作表」(geo_plan_impl.build_ideal_plan: 112 步/45.05s/4件/320UPH) 的
-#   当前步翻成 43D 观察量 (米), 通道划分与 su2.py::obs43_geometry 同一口径。
-#   out1 = 43D (下游 ssff/ssreason/ss_moe/n_geoplan 照旧吃), out2/out3 带同一帧的
-#   SU(2) 群元素与元信息 (段号/动作/UPH), 逐拍落 ss_live/ss_obs_ideal.json 供核对。
-# src/lerobot/middleware/nodes/n_state.py → 上五层 = 仓库根 (少一层就写到 src/zmax_data 里, 静默不落盘)
-_IDEAL_LIVE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__)))))), "zmax_data", "ss_live", "ss_obs_ideal.json")
-
-
-def _ideal_compute(ctx):
-    """理想档一个周期: 工艺动作 → 43D 统一状态向量。"""
-    global LAST_STATUS
-    import json as _j
-    import time as _t
-    from lerobot.engineering.nodes import geo_plan_impl as _G              # noqa: PLC0415
-    from lerobot.engineering.nodes import ideal_obs as _IO                 # noqa: PLC0415
-    doc = _G.build_ideal_plan(h=8)
-    obs, meta = _IO.frame(doc)
-    try:
-        from lerobot.policies.left_right.state_space import su2 as _su2    # noqa: PLC0415
-        grp = _su2.encode_obs43(obs)
-        # SU2Element 只有 w/x/y/z (__slots__) —— theta 是 property 不是方法, 取标量四元数即可
-        elem = {"w": round(float(grp.w), 6), "x": round(float(grp.x), 6),
-                "y": round(float(grp.y), 6), "z": round(float(grp.z), 6)}
-    except Exception as _e:                                                # noqa: BLE001
-        elem = {"err": "%s: %s" % (type(_e).__name__, _e)}
-    try:
-        _tmp = _IDEAL_LIVE + ".tmp"
-        with open(_tmp, "w", encoding="utf-8") as _fh:
-            _j.dump(dict(meta, obs=[round(float(x), 6) for x in obs], su2=elem,
-                         ts=_t.time()), _fh, ensure_ascii=False)
-        os.replace(_tmp, _IDEAL_LIVE)
-    except Exception:                                                      # noqa: BLE001
-        pass
-    LAST_STATUS = ("理想 43D: 步 %d/%d %s · %.0f UPH · e=%.1fmm"
-                   % (meta["step_i"], meta["step_n"], meta["action"], meta["uph"],
-                      _err_mm(obs)))
-    return {"out1": {"value": {"obs": [float(x) for x in obs], "dim": int(obs.size),
-                               "src": "ssobs 理想档(工艺动作→43D)", "t_str": meta["t_str"]},
-                     "age_s": 0.0, "fresh": True},
-            "out2": {"value": elem, "age_s": 0.0, "fresh": True},
-            "out3": {"value": meta, "age_s": 0.0, "fresh": True}}
-
-
-def _vec(x):
-    try:
-        return list(x)
-    except Exception:                                                      # noqa: BLE001
-        return [0.0, 0.0, 1.0]
-
-
-def _err_mm(obs):
-    try:
-        import numpy as _np
-        from lerobot.policies.left_right.state_space import su2 as _su2
-        return float(_np.linalg.norm(_su2.obs43_geometry(obs)) * 1000.0)
-    except Exception:                                                      # noqa: BLE001
-        return -1.0
-
-
 def compute(ctx):
     """一个周期: ctx 来自总线 → 返回要发回总线的输出。
 
     PURE=False 时只做直通 (数据面), 不调用真实现 —— 避免未验证/未授权的节点被自动执行。
-    理想档 (env ZMAX_SS_IDEAL=1 / params.ideal) 优先: 发 43D 理想观察量。
     """
     global LAST_STATUS
-    try:
-        from lerobot.engineering.nodes import ideal_obs as _IO2            # noqa: PLC0415
-        if _IO2.ideal_on(ctx):
-            return _ideal_compute(ctx)
-    except Exception as _e:                                                # noqa: BLE001
-        LAST_STATUS = "理想档不可用(%s) → 走原路" % _e
     if not PURE:
         LAST_STATUS = "直通 (PURE=False: 只走数据面)"
         return _passthrough(ctx)
@@ -166,14 +101,7 @@ def compute(ctx):
                 # (2026-10-29: 流形引擎族就是这样, 原来 out 恒为空, 下游永远拿不到)
                 _out = {PORTS_OUT[0]: res}
             return _out
-        # 🔴 2026-11-01 全系统贯通实测: 很多实现返回 ndarray/float/bool
-        #   (如 safety.saturate 返回限幅后向量, 标定返回 M), 原来一律当"非 dict"丢掉
-        #   ⇒ 上游算出来、下游永远收不到, 65 个节点里 6 条连线真有值。
-        #   非 None 的一律当首端口的值发出去, 不再吞结果。
-        if res is not None:
-            LAST_STATUS = "实现执行 (非 dict 结果 → %s)" % PORTS_OUT[0]
-            return {PORTS_OUT[0]: res}
-        LAST_STATUS = "实现返回 None → 直通"
+        LAST_STATUS = "实现返回非 dict → 直通"
         return _passthrough(ctx)
     except Exception as e:                                          # noqa: BLE001
         LAST_STATUS = "实现异常(%s: %s) → 直通" % (type(e).__name__, e)

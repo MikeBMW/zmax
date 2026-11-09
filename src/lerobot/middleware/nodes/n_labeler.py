@@ -13,8 +13,14 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ss_l5.<port>
 
-实现绑定: registry key=`l5_loop`
+实现绑定: registry key=`l5_loop` · src/lerobot/engineering/nodes/library.py · node_l5_loop:node_l5_loop
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
+
+⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
+   契约  src/lerobot/middleware/nodes/n_labeler.py              ← 就是本文件
+   实现  src/lerobot/engineering/nodes/l5_loop.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
+   算法  src/lerobot/engineering/nodes/library.py · node_l5_loop                                             ← 纯计算 (模型/几何/控制律)
+   三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("ss_l5")
 """
 
 NODE_ID = 'ss_l5'
@@ -29,9 +35,9 @@ PORTS_OUT = ['out1', 'out2', 'out3', 'out4']
 PORT_LABELS = {}
 
 IMPL_KEY = 'l5_loop'
-SOURCE = 'src/lerobot/engineering/nodes/library.py'
+SOURCE = 'src/lerobot/engineering/nodes/library.py · node_l5_loop'
 SOURCE_SYMBOL = 'node_l5_loop'
-PARAMS = {'state_space': True, 'l5_loop': True, 'l5_capability_level': True, 'orchestrator': 'tools/l5_annotate_train_loop.py', 'annotator': 'tools/auto_annotate.py', 'trainer': 'tools/joint_train_all.py', 'lora_inject': 'tools/lora_inject.py', 'lora_merge': 'tools/merge_lora_ckpt.py'}
+PARAMS = {'state_space': True, 'l5_loop': True, 'l5_capability_level': True, 'orchestrator': 'tools/l5_annotate_train_loop.py', 'annotator': 'tools/auto_annotate.py', 'trainer': 'tools/joint_train_all.py', 'lora_inject': 'tools/lora_inject.py', 'lora_merge': 'tools/merge_lora_ckpt.py', 'source': 'src/lerobot/engineering/nodes/library.py · node_l5_loop', 'source_symbol': 'node_l5_loop'}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False
@@ -96,14 +102,7 @@ def compute(ctx):
                 # (2026-10-29: 流形引擎族就是这样, 原来 out 恒为空, 下游永远拿不到)
                 _out = {PORTS_OUT[0]: res}
             return _out
-        # 🔴 2026-11-01 全系统贯通实测: 很多实现返回 ndarray/float/bool
-        #   (如 safety.saturate 返回限幅后向量, 标定返回 M), 原来一律当"非 dict"丢掉
-        #   ⇒ 上游算出来、下游永远收不到, 65 个节点里 6 条连线真有值。
-        #   非 None 的一律当首端口的值发出去, 不再吞结果。
-        if res is not None:
-            LAST_STATUS = "实现执行 (非 dict 结果 → %s)" % PORTS_OUT[0]
-            return {PORTS_OUT[0]: res}
-        LAST_STATUS = "实现返回 None → 直通"
+        LAST_STATUS = "实现返回非 dict → 直通"
         return _passthrough(ctx)
     except Exception as e:                                          # noqa: BLE001
         LAST_STATUS = "实现异常(%s: %s) → 直通" % (type(e).__name__, e)

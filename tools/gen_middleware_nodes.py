@@ -43,6 +43,12 @@ HEADER = '''# -*- coding: utf-8 -*-
 
 实现绑定: %IMPL%
 执行口径: EXEC_MODE=%MODE% · PURE=%PURE_INIT% %PURE_NOTE%
+
+⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
+   契约  src/lerobot/middleware/nodes/%FILE%              ← 就是本文件
+   实现  src/lerobot/engineering/nodes/%IMPLKEY%.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
+   算法  %SRC%                                             ← 纯计算 (模型/几何/控制律)
+   三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("%NODE%")
 """
 '''
 
@@ -83,6 +89,11 @@ def render(spec, links=None, bus_note=""):
     body = body.replace("%MODE%", spec.exec_mode)
     body = body.replace("%PURE_INIT%", pure_init)
     body = body.replace("%PURE_NOTE%", pure_note)
+    # 一个节点三处 (契约/实现/算法) —— 头注释里写全, 省得"打开源码只看到契约, 以为实现丢了"
+    # %FILE% 留给写盘时按真实文件名替换 (module_name 不一定等于 n_<id>)
+    body = body.replace("%IMPLKEY%", spec.impl_key or "_未绑定")
+    body = body.replace("%SRC%", spec.source or "(未绑定算法)")
+    body = body.replace("%NODE%", spec.id)
     body += '''
 NODE_ID = %r
 NAME = %r
@@ -220,6 +231,8 @@ def generate(specs, links=None, quiet=True, nodes_dir=None):
         fn = os.path.join(nodes_dir, "%s.py" % s.module_name)
         names.add(os.path.basename(fn))
         txt = render(s, links=links, bus_note=bus_note)
+        # 契约文件名 = module_name (不是 n_<id>.py: 如 ssyolo → n_yolo.py)
+        txt = txt.replace("%FILE%", os.path.basename(fn))
         old = None
         if os.path.isfile(fn):
             with open(fn, encoding="utf-8") as f:
