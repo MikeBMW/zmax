@@ -36,7 +36,7 @@ GPU掉载主因=每步CPU>计算→静音日志+workers↑
 §
 工程根~/zmax=仓库(MikeBMW/zmax); zmax_data=数据+HF+secrets(~/zmax_data=软链); 训练带HF_HOME
 §
-禁自行重启任何GUI/服务/进程, 只可停不可起; 重启须用户点名
+禁自重启GUI/服务/进程, 只可停不可起; 重启须点名
 §
 我=主节点(工控机+Orin); AOI.23.23=10082/10083(禁84/85); 更新=aoi_remote_deploy.py
 §
@@ -60,7 +60,7 @@ AR=8797: 底图4相机=8791(arm/gold/surface)+本机D435; /api/cams·/snap/<k>.j
 §
 建图=8793 manual走点(45s/轮); GS_MAP_MODE=auto回旧
 §
-版本号只听老倪; 现5.50.760
+版本号只听老倪; 仓VERSION.md为准(现5.50.770)
 §
 专利12件·渠74/74
 §
@@ -68,6 +68,6 @@ tool0读heartbeat.pose.flange(禁手推R,y差251mm); precheck需扣连杆半径(
 §
 MoveIt起点须SDK直采(禁手推)
 §
-反刷屏: 回答≤两行(先人话); 启动/常驻循环输出默认静音落日志(file全量可查)
+反刷屏: 回答≤两行(先人话); 常驻循环输出默认静音落日志(可查)
 §
 intel出口=.23.66走Orin NAT(zmax-nat-intel;Orin sudo ts123)
