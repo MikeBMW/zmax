@@ -465,6 +465,36 @@ def _ar_cmd_ctrl(mujoco, env, model, data, d):
     return out
 
 
+# ═════ 🎯 关节角直传 (老倪 2026-11-09: 「AR 场景的动作和 MuJoCo 的动作不一致」) ═════
+#   根因: AR 页用**它自己的 IK** 解关节角画臂, 8802 用 Python 的 ik_solve 再解一遍 ⇒ 两个求解器
+#   落不同分支(肘上/肘下), 同一个 TCP 目标画出两种姿态。外形换真 URDF 后几何一致了, 但解不唯一。
+#   解法: 页面把它算出来的 6 个关节角直接推过来 (POST /armq), 8802 只做执行, 不再解 IK ⇒ 构造上一致。
+_MJQ_FILE = os.path.join(ROOT, "zmax_data", "ss_live", "ar_mj_q.json")
+
+
+def _armq_write(payload):
+    d = {"t": time.time(), "R": payload.get("R"), "L": payload.get("L"),
+         "gripL": payload.get("gripL"), "gripR": payload.get("gripR"),
+         "seq": payload.get("seq"), "src": payload.get("src") or "ar3d"}
+    os.makedirs(os.path.dirname(_MJQ_FILE), exist_ok=True)
+    tmp = _MJQ_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f)
+    os.replace(tmp, _MJQ_FILE)
+    return d
+
+
+def _armq_read(max_age=1.5):
+    try:
+        with open(_MJQ_FILE, encoding="utf-8") as f:
+            d = json.load(f)
+        if (time.time() - float(d.get("t") or 0)) > max_age:
+            return None
+        return d
+    except Exception:                                                    # noqa: BLE001
+        return None
+
+
 def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render_hz: float = 0.0):
     import cv2
     import mujoco
@@ -538,9 +568,31 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
         with LOCK:
             cmd = dict(CMD)
         mode = cmd.get("mode") or "idle"
+        # 🎯 关节角直传优先于一切外部 /control: 页面推来的角就是画布上那台臂的角,
+        #   8802 只执行 ⇒ 两边姿态逐帧一致 (两套 IK 各解一次必然有分支差)。
+        _mq0 = _armq_read()
+        if _mq0 and (_mq0.get("R") or _mq0.get("L")):
+            mode = "sim"
+            cmd = {"mode": "sim", "R": _mq0.get("R"), "L": _mq0.get("L"),
+                   "gripL": _mq0.get("gripL"), "gripR": _mq0.get("gripR")}
+            with LOCK:
+                STATE["sync"] = {"src": "armq", "seq": _mq0.get("seq"),
+                                 "age_s": round(time.time() - float(_mq0.get("t") or 0), 2),
+                                 "hasL": bool(_mq0.get("L")), "hasR": bool(_mq0.get("R"))}
         if mode == "idle":
-            # 🔁 AR 场景同步: 没人给指令时就跟着 AR 页的 ar_cmd 走 (否则 8802 画面里双臂是死的)
-            _ac = _ar_cmd_read()
+            # 🎯 最优: 页面直推关节角 (两臂, 与画布同一组角) ⇒ 不解 IK, 姿态与画布逐帧一致
+            _mq = _armq_read()
+            if _mq and (_mq.get("R") or _mq.get("L")):
+                mode = "sim"
+                cmd = {"mode": "sim", "R": _mq.get("R"), "L": _mq.get("L"),
+                       "gripL": _mq.get("gripL"), "gripR": _mq.get("gripR")}
+                with LOCK:
+                    STATE["sync"] = {"src": "armq", "seq": _mq.get("seq"),
+                                     "age_s": round(time.time() - float(_mq.get("t") or 0), 2),
+                                     "hasL": bool(_mq.get("L")), "hasR": bool(_mq.get("R"))}
+                _ac = None
+            else:
+                _ac = _ar_cmd_read() if mode == "idle" else None
             if _ac is not None:
                 _c2 = _ar_cmd_ctrl(mujoco, env, model, data, _ac)
                 if _c2:
@@ -1019,6 +1071,15 @@ v.onerror=function(){h.textContent='流断了(8802 未起? 或通道数已满 3)
                 _d = _cam_sync_write(body or {}, src=str(self.headers.get("Origin") or ""))
                 self._json({"ok": True, "ts": round(_d.get("ts", 0), 3),
                             "cam": {k: _d.get(k) for k in ("az", "el", "dist", "tx", "ty", "tz", "fovy")}})
+            except Exception as e:                                           # noqa: BLE001
+                self._json({"ok": False, "err": "%s: %s" % (type(e).__name__, e)}, 400)
+            return
+        if p == "/armq":
+            # 🎯 AR 页直推 6 轴关节角(度) ⇒ 8802 只执行, 不再自己解 IK (两套 IK 会落不同分支)
+            try:
+                _d = _armq_write(body or {})
+                self._json({"ok": True, "ts": round(_d["t"], 3),
+                            "nR": len(_d.get("R") or []), "nL": len(_d.get("L") or [])})
             except Exception as e:                                           # noqa: BLE001
                 self._json({"ok": False, "err": "%s: %s" % (type(e).__name__, e)}, 400)
             return
