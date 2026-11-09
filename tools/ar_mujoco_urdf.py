@@ -121,18 +121,10 @@ def arm_mjcf(side: str, base_x: float, base_y: float, base_z: float,
     #    会整体歪出腕部、看着"悬空脱开" ⇒ 夹爪留在法兰系, 只有模块挂在 tool1 系。
     out.append('%s  <geom name="%s_t1_flange" type="cylinder" size="0.030 0.012" pos="0 0 0.012" '
                'rgba="0.36 0.39 0.44 1" contype="0" conaffinity="0"/>' % (ind, side))
-    out.append('%s  <geom name="%s_t1_body" type="box" size="0.026 0.022 0.051" pos="0 0 0.075" '
+    # 执行器本体一路伸到指根 (24→190mm): 指头在 tool1 旋转系里, 与执行器末端只差几十毫米,
+    # 不做这段延长就会出现"执行器顶上悬着两根指头"的断手观感。
+    out.append('%s  <geom name="%s_t1_body" type="box" size="0.026 0.022 0.092" pos="0 0 0.116" '
                'rgba="0.20 0.23 0.27 1" contype="0" conaffinity="0"/>' % (ind, side))
-    # 两指: 从执行器顶(0.123)一直伸到模块尾(0.265) ⇒ 中心 0.194 / 半长 0.071, 不再"执行器上悬着一根指头"
-    # y 位置按模块的**实际投影**定 (模块在 tool1 系里转了 33.6°, 法兰系 AABB y = -0.0147..0.0253):
-    #   内侧面对齐 AABB 两侧, 不互插也不留缝; x 对齐模块中心 -0.004
-    for f, fy in (("a", 0.0303), ("b", -0.0197)):
-        out.append('%s  <body name="%s_finger%s" pos="-0.004 %.4f 0.194">' % (ind, side, f, fy))
-        out.append('%s    <joint name="%s_f%s" type="slide" axis="0 1 0" range="-0.003 0.003" '
-                   'damping="1"/>' % (ind, side, f))
-        out.append('%s    <geom name="%s_fg%s" type="box" size="0.010 0.005 0.071" '
-                   'rgba="0.58 0.61 0.66 1" contype="0" conaffinity="0"/>' % (ind, side, f))
-        out.append('%s  </body>' % ind)
     out.append('%s<body name="%s_tool1" pos="%.6f %.6f %.6f" '
                'quat="0.358389 -0.300607 0.140006 0.872692">'
                % (ind, side, -0.015886, 0.018348, 0.258678))
@@ -144,6 +136,16 @@ def arm_mjcf(side: str, base_x: float, base_y: float, base_z: float,
                'contype="0" conaffinity="0" rgba="0 0 0 0"/>' % (ind, side))
     out.append('%s  <geom name="%s_mod" type="box" size="0.00425 0.0067 0.02825" pos="0 0 -0.0283" '
                'rgba="0.94 0.76 0.22 1" contype="0" conaffinity="0"/>' % (ind, side))
+    # 🦾 两指必须跟着**模块的轴向**走 (老倪 2026-11-10: "video 的光模块位姿是歪斜的, 要同步光模块的位姿,
+    #    调整夹爪的抓取姿态")。之前两指写在法兰系里、模块写在 tool1 系里(两者夹角 38.7°) ⇒
+    #    看上去像两根指头把模块"斜着捅住"。现在指头挂在 tool1 系, 夹住模块的两个侧面(宽 13.4mm)。
+    for f, fy in (("a", 0.0107), ("b", -0.0107)):
+        out.append('%s  <body name="%s_finger%s" pos="0 %.4f -0.028">' % (ind, side, f, fy))
+        out.append('%s    <joint name="%s_f%s" type="slide" axis="0 1 0" range="-0.003 0.003" '
+                   'damping="1"/>' % (ind, side, f))
+        out.append('%s    <geom name="%s_fg%s" type="box" size="0.007 0.004 0.030" '
+                   'rgba="0.58 0.61 0.66 1" contype="0" conaffinity="0"/>' % (ind, side, f))
+        out.append('%s  </body>' % ind)
     if side == "R":
         out.append('%s  <site name="tool1" pos="0 0 0" size="0.006" rgba="1 0.85 0.2 1"/>' % ind)
     out.append('%s</body>' % ind)
