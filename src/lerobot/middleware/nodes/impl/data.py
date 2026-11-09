@@ -37,6 +37,7 @@ def node_metaworld_data(ctx):
                 "src": "ar", "cam": _cam, "w": _w, "h": _h,
                 "bytes": _meta.get("bytes"), "frame": _meta.get("frame"),
                 "ts": _meta.get("t") or _t.time(), "cam_params": _cp,
+                "tick": int(_t.time() * 1000),
             }
             if log:
                 log("📦 数据源: AR 场景 (8802 MuJoCo 渲染 · %d×%d · %s B · cam=%s · "
@@ -46,6 +47,15 @@ def node_metaworld_data(ctx):
                        float(_cp.get("dist") or 0), _meta.get("frame")))
         return module._toggle_source_ctx(ctx["name"])
     source = p.get("source", "metaworld")   # metaworld(占位集) | orin(真实产线)
+    # 非 AR 也要把画布选择落到同一个状态里, 否则下游 10s 内还按上一次的 AR 走 (数据同步)
+    try:
+        import time as _t2
+        import lerobot.middleware.nodes.impl.shared_runtime as _SR2
+        _sel = (str(p.get("src_state") or source or "")).strip().lower()
+        _norm = "real" if ("真机" in _sel or "orin" in _sel) else ("sim" if ("仿真" in _sel or "metaworld" in _sel) else "sim")
+        _SR2._SS_STATE["data_source"] = {"src": _norm, "cam": None, "ts": _t2.time()}
+    except Exception:                                                        # noqa: BLE001
+        pass
     frames = p.get("frames", 696)           # 期望帧数 (展示用)
     # 📂 真实数据层 (2026-09-02 老倪: 数据源必须接 lerobot 框架 src/lerobot/datasets/,
     #   不是控制台模板 — 与传感器融合/前馈节点同构: 右键打开 + VSCode 断点都进 datasets 真实实现)

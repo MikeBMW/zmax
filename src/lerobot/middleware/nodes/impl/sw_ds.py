@@ -24,6 +24,19 @@ def node_sw_ds(ctx):
     本节点负责启动桥; 常驻循环里**不阻塞**(异步档), GUI 手动档仍等到桥跑完"""
     log = ctx["log"]
     root = str(ctx.get("root") or os.getcwd())
+    # 🎬 画布数据源 = AR 场景 ⇒ 不许再起 stable-world/metaworld 桥 (两套世界 = 帧不同步)
+    try:
+        from .shared_runtime import _canvas_source as _cs, _ar_frame as _af
+        _c = _cs() or {}
+        if str(_c.get("src") or "") == "ar":
+            _a, _pth, _m = _af(_c.get("cam") or "ar3d", ttl=0.35)
+            log("📦 数据源 [L4]: 画布已选 AR 场景 → 不起 stable-world 桥 · 帧 %s%s"
+                % ((_m or {}).get("frame") or "-",
+                   (" · %d×%d" % (_a.shape[1], _a.shape[0])) if _a is not None else ""))
+            return {"out1": {"src": "ar", "frame": (_m or {}).get("frame"),
+                             "tick": (_m or {}).get("tick"), "skipped_sim_bridge": True}}
+    except Exception:                                                        # noqa: BLE001
+        pass
     ok, st, fr, vd = _sw_start(root, log)
     if not ok:
         return False

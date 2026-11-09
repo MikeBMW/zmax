@@ -40,8 +40,9 @@ def node_ss_vlm(ctx):
             r = (st or {}).get("result") or {}
             ok = bool(r.get("ok"))
             if log:
-                log("🧠 VLM 场景理解 (%s · %s · %sms): %s" % (
+                log("🧠 VLM 场景理解 (%s · %s · %sms · frame=%s tick=%s): %s" % (
                     _src, r.get("src") or "未返回", r.get("latency_ms"),
+                    _meta.get("frame"), _meta.get("tick"),
                     _vlm_brief(r.get("json")) if ok else (r.get("why") or "无结果")))
             return _NodeOut({
                 "kind": "scene_vlm", "layer": "L3", "ok": ok, "frame_src": _src,

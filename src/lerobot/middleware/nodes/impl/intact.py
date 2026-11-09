@@ -35,8 +35,24 @@ def node_intact(ctx):
     try:
         svc = _intact_service(root)
         sk = _intact_skill_ctx(ctx, "")
+        # 画布数据源 = AR 场景 ⇒ 用 AR 真帧喂 INTACT (画布连线 ssdata.out1 → ssintact.in1),
+        #   不许它自己另开 metaworld env (两套世界 = 数据不同步)。
+        _fr, _osrc = None, "engine_render"
+        try:
+            from .shared_runtime import _canvas_source as _cs, _ar_frame as _af
+            _c = _cs() or {}
+            if str(_c.get("src") or "") == "ar":
+                _arr, _pth, _m = _af(_c.get("cam") or "ar3d", ttl=0.35)
+                if _arr is not None:
+                    _fr = _arr
+                    _osrc = "ar(8802 · %s)" % (_m.get("frame") or "")
+                    log("🎯 INTACT 观测帧 ← AR 场景 (%s · %d×%d)"
+                        % (_m.get("frame"), _arr.shape[1], _arr.shape[0]))
+        except Exception:                                                    # noqa: BLE001
+            _fr = None
         rep = svc.run_once(stage="", decode=False, skill_ctx=sk,
-                           write_evidence=False, log=log)
+                           write_evidence=False, log=log,
+                           obs_frame=_fr, obs_source=_osrc)
         _d = dict(rep.diagnostics or {})
         return {"kind": "intact", "trained": bool(rep.trained), "policy": str(rep.policy),
                 "chunk_shape": list(rep.chunk_shape), "source": str(rep.source),

@@ -1530,11 +1530,30 @@ def _ar_frame(cam="ar3d", ttl=0.35):
         meta["frame"] = os.path.basename(path)
         meta["frame_age_s"] = 0.0
         meta["frame_src"] = "AR 场景 (8802 MuJoCo 渲染 · %s)" % cam
+        _tick = (_canvas_source() or {}).get("tick")
+        if _tick:
+            meta["tick"] = _tick                     # 同一拍的所有消费方 log 出同一个 tick
         _AR_FRAME[cam] = {"t": meta.get("t") or now, "arr": arr, "meta": meta, "path": path}
         return arr, path, meta
     except Exception as e:                                                     # noqa: BLE001
         _AR_FRAME.pop(cam, None)
         return None, None, {"gaps": ["AR 帧取不到 (%s): %s: %s" % (cam, type(e).__name__, e)]}
+
+
+def _canvas_source(ttl_th=10.0):
+    """画布「数据源」节点选了什么 —— 全链路唯一口径 (老倪 2026-11-10)。
+
+    data.py 的 node_metaworld_data 每拍把画布拨钮的结果写进 _SS_STATE['data_source']:
+        {"src": "ar" | "metaworld" | "orin", "cam": ..., "w": ..., "h": ..., "bytes": ..., "ts": ...}
+    TTL 10s: 画布停了就当没选过, 不许把下游死锁在某个源上。
+    """
+    try:
+        ds = _SS_STATE.get("data_source") or {}
+        if ds and (time.time() - float(ds.get("ts") or 0)) <= ttl_th:
+            return ds
+    except Exception:                                                          # noqa: BLE001
+        pass
+    return {}
 
 
 def _ar_yolo_weights():
@@ -1564,7 +1583,8 @@ def _yolo_capture_ar(log=None):
     if arr is None:
         gaps.extend(fmeta.get("gaps") or ["AR 帧不可用"])
         return {}, {}, meta
-    meta.update({k: fmeta.get(k) for k in ("frame", "frame_age_s", "frame_src", "bytes") if fmeta.get(k) is not None})
+    meta.update({k: fmeta.get(k) for k in ("frame", "frame_age_s", "frame_src", "bytes", "tick", "cam")
+                 if fmeta.get(k) is not None})
     w, rel = _ar_yolo_weights()
     if not w:
         gaps.append("无 AR 权重")
@@ -1654,8 +1674,8 @@ def _yolo_capture_ar(log=None):
         if not det2d:
             notes.append("本帧 0 检出")
         if log:
-            log("🎯 AR 源 (%s · %s): 检出 %d 类 %s · 3D %d 点 · %.0fms%s" % (
-                meta.get("frame"), rel, len(det2d),
+            log("🎯 AR 源 (%s · %s · tick=%s): 检出 %d 类 %s · 3D %d 点 · %.0fms%s" % (
+                meta.get("frame"), rel, meta.get("tick"), len(det2d),
                 {k: round(v["conf"], 2) for k, v in det2d.items()}, len(det3d), meta["dt_ms"],
                 (" · gaps=%s" % gaps) if gaps else ""))
         return det3d, det2d, meta
@@ -2995,6 +3015,14 @@ def _vlm_frame():
        ② **仿真**: 感知链缓存的 metaworld 渲染帧 (_YOLO_CACHE['img'])
        返回 (image_path, src, meta); meta 如实带帧龄/来源 (NTP 回拨时负帧龄拒用)"""
     meta = {}
+    _cs = _canvas_source()
+    if _cs.get("src") == "ar":
+        # 画布选了 AR ⇒ 先吃 AR 帧, 不许被同目录里的真机旧图顶掉 (数据同步)
+        _a, _ap_path, _am = _ar_frame(_cs.get("cam") or "ar3d")
+        if _a is not None and _ap_path:
+            meta.update({"frame_age_s": 0.0, "frame_src": "AR 场景 (8802 MuJoCo 渲染)",
+                         "frame": os.path.basename(_ap_path)})
+            return _ap_path, "ar", meta
     try:
         _d = os.environ.get("ZMAX_SS_REMOTE_DIR", "/home/ubuntu/zmax/zmax_data/ss_live")
         cands = [os.path.join(_d, n) for n in ("cam_rs.png", "cam_fp.png", "cam_latest.png")]
@@ -3015,7 +3043,7 @@ def _vlm_frame():
             _a, _ap_path, _am = _ar_frame()
             if _a is not None and _ap_path:
                 meta.update({"frame_age_s": 0.0, "frame_src": "AR 场景 (8802 MuJoCo 渲染)",
-                             "frame": os.path.basename(_ap_path)})
+                             "frame": os.path.basename(_ap_path), "tick": _am.get("tick")})
                 return _ap_path, "ar", meta
     except Exception:                                                          # noqa: BLE001
         pass

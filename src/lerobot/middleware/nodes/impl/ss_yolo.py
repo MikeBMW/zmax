@@ -39,14 +39,10 @@ def node_ss_yolo(ctx):
         import numpy as np
         _meta, _d2 = {}, None
         # 画布「数据源」节点选了 AR 场景 ⇒ 以画布为准 (老倪 2026-11-10); 环境变量只做兜底。
-        #   10s 内写过的选择才认, 否则画布停机时会把 L2 死锁在 ar 上。
         _canvas_src = ""
         try:
-            import time as _t
-            from .shared_runtime import _SS_STATE as _SS
-            _ds = _SS.get("data_source") or {}
-            if (_t.time() - float(_ds.get("ts") or 0)) < 10.0:
-                _canvas_src = str(_ds.get("src") or "").lower()
+            from .shared_runtime import _canvas_source as _csrc
+            _canvas_src = str((_csrc() or {}).get("src") or "").lower()
         except Exception:                                                    # noqa: BLE001
             _canvas_src = ""
         _src = (_canvas_src or os.environ.get("ZMAX_L2_SRC") or ctx.get("l2_src") or "sim").lower()
