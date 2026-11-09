@@ -781,6 +781,18 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
                                     _ax = -_ax / (np.linalg.norm(_ax) + 1e-9)
                                     _cc.azimuth = float(np.degrees(np.arctan2(_ax[1], _ax[0])))
                                     _cc.elevation = float(np.degrees(np.arcsin(max(-1.0, min(1.0, _ax[2])))))
+                    # 🧭 把这次**真正用的**相机记下来 (lookat/az/el/dist/fovy/画幅):
+                    #   外部只能从 URL 猜参数, 但 close 机位是服务端算的 (track/face), 猜不出来 ⇒
+                    #   投影必然错位 (实测 R_mod 投影到空处)。/cam.json 就是给它一个真值出口。
+                    try:
+                        STATE["free_cam"] = {"lookat": [float(v) for v in _cc.lookat],
+                                             "az": float(_cc.azimuth), "el": float(_cc.elevation),
+                                             "dist": float(_cc.distance),
+                                             "fovy": float(_rq["fovy"]), "ts": time.time(),
+                                             "w": int(_sz2[1]) if _sz2 else int(renderer.width),
+                                             "h": int(_sz2[0]) if _sz2 else int(renderer.height)}
+                    except Exception:                                      # noqa: BLE001
+                        pass
                     model.vis.global_.fovy = float(_rq["fovy"])
                     # 任意视角也要遵守同一条: 俯角 <= -70° ⇒ 关掉设备/相机盒 (否则顶视被横梁盖死)
                     _op2 = mujoco.MjvOption()
@@ -790,11 +802,21 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
                     if _sz2 and (_sz2[0], _sz2[1]) != (int(renderer.height), int(renderer.width)):
                         _rnd = _free_renderer(mujoco, model, _sz2[0], _sz2[1])
                     _rnd.update_scene(data, _cc, _op2)
-                    _im = np.asarray(_rnd.render())
-                    _ok, _buf = cv2.imencode(".png", cv2.cvtColor(_im, cv2.COLOR_RGB2BGR),
-                                             [cv2.IMWRITE_PNG_COMPRESSION, 3])
-                    _rq["png"] = _buf.tobytes() if _ok else None
-                    _rq["err"] = None if _ok else "png encode failed"
+                    if _rq.get("depth"):
+                        _rnd.enable_depth_rendering()
+                        try:
+                            _dep = np.asarray(_rnd.render(), dtype=np.float32)
+                        finally:
+                            _rnd.disable_depth_rendering()
+                        _rq["depth_arr"] = _dep
+                        _rq["png"] = b""
+                        _rq["err"] = None
+                    else:
+                        _im = np.asarray(_rnd.render())
+                        _ok, _buf = cv2.imencode(".png", cv2.cvtColor(_im, cv2.COLOR_RGB2BGR),
+                                                 [cv2.IMWRITE_PNG_COMPRESSION, 3])
+                        _rq["png"] = _buf.tobytes() if _ok else None
+                        _rq["err"] = None if _ok else "png encode failed"
                 except Exception as _e:                                    # noqa: BLE001
                     _rq["err"] = "%s: %s" % (type(_e).__name__, _e)
                 finally:
@@ -864,7 +886,10 @@ def render_free(qs, timeout=3.5):
            # 🎯 跟物: "track"=把 lookat 钉到某个 geom 的世界位置; "face"=再让机位沿这个 geom 的
            #    x 轴正视 (模块被两指夹住只有从模块侧面才看得见)。渲染线程里算 —— HTTP 线程拿不到 data。
            "track": ((qs.get("track") or [None])[0]),
-           "face": ((qs.get("face") or [None])[0])}
+           "face": ((qs.get("face") or [None])[0]),
+           # 🌕 深度通道: 单目 RGB 只知道方向, 不知道距离 —— 腕部特写里件在 0.56m 高,
+           #   按料盘面(0.109m)反投影会差 450mm。要真 3D 就必须有深度。
+           "depth": bool((qs.get("depth") or [""])[0])}
     try:
         FREE_Q.put_nowait(req)
     except queue.Full:              # 丢最老的, 保证最新视角能出
@@ -877,9 +902,20 @@ def render_free(qs, timeout=3.5):
         raise RuntimeError("渲染线程忙/未出图 (超时 %.1fs)" % timeout)
     if req["err"]:
         raise RuntimeError(req["err"])
+    if req.get("depth"):
+        if req.get("depth_arr") is None:
+            raise RuntimeError("空深度帧")
+        return req.get("depth_arr")
     if not req["png"]:
         raise RuntimeError("空帧")
     return req["png"]
+
+
+def render_depth(qs, timeout=6.0):
+    """深度帧 (米, float32 HxW) —— 与 render_free 同一套机位参数, 只是走深度通道。"""
+    q2 = dict(qs)
+    q2["depth"] = ["1"]
+    return render_free(q2, timeout=timeout)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -918,6 +954,38 @@ class Handler(BaseHTTPRequestHandler):
             cam_name = "ar3d"
         # 📷 顶视 (老倪 2026-11-09): 缓存帧里的 views["top"] 与实际取景不一致 (实测仍是斜视,
         #   与 free-cam 正俯视差 74.5 灰度), 这里改成**现场按预设参数渲染**, 不再读缓存。
+        # 🧭 最近一次渲染**真正用的**相机参数 (close 机位是服务端算的 track/face, 外部猜不到)
+        if p in ("/cam.json", "/cam"):
+            _fc = (STATE.get("free_cam") or {})
+            _fc = dict(_fc)
+            if _fc:
+                _fc["age_s"] = round(time.time() - float(_fc.get("ts") or 0), 3)
+            self._json({"ok": bool(_fc), "cam": _fc}, 200 if _fc else 404)
+            return
+        # 🌕 深度帧: 与 RGB 同机位同画幅 (16bit PNG, 毫米), 供 ar_percept 做真 3D
+        if p in ("/depth.png", "/depth"):
+            _dqs = dict(qs)
+            _dcam = (_dqs.get("cam") or [""])[0]
+            try:
+                if _dcam == "close":
+                    _d = render_depth({"track": ["R_tcp"], "face": ["R_mod"], "dist": ["0.26"],
+                                       "fovy": ["50"], "az": ["0"], "el": ["0"]})
+                elif _dqs.get("live"):
+                    _cq = _cam_sync_read()
+                    _d = render_depth(_page_cam(_cq)) if _cq else None
+                else:
+                    _d = render_depth(_page_cam(_dqs))
+                if _d is None:
+                    self._send(503, b"depth unavailable", "text/plain")
+                    return
+                import cv2 as _cv2                                           # noqa: PLC0415
+                import numpy as _np                                          # noqa: PLC0415
+                _mm = _np.where(_np.isfinite(_d), _np.clip(_d * 1000.0, 0, 65535), 0).astype(_np.uint16)
+                _ok, _buf = _cv2.imencode(".png", _mm, [_cv2.IMWRITE_PNG_COMPRESSION, 3])
+                self._send(200, _buf.tobytes() if _ok else b"", "image/png")
+            except Exception as e:                                          # noqa: BLE001
+                self._send(503, ("depth: %s" % e).encode(), "text/plain")
+            return
         # 🦾 cam=close 现在是「右臂夹爪特写」: 机位跟着 R_tcp 走、正对光模块侧面。
         #   (老倪 2026-11-10: 光模块在 ar3d 全景里只有 13x3 px, 判不了夹没夹住)
         if cam_name == "close" and p in ("/", "/frame.png", "/frame.jpg"):

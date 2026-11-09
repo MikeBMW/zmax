@@ -70,6 +70,22 @@ def fetch(cam="ar3d", timeout=6.0, live=True):
         raise RuntimeError("帧解码失败: %s" % e)
     meta["shape"] = list(arr.shape)
     meta["w"], meta["h"] = int(arr.shape[1]), int(arr.shape[0])
+    # 🧭 相机真值: close 机位是服务端按 track/face 算的, 用页面参数去反投影必然错位
+    #   (实测 R_mod 投到空处, 深度 127m) ⇒ 以 /cam.json 记录的那一台为准。
+    try:
+        rq = urllib.request.Request("%s/cam.json" % BASE, headers={"User-Agent": "zmax-ar-percept"})
+        with urllib.request.urlopen(rq, timeout=3.0) as r:
+            cj = json.loads(r.read().decode("utf-8") or "{}")
+        c = (cj or {}).get("cam") or {}
+        if c and float(c.get("age_s") or 99) < 5.0:
+            meta["cam_params"] = {"az": c["az"], "el": c["el"], "dist": c["dist"],
+                                  "tgt": c["lookat"], "fovy": c["fovy"],
+                                  "w": _w if (_w := meta["w"]) else c.get("w"),
+                                  "h": meta["h"], "src": "8802 /cam.json"}
+            return arr, meta
+    except Exception:                                                          # noqa: BLE001
+        pass
+    meta["cam_params"] = fit(cam_params(), arr)
     return arr, meta
 
 
@@ -142,6 +158,52 @@ def unproject(px, p=None, plane_z=0.109):
         if s <= 0:
             continue
         out[i] = pos + d * s
+    return out
+
+
+def fetch_depth(cam="close", timeout=8.0, live=True):
+    """取同机位的**深度帧** (米)。8802 /depth.png 出的是 16bit PNG 毫米。"""
+    q = "cam=%s" % cam + ("&live=1" if live and cam == "ar3d" else "")
+    url = "%s/depth.png?%s" % (BASE, q)
+    t0 = time.time()
+    req = urllib.request.Request(url, headers={"User-Agent": "zmax-ar-percept"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        buf = r.read()
+    import io
+    from PIL import Image
+    d = np.asarray(Image.open(io.BytesIO(buf))).astype(np.float32) / 1000.0
+    return d, {"src": "ar-depth:%s" % cam, "url": url, "bytes": len(buf),
+               "t": time.time(), "dt_s": round(time.time() - t0, 3),
+               "w": int(d.shape[1]), "h": int(d.shape[0]),
+               "min_m": float(d[d > 0].min()) if (d > 0).any() else None,
+               "med_m": float(np.median(d[d > 0])) if (d > 0).any() else None}
+
+
+def unproject_px(px, depth, p=None, win=3):
+    """像素 + 深度 → 世界点 (真 3D)。窗口内取中值深度, 单像素噪声不会把点甩出去。
+
+    这是"单目只有方向、加深度才有距离"的那一步: 腕部特写里件在 0.56m 高,
+    若按料盘面(z=0.109)反投影实测误差 452mm —— 有深度就没有这个假设。
+    """
+    p = p or cam_params()
+    K = intrinsics(p)
+    pos, fwd, right, up2 = _basis(p)
+    px = np.atleast_2d(np.asarray(px, float))
+    out = np.full((len(px), 3), np.nan)
+    h, w = depth.shape[:2]
+    for i, (u, v) in enumerate(px):
+        x0, x1 = max(0, int(u) - win), min(w, int(u) + win + 1)
+        y0, y1 = max(0, int(v) - win), min(h, int(v) + win + 1)
+        if x1 <= x0 or y1 <= y0:
+            continue
+        patch = depth[y0:y1, x0:x1]
+        patch = patch[patch > 0]
+        if patch.size == 0:
+            continue
+        z = float(np.median(patch))
+        nx = (float(u) - K["cx"]) / K["fx"]
+        ny = (float(v) - K["cy"]) / K["fy"]
+        out[i] = pos + right * (nx * z) + up2 * (-ny * z) + fwd * z
     return out
 
 

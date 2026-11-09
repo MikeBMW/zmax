@@ -1774,6 +1774,184 @@ def _det2d_and_3d(img_bgr, meta, log=None):
     return det3d, det2d
 
 
+_AR_FRAME = {}          # cam → {t, arr, meta, path}  (两个消费方各吃自己的机位, 不互相顶掉)
+
+
+def _ar_frame(cam="ar3d", ttl=0.35):
+    """AR 场景帧 (8802 渲染) —— 老倪 2026-11-10: 数据源就是 AR 场景。
+
+    TTL 内复用同一帧: 画布一拍里 YOLO / VLM / 分割 三个节点读到的必须是**同刻同帧**,
+    否则"感知结果 A + 场景理解 B"拼起来是两帧, 后面融合就假了。
+    """
+    import time as _t
+    now = _t.time()
+    c = _AR_FRAME.get(cam) or {}
+    if c.get("arr") is not None and (now - float(c.get("t") or 0.0)) <= ttl:
+        return c["arr"], c["path"], dict(c["meta"])
+    try:
+        sys.path.insert(0, os.path.join(_REPO_ROOT, "tools"))
+        import ar_percept as _ap                                                # noqa: PLC0415
+        arr, meta = _ap.fetch(cam)
+        # fetch 已经带回**这次渲染真正用的**相机 (/cam.json); 只有拿不到时才回落到页面参数
+        if not meta.get("cam_params"):
+            meta["cam_params"] = _ap.fit(_ap.cam_params(), arr)
+        meta["cam"] = cam
+        path = _ap.frame_path(arr)
+        meta["frame"] = os.path.basename(path)
+        meta["frame_age_s"] = 0.0
+        meta["frame_src"] = "AR 场景 (8802 MuJoCo 渲染 · %s)" % cam
+        _AR_FRAME[cam] = {"t": meta.get("t") or now, "arr": arr, "meta": meta, "path": path}
+        return arr, path, meta
+    except Exception as e:                                                     # noqa: BLE001
+        _AR_FRAME.pop(cam, None)
+        return None, None, {"gaps": ["AR 帧取不到 (%s): %s: %s" % (cam, type(e).__name__, e)]}
+
+
+def _ar_yolo_weights():
+    """在役 AR 权重 (渲染域微调) → 没有就退回真机权重并如实标注。"""
+    for rel in ("models/ar_yolo_v1.pt", "models/yolo_peg_live.pt"):
+        fp = os.path.join(_REPO_ROOT, rel)
+        if os.path.isfile(fp):
+            return fp, rel
+    return None, None
+
+
+def _yolo_capture_ar(log=None):
+    """AR 源: 8802 渲染帧 → YOLO(渲染域权重) → 2D 框 → 针孔反投影 3D (射线∩料盘面)。
+
+    与真机源的区别只有一处: 3D 用的是**渲染相机**的参数 (ar_percept), 不是手眼标定 ——
+    渲染场景里相机是已知的, 这就是它的真值; 真机才需要 K/T。
+    """
+    import time as _t
+    gaps, notes = [], []
+    meta = {"frame": None, "src": "ar", "cam": "AR 渲染帧 (8802)", "gaps": gaps, "notes": notes,
+            "depth_src": "射线∩料盘面 z=%.3f" % _ar_plane_z()}
+    # 🎯 L2 吃 **close (腕部特写) 机位**: 2.0m 全景下 13mm 模块只有 3px, 实测 0 检出;
+    #   同一时刻 close 帧实测 OPT_Gold 0.78 (盒 189x149px) —— 感知必须用看得清的机位。
+    arr, path, fmeta = _ar_frame("close")
+    if arr is None:
+        arr, path, fmeta = _ar_frame("ar3d")
+    if arr is None:
+        gaps.extend(fmeta.get("gaps") or ["AR 帧不可用"])
+        return {}, {}, meta
+    meta.update({k: fmeta.get(k) for k in ("frame", "frame_age_s", "frame_src", "bytes") if fmeta.get(k) is not None})
+    w, rel = _ar_yolo_weights()
+    if not w:
+        gaps.append("无 AR 权重")
+        return {}, {}, meta
+    meta["weights"] = rel
+    try:
+        from ultralytics import YOLO                                              # noqa: PLC0415
+        _sig = (rel, os.path.getmtime(w))
+        if _YOLO_CACHE.get("_ar_model_sig") != _sig:
+            _YOLO_CACHE["_ar_model"] = YOLO(w)
+            _YOLO_CACHE["_ar_model_sig"] = _sig
+        m = _YOLO_CACHE["_ar_model"]
+        t0 = _t.time()
+        # 🖥 450MB 显存的卡上还要跑 VLM/INTACT ⇒ 感知走 CPU (实测 640 输入 ~60ms/帧, 够 300UPH)
+        dev = os.environ.get("ZMAX_AR_YOLO_DEVICE", "cpu")
+        res = m.predict(arr[:, :, ::-1].copy(), conf=float(os.environ.get("SS_YOLO_CONF", "0.35")),
+                        imgsz=int(os.environ.get("ZMAX_AR_YOLO_IMGSZ", "640")),
+                        device=dev, verbose=False)[0]
+        det2d, det3d = {}, {}
+        p = fmeta.get("cam_params") or {}
+        for b in getattr(res, "boxes", []):
+            cls = res.names[int(b.cls)]
+            x1, y1, x2, y2 = [float(v) for v in b.xyxy[0].tolist()]
+            d = {"box": [x1, y1, x2, y2], "conf": float(b.conf),
+                 "cx": (x1 + x2) / 2.0, "cy": (y1 + y2) / 2.0}
+            if cls not in det2d or d["conf"] > det2d[cls]["conf"]:
+                det2d[cls] = d
+        if p and det2d:
+            sys.path.insert(0, os.path.join(_REPO_ROOT, "tools"))
+            import ar_percept as _ap                                            # noqa: PLC0415
+            import numpy as _np                                                 # noqa: PLC0415
+            # 🌕 真 3D: 取同机位深度帧, 用框中心附近的**中值深度**反投影。
+            #   没有深度就只能假设件在料盘面 (z=0.109) —— 腕部特写里件在 0.56m,
+            #   那个假设实测差 452mm, 等于把 3D 当装饰。这里宁可慢 90ms 也要真距离。
+            _dep = None
+            try:
+                _dep, _dm = _ap.fetch_depth(fmeta.get("cam") or "close")
+                meta["depth_src"] = "8802 /depth.png (%s) · med %.2fm" % (
+                    fmeta.get("cam"), _dm.get("med_m") or 0.0)
+            except Exception as e:                                              # noqa: BLE001
+                gaps.append("深度帧不可用: %s: %s" % (type(e).__name__, e))
+            for cls, d2 in det2d.items():
+                try:
+                    if _dep is not None:
+                        wpt = _ap.unproject_px([[d2["cx"], d2["cy"]]], _dep, p)[0]
+                    else:
+                        wpt = _ap.unproject([[d2["cx"], d2["cy"]]], p, plane_z=_ar_plane_z())[0]
+                    if _np.isfinite(wpt).all():
+                        det3d[cls] = [float(v) for v in wpt]
+                        meta.setdefault("depth_used", "depth" if _dep is not None else "plane")
+                except Exception as e:                                          # noqa: BLE001
+                    gaps.append("%s 反投影失败: %s" % (cls, e))
+        # 🔁 特写机位被夹爪自己挡住时(实测会有一整段 pose 全遮挡)退回全景再试一次 ——
+        #   宁可拿一张"看得见但小"的帧, 也不要给下游一个空的感知结果。
+        if not det2d and (fmeta or {}).get("cam") == "close":
+            _a2, _p2, _m2 = _ar_frame("ar3d")
+            if _a2 is not None:
+                _r2 = m.predict(_a2[:, :, ::-1].copy(), conf=float(os.environ.get("SS_YOLO_CONF", "0.35")),
+                                imgsz=int(os.environ.get("ZMAX_AR_YOLO_IMGSZ", "640")), device=dev,
+                                verbose=False)[0]
+                for b in getattr(_r2, "boxes", []):
+                    cls = _r2.names[int(b.cls)]
+                    x1, y1, x2, y2 = [float(v) for v in b.xyxy[0].tolist()]
+                    d = {"box": [x1, y1, x2, y2], "conf": float(b.conf),
+                         "cx": (x1 + x2) / 2.0, "cy": (y1 + y2) / 2.0}
+                    if cls not in det2d or d["conf"] > det2d[cls]["conf"]:
+                        det2d[cls] = d
+                if det2d:
+                    meta["cam"] = "AR 渲染帧 (8802 · ar3d 回退)"
+                    meta["cam_params"] = _m2.get("cam_params") or p
+                    p = meta["cam_params"]
+                    notes.append("特写遮挡 → 全景回退")
+                    sys.path.insert(0, os.path.join(_REPO_ROOT, "tools"))
+                    import ar_percept as _ap2                                       # noqa: PLC0415
+                    for cls, d2 in det2d.items():
+                        if cls in det3d:
+                            continue
+                        try:
+                            wpt = _ap2.unproject([[d2["cx"], d2["cy"]]], p, plane_z=_ar_plane_z())[0]
+                            import numpy as _np2                                        # noqa: PLC0415
+                            if _np2.isfinite(wpt).all():
+                                det3d[cls] = [float(v) for v in wpt]
+                        except Exception:                                          # noqa: BLE001
+                            pass
+        meta["dt_ms"] = round((_t.time() - t0) * 1000.0, 1)
+        meta["n_det"] = len(det2d)
+        if not det2d:
+            notes.append("本帧 0 检出")
+        if log:
+            log("🎯 AR 源 (%s · %s): 检出 %d 类 %s · 3D %d 点 · %.0fms%s" % (
+                meta.get("frame"), rel, len(det2d),
+                {k: round(v["conf"], 2) for k, v in det2d.items()}, len(det3d), meta["dt_ms"],
+                (" · gaps=%s" % gaps) if gaps else ""))
+        return det3d, det2d, meta
+    except Exception as e:                                                     # noqa: BLE001
+        gaps.append("AR 推理失败: %s: %s" % (type(e).__name__, e))
+        return {}, {}, meta
+
+
+def _ar_plane_z():
+    """AR 场景里"件所在平面"的高度 —— 料盘面 (place_cells 的槽面), 不手填。"""
+    v = os.environ.get("ZMAX_AR_PLANE_Z")
+    if v:
+        try:
+            return float(v)
+        except Exception:                                                      # noqa: BLE001
+            pass
+    try:
+        import json as _j
+        p = os.path.join(_REPO_ROOT, "config", "calib", "zmax_ar_plane.json")
+        if os.path.isfile(p):
+            return float(_j.load(open(p, encoding="utf-8")).get("z"))
+    except Exception:                                                          # noqa: BLE001
+        pass
+    return 0.109
+
+
 def _yolo_capture_real(log=None):
     """真机源: ①`ZMAX_L2_VIDEO=x.mp4` 逐帧真读视频 ②否则取 zmax_data/ss_live/cam_*.png 最新帧。
 
@@ -3429,10 +3607,10 @@ def _skill_spec_from_env(log=None):
     parts, notes = [], []
     try:
         meta = _VLM.get("img") or {}
-        if meta.get("src") in ("real", "sim"):
+        if meta.get("src") in ("real", "sim", "ar"):
+            _srcname = {"real": "真机产线", "sim": "metaworld 仿真", "ar": "AR 场景 (MuJoCo 渲染)"}[meta["src"]]
             parts.append("环境=%s(帧 %s, 帧龄 %ss)" % (
-                "真机产线" if meta["src"] == "real" else "metaworld 仿真",
-                meta.get("frame"), meta.get("frame_age_s")))
+                _srcname, meta.get("frame"), meta.get("frame_age_s")))
         else:
             notes.append("环境帧不可用")
     except Exception:                                                          # noqa: BLE001
@@ -3759,6 +3937,16 @@ def _vlm_frame():
             meta = {"frame_age_s": round(age, 2), "frame_src": "真机帧(旧)", "frame": os.path.basename(f)}
     except Exception:                                                          # noqa: BLE001
         pass
+    # 🎥 AR 场景帧 (8802 渲染) —— 优先级最高: 数据源就是它
+    try:
+        if (os.environ.get("ZMAX_SS_FRAME_SRC", "") or "").lower() in ("ar", "auto", ""):
+            _a, _ap_path, _am = _ar_frame()
+            if _a is not None and _ap_path:
+                meta.update({"frame_age_s": 0.0, "frame_src": "AR 场景 (8802 MuJoCo 渲染)",
+                             "frame": os.path.basename(_ap_path)})
+                return _ap_path, "ar", meta
+    except Exception:                                                          # noqa: BLE001
+        pass
     img = _YOLO_CACHE.get("img") if "_YOLO_CACHE" in globals() else None
     if img is not None:
         try:
@@ -3973,6 +4161,10 @@ def node_ss_yolo(ctx):
         if _src == "real":
             det3d, _d2, _meta = _yolo_capture_real(log)
             obs39, aligned = None, None
+        elif _src == "ar":
+            # 🎥 AR 场景源 (老倪 2026-11-10): 8802 渲染帧 → 渲染域权重 → 针孔反投影
+            det3d, _d2, _meta = _yolo_capture_ar(log)
+            obs39, aligned = None, None
         else:
             aligner = _yolo_ensure_aligner(log)
             det3d, obs39, _img = _yolo_capture(log, aligner)
@@ -3984,12 +4176,12 @@ def node_ss_yolo(ctx):
         # 🆕 2026-10-28 老倪: L2 感知节点→plan 的唯一交界 = vision_points.json (由本节点写, 不由脚本写)
         try:
             from . import vision_points as _vp
-            _meta = _meta if _src == "real" else (_YOLO_CACHE.get("meta") or {})
-            _d2 = _d2 if _src == "real" else _YOLO_CACHE.get("det2d")
+            _meta = _meta if _src in ("real", "ar") else (_YOLO_CACHE.get("meta") or {})
+            _d2 = _d2 if _src in ("real", "ar") else _YOLO_CACHE.get("det2d")
             _path, _verified, _np_ = _vp.publish_from_det(
                 det3d, _d2, _meta,
-                cam=("真机相机帧" if _src == "real" else "metaworld渲染帧"),
-                kind=("ss_yolo_node_real" if _src == "real" else "ss_yolo_node"),
+                cam=("真机相机帧" if _src == "real" else ("AR 场景帧 (8802)" if _src == "ar" else "metaworld渲染帧")),
+                kind=("ss_yolo_node_real" if _src == "real" else ("ss_yolo_node_ar" if _src == "ar" else "ss_yolo_node")),
                 note="canvas node 🎯 YOLO 目标检测 (%s 源)" % _src,
                 pose=_yolo_pose_extra())
             if log:
@@ -4001,14 +4193,14 @@ def node_ss_yolo(ctx):
                 log("⚠️ 3D 观测点发布失败: %s: %s" % (type(_e).__name__, _e))
         if log:
             n = len(det3d)
-            det2d = _d2 if _src == "real" else _YOLO_CACHE.get("det2d", {})
+            det2d = _d2 if _src in ("real", "ar") else _YOLO_CACHE.get("det2d", {})
             desc = " ".join(
                 f"{k}=[{v[0]:.3f},{v[1]:.3f},{v[2]:.3f}]"
                 + (f" conf={det2d[k]['conf']:.2f}" if k in det2d else "")
                 for k, v in sorted(det3d.items()))
             log(f"🎯 YOLO 目标检测 (真实, {_src} 源): {n}/3 目标 · {desc}"
                 + ("" if _src == "real" else ""))
-            if _src == "real":
+            if _src in ("real", "ar"):
                 log("   2D: %s · 3D: %d 点%s" % (
                     {k: round(v["conf"], 2) for k, v in (det2d or {}).items()}, len(det3d),
                     "" if not _meta.get("gaps") else " · 缺证据 %s" % _meta.get("gaps")))
