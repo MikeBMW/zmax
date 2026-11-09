@@ -83,6 +83,11 @@ def _equip_geoms():
         nm = str(b.get("name") or "")
         if nm.startswith("槽"):         # 槽位太多太碎, 不画 (主料盘自带槽)
             continue
+        # 🔴 料盘一律交给 build_mjcf 的 pan_* 循环 (薄底+四壁+42 个槽):
+        #   这里再把 3 个料盘画成 0.10~0.14 的实心 slab, 正好把槽片 (z 0.105~0.109) 整个盖死
+        #   ⇒ 顶视里左盘/下盘/废料盘"是纯平板、一格槽都看不见"(实测红色槽片 0 像素)。
+        if "料盘" in nm:
+            continue
         try:
             p1 = [float(v) for v in b["p1"][:3]]
             p2 = [float(v) for v in b["p2"][:3]]
