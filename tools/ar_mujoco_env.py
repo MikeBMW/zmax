@@ -205,10 +205,29 @@ def build_mjcf() -> str:
                 'rgba="0.22 0.24 0.27 1"/>'
                 % (pcx, pcy, pzlo / 2.0, px + 0.02, py + 0.02, max(0.01, pzlo / 2.0)))
     # 槽位（凹槽参照物，不挡模块）
+    # 🔴 2026-11-09: 原来只画 fences 里前 6 个槽 ⇒ 顶视里"上料盘/下料盘/废料盘没有槽"看着像少东西。
+    #    真源改用 place_cells.json (42 个槽, 覆盖 3 个有槽料盘, SAM3 实测 base mm)。
+    _pc = []
+    try:
+        import json as _json
+        _pf = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "zmax_data", "staging_zmax_repo", "data", "skills", "l2_atomic",
+                           "place_cells.json")
+        with open(_pf, "r", encoding="utf-8") as _fh:
+            _pc = [c for c in (_json.load(_fh).get("cells") or []) if c.get("kind") == "slot"]
+    except Exception:                                                        # noqa: BLE001
+        _pc = []
+    if _pc:
+        for k, _c in enumerate(_pc):
+            _px, _py, _pz = [float(v) / 1000.0 for v in (_c.get("pos_mm") or [0, 0, 0])]
+            _sx, _sy = [max(0.004, float(v) / 2000.0) for v in (_c.get("size_mm") or [36, 42, 15])[:2]]
+            geos.append('<geom name="slot%d" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f 0.002" '
+                        'rgba="0.05 0.05 0.06 1" contype="0" conaffinity="0"/>'
+                        % (k, _px, _py, _pz - 0.006, _sx, _sy))
     for k, s in enumerate(slots[:6]):
         scx, scy, scz = ctr(s)
         sx2, sy2, sz2 = sz(s)
-        geos.append('<geom name="slot%d" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f 0.002" '
+        geos.append('<geom name="fslot%d" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f 0.002" '
                     'rgba="0.05 0.05 0.06 1" contype="0" conaffinity="0"/>'
                     % (k, scx, scy, pzlo + 0.008, sx2, sy2))
 
