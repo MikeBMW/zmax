@@ -379,8 +379,34 @@ TCP_JSON = os.path.expanduser("~/zmax/zmax_data/rokae_sdk/tcp_out/latest.json")
 IMG_W, IMG_H = 640, 480
 
 
+def _up_base() -> str:
+    """上游推流服务基址 —— 产线上 cam_live_stream 在 8791; 笔记本(冻结包)上它是 8793。
+
+    老倪 2026-11-09 Windows: 「全流程 UPH 按钮按下, 机器人不动」—— 根因在这条: UP 写死 8791,
+    笔记本没有 8791(只有自起的 8793) ⇒ /scene.json 取不到 ⇒ 页面没有 path3d 段表 ⇒
+    UPH 全流程没有轨迹可走, 双臂当然不动。这里按 ZMAX_STREAM_URL > 8791 > 8793 现探一次并记住。
+    """
+    global UP
+    try:
+        import urllib.request as _u
+        for cand in (os.environ.get("ZMAX_STREAM_URL"), UP, "http://127.0.0.1:8791",
+                     "http://127.0.0.1:8793"):
+            if not cand:
+                continue
+            try:
+                with _u.urlopen(cand + "/station/status", timeout=1.5) as _r:
+                    if 200 <= int(getattr(_r, "status", 200) or 200) < 300:
+                        UP = cand
+                        return UP
+            except Exception:                                          # noqa: BLE001
+                continue
+    except Exception:                                                  # noqa: BLE001
+        pass
+    return UP
+
+
 def _get(path: str, timeout: float = 10.0):
-    with urllib.request.urlopen(UP + path, timeout=timeout) as r:
+    with urllib.request.urlopen(_up_base() + path, timeout=timeout) as r:
         return r.read()
 
 
