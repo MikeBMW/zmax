@@ -1,4 +1,4 @@
-远程: USB网卡(本机.23.50)→Orin tashan@.23.66 + 工控机.23.23 + intel550C.23.70; 网卡拔⇒仅wifi无常通路; 技能走ssh/运动走bridge39071
+远程: 网卡→Orin.23.66+工控机.23.23+intel.23.70直连; 拔⇒wifi(.43)经Orin跳; bridge39071; 小芳=cli_aac4912eb6389bc2在550C默认profile
 §
 NTP回拨8h(勿动RTC)→用monotonic; 判活判'未来时间戳'; cron ticker卡死→watchdog.timer
 §
@@ -34,7 +34,7 @@ ECS=仅web入口(TLS+反代+frp); 站点已搬550C(nginx:8081+php8.3+mysql,已�
 §
 GPU掉载主因=每步CPU>计算→静音日志+workers↑
 §
-工程根~/zmax=独立仓库(MikeBMW/zmax); zmax_data=模型+数据+HF+secrets/zmax.env; 训练带HF_HOME
+工程根~/zmax=仓库(MikeBMW/zmax); zmax_data=数据+HF+secrets(~/zmax_data=软链); 训练带HF_HOME
 §
 禁自行重启任何GUI/服务/进程, 只可停不可起; 重启须用户点名
 §
@@ -60,14 +60,14 @@ AR=8797: 底图4相机=8791(arm/gold/surface)+本机D435; /api/cams·/snap/<k>.j
 §
 建图=8793 manual走点(45s/轮); GS_MAP_MODE=auto回旧
 §
-版本号只听老倪; 现5.50.758
+版本号只听老倪; 现5.50.760
 §
-专利12件·渠74/74(patent_registry.json)
+专利12件·渠74/74
 §
 tool0读heartbeat.pose.flange(禁手推R,y差251mm); precheck需扣连杆半径(肘r78)+<20mm FAIL; 手臂相机围栏无此项盲区
 §
 MoveIt起点须SDK直采(禁手推)
 §
-rec48=48Hz只读记录器待部署; 建图缺RealSense
-§
 反刷屏: 回答≤两行(先人话); 启动/常驻循环输出默认静音落日志(file全量可查)
+§
+intel出口=.23.66走Orin NAT(zmax-nat-intel;Orin sudo ts123)
