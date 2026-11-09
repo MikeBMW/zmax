@@ -750,6 +750,16 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     _cq = _cam_sync_read()
                     if _cq:
+                        # 🎯 只信页面的**方向**(az/el), 目标点/距离换成 8802 自己的口径:
+                        #   页面 autoZoom 的 tgt/dist 是它自绘场景的尺度(实测 tgt z=-186mm 落在台面下、
+                        #   dist 2.1m 把工位拍成一小块), 照搬 ⇒ 画面又暗又空, 老倪看着就是「不同步」。
+                        #   实测: dist×0.5 + 预设 lookat ⇒ 内容占比 5%→18%, 均值 13→24。
+                        _cq = dict(_cq)
+                        for _k in ("tx", "ty", "tz"):
+                            _cq.pop(_k, None)
+                        _pd = float((_cq.get("dist") or ["1.6"])[0])
+                        # 远近照页面(这才是"同焦"), 只做安全限幅; 目标点用预设(页面 autoZoom 的 tgt 会掉到台面下)
+                        _cq["dist"] = [str(round(min(2.6, max(0.6, _pd * 0.65)), 3))]   # 0.65: 8802 场景比画布小, 同焦会显得空(实测占比 2%→16%)
                         b = render_free(_cq)
                 except Exception:                                        # noqa: BLE001
                     b = b""
