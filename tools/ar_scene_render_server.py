@@ -681,7 +681,11 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
                         else:
                             c.elevation, c.azimuth = cam0[name]
                         model.vis.global_.fovy = float(VIEWS[name].get("fovy", 45.0))
-                        renderer.update_scene(data, c)
+                        # 顶视: 关掉 group 3 (设备/相机盒)。上横梁悬在料盘正上方, 不关就把料盘全盖住。
+                        _op = mujoco.MjvOption()
+                        if name == "top" or float(c.elevation) <= -70.0:
+                            _op.geomgroup[3] = 0
+                        renderer.update_scene(data, c, _op)
                         img = np.asarray(renderer.render())
                         box, px = gold_box(gold_mask(img))
                         ok, buf = cv2.imencode(".png", cv2.cvtColor(img, cv2.COLOR_RGB2BGR),
@@ -735,7 +739,11 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
                     _cc.elevation = _rq["cam"]["elevation"]
                     _cc.azimuth = _rq["cam"]["azimuth"]
                     model.vis.global_.fovy = float(_rq["fovy"])
-                    renderer.update_scene(data, _cc)
+                    # 任意视角也要遵守同一条: 俯角 <= -70° ⇒ 关掉设备/相机盒 (否则顶视被横梁盖死)
+                    _op2 = mujoco.MjvOption()
+                    if float(_cc.elevation) <= -70.0:
+                        _op2.geomgroup[3] = 0
+                    renderer.update_scene(data, _cc, _op2)
                     _im = np.asarray(renderer.render())
                     _ok, _buf = cv2.imencode(".png", cv2.cvtColor(_im, cv2.COLOR_RGB2BGR),
                                              [cv2.IMWRITE_PNG_COMPRESSION, 3])
