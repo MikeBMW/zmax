@@ -176,6 +176,39 @@ jobs:
           printf '{"note":"vendor URDF/meshes not in repo; placeholder so PyInstaller --add-data resolves"}\n' > "$D/PLACEHOLDER.json"
           test -d "$D" && echo "moveit_xms5 placeholder ok: $(ls "$D" | tr '\n' ' ')"
 
+      - name: "🔗 软链/画布闸 (pack_guard) — 禁止把 Linux 软链打进包"
+        shell: bash
+        run: |
+          # 2026-11-10 事故: 仓库里 flows/state_space_obs.json 与 config/data 都是软链,
+          # 打包后 Windows 侧解析不了(断链或自指) ⇒ GUI「打开总工程」加载失败。
+          # 这里在 PyInstaller 之前把要进包的目录就地实体化, 并断言画布 JSON 真有 nodes。
+          for d in flows src/lerobot defaults data/database/zmax/sources tools; do
+            [ -e "$d" ] || continue
+            python tools/pack_guard.py "$d" --fix || echo "::warning::pack_guard 实体化有失败项: $d"
+          done
+          python - <<'PY'
+          import json, os, sys
+          cand = ["flows/state_space_obs.json",
+                  "src/lerobot/engineering/flows/state_space_obs.json"]
+          ok = 0
+          for p in cand:
+              if not os.path.isfile(p):
+                  print("(不在库:", p, ")")
+                  continue
+              if os.path.islink(p):
+                  print("::error::", p, "仍是软链")
+                  sys.exit(1)
+              d = json.load(open(p, encoding="utf-8"))
+              n = len(d.get("nodes") or [])
+              print(p, "nodes", n)
+              assert n > 0, p + " 是空画布"
+              ok += 1
+          if ok == 0:
+              print("::error:: 找不到任何画布真源 (flows/state_space_obs.json)")
+              sys.exit(1)
+          print("画布真源 OK:", ok, "处")
+          PY
+
       - name: Build .exe with PyInstaller
         run: |
           cd tools\gui
@@ -538,6 +571,34 @@ jobs:
             echo "canvas: 用空骨架(兜底)"
           fi
           python -c "import json;d=json.load(open('src/lerobot/engineering/flows/state_space_obs.json',encoding='utf-8'));print('canvas nodes (factory skeleton):',len(d.get('nodes',[])))"
+
+      - name: "🔗 软链/画布闸 (pack_guard) — 禁止把 Linux 软链打进包"
+        shell: bash
+        run: |
+          for d in flows src/lerobot defaults data/database/zmax/sources tools; do
+            [ -e "$d" ] || continue
+            python3 tools/pack_guard.py "$d" --fix || echo "::warning::pack_guard 实体化有失败项: $d"
+          done
+          python3 - <<'PY'
+          import json, os, sys
+          cand = ["flows/state_space_obs.json",
+                  "src/lerobot/engineering/flows/state_space_obs.json"]
+          ok = 0
+          for p in cand:
+              if not os.path.isfile(p):
+                  continue
+              if os.path.islink(p):
+                  print("::error::", p, "仍是软链")
+                  sys.exit(1)
+              n = len((json.load(open(p, encoding="utf-8")).get("nodes") or []))
+              print(p, "nodes", n)
+              assert n > 0, p + " 是空画布"
+              ok += 1
+          if ok == 0:
+              print("::error:: 找不到画布真源")
+              sys.exit(1)
+          print("画布真源 OK:", ok, "处")
+          PY
 
       - name: Build .app with PyInstaller
         run: |
