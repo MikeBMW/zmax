@@ -1,6 +1,6 @@
 <!doctype html><html lang="zh"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Z-MAX · TCP 轨迹 AR/VR 调试台</title>
+<title>Z-MAX AR3D r88 · SIM自动</title>
 <style>
  *{box-sizing:border-box}
  body{margin:0;background:#0b0f14;color:#e6edf3;font:15px/1.5 -apple-system,Segoe UI,Roboto,"Noto Sans SC",sans-serif}
@@ -110,7 +110,7 @@
   <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
   <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
      style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-11-01 r87 · 🧈 右臂平顺(实测: 会动的段里静止帧 91%→8% · 单帧最大位移 690.7mm→40.7mm · 单关节 48.7°→3.0°): 段内按本地时间 60fps 前进 + 段末按 392 段表续接 + 600mm/s 限速 + IK 单帧 3° 限幅 · 圆柱通道 r=10mm(通道里那些矩形=场景立方体, 「🧊 只看通道」可关) · 包络按当前动作/当前光模块 · plan 段 → 执行器节点 → 页面(优先 /api/ar/exec) · 真机零指令</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-11-09 r89 · SIM双臂自动/加粗 · 🧈 右臂平顺(实测: 会动的段里静止帧 91%→8% · 单帧最大位移 690.7mm→40.7mm · 单关节 48.7°→3.0°): 段内按本地时间 60fps 前进 + 段末按 392 段表续接 + 600mm/s 限速 + IK 单帧 3° 限幅 · 圆柱通道 r=10mm(通道里那些矩形=场景立方体, 「🧊 只看通道」可关) · 包络按当前动作/当前光模块 · plan 段 → 执行器节点 → 页面(优先 /api/ar/exec) · 真机零指令</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -2193,7 +2193,9 @@ function drawCfgPts(g, pr){
 //    /api/calib 慢/失败时整条链跳过 ⇒ 点位永远 0 个(判据直接红)。点位和相机是两件事, 独立起。
 loadCfgPts();
 setInterval(loadCfgPts, 10000);
+var DRWN=0;
 function drawVR(){
+  try{ DRWN++; }catch(e){}
   const c=$('vr'), g=c.getContext('2d');
   const W=c.clientWidth*devicePixelRatio, H=c.clientHeight*devicePixelRatio;
   if(c.width!==W||c.height!==H){ c.width=W; c.height=H; }   // 只在尺寸真变时重设(重设=清空)
@@ -2269,7 +2271,7 @@ function drawVR(){
     for(const side of ['L','R']){
       const segs = SIMB[side] || [];
       const col = (side==='L') ? 'rgba(64,196,255,.95)' : 'rgba(255,176,64,.95)';
-      g.strokeStyle=col; g.lineWidth=4; g.lineCap='round';
+      g.strokeStyle=col; g.lineWidth=6.5; g.lineCap='round'; g.lineJoin='round';
       let last=null;
       for(const sg of segs){
         const a=pr(sg[0]), b=pr(sg[1]);
@@ -2279,12 +2281,12 @@ function drawVR(){
       }
       // 关节球
       g.fillStyle=col;
-      for(const sg of segs){ const a=pr(sg[0]); if(a){ g.beginPath(); g.arc(a.u,a.v,3.2,0,Math.PI*2); g.fill(); } }
-      if(last){ g.beginPath(); g.arc(last.u,last.v,5,0,Math.PI*2); g.fill();
+      for(const sg of segs){ const a=pr(sg[0]); if(a){ g.beginPath(); g.arc(a.u,a.v,4.4,0,Math.PI*2); g.fill(); } }
+      if(last){ g.beginPath(); g.arc(last.u,last.v,6.5,0,Math.PI*2); g.fill();
         g.fillStyle='#cfe9ff'; g.font='bold 11px monospace'; g.fillText('SIM '+side, last.u+7, last.v-7); }
     }
-    g.fillStyle='rgba(140,200,255,.9)'; g.font='11px monospace';
-    g.fillText('🦾 SIM骨骼 ← 8802 渲染真值 · n='+(SIMB.n||'-'), 10, 16);
+    g.fillStyle='rgba(140,200,255,.95)'; g.font='bold 13px monospace';
+    g.fillText('🦾 SIM 双臂  左'+(SIMB.L||[]).length+'段 / 右'+(SIMB.R||[]).length+'段 · n='+(SIMB.n||'-'), 10, 18);
   } else if(SIMON){
     g.fillStyle='rgba(255,120,120,.9)'; g.font='11px monospace';
     g.fillText('🦾 SIM骨骼: 取不到/已过期 '+(SIMERR||''), 10, 16);
@@ -4381,6 +4383,16 @@ async function simBonesPull(){
     if(j && j.ok){ SIMB=j; SIMTS=Date.now()/1000; SIMERR=''; }
     else { SIMERR=(j&&(j.err||j.why))||'ok=false'; }
   }catch(e){ SIMERR=String(e&&e.message||e); }
+  // 🔴 2026-11-09 老倪「没有双臂」的另一半真因: 这页的 3D 是**按需重画**的(相机帧到了才画),
+  //   没有相机帧时 drawVR 就再也不被调用(服务端诊断实测 drw=4, 画布 1545×868 一张旧图)。
+  //   SIM 骨骼层是 5Hz 拉的 ⇒ 拉完必须自己重画一次, 否则骨骼数据在内存里、画面永远不变。
+  if(SIMON && SIMB && SIMB.ok){
+    const _n=Date.now();
+    if(!simBonesPull._last || _n - simBonesPull._last >= 100){
+      simBonesPull._last=_n;
+      try{ drawVR(); }catch(e){}
+    }
+  }
 }
 $('bSim').addEventListener('click', ()=>{
   SIMON=!SIMON; $('bSim').classList.toggle('on',SIMON);
@@ -4401,6 +4413,8 @@ setInterval(()=>{
     const _b=$('bSim'); if(_b){ _b.classList.add('on'); }
     try{ VR.simArm=true; const _br=$('bArmR'); if(_br){ _br.classList.add('on'); _br.textContent='🦾 右臂_仿真'; } }catch(e){}
     simBonesPull();
+    // 视角对到双臂包围盒中心(骨架 y 0~0.5 / z 0~0.8m), 免得臂在视野外让人以为"没有臂"
+    try{ VR.tgt=[0.0,0.25,0.38]; VR.dist=1.15; }catch(e){}
     try{ console.log('[SIM] 无真机位姿 ⇒ 自动打开 SIM 骨骼层(8802)'); }catch(e){}
   }catch(e){}
 }, 1500);
@@ -5095,6 +5109,15 @@ async function robotTick(){
         spin:(typeof VR!=='undefined'&&VR.spin)?1:0,
         yaw:(typeof VR!=='undefined'&&VR.yaw!=null)?+VR.yaw.toFixed(4):null,
         mod3:(typeof MOD3ON!=='undefined'&&MOD3ON)?1:0,
+        // 🦾 2026-11-09 远端排查「没有双臂」: SIM 层到底开没开、骨骼数据新不新、3D 画布有没有在画
+        sim:(typeof SIMON!=='undefined'&&SIMON)?1:0,
+        simN:(typeof SIMB!=='undefined'&&SIMB)?(SIMB.n||null):null,
+        simAge:(typeof SIMTS!=='undefined'&&SIMTS)?+(Date.now()/1000-SIMTS).toFixed(1):null,
+        simErr:(typeof SIMERR!=='undefined')?String(SIMERR||''):'',
+        drw:(typeof DRWN!=='undefined')?DRWN:null,
+        cw:(document.getElementById('vr')||{}).width||null,
+        ch:(document.getElementById('vr')||{}).height||null,
+        bld:'2026-11-09 r89',
         // 🩺 2026-10-29 老倪「开状态空间就看不到手里那颗模块」: 手里有没有货 / 落在第几段 直接上报
         drv:(typeof ARCMD!=='undefined'&&ARCMD.drv)||'',
         carry:(typeof INSP!=='undefined'&&INSP.carry)?1:0,

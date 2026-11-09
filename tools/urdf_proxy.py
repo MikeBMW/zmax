@@ -17,9 +17,49 @@ from __future__ import annotations
 import os
 import re
 import struct
+import sys
 
-REPO = os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax")
-URDF = os.path.join(REPO, "data/database/zmax/sources/config/moveit_xms5/urdf/xms5_r800_w4g3b4c.urdf")
+
+def _resolve_urdf() -> str:
+    """URDF 真源定位 —— 数据要能跟着 data/ 目录迁移(老倪 2026-11-09)。
+
+    以前是写死 '/home/ubuntu/zmax'（`os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax")`），
+    Windows 上就变成 '/home/ubuntu/zmax\\data/...' 这种混合路径 ⇒ FileNotFoundError ⇒
+    /api/urdf 永远 ok=false ⇒ AR 页面没有 URDF 双臂外形。
+
+    候选顺序:
+      ① ZMAX_URDF (整条文件路径) / ZMAX_REPO (仓库根)
+      ② <本文件>/../../data/...        (源码仓库 / 冻结包 _internal 都成立)
+      ③ <本文件>/../../../data/...     (冻结包: tools 在 _internal/tools ⇒ 上两级是安装根)
+      ④ ~/zmax/data/...               (老布局兜底)
+    """
+    rel = os.path.join("data", "database", "zmax", "sources", "config",
+                       "moveit_xms5", "urdf", "xms5_r800_w4g3b4c.urdf")
+    env_f = os.environ.get("ZMAX_URDF")
+    if env_f and os.path.exists(env_f):
+        return env_f
+    roots = []
+    env_r = os.environ.get("ZMAX_REPO")
+    if env_r:
+        roots.append(env_r)
+    here = os.path.dirname(os.path.abspath(__file__))
+    _mei = getattr(sys, "_MEIPASS", "") or ""
+    roots += [os.path.dirname(here),                                                 # 源码仓库根 (tools/ 上一级)
+              _mei,                                                                  # 冻结包内 _internal
+              os.path.dirname(_mei) if _mei else "",                                 # 安装根 (app 目录)
+              os.path.dirname(os.path.dirname(here)),                                # 冻结包: _internal 上一级
+              os.path.dirname(os.path.dirname(os.path.dirname(here))),               # 再上一级 (安装根)
+              os.path.join(os.path.expanduser("~"), "zmax")]
+    roots = [r for r in roots if r]
+    for r in roots:
+        p = os.path.join(r, rel)
+        if os.path.exists(p):
+            return p
+    return os.path.join(roots[0] if roots else ".", rel)
+
+
+REPO = os.environ.get("ZMAX_REPO") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+URDF = _resolve_urdf()
 PTS_PER_LINK = 220
 
 
