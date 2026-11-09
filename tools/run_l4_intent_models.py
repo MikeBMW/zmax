@@ -124,7 +124,7 @@ def main() -> int:
     code2 = """
 import json, sys, numpy as np
 sys.path.insert(0,'/home/ubuntu/zmax/src')
-from lerobot.engineering.nodes import library as lib
+from lerobot.middleware.nodes.impl import shared_runtime as lib
 import numpy as np
 import numpy as _np
 _z=_np.load('/home/ubuntu/zmax/reports/ss_episode_latest.npz', allow_pickle=True)

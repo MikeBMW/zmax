@@ -16521,7 +16521,7 @@ class SimulinkModule(QWidget):
         """
         import sys as _sys
         try:
-            from lerobot.engineering.nodes import library as _LIB
+            from lerobot.middleware.nodes.impl import shared_runtime as _LIB
             _LIB._SS_MODS.clear()
         except Exception:                                                  # noqa: BLE001
             pass

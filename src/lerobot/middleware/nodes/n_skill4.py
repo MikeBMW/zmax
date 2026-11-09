@@ -17,7 +17,7 @@
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
    契约  src/lerobot/middleware/nodes/n_skill4.py              ← 就是本文件
-   实现  src/lerobot/engineering/nodes/sssk4.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
+   实现  src/lerobot/middleware/nodes/impl/sssk4.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
    算法  src/lerobot/policies/left_right/state_space/skills/atomic_skills.py                                             ← 纯计算 (模型/几何/控制律)
    三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("sssk4")
 """

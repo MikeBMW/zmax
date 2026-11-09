@@ -32,7 +32,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-LIB = ROOT / "src/lerobot/engineering/nodes/library.py"
+LIB = ROOT / "src/lerobot/middleware/nodes/impl/shared_runtime.py"
 NODES = LIB.parent
 MANIFEST = NODES / "impl_manifest.json"
 

@@ -40,7 +40,7 @@ def single() -> bool:
     取不到时退回 env 判断, 保证在节点包外被引用也能工作。
     """
     try:
-        from lerobot.engineering.nodes._single_thread import enabled as _en      # noqa: PLC0415
+        from lerobot.engineering.single_thread import enabled as _en      # noqa: PLC0415
         return bool(_en())
     except Exception:                                                          # noqa: BLE001
         pass

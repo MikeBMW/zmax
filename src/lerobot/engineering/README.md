@@ -13,26 +13,28 @@ src/lerobot/
 ├── policies/                        ① 算法       纯计算：模型、几何、控制律。
 │   └── yolo_3d/yolo_state_aligner.py            不知道节点名、不知道端口、不碰总线
 │
-├── middleware/                      ② 通讯中间件  总线 + 传输 + 节点适配
+├── middleware/                      ② 通讯中间件  总线 + 传输 + 节点 (契约 + 实现)
 │   ├── bus.py                         publish / latest / 订阅
-│   └── nodes/n_yolo.py                端口契约：PORTS_IN/OUT、话题 ss.node.ssyolo.<port>、
-│                                      EXEC_MODE / PURE 闸、把 ctx 交给 registry 的实现
+│   └── nodes/
+│       ├── n_yolo.py                  契约：PORTS_IN/OUT、话题 ss.node.ssyolo.<port>、
+│       │                              EXEC_MODE / PURE 闸、把 ctx 交给 registry
+│       └── impl/ss_yolo.py            实现：取数 → 调算法 → 打标 (共享运行时 impl/shared_runtime.py)
 │
-└── engineering/                     ③ 编排 (L1~L5)  桥梁：分层、注册、派发、画布真源
+└── engineering/                     ③ 分层设计 (L1~L5)  —— 没有 nodes/ 目录
+    ├── layers/by_level.py            L2/L3/L4/L5 各有哪些节点 (生成物)
     ├── levels.py                     L2/L3/L4/L5 各自"必须还能干的事" + check()
     ├── registry.py                   key → 实现函数 + 文件/行号
     ├── runtime.py                    按拓扑序派发
     ├── sourceview.py                 源码定位 (get_node_location / get_node_triple)
     ├── flows/state_space_obs.json    画布真源
-    ├── node_map.json                 一节点三处 (生成物)
-    └── nodes/<node_key>.py           实现正文：取数 → 调算法 → 打标
+    └── node_map.json                 一节点三处 (生成物)
 ```
 
 以 YOLO 为例，`sourceview.get_node_triple("ssyolo")` 直接给出三处：
 
 ```json
 {"contract": "src/lerobot/middleware/nodes/n_yolo.py:1",
- "impl":     "src/lerobot/engineering/nodes/ss_yolo.py:22",
+ "impl":     "src/lerobot/middleware/nodes/impl/ss_yolo.py:22",
  "algo":     "src/lerobot/policies/yolo_3d/yolo_state_aligner.py:1",
  "layer": "L2", "impl_key": "ss_yolo", "ports_in": ["in1"], "ports_out": ["out1"]}
 ```
@@ -46,11 +48,11 @@ src/lerobot/
 |---|---|---|
 | `policies/` | 纯函数/类：输入张量或数组，输出结果 | 读总线、写文件、知道节点名、`import lerobot.middleware` |
 | `middleware/nodes/` | 端口清单、话题、`PURE` 执行口径、`manifest()` | 业务算法、状态缓存、模型推理 |
-| `engineering/nodes/` | 取数、调用 `policies`、结果打标、节点级缓存 | 直接开 socket、直接 `mj_step`、自己拼端口名 |
+| `middleware/nodes/impl/` | 取数、调用 `policies`、结果打标、节点级缓存 | 直接开 socket、直接 `mj_step`、自己拼端口名 |
 | `engineering/{levels,registry,runtime,flows}` | 分层契约、注册、派发、画布读写 | 任何算法 |
 
 判断方法：**这段代码换个机器人还能用 → policies；换个传输协议要改 → middleware；
-只是把两者接起来并留下证据 → engineering/nodes。**
+只是把两者接起来并留下证据 → middleware/nodes/impl。engineering 里不放节点。**
 
 ## 3. 节点实现按节点名分文件（2026-11-10）
 
@@ -84,8 +86,8 @@ registry                          157 key · 0 个不可调用
 ## 5. 改东西的规矩
 
 1. 算法只写 `policies/`；契约只改 `middleware/nodes/`；**不要**在契约里写业务逻辑。
-2. 节点实现写 `engineering/nodes/<node_key>.py`，不要再往 `library.py` 里加函数。
-3. 新增节点：①`policies/` 写算法 → ②`engineering/nodes/<key>.py` 写实现并 `_reg(key, [...], doc, fn)`
+2. 节点实现写 `middleware/nodes/impl/<node_key>.py`，不要再往 `shared_runtime.py` 里加函数。
+3. 新增节点：①`policies/` 写算法 → ②`middleware/nodes/impl/<key>.py` 写实现并 `_reg(key, [...], doc, fn)`
    → ③`tools/gen_middleware_nodes.py` 生成契约 → ④画布 JSON 加节点/连线 → ⑤重生成 `node_map.json`。
 4. 路径一律从 `paths.py` 取，不要 `dirname(__file__)` 上溯。
 5. 改完必跑：
@@ -97,7 +99,7 @@ registry                          157 key · 0 个不可调用
 
 * `ss_moe`（元数据 MOE 门控路由）：**画布上有、没有执行注册** —— `levels.check()` 因此报
   "L2 档位可执行 ❌ / 档位契约无问题 ❌"。
-* `library.py` 里仍有 81 个非画布内部 key（`sw_*` 开关、训练/部署/评估类），未按节点名分文件。
+* `impl/shared_runtime.py` (原 library.py) 里仍有 81 个非画布内部 key（`sw_*` 开关、训练/部署/评估类），未按节点名分文件。
 * `verify_engineering.py` 的 "壳转发到包" 一项在无 `ZMAX_SINGLE_THREAD` 时被单线程横幅污染 stdout
   而误报 ❌；手动核对为 157 key / True / runtime。
 

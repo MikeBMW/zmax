@@ -158,7 +158,7 @@ def main():
     ck("feature.dbc BO_ B5 = 光学质量检测", "BO_ B5 光学质量检测" in dbc and "BO_ B5 外观质量检测" not in dbc)
 
     print("=== ⑤ AOI 话题真发出 (真跑画布节点) ===")
-    from lerobot.engineering.nodes import library as L
+    from lerobot.middleware.nodes.impl import shared_runtime as L
     ctx = {"log": lambda *a, **k: None}
     L.node_ss_aoi(ctx)
     import ar_aoi_bus as B

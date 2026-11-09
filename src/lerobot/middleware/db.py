@@ -298,7 +298,7 @@ LAYER_ORDER = ("L1", "L2", "L3", "L4", "L5", "meta")
 def _level_map():
     """节点 id → 层 (画布节点的 layer 字段为空时用它兜底; 真源 = 工程档位索引)。"""
     try:
-        from lerobot.engineering.nodes.by_level import LEVELS_INDEX
+        from lerobot.engineering.layers.by_level import LEVELS_INDEX
         m = {}
         for lv, items in LEVELS_INDEX.items():
             for it in items:

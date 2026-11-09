@@ -116,7 +116,7 @@ FEATURES = [
 # 节点逻辑迁移映射 (2026-09-28): 老路径(兼容壳, 不含逻辑) → 新真源
 #   审计/映射类断言会同时扫这两处, 命中任一即算命中, 避免"迁移完成但测试桩过期"的假失败。
 _MIGRATED_SRC = {
-    "tools/gui/node_logic.py": "src/lerobot/engineering/nodes/library.py",
+    "tools/gui/node_logic.py": "src/lerobot/middleware/nodes/impl/shared_runtime.py",
 }
 
 

@@ -80,8 +80,8 @@ def main():
     a = ap.parse_args()
 
     from fullstack_ideal_chain import load_canvas
-    from lerobot.engineering.nodes import geo_plan_impl as G
-    from lerobot.engineering.nodes import ideal_obs as IO
+    from lerobot.middleware.nodes.impl import geo_plan_impl as G
+    from lerobot.middleware.nodes.impl import ideal_obs as IO
     nodes, side, _ = load_canvas()
     allnodes = {**nodes, **side}
 

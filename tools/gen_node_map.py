@@ -54,7 +54,7 @@ def parse_adapter(p: Path) -> dict:
 
 def registry_locations() -> dict:
     sys.path.insert(0, str(SRC))
-    import lerobot.engineering.nodes  # noqa: F401  (导入即注册)
+    import lerobot.middleware.nodes.impl.shared_runtime  # noqa: F401  (导入即注册)
     from lerobot.engineering import registry
     out = {}
     for k, v in registry.NODE_LOGIC.items():
@@ -66,7 +66,7 @@ def registry_locations() -> dict:
 
 def layers() -> dict:
     sys.path.insert(0, str(SRC))
-    from lerobot.engineering.nodes.by_level import LEVELS_INDEX
+    from lerobot.engineering.layers.by_level import LEVELS_INDEX
     out = {}
     for lv, rows in LEVELS_INDEX.items():
         for r in rows:

@@ -43,7 +43,9 @@ def main():
     n_keys = len(E.NODE_ORDER)
     chk(n_keys >= 140, "注册 key 数", "%d 个" % n_keys)
     chk(E.paths.REPO_ROOT == REPO, "仓库根解析", E.paths.REPO_ROOT)
-    chk(E.paths.LOGIC_FILE.endswith("engineering/nodes/library.py"), "逻辑唯一依据在包内", E.paths.LOGIC_FILE.replace(REPO + "/", ""))
+    # 🔁 2026-11-10: 节点实现搬出 engineering (engineering 只做分层) ⇒ 真源在 middleware/nodes/impl
+    chk(E.paths.LOGIC_FILE.endswith("middleware/nodes/impl/shared_runtime.py"), "逻辑唯一依据在包内",
+        E.paths.LOGIC_FILE.replace(REPO + "/", ""))
 
     print("=== ② 逻辑住包里 (GUI 只显示) ===")
     homes = {}
@@ -83,7 +85,7 @@ def main():
 
     print("=== ⑥ 档位索引 nodes/by_level.py ===")
     try:
-        from lerobot.engineering.nodes import by_level
+        from lerobot.engineering.layers import by_level
         s = by_level.summary()
         chk(sum(v["nodes"] for v in s.values()) > 0, "档位索引可用", str(s))
         if a.regen_by_level:

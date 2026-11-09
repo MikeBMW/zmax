@@ -118,7 +118,7 @@ def get_node_triple(key_or_node_id):
     老倪 2026-11-10: 「engineering 是算法和 node 中间件的桥梁」——
     一个节点天然落在三处文件, 右键只给一处就会让人以为实现丢了:
       contract  middleware/nodes/n_xxx.py   端口/话题/执行口径 (调 registry)
-      impl      engineering/nodes/<key>.py   取数 → 调算法 → 打标
+      impl      middleware/nodes/impl/<key>.py  取数 → 调算法 → 打标
       algo      policies/...                 纯算法
     表由 tools/gen_node_map.py 生成 (engineering/node_map.json)。
     """

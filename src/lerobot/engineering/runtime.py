@@ -118,7 +118,7 @@ def _demo_node_output(module, node, ctx):
     #   本函数没跟着搬) — 直接引用会 NameError, 而 GUI 的单步/播放外层是 try/except ⇒ 静默失效。
     #   惰性取一次 (顺带兼容 library 尚未导入时)。
     try:
-        from .nodes.library import _YOLO_CACHE as _YC
+        from ..middleware.nodes.impl.shared_runtime import _YOLO_CACHE as _YC
     except Exception:                                                    # noqa: BLE001
         _YC = {}
     if match_node(name) == "ss_yolo" and _YC.get("det3d"):

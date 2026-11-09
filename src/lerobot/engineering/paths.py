@@ -8,8 +8,12 @@ import os
 import sys
 
 ENGINEERING_DIR = os.path.dirname(os.path.abspath(__file__))
-NODES_DIR = os.path.join(ENGINEERING_DIR, "nodes")
-LOGIC_FILE = os.path.join(NODES_DIR, "library.py")     # 节点逻辑真源
+# 🧭 老倪 2026-11-10: engineering 里不再有 nodes/ —— 节点属于中间件。
+#   节点实现 = middleware/nodes/impl/<node_key>.py; 共享运行时 = impl/shared_runtime.py
+NODES_DIR = os.path.join(os.path.dirname(ENGINEERING_DIR), "middleware", "nodes", "impl")
+LAYERS_DIR = os.path.join(ENGINEERING_DIR, "layers")
+LOGIC_FILE = os.path.join(NODES_DIR, "shared_runtime.py")   # 共享运行时真源
+BY_LEVEL_FILE = os.path.join(LAYERS_DIR, "by_level.py")     # 分层索引 (生成物)
 FLOWS_DIR = os.path.join(ENGINEERING_DIR, "flows")     # 画布/工程 JSON (package data)
 CANVAS_DEFAULT = "state_space_obs.json"
 
