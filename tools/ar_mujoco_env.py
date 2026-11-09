@@ -178,8 +178,10 @@ def build_mjcf() -> str:
         if min(_s) < 0.004:                       # 厚度为 0 的参考面跳过 (会把整块空间糊住)
             continue
         _eq_n += 1
+        # 半透明 (alpha 0.45): 设备盒是真的实测盒体, 坐标不改; 但实心实体会
+        # ①顶视把台面盖死 (横梁 200×1600×18 占画面 12%) ②把光模块插孔整个包住看不见。
         geos.append('<geom name="equip%d" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f %.4f" '
-                    'rgba="0.30 0.34 0.40 1" contype="0" conaffinity="0"/>'
+                    'rgba="0.42 0.46 0.54 0.45" contype="0" conaffinity="0"/>'
                     % (_eq_n, _c[0], _c[1], _c[2], _s[0], _s[1], _s[2]))
     # 台面
     geos.append('<geom name="table" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f 0.015" '
