@@ -4478,11 +4478,17 @@ function mjPull(force){
   if(!MJ.on) return;
   if(document.hidden) return;                      // 后台标签页不拉(省渲染线程)
   const now=(typeof performance!=='undefined'?performance.now():Date.now());
-  if(!force && now-MJ.tLast<400) return;           // 400ms 下限 ≈2.5fps: 相机一变立即拉, 场景在动也要持续刷新
+  if(!force && now-MJ.tLast<650) return;           // 650ms 下限 ≈1.5fps: 8802 每张要 ~90ms 渲染, 拉太快会把渲染线程压满 ⇒ 画面一卡一跳
   MJ.tLast=now; MJ.sent=mjParams();
   const host=(location.hostname||'127.0.0.1');
   MJ.url='http://'+host+':8802/frame.png?'+MJ.sent+'&_='+Math.round(now);
-  MJ.img.src=MJ.url;
+  // 🔴 双缓冲: 直接改 <img>.src 会先清空再加载 ⇒ 底图一闪一闪(老倪 2026-11-09「疯狂跳动」)。
+  //   先让离屏 Image 加载完, 再把可见 img 指过去, 中间始终显示上一帧。
+  const _pre=new Image();
+  _pre.onload=function(){ try{ MJ.img.src=MJ.url; }catch(e){} };
+  _pre.onerror=function(){ const t=document.getElementById('mjtag');
+    if(t) t.textContent='⚠ 8802 渲染帧取不到(服务没起/端口不通): '+MJ.url; };
+  _pre.src=MJ.url;
 }
 function mjToggle(){
   MJ.on=!MJ.on;
