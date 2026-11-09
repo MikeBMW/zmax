@@ -5361,9 +5361,26 @@ def node_ss_vlm(ctx):
         mod = ctx.get("module")
         tr = getattr(mod, "_ss_tr", None) if mod is not None else None
         if tr is None or not tr.get("t"):
+            # 🎥 无引擎轨迹 (常驻循环 / 没点 ▶) 时,VLM 也必须真跑: 吃 AR 场景当前帧做场景理解。
+            #   以前这里直接 return False → 整层 L3 在看戏, 技能编排器只能报「场景理解未就绪」。
+            img, _src, _meta = _vlm_frame()
+            if img is None:
+                if log:
+                    log("🧠 VLM: 无引擎轨迹且取不到 AR 帧 — 不假装看过现场")
+                return False
+            st = _vlm_ask_async("describe", img, _vlm_ctx(ctx), log)
+            r = (st or {}).get("result") or {}
+            ok = bool(r.get("ok"))
             if log:
-                log("🧠 VLM: 无引擎轨迹 — 先点 ▶ 运行 (🎥真实化, 每阶段出真实帧)")
-            return False
+                log("🧠 VLM 场景理解 (%s · %s · %sms): %s" % (
+                    _src, r.get("src") or "未返回", r.get("latency_ms"),
+                    _vlm_brief(r.get("json")) if ok else (r.get("why") or "无结果")))
+            return _NodeOut({
+                "kind": "scene_vlm", "layer": "L3", "ok": ok, "frame_src": _src,
+                "frame": _meta.get("frame"), "frame_age_s": _meta.get("frame_age_s"),
+                "src": "src/lerobot/policies/left_right/state_space/scene_vlm.py::SceneVLM.describe",
+                "latency_ms": r.get("latency_ms"), "scene": r.get("json"),
+            }) if "_NodeOut" in globals() else {"out1": r}
         idx = min(int(getattr(mod, "_ss_round", 0) or 0), len(tr["t"]) - 1)
         stage = str(tr["stage"][idx]).replace("阶段 ", "").split("·")[0].strip()
         meta = tr.get("_meta") or {}
