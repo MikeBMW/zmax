@@ -976,7 +976,19 @@ class Handler(BaseHTTPRequestHandler):
 <script>
 var t0=Date.now(),v=document.getElementById('v'),h=document.getElementById('h'),cam='预设机位';
 // pull-frame-v1: 每 100ms 拉一张 /frame.png?cam=ar3d ⇒ 右键=当前帧真图
-var FPS=6;function tick8802(){v.src='/frame.png?cam=ar3d&live=1&_='+Date.now();}
+// 🔴 2026-11-09「8802/video 没有了」根因: 每拍改 <img>.src ⇒ 元素先进入 loading 态(0×0/透明),
+//   6fps × 每张 ~200ms 加载 ⇒ 几乎全程是 loading, 看着就是"没有画面"。
+//   改成 fetch 取 PNG → blob URL 换图 (已解码, 不会再走 loading), 旧 blob 立刻 revoke。
+var FPS=6, busy=false;   // ⚠ FPS 必须定义: 下面 setInterval 用 Math.round(1000/FPS), 少了它=每帧连发, 会把渲染线程打满
+function tick8802(){
+  if(busy) return; busy=true;
+  var u='/frame.png?cam=ar3d&live=1&_='+Date.now();
+  fetch(u,{cache:'no-store'}).then(function(r){ return r.blob(); }).then(function(b){
+    var url=URL.createObjectURL(b), old=v.getAttribute('data-u');
+    v.src=url; v.setAttribute('data-u',url);
+    if(old){ try{ URL.revokeObjectURL(old); }catch(e){} }
+  }).catch(function(){}).then(function(){ busy=false; });
+}
 setInterval(tick8802,Math.round(1000/FPS));
 setInterval(function(){h.textContent='Z-MAX AR 8802 · PNG 6fps · '+(v.naturalWidth||0)+'×'+(v.naturalHeight||0)
  +' · 视角:'+cam+' · 已看 '+Math.round((Date.now()-t0)/1000)+'s · '+location.host+'/video';},500);
