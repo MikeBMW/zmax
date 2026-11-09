@@ -162,6 +162,25 @@ def build_mjcf() -> str:
                      'rgba="0.29 0.31 0.34 1"/>' % (_i, _lx, _ly))
 
     geos = []
+    # 🎥 设备箱体 (2026-11-09 老倪「8802/video 少东西, 比如中央相机、AOI 检测相机」):
+    #   AR 画布把 fence_store 里的设备盒 (侧面检测相机 / 检测设备 / 上横梁 / 前方深度相机) 都画出来,
+    #   8802 的 MuJoCo 场景却只有台面和料盘 ⇒ 两边"少东西"。这里把非料盘/非槽位的盒体全部补成
+    #   可视几何 (contype=0 不参与碰撞), 尺寸位置逐项取自 fence_store, 不手写常数。
+    _eq_n = 0
+    for _b in boxes:
+        _nm = str(_b.get("name"))
+        if ("料盘" in _nm) or _nm.startswith("槽") or ("槽" in _nm and "料盘" not in _nm):
+            continue
+        if not _b.get("p1") or not _b.get("p2"):
+            continue
+        _c = ctr(_b)
+        _s = sz(_b)
+        if min(_s) < 0.004:                       # 厚度为 0 的参考面跳过 (会把整块空间糊住)
+            continue
+        _eq_n += 1
+        geos.append('<geom name="equip%d" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f %.4f" '
+                    'rgba="0.30 0.34 0.40 1" contype="0" conaffinity="0"/>'
+                    % (_eq_n, _c[0], _c[1], _c[2], _s[0], _s[1], _s[2]))
     # 台面
     geos.append('<geom name="table" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f 0.015" '
                 'rgba="0.32 0.32 0.35 1"/>' % (pcx, pcy, pzlo - 0.015, px + 0.10, py + 0.10))
