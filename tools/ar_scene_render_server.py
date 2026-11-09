@@ -830,6 +830,19 @@ class Handler(BaseHTTPRequestHandler):
         # 🎬 直播窗口默认看全景(ar3d) —— 「这个窗口」= AR 场景那个画面; 要料盘特写就 ?cam=close
         if p in ("/video", "/video.mjpg", "/stream", "/stream.mjpg") and not (qs.get("cam") or qs.get("c")):
             cam_name = "ar3d"
+        # 📷 顶视 (老倪 2026-11-09): 缓存帧里的 views["top"] 与实际取景不一致 (实测仍是斜视,
+        #   与 free-cam 正俯视差 74.5 灰度), 这里改成**现场按预设参数渲染**, 不再读缓存。
+        if cam_name == "top" and p in ("/", "/frame.png", "/frame.jpg"):
+            _v = VIEWS["top"]
+            try:
+                self._send(200, render_free({
+                    "az": ["%.4f" % _v["azimuth"]], "el": ["%.4f" % _v["elevation"]],
+                    "dist": ["%.4f" % _v["distance"]],
+                    "tx": ["%.4f" % _v["lookat"][0]], "ty": ["%.4f" % _v["lookat"][1]],
+                    "tz": ["%.4f" % _v["lookat"][2]], "fovy": ["%.4f" % _v["fovy"]]}), "image/png")
+            except Exception as e:                                          # noqa: BLE001
+                self._send(503, ("top-view: %s" % e).encode(), "text/plain")
+            return
         if p in ("/", "/frame.png", "/frame.jpg") and any(
                 k in qs for k in ("az", "el", "dist", "tx", "ty", "tz", "fovy")):
             try:
