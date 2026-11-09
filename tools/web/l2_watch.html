@@ -38,11 +38,12 @@
 </small></div>
 <script>
 const Q = new URLSearchParams(location.search);
-const BASE = Q.get('base') || 'http://127.0.0.1:8802';
+// ⚠ 必须走同源 (8820 代理): 8802 不回 CORS 头, 直连 http://127.0.0.1:8802 的 fetch 会被浏览器拦掉 → 页面空白
+const BASE = '';
 const CAM = Q.get('cam') || 'close';
 const HZ = Math.max(1, Math.min(10, parseFloat(Q.get('hz') || '4')));
 const im = document.getElementById('im'), cv = document.getElementById('cv'), ctx = cv.getContext('2d');
-document.getElementById('url').textContent = BASE + '/frame.png?cam=' + CAM;
+document.getElementById('url').textContent = location.origin + '/frame.png?cam=' + CAM + '  (→ 8802)';
 document.getElementById('hz').textContent = HZ + 'Hz';
 let lastSize = null, lastChange = Date.now(), lastDet = null;
 
