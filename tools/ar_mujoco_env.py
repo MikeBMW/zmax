@@ -104,6 +104,15 @@ def build_mjcf() -> str:
     区别是这里**臂带关节+actuator**、**光模块是 freejoint 刚体**（能被抓）。
     """
     sys.path.insert(0, osp.join(ROOT, "tools"))
+    # 🔴 2026-11-09: 双臂几何/运动学切换 —— 真 URDF(默认) vs 旧缩尺胶囊(ZMAX_AR_MJCF=simple 回滚)
+    #   旧 arm() 是自己写的 6 段缩尺链 (圆柱/胶囊), 与 AR 页的 URDF FK 不同源 ⇒ 外形是棍子、动作对不上。
+    _use_urdf = os.environ.get("ZMAX_AR_MJCF", "urdf").lower() != "simple"
+    try:
+        import ar_mujoco_urdf as _U
+        if not _U.meshes_ok():                       # 缺 STL 就退回简化臂 (冻包/CI 常见)
+            _use_urdf = False
+    except Exception:                                                        # noqa: BLE001
+        _U, _use_urdf = None, False
     try:
         import fence_store as FS
         items = FS.listing().get("items") or []
@@ -290,6 +299,7 @@ def build_mjcf() -> str:
     <texture name="grid" type="2d" builtin="checker" rgb1="0.24 0.25 0.28" rgb2="0.17 0.18 0.21"
              width="512" height="512"/>
     <material name="grid" texture="grid" texrepeat="10 10"/>
+%(meshes)s
   </asset>
   <worldbody>
     <light pos="%(lx).4f %(ly).4f %(lz).4f" dir="0 0 -1" diffuse="0.9 0.9 0.95" specular="0.25 0.25 0.25"/>
@@ -312,9 +322,11 @@ def build_mjcf() -> str:
        "l2x": pcx - 0.5, "l2y": pcy - 0.5, "l2z": pzlo + 1.0,
        "cam": cam_body, "geos": "\n    ".join(geos), "geo3d": "\n    ".join(geo3d), "module": module, "box": _box,
        "equip": _equip_geoms(),
-       "armL": arm("L", 0.0, 0.50, 0.0),
-       "armR": arm("R", 0.0, 0.00, 0.0),
-       "acts": "\n".join(acts)}
+       "armL": (_U.arm_mjcf("L", 0.0, 0.50, 0.0) if _use_urdf else arm("L", 0.0, 0.50, 0.0)),
+       "armR": (_U.arm_mjcf("R", 0.0, 0.00, 0.0) if _use_urdf else arm("R", 0.0, 0.00, 0.0)),
+       "meshes": (_U.mesh_assets() if _use_urdf else ""),
+       "acts": ("\n".join(_U.actuators_mjcf(s) for s in ("L", "R")) if _use_urdf
+                else "\n".join(acts))}
 
 
 # ═══════════════ Gym 风格 env ═══════════════
