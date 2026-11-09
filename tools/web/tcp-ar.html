@@ -2217,10 +2217,13 @@ function mjPushQ(){
     const now=(typeof performance!=='undefined'?performance.now():Date.now());
     if(now-_mjqT<100) return; _mjqT=now;
     const d2r=180/Math.PI, conv=a=>a.map(v=>+(v*d2r).toFixed(2));
-    const Rq=(typeof PREV!=='undefined'&&PREV&&PREV.on&&PREV.q)?conv(PREV.q):null;
-    // 左臂没自己的关节角时, 画布本身就是"照抄右臂姿态"(本文件 LARM.q 默认 null 的处理),
-    // 所以这里也照抄 —— 否则渲染里左臂停在 home、右臂在动, 看着就是"两臂不对称"。
-    const Lq=(typeof LARM!=='undefined'&&LARM&&LARM.q)?conv(LARM.q):(Rq?Rq.slice():null);
+    // 右臂姿态来源与画布一致: ① 页面 IK 结果 PREV.q ② 否则真机关节角 TCP.joints
+    //   (老倪 2026-11-09「右臂怎么没动」: 页面只有左臂位姿时 PREV.q 是 null, R 推的是空 ⇒ 渲染里右臂不动)
+    const tcpq=(typeof TCP!=='undefined'&&TCP&&TCP.ok&&TCP.joints)?conv(TCP.joints):null;
+    let Rq=(typeof PREV!=='undefined'&&PREV&&PREV.on&&PREV.q)?conv(PREV.q):tcpq;
+    // 左臂没有独立位姿时, 画布本身就是"照抄右臂", 这里也照抄
+    let Lq=(typeof LARM!=='undefined'&&LARM&&LARM.q)?conv(LARM.q):(Rq?Rq.slice():null);
+    if(!Rq&&Lq) Rq=Lq.slice();          // 只有左臂有姿态时, 右臂跟左臂 (画布同样没有右侧独立源)
     if(!Rq&&!Lq) return;
     const host=(location.hostname||'127.0.0.1');
     fetch('http://'+host+':8802/armq',{method:'POST',mode:'no-cors',
