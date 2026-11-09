@@ -155,10 +155,14 @@ def build_mjcf() -> str:
                  'rgba="0.34 0.34 0.36 1"/>')
     # 🖼 背景墙 (2026-11-09): 侧/正面取景时画面上半是纯黑虚空 (实测 47% 像素 <5 灰阶, 整片连通),
     #   目检看不出"这是工位在房间里"。加两块暗灰竖板把背景兜住, 不动台面/料盘几何。
-    geo3d.append('<geom name="backdrop_x" type="box" pos="-1.05 0.25 0.55" size="0.02 2.0 1.30" '
-                 'rgba="0.16 0.17 0.20 1" contype="0" conaffinity="0"/>')
-    geo3d.append('<geom name="backdrop_y" type="box" pos="0.6 1.95 0.55" size="2.0 0.02 1.30" '
-                 'rgba="0.13 0.14 0.17 1" contype="0" conaffinity="0"/>')
+    #   ⚠ 实测一块墙不够: 上半右侧仍是 99.5% 绝对黑 (std=0) ⇒ 三面墙围起来, 尺寸放大到覆盖整幅取景。
+    #   ⚠ 方位 0° 时相机在 -x 侧朝 +x 看 ⇒ 背板必须放在 +x (放 -x 会把整幅画面糊成一块灰, 实测 13.8KB 全灰)。
+    geo3d.append('<geom name="backdrop_x" type="box" pos="1.55 0.25 0.85" size="0.02 3.2 1.70" '
+                 'rgba="0.20 0.21 0.24 1" contype="0" conaffinity="0"/>')
+    geo3d.append('<geom name="backdrop_y" type="box" pos="0.6 2.05 0.85" size="3.2 0.02 1.70" '
+                 'rgba="0.17 0.18 0.21 1" contype="0" conaffinity="0"/>')
+    geo3d.append('<geom name="backdrop_yn" type="box" pos="0.6 -1.55 0.85" size="3.2 0.02 1.70" '
+                 'rgba="0.17 0.18 0.21 1" contype="0" conaffinity="0"/>')
     for _i, (_lx, _ly) in enumerate([(0.375, -0.525), (0.925, -0.525), (0.375, 1.025), (0.925, 1.025)]):
         geo3d.append('<geom name="leg%d" type="box" pos="%.3f %.3f -0.375" size="0.0225 0.0225 0.375" '
                      'rgba="0.29 0.31 0.34 1"/>' % (_i, _lx, _ly))
