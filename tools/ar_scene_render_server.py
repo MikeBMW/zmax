@@ -65,6 +65,10 @@ VIEWS = {
     #   🔴 2026-11-09 四修: 距离 1.75 时左臂腕/夹爪出画 (两臂不对称)。后拉到 2.25, 目标点抬到 0.42。
     "ar3d": {"lookat": [0.55, 0.25, 0.42], "distance": 2.25, "elevation": -20.0,
              "azimuth": 0.0, "fovy": 69.4, "note": "全景: 正面 (方位0) 两臂分开且腕部入画, 目标点 z0.42 d2.25"},
+    # 📷 顶视 (老倪 2026-11-09): 画布有「📷 顶视相机」, 8802 只有 close/ar3d 两个机位 ⇒ 补一个正俯视,
+    #   目标点压到台面高度 0.10, 俯角 -89° (留 1° 让 MuJoCo 的 up 向量有解), 视场压到 55° 看得清槽位。
+    "top": {"lookat": [0.55, 0.25, 0.10], "distance": 1.75, "elevation": -89.0,
+            "azimuth": 0.0, "fovy": 55.0, "note": "顶视: 正俯视全工位 (台面/双臂基座/料盘同框)"},
 }
 STATE = {"png": b"", "n": 0, "ts": 0.0, "mean": None, "gold_px": 0, "box": None,
          "ms": None, "shape": None, "err": None, "mode": "idle",
@@ -972,9 +976,11 @@ class Handler(BaseHTTPRequestHandler):
 #w{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
 #v{max-width:100%;max-height:100%}
 #h{position:fixed;left:10px;top:8px;color:#79c0ff;font:bold 12px monospace;text-shadow:0 0 6px #000}
-</style><div id="h"></div><div id="w"><img id="v" src="/frame.png?cam=ar3d&live=1" alt="8802 render stream"></div>
+</style><div id="h"></div><div id="w"><img id="v" src="/frame.png?cam=ar3d" alt="8802 render stream"></div>
 <script>
 var t0=Date.now(),v=document.getElementById('v'),h=document.getElementById('h'),cam='预设机位';
+// ?cam=top|close|ar3d 切机位 (老倪 2026-11-09「顶视相机」): /video?cam=top 就是正俯视
+var VIEW=(new URLSearchParams(location.search)).get('cam')||'ar3d';
 // pull-frame-v1: 每 100ms 拉一张 /frame.png?cam=ar3d ⇒ 右键=当前帧真图
 // 🔴 2026-11-09「8802/video 没有了」根因: 每拍改 <img>.src ⇒ 元素先进入 loading 态(0×0/透明),
 //   6fps × 每张 ~200ms 加载 ⇒ 几乎全程是 loading, 看着就是"没有画面"。
@@ -982,7 +988,7 @@ var t0=Date.now(),v=document.getElementById('v'),h=document.getElementById('h'),
 var FPS=6, busy=false;   // ⚠ FPS 必须定义: 下面 setInterval 用 Math.round(1000/FPS), 少了它=每帧连发, 会把渲染线程打满
 function tick8802(){
   if(busy) return; busy=true;
-  var u='/frame.png?cam=ar3d&live=1&_='+Date.now();
+  var u='/frame.png?cam='+VIEW+(VIEW==='ar3d'?'&live=1':'')+'&_='+Date.now();
   fetch(u,{cache:'no-store'}).then(function(r){ return r.blob(); }).then(function(b){
     var url=URL.createObjectURL(b), old=v.getAttribute('data-u');
     v.src=url; v.setAttribute('data-u',url);
@@ -995,7 +1001,7 @@ setInterval(function(){h.textContent='Z-MAX AR 8802 · PNG 6fps · '+(v.naturalW
 setInterval(function(){fetch('/cam',{cache:'no-store'}).then(function(r){return r.json();}).then(function(j){
   cam = j.follow ? ('跟随 ar3d 页面 '+(j.age_s)+'s前') : '预设机位(页面没在推)';}).catch(function(){});},1500);
 v.onerror=function(){h.textContent='流断了(8802 未起? 或通道数已满 3) · 10s 后自动重连';
- setTimeout(function(){v.src='/frame.png?cam=ar3d&live=1&_='+Date.now();},10000);};
+ setTimeout(function(){v.src='/frame.png?cam='+VIEW+(VIEW==='ar3d'?'&live=1':'')+'&_='+Date.now();},10000);};
 </script>""").encode("utf-8")
             self._send(200, _html, "text/html; charset=utf-8")
             return
