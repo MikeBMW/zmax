@@ -326,7 +326,9 @@ def build_mjcf() -> str:
   <body name="cam_topmid_body" pos="0.55 0.25 0.98">
     <geom name="cam_topmid_box" type="box" size="0.048 0.048 0.032" rgba="0.17 0.19 0.23 1" group="3" contype="0" conaffinity="0"/>
     <geom name="cam_topmid_lens" type="cylinder" size="0.019 0.014" pos="0 0 -0.046" rgba="0.04 0.05 0.07 1" group="3" contype="0" conaffinity="0"/>
-    <geom name="cam_topmid_mount" type="box" size="0.010 0.010 0.075" pos="0.075 0 0.105" rgba="0.48 0.51 0.55 1" group="3" contype="0" conaffinity="0"/>
+    <!-- 吊杆: 从壳体下沿一路接到下方 z=0.70 的上横梁 (equip3 横跨 y, x 0.4~0.6)。
+         原来 150mm 短杆偏 75mm、横向 17mm 空气缝, 看着是根悬空小棍。 -->
+    <geom name="cam_topmid_mount" type="box" size="0.008 0.008 0.1225" pos="0.035 0 -0.1575" rgba="0.48 0.51 0.55 1" group="3" contype="0" conaffinity="0"/>
     <camera name="cam_topmid" pos="0 0 -0.06" euler="0 0 0" fovy="70"/>
   </body>""" % (_scx, _scy, max(slot0["p1"][2], slot0["p2"][2]))
 
