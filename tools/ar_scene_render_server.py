@@ -71,8 +71,10 @@ VIEWS = {
     "top": {"lookat": [0.55, 0.235, 0.11], "distance": 1.55, "elevation": -89.0,
             "azimuth": 0.0, "fovy": 50.0, "note": "顶视: 正俯视全工位 (台面/双臂基座/料盘同框)"},
     # 🎥 中央顶视相机 (场景里两臂之间的实体相机 cam_topmid, 位于 z=0.92 正下视) 的等效机位
-    "topmid": {"lookat": [0.55, 0.25, 0.00], "distance": 0.92, "elevation": -89.0,
-               "azimuth": 0.0, "fovy": 70.0, "note": "中央顶视相机视角 (等效 MJCF 的 cam_topmid)"},
+    # 顶视相机 (与 MJCF 的 cam_topmid / AR 页 TCAM 同源): 立柱在两臂中线 x=0,y=0.25, 相机在 z≈0.356
+    # 俯 35° 朝 +X, 视场 58°; 视线与料盘平面 (z=0.14) 交点 (0.328,0.25,0.14), 距离 0.377
+    "topmid": {"lookat": [0.328, 0.25, 0.14], "distance": 0.377, "elevation": -35.0,
+               "azimuth": 0.0, "fovy": 58.0, "note": "顶视相机 D435 视角 (等效 MJCF cam_topmid)"},
 }
 STATE = {"png": b"", "n": 0, "ts": 0.0, "mean": None, "gold_px": 0, "box": None,
          "ms": None, "shape": None, "err": None, "mode": "idle",
