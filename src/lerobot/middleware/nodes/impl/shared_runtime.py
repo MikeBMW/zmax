@@ -1578,14 +1578,24 @@ def _yolo_capture_ar(log=None):
             "depth_src": "射线∩料盘面 z=%.3f" % _ar_plane_z()}
     # 🎯 L2 吃 **close (腕部特写) 机位**: 2.0m 全景下 13mm 模块只有 3px, 实测 0 检出;
     #   同一时刻 close 帧实测 OPT_Gold 0.78 (盒 189x149px) —— 感知必须用看得清的机位。
-    arr, path, fmeta = _ar_frame("close")
+    # 🔌 与画布同拍: 画布「数据源」节点若选了 close 机位, 直接吃它那一帧 (out1 的同一张图),
+    #    不再自己再拉一次 —— 否则同一拍里 YOLO 和场景理解各拍一张, 帧号都不一样 (数据同步)。
+    arr = path = fmeta = None
+    _cs = _canvas_source() or {}
+    if str(_cs.get("cam") or "") == "close":
+        _c = _AR_FRAME.get("close") or {}
+        if _c.get("arr") is not None and (_t.time() - float(_c.get("t") or 0)) <= 0.35:
+            arr, path, fmeta = _c["arr"], _c["path"], dict(_c["meta"])
+            from_canvas = True
     if arr is None:
-        arr, path, fmeta = _ar_frame("ar3d")
+        arr, path, fmeta = _ar_frame("close")
+        from_canvas = False
     if arr is None:
         gaps.extend(fmeta.get("gaps") or ["AR 帧不可用"])
         return {}, {}, meta
     meta.update({k: fmeta.get(k) for k in ("frame", "frame_age_s", "frame_src", "bytes", "tick", "cam")
                  if fmeta.get(k) is not None})
+    meta["frame_from"] = "canvas_out1" if from_canvas else "self_close"
     w, rel = _ar_yolo_weights()
     if not w:
         gaps.append("无 AR 权重")
@@ -1675,8 +1685,8 @@ def _yolo_capture_ar(log=None):
         if not det2d:
             notes.append("本帧 0 检出")
         if log:
-            log("🎯 AR 源 (%s · %s · tick=%s): 检出 %d 类 %s · 3D %d 点 · %.0fms%s" % (
-                meta.get("frame"), rel, meta.get("tick"), len(det2d),
+            log("🎯 AR 源 (%s · %s · tick=%s · 帧源=%s): 检出 %d 类 %s · 3D %d 点 · %.0fms%s" % (
+                meta.get("frame"), rel, meta.get("tick"), meta.get("frame_from"), len(det2d),
                 {k: round(v["conf"], 2) for k, v in det2d.items()}, len(det3d), meta["dt_ms"],
                 (" · gaps=%s" % gaps) if gaps else ""))
         return det3d, det2d, meta
