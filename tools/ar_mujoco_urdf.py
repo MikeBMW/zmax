@@ -86,10 +86,11 @@ def arm_mjcf(side: str, base_x: float, base_y: float, base_z: float,
            默认竖直安装 (与 URDF 原姿态一致)。
     """
     e = (' euler="%s"' % euler) if euler else ""
+    # 🔴 2026-11-09 修正: 不能在基座上再挂一个 j0 —— URDF 是 base(fixed) → joint_1(0,0,0.328,axis z) → link1,
+    #   之前基座多挂一个绕 z 的 j0, 导致 6 个 hinge 名 j0..j6 与 URDF joint_1..joint_6 整体错位一格
+    #   (实测模型里 R_j1 axis=[0,0,1]、R_j3 axis=[0,-1,0], 与 URDF 不符; 同一组关节角算出的 TCP
+    #    和页面对不上 ⇒ "动作不一致" 的真正原因)。
     out = ['<body name="%s_link0" pos="%.4f %.4f %.4f"%s>' % (side, base_x, base_y, base_z, e)]
-    # 基座: 6 轴第 1 轴 (绕 z 转) 就长在基座里
-    out.append('  <joint name="%s_j0" type="hinge" axis="0 0 1" range="-175 175" '
-               'armature="0.05" damping="4"/>' % side)
     out.append('  <geom name="%s_g0" type="mesh" mesh="%s_m_base" rgba="%s" '
                'contype="1" conaffinity="1"/>' % (side, side, _rgba(0)))
     parent_indent = "  "
@@ -97,7 +98,7 @@ def arm_mjcf(side: str, base_x: float, base_y: float, base_z: float,
         ind = "  " * (i + 2)
         out.append('%s<body name="%s_%s" pos="%.4f %.4f %.4f">' % (ind, side, link, *xyz))
         out.append('%s  <joint name="%s_j%d" type="hinge" axis="%d %d %d" range="-175 175" '
-                   'armature="0.05" damping="4"/>' % (ind, side, i + 1, *ax))
+                   'armature="0.05" damping="4"/>' % (ind, side, i, *ax))
         out.append('%s  <geom name="%s_g%d" type="mesh" mesh="%s_m_%s" rgba="%s" '
                    'contype="1" conaffinity="1"/>' % (ind, side, i + 1, side, link, _rgba(i + 1)))
         parent_indent = ind + "  "
@@ -125,7 +126,10 @@ def arm_mjcf(side: str, base_x: float, base_y: float, base_z: float,
     return "\n".join(out)
 
 
-def actuators_mjcf(side: str, kp: float = 300.0, kv: float = 20.0) -> str:
+def actuators_mjcf(side: str, kp: float = 1500.0, kv: float = 80.0) -> str:
+    # 🔴 2026-11-09: kp=300/kv=20 在真 URDF 链上有 30~60mm 重力静差 (实测同一组关节角,
+    #   渲染里 TCP 比页面对应点低 57mm) ⇒ 提到 1500/80, 静差压到 1cm 内。真机重复定位 ±0.02mm,
+    #   这里只是仿真跟上位姿, 不靠放宽判据。
     out = []
     for i in range(6):
         out.append('    <position name="%s_act%d" joint="%s_j%d" kp="%.0f" kv="%.0f" '
