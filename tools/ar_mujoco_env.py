@@ -183,7 +183,7 @@ def build_mjcf() -> str:
         # group=3 = 「设备/相机盒」: 顶视时渲染端把这一组关掉 (上横梁 1.6m 正悬在料盘上方 0.55m,
         # 任何正俯视都必然被它盖死, 与俯角/视场无关 —— 实测顶视里 4 个料盘被遮 95~100%)
         geos.append('<geom name="equip%d" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f %.4f" '
-                    'rgba="0.42 0.46 0.54 0.45" contype="0" conaffinity="0" group="3"/>'
+                    'rgba="0.42 0.46 0.54 0.94" contype="0" conaffinity="0" group="3"/>'
                     % (_eq_n, _c[0], _c[1], _c[2], _s[0], _s[1], _s[2]))
     # 台面
     geos.append('<geom name="table" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f 0.015" '
