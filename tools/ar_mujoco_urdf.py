@@ -116,21 +116,24 @@ def arm_mjcf(side: str, base_x: float, base_y: float, base_z: float,
     #    Z 轴指向外(朝台面), 模块本体从模块头(tool1 原点)朝法兰长 56.5mm。
     #    尺寸 MODSPEC: L 56.5 × W 13.4 × T 8.5 mm (X=厚, Y=宽, Z=长), 头在 tool1 原点。
     #    夹爪没有 URDF ⇒ 按"法兰→tool1 = 259mm"自己设计: 法兰盘 + 执行器本体 + 两指夹住模块尾部。
+    # 🦾 夹爪本体 (法兰坐标系 = link6 原点; 沿腕轴 +Z 伸出):
+    #    实测 tool1 的 Z 轴与法兰轴夹角 33.6° (URDF joint_tool1 rpy 带大角度), 把夹爪画在 tool1 旋转系里
+    #    会整体歪出腕部、看着"悬空脱开" ⇒ 夹爪留在法兰系, 只有模块挂在 tool1 系。
+    out.append('%s  <geom name="%s_t1_flange" type="cylinder" size="0.030 0.012" pos="0 0 0.012" '
+               'rgba="0.36 0.39 0.44 1" contype="0" conaffinity="0"/>' % (ind, side))
+    out.append('%s  <geom name="%s_t1_body" type="box" size="0.026 0.022 0.048" pos="0 0 0.075" '
+               'rgba="0.20 0.23 0.27 1" contype="0" conaffinity="0"/>' % (ind, side))
+    for f, off in (("a", 0.0095), ("b", -0.0095)):
+        # 两指: 沿模块宽度方向开合; 模块中心在法兰系 z≈0.237, 指尖伸到 0.20~0.265
+        out.append('%s  <body name="%s_finger%s" pos="0 %.4f 0.205">' % (ind, side, f, off))
+        out.append('%s    <joint name="%s_f%s" type="slide" axis="0 1 0" range="-0.004 0.004" '
+                   'damping="1"/>' % (ind, side, f))
+        out.append('%s    <geom name="%s_fg%s" type="box" size="0.007 0.005 0.032" '
+                   'rgba="0.58 0.61 0.66 1" contype="0" conaffinity="0"/>' % (ind, side, f))
+        out.append('%s  </body>' % ind)
     out.append('%s<body name="%s_tool1" pos="%.6f %.6f %.6f" '
                'quat="0.358389 -0.300607 0.140006 0.872692">'
                % (ind, side, -0.015886, 0.018348, 0.258678))
-    out.append('%s  <geom name="%s_t1_flange" type="cylinder" size="0.030 0.012" pos="0 0 -0.246" '
-               'rgba="0.36 0.39 0.44 1" contype="0" conaffinity="0"/>' % (ind, side))
-    out.append('%s  <geom name="%s_t1_body" type="box" size="0.026 0.020 0.045" pos="0 0 -0.190" '
-               'rgba="0.20 0.23 0.27 1" contype="0" conaffinity="0"/>' % (ind, side))
-    for f, off in (("a", 0.0085), ("b", -0.0085)):
-        # 两指: 沿模块宽度方向(Y)开合, 关到位时夹住 13.4mm 宽的模块
-        out.append('%s  <body name="%s_finger%s" pos="0 %.4f -0.080">' % (ind, side, f, off))
-        out.append('%s    <joint name="%s_f%s" type="slide" axis="0 1 0" range="-0.004 0.004" '
-                   'damping="1"/>' % (ind, side, f))
-        out.append('%s    <geom name="%s_fg%s" type="box" size="0.005 0.004 0.026" '
-                   'rgba="0.58 0.61 0.66 1" contype="0" conaffinity="0"/>' % (ind, side, f))
-        out.append('%s  </body>' % ind)
     out.append('%s  <geom name="%s_mod" type="box" size="0.00425 0.0067 0.02825" pos="0 0 -0.0283" '
                'rgba="0.94 0.76 0.22 1" contype="0" conaffinity="0"/>' % (ind, side))
     if side == "R":
