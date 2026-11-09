@@ -163,6 +163,19 @@ jobs:
           }
           "staged_py=" + @(Get-ChildItem $dst -Filter '*.py').Count + " size_mb=" + [math]::Round(((Get-ChildItem $dst -Recurse -File | Measure-Object Length -Sum).Sum/1MB),1)
 
+      - name: "Materialize gitignored data dirs (moveit_xms5 不在 checkout 里, 但 --add-data 要求它存在)"
+        shell: bash
+        run: |
+          # 🔴 2026-11-09 CI 实测: pyinstaller 两个构建步骤都带
+          #   --add-data "...\data\database\zmax\sources\config\moveit_xms5;..." 而 data/ 在 .gitignore
+          #   ⇒ checkout 里没有该目录 ⇒ "ERROR: Unable to find ... when adding binary and data files" ⇒ 整段失败
+          #   (v5.50.770 之后连续两轮 Windows 构建都死在这句, mac 侧照常 success ⇒ Release 只有 mac 资产)。
+          #   厂家 URDF/meshes 不进库 (体积+授权) ⇒ 只造目录占位; 缺网格时 AR 机器人视图按降级处理, 不假装有。
+          D="data/database/zmax/sources/config/moveit_xms5"
+          mkdir -p "$D/urdf"
+          printf '{"note":"vendor URDF/meshes not in repo; placeholder so PyInstaller --add-data resolves"}\n' > "$D/PLACEHOLDER.json"
+          test -d "$D" && echo "moveit_xms5 placeholder ok: $(ls "$D" | tr '\n' ' ')"
+
       - name: Build .exe with PyInstaller
         run: |
           cd tools\gui
