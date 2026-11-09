@@ -339,9 +339,11 @@ def build_mjcf() -> str:
     <!-- 底座法兰 + 立柱 -->
     <geom name="cam_topmid_flange" type="cylinder" size="0.0945 0.008" pos="0 0 0.008" rgba="0.30 0.33 0.38 1" group="3" contype="0" conaffinity="0"/>
     <geom name="cam_topmid_col" type="cylinder" size="0.070 0.156" pos="0 0 0.168" rgba="0.16 0.20 0.25 1" group="3" contype="0" conaffinity="0"/>
-    <geom name="cam_topmid_cap" type="cylinder" size="0.072 0.004" pos="0 0 0.326" rgba="0.25 0.30 0.36 1" group="3" contype="0" conaffinity="0"/>
+    <geom name="cam_topmid_cap" type="cylinder" size="0.062 0.004" pos="0 0 0.326" rgba="0.25 0.30 0.36 1" group="3" contype="0" conaffinity="0"/>
+    <!-- 悬臂: 把 D435 探出柱顶 70mm, 否则 35° 俯视时镜头被自己的顶盖挡住 (实测顶盖占画面下部六成) -->
+    <geom name="cam_topmid_arm" type="box" size="0.036 0.012 0.010" pos="0.036 0 0.330" rgba="0.28 0.31 0.36 1" group="3" contype="0" conaffinity="0"/>
     <!-- D435 机身: 90(y)×25(z)×25(x), 绕 Y 俯 35° 朝 +X -->
-    <body name="cam_topmid_head" pos="0 0 0.3315" euler="0 -35 0">
+    <body name="cam_topmid_head" pos="0.072 0 0.3315" euler="0 35 0">
       <geom name="cam_topmid_tilt" type="box" size="0.0125 0.045 0.0125" pos="0 0 0.0125" rgba="0.10 0.13 0.17 1" group="3" contype="0" conaffinity="0"/>
       <geom name="cam_topmid_plate" type="box" size="0.0025 0.045 0.0125" pos="0.0145 0 0.0125" rgba="0.05 0.06 0.08 1" group="3" contype="0" conaffinity="0"/>
       <!-- 前面板: 左 IR / RGB(蓝) / 右 IR / 红外投射器(红) -->
@@ -350,7 +352,8 @@ def build_mjcf() -> str:
       <geom name="cam_topmid_ir1" type="cylinder" size="0.007 0.002" pos="0.0175 0.031 0.0125" euler="0 90 0" rgba="0.04 0.05 0.06 1" group="3" contype="0" conaffinity="0"/>
       <geom name="cam_topmid_led" type="sphere" size="0.004" pos="0.006 0 0.026" rgba="0.02 0.84 0.63 1" group="3" contype="0" conaffinity="0"/>
       <!-- 真相机: 从镜头面朝 +X 俯 35° 看工作区, 视场 58°(D435 垂直) -->
-      <camera name="cam_topmid" pos="0.020 0 0.0125" euler="0 -55 0" fovy="58"/>
+      <!-- ⚠ euler 用 -90 而不是 -55: 父 body 已经 -35°, 叠加 -55 会变成 -90° ⇒ 镜头实际水平朝 +X (实测中央射线打到 0.70m 的 equip2, 不是台面) -->
+      <camera name="cam_topmid" pos="0.020 0 0.0125" euler="0 -90 0" fovy="58"/>
     </body>
   </body>""" % (_scx, _scy, max(slot0["p1"][2], slot0["p2"][2]))
 
