@@ -136,6 +136,12 @@ def arm_mjcf(side: str, base_x: float, base_y: float, base_z: float,
     out.append('%s<body name="%s_tool1" pos="%.6f %.6f %.6f" '
                'quat="0.358389 -0.300607 0.140006 0.872692">'
                % (ind, side, -0.015886, 0.018348, 0.258678))
+    # 🔧 IK/FK 锚点: ar_scene_render_server.py::ik_solve 找 **geom** `<side>_tcp`, FK 找 **site** `<side>_tcp`
+    #    ⇒ 两个都要有, 且必须落在真正的 TCP (=tool1 模块头部)。重写夹爪时删掉了这两个 ⇒
+    #    ik_solve 报 "找不到 R_tcp" ⇒ ar_cmd 驱动整条断, 双臂停在最后一帧 (老倪: 手臂不动)。
+    out.append('%s  <site name="%s_tcp" pos="0 0 0" size="0.004" rgba="1 0.2 0.2 1"/>' % (ind, side))
+    out.append('%s  <geom name="%s_tcp" type="sphere" size="0.004" pos="0 0 0" group="5" '
+               'contype="0" conaffinity="0" rgba="0 0 0 0"/>' % (ind, side))
     out.append('%s  <geom name="%s_mod" type="box" size="0.00425 0.0067 0.02825" pos="0 0 -0.0283" '
                'rgba="0.94 0.76 0.22 1" contype="0" conaffinity="0"/>' % (ind, side))
     if side == "R":

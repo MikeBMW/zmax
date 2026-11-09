@@ -467,6 +467,7 @@ def _ar_cmd_ctrl(mujoco, env, model, data, d):
         return None
     now = time.time()
     deg = _AC_LAST.get("deg")
+    _AC_LAST["tgt"] = [round(v * 1000, 1) for v in tgt]
     if not deg or (now - _AC_LAST["t"]) >= 0.12:
         r = ik_solve(mujoco, model, data, mujoco, "R", tgt, iters=60, seed_deg=deg)
         if not r.get("ok"):
@@ -1069,6 +1070,8 @@ v.onerror=function(){h.textContent='流断了(8802 未起? 或通道数已满 3)
             age = (time.time() - st["ts"]) if st["ts"] else None
             cal = st.get("calibs") or {}
             self._json({"ok": st["err"] is None, "n": st["n"], "mode": st["mode"],
+                        "ac_err": _AC_LAST.get("err"),          # ar_cmd 驱动为什么没生效 (IK/取数)
+                        "ac_tgt": _AC_LAST.get("tgt"),
                         "age_s": round(age, 2) if age is not None else None,
                         "shape": st.get("shape"), "mean": st.get("mean"),
                         "gold_px": st.get("gold_px"), "box": st.get("box"), "ms": st.get("ms"),
