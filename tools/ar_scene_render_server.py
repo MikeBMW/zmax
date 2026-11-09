@@ -70,6 +70,9 @@ VIEWS = {
     # 顶视收紧 (2026-11-09): 原 1.75m/55° 时工位只占中间一条横带, 上下 60% 是棋盘地板
     "top": {"lookat": [0.55, 0.19, 0.11], "distance": 1.30, "elevation": -89.0,
             "azimuth": 0.0, "fovy": 42.0, "note": "顶视: 正俯视全工位 (台面/双臂基座/料盘同框)"},
+    # 🎥 中央顶视相机 (场景里两臂之间的实体相机 cam_topmid, 位于 z=0.92 正下视) 的等效机位
+    "topmid": {"lookat": [0.55, 0.25, 0.00], "distance": 0.92, "elevation": -89.0,
+               "azimuth": 0.0, "fovy": 70.0, "note": "中央顶视相机视角 (等效 MJCF 的 cam_topmid)"},
 }
 STATE = {"png": b"", "n": 0, "ts": 0.0, "mean": None, "gold_px": 0, "box": None,
          "ms": None, "shape": None, "err": None, "mode": "idle",
@@ -1004,7 +1007,7 @@ class Handler(BaseHTTPRequestHandler):
   padding:5px 10px;font:bold 12px monospace;cursor:pointer}
 #c button.on{background:#1d6fdc;color:#fff;border-color:#4aa3ff}
 </style><div id="h"></div>
-<div id="c"><button data-v="ar3d" class="on">全景</button><button data-v="top">顶视</button><button data-v="close">特写</button></div>
+<div id="c"><button data-v="ar3d" class="on">全景</button><button data-v="top">顶视</button><button data-v="topmid">中央顶视</button><button data-v="close">特写</button></div>
 <div id="w"><img id="v" src="/frame.png?cam=ar3d" alt="8802 render stream"></div>
 <script>
 var t0=Date.now(),v=document.getElementById('v'),h=document.getElementById('h'),cam='预设机位';
@@ -1034,7 +1037,7 @@ function tick8802(){
 }
 setInterval(tick8802,Math.round(1000/FPS));
 // ⚠ 角标定时器必须自带 setInterval(function(){ ... },500) 包裹 (上一版把这句吃掉, 整段脚本语法错 ⇒ 画面全停)
-setInterval(function(){h.textContent='Z-MAX AR 8802 · '+({ar3d:'全景',top:'顶视',close:'特写'}[VIEW]||VIEW)
+setInterval(function(){h.textContent='Z-MAX AR 8802 · '+({ar3d:'全景',top:'顶视',topmid:'中央顶视',close:'特写'}[VIEW]||VIEW)
 +' · PNG 6fps · '+(v.naturalWidth||0)+'×'+(v.naturalHeight||0)
 +' · 视角:'+cam+' · 已看 '+Math.round((Date.now()-t0)/1000)+'s';},500);
 setInterval(function(){fetch('/cam',{cache:'no-store'}).then(function(r){return r.json();}).then(function(j){
