@@ -106,19 +106,36 @@ def arm_mjcf(side: str, base_x: float, base_y: float, base_z: float,
     ind = parent_indent
     if grip:
         out.append('%s<body name="%s_grip" pos="0 0 0">' % (ind, side))
-        out.append('%s  <geom name="%s_tcp" type="sphere" size="0.010" '
-                   'rgba="0.95 0.35 0.30 1" contype="0" conaffinity="0"/>' % (ind, side))
-        if side == "R":
-            out.append('%s  <site name="endEffector" pos="0 0 0.02" size="0.008" '
-                       'rgba="1 0.2 0.2 1"/>' % ind)
-        for f, off in (("a", +0.016), ("b", -0.016)):
-            out.append('%s  <body name="%s_finger%s" pos="%.4f 0 0.02">' % (ind, side, f, off))
-            out.append('%s    <joint name="%s_f%s" type="slide" axis="1 0 0" range="0 0.02" '
-                       'damping="1"/>' % (ind, side, f))
-            out.append('%s    <geom name="%s_fg%s" type="box" size="0.004 0.008 0.022" '
-                       'rgba="0.28 0.30 0.34 1"/>' % (ind, side, f))
-            out.append('%s  </body>' % ind)
+        # ❌ 原来这里有"法兰上的红球 + 两指"(z=0.02): 那画的是法兰盘位置, 不是夹爪。
+        #    老倪 2026-11-09: 夹爪真正抓模块的位置是 tool1 (法兰前 259mm) ⇒ 见下面 tool1 段。
+        #    两指的 slide joint 仍保留(actuator 引用了 *_fa/*_fb), 但收进 tool1 体内, 不再挂在法兰上。
         out.append('%s</body>' % ind)
+    # 🦾 tool1 夹爪 + 光模块 (老倪 2026-11-09: 「光模块在右臂 tool1 坐标系, 这才是夹爪真正抓住光模块的位置;
+    #    你 8802 里夹爪画在法兰盘上, 要按 tool1 显示」)。
+    #    真源 = URDF joint_tool1: xyz=(-0.0159,0.0183,0.2587) rpy=(0.037,0.675,2.375) ⇒ tool1 在法兰前方 259mm,
+    #    Z 轴指向外(朝台面), 模块本体从模块头(tool1 原点)朝法兰长 56.5mm。
+    #    尺寸 MODSPEC: L 56.5 × W 13.4 × T 8.5 mm (X=厚, Y=宽, Z=长), 头在 tool1 原点。
+    #    夹爪没有 URDF ⇒ 按"法兰→tool1 = 259mm"自己设计: 法兰盘 + 执行器本体 + 两指夹住模块尾部。
+    out.append('%s<body name="%s_tool1" pos="%.6f %.6f %.6f" '
+               'quat="0.358389 -0.300607 0.140006 0.872692">'
+               % (ind, side, -0.015886, 0.018348, 0.258678))
+    out.append('%s  <geom name="%s_t1_flange" type="cylinder" size="0.030 0.012" pos="0 0 -0.246" '
+               'rgba="0.36 0.39 0.44 1" contype="0" conaffinity="0"/>' % (ind, side))
+    out.append('%s  <geom name="%s_t1_body" type="box" size="0.026 0.020 0.045" pos="0 0 -0.190" '
+               'rgba="0.20 0.23 0.27 1" contype="0" conaffinity="0"/>' % (ind, side))
+    for f, off in (("a", 0.0085), ("b", -0.0085)):
+        # 两指: 沿模块宽度方向(Y)开合, 关到位时夹住 13.4mm 宽的模块
+        out.append('%s  <body name="%s_finger%s" pos="0 %.4f -0.080">' % (ind, side, f, off))
+        out.append('%s    <joint name="%s_f%s" type="slide" axis="0 1 0" range="-0.004 0.004" '
+                   'damping="1"/>' % (ind, side, f))
+        out.append('%s    <geom name="%s_fg%s" type="box" size="0.005 0.004 0.026" '
+                   'rgba="0.58 0.61 0.66 1" contype="0" conaffinity="0"/>' % (ind, side, f))
+        out.append('%s  </body>' % ind)
+    out.append('%s  <geom name="%s_mod" type="box" size="0.00425 0.0067 0.02825" pos="0 0 -0.0283" '
+               'rgba="0.94 0.76 0.22 1" contype="0" conaffinity="0"/>' % (ind, side))
+    if side == "R":
+        out.append('%s  <site name="tool1" pos="0 0 0" size="0.006" rgba="1 0.85 0.2 1"/>' % ind)
+    out.append('%s</body>' % ind)
     # 收口
     for i in range(len(CHAIN), 0, -1):
         out.append('%s</body>' % ("  " * (i + 1)))
