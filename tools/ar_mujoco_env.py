@@ -330,21 +330,28 @@ def build_mjcf() -> str:
       <site name="hole" pos="0 0 0" size="0.006" rgba="0.2 0.9 0.4 1"/>
       <site name="goal" pos="0 0 -0.010" size="0.005" rgba="0.9 0.9 0.2 1"/>
     </body>
-  <!-- 🎥 中央顶视相机 (老倪 2026-11-09「两个手臂中间的顶视相机还是没有」):
-       两臂(y=0 / y=0.5)之间的正上方, 壳体+镜头+短支架都归 group 3 (顶视时隐掉, 不挡料盘);
-       <camera name="cam_topmid"> 是真正的 MuJoCo 相机, 可被 /frame.png?cam=topmid 直接使用。 -->
-  <body name="cam_topmid_body" pos="0.55 0.25 0.98">
-    <!-- 尺寸从 96mm 放大到 170×170×110mm: 在 ar3d 相机 (2.3m 距离/fov 69) 下 96mm 只有 22px,
-         老倪会说"还是没有"; 170mm 约 39px, 能看出是台相机。顶面浅灰、侧面深灰、镜头黑、加红色指示灯。 -->
-    <geom name="cam_topmid_box" type="box" size="0.085 0.085 0.055" rgba="0.20 0.23 0.28 1" group="3" contype="0" conaffinity="0"/>
-    <geom name="cam_topmid_cap" type="box" size="0.086 0.086 0.006" pos="0 0 0.060" rgba="0.62 0.65 0.70 1" group="3" contype="0" conaffinity="0"/>
-    <geom name="cam_topmid_ring" type="cylinder" size="0.040 0.010" pos="0 0 -0.062" rgba="0.45 0.48 0.52 1" group="3" contype="0" conaffinity="0"/>
-    <geom name="cam_topmid_lens" type="cylinder" size="0.028 0.020" pos="0 0 -0.082" rgba="0.02 0.03 0.05 1" group="3" contype="0" conaffinity="0"/>
-    <geom name="cam_topmid_led" type="sphere" size="0.010" pos="0.070 0 0.058" rgba="0.90 0.15 0.10 1" group="3" contype="0" conaffinity="0"/>
-    <!-- 吊杆: 从壳体下沿一路接到下方 z=0.70 的上横梁 (equip3 横跨 y, x 0.4~0.6)。
-         原来 150mm 短杆偏 75mm、横向 17mm 空气缝, 看着是根悬空小棍。 -->
-    <geom name="cam_topmid_mount" type="box" size="0.012 0.012 0.115" pos="0.075 0 -0.170" rgba="0.55 0.58 0.62 1" group="3" contype="0" conaffinity="0"/>
-    <camera name="cam_topmid" pos="0 0 -0.06" euler="0 0 0" fovy="70"/>
+  <!-- 🎥 顶视相机 = AR 页面 tcp-ar.html 的同一套设计 (老倪 2026-11-09「AR 里的顶视相机要显示到 video 渲染场景」):
+       tcp-ar.html 里 TCAM={y:0.25, r:0.070, tilt:35, fovH:87, fovV:58, body:[0.09,0.025,0.025]},
+       立柱在两臂 (y=0 / y=0.5) 的中线 x=0, 半径 70mm, 高 = 1 轴高 (URDF joint_1 z=0.328m);
+       顶上按 RealSense D435 模板: 90(W)×25(H)×25(D) mm, 俯角 35° 朝 +X 看工作区。
+       之前我做的是"吊在横梁上的方块", 与 AR 页完全不是同一个东西 ⇒ 现在按 AR 页逐项复制。 -->
+  <body name="cam_topmid_body" pos="0 0.25 0">
+    <!-- 底座法兰 + 立柱 -->
+    <geom name="cam_topmid_flange" type="cylinder" size="0.0945 0.008" pos="0 0 0.008" rgba="0.30 0.33 0.38 1" group="3" contype="0" conaffinity="0"/>
+    <geom name="cam_topmid_col" type="cylinder" size="0.070 0.156" pos="0 0 0.168" rgba="0.16 0.20 0.25 1" group="3" contype="0" conaffinity="0"/>
+    <geom name="cam_topmid_cap" type="cylinder" size="0.072 0.004" pos="0 0 0.326" rgba="0.25 0.30 0.36 1" group="3" contype="0" conaffinity="0"/>
+    <!-- D435 机身: 90(y)×25(z)×25(x), 绕 Y 俯 35° 朝 +X -->
+    <body name="cam_topmid_head" pos="0 0 0.3315" euler="0 -35 0">
+      <geom name="cam_topmid_tilt" type="box" size="0.0125 0.045 0.0125" pos="0 0 0.0125" rgba="0.10 0.13 0.17 1" group="3" contype="0" conaffinity="0"/>
+      <geom name="cam_topmid_plate" type="box" size="0.0025 0.045 0.0125" pos="0.0145 0 0.0125" rgba="0.05 0.06 0.08 1" group="3" contype="0" conaffinity="0"/>
+      <!-- 前面板: 左 IR / RGB(蓝) / 右 IR / 红外投射器(红) -->
+      <geom name="cam_topmid_ir0" type="cylinder" size="0.007 0.002" pos="0.0175 -0.031 0.0125" euler="0 90 0" rgba="0.04 0.05 0.06 1" group="3" contype="0" conaffinity="0"/>
+      <geom name="cam_topmid_rgb" type="cylinder" size="0.007 0.002" pos="0.0175 0 0.0125" euler="0 90 0" rgba="0.12 0.31 0.85 1" group="3" contype="0" conaffinity="0"/>
+      <geom name="cam_topmid_ir1" type="cylinder" size="0.007 0.002" pos="0.0175 0.031 0.0125" euler="0 90 0" rgba="0.04 0.05 0.06 1" group="3" contype="0" conaffinity="0"/>
+      <geom name="cam_topmid_led" type="sphere" size="0.004" pos="0.006 0 0.026" rgba="0.02 0.84 0.63 1" group="3" contype="0" conaffinity="0"/>
+      <!-- 真相机: 从镜头面朝 +X 俯 35° 看工作区, 视场 58°(D435 垂直) -->
+      <camera name="cam_topmid" pos="0.020 0 0.0125" euler="0 -55 0" fovy="58"/>
+    </body>
   </body>""" % (_scx, _scy, max(slot0["p1"][2], slot0["p2"][2]))
 
     # 相机：名字必须叫 corner2（aligner 硬编码），放在料盘前上方俯视。
