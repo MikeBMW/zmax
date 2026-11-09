@@ -989,11 +989,26 @@ class Handler(BaseHTTPRequestHandler):
 #w{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
 #v{max-width:100%;max-height:100%}
 #h{position:fixed;left:10px;top:8px;color:#79c0ff;font:bold 12px monospace;text-shadow:0 0 6px #000}
-</style><div id="h"></div><div id="w"><img id="v" src="/frame.png?cam=ar3d" alt="8802 render stream"></div>
+/* 📷 机位切换 (老倪 2026-11-09「8802/video 没有顶视相机」): 全景/顶视/特写 三个按钮, 不用改 URL */
+#c{position:fixed;right:10px;top:8px;display:flex;gap:6px;z-index:9}
+#c button{background:#12202e;color:#79c0ff;border:1px solid #2a4a66;border-radius:6px;
+  padding:5px 10px;font:bold 12px monospace;cursor:pointer}
+#c button.on{background:#1d6fdc;color:#fff;border-color:#4aa3ff}
+</style><div id="h"></div>
+<div id="c"><button data-v="ar3d" class="on">全景</button><button data-v="top">顶视</button><button data-v="close">特写</button></div>
+<div id="w"><img id="v" src="/frame.png?cam=ar3d" alt="8802 render stream"></div>
 <script>
 var t0=Date.now(),v=document.getElementById('v'),h=document.getElementById('h'),cam='预设机位';
 // ?cam=top|close|ar3d 切机位 (老倪 2026-11-09「顶视相机」): /video?cam=top 就是正俯视
 var VIEW=(new URLSearchParams(location.search)).get('cam')||'ar3d';
+// 机位按钮: 点了就换 VIEW, 下一拍 fetch 自动用新机位 (不刷新页面)
+document.querySelectorAll('#c button').forEach(function(b){
+  if(b.getAttribute('data-v')===VIEW){ b.classList.add('on'); } else { b.classList.remove('on'); }
+  b.onclick=function(){
+    VIEW=b.getAttribute('data-v');
+    document.querySelectorAll('#c button').forEach(function(x){ x.classList.toggle('on', x===b); });
+  };
+});
 // pull-frame-v1: 每 100ms 拉一张 /frame.png?cam=ar3d ⇒ 右键=当前帧真图
 // 🔴 2026-11-09「8802/video 没有了」根因: 每拍改 <img>.src ⇒ 元素先进入 loading 态(0×0/透明),
 //   6fps × 每张 ~200ms 加载 ⇒ 几乎全程是 loading, 看着就是"没有画面"。
@@ -1009,8 +1024,10 @@ function tick8802(){
   }).catch(function(){}).then(function(){ busy=false; });
 }
 setInterval(tick8802,Math.round(1000/FPS));
-setInterval(function(){h.textContent='Z-MAX AR 8802 · PNG 6fps · '+(v.naturalWidth||0)+'×'+(v.naturalHeight||0)
- +' · 视角:'+cam+' · 已看 '+Math.round((Date.now()-t0)/1000)+'s · '+location.host+'/video';},500);
+// ⚠ 角标定时器必须自带 setInterval(function(){ ... },500) 包裹 (上一版把这句吃掉, 整段脚本语法错 ⇒ 画面全停)
+setInterval(function(){h.textContent='Z-MAX AR 8802 · '+({ar3d:'全景',top:'顶视',close:'特写'}[VIEW]||VIEW)
++' · PNG 6fps · '+(v.naturalWidth||0)+'×'+(v.naturalHeight||0)
++' · 视角:'+cam+' · 已看 '+Math.round((Date.now()-t0)/1000)+'s';},500);
 setInterval(function(){fetch('/cam',{cache:'no-store'}).then(function(r){return r.json();}).then(function(j){
   cam = j.follow ? ('跟随 ar3d 页面 '+(j.age_s)+'s前') : '预设机位(页面没在推)';}).catch(function(){});},1500);
 v.onerror=function(){h.textContent='流断了(8802 未起? 或通道数已满 3) · 10s 后自动重连';
