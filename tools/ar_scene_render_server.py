@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import hashlib
 import os
 import queue
 import sys
@@ -65,6 +66,45 @@ STATE = {"png": b"", "n": 0, "ts": 0.0, "mean": None, "gold_px": 0, "box": None,
 LOCK = threading.Lock()
 GL = threading.Lock()
 FREE_Q = queue.Queue(maxsize=8)   # 🎥 任意视角请求 (必须由渲染线程消费: EGL 上下文线程绑定)          # 🎥 按需任意视角渲染 与 主循环 共用 renderer ⇒ 必须串行
+_STREAMS = {"n": 0, "max": 3}     # 🎬 /video MJPEG 同时观看数上限(每条流都会持续拉渲染/重发帧, 不设上限会把渲染线程吃满)
+_STREAMS_LOCK = threading.Lock()
+# 🎥 2026-11-09 老倪: 「/video 没有跟 8797/ar3d 同步」⇒ ar3d 页面每 500ms 把它的相机
+#   (az/el/dist/tgt/fovy) POST 到 /cam 落到这个文件; /video 每帧读它, 用**同一机位**渲染 ⇒
+#   窗口里看到的就是页面上那个视角。页面不动相机时参数不变 ⇒ 复用上一帧, 零额外渲染开销
+#   (自由机位单帧约 70ms, 12fps 空转会白烧 CPU 并拖慢 L2 取帧)。
+_CAM_SYNC = {"path": os.path.expanduser(os.environ.get("ZMAX_AR3D_CAM")
+                                        or "~/zmax/zmax_data/ss_live/ar3d_cam.json")}
+_CAM_SYNC_LOCK = threading.Lock()
+
+
+def _cam_sync_read(max_age=6.0):
+    """读 ar3d 页面推来的相机; 过期/缺失 → None(退回预设机位, 不假装同步)。"""
+    try:
+        with open(_CAM_SYNC["path"], encoding="utf-8") as _f:
+            d = json.load(_f)
+        if (time.time() - float(d.get("ts") or 0)) > max_age:
+            return None
+        out = {}
+        for k in ("az", "el", "dist", "tx", "ty", "tz", "fovy"):
+            if k in d:
+                out[k] = [str(d[k])]      # render_free 吃的是 query dict(list)
+        return out if len(out) >= 6 else None
+    except Exception:                                                    # noqa: BLE001
+        return None
+
+
+def _cam_sync_write(payload, src=""):
+    d = {k: payload[k] for k in ("az", "el", "dist", "tx", "ty", "tz", "fovy") if k in payload}
+    d["ts"] = time.time()
+    d["src"] = src
+    with _CAM_SYNC_LOCK:
+        _p = _CAM_SYNC["path"]
+        os.makedirs(os.path.dirname(_p), exist_ok=True)
+        _tmp = _p + ".tmp"
+        with open(_tmp, "w", encoding="utf-8") as _f:
+            json.dump(d, _f)
+        os.replace(_tmp, _p)
+    return d
 CMD = {"mode": "idle", "L": None, "R": None, "gripL": None, "gripR": None, "ts": 0.0}
 ENV = {"env": None}          # render_loop 建好后放进来, 供 /ik 用
 
@@ -637,6 +677,9 @@ class Handler(BaseHTTPRequestHandler):
         cam_name = (qs.get("cam") or ["close"])[0]
         if cam_name not in VIEWS:
             cam_name = "close"
+        # 🎬 直播窗口默认看全景(ar3d) —— 「这个窗口」= AR 场景那个画面; 要料盘特写就 ?cam=close
+        if p in ("/video", "/video.mjpg", "/stream", "/stream.mjpg") and not (qs.get("cam") or qs.get("c")):
+            cam_name = "ar3d"
         if p in ("/", "/frame.png", "/frame.jpg") and any(
                 k in qs for k in ("az", "el", "dist", "tx", "ty", "tz", "fovy")):
             try:
@@ -651,8 +694,127 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._send(200, b, "image/png")
             return
+        if p in ("/video", "/video.mjpg", "/stream", "/stream.mjpg"):
+            # 🎬 2026-11-09 老倪: 「ar 场景渲染帧, 8802 输入还是跟原来一样 —— 把这个窗口直接做成
+            #   http://10.163.146.76:8802/video 可以么?」⇒ 服务端直接推 MJPEG, 浏览器打开这个地址就是
+            #   活的渲染画面(不再靠页面自己一帧帧拼, 也没跨源 taint 问题)。
+            #   参数: cam=close|ar3d (默认 ar3d 全景) · fps=1..15 (默认 12)
+            #        带 az/el/dist/tx/ty/tz/fovy ⇒ 自由机位(逐帧经渲染线程, 用独立 MjvCamera, 不动机位相机)
+            _free = any(k in qs for k in ("az", "el", "dist", "tx", "ty", "tz", "fovy"))
+            try:
+                _fps = float((qs.get("fps") or ["12"])[0])
+            except Exception:                                              # noqa: BLE001
+                _fps = 12.0
+            _fps = max(1.0, min(15.0, _fps))
+            _dt = 1.0 / _fps
+            with _STREAMS_LOCK:
+                if _STREAMS["n"] >= _STREAMS["max"]:
+                    self._send(503, b"too many streams (max %d)" % _STREAMS["max"], "text/plain")
+                    return
+                _STREAMS["n"] += 1
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+                self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Connection", "close")
+                self.end_headers()
+                self.close_connection = True
+                _last_n = -1
+                _last_md5 = None
+                _last_sent = 0.0
+                _fkey = None
+                _fpng = None
+                _follow = (qs.get("follow") or ["1"])[0].lower() not in ("0", "false", "no", "off")
+                while True:
+                    _t0 = time.time()
+                    _png = None
+                    # 🎥 跟随 ar3d 页面的相机(默认开): 页面在推就同机位, 没在推就退回预设机位
+                    if _follow:
+                        _cq = _cam_sync_read()
+                        if _cq:
+                            try:
+                                _k = tuple(round(float(_cq[_k2][0]), 5) for _k2 in
+                                           ("az", "el", "dist", "tx", "ty", "tz", "fovy"))
+                            except Exception:                              # noqa: BLE001
+                                _k = None
+                            if _k is not None and _k != _fkey:
+                                try:
+                                    _fpng = render_free(_cq)
+                                    _fkey = _k
+                                except Exception:                          # noqa: BLE001
+                                    pass
+                            _png = _fpng          # 相机没动 ⇒ 复用上一帧, 不重复渲染
+                    if _png is None and _free:
+                        try:
+                            _png = render_free(qs)
+                        except Exception:                                  # noqa: BLE001
+                            _png = None
+                    if _png is None and not (_follow and _fkey is not None):
+                        with LOCK:
+                            _st3 = dict(STATE)
+                            _v3 = (_st3.get("views") or {}).get(cam_name) or {}
+                        _n3 = _v3.get("n", _st3.get("n"))
+                        if _n3 != _last_n:               # 同帧不重发(站点相机 → 零额外渲染开销)
+                            _png = _v3.get("png") or (_st3.get("png") if cam_name == "close" else b"")
+                            _last_n = _n3
+                    # 🧮 场景静止时相机每帧都"变"(n 在涨)但像素不变 ⇒ 画面逐字节相同。
+                    #   比对 md5: 没变就只按 1fps 发心跳帧, 否则 12fps 白白吃掉 ~9Mbps 带宽(实测 8 帧 md5 全同)。
+                    if _png:
+                        _md5 = hashlib.md5(_png).digest()
+                        if _md5 == _last_md5 and (time.time() - _last_sent) < 1.0:
+                            _png = None
+                        else:
+                            _last_md5, _last_sent = _md5, time.time()
+                    if _png:
+                        self.wfile.write(b"--frame\r\nContent-Type: image/png\r\nContent-Length: "
+                                         + str(len(_png)).encode() + b"\r\n\r\n")
+                        self.wfile.write(_png)
+                        self.wfile.write(b"\r\n")
+                        self.wfile.flush()
+                    _gap = _dt - (time.time() - _t0)
+                    time.sleep(_gap if _gap > 0 else 0.005)
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass                                     # 客户端关窗/断网: 正常退出
+            finally:
+                with _STREAMS_LOCK:
+                    _STREAMS["n"] = max(0, _STREAMS["n"] - 1)
+            return
+        if p in ("/live", "/live.html", "/video.html"):
+            # 📺 /video 的 HTML 外壳: 一屏只有渲染画面 + 帧龄/尺寸角标, 手机/大屏直接全屏看
+            _html = ("""<!doctype html><meta charset="utf-8">
+<title>Z-MAX 8802 · 渲染帧</title>
+<style>html,body{margin:0;height:100%;background:#05070a;overflow:hidden}
+#w{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+#v{max-width:100%;max-height:100%}
+#h{position:fixed;left:10px;top:8px;color:#79c0ff;font:bold 12px monospace;text-shadow:0 0 6px #000}
+</style><div id="h"></div><div id="w"><img id="v" src="/video?fps=12" alt="8802 render stream"></div>
+<script>
+var t0=Date.now(),v=document.getElementById('v'),h=document.getElementById('h'),cam='预设机位';
+setInterval(function(){h.textContent='Z-MAX AR 8802 · MJPEG '+(v.naturalWidth||0)+'×'+(v.naturalHeight||0)
+ +' · 视角:'+cam+' · 已看 '+Math.round((Date.now()-t0)/1000)+'s · '+location.host+'/video';},500);
+setInterval(function(){fetch('/cam',{cache:'no-store'}).then(function(r){return r.json();}).then(function(j){
+  cam = j.follow ? ('跟随 ar3d 页面 '+(j.age_s)+'s前') : '预设机位(页面没在推)';}).catch(function(){});},1500);
+v.onerror=function(){h.textContent='流断了(8802 未起? 或通道数已满 3) · 10s 后自动重连';
+ setTimeout(function(){v.src='/video?fps=12&_='+Date.now();},10000);};
+</script>""").encode("utf-8")
+            self._send(200, _html, "text/html; charset=utf-8")
+            return
         if p == "/bones.json":
             self._json(st.get("bones") or {"ok": False, "why": "骨骼快照未生成 (渲染循环未跑)"})
+            return
+        if p == "/cam":
+            # 🎥 当前跟随的相机(ar3d 页面推上来的那份) + 新鲜度; 页面没推 ⇒ age 很大/无文件 ⇒ 看的是预设机位
+            try:
+                with open(_CAM_SYNC["path"], encoding="utf-8") as _f:
+                    _d = json.load(_f)
+                _d["age_s"] = round(time.time() - float(_d.get("ts") or 0), 2)
+                _d["follow"] = _d["age_s"] <= 6.0
+                _d["path"] = _CAM_SYNC["path"]
+                self._json(_d)
+            except Exception:                                                # noqa: BLE001
+                self._json({"follow": False, "why": "还没有页面推过相机(看的是预设机位)",
+                            "path": _CAM_SYNC["path"]})
             return
         if p == "/status.json":
             age = (time.time() - st["ts"]) if st["ts"] else None
@@ -752,6 +914,17 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(n).decode("utf-8")) if n else {}
         except Exception:                                                    # noqa: BLE001
             self._json({"ok": False, "err": "body 不是 JSON"}, 400)
+            return
+        if p == "/cam":
+            # 🎥 2026-11-09 老倪: 「/video 没有跟 8797/ar3d 同步」
+            #   ar3d 页面每 500ms 把它的相机推过来(跨源 no-cors POST, body 是 JSON 文本);
+            #   /video 读同一份参数渲染 ⇒ 窗口与页面同机位。只存参数, 不动仿真/不下发关节。
+            try:
+                _d = _cam_sync_write(body or {}, src=str(self.headers.get("Origin") or ""))
+                self._json({"ok": True, "ts": round(_d.get("ts", 0), 3),
+                            "cam": {k: _d.get(k) for k in ("az", "el", "dist", "tx", "ty", "tz", "fovy")}})
+            except Exception as e:                                           # noqa: BLE001
+                self._json({"ok": False, "err": "%s: %s" % (type(e).__name__, e)}, 400)
             return
         if p == "/control":
             _now = time.time()

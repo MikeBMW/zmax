@@ -4116,6 +4116,75 @@ SRC_DESC = {"真机": "📡 真机 (Orin 远程只读: TCP位姿/关节/力/夹�
             "AR场景": "🥽 AR场景 (状态空间工程视频源实拍 + AOI/空间点位叠加) · 8793/ar"}
 
 
+def open_render_stream_window(url=None, log_path=None):
+    """🎥 打开 8802 渲染帧直播窗口(浏览器新窗口) —— 老倪 2026-11-09:
+    「旁路实时可视化节点右键打开 http://10.163.146.76:8802/video，不是打开之前的窗口」。
+    返回 (ok, how, url)。为什么不用 webbrowser: snap/chromium 下它常只往已有窗口塞个后台标签,
+    看着像"没打开"; 这里直接 `chromium --new-window` 再 `wmctrl -a` 抬到前台, 失败才退 xdg-open。
+    """
+    import shutil as _sh
+    import socket as _sk
+    import subprocess as _sp
+    if not url:
+        _host = "127.0.0.1"
+        try:
+            _s = _sk.socket(_sk.AF_INET, _sk.SOCK_DGRAM)
+            _s.connect(("10.255.255.255", 1))          # 不真发包, 只为取出口网卡地址(10.163.146.76)
+            _host = _s.getsockname()[0]
+            _s.close()
+        except Exception:                                                # noqa: BLE001
+            pass
+        url = os.environ.get("ZMAX_RENDER_URL") or ("http://%s:8802/video" % _host)   # 默认 fps=12
+    how = ""
+    if os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
+        for _c in ("chromium", "chromium-browser", "google-chrome", "chrome", "microsoft-edge"):
+            _p = _sh.which(_c)
+            if not _p:
+                continue
+            try:
+                _sp.Popen([_p, "--new-window", url], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL,
+                          start_new_session=True)
+                how = "%s --new-window" % _c
+                break
+            except Exception:                                            # noqa: BLE001
+                continue
+        if how:                                    # 抬到前台(新窗口可能开在别的虚拟桌面/后面)
+            try:
+                _wm = _sh.which("wmctrl")
+                if _wm:
+                    _sp.Popen([_wm, "-a", "video"], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL,
+                              start_new_session=True)
+            except Exception:                                            # noqa: BLE001
+                pass
+        if not how:
+            try:
+                import webbrowser as _wb
+                if _wb.open(url, new=2):
+                    how = "webbrowser"
+            except Exception:                                            # noqa: BLE001
+                pass
+        if not how:
+            _p = _sh.which("xdg-open")
+            if _p:
+                try:
+                    _sp.Popen([_p, url], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL, start_new_session=True)
+                    how = "xdg-open"
+                except Exception:                                        # noqa: BLE001
+                    pass
+    try:                                   # 落一条日志: 点了没开也能查(无图形会话也留证)
+        if not log_path:
+            log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__)))), "zmax_data", "logs", "ar3d_video_open.log")
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, "a", encoding="utf-8") as _f:
+            _f.write("%s\tok=%s\thow=%s\tdisplay=%s\turl=%s\n"
+                     % (time.strftime("%Y-%m-%d %H:%M:%S"), bool(how), how or "FAILED",
+                        os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY") or "-", url))
+    except Exception:                                                    # noqa: BLE001
+        pass
+    return (bool(how), how or "FAILED", url)
+
+
 def _src_norm(v):
     """数据源状态归一: 老工程里存的是 '仿真' ⇒ 插拔场景 (与原来那条仿真路一字不动, 不回退)。"""
     v = str(v or "").strip()
@@ -4571,8 +4640,13 @@ class SimCanvas(QGraphicsView):
         #   要看的是「实际送进 YOLO 的那一帧渲染图」: ▶运行中 = 引擎当前步渲染帧 (与 detect_3d 同帧),
         #   引擎 idle = 静态初始帧 + 画面压横幅如实标注 (不假动)
         a_bypin = None
+        a_bypvid = None
         if str(item.node.get("params", {}).get("viz_kind") or "") == "bypass":
-            a_bypin = menu.addAction("视频输入 (渲染帧 · 实际喂给 YOLO)")
+            # 🎥 2026-11-09 老倪: 「右键打开 http://10.163.146.76:8802/video，不是打开之前的窗口」
+            #   直播流走 8802 服务端 MJPEG (/video, 960×720, 与 /frame.png 同一份帧源), 浏览器直接开;
+            #   想调帧率就 ?fps=1..15。之前的 Qt 单帧窗口保留成第二项, 不再占主入口。
+            a_bypvid = menu.addAction("🎥 视频输入 → 8802 直播 /video (浏览器)")
+            a_bypin = menu.addAction("🖼 渲染帧单帧 (喂给 YOLO 的那一帧)")
         # 🔍 2026-09-24 老倪: 外观质量检测节点右键 → 打开**质量检测汇总终端**
         #   (金手指检查 / 外观划伤 / 光口端面 / 全帧扫描 · 图像定位+拉伸 · 缺陷框选标定 · 在线增量训练)
         #   与「打开输入图像」同款入口: 帧源跟随画布「🔀 数据源切换」
@@ -4674,6 +4748,20 @@ class SimCanvas(QGraphicsView):
                 try:
                     self.module._log(f"⚠️ 打开输入图像失败: {type(_e).__name__}: {_e}")
                 except Exception:                                          # noqa: BLE001
+                    pass
+        elif a_bypvid is not None and chosen == a_bypvid:
+            # 🎥 2026-11-09 老倪: 「右键打开 http://10.163.146.76:8802/video，不是打开之前的窗口」
+            #   8802 服务端 MJPEG 直播流, 用浏览器**新窗口**开(webbrowser 在 snap/chromium 里
+            #   常常只往已有窗口塞个后台标签, 人看着像"没打开") ⇒ 直接 chromium --new-window + 抬到前台。
+            try:
+                _ok, _how, _url = open_render_stream_window()
+                self.module._log(("📺 8802 直播已开: %s  (方式 %s · 渲染帧 MJPEG, 与 /frame.png 同源)"
+                                  % (_url, _how)) if _ok else
+                                 ("⚠️ 没能开浏览器; 地址给你, 手动打开: %s" % _url))
+            except Exception as _e:                                    # noqa: BLE001
+                try:
+                    self.module._log(f"⚠️ 打开 8802 直播失败: {type(_e).__name__}: {_e}")
+                except Exception:                                      # noqa: BLE001
                     pass
         elif a_bypin is not None and chosen == a_bypin:
             # 🎥 2026-11-08 老倪: 旁路可视化节点「视频输入」= **AR 场景渲染帧**

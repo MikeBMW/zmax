@@ -1,6 +1,6 @@
 <!doctype html><html lang="zh"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Z-MAX AR3D r88 · SIM自动</title>
+<title>Z-MAX AR3D r92 · SIM自动 · 位置细胞 · 8802直播</title>
 <style>
  *{box-sizing:border-box}
  body{margin:0;background:#0b0f14;color:#e6edf3;font:15px/1.5 -apple-system,Segoe UI,Roboto,"Noto Sans SC",sans-serif}
@@ -28,6 +28,14 @@
         pointer-events:none;z-index:9;image-rendering:pixelated}
  aside{flex:0 1 380px;min-width:300px;display:flex;flex-direction:column;gap:12px}
  .card{background:#11161d;border:1px solid #21262d;border-radius:12px;padding:12px}
+ /* 🎥 MuJoCo 同视角底图: 8802 的渲染帧贴在画布正下方(同一矩形, contain 等比), 画布转透明让图透上来。
+    为什么不 drawImage 进画布: 8802 与本页不同源 ⇒ 会 taint canvas, 页面自己的 getImageData(autoZoomPlan)会抛。 */
+ #vrcard{position:relative}
+ #mjframe{position:absolute;display:none;pointer-events:none;object-fit:contain;z-index:0;border-radius:8px;background:#04070a}
+ #mjtag{position:absolute;left:14px;bottom:14px;z-index:3;display:none;background:#000b;border:1px solid #30363d;
+        border-radius:6px;padding:4px 8px;font:11.5px/1.45 monospace;color:#9fd3ff;max-width:72%;
+        word-break:break-all;pointer-events:auto;user-select:text}   /* 可选中复制: 模型(YOLO)吃的就是这条 URL */
+ #vrcard #vr{position:relative;z-index:1}
  .card h2{font-size:14px;margin:0 0 8px;color:#8b949e;font-weight:600}
  button{background:#21262d;color:#e6edf3;border:1px solid #30363d;border-radius:10px;padding:11px 12px;font-size:15px;font-family:inherit;cursor:pointer}
  button:hover:not(:disabled){background:#2d333b;border-color:#8b949e}
@@ -110,7 +118,7 @@
   <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
   <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
      style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-11-09 r89 · SIM双臂自动/加粗 · 🧈 右臂平顺(实测: 会动的段里静止帧 91%→8% · 单帧最大位移 690.7mm→40.7mm · 单关节 48.7°→3.0°): 段内按本地时间 60fps 前进 + 段末按 392 段表续接 + 600mm/s 限速 + IK 单帧 3° 限幅 · 圆柱通道 r=10mm(通道里那些矩形=场景立方体, 「🧊 只看通道」可关) · 包络按当前动作/当前光模块 · plan 段 → 执行器节点 → 页面(优先 /api/ar/exec) · 真机零指令</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-11-09 r92 · 📺 8802 直播窗口(渲染站自己推 MJPEG: 8802/video · /live 全屏外壳, 与工位渲染同源同帧) · 🧭 位置细胞层 · 🎥 MuJoCo 同视角 · 其它同 r91</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -160,6 +168,8 @@
   <div class="card" id="vrcard">
     <h2><span>VR 三维视图(base 系 · 拖动可转)</span><span style="font-weight:400;font-size:12px;color:#6b7a8d">与相机窗口同尺寸</span></h2>
     <canvas id="vr"></canvas>
+    <img id="mjframe" alt="MuJoCo 同视角渲染帧(8802)">
+    <div id="mjtag" title="8802 同视角渲染帧: 这条 URL 就是 YOLO 该吃的那张图(可选中复制)"></div>
     <!-- 🧭 2026-10-26 老倪: 「在这个窗口左侧，增加所有的 执行轨迹 坐标系等按钮…这样我可以同时看着按钮和图像」
          ⇒ 三维按钮全部收进这层 rail: 普通页面里照旧排在画布下方(display:block),
            /ar3d 里 CSS 把它摆到**左栏**(grid 左固定 300px, 画布占右边其余宽度)。 -->
@@ -268,6 +278,9 @@
       <button id="bTab" class="sm on" title="实验桌(工作台) 1600×600×750mm + 45×45 铝型材框架: 四腿从地面通到上横梁底面, 顶框两根支撑梁垫在上横梁下、四个角码夹住它; 点一下隐藏">🧪 实验桌</button>
       <button id="bFlr" class="sm on" title="地面层 z=-750mm: 四轮与桌腿落地的那一层, 与 z=0 的 base 工作平面差 750; 点一下隐藏">🟫 地面</button>
       <button id="bSim" class="sm" title="SIM 骨骼: 直接画 8802 渲染场景的 body_xpos 真值 (与渲染帧同一份数据), 不是 URDF 真机; 真机没上电时这才是"渲染里那台机器"">🦾 SIM骨骼</button>
+      <button id="bMj" class="sm" title="MuJoCo 同视角: 把本页三维相机(yaw/pitch/dist/tgt)发给 8802 渲染站, 同一视角出图贴在画布底下; 模型(YOLO)吃的就是这张图">🎥 MuJoCo 同视角</button>
+      <button id="bCells" class="sm" title="位置细胞层: 直接画工程参数中心 3D 坐标库(/api/place_cells · place_cells.json)里的 133 枚细胞 —— 料盘/槽/插孔/工装/结构件/示教点, 不再用页面里手打的常量">🧭 位置细胞</button>
+      <button id="bLiv" class="sm" title="8802 直播窗口: 新开一页看渲染站自己推的 MJPEG 画面(8802/live ← /video), 与工位渲染同源同帧, 不带本页叠加层">📺 8802 直播</button>
     </div>
     <!-- 左臂位姿控制(左臂自身世界系): x y z 平移(mm) / a b c 姿态(deg), 参考 station 点动 -->
     <div id="cardLarm" style="margin-top:6px;border:1px solid #1f2b33;border-radius:8px;padding:6px 8px;background:#0d1418">
@@ -2202,7 +2215,10 @@ function drawVR(){
   g.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
   const w=c.clientWidth,h=c.clientHeight;
   g.clearRect(0,0,w,h);
-  g.fillStyle='#070a0e'; g.fillRect(0,0,w,h);
+  // 🎥 MuJoCo 同视角开着时画布保持透明 ⇒ 底下那张 8802 渲染帧透上来(矢量层照旧叠在上面)
+  if(!(typeof MJ!=='undefined' && MJ.on)){ g.fillStyle='#070a0e'; g.fillRect(0,0,w,h); }
+  // 🎥 MuJoCo 同视角: 相机变了就按新参数找 8802 要一张同视角帧(限速在 mjPull 里做)
+  if(typeof MJ!=='undefined' && MJ.on){ mjLayout(); mjPull(false); }
   // 🔴 2026-10-28 老倪「图像不要总是上下漂浮」:
   //   原来 `if(VR.auto) vrFitBox();` 每帧重新取景, 而 vrFitBox 把**会动的臂点云**算进包围盒
   //   ⇒ 双臂一上一下, 相机目标点跟着上下移, 整幅图就"漂浮"。
@@ -2233,7 +2249,13 @@ function drawVR(){
       _ovw=Math.max(0, Math.min(w, cr.right-pr2.left));
     }
   }catch(e){}
-  const F=520, CX=(w-_ovw)/2, CY=h/2;
+  let F=520, CX=(w-_ovw)/2, CY=h/2;
+  // 🎥 MuJoCo 同视角: 叠层投影必须与底下那张渲染帧同一相机(视场/主点/像素比例), 否则矢量与渲染图错位。
+  //   口径: MJ 开且帧已到 ⇒ 用 contain-fit 矩形 + 渲染 fovy 反推 F/CX/CY(与 CSS object-fit:contain 完全一致)。
+  if(typeof MJ!=='undefined' && MJ.on){
+    const _r=mjContain(w,h);
+    if(_r){ F=(_r.h/2)/Math.tan(MJ.fovy*Math.PI/360); CX=_r.x+_r.w/2; CY=_r.y+_r.h/2; }
+  }
   window.__vm={CX:CX, CY:CY, ovw:_ovw, w:w, h:h, F:F};   // 自检用: 取景中心/右侧栏遮挡宽度
   function pr(P){
     const dx=P[0]-eye[0],dy=P[1]-eye[1],dz=P[2]-eye[2];
@@ -2415,6 +2437,7 @@ function drawVR(){
   // 📷 顶视相机: 两臂之间的立柱 + RealSense 模板相机 + 打到台面的视锥覆盖区
   if(TCAM.show) drawTopCam(g, pr);
   // 🧱 3D 围栏 (画在机器人之上, 轨迹之下)
+  try{ if(typeof drawPlaceCells==='function') drawPlaceCells(g,pr); }catch(e){}   // 🧭 位置细胞层(库里来的坐标)
   if(typeof FENCES!=='undefined' && FENCES.length) drawFences(g,pr);
   // 🔩 光模块长方体 @ tool1 (2026-10-25 老倪: 「在三维视图画出光模块」)
   //    口径由老倪定: tool1 原点 = 模块头中心(= 长方体沿 Z 的一端); X = 上表面法向(厚度 T);
@@ -4400,6 +4423,173 @@ $('bSim').addEventListener('click', ()=>{
   try{ console.log('SIM bones', SIMON); }catch(e){}
 });
 setInterval(()=>{ if(SIMON) simBonesPull(); }, 200);
+
+// ═════ 🎥 MuJoCo 同视角 (2026-11-09 老倪: 「8797 页面上的三维视角参数接到 8802」) ═════
+//   口径: 人看到哪个角度, 模型(YOLO)就吃哪个角度 —— 本页相机(yaw/pitch/dist/tgt)直接变成
+//   8802 /frame.png 的 az/el/dist/tx/ty/tz(+fovy), 同一张图既贴回画布, 也能被 YOLO 直接读。
+//   换算: 页面 fwd=[cp·cy, cp·sy, -sp], eye=tgt-fwd·dist ⇒ MuJoCo az=yaw+180°, el=pitch, lookat=tgt, dist=dist。
+//   两个硬约束:
+//     ① 不能把图 drawImage 进 canvas —— 8802 不同源会 taint, 页面自己的 getImageData(autoZoomPlan/自检)会抛;
+//        所以图放画布**下面**一层 <img>, 画布透明, 矢量照旧叠在上面。
+//     ② 矢量叠层不能再用固定 F=520 —— 必须按渲染帧的 contain 矩形 + fovy 反推 F/CX/CY, 否则人看到的和模型看到的错位。
+var MJ={on:false, fovy:69.4, url:'', img:null, tLast:0, sent:'', got:'', n:0};   // fovy 与 8802 VIEWS['ar3d'] 同源: 2*atan((720/2)/520)=69.4°
+function mjContain(w,h){
+  const im=MJ.img;
+  if(!im||!im.naturalWidth||!im.naturalHeight) return null;
+  const a=im.naturalWidth/im.naturalHeight;
+  let iw=w, ih=w/a;
+  if(ih>h){ ih=h; iw=h*a; }
+  return {x:(w-iw)/2, y:(h-ih)/2, w:iw, h:ih};
+}
+function mjParams(){
+  // 8802 VIEWS['ar3d'] 已经把这套换算钉好了(实测 1px): azimuth=deg(yaw), elevation=-deg(pitch), fovy=69.4
+  const az=VR.yaw*180/Math.PI, el=-VR.pitch*180/Math.PI;
+  const t=VR.tgt||[0,0,0];
+  return 'az='+az.toFixed(1)+'&el='+el.toFixed(1)+'&dist='+VR.dist.toFixed(3)
+       +'&tx='+t[0].toFixed(3)+'&ty='+t[1].toFixed(3)+'&tz='+t[2].toFixed(3)
+       +'&fovy='+MJ.fovy.toFixed(1);
+}
+function mjLayout(){
+  const c=$('vr'), im=MJ.img, card=$('vrcard');
+  if(!c||!im||!card) return;
+  const r=c.getBoundingClientRect(), p=card.getBoundingClientRect();
+  im.style.left=(r.left-p.left)+'px'; im.style.top=(r.top-p.top)+'px';
+  im.style.width=r.width+'px';    im.style.height=r.height+'px';
+}
+function mjCamObj(){
+  const az=VR.yaw*180/Math.PI, el=-VR.pitch*180/Math.PI, t=VR.tgt||[0,0,0];
+  return {az:+az.toFixed(2), el:+el.toFixed(2), dist:+VR.dist.toFixed(4),
+          tx:+t[0].toFixed(4), ty:+t[1].toFixed(4), tz:+t[2].toFixed(4), fovy:+MJ.fovy.toFixed(1)};
+}
+let _camPushLast='', _camPushT=0;
+function mjPushCam(force){
+  // 🎥 2026-11-09 老倪: 「/video 没有跟 /ar3d 同步」⇒ 本页相机推给 8802, 直播窗口用同一机位渲染。
+  //   变动立刻推 + 每 2s 心跳(8802 侧 6s 没收到就当页面关了, 退回预设机位, 不假装同步)。
+  try{
+    const s=JSON.stringify(mjCamObj()), now=Date.now();
+    if(!force && s===_camPushLast && (now-_camPushT)<2000) return;
+    _camPushLast=s; _camPushT=now;
+    fetch('http://'+location.hostname+':8802/cam',{method:'POST',mode:'no-cors',
+      headers:{'Content-Type':'text/plain'},body:s}).catch(function(){});
+  }catch(e){}
+}
+setInterval(function(){mjPushCam(false);},500);
+function mjPull(force){
+  if(!MJ.on) return;
+  if(document.hidden) return;                      // 后台标签页不拉(省渲染线程)
+  const now=(typeof performance!=='undefined'?performance.now():Date.now());
+  if(!force && now-MJ.tLast<400) return;           // 400ms 下限 ≈2.5fps: 相机一变立即拉, 场景在动也要持续刷新
+  MJ.tLast=now; MJ.sent=mjParams();
+  const host=(location.hostname||'127.0.0.1');
+  MJ.url='http://'+host+':8802/frame.png?'+MJ.sent+'&_='+Math.round(now);
+  MJ.img.src=MJ.url;
+}
+function mjToggle(){
+  MJ.on=!MJ.on;
+  const im=MJ.img, c=$('vr'), b=$('bMj'), tag=$('mjtag');
+  if(im){ im.style.display=MJ.on?'block':'none'; }
+  if(c){ c.style.background=MJ.on?'transparent':'#070a0e'; }
+  if(tag){ tag.style.display=MJ.on?'block':'none'; }
+  if(b){ b.classList.toggle('on',MJ.on);
+         b.textContent=MJ.on?'🎥 MuJoCo 同视角(已接)':'🎥 MuJoCo 同视角'; }
+  if(MJ.on){ mjLayout(); mjPull(true); }
+  try{ drawVR(); }catch(e){}
+  try{ console.log('[MJ]', MJ.on?'开':'关', MJ.url||''); }catch(e){}
+}
+(function mjInit(){
+  const im=$('mjframe'), b=$('bMj'), tag=$('mjtag');
+  if(!im||!b) return;
+  MJ.img=im;
+  im.onload=function(){
+    MJ.n++; MJ.got=new Date().toLocaleTimeString(); MJ.tLoad=(typeof performance!=='undefined'?performance.now():Date.now());
+    if(MJ.on){ mjLayout(); if(tag) tag.textContent='🎥 8802 同视角 · 取回 '+MJ.got+' · '+MJ.url; try{ drawVR(); }catch(e){} }
+  };
+  im.onerror=function(){ if(tag) tag.textContent='⚠ 8802 渲染帧取不到(服务没起/端口不通): '+MJ.url;
+    try{ console.log('[MJ] 渲染帧取不到', MJ.url); }catch(e){} };
+  b.onclick=mjToggle;
+  // 场景在动: 独立定时器持续要新帧(不依赖 drawVR 被谁触发), 400ms 下限在 mjPull 里
+  setInterval(function(){ if(MJ.on) mjPull(false); }, 400);
+  // 帧龄: 每秒刷一次(老倪口径: 画面自身要标帧龄, 否则旧图看不出来)
+  setInterval(function(){
+    if(!MJ.on||!tag) return;
+    const now=(typeof performance!=='undefined'?performance.now():Date.now());
+    const age=MJ.tLoad?((now-MJ.tLoad)/1000).toFixed(1):'—';
+    tag.textContent='🎥 8802 同视角 · 取回 '+MJ.got+' · 帧龄 '+age+'s · '+MJ.url;
+  }, 800);
+})();
+
+// ═════ 🧭 位置细胞层 (2026-11-09 老倪: 「ar3d 是可视化的窗口, 工程配置里要有所有配置坐标」) ═════
+//   数据只从 /api/place_cells 来 (库 = data/skills/l2_atomic/place_cells.json, 由 tools/scene_places_build.py
+//   从围栏/示教台账/空间点/页面结构常数汇总, 禁手改) ⇒ 页面不再手打任何场景坐标, 这里只负责按库画。
+//   点类只画 示教位姿/站点/空间点; 动作锚点(motion_anchor/tuning_anchor)不画 —— 36+16 个会糊屏。
+var PC={on:false, doc:null, at:0, err:null, n:0};
+var PCOL={tray:'#3fb950',slot:'#58a6ff',socket:'#ff9f1a',structure:'#6e7681',sensor:'#d2a8ff',
+          station:'#ff7b72',approach_pose:'#ffd33d',teach_point:'#79c0ff',live_probe:'#8b949e',
+          fixture:'#8b949e'};
+var PC_PT={approach_pose:1,station:1,teach_point:1};
+async function pcPull(){
+  try{
+    const r=await (await fetch('/api/place_cells',{cache:'no-store'})).json();
+    if(r&&r.ok){ PC.doc=r; PC.at=Date.now(); PC.err=null; }
+    else PC.err=(r&&r.err)||'bad';
+  }catch(e){ PC.err=String(e).slice(0,60); }
+}
+function pcToggle(){
+  PC.on=!PC.on;
+  const b=$('bCells');
+  if(b){ b.classList.toggle('on',PC.on); b.textContent=PC.on?'🧭 位置细胞(已接)':'🧭 位置细胞'; }
+  if(PC.on) pcPull().then(()=>{ try{drawVR();}catch(e){} });
+  else { try{drawVR();}catch(e){} }
+}
+function drawPlaceCells(g,pr){
+  if(!PC.on) return 0;
+  if(!PC.doc){ pcPull(); return 0; }
+  let nb=0,np=0;
+  g.save(); g.lineWidth=1.15; g.setLineDash([4,3]);
+  for(const c of (PC.doc.cells||[])){
+    const k0=String(c.kind||'').split('.')[0];
+    const col=PCOL[k0]||'#7d8590';
+    const P=c.pos_mm;
+    if(!P||P[0]==null) continue;
+    if(c.shape==='box'&&c.size_mm&&c.size_mm.length===3&&c.size_mm[0]!=null){
+      const hx=c.size_mm[0]/2000,hy=c.size_mm[1]/2000,hz=c.size_mm[2]/2000;
+      const x=P[0]/1000,y=P[1]/1000,z=(P[2]==null?0:P[2])/1000;
+      const V=[];
+      for(let i=0;i<8;i++) V.push([x+(i&1?hx:-hx), y+(i&2?hy:-hy), z+(i&4?hz:-hz)]);
+      const E=[[0,1],[2,3],[4,5],[6,7],[0,2],[1,3],[4,6],[5,7],[0,4],[1,5],[2,6],[3,7]];
+      g.strokeStyle=col; g.globalAlpha=.55;
+      for(const e of E){ const a=pr(V[e[0]]), b2=pr(V[e[1]]); if(!a||!b2) continue;
+        g.beginPath(); g.moveTo(a.u,a.v); g.lineTo(b2.u,b2.v); g.stroke(); }
+      nb++;
+    } else if(PC_PT[k0]){
+      const p=pr([P[0]/1000,P[1]/1000,(P[2]==null?0:P[2])/1000]); if(!p) continue;
+      g.strokeStyle=col; g.globalAlpha=.95;
+      g.beginPath(); g.moveTo(p.u-4,p.v); g.lineTo(p.u+4,p.v); g.moveTo(p.u,p.v-4); g.lineTo(p.u,p.v+4); g.stroke();
+      np++;
+    }
+  }
+  g.restore();
+  const age=PC.at?((Date.now()-PC.at)/1000).toFixed(0):'—';
+  const cnt=PC.doc.counts||{};
+  const txt='🧭 位置细胞 '+(PC.doc.total||0)+' 枚 (盒'+nb+'/点'+np+') · 槽'+(cnt.slot||0)
+            +' · 料盘'+(cnt.tray||0)+' · 示教'+((cnt.approach_pose||0)+(cnt.teach_point||0)+(cnt.station||0))
+            +' · 库龄 '+age+'s'+(PC.err?(' · 取不到 '+PC.err):'');
+  g.save(); g.font='bold 12px monospace'; g.fillStyle='#79c0ff'; g.fillText(txt,8,32); g.restore();
+  window.__PC__={total:PC.doc.total,nb:nb,np:np,age:age,err:PC.err};
+  return nb+np;
+}
+(function pcInit(){
+  const b=$('bCells'); if(!b) return;
+  b.onclick=pcToggle;
+  setInterval(function(){ if(PC.on) pcPull(); }, 3000);
+  // 📺 8802 直播: 渲染站自己推 MJPEG (GET /video), 这里只负责开窗口 —— 画面与工位渲染同源同帧,
+  //   unlike 🎥 同视角层(那张是给 YOLO 对齐用的静态帧), 这条是连续流, 手机上也能直接看。
+  const L=$('bLiv');
+  if(L) L.onclick=function(){
+    window.open('http://'+(location.hostname||'127.0.0.1')+':8802/live','zmax8802live');
+  };
+})();
+
 // 🪟 2026-11-09 兜底看门狗: 上面那段自动开 SIM 写在 refresh() 里, 而 refresh() 一开头就
 //   await /api/traj —— 在没有 scene.json 的机器上它是 500 ⇒ 整个 refresh 抛进 catch ⇒
 //   /api/tcp 那段和自动开 SIM 永远不会执行(实测: SIMON 一直 false, 页面一条臂都没有)。
@@ -5117,7 +5307,7 @@ async function robotTick(){
         drw:(typeof DRWN!=='undefined')?DRWN:null,
         cw:(document.getElementById('vr')||{}).width||null,
         ch:(document.getElementById('vr')||{}).height||null,
-        bld:'2026-11-09 r89',
+        bld:'2026-11-09 r92',
         // 🩺 2026-10-29 老倪「开状态空间就看不到手里那颗模块」: 手里有没有货 / 落在第几段 直接上报
         drv:(typeof ARCMD!=='undefined'&&ARCMD.drv)||'',
         carry:(typeof INSP!=='undefined'&&INSP.carry)?1:0,

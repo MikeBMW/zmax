@@ -1593,6 +1593,43 @@ class H(BaseHTTPRequestHandler):
                     self._json(_b)
                 except Exception as _e:                                     # noqa: BLE001
                     self._json({"ok": False, "err": "%s: %s" % (type(_e).__name__, str(_e)[:160])})
+            elif p == "/api/place_cells":     # 🧭 场景位置细胞 (工程参数中心的 3D 元素精确坐标 · 单一真源)
+                #   2026-11-09 老倪: 「ar3d 是可视化的窗口, 但工程配置中要有所有配置坐标; L2 层记忆库要
+                #   记录所有这些位置信息, 与大脑神经元的位置细胞同样作用」⇒ 页面与模型都从这一份读。
+                #   真源 = data/skills/l2_atomic/place_cells.json (tools/scene_places_build.py 生成, 禁手改)。
+                #   ?kind=slot 过滤 · ?q=x,y,z 查高斯发放 · ?stats=1 只回摘要 · 每次热读磁盘(改了库不用重启)
+                try:
+                    _pf = os.path.join(REPO, "data", "skills", "l2_atomic", "place_cells.json")
+                    with open(_pf, "rb") as _f:
+                        _doc = json.loads(_f.read().decode("utf-8"))
+                    _doc["ok"] = True
+                    _doc["age_s"] = round(time.time() - os.path.getmtime(_pf), 1)
+                    _doc["src"] = "data/skills/l2_atomic/place_cells.json (scene_places_build.py 生成)"
+                    _k = qs.get("kind")
+                    if _k:
+                        _doc["cells"] = [c for c in _doc.get("cells", [])
+                                         if c.get("kind") == _k or str(c.get("kind", "")).startswith(_k + ".")]
+                        _doc["filtered"] = _k
+                    _q = qs.get("q")
+                    if _q:
+                        _p = [float(v) for v in _q.split(",")]
+                        _fire = []
+                        for _c in _doc.get("cells", []):
+                            _pm, _sz = _c.get("pos_mm"), _c.get("size_mm") or [0, 0, 0]
+                            if not _pm or any(v is None for v in _pm):
+                                continue
+                            _d = math.sqrt(sum((_p[i] - float(_pm[i])) ** 2 for i in range(3)))
+                            _r = max(20.0, 0.5 * math.sqrt(sum(float(v or 0) ** 2 for v in _sz)))
+                            _fire.append({"id": _c["id"], "name": _c.get("name"), "kind": _c.get("kind"),
+                                          "d_mm": round(_d, 1), "w": round(math.exp(-0.5 * (_d / _r) ** 2), 4)})
+                        _fire.sort(key=lambda t: (-t["w"], t["d_mm"]))
+                        _doc["fire"] = _fire[:max(1, int(qs.get("k", "6") or 6))]
+                    if qs.get("stats"):
+                        _doc.pop("cells", None)
+                        _doc.pop("adjacency", None)
+                    self._json(_doc)
+                except Exception as _e:                                       # noqa: BLE001
+                    self._json({"ok": False, "err": "%s: %s" % (type(_e).__name__, str(_e)[:200])})
             elif p == "/api/robot_state":        # 🤖 机器人状态机 (是否在插拔 ⇒ 页面顶部一眼看到)
                 #   唯一依据 = tools/robot_state.py (控制器三查 + 位姿 + 阶段文件), 本服务只做只读代发。
                 try:
