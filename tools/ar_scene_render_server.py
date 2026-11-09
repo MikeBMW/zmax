@@ -686,9 +686,10 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
                             c.elevation, c.azimuth = cam0[name]
                         model.vis.global_.fovy = float(VIEWS[name].get("fovy", 45.0))
                         # 顶视: 关掉 group 3 (设备/相机盒)。上横梁悬在料盘正上方, 不关就把料盘全盖住。
+                        # MjvOption 默认 geomgroup=[1,1,1,0,0,0] ⇒ group3 天生是关的!
+                        #   只写 geomgroup[3]=0 等于"永远是关", 设备/相机盒哪都看不见 (实测差 31 灰度)。
                         _op = mujoco.MjvOption()
-                        if name == "top" or float(c.elevation) <= -70.0:
-                            _op.geomgroup[3] = 0
+                        _op.geomgroup[3] = 0 if (name == "top" or float(c.elevation) <= -70.0) else 1
                         renderer.update_scene(data, c, _op)
                         img = np.asarray(renderer.render())
                         box, px = gold_box(gold_mask(img))
@@ -745,8 +746,7 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
                     model.vis.global_.fovy = float(_rq["fovy"])
                     # 任意视角也要遵守同一条: 俯角 <= -70° ⇒ 关掉设备/相机盒 (否则顶视被横梁盖死)
                     _op2 = mujoco.MjvOption()
-                    if float(_cc.elevation) <= -70.0:
-                        _op2.geomgroup[3] = 0
+                    _op2.geomgroup[3] = 0 if float(_cc.elevation) <= -70.0 else 1   # 默认是关的, 斜视要打开
                     renderer.update_scene(data, _cc, _op2)
                     _im = np.asarray(renderer.render())
                     _ok, _buf = cv2.imencode(".png", cv2.cvtColor(_im, cv2.COLOR_RGB2BGR),
@@ -844,8 +844,8 @@ class Handler(BaseHTTPRequestHandler):
             cam_name = "ar3d"
         # 📷 顶视 (老倪 2026-11-09): 缓存帧里的 views["top"] 与实际取景不一致 (实测仍是斜视,
         #   与 free-cam 正俯视差 74.5 灰度), 这里改成**现场按预设参数渲染**, 不再读缓存。
-        if cam_name == "top" and p in ("/", "/frame.png", "/frame.jpg"):
-            _v = VIEWS["top"]
+        if cam_name in ("top", "topmid") and p in ("/", "/frame.png", "/frame.jpg"):
+            _v = VIEWS[cam_name]
             try:
                 self._send(200, render_free({
                     "az": ["%.4f" % _v["azimuth"]], "el": ["%.4f" % _v["elevation"]],
