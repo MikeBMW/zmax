@@ -688,7 +688,18 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(503, ("free-cam: %s: %s" % (type(e).__name__, e)).encode(), "text/plain")
             return
         if p in ("/", "/frame.png", "/frame.jpg"):
-            b = (views.get(cam_name) or {}).get("png") or (st["png"] if cam_name == "close" else b"")
+            b = b""
+            if qs.get("live"):
+                # 👁 live=1: 直播窗口要的是「和 AR 页同一个机位」⇒ 有新鲜推来的相机就现场按它渲染。
+                #   不能拿 views[] 里的缓存帧 —— 那是预设机位, 老倪看到的就是「/video 与 AR 场景不同步」。
+                try:
+                    _cq = _cam_sync_read()
+                    if _cq:
+                        b = render_free(_cq)
+                except Exception:                                        # noqa: BLE001
+                    b = b""
+            if not b:
+                b = (views.get(cam_name) or {}).get("png") or (st["png"] if cam_name == "close" else b"")
             if not b and cam_name != "close":
                 # pull-frame-v1b: 直播窗口要的是"当前跟随机位的一张图" ⇒ 与 /video 同口径现场渲染,
                 #   否则页面没在推视角时这里只有 503 (老倪右键新标签打开就一片空白)
@@ -803,18 +814,18 @@ class Handler(BaseHTTPRequestHandler):
 #w{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
 #v{max-width:100%;max-height:100%}
 #h{position:fixed;left:10px;top:8px;color:#79c0ff;font:bold 12px monospace;text-shadow:0 0 6px #000}
-</style><div id="h"></div><div id="w"><img id="v" src="/frame.png?cam=ar3d" alt="8802 render stream"></div>
+</style><div id="h"></div><div id="w"><img id="v" src="/frame.png?cam=ar3d&live=1" alt="8802 render stream"></div>
 <script>
 var t0=Date.now(),v=document.getElementById('v'),h=document.getElementById('h'),cam='预设机位';
 // pull-frame-v1: 每 100ms 拉一张 /frame.png?cam=ar3d ⇒ 右键=当前帧真图
-var FPS=10;function tick8802(){v.src='/frame.png?cam=ar3d&_='+Date.now();}
+var FPS=10;function tick8802(){v.src='/frame.png?cam=ar3d&live=1&_='+Date.now();}
 setInterval(tick8802,Math.round(1000/FPS));
 setInterval(function(){h.textContent='Z-MAX AR 8802 · PNG 10fps · '+(v.naturalWidth||0)+'×'+(v.naturalHeight||0)
  +' · 视角:'+cam+' · 已看 '+Math.round((Date.now()-t0)/1000)+'s · '+location.host+'/video';},500);
 setInterval(function(){fetch('/cam',{cache:'no-store'}).then(function(r){return r.json();}).then(function(j){
   cam = j.follow ? ('跟随 ar3d 页面 '+(j.age_s)+'s前') : '预设机位(页面没在推)';}).catch(function(){});},1500);
 v.onerror=function(){h.textContent='流断了(8802 未起? 或通道数已满 3) · 10s 后自动重连';
- setTimeout(function(){v.src='/frame.png?cam=ar3d&_='+Date.now();},10000);};
+ setTimeout(function(){v.src='/frame.png?cam=ar3d&live=1&_='+Date.now();},10000);};
 </script>""").encode("utf-8")
             self._send(200, _html, "text/html; charset=utf-8")
             return
