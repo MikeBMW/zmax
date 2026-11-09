@@ -19,4 +19,11 @@ export ZMAX_CANVAS_HZ=10
 export ZMAX_UPH_AR_PUB=1
 export ZMAX_YOLO_SHARE=1
 export PYTHONUNBUFFERED=1
-exec ./gui-venv311/bin/python -m debugpy --listen 127.0.0.1:5678 tools/ss_canvas_loop.py
+# 🔴 2026-11-09 老倪实测: 调试完忘了 start 回去 ⇒ ar_cmd.json 停在那一秒, 页面「右臂不动」,
+#   而 systemd 那边是 inactive、没有任何报错。收工自动把常驻循环拉回来。
+cleanup() {
+  echo "[debug] 退出 ⇒ 把常驻循环拉回来 (否则右臂不动)"
+  sudo systemctl start zmax-ss-canvas-loop
+}
+trap cleanup EXIT INT TERM
+./gui-venv311/bin/python -m debugpy --listen 127.0.0.1:5678 tools/ss_canvas_loop.py
