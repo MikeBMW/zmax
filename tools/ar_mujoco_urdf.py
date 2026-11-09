@@ -121,14 +121,16 @@ def arm_mjcf(side: str, base_x: float, base_y: float, base_z: float,
     #    会整体歪出腕部、看着"悬空脱开" ⇒ 夹爪留在法兰系, 只有模块挂在 tool1 系。
     out.append('%s  <geom name="%s_t1_flange" type="cylinder" size="0.030 0.012" pos="0 0 0.012" '
                'rgba="0.36 0.39 0.44 1" contype="0" conaffinity="0"/>' % (ind, side))
-    out.append('%s  <geom name="%s_t1_body" type="box" size="0.026 0.022 0.048" pos="0 0 0.075" '
+    out.append('%s  <geom name="%s_t1_body" type="box" size="0.026 0.022 0.051" pos="0 0 0.075" '
                'rgba="0.20 0.23 0.27 1" contype="0" conaffinity="0"/>' % (ind, side))
-    for f, off in (("a", 0.0095), ("b", -0.0095)):
-        # 两指: 沿模块宽度方向开合; 模块中心在法兰系 z≈0.237, 指尖伸到 0.20~0.265
-        out.append('%s  <body name="%s_finger%s" pos="0 %.4f 0.205">' % (ind, side, f, off))
-        out.append('%s    <joint name="%s_f%s" type="slide" axis="0 1 0" range="-0.004 0.004" '
+    # 两指: 从执行器顶(0.123)一直伸到模块尾(0.265) ⇒ 中心 0.194 / 半长 0.071, 不再"执行器上悬着一根指头"
+    # y 位置按模块的**实际投影**定 (模块在 tool1 系里转了 33.6°, 法兰系 AABB y = -0.0147..0.0253):
+    #   内侧面对齐 AABB 两侧, 不互插也不留缝; x 对齐模块中心 -0.004
+    for f, fy in (("a", 0.0303), ("b", -0.0197)):
+        out.append('%s  <body name="%s_finger%s" pos="-0.004 %.4f 0.194">' % (ind, side, f, fy))
+        out.append('%s    <joint name="%s_f%s" type="slide" axis="0 1 0" range="-0.003 0.003" '
                    'damping="1"/>' % (ind, side, f))
-        out.append('%s    <geom name="%s_fg%s" type="box" size="0.007 0.005 0.032" '
+        out.append('%s    <geom name="%s_fg%s" type="box" size="0.010 0.005 0.071" '
                    'rgba="0.58 0.61 0.66 1" contype="0" conaffinity="0"/>' % (ind, side, f))
         out.append('%s  </body>' % ind)
     out.append('%s<body name="%s_tool1" pos="%.6f %.6f %.6f" '
