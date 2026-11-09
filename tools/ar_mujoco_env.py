@@ -296,7 +296,7 @@ def build_mjcf() -> str:
     <quality shadowsize="2048"/>
     <!-- 🔆 2026-11-09: 换成真 URDF 网格后整帧偏暗 (实测 mean 20.4/255, 82%% 像素<40),
          目检看不清料盘与臂; 头灯给一层环境光 + 漫反射, 不动几何/标定。 -->
-    <headlight ambient="0.42 0.42 0.46" diffuse="0.55 0.55 0.58" specular="0.12 0.12 0.12"/>
+    <headlight ambient="0.60 0.60 0.64" diffuse="0.70 0.70 0.74" specular="0.12 0.12 0.12"/>
   </visual>
   <asset>
     <texture name="grid" type="2d" builtin="checker" rgb1="0.24 0.25 0.28" rgb2="0.17 0.18 0.21"
@@ -305,7 +305,7 @@ def build_mjcf() -> str:
 %(meshes)s
   </asset>
   <worldbody>
-    <light pos="%(lx).4f %(ly).4f %(lz).4f" dir="0 0 -1" diffuse="1.15 1.15 1.2" specular="0.25 0.25 0.25"/>
+    <light pos="%(lx).4f %(ly).4f %(lz).4f" dir="0 0 -1" diffuse="1.35 1.35 1.4" specular="0.25 0.25 0.25"/>
     <light pos="%(l2x).4f %(l2y).4f %(l2z).4f" dir="0.3 0.7 -1" diffuse="0.55 0.55 0.6"/>
     <geom name="floor" type="plane" pos="0 0 -0.750" size="3 3 0.05" material="grid"/>
 %(geo3d)s
