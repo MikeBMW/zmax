@@ -16,8 +16,11 @@
 
 用法: QT_QPA_PLATFORM=offscreen gui-venv311/bin/python tools/verify_l2_linkage.py
 """
+import ast
+import glob as _glob
 import json
 import os
+import re
 import signal
 import sys
 import time
@@ -133,6 +136,50 @@ def call_with_timeout(fn, ctx):
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, old)
+
+
+# ── 语义契约 (ZMP-2026-015 步骤4) ─────────────────────────────────────────
+# 从 impl 源码提取 _pick("inN", ("k1","k2",...)) 的取值键序列。
+# 判据: 上游载荷非空, 但下游取值键与载荷键集合**无交集** ⇒ 语义错读
+#   (端口有值、日志干净、功能实际失效 —— 比"空口"更隐蔽的一类断点)
+# 只加诊断, **不改变四态计数**, 所以真联通率基线不受影响。
+def _semantic_contract() -> dict:
+    here = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.dirname(here)
+    out: dict = {}
+    for fp in _glob.glob(os.path.join(root, "src/lerobot/middleware/nodes/impl/*.py")):
+        try:
+            txt = open(fp, encoding="utf-8", errors="replace").read()
+        except OSError:
+            continue
+        # 用 AST 取真实调用 —— 正则会把 docstring/注释里「原来是这样写的」历史代码当成契约,
+        # 实测误报: safety_limit_impl 的 in5 明明已改成质量门, 正则仍从 docstring 抓到旧键。
+        try:
+            _tree = ast.parse(txt)
+        except SyntaxError:
+            continue
+        _found: dict = {}
+        for node in ast.walk(_tree):
+            if not isinstance(node, ast.Call):
+                continue
+            f = node.func
+            if not (isinstance(f, ast.Name) and f.id == "_pick"):
+                continue
+            if len(node.args) < 2:
+                continue
+            a0, a1 = node.args[0], node.args[1]
+            if not (isinstance(a0, ast.Constant) and isinstance(a0.value, str)):
+                continue
+            keys: list = []
+            if isinstance(a1, (ast.Tuple, ast.List)):
+                for e in a1.elts:
+                    if isinstance(e, ast.Constant) and isinstance(e.value, str):
+                        keys.append(e.value)
+            if keys:
+                _found.setdefault(a0.value, tuple(keys))
+        for port, keys in _found.items():
+            out.setdefault(os.path.basename(fp), {})[port] = keys
+    return out
 
 
 def main():
@@ -279,11 +326,42 @@ def main():
             st = "OK"
         rows.append((st, l["f"], l["f_port"], l["t"], l["t_port"], l.get("label", "")))
 
-    order_st = {"OK": 0, "空口": 1, "未送达": 2, "崩(上游)": 3}
+    # ── 语义错读细分 (ZMP-2026-015 步骤4): 载荷非空但下游取值键全不命中 ──
+    _sem = _semantic_contract()
+    _node_src = {}
+    for _n in (flow.get("nodes") or []):
+        _s = (_n.get("params") or {}).get("source")
+        if _s:
+            _node_src[_n.get("id")] = os.path.basename(str(_s))
+    _misread = []
+    _rows2 = []
+    for st, f, fp, t, tp, lab in rows:
+        if st == "未送达":
+            _up = produced.get((f, fp))
+            if _up not in (None, {}, [], "") and isinstance(_up, dict):
+                _impl = _node_src.get(t)
+                _keys = (_sem.get(_impl) or {}).get(tp) if _impl else None
+                if _keys:
+                    _have = tuple(_up.keys())
+                    if not (set(_keys) & set(_have)):
+                        st = "未送达·语义错读"
+                        _misread.append((t, tp, _impl, _keys, _have))
+        _rows2.append((st, f, fp, t, tp, lab))
+    rows = _rows2
+
+    order_st = {"OK": 0, "空口": 1, "未送达": 2, "未送达·语义错读": 2, "崩(上游)": 3}
     rows.sort(key=lambda r: order_st.get(r[0], 9))
     for st, f, fp, t, tp, lab in rows:
-        icon = {"OK": "✅", "空口": "⚪", "未送达": "❌", "崩(上游)": "💥"}.get(st, "?")
+        icon = {"OK": "✅", "空口": "⚪", "未送达": "❌", "未送达·语义错读": "🔍",
+                "崩(上游)": "💥"}.get(st, "?")
         print("   %s %-10s %-6s → %-10s %-6s %-6s %s" % (icon, f, fp, t, tp, st, lab[:24]))
+
+    if _misread:
+        print("\n   🔍 语义错读 %d 处 (端口有值、日志干净、功能失效):" % len(_misread))
+        for t, tp, impl, keys, have in _misread:
+            print("      %-11s %-5s ← %s" % (t, tp, impl))
+            print("         取值键  %s" % (keys,))
+            print("         载荷键  %s" % (have[:8],))
 
     # ── ⑤ 汇总 ───────────────────────────────────────────────────────────
     if _multi:
