@@ -59,7 +59,7 @@ def node_ss_mani(ctx):
                 else:
                     log(f"   自由空间 (转移段无接触约束) · ‖e‖={r['progress']:.4f}m · "
                         f"V̇={r['Vdot']:.3e}")
-            return _NodeOut({
+            _rb = {
                 "kind": "contact_manifold", "layer": "L4", "ok": True,
                 "stage": stage, "idx": idx, "t": round(float(fr["t"]), 3),
                 "frame_src": fr["src"], "frame_from": fr["from"],
@@ -70,7 +70,9 @@ def node_ss_mani(ctx):
                 "Vdot": float(r.get("Vdot") or 0.0),
                 "summary": str(cm.summarize(r)),
                 "src": "src/lerobot/manifold/manifold_layer.py::ContactManifold.decompose",
-            })
+            }
+            # 端口: 画布 ssmani_c.out1 → ssdec.in5(接触流形坐标) / ssvideo.in3
+            return _NodeOut({"out1": dict(_rb), "out2": dict(_rb), **_rb})
         if "性能" in name:
             _ll2 = _SS_STATE.get("lora_l4") or {}
             _lp = _ll2.get("performance") or {}
@@ -84,7 +86,7 @@ def node_ss_mani(ctx):
             if log:
                 log(f"🧮 性能流形 (真实·t={fr['t']:.2f}s {stage} · {fr['from']}帧{idx}): {pm.summarize(r)}")
                 log(f"   修正方向 ∇V_p={np.round(r['grad'],4)} (最优对准 = 沿 −∇ 下山到 δ→0)")
-            return _NodeOut({
+            _pb = {
                 "kind": "perf_manifold", "layer": "L4", "ok": True,
                 "stage": stage, "idx": idx, "t": round(float(fr["t"]), 3),
                 "frame_src": fr["src"], "frame_from": fr["from"],
@@ -93,7 +95,9 @@ def node_ss_mani(ctx):
                 "grad": ([float(x) for x in r["grad"]] if r.get("grad") is not None else []),
                 "summary": str(pm.summarize(r)),
                 "src": "src/lerobot/manifold/manifold_layer.py::PerformanceManifold.evaluate",
-            })
+            }
+            # 端口: 画布 ssmani_p.out1 → ssdec.in5(性能流形代价) / ssvideo.in4
+            return _NodeOut({"out1": dict(_pb), "out2": dict(_pb), **_pb})
         if log:
             log("⚠️ 流形层: 节点名未识别接触/性能分派")
         return False

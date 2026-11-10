@@ -302,4 +302,21 @@ def node_ss_calib_mani(ctx):
 
 
 # 与既有 *_impl.py 同约定: 外部也可以 from ... import run
+# ── 端口包装 (2026-11-10): 画布 n_calib_mani.out1/2/3 → ss_mani_eng.in6(M)、
+#    ssmani_c.in3(M 惯性尺度)、ssmani_exp.in6(M 梯度流/动量)。实现只返回扁平 _NodeOut,
+#    三个端口恒空 ⇒ 流形引擎拿不到主参数 M。不改任何标定逻辑。
+_raw_calib_mani = node_ss_calib_mani
+
+
+def node_ss_calib_mani(ctx):
+    _r = _raw_calib_mani(ctx)
+    if not isinstance(_r, dict):
+        return _r
+    if any(str(k).startswith("out") for k in _r):
+        return _r
+    _c = dict(_r)
+    _c.setdefault("kind", "calib_mani")
+    return _NodeOut({"out1": dict(_c), "out2": dict(_c), "out3": dict(_c), **_c})
+
+
 run = node_ss_calib_mani

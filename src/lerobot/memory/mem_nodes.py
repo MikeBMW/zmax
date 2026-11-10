@@ -604,3 +604,38 @@ def node_ss_mem_field(ctx):
         if log:
             log(f"⚠️ 势场记忆联络失败: {type(e).__name__}: {e}")
         return False
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 端口包装 (2026-11-10): 画布给这 6 个记忆节点都连了 out1, 但实现只返回内部 dict
+# 或 True ⇒ 端口恒为 None, 下游(势场联络/调度/前馈/原子技能/总装中枢)全部读到空。
+# 这里统一补 out1/out2, 不改任何记忆读写逻辑。
+# ══════════════════════════════════════════════════════════════════════════════
+def _wrap_mem_port(fn, kind):
+    def _wrapped(ctx):
+        _r = fn(ctx)
+        if isinstance(_r, dict) and any(str(k).startswith("out") for k in _r):
+            return _r
+        if isinstance(_r, dict):
+            _b = dict(_r)
+            _b.setdefault("kind", kind)
+            _b.setdefault("ok", True)
+            return {"out1": dict(_b), "out2": dict(_b), **_b}
+        _b = {"kind": kind, "ok": bool(_r), "value": _r}
+        return {"out1": dict(_b), "ok": bool(_r)}
+
+    _wrapped.__name__ = getattr(fn, "__name__", kind)
+    _wrapped.__doc__ = getattr(fn, "__doc__", "")
+    return _wrapped
+
+
+node_ss_mem_l2 = _wrap_mem_port(node_ss_mem_l2, "mem_l2")
+node_ss_mem_l3 = _wrap_mem_port(node_ss_mem_l3, "mem_l3")
+node_ss_mem_l4 = _wrap_mem_port(node_ss_mem_l4, "mem_l4")
+node_ss_mem_share = _wrap_mem_port(node_ss_mem_share, "mem_share")
+node_ss_mem_field = _wrap_mem_port(node_ss_mem_field, "mem_field")
+if "node_ss_mem_links" in globals():
+    node_ss_mem_links = _wrap_mem_port(node_ss_mem_links, "mem_links")
+
+
+run = node_ss_mem_field

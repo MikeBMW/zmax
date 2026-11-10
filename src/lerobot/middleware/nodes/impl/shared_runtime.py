@@ -3700,8 +3700,13 @@ def node_ss_abc(ctx):
         return False
 
 def node_ss_mani(ctx):
-    """→ nodes/ss_mani_p.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
-    from .ss_mani_p import node_ss_mani as _impl
+    """🧮 接触流形 / 性能流形 —— 薄壳: 真实现 nodes/ss_mani_c.py::node_ss_mani
+
+    ⚠️ 2026-11-10 实测: 原来转调 `.ss_mani_p`(全仓不存在) ⇒ 接触流形/性能流形
+       两个节点点了必崩; 真正的实现一直在 ss_mani_c.py(107 行, 内部按 '接触'/'性能'
+       分派 ContactManifold / PerformanceManifold)里, 却没有任何注册引用它。
+    """
+    from .ss_mani_c import node_ss_mani as _impl
     return _impl(ctx)
 
 

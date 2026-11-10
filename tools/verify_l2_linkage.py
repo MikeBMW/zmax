@@ -41,6 +41,12 @@ WANTED = [
 
 TIMEOUT_S = 15
 
+# 可选: --nodes a,b,c 只跑指定子图 (默认 L2 主干)
+if "--nodes" in sys.argv:
+    _i = sys.argv.index("--nodes")
+    if _i + 1 < len(sys.argv):
+        WANTED = [x.strip() for x in sys.argv[_i + 1].split(",") if x.strip()]
+
 
 class _TO(Exception):
     pass
@@ -125,6 +131,7 @@ def main():
     got = {}           # (nid, "in1") -> 实际喂进的值 (取最后一拍)
     exec_log = {}
     logs = []
+    _multi = []        # (节点, 端口, 上游条数, 其中非空条数)
 
     for _pass in (1, 2):
         if _pass == 2:
@@ -137,12 +144,20 @@ def main():
                 continue
             ctx = {"log": lambda m, _n=nid: logs.append((_n, str(m)[:120])),
                    "params": n.get("params") or {}, "name": n.get("name")}
+            # 同一入端口可能有多个上游 (如 ssdec.in5 ← 接触流形/性能流形/潜空间 三条线):
+            #   判定「下游能不能拿到」要用**任一非空**, 不能只看最后一条 (后写覆盖 → 误报未送达)
+            _port_vals = {}
             for l in in_sub:
                 if l["t"] != nid:
                     continue
                 v = produced.get((l["f"], l["f_port"]))
-                got[(nid, l["t_port"])] = v
-                ctx[l["t_port"]] = v
+                _port_vals.setdefault(l["t_port"], []).append(v)
+                ctx[l["t_port"]] = v          # 保真: 引擎侧也是最后一条覆盖
+            for _p, _vs in _port_vals.items():
+                _nb = [v for v in _vs if v is not None]
+                got[(nid, _p)] = _nb[0] if _nb else None
+                if len(_vs) > 1:
+                    _multi.append((nid, _p, len(_vs), len(_nb)))
             t0 = time.time()
             try:
                 out = call_with_timeout(fn, ctx)
@@ -200,6 +215,14 @@ def main():
         print("   %s %-10s %-6s → %-10s %-6s %-6s %s" % (icon, f, fp, t, tp, st, lab[:24]))
 
     # ── ⑤ 汇总 ───────────────────────────────────────────────────────────
+    if _multi:
+        print("\n④ 多上游共用同一入端口 (引擎侧是「最后一条覆盖」, 会丢掉前面的信号):")
+        _last = {}
+        for nid, p, n_tot, n_ok in _multi:
+            _last[(nid, p)] = (n_tot, n_ok)
+        for (nid, p), (n_tot, n_ok) in _last.items():
+            print("   %-13s %-5s ← %d 条上游, 其中 %d 条有值%s"
+                  % (nid, p, n_tot, n_ok, "" if n_ok == n_tot else "   ⚠️ 有信号被覆盖"))
     from collections import Counter
     cnt = Counter(r[0] for r in rows)
     print("\n" + "=" * 86)

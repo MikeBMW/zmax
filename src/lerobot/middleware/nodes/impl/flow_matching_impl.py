@@ -84,6 +84,23 @@ def _l4_in_summary(ctx):
             keep = {"keys": sorted(val.keys())[:8]}
         keep["_age_s"] = (item.get("age_s") if isinstance(item, dict) else None)
         out[port] = keep
+    # ⚠️ 画布 ssdec.in5 接了 3 条上游(接触流形/性能流形/潜空间), 而引擎 _collect_inputs
+    #    是 ins[port]=src「最后一条覆盖」⇒ 只留最后那条, 另外两个流形信号被丢。
+    #    这里从两个流形节点写的 _SS_STATE 补齐, 让动作头同时看到 contact + performance。
+    try:
+        from .shared_runtime import _SS_STATE as _SST
+        _extra = {}
+        _cm = _SST.get("contact_mani")
+        if isinstance(_cm, dict):
+            _extra["contact"] = {k: _cm.get(k) for k in
+                                 ("progress", "risk", "risk_th", "Vdot", "axis") if k in _cm}
+        _pm = _SST.get("perf_mani")
+        if isinstance(_pm, dict):
+            _extra["performance"] = {k: _pm.get(k) for k in ("V_p", "eta", "grad") if k in _pm}
+        if _extra:
+            out["in5_sources"] = _extra
+    except Exception:                                                  # noqa: BLE001
+        pass
     return out
 
 
