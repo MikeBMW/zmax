@@ -108,7 +108,42 @@ def node_ss_s1(ctx):
         # 端口必须真产 (画布: sssensor.out1→ssobs.in1 融合特征 / out2→ss_mani_eng.in1 43D 状态)
         #   原来只 return True ⇒ 统一状态空间的入口读到 None (2026-11-10 实测空口)
         _f43 = [round(float(x), 6) for x in np.asarray(_ss_ensure_obs43(log), dtype=float).ravel()[:43]]
+        # 🔍 2026-11-10: 画布 `ssaoi.out1 → sssensor.in4`(外观质量门) 之前**零读取** ——
+        #   本节点原来只走内部通道(_ss_env_obs/_ss_tactile_mod), 根本不看 ctx 端口 ⇒
+        #   6 条入边(in1~in6)全是"连着但没人读"。这里先把质量门这条接上:
+        #   AOI 的判定不进 obs43(会破坏 39D+4D 的维度语义), 而是作为**独立质量观测**随融合结果下发,
+        #   由调度层(safety_limit_impl.in5)做硬否决、由界面做良率展示 —— 各层各管一件事。
+        _aoi = {}
+        try:
+            _pv = ctx.get("in4")
+            _av = _pv.get("value") if isinstance(_pv, dict) else _pv
+            if isinstance(_av, dict) and (_av.get("kind") == "aoi" or "verdict" in _av or "pass" in _av):
+                _verdict = str(_av.get("verdict") or "").lower()
+                _aoi = {
+                    "pass": _av.get("pass"),
+                    "verdict": _av.get("verdict"),
+                    "verdict_why": _av.get("verdict_why"),
+                    "defect_n": _av.get("defect_n"),
+                    "scratch": _av.get("scratch"), "blob": _av.get("blob"),
+                    "focus": _av.get("focus"),
+                    "age_s": _av.get("age_s"), "stale": bool(_av.get("stale")),
+                    "seq": _av.get("seq"),
+                    # 语义分开: 取像不健康 ≠ 工件 NG (2026-10-08 教训)
+                    "imaging_ok": (_verdict == "ok"),
+                    "usable": bool(_av.get("pass") is not None and _verdict == "ok"
+                                   and not _av.get("stale")),
+                }
+                _SS_STATE["aoi_gate"] = _aoi
+            elif _pv is not None:
+                _aoi = {"pass": None, "usable": False,
+                        "why": "in4 载荷非 AOI 形态(%s)" % type(_av).__name__}
+                _SS_STATE["aoi_gate"] = _aoi
+            else:
+                _aoi = {"pass": None, "usable": False, "why": "in4 未连/无值"}
+        except Exception as _e:                                          # noqa: BLE001
+            _aoi = {"pass": None, "usable": False, "why": "in4 读取异常: %s" % _e}
         _fus = {"kind": "fused43", "layer": "L2", "dim": len(_f43),
+                "aoi": _aoi,
                 "obs43": _f43, "obs39": _f43[:39], "tactile": _f43[39:43],
                 "tcp": _f43[0:3], "peg": _f43[4:7], "hole": _f43[36:39],
                 "fusion_src": _SS_STATE.get("fusion_src", "env"),
@@ -116,6 +151,12 @@ def node_ss_s1(ctx):
                 "box3d_dev_mm": _SS_STATE.get("box3d_dev_mm"),
                 "seg_mask3d_dev_mm": _SS_STATE.get("seg_mask3d_dev_mm"),
                 "age_s": 0.0, "source": "ss_sensor 融合定位建图"}
+        if log and _aoi.get("verdict"):
+            log("🔍 外观质量门(in4): verdict=%s pass=%s 缺陷=%s 可用=%s%s" % (
+                _aoi.get("verdict"), _aoi.get("pass"), _aoi.get("defect_n"), _aoi.get("usable"),
+                (" · " + str(_aoi.get("why"))) if _aoi.get("why") else ""))
+        elif log:
+            log("🔍 外观质量门(in4): %s" % (_aoi.get("why") or "无"))
         return {"out1": dict(_fus), "out2": dict(_fus),
                 "out3": {"kind": "fusion_dev",
                          "box3d_dev_mm": _SS_STATE.get("box3d_dev_mm"),

@@ -68,6 +68,56 @@ def guard_pose(pose, cur_mm=None):
             "clipped": clipped, "frame": frame}
 
 
+def _quality_gate(pv):
+    """🔍 AOI 质量门判定 —— 画布 `ssaoi.out1 → sssched.in5` 标签就是「质量门」。
+
+    ⚠️ 2026-11-10 实测: 这行原来是 `_pick("in5", ("contact_p","p","score"))` —— 把质量门
+       当 contact_p 的兜底读, 而 AOI 载荷里没有这三个键 ⇒ 取不到 ⇒ 这条边**端口有值却等于没接**。
+       比空口更隐蔽(空口是 None, 这里是"读到但读错字段")。
+
+    判定口径 (与 2026-10-08「参数错的帧上谈缺陷判定没有意义」一致):
+        · 无载荷 / 未出判决 / 快照过期  ⇒ 门不可用, **不拦截** (信息不全不许拦产)
+        · 取像不健康 (verdict != ok)   ⇒ 门不可用, **不拦截** (这是相机问题, 不是工件 NG)
+        · 取像健康 且 pass is False     ⇒ **真 NG, 拦截**
+        · 取像健康 且 pass is True      ⇒ 放行
+    返回 dict 永远带 available/block/why 三键, 让「接没接、拦没拦」可观测。
+    """
+    v = pv.get("value") if isinstance(pv, dict) else pv
+    if not isinstance(v, dict):
+        return {"available": False, "block": False, "why": "无 AOI 载荷(端口空)"}
+    verdict = str(v.get("verdict") or "").lower()
+    age = v.get("age_s")
+    stale = bool(v.get("stale"))
+    passed = v.get("pass")
+    out = {"verdict": verdict or None, "pass": passed, "age_s": age, "stale": stale,
+           "scratch": v.get("scratch"), "blob": v.get("blob"), "seq": v.get("seq")}
+    if passed is None:
+        out.update({"available": False, "block": False,
+                    "why": "AOI 未出判决(%s) ⇒ 不拦截" % (verdict or "无")})
+        return out
+    if stale:
+        out.update({"available": False, "block": False,
+                    "why": "AOI 快照过期(%ss 未更新) ⇒ 不拦截" % age})
+        return out
+    if verdict and verdict != "ok":
+        out.update({"available": False, "block": False,
+                    "why": "取像不健康(%s) ⇒ 不据此判工件" % verdict})
+        return out
+    dn = None
+    try:
+        if v.get("scratch") is not None and v.get("blob") is not None:
+            dn = int(v["scratch"]) + int(v["blob"])
+    except Exception:                                                # noqa: BLE001
+        dn = None
+    out["defect_n"] = dn
+    if passed is False:
+        out.update({"available": True, "block": True,
+                    "why": "AOI 判 NG (缺陷数 %s) ⇒ 拦截" % dn})
+    else:
+        out.update({"available": True, "block": False, "why": "AOI 判 OK ⇒ 放行"})
+    return out
+
+
 def run(ctx):
     log = ctx.get("log")
     try:
@@ -162,9 +212,11 @@ def run(ctx):
         u_fb, _pf = _pick("in8", ("u_fb", "residual", "res", "err", "u"))  # 🧪 状态校正器
         res_v, _pr = _pick("in8", ("residual", "res", "err", "u"))
         cp, _pc = _pick("in4", ("contact_p", "p_contact", "cp"))           # 🧮 流形引擎
-        if cp is None:
-            cp, _pc = _pick("in5", ("contact_p", "p", "score"))            # 🔍 AOI
-        _ports.update({"u_fb": _pf or "", "residual": _pr or "", "cp": _pc or ""})
+        # 🔍 in5 = 质量门 (画布标签就是「质量门」)。原来这里把 in5 当 contact_p 兜底读,
+        #    字段对不上 ⇒ AOI 这条边端口有值却等于没接 (2026-11-10 实测)。
+        _qg = _quality_gate(ctx.get("in5"))
+        _ports.update({"u_fb": _pf or "", "residual": _pr or "", "cp": _pc or "",
+                       "quality": ("in5.质量门: " + _qg["why"]) if _qg.get("available") is not None else ""})
 
         if not u_ff:
             # 关键输入缺: 不装"已生效", 明确直通并交代缺哪路
@@ -184,6 +236,18 @@ def run(ctx):
         _cp = float(np.asarray(cp, float).ravel()[0]) if cp else float(_SS_STATE.get("contact_p", 0.1))
         _res = res_v if res_v is not None else _SS_STATE.get("residual", np.zeros(4))
         r = float(np.linalg.norm(np.asarray(_res, dtype=float).ravel()[:3]))
+
+        # 🔍 质量门硬否决: AOI 判 NG 且取像健康 ⇒ 不生成动作 (允许停产, 不允许放行不良品)
+        if _qg.get("block"):
+            _SS_STATE["quality_gate"] = _qg
+            if log:
+                log("🔍 质量门拦截: %s" % _qg["why"])
+            return {"out1": {"kind": "quality_veto", "u": None, "why": _qg["why"],
+                             "quality_gate": _qg, "stage_skipped": True,
+                             "src": "safety_limit_impl.in5 质量门 (AOI)"},
+                    "out2": {"ok": False, "why": "质量门拦截", "ports": _ports,
+                             "quality_gate": _qg}}
+        _SS_STATE["quality_gate"] = _qg
 
         mod = cog.ActionModulator()
         u, stage = mod.decide(np.asarray(u_ff, dtype=float), u_fb, _cp, r)
@@ -206,8 +270,9 @@ def run(ctx):
                          "u_ff": [round(float(x), 6) for x in u_ff],
                          "stage": stage, "amp_ratio": round(_k, 4), "dir_cos": round(_dir, 3),
                          "contact_p": round(_cp, 4), "residual": round(r, 4),
-                         "src": "cognition.ActionModulator.decide (端口 in6/in9→in8→in4/in5)"},
-                "out2": {"ok": True, "ports": _ports,
+                         "quality_gate": _qg,
+                         "src": "cognition.ActionModulator.decide (端口 in6/in9→in8→in4) + in5 质量门"},
+                "out2": {"ok": True, "ports": _ports, "quality_gate": _qg,
                          "gripper": round(float(u[3]), 4),
                          "rule": "①否决(残差) ②前馈+反馈相加 ③按阶段限速(只削幅不改方向) ④元任务门控(默认关)"}}
     except Exception as e:
