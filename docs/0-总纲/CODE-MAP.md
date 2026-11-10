@@ -46,6 +46,11 @@
 | 度规构造 | 同上 | `src/lerobot/policies/manifold/geodesic_inject.py` | `def anisotropic_metric` | 同上 |
 | 径向/轴向分解 | 同上 | `src/lerobot/policies/manifold/geodesic_inject.py` | `def split_components` | — |
 | 李雅普诺夫判据 | 同上 | `src/lerobot/policies/manifold/geodesic_inject.py` | `def lyapunov_check` | — |
+| 触觉力→梯度（v2） | `1-天枢-产品边界/patents/ZMP-2026-013_*.md` §4.2 | `src/lerobot/policies/manifold/geodesic_inject.py` | `def tactile_to_gradient` | `config/calib/zmax_manifold.json#inject` |
+| 视觉/触觉融合权重 | 同上 §4.2(c) | `src/lerobot/policies/manifold/geodesic_inject.py` | `def fuse_gradient` | 同上 |
+| 力阈值保护 | 同上 §4.5 | `src/lerobot/policies/manifold/geodesic_inject.py` | `def force_guard` | 同上 |
+| 径向投影（剔轴向） | 同上 §4.2(b) | `src/lerobot/policies/manifold/geodesic_inject.py` | `def _radial_part` | — |
+| 触觉离线实测 26 项 | `4-天权-模型算法/README.md` | `tools/verify_visuo_tactile.py` | `def ck` | — |
 | 参数读取（真源） | `0-总纲/README.md` | `src/lerobot/policies/manifold/inject_cfg.py` | `def load` | `config/calib/zmax_manifold.json` |
 | 接入点（动作头） | `4-天权-模型算法/README.md` | `src/lerobot/middleware/nodes/impl/flow_matching_impl.py` | `def run` | 画布 `ssdec.params.l4_inject` |
 

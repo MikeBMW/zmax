@@ -42,8 +42,12 @@ def _clean(cell: str) -> str:
 def _doc_exists(cell: str) -> tuple[bool, str]:
     """文档列可能带 * 通配或只给目录。"""
     c = _clean(cell)
+    # _clean 在「`path` §4.2」这种写法下会把尾注一起带进来: 截到空白/反引号为止
+    c = c.split("`")[0].split(" ")[0].strip()
     if not c or c in ("—", "-"):
         return True, "空"
+    if c.startswith("同上"):          # 表格里用「同上」继承上一行, 合法写法
+        return True, "继承上一行"
     p = os.path.join(ROOT, "docs", c)
     if "*" in p:
         hits = glob.glob(p)

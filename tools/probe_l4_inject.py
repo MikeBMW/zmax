@@ -85,6 +85,27 @@ if np.linalg.norm(dn) > 1e-12:
     cos = float(np.dot(-g / np.linalg.norm(g), dn / np.linalg.norm(dn)))
     print("        与 −∇V 余弦 = %.6f  (1.0 = 严格沿下降方向)" % cos)
     print("        Lyapunov ∇VᵀΔξ = %.6g  (≤0 合格)" % float(np.dot(g, dn)))
+# ── 场景 3 · 真帧 + 触觉：证明动作头真的读 tactile4（不是只写在注释里）──
+print("\n" + "=" * 70)
+print("场景 3 · 真帧 + 触觉注入（_SS_STATE['tactile4']，验证节点是否真读）")
+_prev = SR._SS_STATE.get("tactile4")
+# tactile4 = [夹持力, 接触概率, dir_x(轴向), dir_z(径向)]  ← X 是插入轴, 径向靠 dir_z
+for tag, tac in (("未接触(contact=0.02)", [0.8, 0.02, 0.0, 1.0]),
+                 ("深接触(contact=0.95)", [0.8, 0.95, 0.0, 1.0])):
+    SR._SS_STATE["tactile4"] = tac
+    _o3 = FM.run(_ctx())
+    _i3 = ((_o3 or {}).get("out1") or {}).get("l4_inject") or {}
+    _t3 = (_i3.get("tactile") or {})
+    print("   %-22s → injected=%s 源=%-14s w_tac=%s  w_vis=%s  Δ径向=%.5f mm" % (
+        tag, _i3.get("injected"), str(_i3.get("grad_src")),
+        _i3.get("w_tac"), _i3.get("w_vis"), float(_i3.get("radial") or 0.0)))
+    print("      触觉来源=%s  径向幅=%.4f 轴向幅=%.4f  维度=%s" % (
+        _t3.get("src"), float(_t3.get("radial_norm") or 0),
+        float(_t3.get("axial_norm") or 0), _i3.get("tactile_dir_dims")))
+if _prev is None:
+    SR._SS_STATE.pop("tactile4", None)
+else:
+    SR._SS_STATE["tactile4"] = _prev
 print("=" * 70)
 
 res = {

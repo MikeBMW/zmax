@@ -86,14 +86,27 @@ def geometry(cfg: dict | None = None) -> dict:
     **不填默认值** —— 否则标定真源形同虚设。
     """
     c = cfg if cfg is not None else load()
-    keys = ("sigma_t", "sigma_n", "alpha0", "V0", "max_ratio",
-            "cap_min_mm", "eps_mm", "eta_floor")
+    # 🔴 键名必须与 geodesic_inject.DEFAULTS 一致（sigma_t_mm / sigma_n_mm）。
+    #    曾经这里输出 sigma_t/sigma_n、DEFAULTS 用 sigma_t_mm ⇒ 真源永远进不去，
+    #    只是默认值恰好等于真源值才没被发现。改真源立刻失效。
+    keys = (("sigma_t", "sigma_t_mm"), ("sigma_n", "sigma_n_mm"),
+            ("alpha0", "alpha0"), ("V0", "V0"), ("max_ratio", "max_ratio"),
+            ("cap_min_mm", "cap_min_mm"), ("eps_mm", "eps_mm"),
+            ("eta_floor", "eta_floor"),
+            # ── 视触觉融合参数 (ZMP-2026-013 v2) ──────────────────────
+            ("tac_enable", "tac_enable"), ("tac_contact_c0", "tac_contact_c0"),
+            ("tac_gamma", "tac_gamma"), ("tac_w_max", "tac_w_max"),
+            ("force_max", "force_max"), ("force_k", "force_k"),
+            ("force_abort_ratio", "force_abort_ratio"),
+            ("contact_stiffness", "contact_stiffness"))
     out = {}
-    for k in keys:
-        v = c.get(k)
-        if isinstance(v, (int, float)):
-            out[k] = float(v)
-    if "sigma_t" not in out or "sigma_n" not in out:
+    for k_src, k_dst in keys:
+        v = c.get(k_src)
+        if isinstance(v, bool):
+            out[k_dst] = bool(v)
+        elif isinstance(v, (int, float)):
+            out[k_dst] = float(v)
+    if "sigma_t_mm" not in out or "sigma_n_mm" not in out:
         return {}
     return out
 

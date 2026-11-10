@@ -197,9 +197,22 @@ def run(ctx):
                 _inj = {"injected": False,
                         "reason": "真源 inject 关闭或缺失(%s)" % (_cfg_src.get("_missing") or _cfg_src.get("_err") or "enabled=false"),
                         "cfg_src": _cfg_src.get("_src")}
-            elif _grad is None or len(_grad) < 3:
-                _inj = {"injected": False, "reason": "性能流形未出 ∇V_p(无真值)"}
-            else:
+            elif True:
+                # ── 视触觉融合输入 (2026-11-11): 视觉 ∇V_p 不再强制存在 ──────
+                #   tactile4 = [夹持力, 接触概率, dir_x, dir_z] (gen_tactile.synth_tactile 几何合成)
+                #   ⚠ 只有 x/z 两个方向分量, 缺 y ⇒ 径向 Y 向无触觉信息, 如实标注。
+                #   真六维力: 若 _SS_STATE 里出现 force/wrench (硬件到位后), 直接优先使用。
+                _contact = _dxy = _force = _resid = None
+                try:
+                    from .shared_runtime import _SS_STATE as _SS
+                    _st4 = _SS.get("tactile4")
+                    if isinstance(_st4, (list, tuple)) and len(_st4) >= 4:
+                        _contact = float(_st4[1])
+                        _dxy = [float(_st4[2]), 0.0, float(_st4[3])]
+                    _force = _SS.get("force") or _SS.get("wrench")
+                    _resid = _SS.get("residual")
+                except Exception:                                      # noqa: BLE001
+                    pass
                 _geo = _icfg.geometry(_cfg_src)
                 if isinstance(_oc, dict):
                     _geo.update({k: float(v) for k, v in _oc.items() if isinstance(v, (int, float))})
@@ -211,14 +224,16 @@ def run(ctx):
                     from lerobot.policies.manifold.geodesic_inject import correct as _geo_correct
                     nominal, _inj = _geo_correct(
                         nominal, _grad, _axis or [1.0, 0.0, 0.0],
-                        eta=_perf.get("eta"), V_p=_perf.get("V_p"), cfg=_geo)
-                    _inj["grad_src"] = "ssmani_p.grad (∇V_p = Wδ)"
+                        eta=_perf.get("eta"), V_p=_perf.get("V_p"), cfg=_geo,
+                        force=_force, contact=_contact, dir_xy=_dxy, residual=_resid)
+                    _inj["tactile_dir_dims"] = "xz_only(缺y)" if _dxy else None
                     _inj["cfg_src"] = _cfg_src.get("_src")
                     _inj["cfg_overridden"] = bool(isinstance(_oc, dict))
                 if log and _inj.get("injected"):
-                    log("🧭 L4 几何注入: Δξ=%s (径向 %.4f 轴向 %.4f) α=%.3f  [M: σ_t=%.2f σ_n=%.2f]"
+                    log("🧭 L4 注入: Δξ=%s (径 %.4f 轴 %.4f) α=%.3f 源=%s w_tac=%.2f 力=%sN  [σ_t=%.2f σ_n=%.2f]"
                         % (np.round(_inj["delta"], 4), _inj["radial"], _inj["axial"],
-                           _inj["alpha"],
+                           _inj["alpha"], _inj.get("grad_src"), float(_inj.get("w_tac") or 0.0),
+                           _inj.get("force_N"),
                            float(_inj["metric"]["sigma_t_mm"]), float(_inj["metric"]["sigma_n_mm"])))
             # 📡 数据总线落地: 真注入才发信号 (未注入不发 —— 不填 0 冒充)
             #   注册键见 config/topics/scene_tags.json (场景=插拔场景, 信号分析页可见)
@@ -237,7 +252,12 @@ def run(ctx):
                         "L4注入.各向异性_比": (round((_sn / _st) ** 2, 1) if _st > 1e-9 else 0.0),
                         "L4注入.Vp代价_mm2": round(float(_inj.get("V_p") or 0.0), 6),
                         "L4注入.η置信度": round(float(_inj.get("eta") or 0.0), 6),
-                    }, meta={"by": "ssdec L4 几何注入"}, quiet=True)
+                        "L4注入.触觉权重": round(float(_inj.get("w_tac") or 0.0), 6),
+                        "L4注入.力N": round(float(_inj.get("force_N") or 0.0), 6),
+                        "L4注入.梯度源": 1.0 if _inj.get("grad_src") == "force" else
+                                        (0.5 if str(_inj.get("grad_src") or "").endswith("_proxy") else 0.0),
+                    }, meta={"by": "ssdec L4 视触觉注入",
+                            "grad_src": _inj.get("grad_src")}, quiet=True)
                 except Exception as _be:                                   # noqa: BLE001
                     if log:
                         log("⚠️ L4 注入信号总线写入失败: %s" % _be)
