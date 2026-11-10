@@ -2659,9 +2659,45 @@ def node_ss_s1(ctx):
 
 
 def node_ss_s2(ctx):
-    """→ nodes/ss_est.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
-    from .ss_est import node_ss_s2 as _impl
-    return _impl(ctx)
+    """🔮 自适应状态估计器 — 慢路径: 潜状态递归 + 预测/校正。
+
+    ⚠️ 2026-11-10 实测: 原实现文件 `nodes/impl/ss_est.py` **不存在**, 转调必然
+       ModuleNotFoundError (画布上点这个节点直接报错)。此处内联最小实现补上 ——
+       算法本体仍是 `parallel.py::AdaptiveStateEstimator` (与引擎 runtime.py:586 同一个类),
+       没有另写一套。
+    """
+    log = ctx.get("log")
+    try:
+        import numpy as np
+        par = _ss_import("parallel")
+        est = par.AdaptiveStateEstimator(A=1.0, K=0.2, B=0.02)   # 与引擎同参数
+        latent = np.asarray(_SS_STATE.get("latent") or np.zeros(4), dtype=float).ravel()[:4]
+        if latent.size < 4:                       # 引擎口径: latent = concat(x[3], [0]) ⇒ 4 维
+            latent = np.concatenate([latent, np.zeros(4 - latent.size)])
+        act = np.asarray(_SS_STATE.get("u_ff") or np.zeros(4), dtype=float).ravel()[:4]
+        if act.size < 4:
+            act = np.concatenate([act, np.zeros(4 - act.size)])
+        pred = est.predict(latent, act)          # 先验: x̂⁻ = A·x + B·u
+        z = _SS_STATE.get("obs43")
+        if z is not None and np.asarray(z).size >= latent.size:
+            zk = np.asarray(z, dtype=float).ravel()[:latent.size]
+            post = est.update(pred, zk)          # 后验: x̂ = x̂⁻ + K·(z − x̂⁻)
+            _SS_STATE["latent"] = post
+            if log:
+                log("🔮 自适应状态估计: ‖x̂⁻‖=%.4g → 校正后 ‖x̂‖=%.4g "
+                    "(残差 %.4g, K=0.2, A=1.0, B=dt)" % (
+                        float(np.linalg.norm(pred)), float(np.linalg.norm(post)),
+                        float(np.linalg.norm(zk - pred))))
+        else:
+            _SS_STATE["latent_pred"] = pred
+            if log:
+                log("🔮 自适应状态估计: 仅预测 ‖x̂⁻‖=%.4g (无观测可校正; 先 ▶ 运行产生 obs43)"
+                    % float(np.linalg.norm(pred)))
+        return True
+    except Exception as e:  # noqa: BLE001
+        if log:
+            log("⚠️ 自适应状态估计失败: %s" % e)
+        return False
 
 
 
