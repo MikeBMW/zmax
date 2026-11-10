@@ -88,6 +88,9 @@ if "--engine" in sys.argv:
         "corrected_vec": [x.tolist() for x in _cor],
         "x": _obs[:, 0:3].tolist(),
         "peg_head": _obs[:, 11:14].tolist(),
+        "peg": _obs[:, 11:14].tolist(),          # ss_vlm/ss_lora_l4 用 tr["peg"] (与 peg_head 同源)
+        "grasped": [float(_obs[i][39]) for i in range(len(_obs))],
+        "key_frames": {},                         # 无真帧: 各节点据此如实标「几何对照/无编码」
         "target": _obs[:, 36:39].tolist(),
         "v_vec": (_ue[:, 0:3].tolist() if _ue.ndim == 2 and _ue.shape[0] == len(_obs) else [[0, 0, 0]] * len(_obs)),
         "u_sat": _usat_l, "residual": _res_l, "contact_p": _cp_l,
@@ -107,6 +110,11 @@ if "--nodes" in sys.argv:
     _i = sys.argv.index("--nodes")
     if _i + 1 < len(sys.argv):
         WANTED = [x.strip() for x in sys.argv[_i + 1].split(",") if x.strip()]
+
+# --all: 画布全部节点 (94 节点 / 222 边, L2~L5 + 执行层一次跑完)
+if "--all" in sys.argv:
+    with open(FLOW, encoding="utf-8") as _fh:
+        WANTED = [n["id"] for n in json.load(_fh)["nodes"]]
 
 
 class _TO(Exception):

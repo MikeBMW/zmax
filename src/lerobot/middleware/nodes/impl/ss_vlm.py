@@ -44,12 +44,14 @@ def node_ss_vlm(ctx):
                     _src, r.get("src") or "未返回", r.get("latency_ms"),
                     _meta.get("frame"), _meta.get("tick"),
                     _vlm_brief(r.get("json")) if ok else (r.get("why") or "无结果")))
-            return _NodeOut({
+            _rb2 = {
                 "kind": "scene_vlm", "layer": "L3", "ok": ok, "frame_src": _src,
                 "frame": _meta.get("frame"), "frame_age_s": _meta.get("frame_age_s"),
                 "src": "src/lerobot/policies/left_right/state_space/scene_vlm.py::SceneVLM.describe",
                 "latency_ms": r.get("latency_ms"), "scene": r.get("json"),
-            }) if "_NodeOut" in globals() else {"out1": r}
+            }
+            return {"out%d" % _i: dict(_rb2) for _i in range(1, 8)} | dict(_rb2) \
+                if "_NodeOut" in globals() else {"out1": r}
         idx = min(int(getattr(mod, "_ss_round", 0) or 0), len(tr["t"]) - 1)
         stage = str(tr["stage"][idx]).replace("阶段 ", "").split("·")[0].strip()
         meta = tr.get("_meta") or {}
@@ -87,8 +89,8 @@ def node_ss_vlm(ctx):
         elif log:
             log("   帧源: 本轮轨迹无真实帧 (key_frames 空) — 需 🎥真实化 R1 视觉运行; 引擎快演无帧")
         # ② 几何潜空间对照 (教学注解, GUI 演示层)
+        z_vis = np.concatenate([x - tgt, x - peg, [float(tr["grasped"][idx])]])
         if log:
-            z_vis = np.concatenate([x - tgt, x - peg, [float(tr["grasped"][idx])]])
             log(f"   几何 z∈R⁷ (对照): 手→目标 {np.round(z_vis[:3], 4)} m · 手→工件 "
                 f"{np.round(z_vis[3:6], 4)} m · 夹持={z_vis[6]:.0f}")
             if meta.get("mode") == "full" or any("AOI" in str(s) for s in tr.get("stage", [])):
@@ -100,7 +102,22 @@ def node_ss_vlm(ctx):
                 log(f"   📷 AOI 检测报告: {'PASS' if _ar.get('ok') else 'FAIL'} "
                     f"(残余深度 {_ar.get('insert_depth_min_mm')}mm · 力峰 {_ar.get('force_peak')})")
             log("   ⚙️ 真实实现: src/lerobot/policies/smolvla_lew/vlm_encoder.py (encode_stage)")
-        return True
+        # ── 端口 (2026-11-10): 画布 ssvlm.out1..out7 → ssskill/ssdec/ssreason 等 7 条出边,
+        #    原实现只 return True ⇒ 全空。交出真算的 z_vis + 帧/阶段/AOI 状态 (无帧时如实标注)。
+        _has_fr = bool(kf and stage in kf)
+        _vb = {"kind": "scene_vlm", "layer": "L3", "ok": True,
+               "idx": int(idx), "stage": str(stage), "has_frames": _has_fr,
+               "z_vis": [round(float(v), 6) for v in z_vis],
+               "hand_to_target": [round(float(v), 6) for v in z_vis[:3]],
+               "hand_to_peg": [round(float(v), 6) for v in z_vis[3:6]],
+               "grasped": float(z_vis[6]),
+               "aoi_report": (meta.get("aoi_report") or None),
+               "note": ("本轮无真实帧 (key_frames 空) ⇒ z_vis 为几何对照, 不是 VLM 编码输出"
+                        if not _has_fr else "真帧编码"),
+               "src": "src/lerobot/policies/smolvla_lew/vlm_encoder.py::encode_stage"}
+        _vp = {"out%d" % _i: dict(_vb) for _i in range(1, 8)}
+        _vp.update(_vb)
+        return _vp
     except Exception as e:
         if log:
             log(f"⚠️ VLM 编码失败: {e}")

@@ -2756,8 +2756,12 @@ def node_ss_s3(ctx):
 
 
 def node_ss_exec(ctx):
-    """→ nodes/ss_world.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
-    from .ss_world import node_ss_exec as _impl
+    """🌍 物理世界执行体 —— 薄壳: 真实现 nodes/ss_act.py::node_ss_exec
+
+    ⚠️ 2026-11-10 全图实测: 原来转调 `.ss_world`(全仓不存在) ⇒ 画布上「🌍 物理世界」节点
+       一点就 ModuleNotFoundError (ssbg4 crash 实测); 真实现一直在 ss_act.py。
+    """
+    from .ss_act import node_ss_exec as _impl
     return _impl(ctx)
 
 

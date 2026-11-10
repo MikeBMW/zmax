@@ -4116,6 +4116,24 @@ SRC_DESC = {"真机": "📡 真机 (Orin 远程只读: TCP位姿/关节/力/夹�
             "AR场景": "🥽 AR场景 (状态空间工程视频源实拍 + AOI/空间点位叠加) · 8793/ar"}
 
 
+def _lan_host():
+    """本机在局域网上的出口地址 (给浏览器 URL 用; 取不到就 127.0.0.1)。"""
+    import socket as _sk
+    try:
+        _s = _sk.socket(_sk.AF_INET, _sk.SOCK_DGRAM)
+        _s.connect(("10.255.255.255", 1))       # 不真发包, 只为取出口网卡地址
+        _h = _s.getsockname()[0]
+        _s.close()
+        return _h or "127.0.0.1"
+    except Exception:                                                    # noqa: BLE001
+        return "127.0.0.1"
+
+
+def _dl_page_url(page):
+    """tools/web/dl/<page> 的浏览器地址 —— 8799 是只读静态服务, 静态页改了立刻生效。"""
+    return os.environ.get("ZMAX_DL_BASE") or ("http://%s:8799/dl/%s" % (_lan_host(), page))
+
+
 def open_render_stream_window(url=None, log_path=None):
     """🎥 打开 8802 渲染帧直播窗口(浏览器新窗口) —— 老倪 2026-11-09:
     「旁路实时可视化节点右键打开 http://10.163.146.76:8802/video，不是打开之前的窗口」。
@@ -4631,11 +4649,16 @@ class SimCanvas(QGraphicsView):
         #   真机链路 = Orin UVC取帧+JPEG压缩(服务端) → ROS2 srv /zmax/live_frame
         #             → 本机 Docker 客户端落盘 → 本窗口轮询显示 (GUI 无需 rclpy)
         a_input = None
+        a_seen = None
         if item.node.get("params", {}).get("detection_targets") or "YOLO" in item.node.get("name", ""):
             # 🎥 2026-09-17 老倪: 标签带当前输入源, 一眼看出这菜单会开哪一路 (原来只写"实时原始视频流")
             _cs = _canvas_src_state(self.module)
             a_input = menu.addAction("打开输入图像 (%s)"
                                      % ("🧪 仿真 metaworld" if _cs == "仿真" else "🎥 真机 RealSense"))
+            # 🖼 2026-11-10 老倪: 「当前看到的单帧图片」做成右键入口 —— 不是"再推一路视频",
+            #   而是 YOLO 节点**这一拍实际喂进网络的那一帧** (引擎每拍落盘 yolo_seen.jpg/json),
+            #   窗口只读文件+画框: 不抢相机、不重复推理、看一眼零副作用。
+            a_seen = menu.addAction("当前看到的单帧 → 浏览器打开 (YOLO 实际输入那一帧)")
         # 🎥 2026-11-08 老倪: 旁路实时可视化节点 (viz_kind=bypass) 右键 → 视频输入
         #   要看的是「实际送进 YOLO 的那一帧渲染图」: ▶运行中 = 引擎当前步渲染帧 (与 detect_3d 同帧),
         #   引擎 idle = 静态初始帧 + 画面压横幅如实标注 (不假动)
@@ -4646,7 +4669,7 @@ class SimCanvas(QGraphicsView):
             #   直播流走 8802 服务端 MJPEG (/video, 960×720, 与 /frame.png 同一份帧源), 浏览器直接开;
             #   想调帧率就 ?fps=1..15。之前的 Qt 单帧窗口保留成第二项, 不再占主入口。
             a_bypvid = menu.addAction("🎥 视频输入 → 8802 直播 /video (浏览器)")
-            a_bypin = menu.addAction("🖼 渲染帧单帧 (喂给 YOLO 的那一帧)")
+            a_bypin = menu.addAction("渲染帧单帧 → 浏览器打开 (喂给 YOLO 的那一帧)")
         # 🔍 2026-09-24 老倪: 外观质量检测节点右键 → 打开**质量检测汇总终端**
         #   (金手指检查 / 外观划伤 / 光口端面 / 全帧扫描 · 图像定位+拉伸 · 缺陷框选标定 · 在线增量训练)
         #   与「打开输入图像」同款入口: 帧源跟随画布「🔀 数据源切换」
@@ -4749,6 +4772,19 @@ class SimCanvas(QGraphicsView):
                     self.module._log(f"⚠️ 打开输入图像失败: {type(_e).__name__}: {_e}")
                 except Exception:                                          # noqa: BLE001
                     pass
+        elif a_seen is not None and chosen == a_seen:
+            # 🖼 2026-11-10 老倪: 「当前看到的单帧图片」→ 浏览器打开, **不要单独窗口**。
+            #   引擎每拍落盘 yolo_seen.jpg/json (含 tools/web/dl/ 副本), 8799 只读静态服务
+            #   直接供 seen.html (自动刷新 + 横幅标源/拍照时间/帧龄/检出), 与在役进程无关。
+            try:
+                _ok, _how, _url = open_render_stream_window(url=_dl_page_url("seen.html"))
+                self.module._log(("🖼 当前看到的单帧已开: %s  (方式 %s)" % (_url, _how)) if _ok else
+                                 ("⚠️ 没能开浏览器; 地址给你, 手动打开: %s" % _url))
+            except Exception as _e:                                        # noqa: BLE001
+                try:
+                    self.module._log(f"⚠️ 打开当前单帧失败: {type(_e).__name__}: {_e}")
+                except Exception:                                          # noqa: BLE001
+                    pass
         elif a_bypvid is not None and chosen == a_bypvid:
             # 🎥 2026-11-09 老倪: 「右键打开 http://10.163.146.76:8802/video，不是打开之前的窗口」
             #   8802 服务端 MJPEG 直播流, 用浏览器**新窗口**开(webbrowser 在 snap/chromium 里
@@ -4765,14 +4801,18 @@ class SimCanvas(QGraphicsView):
                     pass
         elif a_bypin is not None and chosen == a_bypin:
             # 🎥 2026-11-08 老倪: 旁路可视化节点「视频输入」= **AR 场景渲染帧**
-            #   (8802 ArMujocoEnv 渲染 → _mod3_worker 解码 → yolo_ar_peg; 窗口读 /dev/shm/mod3_frame.jpg)
-            #   8802 没帧时窗口如实标「缺帧原因」, 不拿仿真/真机帧顶替
+            #   (8802 ArMujocoEnv 渲染 → _mod3_worker 解码 → yolo_ar_peg)
+            #   2026-11-10 老倪: 「渲染单帧也用浏览器打开, 不用单独窗口」⇒ 改开 render.html
+            #   (静态页轮询 8802 /frame.png?cam=close, 就是喂 YOLO 的那一路 close 机位),
+            #   不再起 Qt 窗口; 8802 没帧时页面横幅如实说"渲染帧已停"。
             try:
-                from yolo_input_viewer import open_input_viewer
-                open_input_viewer(self, module=self.module, source="ar")
+                _ok, _how, _url = open_render_stream_window(url=_dl_page_url("render.html"))
+                self.module._log(("🖼 渲染帧单帧已开: %s  (方式 %s · 8802 /frame.png cam=close)"
+                                  % (_url, _how)) if _ok else
+                                 ("⚠️ 没能开浏览器; 地址给你, 手动打开: %s" % _url))
             except Exception as _e:                                        # noqa: BLE001
                 try:
-                    self.module._log(f"⚠️ 打开视频输入失败: {type(_e).__name__}: {_e}")
+                    self.module._log(f"⚠️ 打开渲染帧单帧失败: {type(_e).__name__}: {_e}")
                 except Exception:                                          # noqa: BLE001
                     pass
         elif a_aoi is not None and chosen == a_aoi:
@@ -17347,7 +17387,15 @@ class SimulinkModule(QWidget):
         try:
             if not text:
                 return False
-            self._log("🎬 " + str(text))          # ← 下方终端
+            # 🔇 2026-11-10 老倪: 「🎬 ✅ 🟢 L5 ✅ 完成 · 全链跑完 别刷屏, 都看不清文字了」——
+            #   本函数被 _l5_poll 每 2s 无条件调用(旧横幅时代"每轮询重铺"是给 QLabel 用的),
+            #   横幅改成只写终端后 ⇒ 同一句话每 2s 打一行, 把日志面板刷满。
+            #   现在按**文案去重**: 同一状态只说一次; 状态/阶段真变了文案就变, 自然会再播报
+            #   (_l5_poll 在 _key 变化时会清掉这个游标, 保证新一轮跑完仍看得见)。
+            _txt = "🎬 " + str(text)
+            if _txt != str(getattr(self, "_l5_log_last", "") or ""):
+                self._l5_log_last = _txt
+                self._log(_txt)                   # ← 下方终端 (同文案不重复)
             self._l5_banner_on = False
             try:
                 _lab = getattr(self, "_l5_banner_lab", None)
@@ -17561,6 +17609,7 @@ class SimulinkModule(QWidget):
             # ❸ 状态/阶段一变就大喊一次 (老倪盯终端 + 底部日志栏)
             if getattr(self, "_l5_last_key", None) != _key:
                 self._l5_last_key = _key
+                self._l5_log_last = None      # 🔁 状态/阶段/进度真变了 ⇒ 允许同一文案再播报一次 (跨轮次)
                 if state == "running":
                     self._log("════ %s ════" % _banner)
                     for _l in _lines[:3]:

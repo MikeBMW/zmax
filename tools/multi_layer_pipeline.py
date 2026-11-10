@@ -303,6 +303,52 @@ def _mk_l3(**kw):
 
 # ─────────────────────────── L2: 检测反馈 ───────────────────────────
 
+# 🆕 2026-11-10 老倪「在仿真环境下打通 sim-to-real 的所有功能」：
+#   L2 感知层除了 YOLO, 还要跑**光学质量检测**(金手指搬运 + 本机YOLO + 表面重算)。
+#   三路各含 HTTP/推理, 单轮 1.3~3.0s ⇒ 必须节流(默认 2s), 否则把 10Hz 回路拖死。
+_AOI = {"t": 0.0, "res": None}
+
+
+def aoi_round(log=None):
+    """L2 附带: 光学质量检测一轮 (policies/aoi 三路)。失败不影响 YOLO 那一路。"""
+    iv = float(os.environ.get("ZMAX_AOI_MIN_INTERVAL_S", "2.0"))
+    if _AOI["res"] is not None and (time.time() - _AOI["t"]) < iv:
+        return _AOI["res"]
+    try:
+        import sys
+        sys.path.insert(0, "/home/ubuntu/zmax/src")
+        from lerobot.policies.aoi import gold_bypass, gold_yolo_bypass, surface_bypass
+        cache = {}
+        sig = {}
+
+        def publish(s, lg=None):
+            sig.update(s or {})
+        g = gold_bypass(log=log, cache=cache, publish=publish) or {}
+        gy = gold_yolo_bypass(log=log, cache=cache, publish=publish) or {}
+        sf = surface_bypass(log=log, cache=cache, publish=publish) or {}
+        res = {"gold_verdict": g.get("verdict"), "gold_code": g.get("code"),
+               "gold_n_keys": g.get("n_keys"),
+               "gold_yolo_n": gy.get("n"), "gold_yolo_present": gy.get("present"),
+               "gold_yolo_ms": gy.get("infer_ms"),
+               "surface_verdict": sf.get("verdict"), "surface_why": sf.get("verdict_why"),
+               "sig": {k: round(float(v), 4) for k, v in sig.items() if isinstance(v, (int, float))},
+               "src": "policies/aoi (gold+gold_yolo+surface)"}
+        _AOI.update({"t": time.time(), "res": res})
+        # 🔎 可取证且不刷屏: 每轮真跑落一个文件 (老倪「要证据才认完成」), 引擎日志不必刷。
+        try:
+            import json as _json
+            with open("/home/ubuntu/zmax/zmax_data/ss_live/pipe_aoi.json", "w", encoding="utf-8") as _f:
+                _json.dump({"t": time.time(), "at": time.strftime("%Y-%m-%d %H:%M:%S"), **res},
+                           _f, ensure_ascii=False)
+        except Exception:                                             # noqa: BLE001
+            pass
+        return res
+    except Exception as e:                                            # noqa: BLE001
+        r = {"err": "%s: %s" % (type(e).__name__, str(e)[:120])}
+        _AOI.update({"t": time.time(), "res": r})
+        return r
+
+
 class L2DetectLayer(Layer):
     """L2: 检测 + 反馈. 可插拔: detect.yolo / detect.stub"""
     name = "L2"
@@ -346,9 +392,11 @@ class L2DetectLayer(Layer):
             obs_align = None
             if ctx.get("obs39") is not None and d3 is not None:
                 obs_align = self._yp.align_obs(ctx["obs39"], d3)
+            # 🆕 2026-11-10 光学质量检测并入 L2 (默认开; ZMAX_PIPE_AOI=0 可关)
+            aoi = aoi_round() if os.environ.get("ZMAX_PIPE_AOI", "1") != "0" else None
             return NodeOut(name=self.name, ok=True, src="detect.yolo",
                            latency_ms=(time.time() - t0) * 1000,
-                           data={"det": det, "det3d": d3, "obs_align": obs_align},
+                           data={"det": det, "det3d": d3, "obs_align": obs_align, "aoi": aoi},
                            conf=float(len(det)) if det else 0.0)
         except Exception as e:
             return NodeOut(name=self.name, ok=False, src="detect.yolo",

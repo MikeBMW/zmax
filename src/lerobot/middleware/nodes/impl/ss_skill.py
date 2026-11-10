@@ -35,7 +35,20 @@ def node_ss_skill(ctx):
             log(f"   ⚙ 参数: 力阈值 {pr.get('force_limit')}N · 节拍 {pr.get('tact_time')}s · "
                 f"插入深度 {pr.get('insert_depth')}m")
             log(f"   📚 新技能序列已注册进 🧠任务规划器技能库")
-        return True
+        # 端口 (2026-11-10): 画布 ssskill.out1..out7 分别喂 7 个原子技能/任务规划/执行,
+        # 原实现只 return True ⇒ 9 条出边全空。这里交出编排器真算出的序列与参数。
+        _skb = {"kind": "skill_plan", "layer": "L3", "ok": True,
+                "spec": str(spec_text)[:300],
+                "sequence": [str(t) for t in (out.get("sequence") or [])],
+                "n_skills": len(out.get("sequence") or []),
+                "params": dict(out.get("params") or {}),
+                "force_limit": (out.get("params") or {}).get("force_limit"),
+                "tact_time": (out.get("params") or {}).get("tact_time"),
+                "insert_depth": (out.get("params") or {}).get("insert_depth"),
+                "src": "state_space/planner.py::SkillComposer.compose"}
+        _ports = {"out%d" % i: dict(_skb) for i in range(1, 8)}
+        _ports.update(_skb)
+        return _ports
     except Exception as e:
         if log:
             log(f"⚠️ 技能编排器演示失败: {e}")
