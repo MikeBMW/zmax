@@ -51,6 +51,18 @@ def run(ctx):
     if _k != _PRINT_LAST["k"] or _now - _PRINT_LAST["t"] >= 5.0:
         _PRINT_LAST.update(k=_k, t=_now)
         print("[执行器节点] " + _json.dumps(out, ensure_ascii=False)[:400])
+    # 端口必须真产 (2026-11-10 实测: 原来返回扁平 dict, 画布声明的 out1/out2 两个端口全空):
+    #   out2 = 执行结果 → ssinnov.in5 (段号/到位/残差)
+    #   out1 = 透传 sslimit 送来的限幅动作 → ssact.in1
+    #          ⚠️ 本节点按设计**不下发**任何动作 (见函数 docstring), 所以这里是透传不是新命令。
+    _cmd = ctx.get("in2") or ctx.get("in1")
+    _o1 = ({"kind": "exec_cmd_passthrough", "layer": "L2", "passthrough": True,
+            "cmd": _cmd, "source": "n_exec 透传 sslimit 限幅结果 (本节点不下发)"}
+           if _cmd else None)
+    _o2 = dict(out, kind="exec_result", layer="L2")
+    out["out1"] = _o1
+    out["out2"] = _o2
+    out["ok"] = True
     return out
 
 

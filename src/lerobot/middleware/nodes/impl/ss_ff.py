@@ -41,7 +41,10 @@ def node_ss_s2(ctx):
                     f"update(K·(z−x̂₋))→latent={np.round(latent,4)} (parallel.py AdaptiveStateEstimator)")
             return {"out1": {"kind": "state_est", "latent": [float(x) for x in np.asarray(latent).ravel()],
                              "latent_pred": [float(x) for x in np.asarray(latent_pred).ravel()]},
-                    "out2": None, "ok": True}
+                    # out2 也要有值: 画布 ssest.out2 → ssinnov.in1 (潜状态给状态校正器)
+                    "out2": {"kind": "state_est", "latent": [float(x) for x in np.asarray(latent).ravel()],
+                             "latent_pred": [float(x) for x in np.asarray(latent_pred).ravel()]},
+                    "ok": True}
         accel = par.FeedforwardAccelerator()
         u_ff = accel.forward(obs43)
         # 🧠 2026-09-08 老倪目检实锤: 域外布局 forward 走解析守卫 → probe 空 → 直方图无数据。

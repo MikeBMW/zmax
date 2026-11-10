@@ -64,4 +64,26 @@ def node_ss_aoi(ctx):
 
 
 # 与既有 *_impl.py 同约定: 外部也可以 from ... import run
+_raw_aoi = node_ss_aoi
+
+
+def node_ss_aoi(ctx):
+    """🔍 光学质量检测 — 端口包装薄壳 (逻辑全在 _raw_aoi → policies/aoi/quality.py)。
+
+    原实现返回扁平 dict(kind/pass/verdict/items…), 但画布声明了
+    out1→sssched.in5(质量门) / out1→sssensor.in4(外观质量门) ⇒ 端口一直是空的
+    (2026-11-10 实测)。这里只补端口, 不改任何判定逻辑。
+    """
+    _r = _raw_aoi(ctx)
+    if not isinstance(_r, dict):
+        return _r
+    if any(str(k).startswith("out") for k in _r):
+        return _r
+    _b = dict(_r)
+    _b.setdefault("kind", "aoi")
+    return {"out1": dict(_b), "out2": dict(_b),
+            "ok": _r.get("pass") is not None,
+            **{k: v for k, v in _r.items() if k not in ("out1", "out2")}}
+
+
 run = node_ss_aoi

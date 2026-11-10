@@ -26,7 +26,16 @@ def run(ctx):
         if log:
             log(f"📍 Marker 触觉 (真实): grasp={tac[0]:.3f} contact={tac[1]:.3f} "
                 f"dir=({tac[2]:.2f},{tac[3]:.2f}) (gen_tactile.py)")
-        return True
+        # 端口必须真产 (画布: sstactile.out1→sssensor.in3 "触觉 4D (力/接触)")
+        #   原来 return True ⇒ 融合定位建图的触觉输入一直是 None (2026-11-10 实测)
+        _t = [round(float(v), 6) for v in np.asarray(tac, dtype=float).ravel()[:4]]
+        return {"out1": {"kind": "tactile4", "layer": "L2", "dim": len(_t),
+                         "tactile": _t,
+                         "grasp": _t[0] if _t else None,
+                         "contact": _t[1] if len(_t) > 1 else None,
+                         "dir": _t[2:4],
+                         "source": "policies/yolo_3d/gen_tactile.py synth_tactile"},
+                "ok": True}
     except Exception as e:
         if log:
             log(f"⚠️ 触觉合成真实执行失败: {e}")

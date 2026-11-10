@@ -2659,60 +2659,17 @@ def node_ss_s1(ctx):
 
 
 def node_ss_s2(ctx):
-    """🔮 自适应状态估计器 — 慢路径: 潜状态递归 + 预测/校正。
+    """⚡ 前馈加速器 — 快路径 obs→u_ff 建议动作 (权重 30%)。
 
-    ⚠️ 2026-11-10 实测: 原实现文件 `nodes/impl/ss_est.py` **不存在**, 转调必然
-       ModuleNotFoundError (画布上点这个节点直接报错)。此处内联最小实现补上 ——
-       算法本体仍是 `parallel.py::AdaptiveStateEstimator` (与引擎 runtime.py:586 同一个类),
-       没有另写一套。
+    ⚠️ 2026-11-10 实测发现的绑定错位: `_reg("ss_ff", ..., node_ss_s2)` 与
+       `_reg("ss_est", ..., node_ss_s2)` **绑同一个函数**, 而本壳原先转调
+       `.ss_est`(文件不存在) ⇒ ① 前馈加速器点了必崩; ② 它真正的实现
+       `impl/ss_ff.py::node_ss_s2`(96 行, 含左脑 MLP + 解析守卫) **全仓零 import**。
+       修: 本壳恢复为转调 ss_ff.py(即前馈加速器真身); 自适应状态估计器
+       另立 node_ss_est。
     """
-    log = ctx.get("log")
-    try:
-        import numpy as np
-        par = _ss_import("parallel")
-        est = par.AdaptiveStateEstimator(A=1.0, K=0.2, B=0.02)   # 与引擎同参数
-        latent = np.asarray(_SS_STATE.get("latent") or np.zeros(4), dtype=float).ravel()[:4]
-        if latent.size < 4:                       # 引擎口径: latent = concat(x[3], [0]) ⇒ 4 维
-            latent = np.concatenate([latent, np.zeros(4 - latent.size)])
-        act = np.asarray(_SS_STATE.get("u_ff") or np.zeros(4), dtype=float).ravel()[:4]
-        if act.size < 4:
-            act = np.concatenate([act, np.zeros(4 - act.size)])
-        pred = est.predict(latent, act)          # 先验: x̂⁻ = A·x + B·u
-        z = _SS_STATE.get("obs43")
-        if z is not None and np.asarray(z).size >= latent.size:
-            zk = np.asarray(z, dtype=float).ravel()[:latent.size]
-            post = est.update(pred, zk)          # 后验: x̂ = x̂⁻ + K·(z − x̂⁻)
-            _SS_STATE["latent"] = post
-            _SS_STATE["latent_pred"] = pred
-            out_lat, out_pred = post, pred
-            if log:
-                log("🔮 自适应状态估计: ‖x̂⁻‖=%.4g → 校正后 ‖x̂‖=%.4g "
-                    "(残差 %.4g, K=0.2, A=1.0, B=dt)" % (
-                        float(np.linalg.norm(pred)), float(np.linalg.norm(post)),
-                        float(np.linalg.norm(zk - pred))))
-        else:
-            _SS_STATE["latent_pred"] = pred
-            out_lat, out_pred = latent, pred
-            if log:
-                log("🔮 自适应状态估计: 仅预测 ‖x̂⁻‖=%.4g (无观测可校正; 先 ▶ 运行产生 obs43)"
-                    % float(np.linalg.norm(pred)))
-        # 端口值必须真产 (画布声明 ssest.out1→sspred.in1, out2→ssinnov.in1;
-        #  只写 _SS_STATE 会让走端口的下游读到 None —— 与「AOI PURE=False 直通」同一类坑)
-        _body = {"kind": "state_est", "layer": "L2", "role": "潜状态 (手位置+夹爪)",
-                 "latent": [round(float(x), 6) for x in np.asarray(out_lat, dtype=float).ravel()],
-                 "latent_pred": [round(float(x), 6) for x in np.asarray(out_pred, dtype=float).ravel()],
-                 "A": 1.0, "K": 0.2, "B": 0.02}
-        return {"out1": dict(_body), "out2": dict(_body), "ok": True}
-    except Exception as e:  # noqa: BLE001
-        if log:
-            log("⚠️ 自适应状态估计失败: %s" % e)
-        return False
-
-
-
-_FF_HIST_WIN = None  # 🧠 前馈激活直方图窗口 (全局单实例, 主线程)
-
-_FF_ATTR_WIN = None  # 🎯 归因分工窗口 (全局单实例)
+    from .ss_ff import node_ss_s2 as _impl
+    return _impl(ctx)
 
 
 def _gui_host_ok() -> bool:

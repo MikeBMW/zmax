@@ -70,6 +70,11 @@ def node_ss_mani_eng(ctx):
             _d["mani_geo"] = None
         _MANI_ENG_CACHE["out"] = dict(_d)          # 供下一拍节流回放
         _MANI_ENG_CACHE["t"] = time.monotonic()
+        # 端口必须真产 (画布: ss_mani_eng.out5→sssched.in4 "动作指令 a"; 其余 out1..out6 同理)
+        #   原来只返回扁平 dict ⇒ 画布声明的 6 个端口全空 (2026-11-10 实测)
+        _o = dict(_d)                              # 拷贝在挂 out 之前, 不会自我引用
+        for _pn in ("out1", "out2", "out3", "out4", "out5", "out6"):
+            _d[_pn] = dict(_o)
         return _NodeOut(_d)
 
     # ⓪ 🆕 2026-10-12 老倪: 「主参数 M 的功能, 要由**流形引擎节点**实现, 通过一个结构, 承接要实现的功能」。

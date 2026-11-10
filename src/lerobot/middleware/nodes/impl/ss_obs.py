@@ -131,7 +131,26 @@ def node_ss_su2(ctx):
                 % (u["layer_peel"]["_residual"]["theta"], u["dominant_layer"],
                    u["noncommutativity"].get("L2|L4", 0.0)))
             log("   (43D obs = 群里的 L2 输入块; 其余节点数据按 NODE_SPECS 各自映射成群元素)")
-        return True
+        # 端口必须真产 —— 画布上 ssobs.out1/out2 喂 ssff·ssest·ssreason·ssvideo·ss_moe·n_geoplan,
+        #   out3 喂 ss_mani_eng。原来只 return True ⇒ 6 个下游全部读到 None (2026-11-10 实测)
+        import numpy as np
+        _obs = [round(float(x), 6) for x in np.asarray(_ss_ensure_obs43(log), dtype=float).ravel()[:43]]
+        _body = {"kind": "obs43", "dim": len(_obs),
+                 "obs": _obs, "obs43": _obs,
+                 "obs39": _obs[:39], "tactile": _obs[39:43],
+                 "tcp": _obs[0:3], "grip": _obs[3:4], "peg": _obs[4:7],
+                 "hole": _obs[36:39], "R": _obs[24:33],
+                 "src": _SS_STATE.get("obs43_src", ""),
+                 "layout": "0:3tcp 3grip 4:7peg 7:10rel 12:18q 18:24dq 24:33R 33:36target 36:39hole 39:43tactile"}
+        return {"out1": dict(_body), "out2": dict(_body),
+                "out3": {"kind": "su2", "dim": 43,
+                         "readout": u.get("readout"),
+                         "dominant_layer": u.get("dominant_layer"),
+                         "layer_peel": u.get("layer_peel"),
+                         "noncommutativity": u.get("noncommutativity"),
+                         "layers": {k: (v.describe() if hasattr(v, "describe") else str(v))
+                                    for k, v in (layers or {}).items()}},
+                "ok": True}
     except Exception as e:                                              # noqa: BLE001
         if log:
             log("⚠️ SU(2) 统一状态映射失败: %s" % e)

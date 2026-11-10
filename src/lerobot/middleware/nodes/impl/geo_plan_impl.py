@@ -467,6 +467,18 @@ def run(ctx=None):
                     "event": c.get("out3"), "err": c.get("err")}
     if isinstance(out.get("value"), dict) and isinstance(c.get("out1"), dict):
         out["value"]["craft"] = c["out1"]
+    # 端口必须真产 (画布: n_geoplan.out1→sslimit.in3 3D 引导位姿 / out2→sssched.in9 块)
+    #   原来 _run_guides 的 value/chunk 是扁平键, 画布声明的两个端口全空 (2026-11-10 实测)
+    if not any(str(k).startswith("out") for k in out):
+        _v = out.get("value")
+        if isinstance(_v, dict) and "tcp" in _v and "pos_mm" not in _v:
+            _v = dict(_v, pos_mm=_v.get("tcp"))
+        out["out1"] = {"value": _v, "age_s": 0.0, "fresh": True}
+        _ch = out.get("chunk") or []
+        out["out2"] = {"H": out.get("h"), "chunk": _ch,
+                       "chunk0": (_ch[0] if _ch else None),
+                       "seg_i": out.get("i"), "kind": out.get("kind"),
+                       "age_s": 0.0, "fresh": True}
     return out
 
 

@@ -96,6 +96,11 @@ def node_yolo_align(ctx):
             out[4:7] = p3
             out[22:25] = p3
             _YOLO_CACHE["obs39_aligned"] = out
+            # 🆕 2026-11-10 (老倪「融合定位建图接到 2D→3D 的结果了么」): 此前 obs39_aligned
+            #   全仓只有这一处写、零消费者 ⇒ 解算结果悬着。融合节点按新鲜度闸取值需要时间戳,
+            #   在这里如实记一笔 (不写时间戳下游只能猜新鲜度)。
+            import time as _t
+            _YOLO_CACHE["obs39_aligned_t"] = _t.time()
         _YOLO_CACHE["box3d"] = dict(_BOX3D["last"])
         if log:
             log(f"📐 2D→3D 解算(不作弊): 框{[round(v,1) for v in box]} + 位姿[{psrc}] "
@@ -125,7 +130,16 @@ def node_yolo_align(ctx):
                 _BOX3D["last"]["score_mm_vs_sim_truth"] = round(err, 2)
         except Exception:                                                  # noqa: BLE001
             pass
-        return True
+        # 端口必须真产 (画布: ss2d3d.out1→sssensor.in2 "视觉 3D 定位 (YOLO→2D→3D)")
+        #   原来 return True ⇒ 融合定位建图的 3D 输入一直是 None (2026-11-10 实测)
+        _b = dict(_BOX3D.get("last") or {})
+        try:
+            _b["p3_mm"] = [round(float(v), 2) for v in np.asarray(p3, dtype=float).ravel()[:3]]
+        except Exception:                                                  # noqa: BLE001
+            pass
+        return {"out1": {"kind": "yolo_align", "layer": "L2", "box3d": _b,
+                         "source": "policies/yolo_3d/yolo_state_aligner.py align"},
+                "ok": True}
     except Exception as e:
         if log:
             log(f"⚠️ 2D→3D 解算(不作弊) 失败: {type(e).__name__}: {e}")
