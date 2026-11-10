@@ -58,6 +58,7 @@ if "--engine" in sys.argv:
     #    这里关掉内稳态盘写, 否则两个引擎抢同一个 .tmp → os.replace FileNotFoundError
     _eng = ManifoldEngine(homeostasis=False)
     _lat, _pri, _cor = [], [], []
+    _res_l, _usat_l, _cp_l = [], [], []
     # ⚠️ 必须先把编码器 fit 到**整条轨迹**: 引擎默认 z_source 是「内建 PCA 编码器
     #    (Encoder.fit, 对当前状态拟合)」, 单帧拟合单样本 ⇒ PCA 方差为 0 ⇒ z 恒全零。
     #    GUI 点 ▶ 运行状态空间时是先 fit 全轨迹再逐帧 step 的, 这里补上同一口径。
@@ -69,6 +70,13 @@ if "--engine" in sys.argv:
         for _k, _acc in (("z", _lat), ("p_next", _pri), ("p", _cor)):
             _v = _np.asarray(_rec.get(_k) if _rec.get(_k) is not None else [0, 0, 0, 0], dtype=float).ravel()
             _acc.append(_v[:4] if _v.size >= 4 else _np.pad(_v, (0, max(0, 4 - _v.size))))
+        # ss_calib 要读这三列 (u_sat 标量范数 / residual / contact_p), 引擎 rec 里都有:
+        _a = _np.asarray(_rec.get("action") if _rec.get("action") is not None else [0, 0, 0, 0],
+                         dtype=float).ravel()
+        _usat_l.append(float(_np.linalg.norm(_a)))
+        _r = float(_rec.get("residual") or 0.0)
+        _res_l.append(_r)
+        _cp_l.append(float(1.0 / (1.0 + _np.exp(-8.0 * abs(_r)))))   # σ(8·‖residual‖), 与引擎同口径
     _stage = [str((_d.get("stage") or ["对位"] * len(_obs))[_i]) for _i in range(len(_obs))] \
         if isinstance(_d.get("stage"), list) and len(_d["stage"]) == len(_obs) else ["对位"] * len(_obs)
     _tr = {
@@ -82,6 +90,8 @@ if "--engine" in sys.argv:
         "peg_head": _obs[:, 11:14].tolist(),
         "target": _obs[:, 36:39].tolist(),
         "v_vec": (_ue[:, 0:3].tolist() if _ue.ndim == 2 and _ue.shape[0] == len(_obs) else [[0, 0, 0]] * len(_obs)),
+        "u_sat": _usat_l, "residual": _res_l, "contact_p": _cp_l,
+        "u_sat_vec": [[0.0, 0.0, 0.0]] * len(_obs),
     }
 
     class _Mod:

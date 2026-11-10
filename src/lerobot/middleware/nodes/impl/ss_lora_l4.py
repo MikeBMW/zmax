@@ -147,7 +147,12 @@ def node_ss_lora_l4(ctx):
             log("   ⚠️ 未训练/无产物 ⇒ Δu=0 (恒等, 零回归) —— 没有假装有微调")
         else:
             log("   ⏳ 待办: LoRA A/B 与统一主干/阶段专家同口径 A/B (留出集+平凡基线) 有提升才切在役指针")
-    return True
+    # ── 端口 (2026-11-10): 画布 ss_lora_l4.out1..out4 分别喂 预测器/接触流形/性能流形/动作头 L4 条件,
+    #    原实现只 return True ⇒ 4 路全空 (值为 _SS_STATE["lora_l4"] 里已算好的那些, 这里如实交出)
+    _lb = dict(_SS_STATE["lora_l4"])
+    _lb.update({"kind": "lora_l4", "layer": "L4", "ok": True,
+                "src_node": "src/lerobot/middleware/nodes/impl/ss_lora_l4.py::node_ss_lora_l4"})
+    return {"out1": dict(_lb), "out2": dict(_lb), "out3": dict(_lb), "out4": dict(_lb), **_lb}
 
 
 # 与既有 *_impl.py 同约定: 外部也可以 from ... import run

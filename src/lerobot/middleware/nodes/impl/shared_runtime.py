@@ -4243,7 +4243,22 @@ def node_ss_moe(ctx):
         if log:
             log("   ⚠ 元数据层报告失败: %r" % (_e,))
 
-    return True
+    # ── 端口 (2026-11-10): 画布 ss_moe.out1 → ssmani_exp.in4(阶段专家预测)
+    #    / out2 → sssched.in7(门控路由/阶段置信) / out3 → ss_mani_eng.in5(阶段先验)。
+    #    原实现只 return True ⇒ 三路全空。这里交出本节点真算出的 route/holography 结果。
+    _rm = locals().get("_r") or {}
+    _hm = locals().get("_h") or {}
+    _mb = {"kind": "moe", "layer": "L4", "ok": bool(_rm),
+           "primitives": _rm.get("primitives"), "bose": _rm.get("bose"),
+           "fermi": _rm.get("fermi"), "topics": _rm.get("topics"),
+           "coverage_pct": _rm.get("coverage_pct"),
+           "stage_injective": _rm.get("stage_injective"),
+           "gate": "hard_prior (7 阶段 → 7 专家 1:1 单射, 路由熵 0)",
+           "route": (dict(_rm) if isinstance(_rm, dict) else {}),
+           "holography": (dict(_hm) if isinstance(_hm, dict) else {}),
+           "note": "元数据空间根 + 硬先验门控路由 (route/holography 每拍真算)",
+           "src": "tools/meta_moe_router.py"}
+    return {"out1": dict(_mb), "out2": dict(_mb), "out3": dict(_mb), **_mb}
 
 def node_ss_lora_l4(ctx):
     """→ nodes/ss_lora_l4.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
@@ -4257,7 +4272,7 @@ def node_ss_lora_l3(ctx):
     return _impl(ctx)
 
 
-_reg("ss_moe", ["阶段专家 MOE", "阶段专家MOE", "MOE 架构", "MOE架构"],
+_reg("ss_moe", ["元数据MOE门控路由", "元数据 MOE 门控路由", "元数据MOE", "阶段专家 MOE", "阶段专家MOE", "MOE 架构", "MOE架构"],
      "🧬 阶段专家 MOE (7 阶段专家 + 先验门控路由 · 建设中) — L4 认知预测主干改造",
      node_ss_moe)
 

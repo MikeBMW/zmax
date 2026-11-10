@@ -41,6 +41,21 @@ def node_ss_calib(ctx):
         gap = layer.equilibrium_gap(stage, speed, residual, contact_p)
         _SS_STATE["calib"] = {"layer": layer, "stage": stage, "gap": gap,
                               "attr": layer.attr, "rep": layer.rep, "lat": layer.lat}
+        # 端口: 画布 sscalib.out1 → sslat.in1 / out2 → ss_mani_eng.in3(度量/势场参数)
+        #       / out3 → n_calib_mani.in1(标定层单一唯一依据)。原实现只 return True ⇒ 三路全空。
+        _rb = {"kind": "calib", "layer": "L4", "ok": True,
+               "stage": str(stage), "speed": float(speed), "residual": float(residual),
+               "contact_p": float(contact_p),
+               "gap": (float(gap) if isinstance(gap, (int, float)) else None),
+               "attr": dict(layer.attr), "rep": dict(layer.rep), "lat": dict(layer.lat),
+               "Kp": layer.attr.get("Kp"),
+               "K_kalman": layer.rep.get("K_kalman"),
+               "contact_gain": layer.rep.get("contact_gain"),
+               "veto_th": layer.rep.get("veto_th"),
+               "latent_dim": (layer.lat or {}).get("latent_dim"),
+               "state_dim": (layer.lat or {}).get("state_dim"),
+               "summary": str(layer.summarize(stage, speed, residual, contact_p))[:200],
+               "src": "src/lerobot/calibration/calibration_layer.py::CalibrationLayer"}
         if log:
             log(f"🧮 标定层 (真实): {layer.summarize(stage, speed, residual, contact_p)}")
             log(f"   引力标定 (快速动作): Kp={layer.attr['Kp']} · 当前阶段速度上限 "
@@ -48,7 +63,7 @@ def node_ss_calib(ctx):
             log(f"   斥力标定 (状态预测): K_kalman={layer.rep['K_kalman']} · 残差EMA={layer.rep['res_ema']} · "
                 f"接触增益={layer.rep['contact_gain']} · 否决阈值={layer.rep['veto_th']}")
             log(f"   {layer.latent_summary()}")
-        return True
+        return {"out1": dict(_rb), "out2": dict(_rb), "out3": dict(_rb), **_rb}
     except Exception as e:
         if log:
             log(f"⚠️ 标定层执行失败: {e}")

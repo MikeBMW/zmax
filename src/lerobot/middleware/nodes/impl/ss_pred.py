@@ -86,7 +86,33 @@ def node_ss_pred(ctx):
                 f"性能 [η={eta:.3f} rem d_perp] — readout 对齐 6 维回归")
             log("   ⚙️ 真实实现: src/lerobot/manifold/predictor_layer.py "
                 "(LatentPredictor→ManifoldReadout)")
-        return True
+        # ── 端口 (2026-11-10): 画布 ssmani_exp.out1 → ssmani_c.in1 / ssmani_p.in1 (预测流形 JEPA)
+        #    本节点当前是结构自检 (WorldModelPredictor 随机初始化), 引擎也未发布流形真值列 ⇒
+        #    如实交「已接入但未就绪」+ 引擎真给得出的那几列, 不假装有预测。
+        def _col(_k):
+            _v = tr.get(_k)
+            if not _v:
+                return None
+            try:
+                _x = float(_v[idx])
+            except Exception:                                              # noqa: BLE001
+                return None
+            return None if _x != _x else _x          # NaN → None
+
+        _eb = {"kind": "mani_exp", "layer": "L4", "ok": True,
+               "model": "WorldModelPredictor(LatentPredictor→ManifoldReadout)",
+               "trained": False,
+               "model_ready": False,
+               "note": "JEPA 随机初始化结构自检; 训练后启用 (未就绪, 不假装有预测)",
+               "idx": int(idx), "stage": str((tr.get("stage") or [""] * (int(idx) + 1))[int(idx)]),
+               "mani_progress": _col("mani_progress"),
+               "mani_risk": _col("mani_risk"),
+               "mani_eta": _col("mani_eta"),
+               "u_lora_norm": (float(np.linalg.norm(_ll.get("u_lora") or [])) if _ll else None),
+               "metric_norm": (float((_ll.get("predictor") or {}).get("metric_norm") or 0.0)
+                               if _ll else None),
+               "src": "src/lerobot/manifold/predictor_layer.py"}
+        return {"out1": dict(_eb), "out2": dict(_eb), **_eb}
     except Exception as e:
         if log:
             log(f"⚠️ Predictor 执行失败: {e}")
