@@ -136,7 +136,8 @@ def can_guide_3d(cam: Dict[str, Any]) -> Tuple[bool, str]:
 def perceive_plan(p_m: Tuple[float, float, float],
                   scene: Optional[str] = None,
                   prev_zone: Optional[str] = None,
-                  hysteresis_mm: float = DEFAULT_HYSTERESIS_MM) -> Dict[str, Any]:
+                  hysteresis_mm: float = DEFAULT_HYSTERESIS_MM,
+                  zone_override: Optional[str] = None) -> Dict[str, Any]:
     """TCP 位置 → 该位置的感知计划。
 
     返回:
@@ -148,7 +149,10 @@ def perceive_plan(p_m: Tuple[float, float, float],
     zones = load_zones()
     reg = load_registry()
     cams = reg["cams"]
-    zone, how = zone_of(p_m, zones, prev=prev_zone, hysteresis_mm=hysteresis_mm)
+    if zone_override:
+        zone, how = zone_override, "override(ALERT 预热即将进入的区)"
+    else:
+        zone, how = zone_of(p_m, zones, prev=prev_zone, hysteresis_mm=hysteresis_mm)
 
     # 区域自带的感知绑定 (派生区: {"cam_id": "role"}) —— 优先于注册表的 coverage
     bind: Dict[str, str] = (zones.get(zone) or {}).get("cams") or {}
@@ -186,6 +190,72 @@ def perceive_plan(p_m: Tuple[float, float, float],
 
 
 # ────────────────────────────── 轨迹扫描 ──────────────────────────────
+def perceive_state(p_m: Tuple[float, float, float],
+                   prev_state: str = "WATCH",
+                   prev_zone: Optional[str] = None,
+                   alert_band_mm: float = 100.0,
+                   hysteresis_mm: float = DEFAULT_HYSTERESIS_MM) -> Dict[str, Any]:
+    """四态感知门控 —— 对应大脑「周边监视 → 眼跳 → 中央凹采样 → 退出」的连续增益调节。
+
+    不是二值开关 (开/关), 而是**精度权重 gain 连续变化**:
+      WATCH    不在命名区        gain 0.2  只开 overview (顶摄低帧率跟拍 = 周边视觉)
+      ALERT    进入区但贴边 <100mm gain 0.6  目标相机预热, 还不采信 (接近警觉)
+      FOVEATE  深入区内 >100mm   gain 1.0  全开, 出 3D 引导 (= 中央凹对准)
+      RELEASE  从区内退出        gain 0.2  回落 WATCH (不要瞬间断电, 保留余像)
+
+    gain 的用途: 下游按它决定采样帧率/是否采信本次定位 —— 这正是大脑做的
+    「按预期提高该感觉通道的精度权重」(predictive coding 的 precision weighting)。
+    """
+    zones = load_zones()
+    zone, how = zone_of(p_m, zones, prev=prev_zone, hysteresis_mm=hysteresis_mm)
+    named = zone not in ("其它", "包络外")
+
+    # ALERT 的正确判据: 「逼近某个区」= 在区外但离区面 alert_band 内。
+    # 不能用「离区内边界的深度」—— 插入工位区 z 只有 11mm 厚, 工件贴在区底时深度恒≈0,
+    # 那样永远进不了高精度态 (实测 depth=0.5mm)。到达目标区就该全力看, 这是大脑的口径。
+    near_mm, near_zone = 1e9, None
+    if not named:
+        for z, v in zones.items():
+            if z in ("其它", "包络外"):
+                continue
+            b = v["bbox"]
+            dx = max(b["x"][0] - p_m[0], 0.0, p_m[0] - b["x"][1])
+            dy = max(b["y"][0] - p_m[1], 0.0, p_m[1] - b["y"][1])
+            dz = max(b["z"][0] - p_m[2], 0.0, p_m[2] - b["z"][1])
+            d = (dx * dx + dy * dy + dz * dz) ** 0.5 * 1000.0
+            if d < near_mm:
+                near_mm, near_zone = d, z
+
+    if named:
+        state = "FOVEATE"
+    elif near_mm <= alert_band_mm:
+        state = "ALERT"
+    elif prev_state in ("FOVEATE", "ALERT"):
+        state = "RELEASE"
+    else:
+        state = "WATCH"
+
+    gain = {"WATCH": 0.2, "RELEASE": 0.2, "ALERT": 0.6, "FOVEATE": 1.0}[state]
+    # ALERT 时预热"即将进入"那个区的相机 (大脑的 priming); 区内/其余用真实判定
+    plan = perceive_plan(p_m, prev_zone=prev_zone, hysteresis_mm=hysteresis_mm,
+                         zone_override=(near_zone if (state == "ALERT" and near_zone) else None))
+
+    # 按 gain 决定每台相机的采样档 (大脑的双通道: 周边低带宽 / 中央凹高带宽)
+    for c in plan["cams"]:
+        if "overview" in c["role"]:
+            c["sampling"] = "low_rate(2Hz)"          # 周边视觉: 一直在看, 但低带宽
+        elif "quality" in c["role"]:
+            c["sampling"] = "on_demand"              # 质量相机: 到位才抓一帧
+        else:
+            c["sampling"] = "high_rate(10Hz)" if gain >= 1.0 else "prewarm(1Hz)"
+
+    return {"p_m": [round(v, 4) for v in p_m], "zone": zone, "zone_how": how,
+            "state": state, "gain": gain, "zone_depth_mm": round(alert_band_mm - near_mm, 1) if not named else 0.0,
+            "cams": plan["cams"], "guide": plan["guide"], "blocked": plan["blocked"],
+            "_neuro": {"WATCH": "周边视觉低带宽监视", "ALERT": "接近警觉·预热",
+                       "FOVEATE": "中央凹对准·高精度采样", "RELEASE": "退出·保留余像"}[state]}
+
+
 def scan_traj(pts_m: List[Tuple[float, float, float]],
               label: str = "", hysteresis_mm: float = DEFAULT_HYSTERESIS_MM
               ) -> Dict[str, Any]:
