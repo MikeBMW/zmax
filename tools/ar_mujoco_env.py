@@ -69,7 +69,10 @@ def _equip_geoms():
     boxes = [b for b in items
              if b.get("type") == "box" and b.get("p1") and b.get("p2") and b.get("enabled")]
     # 主料盘: 与 build_mjcf 同口径 (第一个名字含"料盘"且不带"槽"的盒子)
-    pans = [b for b in boxes if "料盘" in str(b.get("name")) and "槽" not in str(b.get("name"))]
+    # ⚠ `"槽" not in name` 会把 "下料盘(第三·14槽)" / "废料盘(不良品·无槽位)" 一起筛掉,
+    #   结果只建 2 个盘体, 另两个盘在顶视里是空的; 槽本体是以 "槽" 开头的条目, 只排除这种。
+    pans = [b for b in boxes
+            if "料盘" in str(b.get("name")) and not str(b.get("name")).startswith("槽")]
     main = pans[0] if pans else None
     if main:
         boxes = [b for b in boxes if b is not main]
@@ -79,6 +82,11 @@ def _equip_geoms():
             break
         nm = str(b.get("name") or "")
         if nm.startswith("槽"):         # 槽位太多太碎, 不画 (主料盘自带槽)
+            continue
+        # 🔴 料盘一律交给 build_mjcf 的 pan_* 循环 (薄底+四壁+42 个槽):
+        #   这里再把 3 个料盘画成 0.10~0.14 的实心 slab, 正好把槽片 (z 0.105~0.109) 整个盖死
+        #   ⇒ 顶视里左盘/下盘/废料盘"是纯平板、一格槽都看不见"(实测红色槽片 0 像素)。
+        if "料盘" in nm:
             continue
         try:
             p1 = [float(v) for v in b["p1"][:3]]
@@ -104,6 +112,15 @@ def build_mjcf() -> str:
     区别是这里**臂带关节+actuator**、**光模块是 freejoint 刚体**（能被抓）。
     """
     sys.path.insert(0, osp.join(ROOT, "tools"))
+    # 🔴 2026-11-09: 双臂几何/运动学切换 —— 真 URDF(默认) vs 旧缩尺胶囊(ZMAX_AR_MJCF=simple 回滚)
+    #   旧 arm() 是自己写的 6 段缩尺链 (圆柱/胶囊), 与 AR 页的 URDF FK 不同源 ⇒ 外形是棍子、动作对不上。
+    _use_urdf = os.environ.get("ZMAX_AR_MJCF", "urdf").lower() != "simple"
+    try:
+        import ar_mujoco_urdf as _U
+        if not _U.meshes_ok():                       # 缺 STL 就退回简化臂 (冻包/CI 常见)
+            _use_urdf = False
+    except Exception:                                                        # noqa: BLE001
+        _U, _use_urdf = None, False
     try:
         import fence_store as FS
         items = FS.listing().get("items") or []
@@ -112,7 +129,10 @@ def build_mjcf() -> str:
     boxes = [b for b in items if b.get("type") == "box" and b.get("p1") and b.get("p2")]
 
     # 料盘/槽位（结构件跳过：横梁 1.6m 会把台面盖死，见 ar_mujoco_scene 的实测注释）
-    pans = [b for b in boxes if "料盘" in str(b.get("name")) and "槽" not in str(b.get("name"))]
+    # ⚠ `"槽" not in name` 会把 "下料盘(第三·14槽)" / "废料盘(不良品·无槽位)" 一起筛掉,
+    #   结果只建 2 个盘体, 另两个盘在顶视里是空的; 槽本体是以 "槽" 开头的条目, 只排除这种。
+    pans = [b for b in boxes
+            if "料盘" in str(b.get("name")) and not str(b.get("name")).startswith("槽")]
     slots = [b for b in boxes if str(b.get("name")).startswith("槽")]
     if not pans:
         pans = [{"name": "pan", "p1": [0.39, 0.10, 0.10], "p2": [0.65, 0.50, 0.14]}]
@@ -144,37 +164,96 @@ def build_mjcf() -> str:
     #   (实测 gold_px 25594、框贴画面边)。几何仍与 ar3d 桌面完全一致, 只换颜色。
     geo3d.append('<geom name="bench" type="box" pos="0.65 0.25 -0.015" size="0.300 0.800 0.015" '
                  'rgba="0.34 0.34 0.36 1"/>')
+    # ❌ 2026-11-09 回退: 加了三面背景墙后, AR 页推来的相机 (az≈-51.6) 正好站在墙外侧,
+    #   渲染出来整幅是一块平灰 (帧只有 17.7KB、画面"什么都没有") —— 老倪报「8802/video 没有了」。
+    #   背景黑是观感问题, 挡住画面是功能问题 ⇒ 墙全部去掉, 只保留地面。
+    pass
     for _i, (_lx, _ly) in enumerate([(0.375, -0.525), (0.925, -0.525), (0.375, 1.025), (0.925, 1.025)]):
         geo3d.append('<geom name="leg%d" type="box" pos="%.3f %.3f -0.375" size="0.0225 0.0225 0.375" '
                      'rgba="0.29 0.31 0.34 1"/>' % (_i, _lx, _ly))
 
     geos = []
+    # 🎥 设备箱体 (2026-11-09 老倪「8802/video 少东西, 比如中央相机、AOI 检测相机」):
+    #   AR 画布把 fence_store 里的设备盒 (侧面检测相机 / 检测设备 / 上横梁 / 前方深度相机) 都画出来,
+    #   8802 的 MuJoCo 场景却只有台面和料盘 ⇒ 两边"少东西"。这里把非料盘/非槽位的盒体全部补成
+    #   可视几何 (contype=0 不参与碰撞), 尺寸位置逐项取自 fence_store, 不手写常数。
+    _eq_n = 0
+    for _b in boxes:
+        _nm = str(_b.get("name"))
+        if ("料盘" in _nm) or _nm.startswith("槽") or ("槽" in _nm and "料盘" not in _nm):
+            continue
+        if not _b.get("p1") or not _b.get("p2"):
+            continue
+        _c = ctr(_b)
+        _s = sz(_b)
+        if min(_s) < 0.004:                       # 厚度为 0 的参考面跳过 (会把整块空间糊住)
+            continue
+        _eq_n += 1
+        # 半透明 (alpha 0.45): 设备盒是真的实测盒体, 坐标不改; 但实心实体会
+        # ①顶视把台面盖死 (横梁 200×1600×18 占画面 12%) ②把光模块插孔整个包住看不见。
+        # group=3 = 「设备/相机盒」: 顶视时渲染端把这一组关掉 (上横梁 1.6m 正悬在料盘上方 0.55m,
+        # 任何正俯视都必然被它盖死, 与俯角/视场无关 —— 实测顶视里 4 个料盘被遮 95~100%)
+        geos.append('<geom name="equip%d" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f %.4f" '
+                    'rgba="0.42 0.46 0.54 0.94" contype="0" conaffinity="0" group="3"/>'
+                    % (_eq_n, _c[0], _c[1], _c[2], _s[0], _s[1], _s[2]))
     # 台面
     geos.append('<geom name="table" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f 0.015" '
                 'rgba="0.32 0.32 0.35 1"/>' % (pcx, pcy, pzlo - 0.015, px + 0.10, py + 0.10))
     # 料盘：薄底 + 四壁（实心盒会把槽和模块包住 —— 实测过）
+    # 🔴 2026-11-09: 原来只建 pans[0] 一个盘体, 另外 3 个盘 (左臂盘/下料盘/废料盘) 只有 2mm 槽片悬空
+    #    ⇒ 顶视里"另外两个盘是纯色板、没有槽"。改成遍历所有盘。
     wall = 0.006
-    geos.append('<geom name="pan_bot" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f %.4f" '
-                'rgba="0.10 0.10 0.11 1"/>' % (pcx, pcy, pzlo + wall / 2, px, py, wall / 2))
-    for suf, gx, gy, sx, sy in (
-            ("w0", pcx, pan["p1"][1] + wall / 2, px, wall / 2),
-            ("w1", pcx, pan["p2"][1] - wall / 2, px, wall / 2),
-            ("w2", pan["p1"][0] + wall / 2, pcy, wall / 2, py),
-            ("w3", pan["p2"][0] - wall / 2, pcy, wall / 2, py)):
-        geos.append('<geom name="pan_%s" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f %.4f" '
-                    'rgba="0.10 0.10 0.11 1"/>'
-                    % (suf, gx, gy, (pzlo + pzlo + 0.04) / 2, sx, sy, 0.02))
-    # 垫块: 料盘底(0.10) 与 ar3d 桌面(z=0) 之间的 100mm 支撑 (否则料盘悬空, 看着位置就不对)
-    geos.append('<geom name="pan_riser" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f %.4f" '
-                'rgba="0.22 0.24 0.27 1"/>'
-                % (pcx, pcy, pzlo / 2.0, px + 0.02, py + 0.02, max(0.01, pzlo / 2.0)))
+    for _pi, _p in enumerate(pans):
+        _cx, _cy, _ = ctr(_p)
+        _sx, _sy, _ = sz(_p)
+        _lo = min(_p["p1"][2], _p["p2"][2])
+        _x0, _x1 = min(_p["p1"][0], _p["p2"][0]), max(_p["p1"][0], _p["p2"][0])
+        _y0, _y1 = min(_p["p1"][1], _p["p2"][1]), max(_p["p1"][1], _p["p2"][1])
+        geos.append('<geom name="pan_bot%d" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f %.4f" '
+                    'rgba="0.10 0.10 0.11 1"/>' % (_pi, _cx, _cy, _lo + wall / 2, _sx, _sy, wall / 2))
+        for _suf, _gx, _gy, _gzx, _gzy in (
+                ("w0", _cx, _y0 + wall / 2, _sx, wall / 2),
+                ("w1", _cx, _y1 - wall / 2, _sx, wall / 2),
+                ("w2", _x0 + wall / 2, _cy, wall / 2, _sy),
+                ("w3", _x1 - wall / 2, _cy, wall / 2, _sy)):
+            geos.append('<geom name="pan%d_%s" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f %.4f" '
+                        'rgba="0.10 0.10 0.11 1"/>'
+                        % (_pi, _suf, _gx, _gy, (_lo + _lo + 0.04) / 2, _gzx, _gzy, 0.02))
+        # 垫块: 料盘底(0.10) 与 ar3d 桌面(z=0) 之间的 100mm 支撑 (否则料盘悬空, 看着位置就不对)
+        geos.append('<geom name="pan_riser%d" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f %.4f" '
+                    'rgba="0.22 0.24 0.27 1"/>'
+                    % (_pi, _cx, _cy, _lo / 2.0, _sx + 0.02, _sy + 0.02, max(0.01, _lo / 2.0)))
     # 槽位（凹槽参照物，不挡模块）
-    for k, s in enumerate(slots[:6]):
-        scx, scy, scz = ctr(s)
-        sx2, sy2, sz2 = sz(s)
-        geos.append('<geom name="slot%d" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f 0.002" '
-                    'rgba="0.05 0.05 0.06 1" contype="0" conaffinity="0"/>'
-                    % (k, scx, scy, pzlo + 0.008, sx2, sy2))
+    # 🔴 2026-11-09: 原来只画 fences 里前 6 个槽 ⇒ 顶视里"上料盘/下料盘/废料盘没有槽"看着像少东西。
+    #    真源改用 place_cells.json (42 个槽, 覆盖 3 个有槽料盘, SAM3 实测 base mm)。
+    _pc = []
+    try:
+        import json as _json
+        _pf = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "zmax_data", "staging_zmax_repo", "data", "skills", "l2_atomic",
+                           "place_cells.json")
+        with open(_pf, "r", encoding="utf-8") as _fh:
+            _pc = [c for c in (_json.load(_fh).get("cells") or []) if c.get("kind") == "slot"]
+    except Exception:                                                        # noqa: BLE001
+        _pc = []
+    if _pc:
+        for k, _c in enumerate(_pc):
+            _px, _py, _pz = [float(v) / 1000.0 for v in (_c.get("pos_mm") or [0, 0, 0])]
+            _sx, _sy = [max(0.004, float(v) / 2000.0) for v in (_c.get("size_mm") or [36, 42, 15])[:2]]
+            # z 贴盘底上表面 (盘底 0.10 + 底厚 0.006 = 0.106, 片厚 2mm ⇒ 中心 0.107):
+            #   原来用 _pz-0.006=0.1115, 顶视能看到槽片与盘底之间 5.4mm 的缝 (像浮着)
+            geos.append('<geom name="slot%d" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f 0.002" '
+                        'rgba="0.45 0.46 0.48 1" contype="0" conaffinity="0"/>'
+                        % (k, _px, _py, 0.107, _sx, _sy))
+    # ❌ 去掉 fslot 复制: fences 的这 6 个槽与 place_cells 的 42 个槽是同一批 (主料盘),
+    #   两套片叠在 0.1081/0.107 会 z-fighting。有 place_cells 时只用那一套。
+    if not _pc:
+        for k, s in enumerate(slots[:6]):
+            scx, scy, scz = ctr(s)
+            sx2, sy2, sz2 = sz(s)
+            geos.append('<geom name="fslot%d" type="box" pos="%.4f %.4f %.4f" size="%.4f %.4f 0.002" '
+                        'rgba="0.45 0.46 0.48 1" contype="0" conaffinity="0"/>'
+                        % (k, scx, scy, pzlo + 0.008, sx2, sy2))
 
     # 光模块：**freejoint** 刚体（能被抓走，这是与静态场景的本质区别）
     gold_pos = [pcx, pcy, pzlo + 0.012]
@@ -250,7 +329,37 @@ def build_mjcf() -> str:
     <body name="box" pos="%.4f %.4f %.4f">
       <site name="hole" pos="0 0 0" size="0.006" rgba="0.2 0.9 0.4 1"/>
       <site name="goal" pos="0 0 -0.010" size="0.005" rgba="0.9 0.9 0.2 1"/>
-    </body>""" % (_scx, _scy, max(slot0["p1"][2], slot0["p2"][2]))
+    </body>
+  <!-- 🎥 顶视相机 = AR 页面 tcp-ar.html 的同一套设计 (老倪 2026-11-09「AR 里的顶视相机要显示到 video 渲染场景」):
+       tcp-ar.html 里 TCAM={y:0.25, r:0.070, tilt:35, fovH:87, fovV:58, body:[0.09,0.025,0.025]},
+       立柱在两臂 (y=0 / y=0.5) 的中线 x=0, 半径 70mm, 高 = 1 轴高 (URDF joint_1 z=0.328m);
+       顶上按 RealSense D435 模板: 90(W)×25(H)×25(D) mm, 俯角 35° 朝 +X 看工作区。
+       之前我做的是"吊在横梁上的方块", 与 AR 页完全不是同一个东西 ⇒ 现在按 AR 页逐项复制。 -->
+  <body name="cam_topmid_body" pos="0 0.25 0">
+    <!-- 底座法兰 + 立柱 -->
+    <geom name="cam_topmid_flange" type="cylinder" size="0.0945 0.008" pos="0 0 0.008" rgba="0.30 0.33 0.38 1" group="3" contype="0" conaffinity="0"/>
+    <geom name="cam_topmid_col" type="cylinder" size="0.070 0.156" pos="0 0 0.168" rgba="0.16 0.20 0.25 1" group="3" contype="0" conaffinity="0"/>
+    <geom name="cam_topmid_cap" type="cylinder" size="0.062 0.004" pos="0 0 0.326" rgba="0.25 0.30 0.36 1" group="3" contype="0" conaffinity="0"/>
+    <!-- 悬臂: 把 D435 探出柱顶 70mm, 否则 35° 俯视时镜头被自己的顶盖挡住 (实测顶盖占画面下部六成) -->
+    <geom name="cam_topmid_arm" type="box" size="0.036 0.012 0.010" pos="0.036 0 0.330" rgba="0.28 0.31 0.36 1" group="3" contype="0" conaffinity="0"/>
+    <!-- D435 机身: 90(y)×25(z)×25(x), 绕 Y 俯 35° 朝 +X -->
+    <body name="cam_topmid_head" pos="0.072 0 0.3315" euler="0 35 0">
+      <geom name="cam_topmid_tilt" type="box" size="0.0125 0.045 0.0125" pos="0 0 0.0125" rgba="0.10 0.13 0.17 1" group="3" contype="0" conaffinity="0"/>
+      <geom name="cam_topmid_plate" type="box" size="0.0025 0.045 0.0125" pos="0.0145 0 0.0125" rgba="0.05 0.06 0.08 1" group="3" contype="0" conaffinity="0"/>
+      <!-- 背面标牌 (实测 AR 机位在 -X 侧, 看到的是 D435 背面: 深色机身贴在黑色料盘上只有 26×8px,
+           认不出是相机。加一块浅灰尾板 + 一道白标条, 从背面也能一眼看出是装在立柱上的相机) -->
+      <geom name="cam_topmid_back" type="box" size="0.0025 0.045 0.0125" pos="-0.0145 0 0.0125" rgba="0.72 0.75 0.79 1" group="3" contype="0" conaffinity="0"/>
+      <geom name="cam_topmid_stripe" type="box" size="0.0028 0.045 0.0025" pos="-0.0145 0 0.0225" rgba="0.95 0.96 0.98 1" group="3" contype="0" conaffinity="0"/>
+      <!-- 前面板: 左 IR / RGB(蓝) / 右 IR / 红外投射器(红) -->
+      <geom name="cam_topmid_ir0" type="cylinder" size="0.007 0.002" pos="0.0175 -0.031 0.0125" euler="0 90 0" rgba="0.04 0.05 0.06 1" group="3" contype="0" conaffinity="0"/>
+      <geom name="cam_topmid_rgb" type="cylinder" size="0.007 0.002" pos="0.0175 0 0.0125" euler="0 90 0" rgba="0.12 0.31 0.85 1" group="3" contype="0" conaffinity="0"/>
+      <geom name="cam_topmid_ir1" type="cylinder" size="0.007 0.002" pos="0.0175 0.031 0.0125" euler="0 90 0" rgba="0.04 0.05 0.06 1" group="3" contype="0" conaffinity="0"/>
+      <geom name="cam_topmid_led" type="sphere" size="0.004" pos="0.006 0 0.026" rgba="0.02 0.84 0.63 1" group="3" contype="0" conaffinity="0"/>
+      <!-- 真相机: 从镜头面朝 +X 俯 35° 看工作区, 视场 58°(D435 垂直) -->
+      <!-- ⚠ euler 用 -90 而不是 -55: 父 body 已经 -35°, 叠加 -55 会变成 -90° ⇒ 镜头实际水平朝 +X (实测中央射线打到 0.70m 的 equip2, 不是台面) -->
+      <camera name="cam_topmid" pos="0.020 0 0.0125" euler="0 -90 0" fovy="58"/>
+    </body>
+  </body>""" % (_scx, _scy, max(slot0["p1"][2], slot0["p2"][2]))
 
     # 相机：名字必须叫 corner2（aligner 硬编码），放在料盘前上方俯视。
     # 🔴 xyaxes 必须**按几何算**，不能手写常数：手写 (0,0.35,0.94) 只给 20° 俯角，
@@ -285,15 +394,25 @@ def build_mjcf() -> str:
   <visual>
     <global offwidth="%(W)d" offheight="%(H)d"/>
     <quality shadowsize="2048"/>
+    <!-- 🔆 2026-11-09: 换成真 URDF 网格后整帧偏暗 (实测 mean 20.4/255, 82%% 像素<40),
+         目检看不清料盘与臂; 头灯给一层环境光 + 漫反射, 不动几何/标定。 -->
+    <headlight ambient="0.60 0.60 0.64" diffuse="0.70 0.70 0.74" specular="0.12 0.12 0.12"/>
   </visual>
   <asset>
     <texture name="grid" type="2d" builtin="checker" rgb1="0.24 0.25 0.28" rgb2="0.17 0.18 0.21"
              width="512" height="512"/>
     <material name="grid" texture="grid" texrepeat="10 10"/>
+%(meshes)s
   </asset>
   <worldbody>
-    <light pos="%(lx).4f %(ly).4f %(lz).4f" dir="0 0 -1" diffuse="0.9 0.9 0.95" specular="0.25 0.25 0.25"/>
-    <light pos="%(l2x).4f %(l2y).4f %(l2z).4f" dir="0.3 0.7 -1" diffuse="0.4 0.4 0.45"/>
+    <light pos="%(lx).4f %(ly).4f %(lz).4f" dir="0 0 -1" diffuse="1.35 1.35 1.4" specular="0.25 0.25 0.25"/>
+    <light pos="%(l2x).4f %(l2y).4f %(l2z).4f" dir="0.3 0.7 -1" diffuse="0.55 0.55 0.6"/>
+    <!-- 🔆 料盘补光 (2026-11-09): 槽唇 vs 盘面只有 11 灰阶, 槽内件看不出来 -->
+    <!-- 🎯 料盘补光: 原来只有一盏对着中盘(0.52,0.25), 中盘被打到 250/255, 左右两盘只有 77~115
+         ⇒ 顶视里左/右盘的 28 个槽"看不见"。改成每个有槽的盘上方各一盏, 亮度降到 0.45 避免过曝。 -->
+    <light pos="0.52 0.771 1.10" dir="0 0 -1" diffuse="0.45 0.45 0.48" specular="0.08 0.08 0.08"/>
+    <light pos="0.52 0.348 1.10" dir="0 0 -1" diffuse="0.45 0.45 0.48" specular="0.08 0.08 0.08"/>
+    <light pos="0.52 -0.076 1.10" dir="0 0 -1" diffuse="0.45 0.45 0.48" specular="0.08 0.08 0.08"/>
     <geom name="floor" type="plane" pos="0 0 -0.750" size="3 3 0.05" material="grid"/>
 %(geo3d)s
 %(cam)s
@@ -312,9 +431,11 @@ def build_mjcf() -> str:
        "l2x": pcx - 0.5, "l2y": pcy - 0.5, "l2z": pzlo + 1.0,
        "cam": cam_body, "geos": "\n    ".join(geos), "geo3d": "\n    ".join(geo3d), "module": module, "box": _box,
        "equip": _equip_geoms(),
-       "armL": arm("L", 0.0, 0.50, 0.0),
-       "armR": arm("R", 0.0, 0.00, 0.0),
-       "acts": "\n".join(acts)}
+       "armL": (_U.arm_mjcf("L", 0.0, 0.50, 0.0) if _use_urdf else arm("L", 0.0, 0.50, 0.0)),
+       "armR": (_U.arm_mjcf("R", 0.0, 0.00, 0.0) if _use_urdf else arm("R", 0.0, 0.00, 0.0)),
+       "meshes": (_U.mesh_assets() if _use_urdf else ""),
+       "acts": ("\n".join(_U.actuators_mjcf(s) for s in ("L", "R")) if _use_urdf
+                else "\n".join(acts))}
 
 
 # ═══════════════ Gym 风格 env ═══════════════
