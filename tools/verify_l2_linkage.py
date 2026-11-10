@@ -41,6 +41,57 @@ WANTED = [
 
 TIMEOUT_S = 15
 
+# ── --engine: 真跑一次流形引擎 ───────────────────────────────────────────
+# sslat / ssmani_exp / ss_lora_l4 只从 ctx["module"]._ss_tr 取轨迹 (GUI 播放态内存),
+# 离线时必然 return False 说「无引擎轨迹」。这里读 ss_traj_last.json 的 357 帧 obs,
+# 逐帧真调 eng.step(), 把引擎算出的潜坐标组装成 _ss_tr, 作为 module 桩传进去。
+_MODULE = None
+if "--engine" in sys.argv:
+    import numpy as _np
+    _tp = os.path.join(ROOT, "data/database/zmax/sources/canvas/ss_traj_last.json")
+    with open(_tp, encoding="utf-8") as _fh:
+        _d = json.load(_fh)
+    _obs = _np.asarray(_d["obs"], dtype=float)
+    _ue = _np.asarray(_d.get("u_exec_vec") or [], dtype=float)
+    from lerobot.manifold.manifold_engine import ManifoldEngine        # noqa: E402
+    # ⚠️ 常驻回路 tools/ss_engine_loop.py 已在 10Hz 跑并写 ss_live/manifold_homeostasis.json;
+    #    这里关掉内稳态盘写, 否则两个引擎抢同一个 .tmp → os.replace FileNotFoundError
+    _eng = ManifoldEngine(homeostasis=False)
+    _lat, _pri, _cor = [], [], []
+    # ⚠️ 必须先把编码器 fit 到**整条轨迹**: 引擎默认 z_source 是「内建 PCA 编码器
+    #    (Encoder.fit, 对当前状态拟合)」, 单帧拟合单样本 ⇒ PCA 方差为 0 ⇒ z 恒全零。
+    #    GUI 点 ▶ 运行状态空间时是先 fit 全轨迹再逐帧 step 的, 这里补上同一口径。
+    _fit = _eng.fit(_obs)
+    print("⚙️ 编码器 fit 全轨迹: %s" % {k: _fit.get(k) for k in list(_fit)[:5]})
+    _t0 = time.time()
+    for _i in range(len(_obs)):
+        _rec = _eng.step(_obs[_i], dt=0.1)
+        for _k, _acc in (("z", _lat), ("p_next", _pri), ("p", _cor)):
+            _v = _np.asarray(_rec.get(_k) if _rec.get(_k) is not None else [0, 0, 0, 0], dtype=float).ravel()
+            _acc.append(_v[:4] if _v.size >= 4 else _np.pad(_v, (0, max(0, 4 - _v.size))))
+    _stage = [str((_d.get("stage") or ["对位"] * len(_obs))[_i]) for _i in range(len(_obs))] \
+        if isinstance(_d.get("stage"), list) and len(_d["stage"]) == len(_obs) else ["对位"] * len(_obs)
+    _tr = {
+        "t": [round(_i * 0.1, 3) for _i in range(len(_obs))],
+        "stage": _stage,
+        "obs": _obs.tolist(),
+        "latent_vec": [x.tolist() for x in _lat],
+        "prior_vec": [x.tolist() for x in _pri],
+        "corrected_vec": [x.tolist() for x in _cor],
+        "x": _obs[:, 0:3].tolist(),
+        "peg_head": _obs[:, 11:14].tolist(),
+        "target": _obs[:, 36:39].tolist(),
+        "v_vec": (_ue[:, 0:3].tolist() if _ue.ndim == 2 and _ue.shape[0] == len(_obs) else [[0, 0, 0]] * len(_obs)),
+    }
+
+    class _Mod:
+        _ss_tr = _tr
+        _ss_round = len(_obs) - 1
+
+    _MODULE = _Mod()
+    print("⚙️ --engine: 真跑 %d 帧 引擎 step %.2fs (潜维 %s, 末帧 z=%s)"
+          % (len(_obs), time.time() - _t0, len(_lat[0]), _np.round(_lat[-1], 3).tolist()))
+
 # 可选: --nodes a,b,c 只跑指定子图 (默认 L2 主干)
 if "--nodes" in sys.argv:
     _i = sys.argv.index("--nodes")
@@ -144,6 +195,8 @@ def main():
                 continue
             ctx = {"log": lambda m, _n=nid: logs.append((_n, str(m)[:120])),
                    "params": n.get("params") or {}, "name": n.get("name")}
+            if _MODULE is not None:
+                ctx["module"] = _MODULE        # --engine: 真跑引擎后的 GUI 播放态桩
             # 同一入端口可能有多个上游 (如 ssdec.in5 ← 接触流形/性能流形/潜空间 三条线):
             #   判定「下游能不能拿到」要用**任一非空**, 不能只看最后一条 (后写覆盖 → 误报未送达)
             _port_vals = {}

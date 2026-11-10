@@ -60,6 +60,19 @@ def node_ss_lat(ctx):
                                      "prior": prior, "vel": vel,
                                      "eff_dim": eff_dim, "eff_dim99": eff_dim99,
                                      "lat": dict(layer.lat)}
+        # 端口: 画布 sslat.out1 → ssdec.in5(潜空间→动作头条件) / out2 → ss_mani_eng.in4
+        #       / out3 → n_calib_mani.in2 (曲率/维度尺度)。原实现算完只 return True ⇒ 三路全空。
+        _rb = {"kind": "latent", "layer": "L4", "ok": True,
+               "idx": int(idx), "stage": stage, "t": round(float(tr["t"][idx]), 3),
+               "latent": [round(float(x), 6) for x in np.asarray(lat, float).ravel()],
+               "prior": [round(float(x), 6) for x in np.asarray(prior, float).ravel()],
+               "vel": [round(float(x), 6) for x in np.asarray(vel, float).ravel()],
+               "eff_dim": int(eff_dim), "eff_dim99": int(eff_dim99),
+               "latent_dim": int(lat.size), "state_dim": int(layer.lat["state_dim"]),
+               "flow_kind": str(layer.lat.get("flow_kind")),
+               "prior_A": float(layer.lat.get("prior_A") or 0.0),
+               "summary": str(layer.latent_summary())[:160],
+               "src": "src/lerobot/middleware/nodes/impl/ss_lat.py::node_ss_lat"}
         if log:
             log(f"🧮 潜空间 (真实·t={tr['t'][idx]:.2f}s {stage}): 潜坐标 (位置3+预测力1)="
                 f"{np.round(lat, 4)}")
@@ -67,7 +80,7 @@ def node_ss_lat(ctx):
                 f"A={layer.lat['prior_A']:.1f} 恒速线性流形 ({layer.lat['flow_kind']})")
             log(f"   PCA 校验: " + " · ".join(checks))
             log(f"   标定: {layer.latent_summary()}")
-        return True
+        return {"out1": dict(_rb), "out2": dict(_rb), "out3": dict(_rb), **_rb}
     except Exception as e:
         if log:
             log(f"⚠️ 潜空间执行失败: {e}")
