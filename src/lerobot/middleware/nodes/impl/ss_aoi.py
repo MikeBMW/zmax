@@ -12,13 +12,24 @@ from .shared_runtime import (  # noqa: F401
     _YOLO_CACHE,
     _YOLO_DIR,
     _ar_aoi_publish,
-    _gold_bypass,
     _load_mod,
-    _surface_bypass,
     _yolo_capture,
     _yolo_ensure_aligner,
     os,
 )
+# 🔀 2026-11-10 老倪: 「AOI 算法，在 src/lerobot/policies 算法路径，统一管理」
+#   节点只做薄壳: 算法在 policies/aoi/，这里注入进程内缓存 + 话题发布回调。
+from lerobot.policies.aoi import (  # noqa: E402
+    gold_bypass as _algo_gold_bypass,
+    gold_yolo_bypass as _algo_gold_yolo_bypass,
+    surface_bypass as _algo_surface_bypass,
+)
+
+# 🔴 2026-11-10 实测节流 (上真机前必须): 三路旁路 = 2×HTTP(10082) + 1×HTTP(10083) + 1 次 YOLO 推理,
+#   单拍实测 1.3~3.0s; 而引擎是 10Hz(100ms/拍预算) ⇒ **每拍都跑会把整个循环拖死**。
+#   节点层按间隔节流, 其余拍直接回上一轮结果(并标 cached_ago_s), 不重算、不重复发话题。
+_AOI_LAST = {"t": 0.0, "out": None}
+
 
 def node_ss_aoi(ctx):
     """🔍 光学质量检测 — 真实执行: 目标帧 → quality_check.py AOIQualityChecker 图像处理缺陷检测,
@@ -28,6 +39,12 @@ def node_ss_aoi(ctx):
     🔁 2026-10-11: 「外观质量检测」→「光学质量检测」(老倪); 新增 AOI 话题发布 (信号分析页可看)"""
     log = ctx.get("log")
     try:
+        import time as _tm
+        _iv = float(os.environ.get("ZMAX_AOI_MIN_INTERVAL_S", "2.0"))
+        if _AOI_LAST["out"] is not None and (_tm.time() - _AOI_LAST["t"]) < _iv:
+            _c = dict(_AOI_LAST["out"])
+            _c["cached_ago_s"] = round(_tm.time() - _AOI_LAST["t"], 2)
+            return _c                                  # 节流拍: 不重算、不重复发话题, 只回缓存
         qc_path = os.path.join(_YOLO_DIR, "quality_check.py")
         qc = _load_mod("yolo_3d.quality_check", qc_path)    # 正常 import (断点可绑)
         # 目标帧: 优先用 YOLO 节点缓存帧, 无则同源采样一帧 (与 node_ss_yolo 一致)
@@ -69,8 +86,9 @@ def node_ss_aoi(ctx):
             log(f"🔍 光学质量检测 (真实图像处理): {qc.summarize(res)} (quality_check.py)")
             log(f"🔍 AOI 话题已发出 ({len(_sig)} 个): " + " · ".join("%s=%g" % (k.split('.')[-1], v)
                                                                   for k, v in sorted(_sig.items())))
-        _gold_bypass(log)             # 🆕 10082 金手指同源搬运转发 (工控机 YOLO 真判决)
-        _surface_bypass(log)          # 🆕 10083 表面旁路 (4060 本机), 失败不影响金手指那一路
+        _gy = _algo_gold_yolo_bypass(log=log, cache=_YOLO_CACHE, publish=_ar_aoi_publish)  # 本机 YOLO 推理
+        _algo_gold_bypass(log=log, cache=_YOLO_CACHE, publish=_ar_aoi_publish)             # 搬运 10082 真判决
+        _algo_surface_bypass(log=log, cache=_YOLO_CACHE, publish=_ar_aoi_publish)          # 10083 本机重算
         # 🔴 2026-10-29 接口对齐: 原来 return bool ⇒ 壳判定「实现返回非 dict → 直通」⇒ 下游
         #    ssplan/ssdec 拿不到 AOI 判决。改为发业务字典 (与 INTACT 节点同一口径)。
         _items = []
@@ -79,7 +97,7 @@ def node_ss_aoi(ctx):
                            "value": _it.get("value"), "threshold": _it.get("threshold"),
                            "pass": bool(_it.get("pass")),
                            "note": _it.get("note")})
-        return {"kind": "aoi", "pass": bool(res.get("pass")),
+        _out = {"kind": "aoi", "pass": bool(res.get("pass")),
                 "verdict": (_q.get("verdict") if _q else None),
                 "verdict_why": (_q.get("why") if _q else None),
                 "scratch": res.get("scratch"), "blob": res.get("blob"),
@@ -90,9 +108,18 @@ def node_ss_aoi(ctx):
                 "items": _items,
                 "sig_n": len(_sig),
                 "src": "quality_check.AOIQualityChecker (本机图像处理)",
-                "remote": (f"10083 {(_AOI_REMOTE.get('surface') or '未接')}"
-                           if isinstance(globals().get("_AOI_REMOTE"), dict) else "10083 未接"),
+                "gold_yolo": (None if not _gy else {"n": _gy.get("n"), "best_conf": _gy.get("best_conf"),
+                                                    "present": _gy.get("present"), "infer_ms": _gy.get("infer_ms"),
+                                                    "src": _gy.get("src"), "gate": _gy.get("gate")}),
+                "gold_remote": (_YOLO_CACHE.get("gold_aoi") or {}).get("verdict"),
+                # 表面那一路的真实结论取自算法层回写的缓存 (原来读一个从未定义的
+                # _AOI_REMOTE ⇒ 永远显示"未接", 与日志里"未出图/verdict"矛盾)
+                "remote": "10083 " + str((_YOLO_CACHE.get("surface_aoi") or {}).get("verdict")
+                                         or (_YOLO_CACHE.get("surface_aoi") or {}).get("why")
+                                         or "未接"),
                 "no_truth": True}
+        _AOI_LAST.update({"t": _tm.time(), "out": _out})     # 成功一轮才更新节流时间戳
+        return _out
     except Exception as e:
         if log:
             log(f"⚠️ 光学质量检测真实执行失败: {e}")
