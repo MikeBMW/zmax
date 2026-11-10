@@ -469,6 +469,30 @@ def _page_cam(qs):
     return d
 
 
+# 🔴 老倪 2026-11-10「/video 现在是乱动」: 微任务切换时 a/b 瞬移 + IK 换解支 ⇒ 单拍 49°/200ms。
+#   两道闸: 目标点限速 (mm/拍) + IK 解跳变闸 (度/拍), 超了就保持上一拍, 下一拍继续逼近。
+_TGT_STEP_MM = float(os.environ.get("ZMAX_AR_TGT_STEP_MM", "12"))
+_MAX_DEG_STEP = float(os.environ.get("ZMAX_AR_MAX_DEG_STEP", "6"))
+
+# 🔴 2026-11-10「两个画面都不动」: IK 每拍在**共享 model/data** 上 mj_forward, 而渲染线程同时在
+#   同一个 MjData 上 update_scene/render ⇒ MuJoCo 内部状态被踩, render() 卡死不返回 (实测 n 冻在 1)。
+#   IK 用私有一份 MjData (只同步 qpos), 和渲染彻底分开。
+_IK_DATA = {}
+
+
+def _ik_data(mujoco, model, data):
+    key = id(model)
+    d = _IK_DATA.get(key)
+    if d is None:
+        d = mujoco.MjData(model)
+        _IK_DATA[key] = d
+    try:
+        d.qpos[:] = data.qpos
+    except Exception:                                            # noqa: BLE001
+        pass
+    return d
+
+
 def _ar_cmd_read(max_age=2.5):
     try:
         with open(os.path.join(ROOT, "zmax_data", "ss_live", "ar_cmd.json"), encoding="utf-8") as _f:
@@ -491,14 +515,27 @@ def _ar_cmd_ctrl(mujoco, env, model, data, d):
         return None
     now = time.time()
     deg = _AC_LAST.get("deg")
+    # ① 目标点限速 (mm/拍): 微任务切换时 ar_cmd 的 a/b 会瞬移, 直接跟就是"乱动"
+    _pt = _AC_LAST.get("tgt_s")
+    if _pt and len(_pt) == 3:
+        _st = _TGT_STEP_MM
+        tgt = [p + max(-_st, min(_st, t - p)) for p, t in zip(_pt, tgt)]
+    _AC_LAST["tgt_s"] = tgt
     _AC_LAST["tgt"] = [round(v * 1000, 1) for v in tgt]
     if not deg or (now - _AC_LAST["t"]) >= 0.12:
-        r = ik_solve(mujoco, model, data, mujoco, "R", tgt, iters=60, seed_deg=deg)
+        r = ik_solve(mujoco, model, _ik_data(mujoco, model, data), mujoco, "R", tgt, iters=60,
+                     seed_deg=deg, rate_deg=_MAX_DEG_STEP)
         if not r.get("ok"):
             _AC_LAST["err"] = r.get("err") or "ik bad"
             return None
-        deg = r["deg"]
-        _AC_LAST.update({"t": now, "deg": deg, "err": None, "n": _AC_LAST.get("n", 0) + 1})
+        # ② 解跳变闸: 单拍摆幅过大 ⇒ 换了解支/踩奇异, 退回上一拍, 下一拍再从新目标逼近
+        _jmp = max(abs(x - y) for x, y in zip(r["deg"], deg)) if deg else 0.0
+        if deg and _jmp > _MAX_DEG_STEP * 3:
+            _AC_LAST["err"] = "IK 跳变 %.1f°>%.1f° 退回上一拍" % (_jmp, _MAX_DEG_STEP)
+            _AC_LAST.update({"t": now, "n": _AC_LAST.get("n", 0) + 1})
+        else:
+            deg = r["deg"]
+            _AC_LAST.update({"t": now, "deg": deg, "err": None, "n": _AC_LAST.get("n", 0) + 1})
     out = {"mode": "sim", "R": deg, "_src": "ar_cmd", "_label": d.get("label"),
            "_tgt_mm": [round(v * 1000, 1) for v in tgt]}
     # 🦾 老倪 2026-11-10「/video 的左手怎么不动?」——
@@ -508,12 +545,17 @@ def _ar_cmd_ctrl(mujoco, env, model, data, d):
     _lseed = _AC_LAST.get("degL")
     try:
         _tgtL = [tgt[0], tgt[1] + 0.5, tgt[2]]
-        _rl = ik_solve(mujoco, model, data, mujoco, "L", _tgtL, iters=60,
-                       seed_deg=_lseed if _lseed else None)
+        _rl = ik_solve(mujoco, model, _ik_data(mujoco, model, data), mujoco, "L", _tgtL, iters=60,
+                       seed_deg=_lseed if _lseed else None,
+                       rate_deg=_MAX_DEG_STEP if _lseed else None)
         if _rl.get("ok"):
-            out["L"] = _rl["deg"]
-            _AC_LAST["degL"] = _rl["deg"]
-            _AC_LAST.pop("errL", None)
+            _jl = max(abs(x - y) for x, y in zip(_rl["deg"], _lseed)) if _lseed else 0.0
+            if _lseed and _jl > _MAX_DEG_STEP * 3:                        # 左臂同口径跳变闸
+                _AC_LAST["errL"] = "IK 跳变 %.1f°>%.1f° 保持" % (_jl, _MAX_DEG_STEP)
+            else:
+                out["L"] = _rl["deg"]
+                _AC_LAST["degL"] = _rl["deg"]
+                _AC_LAST.pop("errL", None)
         else:
             _AC_LAST["errL"] = _rl.get("err") or "ik bad L"
     except Exception as _e:                                               # noqa: BLE001
@@ -667,8 +709,19 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
                 STATE["sync"] = {"src": "armq", "seq": _mq0.get("seq"),
                                  "age_s": round(time.time() - float(_mq0.get("t") or 0), 2),
                                  "hasL": bool(_mq0.get("L")), "hasR": bool(_mq0.get("R"))}
-        if mode == "idle":
-            # 🎯 最优: 页面直推关节角 (两臂, 与画布同一组角) ⇒ 不解 IK, 姿态与画布逐帧一致
+        if mode in ("idle", "sim") and _ar_cmd_read() is not None:
+            # 🔴 2026-11-10「/video 乱动 → 修完又不动」: 原来只在 mode=="idle" 读 ar_cmd,
+            #   而 ar_cmd 一驱动就把 mode 置成 sim ⇒ 下一拍再也读不到 ar_cmd, 姿态冻在第一帧。
+            #   ar_cmd 只要新鲜就是唯一真源 (页面已改成纯镜像, 不再推 /armq)。
+            _ac = _ar_cmd_read()
+            _c2 = _ar_cmd_ctrl(mujoco, env, model, data, _ac)
+            if _c2:
+                mode, cmd = "sim", _c2
+                with LOCK:
+                    STATE["sync"] = {"src": "ar_cmd", "label": _c2.get("_label"),
+                                     "tgt_mm": _c2.get("_tgt_mm"), "n": _AC_LAST.get("n")}
+        elif mode == "idle":
+            # 🎯 次优: 页面直推关节角 (两臂, 与画布同一组角) ⇒ 不解 IK, 姿态与画布逐帧一致
             _mq = _armq_read()
             if _mq and (_mq.get("R") or _mq.get("L")):
                 mode = "sim"
@@ -944,6 +997,23 @@ def render_depth(qs, timeout=6.0):
 
 
 class Handler(BaseHTTPRequestHandler):
+    # 🔴 2026-11-10「两个场景动作要同步」: 8797/ar3d 页在另一个端口, 读 /joints.json 被 CORS 拦
+    #   ⇒ 页面只能退回自己的 JS IK 再推 /armq, 两个写者抢 qpos ⇒ 乱动 + 两边对不上。
+    #   这里统一给所有响应加 CORS, 页面就能纯镜像读同一组关节角。
+    def end_headers(self):                                       # noqa: D102
+        try:
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "*")
+        except Exception:                                        # noqa: BLE001
+            pass
+        super().end_headers()
+
+    def do_OPTIONS(self):                                        # noqa: N802
+        self.send_response(204)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     protocol_version = "HTTP/1.1"
 
     def log_message(self, *a):                                              # noqa: D401
@@ -1251,7 +1321,10 @@ v.onerror=function(){h.textContent='流断了(8802 未起? 或通道数已满 3)
         if p == "/status.json":
             age = (time.time() - st["ts"]) if st["ts"] else None
             cal = st.get("calibs") or {}
+            _ac_now = _ar_cmd_read(2.5)                     # ar_cmd 是否在喂 (决定谁是真源)
             self._json({"ok": st["err"] is None, "n": st["n"], "mode": st["mode"],
+                        "ac_driving": bool(_ac_now),            # True ⇒ 页面必须停推 /armq, 只做镜像
+                        "ac_label": (_ac_now or {}).get("label"),
                         "ac_err": _AC_LAST.get("err"),          # ar_cmd 驱动为什么没生效 (IK/取数)
                         "ac_tgt": _AC_LAST.get("tgt"),
                         # 🔎 同步真源: src=armq 表示"页面推角, 8802 只执行"(逐帧同角);

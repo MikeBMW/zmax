@@ -2231,8 +2231,24 @@ function svrQPoll(){
   }catch(e){}
 }
 setInterval(svrQPoll, 100); setTimeout(svrQPoll, 400);
+// 🔴 谁是真源由服务器说: ar_cmd 在喂 (ac_driving) ⇒ 页面停推 /armq, 只镜像 /joints.json。
+//   (只看 joints.json 的 src 会自锁: 页面一推, 服务器就报 armq, 页面就永远以为自己该推)
+var AC_DRIVING=false;
+function acDrvPoll(){
+  try{
+    var host=(location.hostname||'127.0.0.1');
+    fetch('http://'+host+':8802/status.json',{cache:'no-store'}).then(function(r){return r.json();})
+      .then(function(d){ AC_DRIVING=!!(d&&d.ac_driving); }).catch(function(){});
+  }catch(e){}
+}
+setInterval(acDrvPoll, 500); setTimeout(acDrvPoll, 300);
 function mjPushQ(){
   try{
+    // 🔴 2026-11-10「/video 现在是乱动」+「两个场景动作要同步」:
+    //   8802 已由 ar_cmd (L2/L3/L4 链路) 驱动时, 页面再推自己的 JS IK 角就是**第二个写者抢 qpos**
+    //   ⇒ 两边各解一次 IK, 画面乱跳且对不上。这里改成纯镜像: 服务器在驱动就不推, 只读 /joints.json 做 FK。
+    if(typeof AC_DRIVING!=='undefined' && AC_DRIVING) return;   // 8802 由 ar_cmd 驱动 ⇒ 页面只镜像
+    if(typeof SVRQ!=='undefined' && SVRQ && SVRQ.ok && SVRQ.src==='ar_cmd' && (SVRQ.age||0)<1.5) return;
     const now=(typeof performance!=='undefined'?performance.now():Date.now());
     if(now-_mjqT<100) return; _mjqT=now;
     const d2r=180/Math.PI, conv=a=>a.map(v=>+(v*d2r).toFixed(2));
