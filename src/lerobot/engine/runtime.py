@@ -4148,6 +4148,17 @@ class RealStateSpaceSim:
                         tr["z7_vec"].append(_z7.copy())
                         # 🧠 2026-09-10 LEW 前视: 维护历史序列 (遇阻修正用, 最近 3)
                         self._z7_hist.append(_z7.copy())
+                        # 🧠 2026-11-11 L4→L3 世界模型在环 (ZMP-2026-019):
+                        #    把 z7 与预测流形写进进程内共享状态, 让 L3 动作头能对候选修正
+                        #    做前向验证(预测 d_perp 是否变小), 而不是只看当前梯度。
+                        #    失败静默不影响引擎主流程(纯旁路)。
+                        try:
+                            from lerobot.middleware.nodes.impl.shared_runtime import (
+                                _SS_STATE as _SSG)
+                            _SSG["z7"] = _z7.copy()
+                            _SSG["z7_ts"] = float(getattr(self, "t", 0.0) or 0.0)
+                        except Exception:
+                            pass
                         if len(self._z7_hist) > 3:
                             self._z7_hist.pop(0)
                     except Exception:
