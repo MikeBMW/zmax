@@ -3379,27 +3379,7 @@ _GOLD_DOWN_UNTIL = 0.0          # 10082 不可达冷却到期时刻 (同一套�
 #     (与 policies/yolo_3d、policies/sam3_seg 同级 —— 感知前端统一在 policies/ 下的既有约定)。
 #   这里只留**注入式薄转发**: 把进程内缓存(_YOLO_CACHE)和话题发布回调(_ar_aoi_publish)传进去,
 #   既保持所有既有调用点(节点/其它模块)不用改, 又不让 policies 反向 import middleware。
-from lerobot.policies.aoi import (                                # noqa: E402
-    gold_bypass as _p_gold_bypass,
-    gold_yolo_bypass as _p_gold_yolo_bypass,
-    surface_bypass as _p_surface_bypass,
-)
-
-
-def _gold_yolo_model(log=None):
-    """→ policies/aoi/gold_yolo.py::gold_yolo_model (算法层)"""
-    from lerobot.policies.aoi.gold_yolo import gold_yolo_model
-    return gold_yolo_model(log=log)
-
-
-def _gold_yolo_bypass(log=None):
-    """→ policies/aoi/gold_yolo.py::gold_yolo_bypass (本机 YOLO 推理, 与搬运并列)"""
-    return _p_gold_yolo_bypass(log=log, cache=_YOLO_CACHE, publish=_ar_aoi_publish)
-
-
-def _gold_bypass(log=None):
-    """→ policies/aoi/gold.py::gold_bypass (搬运工控机 10082 真判决)"""
-    return _p_gold_bypass(log=log, cache=_YOLO_CACHE, publish=_ar_aoi_publish)
+from lerobot.policies.aoi import surface_bypass as _p_surface_bypass   # noqa: E402
 
 
 def _surface_bypass(log=None):
@@ -3408,7 +3388,12 @@ def _surface_bypass(log=None):
 
 
 def node_ss_aoi(ctx):
-    """→ nodes/ss_aoi.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    """⚠️ **这不是 AOI 算法, 是节点入口的兼容别名** (老倪 2026-11-10: 「def node_ss_aoi(ctx) 这个
+    应该是 AOI 的算法，怎么能在中间件里呢?」)。
+
+    AOI 算法 100% 在 `src/lerobot/policies/aoi/`(入口 quality.py::inspect_aoi);
+    这里只有一行转调, 给老 import/验收脚本留存 —— 里面没有任何判据/阈值/图像处理。
+    """
     from .ss_aoi import node_ss_aoi as _impl
     return _impl(ctx)
 

@@ -10,7 +10,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ssaoi.<port>
 
-实现绑定: registry key=`ss_aoi` · src/lerobot/engineering/nodes/library.py · node_ss_aoi:node_ss_aoi
+实现绑定: registry key=`ss_aoi` · 节点入口 src/lerobot/middleware/nodes/impl/ss_aoi.py · node_ss_aoi
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
