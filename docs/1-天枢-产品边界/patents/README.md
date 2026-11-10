@@ -79,6 +79,30 @@ L4 世界模型 ──③ 预测 d_perp' + 增益判定──▶ L3 决定"到�
 
 ---
 
+## 二·五、013 v3 定稿（对外脱敏版）与内部代码映射
+
+013 交底书正文已按"对外提交版"处理：**不含任何具体代码路径**，实现结构以"功能模块职责"描述（§6.4）。
+代码落点保留在本节与 `docs/0-总纲/CODE-MAP.md`，供工程追溯，**不随交底书外发**。
+
+| 定稿权项 | 内部代码落点 | 实测脚本 |
+|---|---|---|
+| 权 1 势场 + 度规 + 解析修正 | `policies/manifold/geodesic_inject.py::correct` | `verify_013_claims.py` 1a–1d |
+| 权 2 ∇V_tac = +P_t·F（同向、无轴向） | `::tactile_to_gradient` | 2a–2d |
+| 权 3 两路归一化后加权 | `::fuse_gradient` | 3a–3c |
+| 权 4 (σn/σt)² 各向异性 | `::anisotropic_metric` | 4a–4b（400 / 144） |
+| 权 5 力阈值保护 | `::force_guard` | 5b–5e（20/44/52/70 N） |
+| 权 6 触觉主导旁路门控 | `correct()` 门控段 | 6a（alpha 0.85 vs 0.0057） |
+| 权 7 双重限幅（含 c_min、触觉除 K） | `correct()` 限幅段 + 真源 `#inject` | 7a–7d |
+| 权 8 ε 不计入限幅上限 | `correct()` 限幅段 | 8a |
+| 权 9 免重训（纯解析） | 无 torch 依赖、签名无 model/net | 9a–9b |
+| 权 10 径向/轴向分解 | `correct()` 返回 `radial`/`axial` | 10a–10b |
+| 权 11 三级来源 + 代理禁止同源 | `tactile_to_gradient` 的 `src` + `flow_matching_impl` 的 `grad_src` | 11a–11d |
+| 权 12 视觉+力双输入 | `correct(grad_V, ..., force=, contact=)` | 12a |
+
+**执行一条命令即可复核全部 12 条**：`gui-venv311/bin/python tools/verify_013_claims.py` → **36 PASS / 0 FAIL**。
+
+**附图**：`figs/013_fig1_geometry.png`（几何投影）、`figs/013_fig2_flow.png`（控制流）、`figs/013_fig3_weights.png`（权重过渡），由 `tools/make_013_figs.py` 生成，已内嵌进 docx（3 张图 / 342 KB）。
+
 ## 三、013 到底联动了没有（正面回答）
 
 **联动了，链条是四段，每段都能指出代码、跑出数**：

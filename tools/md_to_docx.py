@@ -16,7 +16,7 @@ from docx import Document
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
-from docx.shared import Pt, RGBColor
+from docx.shared import Inches, Pt, RGBColor
 
 EA = "微软雅黑"
 MONO = "Consolas"
@@ -70,6 +70,28 @@ def convert(md_path, out_path):
         s = ln.strip()
 
         if not s:
+            i += 1
+            continue
+
+        # 图片  ![alt](path)  —— 相对 md 所在目录解析, 缺失时留一行灰字提示(不静默跳过)
+        m_img = re.match(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$", s)
+        if m_img:
+            alt, src = m_img.group(1), m_img.group(2).strip()
+            if src.startswith("http://") or src.startswith("https://"):
+                i += 1
+                continue
+            fig = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(md_path)), src))
+            if os.path.exists(fig):
+                try:
+                    doc.add_picture(fig, width=Inches(5.9))
+                    doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+                except Exception as e:                                  # noqa: BLE001
+                    pr = doc.add_paragraph()
+                    _font(pr.add_run("[图片插入失败 %s: %s]" % (os.path.basename(fig), e)), 9)
+            else:
+                pr = doc.add_paragraph()
+                _font(pr.add_run("[缺图: %s]" % src), 9)
+                pr.runs[0].font.color.rgb = RGBColor(0xB0, 0x30, 0x30)
             i += 1
             continue
 
