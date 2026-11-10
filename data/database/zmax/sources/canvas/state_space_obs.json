@@ -798,8 +798,8 @@
      "self_test": "gui-venv311/bin/python src/lerobot/policies/yolo_3d/quality_check.py",
      "align": "python3 tools/aoi/production_sync.py status|verify|diff|pull"
     },
-    "source": "src/lerobot/policies/aoi/quality.py · inspect_aoi (算法层入口; 判据内核 yolo_3d/quality_check.py::AOIQualityChecker.check)",
-    "source_symbol": "inspect_aoi"
+    "source": "src/lerobot/policies/aoi/quality.py",
+    "source_symbol": "def inspect_aoi"
    }
   },
   {
@@ -1524,7 +1524,10 @@
     "_port_labels": {
      "out1": "out1"
     },
-    "pure_verified": true
+    "pure_verified": true,
+    "l4_inject": "on",
+    "l4_inject_cfg": {},
+    "l4_inject_note": "L4 几何注入开关/参数。on=注入(默认) · off=完全退回原行为。几何参数(σt/σn/α0/V0/限幅)真源在 config/calib/zmax_manifold.json#inject，l4_inject_cfg 只做现场临时覆盖、不写真源。专利 ZMP-2026-013。"
    },
    "inputs": [
     "in1",
@@ -2282,7 +2285,7 @@
      "工程库": "data/database/zmax/zmax_engineering.db"
     },
     "cfg_snapshot": {
-     "loaded_at": "2026-11-10 19:27:31",
+     "loaded_at": "2026-11-11 06:53:15",
      "files_total": 8,
      "files_ok": 8,
      "orders": 12,
@@ -2346,18 +2349,18 @@
      "口径": "一个状态空间工程承载全部任务; 任务=配方段子集+参数覆盖"
     },
     "source_symbol": "def import_config_files(",
-    "cfg_loaded_at": "2026-11-10 19:27:31",
+    "cfg_loaded_at": "2026-11-11 06:53:15",
     "cfg_files": [
      {
       "name": "总工程文件",
       "rel": "data/database/zmax/zmax_space.proj",
-      "sha256": "ae5a99a438a98f39",
+      "sha256": "6981ca9918e437cc",
       "exists": true
      },
      {
       "name": "任务绑定",
       "rel": "config/ss_task_binding.json",
-      "sha256": "a392cab9c8051c66",
+      "sha256": "6ac2c1e5b9c8466f",
       "exists": true
      },
      {
@@ -2387,7 +2390,7 @@
      {
       "name": "主参数M能量标定",
       "rel": "config/calib/zmax_manifold.json",
-      "sha256": "da79bdbbbb66763d",
+      "sha256": "13a25bd3468aeb31",
       "exists": true
      },
      {

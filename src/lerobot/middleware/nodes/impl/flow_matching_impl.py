@@ -185,22 +185,62 @@ def run(ctx):
             _grad = _perf.get("grad")
             _axis = _cont.get("axis")
             _pj = str((ctx.get("params") or {}).get("l4_inject", "on")).lower()
+            # 🔑 参数真源: config/calib/zmax_manifold.json#inject (流形标定单一唯一依据)。
+            #   画布 params.l4_inject_cfg 只做**现场临时覆盖**, 不改真源。
+            #   真源缺 σt/σn ⇒ 不注入(不填默认值) —— 否则标定真源形同虚设。
+            from lerobot.policies.manifold import inject_cfg as _icfg
+            _cfg_src = _icfg.load()
+            _oc = (ctx.get("params") or {}).get("l4_inject_cfg")
             if _pj in ("off", "0", "false") or os.environ.get("ZMAX_L4_INJECT") == "0":
                 _inj = {"injected": False, "reason": "开关关闭(画布 l4_inject=off)"}
+            elif not _icfg.enabled(_cfg_src):
+                _inj = {"injected": False,
+                        "reason": "真源 inject 关闭或缺失(%s)" % (_cfg_src.get("_missing") or _cfg_src.get("_err") or "enabled=false"),
+                        "cfg_src": _cfg_src.get("_src")}
             elif _grad is None or len(_grad) < 3:
                 _inj = {"injected": False, "reason": "性能流形未出 ∇V_p(无真值)"}
             else:
-                from lerobot.policies.manifold.geodesic_inject import correct as _geo_correct
-                nominal, _inj = _geo_correct(
-                    nominal, _grad, _axis or [1.0, 0.0, 0.0],
-                    eta=_perf.get("eta"), V_p=_perf.get("V_p"),
-                    cfg=(ctx.get("params") or {}).get("l4_inject_cfg"))
-                _inj["grad_src"] = "ssmani_p.grad (∇V_p = Wδ)"
+                _geo = _icfg.geometry(_cfg_src)
+                if isinstance(_oc, dict):
+                    _geo.update({k: float(v) for k, v in _oc.items() if isinstance(v, (int, float))})
+                if not _geo:
+                    _inj = {"injected": False,
+                            "reason": "真源未标定 σt/σn ⇒ 不注入(不填默认值)",
+                            "cfg_src": _cfg_src.get("_src")}
+                else:
+                    from lerobot.policies.manifold.geodesic_inject import correct as _geo_correct
+                    nominal, _inj = _geo_correct(
+                        nominal, _grad, _axis or [1.0, 0.0, 0.0],
+                        eta=_perf.get("eta"), V_p=_perf.get("V_p"), cfg=_geo)
+                    _inj["grad_src"] = "ssmani_p.grad (∇V_p = Wδ)"
+                    _inj["cfg_src"] = _cfg_src.get("_src")
+                    _inj["cfg_overridden"] = bool(isinstance(_oc, dict))
                 if log and _inj.get("injected"):
                     log("🧭 L4 几何注入: Δξ=%s (径向 %.4f 轴向 %.4f) α=%.3f  [M: σ_t=%.2f σ_n=%.2f]"
                         % (np.round(_inj["delta"], 4), _inj["radial"], _inj["axial"],
                            _inj["alpha"],
                            float(_inj["metric"]["sigma_t_mm"]), float(_inj["metric"]["sigma_n_mm"])))
+            # 📡 数据总线落地: 真注入才发信号 (未注入不发 —— 不填 0 冒充)
+            #   注册键见 config/topics/scene_tags.json (场景=插拔场景, 信号分析页可见)
+            if _inj.get("injected"):
+                try:
+                    from .shared_runtime import _REPO_ROOT as _RR, _load_mod as _LM
+                    _bus = _LM("ar_aoi_bus", os.path.join(_RR, "tools", "ar_aoi_bus.py"))
+                    _m = _inj.get("metric") or {}
+                    _st = float(_m.get("sigma_t_mm") or 0.0)
+                    _sn = float(_m.get("sigma_n_mm") or 0.0)
+                    _bus.publish({
+                        "L4注入.生效": 1.0,
+                        "L4注入.Δξ_径向_mm": round(float(_inj.get("radial") or 0.0), 6),
+                        "L4注入.Δξ_轴向_mm": round(float(_inj.get("axial") or 0.0), 6),
+                        "L4注入.门控alpha": round(float(_inj.get("alpha") or 0.0), 6),
+                        "L4注入.各向异性_比": (round((_sn / _st) ** 2, 1) if _st > 1e-9 else 0.0),
+                        "L4注入.Vp代价_mm2": round(float(_inj.get("V_p") or 0.0), 6),
+                        "L4注入.η置信度": round(float(_inj.get("eta") or 0.0), 6),
+                    }, meta={"by": "ssdec L4 几何注入"}, quiet=True)
+                except Exception as _be:                                   # noqa: BLE001
+                    if log:
+                        log("⚠️ L4 注入信号总线写入失败: %s" % _be)
         except Exception as _e:                                            # noqa: BLE001
             _inj = {"injected": False, "reason": "注入异常: %s" % _e}
 
