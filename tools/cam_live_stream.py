@@ -1849,6 +1849,60 @@ def _aoi_busy_release(port) -> None:
         pass
 
 
+# 🔴 2026-11-10 实测事故: 10083 的 `GET /picture?grab=1` 在对端相机卡住时**一个字节都不回**,
+#   而 urlopen(timeout=) 只管单次 recv ⇒ 8791 的 aoi-surface 线程在 getresponse 里挂了 2396s(40 分钟),
+#   页面那格一直显示旧帧, 服务本身却健康(py-spy 才看出来)。两条处置:
+#   ① 取图改成**整体墙钟超时**(工作线程 + join), 超时就抛掉这次请求, worker 继续跑下一轮;
+#   ② 连续卡死进**冷却**(这段时间只读内存帧, 不再 grab), 免得每轮都挂一个孤儿线程去撞同一台卡死的相机。
+_AOI_FETCH_STUCK = {}       # port → 冷却到期时刻
+_AOI_STUCK_COOL_S = 30.0    # 卡死一次冷却多久
+_AOI_GET_TOTAL_S = 8.0      # 单次取图整体上限(含等首字节 + 读完 body)
+
+
+def _aoi_fetch_stuck(port) -> bool:
+    try:
+        return float(_AOI_FETCH_STUCK.get(int(port), 0.0)) > time.time()
+    except Exception:                                                        # noqa: BLE001
+        return False
+
+
+def _http_get_bounded(url, total_s=None, headers=None):
+    """整体墙钟超时的 HTTP GET → (code, raw, err, hdrs)。
+
+    code=0 = 没拿到响应(超时/连不上)。HTTPError 也照实回 code + body 前 400B,
+    这样 404 判"老版没有该路由"的逻辑不用改。
+    """
+    _total = float(total_s or _AOI_GET_TOTAL_S)
+    box = {}
+
+    def _run():
+        try:
+            req = urllib.request.Request(url, headers=headers or {"User-Agent": "zmax-station"})
+            with urllib.request.urlopen(req, timeout=_total) as r:
+                box["code"] = r.status
+                box["hdrs"] = dict(r.headers or {})
+                box["raw"] = r.read()
+        except urllib.error.HTTPError as e:
+            box["code"] = e.code
+            try:
+                box["raw"] = e.read()[:400]
+            except Exception:                                                # noqa: BLE001
+                box["raw"] = b""
+            try:
+                box["hdrs"] = dict(e.headers or {})
+            except Exception:                                                # noqa: BLE001
+                box["hdrs"] = {}
+        except Exception as e:                                               # noqa: BLE001
+            box["err"] = str(e)[:140]
+
+    th = threading.Thread(target=_run, daemon=True, name="aoi-get")
+    th.start()
+    th.join(_total)
+    if th.is_alive():
+        return 0, b"", "整体超时 %.0fs (对端卡死, 本次已放弃; 不会拖住 worker)" % _total, {}
+    return int(box.get("code") or 0), box.get("raw") or b"", box.get("err") or "", box.get("hdrs") or {}
+
+
 # 🎛 按点位切曝光 (老倪 2026-10-08: 「按点位切曝光」)
 #   实测(2026-10-08 21:16, 零重启): 工控机 /param 的**实时写入是有效的** —— 自动曝光关掉之后,
 #   POST /param?exposure=40000 回 applied{ok:True} 且**下一帧 p50 33→67**(正中标定值 63 附近)。
@@ -2284,24 +2338,27 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
         # 🔴 2026-09-27 老倪: 有人看这一格 ⇒ 每轮都带 grab 触发一帧(顶到 OPT 上限 ~1.4/1.7fps);
         #   没人看 ⇒ 保持只读(不触发拍照, 不长时间占产线相机)。
         _watching = ((not _aoi_busy(port))           # 🔴 检测进行中 ⇒ 只读内存帧, 不抢相机
+                     and (not _aoi_fetch_stuck(port))  # 🔴 对端刚卡死过 ⇒ 冷却期内只读内存帧
                      and ((time.time() - _AOI_VIEW_TS.get(name, 0.0)) < _AOI_LIVE_WIN_S
                           or (full_name and (time.time() - _AOI_VIEW_TS.get(full_name, 0.0)) < _AOI_LIVE_WIN_S)))
         _url_live = url + ("&grab=1" if "?" in url else "?grab=1")
         _req_url = _url_live if _watching else url
         code, raw, err = 0, b"", ""
         _src_age = None
-        try:
-            req = urllib.request.Request(_req_url, headers={"User-Agent": "zmax-station"})
-            with urllib.request.urlopen(req, timeout=10) as r:
-                code = r.status
-                # 🕒 源端自报帧龄: 工控机 10082 会给 X-Frame-Age-S(memory 里那帧多旧) ——
-                #    不拿它, 页面就会把一张 400s 前的图显示成"刚取到, 0.9s"。
-                _src_age = _hdr_age(r.headers)
-                raw = r.read()
-        except urllib.error.HTTPError as e:
-            code, err = e.code, (e.read()[:200].decode("utf-8", "ignore") if hasattr(e, "read") else "")
-        except Exception as e:                                                    # noqa: BLE001
-            err = str(e)[:140]
+        # 🔴 2026-11-10: 走**整体超时**取图 —— urlopen(timeout=) 只管单次 recv,
+        #   相机卡住时对端一字节不回 ⇒ 本线程会永久挂在 getresponse(实测挂过 2396s)。
+        code, raw, err, _hdrs = _http_get_bounded(_req_url)
+        # 🕒 源端自报帧龄: 工控机 10082 会给 X-Frame-Age-S(memory 里那帧多旧) ——
+        #    不拿它, 页面就会把一张 400s 前的图显示成"刚取到, 0.9s"。
+        _src_age = _hdr_age(_hdrs)
+        if code == 0:
+            _AOI_FETCH_STUCK[int(port)] = time.time() + _AOI_STUCK_COOL_S
+            if n % 20 == 1:
+                print("[aoi] %d %s: %s ⇒ %.0fs 内只读内存帧" % (port, name, err, _AOI_STUCK_COOL_S), flush=True)
+        elif code == 200 and raw:
+            _AOI_FETCH_STUCK.pop(int(port), None)
+        if code and code != 200 and not err:
+            err = raw[:200].decode("utf-8", "ignore")
         if code == 200 and raw:
             bgr = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
             if bgr is not None:
@@ -2447,6 +2504,7 @@ def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0
         url = "http://" + _AOI_HOST + ":%d/picture?kind=%s" % (port, kind)
         # 有人在看这一格 ⇒ 每轮带 grab 顶到 OPT 上限 (~1.4/1.7fps); 没人看就只读内存帧(不占产线相机)
         _watching = ((not _aoi_busy(port))           # 🔴 同上: 检测期间不抢相机
+                     and (not _aoi_fetch_stuck(port))  # 🔴 对端刚卡死过 ⇒ 冷却期内只读内存帧
                      and any((time.time() - _AOI_VIEW_TS.get(k, 0.0)) < _AOI_LIVE_WIN_S
                              for k in (name, full_name, anno_name)))
         # 🆕 2026-10-12 老倪「金手指刷新图像的延迟怎么这么大, 得5秒多才能更新, 优化, 延迟要小于1秒」
@@ -2462,20 +2520,19 @@ def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0
             _req_url = url + ("&grab=1" if _watching else "")
             _use_prev = False
         code, raw, err, _src_age = 0, b"", "", None
-        try:
-            req = urllib.request.Request(_req_url, headers={"User-Agent": "zmax-station"})
-            with urllib.request.urlopen(req, timeout=10) as r:
-                code = r.status
-                _src_age = 0.0 if _use_prev else _hdr_age(r.headers)   # preview 必是当帧现抓 ⇒ 帧龄 0
-                raw = r.read()
-        except urllib.error.HTTPError as e:
-            code = e.code
-            err = (e.read()[:200].decode("utf-8", "ignore") if hasattr(e, "read") else "")
-            if _use_prev and code == 404:
-                _AOI_PREVIEW_OK[port] = False
-                print("[aoi_gold] 工控机没有 /preview.jpg ⇒ 永久回落 /picture?grab=1")
-        except Exception as e:                                                    # noqa: BLE001
-            err = str(e)[:140]
+        # 🔴 2026-11-10: 整体超时取图(同 _aoi_worker 注释); preview 404 仍永久回落老路
+        code, raw, err, _hdrs = _http_get_bounded(_req_url)
+        _src_age = 0.0 if _use_prev else _hdr_age(_hdrs)   # preview 必是当帧现抓 ⇒ 帧龄 0
+        if code == 0:
+            _AOI_FETCH_STUCK[int(port)] = time.time() + _AOI_STUCK_COOL_S
+            if n % 20 == 1:
+                print("[aoi_gold] %d %s: %s ⇒ %.0fs 内只读内存帧"
+                      % (port, name, err, _AOI_STUCK_COOL_S), flush=True)
+        elif code == 200 and raw:
+            _AOI_FETCH_STUCK.pop(int(port), None)
+        elif _use_prev and code == 404:
+            _AOI_PREVIEW_OK[port] = False
+            print("[aoi_gold] 工控机没有 /preview.jpg ⇒ 永久回落 /picture?grab=1")
 
         if code == 200 and raw:
             bgr = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
