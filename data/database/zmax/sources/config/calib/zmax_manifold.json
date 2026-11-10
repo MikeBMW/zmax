@@ -1,0 +1,73 @@
+{
+ "_doc": "流形引擎主标定参数 M (状态空间的结构参数/等效惯量) — 标定层单一唯一依据。物理: a=F/M ⇒ Δx=F·dt²/M; 信息: 把信息代价梯度换成状态加速度的曲率尺度; M 从流形结构导出 (非自由拟合), 现场以单标量标定。inertia=false ⇒ 零回归。",
+ "M": 3.643,
+ "inertia": false,
+ "_range": [
+  0.0,
+  8.0
+ ],
+ "_unit": "等效惯量尺度 (无量纲归一化; 物理类比 kg, 信息类比 Fisher/Hessian 曲率尺度)",
+ "_flow": "二阶: v ← v + (F/M)·dt; p ← exp_p(v·dt)   (M→0 ⇒ 一阶过阻尼 = 旧 GD)",
+ "_updated_at": "2026-10-14 16:55:49",
+ "metric": {
+  "dim": 6,
+  "mode": "diag",
+  "diag": [
+   10.0,
+   10.0,
+   50.0,
+   10.0,
+   10.0,
+   10.0
+  ],
+  "_modes": {
+   "isotropic": "G=I (旧行为, Γ=0, 直线)",
+   "diag": "每轴刚度 n 个参数",
+   "full": "一般度量 n(n+1)/2 个独立分量 (3→6 · 6→21 · 16→136 · 43→946)"
+  },
+  "_independent_components": {
+   "3": 6,
+   "6": 21,
+   "16": 136,
+   "43": 946
+  },
+  "_geodesic": "ẍ = −Γ ẋẋ (无力) / + g⁻¹F (有力)",
+  "_det": "det G = 1 (尺度全归 M)",
+  "components": [
+   4.472135955,
+   0.0,
+   4.472135955,
+   0.0,
+   0.0,
+   4.472135955
+  ]
+ },
+ "inject": {
+  "_doc": "动作空间装配容差度规 (专利 ZMP-2026-013) — 与上面 metric(状态空间度规) 是同一思想的两个层次: metric 决定状态怎么走, inject 决定动作往哪个方向修。M_act = σt²·Pt + σn²·Pn (Pt=I−nnᵀ径向, Pn=nnᵀ轴向) ; Δξ = −α·M_act⁻¹∇V",
+  "_unit": "mm",
+  "sigma_t": 0.3,
+  "sigma_n": 6.0,
+  "alpha0": 0.85,
+  "V0": 10.0,
+  "max_ratio": 0.6,
+  "cap_min_mm": 0.3,
+  "eps_mm": 0.02,
+  "eta_floor": 0.05,
+  "enabled": true,
+  "_how": {
+   "sigma_t": "径向单边配合间隙 (孔与模块公差量级)",
+   "sigma_n": "轴向推进行程",
+   "anisotropy": "径向/轴向增益比 = (σn/σt)²，本例 400×",
+   "alpha0": "基准步长系数",
+   "V0": "代价衰减尺度 mm² (δ≈4.5mm 时门控衰减 1/e)",
+   "max_ratio": "单拍修正 ≤ 名义步长的比例",
+   "cap_min_mm": "对位阶段绝对下限 (名义步长常仅 0.05mm，纯比例会压死纠偏)",
+   "eps_mm": "微量保护项",
+   "eta_floor": "置信度下限，防归零僵死",
+   "enabled": "false ⇒ 完全退回原行为 (零回归)"
+  },
+  "_zero_regression": "enabled=false 或 sigma_t/sigma_n 缺失 ⇒ 不注入，动作逐位不变",
+  "_verified": "tools/verify_l4_injection.py (A收敛/B各向异性400×/C 257段)",
+  "_updated_at": "2026-11-11 06:52:51"
+ }
+}
