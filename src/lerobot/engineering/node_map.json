@@ -62,7 +62,7 @@
    "contract": "src/lerobot/middleware/nodes/n_l2.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/n_exec.py:10",
    "impl_key": "n_exec",
-   "layer": "L2",
+   "layer": "L1",
    "name": "⚙️ 动作执行器 (L2 收口 · 授权/闸/到位)",
    "ports_in": [
     "in1",
@@ -190,7 +190,7 @@
    "contract": "src/lerobot/middleware/nodes/n_overlay.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/n_realscene_live.py:10",
    "impl_key": "n_realscene_live",
-   "layer": "meta",
+   "layer": null,
    "name": "🎥 真实场景叠加 · 双眼 (sim2real)",
    "ports_in": [
     "in1"
@@ -266,7 +266,7 @@
    "contract": "src/lerobot/middleware/nodes/n_viewer.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/ss_3d_view.py:10",
    "impl_key": "ss_3d_view",
-   "layer": "meta",
+   "layer": null,
    "name": "🧭 3D 视图",
    "ports_in": [
     "in1",
@@ -280,9 +280,9 @@
   "ss_grav_h": {
    "algo": "src/lerobot/manifold/state_space_energy.py:1",
    "contract": "src/lerobot/middleware/nodes/n_se.py:1",
-   "impl": "src/lerobot/middleware/nodes/impl/shared_runtime.py:4715",
+   "impl": "src/lerobot/middleware/nodes/impl/shared_runtime.py:4726",
    "impl_key": "ss_grav_h",
-   "layer": null,
+   "layer": "L4",
    "name": "🌍 万有引力 · SE(3) 几何阻抗 + H=K+U (力场仲裁)",
    "ports_in": [
     "in1",
@@ -475,7 +475,7 @@
    "contract": "src/lerobot/middleware/nodes/n_actuator.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/ss_act.py:10",
    "impl_key": "ss_act",
-   "layer": "L2",
+   "layer": "L1",
    "name": "🤖 机器人执行器",
    "ports_in": [
     "in1"
@@ -486,9 +486,9 @@
    "pure": true
   },
   "ssaoi": {
-   "algo": "src/lerobot/engineering/nodes/library.py · node_ss_aoi:1",
+   "algo": "src/lerobot/policies/aoi/quality.py:1",
    "contract": "src/lerobot/middleware/nodes/n_inspection.py:1",
-   "impl": "src/lerobot/middleware/nodes/impl/ss_aoi.py:23",
+   "impl": "src/lerobot/middleware/nodes/impl/ss_aoi.py:36",
    "impl_key": "ss_aoi",
    "layer": "L2",
    "name": "🔍 光学质量检测",
@@ -505,7 +505,7 @@
    "contract": "src/lerobot/middleware/nodes/n_bypass.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/ss_bypass_viz.py:15",
    "impl_key": "ss_bypass_viz",
-   "layer": "meta",
+   "layer": null,
    "name": "📈 旁路实时可视化 (当前阶段/残差/接触概率)",
    "ports_in": [
     "in1"
@@ -548,12 +548,12 @@
    "pure": false
   },
   "ssdata": {
-   "algo": "src/lerobot/engineering/nodes/library.py · node_metaworld_data:1",
+   "algo": "src/lerobot/middleware/nodes/impl/data.py · node_metaworld_data:1",
    "contract": "src/lerobot/middleware/nodes/n_metaworld.py:1",
-   "impl": "src/lerobot/middleware/nodes/impl/data.py:16",
+   "impl": "src/lerobot/middleware/nodes/impl/data.py:18",
    "impl_key": "data",
-   "layer": "meta",
-   "name": "📦 metaworld 数据源",
+   "layer": null,
+   "name": "📦 数据源 (AR场景 ⇄ 仿真 ⇄ 真机)",
    "ports_in": [
     "in1"
    ],
@@ -562,7 +562,7 @@
     "out2",
     "out3"
    ],
-   "pure": false
+   "pure": true
   },
   "ssdec": {
    "algo": "src/lerobot/policies/smolvla_lew/action_head.py:1",
@@ -600,7 +600,7 @@
   "ssfeat": {
    "algo": "src/lerobot/verification/verification_layer.py:1",
    "contract": "src/lerobot/middleware/nodes/n_feature.py:1",
-   "impl": "src/lerobot/middleware/nodes/impl/shared_runtime.py:4023",
+   "impl": "src/lerobot/middleware/nodes/impl/shared_runtime.py:4034",
    "impl_key": "ss_feature",
    "layer": null,
    "name": "🧩 Feature 功能清单",
@@ -635,7 +635,7 @@
    "contract": "src/lerobot/middleware/nodes/n_histogram.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/ss_ff_hist.py:17",
    "impl_key": "ss_ff_hist",
-   "layer": "meta",
+   "layer": null,
    "name": "🧠 前馈激活直方图",
    "ports_in": [
     "in1",
@@ -727,7 +727,7 @@
    "contract": "src/lerobot/middleware/nodes/n_limiter.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/ss_limit.py:10",
    "impl_key": "ss_limit",
-   "layer": "L2",
+   "layer": "L1",
    "name": "🛡 安全执行边界 (饱和限幅)",
    "ports_in": [
     "in1",
@@ -831,7 +831,7 @@
    "contract": "src/lerobot/middleware/nodes/n_mode.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/mode_switch.py:10",
    "impl_key": "mode_switch",
-   "layer": "meta",
+   "layer": null,
    "name": "🔀 训练/推理",
    "ports_in": [
     "in1"
@@ -887,7 +887,7 @@
    "contract": "src/lerobot/middleware/nodes/n_longplan.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/plan_long_impl.py:896",
    "impl_key": "ss_plan_long",
-   "layer": "meta",
+   "layer": null,
    "name": "🧩 长程元任务编排器 (Plan)",
    "ports_in": [
     "in1",
@@ -933,9 +933,9 @@
   "sssched": {
    "algo": "src/lerobot/policies/left_right/state_space/cognition.py:1",
    "contract": "src/lerobot/middleware/nodes/n_scheduler.py:1",
-   "impl": "src/lerobot/middleware/nodes/impl/shared_runtime.py:2600",
+   "impl": "src/lerobot/middleware/nodes/impl/shared_runtime.py:2750",
    "impl_key": "ss_sched",
-   "layer": null,
+   "layer": "L2",
    "name": "🧭 动作调制器",
    "ports_in": [
     "in1",
@@ -957,7 +957,7 @@
   "sssensor": {
    "algo": "src/lerobot/policies/left_right/state_space/perception.py:1",
    "contract": "src/lerobot/middleware/nodes/n_slam.py:1",
-   "impl": "src/lerobot/middleware/nodes/impl/ss_sensor.py:21",
+   "impl": "src/lerobot/middleware/nodes/impl/ss_sensor.py:22",
    "impl_key": "ss_sensor",
    "layer": "L2",
    "name": "📡 融合定位建图",
@@ -1149,7 +1149,7 @@
    "contract": "src/lerobot/middleware/nodes/n_uph.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/uph_tact_impl.py:101",
    "impl_key": "ss_uph",
-   "layer": "meta",
+   "layer": null,
    "name": "🏭 UPH 节拍循环器",
    "ports_in": [
     "in1"
@@ -1164,7 +1164,7 @@
    "contract": "src/lerobot/middleware/nodes/n_waves.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/ss_scope.py:10",
    "impl_key": "ss_scope",
-   "layer": "meta",
+   "layer": null,
    "name": "📊 仿真波形",
    "ports_in": [
     "in1",
@@ -1182,7 +1182,7 @@
    "contract": "src/lerobot/middleware/nodes/n_video.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/ss_video.py:10",
    "impl_key": "ss_video",
-   "layer": "meta",
+   "layer": null,
    "name": "🎥 操作视频",
    "ports_in": [
     "in1",
@@ -1247,7 +1247,7 @@
    "contract": "src/lerobot/middleware/nodes/n_signals.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/ss_z700_signals.py:15",
    "impl_key": "ss_z700_signals",
-   "layer": "meta",
+   "layer": null,
    "name": "🖥 Z700 真机信号 (全信号观测 · 物理世界输出)",
    "ports_in": [
     "in1"
@@ -1263,7 +1263,7 @@
    "contract": "src/lerobot/middleware/nodes/n_renderer.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/sw_ds.py:22",
    "impl_key": "sw_ds",
-   "layer": "meta",
+   "layer": null,
    "name": "🧪 光模块插拔 · 环境渲染图像源 (Z-MAX 引擎逐帧真图)",
    "ports_in": [
     "in2",
@@ -1296,7 +1296,7 @@
    "contract": "src/lerobot/middleware/nodes/n_rollout.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/sw_video.py:18",
    "impl_key": "sw_video",
-   "layer": "meta",
+   "layer": null,
    "name": "🎬 插拔渲染视频 (从 Z-MAX 引擎取出 · 实况窗)",
    "ports_in": [
     "in1"

@@ -1460,6 +1460,7 @@ def _yolo_capture(log, aligner):
     det3d, _meta, det2d = _yolo_detect_bg(aligner, img, log)
     _YOLO_CACHE.update({"det3d": det3d, "det2d": det2d, "obs39": obs39, "img": img,
                         "meta": _meta, "img_src": "sim"})   # 仿真渲染帧 (非臂上相机 ⇒ 掩膜3D 如实拒答)
+    _yolo_keep_seen(img, "sim", _meta, det2d)               # 🖼 右键「当前看到的单帧」= 这一帧
     return det3d, obs39, img
 
 def _det2d_and_3d(img_bgr, meta, log=None):
@@ -1503,6 +1504,117 @@ def _det2d_and_3d(img_bgr, meta, log=None):
             except Exception as e:                                              # noqa: BLE001
                 gaps.append("%s 反投影失败: %s" % (cls, e))
     return det3d, det2d
+
+
+# ───── 🖼 当前看到的单帧 (老倪 2026-11-10: 「当前看到的单帧图片」做成 YOLO 节点右键入口) ─────
+# 引擎节点和 GUI 是两个进程 ⇒ 不能靠 _YOLO_CACHE 传图, 必须落盘到固定文件名, GUI 只读文件。
+# 三份产物 (同目录, 名字固定 ⇒ 右键菜单永远知道去哪拿):
+#   yolo_seen.jpg        这一拍**实际喂给 YOLO 的原帧** (未画框, 取证用)
+#   yolo_seen_boxed.jpg  同帧 + 检测框图 (命令行/汇报可直接看)
+#   yolo_seen.json       同帧元数据 (源/时间/帧龄/权重/检出/conf/gaps)
+_SEEN_MIN_DT = 0.30          # 写盘节流 (节点本身已被 ZMAX_L2_PERIOD_S 节流到 ~2Hz)
+
+
+def yolo_seen_paths():
+    """当前单帧三件套的绝对路径 (由 _yolo_keep_seen 写, 不在这里建目录)。"""
+    d = os.path.join(_node_repo_root(), "zmax_data", "ss_live")
+    return (os.path.join(d, "yolo_seen.jpg"),
+            os.path.join(d, "yolo_seen_boxed.jpg"),
+            os.path.join(d, "yolo_seen.json"))
+
+
+def yolo_seen_web_paths():
+    """浏览器副本 (老倪 2026-11-10: 「用浏览器打开, 不用单独窗口」)。
+
+    落在 tools/web/dl/ —— 已跑的只读静态服务 8799 直接能取 (/dl/<file>),
+    所以**不用起新服务、不用重启任何一个在役进程**, 页面是静态的: seen.html。
+    """
+    d = os.path.join(_node_repo_root(), "tools", "web", "dl")
+    return (os.path.join(d, "yolo_seen.jpg"), os.path.join(d, "yolo_seen.json"))
+
+
+def _seen_write(path, data):
+    """原子写 (tmp + os.replace): GUI 轮询时绝不会读到半张图 / 半截 JSON。"""
+    tmp = "%s.tmp.%d" % (path, os.getpid())
+    if isinstance(data, (bytes, bytearray)):
+        with open(tmp, "wb") as fh:
+            fh.write(data)
+    else:
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(data)
+    os.replace(tmp, path)
+
+
+def _yolo_keep_seen(img_bgr, src, meta=None, det2d=None, weights=None):
+    """把「这一拍实际喂给 YOLO 的那一帧」落盘, 供 YOLO 节点右键「当前看到的单帧」查看。
+
+    静默失败 — 落盘只是给人看的旁路, 绝不许把感知链路带崩。
+    返回 (jpg_path, json_path) 或 (None, None)。
+    """
+    try:
+        import json as _json
+        import time as _t
+        now = _t.time()
+        if now - float(_YOLO_CACHE.get("_seen_t") or 0.0) < _SEEN_MIN_DT:
+            return _YOLO_CACHE.get("_seen_paths") or (None, None)
+        if img_bgr is None:
+            return None, None
+        import numpy as _np
+        arr = _np.asarray(img_bgr)
+        if arr.ndim != 3 or arr.shape[0] < 8 or arr.shape[1] < 8:
+            return None, None
+        import cv2
+        jpg, boxed_p, json_p = yolo_seen_paths()
+        os.makedirs(os.path.dirname(jpg), exist_ok=True)
+        ok, buf = cv2.imencode(".jpg", arr, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+        if not ok:
+            return None, None
+        _seen_write(jpg, buf.tobytes())
+        d2 = det2d or {}
+        boxed = arr.copy()
+        for cls, d in d2.items():
+            try:
+                x1, y1, x2, y2 = [int(round(float(v))) for v in d["box"]]
+                cv2.rectangle(boxed, (x1, y1), (x2, y2), (60, 220, 60), 2)
+                cv2.putText(boxed, "%s %.2f" % (cls, float(d.get("conf") or 0.0)),
+                            (x1 + 2, max(14, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                            (60, 220, 60), 1, cv2.LINE_AA)
+            except Exception:                                                    # noqa: BLE001
+                continue
+        ok2, buf2 = cv2.imencode(".jpg", boxed, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+        if ok2:
+            _seen_write(boxed_p, buf2.tobytes())
+        m = meta or {}
+        rec = {
+            "t": now,
+            "t_str": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now)),
+            "src": src,
+            "src_label": {"sim": "metaworld 渲染帧", "real": "真机相机帧",
+                          "ar": "AR 场景渲染帧 (8802)"}.get(src, src),
+            "frame": m.get("frame"), "frame_age_s": m.get("frame_age_s"),
+            "cam": m.get("cam"), "weights": weights or m.get("weights"),
+            "n_det": len(d2), "det2d": d2,
+            "gaps": list(m.get("gaps") or []),
+            "shape": [int(arr.shape[1]), int(arr.shape[0])],
+            "jpg": jpg, "boxed": boxed_p,
+        }
+        _seen_write(json_p, _json.dumps(rec, ensure_ascii=False))
+        # 🌐 浏览器副本: 8799 只读静态服务直接读这个目录 (/dl/yolo_seen.jpg|json),
+        #    右键「当前看到的单帧」= 开 seen.html; 写失败无所谓 (窗口版仍可用)。
+        try:
+            _wj, _wjson = yolo_seen_web_paths()
+            if os.path.isdir(os.path.dirname(_wj)):
+                _seen_write(_wj, buf.tobytes())
+                _seen_write(_wjson, _json.dumps(rec, ensure_ascii=False))
+        except Exception:                                                        # noqa: BLE001
+            pass
+        _YOLO_CACHE["img"] = arr
+        _YOLO_CACHE["_seen_t"] = now
+        _YOLO_CACHE["_seen_paths"] = (jpg, json_p)
+        _YOLO_CACHE["seen_meta"] = rec
+        return jpg, json_p
+    except Exception:                                                            # noqa: BLE001
+        return None, None
 
 
 _AR_FRAME = {}          # cam → {t, arr, meta, path}  (两个消费方各吃自己的机位, 不互相顶掉)
@@ -1684,6 +1796,7 @@ def _yolo_capture_ar(log=None):
         meta["n_det"] = len(det2d)
         if not det2d:
             notes.append("本帧 0 检出")
+        _yolo_keep_seen(arr, "ar", meta, det2d, weights=rel)   # 🖼 右键「当前看到的单帧」
         if log:
             log("🎯 AR 源 (%s · %s · tick=%s · 帧源=%s): 检出 %d 类 %s · 3D %d 点 · %.0fms%s" % (
                 meta.get("frame"), rel, meta.get("tick"), meta.get("frame_from"), len(det2d),
@@ -1765,6 +1878,7 @@ def _yolo_capture_real(log=None):
             log("🎯 真机源(视频): %s 第 %d 帧 %.0ffps · 检出 %d 类 · 3D %d 点%s"
                 % (os.path.basename(_vid), meta["frame_i"], fps, len(det2d or {}), len(det3d or {}),
                    (" · gaps=%s" % gaps) if gaps else ""))
+        _yolo_keep_seen(img, "real", meta, det2d)   # 🖼 右键「当前看到的单帧」
         return det3d, det2d, meta
 
     live = os.path.join(_REPO_ROOT, "zmax_data", "ss_live")
@@ -1794,6 +1908,7 @@ def _yolo_capture_real(log=None):
             log("🎯 真机源: 帧 %s (%.1fs) · 检出 %d 类 · 3D %d 点%s"
                 % (os.path.basename(best), best_age, len(det2d or {}), len(det3d or {}),
                    (" · gaps=%s" % gaps) if gaps else ""))
+        _yolo_keep_seen(img, "real", meta, det2d)   # 🖼 右键「当前看到的单帧」
         return det3d, det2d, meta
     except Exception as e:                                                       # noqa: BLE001
         gaps.append("真机感知异常: %s: %s" % (type(e).__name__, e))
@@ -2180,7 +2295,11 @@ _EXTERNAL_LOC["yolo_3d"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 57
 #   全仓库零执行调用 → 查看源码/断点永不命中 (老倪断点停在 detect_3d 126 才发现). 改指真实反投影 detect_3d.
 _EXTERNAL_LOC["yolo_align"] = (os.path.join(_YOLO_DIR, "yolo_state_aligner.py"), 93, "def detect_3d")  # 📐 2D→3D 解算 (2026-09-21 行号同步: 65→93)
 
-_EXTERNAL_LOC["ss_aoi"] = (os.path.join(_YOLO_DIR, "quality_check.py"), 200, "def assess_frame")  # 🐛 2026-09-02: 外观质量检测缺映射 → 双击显示 node_ss_aoi 胶水函数而非真实源码 (同 ss_yolo 断点问题)
+# 🔀 2026-11-10: 光学质量检测算法已迁到算法层 ⇒ 双击源码指向**真实执行入口**
+#   policies/aoi/quality.py::inspect_aoi (一次完整巡检: 图像处理判定 + 三路旁路);
+#   判据内核仍是 yolo_3d/quality_check.py::AOIQualityChecker.check (DET-AOI-01~04)。
+_EXTERNAL_LOC["ss_aoi"] = (os.path.join(_REPO_ROOT, "src", "lerobot", "policies", "aoi", "quality.py"),
+                           155, "def inspect_aoi")
 
 def node_obs39(ctx):
     """📊 39D obs 输入 — metaworld peg-insertion 完整观测 (2026-08-10 实测确认)
@@ -3237,7 +3356,10 @@ def _ar_aoi_publish(sig, log=None):
     try:
         _p = os.path.join(_REPO_ROOT, "tools", "ar_aoi_bus.py")
         _s = _load_mod("ar_aoi_bus", _p)
-        r = _m.publish(sig, meta={"by": "状态空间节点 🔍 光学质量检测"}, quiet=True)
+        # 🐛 2026-11-10 修: 这里原来写 `_m.publish(...)` 而模块存在 `_s` ⇒ NameError
+        #   「AOI 信号总线不可用: name '_m' is not defined」⇒ 节点算出来的 AOI 量**从来没写进总线**
+        #   (live 里 AOI 键恒 0 的真因之一)。上屏日志被 quiet 吞掉时只看到一句警告, 极易漏过去。
+        r = _s.publish(sig, meta={"by": "状态空间节点 🔍 光学质量检测"}, quiet=True)
         if log and not r.get("ok"):
             log("⚠️ AOI 信号总线写入失败: %s" % r.get("err"))
         return r
@@ -3251,189 +3373,38 @@ _SURF_DOWN_UNTIL = 0.0          # 10083 不可达冷却到期时刻 (Pitfall: �
 _GOLD_DOWN_UNTIL = 0.0          # 10082 不可达冷却到期时刻 (同一套降级策略)
 
 
+# 🔀 2026-11-10 老倪: 「def node_ss_aoi(ctx) 这个应该是 AOI 的算法，怎么能在中间件里呢?
+#   AOI 算法，在 src/lerobot/policies 算法路径，统一管理」
+#   ⇒ 算法真身已迁 src/lerobot/policies/aoi/{gold,gold_yolo,surface}.py
+#     (与 policies/yolo_3d、policies/sam3_seg 同级 —— 感知前端统一在 policies/ 下的既有约定)。
+#   这里只留**注入式薄转发**: 把进程内缓存(_YOLO_CACHE)和话题发布回调(_ar_aoi_publish)传进去,
+#   既保持所有既有调用点(节点/其它模块)不用改, 又不让 policies 反向 import middleware。
+from lerobot.policies.aoi import (                                # noqa: E402
+    gold_bypass as _p_gold_bypass,
+    gold_yolo_bypass as _p_gold_yolo_bypass,
+    surface_bypass as _p_surface_bypass,
+)
+
+
+def _gold_yolo_model(log=None):
+    """→ policies/aoi/gold_yolo.py::gold_yolo_model (算法层)"""
+    from lerobot.policies.aoi.gold_yolo import gold_yolo_model
+    return gold_yolo_model(log=log)
+
+
+def _gold_yolo_bypass(log=None):
+    """→ policies/aoi/gold_yolo.py::gold_yolo_bypass (本机 YOLO 推理, 与搬运并列)"""
+    return _p_gold_yolo_bypass(log=log, cache=_YOLO_CACHE, publish=_ar_aoi_publish)
+
+
 def _gold_bypass(log=None):
-    """🆕 2026-10-30 金手指(10082) 同源搬运转发 —— 让状态空间与工控机功能一模一样。
-
-    与 _surface_bypass 的差别: 表面是"同一份 surface_judge 在本机重算", 金手指**不能**重算 ——
-    它的真判决是工控机上的 YOLO(bestgf05088.pt.enc, imgsz=960, 吃同帧派生 960 方图), 本机没有那份权重,
-    所以这里只做**搬运**: 判决/缺陷数/推理ms 一律取 GET /last_result, 几何取 GET /crop_info。
-    绝不本机重算、绝不编数(404「尚无检测结果」⇒ 判决=2 未检, 不许填 0 冒充 OK)。
-
-    · 探活 0.25s + 60s 冷却, 与表面旁路同一套降级策略 —— 10082 不在线时不拖 300UPH 节拍。
-    · 话题键名照注册表 config/topics/ar_aoi_signals.json 的「AOI·金手指 (工控机 10082)」组。
-    """
-    try:
-        import time as _t
-        import json as _json
-        import urllib.request as _urq
-        global _GOLD_DOWN_UNTIL
-        if _t.time() < _GOLD_DOWN_UNTIL:
-            _cache = {"ok": False, "verdict": "unavailable", "code": 2,
-                      "why": "10082 已知不可达 (冷却中, 不重复探)", "cached_down": True}
-            _YOLO_CACHE["gold_aoi"] = _cache
-            return _cache
-        import socket as _sock
-        _host = os.environ.get("ZMAX_AOI_GOLD_HOST", "192.168.23.23")
-        try:
-            _c = _sock.create_connection((_host, 10082), timeout=0.25)
-            _c.close()
-        except OSError as _e:
-            _GOLD_DOWN_UNTIL = _t.time() + 60.0
-            _cache = {"ok": False, "verdict": "unavailable", "code": 2,
-                      "why": f"{_host}:10082 不可达 ({type(_e).__name__}), 60s 内不再探",
-                      "cached_down": True}
-            _YOLO_CACHE["gold_aoi"] = _cache
-            if log:
-                log(f"🌑 金手指 10082 旁路: {_cache['why']} — 本机几何体检那一路不受影响")
-            return _cache
-
-        def _get(path, timeout=1.2):
-            _req = _urq.Request(f"http://{_host}:10082{path}",
-                                headers={"User-Agent": "zmax-probe"})   # 不带 UA 会被服务丢掉
-            try:
-                with _urq.urlopen(_req, timeout=timeout) as _r:
-                    return _json.loads(_r.read().decode("utf-8", "replace"))
-            except _urq.HTTPError as _he:
-                # 404「尚无检测结果」是合法形态(本轮没触发拍照), 不是故障 —— 别报成"读取失败"
-                try:
-                    return _json.loads(_he.read().decode("utf-8", "replace"))
-                except Exception:                                      # noqa: BLE001
-                    return {"code": _he.code, "msg": f"HTTP {_he.code}"}
-
-        lr, ci = None, None
-        try:
-            lr = _get("/last_result", 1.5)
-        except Exception as _e:                                        # noqa: BLE001
-            lr = {"code": 404, "msg": f"读取失败 {type(_e).__name__}"}
-        try:
-            ci = _get("/crop_info", 1.2)
-        except Exception as _e:                                        # noqa: BLE001
-            ci = {"code": 404, "msg": f"读取失败 {type(_e).__name__}"}
-
-        # 判决: 工控机真值直搬; 没有结果就是"未检", 不是 OK
-        _has = int(lr.get("code") or 0) == 200
-        _v = str(lr.get("verdict") or "").upper()
-        _code = 2 if not _has else (1 if _v in ("NG", "FAIL", "BAD") else 0)
-        _jd = (ci.get("judge") or {}) if isinstance(ci, dict) else {}
-        _nb = ci.get("bbox") or _jd.get("bbox") or []
-        res = {
-            "ok": _has,
-            "kind": "gold_aoi",
-            "verdict": (_v or ("未检" if _code == 2 else "OK")),
-            "code": _code,
-            "defects": lr.get("count"),
-            "infer_ms": lr.get("ms"),
-            "detect_type": lr.get("detect_type"),
-            "n_keys": _jd.get("n_keys"),
-            "pitch_px": _jd.get("lattice_pitch_px") or _jd.get("pitch"),
-            "angle_deg": ci.get("angle"),
-            "kept_rows": _jd.get("kept_rows") or _jd.get("key_row_span"),
-            "bbox": list(_nb)[:4] if _nb else None,
-            "judge_ver": _jd.get("ver") or ci.get("judge_ver"),
-            "gold_file": lr.get("topview"),
-            "model_input": lr.get("model_input"),
-            "src": f"工控机 {_host}:10082 (/last_result + /crop_info, 同源搬运)",
-            "why": (None if _has else (lr.get("msg") or "尚无检测结果")),
-        }
-        _YOLO_CACHE["gold_aoi"] = res
-
-        # 发话题: 只写本轮真有值的键 (缺的不写, 不填 0 冒充)
-        _sig = {"AOI.判决": float(_code)}
-        if res.get("defects") is not None:
-            _sig["AOI.缺陷数"] = float(res["defects"])
-        if res.get("infer_ms") is not None:
-            _sig["AOI.推理_ms"] = float(res["infer_ms"])
-        if res.get("n_keys") is not None:
-            _sig["AOI.金手指根数"] = float(res["n_keys"])
-        if res.get("angle_deg") is not None:
-            _sig["AOI.倾角_deg"] = float(res["angle_deg"])
-        if _nb and len(_nb) >= 4:
-            _x, _y, _w, _h = [float(v) for v in list(_nb)[:4]]
-            _sig["AOI.矩形中心_x"] = _x
-            _sig["AOI.矩形中心_y"] = _y
-            _sig["AOI.矩形宽_px"] = _w
-            _sig["AOI.矩形高_px"] = _h
-        _sig["AOI.拍照_epoch"] = float(_t.time())
-        _ar_aoi_publish(_sig, log)
-
-        if log:
-            if _has:
-                log(f"🎯 金手指 10082 同源判决: {res['verdict']} · 缺陷 {res.get('defects')} · "
-                    f"推理 {res.get('infer_ms')}ms · 根数 {res.get('n_keys')} · 倾角 {res.get('angle_deg')} "
-                    f"(judge_ver={res.get('judge_ver')})")
-            else:
-                log(f"⏸ 金手指 10082 同源判决: 未检 — {res.get('why')} (判决=2, 不冒充 OK)")
-            log(f"   金手指话题已发出 ({len(_sig)} 个): "
-                + " · ".join("%s=%g" % (k.split(".")[-1], v) for k, v in sorted(_sig.items())))
-        return res
-    except Exception as e:                                             # noqa: BLE001
-        if log:
-            log(f"⚠️ 金手指 10082 旁路失败 (不影响本机几何体检): {type(e).__name__}: {e}")
-        return None
+    """→ policies/aoi/gold.py::gold_bypass (搬运工控机 10082 真判决)"""
+    return _p_gold_bypass(log=log, cache=_YOLO_CACHE, publish=_ar_aoi_publish)
 
 
 def _surface_bypass(log=None):
-    """🆕 2026-10-19 老倪「10083服务, 可以在4060上旁路运行」:
-    表面相机旁路 —— 本机(4060) 通过 HTTP 从工控机 10083 取同一帧, 自己搜矩形刚体 → 摆正
-    (保留整块模块 · 长边水平 · 零插值) → 量光学质量 → 发「表面光学.*」话题。
-    · 不部署到工控机、不改产线程序、不抢相机独占; 10083 不可达就只记一句, 不影响金手指那一路。
-    · 实现同源: src/lerobot/policies/yolo_3d/surface_optical.py → tools/aoi_surface_rect.py
-      (与交付的判据图同一个 surface_judge, 不另写一套口径)。
-    · ROI 口径: 模块摆正后单独统计, **不看整帧 mean** —— 黑背景会把整帧 mean 拉到 16 而模块本身
-      仍在过曝(实测 5000us: 整帧 mean 16.25/暗部94.7%, 模块 mean 153.9/死白16.68%)。
-    """
-    try:
-        import time as _t
-        global _SURF_DOWN_UNTIL
-        if _t.time() < _SURF_DOWN_UNTIL:
-            _cache = {"ok": False, "verdict": "unavailable",
-                      "why": "10083 已知不可达 (冷却中, 不重复探)", "cached_down": True}
-            _YOLO_CACHE["surface_aoi"] = _cache
-            return _cache
-        # 快速探活 0.25s: 不在线就立刻降级, 不把 1s 连通超时摊到每一拍 (300UPH 每件 12s 预算)
-        import socket as _sock
-        _host = os.environ.get("ZMAX_AOI_SURFACE_HOST", "192.168.23.23")
-        try:
-            _c = _sock.create_connection((_host, 10083), timeout=0.25)
-            _c.close()
-        except OSError as _e:
-            _SURF_DOWN_UNTIL = _t.time() + 60.0
-            _cache = {"ok": False, "verdict": "unavailable",
-                      "why": f"{_host}:10083 不可达 ({type(_e).__name__}), 60s 内不再探",
-                      "cached_down": True}
-            _YOLO_CACHE["surface_aoi"] = _cache
-            if log:
-                log(f"🌑 表面 10083 旁路: {_cache['why']} — 金手指主路不受影响")
-            return _cache
-        from lerobot.policies.yolo_3d.surface_optical import SurfaceOpticalQuality
-        sq = SurfaceOpticalQuality()
-        sres = sq.run()
-        _YOLO_CACHE["surface_aoi"] = sres
-        ssig = sq.signals(sres)
-        if ssig:
-            _ar_aoi_publish(ssig, log)
-        if log:
-            _m = {"ok": "✅", "too_dark": "🌑", "overexposed": "🔴", "shape_fail": "❔"}.get(
-                sres.get("verdict"), "❔")
-            _mod = sres.get("module") or {}
-            _full = sres.get("full") or {}
-            if sres.get("ok"):
-                log(f"{_m} 表面 10083 旁路: {sres.get('verdict')} — {sres.get('verdict_why')}")
-                log(f"   模块摆正 {sres.get('judge_shape')} 水平={_mod.get('long_edge_horizontal')} "
-                    f"长宽比={_mod.get('aspect')} 倾角={(_rect_angle := (sres.get('rect') or {}).get('angle'))} "
-                    f"矩形度={(_fi := (sres.get('rect') or {}).get('fill'))}")
-                log(f"   ROI 口径: 模块 mean={_mod.get('mean')} 死白={_mod.get('sat_pct')}% "
-                    f"清晰度={_mod.get('sharpness')}  |  整帧 mean={_full.get('mean')} "
-                    f"死白={_full.get('sat_pct')}% 暗部={_full.get('dark_pct')}% (整帧会被黑背景拉低, 判决看 ROI)")
-            else:
-                log(f"{_m} 表面 10083 旁路: 未出图 — {sres.get('why')}")
-            log(f"   表面光学话题已发出 ({len(ssig)} 个): "
-                + " · ".join("%s=%g" % (k.split('.')[-1], v) for k, v in sorted(ssig.items())))
-        return sres
-    except Exception as e:                                          # noqa: BLE001
-        if log:
-            log(f"⚠️ 表面 10083 旁路失败 (不影响金手指): {type(e).__name__}: {e}")
-        return None
+    """→ policies/aoi/surface.py::surface_bypass (10083 本机重算)"""
+    return _p_surface_bypass(log=log, cache=_YOLO_CACHE, publish=_ar_aoi_publish)
 
 
 def node_ss_aoi(ctx):

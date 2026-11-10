@@ -20,5 +20,15 @@ AOI 算法，在 /home/ubuntu/zmax/src/lerobot/policies 算法路径，统一管
 from .gold import gold_bypass                     # noqa: F401
 from .gold_yolo import gold_yolo_bypass, gold_yolo_model   # noqa: F401
 from .surface import surface_bypass               # noqa: F401
+from .quality import (                            # noqa: F401
+    inspect_aoi,
+    inspect_quality,
+    log_quality,
+    quality_items,
+    quality_report,
+    quality_signals,
+)
 
-__all__ = ["gold_bypass", "gold_yolo_bypass", "gold_yolo_model", "surface_bypass"]
+__all__ = ["gold_bypass", "gold_yolo_bypass", "gold_yolo_model", "surface_bypass",
+           "inspect_aoi", "inspect_quality", "quality_signals", "quality_report",
+           "quality_items", "log_quality"]

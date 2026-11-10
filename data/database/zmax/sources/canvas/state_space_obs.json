@@ -798,8 +798,8 @@
      "self_test": "gui-venv311/bin/python src/lerobot/policies/yolo_3d/quality_check.py",
      "align": "python3 tools/aoi/production_sync.py status|verify|diff|pull"
     },
-    "source": "src/lerobot/engineering/nodes/library.py · node_ss_aoi",
-    "source_symbol": "node_ss_aoi"
+    "source": "src/lerobot/policies/aoi/quality.py · inspect_aoi (算法层入口; 判据内核 yolo_3d/quality_check.py::AOIQualityChecker.check)",
+    "source_symbol": "inspect_aoi"
    }
   },
   {
@@ -2282,7 +2282,7 @@
      "工程库": "data/database/zmax/zmax_engineering.db"
     },
     "cfg_snapshot": {
-     "loaded_at": "2026-11-10 06:40:40",
+     "loaded_at": "2026-11-10 19:27:31",
      "files_total": 8,
      "files_ok": 8,
      "orders": 12,
@@ -2346,18 +2346,18 @@
      "口径": "一个状态空间工程承载全部任务; 任务=配方段子集+参数覆盖"
     },
     "source_symbol": "def import_config_files(",
-    "cfg_loaded_at": "2026-11-10 06:40:40",
+    "cfg_loaded_at": "2026-11-10 19:27:31",
     "cfg_files": [
      {
       "name": "总工程文件",
       "rel": "data/database/zmax/zmax_space.proj",
-      "sha256": "7f33742cda30ad88",
+      "sha256": "ae5a99a438a98f39",
       "exists": true
      },
      {
       "name": "任务绑定",
       "rel": "config/ss_task_binding.json",
-      "sha256": "54efeedee38376dd",
+      "sha256": "a392cab9c8051c66",
       "exists": true
      },
      {
