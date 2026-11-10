@@ -3,6 +3,7 @@
 from .camera_scheduler import (  # noqa: F401
     can_guide_3d,
     perceive_state,
+    place_cell,
     load_registry,
     load_zones,
     perceive_plan,
@@ -10,5 +11,5 @@ from .camera_scheduler import (  # noqa: F401
     zone_of,
 )
 
-__all__ = ["can_guide_3d", "load_registry", "load_zones", "perceive_plan", "perceive_state",
+__all__ = ["can_guide_3d", "load_registry", "load_zones", "perceive_plan", "perceive_state", "place_cell",
            "scan_traj", "zone_of"]
