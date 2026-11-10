@@ -2683,6 +2683,8 @@ def node_ss_s2(ctx):
             zk = np.asarray(z, dtype=float).ravel()[:latent.size]
             post = est.update(pred, zk)          # 后验: x̂ = x̂⁻ + K·(z − x̂⁻)
             _SS_STATE["latent"] = post
+            _SS_STATE["latent_pred"] = pred
+            out_lat, out_pred = post, pred
             if log:
                 log("🔮 自适应状态估计: ‖x̂⁻‖=%.4g → 校正后 ‖x̂‖=%.4g "
                     "(残差 %.4g, K=0.2, A=1.0, B=dt)" % (
@@ -2690,10 +2692,17 @@ def node_ss_s2(ctx):
                         float(np.linalg.norm(zk - pred))))
         else:
             _SS_STATE["latent_pred"] = pred
+            out_lat, out_pred = latent, pred
             if log:
                 log("🔮 自适应状态估计: 仅预测 ‖x̂⁻‖=%.4g (无观测可校正; 先 ▶ 运行产生 obs43)"
                     % float(np.linalg.norm(pred)))
-        return True
+        # 端口值必须真产 (画布声明 ssest.out1→sspred.in1, out2→ssinnov.in1;
+        #  只写 _SS_STATE 会让走端口的下游读到 None —— 与「AOI PURE=False 直通」同一类坑)
+        _body = {"kind": "state_est", "layer": "L2", "role": "潜状态 (手位置+夹爪)",
+                 "latent": [round(float(x), 6) for x in np.asarray(out_lat, dtype=float).ravel()],
+                 "latent_pred": [round(float(x), 6) for x in np.asarray(out_pred, dtype=float).ravel()],
+                 "A": 1.0, "K": 0.2, "B": 0.02}
+        return {"out1": dict(_body), "out2": dict(_body), "ok": True}
     except Exception as e:  # noqa: BLE001
         if log:
             log("⚠️ 自适应状态估计失败: %s" % e)
