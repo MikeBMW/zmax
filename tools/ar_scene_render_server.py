@@ -695,6 +695,7 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
     _views_cache = {}
     while True:
         t0 = time.time()
+        _HEART["t"], _HEART["n"] = t0, n            # 看门狗心跳 (卡死就自杀, 不让人等)
         with LOCK:
             cmd = dict(CMD)
         mode = cmd.get("mode") or "idle"
@@ -927,6 +928,24 @@ def _free_renderer(mujoco, model, h, w):
     return r
 
 
+# 🔴 2026-11-10「两个画面都不动」反复复现: 渲染线程偶尔卡死在 mujoco Renderer.render() 的 C 层
+#   (EGL 同步), 卡住后整条 /frame.png / /video / 关节推进全停, 只能人工重启。
+#   ⇒ 渲染线程每拍打心跳; 看门狗线程发现 6s 没心跳就自杀, systemd(Restart=always) 秒级拉起。
+_HEART = {"t": time.time(), "n": 0}
+_CACHE = {}
+
+
+def _gl_watchdog(stale=6.0, every=2.0):
+    import os as _os
+    import time as _t
+    while True:
+        _t.sleep(every)
+        _age = _t.time() - _HEART["t"]
+        if _age > stale:
+            print("[watchdog] render_loop 卡死 %.1fs (n=%s) ⇒ 自杀重拉" % (_age, _HEART["n"]), flush=True)
+            _os._exit(9)
+
+
 def render_free(qs, timeout=3.5):
     """🎥 任意视角: GET /frame.png?az=&el=&dist=&tx=&ty=&tz=&fovy=
 
@@ -968,6 +987,13 @@ def render_free(qs, timeout=3.5):
            # 🌕 深度通道: 单目 RGB 只知道方向, 不知道距离 —— 腕部特写里件在 0.56m 高,
            #   按料盘面(0.109m)反投影会差 450mm。要真 3D 就必须有深度。
            "depth": bool((qs.get("depth") or [""])[0])}
+    # 同一拍 + 同一视角 ⇒ 直接复用 (页面 + 8820 观测窗 + L2 同拍各要一次, 否则一拍渲三遍)
+    _ck = (int(_HEART["n"]), tuple(round(v, 5) for v in cam["lookat"]), round(cam["distance"], 4),
+           round(cam["elevation"], 2), round(cam["azimuth"], 2), round(req["fovy"], 2),
+           str(req["size"]), str(req["track"]), str(req["face"]), bool(req["depth"]))
+    _hit = _CACHE.get("k")
+    if _hit == _ck and _CACHE.get("png"):
+        return _CACHE["png"]
     try:
         FREE_Q.put_nowait(req)
     except queue.Full:              # 丢最老的, 保证最新视角能出
@@ -986,6 +1012,10 @@ def render_free(qs, timeout=3.5):
         return req.get("depth_arr")
     if not req["png"]:
         raise RuntimeError("空帧")
+    try:
+        _CACHE["k"], _CACHE["png"] = _ck, req["png"]
+    except Exception:                                                        # noqa: BLE001
+        pass
     return req["png"]
 
 
@@ -1499,6 +1529,7 @@ def main():
     ap.add_argument("--seed", type=int, default=11)
     ap.add_argument("--no-jitter", action="store_true")
     a = ap.parse_args()
+    threading.Thread(target=_gl_watchdog, daemon=True, name="gl-watchdog").start()
     threading.Thread(target=render_loop, args=(a.hz, not a.no_jitter, a.seed,
                                                a.phys_hz, a.render_hz),
                      daemon=True).start()
