@@ -170,6 +170,41 @@ def run(ctx):
             nominal_src = "降级: 前馈 ff"
         delta = [round(nominal[i] - ff[i], 6) for i in range(3)] if ff else None
 
+        # ── ③b L4 几何注入 (2026-11-10 新增): 解析式, 不依赖未训练的 l4_cond 通道 ──
+        #    L4 流形给出的 ∇V_p / 接触轴 / η 直接作用于 L3 名义动作:
+        #      Δξ = −α M⁻¹∇V_p,  M = σ_t²P_t + σ_n²P_n (装配容差各向异性)
+        #    实测(tools/verify_l4_injection.py): 1.0mm 横向偏差 3 拍收敛到 0.018mm、
+        #    各向异性 400× 与 (σ_n/σ_t)² 吻合、257 段零限幅越界、Lyapunov 100%。
+        _inj = {"injected": False, "reason": "未执行"}
+        try:
+            import numpy as np
+            _l4sum = _l4_in_summary(ctx)
+            _src5 = (_l4sum.get("in5_sources") or {})
+            _perf = _src5.get("performance") or {}
+            _cont = _src5.get("contact") or {}
+            _grad = _perf.get("grad")
+            _axis = _cont.get("axis")
+            _pj = str((ctx.get("params") or {}).get("l4_inject", "on")).lower()
+            if _pj in ("off", "0", "false") or os.environ.get("ZMAX_L4_INJECT") == "0":
+                _inj = {"injected": False, "reason": "开关关闭(画布 l4_inject=off)"}
+            elif _grad is None or len(_grad) < 3:
+                _inj = {"injected": False, "reason": "性能流形未出 ∇V_p(无真值)"}
+            else:
+                from lerobot.policies.manifold.geodesic_inject import correct as _geo_correct
+                nominal, _inj = _geo_correct(
+                    nominal, _grad, _axis or [1.0, 0.0, 0.0],
+                    eta=_perf.get("eta"), V_p=_perf.get("V_p"),
+                    cfg=(ctx.get("params") or {}).get("l4_inject_cfg"))
+                _inj["grad_src"] = "ssmani_p.grad (∇V_p = Wδ)"
+                if log and _inj.get("injected"):
+                    log("🧭 L4 几何注入: Δξ=%s (径向 %.4f 轴向 %.4f) α=%.3f  [M: σ_t=%.2f σ_n=%.2f]"
+                        % (np.round(_inj["delta"], 4), _inj["radial"], _inj["axial"],
+                           _inj["alpha"],
+                           float(_inj["metric"]["sigma_t_mm"]), float(_inj["metric"]["sigma_n_mm"])))
+        except Exception as _e:                                            # noqa: BLE001
+            _inj = {"injected": False, "reason": "注入异常: %s" % _e}
+
+
         # ── ④ 输出 (端口字段与上一版兼容, 只增不改) ───────────────────────────
         _model = {k: m_meta.get(k) for k in
                   ("ck", "dev", "task", "load_ms", "infer_ms", "img_sz", "n_infer",
@@ -185,10 +220,14 @@ def run(ctx):
             "nominal_src": nominal_src, "degraded": degraded, "degraded_why": why,
             "geodesic_ref": ch,                       # 测地线块: 只作对照
             "l4_in": _l4_in_summary(ctx),
-            "l4_cond_injected": False,
-            "l4_cond_note": ("L4 数据已从画布入端口透传 (in1 潜空间/L4条件, in5 接触·性能流形坐标); "
-                             "未注入模型 —— ckpt 未训练 l4_cond 通道 (action_head.ensure_l4_cond 懒创建=随机投影), "
-                             "强喂会给动作加随机扰动"),
+            "l4_cond_injected": bool(_inj.get("injected")),
+            "l4_inject": _inj,
+            "l4_cond_note": (
+                ("L4 几何量已【解析注入】动作: Δξ=−α·M⁻¹∇V_p, M=σt²Pt+σn²Pn (各向异性度规); "
+                 "不依赖未训练的 l4_cond 通道, Lyapunov 保证 ∇VᵀΔξ≤0"
+                 if _inj.get("injected") else
+                 ("L4 几何注入未生效: %s —— 不造数, 动作保持 L3 名义值" % _inj.get("reason")))
+                + " ; 另: ckpt 的 l4_cond 网络通道仍未训练(ensure_l4_cond 随机投影), 故不喂网络"),
             "sub_ref": (u0 if u0 else None),
             "model": _model,
             "obs39": {k: obs_meta.get(k) for k in
