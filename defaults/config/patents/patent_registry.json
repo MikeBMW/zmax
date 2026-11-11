@@ -1,6 +1,6 @@
 {
  "schema": "zmax-patent-registry/1",
- "updated": "2026-11-11 13:17:04+0800",
+ "updated": "2026-11-11 13:31:22+0800",
  "note": "Z-MAX 专利申请渠道唯一依据。每件专利挂 fn_ids(主)/fn_ids_related(关联); 覆盖核对见 tools/patent_center.py --coverage。编写稿在 config/patents/drafts/, 本文件由 --build 生成。",
  "draft_parts": [
   "part_a.json",
@@ -232,7 +232,8 @@
     "FN-SYS2-16"
    ],
    "fn_ids_related": [
-    "FN-SYS2-15"
+    "FN-SYS2-15",
+    "FN-PLAT-75"
    ],
    "impl_refs": [
     "src/lerobot/policies/left_right/state_space/planner.py",
@@ -408,7 +409,8 @@
    ],
    "fn_ids_related": [
     "FN-SYS2-27",
-    "FN-SYS2-24"
+    "FN-SYS2-24",
+    "FN-SYS0-64"
    ],
    "impl_refs": [
     "tools/merge_lora_ckpt.py",

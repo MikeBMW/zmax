@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-11 13:17",
+ "generated_at": "2026-11-11 13:31",
  "patents": [
   {
    "pat_id": "ZMP-2026-001",
@@ -294,6 +294,13 @@
      "code": "src/lerobot/memory/mem_nodes.py · node_ss_mem_l4",
      "role": "关联",
      "layer": "L4/L5"
+    },
+    {
+     "fn_id": "FN-PLAT-75",
+     "name": "🧠 前馈激活直方图",
+     "code": "tools/gui/node_logic.py · node_ss_ff_hist",
+     "role": "关联",
+     "layer": "PLAT"
     }
    ],
    "nodes": [
@@ -305,7 +312,8 @@
     "n_geoplan",
     "ss_grav_h",
     "ss_mem_field",
-    "ss_mem_l4"
+    "ss_mem_l4",
+    "ssff_hist"
    ],
    "impl_refs": [
     "src/lerobot/policies/left_right/state_space/planner.py",
@@ -315,6 +323,7 @@
     "工程库 canvas_nodes 表 (势场联络/安全边界节点)"
    ],
    "docs": [
+    "docs/7-瑶光-记录追溯/STATE_SPACE_RETROSPECTIVE_20260926.md",
     "docs/7-瑶光-记录追溯/incidents/TASK_LEDGER_20260924.md",
     "docs/5-玉衡-指标验收/eval/u_ff过原子技能节点_物理闸内联_v5.50.739.md",
     "docs/1-天枢-产品边界/patents/ZMP-2026-004_一种可行域逐层收窄与底层势函数收口的机器人运动安全控制方法.md",
@@ -572,6 +581,13 @@
      "code": "src/lerobot/manifold/predictor_layer.py",
      "role": "关联",
      "layer": "L4/L5"
+    },
+    {
+     "fn_id": "FN-SYS0-64",
+     "name": "🌍 物理世界",
+     "code": "src/lerobot/policies/left_right/state_space/execution.py",
+     "role": "关联",
+     "layer": "L2"
     }
    ],
    "nodes": [
@@ -588,7 +604,9 @@
     "swintact",
     "ss_moe",
     "swworld",
-    "ssmani_exp"
+    "ssmani_exp",
+    "ssact",
+    "ssworld"
    ],
    "impl_refs": [
     "tools/merge_lora_ckpt.py",
@@ -606,7 +624,8 @@
     "docs/1-天枢-产品边界/patents/ZMP-2026-007_一种世界模型意图_动作分块生成与适配层折叠部署方法及零动作伪装防护.docx",
     "docs/1-天枢-产品边界/patents/ZMP-2026-007_一种世界模型意图_动作分块生成与适配层折叠部署方法及零动作伪装防护.md",
     "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-007_一种世界模型意图-动作分块生成与适配层折叠部署方法及零动作伪装防护.docx",
-    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-007_一种世界模型意图-动作分块生成与适配层折叠部署方法及零动作伪装防护.md"
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-007_一种世界模型意图-动作分块生成与适配层折叠部署方法及零动作伪装防护.md",
+    "docs/6-开阳-工程落地/architecture_layers_v511.md"
    ]
   },
   {
@@ -1199,7 +1218,6 @@
    ],
    "data_refs": [],
    "docs": [
-    "docs/7-瑶光-记录追溯/STATE_SPACE_RETROSPECTIVE_20260926.md",
     "docs/1-天枢-产品边界/patents/ZMP-2026-013_一种基于视触觉融合与装配公差度规的跨层动作修正方法及系统.docx",
     "docs/1-天枢-产品边界/patents/ZMP-2026-013_一种基于视触觉融合与装配公差度规的跨层动作修正方法及系统.md",
     "docs/1-天枢-产品边界/patents/_v1_历史/ZMP-2026-013_v2_视触觉融合初版_20261111.md",
@@ -1744,6 +1762,7 @@
    "source": "src/lerobot/policies/left_right/state_space/execution.py",
    "symbol": "class RobotExecutor",
    "patents": [
+    "ZMP-2026-007",
     "ZMP-2026-015",
     "ZMP-2026-018"
    ]
@@ -1757,6 +1776,7 @@
    "source": "src/lerobot/policies/left_right/state_space/execution.py",
    "symbol": "class PhysicalWorld",
    "patents": [
+    "ZMP-2026-007",
     "ZMP-2026-015",
     "ZMP-2026-018"
    ]
@@ -2003,7 +2023,9 @@
    "impl_key": "ss_ff_hist",
    "source": "tools/gui/node_logic.py · node_ss_ff_hist",
    "symbol": "",
-   "patents": []
+   "patents": [
+    "ZMP-2026-004"
+   ]
   },
   {
    "node_id": "ss3d_view",
@@ -2675,7 +2697,7 @@
   {
    "path": "docs/7-瑶光-记录追溯/STATE_SPACE_RETROSPECTIVE_20260926.md",
    "title": "状态空间工程 · 全局复盘 (2026-09-26 大清理行动)",
-   "patent": "ZMP-2026-013"
+   "patent": "ZMP-2026-004"
   },
   {
    "path": "docs/7-瑶光-记录追溯/README.md",
@@ -4560,7 +4582,7 @@
   {
    "path": "docs/6-开阳-工程落地/architecture_layers_v511.md",
    "title": "Z-MAX 分层职责 (老倪 2026-09-19 更正版, v5.10.0 起生效)",
-   "patent": ""
+   "patent": "ZMP-2026-007"
   },
   {
    "path": "docs/6-开阳-工程落地/factory_fine_ops_requirements.md",
@@ -5211,8 +5233,8 @@
  "summary": {
   "patents": 20,
   "nodes": 79,
-  "nodes_covered": 77,
+  "nodes_covered": 78,
   "docs": 508,
-  "docs_linked": 78
+  "docs_linked": 79
  }
 }
