@@ -98,7 +98,9 @@ def geometry(cfg: dict | None = None) -> dict:
             ("tac_gamma", "tac_gamma"), ("tac_w_max", "tac_w_max"),
             ("force_max", "force_max"), ("force_k", "force_k"),
             ("force_abort_ratio", "force_abort_ratio"),
-            ("contact_stiffness", "contact_stiffness"))
+            ("contact_stiffness", "contact_stiffness"),
+            # ── 公差盒投影 (ZMP-2026-020 从权4) ───────────────────────
+            ("proj_enable", "proj_enable"), ("tol_r_mm", "tol_r_mm"))
     out = {}
     for k_src, k_dst in keys:
         v = c.get(k_src)

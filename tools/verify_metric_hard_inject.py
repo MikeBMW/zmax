@@ -29,6 +29,10 @@ from lerobot.policies.manifold.metric_inject import (  # noqa: E402
     hard_inject_step, isotropic_flow_loss, metric_flow_loss, metric_matrix,
     project_metric_ball,
 )
+# 真链路同一函数 (flow_matching_impl 调的就是它) —— 公差盒投影必须在这里验, 不在离线模块
+from lerobot.policies.manifold.geodesic_inject import (  # noqa: E402
+    DEFAULTS as GI_DEFAULTS, W_OF, correct as gi_correct,
+)
 
 PASS, FAIL = [], []
 SIG_T, SIG_N = 0.30, 6.00
@@ -287,6 +291,49 @@ for _ in range(60):
     if np.linalg.norm(x) < 1e-6:
         break
 ck("E1 60 步内 V 单调不增", viol == 0, "违例 %d 次, 末 |x|=%.6f" % (viol, float(np.linalg.norm(x))))
+
+
+# ══ F 真链路公差盒投影 (专利从权4, geodesic_inject.correct) ══════════
+print("\n[F] 真链路公差盒投影（flow_matching_impl 调用的同一个 correct()）")
+_cfg = dict(GI_DEFAULTS)
+_cfg.update({"sigma_t_mm": SIG_T, "sigma_n_mm": SIG_N, "proj_enable": True, "tol_r_mm": 0.30})
+_U = [0.05, 0.0, 0.0, 1.0]                     # 名义步长 0.05mm
+_AX = [1.0, 0.0, 0.0]                          # 插入轴 X ⇒ 径向 = y,z
+
+def _run_proj(delta_vec, cfg):
+    g = W_OF(delta_vec) @ np.asarray(delta_vec, dtype=float)   # ∇V = W δ
+    return gi_correct(_U, g, _AX, eta=0.99, V_p=float(np.dot(delta_vec, delta_vec)), cfg=cfg)
+
+# F1 径向在公差带内 ⇒ 本拍不修正, 原样返回
+_u1, i1 = _run_proj(np.array([0.0, 0.10, 0.0]), _cfg)
+ck("F1 径向 0.10mm ≤ tol 0.30mm ⇒ 不修正且原样返回",
+   i1.get("injected") is False and list(_u1[:3]) == _U[:3] and
+   ((i1.get("project") or {}).get("action") == "in_tolerance_skip"),
+   (i1.get("reason") or "")[:56])
+
+# F2 径向超公差 ⇒ 正常注入
+_u2, i2 = _run_proj(np.array([0.0, 0.50, 0.0]), _cfg)
+ck("F2 径向 0.50mm > tol ⇒ 注入且方向朝 −∇V",
+   i2.get("injected") is True and float(np.dot(np.asarray(i2["delta"]), _u2[:3] - np.asarray(_U[:3]))) >= 0
+   and (i2.get("project") or {}).get("action") == "inject",
+   "Δξ=%s 径向 %.4f" % (np.round(i2.get("delta"), 5), float(i2.get("radial") or 0)))
+
+# F3 投影只判径向: 轴向偏差再大, 径向在带内就不修
+_u3, i3 = _run_proj(np.array([5.0, 0.10, 0.0]), _cfg)   # 轴向 5mm + 径向 0.10mm
+ck("F3 只判径向: 轴向 5mm 不影响判定(径向 0.10mm 仍在带内 ⇒ 不修)",
+   i3.get("injected") is False and ((i3.get("project") or {}).get("action") == "in_tolerance_skip"),
+   "r_before=%s" % ((i3.get("project") or {}).get("r_before_mm")))
+
+# F4 开关关闭 ⇒ 回到投影引入前的行为(带内也注入)
+_c4 = dict(_cfg); _c4["proj_enable"] = False
+_u4, i4 = _run_proj(np.array([0.0, 0.10, 0.0]), _c4)
+ck("F4 proj_enable=False ⇒ 带内也注入(行为可回退)", i4.get("injected") is True, i4.get("reason") or "")
+
+# F5 tol_r 缺项 ⇒ 不投影, 不填默认值
+_c5 = dict(_cfg); _c5.pop("tol_r_mm", None)
+_u5, i5 = _run_proj(np.array([0.0, 0.10, 0.0]), _c5)
+ck("F5 tol_r 缺项 ⇒ 不做投影(不填默认值)", i5.get("injected") is True
+   and (i5.get("project") or {}).get("applied") is False, "project=%s" % (i5.get("project")))
 
 # ══ 汇总 ═════════════════════════════════════════════════════════════
 print("\n" + "=" * 86)

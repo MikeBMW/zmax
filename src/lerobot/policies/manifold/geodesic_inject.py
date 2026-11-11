@@ -69,6 +69,11 @@ DEFAULTS: dict[str, Any] = {
     "force_k": 6.0,         # 超限后置信度衰减陡度
     "force_abort_ratio": 1.5,  # 超限 1.5 倍 ⇒ 直接停机(不走修正)
     "contact_stiffness": 6.0,  # 接触刚度 K (N/mm) —— 力反解偏差必须除它, 见 correct() 步骤③
+    # ── 公差盒投影 Project_M (专利 ZMP-2026-020 从权4) ────────────────────
+    "proj_enable": True,    # 公差盒投影开关
+    "tol_r_mm": None,       # 径向公差带半宽(mm) 绝对值 —— 必须由标定真源给, **不给默认值**:
+                            #   缺项 ⇒ 不做投影(与 σt/σn 同一口径, 否则真源形同虚设)。
+                            #   径向偏差已在带内 ⇒ 本拍不修正(防抖/防极限环); 轴向永不参与判定
 }
 
 
@@ -399,6 +404,39 @@ def correct(nominal, grad_V, axis, *, eta: float | None = None,
     else:
         gate = e * math.exp(-v / max(c["V0"], 1e-9)) * float(guard.get("scale") or 1.0)
         info["gate_mode"] = "visual_exp_Vp"
+
+    # ── 公差盒投影 Project_M (专利 ZMP-2026-020 从权4) ─────────────────────────
+    #   口径: 只判**径向**, 轴向永不参与 —— 推进通道必须始终畅通。
+    #   径向偏差已在公差带 ±tol_r 内 ⇒ 本拍不修正(防抖 / 防极限环), 原样返回名义动作;
+    #   带外 ⇒ 继续按自然梯度修正, 单步不过冲由下面的 0.95·d_dev 限幅保证。
+    #   tol_r 缺项 ⇒ 不做投影(不填默认值), 行为与投影引入前完全一致。
+    proj: dict[str, Any] = {"applied": False, "enable": bool(c.get("proj_enable", True))}
+    _tol_r = c.get("tol_r_mm")
+    if proj["enable"] and _tol_r and float(_tol_r) > 0:
+        try:
+            _n = np.asarray(axis, dtype=float).reshape(-1)[:3]
+            _n = _n / max(float(np.linalg.norm(_n)), 1e-12)
+            _Pt = np.eye(3) - np.outer(_n, _n)
+            _w_tac = float(finfo.get("w_tac") or 0.0)
+            if _w_tac >= 0.5 and force is not None:
+                _dvec = (np.asarray(force, dtype=float).reshape(-1)[:3]
+                         / max(float(c["contact_stiffness"]), 1e-9))
+            else:
+                _dvec = np.linalg.solve(W_OF(g), g)
+            _r_before = float(np.linalg.norm(_Pt @ _dvec))
+            proj.update({"r_before_mm": round(_r_before, 6), "tol_r_mm": float(_tol_r)})
+            if _r_before <= float(_tol_r):
+                proj["applied"] = True
+                proj["action"] = "in_tolerance_skip"
+                info["project"] = proj
+                info.update({"injected": False, "gate": 0.0,
+                             "reason": ("径向偏差 %.4fmm ≤ 公差带 ±%.4fmm ⇒ 本拍不修正(防抖/防极限环)"
+                                        % (_r_before, float(_tol_r)))})
+                return u, info
+            proj["action"] = "inject"
+        except Exception as _pe:                                    # noqa: BLE001
+            proj["err"] = "%s: %s" % (type(_pe).__name__, _pe)
+    info["project"] = proj
 
     # ③ 步长：以名义步长为尺度，硬限幅 ≤ max_ratio
     step = float(np.linalg.norm(u[:3]))

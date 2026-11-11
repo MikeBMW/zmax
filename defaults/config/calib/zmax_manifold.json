@@ -1,6 +1,6 @@
 {
- "_doc": "流形引擎主标定参数 M (状态空间的结构参数/等效惯量) — 标定层单一真源。物理: a=F/M ⇒ Δx=F·dt²/M; 信息: 把信息代价梯度换成状态加速度的曲率尺度; M 从流形结构导出 (非自由拟合), 现场以单标量标定。inertia=false ⇒ 零回归。",
- "M": 4.423,
+ "_doc": "流形引擎主标定参数 M (状态空间的结构参数/等效惯量) — 标定层单一唯一依据。物理: a=F/M ⇒ Δx=F·dt²/M; 信息: 把信息代价梯度换成状态加速度的曲率尺度; M 从流形结构导出 (非自由拟合), 现场以单标量标定。inertia=false ⇒ 零回归。",
+ "M": 3.643,
  "inertia": false,
  "_range": [
   0.0,
@@ -8,25 +8,104 @@
  ],
  "_unit": "等效惯量尺度 (无量纲归一化; 物理类比 kg, 信息类比 Fisher/Hessian 曲率尺度)",
  "_flow": "二阶: v ← v + (F/M)·dt; p ← exp_p(v·dt)   (M→0 ⇒ 一阶过阻尼 = 旧 GD)",
- "_updated_at": "2026-10-10 12:50:46",
- "_energy_derivation": {
-  "project": "PROJ-TH-TRAY",
-  "name": "泰国摆盘 (光模块 周转盘 → 上料 Tray 盘)",
-  "formula": "M = 1 + (½·m_eff·v² + m_eff·g·h) / E_ref",
-  "m_eff_kg": 1.535,
-  "E_kin_J": 0.0691,
-  "E_pot_J": 6.7763,
-  "E_task_J": 6.8453,
-  "E_ref_J": 2.0,
-  "energy_level": "E3 带夹具/高速",
-  "sources": {
-   "夹具/吸嘴": "真源: config/calib/zmax_calib.json#tool_payload.mass_kg",
-   "工件": "真源: 光模块 100G/400G QSFP 级 ≈25g",
-   "峰值速度": "假设(可标定): 宏微复合转运峰值 ≈0.3 m/s",
-   "行程": "真源: 升降行程 0~450mm (zmax_project_bom/结构参数)"
+ "_updated_at": "2026-11-11 08:15:00",
+ "metric": {
+  "dim": 6,
+  "mode": "diag",
+  "diag": [
+   10.0,
+   10.0,
+   50.0,
+   10.0,
+   10.0,
+   10.0
+  ],
+  "_modes": {
+   "isotropic": "G=I (旧行为, Γ=0, 直线)",
+   "diag": "每轴刚度 n 个参数",
+   "full": "一般度量 n(n+1)/2 个独立分量 (3→6 · 6→21 · 16→136 · 43→946)"
   },
-  "updated_at": "2026-10-10 12:50:46",
-  "inertia_note": "inertia=false 保持零回归; 要开二阶需现场标定证据 ΔV<0 (本工具不代开)",
-  "by": "tools/master_param_m.py (老倪: 主参数要有值, 类比能量/能级)"
+  "_independent_components": {
+   "3": 6,
+   "6": 21,
+   "16": 136,
+   "43": 946
+  },
+  "_geodesic": "ẍ = −Γ ẋẋ (无力) / + g⁻¹F (有力)",
+  "_det": "det G = 1 (尺度全归 M)",
+  "components": [
+   4.472135955,
+   0.0,
+   4.472135955,
+   0.0,
+   0.0,
+   4.472135955
+  ]
+ },
+ "inject": {
+  "_doc": "动作空间装配容差度规 (专利 ZMP-2026-013) — 与上面 metric(状态空间度规) 是同一思想的两个层次: metric 决定状态怎么走, inject 决定动作往哪个方向修。M_act = σt²·Pt + σn²·Pn (Pt=I−nnᵀ径向, Pn=nnᵀ轴向) ; Δξ = −α·M_act⁻¹∇V",
+  "_unit": "mm",
+  "sigma_t": 0.3,
+  "sigma_n": 6.0,
+  "alpha0": 0.85,
+  "V0": 10.0,
+  "max_ratio": 0.6,
+  "cap_min_mm": 0.3,
+  "eps_mm": 0.02,
+  "eta_floor": 0.05,
+  "enabled": true,
+  "_how": {
+   "sigma_t": "径向单边配合间隙 (孔与模块公差量级)",
+   "sigma_n": "轴向推进行程",
+   "anisotropy": "径向/轴向增益比 = (σn/σt)²，本例 400×",
+   "alpha0": "基准步长系数",
+   "V0": "代价衰减尺度 mm² (δ≈4.5mm 时门控衰减 1/e)",
+   "max_ratio": "单拍修正 ≤ 名义步长的比例",
+   "cap_min_mm": "对位阶段绝对下限 (名义步长常仅 0.05mm，纯比例会压死纠偏)",
+   "eps_mm": "微量保护项",
+   "eta_floor": "置信度下限，防归零僵死",
+   "enabled": "false ⇒ 完全退回原行为 (零回归)",
+   "tol_r_mm": "径向公差带半宽(绝对值 mm): 径向偏差已在带内 ⇒ 本拍不修正(防抖/防极限环); 轴向永不参与判定。专利 ZMP-2026-020 从权4 (公差盒投影)"
+  },
+  "_zero_regression": "enabled=false 或 sigma_t/sigma_n 缺失 ⇒ 不注入，动作逐位不变",
+  "_verified": "tools/verify_l4_injection.py (A收敛/B各向异性400×/C 257段)",
+  "_updated_at": "2026-11-11 06:52:51",
+  "tac_enable": true,
+  "tac_contact_c0": 0.35,
+  "tac_gamma": 2.0,
+  "tac_w_max": 0.9,
+  "force_max": 40.0,
+  "force_k": 6.0,
+  "force_abort_ratio": 1.5,
+  "contact_stiffness": 6.0,
+  "_doc_tactile": "视触觉融合: 远场视觉主导、接触后触觉主导。∇V_tac ∝ +F_radial (力=排斥=势能上升方向; 写成 −F 会把模块推出孔)。force_max=40N 与现场插入力上限一致; contact_stiffness(K,N/mm) 用于把力反解成偏差做限幅, 缺它必极限环。",
+  "hard_inject": {
+   "_doc": "度规硬注入 ZMP-2026-020 — 训练端马氏损失 + 推理端ODE步内注入 + 公差盒投影。与 inject 段共用 sigma_t/sigma_n; 本段只管硬注入自身参数。",
+   "enabled": false,
+   "_why_default_off": "默认关闭 = 零回退。开启前须确认调用方已按 step 模式接好, 否则行为与旧版不同。",
+   "mode": "step",
+   "_modes": {
+    "step": "每个积分步内注入(ZMP-020 主张, 实测末态 0.0006mm)",
+    "terminal": "仅在生成终点叠加一次(旧 013 做法, 实测 0.0203mm)"
+   },
+   "step_cap_ratio": 0.95,
+   "_step_cap_doc": "单步位移上限 = ratio × ‖P_t·∇V‖（按径向算，不能被轴向大位移撑大）",
+   "proj_tol_r_mm": 0.3,
+   "_proj_doc": "公差盒投影半径上限; 仅约束径向, 轴向放行以保证推进通道",
+   "loss": {
+    "mode": "metric",
+    "_modes": {
+     "metric": "马氏加权 eᵀMe (纯 020 主张)",
+     "isotropic": "各向同性 L2 (对照/基线)",
+     "hybrid": "马氏 + 径向保底 λ‖e_t‖² (容量受限时必须)"
+    },
+    "lambda_radial": 0.0,
+    "_lambda_doc": "径向保底系数。实测容量受限时纯 metric 使径向误差 +948%; λ 无免费午餐, 应按'解析层单拍可修正量'反推(实测 λ=10 时轴向 +22.7%/径向 −20.1%)"
+   },
+   "_verified": "tools/verify_metric_hard_inject.py — A/B/C/D/E 共 20 项全过",
+   "_key_finding": "推理端步内注入收益 94.9% >> 训练端马氏加权 2.5% (约 38 倍); 且无附加限幅时终点叠加会过冲 8.4 倍。算力有限时优先投推理端。"
+  },
+  "proj_enable": true,
+  "tol_r_mm": 0.3
  }
 }
