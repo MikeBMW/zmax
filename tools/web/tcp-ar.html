@@ -1,6 +1,6 @@
 <!doctype html><html lang="zh"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Z-MAX AR3D r92 · SIM自动 · 位置细胞 · 8802直播</title>
+<title>Z-MAX AR3D r94 · SIM自动 · 位置细胞 · 8802直播</title>
 <style>
  *{box-sizing:border-box}
  body{margin:0;background:#0b0f14;color:#e6edf3;font:15px/1.5 -apple-system,Segoe UI,Roboto,"Noto Sans SC",sans-serif}
@@ -119,7 +119,7 @@
   <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
   <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
      style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-11-09 r92 · 📺 8802 直播窗口(渲染站自己推 MJPEG: 8802/video · /live 全屏外壳, 与工位渲染同源同帧) · 🧭 位置细胞层 · 🎥 MuJoCo 同视角 · 其它同 r91</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-11-11 r94 · 轨迹点纳入取景+到位后补取景 · 📺 8802 直播窗口(渲染站自己推 MJPEG: 8802/video · /live 全屏外壳, 与工位渲染同源同帧) · 🧭 位置细胞层 · 🎥 MuJoCo 同视角 · 其它同 r91</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -1162,6 +1162,10 @@ function vrFitBox(){
   (TRAJ.plan||[]).forEach(p=>pts.push(p));
   // 🧭 所有亮着的命名轨迹都纳入取景 (多选后原来只算当前一条 ⇒ 另外几条可能整个在框外看不见)
   Object.keys(NAMED_ON).filter(k=>NAMED_ON[k]).forEach(k=>(NAMED[k]||[]).forEach(p=>pts.push(p)));
+  // 📍 轨迹点(录制的真实轨迹等)也纳入取景 —— 不纳入就会被裁在画外(实测录到 z=998mm 时上半段全在框外, 用户看"没画出来")
+  if(typeof FENCES!=='undefined' && FENCES && FENCES.filter){
+    FENCES.filter(i=>i && i.type==='points' && i.enabled!==false).forEach(i=>(i.pts||[]).forEach(p=>pts.push(p)));
+  }
   if(TCP&&TCP.ok) pts.push([TCP.x,TCP.y,TCP.z]);
   // 🦾 URDF 外形也纳入取景: 否则整条臂会跑出画面 (实测只按 TCP 取景时, 臂顶 bbox 到 y=-26px)
   if(VR.urdf && VR.real!==false && URDF && LINKM){
@@ -1568,6 +1572,14 @@ async function loadFences(){
     $('tFence').textContent=FENCES.length+' 个';
     $('tFence').className='tag'+(FENCES.length?' on':'');
     renderFenceList(); paintFenceBtns(); paintCorBtn(); drawVR();
+    // 📍 首次拿到"轨迹点"后补一次取景 —— 启动那拍 vrFitBox 早于围栏到达, 录制的真实轨迹(会抬到 1m 高)会被裁在画外
+    if(!window.__FIT_AFTER_PTS && FENCES.some(i=>i.type==='points' && i.enabled!==false)){
+      window.__FIT_AFTER_PTS=1;
+      const _po=VR.panOff||[0,0,0];
+      if(Math.abs(_po[0])+Math.abs(_po[1])+Math.abs(_po[2])<1e-6){
+        VR.auto=true; VR.camLock=0; if(typeof vrFitBox==='function') vrFitBox(); drawVR();
+      }
+    }
   }catch(e){ $('pFence').textContent='围栏读失败: '+e; }
 }
 // 🧱 第四行(围栏盒) / 第五行(直线): 按 /api/fence 唯一依据生成按钮, 点一下=启用/停用
@@ -5379,7 +5391,7 @@ async function robotTick(){
         drw:(typeof DRWN!=='undefined')?DRWN:null,
         cw:(document.getElementById('vr')||{}).width||null,
         ch:(document.getElementById('vr')||{}).height||null,
-        bld:'2026-11-09 r92',
+        bld:'2026-11-11 r94',
         // 🩺 2026-10-29 老倪「开状态空间就看不到手里那颗模块」: 手里有没有货 / 落在第几段 直接上报
         drv:(typeof ARCMD!=='undefined'&&ARCMD.drv)||'',
         carry:(typeof INSP!=='undefined'&&INSP.carry)?1:0,
