@@ -42,22 +42,24 @@ def status(port: int) -> dict:
 
 
 def start(port: int, sn: str, exposure: float, gain: float) -> str:
-    ps = (r'$c=Get-NetTCPConnection -LocalPort {port} -State Listen -EA SilentlyContinue; '
-          r'if($c){ $id=$c.OwningProcess; Stop-Process -Id $id -Force; "stopped old pid " + $id }; '
-          r'Start-Sleep -Seconds 3; '
-          r'$sh=New-Object -ComObject WScript.Shell; '
-          r'$cmd="cmd /c cd /d D:\xspace\ultralytics_AOI && ' + PY + r' ' + PROVIDER +
-          r' --port {port} --sn {sn} --exposure {exposure} --gain {gain} >> ' +
-          LOG.replace("{port}", str(port)) + r' 2>&1"; '
-          r'$sh.Run($cmd,0,$false); "launched provider on {port}"').format(
-        port=port, sn=sn, exposure=exposure, gain=gain)
-    return A.remote(ps, wait=90, label=f"provider_start_{port}")
+    # 🔴 不要对整段 PowerShell 用 .format(): PS 的 { } 会被当成占位符 (实测 KeyError ' $id=$c')。
+    #    一律用字符串拼接。
+    log = LOG.replace("{port}", str(port))
+    ps = ('$c=Get-NetTCPConnection -LocalPort ' + str(port) + ' -State Listen -EA SilentlyContinue; '
+          'if($c){ $id=$c.OwningProcess; Stop-Process -Id $id -Force; "stopped old pid " + $id }; '
+          'Start-Sleep -Seconds 3; '
+          '$sh=New-Object -ComObject WScript.Shell; '
+          '$cmd="cmd /c cd /d D:\\xspace\\ultralytics_AOI && ' + PY + ' ' + PROVIDER +
+          ' --port ' + str(port) + ' --sn ' + sn + ' --exposure ' + str(exposure) +
+          ' --gain ' + str(gain) + ' >> ' + log + ' 2>&1"; '
+          '$sh.Run($cmd,0,$false); "launched provider on ' + str(port) + '"')
+    return A.remote(ps, wait=90, label="provider_start_%d" % port)
 
 
 def stop(port: int) -> str:
-    ps = (r'$c=Get-NetTCPConnection -LocalPort {port} -State Listen -EA SilentlyContinue; '
-          r'if($c){ $id=$c.OwningProcess; Stop-Process -Id $id -Force; "stopped pid " + $id } '
-          r'else { "nothing on {port}" }').format(port=port)
+    ps = ('$c=Get-NetTCPConnection -LocalPort ' + str(port) + ' -State Listen -EA SilentlyContinue; '
+          'if($c){ $id=$c.OwningProcess; Stop-Process -Id $id -Force; "stopped pid " + $id } '
+          'else { "nothing on ' + str(port) + '" }')
     return A.remote(ps, wait=60, label=f"provider_stop_{port}")
 
 

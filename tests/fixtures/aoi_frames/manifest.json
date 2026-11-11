@@ -1,0 +1,42 @@
+{
+ "gold_01.jpg": {
+  "from": "zmax_data/aoi_offline/gold/gold19_definitive_origin.png",
+  "shape": [
+   2448,
+   2048
+  ],
+  "bytes": 483910,
+  "sha256": "62860f2d272a0e552e3d567fae956b137710a65a18c546b739b37c57b836f0c5",
+  "mean": 101.2
+ },
+ "gold_02.jpg": {
+  "from": "zmax_data/aoi_offline/gold/Finger_Image_W2448_H2048_No_8.png",
+  "shape": [
+   2448,
+   2048
+  ],
+  "bytes": 377834,
+  "sha256": "280cbc3f0c5cf593aff37e68ce127fffd2e94926b83e447b24b939747d5dfe98",
+  "mean": 54.2
+ },
+ "surface_01.jpg": {
+  "from": "zmax_data/aoi_offline/surface/surface_001.jpg",
+  "shape": [
+   2448,
+   2048
+  ],
+  "bytes": 206677,
+  "sha256": "454df81a7d1ff46e68ff36f75d437e96a91a9a8f95db6f29f399dee01f5c5f8f",
+  "mean": 30.0
+ },
+ "surface_02.jpg": {
+  "from": "zmax_data/aoi_offline/surface/surface_origin_raw.png",
+  "shape": [
+   2448,
+   2048
+  ],
+  "bytes": 396493,
+  "sha256": "060ec5a1b6d80017348005d7d5a732feab58ebdfcdd4873b534c1df8faf4c2b5",
+  "mean": 29.4
+ }
+}

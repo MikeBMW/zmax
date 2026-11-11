@@ -1,0 +1,184 @@
+{
+ "root": "/home/ubuntu/zmax",
+ "items": [
+  {
+   "path": "src/lerobot/policies/aoi/service/prod/gold_10082_prod.py",
+   "what": "产线金手指程序 (与工控机逐字节一致)",
+   "required": true,
+   "exists": true,
+   "bytes": 206094,
+   "sha256": "a595c39eb12dae399dc9f87428aa2875b7a2552db41ef225f72bcbd4aca97ecf"
+  },
+  {
+   "path": "src/lerobot/policies/aoi/service/prod/surface_10083_prod.py",
+   "what": "产线表面程序 (与工控机逐字节一致)",
+   "required": true,
+   "exists": true,
+   "bytes": 65368,
+   "sha256": "0f9206b5d994fc5d7fed00809d21dc3df57f38d704f6d2b5820683f1e4bfe727"
+  },
+  {
+   "path": "src/lerobot/policies/aoi/service/stubs.py",
+   "what": "Windows SDK 桩",
+   "required": true,
+   "exists": true,
+   "bytes": 4684,
+   "sha256": "4ea783b58c680102a60f2e0f9a90496b76e0b685136ae7c21628483a9a4205f0"
+  },
+  {
+   "path": "src/lerobot/policies/aoi/service/prodload.py",
+   "what": "加载器 + judge_gold/judge_surface",
+   "required": true,
+   "exists": true,
+   "bytes": 4116,
+   "sha256": "9ee131450621b487df65f000e7bac4646945a590c7f1cc0f7bb294d3a95cdf3f"
+  },
+  {
+   "path": "src/lerobot/policies/aoi/service/sources.py",
+   "what": "帧源 remote/cam/file/dir/corpus/push",
+   "required": true,
+   "exists": true,
+   "bytes": 7985,
+   "sha256": "99af73997f4928316d8f2a1af6598ec17a1af2ca9c3403947a6f7a52be7e25ab"
+  },
+  {
+   "path": "src/lerobot/policies/aoi/service/app.py",
+   "what": "镜像服务路由",
+   "required": true,
+   "exists": true,
+   "bytes": 13759,
+   "sha256": "de5aea4e726bd94588a4813683133c1c717627a44d8a916d67dfc8d89794a9af"
+  },
+  {
+   "path": "src/lerobot/policies/aoi/service/run.py",
+   "what": "服务入口",
+   "required": true,
+   "exists": true,
+   "bytes": 1523,
+   "sha256": "9295808f475ccf54e7b6dddce6cb37dbbb47b14bc0ea3a17ca3628a2f2d751e2"
+  },
+  {
+   "path": "src/lerobot/policies/aoi/local.py",
+   "what": "节点侧旁路客户端",
+   "required": true,
+   "exists": true,
+   "bytes": 6089,
+   "sha256": "898604c8e1f35da68caced901c8e25a9ae38cd29f092caf7443aed65aaf303dc"
+  },
+  {
+   "path": "src/lerobot/policies/aoi/quality.py",
+   "what": "inspect_aoi (接本机镜像)",
+   "required": true,
+   "exists": true,
+   "bytes": 11741,
+   "sha256": "bde5a113663b38311b3e571019cec98a6cab918d4da9bd5eca802976312c78c0"
+  },
+  {
+   "path": "src/lerobot/policies/aoi/gold.py",
+   "what": "工控机判决搬运 (在线时的对照路)",
+   "required": true,
+   "exists": true,
+   "bytes": 6229,
+   "sha256": "7df4b6664a9c0fa6fe8522c46e81dba581d11368636949b6bcd3dd032ae3e6ee"
+  },
+  {
+   "path": "src/lerobot/policies/aoi/surface.py",
+   "what": "工控机表面旁路 (在线时的对照路)",
+   "required": true,
+   "exists": true,
+   "bytes": 3719,
+   "sha256": "11650f8646d3da55cab3a63fea684cbd8f315fd710bfc47635aacf272f917f13"
+  },
+  {
+   "path": "src/lerobot/policies/aoi/gold_yolo.py",
+   "what": "本机 YOLO 观测 (models/yolo_gold_v2.pt)",
+   "required": false,
+   "exists": true,
+   "bytes": 6852,
+   "sha256": "c2f7258ae116aa428e5bf56f0ee5e497621c98a006d1a1741517309e92ff24b7"
+  },
+  {
+   "path": "src/lerobot/middleware/nodes/impl/ss_aoi.py",
+   "what": "画布节点薄壳 (异步 worker)",
+   "required": true,
+   "exists": true,
+   "bytes": 7924,
+   "sha256": "5317e4659f8f5ee1ebf64eb7efb9383a65ae66f822ff730cb70a6f47bf7d9adc"
+  },
+  {
+   "path": "tools/aoi/cam_provider.py",
+   "what": "工控机取图 provider (相机线只能在工控机)",
+   "required": true,
+   "exists": true,
+   "bytes": 12797,
+   "sha256": "c56a361626e24791615463e241ffbea75ba2ed1c1e4d6ddc295a014f48b50d72"
+  },
+  {
+   "path": "tools/aoi/provider_ctl.py",
+   "what": "provider 远控 start/stop/status",
+   "required": true,
+   "exists": true,
+   "bytes": 4052,
+   "sha256": "90211ad61801e44161383943a14dbba5f6914de6434ba6f5d9ec38f01f33b48a"
+  },
+  {
+   "path": "tools/aoi/setup_aoi_venv.sh",
+   "what": "建产线数值栈 venv",
+   "required": true,
+   "exists": true,
+   "bytes": 1125,
+   "sha256": "5c2f7fa98d514cd0f7968aa0374f481b769cdc76fe909d16a4c4b3fc8bf5b342"
+  },
+  {
+   "path": "tools/aoi_local_service.sh",
+   "what": "本机镜像起停",
+   "required": true,
+   "exists": true,
+   "bytes": 2584,
+   "sha256": "91cd8d0bffe551c648458c0d9ac4985fcd5123de99b0e54df5c9f4c1d5990e26"
+  },
+  {
+   "path": "tools/verify_aoi_local_service.py",
+   "what": "镜像服务验收 22 项",
+   "required": true,
+   "exists": true,
+   "bytes": 8239,
+   "sha256": "29efaa83065f1641e3ce2692a7da90c61b9111af4853189736c56b536b50406e"
+  },
+  {
+   "path": "tools/verify_aoi_offline.py",
+   "what": "离线自检 18 项",
+   "required": true,
+   "exists": true,
+   "bytes": 8026,
+   "sha256": "efcffd0e862b82d840ed69aff196b02f1201b5be007cc0428a5d5c1bea655335"
+  },
+  {
+   "path": "tests/fixtures/aoi_frames/manifest.json",
+   "what": "离线帧 fixture 清单",
+   "required": true,
+   "exists": true,
+   "bytes": 961,
+   "sha256": "f694daaf41d664485772336670eaea112da8a3aadc5697ac40139bf7d5f147d7"
+  }
+ ],
+ "missing": [],
+ "frames": {
+  "gold_01.jpg": "62860f2d272a0e552e3d567fae956b137710a65a18c546b739b37c57b836f0c5",
+  "gold_02.jpg": "280cbc3f0c5cf593aff37e68ce127fffd2e94926b83e447b24b939747d5dfe98",
+  "surface_01.jpg": "454df81a7d1ff46e68ff36f75d437e96a91a9a8f95db6f29f399dee01f5c5f8f",
+  "surface_02.jpg": "060ec5a1b6d80017348005d7d5a732feab58ebdfcdd4873b534c1df8faf4c2b5"
+ },
+ "corpus_frames": {
+  "gold": 7,
+  "surface": 21
+ },
+ "venv": {
+  "path": ".venv-aoi310",
+  "pins": [
+   "numpy==1.26.4",
+   "opencv-python==4.10.0.84",
+   "flask"
+  ]
+ }
+}

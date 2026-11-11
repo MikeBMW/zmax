@@ -8,7 +8,9 @@
     cam:<url>       直接抓一个 JPEG 的 URL (如本机 8797: http://127.0.0.1:8797/snap/gold.jpg)
     file:<path>     指定一张图 (回放/取证)
     dir:<path>      目录里最新的图 (录制回放)
-    push            只接受 POST /frame 推上来的帧 —— 工控机停机时唯一可用且不造假的方式
+    push            只接受 POST /frame 推上来的帧
+    corpus[:dir]    离线帧库: 目录里的真帧循环取 (默认 zmax_data/aoi_offline/<kind>)
+                    —— 老倪离线时的主力路径: 没有相机/工控机也能把判据/检测整条链跑通
 
 🔴 任何源失败都如实返回 ("no frame"), 绝不返回一张旧图/合成图冒充本轮画面。
 """
@@ -59,6 +61,30 @@ def _http_get(url: str, timeout: float | None = None, bounded: bool = True):
     return box.get("buf"), box.get("err")
 
 
+_CYCLE: dict = {}
+
+
+def corpus_dir(kind: str) -> str:
+    """离线帧库目录 (可用 ZMAX_AOI_LOCAL_CORPUS_<KIND> 覆盖)。"""
+    d = (os.environ.get(f"ZMAX_AOI_LOCAL_CORPUS_{kind.upper()}")
+         or os.environ.get("ZMAX_AOI_LOCAL_CORPUS")
+         or os.path.expanduser(f"~/zmax/zmax_data/aoi_offline/{kind}"))
+    return os.path.expanduser(d)
+
+
+def next_frame(kind: str, d: str):
+    """按顺序循环取一帧 (让连续多次检测不总是同一张)。"""
+    files = []
+    for pat in _EXT:
+        files += glob.glob(os.path.join(d, pat))
+    if not files:
+        return None
+    files.sort()
+    i = _CYCLE.get(kind, 0) % len(files)
+    _CYCLE[kind] = _CYCLE.get(kind, 0) + 1
+    return files[i]
+
+
 def kind_src(kind: str) -> str:
     return (os.environ.get(f"ZMAX_AOI_LOCAL_{kind.upper()}_SRC")
             or os.environ.get("ZMAX_AOI_LOCAL_SRC")
@@ -88,6 +114,17 @@ def grab(kind: str, spec: str | None = None):
                     return bgr, _done(met, t0)
                 errs.append(f"{u.split('/', 3)[-1]} → {err or '空响应'}")
             met["why"] = "远端取图失败: " + " | ".join(errs)
+            # 离线兜底: 远端(相机/工控机)不可达时, 用本地离线帧库继续把判据/检测跑通。
+            # 🔴 回执里 how 必须写明是离线帧库 —— 不能让人以为这是本轮真实现场画面。
+            if os.environ.get("ZMAX_AOI_LOCAL_OFFLINE_FALLBACK", "1") != "0":
+                p = next_frame(kind, corpus_dir(kind))
+                if p is not None:
+                    bgr = cv2.imread(p)
+                    if bgr is not None:
+                        met.update(ok=True, how="offline-corpus:" + p, offline=True,
+                                   frame=[int(bgr.shape[1]), int(bgr.shape[0])],
+                                   why=met["why"] + " ⇒ 已回落离线帧库")
+                        return bgr, _done(met, t0)
             return None, _done(met, t0)
 
         if spec.startswith("cam:"):
@@ -118,6 +155,19 @@ def grab(kind: str, spec: str | None = None):
                 met["why"] = f"目录里没有图: {d}"
                 return None, _done(met, t0)
             p = max(files, key=os.path.getmtime)
+            bgr = cv2.imread(p)
+            if bgr is None:
+                met["why"] = f"读图失败: {p}"
+                return None, _done(met, t0)
+            met.update(ok=True, how=p, frame=[int(bgr.shape[1]), int(bgr.shape[0])])
+            return bgr, _done(met, t0)
+
+        if spec.startswith("corpus"):
+            d = spec.split(":", 1)[1] if ":" in spec else corpus_dir(kind)
+            p = next_frame(kind, d)
+            if p is None:
+                met["why"] = f"离线帧库为空: {d}"
+                return None, _done(met, t0)
             bgr = cv2.imread(p)
             if bgr is None:
                 met["why"] = f"读图失败: {p}"

@@ -183,7 +183,9 @@ def inspect_aoi(frame, log=None, cache=None, publish=None):
                 log(f"⚠️ 本机镜像(金手指)跳过: {type(e).__name__}: {e}")
     try:
         from .gold_yolo import gold_yolo_bypass
-        _gy = gold_yolo_bypass(log=log, cache=cache, publish=publish)   # 本机 YOLO 推理
+        # 离线纪律: 本机镜像已有金手指结果时, 不再向 10082 取图 (离线会白等一个 URLError)
+        _gy = (None if gold_local is not None
+               else gold_yolo_bypass(log=log, cache=cache, publish=publish))  # 本机 YOLO 推理
     except Exception as e:                                                 # noqa: BLE001
         if log:
             log(f"⚠️ 金手指本机 YOLO 旁路跳过: {type(e).__name__}: {e}")
