@@ -3,13 +3,13 @@
 """verify_patent_export.py — 判据: 专利交底书一键导出 (老倪 2026-10-14 「预留专利申请一键导出」)
 
 判据 (每条真读产物/唯一依据):
-  ① 覆盖: 每个功能 (config_meta.json 74 个) 都有一份交底书 md;
+  ① 覆盖: 每个功能 (config_meta.json 现算) 都有一份交底书 md;
   ② 成文: 十节标题齐 (发明名称/技术领域/背景技术/要解决的技术问题/技术方案/有益效果/
           具体实施方式/附图说明/证据清单/检索关键词建议);
   ③ 有据: 每份都带「证据清单」表且至少 5 行出处 (唯一依据文件路径);
   ④ 不吹: 全文无宣传话术禁词;
   ⑤ 不编: 唯一依据没有的项写「唯一依据未登记」; 如果"有益效果"没有验证方法, 必须出现「唯一依据未登记验证方法」;
-  ⑥ 成件: docx 与 pdf 各 74 份 (--no-pdf 时跳过 pdf 检查);
+  ⑥ 成件: docx 与 pdf 份数 == 功能数 (--no-pdf 时跳过 pdf 检查);
   ⑦ 幂等: 重跑一次数量不变 (INDEX.json 计数 == 实际文件数)。
 用法: ./gui-venv311/bin/python tools/verify_patent_export.py [--no-pdf]
 """
@@ -49,7 +49,7 @@ def main():
     print("═══ ① 覆盖 ═══")
     got = {os.path.basename(p).split("_")[0] for p in mds}
     miss = [k for k in meta if k not in got]
-    chk("每个功能一份交底书 (74)", not miss and len(mds) >= len(meta),
+    chk("每个功能一份交底书 (%d)" % len(meta), not miss and len(mds) >= len(meta),
         "产物 %d 份 · 缺 %s" % (len(mds), miss[:5]))
 
     print("\n═══ ② 十节齐 / ③ 有据 / ④ 不吹 / ⑤ 不编 ═══")
