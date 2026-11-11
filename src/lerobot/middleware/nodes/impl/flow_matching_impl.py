@@ -206,10 +206,17 @@ def run(ctx):
                 try:
                     from .shared_runtime import _SS_STATE as _SS
                     _st4 = _SS.get("tactile4")
-                    if isinstance(_st4, (list, tuple)) and len(_st4) >= 4:
-                        _contact = float(_st4[1])
-                        _dxy = [float(_st4[2]), 0.0, float(_st4[3])]
-                    _force = _SS.get("force") or _SS.get("wrench")
+                    # 🔴 生产端 tactile_impl 写的是 **np.ndarray**(.reshape(4))，这里原来只认
+                    #    isinstance(..., (list, tuple)) ⇒ 真链路上触觉恒读不到(w_tac 恒 0, 实测 2026-11-11)。
+                    #    改成 asarray 归一化，list/tuple/ndarray 都能吃。
+                    _a4 = np.asarray(_st4, dtype=float).reshape(-1) if _st4 is not None else None
+                    if _a4 is not None and _a4.size >= 4 and np.all(np.isfinite(_a4[:4])):
+                        _contact = float(_a4[1])
+                        _dxy = [float(_a4[2]), 0.0, float(_a4[3])]
+                    # 🔴 同样不能 `or`: 若 force 是 np.ndarray 会抛 ambiguous(被外层吞成注入异常)
+                    _force = _SS.get("force")
+                    if _force is None:
+                        _force = _SS.get("wrench")
                     _resid = _SS.get("residual")
                 except Exception:                                      # noqa: BLE001
                     pass
@@ -222,8 +229,12 @@ def run(ctx):
                             "cfg_src": _cfg_src.get("_src")}
                 else:
                     from lerobot.policies.manifold.geodesic_inject import correct as _geo_correct
+                    # 🔴 不能用 `_axis or [...]`: _axis 来自接触流形, 常是 np.array ⇒ 多元素数组
+                    #    求 bool 抛 ValueError("truth value ... ambiguous"), 被外层 except 吞成
+                    #    "注入异常" ⇒ 真实帧永远不注入(实测 2026-11-11)。只判 None。
+                    _axis_use = _axis if _axis is not None else [1.0, 0.0, 0.0]
                     nominal, _inj = _geo_correct(
-                        nominal, _grad, _axis or [1.0, 0.0, 0.0],
+                        nominal, _grad, _axis_use,
                         eta=_perf.get("eta"), V_p=_perf.get("V_p"), cfg=_geo,
                         force=_force, contact=_contact, dir_xy=_dxy, residual=_resid)
                     _inj["tactile_dir_dims"] = "xz_only(缺y)" if _dxy else None
@@ -318,10 +329,14 @@ def run(ctx):
                 log(f"⚠️ L3 写 _SS_STATE[u] 失败: {type(_e).__name__}: {_e}")
         out2 = {
             "layer": "L3",
-            "vec": delta if delta is not None else nominal[:3],
+            # 🔴 nominal / ff / delta 常是 np.ndarray ⇒ json.dump(default=float) 会调 float(array),
+            #    抛 "only 0-dimensional arrays can be converted" ⇒ 整份 l3_latest.json 落盘失败
+            #    (实测 2026-11-11: 每帧报错, 下游 layer_forces / 300UPH 报告读不到 L3)。显式转 list[float]。
+            "vec": ([float(x) for x in delta] if delta is not None else [float(x) for x in nominal[:3]]),
             "vec_semantics": ("修正量 nominal_L3−base_L2 (模型相对 L2 基础)" if delta is not None
                               else "L3 名义动作绝对量"),
-            "nominal": nominal[:3], "base": (ff[:3] if ff else None),
+            "nominal": [float(x) for x in nominal[:3]],
+            "base": ([float(x) for x in ff[:3]] if ff else None),
             "model_ok": (act is not None), "degraded": degraded,
             "w_hint": "权重在 config/calib/layer_forces.json 的 w.L3 (热读, 见万有引力节点)",
             "age_s": round(age, 3), "fresh": bool(age <= 5.0),
@@ -334,7 +349,8 @@ def run(ctx):
             _t = _p + ".tmp"
             with open(_t, "w", encoding="utf-8") as fh:
                 _j.dump({"out1": out1, "out2": out2, "t": time.time()},
-                        fh, ensure_ascii=False, indent=1, default=float)
+                        fh, ensure_ascii=False, indent=1,
+                        default=lambda o: o.tolist() if hasattr(o, "tolist") else float(o))
             os.replace(_t, _p)
         except Exception as _we:                                             # noqa: BLE001
             if log:
