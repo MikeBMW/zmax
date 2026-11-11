@@ -261,10 +261,13 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
 #poseedit .perow{display:flex;gap:6px}
 #poseedit .pi{flex:1 1 0;min-width:0;background:#0d1117;color:#e6edf3;border:1px solid #30363d;
   border-radius:6px;padding:6px 4px;font:600 13px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;text-align:center}
-#poseedit .pi:focus{border-color:#58a6ff;outline:none;box-shadow:0 0 0 1px #58a6ff}
+#poseedit .pi{cursor:text}#poseedit .pi:focus{border-color:#58a6ff;outline:none;box-shadow:0 0 0 1px #58a6ff}
 #poseedit .pi.chg{border-color:#d29922}
 #poseedit .perow2{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 #poseedit .psp{flex:0 0 72px;text-align:center}
+#perst{flex:0 0 auto;padding:6px 9px;font-size:14px;font-weight:700;border-radius:6px;
+  background:#21262d;color:#e6edf3;border:1px solid #30363d;cursor:pointer}
+#perst:hover{border-color:#58a6ff}
 #pegobtn{flex:1 1 auto;font-weight:700;font-size:15px;padding:8px 10px}
 #pe_state{font-size:11px;color:#8b949e}
 /* 📱 窄屏(手机): 字缩小保证仍是横向一排, 不换行、不截断数字 */
@@ -717,6 +720,7 @@ var HTML_VER="__HTMLVER__";</script>
           <input class="pi" id="pe_c" inputmode="decimal" placeholder="C °" oninput="peDirty(this)">
         </div>
         <div class="perow2">
+          <button id="perst" onclick="peReset()" title="把 6 个框恢复成当前实时位姿(手改过之后用)">↺</button>
           <input class="pi psp" id="pe_spd" value="50" inputmode="decimal" title="速度 mm/s (1~1000)">
           <button id="pegobtn" onclick="poseGoto(this)" title="按上面 6 个数字移动: 位置+姿态一次到位 (/move_pose)">🎯 移动到该位姿</button>
           <span id="pe_state">mm/s · 单次 ≤300mm / ≤30°</span>
@@ -930,7 +934,7 @@ function poseHud(tp){
 /* 🆕 2026-11-11 老倪: 手动输入位姿 → 移动到该位姿 (实时位姿卡片下面那块输入栏)。
    数据流与方向键/点1 完全同一条链(白名单 → 授权真动 → 限流 → FIFO → 执行器裁决 → 回执原样摆出);
    服务端另过量纲闸(±2000mm/±360°)与单次 Δ 闸(≤300mm、≤30°), 这里只做同一口径的即时提示。 */
-let PE_DIRTY=false, PE_CUR=null;
+let PE_DIRTY=false, PE_CUR=null, PE_TP=null;
 function peDirty(el){ PE_DIRTY=true; if(el) el.classList.add('chg'); peHint(); }
 function peHint(){
   const st=$('#pe_state'); if(!st) return;
@@ -943,10 +947,24 @@ function peHint(){
   st.textContent='Δ '+fmt(d,1)+'mm / '+fmt(da,1)+'°'+(bad?' ⛔ 超单次上限, 请分两步':'');
   st.style.color=bad?'#f85149':'#8b949e';
 }
+function peReset(){
+  PE_DIRTY=false;
+  // 有些浏览器点按钮不会把焦点从输入框移走 ⇒ peSync 会判"正在输入"而不填; 先主动失焦
+  const a=document.activeElement;
+  if(a && /^(INPUT|TEXTAREA)$/.test((a.tagName||'').toUpperCase())) a.blur();
+  document.querySelectorAll('#poseedit .pi').forEach(e=>e.classList.remove('chg'));
+  peSync(PE_TP);                       // 回到"跟着实时位姿走"
+}
 function peSync(tp){
+  if(tp) PE_TP=tp;
   PE_CUR=(tp&&tp.xyz&&tp.xyz[0]!==null&&tp.xyz[0]!==undefined)
     ? {xyz:tp.xyz.map(v=>v*1000), abc:(tp.abc_deg||[]), stale:!!tp.stale} : null;
-  if(PE_DIRTY||!PE_CUR||PE_CUR.stale){ peHint(); return; }     // 手改过 / 源已静止 ⇒ 绝不覆盖用户输入
+  const _ae=document.activeElement;
+  const _tag=_ae && (_ae.tagName||'').toUpperCase();
+  const _typing=!!_ae && /^(INPUT|TEXTAREA|SELECT)$/.test(_tag) && !!(_ae.closest && _ae.closest('#poseedit'));
+  // ⚠️ 只认"真在输入框里"; 点 ↺/移动按钮时 activeElement 也在 #poseedit 里, 但它不是输入框 ——
+  //    之前按 closest 一律判"正在输入" ⇒ 点 ↺ 恢复不了(实测 x 停在 700.5)。
+  if(PE_DIRTY||_typing||!PE_CUR||PE_CUR.stale){ peHint(); return; }
   const put=(id,v)=>{const e=$('#'+id); if(e&&v!==null&&v!==undefined) e.value=Math.round(v*10)/10;};
   ['x','y','z'].forEach((k,i)=>put('pe_'+k,PE_CUR.xyz[i]));
   ['a','b','c'].forEach((k,i)=>put('pe_'+k,PE_CUR.abc[i]));
@@ -986,7 +1004,16 @@ function poseCopy(){
   const h=g('posehud'); if(h){ h.classList.add('copied'); setTimeout(()=>h.classList.remove('copied'),500); }
 }
 (function(){ const h=document.getElementById('posehud');
-  if(h) h.addEventListener('click',poseCopy); })();
+  if(!h) return;
+  /* 🆕 2026-11-11 现场纠错(老倪): 「手动编辑栏无法输入, 只能看, 不能改」——
+     真因不是 CSS/readonly: 整个卡片绑了"点一下复制全部数值"(poseCopy), 点输入框时 click 冒泡上来,
+     poseCopy 里 selectNodeContents(#posehud) 把整卡内容选走 ⇒ 输入框立刻失焦 ⇒ 敲键盘没反应。
+     处置: 点 #poseedit 里的任何东西(输入框/速度框/移动按钮)一律不触发复制。 */
+  h.addEventListener('click',(e)=>{
+    if(e.target && e.target.closest && e.target.closest('#poseedit')) return;
+    poseCopy();
+  });
+})();
 function _btns(on){document.querySelectorAll('button[data-skill]').forEach(b=>b.disabled=!on);}
 /* 🔴 碰撞点台账渲染 (老倪 2026-10-01 二次定调: 「碰撞点要显示 x y z a b c 位置与实时位姿对应,
    放在右上角就是要用眼睛看, 对比体型的。你显示那么多没必要」)
