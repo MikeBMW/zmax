@@ -35,7 +35,7 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'ss_scope'
-SOURCE = 'src/lerobot/engineering/nodes/library.py · node_ss_scope'
+SOURCE = 'src/lerobot/middleware/nodes/impl/ss_scope.py · node_ss_scope'
 SOURCE_SYMBOL = 'node_ss_scope'
 PARAMS = {'state_space': True, 'state_space_scope': True, 'desc': '仿真波形: 双击显示最近一次仿真波形 (距离/前馈/残差/接触概率 + 阶段切换标注)', 'viz_kind': 'scope', 'source': 'src/lerobot/engineering/nodes/library.py · node_ss_scope', 'source_symbol': 'node_ss_scope'}
 

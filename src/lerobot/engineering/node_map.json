@@ -9,7 +9,7 @@
   "n_calib_mani": {
    "algo": "src/lerobot/engineering/config_import.py:1",
    "contract": "src/lerobot/middleware/nodes/n_inertia.py:1",
-   "impl": "src/lerobot/middleware/nodes/impl/n_calib_mani.py:24",
+   "impl": "src/lerobot/middleware/nodes/impl/n_calib_mani.py:311",
    "impl_key": "n_calib_mani",
    "layer": "L4",
    "name": "🧮 标定诊断测量 · 主参数 M (状态空间结构参数 · 等效惯量)",
@@ -58,7 +58,7 @@
    "pure": false
   },
   "n_exec": {
-   "algo": "src/lerobot/engineering/nodes/exec_dispatch_impl.py:1",
+   "algo": "src/lerobot/middleware/nodes/impl/exec_dispatch_impl.py:1",
    "contract": "src/lerobot/middleware/nodes/n_l2.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/n_exec.py:10",
    "impl_key": "n_exec",
@@ -76,7 +76,7 @@
    "pure": false
   },
   "n_geoplan": {
-   "algo": "src/lerobot/engineering/nodes/geo_plan_impl.py:1",
+   "algo": "src/lerobot/middleware/nodes/impl/geo_plan_impl.py:1",
    "contract": "src/lerobot/middleware/nodes/n_geodesic.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/n_geoplan.py:10",
    "impl_key": "n_geoplan",
@@ -137,7 +137,7 @@
    "pure": false
   },
   "n_l2_muscle": {
-   "algo": "src/lerobot/engineering/nodes/library.py · node_n_l2_muscle:1",
+   "algo": "src/lerobot/middleware/nodes/impl/n_l2_muscle.py · node_n_l2_muscle:1",
    "contract": "src/lerobot/middleware/nodes/n_skills.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/n_l2_muscle.py:20",
    "impl_key": "n_l2_muscle",
@@ -154,7 +154,7 @@
   "n_mem_links": {
    "algo": "src/lerobot/memory/mem_nodes.py · node_ss_mem_links:1",
    "contract": "src/lerobot/middleware/nodes/n_graph.py:1",
-   "impl": "src/lerobot/memory/mem_nodes.py:370",
+   "impl": "src/lerobot/memory/mem_nodes.py:615",
    "impl_key": "ss_mem_links",
    "layer": "L5",
    "name": "🔗 跨层连接 · 记忆图谱",
@@ -169,7 +169,7 @@
    "pure": false
   },
   "n_moveit": {
-   "algo": "src/lerobot/engineering/nodes/plan_impl.py:1",
+   "algo": "src/lerobot/middleware/nodes/impl/plan_impl.py:1",
    "contract": "src/lerobot/middleware/nodes/n_moveit.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/n_moveit.py:10",
    "impl_key": "n_moveit",
@@ -186,7 +186,7 @@
    "pure": false
   },
   "n_realscene": {
-   "algo": "src/lerobot/engineering/nodes/library.py · node_realscene_live:1",
+   "algo": "src/lerobot/middleware/nodes/impl/n_realscene_live.py · node_realscene_live:1",
    "contract": "src/lerobot/middleware/nodes/n_overlay.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/n_realscene_live.py:10",
    "impl_key": "n_realscene_live",
@@ -280,7 +280,7 @@
   "ss_grav_h": {
    "algo": "src/lerobot/manifold/state_space_energy.py:1",
    "contract": "src/lerobot/middleware/nodes/n_se.py:1",
-   "impl": "src/lerobot/middleware/nodes/impl/shared_runtime.py:4726",
+   "impl": "src/lerobot/middleware/nodes/impl/shared_runtime.py:4737",
    "impl_key": "ss_grav_h",
    "layer": "L4",
    "name": "🌍 万有引力 · SE(3) 几何阻抗 + H=K+U (力场仲裁)",
@@ -299,7 +299,7 @@
    "pure": true
   },
   "ss_l5": {
-   "algo": "src/lerobot/engineering/nodes/library.py · node_l5_loop:1",
+   "algo": "src/lerobot/middleware/nodes/impl/l5_loop.py · node_l5_loop:1",
    "contract": "src/lerobot/middleware/nodes/n_labeler.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/l5_loop.py:10",
    "impl_key": "l5_loop",
@@ -377,7 +377,7 @@
   "ss_mem_field": {
    "algo": "src/lerobot/memory/potential_field.py:1",
    "contract": "src/lerobot/middleware/nodes/n_potential.py:1",
-   "impl": "src/lerobot/memory/mem_nodes.py:511",
+   "impl": "src/lerobot/memory/mem_nodes.py:615",
    "impl_key": "ss_mem_field",
    "layer": "L4",
    "name": "🧲 总装机记忆 · 势场联络 (L2/L3/L4 势场 → 意图 −∇Φ)",
@@ -392,7 +392,7 @@
   "ss_mem_l2": {
    "algo": "src/lerobot/memory/mem_nodes.py · node_ss_mem_l2:1",
    "contract": "src/lerobot/middleware/nodes/n_muscle.py:1",
-   "impl": "src/lerobot/memory/mem_nodes.py:71",
+   "impl": "src/lerobot/memory/mem_nodes.py:615",
    "impl_key": "ss_mem_l2",
    "layer": "L2",
    "name": "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)",
@@ -408,7 +408,7 @@
   "ss_mem_l3": {
    "algo": "src/lerobot/memory/mem_nodes.py · node_ss_mem_l3:1",
    "contract": "src/lerobot/middleware/nodes/n_sequence.py:1",
-   "impl": "src/lerobot/memory/mem_nodes.py:150",
+   "impl": "src/lerobot/memory/mem_nodes.py:615",
    "impl_key": "ss_mem_l3",
    "layer": "L3",
    "name": "🚀 L3 · 长程序列规划 (记忆: 海马体)",
@@ -438,7 +438,7 @@
   "ss_mem_share": {
    "algo": "src/lerobot/memory/mem_nodes.py · node_ss_mem_share:1",
    "contract": "src/lerobot/middleware/nodes/n_memory.py:1",
-   "impl": "src/lerobot/memory/mem_nodes.py:257",
+   "impl": "src/lerobot/memory/mem_nodes.py:615",
    "impl_key": "ss_mem_share",
    "layer": "L4",
    "name": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
@@ -488,7 +488,7 @@
   "ssaoi": {
    "algo": "src/lerobot/policies/aoi/quality.py:1",
    "contract": "src/lerobot/middleware/nodes/n_inspection.py:1",
-   "impl": "src/lerobot/middleware/nodes/impl/ss_aoi.py:36",
+   "impl": "src/lerobot/middleware/nodes/impl/ss_aoi.py:127",
    "impl_key": "ss_aoi",
    "layer": "L2",
    "name": "🔍 光学质量检测",
@@ -498,7 +498,7 @@
    "ports_out": [
     "out1"
    ],
-   "pure": false
+   "pure": true
   },
   "ssbypv": {
    "algo": "tools/gui/ss_bypass_view.py:1",
@@ -533,7 +533,7 @@
    "pure": false
   },
   "sscap": {
-   "algo": "src/lerobot/engineering/nodes/library.py · node_ss_cap:1",
+   "algo": "src/lerobot/middleware/nodes/impl/ss_cap.py · node_ss_cap:1",
    "contract": "src/lerobot/middleware/nodes/n_profile.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/ss_cap.py:10",
    "impl_key": "ss_cap",
@@ -600,7 +600,7 @@
   "ssfeat": {
    "algo": "src/lerobot/verification/verification_layer.py:1",
    "contract": "src/lerobot/middleware/nodes/n_feature.py:1",
-   "impl": "src/lerobot/middleware/nodes/impl/shared_runtime.py:4034",
+   "impl": "src/lerobot/middleware/nodes/impl/shared_runtime.py:4030",
    "impl_key": "ss_feature",
    "layer": null,
    "name": "🧩 Feature 功能清单",
@@ -827,7 +827,7 @@
    "pure": true
   },
   "ssmode": {
-   "algo": "src/lerobot/engineering/nodes/library.py · node_mode_switch:1",
+   "algo": "src/lerobot/middleware/nodes/impl/mode_switch.py · node_mode_switch:1",
    "contract": "src/lerobot/middleware/nodes/n_mode.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/mode_switch.py:10",
    "impl_key": "mode_switch",
@@ -883,7 +883,7 @@
    "pure": false
   },
   "ssplan": {
-   "algo": "src/lerobot/engineering/nodes/plan_long_impl.py:1",
+   "algo": "src/lerobot/middleware/nodes/impl/plan_long_impl.py:1",
    "contract": "src/lerobot/middleware/nodes/n_longplan.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/plan_long_impl.py:896",
    "impl_key": "ss_plan_long",
@@ -933,7 +933,7 @@
   "sssched": {
    "algo": "src/lerobot/policies/left_right/state_space/cognition.py:1",
    "contract": "src/lerobot/middleware/nodes/n_scheduler.py:1",
-   "impl": "src/lerobot/middleware/nodes/impl/shared_runtime.py:2750",
+   "impl": "src/lerobot/middleware/nodes/impl/shared_runtime.py:2752",
    "impl_key": "ss_sched",
    "layer": "L2",
    "name": "🧭 动作调制器",
@@ -1145,7 +1145,7 @@
    "pure": false
   },
   "ssuph": {
-   "algo": "src/lerobot/engineering/nodes/uph_tact_impl.py:1",
+   "algo": "src/lerobot/middleware/nodes/impl/uph_tact_impl.py:1",
    "contract": "src/lerobot/middleware/nodes/n_uph.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/uph_tact_impl.py:101",
    "impl_key": "ss_uph",
@@ -1160,7 +1160,7 @@
    "pure": true
   },
   "ssvideo": {
-   "algo": "src/lerobot/engineering/nodes/library.py · node_ss_scope:1",
+   "algo": "src/lerobot/middleware/nodes/impl/ss_scope.py · node_ss_scope:1",
    "contract": "src/lerobot/middleware/nodes/n_waves.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/ss_scope.py:10",
    "impl_key": "ss_scope",
@@ -1178,7 +1178,7 @@
    "pure": false
   },
   "ssvideo2": {
-   "algo": "src/lerobot/engineering/nodes/library.py · node_ss_video:1",
+   "algo": "src/lerobot/middleware/nodes/impl/ss_video.py · node_ss_video:1",
    "contract": "src/lerobot/middleware/nodes/n_video.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/ss_video.py:10",
    "impl_key": "ss_video",

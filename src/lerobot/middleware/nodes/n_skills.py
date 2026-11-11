@@ -32,7 +32,7 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'n_l2_muscle'
-SOURCE = 'src/lerobot/engineering/nodes/library.py · node_n_l2_muscle'
+SOURCE = 'src/lerobot/middleware/nodes/impl/n_l2_muscle.py · node_n_l2_muscle'
 SOURCE_SYMBOL = 'node_n_l2_muscle'
 PARAMS = {'kind': 'real', 'real': True, 'skill': 'data/skills/l2_muscle/光模块_抓放循环_v1.json', 'bridge': 'tools/l2_ros2_bridge.py', 'layer': 'L2', 'desc': 'L2 肌肉记忆: 对准→下降→夹紧(force40)→抬起; 由 L3 序列调用, 经 l2_ros2_bridge(ROS2) 转发 Orin', 'source': 'src/lerobot/engineering/nodes/library.py · node_n_l2_muscle', 'source_symbol': 'node_n_l2_muscle'}
 

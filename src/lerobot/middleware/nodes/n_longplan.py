@@ -33,7 +33,7 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'ss_plan_long'
-SOURCE = 'src/lerobot/engineering/nodes/plan_long_impl.py'
+SOURCE = 'src/lerobot/middleware/nodes/impl/plan_long_impl.py'
 SOURCE_SYMBOL = 'def run'
 PARAMS = {'state_space': True, 'long_horizon': True, 'task_id': 'TASK-07-AOI', 'desc': '[长程元任务·AR 场景] 读配置中心 TASK-07-AOI 的元任务组合(ar_meta_tasks.json), 按轮模板展开成 392 段(与段表逐段校验), 每段带元任务归属 → out1 当前动作+元任务 / out2 元任务进度 / out3 长程节拍; 场景已录 ⇒ 不依赖大模型, 离线可跑; 真机零指令', 'source': 'src/lerobot/engineering/nodes/plan_long_impl.py', 'source_symbol': 'def run', 'impl_key': 'ss_plan_long', 'pure_verified': True}
 

@@ -32,7 +32,7 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'ss_cap'
-SOURCE = 'src/lerobot/engineering/nodes/library.py · node_ss_cap'
+SOURCE = 'src/lerobot/middleware/nodes/impl/ss_cap.py · node_ss_cap'
 SOURCE_SYMBOL = 'node_ss_cap'
 PARAMS = {'desc': '[数据源层·能力档位] 单击圆钮直选 / 双击循环: L2 基础(插装成功) → L3 +smolvla(插→拔→AOI→放回全链) → L4 +流形预测世界模型(失败自主恢复直到完成) → L5 大模型视觉语言自动标注(L2/L3/L4 监督数据) + 标注完成自动启动训练(L2 YOLO 全量 / L3 SmolVLA LoRA / L4 INTACT LoRA→merge)。档位驱动 ▶运行 任务链。', 'state_space': True, 'cap_level': 'L2', 'cap_switch': True, 'source': 'src/lerobot/engineering/nodes/library.py · node_ss_cap', 'source_symbol': 'node_ss_cap'}
 

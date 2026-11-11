@@ -33,7 +33,7 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'ss_video'
-SOURCE = 'src/lerobot/engineering/nodes/library.py · node_ss_video'
+SOURCE = 'src/lerobot/middleware/nodes/impl/ss_video.py · node_ss_video'
 SOURCE_SYMBOL = 'node_ss_video'
 PARAMS = {'state_space': True, 'state_space_rollout': True, 'desc': '操作视频: 双击打开 metaworld 训练后 rollout 视频对比窗口 (多模型同步播放)', 'viz_kind': 'video', 'source': 'src/lerobot/engineering/nodes/library.py · node_ss_video', 'source_symbol': 'node_ss_video'}
 

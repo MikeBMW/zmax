@@ -32,7 +32,7 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'mode_switch'
-SOURCE = 'src/lerobot/engineering/nodes/library.py · node_mode_switch'
+SOURCE = 'src/lerobot/middleware/nodes/impl/mode_switch.py · node_mode_switch'
 SOURCE_SYMBOL = 'node_mode_switch'
 PARAMS = {'mode': 'train', 'state_space': True, 'desc': '[基础·分段小模型] 运行模式选择 (三态, 双击循环切换): 📷推理=加载真实模型 rollout / 🚀训练=训练真实模型(仿真 metaworld) / 🎯真机数据L2训练=边干边学闭环 (真机帧采集+自动标注 → 训练 → 新鲜帧同口径对照 → 有提升才上在役)。选🎯后点「▶ 运行」即按真实数据开训 (相机标定未就绪时只走伪标注, 如实标注 gap)', 'source': 'src/lerobot/engineering/nodes/library.py · node_mode_switch', 'source_symbol': 'node_mode_switch'}
 

@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-11 13:31",
+ "generated_at": "2026-11-11 19:33",
  "patents": [
   {
    "pat_id": "ZMP-2026-001",
@@ -11,21 +11,21 @@
     {
      "fn_id": "FN-PLAT-68",
      "name": "🧭 能力档位",
-     "code": "src/lerobot/engineering/nodes/library.py · node_ss_cap",
+     "code": "src/lerobot/middleware/nodes/impl/ss_cap.py · node_ss_cap",
      "role": "主挂",
      "layer": "PLAT"
     },
     {
      "fn_id": "FN-PLAT-69",
      "name": "🎥 真实场景叠加 · 双眼 (sim2real)",
-     "code": "src/lerobot/engineering/nodes/library.py · node_realscene_live",
+     "code": "src/lerobot/middleware/nodes/impl/n_realscene_live.py · node_realscene_live",
      "role": "主挂",
      "layer": "PLAT"
     },
     {
      "fn_id": "FN-PLAT-70",
      "name": "🏭 UPH 节拍循环器",
-     "code": "src/lerobot/engineering/nodes/uph_tact_impl.py",
+     "code": "src/lerobot/middleware/nodes/impl/uph_tact_impl.py",
      "role": "主挂",
      "layer": "PLAT"
     },
@@ -263,7 +263,7 @@
     {
      "fn_id": "FN-SYS0-48",
      "name": "🧭 测地线规划引导",
-     "code": "src/lerobot/engineering/nodes/geo_plan_impl.py",
+     "code": "src/lerobot/middleware/nodes/impl/geo_plan_impl.py",
      "role": "主挂",
      "layer": "L2"
     },
@@ -386,14 +386,14 @@
     {
      "fn_id": "FN-SYS2-14",
      "name": "🧿 L5 · 视觉语言自动标注 → L2/L3/L4 监督 → 自动训练",
-     "code": "src/lerobot/engineering/nodes/library.py · node_l5_loop",
+     "code": "src/lerobot/middleware/nodes/impl/l5_loop.py · node_l5_loop",
      "role": "主挂",
      "layer": "L4/L5"
     },
     {
      "fn_id": "FN-PLAT-73",
      "name": "📊 仿真波形",
-     "code": "src/lerobot/engineering/nodes/library.py · node_ss_scope",
+     "code": "src/lerobot/middleware/nodes/impl/ss_scope.py · node_ss_scope",
      "role": "关联",
      "layer": "PLAT"
     },
@@ -459,7 +459,7 @@
     {
      "fn_id": "FN-PLAT-71",
      "name": "🧩 长程元任务编排器 (Plan)",
-     "code": "src/lerobot/engineering/nodes/plan_long_impl.py",
+     "code": "src/lerobot/middleware/nodes/impl/plan_long_impl.py",
      "role": "关联",
      "layer": "PLAT"
     },
@@ -751,7 +751,7 @@
     {
      "fn_id": "FN-SYS0-36",
      "name": "💪 L2 肌肉记忆技能库 (光模块抓放循环)",
-     "code": "src/lerobot/engineering/nodes/library.py · node_n_l2_muscle",
+     "code": "src/lerobot/middleware/nodes/impl/n_l2_muscle.py · node_n_l2_muscle",
      "role": "主挂",
      "layer": "L2"
     },
@@ -1047,28 +1047,28 @@
     {
      "fn_id": "FN-PLAT-66",
      "name": "🔀 训练/推理",
-     "code": "src/lerobot/engineering/nodes/library.py · node_mode_switch",
+     "code": "src/lerobot/middleware/nodes/impl/mode_switch.py · node_mode_switch",
      "role": "主挂",
      "layer": "PLAT"
     },
     {
      "fn_id": "FN-PLAT-71",
      "name": "🧩 长程元任务编排器 (Plan)",
-     "code": "src/lerobot/engineering/nodes/plan_long_impl.py",
+     "code": "src/lerobot/middleware/nodes/impl/plan_long_impl.py",
      "role": "主挂",
      "layer": "PLAT"
     },
     {
      "fn_id": "FN-PLAT-73",
      "name": "📊 仿真波形",
-     "code": "src/lerobot/engineering/nodes/library.py · node_ss_scope",
+     "code": "src/lerobot/middleware/nodes/impl/ss_scope.py · node_ss_scope",
      "role": "主挂",
      "layer": "PLAT"
     },
     {
      "fn_id": "FN-PLAT-74",
      "name": "🎥 操作视频",
-     "code": "src/lerobot/engineering/nodes/library.py · node_ss_video",
+     "code": "src/lerobot/middleware/nodes/impl/ss_video.py · node_ss_video",
      "role": "主挂",
      "layer": "PLAT"
     },
@@ -1096,7 +1096,7 @@
     {
      "fn_id": "FN-PLAT-69",
      "name": "🎥 真实场景叠加 · 双眼 (sim2real)",
-     "code": "src/lerobot/engineering/nodes/library.py · node_realscene_live",
+     "code": "src/lerobot/middleware/nodes/impl/n_realscene_live.py · node_realscene_live",
      "role": "关联",
      "layer": "PLAT"
     },
@@ -1181,7 +1181,7 @@
     {
      "fn_id": "FN-SYS0-62",
      "name": "⚙️ 动作执行器 (L2 收口 · 授权/闸/到位)",
-     "code": "src/lerobot/engineering/nodes/exec_dispatch_impl.py",
+     "code": "src/lerobot/middleware/nodes/impl/exec_dispatch_impl.py",
      "role": "关联",
      "layer": "L2"
     },
@@ -1220,6 +1220,8 @@
    "docs": [
     "docs/1-天枢-产品边界/patents/ZMP-2026-013_一种基于视触觉融合与装配公差度规的跨层动作修正方法及系统.docx",
     "docs/1-天枢-产品边界/patents/ZMP-2026-013_一种基于视触觉融合与装配公差度规的跨层动作修正方法及系统.md",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-013_一种基于视触觉融合与装配公差度规的跨层动作修正方法及系统.docx",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-013_一种基于视触觉融合与装配公差度规的跨层动作修正方法及系统.md",
     "docs/1-天枢-产品边界/patents/_v1_历史/ZMP-2026-013_v2_视触觉融合初版_20261111.md",
     "docs/1-天枢-产品边界/patents/_v1_历史/ZMP-2026-013_v1_纯视觉版_20261110.md"
    ]
@@ -1269,7 +1271,7 @@
     {
      "fn_id": "FN-SYS0-62",
      "name": "⚙️ 动作执行器 (L2 收口 · 授权/闸/到位)",
-     "code": "src/lerobot/engineering/nodes/exec_dispatch_impl.py",
+     "code": "src/lerobot/middleware/nodes/impl/exec_dispatch_impl.py",
      "role": "关联",
      "layer": "L2"
     }
@@ -1297,7 +1299,9 @@
    ],
    "docs": [
     "docs/1-天枢-产品边界/patents/ZMP-2026-014_一种基于取像健康度分离的视觉质量门在线裁决方法及系统.md",
-    "docs/1-天枢-产品边界/patents/ZMP-2026-014_一种基于取像健康度分离的视觉质量门在线裁决方法及系统.docx"
+    "docs/1-天枢-产品边界/patents/ZMP-2026-014_一种基于取像健康度分离的视觉质量门在线裁决方法及系统.docx",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-014_一种基于取像健康度分离的视觉质量门在线裁决方法及系统.md",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-014_一种基于取像健康度分离的视觉质量门在线裁决方法及系统.docx"
    ]
   },
   {
@@ -1310,7 +1314,7 @@
     {
      "fn_id": "FN-SYS0-62",
      "name": "⚙️ 动作执行器 (L2 收口 · 授权/闸/到位)",
-     "code": "src/lerobot/engineering/nodes/exec_dispatch_impl.py",
+     "code": "src/lerobot/middleware/nodes/impl/exec_dispatch_impl.py",
      "role": "主挂",
      "layer": "L2"
     },
@@ -1350,7 +1354,9 @@
    "data_refs": [],
    "docs": [
     "docs/1-天枢-产品边界/patents/ZMP-2026-015_一种分层控制链路真联通率的四态量化校验方法及系统.docx",
-    "docs/1-天枢-产品边界/patents/ZMP-2026-015_一种分层控制链路真联通率的四态量化校验方法及系统.md"
+    "docs/1-天枢-产品边界/patents/ZMP-2026-015_一种分层控制链路真联通率的四态量化校验方法及系统.md",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-015_一种分层控制链路真联通率的四态量化校验方法及系统.docx",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-015_一种分层控制链路真联通率的四态量化校验方法及系统.md"
    ]
   },
   {
@@ -1403,7 +1409,9 @@
    "data_refs": [],
    "docs": [
     "docs/1-天枢-产品边界/patents/ZMP-2026-016_一种长耗时感知任务与短周期控制回路的异步快照解耦方法及系统.md",
-    "docs/1-天枢-产品边界/patents/ZMP-2026-016_一种长耗时感知任务与短周期控制回路的异步快照解耦方法及系统.docx"
+    "docs/1-天枢-产品边界/patents/ZMP-2026-016_一种长耗时感知任务与短周期控制回路的异步快照解耦方法及系统.docx",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-016_一种长耗时感知任务与短周期控制回路的异步快照解耦方法及系统.md",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-016_一种长耗时感知任务与短周期控制回路的异步快照解耦方法及系统.docx"
    ]
   },
   {
@@ -1458,7 +1466,9 @@
    ],
    "docs": [
     "docs/1-天枢-产品边界/patents/ZMP-2026-017_一种分层参数真源单一性与生效性验证方法及系统.docx",
-    "docs/1-天枢-产品边界/patents/ZMP-2026-017_一种分层参数真源单一性与生效性验证方法及系统.md"
+    "docs/1-天枢-产品边界/patents/ZMP-2026-017_一种分层参数真源单一性与生效性验证方法及系统.md",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-017_一种分层参数真源单一性与生效性验证方法及系统.docx",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-017_一种分层参数真源单一性与生效性验证方法及系统.md"
    ]
   },
   {
@@ -1510,7 +1520,9 @@
    "data_refs": [],
    "docs": [
     "docs/1-天枢-产品边界/patents/ZMP-2026-018_一种仿真速度指令到真机单轴分步安全跟随方法及系统.docx",
-    "docs/1-天枢-产品边界/patents/ZMP-2026-018_一种仿真速度指令到真机单轴分步安全跟随方法及系统.md"
+    "docs/1-天枢-产品边界/patents/ZMP-2026-018_一种仿真速度指令到真机单轴分步安全跟随方法及系统.md",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-018_一种仿真速度指令到真机单轴分步安全跟随方法及系统.docx",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-018_一种仿真速度指令到真机单轴分步安全跟随方法及系统.md"
    ]
   },
   {
@@ -1577,7 +1589,9 @@
    "data_refs": [],
    "docs": [
     "docs/1-天枢-产品边界/patents/ZMP-2026-019_一种世界模型在环的分层动作修正方法及系统.md",
-    "docs/1-天枢-产品边界/patents/ZMP-2026-019_一种世界模型在环的分层动作修正方法及系统.docx"
+    "docs/1-天枢-产品边界/patents/ZMP-2026-019_一种世界模型在环的分层动作修正方法及系统.docx",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-019_一种世界模型在环的分层动作修正方法及系统.md",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-019_一种世界模型在环的分层动作修正方法及系统.docx"
    ]
   },
   {
@@ -1640,7 +1654,9 @@
    "data_refs": [],
    "docs": [
     "docs/1-天枢-产品边界/patents/ZMP-2026-020_一种基于装配公差度规的双层硬注入动作生成方法及系统.docx",
-    "docs/1-天枢-产品边界/patents/ZMP-2026-020_一种基于装配公差度规的双层硬注入动作生成方法及系统.md"
+    "docs/1-天枢-产品边界/patents/ZMP-2026-020_一种基于装配公差度规的双层硬注入动作生成方法及系统.md",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-020_一种基于装配公差度规的双层硬注入动作生成方法及系统.docx",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-020_一种基于装配公差度规的双层硬注入动作生成方法及系统.md"
    ]
   }
  ],
@@ -1787,7 +1803,7 @@
    "type": "model",
    "module": "n_waves",
    "impl_key": "ss_scope",
-   "source": "src/lerobot/engineering/nodes/library.py · node_ss_scope",
+   "source": "src/lerobot/middleware/nodes/impl/ss_scope.py",
    "symbol": "node_ss_scope",
    "patents": [
     "ZMP-2026-005",
@@ -1800,7 +1816,7 @@
    "type": "model",
    "module": "n_video",
    "impl_key": "ss_video",
-   "source": "src/lerobot/engineering/nodes/library.py · node_ss_video",
+   "source": "src/lerobot/middleware/nodes/impl/ss_video.py",
    "symbol": "node_ss_video",
    "patents": [
     "ZMP-2026-012"
@@ -1881,7 +1897,7 @@
    "type": "mode_switch",
    "module": "n_mode",
    "impl_key": "mode_switch",
-   "source": "src/lerobot/engineering/nodes/library.py · node_mode_switch",
+   "source": "src/lerobot/middleware/nodes/impl/mode_switch.py",
    "symbol": "node_mode_switch",
    "patents": [
     "ZMP-2026-012"
@@ -2256,7 +2272,7 @@
    "type": "model",
    "module": "n_profile",
    "impl_key": "ss_cap",
-   "source": "src/lerobot/engineering/nodes/library.py · node_ss_cap",
+   "source": "src/lerobot/middleware/nodes/impl/ss_cap.py",
    "symbol": "node_ss_cap",
    "patents": [
     "ZMP-2026-001"
@@ -2472,7 +2488,7 @@
    "type": "model",
    "module": "n_skills",
    "impl_key": "n_l2_muscle",
-   "source": "src/lerobot/engineering/nodes/library.py · node_n_l2_muscle",
+   "source": "src/lerobot/middleware/nodes/impl/n_l2_muscle.py",
    "symbol": "node_n_l2_muscle",
    "patents": [
     "ZMP-2026-009"
@@ -2552,7 +2568,7 @@
    "type": "model",
    "module": "n_moveit",
    "impl_key": "n_moveit",
-   "source": "src/lerobot/engineering/nodes/plan_impl.py",
+   "source": "src/lerobot/middleware/nodes/impl/plan_impl.py",
    "symbol": "def run",
    "patents": []
   },
@@ -2562,7 +2578,7 @@
    "type": "model",
    "module": "n_overlay",
    "impl_key": "n_realscene_live",
-   "source": "src/lerobot/engineering/nodes/library.py · node_realscene_live",
+   "source": "src/lerobot/middleware/nodes/impl/n_realscene_live.py",
    "symbol": "node_realscene_live",
    "patents": [
     "ZMP-2026-001",
@@ -2575,7 +2591,7 @@
    "type": "model",
    "module": "n_labeler",
    "impl_key": "l5_loop",
-   "source": "src/lerobot/engineering/nodes/library.py · node_l5_loop",
+   "source": "src/lerobot/middleware/nodes/impl/l5_loop.py",
    "symbol": "node_l5_loop",
    "patents": [
     "ZMP-2026-005"
@@ -2627,7 +2643,7 @@
    "type": "model",
    "module": "n_l2",
    "impl_key": "n_exec",
-   "source": "src/lerobot/engineering/nodes/exec_dispatch_impl.py",
+   "source": "src/lerobot/middleware/nodes/impl/exec_dispatch_impl.py",
    "symbol": "def run",
    "patents": [
     "ZMP-2026-013",
@@ -2656,7 +2672,7 @@
    "type": "model",
    "module": "n_uph",
    "impl_key": "ss_uph",
-   "source": "src/lerobot/engineering/nodes/uph_tact_impl.py",
+   "source": "src/lerobot/middleware/nodes/impl/uph_tact_impl.py",
    "symbol": "def run",
    "patents": [
     "ZMP-2026-001"
@@ -2668,7 +2684,7 @@
    "type": "model",
    "module": "n_longplan",
    "impl_key": "ss_plan_long",
-   "source": "src/lerobot/engineering/nodes/plan_long_impl.py",
+   "source": "src/lerobot/middleware/nodes/impl/plan_long_impl.py",
    "symbol": "def run",
    "patents": [
     "ZMP-2026-006",
@@ -2681,7 +2697,7 @@
    "type": "model",
    "module": "n_geodesic",
    "impl_key": "n_geoplan",
-   "source": "src/lerobot/engineering/nodes/geo_plan_impl.py",
+   "source": "src/lerobot/middleware/nodes/impl/geo_plan_impl.py",
    "symbol": "run",
    "patents": [
     "ZMP-2026-004"
@@ -2692,6 +2708,11 @@
   {
    "path": "docs/README.md",
    "title": "docs 目录 · 北斗七星阵",
+   "patent": ""
+  },
+  {
+   "path": "docs/AOI_OFFLINE_DEV.md",
+   "title": "离线 AOI 开发 (无相机 / 无工控机也能改判据、跑检测)",
    "patent": ""
   },
   {
@@ -3945,8 +3966,18 @@
    "patent": "ZMP-2026-006"
   },
   {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-019_一种世界模型在环的分层动作修正方法及系统.md",
+   "title": "技术交底书",
+   "patent": "ZMP-2026-019"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-016_一种长耗时感知任务与短周期控制回路的异步快照解耦方法及系统.md",
+   "title": "技术交底书",
+   "patent": "ZMP-2026-016"
+  },
+  {
    "path": "docs/1-天枢-产品边界/patents/交底书/00_交底书清单.md",
-   "title": "专利交底书清单（12 件）",
+   "title": "专利交底书清单（20 件）",
    "patent": "ZMP-2026-003"
   },
   {
@@ -3965,9 +3996,19 @@
    "patent": "ZMP-2026-002"
   },
   {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-013_一种基于视触觉融合与装配公差度规的跨层动作修正方法及系统.docx",
+   "title": "ZMP-2026-013_一种基于视触觉融合与装配公差度规的跨层动作修正方法及系统",
+   "patent": "ZMP-2026-013"
+  },
+  {
    "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-001_一种基于北斗七星结构的具身智能状态空间工程配置方法及系统.docx",
    "title": "ZMP-2026-001_一种基于北斗七星结构的具身智能状态空间工程配置方法及系统",
    "patent": "ZMP-2026-001"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-019_一种世界模型在环的分层动作修正方法及系统.docx",
+   "title": "ZMP-2026-019_一种世界模型在环的分层动作修正方法及系统",
+   "patent": "ZMP-2026-019"
   },
   {
    "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-003_基于二阶特殊酉群的状态空间统一表示与跨层映射方法.docx",
@@ -4000,9 +4041,24 @@
    "patent": "ZMP-2026-005"
   },
   {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-018_一种仿真速度指令到真机单轴分步安全跟随方法及系统.docx",
+   "title": "ZMP-2026-018_一种仿真速度指令到真机单轴分步安全跟随方法及系统",
+   "patent": "ZMP-2026-018"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-020_一种基于装配公差度规的双层硬注入动作生成方法及系统.docx",
+   "title": "ZMP-2026-020_一种基于装配公差度规的双层硬注入动作生成方法及系统",
+   "patent": "ZMP-2026-020"
+  },
+  {
    "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-004_一种可行域逐层收窄与底层势函数收口的机器人运动安全控制方法.md",
    "title": "技术交底书",
    "patent": "ZMP-2026-004"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-017_一种分层参数真源单一性与生效性验证方法及系统.docx",
+   "title": "ZMP-2026-017_一种分层参数真源单一性与生效性验证方法及系统",
+   "patent": "ZMP-2026-017"
   },
   {
    "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-007_一种世界模型意图-动作分块生成与适配层折叠部署方法及零动作伪装防护.docx",
@@ -4015,9 +4071,29 @@
    "patent": "ZMP-2026-007"
   },
   {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-020_一种基于装配公差度规的双层硬注入动作生成方法及系统.md",
+   "title": "技术交底书",
+   "patent": "ZMP-2026-020"
+  },
+  {
    "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-009_一种原子技能肌肉记忆固化与标杆模板快速直通方法.docx",
    "title": "ZMP-2026-009_一种原子技能肌肉记忆固化与标杆模板快速直通方法",
    "patent": "ZMP-2026-009"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-015_一种分层控制链路真联通率的四态量化校验方法及系统.docx",
+   "title": "ZMP-2026-015_一种分层控制链路真联通率的四态量化校验方法及系统",
+   "patent": "ZMP-2026-015"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-015_一种分层控制链路真联通率的四态量化校验方法及系统.md",
+   "title": "技术交底书",
+   "patent": "ZMP-2026-015"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-013_一种基于视触觉融合与装配公差度规的跨层动作修正方法及系统.md",
+   "title": "技术交底书",
+   "patent": "ZMP-2026-013"
   },
   {
    "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-006_一种开放词汇分割前置的视觉触觉融合定位与场景建图方法.md",
@@ -4030,14 +4106,34 @@
    "patent": "ZMP-2026-011"
   },
   {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-017_一种分层参数真源单一性与生效性验证方法及系统.md",
+   "title": "技术交底书",
+   "patent": "ZMP-2026-017"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-014_一种基于取像健康度分离的视觉质量门在线裁决方法及系统.md",
+   "title": "技术交底书",
+   "patent": "ZMP-2026-014"
+  },
+  {
    "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-008_一种大模型慢决策规划与本地工具技能包协同及双层安全否决方法.docx",
    "title": "ZMP-2026-008_一种大模型慢决策规划与本地工具技能包协同及双层安全否决方法",
    "patent": "ZMP-2026-008"
   },
   {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-016_一种长耗时感知任务与短周期控制回路的异步快照解耦方法及系统.docx",
+   "title": "ZMP-2026-016_一种长耗时感知任务与短周期控制回路的异步快照解耦方法及系统",
+   "patent": "ZMP-2026-016"
+  },
+  {
    "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-012_一种多相机底图增强现实叠加与真机场景一致性校验方法.docx",
    "title": "ZMP-2026-012_一种多相机底图增强现实叠加与真机场景一致性校验方法",
    "patent": "ZMP-2026-012"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-014_一种基于取像健康度分离的视觉质量门在线裁决方法及系统.docx",
+   "title": "ZMP-2026-014_一种基于取像健康度分离的视觉质量门在线裁决方法及系统",
+   "patent": "ZMP-2026-014"
   },
   {
    "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-010_一种机器人多层记忆组织与元任务预测映射方法.docx",
@@ -4053,6 +4149,11 @@
    "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-008_一种大模型慢决策规划与本地工具技能包协同及双层安全否决方法.md",
    "title": "技术交底书",
    "patent": "ZMP-2026-008"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-018_一种仿真速度指令到真机单轴分步安全跟随方法及系统.md",
+   "title": "技术交底书",
+   "patent": "ZMP-2026-018"
   },
   {
    "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-012_一种多相机底图增强现实叠加与真机场景一致性校验方法.md",
@@ -5234,7 +5335,7 @@
   "patents": 20,
   "nodes": 79,
   "nodes_covered": 78,
-  "docs": 508,
-  "docs_linked": 79
+  "docs": 525,
+  "docs_linked": 95
  }
 }

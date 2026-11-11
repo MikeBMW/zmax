@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""patent_disclosure.py — 12 件专利的技术交底书生成器（md + docx）
+"""patent_disclosure.py — 专利技术交底书生成器（md + docx）
 
 口径（与工程库一致，不许编）：
   · 真源 = config/patents/patent_registry.json（唯一依据）
@@ -12,7 +12,7 @@
   六 有益效果 / 七 附图说明 / 八 具体实施方式 / 九 关键保护点与替代方案 / 十 检索关键词
 
 用法:
-  python3 tools/patent_disclosure.py                 # 全部 12 件
+  python3 tools/patent_disclosure.py                 # 全部
   python3 tools/patent_disclosure.py --pat ZMP-2026-003
   python3 tools/patent_disclosure.py --no-docx       # 只出 md
 """
@@ -308,7 +308,7 @@ def main():
         print("没找到:", a.pat)
         return 1
 
-    index = ["# 专利交底书清单（12 件）", "",
+    index = ["# 专利交底书清单（%d 件）" % len(pats), "",
              "| 编号 | 代号 | 层 | 发明名称 | 交底书 |", "|---|---|---|---|---|"]
     for k, p in enumerate(pats, 1):
         tag = os.path.splitext(os.path.basename(p["title"]))[0]

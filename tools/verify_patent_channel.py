@@ -15,9 +15,9 @@
   ⑥ 逻辑: 问题 ≥2 · 方案 ≥4 · 效果 ≥2 · 权项 ≥3 · 实施例 ≥2
   ⑦ 落地: 每件落地引用 ≥2 条, 且**逐条真实存在** (文件/目录在仓库里)
   ⑧ 数据真实: 文档里的统计 = 唯一依据现算 (工程库 functions/product_features/canvas_nodes + 主控台模型矩阵)
-  ⑨ 导出: 12 件 md + docx 全落地非空, 总览清单含"渠道 100% 预留"
+  ⑨ 导出: 每件 md + docx 全落地非空, 总览清单含"渠道 100% 预留"
   ⑩ 同源: 文档内"挂载功能表"行数 == 该专利挂载数
-  ⑪ 文档配置页: 专利块在位 (表 12 行) 且与 SOR/立项/合作协议**同一页签**(同级别) + 共用同一预览窗
+  ⑪ 文档配置页: 专利块在位 (表行数=件数) 且与 SOR/立项/合作协议**同一页签**(同级别) + 共用同一预览窗
   ⑫ 功能配置页: 74 行专利渠道列无"渠道未闭合" + 有「📜 该功能专利申请草稿」按钮
   ⑬ 交互: 选中一行功能 → 预览闸门真的打开该功能主挂专利正文
   ⑭ 复制: 功能↔专利渠道清单可复制 (74 行 + 表头)
@@ -61,7 +61,7 @@ def main():
 
     print("\n═══ ② 内容字段 (层次/逻辑要写全) ═══")
     bad = [(p.get("pat_id"), [k for k in REQ if not p.get(k)]) for p in pats if any(not p.get(k) for k in REQ)]
-    chk("每件必需字段齐全", not bad, "%s" % (bad[:3] if bad else "12/12 齐全"))
+    chk("每件必需字段齐全", not bad, "%s" % (bad[:3] if bad else "%d/%d 齐全" % (len(pats), len(pats))))
 
     print("\n═══ ③ 专利申请渠道: 功能逐条挂上 (老倪: 预留**所有**功能的渠道) ═══")
     chk("功能覆盖 %d/%d, 未挂 0 条" % (cov["covered"], cov["total_fn"]),
@@ -74,12 +74,12 @@ def main():
 
     print("\n═══ ④⑤ 不许空专利 · 层次与星位 ═══")
     _empty = [p["pat_id"] for p in pats if not (p.get("fn_ids") or p.get("fn_ids_related"))]
-    chk("每件专利至少挂 1 条功能", not _empty, "%s" % (_empty or "12/12 都挂了功能"))
+    chk("每件专利至少挂 1 条功能", not _empty, "%s" % (_empty or "%d/%d 都挂了功能" % (len(pats), len(pats))))
     _lay = sorted({p.get("layer") for p in pats})
     chk("层次分类 ≥ 4 类 (体系/数学/模型/执行/标定/视觉 分级)", len(_lay) >= 4, "%d 类: %s" % (len(_lay), " · ".join(_lay)))
     _stars = {"天枢", "天璇", "天玑", "天权", "玉衡", "开阳", "瑶光"}
     _badstar = [p["pat_id"] for p in pats if p.get("star") not in _stars]
-    chk("每件星位属于北斗七星 (阵法结构一致)", not _badstar, "%s" % (_badstar or "12/12 合法"))
+    chk("每件星位属于北斗七星 (阵法结构一致)", not _badstar, "%s" % (_badstar or "%d/%d 合法" % (len(pats), len(pats))))
 
     print("\n═══ ⑥ 逻辑完整度 (问题→方案→效果→权项→实施例) ═══")
     _thin = []
@@ -88,7 +88,7 @@ def main():
         for k, want in n.items():
             if len(p.get(k) or []) < want:
                 _thin.append("%s.%s(%d<%d)" % (p["pat_id"], k, len(p.get(k) or []), want))
-    chk("件件 问题≥2 方案≥4 效果≥2 权项≥3 实施例≥2", not _thin, "%s" % (_thin[:4] or "12/12 达标"))
+    chk("件件 问题≥2 方案≥4 效果≥2 权项≥3 实施例≥2", not _thin, "%s" % (_thin[:4] or "%d/%d 达标" % (len(pats), len(pats))))
 
     print("\n═══ ⑦ 落地: 落地引用必须真实存在 ═══")
     _miss, _n = [], 0
@@ -117,9 +117,25 @@ def main():
     _md = [f for f in os.listdir(os.path.join(ROOT, "docs", "1-天枢-产品边界", "patents")) if f.endswith(".md")]
     _dx = [f for f in os.listdir(os.path.join(ROOT, "docs", "1-天枢-产品边界", "patents")) if f.endswith(".docx")]
     _idx = os.path.join(ROOT, "docs", "1-天枢-产品边界", "patents", "00_专利申请渠道清单.md")
-    chk("12 件 md + 12 件 docx + 总览清单都落地", len(_md) >= len(pats) + 1 and len(_dx) >= len(pats) and os.path.exists(_idx),
+    chk("每件 md + docx + 总览清单都落地 (共 %d 件)" % len(pats), len(_md) >= len(pats) + 1 and len(_dx) >= len(pats) and os.path.exists(_idx),
         "md %d · docx %d · 清单 %s" % (len(_md), len(_dx), os.path.exists(_idx)))
     _itxt = open(_idx, encoding="utf-8").read() if os.path.exists(_idx) else ""
+    # 交底书目录 (docs/.../patents/交底书): 每件 md+docx 齐 + md 十节齐 — 件数现算, 不写字面量
+    _jd = os.path.join(ROOT, "docs", "1-天枢-产品边界", "patents", "交底书")
+    _jmd = [f for f in os.listdir(_jd) if f.endswith(".md") and f.startswith("ZMP-")] if os.path.isdir(_jd) else []
+    _jdx = [f for f in os.listdir(_jd) if f.endswith(".docx") and f.startswith("ZMP-")] if os.path.isdir(_jd) else []
+    _SEC = ["一、发明名称", "二、技术领域", "三、背景技术", "四、要解决的技术问题", "五、技术方案",
+            "六、有益效果", "七、附图说明", "八、具体实施方式", "九、关键保护点与替代方案", "十、检索关键词"]
+    _jbad = []
+    for _f in _jmd:
+        _t = open(os.path.join(_jd, _f), encoding="utf-8").read()
+        _m = [x for x in _SEC if x not in _t]
+        if _m:
+            _jbad.append("%s 缺%s" % (_f[:14], _m[:2]))
+        if not os.path.exists(os.path.join(_jd, _f[:-3] + ".docx")):
+            _jbad.append("%s 无 docx" % _f[:14])
+    chk("交底书目录每件 md+docx 齐 且十节齐全 (共 %d 件)" % len(pats), len(_jmd) == len(pats) and len(_jdx) == len(pats) and not _jbad,
+        "md %d · docx %d · %s" % (len(_jmd), len(_jdx), _jbad[:3] if _jbad else "十节全齐"))
     chk("总览清单写明渠道 100% 预留 + 唯一依据数据", ("100%" in _itxt or "渠道 100% 预留" in _itxt) and "已挂渠道" in _itxt,
         _itxt.splitlines()[8][:70] if len(_itxt.splitlines()) > 8 else "")
     _p0, _mine = pats[1], [x for x in cov["per_fn"]

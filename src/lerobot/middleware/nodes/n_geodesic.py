@@ -33,7 +33,7 @@ PORTS_OUT = ['out1', 'out2']
 PORT_LABELS = {'in1': 'obs 43D', 'in2': '目标点(可选)', 'out1': '3D 引导位姿', 'out2': '块 chunk[H,4]'}
 
 IMPL_KEY = 'n_geoplan'
-SOURCE = 'src/lerobot/engineering/nodes/geo_plan_impl.py'
+SOURCE = 'src/lerobot/middleware/nodes/impl/geo_plan_impl.py'
 SOURCE_SYMBOL = 'run'
 PARAMS = {'state_space': True, 'geo_chunk': {'H': 8, 'latent': 16, 'state_dim': 43, 'manifold': 'SU(2)', 'M': 3.643, 'decode': 'ridge (readout + readout_b, 硬限幅)'}, 'role': '运动规划支 (与前馈 MLP 并列, 进加权)', 'desc': 'obs43 → ManifoldEngine.project(潜空间) → 目标点(本段目标槽 obs[36:39]) → navigator.compute_geodesic(H 步, 指数映射+slerp) → readout ridge 解码(限幅) → 块 chunk[H,4]。与块流水线 tools/ss_chunk_pipeline.py::_chunk 逐行同源; 只出块, 不下发、不碰授权。注意: 与 n_moveit (MoveIt 关节空间规划, 在原子技能之后) 不是同一个节点。源码 src/lerobot/engineering/nodes/geo_plan_impl.py', 'source': 'src/lerobot/engineering/nodes/geo_plan_impl.py', 'source_symbol': 'run', '_port_labels': {'in1': 'obs 43D', 'in2': '目标点(可选)', 'out1': '3D 引导位姿', 'out2': '块 chunk[H,4]'}, 'guide': {'target': '视觉3D 孔口(obs[36:39]) / 模块(obs[4:7])', 'hover_mm': 40, 'v_cap': 0.35, 'dt': 0.1, 'pose': 'pos_mm + quat(obs[24:33] 旋转矩阵) + 进给轴', 'check': '测地线方向与几何方向 cos, <0.3 时几何主导并标注'}}
 

@@ -35,7 +35,7 @@ PORTS_OUT = ['out1', 'out2']
 PORT_LABELS = {}
 
 IMPL_KEY = 'n_exec'
-SOURCE = 'src/lerobot/engineering/nodes/exec_dispatch_impl.py'
+SOURCE = 'src/lerobot/middleware/nodes/impl/exec_dispatch_impl.py'
 SOURCE_SYMBOL = 'def run'
 PARAMS = {'layer': 'L2', 'role': 'execution sink (唯一能碰执行器的一层)', 'impl': 'src/lerobot/engineering/nodes/exec_dispatch_impl.py', 'fifo': 'zmax_data/l2_cmd.fifo', 'leg': 'sdk (本机直连, ZMAX_L2_FORCE_J=1 ⇒ MoveJ)', 'safety': '授权 epoch · guard_box 包络 · z_floor · 天花板 · 抬升闸 · VL 快层', 'source': 'src/lerobot/engineering/nodes/exec_dispatch_impl.py', 'source_symbol': 'def run', 'state_file': 'zmax_data/ss_live/exec_state.json', 'events_file': 'zmax_data/ss_live/exec_events.jsonl', 'notes': '节点实现只读真值(exec_state.json/exec_events.jsonl), 不下发; 段表下发在常驻进程 tools/l2_daemon.py (FIFO zmax_data/l2_cmd.fifo + 8793 授权 + 闸)', 'dispatcher': 'tools/l2_daemon.py'}
 

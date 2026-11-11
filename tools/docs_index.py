@@ -52,12 +52,26 @@ def load():
 
 
 def link(patents, fns, nodes):
-    """专利 → 功能 → 节点：用 code_file 与节点 source 对齐。"""
-    by_src = {}
+    """专利 → 功能 → 节点：用 code_file 与节点 source 对齐。
+
+    两边都可能带 symbol/行号后缀（`path · sym` / `path::sym` / `path:12` / `path --flag`），
+    所以先精确匹配，再按**纯路径**归一化匹配 —— 否则同一文件换个写法就断链。
+    """
+    def norm(s):
+        s = (s or "").replace("\\", "/").strip()
+        for sep in (" · ", "::", ":"):
+            if sep in s and not s.startswith(sep):
+                s = s.split(sep, 1)[0]
+        if " --" in s:
+            s = s.split(" --", 1)[0]
+        return s.strip()
+
+    by_src, by_norm = {}, {}
     for n in nodes:
         s = (n.get("source") or "").replace("\\", "/").strip()
         if s:
             by_src.setdefault(s, []).append(n["node_id"])
+            by_norm.setdefault(norm(s), []).append(n["node_id"])
     node_by_id = {n["node_id"]: n for n in nodes}
     out = []
     for p in patents:
@@ -72,7 +86,8 @@ def link(patents, fns, nodes):
             cf = (f.get("code_file") or "").replace("\\", "/").strip()
             pfunc.append(dict(fn_id=fid, name=f.get("name", ""), code=cf,
                               role="主挂" if fid in fids else "关联", layer=f.get("layer", "")))
-            for nid in by_src.get(cf, []):
+            hits = by_src.get(cf) or by_norm.get(norm(cf)) or []
+            for nid in hits:
                 if nid not in pnodes:
                     pnodes.append(nid)
         out.append(dict(pat=p, funcs=pfunc, nodes=pnodes))

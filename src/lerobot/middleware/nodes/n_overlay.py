@@ -32,7 +32,7 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'n_realscene_live'
-SOURCE = 'src/lerobot/engineering/nodes/library.py · node_realscene_live'
+SOURCE = 'src/lerobot/middleware/nodes/impl/n_realscene_live.py · node_realscene_live'
 SOURCE_SYMBOL = 'node_realscene_live'
 PARAMS = {'source': 'src/lerobot/engineering/nodes/library.py · node_realscene_live', 'source_symbol': 'node_realscene_live'}
 
