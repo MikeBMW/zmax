@@ -49,7 +49,9 @@ CALIB_SRC = os.path.join(ROOT, "config", "calib", "zmax_calib.json")
 MANIFOLD_SRC = os.path.join(ROOT, "config", "calib", "zmax_manifold.json")
 FEATURE_DBC = os.path.join(ROOT, "feature.dbc")
 VERIF_SRC = os.path.join(ROOT, "src", "lerobot", "verification", "verification_layer.py")
-NODES_SRC = os.path.join(ROOT, "src", "lerobot", "engineering", "nodes", "library.py")
+# 2026-11-11: 节点实现已从 engineering/nodes/library.py 迁到 middleware/nodes/ (impl/*.py + _index.py),
+#   旧路径不存在 ⇒ 指纹恒空、stale 永远报"没了"。指向现役节点注册表。
+NODES_SRC = os.path.join(ROOT, "src", "lerobot", "middleware", "nodes", "_index.py")
 CANVAS = os.path.join(ROOT, "src", "lerobot", "engineering", "flows", "state_space_obs.json")
 CURATION = os.path.join(ROOT, "config", "library_curation.json")
 PROJ_DIR = os.path.join(ROOT, "data", "database", "zmax")   # 标准产品数据路径: data/database/<产品>/
@@ -277,7 +279,7 @@ def build(db=DB_DEFAULT, proj_path=None, quiet=False):
             "manifold": [MANIFOLD_SRC, _sha(_read(MANIFOLD_SRC) or "")],
             "feature_dbc": [FEATURE_DBC, _sha(_read(FEATURE_DBC) or "")],
             "verification": [VERIF_SRC, _sha(_read(VERIF_SRC) or "")],
-            "node_logic": [NODES_SRC, _sha(_read(NODES_SRC) or "")],
+            "node_logic": [NODES_SRC, os.path.exists(NODES_SRC) and _sha(_read(NODES_SRC) or "")],
             "curation": [CURATION, _sha(_read(CURATION) or "")],
         }),
     }
@@ -1077,7 +1079,10 @@ def is_stale(db=DB_DEFAULT):
             continue
         _p2 = _p if os.path.isabs(_p) else os.path.join(ROOT, _p)
         if not os.path.exists(_p2):
-            _bad.append("%s 没了" % _k)
+            # 建库时就不存在 (指纹为 None/falsy) ⇒ 该源已并入别处, 不算"库落后";
+            # 建库时存在、现在没了才是真信号 (源码被删/移走要重判)。
+            if _sha_v:
+                _bad.append("%s 没了" % _k)
             continue
         if _sha_v and _sha(_read(_p2) or "") != _sha_v:
             _bad.append("%s 变了" % _k)

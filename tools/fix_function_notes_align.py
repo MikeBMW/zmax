@@ -80,6 +80,9 @@ if "--apply" not in sys.argv or _missing:
     sys.exit(0 if not _missing else 1)
 doc["notes"] = out
 doc["count"] = len(out)
+# 2026-11-11: notes_by_name 也要跟着重建 —— 原来只改 notes, by_name 仍按旧名挂号 (实测缺 6 条当前名),
+#   而 engineering_db.build 优先按 notes_by_name 取描述 ⇒ 库里描述整体错位。
+doc["notes_by_name"] = {(v.get("name") or ""): dict(v, fn_id=fid) for fid, v in out.items() if v.get("name")}
 if orphan:
     doc["notes_orphan"] = {k: v for k, v in list(doc.get("notes_orphan", {}).items()) +
                            [(o.split(" ")[0], notes[o.split(" ")[0]]) for o in orphan]}
