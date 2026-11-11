@@ -2212,43 +2212,8 @@ var DRWN=0;
 //   两个求解器(页面 JS IK / 8802 Python IK)会落不同分支 ⇒ 同一 TCP 画出两种姿态。
 //   改成: 页面把**它自己算出的 6 轴角**推给 8802, 8802 只执行, 不再解 IK ⇒ 构造上一致。
 let _mjqT=0, _mjqN=0, _mjqErr=null;
-// 🤝 8802 关节真源 (老倪 2026-11-10「要跟 /ar3d 一样, 动作同步」)
-//   8802 每拍把**真正写进 qpos** 的 R/L 关节角挂在 /joints.json; 页面拿这组角做 FK 上屏。
-//   这样两个场景是同一组数, 不存在"JS IK 和 Python IK 各解一次"的分支差,
-//   也不要求这个标签页在前台/在推角 —— 只要 8802 在跑, 两边就一致。
-var SVRQ={ok:false,t:0,R:null,L:null,age:9,src:null};
-function svrQPoll(){
-  try{
-    var host=(location.hostname||'127.0.0.1');
-    fetch('http://'+host+':8802/joints.json',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
-      if(d&&d.fresh&&d.R&&d.R.length>=6){
-        var d2r=Math.PI/180;
-        SVRQ={ok:true,t:Date.now(),R:d.R.map(function(v){return v*d2r;}),
-              L:(d.L&&d.L.length>=6)?d.L.map(function(v){return v*d2r;}):null,
-              age:d.age_s||0,src:d.src||null};
-      } else { SVRQ.ok=false; SVRQ.age=(d&&d.age_s)||9; }
-    }).catch(function(){ SVRQ.ok=false; });
-  }catch(e){}
-}
-setInterval(svrQPoll, 100); setTimeout(svrQPoll, 400);
-// 🔴 谁是真源由服务器说: ar_cmd 在喂 (ac_driving) ⇒ 页面停推 /armq, 只镜像 /joints.json。
-//   (只看 joints.json 的 src 会自锁: 页面一推, 服务器就报 armq, 页面就永远以为自己该推)
-var AC_DRIVING=false;
-function acDrvPoll(){
-  try{
-    var host=(location.hostname||'127.0.0.1');
-    fetch('http://'+host+':8802/status.json',{cache:'no-store'}).then(function(r){return r.json();})
-      .then(function(d){ AC_DRIVING=!!(d&&d.ac_driving); }).catch(function(){});
-  }catch(e){}
-}
-setInterval(acDrvPoll, 500); setTimeout(acDrvPoll, 300);
 function mjPushQ(){
   try{
-    // 🔴 2026-11-10「/video 现在是乱动」+「两个场景动作要同步」:
-    //   8802 已由 ar_cmd (L2/L3/L4 链路) 驱动时, 页面再推自己的 JS IK 角就是**第二个写者抢 qpos**
-    //   ⇒ 两边各解一次 IK, 画面乱跳且对不上。这里改成纯镜像: 服务器在驱动就不推, 只读 /joints.json 做 FK。
-    if(typeof AC_DRIVING!=='undefined' && AC_DRIVING) return;   // 8802 由 ar_cmd 驱动 ⇒ 页面只镜像
-    if(typeof SVRQ!=='undefined' && SVRQ && SVRQ.ok && SVRQ.src==='ar_cmd' && (SVRQ.age||0)<1.5) return;
     const now=(typeof performance!=='undefined'?performance.now():Date.now());
     if(now-_mjqT<100) return; _mjqT=now;
     const d2r=180/Math.PI, conv=a=>a.map(v=>+(v*d2r).toFixed(2));
@@ -3703,11 +3668,7 @@ function plantAtAR(){
   // 🧈 60fps 续跑: 每帧按本地时间在**当前段内**前进, 再关节限速逼近 ⇒ 2.5Hz 数据也画得连续。
   //   (原来只有 10Hz 轮询里解一次 IK, 然后直接赋值 ⇒ 画面 91% 的帧静止、剩下的是瞬移)
   if(d && d.a && d.b){ try{ const qf=arCmdSolve(d, true); if(qf) ARCMD.q=qf; }catch(e){} }
-  if(SVRQ.ok && (Date.now()-SVRQ.t)<900){
-    // 8802 在出真值 ⇒ 直接用它写进 qpos 的那组角 (两臂), 页面只负责 FK 上屏
-    PREV.on=true; PREV.q=SVRQ.R.slice(); PREV.M=urdfFK(PREV.q);
-    if(SVRQ.L){ LARM.q=SVRQ.L.slice(); larmRecalc(); }
-  } else if(ARCMD.q){ PREV.on=true; PREV.q=arQStep(ARCMD.q); PREV.M=urdfFK(PREV.q); }
+  if(ARCMD.q){ PREV.on=true; PREV.q=arQStep(ARCMD.q); PREV.M=urdfFK(PREV.q); }
   try{ window.__ARQ=(PREV.q&&PREV.q.length)?PREV.q.slice(0,6):null; window.__ARTCP=(PREV.M&&PREV.M.length>=15)?[PREV.M[12],PREV.M[13],PREV.M[14]]:null; window.__ARD={kind:d.kind,label:d.label,u:d.u,a:d.a,b:d.b,seq:d.seq}; }catch(e){}
   // 🔴 2026-10-29 老倪: 「点全流程UPH 右臂能拿起光模块, 开状态空间就看不到手里那颗了」
   //   根因: 手里模块/源盘剩余/孔占用/检测标注 全靠 INSP.*, 而 INSP.* 只有全流程播放器(inspStep)在写,
@@ -4554,12 +4515,8 @@ function mjLayout(){
 }
 function mjCamObj(){
   const az=VR.yaw*180/Math.PI, el=-VR.pitch*180/Math.PI, t=VR.tgt||[0,0,0];
-  // 📐 w/h 一起推: 直播窗口(live=1)按这个画幅出图, 否则回落到 960x720(4:3), 横向视场与画布差三成
-  let w=0,h=0; try{ const c=$('vr'); if(c){ w=Math.round(c.clientWidth)||0; h=Math.round(c.clientHeight)||0; } }catch(e){}
-  const o={az:+az.toFixed(2), el:+el.toFixed(2), dist:+VR.dist.toFixed(4),
+  return {az:+az.toFixed(2), el:+el.toFixed(2), dist:+VR.dist.toFixed(4),
           tx:+t[0].toFixed(4), ty:+t[1].toFixed(4), tz:+t[2].toFixed(4), fovy:+MJ.fovy.toFixed(1)};
-  if(w&&h){ o.w=w; o.h=h; }
-  return o;
 }
 let _camPushLast='', _camPushT=0;
 function mjPushCam(force){

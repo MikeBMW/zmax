@@ -1,4 +1,4 @@
-远程: USB网卡(本机.23.50)→Orin tashan@.23.66 + 工控机.23.23 + intel550C.23.70; 网卡拔⇒仅wifi无常通路; 技能走ssh/运动走bridge39071
+远程: 网卡→Orin.23.66+工控机.23.23+intel.23.70直连; 拔⇒wifi(.43)经Orin跳; bridge39071; 小芳=cli_aac4912eb6389bc2在550C默认profile
 §
 NTP回拨8h(勿动RTC)→用monotonic; 判活判'未来时间戳'; cron ticker卡死→watchdog.timer
 §
@@ -30,13 +30,13 @@ L5规划器/safety=left_right/state_space/{planner,safety}.py; INTACT须常驻
 §
 LoRA需merge(否则零动作伪装):merge_lora_ckpt.py
 §
-ECS=仅web入口(TLS+反代+frp); 站点已搬550C(nginx:8081+php8.3+mysql,已对拍), 切流待点头; 资产走产线直连/U盘
+ECS=web入口; 站点已搬550C(nginx:8081), 切流待点头; 资产产线直连/U盘
 §
 GPU掉载主因=每步CPU>计算→静音日志+workers↑
 §
-工程根~/zmax=独立仓库(MikeBMW/zmax); zmax_data=模型+数据+HF+secrets/zmax.env; 训练带HF_HOME
+工程根~/zmax=仓库(MikeBMW/zmax); zmax_data=数据+HF+secrets(~/zmax_data=软链); 训练带HF_HOME
 §
-禁自行重启任何GUI/服务/进程, 只可停不可起; 重启须用户点名
+禁自重启GUI/服务/进程, 只可停不可起; 重启须点名
 §
 我=主节点(工控机+Orin); AOI.23.23=10082/10083(禁84/85); 更新=aoi_remote_deploy.py
 §
@@ -58,16 +58,18 @@ AR=8797: 底图4相机=8791(arm/gold/surface)+本机D435; /api/cams·/snap/<k>.j
 §
 奇异区: 姿态>5°被50113拒且腿假报到位(看真值); 转移=抬50→转身→低位横移→上方升降
 §
-建图=8793 manual走点(45s/轮); GS_MAP_MODE=auto回旧
+建图=8793走点45s/轮; GS_MAP_MODE=auto
 §
-版本号只听老倪; 现5.50.758
+版本号只听老倪; 仓VERSION.md为准(现5.50.770)
 §
-专利12件·渠74/74(patent_registry.json)
+专利12件
 §
 tool0读heartbeat.pose.flange(禁手推R,y差251mm); precheck需扣连杆半径(肘r78)+<20mm FAIL; 手臂相机围栏无此项盲区
 §
 MoveIt起点须SDK直采(禁手推)
 §
-rec48=48Hz只读记录器待部署; 建图缺RealSense
+反刷屏:回答≤两行;常驻输出静音
 §
-反刷屏: 回答≤两行(先人话); 启动/常驻循环输出默认静音落日志(file全量可查)
+intel出口=.23.66走Orin NAT(zmax-nat-intel;Orin sudo ts123)
+§
+新版必跑canvas_selfheal; 打包红线=软链必须解引用(cp -L), 否则Win画布加载失败; Win补丁每版同步新app

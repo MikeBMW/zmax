@@ -131,11 +131,6 @@ def arm_mjcf(side: str, base_x: float, base_y: float, base_z: float,
     # 🔧 IK/FK 锚点: ar_scene_render_server.py::ik_solve 找 **geom** `<side>_tcp`, FK 找 **site** `<side>_tcp`
     #    ⇒ 两个都要有, 且必须落在真正的 TCP (=tool1 模块头部)。重写夹爪时删掉了这两个 ⇒
     #    ik_solve 报 "找不到 R_tcp" ⇒ ar_cmd 驱动整条断, 双臂停在最后一帧 (老倪: 手臂不动)。
-    # 💡 腕部补光 (环光): 现场抓取头都有环形光; 没有它, 0.26m 的特写机位在**抬手 pose**下全黑
-    #    (实测 mean 8/255, 框在但画面没信息 ⇒ 训练集和在线特写都白搭)。灯挂在 tool1 上随动。
-    out.append('%s  <light name="%s_ring" pos="0 0 0.02" dir="0 0 -1" directional="false" '
-               'cutoff="70" exponent="1" diffuse="0.95 0.92 0.85" specular="0.05 0.05 0.05" '
-               'attenuation="1 0 0" castshadow="false"/>' % (ind, side))
     out.append('%s  <site name="%s_tcp" pos="0 0 0" size="0.004" rgba="1 0.2 0.2 1"/>' % (ind, side))
     out.append('%s  <geom name="%s_tcp" type="sphere" size="0.004" pos="0 0 0" group="5" '
                'contype="0" conaffinity="0" rgba="0 0 0 0"/>' % (ind, side))

@@ -34,6 +34,37 @@ metadata:
 ```
 本机 node/npm 在 `~/.hermes/tools/node-26.7.0-linux-x64/bin/`; npm registry 可达; 缺 LICENSE 只是警告。
 
+## 🪟 Windows 打包版上装 VSCode + 起 550B (2026-11-09 实测, 无管理员)
+
+现场: 本机只有打包控制台 `zmax_console/app8/Z-MAX_Console.exe` (PyInstaller), 没有 `code`, 没有
+`tools/gui/vscode_launch.py`, 也没有 `ZMAX.code-workspace` ⇒ 控制台的「打开 VSCode」按钮在这里不起作用,
+工程/工作区得自己立。
+
+1. **便携安装 (免管理员, 比 winget 可控)**:
+   `curl -L -o vscode.zip https://update.code.visualstudio.com/latest/win32-x64-archive/stable`
+   ⚠️ 实测 1.145.2 的 archive 是 **369MB**, 用 `curl -sI ... -L | grep -i content-length` 先拿总长,
+   按 size 相等判断下载完 (中途 `unzip -l` 报 `cannot find zipfile directory` = 没下完, 不是包坏)。
+   解包到 `~/vscode`, 入口 `~/vscode/bin/code.cmd`, `code.cmd --version` 回版本才算装好。
+   起窗口用 `code.cmd --new-window "<abs>/ZMAX.code-workspace"` —— 单例下不带 `--new-window` 只会转给已有实例;
+   不认识的选项(如 `--disable-extensions-not-installed`)只打 `not in the list of known options` 警告, 不阻断, 别去查。
+   给用户入口就建快捷方式 (WScript.Shell CreateShortcut: TargetPath=`vscode\Code.exe`, Arguments=workspace 绝对路径)。
+2. **工程/工作区**: 引擎根 = `app8/_internal` (有 `src/lerobot` + `tools` + `flows`), 数据根 = `~/zmax`
+   (启动器 `launch.vbs` 里 `ZMAX_ROOT` 就指它)。`ZMAX.code-workspace` 放这两个文件夹;
+   `window.title` 写 `Z-MAX 550B 标定版 · 单线程 debug`(标题就是验收判据)。
+3. **550B 口径落进 `.vscode/`**: `settings.json` 的 `terminal.integrated.env.windows` 里
+   `ZMAX_PRODUCT=550B` + OMP/MKL/OPENBLAS/NUMEXPR/VECLIB/TORCH 全 1 + `ZMAX_SINGLE_THREAD=1`
+   (与启动器 `SINGLE_THREAD_ENV` 同源); 省资源开关: `files.watcherExclude` (torch/models/zmax_data) ·
+   `search.exclude` · `editor.minimap` off · `git.enabled`/`git.autofetch` off · `extensions.autoUpdate` off ·
+   `python.analysis.indexing` off。
+4. **没有可用 Python ⇒ 用 tasks.json 代替 launch.json**: 冻结 exe 自带解释器 (`Z-MAX_Console.exe <script.py>`),
+   但 debugpy 进不去。所以三个 task: 画布全节点跑(`node_breakpoint_audit.py`) · 引擎直达
+   (`debug_run_engine.py --steps 120`) · 起 8793/8797 (`run_8793.bat`/`run_8797.bat`), `cwd` 必须是
+   `zmax_console/app8` (相对 `_internal/...`)。要真断点得另装一套带依赖的 Python (本机没有)。
+5. **验收 (不靠肉眼)**: `code.cmd --status` 输出里要有
+   `window [1] (Z-MAX 550B 标定版 · 单线程 debug)` + `Workspace Stats` 两个 Folder(引擎 >20000 files / 数据 23 files)
+   且 `Conf files: tasks.json settings.json`。截图取证在 Windows 上注意: 全屏截图只能拿到**前台窗口**
+   (Hermes 终端常在最前), 别把那张图当成 VSCode 没起来。
+
 ## 坑 (踩过的)
 1. **VSCode 单例**: 装完扩展后 `code <path>` 只会把请求转给**已在跑的实例** ⇒ 扩展不会加载, exthost 里查不到、日志为空。
    必须 `code -n <path>` (新窗口) 或触发 Reload Window; 或停掉旧实例再起。别以为"装了就生效"。
