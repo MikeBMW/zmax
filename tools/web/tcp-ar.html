@@ -1,6 +1,6 @@
 <!doctype html><html lang="zh"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Z-MAX AR3D r94 · SIM自动 · 位置细胞 · 8802直播</title>
+<title>Z-MAX AR3D r95 · SIM自动 · 位置细胞 · 8802直播</title>
 <style>
  *{box-sizing:border-box}
  body{margin:0;background:#0b0f14;color:#e6edf3;font:15px/1.5 -apple-system,Segoe UI,Roboto,"Noto Sans SC",sans-serif}
@@ -119,7 +119,7 @@
   <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
   <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
      style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-11-11 r94 · 轨迹点纳入取景+到位后补取景 · 📺 8802 直播窗口(渲染站自己推 MJPEG: 8802/video · /live 全屏外壳, 与工位渲染同源同帧) · 🧭 位置细胞层 · 🎥 MuJoCo 同视角 · 其它同 r91</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-11-11 r95 · 真实轨迹开关 · 📺 8802 直播窗口(渲染站自己推 MJPEG: 8802/video · /live 全屏外壳, 与工位渲染同源同帧) · 🧭 位置细胞层 · 🎥 MuJoCo 同视角 · 其它同 r91</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -317,6 +317,9 @@
       <button id="t5" class="sm" title="轨迹5 实时: 从当前 TCP 规划到左栏选中的 🎯 目标点 (默认 安全点1); 路径 = 原地升到安全高 → 平移 → 垂直落点; 换目标点会自动重算">轨迹5 实时</button>
       <button id="tOff" class="sm" title="只显示实测/规划轨迹, 不再叠命名轨迹">✕ 关掉命名轨迹</button>
       <button id="tFit" class="sm" title="把视角对准当前显示的轨迹(只有点这个按钮才会动相机; 点轨迹按钮不会跳)">🎯 对准</button>
+      <!-- 📍 老倪 2026-11-11「做一个按钮，可以打开和关闭真实轨迹」: 一键开关录制进来的真实轨迹,
+           不用去下面「轨迹点」里翻; 顺便把视角对准它(不然抬到 1m 的那段在框外看着像没画) -->
+      <button id="tReal" class="sm" title="显示/隐藏录制下来的真实轨迹(三维里那条洋红 3D 轨迹, 来自位姿真值录制) · 打开时视角自动对准它">📍 真实轨迹</button>
     </div>
     <!-- 🧱 第四行: 围栏盒子(长方体/上横梁/检测设备/前方相机) · 第五行: 直线(小红/小兰/小青)
          按钮由 paintFenceBtns() 按 /api/fence 的唯一依据动态生成, 点击=启用/停用该元素
@@ -1571,7 +1574,7 @@ async function loadFences(){
     if($('fMargin') && document.activeElement!==$('fMargin')) $('fMargin').value=Math.round(FMARGIN);
     $('tFence').textContent=FENCES.length+' 个';
     $('tFence').className='tag'+(FENCES.length?' on':'');
-    renderFenceList(); paintFenceBtns(); paintCorBtn(); drawVR();
+    renderFenceList(); paintFenceBtns(); paintCorBtn(); if(typeof paintRealBtn==='function') paintRealBtn(); drawVR();
     // 📍 首次拿到"轨迹点"后补一次取景 —— 启动那拍 vrFitBox 早于围栏到达, 录制的真实轨迹(会抬到 1m 高)会被裁在画外
     if(!window.__FIT_AFTER_PTS && FENCES.some(i=>i.type==='points' && i.enabled!==false)){
       window.__FIT_AFTER_PTS=1;
@@ -4932,6 +4935,31 @@ refreshAuthBadge(); setInterval(refreshAuthBadge, 3000);
   VR.auto=true; VR.camLock=0; VR.panOff=[0,0,0]; var _h=document.getElementById('panChip'); if(_h) _h.style.display='none';
   if(typeof vrFitBox==='function') vrFitBox(); drawVR();
 }); });
+// 📍 真实轨迹 一键开关 (老倪 2026-11-11): 认名字带「真实轨迹」的 points 元素, 没有就取最新一条 points
+function realTrajItem(){
+  const P=(FENCES||[]).filter(i=>i && i.type==='points');
+  const R=P.filter(i=>/真实轨迹/.test(i.name||''));
+  return R[R.length-1] || P[P.length-1] || null;
+}
+function paintRealBtn(){
+  const b=$('tReal'); if(!b) return;
+  const it=realTrajItem();
+  if(!it){ b.className='sm'; b.textContent='📍 真实轨迹'; b.title='还没有录制进来的真实轨迹 (tools/pose_to_ar.py)'; return; }
+  b.className='sm'+(it.enabled?' on':'');
+  b.textContent='📍 真实轨迹 '+(it.pts||[]).length+'点';
+  b.title=(it.enabled?'显示中 · 点一下隐藏':'已隐藏 · 点一下显示')+' · '+(it.name||'');
+}
+{ const b=$('tReal'); if(b) b.addEventListener('click', async ()=>{
+    const it=realTrajItem();
+    if(!it){ const p=$('pTraj'); if(p) p.textContent='还没有录制进来的真实轨迹'; return; }
+    await fencePost('/api/fence/update',{id:it.id, enabled:!it.enabled});   // 内部会 loadFences + drawVR
+    const it2=realTrajItem();
+    if(it2 && it2.enabled){                                                // 打开就把视角对准它(抬到 1m 那段才不会被裁)
+      VR.auto=true; VR.camLock=0; VR.panOff=[0,0,0];
+      if(typeof vrFitBox==='function') vrFitBox(); drawVR();
+    }
+    paintRealBtn();
+  }); }
 $('tOff').addEventListener('click',()=>clearNamed());
 $('bAll').addEventListener('click',async ()=>{
   const r=await (await fetch('/api/traj/baseline',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -5391,7 +5419,7 @@ async function robotTick(){
         drw:(typeof DRWN!=='undefined')?DRWN:null,
         cw:(document.getElementById('vr')||{}).width||null,
         ch:(document.getElementById('vr')||{}).height||null,
-        bld:'2026-11-11 r94',
+        bld:'2026-11-11 r95',
         // 🩺 2026-10-29 老倪「开状态空间就看不到手里那颗模块」: 手里有没有货 / 落在第几段 直接上报
         drv:(typeof ARCMD!=='undefined'&&ARCMD.drv)||'',
         carry:(typeof INSP!=='undefined'&&INSP.carry)?1:0,
