@@ -2,7 +2,8 @@
 """本机 AOI 镜像服务的「帧源」—— 判据代码是产线的，像素从哪来必须写明。
 
 方案 (按 `ZMAX_AOI_LOCAL_<KIND>_SRC` 选, KIND=GOLD|SURFACE):
-    remote:<host>   工控机在跑时取它的原图 (gold 优先 /preview.jpg, 否则 /picture?kind=origin&grab=1;
+    remote:<host>   工控机上的取图口 (产线的 AOI 程序, 或轻量 provider:
+                    tools/aoi/cam_provider.py 只做 抓帧→JPEG, 不起模型/不写盘) (gold 优先 /preview.jpg, 否则 /picture?kind=origin&grab=1;
                     surface 用 /picture?kind=origin&grab=1 —— v20 起有这个口)
     cam:<url>       直接抓一个 JPEG 的 URL (如本机 8797: http://127.0.0.1:8797/snap/gold.jpg)
     file:<path>     指定一张图 (回放/取证)
