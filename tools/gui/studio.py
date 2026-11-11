@@ -1252,7 +1252,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.50.771")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.50.772")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.ensurePolished()                     # 先套上样式再量字, 否则 sizeHint 按默认字体算
         ver.setToolTip("版本号在此 (侧栏品牌位)\n"
                        "顶栏标题 = 产品标识「XSpace ZMAX <产品号>」, 与配置中心产品配置同源 (config/platform/zmax_product.json)\n"
@@ -12738,6 +12738,7 @@ class StudioMainWindow(QMainWindow):
         self._set_console_title()
         # 🐛 2026-09-01 老倪: 调试自检 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.50.772: 专利020 度规硬注入(训练端马氏损失+推理端ODE步内注入+公差盒投影)与自主训练六段闭环落地; 实测步内注入末态0.0006mm vs 终点叠加0.0203mm(34x), 无限幅过冲8.4x; 训练端加权收益仅2.5%、容量受限时径向崩1669% ⇒ 推理端收益是训练端38倍; 落地四层且真源默认enabled=false零回退; 20件专利在册, verify 20/20
         # v5.50.771: v5.50.771: AR3D 8802 直播流+3D坐标唯一真源(位置细胞133) + AR 上游探活(8791→8793) + 产品大屏=本机8793 + Windows 包自包含(单实例闸/随包 tools·config·真画布 94 节点); 根因: 旧包在 Windows 上多实例抢相机、画布 0 节点、按钮指别机端口
         # v5.50.770: AR 自由视角/8802 任意视角框架 + SIM 骨骼真值层(/bones.json) + 摄像头 off 档不再被 builtin 抢回; 根因: 视角被锁定与 off 档被回退 = 用户操作无反应/设备被抢
         # v5.50.768: v5.50.768: 算力实测(550A/550C 三设备)+55D 端侧部署+BOM三档成本+手册M4(299页); 根因: 100ms 拍预算此前无实测依据, 成本档位与目标30/22/35万未对账
@@ -13732,7 +13733,7 @@ class StudioMainWindow(QMainWindow):
         #   ⇒ 状态栏右下角那组控件 (_latency_label「延迟: xx ms」+ _engine_status「● 本地就绪」+
         #      _engine_combo「ACT (Local · 1ms)」) 整组删除, 不再建、不再挂到状态栏。
         #      保留 sb.showMessage(...) 的一行总览, 界面上不再有这组无用读数 (引擎实际由画布/工程配置决定)。
-        sb.showMessage("Z-MAX v5.50.771  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.50.772  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🔴 2026-10-12 老倪(定规矩): 「点开启动图标后, 3D场景不要自动启动, 我要先检查任务配置, 然后启动工程」
         #   本段以下所有自动开窗/自动运行**一律只在显式 env 下触发**(ZMAX_AUTO_*), 正常双击图标时:
@@ -16191,7 +16192,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.50.771</b> · 多模态动作专家<br>
+<b>Z-MAX v5.50.772</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>
