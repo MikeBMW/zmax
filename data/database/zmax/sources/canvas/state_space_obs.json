@@ -2285,7 +2285,7 @@
      "工程库": "data/database/zmax/zmax_engineering.db"
     },
     "cfg_snapshot": {
-     "loaded_at": "2026-11-11 15:30:24",
+     "loaded_at": "2026-11-12 00:14:43",
      "files_total": 8,
      "files_ok": 8,
      "orders": 12,
@@ -2349,12 +2349,12 @@
      "口径": "一个状态空间工程承载全部任务; 任务=配方段子集+参数覆盖"
     },
     "source_symbol": "def import_config_files(",
-    "cfg_loaded_at": "2026-11-11 15:30:24",
+    "cfg_loaded_at": "2026-11-12 00:14:43",
     "cfg_files": [
      {
       "name": "总工程文件",
       "rel": "data/database/zmax/zmax_space.proj",
-      "sha256": "ac07c8feadd0b7b9",
+      "sha256": "ac369af9c96e3c37",
       "exists": true
      },
      {
@@ -2390,7 +2390,7 @@
      {
       "name": "主参数M能量标定",
       "rel": "config/calib/zmax_manifold.json",
-      "sha256": "83f6275ebb492efc",
+      "sha256": "ed3ffbce5cbddce7",
       "exists": true
      },
      {
