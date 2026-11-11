@@ -36,7 +36,7 @@ GPU掉载主因=每步CPU>计算→静音日志+workers↑
 §
 工程根~/zmax=仓库(MikeBMW/zmax); zmax_data=数据+HF+secrets(~/zmax_data=软链); 训练带HF_HOME
 §
-禁自重启GUI/服务/进程, 只可停不可起; 重启须点名
+禁自重启GUI/服务(只可停);重启须点名
 §
 我=主节点(工控机+Orin); AOI.23.23=10082/10083(禁84/85); 更新=aoi_remote_deploy.py
 §
@@ -50,7 +50,7 @@ AR=8797: 底图4相机=8791(arm/gold/surface)+本机D435; /api/cams·/snap/<k>.j
 §
 任务7=TASK-07-AOI(=AR·L5自进化); 任务↔场景=ss_scene_switch.py(FW/TRAY/AOI); 信号色标=sig_scene_tags.py
 §
-场景色: 插拔绿/摆盘蓝/AR紫(3D按钮=配置中心=信号分析)
+场景色: 插拔绿/摆盘蓝/AR紫(3D按钮=配置中心)
 §
 控制进程: 按端口/pid找(ss -ltnp), 禁ps|grep名(自杀); 杀进程写脚本别内联; sudo免密; MoveIt起点=SDK直采
 §
@@ -62,7 +62,7 @@ AR=8797: 底图4相机=8791(arm/gold/surface)+本机D435; /api/cams·/snap/<k>.j
 §
 版本号只听老倪; 仓VERSION.md为准(现5.50.770)
 §
-专利12件
+专利20件(001-020)
 §
 tool0读heartbeat.pose.flange(禁手推R,y差251mm); precheck需扣连杆半径(肘r78)+<20mm FAIL; 手臂相机围栏无此项盲区
 §
