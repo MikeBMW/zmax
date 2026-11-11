@@ -163,6 +163,24 @@ def inspect_aoi(frame, log=None, cache=None, publish=None):
     res, sig = inspect_quality(frame, log=log, cache=cache, publish=publish)
 
     _gy = gold_yolo = _gold = gold_remote = _surf = surface = None
+    # 🔀 2026-11-11 (老倪「把工控机的 10082/10083 服务代码复制过来，搞成一样的，可以旁路 AOI 检测」):
+    #   本机镜像优先 —— 工控机停机时 10082/10083 什么都不回, 三路旁路全降级; 而本机镜像跑的是
+    #   **同一份产线判据代码**(service/prod/*.py, sha256 一致), 只是像素来自帧源。
+    #   判据 basis 不同(产线 YOLO 的加密权重本机没有) ⇒ 独立字段, 绝不混进"工控机真值"话题。
+    gold_local = surface_local = None
+    _local_bp = None
+    try:
+        from .local import local_bypass as _local_bp
+    except Exception as e:                                                # noqa: BLE001
+        if log:
+            log(f"⚠️ 本机 AOI 镜像客户端不可用: {type(e).__name__}: {e}")
+    if _local_bp is not None:
+        try:
+            _lg = _local_bp("gold", log=log, cache=cache)
+            gold_local = (_lg or {}).get("verdict")
+        except Exception as e:                                            # noqa: BLE001
+            if log:
+                log(f"⚠️ 本机镜像(金手指)跳过: {type(e).__name__}: {e}")
     try:
         from .gold_yolo import gold_yolo_bypass
         _gy = gold_yolo_bypass(log=log, cache=cache, publish=publish)   # 本机 YOLO 推理
@@ -171,22 +189,37 @@ def inspect_aoi(frame, log=None, cache=None, publish=None):
             log(f"⚠️ 金手指本机 YOLO 旁路跳过: {type(e).__name__}: {e}")
     try:
         from .gold import gold_bypass
-        _gold = gold_bypass(log=log, cache=cache, publish=publish)      # 搬运 10082 真判决
-        gold_remote = (cache.get("gold_aoi") or {}).get("verdict")
+        # 本机镜像已经出了金手指结果 ⇒ 不再打 10082 (省一次 1.2s HTTP); 要强制双路都取: ZMAX_AOI_LOCAL=0
+        if gold_local is None:
+            _gold = gold_bypass(log=log, cache=cache, publish=publish)  # 搬运 10082 真判决
+            gold_remote = (cache.get("gold_aoi") or {}).get("verdict")
     except Exception as e:                                                 # noqa: BLE001
         if log:
             log(f"⚠️ 金手指搬运旁路跳过: {type(e).__name__}: {e}")
+    if _local_bp is not None:
+        try:
+            _ls = _local_bp("surface", log=log, cache=cache)
+            surface_local = (_ls or {}).get("verdict")
+        except Exception as e:                                            # noqa: BLE001
+            if log:
+                log(f"⚠️ 本机镜像(表面)跳过: {type(e).__name__}: {e}")
     try:
         from .surface import surface_bypass
-        _surf = surface_bypass(log=log, cache=cache, publish=publish)   # 10083 本机重算
-        _sa = cache.get("surface_aoi") or {}
-        surface = _sa.get("verdict") or _sa.get("why")
+        if surface_local is None:                                         # 本机镜像已出结果就不抢 10083 相机
+            _surf = surface_bypass(log=log, cache=cache, publish=publish)  # 10083 本机重算
+            _sa = cache.get("surface_aoi") or {}
+            surface = _sa.get("verdict") or _sa.get("why")
     except Exception as e:                                                 # noqa: BLE001
         if log:
             log(f"⚠️ 表面旁路跳过: {type(e).__name__}: {e}")
 
-    return quality_report(res, sig_n=len(sig), gold_yolo=gold_yolo or _gy,
+    _rep = quality_report(res, sig_n=len(sig), gold_yolo=gold_yolo or _gy,
                           gold_remote=gold_remote, surface=surface)
+    # 本机镜像这一路的判决/来源单列 (调用方一看就知道"这是本机判据", 不是工控机真值)
+    _rep["gold_local"] = gold_local or (cache.get("gold_local") or {}).get("verdict")
+    _rep["surface_local"] = surface_local or (cache.get("surface_local") or {}).get("verdict")
+    _rep["local_mirror"] = {"gold": cache.get("gold_local"), "surface": cache.get("surface_local")}
+    return _rep
 
 
 __all__ = ["inspect_quality", "inspect_aoi", "quality_signals", "quality_report",
