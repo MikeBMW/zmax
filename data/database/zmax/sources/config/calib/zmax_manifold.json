@@ -8,7 +8,7 @@
   ],
   "_unit": "等效惯量尺度 (无量纲归一化; 物理类比 kg, 信息类比 Fisher/Hessian 曲率尺度)",
   "_flow": "二阶: v ← v + (F/M)·dt; p ← exp_p(v·dt)   (M→0 ⇒ 一阶过阻尼 = 旧 GD)",
-  "_updated_at": "2026-10-14 16:55:49",
+  "_updated_at": "2026-11-11 08:15:00",
   "metric": {
     "dim": 6,
     "mode": "diag",
@@ -77,6 +77,32 @@
     "force_k": 6.0,
     "force_abort_ratio": 1.5,
     "contact_stiffness": 6.0,
-    "_doc_tactile": "视触觉融合: 远场视觉主导、接触后触觉主导。∇V_tac ∝ +F_radial (力=排斥=势能上升方向; 写成 −F 会把模块推出孔)。force_max=40N 与现场插入力上限一致; contact_stiffness(K,N/mm) 用于把力反解成偏差做限幅, 缺它必极限环。"
+    "_doc_tactile": "视触觉融合: 远场视觉主导、接触后触觉主导。∇V_tac ∝ +F_radial (力=排斥=势能上升方向; 写成 −F 会把模块推出孔)。force_max=40N 与现场插入力上限一致; contact_stiffness(K,N/mm) 用于把力反解成偏差做限幅, 缺它必极限环。",
+    "hard_inject": {
+      "_doc": "度规硬注入 ZMP-2026-020 — 训练端马氏损失 + 推理端ODE步内注入 + 公差盒投影。与 inject 段共用 sigma_t/sigma_n; 本段只管硬注入自身参数。",
+      "enabled": false,
+      "_why_default_off": "默认关闭 = 零回退。开启前须确认调用方已按 step 模式接好, 否则行为与旧版不同。",
+      "mode": "step",
+      "_modes": {
+        "step": "每个积分步内注入(ZMP-020 主张, 实测末态 0.0006mm)",
+        "terminal": "仅在生成终点叠加一次(旧 013 做法, 实测 0.0203mm)"
+      },
+      "step_cap_ratio": 0.95,
+      "_step_cap_doc": "单步位移上限 = ratio × ‖P_t·∇V‖（按径向算，不能被轴向大位移撑大）",
+      "proj_tol_r_mm": 0.3,
+      "_proj_doc": "公差盒投影半径上限; 仅约束径向, 轴向放行以保证推进通道",
+      "loss": {
+        "mode": "metric",
+        "_modes": {
+          "metric": "马氏加权 eᵀMe (纯 020 主张)",
+          "isotropic": "各向同性 L2 (对照/基线)",
+          "hybrid": "马氏 + 径向保底 λ‖e_t‖² (容量受限时必须)"
+        },
+        "lambda_radial": 0.0,
+        "_lambda_doc": "径向保底系数。实测容量受限时纯 metric 使径向误差 +948%; λ 无免费午餐, 应按'解析层单拍可修正量'反推(实测 λ=10 时轴向 +22.7%/径向 −20.1%)"
+      },
+      "_verified": "tools/verify_metric_hard_inject.py — A/B/C/D/E 共 20 项全过",
+      "_key_finding": "推理端步内注入收益 94.9% >> 训练端马氏加权 2.5% (约 38 倍); 且无附加限幅时终点叠加会过冲 8.4 倍。算力有限时优先投推理端。"
+    }
   }
 }

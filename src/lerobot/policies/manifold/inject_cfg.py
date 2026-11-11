@@ -116,4 +116,39 @@ def enabled(cfg: dict | None = None) -> bool:
     return bool(c.get("enabled", True)) and not c.get("_missing") and not c.get("_err")
 
 
-__all__ = ["load", "geometry", "enabled", "src_path"]
+def hard(cfg: dict | None = None) -> dict:
+    """读取度规硬注入参数（ZMP-2026-020）。缺失或关闭时返回空 dict。
+
+    零回退契约：返回 {} ⇒ 调用方不得注入，行为与旧版逐位一致。
+    """
+    c = cfg if cfg is not None else load()
+    h = (c or {}).get("hard_inject")
+    if not isinstance(h, dict) or not bool(h.get("enabled", False)):
+        return {}
+    out = {}
+    for k in ("mode",):
+        v = h.get(k)
+        if isinstance(v, str):
+            out[k] = v
+    for k in ("step_cap_ratio", "proj_tol_r_mm"):
+        v = h.get(k)
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            out[k] = float(v)
+    loss = h.get("loss") if isinstance(h.get("loss"), dict) else {}
+    if isinstance(loss.get("mode"), str):
+        out["loss_mode"] = loss["mode"]
+    lv = loss.get("lambda_radial")
+    if isinstance(lv, (int, float)) and not isinstance(lv, bool):
+        out["loss_lambda"] = float(lv)
+    # 与 013 共用几何参数：没有 σt/σn 就无法构造度规 ⇒ 视为未启用
+    g = geometry(c)
+    if "sigma_t_mm" not in g or "sigma_n_mm" not in g:
+        return {}
+    out.update({"sigma_t_mm": g["sigma_t_mm"], "sigma_n_mm": g["sigma_n_mm"],
+                "K_contact": g.get("contact_stiffness", 6.0),
+                "force_max": g.get("force_max", 40.0),
+                "force_abort_ratio": g.get("force_abort_ratio", 1.5)})
+    return out
+
+
+__all__ = ["load", "geometry", "enabled", "hard", "src_path"]
