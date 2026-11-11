@@ -951,6 +951,11 @@ def _abs_skills() -> dict:
 
 
 _CTL_ABS_SKILLS = {
+    # 🆕 2026-11-11 老倪: 「实时位姿下面加一个手动输入编辑栏, 输入位姿就移动到该位姿」
+    #    与点1/点2 同一套链(授权真动 → 限流 → FIFO → 执行器裁决 → 回执), 唯一区别是
+    #    目标位姿由页面输入(pose=6 个数字), 不再锁在示教点库里 —— 所以额外加了量纲闸
+    #    (±2000mm / ±360°) 与单次 Δ 闸(≤300mm, ≤30°), 手输错一位数不当摇杆用。
+    "L2.goto_tcp_abs": "🎯 移动到输入位姿",
     "L2.goto_gold_pt1": "🎯 回到金手指点1",
     # 🎯 2026-10-08 老倪: 「记录当前点，增加 金手指点2 按钮」 —— 与 goto_gold_pt1 同规格:
     #    只送技能 id, 目标点『金手指点2』真值在示教点库 + 执行器 point_locked 收口(页面/接口都改不了点位)。
@@ -2783,6 +2788,23 @@ def _beep_alive() -> bool:
     return False
 
 
+def _daemon_has_feature(name: str, max_age_s: float = 3600.0) -> bool:
+    """执行器自报能力(l2_features.json, 由 daemon 启动时写)。
+
+    🆕 2026-11-11: 绝对位姿上线时踩到的真风险 —— 老版执行器不认识 spec.pose6, 会落到
+    line_abs 的默认点(home): 演练回执里目标变成 (0.6639,-0.0293,0.2935), 与页面输入无关,
+    而页面看不出差别 ⇒ 一授权真动就是往 home 飞。所以**下发前先问执行器支不支持**。
+    """
+    p = os.path.join(os.path.dirname(_L2_FIFO), "l2_features.json")
+    try:
+        if (time.time() - os.path.getmtime(p)) > max_age_s:
+            return False
+        d = json.load(open(p, encoding="utf-8")) or {}
+        return bool(d.get(name))
+    except Exception:                                                        # noqa: BLE001
+        return False
+
+
 def _ctl_move(req: dict) -> dict:
     """🕹 手动点动: 白名单校验 → 双重授权 → 限流 → 写执行器 FIFO → **等回执**。
 
@@ -2790,6 +2812,43 @@ def _ctl_move(req: dict) -> dict:
     不是"已发送"这种自报。
     """
     sid = str(req.get("skill") or "")
+    # 🆕 2026-11-11 绝对位姿输入: 先把 6 个数字解析干净并过量纲/Δ 闸, 再进通用授权链。
+    #   手输 596→5.96 这种量纲错误, 靠人眼看不住 —— 这里直接拒, 不进 FIFO。
+    _v6, _pose_raw, _dmm = None, "", None
+    if sid == "L2.goto_tcp_abs":
+        _pose_raw = str(req.get("pose") if req.get("pose") is not None else "").replace("，", ",").strip()
+        _parts = [x for x in _pose_raw.replace(" ", ",").split(",") if x != ""]
+        try:
+            _v6 = [float(x) for x in _parts]
+        except (TypeError, ValueError):
+            return {"ok": False, "msg": "位姿要 6 个数字(x,y,z 毫米 · a,b,c 度), 收到: %r" % _pose_raw}
+        if len(_v6) != 6:
+            return {"ok": False, "msg": "位姿要 6 个数字(x,y,z,a,b,c), 收到 %d 个: %r" % (len(_v6), _pose_raw)}
+        _x, _y, _z, _a, _b, _c = _v6
+        if not (-2000.0 <= _x <= 2000.0 and -2000.0 <= _y <= 2000.0 and -300.0 <= _z <= 2300.0):
+            return {"ok": False, "msg": "位置超界(毫米): x/y ∈ ±2000, z ∈ -300~2300"}
+        if not all(-360.0 <= _v <= 360.0 for _v in (_a, _b, _c)):
+            return {"ok": False, "msg": "姿态角超界(度): a/b/c ∈ ±360"}
+        if not _daemon_has_feature("pose6"):
+            return {"ok": False, "denied": True, "code": 503,
+                    "msg": "🚫 执行器还没加载「绝对位姿」能力(缺 zmax_data/l2_features.json 的 pose6 标记): "
+                           "先在主机执行 `sudo systemctl restart zmax-l2-daemon`, 再点一次"}
+
+        _pz = _rokae_pose()
+        _cur, _cab = _pz.get("xyz") or [], _pz.get("abc_deg") or []
+        if not _pz.get("stale") and len([_v for _v in _cur if _v is not None]) == 3:
+            _dx = (_x / 1000.0 - _cur[0]) * 1000.0
+            _dy = (_y / 1000.0 - _cur[1]) * 1000.0
+            _dz = (_z / 1000.0 - _cur[2]) * 1000.0
+            _dmm = (_dx * _dx + _dy * _dy + _dz * _dz) ** 0.5
+            if _dmm > 300.0:
+                return {"ok": False, "msg": "单次平动 %.0fmm 超 300mm 上限(Δ=%+.0f,%+.0f,%+.0fmm): 请分两步走"
+                        % (_dmm, _dx, _dy, _dz)}
+            if len([_v for _v in _cab if _v is not None]) == 3:
+                _da = max(abs(_a - _cab[0]), abs(_b - _cab[1]), abs(_c - _cab[2]))
+                if _da > 30.0:
+                    return {"ok": False, "msg": "单次姿态变化 %.1f° 超 30° 上限(当前 a/b/c=%s): 请分两步转"
+                            % (_da, _cab)}
     _abs = _abs_skills().get(sid)
     if sid not in _CTL_SKILLS and _abs is None:
         return {"ok": False, "msg": "技能 %r 不在手动控制白名单里" % sid}
@@ -2836,6 +2895,12 @@ def _ctl_move(req: dict) -> dict:
                 "msg": "未授权真动(现场安全): 先点页面上『🔓 授权真动』并二次确认(现场确认无人), "
                        "再操作; 授权 %.0f 分钟后自动失效" % _win}
     cmd = {"skill": sid, "speed": speed} if pname is None else {"skill": sid, pname: val, "speed": speed}
+    if _v6 is not None:
+        # 绝对位姿: 执行器 build_move 见到 pose6 就直接走 /move_pose(位置+姿态一次到位)
+        cmd["pose6"] = [round(v, 4) for v in _v6]
+        cmd["manual_point"] = True          # 与"点1"同口径: 人工单点回位(抬升闸不硬拦, 绝对值红线照旧)
+        if _dmm is not None:
+            cmd["req_d_mm"] = round(_dmm, 1)
     # 🧭 2026-10-18 老倪: 「步长…补上」+「要在 trace 和信号分析看到 plan 节点的信号」——
     #   把**页面口径**一起带给执行器 (mm/s 与步长), 让它落进段表 req_* 字段;
     #   执行器只读不用 (真实速度仍用换算后的 speed), 纯溯源, 零行为变化。
@@ -2915,7 +2980,8 @@ def _ctl_move(req: dict) -> dict:
     #    **不冒充当次已下发**(也不让现场把"还没动"当成"点了没反应/坏了"); 页面继续追 /ctl/log
     #    直到出现「受理: 已下发」或「🛑 被拦(...) ⇒ 拒发」那一行。
     _pend = bool(buf) and ("受理" not in buf) and ("等针对该动作的裁决" in buf or "告知 VL" in buf)
-    _par = {} if pname is None else {pname: val}
+    _par = ({"pose": _pose_raw, "d_mm": (None if _dmm is None else round(_dmm, 1))}
+            if _v6 is not None else ({} if pname is None else {pname: val}))
     out = {"ok": True, "dry": not want_real, "skill": sid, "param": _par, "speed": speed,
            "speed_mm_s": round(speed_mm_s, 1),
            "pending": bool(_pend and want_real),

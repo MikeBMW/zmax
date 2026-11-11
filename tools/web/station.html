@@ -255,6 +255,18 @@ aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
 #posehud .pv .v{color:#e6edf3;font-weight:700;font-size:14px;white-space:nowrap}
 #posehud .pv .v.bad{color:#f85149}
 #posehud .hint{margin-top:3px}
+/* 🆕 2026-11-11 手动输入位姿栏(老倪: 「实时位姿下面增加每个位姿的手动输入编辑栏」) —— 一行 6 个输入框,
+   与上面 6 个只读值同宽同字体(数字对齐不跳), 下面一行 = 速度 + 移动按钮; 手机上换行不挤。 */
+#poseedit{margin-top:6px;display:flex;flex-direction:column;gap:6px}
+#poseedit .perow{display:flex;gap:6px}
+#poseedit .pi{flex:1 1 0;min-width:0;background:#0d1117;color:#e6edf3;border:1px solid #30363d;
+  border-radius:6px;padding:6px 4px;font:600 13px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;text-align:center}
+#poseedit .pi:focus{border-color:#58a6ff;outline:none;box-shadow:0 0 0 1px #58a6ff}
+#poseedit .pi.chg{border-color:#d29922}
+#poseedit .perow2{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#poseedit .psp{flex:0 0 72px;text-align:center}
+#pegobtn{flex:1 1 auto;font-weight:700;font-size:15px;padding:8px 10px}
+#pe_state{font-size:11px;color:#8b949e}
 /* 📱 窄屏(手机): 字缩小保证仍是横向一排, 不换行、不截断数字 */
 @media (max-width:820px){#posehud .posegrid{gap:3px} #posehud .pv .v{font-size:12px} #posehud .pv .k{font-size:10px}}
 /* 📱 2026-10-01 (老倪: 「我要远程操作 / 手机远程控制」) —— 手机竖屏断点。
@@ -691,6 +703,25 @@ var HTML_VER="__HTMLVER__";</script>
         <span class="pv"><i class="k">C</i><b class="v" id="ph_c">—</b></span>
       </div>
       <div class="hint" id="ph_age">读位姿中…</div>
+      <!-- 🆕 2026-11-11 老倪: 「在实时位姿下面，增加一个每个位姿的手动输入编辑栏，我可以输入位姿，
+           然后移动到这个位姿」 —— 6 个输入框(默认自动填当前位姿, 手改过就不再被轮询覆盖) + 速度 + 移动按钮。
+           走的是与方向键/点1 同一条链: 白名单 → 授权真动 → 限流 → FIFO → 执行器裁决 → 回执(原样摆出来)。
+           服务端另加两道闸: 量纲(±2000mm / ±360°) 与单次 Δ(≤300mm、≤30°), 手输错量级不会直接下发。 -->
+      <div id="poseedit">
+        <div class="perow">
+          <input class="pi" id="pe_x" inputmode="decimal" placeholder="X mm" oninput="peDirty(this)">
+          <input class="pi" id="pe_y" inputmode="decimal" placeholder="Y mm" oninput="peDirty(this)">
+          <input class="pi" id="pe_z" inputmode="decimal" placeholder="Z mm" oninput="peDirty(this)">
+          <input class="pi" id="pe_a" inputmode="decimal" placeholder="A °" oninput="peDirty(this)">
+          <input class="pi" id="pe_b" inputmode="decimal" placeholder="B °" oninput="peDirty(this)">
+          <input class="pi" id="pe_c" inputmode="decimal" placeholder="C °" oninput="peDirty(this)">
+        </div>
+        <div class="perow2">
+          <input class="pi psp" id="pe_spd" value="50" inputmode="decimal" title="速度 mm/s (1~1000)">
+          <button id="pegobtn" onclick="poseGoto(this)" title="按上面 6 个数字移动: 位置+姿态一次到位 (/move_pose)">🎯 移动到该位姿</button>
+          <span id="pe_state">mm/s · 单次 ≤300mm / ≤30°</span>
+        </div>
+      </div>
     </div>
     <!-- ── 🔴 碰撞点台账 (2026-10-01 老倪: 「增加技能，记录所有碰撞点…显示在实时位姿下面，紧挨着，
          红色字体，可以拖动显示所有碰撞点，最上面显示最新的」) —— 数据来自控制器报警日志(原生 #30400/#13036)
@@ -894,6 +925,52 @@ function poseHud(tp){
     S('ph_age','读不到位姿');
   }
   const h=g('posehud'); if(h) h.classList.toggle('stale', st||!has);
+  try{ peSync(tp); }catch(_e){}   // 🆕 手动输入栏跟着实时位姿填当前值(手改过后不再覆盖)
+}
+/* 🆕 2026-11-11 老倪: 手动输入位姿 → 移动到该位姿 (实时位姿卡片下面那块输入栏)。
+   数据流与方向键/点1 完全同一条链(白名单 → 授权真动 → 限流 → FIFO → 执行器裁决 → 回执原样摆出);
+   服务端另过量纲闸(±2000mm/±360°)与单次 Δ 闸(≤300mm、≤30°), 这里只做同一口径的即时提示。 */
+let PE_DIRTY=false, PE_CUR=null;
+function peDirty(el){ PE_DIRTY=true; if(el) el.classList.add('chg'); peHint(); }
+function peHint(){
+  const st=$('#pe_state'); if(!st) return;
+  if(!PE_CUR){ st.textContent='mm/s · 单次 ≤300mm / ≤30° (暂读不到当前位姿)'; st.style.color='#8b949e'; return; }
+  const v=['x','y','z','a','b','c'].map(k=>parseFloat(($('#pe_'+k)||{}).value));
+  if(v.some(x=>!isFinite(x))){ st.textContent='mm/s · 单次 ≤300mm / ≤30°'; st.style.color='#8b949e'; return; }
+  const d=Math.hypot(v[0]-PE_CUR.xyz[0], v[1]-PE_CUR.xyz[1], v[2]-PE_CUR.xyz[2]);
+  const da=Math.max(...[0,1,2].map(i=>Math.abs(v[3+i]-(PE_CUR.abc[i]==null?v[3+i]:PE_CUR.abc[i]))));
+  const bad=(d>300||da>30);
+  st.textContent='Δ '+fmt(d,1)+'mm / '+fmt(da,1)+'°'+(bad?' ⛔ 超单次上限, 请分两步':'');
+  st.style.color=bad?'#f85149':'#8b949e';
+}
+function peSync(tp){
+  PE_CUR=(tp&&tp.xyz&&tp.xyz[0]!==null&&tp.xyz[0]!==undefined)
+    ? {xyz:tp.xyz.map(v=>v*1000), abc:(tp.abc_deg||[]), stale:!!tp.stale} : null;
+  if(PE_DIRTY||!PE_CUR||PE_CUR.stale){ peHint(); return; }     // 手改过 / 源已静止 ⇒ 绝不覆盖用户输入
+  const put=(id,v)=>{const e=$('#'+id); if(e&&v!==null&&v!==undefined) e.value=Math.round(v*10)/10;};
+  ['x','y','z'].forEach((k,i)=>put('pe_'+k,PE_CUR.xyz[i]));
+  ['a','b','c'].forEach((k,i)=>put('pe_'+k,PE_CUR.abc[i]));
+  peHint();
+}
+async function poseGoto(btn){
+  const v=['x','y','z','a','b','c'].map(k=>parseFloat(($('#pe_'+k)||{}).value));
+  if(v.some(x=>!isFinite(x))){ $('#msg').textContent='位姿要 6 个数字: x y z (mm) + a b c (度)'; $('#msg').className='bad'; return; }
+  if(PE_CUR && !PE_CUR.stale){
+    const d=Math.hypot(v[0]-PE_CUR.xyz[0], v[1]-PE_CUR.xyz[1], v[2]-PE_CUR.xyz[2]);
+    if(d>300){ $('#msg').textContent='⛔ 单次平动 '+fmt(d,0)+'mm 超 300mm 上限 —— 先输中间点, 分两步走'; $('#msg').className='bad'; return; }
+  }
+  const spd=Math.max(1,Math.min(1000,parseFloat(($('#pe_spd')||{}).value||'50')||50));
+  const real=ARMED;
+  btn.disabled=true; const un=setTimeout(()=>{btn.disabled=false;},22000);
+  $('#msg').textContent='下发中… ('+(real?'真动':'演练 · 未授权不会真动')+' · 最多等 18s)'; $('#msg').className='wa';
+  $('#mq').style.display='none';
+  try{
+    renderMoveOut(await post('/ctl/move',{skill:'L2.goto_tcp_abs',pose:v.join(','),speed_mm_s:spd,arm:real?1:0},18000),'手动输入位姿');
+  }catch(e){
+    $('#msg').textContent='请求没发出去/超时: '+e+' —— 若反复如此, 关掉其它本机页面(浏览器对同一端口只有 6 条连接)';
+    $('#msg').className='bad';
+  }
+  clearTimeout(un); btn.disabled=false;
 }
 function poseCopy(){
   const g=id=>document.getElementById(id);

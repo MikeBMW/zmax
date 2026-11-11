@@ -7,7 +7,7 @@
   B) 状态通道: 循环读 /robot/tcp_pose -> 维护当前位姿缓存 (供相对技能算目标)
 接口: FIFO ~/zmax/zmax_data/l2_cmd.fifo  (一行一条 JSON: {"skill":"L2.lift","d_mm":100})
 """
-import io, json, os, re, select, subprocess, sys, threading, time
+import io, json, math, os, re, select, subprocess, sys, threading, time
 import urllib.request
 
 # 🔐 真动授权(8793 手动控制台)的单一唯一依据 —— 所有运动下发的**唯一收口**(chan_send/服务调用/夹爪)
@@ -501,6 +501,20 @@ def plan_dump(skill, plans, backend="rule", src="l2_daemon", spec=None, start_po
         log("⚠️ 段表落盘失败(不影响执行): %s" % str(e)[:80])
 
 
+def _euler_zyx_to_quat(rx_deg, ry_deg, rz_deg):
+    """Euler ZYX(度) → (qx,qy,qz,qw)。公式与 tools/rokae/tcp_direct_sampler.euler_to_quaternion 逐行相同
+    (与示教器 / tactile_force_node 同口径), 保证"页面输入的 abc"与"读回来的 abc"可互相复现。"""
+    rx, ry, rz = math.radians(rx_deg), math.radians(ry_deg), math.radians(rz_deg)
+    cr, sr = math.cos(rx * 0.5), math.sin(rx * 0.5)
+    cp, sp = math.cos(ry * 0.5), math.sin(ry * 0.5)
+    cy, sy = math.cos(rz * 0.5), math.sin(rz * 0.5)
+    qw = cy * cp * cr + sy * sp * sr
+    qx = cy * cp * sr - sy * sp * cr
+    qy = sy * cp * sr + cy * sp * cr
+    qz = sy * cp * cr - cy * sp * sr
+    return qx, qy, qz, qw
+
+
 def build_move(sk, spec, pts, cur=None, curq=None):
     # ⚠️ 相对运动的目标 = 真实当前位姿 + 偏移 → 位姿必须直读(常驻流缓存会滞后整分钟级,
     #    会把这 50mm 累加成错的落点); cur/curq 由调用方传入可避免重复直读。
@@ -509,6 +523,24 @@ def build_move(sk, spec, pts, cur=None, curq=None):
     p, q = cur, (curq or _pose["q"])
     if not p or not q:
         return None
+    # 🆕 2026-11-11 老倪: 「实时位姿下面加手动输入栏, 输入位姿就移动到该位姿」——
+    #   spec.pose6 = [x_mm, y_mm, z_mm, a_deg, b_deg, c_deg] ⇒ 绝对目标(位置+姿态一起给),
+    #   不再"当前位姿 + 增量"(那个口径只适合方向键); 走 /move_pose 一次到位(不掉电)。
+    #   安全闸不绕过: 授权 epoch / Δ 日志 / 环境包络 / 速度上限全在同一路径后面照旧执行。
+    _p6 = spec.get("pose6")
+    if _p6:
+        try:
+            _v6 = [float(x) for x in (_p6.split(",") if isinstance(_p6, str) else _p6)]
+        except (TypeError, ValueError):
+            log("⚠️ 绝对位姿解析失败(不是 6 个数字): %r" % (_p6,))
+            return None
+        if len(_v6) != 6:
+            log("⚠️ 绝对位姿要 6 个值(x y z a b c), 收到 %d 个" % len(_v6))
+            return None
+        log("🎯 绝对位姿输入: pos=(%.1f, %.1f, %.1f)mm · abc=(%.2f, %.2f, %.2f)°"
+            % tuple(_v6))
+        return ([_v6[0] / 1000.0, _v6[1] / 1000.0, _v6[2] / 1000.0],
+                _euler_zyx_to_quat(_v6[3], _v6[4], _v6[5]))
     t = list(p)
     # 🎯 2026-10-25 段表绝对目标优先: traj_exec 会给 abs_mm(规划里的 to_mm)。
     #   给了就落到规划点, 不再"当前位姿 + 增量"——否则前一段被拦/跳过会把后面所有点带偏
@@ -1910,8 +1942,10 @@ def dispatch(reg, spec, chan):
                          "dir": _dir, "lin": (dx * dx + dy * dy + dz * dz) ** 0.5}],
                   backend="rule", src="l2_daemon.build_move", spec=spec, start_pos=_cur)
         # 🔄 旋转走 /move_pose (与 tools/l2_pose_rot.py 已验证通道一致); 平移仍走 /move_line
-        _srv = "/move_pose" if _rot else "/move_line"
-        _to = int(max(90, 20 + abs(float(_rot["deg"])) * 3)) if _rot else 90
+        _abs6 = bool(spec.get("pose6"))
+        _srv = "/move_pose" if (_rot or _abs6) else "/move_line"
+        _to = (int(max(90, 20 + abs(float(_rot["deg"])) * 3)) if _rot
+               else (120 if _abs6 else 90))          # 绝对位姿: 距离不定, 给 120s 窗口
         call = ('timeout %d ros2 service call %s interfaces/srv/TargetPose "{speed: %s, joint_state: {name: [], '
                 'position: []}, pose: {position: {x: %s, y: %s, z: %s}, orientation: {x: %s, y: %s, z: %s, w: %s}}}"'
                 % (_to, _srv, sp, x, y, z, qx, qy, qz, qw))
@@ -2991,11 +3025,34 @@ def _single_instance():
     # ⚠️ fd 故意不关: 关了锁就释放了, 单实例保护随之失效
 
 
+FEATURES_PATH = os.path.join(os.path.dirname(os.path.abspath(FIFO)), "l2_features.json")
+
+
+def _write_features():
+    """🆕 2026-11-11: 把本进程**真正支持的能力**落成文件, 给上游做前置判据。
+
+    为什么非要这个文件: 老版执行器不认识 spec.pose6, 会落到 line_abs 的默认点(home) ——
+    实测一次演练就打出 "目标 pos=(0.6639,-0.0293,0.2935)", 与页面输入毫不相干。页面上看不出
+    差别, 一旦授权真动就是**往 home 飞**。所以服务端在下发前必须先读这份标记, 没标就直接拒。
+    """
+    try:
+        d = {"pose6": True, "abs_pose_skill": "L2.goto_tcp_abs", "pid": os.getpid(),
+             "ts": time.time(), "ts_str": time.strftime("%F %T")}
+        tmp = FEATURES_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False)
+        os.replace(tmp, FEATURES_PATH)
+        log("🧩 能力标记已写出: %s (pose6=绝对位姿)" % FEATURES_PATH)
+    except Exception as e:                                                   # noqa: BLE001
+        log("⚠️ 能力标记写出失败(不影响执行): %s" % str(e)[:80])
+
+
 def main():
     _single_instance()
     if os.path.exists(FIFO):
         os.unlink(FIFO)
     os.mkfifo(FIFO)
+    _write_features()
     reg = json.load(open(REG_PATH, encoding="utf-8"))
     threading.Thread(target=state_thread, daemon=True).start()
     # ① 等直连链路就绪 ② 一次性 ssh 探针确认真能登录 —— 否则通道"建完即死"变僵尸(2026-09-21 实况)
