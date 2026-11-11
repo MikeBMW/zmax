@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-11 08:10",
+ "generated_at": "2026-11-11 13:17",
  "patents": [
   {
    "pat_id": "ZMP-2026-001",
@@ -9,57 +9,48 @@
    "status": "撰写中",
    "funcs": [
     {
-     "fn_id": "FN-PLAT-62",
-     "name": "（唯一依据未登记）",
-     "code": "",
-     "role": "主挂"
-    },
-    {
-     "fn_id": "FN-PLAT-63",
-     "name": "📦 metaworld 数据源",
-     "code": "metaworld",
+     "fn_id": "FN-PLAT-68",
+     "name": "🧭 能力档位",
+     "code": "src/lerobot/engineering/nodes/library.py · node_ss_cap",
      "role": "主挂",
      "layer": "PLAT"
     },
     {
-     "fn_id": "FN-PLAT-68",
+     "fn_id": "FN-PLAT-69",
+     "name": "🎥 真实场景叠加 · 双眼 (sim2real)",
+     "code": "src/lerobot/engineering/nodes/library.py · node_realscene_live",
+     "role": "主挂",
+     "layer": "PLAT"
+    },
+    {
+     "fn_id": "FN-PLAT-70",
+     "name": "🏭 UPH 节拍循环器",
+     "code": "src/lerobot/engineering/nodes/uph_tact_impl.py",
+     "role": "主挂",
+     "layer": "PLAT"
+    },
+    {
+     "fn_id": "FN-PLAT-72",
      "name": "🧩 Feature 功能清单",
      "code": "src/lerobot/verification/verification_layer.py",
      "role": "主挂",
      "layer": "PLAT"
     },
     {
-     "fn_id": "FN-PLAT-69",
-     "name": "📊 仿真波形",
-     "code": "",
-     "role": "主挂",
-     "layer": "PLAT"
-    },
-    {
-     "fn_id": "FN-PLAT-70",
-     "name": "🎥 操作视频",
-     "code": "",
-     "role": "主挂",
-     "layer": "PLAT"
-    },
-    {
-     "fn_id": "FN-PLAT-72",
-     "name": "🧭 3D 视图",
-     "code": "tools/gui/node_logic.py · node_ss_3d_view",
-     "role": "主挂",
-     "layer": "PLAT"
-    },
-    {
      "fn_id": "FN-PLAT-67",
-     "name": "🎥 真实场景叠加 · 双眼 (sim2real)",
-     "code": "",
+     "name": "🖥 Z700 真机信号 (全信号观测 · 物理世界输出)",
+     "code": "tools/gui/ss_bypass_view.py",
      "role": "关联",
      "layer": "PLAT"
     }
    ],
    "nodes": [
+    "sscap",
+    "n_realscene",
+    "ssuph",
     "ssfeat",
-    "ss3d_view"
+    "ssbypv",
+    "ssz700"
    ],
    "impl_refs": [
     "tools/gui/ss_seven_stars.py",
@@ -87,30 +78,23 @@
    "status": "撰写中",
    "funcs": [
     {
-     "fn_id": "FN-PLAT-64",
-     "name": "🔀 训练/推理",
-     "code": "",
+     "fn_id": "FN-PLAT-65",
+     "name": "📦 数据源 (AR场景 ⇄ 仿真 ⇄ 真机)",
+     "code": "src/lerobot/middleware/nodes/impl/data.py · node_metaworld_data",
      "role": "主挂",
      "layer": "PLAT"
     },
     {
-     "fn_id": "FN-PLAT-65",
+     "fn_id": "FN-PLAT-67",
      "name": "🖥 Z700 真机信号 (全信号观测 · 物理世界输出)",
      "code": "tools/gui/ss_bypass_view.py",
      "role": "主挂",
      "layer": "PLAT"
     },
     {
-     "fn_id": "FN-PLAT-67",
-     "name": "🎥 真实场景叠加 · 双眼 (sim2real)",
-     "code": "",
-     "role": "主挂",
-     "layer": "PLAT"
-    },
-    {
      "fn_id": "FN-SYS2-05",
      "name": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
-     "code": "",
+     "code": "src/lerobot/memory/mem_nodes.py · node_ss_mem_share",
      "role": "主挂",
      "layer": "L4/L5"
     },
@@ -130,8 +114,10 @@
     }
    ],
    "nodes": [
+    "ssdata",
     "ssbypv",
     "ssz700",
+    "ss_mem_share",
     "n_intent_bundle",
     "n_mem_links"
    ],
@@ -160,8 +146,8 @@
    "funcs": [
     {
      "fn_id": "FN-SYS0-44",
-     "name": "🧩 SU(2) 统一状态空间 (二阶特殊酉群)",
-     "code": "src/lerobot/policies/left_right/state_space/su2.py",
+     "name": "⚡ 前馈加速器",
+     "code": "src/lerobot/policies/left_right/state_space/parallel.py",
      "role": "主挂",
      "layer": "L2"
     },
@@ -174,29 +160,29 @@
     },
     {
      "fn_id": "FN-SYS2-18",
+     "name": "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
+     "code": "src/lerobot/manifold/manifold_engine.py",
+     "role": "主挂",
+     "layer": "L4/L5"
+    },
+    {
+     "fn_id": "FN-SYS2-19",
      "name": "🧮 接触流形 · 导航地图 (e∥进度/e⊥偏离)",
      "code": "src/lerobot/manifold/manifold_layer.py",
      "role": "主挂",
      "layer": "L4/L5"
     },
     {
-     "fn_id": "FN-SYS2-19",
+     "fn_id": "FN-SYS2-20",
      "name": "🧮 性能流形 · 耦合代价 (V_p/η)",
      "code": "src/lerobot/manifold/manifold_layer.py",
      "role": "主挂",
      "layer": "L4/L5"
     },
     {
-     "fn_id": "FN-SYS2-20",
-     "name": "🧮 潜空-流形",
-     "code": "src/lerobot/calibration/calibration_layer.py",
-     "role": "主挂",
-     "layer": "L4/L5"
-    },
-    {
      "fn_id": "FN-SYS2-29",
-     "name": "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
-     "code": "src/lerobot/manifold/manifold_engine.py",
+     "name": "🎛 L4 · INTACT LoRA 微调 (接在意图解码器后 · 冻结原权重 · 只调 ΔW=(α/r)BA)",
+     "code": "tools/lora_inject.py",
      "role": "主挂",
      "layer": "L4/L5"
     },
@@ -209,21 +195,25 @@
     },
     {
      "fn_id": "FN-SYS2-23",
-     "name": "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)",
-     "code": "src/lerobot/manifold/predictor_layer.py",
+     "name": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
+     "code": "src/lerobot/policies/intact/service.py",
      "role": "关联",
      "layer": "L4/L5"
     }
    ],
    "nodes": [
-    "ssobs",
+    "ssff",
+    "ssest",
     "sscalib",
     "sslat",
+    "ss_mani_eng",
     "ssmani_c",
     "ssmani_p",
-    "ss_mani_eng",
+    "ss_lora_l4",
+    "ss_lora_l3",
     "n_calib_mani",
-    "ssmani_exp"
+    "ssintact",
+    "ssintact_dec"
    ],
    "impl_refs": [
     "src/lerobot/manifold/manifold_engine.py",
@@ -251,29 +241,29 @@
    "funcs": [
     {
      "fn_id": "FN-SYS0-45",
-     "name": "⚡ 前馈加速器",
-     "code": "src/lerobot/policies/left_right/state_space/parallel.py",
-     "role": "主挂",
-     "layer": "L2"
-    },
-    {
-     "fn_id": "FN-SYS0-46",
      "name": "🔮 自适应状态估计器",
      "code": "src/lerobot/policies/left_right/state_space/parallel.py",
      "role": "主挂",
      "layer": "L2"
     },
     {
-     "fn_id": "FN-SYS0-47",
+     "fn_id": "FN-SYS0-46",
      "name": "📈 先验动力学预测器",
      "code": "src/lerobot/policies/left_right/state_space/dynamics.py",
      "role": "主挂",
      "layer": "L2"
     },
     {
-     "fn_id": "FN-SYS0-48",
+     "fn_id": "FN-SYS0-47",
      "name": "🧪 状态校正器",
      "code": "src/lerobot/policies/left_right/state_space/cognition.py",
+     "role": "主挂",
+     "layer": "L2"
+    },
+    {
+     "fn_id": "FN-SYS0-48",
+     "name": "🧭 测地线规划引导",
+     "code": "src/lerobot/engineering/nodes/geo_plan_impl.py",
      "role": "主挂",
      "layer": "L2"
     },
@@ -286,8 +276,8 @@
     },
     {
      "fn_id": "FN-SYS0-50",
-     "name": "🛡 安全执行边界 (饱和限幅)",
-     "code": "src/lerobot/policies/left_right/state_space/safety.py",
+     "name": "🌍 万有引力 · SE(3) 几何阻抗 + H=K+U (力场仲裁)",
+     "code": "src/lerobot/manifold/state_space_energy.py",
      "role": "主挂",
      "layer": "L2"
     },
@@ -301,7 +291,7 @@
     {
      "fn_id": "FN-SYS2-15",
      "name": "🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)",
-     "code": "",
+     "code": "src/lerobot/memory/mem_nodes.py · node_ss_mem_l4",
      "role": "关联",
      "layer": "L4/L5"
     }
@@ -312,8 +302,10 @@
     "sspred",
     "ssinnov",
     "sssched",
-    "sslimit",
-    "ss_mem_field"
+    "n_geoplan",
+    "ss_grav_h",
+    "ss_mem_field",
+    "ss_mem_l4"
    ],
    "impl_refs": [
     "src/lerobot/policies/left_right/state_space/planner.py",
@@ -323,15 +315,14 @@
     "工程库 canvas_nodes 表 (势场联络/安全边界节点)"
    ],
    "docs": [
-    "docs/1-天枢-产品边界/patents/ZMP-2026-004_一种可行域逐层收窄与底层势函数收口的机器人运动安全控制方法.docx",
-    "docs/1-天枢-产品边界/patents/ZMP-2026-004_一种可行域逐层收窄与底层势函数收口的机器人运动安全控制方法.md",
-    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-004_一种可行域逐层收窄与底层势函数收口的机器人运动安全控制方法.docx",
-    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-004_一种可行域逐层收窄与底层势函数收口的机器人运动安全控制方法.md",
+    "docs/7-瑶光-记录追溯/incidents/TASK_LEDGER_20260924.md",
     "docs/5-玉衡-指标验收/eval/u_ff过原子技能节点_物理闸内联_v5.50.739.md",
+    "docs/1-天枢-产品边界/patents/ZMP-2026-004_一种可行域逐层收窄与底层势函数收口的机器人运动安全控制方法.md",
+    "docs/1-天枢-产品边界/patents/ZMP-2026-004_一种可行域逐层收窄与底层势函数收口的机器人运动安全控制方法.docx",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-004_一种可行域逐层收窄与底层势函数收口的机器人运动安全控制方法.md",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-004_一种可行域逐层收窄与底层势函数收口的机器人运动安全控制方法.docx",
     "docs/6-开阳-工程落地/three_brain_architecture.md",
-    "docs/6-开阳-工程落地/data_snapshots/2026-10-10_配置驱动双功能/画布分级审计.md",
-    "docs/7-瑶光-记录追溯/STATE_SPACE_RETROSPECTIVE_20260926.md",
-    "docs/7-瑶光-记录追溯/incidents/TASK_LEDGER_20260924.md"
+    "docs/6-开阳-工程落地/data_snapshots/2026-10-10_配置驱动双功能/画布分级审计.md"
    ]
   },
   {
@@ -365,7 +356,7 @@
     {
      "fn_id": "FN-SYS0-40",
      "name": "🔍 光学质量检测",
-     "code": "",
+     "code": "src/lerobot/policies/aoi/quality.py",
      "role": "主挂",
      "layer": "L2"
     },
@@ -386,21 +377,21 @@
     {
      "fn_id": "FN-SYS2-14",
      "name": "🧿 L5 · 视觉语言自动标注 → L2/L3/L4 监督 → 自动训练",
-     "code": "",
+     "code": "src/lerobot/engineering/nodes/library.py · node_l5_loop",
      "role": "主挂",
      "layer": "L4/L5"
     },
     {
      "fn_id": "FN-PLAT-73",
-     "name": "📈 旁路实时可视化 (当前阶段/残差/接触概率)",
-     "code": "tools/gui/ss_bypass_view.py",
+     "name": "📊 仿真波形",
+     "code": "src/lerobot/engineering/nodes/library.py · node_ss_scope",
      "role": "关联",
      "layer": "PLAT"
     },
     {
      "fn_id": "FN-SYS2-26",
-     "name": "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)",
-     "code": "tools/intact_sw_optical_bridge.py",
+     "name": "🎯 INTACT 插拔策略 · 光模块抓取插入 (本域微调 · 零搜索)",
+     "code": "src/lerobot/policies/intact/runtime/node.py",
      "role": "关联",
      "layer": "L4/L5"
     }
@@ -409,14 +400,14 @@
     "ssyolo",
     "ss2d3d",
     "sstactile",
+    "ssaoi",
     "n_vlm_llm",
     "n_dsvl",
-    "ssbypv",
-    "ssz700",
-    "swworld"
+    "ss_l5",
+    "ssvideo",
+    "swintact"
    ],
    "impl_refs": [
-    "src/lerobot/engineering/nodes/library.py",
     "src/lerobot/verification/capability_levels.py",
     "tools/gui/veh6_config_page.py",
     "models/yolo_peg_live.pt"
@@ -426,12 +417,13 @@
     "真机画面统计 (8791/local2)"
    ],
    "docs": [
+    "docs/7-瑶光-记录追溯/notes/capability_L2L3L4_actual.md",
     "docs/1-天枢-产品边界/deliverables/1-产品方案/元任务总体设计_v5.50.736.md",
     "docs/1-天枢-产品边界/patents/ZMP-2026-005_一种二维检测到三维坐标到状态量的同构感知链与真机域适应方法.docx",
     "docs/1-天枢-产品边界/patents/ZMP-2026-005_一种二维检测到三维坐标到状态量的同构感知链与真机域适应方法.md",
     "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-005_一种二维检测到三维坐标到状态量的同构感知链与真机域适应方法.docx",
     "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-005_一种二维检测到三维坐标到状态量的同构感知链与真机域适应方法.md",
-    "docs/7-瑶光-记录追溯/notes/capability_L2L3L4_actual.md"
+    "docs/2-天璇-作业任务/AOI_TASK7_20261012.md"
    ]
   },
   {
@@ -443,51 +435,51 @@
    "funcs": [
     {
      "fn_id": "FN-SYS0-42",
-     "name": "🧩 开放词汇分割 (SAM3 分割anything)",
-     "code": "tools/sam3_seg.py",
-     "role": "主挂",
-     "layer": "L2"
-    },
-    {
-     "fn_id": "FN-SYS0-43",
      "name": "📡 融合定位建图",
      "code": "src/lerobot/policies/left_right/state_space/perception.py",
      "role": "主挂",
      "layer": "L2"
     },
     {
+     "fn_id": "FN-SYS0-43",
+     "name": "🧩 SU(2) 统一状态空间 (二阶特殊酉群)",
+     "code": "src/lerobot/policies/left_right/state_space/su2.py",
+     "role": "主挂",
+     "layer": "L2"
+    },
+    {
      "fn_id": "FN-PLAT-71",
-     "name": "🧠 前馈激活直方图",
-     "code": "tools/gui/node_logic.py · node_ss_ff_hist",
+     "name": "🧩 长程元任务编排器 (Plan)",
+     "code": "src/lerobot/engineering/nodes/plan_long_impl.py",
      "role": "关联",
      "layer": "PLAT"
     },
     {
      "fn_id": "FN-SYS0-41",
-     "name": "📐 板坐标系定位 (工序坐标系·免手眼)",
-     "code": "tools/board_frame_module.py",
+     "name": "🧩 SAM3分割",
+     "code": "tools/sam3_seg.py",
      "role": "关联",
      "layer": "L2"
     }
    ],
    "nodes": [
-    "ss_seg",
     "sssensor",
-    "ssff_hist"
+    "ssobs",
+    "ssplan",
+    "ss_seg"
    ],
    "impl_refs": [
-    "src/lerobot/engineering/nodes/by_level.py",
-    "src/lerobot/engineering/nodes/library.py",
-    "tools/gui/veh6_config_page.py"
+    "tools/gui/veh6_config_page.py",
+    "src/lerobot/middleware/nodes/n_sam3.py"
    ],
    "data_refs": [
     "工程库 canvas_nodes 表 (融合定位建图节点)"
    ],
    "docs": [
-    "docs/1-天枢-产品边界/patents/ZMP-2026-006_一种开放词汇分割前置的视觉触觉融合定位与场景建图方法.docx",
     "docs/1-天枢-产品边界/patents/ZMP-2026-006_一种开放词汇分割前置的视觉触觉融合定位与场景建图方法.md",
-    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-006_一种开放词汇分割前置的视觉触觉融合定位与场景建图方法.docx",
-    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-006_一种开放词汇分割前置的视觉触觉融合定位与场景建图方法.md"
+    "docs/1-天枢-产品边界/patents/ZMP-2026-006_一种开放词汇分割前置的视觉触觉融合定位与场景建图方法.docx",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-006_一种开放词汇分割前置的视觉触觉融合定位与场景建图方法.md",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-006_一种开放词汇分割前置的视觉触觉融合定位与场景建图方法.docx"
    ]
   },
   {
@@ -500,7 +492,7 @@
     {
      "fn_id": "FN-SYS1-31",
      "name": "🚀 L3 · 长程序列规划 (记忆: 海马体)",
-     "code": "",
+     "code": "src/lerobot/memory/mem_nodes.py · node_ss_mem_l3",
      "role": "主挂",
      "layer": "L3"
     },
@@ -527,73 +519,76 @@
     },
     {
      "fn_id": "FN-SYS2-21",
+     "name": "🧮 潜空-流形",
+     "code": "src/lerobot/calibration/calibration_layer.py",
+     "role": "主挂",
+     "layer": "L4/L5"
+    },
+    {
+     "fn_id": "FN-SYS2-22",
      "name": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
      "code": "src/lerobot/policies/intact/service.py",
      "role": "主挂",
      "layer": "L4/L5"
     },
     {
-     "fn_id": "FN-SYS2-22",
+     "fn_id": "FN-SYS2-23",
      "name": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
      "code": "src/lerobot/policies/intact/service.py",
      "role": "主挂",
      "layer": "L4/L5"
     },
     {
-     "fn_id": "FN-SYS2-23",
-     "name": "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)",
-     "code": "src/lerobot/manifold/predictor_layer.py",
+     "fn_id": "FN-SYS2-25",
+     "name": "🧾 元任务预测 (驱动扭矩 → 元任务预测值)",
+     "code": "tools/ss_meta_predict.py · node_ss_intent_direct (src/lerobot/memory/mem_nodes.py)",
      "role": "主挂",
      "layer": "L4/L5"
     },
     {
-     "fn_id": "FN-SYS2-25",
+     "fn_id": "FN-SYS2-26",
      "name": "🎯 INTACT 插拔策略 · 光模块抓取插入 (本域微调 · 零搜索)",
      "code": "src/lerobot/policies/intact/runtime/node.py",
      "role": "主挂",
      "layer": "L4/L5"
     },
     {
-     "fn_id": "FN-SYS2-26",
-     "name": "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)",
-     "code": "tools/intact_sw_optical_bridge.py",
-     "role": "主挂",
-     "layer": "L4/L5"
-    },
-    {
      "fn_id": "FN-SYS2-28",
-     "name": "🎛 L4 · INTACT LoRA 微调 (接在意图解码器后 · 冻结原权重 · 只调 ΔW=(α/r)BA)",
-     "code": "tools/lora_inject.py",
+     "name": "🧬 元数据MOE门控路由",
+     "code": "tools/stage_moe_backbone.py",
      "role": "主挂",
      "layer": "L4/L5"
     },
     {
      "fn_id": "FN-SYS2-27",
-     "name": "🧬 元数据MOE门控路由",
-     "code": "tools/stage_moe_backbone.py",
+     "name": "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)",
+     "code": "tools/intact_sw_optical_bridge.py",
      "role": "关联",
      "layer": "L4/L5"
     },
     {
      "fn_id": "FN-SYS2-24",
-     "name": "🧾 元任务预测 (驱动扭矩 → 元任务预测值)",
-     "code": "tools/ss_meta_predict.py · node_ss_intent_direct (src/lerobot/memory/mem_nodes.py)",
+     "name": "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)",
+     "code": "src/lerobot/manifold/predictor_layer.py",
      "role": "关联",
      "layer": "L4/L5"
     }
    ],
    "nodes": [
+    "ss_mem_l3",
     "ssvlm",
     "ssdec",
     "ss_lora_l4",
     "ss_lora_l3",
+    "sscalib",
+    "sslat",
     "ssintact",
     "ssintact_dec",
-    "ssmani_exp",
+    "n_intent_direct",
     "swintact",
-    "swworld",
     "ss_moe",
-    "n_intent_direct"
+    "swworld",
+    "ssmani_exp"
    ],
    "impl_refs": [
     "tools/merge_lora_ckpt.py",
@@ -606,12 +601,12 @@
     "models/active_models.json (L4 指针与适配层条目)"
    ],
    "docs": [
+    "docs/7-瑶光-记录追溯/notes/L5-UPGRADE-STRATEGY.md",
+    "docs/7-瑶光-记录追溯/notes/L5-TRAINING-GOALS.md",
     "docs/1-天枢-产品边界/patents/ZMP-2026-007_一种世界模型意图_动作分块生成与适配层折叠部署方法及零动作伪装防护.docx",
     "docs/1-天枢-产品边界/patents/ZMP-2026-007_一种世界模型意图_动作分块生成与适配层折叠部署方法及零动作伪装防护.md",
     "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-007_一种世界模型意图-动作分块生成与适配层折叠部署方法及零动作伪装防护.docx",
-    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-007_一种世界模型意图-动作分块生成与适配层折叠部署方法及零动作伪装防护.md",
-    "docs/7-瑶光-记录追溯/notes/L5-TRAINING-GOALS.md",
-    "docs/7-瑶光-记录追溯/notes/L5-UPGRADE-STRATEGY.md"
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-007_一种世界模型意图-动作分块生成与适配层折叠部署方法及零动作伪装防护.md"
    ]
   },
   {
@@ -666,28 +661,28 @@
     {
      "fn_id": "FN-SYS2-15",
      "name": "🏆 L4 · 工作安全 + 物理世界导航 (记忆: 前额叶)",
-     "code": "",
+     "code": "src/lerobot/memory/mem_nodes.py · node_ss_mem_l4",
      "role": "主挂",
      "layer": "L4/L5"
     },
     {
      "fn_id": "FN-SYS2-27",
-     "name": "🧬 元数据MOE门控路由",
-     "code": "tools/stage_moe_backbone.py",
+     "name": "🌍 Z-MAX 引擎 · 光模块插拔真物理 (模型动作真下发 env.step)",
+     "code": "tools/intact_sw_optical_bridge.py",
      "role": "主挂",
      "layer": "L4/L5"
     },
     {
      "fn_id": "FN-SYS2-24",
-     "name": "🧾 元任务预测 (驱动扭矩 → 元任务预测值)",
-     "code": "tools/ss_meta_predict.py · node_ss_intent_direct (src/lerobot/memory/mem_nodes.py)",
+     "name": "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)",
+     "code": "src/lerobot/manifold/predictor_layer.py",
      "role": "关联",
      "layer": "L4/L5"
     },
     {
      "fn_id": "FN-SYS1-31",
      "name": "🚀 L3 · 长程序列规划 (记忆: 海马体)",
-     "code": "",
+     "code": "src/lerobot/memory/mem_nodes.py · node_ss_mem_l3",
      "role": "关联",
      "layer": "L3"
     }
@@ -699,8 +694,10 @@
     "ssskill",
     "n_web_agent",
     "n_hil",
-    "ss_moe",
-    "n_intent_direct"
+    "ss_mem_l4",
+    "swworld",
+    "ssmani_exp",
+    "ss_mem_l3"
    ],
    "impl_refs": [
     "src/lerobot/policies/left_right/state_space/planner.py",
@@ -728,91 +725,91 @@
     {
      "fn_id": "FN-SYS0-35",
      "name": "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)",
-     "code": "",
+     "code": "src/lerobot/memory/mem_nodes.py · node_ss_mem_l2",
      "role": "主挂",
      "layer": "L2"
     },
     {
      "fn_id": "FN-SYS0-36",
      "name": "💪 L2 肌肉记忆技能库 (光模块抓放循环)",
-     "code": "",
+     "code": "src/lerobot/engineering/nodes/library.py · node_n_l2_muscle",
      "role": "主挂",
      "layer": "L2"
     },
     {
      "fn_id": "FN-SYS0-51",
+     "name": "🛡 安全执行边界 (饱和限幅)",
+     "code": "src/lerobot/policies/left_right/state_space/safety.py",
+     "role": "主挂",
+     "layer": "L2"
+    },
+    {
+     "fn_id": "FN-SYS0-52",
      "name": "① 接近 · SK01",
      "code": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
      "role": "主挂",
      "layer": "L2"
     },
     {
-     "fn_id": "FN-SYS0-52",
+     "fn_id": "FN-SYS0-53",
      "name": "② 对位 · SK02",
      "code": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
      "role": "主挂",
      "layer": "L2"
     },
     {
-     "fn_id": "FN-SYS0-53",
+     "fn_id": "FN-SYS0-54",
      "name": "③ 下降 · SK03",
      "code": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
      "role": "主挂",
      "layer": "L2"
     },
     {
-     "fn_id": "FN-SYS0-54",
+     "fn_id": "FN-SYS0-55",
      "name": "④ 抓取 · SK04",
      "code": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
      "role": "主挂",
      "layer": "L2"
     },
     {
-     "fn_id": "FN-SYS0-55",
+     "fn_id": "FN-SYS0-56",
      "name": "⑤ 抬起 · SK05",
      "code": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
      "role": "主挂",
      "layer": "L2"
     },
     {
-     "fn_id": "FN-SYS0-56",
+     "fn_id": "FN-SYS0-57",
      "name": "⑥ 转移 · SK06",
      "code": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
      "role": "主挂",
      "layer": "L2"
     },
     {
-     "fn_id": "FN-SYS0-57",
+     "fn_id": "FN-SYS0-58",
      "name": "⑦ 插入 · SK07",
      "code": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
      "role": "主挂",
      "layer": "L2"
     },
     {
-     "fn_id": "FN-SYS0-58",
+     "fn_id": "FN-SYS0-59",
      "name": "⑧ 完成 · SK08",
      "code": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
      "role": "主挂",
      "layer": "L2"
     },
     {
-     "fn_id": "FN-SYS0-59",
-     "name": "🧭 MoveIt 运动规划 · SDK 直驱桥(Orin)",
+     "fn_id": "FN-SYS0-60",
+     "name": "运动规划",
      "code": "",
      "role": "主挂",
      "layer": "L2"
     },
     {
-     "fn_id": "FN-SYS0-60",
-     "name": "⚖ 物理约束 · 惯性/质量率闸 (SK01-08)",
-     "code": "src/lerobot/policies/left_right/state_space/physics_constraints.py::InertiaLimiter.limit",
-     "role": "主挂",
-     "layer": "L2"
-    },
-    {
      "fn_id": "FN-SYS0-61",
-     "name": "🤖 机器人执行器",
-     "code": "src/lerobot/policies/left_right/state_space/execution.py",
+     "name": "⚖ 动力学约束",
+     "code": "src/lerobot/policies/left_right/state_space/physics_constraints.py::DynamicLimiter.limit",
      "role": "主挂",
      "layer": "L2"
     },
@@ -825,13 +822,16 @@
     },
     {
      "fn_id": "FN-SYS2-29",
-     "name": "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
-     "code": "src/lerobot/manifold/manifold_engine.py",
+     "name": "🎛 L4 · INTACT LoRA 微调 (接在意图解码器后 · 冻结原权重 · 只调 ΔW=(α/r)BA)",
+     "code": "tools/lora_inject.py",
      "role": "关联",
      "layer": "L4/L5"
     }
    ],
    "nodes": [
+    "ss_mem_l2",
+    "n_l2_muscle",
+    "sslimit",
     "sssk1",
     "sssk2",
     "sssk3",
@@ -840,15 +840,14 @@
     "sssk6",
     "sssk7",
     "sssk8",
-    "ssact",
-    "ssworld",
+    "ssphys",
     "n_skill_dict",
-    "ss_mani_eng"
+    "ss_lora_l4",
+    "ss_lora_l3"
    ],
    "impl_refs": [
     "tools/ss_l3_loop_ctl.sh",
     "src/lerobot/policies/left_right/state_space",
-    "src/lerobot/engineering/nodes/by_level.py",
     "src/lerobot/engineering/levels.py"
    ],
    "data_refs": [
@@ -856,10 +855,10 @@
     "工程库 functions 表 (系统0 27 条)"
    ],
    "docs": [
-    "docs/1-天枢-产品边界/patents/ZMP-2026-009_一种原子技能肌肉记忆固化与标杆模板快速直通方法.docx",
     "docs/1-天枢-产品边界/patents/ZMP-2026-009_一种原子技能肌肉记忆固化与标杆模板快速直通方法.md",
-    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-009_一种原子技能肌肉记忆固化与标杆模板快速直通方法.docx",
-    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-009_一种原子技能肌肉记忆固化与标杆模板快速直通方法.md"
+    "docs/1-天枢-产品边界/patents/ZMP-2026-009_一种原子技能肌肉记忆固化与标杆模板快速直通方法.docx",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-009_一种原子技能肌肉记忆固化与标杆模板快速直通方法.md",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-009_一种原子技能肌肉记忆固化与标杆模板快速直通方法.docx"
    ]
   },
   {
@@ -899,15 +898,15 @@
     },
     {
      "fn_id": "FN-SYS2-24",
-     "name": "🧾 元任务预测 (驱动扭矩 → 元任务预测值)",
-     "code": "tools/ss_meta_predict.py · node_ss_intent_direct (src/lerobot/memory/mem_nodes.py)",
+     "name": "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)",
+     "code": "src/lerobot/manifold/predictor_layer.py",
      "role": "主挂",
      "layer": "L4/L5"
     },
     {
      "fn_id": "FN-SYS2-05",
      "name": "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
-     "code": "",
+     "code": "src/lerobot/memory/mem_nodes.py · node_ss_mem_share",
      "role": "关联",
      "layer": "L4/L5"
     },
@@ -924,7 +923,8 @@
     "n_skill_dict",
     "n_mem_links",
     "n_eng_mem",
-    "n_intent_direct",
+    "ssmani_exp",
+    "ss_mem_share",
     "ss_mem_field"
    ],
    "impl_refs": [
@@ -937,10 +937,10 @@
     "元任务预测唯一依据 zmax_data/ss_live/meta_pred.json"
    ],
    "docs": [
-    "docs/1-天枢-产品边界/patents/ZMP-2026-010_一种机器人多层记忆组织与元任务预测映射方法.docx",
     "docs/1-天枢-产品边界/patents/ZMP-2026-010_一种机器人多层记忆组织与元任务预测映射方法.md",
-    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-010_一种机器人多层记忆组织与元任务预测映射方法.docx",
-    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-010_一种机器人多层记忆组织与元任务预测映射方法.md"
+    "docs/1-天枢-产品边界/patents/ZMP-2026-010_一种机器人多层记忆组织与元任务预测映射方法.docx",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-010_一种机器人多层记忆组织与元任务预测映射方法.md",
+    "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-010_一种机器人多层记忆组织与元任务预测映射方法.docx"
    ]
   },
   {
@@ -952,8 +952,8 @@
    "funcs": [
     {
      "fn_id": "FN-SYS0-41",
-     "name": "📐 板坐标系定位 (工序坐标系·免手眼)",
-     "code": "tools/board_frame_module.py",
+     "name": "🧩 SAM3分割",
+     "code": "tools/sam3_seg.py",
      "role": "主挂",
      "layer": "L2"
     },
@@ -966,7 +966,7 @@
     },
     {
      "fn_id": "FN-SYS0-52",
-     "name": "② 对位 · SK02",
+     "name": "① 接近 · SK01",
      "code": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
      "role": "关联",
      "layer": "L2"
@@ -987,6 +987,7 @@
     }
    ],
    "nodes": [
+    "ss_seg",
     "n_calib_mani",
     "sssk1",
     "sssk2",
@@ -1026,36 +1027,57 @@
    "funcs": [
     {
      "fn_id": "FN-PLAT-66",
-     "name": "🧭 能力档位",
-     "code": "",
+     "name": "🔀 训练/推理",
+     "code": "src/lerobot/engineering/nodes/library.py · node_mode_switch",
      "role": "主挂",
      "layer": "PLAT"
     },
     {
      "fn_id": "FN-PLAT-71",
-     "name": "🧠 前馈激活直方图",
-     "code": "tools/gui/node_logic.py · node_ss_ff_hist",
+     "name": "🧩 长程元任务编排器 (Plan)",
+     "code": "src/lerobot/engineering/nodes/plan_long_impl.py",
      "role": "主挂",
      "layer": "PLAT"
     },
     {
      "fn_id": "FN-PLAT-73",
-     "name": "📈 旁路实时可视化 (当前阶段/残差/接触概率)",
-     "code": "tools/gui/ss_bypass_view.py",
+     "name": "📊 仿真波形",
+     "code": "src/lerobot/engineering/nodes/library.py · node_ss_scope",
      "role": "主挂",
      "layer": "PLAT"
     },
     {
      "fn_id": "FN-PLAT-74",
+     "name": "🎥 操作视频",
+     "code": "src/lerobot/engineering/nodes/library.py · node_ss_video",
+     "role": "主挂",
+     "layer": "PLAT"
+    },
+    {
+     "fn_id": "FN-PLAT-76",
+     "name": "🧭 3D 视图",
+     "code": "tools/gui/node_logic.py · node_ss_3d_view",
+     "role": "主挂",
+     "layer": "PLAT"
+    },
+    {
+     "fn_id": "FN-PLAT-78",
      "name": "🧪 光模块插拔 · 环境渲染图像源 (Z-MAX 引擎逐帧真图)",
      "code": "tools/intact_sw_optical_bridge.py --spool",
      "role": "主挂",
      "layer": "PLAT"
     },
     {
+     "fn_id": "FN-PLAT-79",
+     "name": "🎬 插拔渲染视频 (从 Z-MAX 引擎取出 · 实况窗)",
+     "code": "tools/intact_sw_optical_bridge.py --video-dir",
+     "role": "主挂",
+     "layer": "PLAT"
+    },
+    {
      "fn_id": "FN-PLAT-69",
-     "name": "📊 仿真波形",
-     "code": "",
+     "name": "🎥 真实场景叠加 · 双眼 (sim2real)",
+     "code": "src/lerobot/engineering/nodes/library.py · node_realscene_live",
      "role": "关联",
      "layer": "PLAT"
     },
@@ -1068,10 +1090,14 @@
     }
    ],
    "nodes": [
-    "ssff_hist",
-    "ssbypv",
-    "ssz700",
+    "ssmode",
+    "ssplan",
+    "ssvideo",
+    "ssvideo2",
+    "ss3d_view",
     "swds",
+    "swvideo",
+    "n_realscene",
     "n_vlm_llm",
     "n_dsvl"
    ],
@@ -1089,6 +1115,514 @@
     "docs/1-天枢-产品边界/patents/ZMP-2026-012_一种多相机底图增强现实叠加与真机场景一致性校验方法.md",
     "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-012_一种多相机底图增强现实叠加与真机场景一致性校验方法.docx",
     "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-012_一种多相机底图增强现实叠加与真机场景一致性校验方法.md"
+   ]
+  },
+  {
+   "pat_id": "ZMP-2026-013",
+   "star": "开阳",
+   "layer": "动作注入层",
+   "title": "一种基于视触觉融合与装配公差度规的跨层动作修正方法及系统",
+   "status": "定稿",
+   "funcs": [
+    {
+     "fn_id": "FN-SYS0-39",
+     "name": "🖐 触觉感知",
+     "code": "src/lerobot/policies/yolo_3d/gen_tactile.py",
+     "role": "主挂",
+     "layer": "L2"
+    },
+    {
+     "fn_id": "FN-SYS0-49",
+     "name": "🧭 动作调制器",
+     "code": "src/lerobot/policies/left_right/state_space/cognition.py",
+     "role": "主挂",
+     "layer": "L2"
+    },
+    {
+     "fn_id": "FN-SYS0-50",
+     "name": "🌍 万有引力 · SE(3) 几何阻抗 + H=K+U (力场仲裁)",
+     "code": "src/lerobot/manifold/state_space_energy.py",
+     "role": "主挂",
+     "layer": "L2"
+    },
+    {
+     "fn_id": "FN-SYS0-58",
+     "name": "⑦ 插入 · SK07",
+     "code": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
+     "role": "主挂",
+     "layer": "L2"
+    },
+    {
+     "fn_id": "FN-SYS2-19",
+     "name": "🧮 接触流形 · 导航地图 (e∥进度/e⊥偏离)",
+     "code": "src/lerobot/manifold/manifold_layer.py",
+     "role": "关联",
+     "layer": "L4/L5"
+    },
+    {
+     "fn_id": "FN-SYS0-62",
+     "name": "⚙️ 动作执行器 (L2 收口 · 授权/闸/到位)",
+     "code": "src/lerobot/engineering/nodes/exec_dispatch_impl.py",
+     "role": "关联",
+     "layer": "L2"
+    },
+    {
+     "fn_id": "FN-SYS1-33",
+     "name": "🎯 Flow-Matching Action Head (DiT)",
+     "code": "src/lerobot/policies/smolvla_lew/action_head.py",
+     "role": "关联",
+     "layer": "L3"
+    }
+   ],
+   "nodes": [
+    "sstactile",
+    "ssinnov",
+    "sssched",
+    "ss_grav_h",
+    "sssk1",
+    "sssk2",
+    "sssk3",
+    "sssk4",
+    "sssk5",
+    "sssk6",
+    "sssk7",
+    "sssk8",
+    "ssmani_c",
+    "ssmani_p",
+    "n_exec",
+    "ssdec"
+   ],
+   "impl_refs": [
+    "src/lerobot/policies/manifold/geodesic_inject.py",
+    "src/lerobot/policies/manifold/inject_cfg.py",
+    "tools/verify_013_claims.py"
+   ],
+   "data_refs": [],
+   "docs": [
+    "docs/7-瑶光-记录追溯/STATE_SPACE_RETROSPECTIVE_20260926.md",
+    "docs/1-天枢-产品边界/patents/ZMP-2026-013_一种基于视触觉融合与装配公差度规的跨层动作修正方法及系统.docx",
+    "docs/1-天枢-产品边界/patents/ZMP-2026-013_一种基于视触觉融合与装配公差度规的跨层动作修正方法及系统.md",
+    "docs/1-天枢-产品边界/patents/_v1_历史/ZMP-2026-013_v2_视触觉融合初版_20261111.md",
+    "docs/1-天枢-产品边界/patents/_v1_历史/ZMP-2026-013_v1_纯视觉版_20261110.md"
+   ]
+  },
+  {
+   "pat_id": "ZMP-2026-014",
+   "star": "天权",
+   "layer": "质量门层",
+   "title": "一种基于取像健康度分离的视觉质量门在线裁决方法及系统",
+   "status": "撰写中",
+   "funcs": [
+    {
+     "fn_id": "FN-SYS0-40",
+     "name": "🔍 光学质量检测",
+     "code": "src/lerobot/policies/aoi/quality.py",
+     "role": "主挂",
+     "layer": "L2"
+    },
+    {
+     "fn_id": "FN-SYS0-37",
+     "name": "🎯 YOLO 目标检测",
+     "code": "src/lerobot/policies/yolo_3d/yolo_state_aligner.py",
+     "role": "主挂",
+     "layer": "L2"
+    },
+    {
+     "fn_id": "FN-SYS0-38",
+     "name": "📐 2D→3D 解算",
+     "code": "src/lerobot/policies/yolo_3d/yolo_state_aligner.py",
+     "role": "主挂",
+     "layer": "L2"
+    },
+    {
+     "fn_id": "FN-PLAT-77",
+     "name": "📈 旁路实时可视化 (当前阶段/残差/接触概率)",
+     "code": "tools/gui/ss_bypass_view.py",
+     "role": "关联",
+     "layer": "PLAT"
+    },
+    {
+     "fn_id": "FN-SYS0-51",
+     "name": "🛡 安全执行边界 (饱和限幅)",
+     "code": "src/lerobot/policies/left_right/state_space/safety.py",
+     "role": "关联",
+     "layer": "L2"
+    },
+    {
+     "fn_id": "FN-SYS0-62",
+     "name": "⚙️ 动作执行器 (L2 收口 · 授权/闸/到位)",
+     "code": "src/lerobot/engineering/nodes/exec_dispatch_impl.py",
+     "role": "关联",
+     "layer": "L2"
+    }
+   ],
+   "nodes": [
+    "ssaoi",
+    "ssyolo",
+    "ss2d3d",
+    "ssbypv",
+    "ssz700",
+    "sslimit",
+    "n_exec"
+   ],
+   "impl_refs": [
+    "src/lerobot/middleware/nodes/impl/safety_limit_impl.py",
+    "src/lerobot/middleware/nodes/impl/ss_aoi.py",
+    "src/lerobot/middleware/nodes/impl/ss_sensor.py",
+    "src/lerobot/middleware/nodes/n_inspection.py",
+    "src/lerobot/policies/aoi/quality.py",
+    "tools/probe_aoi_chain_e2e.py"
+   ],
+   "data_refs": [
+    "zmax_data/ss_live/aoi_async_probe.json",
+    "zmax_data/ss_live/aoi_chain_e2e.json"
+   ],
+   "docs": [
+    "docs/1-天枢-产品边界/patents/ZMP-2026-014_一种基于取像健康度分离的视觉质量门在线裁决方法及系统.md",
+    "docs/1-天枢-产品边界/patents/ZMP-2026-014_一种基于取像健康度分离的视觉质量门在线裁决方法及系统.docx"
+   ]
+  },
+  {
+   "pat_id": "ZMP-2026-015",
+   "star": "天枢",
+   "layer": "工程可信层",
+   "title": "一种分层控制链路真联通率的四态量化校验方法及系统",
+   "status": "撰写中",
+   "funcs": [
+    {
+     "fn_id": "FN-SYS0-62",
+     "name": "⚙️ 动作执行器 (L2 收口 · 授权/闸/到位)",
+     "code": "src/lerobot/engineering/nodes/exec_dispatch_impl.py",
+     "role": "主挂",
+     "layer": "L2"
+    },
+    {
+     "fn_id": "FN-SYS0-63",
+     "name": "🤖 机器人执行器",
+     "code": "src/lerobot/policies/left_right/state_space/execution.py",
+     "role": "主挂",
+     "layer": "L2"
+    },
+    {
+     "fn_id": "FN-PLAT-72",
+     "name": "🧩 Feature 功能清单",
+     "code": "src/lerobot/verification/verification_layer.py",
+     "role": "关联",
+     "layer": "PLAT"
+    },
+    {
+     "fn_id": "FN-SYS2-08",
+     "name": "🔗 跨层连接 · 记忆图谱",
+     "code": "src/lerobot/memory/mem_nodes.py · node_ss_mem_links",
+     "role": "关联",
+     "layer": "L4/L5"
+    }
+   ],
+   "nodes": [
+    "n_exec",
+    "ssact",
+    "ssworld",
+    "ssfeat",
+    "n_mem_links"
+   ],
+   "impl_refs": [
+    "src/lerobot/middleware/nodes/impl/safety_limit_impl.py",
+    "tools/verify_l2_linkage.py"
+   ],
+   "data_refs": [],
+   "docs": [
+    "docs/1-天枢-产品边界/patents/ZMP-2026-015_一种分层控制链路真联通率的四态量化校验方法及系统.docx",
+    "docs/1-天枢-产品边界/patents/ZMP-2026-015_一种分层控制链路真联通率的四态量化校验方法及系统.md"
+   ]
+  },
+  {
+   "pat_id": "ZMP-2026-016",
+   "star": "天枢",
+   "layer": "工程可信层",
+   "title": "一种长耗时感知任务与短周期控制回路的异步快照解耦方法及系统",
+   "status": "撰写中",
+   "funcs": [
+    {
+     "fn_id": "FN-SYS0-40",
+     "name": "🔍 光学质量检测",
+     "code": "src/lerobot/policies/aoi/quality.py",
+     "role": "主挂",
+     "layer": "L2"
+    },
+    {
+     "fn_id": "FN-PLAT-77",
+     "name": "📈 旁路实时可视化 (当前阶段/残差/接触概率)",
+     "code": "tools/gui/ss_bypass_view.py",
+     "role": "主挂",
+     "layer": "PLAT"
+    },
+    {
+     "fn_id": "FN-SYS0-37",
+     "name": "🎯 YOLO 目标检测",
+     "code": "src/lerobot/policies/yolo_3d/yolo_state_aligner.py",
+     "role": "关联",
+     "layer": "L2"
+    },
+    {
+     "fn_id": "FN-SYS0-38",
+     "name": "📐 2D→3D 解算",
+     "code": "src/lerobot/policies/yolo_3d/yolo_state_aligner.py",
+     "role": "关联",
+     "layer": "L2"
+    }
+   ],
+   "nodes": [
+    "ssaoi",
+    "ssbypv",
+    "ssz700",
+    "ssyolo",
+    "ss2d3d"
+   ],
+   "impl_refs": [
+    "src/lerobot/middleware/nodes/impl/ss_aoi.py",
+    "tools/probe_aoi_async.py"
+   ],
+   "data_refs": [],
+   "docs": [
+    "docs/1-天枢-产品边界/patents/ZMP-2026-016_一种长耗时感知任务与短周期控制回路的异步快照解耦方法及系统.md",
+    "docs/1-天枢-产品边界/patents/ZMP-2026-016_一种长耗时感知任务与短周期控制回路的异步快照解耦方法及系统.docx"
+   ]
+  },
+  {
+   "pat_id": "ZMP-2026-017",
+   "star": "天枢",
+   "layer": "工程可信层",
+   "title": "一种分层参数真源单一性与生效性验证方法及系统",
+   "status": "撰写中",
+   "funcs": [
+    {
+     "fn_id": "FN-SYS0-49",
+     "name": "🧭 动作调制器",
+     "code": "src/lerobot/policies/left_right/state_space/cognition.py",
+     "role": "主挂",
+     "layer": "L2"
+    },
+    {
+     "fn_id": "FN-SYS2-30",
+     "name": "🧮 标定诊断测量 · 主参数 M (状态空间结构参数 · 等效惯量)",
+     "code": "src/lerobot/engineering/config_import.py",
+     "role": "主挂",
+     "layer": "L4/L5"
+    },
+    {
+     "fn_id": "FN-SYS0-50",
+     "name": "🌍 万有引力 · SE(3) 几何阻抗 + H=K+U (力场仲裁)",
+     "code": "src/lerobot/manifold/state_space_energy.py",
+     "role": "关联",
+     "layer": "L2"
+    },
+    {
+     "fn_id": "FN-PLAT-72",
+     "name": "🧩 Feature 功能清单",
+     "code": "src/lerobot/verification/verification_layer.py",
+     "role": "关联",
+     "layer": "PLAT"
+    }
+   ],
+   "nodes": [
+    "ssinnov",
+    "sssched",
+    "n_calib_mani",
+    "ss_grav_h",
+    "ssfeat"
+   ],
+   "impl_refs": [
+    "src/lerobot/policies/manifold/geodesic_inject.py",
+    "src/lerobot/policies/manifold/inject_cfg.py"
+   ],
+   "data_refs": [
+    "config/calib/zmax_manifold.json"
+   ],
+   "docs": [
+    "docs/1-天枢-产品边界/patents/ZMP-2026-017_一种分层参数真源单一性与生效性验证方法及系统.docx",
+    "docs/1-天枢-产品边界/patents/ZMP-2026-017_一种分层参数真源单一性与生效性验证方法及系统.md"
+   ]
+  },
+  {
+   "pat_id": "ZMP-2026-018",
+   "star": "开阳",
+   "layer": "工程可信层/动作层",
+   "title": "一种仿真速度指令到真机单轴分步安全跟随方法及系统",
+   "status": "撰写中",
+   "funcs": [
+    {
+     "fn_id": "FN-SYS0-63",
+     "name": "🤖 机器人执行器",
+     "code": "src/lerobot/policies/left_right/state_space/execution.py",
+     "role": "主挂",
+     "layer": "L2"
+    },
+    {
+     "fn_id": "FN-SYS0-60",
+     "name": "运动规划",
+     "code": "",
+     "role": "主挂",
+     "layer": "L2"
+    },
+    {
+     "fn_id": "FN-SYS0-51",
+     "name": "🛡 安全执行边界 (饱和限幅)",
+     "code": "src/lerobot/policies/left_right/state_space/safety.py",
+     "role": "关联",
+     "layer": "L2"
+    },
+    {
+     "fn_id": "FN-SYS2-13",
+     "name": "🙋 HIL 人机在环 · 状态↔指示",
+     "code": "src/lerobot/policies/left_right/state_space/hil_bridge.py",
+     "role": "关联",
+     "layer": "L4/L5"
+    }
+   ],
+   "nodes": [
+    "ssact",
+    "ssworld",
+    "sslimit",
+    "n_hil"
+   ],
+   "impl_refs": [
+    "tools/bridge_follow.py",
+    "src/lerobot/policies/left_right/state_space/planner.py"
+   ],
+   "data_refs": [],
+   "docs": [
+    "docs/1-天枢-产品边界/patents/ZMP-2026-018_一种仿真速度指令到真机单轴分步安全跟随方法及系统.docx",
+    "docs/1-天枢-产品边界/patents/ZMP-2026-018_一种仿真速度指令到真机单轴分步安全跟随方法及系统.md"
+   ]
+  },
+  {
+   "pat_id": "ZMP-2026-019",
+   "star": "玉衡",
+   "layer": "世界模型跨层",
+   "title": "一种世界模型在环的分层动作修正方法及系统",
+   "status": "定稿",
+   "funcs": [
+    {
+     "fn_id": "FN-SYS2-22",
+     "name": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
+     "code": "src/lerobot/policies/intact/service.py",
+     "role": "主挂",
+     "layer": "L4/L5"
+    },
+    {
+     "fn_id": "FN-SYS2-24",
+     "name": "🧠 流形专家预测器 (JEPA: 潜空间→流形→动作)",
+     "code": "src/lerobot/manifold/predictor_layer.py",
+     "role": "主挂",
+     "layer": "L4/L5"
+    },
+    {
+     "fn_id": "FN-SYS0-49",
+     "name": "🧭 动作调制器",
+     "code": "src/lerobot/policies/left_right/state_space/cognition.py",
+     "role": "主挂",
+     "layer": "L2"
+    },
+    {
+     "fn_id": "FN-SYS2-23",
+     "name": "🎯 INTACT 意图解码器 (L4 → L3 条件)",
+     "code": "src/lerobot/policies/intact/service.py",
+     "role": "关联",
+     "layer": "L4/L5"
+    },
+    {
+     "fn_id": "FN-SYS2-19",
+     "name": "🧮 接触流形 · 导航地图 (e∥进度/e⊥偏离)",
+     "code": "src/lerobot/manifold/manifold_layer.py",
+     "role": "关联",
+     "layer": "L4/L5"
+    }
+   ],
+   "nodes": [
+    "ssintact",
+    "ssintact_dec",
+    "ssmani_exp",
+    "ssinnov",
+    "sssched",
+    "ssmani_c",
+    "ssmani_p"
+   ],
+   "impl_refs": [
+    "src/lerobot/engine/runtime.py",
+    "src/lerobot/policies/manifold/geodesic_inject.py",
+    "src/lerobot/policies/manifold/wm_adapter.py",
+    "src/lerobot/policies/manifold/wm_verify.py",
+    "tools/probe_wm_inloop_e2e.py",
+    "tools/probe_wm_predict.py",
+    "tools/verify_wm_inloop.py"
+   ],
+   "data_refs": [],
+   "docs": [
+    "docs/1-天枢-产品边界/patents/ZMP-2026-019_一种世界模型在环的分层动作修正方法及系统.md",
+    "docs/1-天枢-产品边界/patents/ZMP-2026-019_一种世界模型在环的分层动作修正方法及系统.docx"
+   ]
+  },
+  {
+   "pat_id": "ZMP-2026-020",
+   "star": "天玑",
+   "layer": "数学内核层/动作层",
+   "title": "一种基于装配公差度规的双层硬注入动作生成方法及系统",
+   "status": "撰写中",
+   "funcs": [
+    {
+     "fn_id": "FN-SYS1-33",
+     "name": "🎯 Flow-Matching Action Head (DiT)",
+     "code": "src/lerobot/policies/smolvla_lew/action_head.py",
+     "role": "主挂",
+     "layer": "L3"
+    },
+    {
+     "fn_id": "FN-SYS0-49",
+     "name": "🧭 动作调制器",
+     "code": "src/lerobot/policies/left_right/state_space/cognition.py",
+     "role": "主挂",
+     "layer": "L2"
+    },
+    {
+     "fn_id": "FN-SYS2-30",
+     "name": "🧮 标定诊断测量 · 主参数 M (状态空间结构参数 · 等效惯量)",
+     "code": "src/lerobot/engineering/config_import.py",
+     "role": "主挂",
+     "layer": "L4/L5"
+    },
+    {
+     "fn_id": "FN-SYS1-34",
+     "name": "🎛 L3 · SmolVLA LoRA 微调 · 接入中",
+     "code": "tools/lora_inject.py",
+     "role": "关联",
+     "layer": "L3"
+    },
+    {
+     "fn_id": "FN-SYS0-50",
+     "name": "🌍 万有引力 · SE(3) 几何阻抗 + H=K+U (力场仲裁)",
+     "code": "src/lerobot/manifold/state_space_energy.py",
+     "role": "关联",
+     "layer": "L2"
+    }
+   ],
+   "nodes": [
+    "ssdec",
+    "ssinnov",
+    "sssched",
+    "n_calib_mani",
+    "ss_lora_l4",
+    "ss_lora_l3",
+    "ss_grav_h"
+   ],
+   "impl_refs": [
+    "src/lerobot/policies/manifold/metric_inject.py",
+    "src/lerobot/policies/manifold/inject_cfg.py",
+    "tools/verify_metric_hard_inject.py"
+   ],
+   "data_refs": [],
+   "docs": [
+    "docs/1-天枢-产品边界/patents/ZMP-2026-020_一种基于装配公差度规的双层硬注入动作生成方法及系统.docx",
+    "docs/1-天枢-产品边界/patents/ZMP-2026-020_一种基于装配公差度规的双层硬注入动作生成方法及系统.md"
    ]
   }
  ],
@@ -1114,7 +1648,7 @@
    "source": "src/lerobot/policies/left_right/state_space/su2.py",
    "symbol": "class SU2UnifiedState",
    "patents": [
-    "ZMP-2026-003"
+    "ZMP-2026-006"
    ]
   },
   {
@@ -1126,6 +1660,7 @@
    "source": "src/lerobot/policies/left_right/state_space/parallel.py",
    "symbol": "class FeedforwardAccelerator",
    "patents": [
+    "ZMP-2026-003",
     "ZMP-2026-004"
    ]
   },
@@ -1138,6 +1673,7 @@
    "source": "src/lerobot/policies/left_right/state_space/parallel.py",
    "symbol": "class AdaptiveStateEstimator",
    "patents": [
+    "ZMP-2026-003",
     "ZMP-2026-004"
    ]
   },
@@ -1162,7 +1698,11 @@
    "source": "src/lerobot/policies/left_right/state_space/cognition.py",
    "symbol": "def state_correction",
    "patents": [
-    "ZMP-2026-004"
+    "ZMP-2026-004",
+    "ZMP-2026-013",
+    "ZMP-2026-017",
+    "ZMP-2026-019",
+    "ZMP-2026-020"
    ]
   },
   {
@@ -1174,7 +1714,11 @@
    "source": "src/lerobot/policies/left_right/state_space/cognition.py",
    "symbol": "def decide",
    "patents": [
-    "ZMP-2026-004"
+    "ZMP-2026-004",
+    "ZMP-2026-013",
+    "ZMP-2026-017",
+    "ZMP-2026-019",
+    "ZMP-2026-020"
    ]
   },
   {
@@ -1186,7 +1730,9 @@
    "source": "src/lerobot/policies/left_right/state_space/safety.py",
    "symbol": "def saturate",
    "patents": [
-    "ZMP-2026-004"
+    "ZMP-2026-009",
+    "ZMP-2026-014",
+    "ZMP-2026-018"
    ]
   },
   {
@@ -1198,7 +1744,8 @@
    "source": "src/lerobot/policies/left_right/state_space/execution.py",
    "symbol": "class RobotExecutor",
    "patents": [
-    "ZMP-2026-009"
+    "ZMP-2026-015",
+    "ZMP-2026-018"
    ]
   },
   {
@@ -1210,7 +1757,8 @@
    "source": "src/lerobot/policies/left_right/state_space/execution.py",
    "symbol": "class PhysicalWorld",
    "patents": [
-    "ZMP-2026-009"
+    "ZMP-2026-015",
+    "ZMP-2026-018"
    ]
   },
   {
@@ -1221,7 +1769,10 @@
    "impl_key": "ss_scope",
    "source": "src/lerobot/engineering/nodes/library.py · node_ss_scope",
    "symbol": "node_ss_scope",
-   "patents": []
+   "patents": [
+    "ZMP-2026-005",
+    "ZMP-2026-012"
+   ]
   },
   {
    "node_id": "ssvideo2",
@@ -1231,7 +1782,9 @@
    "impl_key": "ss_video",
    "source": "src/lerobot/engineering/nodes/library.py · node_ss_video",
    "symbol": "node_ss_video",
-   "patents": []
+   "patents": [
+    "ZMP-2026-012"
+   ]
   },
   {
    "node_id": "ssyolo",
@@ -1243,7 +1796,9 @@
    "symbol": "class YoloStateAligner",
    "patents": [
     "ZMP-2026-005",
-    "ZMP-2026-011"
+    "ZMP-2026-011",
+    "ZMP-2026-014",
+    "ZMP-2026-016"
    ]
   },
   {
@@ -1256,7 +1811,9 @@
    "symbol": "def detect_3d",
    "patents": [
     "ZMP-2026-005",
-    "ZMP-2026-011"
+    "ZMP-2026-011",
+    "ZMP-2026-014",
+    "ZMP-2026-016"
    ]
   },
   {
@@ -1268,7 +1825,8 @@
    "source": "src/lerobot/policies/yolo_3d/gen_tactile.py",
    "symbol": "def synth_tactile",
    "patents": [
-    "ZMP-2026-005"
+    "ZMP-2026-005",
+    "ZMP-2026-013"
    ]
   },
   {
@@ -1279,17 +1837,23 @@
    "impl_key": "ss_aoi",
    "source": "src/lerobot/policies/aoi/quality.py",
    "symbol": "def inspect_aoi",
-   "patents": []
+   "patents": [
+    "ZMP-2026-005",
+    "ZMP-2026-014",
+    "ZMP-2026-016"
+   ]
   },
   {
    "node_id": "ssdata",
    "name": "📦 数据源 (AR场景 ⇄ 仿真 ⇄ 真机)",
    "type": "hardware",
    "module": "n_metaworld",
-   "impl_key": "",
+   "impl_key": "data",
    "source": "src/lerobot/middleware/nodes/impl/data.py · node_metaworld_data",
    "symbol": "node_metaworld_data",
-   "patents": []
+   "patents": [
+    "ZMP-2026-002"
+   ]
   },
   {
    "node_id": "ssmode",
@@ -1299,7 +1863,9 @@
    "impl_key": "mode_switch",
    "source": "src/lerobot/engineering/nodes/library.py · node_mode_switch",
    "symbol": "node_mode_switch",
-   "patents": []
+   "patents": [
+    "ZMP-2026-012"
+   ]
   },
   {
    "node_id": "ssllm_in",
@@ -1358,7 +1924,8 @@
    "source": "src/lerobot/calibration/calibration_layer.py",
    "symbol": "class CalibrationLayer",
    "patents": [
-    "ZMP-2026-003"
+    "ZMP-2026-003",
+    "ZMP-2026-007"
    ]
   },
   {
@@ -1370,8 +1937,7 @@
    "source": "src/lerobot/manifold/manifold_engine.py",
    "symbol": "class ManifoldEngine",
    "patents": [
-    "ZMP-2026-003",
-    "ZMP-2026-009"
+    "ZMP-2026-003"
    ]
   },
   {
@@ -1383,7 +1949,9 @@
    "source": "src/lerobot/manifold/manifold_layer.py",
    "symbol": "class ContactManifold",
    "patents": [
-    "ZMP-2026-003"
+    "ZMP-2026-003",
+    "ZMP-2026-013",
+    "ZMP-2026-019"
    ]
   },
   {
@@ -1395,7 +1963,9 @@
    "source": "src/lerobot/manifold/manifold_layer.py",
    "symbol": "class PerformanceManifold",
    "patents": [
-    "ZMP-2026-003"
+    "ZMP-2026-003",
+    "ZMP-2026-013",
+    "ZMP-2026-019"
    ]
   },
   {
@@ -1407,7 +1977,8 @@
    "source": "src/lerobot/calibration/calibration_layer.py",
    "symbol": "LATENT_CALIB",
    "patents": [
-    "ZMP-2026-003"
+    "ZMP-2026-003",
+    "ZMP-2026-007"
    ]
   },
   {
@@ -1419,7 +1990,9 @@
    "source": "src/lerobot/verification/verification_layer.py",
    "symbol": "FEATURES = [",
    "patents": [
-    "ZMP-2026-001"
+    "ZMP-2026-001",
+    "ZMP-2026-015",
+    "ZMP-2026-017"
    ]
   },
   {
@@ -1430,10 +2003,7 @@
    "impl_key": "ss_ff_hist",
    "source": "tools/gui/node_logic.py · node_ss_ff_hist",
    "symbol": "",
-   "patents": [
-    "ZMP-2026-006",
-    "ZMP-2026-012"
-   ]
+   "patents": []
   },
   {
    "node_id": "ss3d_view",
@@ -1444,7 +2014,7 @@
    "source": "tools/gui/node_logic.py · node_ss_3d_view",
    "symbol": "",
    "patents": [
-    "ZMP-2026-001"
+    "ZMP-2026-012"
    ]
   },
   {
@@ -1456,9 +2026,10 @@
    "source": "tools/gui/ss_bypass_view.py",
    "symbol": "class SSBypassView",
    "patents": [
+    "ZMP-2026-001",
     "ZMP-2026-002",
-    "ZMP-2026-005",
-    "ZMP-2026-012"
+    "ZMP-2026-014",
+    "ZMP-2026-016"
    ]
   },
   {
@@ -1470,9 +2041,10 @@
    "source": "tools/gui/ss_bypass_view.py",
    "symbol": "class Z700SignalsView",
    "patents": [
+    "ZMP-2026-001",
     "ZMP-2026-002",
-    "ZMP-2026-005",
-    "ZMP-2026-012"
+    "ZMP-2026-014",
+    "ZMP-2026-016"
    ]
   },
   {
@@ -1485,7 +2057,8 @@
    "symbol": "class SK01Approach",
    "patents": [
     "ZMP-2026-009",
-    "ZMP-2026-011"
+    "ZMP-2026-011",
+    "ZMP-2026-013"
    ]
   },
   {
@@ -1498,7 +2071,8 @@
    "symbol": "class SK02Align",
    "patents": [
     "ZMP-2026-009",
-    "ZMP-2026-011"
+    "ZMP-2026-011",
+    "ZMP-2026-013"
    ]
   },
   {
@@ -1511,7 +2085,8 @@
    "symbol": "class SK03Descend",
    "patents": [
     "ZMP-2026-009",
-    "ZMP-2026-011"
+    "ZMP-2026-011",
+    "ZMP-2026-013"
    ]
   },
   {
@@ -1524,7 +2099,8 @@
    "symbol": "class SK04Grasp",
    "patents": [
     "ZMP-2026-009",
-    "ZMP-2026-011"
+    "ZMP-2026-011",
+    "ZMP-2026-013"
    ]
   },
   {
@@ -1537,7 +2113,8 @@
    "symbol": "class SK05Lift",
    "patents": [
     "ZMP-2026-009",
-    "ZMP-2026-011"
+    "ZMP-2026-011",
+    "ZMP-2026-013"
    ]
   },
   {
@@ -1550,7 +2127,8 @@
    "symbol": "class SK06Transfer",
    "patents": [
     "ZMP-2026-009",
-    "ZMP-2026-011"
+    "ZMP-2026-011",
+    "ZMP-2026-013"
    ]
   },
   {
@@ -1563,7 +2141,8 @@
    "symbol": "class SK07Insert",
    "patents": [
     "ZMP-2026-009",
-    "ZMP-2026-011"
+    "ZMP-2026-011",
+    "ZMP-2026-013"
    ]
   },
   {
@@ -1576,7 +2155,8 @@
    "symbol": "class SK08Complete",
    "patents": [
     "ZMP-2026-009",
-    "ZMP-2026-011"
+    "ZMP-2026-011",
+    "ZMP-2026-013"
    ]
   },
   {
@@ -1600,7 +2180,9 @@
    "source": "src/lerobot/policies/smolvla_lew/action_head.py",
    "symbol": "class SmolVLALewActionHead",
    "patents": [
-    "ZMP-2026-007"
+    "ZMP-2026-007",
+    "ZMP-2026-013",
+    "ZMP-2026-020"
    ]
   },
   {
@@ -1612,7 +2194,9 @@
    "source": "src/lerobot/policies/intact/service.py",
    "symbol": "def run_once(",
    "patents": [
-    "ZMP-2026-007"
+    "ZMP-2026-003",
+    "ZMP-2026-007",
+    "ZMP-2026-019"
    ]
   },
   {
@@ -1624,7 +2208,9 @@
    "source": "src/lerobot/policies/intact/service.py",
    "symbol": "def run_once(",
    "patents": [
-    "ZMP-2026-007"
+    "ZMP-2026-003",
+    "ZMP-2026-007",
+    "ZMP-2026-019"
    ]
   },
   {
@@ -1636,8 +2222,10 @@
    "source": "src/lerobot/manifold/predictor_layer.py",
    "symbol": "class WorldModelPredictor",
    "patents": [
-    "ZMP-2026-003",
-    "ZMP-2026-007"
+    "ZMP-2026-007",
+    "ZMP-2026-008",
+    "ZMP-2026-010",
+    "ZMP-2026-019"
    ]
   },
   {
@@ -1648,7 +2236,9 @@
    "impl_key": "ss_cap",
    "source": "src/lerobot/engineering/nodes/library.py · node_ss_cap",
    "symbol": "node_ss_cap",
-   "patents": []
+   "patents": [
+    "ZMP-2026-001"
+   ]
   },
   {
    "node_id": "ss_mem_l2",
@@ -1658,7 +2248,9 @@
    "impl_key": "ss_mem_l2",
    "source": "src/lerobot/memory/mem_nodes.py · node_ss_mem_l2",
    "symbol": "node_ss_mem_l2",
-   "patents": []
+   "patents": [
+    "ZMP-2026-009"
+   ]
   },
   {
    "node_id": "ss_mem_l3",
@@ -1668,7 +2260,10 @@
    "impl_key": "ss_mem_l3",
    "source": "src/lerobot/memory/mem_nodes.py · node_ss_mem_l3",
    "symbol": "node_ss_mem_l3",
-   "patents": []
+   "patents": [
+    "ZMP-2026-007",
+    "ZMP-2026-008"
+   ]
   },
   {
    "node_id": "ss_mem_l4",
@@ -1678,7 +2273,10 @@
    "impl_key": "ss_world",
    "source": "src/lerobot/memory/mem_nodes.py · node_ss_mem_l4",
    "symbol": "node_ss_mem_l4",
-   "patents": []
+   "patents": [
+    "ZMP-2026-004",
+    "ZMP-2026-008"
+   ]
   },
   {
    "node_id": "ss_mem_field",
@@ -1701,7 +2299,10 @@
    "impl_key": "ss_mem_share",
    "source": "src/lerobot/memory/mem_nodes.py · node_ss_mem_share",
    "symbol": "node_ss_mem_share",
-   "patents": []
+   "patents": [
+    "ZMP-2026-002",
+    "ZMP-2026-010"
+   ]
   },
   {
    "node_id": "n_intent_bundle",
@@ -1739,7 +2340,8 @@
    "symbol": "",
    "patents": [
     "ZMP-2026-002",
-    "ZMP-2026-010"
+    "ZMP-2026-010",
+    "ZMP-2026-015"
    ]
   },
   {
@@ -1751,9 +2353,7 @@
    "source": "tools/ss_meta_predict.py · node_ss_intent_direct (src/lerobot/memory/mem_nodes.py)",
    "symbol": "",
    "patents": [
-    "ZMP-2026-007",
-    "ZMP-2026-008",
-    "ZMP-2026-010"
+    "ZMP-2026-007"
    ]
   },
   {
@@ -1777,6 +2377,7 @@
    "source": "src/lerobot/policies/intact/runtime/node.py",
    "symbol": "",
    "patents": [
+    "ZMP-2026-005",
     "ZMP-2026-007"
    ]
   },
@@ -1789,8 +2390,8 @@
    "source": "tools/intact_sw_optical_bridge.py",
    "symbol": "def ",
    "patents": [
-    "ZMP-2026-005",
-    "ZMP-2026-007"
+    "ZMP-2026-007",
+    "ZMP-2026-008"
    ]
   },
   {
@@ -1801,7 +2402,9 @@
    "impl_key": "sw_video",
    "source": "tools/intact_sw_optical_bridge.py --video-dir",
    "symbol": "def ",
-   "patents": []
+   "patents": [
+    "ZMP-2026-012"
+   ]
   },
   {
    "node_id": "n_eng_mem",
@@ -1849,19 +2452,20 @@
    "impl_key": "n_l2_muscle",
    "source": "src/lerobot/engineering/nodes/library.py · node_n_l2_muscle",
    "symbol": "node_n_l2_muscle",
-   "patents": []
+   "patents": [
+    "ZMP-2026-009"
+   ]
   },
   {
    "node_id": "ss_moe",
    "name": "🧬 元数据MOE门控路由",
    "type": "model",
    "module": "n_moe",
-   "impl_key": "",
+   "impl_key": "ss_moe",
    "source": "tools/stage_moe_backbone.py",
    "symbol": "class StageMoE",
    "patents": [
-    "ZMP-2026-007",
-    "ZMP-2026-008"
+    "ZMP-2026-007"
    ]
   },
   {
@@ -1873,7 +2477,10 @@
    "source": "tools/lora_inject.py",
    "symbol": "def inject_lora",
    "patents": [
-    "ZMP-2026-007"
+    "ZMP-2026-003",
+    "ZMP-2026-007",
+    "ZMP-2026-009",
+    "ZMP-2026-020"
    ]
   },
   {
@@ -1885,7 +2492,10 @@
    "source": "tools/lora_inject.py",
    "symbol": "class LoRALinear",
    "patents": [
-    "ZMP-2026-007"
+    "ZMP-2026-003",
+    "ZMP-2026-007",
+    "ZMP-2026-009",
+    "ZMP-2026-020"
    ]
   },
   {
@@ -1910,7 +2520,8 @@
    "symbol": "class HilBridge",
    "patents": [
     "ZMP-2026-008",
-    "ZMP-2026-011"
+    "ZMP-2026-011",
+    "ZMP-2026-018"
    ]
   },
   {
@@ -1931,7 +2542,10 @@
    "impl_key": "n_realscene_live",
    "source": "src/lerobot/engineering/nodes/library.py · node_realscene_live",
    "symbol": "node_realscene_live",
-   "patents": []
+   "patents": [
+    "ZMP-2026-001",
+    "ZMP-2026-012"
+   ]
   },
   {
    "node_id": "ss_l5",
@@ -1941,7 +2555,9 @@
    "impl_key": "l5_loop",
    "source": "src/lerobot/engineering/nodes/library.py · node_l5_loop",
    "symbol": "node_l5_loop",
-   "patents": []
+   "patents": [
+    "ZMP-2026-005"
+   ]
   },
   {
    "node_id": "n_calib_mani",
@@ -1953,7 +2569,9 @@
    "symbol": "def import_config_files(",
    "patents": [
     "ZMP-2026-003",
-    "ZMP-2026-011"
+    "ZMP-2026-011",
+    "ZMP-2026-017",
+    "ZMP-2026-020"
    ]
   },
   {
@@ -1965,7 +2583,8 @@
    "source": "tools/sam3_seg.py",
    "symbol": "def segment(img_bgr",
    "patents": [
-    "ZMP-2026-006"
+    "ZMP-2026-006",
+    "ZMP-2026-011"
    ]
   },
   {
@@ -1976,7 +2595,9 @@
    "impl_key": "ss_dyn_gate",
    "source": "src/lerobot/policies/left_right/state_space/physics_constraints.py::DynamicLimiter.limit",
    "symbol": "def limit",
-   "patents": []
+   "patents": [
+    "ZMP-2026-009"
+   ]
   },
   {
    "node_id": "n_exec",
@@ -1986,7 +2607,11 @@
    "impl_key": "n_exec",
    "source": "src/lerobot/engineering/nodes/exec_dispatch_impl.py",
    "symbol": "def run",
-   "patents": []
+   "patents": [
+    "ZMP-2026-013",
+    "ZMP-2026-014",
+    "ZMP-2026-015"
+   ]
   },
   {
    "node_id": "ss_grav_h",
@@ -1996,7 +2621,12 @@
    "impl_key": "ss_grav_h",
    "source": "src/lerobot/manifold/state_space_energy.py",
    "symbol": "class StateSpaceHamiltonian",
-   "patents": []
+   "patents": [
+    "ZMP-2026-004",
+    "ZMP-2026-013",
+    "ZMP-2026-017",
+    "ZMP-2026-020"
+   ]
   },
   {
    "node_id": "ssuph",
@@ -2006,7 +2636,9 @@
    "impl_key": "ss_uph",
    "source": "src/lerobot/engineering/nodes/uph_tact_impl.py",
    "symbol": "def run",
-   "patents": []
+   "patents": [
+    "ZMP-2026-001"
+   ]
   },
   {
    "node_id": "ssplan",
@@ -2016,7 +2648,10 @@
    "impl_key": "ss_plan_long",
    "source": "src/lerobot/engineering/nodes/plan_long_impl.py",
    "symbol": "def run",
-   "patents": []
+   "patents": [
+    "ZMP-2026-006",
+    "ZMP-2026-012"
+   ]
   },
   {
    "node_id": "n_geoplan",
@@ -2026,7 +2661,9 @@
    "impl_key": "n_geoplan",
    "source": "src/lerobot/engineering/nodes/geo_plan_impl.py",
    "symbol": "run",
-   "patents": []
+   "patents": [
+    "ZMP-2026-004"
+   ]
   }
  ],
  "docs": [
@@ -2036,13 +2673,623 @@
    "patent": ""
   },
   {
-   "path": "docs/0-总纲/CODE-MAP.md",
-   "title": "代码映射表 · 文档 ↔ 代码",
+   "path": "docs/7-瑶光-记录追溯/STATE_SPACE_RETROSPECTIVE_20260926.md",
+   "title": "状态空间工程 · 全局复盘 (2026-09-26 大清理行动)",
+   "patent": "ZMP-2026-013"
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/README.md",
+   "title": "7-瑶光 · 记录追溯",
    "patent": ""
   },
   {
-   "path": "docs/0-总纲/README.md",
-   "title": "0 · 总纲：一套系统，一个思想",
+   "path": "docs/7-瑶光-记录追溯/handoff_20260922_2_shutdown.md",
+   "title": "交接：关机前状态 (2026-09-22 09:0x) — 第二轮",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/关机清单_20261105.md",
+   "title": "关机清单 · 2026-11-05 08:18（版本基线 v5.50.768）",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/关机清单_20261107.md",
+   "title": "关机清单 2026-11-07（550A · 准备关机）",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/handoff_20260922_3_shutdown.md",
+   "title": "交接：关机前状态 (2026-09-22 15:50) — 第三轮",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/handoff_20260922_shutdown.md",
+   "title": "交接：关机前状态 (2026-09-22 08:15)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/EFFICIENCY-PLAN.md",
+   "title": "Z-MAX 效率提升方案 · Efficiency Boost",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/2026-10-23_handoff.md",
+   "title": "2026-10-23 handoff (晚 · 开机自愈核验 + 控制台两处修复)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/DOCKER-ENV-UNIFIED.md",
+   "title": "Z-MAX 统一 Docker 环境 (三端对齐)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/GPU_TRAINING_NEXT_STEPS.md",
+   "title": "GPU 训练续接清单 (2026-08-24 静静, 关机前保存)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/HJEPA-V3.1-REPORT.md",
+   "title": "H-JEPA v3.1 模型验证报告",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/DUAL_SCREEN_FIX_20260915.md",
+   "title": "Ubuntu 双屏(外接 HDMI)修复记录 — 2026-09-15",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/SESSION-HANDOFF-20261015.md",
+   "title": "交接快照 · 2026-10-15 (关机前保存)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/l2_real_data_autolearn_flow.md",
+   "title": "真机数据 L2「边干边学」自动学习闭环 (sim → real 泛化)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/platform_vs_instance.md",
+   "title": "平台 / 实例 解耦规范",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/AOI-LAYER3-DIAGNOSIS-20261009.md",
+   "title": "AOI 10082 判据图「跳」—— 分层归因 (2026-10-09)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/2026-10-10_handoff.md",
+   "title": "交接记录 2026-10-10 (收工存档)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/DATA-FLYWHEEL.md",
+   "title": "Z-MAX 数据闭环 v3 · Data Flywheel",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/机器状态_20261018_收工.md",
+   "title": "收工状态 2026-10-19 06:38:55",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/摆盘功能清单评审_20261010.md",
+   "title": "泰国摆盘项目 · 功能清单评审报告",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/HARDWARE-VERIFICATION.md",
+   "title": "硬件验证 · 动作技能量化指标",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/home_top_level_map.md",
+   "title": "/home/ubuntu 顶层地图（每个东西是干什么的）",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/vscode-workspace-and-source-control.md",
+   "title": "VSCode 工作区 · Source Control · 调试 速查 (2026-10-17)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/EDGE-DEPLOYMENT.md",
+   "title": "Z-MAX 端侧部署管线 · Edge Deployment Pipeline",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/DATA-QUALITY-VERIFICATION.md",
+   "title": "小芳 · 数据质量验证方案",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/机器状态_20261019_收工.md",
+   "title": "机器状态 · 2026-10-19 收工",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/cleanup_20261101.md",
+   "title": "/home/ubuntu 清理记录 · 2026-11-01",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/restore_matrix.md",
+   "title": "zmax 基线核验：仓库能恢复到什么程度",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/CALIB-20260921-handeye.md",
+   "title": "手眼标定 done — 2026-09-21 现场（eye-in-hand · CGB-020）",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/feature_dbc_spec.md",
+   "title": "feature.dbc — 能力数据库方案 (参考 Vector CANoe DBC)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/ci-cd-design.md",
+   "title": "Z-MAX Simulink 模型开发 · CI/CD 设计 (v1.0)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/DATA_MANIFEST_20260926.md",
+   "title": "数据清单 (2026-09-26/27, 关机前)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/DATA-CLOSED-LOOP.md",
+   "title": "Z-MAX 数据闭环流程 · 全链路定义 v1.0",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/HELP-DEVELOPMENT-BIBLE.md",
+   "title": "Z-MAX 操作手册 · User Manual",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/AOI-PT2-JUDGE-DIAGNOSIS-20261008.md",
+   "title": "金手指点2 判据诊断（离线跑判据本体，8 帧复现）— 2026-10-08 21:2x",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/DEPLOY-READY.md",
+   "title": "Mac 部署管线 · 就绪状态",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/L5_AUTONOMOUS_EVOLUTION.md",
+   "title": "L5 自主进化章程 (Z-MAX 状态空间工程) — 2026-09-26 立",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/CONTAINER-COMPAT.md",
+   "title": "Z-MAX 容器方案兼容性报告 (三端对齐)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/supply-chain-joyson-controller.md",
+   "title": "Z-MAX 供应链文档 — 控制器硬件",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/AOI-PT2-POSE-EXPERIMENT-20261008.md",
+   "title": "金手指点2 视角实验（动臂试探）— 2026-10-08 21:10~21:14",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/GUI-CHECKLIST.md",
+   "title": "Z-MAX GUI 可用性检查清单 · 用户操作指南",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/老倪同步_20261018_0637.md",
+   "title": "老倪同步(原文留档) — 2026-10-19 06:37:54",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/V1.0.6-真机生产流程.md",
+   "title": "Z-MAX 真机生产流程 · V1.0.6",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/CONDITION-ACTION-MAP.md",
+   "title": "条件技能 → 动作技能 硬件映射",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/closed_loop_realization_design.md",
+   "title": "闭环真实化设计 (方案2) — metaworld 物理 + YOLO 视觉感知真闭环",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/AR场景-2026-10-29-下班记录.md",
+   "title": "AR 场景下半场收工记录 · 2026-10-29 08:58",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/capability_L2L3L4_actual.md",
+   "title": "Z-MAX 状态空间实际能力 — L2/L3/L4 功能整理 (2026-09-09 老倪: 按实际状态空间模型)",
+   "patent": "ZMP-2026-005"
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/DOCUMENT-TOPOLOGY.md",
+   "title": "Z-MAX 文档拓扑 v1.0",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/安全事件-20261010-ECS口令泄露.md",
+   "title": "安全事件记录 · 2026-10-10 · 公开仓库内明文口令",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/END-SIDE-PIPELINE.md",
+   "title": "Z-MAX 端侧实现方案 (小芳) — 对应 SIMULINK-PIPELINE-DETAILS 第5节",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/v5.42.0_配置驱动功能切换_20261010.md",
+   "title": "v5.42.0 — 配置驱动功能切换（同一状态空间工程 · 插拔 / 摆盘 双功能真跑）",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/L5-UPGRADE-STRATEGY.md",
+   "title": "大模型层（L5）升级优化策略",
+   "patent": "ZMP-2026-007"
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/DATA-SPACE-MAP.md",
+   "title": "Z-MAX 全局数据空间映射 v1.0",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/capability_levels_L2L3L4.md",
+   "title": "Z-MAX 三级能力升级路径 (参考自动驾驶 L2/L3/L4)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/3DGS-2026-10-14-收工记录.md",
+   "title": "3DGS 建图 · 2026-10-14 收工记录 (会话 map_sess_20261013_203035)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/STATION_6PANEL_20260927.md",
+   "title": "🛰 工位总览 · 6 路同屏 + 手动控制机器人 (2026-09-27, v5.15.15 → v5.15.16)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/data_layout.md",
+   "title": "data/ 数据与工程文件布局 (2026-10-09 老倪: 「所有工程文件和数据库文件都放在 data/database；继续整合所有数据文件，现在的数据太杂乱了」)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/Z700_technical_agreement_v3.md",
+   "title": "Z700 具身智能方案技术协议 v3",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/SHUTDOWN-20261022.md",
+   "title": "2026-10-22 收工存档 / 开机续做清单",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/AR场景-2026-10-29-收工记录.md",
+   "title": "AR 场景全链打通 + 550C 通路恢复 — 收工记录（2026-10-29）",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/web_协同_大屏监督规格.md",
+   "title": "web 协同：大屏动作级监督扩展规格 (P1/P2) — 2026-08-10",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/model-paths.md",
+   "title": "Z-MAX 模型 / 数据 的默认落盘路径（约定）",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/L5-TRAINING-GOALS.md",
+   "title": "大模型层（L5）训练目标",
+   "patent": "ZMP-2026-007"
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/2026-10-10_handoff_晚.md",
+   "title": "2026-10-10 晚 · 收工存档 (v5.41.0)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/notes/SHUTDOWN-20261022_1320_fullflow_abort.md",
+   "title": "2026-10-22 收工存档（全量连跑中断版）",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/关机前状态留档_20260930.md",
+   "title": "🗂 关机前状态留档 · 2026-09-30 (vv5.16.35)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/TASK_LEDGER_20260924.md",
+   "title": "Z-MAX 任务台账 — 盘点于 2026-09-24 07:20 (静静)",
+   "patent": "ZMP-2026-004"
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/关机前状态留档_20260916_晚_v568.md",
+   "title": "关机前状态留档 (v5.6.8, 2026-09-16 08:45)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/INCIDENT-20261007-sdk-movej-collision.md",
+   "title": "INCIDENT-20261007 · SDK MoveJ 手动测试越位碰撞 (J5 力矩超限)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/INCIDENT-20261002-host-hardstop.md",
+   "title": "INCIDENT 2026-10-02 工位机(4060)硬停 — 5 天无日志，10-07 才通电",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/HANDOVER_20260924_AOI.md",
+   "title": "AOI / 外观质量检测线 — 交接单 (2026-09-24 收工)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/INCIDENT-20261008-goldpt1-segpath-collision.md",
+   "title": "INCIDENT 2026-10-08(4): 去金手指点1 —— 分段直线路径撞净空, 老倪急停",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/关机前状态留档_20260916.md",
+   "title": "🗂 关机前状态留档 · 2026-09-16 (v5.6.7)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/关机前状态留档_20261007.md",
+   "title": "🗂 关机前状态留档 · 2026-10-07",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/INCIDENT-20260920-aoi-home-move.md",
+   "title": "事故复盘 2026-09-20 08:42 — 点「进入金手指AOI检测区」实际跑去了 home（老倪按下急停）",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/INCIDENT-20261001-sidept1-approach-collision.md",
+   "title": "事故 2026-10-01 · 侧面点0 → 侧面点1 靠近过程碰撞（3 轴）",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/关机前状态留档_20261008_晚.md",
+   "title": "关机前状态留档 — 2026-10-08（晚间，收尾版本 v5.18.10）",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/INCIDENT-20261008-gsmap-space7-movej-rise-estop.md",
+   "title": "INCIDENT 2026-10-08（当日第二次）· 建图第2轮去 space7：MoveL 被拒 → **MoveJ 自愈关节摆升**，老倪现场急停",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/INCIDENT-20261001-traverse-height-collision.md",
+   "title": "事故复盘 2026-10-01 07:55 — 「准备点回点/侧面点靠近」横移高度取「点位 z+180mm」，臂走高后碰撞（老倪按急停 + 现场喊\"要碰撞了注意\"）",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/AOI-PT2-ROUND3-STATUS-20261008.md",
+   "title": "点2 判据 第3轮 状态（2026-10-08 收工）— 未上线，产线仍是 v25",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/INCIDENT-20261008-goto3stage-lift40-estop.md",
+   "title": "INCIDENT 2026-10-08（当日第三次 · near-miss）· 回点三段配方阶段1「竖直抬升 106.5mm」，老倪现场急停",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/INCIDENT-20261025-01-beam-collision-approach-board.md",
+   "title": "INC-20261025-01 · 为测距做 +X 转移，肘部/连杆撞上方横梁（与 INC-20261020-01 同一失效模式）",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/INC-20261020-01-aoi-upper-beam.md",
+   "title": "INC-20261020-01 抬升去金手指点1 途中肘部撞上横梁（3 次急停）",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/HANDOFF-20260924-shutdown.md",
+   "title": "交接 / 关机前存档 — 2026-09-24 06:40 (静静 CLI 会话)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/AOI-V30-HANDOFF-20261009.md",
+   "title": "AOI 10082 三层收口 (v30) —— 交接清单 · 2026-10-09",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/HANDOVER_20260926.md",
+   "title": "关机前状态留档 — 2026-09-26 晨 (静静)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/INCIDENT-INDEX.md",
+   "title": "事故台账 INCIDENT-INDEX",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/关机前状态留档_20261008.md",
+   "title": "关机前状态留档 — 2026-10-08（收尾版本 v5.18.1）",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/AOI-PT2-ROUND4-STATUS-20261009.md",
+   "title": "AOI 点2 判据 / 画布连线 / 旁路上网通道 —— ROUND4 状态 (2026-10-09)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/NEXT_ITERATION_20260926.md",
+   "title": "Z-MAX 状态空间工程 · 下一轮迭代计划 (2026-09-26 冻结 v5.15.10 之后)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/TASK_LEDGER_20260925.md",
+   "title": "Z-MAX 任务台账 — 盘点于 2026-09-25 08:40 (静静 · 开机后)",
+   "patent": ""
+  },
+  {
+   "path": "docs/7-瑶光-记录追溯/incidents/INCIDENT-20261008-space2-lift-collision.md",
+   "title": "INCIDENT 2026-10-08 · 空间2(XY)上方\"盲抬 50mm\"撞到净空，动作中止 + 急停",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/l4_runtime_evidence_matrix_20260922.md",
+   "title": "L4 端到端运行时证据矩阵 (2026-09-22, 只读探针)",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/zmax_300uph_model_io.md",
+   "title": "Z-MAX 状态空间工程 · 各层模型 I/O 与 action 传递链（实测）",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/zmax_gold_detector_negative_result.md",
+   "title": "金手指检测模型训练 · 负结果（2026-10-30）",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/zmax_mani_engine_ab_test.md",
+   "title": "流形引擎节点有效性 · A/B 对照（2026-10-30）",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/README.md",
+   "title": "5-玉衡 · 指标验收",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/zmax_300uph_global_analysis.md",
+   "title": "Z-MAX 300UPH 全局分析报告（2026-10-30）",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/lora_align_ab_20260924.md",
+   "title": "①-1 · L4 注入\"被闸死\"的根因与对齐层同口径 A/B — 2026-09-24",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/zmax_300uph_verification.md",
+   "title": "300UPH 状态空间驱动验证（2026-10-29 实测）",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/l4_stats_caliber_fix_20260922.md",
+   "title": "L4 反归一化口径 bug 修复 + \"模型为何不被采纳\"定量归因 (2026-09-22)",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/zmax_l2_300uph_closure.md",
+   "title": "L2 独立运行 · 300 UPH 收口核算（2026-11-02）",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/test-reports/MASTER-TEST-REPORT.md",
+   "title": "Z-MAX 项目测试总报告 · Master Test Report",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/test-reports/F11-final-submission.md",
+   "title": "F11 · 测试报告汇总提交 [收尾]",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/test-reports/F05-e2e-sys1-test.md",
+   "title": "F05 · 全链路端到端测试 — Sys-1 ACT 通过",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/test-reports/F06-tcp-bridge-test.md",
+   "title": "F06 · TCP Bridge测试 — PC-Orin Domain23转发 测试报告",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/test-reports/F08-reliability-test.md",
+   "title": "F08 · 硬件可靠性验证 — 测试报告",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/test-reports/F02-mac-smolvla-test.md",
+   "title": "F02 · 端侧测试(Mac) — SmolVLA量化→Mac 测试报告",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/test-reports/F03-orin-inference-test.md",
+   "title": "F03 · 端侧测试(Orin Nano) — 模型→Orin推理 测试报告",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/test-reports/F07-hardware-smart-connect.md",
+   "title": "F07 · 硬件连接智能化 — 即插即用+自动识别+自适应配置 测试报告",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/test-reports/F12-gui-verification.md",
+   "title": "F12 · GUI功能好用/安全/可靠验证 [收尾]",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/test-reports/F04-hardware-adaptation-test.md",
+   "title": "F04 · 硬件适配(SR5+Z700) — 机械臂对接 测试报告",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/eval/原子技能目标输出口_技能驱动仿真_v5.50.739.md",
+   "title": "原子技能「目标输出口」+ 技能驱动仿真 — 落地与判据（v5.50.739 · 2026-10-16）",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/eval/550A_全量pipeline_度规约束与分层_2026-10-19.md",
+   "title": "550A 全量 pipeline 训练 · 度规约束与结构化分层的实测证明",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/eval/u_ff过原子技能节点_物理闸内联_v5.50.739.md",
+   "title": "u_ff 过「原子技能节点 + 物理闸」再给仿真器 — 落地与 A/B（v5.50.739 · 2026-10-16）",
+   "patent": "ZMP-2026-004"
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/eval/元任务性能物理值全链验证_v5.50.735.md",
+   "title": "元任务 · 性能配置 · 物理参数 全链对应与物理值验证 (基线产品 v5.50.735)",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/eval/迭代路线图_v5.50.735.md",
+   "title": "产品迭代路线 Phase 0→4 · 迭代验证与对比分析 (基线产品 v5.50.735)",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/eval/归一化球面实现方案_落地_v5.50.735.md",
+   "title": "归一化球面「实现方案」落地对账 (v5.50.735)",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/eval/评估分析报告_v5.50.735.md",
+   "title": "评估分析报告 · 基线产品 v5.50.735",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/eval/数据闭环训练与约束验证_20261020.md",
+   "title": "数据闭环训练 + 约束验证 评估报告",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/eval/Phase0_L2速度反馈延迟_全测_v5.50.735.md",
+   "title": "Phase 0 · L2 原子技能「速度反馈延迟」逐技能全测 (v5.50.735)",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/eval/评估分析页_场景迭代面板_v5.50.735.md",
+   "title": "评估分析页 · 迭代路线图区块「插拔 / 摆盘 场景 × Phase 0→4 全流程迭代」视图",
+   "patent": ""
+  },
+  {
+   "path": "docs/5-玉衡-指标验收/eval/流形引擎几何完备性_20261019.md",
+   "title": "流形引擎几何完备性：切空间投影有效 · 度规势被证伪",
    "patent": ""
   },
   {
@@ -2051,18 +3298,13 @@
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/Z-MAX-硬件平台-L2-L3-L4方案.md",
-   "title": "Z-MAX 硬件平台定义 · L2/L3/L4 三档方案",
-   "patent": ""
-  },
-  {
    "path": "docs/1-天枢-产品边界/Z-MAX产品等级定义-L1-L5标准.md",
    "title": "Z-MAX 产品等级定义 · L1~L5 自动化标准",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/README_INDEX.md",
-   "title": "交付件索引 · docs/1-天枢-产品边界/deliverables",
+   "path": "docs/1-天枢-产品边界/Z-MAX-硬件平台-L2-L3-L4方案.md",
+   "title": "Z-MAX 硬件平台定义 · L2/L3/L4 三档方案",
    "patent": ""
   },
   {
@@ -2076,138 +3318,28 @@
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/INDEX_5.50.B.md",
-   "title": "Z-MAX 5.50.B 交付文档包 · 汇总索引",
+   "path": "docs/1-天枢-产品边界/deliverables/README_INDEX.md",
+   "title": "交付件索引 · docs/1-天枢-产品边界/deliverables",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/Z-MAX产品解决方案_5.50.C_20261101.pptx",
-   "title": "Z-MAX产品解决方案_5.50.C_20261101",
+   "path": "docs/1-天枢-产品边界/deliverables/3-供应商SOR/供应商SOR_摆盘_TASK-06-TRAY_5.50.B_20261013.md",
+   "title": "1. 项目背景与用途",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/Z-MAX以世界模型为核心的状态空间工程_5.50.D-M2.pptx",
-   "title": "Z-MAX以世界模型为核心的状态空间工程_5.50.D-M2",
+   "path": "docs/1-天枢-产品边界/deliverables/3-供应商SOR/SOR_供应商要求_插拔类_TASK-01-FW_TASK-05-ATS_5.50.C.docx",
+   "title": "SOR_供应商要求_插拔类_TASK-01-FW_TASK-05-ATS_5.50.C",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/Z-MAX以世界模型为核心的状态空间工程_550_v1.pptx",
-   "title": "Z-MAX以世界模型为核心的状态空间工程_550_v1",
+   "path": "docs/1-天枢-产品边界/deliverables/3-供应商SOR/供应商SOR_摆盘_TASK-06-TRAY_5.50.5_20261013.md",
+   "title": "1. 项目背景与用途",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/Z-MAX以世界模型为核心的状态空间工程_550_v2.pptx",
-   "title": "Z-MAX以世界模型为核心的状态空间工程_550_v2",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/Z-MAX以世界模型为核心的状态空间工程_演讲备注讲稿_288页.docx",
-   "title": "Z-MAX以世界模型为核心的状态空间工程_演讲备注讲稿_288页",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/Z-MAX总技术手册_5.50.D-M1.pptx",
-   "title": "Z-MAX总技术手册_5.50.D-M1",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/Z-MAX整机解决方案与技术白皮书_5.50.C-R6_20261103.pptx",
-   "title": "Z-MAX整机解决方案与技术白皮书_5.50.C-R6_20261103",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/Z-MAX整机解决方案与技术白皮书_550_v1.pptx",
-   "title": "Z-MAX整机解决方案与技术白皮书_550_v1",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/Z-MAX精细操作机器人_能力分级产品解决方案_5.50.D-R1.pptx",
-   "title": "Z-MAX精细操作机器人_能力分级产品解决方案_5.50.D-R1",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/交付说明_世界模型技术手册_M2.md",
-   "title": "以世界模型为核心的状态空间工程 · 技术手册 5.50.D-M2 交付说明",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/元任务总体设计_v5.50.736.md",
-   "title": "元任务总体设计 (Z-MAX v5.50.736)",
-   "patent": "ZMP-2026-005"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/功能清单_Z-MAX_20261012.md",
-   "title": "Z-MAX 具身智能机器人平台 · 功能清单",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/功能说明_5.50.A.md",
-   "title": "Z-MAX 功能说明（交付版 5.50.A）",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/功能说明_Z-MAX_5.50.B_20261013.md",
-   "title": "Z-MAX 功能说明（交付版 5.50.B）",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/版本策略_5.50.A_B_C.md",
-   "title": "Z-MAX 版本策略（5.50.A / 5.50.B / 5.50.C）",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/2-机器人方案/AR场景机器人方案_5.50.C_20261101.pptx",
-   "title": "AR场景机器人方案_5.50.C_20261101",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/2-机器人方案/Z-MAX整机解决方案与技术白皮书_5.50.C-R6_20261103.pptx",
-   "title": "Z-MAX整机解决方案与技术白皮书_5.50.C-R6_20261103",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/2-机器人方案/Z-MAX机器人整机解决方案_5.50.C-R2_20261102.pptx",
-   "title": "Z-MAX机器人整机解决方案_5.50.C-R2_20261102",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/2-机器人方案/Z-MAX机器人整机解决方案_5.50.C-R3_20261102.pptx",
-   "title": "Z-MAX机器人整机解决方案_5.50.C-R3_20261102",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/2-机器人方案/Z-MAX机器人整机解决方案_5.50.C-R4_20261102.pptx",
-   "title": "Z-MAX机器人整机解决方案_5.50.C-R4_20261102",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/2-机器人方案/Z-MAX机器人整机解决方案_5.50.C-R5_20261102.pptx",
-   "title": "Z-MAX机器人整机解决方案_5.50.C-R5_20261102",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/2-机器人方案/Z-MAX机器人整机解决方案_5.50.C_20261101.pptx",
-   "title": "Z-MAX机器人整机解决方案_5.50.C_20261101",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/2-机器人方案/Z-MAX机器人整机解决方案_5.50.C_20261102.pptx",
-   "title": "Z-MAX机器人整机解决方案_5.50.C_20261102",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/2-机器人方案/交付说明_R6.md",
-   "title": "Z-MAX 状态空间工程 · R6 交付说明",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/2-机器人方案/机器人作业姿态_工位版_5.50.C_20261101.pptx",
-   "title": "机器人作业姿态_工位版_5.50.C_20261101",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/3-供应商SOR/SOR_Z-MAX_5.50.B_20261013.md",
-   "title": "Z-MAX 供应商需求规格书（SOR · 交付版 5.50.B）",
+   "path": "docs/1-天枢-产品边界/deliverables/3-供应商SOR/任务配置单_Z-MAX_20261012.md",
+   "title": "Z-MAX 任务配置单(最终验证版)",
    "patent": ""
   },
   {
@@ -2216,13 +3348,33 @@
    "patent": ""
   },
   {
+   "path": "docs/1-天枢-产品边界/deliverables/3-供应商SOR/供应商SOR_摆盘_TASK-06-TRAY_5.50.B_20261013.docx",
+   "title": "供应商SOR_摆盘_TASK-06-TRAY_5.50.B_20261013",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/3-供应商SOR/SOR_Z-MAX_5.50.B_20261013.md",
+   "title": "Z-MAX 供应商需求规格书（SOR · 交付版 5.50.B）",
+   "patent": ""
+  },
+  {
    "path": "docs/1-天枢-产品边界/deliverables/3-供应商SOR/SOR_供应商要求_插拔_TASK-01-FW_5.50.C.md",
    "title": "供应商要求 SOR (Statement of Requirements) · 插拔作业",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/3-供应商SOR/SOR_供应商要求_插拔类_TASK-01-FW_TASK-05-ATS_5.50.C.docx",
-   "title": "SOR_供应商要求_插拔类_TASK-01-FW_TASK-05-ATS_5.50.C",
+   "path": "docs/1-天枢-产品边界/deliverables/3-供应商SOR/供应商SOR_摆盘_TASK-06-TRAY_5.50.5_20261013.docx",
+   "title": "供应商SOR_摆盘_TASK-06-TRAY_5.50.5_20261013",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/3-供应商SOR/供应商SOR_Z-MAX_光模块精细操作_20261012.md",
+   "title": "Z-MAX 具身智能机器人平台 · 供应商需求规格书 (SOR)",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/3-供应商SOR/SOR_供应商要求_摆盘_TASK-06-TRAY_5.50.C.md",
+   "title": "供应商要求 SOR (Statement of Requirements) · 摆盘作业",
    "patent": ""
   },
   {
@@ -2236,43 +3388,143 @@
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/3-供应商SOR/SOR_供应商要求_摆盘_TASK-06-TRAY_5.50.C.md",
-   "title": "供应商要求 SOR (Statement of Requirements) · 摆盘作业",
+   "path": "docs/1-天枢-产品边界/deliverables/8-工程手册/Z-MAX以世界模型为核心的状态空间工程_550_v4_20261111.pptx",
+   "title": "Z-MAX以世界模型为核心的状态空间工程_550_v4_20261111",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/3-供应商SOR/任务配置单_Z-MAX_20261012.md",
-   "title": "Z-MAX 任务配置单(最终验证版)",
+   "path": "docs/1-天枢-产品边界/deliverables/8-工程手册/工程操作手册_三档_A_B_C.docx",
+   "title": "工程操作手册_三档_A_B_C",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/3-供应商SOR/供应商SOR_Z-MAX_光模块精细操作_20261012.md",
-   "title": "Z-MAX 具身智能机器人平台 · 供应商需求规格书 (SOR)",
+   "path": "docs/1-天枢-产品边界/deliverables/8-工程手册/550c_remote_results_20261026.md",
+   "title": "Z-MAX 550A/550B/550C 阶段结果（远程模式）· 2026-10-26 06:36",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/3-供应商SOR/供应商SOR_摆盘_TASK-06-TRAY_5.50.5_20261013.docx",
-   "title": "供应商SOR_摆盘_TASK-06-TRAY_5.50.5_20261013",
+   "path": "docs/1-天枢-产品边界/deliverables/8-工程手册/工程操作手册_三档_A_B_C.md",
+   "title": "工程操作手册 (Working Instruction) —— 按性能等级 A / B / C",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/3-供应商SOR/供应商SOR_摆盘_TASK-06-TRAY_5.50.5_20261013.md",
-   "title": "1. 项目背景与用途",
+   "path": "docs/1-天枢-产品边界/deliverables/8-工程手册/README_技术手册版本.md",
+   "title": "技术手册 · 版本说明",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/3-供应商SOR/供应商SOR_摆盘_TASK-06-TRAY_5.50.B_20261013.docx",
-   "title": "供应商SOR_摆盘_TASK-06-TRAY_5.50.B_20261013",
+   "path": "docs/1-天枢-产品边界/deliverables/8-工程手册/20261026_handoff.md",
+   "title": "2026-10-26 交接单（关机前）",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/3-供应商SOR/供应商SOR_摆盘_TASK-06-TRAY_5.50.B_20261013.md",
-   "title": "1. 项目背景与用途",
+   "path": "docs/1-天枢-产品边界/deliverables/7-流形引擎与世界模型/流形引擎与世界模型分层框架_5.50.D-P1_20261110.pptx",
+   "title": "流形引擎与世界模型分层框架_5.50.D-P1_20261110",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/3-精细操作机器人产品/Z-MAX精细操作机器人_F系列_立项任务书_20261104.docx",
-   "title": "Z-MAX精细操作机器人_F系列_立项任务书_20261104",
+   "path": "docs/1-天枢-产品边界/deliverables/5-交付包-摆盘/摆盘性能对账_5.50.758.md",
+   "title": "摆盘 TASK-06-TRAY · 性能对账与配置映射 (v5.50.758)",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/5-交付包-摆盘/摆盘性能对账_5.50.C.md",
+   "title": "摆盘 TASK-06-TRAY · 性能对账与配置映射 (v5.50.C)",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/5-交付包-摆盘/README_交付包_摆盘TASK-06-TRAY_5.50.B.md",
+   "title": "Z-MAX 交付文档包 · 摆盘 TASK-06-TRAY（5.50.B）",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/5-交付包-摆盘/交付文档_摆盘_TASK-06-TRAY_5.50.C.md",
+   "title": "摆盘作业 交付文档 · TASK-06-TRAY · 5.50.C",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/项目立项文档_Z-MAX_20261012.md",
+   "title": "Z-MAX 具身智能机器人平台 · 项目立项文档",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/元任务开发计划_2026-10_2027-12.docx",
+   "title": "元任务开发计划_2026-10_2027-12",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/立项文档_Z-MAX_5.50.B_20261013.md",
+   "title": "Z-MAX 具身智能机器人平台 · 项目立项文档（5.50.B）",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/项目立项报告_双臂协作工位.md",
+   "title": "双臂协作工位项目立项报告",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/Z-MAX项目进展_5.50.D-P3_20261110.pptx",
+   "title": "Z-MAX项目进展_5.50.D-P3_20261110",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/Z700项目立项文档_成都储翰插拔工位_v1.1.docx",
+   "title": "Z700项目立项文档_成都储翰插拔工位_v1.1",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/合作协议_机器人数据平台与解决方案_5.50.C.docx",
+   "title": "合作协议_机器人数据平台与解决方案_5.50.C",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/合作协议_机器人数据平台与解决方案_5.50.C.md",
+   "title": "合作协议 (草案) · 机器人数据平台提供/销售 · 解决方案采购",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/项目立项报告_双臂协作工位.docx",
+   "title": "项目立项报告_双臂协作工位",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/Z700项目立项文档_成都储翰插拔工位_v1.0.docx",
+   "title": "Z700项目立项文档_成都储翰插拔工位_v1.0",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/元任务开发计划_2026-10_2027-12.md",
+   "title": "Z-MAX 状态空间工程 · 元任务开发计划（项目立项书）",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/outreach/荣旗_立项资料清单_邮件_20261019.md",
+   "title": "荣旗项目 · 立项资料索取邮件 (2026-10-19)",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/参考/Z100L立项文档_v1.1.docx",
+   "title": "Z100L立项文档_v1.1",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/参考/Z-MAX以世界模型为核心的状态空间工程_550_v3.pptx",
+   "title": "Z-MAX以世界模型为核心的状态空间工程_550_v3",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/_历史版本/Z-MAX项目矩阵状态评估_5.50.D-P1_20261110.pptx",
+   "title": "Z-MAX项目矩阵状态评估_5.50.D-P1_20261110",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/_历史版本/Z-MAX项目进展横向对比_5.50.D-P2_20261110.pptx",
+   "title": "Z-MAX项目进展横向对比_5.50.D-P2_20261110",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/3-精细操作机器人产品/Z-MAX精细操作机器人_能力分级产品解决方案_5.50.D-R1_文字版.docx",
+   "title": "Z-MAX精细操作机器人_能力分级产品解决方案_5.50.D-R1_文字版",
    "patent": ""
   },
   {
@@ -2281,8 +3533,38 @@
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/3-精细操作机器人产品/Z-MAX精细操作机器人_能力分级产品解决方案_5.50.D-R1_文字版.docx",
-   "title": "Z-MAX精细操作机器人_能力分级产品解决方案_5.50.D-R1_文字版",
+   "path": "docs/1-天枢-产品边界/deliverables/3-精细操作机器人产品/Z-MAX精细操作机器人_F系列_立项任务书_20261104.docx",
+   "title": "Z-MAX精细操作机器人_F系列_立项任务书_20261104",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/7-配置与测试/原型验证测试报告_Z-MAX_20261012.md",
+   "title": "Z-MAX 原型验证测试报告 — 主参数 M(度量张量)与系统特性、成功率、节拍的关系",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/7-配置与测试/全系统配置清单_5.50.B.md",
+   "title": "Z-MAX 全系统总配置清单（交付件 5.50.B）",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/7-配置与测试/全系统配置清单_5.50.A.md",
+   "title": "Z-MAX 全系统总配置清单（交付件 5.50.A）",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/7-配置与测试/功能topic_输入输出测试报告_v5.50.6.md",
+   "title": "功能 topic 输入/输出 实测报告 · v5.50.6",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/7-配置与测试/全系统配置清单_Z-MAX_5.50.B_20261013.md",
+   "title": "Z-MAX 全系统配置清单（交付件 5.50.B）",
+   "patent": ""
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/7-配置与测试/全系统配置清单_5.50.C.md",
+   "title": "Z-MAX 全系统总配置清单（交付件 5.50.C）",
    "patent": ""
   },
   {
@@ -2301,199 +3583,144 @@
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/5-交付包-摆盘/README_交付包_摆盘TASK-06-TRAY_5.50.B.md",
-   "title": "Z-MAX 交付文档包 · 摆盘 TASK-06-TRAY（5.50.B）",
+   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/交付说明_世界模型技术手册_M2.md",
+   "title": "以世界模型为核心的状态空间工程 · 技术手册 5.50.D-M2 交付说明",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/5-交付包-摆盘/交付文档_摆盘_TASK-06-TRAY_5.50.C.md",
-   "title": "摆盘作业 交付文档 · TASK-06-TRAY · 5.50.C",
+   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/Z-MAX精细操作机器人_能力分级产品解决方案_5.50.D-R1.pptx",
+   "title": "Z-MAX精细操作机器人_能力分级产品解决方案_5.50.D-R1",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/5-交付包-摆盘/摆盘性能对账_5.50.758.md",
-   "title": "摆盘 TASK-06-TRAY · 性能对账与配置映射 (v5.50.758)",
+   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/功能清单_Z-MAX_20261012.md",
+   "title": "Z-MAX 具身智能机器人平台 · 功能清单",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/5-交付包-摆盘/摆盘性能对账_5.50.C.md",
-   "title": "摆盘 TASK-06-TRAY · 性能对账与配置映射 (v5.50.C)",
+   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/功能说明_Z-MAX_5.50.B_20261013.md",
+   "title": "Z-MAX 功能说明（交付版 5.50.B）",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/Z-MAX项目矩阵状态评估_5.50.D-P1_20261110.pptx",
-   "title": "Z-MAX项目矩阵状态评估_5.50.D-P1_20261110",
+   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/元任务总体设计_v5.50.736.md",
+   "title": "元任务总体设计 (Z-MAX v5.50.736)",
+   "patent": "ZMP-2026-005"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/Z-MAX总技术手册_5.50.D-M1.pptx",
+   "title": "Z-MAX总技术手册_5.50.D-M1",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/Z-MAX项目进展_5.50.D-P3_20261110.pptx",
-   "title": "Z-MAX项目进展_5.50.D-P3_20261110",
+   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/Z-MAX以世界模型为核心的状态空间工程_演讲备注讲稿_288页.docx",
+   "title": "Z-MAX以世界模型为核心的状态空间工程_演讲备注讲稿_288页",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/Z700项目立项文档_成都储翰插拔工位_v1.0.docx",
-   "title": "Z700项目立项文档_成都储翰插拔工位_v1.0",
+   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/版本策略_5.50.A_B_C.md",
+   "title": "Z-MAX 版本策略（5.50.A / 5.50.B / 5.50.C）",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/Z700项目立项文档_成都储翰插拔工位_v1.1.docx",
-   "title": "Z700项目立项文档_成都储翰插拔工位_v1.1",
+   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/Z-MAX以世界模型为核心的状态空间工程_550_v2.pptx",
+   "title": "Z-MAX以世界模型为核心的状态空间工程_550_v2",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/元任务开发计划_2026-10_2027-12.docx",
-   "title": "元任务开发计划_2026-10_2027-12",
+   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/Z-MAX产品解决方案_5.50.C_20261101.pptx",
+   "title": "Z-MAX产品解决方案_5.50.C_20261101",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/元任务开发计划_2026-10_2027-12.md",
-   "title": "Z-MAX 状态空间工程 · 元任务开发计划（项目立项书）",
+   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/Z-MAX整机解决方案与技术白皮书_550_v1.pptx",
+   "title": "Z-MAX整机解决方案与技术白皮书_550_v1",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/合作协议_机器人数据平台与解决方案_5.50.C.docx",
-   "title": "合作协议_机器人数据平台与解决方案_5.50.C",
+   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/Z-MAX以世界模型为核心的状态空间工程_5.50.D-M2.pptx",
+   "title": "Z-MAX以世界模型为核心的状态空间工程_5.50.D-M2",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/合作协议_机器人数据平台与解决方案_5.50.C.md",
-   "title": "合作协议 (草案) · 机器人数据平台提供/销售 · 解决方案采购",
+   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/Z-MAX整机解决方案与技术白皮书_5.50.C-R6_20261103.pptx",
+   "title": "Z-MAX整机解决方案与技术白皮书_5.50.C-R6_20261103",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/当前进展与四方对比_5.50.D-P1_20261110.pptx",
-   "title": "当前进展与四方对比_5.50.D-P1_20261110",
+   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/功能说明_5.50.A.md",
+   "title": "Z-MAX 功能说明（交付版 5.50.A）",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/插拔和摆盘项目进展_20261110.pptx",
-   "title": "插拔和摆盘项目进展_20261110",
+   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/Z-MAX以世界模型为核心的状态空间工程_550_v1.pptx",
+   "title": "Z-MAX以世界模型为核心的状态空间工程_550_v1",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/立项文档_Z-MAX_5.50.B_20261013.md",
-   "title": "Z-MAX 具身智能机器人平台 · 项目立项文档（5.50.B）",
+   "path": "docs/1-天枢-产品边界/deliverables/1-产品方案/INDEX_5.50.B.md",
+   "title": "Z-MAX 5.50.B 交付文档包 · 汇总索引",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/项目立项报告_双臂协作工位.docx",
-   "title": "项目立项报告_双臂协作工位",
+   "path": "docs/1-天枢-产品边界/deliverables/2-机器人方案/Z-MAX机器人整机解决方案_5.50.C_20261101.pptx",
+   "title": "Z-MAX机器人整机解决方案_5.50.C_20261101",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/项目立项报告_双臂协作工位.md",
-   "title": "双臂协作工位项目立项报告",
+   "path": "docs/1-天枢-产品边界/deliverables/2-机器人方案/Z-MAX机器人整机解决方案_5.50.C-R2_20261102.pptx",
+   "title": "Z-MAX机器人整机解决方案_5.50.C-R2_20261102",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/项目立项文档_Z-MAX_20261012.md",
-   "title": "Z-MAX 具身智能机器人平台 · 项目立项文档",
+   "path": "docs/1-天枢-产品边界/deliverables/2-机器人方案/机器人作业姿态_工位版_5.50.C_20261101.pptx",
+   "title": "机器人作业姿态_工位版_5.50.C_20261101",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/outreach/荣旗_立项资料清单_邮件_20261019.md",
-   "title": "荣旗项目 · 立项资料索取邮件 (2026-10-19)",
+   "path": "docs/1-天枢-产品边界/deliverables/2-机器人方案/AR场景机器人方案_5.50.C_20261101.pptx",
+   "title": "AR场景机器人方案_5.50.C_20261101",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/_历史版本/Z-MAX项目进展横向对比_5.50.D-P2_20261110.pptx",
-   "title": "Z-MAX项目进展横向对比_5.50.D-P2_20261110",
+   "path": "docs/1-天枢-产品边界/deliverables/2-机器人方案/Z-MAX机器人整机解决方案_5.50.C-R5_20261102.pptx",
+   "title": "Z-MAX机器人整机解决方案_5.50.C-R5_20261102",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/参考/Z-MAX以世界模型为核心的状态空间工程_550_v3.pptx",
-   "title": "Z-MAX以世界模型为核心的状态空间工程_550_v3",
+   "path": "docs/1-天枢-产品边界/deliverables/2-机器人方案/Z-MAX机器人整机解决方案_5.50.C-R4_20261102.pptx",
+   "title": "Z-MAX机器人整机解决方案_5.50.C-R4_20261102",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/6-立项与协议/参考/Z100L立项文档_v1.1.docx",
-   "title": "Z100L立项文档_v1.1",
+   "path": "docs/1-天枢-产品边界/deliverables/2-机器人方案/Z-MAX机器人整机解决方案_5.50.C_20261102.pptx",
+   "title": "Z-MAX机器人整机解决方案_5.50.C_20261102",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/7-流形引擎与世界模型/流形引擎与世界模型分层框架_5.50.D-P1_20261110.pptx",
-   "title": "流形引擎与世界模型分层框架_5.50.D-P1_20261110",
+   "path": "docs/1-天枢-产品边界/deliverables/2-机器人方案/交付说明_R6.md",
+   "title": "Z-MAX 状态空间工程 · R6 交付说明",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/7-配置与测试/全系统配置清单_5.50.A.md",
-   "title": "Z-MAX 全系统总配置清单（交付件 5.50.A）",
+   "path": "docs/1-天枢-产品边界/deliverables/2-机器人方案/Z-MAX机器人整机解决方案_5.50.C-R3_20261102.pptx",
+   "title": "Z-MAX机器人整机解决方案_5.50.C-R3_20261102",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/7-配置与测试/全系统配置清单_5.50.B.md",
-   "title": "Z-MAX 全系统总配置清单（交付件 5.50.B）",
+   "path": "docs/1-天枢-产品边界/deliverables/2-机器人方案/Z-MAX整机解决方案与技术白皮书_5.50.C-R6_20261103.pptx",
+   "title": "Z-MAX整机解决方案与技术白皮书_5.50.C-R6_20261103",
    "patent": ""
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/7-配置与测试/全系统配置清单_5.50.C.md",
-   "title": "Z-MAX 全系统总配置清单（交付件 5.50.C）",
-   "patent": ""
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-019_一种世界模型在环的分层动作修正方法及系统.md",
+   "title": "一种世界模型在环的分层动作修正方法及系统",
+   "patent": "ZMP-2026-019"
   },
   {
-   "path": "docs/1-天枢-产品边界/deliverables/7-配置与测试/全系统配置清单_Z-MAX_5.50.B_20261013.md",
-   "title": "Z-MAX 全系统配置清单（交付件 5.50.B）",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/7-配置与测试/功能topic_输入输出测试报告_v5.50.6.md",
-   "title": "功能 topic 输入/输出 实测报告 · v5.50.6",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/7-配置与测试/原型验证测试报告_Z-MAX_20261012.md",
-   "title": "Z-MAX 原型验证测试报告 — 主参数 M(度量张量)与系统特性、成功率、节拍的关系",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/8-工程手册/20261026_handoff.md",
-   "title": "2026-10-26 交接单（关机前）",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/8-工程手册/550c_remote_results_20261026.md",
-   "title": "Z-MAX 550A/550B/550C 阶段结果（远程模式）· 2026-10-26 06:36",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/8-工程手册/README_技术手册版本.md",
-   "title": "技术手册 · 版本说明",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/8-工程手册/Z-MAX以世界模型为核心的状态空间工程_550_v4_20261111.pptx",
-   "title": "Z-MAX以世界模型为核心的状态空间工程_550_v4_20261111",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/8-工程手册/工程操作手册_三档_A_B_C.docx",
-   "title": "工程操作手册_三档_A_B_C",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/deliverables/8-工程手册/工程操作手册_三档_A_B_C.md",
-   "title": "工程操作手册 (Working Instruction) —— 按性能等级 A / B / C",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/00_专利申请渠道清单.md",
-   "title": "Z-MAX 专利申请渠道清单 (总览)",
-   "patent": "ZMP-2026-011"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/README.md",
-   "title": "专利体系 · Z-MAX 状态空间工程",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-001_一种基于北斗七星结构的具身智能状态空间工程配置方法及系统.docx",
-   "title": "ZMP-2026-001_一种基于北斗七星结构的具身智能状态空间工程配置方法及系统",
-   "patent": "ZMP-2026-001"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-001_一种基于北斗七星结构的具身智能状态空间工程配置方法及系统.md",
-   "title": "一种基于北斗七星结构的具身智能状态空间工程配置方法及系统",
-   "patent": "ZMP-2026-001"
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-016_一种长耗时感知任务与短周期控制回路的异步快照解耦方法及系统.md",
+   "title": "一种长耗时感知任务与短周期控制回路的异步快照解耦方法及系统",
+   "patent": "ZMP-2026-016"
   },
   {
    "path": "docs/1-天枢-产品边界/patents/ZMP-2026-002_一种四系统分层具身智能架构及其功能_层级_模型三向映射方法.docx",
@@ -2501,9 +3728,29 @@
    "patent": "ZMP-2026-002"
   },
   {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-002_一种四系统分层具身智能架构及其功能_层级_模型三向映射方法.md",
-   "title": "一种四系统分层具身智能架构及其功能—层级—模型三向映射方法",
-   "patent": "ZMP-2026-002"
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-009_一种原子技能肌肉记忆固化与标杆模板快速直通方法.md",
+   "title": "一种原子技能肌肉记忆固化与标杆模板快速直通方法",
+   "patent": "ZMP-2026-009"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/00_专利申请渠道清单.md",
+   "title": "Z-MAX 专利申请渠道清单 (总览)",
+   "patent": "ZMP-2026-011"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-013_一种基于视触觉融合与装配公差度规的跨层动作修正方法及系统.docx",
+   "title": "ZMP-2026-013_一种基于视触觉融合与装配公差度规的跨层动作修正方法及系统",
+   "patent": "ZMP-2026-013"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-001_一种基于北斗七星结构的具身智能状态空间工程配置方法及系统.docx",
+   "title": "ZMP-2026-001_一种基于北斗七星结构的具身智能状态空间工程配置方法及系统",
+   "patent": "ZMP-2026-001"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-019_一种世界模型在环的分层动作修正方法及系统.docx",
+   "title": "ZMP-2026-019_一种世界模型在环的分层动作修正方法及系统",
+   "patent": "ZMP-2026-019"
   },
   {
    "path": "docs/1-天枢-产品边界/patents/ZMP-2026-003_基于二阶特殊酉群的状态空间统一表示与跨层映射方法.docx",
@@ -2511,14 +3758,54 @@
    "patent": "ZMP-2026-003"
   },
   {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-001_一种基于北斗七星结构的具身智能状态空间工程配置方法及系统.md",
+   "title": "一种基于北斗七星结构的具身智能状态空间工程配置方法及系统",
+   "patent": "ZMP-2026-001"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-011_一种人机在环示教与视觉伺服小步对位的工件标定及抓取方法.docx",
+   "title": "ZMP-2026-011_一种人机在环示教与视觉伺服小步对位的工件标定及抓取方法",
+   "patent": "ZMP-2026-011"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-002_一种四系统分层具身智能架构及其功能_层级_模型三向映射方法.md",
+   "title": "一种四系统分层具身智能架构及其功能—层级—模型三向映射方法",
+   "patent": "ZMP-2026-002"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-010_一种机器人多层记忆组织与元任务预测映射方法.md",
+   "title": "一种机器人多层记忆组织与元任务预测映射方法",
+   "patent": "ZMP-2026-010"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-007_一种世界模型意图_动作分块生成与适配层折叠部署方法及零动作伪装防护.docx",
+   "title": "ZMP-2026-007_一种世界模型意图_动作分块生成与适配层折叠部署方法及零动作伪装防护",
+   "patent": "ZMP-2026-007"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/README.md",
+   "title": "专利体系 · Z-MAX 状态空间工程",
+   "patent": ""
+  },
+  {
    "path": "docs/1-天枢-产品边界/patents/ZMP-2026-003_基于二阶特殊酉群的状态空间统一表示与跨层映射方法.md",
    "title": "基于二阶特殊酉群的状态空间统一表示与跨层映射方法",
    "patent": "ZMP-2026-003"
   },
   {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-004_一种可行域逐层收窄与底层势函数收口的机器人运动安全控制方法.docx",
-   "title": "ZMP-2026-004_一种可行域逐层收窄与底层势函数收口的机器人运动安全控制方法",
-   "patent": "ZMP-2026-004"
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-005_一种二维检测到三维坐标到状态量的同构感知链与真机域适应方法.docx",
+   "title": "ZMP-2026-005_一种二维检测到三维坐标到状态量的同构感知链与真机域适应方法",
+   "patent": "ZMP-2026-005"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-018_一种仿真速度指令到真机单轴分步安全跟随方法及系统.docx",
+   "title": "ZMP-2026-018_一种仿真速度指令到真机单轴分步安全跟随方法及系统",
+   "patent": "ZMP-2026-018"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-020_一种基于装配公差度规的双层硬注入动作生成方法及系统.docx",
+   "title": "ZMP-2026-020_一种基于装配公差度规的双层硬注入动作生成方法及系统",
+   "patent": "ZMP-2026-020"
   },
   {
    "path": "docs/1-天枢-产品边界/patents/ZMP-2026-004_一种可行域逐层收窄与底层势函数收口的机器人运动安全控制方法.md",
@@ -2526,9 +3813,104 @@
    "patent": "ZMP-2026-004"
   },
   {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-005_一种二维检测到三维坐标到状态量的同构感知链与真机域适应方法.docx",
-   "title": "ZMP-2026-005_一种二维检测到三维坐标到状态量的同构感知链与真机域适应方法",
-   "patent": "ZMP-2026-005"
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-017_一种分层参数真源单一性与生效性验证方法及系统.docx",
+   "title": "ZMP-2026-017_一种分层参数真源单一性与生效性验证方法及系统",
+   "patent": "ZMP-2026-017"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-020_一种基于装配公差度规的双层硬注入动作生成方法及系统.md",
+   "title": "一种基于装配公差度规的双层硬注入动作生成方法及系统",
+   "patent": "ZMP-2026-020"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-009_一种原子技能肌肉记忆固化与标杆模板快速直通方法.docx",
+   "title": "ZMP-2026-009_一种原子技能肌肉记忆固化与标杆模板快速直通方法",
+   "patent": "ZMP-2026-009"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-015_一种分层控制链路真联通率的四态量化校验方法及系统.docx",
+   "title": "ZMP-2026-015_一种分层控制链路真联通率的四态量化校验方法及系统",
+   "patent": "ZMP-2026-015"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-007_一种世界模型意图_动作分块生成与适配层折叠部署方法及零动作伪装防护.md",
+   "title": "一种世界模型意图-动作分块生成与适配层折叠部署方法及零动作伪装防护",
+   "patent": "ZMP-2026-007"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-015_一种分层控制链路真联通率的四态量化校验方法及系统.md",
+   "title": "一种分层控制链路真联通率的四态量化校验方法及系统",
+   "patent": "ZMP-2026-015"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-013_一种基于视触觉融合与装配公差度规的跨层动作修正方法及系统.md",
+   "title": "一种基于视触觉融合与装配公差度规的跨层动作修正方法及系统",
+   "patent": "ZMP-2026-013"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-006_一种开放词汇分割前置的视觉触觉融合定位与场景建图方法.md",
+   "title": "一种开放词汇分割前置的视觉触觉融合定位与场景建图方法",
+   "patent": "ZMP-2026-006"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-011_一种人机在环示教与视觉伺服小步对位的工件标定及抓取方法.md",
+   "title": "一种人机在环示教与视觉伺服小步对位的工件标定及抓取方法",
+   "patent": "ZMP-2026-011"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-017_一种分层参数真源单一性与生效性验证方法及系统.md",
+   "title": "一种分层参数真源单一性与生效性验证方法及系统",
+   "patent": "ZMP-2026-017"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-014_一种基于取像健康度分离的视觉质量门在线裁决方法及系统.md",
+   "title": "一种基于取像健康度分离的视觉质量门在线裁决方法及系统",
+   "patent": "ZMP-2026-014"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-008_一种大模型慢决策规划与本地工具技能包协同及双层安全否决方法.docx",
+   "title": "ZMP-2026-008_一种大模型慢决策规划与本地工具技能包协同及双层安全否决方法",
+   "patent": "ZMP-2026-008"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-016_一种长耗时感知任务与短周期控制回路的异步快照解耦方法及系统.docx",
+   "title": "ZMP-2026-016_一种长耗时感知任务与短周期控制回路的异步快照解耦方法及系统",
+   "patent": "ZMP-2026-016"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-012_一种多相机底图增强现实叠加与真机场景一致性校验方法.docx",
+   "title": "ZMP-2026-012_一种多相机底图增强现实叠加与真机场景一致性校验方法",
+   "patent": "ZMP-2026-012"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-014_一种基于取像健康度分离的视觉质量门在线裁决方法及系统.docx",
+   "title": "ZMP-2026-014_一种基于取像健康度分离的视觉质量门在线裁决方法及系统",
+   "patent": "ZMP-2026-014"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-010_一种机器人多层记忆组织与元任务预测映射方法.docx",
+   "title": "ZMP-2026-010_一种机器人多层记忆组织与元任务预测映射方法",
+   "patent": "ZMP-2026-010"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-004_一种可行域逐层收窄与底层势函数收口的机器人运动安全控制方法.docx",
+   "title": "ZMP-2026-004_一种可行域逐层收窄与底层势函数收口的机器人运动安全控制方法",
+   "patent": "ZMP-2026-004"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-008_一种大模型慢决策规划与本地工具技能包协同及双层安全否决方法.md",
+   "title": "一种大模型慢决策规划与本地工具技能包协同及双层安全否决方法",
+   "patent": "ZMP-2026-008"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-018_一种仿真速度指令到真机单轴分步安全跟随方法及系统.md",
+   "title": "一种仿真速度指令到真机单轴分步安全跟随方法及系统",
+   "patent": "ZMP-2026-018"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-012_一种多相机底图增强现实叠加与真机场景一致性校验方法.md",
+   "title": "一种多相机底图增强现实叠加与真机场景一致性校验方法",
+   "patent": "ZMP-2026-012"
   },
   {
    "path": "docs/1-天枢-产品边界/patents/ZMP-2026-005_一种二维检测到三维坐标到状态量的同构感知链与真机域适应方法.md",
@@ -2541,189 +3923,14 @@
    "patent": "ZMP-2026-006"
   },
   {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-006_一种开放词汇分割前置的视觉触觉融合定位与场景建图方法.md",
-   "title": "一种开放词汇分割前置的视觉触觉融合定位与场景建图方法",
-   "patent": "ZMP-2026-006"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-007_一种世界模型意图_动作分块生成与适配层折叠部署方法及零动作伪装防护.docx",
-   "title": "ZMP-2026-007_一种世界模型意图_动作分块生成与适配层折叠部署方法及零动作伪装防护",
-   "patent": "ZMP-2026-007"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-007_一种世界模型意图_动作分块生成与适配层折叠部署方法及零动作伪装防护.md",
-   "title": "一种世界模型意图-动作分块生成与适配层折叠部署方法及零动作伪装防护",
-   "patent": "ZMP-2026-007"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-008_一种大模型慢决策规划与本地工具技能包协同及双层安全否决方法.docx",
-   "title": "ZMP-2026-008_一种大模型慢决策规划与本地工具技能包协同及双层安全否决方法",
-   "patent": "ZMP-2026-008"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-008_一种大模型慢决策规划与本地工具技能包协同及双层安全否决方法.md",
-   "title": "一种大模型慢决策规划与本地工具技能包协同及双层安全否决方法",
-   "patent": "ZMP-2026-008"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-009_一种原子技能肌肉记忆固化与标杆模板快速直通方法.docx",
-   "title": "ZMP-2026-009_一种原子技能肌肉记忆固化与标杆模板快速直通方法",
-   "patent": "ZMP-2026-009"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-009_一种原子技能肌肉记忆固化与标杆模板快速直通方法.md",
-   "title": "一种原子技能肌肉记忆固化与标杆模板快速直通方法",
-   "patent": "ZMP-2026-009"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-010_一种机器人多层记忆组织与元任务预测映射方法.docx",
-   "title": "ZMP-2026-010_一种机器人多层记忆组织与元任务预测映射方法",
-   "patent": "ZMP-2026-010"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-010_一种机器人多层记忆组织与元任务预测映射方法.md",
-   "title": "一种机器人多层记忆组织与元任务预测映射方法",
-   "patent": "ZMP-2026-010"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-011_一种人机在环示教与视觉伺服小步对位的工件标定及抓取方法.docx",
-   "title": "ZMP-2026-011_一种人机在环示教与视觉伺服小步对位的工件标定及抓取方法",
-   "patent": "ZMP-2026-011"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-011_一种人机在环示教与视觉伺服小步对位的工件标定及抓取方法.md",
-   "title": "一种人机在环示教与视觉伺服小步对位的工件标定及抓取方法",
-   "patent": "ZMP-2026-011"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-012_一种多相机底图增强现实叠加与真机场景一致性校验方法.docx",
-   "title": "ZMP-2026-012_一种多相机底图增强现实叠加与真机场景一致性校验方法",
-   "patent": "ZMP-2026-012"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-012_一种多相机底图增强现实叠加与真机场景一致性校验方法.md",
-   "title": "一种多相机底图增强现实叠加与真机场景一致性校验方法",
-   "patent": "ZMP-2026-012"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-013_一种基于装配容差各向异性度规的跨层动作修正方法及系统.docx",
-   "title": "ZMP-2026-013_一种基于装配容差各向异性度规的跨层动作修正方法及系统",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-013_一种基于装配容差各向异性度规的跨层动作修正方法及系统.md",
-   "title": "一种基于装配容差各向异性度规的跨层动作修正方法及系统",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-013_一种基于视触觉融合与装配公差度规的跨层动作修正方法及系统.docx",
-   "title": "ZMP-2026-013_一种基于视触觉融合与装配公差度规的跨层动作修正方法及系统",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-013_一种基于视触觉融合与装配公差度规的跨层动作修正方法及系统.md",
-   "title": "一种基于视触觉融合与装配公差度规的跨层动作修正方法及系统",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-014_一种基于取像健康度分离的视觉质量门在线裁决方法及系统.docx",
-   "title": "ZMP-2026-014_一种基于取像健康度分离的视觉质量门在线裁决方法及系统",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-014_一种基于取像健康度分离的视觉质量门在线裁决方法及系统.md",
-   "title": "一种基于取像健康度分离的视觉质量门在线裁决方法及系统",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-015_一种分层控制链路真联通率的四态量化校验方法及系统.docx",
-   "title": "ZMP-2026-015_一种分层控制链路真联通率的四态量化校验方法及系统",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-015_一种分层控制链路真联通率的四态量化校验方法及系统.md",
-   "title": "一种分层控制链路真联通率的四态量化校验方法及系统",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-016_一种长耗时感知任务与短周期控制回路的异步快照解耦方法及系统.docx",
-   "title": "ZMP-2026-016_一种长耗时感知任务与短周期控制回路的异步快照解耦方法及系统",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-016_一种长耗时感知任务与短周期控制回路的异步快照解耦方法及系统.md",
-   "title": "一种长耗时感知任务与短周期控制回路的异步快照解耦方法及系统",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-017_一种分层参数真源单一性与生效性验证方法及系统.docx",
-   "title": "ZMP-2026-017_一种分层参数真源单一性与生效性验证方法及系统",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-017_一种分层参数真源单一性与生效性验证方法及系统.md",
-   "title": "一种分层参数真源单一性与生效性验证方法及系统",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-018_一种仿真速度指令到真机单轴分步安全跟随方法及系统.docx",
-   "title": "ZMP-2026-018_一种仿真速度指令到真机单轴分步安全跟随方法及系统",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-018_一种仿真速度指令到真机单轴分步安全跟随方法及系统.md",
-   "title": "一种仿真速度指令到真机单轴分步安全跟随方法及系统",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-019_一种世界模型在环的分层动作修正方法及系统.docx",
-   "title": "ZMP-2026-019_一种世界模型在环的分层动作修正方法及系统",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-019_一种世界模型在环的分层动作修正方法及系统.md",
-   "title": "一种世界模型在环的分层动作修正方法及系统",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-020_一种基于装配公差度规的双层硬注入动作生成方法及系统.docx",
-   "title": "ZMP-2026-020_一种基于装配公差度规的双层硬注入动作生成方法及系统",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/ZMP-2026-020_一种基于装配公差度规的双层硬注入动作生成方法及系统.md",
-   "title": "一种基于装配公差度规的双层硬注入动作生成方法及系统",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/_v1_历史/ZMP-2026-013_v1_纯视觉版_20261110.docx",
-   "title": "ZMP-2026-013_v1_纯视觉版_20261110",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/_v1_历史/ZMP-2026-013_v1_纯视觉版_20261110.md",
-   "title": "一种基于装配容差各向异性度规的跨层动作修正方法及系统",
-   "patent": ""
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/_v1_历史/ZMP-2026-013_v2_视触觉融合初版_20261111.md",
-   "title": "一种基于视触觉融合与装配公差度规的跨层动作修正方法及系统",
-   "patent": ""
-  },
-  {
    "path": "docs/1-天枢-产品边界/patents/交底书/00_交底书清单.md",
    "title": "专利交底书清单（12 件）",
    "patent": "ZMP-2026-003"
   },
   {
-   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-001_一种基于北斗七星结构的具身智能状态空间工程配置方法及系统.docx",
-   "title": "ZMP-2026-001_一种基于北斗七星结构的具身智能状态空间工程配置方法及系统",
-   "patent": "ZMP-2026-001"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-001_一种基于北斗七星结构的具身智能状态空间工程配置方法及系统.md",
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-009_一种原子技能肌肉记忆固化与标杆模板快速直通方法.md",
    "title": "技术交底书",
-   "patent": "ZMP-2026-001"
+   "patent": "ZMP-2026-009"
   },
   {
    "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-002_一种四系统分层具身智能架构及其功能—层级—模型三向映射方法.docx",
@@ -2736,9 +3943,29 @@
    "patent": "ZMP-2026-002"
   },
   {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-001_一种基于北斗七星结构的具身智能状态空间工程配置方法及系统.docx",
+   "title": "ZMP-2026-001_一种基于北斗七星结构的具身智能状态空间工程配置方法及系统",
+   "patent": "ZMP-2026-001"
+  },
+  {
    "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-003_基于二阶特殊酉群的状态空间统一表示与跨层映射方法.docx",
    "title": "ZMP-2026-003_基于二阶特殊酉群的状态空间统一表示与跨层映射方法",
    "patent": "ZMP-2026-003"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-001_一种基于北斗七星结构的具身智能状态空间工程配置方法及系统.md",
+   "title": "技术交底书",
+   "patent": "ZMP-2026-001"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-011_一种人机在环示教与视觉伺服小步对位的工件标定及抓取方法.docx",
+   "title": "ZMP-2026-011_一种人机在环示教与视觉伺服小步对位的工件标定及抓取方法",
+   "patent": "ZMP-2026-011"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-010_一种机器人多层记忆组织与元任务预测映射方法.md",
+   "title": "技术交底书",
+   "patent": "ZMP-2026-010"
   },
   {
    "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-003_基于二阶特殊酉群的状态空间统一表示与跨层映射方法.md",
@@ -2746,34 +3973,14 @@
    "patent": "ZMP-2026-003"
   },
   {
-   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-004_一种可行域逐层收窄与底层势函数收口的机器人运动安全控制方法.docx",
-   "title": "ZMP-2026-004_一种可行域逐层收窄与底层势函数收口的机器人运动安全控制方法",
-   "patent": "ZMP-2026-004"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-004_一种可行域逐层收窄与底层势函数收口的机器人运动安全控制方法.md",
-   "title": "技术交底书",
-   "patent": "ZMP-2026-004"
-  },
-  {
    "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-005_一种二维检测到三维坐标到状态量的同构感知链与真机域适应方法.docx",
    "title": "ZMP-2026-005_一种二维检测到三维坐标到状态量的同构感知链与真机域适应方法",
    "patent": "ZMP-2026-005"
   },
   {
-   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-005_一种二维检测到三维坐标到状态量的同构感知链与真机域适应方法.md",
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-004_一种可行域逐层收窄与底层势函数收口的机器人运动安全控制方法.md",
    "title": "技术交底书",
-   "patent": "ZMP-2026-005"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-006_一种开放词汇分割前置的视觉触觉融合定位与场景建图方法.docx",
-   "title": "ZMP-2026-006_一种开放词汇分割前置的视觉触觉融合定位与场景建图方法",
-   "patent": "ZMP-2026-006"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-006_一种开放词汇分割前置的视觉触觉融合定位与场景建图方法.md",
-   "title": "技术交底书",
-   "patent": "ZMP-2026-006"
+   "patent": "ZMP-2026-004"
   },
   {
    "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-007_一种世界模型意图-动作分块生成与适配层折叠部署方法及零动作伪装防护.docx",
@@ -2786,39 +3993,14 @@
    "patent": "ZMP-2026-007"
   },
   {
-   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-008_一种大模型慢决策规划与本地工具技能包协同及双层安全否决方法.docx",
-   "title": "ZMP-2026-008_一种大模型慢决策规划与本地工具技能包协同及双层安全否决方法",
-   "patent": "ZMP-2026-008"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-008_一种大模型慢决策规划与本地工具技能包协同及双层安全否决方法.md",
-   "title": "技术交底书",
-   "patent": "ZMP-2026-008"
-  },
-  {
    "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-009_一种原子技能肌肉记忆固化与标杆模板快速直通方法.docx",
    "title": "ZMP-2026-009_一种原子技能肌肉记忆固化与标杆模板快速直通方法",
    "patent": "ZMP-2026-009"
   },
   {
-   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-009_一种原子技能肌肉记忆固化与标杆模板快速直通方法.md",
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-006_一种开放词汇分割前置的视觉触觉融合定位与场景建图方法.md",
    "title": "技术交底书",
-   "patent": "ZMP-2026-009"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-010_一种机器人多层记忆组织与元任务预测映射方法.docx",
-   "title": "ZMP-2026-010_一种机器人多层记忆组织与元任务预测映射方法",
-   "patent": "ZMP-2026-010"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-010_一种机器人多层记忆组织与元任务预测映射方法.md",
-   "title": "技术交底书",
-   "patent": "ZMP-2026-010"
-  },
-  {
-   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-011_一种人机在环示教与视觉伺服小步对位的工件标定及抓取方法.docx",
-   "title": "ZMP-2026-011_一种人机在环示教与视觉伺服小步对位的工件标定及抓取方法",
-   "patent": "ZMP-2026-011"
+   "patent": "ZMP-2026-006"
   },
   {
    "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-011_一种人机在环示教与视觉伺服小步对位的工件标定及抓取方法.md",
@@ -2826,9 +4008,29 @@
    "patent": "ZMP-2026-011"
   },
   {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-008_一种大模型慢决策规划与本地工具技能包协同及双层安全否决方法.docx",
+   "title": "ZMP-2026-008_一种大模型慢决策规划与本地工具技能包协同及双层安全否决方法",
+   "patent": "ZMP-2026-008"
+  },
+  {
    "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-012_一种多相机底图增强现实叠加与真机场景一致性校验方法.docx",
    "title": "ZMP-2026-012_一种多相机底图增强现实叠加与真机场景一致性校验方法",
    "patent": "ZMP-2026-012"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-010_一种机器人多层记忆组织与元任务预测映射方法.docx",
+   "title": "ZMP-2026-010_一种机器人多层记忆组织与元任务预测映射方法",
+   "patent": "ZMP-2026-010"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-004_一种可行域逐层收窄与底层势函数收口的机器人运动安全控制方法.docx",
+   "title": "ZMP-2026-004_一种可行域逐层收窄与底层势函数收口的机器人运动安全控制方法",
+   "patent": "ZMP-2026-004"
+  },
+  {
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-008_一种大模型慢决策规划与本地工具技能包协同及双层安全否决方法.md",
+   "title": "技术交底书",
+   "patent": "ZMP-2026-008"
   },
   {
    "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-012_一种多相机底图增强现实叠加与真机场景一致性校验方法.md",
@@ -2836,53 +4038,38 @@
    "patent": "ZMP-2026-012"
   },
   {
-   "path": "docs/2-天璇-作业任务/AOI_GOLD_DETECTION_CHAIN_20261012.md",
-   "title": "金手指检测链路: 谁在检测、模型吃什么、判据图给不给模型 (2026-10-12 实测口径)",
-   "patent": ""
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-005_一种二维检测到三维坐标到状态量的同构感知链与真机域适应方法.md",
+   "title": "技术交底书",
+   "patent": "ZMP-2026-005"
   },
   {
-   "path": "docs/2-天璇-作业任务/AOI_GOLD_FRAME_V2_20261012.md",
-   "title": "判据图取景口径 v2 上线台账（2026-10-12）",
-   "patent": ""
+   "path": "docs/1-天枢-产品边界/patents/交底书/ZMP-2026-006_一种开放词汇分割前置的视觉触觉融合定位与场景建图方法.docx",
+   "title": "ZMP-2026-006_一种开放词汇分割前置的视觉触觉融合定位与场景建图方法",
+   "patent": "ZMP-2026-006"
   },
   {
-   "path": "docs/2-天璇-作业任务/aoi_gold_servo.md",
-   "title": "金手指 AOI：区域检测 → 机械臂视觉伺服对准 + 自动对焦（设计，2026-09-20）",
-   "patent": ""
+   "path": "docs/1-天枢-产品边界/patents/_v1_历史/ZMP-2026-013_v2_视触觉融合初版_20261111.md",
+   "title": "一种基于视触觉融合与装配公差度规的跨层动作修正方法及系统",
+   "patent": "ZMP-2026-013"
   },
   {
-   "path": "docs/2-天璇-作业任务/AOI_POINT_DANGER.md",
-   "title": "AOI 示教点危险台账",
-   "patent": ""
+   "path": "docs/1-天枢-产品边界/patents/_v1_历史/ZMP-2026-013_v1_纯视觉版_20261110.md",
+   "title": "一种基于装配容差各向异性度规的跨层动作修正方法及系统",
+   "patent": "ZMP-2026-013"
   },
   {
-   "path": "docs/2-天璇-作业任务/aoi_quality_head_and_console_20260924.md",
-   "title": "外观质量检测 · 质量检测任务头 + 汇总终端窗口 方案 (2026-09-24)",
-   "patent": ""
-  },
-  {
-   "path": "docs/2-天璇-作业任务/AOI_SURFACE_EXPOSURE_20261012.md",
-   "title": "表面检测(工控机 10083)曝光过大的实测结论 (2026-10-12)",
-   "patent": ""
-  },
-  {
-   "path": "docs/2-天璇-作业任务/AOI_SURFACE_V20_1_20261012.md",
-   "title": "表面检测(10083)v20.1 两处改动: 取像参数 settle + 判据阈值相对化 (2026-10-12)",
+   "path": "docs/1-天枢-产品边界/patents/_v1_历史/ZMP-2026-013_v1_纯视觉版_20261110.docx",
+   "title": "ZMP-2026-013_v1_纯视觉版_20261110",
    "patent": ""
   },
   {
    "path": "docs/2-天璇-作业任务/AOI_TASK7_20261012.md",
    "title": "配置中心「任务7 = AOI」+ 节点改名「🔍 光学质量检测」+ AOI 话题/AR 空间点位 (v5.48.0 · 2026-10-12)",
-   "patent": ""
+   "patent": "ZMP-2026-005"
   },
   {
-   "path": "docs/2-天璇-作业任务/AR_AOI_TRAY_20261011.md",
-   "title": "AR 场景 · AOI 联合检查 · 摆盘 — 连夜自主完成记录 (2026-10-11 夜)",
-   "patent": ""
-  },
-  {
-   "path": "docs/2-天璇-作业任务/AR_CAMS_L5_20261012.md",
-   "title": "AR 场景改造(底图 = 状态空间工程的视频数据源 · 4 相机 · L5 deepseek VL 理解) + 活跃配置→场景 + 信号分析场景色标 (v5.49.0 · 2026-10-12)",
+   "path": "docs/2-天璇-作业任务/AOI_SURFACE_V20_1_20261012.md",
+   "title": "表面检测(10083)v20.1 两处改动: 取像参数 settle + 判据阈值相对化 (2026-10-12)",
    "patent": ""
   },
   {
@@ -2891,18 +4078,13 @@
    "patent": ""
   },
   {
-   "path": "docs/2-天璇-作业任务/orin-pipeline-kb.md",
-   "title": "Orin 真机工序知识库",
+   "path": "docs/2-天璇-作业任务/Z-MAX-插拔状态机.md",
+   "title": "Z-MAX 插拔工序状态机",
    "patent": ""
   },
   {
-   "path": "docs/2-天璇-作业任务/orin-workflow-analysis.md",
-   "title": "Orin 真机料仓工序 YAML 解析",
-   "patent": ""
-  },
-  {
-   "path": "docs/2-天璇-作业任务/README.md",
-   "title": "2-天璇 · 作业任务",
+   "path": "docs/2-天璇-作业任务/aoi_quality_head_and_console_20260924.md",
+   "title": "外观质量检测 · 质量检测任务头 + 汇总终端窗口 方案 (2026-09-24)",
    "patent": ""
   },
   {
@@ -2911,23 +4093,18 @@
    "patent": ""
   },
   {
-   "path": "docs/2-天璇-作业任务/ss_task_binding_20261009.md",
-   "title": "任务 × 状态空间工程：一个工程承载全部任务（配置清单）",
-   "patent": ""
-  },
-  {
-   "path": "docs/2-天璇-作业任务/ui_slim_toolbar_menu_20261009.md",
-   "title": "控制台 UI 三次精简 + 「画布」菜单 (2026-10-09, v5.26.0)",
-   "patent": ""
-  },
-  {
    "path": "docs/2-天璇-作业任务/veh6_task_config_20261009.md",
    "title": "VEH.6 配置中心 · 任务配置（主要工程配置）",
    "patent": ""
   },
   {
-   "path": "docs/2-天璇-作业任务/Z-MAX-插拔状态机.md",
-   "title": "Z-MAX 插拔工序状态机",
+   "path": "docs/2-天璇-作业任务/orin-pipeline-kb.md",
+   "title": "Orin 真机工序知识库",
+   "patent": ""
+  },
+  {
+   "path": "docs/2-天璇-作业任务/README.md",
+   "title": "2-天璇 · 作业任务",
    "patent": ""
   },
   {
@@ -2941,98 +4118,73 @@
    "patent": ""
   },
   {
-   "path": "docs/3-天玑-能力功能/atomic_skill_topics_20261015.md",
-   "title": "原子技能 topic 清单 (所有场景)",
+   "path": "docs/2-天璇-作业任务/AR_CAMS_L5_20261012.md",
+   "title": "AR 场景改造(底图 = 状态空间工程的视频数据源 · 4 相机 · L5 deepseek VL 理解) + 活跃配置→场景 + 信号分析场景色标 (v5.49.0 · 2026-10-12)",
    "patent": ""
   },
   {
-   "path": "docs/3-天玑-能力功能/model_capability_architecture.md",
-   "title": "Z700 R MPV 模型能力架构 (v2.0)",
+   "path": "docs/2-天璇-作业任务/AOI_GOLD_DETECTION_CHAIN_20261012.md",
+   "title": "金手指检测链路: 谁在检测、模型吃什么、判据图给不给模型 (2026-10-12 实测口径)",
    "patent": ""
   },
   {
-   "path": "docs/3-天玑-能力功能/README.md",
-   "title": "3-天玑 · 能力功能",
+   "path": "docs/2-天璇-作业任务/aoi_gold_servo.md",
+   "title": "金手指 AOI：区域检测 → 机械臂视觉伺服对准 + 自动对焦（设计，2026-09-20）",
    "patent": ""
   },
   {
-   "path": "docs/3-天玑-能力功能/state_space_feature_list.md",
-   "title": "🧩 状态空间系统 Feature List & Test Cases (2026-09-03)",
+   "path": "docs/2-天璇-作业任务/AOI_POINT_DANGER.md",
+   "title": "AOI 示教点危险台账",
    "patent": ""
   },
   {
-   "path": "docs/3-天玑-能力功能/vision_grasp_skill.md",
-   "title": "视觉引导抓取技能 `L2.grasp_vision` — 设计与判据 (2026-09-22)",
+   "path": "docs/2-天璇-作业任务/ss_task_binding_20261009.md",
+   "title": "任务 × 状态空间工程：一个工程承载全部任务（配置清单）",
    "patent": ""
   },
   {
-   "path": "docs/3-天玑-能力功能/zmax_l2_l3_l4_capability_stack.md",
-   "title": "Z-MAX 能力栈: L2/L3/L4 分层打通 (2026-09-14, 老倪原则)",
+   "path": "docs/2-天璇-作业任务/AOI_SURFACE_EXPOSURE_20261012.md",
+   "title": "表面检测(工控机 10083)曝光过大的实测结论 (2026-10-12)",
    "patent": ""
   },
   {
-   "path": "docs/3-天玑-能力功能/空间质数结构化理解能力_设计_v1.md",
-   "title": "空间质数结构化理解能力 · 设计 v1",
+   "path": "docs/2-天璇-作业任务/ui_slim_toolbar_menu_20261009.md",
+   "title": "控制台 UI 三次精简 + 「画布」菜单 (2026-10-09, v5.26.0)",
    "patent": ""
   },
   {
-   "path": "docs/4-天权-模型算法/DDS-MASTER-DATA.md",
-   "title": "Z-MAX 具身智能主数据空间设计 v1.0",
+   "path": "docs/2-天璇-作业任务/AOI_GOLD_FRAME_V2_20261012.md",
+   "title": "判据图取景口径 v2 上线台账（2026-10-12）",
    "patent": ""
   },
   {
-   "path": "docs/4-天权-模型算法/intact_robot_switch.md",
-   "title": "🤖 INTACT 标准机器人 · 数据源层切换节点 (设计 + 实现)",
+   "path": "docs/2-天璇-作业任务/orin-workflow-analysis.md",
+   "title": "Orin 真机料仓工序 YAML 解析",
    "patent": ""
   },
   {
-   "path": "docs/4-天权-模型算法/L3-技术路线与开发指南-v1.0.4.md",
-   "title": "Z\\-MAX 产品迭代技术路线与代码开发指南",
+   "path": "docs/2-天璇-作业任务/AR_AOI_TRAY_20261011.md",
+   "title": "AR 场景 · AOI 联合检查 · 摆盘 — 连夜自主完成记录 (2026-10-11 夜)",
    "patent": ""
   },
   {
-   "path": "docs/4-天权-模型算法/l4_dy_axis_attribution_20260922.md",
-   "title": "L4 卡点定量归因：为什么门闸总否决 —— dy 轴 (2026-09-22)",
+   "path": "docs/4-天权-模型算法/zmax_lie_intent_manifolds.md",
+   "title": "🧭 Z-MAX 意图的李群结构 (SU(2) / SE(3)) 落地 — 2026-09-16",
    "patent": ""
   },
   {
-   "path": "docs/4-天权-模型算法/L4_latent_space.md",
-   "title": "L4 潜空间设计 (VLM 通用视觉编码器 → 黎曼度规约束 → INTACT 意图解码)",
-   "patent": ""
-  },
-  {
-   "path": "docs/4-天权-模型算法/left_right_policy.md",
-   "title": "🧠 Z-MAX 左右脑双脑策略 (LeftRightPolicy) 技术方案",
-   "patent": ""
-  },
-  {
-   "path": "docs/4-天权-模型算法/manifold_engine_20260924.md",
-   "title": "流形引擎 (Manifold Engine) — L4 核心内核 · 落地记录 2026-09-24",
-   "patent": ""
-  },
-  {
-   "path": "docs/4-天权-模型算法/manifold_mcd_master_param_M_20261009.md",
-   "title": "标定诊断测量 · 主参数 M —— 配置/标定/诊断 三合一接口 (ASAM-MCD 类比)",
-   "patent": ""
-  },
-  {
-   "path": "docs/4-天权-模型算法/memory-layers-v510.md",
-   "title": "多层记忆架构 (v5.10 · 2026-09-19 整理)",
-   "patent": ""
-  },
-  {
-   "path": "docs/4-天权-模型算法/MODEL-THEORY.md",
-   "title": "Z-MAX 五模型理论对比 · 公式与证明 (供 PDF 报告嵌入)",
-   "patent": ""
-  },
-  {
-   "path": "docs/4-天权-模型算法/model_zoo_architecture.md",
-   "title": "🧩 Model Zoo 配置表架构设计 (技术对比维度)",
+   "path": "docs/4-天权-模型算法/zmax_l4_l2_compat_wiring.md",
+   "title": "L4 档「L2 兼容」接线与取证 (v5.6.8 补丁, 2026-09-16 09:05)",
    "patent": ""
   },
   {
    "path": "docs/4-天权-模型算法/model_zoo_config_matching_20261009.md",
    "title": "Model Zoo × 工程配置：如何区分、如何匹配（三层分离 + 契约求交）",
+   "patent": ""
+  },
+  {
+   "path": "docs/4-天权-模型算法/memory-layers-v510.md",
+   "title": "多层记忆架构 (v5.10 · 2026-09-19 整理)",
    "patent": ""
   },
   {
@@ -3046,18 +4198,8 @@
    "patent": ""
   },
   {
-   "path": "docs/4-天权-模型算法/sam3_open_vocab_seg_L2_20260929.md",
-   "title": "L2 新增「开放词汇分割」能力 —— SAM3 模型评估与分层裁决 (2026-09-29)",
-   "patent": ""
-  },
-  {
-   "path": "docs/4-天权-模型算法/sim2real_robot_motion_autolearn_plan.md",
-   "title": "真机动作 → L2 自动学习 方案 (sim→real 泛化 · 2026-09-18)",
-   "patent": ""
-  },
-  {
-   "path": "docs/4-天权-模型算法/space_model_nodes_load_map.md",
-   "title": "状态空间 · 模型节点 ↔ 加载代码 ↔ 权重 (v5.11.4)",
+   "path": "docs/4-天权-模型算法/manifold_engine_20260924.md",
+   "title": "流形引擎 (Manifold Engine) — L4 核心内核 · 落地记录 2026-09-24",
    "patent": ""
   },
   {
@@ -3066,73 +4208,8 @@
    "patent": ""
   },
   {
-   "path": "docs/4-天权-模型算法/yolo_weights_lineage_20260919.md",
-   "title": "YOLO 在役权重谱系 + 标注适配闭环 (2026-09-19 现场)",
-   "patent": ""
-  },
-  {
-   "path": "docs/4-天权-模型算法/Z-MAX-SmolVLA训练方案.md",
-   "title": "Z-MAX VTLA 训练方案",
-   "patent": ""
-  },
-  {
-   "path": "docs/4-天权-模型算法/Z-MAX-类脑计算方案.md",
-   "title": "Z-MAX 类脑计算方案",
-   "patent": ""
-  },
-  {
-   "path": "docs/4-天权-模型算法/Z-MAX-类脑迭代路线图.md",
-   "title": "Z-MAX 类脑迭代开发路线图",
-   "patent": ""
-  },
-  {
-   "path": "docs/4-天权-模型算法/zmax_adaptive_gain.md",
-   "title": "🎚 Z-MAX 卡尔曼式自适应增益 (L4 导航 / L3 流程 / L2 执行)",
-   "patent": ""
-  },
-  {
-   "path": "docs/4-天权-模型算法/zmax_intact_alignment.md",
-   "title": "INTACT × Z-MAX 状态空间 · 技术路线整合",
-   "patent": ""
-  },
-  {
-   "path": "docs/4-天权-模型算法/zmax_intact_node.md",
-   "title": "Z-MAX · INTACT 节点设计 (L4 层) — 2026-09-11",
-   "patent": ""
-  },
-  {
-   "path": "docs/4-天权-模型算法/zmax_intent_bundle_3layer.md",
-   "title": "Z-MAX 三层能力整合设计 — 意图丛(Intent Bundle)架构 v1",
-   "patent": ""
-  },
-  {
-   "path": "docs/4-天权-模型算法/zmax_l4_fiber_bundle.md",
-   "title": "🧬 Z-MAX L4 纤维丛联络层设计 (动作丛 → 接触丛 → DiT)",
-   "patent": ""
-  },
-  {
-   "path": "docs/4-天权-模型算法/zmax_l4_intact_policy.md",
-   "title": "Z-MAX · L4 INTACT 策略化 + 连线设计 (metaworld → INTACT → decoder → L3)",
-   "patent": ""
-  },
-  {
-   "path": "docs/4-天权-模型算法/zmax_l4_l2_compat_wiring.md",
-   "title": "L4 档「L2 兼容」接线与取证 (v5.6.8 补丁, 2026-09-16 09:05)",
-   "patent": ""
-  },
-  {
-   "path": "docs/4-天权-模型算法/zmax_lie_intent_manifolds.md",
-   "title": "🧭 Z-MAX 意图的李群结构 (SU(2) / SE(3)) 落地 — 2026-09-16",
-   "patent": ""
-  },
-  {
-   "path": "docs/4-天权-模型算法/zmax_sim2real_dr_experiment.md",
-   "title": "Z-MAX 感知层 sim→real 域差专题: 域随机化 (DR) 同口径对照实验 (2026-09-17)",
-   "patent": ""
-  },
-  {
-   "path": "docs/4-天权-模型算法/zmax_sim2real_yolo_flow.md",
-   "title": "Z-MAX 感知层 sim→real 无缝移植 (YOLO · 2026-09-17)",
+   "path": "docs/4-天权-模型算法/left_right_policy.md",
+   "title": "🧠 Z-MAX 左右脑双脑策略 (LeftRightPolicy) 技术方案",
    "patent": ""
   },
   {
@@ -3141,18 +4218,68 @@
    "patent": ""
   },
   {
+   "path": "docs/4-天权-模型算法/MODEL-THEORY.md",
+   "title": "Z-MAX 五模型理论对比 · 公式与证明 (供 PDF 报告嵌入)",
+   "patent": ""
+  },
+  {
+   "path": "docs/4-天权-模型算法/sim2real_robot_motion_autolearn_plan.md",
+   "title": "真机动作 → L2 自动学习 方案 (sim→real 泛化 · 2026-09-18)",
+   "patent": ""
+  },
+  {
+   "path": "docs/4-天权-模型算法/manifold_mcd_master_param_M_20261009.md",
+   "title": "标定诊断测量 · 主参数 M —— 配置/标定/诊断 三合一接口 (ASAM-MCD 类比)",
+   "patent": ""
+  },
+  {
+   "path": "docs/4-天权-模型算法/zmax_intact_alignment.md",
+   "title": "INTACT × Z-MAX 状态空间 · 技术路线整合",
+   "patent": ""
+  },
+  {
+   "path": "docs/4-天权-模型算法/model_zoo_architecture.md",
+   "title": "🧩 Model Zoo 配置表架构设计 (技术对比维度)",
+   "patent": ""
+  },
+  {
+   "path": "docs/4-天权-模型算法/space_model_nodes_load_map.md",
+   "title": "状态空间 · 模型节点 ↔ 加载代码 ↔ 权重 (v5.11.4)",
+   "patent": ""
+  },
+  {
+   "path": "docs/4-天权-模型算法/zmax_sim2real_dr_experiment.md",
+   "title": "Z-MAX 感知层 sim→real 域差专题: 域随机化 (DR) 同口径对照实验 (2026-09-17)",
+   "patent": ""
+  },
+  {
    "path": "docs/4-天权-模型算法/节点代码review_流形链路_v5.50.736.md",
    "title": "节点代码 review — 流形链路六节点 (v5.50.736 · 550B 标定/调试档)",
    "patent": ""
   },
   {
-   "path": "docs/4-天权-模型算法/deliverables/Z-MAX以世界模型为核心的状态空间工程_5.50.D-M2.pptx",
-   "title": "Z-MAX以世界模型为核心的状态空间工程_5.50.D-M2",
+   "path": "docs/4-天权-模型算法/zmax_adaptive_gain.md",
+   "title": "🎚 Z-MAX 卡尔曼式自适应增益 (L4 导航 / L3 流程 / L2 执行)",
    "patent": ""
   },
   {
-   "path": "docs/4-天权-模型算法/deliverables/Z-MAX以世界模型为核心的状态空间工程_5.50.D-M3.pptx",
-   "title": "Z-MAX以世界模型为核心的状态空间工程_5.50.D-M3",
+   "path": "docs/4-天权-模型算法/zmax_intact_node.md",
+   "title": "Z-MAX · INTACT 节点设计 (L4 层) — 2026-09-11",
+   "patent": ""
+  },
+  {
+   "path": "docs/4-天权-模型算法/zmax_l4_intact_policy.md",
+   "title": "Z-MAX · L4 INTACT 策略化 + 连线设计 (metaworld → INTACT → decoder → L3)",
+   "patent": ""
+  },
+  {
+   "path": "docs/4-天权-模型算法/l4_dy_axis_attribution_20260922.md",
+   "title": "L4 卡点定量归因：为什么门闸总否决 —— dy 轴 (2026-09-22)",
+   "patent": ""
+  },
+  {
+   "path": "docs/4-天权-模型算法/zmax_intent_bundle_3layer.md",
+   "title": "Z-MAX 三层能力整合设计 — 意图丛(Intent Bundle)架构 v1",
    "patent": ""
   },
   {
@@ -3161,183 +4288,143 @@
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/l4_runtime_evidence_matrix_20260922.md",
-   "title": "L4 端到端运行时证据矩阵 (2026-09-22, 只读探针)",
+   "path": "docs/4-天权-模型算法/deliverables/Z-MAX以世界模型为核心的状态空间工程_5.50.D-M3.pptx",
+   "title": "Z-MAX以世界模型为核心的状态空间工程_5.50.D-M3",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/l4_stats_caliber_fix_20260922.md",
-   "title": "L4 反归一化口径 bug 修复 + \"模型为何不被采纳\"定量归因 (2026-09-22)",
+   "path": "docs/4-天权-模型算法/deliverables/Z-MAX以世界模型为核心的状态空间工程_5.50.D-M2.pptx",
+   "title": "Z-MAX以世界模型为核心的状态空间工程_5.50.D-M2",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/lora_align_ab_20260924.md",
-   "title": "①-1 · L4 注入\"被闸死\"的根因与对齐层同口径 A/B — 2026-09-24",
+   "path": "docs/4-天权-模型算法/状态空间/DDS-MASTER-DATA.md",
+   "title": "Z-MAX 具身智能主数据空间设计 v1.0",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/README.md",
-   "title": "5-玉衡 · 指标验收",
+   "path": "docs/4-天权-模型算法/状态空间/zmax_l4_fiber_bundle.md",
+   "title": "🧬 Z-MAX L4 纤维丛联络层设计 (动作丛 → 接触丛 → DiT)",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/zmax_300uph_global_analysis.md",
-   "title": "Z-MAX 300UPH 全局分析报告（2026-10-30）",
+   "path": "docs/4-天权-模型算法/策略与训练/Z-MAX-SmolVLA训练方案.md",
+   "title": "Z-MAX VTLA 训练方案",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/zmax_300uph_model_io.md",
-   "title": "Z-MAX 状态空间工程 · 各层模型 I/O 与 action 传递链（实测）",
+   "path": "docs/4-天权-模型算法/策略与训练/L3-技术路线与开发指南-v1.0.4.md",
+   "title": "Z\\-MAX 产品迭代技术路线与代码开发指南",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/zmax_300uph_verification.md",
-   "title": "300UPH 状态空间驱动验证（2026-10-29 实测）",
+   "path": "docs/4-天权-模型算法/感知与检测/sam3_open_vocab_seg_L2_20260929.md",
+   "title": "L2 新增「开放词汇分割」能力 —— SAM3 模型评估与分层裁决 (2026-09-29)",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/zmax_gold_detector_negative_result.md",
-   "title": "金手指检测模型训练 · 负结果（2026-10-30）",
+   "path": "docs/4-天权-模型算法/感知与检测/yolo_weights_lineage_20260919.md",
+   "title": "YOLO 在役权重谱系 + 标注适配闭环 (2026-09-19 现场)",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/zmax_l2_300uph_closure.md",
-   "title": "L2 独立运行 · 300 UPH 收口核算（2026-11-02）",
+   "path": "docs/4-天权-模型算法/感知与检测/zmax_sim2real_yolo_flow.md",
+   "title": "Z-MAX 感知层 sim→real 无缝移植 (YOLO · 2026-09-17)",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/zmax_mani_engine_ab_test.md",
-   "title": "流形引擎节点有效性 · A/B 对照（2026-10-30）",
+   "path": "docs/4-天权-模型算法/世界模型/intact_robot_switch.md",
+   "title": "🤖 INTACT 标准机器人 · 数据源层切换节点 (设计 + 实现)",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/eval/550A_全量pipeline_度规约束与分层_2026-10-19.md",
-   "title": "550A 全量 pipeline 训练 · 度规约束与结构化分层的实测证明",
+   "path": "docs/4-天权-模型算法/世界模型/Z-MAX-类脑迭代路线图.md",
+   "title": "Z-MAX 类脑迭代开发路线图",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/eval/Phase0_L2速度反馈延迟_全测_v5.50.735.md",
-   "title": "Phase 0 · L2 原子技能「速度反馈延迟」逐技能全测 (v5.50.735)",
+   "path": "docs/4-天权-模型算法/世界模型/Z-MAX-类脑计算方案.md",
+   "title": "Z-MAX 类脑计算方案",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/eval/u_ff过原子技能节点_物理闸内联_v5.50.739.md",
-   "title": "u_ff 过「原子技能节点 + 物理闸」再给仿真器 — 落地与 A/B（v5.50.739 · 2026-10-16）",
-   "patent": "ZMP-2026-004"
-  },
-  {
-   "path": "docs/5-玉衡-指标验收/eval/元任务性能物理值全链验证_v5.50.735.md",
-   "title": "元任务 · 性能配置 · 物理参数 全链对应与物理值验证 (基线产品 v5.50.735)",
+   "path": "docs/4-天权-模型算法/世界模型/L4_latent_space.md",
+   "title": "L4 潜空间设计 (VLM 通用视觉编码器 → 黎曼度规约束 → INTACT 意图解码)",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/eval/原子技能目标输出口_技能驱动仿真_v5.50.739.md",
-   "title": "原子技能「目标输出口」+ 技能驱动仿真 — 落地与判据（v5.50.739 · 2026-10-16）",
+   "path": "docs/3-天玑-能力功能/vision_grasp_skill.md",
+   "title": "视觉引导抓取技能 `L2.grasp_vision` — 设计与判据 (2026-09-22)",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/eval/归一化球面实现方案_落地_v5.50.735.md",
-   "title": "归一化球面「实现方案」落地对账 (v5.50.735)",
+   "path": "docs/3-天玑-能力功能/README.md",
+   "title": "3-天玑 · 能力功能",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/eval/数据闭环训练与约束验证_20261020.md",
-   "title": "数据闭环训练 + 约束验证 评估报告",
+   "path": "docs/3-天玑-能力功能/state_space_feature_list.md",
+   "title": "🧩 状态空间系统 Feature List & Test Cases (2026-09-03)",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/eval/流形引擎几何完备性_20261019.md",
-   "title": "流形引擎几何完备性：切空间投影有效 · 度规势被证伪",
+   "path": "docs/3-天玑-能力功能/atomic_skill_topics_20261015.md",
+   "title": "原子技能 topic 清单 (所有场景)",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/eval/评估分析报告_v5.50.735.md",
-   "title": "评估分析报告 · 基线产品 v5.50.735",
+   "path": "docs/3-天玑-能力功能/zmax_l2_l3_l4_capability_stack.md",
+   "title": "Z-MAX 能力栈: L2/L3/L4 分层打通 (2026-09-14, 老倪原则)",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/eval/评估分析页_场景迭代面板_v5.50.735.md",
-   "title": "评估分析页 · 迭代路线图区块「插拔 / 摆盘 场景 × Phase 0→4 全流程迭代」视图",
+   "path": "docs/3-天玑-能力功能/model_capability_architecture.md",
+   "title": "Z700 R MPV 模型能力架构 (v2.0)",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/eval/迭代路线图_v5.50.735.md",
-   "title": "产品迭代路线 Phase 0→4 · 迭代验证与对比分析 (基线产品 v5.50.735)",
+   "path": "docs/3-天玑-能力功能/空间质数结构化理解能力_设计_v1.md",
+   "title": "空间质数结构化理解能力 · 设计 v1",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/test-reports/F02-mac-smolvla-test.md",
-   "title": "F02 · 端侧测试(Mac) — SmolVLA量化→Mac 测试报告",
+   "path": "docs/6-开阳-工程落地/project_archive_v2_20261009.md",
+   "title": "Z-MAX 状态空间工程存档格式 v2 + 🗂 总工程 zmax_space (2026-10-09)",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/test-reports/F03-orin-inference-test.md",
-   "title": "F03 · 端侧测试(Orin Nano) — 模型→Orin推理 测试报告",
+   "path": "docs/6-开阳-工程落地/zmax_memory_integration.md",
+   "title": "🧲 Z-MAX 记忆层集成工程 (L2 肌肉 / L3 流程 / L4 工作 / 总装记忆)",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/test-reports/F04-hardware-adaptation-test.md",
-   "title": "F04 · 硬件适配(SR5+Z700) — 机械臂对接 测试报告",
+   "path": "docs/6-开阳-工程落地/SIMULINK-PIPELINE-DETAILS.md",
+   "title": "Z-MAX 数据闭环 Simulink Pipeline 完整细节 (给 web 的总体方案素材)",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/test-reports/F05-e2e-sys1-test.md",
-   "title": "F05 · 全链路端到端测试 — Sys-1 ACT 通过",
+   "path": "docs/6-开阳-工程落地/L2-Z-MAX解决方案-v1.0.6.md",
+   "title": "具身机器人产品解决方案 — V1.0.6 真机版",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/test-reports/F06-tcp-bridge-test.md",
-   "title": "F06 · TCP Bridge测试 — PC-Orin Domain23转发 测试报告",
+   "path": "docs/6-开阳-工程落地/STATE_SPACE_NODE_CUTOVER.md",
+   "title": "状态空间节点逐一切换 · 工作台账 (目标 300UPH · AR3D 练习场)",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/test-reports/F07-hardware-smart-connect.md",
-   "title": "F07 · 硬件连接智能化 — 即插即用+自动识别+自适应配置 测试报告",
+   "path": "docs/6-开阳-工程落地/platform_engineering_db_20261009.md",
+   "title": "🏭 Z-MAX 平台 + 产品/子系统功能清单 + 工程数据库 (2026-10-09 老倪)",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/test-reports/F08-reliability-test.md",
-   "title": "F08 · 硬件可靠性验证 — 测试报告",
+   "path": "docs/6-开阳-工程落地/ss_step_follow_20261009.md",
+   "title": "状态空间画布 · 单步跟随 + 逐节点实现审计 (v5.22.0)",
    "patent": ""
   },
   {
-   "path": "docs/5-玉衡-指标验收/test-reports/F11-final-submission.md",
-   "title": "F11 · 测试报告汇总提交 [收尾]",
-   "patent": ""
-  },
-  {
-   "path": "docs/5-玉衡-指标验收/test-reports/F12-gui-verification.md",
-   "title": "F12 · GUI功能好用/安全/可靠验证 [收尾]",
-   "patent": ""
-  },
-  {
-   "path": "docs/5-玉衡-指标验收/test-reports/MASTER-TEST-REPORT.md",
-   "title": "Z-MAX 项目测试总报告 · Master Test Report",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/20261018_l2_daemon_调试指南.md",
-   "title": "l2_daemon.py 怎么 debug · 断点放哪里",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/20261018_moveit_精确控制方案.md",
-   "title": "MoveIt 精确控制真机 —— 完整方案（离线设计，未动真机）",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/20261109_scene_places_坐标唯一真源.md",
-   "title": "场景 3D 元素坐标的唯一真源（位置细胞库）· 2026-11-09",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/ARCHITECTURE-OVERVIEW.md",
-   "title": "Z-MAX 系统全景架构",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/architecture_layers_v511.md",
-   "title": "Z-MAX 分层职责 (老倪 2026-09-19 更正版, v5.10.0 起生效)",
+   "path": "docs/6-开阳-工程落地/MIGRATION-550C-STATE.md",
+   "title": "550C 迁移状态 (2026-10-25 中断点)",
    "patent": ""
   },
   {
@@ -3346,23 +4433,8 @@
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/canvas_layout_forward_20260924.md",
-   "title": "状态空间画布 · 前向加宽重排 (2026-09-24)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/CONFIG_CENTER_TREE_WIDTH_20261012.md",
-   "title": "配置中心左侧栏「适配宽度」(2026-10-12 老倪上报)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/CONFIG_SHEET_AND_SCENE_COLORS_20261012.md",
-   "title": "配置单导出 + 场景色上屏 + 实时监控看配置 (2026-10-12 老倪)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/ECS-MIGRATION.md",
-   "title": "ECS 迁移清单（39.102.211.79 → 新实例）",
+   "path": "docs/6-开阳-工程落地/PLAN_NODE_PORT_ALIGN_20261101.md",
+   "title": "运动规划节点（n_moveit）端口对正与势场力接入方案",
    "patent": ""
   },
   {
@@ -3371,13 +4443,18 @@
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/factory_fine_ops_demand.md",
-   "title": "🏭 光模块工厂精细操作需求规格书（市场版）",
+   "path": "docs/6-开阳-工程落地/README.md",
+   "title": "6-开阳 · 工程落地",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/factory_fine_ops_requirements.md",
-   "title": "🏭 光模块工厂精细操作需求规格书（市场版）",
+   "path": "docs/6-开阳-工程落地/zmax状态空间数据空间.md",
+   "title": "Z-MAX 状态空间数据空间（数据服务化定义）— 2026-08-20 静静 → web",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/right_panel_trim_mparam_20261009.md",
+   "title": "右侧侧边栏精简 + 「主参数 M」页 (v5.24.0, 2026-10-09)",
    "patent": ""
   },
   {
@@ -3386,23 +4463,28 @@
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/FEISHU_SYNC_SCENE_OVERLAY_20260927.md",
-   "title": "飞书线同步记录 · 场景叠加 (2026-09-27)",
+   "path": "docs/6-开阳-工程落地/ss_run_cfg_panel_20261009.md",
+   "title": "6 个运行开关 → 右侧「参数标定」侧边页 (测量/诊断/标定/配置) + 侧边页体检 (v5.23.0)",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/full_system_dataclosedloop_20260922.md",
-   "title": "Z-MAX 全系统 采-训-推 数据闭环与 sim-to-real 参数架构 (2026-09-22)",
+   "path": "docs/6-开阳-工程落地/Z-MAX-Sys0-框架设计.md",
+   "title": "Z-MAX Sys-0 · L2基线版框架设计",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/fusion_localization_blur_refocus_20260924.md",
-   "title": "融合定位 · 模糊识别 → 补偿动作 → AOI 复焦复检 方案 (2026-09-24)",
+   "path": "docs/6-开阳-工程落地/CONFIG_CENTER_TREE_WIDTH_20261012.md",
+   "title": "配置中心左侧栏「适配宽度」(2026-10-12 老倪上报)",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/global_data_space_mapping_20260929.md",
-   "title": "🌐 全局数据空间 (Global Data Space) —— 映射关系 · 数据闭环 · 质量管理 · 全链路可视化",
+   "path": "docs/6-开阳-工程落地/ECS-MIGRATION.md",
+   "title": "ECS 迁移清单（39.102.211.79 → 新实例）",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/20261018_moveit_精确控制方案.md",
+   "title": "MoveIt 精确控制真机 —— 完整方案（离线设计，未动真机）",
    "patent": ""
   },
   {
@@ -3416,63 +4498,13 @@
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/L2-Z-MAX解决方案-v1.0.6.md",
-   "title": "具身机器人产品解决方案 — V1.0.6 真机版",
+   "path": "docs/6-开阳-工程落地/rokae_j5_issue_report_for_vendor.md",
+   "title": "rokae_j5_issue_report_for_vendor",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/L2记忆库_设计与接线.md",
-   "title": "L2 记忆库 · 设计与接线（2026-11-02）",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/library_sync_20261009.md",
-   "title": "📚 模块库 ↔ 画布 同步 / 拖入 / 删除 / 存为新工程 (2026-10-09 老倪)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/MAPPING-3DGS.md",
-   "title": "自动建图 (3DGS) — 完整链路与命令",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/MAPPING-DIAGNOSIS.md",
-   "title": "建图质量诊断: 为什么现在的数据建不出可用场景资产",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/MIGRATION-550C-STATE.md",
-   "title": "550C 迁移状态 (2026-10-25 中断点)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/param_registry_20261009.md",
-   "title": "🎛 数据一体化工程: 全局可改数字 → 链路 → 代码 (2026-10-09 老倪)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/PLAN_NODE_PORT_ALIGN_20261101.md",
-   "title": "运动规划节点（n_moveit）端口对正与势场力接入方案",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/platform_engineering_db_20261009.md",
-   "title": "🏭 Z-MAX 平台 + 产品/子系统功能清单 + 工程数据库 (2026-10-09 老倪)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/project_archive_v2_20261009.md",
-   "title": "Z-MAX 状态空间工程存档格式 v2 + 🗂 总工程 zmax_space (2026-10-09)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/README.md",
-   "title": "6-开阳 · 工程落地",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/real_autolabel_by_robot_motion.md",
-   "title": "用机器人实际动作自动标注光模块（kinematic auto-labeling）",
+   "path": "docs/6-开阳-工程落地/canvas_layout_forward_20260924.md",
+   "title": "状态空间画布 · 前向加宽重排 (2026-09-24)",
    "patent": ""
   },
   {
@@ -3481,23 +4513,8 @@
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/real_machine_safety_checklist.md",
-   "title": "真机首次适配 · 全系统安全检查单 (2026-09-19, v5.9.0)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/right_panel_trim_mparam_20261009.md",
-   "title": "右侧侧边栏精简 + 「主参数 M」页 (v5.24.0, 2026-10-09)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/robot_build_sheet_loading_unloading_20261009.md",
-   "title": "机器人产线的\"配置单\"：Build Sheet 怎么配（以「上下料工序」为例）",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/rokae_j5_issue_report_for_vendor.md",
-   "title": "rokae_j5_issue_report_for_vendor",
+   "path": "docs/6-开阳-工程落地/CONFIG_SHEET_AND_SCENE_COLORS_20261012.md",
+   "title": "配置单导出 + 场景色上屏 + 实时监控看配置 (2026-10-12 老倪)",
    "patent": ""
   },
   {
@@ -3506,13 +4523,28 @@
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/SCENE_OVERLAY_3CAM_20260927.md",
-   "title": "场景叠加 · 三相机并存改造（2026-09-27）",
+   "path": "docs/6-开阳-工程落地/Z-MAX-系统架构-五层引擎.md",
+   "title": "Z-MAX 系统架构 · 五层智能引擎",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/SIMULINK-PIPELINE-DETAILS.md",
-   "title": "Z-MAX 数据闭环 Simulink Pipeline 完整细节 (给 web 的总体方案素材)",
+   "path": "docs/6-开阳-工程落地/MAPPING-3DGS.md",
+   "title": "自动建图 (3DGS) — 完整链路与命令",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/robot_build_sheet_loading_unloading_20261009.md",
+   "title": "机器人产线的\"配置单\"：Build Sheet 怎么配（以「上下料工序」为例）",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/FEISHU_SYNC_SCENE_OVERLAY_20260927.md",
+   "title": "飞书线同步记录 · 场景叠加 (2026-09-27)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/fusion_localization_blur_refocus_20260924.md",
+   "title": "融合定位 · 模糊识别 → 补偿动作 → AOI 复焦复检 方案 (2026-09-24)",
    "patent": ""
   },
   {
@@ -3521,38 +4553,23 @@
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/ss_run_cfg_panel_20261009.md",
-   "title": "6 个运行开关 → 右侧「参数标定」侧边页 (测量/诊断/标定/配置) + 侧边页体检 (v5.23.0)",
+   "path": "docs/6-开阳-工程落地/full_system_dataclosedloop_20260922.md",
+   "title": "Z-MAX 全系统 采-训-推 数据闭环与 sim-to-real 参数架构 (2026-09-22)",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/ss_step_follow_20261009.md",
-   "title": "状态空间画布 · 单步跟随 + 逐节点实现审计 (v5.22.0)",
+   "path": "docs/6-开阳-工程落地/architecture_layers_v511.md",
+   "title": "Z-MAX 分层职责 (老倪 2026-09-19 更正版, v5.10.0 起生效)",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/STANDARD_STARTUP_FLOW_20261012.md",
-   "title": "Z-MAX 标准打开流程 (2026-10-12 老倪定的规矩)",
+   "path": "docs/6-开阳-工程落地/factory_fine_ops_requirements.md",
+   "title": "🏭 光模块工厂精细操作需求规格书（市场版）",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/STATE_SPACE_NODE_CUTOVER.md",
-   "title": "状态空间节点逐一切换 · 工作台账 (目标 300UPH · AR3D 练习场)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/three_brain_architecture.md",
-   "title": "Z-MAX 三脑架构 — 分层递阶控制 + 数据流闭环",
-   "patent": "ZMP-2026-004"
-  },
-  {
-   "path": "docs/6-开阳-工程落地/veh6_config_center_mcd_20261009.md",
-   "title": "VEH.6 可视化编辑 · 配置中心 —— 科学规划（模型/工程/功能/性能 × 测量/标定/诊断）",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/veh6_config_center_operation_20261009.md",
-   "title": "VEH.6 配置中心 · 操作手册（怎么配工艺流程）",
+   "path": "docs/6-开阳-工程落地/L2记忆库_设计与接线.md",
+   "title": "L2 记忆库 · 设计与接线（2026-11-02）",
    "patent": ""
   },
   {
@@ -3561,28 +4578,78 @@
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/Z-MAX-Sys0-框架设计.md",
-   "title": "Z-MAX Sys-0 · L2基线版框架设计",
+   "path": "docs/6-开阳-工程落地/SCENE_OVERLAY_3CAM_20260927.md",
+   "title": "场景叠加 · 三相机并存改造（2026-09-27）",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/Z-MAX-系统架构-五层引擎.md",
-   "title": "Z-MAX 系统架构 · 五层智能引擎",
+   "path": "docs/6-开阳-工程落地/three_brain_architecture.md",
+   "title": "Z-MAX 三脑架构 — 分层递阶控制 + 数据流闭环",
+   "patent": "ZMP-2026-004"
+  },
+  {
+   "path": "docs/6-开阳-工程落地/veh6_config_center_operation_20261009.md",
+   "title": "VEH.6 配置中心 · 操作手册（怎么配工艺流程）",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/zmax_memory_integration.md",
-   "title": "🧲 Z-MAX 记忆层集成工程 (L2 肌肉 / L3 流程 / L4 工作 / 总装记忆)",
+   "path": "docs/6-开阳-工程落地/20261109_scene_places_坐标唯一真源.md",
+   "title": "场景 3D 元素坐标的唯一真源（位置细胞库）· 2026-11-09",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/zmax状态空间数据空间.md",
-   "title": "Z-MAX 状态空间数据空间（数据服务化定义）— 2026-08-20 静静 → web",
+   "path": "docs/6-开阳-工程落地/library_sync_20261009.md",
+   "title": "📚 模块库 ↔ 画布 同步 / 拖入 / 删除 / 存为新工程 (2026-10-09 老倪)",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-29_shutdown_handoff.md",
-   "title": "2026-10-29 收工存档 · 关机交接单",
+   "path": "docs/6-开阳-工程落地/veh6_config_center_mcd_20261009.md",
+   "title": "VEH.6 可视化编辑 · 配置中心 —— 科学规划（模型/工程/功能/性能 × 测量/标定/诊断）",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/STANDARD_STARTUP_FLOW_20261012.md",
+   "title": "Z-MAX 标准打开流程 (2026-10-12 老倪定的规矩)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/ARCHITECTURE-OVERVIEW.md",
+   "title": "Z-MAX 系统全景架构",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/real_autolabel_by_robot_motion.md",
+   "title": "用机器人实际动作自动标注光模块（kinematic auto-labeling）",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/MAPPING-DIAGNOSIS.md",
+   "title": "建图质量诊断: 为什么现在的数据建不出可用场景资产",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/param_registry_20261009.md",
+   "title": "🎛 数据一体化工程: 全局可改数字 → 链路 → 代码 (2026-10-09 老倪)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/global_data_space_mapping_20260929.md",
+   "title": "🌐 全局数据空间 (Global Data Space) —— 映射关系 · 数据闭环 · 质量管理 · 全链路可视化",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/20261018_l2_daemon_调试指南.md",
+   "title": "l2_daemon.py 怎么 debug · 断点放哪里",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/factory_fine_ops_demand.md",
+   "title": "🏭 光模块工厂精细操作需求规格书（市场版）",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/real_machine_safety_checklist.md",
+   "title": "真机首次适配 · 全系统安全检查单 (2026-09-19, v5.9.0)",
    "patent": ""
   },
   {
@@ -3591,78 +4658,13 @@
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-09_v5.34.0_侧栏UI定版/README.md",
-   "title": "v5.34.0 现场数据快照 (2026-10-09 定版)",
+   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-29_shutdown_handoff.md",
+   "title": "2026-10-29 收工存档 · 关机交接单",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-09_v5.35.0_平台实例解耦/README.md",
-   "title": "v5.35.0 现场数据存档 (2026-10-09)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-09_v5.36.0_自主进化/README.md",
-   "title": "v5.36.0 现场数据存档 (2026-10-09)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-09_关机收尾_v5.34.2/README.md",
-   "title": "关机收尾快照 — v5.34.2 (2026-10-09 夜)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-09_关机收尾_v5.34.2/shutdown_checklist.md",
-   "title": "关机前核对单 (2026-10-09 夜 · v5.34.2)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-10_配置驱动双功能/L4L5进控制逻辑_20261011.md",
-   "title": "L4/L5 层进控制逻辑 —— 配置驱动对比 (2026-10-11)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-10_配置驱动双功能/README.md",
-   "title": "2026-10-10 配置驱动双功能（插拔 / 摆盘）数据存档",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-10_配置驱动双功能/全链每帧证据.md",
-   "title": "全链每帧证据 (状态空间六层 → 执行层)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-10_配置驱动双功能/切换验证说明.md",
-   "title": "切换验证说明",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-10_配置驱动双功能/画布分级审计.md",
-   "title": "画布档位级验收 — 20261010_190510",
-   "patent": "ZMP-2026-004"
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-11_关机收尾_v5.47.1/README.md",
-   "title": "数据快照 2026-10-11 · 关机收尾 v5.47.1",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-11_关机收尾_v5.47.1/shutdown_checklist.md",
-   "title": "下电核对单 · 2026-10-11 · v5.47.1",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-11_关机收尾_v5.47.2/README.md",
-   "title": "数据快照 2026-10-11 · 关机收尾 v5.47.2",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-11_关机收尾_v5.47.2/shutdown_checklist.md",
-   "title": "下电核对单 · 2026-10-11 · v5.47.2",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-11_状态同步_v5.47.0_配置驱动功能切换+场景叠加/README.md",
-   "title": "数据快照 2026-10-11 · 状态同步 (当前版本 v5.47.0)",
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261014_L4_latent_chain/README.md",
+   "title": "现场数据快照 — 20261014_L4_latent_chain",
    "patent": ""
   },
   {
@@ -3676,63 +4678,58 @@
    "patent": ""
   },
   {
+   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-09_v5.36.0_自主进化/README.md",
+   "title": "v5.36.0 现场数据存档 (2026-10-09)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261015_skill_physics_constraints/RESTART-AFTER-SHUTDOWN.md",
+   "title": "关机存档 · 代 v5.50.735 收尾 (2026-10-15 傍晚)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261015_skill_physics_constraints/README.md",
+   "title": "现场数据快照 · ⚖ 原子技能物理惯性/质量变化率约束 (2026-10-15, for v5.50.735)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261016_状态同步_v5.50.737_元任务性能物理值全链+场景迭代+球面归一化/元任务性能物理值全链验证_v5.50.735.md",
+   "title": "元任务 · 性能配置 · 物理参数 全链对应与物理值验证 (基线产品 v5.50.735)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261016_状态同步_v5.50.737_元任务性能物理值全链+场景迭代+球面归一化/hermes-jingjing-memory-2026-10-16.md",
+   "title": "hermes-jingjing-memory-2026-10-16",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261016_状态同步_v5.50.737_元任务性能物理值全链+场景迭代+球面归一化/归一化球面实现方案_落地_v5.50.735.md",
+   "title": "归一化球面「实现方案」落地对账 (v5.50.735)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261016_状态同步_v5.50.737_元任务性能物理值全链+场景迭代+球面归一化/Phase0_L2速度反馈延迟_全测_v5.50.735.md",
+   "title": "Phase 0 · L2 原子技能「速度反馈延迟」逐技能全测 (v5.50.735)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261016_状态同步_v5.50.737_元任务性能物理值全链+场景迭代+球面归一化/评估分析页_场景迭代面板_v5.50.735.md",
+   "title": "评估分析页 · 迭代路线图区块「插拔 / 摆盘 场景 × Phase 0→4 全流程迭代」视图",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261015_visual_evidence_caliber/README.md",
+   "title": "现场数据快照 · 视觉证据口径 + 链路 (2026-10-15, for v5.50.72)",
+   "patent": ""
+  },
+  {
    "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-12_判据图口径v2_点位表/README.md",
    "title": "2026-10-12 判据图口径 v2 + 配置中心点位表(空间点1~8)",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-12_标准打开流程_v5.49.3/matrix_summary.md",
-   "title": "配置 × 任务 × 场景 × 信号实时监控 自动测试 — 终版 (46/46 PASS)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-12_标准打开流程_v5.49.3/task_scene_matrix_20261012_195028.md",
-   "title": "配置 × 任务 × 场景 × 信号实时监控 自动测试 (20261012_195028)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261008_aoi_gold_judge_v21/README.md",
-   "title": "20261008 · 金手指判据图 v21 上线(v5.18.8)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261008_aoi_gold_judge_v22/README.md",
-   "title": "2026-10-08 晚 · 金手指判据图 v22(失败不再端旧口径 + 逐窗救回)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261008_desktop_pack_v5188/README.md",
-   "title": "2026-10-08 · 桌面版打包坏包修复 (v5.18.8)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261008_goldpt1_gripper_v5187/README.md",
-   "title": "数据快照 · 2026-10-08 金手指点1 到位 + 夹爪服务名修复 (v5.18.7)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261008_nolift_plane_v5185/README.md",
-   "title": "数据快照 · 2026-10-08 删抬升 + 空间点重记同平面 (v5.18.5)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261008_safety_gates_v5184/INCIDENT-20261008-goto3stage-lift40-estop.md",
-   "title": "INCIDENT 2026-10-08（当日第三次 · near-miss）· 回点三段配方阶段1「竖直抬升 106.5mm」，老倪现场急停",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261008_safety_gates_v5184/INCIDENT-20261008-gsmap-space7-movej-rise-estop.md",
-   "title": "INCIDENT 2026-10-08（当日第二次）· 建图第2轮去 space7：MoveL 被拒 → **MoveJ 自愈关节摆升**，老倪现场急停",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261008_safety_gates_v5184/INCIDENT-20261008-space2-lift-collision.md",
-   "title": "INCIDENT 2026-10-08 · 空间2(XY)上方\"盲抬 50mm\"撞到净空，动作中止 + 急停",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261008_safety_gates_v5184/INCIDENT-INDEX.md",
-   "title": "事故台账（每一次碰撞/急停/误动都在这里，按时间倒序）",
+   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-09_v5.34.0_侧栏UI定版/README.md",
+   "title": "v5.34.0 现场数据快照 (2026-10-09 定版)",
    "patent": ""
   },
   {
@@ -3741,13 +4738,83 @@
    "patent": ""
   },
   {
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261008_safety_gates_v5184/INCIDENT-20261008-gsmap-space7-movej-rise-estop.md",
+   "title": "INCIDENT 2026-10-08（当日第二次）· 建图第2轮去 space7：MoveL 被拒 → **MoveJ 自愈关节摆升**，老倪现场急停",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261008_safety_gates_v5184/INCIDENT-20261008-goto3stage-lift40-estop.md",
+   "title": "INCIDENT 2026-10-08（当日第三次 · near-miss）· 回点三段配方阶段1「竖直抬升 106.5mm」，老倪现场急停",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261008_safety_gates_v5184/INCIDENT-INDEX.md",
+   "title": "事故台账（每一次碰撞/急停/误动都在这里，按时间倒序）",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261008_safety_gates_v5184/INCIDENT-20261008-space2-lift-collision.md",
+   "title": "INCIDENT 2026-10-08 · 空间2(XY)上方\"盲抬 50mm\"撞到净空，动作中止 + 急停",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-09_v5.35.0_平台实例解耦/README.md",
+   "title": "v5.35.0 现场数据存档 (2026-10-09)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261008_desktop_pack_v5188/README.md",
+   "title": "2026-10-08 · 桌面版打包坏包修复 (v5.18.8)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261008_aoi_gold_judge_v21/README.md",
+   "title": "20261008 · 金手指判据图 v21 上线(v5.18.8)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-11_关机收尾_v5.47.2/README.md",
+   "title": "数据快照 2026-10-11 · 关机收尾 v5.47.2",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-11_关机收尾_v5.47.2/shutdown_checklist.md",
+   "title": "下电核对单 · 2026-10-11 · v5.47.2",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-11_关机收尾_v5.47.1/README.md",
+   "title": "数据快照 2026-10-11 · 关机收尾 v5.47.1",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-11_关机收尾_v5.47.1/shutdown_checklist.md",
+   "title": "下电核对单 · 2026-10-11 · v5.47.1",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261015_scene_phase_iteration_gui/MANIFEST.md",
+   "title": "MANIFEST · 评估分析页「插拔/摆盘 场景 × Phase 0→4」迭代面板 离屏真渲染截图",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261017_状态同步_v5.50.740_核心归位到src+调试停跳+跨平台打包+三产品同步/NOTE.md",
+   "title": "v5.50.740 · 核心归位到src+调试停跳+跨平台打包+三产品同步",
+   "patent": ""
+  },
+  {
    "path": "docs/6-开阳-工程落地/data_snapshots/20261008_speed_shortestpath/README.md",
    "title": "现场数据快照 · 2026-10-08（回点提速 + 去绕远）",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261008_zfloor_tol_v5186/README.md",
-   "title": "数据快照 · 2026-10-08 修 0.1mm 下压误判 (v5.18.6)",
+   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-09_关机收尾_v5.34.2/README.md",
+   "title": "关机收尾快照 — v5.34.2 (2026-10-09 夜)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-09_关机收尾_v5.34.2/shutdown_checklist.md",
+   "title": "关机前核对单 (2026-10-09 夜 · v5.34.2)",
    "patent": ""
   },
   {
@@ -3761,43 +4828,8 @@
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261014_L4_latent_chain/README.md",
-   "title": "现场数据快照 — 20261014_L4_latent_chain",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261015_scene_phase_iteration_gui/MANIFEST.md",
-   "title": "MANIFEST · 评估分析页「插拔/摆盘 场景 × Phase 0→4」迭代面板 离屏真渲染截图",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261015_skill_physics_constraints/README.md",
-   "title": "现场数据快照 · ⚖ 原子技能物理惯性/质量变化率约束 (2026-10-15, for v5.50.735)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261015_skill_physics_constraints/RESTART-AFTER-SHUTDOWN.md",
-   "title": "关机存档 · 代 v5.50.735 收尾 (2026-10-15 傍晚)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261015_visual_evidence_caliber/README.md",
-   "title": "现场数据快照 · 视觉证据口径 + 链路 (2026-10-15, for v5.50.72)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261016_状态同步_v5.50.735_元任务性能物理值全链+场景迭代+球面归一化/hermes-jingjing-memory-2026-10-16.md",
-   "title": "hermes-jingjing-memory-2026-10-16",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261016_状态同步_v5.50.735_元任务性能物理值全链+场景迭代+球面归一化/Phase0_L2速度反馈延迟_全测_v5.50.735.md",
-   "title": "Phase 0 · L2 原子技能「速度反馈延迟」逐技能全测 (v5.50.735)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261016_状态同步_v5.50.735_元任务性能物理值全链+场景迭代+球面归一化/README.md",
-   "title": "数据快照 2026-10-16 · 状态同步 (当前版本 v5.50.735)",
+   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-11_状态同步_v5.47.0_配置驱动功能切换+场景叠加/README.md",
+   "title": "数据快照 2026-10-11 · 状态同步 (当前版本 v5.47.0)",
    "patent": ""
   },
   {
@@ -3806,8 +4838,23 @@
    "patent": ""
   },
   {
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261016_状态同步_v5.50.735_元任务性能物理值全链+场景迭代+球面归一化/README.md",
+   "title": "数据快照 2026-10-16 · 状态同步 (当前版本 v5.50.735)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261016_状态同步_v5.50.735_元任务性能物理值全链+场景迭代+球面归一化/hermes-jingjing-memory-2026-10-16.md",
+   "title": "hermes-jingjing-memory-2026-10-16",
+   "patent": ""
+  },
+  {
    "path": "docs/6-开阳-工程落地/data_snapshots/20261016_状态同步_v5.50.735_元任务性能物理值全链+场景迭代+球面归一化/归一化球面实现方案_落地_v5.50.735.md",
    "title": "归一化球面「实现方案」落地对账 (v5.50.735)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261016_状态同步_v5.50.735_元任务性能物理值全链+场景迭代+球面归一化/Phase0_L2速度反馈延迟_全测_v5.50.735.md",
+   "title": "Phase 0 · L2 原子技能「速度反馈延迟」逐技能全测 (v5.50.735)",
    "patent": ""
   },
   {
@@ -3816,13 +4863,8 @@
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261016_状态同步_v5.50.736_元任务性能物理值全链+场景迭代+球面归一化/hermes-jingjing-memory-2026-10-16.md",
-   "title": "hermes-jingjing-memory-2026-10-16",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261016_状态同步_v5.50.736_元任务性能物理值全链+场景迭代+球面归一化/Phase0_L2速度反馈延迟_全测_v5.50.735.md",
-   "title": "Phase 0 · L2 原子技能「速度反馈延迟」逐技能全测 (v5.50.735)",
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261008_goldpt1_gripper_v5187/README.md",
+   "title": "数据快照 · 2026-10-08 金手指点1 到位 + 夹爪服务名修复 (v5.18.7)",
    "patent": ""
   },
   {
@@ -3831,8 +4873,18 @@
    "patent": ""
   },
   {
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261016_状态同步_v5.50.736_元任务性能物理值全链+场景迭代+球面归一化/hermes-jingjing-memory-2026-10-16.md",
+   "title": "hermes-jingjing-memory-2026-10-16",
+   "patent": ""
+  },
+  {
    "path": "docs/6-开阳-工程落地/data_snapshots/20261016_状态同步_v5.50.736_元任务性能物理值全链+场景迭代+球面归一化/归一化球面实现方案_落地_v5.50.735.md",
    "title": "归一化球面「实现方案」落地对账 (v5.50.735)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261016_状态同步_v5.50.736_元任务性能物理值全链+场景迭代+球面归一化/Phase0_L2速度反馈延迟_全测_v5.50.735.md",
+   "title": "Phase 0 · L2 原子技能「速度反馈延迟」逐技能全测 (v5.50.735)",
    "patent": ""
   },
   {
@@ -3841,113 +4893,123 @@
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261016_状态同步_v5.50.737_元任务性能物理值全链+场景迭代+球面归一化/hermes-jingjing-memory-2026-10-16.md",
-   "title": "hermes-jingjing-memory-2026-10-16",
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261008_zfloor_tol_v5186/README.md",
+   "title": "数据快照 · 2026-10-08 修 0.1mm 下压误判 (v5.18.6)",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261016_状态同步_v5.50.737_元任务性能物理值全链+场景迭代+球面归一化/Phase0_L2速度反馈延迟_全测_v5.50.735.md",
-   "title": "Phase 0 · L2 原子技能「速度反馈延迟」逐技能全测 (v5.50.735)",
+   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-12_标准打开流程_v5.49.3/task_scene_matrix_20261012_195028.md",
+   "title": "配置 × 任务 × 场景 × 信号实时监控 自动测试 (20261012_195028)",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261016_状态同步_v5.50.737_元任务性能物理值全链+场景迭代+球面归一化/元任务性能物理值全链验证_v5.50.735.md",
-   "title": "元任务 · 性能配置 · 物理参数 全链对应与物理值验证 (基线产品 v5.50.735)",
+   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-12_标准打开流程_v5.49.3/matrix_summary.md",
+   "title": "配置 × 任务 × 场景 × 信号实时监控 自动测试 — 终版 (46/46 PASS)",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261016_状态同步_v5.50.737_元任务性能物理值全链+场景迭代+球面归一化/归一化球面实现方案_落地_v5.50.735.md",
-   "title": "归一化球面「实现方案」落地对账 (v5.50.735)",
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261008_aoi_gold_judge_v22/README.md",
+   "title": "2026-10-08 晚 · 金手指判据图 v22(失败不再端旧口径 + 逐窗救回)",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261016_状态同步_v5.50.737_元任务性能物理值全链+场景迭代+球面归一化/评估分析页_场景迭代面板_v5.50.735.md",
-   "title": "评估分析页 · 迭代路线图区块「插拔 / 摆盘 场景 × Phase 0→4 全流程迭代」视图",
+   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-10_配置驱动双功能/画布分级审计.md",
+   "title": "画布档位级验收 — 20261010_190510",
+   "patent": "ZMP-2026-004"
+  },
+  {
+   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-10_配置驱动双功能/切换验证说明.md",
+   "title": "切换验证说明",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/data_snapshots/20261017_状态同步_v5.50.740_核心归位到src+调试停跳+跨平台打包+三产品同步/NOTE.md",
-   "title": "v5.50.740 · 核心归位到src+调试停跳+跨平台打包+三产品同步",
+   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-10_配置驱动双功能/README.md",
+   "title": "2026-10-10 配置驱动双功能（插拔 / 摆盘）数据存档",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/ops/2026-10-18_内存OOM死机复盘.md",
-   "title": "内存 OOM / 死机事故复盘 — 2026-10-18",
+   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-10_配置驱动双功能/全链每帧证据.md",
+   "title": "全链每帧证据 (状态空间六层 → 执行层)",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/ops/Orin运维手册.md",
-   "title": "Orin SSH 运维手册",
+   "path": "docs/6-开阳-工程落地/data_snapshots/2026-10-10_配置驱动双功能/L4L5进控制逻辑_20261011.md",
+   "title": "L4/L5 层进控制逻辑 —— 配置驱动对比 (2026-10-11)",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/ops/REMOTE-CONTROL.md",
-   "title": "手机远程操作 (公网) — 链路与开关",
+   "path": "docs/6-开阳-工程落地/data_snapshots/20261008_nolift_plane_v5185/README.md",
+   "title": "数据快照 · 2026-10-08 删抬升 + 空间点重记同平面 (v5.18.5)",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/ops/REPLICA_SOP.md",
-   "title": "📦 Z-MAX 系统复制 SOP（工作端 静静 → 备份端 小芳）",
+   "path": "docs/6-开阳-工程落地/release/benchmark-simulation-report.md",
+   "title": "Z-MAX 模型性能报告 · 仿真联调基准",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/ops/ROKAE-DIRECT-CONTROL.md",
-   "title": "4060 直连珞石控制器 (不经 Orin) — 可行性实证 2026-09-21",
+   "path": "docs/6-开阳-工程落地/release/RELEASE_NOTES_v2.0.0.md",
+   "title": "🎉 Z-MAX v2.0.0 Release Note — 左右脑双脑策略大版本",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/ops/Z-MAX-UPSTREAM-SYNC.md",
-   "title": "Z-MAX LeRobot Fork 同步工作流",
+   "path": "docs/6-开阳-工程落地/release/Z-MAX-测试用例框架.md",
+   "title": "Z-MAX 测试用例框架",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/ops/Z-MAX数据日志方案-MCAP分析.md",
-   "title": "Z-MAX 数据日志方案：Rosbag vs MCAP 对比分析",
+   "path": "docs/6-开阳-工程落地/release/Z-MAX-TEST-CASES.md",
+   "title": "Z-MAX 全量测试用例 · Test Case Suite",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/ops/ZMAX-CICD-版本管理.md",
-   "title": "Z-MAX 统一版本管理 · 三工程协同CI/CD",
+   "path": "docs/6-开阳-工程落地/release/ZMAX-QUALITY-CERTIFICATE.md",
+   "title": "Z-MAX 质量验证证书 · Quality Certificate",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/ops/ZMAX-DATA-LOOP-OVERVIEW.md",
-   "title": "Z-MAX 数据闭环全景 · 开发流程/场景/功能定义 (v4.0)",
+   "path": "docs/6-开阳-工程落地/release/Z-MAX-里程碑-V1.0终版.md",
+   "title": "Z-MAX 项目里程碑 · V1.0 终版总结",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/ops/ZMAX-产品升级规范V3.md",
-   "title": "Z-MAX 产品升级规范 v3.0 · 2026-07-19",
+   "path": "docs/6-开阳-工程落地/release/benchmark-smolvla-vs-act.md",
+   "title": "SmolVLA vs ACT 性能对比报告",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/patch/A1_ORIN_UPLINK_DEPLOYED.md",
-   "title": "A1 · Orin → 云 状态上行 · 已部署 (2026-09-26, 老倪授权 A1~A9)",
+   "path": "docs/6-开阳-工程落地/release/MODEL-ACCEPTANCE.md",
+   "title": "模型训练验收清单 · 小芳检查项",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/patch/arm_j6_first_step_1deg_20260926.md",
-   "title": "真机首条动作取证 · J6 相对 +1° (2026-09-26 13:03)",
+   "path": "docs/6-开阳-工程落地/release/Z-MAX-项目总结报告-V1.0.md",
+   "title": "Z-MAX 项目总结报告 · V1.0 终版",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/patch/opt_10082_gold_stretch_2x.md",
-   "title": "补丁: 10082 金手指拉长口径 → **短边 ×2** (交工控机侧) — 2026-09-24",
+   "path": "docs/6-开阳-工程落地/release/TEST-TASK-BOARD.md",
+   "title": "Z-MAX 测试任务板 · Test Task Board",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/patch/opt_surface_10083_add_picture_route.md",
-   "title": "补丁: 10083 表面相机加 `/picture` 路由 (交工控机侧) — 2026-09-24",
+   "path": "docs/6-开阳-工程落地/release/VERSION-SYNC.md",
+   "title": "Z-MAX 跨工程版本同步规范",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/patch/ORIN_UPLINK_FIELD.md",
-   "title": "Orin → 云 状态上行 · 现场执行清单 (2026-09-26)",
+   "path": "docs/6-开阳-工程落地/release/benchmark-sys-all-models.md",
+   "title": "Z-MAX Sys-0/1/2/11/12 全系统性能基准报告",
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/patch/REAL_MACHINE_AUTHORIZATION_REQUEST.md",
-   "title": "真机操作 · 授权许可申请 (2026-09-26)",
+   "path": "docs/6-开阳-工程落地/release/VERSION.md",
+   "title": "Z-MAX 产品版本管理",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/release/MAINLINE_CONVERGED.md",
+   "title": "状态空间工程 · 主线收敛 (2026-09-26, v5.15.11 冻结)",
    "patent": ""
   },
   {
@@ -3966,153 +5028,8 @@
    "patent": ""
   },
   {
-   "path": "docs/6-开阳-工程落地/release/benchmark-simulation-report.md",
-   "title": "Z-MAX 模型性能报告 · 仿真联调基准",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/release/benchmark-smolvla-vs-act.md",
-   "title": "SmolVLA vs ACT 性能对比报告",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/release/benchmark-sys-all-models.md",
-   "title": "Z-MAX Sys-0/1/2/11/12 全系统性能基准报告",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/release/MAINLINE_CONVERGED.md",
-   "title": "状态空间工程 · 主线收敛 (2026-09-26, v5.15.11 冻结)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/release/MODEL-ACCEPTANCE.md",
-   "title": "模型训练验收清单 · 小芳检查项",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/release/RELEASE_NOTES_v2.0.0.md",
-   "title": "🎉 Z-MAX v2.0.0 Release Note — 左右脑双脑策略大版本",
-   "patent": ""
-  },
-  {
    "path": "docs/6-开阳-工程落地/release/simulation-benchmark-report.md",
    "title": "Z-MAX Sys-0/1/2 模型推理性能测试报告",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/release/TEST-TASK-BOARD.md",
-   "title": "Z-MAX 测试任务板 · Test Task Board",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/release/VERSION-SYNC.md",
-   "title": "Z-MAX 跨工程版本同步规范",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/release/VERSION.md",
-   "title": "Z-MAX 产品版本管理",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/release/Z-MAX-TEST-CASES.md",
-   "title": "Z-MAX 全量测试用例 · Test Case Suite",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/release/Z-MAX-测试用例框架.md",
-   "title": "Z-MAX 测试用例框架",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/release/Z-MAX-里程碑-V1.0终版.md",
-   "title": "Z-MAX 项目里程碑 · V1.0 终版总结",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/release/Z-MAX-项目总结报告-V1.0.md",
-   "title": "Z-MAX 项目总结报告 · V1.0 终版",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/release/ZMAX-QUALITY-CERTIFICATE.md",
-   "title": "Z-MAX 质量验证证书 · Quality Certificate",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/source/contributing.md",
-   "title": "How to contribute to 🤗 LeRobot",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/source/policy_act_README.md",
-   "title": "policy_act_README",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/source/policy_diffusion_README.md",
-   "title": "policy_diffusion_README",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/source/policy_groot_README.md",
-   "title": "policy_groot_README",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/source/policy_molmoact2_README.md",
-   "title": "MolmoAct2",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/source/policy_multi_task_dit_README.md",
-   "title": "Multitask DiT Policy",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/source/policy_pi05_README.md",
-   "title": "π₀.₅ (pi05)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/source/policy_pi0_README.md",
-   "title": "π₀ (pi0)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/source/policy_rtc_README.md",
-   "title": "Real-Time Chunking (RTC)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/source/policy_sarm_README.md",
-   "title": "policy_sarm_README",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/source/policy_smolvla_lew_README.md",
-   "title": "Option A: Using uv (recommended, matches lerobot standard)",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/source/policy_smolvla_README.md",
-   "title": "policy_smolvla_README",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/source/policy_tdmpc_README.md",
-   "title": "policy_tdmpc_README",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/source/policy_vla_jepa_README.md",
-   "title": "VLA-JEPA",
-   "patent": ""
-  },
-  {
-   "path": "docs/6-开阳-工程落地/source/policy_vqbet_README.md",
-   "title": "policy_vqbet_README",
    "patent": ""
   },
   {
@@ -4121,481 +5038,181 @@
    "patent": ""
   },
   {
+   "path": "docs/6-开阳-工程落地/source/policy_smolvla_README.md",
+   "title": "policy_smolvla_README",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/source/policy_multi_task_dit_README.md",
+   "title": "Multitask DiT Policy",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/source/policy_molmoact2_README.md",
+   "title": "MolmoAct2",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/source/policy_diffusion_README.md",
+   "title": "policy_diffusion_README",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/source/policy_vqbet_README.md",
+   "title": "policy_vqbet_README",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/source/policy_vla_jepa_README.md",
+   "title": "VLA-JEPA",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/source/policy_sarm_README.md",
+   "title": "policy_sarm_README",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/source/policy_tdmpc_README.md",
+   "title": "policy_tdmpc_README",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/source/policy_act_README.md",
+   "title": "policy_act_README",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/source/policy_rtc_README.md",
+   "title": "Real-Time Chunking (RTC)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/source/contributing.md",
+   "title": "How to contribute to 🤗 LeRobot",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/source/policy_groot_README.md",
+   "title": "policy_groot_README",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/source/policy_smolvla_lew_README.md",
+   "title": "Option A: Using uv (recommended, matches lerobot standard)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/source/policy_pi0_README.md",
+   "title": "π₀ (pi0)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/source/policy_pi05_README.md",
+   "title": "π₀.₅ (pi05)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/ops/ROKAE-DIRECT-CONTROL.md",
+   "title": "4060 直连珞石控制器 (不经 Orin) — 可行性实证 2026-09-21",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/ops/Z-MAX-UPSTREAM-SYNC.md",
+   "title": "Z-MAX LeRobot Fork 同步工作流",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/ops/Orin运维手册.md",
+   "title": "Orin SSH 运维手册",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/ops/2026-10-18_内存OOM死机复盘.md",
+   "title": "内存 OOM / 死机事故复盘 — 2026-10-18",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/ops/ZMAX-CICD-版本管理.md",
+   "title": "Z-MAX 统一版本管理 · 三工程协同CI/CD",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/ops/REMOTE-CONTROL.md",
+   "title": "手机远程操作 (公网) — 链路与开关",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/ops/REPLICA_SOP.md",
+   "title": "📦 Z-MAX 系统复制 SOP（工作端 静静 → 备份端 小芳）",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/ops/ZMAX-DATA-LOOP-OVERVIEW.md",
+   "title": "Z-MAX 数据闭环全景 · 开发流程/场景/功能定义 (v4.0)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/ops/Z-MAX数据日志方案-MCAP分析.md",
+   "title": "Z-MAX 数据日志方案：Rosbag vs MCAP 对比分析",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/ops/ZMAX-产品升级规范V3.md",
+   "title": "Z-MAX 产品升级规范 v3.0 · 2026-07-19",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/patch/REAL_MACHINE_AUTHORIZATION_REQUEST.md",
+   "title": "真机操作 · 授权许可申请 (2026-09-26)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/patch/opt_surface_10083_add_picture_route.md",
+   "title": "补丁: 10083 表面相机加 `/picture` 路由 (交工控机侧) — 2026-09-24",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/patch/ORIN_UPLINK_FIELD.md",
+   "title": "Orin → 云 状态上行 · 现场执行清单 (2026-09-26)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/patch/opt_10082_gold_stretch_2x.md",
+   "title": "补丁: 10082 金手指拉长口径 → **短边 ×2** (交工控机侧) — 2026-09-24",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/patch/arm_j6_first_step_1deg_20260926.md",
+   "title": "真机首条动作取证 · J6 相对 +1° (2026-09-26 13:03)",
+   "patent": ""
+  },
+  {
+   "path": "docs/6-开阳-工程落地/patch/A1_ORIN_UPLINK_DEPLOYED.md",
+   "title": "A1 · Orin → 云 状态上行 · 已部署 (2026-09-26, 老倪授权 A1~A9)",
+   "patent": ""
+  },
+  {
    "path": "docs/6-开阳-工程落地/web/web-api-reference.md",
    "title": "硬件数据 API (供 Web 前端使用)",
    "patent": ""
   },
   {
-   "path": "docs/7-瑶光-记录追溯/handoff_20260922_2_shutdown.md",
-   "title": "交接：关机前状态 (2026-09-22 09:0x) — 第二轮",
+   "path": "docs/0-总纲/README.md",
+   "title": "0 · 总纲：一套系统，一个思想",
    "patent": ""
   },
   {
-   "path": "docs/7-瑶光-记录追溯/handoff_20260922_3_shutdown.md",
-   "title": "交接：关机前状态 (2026-09-22 15:50) — 第三轮",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/handoff_20260922_shutdown.md",
-   "title": "交接：关机前状态 (2026-09-22 08:15)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/README.md",
-   "title": "7-瑶光 · 记录追溯",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/STATE_SPACE_RETROSPECTIVE_20260926.md",
-   "title": "状态空间工程 · 全局复盘 (2026-09-26 大清理行动)",
-   "patent": "ZMP-2026-004"
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/关机清单_20261105.md",
-   "title": "关机清单 · 2026-11-05 08:18（版本基线 v5.50.768）",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/关机清单_20261107.md",
-   "title": "关机清单 2026-11-07（550A · 准备关机）",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/AOI-PT2-ROUND3-STATUS-20261008.md",
-   "title": "点2 判据 第3轮 状态（2026-10-08 收工）— 未上线，产线仍是 v25",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/AOI-PT2-ROUND4-STATUS-20261009.md",
-   "title": "AOI 点2 判据 / 画布连线 / 旁路上网通道 —— ROUND4 状态 (2026-10-09)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/AOI-V30-HANDOFF-20261009.md",
-   "title": "AOI 10082 三层收口 (v30) —— 交接清单 · 2026-10-09",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/HANDOFF-20260924-shutdown.md",
-   "title": "交接 / 关机前存档 — 2026-09-24 06:40 (静静 CLI 会话)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/HANDOVER_20260924_AOI.md",
-   "title": "AOI / 外观质量检测线 — 交接单 (2026-09-24 收工)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/HANDOVER_20260926.md",
-   "title": "关机前状态留档 — 2026-09-26 晨 (静静)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/INC-20261020-01-aoi-upper-beam.md",
-   "title": "INC-20261020-01 抬升去金手指点1 途中肘部撞上横梁（3 次急停）",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/INCIDENT-20260920-aoi-home-move.md",
-   "title": "事故复盘 2026-09-20 08:42 — 点「进入金手指AOI检测区」实际跑去了 home（老倪按下急停）",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/INCIDENT-20261001-sidept1-approach-collision.md",
-   "title": "事故 2026-10-01 · 侧面点0 → 侧面点1 靠近过程碰撞（3 轴）",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/INCIDENT-20261001-traverse-height-collision.md",
-   "title": "事故复盘 2026-10-01 07:55 — 「准备点回点/侧面点靠近」横移高度取「点位 z+180mm」，臂走高后碰撞（老倪按急停 + 现场喊\"要碰撞了注意\"）",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/INCIDENT-20261002-host-hardstop.md",
-   "title": "INCIDENT 2026-10-02 工位机(4060)硬停 — 5 天无日志，10-07 才通电",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/INCIDENT-20261007-sdk-movej-collision.md",
-   "title": "INCIDENT-20261007 · SDK MoveJ 手动测试越位碰撞 (J5 力矩超限)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/INCIDENT-20261008-goldpt1-segpath-collision.md",
-   "title": "INCIDENT 2026-10-08(4): 去金手指点1 —— 分段直线路径撞净空, 老倪急停",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/INCIDENT-20261008-goto3stage-lift40-estop.md",
-   "title": "INCIDENT 2026-10-08（当日第三次 · near-miss）· 回点三段配方阶段1「竖直抬升 106.5mm」，老倪现场急停",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/INCIDENT-20261008-gsmap-space7-movej-rise-estop.md",
-   "title": "INCIDENT 2026-10-08（当日第二次）· 建图第2轮去 space7：MoveL 被拒 → **MoveJ 自愈关节摆升**，老倪现场急停",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/INCIDENT-20261008-space2-lift-collision.md",
-   "title": "INCIDENT 2026-10-08 · 空间2(XY)上方\"盲抬 50mm\"撞到净空，动作中止 + 急停",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/INCIDENT-20261025-01-beam-collision-approach-board.md",
-   "title": "INC-20261025-01 · 为测距做 +X 转移，肘部/连杆撞上方横梁（与 INC-20261020-01 同一失效模式）",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/INCIDENT-INDEX.md",
-   "title": "事故台账 INCIDENT-INDEX",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/NEXT_ITERATION_20260926.md",
-   "title": "Z-MAX 状态空间工程 · 下一轮迭代计划 (2026-09-26 冻结 v5.15.10 之后)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/TASK_LEDGER_20260924.md",
-   "title": "Z-MAX 任务台账 — 盘点于 2026-09-24 07:20 (静静)",
-   "patent": "ZMP-2026-004"
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/TASK_LEDGER_20260925.md",
-   "title": "Z-MAX 任务台账 — 盘点于 2026-09-25 08:40 (静静 · 开机后)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/关机前状态留档_20260916.md",
-   "title": "🗂 关机前状态留档 · 2026-09-16 (v5.6.7)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/关机前状态留档_20260916_晚_v568.md",
-   "title": "关机前状态留档 (v5.6.8, 2026-09-16 08:45)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/关机前状态留档_20260930.md",
-   "title": "🗂 关机前状态留档 · 2026-09-30 (vv5.16.35)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/关机前状态留档_20261007.md",
-   "title": "🗂 关机前状态留档 · 2026-10-07",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/关机前状态留档_20261008.md",
-   "title": "关机前状态留档 — 2026-10-08（收尾版本 v5.18.1）",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/incidents/关机前状态留档_20261008_晚.md",
-   "title": "关机前状态留档 — 2026-10-08（晚间，收尾版本 v5.18.10）",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/2026-10-10_handoff.md",
-   "title": "交接记录 2026-10-10 (收工存档)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/2026-10-10_handoff_晚.md",
-   "title": "2026-10-10 晚 · 收工存档 (v5.41.0)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/2026-10-23_handoff.md",
-   "title": "2026-10-23 handoff (晚 · 开机自愈核验 + 控制台两处修复)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/3DGS-2026-10-14-收工记录.md",
-   "title": "3DGS 建图 · 2026-10-14 收工记录 (会话 map_sess_20261013_203035)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/AOI-LAYER3-DIAGNOSIS-20261009.md",
-   "title": "AOI 10082 判据图「跳」—— 分层归因 (2026-10-09)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/AOI-PT2-JUDGE-DIAGNOSIS-20261008.md",
-   "title": "金手指点2 判据诊断（离线跑判据本体，8 帧复现）— 2026-10-08 21:2x",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/AOI-PT2-POSE-EXPERIMENT-20261008.md",
-   "title": "金手指点2 视角实验（动臂试探）— 2026-10-08 21:10~21:14",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/AR场景-2026-10-29-下班记录.md",
-   "title": "AR 场景下半场收工记录 · 2026-10-29 08:58",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/AR场景-2026-10-29-收工记录.md",
-   "title": "AR 场景全链打通 + 550C 通路恢复 — 收工记录（2026-10-29）",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/CALIB-20260921-handeye.md",
-   "title": "手眼标定 done — 2026-09-21 现场（eye-in-hand · CGB-020）",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/capability_L2L3L4_actual.md",
-   "title": "Z-MAX 状态空间实际能力 — L2/L3/L4 功能整理 (2026-09-09 老倪: 按实际状态空间模型)",
-   "patent": "ZMP-2026-005"
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/capability_levels_L2L3L4.md",
-   "title": "Z-MAX 三级能力升级路径 (参考自动驾驶 L2/L3/L4)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/ci-cd-design.md",
-   "title": "Z-MAX Simulink 模型开发 · CI/CD 设计 (v1.0)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/cleanup_20261101.md",
-   "title": "/home/ubuntu 清理记录 · 2026-11-01",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/closed_loop_realization_design.md",
-   "title": "闭环真实化设计 (方案2) — metaworld 物理 + YOLO 视觉感知真闭环",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/CONDITION-ACTION-MAP.md",
-   "title": "条件技能 → 动作技能 硬件映射",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/CONTAINER-COMPAT.md",
-   "title": "Z-MAX 容器方案兼容性报告 (三端对齐)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/DATA-CLOSED-LOOP.md",
-   "title": "Z-MAX 数据闭环流程 · 全链路定义 v1.0",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/DATA-FLYWHEEL.md",
-   "title": "Z-MAX 数据闭环 v3 · Data Flywheel",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/DATA-QUALITY-VERIFICATION.md",
-   "title": "小芳 · 数据质量验证方案",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/DATA-SPACE-MAP.md",
-   "title": "Z-MAX 全局数据空间映射 v1.0",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/data_layout.md",
-   "title": "data/ 数据与工程文件布局 (2026-10-09 老倪: 「所有工程文件和数据库文件都放在 data/database；继续整合所有数据文件，现在的数据太杂乱了」)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/DATA_MANIFEST_20260926.md",
-   "title": "数据清单 (2026-09-26/27, 关机前)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/DEPLOY-READY.md",
-   "title": "Mac 部署管线 · 就绪状态",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/DOCKER-ENV-UNIFIED.md",
-   "title": "Z-MAX 统一 Docker 环境 (三端对齐)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/DOCUMENT-TOPOLOGY.md",
-   "title": "Z-MAX 文档拓扑 v1.0",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/DUAL_SCREEN_FIX_20260915.md",
-   "title": "Ubuntu 双屏(外接 HDMI)修复记录 — 2026-09-15",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/EDGE-DEPLOYMENT.md",
-   "title": "Z-MAX 端侧部署管线 · Edge Deployment Pipeline",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/EFFICIENCY-PLAN.md",
-   "title": "Z-MAX 效率提升方案 · Efficiency Boost",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/END-SIDE-PIPELINE.md",
-   "title": "Z-MAX 端侧实现方案 (小芳) — 对应 SIMULINK-PIPELINE-DETAILS 第5节",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/feature_dbc_spec.md",
-   "title": "feature.dbc — 能力数据库方案 (参考 Vector CANoe DBC)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/GPU_TRAINING_NEXT_STEPS.md",
-   "title": "GPU 训练续接清单 (2026-08-24 静静, 关机前保存)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/GUI-CHECKLIST.md",
-   "title": "Z-MAX GUI 可用性检查清单 · 用户操作指南",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/HARDWARE-VERIFICATION.md",
-   "title": "硬件验证 · 动作技能量化指标",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/HELP-DEVELOPMENT-BIBLE.md",
-   "title": "Z-MAX 操作手册 · User Manual",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/HJEPA-V3.1-REPORT.md",
-   "title": "H-JEPA v3.1 模型验证报告",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/home_top_level_map.md",
-   "title": "/home/ubuntu 顶层地图（每个东西是干什么的）",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/l2_real_data_autolearn_flow.md",
-   "title": "真机数据 L2「边干边学」自动学习闭环 (sim → real 泛化)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/L5-TRAINING-GOALS.md",
-   "title": "大模型层（L5）训练目标",
-   "patent": "ZMP-2026-007"
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/L5-UPGRADE-STRATEGY.md",
-   "title": "大模型层（L5）升级优化策略",
-   "patent": "ZMP-2026-007"
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/L5_AUTONOMOUS_EVOLUTION.md",
-   "title": "L5 自主进化章程 (Z-MAX 状态空间工程) — 2026-09-26 立",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/model-paths.md",
-   "title": "Z-MAX 模型 / 数据 的默认落盘路径（约定）",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/platform_vs_instance.md",
-   "title": "平台 / 实例 解耦规范",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/restore_matrix.md",
-   "title": "zmax 基线核验：仓库能恢复到什么程度",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/SESSION-HANDOFF-20261015.md",
-   "title": "交接快照 · 2026-10-15 (关机前保存)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/SHUTDOWN-20261022.md",
-   "title": "2026-10-22 收工存档 / 开机续做清单",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/SHUTDOWN-20261022_1320_fullflow_abort.md",
-   "title": "2026-10-22 收工存档（全量连跑中断版）",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/STATION_6PANEL_20260927.md",
-   "title": "🛰 工位总览 · 6 路同屏 + 手动控制机器人 (2026-09-27, v5.15.15 → v5.15.16)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/supply-chain-joyson-controller.md",
-   "title": "Z-MAX 供应链文档 — 控制器硬件",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/V1.0.6-真机生产流程.md",
-   "title": "Z-MAX 真机生产流程 · V1.0.6",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/v5.42.0_配置驱动功能切换_20261010.md",
-   "title": "v5.42.0 — 配置驱动功能切换（同一状态空间工程 · 插拔 / 摆盘 双功能真跑）",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/vscode-workspace-and-source-control.md",
-   "title": "VSCode 工作区 · Source Control · 调试 速查 (2026-10-17)",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/web_协同_大屏监督规格.md",
-   "title": "web 协同：大屏动作级监督扩展规格 (P1/P2) — 2026-08-10",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/Z700_technical_agreement_v3.md",
-   "title": "Z700 具身智能方案技术协议 v3",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/安全事件-20261010-ECS口令泄露.md",
-   "title": "安全事件记录 · 2026-10-10 · 公开仓库内明文口令",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/摆盘功能清单评审_20261010.md",
-   "title": "泰国摆盘项目 · 功能清单评审报告",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/机器状态_20261018_收工.md",
-   "title": "收工状态 2026-10-19 06:38:55",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/机器状态_20261019_收工.md",
-   "title": "机器状态 · 2026-10-19 收工",
-   "patent": ""
-  },
-  {
-   "path": "docs/7-瑶光-记录追溯/notes/老倪同步_20261018_0637.md",
-   "title": "老倪同步(原文留档) — 2026-10-19 06:37:54",
+   "path": "docs/0-总纲/CODE-MAP.md",
+   "title": "代码映射表 · 文档 ↔ 代码",
    "patent": ""
   }
  ],
  "summary": {
-  "patents": 12,
+  "patents": 20,
   "nodes": 79,
-  "nodes_covered": 58,
-  "docs": 512,
-  "docs_linked": 59
+  "nodes_covered": 77,
+  "docs": 508,
+  "docs_linked": 78
  }
 }
