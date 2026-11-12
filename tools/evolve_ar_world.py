@@ -171,7 +171,7 @@ def run_generation(g: int, a, ledger) -> dict:
         pass
     rec["stages"]["data"] = {"rc": r["rc"], "sec": r["sec"], "stats": meta.get("stats"),
                              "box_w_px": meta.get("box_w_px"), "err": None if r["rc"] == 0 else r["err"][-400:]}
-    if r["rc"] != 0 or not meta.get("stats", {}).get("kept"):
+    if r["rc"] != 0 or not (meta.get("stats") or {}).get("kept"):
         rec["ok"] = False
         rec["error"] = "造数据失败"
         return rec
@@ -309,8 +309,8 @@ def report(a, rounds, extra) -> str:
     for r in (led.get("generations") or [])[-12:]:
         s = r.get("score") or {}
         lines.append("| %s | %s | %ss | %s | %s | %s | %s |" % (
-            r.get("gen"), (r.get("stages", {}).get("data") or {}).get("stats", {}).get("kept", "—"),
-            (r.get("stages", {}).get("train_eval") or {}).get("sec", "—"),
+            r.get("gen"), (((r.get("stages") or {}).get("data") or {}).get("stats") or {}).get("kept", "—"),
+            ((r.get("stages") or {}).get("train_eval") or {}).get("sec", "—"),
             s.get("hc_map50", "未测"), s.get("hc_precision", "未测"), s.get("legacy_map50", "未测"),
             "晋级" if r.get("promoted") else ("失败" if r.get("ok") is False else "保持")))
     for k, v in (extra or {}).items():

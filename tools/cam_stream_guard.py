@@ -195,9 +195,19 @@ def judge(cmd_devs, expect, st, local_key=RGB_KEY):
             return False, "进程不在(推流没跑)"
         if cmd_devs.get("no-local"):
             return True, "ok (用户已关闭笔记本那一路 kind=off)"
-        if cmd_devs.get("local-dev") != lo_e or cmd_devs.get("local2-dev") != l2_e:
-            return False, ("进程用的是 local-dev=%s local2-dev=%s, 实测解析应为 local=%s local2=%s"
-                           % (cmd_devs.get("local-dev"), cmd_devs.get("local2-dev"), lo_e, l2_e))
+        # 解析器打不开设备(最典型就是被推流自己占着)时会回 -1 ⇒ 那是"不可判定", 不是"设备号错"。
+        # 拿 -1 去跟进程比会每 5 分钟白重启一次 (2026-11-12 实测: local=-1 local2=-1, 进程用默认值 None)。
+        _bad = []
+        for _name, _exp, _key in (("local", lo_e, "local-dev"), ("local2", l2_e, "local2-dev")):
+            if _exp is None or _exp < 0:
+                continue                       # 解析不出来 ⇒ 这一路不校验(留 stats/label 判活)
+            _got = cmd_devs.get(_key)
+            _got = -1 if _got is None else _got
+            if _got != _exp:
+                _bad.append("%s-dev=%s(应为 %s)" % (_name, _got, _exp))
+        if _bad:
+            return False, ("进程用的设备号与实测解析不一致: %s · 进程 local-dev=%s local2-dev=%s, 实测 local=%s local2=%s"
+                           % (" / ".join(_bad), cmd_devs.get("local-dev"), cmd_devs.get("local2-dev"), lo_e, l2_e))
     if st:
         lo = (st.get("local") or {}).get("label", "")
         l2 = (st.get("local2") or {}).get("label", "")
