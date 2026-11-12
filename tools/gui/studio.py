@@ -16552,13 +16552,18 @@ _INST_LOCK = None
 
 
 def _single_instance_guard():
-    """双击两次只留一个实例 (实测多实例会互相覆盖 canvas/config, 还会让启动变慢)。"""
+    """双击两次只留一个实例 (实测多实例会互相覆盖 canvas/config, 还会让启动变慢)。
+
+    ⚠️ 2026-11-12: 锁端口原为 8795, 而 tools/hil_local_api.py 就在 8795 起 HTTP (手机 HIL 面板)
+    ⇒ 两者互斥: 谁先起谁占口, 控制台先起来之后 HIL API 起不来, 反之控制台静默退出(还因为
+    os._exit 跳过 flush, 连那行提示都看不到)。锁改用独立端口 8895, 与控制台对外服务无关。
+    """
     import socket as _so
     global _INST_LOCK
     s = _so.socket(_so.AF_INET, _so.SOCK_STREAM)
     try:
         s.setsockopt(_so.SOL_SOCKET, _so.SO_REUSEADDR, 0)
-        s.bind(("127.0.0.1", 8795))
+        s.bind(("127.0.0.1", 8895))
         s.listen(1)
         _INST_LOCK = s
         return True

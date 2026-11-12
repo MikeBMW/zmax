@@ -303,7 +303,8 @@
    ],
    "outputs": [
     "out1",
-    "out2"
+    "out2",
+    "out3"
    ],
    "actions": []
   },
@@ -820,7 +821,7 @@
    "color": "#58a6ff",
    "params": {
     "src_switch": true,
-    "src_state": "AR场景",
+    "src_state": "插拔场景",
     "source": "src/lerobot/middleware/nodes/impl/data.py · node_metaworld_data",
     "task": "peg-insert-side-v3",
     "frames": 4800,
@@ -2285,7 +2286,7 @@
      "工程库": "data/database/zmax/zmax_engineering.db"
     },
     "cfg_snapshot": {
-     "loaded_at": "2026-11-12 20:06:06",
+     "loaded_at": "2026-11-12 21:50:24",
      "files_total": 8,
      "files_ok": 8,
      "orders": 12,
@@ -2349,18 +2350,18 @@
      "口径": "一个状态空间工程承载全部任务; 任务=配方段子集+参数覆盖"
     },
     "source_symbol": "def import_config_files(",
-    "cfg_loaded_at": "2026-11-12 20:06:06",
+    "cfg_loaded_at": "2026-11-12 21:50:24",
     "cfg_files": [
      {
       "name": "总工程文件",
       "rel": "data/database/zmax/zmax_space.proj",
-      "sha256": "ac369af9c96e3c37",
+      "sha256": "be8f87f0eaff1269",
       "exists": true
      },
      {
       "name": "任务绑定",
       "rel": "config/ss_task_binding.json",
-      "sha256": "308c436f8474d995",
+      "sha256": "8fc8308c0b7c6619",
       "exists": true
      },
      {
