@@ -35,3 +35,9 @@ terminal(background=true, persist_on_release=true,
 - 用 `os._exit` 收尾的程序, **崩溃前的 print 都会丢** ⇒ 排查时先把它那几条判断打印改成写文件,
   或临时用 `python -u` / 重定向并在 exit 前手动 `flush`。
 - 改端口这类修复**要重启 GUI 才生效**; 用户正在看的时候不得自行重启。
+
+## 姊妹坑: 外部窗口「出没出来」也别只认页面标题
+同一个毛病换个方向再犯一次: 控制台点「打开 AR 页面」→ 窗口真的弹出去了, 但判据拿固定字符串匹配 `wmctrl`
+标题(只认「TCP 轨迹」「AR/VR」), 页面 `<title>` 改成「Z-MAX AR3D r95 · …」后一个标记都不命中
+⇒ 报「浏览器没开新窗口」并再 spawn 两遍。定式(标记集合 + 连接数二级判据 + 真浏览器验收):
+`references/ar-window-presence-check.md`。一句话规则: **判据要找“稳定语义标记 + 第二路证据”, 不绑单一字符串。**

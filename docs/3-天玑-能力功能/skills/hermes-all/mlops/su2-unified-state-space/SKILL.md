@@ -159,8 +159,16 @@ S³ 分量、层贡献+反演表、层间不可交换与 FS 距离热力矩阵�
   段表 0 段带 quat 时正确说法是"**通道在、未启用**", 不是"输出了"。
 
 ## 四元数怎么交给流形引擎: 只给该给的通道 (别塞编码器)
-统一状态空间交给引擎的**实际数据 = 43 维统一状态向量**(`ss_engine_loop`: `state = O[idx, :43]` → `eng.step`), 不是四元数;
-四元数是引擎自己从 `z→project()` 投出来的 p。要把 q 接进去, 只有四条通道, 取舍已逐条实测:
+统一状态空间交给引擎的**实际数据 = 统一状态向量**(`ss_engine_loop`: `state = O[idx, :STATE_DIM]` → `eng.step`), 不是四元数;
+四元数是引擎自己从 `z→project()` 投出来的 p。**标准口径 55 维**(`STATE_DIM` 默认 55, 由 `ZMAX_STATE_DIM` 覆盖);
+老 43 维轨迹由引擎做 43↔55 自适配(尾部补 0, 口径写进 `conform_note`) ⇒ 前 43 维语义一字不动。报"引擎吃了多少维"先看 `state_dim`, 别沿用旧文档的 43。
+```
+[ 0:39] 视觉与本体  tcp_p3 | grip_scalar1 | peg_xyz3 | peg−tcp3 | grip_xy2 | q_right6 | dq_right6 | tcp_R9 | target3 | hole3
+[39:43] 触觉力觉    grasp | contact | dir_x | dir_y
+[43:55] 预留 12     finger_pressure4 | temperature1 | acoustic1 | current2 | spare4   (默认全 0 = 沉睡, 按名 extra 才唤醒)
+```
+分段唯一依据 `src/lerobot/policies/left_right/state_space/unified_state55.py`(`SLICE` / `layout_table()`), 消费端禁止自己数下标。
+要把 q 接进去, 只有四条通道, 取舍已逐条实测:
 
 | 通道 | 做法 | 结论 |
 |---|---|---|
@@ -176,12 +184,12 @@ S³ 分量、层贡献+反演表、层间不可交换与 FS 距离热力矩阵�
 
 ## 引擎的输入/输出/记忆 (它不积分, 也没有 z→z 世界模型)
 `ManifoldEngine.step(state, potential_fn=None, dt=0.01, sensor_residual=None)` 是**一拍**(在役 10Hz), 内部五步:
-`project`(43D→编码 z→投到 S³ 得 p) → `gradient_flow`(Φ=到 goal 的度规距离, ∇Φ 切空间投影) →
+`project`(state→编码 z→投到 S³ 得 p) → `gradient_flow`(Φ=到 goal 的度规距离, ∇Φ 切空间投影) →
 `_evolve`(沿梯度走一步得 p_next) → 解码 action(readout 岭回归) → 可选 `feedback_update`。
 
 | | 内容 |
 |---|---|
-| 输入 | `state` = **43 维**(唯一状态输入) · `goal_point`(四元数, 由引擎自己 `project(轨迹末帧)` 得到, 不是外部给的) · 可选 potential_fn / sensor_residual / dt |
+| 输入 | `state` = **55 维标准口径**(老 43 维自动尾部补 0; 唯一状态输入) · `goal_point`(四元数, 由引擎自己 `project(轨迹末帧)` 得到, 不是外部给的) · 可选 potential_fn / sensor_residual / dt |
 | 输出 | rec: `p` / `p_next` · `z`(16)+`z_source` · `phi` / `grad` · `action`(4) · confidence/anomaly/residual · M/momentum · `orbit` · homeostasis · 三段耗时 |
 | 跨拍记忆 | 只有 `velocity`(仅 `inertia=True`) · `orbit` 历史 · `_a_prev` · `hom` |
 
@@ -192,6 +200,10 @@ S³ 分量、层贡献+反演表、层间不可交换与 FS 距离热力矩阵�
   抓帧不通时回退内建 PCA, 并在 `z_source` 明写"成功 0/失败 N", 不静默。
 - **没有 z→z 的转移模型**: `orbit` 是用最近几步 **p** 的角速度外推; `manifold_layer.predict_manifold` 是接触/性能流形读出。对外不许说"在潜空间里预测下一个四元数"——真要在 z 里预测, 得补转移网络并用真机连续数据训。
 - 视觉塔 ~0.8s/帧(4060 实测 792ms/24 帧) ⇒ 只能独立线程 ~1Hz 刷 z, 引擎 10Hz 只读最新值 + 帧龄, 超期即回退并标注。
+- **要回答"引擎到底吃到什么"别靠推理**: `tools/debug_55d_output.py` 用三种真实口径(在役 state jsonl 尾行 tcp/quat/jpos/jvel、CAD 几何夹具、满通道)跑 `UnifiedState55D.fuse()` 并打印分段; 配合 `ZMAX_DEBUG_55D=1` 门控断点, VSCode 配置「🧪 断点 · 55D 输出」直接停在 `fuse()` 的 `return x`。
+- **55 维在调试器里必须“有名字”**: 用户会直接问"这个 x 的物理含义"。`fuse()` 不裸拼 `[k*v, t, e]`, 而是先按 `SLICE` 切成 `named`(19 个物理量) + `named_units`(单位), 再按 `ALL_SEGMENTS` 顺序拼回 x; 另有 `describe(x)` 吐 `[{name, unit, idx, value, meaning}]`。
+  **改拼装方式必须零回归**: `np.array_equal(新x, 旧concat)` 多组随机输入全 True 才能说"只是可读了"; 少一个/错一位下标形状不变、下游全部数字静默错误(前 43 维逐位相同是 43→55 升级的契约)。
+- **实况帧可能只有一半通道有真值**: 现场无示教几何时 `peg_xyz`/`hole_xyz` 段为 0(该行 `geom` 会写"缺失: 无示教几何")⇒ 几何误差 e=0、L2 群元素贴近单位元。报数时必须说明哪几段是 0、为什么是 0, 不许把 0 当成"误差为零"。
 
 ## L4 潜空间接通 (判据: z 真的来自视觉塔, 不是 PCA 回退)
 `z_source` 是引擎自述, 可能一直写着"回退内建 PCA"。接通按四步做, 每步都有可复跑判据:
@@ -268,8 +280,8 @@ skill_ctx=...)` 的**渲染帧 + 24 维 skill_ctx**, 自己模型编出 z_t/z_go
    与 su2 一致; `engine/sim._build_obs` (metaworld) `[4:7]=末端速度 [7:10]=光模块 [36:39]=阶段子目标`
    ⇒ 直接把 sim 的 obs 喂 su2 会把"速度−子目标"当几何误差 (实测 ~500mm / θ≈140° 假误差)。
    交叉验证前先核对通道语义; 在役口径用 `build_ideal_plan()+ideal_obs.frame()`。
-13. **`manifold_engine.project()` 吃的是 43D state, 不是条件/潜向量**: 它的语义是 state→编码→潜→群投影。
-   把 16 维条件向量直接塞进去 ⇒ `broadcast (1,16) vs (43,)`。要真让"逻辑条件"进潜空间,
+13. **`manifold_engine.project()` 吃的是 state 向量(标准 55 / 老 43 自动补 0), 不是条件/潜向量**: 它的语义是 state→编码→潜→群投影。
+   把 16 维条件向量直接塞进去 ⇒ `broadcast (1,16) vs (55,)`。要真让"逻辑条件"进潜空间,
    得训练带条件的编码器; 没做就如实标 `z_cond_used=False / latent_calibrated=False`, 只报 state→潜对照。
 14. **双覆盖两个真坑 (2026-11-03 实测抓到并修)**:
    (a) `pose_caliper.s3_angle` 原来先 `canonical()` 再点乘 ⇒ **w≈0 附近符号规范不唯一**:
