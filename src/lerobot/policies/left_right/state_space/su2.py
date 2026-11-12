@@ -348,6 +348,65 @@ def compose_scene(layers: dict, order=("L2", "L3", "L4", "L5")) -> SU2Element:
     return SU2Element.compose([layers[L] for L in order if L in layers])
 
 
+# ════════════════════════════════════════════════════════════════════════════
+# 可靠性加权 (2026-11-12): 人的多感觉整合是「谁准听谁的」, 权重随新鲜度/可观测性变;
+#   原来是 LAYER_GAIN 手调常量(不随拍变)。这里把权重做成**该层角贡献的缩放** ——
+#   权重 0 ⇒ 该层是单位元(等于没参与), 权重 1 ⇒ 原样; 因为仍在群内运算, 剥离残余仍为 0。
+# ════════════════════════════════════════════════════════════════════════════
+def scale_angle(u: "SU2Element", alpha: float) -> "SU2Element":
+    """把群元素的旋转角按 alpha 缩放 (方向不变): q=(cos(αθ/2), sin(αθ/2)·n̂)。α=0 ⇒ 单位元。"""
+    a = float(max(0.0, min(1.0, alpha)))
+    th = float(u.theta())
+    if a <= 0.0 or th <= 1e-12:
+        return SU2Element.identity()
+    if a >= 1.0:
+        return u
+    ax = u.axis()
+    if not np.all(np.isfinite(ax)) or float(np.linalg.norm(ax)) < 1e-12:
+        return SU2Element.identity()
+    return SU2Element.from_axis_angle(ax, th * a)
+
+
+def weighted_layers(layers: dict, weights: dict, order=("L2", "L3", "L4", "L5")) -> dict:
+    """按可靠度缩放每层的角贡献 (权重缺省=1.0; 不在 layers 里的层不动)"""
+    return {L: scale_angle(u, float(weights.get(L, 1.0))) for L, u in layers.items() if L in order}
+
+
+def scene_with_weights(layers: dict, weights: dict, order=("L2", "L3", "L4", "L5")):
+    """加权后的场景群元素 + 加权后的层 (给剥离/不可交换用同一套)"""
+    wl = weighted_layers(layers, weights, order)
+    return compose_scene(wl, order), wl
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 预测先行 (2026-11-12): 人脑先猜再纠 —— 用最近两拍的场景群元素等角速度外推下一拍,
+#   残差 = 预测 vs 实测的夹角(度)。稳态小、阶段切换处跳高 ⇒ 可直接当事件信号。
+#   纯本地微秒级, 不依赖大模型; 只读, 不参与下发。
+# ════════════════════════════════════════════════════════════════════════════
+def predict_next(prev: "SU2Element", cur: "SU2Element", k: float = 1.0) -> "SU2Element":
+    """等角速度外推: U_pred = U_cur · exp(k·log(U_prev⁻¹·U_cur))"""
+    if prev is None or cur is None:
+        return cur
+    try:
+        rel = prev.inv() * cur
+        return cur * SU2Element.from_rotvec(rel.log() * float(k))
+    except Exception:                                                       # noqa: BLE001
+        return cur
+
+
+def predict_residual(pred: "SU2Element", meas: "SU2Element") -> dict:
+    """预测残差: 夹角(度) + 方向。residual_deg 大 = 这一拍发生了预测没料到的事。"""
+    if pred is None or meas is None:
+        return {"residual_deg": None, "axis": None}
+    try:
+        d = pred.inv() * meas
+        return {"residual_deg": float(np.degrees(d.theta())),
+                "axis": [float(v) for v in np.round(d.axis(), 4)]}
+    except Exception:                                                       # noqa: BLE001
+        return {"residual_deg": None, "axis": None}
+
+
+
 def peel_layers(layers: dict, scene: SU2Element, order=("L2", "L3", "L4", "L5")) -> dict:
     """反演(观察/理解): 逐层剥离, 读"每层贡献了多少" ── U_k⁻¹·U_scene 的 θ 变化"""
     out = {}

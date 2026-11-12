@@ -192,6 +192,43 @@ def _fresh_quat():
     return None, _src, None
 
 
+def _ref_quat(st, sk):
+    """🧩 参考姿态 (2026-11-12): 让「群元素/姿态真值」能进执行链 —— 位姿链的入口。
+
+    两条来源, 都只在该段**显式声明**时才用 (默认行为一个字都不改):
+      st["quat_ref"] = [x,y,z,w]  ⇒ 上游算好的参考姿态 (SU(2) 节点 → 姿态真值 → 这里)
+      quat:"su2" / "ref" + axis   ⇒ 现场按技能轴向现算 (quat_truth.q_for_axis, 记忆真值 + 基准 yaw)
+    🔴 分量顺序: 本执行器全链是 **(x,y,z,w)**; 而 quat_truth/pc 内部是 **(w,x,y,z)** ——
+       实测不转换会把"工具 z 对到 −z"发成"对到 +z"(差 180°), 且四元数仍是单位四元数, 校验查不出来。
+       所以 quat_ref 必须带 quat_ref_order="xyzw", 没写一律拒发 (fail-closed)。
+    返回 (quat|None, 源说明|err)。
+    """
+    _n = st.get("quat_ref")
+    if isinstance(_n, (list, tuple)):
+        if str(st.get("quat_ref_order", "xyzw")).lower() != "xyzw":
+            return None, "quat_ref_order=%r 与本执行器口径(xyzw)不符 ⇒ 拒发" % st.get("quat_ref_order")
+        if len(_n) != 4:
+            return None, "quat_ref 有 %d 个分量(应为 4)" % len(_n)
+        try:
+            _v = [float(x) for x in _n]
+        except (TypeError, ValueError):
+            return None, "quat_ref 不是数值"
+        _norm = sum(x * x for x in _v) ** 0.5
+        if abs(_norm - 1.0) > 1e-3:
+            return None, "quat_ref 不是单位四元数 (‖q‖=%.4f)" % _norm
+        return _v, "su2:quat_ref"
+    _axis = st.get("axis") or sk.get("axis") or "z_pos"
+    try:
+        from lerobot.policies.left_right.state_space import quat_truth as _qt
+        _q4 = [float(x) for x in _qt.q_for_axis(_axis)]
+    except Exception as _e:                                             # noqa: BLE001
+        return None, "参考姿态不可用(%s: %s)" % (type(_e).__name__, str(_e)[:120])
+    if len(_q4) != 4:
+        return None, "参考姿态分量数=%d(应为 4)" % len(_q4)
+    _q = [_q4[1], _q4[2], _q4[3], _q4[0]]          # (w,x,y,z) → (x,y,z,w) 执行器口径
+    return _q, "su2:axis=%s" % _axis
+
+
 _reg_mtime = [0.0]
 
 
@@ -1200,7 +1237,15 @@ def plan_stage(sk, st, pts, spec, cur):
             name = str(st.get("to_label") or "path")
             t = [float(v) for v in _tp]
             _tq = st.get("quat")
-            if isinstance(_tq, (list, tuple)) and len(_tq) == 4:
+            if isinstance(st.get("quat_ref"), (list, tuple)):
+                # 🧩 位姿链: 轨迹点也吃参考姿态 (与点位分支同一入口, 含顺序/单位校验)
+                q, _qmsg = _ref_quat(st, sk)
+                if not q:
+                    return {"err": "参考姿态被拒: %s (路径点 %s)" % (_qmsg, name)}
+                _qsrc, _qage = _qmsg, 0.0
+                log("🧩 参考姿态(位姿链·路径点): %s → quat [%.4f %.4f %.4f %.4f]"
+                    % (_qmsg, q[0], q[1], q[2], q[3]))
+            elif isinstance(_tq, (list, tuple)) and len(_tq) == 4:
                 q = [float(v) for v in _tq]
             else:
                 q, _qsrc, _qage = _fresh_quat()   # 路径复现: 只走位置, 姿态保持当前(现读, 不吃缓存)
@@ -1209,10 +1254,20 @@ def plan_stage(sk, st, pts, spec, cur):
             if name not in pts:
                 return {"err": "点位 %s 不在点位库" % name}
             t = [float(v) for v in pts[name]["pos"]]
-            if str(st.get("quat", sk.get("quat", ""))).lower() == "taught" and pts[name].get("quat"):
+            _qmode = str(st.get("quat", sk.get("quat", ""))).lower()
+            if _qmode == "taught" and pts[name].get("quat"):
                 q, _qe = _quat4(pts[name]["quat"], name)       # 显式回示教姿态 → 纯平移, 不带旋转
                 if _qe:
                     return {"err": "点位 %s 的姿态不可用(%s) ⇒ 拒发; 请重录该点" % (name, _qe)}
+            elif _qmode in ("su2", "ref") or isinstance(st.get("quat_ref"), (list, tuple)):
+                # 🧩 2026-11-12 位姿链: 姿态取自参考姿态(群元素/姿态真值), 不再"保持当前"。
+                #   默认不开 —— 只有段表显式写 quat:"su2"/"ref" 或给 quat_ref 才走这里。
+                q, _qmsg = _ref_quat(st, sk)
+                if not q:
+                    return {"err": "参考姿态被拒: %s (点位 %s)" % (_qmsg, name)}
+                _qsrc, _qage = _qmsg, 0.0
+                log("🧩 参考姿态(位姿链): %s → quat [%.4f %.4f %.4f %.4f] (点位 %s · 姿态不再是「保持当前」)"
+                    % (_qmsg, q[0], q[1], q[2], q[3], name))
             else:
                 q, _qsrc, _qage = _fresh_quat()     # ⚠️ "姿态保持当前"也必须现读, 不吃陈旧缓存
                 if q and len(q) != 4:
