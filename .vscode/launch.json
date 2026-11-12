@@ -2,6 +2,26 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "🧪 断点 · 55D 输出 (unified_state55.fuse · 停 return x)",
+      "type": "python",
+      "request": "launch",
+      "program": "/home/ubuntu/zmax/tools/debug_55d_output.py",
+      "python": "/home/ubuntu/zmax/gui-venv311/bin/python",
+      "pythonArgs": [
+        "-X",
+        "frozen_modules=off"
+      ],
+      "cwd": "/home/ubuntu/zmax",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "stopOnEntry": false,
+      "env": {
+        "ZMAX_DEBUG_55D": "1",
+        "PYTHONUNBUFFERED": "1",
+        "PYDEVD_DISABLE_FILE_VALIDATION": "1"
+      }
+    },
+    {
       "name": "🧪 断点 · 整个 GUI (studio.py · 550B 单线程)",
       "type": "python",
       "request": "launch",

@@ -150,6 +150,12 @@ class UnifiedState55D:
         if x.size != OBS55_DIM:
             raise ValueError("融合结果应为 %d 维, 实际 %d" % (OBS55_DIM, x.size))
         self.current_state = x
+        # 🧪 TEMP 调试断点 (2026-11-13 老倪: "停在 55D 输出的 return, 我看看实际输出")
+        #   只在 ZMAX_DEBUG_55D=1 时触发 ⇒ 常驻服务(未设该变量)不会被拦下来挂死。
+        #   用法: VSCode 里 F5 「🧪 断点 · 55D 输出」; 或命令行 ZMAX_DEBUG_55D=1 python tools/debug_55d_output.py
+        import os as _os_dbg
+        if _os_dbg.environ.get("ZMAX_DEBUG_55D") == "1":
+            breakpoint()          # ← 断点停在这里, 局部变量: x(55) / v(39) / t(4) / e(12)
         return x
 
     # ---- 按名取值 ------------------------------------------------------------
