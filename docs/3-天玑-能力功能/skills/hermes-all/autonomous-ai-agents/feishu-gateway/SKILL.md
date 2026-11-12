@@ -37,7 +37,7 @@ cron 侧用 `no_agent=True` + `deliver='local'`, 由脚本自己决定发不发(
 
 Use when: A fresh Hermes Agent install needs Feishu/Lark connectivity — no prior config exists, `.env` has no FEISHU vars, and `platforms.feishu` is not in `config.yaml`. This covers the **fresh-install setup** path, distinct from troubleshooting an existing connection.
 
-> For **troubleshooting** an existing Feishu gateway that's failing, load the `hermes-feishu-troubleshooting` skill from the repo's `docs/3-天玑-能力功能/skills/shared/` directory.
+> For **troubleshooting** an existing Feishu gateway that's failing, load the `hermes-feishu-troubleshooting` skill from the repo's `docs/3-天玑-能力功能/shared/` directory.
 
 ## Prerequisites
 
@@ -148,6 +148,14 @@ Gateway running with 1 platform(s)
 | No Feishu lines at all | Platform not enabled | Re-check Step 3 |
 | `ModuleNotFoundError: No module named 'lark_oapi'` | Dep missing | Re-check Step 1 |
 | `Failed to connect` / `WebSocket error` | Wrong App ID/Secret, or app not published | Verify credentials, publish app in Feishu console |
+| `connect failed … NameResolutionError` / `Failed to resolve 'open.feishu.cn'` | **不是凭据问题**：主机的出口/DNS 挂了 | `getent hosts open.feishu.cn` + `ip route \| head -3`，见下段 |
+
+🔴 **`Failed to resolve` 一律先判主机出口，不要去翻 app 配置。** 重试日志里每 2 分钟一条
+`Lark: connect failed … NameResolutionError` 而本地服务全正常（8081 200、sshd 通），典型形态是
+**默认网关指向一台已经不在的机器**（本机拔了 USB 网卡 / 那台机没做 NAT）⇒ 整机没外网，飞书自然解析失败。
+判据与修法（改 NM profile + 新出口机补 MASQUERADE/FORWARD + oneshot 持久化）见 `offline-target-deployment` 铁律五；
+`offline-target-deployment` 的体检脚本跑完再谈 gateway。**链路修好后 gateway 会自己重连，不需要重启服务**——
+判据是新日志里不再出现 `connect failed`，且 `ss -tnp | grep :443` 能看到通往飞书的 ESTAB。
 | `[Feishu] Unauthorized approval click` | User's open_id not in ALLOWED_USERS | Add to `FEISHU_ALLOWED_USERS` |
 | `check_fn _check_feishu returned False` | Platform not enabled or dep missing | Check Steps 1 + 3 |
 
@@ -283,6 +291,17 @@ curl -s "https://open.feishu.cn/open-apis/im/v1/messages/<message_id>" -H "Autho
 
 ## 多机部署 / 换 app 接管: 一个 app 只能一台机在跑
 
+### 把另一台机上的 agent 整体搬到这台机: 搬 profile, 不搬 `~/.hermes`
+```bash
+hermes profile list                                    # 目标机: 先看已有哪些身份在跑
+hermes profile export default -o <name>.tar.gz         # 源机: skills/sessions/state.db/config/memories 全带
+hermes profile import <name>.tar.gz --name <name>      # 目标机: 新增并存 profile
+```
+- **不覆盖式迁**: 目标机往往已经有在跑的 `default` 与业务 profile，顶掉它会静默换人答话；新增并存才是定式。
+- 包很小（skills≈10MB + state.db≈10MB），真正的阻塞是**两边没有共同网段**（
+  `remote-link-operations` §10）；先解决可达性再谈拷贝。
+- 验收三件：`profile list` 里能见到它 · 为它起的 gateway 日志有 `feishu connected` · 用它真发一条拿到 `message_id`。
+
 - **同一个 app 只允许一条 WebSocket 生效**。把同一 app 的 `.env` 配到第二台机, 飞书事件会被任一台接走
   ⇒ 消息丢一半, 而且分不清是谁答的。接管顺序固定: 新机配好并验到 `state=connected` → **旧机 `hermes gateway stop` 让位**;
   两台都在线期间, "某台答了" 不能当稳定行为报给用户。
@@ -298,6 +317,26 @@ curl -s "https://open.feishu.cn/open-apis/im/v1/messages/<message_id>" -H "Autho
   本机读文件合并进 `.env`, 全程不回显。
 - **跨网段交接由能连到目标机的那台落地**: 接管方在办公网、目标机在产线内网时, 让对方扫网找机器是徒劳的
   (扫 500 个地址也只有一个网段的 SSH)。让对端只负责"准备凭据文件 + 之后停掉自己", 落地与验证由有链路的一侧做。
+- 🔴 **迁移后 `.env` 里继承来的 `FEISHU_ALLOWED_USERS` 常是「上一个 app」的 open_id**：拿它发消息回
+  `99992361 open_id cross app` —— 看着像权限或网络问题, 其实是 id 按 app 隔离、不属于当前这个 app。
+  open_id 必须按当前 app 重取: `GET /open-apis/im/v1/chats/<chat_id>/members?member_id_type=open_id`
+  (同时返回 `name`, 可当场核名单对不对), 再回写 `.env`; 写前 `cp` 备份, 只回显 `app_id`, secret 不回显。
+- **迁移验收顺序固定**: `bot/v3/info` 的 `app_name` 认出「这台机上跑的是哪个机器人」→ `chats/<id>` + `members`
+  确认群和人都对 → 真发一条并回读 `message_id`(`code=0` 只代表受理)。三条齐了才能说「已迁到某台机」。
+- **两台机同 app 并存期间不要用「有人答了」当成功证据**: 长连接由飞书随机投递, 表现为「有时不回」;
+  必须先让旧机 `gateway stop` 让位, 再复测。
+- 🔴 **「发得出去」不等于「收得进来」—— 接管前只能交出三证, 接管后必须等一条真实入站**:
+  实测形态: 新机 API 直发 `code=0` + `message_id` 齐, 群里也真看到, 但同一天 `grep -c 'inbound' gateway.log` = 0,
+  用户发的消息全被旧机接走 ⇒ 若据此宣布「已迁好」, 用户下次 @ 就是旧机答话, 当场穿。
+  可出示的三证: ① 日志 `[Feishu] Connected in websocket mode` 且时间是最近; ② `sudo ss -tnp | grep :443` 里那条 ESTAB
+  的 owner 是这个网关 pid, 且对端 IP 落在 `getent ahostsv4 open.feishu.cn` 的解析集合内(排除其它 443 业务连接);
+  ③ 出站链路活着(定时任务/日志有成功投递)。三证只证明「能收」, **不证明「正在收」**。
+  验收判据写死: 旧机停掉后, 让用户发一条, 新机 `inbound` 计数 +1 才算迁移完成; 只看到 `Sending response` /
+  `delivered` 都不算(那是出站)。
+- 🔴 **无法访问旧机时, 唯一正确的话术是「你停旧机, 我这边等一条入站」**: 不要试图用重启新机去抢长连接
+  —— 归属不由重启决定, 抢不到还白白断一次服务; 也不要替用户宣布迁移完成。
+  旧机 agent 自己停不了自己的网关(SIGTERM 传播), 得让用户在**独立终端**跑 `hermes gateway stop`,
+  并预先给出回滚命令 `hermes gateway start` —— 停之前他会问「停了没人回怎么办」, 先把这个答案摆出来。
 - **远端跑 hermes 用绝对路径** `~/.local/bin/hermes …`: 非登录 shell 里 `hermes` 常 `command not found`,
   不代表没装。
 - **接管后要停掉旧机上的同名 cron**: 同一份状态报告在很多台机各有一条定时任务时, 接管后 `hermes cron pause <id>`
@@ -305,6 +344,18 @@ curl -s "https://open.feishu.cn/open-apis/im/v1/messages/<message_id>" -H "Autho
   `{"title","content"}` 而不是 `text` —— 取不到 text 不等于没发出去, 要按 `title` + `create_time` 核。
 
 ### When user says "你怎么不回答？" / "你得回复啊"
+
+**0. 最先查本机这一行(30 秒, 能直接结束排查)**: `grep -A3 '^platforms:' ~/.hermes/config.yaml`
+
+`platforms.feishu.enabled: false` 时 gateway 照常启动但**一个平台都不加载**, 群里 @ 完全静默, journal 原文
+`Platform 'feishu' is explicitly disabled by platforms.feishu.enabled: false in config.yaml` + `No messaging platforms enabled.`。
+**显式 disable 优先于环境变量凭据** —— 凭据齐、`.env` 里 `FEISHU_*` 全在、token 自检 code=0, 也照样收不到任何消息, 别因为自检通过就跳过这步。
+
+- 修复: `hermes config set platforms.feishu.enabled true`(或直接改 config.yaml, 先 `cp -a` 备份), 然后重启。
+- `sudo hermes …` 常因 root 的 PATH/依赖缺失而报 `command not found` 或 `No module named 'ruamel'` —— 走 `sudo systemctl restart hermes-gateway`(systemd 在管时最稳), 或 `sudo /home/<user>/.local/bin/hermes …`。成功的判据不是 `is-active`, 而是重启后日志里出现 `[Lark] connected to wss://msg-frontier.feishu.cn/ws/v2`。
+- **WebSocket 不补发断连期间的消息**: 重启后旧的 @ 不会重放, 明确请用户重发一条, 别坐在那儿等。
+- 群里附件拉不下来报 `234008 The app is not the resource sender` 时别硬啃 API —— 交付件通常本来就是本机产出的, 直接去 `docs/**/deliverables/`、`zmax_data/` 找源文件核对。
+- **飞书会话与 CLI 会话不共享上下文**: 用户在 CLI 里问「飞书端的报告你看到了么」, 这个会话确实看不到。用 `tools/feishu_check_messages.py --n 40` 拉正文 + 本机找文件读完再答, 并说清"是拉下来读的", 不要凭印象宣称看到了。
 
 1. Check group membership (chat list API)
 2. Verify `im.message.receive_v1` is subscribed AND app is published

@@ -14,8 +14,8 @@ description: Use when 训练/评估/部署 left_right 双脑策略 (左脑MLP+�
 - `src/lerobot/policies/left_right/` — lerobot 标准 policy (configuration/modeling/processor)
 - `tools/p3_metrics_bridge.py` — 指标上报 bridge (metrics → HTTP API)
 - `tools/eval_left_right_policy.py` / `tools/eval_std_left_right.py` — 评估脚本
-- `docs/4-天权-模型算法/left_right_policy.md` — 技术方案 (39D 结构 + 状态机调制表)
-- `docs/6-开阳-工程落地/factory_fine_ops_supervision.md` — 大屏监督方案 (8状态×指标)
+- `docs/left_right_policy.md` — 技术方案 (39D 结构 + 状态机调制表)
+- `docs/factory_fine_ops_supervision.md` — 大屏监督方案 (8状态×指标)
 
 ## 架构 (必记)
 - 左脑 LeftBrainMLP: 39D→4D 动作 (MLP 偏置接近: act=act×0.3+clip(delta×2))
@@ -31,7 +31,7 @@ description: Use when 训练/评估/部署 left_right 双脑策略 (左脑MLP+�
 - **39D state = 状态观测**(输入特征向量), 处理它的层叫**状态编码器** 39D→512。
 - **动作调制 = 决策编排模块**(非层): `_act_state_machine` 8阶段门控, u=g(stage)·(w_ff·u_ff+(1−w_ff)·u_fb), 无参数梯度不流经。理论=Brooks包容架构+残差策略。专业名 Action Modulator/行为仲裁。
 - **安全限值 = 安全护盾**(Safety Shield/CBF, 系统级): safety.py saturate + sys0_safety.py L1-L4。独立于模型, 所有路线共有, 不入模型架构表。
-- 配置表 ZOO_SPEC 栏位: 🏗架构(架构/VLM层/CNN层/状态编码/动作调制/Expert层/模型宽度/世界模型) + 🛡安全(安全机制/动作限幅/力限值/否决重试)。详见 docs/4-天权-模型算法/model_zoo_architecture.md。
+- 配置表 ZOO_SPEC 栏位: 🏗架构(架构/VLM层/CNN层/状态编码/动作调制/Expert层/模型宽度/世界模型) + 🛡安全(安全机制/动作限幅/力限值/否决重试)。详见 docs/model_zoo_architecture.md。
 - **三层安全对比**: 状态空间唯一三层(内置否决 veto_th=2.0 + saturate限幅 clip(±0.6~±1) + Sys0外部壳); VLA/ACT/MLP蒸馏仅Sys0外挂; 官方专家力控闭环有界; YOLO不输出动作无安全需求。
 
 ## 训练 (train_full_pipeline.py)

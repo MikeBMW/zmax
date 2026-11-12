@@ -54,7 +54,7 @@
 - **域是第一判据**：仿真域(`metaworld`)模型对站点几何几乎无依赖；真机域(`real`)一缺几何就红。
   实测：10 模型可用 9/10，**唯一受阻的是唯一真机域在役模型 L4.intact**（缺 T_base_cam/plane_z/cell_geometry）。
 - **已有真源不能绕过**（不要新建第二套）：`models/active_models.json`(在役指针) ·
-  `engineering/models_manifest.json`(版本+probe) · `docs/4-天权-模型算法/third_party_model_spec.md`(模型包 manifest v1) ·
+  `engineering/models_manifest.json`(版本+probe) · `docs/third_party_model_spec.md`(模型包 manifest v1) ·
   `tools/model_autoload.py`。该补的是 manifest 的 **契约段**(domain/requires/normalization/io)，不是新体系。
 - 匹配器 `tools/model_site_match.py` → `config/mcd/match_matrix.json`（纯只读，可复算）。
 - 冲解规则：G1/G3 **站点永远赢**（模型只能要求）；G2 组配覆盖可可回溯；归一化 stats 谁都不可覆盖（不同源=拒绝加载）。

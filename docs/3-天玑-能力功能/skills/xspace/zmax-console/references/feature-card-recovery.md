@@ -67,7 +67,7 @@ cd ~/lerobot-smolvla-lew && python3 tools/ci/integrity_check.py
 
 1. 改 5 处版本号 (上面)
 2. `python3 tools/ci/integrity_check.py` 通过
-3. 生成中版本报告: `tools/gen_report_v180.py` → `docs/6-开阳-工程落地/ops/CICD_REPORT_v180.html` (9 项功能表 + 模型表 + 链路表 + SHA)
+3. 生成中版本报告: `tools/gen_report_v180.py` → `docs/CICD_REPORT_v180.html` (9 项功能表 + 模型表 + 链路表 + SHA)
 4. 更新技能 zmax-console 版本迭代节 (坑+流程)
 5. commit: `release: Z-MAX v1.8.0 — <特性摘要>`
 6. `git tag -a v1.8.0 -m "..."` + `git push origin main --tags`

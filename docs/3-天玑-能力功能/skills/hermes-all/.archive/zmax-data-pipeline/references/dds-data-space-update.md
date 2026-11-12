@@ -22,7 +22,7 @@
 - changelog 是**字段级审计表**: 列 = id/ts/table_name/key_name/field_name/old_value/new_value (无 ver 列! 别按常见 ver/msg 结构写)
 
 ## 文档基准 (三体一致)
-- **唯一基准**: `docs/6-开阳-工程落地/ops/ZMAX-DATA-LOOP-OVERVIEW.md` (v4.0) — 开发流程/场景/功能/数据流定义
+- **唯一基准**: `docs/ZMAX-DATA-LOOP-OVERVIEW.md` (v4.0) — 开发流程/场景/功能/数据流定义
 - 旧文档 (DATA-FLYWHEEL.md / ARCHITECTURE-OVERVIEW.md) 已标记指向基准, 保留历史
 - 任何环节改动必须同步该文件, 保证三体(静静/小芳/web)逻辑、数据一致
 

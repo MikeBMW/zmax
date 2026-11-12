@@ -6,8 +6,8 @@
 ## 一、共享通道 (两条, 都要走)
 
 1. **既有 cron 通道** `tools/sync_hermes_to_repo.sh` (cron `hermes-skill-memory-sync` 每 6h):
-   - zmax-console 全家 → `docs/3-天玑-能力功能/skills/xspace/zmax-console/` (SKILL.md + references + scripts + templates)
-   - 24 个关键 mlops/github/devops 技能 → `docs/3-天玑-能力功能/skills/xspace/<name>`
+   - zmax-console 全家 → `docs/3-天玑-能力功能/xspace/zmax-console/` (SKILL.md + references + scripts + templates)
+   - 24 个关键 mlops/github/devops 技能 → `docs/3-天玑-能力功能/xspace/<name>`
    - **MEMORY.md + USER.md** → `docs/7-瑶光-记录追溯/hermes-jingjing-{memory,user}-<日期>.md` + `-latest.md`
    - `docs/3-天玑-能力功能/skills/manifest.json` (技能数/最后同步, 天级幂等不刷屏)
    - 手工跑用 `bash tools/sync_hermes_to_repo.sh --no-push` 然后自己用下面 §三 的推送法
@@ -15,7 +15,7 @@
      代理 URL host 是 ghproxy.net → 会卡在等密码, 所以推送统一走 §三)
 
 2. **"所有技能"全量镜像** (老倪说"所有"时用; 只有 SKILL.md + references/scripts/templates 的文本, 很小):
-   - 目标 `docs/3-天玑-能力功能/skills/hermes-all/<技能名>/` + 可读索引 `docs/3-天玑-能力功能/skills/hermes-all-index.md`
+   - 目标 `docs/3-天玑-能力功能/hermes-all/<技能名>/` + 可读索引 `docs/3-天玑-能力功能/skills/hermes-all-index.md`
      (技能名/分类/文件数/说明 ← 从 frontmatter 的 description/title 抽)
    - 实测规模: **155 个技能 / 1115 文件 / 13MB** (源 `~/.hermes/skills` 看似 50MB, 大半是
      `.curator_backups/*.tar.gz` 本机快照 → **必须排除**)

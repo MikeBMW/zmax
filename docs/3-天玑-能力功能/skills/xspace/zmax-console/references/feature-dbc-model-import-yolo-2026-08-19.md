@@ -3,7 +3,7 @@
 ## 能力特征库架构 (v2.0, R MPV Z700 方案书驱动)
 
 - 四层架构: L0 任务规划 → L1 技能编排(200项原子技能) → L2 模型决策(可替换)
-  → L3 感知执行。文档: docs/3-天玑-能力功能/model_capability_architecture.md
+  → L3 感知执行。文档: docs/model_capability_architecture.md
 - **8 能力域 31 项**: A 移动流转 / B 感知认知 / C 作业执行 / D 决策引导 /
   E 数据学习 / F 部署运行 / G 对外协作 / H 工程交付。
   **能力视角** (能做什么), 禁技术词 (YOLO/ACT/MLP/状态空间方程), 程序校验零残留。
@@ -25,7 +25,7 @@
 ## 第三方模型导入保证链路 (tools/gui/model_importer.py)
 
 标准格式 zmax-model-v1 (manifest.json: format/name/node/version/capabilities/
-interfaces/weights; 规范: docs/4-天权-模型算法/third_party_model_spec.md)。
+interfaces/weights; 规范: docs/third_party_model_spec.md)。
 四步保证: ①校验(能力ID必须存在于能力库, 不达标拒绝) ②自动注册(feature.dbc
 BU_+CM_) ③接口挂载(无 adapter 用默认观测→动作直通) ④冒烟验证(出动作才算,
 失败自动回滚注册)。GUI: 数据字典面板「导入」按钮, 后台线程不卡 UI。

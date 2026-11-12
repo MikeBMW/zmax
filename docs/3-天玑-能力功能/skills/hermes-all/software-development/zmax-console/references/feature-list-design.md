@@ -31,7 +31,7 @@
 - **文件即配置事实**: 数据字典树从 feature.dbc 解析构建 (model_tree.py refresh),
   缺失时自动从能力库生成; export_dbc/parse_dbc/build_tree_from_dbc 双向。
 - 工程落点: `tools/gui/model_feature.py` (能力库+Manifest) / `tools/gui/feature_dbc.py`
-  (解析器) / `feature.dbc` (仓库根) / `docs/7-瑶光-记录追溯/notes/feature_dbc_spec.md` (方案文档)。
+  (解析器) / `feature.dbc` (仓库根) / `docs/feature_dbc_spec.md` (方案文档)。
 
 ## VcXsrv 弹窗实战坑 (Feature List 弹窗, 2026-08-19)
 

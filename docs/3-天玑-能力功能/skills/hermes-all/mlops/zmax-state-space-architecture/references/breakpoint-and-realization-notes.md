@@ -36,7 +36,7 @@
 - "1 帧够不够/稳不稳" 不影响闭环正确性, 只影响展示证据置信度。真闭环 = R0/R1 真实化。
 
 ## 🔄 闭环真实化 R0 (方案2 落地)
-老倪拍板: 引擎世界换 metaworld + YOLO 每 N 步喂 obs。设计: docs/7-瑶光-记录追溯/notes/closed_loop_realization_design.md。
+老倪拍板: 引擎世界换 metaworld + YOLO 每 N 步喂 obs。设计: docs/closed_loop_realization_design.md。
 - **R0 物理真实化** (tools/gui/state_space_sim_real.py, 已提交 109e6a68): 六层控制器源码
   importlib 直载 (同引擎), 指令→env.step 真实物理, 感知真值直读。**单轮全流程跑通**
   (seed100: 接近→对位→下降→抓取 grp0.41 锁存→抬起 gf=1 真夹持→转移→插入 cp0.93→完成)。

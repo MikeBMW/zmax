@@ -72,7 +72,7 @@ src/lerobot/dataspace/topics.py              ← 注册表(话题/类型/QoS/生
 - **按钮必须 addWidget**：对象存在 + text() 对，但没挂布局就是界面不可见且不报错。自检断言 `btn.parent() is not None`。
 - **主线程不碰网络**：live.json/loop.json 是本地文件读取，主线程 QTimer 刷新没问题；**ECS/8790/SSH 请求必须进后台线程**。
 - **prod 档要显式标注**：量产档 `prod` 不发任何 DDS 话题是**预期正确**（零开销），页面要显示“本档允许 0 话题 + 原因”，否则会被误判成坏了。
-- **扫描根目录**：`tools/gui/data_space.py` 原扫 `~/lerobot-smolvla-lew`（另一棵分支检出），已改 `ZMAX_REPO`(默认 `/home/ubuntu/zmax_rel`)——老倪红线：逻辑与产物只有一个 CICD 路径。
+- **扫描根目录**：`tools/gui/data_space.py` 原扫 `~/lerobot-smolvla-lew`（另一棵分支检出），已改 `ZMAX_REPO`(默认 `/home/ubuntu/zmax`)——老倪红线：逻辑与产物只有一个 CICD 路径。
 
 ## 相关服务
 ```

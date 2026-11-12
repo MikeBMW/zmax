@@ -5,6 +5,21 @@ description: Use when 调用产线 AOI 检测服务(10082 金手指/10083 表面
 
 # 产线 AOI 检测服务 (Z-MAX, 工控机 192.168.23.23)
 
+## 🔴 2026-11-11 事故: `aoi_remote_deploy --only 10083` 会把 10082 也盖回旧件 + 重启
+
+- `start_pair()` 里写死 `FILENAME_10082 = cam_finger_10082_work_v20.py`, 且**无条件重启两路**。
+  工控机上真现役是 206,094 B 的同一个文件名(v21/VERSION="v21"、`_JUDGE_VER=v36-gold19-cxwin-20261009`、带 `/param`),
+  而仓库里 `zmax_data/aoi_v4/cam_finger_10082_work_v20.py` 只有 67,594 B(旧版、无 `/param`) ⇒
+  推文件 + 重启 = **把现役降级**, `/param` 变 404、曝光回程序默认。以后推文件前先比长度/哈希, 并先 `--dry`。
+- 救回的唯一途径: 工控机 `cam_finger_10082_work_v20.py.bak_<ts>` 是**覆盖前**的备份(206KB 那版就在里面),
+  `Copy-Item .bak_xxx cam_finger_10082_work_v20.py -Force` 后只重启 10082。救完立刻把 206KB 那版拉回仓库
+  (`[IO.File]::ReadAllBytes` → gzip → base64 走 agent_hub 回执通道), 否则下次还会再盖一次。
+- 取像档位**只认 `cam_param_persist.json`**: 10082 = **24000us × 8dB**(现场实测唯一让 v36 命中行带[880,939]且 n_keys=19),
+  表面 10083 = 80000us / 1.8dB。别自己"按经验"改成 20000×8 —— 重启后 ⑤b 会照 persist 回填, 手改反而制造漂移。
+- "服务通" ≠ "能判": 两路都出现过 `mean=66/76 std=2` 的死平场(工件不在位或光源未开) 与 10083 `mean=11.3 p99=29`(全黑)。
+  判据侧表现就是 `suppressed_19gate` / `亮条上边缘点太少(0)`, 而 `/last_result` 照样回 **OK** ⇒ **黑帧假放行**。
+  回答"服务好使"时必须同时报帧亮度, 否则等于没验。
+
 ## 🔴 侧面检测相机 = 10083 · 曝光写入必须 POST (2026-10-12 实测, 老倪纠正端口)
 - **10083 = 侧面检测相机**；10082 = 金手指/顶视。两者控制口不同：
   - 10083 曝光：`GET /exposure` **只读**；**写必须 `POST /exposure?us=<微秒>&gain=<dB>`**。
@@ -311,6 +326,75 @@ GET /preview.jpg?meta=1                                       # 只回 JSON: gra
 2. 上线前先 `production_sync.py pull` 拿**产线现版**再改(仓库旧副本 110276B / 产线现版 200172B, 差异极大)。
 3. 部署前后都读 `/crop_info` 的 `judge_ver` —— 本改动后仍必须是 `v36-gold19-cxwin-20261009`。
 4. 重启会把取像档位打回默认(部署器 ⑤b 自动复原 `24000us×8`) ⇒ 验完再看一眼 `/param`。
+
+## 🆕 本机 AOI 镜像服务 (旁路): 产线代码原样搬过来跑 (2026-11-11, 工控机停机时唯一可用的检测)
+
+老倪: 「在 光学检测节点，把工控机的10082 10083服务，代码复制过来，搞成一样的，可以旁路AOI检测」
+
+- 位置: `src/lerobot/policies/aoi/service/` — `prod/` 是工控机现役文件**逐字节**副本
+  (`gold_10082_prod.py` 206,094B sha a595c39e… · `surface_10083_prod.py` 65,368B sha 0f9206b5…),
+  `stubs.py` 装 Windows SDK 桩, `prodload.py` 用 exec 加载 (每视角独立模块+独立工作目录,
+  因为产线文件有 `_LAST_GOOD_JUDGE`/`_V31_ST` 这类跨帧全局量), `sources.py` 帧源, `app.py` 路由, `run.py` 入口。
+- **数值栈必须同源**: 另建 `.venv-aoi310` (`uv pip install --python ... numpy==1.26.4 opencv-python==4.10.0.84 flask`)。
+  用 gui-venv311 的 cv2 5.0.0 跑同一帧会命中不同窗口 ⇒ 不能当产线复现。
+- 节点接入: `policies/aoi/local.py::local_bypass(kind)` —— `inspect_aoi` 里**本机镜像优先**,
+  拿到结果就不再打 10082/10083 (省 HTTP, 也不抢相机); 结果落 `gold_local` / `surface_local` /
+  `local_mirror` 字段, basis 写 `local-judge (同源判据代码)`, **绝不混进「工控机真值」话题**。
+  开关 `ZMAX_AOI_LOCAL=auto(默认)|1|0`, 端口 `…_GOLD_PORT=20082` / `…_SURFACE_PORT=20083`。
+- 帧源 `ZMAX_AOI_LOCAL_<KIND>_SRC`: `remote:<host>` / `cam:<url>` / `file:<图>` / `dir:<目录>` / `push`。
+  工控机停机时用 `push` + `POST /frame` 推一帧 —— 没帧就回 `NO_FRAME`, **绝不回 200 假装检测过**。
+- 本机**没有**的东西一律如实报: 相机 (OPT Windows SDK) ⇒ `/param` `/exposure` 回 `ok=false camera_absent`;
+  产线加密权重 (.pt.enc) ⇒ verdict 来自判据几何, `/last_result.model` 字段明写。
+- 验收: `./.venv-aoi310/bin/python tools/verify_aoi_local_service.py` = **22/22**
+  (prod sha256 对账 · 判据图 900x332 非黑屏 · 帧不对必须 JUDGE_FAIL · 无帧必须 NO_FRAME · /frame 闭环)。
+  起停: `bash tools/aoi_local_service.sh start|stop|status|log gold|surface|both`。
+- 🔴 三个坑: ① `/frame` 取 raw body 必须在碰 `request.files` **之前** (表单解析吃掉请求体 ⇒ "200 但 frame=None");
+  ② 客户端调 `/capture_detect` 必须 **POST** (GET → 405, 看着像服务没反应);
+  ③ 桩模块必须给 `__all__` (产线 `from SciCam_class import *` 会迭代 `__getattr__` ⇒ `TypeError: not iterable`)。
+
+## 🆕 工控机只当"快门": 轻量取图 provider (2026-11-11, 相机线只能在工控机的正解)
+
+老倪: 「现在相机的网线连接在工控机上，驱动也在工控机上，那怎么在我的4060运行呢？10083服务可以试试」
+
+**相机线+OPT SDK 只在工控机 ⇒ 4060 不可能自己取图**。正确分工: 工控机只做抓帧, 判据/检测全在 4060。
+
+- `tools/aoi/cam_provider.py` (纯 ASCII, 必须 — PS5.1/GBK 会搞坏非 ASCII):
+  `SciCam_Grab → Payload_ConvertImage → JPEG`; **不加载模型/不渲染判据/不写盘**。
+  路由 `/health` `/status` `/preview.jpg` `/picture?kind=origin&grab=1` `/param(GET/POST)`,
+  与产线口 drop-in 兼容 ⇒ 4060 的 `sources.py remote:<host>` 零改动就能用。
+  抓帧失败 3 次重连重抓, 仍失败回 **503 ok=false**, 绝不返回旧帧。
+- `tools/aoi/provider_ctl.py start|stop|status` — 从 4060 远控; start 会先停该端口旧进程 (相机独占)。
+- 实测 (10083 / D265250099 / 80000us×1.8): 取图 **0.145s** (产线 AOI 程序同帧 3.16s)、
+  provider **CPU 3.4% · 内存 102MB**、`last_grab_ms 34~81`; 4060 本机判据整帧 **207~354ms**
+  (pull 165~302 + judge 42~80)。
+- 切换: 回产线程序 = `provider_ctl stop --port 10083` → 起 `cam_surface_10083_work_v20.py`;
+  金手指同理 `--port 10082 --sn D265250070 --exposure 24000 --gain 8`。
+- ⚠️ 送文件到工控机: 4060 起 `python3 -m http.server <port> --bind 0.0.0.0 --directory tools/aoi`
+  (绑 **192.168.23.50**), 工控机 `iwr -UseBasicParsing` + `Get-FileHash` 逐位核对后才执行。
+  先 `ss -ltn` 挑空闲端口 —— 8801/8802/8804/8805 等已被占, 直接用会 `Address already in use`。
+
+## 🆕 离线 AOI 开发 (无相机/无工控机也能改判据) — 2026-11-11
+
+老倪: 「一会我离线，但是你要保证，离线也可以进行AOI开发，代码你要copy完整」
+
+- **代码完整性靠 sha 不靠记忆**: `tools/aoi/offline_manifest.py --write` 生成
+  `docs/aoi_offline_manifest.json` (20 项文件 + 作用 + sha256 + fixture 表), `missing` 必须为空。
+- **离线帧库**: `zmax_data/aoi_offline/{gold,surface}/` (真机原帧 2448x2048; gold 7 · surface 21),
+  仓库内另带 4 张 1.4MB fixture (`tests/fixtures/aoi_frames/`, 带 manifest sha) ⇒ clone 就能跑。
+- **新帧源 `corpus`**: 目录循环取帧; `remote:` 失败时**自动回落** corpus 并在回执写
+  `source.how=offline-corpus` + `source.offline=true` (否则会让人误以为是现场实拍)。
+- 自检: `./.venv-aoi310/bin/python tools/verify_aoi_offline.py` = **18/18**
+  (帧库 · 数值栈 numpy1.26.4/opencv4.10.0.84/flask · prod sha · 4 张 fixture 全出判据 ·
+  corpus 三轮 · 远端不可达回落). 镜像服务另 22/22 (`verify_aoi_local_service.py`)。
+- 节点离线实测: `inspect_aoi` 一拍 2.5~2.9s, `gold_local=JUDGE_OK` / `surface_local=JUDGE_FAIL`,
+  **全程未向 192.168.23.23 发请求** (日志里那条 IP 只是"产线在哪"的说明)。
+- 建环境: `bash tools/aoi/setup_aoi_venv.sh` (钉死 numpy1.26.4 / opencv-python4.10.0.84 / flask)。
+  ⚠️ opencv 运行时 `__version__` 只报 `4.10.0`, 判据要比前缀不是全等。
+- 日常: `ZMAX_AOI_LOCAL_*_SRC=corpus bash tools/aoi_local_service.sh start both` → 改代码 →
+  `POST :20082/:20083 /capture_detect` → 看 `/picture?kind=judge` → 重跑两个验收脚本。
+- 🔴 离线也要串行取值: 本机镜像已有金手指结果时**不要再跑 gold_yolo 取图** (离线白等一个 URLError)。
+- PS 串坑: 给 PowerShell 命令拼字符串**绝不用 `.format()`** —— PS 的 `{ }` 会被当占位符
+  (`KeyError ' $id=$c'`), 一律字符串拼接。
 
 ## 端点（唯一路由, 无需参数/鉴权）
 
@@ -1086,7 +1170,7 @@ POST http://192.168.23.23:10082/param?exposure=40000&gain=8
 第二来源: **光源相位闪烁** —— 帧间 sat_before 0.240↔0.286 交替、被拒边缘段跟着变 ⇒ 同一条排带被拍到两种亮度。
 修法(风险由低到高): ① 补格改用**周期性**判据(沿节距/相位向两侧走, 槽位均值 ≥0.6×中位槽就继续) ② 粘连块按节距**切开**而非整块丢弃
 ③ 光源换成直流/在判据侧做主相位投票。**验收**: 前视逐位不变 + 点2 稳定等于真值 + 对照组(不改的 v25)同批帧序列。
-诊断全文: 仓库 `docs/7-瑶光-记录追溯/notes/AOI-PT2-JUDGE-DIAGNOSIS-20261008.md`; 8 帧基线: `zmax_data/aoi_v4/snapshots/20261008_pt2_frames_exp40000/`。
+诊断全文: 仓库 `docs/AOI-PT2-JUDGE-DIAGNOSIS-20261008.md`; 8 帧基线: `zmax_data/aoi_v4/snapshots/20261008_pt2_frames_exp40000/`。
 
 ## 🔴 按点位切曝光/增益必须**落盘 + 重启复原**（2026-10-08 现场踩坑）
 
@@ -1299,7 +1383,7 @@ POST http://192.168.23.23:10082/param?exposure=40000&gain=8
    内容质心逐帧极差 ≤1px(锁定后 0.3px) · 真目标覆盖行数(81/339 → 339/339)。
    ⚠️ 检查脚本里"无红/绿横幅"那条要**排除外圈**(绿框是判据图口框, 会被误判成横幅): 只统计中间区域像素。
 8. 落地: `tools/aoi_exposure_fix.py::gold_roi()` + `tools/cam_live_stream.py::_gold_roi_hold()/_GOLD_OUT_LOCK/_gold_rect_vote()/_gold_rectify(v3)`;
-   一键回退 `ZMAX_AOI_GOLD_RECT=0`; 台账 `docs/2-天璇-作业任务/AOI_GOLD_FRAME_V2_20261012.md`; 验收 `tools/verify_aoi_gold_display.py`(PASS 17/FAIL 0)。
+   一键回退 `ZMAX_AOI_GOLD_RECT=0`; 台账 `docs/AOI_GOLD_FRAME_V2_20261012.md`; 验收 `tools/verify_aoi_gold_display.py`(PASS 17/FAIL 0)。
 
 ## 🗂 同一个物理点两套库 ⇒ 配置中心永远滞后 (2026-10-12, 用户: 「标注模式更新了点1, 配置中心还是没更新」)
 
@@ -1315,7 +1399,7 @@ POST http://192.168.23.23:10082/param?exposure=40000&gain=8
 - **验收工具**: `tools/verify_points_consistency.py` —— 台账 / L2 技能库 / 空间点库 / 任务配置 四处同值体检
   (位置差 ≤1e-5 m · 配置里的 x/y/z 与台账逐位相符)。每次改点位录链都跑它。
 - ⚠️ 验证脚本里的期望值**必顶从真源现读**(实测: 写死 `0.489774` 的断言在现场重教点1 后报**假失败**)。
-- 📄 链路口径(谁在检测/模型吃什么/接口清单): `docs/2-天璇-作业任务/AOI_GOLD_DETECTION_CHAIN_20261012.md`
+- 📄 链路口径(谁在检测/模型吃什么/接口清单): `docs/AOI_GOLD_DETECTION_CHAIN_20261012.md`
 
 ### 🔁 续篇(同日): **空间点**也漏同步 + 点位要记 **6 个数(x y z a b c)**
 
@@ -1379,11 +1463,24 @@ GUI 侧同步点见 `state-space-canvas-engineering` 技能「节点改名必须
 判据: 真跑节点后回读 live 数话题 ≥8 且自洽(判决 0/1 · **缺陷数 = 划伤 + 污点**); 点位信号 ≥20 条。
 实测样例(AR 帧 10-12): 判决=1(NG) · 缺陷数 70 = 划伤 57 + 污点 13 · 清晰度 446 · 取像体检 3(gaps_washed)。
 
+## 🔴 10083 `/picture?grab=1` 会**永久挂死** ⇒ 本机取图必须整体墙钟超时 (2026-11-10 实测)
+
+症状: 老倪「10083 10082 通道怎么没有图像了」—— 页面那格画面不动, 但服务健康。
+- 实测: `GET http://192.168.23.23:10083/picture?kind=crop&grab=1` 相机卡住时 **35s(乃至更长)一字节不回**; 同一刻 `kind=crop`(不带 grab) 4ms 返回。
+- 后果: 8791 `cam_live_stream` 的 `aoi-surface` 线程挂在 `urlopen→getresponse` **2396s**(py-spy 才看出来),
+  `/api/cams` 报 `age_s=2396 fps=0.0 stalled=True`。`urlopen(timeout=10)` **只管单次 recv**, 对这种"连响应头都不给"的挂死无效。
+- `ss -K` reset 挂死连接**治不了**: 线程立刻发新请求再挂(实测)。
+- 修法(已上线, `tools/cam_live_stream.py`): `_http_get_bounded()` = 工作线程 + `join(总时限 8s)`, 超时抛掉本次请求;
+  + `_AOI_FETCH_STUCK` 卡死冷却 30s 内只读内存帧不 grab。离线判据(黑洞服务 accept 后不回字节): 3.0s 返回 code=0。
+- 重启服务走 systemd: `systemctl restart zmax-cam-live-stream`(**它是 unit 托管, 别再 nohup 起副本**)。
+- 附带: 10083 重启会**按落盘 `surface_exposure.json` 复原曝光** —— 本次该文件是 5000us ⇒ 画面 mean 11.8 近黑;
+  写回产线值 `POST /exposure?us=80000&gain=1.8` 后 mean 186(即使 SDK 回 `us_ok=false`, 以图像实测为准: 亮了就是生效了)。
+
 ## 🔧 表面(10083)v20.1: 参数 settle + 判据阈值相对化 (2026-10-12, 离线 10/10 PASS, ⏸ 待上线)
 
 老倪「降曝光」那条的三个配套事里, 前两件已改好(**未上产线**: 产线 USB 网卡不在位 ⇒ 192.168.23.23 不可达)。
 文件 `tools/aoi/cam_surface_10083_work_v20.py`(= `zmax_data/aoi_v4/` 同名副本) · sha `32eb2562fe9dabd3` ·
-清单已标 `pending_deploy` · 判据 `zmax_data/aoi_v4/test_v20_1_settle_and_relth.py` · 文档 `docs/2-天璇-作业任务/AOI_SURFACE_V20_1_20261012.md`。
+清单已标 `pending_deploy` · 判据 `zmax_data/aoi_v4/test_v20_1_settle_and_relth.py` · 文档 `docs/AOI_SURFACE_V20_1_20261012.md`。
 
 1. **改完取像参数的"第一帧"必须由改参数那个调用自己吃掉**: `POST /exposure` 成功后 `_warmup_grab()` 丢一帧
    (不落盘/不动 `_LAST_PIC`/`_MEM`), 回执报 `warmup`。**重连只在第一次失败时做** —— 每次失败都 Close/Open
@@ -1419,7 +1516,7 @@ GUI 侧同步点见 `state-space-canvas-engineering` 技能「节点改名必须
 - 要真降曝光, 必须配套三件事(未做): ① 改判据算法不依赖过曝亮条; ② 模型输入换曝光 ⇒ 同口径重评(同一模块只改曝光);
   ③ 把 `_apply_expo` 改成**永远停流→设→重开流**——实测改曝光后**第一张抓帧必 500「抓帧失败」**, 第二张才好。
 - 判据: `tools/verify_surface_display.py`(曝光==产线口径 / 显示帧死白≤2% / 工控机原图仍过曝⇒没造假 / 页面标注在)。
-- 📄 全过程证据: `docs/2-天璇-作业任务/AOI_SURFACE_EXPOSURE_20261012.md`。
+- 📄 全过程证据: `docs/AOI_SURFACE_EXPOSURE_20261012.md`。
 
 ### ⏱ 「点了好几秒才有反映」的真因: 子进程里的采样窗口 (2026-10-12 实测)
 

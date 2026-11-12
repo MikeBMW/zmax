@@ -10,7 +10,7 @@ import math
 import os
 import sys
 
-sys.path.insert(0, "/home/ubuntu/zmax_rel/tools/gui")
+sys.path.insert(0, "/home/ubuntu/zmax/tools/gui")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5.QtGui import QGuiApplication, QFontMetrics, QFont  # noqa: E402
@@ -70,7 +70,7 @@ def old_wrap(text, fm, avail, max_lines=LINES):
 
 
 def main():
-    d = json.load(open("/home/ubuntu/zmax_rel/flows/state_space_obs.json", encoding="utf-8"))
+    d = json.load(open("/home/ubuntu/zmax/flows/state_space_obs.json", encoding="utf-8"))
     nodes = [n for n in d["nodes"] if n.get("type") != "row_bg"]
     fm_old = QFontMetrics(QFont("Noto Sans CJK SC", 9, QFont.Bold))
     fm_new = QFontMetrics(SM._node_font(SM.NODE_TITLE_PT, True))

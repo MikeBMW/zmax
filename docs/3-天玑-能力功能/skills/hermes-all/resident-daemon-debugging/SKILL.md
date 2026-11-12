@@ -84,6 +84,28 @@ metadata:
 **辅助坑**: 部分节点会 `QWidget()` —— 无 QApplication 直接 SIGABRT 审计进程;
 验证脚本开头要 `QT_QPA_PLATFORM=offscreen` 并建一个 `QApplication` 实例。
 
+## 断点下错副本: 同一段代码按分段复制了 N 份 + 单射在职调度
+
+**症状**: 用户贴出自己下断点的那段 `return`, 说"这就是唯一的一段代码, 为什么进不了这个断点"。
+
+两个成因通常同时成立, **两个都要证**: ①这段代码在文件里被**复制**了 8~9 份(一类一份), 而调度每拍只调
+**在职**那一个类的 `clamp()`, 其余类"沿用上一拍结果、不重算" ⇒ 断点落在非在职副本上**一行都不执行**;
+②真正执行的那个**进程**未必是用户 F5 的那个 —— 先量一量: `/proc/<pid>/cmdline` 里 `grep -c pydevd` = 0 就不是
+被调试的进程。取"现在哪一份在跑": 读实时状态文件的在职标志(`skill_phys.json` 的 `在职 == 1`, 龄 <1s)。
+
+**派发宿主已改为"状态空间进程内"(独立派发器停用)**: 技能派发现在是 `tools/ss_canvas_loop.py` 每拍内调
+`dispatch_inproc.tick("ss_canvas_loop")` ⇒ 想让断点命中, **F5/attach 的对象就是这个画布循环进程**;
+独立 `tools/ss_skill_dispatch.py` 单元已 stopped+disabled, 且脚本本身在无 `--once`/`ZMAX_DISPATCH_STANDALONE=1` 时
+**打印"已停用"并 exit 0** —— 所以「找不到那个独立进程」是预期, 不是环境坏了，更不要为了调试把它重新拉起
+(那会把双写者、断点永不命中的老毛病一并拉回来)。单拍看结果用 `--once`。
+⚠️ 读到 `canvas_loop.json` 的 `dispatch` 字段为 `null` 时别判"没在派发": 同一份状态文件可能被**旧代码的**
+第二份画布循环 (例如用户早先 F5 那个) 最后落盘。真判据是 `skill_phys.json` 帧龄 <1s + 宿主日志首行
+`🧩 技能派发: 本进程内每拍派发 SK01~SK08 (pid N)`。
+
+**交付口径**: 回答"为什么进不了这个断点"必须同时给 **哪一份副本**(类名 + 当前 return 行号) 与
+**哪个进程**(pid + pydevd 计数), 再给一条能真停的命令 —— 只给一样等于没答。
+命令与判读: `references/breakpoint-not-hitting.md` §1c。
+
 ## 断点不命中的完整分诊链（按顺序跑，每步都能独立证伪）
 
 “断点不进”有四层原因，**先证进程，再证代码，最后才改配置**。跳过前两层去改 launch/env，会陷入
@@ -138,6 +160,20 @@ sed -n 's/.*pid=\([0-9]*\).*/\1/p' zmax_data/ss_live/actuator_calls.log | sort |
 验收口径: 自动跑后日志里出现 `[brk:<tag>] 到达` 或 py-spy 栈里出现该函数。
 调试完把常驻服务 start 回来（`sudo systemctl start <loop 服务名>`），别让生产循环一直停着。
 
+**“界面在跑、但跑的是回放”= 技能链一次都没走 (最隐蔽的一层)**: 画布数据源是「操作视频同源 episode」时,
+▶运行 走的是回放计划, **不经过 `sched.decide → skill_step → clamp`** ⇒ 技能断点永远不停, 而画面/日志全“正常”。
+十秒判据: `zmax_data/ss_live/trace_live.json` 的 `src` 写着 `操作视频同源 episode … N 步` 且帧数在涨,
+同时 `skill_phys.json` 帧龄很老、`skill_calls.log` 里没有该 GUI pid 的计数 ⇒ 是回放。
+**同一形态的第二种分支: 数据源 =「AR场景」** —— `start_sim()` 的 `_ar_src` 分支只写
+`zmax_data/ss_live/ar_play.json`(`{"action":"start","by":"simulink.run","src":"AR场景"}`) 并播双臂动画,
+引擎同样一次不跑、技能一次不调。切回引擎分支的落法: 画布 JSON 里 `ssdata.params.src_state` 要是「插拔场景」,
+再用命令通道 `ss_canvas` 重载画布(它 `open_state_space()` 重读文件) → 隔几秒 `ss_run`。
+回答顺序固定为
+**当前数据源是回放还是实时 → 回放不经过决定层 → 技能不执行 → 断点无对象**, 别把它说成“断点没绑”。
+驱动本仓 GUI 走命令通道 `/tmp/zmax_nav_cmd`(`ss_canvas`/`ss_run`/`mparam`/`ds_win`/`ov_page`/`open_all` …),
+别盲点坐标; 两个坑(同文件写 `ss_canvas`+`ss_run` 会抢跑、`ss_run` 按档位/数据源分流)见
+`references/vscode-debug-session-driving.md` §6~§7。
+
 ### ② 这个进程此刻在干什么
 ```bash
 sudo py-spy dump --pid <pid>
@@ -178,6 +214,14 @@ mtime 不动、备份文件数不涨, 三条同时成立才算修好。
 栈在变(不同节点/HTTP/json.dump) ⇒ 在跑; 连续几次同一行 ⇒ 才叫挂住。判定完再决定修什么。
 配套改进是给循环加**心跳行** (每 ~5s 打 `💓 tick=N · Xms/预算Yms · K 节点`), 让终端永远不可能看起来冻住。
 
+**终端只剩「… N 行已省略 (全量: /tmp/xxx.log)」= 节流器在干活, 不是日志丢了**: 本仓 `tools/loop_quiet.py`
+把 stdout 限速 (每秒 N 行 + 每 10s 一行省略统计), 全文原样落 `ZMAX_LOOP_LOG`。默认值在**代码里是 "0"**
+(`os.environ.get("ZMAX_LOOP_TERM_LINES","0")`) ⇒ 终端一行都不放、只剩统计行，看着像输出被吞；
+而同一文件的 docstring 写着「默认 2」—— **以代码为准**。判读三步: ① `grep -c '行已省略' <全量日志>` 应为 0
+(0 = 一行未丢) ② `wc -l` + 体积给底账 ③ 要看就 `ZMAX_LOOP_TERM_LINES=2`(限速) 或 `ZMAX_LOOP_VERBOSE=1`(全关)。
+汇报给两个数（每秒放几行、全量在哪个文件），不说"日志被截断了"；用户追问"这些省略干啥呢"= 那行统计本身没信息量，
+正解是把统计换成有内容的摘要（本拍阶段/速度/偏差）而不仅是改行数。
+
 **每拍重扫真源是节拍杀手**: 每拍都读 8 个配置 + 重算 sha 的节点实测占 85ms/拍 (预算 100ms) ⇒ 循环
 一直“超节拍”。按 `(路径, mtime_ns, size)` 签名 + 短 TTL (2s) 缓存, 文件没动就复用上一次结果 ⇒ 同一节点
 降到 0.4ms。凡是在 `10Hz` 循环里跑的“读文件/算哈希/扫目录”都按这条处理; 改完用状态文件的 `traces[].ms`
@@ -190,7 +234,11 @@ mtime 不动、备份文件数不涨, 三条同时成立才算修好。
 `ZMAX_<X>_PERIOD_S` + 缓存回放 (返回上次结果并附 `cached_ago_s`), 下游每拍照样有值, 尖峰即消失。
 加之前先看 `traces[].ms`, 确定峰值那一拍到底谁占大头, 别凭猜。
 
-**单次 40~200ms 的重推理要挪后台线程, 光靠“每 N 拍一次”不够**: YOLO/sam3 这类推理即使每 0.5s 才真跑一次,
+**单次 40~200ms 的重推理可以挪后台线程, 光靠“每 N 拍一次”不够 —— 但只限多线程档**: 🔴 前提是
+`ZMAX_MULTI_THREAD=1`。550B 单线程档**禁止**把推理挪线程: 必须走 `thread_policy.spawn_or_inline()` 当场同步算完,
+否则实现跑在 worker 里、断点在主线程永远不停、下游拿的还是上一拍结果。单线程的代价 (一拍 30ms → 200ms+) 要认,
+不要拿本节去“优化”回来。开关钉法/验证配方/审计口径见 `references/single-thread-and-breakpoints.md`。
+多线程档做法: YOLO/sam3 这类推理即使每 0.5s 才真跑一次,
 落到那一拍照样破预算 (显存被别的进程抢时更久)。做法: 主线程只做便宜部分 (env.render / 取帧 ≈10ms),
 推理交给常驻单线程, 本拍返回**上一帧**结果 + `cached_ago_s`; 冷启还没有任何结果时同步算一次, 保证下游第一拍有值;
 后台线程内异常必须自己接住 (存进状态字段), 绝不让它冒到主循环。分工底线: **渲染/环境留在主线程** (mujoco/PIL
@@ -250,6 +298,11 @@ tick 增量翻倍, 读出 65Hz 这种荒唐值; 两份还抢同一块 GPU, 推�
 - **frozen modules**: debugpy 自报 `frozen modules … may make the debugger miss breakpoints`。Python 3.11 起
   必须在 launch 配置里给 `pythonArgs: ["-X","frozen_modules=off"]`（`args` 是给程序的，不生效）+
   env `PYDEVD_DISABLE_FILE_VALIDATION=1`。
+- **脚本参数写进 `pythonArgs` ⇒ 调试目标一次都没启动**: `pythonArgs` 是解释器自己的开关位 (`-X`/`-u`)，
+  脚本参数必须放 `args`。放错的现场三连: 集成终端只有一行 `unknown option --steps` + usage ⇒ VSCode 弹
+  `Timed out waiting for debuggee to spawn` ⇒ `Call Stack` 空但工具栏“重启/停止”还亮(半死会话)。
+  这时别去怀疑断点绑不上, 先看集成终端原话; 那个超时模态框会挡住下一次 F5, 先 `Escape` 关掉再重跑。
+  字段分工、会话活着/已暂停的判据、替用户操作 VSCode 的约束见 `references/vscode-debug-session-driving.md`。
 - **加载器连 `sys.modules` 都没注册**: 连补偿都做不到(pydevd 按模块名定位文件)。但注册上也**仍然不够** ——
   见下一条“动态加载”。同一仓库常有的模块注册了、有的漏了, 逐个核, 别假设“同一个 repo 的加载方式都一样”。自查:
   `python -c "import sys;sys.path.insert(0,'src');<触发一次节点>;print('<模块名>' in sys.modules)"`。
@@ -269,6 +322,35 @@ tick 增量翻倍, 读出 65Hz 这种荒唐值; 两份还抢同一块 GPU, 推�
   对策: 每次运行前清模块缓存（`library._SS_MODS` 与 `sys.modules` 里的 `state_space.*`/`ss_real.*`）
   强制重编译，新断点在编译时被注入；代价几十 ms。两个入口都要清: ▶运行 与 右键运行节点。
 
+### 断点命中频率 ≠ 顺序执行 (用户会拿"一个反复进、一个总不进"来质疑)
+
+同一进程里节点按拓扑序逐个跑, **不代表两个函数被调用的次数一样**: 命中频率 = 调用点个数 × 宿主节拍。
+- 例: `safety.saturate()` 被画布节点 `sslimit` 每拍调一次 (10Hz ⇒ 10 次/秒), 而技能 `clamp()` 只在派发段调、
+  且只调**在职**那一个类 ⇒ 表面就是"一个反复停、一个几乎不停"。先数调用点再回答:
+  `grep -rn "<fn>(" src/ tools/ | grep -v "def "`, 然后对每个调用点问"它在哪个宿主、什么频率";
+  动态侧看产物帧龄/计数 (不涨 = 一次都没走到)。
+- 🔴 **把断点放在每拍必经的高频函数上 = 把循环冻成每拍一停**: 10Hz 循环里 `saturate` 断一次就停一次,
+  界面/派发全卡住。要停在高频点上必须用**条件断点** (`np.abs(u).max() > 0.6`、`why` 含某条削因),
+  或文件开关只记录不停。
+- 回答顺序: ①谁在调它 (调用点 + 宿主) ②宿主节拍 ③那个宿主是不是用户正在调试的进程
+  ⇒ 三条齐了再谈"为什么进不去"; 只答"你下错地方了"会被继续追问。
+
+### 调试配置默认 = 整个 GUI, 不是常驻循环
+
+用户口径: 「调试的配置, 不要 loop, 要启动整个 GUI」—— F5 起的应是界面本体 (`tools/gui/studio.py`),
+常驻循环只是背后一环; 要在界面代码里打断点, 调试器就必须挂在 GUI 进程上。
+- **启动口径照抄启动脚本, 不许凭记忆重建**: 读 `tools/gui/launch_studio.sh` 的 `exec` 行 ⇒`cwd=tools/gui`、
+  `program=studio.py`、`DISPLAY=:0`、`QT_QPA_PLATFORM=xcb` (脚本先 `unset` 再 `export`: 离屏判据会把 offscreen
+  继承下去 ⇒ 进程活着但没窗口)。再加 `ZMAX_SINGLE_THREAD=1` (550B 单线程) + `pythonArgs:["-X","frozen_modules=off"]`
+  + `PYDEVD_DISABLE_FILE_VALIDATION=1`。
+- ⚠️ **不要顺手加 `ZMAX_DEBUG_MODE=1`**: 它让 GUI 建完窗口再自动跑一遍引擎, 页面建完要 25~36s;
+  调界面本身不需要, 要看引擎另用单拍入口。
+- **模板与文件必须同时改**: 界面「打开 VSCode」会用模板整份重写 `.vscode/launch.json`, 只改 json 下次就丢。
+  两边写完再**逐字段对拍** (`ast.get_source_segment` 取模板函数源码 → 带假 root `exec` → 与 json 比
+  name/program/cwd/pythonArgs/env), 并回读 `configs` 条数。
+- ⚠️ 用 patch 替换函数体内整段 `configurations` 时, new_string 自带收尾 `],}` 而旧 dict 没一起删 ⇒ 留下悬空块
+  ⇒ `IndentationError`; 删完立刻 `py_compile`, 别等 GUI 启动才发现。
+
 ### 要“Call Stack 能看出是哪个画布节点”: 改函数真名, 别指望栈能按顺序排
 
 - 中间件节点模块入口全叫 `compute` ⇒ 栈里十几层同名帧, 用户看到的就是“这些函数不是我要的节点”。
@@ -285,13 +367,34 @@ tick 增量翻倍, 读出 65Hz 这种荒唐值; 两份还抢同一块 GPU, 推�
 
 **别用裸 DAP 客户端去验 `debugpy --listen` 的断点**: 手搓 DAP 客户端会得到 `setBreakpoints → "Server is not available"`
 (必须先 attach), 而 `attach` 带 processId 会走 gdb 注入 (`ptrace: No such process`), processId=null 又报
-`issubclass() arg 1 must be a class`。这条路径只证明“客户端写错了”, 不证明断点好坏。用下面两条:
+`issubclass() arg 1 must be a class`。这条路径只证明“客户端写错了”, 不证明断点好坏。真要用/接手时三个硬约束:
+`clientOS` 必须是 `"UNIX"` (写 `"linux"` 直接 AssertionError 断连)、`--listen` 模式不一定发 `initialized` 事件
+(别死等, 3s 软等即可)、`attach` 请求不可省。证书完用下面两条:
 ```bash
 python -m pdb -c "b /abs/path/file.py:LINE" -c c -c "p 变量" tools/<跑一次节点的脚本>.py
 ```
 - 路径必须**绝对**（相对路径匹配不上 `co_filename`），行号必须落在可执行语句。
 - 动态 `exec(compile(src, path, "exec"))` 加载的模块 **pdb 能停、debugpy 的 UI 断点未必** —— 两者要分开证，
   别拿 pdb 停住了就宣布 VSCode 也能停。
+
+**进程内没有公开 API 能替 VSCode 下“真行断点”**: 这版 debugpy 的 `PyDB` 只有 `set_break_on_system_exit`,
+没有 `set_break` —— 行断点只能由编辑器经 DAP `setBreakpoints` 下发, 别去猜私有 API 或指望进程自己装断点。
+能落地的是在目标函数**体里**放一行 `debugpy.breakpoint()` 钩子(先用 `is_client_connected()`/`get_global_debugger()`/`sys.gettrace()` 判空,
+没连调试器就立即返回 ⇒ 生产零开销),
+停下来的帧就是那个函数本身; 用 wrapper 在外面包一层只会停在 wrapper 帧, Call Stack 差一层。
+🔴 `breakpoint()` **绝不能包在 `try/except Exception` 里** —— pydevd 靠抛异常挂栈, 被接住后暂停点落到 `except` 的
+`pass` 行(界面显示 `Paused on breakpoint`, 但当前行是 `pass`、帧顶是钩子) ⇒ 用户判成“没停在技能里”。
+armed 判定可以带 try, 只有 `breakpoint()` 必须是裸语句。
+🔴 加了 `_zmax_bp_armed()` 之类的调用点就 `grep -c "^def _zmax_bp_armed"` 确认名字**真定义了**: 漏定义时
+每拍 `NameError` 被上游 `except → 直通` 吞掉, 运行照跑、断点一次不停, 表现与“调试器没接管”一模一样。
+钩子会改行号 —— 交付时必须用 AST 重算并报当前行号。见 `references/vscode-debug-session-driving.md` §4。
+
+🔴 **代码里的断点钩子会停在用户根本没点断点的那一行 ⇒ 交付前必须删掉**: 用户看到黄箭头停在自己没下红点的
+`_out = {...}` 上, 只会得出"这调试器乱停"的结论 (原话形态: 「这里没有断点, 你怎么还停止?」)。钩子只许当**当轮临时诊断**用:
+用完全处删除 (连 `_zmax_bp_armed` 这类辅助函数一起删, 否则 `grep debugpy` 还留着遗迹, 下次谁也不知道哪个还生效),
+`py_compile` 通过后 **重启调试会话** —— 运行中的进程握着旧 code object, 不重启照旧停。自证"没有隐藏断点"用**产物连续增长**:
+触发一次运行, 调用日志行数一路上涨 (`wc -l` 连采两次递增)、进程 CPU 时间持续累加 ⇒ 代码里确实没东西在停;
+随后把暂停权交回用户 —— 只报当前行号, 让他自己在 gutter 点。
 
 兜底断点用**文件开关**而不是 env: `touch <仓库>/zmax_data/ss_live/BREAK` ⇒ 代码里 `os.path.exists()` 无条件
 `breakpoint()`。它不依赖 env、不依赖 `debugpy.is_client_connected()`，是唯一能区分“代码没到”与“调试器没接管”的开关。
@@ -310,10 +413,70 @@ python -m pdb -c "b /abs/path/file.py:LINE" -c c -c "p 变量" tools/<跑一次�
 要看变量用终端 pdb 通道，GUI 不受影响。
 
 ### 交付口径
-每次说“改好了”都附**一条可复现命令 + 它的真实输出**。没跑 pdb、没看 py-spy 栈就说“还没验证”，
-不说“应该能停”。一个未验证的“已修复”被否一次，用户之后会要求把每个结论重新证明一遍。
+每次说"改好了"都附**一条可复现命令 + 它的真实输出**。没跑 pdb、没看 py-spy 栈就说"还没验证",
+不说"应该能停"。一个未验证的"已修复"被否一次，用户之后会要求把每个结论重新证明一遍。
 
-命令清单与判据见 `references/breakpoint-not-hitting.md`。
+**用户说"你把 VSCode 配好 / 全程你操作" ⇒ 环境由我配、证据由我跑**, 只把「下拉选哪条配置 + 按 F5」留给他:
+① 改写/新增 `launch.json` 后回读条数与每条 `program` 是否存在; ② 用无窗口直达脚本
+(`tools/debug_run_engine.py`) 自己跑到"每步恰好一次技能 clamp"; ③ 用 `python -m pdb -c "b <abs>:<line>"`
+真停一次, 把命中行 + 调用栈贴给他。不要反过来让用户去点按钮/重启/截图代跑 —— 那不叫"全程你操作"。
+⚠️ 用户一旦说「用 vscode, 别用 pdb」: pdb 只能当我这边的内部自证,**不把 pdb 命令丢给他、也不开一个 pdb 终端
+窗口当交付物**; 交付证据改成 VSCode 会话本身 (断点行的当前行号 · 集成终端原话 · 会话已暂停的 `/proc` 读数 · 界面截图),
+且把他要按的键减到最少 (`Escape` 关残留模态框 + F5)。
+配方: `references/single-thread-and-breakpoints.md` §三·七。
+
+**问“到底是不是 X / 别扯蛋 / 说人话” ⇒ 第一句就给结论**（是/不是 + 一句范围或代价），不回顾历史实现
+（“以前是 worker 现在改了”这类叙述一律不要），不列备选方案，结尾不加“要不要我…”。
+**问哪一块就只答那一块**: 用户问“功能逻辑”时只讲节点/推理/派发的执行线程, 不要把 GUI 线程、systemd 服务、
+其他档位扯进来 (多扯一句就会被回“别扯蛋”)。要给边界就一句“GUI 自己那几条不算”, 然后停。
+用户把同一个问题问第二遍，几乎都是上一轮答成了背景介绍而不是结论。
+
+命令清单与判据见 `references/breakpoint-not-hitting.md`；单线程档与逐节点断点验收见
+`references/single-thread-and-breakpoints.md`（§6 = 线程数怎么量/怎么归属/哪些搬不动；
+§三·六~§三·十 = 技能 return 断点为什么不进：控制链绕开技能 · 连线缺失 · return 行里的列表推导
+停在 `<listcomp>` 帧 · 用执行落盘日志把“没执行”和“调试器没停”分开 · “全程你操作”时能做到/不能做到的边界）。
+
+**用户说"你还有 N 条线程" ⇒ 先用 `ls /proc/<pid>/task | wc -l` 实测再回答**, 不许用"已经单线程了"顶回去。
+两个硬坑: ①`/proc/<pid>/environ` 是 execve 时的快照, 运行期 `os.environ[...]=...` 不会出现 ⇒ 查不到不等于没生效;
+②GUI 的隐形大头是**启动就自动 prewarm 一个隐藏 WebEngine 窗口** (≈+33 条), 改懒建那一项就能从 45 降到 17。
+量线程/归属创建点的脚本: `scripts/measure_threads.sh <脚本> <秒数>` + `PYTHONPATH` 注入 `sitecustomize.py` 包
+`threading.Thread.start` 记栈 (C 层线程不会出现在里面 = 不是我代码起的)。
+
+**目标口径 = 恰好两条 Python 线程** (MainThread 管界面, `zmax` 工程线程跑一切周期活/阻塞 IO; 实现 `tools/gui/zmax_thread.py`
+的 `submit()/every()`)。三条总是成立、必须分开报的数: ①Python 线程数 (目标 2) ②OS 线程数 (Qt/libiomp/CUDA 十几条, 不算违约)
+③python **子进程**数 (周期刷新写 `subprocess.run([python, tool.py --json])` 的, 一律改同进程 `collect()`/`build()` 调用)。
+用户抱怨"还是跳"时, 问题不在条数而在工程线程在调试器眼皮下停站: 每拍先判 `sys.gettrace() is not None` 就跳过周期任务。
+配方与归属判据见 `references/single-thread-and-breakpoints.md` §6.1~§6.7。
+
+## 🐢 「节点全打开」后 10Hz 循环卡死 (计算面解锁的回归)
+
+**症状**: 把"吞结果"那类模板坑修好 (或打开 `ZMAX_NODE_PURE_ALL`) 之后, 循环 tick **停在同一数字几十秒**,
+`canvas_loop.json` 的龄一路涨, 而 AR/数据空间还"看着有值"(快车道在跑) ⇒ 很容易被误判成"在跑"。
+
+定性顺序不能反:
+1. `canvas_loop.json` 的 `tick`/`cost_ms` 是否在涨 (冻结 = 一拍照样卡死; `STATE_EVERY` 决定它每 N 拍才写);
+2. `py-spy dump --pid <MainPID>` **隔 2~3s 采两次**: 同一行不动才是卡死;
+3. 看栈底那几帧落在哪个节点 (`compute → step → project.step → main`), 不要把"节点在算"当成循环坏了。
+
+**根因是结构性的**: 以前这些节点 `PURE=False` 直通 0ms, 一旦真跑, 单次 0.4~9s 的重节点
+(意图解码/技能库/世界模型记忆/YOLO/SAM3/AOI/元任务) 与回路外节点 (验证层的 sim 并行前向、HIL/LLM/Web 的
+https 调用 —— 断网时 `getaddrinfo` 卡死, socket timeout 管不住 DNS) 全都挤进 10Hz 拍子。
+
+**修法 = 三档, 都用 env 落地, 可回滚**:
+
+| 档 | env | 语义 |
+|---|---|---|
+| 每拍核心链 | `ZMAX_CORE_IDS=ssobs,n_geoplan,sssched,sslimit,ssphys,n_moveit,n_exec,ssact,ssworld,…` | 状态→动作→限幅→规划→执行 |
+| 每 N 拍全量 | `ZMAX_FULL_EVERY=30` | 保证在役节点不饿死 |
+| 永不进循环 | `ZMAX_NODE_PURE_OFF=<ids>` | 回路外 (验证层/LLM/Web/HIL) + 单次 >0.4s 的重计算 |
+
+验收: `cost_ms` 回到预算内 (实测 25s → 15~21ms)、`tick` 每几秒推进、`NRestarts=0`、日志 `Traceback` 0。
+
+**两个必踩的坑**:
+- 🔴 `FULL_EVERY` 与 `SLOW_EVERY` 设成同一个数 ⇒ 全量拍再被 SLOW 过滤一次 ⇒ **慢节点永远轮不到**,
+  而每拍读数 15ms 看着很健康。要么慢节点单独计数, 要么直接进 `PURE_OFF`。
+- 🔴 先量再改档: 拿每节点 `ms` 排序 (在线 `traces[].ms`, 或离线按同一套 env 跑一拍统计) 再决定谁 OFF,
+  别凭"看着重"猜; 关掉一个 9s 的节点与关掉一个 0.4s 的节点, 对拍子的意义完全不同。
 
 ## 三步配方
 
@@ -428,7 +591,10 @@ FIFO 文件存在、权限对、mtime 正常 —— 全都不代表有人读。�
 - 断点停在"等下游回执"的循环里最危险（下游可能已经动了）。要么 dry，要么把断点放在**下发之前**。
 - 离线台要读**真实状态文件**（不是内存缓存），否则算出来的目标与线上不一致。
 - **调试期间别按名字杀循环进程**: `pkill -f "tools/<loop>.py"` 会把用户 F5 起的 debug 会话一起 SIGTERM
-  (而且这条命令自己也匹配得上, 先把自己这条 shell 杀掉)。现场表现是“用户那边突然没输出了 / 还是卡着”,
+  (而且这条命令自己也匹配得上, 先把自己这条 shell 杀掉 —— 括号写法 `pkill -f "pat[.]tern"` 只防模式本身,
+  字面量出现在**同一条命令的其它位置** (比如后面还跟着启动该进程的命令) 照样自匹配 ⇒ `exit -15`,
+  看着像终端/工具坏了; 最稳是按端口或 pid 停, `ss -ltnp | grep <port>` 拿 pid 再 kill, 或把 kill 单独发一次)。
+  现场表现是“用户那边突然没输出了 / 还是卡着”,
   然后你又会去怀疑代码。做法: `ps -eo pid,etimes,cmd | grep "[t]ools/<loop>.py"` 列出全部, 按 **pid**
   只停自己起的测试实例; 要批量停又不想误伤自己, 用 `ps -eo pid,args | awk '$2 ~ /python$/ && $3 ~ /<loop>.py/ {print $1}'`
   (bash -c 的 $2 是 `-c`, 天然被排除), 写完先在 `$(seq)` 里 `echo` 一遍再执行。 万一已经误杀, 直接说“是我杀的, 按 F5 重开”, 别让他继续等日志。
@@ -444,9 +610,36 @@ FIFO 文件存在、权限对、mtime 正常 —— 全都不代表有人读。�
   换成你要的那条 —— VSCode 记住的是下拉里**上次选中**的配置, 顺序只在“从未选过”时才算默认。判断实际跑的是哪条,
   只看 launcher cmdline 尾部的 program 路径(`tr '\0' '\n' < /proc/<pid>/cmdline | tail -3`)与 `wmctrl -lp` 的窗口属主 pid,
   不要用列表顺序推断, 也不要去猜用户点了什么。交付时说清“下拉里要选哪条”, 别只说“我把它放第一位了”。
+- **要 100% 落到某条配置, 只留那一条**: 改顺序、加进多根工作区文件的 `launch` 段、重写模板都不保证 F5 换过去
+  (VSCode 用的是下拉里**上次选中**那条, 实测三次 F5 仍起旧配置)。硬办法是把 `.vscode/launch.json` 与
+  多根工作区文件 (`<名字>.code-workspace` 的 `launch.configurations`) 都临时裁成**只剩目标那一条**, 跑完再恢复并回读条数;
+  中途靠 Ctrl+Shift+F5 重启会话即可换代码, 不必让用户重开窗口。
 - **`torch.from_numpy(np.asarray(PIL.Image))` 拿到的是只读缓冲 ⇒ 每拍刷一行 `non-writable tensor` 警告**:
   PIL 出来的 ndarray 不可写, torch 只是警告不报错, 现场看起来像“报错刷屏”其实是每拍过一次就刷一次。
   修法 `np.array(..., copy=True)` (或 `.astype`) 显式复制, 别用 `asarray` 省这一步。
+- **把常驻任务从独立服务搬进宿主进程时, 三件套缺一不可**: ①宿主每拍调用 (放在 `step()` 之后) ②**归属闸**
+  (`owner()`/`ZMAX_DISPATCH_HOST` 单一名额, 其它宿主调 tick 直接返回 None ⇒ 不会双写状态文件)
+  ③**旧入口默认拒绝启动** (没有显式 `--standalone` 就打印原因 `exit 0`, 别让它崩成 Restart 循环)。
+  搬运后验收看 **产物帧龄 + 宿主 pid 一致性**: `systemctl show -p MainPID --value <宿主unit>` 要等于状态文件里
+  记的 `dispatch.pid`, 且产物文件 (如 `skill_phys.json`) 帧龄 <1s; 只看「进程在」不算。
+- **用户拿到工具返回的 pid 就问"为什么是独立进程 / 技能派发为什么独立"**: 那是这条 shell 命令自己的 bash
+  子进程(长命令被工具转后台时也是同一个 pid, 不会另起一个), 与技能无关 —— 技能就是本会话里读 SKILL.md 后自己敲命令,
+  没有派生 agent。一句话说清 pid 属于哪条命令, 别把工具层行为解释成"派发机制"。
+  ⚠️ 但**别顺手否认机制存在**: 回答前先 `systemctl list-units '<前缀>*' --all --no-pager` +
+  `systemctl --user list-units '<前缀>*'` + 扫 `/proc/*/cmdline`; 用户问“为什么是独立进程”往往是他已经看到那个单元在跑,
+  “我这边只是在敲命令”只能证明自己没起, 证明不了单元不在。先取证再结论。
+- **用户说「别自己启动」= 连自启钩子一起清, 不只是不敲 `systemctl start`**: 他会把你停掉的服务几分钟后又回来
+  当成"你又启动了"。先认元凶 (`cat /proc/<pid>/cgroup`、`systemctl --user is-active <unit>`、
+  `systemctl show -p Restart -p NRestarts`), 常见是 `zmax-studio-mem-guard.timer` 这种 `--enforce` 看门狗
+  (`studio_mem_guard.py` 会 `bash restart_studio.sh` 把 GUI 拉起来)。清法: crontab 先 `crontab -l > bak` 再清空;
+  timer/service 先 `disable --now` 再 **mv 到 `~/.hermes/autostart_removed_<ts>/`** (不 rm, 可回滚);
+  `~/.hermes/scripts/*.sh` 全移; 收尾回读 `crontab -l | wc -l` / `systemctl list-timers | grep -c zmax` /
+  `ls ~/.config/systemd/user/*.service`。只 disable 不 mv 的, 下次开机照旧回来。
+  · **停 GUI 本身也要走单元, 不能只 kill pid**: `kill <pid>` 会被 `Restart=always` 在数秒内拉回, 用户看到的就是
+  “你根本没关掉/又自己启动”。用 `systemctl --user stop <gui-unit>`, 停完按 `comm` 过滤复核进程为空
+  (python 开头那种), 别用 `pgrep -f` 撞到自己这条命令。
+  · 清完 `systemctl daemon-reload`（`--user` 那边也要）, 否则 `list-timers` 里还挂着已移走的单元 ⇒ 误判“没清掉”。
+  · 报告口径: 点名“停掉哪几个单元 · 备份目录路径 · 还剩哪些 enabled 的 service 会在开机/崩溃自起”, 不写“已全部关闭”。
 - **`linux` 上重启控制台用既有 unit, 别手搓 python**: `systemctl --user restart zmax-studio`
   (`ExecStart=tools/gui/launch_studio.sh`) —— 启动脚本里 `unset QT_QPA_PLATFORM` + `export QT_QPA_PLATFORM=xcb`
   是踩过坑写进去的: 在同一个 shell 里跑过离屏判据(`QT_QPA_PLATFORM=offscreen`)后继承下去, GUI 会“进程活着、

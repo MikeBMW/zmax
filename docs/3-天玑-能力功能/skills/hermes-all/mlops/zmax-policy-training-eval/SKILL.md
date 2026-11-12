@@ -948,12 +948,14 @@ print(len(B), len(nz), max(float(v.abs().max()) for v in B.values()))
   坐标叠加实现代码、画布功能块注册步骤、RL+夹爪组合、MLP 蒸馏细节
 - references/simulink-flow-generator.md — 2026-08-10 flow JSON 生成器模式:
   gen 脚本骨架 + 布局常量 + 模块库 flow 按钮 + offscreen 验证 (hardware_toolbox/dual_brain/transfer_adaptive 三实例)
+- references/condition-channel-finetune.md — 给已训练 policy 加条件通道 (p_cond/l4_cond_proj):
+  动手前两问 (出口是否 numpy / 显存够不够反传主干) + 两条替代路线 + 三行判据 + 零初始化口径
 
 ## 场景需求 → 大屏动作级监督 (2026-08-10 老倪: 39D状态机 → 工厂精细操作场景 + 指标大屏监督)
 
-把 left_right 8 状态机 (docs/4-天权-模型算法/left_right_policy.md) 翻译成工厂场景需求 + 可监督技术指标,
+把 left_right 8 状态机 (docs/left_right_policy.md) 翻译成工厂场景需求 + 可监督技术指标,
 在 factory-dashboard.html 大屏逐机器人逐动作实时监督/记录。方案文档已落盘:
-- `docs/6-开阳-工程落地/factory_fine_ops_supervision.md` (方案本体, 帮助菜单已注册 "🏭 精细操作场景 + 调制指标大屏监督方案")
+- `docs/factory_fine_ops_supervision.md` (方案本体, 帮助菜单已注册 "🏭 精细操作场景 + 调制指标大屏监督方案")
 - `docs/6-开阳-工程落地/web_协同_大屏监督规格.md` (给 web 的 P1/P2 实施规格: STAGE_METRICS 模板 + API 契约 + 模拟数据分配)
 - 注意: 对应场景工程细节属 zmax-scene-engineering (用户自有, 不可 curate) — 此处只存状态机→指标映射。
 
@@ -1096,7 +1098,7 @@ scripts/ws_probe.py):
   contact 只给状态机不喂左脑) / 8 状态机阶段调制表 / 39D 结构 / 训练管线。
 - **版本号 v1.8.0→v2.0.0 两处**: studio.py 230 行 (侧边栏 QLabel) + 9230 行
   (setWindowTitle)。
-- **交付物**: docs/4-天权-模型算法/left_right_policy.md + docs/6-开阳-工程落地/release/RELEASE_NOTES_v2.0.0.md + tag。
+- **交付物**: docs/left_right_policy.md + docs/RELEASE_NOTES_v2.0.0.md + tag。
 - **⚠️ 画布 flow 还是 6 阶段** (接近/抓取/抬起/转移/插入/完成), 最新 modeling 是 8 状态
   (含 ST_ALIGN 对位/ST_DESCEND 下降) — 待同步 (gen_dual_brain_flow.py 行2 加 2 节点)。
 
@@ -1132,7 +1134,7 @@ scripts/ws_probe.py):
   别查凭据/网络; 修完必须实际推一次验证 (手动跑上传+发送, 看 code==0)。
 
 ## 精细操作场景 + 调制指标大屏监督 (2026-08-10 老倪: 工厂工艺→场景需求→大屏严格监督)
-- **方案文档**: docs/6-开阳-工程落地/factory_fine_ops_supervision.md — 帮助菜单第二条目
+- **方案文档**: docs/factory_fine_ops_supervision.md — 帮助菜单第二条目
   「🏭 精细操作场景 + 调制指标大屏监督方案」(_mk_doc_action 相对名, 同左右脑策略条目)。
 - **方法**: 把 left_right 8 状态机调制翻译成**可监督技术指标**; 工厂工艺来自
   zmax-website/factory-3d.html `ZONES` (区域 coc/oe/mod/wh × 工位 I101+, 每工位 desc 含
@@ -1153,8 +1155,8 @@ scripts/ws_probe.py):
 - 场景-指标对照和 8 状态表全文见方案文档 (报告/评审直接引用, 别现场重写)。
 
 ## Z700 技术协议 v3 + 市场版需求文档 (2026-08-10 老倪: 双脑成果→工程技术协议 + 投资收益)
-- **交付物**: docs/7-瑶光-记录追溯/notes/Z700_technical_agreement_v3.md (**11 章工程基线, 已去白盒化**) +
-  docs/6-开阳-工程落地/factory_fine_ops_demand.md (市场版需求规格书, **零技术词**: 禁 39D/状态机/MLP/调制/API 等,
+- **交付物**: docs/Z700_technical_agreement_v3.md (**11 章工程基线, 已去白盒化**) +
+  docs/factory_fine_ops_demand.md (市场版需求规格书, **零技术词**: 禁 39D/状态机/MLP/调制/API 等,
   只用 节拍/良率/尺寸/重量/工艺描述)。帮助菜单 5 条目: 左右脑策略 / 精细操作监督 / 市场版需求 /
   **📑 Z700 具身方案技术协议 v3** / (原有文档)。
 - **🚨 去白盒化 (老倪 2026-08-10 纠正: "不是白盒交付, 就是符合5个场景的具身方案技术协议,

@@ -221,7 +221,7 @@ done
 ## 全局数据空间 (水流 DDS + 主数据, 2026-08-03 老倪"原型全局数据空间"实测)
 - **主数据层 (稳定权威, m_ 前缀表)**: `m_workpiece` (工件/插拔力/精度) · `m_equipment` (设备/DOF/topics/标定, 实测型号 XMS5-R800-W4G3B4C 固件3.2.1) · `m_station` (工位/布局/任务) · `m_process` (动作标签→维度→条件→原子技能) · `m_model` (维度/帧数/loss/延迟/URL/状态)。脚本 `zmax-website/init_master_data.py`。
 - **流水层 (动态实时)**: `waterflow_dds.py` 每 10s 探测 7 节点 (采集/上传/训练/模型URL/部署/推理/控制台) → 写 `dds_flow` 时间序列 (flow_rate 水流强度) + `dds_node_state` 实时状态。流水**只引用主数据 ID** (推理节点 detail 带 `模型:MD-ACT6D-v3`), 不复制主数据内容 → 无冗余、可追溯。
-- 设计文档: `zmax-website/docs/MASTER-DATA-SPACE.md`; 全景基准: `lerobot-smolvla-lew/docs/6-开阳-工程落地/ops/ZMAX-DATA-LOOP-OVERVIEW.md` (v4.0, 唯一基准, 旧 DATA-FLYWHEEL/ARCHITECTURE-OVERVIEW 指向它)。
+- 设计文档: `zmax-website/docs/MASTER-DATA-SPACE.md`; 全景基准: `lerobot-smolvla-lew/docs/ZMAX-DATA-LOOP-OVERVIEW.md` (v4.0, 唯一基准, 旧 DATA-FLYWHEEL/ARCHITECTURE-OVERVIEW 指向它)。
 - 旧 ECS 地址 106.75.239.80 → 39.102.211.79 批量替换 (zmax_auto_collector/dds_cycle/orin_pipeline/collect_upload_npz/ib_robot_config/studio/data_closed_loop/zmax_sys1), 用 sed 扫 `grep -rn '106.75' --include=*.py|*.json|*.yaml` 排除 .venv。
 
 ## 三阶段渐进式训练管线 (tools/cicd_pipeline.py, 2026-08-02)
@@ -236,7 +236,7 @@ Stage1 MetaWorld 仿真 (backbone 冻结 lr_backbone=0, lr 1e-4) → Stage2 Sim-
 ## Evaluation & baseline comparison (2026-08-02 实测)
 Compare a candidate checkpoint against a baseline on the SAME data with the SAME input features — different state dims (e.g. metaworld_mt50=4D vs act_metaworld=2D) make any comparison meaningless.
 
-Tool: `tools/act_compare.py --baseline <ckpt> --candidate <ckpt> --dataset data/metaworld_act --report docs/6-开阳-工程落地/ops/CICD_COMPARE_v1.1.0.html` (outputs JSON + HTML; 4060 实测 100 帧 ≈ 1-2min). Auto-iterate: `tools/auto_iterate.py` (train → compare → if MSE improve <5% adjust steps+1000/lr×0.8 → retrain).
+Tool: `tools/act_compare.py --baseline <ckpt> --candidate <ckpt> --dataset data/metaworld_act --report docs/CICD_COMPARE_v1.1.0.html` (outputs JSON + HTML; 4060 实测 100 帧 ≈ 1-2min). Auto-iterate: `tools/auto_iterate.py` (train → compare → if MSE improve <5% adjust steps+1000/lr×0.8 → retrain).
 
 **Critical pitfalls (all hit in session):**
 - `select_action()` returns NORMALIZED actions — must run through the unnormalizer postprocessor or MSE is nonsense (~78000 vs ~12000 after fix). Load it via `from lerobot.policies import make_pre_post_processors` (NOT `lerobot.processors` — no such module) + `make_pre_post_processors(policy_cfg=policy.config, pretrained_path=str(ckpt))`. ACTPolicy import path: `lerobot.policies.act.modeling_act` (not `policy_act`).
@@ -248,7 +248,7 @@ Tool: `tools/act_compare.py --baseline <ckpt> --candidate <ckpt> --dataset data/
 
 **Auto-iteration tooling pitfalls (tools/auto_iterate.py, all hit in session):**
 - **Regex editing YAML clobbers nested fields**: `re.sub(r"steps: \d+", ...)` ALSO matches `  n_obs_steps: 1` and `  n_action_steps: 7` (they contain `steps: \d+`) → sets them to 3000 → ACTConfig error `n_action_steps 3000 > chunk_size 7`. Fix: anchor to line start with `^steps: \d+` and `^lr: ...` using `flags=re.M` — only the top-level `steps`/`lr` get touched. After any config-rewriting helper, grep the config to confirm nested fields survived.
-- **compare JSON path must follow `--report`**: act_compare.py originally hardcoded `Path("docs/6-开阳-工程落地/ops/CICD_COMPARE_v1.1.0.json")` while auto_iterate looked for `docs/6-开阳-工程落地/ops/CICD_COMPARE_auto.json` → "对比失败" with no visible error (JSON written under the wrong name). Fix: `json_path = Path(args.report).with_suffix(".json")` so HTML and JSON stay coupled.
+- **compare JSON path must follow `--report`**: act_compare.py originally hardcoded `Path("docs/CICD_COMPARE_v1.1.0.json")` while auto_iterate looked for `docs/CICD_COMPARE_auto.json` → "对比失败" with no visible error (JSON written under the wrong name). Fix: `json_path = Path(args.report).with_suffix(".json")` so HTML and JSON stay coupled.
 - auto_iterate failure AFTER a config breakage may leave `outputs/train/<job>` deleted (script `rm -rf`s it each round) — retraining is required, don't expect the old checkpoint to survive.
 
 详细实测记录 (加载/归一化/数据形状/数字): `references/act-baseline-compare.md`

@@ -20,15 +20,15 @@ ExecStart=/usr/bin/docker run ... -v /home/ubuntu/lerobot-smolvla-lew:/repo:ro .
 
 ## 修法（可复制）
 
-1. **选一个稳定路径**: 关键服务统一指向 canonical worktree（如 `/home/ubuntu/zmax_rel`），
+1. **选一个稳定路径**: 关键服务统一指向 canonical worktree（如 `/home/ubuntu/zmax`），
    不要指向"多人/多线共用的检出"。
 2. **venv 也一起稳**: worktree 里没有 venv 时用软链复用（venv 与分支无关）:
-   `ln -s /home/ubuntu/lerobot-smolvla-lew/gui-venv311 /home/ubuntu/zmax_rel/gui-venv311`
+   `ln -s /home/ubuntu/lerobot-smolvla-lew/gui-venv311 /home/ubuntu/zmax/gui-venv311`
 3. **逐个 unit 重指 + 备份 + 重启复核**（写成可重跑脚本, 别手改）:
    ```bash
    for s in ss-remote-tap ss-bypass ss-yolo-bypass zmax-net-optimize zmax-web-agent-bridge aoi-feishu-push; do
      sudo cp -n /etc/systemd/system/$s.service /etc/systemd/system/$s.service.bak
-     sudo sed -i 's#/home/ubuntu/lerobot-smolvla-lew#/home/ubuntu/zmax_rel#g' /etc/systemd/system/$s.service
+     sudo sed -i 's#/home/ubuntu/lerobot-smolvla-lew#/home/ubuntu/zmax#g' /etc/systemd/system/$s.service
    done
    sudo systemctl daemon-reload
    for s in ...; do sudo systemctl restart "$s"; done

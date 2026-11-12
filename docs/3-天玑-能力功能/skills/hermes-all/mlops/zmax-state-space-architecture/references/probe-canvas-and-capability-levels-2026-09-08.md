@@ -75,7 +75,7 @@ tr probe_seq 0 帧 → 直方图/归因无数据。**简化引擎 ⚡快演走 M
   ③ 13 段 full 链/AOI 引擎报告**无对应 t_ 测试** — 需新增 (参考模板: 跑
      `RealStateSpaceSim(seed=104, vision=False, mode="full")` ~1-2s 可自动) +
      FEATURES/FEATURE_META 条目 + capability funcs.groups 挂 "chain" 组
-  ④ docs/7-瑶光-记录追溯/notes/capability_levels_L2L3L4.md 与 docs/3-天玑-能力功能/state_space_feature_list.md 同步命名
+  ④ docs/capability_levels_L2L3L4.md 与 docs/state_space_feature_list.md 同步命名
 - 关联: 画布三级行 (flow.json row_bg): 🏆L4 专家自主·标定 / 🏆L4 专家自主·世界模型(流形) /
   🚀L3 高级自动·端到端 (VLM+DiT) / 🔧L2 基础辅助 六行 (检测/融合/控制/状态机/技能/执行)。
 

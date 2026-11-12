@@ -85,3 +85,64 @@ python3 -c "import json;c=json.load(open('zmax_data/ss_live/ar_cmd.json'));m=c['
 # 逐拍验 S 曲线 + 图位姿 skew
 tail -1 data/memory/ar_cycles.jsonl
 ```
+
+## 9. L2 记忆库: 技能库 / 操作库 / 标杆 / 轨迹, 一个只读入口
+
+口径: **要记忆的工程配置·操作·点位全部由记忆节点落库, 其它节点只 `query()` 查询**, 不直读原始 json。
+
+| 库 | 持有节点 | 内容 |
+|---|---|---|
+| `skills.json` | `n_l2_muscle` | 技能点定义 + 功能接口 (ros 接口 / 参数 schema / 前置 / 判据 / 步骤) |
+| `ops_cards / ops_points / ops_seq` | `ss_mem_l2` | 工艺卡(工艺编排) · 固定轨迹点(示教 tcp) · 段序列+节拍口径 |
+| `champs.json / ledger.json` | `ss_mem_l2` | 固化标杆 `(seed|stage)→champ_u/champ_x` · 实测台账 `{n, mean_t, plan_t}` |
+| `traj.json` | `ss_mem_l2` | 理想轨迹, 每条必带 `executable` |
+
+实现要点 (可复用):
+
+- 只读入口一个函数: `query({skill|iface|card|point|champ|traj|measured|seq|stats})`; 再加 `stats()` 给节点输出/大屏/报告同源。
+- **写权限写进代码**: `put_*(entry, writer=...)` 只接受记忆节点名 (`n_l2_muscle` / `ss_mem_l2`), 其它抛 `PermissionError` ——"只许记忆节点写"靠自觉一定会被绕过。
+- 每条 entry 带 `src`(原文件) + `sha`(内容指纹) + `at`(入库时间); 重建脚本从真源现算, 旧库先备份, 自检拿 sha 对账 ⇒ **改真源不重建 = 自检红**, 这是特性。
+- 计数对账一定按"真源条目集合的并集"算 (原子+组合+示教去重); 工艺卡按**工单号**做主键, 场景号只做查询回话 (`SCN-07-AOI` 可能有 T1/T2/T3/主 四张), 用场景号当 key 会静默丢卡。
+- `index.json` 承载 `counts + 每库 sha + built_at`, 界面/报告只看这一份, 别各自扫目录。
+
+轨迹库必须标 `executable`, 否则就会拿参考序列当真机指令:
+
+| kind | 来源 | 可下发 |
+|---|---|---|
+| `sim_champ` | 仿真标杆整段 u/x | 否 (归一化, 只能作前馈参考/预览) |
+| `taught` | 示教技能点位序列 (tcp pos+quat) | 是 (move_line 逐点) |
+| `spline` | 示教点五次插值稠密路径 | 是 |
+| `demo_file` | 手把手录制文件 | 是 (按文件回放; **只索引不复制**大文件) |
+
+## 10. `mm_hits = 0` 的三种成因 (别一律当"链断了")
+
+1. **该 seed 没练过**: 标杆按 `seed|stage` 分桶, 库里只有 101~104 时跑 seed 0 必然 0 命中。
+2. **读到了另一份库**: 引擎 `get_memory()` 的默认 path **相对模块目录**解析 ⇒ 常是 `src/data/muscle_memory.json`, 不是仓库根的 `data/muscle_memory.json`; 同仓见过三份副本各存一半。
+3. **按设计旁路**: L4 干扰轮会主动 `_mm_on=False` (「布局变了无标杆」), 此时 0 命中是正确行为。
+
+一分半钟的三连确认: `print(sim.muscle.path)` → `len(sim.muscle.db)` → `sim.muscle.get_champ(seed, 段)`。
+取证脚本对第 1 种要打印「该 seed 无标杆 (库 n=0)」而不是 ❌ 未接管 —— 否则读报告的人把"没练过"当缺陷去修。
+
+## 11. UPH 必须双口径 + 按段类归因
+
+同一条段表给两个数, 合写一句就是承诺超交付:
+
+```
+计划口径 = Σ 段表 t / 件数                      # 按速度上限规划出来的
+实测口径 = Σ (t × 台账 mean_t/plan_t) / 件数    # 把现场实测均值代回每一段
+300 UPH ⇒ tact ≤ 12.000 s/件
+```
+
+- 段表按 **`mod` 字段**取"一件一组"(每件固定段数, 例如 28 段 / 11.5s), **不要用整表均值** —— 整表含平铺/搬运段, 会稀释成好看的数。
+- 台账是**活数据**: `n` 每轮在长, 连 `plan_t` 都会被上游改写 ⇒ 报数字要带采集时刻, 并说明随跑动会变。
+- 差额按段类列 (`move +3.5s / up +1.0s / down +0.7s / pull +0.6s`), 结论形如「独立运行 ✅ · 计划口径 300 ✅ · 实测口径 300 ❌ (差 X s/件)」, 再给出要保 300 必须动哪几类 (改路径/提速/合并行程), 不让"能"或"不能"单字结案。
+- 复量脚本落 `tools/` (cap=l2 独立跑 + 双口径 + 归因), 别每次对话手算。
+
+## 12. 记忆节点自己的库, 别指望 `IMPL_KEY` 注册
+
+`PURE=True` 只是第一道闸: 壳仍要走 `registry.get(IMPL_KEY)` 拿实现, 记忆节点这种"自己就是库"的节点如果没注册, 状态会停在「实现未注册 → 直通」。两条路二选一并在验收里写清:
+
+- 在 `compute()` 里**直接读库** (记忆节点持有库, 合法), 顺带把查询入参 `ctx["in1"].value` 透传 (`{"skill": id}` 之类);
+- 或注册实现, 但实现必须 return 业务 dict (返回 `True` 会被壳当"非 dict"再过滤成直通)。
+
+两条都要带 try/except → 回退直通, 并且 `LAST_STATUS` 要写清是"技能库查询 (N 条)"还是"异常 → 直通", 否则事后分不清是没接还是抛了。

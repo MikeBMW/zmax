@@ -133,7 +133,7 @@ metadata:
 
 现场铁律: 「要先垂直抬升5厘米, 才能去别的地方 / 不要升高超过 10cm」。
 **错误写法**: 横移高度 = 目标点 z + 180mm（与起点无关的绝对量）⇒ 臂从出发现场 (`0.436`) 再抬 217mm 到 `0.549`
-才横移 194mm ⇒ 撞（日志 `docs/7-瑶光-记录追溯/incidents/INCIDENT-20261001-traverse-height-collision.md`）；登记在 `docs/6-开阳-工程落地/INCIDENT-INDEX.md`。
+才横移 194mm ⇒ 撞（日志 `docs/INCIDENT-20261001-traverse-height-collision.md`）；登记在 `docs/6-开阳-工程落地/INCIDENT-INDEX.md`。
 
 - **正确**: 横移高度 = `max(起点 z, 目标 z) + min(climb, 100mm)`，`climb` 默认 **50mm**。
 - **执行器爬升闸**（`tools/l2_daemon.py`）: 多段计划里相对**计划起点**抬升 > `climb_limit_mm`(默 100) ⇒ **拒发**；
@@ -151,7 +151,7 @@ metadata:
   比当天撞过的高度 0.5491 还高 37mm。
   ⚠️ 服务端 `cam_live_stream._ctl_move` 只转发白名单字段 ⇒ `allow_climb_mm` 这类**放行字段被静默丢弃**,
   现象是 "现场说动、臂不动"(执行器仍报拒发)。放行/覆盖类字段必须显式透传。
-  (复盘: `docs/7-瑶光-记录追溯/incidents/INCIDENT-20261001-sidept1-approach-collision.md` · 台账 `docs/6-开阳-工程落地/INCIDENT-INDEX.md`)
+  (复盘: `docs/INCIDENT-20261001-sidept1-approach-collision.md` · 台账 `docs/6-开阳-工程落地/INCIDENT-INDEX.md`)
 - **报计划必须同时给“相对当前的高度变化”和“绝对高度”**: 只给绝对 z, 现场来不及判。
 - **听到“要碰撞/注意”**: 立刻 `python3 tools/agent_all_stop.py`（杀 L2 执行器 = 断掉我方唯一下发路径；
   停 GPU 重活让给安全层；复查剩余进程；`--keep-capture` 保留只读采集当证据），然后只读报位姿等老倪处理。
@@ -317,7 +317,7 @@ mean=6/median=0/96% 像素<20), 被当成「笔记本相机(全局视角)」⇒ 
 
 **现场恢复注意**: 急停后 Orin 侧 `/robot/tcp_pose`、`/robot_status` 会**停止发布**(topic 消失) →
 daemon 全部运动技能安全拒绝("位姿缓存未就绪"); 恢复前不要下发任何运动。完整复盘:
-`docs/7-瑶光-记录追溯/incidents/INCIDENT-20260920-aoi-home-move.md`。
+`docs/INCIDENT-20260920-aoi-home-move.md`。
 
 ## 🎯 L2 原子技能 · 传授点库 · 回点技能 · DRY-RUN (2026-09-20 落地)
 

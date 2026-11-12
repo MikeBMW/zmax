@@ -56,3 +56,29 @@ shutil.rmtree(mei, ignore_errors=True)
 
 ## 排查口诀
 "主窗口能开 + 某功能挂" → 先查 `--add-data` 清单 vs 该功能运行时读取的数据路径 (grep `open(`, `load_flow_file`, `abspath(__file__)`), 别先怀疑代码逻辑。
+
+---
+
+## 用户数据不随包走: 新机首发必须「种」一份 data
+
+**症状**: 新机上控制台能开, 但 `文件 → 打开总工程` 弹 `❌ 没有这个文件: <路径>`。
+
+**根因**: 打包只带 exe 与依赖; `data/database/**`(工程/主参数/功能笔记)与 `data/scene/**` 是**本机数据**,
+既不该进包、也不在包里 ⇒ 全新机器上这些目录是空的。这不是「打包漏了」, 是这类文件本来就靠首次种入。
+
+```bash
+# 只打最小种子: 别把几百 MB 的历史 archive/截图一起搬
+tar -czf seed.tar.gz -C ~/zmax \
+  data/database/zmax/zmax_space.proj data/database/zmax/config_meta.json \
+  data/database/zmax/function_notes.json $(cd ~/zmax && ls data/scene/*.json)
+scp seed.tar.gz win:C:/Users/<u>/zmax_console/
+ssh win 'cd C:\Users\<u>\zmax_console && tar -xzf seed.tar.gz'   # Win10+ 自带 bsdtar
+```
+
+- 🔴 **同一份种子要放遍所有候选根**: 冻结态 `repo_path` 可能是 `dirname^3(__file__)`(= `<app>` 的上级),
+  也可能是 cwd ⇒ 实测这三个都放过才稳: `<install>\`、`<install>\app\`、`%USERPROFILE%\zmax\`
+  (代码里大量 `os.path.expanduser("~/zmax")` 路径, 首次运行会自动建出后者的 `zmax_data/`)。
+- **放完不用重启**: 打开工程用的是点击时 `os.path.exists`, 直接再点一次即可。
+- **取证入口**: 打开/加载工程的每一步都写 `~/zmax/zmax_data/logs/open_project.log`
+  (入口 / 文件不存在 / 读档失败 / 界面回填) —— 用户说「打不开」先读这个文件, 别让他复述弹窗内容。
+- 交付口径: 「包能开」与「工程能打开」是两件事, 都要验; 新机首发清单里写明「种 data」这一步。

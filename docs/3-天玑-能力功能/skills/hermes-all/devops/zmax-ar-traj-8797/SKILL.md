@@ -5,7 +5,25 @@ description: Use when 改 8797/ar 页的轨迹按钮·执行链·围栏避让规
 
 # 8797/ar 轨迹按钮与执行链
 
-> 深度参考: `references/camera-and-rail-layout-stability.md` — 画面上下漂浮（drawVR 每帧自动取景把运动臂算进包围盒）、左栏按钮上下跳（不许有出现/消失的行，信号摘要只上顶部横幅）、播放命令 120s 时效口径与跟版刷新丢播放。
+## 8802 画面「不动 / 乱动 / 两边不同步」的真因清单 (2026-11-10 实测)
+- **显存不足**：`nvidia-smi` 只剩 ~400MB 时 MuJoCo `Renderer.render()` 会在 C 层**不返回**，整个 8802 冻住（n 不涨，`/frame.png` `/video` `/joints.json` 全停，进程 100% CPU 但不出图）。先腾显存，别当链路故障查。
+- **两个写者**：8797 页 `mjPushQ` 每 120ms 推 `/armq`，`ar_cmd` 也写同一批 qpos ⇒ 乱动 + 两边对不上。判据用 `/status.json` 的 `ac_driving`（ar_cmd 是否在喂）；为 true 时页面必须停推、只镜像 `/joints.json`。别用 `joints.json.src` 判断——页面一推它就变 `armq`，会自锁。
+- **`ar_cmd` 自锁**：只在 `mode=="idle"` 读 ar_cmd，而它一驱动就把 mode 置 `sim` ⇒ 下一拍不再读，姿态冻在第一帧。要每拍都读（新鲜即唯一真源）。
+- **IK 与渲染共用 MjData**：IK 每拍在共享 `model/data` 上 `mj_forward`，渲染线程同时 `update_scene/render` ⇒ MuJoCo 内部状态被踩，render 卡死。IK 用私有一份 `MjData`（只同步 qpos）。
+- **平滑两道闸**：目标点 12mm/拍 + `ik_solve(rate_deg=6)`；不加闸实测单拍 49°/200ms = 乱动，加硬拒绝又会卡死不动。
+- **跨端口读不到**：8802 原来没有 CORS，8797 页 `fetch(:8802/joints.json)` 被浏览器拦掉 ⇒ 静默退回自解 IK。`end_headers()` 统一加 ACAO。
+- 兜底：渲染线程打心跳 + 看门狗线程 6s 无心跳 `os._exit(9)`，靠 systemd `Restart=always` 秒级重拉，别让用户对着卡死画面等。
+- **第二观察窗要跟主页面同机位同动作，别另开固定机位**：用户提「这些动作要跟 render.html 同步」就是这条。
+  8802 支持 `?cam=ar3d&live=1` —— 用 AR 页每拍推来的相机参数（`/cam.json`，`age_s` 秒级）**现场**渲染，
+  同一台 MuJoCo、同一步动作 ⇒ 视角与动作天然同步；页面拉帧 1s→**250ms**（1s 看着像幻灯片）。
+  判据：连拍三帧 hash 全不同（动作在跑）+ 与不带 `live` 的缓存帧差几十万像素（证明是现算视角，不是旧图）；
+  特写仍留一个按钮切回 `cam=close`。
+- **"/station 页机器人不动" 与 AR 页无关**：那台页面驱动的是真机，先看 `/ctl/status` 的
+  `operation/mode`（`drag`+`manual` ⇒ 前置不满足）+ `motion_armed`；本 skill 描述的仿真臂永远不受它影响。
+
+> 深度参考 (场景同步): `references/ar-vs-mujoco-scene-sync.md` — AR 页 ↔ 8802 MuJoCo 要做到「同机位 + 同关节角」: 机位逐字段照搬并 tz 取反、画幅比先算比例再限幅、推角要自愈不能只试一次、`R_tcp` 锚点删了会静默停臂、夹爪必须画在 tool1 系 (与法兰差 38.7°)、判夹持用跟物特写 + 几何投影对账而不是读图。
+
+> 深度参考: `references/camera-and-rail-layout-stability.md` — 画面上下漂浮（drawVR 每帧自动取景把运动臂算进包围盒）、左栏按钮上下跳（不许有出现/消失的行，信号摘要只上顶部横幅）、播放命令 120s 时效口径与跟版刷新丢播放、浮层在两栏之间居中（§4 多视口几何账 + 离屏 iframe 判交配方）、删「只在某态出现」的横幅时别留半条链（§5）。
 
 ## 独立三维页 `/ar3d` (2026-10-26)
 - 需求原话: 「三维视图要单独打开一个页面…完全独立的一个页面, 只有三维视图, 没有其它的按钮」。
@@ -532,6 +550,11 @@ description: Use when 改 8797/ar 页的轨迹按钮·执行链·围栏避让规
 - `8793/ar` **只做 302** → `8797/ar`, 不代理(`cam_live_stream.py` 的 `/ar` 分支); 所以 8793/ar 秒回 302,
   真正的页面/取帧/判据 API 全在 8797。控制台的页面入口固定 `10.163.146.78:8793/ar`(他记的地址),
   服务探测走 `127.0.0.1:8797`(回环优先) —— 同一台机两个端口, 不是"通道变了"。
+- 🔴 **路径全小写, 且 302 的 Location 写死回环** (实测): `/AR3D` 在 8793/8797 都是 **404(9 字节)**;
+  可用的是 `/ar3d`。而 `8793/ar3d` 回的 302 是 `http://127.0.0.1:8797/ar3d` —— **手机/别的机器打开会被跳到它自己的
+  127.0.0.1 而打不开**。给局域网/手机就用 `http://<本机IP>:8797/ar3d` 直连, 别绕 8793。
+  他要"你来打开"时: `DISPLAY=:0 xdg-open 'http://127.0.0.1:8797/ar3d'`, 再用 `wmctrl -l` 找标题
+  `Z-MAX · TCP 轨迹 AR/VR 调试台` + `ss -tnp | grep :8797` 有 ESTAB 才算真开了(只看 Popen 成功不算)。
 - **打不开的真因**: 8797 是 fork-per-connection(`max_children=24`, backlog 5)。多开几个 AR 页后实测
   24 个子进程 / RSS 合计 12.3GB / LISTEN Recv-Q=6 满 ⇒ 新连接排队, `curl -L 8793/ar` 要 **175.8s** 才通
   (直连当时也 30s 超时), 浏览器窗口一直空白(标题 `Untitled`)。
@@ -564,7 +587,17 @@ description: Use when 改 8797/ar 页的轨迹按钮·执行链·围栏避让规
   `getBoundingClientRect().top` + `#vrRail` 高度 —— 四态必须**逐位相同**(实测 275/83/577 四态一致)。
   只量"切换后按钮还在"不算, 高度差 20px 就要被他叫回来。
 - **语义(与画布 `🤖 机器人执行器` 的 AR 开关是两个东西)**: 接入时三维**只**认 `/api/ar/cmd`
-  (唯一依据 `zmax_data/ss_live/ar_cmd.json`) 的段/插值走帧; 关 = 本页本地虚拟时钟仿真。
+  (唯一依据:`ar_cmd_chain.json` 优先 → 回落 `ar_cmd.json`) 的段/插值走帧; 关 = 本页本地虚拟时钟仿真。
+  **画布那对开关的真作用(2026-11-02 定稿)**: `ar_scene` = **页面模式开关**(开 = 页面进 AR 模式);
+  `real_auth` = **真授权**(`ctl_auth.grant/revoke`, 与 8793 同一写口)。
+  🔴 **两开关独立、可同时开, 不要加互斥**: `ar_scene` 默认**不再否决真机**(用户原话「两个开关可以同时打开」;
+  旧行为用 `ZMAX_AR_HARDVETO=1` 一句复原), 真机唯一真闸就是 `ctl_auth`(8793 二次确认)。
+  AR 写链 `ar_bridge.update()` **不看这两个开关** ⇒ AR=关 时渲染数据照写(页面靠 `/api/ar/mode` 的 `ar_scene` 自己退出 AR 模式);
+  曾经提过/加过的“AR=关停写链(真互斥)”已要求回退 —— 别再自作主张加第二道闸。
+  边界: 开关文件超 1800s 不更新 ⇒ fail-open(`ss_canvas_loop` 只续 `ar_scene`, 永不续 `real_auth`)。
+  实测法(只读、不改现场): `python -c "...from lerobot.engineering.exec import daemon as D; print(D._auth_guard('move_joint','运动'))"`
+  —— 现行回「真动授权未开」, 置 `ZMAX_AR_HARDVETO=1` 才回 AR 理由; 再在内存里摘掉 `D._ar_scene_gate` 复测下一道闸。
+  改完 `exec/daemon.py` 要重启 `l2_daemon` 才生效(重启须用户点头)。
   信号通没通看**顶部横幅**的 `seq / 帧龄`(没有它就是"拨了不知道通没通", 但不要为它新开一行)。
 - **路由实现(三处, 缺一条就是假接入)**:
   1. `plantStep` 里 `isAR = (SSMODE.on && SSMODE.follow) ? (ARCMD ok&&fresh&&q) : (原 ARMODE 条件)` —— 跟随优先级最高,
@@ -597,6 +630,32 @@ description: Use when 改 8797/ar 页的轨迹按钮·执行链·围栏避让规
 - 🔴 **画布开关每 2s 会把它抢回去**: `arModeApply` 的 `on = SSMODE.touched ? !!SSMODE.on : !!d.ar_scene`。
   少了 `touched` 这一层, 人拨回关后 2s 视图自己跳回 AR(症状"开关关不掉")。视图路由抽成 `arViewSet(on)`, 画布开关与拨杆共用一份。
 - **只接执行信号**: 不写 `exec_switches.json`、不碰 `real_auth`(仍只在 8793 授权)、不下发真机指令 —— 提示行/横幅都要写明。
+- 🔴 **原子技能包络要的是「针对性」, 不是「接入才显示」** (两轮纠正后的现行口径, 别再按 `SSMODE.on` 一刀隐):
+  包络数据随页面常驻(实测 1288 条), `CORPRE` 默认 true ⇒ 先被问「没连状态空间为什么还显示约束」, 改成接入才显示后
+  立刻被打回: 「没接入也可以看约束通道, 但只显示要执行的那个动作, 不能全都显示」。
+  定式四条:
+  ① `#rowCor` / `#rowCorSkills` **常显**(`ssPaint()` 里 `display=''`), 并**开机调一次** `try{ssPaint()}catch(e){}`
+     —— 它原来只在切换时被调用, HTML 里写死的初值永远得不到纠正;
+  ② 针对性 = **一次机动一条通道**, 不是「一个技能一组」: 同一技能(如 SK01 接近)在整表里有十几次机动(每个号位一次),
+     组级过滤仍是 448 条 ⇒ 必被退回「你不能显示那么多条约束通道, 拿起哪个光模块就显示那个光模块的」。
+     定式 `corPrePolyIdx(R)`(R 已按 `COR-<SK>-…` 过滤):
+     · 折线编号就在 id 里 `COR-SK01-p<j>-s<i>e<k>`; **该次机动的真实起终点 = 端环线 `-scap` / `-ecap` 的中点**
+       (端环从 `p+e1·r` 到 `p−e1·r`, 中点正好是 p); 直接拿母线端点比会差一个 r(几十 mm), 在相邻号位间必然挑错。
+     · 先按 ordinal 对号: 数该技能在 `INSP.plan[0..INSP.si]` 里出现过第几次(`seg_poly` 与 p<j> 同序), 再用端环中点校验 `<8mm`;
+       对不上(段表与包络不同源)才退回「几何最近」。
+     · 同一坐标会被多次机动复用(反复回同一个金手指点) ⇒ 距离并列 0mm 时**按 ordinal 定**, 不要取"第一个最小";
+       并列的那几条几何上完全重合, 画哪条看起来都一样, 但标签/编号必须跟当前段一致。
+     · 画完只留 **4 条线**(2 母线 + 2 端环); 画布标签用段里的 `mod` 报「光模块 #N」, 不要报折线序号。
+  ③ 红线再叠一道 **真在跑** 闸 `_execLive = PLANT.on || (SSMODE.on && SSMODE.follow)` —— 只看 `PRE_SK` 会闲坐也标"即将执行"
+     (`ar_cmd` 轮询一直在写它), `plantStop()` 里清 `PRE_SK/PRE_LABEL/__PRE_LINES__` 并重绘, 不留残影;
+  ④ `corPreMark()` 改了就调 `paintCorBtn()`: 当前那组显示 `🔴 SK07 插入 (112)` + 红边框, 「全部隐藏」按钮追加 `· 只画 SK07 插入`,
+     让"画的是哪一组"不用猜。
+  自验(未接入, 只点本地『🏭 全流程 UPH』, 采 8 拍): 每拍 `__PRE_POLY__` 随段切换(实测 4→5→3→7→8),
+  `__PRE_LINES__` **恒为该折线的线数(实测 4)**, 不再是组级 168/112/448/224;
+  且选中折线 `-scap/-ecap` 中点与当前段 `a/b` 偏差 **0mm**(这条是"画的就是这一步"的硬证)、`CORSET.size==0`(没铺全网);
+  停机后 `PRE_SK=null` 且红线 0; 另需一条静置判据: **一个按钮都不点**等 8s, 红线仍为 0(此时 `PRE_SK` 可能有值, 但它不画)。
+  ⚠ 组级数字(448/168)只在"手动点某个 SK 按钮"时才是对的, 别把 `__PRE_LINES__ == corCount(PRE_SK)` 当验收口径 ——
+  那正是被退回的"全铺"行为。
 - 自验(真浏览器 console, 逐条实测): `LABEL`+`role=switch` · 在 300px 栏内不截(`rect in rail`) ·
   拨开→`SSMODE.on=true/follow=false/PLANT.on=false`、提示 `✅ 已接入(未跟随)`、**3s 内 canvas diff 必须 = 0**(实测 0) ·
   点 ▶→`follow=true`、提示 `✅ 跟随中`、`PREV.q` 变化、canvas diff 4.3 万(实测 43624)、右栏游标跟 MT ·
@@ -619,6 +678,152 @@ description: Use when 改 8797/ar 页的轨迹按钮·执行链·围栏避让规
   `bld` 落后发布号 = 他那页还是旧代码。
 
 > 控制台侧的按钮/播放态改动用**离屏 GUI harness 点真按钮**验收(含敌意写测试), 配方与三个坑见 `references/gui-offscreen-harness-verify.md`; 报告前必须跑出四段快照全对。
+
+### 🧊 约束通道画成圆柱后, 「管子里的矩形是什么」= 场景立方体, 不是通道
+老倪追问「圆柱通道里还有个矩形, 这个是什么作用」时, 不要再讲约束, 直接分层:
+- **通道只有三件**: 半透明管壁(边界) + 两端截面圆环(进出口) + 不透明黄中线(`#ffd166`, 理想轨迹)。
+  除此之外任何矩形都不是通道。
+- 其余矩形全是场景立方体: `FENCES` 里的 box(🔌 光模块插孔 / 检测设备 / 黑色料盘 / 下料盘 / 前方位机 / 废料盘)
+  + 刀柄上的 🔩 光模块长方体 + 已放下模块的扁平小矩形(良品绿 `#34d399` / NG 红 `#ef4444`)。
+  语义一句话: **盒子=不能进的空间, 通道=可以走的空间**, 轨迹走进料盘/插孔时盒子自然落在管子内部。
+- 判「哪个盒子进了管子」= 点到**轴的线段距离** ≤ 显示半径(实测下料盘中心离轴 60mm < 75mm ⇒ 就是它),
+  不要用 bbox 膨胀判(会把 311mm 外的「检测设备」也报成在里面)。
+- 给一个 `COR_ONLY`「🧊 只看通道」: `drawFences` 里 `items=FENCES.filter(...&& !(COR_ONLY && !corIsCor(it)))`,
+  纯显示过滤、**不动 `fences.json`**; 验证开关真生效用两态 canvas diff(实测 30910px 消失, 关回全恢复),
+  不可能用「按钮变蓝了」当证据。
+- 🔴 **改左栏 HTML 时替换整行会把相邻的 host 容器一起吃掉**: 本轮用 `patch` 在 `#rowCor` 末尾加按钮,
+  匹配串包含了下一行的 `<div class="row" id="rowCorSkills"></div>` ⇒ 技能按钮整排宿主被删除,
+  页面不报错、只是那排按钮永远不出现。定式: 加按钮只锚定到 `</div>` 之前的那一个按钮行,
+  改完读 DOM 确认 `rowCor` / `rowCorSkills` / `rowPts` 三个宿主都还在。
+
+### 🧈 右臂「动作不平顺」的量化真因与三件套修法 (2026-11-01 r86)
+老倪: 「现在的AR场景右臂 动作不平顺, 怎么回事? 修」——先量再改, 不要先调 PD/增益。
+
+**两个根因(都是实测, 不是推测)**
+1. **指令流只有 2.5Hz**: `zmax-ss-canvas-loop` 现在每拍跑**全部 80 个节点**(白名单已于 10-31 按老倪要求删除),
+   `canvas_loop.json` 实测 `cost_ms≈278 / budget 100 / over_budget true`, 真实 tick 只有 **2.51Hz**(配置 10Hz)。
+   而 `sim_insert.json` 段长中位 **0.3s** ⇒ 一段连一拍都拿不到。判据: 采 `canvas_loop.json` 的 tick 增量算频率,
+   不要信 `hz` 字段(那是配置值)。重节点排名: ssintact_dec 78ms · ssintact 77 · ssyolo 36 · ssaoi 34 · ssdec 16。
+2. **页面把每个采样硬赋给 `PREV.q`**(`plantAtAR` 里 `PREV.q=ARCMD.q`) ⇒ 每次更新都是一次瞬移。
+   基线(239 帧真浏览器 rAF 采样): **218 帧完全静止(91%)** · 21 帧单帧 >20mm · 20 帧 >100mm ·
+   **单帧最大 690.7mm · 单关节 48.7°**。这就是「一顿一顿」的全部来源。
+
+**修法三件套(全在页面 `tools/web/tcp-ar.html`, 热读生效, 不用重启服务)**
+- `arCmdU(d)`: 同一采样重复读到时按**本地时间**继续推进 `u = u0 + el/t_seg`; 采样身份用
+  `kind|seq|u|mt_id|a|b` 拼 key —— 🔴 不能在每帧调用时重锚 `t0`, 否则 `el` 恒 0、u 永不前进(踩过, 静止帧仍 69%)。
+- `arPointTarget(d)`: u>1 时按 `/api/sim_insert` 的 **392 段表本地续接**(上限 3s, `ARCMD.age>1.2s` 不续),
+  段表匹配用精确 a/b(±0.6mm), 失败再**按 a 点最近 50mm 兜底**(少了这条, 段末仍会停 → 静止帧 52/276)。
+- `arPointStep`: 画点按 **600mm/s 限速**逼近目标(段表隐含末速 p90 625mm/s, 所以只吃掉瞬移不吃正常速度);
+  IK 后再加**关节限幅 3°/帧**(IK 换解支会让单帧跳 10°+/99.8mm, 等比缩回, 方向不变)。
+
+**验收口径(会动的段内统计, 静止段要单独剔掉)**
+| | 改前 | 改后(r86) |
+|---|---|---|
+| 会动段里静止帧 | 91% | **8%** |
+| 单帧位移 p50 / p90 | 0 / — | **9.4 / 14.2 mm** |
+| 单帧最大位移 | 690.7mm | **40.7mm**(>100mm 0 次) |
+| 单关节单帧最大 | 48.7° | **3.0°**(限幅) |
+判「静止」必须用 `seg=dist(a,b)<=5mm` 把**检测停留段**(golden 0.68s 原地)剔掉 —— 否则把正常停顿算成卡顿。
+
+**还剩什么(如实报)**: 约 8% 的帧在段头微停、5 帧 >20mm, 源头就是 2.5Hz 指令流; 要根治得让 loop 里的
+`ssplan` 走 10Hz 快车道 —— 那要重启 `zmax-ss-canvas-loop`(AR 会冻一下再续), 属停/起服务, 必须用户点头。
+
+**🚀 快车道(已做, 2026-11-01)**: `ss_canvas_loop.py` 把全量节点**按原顺序切成段**(`ZMAX_LOOP_CHUNK`,
+默认每段 12 个) 逐段 `prj.step(only=chunk)`, 段与段之间插一拍 `prj.step(only=['ssplan','ssact'])`
+(`ZMAX_LOOP_FAST_HZ` 默认 20)。**语义不变**: 每个节点仍每圈只跑一次、顺序不变(不能用轮转分组,
+那会把下游节点的输入推迟一整圈)。实测: `ar_cmd` **2.5Hz → 10.7Hz**, 全量拍仍 2Hz 量级, 80 节点全跑。
+改完必须 `sudo systemctl restart zmax-ss-canvas-loop`; 验收读 `canvas_loop.json` 的 `fast_n` 增量
+(注意它每 STATE_EVERY 拍才落盘, 直接用 `d['tick']` 增量算频率会偏低一个量级)。
+快车道后的画面(会动的段内): 静止帧 5.3% · p50 8.4mm/帧 · 最大 33mm(帧率抖动, 600mm/s×55ms) · 关节 ≤3°。
+
+### 🧱 把「通道+动力学」真接进 plan 节点 (2026-11-01)
+**两条链原来是分开的**: plan 只做段序+L4限速+节拍缩放; `atomic_skills.clamp()→corridor_finish()`
+(通道 r=10mm/速度/加加速度)在 dispatch_inproc 旁路跑, 回写 `skill_phys.json`, **不回写 ar_cmd**。
+**接法(可复算, 已验证)**:
+1. `tools/plan_gate_corridor.py` 读 `skill_corridors.json`(8阶段 r/v_cap/a_max) +
+   `config/calib/zmax_skill_physics.json`(jerk) ⇒ 逐段 `t_min`; 写 `sim_insert_gated.json`
+   (每段带 `gate{stage,r_mm,v_cap,a_cap,j_cap,bound_by}`, 原 t 保留为 `t_in`)。
+2. `plan_long_impl.py` 的 `_gate_rows()` 读闸后表作**段时长下限** (`te=max(t0*k, L/v_cap, gate_t)`),
+   不影响 `_self_plan()` 几何对拍; `_pub_ar()` 逐帧把 `gate{...}` + `cor_r_mm` 写进 ar_cmd。
+3. 关闭: `ZMAX_PLAN_GATE=0`。
+**拐角才是真瓶颈**: 通道半径 r 内转弯有向心加速度上限 ⇒ `v_corner=√(a·r)`。
+实测 (a=4.17m/s², r=10mm): v_corner=204mm/s ⇒ 392段节拍 9.96s→**17.63s/件, 361→204UPH**。
+灵敏度(`--sweep`): r10+a×5=312UPH · r20+a×3=319 · r30+a×2=315 ⇒ 要 300UPH 必须抬加速度或放大 r。
+**别用 rest-to-rest S曲线口径**(60L/T³) 算段时长: 会把每段当成起停, 算出 296s/194UPH 的假账。
+
+**实测选定 r=80mm 全段** (2026-11-01 老倪「放宽通道半径」): 拐角允许速度 192→588mm/s,
+闸后节拍 17.63s→**11.88s/件 303UPH**(a=真源不动); 实测播放 11.25s/件≈320UPH, 仍 ≥300。
+选 80 的理由: r60→293 · r70→298 · **r80→303** · r100→310 ⇒ 80 是“只靠半径顶住 300UPH”的最小值。
+产物: `sim_insert_gated.json`; ar_cmd 每帧带 `gate{r_mm,v_cap,a_cap,j_cap,bound_by}`;
+页面通道默认 ×1 (真值已够粗, 原 ×3 只是为让 10mm 看得见)。
+⚠ 缺通道定义的阶段(拔出/AOI检测/回程/放入) 在 `_limits()` 里 r 回退必须跟真值一致(现 80),
+否则拐角仍按 10mm 算, 白丢 30s 节拍。
+⚠ 跑 `plan_gate_corridor.py` 别把 fences/rows 全打出来 — 1288 条 ≈ 320KB 日志, 只看汇总。
+
+### 🧱 每拍技能 clamp 进 plan 发布路径 (`_skill_clamp`)
+- `plan_long_impl._pub_ar` 发布前过闸: 按本段 `gate.v_cap` 限 u 增量 (单拍位移 ≤ v_cap·dt), 帧内 `gate.skill={code,v_cap,L_mm,clip,n,u_nom,u_pub,cut}` 留证。
+- 关键坑: 同一拍重复调用时 dt≈0 ⇒ u 被冻住。必须 `0<dt<0.01` 直接返回且不重锚。
+- 单测口径: L=100mm/v_cap=50mm/s/dt=0.1s ⇒ 名义 0.9 削到 0.0501 (每拍 5.0mm)。实测在线 clip 25/542 拍, UPH 316。
+
+### 🔌 只点亮某个节点的计算面: `ZMAX_NODE_PURE_IDS=ss2d3d,sssensor` (node.py 新增)
+比 `ZMAX_NODE_PURE_ALL=1` 安全: 只翻指定 id, 其余保持直通; drop-in 写在
+`/etc/systemd/system/zmax-ss-canvas-loop.service.d/zz-pure-ids.conf`。
+**点亮 != 有产出**: `📐2D→3D` 前置是 det2d 框 + 机器人位姿, 而本环的帧源是 `aligner.env.render()` (`img_src="sim"`)、
+位姿源 `real(tap)` 可能是几天前的 ⇒ 先查数据源再查开关, 否则只是 0.99ms 空转。
+
+### 🚀 274 → 303/325 UPH: 提速只动「过渡段 + 空载跨件」(2026-11-01 老倪「必须上300」)
+**先算清时间在哪** (plan 实际口径 209.8s/16件=274UPH): 静止/工艺段 50.6s (24%) · 未建模跨件飞行
+21.3s · 段表内运动 137.9s。半径再放 (80→150) 只 +8UPH ⇒ 拐角不是瓶颈。
+**档位文件** `config/calib/zmax_plan_speed.json` (plan 与 gate 工具都热读, 改完不用重启):
+`transit.stages=[转移,抬起,AOI转移,回程]` 乘 `v_mult 2.2 / a_mult 2.5 / j_mult 2.5`,
+`travel_mm_s=1800` (跨件空载飞行)。**精密段 (对位/下降/抓取/插入/完成/拔出/AOI检测) 一字不动, 工艺停留不削**。
+结果: 闸后表 190.1→178.6s · plan 实际 209.8→**189.8s (11.86s/件 303UPH)** · 在线实测 75s 走 6 件
+=**11.07s/件 325UPH**。
+⚠ 只说“闸后表 UPH”会虚报 (303 vs plan 实际 274 差 22s 是 L2 记忆 k + 跨件过渡); 报数一律用
+plan `_mem_timing()` 的实际 t_eff 总和 ÷ 件数。
+⚠ 提速属规划档位, 真机执行另受 8793 授权链约束且需标定确认 (1596mm/s 转移 / 1800mm/s 空载)。
+
+### 🔴 另一个“抖动”真因: 两个节点抢写同一个 ar_cmd.json
+`plan_long_impl._pub_ar` 与 `uph_tact_impl._pub_ar` 都写 `zmax_data/ss_live/ar_cmd.json`,
+各自时间轴/段序交替覆盖 ⇒ 页面手臂来回跳 (实测 25s 采样: 80% 帧来自 ss_uph_tact,
+`t_seg` 只有 19% 与闸后对得上)。修法: `ZMAX_AR_OWNER`(默认 plan), 非写者直接 return。
+验收口径: 采样里 `src` 只有一个值 · `t_seg >= gate.t_gate` 零违例 · 无帧超阶段 v_cap。
+
+### ▶ 「启动 ar3d」= 走控制台自己的入口, 不是自己 xdg-open 一个标签
+- 拉起页面用控制台「🥽 AR」按钮同一个函数(它只认窗口表, 不认返回值):
+  ```bash
+  DISPLAY=:0 ZMAX_AR_URL=http://127.0.0.1:8797/ar3d QT_QPA_PLATFORM=offscreen \
+    gui-venv311/bin/python -c "import sys;sys.path[:0]=['/home/ubuntu/zmax','/home/ubuntu/zmax/tools','/home/ubuntu/zmax/tools/gui','/home/ubuntu/zmax/src']
+  import ss_dreamview as SD; print(SD.ar_page_url()); print(SD.ar_open_url())"
+  ```
+  回「已在窗口表里(置顶)」= **复用已有 chromium 窗口、没开新窗**; 要一个新窗先 `wmctrl -l` 找到旧 id 再 `wmctrl -ic <id>`, 然后重跑。
+- 让它真跑起来 = 控制台「▶ 运行」的同一写口: 写 `zmax_data/ss_live/ar_play.json`
+  `{ts:now, action:'start', by:'simulink.run', src:'AR场景', task:'TASK-07-AOI'}`; 页面 2s 轮询 `/api/ar/mode`,
+  见到**新 ts** 才 `plantStart()`(超过 120s 的老 ts 不算)。
+- 外写这份文件时**控制台按钮文字不会跟着变** ⇒ 交付时必须主动说「控制台可能仍显示 ▶ 运行, 按一下就对齐」,
+  否则他会当成"没启动"。
+- 判"真启动了"三样: `wmctrl -l` 有 `Z-MAX · TCP 轨迹 AR/VR 调试台` · `/api/ar/mode` 的 `ar_scene=true / fresh=true`
+  且 `play.action=start / play.fresh=true` · 页面同时出现「开 · 已接入状态空间」与「全流程运行中」。
+- ⚠ 只打开页面不等于启动: 页面无 `play` 时一帧都不播(播放权归人), 别拿"窗口在"当"跑起来了"。
+
+### ⚡ 在役页面上加功能: 先走「页内 JS + 热读」, 不为加字段去重启服务
+- 服务没重启 ⇒ 新端点/新分区/新字段都没上线; 但 `tools/web/tcp-ar.html` 是 mtime 热读 ⇒
+  **纯前端能做完的功能(回放开关、读数条、按钮)当天就能上屏**, 用户按一次 F5 即可。只有服务端逻辑(新 `/api/*`)才需要重启, 而重启要用户点头。
+- 驱动虚拟右臂复用现成三件: `ikTool1([x,y,z] 米, 上一帧 q)` → `PREV.q` / `PREV.on=true` / `PREV.M=urdfFK(q)`;
+  在自己那套循环或 `plantAtAR` 入口加一道 `if(某开关.on) return;`, 否则实况链每帧把姿态覆盖回去, 看着像"功能没生效"。
+- 🔴 **自有状态必须挂 `window.<名字>`**: `PREV`/`URDF` 是顶层 `let/const`, `window.PREV` 恒 `undefined` ⇒
+  用无头浏览器采证时会误判「臂没动」。把 `{on,seg,frames,q,ikErr,hud,cycle,uph}` 整体挂到 `window.<功能名>` 再采。
+- 采证口径(不靠截图): 无头浏览器打开真页面 → `document.getElementById('<btn>').click()` → 隔 5~6s **两次**读
+  `window.<功能名>.q`(关节角在变=臂真被驱动) + HUD 文案(段号/进度/UPH) + console 零错误。
+  "按钮出现了/点下去了"不算验过。
+- 🔴 **页面按钮文案不许写死时间或 UPH**(如「(44.69s / 112段)」): 真源一改标签就与计算结果自相矛盾。
+  标签写「(112 段 · 按本节拍)」, 数字全部留给运行时读数条现算。
+- **理想档回放的时间账口径**(页面与离线工具必须同一套, 否则两边秒数对不上):
+  ① 只重算纯位移段: 长段 `t=d/v+v/a`、短段 `t=2√(d/a)`; 零位移/工艺段(夹/放/插入/AOI/驻留)**保留段表原 t**;
+  ② 速度分档: 抬升/横移/空载 1000mm/s, 下落/插入/**拔出** 300mm/s —— 拔当快档会把每循环算乐观 ~0.4s、UPH 虚高 2~3;
+  ③ 加速度给区间不给单点(实测 2.0→260 · 3.0→297 · 4.0→320 · 6.0→355, 临界≈3.5 m/s²);
+  ④ 这类数字一律是**模型值**(真机零指令、未实测), 只能叫节拍能力, 不能叫"保证";
+  ⑤ 页内算出的循环秒与离线工具差 >0.1s = 分档/取整不一致, 先对齐再谈时序。
 
 ## 页面显示三条铁律 (违反必然被退回)
 
@@ -685,10 +890,14 @@ description: Use when 改 8797/ar 页的轨迹按钮·执行链·围栏避让规
   ⇒ 实时 UPH 每 159s 转一圈就归零/算成 0。累计口径 = `轮数×14 + mod`, 轮数在 `mod` 回头时 +1。
   判据: 跑过一轮(≈160s)后产出单调不减。
 
-### 🔀 驱动源分层: 页面优先吃“执行器节点”的输出, 再回落 plan 直发
-- 把 plan 段接进执行器后, **页面必须改吃执行器那份**, 否则“plan → 执行器 → 页面”只是嘴上说的:
-  服务端加只读端点(如 `/api/ar/exec`, 读执行器落盘文件, 回 `{ok,fresh,age_s,src,from,...}`),
-  页面 `_arFetch()` 先试它、不 fresh 才回落 `/api/ar/cmd`;
+### 🔀 驱动源分层: 页面吃“执行器节点”的输出, 再回落 plan 直发
+- **现行实现(已落地, 别再按旧稿找 `ar_exec.json`)**: 执行链产物写**单文件双分区**
+  `zmax_data/ss_live/ar_cmd_chain.json`(`plan`←运动规划 `n_moveit` / `exec`←机器人执行器 `ssact` / `annot`←联通器),
+  `GET /api/ar/cmd` **优先读它**(回 `chain:true` / `src:"chain:n_moveit+ssact"` / `drive:"exec:ssact"` / `exec_u`),
+  过期/空才回落老的 `ar_cmd.json`。写者是 `src/lerobot/engineering/exec/ar_bridge.py`(文件锁、各写各的分区)。
+  🔴 `/api/ar/exec` 读的是**旧文件** `ar_exec.json`, 实测 `age_s≈3.7 天 / fresh:false` —— **判「执行器接进 AR 没有」只看 `/api/ar/cmd`**,
+  拿 exec 那个端点会得出相反结论(同一时刻 cmd 是 `age=0.07s / drive=exec:ssact`)。
+  开关语义/三条流的真值表见 `references/ar-cmd-signal-contract.md` §1、§1b。
 - 🔴 **把本次驱动源写进一个可读字段**(如 `ARCMD.drv="🤖 执行器节点(ssact)"`), 并加进 `/api/ar_diag` 上报 ——
   这是“谁在驱臂”的唯一现场证据; 只改 fetch 顺序不加这个字段, 现场没法自报。
 - 用户问「动作执行器节点接的是 AR 场景, 能不能让 plan 真的喂它」时, 先分清两层再动手:
@@ -715,6 +924,8 @@ description: Use when 改 8797/ar 页的轨迹按钮·执行链·围栏避让规
   改完必须 `sudo systemctl restart zmax-ss-canvas-loop`(节点代码在常驻循环进程里, 不重启还是旧的)。
 
 ### 🗣 回答「这东西输出的是什么数据」的定式(被用户用「说人话」催过)
+> 段表只有位置、姿态从哪来、为什么不保证，以及 `MAX_SEGS=40` 静默截断的判据 → `references/ar-cmd-signal-contract.md` §6 / §6b。
+> 🔴 被**第二次**要求「说人话」= 连「字段表 + 人话总结」并存都不许，只留一段散文 + 一个比喻 + 一个数字。
 - **先一句人话, 再决定要不要展开**: 这条链的答案就是「起点坐标 / 终点坐标 / 走完多少」三个数,
   页面自己按进度插值再逆解, 关节角不是下发来的。开口先给这句; 用户追问细节再上字段表。
   一上来铺 5 列字段表 + 三种出口 + IK 术语, 他会直接回「你到底发的是啥啊, 说人话」。
@@ -828,8 +1039,18 @@ estop/授权/手动模式那条岔路(那是真机的事, 与 AR 画面零关系
 - **点按钮不许动相机**(他原话: 三维视图不要跳)。相机只在显式『🎯 对准』时才取景。
 - **同一实体有「真机/仿真」两份时, 必须两个按钮分开命名**: `右臂_真机` / `右臂_仿真`。
   一个按钮控两份他很就会问「到底藏的哪个」。隐藏文字也跟状态变(`xxx(已隐藏)`), 不要只变色。
-- **任何浮层/看板都要自带两级隐藏**: 收起明细(只留标题条) + 整个隐藏(收成顶部小胶囊, 点回显), 且隐藏**不许停掉正在跑的业务**(全流程继续跑、只不显示)。
-- **浮层定位按「可见区中心」算, 不是窗口中心**: 右侧节拍栏是 392px 覆盖层, `left:50%` 会让浮层压在侧栏上; 用 `left = (innerWidth − 面板宽)/2` 并同步 `maxWidth`, 否则他会说「偏右/挡住」。
+- **任何浮层/看板都要自带**三级**隐藏**: 收起明细(只留标题条) + 整个隐藏(收成顶部小胶囊, 点回显) + **胶囊自己也能收掉**(胶囊上再挂一个 ✕), 且隐藏**不许停掉正在跑的业务**(全流程继续跑、只不显示)。只有前两级时, 用户说的「这个窗口要可以隐藏」指的往往是**胶囊还在原地挡着** —— 他隐藏的是「页面上别再占地方」这件事, 不是「收窄一点」。
+  实现定式: 一个 `PLANT.hudHidden` 标志 + 三个入口各守一道闸(`plantStart` 显式点『全流程 UPH』时清标志放出来、`ssFollowStart`/`inspEnsure` 只在未隐藏时显示), 否则下一次轮询/跟随又把胶囊立起来, 看着像「✕ 没用」。
+- 🔴 **最后一级收掉后必须留一个可点回来的小把手**(如左栏右侧 32×21 的 `🏭` 方块), 且**不许把『🏭 全流程 UPH』当回显路径**:
+  它在跑的时候点一下走的是 `plantToggle` ⇒ **停**, 于是用户看到的就是「窗口没有了, 怎么点都回不来」。
+  自验(跑着的时候做, 才算数): 连点窗口 ✕ → 胶囊 ✕ ⇒ `box=none · pill=none · chip=block` 且 `PLANT.on` 仍 `true`; 点 chip ⇒ `box=block`、`PLANT.on` 仍 `true`、`hudHidden=false`。
+  只验「能隐藏」不验「能回来」= 交付一个死胡同, 下一轮必被退回来。
+  🔴 **三级全收掉之后必须还有一道「开页就摆出来」的兜底**: 脚本尾部 `setTimeout(900ms)` 里判
+  `if(!PLANT.hudHidden && box显示none && pill显示none) uphHudShow()`。因为页面有跟版自校会 `location.reload()`,
+  而「点过全流程才出现」的老口径下 `PLANT.on` 一复位就只剩空页面 —— 用户的原话是「找回来 300UPH 的窗口」,
+  而且他不会去点按钮翻。自验: **新开页一个按钮都不点**, 900ms 后 `box=block` 且矩形落在左右两栏之间居中。
+- **浮层定位 = 左右两条边栏之间那条带子的正中**, 不是视口中心, 也不是「只减去右侧栏」。ar3d 左栏 `#vrRail` 是 **300px**、右侧节拍栏 `#tactWrap` 是 **392px** 覆盖层 ⇒ 只按 `(innerWidth − 392)/2` 算, 1280 宽时浮层左沿落到 229px, 直接压住左栏, 用户的原话是「位置要对中, 不要遮挡了左侧边栏」。定式: `L = vrRail.right + 8` · `R = tactWrap.left − 8` · `left = (L+R)/2`, 并把 `maxWidth` **和** `minWidth` 一起夹进 `R−L`(原来靠 `min-width:430px` 硬撑, 窄屏必然越界); `R−L<260`(手机竖屏/两条栏叠成一列)才退回整屏居中。多宽度几何自验见 `references/camera-and-rail-layout-stability.md` §4。
+- 🔴 **浮层里被 JS 反复改写文字的元素, 必须留一个内层子元素承接文字**: 代码里写的是 `pill.textContent=…`, 那么「往胶囊里塞一个 ✕」的内联 span 会在下一次刷新文案时被整个抹掉 ⇒ 把文案改成写 `#uphPillT`(`uphPillText(t)` 一行 helper), ✕ 用 `#uphPillX` 挂在旁边, 点击里 `stopPropagation()+preventDefault()` 免得触发胶囊自己的展开。
 
 ## 五个必踩的坑
 1. **别自己构造轨迹**。工程配置里没有的元素不要"以某个中点为心造个正方形"——他会立刻指出"不是新的"。
@@ -1083,7 +1304,9 @@ ssh orin 'ros2 topic info -v /robot/tcp_pose'         # Publisher count: 0 = ROS
   光模块 56.5×13.4×8.5; `depth_available=False` 表示距离是**由已知件长反解**(误差~5%), 换品种要重设件长;
   `warn` 里"类别是 peg 不是 OPT_Gold"要在汇报时如实说, 别说成"识别到光模块"。
 
-### 📍 轨迹画进三维: 用 points, 而且左栏必须有入口 (否则用户「没看到」)
+> 录制轨迹进 AR（points 入库 + 取景裁切 + `#tReal` 一键开关 + 像素判据）: `references/ar-points-trajectory.md`
+
+## 轨迹点画进三维: 用 points, 而且左栏必须有入口 (否则用户「没看到」)
 - 往 `fences.json` 加 `type=points` 后**三维里画了、左栏却没有那一行** —— `paintFenceBtns()` 只渲染
   `rowBoxes`(box)/`rowLines`(line), points 既没容器也没按钮 ⇒ 用户找不到、点不开, 报的就是「没看到」。
   修法三处一起改 `tools/web/tcp-ar.html`: ① 加 `<div class="row" id="rowPts"></div>`
@@ -1099,8 +1322,57 @@ ssh orin 'ros2 topic info -v /robot/tcp_pose'         # Publisher count: 0 = ROS
   同步回服务端: 实测 14 个槽的判据跑完, 服务端 13 个变成 `enabled=false`(列表还在、三维不画)。
   判据跑完**必须 `GET /api/fence` 回读一遍**, 被改回去就用 `FS.update(id, enabled=True)` 修回。
 
+### 🦾 页面「SIM 骨骼」层 = 让 AR 页与渲染帧同源的那一层
+老倪： 「渲染后的图像，与 AR场景，我看到的样子，不一样。数据要同步」。真因是：页面三维画的是 **URDF 真机**
+（数据来自 `tcp_out/latest.json`，真机不上电就永远停在旧姿态），而 8802 渲染站画的是**仿真双臂** —— 两套数据源。
+- 定式（A 方案，已落地）: 渲染站每拍快照 `data.xpos` 成 `/bones.json`（`L_*/R_*` 各 8 段世界坐标）
+  → 8797 `/api/sim_bones` 原样代理 → 页面左栏「🦾 SIM骨骼」开关，200ms 拉一次，用页面**自己的 `pr()`** 投影画线
+  （L 青 `rgba(64,196,255)` / R 橙 `rgba(255,176,64)`，`lineWidth 4` + `lineCap round`），末端标 `SIM L`/`SIM R`，
+  顶部横幅带 `n`。**URDF 真机层保留不动**（两层对照看），绝不拿仿真 `q` 去喂 URDF 关节。
+- 🔴 **仿真侧取位姿必须用 `data.xpos`，不是 `model.body_xpos`**: MjModel 没这个字段，写了就是 AttributeError，
+  而快照代码若写在 `STATE.update` 之后，会把**整拍状态置 err**、`/status.json` 看着像渲染坏了。
+- 验收口径（三条全过才叫同源）: ①开关差分像素（实测 +200 青 / +376 橙）②`/bones.json#n` 递增（真的每拍在写）
+  ③骨骼末端与 `state.json#truth.tcpL/tcpR` 差 **<10mm**（差的那几 mm 是手指偏置，不是错）。
+- ⚠ 页面 `let SIMON/SIMB/SIMTS` **不挂 window** ⇒ console 里 `window.SIMON` 永远 undefined，会误判“没生效”；
+  断言一律走 DOM（按钮 class/文本）+ 画布像素差分。
+- 用户改完说「无法调整视角」时，先按「自验方法」合成 PointerEvent 比对画布 hash（实测拖 140px：96670→109764 = 能转）
+  再数一遍 `git show <commit> -- tools/web/tcp-ar.html` 的增删行（本次 45 插入 / **0 删除**、只碰 SIM 图层）
+  ⇒ 能当场排除“改坏了事件绑定”；剩下的原因是**服务重启期间加载的半死标签页**，让他 `Ctrl+Shift+R`。
+- 🔴 **「只有光模块/一条臂都没有，也不动」= 四条驱动源全过期**, 不要先改渲染: 逐条量
+  `/api/tcp`(age/stale) · `/api/ar/cmd`(age/fresh/src) · `/api/cams`(online) · `/api/sim_bones`(L/R 两次采样位移),
+  一键探针 `scripts/ar_feed_probe.py`。两个反直觉点: ① `TCP.ok=true` 不代表新鲜(位姿可陈旧几天, 看 `stale`);
+  ② `/bones.json` 的 `n` 停机时照样涨(是物理计数, 不是位移) —— 只看 n 会判“仿真在跑”。口径与网络断链判据见
+  `references/ar-page-data-layers.md`。
+
+### 🎥 让「人看到的这帧」= 模型吃的那帧: 页面相机 → 8802 同视角 (2026-11-09 r90)
+老倪: 「8797 页面上的三维视角参数接到 8802」+「人能看到机器人在干活, 这个图像怎么让 YOLO 看到」。
+- **换算(别再自己推)**: 真源是 `tools/ar_scene_render_server.py` 的 `VIEWS['ar3d']` 注释 ——
+  `az=deg(yaw)` · `el=−deg(pitch)` · `dist=VR.dist` · `lookat=VR.tgt`(米) · `fovy=69.4`(=2·atan(360/520))。
+  方向别看错: 页面 `fwd=[cp·cy, cp·sy, −sp]`, MuJoCo 的 azimuth 与之相差 180° 的直觉是错的, 照真源 1px 对。
+- 端点 `GET :8802/frame.png?az&el&dist&tx&ty&tz&fovy` = `render_free` 请求队列(EGL 上下文绑在渲染线程, HTTP 线程直接 render 会 EGL_BAD_ACCESS), 超时 3.5s。
+- 页面实现三件, 缺一件就错位或崩:
+  ① 图放**画布下面一层** `<img id="mjframe">`, 开 MJ 时 `#vr` 背景转透明 —— **不要 drawImage 进 canvas**:
+     8802 与本页不同源会 taint, 页面自己的 `getImageData`(`autoZoomPlan` / 自检哈希)当场抛。
+  ② 叠层投影必须换成「渲染帧的相机」: `contain` 矩形反推 `F=(imgH/2)/tan(fovy/2)`、`CX/CY=矩形中心`,
+     否则矢量层与渲染图差一个视场(原 `F=520` 只在不开 MJ 时成立)。
+  ③ 刷新: 相机一变立即拉, **400ms 下限**(≈2.4fps; 8802 一帧 ~60ms, 别按 60fps 拉), `document.hidden` 停;
+     标签写「取回时刻 + 帧龄 + **可复制 URL**」—— 那条 URL 就是 YOLO 该吃的那张图。
+- 验收(实测): `nat=960×720` · 980×577 画布上 `F=416.6 / CX=490` · 3s 内 7 次加载 · JS 零错误 ·
+  **YOLO 框中心 (418,280) vs 页面投影 (419,281) = 1px**。
+- 反面论据(被问「为什么不能直接截页面喂模型」时给): QWebEngine 离屏抓 1600×900 得到纯白(mean=255, 页面没画完就抓)且模型 0 框;
+  就算抓到, 矢量绘制域与 `yolo_ar_peg.pt` 的训练域(MuJoCo 渲染)也不同 ⇒ 正确路径是「8802 出图 → YOLO」, 页面只负责显示同一帧。
+
+### 🧭 位置细胞层 r91 (工程坐标不得手打)
+- 页面不存场景坐标: 左栏「🧭 位置细胞」拉 `/api/place_cells`(库 `data/skills/l2_atomic/place_cells.json`,
+  由 `tools/scene_places_build.py` 从围栏/示教台账/空间点/页面结构常量生成), 盒类 53 + 点类 25 直接画。
+- 改坐标的正确姿势: 改测量真源 → `python3 tools/scene_places_build.py` → 刷新页面(端点热读磁盘, **不用重启**)。
+  改构建器才要重启: `bash tools/restart_traj_ar.sh`。
+- 页面只吃 `pos_mm/size_mm`(毫米), `pr()` 要米 ⇒ 除以 1000; `shape!=box` 的不走盒体分支(地面是 `plane`)。
+
 ## 自验方法 (不靠肉眼)
 浏览器 console 直接量:
+- 🔴 **用户只给视觉描述(「上边那行粉色背景的字」「挡住左栏那个窗口」)时, 不要按文字 grep 猜**: 遍历元素读 `getComputedStyle(el).backgroundColor`, 按色相筛(`r>120 && r>g+30 && b>g+10` 抓紫/粉), 打印 `{tag,id,cls,bg,txt,top}` 一眼锁定 id, 再拿 id 回源码 grep。文案 grep 只会命中文案/注释/构建戳, 命不中真正那个浮层 —— 它的文字往往是 JS 拼出来的。
+- 🔴 **浮层/布局改动按多个视口宽度量矩形相交, 不是只看自己那个窗口**: 用**离屏 iframe** 复用同一页面(不改窗口大小): `iframe{position:fixed;left:-99999px;width:W;height:H}` → `onload` 后延时约 900ms 等数据到 → 在 `contentWindow` 里调页面自己的定位函数 → `getBoundingClientRect` 两两判交(`a.left<b.right-1 && a.right>b.left+1 && a.top<b.bottom-1 && a.bottom>b.top+1`)。一次 console 求值返回不了异步结果(拿到的是 `'started'`) ⇒ 结果先写 `window.__geo`, 下一次调用再读。⚠ 窄屏下两条栏会叠成一列(左栏跑到底部矩形), 单看 x 区间会误判「挡住左栏」, 必须用**二维相交**判。
 - 🔴 **验「播放/动画真的画出来了」用 canvas 取像素, 不用截图**: `document.getElementById('vr').getContext('2d').getImageData(0,0,w,h)`
   在真浏览器里拿到的是**当前帧真实渲染**, 逐帧可读、可数色块。截图那条路有两个坑:
   ① 页面有 4 个 canvas(`vid` 640×480 相机底图 · `ov` 叠加 · `loupe` 176 · `vr` 980×577 三维),
@@ -1131,6 +1403,11 @@ ssh orin 'ros2 topic info -v /robot/tcp_pose'         # Publisher count: 0 = ROS
 - 🔴 **`patch` 落盘必须回读**: 在 `execute_code` 里调 `patch()` 曾返回 ok 而文件一个字节没变(grep 才发现),
   于是紧接着那轮截图/判据验的全是旧代码, 结论作废。改 HTML 走带 diff 的顶层 `patch` 工具, 或改完立刻
   `grep -n "<新加的注释原文>"` 确认, 截图前再核一次版本戳 —— 三者缺一就可能拿旧版页面骗自己。
+
+## 📼 录制真机位姿 → 同步 AR
+`tools/pose_record.py start|stop`（逐拍存 `pose_records/rec_*/poses.jsonl`）→ `tools/pose_to_ar.py --per-run`
+（只准 `type=points`, 写完回读 `/api/fence` 核 `enabled/n`）→ `./gui-venv311/bin/python tools/pose_map.py`（图+覆盖）。
+真值只有 5Hz、两个写者、AR 页像素判据不适用（撞色+开轨迹会重取景）——全部坑见 `references/pose-recording-to-ar.md`。
 
 ## 让用户一眼确认"你这版到底有没有生效"
 - 页面标题旁放**版本戳**（如 `构建 2026-10-26 r8 · 五条按钮都能点亮`），改一次页面就递一次号。
@@ -1185,6 +1462,25 @@ L2 全链 (`tools/ss_l2_chain.py`, 8805 站每采样点跑):
   (模板单位是 **mm**, 与 m 混用会得到 50 万 mm 的"距离"), ssaoi 吃当拍帧统计 (mean/det_n), 不冒充 AOI 服务。
 - 指令点取用顺序: 预测位姿 > 估计 > 实测; 但**只在与轨迹点同侧且偏差 <8mm 时采用**, 外推跑偏退回轨迹点。
 - 加节点到 `StationChain` 一律走 `self._l2 = ss_l2_chain.L2Chain(self)` 懒建, 别在 `tick()` 里写平行实现。
+
+## 8802 MuJoCo 场景「少东西/看不见」四类真因 (2026-11-09 实测)
+
+1. **geomgroup 默认是关的**: `mujoco.MjvOption()` 默认 `geomgroup=[1,1,1,0,0,0]`, 只写 `geomgroup[3]=0` 等于永远关。要显示分组几何必须显式置 1: `op.geomgroup[3] = 0 if 顶视 else 1`。症状是“模型里有 geom、渲染里永远不出现”。
+2. **两个 builder 打架**: `ar_mujoco_env.py` 里 `fence_geoms()`(画 `eq*` 实心 slab) 和 `build_mjcf()`(画 `pan_*` 薄底+槽) 会同时画料盘 —— 实心 slab z 0.10~0.14 把 z 0.105~0.109 的槽片盖死, 顶视里就是“纯平板没有槽”。料盘只在一处画。
+3. **过滤条件筛选过头**: `"槽" not in name` 会把 `下料盘(第三·14槽)` / `废料盘(不良品·无槽位)` 一起筛掉, 只剩 2 个盘体。槽本体是以 `槽` 开头的条目, 只排除这种。
+4. **一盏点光只照一个盘**: 被照的盘 250/255 过曝、其余 77~115, 侧盘的槽与盘面同亮度。补光要按料盘逐个放 (三盏 0.45)。
+
+诊断手法(比目测快且不靠猜): 把待查几何的 rgba 临时改成 `1 0.1 0.1` 再渲一帧, 数红色像素及其 u 范围。修前 5335px 集中在一个盘, 修后 16371px 跨三盘, 一眼定案。同类可用 `mj_ray` 从上方打一条射线, 返回第一个命中的 geom 名 —— 直接看出是哪个盒子盖住了目标。
+
+取景验证也要数值化: 把真源坐标(如 place_cells 的 42 个槽)按同一 az/el/dist/fov 投影到像素, 检查 in-frame 数量; 目测“看起来没有”经常只是被截在画外。
+
+**深度手册**: `references/mujoco-8802-render-scene.md` —— geomgroup 默认关/两处 builder 互盖/染色法与射线法/
+顶视取景数值化/直播页 img 换图/tool1 夹爪与光模块。改 8802 场景前先读它, 不要在 SKILL.md 里再展一份。
+
+**夹爪位置**: `joint_tool1` 的 Z 轴与腕轴夹角 33.6° (xyz 259mm + 大角度 rpy)。夹爪/法兰盘/指头一律建在**法兰系**,
+只有光模块挂在 tool1 旋转系 —— 画错坐标系的表现是“组件悬空脱在腕外, 中间一道黑缝”, 不是穿模。
+
+**8802 机位索引**: `/video?cam=ar3d`(跟随 AR 页相机, 默认) · `top`(正俯视 1.55m/50°, lookat z 0.11) · `topmid`(顶视相机/D435 视角) · `close`(料盘特写)。顶视相机实体与 AR 页 `TCAM` 同源: 两臂中线 x=0,y=0.25 的立柱 r=70mm、高 0.328m(=joint_1), 顶上一台 D435(90×25×25mm, 俯 35° 朝 +X, fov 58)。改场景几何后**必须同时改 `VIEWS` 预设**, 否则按钮/URL 出的还是旧机位。
 
 ## 多机一致性
 - 550C 上没有 `planned_traj.json`(规划在 550B 做); `named?k=square` 要能退回 `plan_latest.json`

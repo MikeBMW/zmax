@@ -214,7 +214,7 @@ simulink_module.py 独立模块 (~800行)，studio.py 4 处集成点 (import / �
 - rebase 冲突多 (如 mac 分支大改同批文件) 时 `--abort` 后改 `merge -X theirs --allow-unrelated-histories` 更干净。
 
 ### 11. CI/CD 管道 (对标 MathWorks Simulink 持续集成, 2026-08-01)
-参考 MathWorks《Simulink 模型验证之持续集成》(ww2.mathworks.cn/company/technical-articles/continuous-integration-for-verification-of-simulink-models.html)。设计文档: `docs/7-瑶光-记录追溯/notes/ci-cd-design.md` (仓库根)。
+参考 MathWorks《Simulink 模型验证之持续集成》(ww2.mathworks.cn/company/technical-articles/continuous-integration-for-verification-of-simulink-models.html)。设计文档: `docs/ci-cd-design.md` (仓库根)。
 
 **资源拓扑**: GitHub Actions (免费 runner, 编排+无GPU阶段) / 4060 (训练smoke+GUI测试) / web 4090 (大训练) / ECS (部署+API) / Orin (HIL真机) / Mac (采集桥)。
 
@@ -226,7 +226,7 @@ simulink_module.py 独立模块 (~800行)，studio.py 4 处集成点 (import / �
 
 **.github/workflows/ci-cd.yml** 触发: push main (tools/gui, tools/ci, simulink-spec.md, flow*.json) / PR / workflow_dispatch。**增量策略**: 每次 push 只跑 1+2 快速阶段 (~2min), 3/4 按需触发, 省免费额度。**无 MATLAB 依赖**, 全程 Python 生态。2026-08-02 另建 `.github/workflows/simulink-ci.yml` (独立轻量工作流): paths 触发 simulink-spec.md / simulink_*.py / flow*.json, 步骤 = `simulink_ci.py test` (内置回归) → find 全仓库 flow json 逐个 validate → upload-artifact 报告工件。免费 runner 零 GPU, 只验证不训练。改动 simulink_ci.py 后记得同步 scp 到 ECS `/root/zmax-relay/` (relay 的 `/ci/validate` 端点 import 它)。
 
-**同步 web 仓库**: docs/7-瑶光-记录追溯/notes/ci-cd-design.md + simulink-spec.md 复制到 zmax-website 各自 commit/push (两仓库独立历史, web 侧远端有新提交时 `git pull --rebase origin main` 再推)。
+**同步 web 仓库**: docs/ci-cd-design.md + simulink-spec.md 复制到 zmax-website 各自 commit/push (两仓库独立历史, web 侧远端有新提交时 `git pull --rebase origin main` 再推)。
 
 ### 12. ECS 中转服务 + nginx 反代 (2026-08-01 实测)
 数据闭环链路: Orin采集 → Mac(8769) → ECS中转 → 4060训练 → 部署Orin。中转服务 `zmax_relay.py` 部署在 ECS 的 `/root/zmax-relay/`, 详情见 `references/ecs-relay.md`。

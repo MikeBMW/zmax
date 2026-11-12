@@ -1,7 +1,7 @@
 # 配置中心左栏「拖不动 + 字被截」= 被右侧最小宽度顶死 (2026-10-12)
 
 > 老倪原话: 「你看现在的配置中心，左侧栏，无法更改宽度，字体都挡住了。改适配宽度」
-> 交付: v5.49.2 · `tools/gui/veh6_config_page.py` · 判据 `tools/verify_config_tree_width.py` 10/10 × 两套 DPI · 文档 `docs/6-开阳-工程落地/CONFIG_CENTER_TREE_WIDTH_20261012.md`
+> 交付: v5.49.2 · `tools/gui/veh6_config_page.py` · 判据 `tools/verify_config_tree_width.py` 10/10 × 两套 DPI · 文档 `docs/CONFIG_CENTER_TREE_WIDTH_20261012.md`
 
 ## 🔴 两个症状一个根因, 别先动左栏
 

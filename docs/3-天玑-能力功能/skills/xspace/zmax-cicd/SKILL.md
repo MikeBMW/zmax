@@ -82,7 +82,7 @@ PYTHONPATH=src .venv/bin/python -m lerobot.scripts.lerobot_train --config_path c
 ## 对比与自动迭代
 ```bash
 # 同数据公平对比 (基线 vs 候选) → docs/CICD_COMPARE_*.html/.json
-PYTHONPATH=src .venv/bin/python tools/act_compare.py --baseline <ckpt> --candidate <ckpt> --dataset data/metaworld_act --report docs/6-开阳-工程落地/ops/CICD_COMPARE_auto.json
+PYTHONPATH=src .venv/bin/python tools/act_compare.py --baseline <ckpt> --candidate <ckpt> --dataset data/metaworld_act --report docs/CICD_COMPARE_auto.json
 # 自动迭代: 训练→对比→提升≥5%则部署, 否则改进超参重训
 .venv/bin/python tools/auto_iterate.py --max-rounds N
 ```

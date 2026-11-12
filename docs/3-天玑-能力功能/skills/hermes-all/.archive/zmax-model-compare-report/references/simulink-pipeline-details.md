@@ -1,7 +1,7 @@
 # Simulink Pipeline 完整细节 (给 web 汇总 cicd.html 数据闭环方案页)
 
 > 2026-08-06 老倪: "结合simulink的pipeline, 小芳在cicd页面总结数据闭环完整方案…静静你要配合将simulink的所有细节告诉web"
-> 仓库文档: `docs/6-开阳-工程落地/SIMULINK-PIPELINE-DETAILS.md` (已推送)
+> 仓库文档: `docs/SIMULINK-PIPELINE-DETAILS.md` (已推送)
 > 实现参考: `tools/gui/simulink_module.py` (CICDPanel 6环节) + `tools/cicd_pipeline.py`
 
 ## 总体链路 (6 环节环形)
@@ -31,7 +31,7 @@
 ## KPI
 闭环<5min · 推理479ms(v2)/1051ms(v1) · 训练loss 1.543(真机6D)/1.551(仿真4D) · 单包≤100M
 
-## 端侧分工 (小芳 docs/7-瑶光-记录追溯/notes/END-SIDE-PIPELINE.md)
+## 端侧分工 (小芳 docs/END-SIDE-PIPELINE.md)
 - Orin: 采集→过滤(JOINT_EPS=0.01rad+200ms)→打标→上传; 推理→心跳(含sys性能)
 - Mac: 中转(唯一通公网+内网) + 监听器(拉模型自动部署) + 影子模式(sim-to-real 4D对比)
 - 接口: /sim_joint_trajectory(6D) · /robot/tcp_pose(笛卡尔) · /motion/initialization_complete

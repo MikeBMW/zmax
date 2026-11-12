@@ -35,7 +35,7 @@ Agent: [Cloned web repo, read WEB_AGENT_MEMORY.md, CHANGELOG.md]
 5. `docs/7-瑶光-记录追溯/memory/xspace.md` — Complete agent profile: hardware (RTX4060 8G, i9-13900H, WSL2), training config, inference system, Feishu config, Mac partner details, website ops, design specs, 132 skill inventory
 6. `docs/7-瑶光-记录追溯/memory/xiaofang.md` — Partner agent (Mac M1) profile: Gateway setup, Orin connection, ECS tunnel
 7. `docs/Z-MAX-SmolVLA训练方案.md` — VTLA training plan with 4 phases and hardware constraints
-8. `docs/7-瑶光-记录追溯/notes/DEPLOY-READY.md` — Mac deployment pipeline status
+8. `docs/DEPLOY-READY.md` — Mac deployment pipeline status
 
 ### From zmax-website/
 

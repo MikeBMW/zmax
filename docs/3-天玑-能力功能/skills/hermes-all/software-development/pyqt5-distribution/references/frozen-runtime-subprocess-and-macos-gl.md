@@ -44,6 +44,65 @@ def resolve_python() -> str:
 **稳妥做法: 把 helper 追加到文件末尾**(模块级函数, 调用点在函数体内执行时早已定义),
 或选一个不可能续行的锚点。
 
+### 1b 根治: 在冻结入口拦一刀 (优于逐点换 `resolve_python`)
+
+`resolve_python()` 只解决「能起子进程」的一半: 目标机**没装 Python** 时它返回 `"python3"` ⇒ not found;
+而很多调用点写的是「venv 解释器存在才用, 否则回退 `sys.executable`」⇒ 回退那支又变成自递归。
+往**空 Windows 机**上部署时, 唯一可行解是让 exe 自己当解释器。
+
+做法: 入口脚本(studio.py)在**任何 Qt/页面/重依赖 import 之前**, 冻结态且 `argv[1]` 是脚本 / `-c` / `-m` 时
+同进程执行它, 输出照写 stdout, 按它的退出码 `sys.exit`, **绝不继续启动 GUI**:
+
+```python
+def _run_helper_script_if_any():
+    if not getattr(sys, "frozen", False):
+        return
+    argv = [str(a) for a in sys.argv[1:]]
+    if not argv:
+        return
+    mode = "file"
+    if argv[0] == "-c":   mode, target = "code", argv[1]
+    elif argv[0] == "-m": mode, target = "module", argv[1]
+    else:
+        target = argv[0].replace("\\", "/")
+        if not target.lower().endswith(".py"):
+            return                                     # 正常启动
+        target = target if os.path.isabs(target) else os.path.join(os.getcwd(), target)
+        if not os.path.exists(target):
+            return                                     # 找不到就交回正常启动, 不吞参数
+    if sys.stdout is None:                             # --windowed: fd 还在, 父进程是管道
+        sys.stdout = os.fdopen(os.dup(1), "w", encoding="utf-8", errors="replace", buffering=1)
+    import runpy
+    rc = 0
+    try:
+        if mode == "file":
+            sys.argv = [target] + argv[1:]; runpy.run_path(target, run_name="__main__")
+        elif mode == "code":
+            exec(compile(target, "<frozen -c>", "exec"), {"__name__": "__main__"})
+        else:
+            sys.argv = [target] + argv[2:]; runpy.run_module(target, run_name="__main__", alter_sys=True)
+    except SystemExit as e:
+        rc = e.code if isinstance(e.code, int) else (0 if e.code is None else 1)
+    sys.exit(rc)
+```
+
+要点:
+- **放在所有重依赖/Qt import 之前, 也要放在「启动静音闸」之前** —— 静音闸会把 stdout 换成文件, 之后工具输出就回不到父进程了。
+- `--windowed` 下 `sys.stdout is None`, 但子进程是被 `subprocess(capture_output=True)`/`QProcess` 起的 ⇒ **fd 1 仍是管道**,
+  `os.fdopen(os.dup(1))` 就能写; 漏这步工具输出全丢, 父进程只拿到空 stdout (表现为「工具没输出」而不是崩溃)。
+- 一个拦截点覆盖全部调用方(`.py`/`-c`/`-m` 三种形态在真实代码里都出现过), 比逐个改调用点稳。
+- 源码环境零影响: `getattr(sys, "frozen", False)` 为假直接 return。
+
+**判定与取证(别靠猜)**:
+- 症状签名 = **双击没窗口 + 进程数单调暴涨**(实测 16s 内 1→22, 累计 CPU 一直涨)。
+  `Get-CimInstance Win32_Process -Filter "Name='<exe>.exe'" | Select ProcessId,ParentProcessId,CommandLine`
+  —— 子进程命令行是 `<exe> tools/xxx.py --json` 这种「exe + 脚本参数」就是本坑。
+- 「进程一启动就写」的探针日志(如 `zmax_startup.log`)行数 = 启动次数; 修复前一次双击能刷出十几行, 修复后应只剩个位数。
+- 修完判据: 同样操作 **进程数稳定(1~2)** + 窗口出现 + `Responding=True`, 三者都看。
+- 派发同时是**远程取证入口**: 没有 python 的机器上也能用 exe 自己跑诊断代码拿到真 traceback ——
+  配方(`Start-Process -Wait -RedirectStandardOutput`、探针文件无 BOM、`sys.path` 补 `_MEIPASS/src`)
+  见 `references/windows-frozen-app-silent-failures.md` §0。
+
 ## 2. `--add-data` 指向**不存在的路径** = pyinstaller 步骤硬失败
 
 ```

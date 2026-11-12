@@ -4,7 +4,7 @@
 按老倪的规矩判 "看不清" 三种毛病 —— ①文字宽过它的绘制矩形(会挤/被裁) ②画到方框外
 ③两块文字矩形互相压(遮挡)。外加统计每个节点的文字行数 (行数越多越挤)。
 
-用法: cd /home/ubuntu/zmax_rel && QT_QPA_PLATFORM=offscreen ./gui-venv311/bin/python <本脚本> [flow.json ...]
+用法: cd /home/ubuntu/zmax && QT_QPA_PLATFORM=offscreen ./gui-venv311/bin/python <本脚本> [flow.json ...]
 不给参数 = 扫 flows/ 与 src/lerobot/engineering/flows/ 全部。
 """
 import glob
@@ -12,7 +12,7 @@ import json
 import os
 import sys
 
-REPO = os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax_rel")
+REPO = os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax")
 sys.path.insert(0, os.path.join(REPO, "tools", "gui"))
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 

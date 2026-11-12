@@ -3,8 +3,8 @@
 > 本文件补充并部分更新 `references/git-push-behind-gfw.md` (那份 08-25 写时还没有体积墙/凭证头两条)。
 > 一键脚本: `scripts/push_via_ghproxy.sh` (显式认证头 → 依次试 3 个镜像 → ls-remote 核对, 成功才 exit 0)。
 >
-> ⚠️ 该脚本**第一个参数是仓库路径**, 默认 `~/lerobot-smolvla-lew` —— **不是** main worktree `/home/ubuntu/zmax_rel`。
-> 在 worktree 里发版必须显式传路径: `bash <skill>/scripts/push_via_ghproxy.sh /home/ubuntu/zmax_rel`;
+> ⚠️ 该脚本**第一个参数是仓库路径**, 默认 `~/lerobot-smolvla-lew` —— **不是** main worktree `/home/ubuntu/zmax`。
+> 在 worktree 里发版必须显式传路径: `bash <skill>/scripts/push_via_ghproxy.sh /home/ubuntu/zmax`;
 > 传分支名(`... main`)会被当成路径 ⇒ `cd: main: No such file or directory` (2026-09-28 实测踩过, 白跑一次)。
 >
 > **推 tag 不能用这个脚本**(它只推 `HEAD:main`) —— 用同一套显式认证头手推, 再核对 `^{}`:

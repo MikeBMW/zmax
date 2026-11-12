@@ -535,6 +535,70 @@ slide.background.fill.fore_color.rgb = WHITE  # match template
    `UnicodeEncodeError: 'charmap' codec can't encode character '\u2705'` → **exit 1** (CI 步骤实测失败, 文件其实已写好);
    GUI 用 `subprocess(capture_output=True)` 调同一脚本时同样崩 = 静默"视频生成失败"。双保险:
    脚本顶部 `sys.stdout.reconfigure(encoding="utf-8", errors="replace")` + 父进程 env 传 `PYTHONIOENCODING=utf-8`。
+   🔴 **在冻结 GUI 里它掀翻的是业务本身, 不是一行日志**: 同一句 emoji print 抛在 `save_canvas()` 里 ⇒ 用户看到
+   「打开工程失败」的泛化弹窗; 抛在画布初始化里 ⇒ 每轮都失败被重试 41 次 × 10s = 用户说「启动怎么这么慢」。
+   中文 Windows 的流是 **GBK(cp936)**, 而且 **`PYTHONIOENCODING` 对窗口版 exe 无效**(bootloader 自己造流,
+   实测子进程继承该变量仍报 `'gbk' codec`) ⇒ 必须在入口代码最顶部 reconfigure, 且日志 sink 文件也要
+   `encoding="utf-8", errors="replace"`。三类「泛化报错、无 traceback」的 Windows 静默真因(编码 /
+   文本写盘把 `\n` 变 `\r\n` 导致 sha256 对不上 / 打包无条件拷了空骨架默认数据)与远程取证配方见
+   `references/windows-frozen-app-silent-failures.md`。
+
+## 窗口版 exe 跑脚本「零输出直接退出」⇒ 自带包装器抓 traceback
+
+`--windowed` 包里 `sys.stdout/stderr` 是 **None**(bootloader 不造流, 继承来的句柄也不管用) ⇒ 入口把 `.py` 交给
+runpy 执行时, 脚本里的 print / 未捕获异常**无处可去**: 你看到的就是「进程起了、几秒/几十秒后没了、重定向的日志 0 字节」,
+分不清是配置读不到、端口占用还是缺依赖。
+
+定式: 写一个十行包装器随包放在 exe 同级, 用 `exe 包装器.py` 起目标脚本:
+1. `open(log, "a", encoding="utf-8", errors="replace", buffering=1)` 后把 `sys.stdout` 与 `sys.stderr` **都**指向它;
+2. 入口需要的开关/根路径用 `os.environ.setdefault(...)` 在包装器里钉死(它不继承你 ssh/CI 会话的 export);
+3. `runpy.run_path(<目标脚本>, run_name="__main__")`;
+4. `except SystemExit` 记下 code、`except BaseException` 写 `traceback.print_exc(file=fh)`, 结尾再写一行 end 时间戳。
+
+有了它, “点位配置读不到/端口监听失败/依赖缺失”这类 `SystemExit("…")` 会原样落盘, 且能看出是**哪一步**死的。
+模板: `templates/frozen_capture_wrapper.py`。同类判据: 日志 0 字节 + 进程已退出 = 先加这层包装, 别猜。
+
+## 冻结包的两条「源码正常、包里静默坏」铁律
+
+1. **源树软链 ⇒ 包里两份拷贝, 写一个读另一个**: `flows/x.json -> src/.../flows/x.json` 这类唯一依据软链,
+   `--add-data` 会各拷一份变两个真文件。写盘的探测表命中 A、读盘的命中 B ⇒ 打开工程后内容永远空(实测 94 节点 → 0),
+   无任何报错。判据/修法/线上救急见 `references/frozen-path-detection.md` 的「软链…两份拷贝」节;
+   根治=冻结态候选表把**可写那份放第一位**, 或只带一个真源。
+2. **子进程用 `resolve_python()` 不够, 要入口拦一刀**: 目标机没装 Python 时它只能返回 `"python3"`,
+   而「venv 在就用、否则回退 `sys.executable`」的写法在冻结包里就是自递归(双击没窗口 + 进程数暴涨)。
+   正解=入口脚本在任何 Qt/重依赖 import **之前**判 `argv[1]` 是 `.py`/`-c`/`-m` 就同进程 runpy 执行、
+   `os.fdopen(os.dup(1))` 补 stdout(窗口版 sys.stdout=None)、按退出码 `sys.exit`。完整代码见
+   `references/frozen-runtime-subprocess-and-macos-gl.md` §1b。
+
+## 槽函数里抛异常 = 进程直接消失 (PyQt5 qFatal)
+
+PyQt5 ≥5.5: **异常从槽函数冒出** (`clicked` 的 lambda、菜单项、QTimer 回调全算) 不是弹框、不是忽略 ——
+Qt 调 `qFatal` **立刻杀进程**。用户看到的就是「点一下, 程序没了」; 而同一句代码在普通函数里抛,
+表现是弹个泛化对话框 + 程序还活着 —— **两种不同症状, 同一个根因**。所以:
+- 每个按钮/菜单/定时器回调体一律 `try/except` 包住, 异常**落盘 + 状态栏一行**, 绝不外抛
+  (`zmax_data/logs/ui_error.log` + `traceback.format_exc()`); 只把异常重新抛给 Qt 就等于崩。
+- 重活抽成模块级函数 (如 `_open_x(win=None)`) 再在槽里 `try: _open_x(self) except: 记日志` ——
+  这样既能在启动链上单测, 也能被 exe `-c` 探针直接调(见 `references/windows-frozen-app-silent-failures.md` §0)。
+- 中文 Windows 的 emoji print (GBK) 落在槽里 ⇒ **直接崩溃**, 不是「少打一行日志」;
+  入口 stdio reconfigure 是前置条件(同文件 §1)。
+- 判别捷径: 用户说「崩了/窗口没了」而 Application/WER 事件日志一条都没有、`procs` 也已经掉到 0 ⇒
+  按「槽里异常被 qFatal」查, 别先去查内存/显卡/杀软。
+
+## 「打开网页」类按钮: 候选链 + TCP 探活, 不许写死公网、不许让用户手输 IP
+
+按钮背后的地址写死公网域名, 换个网络环境(产线 / 家里 / 出差)就是「点了打不开」; 反过来让用户自己粘
+IP 也不行 —— 入口必须是界面上的那个按钮。定式:
+`ZMAX_*_URL` 环境变量 > `127.0.0.1:<port>` > `config/ui/dashboard_hosts.json` 登记的主机 >
+产线默认地址 > 公网; 每跳 0.8s TCP 探活, 谁通开谁, 状态栏写**实际打开的 URL**(以后「打不开」
+一眼分清是网络还是服务); 同一段代码在产线机自然命中 127.0.0.1, 在笔记本靠登记/环境变量。
+
+## 冻结包里定「仓库根」: 按特征目录探, 不按 `dirname` 级数算
+
+`dirname(dirname(dirname(__file__)))` 这类级数在 onedir 布局下会指到安装根的**上一级或下一级**
+(少一级 ⇒ `tools/xxx.py`、`config/*.json` 一律 FileNotFound, 界面只报一句泛化失败)。
+冻结态改成按**特征目录**探: 从 `_MEIPASS`、`_MEIPASS/..`、本文件上两级里挑第一个存在
+`config/` 或 `tools/` 的目录当根; 一个都探不到才回落 `_MEIPASS`。
+配套: `--add-data` 要把 `config/` 与 `tools/` **一起带进包**, 否则新机装完必然缺件。
 
 ## 桌面包「刻意不内置」的依赖 → 功能必须能力闸降级, 不许整轮失败 (2026-10-08 实测)
 
@@ -613,6 +677,7 @@ PyQt5/Qt5/bin) → WinError 126; PyInstaller 的 ctypes 钩子 (`PyInstaller/loa
 | .exe 点「运行」即崩: `Failed to load dynlib/dll '...\mujoco\plugin\actuator.dll' ... not found when the application was frozen` | 插件目录里没有它依赖的 `mujoco.dll`(在上一级 `mujoco/`) + VC 运行时 | `--runtime-hook pyi_rth_mujoco_dlls.py` (把依赖复制进 `mujoco/plugin/` 做自足目录) + CI 冻结核验 `App.exe --engine-selftest`; 报错处打印 `e.__cause__` |
 | .exe crashes at startup: `FileNotFoundError [WinError 3] ...\AppData\Local\data` | PyInstaller **onefile** exe cwd ≠ repo (unpacked temp/AppData); relative-path `os.listdir("data")` throws | Guard EVERY filesystem probe with `os.path.exists/isdir` before listdir; build paths from an absolute `_repo_root()` (frozen-aware), never bare relative names; probe-only code must degrade to empty list on missing dirs |
 | .exe **双击即崩**: `studio.py:NNN → simulink_module.py:NN → node_logic.py:NN ModuleNotFoundError: No module named 'lerobot'` | GUI 的 compat shim 把节点逻辑迁进 `src/lerobot/engineering` 后, **打包没跟着带这个包**; 且 shim 用 `dirname(__file__)/../../src` 相对上溯 ⇒ 冻结时指到 `_MEIPASS` 的父级 | ① shim 改**冻结感知候选表**(`_MEIPASS/src` → `_MEIPASS` → 源码上溯 → env 兜底), 命中含 `lerobot/engineering` 的那条; ② 打包加 `--add-data src/lerobot/engineering:<dest>`(每个平台都要, 少了就是坏包); ③ 冻结核验必须覆盖 **GUI 启动导入链** (见下) |
+| 构建第 12 步 `Build .exe with PyInstaller` 直接红: `ERROR: Unable to find 'D:\a\...\data\database\zmax\sources\config\moveit_xms5' when adding binary and data files` (mac job 照常 success ⇒ Release 只有 mac 资产) | `--add-data` 指向 `data/` 下的实例目录, 而 `data/` 在 `.gitignore` ⇒ CI checkout 里根本没有这个路径 | 构建前加一步造占位: `mkdir -p data/database/zmax/sources/config/moveit_xms5/urdf` + 写一个 `PLACEHOLDER.json`(厂家 URDF/网格本来就不进库)。**别把这些目录提交进库**, 也别删 `--add-data`(现场机有真网格时才有内容) |
 
 ### 冻结包必须验「GUI 启动链」, 只验引擎 = 假绿 (2026-10-08 实测)
 
@@ -632,6 +697,24 @@ assert os.path.isfile(_nl.CANVAS_JSON), "画布真源 JSON 不在包内"   # pac
 
 配套的"文件在不在包里"断言(archive_viewer / find)只是**前置守卫**, 不能替代真导入 ——
 一个漏进包的文件, 和一个进了包但路径解析不到的包, 只有真跑才能区分。
+
+### 核验还要覆盖「写→读往返」: 只有导入全绿 = 半个绿
+
+导入全绿只证明"包不缺件", 不证明"功能真能用"。包里最常见的静默坏是 **写盘跟读盘不是同一个文件**
+(软链在打包后变两份真拷贝, 见上面铁律 1) —— 症状是: 点"保存/打开"都不报错, 而内容永远是空的。
+
+规则: 冻结核验里加一条 **真往返** —— 用产品自己的写入 API 写一份, 再用它自己的读取入口读回,
+断言**业务条数**相等, 并把条数打出来:
+```python
+# 例: 打开工程后画布必须是 94 个节点, 而不是"打开成功"
+n = len(sim.canvas.items()) if getattr(sim, "canvas", None) else -1
+assert n > 0, "写盘写了 A 文件、读盘读了 B 文件 ⇒ 画布空"
+print("canvas_items=%d" % n)
+```
+- 判据只认**业务计数**(节点数/行数/条数), 不认"返回 200""没报错""文件存在"。
+- 本地复现: 把 `sys.frozen=True` + `_MEIPASS=<临时目录>` 手工撞一遍候选表, 就能低成本验证第一段候选命中;
+  真包上再跑一次(点一次用户会点的那个动作, 读它自己的 trace 日志里的数字)。
+- 用户报"打开了但里面是空的"时, **先比写盘与读盘两个路径**, 别去查渲染/数据源 —— 这类 bug 一行日志都不留。
 
 **本地复现冻结语义**: 本机 venv 常带 torch/ultralytics, `--onefile` 归档会超 4GB 报
 `struct.error: 'I' format requires 0 <= number <= 4294967295` → 用 **onedir**

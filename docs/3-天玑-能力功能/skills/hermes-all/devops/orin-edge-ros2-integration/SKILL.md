@@ -144,6 +144,25 @@ $P tools/sim2real_preflight.py   # 仿真链路真跑 8 项 + 真机只读信号
 - 手动测试进程与常驻进程**同名节点**互相干扰 → 测前先 pkill，测完再走 daemon 拉起。
 - `netplan apply` 会顺带弹一下 WiFi（改完记得 `nmcli connection up <原 SSID>`）；同一 LAN 上本机静态 IP 别设默认网关，否则打断上网/relay。
 
+## 重启后 ROS2 CLI 失效 + 夹爪真值取法（实测）
+
+- **Orin 重启后 `ros2 service call` / `ros2 topic echo` 会整片失效**：报 `!rclpy.ok()` 或
+  `rcl node's context is invalid, at ./src/rcl/node.c:428`，setup 链里还可能引用不存在的 ws
+  （`not found: "…/local_setup.bash"`）。这**不是驱动坏了** —— 判活看 `ss -ltn` 端口 + `pgrep -af <驱动的实际路径>`，
+  新 pid 就说明服务在。
+- **绕开 CLI 的做法（推荐）**：写一个小 rclpy 脚本（`Node` + `create_client` + `spin_until_future_complete`），
+  `scp` 过去，在 `source /opt/ros/humble/setup.bash; source <ws>/install/setup.bash; export ROS_DOMAIN_ID=0`
+  之后用 `python3` 跑。比修 ros2 daemon 快，而且能一口气采到「动作前 → 下发 → 动作后」三个真值。
+- `/gripper_pos` **同时有 Float32 与 Float64 两个 publisher** ⇒ 不带类型 `ros2 topic echo --once /gripper_pos`
+  直接报错；必顶写全 `std_msgs/msg/Float32`。它**只在夹爪动作时更新**，静止读不到消息 ≠ 驱动不在。
+- **夹爪方向只看动作后的开度真值，不看 srv 回执**：回执里的 `curr_pos` 可能是**动作前**的位置，单看一次响应会读反
+  （实测把 `target_pos=1000` 当成“收到最小”，实际是开到最大，现场当场纯。口径：`0` = 全合 · `1000` = 全开；
+  要“收到最小”就发 0 并回读 `/gripper_pos` 看是否收敛，连续两次 `close` 停在同一值才算到底。
+- `target_force` 是百分比（夹牢靠它，`-1` 只会偏松）；`push_length`/`push_speed` 在已到底时**不改变开度**（实测 200 无效），
+  别把它当“再合一点”的旋钮。
+- **报警 13047 不属于模式/急停那套闸**：`RSC初始化过程中检测到参数与主控制器不一致，已按主控更新，需要硬重启机器人或控制柜方可生效`
+  —— repair 字段就写“硬重启机器人或控制柜”。这种报警**不靠切 automatic / 重新授权解决**：先摘 13047，再谈 manual/drag 与授权。
+
 ## 相机实时视频流（压缩推流给人看，2026-09-26 实测）
 
 老倪要「把实时视频流发过来 + 视频流要压缩」时的现成配方：`tools/cam_live_stream.py --port 8791 --quality 70`。

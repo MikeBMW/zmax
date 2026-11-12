@@ -7,7 +7,7 @@ import json
 import os
 import sys
 
-sys.path.insert(0, "/home/ubuntu/zmax_rel/tools/gui")
+sys.path.insert(0, "/home/ubuntu/zmax/tools/gui")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5.QtCore import QRectF  # noqa: E402

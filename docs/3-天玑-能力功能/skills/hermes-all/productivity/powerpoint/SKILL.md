@@ -171,7 +171,59 @@ substituted, so render-verify (Procedure step 5) before shipping the PDF.
 There is no offline pure-Python .pptx→PDF path; if `soffice` is absent,
 say so rather than approximating.
 
+### Windows 上没有 LibreOffice 但有真 Office ⇒ 用 COM 导 PDF/PNG（比 soffice 更准）
+`pptx_render.py` 只找 `soffice`，在装了 Microsoft Office 的 Windows 上会返回
+`{"rendered": false}`。此时直接用 PowerPoint COM，渲染出来的就是用户开会看到的那一份：
+
+```powershell
+$app = New-Object -ComObject PowerPoint.Application
+$p = $app.Presentations.Open('C:\path\deck.pptx', $true, $false, $false)
+$p.SaveAs('C:\path\deck.pdf', 32)                     # 32 = ppSaveAsPDF
+$p.Export('C:\path\render', 'PNG', 1600, 900)          # 每页一个 PNG
+$p.Close(); $app.Quit()
+```
+- 判 Office 在不在：`ls "/c/Program Files/Microsoft Office/root/Office16/POWERPNT.EXE"`。
+- 导出 PNG 默认是中文名（`幻灯片1.PNG`），git-bash 里 `ls` 会乱码；用 `Get-ChildItem`
+  或 Python `os.listdir` 取名字，别照乱码回显猜路径。
+- 必须 `$p.Close()` + `$app.Quit()`，否则残留 POWERPNT 进程锁住文件，下一次 Open 报被占用。
+- 目标 pptx 若正在 PowerPoint 里开着（目录里有 `~$xxx.pptx` 锁文件），`prs.save()` 到同名会失败：
+  先存新文件名交付，不要替用户关窗口。
+
+### 纯 Python 侧装 office 库（宿主无 pip 时）
+```bash
+uv venv C:/Users/<u>/.../office-venv --python 3.14
+uv pip install --python <venv>/Scripts/python.exe \
+  --index-url https://pypi.tuna.tsinghua.edu.cn/simple \
+  python-pptx python-docx openpyxl
+```
+- **uv 的路径必须写 `C:/...` 原生形式**；写 `/c/Users/...` 会被拼成 `C:\c\Users\...` 建错目录。
+- 官方源下 pillow/lxml 常几分钟不动，换清华源 1 分钟完事。
+- 装完必须回读版本（`import pptx; print(pptx.__version__)`），别只看安装日志。
+
 ## Pitfalls
+
+- **A verifier that only greps strings is not a verifier.** `assert '11.467 s' in deck_text`
+  passes while the same page says 45.87 s two lines away, and passes when the
+  components don't add up. Make each check a numeric recompute from the source
+  (block durations, ranges, percentages) and assert the *formatted* value the
+  deck must contain — including the units and the range endpoints.
+- **Never hand-write "verifier: N items / N PASS" into a slide.** It drifts the
+  moment a check is added (22 → 32 → 37 in three edits). Have the build script
+  run the verifier, parse its summary and write the numbers back, and put a
+  self-consistency gate in the verifier itself: if the count printed in the deck
+  ≠ the count just executed, exit non-zero.
+- **Timeline/Gantt pages: one coordinate system, or the plot silently shifts.**
+  Storing blocks relative to a window start while the axis is absolute (or vice
+  versa) does not raise — it just draws the wrong slice, and any metric filtered
+  by that window ("occupancy 41.96 s / 91%") becomes a filter artifact. Keep
+  blocks in absolute time, window with `[base, base+dur)` for both drawing and
+  metrics, and assert drawn bar x-positions against the source block starts
+  (match by fill colour to skip legend chips and background bands).
+- **If a per-piece time account needs a filler term to reach the total, the
+  components are wrong.** "7.75 + 1.41 + 2.31 = 11.47" hid an omitted 0.99 s move
+  and an insert amortized over 4 pieces instead of 2. Reconcile bottom-up
+  (sum of real block durations + measured gaps == cycle) and show 3 decimals on
+  both terms so the addition is visibly exact.
 
 - **Run splitting**: PowerPoint fragments paragraph text into runs at
   spell-check and edit boundaries. `--replace-text` first merges adjacent
@@ -209,8 +261,23 @@ say so rather than approximating.
 - **`✗` (U+2717) / `✘` / `✔` have no glyph in Noto Sans CJK — they render as `.notdef` 豆腐块** (`✓` U+2713 and `◐` U+25D0 do exist). Use `✓` + `×` (U+00D7) for pass/fail marks. Font fallback fails silently, so this is only visible after rendering.
 - **图内注释**用 `fig.text(...)` 落在画布外 + `subplots_adjust(bottom=…)` 留边距；写在 `transform=ax.transAxes` 的 0.01–0.05 处必然压最短的那根条或曲线，改完还要重新量图底与页面结论条的距离。
 - **2×2 矩阵图的四格标题**放在「离数据点最远的那半格」：点全在顶部就写底部，全在底部就写顶部；写死在某个角必然被压。
-- **卡片/表格/结论条三者要按页面坐标算一遍**：`卡 y + n×步进` vs `结论 y` vs `页脚 7.02`。这类碰撞最常见，且肉眼看小图看不出来。
+- **表格/卡片/结论条要按页面坐标算，且要按**渲染后**的实际高度算**：声明值
+  `表格底 = y + head_h + (n_rows−1) × row_h`，但单元格文字一换行 PowerPoint 就**自动加高该行**，
+  真实底边比声明值低 —— 于是「表底 vs 下方说明」的碰撞在 spec 里算不出来，只能看导出的 PNG。
+  做法：① 先在 spec 里留 ≥0.15in 余量；② 导出 PNG 后看最后一行与下方文字之间有没有缝；
+  ③ 要紧就**同时**压 row_h/字号 **并**把下方文字再往下挪（只做一样只能在两页之间来回倒）。
+  `页脚 y`、`结论条 y`、`卡 y + n×步进` 三者与表底一起算一遍，这类碰撞肉眼扫小图看不见。
+- **判「贴住」的哨兵**：表格最后一行与页脚横线/下一段文字之间看不到空隙、或某格把一两个字挤到第二行
+  ⇒ 已经到临界，必须调；等文字真的叠上就来不及逐页返工了。
 
+- **厂家 STL 常以 mm 为单位，而 URDF 的 origin 是 m**：混用会渲出 272 米高的机器人。
+  读网格后先打印 bbox，量级 >10 就乘 0.001；尺寸表里的数要跟 bbox 对得上再进 PPT。
+- **headless 机器不要指望 pyrender/trimesh 的 save_image**（本机 `gladLoadGL` 直接失败）：
+  用 numpy 自写 z-buffer 光栅化（三角形投影 → 重心坐标 → 深度测试，2x 超采样降采样），
+  7 个 STL / 16 万三角形一次四视图约 30 s，且结果可复现（无 GPU 依赖）。
+- **matplotlib 图内中文 = 豆腐块**：先 `rcParams["font.sans-serif"]=["Noto Sans CJK SC",…]`，
+  再画标注；尺寸线/文字画在图像边界外时先 `np.pad(img, …)` 留白，否则被 `set_xlim` 裁掉，
+  校验方法是量「标注带」的墨量（右/下 10% 条带），不是看文件大小。
 - **CJK runs need the East Asian typeface set separately**: `run.font.name
   = "微软雅黑"` only writes `a:latin` — Chinese glyphs fall back to the
   theme font and render wrong. Also append `<a:ea typeface="微软雅黑"/>`

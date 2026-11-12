@@ -13,7 +13,7 @@
   act/world/sobs/rsn/llm/est/pred/mc/mp/lat/cal/inn...) 展开成 verification_layer 真实断言方法名。
 - `tools/ss_level_tests.py` — CLI: `--list` / `--level L2` / 全量; run_level 逐个 getattr + fn(np) 调用
   (VerificationLayer 断言签名是 fn(np), 不是 fn(None)!), 输出 ✅/❌ + detail。
-- `docs/7-瑶光-记录追溯/notes/capability_levels_L2L3L4.md` — 升级路径 (L2→L3: VLM权重+ActionHead训练+端到端模式;
+- `docs/capability_levels_L2L3L4.md` — 升级路径 (L2→L3: VLM权重+ActionHead训练+端到端模式;
   L3→L4: 世界模型实时接入+流形导航闭环+多布局恢复)。
 
 ## 实测结果

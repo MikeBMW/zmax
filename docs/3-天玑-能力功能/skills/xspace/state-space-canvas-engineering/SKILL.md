@@ -12,8 +12,79 @@ metadata:
 
 # 状态空间画布工程 (改节点/连线/拓扑的安全做法)
 
+> 画布层节点数 ↔ 册子页数 1:1 对账、校验器动态计数、导入顺序、合并语义与环复核：见 `references/canvas-ppt-reconciliation.md`。
+>
+> 右键入口(浏览器静态页) → `references/canvas-node-context-menu.md` · 日志刷屏 → `references/canvas-log-noise.md`。
+
+## 🔴 「打开总工程」没反应/加载失败 = 画布文件是 Linux 软链 (Windows 每次新版复现)
+
+日志形态: `打开总工程: 跳过确认框 (选文件即确认) → 写盘…` 之后**没有** `界面回填 切画布tab=True`。
+根因: Linux 仓库里 `flows/state_space_obs.json` 是软链
+(`flows/… -> ../src/lerobot/engineering/flows/… -> data/database/zmax/sources/canvas/…`)，
+打包/同步到 Windows 后软链要么断要么**自指**
+(实测 `canvas/state_space_obs.json -> ../../../../data/…/canvas/state_space_obs.json` 指回自己 ⇒
+`Too many levels of symbolic links`)，GUI 读不到 ⇒ 加载失败。
+
+四个落点都必须**实体文件** (94 节点/222 连线, 纯 JSON 约 133KB):
+`<app>/_internal/flows/` · `<app>/_internal/src/lerobot/engineering/flows/` ·
+`<ZMAX_ROOT>/flows/` · `<ZMAX_ROOT>/data/database/zmax/sources/canvas/`。
+`<ZMAX_ROOT>=C:\Users\Mike\zmax` 且这个根里**本来没有 flows/**，所以这一格经常是“缺失”而不是“软链”。
+
+定式（已落地）: `tools/canvas_selfheal.py` —— 检查每个落点是否「非软链 + JSON 可解析 + nodes>0」，
+坏了就从真源（`<ZMAX_ROOT>/data/…/canvas/` → `~/zmax_repo/…` → app8 包）复制一份；
+断链/自指必须**先 os.remove 再 copy**（直接覆盖写会 ELOOP）。
+已挂 cron `画布真源自愈 (10m)`（`--quiet`，全好时零输出）。
+⚠️ 版本更新后**先把 Windows 补丁同步到新 app**（SIGALRM→线程超时 · subprocess stdin=DEVNULL ·
+`MUJOCO_GL=wgl` · 打包版无 `tools/gui` 时 cwd 退回仓库根）—— 补丁只在旧包里，新版就会再踩一次。
+
+
+
+1. **按显示名找 id**：册子和界面上是 `🧬 技能词典 · L2 动作基` 这类带 emoji 的显示名，画布真源里是 `n_skill_dict`。在 `data/database/zmax/sources/canvas/state_space_obs.json` 的 `nodes[].name` 里搜关键词拿 id；`l2_nodes()` 返回的是 id 集合，搜显示名搜不到。
+2. **dry-run 看断口**：`./gui-venv311/bin/python tools/del_canvas_node.py --id <id>` 打印入边、出边、以及每个下游「剩余上游 N 个」。**N=0 就是造孤岛**，先重定向再删；多源汇聚节点（势场 `ss_grav_h` 六路输入）少一路不断链，单上游节点会直接掉下来。
+3. `--apply` 落盘（自带备份 `zmax_data/backup_state_space_obs_<MMDD_HHMMSS>.json`）。连删多个节点时按秒命名的备份会互相覆盖——先手动 `cp` 一份，或事后以 `zmax_data/snapshots/` 的副本为准。
+4. **删 `by_level.py` 里的同名条目**：`LEVELS_INDEX` 是「它属于哪层、册子出几页」的唯一依据；画布删了这里没删 → 册子照旧出页。
+5. **清 pyc 再重出**：`rm -f src/lerobot/engineering/nodes/__pycache__/by_level*.pyc tools/__pycache__/verify_solution_deck*.pyc`。旧 pyc 让补丁「看起来没生效」，是这套工程最常见的一次性返工。
+6. `./gui-venv311/bin/python tools/build_solution_deck.py`，必须收到 `58 PASS / 0 FAIL`。
+7. 正式产物 `cp -f` 到 `zmax_data/deliverables/...`（用户打开的是这份），再 `pkill -x soffice.bin` 重开才看到新页数。
+8. commit 只含代码（`by_level.py`、工具、校验器）——**画布 json 在 `data/` 下被 .gitignore**，另存一份到 `zmax_data/snapshots/state_space_obs_<动作>_<HHMM>.json` 才算留档。
+9. `printf 'ss_canvas\n' > /tmp/zmax_nav_cmd` 通知画布重载，文件被回写才是真生效。
+
+### 只删册子页、不删画布节点（NO_PAGE）
+
+配置类/汇聚类节点（能力档位 `sscap`、总装记忆中枢 `ss_mem_share`）画布要留、册子不该单独占页：
+
+1. `tools/l345_pages.py` 顶层写 `NO_PAGE = {"sscap", "ss_mem_share"}`，并在**同一处**紧跟 `LC.SKIP_IDS = set(NO_PAGE)` —— 模块导入即生效，基础层也受控。
+2. `build_solution_deck.py` 里 `import l345_pages` 必须排在 `_C2.add_block(pr)` **之前**；排在后面，基础层仍会为它单独出页（页数没少、名字还在），且看不出报错。
+3. `l2_chain_pages.add_block` 的 `order` 按 `SKIP_IDS` 过滤，`node_page` 的 `total` 用过滤后的长度，位次才连续。
+4. 校验器三层节点页数与总页数一律 `len([x for x in _level_ids(lv) if x not in NO_PAGE])`，**不许写死**。写死 18/11/5 或总页数，每次增删都误报 FAIL，掩盖真问题。
+5. **不要连带过滤 `node_page` 的 ins/outs**：抹掉上下游连线后，下游页会变成「输入 0 条 / 输出 12 条」的孤页——册子干净了但事实失真。NO_PAGE 只决定「是否单独出页」。
+
+### 「这页怎么重复了」= 链路引用，不是重复页
+
+同名出现在多页是正常的：每个节点页都画「谁给它、它交给谁」，汇聚节点必然出现在所有下游页的框里。用角标判归属：
+
+```python
+pat = re.compile(r'(认知层|任务层|决策层)\s*·\s*第\s*(\d+)\s*/\s*(\d+)\s*位')
+hits = [(i, m.group(0)) for i, s in enumerate(pr.slides, 1)
+        for sh in s.shapes if sh.has_text_frame
+        for m in [pat.search(sh.text_frame.text)] if m]
+```
+
+带角标的才是独立页；没有角标的只是别人页里的连线框。各层角标数应等于 `_level_ids(lv) - NO_PAGE`。用户说「删掉」时，先按这条把「独立页」与「引用」分开报给他，再动手——删连线会造孤页，删节点会断下游。
+
+### 合并（同一脚本的多个开关 → 一个节点）
+`swds(--spool)` / `swvideo(--video-dir)` / `swworld(主运行)` 本是同一个 bridge 脚本的三个输出面，合并成一个节点：被删节点的入边/出边端点重定向到主节点 → 删主节点指向它们的自指边 → 去重 → 校验无悬空。`tools/merge_sw_nodes.py` 就是这套，务必打印「改前 / 改后入出清单」当判据。
+
+### 三条代价规则
+- **校验器不许写死页数**：`tools/verify_solution_deck.py` 里 `_NP_TOTAL = len(ORDER) + 5 + 18 + 11`、`('L4','认知层',18)`、`('L5','任务层',11)` 都是死数，删一个节点必然 FAIL 两三行。改法是 L3/L4/L5 三层**全部换成 `len(L345._level_ids(lv))`**，不是把 18 改成 17 —— 否则下次增删还得改。
+- **备份文件名秒级会互相覆盖**：连删多个节点时几次备份落在同一秒，只剩最后一个删除前的状态。批量删要么给脚本加毫秒/序号，要么先手动 cp 一份；恢复靠 `zmax_data/snapshots/` 的副本。
+- **「有节点么」≠「删掉」**：用户问某页/某节点在画布上有没有时，只答 id、归属层、册子第几页，等点名再动；顺手删是越过授权。
+
 > 深度参考: `references/node-source-mapping-and-run-button.md` — 节点右键「打开源代码」三层解析（节点 params.source → 中间件 SOURCE → registry file:line，id 失配也能开）；画布「▶ 运行/■ 停止」按钮点亮、写点只读拦截、stop_sim 先解播放态。
 > 常驻循环「卡住 / 太慢 / 空转 / 反复检测 / 停不下来」类投诉的判别与性能口径（心跳 + **按件变化**打的证据行、画布每拍重写→自激重载、dt 结算少扣杂项、白名单漏节点→u 恒 0、模型加载永久熔断、跑够即停与干净退出）：`references/canvas-loop-runtime-observability.md`。
+> 方案册里「L2 链路 k/N · 节点名 · id」那几十页怎么调序 / 重出 / 验收（`PIN_POS` 锚点、母版层页重生成、LibreOffice 开窗冲突、**构建入口与用户那份是两份副本→md5 同步**、**框图可读性三段正交走线与结构指纹验收**）：`references/l2-chain-deck-pages.md`。
+> 「L3/L4/L5 层页」=「认知层 · 第 k / 18 位」那批：同册但**另一套生成器**（`tools/l345_pages.py`）、没有 `PIN_POS`、以及"不等重出直接改现有册子页序 + 位次重编号"的做法，也见同一份 `references/l2-chain-deck-pages.md`。
+> 改完 `state_space_obs.json` 用户还说「你也没改啊」—— GUI 内存旧布局、`/tmp/zmax_nav_cmd` 重载通道、重载后自动回写覆盖外部编辑：`references/canvas-edit-visibility.md`。
 
 ## When to Use
 - 用户要求"加一个节点""把它接到 X 后面""所有 Y 都要进 Z 节点""整理连线/不要交叉/删掉不相关节点"。
@@ -73,7 +144,7 @@ metadata:
   再跑 `verify_canvas_render.py` 看「文件 N / 渲染 M」。
 * 顺带: 往行里插节点会挪 `fn_id` (描述真源 `function_notes.json`/`config_meta.json` 静默错挂,
   判据只看得见"空描述"看不到"错挂")——修法 `tools/fix_function_notes_align.py` + `tools/config_meta.py build`,
-  细节见 zmax-console::references/canvas-insert-shifts-fn-id.md
+  references/canvas-insert-shifts-fn-id.md`、`references/skill-signal-wiring.md`(把技能信号接进下游节点的接线 recipe: 声明 inputs→加 link→mw_db sync→只透传不控制)
 
 - **端口一律字符串列表** (`["in1","out1"]`); 历史遗留的 `[{'id':'out1','label':...}]` 字典格式要先归一(原标签存 `params._port_labels`)。
 - **新线必须前向**: `f.x + f.w <= t.x`(源节点右边界 ≤ 目标节点左边界), 否则渲染成交叉/反向线, 被断言拦下。
@@ -335,6 +406,40 @@ metaworld 渲染 = **MuJoCo** 离屏渲染器 (`env.render()`; 无 X11 用 `MUJO
 - 本次实测: 无执行注册 **0** · 真缺口 **0** · 完全孤立 **0** ⇒ 画布本来就是接线完整的, 没有"死节点"可删。
 - 可删的只有**有文档依据**的: 属于已关闭任务线的节点（例: 参数寻优线关闭 → 通用算子 A/B/C 节点）。
 - 删前跑安全判据: **删除后每个邻居仍 ≥1 入且 ≥1 出**（不许产生断链）；删后复扫孤立=0 + 渲染复核 + 控制台重启。
+
+### 🔴 用户说「这个功能我在画布上也没画啊」⇒ 先用真源事实答, 别跟着删
+
+生成器脚本加进画布的节点, 用户完全没有"我画过"的手感。他要的是**它到底在哪、怎么来的**, 不是一句"有的"。
+五条只读证据按序跑完再回话:
+1. **在不在 + 在哪**: 从真源 `realpath(flows/state_space_obs.json)` 按 id 取节点, 给 `x/y` 与它落在哪条 `row_bg` 行带区间,
+   并说清夹在哪两个邻居节点之间 —— 坐标能把"我没画过"变成可核对的事实。
+2. **几条连线**: 扫 links 的 `f`/`t` 两端逐条列 `label`。有出/入线 = 数据面已接上, 不是悬空框。
+3. **谁加的**: `grep -rln "<节点 id>" --include=*.py tools/` —— 常命中 `tools/gui/gen_*_node.py` 这类"画布接入 … (幂等)"脚本
+   ⇒ 结论写"不是你手画的, 是生成脚本加的", 别只说"画布上有"。
+4. **什么时候起就有**: `grep -l '"<id>"' data/database/*/sources/canvas/_archive/*.json | sort | head -1`。
+   ⚠ 快照名 `before_<事由>` = 那一瞬之前的状态 ⇒ **它的时间不是该节点的诞生时间**, 别拿它当依据。
+5. **有没有真实现**: `ls src/lerobot/middleware/nodes/n_<mod>.py`。没有壳 ⇒ 工程里就是 PURE 直通 (方案册页会如实标),
+   有壳才谈"真算"。
+
+处置: 先给「在画布/坐标/连线数/来源脚本/直通-真算」五项, 然后只问留还是删。**删除必须用户点头**;
+删后不能只删 JSON 节点 —— 按「增删连线」的完整同步链走 (`mw_db sync` → 重建 `busdb.json` → `engineering_db build` → 两个 `--check`),
+否则 Trace/端口表里那个节点与它的线照旧在。
+
+**删节点的完整收口清单 (少一步就留残渣或会复活)**:
+1. **备份 + 还原命令**: 走 `flows.save_canvas()`(自动备份到 `_archive/state_space_obs_before_<事由>_<ts>.json`), 把还原命令打给用户。
+2. **邻居断链预检只能看"本来有 → 变 0"**: 源头节点(如真机信号源)本来就 0 入边, 用「每个邻居必须 ≥1 入且 ≥1 出」硬判会**假报断链**;
+   判据写成 `before_in and not after_in` / `before_out and not after_out`。
+3. **数据库三张表回读**: `mw_link` / `mw_port` / `mw_node` / `canvas_nodes` 含该 id 的行必须 **0**; 只跑 `engineering_db.py build` 不够(见上)。
+4. **生成器的硬编码表要一起删**: `tools/gen_topic_types.py::NODES` 那条(否则话题类型里还留着一个不存在的节点)、
+   `tools/mcd_build.py` 的 `affects`、审计/判据集合 (`canvas_level_audit.py` / `canvas_link_reconcile.py`) —— 然后重跑
+   `gen_topic_types.py` + `mcd_build.py` + `gen_by_level_index.py`。
+5. **断掉复活路径**: 把「画布接入 …(幂等)」那类 `tools/gui/gen_*_node.py` 脚本在 `__main__` 里加 guard 直接 `exit 3`(写明事由),
+   并清掉布局脚本 (`post_layout_fix.py` / `gen/ss_obs_layout2.py`) 里的节点/连线条目 —— 否则谁跑一次它就回来了。
+6. **判据改成关系式**: 别再断言「该节点必须在」, 改成「功能节点孤立 = 0」+ 如实打印该节点的存在状态, 否则下次删节点判据永远红。
+7. **交付件重出**: 方案册 L2 逐节点页数随画布节点数变 ⇒ 先 `tools/build_layer_nodes.py` 再 `tools/build_solution_deck.py`,
+   验收 `verify_solution_deck.py` 0 FAIL, 并回读"全文 0 处出现该节点名"(`references/l2-chain-deck-pages.md`)。
+8. **实现代码不跟着删**: `nodes/library.py` 的 `node_*` + `_EXTERNAL_LOC` + 注册关键字 + 真实现文件一律保留(可复用),
+   交付时明说"不在画布/PPT, 但代码还在", 要连代码一起删等用户点名。
 
 ## 工程架构 (2026-09-28 迁移后): 逻辑在包内, GUI 只显示
 
@@ -630,7 +735,7 @@ Python 只在启动时读一次源码, 改完不重启零效果; 但反复重启
 | 指标 | 基线 | 怎么查 |
 |---|---|---|
 | 画布节点项 / 连线项 | **93 / 212** (2026-10-28 实测; 更早 90/201 · 89/183 · 87/172) | `verify_canvas_render.py` |
-| 节点数 / 连线数 (JSON) | **93 / 213** (2026-10-28 实测; 更早 90/202) | 直接数 `state_space_obs.json` |
+| 节点数 / 连线数 (JSON) | 功能节点 **79** / 连线 **214** (删「板坐标系定位」后的现值; 更早 80/220 · 93/213) | 直接数 `state_space_obs.json`; **背景带 `row_bg`/`bg` 不算节点**, 增删一次这两个数就变 —— 只用来比改前/改后, 不当绝对判据 |
 | 档位审计 | R1 15 · R2 **40** · R3 13 · R4 7 · R5 2 · 无执行注册 1(既有: 元数据MOE门控路由) | `canvas_level_audit.py` |
 | 档位测试 | L2 275/275 · L3 94/94 · L4 178/178 | `xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py --level Lx` |
 
@@ -1120,10 +1225,40 @@ for k in z700_internal gain_schedule; do echo -n "$k="; grep -c "$k" $C; done   
 | 画布 UI | `tools/gui/simulink_module.py` | 画线/命中/参数落盘 (纯界面) |
 | 数据流调度 | 画布 JSON 的连线 → `middleware/loader.py::topo_order()`(SCC 缩点→拓扑序) → `middleware/project.py::Project.step()`(逐 `nd.step()`) | 每节点 pull→compute→push |
 | 任务/场景调度 | `tools/ss_scene_switch.py` | 任务 ↔ 场景 ↔ 画布数据源节点 |
-| 动作调度 | `tools/l2_daemon.py` | FIFO → 授权 → 逐段闸 → 真机 |
+| 动作调度 | `src/lerobot/engineering/exec/daemon.py` (tools/l2_daemon.py 只剩 23 行 runpy 薄壳) | FIFO → 授权 → 逐段闸 → 真机 |
 
 改"谁先跑"去 middleware 拓扑; 改"跑哪个场景"去场景切换; 改"能不能动"去 `l2_daemon`。
 判某节点在一拍里干了什么用 CLI (`mw_project.py step` → 读 `n.last_status`), 别靠 GUI 点击。
+
+### 🔴 常驻执行器不塞进每拍节点: 契约归工程, 进程留 systemd
+
+用户问「X 不能脱离状态空间工程, 是不是放到 <某个执行类> 节点里比较合理」时, 答**方向对, 但要拆成两件** ——
+把常驻 daemon 搬进节点函数有三个必然代价: ①节点被禁用/断点/未连线 ⇒ 动作没人发, 而且**没有日志、没有回执**
+(最危险的静默失效); ②画布节点是 220~310ms/拍的纯函数, daemon 是 10Hz 常驻 + FIFO + 断线重连, 生命周期不同;
+③授权闸必须 fail-closed 且**不依赖 GUI 存活** (画布崩了臂也必须停手)。
+
+落法 (已实测):
+- `src/lerobot/engineering/exec/contract.py` = 契约本体: 段表 schema (必填 ros/speed_mm_s, 强烈建议 abs_mm) ·
+  闸序 `auth→stage→physics→vl→dispatch→arrive` · 回执 13 字段 · `validate_seg` / `dispatch`(fail-closed) / `receipt`(只读)。
+- 执行类节点每拍**只读回执** (`kind=exec_receipt`, 带 `gate_order`), 下发必须**显式** (`ctx["dispatch_segs"]`) ——
+  画布每拍绝不自动发, 否则节点一被禁用就变成"动作消失且无记录"。
+- 代码随工程走 / 运行态随数据盘: 三个 env 就够 `ZMAX_REPO · ZMAX_DATA · ZMAX_L2_FIFO`; tools/ 下留薄壳 runpy 转调;
+  systemd `ExecStart` 改指工程内路径 (仓库副本 + `/etc` 同步 + `daemon-reload`, **不重启运行中的进程**)。
+- 🔴 **搬进 `src/` 必改仓库根探测**: 原来 `dirname×2(__file__)` 在 `tools/` 下是对的, 挪到 `src/lerobot/engineering/exec/`
+  会指到 `src/lerobot/engineering` ⇒ 数据路径全错。改成向上找 `.git` (+ `ZMAX_REPO` 覆盖); 仍住在 tools/ 的兄弟模块
+  (如 `ctl_auth`) 要 `sys.path.insert(0, REPO/tools)`。顺带查一遍该文件里所有 `__file__` 上溯。
+- 同一批改的验收: 契约在工程内 · daemon 真实现行数 vs 壳行数 · 节点真跑出回执 · 无授权 fail-closed 一条不发 ·
+  每拍不自动下发 · 段表缺字段判废/缺 abs_mm 明确提示漂移 · 换盘只靠三个 env。
+
+### 🔴 端口形同虚设的两个方向 (改接线前后都要查)
+
+- **上游 → 下游**: 实现在读模块级 `_SS_STATE` 而不是 `ctx["inN"]` ⇒ 上游连线永远不生效 (连线在、值不变)。
+  判据: 灌一个合成 ctx (`{"in1": {"value": {...}}, "age_s": 0.05}`) 看输出变不变; 不变就是没读端口。
+- **端口语义按消费者的读取点核对, 不按连线标签**: 实测某节点 `out3` 是"安全约束", 却接在下游 `in1`(目标点),
+  而下游只读 `in2` ⇒ 那道约束一直被当目标点喂进去, 等于没有。改接前先 `grep -n "def _limits" -A8` 看它到底读哪个口。
+- **分流要显式**: 同一个实现服务多个节点时按 `ctx["name"]` 分派, 并保证互不抢占分支 ——
+  实测两个节点共用 `run()` 时, 后加的分支会先命中别人的输入 (例: 位姿守护只认"边界"类节点名,
+  否则调制器的 `in2` 会被它抢走, 调制器永远不执行)。
 
 ## 往画布插一个节点 ⇒ 先想清楚 FN-*-NN 编号会整体平移 (2026-10-25 实测)
 
@@ -1359,7 +1494,7 @@ for k in z700_internal gain_schedule; do echo -n "$k="; grep -c "$k" $C; done   
 ./gui-venv311/bin/python tools/canvas_cleanup.py           # 删节点(带安全判据, --apply 才写盘)
 pgrep -f "gui-venv311/bin/python studio.py"                # 控制台在跑; 并确认 Traceback=0
 ```
-参考实证: `docs/7-瑶光-记录追溯/incidents/TASK_LEDGER_20260925.md`（会话七/十一/二十一: 连线失踪、清理、执行链重连）。
+参考实证: `docs/TASK_LEDGER_20260925.md`（会话七/十一/二十一: 连线失踪、清理、执行链重连）。
 L5「能力档位 → 点运行 → 自动标注 → 自动训练 → 重启自动加载」这条链的机制、状态文件字段、
 反假训练三道闸门与槽位标注工具: `references/l5-annotate-train-loop.md`。
 画布上「配置/标定/诊断」接口节点(参数注册表 → 描述文件 → 面板/远程/诊断)的设计约定与 ASAM-MCD 类比:
@@ -1375,6 +1510,22 @@ L5「能力档位 → 点运行 → 自动标注 → 自动训练 → 重启自�
 MoveIt 容器已退出) 与 **仿真基座系≠真机基座系 (差 ~0.7m，只能叠方向增量)**: `references/velocity-to-pose-bridge.md` §1-§5。
 信号分析(Graphic)树里找不到刚接的 live 话题、以及页面参数→执行器→段表的速度/步长对账口径(三处改写、限速闸)、
 以及数据空间窗口"反映慢"的五段链路量法: 同文件 §9 · §10 · §11。
+
+## 节点"看不见"先量几何, 再谈接线 (2026-11-02 实测)
+
+用户说「L2 也看不到这个节点」时, 九成不是接线问题, 而是**它没和本行带到同一高度**或者被邻节点盖住:
+
+1. 从真源取该节点 `x/y/w/h`, 取其所属行带 `ssbgN` 的矩形 (`x/y/w/h`), 断言它在带内 (纵向也要, 不只是横向);
+2. 算带内两两重叠 (排除 `ssbg*`/`row_*` 背景), 重叠对逐条列; 同 y 差 < `h` 就是压在一起;
+3. 修法: 把目标节点对到本行主行的 `y`(与邻居节点**同一个 y** 才叫"在这一行"), 让位置的那位下移一行 (新 y + h 仍须 ≤ 带底);
+   不要靠"挪到带外空地"想省事 —— 带外看起来就成了没分层的游荡节点。
+4. 收尾三证: 带内零重叠 · `l2_wiring` 的 L2 集合仍含它 (页数不变) · 全画布功能节点两两重叠 0。
+   连线不要为了腾位置而重排: 语义对的边 (帧/概念提示/框提示 → 掩膜/轮廓特征/实例清单) 保留原样。
+
+**改名要同步四处, 少一处就有一处显示回旧名**: 画布 `name` (走 `save_canvas`) · 中间件壳 `n_<mod>.py::NAME` ·
+`middleware/nodes/_index.py::BY_NAME` 的键 · `src/lerobot/engineering/nodes/by_level.py` 的显示名字段。
+方案册页标题取的是**中间件 `NAME`**, 层页表格取的是**画布 `name`** —— 只改一个, 两处就会打架,
+用户会拿旧名那一页回来说"改了怎么还是旧名字"。改完必重回 `build_layer_nodes.py` + `build_solution_deck.py`。
 
 ## 节点改名 / 新增任务 = 真源三件套 + 生成器, 别手改生成物 (2026-10-12 实测)
 

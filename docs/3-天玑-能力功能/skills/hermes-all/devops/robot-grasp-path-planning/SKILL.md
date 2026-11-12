@@ -19,6 +19,19 @@ metadata:
 
 分工: 本技能管**规划与自检**; **下发与现场闸门**归 `real-arm-motion-control`; **叠加图/相机侧画法**归 `sim-real-scene-overlay`。
 
+## 0a. 真接容器里的 MoveIt plan-only (2026-11-02 实测)
+链路: 宿主机 `tools/moveit_plan_req.py`(读真机 tap → `zmax_data/runtime/moveit_plan/plan_req.json`)
+ → 容器 `zmax-moveit` 内 `python3 /ws/moveit_plan_live.py --interval 3.0 --group arm --base <型>_base --rename-prefix <型>_`
+ → `live_plan.jsonl` + `live_plan_latest.json` (tcp_path 米 / joints_path rad / plan_code / plan_time_s / end_err_mm)。
+容器安全: `allow_trajectory_execution=False` + ROS_DOMAIN_ID=42 隔离 ⇒ 不可能让臂动。
+| 坑 | 症状 | 修法 |
+|---|---|---|
+| 容器写着却不在跑 | `docker ps` 无 / exit=137 但 OOM=false, RestartPolicy=no ⇒ 重启后永不回来 | `docker start` + `docker update --restart=always` |
+| 起了容器也不出规划 | 只有 move_group 进程, live_plan 不更新 | 规划循环要**单独起**: `docker exec -d … python3 /ws/moveit_plan_live.py …`; 落成 oneshot systemd (ExecStartPre 保容器 / ExecStart 幂等拉起) |
+| **IK 另一支解** | TCP 只走 50mm, 关节却 J1 0.16→-3.18rad, 总行程 6~7rad, TCP 折线 4m | 必须加**关节空间闸**(单步 ≤0.8rad / 总 ≤3.0rad) 和 **绕行闸**(总长 ≤2.5×直线+300mm), 不过就回退 rule; 只看 TCP 会中招 |
+| 只用探针冒充规划 | 节点 `moveit.available=true` 但没轨迹 | 探针只查 docker 镜像; 真结果读 `live_plan_latest.json` (新鲜 ≤8s + plan_code==1 + 双闸过才接管) |
+下游集成: `src/lerobot/engineering/nodes/moveit_backend.py::snapshot()` → 节点 `plan_impl` 选后端 (`ZMAX_PLAN_BACKEND=auto|rule|moveit`), 段表带 `abs_mm`+`t`(MoveIt 参数化时长按段长分摊)。
+
 ## 0. 先立口径
 - 路径 = **base 系 TCP 位姿序列**(位置 + 姿态)。
 - 位姿来源 = **示教库**, **不自己编**: `data/skills/l2_atomic/taught_points.json`(字段 `frame="base_link"`),

@@ -391,7 +391,7 @@ metadata:
   中途重建会让正在跑的训练报 `FileNotFoundError: ..._ds/images/img_00017.jpg` 直接死掉(实测 13000/30000 处崩)。
   定式: **要么先等训练结束再重建, 要么给这一版编到新目录**(不要让评估/体检和训练共用同一个 `_ds`)。
   另外 `--from-recording <会话> --no-train` 是**只建库+质检**的体检口径(不动臂、不烧 GPU), 报完数字就退。
-- 状态: `~/zmax_data/gs_map/status.json`(页面 /ctl/gs_map 轮询); 文档 `docs/6-开阳-工程落地/MAPPING-3DGS.md`。
+- 状态: `~/zmax_data/gs_map/status.json`(页面 /ctl/gs_map 轮询); 文档 `docs/MAPPING-3DGS.md`。
 
 ## 手动走位采集(操作员用控制器自己的“运动到点”, 助手只采集)
 

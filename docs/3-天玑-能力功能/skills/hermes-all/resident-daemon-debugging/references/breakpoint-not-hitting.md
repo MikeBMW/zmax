@@ -50,6 +50,34 @@ sed -n 's/.*pid=\([0-9]*\).*/\1/p' zmax_data/ss_live/actuator_calls.log | sort |
   节点宿主历史上会换十几个 pid（各代 GUI / 常驻循环 / 单次脚本），所以调试配置要指向“会执行该节点的入口”，
   不是“现在开着的任意 GUI”。
 
+## 1c. 同名代码被复制 N 份 + 单射在职调度 ⇒ 断点下错副本
+
+用户贴出自己下断点的那段 `return`（看上去“就这一段代码”）时说进不了断点，而代码明明在跑。
+先数副本、再认在职，两步都要做。
+
+```bash
+# ① 副本数：同一个 return 块的标志串 / 类定义各有多少份
+grep -c '"src": self.source' <file>          # = 副本数
+awk '/^class |def clamp|return \{/{print NR": "$0}' <file>   # 类 → 函数 → return 行号全景
+# ② 现在哪一份在跑：读实时状态文件里的在职标志（龄 <1~2s 才算）
+python3 -c "import json;d=json.load(open('zmax_data/ss_live/skill_phys.json'));\
+print([(k,v.get('stage'),v.get('在职')) for k,v in d['skills'].items()])"
+# ③ 调 clamp 的进程到底是哪个 / 有没有挂调试器
+ps -o pid,lstart,cmd -p <pid>                # 无 debugpy/launcher = 常驻 plain-python
+tr '\0' ' ' < /proc/<pid>/cmdline | grep -c pydevd    # 0 = 这个进程里断点不会停
+```
+
+判读: `在职=1` 的那一项是唯一被调用的副本（调度器 `_phys` → `_sk.clamp`）；`在职=0` 的条目即使带着
+`why`/`err` 也只是上一拍的回放，它那份 `clamp()` 一行都不执行。派发器里常见的写法是
+`if _on: _p = self._phys(...)` / `else: _p = self._last_p.get(st)`，所以“有输出”不等于“这段代码跑了”。
+
+安全停进去: 常驻件若带单拍入口（`--once` / `--ticks 1`），就用它 —— launch 里 `program` 指该脚本、
+`args: ["--once"]`、断点下**在职那个类**的 return 行，跑一次打印完整结果字典即退出。
+**不要对在役 60Hz 派发器 attach 后停在 clamp**：一停整条下发链就冻住。
+
+报给用户的结论必须同时含“哪一份副本（类名 + 当前 return 行号）”与“哪个进程（pid + pydevd 计数）”，
+只给一样他会继续问下一轮。
+
 ## 2. 调试进程此刻在干什么
 
 ```bash

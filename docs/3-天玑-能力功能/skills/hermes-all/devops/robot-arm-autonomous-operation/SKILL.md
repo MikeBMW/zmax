@@ -231,4 +231,4 @@ metadata:
 - 跟随仿真速度信号(小幅度/同节奏/三轴 move-rel + guard_box): `references/sim-signal-to-real-follow.md`
 - 设备侧细节（控制器 IP / SDK 路径 / 常驻 HTTP 桥 / 字段列表）见 skill `rokae-direct-control`（用户所有, 我只读）。
 - 现场动作闸门与逐条请示的完整口径见 skill `real-arm-motion-control`（用户所有, 我只读）。
-- 本会话完整证据: `docs/7-瑶光-记录追溯/incidents/TASK_LEDGER_20260925.md`（会话十五~二十一）· `data/selfcal/` · `data/handeye/`。
+- 本会话完整证据: `docs/TASK_LEDGER_20260925.md`（会话十五~二十一）· `data/selfcal/` · `data/handeye/`。

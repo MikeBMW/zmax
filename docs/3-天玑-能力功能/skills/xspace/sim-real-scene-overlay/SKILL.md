@@ -715,9 +715,9 @@ D405 的 1280×720 与 640×480 是**不同 FOV**（不是 2× binning）：
 ## 参考实现
 `zmax_rel/tools/scene_overlay.py`（投影+绘制+规格）· `gen_overlay_from_vlm.py` · `gen_overlay_from_det.py` ·
 `ros_scene_depth_build.py`（容器内深度建图）· `verify_projection_chain.py` · `verify_overlay_alignment.py` ·
-`cam_live_stream.py --overlay`（端点/叠加页，`--overlay-src all` 三路并存）· `verify_three_cameras.py`（六路快照+页面按钮）· `verify_three_cam_canvas.py`（画布拼图逐格取证）· `docs/6-开阳-工程落地/SCENE_OVERLAY.md`（完整交付文档）· `docs/6-开阳-工程落地/SCENE_OVERLAY_3CAM_20260927.md`（三相机改造）。
+`cam_live_stream.py --overlay`（端点/叠加页，`--overlay-src all` 三路并存）· `verify_three_cameras.py`（六路快照+页面按钮）· `verify_three_cam_canvas.py`（画布拼图逐格取证）· `docs/SCENE_OVERLAY.md`（完整交付文档）· `docs/SCENE_OVERLAY_3CAM_20260927.md`（三相机改造）。
 
 **工位总览 6 窗 + 手动控制 (v5.15.15)**: `cam_live_stream.py` 的 `STATION_PAGE`(/station) ·
 `_depth_worker` · `_aoi_worker`(10082/10083) · `_ctl_move`/`_ctl_status`(+/ctl/move · /station/status) ·
 `tools/depth_colorize.py`(彩色化唯一真源) · `tools/ros_depth_stream.py` + `ros_tcp_cache.py`(容器常驻) ·
-`tools/probe_depth_color_pair.py`(同刻深度/彩色相关核验) · `tools/verify_aoi_autograb_branch.py`(假 404 → 断言自动取景补拍) · `docs/7-瑶光-记录追溯/notes/STATION_6PANEL_20260927.md`(台账, 含第二轮三个根因)。
+`tools/probe_depth_color_pair.py`(同刻深度/彩色相关核验) · `tools/verify_aoi_autograb_branch.py`(假 404 → 断言自动取景补拍) · `docs/STATION_6PANEL_20260927.md`(台账, 含第二轮三个根因)。

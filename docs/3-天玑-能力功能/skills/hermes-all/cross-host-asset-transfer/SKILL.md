@@ -19,6 +19,44 @@ metadata:
 适用: 权重/数据集/轮子包要从本机到一台**边缘机或工控机**(可能无外网、Python 版本与本机不同、没有 GPU)。
 目标不是"拷过去了", 而是**那台机器上真能 import / 真能前向**。
 
+## 0. 通道没通先建通道(对端未知 / 本机无键)
+
+搬家前先把三件事坐实: **对端是谁 / 从哪进 / 谁是真源**。跳过这三步就会把"本机没私钥"当网络故障查。
+
+```bash
+ip route | head -3                       # 先认当前网段(换环境后网段会变, 别沿用记忆里的 IP)
+python3 scripts/find_peer_hermes.py      # 并发扫 22 口 + 抓 banner + 端口指纹, 不需要 nmap
+curl -s http://<ip>:8793/ | head -c 200  # 服务页标题是最快的身份指纹
+ls -l --time-style=+%F_%T <两边同一文件>  # 谁新谁是真源
+```
+
+- **无键不等于能口令登录**: 只带应用目录(如 `~/.hermes`)的介质/新机里根本没有 `~/.ssh` 私钥,
+  出站必报 `Permission denied (publickey)`。修法 = 本机 `ssh-keygen -t ed25519 -N ''` 生成一对,
+  **公钥可贴聊天、私钥不离本机**, 让对端跑一行 `mkdir -p ~/.ssh && echo '<pub>' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`。
+- **口令不跨机复用**: 云主机 / 跳板 / 边缘机各有一份口令, 拿 A 机的口令试 B 机只会白耗轮次
+  (还可能触发失败锁定)。要么一次性公钥授权, 要么向用户点名要**这台机**的口令,
+  用 `sshpass -p ... ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no` 并禁公钥。
+- **判身份只认端口指纹, 不认单个 22 口**: 陌生机开 22 只说明"有台 Linux"; 同版本 Ubuntu
+  的 SSH banner 也只能当旁证。本环境指纹: `8791 + 8793 + 8797` 同开 = Z-MAX 工位机(550A/4060),
+  8793 页面标题为旁路调试实时视频流; 产线设备各走自己的专口, 不要按 22 口去猜。
+- **把"同一个 agent 的大脑"当资产同步时**: 目录里 `memories/ skills/ cron/jobs.json config.yaml auth.json sessions/`
+  是文本类, 可增量合并; `state.db*` 走 `sqlite3.backup()` 快照, 绝不 rsync 活库。
+  先拉到 staging 目录再合并, 不要 `rsync --delete` 直接盖正在跑的 `~/.hermes`;
+  合并完**不重启在跑的服务**(重启须用户点名), 让新记忆/技能在下一轮自然生效。
+- **只差记忆/技能时不要搬整棵树**: 体积大头是 venv / 权重 / 会话库, 先 `du -sh */ | sort -h`
+  确认要传的只是几十 MB 的文本类, 避免为一个几 MB 的改动拉 9GB。
+- **记忆/技能 tar 不包含项目产物**(画布 json、配置、flows), 用户说「同步记忆」时那部分会静默分叉:
+  搬完顺手比一下关键 json 的 md5(本机 `flows/` 常常是指向 `data/.../sources/canvas/` 的软链,
+  要拿**真源那份**去比), 分叉就两个位置都推、各留 `.bak` 备份, 推完两侧 md5 必须相同。
+- 🔴 **目标地址是 DHCP 分配时要先核身份再写**: 同一 IP 会被别的机器/换机后复用, 写脑文件到错机器 = 污染别人的 `~/.hermes`。
+  三件套: `hostname` · `cut -c1-60 /proc/cmdline`(介质特有标记, 如 `casper ... persistent`) · `findmnt -no SOURCE ~/.hermes`(应指向那份镜像)。
+  任一对不上就**停 rsync**, 重扫网段或问人; 不要用"上次就是这个 IP"当理由。
+- 🔴 **"定时同步在跑"要看日志里的 rc, 不是 timer active**: 对端换网段后源机没有到那网段的路由, 每轮只写一行 skip 退出 0 ——
+  `systemctl list-timers` 依然显示上次/下次很漂亮, 增量却一点也没过去。判据 = 用 `read_file` 读同步日志、确认里面有 `上行rc=0 下行rc=0`;
+  只有 skip 行就是真没同步。双向验收固定用探针: 两侧各写一个文件, 跑一轮后**两边都该看到两个**。
+- **对端只有 wifi、目标网段只有有线时不通用**: `ip -o link` 只有 `wlp*` / `lspci` 只有无线控制器 ⇒ 网线插不进去, 必须插 USB 转 RJ45 (插上才会出现 `enx*`)。
+  给有线口加静态地址时**不要设默认网关**, 让原 wifi 继续当默认路由 (同步/外网不断): `ip addr add <ip>/24 dev enxXXXX && ip link set enxXXXX up`。
+
 ## 1. 先选链路, 再传
 
 按实测速率选, 不要按"哪条现成"选:
@@ -32,6 +70,25 @@ metadata:
 - 中转链路普遍有对端周期性 `Connection closed by remote host`, 大文件会被拦半途; 一旦直连可用立即切换,
   否则白等一小时。
 - 传之前先确认大小与目标盘剩余空间(`df -h`), 权重 3GB 级别不算小。
+
+### 从 GitHub Release 拉大产物: 单流 curl 会被掐到 30KB/s
+
+同一条代理链接(如 `ghfast.top` 前缀): `curl` 单流实测 **33KB/s** 且常在 90% 处 stall 到超时;
+`aria2c -x8 -s8` 实测 **~1MB/s** —— 169MB 从「要 80 分钟」变成 1.5 分钟。慢的根因是**每条连接被限速**, 不是带宽。
+
+```bash
+aria2c -x8 -s8 -k1M -c --max-tries=10 --retry-wait=3 --console-log-level=warn \
+  -d /tmp/rel -o app.zip "https://ghfast.top/https://github.com/<o>/<r>/releases/download/<tag>/<asset>"
+sha256sum /tmp/rel/app.zip        # 与 Release API 的 assets[].digest 逐位对
+```
+
+- 🔴 **同 tag 重建过资产时必须先删旧文件再下**: 文件名不变、内容变了, `-c` 续传会把新旧字节拼在一起 ⇒
+  sha256 永远对不上(而且 size 可能刚好等于新包, 看着「已下完」)。重建版发布后旧包一律先 `rm`。
+- **下载放本机, 再用局域网送过去**: 目标 Windows/边缘机直连 GitHub 实测 0 B/s; 本机下完 `scp` 过 LAN
+  实测 169MB / ~5s。顺序是「本机 aria2c → LAN scp」, 不是「目标机直接 curl」。
+- 完成判据只有一条: `sha256sum` == `GET /repos/<o>/<r>/releases/tags/<tag>` 中该资产的 `digest`;
+  文件大小对不等于内容对(半截续传也一样大)。
+- 目标机是 Windows 时解压用自带的 bsdtar (`tar -xzf`), 不必找 7z。
 
 ### 方向: 让"要收的那台"主动去拉, 不要反向往里推
 
@@ -91,6 +148,17 @@ ssh host 'pip install --no-index --find-links /home/x/wheels312 <pkg>'
 3. **真跑**: 喂一份真数据跑一次, 记录耗时与输出数值(例: 参数规模 / 加载秒数 / 单次推理秒数)。
    只说"跑通了"不算证据; 目标是给出能让别人复核的数。
 
+**清单对账本身也会骗人**(取数环节的坑, 与传输无关):
+- **`tee file | head` 会静默截断 file**: `head` 读够行数就关管道, `tee` 吃 SIGPIPE 提前退出,
+  落盘清单只剩前几十行 ⇒ 拿它比会报出成百上千个「缺失文件」(实测 2157 行只存了 46 行, 差点报「2113 个缺失」)。
+  要预览就 `> file` 之后再 `head file`, 别在链子上接 head。
+- **文件数相等 ≠ 内容对应**: 远端 `dir /s /b /a:-d <dir>` / `find <dir> -type f` **整行落盘**,
+  本地 `tr -d '\r' | sed 's|.*<dir>[/\\]||' | tr '\\' '/' | sort` 归一化后与本地清单
+  `comm -23 / -13` 比**名字集合**, 两侧 0/0 才算齐, 再抽 4~5 个关键文件逐位比 md5。
+  别用 `grep -oE` 加多层转义去抠路径 —— 引用被吃掉时会静默数出 0。
+- **软链路径的 mtime 是链接自己的**, 和目标文件不是一个时间(两侧 md5 相同却一个显示旧日期),
+  拿 mtime 判新旧必错; 判新旧只认 md5/字节数。
+
 在验收报告里把这三条都写出来, 并明写**性能结论**: 目标机若无 GPU, 同一模型可能是秒级→十秒级,
 "能用"和"能实时"是两件事, 必须分开说。实测锚点: 840M 参数视觉模型在 CPU(8 线程, 640×480)上
 **单次 43~64s**, 同模型在 4060 上是 0.4s 级 —— 无 GPU 目标机的结论只能是"静态/离线可用",
@@ -110,7 +178,20 @@ ssh host 'pip install --no-index --find-links /home/x/wheels312 <pkg>'
   (实测被报缺的两份权重分别是一个月前/三天前就在目标机上), 误判会让你重复推 GB 级数据。
 - `/health` 200 只证明**服务在**, 不证明**资产齐**(进程起来了、模型文件没到位也照样 ok) —— 两件事分开报。
 
-## 5. 收尾
+## 搬到可启动介质(离线交付一台能自己起的主机)
+
+场景: 要交付的不是"文件已在目标机", 而是一块插到**任何一台机器**就能自己开机、联网、起服务、可远程接管的介质(随身盘/Live 系统)。验收标准是"开机后没人碰它也能被接上", 不是"拷完了"。
+
+1. **解释器可能不在应用目录里** — venv 的 python 经常是软链到用户级托管解释器(`~/.local/share/uv/python/cpython-X.Y.Z-.../bin/python3.11`)。只同步 `~/.hermes` 这类应用目录 ⇒ 软链断 ⇒ 无声起不来。先 `readlink -f <venv>/bin/python` 读出版本号, 再把整个托管解释器目录同版本 rsync 过去。
+2. **ABI 在本机先验, 别留到目标机现场** — 直接拿介质里那份解释器二进制跑, 把复制过去的 site-packages 手动插到 `sys.path` 试 import 核心依赖(pydantic/openai/aiohttp/httpx), 能导入才算 ABI 对。机器不能先开机的情况也能这样验证。
+3. **缺包不一定是传坏** — numpy/tiktoken 之类 import 失败先 `ls site-packages` 比对源 venv; 源本来就没装就是正常现象, 拿它下结论会去修一个不存在的 bug。
+4. **网络和远程接管要预置** — 现场没人帮你敲命令: wifi 预先存成 NetworkManager keyfile(`/etc/NetworkManager/system-connections/<SSID>.nmconnection`, 600 root, 不要 pin 网卡名, 也不要把 netplan yaml 直接拷进去),
+   sshd 加进 `multi-user.target.wants` 并塞入己方公钥, 主机名设成可识别名字, 配了 mDNS 就用 `<name>.local` 定位。
+5. **写镜像/overlay 层的两条铁律**: ① 写前 `findmnt -no OPTIONS <mnt>` 确认是 rw —— 前置只读探针留下的 ro 挂载会让整批写入报 EROFS, 而脚本自己的 echo 看着像成功; ② 用**绝对**路径 —— `.../home/ubuntu/../etc` 归一化是 `.../home/etc`(多一层), 写完必须 `stat` 落点, 错了 `mv` 回正位并删掉误建的目录树。
+6. **活库用快照拷, 不直接 rsync** — sqlite 在服务运行时被写, WAL 下直接拷会得到抱页库; 用 `sqlite3.backup()`(或 `python -c` 同 API) 落一致性快照, 拷完 `PRAGMA integrity_check` 必须 ok。
+7. **开机后的接管三核**: 真正挂上的是副本而不是本地空壳目录(`findmnt -no SOURCE,FSTYPE <挂载点>`)、一条只有源数据里才有的具体内容能对上(暗号校验)、服务 unit 真在跑。
+
+## 收尾
 
 - 旧链路上的传输任务(中转脚本/后台 rsync)按 **PID** 停: `pgrep -af` 看清父子再 `kill -TERM <pid>`。
   `pkill -f <脚本名>` 会匹配到执行它的那条 shell 命令行(名字就在里面), 把自己一起 SIGTERM 掉

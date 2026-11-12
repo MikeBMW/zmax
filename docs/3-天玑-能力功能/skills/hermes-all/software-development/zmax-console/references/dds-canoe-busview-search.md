@@ -111,8 +111,8 @@
 > ⇒ **图形会话一进就会自动弹一个控制台**(只是 Restart=no, 所以关了不会自己弹回来)。
 > 老倪开机看到的是 **v5.15.13 旧版**, 根因 = 单元里 `WorkingDirectory/ExecStart` 还硬编码在**共享检出**
 > `/home/ubuntu/lerobot-smolvla-lew`(被并行线切到 mac-hw ⇒ 那边 GUI 停在 v5.15.13), 真源是 worktree
-> `/home/ubuntu/zmax_rel`(v5.16.4)。桌面图标 09-26 已改成按脚本位置推仓库根, **只有这个 systemd 单元没跟上**。
-> 纪律: **凡"开机自启/常驻"入口一律指 worktree** —— 现在 `ExecStart=/home/ubuntu/zmax_rel/tools/gui/launch_studio.sh`
+> `/home/ubuntu/zmax`(v5.16.4)。桌面图标 09-26 已改成按脚本位置推仓库根, **只有这个 systemd 单元没跟上**。
+> 纪律: **凡"开机自启/常驻"入口一律指 worktree** —— 现在 `ExecStart=/home/ubuntu/zmax/tools/gui/launch_studio.sh`
 > (自带 worktree 优先 / DBUS 会话总线补全 / 已有实例去重激活); 改完必 `systemctl --user daemon-reload` 并回读
 > `systemctl --user show zmax-studio.service -p ExecStart -p WorkingDirectory`。
 > 排查「界面怎么是旧版」: 两个检出各查一次 `grep -m1 CURRENT_VERSION <检出>/tools/gui/update_checker.py`,

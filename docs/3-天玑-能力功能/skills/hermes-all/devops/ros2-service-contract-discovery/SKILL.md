@@ -64,6 +64,23 @@ metadata:
 - **多步循环跑在"有工作空间的那台机器"上**: 不要每一步都从别的机器 ssh 过去。
   一次 ssh 起一个本地循环 + 本地自检(读反馈、算偏差、不达标就停), 否则每步往返延迟会让
   本来连续的动作看起来"走走停停"。
+- 🔴 **主机重启/驱动重启后 `ros2` CLI 自己的 rcl 上下文会失效**: 报
+  `failed to check service availability: rcl node's context is invalid` · `!rclpy.ok()` ·
+  `sequence size exceeds remaining buffer` ⇒ 整条 `ros2 service call` 白跑, 反复重启 CLI 也没用。
+  定式 = 把调用写成 **rclpy 直连脚本** scp 过去跑(绕开 ros2 CLI daemon, 最稳):
+  `rclpy.init()` → `Node('probe')` → `create_client(Srv,'/<name>')` → `wait_for_service(timeout_sec=5)` →
+  `call_async(req)` + `spin_until_future_complete(n,fut,timeout_sec=10)`; 要读反馈就用
+  `create_subscription(MsgType,'/<topic>')` + `spin_once` 连采几拍。跑前 source 完整环境
+  (`/opt/ros/<distro>/setup.bash` + 那个工作空间的 `install/setup.bash`)。
+- 🔴 **同名话题双类型 ⇒ `ros2 topic echo` 必空, 必须显式给类型**: `ros2 topic info` 会显示
+  `Type: ['std_msgs/msg/Float32', 'std_msgs/msg/Float64']` (两个发布者各发一种) ⇒ 不带类型直接 echo
+  什么都拿不到/直接失败。定式 `ros2 topic echo --once /<topic> std_msgs/msg/Float32`
+  (rclpy 侧同理, 类型选错就静默零消息)。
+- 🔴 **服务响应里的位置字段是"调用时刻读数", 不是动作终点**: 判"合到底/走到位没有"必须另外读**带外真值**
+  的**时序序列**, 不能拿 response 里那个值当结果 —— 执行中采样会给出看似相互矛盾的序列
+  (同一轮实测出现 957/29/961/29, 只是采样相位不同)。
+- **推进类参数不一定能突破"最小行程"**: 给夹爪加 `force`/`push_length`/`push_speed` 实测都改不了一字开度时,
+  先怀疑**方向语义**(0 与满载哪个是"合")或零点/标定, 不要靠一层层加力硬压。
 
 ## 取证口径(交付时一起给)
 每次探测/下发都留: ①解析到的 `message` 原文 ②下发前后的**带外真值** ③本步耗时。

@@ -22,7 +22,7 @@ metadata:
 - 真实化闭环: `tools/gui/state_space_sim_real.py` — R0/R1 一体化, `--vision` 开关
 - 六层源码: `src/lerobot/policies/left_right/state_space/{perception,parallel,cognition,dynamics,safety,execution}.py`
 - YOLO 链: `src/lerobot/policies/yolo_3d/yolo_state_aligner.py` (detect_3d / align)
-- 设计文档: `docs/7-瑶光-记录追溯/notes/closed_loop_realization_design.md`
+- 设计文档: `docs/closed_loop_realization_design.md`
 - 探针存档: `tools/probes_real/probe_mw_real*.py` (契约实测) + `probe_r1_calib.py` (视觉定标)
 
 ## 命令

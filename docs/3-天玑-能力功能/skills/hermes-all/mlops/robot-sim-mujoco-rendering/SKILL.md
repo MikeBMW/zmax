@@ -84,6 +84,14 @@ ren.update_scene(d, camera=cam); frame = ren.render()
 - **腔体内件必须自己验可见性, 不能凭"我传了相机"就信**: 消融法 —— 把目标件移到视野外
   (如 z=-5) 渲一帧, 与正常帧求差, 变化区的 bbox/像素数就是该件在画面里的真实占位
   (件宽 52mm、视距 0.92m 时约 950px/颗)。数字太小 ⇒ 画面拍了等于没拍。
+- **方位角要垂直于"需要分开的方向"**: 两臂沿 y 并排 (y=0 / y=0.5) 时, 任何沿 y 的视角 (-51.6°/-72°)
+  都会把两台叠成一条轮廓, 只有沿 x (azimuth≈0) 才分得开。先看布局轴再定 azimuth, 不要沿用
+  "看起来好看"的旧角度。
+- **mujoco `azimuth=0` 的相机在 −x 侧朝 +x 看**: 想加背景板/挡板兜住黑底时, 背板必须放在 **+x**;
+  放 −x 会让相机站在板外侧, 整幅渲染成一块平灰 (见下条判据)。
+- **帧文件大小是"画面被挡住"的快速判据**: 同一机位正常帧 ~190KB/960×720, 被挡时掉到 17KB 且
+  像素 std≈0、p50≈p90 (整幅均匀)。`size_download` 突然掉一个数量级 ⇒ 先查有没有大 geom 挡在相机前,
+  不要去调曝光。
 
 ## 9. 仿真控制三坑 (都是"判据全错但不报错"类)
 
@@ -217,6 +225,39 @@ runtime 只认具名对象和固定索引，缺一个就 KeyError 四档全挂�
 距离却一字不变 —— 非常像视觉链路没通，容易往错的方向查半天。
 判别：把 `_vis` / `_peg_cur` / `geom[...]` **三个一起打印**（都有值却用不上 ⇒ 就是它）；
 修法是调用处改 `getattr(...) or fallback` 或显式 `if x is None`，**不要去改视觉层**。
+
+## 双臂由「缩尺胶囊」换真 URDF 网格 (外形 + 逐帧姿态一致)
+
+自带 MJCF 里的臂若只是 `<geom type="capsule">` 几根棍, 而另一个前端 (AR 页/URDF 渲染) 画的是真
+URDF, 两边**一定**既不像也不同步 —— 这是两套几何 + 两套运动学, 不是延迟。完整配方见
+`references/urdf-to-mjcf-arms.md` (URDF 解析 → MJCF body 树 + mesh asset → 三大验收)。
+
+三条铁律:
+
+1. **一个 URDF revolute 对应一个 hinge, 不多不少**。基座 body 只能挂 mesh, **不能先挂一个"基座 yaw"**
+   再往下接 URDF 链 —— 那会让 6 个 hinge 相对 `joint_1..joint_6` 整体错位一格, 模型里读到的
+   `jnt_axis` 变成 `[0,0,1] / [0,1,0]...` 与 URDF 不符。症状极隐蔽: 关节名齐全、IK 也能收敛、
+   单看渲染还挺正常, 但**同一组关节角算出的 TCP 与前端差几十厘米** ⇒ 被误报成"动作不同步/延迟"。
+   验收: 打印 `m.jnt_axis[jid]`, 逐条对 URDF `axis`; 必须一字不差。
+2. **同上位姿的判据是 FK 对拍, 不是目测**。取前端算出的关节角 (度), 在 mujoco 里写 `qpos` →
+   `mj_forward` → 读 `geom_xpos[<side>_tcp]`, 与前端 tool0 比: 合格线 <1mm (实测 0.1mm)。
+   几十毫米 ⇒ 链/轴已经错了, 别去调 PD 增益。
+3. **给前端做"姿态镜像"时不要靠 position actuator 伺服**。真 6 轴链在 kp=300~1500 下都有
+   **15° 级静差** (实测 j0/j1 各差 15.9°, 末端 57~217mm), 画面上就是"臂没到那个姿态"。
+   镜像场景直接写 qpos (物理步进后回写, 同拍清 qvel), 渲染姿态才与源头逐帧一致:
+```python
+for k in range(6):
+    j  = mj_name2id(model, mjOBJ_JOINT, "%s_j%d" % (side, k))
+    a  = model.jnt_qposadr[j]
+    data.qpos[a] = np.radians(deg[k])
+    data.qvel[model.jnt_dofadr[j]] = 0.0        # 不清 qvel 会被下一步的动力学拉走
+    data.ctrl[mj_name2id(model, mjOBJ_ACTUATOR, "%s_act%d" % (side, k))] = np.radians(deg[k])
+mujoco.mj_forward(model, data)                  # 放在 mj_step 之后执行, 保证出片姿态=输入姿态
+```
+
+**mesh 缺失必须优雅退回**: 冻包/CI 里 `config/*/urdf/meshes` 常是空占位目录, `MjModel.from_xml_path`
+直接抛 `Error opening file ... .stl` 把整个渲染线程打死。加载前先 `meshes_ok()` 逐文件 `os.path.exists`,
+缺一个就退回旧简化模型并打日志 —— 宁可丑, 不能不出图。
 
 ## 关联
 

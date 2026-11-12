@@ -1,6 +1,6 @@
 # 8791/8793 推流必须用正规启动器（踩过的坑）
 
-**一律用**：`bash /home/ubuntu/zmax_rel/tools/start_station_stream.sh`（自带：按卡名+能力解析相机设备、抬 fd 上限、按端口停旧实例）。
+**一律用**：`bash /home/ubuntu/zmax/tools/start_station_stream.sh`（自带：按卡名+能力解析相机设备、抬 fd 上限、按端口停旧实例）。
 
 **不要**自己拼 `cam_live_stream.py` 的命令行重启。少一个开关就是一条功能整线消失，而且报错点离根因很远：
 

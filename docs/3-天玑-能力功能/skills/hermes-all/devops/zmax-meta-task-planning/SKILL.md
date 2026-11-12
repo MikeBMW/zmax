@@ -300,7 +300,7 @@ L2 能满足速度节拍/单任务; L3 能满足多任务编排; L4(含L5) 能�
 老倪: 「根据性能等级, 进行工程配置, 要有操作手册 working instruction, 保证能够工程实现」
 
 真源 `tools/spec/eng_profiles.json` → **两处消费**: 配置中心「⚙️ 工程配置」页 (A/B/C 切换 + 四张表 + 每步「▶ 跑」)
-+ `docs/1-天枢-产品边界/deliverables/8-工程手册/工程操作手册_三档_A_B_C.{md,docx}` (`tools/export_wi_doc.py` 生成)。
++ `docs/1-天枢-产品边界/deliverables/工程操作手册_三档_A_B_C.md/.docx` (`tools/export_wi_doc.py` 生成)。
 
 每步 WI 五要素缺一不可: **做什么 / 在哪做(local|onsite|orin) / 可粘命令 / 期望输出 / 失败处理**。
 规模: A 9 步 · B 8 步 · C 8 步 = 25 步。

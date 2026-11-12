@@ -79,7 +79,7 @@ metadata:
 |---|---|
 | `src/` `tools/` `configs/` `flows/` `scripts/` `docker/` `dds/` `ros_*_ws/` 等代码与配置 | `reports/` 运行产物(截图/状态快照, 数百 MB) |
 | `docs/**` 文本(.md/.csv/小图) | 权重 `*.pt/*.h5/*.safetensors`、交付件 `pdf/pptx/zip`、视频 |
-| `docs/3-天玑-能力功能/skills/hermes-all/` 技能全量镜像 | `outputs/` `runs/` `models/` `gui-venv311/`(venv) |
+| `docs/3-天玑-能力功能/hermes-all/` 技能全量镜像 | `outputs/` `runs/` `models/` `gui-venv311/`(venv) |
 | `docs/7-瑶光-记录追溯/` 记忆快照(MEMORY.md + USER.md, 每日 + latest) | `.github/`(fork 的上游 CI) |
 
 - 守卫: `python3 tools/repo_guard.py` (加 `--staged` 可做 pre-commit)。判据: 权重/交付件类 >200KB 报; 二进制 >300KB 报
@@ -236,7 +236,7 @@ python3 tools/ns_unify_paths.py --dry   # 先看要改哪些、多少处
 python3 tools/ns_unify_paths.py         # 真改 (改前 tar 备份: zmax_data/backups/ns_unify_pre_<日期>.tar.gz)
 ```
 规则(写在脚本里, 别手改):
-1. `/home/ubuntu/zmax_rel/...` → `/home/ubuntu/zmax/...` **恒安全**(前者本就是软链)。
+1. `/home/ubuntu/zmax/...` → `/home/ubuntu/zmax/...` **恒安全**(前者本就是软链)。
 2. `/home/ubuntu/zmax_dds/...` → `/home/ubuntu/zmax/dds/...`。
 3. `/home/ubuntu/lerobot-smolvla-lew/...` → `/home/ubuntu/zmax/...` **仅当 zmax 下存在同一相对路径**;
    两棵工作树分支不同、内容有差异 ⇒ 缺路径的一律保留并打印出来人工看。
@@ -300,8 +300,8 @@ python3 tools/ns_unify_paths.py         # 真改 (改前 tar 备份: zmax_data/b
   **历史里的密钥清不掉**(force-push 后旧对象仍可按 SHA 取) ⇒ 要么删库重建(破坏性, 需老倪点头), 要么轮换密钥。
 
 ## 技能 + 记忆同步
-- 脚本: `tools/sync_hermes_to_repo.sh` (`--no-push` 只提交)。三件事: ① zmax-console 全家 → `docs/3-天玑-能力功能/skills/xspace/`
-  ② **技能全量镜像** `~/.hermes/skills` → `docs/3-天玑-能力功能/skills/hermes-all/`(rsync --delete + 删 >300KB 大图)
+- 脚本: `tools/sync_hermes_to_repo.sh` (`--no-push` 只提交)。三件事: ① zmax-console 全家 → `docs/3-天玑-能力功能/xspace/`
+  ② **技能全量镜像** `~/.hermes/skills` → `docs/3-天玑-能力功能/hermes-all/`(rsync --delete + 删 >300KB 大图)
   ③ 记忆 → `docs/7-瑶光-记录追溯/hermes-jingjing-{memory,user}-<日期>.md` + `-latest.md`; 然后 commit + push。
 - cron: Hermes job `hermes-skill-memory-sync`(每 6h) → 包装脚本 `~/.hermes/scripts/sync_hermes_to_repo.sh`
   → **必须指向工程根那份**(2026-09-30 前指向 fork 副本, 会把技能推到错仓库)。

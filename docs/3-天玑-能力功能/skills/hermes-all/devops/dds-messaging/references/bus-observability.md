@@ -54,7 +54,7 @@ N 条画布连线若开 N 个 topic, 发现/内存/可读性一起崩。CANoe �
 
 `REPO = dirname(dirname(__file__))` 这类反推: 脚本一旦被放到别处(如 ~/xxx.py), REPO 会变成
 `/home`, `sys.path` 里塞进不存在的目录, 于是 `import hardware_view` 每轮抛 ModuleNotFoundError,
-话题静默为空(日志里只有异常, 容易被当成"没数据")。脚本一律显式 `ZMAX_REPO=/home/ubuntu/zmax_rel`。
+话题静默为空(日志里只有异常, 容易被当成"没数据")。脚本一律显式 `ZMAX_REPO=/home/ubuntu/zmax`。
 
 ## 七、判定"话题活着"的三个前提(缺一个就会误报)
 

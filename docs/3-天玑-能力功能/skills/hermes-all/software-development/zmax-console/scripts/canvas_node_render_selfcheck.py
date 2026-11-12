@@ -12,7 +12,7 @@ import json
 import os
 import sys
 
-sys.path.insert(0, "/home/ubuntu/zmax_rel/tools/gui")
+sys.path.insert(0, "/home/ubuntu/zmax/tools/gui")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5.QtGui import QGuiApplication, QImage, QPainter, QColor, QFontMetrics  # noqa: E402
@@ -20,7 +20,7 @@ from PyQt5.QtCore import QRectF  # noqa: E402
 from PyQt5.QtWidgets import QStyleOptionGraphicsItem  # noqa: E402
 
 TAG = sys.argv[1] if len(sys.argv) > 1 else "sc"
-JSON_IN = os.environ.get("CANVAS_JSON", "/home/ubuntu/zmax_rel/flows/state_space_obs.json")
+JSON_IN = os.environ.get("CANVAS_JSON", "/home/ubuntu/zmax/flows/state_space_obs.json")
 OUT = "/tmp/ui_fix"
 os.makedirs(OUT, exist_ok=True)
 

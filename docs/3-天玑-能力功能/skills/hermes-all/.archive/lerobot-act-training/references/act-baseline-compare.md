@@ -51,8 +51,8 @@ Fix: `re.sub(r"^steps: \d+", ..., flags=re.M)` and `^lr: ...` — line-anchored,
 After any config-rewriting helper, grep the config to confirm nested fields survived.
 
 ### Bug 2: compare JSON path hardcoded
-act_compare.py wrote `Path("docs/6-开阳-工程落地/ops/CICD_COMPARE_v1.1.0.json")` regardless of `--report`;
-auto_iterate read `docs/6-开阳-工程落地/ops/CICD_COMPARE_auto.json` → "对比失败" with no visible error.
+act_compare.py wrote `Path("docs/CICD_COMPARE_v1.1.0.json")` regardless of `--report`;
+auto_iterate read `docs/CICD_COMPARE_auto.json` → "对比失败" with no visible error.
 Fix: `json_path = Path(args.report).with_suffix(".json")` — HTML and JSON stay coupled.
 
 ## GUI integration (studio.py EvalModule)

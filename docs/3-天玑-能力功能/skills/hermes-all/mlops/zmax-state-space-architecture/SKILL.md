@@ -36,31 +36,138 @@ description: "Use when 状态空间画布 debug — 字段来源(预定义vs预�
 - 通用判别: 手写解析公式 + 注释声称"等价于训练后学的" = 教学/画布层; 真权重必有 npz/pt
   加载处 (outputs/rl_peg/full_pipeline.pt 或 state_space_sim npz)。
 
-## 🏢 工程实现包 (2026-09-28 起): src/lerobot/engineering/ —— 逻辑在这里, GUI 只显示
+## 🏢 包分层 (2026-11-10 定调): policies=算法 · middleware=通讯 · engineering=L1~L5 编排桥梁
 
-节点逻辑与画布 JSON 已从 `tools/gui/` 搬进包 (lerobot 哲学: 注册表 + 实现归属 + 调用方解耦):
+老倪定的三句话是判断"代码该放哪"的唯一依据 —— **一个画布节点 = 三个文件, 不是一个**:
+
+| 层 | 目录 | 写什么 | 不许写 |
+|---|---|---|---|
+| 算法 | `policies/` | 纯函数/类: 模型、几何、控制律 | 读总线、知道节点名、import middleware |
+| 通讯 | `middleware/nodes/n_<id>.py`(契约) + `middleware/nodes/impl/<node_key>.py`(实现) | 契约只写端口/话题/`PURE`; impl 写取数→调 policies→打标→节点级缓存 | 算法本体写进 impl、契约里写业务逻辑 |
+| 编排 | `engineering/l1_robot/` … `l5_human_sync/` | 分层设计: 本层层义、必须还能干的事、节点清单(实例数据) | **放节点实现** —— `engineering/` 里不许有 `nodes/` 目录 |
+
+判断法: **换个机器人还能用 → policies; 换个传输协议要改 → middleware(含 impl); 只把两者接起来并留证据 → middleware/nodes/impl。**
+
+### 把算法从 impl 迁进 `policies/<域>/` 的定式 (节点只留薄壳)
+
+用户口径「这个算法怎么能在中间件里呢? 算法在 `src/lerobot/policies` 算法路径统一管理」时, 按这几条做:
+
+1. 新包 `policies/<域>/` 与 `yolo_3d`/`sam3_seg` 同级, 一文件一路(来源不同的并列写, 例如 `gold.py` 搬运工控机真值 /
+   `gold_yolo.py` 本机推理 / `surface.py` 本机重算), `__init__.py` 里 `__all__` 导出。
+2. **依赖方向只能 policies ← middleware**: 包内**不许** `import lerobot.middleware`。进程内缓存与话题发布一律
+   **由调用方注入** (`fn(log, cache, publish)`), 签名里显式带 `cache/publish`。
+3. 过渡期在 `shared_runtime.py` 留**注入式薄转发**(老调用点不用改), impl 里直接 `from lerobot.policies.<域> import …`。
+4. 迁完必须**真跑一次节点**(`node_<key>({"log": sink})`) 再报完成: `py_compile` 与 `import` 都过不代表能跑;
+   判据 = 返回 dict 里字段有真值 + 日志里每个来源都打了自己的 src 标记。
+5. 🔴 **返回值里的字段名要逐个对账, 读"没定义过的全局名"不会报错**: 条件表达式 `f(globals().get("X")) if isinstance(globals().get("X"), dict) else "未接"`
+   里 `X` 不存在时 False 分支直接走, 永远显示兜底文案「未接」—— 实测 `remote` 字段因此长期假报"表面未接",
+   而同一轮日志里明明有 verdict。修法: 从算法层回写的缓存取真值 (`cache["surface_aoi"].verdict/why`)。
+   迁移后逐一核对返回字段 == 日志里的真数, 别只看不抛异常。
 
 ```
-src/lerobot/engineering/
-  paths.py      路径真源 (REPO_ROOT / LOGIC_FILE / FLOWS_DIR / GUI_DIR)
-  registry.py   register(key,[关键字],doc,fn) · match_node(name) · home_file(key) · logic_globals()
-  runtime.py    execute_node_logic(module,node,...) · _trace_exec · _demo_node_output
-  sourceview.py get_node_source / get_node_location / explain_node / save/restore/reload
-  flows.py      load_canvas / save_canvas(原子+备份) / validate_* / orphans / stats
-  levels.py     L2/L3/L4/L5 档位契约 (must 列表) + band_map() + check()
-  nodes/library.py    141 条节点逻辑 · 148 个注册 key (唯一真源)
-  nodes/by_level.py   档位索引 (节点↔key↔函数, 自动生成)
-  flows/state_space_obs.json   画布真源 (87 节点 / 173 连线)
+src/lerobot/middleware/nodes/
+  n_<id>.py            端口契约 (生成物, tools/gen_middleware_nodes.py)
+  impl/<node_key>.py   节点实现: 一个节点一个文件, 文件名 = 画布节点 key
+  impl/shared_runtime.py  所有节点共用的运行时 (原 engineering/nodes/library.py)
+src/lerobot/engineering/          ← 没有 nodes/ 目录
+  l1_robot/ l2_basic/ l3_advanced/ l4_expert/ l5_human_sync/   每层的层义+节点清单 (生成物)
+  layers.py      汇总: LEVELS_INDEX / keys_of / funcs_of / summary
+  levels.py      每层"必须还能干的事" + check()   (层归属唯一真源: band_map + OVERRIDE)
+  paths.py / registry.py / runtime.py / flows.py / sourceview.py / single_thread.py
+  node_map.json  一节点三处 (生成物, tools/gen_node_map.py)
 ```
+
+**层义 (老倪 2026-11-10 定名, 唯一口径)**: L1 **机器人接口** · L2 **基础功能** · L3 **高级功能** ·
+L4 **专家功能** · L5 **人机同步**。实测分层节点数 L1 4 / L2 26 / L3 5 / L4 19 / L5 11。
+L1 原来混在"基础功能"里 (`ssact`/`n_exec`/`sslimit`/`ssworld`) —— 接口收口与算法混层会让人以为
+"基础功能"同时管执行器和检测; 分出来后 L2 从 29 降到 26。
+
+### 契约里的 `LAYER` 也是生成物 —— 层标记的真源是画布/库里那一份
+
+`n_<id>.py` 的 `LAYER='L2'` 手改**一定会被下一次 `gen_middleware_nodes` 抹掉**: 实测一次全量重生成把
+`ssaoi` 的 `LAYER='L2'` 改回 `''`, 同时 DB `mw_node.layer` 也是 `''`(画布源 `state_space_obs.json` 里该节点 `layer: null`)。
+⇒ 改层归属只能改**画布真源 (+DB)** 再重生成; 判据 `grep '^LAYER' n_<id>.py` + `select layer from mw_node where node_id=…`
+两处一致, 否则下游 `attribution.layer_of` / 分层审计会把该节点判成 `meta`/SYS, 整族信号不上表。
+发现"登记过 L2 现在变空"时, 先查是哪个重生成动的(find 出的 git 历史里那笔一定是节点改名/重生成提交), 别在生成物上补一遍了事。
+
+### 搬目录时必须一起改的 5 处 (少一处就 ImportError 或判据假红)
+1. `engineering/paths.py`: `LOGIC_FILE` 指 `middleware/nodes/impl/shared_runtime.py`, 加 `BY_LEVEL_FILE` 指 `engineering/layers.py`。
+   路径常量不动 ⇒ 写节点逻辑的工具会往已删除的路径写(静默)。
+2. impl 里原来从 `engineering` 拿的模块要改成**绝对导入** (`from lerobot.engineering.modload import …`);
+   `middleware/nodes/impl` 的 `..` 是 `middleware/nodes`, 相对导入必断。
+3. 校验/审计脚本里写死的 `lerobot.engineering.nodes` / `engineering/nodes/library.py` 字符串 (verify_engineering、
+   gen_node_map、gen_by_level_index、layer_calls、busdb) 全部要改, 否则重构后判据报 `No module named 'lerobot.engineering.nodes'`。
+4. 契约头里的 `实现绑定` 由生成器写, **别手改** —— 改 `tools/gen_middleware_nodes.py` 再重生成 79 个。
+5. 生成器输出路径跟着搬: `by_level` → `engineering/layers.py`; 生成后跑 `verify_engineering` + `canvas_level_audit`,
+   两套数字**必须与重构前逐项一致** (实测 R1 15/R2 42/R3 12/R4 7/R5 2), 否则是搬漏不是搬好。
+
+溯源: `get_node_triple("ssyolo")` → `{contract: middleware/nodes/n_yolo.py:1, impl: engineering/nodes/ss_yolo.py:22,
+ algo: policies/yolo_3d/yolo_state_aligner.py:1, layer: L2}`。**右键只给一处(契约)会让用户以为实现丢了** ——
+回答"代码在哪"一律给三处, 并说清哪处是契约(不含业务逻辑)。
+
+- 契约文件与 `_index.py` 由 `tools/gen_middleware_nodes.py` 生成, 实现文件与 `by_level.py`/`node_map.json` 各自有生成器 ⇒ **全部别手改**, 改生成器再重生成。
+- 拆/合节点的完整流程、AST 切分脚本、四个静默坑 (registry 里 NODE_LOGIC 被换绑定 / 多 key 共用一个函数 / `global` 语句 / 生成器占位符落错文件名) → `references/node-code-split-and-three-layer-map.md`。
 
 `tools/gui/node_logic.py` = 33 行兼容壳 (转发包命名空间) · 仓库根 `flows/state_space_obs.json` = 软链。
-**新增/改节点逻辑请写包里那份, 不要再写回 GUI 目录。**
+**新增/改节点逻辑写 `middleware/nodes/impl/<node_key>.py`, 不要再写回 GUI 目录, 也不要再往 `shared_runtime.py` 里加函数。**
 
 溯源链 (从画布节点名 → 真代码): `registry.match_node(节点名)` → key →
 `sourceview.get_node_location(key)` / `registry.home_file(key)` (用 `fn.__code__.co_filename`, 所以搬完自动指对地方)。
 
-四层契约 (`levels.py`, 实测节点数): L2 基础功能 25 · L3 连续功能 5 · L4 自主安全 17 · L5 场景理解+自动标注 11 ·
-元层 12; 判据 = `levels.check()` 里每层 `no_logic_key` 为空。
+### ✅ 「按分层重新跑一遍所有层」的验收口径 (别只报"跑过了")
+
+`tools/layer_e2e_verify.py [--frames N] [--cam close] [--weights models/ar_yolo_v2.pt]` 一轮出
+`reports/layer_e2e_<ts>.{json,md}`, 每层必须有**数字**, 不是"能导入":
+
+| 层 | 必给的数 | 不合格的样子 |
+|---|---|---|
+| L1 机器人接口 | 位姿真值文件可读 + **明确写"未下发任何指令"** | 写成"已验证接口"但没说有没有动臂 |
+| L2 基础功能 | 帧数/检出帧数/平均 conf/单帧 ms/**带 3D 的帧数** | 只说"YOLO 跑通了" |
+| L3 高级功能 | 耗时 + 返回 JSON 的键 (目标可见/在夹爪上/朝向) | 返回 True 当证据 |
+| L4 专家功能 | 意图 → 几个技能 token + token 内容 | 调不到入口就说"已就绪" |
+| L5 人机同步 | 元任务条数 + task_id + 前几条名字 | 数成 0 还标 OK |
+
+L5 元任务真源不是 `config/ar_meta_tasks.json` (没有), 而是 `data/database/zmax/sources/config/tasks/ar_meta_tasks.json`,
+键名是 `meta_tasks` / `task_id` / `lanes` (不是 `tasks`)。数 0 就是读错了文件或错键。
+
+**训练候选一律同源 A/B, 不提升不进默认档**: `tools/l2_ab_eval.py --a v2 --b v3` 把**同一帧**同时喂两个权重
+(不是各跑 N 帧 —— 臂在动, 帧本来就不同), 报检出率/conf/框 IoU。实测一次: v3 (batch1/imgsz512 微调 6 epoch)
+val mAP50 0.248 vs v2 0.255 · 同源 A/B 85% vs 100% ⇒ **v2 留役**, v3 只存档。显存被引擎占满时小 batch 微调
+基本不会赢, 别拿它当"重训过了"交差。
+
+### 🔴 画布上的开关/拨钮必须真实现, 不是改标签画布节点 `params.src_state` 写着什么, 节点实现里就必须有对应的分支去取那个数据源 —— "画布写着 AR场景、
+代码只认 metaworld|orin" 就是假接入(用户一问"代码在哪里"就露)。落地范式(数据源节点实测):
+
+1. 实现里按**画布参数**判定 (`src_state`/`source`), 命中选择就真去取数据并落 `_SS_STATE["data_source"]`
+   (`src/cam/w/h/bytes/ts/cam_params`), 日志打实测值(分辨率·字节·相机参数·帧名)。
+2. 消费方 (如 L2 YOLO) 取源优先级 = **画布 > env > 默认**: `_SS_STATE["data_source"]["src"]` 带 **10s 时效**,
+   过期才回落 `ZMAX_L2_SRC` —— 无时效会把"画布停了"变成死锁在 ar。
+3. 契约 `PARAMS.source`/`desc`/`source_symbol` 一并更新并重生成 —— 留旧路径 (`engineering/nodes/library.py`)
+   会让人以为实现丢了。
+4. 自证: **不设任何 env**, 只让画布选择生效, 看节点日志出 `📦 数据源: AR 场景 (…960×720… B…)`、
+   下游出 `🎯 AR 源 (ar_frame_*.png …)` + 3D 点。只改标签也能跑, 所以判据必须是"取到了真帧"。
+
+层义与节点数见上「层义」一节; 判据 = `levels.check()` 里每层 `no_logic_key` 为空 (`ss_moe` 这类
+画布有节点无执行注册的会单独报 → 归 L2/`26` 里的缺口, 不要为了凑数把它算过)。
+
+#### 全链路只允许一个世界 (改完数据源节点还不够)
+
+只把「数据源节点」改真, 下游仍会各开一套世界 —— 实测三处: `intact.py` 自建 metaworld env、
+`sw_ds.py` 自起 stable-world 桥、`_vlm_frame()` 的「真机旧图」分支抢先返回 (AR 已被选还读真机帧)。
+定式:
+
+1. **单一读取口**: `shared_runtime._canvas_source(ttl_th=10)` 只读 `_SS_STATE["data_source"]` (数据源节点每拍写),
+   所有消费方 (yolo / vlm / seg / intact / L4 桥) 一律调它; env 变量 (`ZMAX_L2_SRC` / `ZMAX_SS_FRAME_SRC`) 只做兜底。
+2. **下游不许自建世界**: 发现节点里 `MT1(` / `env.step` / 起 render 桥 / `make(`, 就在最前面判画布源;
+   选中 AR 时改为**读 AR 帧并传进去** (INTACT: `run_once(obs_frame=arr, obs_source="ar(...)")`),
+   或明确**跳过并留日志** (`skipped_sim_bridge=True`) —— 静默各跑各的比报错更难查。
+3. **同一拍可对账**: 数据源节点写 `tick=int(time*1000)`, `_ar_frame` 把它带进 meta, yolo/vlm 日志都打
+   `tick=...` + `frame=...` —— 两个不同机位 (close 检测 / ar3d 场景) 是**设备分工**, 不是不同步; 但同一机位
+   必须同 tick 同帧名。
+4. **审计方法 (别凭印象说"都接了")**: 从 `flows/state_space_obs.json` 取 `links` 里所有 `f == 'ssdata'` 的下游,
+   用 `node_map.json` 把节点 id 映到 impl 文件, 逐个 grep `_ar_frame(` / `_vlm_frame(` / `_yolo_capture(` /
+   `metaworld` / `env.step` / `fetch`, 分类成 AR / 消费上游状态 / 自建世界。实测 17 个下游里只 5 个真取帧,
+   3 个是违规的 —— 不扫一遍会漏。
 
 同类搬运的验收口径 (以后照用): ①key 集合与顺序 ②画布全量节点名→key 映射 ③每条关键字/doc 逐字
 ④函数源码逐字哈希; 基线 = 渲染 87/172 · 档位审计 R1 15·R2 34·R3 13·R4 7·R5 3·真缺口 0。
@@ -144,6 +251,76 @@ src/lerobot/engineering/
    (c) 姿态四元数无真源时(`tcp_pose.rx/ry/rz=None`、`plan_from_vff.rotation="未建模"`)一律写"未建模/未算",
    不拿力的方向冒充姿态。
    逐字段真源表(含单位、自查命令、"看起来像但其实不是"三条)见 `references/force-and-quaternion-provenance.md`。
+
+9. **`PURE=False` 的直通节点要「出理想规划」时, 只能加"理想档", 不能假装它算过了**: 现场没有 obs43 落盘
+   ⇒ obs43→流形→测地线那条真档返回 `ok=False`。做法 = 新增 `ideal` 分支 + 显式开关 (`params.ideal` 或环境变量)
+   + **不换端口语义** (out1 位姿 / out2 chunk[H,4]), 几何取**执行器同一个段表生成器**的稳态窗口 (不另造点位),
+   段内用流形测地线 (S² 大圆) 采样成 chunk, 时序换理想剖面; 报告里必须写清「理想档 = 点位+动作+时序的理想规划,
+   不是从感知得来的」, 并给 UPH 判定 + 余量。**默认不自动开** —— 它会替掉原直通输出, 下游读到的语义就变了。
+   配套: 硬编码的兜底参数只许写成函数默认值并留开关, 不要让常驻循环无条件跑理想档。
+
+## 🔌 节点计算面契约: 结果被吞 / 端口取不到值 / 判"有效"的口径
+
+三个都是**静默**故障 (日志照跑、循环照转、端口全空), 排查代价极高。改节点实现/模板前先记住:
+
+1. **非 dict 结果被整块丢掉**: 节点模板是 `if isinstance(res, dict): … else: LAST_STATUS="实现返回非 dict → 直通"`。
+   实现返回 `np.ndarray` / `float` / `bool` (如 `safety.saturate` 返回限幅后向量) ⇒ **上游算出来了, 下游永远收不到**,
+   状态行只写"直通", 看着像节点没实现。修法: `if res is not None: return {PORTS_OUT[0]: res}` (全部节点模块同款一处改)。
+   判据: 改完跑一拍全量, 「端口真发出非空值」的节点数必须明显上升 (本仓 6 → 30/65)。
+2. **`ctx[port]` 是信封不是裸值**: 常驻循环与 Project.step 传的是
+   `ctx["in1"] = {"value": …, "age_s": …, "fresh": …}`。实现里把 `ctx["in1"]` 当裸向量用 ⇒ 永远报
+   "无 obs43 输入"/"缺输入", 那条链一直空转。定式取数:
+   `v = ctx.get(p); if isinstance(v, dict) and "value" in v: v = v["value"]; if isinstance(v, dict): v = v.get("obs") or v.get("state")`。
+3. **判"节点有效"不许用 `bool(outs)`**: 节点可以只返回端口壳子 (`{"out1": {"value": None}}`), `bool` 为真但什么也没发。
+   判据 = 至少一个端口 `value` 非 None / 非空 dict / 非空 list; 数"上游真发出值的连线"也要按 value 判,**不是**按
+   总线里有没有那个 key (端口壳子也算有 key ⇒ 会报出 6/171 与 161/171 两个互相矛盾的读数)。
+4. **写产物先算清仓库根深度**: `src/lerobot/engineering/nodes/x.py` 要**上溯 5 层**才算到仓库根, `middleware/nodes/x.py` 同理;
+   少算一层就写到 `src/zmax_data/` 这种不存在/没人读的路径 ⇒ **静默不落盘**、也不报错。写完必须回读 mtime 龄,
+   别用"代码里写了 dump"当证据。
+
+6. **契约门不满足 ⇒ 节点只做 `out1←in1` 直通, 实现一次都没跑**。三样缺一不可: ①契约 `EXEC_MODE='pure'`
+   ②画布节点 params 带 `pure_verified=true` ③`impl_key` 能命中实现。缺任一项时 `compute()` 收 **只含已连线端口的 ctx**
+   (`{'in1': {'from': 'canvas'}}`), 实现侧取模块/输入直接 `KeyError: 'module'`, 状态行写"直通",
+   而端口仍回信封、上游帧照流、下游"一切正常" —— 这是最贵的一类假绿。
+   判据(三样一起看): `registry.match_node(<画布节点名>)` 非 None · 该节点 `PURE is True` · 日志里有真实现印记
+   (例 `🎯 AR 源 (ar_frame_*.png … 帧源=canvas_out1)`)。只有端口有值不算接上。
+7. **改节点名必须同步补注册关键词, 否则改名=断实现**。注册表按**子串关键词**匹配, 把节点改名成
+   「📦 数据源 (AR场景 ⇄ 仿真 ⇄ 真机)」后旧关键词 (`metaworld 数据`) 不再命中 ⇒ `IMPL_KEY` 变空 ⇒ 静默直通(同 6)。
+   定式: `_reg("<key>", [...])` 里补新名里的**稳定短语** (实测补 `AR场景 ⇄` / `数据源 (AR场景`), 然后
+   `R.match_node('<新名>')` 断言返回该 key —— 改名后不跑这一句就等于没接。
+8. **端口 = `compute()` 返回 dict 的键, 不是"多出来的字段"**。返回里出现 `PORTS_OUT` 之外的键 ⇒ 整坨被塞进 `out1`,
+   下游按 out2/out3 取必空。要几个出口就显式 `{'out1':…,'out2':…,'out3':…}` 且与契约 `PORTS_OUT` 逐项一致;
+   实测 `ssdata` 从"out1 里一坨"拆成 帧/状态/句柄 三端口后, 下游才可能按连线各取所需。
+
+9. **节点之间的数据面不是 out1→in1, 是「同进程 dict + 跨进程 JSON」** —— 回答"下游节点收到上游输出了么"必须分这两层答:
+   · `runtime.run_node` 造的 `ctx` 只有 `{module, params, log, name, label}`, **没有 inputs / 上游 out1** ⇒ 画布连线
+     只是**拓扑语义**(谁依赖谁), 不是数据管道; 节点返回的 `out1` 只进 `LAST_OUT`(给节点级 SU(2) 映射取值), 不自动喂下游。
+   · 同进程节点之间靠**模块级 dict**: 实测 `yolo_align.py` 直接读 `_YOLO_CACHE.get("det2d")`, **不读** JSON。
+     跨进程/对外才落 JSON 契约(`zmax_data/ss_live/vision_points.json` 等), 供 plan/画布 GUI/8797/web 页消费。
+   · 所以"为什么不用共享内存"的正确回答是: **已经是共享内存**(Python 进程内 dict, 零序列化)。真跨进程共享内存段要自管
+     生命周期/锁/类型约束, 而这条链 2Hz、单写多读、几百字节 ⇒ 落 JSON 换来可审计 + 任意消费者 + 进程崩了不丢, 收益更高。
+   · 🔴 **隐式耦合**: 靠 `_YOLO_CACHE` 的前提是上下游在**同一进程**。先按 pid 核清谁在跑
+     (`pgrep -af 'ss_engine_loop|ss_canvas_loop'`); 把 YOLO 与 2D→3D 拆到两个服务的那一刻这条链立刻断, 只能改读 JSON 契约 ——
+     别以为"画布上画着线就还通"。
+
+10. **节点「看一眼结果」的入口 = 浏览器静态页, 不是 Qt 弹窗** (老倪口径:「渲染单帧, 也用浏览器打开, 不用单独窗口」):
+   · 页面放 `tools/web/dl/*.html`, 交给**已在跑的只读静态服务 8799 的 `/dl/`** 投出去 ⇒ 不新增端口/进程、改完**热生效零重启**,
+     手机/局域网 `http://<lan>:8799/dl/xxx.html` 同开。
+   · 引擎侧写文件、页面只读文件: 跨进程(GUI ↔ 引擎)传图**必须落盘**(固定文件名 + 原子替换), 不能靠进程内缓存。
+   · 页面横幅必须带**拍照时间 + 帧龄**, 帧停了变橙写"已停" —— 否则用户会把旧图当实时。
+   · 要"跟另一个页面的视角同步"用 8802 的 `frame.png?cam=ar3d&live=1`(拿 AR 页推来的相机参数**现场**渲染);
+     判据 = 连拍两帧 hash 不同 + 与缓存帧(nolive)像素差很大; 固定机位 `cam=close` 不会跟随。
+
+5. **修好「结果被吞」之后必然撞上拍子**: 以前节点全直通 (每拍 ~0ms), 一修好就真算, 一次全量 pass 实测 25.3s
+   (n_decoder 9.0s · n_skills 4.0s · n_prefrontal 3.7s · n_yolo 2.1s · n_hil 卡 https/GETDNS · VLM 节点走外部 HTTP 120s),
+   10Hz 循环 tick 直接冻住 (88~160s 一拍)。定式: 常驻循环**分两档** —— 核心链每拍跑
+   (ssobs→n_geoplan→ssff/ssest→sssched→sslimit→ssphys→ss_grav_h→n_moveit→n_exec→ssact), 每 30 拍跑一遍全量;
+   单次 >60ms 或走外网的节点置 `ZMAX_NODE_PURE_OFF` (保持直通) 并交给旁路串行推理队列 (`tools/serial_inference.py`)。
+   判据: `canvas_loop.json` 的 `cost_ms` 回到 15~21ms, 且 tick 持续增长 (不涨 = 卡在某节点, py-spy 直接抓)。
+   别把「不接入」当妥协: 慢节点进拍子只会拖垮 AR 节拍, 300UPH 由工艺动作表决定, 与它们无关。
+
+全系统贯通 (L5→L4→L3→L2 由后向前, 每层先发理想值, 再验 UPH 与联通) 的做法、每层理想值的定义、
+43D 理想观察量的通道口径与判定数字 → `references/full-stack-ideal-value-run.md`。
 
 ## 🧮 流形层逐帧发布闭环 (2026-09-03 老倪: "为什么流形/潜空间没有输出连线")
 - 回路外元层此前只读日志、无输出 → 半吊子。闭环: 引擎 run() 每步实算流形量
@@ -324,6 +501,19 @@ src/lerobot/engineering/
 5. `data/` 与 `reports/*.png` 被 .gitignore → 映射表 `data/su2_mapping.json` 是**本地生成**
    (`load_mapping` 缺文件回退内置 DEFAULT_MAPPING, 不阻塞), 图不入库。
 6. 扩展新层/新节点映射: 改 `NODE_SPECS`/`encode_layer` 即可(数据驱动), 不用碰画布 JSON。
+7. **「YOLO 输出怎么进统一状态空间」= 三条真入口 + 一条断链, 必须分开答** (别用一句"检测进了 obs"糊过去):
+   ①**画布 L2 块** `encode_obs43`(su2.py:272) 吃 43D, e = 光模块头(`[4:7]`, z+0.030) − 孔位(`[36:39]`);
+   而画布 sim 的 43D 来自 `_ss_ensure_obs43`(library.py:2642) = metaworld `env._get_obs()` + 合成触觉 4D
+   ⇒ **吃 env 真值, YOLO 不在其中**。
+   ②**真机/AR 链** `ss_station_engine.obs43`(`[4:7]`=检测坐标 `ST["perc"].xyz`) →
+   `ManifoldEngine(manifold_type="su2").project()` 取潜向量 `z[:3]` → `from_rotvec`(manifold_engine.py:309-318)
+   ⇒ YOLO 真在环里, 但口径是"观测→潜空间", 与①的几何误差**不是同一把尺子**, 两条分开报。
+   ③**节点级** `encode_nodes`/`NODE_SPECS`: 该节点 spec 仍按旧标签 `"peg 检测框"/"hole 检测框"` 取数, 而节点现在只发
+   vision_points 契约(`points → 光模块·当前/hole`) ⇒ `node_vector` 取空 → **每帧映射成单位元**, 只在
+   `detail["no_numeric_output"]` 留一行(静默失败)。判据: 拿 `zmax_data/ss_live/vision_points.json` 当帧喂
+   `su2.encode_nodes`, θ 必须 ≠0; θ=0 且该节点在 `no_numeric_output` 里 = 这条映射没接上。
+   ④`aligner.align()` 产出的 `_YOLO_CACHE["aligned39"]` 全仓库只有写没有读 ⇒ **不许**拿它当"检测已进 43D"的证据。
+   回答前按这四分对号; 完整入口图/探针命令/两种接法见 `references/yolo-to-su2-entry-map.md`。
 
 ## 🔌 引擎 L4 注入开关盘点 (2026-09-24 血教训: A/B 前先核对链上开关默认值)
 
@@ -702,6 +892,43 @@ xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py [--level L2|L3|L4]
    ref 表: SK01/SK02 = `peg + [0,0,hover_h]` (0.09 / 0.05, v_cap 0.35 / 0.12) · SK06 = `hole_mouth + hover`(0.02)。
    即: 技能自己定义目标, plan 只出段序 —— 切换会改几何基线, 必须整轮重测。
 
+## 📋 把节点清单导出成文档表（名称/功能/PURE/实现文件）
+
+交付文档要「L2 层所有逻辑节点的功能」时不要手写清单，三步从真源拼：
+
+1. **分层从画布坐标取**：`data/database/zmax/sources/canvas/state_space_obs.json` 里 `type=='row_bg'` 的节点给出各层带的 y 区间，节点按 (x,y) 落在哪条带归层。`ssworld`（🌍 物理世界）这类环境实体**不算逻辑节点**，计数排除并在图注写明。
+2. **id → 实现模块**：`src/lerobot/middleware/nodes/_index.py` 是「画布节点 id → 模块名」映射；模块文件头带 `NAME` / `PARAMS['desc']` / `PURE` / `SOURCE`+`SOURCE_SYMBOL` / `PORTS_IN/OUT`，这就是「功能」字段的真源（`desc` 首句通常已是完整功能描述）。
+3. **`SOURCE` 为空串的节点**（`ssaoi` / `n_l2_muscle` / `ss_mem_l2`）用实现键或实现文件头原文补，并在表里标注「SOURCE 未登记」，**不要编路径**。
+
+坑：①抓 `^PURE\s*=` 必须带 `re.M`（只给 `re.S` 时全表返回空，看着像节点没登记）；②这类集合里常有 `limit=None` 的附属项（`spec['joints']` 末两个 tool 关节就是），先过滤再取字段，否则第一项就 `TypeError`；③表里同时给 `PURE=True/False` 两态 —— 用户就是用它判「真算 vs 只走数据面」。
+
+## 🧾 回答「这个节点现在的输入输出是什么」— 四件套, 一次备齐
+
+用户问这类问题时不要只贴契约抄一遍。按此四步，交付里同时给**路径+行号**（他要直接贴进 VSCode 打开）：
+
+1. **定位节点**: 画布 JSON 里按**名字**找 id (`data/database/zmax/sources/canvas/state_space_obs.json`,
+   例「统一状态空间」→ `ssobs`)。⚠️ 契约文件名 **不等于** id: `ssobs` 的契约是 `n_state.py`
+   —— 用 `middleware/nodes/_index.py` 的 `'<id>': '<模块>'` 映射查，别去猜 `n_<id>.py`。
+2. **端口真源是契约文件, 不是 links**: 画布 `links` 里的 `fport/tport` 常是 `None`（只有拓扑语义），
+   端口名单只在契约 `PORTS_IN/PORTS_OUT` 里；连线只用来回答"连到谁"。
+3. **一条命令拿真值当证据**（比读代码推断可信）—— 每个 impl 都导出入口函数并留 `run = 入口` 别名:
+   ```python
+   from lerobot.middleware.nodes.impl.ss_obs import node_ss_su2
+   out = node_ss_su2({"log": lambda m: logs.append(m), "demo_light": True})
+   # 返回 {'out1':…, 'out2':…, 'out3':…, 'ok': True}；out1/out2 同一份 43D obs 体, out3 = 群读数
+   ```
+   报字段就报返回值里的: out1 的 `tcp/peg/hole/tactile/src`, out3 的 `readout/dominant_layer/layer_peel`。
+4. 🔴 **必须同时报 `PURE` 和本拍跑没跑**: 这类契约多半 `PURE=False` + `EXEC_MODE='view'` ⇒ 常驻循环/画布
+   `compute()` 只做 `out1←in1` 直通，out2/out3 恒 None；真实现只在「单步 / 右键运行 / ▶运行」时执行。
+   "哪些节点在本拍跑"看 `zmax_data/ss_live/canvas_loop.json` 的 `n_ran` / `fast_only`（实测常驻只跑
+   ssplan/ssact/n_moveit/n_geoplan）—— 端口有值≠这条链在算。
+
+⚠️ **两个读数的口径陷阱（报数前先想）**:
+- L2 走 `quat_truth` 精确四元数时, `θ` 是**姿态角本身**（`z_pos` + `SS_TRUTH_YAW_DEG=180` ⇒ θ=180°、|w|=0），
+  **不是误差角**；只有回落 43D 时 θ 才是 tanh 压缩后的误差指示器。两种 θ 不许放一起比大小。
+- `demo_light=True` 时 L2 可因无 `obs43` 缓存而落单位元/记忆真值，但返回段仍会调 `_ss_ensure_obs43()`
+  触发真采样（日志会有 YOLO/metaworld 加载行）—— 所以"light 档=零开销"不成立，解释时说明是缓存路径。
+
 ## 关键文件
 - src/lerobot/engine/runtime.py (闭环总装 `RealStateSpaceSim`, 4240 行零 Qt; 原 `tools/gui/state_space_sim_real.py`,
   那边现在只剩别名 shim `sys.modules[__name__] = 真身`。**三层身份别混**: 总装 runtime ≠ 流形引擎节点
@@ -716,6 +943,171 @@ xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py [--level L2|L3|L4]
 - 数据空间(DDS 总线)的信号表与关键词、MoveIt 规划/action 取数地图（含"域是 42""action 话题默认隐藏"
   "规划结果走 get_result 服务不走话题""`tcp_path` 只存 x y z""姿态比对只能用四元数夹角"）
   → `references/dds-bus-signal-map-and-moveit-action.md`
+
+## SU(2) 节点级映射的真源 (2026-11-03 修)
+
+`node_ss_su2` 曾读 `getattr(mod, "_ss_io_frame")` —— **全仓库无人写这个属性** ⇒ `encode_nodes({})`
+永远空帧, 节点级映射静默落空。现在三路取数 (`library.py::_ss_node_frame`):
+① `mod._ss_tr["io_trace"][_ss_round][1]` (画布引擎**当前帧** io 快照, 标签与 NODE_SPECS 同口径;
+   无 `_ss_tr` 时退 `mod._tr` 末帧) →
+② `runtime.LAST_OUT` (每个节点真跑完留的返回值, `runtime.run_node` 里记) → ③ `mod._ss_io_frame` 兼容。
+
+🔴 **YOLO 输出三套标签, 只认一套就是静默单位元**: 契约 `vision_points.json`(`points`:光模块·当前/hole, mm) ·
+`lerobot.engine.runtime` io 快照(`peg 3D (detect_3d)`) · `lerobot.engine.sim` io 快照(`peg 3D 坐标`)。
+NODE_SPECS 用 `ptsdiff` 三路全认 (契约 mm→米 与 `obs43_geometry` 同单位; 3D 标签优先于 2D 框)。
+判据: `cos(n̂, 光模块−hole)` 必须 = 1.0; `encode_nodes(detail=…)["no_numeric_output"]` 里不该再出现该节点名。
+
+43D 侧同理: `_ss_ensure_obs43` 现**优先吃** `_YOLO_CACHE["aligned39"]`(align() 真实产出, 带
+`aligned39_t` 时间戳, `SS_ALIGN_MAX_AGE_S` 默认 3s), 过期才退回 metaworld 真值; 用哪一路写进
+`_SS_STATE["obs43_src"]`。改完必回读日志里“📊 43D obs 组装 (yolo/env 源)”这行。
+
+### L5 槽 (意图) 的真供给
+
+`state_space/l5_intent.py`(2026-11-03) 是 L5 的唯一写入方: DeepSeek 短提示 + 小 JSON
+`{"intent":[x,y,z],"conf","why"}` → `frame["L5_intent"]` → `su2.encode_layer("L5")`。
+· intent 语义 = **基座系期望运动方向**(单位方向, 不是位置/速度幅值); 减小误差应指向 **−e**, 所以自检用
+  `cos(intent, −(peg_head−hole))` (实测 1.00 为对); 旧版写成 cos(intent, e) 会把正确动作误标 suspicious。
+· **延迟实测 0.8s~133s 波动**(同 key, 关 thinking 也一样) ⇒ 必须单飞 + TTL 缓存(默认 60s, `SS_L5_TTL_S`),
+  异步档**绝不阻塞 10Hz**; 冷启第一拍返回 None = L5 落单位元 + 日志说明。`SS_L5_SYNC=1` 仅调试用(会卡 1~130s)。
+· 校验硬闘: JSON 必需、3 维、有限、非零、clip 到 [-1,1]; 失败就 None, **不用规则冒充大模型**。
+· 调用流水 `zmax_data/l5_intent_calls.jsonl` 可恢复查每一次的 vec/why/时延。
 - **末端位姿 x/y/z/a/b/c 的真源与坐标系口径**（仿真 episode 不记姿态 · 真机走 `rokae_sdk/tcp_out/latest.json`
   `frame=base_link` · 现场世界系须标定才存在 · `ss_live/trace_live.json` 是单槽会被不同任务互相覆盖）
   → 同上文件末节「末端位姿 x/y/z/a/b/c 的真源与坐标系」
+
+## 🧮 「四元数/群元素 = 执行尺子」类主张的判据 (先量再答)
+
+用户/评审常提「四元数把旋转映到 S³ 上一段轨迹, 一一对应, 所以算轨迹 = 执行动作」。方向对 (exp 映射
+`su2.from_rotvec` 就是这个), 但**这个主张在本工程当前不成立**。回答前必须做三项检查, 每项都给数:
+
+1. **编码是否单射** —— `ω = π·tanh(g·‖e‖)·ê` 是**压缩指示器**不是实际旋转角。实测量 `encode_obs43`:
+   ‖e‖=10mm→θ 3.60° · 50mm→17.9° · 100mm→35.5° · 500mm→137.1° · 1000mm→173.5° · 5000mm→180.0°;
+   角分辨率 6.28e-3 → 2.8e-5 rad/mm (**衰竭 200×**)。⇒ 大误差段多对一, 不是卡尺。判「是不是卡尺」
+   就量两段不同 ‖e‖ 在 θ 上是否仍可分, 别口头断言。
+2. **双覆盖要商掉** —— SU(2)→SO(3) 是 2:1; `U` 与 `−U` 是同一旋转 (实测四元数夹角 0.0°)。
+   不先说「商掉 ±q」就写"一一对应"必错, 且符号跳变处会造出伪轨迹。
+3. **消费者是谁 = 唯一硬判据** —— `grep -rn "su2_readout\|su2_layers\|su2_scene\|su2_nodes" src tools`:
+   全仓库只命中 `tools/gui/su2_dialog.py`(面板) 与 `tools/plot_su2_state.py`(出图) ⇒ **群元素是给人看的读数层**。
+   真正下发的是 `ss_station_engine.tick_plan`: `u_sat[:3] * dt` → 8802 双臂 IK/control (速度域), 没有任何一行
+   把群元素/测地线转成关节或末端位姿指令。
+
+结论口径 (现状): 统一状态空间 = **观察/分解层** (方向+幅度+层剥离+耦合强度), 执行走 **速度闭环**;
+它借了四元数的数学结构, 没拿它当执行尺子。②③ 里**姿态那一步已落地但默认关** (见下节「参考姿态」);
+`ZMAX_ARRIVE_TOL_DEG` 仍只做"到位验证" fail-closed, 不参与轨迹生成 —— 真正的 A/B(速度链 vs 位姿链 的
+成功率/朝向误差/UPH) 还没做, 需要现场授权, 别把"入口通"说成"已提升"。
+
+## 🧩 出口/权重/预测/参考姿态 四件套 (2026-11-12 落地, 判据 `tools/verify_su2_layers.py` + `tools/verify_pose_chain.py`)
+
+`ssobs` 从"一份读数"升级成"分层的、会挑信源、能预测、能给参考姿态"的节点。**每件都有可复跑判据(11/11 + 7/7)**,
+改这块前先跑一遍, 别凭日志感觉:
+
+1. **out1 ≠ out2**: out1 = 43D 观测体, out2 = 四层结构体(θ/方向/可观测/权重/贡献)。
+   🔴 **同一拍必须同一份 obs43**: 原来 L2 编码用一份、out1 又调 `_ss_ensure_obs43()` 重取一份(env 会重采样)
+   ⇒ `same_frame_as_L2=False`, 下游拿到的和 L2 判据的不是同一帧。判据就查这个字段。
+2. **权重 = 有没有数 × 时效**, 作用在**群内**(角缩放/slerp), 不是向量平均 —— 全权重=1 时与旧 compose
+   **逐位相同**(零回归, B1 判据)。L5 半衰 30s、过期即 0; `w` 0→1 必须真改场景(实测 Δθ=0.367), 否则是摆设。
+3. **预测先行要预测「输入」, 不许预测群元素**: 编码是 `π·tanh(g‖v‖)` 非线性 ⇒ 对群元素做等角速度外推,
+   平稳段就有 3~8° 残差, 阶段突变被淹没(实测过)。改成一阶外推输入再编码 ⇒ 平稳段 **0.0°**、突变拍 4.17°。
+   🔴 四元数/慢先验(**L2_quat / L5_intent**)不参与外推: 外推单位四元数会得到非单位四元数, 残差随机乱跳(实测)。
+   信号饱和(contact 到 1.0 被削顶)也会被判成事件 —— 这是**特性**, 别为了让它"平稳"去改判据。
+4. **参考姿态进执行链(位姿链入口)**: `ss_obs.out3.quat_ref`(xyzw) → 段表 `quat_ref` →
+   `daemon._ref_quat()` → 已有"位置+姿态双判据"到位检查。默认**零变化**: 只有段表显式写 `quat:"su2"/"ref"`
+   或给 `quat_ref` 才走; 坏输入(3 分量/非单位/非数值/顺序不符)一律**拒发**, 宁可不动臂。
+   🔴 **分量顺序是真事故级坑**: `quat_truth`/`pose_caliper` 内部是 **(w,x,y,z)**, 执行器全链是 **(x,y,z,w)**。
+   不转换时四元数仍是单位长度、校验全过, 但"工具 z 对 −z"会发成"对 +z"(**差 180°**)。
+   定式: 跨模块传四元数必须显式带 `quat_ref_order="xyzw"`, 不符即拒; 判据 = 用 6 个技能轴验 `R(q)·ẑ` 与轴的夹角
+   (实测 0.000e+00°)。
+
+> 复跑: `gui-venv311/bin/python tools/verify_su2_layers.py` (11 项) / `tools/verify_pose_chain.py` (7 项,
+> 零运动不写 FIFO)。两者都会把结果落 `reports/*.json`。
+流形引擎那条 "测地线真驱动动作" 也不是位姿轨迹: 状态是 PCA 潜空间 `z[:3]`, 目标是 `obs[0:3]←孔位` 重投影配的。
+
+### AR 站四层覆盖 (问「L2~L5 对 AR 有没有作用」先查这里)
+
+AR 站 (8797) 每拍跑 17 节点 L2 全链 (`tools/ss_l2_chain.py::L2_ORDER`): ssyolo → ss2d3d → sssensor → ssobs →
+ssest → sspred → ssinnov → sstactile → ssaoi → ssff → **n_geoplan** → sssched → sslimit → ssphys → sssk →
+ss_mem_l2 → ssact; `tick_plan` 再把测地线块与前馈 MLP 按 λ 加权 → 调制 → `safety.saturate`。
+
+| 层 | AR 闭环内? | 证据 |
+|---|---|---|
+| L2 检测/收口 | ✅ | `ss_station_engine.obs43` 的 `[4:7]` = `ST["perc"].xyz` (YoloPerception 产出) |
+| L3 规划 | ✅ | `n_geoplan` 测地线 chunk 进 `tick_plan` 右支 |
+| L4 执行/安全 | ✅ | `ssff` 前馈 MLP 左支 + sssched/sslimit/ssphys 三级闸 |
+| L5 大模型 | ⚠️ 半 | 页面「🧠 L5 理解」按钮走 `ar_l5_understand.py`→SceneVLM(deepseek VL), 按需、不进节拍、不下发; **闭环内零命中** (grep `L5\|l5_intent` 在 ss_station_engine.py / ar_render_station.py 无结果) |
+
+别把两套口径混成一句: AR 用的是流形引擎的 su2 **切空间**(obs43→潜空间→群), 不是 su2.py 的 L2~L5 层合成;
+`l5_intent.py` 目前只喂画布「🧩 SU(2)」节点的 L5 槽。要让 L5 对 AR 真起作用, 得接进 `tick_plan` 的前馈/规划权重,
+且它实测 0.8~133s/次 ⇒ 只能当慢先验。
+
+## 四元数真值策略 (quat_truth.py, 2026-11-03)
+
+链路: 记忆(技能轴向)→真值 q_t → 感知补偿(S³ 互补滤波, 权重=新鲜度)→q_fused → su2 L2 精确群元素
+(不再 tanh) → 流形/规划/action/原子技能; 伴生 V=½kθ² 与指向真值的引力, 契约落
+`zmax_data/ss_live/quat_truth_latest.json`, 流水 `quat_truth_calls.jsonl`。
+
+判据 (必须复验): 106 条技能轴对齐 0.0; 3°/α=0.5/w=1 → 融合 1.5°; 过期或无测量 w=0 且 q_fused==q_t;
+V 随误差单调; 引力方向 cos=1; `encode_layer("L2", {"L2_quat": q})` 与 q_fused 逐位一致。
+
+坑 (都踩过):
+- 四元数误差必须用 Hamilton 乘法 q_t⁻¹⊗q_f, 逐元素相乘会得到恒 180° 的假误差。
+- `s3_angle` 不含 ±q 商, 直接 2×角度会出 360°; 用 `|rotvec(rel_q(a,b))|` 取物理角。
+- 轴向要带符号: 只看 |e_x| vs |e_z| 会丢方向, 真值与测量差 180°; 用插入方向 d=孔位−光模块 的符号。
+- 姿态不是唯一解: 同一"工具 z 对齐"约束下 24 个 yaw 里有的 0.0mm 可达、有的差 30~150mm
+  (现场 URDF 数值 IK, tools/pose_offline_sim.py)。固定 yaw 写死会让整段不可达。
+- 位置-only 段表按末端速度排时间 → 关节速度峰值 554°/s (10Hz 采样) 远超常规 180°/s;
+  说 UPH 前必须用关节 q̇ 复核 (段表直加 313 → 补段间瞬移 292 → 按 S 曲线峰值限幅 277 → 台账实测 216)。
+  三项复核的做法/工具/实测表 + 姿态可行集 (24 个 yaw 中有的 0.0mm 有的差 30~150mm)
+  → `references/pose-and-takt-physical-checks.md`
+- 🔴 **经 `_ss_import`(spec 按路径加载) 调入的新模块, `import 兄弟模块` 会 ModuleNotFoundError**:
+  spec 加载不给 sys.path 加目录 ⇒ `import pose_caliper` 失败, 而画布节点里这异常被 try 吞掉, 节点静默落回旧路径
+  (日志只一行 ⚠️)。定式: 模块顶部自补目录 `_HERE=os.path.dirname(os.path.abspath(__file__)); _HERE not in sys.path and sys.path.insert(0,_HERE)`,
+  再 import 兄弟模块。判据: 用**画布节点真跑路径**(不是 `cd 目录 && python 模块.py`)验一次。
+- 真值/契约落盘要能被下游查: `zmax_data/ss_live/quat_truth_latest.json`(单槽, 写临时文件再 os.replace) +
+  `quat_truth_calls.jsonl`(逐次流水, 可复盘每次 err/V/w/引力)。
+
+### 部署到 550C(intel) 的验收口径
+intel 的登录用户是 `intel`(不是 ubuntu), `~/zmax` 是**同步副本不是 git 仓库** ⇒ 不能 `git pull`, 用
+`rsync -a --relative <相对路径...> intel:~/zmax/`, 然后**在远端跑一遍模块自检**并与本地 `md5sum` 逐个对照;
+只比时间/大小不算部署成功。intel 上的飞书凭据在 `~/.hermes/config.yaml` 的 `platforms.feishu`(它自己的应用),
+别再往 `.env` 塞第二套(双源打架); gateway 存活看 `systemctl --user is-active hermes-gateway` +
+日志 `✓ feishu connected`。代码同步了但服务未重启 = 未生效, 要如实报不生效。
+
+### 补偿增益头的训练与验收 (tools/train_quat_gain.py, eval_quat_gain.py)
+
+- **退化任务警告**: 若把记忆真值当"精确", 最优解就是忽略测量, 训练出来的头必然劣于解析基线
+  (实测 v1: 头 6.50° vs 基线 1.68°)。必须有"记忆漂移"才有融合增益空间。
+- 零初始化输出层 ⇒ 起点 g=0.5 恰等于解析基线, 保证"先不回退, 只在有增益处改进"。
+- 实测 (600k 样本/22 epoch/4060, 106s): 总体 2.386° vs 2.898° (Δ-0.51, p95 4.54 vs 5.73);
+  10-15° 噪声档 2.465 vs 3.771 (Δ-1.31); 3-6° 档 +0.115 回退 ⇒ ok=false, **不进默认档**。
+- 混合门限 (|测量−记忆| ≥ 12° 才用头, 门限只在验证集选): test 2.652 vs 2.895, p95 改善 0.68,
+  但 6-10° 档仍 +0.032 ⇒ 按"每档不回退"门槛依旧不上线。要上线必须真机姿态标定数据复评。
+- 验收脚本必须用**独立种子**重采样, 且门限只在验证集选 —— 否则等于自评自过。
+
+- **产物覆盖坑**: 旧训练任务在后台跑完会覆盖同名 quat_head.pt / report.json, 导致 ckpt 与报告不同源
+  (实测 v1 在 09:18 覆盖了 v2 的产物)。同一输出目录只允许一个训练进程; 训完先校验 `ckpt.arch` 与 `report.task` 是否同源再验收。
+
+### 🎯 轨迹可视化窗口 (主参数页 S³ 轨迹球 + 完全隐藏)
+
+四元数那段「滑动轨迹」要在右侧栏**看得见**: 新视图挂在 `MasterParamMView.viz_stack` 第 3 页
+(`tools/gui/su2_traj_ball.py`), S³ **立体投影 `p=(x,y,z)/(1.05−w)`** (极点放球外, 单位元不发散),
+轨迹用 slerp 补点成弧, 只认 `quat_truth_calls.jsonl`, 无数据画空态。
+「完全隐藏」= 隐藏控件 + **停刷新计时器** + **从下拉摘项** + QSettings 落盘 (`mparam/su2_ball`),
+还原口是视图行的 🎯 小开关; 宿主用 `hiddenChanged` 统一做摘项/落盘。
+离屏验收 (`QT_QPA_PLATFORM=offscreen` + `grab()` 关键颜色像素统计 + 重启态 0/1) 的判据表与
+两个坑 (隐藏后 grab 仍返回旧画面; 别开第二个 GL 上下文) → `references/su2-trajectory-ball-ui.md`
+
+#### 📐 规范化经线视图 (经度=绕哪根轴, 纬度=转了多少)
+- 算法: 相对起点每步 `r = q_i ⊗ q_0⁻¹` → **转角定纬度** (窗口内最大角归一 ⇒ 赤道 0° = 起点, 北极 90° = 转到位)、
+  **轴定经度** (同轴 = 同一条经线)。单轴动作画出来正好是一条赤道→北极的经线; 换轴就换经线。
+  三视图循环 `S³ → S² → 经线`, 默认落在经线视图, 选择落 QSettings `mparam/su2_mode`。
+- 判据 (单轴合成轨迹必须过): 绕 x 90° / y 60° / z 45° ⇒ 经度跨度 **0.0000°**、偏差 RMS **0.0000°**、
+  起点 `(1,0,0)` 赤道、终点 `(0,0,1)` 北极。真数据**不设跨度上限** —— 它是读数不是合格线
+  (实测混轴 8 次观测 z_pos+x_neg: 偏差 RMS 97.6° / 圆周跨度 360°, 扇面开度就是混轴程度)。
+- 🔴 **角度≈0 时旋转轴是病态的** (`r≈I` ⇒ 轴方向纯噪声) ⇒ 必须继承最近的有效轴, 否则起点附近会甩出
+  90° 假经度 (第一版实测就是 0.000° 期望值算出 90°)。
+- 🔴 **经度是角度, 不能用 `max−min`**: 同一根经线在 ±180° 两侧各取一半 ⇒ 跨度被算成 180°(甚至 360°)。
+  用圆周统计 `R=|mean(e^{iθ})|`、`circ_std=√(−2 ln R)` (第二版实测因此虚高)。numpy 数组别喂 `math.sin`,
+  用 `np.sin(...).mean()` 再转 float。
+- 视图设计红线 (本页同类窗口通用): **隐藏后必须有带字的恢复入口** (`🎯 显示球`, ≥78px 深底+蓝描边),
+  只留一个 26px 图标用户会找不到; 字号一次只调**一档** (页面 12pt / 下拉 12px / 弹层行高 24px 为定稿档),
+  下拉弹层白底白字要修 `QAbstractItemView` 而不是只改 `QComboBox`。

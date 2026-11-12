@@ -40,6 +40,6 @@ curl -s https://api.github.com/repos/MikeBMW/zmax/releases/latest              #
 ```
 
 ## 6. 技能 + 记忆同步
-`bash tools/sync_hermes_to_repo.sh`：技能全量镜像到 `docs/3-天玑-能力功能/skills/hermes-all/`（另挑一份到 `docs/3-天玑-能力功能/skills/xspace/`）、
+`bash tools/sync_hermes_to_repo.sh`：技能全量镜像到 `docs/3-天玑-能力功能/hermes-all/`（另挑一份到 `docs/3-天玑-能力功能/xspace/`）、
 记忆备份成 `docs/7-瑶光-记录追溯/hermes-jingjing-{memory,user}-<日期>.md` + `-latest.md`、更新 manifest，自带 commit + push。
 > 若该脚本的 SKILL.md 侧记不在本技能，就只当作工作流参考；技能/记忆的改动务必在跑它之前完成。

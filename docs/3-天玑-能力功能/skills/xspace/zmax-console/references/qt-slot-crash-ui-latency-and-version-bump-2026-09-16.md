@@ -38,7 +38,7 @@
 3. `update_checker.py` `CURRENT_VERSION`；
 4. `version_sync.py` `zmax_ver`（**不带 v**）；
 5. `docs_sync.py` 的 `"version"` 与 `"zmax_version"` 两键；
-6. `docs/6-开阳-工程落地/release/VERSION.md` **版本历史表插到最上**（新条目在最前）。
+6. `docs/VERSION.md` **版本历史表插到最上**（新条目在最前）。
 验收: `grep -c "vX.Y.Z" studio.py` = **3**（版本号）+1（摘要注释）；`ast.parse` 过；
 `git tag vX.Y.Z` + push；`git ls-remote --tags origin | grep vX.Y.Z` 复核远端。
 ⚠️ **提交前先看 `reports/`**: 证据视频动辄 GB 级（当天 283 个 >1MB 文件 ≈ 1.74GB）。

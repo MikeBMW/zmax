@@ -3,7 +3,7 @@
 """节点标签体检 (只读): 把 26 个 flow / 1000+ 个节点的「画进框里的字」全量算一遍,
 按老倪的规矩判: 字数 ≤10 · 一行放得下(≤300px) · 不得只剩层号(L2/L3/L4) · 不得过简。
 
-用法:  cd /home/ubuntu/zmax_rel
+用法:  cd /home/ubuntu/zmax
        QT_QPA_PLATFORM=offscreen ./gui-venv311/bin/python <本脚本>
 三个 "0" (超10字 / 超300px / 只剩层号) = 通过。
 """
@@ -13,7 +13,7 @@ import os
 import re
 import sys
 
-REPO = os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax_rel")
+REPO = os.environ.get("ZMAX_REPO", "/home/ubuntu/zmax")
 sys.path.insert(0, os.path.join(REPO, "tools", "gui"))
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 

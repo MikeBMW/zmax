@@ -68,7 +68,7 @@ def refresh(self):                              # GUI 侧: 零 I/O, 实测 <1ms
    ```python
    def _flows_path(name):
        cands = [os.path.join(_repo_root_path(), "flows", name),
-                os.path.join("/home/ubuntu/zmax_rel", "flows", name),      # main worktree 兜底
+                os.path.join("/home/ubuntu/zmax", "flows", name),      # main worktree 兜底
                 os.path.join(os.path.expanduser("~"), "lerobot-smolvla-lew", "flows", name)]
        env = os.environ.get("ZMAX_FLOWS_DIR")                             # 环境变量优先
        if env: cands.insert(0, os.path.join(env, name))

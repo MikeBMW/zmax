@@ -54,6 +54,37 @@ description: Use when 把真机示教动作固化成可复用技能(L2肌肉记�
 - **他说「我接管了」= 正在手拖示教**: 此时**一条指令都不发**(拖动模式下夹爪指令也可能被忽略, 实测下发无效),
   等他说「可以动作」再走三查闸门.
 
+## 两套“技能”别混: 模板类 (SK01-12) vs 注册表条目 (L2.xxx)
+
+被问“你是怎么调用这些技能的 / 工艺动作的指令到底从哪发出的”时, 先把两层分清楚再答, 否则答成另一层:
+
+| 层 | 存哪 | 是什么 | 能不能直接动臂 |
+|---|---|---|---|
+| 模板类 SK01-12 | `src/.../state_space/skills/atomic_skills.py` | 一段固定轨迹模板 + 本段物理约束/目标规则 | ❌ 不直接下发 |
+| 注册表条目 L2.xxx | `data/skills/l2_atomic/registry.json` | 可点可发的技能（点位/速度/guards/steps） | ❌ 只写 FIFO |
+
+三条调用面, **全部只能到 FIFO 为止**:
+① 画布/引擎节点每拍 `run(ctx)`（仿真演示；`n_exec` 节点是**只读**状态显示, 源码头上就写着“不下发动作”）
+② 工位页面 → `POST /ctl/move` → 服务端白名单 → 写 FIFO
+③ 脚本 → 写 FIFO
+
+真正的**唯一收口**在 `l2_daemon` 的 `chan_send()`: 它做了三件事——段表构建、授权闸、下发。
+授权闸读 `~/zmax/zmax_data/ctl_auth.json`（`armed` 到期 + 单调 `epoch`, 命令带签发时的 epoch）:
+**此刻必须有授权、撤销即作废、ctl_auth 不可用 fail-closed 拒发**。回答用户时把这三层名字说准,
+别把“画布节点”说成“发指令的”。
+
+🔴 **段有物理量 ≠ 有技能类**: 真源里有某段的 v/a/jerk 但 `atomic_skills.py` 没对应类时,
+`skill_for(stage)` 返回 `None` ⇒ 派发链静默退回通用闸, 该段的 `clamp()`/`return`/断点**一拍都不进**,
+日志一切正常。要查就一句: 逐段比对“真源 stages 键”与“类上的 stage 属性”差集。
+补类步骤: 数字只从真源 `value` 取 → `phys_note` 必非空 → 新类进 `SKILLS_FULL`/`skills_for_mode('full')`
+（`SKILL_BY_STAGE` 由 `_index_by_stage()` 扫 globals 自动收, 共用基类必须保持 `code="SK--"`）→
+`rel` 类目标的行程回退链 `spec.d_m > TARGET.d_m > params.d_m`（漏了会让“拔出 45mm”算成 0, 判据还全绿）。
+
+🔴 **改技能代码前先取判据基线**: 先跑一遍 `verify_skill_*` 记下红项, 再 `git show HEAD:<文件> > 文件`
+换回旧版跑一遍 —— **改动前就红的不是你的回归**, 不取基线会把老债当自己弄坏的（或把老债当新成果汇报）。
+补类还会改掉判据前提（有判据把“拔出”当“无技能类的样本段”）—— 改判据用一个真不存在的段名 + 新增正向断言,
+别把红项当回归。
+
 ## 调用已注册的 L2 技能 (参数 + 速度 + 多步取证)
 
 - **FIFO 契约**: `echo '{"skill":"L2.lift","d_mm":10,"speed":11}' > ~/zmax_data/l2_cmd.fifo` —— 一行一条 JSON, 延迟 <1s;

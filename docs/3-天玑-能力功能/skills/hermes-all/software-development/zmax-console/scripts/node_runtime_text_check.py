@@ -10,7 +10,7 @@ import json
 import os
 import sys
 
-sys.path.insert(0, "/home/ubuntu/zmax_rel/tools/gui")
+sys.path.insert(0, "/home/ubuntu/zmax/tools/gui")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt5.QtCore import QRectF, Qt  # noqa: E402
@@ -20,7 +20,7 @@ from PyQt5.QtWidgets import QApplication, QStyleOptionGraphicsItem  # noqa: E402
 app = QApplication.instance() or QApplication([])
 import simulink_module as SM  # noqa: E402
 
-FLOW = "/home/ubuntu/zmax_rel/flows/state_space_obs.json"
+FLOW = "/home/ubuntu/zmax/flows/state_space_obs.json"
 d = json.load(open(FLOW, encoding="utf-8"))
 nodes = d["nodes"]
 shim = type("S", (), {"nodes": nodes, "links": d.get("links", [])})()
@@ -28,7 +28,7 @@ shim = type("S", (), {"nodes": nodes, "links": d.get("links", [])})()
 LONG = [
     "自动标注: 6 路相机 → VLM 逐帧打标 (已 1284/2400 帧, 预计 18 分钟)",
     "监督训练: L2 全量 12.4k 帧 → L3/L4 LoRA → merge 回主干 (阶段 2/4)",
-    "产物: /home/ubuntu/zmax_rel/outputs/l5_auto/ckpt_step_3200.pt · 评测成功率 0.93",
+    "产物: /home/ubuntu/zmax/outputs/l5_auto/ckpt_step_3200.pt · 评测成功率 0.93",
 ]
 
 
@@ -107,7 +107,7 @@ for n in hits:
     tot += check(n2, "L5 闭环(运行中, 3 行长中文)")
     n3 = json.loads(json.dumps(n))
     n3.setdefault("params", {})["l5_loop"] = True
-    n3["params"]["l5_lines"] = ["❌ 失败: FileNotFoundError: /home/ubuntu/zmax_rel/datasets/l5_auto_annotations.parquet (缺数据, 请先导出)", ""]
+    n3["params"]["l5_lines"] = ["❌ 失败: FileNotFoundError: /home/ubuntu/zmax/datasets/l5_auto_annotations.parquet (缺数据, 请先导出)", ""]
     n3["params"]["l5_state"] = "error"
     tot += check(n3, "L5 闭环(报错, 超长行)")
 for n in [x for x in nodes if (x.get("params") or {}).get("cap_switch")]:

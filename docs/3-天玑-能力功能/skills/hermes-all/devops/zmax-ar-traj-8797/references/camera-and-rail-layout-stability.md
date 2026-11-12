@@ -33,3 +33,42 @@ if(VR.auto){ VR.auto=false; vrFitBox(); }   // 一次性，不是每帧
 - 口径统一为 **120s**：服务端 `play.fresh = age_s <= 120`；页面 `PLANT._lastPlayTs` 初值 = `Date.now()/1000 - 120`。这样「2 分钟内人点过的运行」刷新后仍然跟随，更老的命令不会自己拉起播放。
 - 改完页面版本后，要给正在挂着的标签页**补一条 fresh `start`**（写 `ar_play.json`），否则用户看到「开关开着却不动」。
 - 排障时先看 `/dev/shm/zmax_ar_diag.jsonl` 里该标签页自报的 `bld`：页面版本号比线上旧 ⇒ 结论是「页面没跟上」，不是信号没来。
+
+## 4. 浮层定位与多视口几何自验（ar3d 浮层压左栏）
+
+症状：顶部浮层（UPH 窗口 / 任何居中 HUD）一边压住左侧按钮栏，用户原话是「位置要对中，不要遮挡了左侧边栏」。
+
+机制：`left = (innerWidth - 右侧栏宽)/2` 只减了右边。ar3d 版式是**左栏 `#vrRail` 300px + 画布 + 右栏 `#tactWrap` 392px**（右栏是 fixed 覆盖层）⇒ 1280 宽时浮层左沿落到 229px，直接压在 300px 宽的左栏上。
+
+规则：
+
+```js
+// 在两条边栏之间那条带子的正中，并把宽度也夹进带子
+L = vrRail.right + 8;  R = tactWrap.left - 8;  left = (L+R)/2;
+maxWidth = minWidth = 夹进 (R-L)；R-L < 260（手机竖屏/两栏叠成一列）才退回整屏居中
+```
+
+实测（`/ar3d` 离屏 iframe，页面自己的 `uphPlace()`，浮层 430 起 / 窄屏自动缩）：
+
+| 视口 | 左栏 right | 右栏 left | 定稿浮层 [左,右] | 与两栏相交 |
+|---|---|---|---|---|
+| 1920×900 | 300 | 1528 | [699,1129] | 无 |
+| 1440×800 | 300 | 1048 | [459,889] | 无 |
+| 1280×720 | 300 | 888 | [379,809]（旧版 229 = 压栏） | 无 |
+| 1024×700 | 300 | 632 | [312,620]（宽 308，自动缩） | 无 |
+| 820×700 | 全宽在底部 | 428 | [4,416] | 二维无（左栏已叠到底部） |
+| 420×780 | 全宽在底部 | 28 | [4,416] | 与右栏重叠（单列版式不可避） |
+
+自验配方（一次拿到全宽度的矩形账）：
+
+1. `iframe{position:fixed;left:-99999px;width:W;height:H}` 逐宽度复用同一页面，`onload` 后延时 ~900ms 等数据到；
+2. 在 `contentWindow` 里 `show` 浮层 + 调页面自己的定位函数，再 `getBoundingClientRect` 收 rail / 右栏 / 浮层 / 胶囊；
+3. **用二维相交**判遮挡（`a.left<b.right-1 && a.right>b.left+1 && a.top<b.bottom-1 && a.bottom>b.top+1`）——窄屏两栏会叠成一列（左栏跑到 `y=462` 底部），只看 x 区间会误报「挡住左栏」；
+4. 异步结果写 `window.__geo`，下一次 console 调用再读（一次求值返回不了 Promise，只能拿到 `'started'`）。
+
+⚠ 这类 iframe 试验做完，浏览器会话可能掉到 `about:blank`：再取元素全是 null / `'MISSING'`。**下手前先读 `location.href`**，回页面重新导航再判，别把它当成「元素被删了」去改代码。
+
+## 5. 删掉「只在某态出现」的横幅时，别留半条链
+
+用户指着一条浮层说「去掉」时，删的是**渲染**，不是**状态**：`arModeApply` 里的开关状态、臂侧按钮、路由（`arViewSet`）全部保留，只把 `createElement/appendChild/textContent` 那段摘掉；顺手在原来位置加一句「旧页可能已把横幅塞进 DOM」的 `removeChild` 兜底，否则打过补丁的旧标签页刷不开还能看到它。判据：`document.getElementById('<横幅id>') === null` + 用真状态调一次（如 `arModeApply({ok:true,ar_scene:true})`）后仍为 null + 控制台零 JS 报错。
+

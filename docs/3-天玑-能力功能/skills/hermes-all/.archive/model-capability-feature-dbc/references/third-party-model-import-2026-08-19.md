@@ -1,6 +1,6 @@
 # 第三方模型导入规范与实现 (2026-08-19)
 
-规范文档: docs/4-天权-模型算法/third_party_model_spec.md (仓库内)
+规范文档: docs/third_party_model_spec.md (仓库内)
 实现: tools/gui/model_importer.py
 GUI 入口: model_tree.py 数据字典面板「导入」按钮 (后台线程, 完成后 refresh 树)
 

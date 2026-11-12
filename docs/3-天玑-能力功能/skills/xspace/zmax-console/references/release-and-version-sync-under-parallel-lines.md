@@ -17,7 +17,7 @@ studio.py"), 保持版本历史连续、诚实。
 
 ## 坑② VERSION.md 被别人的"文档迁移"删掉
 症状: `bump_version.py` 报 `FileNotFoundError: <repo>/VERSION.md`。
-排查: `git ls-tree HEAD | grep -i version` → 只剩 `docs/6-开阳-工程落地/release/VERSION.md`(那是**另一份老的产品版本文档**, 别拿它顶替)。
+排查: `git ls-tree HEAD | grep -i version` → 只剩 `docs/VERSION.md`(那是**另一份老的产品版本文档**, 别拿它顶替)。
 修法: `git checkout <含该版本的提交> -- VERSION.md` 从历史恢复, 再发版; 顺手在交接单写明。
 
 ## 坑③ 共享检出目录被切到别的分支 (最危险)
@@ -27,7 +27,7 @@ studio.py"), 保持版本历史连续、诚实。
 - 引用这些文件的 systemd 服务**进程还在跑(内存里), 但 `systemctl restart` 必挂**。
 修法(不动别人的检出):
 ```bash
-git worktree add /home/ubuntu/zmax_rel main     # main 线独立检出, 本次发布/归档都在这里做
+git worktree add /home/ubuntu/zmax main     # main 线独立检出, 本次发布/归档都在这里做
 # 归档/发版脚本里的 REPO 一律指 worktree; 不要在并行线的检出里 checkout / commit
 ```
 纪律: **一个 agent 线 = 一个 worktree**。提交前先 `git branch --show-current` 自证在正确的线上。

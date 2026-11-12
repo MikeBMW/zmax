@@ -23,7 +23,7 @@ FeatureListDialog (tools/gui/feature_list.py, QTextBrowser 弹窗, 非模态)。
    **如实标注** 不吹牛) · 节拍 · 负载 (插拔>1.00kg 搬运≥5kg) · 端侧轻量化
    <1M 参数 · 24h 连续作业
 
-素材来源: docs/7-瑶光-记录追溯/notes/Z700_technical_agreement_v3.md (5场景/节拍) +
+素材来源: docs/Z700_technical_agreement_v3.md (5场景/节拍) +
 factory_fine_ops_demand.md (需求) + 实测评估 (reports)。
 
 ## 技术坑

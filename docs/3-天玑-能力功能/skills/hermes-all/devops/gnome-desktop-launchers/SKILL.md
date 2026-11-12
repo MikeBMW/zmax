@@ -29,7 +29,7 @@ Ubuntu 24.04 (GNOME 46) 桌面图标由扩展 **Desktop Icons NG (ding@rastersof
 ## 目录改名/家目录整合后: 快捷方式**静默失效**(零反应、不报错)
 
 2026-10-08 实测(老倪报"控制台怎么打不开了"): 家目录整合(仓库 `zmax_rel/` → `zmax/`)后,
-`~/Desktop/XSpace-Studio.desktop` 里 `Exec=/home/ubuntu/zmax_rel/tools/gui/launch_studio.sh`、
+`~/Desktop/XSpace-Studio.desktop` 里 `Exec=/home/ubuntu/zmax/tools/gui/launch_studio.sh`、
 `Icon=/home/ubuntu/lerobot-smolvla-lew/tools/gui/logo.png` —— 两个目录都已不存在 ⇒ **双击毫无反应, 不弹窗不报错**
 (不像"叉号"那样有视觉提示)。
 - 判据: 先看 `Exec=`/`Icon=` 指向是否**真实存在且可执行**(`[ -e ] && [ -x ]`), 再判信任。**路径失效与信任是两回事**。

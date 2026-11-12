@@ -26,6 +26,40 @@
 | `references/gui-patch-safety-and-side-effects-2026-09-19.md` | 大 GUI 单文件改动的安全流程 |
 | `references/display-refresh-honesty-and-window-stubs-2026-09-17.md` | 刷新/显示的"看着变了其实没变"类坑 |
 
+## 1b. 下拉弹层「白底白字」+ 弹层字号（属同一类可读性投诉）
+
+症状: 用户说「背景还是白色，字体也是白色，都看不到要选择的文字了」。
+**根因永远是漏写弹层，不是配色偏好**: `QComboBox{...}` 只样式化本体；弹出列表是独立的
+`QAbstractItemView`，没写就走系统浅底，而本体给的是浅色字 ⇒ 白底白字。
+
+```python
+combo.setStyleSheet(
+    "QComboBox{background:#161b22;color:#e6edf3;border:1px solid #30363d;border-radius:4px;"
+    "padding:2px 6px;font-size:13px;min-height:26px;}"
+    "QComboBox::drop-down{width:18px;border:none;}"
+    "QComboBox QAbstractItemView{background:#161b22;color:#e6edf3;border:1px solid #30363d;"
+    "outline:0;font-size:13px;selection-background-color:#1f6feb;selection-color:#ffffff;}"
+    "QComboBox QAbstractItemView::item{min-height:28px;padding:3px 8px;}")
+# 再兜一层 palette (有的平台/主题弹层不吃 QSS): view().palette() 的 Base/AlternateBase/Text/
+# WindowText/Highlight/HighlightedText 逐个 setColor; view().setMinimumWidth(300) 给长选项
+# (如「🧊 … / 🪐 … / 🎯 …」三项) 留够宽, 否则一进弹层就省略号。
+```
+
+**再加一条全局兜底**: 在 app 级 `_build_global_qss()` 里写同样的 `QComboBox QAbstractItemView`
+规则。单页面写只能修那一处，别的页面照样复发；全局兜住才是根治（f-string 里用双大括号 `{{ }}`）。
+
+字号口径（嫌小时按这档，别逐处临时加）: 侧栏页基准 12→13pt（页级 `setFont(+1pt)`，不动其它页）·
+页内正文最小 12px（原 11px 一律提上去）· 下拉本体与弹层都 13px、本体 `min-height:26~28px`、
+弹层 `::item{min-height:26~28px}` · 弹层最小宽 ≥300px。
+
+### 怎么量（别读字体 API）
+- QSS 写的 `font-size:13px` **不反映在 `QFont.pointSize()`**（读出来常是 -1 或旧值）⇒ 用字体 API 判"字号改没改"会假绿。
+- 正确判据: 渲染后逐行扫亮像素，连续行段 = 一行文字，**段高 ≈ 字形像素高**（实测改前 11px、改后每行 14px）。
+- 可读性量化: `QPalette.Base` vs `QPalette.Text` 的 WCAG 对比度，≥4.5:1 才算看得清（深底浅字实测 14.6:1）。
+- **截断体检**: 扫页内 `QLabel/QPushButton/QComboBox`，`sizeHint().width() > width()+2` 的条数必须为 0 ——
+  字号一放大最容易把窄栏文字挤没，而这类用户就是看画面当结果的。
+- 全部可离屏做: `QT_QPA_PLATFORM=offscreen` + `combo.view().grab()`，不必抬真窗口。
+
 ## 3. 一句话铁律(与 §1 同源)
 
 主线程只做**渲染**; 取数(HTTP/子进程/sleep/重算)一律进工作线程;

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""全量镜像 Hermes 技能到仓库 docs/3-天玑-能力功能/skills/hermes-all/ + 生成可读索引
+"""全量镜像 Hermes 技能到仓库 docs/3-天玑-能力功能/hermes-all/ + 生成可读索引
 
 用途: 老倪说"共享你的**所有**记忆/技能"时用 (既有 cron 通道 tools/sync_hermes_to_repo.sh 只镜像
-      zmax-console 全家 + 24 个关键技能到 docs/3-天玑-能力功能/skills/xspace/, 那是"精选"不是"所有")。
+      zmax-console 全家 + 24 个关键技能到 docs/3-天玑-能力功能/xspace/, 那是"精选"不是"所有")。
 配套: 推前先跑 scripts/scan_redact_secrets.py (技能 references 里最容易藏凭据 → GitHub Push
       Protection 会拦 GH013), 再走 references/hermes-memory-skill-sharing.md §三 的 ghproxy 推送法。
 
@@ -11,7 +11,7 @@
 `.curator_backups/*.tar.gz` 本机快照 → 必须排除 (排除后实际跳过 0 个文件)。
 
 用法:
-    python3 scripts/mirror_all_skills.py                    # 镜像到 <repo>/docs/3-天玑-能力功能/skills/hermes-all/
+    python3 scripts/mirror_all_skills.py                    # 镜像到 <repo>/docs/3-天玑-能力功能/hermes-all/
     python3 scripts/mirror_all_skills.py --dest /tmp/x      # 换目标目录 (先干跑检查)
 """
 from __future__ import annotations
@@ -29,7 +29,7 @@ MAX_FILE = 2 * 1024 * 1024                                   # >2MB 单文件不
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", default=str(pathlib.Path.home() / ".hermes" / "skills"))
-    ap.add_argument("--dest", default="/home/ubuntu/lerobot-smolvla-lew/docs/3-天玑-能力功能/skills/hermes-all")
+    ap.add_argument("--dest", default="/home/ubuntu/lerobot-smolvla-lew/docs/3-天玑-能力功能/hermes-all")
     ap.add_argument("--repo-docs", default="/home/ubuntu/lerobot-smolvla-lew/docs/3-天玑-能力功能/skills")
     a = ap.parse_args()
 
@@ -79,7 +79,7 @@ def main() -> int:
     idx = ["# Hermes 技能全量镜像 (静静) — 索引", "",
            f"> 共 {len(skills)} 个技能 · 源 `~/.hermes/skills` · "
            f"排除 `.curator_backups/*.tar.gz` 与 >2MB 单文件", "",
-           f"> 目录: `docs/3-天玑-能力功能/skills/hermes-all/<技能名>/` (SKILL.md + references/ + scripts/ + templates/)", "",
+           f"> 目录: `docs/3-天玑-能力功能/hermes-all/<技能名>/` (SKILL.md + references/ + scripts/ + templates/)", "",
            "| 技能 | 分类 | 文件数 | 说明 |", "|---|---|---|---|"]
     for s in sorted(skills, key=lambda x: (x["cat"], x["key"])):
         idx.append(f"| `{s['key']}` | {s['cat']} | {s['files']} | {s['desc'].replace('|', '/')} |")

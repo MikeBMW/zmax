@@ -16,6 +16,7 @@ metadata:
 - 用户说"系统自检 / 清理 DNS / 检查网络 / 清理缓存 / 清洁系统 / 提升性能"(常见于**重启后**或**关机存档之后**)。
 - 用户说"**重启了 / 机器回来了 / 元气恢复 / 静静**"(开机后) ⇒ 走 §9 的链路自愈核验, 四行给最简现状; 本机没自愈起来的按 §10 恢复。
 - 用户说"检查任务 / 有什么在跑 / 现在什么情况" ⇒ 走 §9h 的三处只读清点(todo · cron · 在役服务), 只回"待办为空"等于没查。
+- 用户说"**继续上一个任务 / 接着上次的**"(尤其刚重启完)⇒ 走 §9j: 先用会话史取回上轮结论, 再补"上轮留档里写明开机要手工跑的"那一句。
 - 跑长任务前想把机器状态摸一遍(服务在不在、盘够不够、GPU 有没有空转)。
 - 磁盘吃紧 → **磁盘红线部分走 skill `disk-redline-guard`**, 本文管"系统层缓存/服务/性能"。
 - 用户说"**帮我装个 X / 一会开会要用 / 一会演示要用**" ⇒ 先按 §11 查"是不是早就装了"，再做**就绪核查**(外设实测 + 设备占用 + 界面状态)，别直接下安装包。
@@ -163,6 +164,17 @@ WiFi -42dBm/573Mbit/s = 满速档。含 5GHz HE-MCS11/NSS2 才算"好"。
 223.5.5.5 14.9ms / 1.1.1.1 2.6ms · Orin 0.26ms · 工控机 1.10ms, 全 0% 丢包。
 判读: WiFi 信号掉了(-42→-59dBm)但 **tx 协商速率没掉(573Mbit/s)+ 0 丢包 ⇒ 不用处理**, 只记数字别当故障报。
 
+**验「另一台机/端侧节点的出口通不通」(例如 intel 能不能访问飞书) 必须 ssh 到那台机上 curl** —— 本机 curl 走的是本机自己的
+路由(很可能还是另一条 NAT), 结论与该机无关。一个免凭证的通用出口探针:
+```bash
+ssh <host> 'timeout 8 curl -s -o /dev/null -w "%{http_code} %{time_total}s\n" -X POST \
+  https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal \
+  -H "Content-Type: application/json" -d "{}"'      # 200 = 该机到飞书 API 的 TCP/TLS 通(无凭证也回 200 的错误体)
+ssh <host> 'systemctl --user is-active hermes-gateway; systemctl is-active hermes-gateway'  # 顺带看机器人侧单元
+```
+口径: 这只证明**网络层通**, 不等于 bot 能收发消息 —— 报「出口通(200 / 0.24s)」, 别写「飞书好使了」;
+要验收发就查接口/会话, **别发测试消息当探活**(污染群)。探完立刻记下时间与延时, 网络可能几分钟后就变(见 §9e③)。
+
 ## 4. 缓存清理矩阵 (可再生 → 直接删; 曾实测释放)
 | 目标 | 命令 | 实测 |
 |---|---|---|
@@ -262,6 +274,26 @@ WiFi -42dBm/573Mbit/s = 满速档。含 5GHz HE-MCS11/NSS2 才算"好"。
 对最大的那几个 `du -sh <dir>/* | sort -rh | head` 逐层下钻(实测 4 次下钻即定位到单个 95G 文件)。
 每层都**同时查引用**: `grep -rn "<目录名>" --include=*.yaml --include=*.py <训练仓库>` ——
 被训练配置引用的数据集属"在用", 只能列清单问用户, 绝不能自己删。
+
+### 腾空间前的三道排除法 (不做完就别动手)
+
+1. **「重复文件」先判 inode, 再谈省空间**。HF 缓存布局是 `snapshots/<rev>/x.safetensors` → **软链** → `blobs/<sha>`;
+   按「同大小 + 相同 sha256」扫会把这**一对**当去重对象, 算出"可省 10.2G", 实测 `os.path.islink` + `st_ino` 全同 ⇒ **真实可省 0**。
+   口径: 先按 `st_ino` 分组, 只在**不同 inode** 的组里才算重复; `du` 同样不会重复计软链。
+   同型: `git gc --prune=now` 对已紧凑打包的 `.git`(数 G)常**零收益** —— 先 `git count-objects -vH` 看 loose 量再决定。
+2. **大头逐个查引用再定性**。实测训练产物 48G / 数据集 33G / venv 17G / HF 9.5G —— 每个都有 2~154 处默认路径引用
+   (`pretrained_path` 基座、评测基线 ckpt、数据集默认值), 删任一个都断脚本 ⇒ **它们不是垃圾**。
+   只动两类: ①可重建缓存(pip/uv/浏览器 profile/`__pycache__`, `*.pyc` 两万个也只算几十 M) ②**被新版取代**的旧实验产物 ——
+   后者删前必须同步改那些默认值, 且**要用户点头**(退役实验是决策, 不是清理)。
+3. **两个重复数据根 (家目录一个 + 仓库内一个) 的合并定式**: 别逐个改引用, 用软链兼容:
+   `rsync -a --ignore-existing 旧/ 新/`(保留较新副本) → 遍历旧树逐文件断言新树 `exists`(报 0 才算搬完) →
+   `rsync -a --delete <空目录>/ 旧/` 清旧(比 `rm -rf` 留痕) → `rmdir` → `ln -s 新路径 旧路径`。
+   🔴 两个坑: ①`ln -sfn /a/b /a/b` 在目标目录已存在时会**在该目录里建一条自指软链**, 不报错 ⇒ 必须先 `rmdir`;
+   ②root 属主的子目录 `rsync --delete` 删不掉(`cannot delete non-empty directory`) ⇒ 先 `diff <(ls 旧) <(ls 新)`
+   证明文件都在, 再 `sudo rm -rf` 那一份。验收: `ls -ld` 旧路径是 `l` 开头 + 旧代码路径穿透后能 `ls` 到内容。
+
+**汇报数**: 给「已用/可用 + 家目录顶层条目数变化 + 本轮实际回收量」; 回收只有几百 M 就直说, 并单独列「还占大头的都是什么、删了会断什么」。
+
 
 ## 8. 关机前存档 / 交接 (用户说"保存数据, 小版本迭代, 准备关机")
 
@@ -370,11 +402,69 @@ cam_stream_guard · ar_server_guard · vl_safety_keepalive · l2_daemon_keepaliv
 `reports/joint_train_*/` (内含 .pt) 这类必须显式 ignore, 否则下次 `add` 就会把权重拖进库。
 临时脚本写在 `/tmp/*.sh` 再跑, 别塞巨型内联命令。
 
+## 8d. 「保存数据 + 准备关机」的两条易错账
+
+**① 先找「会自己重起的父循环」，否则产物正在被覆盖。** 只看 `pgrep -af` 会看到一堆实验进程，看不出它们是被循环拉起的：
+按 ppid 上推（`ps -o pid,ppid,args -p <pid>`，或读 `/proc/<pid>/stat` 第 4 列）往往落到一个常驻循环（画布/进化/采集）。
+这种形态下**上一轮产物会被新一轮同名重写**，判据是「文件还在但只剩几十字节」（mp4 只剩 `ftyp/isom/mdat` 头 ≈ 44 B）——
+报告分三句写：已落盘的可用产物（逐个给体积+mtime）· 哪个被新轮清成了空壳 · 想干净收尾再关要停哪个父单元（`systemctl stop <父单元>`）。
+停实验/停服务要用户点名，只停不启的授权不等于可以替他把在跑的实验收掉。
+
+**② 交付件被 `.gitignore` 排除（`*.docx` / `*.pdf`）是约定，不是遗漏。** 这类件的留痕不是 `git add -f`，而是把
+`sha256[:8] + 体积 + 「重跑生成器即再生」`写进关机留档；`-f` 强加会把每轮交付件塞进库（用户明确要求大件不进库）。
+被 ignore 的运行态文件（`data/` 下的状态快照）即使 `git status` 里出现 ` M` 也不要强行入库；只想确认时看 `git status -sb`
+应为 `## main...origin/main`（无 ahead/behind），`git log --oneline -1` 给 hash。
+
 ## 9. 重启后核验：链路自愈了没有（用户说「重启了 / 回来了 / 元气恢复」先跑这个）
 
 > 跳板/公网入口断了怎么自愈（22022 是**哪一端**用 -R 建的 · 端口能连但 SSH 不握手 · unit active 但转发已半开 ·
 > LAN 直连↔公网跳板 双模式自动切换 · 换 ECS 时 EIP 决定多少硬编码要改）：
 > 见 `references/remote-access-tunnel.md` 的「跳板恢复」与「迁移」两节。
+
+### 9-0. 先判「我跑在哪个系统实例上」—— §9 全部清点同时为空时最常中的一条
+
+§9 的单元/端口/仓库/真值**一起为空**时, 不要报「服务全死」, 先判是不是根本没跑在装好系统的那个实例上。三条只读判据:
+```bash
+df -h / | tail -1                        # root 是 /dev/cow 或 overlay ⇒ 跑在 U盘持久层, 不是内盘系统
+cat /proc/mounts | grep -E ' /dev/sda1 |rofs'   # /dev/sda1→/cdrom + loop squashfs /rofs = U盘启动
+lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINT      # 内盘分区一个都没挂 ⇒ 工程/数据不在这个实例里
+ls -ld ~/zmax ~/zmax_data                 # 没有 .git、只有几份日志残片 ⇒ 确认工程不在本实例
+```
+- **分区排布与本文/skill 里记的对不上, 就是换了一套系统**: 本机实测见过内盘为 p3(C:)/p4(Recovery)/p5(E:)/p6(76G ext4 空 Ubuntu)/p7(D:)/p9(EFI) 的另一套排布, 与 E 盘迁移任务书里的 p3=376G/p5=433G 完全不同 ⇒ **分区号与容量只认现场 `lsblk`/`sgdisk -p`**, 拿旧表操作会写错盘。
+- 报告口径: 「跑在 U盘 LiveUSB 实例上, 内盘系统未挂载 ⇒ Z-MAX 工程/数据不在本实例, 这是环境不是服务故障」+ 该实例里能干的活(纯本地)。**不写「所有服务都挂了」**。
+
+### 9-0b. 用户问「你的本机器是 Windows, 你能看到么」/ 要取 Windows 上的文件: 只读挂载, 看完卸掉
+
+```bash
+for p in nvme0n1p3 nvme0n1p7; do sudo mkdir -p /mnt/$p; sudo mount -o ro /dev/$p /mnt/$p && ls -1 /mnt/$p | head -12; done
+ls -1 /mnt/nvme0n1p3/Users                     # 用户目录真名以盘上为准(实测 Mike1), 别按假设拼
+sudo find /mnt/nvme0n1p3 /mnt/nvme0n1p7 -maxdepth 4 \( -iname '*zmax*' -o -iname '*lerobot*' -o -iname 'studio.py' \) 2>/dev/null
+sudo umount /mnt/nvme0n1p3 /mnt/nvme0n1p7     # 看完立刻卸: 他下一步可能就回 Windows 用这台机
+```
+- **只读, 绝不 `rw`**: 双系统机上写错一个目录就是拿他的 Windows 冒险; 需要往外拷文件时先拷到本实例 `/tmp` 再处理。
+- 结论分三句: 「能看(只读)」·「Windows 侧有什么」·「有没有工程」。实测 Windows 两盘只有开发工具目录(playPython/VUE/源文件/MobaXterm…), 无 zmax/lerobot ⇒ 工程不在这台笔记本的任何系统里。**别说成「Windows 在跑」**。
+
+### 9-0c. 直连网段不通时, 先在**同一 wifi/热点网段**里找节点, 别下「全不可达」
+
+产线口没插时 `ping <Orin>`/`ping <工控机>` 全不通是预期(见下 "远程模式" 那条); 但机器可能已挂在热点网段上换了个 IP。
+判据不是 ICMP, 而是**在热点 /24 里按 Z-MAX 端口扫 + 认页面身份**:
+```bash
+# 扫段写成脚本再跑: bash 的 `for … /dev/tcp … &` 会因 nested body 被安全扫描直接拦; 用 python socket 或 curl 循环
+python3 - <<'PY'
+import socket
+for i in range(1,255):
+    h='192.168.43.%d'%i
+    for p in (22,8791,8793,8797):
+        s=socket.socket(); s.settimeout(0.3)
+        try: s.connect((h,p)); print(h,p,'OPEN')
+        except Exception: pass
+        finally: s.close()
+PY
+timeout 4 bash -c 'exec 3<>/dev/tcp/<IP>/22; head -c 60 <&3'   # 认系统: OpenSSH_…Ubuntu ⇒ Linux 节点
+timeout 4 curl -s -m4 http://<IP>:8793/ | head -c 200          # 认身份: <title>Z-MAX …</title>
+```
+- 实测形态: 直连 192.168.23.x 全不通、.43 上只有网关与一台未知 IP, 而 `192.168.43.181` 的 8791/8793/8797/8888 全开、8793 回「Z-MAX 旁路调试·实时视频流」、SSH banner 是 Ubuntu 24.04 ⇒ **节点活着, 只是换了网段**。
+- 报告先给「节点在哪个 IP + 哪些端口在 + 是不是那台(页面标题/banner)」, 再问要不要连上去干活; **不要只贴 ping 全丢就收尾**。
 
 这类话要的是**最简现状**：哪些自愈了、哪些还缺、缺在哪一层。一条命令跑完只读清点：
 （**重启后必看 cron ticker 心跳** —— 偏钟下它会静默卡死, 13 个守护任务一起哑, 见 §9g。）
@@ -393,7 +483,10 @@ pgrep -af '<手工进程名>'                            # 自启单元管不到
                                                     #   每个候选 alive=false "探测异常 ModuleNotFoundError" ⇒ 全 -1
                                                     #   (实测 2026-10-25: 据此回落 --local-dev 0, 而重启后 video0
                                                     #    已不存在 ⇒ 推流 40s 后冻在 1839 帧); 且**推流在跑时**
-                                                    #   被占用的那路会报"打不开(被占用)"⇒ 解析要在起流之前跑
+                                                    #   被占用的那路会报"打不开(被占用)"⇒ 解析要在起流之前跑。
+                                                    #   ⚠️ 起流之后再解析, 被占那路的报错可能只有 `can't open camera by index`
+                                                    #   (不带"被占用"字样) ⇒ 见 -1 先 `sudo fuser -v /dev/videoN` 认持有者
+                                                    #   (持有者 = 本机推流 python), 别据此报"相机缺失"
 ls -l /home/ubuntu/zmax/zmax_data/rokae_sdk/tcp_out/latest.json   # 位姿真值(全 0/读不到=会话陈旧)
                                                     # ⚠️ 家目录整合后的真实路径 = `~/zmax/zmax_data/...` (**不是** `~/zmax_data/...`):
                                                     #   按老家目录路径探会得到"缺 latest.json" ⇒ 误报"真值没在刷"(实测踩过);
@@ -678,6 +771,28 @@ journalctl -b -1 --no-pager | grep "user@1000.service: Consumed"            # �
 ⇒ 回答时**先把这一条认领掉**(说清那条命令在等什么、还要多久、已转后台), 再给机器侧的三个数; 别把它混进"机器卡"或"接口超时"。
 三类都要能给判据: 机器端 load/单元数、我这一端 errors.log 的时间戳、第三端"我当时在跑哪条命令"。
 
+### 9d-3. 硬停且内核四件取证全空 ⇒ 只能拿「当时在跑什么」定责, 头号嫌疑是我自己叠的第二套模型栈
+
+§9d 的四件取证(关机序列 / panic·oom-kill·hung-task / pstore 转储 / GPU fence)全空时,**不要再往内核里找** ——
+内核根本没来得及回盘。转去取两条**外部证据**, 顺序固定:
+```bash
+# ① 上轮我最后在跑什么: 按时间列最近 CLI 会话, 读它的末 10 条工具调用
+#    (session_search 不带参数 → session_search(session_id=…))
+# ② 当时后台任务的日志: mtime 停在死亡同一秒、内容断在"模型加载/推理"中途 = 就是它
+ls -l <scratch>/<job>.log; tail -c 1500 <scratch>/<job>.log
+```
+判据不是"有日志"而是**死亡瞬间在做重活**:
+- 本机常驻栈(画布循环 + 引擎循环 + 2× intact_worker + L4 桥)开机即 10 分钟内实测 **≈14G / 31G**,
+  这层是**基线**, 不是可腾的余量。
+- 在这层之上再 `load_project()` 跑一次**全节点 tick**, 它自己还会 fork 引擎桥 + 加载分片权重 ⇒ 直接撞满。
+  权重加载进度条里**单片耗时从 5s 恶化到 20s+ / 片**(如 `Loading weights: 7/489 [02:00]`)就是**已进换页颠簸**,
+  此时桌面先无响应, 用户只能长按电源 —— 别把这种曲线读成"模型大、加载慢"。
+- 🔴 铁律: **全节点 / 全策略 bench 不许与常驻引擎栈同机同刻跑**。起 bench 前先 `free -m` 量 `available`,
+  `available < 6G` ⇒ 不启动; 单进程 RSS 超过 ~8G 即 OOM 风险; 真要跑就串行分批(单节点/单策略),
+  或先停常驻栈(**停要用户点名**, 见 §0 铁律 5)。
+- 汇报口径: 明写「内核没留证据, 定责靠死亡瞬间的负载」+ 当前基线占用数字; **别把无证据的硬停写成 panic**,
+  也别把它栽给"硬件/系统旋钮"。
+
 ## 9e. 开机自愈的两个"假好"陷阱 (2026-10-09 重启后实测)
 
 **① 把后台进程和耗时长的 `sudo systemctl start` 写进同一条 terminal 命令 ⇒ 超时被工具杀掉时, 后台子进程一起死。**
@@ -712,6 +827,13 @@ journalctl -b -1 --no-pager | grep "user@1000.service: Consumed"            # �
 `zmax-proxy`(tinyproxy `Listen 192.168.23.50`) 每 3s 一次 `Could not create listening sockets` 崩溃循环(NRestarts 分钟级+百);
 Orin/工控机/珞石位姿真值/arm 取流全 0。判据: `ip -br a` 里没有 `192.168.23.x` + `lsusb` 无 USB 网卡,
 **开机 5min 与 10min 两次复采都在** 才算真缺失(§9 的 1~2min 规矩)。网卡插回后这些会各自恢复, 不用手工拉。
+- **开机时还通、几分钟后突然全断 ⇒ 先取内核证据再定责** (实测开机 4min 时 ssh 远端成功, 6s 后同一台就 `No route to host`):
+  `sudo dmesg -T | grep -iE 'usb .*disconnect|r8152.*Tx status'` —— 出现 `usb N-M: USB disconnect` + `r8152 enx…: Tx status -108`
+  就是**物理层断开**(拔线/供电/USB 复位), 与驱动、netplan、服务都无关。
+- **同一 HUB 上的 USB 相机(arm D405 / MAXHUB 顶视)会跟着一起消失** ⇒ 「网卡掉了 + 那两格 stalled + 远端不可达」是**一个事件**,
+  报告里合成一条(指向 HUB/线/供电), 别写成三个故障。区分法: `ip -br a` 里 `enx*` 消失 + `lsusb` 里该设备消失 = 确认;
+  内置相机仍留在 `/dev/video*` 只说明另一条总线还活着, 不代表 USB 那路在。
+- 网卡掉线时 `ss -ltnp` 里 8791/8793 仍会 200(那是**本机**服务)⇒ 别拿它反驳「外设缺失」, 两件事分别报。
 
 ## 9f. 2026-10-09 重启后复采: 四个"看着像故障其实不是"的点
 
@@ -786,6 +908,11 @@ sudo systemctl restart hermes-gateway    # 让 ticker 在正时钟下重起 —�
 #   复核: `hermes cron status` 要报 `✓ Gateway is running` + `Ticker heartbeat: Ns ago`,
 #   且 systemctl 的 ExecMainPID 已是新 pid(旧 pid 存活 ≠ 重启成功)。
 ```
+- **先判「真卡死」再谈处置**: 心跳文件隔 **≥70s**(大于 60s 的写周期)两采, epoch 与 mtime 都不变, 且
+  `systemctl is-active hermes-gateway` = active ⇒ ticker 确实死了(不是"还没到下一拍")。6~10s 的两采分不出来。
+- 🔴 **重启网关也是「重启服务」, 按本机规矩要用户点名**: 判定 ticker 卡死后, 把
+  `sudo systemctl restart hermes-gateway` 单独列成「需你点名的一条」报给他, 附代价(全部 cron 当前不跑),
+  **不要自行执行**; 可以顺手 `hermes cron tick` 补一次火, 但要说清那只补一轮、ticker 仍是死的。
 - **独立哨兵**(装在 systemd user timer 里, 不在 cron 里): `~/.hermes/scripts/cron_ticker_watchdog.sh`
   + `~/.config/systemd/user/hermes-cron-ticker-watchdog.{service,timer}`(每 5 分钟, `loginctl Linger=yes` 才随开机起)。
   三条判据任一命中就重启 gateway(30 分钟限流): ①心跳过期 >600s ②心跳在"未来" >120s ③有 enabled 任务的
@@ -867,6 +994,23 @@ GitHub 连不上(135s 超时)失败 → 17:54:28 之后再无任何 tick → 18:
 ⇒ 是那台机器/安全组的事, 不是隧道配置、也不是对端 sshd 抢口 —— 按 §9c 去对端 kill sshd 是白折腾。
 报告只写「本机互联网正常, X 整台不可达(实例/安全组), 本机侧修不了」并给一条要人点头的动作; 用户改走手机热点/局域直连时, 这整条通路不用修。
 
+## 9j. 「继续上一个任务」= 先用会话史把上轮取回来, 再补上轮留档里那句"开机后要手工跑的"
+
+**别凭记忆猜"上一个任务"是什么, 也别从当前机器状态反推**(机器安静不代表任务做完了)。固定顺序:
+1. `session_search` 不带参数 = 按时间列最近会话(最新的一条 CLI 会话通常是它, cron 会话要跳过);
+   再 `session_search(session_id=…)` 读那一轮 —— 它给首 20 + 末 10 条, **末条一般就是上一轮的交付/交接结论**, 够用。
+2. **上轮已完成的部分不重做**: 结论里写了 commit 号 / 归档 / 判据全绿, 只核在位 ——
+   `git log --oneline -1` + `git ls-remote origin refs/heads/main`(两边一致即已推)、产物路径存在即可, 不重跑一遍。
+3. 真正要接着做的是**上轮明确留给开机的动作**(典型 `bash tools/boot_restore.sh check` → `local`)
+   + **目标指标复验**(如 UPH 判据脚本), 而不是把上轮的活重做一遍。
+4. 顺序固定: 单元/端口 → `boot_restore.sh check`(看清缺谁) → `local`(补齐) → 复验目标指标 → 分开报"环境缺失"与"本机没起的"。
+   实测一轮重启后: `check` 只缺 `l5_live_mark` / `vl_safety_monitor`(这两个没有 `@reboot`), `local` 补起后 pid 双活,
+   再跑一次目标指标判据脚本确认指标没退化 —— 三件事跑完才算"接上了", 少一件都只算"机器起来了"。
+5. 判活**别用 `pgrep -af 'a|b'`**: 多分支模式会命中**你自己这条命令的 shell**(cmdline 里就写着那两个名字),
+   于是"在跑"是假绿、偶尔又查不到。用 `boot_restore.sh check`(内部 `[x]` 锚定) 或 `pgrep -x <可执行名>`(见 §10b)。
+6. 报"还差的"时把三类分开: ①本机该起没起(要修) ②产线网卡/远端不在位(环境缺失, 见 §9 — 不要当故障修)
+   ③代码没推/没归档(可当场补)。用户手里的下一步就是这三类里能动手的那一条。
+
 ## 10. 守护脚本的早退会吞掉它后面所有自愈(重启后最常中的一条)
 
 一个守护里有多条自愈分支、又写成 `if bad: … return` 时，**排在前面的那条一坏，后面的自愈永远不执行**。
@@ -874,7 +1018,7 @@ GitHub 连不上(135s 超时)失败 → 17:54:28 之后再无任何 tick → 18:
 ⇒ 深度容器早就不在时，脚本每 5 分钟都在深度分支退出，推流那一支**一次都没跑过**；表现就是重启后 8793 工位总览一直没人拉，
 而 cron 日志里只看得到一行深度失败（看着像「守护在工作」）。
 - **立即恢复**：跑那条**官方启动器**，不要手搓命令行 ——
-  `cd /home/ubuntu/zmax_rel && bash tools/start_station_stream.sh`（它自己按卡名解析设备、抬 fd 上限、末尾复核 `8793/station → 200`）。
+  `cd /home/ubuntu/zmax && bash tools/start_station_stream.sh`（它自己按卡名解析设备、抬 fd 上限、末尾复核 `8793/station → 200`）。
   手搓 `cam_live_stream.py` 会因为设备号写死串线/近黑。
 - **治本**（2026-09-30 已在 `tools/cam_stream_guard.py` 落地并实测）：把每一项自愈都跑完再汇总上报
   （收集式 `notes.append(...)` 代替中途 `return`），只有全好才静默；退出码 = 有失败项才非 0。
@@ -955,7 +1099,66 @@ pgrep -f '^/abs/python /abs/script\.py$' | xargs -r kill
   在本工程目录 · 不命中自己这条 shell) → 杀完复核"只剩一份";
   复核他看的是不是新实例用 `wmctrl -l -p`(窗口→pid) + `ps -o lstart=` 比提交时间, 不看进程个数。
 
-## 12. 某进程 RSS 只增不减(把整机拖到 thrash)⇒ 段级 diff + bpftrace 抓分配者
+## 12b. 起重活前先过内存闸 `tools/mem_gate.py`（2026-11-01 死机后固化）
+
+**症状**: 整机界面卡死 → 长按下电 → journal 在某一秒戛然而止, 无关机序列、无 panic/OOM-kill/hung-task、pstore 空
+⇒ **内核什么都没留下**, 只能从"当时在跑什么"倒推。实测根因: 在已跑满的引擎栈 (canvas_loop 3.2G +
+intact_sw_bridge 2.3G + 2×intact_worker 2.5G + engine_loop 1.3G ≈ **14G/31G**) 之上又起了一个 offscreen
+`load_project()` 全节点基准 (等于**再叠一整套** + fork 第二个引擎桥 + 489 分片权重), 日志里分片加载从
+5s/片 恶化到 22s/片 = 换页颠簸 ⇒ 桌面先死。
+
+```bash
+cd ~/zmax && ./gui-venv311/bin/python tools/mem_gate.py check      # 只读现状
+./gui-venv311/bin/python tools/mem_gate.py run --  <重活命令>       # 安全才起, 超 8G 自动掐
+./gui-venv311/bin/python tools/mem_gate.py run --alone 'ss_canvas_loop|ss_engine_loop' -- cmd  # 禁第二套
+```
+判据: MemAvailable <6G ⇒ 拒 (exit 3) · 已有同类重载(≥8G) ⇒ 拒 (exit 5) · 子进程树 RSS >8G ⇒ 掐 (exit 4)。
+铁律照旧: **同刻只跑一套模型进程**; 基准/评测这类"再加载一遍"的活, 必须串行, 不许和常驻栈并存。
+
+## 12c. 「常驻循环在跑但产物不动」= 某个节点在拍内**同步等长跑子进程** (py-spy 三分钟定位)
+
+实测 (2026-11-01): canvas loop 进程活着、CPU 近 0、`ar_cmd.json` / 链产物停在 264s 前;
+旁边 `engine_latest.json` 却是 0s (引擎循环是另一个进程, 所以"有东西在刷新"会掩盖故障)。
+```bash
+sudo ./gui-venv311/bin/py-spy dump --pid $(pgrep -f 'ss_canvas_loop[.]py' | head -1) | head -20
+```
+栈形: `node_sw_ds → _sw_status 轮询 → project.step → main` ⇒ **一拍被一个节点占满** (等 1800 步真推理的引擎桥,
+超时 2400s) ⇒ 同拍里所有"写 AR 指令/写段表"的节点全停, 上层看到的是"指令停了/AR 不更新"。
+定式: 常驻档 (单元里有 `ZMAX_CANVAS_HZ`) 一律**异步/按节拍**: 起子进程或发 HTTP 后立刻返回、打一行当前态,
+下游读当前态并如实标"未到"; GUI 手动点▶(无该 env) 仍阻塞等终态。改完两个方向都要实测
+(常驻档 0.00s + GUI 档仍等满超时)。
+⚠️ 这类"节点真执行"的活最容易把 10Hz 拍吃掉 —— 判据不是"节点有没有跑", 而是**产物的 mtime 节拍**。
+
+**找阻塞节点的定式 (一次一轮, 不许猜)**: 隔 1s 采 15 次 `py-spy dump` 取 `node_*` 帧做直方图:
+```bash
+P=$(pgrep -f 'ss_canvas_loop[.]py'|head -1)
+for i in $(seq 1 15); do sudo ./gui-venv311/bin/py-spy dump --pid $P 2>/dev/null | head -20 \
+  | grep -oE 'node_[a-z0-9_]+ \(' | head -1; sleep 1; done | sort | uniq -c | sort -rn
+```
+实测一轮: `node_n_l2_muscle` 8/15 (`timeout 6 ros2 topic echo`, 单次最多 10s) → 加节拍闸后
+链产物龄 **中位 2.7s → 0.77s · 90%位 7.2s → 2.2s · >3s 20/20 采样里的 8 → 1**。
+同一轮还收口了 `node_hil`(每拍 POST datadrive 15s + poll 12s → 15s 节拍/1.5s 超时)、
+`node_web_agent`(poll_once 8s → 10s 节拍/2s 超时); 三个都是"从外面看不出来"的隐形阻塞。
+⚠️ 缩块 (`ZMAX_LOOP_CHUNK`) 不管用: 快车道只在**段边界**跑, 一段里有一个 2s 节点就白搭。
+
+### 12c-2. 常驻进程里"看一眼图表"的窗口会 ABRT 打死整条链 —— 用 faulthandler 抓真栈
+
+形态: 单元每隔 ~1min `code=dumped status=6/ABRT` + `QWidget: Must construct a QApplication before a QWidget`, 
+NRestarts 一直涨, 而链产物/指令停更 —— 表面看像"服务崩了", 实际是**某个可视化节点在无窗进程里建 QWidget**。
+源码检索只找得到 `library.py` 一处, 抓不到真因 ⇒ 先开栈再动手:
+```bash
+sudo mkdir -p /etc/systemd/system/<unit>.service.d
+printf '[Service]\nEnvironment=PYTHONFAULTHANDLER=1\nEnvironment=ZMAX_NO_GUI=1\n' \
+  | sudo tee /etc/systemd/system/<unit>.service.d/20-faulthandler.conf
+sudo systemctl daemon-reload && sudo systemctl restart <unit>; sleep 90
+sudo journalctl -u <unit> --no-pager -o cat | grep -A6 'Current thread'   # ← 真凶就这两行
+```
+实测抓到两个: `node_ss_ff_hist → ff_hist_view.py:46` 与 `node_ss_z700_signals → ss_bypass_view.py:1370`,
+同类还有 `node_ss_bypass_viz`(SSBypassView) / `node_ss_ff_attrib`(FFAttribView) ⇒ 四个统一收口到
+`_gui_host_ok()` (主线程 + 有 QApplication + 未设 ZMAX_NO_GUI, 三条全满足才建窗; 否则只算数据)。
+验收: 重启后 `NRestarts` **停在 0 且 journal 里 'Must construct' 计数为 0** (单次 active 不算数)。
+
+## 13. 某进程 RSS 只增不减(把整机拖到 thrash)⇒ 段级 diff + bpftrace 抓分配者
 
 **别靠读代码猜泄漏点。** 三步定死, 顺序不要跳:
 ```bash
@@ -1053,5 +1256,8 @@ OCR 会把同屏其它窗口的文字一起抓进来 ⇒ 只能说"抓到 X 字�
 | 停完不复核就报"全场静止" | 有个别守护 TERM/KILL 后仍活着 | 逐条复核并列出残留(状态/CPU/是否持写句柄), 「停不掉的」也要写 |
 | 用户说"死机了"就顺着认死机 | 电源键触发的干净关机被写成 panic/内核崩溃 | 先取三件套: power key+poweroff 序列 · `fence expiration i915` · `Session logged out`(见 §9d-2), 再定层 |
 | 窗口不映射就去重启窗口管理器 | `killall -3 gnome-shell` 把整个会话带走, 外观=整机死机 | 先看应用自己是否 segfault, 只按 pid 杀那个应用; 合成器不动 |
+| 为 bench 在常驻栈上再跑一套全节点 tick | 整机硬停、内核无任何记录, 事后只能靠日志 mtime 定责 | 起 bench 前 `free -m` + `ps -eo pid,rss,args --sort=-rss` 量常驻栈(基线 ≈14G/31G); `available<6G` 或单进程 RSS>8G 不启动; 全节点 bench 与常驻引擎栈不同时跑 (见 §9d-3) |
+| `cat` 一个二进制/媒体文件去核内容 | 一次 `cat x.mp4` 把 2.7M 字符灌进上下文，后面几轮全被挤掉，而真正要看的只有 40 字节 | 核文件用 `ls -l` / `file` / `stat -c%s` / `ffprobe`；要看头部用 `xxd -l 64`；只 cat 文本与 json，媒体文件一律不 cat（
+  §8d 里判「被清成空壳」也只用体积与文件头，不打开看） |
 
 > 📄 2026-09-24 完整实测数字/命令/产出路径: `references/2026-09-24-baseline.md`

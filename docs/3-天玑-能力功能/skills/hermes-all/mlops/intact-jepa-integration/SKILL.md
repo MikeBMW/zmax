@@ -122,6 +122,17 @@ before action normalization` ⇒ **predictor 没有有效动作可前推** (且 
 **纪律: 绝不用有限的 `z_t` 冒充 `z_pred`** (那是把"拟合"说成"预测"); 要拿到有限 z_pred, 走原生口径
 (真实 `env.render()` 帧 + `num_frames=3` 历史 + 有效 action 经 `env.step`), 或先查动作头为何出 NaN。
 
+### predictor 在哪、谁调它、direct 路径用不用
+- 网络类: `external/INTACT-JEPA/module.py::ARPredictor`(Autoregressive action-conditioned latent predictor, LeWM);
+  冻结运行时用同码副本 `external/INTACT-JEPA/paper_runtime/module.py`(由 `RUNTIME_SHA256SUMS` 校验)。
+- 挂载/调用: `jepa.py` 里 `self.predictor = predictor`, 前向处 `prediction = self.predictor(embedding, action_embedding)`;
+  `history_size` 取自 `model.predictor.pos_embedding.size(1)`(不是配置里写的数)。
+- 谁装它: `tools/intact_worker.py` `import stable_worldmodel as swm` 从 hf `INTACT-JEPA/INTACT`(rev `paper-e5-goal-v1`)整套加载,
+  权重落 `STABLEWM_HOME`(本机 `zmax_data/stable-wm-cache`); 我们的桥是 `src/lerobot/policies/intact/runtime/model_adapter.py` 起子进程。
+- 🔴 **`policy=direct`(零搜索)路径不调用 predictor**: 只有传 `prefix_actions` 时才用它推潜表示。
+  所以在役 direct 策略里“predictor 已加载”≠“predictor 在算”; 讲 `z_pred` 时必须说清是哪条分支, 别把占位当产出。
+- 别和自研的「流形专家预测器」搞混: 那是 `src/lerobot/manifold/predictor_layer.py`(`LatentPredictor`/`WorldModelPredictor`/`ManifoldReadout`, 权重 `models/l4_mani_predictor_*.pt`), 与 ARPredictor 不是同一套。
+
 🔴 **该 ckpt `skill_dim>0` ⇒ 不传 `skill_ctx` 会被模型侧硬闸拒绝** (不是降级):
 `ValueError: checkpoint was trained with a skill channel (skill_dim>0) but info['skill_ctx'] was not provided`
 → `runtime/node.py` 拒绝返回零动作。构造口径: `build_skill_ctx(process, x_hand, stage, grip)`,

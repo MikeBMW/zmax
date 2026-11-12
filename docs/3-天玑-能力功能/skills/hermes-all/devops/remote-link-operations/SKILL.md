@@ -101,6 +101,38 @@ Host <其他内网设备> → ProxyJump <dev>        # 两种模式下都成立
 **所有隧道 unit / 脚本的 ExecStart 一律写别名 `<dev>`，绝不写 IP** ⇒ 换模式只改 config 那两行，unit 一个都不动。
 这是整套设计的关键；写死 IP 之后每换一次模式就要改 N 个 unit，迟早漏一个。
 
+🔴 **“本机没有产线网卡”≠“产线网段设备全断”——先看跳板机是不是双归属。**
+Orin 这类跳板常同时挂产线口（`192.168.23.66`）和手机热点（`192.168.43.x`）。只要它两段都有地址，
+热点模式下整段 `.23.x`（intel/550C `.70`、工控机 `.23.23`）依旧经 `ProxyJump` 可达，
+别把“本机 ping 不通 .23.70”报成“设备挂了/网段断了”。判据与别名写法：
+
+```bash
+ssh orin 'hostname -I; ping -c1 -W1 192.168.23.70'   # 跳板那一侧通不通
+ssh -o ProxyJump=orin intel@192.168.23.70 hostname    # 通 ⇒ 缺的只是本机侧路由
+```
+```
+Host <dev>-wifi            # 热点模式专用别名, 与 <dev> 并行保留
+    HostName <内网IP>
+    ProxyJump <dev>        # <dev> 已指向热点 IP, 两者一起漂
+    IdentityFile ~/.ssh/id_ed25519
+    IdentitiesOnly yes
+    StrictHostKeyChecking no
+```
+先把“跳板自己那侧通不通”当成第一步：跳板侧不通才是设备/产线问题，跳板侧通就只是本机没路由。
+
+🔴 **能 ssh 进设备、却看见设备上的应用成片 `Failed to resolve` / `connect failed` ⇒ 这不是链路问题，是设备自己的出口网关指向了一台已消失的机器。**
+最典型的形态：设备的 `default via` 是**本机那块已拔掉的产线网卡 IP**（本机曾经给它做 NAT）；本机一拔卡/重启，设备就静默断网，
+而它的本地服务和 sshd 全部正常，很容易按本文去查跳板白折腾。一句定位：
+```bash
+ssh <设备> 'ip route | head -3; getent hosts <业务域名> || echo dns-fail'
+```
+网关指向一台已经不在/没有再配该地址的机器 ⇒ 出口故障，修法（改 NM profile + 新出口机补 MASQUERADE/FORWARD + 持久化）
+见 `offline-target-deployment` 的铁律五。
+
+顺带：重启后再跑，先 `ip -br a` 看有什么口——只剩 `wl*` 是常态（USB 网卡没插），
+不是“机器不通”；热点内找 DHCP 设备用并发 ping 扫 `/24` + 端口指纹认机（如 `<ip>:39061` 开 = Orin 臂桥），
+比凭记忆猜 IP 快。
+
 ## 4. 自动切换的判据要「三条同时满足」，宁可不切
 本机 timer（30s）自动切 LAN，只有当：
 1. 出现有线网卡（排除 `wl*` `docker*` `veth*` `br*`）且 `carrier=1`
@@ -330,3 +362,74 @@ exec ssh -i "$HOME/.ssh/<jump-key>" -o BatchMode=yes -o ConnectTimeout=10 -o Str
 用户手里记着的 `http://<旧IP>:<端口>/...` 会立刻打不开（他报「页面打不开」时先 `ip -4 -br addr` 对一遍 IP，
 别先去查端口/进程）。改完必须回读地址、按 SSID 切回原来的 AP（`nmcli con up <SSID>`），并给常用 AP 设
 `connection.autoconnect-priority`（其余置 0），否则下次 apply/重连还会跳。
+
+## 10. 对外开入口：给第三方 / 另一台 agent 一条到内网的路
+
+对方（另一台工作站上的 agent、同事的机器）要直连内网设备时，**先证双方至少共用一个网段，再谈跳板**——
+只给账号不给路等于白给，对方报「不通」时先怀疑它在别的网，不要急着造隧道。
+同理，**对端自报的状态（“那台机没装 X”“那台机不通”）不能当结论**：它可能只是自己没路由。
+用能到的那一侧实测一次（`ssh <别名> 'hostname; ps -eo pid,etime,cmd | grep <服务>'`）再回，
+否则会把“对面局域网里活得好好的主机”报成“没装/没起/挂了”，而用户会拿这句当结论用。
+```bash
+ping -c1 -W2 <对方IP>; nc -z -w2 <对方IP> 22      # 本机 → 对方
+ssh <jump> 'hostname -I; ip route | head -3'      # 跳板是不是双归属(产线口 + 热点口)
+```
+本机只剩热点（`wl*` = 192.168.43.x）、对方在办公网 10.x、产线网卡已拔 ⇒ 两条路都不存在，
+先让对端插网线或连同一热点；`ssh -J` 再漂亮也救不了没有 L2/L3 交集的两台机。
+
+交付给对端的应是**一条能直接跑的命令**，不是 IP 列表：
+```bash
+ssh -J <jump-user>@<jump-ip> <dev-user>@<dev-ip>                      # ① 跳板+目标
+# ② 口令登录（多跳时内层用 -W 显式测）
+sshpass -p '<pw>' ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no \
+  -o ProxyCommand="ssh -i ~/.ssh/<jump-key> -W %h:%p <jump-user>@<jump-ip>" <dev-user>@<dev-ip>
+# ③ 专用密钥（推荐，可随时吊销）
+ssh-keygen -t ed25519 -N '' -C '<peer>@<host>' -f ~/.ssh/<peer>_ed25519
+# 公钥各装一次：跳板的 authorized_keys + 目标的 authorized_keys；装完回读 grep -c
+```
+- **给出去的账号必须自己先登一次**：回显 `ORIN_PW_OK` / `INTEL_LOGIN_OK` 才算交付；
+  `sshd -T | grep passwordauthentication` 只说明门开着，不说明能用。
+- **跳板的 sudo 口令通常就是该账号口令**（`sudo` 成功一次即佐证），但 ssh 口令登录是另一条认证路径，要单独测。
+- **私钥不要贴聊天**：过终端会被脱敏；把它 `install -m 600` 落到目标机 `~/.ssh/<peer>_ed25519`，
+  让对端先用口令登进去自己 `scp` 下来，之后免密。公钥文件路径 + 回读计数才是可核的证据。
+- 对端第一件事是在目标机上跑 `hostname` + 一个本机服务（`curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:<port>/`），
+  不是听「应该能连」。
+
+## 11. 对端是「随身脑」或 Windows 机：认机与入口
+
+🔴 **认机不看 IP、不看主机名 —— DHCP 会让同一个 `.x` 落到别的机器上**（两台都叫 `ubuntu`，主机名/地址都不区分）。
+判据三件同时看：`/proc/cmdline` 含 `casper`（U盘 Live）· `findmnt -no SOURCE ~/.hermes` 指向随身镜像
+（含 `.hermes-mirror`）· `md5sum ~/.hermes/memories/MEMORY.md` 与本机一致。
+```bash
+ssh -o BatchMode=yes <user>@<ip> 'cut -c1-60 /proc/cmdline; findmnt -no SOURCE ~/.hermes; md5sum ~/.hermes/memories/MEMORY.md'
+```
+只凭 IP/主机名就去改配置 = 可能改到别人的机器（实测同一个 IP 上出现了新建目录和新私钥，差点当成"它自己在准备"）。
+
+🔴 **给只有 wifi 的轻薄本接隔离产线网：先查硬件，别假设有网口**。
+```bash
+ls /sys/class/net; lspci | grep -i ethernet; lsusb | grep -iE 'ethernet|lan'
+```
+只有 `wlp*` ⇒ 没有 RJ45，**插上网线也不会通**，必须加 USB→RJ45 网卡（插上后出现 `enx<mac>`/`enp*`）。
+接上后静态地址一定用 `ipv4.method manual ipv4.addresses <ip>/24 ipv4.never-default yes`，
+**绝不给这个口配默认网关** —— 让 wifi 继续持有默认路由，远端命令通道与自动同步不掉，同时直达产线网段；
+给静态口配了 gateway 就是把默认路由顶掉，等于自己把自己断线。TCP 探活比 ping 可信：
+```bash
+for h in <目标1> <目标2>; do timeout 3 bash -c "echo >/dev/tcp/$h/22" 2>/dev/null && echo "$h 通" || echo "$h 不通"; done
+```
+
+🔴 **新机上的持久化改动只有真重启一次才算验收**: 预置的 wifi keyfile、`ExecStart`、`authorized_keys`
+都只在重启后自证 —— 重启后逐项回读（wifi 自连而非手点 · 服务 active · ssh 公钥直登 · 关键文件 md5 对齐）。
+
+🔴 **Windows 对端默认「什么都不通」: 扫不到它 ≠ 它不在**。不放 ICMP / 22 / 445 / 3385，从 Linux 扫网段
+一片空是正常现象。要入口只能在那边开（管理员 PowerShell）：
+```powershell
+Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+Start-Service sshd; Set-Service sshd -StartupType Automatic
+New-NetFirewallRule -DisplayName "OpenSSH" -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow
+```
+开完用 TCP 探活确认（不要用 ping），然后第一件事是把我们的公钥装进 `C:\Users\<用户>\.ssh\authorized_keys`
+并改成只认密钥。**往 Windows 同步文件的额外约束**: rsync 不能带 `-p -g -o`（NTFS 无 posix 权限，chown/chmod 失败），
+用 `-rlt`，远端路径写 `C:/Users/<用户>/.hermes`。
+
+🔴 **对端只有 wifi、又扫不到时，先分清是「不在网」还是「在网但静默」**: 用已知在的设备（如另一台 Linux）验证
+本机 wifi 与网段本身是好的，再对 Windows 下结论；反过来把"扫描没结果"报成"那台机没开机"，用户会拿着这句当结论去现场白跑。

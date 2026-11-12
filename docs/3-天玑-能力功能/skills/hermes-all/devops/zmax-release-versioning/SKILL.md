@@ -23,8 +23,10 @@ metadata:
    (实测记忆里记 5.50.753 而仓里 HEAD 已是 5.50.756)。`head -30 VERSION.md` + `grep -rn '5\.50\.\d{3}' tools/gui/studio.py | head -3`
    先定基线, 再 `bump_version.py --to <用户给的目标号>`。**用户给的目标号与当前号之间的号不补、不改** ——
    `bump_version.py` 会打印 `旧号 → 新号` 两行, 对不上就是基线读错了。
-2. **数据不靠 commit 保存。** `zmax_data/` 在 `.gitignore` 里 ⇒ 「保存数据」= **归档目录 + 清单 + sha256**,
-   不是 `git add zmax_data`(会 fatal 或静默不入库)。
+2. **数据不靠 commit 保存。** `zmax_data/` **和 `data/`** 都在 `.gitignore` 里（画布真源 `data/database/zmax/sources/canvas/state_space_obs.json` 也在其中）⇒ 「保存数据」= **归档目录 + 清单 + sha256**,
+   不是 `git add zmax_data`(会 fatal 或静默不入库)。实测 `git add data/.../state_space_obs.json` 直接回
+   `The following paths are ignored by one of your .gitignore files` ⇒ 画布/配置改动的留档只能靠
+   `cp` 到 `zmax_data/snapshots/` + `archive/zmax_state_*.tar.gz`， commit 里只会有代码。
 3. **commit 与 tag 是两条推送。** `git push origin HEAD` **不会**带上 tag ⇒ 必须再 `git push origin vX.Y.Z`,
    并回读**精确 ref**: `git ls-remote --tags origin 'refs/tags/vX.Y.Z*'`。
    别用 `'vX.Y.*'` 加 `| tail` 验收: ls-remote 输出按**字典序**排, `v5.50.746` 排在 `v5.50.78`/`v5.50.79` 之前,
@@ -84,6 +86,10 @@ zmax_data/release_<ver>_<YYYYMMDD>/
   实测漏了一个 `traj_*.json`（清单里只剩 4 个而非 5 个）, 不核对就会把"轨迹文件"这一项静默丢出归档。
 - **归档文件数上千是正常的**: `data/config` 全量拷贝（calib + platform）单项就有 700 余个文件、5 MB。
   看到 700+ 文件不要以为拷错了, 按目录 `find | wc -l` 分组报一次即可。
+- 🔴 **日志先截尾再归档**: 常驻服务的 log 是 GB 级增长, 整份拷进去会把归档从几十 MB 撑到 760 MB
+  (实测两份 log 352 MB + 384 MB)。做法: `tail -n 4000 <log> > logs/<name>.tail.log` 后再删原件,
+  在 MANIFEST 里写明"日志仅保留尾部 N 行"——归档是给人回溯的, 不是备份运行日志。
+  同理 `reports/` 全量归档可能到 GB 级/数千文件, 规模要报出来 (`find | wc -l` + `du -sh`), 不静默。
 
 ### ③ 提交与推送
 
@@ -99,6 +105,13 @@ git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这
 - **推完要等 CI 真出包再回话**: 一个 `Build Desktop` workflow 里带 Windows + macOS **两个 job** ⇒
   轮询只看那个 run 的 `status/conclusion`，不要要求"至少两个 run"（会等不到而白转）；
   两个 job 都 success 后 `GET /releases/tags/vX.Y.Z` 回读**资产名/体积/state=uploaded**，才把下载链接给他。
+- **`in_progress` 不等于卡住 —— 看 steps 才能给人进度**: 总状态只有 in_progress/completed，用户问"好了没"时拿不出信息。
+  查 `/actions/runs/<id>/jobs`，每个 job 有 `steps[]`: 报「成功 N/总 M + 当前那一步的 name」
+  (Windows job 23 步、macOS 20 步)，这才能客观地说"在 PyInstaller 那一步"。
+- **两个 job 的耗时预期**: Windows job 要装 mujoco/metaworld + PyInstaller + 冻结核验 + 再打一份 onedir 免解包版，
+  macOS job 起步更慢 ⇒ 整个 run **20~40 分钟是正常**，别在 10 分钟时就说"卡住了"或重跑。
+- **资产选哪个**: 要在某台机器上**跑**(演示/自测) 拿 `*-win64-nounpack.zip`(onedir，不往 `%TEMP%` 解包，启动快)，
+  给别人**发单文件**才用 onefile 的 `.exe`。包先落到目标机本地盘再跑，不要从网络共享/映射盘里直接执行。
 - **没有 `gh` 也能查 CI**: token 从 git 凭据库取, 走 REST（不要因为 `gh: command not found` 就说无法查）:
   ```bash
   TOK=$(printf "protocol=https\nhost=github.com\nusername=<user>\n\n" | git credential fill 2>/dev/null | grep '^password=' | cut -d= -f2)
@@ -130,6 +143,9 @@ git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这
    🔴 **`git status` 看不见被 .gitignore 的配置**: 本轮改的 `.vscode/launch.json` 这类调试/启动配置压根不入库
    ⇒ 对你改过的每个路径跑 `git check-ignore -v <path>`, 命中的 `cp` 一份进 `zmax_data/ss_live/<name>.bak-<date>`,
    报告里给绝对路径; 否则关完机这份"下次能复现"的配置没有任何副本。
+   🔴 **未跟踪的 `??` 文件可能是并行 session 的产出** (如 `tools/shadow_*.py`): 不要当垃圾删, 也不要不声不响地留着——
+   先 `./gui-venv311/bin/python -m py_compile <f>` 逐个过一遍, 能编译的一并 `git add` 入库,
+   commit 里写一句"并行 session 产出, 非本轮开发", 汇报时点名。关机前的唯一目标是**不留未入库的可执行文件**。
    commit+push 之后补一条 `sync`, 再关机 (写缓存/挂载未落地的风险与"已保存"的说法直接冲突)。
 2. **状态快照** (这才是数据): 进 `data/database/zmax/archive/state_<date>_preoff/` 拷 `sources/config` 全量、
    `zmax_engineering.db`、`zmax_space.proj`、`config_meta.json`, 再拷一份 `/etc/systemd/system/zmax-*.service`
@@ -145,6 +161,8 @@ git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这
      对端已掉线就把该项标成"在远端磁盘, 未取回", **绝不静默略过** —— 否则清单看起来齐全, 实际少件。
 3. **工程库重建并核对**: `./gui-venv311/bin/python tools/engineering_db.py build` 然后 `... check`,
    必须看到"判据全绿"。改了 config/产品真源不重建 = 下次 check 报漂移。
+   🔴 **收工前 `git checkout` 还原过被 GUI 回写的真源(如 `flows/state_space_obs.json`)就必须再 `build` 一次**: 库里记的
+   还是还原前那份 sha ⇒ 直接 `check` 报 `❌ 判据失败: drift ['canvas']`, 而画布内容本来就是对的。顺序固定: 还原 → build → check。
 4. **开机自启清单**: 逐个 `systemctl is-active/is-enabled` (含 `systemctl --user` 的 GUI 服务),
    把 enabled 的服务列给他 —— 并且要真的 **enabled**, 本次手工 `setsid nohup` 起的服务要补 unit
    (否则重启就没了, 而他会以为还在)。
@@ -155,6 +173,9 @@ git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这
    把它当异常会让用户开机后看到 inactive 又白查一轮。
 5. **关机影响面必须先讲**: 哪些公网/远程链路跑在这台机器上 (隧道、反代、docker 里的 ROS 节点),
    一关机就死; 哪些在别的机器上, 不受影响。让他出门前就知道了, 不要等他到了现场才发现 502。
+   🔴 **"谁靠本机上网"也是影响面**: 本机若在替别的机器做 NAT 出口/默认网关, 一关机那几台当场断外网
+   (实测对端整段产线的默认网关就是本机那张 USB 网卡 ⇒ 关机/拔卡同时带走对方跑的飞书 gateway 与真机执行链)。
+   这类共享上网规则属于基础设施, 收尾不要顺手删 (重复 unit 与 `ExecStop` 删规则的坑见 `systemd-boot-services`)。
    顺带报**本机哪些服务一关就没人顶**: 消息通道/网关、各 87xx 页面与推流、FIFO 执行器 daemon ——
    这几项列清楚比一句“服务会停”有用得多。
 6. **把"开机后必须手动跑一次"的东西单独列出来**, 别混进 enabled 服务清单里：
@@ -169,6 +190,15 @@ git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这
    blocklist 上, 任何审批模式(--yolo / approvals.mode=off / cron approve)都绕不过 ⇒ 你的交付边界是
    "数据保存完 + 把命令交给他自己敲", 报告里直接给 `sudo shutdown -h now`。
    收尾顺序固定: commit+push 回读 sha → 被 .gitignore 的配置单独 `cp` 备份 → `sync` 落盘 → 给关机命令。
+9. **`reports/` 里的结论文件是唯一副本，单独归档一遍**: `reports/*.json|*.md|*.patch` 全在 .gitignore 里（消融结果、取证、未应用的补丁），
+   关完机就没了。做法：整目录 `cp` 到 `zmax_data/deliverables/<批次>/reports_archive/`（实测 1970 个文件 / 22 MB），
+   并在关机清单里点名几条**关键结论文件**（哪个文件支撑哪个结论），否则归档了一堆没人知道哪条重要。
+10. **落一份《关机清单_<date>.md》**（放同批次 deliverables 目录）: 版本基线 + git HEAD(已 push) + 交付件路径/大小 + 取证归档路径
+   + 本机监听端口与常驻进程 + GPU/内存/磁盘 + **待办与跨机依赖**（如另一台机上未解决的冲突）。
+  这份东西的价值是「开机后不用重新考古」；只口头报一遍，第二天就只剩记忆。
+11. **拔了 USB/产线网卡导致的「No route to host」是预期，不是故障**: 关机前用户常先拔卡，远端
+   （intel/Orin）当场不可达 —— 报告里写成「网卡已拔，对端从本机不可达，符合预期」，别去查路由或重启服务；
+   同时说明**对端自己是独立主机，不因本机关机而停**（哪些服务在它上面跑要点名）。
 
 ### ⑤ 「同步 550 ABC」= 两端逐字节对齐，方向靠 sha + diff 判
 
@@ -202,6 +232,10 @@ cd ~/zmax && ./gui-venv311/bin/python tools/feishu_send.py --text "【标题】�
   不要盲发第二遍(群里会出现两条一样的, 他天天在看)。只有他明确说"重发"才再发, 并在回复里点名"现在两条了, 要不要撤回早的"。
 - 消息结构固定四段: **已保存(commit sha + 产物/证据路径) → 本轮成果(实测数字, 一条一个数) → 就绪判定 → 提醒**, 末尾加一句边界
   (如「全程零真机指令」)。不写排查过程, 不复述对话。
+- 🔴 **两台机器两个飞书应用**: 发送器读各自的 `~/.hermes/.env`，550A 与 550C 用的是**不同 app_id**
+  ⇒ 同一份成果从两边各发一次，群里会出现两条来自不同应用的同一份文件（发送者名字不一样）。
+  固定在一台机器上发（产线报告统一走 550C），并在回复里写清 sender app_id 或名字；
+  要换机器发必须先把文件 `scp` 过去再调对端的 `tools/feishu_send_file.py`（它收位置参数，没有 `--file`）。
 - 发之前先自查每个数字的出处: 报告里的 commit sha/文件体积/目录是否存在, 用 `git log --oneline -3`、`ls -l` 校一遍再发 ——
   并行 session 会把 HEAD 往前推, 拿记忆里的号写进群就是假汇报。
 
@@ -214,6 +248,18 @@ cd ~/zmax && ./gui-venv311/bin/python tools/feishu_send.py --text "【标题】�
 `studio.py`(QLabel/状态栏/关于框/changelog 共 4 处) · `update_checker.CURRENT_VERSION` · `version_sync.zmax_ver` ·
 `docs_sync` 两键 · `integrity_check.EXPECTED_VERSION` · `VERSION.md` 新增行。
 要真修就改检查器（按 `self.modules` 字典 + `_lazy()` 闭包里的 `addWidget(_ph)` 重建顺序），别去"修"源码。
+
+**判据红了先证明"是不是本轮引入的"，再决定要不要动手**：把改前的文件从 HEAD 导出来，跑**同一个判据函数**对比：
+```bash
+git show HEAD:tools/gui/studio.py > /tmp/head_studio.py
+./gui-venv311/bin/python -c "import ast,sys;sys.path.insert(0,'tools/ci');import integrity_check as ic;\
+print(len(ic.get_addwidget_order(ast.parse(open('/tmp/head_studio.py',encoding='utf-8').read()))))"
+```
+两边命中数相同 ⇒ 历史遗留，汇报时点名"这条在我改之前就红，与本轮无关"，不要为它去改源码（改源码=把判据的锅甩给产品代码）。
+这条通用：任何"改完判据变红"的怀疑都先做新旧文件同判据对照，别凭印象认领。
+
+**改号本身的自检口径**：`bump_version.py` 每个位置都要打出 `旧命中≥1 → 新命中≥1`；任何一处是 `0 → N`
+说明基线/正则没对上（它写的那个文件里根本没有旧号），要点名而不是跳过。残留在历史 changelog / VERSION.md 旧行的旧号属正常。
 
 ## Pitfalls
 
@@ -231,7 +277,11 @@ cd ~/zmax && ./gui-venv311/bin/python tools/feishu_send.py --text "【标题】�
 | 信记忆里的"当前版本" | `bump_version.py` 打印的旧号与预期不符，或跳号改错 | 先 `head VERSION.md` + grep studio.py 定基线；只落用户给的目标号 |
 | 前台长 `sleep` 等 CI | `exit 124`，误判 CI 挂 | 轮询写成脚本用 `background=true, notify=true` |
 | `scp` 多文件只到一部分 | 归档里少一个关键 json 而 sha256 仍「全 OK」 | staging 后 `ls` 逐名核对，再让脚本拷 |
+| 一次 `git add` 写多个路径 | `fatal: pathspec '<x>' did not match any files` ⇒ **整条命令失败, 一个文件都没暂存**, 而你以为已提交 | 一次 add 多个路径前先 `ls`/`git check-ignore --no-index` 确认都在(本轮新建的脚本常在 `/tmp` 没落库, 先 `cp` 进 `tools/`); add 完 `git status --porcelain` 回读确认真进了暂存区再 commit |
 | tag 后又有改动 | 用户问“我下的包里包含这个吗” | 不补 tag/不自升号，另起 commit；汇报里说明该改动是服务端热读/不进包 |
+| 收工时 `git add data/.../canvas/*.json` | `The following paths are ignored` ⇒ **整条 add 全失败**，一个文件都没暂存（该文件其实是已跟踪的，只是 `data` 是软链到被 ignore 的目录） | 已跟踪的画布用 `git add -f data/...`，并回读 `git status --porcelain` 确认进暂存区 |
+| push 被拒 `fetch first`（并行 session 已推了同一批活） | rebase 逐条撞冲突，而冲突处其实是**同一份活的重复提交**（远端换了 sha） | 不要逐条解冲突：`git branch local-backup-<date> HEAD` → `git reset --hard origin/main` → `git cherry-pick <自己那条commit>`（自己的改动是加法，实测零冲突）→ 回读两侧新功能 grep 都在 → push |
+| `git add -A` 把交付目录里的 `.~lock.<文件名>#` 一起提交 | LibreOffice/WPS 开着交付件就会生成锁文件，`git status` 里反复出现 `D`/`??` 两条锁文件；提交后别人拉下来看到一个瞬时锁 | 提交前 `rm -f <交付目录>/.~lock.*#`，`.gitignore` 加 `.~lock.*#`，锁文件单独一个 commit 清掉；日常提交只 `git add <自己改的文件>`，不用 `-A` |
 
 ## 相关
 - 仓库口径/入库边界/密钥红线: `zmax-engineering-repo`(user-owned)。

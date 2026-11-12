@@ -55,4 +55,4 @@ web agent ◀──GET /api/relay/agent/reply?after=N─────────
 ./gui-venv311/bin/python tools/ss_web_agent.py --ask "画布有多少节点"   # 离线派发
 sudo systemctl is-enabled zmax-web-agent-bridge      # enabled + active
 ```
-参考实证: `<repo>/docs/7-瑶光-记录追溯/incidents/TASK_LEDGER_20260925.md` · `reports/sim2real_preflight_*.md`。
+参考实证: `<repo>/docs/TASK_LEDGER_20260925.md` · `reports/sim2real_preflight_*.md`。

@@ -64,6 +64,14 @@ metadata:
    并如实告诉用户这是"对照实验, 结果待观察", 不要写成已修复。
 8. 版本:**不自主升级** VSCode/工程版本; 宿主随官方源走 (`apt-get install -y --only-upgrade code`),
    定制全部走自研 vsix, 不碰 VSCode 源码。
+9. **「打开 VSCode 到 X 的代码」= 定位文件, 不是重建工作区**: 已有实例就用
+   `code -g <绝对路径>:1` 复用窗口开 tab (连开多个 = 一组 tab, 最后一个为激活), 然后靠窗口标题自证
+   (`wmctrl -l | grep -i "visual studio"` 显示 `文件名 — Visual Studio Code`)。
+   **不要** `code <某子目录>` 另起实例 —— 那会把用户的多根工作区换掉, 他会说"原来代码怎么都看不到了"。
+   只有**没有任何实例**时才 `systemd-run … /usr/bin/code <ZMAX.code-workspace>`, 起完再 `code -g` 开文件。
+   一次定位多处用重复 `-g`(`code -r -g /abs/a.py:311 -g /abs/a.py:346 -g /abs/b.py:196`), 窗口标题只显示当前那个
+   ⇒ 回复里必须**逐条列 绝对路径:行号 + 该行是什么函数/职责**, 让他能直接复制跳转; 只回"已打开"等于没交付。
+   提问是"某段数据从哪来/在哪转换"时, 行号选在**转换发生的那一行**(如编码/投影/融合调用处), 不要笼统给文件头。
 
 ## 用户接着会问的两件事 (先备好)
 - **怎么打开这个工作区**: 桌面 `Z-MAX工程.desktop`(`Exec=/usr/bin/code <工作区文件>`) / `code <工作区文件>` /
@@ -73,6 +81,51 @@ metadata:
   抢相机/引擎/共享内存) 与 `🔌 Attach 现有控制台 (5678)`(只对带 `ZMAX_DEBUG=1` 起来的实例有效,
   桌面/服务起的默认不 listen)。断点绑定/空心的**根因清单**(惰性 import · 路径层数 · 模块加载方式 · 实例属性顶替 ·
   独立进程 · frozen modules · 断点行不是可执行语句) 与「不靠 VSCode 的 pdb 自救法」见 `zmax-console 技能的 references/vscode-debug-breakpoints.md`。
+
+## 让用户自己「停在断点看变量」: attach 靶子 (不改产品代码)
+
+用户说「debug、停在断点上、我看看变量」时, **不要**把 `breakpoint()` 插进业务源码交给他 —— 它会跟着提交跑进产线,
+而且停住的是服务进程本身(整条链一起冻)。正确做法是起一个 **靶子脚本** (放 scratch, 不进仓库):
+
+```python
+import debugpy
+debugpy.listen(("0.0.0.0", 5678))   # 0.0.0.0: 他可能从 LAN 网段连; 绑 127.0.0.1 就只有本机能连
+debugpy.wait_for_client()           # 阻塞到有人 attach
+sys.path[:0] = ["<repo>/src", "<repo>/tools"]
+import <module> as M
+debugpy.breakpoint()                # 连上即停, 立刻有 Locals 可看
+M.<真函数>(...)                      # 只调真函数真源, 不写仿制实现
+```
+
+- `launch.json` 追加一条 attach: `type: python` · `request: attach` · `connect:{host,port}` · `justMyCode:false` ·
+  `pathMappings:[{localRoot:<repo>, remoteRoot:<repo>}]`。**先备份再 json load→append→dump** —— 用户往往已有
+  「断点 · 整个 GUI」之类的配置, 整份 `write_file` 会把它冲掉, 他下次 F5 就找不到自己那条了。
+- **交接前必须自验 attach 真能停**, 否则他连上是一片空白。最小 DAP 客户端足够:
+  `initialize` → `attach` → `setBreakpoints` → `configurationDone` → 等 `stopped` → `scopes`/`variables` 打 Locals。
+  两个硬点: debugpy 的 attach **`arguments` 不能省**(省了回 `AttachRequest.__init__() missing 1 required
+  positional argument`); 收包要按 `request_seq` 对响应, 否则事件与响应串台、`scopes` 会 KeyError。
+- 自验会占掉**唯一**客户端, 断开后靶子就失活 ⇒ **交付给他之前重启一次靶子**并确认端口在 LISTEN。
+- 靶子阻塞在 `wait_for_client`, 必须后台起; 回复里逐条给 `绝对路径:行号`(可直接粘贴) + 停住后 Locals 里会出现
+  哪些变量(取帧的 arr/path/meta、检测的 det2d/det3d), 只说「你设个断点」等于没交付。
+
+### 多根工作区 (`.code-workspace`): launch 配置写在工作区文件里, 不是根 `.vscode/launch.json`
+
+🔴 **打开 `.code-workspace` 时, 根目录的 `.vscode/launch.json` 不被读取** —— 多根工作区的调试配置来自
+工作区文件自己的 `"launch"` 段 (`{"launch": {"version": "0.2.0", "configurations": [...]}}`),
+或各根目录各自的 `.vscode/` (下拉里显示成 `文件夹 : 配置名`)。只改根 `.vscode/launch.json` 时: 文件看着完全正确、
+`json.load` 也对, 但 F5 下拉里根本没有它 ⇒ 表现为"按了 F5 什么都没发生", 而人还在怀疑断点/代码。
+所以**两处都要有**: 工作区级 `launch` 段 (用户 F5 真正读的那份) + 根 `.vscode/launch.json` (用户改为"打开文件夹"时生效)。
+- 工作区 `launch` 段里的 `program` / `python` / `cwd` 一律写**绝对路径** (多根下 `${workspaceFolder}` 有歧义)。
+- 改完回读校验三件: 工作区 JSON 能解析 · 每条配置的 `program`/`python` 存在 · `cwd` 是目录; 再把
+  "下拉里选哪条 + 要按 Reload Window" 告诉用户。
+
+🔴 **"F5 之后断点不进"先证"到底有没有进程起来"**, 这一步能一次排掉一大片方向:
+```bash
+ps -eo pid,lstart,args | grep -E "debugpy/(launcher|adapter)|--connect 127.0.0.1" | grep -v grep
+wmctrl -lp | grep -i "<界面标题>"     # 窗口属主 pid + 标题本身就是状态读数
+```
+没有 launcher 进程 = 脚本压根没启动 (配置没被读到); 有进程但标题写着「未运行 — 点 ▶运行」= 程序起来了、
+业务没跑; 两者都与断点无关。`lstart` 早于你改的文件 mtime = 他跑的是旧代码。
 
 ### 单线程调试档 (550B) 的 launch 配置
 

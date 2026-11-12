@@ -53,43 +53,6 @@ description: Use when 节点要能单步调试或判据因活真源时红时绿�
 Qt 直接 qFatal 整进程退出(无 traceback, 看着像卡死); 且结果要**逐行即时打 + 落 jsonl**,
 不能攒到最后一次输出。
 
-## 1d-3. Windows 打包版 (PyInstaller onedir) 上跑逐节点审计 (2026-11-09 实测)
-
-命令行跑 `python tools/node_breakpoint_audit.py` 在 Windows 上第一枪必挂, 两处都不是节点的问题:
-1. **`signal.SIGALRM` 不存在** ⇒ `AttributeError: module 'signal' has no attribute 'SIGALRM'` (崩在循环之前)。
-   修法(已进打包版): `_has_alarm = hasattr(signal,'SIGALRM') and hasattr(signal,'setitimer')`;
-   无 alarm 平台用 `concurrent.futures` 单线程跑一拍 `future.result(timeout)` 兜超时
-   (超时节点会留一个后台线程, 不影响后续节点; 判据仍是「registry 真函数被调没被调」, 口径不变)。
-2. **冻结 app 的 sys.path 只认 `_internal/`**, 缺依赖会让节点"调用了但算不出"(状态仍写「实现执行」):
-   打包版默认没有 torch/ultralytics ⇒ `cognition/execution/parallel/safety/su2` 退回 spec 加载, HIL、
-   `ssmani_exp`, 一串 YOLO 系节点走兜底。判据要**看 stdout 的 `No module named`**, 不能只看 status 文案。
-   补法(不用重打包): `pip download <pkg> --python-version 3.12 --only-binary=:all: --platform win_amd64
-   --implementation cp --abi cp312 -d wheels --no-deps` ⇒ `unzip wheel -d _internal/`。
-   torch cpu 实测 490MB 解包后可直接 `import torch` (2.15.0+cpu, matmul ok)。
-   缺的 stdlib (`graphlib` 等) 从 **python-3.12.10-embed-amd64.zip 里的 python312.zip**(只有 .pyc) 补;
-   ⚠️ 别把 599 个 pyc 一股脑拷进 `_internal/` —— 会遮蔽同名模块, 且其他版本 python 在该 cwd 下
-   直接 `bad magic number in 'json'` (实测)。只补报错的那几个。
-   验证口径: 跑一个 3 行脚本 `import torch; print(torch.__version__); x@x`, 过了再重跑全量审计
-   (实测 torch 到位后 torch 类警告全消, 剩下 ultralytics / `lerobot.policies.intact` 两类是包内真缺)。
-3. **依赖要一个一个装、一装一验, 别指望一次补齐**: 报错里的包名常常**不是**你正在装的那个
-   (`import ultralytics` 报的是 `PackageNotFoundError: No package metadata was found for torchvision` ⇒ 链条是
-   torch → torchvision → scipy/pandas/matplotlib/pillow/requests/tqdm/psutil/py-cpuinfo/ultralytics-thop …).
-   每装一层就用上面那个一行脚本重测, 错误会直接点名下一个缺的模块。
-4. **`pip download` 用 `| tail` 等于自盲**: 输出被吞后看起来"十分钟没动静", 实际是在串行下 scipy(36.7MB)
-   这类大包 —— 以约 0.4MB/s 落盘, pip 又是**下完才写文件** ⇒ 目录里长时间只有 0 个/1 个 whl 很正常。
-   判进度看 `ls -la <dir>` 的字节数与 `du -sh`, 或单包跑 (一行命令只下一个包, 输出直接可见);
-   判断"真卡死"要连续两次量到文件大小不变, 不能只看目录文件数。
-5. **装包只把失败点往前推一格, 不等于跑通**: ultralytics 到位后 YOLO 系 11 个节点改报
-   `runs/detect/outputs/<模型>/weights/best.pt` 不存在 —— 打包版不带 `runs/` 与 `models/*.npz`。
-   交付时按"逻辑级通过 / 计算级还缺什么件(带确切路径)"两栏报, 不要因为包装上了就说节点跑通了。
-6. **无 GUI 引擎直达 (`tools/debug_run_engine.py`) 在打包版要改两处**: ① 它 `chdir(tools/gui)`,
-   而 onedir 包不发 `tools/gui` 源码 ⇒ `FileNotFoundError`; 目录不在就退回仓库根
-   (`metaworld` 走包内 `asset_path_utils`, 不依赖 cwd)。② `MUJOCO_GL=egl` 在 Windows 非法
-   (`RuntimeError: invalid value for environment variable MUJOCO_GL: egl`) ⇒ `wgl`。
-   修好后的验收口径: 跑完打印 `skills clamp 调用次数` 且**合计 == 步数**(每步恰好 1 次)。
-
-依赖补装的完整清单、逐层报错展开与进度判断口径见 `references/frozen-app-dependency-injection.md`。
-
 ## 1d. 断点不命中: 按"能不能重新绑定"分四类查 (2026-10-29 一次性踩全)
 
 ## 1d-0. 画布节点先查两道闸 (2026-10-31 实测, 比什么都靠前)

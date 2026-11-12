@@ -24,7 +24,10 @@
 
 ## 🔴 迁移实现后必须回改画布 JSON 的 `params.source` (2026-10-29 实测)
 
-第 1 层最优先 ⇒ **画布 JSON 里那份 `params.source` 是决定右键落点的那个值**。
+第 1 层最优先 ⇒ **画布 JSON 里那份 `params.source` / `params.source_symbol` 是决定右键落点的那个值**。
+⚠️ 改了盘上的画布 JSON 后回读又变回旧值 ⇒ **正在跑的 GUI 用内存旧图 save_canvas 盖回去了**。
+确认改的是真源(`flows/state_space_obs.json` 与 `data/database/zmax/sources/canvas/state_space_obs.json` 是**同一份**,
+后者是符号链接目标, 不存在两套), 改完立刻回读校验, 别在 GUI 开着时反复改同一个节点后以为"改不动"。
 执行链外迁 (`library.py` → `nodes/<功能>_impl.py`) 时如果只改了 `_EXTERNAL_LOC` 与中间件 `SOURCE`,
 画布节点 params 还写着旧文件, 用户右键就会跳到**那个旧文件里的某个函数**, 而它往往属于另一个程序 ——
 实测症状: 动作执行器节点右键跳到 `tools/l2_daemon.py` 的 `def main()`
@@ -69,6 +72,10 @@ PY
 - 同步两处映射: `_EXTERNAL_LOC["<key>"] = (<impl.py 绝对路径>, <`def run` 行号>, "def run")`,
   中间件 `nodes/n_<单词>.py` 的 `SOURCE` / `SOURCE_SYMBOL` 也指过去。
 - 改实现后**重算行号**(`grep -n '^def run('`); 映射行号漂了不会报错, 只会把用户送到错误的一行。
+- 行号总是漂 ⇒ 更省事且自愈的写法: `source_symbol` **直接放目标行的代码文本**(`'_line_of'` 是 `lstrip().startswith(token)` 匹配),
+  例如 `'u_vec = _ex.execute('`; 之后代码上下挪多少行, 右键落点自己跟着走, 不用再手改行号。
+  ⚠️ 别把落点定成 `def run(` —— 用户要的是**执行指令那一行**(指令真正被发出的语句), 落到函数头他会问「怎么在这里」。
+  用户原话「应该是这行 对不？你之前不对」时, 说明落点必须精确到语句级, 不是模块级。
 - 挪完顺带确认壳没变行为: 注册 key、`match_node(画布节点名)`、`PURE`、返回值形状都不变。
   ⚠️ `PURE=False` 的壳在画布常驻循环里**只直通不执行实现** —— 实现挪走了但节点「看着有、跑起来不动」时先查这一条,
   别去怀疑规划逻辑。

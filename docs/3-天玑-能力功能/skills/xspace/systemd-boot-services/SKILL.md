@@ -60,11 +60,15 @@ ls -lt <repo>/reports/<名>_*.jsonl       # 真产物: 每跑一次追加一行�
 | 目标路径写死机器名/临时目录 | 换机器就崩 | 路径全部绝对且来自仓库根 |
 | **常驻守护的真逻辑放 `/tmp`** | 重启/清理后脚本与进程一起没了, 下游数据**静默冻结**很久才被发现 | 常驻逻辑一律进**仓库 + unit**(`ExecStart` 指仓库路径); `/tmp` 只准放一次性临时脚本, 且仓库留档一份 |
 | **unit 里写死了命令行开关** | 改了脚本默认值, 重启后行为**没变** | `ExecStart` 的参数**覆盖**脚本默认值 ⇒ 改前先 `grep` 单元里那个开关, 改**单元** + `daemon-reload` + `restart`; 只改代码默认值等于没改。**同类但更隐蔽的一种: 单元带 `Restart=always`** ⇒ 杀掉那个散跑的裸进程**不会换档**, systemd 立刻按 `ExecStart` 把旧档拉回来(观感=「改完开关重启后行为没变」, `ps` 里新进程 ppid=1 像什么都没发生)。换档唯一路径 = 改单元文件 → `daemon-reload` → `restart`；仓库模板 `<repo>/tools/systemd/<unit>` 与已安装的 `/etc/systemd/system/<unit>` 是**两份**, 先 `diff -q` 再一起改, 否则改了模板而真正生效的是旧安装件。**`Environment=` 里的变量值是同一个病**: 只改文件 + `restart` 不生效 —— `Restart=always` 会拿**内存里的旧 Environment** 把进程拉回来, 现象与"改了没生效"一模一样。判据必须读 `/proc/<pid>/environ` 里那一项的值(`tr '\0' '\n' < /proc/<pid>/environ | grep '^KEY='`), **不是看 unit 文件**; 对不上就是漏了 `daemon-reload`。同理, 下游脚本自己的 `export` 优先级可能高于单元 —— 三处(启动脚本 / unit / 代码缺省)同口径才对 |
+| **多个 drop-in 都改 `ExecStart`, 自己的不生效** | 自己写的 `30-xxx.conf` 里明明有 `ExecStart=` + 新命令行, `systemctl cat` 里也看得见, `daemon-reload` + `restart` 后**行为完全没变**(`show -p ExecStart` 还是旧 argv) | drop-in 按**文件名字典序**依次应用, 后应用的 `ExecStart=` 会清掉前面的 ⇒ 已有 `zz-*.conf` 会**永远盖住** `30-*.conf`。定式: 先 `ls -l /etc/systemd/system/<unit>.d/`, 把自己的文件命名成**排序最后**(`zzz-…`), 再 `daemon-reload` + `restart`; 判据只认**生效值** `systemctl show -p ExecStart --value <unit>` — **`systemctl cat` 会把所有片段都打出来**, 看着像"我那行也在"，这是这个坑最容易骗人的地方。另: 若项目模板/安装器也生成同名文件, 改完两边一起对 |
+| **用户能在运行时改的状态被 unit 常量覆盖** | 页面/接口上切过的档(关掉某一路、换源、选设备)只在本次进程内有效, 任何一次重启(含守护自愈)就"自己变回去了", 而代码里看不出错 | unit 里写死的 `--<opt> usb` 这类常量比持久化档优先级高。定式 = unit 传一个**回落哨兵值**(`--<opt> auto`), 由程序读落盘档; 且启动兜底逻辑要**显式排除"关闭"档**(关闭档常常 `dev=-1`, 与"设备不在位"不可区分, 会被兜底成默认值抢回设备/资源)。完工验收 = `restart` 后回读**持久化档与运行时状态仍是用户选的那个**, 只测"当场切换"等于没测 |
 | **依赖写成 `Requires=`** | 重启被依赖方会**连带重启**依赖方 | `Requires=` 是双向生命线(停/重启都传播)。若依赖方的"身份"是**启动时才生成**的(内网穿透的公网 URL、会话级地址/端口、一次性 token), 硬依赖会把它换掉 ⇒ 已发出去的链接、已烧进客户端的地址**全部失效**。定式: 用 `Wants=`(软依赖), 只有确实要"被依赖方死了我也停"时才用 `Requires=`。排查症状: 服务全 `active`、本地直连正常、而**经中间那条链路稳定失败** |
 | **停掉一个被守护驱动的负载时只调了它自己的 API** | 停完几秒它自己又回来了(`on=true`、fps 恢复), 看上去"停不掉/自己重启" | 那类负载常由**另一个 unit 定期 `POST /start` 拉起**。定式 = `systemctl stop+disable <驱动 unit>` → 再停进程内的任务 → **间隔 ≥3s 连查 3 次**状态都是停的才算停; 只看一次 stop 的返回体就报"已停"必翻车(先 `systemctl list-units | grep -i <关键字>` 把驱动找出来) |
+| **腾 GPU / 端口 / 独占设备时只 `kill` 那个 pid** | `nvidia-smi` 当场回落(2%/263MiB), 你报“已停、等用户点名再起”; 十几分钟后 GPU 又 100%、进程名一样而 **pid 全变了** —— 是 unit 的 `Restart=always` 拉的新实例, 先前那句“服务已停”整个失效(用户会以为页面没数据是你停的, 而其实已自愈) | 定式 = `systemctl list-units --state=running 'zmax-*'` 先找出承载该进程的 unit → `systemctl stop <unit>`(**不要 `disable`**, 训练完还要能起回来) → **隔 10s 回读** `nvidia-smi --query-compute-apps=pid` + 逐 pid 读 `tr '\0' ' ' </proc/<pid>/cmdline` 确认还是不是同一批 → 才报“腾出来了”。反方向同样要用 pid 判: 收工时看到进程“又回来了”且 **pid 与 killed 的不同** ⇒ 是自愈, 直接报“systemd 已拉回、无需手动恢复”, 不要让用户去点名起服务 |
 | 用 `ps -o pcpu` 判断"谁在抢 CPU" | 早已空转的进程仍显示 130%+, 结论整个反过来 | `ps` 的 `%CPU` 是**进程生命周期均值**, 不是瞬时值 ⇒ 换成 `uptime` 的 load、`top -bn1 | head`、或服务自己 `/health` 的 duty/fps; 报告里别拿均值当"现在在吃" |
 | 只测一条链路就下结论 | 本地 ok / 经代理失败 | 本地与服务状态都绿时, **先查中间层自己的状态**(隧道日志里的当前 URL、代理日志里的拒绝原因)——中间层会自己换地址/自己拒绝, 不是被服务的错 |
 | **见到 `failed (Result: timeout)` 就赶紧重启** | 其实活已经干完了, 重启白折腾还把在跑的东西拆掉; 或反过来把 failed 当成"服务挂了"报给用户 | 超时判 failed ≠ 没干成: 长链 oneshot(起容器 + `docker exec` 拉常驻进程 + `systemctl restart` 别的单元)最容易在**最后一步**撞 start 超时被 TERM, 而前面几步的产物全在。先取证真实产物 `docker ps` + `docker exec <容器> ps -eo pid,etime,cmd \| grep <目标进程>`, 在跑 ⇒ 只 `sudo systemctl reset-failed <unit>` 清状态即可(**reset-failed 不重启任何东西**)。报"单元全绿/没有故障"之前也要跑这一步, 否则会把清理态当故障、或把 failed 当成已修 |
+| **重复造一个基础设施 unit(共享上网/转发/路由)** | 新建 NAT/转发 unit 后 `disable --now` 它, 整段局域网当场断网(正在生效的 `MASQUERADE`/`FORWARD` 规则被它的 `ExecStop` 一并删掉) | 动手写 unit 前先 `systemctl list-unit-files --state=enabled --no-legend '<前缀>*' \| grep -iE 'nat\|forward\|route\|proxy'`: 已有的那个往往才是超集(实例: `zmax-lan-nat.sh` 除 MASQUERADE 还带两条 `FORWARD ACCEPT`, 只抄 `ip_forward + MASQUERADE` 会漏)。真要收掉自己那份: `disable --now` 之后立刻 `systemctl restart <原有 unit>` 让幂等脚本把规则补回, 再回读 `iptables -t nat -S POSTROUTING` 并从对端 `ping` 公网 IP 复测 —— `is-active=active` 不能证明规则还在。**自己写的 oneshot 不要带 `ExecStop` 删共享规则**, 规则归属方是原有的那个 unit |
 
 ## 4b. 在别人的设备上装 unit: 本体放项目隐藏目录, `/etc` 只放软链
 
@@ -256,6 +260,17 @@ systemctl      active                          # 完全看不出问题
 3. **验收用端口不听服务**: `for p in 19061 8792 8816; do (echo > /dev/tcp/127.0.0.1/$p) 2>/dev/null && echo "$p open" || echo "$p closed"; done`。
    一条链路常摊成 3~4 个隧道 unit(位姿/相机/推流各一个), 逐个验; **`is-active` 全绿而端口全 closed 是常态**。
 4. 公网跳板只做**兜底别名**(`Host <名字>-ecs` 指向公网 IP+端口), 主别名叫直连内网 IP ⇒ 中间层挂掉不拖垮内网链路。
+
+🔴 **一条链路摊成多个隧道 unit 时, 端口清单必须互斥**: 两个 unit 都 `-L 127.0.0.1:39071:…` ⇒ 后起的那个
+`bind: Address already in use` + `ExitOnForwardFailure=yes` ⇒ `status=255` 每 5s 一轮, `NRestarts` 涨到几百。
+动手前先 `ss -ltnp | grep ':<port> '` —— 占用者显示 `users:((\"ssh\",pid=…))` 时, 先 `tr '\0' ' ' </proc/<pid>/cmdline`
+看清是**哪个**隧道单元的转发口: 已由另一条独立隧道(连另一台主机/另一批端口)提供的那几个 `-L`, 从本 unit 里**删掉**, 不要杀进程; 反过来, 只提供单一端口的窄 unit 与带全端口的宽 unit 只能留一个(`disable --now` 窄的那个)。
+
+🔴 **`ExecStartPre=wait_ports_free.sh <端口…>` 的参数必须和本 unit 的 `-L` 列表同步**: 把"别人合法占用"的端口写进等待列表 ⇒
+脚本永远等不到释放, unit 长期停在 `activating`(**不是 `failed`**, 所以上文那张退出码表一条都对不上),
+每轮白等超时才去起 ssh。判据: `systemctl is-active` = `activating` 且 `systemctl status -n3` 的 CGroup 里能看到
+`wait_ports_free.sh …` + `sleep 1` ⇒ 去改 `ExecStartPre` 的参数, 不要动密钥/路径。改完 `daemon-reload` + `restart`,
+验收是**转发端口真的在听**(`ss -ltn | grep 127.0.0.1:39`), 不是 `is-active` 变绿 —— 它变绿只需要 ssh 绑上第一个端口。
 
 🔴 **手测成功≠unit 会成功**: 三者环境不同(HOME / agent / PATH)。失败先看 `journalctl -u <unit> -n 20` 里
 究竟是 `Permission denied`(密钥) 还是 `9/KILL`(进程模型), 两种错治法完全不同 —— 别一上来就改密钥。

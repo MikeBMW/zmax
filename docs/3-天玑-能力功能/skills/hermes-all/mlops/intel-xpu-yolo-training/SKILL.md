@@ -116,6 +116,36 @@ Epoch  GPU_mem  box_loss  cls_loss  dfl_loss
 
 ## 自主进化守护
 
+### 🔴 服务跑的是哪棵树: `~/zmax_map`, 不是 `~/zmax` (2026-11-12 实测)
+
+550C 上有**两棵树**, 同步前先 `systemctl cat <unit> | grep ExecStart`:
+
+| 树 | 用途 | 状态 |
+|---|---|---|
+| `/home/intel/zmax_map` | **在役**: `zmax-evolve-intel` / `zmax-aoi-bypass` 都从这跑 | 活的, 但布局旧 |
+| `/home/intel/zmax` | 同步副本 | 停在 2026-10-25, 改了也没人读 |
+
+`zmax_map` 是**旧布局**: 节点实现在 `src/lerobot/engineering/nodes/library.py`, **没有** `middleware/nodes/impl/`,
+也**没有** `quat_truth.py` (11-03 的四元数真值链没上过 550C) ⇒ 4060 侧的 `ss_obs.py` / `daemon.py` / 新版 `su2.py`
+**不能直接覆盖**, 一覆盖 import 就断 (在跑的 shadow/aoi 服务会挂)。改 550C 只能**按它自己的文件移植补丁**。
+
+### 🔴 采纳判据用 mAP50 会永久锁死 (连续 65 代白跑)
+
+台账实测: `best_map50=0.9880`, `last=0.9882`, **streak=65 代全 rejected**。
+根因同 4060 的 AR 进化 (连续 530 代): mAP50 在这类单类/高对比任务上封顶 ~0.995,
+`cand > best + 0.005` 数学上几乎不可能成立 —— 平台期是**判据没量程**, 不是数据到顶。
+
+现行口径 (两台机统一):
+
+- **主判据 = mAP50-95** > `best_95 + EVO_MARGIN`(0.005)
+- **护栏 = mAP50** ≥ `best_map50 − EVO_NO_REGRESS`(0.005), 防"95 升 50 塌"
+- **切判据前必须先量基线**: 老台账没有 `map50_95` 字段 ⇒ 启动时用在役 `best.pt` 现量一次写进
+  `ledger.seed`, 否则第一代会被当成"首个可用基线"无条件采纳 (这比不升还糟)
+- 实测基线: peg_insert `best.pt` → mAP50 **0.9880** / mAP50-95 **0.8920** ⇒ 95 那边有 10.8 个点余量可辨真假提升
+
+脚本 `tools/zmax_evolve_intel.py`(仓库版在 `tools/`, 在役版在 `~/zmax_map/tools/`, 后者多一个
+`orbit_evolve_advisor` 对称性判读 —— 改之前先 diff 两版, 别单向覆盖)。
+
 脚本 `tools/zmax_evolve_intel.py`（本技能配套），systemd unit
 `deploy/systemd/zmax-evolve-intel.service`，只读端点 `:8810`。
 

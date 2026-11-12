@@ -215,7 +215,7 @@ tbl_rows = [[Paragraph(c, st) if isinstance(c, str) else c for c in row] for row
 
 ## 新场景数据生成 (换场景时, 2026-08-06 peg-insert 实测)
 - `gen_metaworld_data.py --task peg-insert-side-v3 --out data/metaworld_peg` — 支持任意 MT1 任务
-- **Simulink pipeline 完整细节 (6环节 I/O/数据质量/管理手段/KPI) 见 `references/simulink-pipeline-details.md`** — 老倪要求把 Simulink 细节交付给 web 汇总 cicd.html 方案页时用 (仓库 docs/6-开阳-工程落地/SIMULINK-PIPELINE-DETAILS.md)
+- **Simulink pipeline 完整细节 (6环节 I/O/数据质量/管理手段/KPI) 见 `references/simulink-pipeline-details.md`** — 老倪要求把 Simulink 细节交付给 web 汇总 cicd.html 方案页时用 (仓库 docs/SIMULINK-PIPELINE-DETAILS.md)
 - **完整清单见 `references/metaworld-dataset-generation.md`** — tasks.parquet / episodes 标准列 / 视频合并 / stats.json 三件套, 缺一即加载/训练失败
 - **场景选择与 AWE 优势**: push-v3 单段短程不突出 AWE; peg-insert (对准→插入→力反馈, 多阶段接触演化) 才是 AWE 世界模型的主场 — 老倪要"突出AWE优势"时选此类任务
 - **朴素专家策略产生恒定 action (2026-08-06 实测)**: 生成器默认"朝 goal 直线移动"在 peg-insert 上 action std≈0 (环境把末端速度衰减~1/7, 150步只移动0.15) → 数据无训练价值。**修复: 多阶段专家策略** (Phase1 水平快速接近 hole 上方 → Phase2 垂直缓慢插入+夹爪闭合 → Phase3 保持), 生成后 `action.std()` 应 >0.01 且夹爪维有多个离散值 (0/-0.5/-1)
@@ -268,7 +268,7 @@ obs, _, _, _, _ = env.step(a4[:4])          # ① 官方动作直接 step (别�
   ① 标题 (模型名+架构) ② 核心公式 (mathtext, 浅色大字 12.5) ③ 【含义】公式中文白话解释 (每符号/每项说什么) ④ 【比喻】生活化类比 (ACT=抄作业, SmolVLA=雾里看花, LEW=下棋想三步, VLA-Touch=摸黑插插头, AWE=老司机开车) ⑤ 【证明】分步形象说明 (不用纯符号推导, 用"滚雪球/抽屉"等图景)
 - 纯公式无解释的图会被拒 (第一版只有公式+定理被老倪打回"公式要解释")
 - 公式图尺寸 10.5x4.6 (v2 加解释段后变高), 报告嵌入 Image(width=172*mm, height=58*mm)
-- 理论文档基准: `docs/4-天权-模型算法/MODEL-THEORY.md` — 6 定理+证明:
+- 理论文档基准: `docs/MODEL-THEORY.md` — 6 定理+证明:
   - 定理1 ACT: β→∞ ELBO 退化为确定性回归, 最优解 = 条件期望
   - 定理2 SmolVLA: 加权VLB=似然下界 → 多模态分布精确建模
   - 定理3 LEW: 世界模型误差 ε → 策略最优性损失上界 2γε/(1-γ)

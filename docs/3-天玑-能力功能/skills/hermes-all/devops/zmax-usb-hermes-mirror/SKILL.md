@@ -56,6 +56,47 @@ U盘 Live 系统开机 → systemd 自动 bind E盘数据目录(读写直通);U�
 - **gateway 竞态**:gateway Restart=always 能自愈,但已加 After= 排序,避免在空壳 .hermes 上初始化
 - **U盘失忆红线**:只带 U盘不插 E盘 = 镜像还在能工作;但镜像若从未同步过(全新U盘)会失忆。离家前确保在家插 E盘开过一次机
 
+## 双机自动同步 (本机主脑, 11-08 落地)
+两台同时在网时用这一套；只有 U 盘插回本机才跑的那套 (mirror.timer) 只管"插回去"场景。
+- 脚本 `/usr/local/bin/zmax-hermes-usbsync.sh` · unit `zmax-hermes-usbsync.service` (User=ubuntu) · timer `zmax-hermes-usbsync.timer` (开机 5min + 每 10min, Persistent)
+- 上行回灌: `memories/` `skills/` `cron/jobs.json` `config.yaml` `auth.json` `channel_directory.json` `feishu_xiaofang.env` → `rsync --update --backup --backup-dir=~/.hermes/sync_bak/<ts>`，**较新者胜、被覆盖的留备份**（留最近 5 份）
+- 下行推镜像: 本机 `~/.hermes/` → 远端 `/home/ubuntu/.hermes-mirror/`，全量 `--delete`，排除一律**锚定根** `/logs/ /cache/ /image_cache/ /audio_cache/ /tmp/ /.cache/ /sync_bak/` 与 `/*.log /*.lock /*.pid`
+- **state.db 双向都不同步**（两边都在写，合并必撕裂）：会话历史各留各的；要合并会话另做导出导入，别把 2.7G 库放进 rsync
+- 探活失败（不在同一 wifi / ssh 不通）就写一行 skip 退出 0，不算故障；日志 `~/.hermes/logs/zmax-usb-sync.log`
+- 验收方式: 两侧各写一个 `memories/sync_probe_*.txt` → 跑一轮 → 本地与镜像**都**能看到两个探针 = 双向通；再清掉探针
+- 🔴 上行会真的覆盖本机文件（实测一次捞回两侧更新过的两份 SKILL.md，同时把本机旧版打进 `sync_bak/`）；改完技能后看 `sync_bak` 里有没有同名 `.bak.<ts>`，有就是被远端版本盖了，要人工对一下
+- 🔴 同步解决不了"双 gateway 抢飞书"：同一条消息落到哪台只在那台落记忆，这是策略问题，不靠文件同步补
+
+## 从 E盘系统手动刷新 U盘镜像(唯一可靠路径, 11-08 实测)
+E盘启动(auto-merge 日志只写"数据本盘无需绑定")时**没有任何镜像同步在跑**: zmax-hermes-mirror.sh 只存在于 U盘 casper 层, E盘系统没有它。U盘要离家去另一台机器跑, 必须从 E盘手动刷一遍:
+```bash
+sudo mount /dev/sda2 /mnt/casper-ro            # casper-rw 的 overlay upper
+sudo rsync -aAX --delete \
+  --exclude='gateway.pid' --exclude='gateway.sock' --exclude='gateway.lock' \
+  --exclude='gateway-starts.log' --exclude='*.log' --exclude='*.lock' --exclude='*.pid' \
+  --exclude='logs/' --exclude='cache/' --exclude='image_cache/' \
+  --exclude='audio_cache/' --exclude='tmp/' --exclude='.cache/' \
+  --exclude='state.db' --exclude='state.db-wal' --exclude='state.db-shm' \
+  /home/ubuntu/.hermes/ /mnt/casper-ro/upper/home/ubuntu/.hermes-mirror/
+sudo rm -f /mnt/casper-ro/upper/home/ubuntu/.hermes-mirror/state.db-{wal,shm}
+python3 -c "import sqlite3;s=sqlite3.connect('file:/home/ubuntu/.hermes/state.db?mode=ro',uri=True);d=sqlite3.connect('/mnt/casper-ro/upper/home/ubuntu/.hermes-mirror/state.db');s.backup(d);d.close()"
+sync && sudo umount /mnt/casper-ro
+```
+- **state.db 必须用 sqlite backup 快照**, 不能 rsync 拷活库(gateway 在写, WAL 会拷出撕裂库)
+- 镜像路径 = `upper/home/ubuntu/.hermes-mirror`(casper-rw 里只有 upper/work/lost+found, 镜像在 upper 下)
+- rc=24 属正常(cron output/日志轮转时文件消失), 不是失败; 只看 `state.db 快照 rc=0` 和落地后的 md5 抽查
+- 验收: config.yaml / auth.json / memories/MEMORY.md / memories/USER.md / cron/jobs.json md5 逐一对齐 + `PRAGMA integrity_check=ok`; jobs.json 是活文件会被 cron ticker 重写, 最后补拷一次
+- 镜像不能只放记忆: fallback 是把**整个** mirror bind 成 ~/.hermes, 所以 hermes-agent/bin/node/memories/skills/cron/凭证 都得齐, 否则异机起不来
+
+## 异机运行的坑
+- **启动器/运行时必须先对齐, 否则异机必报 `No module named 'pydantic_core._pydantic_core'`**: 真身 = 托管运行时 `~/.hermes/tools/python-3.14.x/` + PM 环境 `~/.hermes/installs/<id>/environments/<id>/venv`(cp314 轮子); 而旧 `hermes-agent/venv` 是 3.11(cp311 轮子)。二者混用 → 包目录找得到、扩展名对不上 → 报这个错。修法: `~/.local/bin/hermes` 必须是 3 行的 73B 版 —— `exec /home/ubuntu/.hermes/hermes-agent/.hermes/bin/hermes "$@"`(老版 159B 指向 venv/bin/python, 必坏)。systemd 网关 unit 的 ExecStart 也改成同一个托管启动器。验证: `hermes doctor` 要显示 `Python 3.14.7 / OpenAI SDK ✓`, 再 `hermes -z "只回答两个字: 就绪"` 真跑一轮模型
+- **排除模式必须锚定根目录, 否则会静默挖空包**: 旧写法 `--exclude='cache/'` 匹配任意层同名目录 → 把 `lark_oapi/core/cache/` 整个排掉 → 异机报 `[Feishu] lark-oapi not installed`(包在、子模块没了)。同理 `logs/` `tmp/` 也是。正确写法一律带前导斜杠只锚定顶层: `--exclude='/cache/' --exclude='/logs/' --exclude='/tmp/' --exclude='/image_cache/' --exclude='/audio_cache/' --exclude='/.cache/'`, 文件类 `--exclude='/*.log' --exclude='/*.lock' --exclude='/*.pid'`
+- **`*.lock` 不带锚定会咬掉 `hermes-agent/pm/uv.lock`** → 异机每轮刷 `source-update completion failed: pm/uv.lock 不存在` + `install out of sync`。锁排除要用 `--exclude='/*.lock'`(只排根目录), 或显式 `--include='**/uv.lock'` 放在 `--exclude='*.lock'` 前面
+- **镜像里的 state.db 2.7G, USB 上首次开机网关要读 2.6G+ 才起来**, 进程处于 D(disk sleep) 属正常, 别当死机
+- **双静静**: USB 在另一台机器起 gateway 会与家里/E盘的 gateway 同时连飞书 → 同一条消息两边都答。离家前或异机开机后按需停一侧
+- 异机无 192.168.23.x 产线网, cron 里 AOI/推流/建图/4060 那些守护会空跑报错, 不动脑但吵; 需要安静就临时 disable 那几个 job
+- 异机上若存在 label=ubuntu-e 的 nvme0n1p5(罕见) → 身份校验通过会误当数据盘, 用前先 `blkid -s LABEL -o value /dev/nvme0n1p5` 确认
+
 ## 排障命令
 ```bash
 # 当前模式判定

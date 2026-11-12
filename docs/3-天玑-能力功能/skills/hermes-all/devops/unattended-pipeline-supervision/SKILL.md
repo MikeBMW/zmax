@@ -80,6 +80,16 @@ bash "$SCRIPT"                       # 真实目录干跑: 必须静默
   （不许为了“跑通”放松闸门）；要修的是**原因文案**与下一步建议，去掉错误归因。
 - **验证修好的文案不用重跑整链**：拿现场已有的产物目录在进程内直接调那一个阶段函数
   （`spec_from_file_location` 加载脚本 → `stage_x(state, batch_dir)`），无 GPU、几分钟就能看到新文案与新数字。
+- **后处理崩 = 每轮白跑，先看产物落没落盘**: 形态是每轮 `① 造数据 → ②③ 训练+评测 → ⏸ 不晋级` 全部走完，
+  紧接 `AttributeError: 'NoneType' object has no attribute 'get'`，而**本轮报告文件从来没生成过** ⇒ 外层循环
+  重跑整轮，每 5 分钟烧一次卡而 best 一直不动。生死判据不是"进程在不在"，而是**本轮该产出的文件在不在**
+  （报告 md / ledger 末行 / ckpt mtime）—— 报告是循环的最后一步，它不落盘等于这一轮全废。
+- **`d.get(k, {})` 的默认值只在键缺失时生效**: 键存在但值为 `null` 时返回 `None`，链式
+  `.get(k, {}).get(...)` 每一级都会炸（ledger 里 `stages` / `stages.data.stats` / `meta.stats` 都可能是 null）。
+  每级改 `(d.get(k) or {})`；一次清完备：`grep -nE '\.get\("[a-z_]+", \{\}\)\.get\(' <script>` 改完应为空。
+- **复现只认现场真产物**: 这类 null 键崩在合成数据里**永远复现不出来**(合成数据不缺键)。crash 点在训练之后时
+  数字已进 ledger ⇒ 进程内 `report(argparse.Namespace(...), 0, {})` 单跑，判据 = 报告落盘且字节数>0、
+  台账末行数值与 ledger 逐字一致（例 `gen 675 | kept 399 | 256.7s | 0.995`）—— 不要为验一个格式化函数再烧一轮训练。
 
 ## 后台完成通知 ≠ 该发群消息 (去噪的最后一闸)
 
@@ -122,6 +132,7 @@ bash "$SCRIPT"                       # 真实目录干跑: 必须静默
 | 改一个**正在运行**的 bash 脚本 | 解释器按字节偏移增量读脚本 → 可能执行到错乱的行 (污染/中断) | 先 `pgrep -af <script>` 确认没在跑才改; 正在跑就**别改**, 另起独立 watcher/闸, 或等它结束再改 |
 | 静默 = 无事, 无法区分 | "没到点" 与 "脚本早挂了" 看起来一样 | (a) 每个静默分支显式 `exit 0` 并在 `--debug` 模式落一行日志; (b) 依赖一个**独立**心跳 (sys-watchdog 类) 覆盖 cron 本身是否在跑 |
 | `deliver='origin'` (CLI) | 用户什么都没收到 | 显式 `deliver='feishu:<chat_id>'` 或 `'all'` |
+| **用软链把仓库脚本挂进 `~/.hermes/scripts`** | job 每轮 `last_status=error`, 报 `Blocked: script path resolves outside the scripts directory`; 而手工 `bash ~/.hermes/scripts/<x>.sh` 完全正常 —— 很容易以为是脚本内容坏了 | cron 只跑 **scripts 目录内的真文件**, 软链会被 realpath 解析后判"越界"。定式 = `cp` 真文件进去(**不要 `ln -s`**), 仓库那份仍是唯一真源、由同步 job 对齐; 判据 = `dirname $(realpath <script>)` 就是 `~/.hermes/scripts`。注意: 目标已是真文件、而你是从它链接的那个源 `cp` 过去时会报 `are the same file` —— 先 `rm` 旧文件再 `cp`。`cron list` 里看 `last_status/last_error`, 不要只看 `enabled=true` 就当已生效 |
 | 每 tick 都推 | 刷屏 → 消息被无视 | 一次性 flag; 需要中间进度就用 `monitor_script` **变化触发**, 不要定时重复推 |
 | 闸门资源 (磁盘/GPU) | 流水线与同机训练互相打死 (OOM / 写坏分片) | 起跑前查 `nvidia-smi` / `df`; 不足就等 (轮询 sleep + 日志留"等待中"记录); 共享目录**单写者纪律** |
 | 结果文件名逐任务不同 | 成功的评测被误判"未产出" | 从各任务 config 的 `output.filename` 取名, 不要猜 `<task>_results.txt` |

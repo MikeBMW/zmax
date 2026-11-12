@@ -15,7 +15,7 @@
 - **graphviz (apt install graphviz) 可用**: `dot -Tpng x.dot -o x.png`, 轻量无头, 中文需 `fontname="WenQuanYi Micro Hei"`
 - **布局**: rankdir=LR 会把整条链排一行 → 图 2522x278 扁; **rankdir=TB 上下分层** → 524x1161 符合"分层递阶"语义; 快慢通道并排用 `{ rank=same; C; D; }`
 - 验证: PIL 检查非白像素占比 + 三原色像素计数 (金/蓝/红三脑色块在)
-- 产物: docs/6-开阳-工程落地/three_brain_architecture.{dot,png,mmd} + kalman_estimator_inner.{dot,png} + docs/6-开阳-工程落地/three_brain_architecture.md
+- 产物: docs/6-开阳-工程落地/three_brain_architecture.{dot,png,mmd} + kalman_estimator_inner.{dot,png} + docs/three_brain_architecture.md
 - 交付: PNG 复制 /mnt/c/Users/Public/ZMAX_videos/ 供 Windows 直接打开
 
 ## 术语表 (对外文档口径)

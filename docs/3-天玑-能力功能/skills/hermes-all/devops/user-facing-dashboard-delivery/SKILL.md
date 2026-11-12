@@ -199,6 +199,20 @@ linger 已开(`loginctl show-user $USER -p Linger` = yes) ⇒ 天然脱离会话
 可复制探针（几何 + 重复 id + 逐点验收循环）见
 `references/surface-location-and-change-verification.md` §「按钮呢? = 在 DOM 里但在视口外」。
 
+## ★ 用户说「调不动 / 拖不动 / 转不了」→ 先查那个控件的**使能链**, 别先怀疑后端
+
+- 交互控件常被一个开关门住: 滑杆/旋钮只在「XX 模式」那个复选框勾上后才把参数推下去 ——
+  不勾直接拖, `valueChanged` 照样发信号, 但 handler 里 `if not enabled: return` ⇒ 用户看到的就是"完全没反应"。
+  实测: AR 渲染窗口三个机位滑杆必须先勾「自由视角」; 用户连报「不能转换视角」, 而 8802 后端一直好的。
+- 定式: **动滑杆就自动进该模式**(`valueChanged` → `setChecked(True)` → 再推参数), 控件旁写一行
+  「拖滑杆就换机位 · 复位回默认」; 「复位」= 回默认态(本项目: 回 L2 实际输入帧), 不是回到半路。
+- 验收不能只看控件状态变了: 同一控件两个不同取值必须产出**内容不同的结果**(实测两机位帧 md5 `0989dd88` vs `9cb46a6a`),
+  并且横幅/状态栏要标出"这不是默认那条链/那路数据"(本项目: `NOT L2 input`), 否则用户会把自由视角的帧当推理输入。
+- 排查顺序: ①控件→handler 有没有绑 ②handler 有没有被前置开关/模式/权限门住 ③参数真的进了请求(日志/URL/控件值)
+  ④后端对参数敏不敏感(直接给两个极端值看产物)。四步走完再动后端。
+- ⚠️ **离屏验收要走真实入口**: 构造函数往往不起后台取帧线程, 直接读内部对象会拿到 `None` ⇒ 会把自己正确的实现误判成"没做"。
+  定式: 像用户那样触发一次(`cb.setCurrentIndex(<那项>)` / 调同一个 slot), 再 `app.processEvents()` 跑几拍, 最后才断言。
+
 ## ★ 用户说「某按钮点了没反应」→ 先取证后端，再改反馈面（不要去解释）
 
 三步定责（几分钟出结果），**别用"它其实在跑"去说服他**：
@@ -956,6 +970,48 @@ displays=:0 scrot -o /tmp/now.png         # 截图取证(本机有 scrot)
   同类坑：终端手搓的浏览器窗口即使开了也常落在**另一块屏/另一个 profile**，用户看不到。
 - 页面里公开取证接口（`window.__XX={ready, geom()}`）供验：**采样前等一帧** —— 同一 tick 里连切步读到的是上一帧
   队列（症状：每步数字一模一样）；"窗口真开了"只认 `wmctrl -lG` + `scrot` + 窗口区边缘像素数，不信 `Popen` 返回码。
+
+## ★ 用户说「XX 大屏/页面打不开」→ 第三层是**地址可达性**, 不是壳也不是后端
+
+先把三件事分开, 各有一条命令, 走错一层就是白改一轮:
+
+| 层 | 症状 | 判据 |
+|---|---|---|
+| 壳 | 窗口/浏览器没起来 | 进程 + 可见窗口(按 pid 认) |
+| 后端 | 服务在跑但没数据 | `ss -ltn` + `curl -o /dev/null -w '%{http_code}'` |
+| **地址可达性** | 服务好好的, 点开只有浏览器一直转 | 对目标 `host:port` 直接 TCP 探活 |
+
+实测: 按钮里**写死**的 `https://<公网域名>/…`, 域名能解析(`getent hosts` 有 A 记录) 而 443 从**两台机器都**
+直接 fail / 20s 超时 ⇒ 用户看到的"打不开"就是浏览器转圈; 而同源服务(本机 8799 大屏页 / 8793 工位总览)
+一直 200。**两台机器各测一次**: 只有一台不通是那台的网络, 两台都不通就是地址/站点本身。
+
+定式(候选链 + 探活 + 状态栏报实际 URL):
+```python
+def _tcp_ok(u, tmo=0.8):                      # 探活超时 ≤1s, 按钮手感优先
+    s = urlsplit(u); port = s.port or (443 if s.scheme == "https" else 80)
+    try:
+        with socket.create_connection((s.hostname or "", port), timeout=tmo): return True
+    except Exception: return False
+
+lan = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)   # 现算本机出口网卡, 不写死 IP
+lan.connect(("8.8.8.8", 80)); lan = lan.getsockname()[0]
+cands = [os.environ.get("ZMAX_DASHBOARD_URL", ""), "http://127.0.0.1:8799/",
+         "http://%s:8799/" % lan, "https://<公网域名>/factory-dashboard.html"]
+url = next((u for u in cands if u and _tcp_ok(u)), cands[-1])
+self.statusBar().showMessage("🖥 产品大屏 → %s" % url, 9000)   # 必须报实际 URL
+```
+- 保留 **env 覆盖**(`ZMAX_*_URL`) ⇒ 现场换出口不用改代码; 函数默认参数不许写 `url=该函数()`(默认值在 def 时求值, 又把地址冻死)。
+- 状态栏写"已打开"没有信息量, **写打开的哪个 URL** —— 下次"打不开"一眼分清是回退还是全不通。
+- 同族(已单独成条): 外部地址写死旧 IP 也会让按钮指向不存在的服务, 见 `zmax-console` 的 AR URL 那条。
+
+**打开之前先核数据新鲜度**: 只读大屏服务读的是**快照 JSON**, 服务活着 ≠ 数据新。实测页面 200、JSON 200,
+但 `generated_at` 是 24 天前 ⇒ 用户点开会当成"系统坏了"(或反之, 把旧数据当实时)。
+- 先读时间戳: `curl -s <url>/dashboard.json | python -c 'import json,sys;d=json.load(sys.stdin);print(d["generated_at"],d.get("version"))'`;
+  落后就**先重采**(本项目 `tools/dashboard_source.py` 无参即写两份), 服务是每请求读文件的 ⇒ **重采不用重启服务**。
+- 汇报时把 `generated_at` 和"通道在线数"一起给("6 路通道 1 路在线 = 家里 WiFi 到不了产线相机, 不是大屏坏了"),
+  否则他会把"数据不全"与"功能坏了"混成一件事。
+- 可达且新鲜的本机地址**直接发给他先看**(浏览器/手机都行), 再谈新包 —— 别让他等一轮构建才有东西看;
+  代码改好而他跑的是旧包时, **不要为验证去重启他的 GUI**, 说明"这处要新包才生效", 新包只替目录。
 
 ## 交付话术（用户视角）
 - 给**可直接点击/打开的链接**，而不是"我改好了"（用户要眼见为实）

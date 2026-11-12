@@ -1,7 +1,7 @@
 # Hermes 技能+记忆 → GitHub 自动同步 (2026-08-28)
 
 老倪指令: "技能完整同步到 GitHub; 记忆一点都不能丢, 每次都要备份"。
-落地: 仓库 `lerobot-smolvla-lew` 的 `docs/3-天玑-能力功能/skills/xspace/` + `docs/7-瑶光-记录追溯/` 成为
+落地: 仓库 `lerobot-smolvla-lew` 的 `docs/3-天玑-能力功能/xspace/` + `docs/7-瑶光-记录追溯/` 成为
 本机 `~/.hermes/` 的异地备份 (本地 + GitHub 双保险, 机器丢失/重装可恢复)。
 
 ## 组成
@@ -16,9 +16,9 @@
 
 ## 同步内容
 
-1. **zmax-console 全家** → `docs/3-天玑-能力功能/skills/xspace/zmax-console/`
+1. **zmax-console 全家** → `docs/3-天玑-能力功能/xspace/zmax-console/`
    (SKILL.md + references/ + scripts/ + templates/, ~214 文件)
-2. **关键技能 ~20 个** (mlops 训练/评估/CICD + github 工作流 + devops) → `docs/3-天玑-能力功能/skills/xspace/<name>/`
+2. **关键技能 ~20 个** (mlops 训练/评估/CICD + github 工作流 + devops) → `docs/3-天玑-能力功能/xspace/<name>/`
    - 体积守卫: >3MB 跳过 (防仓库膨胀)
 3. **记忆备份** → `docs/7-瑶光-记录追溯/`
    - `hermes-jingjing-memory-{YYYY-MM-DD}.md` (每日带日期) + `-latest.md` (永远最新)
@@ -37,7 +37,7 @@
 
 ```bash
 git clone https://github.com/MikeBMW/lerobot-smolvla-lew.git
-# 技能: docs/3-天玑-能力功能/skills/xspace/* → ~/.hermes/skills/<category>/
+# 技能: docs/3-天玑-能力功能/xspace/* → ~/.hermes/skills/<category>/
 # 记忆: docs/7-瑶光-记录追溯/hermes-jingjing-*-latest.md → 逐条 merge 进 Hermes memory
 ```
 

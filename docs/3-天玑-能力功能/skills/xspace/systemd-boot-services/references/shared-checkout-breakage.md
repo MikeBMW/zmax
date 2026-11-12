@@ -12,7 +12,7 @@
 
 ## 修法 (四步, 每步都要复核)
 1. **先分清哪棵树是什么**: `git -C <树> branch --show-current` + 比较 `studio.py` 体积/版本号 + `ls <树>/flows`。
-   本机约定: `main` 线代码/画布在 **worktree `/home/ubuntu/zmax_rel`**; 共用检出 `/home/ubuntu/lerobot-smolvla-lew` 可能被 APP 线占用。
+   本机约定: `main` 线代码/画布在 **worktree `/home/ubuntu/zmax`**; 共用检出 `/home/ubuntu/lerobot-smolvla-lew` 可能被 APP 线占用。
 2. **代码侧多候选定位**(根治"仓库根不对就崩"): 例如画布路径
    ```python
    def _flows_path(name):
@@ -21,8 +21,8 @@
    取证脚本要**显式模拟**"仓库根=另一棵检出"这一场景(monkeypatch `_repo_root_path`)才算证明修好。
 3. **服务侧指向稳定 worktree** + venv 软链(venv 与分支无关):
    ```bash
-   ln -s /home/ubuntu/lerobot-smolvla-lew/gui-venv311 /home/ubuntu/zmax_rel/gui-venv311
-   sudo sed -i 's#/home/ubuntu/lerobot-smolvla-lew#/home/ubuntu/zmax_rel#g' /etc/systemd/system/<u>.service
+   ln -s /home/ubuntu/lerobot-smolvla-lew/gui-venv311 /home/ubuntu/zmax/gui-venv311
+   sudo sed -i 's#/home/ubuntu/lerobot-smolvla-lew#/home/ubuntu/zmax#g' /etc/systemd/system/<u>.service
    sudo systemctl daemon-reload && sudo systemctl restart <u>   # 逐个 restart 后复核 is-active
    bash scripts/check_unit_paths.sh                              # 扫"引用路径是否还存在"
    ```

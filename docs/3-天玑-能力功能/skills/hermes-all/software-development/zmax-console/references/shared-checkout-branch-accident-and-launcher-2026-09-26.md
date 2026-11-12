@@ -27,7 +27,7 @@ def _flows_path(name):
         cands = [os.path.join(getattr(sys, "_MEIPASS", "") or "", "flows", name)]
     else:
         cands = [os.path.join(_repo_root_path(), "flows", name),
-                 os.path.join("/home/ubuntu/zmax_rel", "flows", name),          # main 线 worktree
+                 os.path.join("/home/ubuntu/zmax", "flows", name),          # main 线 worktree
                  os.path.join(os.path.expanduser("~"), "lerobot-smolvla-lew", "flows", name)]
     env = os.environ.get("ZMAX_FLOWS_DIR") or os.environ.get("ZMAX_FLOWS")
     if env:

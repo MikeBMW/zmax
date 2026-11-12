@@ -188,7 +188,7 @@ zmax-orin-aoi-fwd : ssh -NT -p 22022 -L 127.0.0.1:10082:192.168.23.23:10082 \
    实测 **帧龄 1.80s → 0.26s（6.9x）· 0.50fps → 1.86fps（3.7x）**。
    ```bash
    sudo docker run -d --name zmax-arm-raw --restart unless-stopped --network host \
-     -e ROS_DOMAIN_ID=0 -v /dev/shm:/dev/shm -v /home/ubuntu/zmax_rel/tools:/repo:ro \
+     -e ROS_DOMAIN_ID=0 -v /dev/shm:/dev/shm -v /home/ubuntu/zmax/tools:/repo:ro \
      ros:humble-ros-base bash -lc 'source /opt/ros/*/setup.bash; exec python3 /repo/ros_arm_tap_raw.py'
    ```
    ⚠️ **rclpy 订阅不能带 `raw=True`** —— 回调拿到的是 CDR 字节，没有 `.encoding/.height`
@@ -395,6 +395,80 @@ MJPEG（`multipart/x-mixed-replace`）天然免解码缓冲 → 低延迟；服�
    与推流服务 `/snapshot/<cam>.jpg`）——**同时刻各取一张, 比字节数 + `cv2.imread` 的尺寸/均值**,
    两者一致且均值正常才算真帧（实测两路同为 `200/34214B`、640×480、均值 131.9 ⇒ 链路与渲染都真）。
    均值 <10 或字节数极小 = 全黑/占位图。
+
+## 🎬 8802 渲染帧也能直接出直播流 (2026-11-09 老倪: 「这个窗口直接做成 8802/video 可以么?」)
+
+- `GET :8802/video?fps=1..15&cam=close|ar3d` → `multipart/x-mixed-replace` MJPEG; `:8802/live` = 全屏 HTML 外壳(带尺寸/观看时长/断流10s自愈)。
+  默认 `cam=ar3d`(全景 = AR 场景那个画面), 要料盘特写给 `?cam=close`。
+- 帧源就是 `/frame.png` 那一份: 实测流首帧 md5 == `/frame.png?cam=ar3d`(178643B, `f5444ac4b3`)。带 `az/el/dist/tx/ty/tz/fovy`
+  则逐帧走 `render_free`(渲染线程的 FREE_Q + 独立 `MjvCamera`), **不动机位相机**。
+- 🔴 静止场景必须去重: 站点相机 `n` 一直在涨但像素**逐字节相同**(实测连收 8 帧 md5 全同) ⇒ 同 md5 只按 1fps 发心跳帧,
+  否则 12fps × 178KB ≈ 2MB/s 白烧带宽(WiFi/手机受不了)。去重后实测: 静止 3s = 3 帧, 关节微动 3s = 8 帧/6 唯一。
+- 并发上限 3 条(第 4 条 503 `too many streams`), 客户端断开自动减计数 —— 不设上限会把渲染线程吃满并拖慢 L2。
+- 重启: `sudo -n systemctl restart zmax-ar-render`; 起来后 `mode` 回到 **idle**, 要 `POST /control {"mode":"sim"}` 才恢复物理步进。
+- 🔴 `/control` 的 `L/R` 是**角度(deg)**; `/state.json` 的 `truth.qR` 是**弧度** ⇒ 直接回灌会把臂甩到 ~0
+  (实测 qR[1] 0.5017 → 0.0087 rad)。要还原位姿必须 `math.degrees()` 再发, 发完 `truth.qR` 回读对账(实测误差 ≤0.1°)。
+
+- 🔴 画面静止 ≠ 流坏了: `mode=sim` 且没有 `/control` 下发时, 只是**没有驱动源**, 像素逐字节相同(实测 5s 只 4 个不同帧,
+  且只是字节级微抖动)。判流死活看「5s 内不同帧数」, **不看** `/status.json` 的 `n`(n 在涨但像素可能全同)。
+  要它真动: `POST :8805/api/run` 让站跑一轮 —— 实测 22s 收 130 帧/121 个不同帧, 阶段 perceive→act→done, cycle=1,
+  证据图 `zmax_data/ss_live/video_cycle_proof.png`。
+- 🔴 开窗口别用 Python `webbrowser.open`(snap chromium 下静默失败: 不报错也不开窗, 人看着像"点了没反应")。
+  固定写法: `chromium --new-window <url>` + `wmctrl -a video` 抬前台, 并**每次点击落一行日志**
+  (`zmax_data/logs/ar3d_video_open.log`: 时间/ok/how/display/url) —— 没日志＝点击没进处理器, 日志 ok=False＝环境没浏览器。
+  实测: 窗口数 8→9、日志 `ok=True how=chromium --new-window`。
+- 🔴 与 8797/ar3d 同机位: 页面每 500ms `POST //<host>:8802/cam`(变动即推 + 2s 心跳), 8802 `/video` 每帧读
+  `zmax_data/ss_live/ar3d_cam.json` 用同参数渲染; 相机不动就复用上一帧(自由机位单帧 ~70ms); 6s 没收到退预设机位。
+  实测: `/cam` age 1.0s follow=true, 流首帧 vs 同机位 `/frame.png` 平均像素差 0.004(差>8 占 0.01%)。
+  边界: 流里只有 MuJoCo 场景本体, 页面矢量层(围栏/位置细胞/YOLO框)不进流 —— 只能"同机位同姿态", 不是同一张图。
+  改了 `tools/gui/simulink_module.py` 必须**重启 GUI** 才生效。
+
+### 🔴 `/video` 是「按 Accept 分流」的双面端点 —— 地址栏打不开是退化, 不是"正常现象"
+
+- 浏览器**地址栏**打开 `http://<host>:8802/video`(Accept 含 `text/html` 且 `Sec-Fetch-Dest: document`)⇒ 服务端把 `p`
+  改写成 `/live` 回 **HTML 外壳**; `<img src="/video">`(`Sec-Fetch-Dest: image`)照旧拿 MJPEG。判据三行:
+  `curl -H 'Accept: text/html' /video` → `200 text/html` · `curl /video` → `200 multipart/x-mixed-replace` ·
+  浏览器开 `/video` 标题 = `Z-MAX 8802 · 渲染帧`。带参老书签 `/video?fps=12` 同样生效。
+- **地址栏开 /video 一直转圈 / 一片空白 = 在跑的是没有分流的旧代码**, 实测无头浏览器导航直接 timeout。
+  别拿旧结论"导航一直加载中是正常现象, 用 `naturalWidth` 判活"收工 —— 用户看到的就是「video 网页打不开」。
+  修代码 + 重启服务(`sudo systemctl restart zmax-ar-render`), 再按上面三行复验。
+
+### 🔴 直播页要能**右键**「在新标签页打开图片」⇒ 页面必须拉单帧 PNG, 不能直接挂 MJPEG
+
+`<img src="/video">` 的右键菜单只会开一条 multipart 流(空白/一直加载), 另存为、复制图片地址同样无效。
+定式: 外壳页每 100ms 把 `src` 换成 `/frame.png?cam=ar3d&live=1&_=<ts>`(角标写 `PNG 10fps`), 右键那条地址就是一张真 PNG
+(实测相隔 1s 两张 172KB/180KB, 内容在变)。配套后端: `/frame.png?cam=<非close>` 在没有 `views[cam]` 缓存帧时
+必须**现场渲染**(`render_free(_cam_sync_read() or {})`, 与 `/video` 同口径), 否则页面一没在推视角就恒 503。
+Windows 上由计划任务托管 8802 还有两个硬条件(Interactive 会话 + `MUJOCO_GL=wgl`), 见
+`windows-plant-host-operations` 10.13。
+
+### 🔴 拉单帧必须带 `live=1`, 否则直播窗口与 AR 页机位不同步
+
+`/frame.png?cam=ar3d` 走的是 `views["ar3d"]["png"](预设机位缓存), 而 AR 页的机位是 `POST /cam` **推**过来的
+(`zmax_data/ss_live/ar3d_cam.json`) ⇒ 页面拉缓存, 画面永远停在上次预设视角, 用户看到的是「/video 与 AR 场景不同步」。
+`live=1` 时后端先 `_cam_sync_read()`(只认 ≤6s 的新鲜相机)再 `render_free(cq)` 现场渲染; 没有新鲜相机才退回缓存 ——
+**不假装同步**(退缓存时角标应能看出是预设机位)。
+
+判据(可复现, 同一时刻取两帧缩到 240x180 逐像素比): `/video` 帧(MJPEG 本就按推送相机渲染) vs `live=1` 帧 ⇒ diff≈0.0 / 0 像素;
+换 `?cam=ar3d` 缓存帧比 ⇒ diff≈13 / 4000+ 像素, 后者就是「不同步」的量化证据。单帧耗时 50~80ms(960x720), 10fps 够用。
+外壳页角标要写出来源(`视角:跟随 ar3d 页面 N.Ns前`), 用户才能自己判同步活在不在。
+
+### 🔴 把 8802 帧贴成 AR 画布底图(「🎥 MuJoCo 同视角」, 2026-11-09 老倪选 A 方案)
+
+画布/渲染两套场景**本身不同源**(AR 有龙门架·料盘满载, 8802 无龙门·料盘 3 件), 延迟对不上是错觉 ⇒ 解法是
+把 8802 帧当**真值底图**贴在 canvas 下面, 矢量层照画。三条硬规则:
+
+- **对齐不用再标定**: 用页面同一针孔相机(F=416.6 / CX=490 / CY=288.5)把 1600×600 桌面四边形与四个料盘框
+  投到帧上, 残差 5~10px ≈1% 画布宽, 无方向性偏移 ⇒ 相机与几何都别动。
+- **必须双缓冲**: 每帧直接改可见 `<img>.src`, Chrome 先清空再加载 ⇒ 黑帧一闪一闪, 用户报「画布疯狂跳动」。
+  定式: `new Image()` 预载, `onload` 里再把 URL 赋给可见 img。判据: 连拍 6 张, 画布区 mean/亮像素必须稳
+  (实测 50.4~50.6 / 30.7% 不动); 改前 1.2s 间隔就有 12~14% 像素在变。
+- **渲染帧欠曝要在显示层提亮**: 中位亮度 17/255、72% 像素 <25 ⇒ 料盘/机械臂在矢量下面几乎全黑,
+  用户会以为「底图没开/没对齐」。给 `#mjframe` 加 `filter:brightness(2.4) contrast(1.08) saturate(1.05)`
+  —— 只改显示, 不动渲染与标定; 暗像素占比 72%→38.5%、亮像素 30.7%→35.8%。
+- **拉图节拍别和直播窗抢渲染线程**: 画布 650ms + 直播窗 6fps 就够; 原 400ms + 10fps 会把 50Hz 物理的
+  渲染打成 ms 39~148 抖动, 看起来又像「跳」。
+- 默认进页面即 `mjToggle()`(A 方案), 按钮仍可关(关掉就没有真值底图)。
 
 ## 📵 发图前先查同帧 —— 同一张就别发 (2026-10-26 老倪: 「现在是 wifi 环境, 发图片之前看看是不是相同帧, 相同帧就不要发了」)
 

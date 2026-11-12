@@ -7,7 +7,7 @@ trigger: "Use when 老倪提 真实化/闭环真实化/R0/R1/metaworld 物理闭
 
 # Z-MAX 引擎真实化闭环 (R0 物理真实化 → R1 YOLO感知真实化)
 
-> 设计文档: `docs/7-瑶光-记录追溯/notes/closed_loop_realization_design.md`
+> 设计文档: `docs/closed_loop_realization_design.md`
 > 代码: `tools/gui/state_space_sim_real.py` (RealStateSpaceSim, R0 已落地)
 > 探针: `tools/probes_real/probe_mw_real*.py` (12 发, 契约数据源, 保留为标定工具)
 > 全量契约表见 `references/metaworld-contract-2026-09-04.md`

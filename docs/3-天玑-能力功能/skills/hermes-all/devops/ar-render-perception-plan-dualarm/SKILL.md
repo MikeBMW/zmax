@@ -192,6 +192,44 @@ L2 YOLO(8802渲染帧) → /dev/shm/l2_det.json  (① 感知归口, 引擎/画�
 26. **技能派发也有两个写入方**: 常驻 `tools/ss_skill_dispatch.py` 与本站都写 `zmax_data/ss_live/skill_dispatch.json`;
     本站的 `by="ar_render_station(引擎链)"` 会被覆盖。要永久区分就用各自的 `/dev/shm/zmax_ss_engine/skill_<stage>.json`。
 
+27. **8802 无帧先看 GL 后端, 不是码**: `/status.json` 报 `构造失败(3s后重试): FatalError: gladLoadGL error` +
+    日志 `GLFWError: X11: Failed to open display :0` = unit 里 `MUJOCO_GL=glfw` 要 X, 服务进程拿不到显示 ⇒
+    进程活着、端口在听、`/frame.png` 503 `no frame yet`、`mod3_frame.jpg` 永不生成。修复: `MUJOCO_GL=egl` + 清空
+    `DISPLAY`/`XAUTHORITY`(实测同脚本无头出帧 960×720, `gold_px` 2682)。
+    **drop-in 命名坑**: 旧 drop-in `zz-xauth.conf` 会把 `MUJOCO_GL=glfw` 顶回来 —— 覆盖项必须排最后
+    (`zzzz-egl-headless.conf`), 改完用 `systemctl show -p Environment` 核**生效值**, 别只看文件。
+28. **旁路窗口要看 AR 渲染帧, 不是仿真帧**: 用户说「视频输入/实际传入的渲染图像流」时, 指的是
+    `8802 ArMujocoEnv 渲染 → _mod3_worker 解码 → yolo_ar_peg` → `/dev/shm/mod3_frame.jpg` + `mod3_latest.json`
+    (后者带 weights/n/boxes/ts)。窗口读这两份即与推理同源; 有帧画框+横幅(权重/检出/帧龄), 无帧出占位并写
+    `mod3_latest.json#err` 的原因, **绝不拿仿真或真机帧顶替**。接错成 metaworld 仿真渲染会被当场抓出。
+
+29. **任意视角渲染不能在 HTTP 线程做**: mujoco 的 EGL 上下文**绑在渲染线程**, 在 handler 线程里
+    `renderer.update_scene/render` 直接 `EGLError(EGL_BAD_ACCESS, eglMakeCurrent)` (实测 503)。
+    正解: handler 只投递请求 (`FREE_Q` + `threading.Event`), render_loop 每拍消费并回图;
+    取完必须把 `model.vis.global_.fovy` 恢复成 close 的 fovy, 否则污染 L2 那条链的图。
+    接口: `GET /frame.png?az=&el=&dist=&tx=&ty=&tz=&fovy=` (默认=ar3d 全景), 实测 4 组机位 200 且 md5 全不同。
+30. **用户问「桌子呢/设备呢」先量投影, 别猜**: `close` 机位 (dist 0.34m) 只框住料盘, 桌面只在右下角一片,
+    台面角点 `(0.40,-0.40,0)` 投到 `v=-2372` 完全出画; `ar3d` 全景四个点全在 960×720 框内。
+    要解释“看不到”就 curl `/proj?cam=<v>&x=&y=&z=` 报像素坐标。另: 桌面故意用中性灰 (棕色会污染 gold_mask),
+    AR 页里的立柱/相机/AOI 检测设备**在 ArMujocoEnv 里根本没建模** —— 别说成“渲染错了”。
+
+31. **渲染与 AR 页对不上, 先拆两件事再动手**: ①**场景元素**可以同步 —— 真源就是 `fence_store`
+    (页面 `/api/fence` 同一份), 把 `enabled` 的 box 建成 `contype=0 conaffinity=0` 纯视觉 geom 即可
+    (实测加了 左臂料盘/下料盘/废料盘/插孔, `gold_px` 2682→2638、L2 仍 `n=4`, 整帧像素变化 4.6%)。
+    铁律三条: 跳过主料盘 (再套一层盒子直接把光模块盖住)、颜色一律冷灰蓝/近黑 (暖色污染 `gold_mask`)、
+    只同步 `enabled` (页面隐藏的 检测设备/上横梁/侧面相机 默认也是关的, 强画会挡视线掉检出)。
+    ②**机器人位姿天生不同源**: 页面画 URDF 真机、数据来自 `tcp_out/latest.json` (真机不上电就永是旧值,
+    实测 `age_s=171700s` + 桥 refused); 渲染是仿真 6 轴 (`qL` 全 0 / `qR` 另有值)。要对齐必须选一条:
+    页面加一层“仿真骨骼”跟 8802 `/state.json` 同源, 或渲染吃真机 q (需真机在线+轴映射) —— 不要以为
+    “同视角参数”就等于“同一数据源”。
+
+32. **让页面与渲染同源只能用 8802 的 body_xpos (A 方案)**: 页面 `/ar3d` 自己画 URDF 真机, 真机不上电就永远
+    停在旧姿态 (实测 47.7h)。正解: 8802 每拍快照 `data.xpos` 成 `/bones.json` (**不是 `model.body_xpos` ——
+    MjModel 没这个字段, 写了就是 AttributeError 把整拍状态置 err**), 8797 `/api/sim_bones` 同源代理,
+    页面开「🦾 SIM骨骼」层按同一 `pr()` 投影画线 (L 青 / R 橙 / 末端标 SIM)。
+    验收口径: 开关差分像素 (实测 +200 青 +376 橙)、`/bones.json#n` 递增、末端与 `state.json#truth.tcp` 同量级
+    (±10mm 以内是手指偏置, 不是错)。注意: 页面是 **custom canvas 投影 (VIEW.pr)**, 不是 WebGL/Three.js。
+
 ## Verification
 
 - `/status.json`: `ok:true` · `n` 递增 · `gold_px>300` · `calib.res_mm_med` 个位数 mm

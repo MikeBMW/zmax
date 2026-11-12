@@ -45,6 +45,16 @@ on:
     fi
 ```
 
+- 🔴 **dispatch 不传 `inputs.tag` ⇒ 默认值 `dev-snapshot` 会当版本号一路流进 exe 资源**: 生成的
+  `version_info.txt` 变成 `filevers=(dev-snapshot, 0, 0, 0)`, PyInstaller 加载该文件是按 Python 字面量求值的 ⇒
+  `NameError: name 'dev' is not defined` → `Failed to deserialize VSVersionInfo` ⇒ **Windows job 在 Build 步骤整段红,
+  而 macOS job 照样绿**(mac 不读 version-file), 很容易误判成"Windows runner 环境坏了"。
+  两道保险: ① 手动 dispatch **一定**带 `inputs.tag`; ② 生成前把非 `x.y.z` 的值回退到 `VERSION.md`(或等价版本源),
+  并对每一段做 `v if v.isdigit() else '0'` 兜底。
+- ⚠️ **仓库把 `.github/` 写进了 `.gitignore` 时, `git add .github/workflows/x.yml` 静默失败**
+  (只回一句 `The following paths are ignored…`), 提交里根本没有 workflow 改动 ⇒ 推上去等于没改, 而 CI 仍按旧版跑。
+  改 workflow 一律 `git add -f <file>` 并在提交后用 `git show --stat` 确认该文件在改动清单里。
+
 ## Windows .exe (PyInstaller) build
 
 Full pipeline for a Windows runner:
