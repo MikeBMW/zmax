@@ -2906,33 +2906,10 @@ class PipelinePanel(QDialog):
             return
 
         def _work():
-            out = {}
-            try:
-                r = _rq.get("https://datadrive.world/api/relay/status", timeout=6)
-                if r.status_code == 200:
-                    st = r.json()
-                    out["pkgs"] = st.get("packages", 0)
-                    meta = st.get("latest_meta") or {}
-                    out["frames"] = meta.get("frames", None)
-                    out["src"] = meta.get("source", None)
-            except Exception:
-                pass
-            try:
-                r = _rq.get("https://datadrive.world/api/relay/orin/status", timeout=6)
-                if r.status_code == 200:
-                    o = r.json()
-                    out["online"] = o.get("online", False)
-                    out["model"] = o.get("model", "?")
-                    out["infer"] = o.get("infer_count", 0)
-                    out["ms"] = o.get("last_infer_ms")
-                    out["seen"] = o.get("last_seen", "?")
-            except Exception:
-                pass
-            try:
-                r = _rq.head("https://datadrive.world/models/act_cartesian.safetensors", timeout=6)
-                out["url"] = r.status_code
-            except Exception:
-                out["url"] = None
+            # 2026-11-12 老倪「全删云端出口」: 原三次云端探测 (relay/status、relay/orin/status、
+            #   models/act_cartesian.safetensors) 全部删除 —— 云端 ECS 已下线, 再探就是白等超时。
+            #   远端状态面板改为诚实空态 (画布/面板照常显示, 只是不再有云端数字)。
+            out = {"cloud": "deleted", "note": "云端出口已删除 (datadrive.world 下线)"}
             return _json.dumps(out)
 
         def _thread_main():
@@ -7817,13 +7794,19 @@ class SimulinkModule(QWidget):
         🐛 WSL 无 xdg-open → QDesktopServices 找不到浏览器 → cmd.exe start;
         🐛 2026-08-12: cwd 必须 Windows 目录 — WSL 当前目录是 UNC, cmd start 静默失败"""
         import subprocess as _sp
-        url = "https://datadrive.world/solution.html"  # 📄 方案介绍分页 (主页保持不动)
-        try:
-            _sp.Popen(["cmd.exe", "/c", "start", "", url],
-                      stdout=_sp.DEVNULL, stderr=_sp.DEVNULL, cwd="/mnt/c/Windows")
-            self._log(f"🌐 打开方案介绍分页: {url} → Windows 浏览器")
-        except Exception as e:
-            self._log(f"⚠️ 打开链接失败: {e}")
+        # 2026-11-12 老倪「全删云端出口」: 方案介绍页原托管在云端 datadrive.world/solution.html, 云端已删除。
+        #   本地仓库没有这份页面 ⇒ 不再打开死链, 如实说明 (画板上的节点保留, 点了给明确说法)。
+        for _p in (os.path.join(self._repo_root(), "docs", "solution.html"),
+                   os.path.join(self._repo_root(), "docs", "solution.md")):
+            if os.path.isfile(_p):
+                try:
+                    _sp.Popen(["cmd.exe", "/c", "start", "", _p], stdout=_sp.DEVNULL,
+                              stderr=_sp.DEVNULL, cwd="/mnt/c/Windows")
+                    self._log(f"🌐 打开本地方案介绍: {_p}")
+                    return
+                except Exception:
+                    pass
+        self._log("🌐 方案介绍页已随云端出口一起删除 (datadrive.world 已下线, 本地仓库无副本)")
 
     def open_vlatouch(self):
         """🖐 VLA-Touch 触觉对比 (2026-08-05 老倪: 参考 VLA-Touch 项目, 4060 精简):
@@ -9152,9 +9135,9 @@ class SimulinkModule(QWidget):
         # 🚀 训练
         if "训练" in nm:
             return f"steps={p.get('steps', 3000)} policy={p.get('policy', 'left_right')} · 训练完成 ckpt=last"
-        # 🌐 方案介绍
+        # 🌐 方案介绍 (2026-11-12 全删云端出口: 页面已随 datadrive.world 下线, 不再给死链)
         if "方案" in nm:
-            return "https://datadrive.world/solution.html (技术架构 v1.1)"
+            return "方案介绍页已随云端出口删除 (datadrive.world 已下线, 本地仓库无副本)"
         return None
 
     def _sim_node(self, n, keep_active=False):
@@ -13314,11 +13297,16 @@ class SimulinkModule(QWidget):
             tip.setStyleSheet("color:#8b949e; font-size:11pt; padding:4px;")
             lay.addWidget(tip)
             # 📤 导出到 datadrive 网页 (2026-08-18 老倪)
+            # 2026-11-12 老倪「全删云端出口 / 连按钮一起删」: 按钮与 _export_physical_params 的 scp 上传一起删除
+            #   (它唯一作用 = 生成 HTML 再传到云端 ECS 站点, 云端已下线)。参数仍在面板里逐项可看可复制。
             from PyQt5.QtWidgets import QPushButton
-            b_export = QPushButton("📤 导出全部参数到网页 (datadrive.world)")
-            b_export.setStyleSheet("QPushButton { background:#238636; color:#ffffff; border:none; "
-                                   "border-radius:4px; padding:6px 14px; font-weight:bold; }")
-            b_export.clicked.connect(lambda: self._export_physical_params(PW))
+            b_export = QPushButton("📋 复制参数摘要 (本地)")
+            b_export.setStyleSheet("QPushButton { background:#21262d; color:#c9d1d9; border:1px solid #30363d; "
+                                   "border-radius:4px; padding:6px 14px; }")
+            _sum_txt = (f"物理世界参数 (本地快照)\n硬件 {len(PW.HARDWARE_SPEC)} 项 / 电机 {len(PW.AXIS_MOTORS)} 轴 / "
+                        f"臂段 {len(PW.ARM_SEGMENTS)} 段 / 总质量 {_pw.total_mass} kg")
+            b_export.clicked.connect(lambda: (QApplication.clipboard().setText(_sum_txt),
+                                              self._log("📋 参数摘要已复制到剪贴板 (云端出口已删除, 不再上传)")))
             lay.addWidget(b_export, alignment=Qt.AlignRight)
             self._show_nonmodal(dlg)
             self._popup_on_main_screen(dlg)   # 🎯 show 之后定位 (move 在 show 前被覆盖)
@@ -13372,28 +13360,9 @@ class SimulinkModule(QWidget):
             out = "/tmp/physical_world_params.html"
             with open(out, "w", encoding="utf-8") as f:
                 f.write(page)
-            # scp 上传 ECS (同 orin_stream.sh 链路) + chmod 644 — 🐛 2026-08-18:
-            # 主线程同步 scp 会卡界面 60s → 后台线程
-            import threading
-
-            def _upload():
-                try:
-                    import subprocess as _sp
-                    r = _sp.run(["sshpass", "-p", _ECS_PW_SM, "scp", "-o", "StrictHostKeyChecking=no",
-                                 out, "root@47.93.88.143:/www/wwwroot/datadrive.world/"],
-                                capture_output=True, timeout=60)
-                    if r.returncode == 0:
-                        _sp.run(["sshpass", "-p", _ECS_PW_SM, "ssh", "-o", "StrictHostKeyChecking=no",
-                                 "root@47.93.88.143",
-                                 "chmod 644 /www/wwwroot/datadrive.world/physical_world_params.html"],
-                                capture_output=True, timeout=30)
-                        self._safe_log("📤 物理世界参数已导出: https://datadrive.world/physical_world_params.html")
-                    else:
-                        self._safe_log(f"📤 导出失败 (上传): {r.stderr.decode(errors='ignore')[:200]}")
-                except Exception as e:
-                    self._safe_log(f"⚠️ 导出上传失败: {e}")
-
-            threading.Thread(target=_upload, daemon=True).start()
+            # 2026-11-12 老倪「全删云端出口」: scp 上传 ECS + chmod + 打印云端链接 整段删除。
+            #   只留本机产物, 如实报本地路径 (云端站点已下线, 再上传就是白等超时)。
+            self._safe_log(f"📄 物理世界参数 HTML 已生成本地: {out} ({_os_mod.path.getsize(out) // 1024}KB, 云端出口已删除)")
         except Exception as e:
             self._log(f"⚠️ 导出参数失败: {e}")
 
@@ -13932,23 +13901,8 @@ class SimulinkModule(QWidget):
                 else:
                     path, n = m.export_excel()
                 local = f"✅ 已导出 {n} 个{kind} → {path}"
-                # scp 上传 ECS (datadrive.world, 用户可下载)
-                try:
-                    import subprocess as _sp
-                    fname = os.path.basename(path)
-                    r = _sp.run(["sshpass", "-p", _ECS_PW_SM, "scp", "-o", "StrictHostKeyChecking=no", path,
-                                 f"root@47.93.88.143:/www/wwwroot/datadrive.world/{fname}"],
-                                capture_output=True, text=True, timeout=60)
-                    if r.returncode == 0:
-                        _sp.run(["sshpass", "-p", _ECS_PW_SM, "ssh", "-o", "StrictHostKeyChecking=no",
-                                 "root@47.93.88.143", f"chmod 644 /www/wwwroot/datadrive.world/{fname}"],
-                                capture_output=True, text=True, timeout=30)
-                        self._safe_log(local)
-                        self._safe_log(f"🔗 http://datadrive.world/{fname}")
-                    else:
-                        self._safe_log(f"{local} (ECS 上传失败: {(r.stderr or '')[-120:]})")
-                except Exception as _e:
-                    self._safe_log(f"{local} (ECS 上传失败: {_e})")
+                # 2026-11-12 老倪「全删云端出口」: scp 到 wwwroot + 打印 datadrive.world 链接 整段删除。
+                self._safe_log(f"{local} (云端出口已删除, 本地文件可直接打开)")
             except Exception as _e:
                 self._safe_log(f"⚠️ 导出失败: {_e}")
 
@@ -14190,18 +14144,10 @@ class SimulinkModule(QWidget):
                     self._safe_log(f"⚠️ 自动测试失败: {out[-300:]}")
                     return
                 self._safe_log(f"✅ 自动测试完成: {out.splitlines()[0] if out else ''}")
-                # 上传 datadrive.world
+                # 2026-11-12 老倪「全删云端出口」: 报告 PDF/Excel 的 scp 上传与云端链接打印整段删除, 只报本地路径
                 for f, tag in ((pdf, "报告 PDF"), (xlsx, "Excel")):
-                    try:
-                        _r = _sp.run(
-                            ["sshpass", "-p", _ECS_PW_SM, "scp", "-o", "StrictHostKeyChecking=no",
-                             "-o", "ConnectTimeout=15", f,
-                             f"root@47.93.88.143:/www/wwwroot/datadrive.world/{os.path.basename(f)}"],
-                            capture_output=True, text=True, timeout=60)
-                        if _r.returncode == 0:
-                            self._safe_log(f"🔗 {tag}: http://datadrive.world/{os.path.basename(f)}")
-                    except Exception as _e:
-                        self._safe_log(f"⚠️ {tag} 上传失败: {_e}")
+                    if f:
+                        self._safe_log(f"📄 {tag} 本地: {f} (云端出口已删除)")
             except Exception as _e:
                 self._safe_log(f"⚠️ 一键自动测试异常: {_e}")
 
@@ -17025,27 +16971,9 @@ class SimulinkModule(QWidget):
                 for _ln in (r.stdout or "").strip().splitlines()[-9:]:
                     self._safe_log(f"🎬 {_ln}")
                 self._safe_log("🧭 3D 视图现在与该视频同源 — 点「🧭 3D 视图」看同一条 episode 的分层数据")
-                try:
-                    # 🔐 2026-10-10: 仓库为 public, 明文口令已从代码全部移除
-                    #   只从环境变量或 zmax_data/secrets/zmax.env 取 (缺则明确报错, 不再保障明文)
-                    _pw = _ECS_PW_SM or _ecs_pw_from_secrets()
-                    if not _pw:
-                        self._safe_log("⛔ 缺 ZMAX_ECS_PW (环境变量或 zmax_data/secrets/zmax.env) — 上传跳过")
-                        return
-                    r2 = _sp.run(["sshpass", "-p", _pw, "scp", "-o", "StrictHostKeyChecking=no",
-                                  out, "root@47.93.88.143:/www/wwwroot/datadrive.world/"],
-                                 capture_output=True, timeout=60)
-                    if r2.returncode == 0:
-                        _sp.run(["sshpass", "-p", _pw, "ssh", "-o", "StrictHostKeyChecking=no",
-                                 "root@47.93.88.143",
-                                 "chmod 644 /www/wwwroot/datadrive.world/ss_episode_latest.mp4"],
-                                capture_output=True, timeout=30)
-                        self._safe_log("🎥 操作视频 (与 3D 视图同源): "
-                                       "https://datadrive.world/ss_episode_latest.mp4")
-                    else:
-                        self._safe_log(f"🎥 视频已生成 (上传失败): {out}")
-                except Exception as e:
-                    self._safe_log(f"🎥 视频已生成, 上传失败: {e} · 本地: {out}")
+                # 2026-11-12 老倪「全删云端出口」: 原「scp 到 ECS wwwroot + 打印 datadrive 视频链接」整段删除。
+                #   视频本身照旧生成本地, 用「🎥 播放」打开; 云端站点已下线, 再上传只会白等超时。
+                self._safe_log(f"🎥 操作视频 (与 3D 视图同源) 本地: {out} (云端出口已删除)")
             except Exception as e:
                 self._safe_log(f"⚠️ 视频生成失败: {e}")
 
@@ -17895,17 +17823,25 @@ class SimulinkModule(QWidget):
         if not scene:
             self._log(f"❌ 场景不存在: {scene_id}")
             return
-        # 1) 打开 ECS 3D 场景链接 (2026-08-09 老倪+web: scene-3d.html 3D 机器人场景)
+        # 1) 2026-11-12 老倪「全删云端出口」: 原打开 datadrive.world/scene-3d.html (云端 3D 场景页) 已删除,
+        #    改为打开本机 AR/3D 页 (8797, 在役) —— 有本地产物就不给死链; 本机页没起就如实说。
         try:
             from PyQt5.QtCore import QUrl
             from PyQt5.QtGui import QDesktopServices
-            _SCENE3D = {"SCN-01": "insert", "SCN-02": "handle", "SCN-03": "aoi"}
-            _k = _SCENE3D.get(scene_id, scene_id.lower())
-            url = f"https://datadrive.world/scene-3d.html?scene={_k}"
-            QDesktopServices.openUrl(QUrl(url))
-            self._log(f"🏭 已打开 3D 场景: {scene_id} → {url}")
+            _local3d = "http://127.0.0.1:8797/?cam=arm"
+            _alive = False
+            try:
+                import urllib.request as _ur
+                _alive = _ur.urlopen("http://127.0.0.1:8797/", timeout=2).status == 200
+            except Exception:
+                _alive = False
+            if _alive:
+                QDesktopServices.openUrl(QUrl(_local3d))
+                self._log(f"🏭 已打开本机 3D/AR 场景页: {scene_id} → {_local3d} (云端场景页已删除)")
+            else:
+                self._log(f"🏭 {scene_id}: 云端 3D 场景页已随云端出口删除; 本机 8797 未起 ⇒ 先起 AR 页再看 3D")
         except Exception as e:
-            self._log(f"⚠️ 打开链接失败: {e}")
+            self._log(f"⚠️ 打开 3D 失败: {e}")
         # 2) 建场景节点链 (画布: 场景节点 + 技能节点序列 → 结构条件 → SYS1)
         self._build_scene_flow(scene, node)
 
@@ -17969,7 +17905,7 @@ class SimulinkModule(QWidget):
         import urllib.request as _rq
         _SCENE3D = {"SCN-01": "insert", "SCN-02": "handle", "SCN-03": "aoi"}
         _k = _SCENE3D.get(scene_id, scene_id.lower())
-        url = f"https://datadrive.world/scene-3d.html?scene={_k}"
+        url = ""  # 2026-11-12 全删云端出口: 云端 scene-3d.html 已删除 (下面改开本机 8797)
         _scene = None
         try:
             _repo = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
@@ -17978,48 +17914,28 @@ class SimulinkModule(QWidget):
             _scene = next((s for s in _data.get("scenes", []) if s.get("id") == scene_id), None)
             if _scene:
                 _b = _b64.b64encode(_j.dumps(_scene, ensure_ascii=False).encode()).decode()
-                url += f"&json={_up.quote(_b)}"
+                _unused_b64 = _b  # 原 url += &json=<base64> 只服务云端页面, 已删除
         except Exception:
             pass
-        # ① POST 场景 JSON 到 ECS (web 格式: name/skills/specs/kpi)
+        # 2026-11-12 老倪「全删云端出口 / 连按钮一起删」:
+        #   原 ① POST 场景 JSON 到 datadrive.world/scene-api.php → 删除 (云端 ECS 已下线, 不再外呼);
+        #   原 ② 打开云端 scene-3d.html → 改开本机 AR/3D 页 (8797, 在役)。
+        _local3d = "http://127.0.0.1:8797/?cam=arm"
         try:
-            if _scene:
-                import re as _re
-                def _num(v):
-                    # 提取首个数字 (≥99.5% → 99.5; ≤3.5s/颗 → 3.5)
-                    m = _re.search(r"\d+(\.\d+)?", str(v))
-                    try:
-                        return float(m.group(0)) if m else 0.0
-                    except Exception:
-                        return 0.0
-                _steps = _scene.get("process_steps", [])
-                _sr = _num(_scene.get("performance", {}).get("operation_success_rate", ""))
-                _payload = {
-                    "name": _scene.get("name", scene_id),
-                    "skills": [f"{st.get('step', i+1)}.{st.get('name', '')}" for i, st in enumerate(_steps)],
-                    "specs": {
-                        # web 格式: success_rate 为小数 (99.5% → 0.995)
-                        "success_rate": round(_sr / 100.0, 4) if _sr > 1 else _sr,
-                        "cycle_time": _num(_scene.get("performance", {}).get("cycle_time", "")),
-                    },
-                    "kpi": _scene.get("performance", {}),
-                }
-                _req = _rq.Request(
-                    f"https://datadrive.world/scene-api.php/{_k}",
-                    data=_j.dumps(_payload, ensure_ascii=False).encode(),
-                    headers={"Content-Type": "application/json"}, method="POST")
-                with _rq.urlopen(_req, timeout=8) as _resp:
-                    _resp.read()
-                self._log(f"🏭 场景 JSON 已 POST → scene-api.php/{_k} (ECS 保存 scenes/scene_{_k}.json)")
-        except Exception as _e:
-            self._log(f"⚠️ 场景 JSON POST 失败: {_e}")
-        # ② 打开 3D 链接
-        try:
-            _sp.Popen(["cmd.exe", "/c", "start", "", url],
-                      stdout=_sp.DEVNULL, stderr=_sp.DEVNULL, cwd="/mnt/c/Windows")
-            self._log(f"🏭 打开 3D 场景: {scene_id} → Windows 浏览器")
+            _alive = False
+            try:
+                with _rq.urlopen("http://127.0.0.1:8797/", timeout=2) as _r:
+                    _alive = _r.status == 200
+            except Exception:
+                _alive = False
+            if _alive:
+                _sp.Popen(["cmd.exe", "/c", "start", "", _local3d],
+                          stdout=_sp.DEVNULL, stderr=_sp.DEVNULL, cwd="/mnt/c/Windows")
+                self._log(f"🏭 已打开本机 3D/AR 页: {scene_id} → {_local3d} (云端场景页与上传已删除)")
+            else:
+                self._log(f"🏭 {scene_id}: 云端场景页已删除; 本机 8797 未起 ⇒ 先起 AR 页再看 3D")
         except Exception as e:
-            self._log(f"⚠️ 打开链接失败: {e}")
+            self._log(f"⚠️ 打开 3D 失败: {e}")
 
     def _open_scene(self, node):
         """双击场景节点 (2026-08-09 老倪 v2): 打开 场景JSON上传窗口
@@ -18059,13 +17975,13 @@ class SimulinkModule(QWidget):
         _json_str = _j.dumps(_payload, ensure_ascii=False, indent=2)
         _SCENE3D = {"SCN-01": "insert", "SCN-02": "handle", "SCN-03": "aoi"}
         _k = _SCENE3D.get(sid, sid.lower())
-        _api_url = f"https://datadrive.world/scene-api.php/{_k}"
-        _view_url = f"https://datadrive.world/scene-3d.html?scene={_k}"
+        # 2026-11-12 全删云端出口: 原 _api_url (scene-api.php) / _view_url (scene-3d.html) 已删除。
+        #   本窗口现在只做: 本地 JSON 预览 → 复制 / 存到 reports/ → 3D 视图(本机 8797)
         # ── UI ──
         from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                                      QPlainTextEdit, QPushButton, QLineEdit)
         dlg = QDialog(self)
-        dlg.setWindowTitle(f"🏭 场景 JSON 上传 · {sid} ({_scene.get('name', '')[:20]})")
+        dlg.setWindowTitle(f"🏭 场景 JSON · {sid} ({_scene.get('name', '')[:20]}) · 本地")
         dlg.setMinimumSize(640, 560)
         dlg.setStyleSheet("""
             QDialog { background:#0d1117; }
@@ -18088,10 +18004,10 @@ class SimulinkModule(QWidget):
         editor = _CodeEdit(_json_str)
         editor.setMinimumHeight(240)
         lay.addWidget(editor)
-        # 上传链接
-        lay.addWidget(QLabel("🔗 上传链接 (ECS 接收端点):"))
+        # 上传链接 — 2026-11-12 全删云端出口: ECS 接收端点已删除, 这里改为显示本机保存目录 (只读)
+        lay.addWidget(QLabel("💾 本机保存目录 (云端接收端点已删除):"))
         url_row = QHBoxLayout()
-        url_edit = QLineEdit(_api_url)
+        url_edit = QLineEdit(_os.path.join(_repo, "reports"))
         url_edit.setReadOnly(True)
         url_row.addWidget(url_edit, 1)
         btn_copy = QPushButton("📋 复制")
@@ -18102,46 +18018,40 @@ class SimulinkModule(QWidget):
         status.setWordWrap(True)
         status.setStyleSheet("color:#8b949e; font-size:11pt;")
         lay.addWidget(status)
-        # 操作按钮
+        # 操作按钮 — 2026-11-12 老倪「全删云端出口 / 连按钮一起删」:
+        #   原「📤 上传到 ECS」按钮及其 POST scene-api.php 的逻辑整块删除 (云端 ECS 已下线);
+        #   现在只剩 · 本地 JSON 预览 + 📋 复制 + 保存到本地文件 + 3D 视图 (本机 8797)。
         btn_row = QHBoxLayout()
-        btn_up = QPushButton("📤 上传到 ECS")
-        btn_up.setStyleSheet("QPushButton{background:#0d3b33; color:#fff; border:1px solid #00d4aa; border-radius:4px; padding:8px 16px; font-weight:700;}")
-        btn_3d = QPushButton("🌐 打开 3D 场景")
+        btn_save = QPushButton("💾 存到本地文件")
+        btn_save.setStyleSheet("QPushButton{background:#0d3b33; color:#fff; border:1px solid #00d4aa; border-radius:4px; padding:8px 16px; font-weight:700;}")
+        btn_3d = QPushButton("🌐 3D 视图 (本机)")
         btn_close = QPushButton("✖ 关闭")
-        btn_row.addWidget(btn_up, 2)
+        btn_row.addWidget(btn_save, 2)
         btn_row.addWidget(btn_3d, 1)
         btn_row.addWidget(btn_close, 1)
         lay.addLayout(btn_row)
         # 交互
         def _copy():
             from PyQt5.QtWidgets import QApplication as _QA
-            _QA.clipboard().setText(url_edit.text())
-            status.setText("✅ 链接已复制到剪贴板")
+            _QA.clipboard().setText(editor.toPlainText())
+            status.setText("✅ 场景 JSON 已复制到剪贴板 (云端上传已删除)")
         btn_copy.clicked.connect(_copy)
-        def _upload():
+        def _save_local():
             try:
                 _p = _j.loads(editor.toPlainText())
             except Exception as e:
                 status.setText(f"❌ JSON 格式错误: {e}")
                 return
-            btn_up.setText("⏳ 上传中…")
-            btn_up.setEnabled(False)
+            import time as _t  # 局部导入 (本方法头部没引 time)
+            _out = _os.path.join(_repo, "reports", f"scene_{_k}_payload_{_t.strftime('%Y%m%d_%H%M%S')}.json")
             try:
-                _req = _rq.Request(_api_url, data=_j.dumps(_p, ensure_ascii=False).encode(),
-                                   headers={"Content-Type": "application/json"}, method="POST")
-                with _rq.urlopen(_req, timeout=10) as _resp:
-                    _rb = _j.loads(_resp.read().decode("utf-8", "replace"))
-                if _rb.get("ok"):
-                    _saved = _rb.get("url", "")
-                    status.setText(f"✅ 上传成功!\n💾 保存: {_saved}\n(name={_rb.get('name', '')})")
-                    status.setStyleSheet("color:#3fb950; font-size:11pt;")
-                else:
-                    status.setText(f"⚠️ 上传返回: {_rb.get('error', '未知')}")
+                _os.makedirs(_os.path.dirname(_out), exist_ok=True)
+                _j.dump(_p, open(_out, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+                status.setText(f"✅ 已存本地: {_out}")
+                status.setStyleSheet("color:#3fb950; font-size:11pt;")
             except Exception as e:
-                status.setText(f"❌ 上传失败: {e}")
-            btn_up.setText("📤 上传到 ECS")
-            btn_up.setEnabled(True)
-        btn_up.clicked.connect(_upload)
+                status.setText(f"❌ 保存失败: {e}")
+        btn_save.clicked.connect(_save_local)
         def _open3d():
             dlg.accept()
             self.open_scene_link(sid)

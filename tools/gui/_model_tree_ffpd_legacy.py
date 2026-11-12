@@ -2251,7 +2251,12 @@ class EngineeringReqWidget(QWidget):
 
     # ── 📤 上传 PDF → ECS 网站目录 → https URL ──
     def _upload_pdf(self, pdf_path):
-        """scp PDF 到 ECS /www/wwwroot/datadrive.world/reports/ → https://datadrive.world/reports/xxx.pdf"""
+        """scp PDF 到 ECS /www/wwwroot/datadrive.world/reports/ → https://datadrive.world/reports/xxx.pdf
+
+        2026-11-12 老倪「全删云端出口」: 整条 ECS 上传已删除, 一律返回 None。
+        调用方本来就有 `url if url else basename` 兜底 ⇒ 飞书消息里改为本地文件名, 不再出云端链接。"""
+        return None
+    def _upload_pdf_legacy_removed(self, pdf_path):  # noqa: D401 (保留原实现以备追溯, 不再被调用)
         import subprocess as _sp
         import shlex as _sh
         ECS = "root@47.93.88.143"
