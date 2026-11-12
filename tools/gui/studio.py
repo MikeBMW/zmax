@@ -187,8 +187,10 @@ def _open_product_dashboard(win=None):
     if not hosts:
         hosts = ["192.168.23.50:8799"]
     cands = [u for u in ([os.environ.get("ZMAX_DASHBOARD_URL", ""), "http://127.0.0.1:8799/"]
-                         + ["http://%s/" % h if not str(h).startswith("http") else str(h) for h in hosts]
-                         + ["https://datadrive.world/factory-dashboard.html"]) if u]
+                         + ["http://%s/" % h if not str(h).startswith("http") else str(h) for h in hosts])
+             if u]
+    # 2026-11-12 老倪「全删云端出口」: 候选里去掉 https://datadrive.world/factory-dashboard.html
+    #   (云端 ECS 已删除, 留着只会在本机/局域网都不通时白等一个超时, 然后打开死链)
     url, tried = cands[-1], []
     for u in cands:
         tried.append(u)
@@ -3985,9 +3987,11 @@ class DatasetModule(SubModuleWidget):
                 # 📁 本地数据 (2026-08-07 老倪: orin 真机从 cicd.html 网页下载; metaworld 本地已有)
                 tags = ds.get("tags", [])
                 if "orin" in tags:
+                    # 2026-11-12 老倪「全删云端出口」: 原按钮打开 datadrive.world/cicd.html (云端 ECS 中转),
+                    #   云端已删除 ⇒ 按钮不再外呼, 如实说明改走本机/局域网。
                     dl_btn.setText("📥 CICD")
-                    dl_btn.setToolTip("真机数据在 datadrive.world/cicd.html 采集下载 (ECS 中转)")
-                    dl_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://datadrive.world/cicd.html")))
+                    dl_btn.setEnabled(False)
+                    dl_btn.setToolTip("云端出口已删除 (云端 ECS 已下线) — 真机数据集请走本机/局域网拷贝")
                 else:
                     dl_btn.setText("本地")
                     dl_btn.setEnabled(False)
@@ -7974,6 +7978,10 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                     self._log(f"❌ 模型权重缺失: {w_path}")
                     return
                 self._log(f"📦 部署模型源: {w_path} ({_os.path.getsize(w_path)//1024}KB)")
+                # 2026-11-12 老倪「全删云端出口」: 下面整段是「ECS relay 上传 + ssh 到 root@<ECS> 再推 Orin」,
+                #   云端 ECS 已删除 ⇒ 直接停用, 不再探测/不再白等超时。真机部署要走产线网卡局域网直连。
+                self._log("❌ 云端出口已删除: 「ECS 中转 → Orin」部署路径已停用 (改走局域网直连, 需产线网卡在位)")
+                return
                 # ② ECS 连通性探测 (老倪: 要看到 ECS 链路是否通)
                 import subprocess as _sp
                 import requests as _rq
@@ -9184,7 +9192,7 @@ class HardwareModule(SubModuleWidget):
                                       f" border-radius:6px; padding:4px; font-size:18px;}}")
         self.cb_cam_src.currentIndexChanged.connect(self._cam_src_changed)
         cam_bar.addWidget(self.cb_cam_src)
-        self.cam_status = QLabel("⚪ 未连接 · 快照端点 datadrive.world/api/snapshot/latest")
+        self.cam_status = QLabel("⚪ 未连接 · 快照端点 本机 8791/snapshot (云端已删)")
         self.cam_status.setStyleSheet(f"color:{C_GRAY}; font-size:19px; background:transparent; border:none;")
         cam_bar.addWidget(self.cam_status, 1)
         cam_layout.addLayout(cam_bar)

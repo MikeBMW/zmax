@@ -1,0 +1,14 @@
+[Unit]
+Description=Z-MAX 禁云端出口 (datadrive.world / ECS 47.93.88.143 全删, 出站包一律 REJECT)
+Documentation=file:/home/ubuntu/zmax/tools/systemd/zmax-no-cloud-egress.service
+Before=network-online.target
+After=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# 幂等: 已有规则就不再插; 只封这一台云端主机, 不影响其它出网
+ExecStart=/bin/sh -c '/usr/sbin/iptables -C OUTPUT -d 47.93.88.143 -j REJECT 2>/dev/null || /usr/sbin/iptables -I OUTPUT -d 47.93.88.143 -j REJECT --reject-with icmp-port-unreachable'
+
+[Install]
+WantedBy=multi-user.target
