@@ -109,15 +109,14 @@ def cad_visual39():
 def show(tag, x, us):
     print("\n===== %s =====" % tag)
     print("  return x  →  shape=%s dtype=%s  ‖x‖=%.6f" % (x.shape, x.dtype, float(np.linalg.norm(x))))
-    print("  非零维: %s" % [int(i) for i in np.nonzero(np.abs(x) > 1e-12)[0]])
-    for seg in ("tcp_p", "grip_scalar", "peg_xyz", "hole_xyz", "grasp", "contact"):
-        if seg in SLICE:
-            s = SLICE[seg]
-            print("    [%2d:%2d] %-16s %s" % (s.start, s.stop, seg,
-                                              np.array2string(x[s], precision=4, max_line_width=200)))
-    print("  按名取几何误差 peg−hole = %s" % np.array2string(
+    # 按物理量逐段打印 (name / 单位 / 下标 / 值) —— 不再是一串没有含义的数
+    for r in us.describe(x):
+        print("  [%6s] %-15s %-5s %s" % (r["idx"], r["name"], r["unit"],
+                                          np.array2string(np.asarray(r["value"], float),
+                                                          precision=4, max_line_width=200)))
+    print("  几何误差 peg−hole = %s" % np.array2string(
         us.get("peg_xyz", x) - us.get("hole_xyz", x), precision=4))
-    print("  参数化后 12 维扩展 (43:55) 非零通道: %s"
+    print("  12 维扩展非零通道: %s"
           % [s.name for s in EXTRA_SEGMENTS if np.any(np.abs(x[s.start:s.stop]) > 1e-12)])
 
 

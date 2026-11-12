@@ -146,7 +146,24 @@ class UnifiedState55D:
                 self.filled[k] = True
         # 保持 float64: 43D 老口径也是 float64, 强转 float32 会引入 4e-8 级差异 (实测),
         # 那样"前 43 维逐位相同"就不成立 —— 升级必须逐位可对账。
-        x = np.concatenate([self.k_obs * v, t, e])
+        #
+        # 🧪 2026-11-13 老倪: 「vscode 里看不到 x 的物理含义, 改成带物理量的实际变量的组合」
+        #   ⇒ 先按 SLICE 拆成**有名字的物理量**, 再按段顺序拼成 x。
+        #   调试器里直接展开 `named` 就能看到 tcp_p / peg_xyz / hole_xyz / grasp / temperature …
+        #   (名字与单位见 named_units; x 的数值与旧写法逐位相同, 只是"可读了")。
+        v39_m = self.k_obs * v            # 39 维: 视觉与本体 (m / rad / rad·s⁻¹ / 无量纲 混排, 见 named_units)
+        tactile4 = t                      # 4 维: 触觉力觉 [grasp, contact(N), dir_x, dir_y]
+        extra12 = e                       # 12 维: 预留 (默认全 0 沉睡)
+        named: dict[str, np.ndarray] = {}
+        for seg in VISUAL_SEGMENTS:                       # 0:39
+            named[seg.name] = v39_m[seg.start:seg.stop]
+        for seg in TACTILE_SEGMENTS:                      # 39:43
+            named[seg.name] = tactile4[seg.start - VISUAL_DIM:seg.stop - VISUAL_DIM]
+        for seg in EXTRA_SEGMENTS:                        # 43:55
+            named[seg.name] = extra12[seg.start - LEGACY43_DIM:seg.stop - LEGACY43_DIM]
+        self.named = named
+        self.named_units = {s.name: s.unit for s in ALL_SEGMENTS}
+        x = np.concatenate([named[s.name] for s in ALL_SEGMENTS])   # 段顺序唯一来自 ALL_SEGMENTS
         if x.size != OBS55_DIM:
             raise ValueError("融合结果应为 %d 维, 实际 %d" % (OBS55_DIM, x.size))
         self.current_state = x
@@ -155,10 +172,28 @@ class UnifiedState55D:
         #   用法: VSCode 里 F5 「🧪 断点 · 55D 输出」; 或命令行 ZMAX_DEBUG_55D=1 python tools/debug_55d_output.py
         import os as _os_dbg
         if _os_dbg.environ.get("ZMAX_DEBUG_55D") == "1":
-            breakpoint()          # ← 断点停在这里, 局部变量: x(55) / v(39) / t(4) / e(12)
+            breakpoint()      # ← 停在这里。locals 里看: named(19 个物理量) / named_units / x(55)
+            pass
         return x
 
     # ---- 按名取值 ------------------------------------------------------------
+    def describe(self, state=None) -> list[dict]:
+        """把 55 维按**物理量**列出来 (name / unit / idx / value / meaning)。
+
+        调试器里敲 `us.describe(x)` 就能一眼看到每段是什么; 也用于文档/PPT 出处。
+        """
+        x = self.current_state if state is None else np.asarray(state, dtype=np.float64).ravel()
+        rows = []
+        for s in ALL_SEGMENTS:
+            val = x[s.start:s.stop]
+            rows.append({
+                "name": s.name, "unit": s.unit, "idx": "%d:%d" % (s.start, s.stop),
+                "value": (float(val[0]) if s.dim == 1
+                          else [round(float(t), 6) for t in val]),
+                "meaning": s.note,
+            })
+        return rows
+
     def get(self, name: str, state: np.ndarray | None = None) -> np.ndarray:
         x = self.current_state if state is None else np.asarray(state, dtype=np.float32).ravel()
         if name not in SLICE:
