@@ -104,6 +104,8 @@ metadata:
 - **GUI 在跑 (Z-MAX_Console.exe ×4) 时会用内存里的旧画布覆盖你写进去的新画布** (它在「保存/配置中心重载」时写盘, 实测同步后 4 分钟被重写一次 `cfg_loaded_at`/`project_path`)。同步完立刻 md5 回读, 并告知老倪「重开一次控制台才加载新画布」—— 禁自重启, 不要替他重启。
 - **`canvas_selfheal.py` 只修 junction (data/zmax_data 软链)**, 不校验画布内容; 跑它不会改画布, 可以放心跑。
 - **`cc_snapshot.json` 是本地化运行时快照** (`_meta.root` = 本机路径, 由 `tools/config_center_load.py build` 生成) ⇒ 对账时必然与对端不同, 属于正确差异, 别覆盖。
+- **对账时「各改各的」多半只是运行时字段**: 画布 `cfg_loaded_at/loaded_at/sha256`、config `ts/generated_at/canvas_md5` 两端值必然不同 ⇒ `difflib` 报「本机独有 N = 对端新增 N」时逐行看一眼, 确认是时间戳就判「内容已同步」, 不要覆盖。sqlite `zmax_engineering.db` 字节不同但表计数全等 + `param_events` 最新 ts 相同 = 内容等价, 不必推。
+- **肌肉记忆 `src/data/muscle_memory.json` 以对端为真源**: 28 个技能键两端相同, 值不同(对端 `n_ok` 更大 = 真机练得多) ⇒ 直接覆盖。
 - **不许在 `_internal` 下用系统 python**: 该目录的 `*.pyc`(PyInstaller 打包的 stdlib) 会被当标准库加载, 报 `ImportError: bad magic number in 'linecache'`。
 - **验证脚本要用 app9 的 exe 跑**: `cp probe.py _internal/tools/_tmp_x.py && ./Z-MAX_Console.exe _internal/tools/_tmp_x.py`, 结果写文件再读。系统 python 3.14 无 PyQt5; `_pyenv/python.exe` 设 PYTHONPATH 后仍 `ImportError: DLL load failed while importing QtCore`(PyInstaller 的 PyQt5 是假包, 只有 bootloader 能加载)。
 - **自检脚本 `check_node_logic_refs.py` 已过时**: 本机 `node_logic.py` 里 `module.xxx(` 匹配数为 0 ⇒ 它 print「未发现调用」后 exit 1, 不是坏引用。改用工程库 `mw_node.source/symbol` 直接对源码文件做真源核对。

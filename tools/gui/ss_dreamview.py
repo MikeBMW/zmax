@@ -1394,6 +1394,19 @@ def ar_ensure_service(tries: int = 12) -> tuple:
     return False, "启动后 %ds 仍无响应" % int(tries)
 
 
+# 🔴 2026-11-13: 页面标题改成了「Z-MAX AR3D r95 · SIM自动 · 位置细胞 · 8802直播」,
+#   而这里原来只认「TCP 轨迹 / AR/VR」⇒ **窗口确实弹出来了也判"没出窗"**, 老倪连点三次只看到
+#   "浏览器没开新窗口"警告 (实测窗口 0.4s 就在窗口表里, 标题一个标记都不命中)。
+#   ⇒ 认多个标记, 新标题/旧标题都算; 标题再改时把新词加进来即可。
+_AR_TITLE_MARKS = ("TCP 轨迹", "AR/VR", "AR3D", "Z-MAX AR", "位置细胞", "8802直播")
+
+
+def ar_title_hit(title: str) -> bool:
+    """窗口标题是不是 AR 页面 (多标记, 不认单一老标题)。"""
+    _t = title or ""
+    return any(_m in _t for _m in _AR_TITLE_MARKS)
+
+
 def ar_window_seen(timeout: float = 6.0) -> str:
     """页面的窗口出现了吗 —— 查真窗口表(wmctrl), 认页面标题里的「TCP 轨迹 / AR/VR」。
     返回窗口 id(空串=没出现)。**别信 webbrowser.open() 的返回值**: 实测它会返回 True 却什么都没起来。"""
@@ -1406,7 +1419,7 @@ def ar_window_seen(timeout: float = 6.0) -> str:
         except Exception:                                                       # noqa: BLE001
             _o = ""
         for _ln in _o.splitlines():
-            if ("TCP 轨迹" in _ln) or ("AR/VR" in _ln):
+            if ar_title_hit(_ln):
                 return _ln.split()[0]
         if _t.time() - _t0 >= float(timeout):
             return ""
@@ -1690,7 +1703,7 @@ def ar_wait_new_window(before: dict, timeout: float = 2.0) -> str:
         _cur = ar_window_ids()
         # ① **新增**的窗口优先(这是"我这次 spawn 出来的") —— 只认标题会把早就开着的旧窗口当成功
         for _wid, _ti in _cur.items():
-            if _wid not in _before and (("TCP 轨迹" in _ti) or ("AR/VR" in _ti)):
+            if _wid not in _before and ar_title_hit(_ti):
                 return _wid
         # ② 退一步: 任何新增窗口(页面还在加载时标题就是 URL)
         for _wid, _ti in _cur.items():
@@ -1698,7 +1711,7 @@ def ar_wait_new_window(before: dict, timeout: float = 2.0) -> str:
                 return _wid
         # ③ 再退一步: 表里已有 AR 页面(别人已经开过) —— 也算"页面在"
         for _wid, _ti in _cur.items():
-            if ("TCP 轨迹" in _ti) or ("AR/VR" in _ti):
+            if ar_title_hit(_ti):
                 return _wid
         if _t.time() - _t0 >= float(timeout):
             return ""

@@ -650,6 +650,14 @@ v4l2-ctl -d /dev/videoN --list-ctrls | grep -i privacy
 
 ### 9c. 自启的反向隧道 `activating`/崩溃循环 = ECS 侧端口被**僵死 sshd** 占着
 
+> 🔴 **2026-11-12 老倪要求「云端看 ECS 的功能删除」—— 本机已不再有 ECS 链路**：五个 `zmax-ecs-*`
+> （ov/station/dash/mobile/orin）单元文件与 `/etc/zmax-ecs-*.env` 已移入 `~/zmax_quarantine/ecs_removed_<ts>/`，
+> `zmax-orin-intel-fwd` / `zmax-orin-arm-fwd`（经 ECS:22022 的跳板）已 disable。⇒ 再看到 1879x 端口转发/端口被占的
+> 现象，先确认是不是又有人把 ECS 隧道装回来了；本节其余内容（清僵死 sshd）只在 ECS 真复活时适用。
+> 残留：`datadrive.world` 解析仍在那个已死的 IP 上，`loop_status` / `dds aggregator` / `hil_bridge` /
+> `ss3d_live_push` / `ss_web_agent` / `studio.py` 六个进程仍外呼它（`ss -tnp | grep <ip>` 看到一串 SYN-SENT），
+> 每次调用白等一个超时 ⇒ 要真“删干净”得改这几个的推送/拉取代码，不是停单元能解决的。
+
 实测(2026-10-07 重启后): `zmax-ecs-ov` / `zmax-ecs-station` 报 `activating` 且 `NRestarts` 每秒涨;
 `/var/log/zmax-ecs-*.log` 满屏 `Error: remote port forwarding failed for listen port 18791`;
 公网 `https://datadrive.world/ov/...` `/st/...` 全部无响应(curl 15s 超时 = nginx 反代挂在一个没人转发的端口上)。
@@ -970,6 +978,12 @@ GitHub 连不上(135s 超时)失败 → 17:54:28 之后再无任何 tick → 18:
 **汇报形状**(用户要看结果, 不看成篇): 任务(空/几条, 哪条异常+已核产物) · 服务(端口+探活码) · 通路(直连 or 隧道)
 · 资源(GPU 利用率/显存 · 磁盘) · 写好但未上线的交付件 · 需要人决定的一条。数字在前, 不写"一切正常"。
 
+### 9h-2. 常驻回路 inactive / 同一任务被起了两份
+
+- 画布回路被进化训练器 `SHED_UNITS` 让出显存(训完由 `restore_gpu()` 起回): `is-active` 为 inactive 时先看 `zmax-evolve-ar` 是否在训, 别当故障去重启。
+- 同一任务已有常驻单元在跑(如 `evolve_ar_world --rounds 0`)时不要手起第二轮: 两份抢同一张 8G 卡会顶爆显存; 手动轮留证后停掉。
+- 常驻进程 print 重定向到文件是块缓冲 ⇒ `tail` 没新行不等于没跑; 判进度用台账/产物 mtime, 不看日志尾。
+
 ## 9i. 网关本身出问题: 双单元空转(exit 75) · 判活认 systemd 不认 pgrep
 
 **① `pgrep -f 'gateway run'` 判不到活着的网关 —— 它的 argv 是 python 包装。**
@@ -1235,6 +1249,9 @@ OCR 会把同屏其它窗口的文字一起抓进来 ⇒ 只能说"抓到 X 字�
 |---|---|---|
 | 把"有进程"当"在役" | 报"服务正常"但链路其实没数据 | 逐个 `systemctl is-active` + 端口/HTTP 探活, 双证 |
 | 用**本机** `ss -ltn` 查**远端**设备端口 (AOI/Orin/工控机) | 远端服务被判 DOWN 而实际是网卡不在位; 本机同名端口在听时又会把远端判成活着 | 判活三件套按序: `ip -br addr` 里真有对应网段(**没有 = 网卡不在位 = 环境缺失, 不是服务故障**) → `ping -c1 -W1 <ip>` → `timeout 3 bash -c 'echo > /dev/tcp/<ip>/<port>'` (或 `curl --max-time`)。本机 `ss` 永远只回答本机, | 报"某设备端口挂了"之前必须已经过了前两步 |
+| `d.get(k, {})` 在**键存在但值为 null** 时返回 None | 链式 `.get("a",{}).get("b",{}).get("c")` 在某一环是 null 时崩 `'NoneType' has no attribute 'get'` —— 实测 AR 进化每轮训完 5 分钟就崩在报告函数, 五轮里三轮白跑且报告写不出, 而日志里只有一条 AttributeError | 链式取值一律 `((d.get(k) or {}).get(k2) or {})`；判据是**跑到那行**（把真数据灌进纯函数单跑一遍），别看语法检查过 |
+| 守护脚本拿"解析不出来"当"配错了" | 设备被在役进程自己占着 ⇒ 解析器回 `-1`, 与进程的 `None`/默认值永远不等 ⇒ 每 5 分钟白重启一次 + cron 报 error（实测相机守护） | `-1`/`None` 一律视为**不可判定, 跳过该路校验**, 只保留能解析出来的那一路对比；真串线（进程 2 应为 0）仍判错。改完用脚本自带 `--cmdline/--expect` 自测口跑"一致 / 串线 / 一路 -1"三组 |
+| cron 脚本靠 `cd "$(dirname $0)/.."` 推仓库根 | 脚本挪进 `~/.hermes/scripts` 后 `..` 变成家目录 ⇒ 镜像写进 `~/.hermes/docs`(29M 垃圾)、`git diff --cached` 报 `unknown option \`cached'` + `not a git repository` | 按 `.git` 定位（`ZMAX_ROOT` → `~/zmax` 兜底），找不到就 `exit 2` 吵出来；**先查它现在把产物写到哪**（`ls -d ~/.hermes/docs`），错位置的镜像确认可再生再删 |
 | 只回"待办为空"或只读 cron 的 `last_status` 就下结论 | 用户问"检查任务"拿到一句空的, 或把上一轮 error 当当前故障 | 走 §9h: todo + cron + 端口/探活三处; cron 异常必回读它交付的**产物时间戳**再定性 |
 | 探活脚本乱传参数 | 兜底通知脚本把 `--probe` 当**正文**发进群里 | 先 `read` 脚本用法; 别拿"发条测试消息"当探活(会污染群) |
 | 清完不复核 | 删了在役权重的旁支文件 | 必扫保护清单 + `find -xtype l` 断链检查 |

@@ -28,6 +28,10 @@ git remote -v
 
 ## 落地步骤 (GitHub 数据接口, 一笔提交写多个文件)
 
+> 已封装：**`scripts/api_push.py`** —— 直接 `python3 scripts/api_push.py` 就把当前 HEAD 落地(只推差异 +
+> 逐文件校验, 打印 `REMOTE_SHA`)。默认仓库 `~/zmax`, 可用 `REPO=/path OWNER=x NAME=y BRANCH=dev` 覆盖;
+> 工作区不干净时它会直接拒跑 —— 这就是下方第一条红字规矩。平时先跑脚本, 只有要改行为时才照下面手写。
+
 Token 从 `~/.git-credentials` 里读 (`https://<user>:<token>@github.com`), **不打印、不进对话、不写进命令历史**。
 
 1. `GET /repos/<o>/<r>/git/ref/heads/main` → `base`; `GET /git/commits/<base>` → `base_tree`。

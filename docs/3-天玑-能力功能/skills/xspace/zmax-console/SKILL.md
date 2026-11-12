@@ -9,7 +9,7 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 
 ## 🔴 运行纪律
 只可停不可起(禁自行 restart 任何 GUI/服务, 含 `--user` 单元); 启动不刷屏; `launch.json` 只留在用的配置。
-细则: `references/startup-quiet-and-launch-config.md`。
+细则: `references/startup-quiet-and-launch-config.md`; 静默 exit 0 无窗口 ⇒ 锁端口冲突: `references/console-silent-exit-and-port-locks.md`。
 
 > 🔴 **GUI 里任何「打开浏览器页面」的地址都不许写死 IP。** 实测: `ss_dreamview.py` 的
 > `AR_PAGE_URL_LOOPBACK` 写死了旧 WiFi IP `10.163.146.78:8793/ar`(变量名还叫 LOOPBACK), 本机改连热点后
