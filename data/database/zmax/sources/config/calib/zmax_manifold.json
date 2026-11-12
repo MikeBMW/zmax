@@ -64,8 +64,7 @@
    "cap_min_mm": "对位阶段绝对下限 (名义步长常仅 0.05mm，纯比例会压死纠偏)",
    "eps_mm": "微量保护项",
    "eta_floor": "置信度下限，防归零僵死",
-   "enabled": "false ⇒ 完全退回原行为 (零回归)",
-   "tol_r_mm": "径向公差带半宽(绝对值 mm): 径向偏差已在带内 ⇒ 本拍不修正(防抖/防极限环); 轴向永不参与判定。专利 ZMP-2026-020 从权4 (公差盒投影)"
+   "enabled": "false ⇒ 完全退回原行为 (零回归)"
   },
   "_zero_regression": "enabled=false 或 sigma_t/sigma_n 缺失 ⇒ 不注入，动作逐位不变",
   "_verified": "tools/verify_l4_injection.py (A收敛/B各向异性400×/C 257段)",
@@ -104,8 +103,6 @@
    },
    "_verified": "tools/verify_metric_hard_inject.py — A/B/C/D/E 共 20 项全过",
    "_key_finding": "推理端步内注入收益 94.9% >> 训练端马氏加权 2.5% (约 38 倍); 且无附加限幅时终点叠加会过冲 8.4 倍。算力有限时优先投推理端。"
-  },
-  "proj_enable": true,
-  "tol_r_mm": 0.3
+  }
  }
 }

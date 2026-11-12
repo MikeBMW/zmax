@@ -19,6 +19,9 @@ SRC=${ZMAX_SRC:-/home/ubuntu/zmax}
 PY=$SRC/gui-venv311/bin/python
 DEV=${ZMAX_TRAIN_DEVICE:-cpu}
 ARGS="$@"
+# 坑: evolve 默认 --free-gpu 1 ⇒ 会去停 sam3 / 画布回路腾显存。离线跑默认 CPU, 不需要,
+# 且会把现场在跑的服务踢掉 ⇒ 除非用户显式给了 --free-gpu, 否则强制 0。
+case " $ARGS " in *" --free-gpu "*) ;; *) ARGS="$ARGS --free-gpu 0" ;; esac
 
 # 1) 沙箱
 mkdir -p "$R/zmax_data/ar_evolve" "$R/zmax_data/ar_mujoco"
@@ -48,7 +51,7 @@ done
   $PY tools/ar_mujoco_clutter.py --gen --n 16 --clutter 0 --seed 1 --out $R/zmax_data/ar_mujoco/holdout | tail -1
 echo "留出集就绪: hard/\$(ls $R/zmax_data/ar_evolve/holdout_hard/images | wc -l) 张 · hc/\$(ls $R/zmax_data/ar_evolve/holdout_clutter/images | wc -l) 张"
 echo "--- 进化开始 (\$ARGS) ---"
-$PY tools/evolve_ar_world.py \$ARGS 2>&1 | grep -avE '^(\\s+)?[0-9]+/[0-9]+' | tail -30
+$PY tools/evolve_ar_world.py $ARGS 2>&1 | grep -avE '^(\\s+)?[0-9]+/[0-9]+' | tail -30
 EOS
 chmod +x "$INNER"
 
