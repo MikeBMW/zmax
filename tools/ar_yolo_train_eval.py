@@ -25,6 +25,8 @@ import os
 import sys
 import time
 
+DEVICE = os.environ.get("ZMAX_TRAIN_DEVICE", "0")   # 0=cuda:0(默认) / cpu / xpu:0(Intel Arc)
+
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 
@@ -51,7 +53,7 @@ def main() -> int:
     rep = {"base": a.base, "data": a.data, "epochs": a.epochs, "ok": False}
     try:
         m = YOLO(a.base)
-        r = m.train(data=a.data, epochs=a.epochs, imgsz=a.imgsz, batch=a.batch, device=0,
+        r = m.train(data=a.data, epochs=a.epochs, imgsz=a.imgsz, batch=a.batch, device=DEVICE,
                     workers=a.workers, project=a.project, name=a.name, exist_ok=True,
                     seed=a.seed, deterministic=True, verbose=False, plots=False,
                     cache=False, val=False,   # val 统一由下面的固定留出集给, 不用训练内 val
@@ -73,7 +75,7 @@ def main() -> int:
         y = YOLO(rep["weights"])
         for spec in a.eval:
             nm, yaml = spec.split("=", 1)
-            e = y.val(data=yaml, imgsz=a.imgsz, batch=a.batch, device=0, verbose=False,
+            e = y.val(data=yaml, imgsz=a.imgsz, batch=a.batch, device=DEVICE, verbose=False,
                       plots=False, project=a.project, name="val_" + nm, exist_ok=True)
             rep["eval"][nm] = {"yaml": yaml, "map50": round(float(e.box.map50), 4),
                                "map50_95": round(float(e.box.map), 4),
