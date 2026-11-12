@@ -23,7 +23,9 @@
   EVO_BATCH     批大小（默认 8）
   EVO_IMGSZ     输入尺寸（默认 640，必须与在役 OpenVINO 模型一致）
   EVO_DEVICE    xpu / cpu（默认 xpu）
-  EVO_MARGIN    采纳阈值，mAP50 需超过 best + margin（默认 0.005）
+  EVO_MARGIN    采纳阈值，**mAP50-95** 需超过 best + margin（默认 0.005）
+                (2026-11-12 起: mAP50 封顶 ~0.995 无法分辨提升, 只做"不许回退"护栏,
+                 EVO_NO_REGRESS 默认 0.005)
   EVO_ROUNDS    最多进化代数（默认 0 = 无限）
   EVO_COOLDOWN  两代之间冷却秒数（默认 60）
   EVO_PORT      只读 HTTP 端口（默认 8810）
@@ -60,6 +62,7 @@ BATCH = int(os.environ.get("EVO_BATCH", "8"))
 IMGSZ = int(os.environ.get("EVO_IMGSZ", "640"))
 DEVICE = os.environ.get("EVO_DEVICE", "xpu")
 MARGIN = float(os.environ.get("EVO_MARGIN", "0.005"))
+NO_REGRESS = float(os.environ.get("EVO_NO_REGRESS", "0.005"))   # mAP50 允许的抖动量 (护栏, 不是判据)
 MAX_ROUNDS = int(os.environ.get("EVO_ROUNDS", "0"))
 COOLDOWN = float(os.environ.get("EVO_COOLDOWN", "60"))
 PORT = int(os.environ.get("EVO_PORT", "8810"))
@@ -71,7 +74,9 @@ STATE = {
     "phase": "starting",
     "generation": 0,
     "best_map50": None,
+    "best_map50_95": None,
     "last_map50": None,
+    "last_map50_95": None,
     "accepted": 0,
     "rejected": 0,
     "streak": 0,
@@ -310,22 +315,33 @@ def _run_round():
     metrics = _eval_map50(cand, f"gen{gen}")
 
     best_map = STATE.get("best_map50")
+    best_95 = STATE.get("best_map50_95")
     cand_map = metrics.get("map50")
+    cand_95 = metrics.get("map50_95")
 
-    # 采纳判据：必须有真实提升；mAP 未测到一律不采纳
-    if cand_map is None:
+    # 采纳判据 (2026-11-12 改): **主判据 = mAP50-95**, mAP50 只做不许回退的护栏。
+    # 🔴 为什么非改不可: mAP50 在 peg_insert 上实测封顶 ~0.995 (best 已 0.988) ⇒
+    #    `cand > best + 0.005` 几乎不可能成立, 台账里连续 65 代"无实质提升"其实是**判据没量程**,
+    #    不是数据到顶。mAP50-95 还有十几个点余量, 才是能分辨真假提升的那把尺子。
+    #   同源交付: 4060 的 AR 进化 (tools/evolve_ar_world.py) 已用同一口径修过一次。
+    if cand_95 is None or cand_map is None:
         accepted = False
-        reason = f"评估未产出 mAP50（{metrics.get('error', '未知原因')}）→ 不采纳"
-    elif best_map is None:
+        reason = f"评估未产出 mAP（{metrics.get('error', '未知原因')}）→ 不采纳"
+    elif best_95 is None:
         accepted = True
-        reason = f"首个可用基线：mAP50={cand_map:.4f}"
-    elif cand_map > best_map + MARGIN:
+        reason = f"首个可用基线：mAP50-95={cand_95:.4f} (mAP50={cand_map:.4f})"
+    elif cand_95 > best_95 + MARGIN and cand_map >= best_map - NO_REGRESS:
         accepted = True
-        reason = f"提升 {cand_map - best_map:+.4f} > margin {MARGIN} → 采纳"
+        reason = (f"提升 mAP50-95 {cand_95 - best_95:+.4f} > margin {MARGIN} "
+                  f"且 mAP50 未回退 ({cand_map:.4f} vs {best_map:.4f}) → 采纳")
+    elif cand_95 > best_95 + MARGIN:
+        accepted = False
+        reason = (f"mAP50-95 升 {cand_95 - best_95:+.4f} 但 mAP50 回退 "
+                  f"{cand_map - best_map:+.4f} (< -{NO_REGRESS}) → 回滚")
     else:
         accepted = False
-        reason = (f"无实质提升（{cand_map:.4f} vs best {best_map:.4f}，"
-                  f"差 {cand_map - best_map:+.4f} ≤ {MARGIN}）→ 回滚")
+        reason = (f"无实质提升（mAP50-95 {cand_95:.4f} vs best {best_95:.4f}，"
+                  f"差 {cand_95 - best_95:+.4f} ≤ {MARGIN}）→ 回滚")
 
     stored = None
     if accepted:
@@ -349,6 +365,7 @@ def _run_round():
         "train_map50": trained.get("train_map50"),
         "val": metrics,
         "best_map50_before": best_map,
+        "best_map50_95_before": best_95,
         "accepted": accepted,
         "reason": reason,
         "weights_kept": stored,
@@ -363,7 +380,9 @@ def _run_round():
     with _LOCK:
         if accepted and cand_map is not None:
             STATE["best_map50"] = cand_map
+            STATE["best_map50_95"] = cand_95
         STATE["last_map50"] = cand_map
+        STATE["last_map50_95"] = cand_95
         STATE["accepted"] = STATE["accepted"] + (1 if accepted else 0)
         STATE["rejected"] = STATE["rejected"] + (0 if accepted else 1)
         STATE["rounds"] = STATE["rounds"] + 1
@@ -447,6 +466,7 @@ def main():
     accepted = [e for e in entries if e.get("accepted")]
     if accepted:
         restored = accepted[-1]["val"].get("map50")
+        restored_95 = accepted[-1]["val"].get("map50_95")
         if restored is not None:
             # 用台账里最大的代号恢复，别用条数——基线 gen0 不占进化代号，
             # 用 len() 会让重启后跳过一代。
@@ -456,11 +476,28 @@ def main():
                 if e.get("accepted"):
                     break
                 streak += 1
-            _set(best_map50=restored, generation=max_gen,
+            # 🔴 判据从 mAP50 换成 mAP50-95 后, 老台账里没有这个字段 ⇒ 必须**先量再比**:
+            #   否则第一代会被当成"首个可用基线"无条件采纳 (哪怕比在役 best.pt 更差)。
+            if restored_95 is None and os.path.exists(BEST):
+                try:
+                    from ultralytics import YOLO as _Y
+                    _m = _eval_map50(_Y(BEST), "seed95")
+                    restored_95 = _m.get("map50_95")
+                    print(f"[evolve] 台账缺 mAP50-95 ⇒ 实测在役 best.pt: "
+                          f"mAP50={restored} mAP50-95={restored_95}", flush=True)
+                    ledger.setdefault("seed", {})["map50_95"] = restored_95
+                    ledger["seed"]["at"] = _utc()
+                    ledger["seed"]["note"] = "判据切换前用 best.pt 现量 (不复用旧代结果)"
+                    _write_ledger(ledger)
+                except Exception as e:                                             # noqa: BLE001
+                    print(f"[evolve] ⚠️ 基线 mAP50-95 现量失败 ({type(e).__name__}: {e}) "
+                          f"⇒ 保持 None, 下一代按首个基线采纳", flush=True)
+            _set(best_map50=restored, best_map50_95=restored_95, generation=max_gen,
                  accepted=len(accepted),
                  rejected=len(entries) - len(accepted),
                  rounds=len(entries), streak=streak)
-            print(f"[evolve] 从台账恢复: 最优 mAP50={restored:.4f} "
+            print(f"[evolve] 从台账恢复: 最优 mAP50={restored:.4f} · "
+                  f"mAP50-95={restored_95 if restored_95 is None else round(restored_95, 4)} "
                   f"(已采纳 {len(accepted)}/{len(entries)} 代, 连续未采纳 {streak}, "
                   f"下一代 gen{max_gen + 1})", flush=True)
 
