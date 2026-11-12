@@ -37,6 +37,7 @@ PY = os.path.join(ROOT, "gui-venv311/bin/python")
 AR = os.path.join(ROOT, "zmax_data/ar_evolve")
 LEDGER = os.path.join(AR, "ledger.json")
 HOLDOUT_HC = os.path.join(AR, "holdout_clutter/data.yaml")
+HOLDOUT_HARD = os.path.join(AR, "holdout_hard/data.yaml")   # 主判据尺子: clutter16 (2026-11-12 加难)
 HOLDOUT_LEGACY = os.path.join(ROOT, "zmax_data/ar_mujoco/holdout/data.yaml")
 LIVE_AR = os.path.join(ROOT, "models/yolo_ar_peg.pt")   # 在役 (只读, 绝不覆盖)
 EVOLVE_PTR = os.path.join(ROOT, "models/yolo_ar_evolve.pt")
@@ -53,7 +54,11 @@ def sh(cmd, timeout=7200, env=None):
     e = dict(os.environ)
     if env:
         e.update(env)
-    p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=timeout, env=e)
+    try:
+        p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=timeout, env=e)
+    except subprocess.TimeoutExpired as exc:                                 # 卡死(如 CUDA kernel 挂起)不许拖垮整条进化服务
+        return {"rc": 124, "sec": round(time.time() - t0, 1), "out": (exc.stdout or "")[-2500:] if isinstance(exc.stdout, str) else "",
+                "err": "TIMEOUT %ss 子进程已杀: %s" % (timeout, " ".join(str(x) for x in cmd)[:200])}
     return {"rc": p.returncode, "sec": round(time.time() - t0, 1),
             "out": (p.stdout or "")[-2500:], "err": (p.stderr or "")[-2500:]}
 
@@ -186,8 +191,9 @@ def run_generation(g: int, a, ledger) -> dict:
     t0 = time.time()
     r = sh([PY, "tools/ar_yolo_train_eval.py", "--base", base, "--data", tdy,
             "--epochs", str(a.epochs), "--batch", str(a.batch), "--project", gdir, "--name", "train",
-            "--out", jout, "--eval", "hc=" + HOLDOUT_HC, "--eval", "legacy=" + HOLDOUT_LEGACY,
-            "--seed", str(g)], timeout=7200)
+            "--out", jout, "--eval", "hard=" + HOLDOUT_HARD, "--eval", "hc=" + HOLDOUT_HC,
+            "--eval", "legacy=" + HOLDOUT_LEGACY,
+            "--seed", str(g)], timeout=900)   # 正常 ~260s; 900s 未回来即判卡死, 不许无限等
     rec["stages"]["train_eval"] = {"rc": r["rc"], "sec": r["sec"], "err": None if r["rc"] == 0 else r["err"][-600:]}
     try:
         te = json.load(open(jout, encoding="utf-8"))
@@ -204,16 +210,34 @@ def run_generation(g: int, a, ledger) -> dict:
 
     hc = te["eval"]["hc"]
     lg = te["eval"]["legacy"]
-    rec["score"] = {"hc_map50": hc["map50"], "hc_precision": hc["precision"], "hc_recall": hc["recall"],
-                    "legacy_map50": lg["map50"]}
+    hd = te["eval"].get("hard") or {}
+    rec["score"] = {"hard_map50_95": hd.get("map50_95"), "hard_map50": hd.get("map50"),
+                    "hc_map50": hc["map50"], "hc_map50_95": hc.get("map50_95"),
+                    "hc_precision": hc["precision"], "hc_recall": hc["recall"],
+                    "legacy_map50": lg["map50"], "legacy_map50_95": lg.get("map50_95")}
 
-    # ④ 晋级门禁 (两把尺都要过)
+    # ④ 晋级门禁 — 主判据 = hard(clutter16 难留出集) mAP50-95; 其余三把尺只做「不回退」兜底
+    # 为什么不再用 hc.map50: 它在 gen_127 就打到 0.995 = ultralytics 的 mAP50 上限,
+    # "0.995 >= 0.995 + 0.004" 数学上永不成立 ⇒ gen_128~657 连续 530 代零晋级空转。
     prev = ledger.get("best") or {}
-    prev_hc = prev.get("hc_map50")
-    prev_lg = prev.get("legacy_map50")
-    improved = prev_hc is None or hc["map50"] >= float(prev_hc) + a.margin
-    no_regress = prev_lg is None or lg["map50"] >= float(prev_lg) - a.no_regress_tol
-    rec["gate"] = {"prev_hc": prev_hc, "prev_legacy": prev_lg, "margin": a.margin,
+    prev_hard = prev.get("hard_map50_95")
+    prev_hc50 = prev.get("hc_map50")
+    prev_hc95 = prev.get("hc_map50_95")
+    prev_lg50 = prev.get("legacy_map50")
+    prev_lg95 = prev.get("legacy_map50_95")
+    cur_hard = hd.get("map50_95")
+    improved = prev_hard is None or (cur_hard is not None and cur_hard >= float(prev_hard) + a.margin)
+    no_regress = True
+    for name, cur, pv in (("hc.map50", hc.get("map50"), prev_hc50),
+                          ("hc.map50_95", hc.get("map50_95"), prev_hc95),
+                          ("legacy.map50", lg.get("map50"), prev_lg50),
+                          ("legacy.map50_95", lg.get("map50_95"), prev_lg95)):
+        if pv is not None and cur is not None and cur < float(pv) - a.no_regress_tol:
+            no_regress = False
+    if hc.get("recall", 1.0) < 0.98 or (hd.get("recall") is not None and hd["recall"] < 0.90):
+        no_regress = False
+    rec["gate"] = {"prev_hard_map50_95": prev_hard, "cur_hard_map50_95": cur_hard,
+                   "prev_hc": prev_hc50, "prev_legacy": prev_lg50, "margin": a.margin,
                    "improved": improved, "no_regress": no_regress,
                    "verdict": "promote" if (improved and no_regress) else "keep"}
     if improved and no_regress and te.get("weights"):
@@ -229,15 +253,19 @@ def run_generation(g: int, a, ledger) -> dict:
             os.symlink(os.path.relpath(CUR, os.path.dirname(EVOLVE_PTR)), EVOLVE_PTR)
         except Exception as e:                                              # noqa: BLE001
             rec["gate"]["symlink_err"] = str(e)[:200]
-        ledger["best"] = {"gen": g, "ts": ts, "weights": keep, "hc_map50": hc["map50"],
+        ledger["best"] = {"gen": g, "ts": ts, "weights": keep,
+                          "hard_map50_95": hd.get("map50_95"), "hard_map50": hd.get("map50"),
+                          "hc_map50": hc["map50"], "hc_map50_95": hc.get("map50_95"),
                           "hc_precision": hc["precision"], "hc_recall": hc["recall"],
-                          "legacy_map50": lg["map50"], "base": base}
+                          "legacy_map50": lg["map50"], "legacy_map50_95": lg.get("map50_95"),
+                          "base": base}
         rec["promoted"] = keep
-        log("✅ 晋级: hc_map50 %.4f (prev %s) · legacy %.4f" % (hc["map50"], prev_hc, lg["map50"]))
+        log("✅ 晋级: hard50-95 %.4f (prev %s) · hc50 %.4f · legacy50-95 %.4f"
+            % (cur_hard or -1, prev_hard, hc["map50"], lg.get("map50_95") or -1))
     else:
         rec["promoted"] = None
-        log("⏸ 不晋级: hc %.4f vs prev %s (improved=%s no_regress=%s)"
-            % (hc["map50"], prev_hc, improved, no_regress))
+        log("⏸ 不晋级: hard50-95 %.4f vs prev %s (improved=%s no_regress=%s)"
+            % (cur_hard or -1, prev_hard, improved, no_regress))
     rec["ok"] = True
     return rec
 
