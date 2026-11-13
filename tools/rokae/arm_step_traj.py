@@ -55,6 +55,26 @@ def opstate(r):
     return str(r.operationState({}))
 
 
+def _send_wait(r, jt, speed):
+    """下发一条 MoveAbsJ 并等到位。返回 (ok, 最终误差°, 用时s)。"""
+    t0 = time.time()
+    r.moveReset({})
+    ec = {}
+    r.moveAppend([x.MoveAbsJCommand(x.JointPosition([float(v) for v in jt]), speed, -1)],
+                 x.PyString("mv%d" % (int(t0 * 1000) % 100000)), ec)
+    if ec.get("ec", 0) != 0:
+        return False, 999.0, time.time() - t0
+    r.moveStart({})
+    while time.time() - t0 < POINT_TIMEOUT_S:
+        time.sleep(0.12)
+        aj = joints(r)
+        err = max(abs(math.degrees(b - a)) for a, b in zip(jt, aj))
+        if err <= TOL_DEG and "idle" in opstate(r).lower():
+            return True, err, time.time() - t0
+    aj = joints(r)
+    return False, max(abs(math.degrees(b - a)) for a, b in zip(jt, aj)), time.time() - t0
+
+
 def main() -> int:
     dry = "--dry" in sys.argv
     if not os.path.isfile(CMD):
@@ -115,6 +135,28 @@ def main() -> int:
     print(json.dumps({"start": True, "n": len(frames), "speed": speed,
                       "joints_now_deg": [round(math.degrees(v), 2) for v in cur]}, ensure_ascii=False), flush=True)
     prev = cur
+    # 🔁 起点归位段 (2026-11-13 实测缺陷): 上一轮走完停在点 N, 再点「同步操作」是从点 1 起,
+    #    |当前→点1| 可能 69° 远超 30° 闸 ⇒ 直接拒发(实测连点两次必失败)。
+    #    这里按 ≤18°/段插中间点先归位到点 1, 再走正式点; 归位段单独上报, 不占 N 点。
+    j0 = [float(v) for v in frames[0]]
+    jump0 = max(abs(math.degrees(b - a)) for a, b in zip(prev, j0))
+    if jump0 > MAX_JUMP_DEG:
+        k = int(math.ceil(jump0 / (MAX_JUMP_DEG * 0.6)))
+        mid = [[prev[m] + (j0[m] - prev[m]) * (t / float(k)) for m in range(6)]
+               for t in range(1, k)]
+        print(json.dumps({"prep": {"jump_deg": round(jump0, 1), "n_mid": len(mid),
+                                   "seg_deg": round(jump0 / float(k), 1)}}, ensure_ascii=False), flush=True)
+        for pi, pj in enumerate(mid):
+            okp, errp, secp = _send_wait(r, pj, speed)
+            print(json.dumps({"prep_progress": pi + 1, "n": len(mid), "ok": okp,
+                              "err_deg": round(errp, 2), "secs": round(secp, 2)},
+                             ensure_ascii=False), flush=True)
+            if not okp:
+                out["why"] = "归位段第 %d/%d 点未到位(误差 %.1f°), 已停 — 正式点一个没走" % (pi + 1, len(mid), errp)
+                out["prep_steps"] = mid
+                print(json.dumps(out, ensure_ascii=False))
+                return 1
+        prev = joints(r)
     for i, j in enumerate(frames):
         jt = [float(v) for v in j]
         jump = max(abs(math.degrees(b - a)) for a, b in zip(prev, jt))
