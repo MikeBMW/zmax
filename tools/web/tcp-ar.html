@@ -221,6 +221,9 @@
       <!-- 📍 老倪 2026-11-13「左侧增加一个按钮, 让右臂(仿真)按真实轨迹 182 点走一遍」 -->
       <button id="bRTraj" class="sm" title="仿真右臂按录制进来的真实轨迹(182 点, 位姿真值录制)完整走一遍: 沿折线 8mm 重采样 → 逐点 IK → 紫色幽灵臂 + 8802 同帧渲染。只动仿真, 不下发真机指令">📍 右臂跑真实轨迹</button>
       <span id="tRTraj" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
+      <button id="bSyncStep" class="sm" style="margin-left:10px" title="同步操作: 沿真实轨迹「一个点一个点」走(每走到一个点停一下, 看得清逐点到位)。右边的输入框决定走几个点。只动仿真, 不下发真机指令">⏭ 同步操作</button>
+      <input id="iSyncN" type="number" min="1" step="1" value="3" title="走几个点 (1=只走轨迹第1点, 10=走前10点)" style="width:60px;margin-left:4px;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;border-radius:4px;padding:2px 4px;font-size:12px;vertical-align:middle">
+      <span id="tSyncStep" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
       <button id="bIns" class="sm" title="用紫色幽灵臂仿真: 从 7 号位抓起光模块 → 抬起 → 插拔准备点 → 插入口 → 插入到位(47mm)。全程只画不算, 真机零指令">🔌 插入仿真</button>
       <button id="bInsp" class="sm" title="右臂插拔全流程仿真: 黑盘 1~14 号位依次抓取 → 插孔(47mm) → 检测 → 拔出 → 良品放下料盘 / NG 放废料盘。12 良品 + 2 不良。真机零指令">🔁 插拔全流程</button>
       <span id="tPrev" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
@@ -5048,6 +5051,66 @@ function rtrajStop(){  RTRAJ.playing=false;
   rtrajUI(false,'已停在 '+(RTRAJ.fi||0)+'/'+(RTRAJ.frames.length||0)+' 帧 · 真机没动');
   drawVR();
 }
+
+/* ⏭ 同步操作 (老倪 2026-11-13「点击后机器人沿着真实轨迹一个点一个点运行; 按钮后面跟输入栏, 输入点数」)
+   和「📍 右臂跑真实轨迹」的区别: 那个是按时间连续播(1×真实时间, 看着是连贯运动);
+   这个是一点一点走 —— 每走到一个轨迹点就停一下( dwell ), 走完当前点才去下一个,
+   输入框决定走几个点(默认3)。数据同源: 关节角真值帧(pitch 姿态与翻面一起保真), 只用仿真, 真机零指令。 */
+var SYNC={playing:false,raf:null,ph:'idle',i:0,n:0,frames:null,q0:null,t0:0,dur:420,dwell:300};
+function syncUI(on,txt){
+  var b=document.getElementById('bSyncStep'), t=document.getElementById('tSyncStep');
+  if(b){ b.textContent = on ? '⏹ 停止同步' : '⏭ 同步操作'; if(b.classList) b.classList.toggle('on', !!on); }
+  if(t && txt!=null) t.textContent = txt;
+}
+function syncStepStop(msg){
+  SYNC.playing=false;
+  if(SYNC.raf){ cancelAnimationFrame(SYNC.raf); SYNC.raf=null; }
+  syncUI(false, msg || ('已停在 '+(SYNC.i)+'/'+(SYNC.n||0)+' 点 · 真机没动'));
+  drawVR();
+}
+function syncStepPlay(){
+  if(SYNC.playing){ syncStepStop(); return; }
+  var d = ensureTrajJoints();
+  if(!d || !d.frames || !d.frames.length){ syncUI(false,'没有关节角真值数据(先跑 tools/real_traj_joints.py --embed)'); return; }
+  if(RTRAJ.playing) rtrajStop();
+  var frames=d.frames, max=frames.length, inp=document.getElementById('iSyncN');
+  if(inp){ inp.max=max; }
+  var N = inp ? parseInt(inp.value,10) : 3;
+  if(!isFinite(N) || N<1){ N=3; if(inp) inp.value=N; }
+  if(N>max){ N=max; if(inp) inp.value=N; }
+  SYNC.frames=frames; SYNC.n=N; SYNC.i=0; SYNC.playing=true; SYNC.ph='move';
+  SYNC.q0=(PREV.q && PREV.q.length===6 ? PREV.q.slice() : frames[0].j.slice());
+  SYNC.t0=performance.now();
+  PREV.on=true; PREV.q=SYNC.q0.slice(); PREV.M=urdfFK(PREV.q); PREV.target=frames[0].p;
+  mjPushQ(); mjPushQForce();
+  syncUI(true, '同步操作启动 · 目标 '+N+'/'+max+' 点 · 一点一点走 · 真机没动');
+  var smooth=function(x){ return x*x*(3-2*x); };
+  var step=function(){
+    if(!SYNC.playing) return;
+    var f=SYNC.frames[SYNC.i], el=performance.now()-SYNC.t0;
+    if(SYNC.ph==='move'){
+      var u=Math.min(1, el/SYNC.dur), k=smooth(u);
+      var qq=SYNC.q0.map(function(v,idx){ return v+(f.j[idx]-v)*k; });
+      PREV.on=true; PREV.q=qq; PREV.M=urdfFK(qq); PREV.target=f.p;
+      if(u>=1){ SYNC.ph='dwell'; SYNC.t0=performance.now();
+        syncUI(true,'已到第 '+(SYNC.i+1)+'/'+SYNC.n+' 点 · 停一下 · 真机没动'); }
+    } else {
+      PREV.q=f.j.slice(); PREV.M=urdfFK(PREV.q); PREV.target=f.p;   // 停在该点真值关节角上
+      if(el>=SYNC.dwell){
+        if(SYNC.i+1>=SYNC.n){
+          SYNC.playing=false; SYNC.raf=null;
+          syncUI(false,'同步操作完成 · 已走 '+SYNC.n+' 点('+SYNC.n+'/'+max+') · 关节角真值 · 真机没动');
+          drawVR(); return;
+        }
+        SYNC.i++; SYNC.ph='move'; SYNC.q0=PREV.q.slice(); SYNC.t0=performance.now();
+        syncUI(true,'走到第 '+(SYNC.i+1)+'/'+SYNC.n+' 点 · 真机没动');
+      }
+    }
+    mjPushQ(); mjPushQForce(); drawVR();
+    SYNC.raf=requestAnimationFrame(step);
+  };
+  SYNC.raf=requestAnimationFrame(step);
+}
 function rtrajPlay(){
   if(RTRAJ.playing){ rtrajStop(); return; }
   var t=$('tRTraj'), it=realTrajItem();
@@ -5120,6 +5183,7 @@ function rtrajPlay(){
   }, 30);
 }
 { var _b=$('bRTraj'); if(_b) _b.addEventListener('click', rtrajPlay); }
+{ var _bs=document.getElementById('bSyncStep'); if(_bs) _bs.addEventListener('click', syncStepPlay); }
 $('tOff').addEventListener('click',()=>clearNamed());
 $('bAll').addEventListener('click',async ()=>{
   const r=await (await fetch('/api/traj/baseline',{method:'POST',headers:{'Content-Type':'application/json'},
