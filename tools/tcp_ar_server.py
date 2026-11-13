@@ -2918,6 +2918,128 @@ class H(BaseHTTPRequestHandler):
                         "left_s": round(max(0.0, _left)), "left_min": round(max(0.0, _left) / 60.0, 1),
                         "revoked": _rev, "until": _u,
                         "where": "8793 工位总览 → 授权真动(两步确认)"})
+        elif p == "/api/arm/step_traj":
+            # ⏭ 同步操作的真机腿 (老倪 2026-11-13「仿真先走10个点, 然后驱动真实右臂走10个点」)
+            #   数据与仿真同源: tools/web/real_traj_joints.json 的 frames[0:n].j (6 轴关节角真值)
+            #   下发: tools/rokae/arm_step_traj.py 走容器直连控制器(192.168.23.160), MoveAbsJ 逐点:
+            #         每点等到位再下一点, 任一点失败立即停 → 不重发不补偿。
+            #   三步闸: ①真动必须已授权(ctl_auth.json, 与执行器同一真源) ②产线网可达 ③脚本内 power/idle/跳变闸。
+            _b = body or {}
+            _dry = bool(_b.get("dry"))
+            _n = int(_b.get("n") or 0)
+            _jf = os.path.join(REPO, "tools", "web", "real_traj_joints.json")
+            try:
+                _d = json.load(open(_jf, encoding="utf-8"))
+                _fr = _d.get("frames") or []
+            except Exception as e:                                               # noqa: BLE001
+                self._json({"ok": False, "stage": "data", "err": "读不到回放数据: %s" % str(e)[:90]})
+                return
+            if not _fr:
+                self._json({"ok": False, "stage": "data", "err": "回放数据没有帧"})
+                return
+            _n = max(1, min(_n or 1, len(_fr)))
+            _sts = os.path.join(REPO, "zmax_data", "rokae_sdk", "traj_step_state.json")
+            try:
+                _cur = json.load(open(_sts, encoding="utf-8"))
+                if _cur.get("running") and time.time() - float(_cur.get("t0") or 0) < 1800:
+                    self._json({"ok": False, "stage": "busy",
+                                "err": "上一轮真机逐点还在跑(第 %s/%s 点), 等它结束或先停" %
+                                       (_cur.get("done"), _cur.get("n"))})
+                    return
+            except Exception:                                                    # noqa: BLE001
+                pass
+            if not _dry:                                                          # ① 授权(与执行器同一真源)
+                try:
+                    _a = json.load(open(os.path.join(REPO, "zmax_data", "ctl_auth.json"), encoding="utf-8"))
+                    _left = float(_a.get("until") or 0) - time.time()
+                    if float(_a.get("revoked_at") or 0) > 0 or _left <= 0:
+                        self._json({"ok": False, "stage": "auth",
+                                    "err": "真机未授权(授权窗剩 %.0fs)" % max(0.0, _left),
+                                    "hint": "去 8793 工位总览 → 『🔓 授权真动』两步确认后再点"})
+                        return
+                except Exception as e:                                           # noqa: BLE001
+                    self._json({"ok": False, "stage": "auth",
+                                "err": "读不到 ctl_auth.json ⇒ fail-closed: %s" % str(e)[:70]})
+                    return
+            _reach = False                                                       # ② 产线网可达(控制器)
+            try:
+                _p = subprocess.run(["ping", "-c", "1", "-W", "1", "192.168.23.160"],
+                                    capture_output=True, text=True, timeout=4)
+                _reach = _p.returncode == 0
+            except Exception:                                                    # noqa: BLE001
+                _reach = False
+            if not _reach:
+                self._json({"ok": False, "stage": "link",
+                            "err": "产线网不可达: ping 192.168.23.160 失败(USB 网卡/网线?)",
+                            "hint": "插回产线网线后重试; 真机逐点必须直连控制器, 走 WiFi 不行"})
+                return
+            try:                                                                 # ③ 写指令 + 后台起容器
+                _cmd = {"frames": [[float(v) for v in (f.get("j") or [])] for f in _fr[:_n]],
+                        "n": _n, "speed": float(_b.get("speed") or 5.0),
+                        "dwell_ms": int(_b.get("dwell_ms") or 120),
+                        "src": "real_traj_joints.json", "ts": time.time()}
+                _cp = os.path.join(REPO, "zmax_data", "rokae_sdk", "traj_step_cmd.json")
+                os.makedirs(os.path.dirname(_cp), exist_ok=True)
+                with open(_cp, "w", encoding="utf-8") as _f:
+                    json.dump(_cmd, _f, ensure_ascii=False)
+                _out = os.path.join(REPO, "zmax_data", "rokae_sdk", "traj_step_out.log")
+                _argv = ["bash", os.path.join(REPO, "tools", "rokae_sdk_run.sh"),
+                         "--script", "arm_step_traj.py"] + (["--dry"] if _dry else [])
+                _lg = open(_out, "w", encoding="utf-8")
+                _pr = subprocess.Popen(_argv, cwd=REPO, stdout=_lg, stderr=subprocess.STDOUT,
+                                       start_new_session=True)
+                json.dump({"running": True, "t0": time.time(), "n": _n, "dry": _dry,
+                           "pid": _pr.pid, "done": 0, "log": _out},
+                          open(_sts, "w", encoding="utf-8"), ensure_ascii=False)
+                self._json({"ok": True, "started": True, "n": _n, "dry": _dry, "pid": _pr.pid,
+                            "msg": ("演练(只算不下发) " if _dry else "真机逐点开始 ") + "· %d 点 · 关节角真值" % _n})
+            except Exception as e:                                               # noqa: BLE001
+                self._json({"ok": False, "stage": "launch", "err": "%s: %s" % (type(e).__name__, str(e)[:90])})
+        elif p == "/api/arm/step_traj/status":
+            # 真机逐点进度: 读 state + 从输出日志里取最后一次进度(每点一行 JSON)
+            _sts = os.path.join(REPO, "zmax_data", "rokae_sdk", "traj_step_state.json")
+            try:
+                _s = json.load(open(_sts, encoding="utf-8"))
+            except Exception:                                                    # noqa: BLE001
+                self._json({"ok": True, "running": False, "done": 0, "n": 0, "msg": "没有跑过"})
+                return
+            _log = _s.get("log") or ""
+            _prog, _fin = None, None
+            try:
+                with open(_log, encoding="utf-8", errors="ignore") as _f:
+                    for _line in _f:
+                        _line = _line.strip()
+                        if not _line.startswith("{"):
+                            continue
+                        try:
+                            _j = json.loads(_line)
+                        except Exception:                                        # noqa: BLE001
+                            continue
+                        if "progress" in _j:
+                            _prog = _j
+                        if ("ok" in _j) and ("steps" in _j):
+                            _fin = _j
+            except Exception:                                                    # noqa: BLE001
+                pass
+            _alive = False
+            try:
+                os.kill(int(_s.get("pid") or 0), 0)
+                _alive = True
+            except Exception:                                                    # noqa: BLE001
+                _alive = False
+            _out = {"ok": True, "running": bool(_alive and _fin is None),
+                    "dry": _s.get("dry"), "n": _s.get("n"),
+                    "done": (_prog or {}).get("progress", (len(_fin.get("steps") or []) if _fin else 0)),
+                    "step": (_prog or {}).get("step"), "elapsed_s": round(time.time() - float(_s.get("t0") or 0), 1)}
+            if _fin:
+                _out.update({"finished": True, "ok_all": _fin.get("ok"), "why": _fin.get("why"),
+                             "n_done": _fin.get("n_done"), "steps": _fin.get("steps")})
+                _s["running"] = False
+                try:
+                    json.dump(_s, open(_sts, "w", encoding="utf-8"), ensure_ascii=False)
+                except Exception:                                            # noqa: BLE001
+                    pass
+            self._json(_out)
         elif p == "/api/traj/exec":
             # 🧭 2026-10-26 老倪: 「点轨迹按钮→高亮→三维里看着→点执行就发指令」
             #   带 k 就先把它转成段表(planned_traj.json), 再走原来的执行闸;

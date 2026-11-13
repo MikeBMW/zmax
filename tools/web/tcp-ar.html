@@ -224,6 +224,8 @@
       <button id="bSyncStep" class="sm" style="margin-left:10px" title="同步操作: 沿真实轨迹「一个点一个点」走(每走到一个点停一下, 看得清逐点到位)。右边的输入框决定走几个点。只动仿真, 不下发真机指令">⏭ 同步操作</button>
       <input id="iSyncN" type="number" min="1" step="1" value="3" title="走几个点 (1=只走轨迹第1点, 10=走前10点)" style="width:60px;margin-left:4px;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;border-radius:4px;padding:2px 4px;font-size:12px;vertical-align:middle">
       <span id="tSyncStep" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
+      <label id="lSyncArm" style="font-size:12px;color:#8b949e;margin-left:8px;cursor:pointer" title="勾上=仿真走完 N 点后, 按同一批关节角帧驱动真实右臂逐点走同样 N 点(需 8793 授权 + 产线网直连控制器)。不勾=只动仿真。">
+        <input id="cSyncArm" type="checkbox" checked style="vertical-align:-2px"> 真机也走</label>
       <button id="bIns" class="sm" title="用紫色幽灵臂仿真: 从 7 号位抓起光模块 → 抬起 → 插拔准备点 → 插入口 → 插入到位(47mm)。全程只画不算, 真机零指令">🔌 插入仿真</button>
       <button id="bInsp" class="sm" title="右臂插拔全流程仿真: 黑盘 1~14 号位依次抓取 → 插孔(47mm) → 检测 → 拔出 → 良品放下料盘 / NG 放废料盘。12 良品 + 2 不良。真机零指令">🔁 插拔全流程</button>
       <span id="tPrev" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
@@ -5057,6 +5059,7 @@ function rtrajStop(){  RTRAJ.playing=false;
    这个是一点一点走 —— 每走到一个轨迹点就停一下( dwell ), 走完当前点才去下一个,
    输入框决定走几个点(默认3)。数据同源: 关节角真值帧(pitch 姿态与翻面一起保真), 只用仿真, 真机零指令。 */
 var SYNC={playing:false,raf:null,ph:'idle',i:0,n:0,frames:null,q0:null,t0:0,dur:420,dwell:300};
+var SYNCARM={poll:null};
 function syncUI(on,txt){
   var b=document.getElementById('bSyncStep'), t=document.getElementById('tSyncStep');
   if(b){ b.textContent = on ? '⏹ 停止同步' : '⏭ 同步操作'; if(b.classList) b.classList.toggle('on', !!on); }
@@ -5067,6 +5070,39 @@ function syncStepStop(msg){
   if(SYNC.raf){ cancelAnimationFrame(SYNC.raf); SYNC.raf=null; }
   syncUI(false, msg || ('已停在 '+(SYNC.i)+'/'+(SYNC.n||0)+' 点 · 真机没动'));
   drawVR();
+}
+function syncArmRun(n){
+  var cb=document.getElementById('cSyncArm');
+  if(!cb||!cb.checked) return;
+  var t=document.getElementById('tSyncStep');
+  function st(txt,col){ if(t){ t.textContent=txt; t.style.color=col||'#8b949e'; } }
+  st('仿真已走完 '+n+' 点 · 正在请求真机…','#d29922');
+  fetch('/api/arm/step_traj',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({n:n})})
+   .then(function(r){ return r.json(); })
+   .then(function(d){
+      if(!d.ok){
+        st('仿真完成 '+n+' 点 · 真机未动: '+(d.err||d.msg||d.stage||'失败')+(d.hint?' · '+d.hint:''),'#f85149');
+        return;
+      }
+      st('仿真完成 · 真机逐点开始 '+n+' 点…','#58a6ff');
+      var t0=Date.now();
+      if(SYNCARM.poll) clearInterval(SYNCARM.poll);
+      SYNCARM.poll=setInterval(function(){
+        fetch('/api/arm/step_traj/status').then(function(r){ return r.json(); }).then(function(s){
+          if(s.running){
+            st('真机 第 '+(s.done||0)+'/'+(s.n||n)+' 点 · '+(s.elapsed_s||0)+'s','#58a6ff');
+          } else if(s.finished){
+            clearInterval(SYNCARM.poll); SYNCARM.poll=null;
+            if(s.ok_all) st('✅ 真机走完 '+(s.n_done||0)+'/'+(s.n||n)+' 点 · '+(s.why||''),'#3fb950');
+            else st('⛔ 真机停在 '+(s.n_done||0)+'/'+(s.n||n)+' 点 · '+(s.why||''),'#f85149');
+          } else if(Date.now()-t0>900000){
+            clearInterval(SYNCARM.poll); SYNCARM.poll=null;
+            st('真机状态轮询超时, 看 zmax_data/rokae_sdk/traj_step_out.log','#f85149');
+          }
+        }).catch(function(){});
+      },800);
+   })
+   .catch(function(e){ st('真机请求失败: '+e,'#f85149'); });
 }
 function syncStepPlay(){
   if(SYNC.playing){ syncStepStop(); return; }
@@ -5099,8 +5135,10 @@ function syncStepPlay(){
       if(el>=SYNC.dwell){
         if(SYNC.i+1>=SYNC.n){
           SYNC.playing=false; SYNC.raf=null;
-          syncUI(false,'同步操作完成 · 已走 '+SYNC.n+' 点('+SYNC.n+'/'+max+') · 关节角真值 · 真机没动');
-          drawVR(); return;
+          syncUI(false,'仿真走完 '+SYNC.n+' 点('+SYNC.n+'/'+max+') · 关节角真值');
+          drawVR();
+          syncArmRun(SYNC.n);          // 老倪 2026-11-13: 仿真先走 N 点, 然后驱动真实右臂走同样 N 点
+          return;
         }
         SYNC.i++; SYNC.ph='move'; SYNC.q0=PREV.q.slice(); SYNC.t0=performance.now();
         syncUI(true,'走到第 '+(SYNC.i+1)+'/'+SYNC.n+' 点 · 真机没动');
