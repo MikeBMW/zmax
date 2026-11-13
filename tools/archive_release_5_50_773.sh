@@ -17,7 +17,7 @@ echo "[1/6] 代码"
 git diff --name-only "$BASE"..HEAD | while read -r f; do
   [ -f "$f" ] || continue
   case "$f" in
-    *.py|*.sh|*.md|*.json|*.html) : ;;
+    *.py|*.sh|*.md|*.json|*.html|*.yml|*.yaml) : ;;
     *) continue ;;
   esac
   case "$f" in
