@@ -4988,6 +4988,59 @@ function mjPushQForce(){
       body:JSON.stringify({R:Rq,L:Lq,seq:++_mjqN,src:'rtraj'})}).catch(function(){});
   }catch(e){}
 }
+/* 📍 关节角真值回放 (老倪 2026-11-13「真实的机械臂还有旋转/翻面, 你只有平移」)
+   位置 IK 只匹配 xyz ⇒ 姿态由求解器自己挑, 真机那 952° 的转动/翻面全丢。
+   这里直接用录制里的 6 轴关节角真值(tools/real_traj_joints.py 从 poses.jsonl 导出)走帧:
+   位置和姿态一起保真, 不再解 IK。数据缺失时才回退到位置 IK。 */
+var RTRAJJ=null, RTRAJJ_ERR=null, RTRAJJ_TRIED=false;
+function loadTrajJoints(){
+  if(RTRAJJ_TRIED) return; RTRAJJ_TRIED=true;
+  fetch('/real_traj_joints.json',{cache:'no-store'})
+    .then(function(r){ return r.ok?r.json():null; })
+    .then(function(d){
+      if(d && d.frames && d.frames.length){ RTRAJJ=d; RTRAJJ_ERR=null; }
+      else { RTRAJJ_ERR='没有回放数据(跑 tools/real_traj_joints.py)'; }
+    })
+    .catch(function(e){ RTRAJJ_ERR=String(e&&e.message||e); });
+}
+loadTrajJoints();
+
+function rtrajPlayJoints(d){
+  var t=$('tRTraj'), frames=d.frames, rate=RTRAJ.rate||1;
+  RTRAJ.frames=frames; RTRAJ.dur=frames[frames.length-1].t/rate; RTRAJ.fi=0;
+  RTRAJ.t0=performance.now(); RTRAJ.playing=true; RTRAJ.joints=true;
+  RTRAJ.n_pts=d.n_frames; RTRAJ.path_mm=d.path_mm||0; RTRAJ.rot=d.rot_total_deg||0;
+  var f0=frames[0];
+  PREV.on=true; PREV.q=f0.j.slice(); PREV.M=urdfFK(PREV.q); PREV.err_mm=null; PREV.target=f0.p.slice();
+  if(typeof vrFitBox==='function'){ try{ vrFitBox(); }catch(e){} }
+  mjPushQ(); mjPushQForce();
+  rtrajUI(true,'关节角真值回放 · '+d.n_frames+'帧 · '+(d.path_mm||0).toFixed(0)+'mm · 转动 '+
+    (d.rot_total_deg||0).toFixed(0)+'° · '+(frames[frames.length-1].t).toFixed(0)+'s('+rate+'×) · '+d.src_rec+' · 真机没动');
+  var step=function(){
+    if(!RTRAJ.playing) return;
+    var el=(performance.now()-RTRAJ.t0)/1000*rate;
+    var i=RTRAJ.fi;
+    while(i<frames.length-1 && frames[i+1].t<=el) i++;
+    RTRAJ.fi=i;
+    var f=frames[i];
+    // 帧间按时间线性插值关节角(角度域), 避免 5Hz 真值逐帧跳
+    var i2=Math.min(i+1,frames.length-1), f2=frames[i2];
+    var span=Math.max(1e-6,f2.t-f.t), u=Math.max(0,Math.min(1,(el-f.t)/span));
+    var qq=f.j.map(function(v,k){ return v+(f2.j[k]-v)*u; });
+    PREV.on=true; PREV.q=qq; PREV.M=urdfFK(qq); PREV.target=f2.p;
+    if(el>=frames[frames.length-1].t){
+      RTRAJ.playing=false; RTRAJ.raf=null;
+      rtrajUI(false,'走完 '+d.n_frames+' 帧 · '+(d.path_mm||0).toFixed(0)+'mm · 转动 '+
+        (d.rot_total_deg||0).toFixed(0)+'° · 用时 '+(frames[frames.length-1].t).toFixed(0)+'s · 真机没动');
+      drawVR(); return;
+    }
+    mjPushQ();
+    if((RTRAJ.fi & 1)===0) mjPushQForce();
+    drawVR();
+    RTRAJ.raf=requestAnimationFrame(step);
+  };
+  RTRAJ.raf=requestAnimationFrame(step);
+}
 function rtrajStop(){  RTRAJ.playing=false;
   if(RTRAJ.raf){ cancelAnimationFrame(RTRAJ.raf); RTRAJ.raf=null; }
   rtrajUI(false,'已停在 '+(RTRAJ.fi||0)+'/'+(RTRAJ.frames.length||0)+' 帧 · 真机没动');
@@ -4998,6 +5051,7 @@ function rtrajPlay(){
   var t=$('tRTraj'), it=realTrajItem();
   if(!it || !(it.pts||[]).length){ if(t) t.textContent='没有真实轨迹(先跑 tools/pose_to_ar.py 导入)'; return; }
   if(!URDF){ if(t) t.textContent='URDF 还没加载完, 稍等再点'; return; }
+  if(RTRAJJ && RTRAJJ.frames && RTRAJJ.frames.length){ rtrajPlayJoints(RTRAJJ); return; }  // 优先关节角真值(带姿态)
   var pts=it.pts.map(function(p){ return [p[0],p[1],p[2]]; });
   var q0=(PREV.on&&PREV.q&&PREV.q.length>=6)?PREV.q.slice(0,6)
         :((TCP&&TCP.ok&&TCP.joints&&TCP.joints.length>=6)?TCP.joints.slice(0,6):null);
