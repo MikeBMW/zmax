@@ -146,6 +146,13 @@ jobs:
             cp -f defaults/canvas/state_space_obs.json src/lerobot/engineering/flows/state_space_obs.json
             echo "canvas: 用空骨架(兜底)"
           fi
+          # 🔗 flows/state_space_obs.json 在仓库里是 symlink(120000) ⇒ Windows 检出成占位文本、macOS 检出成真链接,
+          #    两种平台都会让 pack_guard/断言判"仍是软链"。这里直接用刚物化的真画布覆盖, 仓库侧不再存 symlink。
+          mkdir -p flows
+          # ⚠️ 必须先 rm: macOS 检出的是真 symlink, cp -f 会顺着链接写到同一 inode ⇒ 链接还在, 断言仍判软链
+          rm -f flows/state_space_obs.json
+          cp -f src/lerobot/engineering/flows/state_space_obs.json flows/state_space_obs.json
+          echo "flows/state_space_obs.json: 已覆盖为真画布(不再依赖 symlink)"
           # 🏭 产品三档 (550A/550B/550C): 实例真源不在仓库里 ⇒ 出厂骨架必须随包, 否则全新安装选不出产品档
           python -c "import json;d=json.load(open('defaults/config/platform/zmax_product.json',encoding='utf-8'));print('factory products:',list(d.get('products',{}).keys()),'active:',d.get('active_product'));assert set(('550A','550B','550C'))<=set(d.get('products',{}))"
           python -c "import json;d=json.load(open('src/lerobot/engineering/flows/state_space_obs.json',encoding='utf-8'));print('canvas nodes (factory skeleton):',len(d.get('nodes',[])))"
@@ -570,6 +577,12 @@ jobs:
             cp -f defaults/canvas/state_space_obs.json src/lerobot/engineering/flows/state_space_obs.json
             echo "canvas: 用空骨架(兜底)"
           fi
+          # 🔗 同 Windows: 仓库里的 flows/state_space_obs.json 是 symlink, CI 检出后断言判"仍是软链" ⇒ 直接覆盖
+          mkdir -p flows
+          # ⚠️ 必须先 rm: macOS 检出的是真 symlink, cp -f 会顺着链接写到同一 inode ⇒ 链接还在, 断言仍判软链
+          rm -f flows/state_space_obs.json
+          cp -f src/lerobot/engineering/flows/state_space_obs.json flows/state_space_obs.json
+          echo "flows/state_space_obs.json: 已覆盖为真画布(不再依赖 symlink)"
           python -c "import json;d=json.load(open('src/lerobot/engineering/flows/state_space_obs.json',encoding='utf-8'));print('canvas nodes (factory skeleton):',len(d.get('nodes',[])))"
 
       - name: "🔗 软链/画布闸 (pack_guard) — 禁止把 Linux 软链打进包"

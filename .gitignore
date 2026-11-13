@@ -380,3 +380,7 @@ tools/rokae/*_tmp.py
 
 # LibreOffice 打开文档时的临时锁文件
 .~lock.*#
+
+# 2026-11-13: 画布真源在本地是数据软链; 仓库里存 symlink 会让 Windows 检出成占位文本、macOS 检出成真链接,
+# 两种平台都过不了 pack_guard/断言 ⇒ 不入库, 由 CI 的 "Materialize canvas" 步骤按真画布/出厂骨架物化。
+flows/state_space_obs.json

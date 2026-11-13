@@ -104,4 +104,11 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # 🔴 Windows CI 实测(2026-11-13): 控制台是 cp1252, print 里的 "✅/⚠️/中文" 直接 UnicodeEncodeError,
+    #    崩在 `if ph:` 的第一行 ⇒ --fix 的实体化循环根本没执行 ⇒ 后续断言仍判"软链"⇒ 打包闸 exit 1。
+    for _s in (sys.stdout, sys.stderr):
+        try:
+            _s.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+        except Exception:                                                     # noqa: BLE001
+            pass
     raise SystemExit(main())
