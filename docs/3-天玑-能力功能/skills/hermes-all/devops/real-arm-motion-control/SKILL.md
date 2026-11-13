@@ -15,6 +15,16 @@ metadata:
 > **BEST_EFFORT** 订阅、`set +u` 后再 source ROS）、以及 **PSNR 口径纪律**（跨数据集/跨留出协议不可比）:
 > 见 `references/capture-trajectory-constant-z.md`。
 
+## 逐点走关节角真值（同步操作真机腿，2026-11-13）
+
+沿录制轨迹「一点一点走」用 MoveAbsJ + 关节角真值，不用笛卡尔线插补：
+- 数据同源 `tools/web/real_traj_joints.json` 的 `frames[i].j`（6 轴，录制里 SDK 直读）
+- 脚本 `tools/rokae/arm_step_traj.py`（容器内跑，读 `zmax_data/rokae_sdk/traj_step_cmd.json`）
+- 每点等到位（关节误差 ≤0.6° 且 operationState=idle）再下一点；单点跳变 >30° 拒发；任一点失败立即停，不重发不补偿
+- 端点 `POST :8797/api/arm/step_traj {n,dry}` / `GET .../status`（异步 Popen + 日志逐点进度）
+- 闸门顺序：授权 ctl_auth → ping 控制器 .160 → 脚本内 power/idle/跳变。未授权必须红字指路 8793，不能静默
+- 离线验逻辑用假 SDK（`ZMAX_SDK_DIR` 指 stub 目录）：能验跳变闸/到位超时/控制器拒发/断链，真机时序仍需现场
+
 ## 🧱 安全区 = 已教点位定义; 天花板闸 + **MoveJ 自愈默认禁用** (2026-10-08 第二起事故)
 
 现场症状 = 走某个点/建图自动跑点时, 臂**往高处或旁边摆**, 超出预期 ⇒ 老倪只能按急停。

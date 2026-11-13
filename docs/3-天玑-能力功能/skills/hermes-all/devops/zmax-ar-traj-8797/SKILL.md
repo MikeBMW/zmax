@@ -5,6 +5,9 @@ description: Use when 改 8797/ar 页的轨迹按钮·执行链·围栏避让规
 
 # 8797/ar 轨迹按钮与执行链
 
+> 右臂按真实轨迹(182点)回放: references/right-arm-real-traj-replay.md
+> ⏭ 同步操作(仿真先走 N 点 → 真机逐点跟走 + 画面实时跟随): references/sync-step-sim-then-real.md
+
 ## 8802 画面「不动 / 乱动 / 两边不同步」的真因清单 (2026-11-10 实测)
 - **显存不足**：`nvidia-smi` 只剩 ~400MB 时 MuJoCo `Renderer.render()` 会在 C 层**不返回**，整个 8802 冻住（n 不涨，`/frame.png` `/video` `/joints.json` 全停，进程 100% CPU 但不出图）。先腾显存，别当链路故障查。
 - **两个写者**：8797 页 `mjPushQ` 每 120ms 推 `/armq`，`ar_cmd` 也写同一批 qpos ⇒ 乱动 + 两边对不上。判据用 `/status.json` 的 `ac_driving`（ar_cmd 是否在喂）；为 true 时页面必须停推、只镜像 `/joints.json`。别用 `joints.json.src` 判断——页面一推它就变 `armq`，会自锁。

@@ -114,17 +114,42 @@ Orin 上的 `zmax-arm-sdk-bridge`（`/health` `/status`，端口在 bridge 脚�
 - 本机的 `zmax_data/rokae_sdk/tcp_out/*.json` 只当**日志**，不当真值：`agent_heartbeat.json` 可以 `agent:"up"` 而
   `state` 全是 `unknown`、`pose` 全 0、`ec:[{ec:263,message:"timeout"}]` —— 那是本机 SDK 会话断了（本机没有产线路由时必然如此），
   机器人本身是好的。报数前先量 `latest.json` 的 mtime/age（上千秒即陈旧），真值一律从 Orin 的 39061 现读。
+- `latest.json` 有**两种状态，按字段分开判**：① `pose` 全 0 / `state` unknown / `ec:[{ec:263}]` = 本机 SDK 会话断，不可用；
+  ② `ts` 与 `date +%s` **逐秒对齐（差 <1s）且位置非零** = 它就是可用真值（本机 SDK 会话活着时每秒覆盖一次）。
+  判新鲜**只认 `ts`**（与系统 epoch 同源）；文件里的 `"t"` 是文本字段，常比系统时间少 8h（已知偏移）—— 拿 `t` 判
+  “陈旧/将来时间戳”会直接报错结论。
 
 ### 5. 周边设备：各用各的判活口
 | 设备 | 判活（只读） | 注意 |
 |---|---|---|
-| AOI 工控机 10082/10083 | `/storage` 200 = 服务在；`/last_result` 的 `t` 换算帧龄 | `/last_result` 404「尚无检测结果」= 重启后内存空，不是坏；`/crop_info` 同理 |
+| AOI 工控机 10082/10083 | **直打 `192.168.23.23:<port>/storage`** = 200 才算在；`/last_result` 的 `t` 换算帧龄 | 本机 `127.0.0.1:10082/10083` 多是 `ssh -L` 隧道（`ss -ltnp` 显示 `users:(("ssh",…))`），隧道在 ≠ AOI 在跑，此时 curl 回 `000`；`/last_result` 404「尚无检测结果」= 重启后内存空，不是坏；`/crop_info` 同理 |
 | Intel 边缘推理 8800 (550C 端侧) | `/health` + `/pipeline/stats` **隔 10s 两次比计数** | 计数不涨=停了；看 `src` 判真帧还是静态图自测（见 5.1） |
 | 机器人控制器 .23.160 | ping + SDK 桥 `/status` | ICMP 通≠可动；可动性看 SDK 会话 |
 | 网关（Mac 等） | 不一定要 ping 通 | 有些主机不回 ICMP，ping 不通≠不通 |
 
 AOI 报告里一定要写**帧龄**：“两路服务都在，但上次检测是 N 小时前”比“服务正常”有用得多；
 要判 OK/NG 必须先触发一次真拍（需用户同意）。
+
+#### AOI 两路都不在听时：恢复顺序与判据（只读阶段先定性，动服务前说清）
+
+1. **先除“本机端口是隧道”这个假象**：`ss -ltnp | grep -E ':(10082|10083)\b'` 看到 LISTEN 但 `users:(("ssh",pid=…))`
+   ⇒ 那是 `ssh -L 127.0.0.1:10082:192.168.23.23:10082` 的隧道占位，curl 回 `000`（不报错也不超时）。
+   判活一律打真源 IP。
+2. **分层定因**：`ping 192.168.23.23` 通（0.2~0.3ms）+ `~/zmax_data/agent_hub/beat` 在刷新 ⇒ 整机与反向通道都好，
+   只是没人监听端口（**服务没起**，不是链路断）。
+3. **反向通道回执本身就是根因证据**：`tools/station_cmd.py` 回执出现
+   「由于已禁用计划任务"ZMAX_AOI_KeepAlive"，其无法运行」⇒ 计划任务是**被禁用**（与“脚本编码坏”是两码事，后者是
+   State=Ready + `LastTaskResult=1` + 一行日志都不写）。两条路可以**同时**被禁，不只 10083。
+   修：`schtasks /change /tn ZMAX_AOI_KeepAlive /enable; schtasks /run /tn ZMAX_AOI_KeepAlive`，
+   **等 ≥100s** 再验（`netstat -ano | findstr LISTENING | findstr "10082 10083"` 或 `/storage`）；冷启期的 500 不算故障。
+4. **恢复后必比档位**：KeepAlive 拉起走程序内 `file_defaults`（10082 = 20000us×8），**不会**读 4060 侧
+   `zmax_data/aoi_v4/cam_param_persist.json`（那份只有部署器 ⑤b 回填）⇒ 档位会低于现场基准 **24000us×8**。
+   报告里写清三行：回读 `/param` 的 `now.exposure_us` / 现场基准 / 差异后果；10083 同理对 `80000us×1.8`。
+   想恢复只能改文件常数走 `aoi_remote_deploy.py`（停启 ~100s）—— **在线 POST 写不进**：现役 10082 的
+   `POST /param?exposure=` 在采集态回 `applied.*.ok=false` + hint「相机在采集中拒绝写」；判生效只认 `applied.*.ok` + 回读 `now.exposure_us`，
+  不认 HTTP 200，也不拿“实时可写”的旧结论当依据（10083 的 `POST /exposure` 仍即时生效，两路能力不同）。
+5. **`station_cmd` 拼 PowerShell 别用 `+` 拼枚举**：`(Get-ScheduledTask -Name X).State + ' | ' + …` 会抛
+   “无法把 `|` 转成 StateEnum”/`SubstringDisambiguationEnumParseThrewAnException` ⇒ 改 `Format-List` 逐项输出，或直接 `netstat`。
 
 ### 5.1 Intel 端侧 (550C)：满载不等于在干活
 一条命令抓全（随本技能）：

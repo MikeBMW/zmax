@@ -62,6 +62,27 @@ metadata:
 - 队列律 `|L − λW| > 0.5 件` 视为口径错(典型: throughput 用单件 CT 推, W 取自别的时间窗)。
 - 汇报只给数值与失败项, 不说"通过"。
 
+## 七、逐槽 BufferGraph: 100D 之上的事实层 (2026-11-13)
+
+100D 是**压缩投影**(聚合计数), 它答不了"第 4 号槽怎么偏了/在槽里等了多久"。事实层要逐槽节点:
+`src/lerobot/policies/left_right/state_space/buffer_graph.py` · 验收 `tools/verify_buffer_graph.py`(54 项)。
+
+- 节点 = 槽位(空槽也发布): `zone_type` · 位姿 **SE(3)=(U∈SU2, t∈ℝ³)** · `MetricTensor` ·
+  四态 `slot_state` · `t_in/t_out`(时间张量)。位姿**不许**只用四元数存(丢平移)。
+- 投影: `aggregate()` 直接回 100D 的 buf dict ⇒ `DesktopBuffer100.fuse()` 前 55 位逐位零回归(实测 27 项仍全过)。
+- 度规: `M = (1/σ_ax²)·nnᵀ + (1/σ_rad²)(I−nnᵀ)`, 引擎 `Δξ = −α·M⁻¹∇V`。插入区 σ_rad=0.3mm / σ_ax=6mm
+  ⇒ **径向步长 0.090×、轴向 36×**, `max|M·M⁻¹−I|=0`。自由区 σ=1mm ⇒ M=I(老行为不变)。
+- 🔴 **动态度规只许放宽自由区**: 插入区 σ_radial 锁死, `relax_metric()` fail-closed。
+  "UPH 落后就放宽径向容差"= 拿刮擦换节拍, 与 0 刮擦目标直接冲突。
+- 🔴 意图必须含 **PREP_NEXT**: 设备在刷(有 inflight)且还有待刷件时, 出"把下一件搬到待插位"而非 IDLE
+  —— 结构上杜绝 `robot_wait=1`。`insert_inserts_done()` = 插完立刻结算 + 给下一条(双工关键一跳)。
+- 🔴 DDS **不新建 IDL**: 既有 `SSNodePort(topic,ts,json)` 已用 JSON 承载值域(加字段不改 IDL)。
+  17 槽全量载荷实测 **9,650 B < 64KB**, 可 10Hz 广播; `from_payload()` 只恢复节点事实,
+  统计窗口(done_ts)必须靠真实事件重放 —— 回灌不许伪造成熟。
+- 未接通(如实报): 画布 `ssobs` 节点还没读 BufferGraph(要重启回路, 须点名) ·
+  引擎 `gradient_flow` 仍是各向同性步长(注入 M⁻¹ 要改那一行 + 真机验证) ·
+  槽位坐标是 `tray_y_pitch` 代理值(段表 4 槽坐标完全相同)。
+
 ## 六、数据侧比口径更常是瓶颈
 向量设计对了仍可能"数据不好也不够": 图像/遥测/episode 三条时间轴各自独立(常见 30Hz / 9Hz / 77Hz),
 从没按时间戳配过对 ⇒ 拿不出逐帧 (观测, 真值)。先量三条流的时间跨度与采样率, 再谈训练。

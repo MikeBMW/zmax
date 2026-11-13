@@ -347,6 +347,18 @@ metadata:
 
 ## 8. 重启常驻进程：别用自己的 shell 去匹配它（会连服务带自己一起杀）
 
+- 🔴 **重启前先看这个服务有没有 `Popen` 拉起来的不可中断子任务**（真机动作、训练、下载、烧录）。
+  systemd 默认 `KillMode=control-group` 会把**整条 cgroup** 一起 SIGTERM —— 实测真机逐点走到第 3 点被打断
+  （子进程日志 `got 3 SIGTERM/SIGINTs, forcefully exiting`），而控制器把**在途那一段自己走完**才停，
+  事后位置既不是起点也不是目标点。
+  - `start_new_session=True` / `nohup` / `setsid` **只脱离会话，不脱离 cgroup** ⇒ 别以为“新 session 就安全”。
+  - 处置：给 unit 加 **`KillMode=process`**（写成 drop-in 入库存到 `tools/systemd/`，同步副本 + 装法注释，否则换机就丢）；
+    本身可等待的活就先等它结束再 restart。
+  - 已经被打断后：**先核设备状态**（`powerState` / `operationState` / `operateMode`）与真值是否静止，再谈下一轮；
+    不要默认“没报错就是安全地停下了”。
+- 🔴 **任务忙/闲判 pid 存活，不判时间戳**：常驻服务用 `time.time()-t0 < N` 判“上一轮还在跑”，遇 NTP 回拨/时钟跳变
+  会把早已结束的上一轮当成在跑，现场表现是“新任务一律被拒”。用 `os.kill(pid, 0)`。
+
 重启服务/执行器/推流进程时，**绝不在自己这条命令行里内联 `pgrep -f <名字>` / `pkill -f <名字>`** ——
 你的命令行本身（含路径、脚本名、甚至**日志文件名**）就含那个字符串，`-f` 会匹配到**执行这条命令的 shell 自己**：
 - 实测：`pkill -f "<模块名>"` ⇒ 自己的 shell `exit -15`（SIGTERM），**同一条命令里后面的步骤一条都没跑**；

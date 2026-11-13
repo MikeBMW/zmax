@@ -128,6 +128,15 @@ git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这
   **不补 tag、不自己升版本号**（版本号只用用户给的那个）。汇报时必须把“改动的性质”点明：
   这类改动是**服务端热读/不掉进安装包**的，所以那个 tag 出的 Windows/macOS 包里没有它也不冲突；
   否则用户下一句必然是“那我下的包到底是不是最新的”。
+- 🔴 **分叉合并(backup→reset→cherry-pick)之后不要 cherry-pick 版本号提交**: 版本提交带着旧基线的
+  studio.py / VERSION.md 上下文, 挑进来必冲突; 只挑功能提交, 然后在新 HEAD 上**重跑**
+  `bump_version.py --to <目标号>`, 再 `git tag -f`。tag 是唯一指向, cherry-pick 换了 sha 就得重打。
+- 轮询可以直接跑 `scripts/ci_watch_release.sh <tag> <sha8>`(后台 + `notify=true`), 它按 sha 认 run、
+  逐 job 报「状态/结论/成功步数/当前步」, run completed 后自动回读 `releases/tags/<tag>` 的资产名与体积。
+- 🔴 **新增 `src/lerobot/**` 子包（算法层/新策略）必须同时加进三处 pyinstaller 命令的 `--add-data`**
+  (Windows onefile / Windows onedir 免解包版 / macOS)。打包闸与资产核验是**清点文件**，漏包照样全绿；
+  只有冻结核验（真跑 `--engine-selftest`）会真 import，报的是导入链深处的 `ModuleNotFoundError`。
+  CI 红了的完整诊断顺序与四类根因见 `references/ci-packaging-gate.md`。
 
 ### ④ 收工 / 关机前 (没给版本号也照样要"保存数据")
 
@@ -269,6 +278,7 @@ print(len(ic.get_addwidget_order(ast.parse(open('/tmp/head_studio.py',encoding='
 | 想用 commit 保存数据 | `zmax_data` 被 .gitignore, add 不进或直接 fatal | 走归档目录 + sha256; 真要入库的是文档/说明, 放 `docs/6-开阳-工程落地/` |
 | 归档漏掉参数真源 | 归档里没有 `layer_forces.json`/`force_field.json` 之类 | `config/` 是软链且不在 git, 逐份 `cp config/calib/<本轮改过的>.json` 进 `data/`, MANIFEST 里点名 |
 | 归档脚本照抄上一版没改路径/版本 | 产物堆到旧版本目录, MANIFEST 写错号 | 复制后只改 `DST` 前缀 + MANIFEST 主题, 跑完用 `search_files(target='files')` 核对目录名 |
+| 归档脚本的扩展名白名单太窄 | 本轮改了 CI/部署配置（`.github/workflows/*.yml`、`*.toml`、页面 `.js/.css`）却全部不在归档里，而 MANIFEST 与 sha256 都全绿 ⇒ 看着齐全、实际少交付物 | 白名单按本轮 `git diff --name-only <基线>..HEAD` 实际出现的类型写；跑完单独数一下某类（如 yml）在 `code/` 里的个数，不只看总文件数 |
 | changelog 写成过程叙述 | 下一版读的人不知道改了什么、根因在哪 | 一行: "做了什么 + 为什么(根因)", 不写排查过程 |
 | 版本号自选 | 与用户口径冲突 | 只按用户给的数字; 没给就只改内容 |
 | 同步多端时默认“仓库最新” | 把远端较新的修复盖掉（反向同理） | 先两侧 sha256，不等就抓回远端 diff 看超集，只拷较新那个方向 |
@@ -278,10 +288,18 @@ print(len(ic.get_addwidget_order(ast.parse(open('/tmp/head_studio.py',encoding='
 | 前台长 `sleep` 等 CI | `exit 124`，误判 CI 挂 | 轮询写成脚本用 `background=true, notify=true` |
 | `scp` 多文件只到一部分 | 归档里少一个关键 json 而 sha256 仍「全 OK」 | staging 后 `ls` 逐名核对，再让脚本拷 |
 | 一次 `git add` 写多个路径 | `fatal: pathspec '<x>' did not match any files` ⇒ **整条命令失败, 一个文件都没暂存**, 而你以为已提交 | 一次 add 多个路径前先 `ls`/`git check-ignore --no-index` 确认都在(本轮新建的脚本常在 `/tmp` 没落库, 先 `cp` 进 `tools/`); add 完 `git status --porcelain` 回读确认真进了暂存区再 commit |
+| 已跟踪但被 `.gitignore` 覆盖的文件（如 `.github/workflows/*.yml`） | `git add` 打印 `The following paths are ignored` 并返回 **1** —— 文件其实已暂存成功，但用它 `&&` 串 `git commit -F <msg>` 时 commit 根本不执行；若 msg 文件也是同一条 `&&` 链里写的，还会追加一个 `could not read log file` 的二次假错 | 这类路径用 `git add -f`；**提交与写 msg 文件分开执行**，commit 前用 `git status --porcelain` 确认在暂存区、commit 后用 `git log --oneline -1` 回读 |
 | tag 后又有改动 | 用户问“我下的包里包含这个吗” | 不补 tag/不自升号，另起 commit；汇报里说明该改动是服务端热读/不进包 |
 | 收工时 `git add data/.../canvas/*.json` | `The following paths are ignored` ⇒ **整条 add 全失败**，一个文件都没暂存（该文件其实是已跟踪的，只是 `data` 是软链到被 ignore 的目录） | 已跟踪的画布用 `git add -f data/...`，并回读 `git status --porcelain` 确认进暂存区 |
 | push 被拒 `fetch first`（并行 session 已推了同一批活） | rebase 逐条撞冲突，而冲突处其实是**同一份活的重复提交**（远端换了 sha） | 不要逐条解冲突：`git branch local-backup-<date> HEAD` → `git reset --hard origin/main` → `git cherry-pick <自己那条commit>`（自己的改动是加法，实测零冲突）→ 回读两侧新功能 grep 都在 → push |
+| cherry-pick 后 tag 还指着被丢掉的 commit | `reset --hard` 之后旧 tag 指向不存在的历史, 远端 tag 与 HEAD 不一致 | 版本提交不 cherry-pick, 在新 HEAD 上重跑 `bump_version.py` → `git tag -f vX.Y.Z` → 校验 `git rev-list -n1 vX.Y.Z` == `git rev-parse HEAD` → 单独 push tag |
+| `reset --hard` 后自建的脚本消失 | 归档/探针脚本若只存在于被丢弃的那个版本提交里, `bash tools/archive_release_*.sh` 报 No such file | reset 前一定先 `git branch -f local-backup-<date> HEAD`; 缺件用 `git show local-backup-<date>:<path> > <path>` 取回, 不要重写一遍 |
+| 重跑归档脚本覆盖手写 evidence | 脚本生成的简版把详细实测版打回去, 且 sha256sums 还是旧的 | 顺序固定: **最后一次**跑归档 → 再补写 evidence → 在归档目录 `find … | sha256sum > sha256sums.txt` 重算 → `-c --quiet` 复核 |
+| 归档脚本的 evidence 统计段（内嵌 python）| ① `json.load(open(f).read().split('\n')[-1])` 报 `'str' object has no attribute 'read'`；② 外层 `<<'PY'` 里又写了一行 `PY` ⇒ heredoc 提前截断，报 `unterminated triple-quoted string` / `unexpected EOF`；③ 输出被 `2>/dev/null` 吞掉 ⇒ **evidence 里只印出一对空 ``` 反而看着像“本轮没数据”** | 逐行解析用 `json.loads(line)`；heredoc 分隔符用与内层不同的名字（如 `PYEV`）；**先单跑内嵌段看 stderr 再重跑全脚本**，不要连续盲跑；完成后 `sed -n` 回读 evidence 那几行确认有数字 |
+| 用同一份日志做“本轮证据”| 后一轮任务用 `open(log,"w")` 覆盖上一轮 ⇒ 下一轮一旦被拒，上一轮的成功数据就永远没了（实测 3 点成功轮被下一次 10 点拒绝轮冲掉）| 任务日志**一律追加**（每轮先写一行 `=== round <时间> n=… ===`）；evidence 要支持列出**多轮**（逐行扫所有 `"steps"` 行），而不是只取最后一行 |
 | `git add -A` 把交付目录里的 `.~lock.<文件名>#` 一起提交 | LibreOffice/WPS 开着交付件就会生成锁文件，`git status` 里反复出现 `D`/`??` 两条锁文件；提交后别人拉下来看到一个瞬时锁 | 提交前 `rm -f <交付目录>/.~lock.*#`，`.gitignore` 加 `.~lock.*#`，锁文件单独一个 commit 清掉；日常提交只 `git add <自己改的文件>`，不用 `-A` |
+| CI 打包红（打包闸/资产核验/冻结核验） | 两个 job 可能都红但根因不同；闸还会因 symlink、cp1252 编码、判据查已删路径、新增子包没进 `--add-data` 而**假失败**，看着像打包坏了 | 先按「失败步 → annotations → run 级 zip 日志」定位，再对四类根因：`references/ci-packaging-gate.md` |
+| 已推的 tag 构建失败后要重出包 | tag 指向未修复的 commit，`workflow_dispatch` 用同 tag 只会重建同一份坏代码 | 修复 commit 落 main 后 `git tag -f vX.Y.Z` → `git push -f origin vX.Y.Z` 触发重建；汇报里明说 tag 被移动（版本号不变，只换指向） |
 
 ## 相关
 - 仓库口径/入库边界/密钥红线: `zmax-engineering-repo`(user-owned)。

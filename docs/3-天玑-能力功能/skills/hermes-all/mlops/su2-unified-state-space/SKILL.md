@@ -348,6 +348,11 @@ skill_ctx=...)` 的**渲染帧 + 24 维 skill_ctx**, 自己模型编出 z_t/z_go
    `restore_gpu()` 起回。⇒ 回答"某节点有没有输出 / 球不动 / 改造好没好"之前, 先 `systemctl is-active
    zmax-ss-canvas-loop`; 引擎回路 `zmax-ss-engine-loop` 在跑只证明 `p`/`p_next` 在刷新(其 `goal_point=None`),
    **它不吐 `quat_ref` 也不跑 ssobs** —— 把引擎回路当成"状态空间在输出"是口径错。
-24. **画布节点的 `outputs` 声明与实际链路可以不一致**: ssobs 声明 `["out1","out2"]` 而链路
+24. **群装不下离散槽位 (桌面缓冲区)**: 槽号/料盘归属/队列/时间戳/各向异性容差都不是转动,
+    塞进 SU(2) 会丢信息(有界映射饱和后多对一)。**容器 = BufferGraph**(逐槽 SE(3)+四态+t_in/t_out,
+    `state_space/buffer_graph.py`), 100D 状态向量是它的压缩投影, SU(2) 只做两件事: 每槽朝向
+    θ=2·arccos|w| 与场景层合成。判定口诀: **离散拓扑+时间+度规 → 图; 朝向+收敛判据 → 群**。
+    别为了"统一"把槽位拍成四元数(实测位置与槽号都不可反演)。
+26. **画布节点的 `outputs` 声明与实际链路可以不一致**: ssobs 声明 `["out1","out2"]` 而链路
    `lk0924_ssobs_ss_mani_eng` 用的是 `out3` —— 运行时取得到(代码里有), 但声明缺口会让面板/校验看不到。
    加/改出口时同步 `params.outputs`, 并在验收里核"声明 ⊇ 被链路引用"。
