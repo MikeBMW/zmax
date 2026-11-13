@@ -1457,8 +1457,58 @@ class H(BaseHTTPRequestHandler):
         self._send(code, "application/json; charset=utf-8",
                    json.dumps(obj, ensure_ascii=False).encode())
 
+    def _step_traj_status(self):
+        """真机逐点进度(do_GET/do_POST 共用): 读 state + 从日志取最后一次进度"""
+        # 真机逐点进度: 读 state + 从输出日志里取最后一次进度(每点一行 JSON)
+        _sts = os.path.join(REPO, "zmax_data", "rokae_sdk", "traj_step_state.json")
+        try:
+            _s = json.load(open(_sts, encoding="utf-8"))
+        except Exception:                                                    # noqa: BLE001
+            self._json({"ok": True, "running": False, "done": 0, "n": 0, "msg": "没有跑过"})
+            return
+        _log = _s.get("log") or ""
+        _prog, _fin = None, None
+        try:
+            with open(_log, encoding="utf-8", errors="ignore") as _f:
+                for _line in _f:
+                    _line = _line.strip()
+                    if not _line.startswith("{"):
+                        continue
+                    try:
+                        _j = json.loads(_line)
+                    except Exception:                                        # noqa: BLE001
+                        continue
+                    if "progress" in _j:
+                        _prog = _j
+                    if ("ok" in _j) and ("steps" in _j):
+                        _fin = _j
+        except Exception:                                                    # noqa: BLE001
+            pass
+        _alive = False
+        try:
+            os.kill(int(_s.get("pid") or 0), 0)
+            _alive = True
+        except Exception:                                                    # noqa: BLE001
+            _alive = False
+        _out = {"ok": True, "running": bool(_alive and _fin is None),
+                "dry": _s.get("dry"), "n": _s.get("n"),
+                "done": (_prog or {}).get("progress", (len(_fin.get("steps") or []) if _fin else 0)),
+                "step": (_prog or {}).get("step"), "elapsed_s": round(time.time() - float(_s.get("t0") or 0), 1)}
+        if _fin:
+            _out.update({"finished": True, "ok_all": _fin.get("ok"), "why": _fin.get("why"),
+                         "n_done": _fin.get("n_done"), "steps": _fin.get("steps")})
+            _s["running"] = False
+            try:
+                json.dump(_s, open(_sts, "w", encoding="utf-8"), ensure_ascii=False)
+            except Exception:                                            # noqa: BLE001
+                pass
+        return _out
+
     def do_GET(self):                                                             # noqa: N802
         p = self.path.split("?")[0]
+        if p == "/api/arm/step_traj/status":        # ⏭ 真机逐点进度(页面 GET 轮询)
+            self._json(self._step_traj_status())
+            return
         qs = {}
         if "?" in self.path:
             for kv in self.path.split("?", 1)[1].split("&"):
@@ -2996,50 +3046,7 @@ class H(BaseHTTPRequestHandler):
             except Exception as e:                                               # noqa: BLE001
                 self._json({"ok": False, "stage": "launch", "err": "%s: %s" % (type(e).__name__, str(e)[:90])})
         elif p == "/api/arm/step_traj/status":
-            # 真机逐点进度: 读 state + 从输出日志里取最后一次进度(每点一行 JSON)
-            _sts = os.path.join(REPO, "zmax_data", "rokae_sdk", "traj_step_state.json")
-            try:
-                _s = json.load(open(_sts, encoding="utf-8"))
-            except Exception:                                                    # noqa: BLE001
-                self._json({"ok": True, "running": False, "done": 0, "n": 0, "msg": "没有跑过"})
-                return
-            _log = _s.get("log") or ""
-            _prog, _fin = None, None
-            try:
-                with open(_log, encoding="utf-8", errors="ignore") as _f:
-                    for _line in _f:
-                        _line = _line.strip()
-                        if not _line.startswith("{"):
-                            continue
-                        try:
-                            _j = json.loads(_line)
-                        except Exception:                                        # noqa: BLE001
-                            continue
-                        if "progress" in _j:
-                            _prog = _j
-                        if ("ok" in _j) and ("steps" in _j):
-                            _fin = _j
-            except Exception:                                                    # noqa: BLE001
-                pass
-            _alive = False
-            try:
-                os.kill(int(_s.get("pid") or 0), 0)
-                _alive = True
-            except Exception:                                                    # noqa: BLE001
-                _alive = False
-            _out = {"ok": True, "running": bool(_alive and _fin is None),
-                    "dry": _s.get("dry"), "n": _s.get("n"),
-                    "done": (_prog or {}).get("progress", (len(_fin.get("steps") or []) if _fin else 0)),
-                    "step": (_prog or {}).get("step"), "elapsed_s": round(time.time() - float(_s.get("t0") or 0), 1)}
-            if _fin:
-                _out.update({"finished": True, "ok_all": _fin.get("ok"), "why": _fin.get("why"),
-                             "n_done": _fin.get("n_done"), "steps": _fin.get("steps")})
-                _s["running"] = False
-                try:
-                    json.dump(_s, open(_sts, "w", encoding="utf-8"), ensure_ascii=False)
-                except Exception:                                            # noqa: BLE001
-                    pass
-            self._json(_out)
+            self._json(self._step_traj_status())
         elif p == "/api/traj/exec":
             # 🧭 2026-10-26 老倪: 「点轨迹按钮→高亮→三维里看着→点执行就发指令」
             #   带 k 就先把它转成段表(planned_traj.json), 再走原来的执行闸;
