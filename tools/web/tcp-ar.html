@@ -5059,7 +5059,26 @@ function rtrajStop(){  RTRAJ.playing=false;
    这个是一点一点走 —— 每走到一个轨迹点就停一下( dwell ), 走完当前点才去下一个,
    输入框决定走几个点(默认3)。数据同源: 关节角真值帧(pitch 姿态与翻面一起保真), 只用仿真, 真机零指令。 */
 var SYNC={playing:false,raf:null,ph:'idle',i:0,n:0,frames:null,q0:null,t0:0,dur:420,dwell:300};
-var SYNCARM={poll:null};
+var SYNCARM={poll:null,follow:null};
+function syncArmFollow(on){
+  if(SYNCARM.follow){ clearInterval(SYNCARM.follow); SYNCARM.follow=null; }
+  if(!on) return;
+  // 真机在动的时候, 仿真臂按真值关节角实时跟随(tcp_out/latest.json 的 joint, ~50Hz 采样)
+  // ⇒ 画面里仿真和真机同一格, 不再出现"仿真走完就静止、真机自己在动"的错觉
+  SYNCARM.follow=setInterval(function(){
+    fetch('/api/tcp').then(function(r){ return r.json(); }).then(function(d){
+      var j=d&&(d.joints||d.joint);   // /api/tcp 真值字段是 joints(复数), joint 是 latest.json 原名
+      if(!j||j.length<6) return;
+      var age=(d&&d.ts)?(Date.now()/1000-d.ts):0;
+      if(Math.abs(age)>2) return;                     // 真值太旧不跟(别把陈旧位姿当实时)
+      var q=[+j[0],+j[1],+j[2],+j[3],+j[4],+j[5]];
+      PREV.q=q; PREV.on=true;
+      try{ PREV.M=urdfFK(q); }catch(e){}
+      mjPushQ(); if(typeof mjPushQForce==='function') mjPushQForce();
+      drawVR();
+    }).catch(function(){});
+  },100);
+}
 function syncUI(on,txt){
   var b=document.getElementById('bSyncStep'), t=document.getElementById('tSyncStep');
   if(b){ b.textContent = on ? '⏹ 停止同步' : '⏭ 同步操作'; if(b.classList) b.classList.toggle('on', !!on); }
@@ -5085,6 +5104,7 @@ function syncArmRun(n){
         return;
       }
       st('仿真完成 · 真机逐点开始 '+n+' 点…','#58a6ff');
+      syncArmFollow(true);        // 真机一动, 仿真就按真值跟随(画面同步)
       var t0=Date.now();
       if(SYNCARM.poll) clearInterval(SYNCARM.poll);
       SYNCARM.poll=setInterval(function(){
@@ -5093,6 +5113,7 @@ function syncArmRun(n){
             st('真机 第 '+(s.done||0)+'/'+(s.n||n)+' 点 · '+(s.elapsed_s||0)+'s','#58a6ff');
           } else if(s.finished){
             clearInterval(SYNCARM.poll); SYNCARM.poll=null;
+            syncArmFollow(false);
             if(s.ok_all) st('✅ 真机走完 '+(s.n_done||0)+'/'+(s.n||n)+' 点 · '+(s.why||''),'#3fb950');
             else st('⛔ 真机停在 '+(s.n_done||0)+'/'+(s.n||n)+' 点 · '+(s.why||''),'#f85149');
           } else if(Date.now()-t0>900000){

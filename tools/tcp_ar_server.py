@@ -2991,7 +2991,13 @@ class H(BaseHTTPRequestHandler):
             _sts = os.path.join(REPO, "zmax_data", "rokae_sdk", "traj_step_state.json")
             try:
                 _cur = json.load(open(_sts, encoding="utf-8"))
-                if _cur.get("running") and time.time() - float(_cur.get("t0") or 0) < 1800:
+                _calive = False                       # 时间戳会被 NTP 回拨打乱, busy 判活要看 pid 是否还在
+                try:
+                    os.kill(int(_cur.get("pid") or 0), 0)
+                    _calive = True
+                except Exception:                                            # noqa: BLE001
+                    _calive = False
+                if _cur.get("running") and _calive:
                     self._json({"ok": False, "stage": "busy",
                                 "err": "上一轮真机逐点还在跑(第 %s/%s 点), 等它结束或先停" %
                                        (_cur.get("done"), _cur.get("n"))})
@@ -3025,7 +3031,7 @@ class H(BaseHTTPRequestHandler):
                 return
             try:                                                                 # ③ 写指令 + 后台起容器
                 _cmd = {"frames": [[float(v) for v in (f.get("j") or [])] for f in _fr[:_n]],
-                        "n": _n, "speed": float(_b.get("speed") or 5.0),
+                        "n": _n, "speed": float(_b.get("speed") or 20.0),   # 关节速度%: 5% 实测 0.3°/s 太慢(每点 25~35s), 20% ⇒ 每点约 6~9s
                         "dwell_ms": int(_b.get("dwell_ms") or 120),
                         "src": "real_traj_joints.json", "ts": time.time()}
                 _cp = os.path.join(REPO, "zmax_data", "rokae_sdk", "traj_step_cmd.json")
