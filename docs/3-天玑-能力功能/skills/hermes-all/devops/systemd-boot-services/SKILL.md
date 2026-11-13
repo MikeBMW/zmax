@@ -227,7 +227,12 @@ systemctl      active                          # 完全看不出问题
   `pkill -f 'ssh.*<端口>'` 同样会自杀——命令行里就写着那个端口号, 它会先杀掉自己所在的 shell(SIGTERM)。
   修法①判据写拼接串(`P="vl_safety""_monitor.py"`)；修法②把循环/kill 放进**独立脚本文件**再执行(它的 argv 只有路径)。
   🔴 **"操作成功一半、工具报被自己 SIGTERM"时先怀疑自杀式匹配, 不要以为服务真挂了。**
-- 🔴 **反方向也会错: 模式串对不上真 argv ⇒ 假阴性**(判活脚本报「没有 X 进程」, 而 `systemctl is-active` 明明是 `active`)。
+- 🔴 **重启脚本里禁 `set -u`**: ROS 的 `setup.bash` 会引用未定义变量(`AMENT_TRACE_SETUP_FILES` 等),
+  开 `set -u` 时 `source` 直接报 `未绑定的变量` 并退出 —— 此时**旧进程已被 kill、新进程根本没起**,
+  而下游只会看到“一直在吐同一张缓存帧/端口还 200”(中继服务手里有上一帧), 极易误判成“重启没生效/改动无效”。
+  定式: 重启脚本不写 `set -u`(或 `set +u` 包住 `source`), 并在脚本最后**强制回测**: 进程存在(只一行)
+  + 端口 `/health` 的帧计数在涨 + 日志里出现新代码自己的那行输出。只跑 `systemctl restart` 不回读 = 没验。
+- 🔴 **反方向也会错: 模式串对不上真 argv ⇒ 假阴性** (判活脚本报「没有 X 进程」, 而 `systemctl is-active` 明明是 `active`)。
   wrapper 类服务(Python CLI、`python -I -c runpy…` 启动器、带 venv 前缀的入口)的真实 argv 与业务名不一致,
   `pgrep -af '<业务名>'` 一个都匹配不到。定式: 先用 `systemctl show -p MainPID` 或 pidfile 拿 pid,
   再 `tr '\0' ' ' < /proc/<pid>/cmdline` 取**一次真 argv** 才写模式; 日常判活优先 `is-active` / 端口 / pidfile,

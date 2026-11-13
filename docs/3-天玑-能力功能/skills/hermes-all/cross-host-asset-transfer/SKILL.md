@@ -220,6 +220,22 @@ ssh host 'pip install --no-index --find-links /home/x/wheels312 <pkg>'
 7. **部署前确认这台机没有该链路的执行消费者**: `grep -rl <输出文件> tools/ src/` + 看 `actuator_calls.log`
    是否存在/在长。否则"部署一个规划器"可能等于"开始给机器人下指令"。
 
+### 6b. 目标机**没有 git**、只有活的代码树: 只更新"两边都有"的文件, 再证明生效
+
+判据: `ls -d ~/zmax/.git` 不存在, 但 `~/zmax/tools`、`~/zmax_map/tools` 下有一堆进程正跑着
+(边缘机常见两棵活树: 一棵状态空间/页面链, 一棵建图/进化链 ⇒ 同步要**分别对两棵**做)。
+
+1. 备份先做: `tar czf <home>/backup/tools_<ts>.tgz -C <home> <tree1>/tools <tree2>/tools`。
+2. diff 必须带 **`--existing`**: 目标树是本机的子集, 不加它时凡"只在本机存在"的文件全被列成差异
+   (实测 134 条, 真正不同的只有 ~30 条) ⇒ 会误判成整树都旧、进而把子集树灌成整树。
+   同时排 `__pycache__`/`*.pyc`(字节永远不同, 噪声最大)。
+3. 真同步同参数 + 备份后缀:
+   `rsync -a -c --existing --exclude '__pycache__' --exclude '*.pyc' --backup --suffix=.bak_pre<标签> tools/ host:<tree>/tools/`
+   —— `--existing` 保证**目标机独有的文件一个不删**。
+4. 验收两条: 远端逐文件 `python3 -m py_compile` 关键的(实测 4/4 OK) + **再跑一次 `-n -c --existing` 应回 0 条**。
+5. 🔴 **写到盘上 ≠ 已生效**: 常驻服务内存里跑的是旧代码, 不 restart 等于白同步。默认**不自动重启**,
+   报"同步完成 · 服务没动, 生效需重启 X/Y", 让用户点名。
+
 ## 7. 整站 web 迁到内网主机(nginx+php+mysql+多服务+反向隧道)
 
 目标机在内网 NAT 后、源站有公网 IP 时, 拓扑固定为: 公网 nginx 只做 TLS 终结 + 反代到隧道,

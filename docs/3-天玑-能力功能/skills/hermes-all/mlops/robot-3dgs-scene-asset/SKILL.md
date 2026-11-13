@@ -175,6 +175,7 @@ metadata:
 | 自建数据集时报「手眼方向用错」 | 校验式拿**米**算出来的相机-法兰距离(0.244)去比**毫米**的手眼模长(244.1) ⇒ 恒差 1000 倍, 好数据被自己判死 | 相机-法兰偏移检查一律 `*1000` 后与 `|t_mm|` 比; 打印两边数值单位(`244.1mm vs 244.1mm`), 不只看 PASS/FAIL |
 | 把上万帧连拍直接喂进训练 | 训练慢/显存吃紧而视角几乎不增 | **先按 6D 位姿最远点贪心抽帧**(平移 + 0.15×朝向差) 到 ~300 张 —— 同视角连拍对重建零贡献。现成工具 `tools/gs_dataset.py`(去畸变 + 选帧 + 出 `cameras.json`/`transforms.json`/`meta.json`) |
 | **深度图无效值 65535 没挡** | 点云 bbox 被撑到 6.8m×5.6m×6.2m(实际工作台 ~2.3m)；离群剔除只剔 1.8% | D405 无效深度编码 **65535**×0.1mm=6553.5mm；有效判据必须**双端**: `(z > 50) & (z < 2000)`(`tools/slam_map_service.py` 已加 `ZMAX_MAP_MAX_DEPTH_MM`, 默认 2000)。实测同一帧: 232308 点/bbox 6.8m → 217375 点/bbox 2.3m |
+| **守护活着但 frames 冻住 / `skipped_jump` 涨到几万** | 臂被开走过(轨迹回放/手动)之后一张都不采; 守护 `active`、`last_error` 空、会话目录 mtime 停住 | 跳变基准 = 最后一次**采到帧**的位姿 ⇒ 臂走开 5cm 后永远判"跳太远"、基准再不更新(死锁)。定式 = 连续 15 次跳变就把基准挪到当前位姿继续采; 判活看 `frames_total`/`cur.frames` 涨不涨(臂在动时 ~1.6 帧/s), 别只看 `systemctl is-active`。详见 `references/autocap-daemon.md` bug#4 |
 | **采完等“出模型”却什么都没有** | `images/` 在涨、`frames_total` 也涨, 但会话目录没有 `cameras.json`、没有新模型; 帧数差几帧才到 `GS_MIN_FRAMES`(实测 151/160) | 收尾门不够就**不 finalize**(不写 `cameras.json`/不打包/不送训), 而且**位姿只在守护进程内存里** ⇒ 查“图张数 vs 门值”, 让操作员再动 3~5 秒凑新视角, **不要重启守护**(那把已采帧的位姿就没了); 要可救回就把 `frames.jsonl` 改成一帧一追加。详见 `references/autocap-daemon.md` |
 | **无人值守自训跑了一整夜, 一版资产都没有** | 守护 active、`state.json` 在刷新、`train_*.log` 一天十几个, 看着"一直在训"; 实际每次都在同一步崩, 成功标志数 = **0** | 三查定案, 别信"进程在跑": ①`grep -l '训练完成\|gs.ply' <资产目录下的 train 日志> \| wc -l` = 0 ⇒ **一版都没成过** ②`grep -c DATASET_FAILED state.json` ⇒ 指纹里堆着失败记录 ③两份日志的报错是否**逐字相同**(同错重复 11 小时 = 没人看)。修完故障必须**清掉 `state.json` 里对应的 `*_FAILED` 指纹**(备份后改), 否则同一指纹永不重试, 你会以为"修好了但没触发"。另: 有多个 `gs_auto_train.py` 实例时按**显式 pid** 清到一个, 否则几份日志互相覆盖、时间线读不出来 |
 | 建库步崩 `ModuleNotFoundError: cv2`(XPU venv 里只装了 torch/gsplat) | 想把系统 `cv2*.so` 软链进 venv 救一下 ⇒ `ImportError: numpy.core.multiarray failed to import`(系统 cv2 是 numpy1.x 编的, venv 是 numpy 2.x) | **按 CPU/GPU 分工**: 建库(去畸变+选帧)只需要 cv2/numpy ⇒ 用**系统 `python3`** 跑 `gs_dataset.py`; 训练才用 XPU venv。编排器里给两个解释器各一个变量(`SYS_PY` / `PY`), 不要为了一个 import 去动 venv 的 numpy 版本 |
@@ -486,6 +487,39 @@ Intel XPU  tools/gs_render_stream_intel.py --ply --cameras --report --handeye --
 ```
 实测: 280,452 高斯 · 5~6fps · 位姿龄 **0.008s** · 单帧 21KB · 端到端 0.31s。
 
+- 🔴 **station 那格"什么都没有"先查渲染流, 不要怀疑图没建**: 判据一条命令 ——
+  `curl -s :8793/gs/live/health` 若回 `{"ok":false,"err":"[Errno 104] Connection reset by peer"}` 而
+  `/gs/live.jpg` 是 `503`, 就是**边缘机侧渲染进程没在跑**(隧道在不在用 `ss -ltnp \| grep 8816` 分开看);
+  `ok:true` + 小 `age_s` 才说明是页面/浏览器侧的问题。资产本身照旧用 `/gs/list` + `.splat` 字节数单独验,
+  两条链别混着猜。
+- 🔴 **只把 `gs_render_stream_intel.py` 放盘上 ≠ 有人拉它**: 这个渲染器要显式 `--ply/--cameras/--report`,
+  而实时建图每轮产出新目录 ⇒ 需要一个"挑最新完整轮次 + 定时轮换"的壳才装得成常驻服务; 缺壳时服务不存在,
+  症状正是上面那条 503(现场看到的只是"空白一坨", 不会报错)。
+  📎 现成壳: `scripts/gs_render_loop.sh`(按**质量**挑 `out_<ts>` + 同名 `ds_<ts>/cameras.json`, `LIFE` 秒轮换,
+  死了 5s 重起, 带可用内存闸), 包成 systemd 单元 + `enable --now`, 端口 8816。验收 = 单元 `active` + 日志出现
+  `载入 N 个高斯 · dev=xpu` + 从 8793 侧回读 `/gs/live/health` 的 `gaussians/fps/age_s`。
+
+- 🔴 **挑资产按 PSNR, 不按 mtime**: 实时建图每轮 400~600 步出的图(12~13.6dB)永远比跑满 3000 步的那版(15dB+)糊,
+  壳若"取最新一轮"就把最糊的推上墙。定式 = 扫所有完整候选(`out_*/` 与训练队列 `jobs/*/out/`, 都要有
+  `gs.ply`+`train_report.json`+同名 `cameras.json`), 按 `psnr_holdout_db` 取最高。
+- 🔴 **同一条道理也适用于实时发布本身**: 实时轮次无条件覆写 `rt_live` ⇒ 12dB 的那轮会把 15dB 的抢成 `latest`,
+  用户刚看完好图再刷一次就变糊(现场原话“怎么模糊了, 没训练成功么”)。要么发布前过一道
+  “优于现役 PSNR 才换”的门(参考 `tools/gs_retrain_swap.py` 的 `--baseline`), 要么把实时轮次发到
+  `rt_<psnr>` 这类**不抢 latest** 的名字下、由壳按质量挑。
+- 🔴 **但候选必须限同一天/同一场景**: 老 job 是**别的场景/别的标定**, PSNR 再高(实测 10-30 那个 job 排第一)
+  渲出来也是另一个工位 ⇒ 加 `date.fromtimestamp(mtime) == date.today()` 这条过滤, 再取 PSNR 最高。
+  判据: 日志里打"选中 <job> PSNR留出 x.xx dB", 与 `/gs/list` 报的那一版对得上。
+- 🔴 **模糊别先怪分辨率**: 实测 640×480 提到 960×720 后清晰度(拉普拉斯方差)只从 **1.5 → 1.9**,
+  而换更高质量资产(400步12.45dB → 3000步15.5dB)立刻变成 **4.4** ⇒ **糊的主因是模型/覆盖, 不是渲染尺寸**。
+  口径: `cv2.Laplacian(gray, CV_64F).var()` 在 1~2 量级 = 明显糊; 先用它对齐"是不是渲染参数的问题", 再谈提分辨率。
+- 🔴 **环绕路径(tour)必然在没拍过的角度糊**: 一圈 300 帧绕过去, 离开采集锥(光轴夹角 >30°)就只能糊 ——
+  这是 3DGS 的固有性质。要"清晰"只有两条: 视角贴着采集位姿/锥内, 或者补采新视角;
+  向用户解释时把"模型 15dB"与"环绕到未覆盖角度"分开说, 别让他以为是渲染 bug。
+- 🔴 **推流不可用时这格要自动降级, 不许留空白**: 进页先 `fetch('gs/live/health')`, 不 `ok` 就自动把
+  退回**静态重建图**(`/gs_render.png` 这类, 十几~几十 KB, 15s 带 cache-buster 刷一次)—— **不要**退回 `/gsview` iframe
+  (同页还挂着 5~6 路 MJPEG, 再叠一个 WebGL 渲 6 万高斯就把整页拖卡, 现场只会说"太卡啦"), 再在说明行写"推流暂不可用 ⇒ 已切浏览器端"。
+  这条是**交付面的兜底**: 用户看不到图时不会去猜是隧道/渲染/资产哪一层, 他只会说"什么都没有"。
+
 - 🔴 **不要拿浏览器端 splat 渲染当交付面**: 那要拉几十 MB 且占宿主页主线程; 服务端渲一帧 JPEG 只有几十 KB。
 - 🔴 **同步公式必须与采集同式**: `T_cam2world = inv(T_base2tcp @ T_cam2tool)`, 手眼取 `~/zmax_map/models/handeye_state.json`
   (|t|=244.1mm · 残差 0.06mm)。位姿源 `/robot/tcp_pose`(PoseStamped 50Hz) —— **Intel(192.168.23.70) 可直接订阅**, 不必绕 Orin。
@@ -515,6 +549,12 @@ A 35.7 · 黑 66.2%    B 92.7 · 黑 13.0%    C 99.4 · 黑 7.8%     (A 的相�
 判据看**分布**(「质心 1.0m 内占 76%」)而不是 min/max 包围盒 —— 后者被个别飞点撑爆。
 
 ### 欠训练 vs 数据不够
+
+- 🔴 **判「欠拟合还是位姿错」用「渲染 vs 原图」清晰度比, 比只看 PSNR 快且不骗人**: 取同一视角的
+  `renders/holdout_XX.png` 与 `holdout_XX_gt.png`, 各算 `cv2.Laplacian(gray, CV_64F).var()`。
+  实测好资产 渲染 **44.7** / 原图 **616**、**61.9** / **243**(有结构); 同一天 3000 步那两份 渲染 **1.8** / 原图 **70.2**、**2.0** / **88.5** ——
+  均值亮度接近却**零结构**(模型学成了“输出每帧平均色”) ⇒ 比值 <0.05 直接判“没学到几何”, **但别据此一票否决「加步数」**: 先做一次只加步数的对照 —— 同一份 900 帧数据 3000→12000 步实测 渲染/原图比 **0.026 → 0.29**(渲染 1.8→23.0 · 留出 PSNR 15.54→16.36), 结构长出来 = 欠拟合(继续加步数/加视角); 仍停在 1~2 量级才转头查位姿与覆盖。同时把数据集的训练图也量一遍(实测 64~70 = 输入清晰)就能把“采集曝光糊”与“模型/位姿问题”当场分开。
+- 判据顺序: 渲染/原图比 → 训练视角 vs 留出 → 位姿时间戳配对(帧与臂位姿是否错帧)。三步走完再动超参。
 `train_report.json` 的 `steps` · `refine_stop_iter` · loss 是否收敛三样一起看: 实测 3000 步 + `refine_stop_iter=1500`
 (默认按 `min(steps,15000)*0.5` 算) ⇒ loss 0.127 仍在跳、渲染只能看大色块。补法 30k 步 + `--sh-degree 3 --refine-stop 15000`;
 但**它只提清晰度, 提不了覆盖** —— 覆盖缺就得真去采。Intel XPU 步速现量: 3000 步≈0.18s/步; 30k 且推流同时在跑时≈0.47s/步(≈3.5h)。
@@ -526,8 +566,10 @@ A 35.7 · 黑 66.2%    B 92.7 · 黑 13.0%    C 99.4 · 黑 7.8%     (A 的相�
 | 坑 | 症状 | 修法 |
 |---|---|---|
 | `pgrep -f gs_render_stream_intel.py` 判活/杀进程 | 计数恒为 1, 或 kill 之后自己的 ssh 会话直接断 | 命令串里也含这个模式 ⇒ **匹配到自己**; 用 pidfile(`echo $$ > /tmp/gsstream.pid` 后 `exec python …`)或按端口 `ss -ltnp` 取 pid |
+| **`pgrep -f <脚本名>` 判"有没有在跑"时命中常驻服务进程** | 守护反复打"有其它训练在跑, 等它结束"、待训帧数一直涨, 而队列 `/health` 明明 `busy:false` | 子是串匹配: `gs_train.py` 会命中 `gs_train_service_intel.py` ⇒ 恒 true。改 `pgrep -af 'gs_train\.py' \| grep -v gs_train_service`; 任何 `pgrep -f` 判活都先列出命中的完整命令行(`pgrep -af`)再下结论。**第三种形态 = 自己的 ssh/bash 命令行本身含该模式**: `ssh host "…pgrep -af 'gs_train.py' \| grep -c <out名>…"` 里两个串都在自己命令行上 ⇒ 永远判"还在跑"(实测守望白等 4 小时直到超时, 训练早已完成)。模式串用 `[.]` 断自身匹配(如 `gs_train[.]py`)+ `grep -v pgrep` |
 | 重启时旧实例还占 :8816 | 新进程 `OSError: [Errno 98] Address already in use`, 而 `/health` 仍回旧数据(甚至旧的 `src/err`) | 先按端口取 pid 杀掉再起; 否则会以为"改了没生效", 实际看的是旧实例 |
-| 训练与推流同时在 XPU 上 | 渲染 fps 掉、health 偶发超时、步速 0.42→0.47s/步 | 已知可接受; 要快把推流 fps 从 10 降到 5~6 |
+| 训练与推流同时在 XPU 上 | 只是 fps 掉、步速 0.42→0.47s/步 | 轻载可接受; 但**加分辨率/加帧率就是另一回事**(见下一条) |
+| 🔴 **推流拉高分辨率 + 训练同跑 ⇒ 把工位机压死** | `Mem:` 总 30G **全用满**、load 从 28 冲到 **50**、**sshd 都 banner timeout**(ping 通但 22/8806/8811/8814/8816 全不应答)、页面那格跟着黑 | 实测把推流从 640×480 提到 960×720@8fps + 实时建图在训 ⇒ 整机 thrash。定式: 渲染前先看 `MemAvailable`, 低于阈值(实测取 6G)**先不渲**; 降载顺序 = 降分辨率 → 降 fps → 停推流退回浏览器端查看器。ssh 抛 banner timeout 时要**重试循环**(`for i in …; do ssh … && break; sleep 15; done`), 别当成机器挂了 —— OOM 释放后会自己回来 |
 | 跨机 `scp` 大 ply | 读回报 `buffer size must be a multiple of element size` | 文件被**截断**(实测 37,340,160B vs 实际 42.6MB) ⇒ 核对字节数后重传, 不要怀疑 ply 解析器 |
 | 改了渲染器代码但页面没变 | — | 渲染器是 **systemd/pidfile 常驻**, 必须重启; 页面/JS 是热读, 只需刷新 |
 | `timeout N ssh host '… ; sleep N ; tail …'` | 拿不到任何输出(命令 exit 0 但空), 像"远端没反应" | `timeout` 把**自己的 ssh 会话**在 sleep 结束前砍了 ⇒ 启动与取值拆两次调用: 一次 detached 起(`setsid nohup … &`, 立刻返回), 另一次再读 health/日志 |
@@ -652,6 +694,37 @@ A 35.7 · 黑 66.2%    B 92.7 · 黑 13.0%    C 99.4 · 黑 7.8%     (A 的相�
 - 🔁 **要走的每一趟都顺手采**: 为复位/回起点而走的长轨迹(比如沿操作员拖过的路径反走 3~4 米)本身就是一次扫掠
   ⇒ 走的同时就开采集(`gs_capture.py --secs 0`, 到终点放 `STOP`), 走完并入上一版数据集 ——
   别"先走回去、再重走一遍采"。
+- 🎯 **回放一条已录轨迹 = 现成的扫场轨迹, 比让人现场走更省事**: 轨迹文件里有几百个关节目标点 + 真累计路程与转角
+  (实测 215 点 / 7.9m / 952°), 正好过 MIN_SPAN/MIN_TRAIN_VIEWS 门。前提**只有一条**: 开跑前先确认
+  采集守护的帧源是活的 —— 实测同一台机上“先跑完一整遍轨迹、然后才发现采集源早就死了(0 帧)” ⇒ 白走一趟。
+  顺序固定: 采集源 `/health` 的帧龄与 fps → 轨迹回放 → 盯 `frames_total` 在涨 → 收工等作业落 `train_report.json`。
+  实测收益: 一趟回放采到 **1352 帧 → 2 个作业**, 首件 **3000 步 / 109k 高斯 / 留出 15.07dB**(历史 859 帧那份 12.08dB)。
+- 📤 **边缘机的训练产物在 job 目录里, 不在资产库**: `gs_train_service` 写到
+  `<service>/jobs/<id>/out/{gs.ply,gs.splat,renders,train_report.json}`, 而工位页的 `/gs/list` 只扫资产根
+  ⇒ “训完了但页面看不到”不是没训成。发布 = 把 `gs.splat + gs.ply + renders + train_report.json`
+  拷到 `<资产根>/<资产名>/`, 再 `curl /gs/list` 回读(它按 mtime 排 latest, 并自己读 `train_report.json`
+  的 PSNR/高斯数/步数)。交付时报数必须带这四项, 不只报"已发布"。
+  🔴 **回读要比对目标文件的 mtime + md5 与源一致**: "已发布"是程序自己打的日志, 实测出现过日志写已发布、
+  资产根本文件 mtime 仍停上一轮 ⇒ `/gs/list` 继续报旧 PSNR、页面看的是旧图。判据只认文件本身。
+  🔴 **步数/高斯数一律读 `train_report.json`, 不读自己传给训练器的参数**: 实测外层日志打"步数 1500"、
+  报告里 `steps` 是 600 ⇒ 报数、算 ETA、比质量都必须取产物里的数, 参数可能是没生效的。
+  📎 边缘机(550C)上读臂相机、用历史会话零运动建图、手眼路径回退的完整配方:
+  `references/550c-arm-camera-and-history-map.md`
+
+## 训练完成 → 自动发布 + 发飞书 (无人值守交付定式)
+
+老倪口径「训练完时，把训练好的图，发到飞书端」⇒ 交付物是**图 + 数字 + 链接**，不是一句「已完成」。
+
+- **判完成盯产物，不按 ETA 猜**: `<out>/train_report.json` 落盘 **且** 该 out 的 `gs_train` 进程消失。时长随负载浮动(同一份 900 帧实测 3000 步 27 分钟 / 12000 步 74 分钟)，用时间猜必然错。
+- 顺序固定五步，缺一步用户就只看到「没消息」:
+  1. 拉 `train_report.json` + `gs.splat` + `renders/holdout_00.png` 与 `holdout_00_gt.png`;
+  2. 拼**左右对照图**(左=模型渲染、右=相机原图，图上直标 PSNR) —— 用户第一眼看「有没有结构」，只给 dB 他会追问「哪里好一些」;
+  3. 发布成资产目录 → `curl /gs/list` 回读取资产名/PSNR/高斯数(自己的「已发布」日志不算证据);
+  4. `tools/feishu_send.py --image <对照图> --text "<资产名 · PSNR 留出/训练 · 步数 · 高斯数 · 查看链接>" --chat <oc_…>`;
+  5. **回读 message_id**(`tools/feishu_check_messages.py --n 3`)并把 `{psnr, steps, n_gaussians, 图, message_id}` 落 `zmax_data/reports/gs_posttrain_<out>.json`; 交付汇报说「图 + message_id + 发送时刻」。
+- 现成实现 `tools/gs_posttrain_feishu.py`(守望→发布→拼图→发送→落档一站)，起它用 `background=true` + `persist_on_release=true`(要跑 1~2 小时，别被会话生命周期带走)。
+- 文字里**必须带口径**: `PSNR 留出 / 训练视角 / 步数 / 高斯数` + 「左=模型渲染(留出视角) 右=相机原图」; 缺了口径，群里那张图就无法判断真假。
+- 🔴 守望脚本挂长驻**前**先用手动模式跑一次(`--max-wait-h 0.05`)验证它真能认出「已完成」—— 完成判据的自匹配坑见上面运维坑表(实测白等 4 小时); 要「优于现役才换资产」另走 `tools/gs_retrain_swap.py --baseline`。
 
 ## PSNR 诊断三分法（看数字就知道错在哪层）
 

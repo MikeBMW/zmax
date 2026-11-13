@@ -19,8 +19,9 @@ metadata:
 - 你的程序依赖被加密/黑盒的包(pyarmor 等), 断点进不去
 - **机器压根没开机 / 在休眠 / 你手上只有一块 U 盘 LiveUSB 起的 Linux**: 通道不存在 ⇒ 走第八节离线载荷
 
-适用环境: 产线 Windows 工控机(例: 192.168.23.23, 开 1008x/139/445, **无 SSH/RDP/WinRM/共享凭据**),
+适用环境: 产线 Windows 工控机(例: 192.168.23.23, 开 1008x/139/445, **无 SSH/RDP/WinRM**),
 上面跑着**你在维护**的程序 + **产线自己的**服务(例: flask_1005 / Mech-Vision)。
+🔑 **拿到账号口令后不必再绕**: 445 开着就优先用 SMB 直接读写盘符(读日志/落脚本/核文件), 反向通道只在没凭据或要**执行命令**时才必需 —— 见「一.0」。
 具体 AOI 端点/版本口径见用户自有的 `zmax-aoi-service`(要找它自动维护先 `hermes curator adopt`)。
 
 ## 铁律(先读, 都是踩过的)
@@ -47,7 +48,6 @@ metadata:
   停在登录界面时探端口必得 0, 别据此写"服务坏了"或去重启机器。
 
 ## 一、驱动它: 反向通道(无登录口时唯一可靠做法)
-
 ```bash
 ./gui-venv311/bin/python tools/station_cmd.py "<PowerShell 一行>"   # 下发并取回执
 ```
@@ -67,7 +67,29 @@ metadata:
 - **下发文件后必须在机器上回读内容**: 静态目录/`iwr -OutFile` 装到的可能还是旧内容 ⇒ 回读并**解析关键字段**
   (例: `(Get-Content <json> -Raw | ConvertFrom-Json).configurations.program`)再报"已生效";
   只比字节数/哈希会把"没生效"当成功报给用户(实测下发后机器上仍是旧配置)。
+- 🔴 **在 bash 里给 `station_cmd.py` 传 PowerShell 必须用单引号包**: 双引号下 bash 会先展开 `$_`/`$LASTEXITCODE`
+  之类 —— 实测 `Where-Object {$_.ProcessName -match 'python'}` 被改写成 `{/home/ubuntu/zmax.ProcessName ...}`
+  ⇒ 回执报 `CommandNotFoundException`, 看着像"通道坏了/这台机器的 PS 不认管道"。正确写法
+  `./gui-venv311/bin/python tools/station_cmd.py 'Get-Process | Where-Object { $_.ProcessName -match "python" }' 90`
+  （外层单引号 + 内层双引号）。
 - 通道健康**看它发来的请求**, 别用日志行数/本机自检判: `sudo timeout 20 tcpdump -A -s 0 -n -i <产线网卡> 'host <机器> and port 8794'`。
+
+### 一.0 有账号口令时: SMB 直读直写(只能读写盘, 不能执行)
+
+口令到手后**第一件该试的事**, 比 base64 分块省事一个量级: 看日志/列目录/校正文件是否存在都能直接干。
+
+```bash
+smbclient -L //<ip> -U '<user>%<pass>' -m SMB2          # 看共享: ADMIN$ / C$ / D$ / <业务共享>
+smbclient //<ip>/D$ -U '<user>%<pass>' -m SMB2 -c 'cd xspace\<目录>; get <日志> /tmp/<日志>'
+```
+- **业务共享往往直接就是安装目录**: 实测 `<业务共享>` 的根与 `D:\xspace\ultralytics_AOI` 同目录
+  ⇒ 列文件用那个共享就行, 路径短、不用转义盘符。
+- **落自己的脚本用 `put`, 再用反向通道执行**: `-c 'put /本地/x.ps1 x.ps1'` → `powershell -ExecutionPolicy Bypass -NoProfile -File D:\<目录>\x.ps1`。
+  这条绕过「单条命令 ~3KB 就坏」与「base64 分块拼坏」两个坑。
+- 纪律: ① 只读或只写**自己的**文件名, 不覆盖现役/别人的文件; ② 落下去的 `.ps1` 本地先查
+  `sum(b>127 for b in open(f,'rb').read()) == 0`（纯 ASCII）; ③ SMB 只能读写**盘**, 要进程/端口/计划任务
+  这种**执行态**仍然走反向通道 —— 两者配合用。
+- 判活仍然以**端口/接口**为准, 别把"共享能列目录"当成"服务在跑"。
 
 ## 二、把在役程序**停干净并交给用户自己在 VSCode 里跑**
 
@@ -884,10 +906,21 @@ Windows 上 8802 不是计划任务直接拉 `ar_scene_render_server.py`, 而是
 配套三条, 少一条会误判:
 - **`KeepAlive` 正常形态就是 3 个进程**: `cmd.exe`(壳, 带 `cd /d`) → `venv\\python.exe`(启动壳) → 裸
   `Python310\\python.exe`(**端口属主**)。看到 3 个别当"重复副本"去杀 —— 判据是 `Get-NetTCPConnection` 谁在听 + 文件 sha。
+  🔴 **按 `Name='python.exe'` 过滤时每端口恰好 2 个**(venv 壳 + Python310 属主), 这**就是正常形态**:
+  两个端口共 4 个 python 并不等于重复实例。**先数"每端口几个属主"再决定动不动手**——属主唯一就别杀
+  (实测把这对儿当重复全杀一遍, 只是白丢 ~100s 产线窗口, 重启后形态一模一样)。
 - **远端修好了, 本机 MJPEG 还会继续推上一轮的黑帧**: 取流采样 **≥8s 取末尾几帧**(实测首帧 mean 3.4,
   6s 后同一条流 mean 48.3); 拿缓冲里第一帧当结论必报错。
 - **判据图只剩细条/没框 ≠ 取图坏**: 同时读机器自报的 `gate_banner`(实测「未识别到金手指键排 | 本帧未检出周期键排结构」)
   与本地同名 ROI 函数返回(空结果 + `why`) ⇒ 结论是**工件不在视野**。如实报"工件不在位", 别改曝光去救。
+  **判"画面里到底有没有工件"的量化口径(两路通用, 一眼定案)**: 取原帧 `kind=origin&grab=1` 解码后算
+  `mean / p50 / p95 / 亮区(>120)占比` —— 实测空场时 10082 是 `mean 69.8 · p95 73 · 亮区 0.000`(**均匀平场 = 光源/工件都没有**),
+  而正常拍到金手指的帧 `mean 113~204` 且有亮条; 10083 空场是 `mean 11.9 · p95 28`(近黑)。
+  再叠两条接口侧硬证: ①金手指 `/region` 的 `crop_size` 实测 `[364,18]`(正常 `[1455,70]`)、`gold_px=0`
+  ②判据自报 `state=suppressed_19gate` + `why="no key-row window found"`(金手指) / `judge_ok=false`
+  +`why="亮条上边缘点太少(0)"`(表面)。
+  🔴 **别先怀疑曝光设置**: 表面路 `GET /exposure` 回 `us=80000/gain=1.8`(#产线值)而原帧 `mean 11.9` ⇒
+  曝光是对的、是工件/光源不在。同理 **`count=0` 绝不是"合格"**: 空场上两路都会回 OK/0 缺陷, 不能当结论报给用户。
 
 ## 支持文件
 
@@ -903,6 +936,8 @@ Windows 上 8802 不是计划任务直接拉 `ar_scene_render_server.py`, 而是
 - `templates/vscode_launch.json` —— 交出去自己调试用的 `launch.json`(多套配置 + UTF-8/无缓冲 + `justMyCode:false`)。
 - `scripts/mk_desktop_launcher.ps1` —— 生成桌面启动器(.lnk)并回读四项; 默认走 `wt -w -1` 独立窗口, 老图标自动 `.bak_<时间>`。
 - `scripts/machine_image_probe.py` —— 机器上只读量图(尺寸/亮度/std/块内 std/饱和比/列自相关), 可选 `--detect` 跑真模型。
+- `scripts/aoi_two_route_verify.py` —— 两路 AOI 真验收: 触发 → 按 `t` 变化等 `/last_result` → 量判据图/原帧
+  (mean/p95/亮区/饱和/暗占比) → 直接打出"空场还是真有内容"的判读。**工件不在位时两路都回 `count=0`, 不能当合格。**
 - `scripts/wininet_proxy_blob.py` —— 生成/改写 `Connections\DefaultConnectionSettings` 的 REG_BINARY hex(浏览器真正读的那份代理配置)。
 - `scripts/uia_click_button.ps1` —— 按名字(ControlType=Button + Name 子串)点 GUI/网页按钮并回执; 需在交互会话的计划任务里跑,
   用于「文件补好后页面自己不重试」这类必须点一下才生效的按钮(例 `🚚 仿真搬运`); 判据读应用自报状态, 不读 `invoked`。

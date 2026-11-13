@@ -415,6 +415,18 @@ publish_plan(plan, 1.0, {"epoch": 0, "until": time.time() - 5}, "PROBE-<时刻>"
   症状指纹: **同一方向第一下能动、第二下死也不动**(第一下正好把关节推到限位), 换反方向又能走。
   ⇒ `moveReset` 重发对限位**完全无效**(只会再回一次成功), 别拿重试当排查; 结论要直说"该方向已到关节限位,
   换方向或先改姿态"。限位表**从 URDF 解析**, 别手抄一份常量等着漂。
+- 🔴 **「通道写成功」≠「读者认这条命令」**: 往 FIFO/队列写一条指令, 写成功只说明**有人读走了**;
+  读者可能是**另一个 dispatcher**, 它的分支表里根本没有这条命令 ⇒ 静默丢弃, 而写入侧拿"写成功"打出 OK。
+  判据(只读): `sudo grep -n '<命令关键字>' /proc/<读者pid>/root/<入口脚本>` **零命中 = 这条路是死的**;
+  再用 `sudo ls -l /proc/<pid>/fd | grep <fifo>` 确认读者就是你以为的那个进程(实测夹爪写给 SDK 桥的 FIFO,
+  它的 `handle()` 只认 `ping/state/pose/path/follow/stop/reset/move-*`, 没有 grip 分支 ⇒ 夹爪一整晚没动过,
+  而日志一直写 OK)。同族: 服务回执里的 `curr_pos/pos` 常是**途中值**(实测发 70 回 35),
+  ⇒ 合格判据只能是**执行器自己的真值通道**(话题/真值文件)在动作后落在目标容差内;
+  每次动作落一条 `{ts, act, target, before, after, ok}` 到 jsonl, 汇报时给前后两个数。
+- 🔴 **`ros2 service call` 报 `The passed service type is invalid` = 工作区没 source**, 不是服务不存在:
+  先 `source /opt/ros/<distro>/setup.bash` + `source <ws>/install/setup.bash`(目录名常带版本号 ⇒ 用 glob);
+  同一个原因还会让 `ros2 interface show <pkg>/srv/X` 报 `Unknown package` —— 那时去读
+  `<ws>/install/<pkg>/share/<pkg>/srv/X.srv` 拿字段定义, 别据此判"接口没有"。
 - 🔴 **下发成功 ≠ 真的动了 —— 腿不校验, 就必须自己校验**: 执行腿回 `ok` 只代表**请求被接受**, 实测
   `bridge 腿下发 OK · Δ=[0,20,0]mm` 而 1 秒后真值一位没变、桥的 `endInRef` 也原地不动
   (两条独立真值同结论 ⇒ 真没动, 不是采样滞后)。定式: 下发后按 `秒数 = 位移/速度` 的约 45% 设一个短窗口
