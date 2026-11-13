@@ -218,6 +218,9 @@
          用一个新颜色表达模拟动作的右臂」 -->
     <div class="row" style="margin-top:8px">
       <button id="bPrev" class="sm" title="点一下 = 按轨迹终点做逆解, 用紫色幽灵臂画出&quot;走完的样子&quot;(真机不动); 再点 = 消失。只画不改真机, 不下发任何指令">👻 预览动作</button>
+      <!-- 📍 老倪 2026-11-13「左侧增加一个按钮, 让右臂(仿真)按真实轨迹 182 点走一遍」 -->
+      <button id="bRTraj" class="sm" title="仿真右臂按录制进来的真实轨迹(182 点, 位姿真值录制)完整走一遍: 沿折线 8mm 重采样 → 逐点 IK → 紫色幽灵臂 + 8802 同帧渲染。只动仿真, 不下发真机指令">📍 右臂跑真实轨迹</button>
+      <span id="tRTraj" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
       <button id="bIns" class="sm" title="用紫色幽灵臂仿真: 从 7 号位抓起光模块 → 抬起 → 插拔准备点 → 插入口 → 插入到位(47mm)。全程只画不算, 真机零指令">🔌 插入仿真</button>
       <button id="bInsp" class="sm" title="右臂插拔全流程仿真: 黑盘 1~14 号位依次抓取 → 插孔(47mm) → 检测 → 拔出 → 良品放下料盘 / NG 放废料盘。12 良品 + 2 不良。真机零指令">🔁 插拔全流程</button>
       <span id="tPrev" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
@@ -4960,6 +4963,106 @@ function paintRealBtn(){
     }
     paintRealBtn();
   }); }
+/* 📍 右臂仿真·走真实轨迹 (老倪 2026-11-13「左侧增加一个按钮, 让右臂(仿真)按照实际的轨迹跑一遍, 真实轨迹 182 点走一次」)
+   真源: FENCES 里名字含「真实轨迹」的 points 元素(pose_to_ar.py 从位姿真值录制导出, 米)
+   走法: 折线按 8mm 重采样(录制点被 RDP 简化过, 直接逐点播会瞬移) → ikTool1 逐点(seed=上一点) → PREV.q/M
+        → mjPushQ 把同一组关节角推给 8802 ⇒ 页面紫色幽灵臂与 8802 渲染同帧
+   口径: 只动仿真, 不下发 l2_daemon / 不写 exec_switches / 不碰真机授权; 再点一次按钮 = 停 */
+var RTRAJ={playing:false,frames:[],fi:0,t0:0,dur:0,raf:null,rate:6,path_mm:0,
+           n_pts:0,bad:0,errAvg:0,errMax:0};
+function rtrajUI(on,txt){
+  var b=$('bRTraj');
+  if(b){ b.classList.toggle('on',!!on); b.textContent = on ? '⏹ 停止·真实轨迹' : '📍 右臂跑真实轨迹'; }
+  var t=$('tRTraj'); if(t && txt!=null) t.textContent=txt;
+}
+/* 回放专用高频推送: 现场可能同时开着别的 /ar3d 页面(它们也在 8Hz 推 /armq),
+   8802 只认"最后写" ⇒ 两个写者会让臂在两姿态间跳(实测连拍两帧 95% 像素在变)。
+   回放期间按 ~30Hz 推, 时间片基本被本页占住; 想让画面绝对干净就关掉其它 ar3d 页。 */
+function mjPushQForce(){
+  try{
+    var r2d=180/Math.PI, conv=function(a){ return a.map(function(v){ return +(v*r2d).toFixed(2); }); };
+    var Rq=(PREV.on && PREV.q)?conv(PREV.q):null; if(!Rq) return;
+    var Lq=(typeof LARM!=='undefined' && LARM && LARM.q)?conv(LARM.q):Rq.slice();
+    fetch('http://'+(location.hostname||'127.0.0.1')+':8802/armq',{method:'POST',mode:'no-cors',
+      headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({R:Rq,L:Lq,seq:++_mjqN,src:'rtraj'})}).catch(function(){});
+  }catch(e){}
+}
+function rtrajStop(){  RTRAJ.playing=false;
+  if(RTRAJ.raf){ cancelAnimationFrame(RTRAJ.raf); RTRAJ.raf=null; }
+  rtrajUI(false,'已停在 '+(RTRAJ.fi||0)+'/'+(RTRAJ.frames.length||0)+' 帧 · 真机没动');
+  drawVR();
+}
+function rtrajPlay(){
+  if(RTRAJ.playing){ rtrajStop(); return; }
+  var t=$('tRTraj'), it=realTrajItem();
+  if(!it || !(it.pts||[]).length){ if(t) t.textContent='没有真实轨迹(先跑 tools/pose_to_ar.py 导入)'; return; }
+  if(!URDF){ if(t) t.textContent='URDF 还没加载完, 稍等再点'; return; }
+  var pts=it.pts.map(function(p){ return [p[0],p[1],p[2]]; });
+  var q0=(PREV.on&&PREV.q&&PREV.q.length>=6)?PREV.q.slice(0,6)
+        :((TCP&&TCP.ok&&TCP.joints&&TCP.joints.length>=6)?TCP.joints.slice(0,6):null);
+  if(!q0){ if(t) t.textContent='没有初始关节角(等真值/URDF 到位)'; return; }
+  if(t) t.textContent='预计算 IK … 0%';
+  setTimeout(function(){                                  // 让"预计算"这行字先画出来
+    var STEP=0.008, dense=[pts[0]], path=0;
+    for(var i=1;i<pts.length;i++){
+      var a=pts[i-1], b=pts[i];
+      var d=Math.sqrt(Math.pow(b[0]-a[0],2)+Math.pow(b[1]-a[1],2)+Math.pow(b[2]-a[2],2));
+      path+=d;
+      var n=Math.max(1,Math.ceil(d/STEP));
+      for(var k=1;k<=n;k++){
+        dense.push([a[0]+(b[0]-a[0])*k/n, a[1]+(b[1]-a[1])*k/n, a[2]+(b[2]-a[2])*k/n]);
+      }
+    }
+    var frames=[], bad=0, esum=0, emax=0, qq=q0.slice();
+    for(var j=0;j<dense.length;j++){
+      var ra=ikTool1(dense[j], qq);
+      if(!ra || !ra.q){ bad++; frames.push({q:qq.slice(), p:dense[j], t:0, err:null}); continue; }
+      qq=ra.q.slice(0,6);
+      var e=(ra.err_mm||0); esum+=e; if(e>emax) emax=e;
+      frames.push({q:qq.slice(), p:dense[j], t:0, err:e});
+    }
+    if(!frames.length){ if(t) t.textContent='IK 全部失败(轨迹可能在工作空间外)'; return; }
+    // 时间轴: 按录制平均末端速度 40mm/s 折算, 再乘播放倍率
+    var vrec=0.040*(RTRAJ.rate||1), tt=0, prev=null;
+    for(var m=0;m<frames.length;m++){
+      if(prev){
+        var dd=Math.sqrt(Math.pow(frames[m].p[0]-prev[0],2)+Math.pow(frames[m].p[1]-prev[1],2)+Math.pow(frames[m].p[2]-prev[2],2));
+        tt += Math.max(0.004, dd/vrec);
+      }
+      frames[m].t=tt; prev=frames[m].p;
+    }
+    RTRAJ.frames=frames; RTRAJ.dur=tt; RTRAJ.fi=0; RTRAJ.t0=performance.now(); RTRAJ.playing=true;
+    RTRAJ.path_mm=path*1000; RTRAJ.n_pts=pts.length; RTRAJ.bad=bad;
+    RTRAJ.errAvg=frames.length?esum/Math.max(1,frames.length-bad):0; RTRAJ.errMax=emax;
+    PREV.on=true; PREV.q=frames[0].q.slice(); PREV.M=urdfFK(PREV.q);
+    PREV.err_mm=null; PREV.target=frames[0].p.slice();
+    rtrajUI(true,'走真实轨迹 '+pts.length+'点 → '+frames.length+'帧 · '+RTRAJ.path_mm.toFixed(0)+'mm · '+
+      RTRAJ.dur.toFixed(0)+'s · IK残差均 '+RTRAJ.errAvg.toFixed(1)+'mm/最大 '+RTRAJ.errMax.toFixed(1)+'mm'+
+      (bad?(' · IK跳过 '+bad+'帧'):'')+' · 真机没动');
+    if(typeof vrFitBox==='function'){ try{ vrFitBox(); }catch(e){} }
+    mjPushQ();
+    var step=function(){
+      if(!RTRAJ.playing) return;
+      var el=(performance.now()-RTRAJ.t0)/1000;
+      var i=RTRAJ.fi;
+      while(i<frames.length-1 && frames[i+1].t<=el) i++;
+      RTRAJ.fi=i;
+      PREV.on=true; PREV.q=frames[i].q.slice(); PREV.M=urdfFK(PREV.q);
+      if(el>=RTRAJ.dur){
+        RTRAJ.playing=false; RTRAJ.raf=null;
+        rtrajUI(false,'走完 '+RTRAJ.n_pts+' 点 · '+RTRAJ.path_mm.toFixed(0)+'mm · 用时 '+RTRAJ.dur.toFixed(0)+'s · 真机没动');
+        drawVR(); return;
+      }
+      mjPushQ();                                          // 100ms 节流在 mjPushQ 内部
+      if((RTRAJ.fi & 1)===0) mjPushQForce();               // 回放期 ~30Hz, 抢住 8802 的时间片
+      drawVR();
+      RTRAJ.raf=requestAnimationFrame(step);
+    };
+    RTRAJ.raf=requestAnimationFrame(step);
+  }, 30);
+}
+{ var _b=$('bRTraj'); if(_b) _b.addEventListener('click', rtrajPlay); }
 $('tOff').addEventListener('click',()=>clearNamed());
 $('bAll').addEventListener('click',async ()=>{
   const r=await (await fetch('/api/traj/baseline',{method:'POST',headers:{'Content-Type':'application/json'},
