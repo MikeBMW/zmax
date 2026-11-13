@@ -234,7 +234,11 @@ jobs:
           NG=$(grep -c "gen_l4_demo_video.py" listing.txt || true)
           # 🔴 2026-10-08: 工程包 (节点逻辑/画布真源) 必须在包里 —— 缺了表现为 exe 双击即崩
           #   (studio→simulink_module→node_logic "No module named 'lerobot'"), 而旧核验只查引擎资产 ⇒ 漏放行。
-          NE=$(grep -c "lerobot.engineering.nodes.library.py" listing.txt || true)
+          # 🔴 2026-11-13: 9e6d4305 重构把 engineering/nodes/ 删了(节点归 middleware), 判据还在查旧路径 ⇒ 永远 0
+          #    ⇒ 打包必挂在资产核验(与真实打包内容无关的假失败)。改为 middleware 目录在包里 + 兼容旧路径。
+          NE_OLD=$(grep -c "lerobot.engineering.nodes.library.py" listing.txt || true)
+          NE_MW=$(grep -c "middleware" listing.txt || true)
+          NE=$(( NE_OLD + NE_MW ))
           NJ=$(grep -c "state_space_obs.json" listing.txt || true)
           NW=$(grep -c "l4_mani_predictor_v5.pt" listing.txt || true)
           NH=$(grep -c "l4_yaw_head_grasp_dz_v2.pt" listing.txt || true)
@@ -662,7 +666,9 @@ jobs:
           N4=$(find tools/gui/dist/Z-MAX_Console.app -name "sawyer_peg_insertion_side_l4.xml" | wc -l)
           NG=$(find tools/gui/dist/Z-MAX_Console.app -name "gen_l4_demo_video.py" | wc -l)
           # 🔴 2026-10-08: 工程包 (节点逻辑 library.py + 画布真源) 必须在 .app 内
-          NE=$(find tools/gui/dist/Z-MAX_Console.app -path "*lerobot/engineering/nodes/library.py" | wc -l)
+          # 🔴 2026-11-13: 旧判据查已删除的 engineering/nodes/library.py(9e6d4305 重构: 节点归 middleware)
+          #    ⇒ .app 内永远 0 ⇒ mac 打包必挂在资产核验。改为 middleware 目录在包里 + 兼容旧路径。
+          NE=$(find tools/gui/dist/Z-MAX_Console.app \( -path "*lerobot/middleware/*" -o -path "*lerobot/engineering/nodes/library.py" \) | wc -l)
           NJ=$(find tools/gui/dist/Z-MAX_Console.app -name "state_space_obs.json" | wc -l)
           NW=$(find tools/gui/dist/Z-MAX_Console.app -name "l4_mani_predictor_v5.pt" | wc -l)
           NH=$(find tools/gui/dist/Z-MAX_Console.app -name "l4_yaw_head_grasp_dz_v2.pt" | wc -l)
