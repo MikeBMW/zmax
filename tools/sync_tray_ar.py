@@ -89,6 +89,21 @@ def box_corners(pos, size):
     return np.array(out)
 
 
+def face_quad(pos, size, top=True):
+    """某个面(顶/底)的 4 角**有序** (TL,TR,BR,BL 的几何序: x-,y- → x+,y- → x+,y+ → x-,y+)。
+
+    画框必须用有序四角: 直接 polyline 8 个角点会连成自交的"蝴蝶结",
+    看起来像骑在隔墙上(实测被目检打回)。
+    """
+    s = np.asarray(size, float)
+    p = np.asarray(pos, float)
+    z = p[2] + (s[2] if top else -s[2])
+    return np.array([[p[0] - s[0], p[1] - s[1], z],
+                     [p[0] + s[0], p[1] - s[1], z],
+                     [p[0] + s[0], p[1] + s[1], z],
+                     [p[0] - s[0], p[1] + s[1], z]])
+
+
 def detect_tray_mask(img, seed_mask=None):
     """实测料盘: 黑色料盘 ⇒ 低亮度 + 低饱和的大块区域。
 
@@ -147,18 +162,21 @@ def main():
 
     vis = img.copy()
     tray_uv_all, slot_uv = [], []
+    tray_top_uv = None
     for g in tray:
-        uv, z, ok = project(box_corners(g["pos"], g["size"]), K, X, tcp7)
-        tray_uv_all.append(uv[ok])
-        if ok.sum() >= 4:
-            p = uv[ok]
-            cv2.polylines(vis, [np.round(p).astype(np.int32)], True, (255, 200, 0), 1)
+        for top in (True, False):
+            quad = face_quad(g["pos"], g["size"], top=top)
+            uv, z, ok = project(quad, K, X, tcp7)
+            if ok.sum() == 4:
+                tray_uv_all.append(uv)
+                cv2.polylines(vis, [np.round(uv).astype(np.int32)], True, (255, 200, 0), 1)
+                if top and g["name"].endswith("_bot"):
+                    tray_top_uv = uv          # 底板顶面 = 料盘口沿, 用于和实测比 yaw/尺寸
     for g in slots:
-        uv, z, ok = project(box_corners(g["pos"], g["size"]), K, X, tcp7)
-        if ok.sum() >= 4:
-            p = uv[ok]
-            slot_uv.append((g["name"], p.mean(0), p))
-            cv2.polylines(vis, [np.round(p).astype(np.int32)], True, (0, 220, 255), 1)
+        uv, z, ok = project(face_quad(g["pos"], g["size"], top=True), K, X, tcp7)
+        if ok.sum() == 4:
+            slot_uv.append((g["name"], uv.mean(0), uv))
+            cv2.polylines(vis, [np.round(uv).astype(np.int32)], True, (0, 220, 255), 1)
 
     all_uv = np.vstack([u for u in tray_uv_all if len(u)] + [p for _, _, p in slot_uv]) if (tray_uv_all or slot_uv) else np.zeros((0, 2))
     if len(all_uv) == 0:
@@ -216,6 +234,60 @@ def main():
         print("投影外包     =%s" % ([int(px0), int(py0), int(px1), int(py1)]))
         print("IoU=%.3f · 中心差 dx=%.1f dy=%.1f px" % (iou, dcx, dcy))
         print("槽中心落在料盘暗区内: %d/%d" % (in_mask, len(slot_uv)))
+
+        # ── 场景料盘 vs 实测料盘: 反投到料盘口沿平面, 给 mm / 度 ──────────────
+        # 料盘口沿 z = 壁顶 (XML: 壁 pos z=0.1201 + 半高 0.02)
+        try:
+            wall_z = max(g["pos"][2] + g["size"][2] for g in tray if g["name"].endswith(("_w0", "_w1", "_w2", "_w3")))
+            rect = cv2.minAreaRect(cnt)
+            box = cv2.boxPoints(rect)
+            base_pts = []
+            for u, v in box:
+                p = so.px_to_base_ray(float(u), float(v), K, X, tcp7, wall_z)
+                base_pts.append(p)
+            base_pts = np.asarray(base_pts, float)
+            if np.isfinite(base_pts).all():
+                # 实测外框 (base, mm)
+                mm = base_pts * 1000.0
+                cen_meas = mm.mean(0)
+                # 长边方向 = 边长较大的那条
+                e0 = mm[1] - mm[0]; e1 = mm[2] - mm[1]
+                if np.linalg.norm(e0) >= np.linalg.norm(e1):
+                    yaw_meas = np.degrees(np.arctan2(e0[1], e0[0])); Lmaj, Lmin = np.linalg.norm(e0), np.linalg.norm(e1)
+                else:
+                    yaw_meas = np.degrees(np.arctan2(e1[1], e1[0])); Lmaj, Lmin = np.linalg.norm(e1), np.linalg.norm(e0)
+                # 矩形 90° 等价: 归一到 (-45,45], 长宽随之对调(否则会报出"yaw 差 93°"的假结论)
+                while yaw_meas > 45.0:
+                    yaw_meas -= 90.0; Lmaj, Lmin = Lmin, Lmaj
+                while yaw_meas <= -45.0:
+                    yaw_meas += 90.0; Lmaj, Lmin = Lmin, Lmaj
+                if Lmaj < Lmin:                 # 归一后保证 Lmaj ≥ Lmin (名字必须与数值一致)
+                    Lmaj, Lmin = Lmin, Lmaj
+                # 场景外框 (base, mm)
+                bot = next(g for g in tray if g["name"].endswith("_bot"))
+                ws = [g for g in tray if g["name"].endswith(("_w0", "_w1", "_w2", "_w3"))]
+                x0 = min(g["pos"][0] - g["size"][0] for g in ws)
+                x1 = max(g["pos"][0] + g["size"][0] for g in ws)
+                y0 = min(g["pos"][1] - g["size"][1] for g in ws)
+                y1 = max(g["pos"][1] + g["size"][1] for g in ws)
+                cen_scene = np.array([(x0 + x1) / 2, (y0 + y1) / 2, wall_z]) * 1000.0
+                d = cen_meas - cen_scene
+                res.update({
+                    "scene_tray_mm": {"center": [round(v, 1) for v in cen_scene], "size": [round(x1 - x0, 1), round(y1 - y0, 1)], "yaw_deg": 0.0},
+                    "meas_tray_mm": {"center": [round(v, 1) for v in cen_meas], "size": [round(Lmaj, 1), round(Lmin, 1)], "yaw_deg": round(float(yaw_meas), 2), "plane_z": round(wall_z, 4)},
+                    "d_center_mm": [round(float(v), 1) for v in d], "d_center_norm_mm": round(float(np.linalg.norm(d[:2])), 1),
+                    "size_delta_pct": [round(100 * (Lmin - (x1 - x0) * 1000) / ((x1 - x0) * 1000), 1),
+                                       round(100 * (Lmaj - (y1 - y0) * 1000) / ((y1 - y0) * 1000), 1)],
+                })
+                print("实测料盘(base,mm): 中心(%.1f,%.1f) 尺寸 %.1f×%.1f yaw %.2f°"
+                      % (cen_meas[0], cen_meas[1], Lmaj, Lmin, yaw_meas))
+                print("场景料盘(base,mm): 中心(%.1f,%.1f) 尺寸 %.1f×%.1f yaw 0.00°"
+                      % (cen_scene[0], cen_scene[1], (x1 - x0) * 1000, (y1 - y0) * 1000))
+                print("→ 中心差 Δ=(%.1f, %.1f) mm (|Δ|=%.1f) · 尺寸差 %.1f%%/%.1f%% · yaw 差 %.2f°"
+                      % (d[0], d[1], np.linalg.norm(d[:2]), res["size_delta_pct"][0], res["size_delta_pct"][1], yaw_meas))
+        except Exception as e:      # 反投/拟合失败要如实报, 不许静默
+            res["base_compare_error"] = str(e)[:160]
+            print("⚠️ 反投对比失败: %s" % str(e)[:120])
     else:
         print("未检出实测料盘暗区 (曝光/工件不在位?)")
 
