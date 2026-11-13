@@ -3041,7 +3041,9 @@ class H(BaseHTTPRequestHandler):
                 _out = os.path.join(REPO, "zmax_data", "rokae_sdk", "traj_step_out.log")
                 _argv = ["bash", os.path.join(REPO, "tools", "rokae_sdk_run.sh"),
                          "--script", "arm_step_traj.py"] + (["--dry"] if _dry else [])
-                _lg = open(_out, "w", encoding="utf-8")
+                with open(_out, "a", encoding="utf-8") as _hd:
+                    _hd.write("\n=== round %s n=%d dry=%s ===\n" % (time.strftime("%F %T"), _n, _dry))
+                _lg = open(_out, "a", encoding="utf-8")   # 追加: 每轮留证, 不覆盖上一轮
                 _pr = subprocess.Popen(_argv, cwd=REPO, stdout=_lg, stderr=subprocess.STDOUT,
                                        start_new_session=True)
                 json.dump({"running": True, "t0": time.time(), "n": _n, "dry": _dry,
