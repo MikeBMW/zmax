@@ -40,19 +40,44 @@ GEOM_RE = re.compile(
     r'\s+size="([-\d.eE]+) ([-\d.eE]+) ([-\d.eE]+)"')
 
 
+GEOM_TAG_RE = re.compile(r'<geom\s+name="([^"]+)"[^>]*?/>', re.S)
+
+
+def _attr(tag, key, default=None, n=3):
+    m = re.search(r'%s="([^"]+)"' % key, tag)
+    if not m:
+        return default
+    v = [float(x) for x in m.group(1).split()]
+    return np.array(v) if n and len(v) == n else v
+
+
 def parse_tray_geoms(path=XML):
-    """按名字归类: 上料盘底板/侧壁 + 槽位。"""
+    """按名字归类: 上料盘底板/侧壁 + 槽位。同时读出 quat (w x y z) —— 回写后场景会带 yaw。"""
     txt = path.read_text(encoding="utf-8")
     tray, slots = [], []
-    for m in GEOM_RE.finditer(txt):
-        name = m.group(1)
-        pos = np.array([float(m.group(i)) for i in (2, 3, 4)])
-        size = np.array([float(m.group(i)) for i in (5, 6, 7)])
-        if name.startswith("b00_"):                 # 上料盘本体(底 + 4 壁)
-            tray.append({"name": name, "pos": pos, "size": size})
-        elif re.match(r"^b(0[1-9]|1[0-4])_槽", name):   # 上料盘 14 槽
-            slots.append({"name": name, "pos": pos, "size": size})
+    for m in GEOM_TAG_RE.finditer(txt):
+        name, tag = m.group(1), m.group(0)
+        if 'type="box"' not in tag:
+            continue
+        pos, size = _attr(tag, "pos"), _attr(tag, "size")
+        if pos is None or size is None:
+            continue
+        quat = _attr(tag, "quat", np.array([1.0, 0.0, 0.0, 0.0]))
+        item = {"name": name, "pos": pos, "size": size, "quat": quat}
+        if name.startswith("b00_"):
+            tray.append(item)
+        elif re.match(r"^b(0[1-9]|1[0-4])_槽", name):
+            slots.append(item)
     return tray, slots
+
+
+def quat_to_R(q):
+    w, x, y, z = [float(v) for v in q]
+    n = np.sqrt(w * w + x * x + y * y + z * z) or 1.0
+    w, x, y, z = w / n, x / n, y / n, z / n
+    return np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+                     [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+                     [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
 
 
 def fetch_arm_frame() -> np.ndarray:
@@ -89,19 +114,19 @@ def box_corners(pos, size):
     return np.array(out)
 
 
-def face_quad(pos, size, top=True):
-    """某个面(顶/底)的 4 角**有序** (TL,TR,BR,BL 的几何序: x-,y- → x+,y- → x+,y+ → x-,y+)。
+def face_quad(pos, size, top=True, quat=None):
+    """某个面(顶/底)的 4 角**有序** (x-,y- → x+,y- → x+,y+ → x-,y+), 支持 box 自带 yaw。
 
     画框必须用有序四角: 直接 polyline 8 个角点会连成自交的"蝴蝶结",
     看起来像骑在隔墙上(实测被目检打回)。
     """
     s = np.asarray(size, float)
     p = np.asarray(pos, float)
-    z = p[2] + (s[2] if top else -s[2])
-    return np.array([[p[0] - s[0], p[1] - s[1], z],
-                     [p[0] + s[0], p[1] - s[1], z],
-                     [p[0] + s[0], p[1] + s[1], z],
-                     [p[0] - s[0], p[1] + s[1], z]])
+    z = s[2] if top else -s[2]
+    local = np.array([[-s[0], -s[1], z], [s[0], -s[1], z], [s[0], s[1], z], [-s[0], s[1], z]])
+    if quat is not None:
+        local = (quat_to_R(quat) @ local.T).T
+    return local + p
 
 
 def detect_tray_mask(img, seed_mask=None):
@@ -138,8 +163,12 @@ def detect_tray_mask(img, seed_mask=None):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--frame", default="")
+    ap.add_argument("--xml", default="", help="用指定场景 XML (A/B 对比用), 默认 zmax_data/ar_mujoco/ar_station.xml")
     ap.add_argument("--write-scene", action="store_true", help="用实测料盘中心回写场景(默认只报)")
     args = ap.parse_args()
+    global XML
+    if args.xml:
+        XML = Path(args.xml)
 
     tcp7 = so.read_tcp()
     if tcp7 is None:
@@ -165,7 +194,7 @@ def main():
     tray_top_uv = None
     for g in tray:
         for top in (True, False):
-            quad = face_quad(g["pos"], g["size"], top=top)
+            quad = face_quad(g["pos"], g["size"], top=top, quat=g.get("quat"))
             uv, z, ok = project(quad, K, X, tcp7)
             if ok.sum() == 4:
                 tray_uv_all.append(uv)
@@ -173,7 +202,7 @@ def main():
                 if top and g["name"].endswith("_bot"):
                     tray_top_uv = uv          # 底板顶面 = 料盘口沿, 用于和实测比 yaw/尺寸
     for g in slots:
-        uv, z, ok = project(face_quad(g["pos"], g["size"], top=True), K, X, tcp7)
+        uv, z, ok = project(face_quad(g["pos"], g["size"], top=True, quat=g.get("quat")), K, X, tcp7)
         if ok.sum() == 4:
             slot_uv.append((g["name"], uv.mean(0), uv))
             cv2.polylines(vis, [np.round(uv).astype(np.int32)], True, (0, 220, 255), 1)
@@ -195,6 +224,16 @@ def main():
 
     # 实测料盘(暗区) 与 投影外包 对比
     cnt, mask = detect_tray_mask(img, m_in if m_ok.sum() >= 4 else None)
+    # 只用投影附近(膨胀 15px)的暗像素量外框: 否则盘外的黑色夹具/阴影会把 minAreaRect 拉长
+    # (实测长边虚高 +14.7% ⇒ yaw/尺寸都跟着歪)
+    if m_ok.sum() >= 4:
+        roi = cv2.dilate(m_in, np.ones((31, 31), np.uint8))
+        m_roi = (mask & roi)
+        cnts2, _ = cv2.findContours(m_roi, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if cnts2:
+            c2 = max(cnts2, key=cv2.contourArea)
+            if cv2.contourArea(c2) >= 1200:
+                cnt, mask = c2, cv2.drawContours(np.zeros_like(mask), [c2], -1, 255, -1)
     res = {"inside_ratio": float(inside), "n_slots_proj": len(slot_uv)}
 
     # 与"暗区检测"无关的独立判据: 投影区本身的亮度 vs 周围环带
@@ -234,6 +273,10 @@ def main():
         print("投影外包     =%s" % ([int(px0), int(py0), int(px1), int(py1)]))
         print("IoU=%.3f · 中心差 dx=%.1f dy=%.1f px" % (iou, dcx, dcy))
         print("槽中心落在料盘暗区内: %d/%d" % (in_mask, len(slot_uv)))
+        # mask 级 IoU: 投影料盘多边形 vs 实测暗区(bbox IoU 会被旋转后的轴对齐包围盒放大而失真)
+        inter = int(((m_in > 0) & (mask > 0)).sum()); union = int(((m_in > 0) | (mask > 0)).sum())
+        res["mask_iou"] = round(inter / union, 4) if union else 0.0
+        print("mask IoU(投影∩实测/并) = %.4f" % res["mask_iou"])
 
         # ── 场景料盘 vs 实测料盘: 反投到料盘口沿平面, 给 mm / 度 ──────────────
         # 料盘口沿 z = 壁顶 (XML: 壁 pos z=0.1201 + 半高 0.02)
@@ -266,10 +309,9 @@ def main():
                 # 场景外框 (base, mm)
                 bot = next(g for g in tray if g["name"].endswith("_bot"))
                 ws = [g for g in tray if g["name"].endswith(("_w0", "_w1", "_w2", "_w3"))]
-                x0 = min(g["pos"][0] - g["size"][0] for g in ws)
-                x1 = max(g["pos"][0] + g["size"][0] for g in ws)
-                y0 = min(g["pos"][1] - g["size"][1] for g in ws)
-                y1 = max(g["pos"][1] + g["size"][1] for g in ws)
+                qs = np.vstack([face_quad(g["pos"], g["size"], top=True, quat=g.get("quat")) for g in ws])
+                x0, x1 = float(qs[:, 0].min()), float(qs[:, 0].max())
+                y0, y1 = float(qs[:, 1].min()), float(qs[:, 1].max())
                 cen_scene = np.array([(x0 + x1) / 2, (y0 + y1) / 2, wall_z]) * 1000.0
                 d = cen_meas - cen_scene
                 res.update({
@@ -305,7 +347,51 @@ def main():
     print("图: %s\nJSON: %s" % (outp, OUT_DIR / "arm_tray_sync.json"))
 
     if args.write_scene:
-        print("--write-scene 需要实测料盘 base 位姿(反投), 本轮未实现回写; 场景文件未改动")
+        if "meas_tray_mm" not in res:
+            print("✗ 没有可用的实测位姿, 拒绝写场景")
+            return 4
+        mm, yaw = res["meas_tray_mm"], res["meas_tray_mm"]["yaw_deg"]
+        c_meas = np.array(mm["center"], float) / 1000.0
+        # 场景料盘中心 (按 4 壁外沿算, 与测量同口径)
+        ws = [g for g in tray if g["name"].endswith(("_w0", "_w1", "_w2", "_w3"))]
+        qs = np.vstack([face_quad(g["pos"], g["size"], top=True, quat=g.get("quat")) for g in ws])
+        c0 = np.array([(qs[:, 0].min() + qs[:, 0].max()) / 2, (qs[:, 1].min() + qs[:, 1].max()) / 2])
+        th = np.radians(float(yaw))
+        R = np.array([[np.cos(th), -np.sin(th)], [np.sin(th), np.cos(th)]])
+        bak = XML.with_suffix(".xml.bak_%s" % time.strftime("%Y%m%d_%H%M%S"))
+        bak.write_bytes(XML.read_bytes())
+        txt = XML.read_text(encoding="utf-8")
+        moved = 0
+        qw, qz = np.cos(th / 2.0), np.sin(th / 2.0)     # MuJoCo quat = (w x y z), 绕 z 转 yaw
+        qstr = "%.6f 0.000000 0.000000 %.6f" % (qw, qz)
+        for g in tray + slots:                      # 本体 + 槽族一起做刚体变换(保持内部关系)
+            p2 = R @ (np.asarray(g["pos"][:2], float) - c0) + c_meas[:2]
+            new_pos = "%.6f %.6f %.6f" % (p2[0], p2[1], g["pos"][2])
+            tag_re = re.compile(r'<geom\s+name="%s"[^>]*?/>' % re.escape(g["name"]), re.S)
+            m = tag_re.search(txt)
+            if not m:
+                continue
+            tag = m.group(0)
+            tag = re.sub(r'pos="[^"]+"', 'pos="%s"' % new_pos, tag, count=1)
+            if 'quat="' in tag:
+                tag = re.sub(r'quat="[^"]+"', 'quat="%s"' % qstr, tag, count=1)
+            else:
+                tag = tag.replace("/>", ' quat="%s"/>' % qstr)
+            txt = txt[:m.start()] + tag + txt[m.end():]
+            moved += 1
+        XML.write_text(txt, encoding="utf-8")
+        side = {"ts": time.strftime("%F %T"), "src": "sync_tray_ar --write-scene (臂相机实测反投)",
+                "center_m": [round(float(v), 6) for v in c_meas[:2]], "yaw_deg": round(float(yaw), 3),
+                "scene_center_before_m": [round(float(v), 6) for v in c0],
+                "applied_geoms": moved, "backup": str(bak),
+                "note": "尺寸未改: 短边吻合(+0.7%), 长边掩膜不可靠(+13%) ⇒ 只同步位姿"}
+        (XML.parent / "tray_pose_measured.json").write_text(json.dumps(side, ensure_ascii=False, indent=1), encoding="utf-8")
+        print("✅ 已同步场景料盘位姿: 中心 %.1f,%.1f mm · yaw %.2f° · 改动 %d 个 geom"
+              % (c_meas[0] * 1000, c_meas[1] * 1000, yaw, moved))
+        print("   备份 %s · 台账 %s" % (bak.name, "tray_pose_measured.json"))
+        print("--- 回读校验(用新 XML 重投同一帧) ---")
+        subprocess.run([sys.executable, __file__] + (["--frame", args.frame] if args.frame else []),
+                       cwd=str(REPO))
     return 0
 
 
