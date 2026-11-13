@@ -27,8 +27,30 @@ import numpy as np
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RECS = os.path.join(REPO, "zmax_data", "pose_records")
 OUT = os.path.join(REPO, "tools", "web", "real_traj_joints.json")
+PAGE = os.path.join(REPO, "tools", "web", "tcp-ar.html")
 POS_MM = 8.0          # 相邻回放帧最大位移
 ROT_DEG = 3.0         # 或单帧转动超过这个也插点(姿态保真优先)
+
+
+def embed_into_page(json_path, page_path):
+    """把回放数据内嵌进 ar3d 页面。
+
+    8797 只白名单服务 tcp-ar.html 本身(其它路径 404), 页面拿不到同目录的 .json ⇒ 内嵌进
+    <script id="rtrajData" type="application/json">。改数据只需重跑本脚本 --embed, 不用重启服务。
+    """
+    import re
+    d = json.load(open(json_path, encoding="utf-8"))
+    payload = json.dumps(d, ensure_ascii=False, separators=(",", ":"))
+    if "</script" in payload:                       # 不该发生, 但别把页面写坏
+        raise SystemExit("数据里出现 </script, 拒绝内嵌")
+    html = open(page_path, encoding="utf-8").read()
+    pat = re.compile(r'(<script id="rtrajData" type="application/json">).*?(</script>)', re.S)
+    if not pat.search(html):
+        raise SystemExit("页面缺 rtrajData 占位块: %s" % page_path)
+    html2 = pat.sub(lambda m: m.group(1) + payload + m.group(2), html, count=1)
+    open(page_path, "w", encoding="utf-8").write(html2)
+    print("已内嵌进页面: %s (%d 帧, 页面 %.1f KB)"
+          % (os.path.basename(page_path), len(d.get("frames") or []), os.path.getsize(page_path) / 1024.0))
 
 
 def load_poses(rec_dir):
@@ -66,6 +88,8 @@ def main():
     ap.add_argument("--traj-name", default="真实轨迹", help="FENCES 里那条 points 元素的名字前缀(对齐 182 点用)")
     ap.add_argument("--all", action="store_true", help="导出全部样本(不按 182 点对齐)")
     ap.add_argument("--out", default=OUT)
+    ap.add_argument("--embed", action="store_true", default=True, help="同时内嵌进 tools/web/tcp-ar.html(默认开)")
+    ap.add_argument("--no-embed", dest="embed", action="store_false")
     a = ap.parse_args()
 
     if a.rec:
@@ -150,6 +174,8 @@ def main():
                                          "rot_total_deg", "max_pos_step_mm", "max_joint_step_deg")},
                      ensure_ascii=False, indent=1))
     print("out: %s (%.1f KB)" % (a.out, os.path.getsize(a.out) / 1024.0))
+    if a.embed:
+        embed_into_page(a.out, PAGE)
 
 
 if __name__ == "__main__":
