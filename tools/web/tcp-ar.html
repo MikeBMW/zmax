@@ -1,6 +1,6 @@
 <!doctype html><html lang="zh"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Z-MAX AR3D r101 · 引导10点 · SIM自动 · 位置细胞 · 8802直播</title>
+<title>Z-MAX AR3D r106 · 右臂不突变 · SIM自动 · 位置细胞 · 8802直播</title>
 <style>
  *{box-sizing:border-box}
  body{margin:0;background:#0b0f14;color:#e6edf3;font:15px/1.5 -apple-system,Segoe UI,Roboto,"Noto Sans SC",sans-serif}
@@ -342,7 +342,7 @@
       <span class="tag" style="background:#30363d99">原子技能包络</span>
       <button class="sm" id="btnCor" onclick="corToggleAll()">🫥 全部隐藏 (0)</button>
       <button class="sm" id="btnCorFollow" onclick="corFollowToggle()" title="按顺序: 播放到哪一段, 就只显示那一段所属技能的约束包络">🔗 跟随播放</button>
-      <button class="sm on" id="btnCorPre" onclick="corPreToggle()" title="每个动作执行前, 用它所属技能的约束通道标出来 (不受隐藏开关影响)">🔴 预执行约束</button>
+      <button class="sm" id="btnCorPre" onclick="corPreToggle()" title="每个动作执行前, 用它所属技能的约束通道标出来 (不受隐藏开关影响)">🔴 预执行约束</button>
       <button class="sm on" id="btnCorTube" onclick="corTubeToggle()" title="约束通道画成圆柱体: 半透明管壁(边界) + 两端截面圆环 + 黄线(理想轨迹); 关掉=只画线框">🧊 管状通道</button>
       <button class="sm" id="btnCorAlpha" onclick="corAlphaCycle()" title="管壁透明度">🌫 透明 22%</button>
       <button class="sm" id="btnCorGain" onclick="corGainCycle()" title="显示放大: 通道真值半径现为 80mm(2026-11-01 放宽), 默认 ×1 就是真值; 放大只放大画面, 数值不变(标签写的是真值)">🔍 显示 ×1</button>
@@ -1353,7 +1353,7 @@ function fillP2(p){ _fset('fX2',p[0]*1000); _fset('fY2',p[1]*1000); _fset('fZ2',
 let CORSET = new Set();                 // 哪些技能的包络要画 (空 = 全隐藏)
 let CORFOLLOW=false;
 const PRE_SK_CH={SK01:'SK01 接近',SK02:'SK02 对位',SK03:'SK03 下降',SK04:'SK04 抓取',SK05:'SK05 抬起',SK06:'SK06 转移',SK07:'SK07 插入',SK08:'SK08 完成'};
-let CORPRE=true;          // 🔴 预执行约束: 每个动作执行前, 把它所属技能的包络用红轮廓画出来
+let CORPRE=false;          // 🔴 预执行约束: 每个动作执行前, 把它所属技能的包络用红轮廓画出来
 // 🧊 2026-11-01 老倪「为什么每个技能的约束都是一个矩形? 应该是围绕理想轨迹的圆柱通道, 要透明, 既看得到理想轨迹又看得到边界」
 //    ⇒ 圆柱渲染: 轴=这一段理想轨迹, 半径=该组包络 r(配置真值); 半透明管壁 + 两端截面圆环(边界) + 中线(理想轨迹)。
 let COR_TUBE=true;        // true=管状(半透明体) / false=线框(只画 4 根母线)
@@ -3784,7 +3784,9 @@ function plantAt(simT){
   const u=(s.t>0)?Math.min(1,Math.max(0,(el-(INSP.cum[si]-lp.base))/s.t)):1;
   corPreMark(s);                                  // 🔴 预执行红轮廓
   const q=s.qa.map(function(v,j){ return v+(s.qb[j]-v)*u; });
-  PREV.on=true; PREV.q=q; PREV.M=urdfFK(q);
+  PREV.on=true;
+  // 🦾 本地全流程走的是 215 点真轨迹 ⇒ 这里解出来的 IK 解不许顶上去(实测翻腕解差 4.06 rad = 位置突变)
+  if(!window.__NO_PLANT_PREV){ PREV.q=q; PREV.M=urdfFK(q); }
   const st=INSP.states[si]||lp.st0;
   INSP.pickedK=Math.max(0,(st.pick||0)-(lp.st0.pick||0));
   INSP.doneK=Math.max(0,(st.done||0)-(lp.st0.done||0));
@@ -3843,6 +3845,7 @@ function plantHud(){
 
 function plantStep(){
   if(!PLANT.on) return;
+  if(!PLANT.local){ PLANT.trajOff=null; PLANT.blendFrom=null; }   // 停一次 ⇒ 下次起播重新按当前关节角对齐
   // 🦾 2026-11-14 老倪「右臂仿真按真实轨迹运行」⇒ 镜像开着的时候, 这一路不许再写 PREV(否则
   //    ar_cmd 的合成段表按 60Hz 盖掉真机位姿, 看着就是"仿真没按真实轨迹走")
   //   例外: 人点了「🏭 全流程 UPH」(PLANT.local=true) = 本地仿真该自己动, 镜像必须让位,
@@ -3871,7 +3874,10 @@ function plantStep(){
     PLANT.raf=requestAnimationFrame(plantStep);
     return;
   }
+  const _q0 = (typeof PREV!=='undefined' && PREV.q) ? PREV.q.slice() : null;   // plantAt 会写 PREV(解 IK), 先存一份
+  window.__NO_PLANT_PREV = !isAR;                    // 非 AR: 右臂由真轨迹驱动 ⇒ 禁止 plantAt 写 PREV
   const r=isAR?plantAtAR():plantAt(PLANT.simT);
+  window.__NO_PLANT_PREV = false;
   // 🦾 2026-11-14 老倪「右臂仿真要改成真实轨迹的位姿」: 本地全流程下, 右臂姿态不再由 plantAt 解 IK,
   //   直接取 215 点真轨迹的关节角帧(页面内嵌 rtrajData = real_traj_joints.json, SDK 真值)按时间循环插值
   //   ⇒ 仿真的右臂与真机录下来的每一个位姿逐帧一致(含转腕/翻面), 不再是自己算出来的一条近似线。
@@ -3880,15 +3886,35 @@ function plantStep(){
       const _d=ensureTrajJoints();
       if(_d && _d.frames && _d.frames.length>1){
         const fr=_d.frames, T=fr[fr.length-1].t||1;
-        const tt=PLANT.simT % T;
+        // 2026-11-14 老倪「右臂位置突变, 不对」⇒ 起播不许瞬移:
+        //   ① 起点按**当前关节角最近的轨迹帧**对齐(不是硬从第 0 帧开始)
+        //   ② 头 600ms 从当前关节角线性过渡到轨迹帧(blend), 之后才是纯真轨迹
+        if(PLANT.trajOff==null || !isFinite(PLANT.trajOff)){
+          var _bq=PREV.q||fr[0].j, _bi=0, _bd=1e9;
+          for(var _k=0;_k<fr.length;_k++){
+            var _m=0; for(var _j=0;_j<6;_j++) _m=Math.max(_m, Math.abs(fr[_k].j[_j]-_bq[_j]));
+            if(_m<_bd){ _bd=_m; _bi=_k; }
+          }
+          PLANT.trajOff=fr[_bi].t; PLANT.blendFrom=_bq.slice(); PLANT.blendT0=performance.now();
+          PLANT.blendMs=600;
+        }
+        const tt=(PLANT.simT + PLANT.trajOff) % T;
         let i=0; while(i<fr.length-2 && fr[i+1].t<=tt) i++;
         const f=fr[i], f2=fr[Math.min(i+1,fr.length-1)];
         const span=Math.max(1e-6,f2.t-f.t), u=Math.max(0,Math.min(1,(tt-f.t)/span));
-        const qq=f.j.map(function(v,k){ return v+(f2.j[k]-v)*u; });
+        var qq=f.j.map(function(v,k){ return v+(f2.j[k]-v)*u; });
+        if(PLANT.blendFrom && PLANT.blendT0){
+          var _w=Math.min(1,(performance.now()-PLANT.blendT0)/Math.max(1,PLANT.blendMs));
+          if(_w<1){ qq=PLANT.blendFrom.map(function(v,k){ return v+(qq[k]-v)*_w; }); }
+          else { PLANT.blendFrom=null; }
+        }
         PREV.on=true; PREV.q=qq; PREV.M=urdfFK(qq); PREV.target=f2.p.slice();
         PREV.src='traj215'; PREV.trajT=+tt.toFixed(3);
+      } else if(_q0){
+        // 真轨迹帧还没到(异步加载) ⇒ 不许用 plantAt 的 IK 解顶上去(实测会跳成翻腕解: 4.06 rad/帧)
+        PREV.q=_q0; PREV.M=urdfFK(_q0); PREV.src='hold';
       }
-    }catch(e){}
+    }catch(e){ if(_q0){ PREV.q=_q0; PREV.M=urdfFK(_q0); } }
   }
   if(r){
     const lp=r.lp;
@@ -4778,10 +4804,18 @@ function mirrorTick(){
   // 🏭 本地全流程(全流程 UPH)在跑 ⇒ 这一段归本地仿真, 镜像不许抢 PREV
   if(typeof PLANT!=='undefined' && PLANT.on && PLANT.local) return;
   fetch('/api/tcp',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+    // 请求发出后才点的「全流程」也要挡住(实测: 旧判据只在发请求前查 ⇒ 回来时照样把真机位姿写进 PREV, 3.65 rad 突变)
+    if(typeof PLANT!=='undefined' && PLANT.on && PLANT.local) return;
     if(!d||d.ok===false||!d.joints||d.joints.length<6) return;
     MIRROR.lastAge=d.age_s;
     if(typeof d.age_s==='number' && d.age_s>1.5) return;      // 真值过期 ⇒ 不拿陈旧位姿骗人
     var q=d.joints.slice(0,6);
+    // 停掉本地全流程后切回跟随真机时也会瞬移(实测 0.97 rad) ⇒ 头 600ms 从上一姿态线性过渡过去
+    if(MIRROR.blendFrom && MIRROR.blendT0){
+      var _w=Math.min(1,(performance.now()-MIRROR.blendT0)/600);
+      if(_w<1){ q=q.map(function(v,k){ return MIRROR.blendFrom[k]+(v-MIRROR.blendFrom[k])*_w; }); }
+      else { MIRROR.blendFrom=null; }
+    }
     PREV.on=true; PREV.q=q; PREV.target=[d.x*1000,d.y*1000,d.z*1000];
     try{ PREV.M=urdfFK(q); }catch(e){}
     MIRROR.n++;
@@ -4791,6 +4825,8 @@ function mirrorTick(){
   }).catch(function(e){ MIRROR.err=String(e&&e.message||e); });
 }
 function mirrorStart(){
+  MIRROR.blendFrom=(typeof PREV!=='undefined'&&PREV.q)?PREV.q.slice():null;
+  MIRROR.blendT0=performance.now();
   if(MIRROR.on) return;
   MIRROR.on=true; MIRROR.err=null;
   if(MIRROR.t) clearInterval(MIRROR.t);
@@ -4802,6 +4838,7 @@ function mirrorStop(){ MIRROR.on=false; if(MIRROR.t){ clearInterval(MIRROR.t); M
 setTimeout(function(){
   try{
     if(typeof VR!=='undefined' && VR.simArm!==false) mirrorStart();
+    try{ ensureTrajJoints(); }catch(e){}          // 预热 215 点关节角(否则第一次点全流程会先用 IK 解顶一帧 ⇒ 位置突变)
     var b=document.getElementById('bArmR');
     if(b) b.addEventListener('click', function(){ try{ (VR.simArm? mirrorStart(): mirrorStop()); }catch(e){} });
   }catch(e){}
@@ -5400,98 +5437,6 @@ function rtrajPlay(){
   }, 30);
 }
 
-// ── 🔮 逐点通道步进 (老倪 2026-11-14): 先给出**下一个点**的通道, 右臂再进这个点 ────────────
-var PST={on:false, i:0, k:0, raf:null, ids:[], d:null, wait:320, t0:0};
-function pstClear(){ if(PST.ids.length){ var s=PST.ids.slice(); FENCES=FENCES.filter(function(it){ return s.indexOf(it.id)<0; }); PST.ids=[]; } }
-var PST_N=10;                                   // 引导窗口: 当前点往后 10 个点
-function pstGuide(i){
-  pstClear();
-  var fr=PST.d&&PST.d.frames; if(!fr||i<0||i>=fr.length-1) return false;
-  var last=fr.length-1, n=Math.min(PST_N, last-i);
-  if(n<1) return false;
-  var pts=[]; for(var t=0;t<=n;t++) pts.push(fr[i+t].p);
-  var put=function(nm,p1,p2,col){
-    var it={id:'PST-'+i+'-'+PST.ids.length, type:'line', name:nm, p1:p1, p2:p2, color:col||'#22d3ee',
-            enabled:true, no_collision:true,
-            note:'🧭 引导 '+n+' 点 · 从 i='+i+' 起 (真轨迹查表) · 先看引导, 右臂再点一个点一个点走'};
-    FENCES.push(it); PST.ids.push(it.id);
-  };
-  var cross=function(p,r,col,nm){                  // 3D 十字点标 (三个方向各一根)
-    put(nm+' x',[p[0]-r,p[1],p[2]],[p[0]+r,p[1],p[2]],col);
-    put(nm+' y',[p[0],p[1]-r,p[2]],[p[0],p[1]+r,p[2]],col);
-    put(nm+' z',[p[0],p[1],p[2]-r],[p[0],p[1],p[2]+r],col);
-  };
-  for(var k=0;k<n;k++) put('🧭 引导段 '+(i+k)+'→'+(i+k+1), pts[k], pts[k+1], '#22d3ee');
-  for(var k2=1;k2<=n;k2++) cross(pts[k2], 0.010, '#7ee7f7', '🧭 第'+(k2)+'点');   // 10 个预测点
-  cross(pts[1], 0.026, '#ff4d4f', '🎯 下一个点');                                   // 下一个要进的点, 红色大十字
-  // 一个 points 项: 让三维取景把这条引导也算进去(否则可能被裁到画外)
-  var pi={id:'PST-pts-'+i, type:'points', name:'🧭 引导点列 (i='+i+')', pts:pts.slice(1),
-          color:'#22d3ee', enabled:true, no_collision:true, note:'🧭 未来 '+n+' 点引导'};
-  FENCES.push(pi); PST.ids.push(pi.id);
-  drawVR();
-  return true;
-}
-function pstHud(msg,col){ var t=$('tRTraj'); if(t){ t.textContent=msg; t.style.color=col||'#f0a020'; } }
-function pstRun(){
-  if(!PST.on) return;
-  var fr=PST.d.frames;
-  if(PST.i>=fr.length-1){
-    PST.on=false; pstClear(); drawVR();
-    pstHud('🧭 引导走完 '+fr.length+' 点 · 每点先出通道再进点 · 已切回跟随真机','#3fb950');
-    try{ if(VR.simArm) mirrorStart(); }catch(e){}
-    var bb=$('bPst'); if(bb){ bb.classList.remove('on'); }
-    return;
-  }
-  var k=PST.i, f0=fr[k], f1=fr[k+1];
-  pstGuide(k);                                            // ① 先画出未来 10 个点的引导轨迹
-  pstHud('🧭 引导已画出 未来的 10 个点 (从 i='+k+' 起) · 右臂正在进入第 '+(k+1)+' 点…');
-  var dur=Math.max(0.5, Math.min(3.0, (f1.t-f0.t)||0.6)); // ② 再让右臂按真实轨迹进入这一点
-  PST.t0=performance.now();
-  var tick=function(){
-    if(!PST.on) return;
-    var el=(performance.now()-PST.t0)/1000;
-    if(el<PST.wait/1000){ drawVR(); PST.raf=requestAnimationFrame(tick); return; }
-    var u=Math.min(1,(el-PST.wait/1000)/dur);
-    var qq=f0.j.map(function(v,kk){ return v+(f1.j[kk]-v)*u; });
-    PREV.on=true; PREV.q=qq; PREV.M=urdfFK(qq);
-    PREV.target=(u<0.5?f0.p:f1.p);
-    mjPushQ(); if((PST.k++ % 3)===0) mjPushQForce();
-    drawVR();
-    if(u>=1.0){
-      PST.i=k+1;
-      pstHud('🔮 已进入第 '+(k+1)+' 点 · 下一点通道马上给出…');
-      setTimeout(function(){ if(PST.on) PST.raf=requestAnimationFrame(pstRun); }, 100);
-      return;
-    }
-    PST.raf=requestAnimationFrame(tick);
-  };
-  PST.raf=requestAnimationFrame(tick);
-}
-function pstToggle(){
-  if(PST.on){ PST.on=false; if(PST.raf) cancelAnimationFrame(PST.raf); pstClear(); drawVR();
-    pstHud('🧭 引导已停','#8b949e'); var b=$('bPst'); if(b) b.classList.remove('on'); return; }
-  PST.d=ensureTrajJoints(); if(!PST.d||!PST.d.frames||!PST.d.frames.length){ pstHud('⛔ 轨迹关节角没载入','#f85149'); return; }
-  try{ mirrorStop(); }catch(e){}
-  try{ if(typeof RTRAJ!=='undefined') RTRAJ.playing=false; }catch(e){}
-  // 从当前游标/最近帧起走
-  var fr=PST.d.frames, st=0;
-  var cur=(typeof exec_index==='function')? exec_index() : null;
-  if(cur!=null && cur>=0 && cur<fr.length) st=cur;
-  PST.on=true; PST.i=st; PST.k=0;
-  var b=$('bPst'); if(b) b.classList.add('on');
-  pstHud('🧭 引导启动 · 从 i='+st+' 开始 · 画未来 10 点, 右臂一点一点进入');
-  PST.raf=requestAnimationFrame(pstRun);
-}
-{ var _bp=document.getElementById('bRTraj');
-  if(_bp && !document.getElementById('bPst')){
-    var _b2=document.createElement('button');
-    _b2.id='bPst'; _b2.className='sm';
-    _b2.textContent='🧭 引导10点';
-    _b2.title='把未来 10 个点画成引导轨迹(青色折线 + 每点十字 + 红色大十字=下一个要进的点), 右臂按真实轨迹一点一点进入; 点一下开始, 再点停止';
-    _b2.addEventListener('click', pstToggle);
-    _bp.insertAdjacentElement('afterend', _b2);
-  }
-}
 { var _b=$('bRTraj'); if(_b) _b.addEventListener('click', rtrajPlay); }
 { var _bs=document.getElementById('bSyncStep'); if(_bs) _bs.addEventListener('click', syncStepPlay); }
 { var _ba=document.getElementById('bSyncAlign');
@@ -5995,7 +5940,7 @@ async function robotTick(){
         drw:(typeof DRWN!=='undefined')?DRWN:null,
         cw:(document.getElementById('vr')||{}).width||null,
         ch:(document.getElementById('vr')||{}).height||null,
-        bld:'2026-11-14 r101',
+        bld:'2026-11-14 r106',
         // 🩺 2026-10-29 老倪「开状态空间就看不到手里那颗模块」: 手里有没有货 / 落在第几段 直接上报
         drv:(typeof ARCMD!=='undefined'&&ARCMD.drv)||'',
         carry:(typeof INSP!=='undefined'&&INSP.carry)?1:0,

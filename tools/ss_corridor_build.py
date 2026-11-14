@@ -202,7 +202,7 @@ def _perp(u):
 def _line(fid, name, p1, p2, color, note=""):
     return {"id": fid, "type": "line", "name": name,
             "p1": [round(x / 1000.0, 6) for x in p1], "p2": [round(x / 1000.0, 6) for x in p2],
-            "color": color, "enabled": True, "no_collision": True, "note": note}
+            "color": color, "enabled": False, "no_collision": True, "note": note}
 
 
 def write_ar_fences(doc):
