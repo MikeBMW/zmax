@@ -1,6 +1,6 @@
 <!doctype html><html lang="zh"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Z-MAX AR3D r99 · 仿真=真轨迹位姿 · SIM自动 · 位置细胞 · 8802直播</title>
+<title>Z-MAX AR3D r100 · 逐点通道 · SIM自动 · 位置细胞 · 8802直播</title>
 <style>
  *{box-sizing:border-box}
  body{margin:0;background:#0b0f14;color:#e6edf3;font:15px/1.5 -apple-system,Segoe UI,Roboto,"Noto Sans SC",sans-serif}
@@ -5399,6 +5399,99 @@ function rtrajPlay(){
     RTRAJ.raf=requestAnimationFrame(step);
   }, 30);
 }
+
+// ── 🔮 逐点通道步进 (老倪 2026-11-14): 先给出**下一个点**的通道, 右臂再进这个点 ────────────
+var PST={on:false, i:0, k:0, raf:null, ids:[], d:null, wait:320, t0:0};
+function pstClear(){ if(PST.ids.length){ var s=PST.ids.slice(); FENCES=FENCES.filter(function(it){ return s.indexOf(it.id)<0; }); PST.ids=[]; } }
+function pstTube(i){
+  pstClear();
+  var fr=PST.d&&PST.d.frames; if(!fr||i<0||i>=fr.length-1) return false;
+  var a=fr[i].p, b=fr[i+1].p; if(!a||!b) return false;
+  var dx=b[0]-a[0], dy=b[1]-a[1], dz=b[2]-a[2];
+  var n=Math.sqrt(dx*dx+dy*dy+dz*dz)||1e-9;
+  var u=[dx/n,dy/n,dz/n];
+  var ref=Math.abs(u[0])<0.9?[1,0,0]:[0,1,0];
+  var e1=[u[1]*ref[2]-u[2]*ref[1], u[2]*ref[0]-u[0]*ref[2], u[0]*ref[1]-u[1]*ref[0]];
+  var m=Math.sqrt(e1[0]*e1[0]+e1[1]*e1[1]+e1[2]*e1[2])||1e-9; e1=[e1[0]/m,e1[1]/m,e1[2]/m];
+  var R=0.080;                                  // 通道半径 80mm (末端可通行包络)
+  var put=function(nm,p1,p2,col){
+    var it={id:'PST-'+i+'-'+PST.ids.length, type:'line', name:nm, p1:p1, p2:p2, color:col||'#f0a020',
+            enabled:true, no_collision:true,
+            note:'🔮 逐点通道 i='+i+'→'+(i+1)+' · r=80mm · 通道先给出, 右臂再进这一点'};
+    FENCES.push(it); PST.ids.push(it.id);
+  };
+  var sgn=[1,-1];
+  for(var si=0;si<2;si++){ var s=sgn[si];
+    put('🔮 逐点母线'+(si+1)+' i='+i, [a[0]+e1[0]*R*s,a[1]+e1[1]*R*s,a[2]+e1[2]*R*s],
+                                     [b[0]+e1[0]*R*s,b[1]+e1[1]*R*s,b[2]+e1[2]*R*s]);
+  }
+  put('🔮 逐点端面 i='+i,     [a[0]+e1[0]*R,a[1]+e1[1]*R,a[2]+e1[2]*R], [a[0]-e1[0]*R,a[1]-e1[1]*R,a[2]-e1[2]*R]);
+  put('🔮 逐点端面 i='+(i+1), [b[0]+e1[0]*R,b[1]+e1[1]*R,b[2]+e1[2]*R], [b[0]-e1[0]*R,b[1]-e1[1]*R,b[2]-e1[2]*R]);
+  put('🔮 逐点轴线 i='+i, a, b, '#ff4d4f');
+  drawVR();
+  return true;
+}
+function pstHud(msg,col){ var t=$('tRTraj'); if(t){ t.textContent=msg; t.style.color=col||'#f0a020'; } }
+function pstRun(){
+  if(!PST.on) return;
+  var fr=PST.d.frames;
+  if(PST.i>=fr.length-1){
+    PST.on=false; pstClear(); drawVR();
+    pstHud('🔮 逐点走完 '+fr.length+' 点 · 每点先出通道再进点 · 已切回跟随真机','#3fb950');
+    try{ if(VR.simArm) mirrorStart(); }catch(e){}
+    var bb=$('bPst'); if(bb){ bb.classList.remove('on'); }
+    return;
+  }
+  var k=PST.i, f0=fr[k], f1=fr[k+1];
+  pstTube(k);                                             // ① 先把下一个点的通道给出来
+  pstHud('🔮 第 '+(k+1)+' 点通道已给出 (i='+k+'→'+(k+1)+') · 等待右臂进入…');
+  var dur=Math.max(0.5, Math.min(3.0, (f1.t-f0.t)||0.6)); // ② 再让右臂按真实轨迹进入这一点
+  PST.t0=performance.now();
+  var tick=function(){
+    if(!PST.on) return;
+    var el=(performance.now()-PST.t0)/1000;
+    if(el<PST.wait/1000){ drawVR(); PST.raf=requestAnimationFrame(tick); return; }
+    var u=Math.min(1,(el-PST.wait/1000)/dur);
+    var qq=f0.j.map(function(v,kk){ return v+(f1.j[kk]-v)*u; });
+    PREV.on=true; PREV.q=qq; PREV.M=urdfFK(qq);
+    PREV.target=(u<0.5?f0.p:f1.p);
+    mjPushQ(); if((PST.k++ % 3)===0) mjPushQForce();
+    drawVR();
+    if(u>=1.0){
+      PST.i=k+1;
+      pstHud('🔮 已进入第 '+(k+1)+' 点 · 下一点通道马上给出…');
+      setTimeout(function(){ if(PST.on) PST.raf=requestAnimationFrame(pstRun); }, 100);
+      return;
+    }
+    PST.raf=requestAnimationFrame(tick);
+  };
+  PST.raf=requestAnimationFrame(tick);
+}
+function pstToggle(){
+  if(PST.on){ PST.on=false; if(PST.raf) cancelAnimationFrame(PST.raf); pstClear(); drawVR();
+    pstHud('🔮 逐点通道已停','#8b949e'); var b=$('bPst'); if(b) b.classList.remove('on'); return; }
+  PST.d=ensureTrajJoints(); if(!PST.d||!PST.d.frames||!PST.d.frames.length){ pstHud('⛔ 轨迹关节角没载入','#f85149'); return; }
+  try{ mirrorStop(); }catch(e){}
+  try{ if(typeof RTRAJ!=='undefined') RTRAJ.playing=false; }catch(e){}
+  // 从当前游标/最近帧起走
+  var fr=PST.d.frames, st=0;
+  var cur=(typeof exec_index==='function')? exec_index() : null;
+  if(cur!=null && cur>=0 && cur<fr.length) st=cur;
+  PST.on=true; PST.i=st; PST.k=0;
+  var b=$('bPst'); if(b) b.classList.add('on');
+  pstHud('🔮 逐点通道启动 · 从 i='+st+' 开始 · 每点先出通道再进点');
+  PST.raf=requestAnimationFrame(pstRun);
+}
+{ var _bp=document.getElementById('bRTraj');
+  if(_bp && !document.getElementById('bPst')){
+    var _b2=document.createElement('button');
+    _b2.id='bPst'; _b2.className='sm';
+    _b2.textContent='🔮 逐点通道';
+    _b2.title='先给出下一个点的通道(半径80mm 双层母线+端面+轴线), 右臂再按真实轨迹进入这一点; 点一下开始, 再点停止';
+    _b2.addEventListener('click', pstToggle);
+    _bp.insertAdjacentElement('afterend', _b2);
+  }
+}
 { var _b=$('bRTraj'); if(_b) _b.addEventListener('click', rtrajPlay); }
 { var _bs=document.getElementById('bSyncStep'); if(_bs) _bs.addEventListener('click', syncStepPlay); }
 { var _ba=document.getElementById('bSyncAlign');
@@ -5902,7 +5995,7 @@ async function robotTick(){
         drw:(typeof DRWN!=='undefined')?DRWN:null,
         cw:(document.getElementById('vr')||{}).width||null,
         ch:(document.getElementById('vr')||{}).height||null,
-        bld:'2026-11-14 r99',
+        bld:'2026-11-14 r100',
         // 🩺 2026-10-29 老倪「开状态空间就看不到手里那颗模块」: 手里有没有货 / 落在第几段 直接上报
         drv:(typeof ARCMD!=='undefined'&&ARCMD.drv)||'',
         carry:(typeof INSP!=='undefined'&&INSP.carry)?1:0,
