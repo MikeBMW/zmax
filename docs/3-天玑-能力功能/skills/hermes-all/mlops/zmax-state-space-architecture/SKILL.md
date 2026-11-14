@@ -892,6 +892,41 @@ xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py [--level L2|L3|L4]
    ref 表: SK01/SK02 = `peg + [0,0,hover_h]` (0.09 / 0.05, v_cap 0.35 / 0.12) · SK06 = `hole_mouth + hover`(0.02)。
    即: 技能自己定义目标, plan 只出段序 —— 切换会改几何基线, 必须整轮重测。
 
+## 🧭 「谁是总调度 / 谁指挥谁」— 先算入度出度, 再读实现实参
+
+架构类主张（用户或外部模型给的"总调度 = 某节点"）必须用两项硬证据核，不许凭节点 `desc` 里的形容词点头：
+
+1. **拓扑**: 从 `data/database/zmax/sources/canvas/state_space_obs.json` 的 `links`(键 `f`/`t`/`label`)算 in/out degree,
+   逐条列出候选节点的输入**来源 + 端口 + label**；再 `[l for l in links if l['f']=='<id>']` 核"它到底连到谁"。
+2. **实现**: 找到该节点真实现(见「节点实现路径两套并存」)，把决策函数的**实参**抄出来(阈值/循环/分支)，形容词才成立。
+
+实测(94 节点 / 222 连线那一版)：
+- `sssched` 入度 **13**(全图第一)，出度 **2**: `out1→sslimit`(「阶段切换与动作融合」)、`out2→ss_grav_h`(「L2 动作调制→技能动作 a」)。
+  13 路输入: ssllm(技能Token) · ss_mem_field(−∇Φ) · ss_mem_l3 · ss_mem_l2 · ssaoi(质量门) · n_l2_muscle · ssff(前馈30%)
+  · ssreason · ssinnov(u_fb) · ss_moe(阶段置信) · n_intent_direct(元任务) · ss_mani_eng(动作a) · n_geoplan(测地线)。
+- `sslimit` 入 3(`sssched`/`ssphys`/`n_geoplan`) 出 **11** ⇒ **真正扇出到执行器的是它**；`n_exec` 入 3(`n_moveit`/`sslimit`/`ss_grav_h`)。
+- `ssobs`(SU(2)) 7 条出边 = ssff/ssest/ssreason/ssvideo/ss_moe/ss_mani_eng/n_geoplan —— **没有直连 sssched**;
+  "调度器拿到 su2 的宏观状态"是经 ssff / ss_moe(阶段置信) 的**间接**路径，回答必须说"间接"，不能写成直连。
+- `sssched` 的仲裁不是形容词: `cognition.ActionModulator.decide` 真做四件事 —— 残差否决 `residual>veto_th(2.0)` 返回全零、
+  连 `max_veto(3)` 次改报「异常: 连续否决」· 融合 `u=u_ff+k_fb(1.0)·u_fb`(相加，注释写明量级差 21 倍所以不用凸组合) ·
+  阶段限速 `STAGE_V_CAP` 12 段(完成 0.02 / 抓取 0.04 / 插入 0.085 / 对位 0.12 / 接近·转移 0.35 m/s，只削幅不改方向) ·
+  每拍 `skill_step()` 过 SK01-08 五约束闸。
+
+对外口径(实测支撑): 三层权力 —— **语义仲裁 `sssched`**(毫秒) · **边界扇出 `sslimit`**(幅值，出 11) ·
+**物理放行 = 授权/安全闸**(在图外，没授权臂一动不动); `ssobs` 是**全局相位度规**(收敛度 |w| / 层间非交换)，不是调度器。
+任何"总调度压在单节点上"的说法，一查 links 就露。
+
+`su2` 的数学主张可当场自证(`group_axiom_selftest()` 返回逐条实测误差，不是写死通过): 酉性/det/结合律/逆元 ~4e-16 ·
+测地三角形不违反 · 平均对易子角 1.32 rad(≈76°) · 同四层换序 θ 差 4.05° · 不可交换矩阵 L3|L4=1.194 rad vs L2|L5=0.042 rad。
+
+## 📁 「所有节点的 json 文件是哪个」
+
+`data/database/zmax/sources/canvas/state_space_obs.json` —— 引擎每拍读的**现役**画布(`ss_canvas_loop.py` 的 `CANVAS`)。
+干扰项一次点明，别让用户拿着快照当现役: `_archive/`(历史备份) · `sources/canvas/ss_traj_last.json`(轨迹临时文件, 0 节点) ·
+`../zmax_space.proj`(快照/导出，节点在它的 `canvas` 字段) · `../config_meta.json`(参数元信息 2.8M) · `../zmax_engineering.db`(sqlite 工程库)。
+报数一律「节点 N / 连线 M + mtime」；与 550C 对照要两份口齐 —— 节点数相同而连线数不同(实测 94/222 vs 94/214)就是旧版，
+不能用一句"两边一样"糊过去。
+
 ## 📋 把节点清单导出成文档表（名称/功能/PURE/实现文件）
 
 交付文档要「L2 层所有逻辑节点的功能」时不要手写清单，三步从真源拼：
@@ -930,6 +965,12 @@ xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py [--level L2|L3|L4]
   触发真采样（日志会有 YOLO/metaworld 加载行）—— 所以"light 档=零开销"不成立，解释时说明是缓存路径。
 
 ## 关键文件
+- src/lerobot/engineering/start.py (**工程正式入口**: 状态机+策略表+钩子+单实例锁+优雅停机;
+  生产 unit 的 ExecStart 指向它. 用户强调过「这不是调试程序」⇒ 别拿它当临时 runner 改, 也别把调试开关塞进入口。
+  `tools/ss_canvas_loop.py` 只是执行腿/节拍器(10Hz 逐节点), 不是入口; 工程本体在它的 `load_project()` 那一刻装载。
+  状态机 `state_space/scheduler_fsm.py::DispatchFSM` 做**进程级单例**(注册表挂 builtins) —— 调制器每拍 `new`
+  且同一文件可能被包导入与按路径加载成两个模块对象, 不修就"状态机看着有、实际不动"。
+  细节/取证/systemd drop-in → 相关技能 layered-capability-stack 里的「dispatch-fsm-entry」参考)
 - src/lerobot/engine/runtime.py (闭环总装 `RealStateSpaceSim`, 4240 行零 Qt; 原 `tools/gui/state_space_sim_real.py`,
   那边现在只剩别名 shim `sys.modules[__name__] = 真身`。**三层身份别混**: 总装 runtime ≠ 流形引擎节点
   `ss_mani_eng`→`src/lerobot/manifold/manifold_engine.py` ≠ 物理积分(metaworld/MuJoCo 内建)。
@@ -1066,6 +1107,13 @@ V 随误差单调; 引力方向 cos=1; `encode_layer("L2", {"L2_quat": q})` 与 
   `quat_truth_calls.jsonl`(逐次流水, 可复盘每次 err/V/w/引力)。
 
 ### 部署到 550C(intel) 的验收口径
+
+- 🔴 **节点实现路径两套并存, 所以「三台同一份代码」要按算法文件验**: 本机(550A/550B)已重构到
+  `middleware/nodes/impl/ss_<x>.py`, 而 550C 仍跑 `engineering/nodes/library.py`(`grep -rl 'def node_ss_s1'` 只在后者命中),
+  两边**算法实现**是同一份(实测都走 `perception.fuse_sensors` / `state_space/map_fusion.py`)。判据 = 各机先 `grep -rl 'def node_<fn>' src`
+  找真实壳, 再对算法文件(`policies/left_right/state_space/*.py`)逐个 md5 对照; 壳位置不同只是布局差异, 但**必须主动说清**——
+  用户问的就是"是不是同一份", 用路径比较回答会给出错误结论。
+
 intel 的登录用户是 `intel`(不是 ubuntu), `~/zmax` 是**同步副本不是 git 仓库** ⇒ 不能 `git pull`, 用
 `rsync -a --relative <相对路径...> intel:~/zmax/`, 然后**在远端跑一遍模块自检**并与本地 `md5sum` 逐个对照;
 只比时间/大小不算部署成功。intel 上的飞书凭据在 `~/.hermes/config.yaml` 的 `platforms.feishu`(它自己的应用),

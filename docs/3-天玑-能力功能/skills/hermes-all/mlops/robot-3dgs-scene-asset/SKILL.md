@@ -157,7 +157,39 @@ metadata:
 6. **VLM 指导**(L5 视觉那条): ① 逐帧筛(糊/过曝/遮挡/无效视角)并实时提示换角度; ② 认区域/工装/工件打**语义标签**写进资产元数据; ③ 采集后判覆盖缺口 → 给下一轮**主动视角建议**(位姿级)。
 7. **增强件**(按需接, 不阻塞主链): 深度监督(D405 深度图当几何约束, 比纯 RGB 稳) · **4DGS**(每帧 TCP 位姿做时间轴, 可做含臂动态的时间维资产) · **diffusion**(新视角/新光照域随机化; 把机械臂 inpainting 抹掉)。
 8. **用途**: 从资产渲染任意视角/光照的“真感”图 → 喂检测/策略做离线回归; 与真机画面做同口径对照(见 `sim-real-scene-overlay`)。
-9. **接进画布**: 数据层节点「3DGS 环境资产」, 输入=图像流+位姿流+L5 触发, 输出=资产路径+渲染通道; 跨 venv 子进程桥的写法见 `cross-venv-model-canvas-node`。
+9. **接进画布**: 数据层节点「3DGS 环境资产」, 输入=图像流+位姿流+L5 触发, 输出=资产路径+渲染通道; 跨 venv 子进程桥的写法见 `cross-venv-model-canvas-node`.
+
+### 建图/训练代码只能有**一份实现**(节点即入口 · 多机同码)
+
+口径: 「所有训练代码, 无论是实时建图还是离线建图, 代码逻辑都在建图融合节点, 550A 550B 550C 都要有相同的代码。」
+⇒ 不是"节点去调一个脚本"就算, 而是**逻辑本身只有一处**(如 `state_space/map_fusion.py`), 三个入口都转发到它:
+
+| 入口 | 谁调 | 干什么 |
+|---|---|---|
+| `tick(ctx)` | 画布节点(融合定位建图)每拍 | 毫秒级: 确保守护活着 / 读状态 / 写一行日志; 重活异步 |
+| `daemon_main()` | systemd 常驻守护 | 攒帧 → 建数据集 → 训练 → 发布 循环 |
+| `offline(session, steps)` | CLI `--offline --session … --steps …` | 一次性建图, 与实时**只差参数** |
+
+- 共用三函数 `build_ds()` → `train()` → `publish()`; 实时 600 步 / 离线 12000~24000 步只是传参, **不许各写一套**。
+- 历史遗留的"节点包里一份 + tools 里一份"重复实现, 症状是**改一处漏一处**(节点日志说在训、守护其实没触发) ⇒ 发现两份就合并, 别在两边同步修。
+- 守护脚本退化成 20 行壳(只找模块 + 把 argv 交给 `daemon_main`), 这样 systemd 的 ExecStart 不用改而逻辑只剩一份。
+- 多机同码的**判据是 md5 相等**, 不是"我拷过了": 节点文件 + 模块 + 壳三样逐台 `md5sum` 比; 路径差异一律走 env 或候选探测(`~/zmax_map/tools/…` vs `<repo>/tools/…`), 不许在代码里写死某台机。
+- 🔴 **拷节点文件必须连 sibling 模块一起拷**: `nodes/__init__.py` 里 `from . import library`, 而 `library.py` 又 import 同目录 20+ 个 `*_impl` ⇒ 只拷 `library.py` 会报
+  `ImportError: cannot import name 'uph_tact_impl' from partially initialized module … (most likely due to a circular import)` —— 这**不是循环 import, 是缺文件**。
+  用 `rsync -a --include='*.py' --exclude='*' <源>/nodes/ <目标>/nodes/` 补齐。
+- 滚动窗口数据集(实时轮次): 从会话里**硬链接最后 N 帧**(`os.link`, 跨盘回退 `copy2`)+ 重写 `cameras.json` 的 `frames`, 判据 = 数据集帧数 == N 且 `note` 记了 `窗口 x/y`。
+- 🔴 **收口之后, 新建图一律走唯一入口, 不许再手工拼老 runner**: 离线轮 = `map_fusion.py --offline --session <会话> --steps N`(内部同一个 `build_ds→train→publish`),
+  再直接 `run_gs_train_*.sh --data --out --steps` 就等于绕开收口又长出一套参数/日志/发布口径(下一次"页面没更新”“守望盯错目录”都从这来)。
+  **已在跑的长训不要为了"换入口"打断**(烧掉的时间比一致性贵), 把切换点写在交付里: 本轮旧 runner、下一轮起新入口。
+- 长训/二次提质的排序: 同一份数据先 **warm start 上一次的 `gs.ply` + 步数翻倍**(实测 12000 步 223k 高斯 → 24000 步 445k 高斯, 步速 ~0.24s/步),
+  比重新随机初始化更省; 但**同一条轨迹重复回放不加视点**, 要再提质只能加新视角(上面「同一条轨迹跑两三遍」节)。
+- 发布资产时**渲染图必须同批拷** —— `/gs_render.png` 取的是最新资产的 `renders/holdout_00.png`, 少拷它就继续显示上一份的老图(下面「交付面」节有完整判据)。
+- **实时链的节奏要能报给现场(「我边走边能更新么」)**: 攒够 **80 新帧**触发一轮(600 帧滚动窗口 / 600 步 / warm start 上一轮)
+  ⇒ 走的过程中地图就在长(不用等整条轨迹走完); 发布成 `rt_live` → 4060 每 **5 分钟** rsync(crontab 里那条 `rsync … rt_live`)→ 工位页 **15 秒**刷一帧渲染图。
+  开走前先确认三件: 采集守护 `frames_total` 在涨 · 位姿源 `pose_age` 新鲜 · 已授权(8793); 位姿桥一停, 采集守护会把整段帧全判「位姿陈旧」丢掉。
+- **同一条轨迹步数翻倍的收益必须实测后再说**: 900 帧同一轨迹 12000 步 → 留出 **16.36dB**; warm start 到 24000 步 → **17.22dB(+0.86)**, 高斯 223k→445k
+  ⇒ 同视角重复回放已到顶。要再提升只能换视角(新轨迹/挪工位)或**把多个会话合并成一份数据集再全量训**, 不要用“再加步数”应付。
+- 断点落点与该模式的自证见 `vscode-breakpoint-inspection`(门控 `ZMAX_DEBUG_<TAG>` + 最小 runner 只调一次节点函数)。
 
 ## Pitfalls
 | 坑 | 症状 | 修法 |
@@ -232,6 +264,15 @@ metadata:
 再往上一层查真源: 相机 hub 的 `/snap`(报 `n` 与 `age_s`)、`/dev/video*`、以及相机那个 unit 是否
 **只是 `linked` 未 enabled**(`systemctl is-active` = inactive, 看着像装好了其实从没自启)。
 图像源死了而位姿活着 ⇒ 采集器能一直跑但一张有用数据都没有, 别拿"守护在跑"向用户报进度。
+- 🔴 **反过来(`img_age` 正常、`pose_age` 几万秒)时, 卡的不是机械臂也不是位姿源, 是本机那个 ROS→HTTP 桥**:
+  实测 `img_age_s 0.06 / pose_age_s 41521 / fps 18.9`, 而 Orin 的 `/robot/tcp_pose` 照常 50Hz 在发 ⇒
+  `systemctl restart zmax-gs-ros-bridge` 后 `pose_age` 立刻回 0.0。代价要先查清再报: 这段位姿空窗里采集守护
+  把 **39.6 万帧**判"位姿陈旧"丢掉(`frames_skipped_stale`、`last_error: 位姿陈旧 age=…`、`cur=null`),
+  而 unit 一直 `active` ⇒ 判断"这一夜有没有在采"必须看 `frames_skipped_stale` 与 `cur` 是否为空, 不要看 `is-active`。
+- 🔴 **unit 反复 `activating (auto-restart)`、日志刷 `已有实例在跑, 本进程退出`、`Main PID … code=exited status=0/SUCCESS`**
+  = 有另一个实例(常见是画布节点 `ensure()` 拉起的)握着 flock ⇒ systemd 永远起不快那个单元, 而守护其实在跑,
+  两边状态互相骗。定式: 按显式 pid 杀掉游离实例 → `systemctl restart`, 让 systemd 成为唯一主人, 再回读一次
+  `is-active` 与 `pgrep -af <脚本>` 的 pid 是否同一个。
 
 ### 🔴 相机**不在臂上**(固定机)时, 会话的「跨度」不是相机轨迹 —— 这种会话不能当重建输入
 
@@ -573,6 +614,7 @@ A 35.7 · 黑 66.2%    B 92.7 · 黑 13.0%    C 99.4 · 黑 7.8%     (A 的相�
 | 跨机 `scp` 大 ply | 读回报 `buffer size must be a multiple of element size` | 文件被**截断**(实测 37,340,160B vs 实际 42.6MB) ⇒ 核对字节数后重传, 不要怀疑 ply 解析器 |
 | 改了渲染器代码但页面没变 | — | 渲染器是 **systemd/pidfile 常驻**, 必须重启; 页面/JS 是热读, 只需刷新 |
 | `timeout N ssh host '… ; sleep N ; tail …'` | 拿不到任何输出(命令 exit 0 但空), 像"远端没反应" | `timeout` 把**自己的 ssh 会话**在 sleep 结束前砍了 ⇒ 启动与取值拆两次调用: 一次 detached 起(`setsid nohup … &`, 立刻返回), 另一次再读 health/日志 |
+| 远端命令里嵌 `python3 -c "…$VAR…"` / 多层引号 | 远端收到的是被本地 shell 展开过的碎片(`No such file or directory`、变量全空), 看着像远端环境坏了 | 引号/`$` 一旦超过一层就别硬拼: `write_file` 写个 `.sh` → `scp` → `ssh host 'bash /tmp/x.sh'`。改远端服务用 `sudo systemctl restart …`(免密 sudo 也要显式写 `sudo`, 否则报 `Interactive authentication required` 而 `is-active` 仍回旧状态) |
 
 ## 交付面的网页查看器 (用户要「自己在窗口里转着看」)
 
@@ -702,8 +744,11 @@ A 35.7 · 黑 66.2%    B 92.7 · 黑 13.0%    C 99.4 · 黑 7.8%     (A 的相�
 - 📤 **边缘机的训练产物在 job 目录里, 不在资产库**: `gs_train_service` 写到
   `<service>/jobs/<id>/out/{gs.ply,gs.splat,renders,train_report.json}`, 而工位页的 `/gs/list` 只扫资产根
   ⇒ “训完了但页面看不到”不是没训成。发布 = 把 `gs.splat + gs.ply + renders + train_report.json`
-  拷到 `<资产根>/<资产名>/`, 再 `curl /gs/list` 回读(它按 mtime 排 latest, 并自己读 `train_report.json`
+  拷贝到 `<资产根>/<资产名>/`, 再 `curl /gs/list` 回读(它按 mtime 排 latest, 并自己读 `train_report.json`
   的 PSNR/高斯数/步数)。交付时报数必须带这四项, 不只报"已发布"。
+  🔴 **少拷 `renders/holdout_00.png` 的后果是「工位页那格继续显示上一份的老图」**: `/gs_render.png` 是按
+  "最新资产的 `renders/holdout_00.png`" 取的(`_gs_latest_render()`), 新资产没带 renders 就顺延到旧资产,
+  资产名与 PSNR 都已是新的、图还是旧的。发布后必须按 md5 核对 `/gs_render.png` == 目标资产那张。
   🔴 **回读要比对目标文件的 mtime + md5 与源一致**: "已发布"是程序自己打的日志, 实测出现过日志写已发布、
   资产根本文件 mtime 仍停上一轮 ⇒ `/gs/list` 继续报旧 PSNR、页面看的是旧图。判据只认文件本身。
   🔴 **步数/高斯数一律读 `train_report.json`, 不读自己传给训练器的参数**: 实测外层日志打"步数 1500"、
@@ -723,6 +768,8 @@ A 35.7 · 黑 66.2%    B 92.7 · 黑 13.0%    C 99.4 · 黑 7.8%     (A 的相�
   4. `tools/feishu_send.py --image <对照图> --text "<资产名 · PSNR 留出/训练 · 步数 · 高斯数 · 查看链接>" --chat <oc_…>`;
   5. **回读 message_id**(`tools/feishu_check_messages.py --n 3`)并把 `{psnr, steps, n_gaussians, 图, message_id}` 落 `zmax_data/reports/gs_posttrain_<out>.json`; 交付汇报说「图 + message_id + 发送时刻」。
 - 现成实现 `tools/gs_posttrain_feishu.py`(守望→发布→拼图→发送→落档一站)，起它用 `background=true` + `persist_on_release=true`(要跑 1~2 小时，别被会话生命周期带走)。
+- 🔴 **“盯哪一轮/发成什么资产名”必须是参数（env），不许写死在脚本里**: 连续跑几轮时每开一轮都改常量代码 = 每轮都可能改漏、而且改的时候上一轮的守望还在跑(它会按新常量去盯一个不存在的 out 目录 ⇒ 白等到超时)。
+  定式: `OUT_NAME = os.environ.get("GS_OUT_NAME", <默认>)`、`ASSET_NAME = os.environ.get("GS_ASSET_NAME", …)`，起守望时随本轮 out 目录一起传。
 - 文字里**必须带口径**: `PSNR 留出 / 训练视角 / 步数 / 高斯数` + 「左=模型渲染(留出视角) 右=相机原图」; 缺了口径，群里那张图就无法判断真假。
 - 🔴 守望脚本挂长驻**前**先用手动模式跑一次(`--max-wait-h 0.05`)验证它真能认出「已完成」—— 完成判据的自匹配坑见上面运维坑表(实测白等 4 小时); 要「优于现役才换资产」另走 `tools/gs_retrain_swap.py --baseline`。
 

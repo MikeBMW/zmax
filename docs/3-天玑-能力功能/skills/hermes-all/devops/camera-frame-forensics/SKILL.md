@@ -520,6 +520,23 @@ if raw[:8] == b"\x89PNG\r\n\x1a\n" or "image" in ctype.lower():
   判据落成三行数字再回复, 别写"可能是隐私开关"。
 - **汇报口径**: 说清「谁占着 · 在哪一步失败 · 现在谁能用 · 自己想看画面时怎么切回」, 别只说"重启试试"。
   代价要主动交底(自己那格会显示"已关闭"及原因), 否则用户会以为是你弄坏了一路。
+- 🔴 **先按 `by-id` 认"哪颗相机"再谈修**: 笔记本上"能出彩色画面"的那颗往往**不是内置相机**, 而是插着的 USB 摄像头。
+  实测这台: `by-id` 里 `WT15 (1ff7:0f52)` = 1280×720 彩色(画面正常), `Integrated RGB Camera (30c9:00c2)` = 只暴露
+  `GREY 640×360`(红外) ⇒ 微信选到它就只得到灰黑。USB 相机一拔, `/sys/bus/usb/devices` 里就只剩内置那颗,
+  而软件侧怎么改都出不了彩色。**判据 = `v4l2-ctl --list-devices` + `ls /dev/v4l/by-id/` + `/sys/bus/usb/devices/*/idVendor` 三处对齐**,
+  别用 "内置/USB" 这种和现场对不上号的词。
+- 🔴 **手工 `ln -sf /dev/videoN /dev/video0` 只在"服务硬写索引 + 已按能力确认目标节点"时用**: udev 的 `by-id` 链
+  (`WT15...-video-index0 -> ../../video0`) 本来就指着真设备, 拿软链去顶它 = 把 udev 的答案覆盖掉;
+  那颗 USB 相机一拔, 软链变**悬空** ⇒ 所有扫 `/dev/video0` 的应用(微信/浏览器)全打不开, 而 `ls /dev/video*` 看着还有节点。
+  拔了就先 `rm` 悬空链 + `udevadm trigger --subsystem-match=video4linux` 让 udev 重建, 再按能力(`--list-formats` 有 MJPG/YUYV)选节点。
+- 🔴 **USB `unbind/bind` 会让功能节点丢掉, 用 `authorized` 复位才完整**: 实测 unbind/bind 后同一条 UVC 相机只剩
+  `GREY 640×360`(红外)一个采集节点, RGB 那路直接不存在 ⇒ 应用只能拿到灰黑; 改 `echo 0 > /sys/bus/usb/devices/<bus>-<port>/authorized;
+  sleep 3; echo 1 > 同路径` 后 RGB 节点(`MJPG/YUYV 640×480`)回来。判据 = `v4l2-ctl --list-devices` 下必须同时有两条不同 `--list-formats` 的采集节点。
+- 🔴 **"全白 mean 249" 往往不是过曝场景, 是自动曝光跑顶**: 同节点 `auto_exposure=3` 下 `mean 249 / max 255 / 彩度 11`,
+  切手动扫档 `5us→3.5 · 150us→94.3 · 1000us→200.9` ⇒ 光路/传感器全好, 只是 AE 选了最亮档。定式 = 锁
+  `auto_exposure=1 + exposure_time_absolute=150`(该场景 mean≈95), 并用 **udev 规则在每次枚举后自动落地**, 否则 USB 复位/重启又变全白:
+  `ACTION=="add", SUBSYSTEM=="video4linux", ATTRS{idVendor}=="30c9", RUN+="/bin/sh -c '/usr/bin/v4l2-ctl -d /dev/%k -c auto_exposure=1 -c exposure_time_absolute=150 || true'"`;
+  验收 = `authorized` 0/1 重枚举后 `--get-ctrl auto_exposure,exposure_time_absolute` 仍回 `1 / 150`。
 
 ## 🪞 画面"总变"的两种非算法根因 (尺寸相同 + 状态字段 ok 都能骗人)
 

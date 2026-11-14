@@ -19,6 +19,9 @@
 1. 服务端日志: `grep -a 'step_traj' /tmp/tcp_ar_server.log | tail` —— 用户说“点了/开始了”但这儿没有新 POST = 请求根本没到服务端(旧标签页/JS 报错), 不是机器人的问题。
 2. `GET /api/arm/step_traj/status`: `running` 为真且 `done` 在涨; `cursor` 只在整轮结束时按 `n_done` 推进。
 3. 真值: `zmax_data/rokae_sdk/tcp_out/latest.json` 的 `joint` 两次采样必须有变化。
+4. 采集侧交叉验真(有建图时最直接): `8806/health` 的 `frames_total` 不涨、而 `frames_skipped_static` 隔 6~10s 两次采样在涨(约 10/s) ⇒ 守护活着、位姿新鲜，**臂确实没动**；两者都不涨才去怀疑 ros-bridge/位姿卡死。
+- 🔴 `GET .../status` 里的 `running=false, cursor=215, done=215` 是**上一趟的残留**，不能当“刚跑过”的证据；判定“本次在跑”只能靠日志里今天的新 `POST /api/arm/step_traj` 与 `done` 在涨。
+- 补发前一次性核完三样：授权 `epoch/until` 剰多少秒、机器人 `power/idle/automatic`、`status.grip_plan` 条数与计划文件是否一致(只剩 2 条事件 = 读的是旧计划文件)。
 - 状态里出现 `finished:true, done:215, cursor:215` = 这条轨迹**已全程走完**; 要重跑必须先 `POST {"reset":true}`, 否则下一次起跑直接报“已到 215/215”。
 - `reset` 可能被 `stage:"busy"` 拒(上一轮容器还在收尾), 等 5~10s 重试。
 - `grip_due` / `grip_done` 是执行器 stdout, 落在 `traj_step_out.log`; 与 `progress` 行交替出现, 状态接口的 `grip_events` 只含本轮。
