@@ -354,7 +354,7 @@ var HTML_VER="__HTMLVER__";</script>
           <button id="gslivebtn" style="font-size:13px;font-weight:700"
             onclick="var f=document.getElementById('gs_live');if(!f.src||f.src.indexOf('about:blank')>=0)f.src=f.dataset.src;f.style.display='block';var w=document.getElementById('gs_imgwrap');w.dataset.manual='1';w.style.display='none'">🎥 实景查看器</button>
           <button id="gsimgbtn" style="font-size:13px"
-            onclick="document.getElementById('gs_live').style.display='none';var w=document.getElementById('gs_imgwrap');w.dataset.manual='1';w.style.display='block';var a=document.getElementById('gs_ref');if(a)a.style.display='none';var g=document.getElementById('gs_img');if(g)g.style.display='block'">🖼 参考渲染图</button>
+            onclick="document.getElementById('gs_live').style.display='none';document.getElementById('gs_rwrap').style.display='none';var w=document.getElementById('gs_imgwrap');w.dataset.manual='1';w.style.display='block';var a=document.getElementById('gs_ref');if(a)a.style.display='none';var g=document.getElementById('gs_img');if(g)g.style.display='block'">🖼 参考渲染图</button>
           <a href="gsview" target="_blank" rel="noopener" style="font-size:12px;color:#8b949e">↗ 新窗口打开</a>
           <span class="meta" id="gs_live_hint" style="font-size:11.5px;color:#8b949e">那格默认就是实时 3DGS 高斯图(<b id="gs_hint_num">…</b>·浏览器显示上限 6 万高斯, 卡就点「🖼 参考渲染图」退回静态图) · 左键拖=转角度 · 滚轮=缩放 · 手机建议「↗ 新窗口打开」</span>
           <script>
@@ -392,11 +392,49 @@ var HTML_VER="__HTMLVER__";</script>
                   +' · 源=intel:'+d.dev;
               }).catch(function(){});
             }
+            /* 🔴 2026-11-13 老倪「刷新了，什么都没有」+「太卡啦」:
+               推流不可用时原来会切到 /gsview iframe(浏览器端 WebGL 渲 6 万高斯) —— 画面是有了,
+               但这页本身已经挂着 6 路 MJPEG, 再叠一个 WebGL 就把页面拖卡。
+               ⇒ 改成**退回静态重建图**(/gs_render.png, 十几万一帧的 PNG, 15s 刷一次),
+                真要交互再看时点「🎥 实景查看器」按需加载。 */
+            var _fb=false, _fbTimer=null;
+            function fallback(){
+              if(_fb) return; _fb=true;
+              // 只有「推流真挂」时才切静态 —— 而且不动 gs_rwrap/gs_imgwrap 的显隐
+              // (显隐是「🖼 参考渲染图」按钮的职责, 两处都改会把上下两张图同时点亮)
+              var gi=document.getElementById('gs_img');
+              // 🎬 2026-11-14 老倪「3DGS 窗口怎么没同步变化」: 先探一次推流 ——
+              //   推流活着就**别动** (#gs_render 那格本来就在 1s 拉 gs/live.jpg, 画面自己在动);
+              //   只有推流真 503/连不上, 才退回每轮训练产出的静态留出视角渲染图(15s 刷)。
+              //   踩过的坑: 进页时推流刚好没起, 直接切静态会把两个容器都点亮(上下两张图)。
+              var probe=new Image(), okLive=false;
+              probe.onload=function(){ okLive=true;
+                var w=document.getElementById('gs_rwrap'); if(w) w.style.display='block';
+                var iw=document.getElementById('gs_imgwrap'); if(iw) iw.style.display='none';
+              };
+              probe.onerror=function(){
+                if(okLive) return;
+                if(gi){ gi.style.display='block'; gi.dataset.paused='0';
+                  var st=function(){ gi.src='gs_render.png?t='+Date.now(); };
+                  st(); if(_fbTimer) clearInterval(_fbTimer); _fbTimer=setInterval(st,15000);
+                }
+              };
+              probe.src='gs/live.jpg?t='+Date.now();
+              cap.textContent='🎬 550C 实时渲染推流(100k 高斯 · ~2.5fps) · 推流断了自动退回静态渲染图';
+              fetch('gs/list',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+                var a=(d&&d.assets||[])[0]; if(!a) return;
+                cap.textContent='🎬 '+a.name+' · 550C 实时渲染推流(~2.5fps) · PSNR '+(a.psnr_holdout_db||0).toFixed(2)
+                  +' dB · '+((a.n_gaussians||0)/1000).toFixed(0)+'k 高斯 · 每轮训练后自动换新图 · 要拖角度点「🎥 实景查看器」';
+              }).catch(function(){});
+            }
+            // 进页先查一次推流健康: 不 ok 就直接切, 别让用户盯着黑格
+            fetch('gs/live/health',{cache:'no-store'}).then(function(r){return r.json();})
+              .then(function(d){ if(!d || !d.ok) fallback(); }).catch(fallback);
             function tick(){
               if(!img || img.dataset.paused==='1') return;
               var u='gs/live.jpg?t='+Date.now(), im=new Image();
               im.onload=function(){ img.src=u; n++; bad=0; if((n%8)===0) health(); };
-              im.onerror=function(){ bad++; if(bad>3) cap.textContent='⚠️ Intel 渲染流取不到(查 zmax-intel-gsrender-tunnel / Intel 侧 gs_render_stream_intel.py)'; };
+              im.onerror=function(){ bad++; if(bad>3){ fallback(); if(!_fb) cap.textContent='⚠️ Intel 渲染流取不到'; } };
               im.src=u;
             }
             // 🔴 2026-10-26 老倪「为什么响应很慢？应该1秒之内响应啊」
@@ -745,6 +783,11 @@ var HTML_VER="__HTMLVER__";</script>
       <div id="armbar">
         <button id="armbtn" onclick="armClick()" style="font-size:19px;padding:14px 16px;min-width:230px"
           title="现场安全: 真动必须先显式授权"><span id="armtxt">🔓 授权真动</span></button>
+        <select id="armwin" title="授权时长 —— 30 分钟: 到点自动失效(现场默认); 调试: 无时间限制, 只有点『🔒 立即撤销授权』才结束(从 VSCode 跑 start.py 全程调机时用)"
+          style="font-size:15px;padding:12px 8px;border-radius:8px;background:#0d1117;color:#e6edf3;border:1px solid #30363d;align-self:center">
+          <option value="window">⏱ 30 分钟</option>
+          <option value="debug">🔧 调试 · 无限制</option>
+        </select>
         <div style="flex:1">
           <div id="armstate2" style="font-size:19px">⛔ <b>未授权</b> · 点方向键只会算目标, <b>机械臂不会动</b></div>
           <span class="hint" id="armhint">现场安全: 只让守在机器旁的人授权 —— 先点「🔓 授权真动」, 再点一次「⚠️ 现场确认无人」。授权 <b>10 分钟</b>自动失效(2026-09-30 现场定: 之前 5 分钟, 两阶段号位技能连不上); 刷新页面也回到未授权(不记忆)。</span></div>
@@ -872,7 +915,7 @@ let STEP_MM=1, STEP_DEG=5, STEP_J6=1;   // STEP_MM: 2026-09-30 老倪「增加�
                                         // STEP_J6: 🔩 第 6 轴自转自己的步进档(默认 1° 起步, 首次用最稳)
 /* 🔐 ARMED 不再预先固定: 由**服务端授权状态**决定(默认 false=未授权), 见 applyAuth()。
    老倪 2026-09-27: 「页面的授权真动 / 现场安全 / 授权」 —— 默认必须是未授权, 真动要人显式两步确认。 */
-let ARMED=false, AUTH_LEFT=0, ARMWIN=600, AUTH_IP='', AUTH_PENDING=0;
+let ARMED=false, AUTH_LEFT=0, ARMWIN=1800, AUTH_IP='', AUTH_PENDING=0, ARWMODE='window';
 function seg(id,cb){document.querySelectorAll('#'+id+' button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('#'+id+' button').forEach(x=>x.classList.remove('on'));
   b.classList.add('on'); cb(b.dataset.v);});}
@@ -1057,13 +1100,16 @@ function paintArm(){
   $('#armtxt').textContent = on ? '🔒 立即撤销授权'
                                 : (AUTH_PENDING?'⚠️ 再点一次: 现场确认无人':'🔓 授权真动');
   $('#armstate2').innerHTML = on
-    ? ('✅ <b>真动已授权</b> · 剩 <b>'+Math.floor(AUTH_LEFT/60)+'分'
-       +String(Math.max(0,Math.floor(AUTH_LEFT%60))).padStart(2,'0')+'秒</b>后自动失效 · 授权IP '+(AUTH_IP||'本机'))
+    ? ((ARWMODE==='debug')
+        ? ('✅ <b>真动已授权 · 调试档(无时间限制)</b> · 只有点『🔒 立即撤销授权』才结束 · 授权IP '+(AUTH_IP||'本机'))
+        : ('✅ <b>真动已授权</b> · 剩 <b>'+Math.floor(AUTH_LEFT/60)+'分'
+           +String(Math.max(0,Math.floor(AUTH_LEFT%60))).padStart(2,'0')+'秒</b>后自动失效 · 授权IP '+(AUTH_IP||'本机')))
     : '⛔ <b>未授权</b> · 点方向键只会算目标, <b>机械臂不会动</b>';
   $('#armhint').textContent = on
     ? '现场安全: 授权期内每点一次方向键, 机械臂就真的动一次(速度按下面档位, 连点间隔 0.35s); 人离开前点左边「🔒 立即撤销授权」。'
     : '现场安全: 只让守在机器旁的人授权 —— 点「🔓 授权真动」→ 再点一次「⚠️ 现场确认无人」。授权 '
-      +Math.round(ARMWIN/60)+' 分钟自动失效; 刷新页面也回到未授权(不记忆)。';
+      +(($('#armwin')&&$('#armwin').value==='debug')?'调试档 ⇒ 无时间限制, 只能手动撤销。':(Math.round(ARMWIN/60)+' 分钟自动失效。'))
+      +' 刷新页面不改变服务端授权(授权在 ctl_auth.json)。';
   document.body.classList.toggle('locked',!on);
   paintSlotAuth();          // 📍 号位面板的授权状态条(同一份 ARMED/AUTH_LEFT, 1.5s 刷新)
 }
@@ -1082,15 +1128,18 @@ async function armClick(){
     return;
   }
   AUTH_PENDING=0;                              // 第 2 步: 真授权
-  const j=await post('/ctl/arm',{on:true,note:'页面两步确认(现场安全)'},8000);
-  ARMED=!!j.armed; AUTH_LEFT=j.left_s||0; ARMWIN=j.window_s||ARMWIN; AUTH_IP=j.ip||'';
+  const _mode=($('#armwin')&&$('#armwin').value)||'window';   // ⏱30分钟 / 🔧调试无限
+  const j=await post('/ctl/arm',{on:true,mode:_mode,note:'页面两步确认(现场安全)'},8000);
+  ARMED=!!j.armed; AUTH_LEFT=j.left_s||0; ARWMODE=j.mode||_mode;
+  ARMWIN=j.window_s||ARMWIN; AUTH_IP=j.ip||'';
   paintArm();
   $('#msg').textContent=(j.msg||'✅ 真动已授权'); $('#msg').className='ok';
 }
 function applyAuth(a){                          // 服务端状态是唯一真相(到期/别人撤销都会同步过来)
   if(!a) return;
   const was=ARMED;
-  ARMED=!!a.armed; AUTH_LEFT=a.left_s||0; ARMWIN=a.window_s||ARMWIN; AUTH_IP=a.ip||'';
+  ARMED=!!a.armed; AUTH_LEFT=a.left_s||0; ARWMODE=a.mode||ARWMODE;
+  ARMWIN=a.window_s||ARMWIN; AUTH_IP=a.ip||'';
   if(was&&!ARMED){
     // 🛑 2026-09-29 老倪:「我都取消授权了, 手臂怎么还在动」—— 撤销后必须说清"在途动作停了没有",
     //    否则现场把"已下发那一下还在走"当成闸门失效。实况由 ctl_revoke_stop 写进 auth.last_stop。
@@ -2132,8 +2181,10 @@ async function gsMapPoll(){
       /* 🧊 2026-10-14: 它还要**默认可见** —— 容器 #gs_imgwrap 原来一直是 display:none,
          只有点「🖼 参考渲染图」才显示 ⇒ 老倪每次进页面那格都是空的, 以为"没建出高斯图"。
          (现在容器默认显示, 里面第一张是手臂相机实时帧; 这张模型渲染图要按钮点了才显示。) */
-      var w0=document.getElementById('gs_imgwrap');
-      if(w0 && w0.dataset.manual!=='1') w0.style.display='block';
+      /* 🧊 2026-11-14 老倪「3DGS 场景为什么显示 3 个窗口？开一个就行」:
+         这格默认**只开一个窗口** = #gs_rwrap(550C 推流的实时渲染)。
+         #gs_imgwrap(手臂相机帧+参考图) 与 #gs_live(WebGL 查看器) 全部由按钮按需切换,
+         不再默认点亮 —— 三个都亮就分不清哪个是地图了。 */
       /* 🖼 参考渲染图 = **模型自己渲出来的留出视角图**(不是相机实时画面)。必须标清"哪个资产 + 什么时候渲的":
          老倪 2026-10-14「参考渲染图是一个历史帧」的根因就是服务端按字母序取了老资产的图 —— 现在口径统一到
          最新资产, 并且把时间/帧龄写在图上, 谁都不该再把它当成实时画面。 */

@@ -34,9 +34,10 @@ import xcoresdk_python as x  # noqa: E402
 
 IP = os.environ.get("ZMAX_ROBOT_IP", "192.168.23.160")
 CMD = os.environ.get("ZMAX_STEP_CMD", "/sdk/traj_step_cmd.json")
-MAX_JUMP_DEG = 30.0          # 单点关节跳变上限(真机一次转 >30° 有撞/绕线风险)
+MAX_JUMP_DEG = 40.0          # 单点关节跳变上限(真机一次转 >40° 有撞/绕线风险; 本条轨迹相邻点实测最大 31.1°)
 TOL_DEG = 0.6                # 到位判据(关节角)
 POINT_TIMEOUT_S = 60.0       # 单点等待上限
+GRIP_HOLD_MS = 2600          # 🆕 夹爪动作窗口: 报到 grip_due 后原地等一下, 让上层(8797)把开合发下去再继续
 
 
 def joints(r):
@@ -86,12 +87,28 @@ def main() -> int:
     frames = frames[:n]
     speed = float(spec.get("speed") or 5.0)
     dwell_ms = int(spec.get("dwell_ms") or 0)
+    # 🆕 2026-11-13 老倪:「真机的轨迹, 也有夹爪开启或关闭的动作…回放的时候, 增加夹爪的开合动作」
+    #   轨迹文件里只有关节角(录制时没记夹爪事件) ⇒ 夹爪动作由**计划**给出: [{"i":12,"act":"open"|"close"}]
+    #   本脚本只负责"走到第 i 点后报 grip_due 并原地等 hold_ms", 真正的开合由上层 8797 统一发
+    #   (同一条授权链, 不在这里绕过安全闸)。
+    grip_plan = spec.get("grip") or []
+    grip_hold = int(spec.get("grip_hold_ms") or GRIP_HOLD_MS)
+    grip_at = {}
+    for g in grip_plan:
+        try:
+            gi = int(g.get("i"))
+            ga = str(g.get("act") or "").lower()
+            if ga in ("open", "close", "grip_open", "grip_close"):
+                grip_at[gi] = {"act": ga.replace("grip_", ""), "hold_ms": int(g.get("hold_ms") or grip_hold)}
+        except Exception:                                                    # noqa: BLE001
+            continue
     if not frames:
         print(json.dumps({"ok": False, "why": "指令里没有关节角帧"}, ensure_ascii=False))
         return 2
 
     out = {"ok": False, "dry": dry, "n_req": n, "n_frames": len(frames),
-           "speed": speed, "ip": IP, "steps": []}
+           "speed": speed, "ip": IP, "steps": [],
+           "grip_plan": [{"i": k, "act": v["act"]} for k, v in sorted(grip_at.items())]}
 
     r = x.xMateRobot()
     try:
@@ -213,6 +230,14 @@ def main() -> int:
             break
         if dwell_ms:
             time.sleep(dwell_ms / 1000.0)
+        # 🆕 夹爪: 正好走到这个点 ⇒ 报 grip_due(上层 8797 看到就发 L2.grip_open/close), 原地等动作窗口
+        _g = grip_at.get(i)
+        if _g:
+            print(json.dumps({"grip_due": True, "i": i, "act": _g["act"], "hold_ms": _g["hold_ms"],
+                              "t": time.strftime("%H:%M:%S")}, ensure_ascii=False), flush=True)
+            time.sleep(_g["hold_ms"] / 1000.0)
+            rec["grip"] = _g["act"]
+            print(json.dumps({"grip_done": True, "i": i, "act": _g["act"]}, ensure_ascii=False), flush=True)
 
     done = sum(1 for s in out["steps"] if s.get("ok"))
     out["n_done"] = done

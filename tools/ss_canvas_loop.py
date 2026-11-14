@@ -38,6 +38,19 @@ if os.environ.get("ZMAX_MULTI_THREAD", "").strip().lower() not in ("1", "true", 
 
 from lerobot.middleware import load_project          # noqa: E402
 
+# 🧠 2026-11-14 老倪「程序入口应该是一个状态机; 状态机放在动作调制节点, 对应小脑基底节/工厂调度」:
+#   本文件 = **节拍器**(10Hz 把观测灌进状态空间), 真正的调度状态机住在「🧭 动作调制器 sssched」:
+#     state_space/scheduler_fsm.py::DispatchFSM  →  状态集合 + 每状态策略(POLICY) + 转移守卫
+#   两个开关都在这里给默认值(可被环境变量覆盖):
+#     ZMAX_FSM=1    状态机作为阶段唯一真源 (0 = 旧内联逻辑, 逐位不变的对照臂)
+#     ZMAX_ORCH=1   总调度仲裁器接管层配比/否决 (0 = 老路径)
+os.environ.setdefault("ZMAX_FSM", "1")
+os.environ.setdefault("ZMAX_ORCH", "1")
+
+# 🧠 每拍钩子: 调度主程序(tools/ss_dispatch_main.py)通过它拿到 tick 号与 traces,
+#   用来在读的状态机上做"状态→执行"的收口; 不设 = 纯引擎循环(550C 生产就是这个用法)。
+TICK_HOOK = None
+
 # 🔇 老倪 2026-10-31「每次运行，你都刷屏」: 节点实现每拍各打一行, 10Hz 糊屏。
 #   装上降噪: 终端 ≤2 行/秒 + 连续重复合并, 全量照写 /tmp/ss_canvas_loop.log;
 #   ZMAX_LOOP_VERBOSE=1 恢复原样, ZMAX_LOOP_TERM_LINES=N 改每秒行数。
@@ -71,6 +84,8 @@ STATE_EVERY = max(1, int(HZ))                 # 约 1s 落一次状态
 #   办法: 把**全量节点按原顺序切成若干段**逐段跑(顺序不变, 每个节点仍每圈只跑一次),
 #   段与段之间插一次「只跑 plan/执行器」的快拍 ⇒ 全量语义不动, 但 ar_cmd 能到 10~20Hz。
 FAST_ONLY = [s for s in (os.environ.get("ZMAX_LOOP_FAST_ONLY") or "ssplan,ssact").split(",") if s]
+if os.environ.get("ZMAX_STEP_MODE") == "1":
+    FAST_ONLY = []          # 单步模式: 一拍一趟, 不走快车道(否则同拍节点跑两遍, 单步会乱序)
 FAST_HZ = float(os.environ.get("ZMAX_LOOP_FAST_HZ") or "20")
 # 🐢 慢车道 (2026-11-01): 重节点 (INTACT 解码 9s / HIL 5s / 技能库 4s / YOLO 1.6s …)
 #   不许每拍都跑, 否则一次全量 pass 25s, 10Hz 拍子直接崩。默认每 30 拍跑一次全的,
@@ -140,7 +155,62 @@ def write_state(d):
         log("写状态失败 %s: %s" % (type(e).__name__, e))
 
 
+_LOCK_FH = [None]
+
+
+def _entry_running():
+    """工程入口(start.py) 是否持着单实例锁 ⇒ 是则本从属引擎必须让位。
+
+    只探测不持有: 拿到锁立刻释放 (LOCK_UN), 这样 GUI 拉起的引擎不会把 F5 的 start.py 挡在门外。
+    """
+    if _LOCK_FH[0] is None:
+        import fcntl as _f
+        _LOCK_FH[0] = open(os.environ.get("ZMAX_START_LOCK", "/tmp/zmax_start.lock"), "a+")
+        _LOCK_FH.append(_f)                       # 文件对象不能挂自定义属性(_io.TextIOWrapper) ⇒ 单独存
+    _f = _LOCK_FH[1]
+    try:
+        _f.flock(_LOCK_FH[0].fileno(), _f.LOCK_EX | _f.LOCK_NB)
+        _f.flock(_LOCK_FH[0].fileno(), _f.LOCK_UN)
+        return False
+    except OSError:
+        return True
+
+
+def _yield_watch():
+    """↩ 让位看门狗 (0.5s 一拍): 工程入口 start.py 一接管就立刻退出本从属引擎。
+
+    为什么用线程而不是只在主循环里查: 画布载入/慢节点一拍可能十几秒, 主循环里查会迟到一个整拍,
+    前端看到的就是"两个引擎同时写状态"。线程口径与主循环无关, 关得掉。
+    """
+    import threading
+    while True:
+        time.sleep(0.5)
+        try:
+            if _entry_running():
+                log("↩ 工程入口 start.py 已接管 ⇒ 本从属引擎让位退出 (不双跑)")
+                sys.stdout.flush()
+                os._exit(0)
+        except Exception:                                          # noqa: BLE001
+            pass
+
+
 def main():
+    # ⛔ 单实例 (与工程入口 start.py 共用 /tmp/zmax_start.lock):
+    #    否则 VSCode 里 F5 start.py 时, GUI 看门狗拉起的本进程会**并行** tick 同一个画布 ——
+    #    两套 10Hz 各写各的状态, 而断点只绑在调试会话那个进程上 ⇒ 现象就是"断点永远不进"。
+    #    start.py 自己调进 engine.main() 时已持锁 (env ZMAX_LOCK_HELD_PID=本pid) ⇒ 跳过, 不自我否决。
+    # 本进程**不持锁**: 只探测"工程入口 start.py 是否已接管"。
+    # 持锁方只应是 start.py —— 否则 GUI 看门狗拉起的引擎会先占锁, 用户 F5 的 start.py 反而被
+    # "已有工程入口在运行" 挡在门外 (2026-11-14 实测就是这个死锁)。
+    if os.environ.get("ZMAX_LOCK_HELD_PID") != str(os.getpid()) and _entry_running():
+        _owner = ""
+        try:
+            with open(os.environ.get("ZMAX_START_LOCK", "/tmp/zmax_start.lock")) as _f:
+                _owner = (_f.read() or "").strip()
+        except OSError:
+            pass
+        log("↩ 工程入口 start.py 已接管 (pid=%s) ⇒ 本从属引擎让位退出, 不并行 tick" % (_owner or "?"))
+        return 3
     log("🐢 慢车道: 每 %d 拍跑全量(慢节点 %s 每 %d 拍一次) · 其余拍只跑核心链 %s"
         % (FULL_EVERY, ",".join(SLOW_IDS) or "无", SLOW_EVERY, ",".join(CORE_IDS)))
     log("画布常驻循环启动 · HZ=%.1f · 全部节点都跑 (无白名单 · 每段%d个) · 快车道 %s @ %.0fHz"
@@ -151,12 +221,23 @@ def main():
            os.getpid(),
            "" if _dsp_ok else " · owner=%s · ZMAX_DISPATCH_INPROC=0?" % (
                dispatch_inproc.owner() if dispatch_inproc else "—")))
+    if os.environ.get("ZMAX_LOCK_HELD_PID") != str(os.getpid()):
+        try:
+            import threading as _th
+            _th.Thread(target=_yield_watch, name="zmax-yield-watch", daemon=True).start()
+            log("👁 让位看门狗已起 (0.5s): start.py 一接管本引擎立即退出")
+        except Exception:                                          # noqa: BLE001
+            pass
     prj, mtime, n_tick, last_err = None, 0.0, 0, ""
     _last_ev = [None]              # 上一行证据的 (段,件) —— 只在变化时打 (见 ✅ 行)
     _next_fast = [0.0]             # 🚀 快车道下次允许的时刻
     _fast_n = [0]                  # 快拍计数(取证用)
     while True:
         try:
+            # ↩ 让位闸: 每一拍都看"工程入口 start.py 是否已接管"(VSCode F5 / systemd 起 start.py 时)
+            if os.environ.get("ZMAX_LOCK_HELD_PID") != str(os.getpid()) and _entry_running():
+                log("↩ 工程入口 start.py 已接管 ⇒ 本从属引擎让位退出 (不双跑)")
+                return 0
             t_iter = time.monotonic()          # 本拍真正起点 (含 keepalive/心跳/写状态的杂项开销)
             mt = os.path.getmtime(CANVAS)
             if prj is None or mt != mtime:
@@ -192,6 +273,12 @@ def main():
                             pass
             cost = time.monotonic() - t0
             n_tick += 1
+            _hk = globals().get("TICK_HOOK")
+            if _hk is not None:
+                try:
+                    _hk(n_tick, traces)
+                except Exception:                                  # noqa: BLE001
+                    pass
             keepalive_switch()                 # 🔄 AR 开关续期(只续 ar_scene), 防 1800s 过期导致双臂不动
             # 🧩 技能派发 (SK01~SK08) —— 本进程内跑, 不再有独立派发进程。
             #   内部自己 try/except: 派发失败只记一行, 绝不拖垮画布循环。
@@ -289,7 +376,9 @@ def main():
 
 if __name__ == "__main__":
     try:
-        main()
+        _rc = main()                       # main() 返回 3 = 单实例闸拒绝; 让退出码可见
+        if _rc:
+            sys.exit(_rc)
     except KeyboardInterrupt:
         log("停止")
         sys.stdout.flush()

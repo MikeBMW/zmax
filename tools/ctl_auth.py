@@ -21,7 +21,7 @@ import os
 import time
 
 PATH = os.path.expanduser(os.environ.get("ZMAX_CTL_AUTH", "~/zmax/zmax_data/ctl_auth.json"))
-DEFAULT_WINDOW = float(os.environ.get("ZMAX_CTL_WINDOW", "600"))   # 授权默认有效期(秒)
+DEFAULT_WINDOW = float(os.environ.get("ZMAX_CTL_WINDOW", "1800"))  # 授权默认有效期(秒) — 2026-11-13 老倪: 半小时
 # ↑ 2026-09-30 老倪现场定: 5 分钟 → **10 分钟**。理由: 号位技能是两阶段(先到正上方再下降),
 #   慢速档一个阶段就走 22~40s, 两次技能连不上窗口就到期 ⇒ 阶段2 被"真动授权未开"拦下中止,
 #   现场表现是"点了不动"。10 分钟仍然自动失效(人走开不会一直armed), 但够连做几套动作。
@@ -50,16 +50,27 @@ def _write(d):
 
 
 def info():
-    """当前授权状态(页面/执行器都读它)。left_s 只按 until 算, 不接受任何"人为续期"。"""
+    """当前授权状态(页面/执行器都读它)。
+
+    两种形态:
+      mode="window" (默认) —— until = since + window, 到点自动失效, 不接受任何"人为续期";
+      mode="debug"          —— 调试档: 无时间限制(until=0, left_s=None), 只由 revoke 结束。
+    老倪 2026-11-14:「授权时间前端改成可选: 30 分钟 / 调试(无时间限制)」。
+    """
     d = _read()
     now = time.time()
     until = float(d.get("until") or 0)
+    mode = str(d.get("mode") or "window")
+    revoked = float(d.get("revoked_at") or 0)
+    debug = (mode == "debug" and revoked <= 0)
     return {
-        "armed": until > now,
+        "mode": mode,
+        "debug": debug,
+        "armed": debug or (until > now),
         "until": until,
-        "left_s": max(0.0, round(until - now, 1)),
+        "left_s": None if debug else max(0.0, round(until - now, 1)),
         "since": float(d.get("since") or 0),
-        "window": float(d.get("window") or DEFAULT_WINDOW),
+        "window": 0.0 if debug else float(d.get("window") or DEFAULT_WINDOW),
         "epoch": int(d.get("epoch") or 0),
         "ip": d.get("ip") or "",
         "note": d.get("note") or "",
@@ -79,13 +90,23 @@ def _event(d, on, ip, note):
     d["events"] = ev[-_MAX_EVENTS:]
 
 
-def grant(ip="", note="", window=None):
-    """授权真动。window 缺省 300s; 每次授权 epoch+1(旧命令随之作废)。"""
+def grant(ip="", note="", window=None, mode="window"):
+    """授权真动。每次授权 epoch+1(旧命令随之作废)。
+
+    mode="window" ⇒ 定时授权(window 缺省 1800s);
+    mode="debug"  ⇒ 调试档, 无时间限制(until=0, 只有 revoke 能结束)。
+    """
     d = _read()
     now = time.time()
-    d["window"] = float(window or d.get("window") or DEFAULT_WINDOW)
+    if str(mode) == "debug":
+        d["mode"] = "debug"
+        d["window"] = 0.0
+        d["until"] = 0.0
+    else:
+        d["mode"] = "window"
+        d["window"] = float(window or d.get("window") or DEFAULT_WINDOW)
+        d["until"] = now + d["window"]
     d["since"] = now
-    d["until"] = now + d["window"]
     d["epoch"] = int(d.get("epoch") or 0) + 1
     d["ip"] = ip or ""
     d["note"] = (note or "")[:80]
@@ -116,6 +137,8 @@ def check(cmd_epoch=None, ignore_always_allow=False):
     · cmd_epoch 比当前 epoch 旧 ⇒ 这条命令是**撤销之前**签发的 ⇒ 拒发(在途/排队也能拦)。
     """
     st = info()
+    if st.get("debug") and st["armed"]:
+        return True, "已授权(调试·无限) · epoch=%s · ip=%s" % (st["epoch"], st["ip"] or "-")
     if not st["armed"]:
         _why = "真动授权未开(现场安全): 先在工位总览 8793 点『🔓 授权真动』并二次确认"
         if st["revoked_at"] and (time.time() - st["revoked_at"]) < 3600:
@@ -137,6 +160,12 @@ if __name__ == "__main__":                                              # 命令
     _a = sys.argv[1] if len(sys.argv) > 1 else "info"
     if _a == "on":
         print(json.dumps(grant(ip="cli", note="cli"), ensure_ascii=False, indent=1))
+    elif _a in ("on-debug", "debug"):
+        print(json.dumps(grant(ip="cli", note="cli-调试档", mode="debug"),
+                         ensure_ascii=False, indent=1))
+    elif _a in ("on-30", "30"):
+        print(json.dumps(grant(ip="cli", note="cli-30分钟", window=1800),
+                         ensure_ascii=False, indent=1))
     elif _a == "off":
         print(json.dumps(revoke(ip="cli", note="cli"), ensure_ascii=False, indent=1))
     else:

@@ -156,6 +156,21 @@ class ActionModulator:
         self.skill_gate_on = os.environ.get("ZMAX_SKILL_GATE", "0").strip().lower() in ("1", "true", "yes", "on")
         self.skill_gate_dt = float(os.environ.get("ZMAX_SKILL_GATE_DT") or 0.1)
         self.veto_count = 0
+        # 🧭 2026-11-14 总调度(仲裁器) —— 装在「动作调制器」里，而不是另开节点：
+        #    本类同时握有「各层提案 + 阶段机 + 物理闸」，仲裁要的三样都在；
+        #    ZMAX_ORCH 未开 ⇒ self.orch=None ⇒ decide() 走原路径，行为逐位不变。
+        self.orch = None
+        if os.environ.get("ZMAX_ORCH", "0").strip().lower() in ("1", "true", "yes", "on"):
+            try:
+                from .orchestrator import Orchestrator          # 包内
+            except ImportError:                                  # 端侧按文件加载(无包)
+                import importlib.util as _iu
+                _op = os.path.join(os.path.dirname(os.path.abspath(__file__)), "orchestrator.py")
+                _sp = _iu.spec_from_file_location("zmax_orchestrator", _op)
+                _mo = _iu.module_from_spec(_sp)
+                _sp.loader.exec_module(_mo)
+                Orchestrator = _mo.Orchestrator
+            self.orch = Orchestrator(am=self)
         self.history = []               # 阶段切换历史 [(stage, reason)]
         # 🐛 2026-09-06 静静: 转移→插入只看水平 dh, 会切在 peg 头低于孔口时 → 斜插顶孔沿
         #   插不进, 夹爪硬推把 peg 从夹爪里挤滑 (off 逐帧缩短) → 滑脱回退。切换须等
@@ -166,6 +181,28 @@ class ActionModulator:
         #   偏差仅 0.14mm ⇒ 入口容差过松是主嫌。
         self.INSERT_HOVER = float(os.environ.get("SS_INSERT_HOVER", "0.02"))
         self.INSERT_Z_TOL = float(os.environ.get("SS_INSERT_Z_TOL", "0.012"))
+        # 🧠 2026-11-14 老倪「程序入口应该是一个状态机; 状态机放在动作调制节点比较合理, 对应小脑基底节的状态,
+        #   工厂调度」⇒ 状态机住进调制器: DispatchFSM 唯一收口「状态集合 + 每状态策略 + 转移守卫」,
+        #   入口 ss_canvas_loop 只是节拍器(每拍把观测灌进来)。ZMAX_FSM=0 ⇒ fsm=None ⇒ advance() 走旧内联逻辑
+        #   (零回归对照臂, 用于逐位对拍)。
+        self.fsm = None
+        if os.environ.get("ZMAX_FSM", "1").strip().lower() not in ("0", "false", "no", "off"):
+            try:
+                from . import scheduler_fsm as _fsm_mod            # 包内
+            except ImportError:                                      # 端侧按文件加载(无包)
+                import importlib.util as _iu2
+                _fp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scheduler_fsm.py")
+                _sp2 = _iu2.spec_from_file_location("zmax_scheduler_fsm", _fp)
+                _fsm_mod = _iu2.module_from_spec(_sp2)
+                _sp2.loader.exec_module(_fsm_mod)
+            # ⚠️ 必须用**进程级单例**: safety_limit_impl 每拍 new 一个调制器, 跟着 new 的话状态永远回到「接近」
+            self.fsm = _fsm_mod.get_fsm(
+                mode=mode, confirm_n=self.confirm_n,
+                align_xy_coarse=align_xy_coarse, align_xy_fine=align_xy_fine,
+                contact_th=contact_th, grasp_th=grasp_th, lift_h=lift_h, align_th=align_th,
+                insert_depth=self.insert_depth, insert_hover=self.INSERT_HOVER,
+                insert_z_tol=self.INSERT_Z_TOL,
+                pull_out_m=self.pull_out_m, pull_clear_h=self.pull_clear_h)
 
     def stage(self):
         return self.STAGES[self.stage_idx]
@@ -348,7 +385,29 @@ class ActionModulator:
                 d_xy=None, lifted=None, at_grasp_pose=False, grasp_force=None,
                 peg_z=None, peg_z_grasp=None, hole_z=None,
                 dist_aoi=None, placed=False):
-        """状态机推进 — 感知/几何证据驱动 (每步调用)"""
+        """状态机推进 — 感知/几何证据驱动 (每步调用)
+
+        🧠 2026-11-14: 真源在 `scheduler_fsm.DispatchFSM`(住在调制器里); 这里只做「观测适配 + 同步」。
+        ZMAX_FSM=0 ⇒ 走下面旧内联逻辑(逐位不变的对照臂)。
+        """
+        if getattr(self, "fsm", None) is not None:
+            _obs = {
+                "d_xy": (d_xy if d_xy is not None else dist_h),
+                "contact_p": contact_p, "gripper": gripper, "lifted": lifted,
+                "dist_h": dist_h, "depth": depth, "placed": placed,
+                "grasp_force": grasp_force, "peg_z": peg_z,
+                "peg_z_grasp": peg_z_grasp, "hole_z": hole_z,
+                "at_grasp_pose": at_grasp_pose,
+            }
+            _before = self.stage()
+            _st = self.fsm.step(_obs)
+            if _st != _before:
+                self.stage_idx = self.fsm.state_idx
+                self.history.append((_st, self.fsm.last_reason))
+                _p = self.fsm.policy()
+                self.v_cap[_st] = _p["v_cap"]          # 策略表 → 限速表(同一份真源)
+                self.v_min[_st] = _p["v_min"]
+            return self.stage()
         st = self.stage()
         # 🛟 夹持丢失 → 回退重抓 (审计建议的鲁棒性分支; 真机一定会掉件)
         #   判据: 抬起~回程 阶段 (放下除外 — 放件时主动开爪, peg 离手属正常工艺),
@@ -409,7 +468,7 @@ class ActionModulator:
             self._pend.clear()          # 证据不成立 → 清空待确认计数 (必须连续)
         return self.stage()
 
-    def decide(self, u_ff, u_fb, contact_p, residual, meta=None):
+    def decide(self, u_ff, u_fb, contact_p, residual, meta=None, force_n=None, su2=None):
         """决策: ①否决权 (残差异常) ②前馈+反馈**相加** ③按阶段显式限速 ④元任务预测**门控**(可选)
 
         u = u_ff + k_fb·u_fb, 然后按当前阶段的速度上限等比缩放 (只削幅, 不改方向)。
@@ -423,15 +482,48 @@ class ActionModulator:
           · 依据"未证明提升不得进默认档": 现在 meta_pred 为 frozen=1 (恒定扭矩⇒无区分度) ⇒ 默认关,
             等真机时变扭矩 / 训练头后再按同口径对照定律。生效次数/最近值可查 (meta_calls / meta_gate)。
         """
+        # ⛳ 自停锚点 (2026-11-14 老倪: 「断点也没有进入啊」) —— VSCode 侧的断点要经过路径/行号映射,
+        #    一旦打开的是仓库里的另一份 cognition.py(共有 3 份)或缓冲区有改动, 断点就静默失效。
+        #    这里用代码内停: 优先 debugpy(有调试器时 VSCode 当场高亮停住), 没有调试器则 pdb 停在终端。
+        #    开关: env ZMAX_STOP_AT_DECIDE=1 或文件 /tmp/zmax_stop_at_decide 存在 (默认关, 生产零影响)
+        if os.environ.get("ZMAX_STOP_AT_DECIDE") == "1" or os.path.exists("/tmp/zmax_stop_at_decide"):
+            try:
+                import debugpy as _dbg
+                if getattr(_dbg, "is_client_connected", lambda: False)():
+                    _dbg.breakpoint()          # VSCode 停住(调用栈=本函数的真实调用链)
+                else:
+                    import pdb as _pdb
+                    _pdb.set_trace()
+            except Exception:                  # noqa: BLE001
+                pass
         _zero = np.zeros_like(np.asarray(u_ff, dtype=float))
-        if residual > self.veto_th:
-            self.veto_count += 1
-            if self.veto_count >= self.max_veto:
-                return _zero, f"异常: 连续否决 (残差 {residual:.2f})"
-            return _zero, f"否决: 减速/重试 (残差 {residual:.2f})"
-        self.veto_count = 0
+        _orch = getattr(self, "orch", None)
+        _orch_tag = ""
+        if _orch is None:                       # 默认路径: 与历史逐位一致
+            if residual > self.veto_th:
+                self.veto_count += 1
+                if self.veto_count >= self.max_veto:
+                    return _zero, f"异常: 连续否决 (残差 {residual:.2f})"
+                return _zero, f"否决: 减速/重试 (残差 {residual:.2f})"
+            self.veto_count = 0
         st = self.stage()
-        u = np.asarray(u_ff, dtype=float) + self.k_fb * np.asarray(u_fb, dtype=float)
+        if _orch is not None:
+            # 🧭 总调度(仲裁器): 层配比 + 一票否决(力/残差/收敛) + 加权融合；
+            #    ③阶段限速 / ④技能五约束闸 仍在下面同一条路径收口（物理只有一份真源）
+            _u_o, _why_o, _veto_o = _orch.arbitrate(
+                u_ff=u_ff, u_fb=u_fb, contact_p=contact_p, residual=residual,
+                meta=meta, stage=st, dt=self.gate_dt,
+                # 力真值(六维力/夹爪反力, N) 与 su2 遥测(θ/|w|/非交换) 由调用方注入;
+                # 默认 None ⇒ 不参与仲裁(不编造)。接进来力否决才真能生效。
+                force_n=force_n, su2=su2)
+            if _veto_o:
+                self.veto_count += 1
+                return _zero, _why_o
+            self.veto_count = 0
+            u = np.asarray(_u_o, dtype=float)
+            _orch_tag = _why_o
+        else:
+            u = np.asarray(u_ff, dtype=float) + self.k_fb * np.asarray(u_fb, dtype=float)
         # ── ③ 阶段限速 ─────────────────────────────────────────────────────────
         #   limiter 存在 ⇒ **经过原子技能 SK01-08 + 物理约束闸** (五条约束, 单点削, 出削因/偏差)
         #   limiter=None ⇒ 旧行为: 按 STAGE_V_CAP 等比缩放 (零回归对照臂)
@@ -490,4 +582,6 @@ class ActionModulator:
         except Exception:                                                       # noqa: BLE001
             pass
         tag = (" · 接触" if contact_p > self.contact_th else "") + _mtag
+        if _orch_tag:
+            tag += " · " + _orch_tag
         return u, f"阶段 {st}{tag}"

@@ -36,8 +36,9 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-INTACT = "/home/ubuntu/zmax/external/INTACT-JEPA"
-CACHE = "/home/ubuntu/zmax/zmax_data/stable-wm-cache"
+ROOT = os.environ.get("ZMAX_ROOT", "/home/ubuntu/zmax")   # 迁移到 550A(Intel) 时由 run_550a.sh 注入
+INTACT = os.environ.get("ZMAX_INTACT", os.path.join(ROOT, "external/INTACT-JEPA"))
+CACHE = os.environ.get("ZMAX_CACHE", os.path.join(ROOT, "zmax_data/stable-wm-cache"))
 MODELS_DIR = os.path.join(ROOT, "zmax_data", "models")
 # ⚠️ 2026-10-07 实测: 整合后 HF 家是**工程根的 zmax_data/hf_cache** (9.2G 真模型都在 hub/ 下),
 #   而 ~/.cache/huggingface 已空 ⇒ 不给 HF_HOME 时各阶段在 offline 模式下找不到缓存, 报
@@ -50,7 +51,8 @@ if not os.path.isdir(HF_ENV["HF_HUB_CACHE"]):
     HF_ENV = {}          # 目录不在就不瞎指 (宁可报缺, 也不让 transformers 找不到北)
 PY_GUI = os.path.join(ROOT, "gui-venv311", "bin", "python")
 PY_INTACT = os.path.join(INTACT, ".venv", "bin", "python")
-PY_LEROBOT = "/home/ubuntu/zmax/venvs/lerobot-venv/bin/python"
+PY_LEROBOT = os.environ.get("ZMAX_LEROBOT_PY",
+                            os.path.join(ROOT, "venvs/lerobot-venv/bin/python"))
 LORA_MOD = os.path.join(ROOT, "tools", "lora_inject.py")
 
 # 在役权重 (续训起点; 与 docs/7-瑶光-记录追溯/handoff_*.md 口径一致)
@@ -162,7 +164,7 @@ def build_stages(a) -> list:
             "--steps", str(a.steps), "--batch", str(b3), "--out", cfg3,
             "--outdir", l3_outdir]
     l3_cmd = [PY_LEROBOT, "-m", "lerobot.scripts.lerobot_train", f"--config_path={cfg3}"]
-    l3_env = {"PATH": "/home/ubuntu/zmax/venvs/lerobot-venv/bin:" + os.environ.get("PATH", ""),
+    l3_env = {"PATH": os.path.dirname(PY_LEROBOT) + ":" + os.environ.get("PATH", ""),
               "PYTHONPATH": os.path.join(ROOT, "src"),
               "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
               "HF_HUB_OFFLINE": "1", "WANDB_MODE": "disabled", **HF_ENV}

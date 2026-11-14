@@ -190,7 +190,11 @@ def run(ctx):
         def _pick(port, keys):
             """从端口载荷里按候选键取数值向量/标量 (各家载荷口径不同, 只认明确字段)。"""
             pv = ctx.get(port)
-            v = pv.get("value") if isinstance(pv, dict) else pv
+            # 🔴 2026-11-14 修: 端口载荷**本身就是业务字典**(如 ssff.out2 = {"kind":"u_ff","u_ff":[...]})
+            #    时, 原来 `.get("value")` 取到 None ⇒ 字段扫描整段跳过 ⇒ 明明有值也判"缺前馈"。
+            #    实测: ssff 打出 u_ff=[-0.364,-0.022,-0.079,0], sssched 仍报"缺前馈 ⇒ 调制器未生效",
+            #    于是 decide() 一次都没被调用 (cognition.py:573 断点永远不进)。
+            v = pv.get("value", pv) if isinstance(pv, dict) else pv
             if isinstance(v, (list, tuple)) and v and isinstance(v[0], (int, float)):
                 return [float(x) for x in v], port
             if isinstance(v, dict):

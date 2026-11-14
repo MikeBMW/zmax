@@ -504,7 +504,8 @@ def _src_apply(kind: str, persist: bool = True, why: str = "页面") -> dict:
     return {"ok": True, "code": 200, "kind": kind, "dev": int(dev), "gen": _gen,
             "name": _v4l_name(int(dev)), "label": _CAM_LABEL["local"], "by": why,
             "msg": "✅ 笔记本这一路已切到 %s (记住选择, 重启后仍是它)"
-                   % ("USB 摄像头" if kind == "usb" else "内置摄像头")}
+                   % {"usb": "USB 摄像头", "off": "关闭(摄像头让给微信/视频通话)",
+                      "builtin": "内置摄像头"}.get(kind, "内置摄像头")}
 
 
 def _src_status() -> dict:
@@ -871,18 +872,19 @@ def _auth_info() -> dict:
     except Exception:                                                   # noqa: BLE001
         _ls = None
     return {"armed": bool(st["armed"]), "left_s": st["left_s"], "window_s": st["window"],
+            "mode": st.get("mode") or "window", "debug": bool(st.get("debug")),
             "ip": st["ip"], "since": st["since"], "epoch": st["epoch"],
             "revoked_at": st["revoked_at"], "events": st["events"][-6:], "last_stop": _ls}
 
 
-def _auth_set(on: bool, ip: str = "", note: str = "") -> dict:
+def _auth_set(on: bool, ip: str = "", note: str = "", mode: str = "window") -> dict:
     """授权/撤销真动。on=True 重新计时(epoch+1); on=False 立刻失效**且 epoch+1** ⇒ 已签发未下发的
     命令(带旧 epoch)在 L2 执行器里一律作废 —— 这样"等慢层 300s 期间人点了撤销"也不会再动。"""
     t = time.time()
     if CA is None:
         return _auth_info()
     if on:
-        CA.grant(ip=ip, note=note)
+        CA.grant(ip=ip, note=note, mode=("debug" if str(mode) == "debug" else "window"))
     else:
         CA.revoke(ip=ip, note=note)
     print("[授权] %s %s ip=%s %s" % ("🔓 真动已授权" if on else "🔒 真动已撤销",
@@ -5610,11 +5612,17 @@ class Handler(BaseHTTPRequestHandler):
         if p in ("/ctl/arm", "/api/ctl/arm"):
             # 🔐 授权真动 / 撤销(只有 POST 能改, 且记 IP+时刻审计)
             on = bool((body or {}).get("on"))
+            _mode = str((body or {}).get("mode") or "window").lower()
             out = _auth_set(on, self._real_ip(),
-                            str((body or {}).get("note") or ("页面授权" if on else "页面撤销")))
-            out.update({"ok": True, "code": 200,
-                        "msg": ("✅ 真动已授权: %.0f 分钟内可直接操作, 到期自动失效" % (out["left_s"] / 60.0))
-                        if on else "🔒 已撤销授权: 现在点方向键只算目标, 机械臂不会动"})
+                            str((body or {}).get("note") or ("页面授权" if on else "页面撤销")),
+                            mode=_mode)
+            if on and _mode == "debug":
+                _m = "✅ 真动已授权(调试档 · 无时间限制): 只有点『🔒 立即撤销授权』或重启页面撤销才失效"
+            elif on:
+                _m = "✅ 真动已授权: %.0f 分钟内可直接操作, 到期自动失效" % ((out["left_s"] or 0) / 60.0)
+            else:
+                _m = "🔒 已撤销授权: 现在点方向键只算目标, 机械臂不会动"
+            out.update({"ok": True, "code": 200, "msg": _m})
         elif p in ("/ctl/move", "/api/ctl/move"):
             out = _ctl_move(body if isinstance(body, dict) else {})
         elif p in ("/station/plan", "/api/station/plan"):

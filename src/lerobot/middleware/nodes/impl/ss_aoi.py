@@ -72,33 +72,41 @@ def _grab_frame(log=None):
     return img
 
 
+def _aoi_once():
+    """一轮巡检 (取帧 → inspect_aoi → 写最新快照)。异常只记账, 不抛。
+
+    单线程/单步档要靠它: 后台线程被禁后, 节点每拍最多推进一轮, 逻辑仍在主线程上可断点可单步。
+    """
+    t0 = _tm.time()
+    try:
+        img = _grab_frame(None)
+        _out = inspect_aoi(img, log=None, cache=_YOLO_CACHE, publish=_ar_aoi_publish)
+        if not isinstance(_out, dict):
+            _out = {"kind": "aoi", "pass": None, "verdict": "bad_return",
+                    "err": "算法层返回非 dict: %s" % type(_out).__name__, "items": []}
+        with _W["lock"]:
+            _W.update({"out": _out, "ts": _tm.time(), "t_start": t0,
+                       "seq": _W["seq"] + 1, "runs": _W["runs"] + 1,
+                       "first_done": True})
+    except Exception as e:                                              # noqa: BLE001
+        with _W["lock"]:
+            _W.update({"errs": _W["errs"] + 1,
+                       "last_err": "%s: %s" % (type(e).__name__, e),
+                       "t_start": t0})
+        # 失败也留一条可读输出 (接口对齐; pass=None 不冒充结果)
+        with _W["lock"]:
+            if _W["out"] is None:
+                _W["out"] = {"kind": "aoi", "pass": None, "verdict": "unavailable",
+                             "err": _W["last_err"], "items": [], "no_truth": True}
+    return _tm.time() - t0
+
+
 def _aoi_worker():
-    """异步巡检线程: 取帧 → inspect_aoi → 写最新快照。异常绝不退出线程。"""
+    """后台巡检线程 (多线程档): 一轮接一轮, 睡到下一周期 (扣掉本轮耗时)。"""
     while True:
         t0 = _tm.time()
-        try:
-            img = _grab_frame(None)
-            _out = inspect_aoi(img, log=None, cache=_YOLO_CACHE, publish=_ar_aoi_publish)
-            if not isinstance(_out, dict):
-                _out = {"kind": "aoi", "pass": None, "verdict": "bad_return",
-                        "err": "算法层返回非 dict: %s" % type(_out).__name__, "items": []}
-            with _W["lock"]:
-                _W.update({"out": _out, "ts": _tm.time(), "t_start": t0,
-                           "seq": _W["seq"] + 1, "runs": _W["runs"] + 1,
-                           "first_done": True})
-        except Exception as e:                                          # noqa: BLE001
-            with _W["lock"]:
-                _W.update({"errs": _W["errs"] + 1,
-                           "last_err": "%s: %s" % (type(e).__name__, e),
-                           "t_start": t0})
-            # 失败也留一条可读输出 (接口对齐; pass=None 不冒充结果)
-            with _W["lock"]:
-                if _W["out"] is None:
-                    _W["out"] = {"kind": "aoi", "pass": None, "verdict": "unavailable",
-                                 "err": _W["last_err"], "items": [], "no_truth": True}
-        # 睡到下一周期 (扣掉本轮耗时, 保证周期稳定)
-        _el = _tm.time() - t0
-        _tm.sleep(max(0.05, _aoi_interval() - _el))
+        _aoi_once()
+        _tm.sleep(max(0.05, _aoi_interval() - (_tm.time() - t0)))
 
 
 def _ensure_worker():
@@ -107,8 +115,15 @@ def _ensure_worker():
         return _W["first_done"]
     with _W["lock"]:
         if _W["th"] is None or not _W["th"].is_alive():
-            _W["th"] = _th.Thread(target=_aoi_worker, name="zmax-aoi-worker", daemon=True)
-            _W["th"].start()
+            from lerobot.engineering.thread_policy import single as _single, spawn_or_inline
+            if _single():
+                # 单线程/单步档: 不起线程。每拍最多推进一轮(按巡检周期), 一轮的代码全在主线程
+                _now = _tm.time()
+                if _now - float(_W.get("last_inline") or 0.0) >= _aoi_interval():
+                    _W["last_inline"] = _now
+                    _aoi_once()
+                return _W["first_done"]
+            _W["th"] = spawn_or_inline("zmax-aoi-worker", _aoi_worker)
     return False
 
 

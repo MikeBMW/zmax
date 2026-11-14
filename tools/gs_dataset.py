@@ -23,7 +23,24 @@ import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CALIB = os.path.join(ROOT, "models/real_cam_calib.json")
-HANDEYE = os.path.expanduser("~/zmax/zmax_data/handeye_state.json")
+
+
+def _first_existing(paths):
+    for p in paths:
+        if os.path.exists(os.path.expanduser(p)):
+            return os.path.expanduser(p)
+    return os.path.expanduser(paths[0])
+
+
+# 🧭 2026-11-13: 手眼真值在不同主机的落点不一样 —— 4060 在 ~/zmax/zmax_data/handeye_state.json,
+#   550C 在 ~/zmax_map/models/handeye_state.json(它没有 ~/zmax 这棵树)。
+#   原来写死 4060 那条 ⇒ 550C 上"用历史数据建图"第一步就 FileNotFoundError。
+HANDEYE = _first_existing([p for p in [
+    os.environ.get("GS_HANDEYE", ""),
+    "~/zmax/zmax_data/handeye_state.json",
+    "~/zmax_map/models/handeye_state.json",
+    "~/zmax_data/handeye_state.json",
+] if p])
 
 
 def quat_to_R(x, y, z, w):

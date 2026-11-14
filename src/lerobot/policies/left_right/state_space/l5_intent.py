@@ -191,9 +191,8 @@ def intent(obs43=None, frame=None):
         _work(obs43, frame)                    # 仅显式调试档 (SS_L5_SYNC=1) 才当场算: 会占 60~130s
     elif need and not (th is not None and th.is_alive()):
         # 常态: 后台单飞, 本拍先用上一份 (冷启第一拍 = None ⇒ L5 落单位元 + 日志说明, 绝不卡节拍)
-        _ST["th"] = threading.Thread(target=_work, args=(obs43, frame), daemon=True,
-                                     name="ss_l5_intent")
-        _ST["th"].start()
+        from lerobot.engineering.thread_policy import spawn_or_inline
+        _ST["th"] = spawn_or_inline("ss_l5_intent", lambda: _work(obs43, frame))
     r = _ST.get("res")
     if not r:
         return None

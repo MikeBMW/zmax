@@ -27,10 +27,10 @@
     "version": "0.2.0",
     "configurations": [
       {
-        "name": "🧪 断点 · 55D 输出 (unified_state55.fuse · 停 return x)",
+        "name": "🧠 后端工程 · 调度状态机 (start.py)",
         "type": "python",
         "request": "launch",
-        "program": "/home/ubuntu/zmax/tools/debug_55d_output.py",
+        "program": "/home/ubuntu/zmax/src/lerobot/engineering/start.py",
         "python": "/home/ubuntu/zmax/gui-venv311/bin/python",
         "pythonArgs": [
           "-X",
@@ -41,13 +41,42 @@
         "justMyCode": false,
         "stopOnEntry": false,
         "env": {
-          "ZMAX_DEBUG_55D": "1",
+          "PYTHONPATH": "/home/ubuntu/zmax/src:/home/ubuntu/zmax/tools",
+          "PYTHONUNBUFFERED": "1",
+          "PYDEVD_DISABLE_FILE_VALIDATION": "1",
+          "ZMAX_FSM": "1",
+          "ZMAX_ORCH": "1",
+          "ZMAX_AUTO_TRAJ": "1",
+          "ZMAX_TRAJ_CHUNK": "10",
+          "ZMAX_TRAJ_SPEED": "40",
+          "ZMAX_DISPATCH_INPROC": "0",
+          "OMP_NUM_THREADS": "4",
+          "MKL_NUM_THREADS": "4"
+        }
+      },
+      {
+        "name": "🎯 断点 · 状态空间常驻循环 (ss_canvas_loop → fuse_sensors)",
+        "type": "python",
+        "request": "launch",
+        "program": "/home/ubuntu/zmax/tools/ss_canvas_loop.py",
+        "python": "/home/ubuntu/zmax/gui-venv311/bin/python",
+        "pythonArgs": [
+          "-X",
+          "frozen_modules=off"
+        ],
+        "cwd": "/home/ubuntu/zmax",
+        "console": "integratedTerminal",
+        "justMyCode": false,
+        "stopOnEntry": false,
+        "env": {
+          "ZMAX_DEBUG_FUSE": "1",
+          "ZMAX_DISPATCH_INPROC": "0",
           "PYTHONUNBUFFERED": "1",
           "PYDEVD_DISABLE_FILE_VALIDATION": "1"
         }
       },
       {
-        "name": "🧪 断点 · 整个 GUI (studio.py · 550B 单线程)",
+        "name": "🖥 前端 GUI · 控制台可视化 (studio.py)",
         "type": "python",
         "request": "launch",
         "program": "/home/ubuntu/zmax/tools/gui/studio.py",
@@ -59,11 +88,11 @@
         "cwd": "/home/ubuntu/zmax/tools/gui",
         "console": "integratedTerminal",
         "justMyCode": false,
+        "stopOnEntry": false,
         "env": {
           "DISPLAY": ":0",
           "QT_QPA_PLATFORM": "xcb",
           "ZMAX_SINGLE_THREAD": "1",
-          "ZMAX_BREAK_SKILL": "1",
           "PYTHONUNBUFFERED": "1",
           "PYDEVD_DISABLE_FILE_VALIDATION": "1",
           "HF_HUB_OFFLINE": "1",

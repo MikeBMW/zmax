@@ -5670,7 +5670,7 @@ def _vscode_launch_cfg(root: str) -> dict:
             #   frozen_modules=off: Python 3.11+ 不给它, debugpy 会对 frozen modules 漏断点。
             #   HF_HUB_OFFLINE/TRANSFORMERS_OFFLINE: 本机 HF 常不通, 在线加载会卡在 list_repo_tree (SYN-SENT)
             #     ⇒ 调试会话在启动阶段就僵住, 表现为"断点根本不进"。
-            {"name": "🧪 断点 · 整个 GUI (studio.py · 550B 单线程)", "type": "python", "request": "launch",
+            {"name": "🖥 前端 GUI · 控制台可视化 (studio.py)", "type": "python", "request": "launch",
              "program": _os.path.join(root, "tools", "gui", "studio.py"), "python": _py(),
              "pythonArgs": ["-X", "frozen_modules=off"],
              "cwd": _os.path.join(root, "tools", "gui"), "console": "integratedTerminal",
@@ -5679,6 +5679,22 @@ def _vscode_launch_cfg(root: str) -> dict:
                      "ZMAX_SINGLE_THREAD": "1",
                      "PYTHONUNBUFFERED": "1", "PYDEVD_DISABLE_FILE_VALIDATION": "1",
                      "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"}},
+            # 🧠 工程正式入口 (老倪 2026-11-14: 「start.py … 是真正的工程正式入口, 切记」)
+            #    这条是**生产链**: 入口 start.py → DispatchFSM 13 状态 → 10Hz 引擎逐节点 → 215 点真机全流程。
+            #    前端授权(8793「授权真动」→ 30 分钟 / 调试无限)后 F5 即自动从第 1 点走到第 215 点;
+            #    断点可打在任意节点/任意技能上 (justMyCode=false)。
+            {"name": "🧠 后端工程 · 调度状态机 (start.py)",
+             "type": "python", "request": "launch",
+             "program": _os.path.join(root, "src", "lerobot", "engineering", "start.py"),
+             "python": _py(), "pythonArgs": ["-X", "frozen_modules=off"],
+             "cwd": root, "console": "integratedTerminal",
+             "justMyCode": False, "stopOnEntry": False,
+             "env": {"PYTHONPATH": _os.path.join(root, "src") + ":" + _os.path.join(root, "tools"),
+                     "PYTHONUNBUFFERED": "1", "PYDEVD_DISABLE_FILE_VALIDATION": "1",
+                     "ZMAX_FSM": "1", "ZMAX_ORCH": "1",
+                     "ZMAX_AUTO_TRAJ": "1", "ZMAX_TRAJ_CHUNK": "10", "ZMAX_TRAJ_SPEED": "20",
+                     "ZMAX_DISPATCH_INPROC": "0",
+                     "OMP_NUM_THREADS": "4", "MKL_NUM_THREADS": "4"}},
         ],
     }
 

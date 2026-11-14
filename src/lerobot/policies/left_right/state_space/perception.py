@@ -13,6 +13,8 @@
 
 时空感知 = 当前帧 + 历史帧时序堆叠。
 """
+import os
+
 import numpy as np
 
 # 55D 是标准口径; 43D 为兼容口径 (老权重吃前 43 维)
@@ -36,6 +38,14 @@ def fuse_sensors(rgbd_feats, force_6d, tactile_marker, K_obs=1.0, dim=LEGACY_OBS
     Returns:
         obs: dim 维统一状态向量 (默认 43 = 兼容口径; 标准口径用 dim=55)
     """
+    # 🎯 断点锚点: 视觉39 ⊕ 触觉4 → 统一状态向量。只有调试配置带 ZMAX_DEBUG_FUSE=1,
+    #    常驻服务/产线没有这个变量 ⇒ 生产路径一字不变; 停的是**本行**, 不是辅助函数里。
+    if os.environ.get("ZMAX_DEBUG_FUSE") == "1":
+        try:
+            import debugpy
+            debugpy.breakpoint()      # 等价于在本行下断点, 编辑器里直接 Paused
+        except Exception:
+            breakpoint()                                                # noqa: T100
     assert np.asarray(rgbd_feats).shape[-1] == VISUAL_DIM, "视觉与本体状态必须 39 维"
     assert np.asarray(tactile_marker).shape[-1] == TACTILE_DIM, "触觉力觉必须 4 维"
     if int(dim) == LEGACY_OBS_DIM:

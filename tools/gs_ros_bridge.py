@@ -29,6 +29,12 @@ PORT = int(os.environ.get("GS_BRIDGE_PORT", "8811"))
 BIND = os.environ.get("GS_BRIDGE_BIND", "127.0.0.1")
 STALE_S = float(os.environ.get("GS_BRIDGE_STALE_S", "3.0"))   # 超过这么久没新帧 ⇒ stale
 JPEG_Q = int(os.environ.get("GS_BRIDGE_JPEG_Q", "92"))
+# 🌐 2026-11-13 老倪「4060 上能看到手臂相机, 550C 也要看到」:
+#   4060 是**直接拉 Orin 8794 HTTP 中继**(30fps), 而 550C 这道桥只认 ROS 话题;
+#   跨机 DDS 发现被网络隔断 ⇒ /realsense/color/image_raw 的 Publisher count=0, 桥永远空图。
+#   ⇒ 加一条 HTTP 帧源(与 4060 完全同源): 置 GS_FRAME_URL 即启用, ROS 帧到了照样覆盖, 两路谁新用谁。
+FRAME_URL = os.environ.get("GS_FRAME_URL", "").strip()
+FRAME_FPS = float(os.environ.get("GS_FRAME_FPS", "15"))
 
 LOCK = threading.Lock()
 IMG = {"jpg": b"", "mono": 0.0, "wh": None, "enc": None, "bright": None}
@@ -92,6 +98,34 @@ class Bridge(Node):
             POSE["mono"] = time.monotonic()
 
 
+def http_frame_loop():
+    """HTTP 帧源 (与 4060 的 8794 中继同源): 跨机 ROS 发现不通时的兜底, 也是 550C 唯一能拿到臂画面的路。"""
+    import urllib.request
+    import cv2
+    last_err = 0.0
+    while True:
+        t0 = time.monotonic()
+        try:
+            with urllib.request.urlopen(FRAME_URL, timeout=2.0) as r:
+                jpg = r.read()
+            if len(jpg) > 2000:
+                bgr = cv2.imdecode(np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
+                wh = [int(bgr.shape[1]), int(bgr.shape[0])] if bgr is not None else None
+                with LOCK:
+                    IMG.update(jpg=jpg, mono=time.monotonic(), wh=wh, enc="http/jpeg",
+                               bright=round(float(bgr.mean()), 2) if bgr is not None else None)
+                    FPS["n"] += 1
+                    el = time.monotonic() - FPS["t0"]
+                    if el >= 5.0:
+                        FPS["rate"] = round(FPS["n"] / el, 2)
+                        FPS["n"], FPS["t0"] = 0, time.monotonic()
+        except Exception as e:                    # 单次失败不许把桥带死
+            if time.monotonic() - last_err > 10.0:
+                last_err = time.monotonic()
+                print("[bridge] 帧源 %s 出错: %r" % (FRAME_URL, e), flush=True)
+        time.sleep(max(0.0, 1.0 / max(1.0, FRAME_FPS) - (time.monotonic() - t0)))
+
+
 class H(BaseHTTPRequestHandler):
     # 保持 HTTP/1.0 语义(每次响应即关连接): urllib 拉图偶发 keep-alive 挂住, 采集循环不能被一条连接拖死
     def log_message(self, *a):
@@ -148,10 +182,12 @@ def main():
     rclpy.init()
     node = Bridge()
     threading.Thread(target=rclpy.spin, args=(node,), daemon=True).start()
+    if FRAME_URL:
+        threading.Thread(target=http_frame_loop, daemon=True).start()
     srv = ThreadingHTTPServer((BIND, PORT), H)
-    print("gs_ros_bridge on %s:%d  img=%s pose=%s" % (
+    print("gs_ros_bridge on %s:%d  img=%s pose=%s http_frame=%s" % (
         BIND, PORT, os.environ.get("GS_IMG_TOPIC", "/realsense/color/image_raw"),
-        os.environ.get("GS_POSE_TOPIC", "/robot/tcp_pose")), flush=True)
+        os.environ.get("GS_POSE_TOPIC", "/robot/tcp_pose"), FRAME_URL or "-"), flush=True)
     srv.serve_forever()
 
 
