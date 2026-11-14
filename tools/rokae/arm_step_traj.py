@@ -193,6 +193,24 @@ def main() -> int:
         try:
             bj = joints(r)
             ec = {}
+            # 🛑 人工断点(容器内没有 VSCode 调试器, 所以用旗标文件停) —— 停在**发指令之前**:
+            #    触发: 存在 /sdk/stop_at_cmd (= 主机 zmax_data/rokae_sdk/stop_at_cmd, 该目录 rw 挂到 /sdk)
+            #    停住时: 本点指令还没发 ⇒ 臂静止不动; 每 2s 复检, 删掉旗标即继续
+            #    证据: 往 stdout(= traj_step_out.log) 打一行 JSON: 目标角/当前角/跳变/停多久
+            _flag = os.environ.get("ZMAX_STOP_AT_CMD_FLAG") or "/sdk/stop_at_cmd"
+            if os.environ.get("ZMAX_STOP_AT_CMD") == "1" or os.path.exists(_flag):
+                _t_hold = time.time()
+                print(json.dumps({"stop_at_cmd": True, "i": i,
+                                  "target_deg": rec["target_deg"],
+                                  "cur_deg": [round(math.degrees(v), 2) for v in bj],
+                                  "max_jump_deg": rec["max_jump_deg"],
+                                  "hint": "臂停在发指令前; 删掉 %s 继续" % _flag},
+                                 ensure_ascii=False), flush=True)
+                while os.path.exists(_flag) and (time.time() - _t_hold) < 3600:
+                    time.sleep(2.0)
+                print(json.dumps({"stop_at_cmd": "released", "i": i,
+                                  "held_s": round(time.time() - _t_hold, 1)},
+                                 ensure_ascii=False), flush=True)
             r.moveReset({})
             cmd = x.MoveAbsJCommand(x.JointPosition([float(v) for v in jt]), speed, -1)
             r.moveAppend([cmd], x.PyString("step%d" % i), ec)

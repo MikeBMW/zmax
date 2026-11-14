@@ -606,4 +606,15 @@ class ActionModulator:
         tag = (" · 接触" if contact_p > self.contact_th else "") + _mtag
         if _orch_tag:
             tag += " · " + _orch_tag
+        # 🚦 闭环直驱护栏(阶段一=影子): ZMAX_DD_MODE 未设/off ⇒ 完全不介入(不写文件/不改 tag)
+        #    shadow: 只记录 u 与实测运动的比对结论; armed: 连续 N 拍达标才 allow
+        #    铁律: u 一字不改; 出任何异常 ⇒ 静默跳过, 215 点照常走
+        try:
+            from .direct_drive_guard import check as _dd_check
+            _dd = _dd_check(u, stage=st, note=tag)
+            if _dd.get("mode") in ("shadow", "armed"):
+                tag += " · 直驱%s%d%%" % ("✓" if _dd.get("allow") else "·",
+                                          int(round(float(_dd.get("score") or 0.0) * 100)))
+        except Exception:                                              # noqa: BLE001
+            pass
         return u, f"阶段 {st}{tag}"
