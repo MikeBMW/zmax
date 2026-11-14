@@ -1,6 +1,6 @@
 <!doctype html><html lang="zh"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Z-MAX AR3D r95 · SIM自动 · 位置细胞 · 8802直播</title>
+<title>Z-MAX AR3D r96 · 仿真=真机位姿 · SIM自动 · 位置细胞 · 8802直播</title>
 <style>
  *{box-sizing:border-box}
  body{margin:0;background:#0b0f14;color:#e6edf3;font:15px/1.5 -apple-system,Segoe UI,Roboto,"Noto Sans SC",sans-serif}
@@ -119,7 +119,7 @@
   <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
   <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
      style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-11-11 r95 · 真实轨迹开关 · 📺 8802 直播窗口(渲染站自己推 MJPEG: 8802/video · /live 全屏外壳, 与工位渲染同源同帧) · 🧭 位置细胞层 · 🎥 MuJoCo 同视角 · 其它同 r91</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-11-14 r96 · 仿真臂=真机位姿真值(不再走合成段表) · 两个插口(socket.optical2) · 真实轨迹开关 · 📺 8802 直播窗口(渲染站自己推 MJPEG: 8802/video · /live 全屏外壳, 与工位渲染同源同帧) · 🧭 位置细胞层 · 🎥 MuJoCo 同视角 · 其它同 r91</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -3835,6 +3835,11 @@ function plantHud(){
 
 function plantStep(){
   if(!PLANT.on) return;
+  // 🦾 2026-11-14 老倪「右臂仿真按真实轨迹运行」⇒ 镜像开着的时候, 这一路不许再写 PREV(否则
+  //    ar_cmd 的合成段表按 60Hz 盖掉真机位姿, 看着就是"仿真没按真实轨迹走")
+  if(typeof MIRROR!=='undefined' && MIRROR.on){
+    PLANT.raf=requestAnimationFrame(plantStep); return;
+  }
   const now=performance.now();
   let dt=(now-PLANT.last)/1000; PLANT.last=now;
   if(dt>0.5) dt=0.5;
@@ -4728,9 +4733,48 @@ $('bUrdf').addEventListener('click',()=>vrKeepCam(()=>{
 //  只在状态**变化**时应用一次, 不每 2s 抢用户手动切的 VR.real / VR.simArm
 var ARMODE={on:false,real_auth:false,age:null};
 // 进/出 AR/状态空间时的**视图**路由(真机臂让位、仿真臂接管) —— 画布开关与左栏拨杆共用这一份
+/* 🦾 仿真臂 = 真机位姿 (老倪 2026-11-14「右臂仿真没有按照真实轨迹在运行, 改成真实轨迹」)
+   口径: 仿真臂的关节角**直接取真机位姿真值**(/api/tcp → tcp_out/latest.json, 6 轴弧度),
+        不再走 ar_cmd.json 的合成段表(那张表是 14 孔计划, 不是这次录的 215 点)。
+        真机怎么走, 仿真就怎么走 —— 真机跑 215 点真实轨迹时, 仿真逐帧一样。
+   同源证据: /api/tcp 的 joints 与页面 PREV.q 逐位相等; 8802 同帧推送(mjPushQ/mjPushQForce)。
+   不下发任何指令, 不碰授权。 */
+var MIRROR={on:false,t:null,n:0,lastAge:null,err:null};
+function mirrorTick(){
+  if(!MIRROR.on) return;
+  fetch('/api/tcp',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+    if(!d||d.ok===false||!d.joints||d.joints.length<6) return;
+    MIRROR.lastAge=d.age_s;
+    if(typeof d.age_s==='number' && d.age_s>1.5) return;      // 真值过期 ⇒ 不拿陈旧位姿骗人
+    var q=d.joints.slice(0,6);
+    PREV.on=true; PREV.q=q; PREV.target=[d.x*1000,d.y*1000,d.z*1000];
+    try{ PREV.M=urdfFK(q); }catch(e){}
+    MIRROR.n++;
+    if(typeof mjPushQ==='function'){ try{ mjPushQ(); }catch(e){} }
+    if(MIRROR.n%3===0 && typeof mjPushQForce==='function'){ try{ mjPushQForce(); }catch(e){} }
+    if(MIRROR.n%2===0){ try{ drawVR(); }catch(e){} }
+  }).catch(function(e){ MIRROR.err=String(e&&e.message||e); });
+}
+function mirrorStart(){
+  if(MIRROR.on) return;
+  MIRROR.on=true; MIRROR.err=null;
+  if(MIRROR.t) clearInterval(MIRROR.t);
+  MIRROR.t=setInterval(mirrorTick,100);                        // 10Hz: 真值 50Hz, 取够用不刷屏
+  mirrorTick();
+}
+function mirrorStop(){ MIRROR.on=false; if(MIRROR.t){ clearInterval(MIRROR.t); MIRROR.t=null; } }
+// 开机默认: 仿真臂在显示 ⇒ 立刻按真机位姿跟随(不用等状态空间开关); 仿真臂被藏起来 ⇒ 停
+setTimeout(function(){
+  try{
+    if(typeof VR!=='undefined' && VR.simArm!==false) mirrorStart();
+    var b=document.getElementById('bArmR');
+    if(b) b.addEventListener('click', function(){ try{ (VR.simArm? mirrorStart(): mirrorStop()); }catch(e){} });
+  }catch(e){}
+}, 1500);
+
 function arViewSet(on){
-  if(on){ VR.real=false; VR.simArm=true; }   // 进 AR: 真机右臂让位, 仿真双臂接管
-  else  { VR.real=true; }                    // 回真机: 真机右臂重新显示
+  if(on){ VR.real=false; VR.simArm=true; mirrorStart(); }   // 进 AR: 真机右臂让位, 仿真臂按真机位姿走
+  else  { VR.real=true; mirrorStop(); }                     // 回真机: 真机右臂重新显示(直接读真值)
   if($('bArmReal')){ $('bArmReal').classList.toggle('on', VR.real!==false);
     $('bArmReal').textContent = VR.real!==false ? '🦾 右臂_真机' : '🦾 右臂_真机(已隐藏)'; }
   if($('bArmR')){ $('bArmR').classList.toggle('on', !!VR.simArm);
@@ -5018,6 +5062,7 @@ function ensureTrajJoints(){
 }
 
 function rtrajPlayJoints(d){
+  try{ mirrorStop(); }catch(e){}          // 回放期间抢 PREV, 先让镜像让位(不然两路互踩)
   var t=$('tRTraj'), frames=d.frames, rate=RTRAJ.rate||1;
   RTRAJ.frames=frames; RTRAJ.dur=frames[frames.length-1].t/rate; RTRAJ.fi=0;
   RTRAJ.t0=performance.now(); RTRAJ.playing=true; RTRAJ.joints=true;
@@ -5043,7 +5088,8 @@ function rtrajPlayJoints(d){
     if(el>=frames[frames.length-1].t){
       RTRAJ.playing=false; RTRAJ.raf=null;
       rtrajUI(false,'走完 '+d.n_frames+' 帧 · '+(d.path_mm||0).toFixed(0)+'mm · 转动 '+
-        (d.rot_total_deg||0).toFixed(0)+'° · 用时 '+(frames[frames.length-1].t).toFixed(0)+'s · 真机没动');
+        (d.rot_total_deg||0).toFixed(0)+'° · 用时 '+(frames[frames.length-1].t).toFixed(0)+'s · 真机没动 · 已切回跟随真机');
+      try{ if(VR.simArm) mirrorStart(); }catch(e){}   // 回放结束 ⇒ 仿真臂回到"跟随真机位姿"
       drawVR(); return;
     }
     mjPushQ();
@@ -5821,7 +5867,7 @@ async function robotTick(){
         drw:(typeof DRWN!=='undefined')?DRWN:null,
         cw:(document.getElementById('vr')||{}).width||null,
         ch:(document.getElementById('vr')||{}).height||null,
-        bld:'2026-11-11 r95',
+        bld:'2026-11-14 r96',
         // 🩺 2026-10-29 老倪「开状态空间就看不到手里那颗模块」: 手里有没有货 / 落在第几段 直接上报
         drv:(typeof ARCMD!=='undefined'&&ARCMD.drv)||'',
         carry:(typeof INSP!=='undefined'&&INSP.carry)?1:0,
