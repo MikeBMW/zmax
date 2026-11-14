@@ -51,6 +51,7 @@ OUT = os.path.join(_repo(), "zmax_data", "ss_live", "action.json")
 TRAJ_JSON = os.path.join(_repo(), "tools", "web", "real_traj_joints.json")
 TRAJ_STATE = os.path.join(_repo(), "zmax_data", "rokae_sdk", "traj_step_state.json")
 LATEST = os.path.join(_repo(), "zmax_data", "rokae_sdk", "tcp_out", "latest.json")
+_SENT = os.path.join(_repo(), "zmax_data", "rokae_sdk", "last_sent.json")
 
 KEYS = ("src", "x", "y", "z", "a", "b", "c", "qx", "qy", "qz", "qw",
         "j1", "j2", "j3", "j4", "j5", "j6", "i", "why", "ts",
@@ -132,9 +133,17 @@ def exec_index(max_err_mm=25.0):
     取不到派单事实 ⇒ 退回最近点; 再取不到 ⇒ None(不猜)。
     """
     st = _traj_state()
-    if not st.get("running"):
-        return None
     fr = _frames()
+    if not st.get("running"):
+        # 轮间空档(容器刚退出/还没派下一点): 用**最后真正发出去**的那一点, 不用 cursor
+        # (cursor 那一刻已经 +1, 是"下一个待发点" ⇒ 会显示成未来点)
+        try:
+            d = json.load(open(_SENT, encoding="utf-8"))
+            if time.time() - float(d.get("ts") or 0) < 300.0:
+                return max(0, min(int(d.get("start") or 0), len(fr) - 1))
+        except Exception:                                          # noqa: BLE001
+            pass
+        return None
     try:
         s = int(st.get("start") or 0)
         n = int(st.get("n") or 0)

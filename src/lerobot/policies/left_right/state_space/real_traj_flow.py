@@ -42,6 +42,7 @@ GRIP = os.path.join(REPO, "tools", "web", "real_traj_grip.json")
 AUTH = os.path.join(REPO, "zmax_data", "ctl_auth.json")
 STS = os.path.join(REPO, "zmax_data", "ss_live", "traj_flow.json")
 POSE = os.path.join(REPO, "zmax_data", "rokae_sdk", "tcp_out", "latest.json")
+SENT = os.path.join(REPO, "zmax_data", "rokae_sdk", "last_sent.json")
 API = os.environ.get("ZMAX_AR_API", "http://127.0.0.1:8797")
 
 
@@ -122,6 +123,18 @@ def _pose():
 class RealTrajFlow:
     """215 点全流程 (授权即跑)。phase: WAIT_AUTH → RUN → DONE / ABORT。"""
 
+
+    def _mark_sent(self, body):
+        """记下**最后真正发出去的那一点**(断点/空档时 action 要显示它, 不是下一个待发点)。"""
+        try:
+            d = {"start": int(body.get("start") or 0), "n": int(body.get("n") or 1),
+                 "cursor": int(self.cursor), "round": int(self.rounds), "ts": time.time()}
+            tmp = SENT + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(d, f)
+            os.replace(tmp, SENT)
+        except Exception:                                          # noqa: BLE001
+            pass
     def __init__(self, chunk: int = 10, speed: float = 20.0, dry: bool = False,
                  dwell_ms: int = 120):
         self.chunk = max(1, int(chunk))
@@ -247,6 +260,42 @@ class RealTrajFlow:
         if self.dry:
             body["dry"] = True
         try:
+            # 🎯 后端只认 action(状态空间工程的最终输出); 现在 src=traj215 ⇒ 照旧回放 215 点
+            #    src=ss 且 ZMAX_ACTION_SS_EXEC=1 才切到状态空间下发(接口未落地 ⇒ 明确报错, 不静默)
+            _act = None
+            try:
+                from . import action_bus as _ab
+                _act = _ab.read()
+                if _act and str(_act.get("src")) == "ss" and \
+                        os.environ.get("ZMAX_ACTION_SS_EXEC") != "1":
+                    _act = dict(_act, src="traj215",
+                                why="action 想走 ss, 但 ZMAX_ACTION_SS_EXEC 未开 ⇒ 回放 215 点")
+                if _act and str(_act.get("src")) == "ss":
+                    self.last_msg = "action 想走 ss, 但接管未实现(需 8797 位姿下发接口) ⇒ 本段仍回放 215 点"
+            except Exception:                                          # noqa: BLE001
+                _act = None
+            # 👀 让 VSCode 的「终端」每段都看得见一行(以前只写 json, 控制台一片安静 ⇒ 用户以为没动)
+            print("📤 派单 n=%s start=%s speed=%s dwell=%sms · 第 %d 轮 · 游标 %d/%d"
+                  % (body.get("n"), body.get("start"), body.get("speed"), body.get("dwell_ms"),
+                     self.rounds, self.cursor, self.total), flush=True)
+            if _act:
+                print("🎯 action[%s] x=%.2f y=%.2f z=%.2f a=%.2f b=%.2f c=%.2f i=%s · %s"
+                      % (_act.get("src"), _act.get("x") or 0, _act.get("y") or 0, _act.get("z") or 0,
+                         _act.get("a") or 0, _act.get("b") or 0, _act.get("c") or 0,
+                         _act.get("i"), str(_act.get("why"))[:60]), flush=True)
+            # 🛑 可断点锚(在本进程里 ⇒ VSCode 会真的停下来, 变量面板能看 n/start/speed):
+            #    触发: touch /tmp/zmax_stop_at_dispatch   继续: rm 掉
+            #    有调试器 ⇒ debugpy.breakpoint(); 没有 ⇒ pdb.set_trace()
+            if os.environ.get("ZMAX_STOP_AT_DISPATCH") == "1" or os.path.exists("/tmp/zmax_stop_at_dispatch"):
+                try:
+                    import debugpy
+                    if debugpy.is_client_connected():
+                        debugpy.breakpoint()
+                    else:
+                        import pdb
+                        pdb.set_trace()
+                except Exception:                                          # noqa: BLE001
+                    pass
             r = _post("/api/arm/step_traj", body)
         except Exception as e:                                           # noqa: BLE001
             self.last_msg = "下发失败(%s): %s" % (type(e).__name__, str(e)[:80])
@@ -257,6 +306,7 @@ class RealTrajFlow:
             self.rounds += 1
             self._post_cursor = self.cursor
             self._post_t = now
+            self._mark_sent(body)
             self.last_msg = "已下发第 %d 轮: %s" % (self.rounds, r.get("msg") or "")
             _say("▶ " + self.last_msg)
         elif stage == "jump":
