@@ -55,7 +55,12 @@ class MuscleMemory:
                              "champ_x": (np.asarray(v["champ_x"], dtype=float)
                                          if v.get("champ_x") else None),
                              "io": v.get("io")}     # 🧬 S2 io 契约 (entry/exit 状态+相位)
-                    self.db[(int(seed), stg)] = entry
+                    # 🦾 2026-11-14: 允许非数字桶(如 "real215" = 真机真实轨迹通道)
+                    try:
+                        seed = int(seed)
+                    except ValueError:
+                        pass
+                    self.db[(seed, stg)] = entry
         except Exception:
             pass
 
@@ -154,12 +159,26 @@ class MuscleMemory:
 
     # ── 快通道: 整段标杆 u_exec (小脑重放) ──
     def get_champ(self, seed, stage):
-        """固化标杆查询: 返回 (champ_u, champ_x) 或 (None, None)"""
+        """固化标杆查询: 返回 (champ_u, champ_x) 或 (None, None)
+
+        🦾 2026-11-14: 加了 real215 兜底桶 —— 肌肉记忆的"通道"以**真机真实轨迹**为准。
+        查库顺序: 本 seed 练出来的 → (没有就)real215(真轨迹) → (再没有)None。
+        SS_MM_REAL=0 可关(纯仿真回退到只认 seed 桶)。"""
         st = str(stage).replace("阶段 ", "").split("·")[0].strip()
-        e = self.db.get((int(seed), st))
-        if e is None or e["champ_u"] is None:
-            return None, None
-        return e["champ_u"], e["champ_x"]
+        try:
+            key = (int(seed), st)
+        except (TypeError, ValueError):
+            key = (seed, st)
+        # 🦾 2026-11-14 老倪「肌肉记忆的通道要跟真实轨迹匹配」⇒ real215(真机录制) **优先**,
+        #   仿真 seed 桶退为兜底。SS_MM_REAL=0 则回到旧口径(只认 seed 桶, 纯仿真)。
+        if os.environ.get("SS_MM_REAL", "1") != "0":
+            e2 = self.db.get(("real215", st))
+            if e2 is not None and e2["champ_u"] is not None:
+                return e2["champ_u"], e2["champ_x"]
+        e = self.db.get(key)
+        if e is not None and e["champ_u"] is not None:
+            return e["champ_u"], e["champ_x"]
+        return None, None
 
     def status(self):
         """GUI 展示: 各场景已固化技能数"""
