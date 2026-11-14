@@ -493,27 +493,44 @@ class RobotExecutor:
                 "grip_meas_age_s": (None if _age is None else round(_age, 1))}
 
     def _act_ss(self, u_arr, chk):
-        """src=ss: action.pose = 实测位姿 + u·dt(mm), 关节=实测(未做 IK, 明确标注)。"""
+        """src=ss: 与真机对齐的 action —— 位姿 = 真机真值 + u·dt, 夹爪 = u[3], 带 align 证据块。
+
+        2026-11-14 老倪「按实际位姿对齐 action, 模型输出也要跟 action 对齐」:
+          位姿必须每拍重新锚在**真机位姿真值**上(不是自己积分的空气位), 并且把对齐证据
+          (pose_truth / u_mm / step_mm / truth_age_s / truth_fresh / step_ok) 一起带出去。
+        """
         dt = self._dt()
         u4 = [round(float(x), 6) for x in np.asarray(u_arr, dtype=float).ravel()[:4]]
-        pose_now = tcp_pose_now()
-        pose = None
-        if pose_now is not None:
-            pose = dict(pose_now)
-            _v = np.asarray(u_arr, dtype=float).ravel()[:3]
-            if _v.size == 3 and bool(np.isfinite(_v).all()):
-                pose.update(x=round(float(pose_now["x"]) + float(_v[0]) * 1000.0 * dt, 2),
-                            y=round(float(pose_now["y"]) + float(_v[1]) * 1000.0 * dt, 2),
-                            z=round(float(pose_now["z"]) + float(_v[2]) * 1000.0 * dt, 2),
-                            src="pos+u*dt(直驱)", dt_s=round(dt, 4))
         _j = self._joints_now()
-        act = Action(kind="action", src="ss", i=None, pose=pose,
-                     joints_deg=_j, joints_src=("实测(未做IK)" if _j else "缺"),
+        try:
+            from . import action_bus as _ab
+            a = _ab.from_ss(u_arr, dt=dt, pose_now=tcp_pose_now(), joints_now=_j,
+                            why="真值位姿 + u*dt(%.3fs) · 全面对齐" % dt)
+        except Exception:                                                  # noqa: BLE001
+            a = None
+        if not a:
+            act = Action(kind="action", src="ss", i=None, pose=None,
+                         joints_deg=_j, joints_src=("实测(未做IK)" if _j else "缺"),
+                         u=u4, cmd=np.asarray(u4, dtype=float),
+                         check=chk, fallback=chk.get("fallback"),
+                         why="位姿真值读不到 ⇒ 不出目标位姿(宁缺不编)", ts=time.time(), dt_s=round(dt, 4))
+            act.update(self._grip_ss())
+            return act
+        pose = {k: a.get(k) for k in ("x", "y", "z", "a", "b", "c", "qx", "qy", "qz", "qw")
+                if a.get(k) is not None}
+        pose["src"] = "pos+u*dt(真值锚定)"
+        pose["dt_s"] = round(dt, 4)
+        act = Action(kind="action", src="ss", i=a.get("i"), pose=pose,
+                     joints_deg=_j, joints_src=a.get("joints_src") or ("实测(未做IK)" if _j else "缺"),
+                     joints_target=a.get("joints_target"), needs_ik=a.get("needs_ik"),
                      u=u4, cmd=np.asarray(u4, dtype=float),
                      check=chk, fallback=chk.get("fallback"),
-                     why="位姿 = 当前位姿 + u*dt(%.3fs)" % dt,
-                     ts=time.time(), dt_s=round(dt, 4))
-        act.update(self._grip_ss())
+                     why=a.get("why") or "位姿 = 真机真值 + u*dt", ts=time.time(), dt_s=round(dt, 4),
+                     align=a.get("align"))
+        for k in ("grip_mm", "grip_act", "grip_state", "grip_src", "grip_now_mm",
+                  "grip_meas_mm", "grip_meas_age_s"):
+            if a.get(k) is not None or k in ("grip_act", "grip_state"):
+                act[k] = a.get(k)
         return act
 
     @staticmethod

@@ -187,7 +187,15 @@ def from_traj215(cursor=None, why="215 点真值回放"):
 
 
 def from_ss(u, dt=0.1, pose_now=None, joints_now=None, why="状态空间输出"):
-    """src=ss: 当前位置 + u*dt 得目标位姿; 关节暂无 IK ⇒ 用实测关节并标注。"""
+    """src=ss: 真机位姿真值 + u*dt ⇒ 目标位姿 (2026-11-14 全面升级: 与真机对齐).
+
+    对齐口径(逐条可查):
+      ① 位置 = **真机位姿真值** + u[:3]*dt   (不是模型自己积分的空气位, 每拍重新锚在真值上)
+      ② 姿态 = 真机 a/b/c + 四元数原样带过来 (u 不动姿态)
+      ③ 夹爪 = u[3] 通道: >=0.5 合, <0.5 开 (以前丢掉 u[3], 只写"保持实测")
+      ④ 每拍自校验: 单拍位移上限 25mm / 真值帧龄 <=1.0s / 分量有限
+      ⑤ 关节: 真机实测关节一并带上(真机控制器按 pose 走 IK, 这里不编造)
+    """
     if pose_now is None:
         pose_now = read_pose()
     if pose_now is None:
@@ -195,24 +203,54 @@ def from_ss(u, dt=0.1, pose_now=None, joints_now=None, why="状态空间输出")
     v = [float(x) for x in (u if hasattr(u, "__len__") else [u])][:3]
     if len(v) != 3 or any(not math.isfinite(x) for x in v):
         return None
+    u_grip = None
+    try:
+        if hasattr(u, "__len__") and len(u) > 3:
+            u_grip = float(u[3])
+    except Exception:                                                    # noqa: BLE001
+        u_grip = None
+    dx, dy, dz = (v[0] * 1000.0 * dt, v[1] * 1000.0 * dt, v[2] * 1000.0 * dt)
+    step = math.sqrt(dx * dx + dy * dy + dz * dz)
+    try:
+        age = float(pose_now.get("age_s")) if pose_now.get("age_s") is not None else None
+    except Exception:                                                    # noqa: BLE001
+        age = None
+    max_step = 25.0
     act = {"src": "ss",
-           "x": round(pose_now["x"] + v[0] * 1000.0 * dt, 2),
-           "y": round(pose_now["y"] + v[1] * 1000.0 * dt, 2),
-           "z": round(pose_now["z"] + v[2] * 1000.0 * dt, 2),
+           "x": round(pose_now["x"] + dx, 2),
+           "y": round(pose_now["y"] + dy, 2),
+           "z": round(pose_now["z"] + dz, 2),
            "a": pose_now.get("a"), "b": pose_now.get("b"), "c": pose_now.get("c"),
            "qx": pose_now.get("qx"), "qy": pose_now.get("qy"),
            "qz": pose_now.get("qz"), "qw": pose_now.get("qw"),
            "i": cursor215(), "why": why, "ts": time.time(),
-           "joints_src": ("实测" if joints_now else "缺")}
+           "joints_src": ("实测" if joints_now else "缺"),
+           "joints_target": None, "needs_ik": bool(joints_now is None),
+           # ── 对齐证据块 (页面/终端/飞书都直接看这几个数) ─────────────────
+           "align": {"frame": "base", "unit": "mm", "dt": round(float(dt), 4),
+                     "pose_truth": [round(float(pose_now["x"]), 2), round(float(pose_now["y"]), 2),
+                                    round(float(pose_now["z"]), 2)],
+                     "u_mm": [round(dx, 3), round(dy, 3), round(dz, 3)],
+                     "step_mm": round(step, 3), "max_step_mm": max_step,
+                     "truth_age_s": age, "truth_fresh": (age is not None and age <= 1.0),
+                     "step_ok": step <= max_step}}
     for k in range(6):
         act["j%d" % (k + 1)] = (round(math.degrees(float(joints_now[k])), 4)
                                 if joints_now and len(joints_now) > k else None)
-    # 状态空间档: 夹爪不由 u 决定(4 维的 u[3] 还没接过来) ⇒ 保持实测状态, 明确标注
-    _m, _ = grip_meas()
-    _keep = {"grip_mm": _m, "grip_act": "hold",
-             "grip_state": (None if _m is None else ("开" if _m > 1.0 else "合")),
-             "grip_src": "保持实测(ss 档暂无夹爪通道)"}
-    return _with_grip(act, _keep)
+    if u_grip is None:
+        _m, _ = grip_meas()
+        keep = {"grip_mm": _m, "grip_act": "hold",
+                "grip_state": (None if _m is None else ("开" if _m > 1.0 else "合")),
+                "grip_src": "保持实测(u 无第4维)"}
+    else:
+        want_close = u_grip >= 0.5
+        _m, _ = grip_meas()
+        keep = {"grip_mm": (0.0 if want_close else GRIP_OPEN_MM),
+                "grip_act": ("close" if want_close else "open"),
+                "grip_state": ("合" if want_close else "开"),
+                "grip_src": "u[3]=%.2f" % u_grip,
+                "grip_now_mm": _m}
+    return _with_grip(act, keep)
 
 
 def grip_plan():
@@ -289,10 +327,16 @@ def read_pose():
         if (x, y, z) == (0.0, 0.0, 0.0):
             return None
         abc = _abc_deg([d.get("qx"), d.get("qy"), d.get("qz"), d.get("qw")]) or [None] * 3
+        _age = None
+        try:
+            _age = round(time.time() - float(d.get("ts") or os.path.getmtime(LATEST)), 3)
+        except Exception:                                                  # noqa: BLE001
+            _age = None
         return {"x": round(x, 2), "y": round(y, 2), "z": round(z, 2),
                 "a": abc[0], "b": abc[1], "c": abc[2],
                 "qx": round(float(d.get("qx") or 0), 6), "qy": round(float(d.get("qy") or 0), 6),
-                "qz": round(float(d.get("qz") or 0), 6), "qw": round(float(d.get("qw") or 0), 6)}
+                "qz": round(float(d.get("qz") or 0), 6), "qw": round(float(d.get("qw") or 0), 6),
+                "age_s": _age}
     except Exception:                                          # noqa: BLE001
         return None
 
