@@ -225,10 +225,13 @@ def build():
     # ── 4 孔轮转: 先全插满, 之后每阶段「拔一对 → AOI → 插同一对」, 不插等待 ─────
     # 老倪: 「不用等待, 第一次全都依次插入 1 2 3 4, 然后拔除 1 2 → 检测 AOI → 插入 1 2
     #        → 拔除 3 4 → 检测 AOI → 插入 3 4 → 再拔除 1 2 …」
-    pair_holes = {1: [HOLES[0], HOLES[1]], 2: [HOLES[2], HOLES[3]]}
+    # 🦾 2026-11-14 老倪「原来 4 个插口, 改成现在实际的两个」⇒ 孔数/坐标全读配置, 两两成对
+    pairs = [HOLES[i:i + 2] for i in range(0, len(HOLES), 2)]
+    pair_holes = {i + 1: p for i, p in enumerate(pairs)}
+    pair_of = {h["id"]: pi for pi, p in pair_holes.items() for h in p}
     ins_round, pull_round = {}, {}
     queue = list(range(1, len(SLOTS) + 1))
-    occupied = {1: [], 2: []}
+    occupied = {pi: [] for pi in pair_holes}
 
     # ① 预插: 孔1→2→3→4 依次插满(模块 1~4), 中间不停
     k = 1
@@ -238,15 +241,15 @@ def build():
         ins_round[m] = k
         modules[m - 1]["hole"] = h["id"]
         modules[m - 1]["insert_round"] = k
-        occupied[1 if h["id"] <= 2 else 2].append(m)
+        occupied[pair_of[h["id"]]].append(m)
     t_pre = round(sum(p["t"] for p in plan if p["k"] == k), 2)
     rounds.append(dict(r=k, pair=0, holes=[h["id"] for h in HOLES],
-                       insert_mods=[1, 2, 3, 4], pull_mods=[],
+                       insert_mods=list(range(1, len(HOLES) + 1)), pull_mods=[],
                        t_round=t_pre, t_work=t_pre, t_wait=0.0))
 
     # ② 轮转: 先拔孔1,2 → AOI → 插孔1,2 → 再拔孔3,4 → AOI → 插孔3,4 → …
     pair_turn = 1
-    while queue or occupied[1] or occupied[2]:
+    while queue or any(occupied.values()):
         k += 1
         pair = pair_turn
         holes = pair_holes[pair]
@@ -272,7 +275,7 @@ def build():
         rounds.append(dict(r=k, pair=pair, holes=[h["id"] for h in holes],
                            insert_mods=newmods, pull_mods=pulled,
                            t_round=tt, t_work=tt, t_wait=0.0))
-        pair_turn = 1 if pair == 2 else 2
+        pair_turn = 1 if pair == len(pairs) else pair + 1
 
     # ── 驻留时长(只测不补): 老倪这版要求「不用等待」, 驻留就是自然值 ──────────
     def measure():
