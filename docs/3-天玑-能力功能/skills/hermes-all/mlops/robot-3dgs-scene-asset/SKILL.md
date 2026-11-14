@@ -111,7 +111,14 @@ metadata:
    - 需编译 CUDA 扩展的包(nerfstudio/tiny-cuda-nn、diff-gaussian-rasterization、gsplat 的 JIT 版)在本机走 **gsplat 预编译轮**
      `uv pip install gsplat --index-url https://docs.gsplat.studio/whl/pt27cu128`(配 `torch==2.7.1 torchvision==0.22.1` cu128)。轮子是否命中以脚本末尾自检打印为准。
    - ⚠️ **训练必须走 `tools/run_gs_train.sh`**: 直接 `python tools/gs_train.py` 会报 `AttributeError: 'NoneType' object has no attribute 'CameraModelType'` —— 真因是 gsplat 的 CUDA 扩展 JIT 编不过、报错被吞; 该脚本包上 CUDA shim 环境(`/home/ubuntu/cuda-shim/bin/nvcc`)就好。
-   - 停训练用 `tools/stop_gs_train.sh`(先取 pid 再排除自身); **内联 `pkill -f "gs_train.py …"` 会把自己的 shell 一起杀掉**(已踩两次)。
+   - 🔴 **边缘机(550C/Intel)先选对解释器再谈超参 —— 三个 venv 的失败指纹各不相同**:
+  `python3` ⇒ `ModuleNotFoundError: No module named 'torch'`;`train_venv` 里的 `gsplat` 是 CUDA 轮 ⇒ 这台没有 NVIDIA GPU 时报
+  `'NoneType' object has no attribute 'CameraModelType'`(看着像扩展没编, 其实是后端根本不存在);
+  **正解 `/home/intel/gsxpu-venv`**(torch 2.10.0+xpu + gsplat 1.5.3+pt210xpu, import 时自己打 `gsplat: Using SYCL XPU backend.`)。
+  自证一条: `<venv>/bin/python -c "import torch,gsplat;print(torch.__version__, torch.xpu.is_available(), gsplat.__version__)"`;
+  最终判据回读产物 `train_report.json` 的 `device`(成功那版是 `xpu`), 不信自己命令行。XPU 实测步速: 24000 步/`--refine-stop 15000`/84k 高斯
+  ≈ **0.11 s/步**(15 核被其它任务占满时也能用) ⇒ ETA 现量现报, 别照抄 GPU 机的数。
+- 停训练用 `tools/stop_gs_train.sh`(先取 pid 再排除自身); **内联 `pkill -f "gs_train.py …"` 会把自己的 shell 一起杀掉**(已踩两次)。
    - 4060 Laptop **8G 显存**: 同刻只跑一个模型进程; 扫场采集很轻, 但训练与在役推理别叠加。
    - 🔴 **开训前先看谁在抢 CPU/内存带宽, 用 SIGSTOP 而不是 kill**: `uptime` + `ps -eo pcpu,rss,etime,args --sort=-pcpu | head`
      —— 这类机器上常年挂着 evolve/自进化任务(实测 3 个进程 ~300% CPU, 15 核 load 顶到 **19.4**), 训练只拿 101% 却要和它们抢带宽。
@@ -256,6 +263,39 @@ metadata:
   帧记录必含: `tcp_mm(3) + tcp_rpy(3)`(或四元数) + 图像文件名 + 深度是否落盘。
 - **深度与彩色成对存**(D405 深度 uint16 · unit=0.1mm · 0=无效), 训练服务看到 `depth/` 才会用 `--init-ply` 反投影做初值; 漏一处就静默退回 `random_box`。
 - 数据集落盘口径(cameras.json + images/ + depth/)与训练服务接口见本技能流程 §4 与 `references/trainer-with-gsplat.md`。
+
+### 🏃 在「正在跑轨迹」的时候采数据: 只能当运行留档, 不能进 3DGS
+
+用户一边跑 215 点、一边说"你采数据啊"时, 抓图+位姿落盘是允许的(只读、零下发), 但要先讲清口径:
+
+- **这批帧不能进训练**: 臂在动 ⇒ 每一帧的场景几何都不同(臂占画面 + 工作区被遮挡), 训进去就是鬼影。
+  判定证据: 同一段画面里的静态物体在相邻帧被臂遮住/露出。要提质必须**静止采集**(臂停在固定位、工件不动、曝光锁定)。
+- **停止判据不能用 `running=false`**(逐点派单的轮间空档就是这个值, 实测只采到 13 帧就误停而游标还在 173→183 前进)
+  ⇒ 用 `running=false` **且** `cursor` 连续 25~30s 没动才收工。用户中途停手超 25s 也会触发, 要能重起一轮接着采(别把已采数据覆盖)。
+- 每帧至少带 `pose_mm(3) + joint_deg(6) + pose_age_s + 轨迹游标 + 时间戳`, 事后才能把"那一刻臂在做什么"与画面对上。
+- 现场问"相机能不能看到某个工装"时, **别拿几何投影硬答**: 没有手眼外参时任何投影都是假设; 更硬的口径是
+  **在真实帧上跑现有检测器统计命中点位**(实测: 787 帧里 peg 只在插拔段 13 个点位命中、hole 0 命中),
+  并且把"权重类别里根本没有这一类"和"有类但检不到"分开说。
+
+### 🤝 想用现有数据/现有轨迹把手眼补出来 —— 先证「可解」再动手
+
+- **先用一成对距离相关判能不能解**: 建图数据集里那种 `cameras.json`(SfM `T_cam2world` + 当时 TCP `pose`)
+  看着正好能解 AX=XB, 但**先算相关系数**: 抽 ~200 帧 `d_robot` vs `d_cam`, **r>0.98 才可解**。
+  实测 r=0.611 ⇒ 相机位姿与机器人位姿对不上(两段会话合并 / pose 字段不是同一次采集),
+  此时把 5 种欧拉约定挨个试只是白跑 ⇒ 直接结案"这批数据不能标定"。工具: `scripts/axxb_park_martin.py` 的 `pairing_quality()`。
+- **单目 SfM 的平移是未定尺度的** ⇒ `t_X` 不能直接解: 旋转用 Park-Martin SVD, 再把尺度 s 与 `t_X`
+  联合线性解 `(R_A − I)·t_X − s·(R_X·t_B) = −t_A`(`solve_axxb(pairs, scale="auto")`)。
+- **唯一验收: `T_base_world = T_base_tcp · X · T_cam2world` 在全部帧上恒定**(散度 ~mm / ~0.1°)。
+  实测解错时散度 **377~1138mm / 85~102°** —— 先看这个数, 再看投影, 别把"215 点里 212 点看不到料盘"当成料盘不在视野。
+- 没有外参时**不许用「相机光轴 ≈ 工具轴」近似去出可见性/覆盖结论**: 实测全轨迹 `b≈-84.5°`(工具轴近乎水平),
+  按这个假设扫下来 215 点里 212 点"看不到料盘"= 假设本身不成立。
+- **零拖点路线**(现场问"用现在的固定轨迹能不能搞"): 把标定板放进轨迹会扫到的位置,
+  **照常跑一遍现有轨迹**, 边跑边抓 `(帧, TCP)` 成对 ⇒ `tools/board_handeye_solve.py --session <dir>`。
+  三个前提: 板可用视图 ≥ `--min-views`(默认 8) · 轨迹要有**多轴旋转激发**(只有平面平移就解不出旋转) · 帧与位姿同源同时刻。
+  板上没现成的用 `scripts/make_chessboard_pdf.py` 生成(A4 · 内角点 5×4 · 方格 20mm, **打印 100% 不缩放**)。
+- 边缘上还有两条备选但都有硬约束(先核再承诺): 深度点云重合需 **发布者 + depth camera_info 都活**
+  (`ros2 topic info` 的 publisher count 为 0 就是采不到); 用现有检测器做目标当基准不行
+  (夹在爪上的目标随动、小目标类别可能 0 命中)。
 
 ### 🔴 「服务 active」不等于「正在采」—— 建图前先读采集桥的帧龄
 系统里建图那条链(ROS 桥 / 自动采集 / 训练 / 地图服务)全 `active`, 不代表有数据: 实测 ROS 桥 `/health` 回
@@ -543,6 +583,11 @@ Intel XPU  tools/gs_render_stream_intel.py --ply --cameras --report --handeye --
 - 🔴 **挑资产按 PSNR, 不按 mtime**: 实时建图每轮 400~600 步出的图(12~13.6dB)永远比跑满 3000 步的那版(15dB+)糊,
   壳若"取最新一轮"就把最糊的推上墙。定式 = 扫所有完整候选(`out_*/` 与训练队列 `jobs/*/out/`, 都要有
   `gs.ply`+`train_report.json`+同名 `cameras.json`), 按 `psnr_holdout_db` 取最高。
+- 🔴 **用户说「3DGS 质量太差 / 刷新了还是不好」先核页面当前加载的是哪一版**, 别马上调训练: 资产列表的 "latest" 是
+  按 `gs.splat` **mtime** 排的 ⇒ 一轮 400 步的实时重建(实测 12.82dB/3.1MB)会盖过跑满 24000 步的成品(17.22dB/13.6MB),
+  页面进来就吃最糊的那份。三步定位: ①`/gs/list` 的 latest 是哪一版 ②它的步数/高斯数/留出 PSNR ③在役最好的那版是多少。
+  定式 = 把低质量的实时轮**移出资产根**(如 `zmax_data/gs_assets_stale/<名>_400step_12.8dB`)让列表按真实质量回退,
+  **不要 `touch` 改 mtime 去骗排序**(面板上的"建图时间"会变成谎话), 移完回读 `/gs/list` 确认 latest 变了再让人刷新。
 - 🔴 **同一条道理也适用于实时发布本身**: 实时轮次无条件覆写 `rt_live` ⇒ 12dB 的那轮会把 15dB 的抢成 `latest`,
   用户刚看完好图再刷一次就变糊(现场原话“怎么模糊了, 没训练成功么”)。要么发布前过一道
   “优于现役 PSNR 才换”的门(参考 `tools/gs_retrain_swap.py` 的 `--baseline`), 要么把实时轮次发到
@@ -615,6 +660,7 @@ A 35.7 · 黑 66.2%    B 92.7 · 黑 13.0%    C 99.4 · 黑 7.8%     (A 的相�
 | 改了渲染器代码但页面没变 | — | 渲染器是 **systemd/pidfile 常驻**, 必须重启; 页面/JS 是热读, 只需刷新 |
 | `timeout N ssh host '… ; sleep N ; tail …'` | 拿不到任何输出(命令 exit 0 但空), 像"远端没反应" | `timeout` 把**自己的 ssh 会话**在 sleep 结束前砍了 ⇒ 启动与取值拆两次调用: 一次 detached 起(`setsid nohup … &`, 立刻返回), 另一次再读 health/日志 |
 | 远端命令里嵌 `python3 -c "…$VAR…"` / 多层引号 | 远端收到的是被本地 shell 展开过的碎片(`No such file or directory`、变量全空), 看着像远端环境坏了 | 引号/`$` 一旦超过一层就别硬拼: `write_file` 写个 `.sh` → `scp` → `ssh host 'bash /tmp/x.sh'`。改远端服务用 `sudo systemctl restart …`(免密 sudo 也要显式写 `sudo`, 否则报 `Interactive authentication required` 而 `is-active` 仍回旧状态) |
+| **训练输出目录里只有 `renders/`, 没有 `point_cloud/`+`train_report.json`, 进程表也查不到 `gs_train.py`** | 守望盯一个永不出现的报告白等几小时; 人或 agent 误以为“还在训” | 按「这轮压根没跑起来」处理: 空 out = 解释器/依赖选错 ⇒ 手跑同一命令看首屏报错(见 §5 三条指纹), 别先怪数据、参数或机器负载; 把守望改成**先核进程或产物再等** |
 
 ## 交付面的网页查看器 (用户要「自己在窗口里转着看」)
 
@@ -799,6 +845,7 @@ A 35.7 · 黑 66.2%    B 92.7 · 黑 13.0%    C 99.4 · 黑 7.8%     (A 的相�
 | 现象 | 判据 | 结论 |
 |---|---|---|
 | 训练视角也低（<20 dB），留出同样低，高斯数正常 | 训练 13.3 / 留出 10.9，渲染一片灰糊 | **位姿/标定错** — 图片本身就对不上，不是训练不够。查 `handeye_state.json` mtime 是否早于采集时间 |
+| **训练视角 ≈ 留出视角, 两个都很低**(实测 16.41 / 16.44) | 两边几乎相等 ⇒ **没有过拟合**, 模型已经把数据里的信息用尽 | 天花板在**数据侧**不是训练侧: 分辨率/JPEG 压缩(实测 640×480、单帧 14~35KB)、采集时场景里有东西在动(鬼影)、视点覆盖。加步数/调致密化都不会涨 ⇒ 先去看采集口径 |
 | 训练视角 25+ dB，留出明显低 | 训练 30 / 留出 12 | 视角覆盖不足或过拟合 → 加采集点 |
 | **训练视角反而低于留出**（实测训练 12.29 / 留出 13.74） | 反常识 ⇒ 留出集抽到了偏"容易"的帧: 每 k 帧抽一帧的留出方式会让留出视角和训练视角几乎重合(同一段静止/同角度) | **判据本身有偏, 不是模型好**: 该区间的 ±0.4dB 差异全落在抽样噪声里。定式 = 留出按**累计转角分块**(整段留出, 同一视角不许同时出现在训练与留出); 用每 k 抽一帧的 PSNR 做横向比较时只能认 >1dB 的差 |
 | 高斯数不涨，停在 100000 初值附近 | loss 不降 | 学习率/初始化问题。增补: 先看 `train_report.json` 的 `init_source` —— 若为 `random_box` 且数据集没有 `depth/`, 根因就是**初始化**(在相机前 0.28m 摆随机盒), 实测留出 PSNR 顶在 10.6~13dB; 此时调步数/致密化全部无效, 先补深度反投影 |
@@ -813,6 +860,9 @@ A 35.7 · 黑 66.2%    B 92.7 · 黑 13.0%    C 99.4 · 黑 7.8%     (A 的相�
 实测(2026-10-24)：2038 帧跑满 3000 步、112,608 高斯、1113s，训练视角 13.30 dB、留出 10.93 dB ⇒ 渲染完全认不出物体（光模块/托盘/PCB 全成一团雾）。真因 = `handeye_state.json` 停在两天前，本轮 467 帧是相机被挪后采的，旧外参反推位姿全错。**这种情况重训多少次都是糊的，必须先修标定。**
 
 ## 验证口径(交付资产前)
+
+📎 点云读入(PLY 多属性 ⇒ NaN)· “点数够不够量尺寸”的密度判据 · “推的/量的”分开报 · 老外参失效的零运动验法
+见 `references/pointcloud-read-and-measure.md`。
 - 资产: ply 高斯数、留出视角 PSNR、资产 bbox 与真实工作区尺度比(与 `env_model.json` 的包络交叉核)。
 - 🔴 **判"合格/不合格"一律用项目自己的门 (`tools/gs_quality.py`), 不要拿你自己更严的主观口径下结论**:
   实测一版留出 18.83dB (训练 34.58) 被我先按"糊了"口头判了不合格 —— 而门的三条 (超平凡基线 ≥3dB /

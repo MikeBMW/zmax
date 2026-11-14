@@ -964,6 +964,119 @@ xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py [--level L2|L3|L4]
 - `demo_light=True` 时 L2 可因无 `obs43` 缓存而落单位元/记忆真值，但返回段仍会调 `_ss_ensure_obs43()`
   触发真采样（日志会有 YOLO/metaworld 加载行）—— 所以"light 档=零开销"不成立，解释时说明是缓存路径。
 
+## 执行器返回位姿口径 action(2026-11-14)
+
+`execution.py:RobotExecutor.execute()` 返回 **`Action(dict)`**, 不是 4 维速度。打红点: `return action`(约 :326) 停住即见 `pose{x,y,z mm, a,b,c deg, qx..qw}` + `joints_deg[6]` + `grip_*` + `src`(ss|traj215)。
+
+- `Action` 是 dict 子类, 带 `__array__/size/ravel/__getitem__`(str→dict, slice→数组) ⇒ `verification_layer`(t_act_dim/t_act_pass) 与 `engine/sim.py`(`u_vec[:3]`) 零改动; `cmd` = ss 档4维速度 / 回退档6维关节deg。
+- 位姿在执行器内算全: ss = `tcp_pose_now()`+`u·dt`(dt 按上一拍时间戳, 夹 10ms~500ms); traj215 = `frames[i]` 的 p/q。ss 档关节只能给实测并标 `joints_src="实测(未做IK)"`。
+- 唯一落盘出口 `action_bus.from_action(act)`; 护栏未放行时执行器 src 仍算 ss 但落盘降级 `from_traj215`。
+- 同名两实现(`engineering/nodes/` 与 `middleware/nodes/impl/`)必漂移 ⇒ 旧的改一层转发。
+- 对账 `tools/action_check.py`: action ⇄ 215点 ⇄ 真机; 机器人没走到该点第三条必红。
+
+### 🔴 action 的 `i` 认「派单事实」, 既不认游标也不认最近点
+
+`traj_step_state.cursor` 是**派单游标**(一轮 n 点全走完才推进), 真机在走 `cursor+1 … cursor+n` ⇒
+拿 cursor 当 action 的点号, 用户一眼就看出「action 跟机器人上看到的不一样」(实测 action i=69 而臂已到第 78 点)。
+但**「最近点」也不能当判据**: 215 点轨迹会来回经过同一片区域, 最近点会跳错 —— 实测臂在第 71 点、
+最近点同时匹配到第 70 点(2.4mm)与第 51 点(22.8mm), 用它当 action 的点就是「看着对应, 实则错位」。
+
+定式(`action_bus.py`):
+- `exec_index()` = **只认派单事实** `start + min(done, n-1)`(CHUNK=1 时就是 start), 取不到再退回最近点。
+- `nearest_index(max_err_mm=60)` 单独存在, **只用于对账/显示**(`i_nearest` 字段), 不参与取值; 位姿帧龄 >2s 或全 0 ⇒ None。
+- action 里同时给 `i`(执行点) 与 `i_plan`(派单游标) 两个号, 任何「某拍序号」类信号都按这条拆。
+- 🔴 **轮间空档要取 `last_sent`, 不能退回 cursor**: 一轮走完、下一点还没派的那一瞬间 `running=False`, 而 cursor
+  已经 +1 ⇒ 退回 cursor 就把 action 显示成**下一个待发点**(未来点)。定式: flow 每次派单成功写
+  `zmax_data/rokae_sdk/last_sent.json{start,n,cursor,round,ts}`, `exec_index()` 在 `running=False` 时优先取它
+  (ts 超 300s 视为旧账, 退回 None⇒cursor)。判据: 手工把 `running=False,cursor=N+1` 喂进 `exec_index()`,
+  必须返回 `N`(最后发出的点)而不是 `N+1`。这是「用户问『断点里不该是上一次发出的点吗』」的唯一正解。
+
+### 📏 「为什么总是差一点点」= 容器到位容差, 不是点号错位
+
+`tools/rokae/arm_step_traj.py` 的到位判据是 `TOL_DEG = 0.6`(关节误差 ≤0.6° 且 `operationState=idle` 即放行, 换下一点),
+而 0.1° 在 ~1.4m 臂展上折算 ≈2~3mm ⇒ action(目标) 与真机实测**恒定**差 2~3mm 属容差等级, 不是对不上。
+判据: 关节差 ≈0.1° 而末端差 2~3mm ⇒ **同一个点**; 关节差 >1° 或末端差 >10mm 才去查点号/游标。
+问「换成上一个点是不是就相等」时**先量再说**: 实测上一点与真机差 49mm、当前派单点 2.9mm、下一个点 11.9mm ⇒
+只有当前派单点是对的(CHUNK=1 时相邻点距就是几十毫米级)。要压小残差只收紧 `TOL_DEG`(0.6→0.1, 每点多等
+0.3~0.5s, 215 点整体 +1~2min; 收到 0.02 会在部分姿态永远等不到而报「未到位已停」), **不要改点号口径**。
+
+### 🔴 断点冻住画布 ⇒ 落盘的 action 就是**上一拍**, 别拿它跟正在动的臂比
+
+用户在断点上看 `action.json` 时会发现它**几十秒不更新**、序号停在暂停那一刻 —— 不是故障: 画布不 tick 就不写盘,
+而 `arm_step_traj` 在容器里把已派发的 n 点走完。**这是「action 跟机器人对不上」最常见的假 bug**: 实测落盘 i=70(169s 前),
+现算 i=71 与真机差 2.17mm。所以:
+
+- 落盘 action 必须自带对账字段(`_enrich()`): `pose_now{x,y,z,a,b,c,age_s}` · `delta_mm[dx,dy,dz]` · `i_nearest` · `dispatch{start,n,done,cursor}`。
+- `tools/action_check.py` 帧龄 >`STALE_S(3s)` 就**判定陈旧并现算一份**(`action_bus.from_traj215()`)再比对, 打印
+  「落盘旧值 = 上一拍, 别拿它对正在动的臂」; `--live` 强制现算, `--i N` 指定点。
+- 判断三者是否真一致只认三个读数: `action.json`(工程输出 + 帧龄) · `traj_step_state`(start/n/done/cursor) · 真机 `latest.json` + 容器日志 `progress k/n`。
+
+### 🖨 `return action` 之前必须打一行实时位姿(终端可见)
+
+老倪口径: 「`return action` 这之前, 增加一个 print 打印实时位姿, 终端也能看到实际的位姿」⇒ 断点/单步时终端那一行就是本拍结论。
+定式 `RobotExecutor._print_action()`(`execution.py`, 在 `return action` 与回退 `return _a` 之前各调一次, 回退带 `回退` 标记):
+
+```
+[action] i=71/215 src=traj215 目标 680.13/31.93/275.05 · 113.69/-70.61/59.87 | 实测 681.11/32.03/277.22 · 113.23/-70.74/60.28 (age 0.05s) | Δ=2.17 mm | 夹爪 0.0 mm 合 | 下发=215点(护栏 mode=shadow ok=0/5)
+```
+
+- 五段缺一不可: 目标(本拍 action 的 pose) · 实测(`tcp_pose_now()`, 带帧龄) · Δ(mm) · 夹爪 · **下发口径**。
+- `pose` 在 ss 档是 `act["pose"]` 子字典, 平铺 `x/y/z` 不一定有 ⇒ 打印必须 `act.get("x", pose.get("x"))` 兜底。
+- **「下发」段是必需的**: 执行器 `src=ss` 时节点里的直驱护栏可能没放行 ⇒ 实际下发的是 215 点; 只看 src 又会误判成「下发直驱位姿」。
+  判定用 `direct_drive_guard.last()`(单线程引擎同进程可直读), 空 ⇒ 写「护栏未跑 · 直驱闸默认关」。
+- 默认常开; `ZMAX_ACTION_PRINT=0` 关。
+
+### 🎯 断点里的 `action` 必须是**真正下发**的那份 —— 换口径放执行器, 不放节点
+
+用户会拿断点里的 `action.pose` 跟机器人屏幕对数字。只要「把直驱换成 215 点」这一步留在节点层
+(`robot_actuator_impl`: `_src=="ss" and not guard.allow → from_traj215`), 断点看到的就永远是**被丢掉的那份**
+(直驱 = 实测 + u·dt), 与真机差几十毫米, 怎么查都对不上。定式: `RobotExecutor.execute()` 末尾先过
+`_effective(act, chk)` —— 护栏没放行就当场换成 215 点(带 `dd_u`/`dd_pose` 留溯源), 再打印、再 return;
+`ZMAX_EXEC_EFFECTIVE=0` 可退回旧行为。判据 `tools/test_action_refactor.py` C 段: `src=traj215` 且与真机实测
+差 <5mm(实测 [-1.11,-0.32,-1.96]mm)。
+
+**换口径必须同步改判据, 否则自检假红**: `verification_layer.t_act_dim / t_act_pass` 原来硬性要 `shape[0]==4`,
+换成 215 点后给 6 维关节 ⇒ 判「维度错」。改成认 `4(直驱4维速度) / 6(215点6维关节)` 并把口径写进文案,
+其它维度仍判错 —— 放宽的是**口径枚举**, 不是维度约束。
+
+**215 点 frames 必须按 mtime 缓存**(`execution._traj_frames()`): 换口径后每拍都要取点, 原来每拍 parse 1MB
+json; 缓存后实测 3.4ms/拍。
+
+### 🔴 断点停的是「该行之前」—— 看不到打印/变量常是停在别的层
+
+- 红点打在某行 ⇒ **该行还没执行**。停在 `self._print_action(action, chk)` 这一行时那一行打印不会出现;
+  要看结果就停在下一行(`return action`), 命中时终端已有它。回退档同理停在 `return _a`。
+- 更要紧的是**停在哪一层**: 停在 `skills/atomic_skills.py::clamp` / `cognition.skill_step` 时, 执行器
+  (`robot_actuator_impl → execution.execute`) 这一拍压根没跑 ⇒ 执行器里那几个红点一个都不命中, 用户会说
+  「我在这里断了还是没有」。判「现在停在哪」用 `sudo $(which py-spy) dump --pid <pid>`(普通用户 attach 报
+  Permission Denied, 必须 sudo), 栈自顶向下 = pydevd → 停住的函数 → 调用链, 一句话就能定位是在调制层还是执行层。
+
+**要立刻停臂只能 `sudo docker kill <执行容器>`**(`docker ps` 里 image=humble 且非 moveit/tap/arm-agent 的那个): 实测 kill 后 1.5s 内两拍位姿只差 0.1mm。
+kill 完 `traj_step_state` 会留**僵尸 pid**(`/proc/<pid>/stat` 第三列 `Z`) 卡住 `running=True` ⇒ 按 Z 判死清账
+(`running=False, pid=0`), 否则下一次派单被 busy 拒、用户看到「点了没反应」。
+
+### 每次启动先核 CHUNK(用户选的档位常被模板改回去)
+
+用户选「断点最多再走 1 点」时, 判据不是 `setdefault` 而是**两处实际值**: `tr '\0' '\n' < /proc/<调试pid>/environ | grep ZMAX_TRAJ`
+与 `.vscode/launch.json` 的 `ZMAX_TRAJ_CHUNK`。实测两边都是 10 而用户以为在 1 ⇒ 断点一按还会再走 10 点。报运行状态时必须把 CHUNK/SPEED 一起报出来。
+
+**派单粒度 = 1 点/轮, 串行等到位**: flow 每轮 `body={"n":chunk,"speed","dwell_ms"}` → 8797 起容器跑
+`arm_step_traj.py` → 单点 `MoveAbsJ` 等到位(err≤TOL_DEG) → 游标 +1 → 下一轮。所以 `n=1` 时「一个点一个点发、
+一个点一个点执行」是事实; 例外只有归位段(一次多点)与夹爪事件(挂在 i=9 合 / i=205 开, 不是独立点)。
+判据看日志 `📤 派单 n=1 start=87 … 第 20 轮` 连排 + `traj_step_state{start,n,done,cursor}`。
+
+### 派单前的 busy 判据: 僵尸 pid(state=Z)必须按死处理
+
+`traj_step_state.running=True` + `kill -0 <pid>` 成功 **不等于** 在执行中: 演练(dry)或异常退出的进程会留**僵尸**,
+`/proc/<pid>/stat` 第三列是 `Z` ⇒ 下一次派单被 busy 拒(看着"点了没反应")。定式: 判活取 state 字段, `Z/X/读不到` 一律当死并清账
+(`running=False, pid=0`), 清账前先确认没有 `arm_step_traj.py` / docker 容器在跑。
+同类: `/api/auth` 曾只认 `until>now`, 把**调试档(until=0)** 误报未授权 ⇒ 授权状态一律读 `tools/ctl_auth.py::info()`(认 window/debug 两形态), 自己算 until 必错。
+
+9. **改这些文件别用「嵌套 heredoc」**: 外层 `terminal` 里写 `python - <<'PY'` 再塞含中文/三引号/`"="*62` 的代码,
+   引号会被剥一层 ⇒ `SyntaxError: unterminated string literal` 或 `invalid character '。'`, 而**上一次的脚本仍照常执行**会让人以为改成功了。
+   定式: 用 `write_file` 落一个 `tools/_fix_<主题>.py`(断言锚点存在 → 替换 → 打印 ok), 再 `./gui-venv311/bin/python tools/_fix_xxx.py`,
+   然后 `py_compile` + 真跑一次取数。凡「改多处/带中文注释」的补丁一律走这条路。
+
 ## 关键文件
 - src/lerobot/engineering/start.py (**工程正式入口**: 状态机+策略表+钩子+单实例锁+优雅停机;
   生产 unit 的 ExecStart 指向它. 用户强调过「这不是调试程序」⇒ 别拿它当临时 runner 改, 也别把调试开关塞进入口。

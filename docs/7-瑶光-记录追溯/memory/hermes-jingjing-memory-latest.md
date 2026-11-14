@@ -46,7 +46,7 @@ GPU掉载主因=每步CPU>计算→静音日志+workers↑
 §
 运动安全: 速度mm/s 1~1000; 前置idle+automatic; 腿上限须重启容器; 清79免授权; 新点位老倪先做; 台账INCIDENT-INDEX.md; 要碰撞先agent_all_stop; 插入力≤40N
 §
-AR=8797(8791底图+D435; L5=ar_l5_understand.py)
+AR=8797; D435在Orin:8794; 4060:8791只是代理; L5=ar_l5_understand.py
 §
 任务7=AR·L5进化; 场景=ss_scene_switch.py; 色标=sig_scene_tags.py
 §
@@ -74,6 +74,6 @@ intel出口=.23.66走Orin NAT(zmax-nat-intel;Orin sudo ts123)
 §
 状态空间100D=前55+45级联缓冲; 段表11.5s/件=313UPH(实测200.6), 900需AOI并行
 §
-调试断点:decide每拍advance+meta; 用scheduler_fsm:181(每拍必过), 252需证据; n_feature每拍仿真须关; start.py自带调试env/离线护栏
+调试断点:decide每拍advance+meta; 用scheduler_fsm:181(每拍必过), 252需证据; n_feature每拍仿真须关
 §
 8797僵尸pid算活⇒busy(已判Z); flow游标跟align回退; 段在容器⇒CHUNK=1

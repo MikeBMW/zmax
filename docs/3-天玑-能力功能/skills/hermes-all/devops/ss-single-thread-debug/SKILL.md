@@ -158,7 +158,88 @@ _do_wait_suspend → step (scheduler_fsm.py:251) → advance (cognition.py:403)
 
 关键认知：`robot_actuator_impl.py:9` 明写「只读真值/不造数/**不下发动作**」⇒ 状态空间的 `u` 只算不执行，
 只写进 AR 链 `exec` 分区（`:104-108 ar_bridge.update`）。所以“u 算出来了”≠“臂收到了”。
-夹爪：`tcp_ar_server.py:118 _grip_send()` → ssh 到 Orin 后 `ros2 service call /gripper_driver ...`，读 `/gripper_pos` 回证。
+夹爪：`tcp_ar_server.py:118 _grip_send()` → ssh 到 Orin 后 `ros2 service call <夹爪服务> …`，读 `/gripper_pos` 回证。
+**服务名会变**（见过 `/gripper_driver`、`/gripper_srv`），代码里走 `ZMAX_GRIP_SRV` 覆盖口；重启驱动后先
+`ros2 service list | grep ^/gripper` 探真名，别写死。
+
+**夹爪真值读不到时按这五条判（别先怀疑 action/代码）**：
+```
+① ros2 topic info /gripper_pos 的 Publisher count: 0  ⇒ 驱动进程不在(订阅数可能是卡死的 echo 占着)
+② echo 报 sequence size exceeds remaining buffer ⇒ 十有八九是【只 source 了 /opt/ros/humble，没 source 厂家工作区】
+   自定义类型未注册。修法: source /opt/ros/humble/setup.bash; source <厂家>/install/setup.bash; export ROS_DOMAIN_ID=0
+   ⚠️ 每条 ssh 都是独立 shell ⇒ 发指令和读真值两条命令都要各自 source；只给一条写的症状是
+   “服务通了但 pos 永远 null”（pos_before/pos_after 全空）
+③ service call 回 "rcl node's context is invalid" ⇒ 几乎总是服务名不对(服务不存在)或服务端没响应,
+   客户端 30s timeout 被掐后的遗言 ⇒ 真因不是 rcl/环境坏
+④ /dev/shm 里成百个 fastrtps_*(100+, 按天累积) = SHM 泄漏: 可清旧文件 + 杀卡住的 ros2 topic echo,
+   但清完仍 0 publisher ⇒ 驱动本身掉了, 不要把“清了 SHM”当修复结论
+⑤ 断代最快: zmax_data/rokae_sdk/grip_events.jsonl 最后一条 ok:true 的时刻 = 坏掉的起点
+   (实测 12:40 成功 → 17:19 起连续 ok:false、pos_before/pos_after 全 null)
+```
+判读单位：`/gripper_pos` 可能是**千分比**（全开 1000.0）而 target 是 mm（全开 70）⇒ 回证判据
+`abs(pos-70)<=3` 永远 False，"动了也报没动"。先归一化（`raw>200 ⇒ mm = raw/1000*行程`）再判。
+修好后的验收（真动、两档都要）：`close ok=True 70→0mm` · `open ok=True 0→70mm`，且服务响应里
+`curr_pos` 与 echo 读数同向变化；只有 `ok=True` + 两个方向的 pos 都被读到，才算夹爪通了。
+汇报口径："轨迹照走，到夹爪那一点会失败但不卡流程" + 最后一次成功时刻 + 现在回证全空；
+要恢复得重启 Orin 上那个驱动节点（整机 SO 进程），**屬生产栈 ⇒ 要用户点头**, 不擅自动。
+
+## 输出语义: `u`/`a` 是**速度**, 位姿另有真源 (别把数组当 x y z 报)
+用户看到断点里的 `array([-0.11578, 0.011491, -0.029385, 0])` 会问“这是实际位置吧”。不是：
+- `u`/`a` = 4 维**指令**：`a[0:3]` 末端速度 **m/s**、`a[3]` 夹爪（0=本拍不动）；乘 `dt` 才是位移。
+- 位姿真值 `zmax_data/rokae_sdk/tcp_out/latest.json`：`x/y/z`(m) · `rx/ry/rz`(rad) · `qx/qy/qz/qw` · `frame` · `src`。
+  与机器人读数同格式的位姿 = **x/y/z mm + a/b/c deg**。
+- 四元数 → `a/b/c` 的唯一口径 `tools/pt_pose.py:abc_deg()`（读不到返回 None，**绝不编数**）。
+- 自证量纲：同刻读两次 `latest.json`，`Δp/dt` 得到的 m/s 才是与 `a` 可比的速度；`a` 与实测速度比方向/幅值 = 闭环判据。
+- 状态空间最后的位姿输出 = `ssact` 的 `out1.pose`（`_SS_STATE["pose_out"]`）：直驱档 = 当前位置 + `u*dt`，回退档 = 215 点目标
+  `frames[cursor].p/.q`；`u_cmd` 是 4 维、`u_cmd_dim=6` 时 `u_cmd` 为空、关节在 `traj_cmd_deg`（两种语义别混着显示）。
+⚠️ 路径陷阱：仓库里有个**诱饵目录 `src/zmax_data/`**。任何新模块“向上找仓库根”来落盘时，
+只判 `zmax_data/` 会命中它 ⇒ 写进 `src/zmax_data/ss_live/` 却没人读（且被 try/except 吞掉、静默失败）。
+判据必须**同时**要求 `zmax_data/` 和 `src/lerobot/` 都在，或直接用 `ZMAX_ROOT` 环境变量。
+
+### 工程最终输出 = `action` 总线（用户会盯着这个变量）
+
+输出只有一处：`zmax_data/ss_live/action.json`（每拍原子写 + `os.replace`），并同时进节点 `out1.action`。
+
+```
+字段  src(traj215|ss) · x/y/z(mm) · a/b/c(deg) · qx/qy/qz/qw · j1..j6(deg) · grip_mm
+      grip_act(open|close|hold) · grip_state(开|合) · grip_src · grip_meas_mm · grip_meas_age_s · i · why · ts
+生成  ssact = robot_actuator_impl.py（action_bus.decide → publish）；数值源头仍是 cognition.decide() 的 u
+分支  src=traj215 ⇒ 后端照旧回放 215 点；src=ss 且执行开关未开 ⇒ 显式回退并在 why/last_msg 写原因
+```
+
+- **断点选行**: 想看「这一拍输出什么」就打 `execution.py` 的 `self._print_action(action, chk)`(打印在它下一行才出)
+  或 `return action`; 节点层 `robot_actuator_impl` 里生成 `_act` 处/`out1` return 仍可看落盘那份。
+  ⚠️ 旧说法「execute() 里只有 4/6 维数值、位姿不在那儿」已作废: `execute()` 现在返回 `Action(dict)`,
+  `pose{x,y,z,a,b,c,qx..qw}` / `joints_deg` / `grip_*` / `src` 全在里面, 而且**换口径已前移到执行器**
+  (`_effective`, `ZMAX_EXEC_EFFECTIVE=0` 可关) ⇒ 断点里这份就是真正下发的那份, 不会再与真机差几十毫米。
+- **红点停的是「该行之前」**: 停在 `self._print_action(...)` 那一行时打印还没出(用户会说「加了 print 也没看到」);
+  停在 modulator 层(`skills/atomic_skills.py::clamp`、`cognition.skill_step`)时执行器这一拍根本没跑,
+  execute 里那几个红点一个都不命中。两者都不是 bug —— 先用 `sudo $(which py-spy) dump --pid <pid>` 看栈
+  停在哪一层, 再让他把红点挪到 `return action`(或直接连续跑)。
+- **变量就叫 `action`**：一处叫 `a`、字段叫 `action`、文件叫 `action.json` ⇒ 每次都要重新解释。改名当拍只改名不改行为，
+  并重跑四个分支（正常/NaN/跳变/回退关）对账数值。
+- 夹爪在 `ss` 档不由 `u` 决定时写 `grip_act="hold"` + 实测值；`grip_meas_mm=null` + 大的 `grip_meas_age_s`
+  就是“夹爪没回证”的直接信号（先查驱动，别怀疑 action 代码）。
+
+### 从“只算不发”到“速度直驱”的落地口径 (三档开关 + 回退 215 点)
+用户要求“先确保 215 点稳定，u 发错就还是走 215 点”时，按这个顺序落，别直接改执行路径：
+
+1. **`ZMAX_DD_MODE = off | shadow | armed`**（默认 off ⇒ 与改造前逐位一致）。
+   `shadow` 只把 `u` 与**实测运动**（`latest.json` 相邻两帧差分）比对并写 `zmax_data/ss_live/dd_guard.json`，
+   **不改 u、不接管**；`armed` 需连续 `N=30` 拍达标才 `allow=True`，任一异常立刻清零。
+   判据（缺一即 deny）：finite · 幅值 ≤0.35 m/s · 与实测速度夹角 ≤25° · 指令/实测速度比 ∈[0.2,5]；
+   臂静止（<5mm/s）不判方向。阈值走 env（`ZMAX_DD_VMAX/ANGLE/RMIN/RMAX/OK_TICKS`）。
+2. **护栏做成纯增量模块**（`direct_drive_guard.py`）并在 `decide()` 出口调用，整段 try/except ——
+   护栏自己不许把主链搞挂；`off` 档连文件都不写。
+3. **回退仲裁在 `RobotExecutor.execute(u, allow_traj_fallback=…)`**：“算错” = NaN/Inf · 通道超限 · 变化率超。
+   算错且开关开 ⇒ 直接输出 **215 点当前点关节真值**（6 维 deg：`traj_step_state.json` 的 `cursor` +
+   `real_traj_joints.json` 的 `frames[i].j`），标 `fallback="traj215:第 N/215 点"`；取不到就退成“归零 + 轨迹照常”。
+   ⚠️ 6 维输出**绝不写 `u_prev`**（那是速度账，写关节角会让下游把 deg 当 m/s），改写 `traj_cmd_deg` 并把 `u_prev` 置零；
+   `u_cmd` 必须带 `u_cmd_dim`，否则页面/台账把关节角当指令显示。
+4. **真发通道现状**：`daemon /move_pose` 是**位姿不是速度**，`/target_relative_joint` 动作后会掉电 ⇒
+   `armed` 档目前只能翻标志，**要真直驱得先另加速度接口** —— 别把“allow=True”报成“已下发”。
+5. 验收（全离线、零运动）：正常 4 维原样 · NaN ⇒ 6 维 215 点 · 跳变（`over_rate`）⇒ 也回 215 点 · 开关关 ⇒ 4 维零。
+   四个分支都要打印对照，只跑通一路就宣布完成 = 假交付。
 
 ## 证据必须出现在**他的屏幕**上
 文件日志、`ss_live/*.json`、py-spy 栈都**不算证据**——他只看 VSCode。原话：“你的证据没有用，我看着 vscode，没有变化”。
@@ -173,7 +254,9 @@ _do_wait_suspend → step (scheduler_fsm.py:251) → advance (cognition.py:403)
 
 - 调试进程冻结 ⇒ 只是不再派新单；**在跑的那段继续走**，最多再走 `n` 个点。
 - `arm_step_traj.py` 逐点**不复查授权**（文件头注释：由调用方先校验）⇒ **撤销授权也停不了在跑段**。
-- 要立刻停：`sudo kill` 容器进程（普通 kill 无效）；要“断点即停”用 `ZMAX_TRAJ_CHUNK=1`（每段 1 点，最多多走 1 点）。
+- 要立刻停：`sudo docker kill <CID>`（`docker ps` 里 image=`ros:humble-ros-base` 且不是 moveit/tap/arm-agent/tcp_sampler 的那个容器；普通 `kill` 无效）。
+  停臂证据 = `latest.json` 两拍（相隔 ~1.5s）`x/y/z` 差 ≤0.1mm，顺手把 `traj_step_state` 的僵尸 pid 清账。
+  要“断点即停”用 `ZMAX_TRAJ_CHUNK=1`（每段 1 点，最多多走 1 点）。
   ⚠️ `CHUNK` 的**优先级**：`start.py::_debug_defaults()` 是 `setdefault` ⇒ `launch.json` / `ZMAX.code-workspace` 里
   显式写的 `ZMAX_TRAJ_CHUNK=10` 会赢，你以为改了 1 实际仍是 10。改完必须回读 `/proc/<pid>/environ`，
   并在 8797 `/api/arm/step_traj/status` 里看 `n`：`n=1` 才算生效（`n=10` = 源配置没改到）。
@@ -212,8 +295,30 @@ _do_wait_suspend → step (scheduler_fsm.py:251) → advance (cognition.py:403)
 现象特征：`traj_flow.json` 的 `last_msg` 停在“对齐到真机最近点: 游标已对齐到第 N 点”，而 8797 `done=0`。
 
 ## 单实例锁与 VSCode
+- **“它到底停没停在断点”不用猜**: `ps -o pcpu,etime,stat -p <pid>` + `grep ^State /proc/<pid>/status` ——
+  在跑是 `RNl+` + CPU 几十~几百 %；已挂起是 `S`/`SNl+` 且 CPU 快速跌下来。坐实一步：
+  `sudo py-spy dump --pid <pid>`，栈里出现 `_do_wait_suspend (pydevd.py)` + 你自己的文件:行
+  （例 `execute (execution.py:335) ← run (robot_actuator_impl.py:101) ← ss_canvas_loop.py:291`）就是“已命中”。
+  此时臂不动、`action.json` 不涨都是对的，不要当故障报。
+- **常驻 canvas 服务会让位，也会被一起停掉**: `zmax-ss-canvas-loop.service`(`Restart=always`) 看到入口起来会打
+  `↩ 工程入口 start.py 已接管 (pid=…) ⇒ 本从属引擎让位退出, 不并行 tick` —— 看到这行就别去 kill 它，也不存在“两个引擎抢派单”。
+  但它被 stop 之后**不会自己起**(`Restart=always` 只管崩溃)：调试会话结束后 `is-active` 仍可能是 `inactive` ⇒
+  画布/AR 页没数据。恢复 = `sudo systemctl start zmax-ss-canvas-loop`（日志出现 `[plan 节点] 无目标 … 真机零指令` 才算安全）。
+  该服务也会把持 `/tmp/zmax_start.lock`，但文件内容是**空**(0 字节)：这种“非工程进程持锁”由
+  `start.py::_acquire_single_instance()` 接管（会打印 `🧹 锁被非工程进程占用 … 接管`），不要当陈旧锁手删。
 - 锁只应由 `start.py` 持；GUI 看门狗拉起的从属引擎只探测并 0.5s 让位。
 - 已有入口持锁时再 F5 会 `SystemExit: 2`（`start.py` 主动退出），不是代码错。
+- **但锁经常不是 start.py 持的**：GUI/看门狗/上一次重启会留下**父进程=init 的孤儿 `ss_canvas_loop.py`**，
+  它顺手占着 `/tmp/zmax_start.lock` ⇒ 用户 F5 立刻 `SystemExit 2`，看着像“启动失败”。判据：
+  ```bash
+  sudo fuser -v /tmp/zmax_start.lock        # 拿 pid
+  tr '\0' ' ' < /proc/<pid>/cmdline          # 不含 engineering/start.py ⇒ 不是入口, 是占锁的旁路进程
+  awk '{print $4}' /proc/<pid>/stat          # 父=1 ⇒ 孤儿(没人回收/没人让它让位)
+  ```
+  处置：`bash tools/kill_stale_canvas.sh`（只杀父=1 的 canvas，再删无主的锁文件），然后复验锁空闲。
+  代码侧已加兜底：`start.py::_acquire_single_instance()` 拿到锁失败时读持有者 cmdline，
+  **不含 `engineering/start.py` 就按陈旧锁处理（unlink 后重抢一次）**，只有真入口在跑才拒绝。
+  若孤儿反复重生，先查是谁在拉它（GUI/看门狗/会话重启），别每秒被杀一次互相追打。
 - `launch.json` 会被 GUI 模板重写 —— **每次 `studio.py` 启动都会重写一次**，不只是点「打开 VSCode」时：
   实测 16:19 重启 GUI 就把手加的 `ZMAX_AOI_OFF` / `ZMAX_SKIP_IDS` / `ZMAX_TRAJ_CHUNK=1` 全冲掉，
   16:21 的 F5 进程只剩 `ZMAX_SINGLE_THREAD=1` + `CHUNK=10` ⇒ 卡在 `ss_aoi._aoi_once` 打本机 10082/10083
@@ -225,6 +330,28 @@ _do_wait_suspend → step (scheduler_fsm.py:251) → advance (cognition.py:403)
 - 本机 HTTP（`127.0.0.1:10082/10083` 的 AOI）不受离线护栏约束 ⇒ 关它只能靠 `ZMAX_AOI_OFF=1`
   或 `ss_aoi._ensure_worker()` 里「单线程档自动关」（已加：单线程且无 `ZMAX_AOI_ONLINE=1` 就直接不巡检）。
 - 无调试器想跑起来：`tools/run_backend_start.sh`（debugpy 监听 5678，可 attach）。
+- **8797 自身重启**（改过 `tcp_ar_server.py` 后必须，否则判活/夹爪等补丁不生效）：`bash tools/restart_8797.sh`
+  —— 按端口找 pid → TERM 再 KILL → `setsid nohup` 重拉 → 验 `HTTP 200` + `/api/arm/step_traj/status`。
+  重启前先看 `zmax_data/rokae_sdk/traj_step_state.json` 的 `running/pid`：有在途段就别重启（会丢内存态、游标错乱）。
+
+## 起跑前/回位后体检（他每次问“可以运行么 / 检查一下”都跑这一套）
+
+八个读数一起给，缺一项就会被追问；每行都要带**帧龄或时间**：
+
+```
+A 位姿     latest.json 帧龄 · x/y/z · 关节 · 最近 215 点第 N 点 · 与第 0 点的位置差/关节 max 差
+          （与第 0 点关节差 ≤~2° 才不会被跳变闸拒；否则要 reset 或先回位）
+B 授权     tools/ctl_auth.py::info() 的 armed/mode/epoch（debug 档 until=0 是合法，不要求 until>now）
+C 轨迹     traj_step_state 的 cursor/start/n/running/pid —— running=True 但 pid 是 Z ⇒ 僵尸，按死清账并 cursor=0
+D 进程     pgrep -af engineering/start.py（会话真停了吗）· debugpy 数
+E 锁       /tmp/zmax_start.lock 有无、几字节、里面 pid 是死是活（空文件 + canvas 服务持锁 = 正常，start.py 会接管）
+F 服务     systemctl is-active zmax-ss-canvas-loop · curl 8797 /ar 的 http_code
+G 容器     docker ps 里只能有常驻四个；出现 humble 执行容器 = 还有段在跑
+H CHUNK    .vscode/launch.json 的 ZMAX_TRAJ_CHUNK（要 “1”），与代码兼容（start.py: `or 1`）
+```
+
+收尾动作（按需、不破坏）：僵尸 pid 清账 + `cursor=0`; 删死 pid 的锁; 若 canvas 服务 inactive 则 start。
+报完给一句结论：「可以 F5」或「先做哪一项」，不要列选项。
 
 ## 沟通口径：先答“谁在控制”，再给选项
 > GUI 自己卡（点节点一顿一顿 / 翻页卡）与断点无关：那是 UI 线程里的同步子进程（`pgrep`/`du` 在点击路径上同步等），
