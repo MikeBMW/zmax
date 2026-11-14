@@ -1,6 +1,6 @@
 <!doctype html><html lang="zh"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Z-MAX AR3D r96 · 仿真=真机位姿 · SIM自动 · 位置细胞 · 8802直播</title>
+<title>Z-MAX AR3D r98 · 仿真=真机位姿 · SIM自动 · 位置细胞 · 8802直播</title>
 <style>
  *{box-sizing:border-box}
  body{margin:0;background:#0b0f14;color:#e6edf3;font:15px/1.5 -apple-system,Segoe UI,Roboto,"Noto Sans SC",sans-serif}
@@ -119,7 +119,7 @@
   <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
   <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
      style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-11-14 r96 · 仿真臂=真机位姿真值(不再走合成段表) · 两个插口(socket.optical2) · 真实轨迹开关 · 📺 8802 直播窗口(渲染站自己推 MJPEG: 8802/video · /live 全屏外壳, 与工位渲染同源同帧) · 🧭 位置细胞层 · 🎥 MuJoCo 同视角 · 其它同 r91</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-11-14 r98 · 仿真臂=真机位姿真值(不再走合成段表) · 两个插口(socket.optical2) · 真实轨迹开关 · 📺 8802 直播窗口(渲染站自己推 MJPEG: 8802/video · /live 全屏外壳, 与工位渲染同源同帧) · 🧭 位置细胞层 · 🎥 MuJoCo 同视角 · 其它同 r91</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -287,7 +287,7 @@
       <span id="tArmL" style="font-size:11.5px;color:#6ee7ff;font-family:monospace">Δ0,0,0</span>
       <button id="bCamTop" class="sm on" title="两臂之间的顶视相机(立柱+RealSense 模板): 立柱高 = 1 轴高度, 相机俯角 35° 看工作区; 点一下隐藏">📷 顶视相机</button>
       <button id="bChs" class="sm on" title="移动底盘箱体 600×800×750mm(本体680+轮Ø150露出70): 顶板 = 两臂安装面 = z=0, 与实验桌桌面平齐; 点一下隐藏">📦 箱体</button>
-      <button id="bTab" class="sm on" title="实验桌(工作台) 1600×600×750mm + 45×45 铝型材框架: 四腿从地面通到上横梁底面, 顶框两根支撑梁垫在上横梁下、四个角码夹住它; 点一下隐藏">🧪 实验桌</button>
+      <button id="bTab" class="sm" title="实验桌(工作台) 1600×600×750mm + 45×45 铝型材框架: 四腿从地面通到上横梁底面, 顶框两根支撑梁垫在上横梁下、四个角码夹住它; 点一下隐藏">🧪 实验桌</button>
       <button id="bFlr" class="sm on" title="地面层 z=-750mm: 四轮与桌腿落地的那一层, 与 z=0 的 base 工作平面差 750; 点一下隐藏">🟫 地面</button>
       <button id="bSim" class="sm" title="SIM 骨骼: 直接画 8802 渲染场景的 body_xpos 真值 (与渲染帧同一份数据), 不是 URDF 真机; 真机没上电时这才是"渲染里那台机器"">🦾 SIM骨骼</button>
       <button id="bMj" class="sm" title="MuJoCo 同视角: 把本页三维相机(yaw/pitch/dist/tgt)发给 8802 渲染站, 同一视角出图贴在画布底下; 模型(YOLO)吃的就是这张图">🎥 MuJoCo 同视角</button>
@@ -536,7 +536,8 @@ var LARM={show:true, off:[0, 0.5, 0], d:[0,0,0], rpy:[0,0,0], q:null, fill:'#123
    现在的文字太多了, 影响阅读。全开则是显示文字」
    做法: 全局挂 VR_TEXT, 直接拦 canvas 的 fillText/strokeText, 3D 视图里所有文字一次全灭,
    面板/按钮是 DOM 不受影响。 */
-var VR_TEXT=true;
+var VR_TEXT=false;      // 🧭 2026-11-14 老倪「工程配置点位全关」⇒ 3D 里的批注文字默认不画
+
 (function(){
   var proto=CanvasRenderingContext2D.prototype;
   if(proto.__zmaxTextPatched) return;
@@ -568,7 +569,7 @@ var CHS={show:true, L:0.600, W:0.800, H:0.750, HB:0.680, cy:0.25, wr:0.075,
          body:'#1b2732', plate:'#31404f', edge:'#7f95ad'};
 // 🧪 实验桌/工作台: 桌面 1600(y)×600(x)×30mm 厚(2026-10-26 老倪: 「桌子长度变成1600」),
 //   4 条 45×45 腿到地面 -0.750, 桌沿离箱体前脸 50mm
-var TAB={show:true, x0:0.35, x1:0.95, cy:0.25, w:1.600, t:0.030, leg:0.045, h:0.750,
+var TAB={show:false, x0:0.35, x1:0.95, cy:0.25, w:1.600, t:0.030, leg:0.045, h:0.750,
          top:'#7a5f45', body:'#54402f', legc:'#4a4f58', edge:'#d8b98c',
          alu:'#a8b3bf', aluEdge:'#6f7c8a', aluDark:'#5c666f'};
 // 🟫 地面层(轮底/桌腿落地): 箱子与桌子站在这层上, 与 z=0 那块 base 工作平面差 750mm
@@ -2056,7 +2057,8 @@ async function loadCfgPts(){
     if(!r||!r.ok){ window.__ptsErr='api '+(r?JSON.stringify(r).slice(0,160):'null');
       const t=$('tCfgN'); if(t) t.textContent=(r&&r.err)?'读取失败':'—'; return; }
     CFG_PTS=r.points||[]; CFG_AGE=(r.age_s==null?null:r.age_s);
-    CFG_PTS.forEach(p=>{ if(!(p.name in CFG_ON)) CFG_ON[p.name]=true; });
+    // 🧭 2026-11-14 老倪: 「工程配置点位, 全关」⇒ 默认全部不画(要看点「全开」)
+    CFG_PTS.forEach(p=>{ if(!(p.name in CFG_ON)) CFG_ON[p.name]=false; });
     // 🎯 目标点(单选)必须在台账里; 默认 安全点1, 没有就取第一个点
     // 🔴 2026-10-26: 支持 ?target=<点名> 直达 —— 手机/微信发一条链接就能把「目标点 + 轨迹5」定好
     //    (只认首次: CFG_TARGET 有值后不再被 URL 覆盖, 免得 10s 轮询把用户手选的冲掉)
@@ -3347,6 +3349,8 @@ function ssConnect(){ SSMODE.on=true; SSMODE.touched=true; inspEnsure(); }
 function ssDisconnect(){ ssFollowStop(); SSMODE.on=false; SSMODE.touched=true; }   // 拨回关 = 停一切播放(不管它是信号驱动还是本地时钟)
 // 点 ▶ = 才开始按信号走帧(唯一能驱动三维的入口)
 function ssFollowStart(){
+  // 🏭 本地全流程在跑 ⇒ 不许被信号驱动顶掉(2026-11-14 老倪「全流程点了右臂不动」)
+  if(typeof PLANT!=='undefined' && PLANT.on && PLANT.local) return;
   SSMODE.on=true; SSMODE.touched=true; SSMODE.follow=true;   // 人点的这一下 = 开始跟; 页面自己绝不自调
   inspEnsure();                              // 段表(手里模块/孔占用)真源, 只加载不播放
   PLANT.userStop=false;
@@ -3551,6 +3555,10 @@ setInterval(arL2Poll, 3000); setTimeout(arL2Poll, 1200);
 var AUTOMIRROR={busy:false,off:false};
 function autoMirrorMaybe(){
   if(AUTOMIRROR.off) return;
+  // 🏭 2026-11-14: 人点了「🏭 全流程 UPH」= 本地全流程在跑(PLANT.local) ⇒ 自动镜像不许接,
+  //   否则 ssFollowStart() 会把 PLANT.local 打回 false 并把 PREV 交还给 ar_cmd
+  //   ⇒ 现象就是"点了全流程, 右臂一动不动"(老倪 2026-11-14 报的)
+  if(typeof PLANT!=='undefined' && PLANT.on && PLANT.local) return;
   try{ if(sessionStorage.getItem('arAutoMirror')==='off'){ AUTOMIRROR.off=true; return; } }catch(e){}
   if(typeof SSMODE==='undefined'||typeof ARCMD==='undefined') return;
   if(!ARCMD.on||!ARCMD.fresh||!ARCMD.q) return;        // 等真信号, 不空转
@@ -3837,7 +3845,9 @@ function plantStep(){
   if(!PLANT.on) return;
   // 🦾 2026-11-14 老倪「右臂仿真按真实轨迹运行」⇒ 镜像开着的时候, 这一路不许再写 PREV(否则
   //    ar_cmd 的合成段表按 60Hz 盖掉真机位姿, 看着就是"仿真没按真实轨迹走")
-  if(typeof MIRROR!=='undefined' && MIRROR.on){
+  //   例外: 人点了「🏭 全流程 UPH」(PLANT.local=true) = 本地仿真该自己动, 镜像必须让位,
+  //   否则 10Hz 的真机位姿把本地仿真按回去 ⇒ 现象就是"点了全流程, 右臂不动"(2026-11-14 老倪报的)
+  if(typeof MIRROR!=='undefined' && MIRROR.on && !PLANT.local){
     PLANT.raf=requestAnimationFrame(plantStep); return;
   }
   const now=performance.now();
@@ -3855,7 +3865,7 @@ function plantStep(){
   //    关着 = 原来那套(AR 开关 + 非本地播放)。
   const isAR=(SSMODE.on && SSMODE.follow) ? !!(ARCMD.on && ARCMD.fresh && ARCMD.q)
                        : !!(typeof ARMODE!=='undefined'&&ARMODE.on&&ARCMD.on&&ARCMD.fresh&&ARCMD.q&&!PLANT.local);
-  if(SSMODE.on && !isAR){          // 接了状态空间但信号断了: 停在最后一帧, 绝不偷偷退回本地仿真
+  if(SSMODE.on && !isAR && !PLANT.local){   // 🏭 PLANT.local=人点了全流程 ⇒ 本地时钟说了算, 不能被这条挡住
     drawVR();
     if((PLANT.frames++ % 6)===0) plantHud();
     PLANT.raf=requestAnimationFrame(plantStep);
@@ -3975,7 +3985,10 @@ function plantStop(){
 }
 
 function plantToggle(){
-  if(PLANT.on){ plantStop(); return; }
+  // 🔴 2026-11-14 老倪「全流程 UPH 点了右臂不动」根因: 原来用 PLANT.on 判"在跑" —— 但状态空间
+  //   自动跟随那条路也会把 PLANT.on 置 true(local=false), 于是点按钮变成了"停"(而按钮文字还没变),
+  //   人再点一次才真跑 ⇒ 看着就是"点了没反应/右臂不动"。改判 PLANT.local = 本地全流程在跑。
+  if(PLANT.on && PLANT.local){ plantStop(); return; }
   if(INSP.plan.length){ plantStart(); return; }
   if(INSP.loading) return;
   INSP.loading=true;
@@ -4617,10 +4630,12 @@ function mjToggle(){
     const age=MJ.tLoad?((now-MJ.tLoad)/1000).toFixed(1):'—';
     tag.textContent='🎥 8802 同视角 · 取回 '+MJ.got+' · 帧龄 '+age+'s · '+MJ.url;
   }, 800);
-  // 🎥 2026-11-09 老倪 A 方案: 「画布开启 MuJoCo 同视角底图」⇒ 进页面就默认接上,
-  //   8802 渲染帧(按本页 az/el/dist/tgt 现场渲染)贴在画布底下, 矢量层叠在上面。
-  //   关掉用同一个按钮; 刷新后又回到开(这是默认口径, 不是记状态)。
-  if(!MJ.on){ try{ mjToggle(); }catch(e){} }
+  // 🎥 2026-11-14 老倪: 「默认不要打开 MuJoCo 同视角」⇒ 进页面不自动接, 要看去点按钮。
+  //   (原来 11-09 的口径是进页面就默认开, 已按 11-14 要求改掉)
+  if(im){ im.style.display='none'; }
+  if($('vr')){ $('vr').style.background='#070a0e'; }
+  if(tag){ tag.style.display='none'; }
+  if(b){ b.classList.remove('on'); b.textContent='🎥 MuJoCo 同视角'; }
 })();
 
 // ═════ 🧭 位置细胞层 (2026-11-09 老倪: 「ar3d 是可视化的窗口, 工程配置里要有所有配置坐标」) ═════
@@ -4742,6 +4757,8 @@ var ARMODE={on:false,real_auth:false,age:null};
 var MIRROR={on:false,t:null,n:0,lastAge:null,err:null};
 function mirrorTick(){
   if(!MIRROR.on) return;
+  // 🏭 本地全流程(全流程 UPH)在跑 ⇒ 这一段归本地仿真, 镜像不许抢 PREV
+  if(typeof PLANT!=='undefined' && PLANT.on && PLANT.local) return;
   fetch('/api/tcp',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
     if(!d||d.ok===false||!d.joints||d.joints.length<6) return;
     MIRROR.lastAge=d.age_s;
@@ -5867,7 +5884,7 @@ async function robotTick(){
         drw:(typeof DRWN!=='undefined')?DRWN:null,
         cw:(document.getElementById('vr')||{}).width||null,
         ch:(document.getElementById('vr')||{}).height||null,
-        bld:'2026-11-14 r96',
+        bld:'2026-11-14 r98',
         // 🩺 2026-10-29 老倪「开状态空间就看不到手里那颗模块」: 手里有没有货 / 落在第几段 直接上报
         drv:(typeof ARCMD!=='undefined'&&ARCMD.drv)||'',
         carry:(typeof INSP!=='undefined'&&INSP.carry)?1:0,
