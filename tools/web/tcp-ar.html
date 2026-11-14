@@ -1,6 +1,6 @@
 <!doctype html><html lang="zh"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Z-MAX AR3D r98 · 仿真=真机位姿 · SIM自动 · 位置细胞 · 8802直播</title>
+<title>Z-MAX AR3D r99 · 仿真=真轨迹位姿 · SIM自动 · 位置细胞 · 8802直播</title>
 <style>
  *{box-sizing:border-box}
  body{margin:0;background:#0b0f14;color:#e6edf3;font:15px/1.5 -apple-system,Segoe UI,Roboto,"Noto Sans SC",sans-serif}
@@ -119,7 +119,7 @@
   <!-- 🧭 2026-10-26 老倪: 「三维视图要单独打开一个页面…只有三维视图, 没有其它的按钮」⇒ /ar3d 独立三维页 -->
   <a href="/ar3d" target="_blank" title="只开三维视图的独立页面(整屏画布, 无按钮) —— 用来看轨迹/位姿, 不用滚轮拖"
      style="font-size:12px;font-weight:700;border-radius:6px;padding:3px 9px;margin-left:8px;white-space:nowrap;border:1px solid #8957e5;color:#c9a6ff;text-decoration:none">🧭 三维独立页 ↗</a>
-  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-11-14 r98 · 仿真臂=真机位姿真值(不再走合成段表) · 两个插口(socket.optical2) · 真实轨迹开关 · 📺 8802 直播窗口(渲染站自己推 MJPEG: 8802/video · /live 全屏外壳, 与工位渲染同源同帧) · 🧭 位置细胞层 · 🎥 MuJoCo 同视角 · 其它同 r91</span>
+  <span id="bVer" title="页面版本戳: 老倪刷不开时先看这里 —— 数字没变就是浏览器拿了旧页" style="font-size:11.5px;color:#7d8590;border:1px solid #30363d;border-radius:6px;padding:2px 6px;margin-left:8px;white-space:nowrap">构建 2026-11-14 r99 · 仿真臂=真机位姿真值(不再走合成段表) · 两个插口(socket.optical2) · 真实轨迹开关 · 📺 8802 直播窗口(渲染站自己推 MJPEG: 8802/video · /live 全屏外壳, 与工位渲染同源同帧) · 🧭 位置细胞层 · 🎥 MuJoCo 同视角 · 其它同 r91</span>
   <span class="tag" id="tVid">底图: —</span>
   <span class="tag" id="tSrc">来源: —</span>
   <span class="tag" id="tAge">帧龄 —</span>
@@ -3872,6 +3872,24 @@ function plantStep(){
     return;
   }
   const r=isAR?plantAtAR():plantAt(PLANT.simT);
+  // 🦾 2026-11-14 老倪「右臂仿真要改成真实轨迹的位姿」: 本地全流程下, 右臂姿态不再由 plantAt 解 IK,
+  //   直接取 215 点真轨迹的关节角帧(页面内嵌 rtrajData = real_traj_joints.json, SDK 真值)按时间循环插值
+  //   ⇒ 仿真的右臂与真机录下来的每一个位姿逐帧一致(含转腕/翻面), 不再是自己算出来的一条近似线。
+  if(!isAR){
+    try{
+      const _d=ensureTrajJoints();
+      if(_d && _d.frames && _d.frames.length>1){
+        const fr=_d.frames, T=fr[fr.length-1].t||1;
+        const tt=PLANT.simT % T;
+        let i=0; while(i<fr.length-2 && fr[i+1].t<=tt) i++;
+        const f=fr[i], f2=fr[Math.min(i+1,fr.length-1)];
+        const span=Math.max(1e-6,f2.t-f.t), u=Math.max(0,Math.min(1,(tt-f.t)/span));
+        const qq=f.j.map(function(v,k){ return v+(f2.j[k]-v)*u; });
+        PREV.on=true; PREV.q=qq; PREV.M=urdfFK(qq); PREV.target=f2.p.slice();
+        PREV.src='traj215'; PREV.trajT=+tt.toFixed(3);
+      }
+    }catch(e){}
+  }
   if(r){
     const lp=r.lp;
     if(isAR){                                    // 🥽 产出/进度由状态空间节点的件号给
@@ -5884,7 +5902,7 @@ async function robotTick(){
         drw:(typeof DRWN!=='undefined')?DRWN:null,
         cw:(document.getElementById('vr')||{}).width||null,
         ch:(document.getElementById('vr')||{}).height||null,
-        bld:'2026-11-14 r98',
+        bld:'2026-11-14 r99',
         // 🩺 2026-10-29 老倪「开状态空间就看不到手里那颗模块」: 手里有没有货 / 落在第几段 直接上报
         drv:(typeof ARCMD!=='undefined'&&ARCMD.drv)||'',
         carry:(typeof INSP!=='undefined'&&INSP.carry)?1:0,
