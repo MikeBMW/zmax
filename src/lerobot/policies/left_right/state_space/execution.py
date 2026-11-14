@@ -198,6 +198,24 @@ def traj215_target(cursor=None):
         return None
 
 
+def _eff_out(act):
+    """这一拍真正下发的口径: 直驱(ss) 还是 215 点回放。
+
+    为什么要打: 执行器 src=ss 时, 节点里的直驱护栏可能没放行 ⇒ 实际落盘/下发的是 215 点。
+    终端只看 src 会以为下发的是直驱位姿, 于是又对不上。这里给出护栏的判决。
+    """
+    try:
+        from lerobot.policies.left_right.state_space import direct_drive_guard as _g
+        v = _g.last() or {}
+        if not v:
+            return "215点(护栏未跑 · 直驱闸默认关)"
+        if str(act.get("src")) == "ss" and not v.get("allow"):
+            return "215点(护栏 mode=%s ok=%s/%s)" % (v.get("mode"), v.get("ok_ticks"), v.get("need"))
+        return "直驱/ss"
+    except Exception:                                       # noqa: BLE001
+        return "?"
+
+
 class Action(dict):
     """工程唯一输出 —— **位姿口径**(老倪 2026-11-14)。
 
@@ -325,7 +343,9 @@ class RobotExecutor:
                 chk["traj_pose"] = _t.get("pose")
                 chk["out_dim"] = 6
                 self.last_check = chk
-                return self._act_traj215(_t, chk)
+                _a = self._act_traj215(_t, chk)
+                self._print_action(_a, chk, tag="回退")
+                return _a
             chk["fallback"] = "hold(不直驱 · 轨迹通道照常)"
         elif _need_fb:
             chk["fallback"] = "hold(不直驱 · 轨迹通道照常)"
@@ -333,7 +353,53 @@ class RobotExecutor:
         # ⑤ 正常档: 输出**位姿**(当前位姿 + u·dt), 不是那个速度数组 —— 老倪 2026-11-14
         #    变量名仍叫 action: 在 VSCode 里对 `return action` 打红点, 看到的就是位姿口径的 action
         action = self._act_ss(action, chk)
+        self._print_action(action, chk)
         return action
+
+    # ─────────────────────── 🖨 终端可见的实时位姿(return action 之前) ───────────────────────
+    @staticmethod
+    def _print_action(act, chk=None, tag=""):
+        """一行打印这一拍的位姿: **目标 vs 实测 vs 差额** —— 让终端和机器人屏幕能直接对账。
+
+        老倪 2026-11-14: 「return action 这之前, 增加一个 print 打印实时位姿, 终端也能看到
+        实际的位姿」。所以打在 return 之前: 断点/单步(F10)时, 终端这一行就是这一拍的结论。
+        关掉: ZMAX_ACTION_PRINT=0
+        """
+        try:
+            if str(os.environ.get("ZMAX_ACTION_PRINT", "1")).strip() in ("0", "false", "False"):
+                return
+            if not isinstance(act, dict):
+                return
+            now = tcp_pose_now() or {}
+            _p = act.get("pose") or {}
+            tx = act.get("x", _p.get("x"))
+            ty = act.get("y", _p.get("y"))
+            tz = act.get("z", _p.get("z"))
+            ta = act.get("a", _p.get("a"))
+            tb = act.get("b", _p.get("b"))
+            tc = act.get("c", _p.get("c"))
+            d_mm = None
+            if None not in (tx, ty, tz) and now.get("x") is not None:
+                d_mm = math.dist([tx, ty, tz], [now["x"], now["y"], now["z"]])
+            g = act.get("grip_mm")
+            gs = act.get("grip_state") or ""
+            print("[action]%s i=%s/%s src=%s 目标 %.2f/%.2f/%.2f · %.2f/%.2f/%.2f | "
+                  "实测 %s/%.2f/%.2f · %.2f/%.2f/%.2f (age %ss) | Δ=%s mm | 夹爪 %s mm %s" % (
+                      (" " + tag) if tag else "",
+                      act.get("i") if act.get("i") is not None else "-",
+                      act.get("total") or 215, act.get("src"),
+                      tx if tx is not None else float("nan"), ty if ty is not None else float("nan"),
+                      tz if tz is not None else float("nan"),
+                      ta if ta is not None else float("nan"), tb if tb is not None else float("nan"),
+                      tc if tc is not None else float("nan"),
+                      ("%.2f" % now["x"]) if now.get("x") is not None else "读不到",
+                      now.get("y") or float("nan"), now.get("z") or float("nan"),
+                      now.get("a"), now.get("b"), now.get("c"), now.get("age_s"),
+                      ("%.2f" % d_mm) if d_mm is not None else "?",
+                      g if g is not None else "?", gs)
+                  + (" | 下发=%s" % _eff_out(act)))
+        except Exception:                                       # noqa: BLE001
+            pass
 
     # ────────────────────────── 位姿口径的 action 构造 ──────────────────────────
     _DT0 = 0.0                      # 上一拍时间戳(跨实例共享, 与 _LAST 同一理由)
