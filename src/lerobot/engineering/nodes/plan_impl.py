@@ -656,6 +656,29 @@ def run(ctx=None):
             }, src="n_moveit")
     except Exception:                                                    # noqa: BLE001
         pass
+    # 🎯 2026-11-15 老倪「运动规划节点应该输出这个 action, 机器人节点是执行」
+    #   ⇒ 规划节点每拍把**下一步目标位姿**做成 action(位姿口径) 交出去; 执行归机器人节点,
+    #     这里绝不越权下发, 也不再让下游自己算位姿。
+    try:
+        from lerobot.policies.left_right.state_space import action_bus as _ab
+        _sg = _cur or {}
+        _a, _b = _sg.get("a") or start, _sg.get("b") or goal_plan
+        _dur = _seg_dur(_sg) if _sg else 0.0
+        _un = min(1.0, float(_u) + (0.1 / _dur if _dur > 0 else 1.0))
+        _tp = [round(float(_a[k]) + (float(_b[k]) - float(_a[k])) * _un, 2) for k in range(3)]
+        _truth = {"x": round(float(start[0]), 2), "y": round(float(start[1]), 2),
+                  "z": round(float(start[2]), 2), "age_s": age}
+        if _POSE_Q:
+            _truth.update({"qx": _POSE_Q[0], "qy": _POSE_Q[1], "qz": _POSE_Q[2], "qw": _POSE_Q[3]})
+        out["action"] = _ab.from_plan(
+            _tp, quat=_gq, truth=_truth, joints_now=None, seg=_sg, u=_un,
+            plan={"plan_id": _pid, "n_seg": _nseg, "goal": [round(v, 2) for v in goal_plan],
+                  "total_mm": out.get("total_mm"), "backend": _backend, "src": "n_moveit"},
+            why="规划输出 · 段 %s/%s %s u=%.2f" % (_si, _nseg, _sg.get("kind"), _un))
+        out["action_note"] = "规划节点出 action(位姿口径); 机器人节点只执行, 不重算"
+    except Exception as _e_act:                                          # noqa: BLE001
+        out["action"] = None
+        out["action_note"] = "action 生成失败: %s" % type(_e_act).__name__
     LAST_STATUS = ("段表 %d 段 / %.0fmm · 起点年龄 %.2fs · 单步≤%.0fmm 向下≤%.0fmm"
                    % (len(segs), out["total_mm"], (age or 0.0), lim["step"], lim["down"]))
     out["status"] = LAST_STATUS

@@ -156,6 +156,87 @@ def exec_index(max_err_mm=25.0):
     return nearest_index(max_err_mm)
 
 
+def from_plan(pose_target, quat=None, truth=None, joints_now=None, seg=None,
+              u=0.0, plan=None, grip=None, why="运动规划输出"):
+    """src=plan: **运动规划节点**输出 action(位姿口径) —— 老倪 2026-11-15
+
+    「运动规划节点应该输出这个 action, 机器人节点是执行」⇒ 分工写死在这里:
+      · 本函数只**出目标位姿**(pose/x,y,z,a,b,c + 四元数 + 关节 + 夹爪 + 证据块), 不下发
+      · 机器人节点拿到 action 后**逐字执行**, 不许再算一遍轨迹/再解一次 IK
+    证据块 align 里带 delta_mm(相对真机真值)、step_ok(单拍幅度)、truth_fresh(真值新鲜)、
+    seg_i/seg_kind/u/plan_id —— 谁执行、执行的是哪一段, 一眼可查。
+    """
+    if pose_target is None or len(pose_target) < 3:
+        return None
+    if truth is None:
+        truth = read_pose()
+    p3 = [float(pose_target[i]) for i in range(3)]
+    if any(not math.isfinite(v) for v in p3):
+        return None
+    q = None
+    try:
+        q = [float(x) for x in quat][:4] if quat else None
+    except Exception:                                                    # noqa: BLE001
+        q = None
+    if q is None and truth is not None:
+        q = [truth.get("qx"), truth.get("qy"), truth.get("qz"), truth.get("qw")]
+    abc = _abc_deg(q) or [None, None, None]
+    tr = ([round(float(truth["x"]), 2), round(float(truth["y"]), 2), round(float(truth["z"]), 2)]
+          if truth else None)
+    dlt = ([round(p3[i] - tr[i], 2) for i in range(3)] if tr else None)
+    step = (math.sqrt(sum(v * v for v in dlt)) if dlt else None)
+    max_step = 25.0
+    try:
+        if seg is not None and seg.get("max_step_mm"):
+            max_step = float(seg["max_step_mm"])
+    except Exception:                                                    # noqa: BLE001
+        pass
+    age = truth.get("age_s") if isinstance(truth, dict) else None
+    act = {"src": "plan",
+           "x": round(p3[0], 2), "y": round(p3[1], 2), "z": round(p3[2], 2),
+           "a": abc[0], "b": abc[1], "c": abc[2],
+           "qx": (round(float(q[0]), 6) if q and q[0] is not None else None),
+           "qy": (round(float(q[1]), 6) if q and q[1] is not None else None),
+           "qz": (round(float(q[2]), 6) if q and q[2] is not None else None),
+           "qw": (round(float(q[3]), 6) if q and q[3] is not None else None),
+           "i": cursor215(), "why": why, "ts": time.time(),
+           "joints_src": ("实测" if joints_now else "缺"),
+           "joints_target": None, "needs_ik": bool(joints_now is None),
+           "pose": {"x": round(p3[0], 2), "y": round(p3[1], 2), "z": round(p3[2], 2),
+                    "a": abc[0], "b": abc[1], "c": abc[2],
+                    "qx": (round(float(q[0]), 6) if q and q[0] is not None else None),
+                    "qy": (round(float(q[1]), 6) if q and q[1] is not None else None),
+                    "qz": (round(float(q[2]), 6) if q and q[2] is not None else None),
+                    "qw": (round(float(q[3]), 6) if q and q[3] is not None else None),
+                    "src": "plan(运动规划节点)"},
+           "plan": dict(plan or {}, seg_i=(seg or {}).get("i"), seg_kind=(seg or {}).get("kind"),
+                        u=round(float(u), 4),
+                        seg_a=(seg or {}).get("a"), seg_b=(seg or {}).get("b"),
+                        quat_src=(seg or {}).get("quat_src")),
+           "align": {"frame": "base", "unit": "mm",
+                     "pose_truth": tr, "delta_mm": dlt, "step_mm": (round(step, 3) if step is not None else None),
+                     "max_step_mm": max_step, "truth_age_s": age,
+                     "truth_fresh": (age is not None and age <= 1.0),
+                     "step_ok": (step is not None and step <= max_step)}}
+    for k in range(6):
+        act["j%d" % (k + 1)] = (round(math.degrees(float(joints_now[k])), 4)
+                                if joints_now and len(joints_now) > k else None)
+    if grip is None:
+        _m, _ = grip_meas()
+        keep = {"grip_mm": _m, "grip_act": "hold",
+                "grip_state": (None if _m is None else ("开" if _m > 1.0 else "合")),
+                "grip_src": "规划未给 ⇒ 保持实测"}
+    else:
+        want_close = bool(grip.get("close")) if isinstance(grip, dict) else bool(grip)
+        _m, _ = grip_meas()
+        keep = {"grip_mm": (0.0 if want_close else GRIP_OPEN_MM),
+                "grip_act": ("close" if want_close else "open"),
+                "grip_state": ("合" if want_close else "开"),
+                "grip_src": (grip.get("src") if isinstance(grip, dict) and grip.get("src") else "规划给"),
+                "grip_now_mm": _m}
+    return _with_grip(act, keep)
+
+
 def from_traj215(cursor=None, why="215 点真值回放"):
     """src=traj215: 直接取 215 点当前点的位姿+关节。取不到 ⇒ None。"""
     fr = _frames()

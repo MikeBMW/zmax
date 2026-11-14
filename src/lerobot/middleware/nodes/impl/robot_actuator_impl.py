@@ -15,6 +15,74 @@ from .shared_runtime import _SS_STATE, _ss_import   # 与 registry 共用同一�
 from ._single_thread import brk as _brk
 
 
+def _exec_action_verbatim(ctx, act, log):
+    """🤖 执行契约 (老倪 2026-11-15): 规划节点给的 action ⇒ **只执行, 不重算**。
+
+    禁止事项 (这条就是分工的红线): 不重跑 IK、不重解段表、不用 4 维速度再推一次位姿。
+    校验 (缺一即拒): 位姿三个分量有限 · 单拍幅度 ≤ align.max_step_mm · 真值新鲜(age≤1s)。
+    真实下发仍只走 exec.contract.dispatch / l2_daemon + 8793 授权; 本节点只做"执行 + 留证"。
+    """
+    import math as _m
+    import time as _t
+    pose = (act or {}).get("pose") or {}
+    al = (act or {}).get("align") or {}
+    probs = []
+    try:
+        px, py, pz = float(pose.get("x")), float(pose.get("y")), float(pose.get("z"))
+        if not all(_m.isfinite(v) for v in (px, py, pz)):
+            probs.append("位姿非有限数")
+    except Exception:                                                     # noqa: BLE001
+        probs.append("位姿缺 x/y/z")
+        px = py = pz = None
+    step = al.get("step_mm")
+    lim = al.get("max_step_mm") or 25.0
+    if step is not None and float(step) > float(lim):
+        probs.append("单拍幅度 %.1fmm > %.1fmm" % (float(step), float(lim)))
+    fresh = al.get("truth_fresh")
+    if fresh is False:
+        probs.append("真值陈旧(age=%s)" % al.get("truth_age_s"))
+    ok = not probs
+    out = {"kind": "actuator", "mode": "verbatim", "ok": ok, "problems": probs,
+           "action": act, "src": (act or {}).get("src"), "pose": pose,
+           "grip_act": (act or {}).get("grip_act"), "grip_mm": (act or {}).get("grip_mm"),
+           "seg": al.get("seg_kind") or ((act or {}).get("plan") or {}).get("seg_kind"),
+           "plan_id": ((act or {}).get("plan") or {}).get("plan_id"),
+           "real_send": False,
+           "note": "动作来自运动规划节点的 action(位姿口径) · 本节点不重算 · 下发另走授权链"}
+    if not ok:
+        if log:
+            log("🤖 机器人执行器 (逐字执行) 拒收: %s" % " / ".join(probs))
+        _SS_STATE["action"] = act
+        return {"out1": out}
+    try:
+        from lerobot.policies.left_right.state_space import action_bus as _ab
+        _m2 = dict(act)
+        _m2["executed"] = {"by": "robot_actuator", "mode": "verbatim", "ts": _t.time()}
+        _ab.publish(_m2)
+        _SS_STATE["action"] = _m2
+        _SS_STATE["pose_out"] = pose
+        if (act or {}).get("src") != "traj215":
+            _SS_STATE["u_prev"] = [0.0, 0.0, 0.0]
+        _SS_STATE["dd_active"] = False
+    except Exception:                                                     # noqa: BLE001
+        pass
+    try:
+        from lerobot.engineering.exec import ar_bridge as _arb
+        _arb.update("exec", {"kind": "exec", "src": (act or {}).get("src"), "pose": pose,
+                             "joints_deg": (act or {}).get("joints_deg"),
+                             "step_mm": step, "seg_i": al.get("seg_i"),
+                             "exec_mode": "verbatim", "exec_by": "robot_actuator"},
+                    src="ssact")
+    except Exception:                                                     # noqa: BLE001
+        pass
+    if log:
+        log("🤖 机器人执行器 (逐字执行规划 action): x=%.2f y=%.2f z=%.2f a=%.2f b=%.2f c=%.2f · "
+            "单拍 %.1fmm · 段 %s · plan#%s"
+            % (px or 0, py or 0, pz or 0, float(pose.get("a") or 0), float(pose.get("b") or 0),
+               float(pose.get("c") or 0), float(step or 0), out["seg"], out["plan_id"]))
+    return {"out1": out}
+
+
 def run(ctx):
     # 🔴 2026-10-29 事实记录 (不受调试器/env 影响): 每次节点被真正调用就往
     #   zmax_data/ss_live/actuator_calls.log 追加一行。用来回答"右键运行节点到底有没有
@@ -79,6 +147,18 @@ def run(ctx):
                              "src": "execution.py:PhysicalWorld", "t": time.time(),
                              "real_send": False, "note": "纯计算·零下发 (下发只走 l2_daemon+8793 授权)"}}
         u_sat = _SS_STATE.get("u_sat", np.zeros(4))
+        # 🎯 老倪 2026-11-15「运动规划节点输出 action, 机器人节点是执行」
+        #   规划节点已给 action(位姿口径) ⇒ 本节点只执行, 绝不重算/重规划
+        _in1 = ctx.get("in1")
+        _act_in = None
+        if isinstance(_in1, dict):
+            if isinstance(_in1.get("action"), dict):
+                _act_in = _in1["action"]
+            elif _in1.get("pose") and str(_in1.get("src")) in ("plan", "ss", "traj215"):
+                _act_in = _in1
+        if isinstance(_act_in, dict) and _act_in.get("pose"):
+            return _exec_action_verbatim(ctx, _act_in, log)
+
         _ex = ex.RobotExecutor()                       # 🔴 2026-10-29: 实例留住, 校验结论要带出去
         # 🎯 2026-11-01 老倪「右键打开源码要有断点, 在 VSCode 里我要看到执行指令」:
         #   停在这里时 u_sat 已绑定, 下一行 action 就是**真正下发的执行指令**。
