@@ -81,12 +81,56 @@ def _frames():
         return []
 
 
-def cursor215():
-    """8797 当前走到第几点(0 基)。取不到 ⇒ 0。"""
+def _traj_state():
     try:
-        return int(json.load(open(TRAJ_STATE, encoding="utf-8")).get("cursor") or 0)
+        return json.load(open(TRAJ_STATE, encoding="utf-8")) or {}
+    except Exception:                                          # noqa: BLE001
+        return {}
+
+
+def cursor215():
+    """游标(0 基) —— 只管"派单派到哪"：8797 每轮结束才推进，运行中会落后真机最多 n 点。"""
+    try:
+        return int(_traj_state().get("cursor") or 0)
     except Exception:                                          # noqa: BLE001
         return 0
+
+
+def exec_index(max_err_mm=25.0):
+    """真机**此刻实际所在**的 215 点序号(0 基) —— 用位姿真值在 215 点里找最近点。
+
+    为什么要有这个 (2026-11-14 老倪:「你看现在的 action, 怎么跟机器人上看到的不一样?」):
+      action 原来取 traj_step_state.cursor, 而 cursor 是**每轮结束**才推进的派单游标;
+      一轮 n=10 点时, 臂在走第 70~79 点, action 却还写 69 ⇒ 看着"对不上"。
+      ⇒ action 必须跟**实际执行**走, 不跟派单游标走。
+    口径: 只在真机确有位姿(帧龄<2s)时算; 最近点距离超 max_err_mm 视为对不上 ⇒ None(不猜)。
+    """
+    st = _traj_state()
+    fr = _frames()
+    if not fr:
+        return None
+    try:
+        if time.time() - os.path.getmtime(LATEST) > 2.0:
+            return None
+        d = json.load(open(LATEST, encoding="utf-8"))
+        p = [float(d["x"]) * 1000.0, float(d["y"]) * 1000.0, float(d["z"]) * 1000.0]
+        if p == [0.0, 0.0, 0.0]:
+            return None
+    except Exception:                                          # noqa: BLE001
+        return None
+    # 只在运行中(或刚结束)才做就近匹配, 免得空闲时把"人手动挪过的位置"当成执行点
+    if not st.get("running"):
+        return None
+    best, bd = None, 1e9
+    for i, f in enumerate(fr):
+        q = f.get("p") or []
+        if len(q) != 3:
+            continue
+        dd = ((q[0] * 1000.0 - p[0]) ** 2 + (q[1] * 1000.0 - p[1]) ** 2
+              + (q[2] * 1000.0 - p[2]) ** 2) ** 0.5
+        if dd < bd:
+            best, bd = i, dd
+    return best if (best is not None and bd <= max_err_mm) else None
 
 
 def from_traj215(cursor=None, why="215 点真值回放"):
@@ -94,7 +138,12 @@ def from_traj215(cursor=None, why="215 点真值回放"):
     fr = _frames()
     if not fr:
         return None
-    i = cursor215() if cursor is None else int(cursor)
+    i_plan = cursor215() if cursor is None else int(cursor)
+    i = i_plan
+    if cursor is None:
+        _e = exec_index()          # 运行中 ⇒ 跟真机实际所在点, 不跟派单游标(2026-11-14)
+        if _e is not None:
+            i = _e
     i = max(0, min(i, len(fr) - 1))
     f = fr[i]
     p = f.get("p") or []
@@ -107,7 +156,7 @@ def from_traj215(cursor=None, why="215 点真值回放"):
            "z": round(p[2] * 1000, 2), "a": abc[0], "b": abc[1], "c": abc[2],
            "qx": round(float(q[0]), 6), "qy": round(float(q[1]), 6),
            "qz": round(float(q[2]), 6), "qw": round(float(q[3]), 6),
-           "i": i, "why": why, "ts": time.time(), "joints_src": "215点轨迹"}
+           "i": i, "i_plan": i_plan, "why": why, "ts": time.time(), "joints_src": "215点轨迹"}
     for k in range(6):
         act["j%d" % (k + 1)] = round(math.degrees(float(j[k])), 4)
     return _with_grip(act, grip_at(i, len(fr)))

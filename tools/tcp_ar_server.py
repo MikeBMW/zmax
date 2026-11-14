@@ -91,15 +91,21 @@ PORT = int(os.environ.get("AR_PORT", "8797"))
 _GRIP_FIFO = os.path.join(REPO, "zmax_data", "rokae_sdk", "cmd_arm.fifo")   # 保留常量, 兼容旧引用
 _GRIP_HOST = os.environ.get("ZMAX_GRIP_HOST", "tashan@192.168.23.66")
 _GRIP_OPEN_MM = float(os.environ.get("ZMAX_GRIP_OPEN_MM", "70"))
+# 🔧 2026-11-14 现场: 重启后驱动把服务名改成了 /gripper_srv(原来 /gripper_driver)
+#    调旧名字只会得到 "failed to check service availability: rcl node's context is invalid"(很误导)
+_GRIP_SRV = os.environ.get("ZMAX_GRIP_SRV", "/gripper_srv")
 _GRIP_FORCE = float(os.environ.get("ZMAX_GRIP_FORCE", "40"))
 _GRIP_LOG = os.path.join(REPO, "zmax_data", "rokae_sdk", "grip_events.jsonl")
 
 
 def _grip_pos() -> float | None:
     """读夹爪位置真值(Orin /gripper_pos), 读不到回 None —— 绝不猜。"""
+    # 🔧 2026-11-14 现场: 只 source humble 时 /gripper_pos 反序列化失败
+    #    ("sequence size exceeds remaining buffer", 自定义类型没注册) ⇒ 必须先 source 厂家工作区。
     cmd = ("source /opt/ros/humble/setup.bash >/dev/null 2>&1; "
+           "source /home/tashan/zl/tashan_robot_so_20261109_110421_ca9eb74_aarch64/install/setup.bash >/dev/null 2>&1; "
            "export ROS_DOMAIN_ID=0; "
-           "timeout 6 ros2 topic echo /gripper_pos std_msgs/msg/Float32 --once 2>/dev/null | head -2")
+           "timeout 8 ros2 topic echo /gripper_pos std_msgs/msg/Float32 --once 2>/dev/null | head -2")
     try:
         r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6", _GRIP_HOST, cmd],
                            capture_output=True, text=True, timeout=25)
@@ -109,9 +115,13 @@ def _grip_pos() -> float | None:
         ln = ln.strip()
         if ln.startswith("data:"):
             try:
-                return float(ln.split(":", 1)[1])
+                _raw = float(ln.split(":", 1)[1])
             except Exception:                                               # noqa: BLE001
                 return None
+            # 🔧 2026-11-14: 驱动全开读 1000.0(千分比) ⇒ 统一换算成 mm, 与 target_mm(0~70) 同口径
+            if abs(_raw) > 200.0:
+                return round(_raw / 1000.0 * _GRIP_OPEN_MM, 2)
+            return _raw
     return None
 
 
@@ -125,9 +135,9 @@ def _grip_send(act: str, speed: float = 20.0, tries: int = 1) -> tuple[bool, dic
     ws = ("/home/tashan/zl/tashan_robot_so_20261109_110421_ca9eb74_aarch64/install/setup.bash")
     call = ("source /opt/ros/humble/setup.bash >/dev/null 2>&1; "
             "source %s >/dev/null 2>&1; export ROS_DOMAIN_ID=0; "
-            "timeout 30 ros2 service call /gripper_driver interfaces/srv/GripperSrv "
+            "timeout 30 ros2 service call %s interfaces/srv/GripperSrv "
             "'{target_pos: %.1f, target_speed: -1.0, target_force: %.1f, target_acc: -1.0, "
-            "target_push_length: -1.0, target_push_speed: -1.0}' 2>&1 | tail -4") % (ws, tgt, _GRIP_FORCE)
+            "target_push_length: -1.0, target_push_speed: -1.0}' 2>&1 | tail -4") % (ws, _GRIP_SRV, tgt, _GRIP_FORCE)
     ev = {"t": time.strftime("%F %T"), "act": act, "target_mm": tgt, "pos_before": pos0}
     try:
         r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", _GRIP_HOST, call],
@@ -3102,17 +3112,28 @@ class H(BaseHTTPRequestHandler):
             # 🔴 2026-10-26 老倪「轨迹2执行，你怎么不动？」——
             #    真因是授权窗过期(10.5 小时前), 服务端在发段表之前就拒了, 一行小字他没看见。
             #    这里只读授权唯一依据, 给页面做**顶部横幅**: 过期=红条, 有授权=绿条, 不让人猜。
+            # 🔴 2026-11-14 修: 原来只认 until>now ⇒ **调试档(无时间限制, until=0)被误报成"未授权"**,
+            #    页面顶部红条会骗人(闸是真的 armed, 横幅说没授权)。口径统一走 tools/ctl_auth.py:info()。
             try:
-                _d = json.load(open(os.path.join(REPO, "zmax_data", "ctl_auth.json"), encoding="utf-8"))
+                import importlib.util as _ilu2
+                _sp2 = _ilu2.spec_from_file_location("_zmax_ctl_auth_b",
+                                                    os.path.join(REPO, "tools", "ctl_auth.py"))
+                _ca2 = _ilu2.module_from_spec(_sp2)
+                _sp2.loader.exec_module(_ca2)
+                _st2 = _ca2.info()
             except Exception as e:                                               # noqa: BLE001
-                self._json({"ok": False, "err": "读不到 ctl_auth.json: %s" % str(e)[:60]})
+                self._json({"ok": False, "err": "读不到授权唯一依据(ctl_auth.py): %s" % str(e)[:60]})
                 return
-            _u = float(_d.get("until") or 0)
-            _left = _u - time.time()
-            _rev = float(_d.get("revoked_at") or 0) > 0
-            self._json({"ok": True, "armed": (not _rev) and _left > 0, "epoch": _d.get("epoch"),
-                        "left_s": round(max(0.0, _left)), "left_min": round(max(0.0, _left) / 60.0, 1),
-                        "revoked": _rev, "until": _u,
+            _left = float(_st2.get("left_s") or 0.0)
+            self._json({"ok": True, "armed": bool(_st2.get("armed")),
+                        "mode": _st2.get("mode"), "debug": bool(_st2.get("debug")),
+                        "epoch": _st2.get("epoch"),
+                        "left_s": (None if _st2.get("debug") else round(max(0.0, _left))),
+                        "left_min": (None if _st2.get("debug") else round(max(0.0, _left) / 60.0, 1)),
+                        "revoked": bool(_st2.get("revoked_at")), "until": _st2.get("until"),
+                        "label": ("已授权(调试档 · 无时间限制)" if (_st2.get("armed") and _st2.get("debug"))
+                                  else ("已授权(剩 %.0f 分)" % (_left / 60.0) if _st2.get("armed")
+                                        else "未授权")),
                         "where": "8793 工位总览 → 授权真动(两步确认)"})
         elif p == "/api/arm/step_traj":
             # ⏭ 同步操作的真机腿 (老倪 2026-11-13「仿真先走10个点, 然后驱动真实右臂走10个点」)

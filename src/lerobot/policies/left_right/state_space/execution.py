@@ -157,6 +157,16 @@ def traj215_target(cursor=None):
             i = 0
             if os.path.exists(_TRAJ_STATE):
                 i = int(json.load(open(_TRAJ_STATE, encoding="utf-8")).get("cursor") or 0)
+            # 2026-11-14 老倪「action 怎么跟机器人上看到的不一样」:
+            #   cursor 是**派单游标**(每轮结束才推进), 一轮 n 点时臂在走 cursor+1~+n。
+            #   ⇒ 运行中按真机位姿取最近点, 让 action 跟"实际执行"对齐(取不到才用 cursor)。
+            try:
+                from . import action_bus as _ab2
+                _e = _ab2.exec_index()
+                if _e is not None:
+                    i = int(_e)
+            except Exception:                                              # noqa: BLE001
+                pass
         else:
             i = int(cursor)
         d = json.load(open(_TRAJ_JSON, encoding="utf-8"))
@@ -169,7 +179,7 @@ def traj215_target(cursor=None):
             return None
         _p = fr[i].get("p") or []
         _abc = _abc_deg(fr[i].get("q") or [])
-        return {"cursor": i, "total": len(fr),
+        return {"cursor": i, "cursor_plan": int(json.load(open(_TRAJ_STATE, encoding="utf-8")).get("cursor") or 0) if os.path.exists(_TRAJ_STATE) else i, "total": len(fr),
                 "joint_deg": [round(math.degrees(float(x)), 4) for x in j],
                 "p_mm": [round(float(x) * 1000, 2) for x in _p],
                 "abc_deg": _abc,
