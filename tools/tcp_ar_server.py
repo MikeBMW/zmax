@@ -3143,7 +3143,13 @@ class H(BaseHTTPRequestHandler):
                     if _cpid <= 1:
                         raise OSError("no pid")
                     os.kill(_cpid, 0)
-                    _calive = True
+                    # 🔴 僵尸(已 kill 但父进程没回收)对 signal 0 仍然"活着" ⇒ 会把 busy 判成永远忙,
+                    #    实测 2026-11-14: 杀掉的 docker run 变 Zs <defunct>, 8797 从此拒绝 reset/下发。
+                    try:
+                        _st_1 = open("/proc/%d/stat" % _cpid).read().rsplit(")", 1)[1].split()[0]
+                    except Exception:                                        # noqa: BLE001
+                        _st_1 = "?"
+                    _calive = (_st_1 != "Z")
                 except Exception:                                            # noqa: BLE001
                     _calive = False
                 if _cur.get("running") and _calive:

@@ -496,6 +496,28 @@ class ActionModulator:
                     _pdb.set_trace()
             except Exception:                  # noqa: BLE001
                 pass
+        # 🧠 每拍推进**调度状态机**(DispatchFSM 住在调制器里) —— 2026-11-14 实测:
+        #    真机链路(safety_limit_impl → decide)此前**没有任何人**调 advance(),
+        #    只有 verification/单元测试和 sim.py 会调 ⇒ DispatchFSM.step() 一次不跑,
+        #    ss_fsm.json 永远冻在"对位", 打在 step() 里的断点(例如 return self.state)永不命中。
+        try:
+            _m = meta or {}
+            _grip = float(np.asarray(u_ff, dtype=float).ravel()[3]) if u_ff is not None else None
+            self.advance(contact_p=contact_p,
+                         dist_h=_m.get("dist_h"),
+                         d_xy=_m.get("d_xy"),
+                         gripper=_grip,
+                         depth=_m.get("depth"),
+                         grasp_force=_m.get("grasp_force"),
+                         peg_z=_m.get("peg_z"),
+                         peg_z_grasp=_m.get("peg_z_grasp"),
+                         hole_z=_m.get("hole_z"),
+                         placed=bool(_m.get("placed") or False),
+                         lifted=_m.get("lifted"),
+                         at_grasp_pose=bool(_m.get("at_grasp_pose") or False),
+                         dist_aoi=_m.get("dist_aoi"))
+        except Exception:                                                  # noqa: BLE001
+            pass
         _zero = np.zeros_like(np.asarray(u_ff, dtype=float))
         _orch = getattr(self, "orch", None)
         _orch_tag = ""

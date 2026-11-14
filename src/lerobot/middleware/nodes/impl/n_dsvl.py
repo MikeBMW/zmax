@@ -24,6 +24,18 @@ def node_dsvl(ctx):
     人机在环红线: 本节点只产出『判读+建议』, 不产生任何机械臂动作指令。
     """
     log = ctx.get("log")
+    import os as _os
+    _off = _os.environ.get("ZMAX_LLM_OFF") == "1"
+    if not _off:
+        try:
+            from lerobot.engineering.thread_policy import single as _single
+            _off = bool(_single()) and _os.environ.get("ZMAX_LLM_ONLINE") != "1"
+        except Exception:                                              # noqa: BLE001
+            _off = False
+    if _off:
+        if log:
+            log("🧿 DeepSeek-V4-Flash: 单线程档 ⇒ 不在此线程联网判读 (ZMAX_LLM_ONLINE=1 可开), 本拍不阻塞画布")
+        return True
     try:
         ins = _ctx_params(ctx).get("instruction", "插入光模块")
         img, src, meta = _vlm_frame()

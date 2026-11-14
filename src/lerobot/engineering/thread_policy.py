@@ -57,6 +57,10 @@ def is_main() -> bool:
     return threading.current_thread() is threading.main_thread()
 
 
+_NET_LABELS = ("l5_intent", "vlm", "llm", "deepseek", "openai", "http", "api")
+_STATE: dict = {}
+
+
 def spawn_or_inline(name: str, fn, daemon: bool = True):
     """单线程 ⇒ 当场同步执行并返回 None; 否则起同名后台线程并返回 Thread。
 
@@ -65,6 +69,14 @@ def spawn_or_inline(name: str, fn, daemon: bool = True):
     让调用方的现有 err 记账继续生效。
     """
     if single():
+        # 🔴 联网类任务(pos标签)在单线程档被当场执行 = 整拍卡在 socket ⇒ decide() 不 tick,
+        #    断点永不命中(2026-11-14 实测 L5/DeepSeek urlopen)。这类任务直接跳过, 调用方按"没值"降级。
+        if any(k in str(name).lower() for k in _NET_LABELS):
+            _st = _STATE.setdefault("skip_net", [])
+            _st.append(str(name))
+            if len(_st) == 1:
+                print("⏭ 单线程档跳过联网任务 %r (不联网, 返回空)" % (name,), flush=True)
+            return None
         if not is_main():                       # 严格执行: 功能逻辑跑到别的线程上必须留痕
             _VIOL.append(threading.current_thread().name)
             if len(_VIOL) == 1:

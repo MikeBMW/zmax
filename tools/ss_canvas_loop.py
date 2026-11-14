@@ -91,6 +91,10 @@ FAST_HZ = float(os.environ.get("ZMAX_LOOP_FAST_HZ") or "20")
 #   不许每拍都跑, 否则一次全量 pass 25s, 10Hz 拍子直接崩。默认每 30 拍跑一次全的,
 #   其余拍子跳过这些节点 (它们的状态保持上一拍结果)。
 SLOW_IDS = [x.strip() for x in (os.environ.get("ZMAX_SLOW_IDS") or "").split(",") if x.strip()]
+# ⛔ 调试用跳过表 (ZMAX_SKIP_IDS): 单线程档下"外部 IO 节点"会被 spawn_or_inline 变成当场同步执行,
+#    一次 AOI/VLM/SAM3 就把整拍卡住 ⇒ 状态机(decide→advance→fsm.step)轮不到, 断点永不命中。
+#    调试状态空间时把这些 id 跳过; 生产不要设。
+SKIP_IDS = [x.strip() for x in (os.environ.get("ZMAX_SKIP_IDS") or "").split(",") if x.strip()]
 SLOW_EVERY = max(1, int(os.environ.get("ZMAX_SLOW_EVERY") or "30"))
 FULL_EVERY = max(1, int(os.environ.get("ZMAX_FULL_EVERY") or "30"))
 # 核心链: 每一拍都要跑 (状态空间 → 工艺动作 → 限幅 → 调制 → 规划 → 执行 → 物理)
@@ -186,6 +190,15 @@ def _yield_watch():
     while True:
         time.sleep(0.5)
         try:
+            if (os.environ.get("ZMAX_ENGINE_OWNER") != "1"
+                    and os.environ.get("ZMAX_LOCK_HELD_PID") != str(os.getpid())
+                    and os.path.exists("/tmp/zmax_engine_yield")):
+                log("⏸ 让位文件出现 ⇒ 本从属引擎退出, 让调试会话独占")
+                try:
+                    sys.stdout.flush()
+                except Exception:                                  # noqa: BLE001
+                    pass
+                os._exit(0)
             if _entry_running():
                 log("↩ 工程入口 start.py 已接管 ⇒ 本从属引擎让位退出 (不双跑)")
                 sys.stdout.flush()
@@ -202,6 +215,13 @@ def main():
     # 本进程**不持锁**: 只探测"工程入口 start.py 是否已接管"。
     # 持锁方只应是 start.py —— 否则 GUI 看门狗拉起的引擎会先占锁, 用户 F5 的 start.py 反而被
     # "已有工程入口在运行" 挡在门外 (2026-11-14 实测就是这个死锁)。
+    # 🚧 让位文件: 调试会话要独占引擎时 touch /tmp/zmax_engine_yield ⇒ 看门狗拉起的从属引擎
+    #    一律不 tick (再拉也退出); 只有 env ZMAX_ENGINE_OWNER=1 的调试会话可以跑。
+    if (os.environ.get("ZMAX_ENGINE_OWNER") != "1"
+            and os.environ.get("ZMAX_LOCK_HELD_PID") != str(os.getpid())   # start.py 进程内调用 ⇒ 豁免
+            and os.path.exists("/tmp/zmax_engine_yield")):
+        log("⏸ 让位文件 /tmp/zmax_engine_yield 存在 ⇒ 本从属引擎不 tick (调试会话独占)")
+        return 4
     if os.environ.get("ZMAX_LOCK_HELD_PID") != str(os.getpid()) and _entry_running():
         _owner = ""
         try:
@@ -259,6 +279,8 @@ def main():
                     _run = _ch if not SLOW_IDS else [x for x in _ch if x not in SLOW_IDS]
                 else:
                     _run = [x for x in _ch if x in CORE_IDS]
+                if SKIP_IDS:
+                    _run = [x for x in _run if x not in SKIP_IDS]
                     if not _run:
                         continue
                 traces.extend(prj.step(only=_run))

@@ -111,6 +111,16 @@ def _aoi_worker():
 
 def _ensure_worker():
     """懒启动 worker (daemon, 不阻塞进程退出)。首次调用返回 False = 还没出第一轮。"""
+    import os as _os
+    # 单线程/调试档**自动**关掉巡检(不依赖 env 是否被 VSCode 缓存吃掉):
+    #   AOI 一轮要打 10082/10083 两个 HTTP, 内联跑会把 10Hz 主循环钉住 ⇒ decide() 不 tick、断点不进。
+    #   生产(多线程)不受影响; 要在线看 AOI 就显式 ZMAX_AOI_ONLINE=1。
+    _single_env = str(_os.environ.get("ZMAX_SINGLE_THREAD", "")).strip().lower() in ("1", "true", "yes", "on")
+    _online = str(_os.environ.get("ZMAX_AOI_ONLINE", "")).strip().lower() in ("1", "true", "yes", "on")
+    if _os.environ.get("ZMAX_AOI_OFF") == "1" or (_single_env and not _online):
+        # 单线程调试档: AOI 巡检要打 10082/10083 两个 HTTP, 内联跑会把整拍卡住;
+        # 调试状态空间时用 ZMAX_AOI_OFF=1 关掉, 生产不要设。
+        return _W["first_done"]
     if _W["th"] is not None and _W["th"].is_alive():
         return _W["first_done"]
     with _W["lock"]:

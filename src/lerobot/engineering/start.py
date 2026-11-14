@@ -129,6 +129,84 @@ def _auth_probe(min_interval=2.0):
     return st
 
 
+def _offline_guard():
+    """调试档离线护栏: 任何节点对**外网**的联网调用立即失败(<1ms), 不占用整拍。
+
+    为什么需要: 单线程档 spawn_or_inline 会把"后台联网"改成当场同步执行, 于是 L5/DeepSeek、
+    VLM、AOI、INTACT-RPC 任何一个卡住都会把 10Hz 主循环钉在 socket 上 ⇒ decide() 不 tick,
+    断点永远不命中(2026-11-14 反复出现: l5_intent.py:137 / scene_vlm.py:195 / http 各种)。
+    逐节点打补丁是打地鼠; 这里在 socket 层一次性兜住: 环回(127.0.0.1/::1)放行(8793/8797 要通),
+    其余一律 OSError, 节点按"没值"降级, 节拍照走。
+
+    开关: 单线程档 或 ZMAX_LLM_OFF=1 时生效; ZMAX_LLM_ONLINE=1 可临时解除。
+    """
+    def _on(k: str) -> bool:
+        return str(os.environ.get(k, "")).strip().lower() in ("1", "true", "yes", "on")
+
+    if not ((_on("ZMAX_SINGLE_THREAD") or _on("ZMAX_LLM_OFF")) and not _on("ZMAX_LLM_ONLINE")):
+        return
+    import socket
+
+    _LOOP = ("127.", "::1", "localhost", "0.0.0.0")   # ⚠️ 绝不能含 ""(那会让所有主机都算本地)
+
+    def _is_local(host):
+        h = str(host or "")
+        return any(h.startswith(x) for x in _LOOP) or h in ("::1", "localhost")
+
+    _orig_cc = socket.create_connection
+
+    def _cc(address, *a, **k):
+        if not _is_local(address[0] if isinstance(address, (tuple, list)) and address else address):
+            raise OSError("offline(debug): 外网联网被禁止, 不占节拍 → %s" % (address,))
+        return _orig_cc(address, *a, **k)
+
+    socket.create_connection = _cc
+    _orig_connect = socket.socket.connect
+
+    def _connect(self, address):
+        if self.family in (socket.AF_INET, socket.AF_INET6) and not _is_local(
+                address[0] if isinstance(address, (tuple, list)) else address):
+            raise OSError("offline(debug): 外网联网被禁止, 不占节拍 → %s" % (address,))
+        return _orig_connect(self, address)
+
+    socket.socket.connect = _connect
+    print("🔌 调试档离线护栏已开: 外网联网立即失败, 环回放行(8793/8797 可用)", flush=True)
+
+
+def _debug_defaults():
+    """调试档(单线程)的**自带默认值** —— 不依赖 .vscode/launch.json 里的 env。
+
+    为什么必须自带(2026-11-14 反复踩): GUI 每次启动会用模板重写 .vscode/launch.json
+    (simulink_module._vscode_launch_cfg), 把我加进去的 ZMAX_AOI_OFF/ZMAX_SKIP_IDS/
+    ZMAX_TRAJ_CHUNK 全冲掉 ⇒ F5 起来的进程只剩 ZMAX_SINGLE_THREAD=1, 于是 AOI/L5/渲染
+    又把主循环钉住, decide() 不 tick, 断点"永远不进"。
+    这里 setdefault: 配置文件里显式给了就以配置为准, 没给就用这套安全默认。
+    """
+    def _on(k: str) -> bool:
+        return str(os.environ.get(k, "")).strip().lower() in ("1", "true", "yes", "on")
+
+    _single = _on("ZMAX_SINGLE_THREAD")
+    _online = _on("ZMAX_LLM_ONLINE") or _on("ZMAX_AOI_ONLINE")
+    if not _single or _online:
+        return
+    _d = {
+        "ZMAX_LLM_OFF": "1",            # L5/DeepSeek/VLM 一律不联网
+        "ZMAX_AOI_OFF": "1",            # 不做 10082/10083 巡检(内联会卡整拍)
+        "ZMAX_FULL_EVERY": "999999",    # 不跑整张画布, 只跑核心链
+        "ZMAX_TRAJ_CHUNK": "1",         # 断点一停, 最多多走 1 点
+        "ZMAX_SKIP_IDS": "ssyolo,ssllm,ssreason,n_vlm_llm,n_dsvl,ss_l5,ss_seg,ssaoi,ssvlm,ssllm_in,ssintact,ssintact_dec,swintact,ss_lora_l4,ssmani_exp,ss_mem_l3,ssbg_vlm,ss_man,n_geoplan,swds,swvideo,n_realscene,ssrender,ssdec,ss2d3d,ss_lora_l3",
+        "ZMAX_CORE_IDS": "ssobs,sssensor,ssff,ssest,sspred,ssinnov,sssched,sslimit,ssact,sstactile,n_exec",
+        "SS_VLM_TIMEOUT": "8",
+    }
+    _set = []
+    for k, v in _d.items():
+        if not str(os.environ.get(k, "")).strip():
+            os.environ[k] = v
+            _set.append(k)
+    if _set:
+        print("🧪 调试档自带默认 env: " + ", ".join(_set), flush=True)
+
+
 def main() -> int:
     _a0 = _auth_probe()                      # ⏱ 第一件事: 你有没有在前端授权, 现在就知道
     _say("")
@@ -147,6 +225,8 @@ def main() -> int:
         from lerobot.engineering import step_mode        # 单步纪律: 节点不许脱离调用栈自己跑
         step_mode.install()
     from lerobot.policies.left_right.state_space.scheduler_fsm import STATES, POLICY, get_fsm
+    _debug_defaults()
+    _offline_guard()
     import ss_canvas_loop as engine                                  # 执行腿(10Hz 引擎)
 
     mode = os.environ.get("SS_MODE", "insert")

@@ -6,6 +6,58 @@ Z-MAX Simulink 模式 · GUI 控制台引擎
 与 Web comfyui.html 共用 simulink-spec.md v1.0 节点规范 (JSON 完全一致)
 """
 import json, math, random, re, time, os, sys, glob, tempfile
+
+
+def _proc_cmdlines():
+    """扫描 /proc 里的命令行(纯 Python, 无子进程, 约 1~3ms)。
+
+    UI 线程禁止 spawn 子进程做"检测类"工作: `pgrep`/`du` 这类调用一旦卡住,
+    整个 Qt 事件循环就冻住(2026-11-14 实测: 点一下节点菜单整窗卡死, 元凶是同步 subprocess)。
+    """
+    out = []
+    for d in os.listdir("/proc"):
+        if not d.isdigit():
+            continue
+        try:
+            with open("/proc/%s/cmdline" % d, "rb") as fh:
+                cl = fh.read().replace(b"\x00", b" ").decode("utf8", "ignore")
+        except OSError:
+            continue
+        if cl:
+            out.append((int(d), cl))
+    return out
+
+
+_PROC_CACHE = {}
+
+
+def _has_proc(keyword, ttl=5.0):
+    """进程存在性查询 —— **永不阻塞 UI**: 命中缓存直接返回, 过期则由后台线程刷新。
+
+    实测: 全 /proc 扫 287 进程 ≈ 17ms, 放在点击路径上仍是可感的卡顿; 所以这里只做缓存读,
+    真正的扫描交给 daemon 线程(每 ttl 秒最多一轮, 同一关键词不排队)。
+    """
+    now = time.time()
+    ent = _PROC_CACHE.get(keyword)
+    stale = (ent is None) or (now - ent[0] > ttl)
+    if stale and not _PROC_CACHE.get("_busy_" + keyword):
+        _PROC_CACHE["_busy_" + keyword] = True
+
+        def _refresh():
+            try:
+                _me = os.getpid()
+                _v = any(keyword in c for _p, c in _proc_cmdlines() if _p != _me)
+                _PROC_CACHE[keyword] = (time.time(), _v)
+            except Exception:                                              # noqa: BLE001
+                pass
+            finally:
+                _PROC_CACHE["_busy_" + keyword] = False
+        try:
+            import threading as _th
+            _th.Thread(target=_refresh, name="procscan", daemon=True).start()
+        except Exception:                                                  # noqa: BLE001
+            _refresh()
+    return bool(ent[1]) if ent else False
 from PyQt5.QtCore import (Qt, QRectF, QPointF, QTimer, pyqtSignal, QLineF, QThread,
                         QMimeData, QByteArray, QObject, QEvent)   # 📚 模块库拖拽 (2026-10-09)
 from PyQt5.QtGui import QDrag                     # 📚 模块库拖拽
@@ -5692,9 +5744,14 @@ def _vscode_launch_cfg(root: str) -> dict:
              "env": {"PYTHONPATH": _os.path.join(root, "src") + ":" + _os.path.join(root, "tools"),
                      "PYTHONUNBUFFERED": "1", "PYDEVD_DISABLE_FILE_VALIDATION": "1",
                      "ZMAX_FSM": "1", "ZMAX_ORCH": "1",
-                     "ZMAX_AUTO_TRAJ": "1", "ZMAX_TRAJ_CHUNK": "10", "ZMAX_TRAJ_SPEED": "20",
+                     # ⚡ 2026-11-14: CHUNK=1 ⇒ 断点停在任意节点时, 臂最多再多走 1 点;
+                     #    SPEED=40 是老倪要的快档。调试档的重节点跳过/离线护栏在 start.py
+                     #    的 _debug_defaults/_offline_guard 里自带, 这里不必重复列(但列了也无害)。
+                     "ZMAX_AUTO_TRAJ": "1", "ZMAX_TRAJ_CHUNK": "1", "ZMAX_TRAJ_SPEED": "40",
                      "ZMAX_DISPATCH_INPROC": "0",
-                     "OMP_NUM_THREADS": "4", "MKL_NUM_THREADS": "4"}},
+                     "ZMAX_SINGLE_THREAD": "1", "ZMAX_LLM_OFF": "1", "ZMAX_AOI_OFF": "1",
+                     "ZMAX_FULL_EVERY": "999999", "SS_VLM_TIMEOUT": "8",
+                     "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"}},
         ],
     }
 
@@ -9798,19 +9855,24 @@ class SimulinkModule(QWidget):
             self.log_box.verticalScrollBar().setValue(
                 self.log_box.verticalScrollBar().maximum())
             # ⚙ 2026-08-08 老倪: 训练中终端要看到状态 — 动态检测 lerobot_train 进程 + 进度 (去重)
-            self._poll_train_state()
+            #   ⚡ 2026-11-14: 该函数在「点节点 → 右键菜单」路径上被调用, 必须极轻: 0.3s 节流 + 无子进程
+            _t2 = time.time()
+            if _t2 - float(getattr(self, "_ext_poll_t", 0.0) or 0.0) >= 0.3:
+                self._ext_poll_t = _t2
+                self._poll_train_state()
         except Exception:
             pass
 
     def _poll_train_state(self):
         """每 2s: 检测训练进程 → 日志框显示「训练中: 目录 · 步数」; 开始/结束各提示一次"""
-        import subprocess as _sp
-        try:
-            _out = _sp.run(["pgrep", "-f", "lerobot_train"], capture_output=True, text=True, timeout=5).stdout
-        except Exception:
+        # ⚡ 2026-11-14: 原来这里每拍 spawn `pgrep`(UI 线程同步等 5s 超时), 偶发卡死 ⇒ 点节点整窗冻住。
+        #    改成纯 /proc 扫描(无子进程, ~2ms) + 2s 节流。
+        _t_now = time.time()
+        if _t_now - float(getattr(self, "_train_poll_t", 0.0) or 0.0) < 2.0:
             return
+        self._train_poll_t = _t_now
         root = self._repo_root()
-        _running = bool(_out.strip())
+        _running = _has_proc("lerobot_train")
         _state = ""
         if _running:
             _dirs = sorted(glob.glob(os.path.join(root, "outputs", "train", "*", "checkpoints")),

@@ -254,7 +254,11 @@ def run(ctx):
         _SS_STATE["quality_gate"] = _qg
 
         mod = cog.ActionModulator()
-        u, stage = mod.decide(np.asarray(u_ff, dtype=float), u_fb, _cp, r)
+        # 观测证据随每拍交给调制器 → 它在 decide 里推进 DispatchFSM (见 cognition.decide 顶部)
+        _meta = {_k: _SS_STATE.get(_k) for _k in
+                 ("dist_h", "d_xy", "depth", "grasp_force", "peg_z", "peg_z_grasp",
+                  "hole_z", "placed", "lifted", "at_grasp_pose", "dist_aoi")}
+        u, stage = mod.decide(np.asarray(u_ff, dtype=float), u_fb, _cp, r, meta=_meta)
         if np.ndim(u) == 0:
             u = np.zeros(4)
         u = np.asarray(u, dtype=float).copy()

@@ -181,6 +181,19 @@ def intent(obs43=None, frame=None):
     · SS_L5_SYNC=1 = 当场同步算 (调试/单步; 会占 1~3s)。
     · 冷启第一拍: 多线程档后台起线程返回 None; 同步档当场出结果 (保证链路能验证)。
     """
+    # 🔴 断点把整拍卡死的第 3 个来源(2026-11-14 实测): 单线程档 spawn_or_inline 把 L5 联网
+    #    改成当场同步执行 ⇒ 每拍 urlopen 到 DeepSeek, 60s 超时 ⇒ 主循环回不到 ss_canvas_loop:286,
+    #    decide() 一次不跑, 587 永不命中。调试/单线程档一律不联网, 只回缓存。
+    _off = str(os.environ.get("ZMAX_LLM_OFF", "")).strip().lower() in ("1", "true", "yes", "on")
+    _single = str(os.environ.get("ZMAX_SINGLE_THREAD", "")).strip().lower() in ("1", "true", "yes", "on")
+    _online = str(os.environ.get("ZMAX_LLM_ONLINE", "")).strip().lower() in ("1", "true", "yes", "on")
+    if (_off or _single) and not _online:
+        _r = _ST.get("res")
+        if not _r:
+            return None
+        _o = dict(_r)
+        _o["age_s"] = round(time.time() - float(_r.get("ts") or 0.0), 2)
+        return _o
     now = time.time()
     res, t = _ST.get("res"), float(_ST.get("t") or 0.0)
     age = (now - t) if t else 1e9

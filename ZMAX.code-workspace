@@ -46,12 +46,19 @@
           "PYDEVD_DISABLE_FILE_VALIDATION": "1",
           "ZMAX_FSM": "1",
           "ZMAX_ORCH": "1",
+          "ZMAX_LLM_OFF": "1",
+          "SS_VLM_TIMEOUT": "8",
+          "ZMAX_SINGLE_THREAD": "1",
           "ZMAX_AUTO_TRAJ": "1",
-          "ZMAX_TRAJ_CHUNK": "10",
+          "ZMAX_TRAJ_CHUNK": "1",
           "ZMAX_TRAJ_SPEED": "40",
           "ZMAX_DISPATCH_INPROC": "0",
-          "OMP_NUM_THREADS": "4",
-          "MKL_NUM_THREADS": "4"
+          "OMP_NUM_THREADS": "1",
+          "MKL_NUM_THREADS": "1",
+          "ZMAX_AOI_OFF": "1",
+          "ZMAX_SKIP_IDS": "ssyolo,ssllm,ssreason,n_vlm_llm,n_dsvl,ss_l5,ss_seg,ssaoi,ssvlm,ssllm_in,ssintact,ssintact_dec,swintact,ss_lora_l4,ssmani_exp,ss_mem_l3,ssbg_vlm,ss_mani_eng,ssmani_c,ssmani_p,n_calib_mani,n_geoplan,swds,swvideo,n_realscene,ssdec,ss2d3d,ss_lora_l3",
+          "ZMAX_CORE_IDS": "ssobs,sssensor,ssff,ssest,sspred,ssinnov,sssched,sslimit,ssact,sstactile,n_exec",
+          "ZMAX_FULL_EVERY": "999999"
         }
       },
       {
@@ -70,6 +77,8 @@
         "stopOnEntry": false,
         "env": {
           "ZMAX_DEBUG_FUSE": "1",
+          "ZMAX_SINGLE_THREAD": "1",
+          "ZMAX_ENGINE_OWNER": "1",
           "ZMAX_DISPATCH_INPROC": "0",
           "PYTHONUNBUFFERED": "1",
           "PYDEVD_DISABLE_FILE_VALIDATION": "1"
@@ -98,6 +107,22 @@
           "HF_HUB_OFFLINE": "1",
           "TRANSFORMERS_OFFLINE": "1"
         }
+      },
+      {
+        "name": "🔌 附着 · 后端状态空间 (start.py · 5678)",
+        "type": "python",
+        "request": "attach",
+        "connect": {
+          "host": "127.0.0.1",
+          "port": 5678
+        },
+        "justMyCode": false,
+        "pathMappings": [
+          {
+            "localRoot": "/home/ubuntu/zmax",
+            "remoteRoot": "/home/ubuntu/zmax"
+          }
+        ]
       }
     ]
   },

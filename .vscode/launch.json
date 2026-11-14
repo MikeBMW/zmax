@@ -2,34 +2,6 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "🧠 后端工程 · 调度状态机 (start.py)",
-      "type": "python",
-      "request": "launch",
-      "program": "/home/ubuntu/zmax/src/lerobot/engineering/start.py",
-      "python": "/home/ubuntu/zmax/gui-venv311/bin/python",
-      "pythonArgs": [
-        "-X",
-        "frozen_modules=off"
-      ],
-      "cwd": "/home/ubuntu/zmax",
-      "console": "integratedTerminal",
-      "justMyCode": false,
-      "stopOnEntry": false,
-      "env": {
-        "PYTHONPATH": "/home/ubuntu/zmax/src:/home/ubuntu/zmax/tools",
-        "PYTHONUNBUFFERED": "1",
-        "PYDEVD_DISABLE_FILE_VALIDATION": "1",
-        "ZMAX_FSM": "1",
-        "ZMAX_ORCH": "1",
-        "ZMAX_AUTO_TRAJ": "1",
-        "ZMAX_TRAJ_CHUNK": "10",
-        "ZMAX_TRAJ_SPEED": "40",
-        "ZMAX_DISPATCH_INPROC": "0",
-        "OMP_NUM_THREADS": "4",
-        "MKL_NUM_THREADS": "4"
-      }
-    },
-    {
       "name": "🖥 前端 GUI · 控制台可视化 (studio.py)",
       "type": "python",
       "request": "launch",
@@ -50,6 +22,34 @@
         "PYDEVD_DISABLE_FILE_VALIDATION": "1",
         "HF_HUB_OFFLINE": "1",
         "TRANSFORMERS_OFFLINE": "1"
+      }
+    },
+    {
+      "name": "🧠 后端工程 · 调度状态机 (start.py)",
+      "type": "python",
+      "request": "launch",
+      "program": "/home/ubuntu/zmax/src/lerobot/engineering/start.py",
+      "python": "/home/ubuntu/zmax/gui-venv311/bin/python",
+      "pythonArgs": [
+        "-X",
+        "frozen_modules=off"
+      ],
+      "cwd": "/home/ubuntu/zmax",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "stopOnEntry": false,
+      "env": {
+        "PYTHONPATH": "/home/ubuntu/zmax/src:/home/ubuntu/zmax/tools",
+        "PYTHONUNBUFFERED": "1",
+        "PYDEVD_DISABLE_FILE_VALIDATION": "1",
+        "ZMAX_FSM": "1",
+        "ZMAX_ORCH": "1",
+        "ZMAX_AUTO_TRAJ": "1",
+        "ZMAX_TRAJ_CHUNK": "1",
+        "ZMAX_TRAJ_SPEED": "40",
+        "ZMAX_DISPATCH_INPROC": "0",
+        "OMP_NUM_THREADS": "4",
+        "MKL_NUM_THREADS": "4"
       }
     }
   ]

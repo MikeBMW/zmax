@@ -3275,6 +3275,20 @@ def _vlm_ask_async(mode, image, ctx, log, fresh_s=8.0):
                 log("⚠️ 场景理解异常: %s: %s" % (type(e).__name__, e))
 
     # 🧵 550B 单线程: 当场调完再返回 (断点停在主线程; 单线程下"pending"不会残留成调用中)
+    # 🔴 但"当场"意味着一次 VLM HTTP(默认 60s)会**阻塞整拍** ⇒ 状态机 decide→advance→fsm.step 轮不到,
+    #    断点永远不进(2026-11-14 实测: 主线程卡在 urlopen, n_cycle 恒 0)。
+    #    所以单线程档默认不联网; 真要看判读结果显式 ZMAX_LLM_ONLINE=1。
+    try:
+        from lerobot.engineering.thread_policy import single as _single_1
+        import os as _os_1
+        if bool(_single_1()) and _os_1.environ.get("ZMAX_LLM_ONLINE") != "1":
+            st.update({"result": {"ok": False, "why": "单线程档不联网判读 (ZMAX_LLM_ONLINE=1 可开)"},
+                       "pending": False})
+            if log:
+                log("🖼🧠 单线程档 ⇒ 跳过 VLM 联网调用 (不阻塞画布; 要判读设 ZMAX_LLM_ONLINE=1)")
+            return st
+    except Exception:                                                      # noqa: BLE001
+        pass
     _spawn_or_inline("ss_vlm", _work)
     return st
 
@@ -4034,10 +4048,18 @@ def node_ss_feature(ctx):
     log = ctx.get("log")
     try:
         mod = _verif_mod()
+        # 🔴 2026-11-14: 这个节点原来**每拍**都 new 一个 VerificationLayer 并跑 v.engine()
+        #    (内部 = 完整 StateSpaceSim + DispatchFSM.step) ⇒ 一拍几百 ms 到数秒,
+        #    打在任何 step()/advance() 行上的断点会被这条"验证链"先撞住, 看起来像主链卡死。
+        #    单线程/调试档: 只第一次汇总, 之后直接复用 (_SS_STATE["verif"]); 要预热给 ZMAX_VERIFY_ONLINE=1。
+        _single = str(os.environ.get("ZMAX_SINGLE_THREAD", "")).strip().lower() in ("1", "true", "yes", "on")
+        _von = str(os.environ.get("ZMAX_VERIFY_ONLINE", "")).strip().lower() in ("1", "true", "yes", "on")
+        if _single and not _von and _SS_STATE.get("verif"):
+            return True
         v = mod.VerificationLayer()
         v.list_features()
-        # 引擎快跑一次 (验证层数据真源预热, 断点可进 StateSpaceSim)
-        _ = v.engine()
+        if not (_single and not _von):
+            _ = v.engine()          # 引擎快跑一次 (验证层数据真源预热, 断点可进 StateSpaceSim)
         if log:
             log("🧩 Feature 清单已汇总 (见上方) · 自动项可点「🧪 Test 用例执行」逐个跑")
         _SS_STATE["verif"] = {"features": mod.FEATURES}

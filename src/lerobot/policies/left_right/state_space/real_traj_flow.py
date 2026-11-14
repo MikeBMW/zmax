@@ -190,7 +190,14 @@ class RealTrajFlow:
             return
 
         if st.get("cursor") is not None:
-            self.cursor = max(self.cursor, int(st.get("cursor") or 0))
+            _c = int(st.get("cursor") or 0)
+            if not st.get("running") and _c + 2 < self.cursor:
+                # 🔴 服务端游标回退(align/复位)后必须跟着退: 原来只做 max(), flow 会永远超前于 8797,
+                #    于是每轮都判 jump → align → 服务端还在原地 ⇒ 死循环, 臂一步不动(2026-11-14 实测)。
+                self.cursor = _c
+                self._post_cursor = -1
+            else:
+                self.cursor = max(self.cursor, _c)
         if not st.get("running") and st.get("done"):
             # 演练/单轮结束时 8797 只在真机模式下推进 cursor ⇒ 这里按 start+done 兜底推进
             self.cursor = max(self.cursor, int(st.get("start") or 0) + int(st.get("done") or 0))
@@ -256,6 +263,9 @@ class RealTrajFlow:
             # 真机不在轨迹附近 ⇒ 让 8797 把游标对齐到最近点, 再继续
             try:
                 ra = _post("/api/arm/step_traj", {"align": True})
+                if ra.get("cursor") is not None:      # 对齐后以服务端为准, 否则 flow 游标仍超前
+                    self.cursor = int(ra["cursor"])
+                    self._post_cursor = -1
                 self.last_msg = "对齐到真机最近点: %s" % (ra.get("msg") or ra.get("err") or "")
                 _say("◎ " + self.last_msg)
             except Exception as e:                                       # noqa: BLE001

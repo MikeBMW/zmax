@@ -28,6 +28,23 @@ def node_ss_llm_in(ctx):
     🚫 无模型时只给**规则回退摘要**并如实标注 —— 不假装有视觉理解 (老倪红线)
     """
     log = ctx.get("log")
+    import os as _os
+    _off = _os.environ.get("ZMAX_LLM_OFF") == "1"
+    if not _off:
+        # 单线程档 ⇒ spawn_or_inline 会把"后台线程"改成当场内联, 60s 的 VLM HTTP 会卡死整拍;
+        # 所以单线程下默认不联网(要看真判读就显式 ZMAX_LLM_ONLINE=1)。与 launch.json 是否带 env 无关。
+        try:
+            from lerobot.engineering.thread_policy import single as _single
+            _off = bool(_single()) and _os.environ.get("ZMAX_LLM_ONLINE") != "1"
+        except Exception:                                              # noqa: BLE001
+            _off = False
+    if _off:
+        # 🔴 单线程调试专用: 单线程档会把 _vlm_ask_async 的"后台线程"改成当场内联(thread_policy.spawn_or_inline),
+        #   一次 VLM HTTP 能等 30~300s ⇒ 整拍卡在这里, 下游 decide() 根本轮不到, 断点永不命中。
+        #   想调状态空间就把本节点短路掉; 生产/多线程档不要设这个 env。
+        if log:
+            log("📝 任务指令: LLM/VLM 通道已短路 (ZMAX_LLM_OFF=1 · 单线程调试不阻塞画布)")
+        return True
     try:
         # 🔌 2026-10-28: 画布参数键叫 task_input(见节点参数), 代码原来只认 instruction ⇒ 填了不生效
         _cp = _ctx_params(ctx)
