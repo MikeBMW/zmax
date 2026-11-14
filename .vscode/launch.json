@@ -46,7 +46,7 @@
         "ZMAX_ORCH": "1",
         "ZMAX_AUTO_TRAJ": "1",
         "ZMAX_TRAJ_CHUNK": "1",
-        "ZMAX_TRAJ_SPEED": "40",
+        "ZMAX_TRAJ_SPEED": "20",
         "ZMAX_DISPATCH_INPROC": "0",
         "OMP_NUM_THREADS": "4",
         "MKL_NUM_THREADS": "4"

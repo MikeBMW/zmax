@@ -48,7 +48,7 @@ def _say(msg: str) -> None:
 _LOCK_FH = None
 
 
-def _acquire_single_instance() -> bool:
+def _acquire_single_instance(_retry: bool = True) -> bool:
     """单实例锁 —— 生产纪律: 一个进程只能有一个工程入口。
 
     为什么必须有: 状态机是进程级单例, 两个入口进程 = 两个状态机, 会**双写** ss_live/ss_fsm.json;
@@ -64,6 +64,25 @@ def _acquire_single_instance() -> bool:
     except OSError:
         fh.seek(0)
         owner = (fh.read() or "").strip() or "未知"
+        # 🩹 2026-11-14 现场: 占锁的常常不是"工程入口"而是 ss_canvas_loop 之类的孤儿进程
+        #    ⇒ F5 直接 SystemExit 2, 看着像"启动失败"。只认 cmdline 含 engineering/start.py 的持有者。
+        _foreign = True
+        try:
+            _cmd = open("/proc/%s/cmdline" % int(owner), "rb").read().decode("utf-8", "ignore")
+            _foreign = "engineering/start.py" not in _cmd
+        except Exception:                                              # noqa: BLE001
+            _foreign = True                                            # 进程已不在 ⇒ 陈旧锁
+        if _foreign and _retry:
+            _say("🧹 锁被非工程进程占用 (pid %s) ⇒ 按陈旧锁处理, 接管" % owner)
+            try:
+                fh.close()
+            except Exception:                                          # noqa: BLE001
+                pass
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+            return _acquire_single_instance(_retry=False)
         _say("⛔ 已有工程入口在运行 (pid %s · 锁 %s) ⇒ 拒绝重复启动" % (owner, path))
         return False
     fh.seek(0)
@@ -197,6 +216,11 @@ def _debug_defaults():
         "ZMAX_SKIP_IDS": "ssyolo,ssllm,ssreason,n_vlm_llm,n_dsvl,ss_l5,ss_seg,ssaoi,ssvlm,ssllm_in,ssintact,ssintact_dec,swintact,ss_lora_l4,ssmani_exp,ss_mem_l3,ssbg_vlm,ss_man,n_geoplan,swds,swvideo,n_realscene,ssrender,ssdec,ss2d3d,ss_lora_l3",
         "ZMAX_CORE_IDS": "ssobs,sssensor,ssff,ssest,sspred,ssinnov,sssched,sslimit,ssact,sstactile,n_exec",
         "SS_VLM_TIMEOUT": "8",
+        # 🚦 闭环直驱护栏: 调试档默认"影子" —— 只记录 u 与实测运动的比对, 不改 u/不接管
+        #    要真接管改成 armed(还必须连续 30 拍达标); 关掉写 off
+        "ZMAX_DD_MODE": "shadow",
+        # a 算错(NaN/超限/变化率超) ⇒ 直接输出 215 点当前点真值关节, 而不是把 0 当指令
+        "ZMAX_DD_TRAJ_FALLBACK": "1",
     }
     _set = []
     for k, v in _d.items():
@@ -247,7 +271,7 @@ def main() -> int:
     flow = None
     if os.environ.get("ZMAX_AUTO_TRAJ") == "1":          # 全流程自动执行(授权即跑, 215 点)
         from lerobot.policies.left_right.state_space.real_traj_flow import RealTrajFlow
-        flow = RealTrajFlow(chunk=int(os.environ.get("ZMAX_TRAJ_CHUNK") or 10),
+        flow = RealTrajFlow(chunk=int(os.environ.get("ZMAX_TRAJ_CHUNK") or 1),
                             speed=float(os.environ.get("ZMAX_TRAJ_SPEED") or 20),
                             dwell_ms=int(os.environ.get("ZMAX_TRAJ_DWELL_MS") or 120),
                             dry=os.environ.get("ZMAX_TRAJ_DRY") == "1")

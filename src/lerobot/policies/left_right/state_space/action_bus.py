@@ -96,30 +96,19 @@ def cursor215():
         return 0
 
 
-def exec_index(max_err_mm=25.0):
-    """真机**此刻实际所在**的 215 点序号(0 基) —— 用位姿真值在 215 点里找最近点。
+def nearest_index(max_err_mm=60.0):
+    """真机位姿最近的 215 点(0 基) —— **只用于对账/显示**, 不参与 action 取值。
 
-    为什么要有这个 (2026-11-14 老倪:「你看现在的 action, 怎么跟机器人上看到的不一样?」):
-      action 原来取 traj_step_state.cursor, 而 cursor 是**每轮结束**才推进的派单游标;
-      一轮 n=10 点时, 臂在走第 70~79 点, action 却还写 69 ⇒ 看着"对不上"。
-      ⇒ action 必须跟**实际执行**走, 不跟派单游标走。
-    口径: 只在真机确有位姿(帧龄<2s)时算; 最近点距离超 max_err_mm 视为对不上 ⇒ None(不猜)。
+    为什么不拿它当 action 的点: 215 点里有些位置在空间上互相靠近(轨迹来回经过同一片区域),
+    最近点会跳错(实测: 臂在第 71 点, 最近点却是 70/51 并列) ⇒ 只能当参考, 不能当判据。
     """
-    st = _traj_state()
     fr = _frames()
-    if not fr:
-        return None
     try:
         if time.time() - os.path.getmtime(LATEST) > 2.0:
             return None
         d = json.load(open(LATEST, encoding="utf-8"))
         p = [float(d["x"]) * 1000.0, float(d["y"]) * 1000.0, float(d["z"]) * 1000.0]
-        if p == [0.0, 0.0, 0.0]:
-            return None
     except Exception:                                          # noqa: BLE001
-        return None
-    # 只在运行中(或刚结束)才做就近匹配, 免得空闲时把"人手动挪过的位置"当成执行点
-    if not st.get("running"):
         return None
     best, bd = None, 1e9
     for i, f in enumerate(fr):
@@ -131,6 +120,31 @@ def exec_index(max_err_mm=25.0):
         if dd < bd:
             best, bd = i, dd
     return best if (best is not None and bd <= max_err_mm) else None
+
+
+def exec_index(max_err_mm=25.0):
+    """真机**此刻正在执行**的 215 点序号(0 基)。
+
+    口径(2026-11-14 定): 只认**派单事实** —— start + done(n 点一段, done 在段内递增)。
+      为什么不用"最近点": 轨迹会来回经过同一片区域, 最近点会跳错(实测第71点在跑,
+      最近点同时匹配到 70 和 51) ⇒ 拿它当 action 的点就是"看着对应, 实则错位"。
+      为什么不用 cursor: cursor 是**每轮结束**才推进的派单游标, 段内会落后最多 n 点。
+    取不到派单事实 ⇒ 退回最近点; 再取不到 ⇒ None(不猜)。
+    """
+    st = _traj_state()
+    if not st.get("running"):
+        return None
+    fr = _frames()
+    try:
+        s = int(st.get("start") or 0)
+        n = int(st.get("n") or 0)
+        d = int(st.get("done") or 0)
+        if n > 0:
+            i = s + max(0, min(d, n - 1))
+            return max(0, min(i, len(fr) - 1))
+    except Exception:                                          # noqa: BLE001
+        pass
+    return nearest_index(max_err_mm)
 
 
 def from_traj215(cursor=None, why="215 点真值回放"):
@@ -159,7 +173,8 @@ def from_traj215(cursor=None, why="215 点真值回放"):
            "i": i, "i_plan": i_plan, "why": why, "ts": time.time(), "joints_src": "215点轨迹"}
     for k in range(6):
         act["j%d" % (k + 1)] = round(math.degrees(float(j[k])), 4)
-    return _with_grip(act, grip_at(i, len(fr)))
+    act = _with_grip(act, grip_at(i, len(fr)))
+    return _enrich(act)
 
 
 def from_ss(u, dt=0.1, pose_now=None, joints_now=None, why="状态空间输出"):
@@ -295,6 +310,34 @@ def read():
         return None
 
 
+def _enrich(act):
+    """给 action 补**对账用**字段 —— 老倪拿 action 和机器人屏幕对数字时缺的就是这些。
+
+    pose_now   : 机器人此刻实测位姿(与 action 同格式, 带 age_s)
+    delta_mm   : action(目标) − 实测, 三个分量; 差多少一目了然
+    i_nearest  : 实测位姿最近的 215 点(仅参考; 轨迹来回经过同一片区域时会跳, 不作判据)
+    dispatch   : 运行中的派单事实 {start, n, done, cursor}
+    """
+    if not act:
+        return act
+    try:
+        _t = read_pose()
+        if _t:
+            act["pose_now"] = _t
+            if act.get("x") is not None and _t.get("x") is not None:
+                act["delta_mm"] = [round(float(act["x"]) - float(_t["x"]), 2),
+                                   round(float(act["y"]) - float(_t["y"]), 2),
+                                   round(float(act["z"]) - float(_t["z"]), 2)]
+            act["i_nearest"] = nearest_index()
+        _st = _traj_state()
+        if _st.get("running"):
+            act["dispatch"] = {"start": _st.get("start"), "n": _st.get("n"),
+                               "done": _st.get("done"), "cursor": _st.get("cursor")}
+    except Exception:                                                      # noqa: BLE001
+        pass
+    return act
+
+
 def from_action(act, deny=""):
     """把执行器返回的 action(位姿口径)摊平成 action.json 的字段表 —— **唯一出口**。
 
@@ -320,6 +363,7 @@ def from_action(act, deny=""):
             out[_k] = act.get(_k)
     if deny:
         out["why"] = ("%s · %s" % (out.get("why") or "", deny)).strip(" ·")
+    out = _enrich(out)
     _mm, _age = grip_meas()
     out.setdefault("grip_meas_mm", _mm)
     out.setdefault("grip_meas_age_s", (None if _age is None else round(_age, 1)))
