@@ -178,6 +178,11 @@ def node_xxx(ctx):
   取证: 起第二个被拒并打出持有 pid、`kill -TERM` 能看到停止行、退出码 0/2/130 有意义。
 - **入口自己的话必须写 `sys.__stdout__`**: 引擎降噪会把 `print` 重定向进日志文件(本项目 `/tmp/ss_canvas_loop.log`),
   否则 F5 后终端一片空白, 用户以为没启动。
+- **要「单步走过每个节点、任何节点不许自己跑」⇒ 三层守卫 + 死循环 worker 拆单轮**: 线程一律 `spawn_or_inline`、
+  节点计算里起的 `.py` 子进程拒并点名(库探针放行)、`FAST_ONLY=[]` 且 OMP/MKL/TORCH=1; 把 `while True` 的
+  worker 原地内联会**卡死整拍**, 必须拆成 `_worker_once()` 由节点每拍推进一轮。验收四条: 线程名只剩 MainThread ·
+  「没有节点试图脱离调用栈」汇总行 · 行级 trace 覆盖各层 · 状态机 `n_trans` 递增。详见
+  `references/step-mode-single-thread-debug.md`。
 
 ## 四、六查探针 (照抄这个结构, 每查都要有机器可判的判据)
 

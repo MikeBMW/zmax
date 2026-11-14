@@ -118,6 +118,24 @@ sudo <venv>/bin/py-spy dump --pid $(pgrep -f 'studio[.]py' | head -1) 2>&1 | hea
   ③再去改动 —— 不抓栈去改事件处理/重写 UI 都是改错地方。
 - 这类修复改的是 `.py` ⇒ **要重启 GUI 才生效**, 当场能给的只是“下次启动生效”, 如实说。
 
+## 1f. 「清后台 / 把机器腾出来」= 分批定位 → 按托管方式停 → 每批复测
+
+用户报「控制台/界面慢」而机器并非算力饱和时，先取三个数（只读，一次出齐）：
+```bash
+top -bn2 -d1 -w 120 | awk '/^top -/{n++} n==2' | head -14   # 第 2 次采样才是瞬时 %CPU(ps 是生命周期均值)
+top -bn1 -H -p <pid> | head -12                              # 单进程内哪个线程在烧(常见: 一个线程 99.9%)
+ss -s | head -2                                              # TIME_WAIT/孤儿连接数(数千 = 前端每帧新建连接)
+```
+- **换算成核数报**: 前几名瞬时 %CPU 相加 ÷100 = "X 核 / N 核"; 只说"很忙"没有说服力。
+- **停之前先认托管方**: `ps -o ppid= -p <pid>` —— ppid=1 且 `systemctl status <pid>` 能给出 unit ⇒ `sudo systemctl stop <unit>`（要防开机起才 disable）；
+  ppid 是用户 systemd 或 GUI 看门狗 ⇒ **杀了会被原参数拉回**（实测 4 秒重生），必须在报告里写明"这个只能改启动参数才降得下来"。
+- **一类一测**: 停一批→采一次 load/idle/sys/free→再停下一批；别一口气全停再给一个总数字。
+- 实测(32 线程工位机, 一轮清 4 个后台): load **23.8→14.5** · idle **24%→63%** · sys **33~57%→6%** · free **2.3G→7.3G**；
+  回收项 = 影子采集 97% + 渲染台 47% + 一个反复 flap 的 unit + 刚起的进化训练(104% / 3G)。
+- **几千条 TIME_WAIT 是内核态开销的来源**（实测 3645 条 + 上下文切换 67 万/s）: 停进程消不掉, 要客户端 keep-alive 或服务端按帧缓存 —— 见 `low-latency-camera-streaming`。
+
+⚠️ **不碰用户正看着的画面类服务**: 推流吃 2~3 核但一停等于把他屏幕让空; 只在他说"清后台/降帧率"时才降 `--fps`/`--quality`，并且报清代价（帧率减半）。
+
 ## 2. DNS "清理"
 ```bash
 resolvectl status | grep -E "Current DNS|DNS Servers"      # 先看解析链 (127.0.0.53 → 上游)
@@ -1275,6 +1293,6 @@ OCR 会把同屏其它窗口的文字一起抓进来 ⇒ 只能说"抓到 X 字�
 | 窗口不映射就去重启窗口管理器 | `killall -3 gnome-shell` 把整个会话带走, 外观=整机死机 | 先看应用自己是否 segfault, 只按 pid 杀那个应用; 合成器不动 |
 | 为 bench 在常驻栈上再跑一套全节点 tick | 整机硬停、内核无任何记录, 事后只能靠日志 mtime 定责 | 起 bench 前 `free -m` + `ps -eo pid,rss,args --sort=-rss` 量常驻栈(基线 ≈14G/31G); `available<6G` 或单进程 RSS>8G 不启动; 全节点 bench 与常驻引擎栈不同时跑 (见 §9d-3) |
 | `cat` 一个二进制/媒体文件去核内容 | 一次 `cat x.mp4` 把 2.7M 字符灌进上下文，后面几轮全被挤掉，而真正要看的只有 40 字节 | 核文件用 `ls -l` / `file` / `stat -c%s` / `ffprobe`；要看头部用 `xxd -l 64`；只 cat 文本与 json，媒体文件一律不 cat（
-  §8d 里判「被清成空壳」也只用体积与文件头，不打开看） |
+| 杀了服务 4 秒它自己回来 / "重启"后端口还是老 pid | GUI 看门狗或 cron keepalive 按**原参数**拉起；新起的实例绑不上端口，老的继续服务 ⇒ 用户以为重启了，跑的还是旧代码 | 判"重启生效"只认 `ss -ltnp \| grep <端口>` 的持有 pid + `ps -o lstart= -p <pid>` 启动时间；要真重启先停托管方(unit/keepalive)再起，或 kill 后确认**新 pid 接管端口**再报成功 |
 
 > 📄 2026-09-24 完整实测数字/命令/产出路径: `references/2026-09-24-baseline.md`

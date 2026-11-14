@@ -6,6 +6,7 @@ trigger: "Use when the user mentions '控制台', 'Console', '远程GUI', '迭�
 ---
 
 # Z-MAX Console — 维护指南
+> GUI 慢/点节点卡顿: `references/gui-slowness-ui-thread-subprocess.md`
 
 ## 🔴 运行纪律
 只可停不可起(禁自行 restart 任何 GUI/服务, 含 `--user` 单元); 启动不刷屏; `launch.json` 只留在用的配置。

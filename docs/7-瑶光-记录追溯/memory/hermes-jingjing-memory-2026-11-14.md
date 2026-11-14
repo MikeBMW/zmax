@@ -20,23 +20,23 @@ YOLO在役=软链yolo_peg_live.pt; 瓶颈=数据; 相机独占⇒检测同进程
 §
 真机: rt后必下电; move_*不下电; 30s勿重发; collision=False; 执行腿=bridge(4060 l2_daemon→39071→Orin 39061); 段表须带abs_mm; 550C不在执行链
 §
-引擎记忆五层L2/L3/L4+Qwen,势场喂obs[0:3]; H-JEPA-MR几何分支+SE3阻抗(u=+Kξ−Bξ̇+F_d; 分量序[ρ;ω])
+引擎记忆五层L2/L3/L4+Qwen,势场喂obs[0:3]; H-JEPA-MR几何分支+SE3阻抗
 §
 真源calib.json→zmax_params.py; 训练=joint_train_all.py --only L4,L3,L2
 §
 L5规划器/safety=left_right/state_space/{planner,safety}.py; INTACT须常驻
 §
-阶段MOE: 门控须硬先验路由; 枚举不匹配静默降级; 判据=单射性
+阶段MOE: 硬先验路由; 枚举不匹配静默降级; 判据=单射性
 §
 LoRA需merge(否则零动作伪装):merge_lora_ckpt.py
 §
-ECS=web入口; 站点已搬550C(nginx:8081), 切流待点头; 资产产线直连/U盘
+ECS=web入口; 站点搬550C(8081)切流待点头; 资产产线直连/U盘
 §
 GPU掉载主因=每步CPU>计算→静音日志+workers↑
 §
 工程根~/zmax=仓库(MikeBMW/zmax); zmax_data=数据+HF+secrets(软链); 训练带HF_HOME
 §
-禁自重启GUI/服务(只可停);重启须点名
+禁自重启GUI/服务(只可停);重启须点名;禁抢用户终端光标,不代跑前台脚本
 §
 我=主节点(工控机+Orin); AOI=10082/10083(禁84/85); 更新=aoi_remote_deploy.py
 §
@@ -46,7 +46,7 @@ GPU掉载主因=每步CPU>计算→静音日志+workers↑
 §
 运动安全: 速度mm/s 1~1000; 前置idle+automatic; 腿上限须重启容器; 清79免授权; 新点位老倪先做; 台账INCIDENT-INDEX.md; 要碰撞先agent_all_stop; 插入力≤40N
 §
-AR=8797(底图8791+D435; /api/cams·/snap; L5=ar_l5_understand.py)
+AR=8797(8791底图+D435; L5=ar_l5_understand.py)
 §
 任务7=AR·L5进化; 场景=ss_scene_switch.py; 色标=sig_scene_tags.py
 §
@@ -54,15 +54,13 @@ AR=8797(底图8791+D435; /api/cams·/snap; L5=ar_l5_understand.py)
 §
 控制进程: 按端口/pid找(ss -ltnp), 禁ps|grep名(自杀); 杀进程写脚本别内联; sudo免密
 §
-判据图=aoi_surface_rect(夹具截断+vertical兜底); 曝光5000us
+判据图=aoi_surface_rect;曝光5000us
 §
 奇异区: 姿态>5°被50113拒且腿假报到位(看真值); 转移=抬50→转身→低位横移→上方升降
 §
-建图=8793走点45s/轮; GS_MAP_MODE=auto
+3DGS糊=视角超覆盖; 建图8793走点45s/轮; GS_MAP_MODE=auto
 §
-版本号只听老倪; 仓VERSION.md为准(现5.50.770)
-§
-专利20件(001-020)
+版本号只听老倪; 仓VERSION.md为准(现5.50.775)
 §
 tool0读heartbeat.pose.flange(禁手推R,y差251mm); precheck需扣连杆半径(肘r78)+<20mm FAIL; 手臂相机围栏无此项盲区
 §
@@ -74,4 +72,8 @@ intel出口=.23.66走Orin NAT(zmax-nat-intel;Orin sudo ts123)
 §
 新版必跑canvas_selfheal; 打包红线=软链必须解引用(cp -L), 否则Win画布加载失败; Win补丁每版同步新app
 §
-状态空间43→55→100: 100D=前55原样+45级联缓冲(5锚/水位背压/四态位图/异步双工); desktop_buffer_state100+verify_state100(27项); 段表11.5s/件=313UPH(测200.6), 900需AOI并行+搬运≤4s; 上料4槽坐标退化
+状态空间100D=前55+45级联缓冲; 段表11.5s/件=313UPH(实测200.6), 900需AOI并行
+§
+调试断点:decide每拍advance+meta; 用scheduler_fsm:181(每拍必过), 252需证据; n_feature每拍仿真须关; start.py自带调试env/离线护栏
+§
+8797僵尸pid算活⇒busy(已判Z); flow游标跟align回退; 段在容器⇒CHUNK=1

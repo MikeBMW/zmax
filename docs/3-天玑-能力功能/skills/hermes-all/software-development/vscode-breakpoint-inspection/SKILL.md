@@ -20,7 +20,11 @@ pdb / debugpy 的基础用法见已装的 `python-debugpy`; 本文只补两件�
 - 需要在用户屏幕上留一个**已经停住**的会话, 而不是给他一串操作步骤
 
 ## 铁律
-1. **交付物是"已停住的会话"**。他说"你给我运行"= 你去点、去按、去起, 不许让他自己 F5。
+1. **交付物是"已停住的会话"**, 但**绝不抢他的光标/终端**(老倪逐字: 「以后不许抢夺我的光标控制权」):
+   - 不许在他正编辑/调试时用 `windowactivate`/`xdotool key` 抢焦点 —— 他的光标会跳走、缓冲区被搅乱;
+   - 不许在**他的终端里前台跑工程入口**: 常驻入口多有单实例 flock, 你跑一次就把他下一次 F5 挡成 `exit 2`, 他的终端还被你的输出淹没;
+   - 起会话用独立窗口(见第一节), 或者**让他按 F5、我只做只读取证**(py-spy / 日志 / HTTP / 文件回读)。
+   他要的"停住"是**他屏幕上那个会话停在锚点**, 不是你在自己 shell 里 pdb 停一下表演给他看 —— 后者他会直接问「vscode 显示啊?」。
 2. **断点必须门控, 且用 `debugpy.breakpoint()` 而不是内置 `breakpoint()`**: 共享库里裸 `breakpoint()` 会把常驻服务挂死。
    ```python
    def _debug_stop() -> None:
@@ -38,12 +42,29 @@ pdb / debugpy 的基础用法见已装的 `python-debugpy`; 本文只补两件�
    用户会以为"断点没停"; `debugpy.breakpoint()` 等价于"在这里下一行断点", 才是他要的形态。
    门控变量只出现在调试 launch 配置的 `env` 里; 常驻服务环境没这个变量 ⇒ 生产路径逐位不变。
    ⚠️ 停止后调试器报的行号通常比 `debugpy.breakpoint()` 那行**大 1**(它在下一行挂起), 报位置按实测栈说。
+   🔴 **`debugpy.breakpoint()` 在没有客户端连接时是 no-op**: 它只打一条提示就继续, 于是"自停锚"在非调试进程里静默不停,
+   用户看到的是「怎么还不停住」。两条路径都要真停必须显式判连接再回退:
+   ```python
+   _stopped = False
+   try:
+       import debugpy
+       if getattr(debugpy, "is_client_connected", lambda: False)():
+           debugpy.breakpoint(); _stopped = True
+   except Exception:
+       pass
+   if not _stopped:
+       import pdb; pdb.set_trace()        # 裸跑 / 无调试器时停在终端
+   ```
 3. **先让变量有名有单位, 再让他看** —— 见第三节。
 4. **自证停住**: py-spy 抓到 `_do_wait_suspend (pydevd)` + 你的函数帧, 才算停住。进程状态 `S` 分不出"停住"和"在跑"。
 5. 不许把 `patch` 当探针: 写进去的 `"X"`、删掉的一行就是真代码。改完用 `py_compile` + AST 裸 name 扫描 + 真跑验。
 
 ## 一、配置与启动
 - 单文件夹窗口读 `.vscode/launch.json`; 用户若开的是 `.code-workspace`, **同一份配置还要写进该文件顶层 `"launch": {"configurations": [...]}`**, 否则选择器里根本没有它。两份都要 JSON 校验。
+- 🔴 **改 launch 里的 env 要定位到“那一条配置块”, 不能用全局字符串替换**: 多条配置都有 `"ZMAX_SINGLE_THREAD": "1"`
+  这类的共用键, 按“第一次出现”插新键会插进**另一条配置**(实测把 `ZMAX_LLM_OFF` 误加到了前端 GUI 那条),
+  看着改成功、跑的却是另一条。定式: 用**只在该块出现的锚**(如 `"ZMAX_ORCH": "1",`、`"program": "…/start.py"`),
+  改完把每条配置的 `name + 关键 env` 逐个打印出来核(JSON `json.load` 后遍历), 而不是 `grep -c` 数量。
 - 必填: `"type": "python"`, `"request": "launch"`, `"program": <绝对路径>`, `"justMyCode": false`, `"console": "integratedTerminal"`, `env` 带门控变量; 配置名加个显眼前缀(如 `🧪 断点 · …`)方便唯一匹配。
 - 起会话(**别用裸 F5**: 它复用上次用过的配置, 可能是个又重又无关的 GUI 配置):
   ```bash
@@ -70,6 +91,10 @@ pdb / debugpy 的基础用法见已装的 `python-debugpy`; 本文只补两件�
 用户口径会变: 先是「别搞那么多配置, 就一个」, 后来又会说「工程逻辑代码和控制台 GUI 的代码可以分开…
 VSCode 的 debug 也要分成前端 GUI 和后端工程 两个」。**按最新口径写, 不是按条数写**:
 默认一条; 他明确要分开 ⇒ 正好两条, 不多不少(别自己再加 attach/compound, 那又变成"那么多配置")。
+- 🔴 **配置名按角色取, 不许叫"断点"**: 老倪原话「这是前端GUI, 不是断点」。
+前端 = `🖥 前端 GUI · 控制台可视化 (studio.py)`, 后端 = `🧠 后端工程 · 调度状态机 (start.py)`;
+只有真·临时定点观察的配置才配 `🧪 断点 · …`。改名要同步**三处**, 否则名又变回去:
+`.vscode/launch.json` + `.code-workspace` 的 `launch` 段 + GUI 模板 `simulink_module.py::_vscode_launch_cfg`。
 - 前端 GUI 一条: `program` = 控制台入口(`tools/gui/studio.py` 这类), env **只给界面需要的**
   (`ZMAX_ROOT`/`PYTHONUNBUFFERED`), **绝不带 `ZMAX_DEBUG_*`** —— 否则调界面时会卡在感知/算法节点上。
 - 后端工程一条: `program` = 常驻循环入口(`tools/ss_canvas_loop.py`, 与部署到端侧同一份),
@@ -84,6 +109,13 @@ VSCode 的 debug 也要分成前端 GUI 和后端工程 两个」。**按最新�
   GUI 那条无法安全双开时, 至少 `py_compile` + `import PyQt5` + 确认无同名进程在跑, 并如实说"未实开, 因生产实例在跑"。
 🔴 **别在他正开着那个文件时硬覆盖**: 覆盖瞬间编辑器重载、光标被抢, 轻则把他弹走, 重则他判定"你把 launch.json 写乱了"。
 覆盖前 `cp -a <file> <file>.bak_<tag>`, 覆盖后回读新内容报一遍。
+🔴 **launch.json 会被工程自己的 GUI/工具重写**: 交付前若配置"莫名少了一条", 先比对备份而不是怀疑自己没写:
+```bash
+md5sum .vscode/launch.json .vscode/launch*.json*    # 与某个 backup 完全一致 ⇒ 被整体回灌了
+./<venv>/bin/python -c "import json;print([c['name'] for c in json.load(open('.vscode/launch.json'))['configurations']])"
+```
+典型来源是 GUI 右键"打开 VSCode"按**内置模板**重写(本项目 `tools/gui/simulink_module.py::_vscode_launch_cfg`);
+只手改 launch.json 会被下一次点击抹掉 ⇒ 要让配置长期存在, 必须同时改模板生成器, 并在回复里点明这条红线。
 ```bash
 D=/home/<user>/.hermes/cache/scratch/mfdbg        # 只要一个文件夹 + 一条配置, 不放代码
 mkdir -p $D/.vscode && cat > $D/.vscode/launch.json <<'JSON'
@@ -127,6 +159,105 @@ xdotool windowactivate $(wmctrl -l | awk '/mfdbg/{print $1}') && sleep 2 && xdot
   `ImportError: cannot import name 'X' from partially initialized module 'pkg.nodes' (most likely due to a circular import)` —— 看着像循环 import, 实为**缺文件**。
   先把整目录 `.py` 补齐(`rsync -a --include='*.py' --exclude='*' <源>/nodes/ <目标>/nodes/`), 再谈代码问题。
 - **无 GUI 也能证明门控断点真停**: `printf 'c\n' | ZMAX_DEBUG_<TAG>=1 <venv>/python tools/debug_node_x.py`, 输出里出现 `> /path/file.py(NN)func()` 即已停在锚点(Pdb 报的行号常比 `breakpoint()` 那行大 1, 报行号按实际输出说)。
+
+## 一·五、"每个周期都要进入"的断点锚(热循环 / 调度器)
+
+他要「在这里加一个断点, 每个周期都能进」时, **不要让他自己去点 F9** —— 在代码里放锚 + 开关:
+
+- **锚行 = 函数体第一条可执行语句, 不是收口 `return`**。带否决/异常早退的函数里, 收口 return 不是每拍都到。
+  实测 `ActionModulator.decide`: 正常周期执行 89 行并命中收口行 1 次; 残差否决周期只执行 8 行就在 `return _zero` 早退,
+  收口行命中 **0** 次。顺带加一个真有用的计数(`self.n_cycle += 1`)并写进快照 —— 断住时能在监视窗口看"第几周期",
+  而不是加一行纯装饰的 `pass`(那种改动经不起"这行有什么意义"的追问)。
+- **开关用 env + 文件双触发**: env 便于 launch 里固定, 文件(`/tmp/zmax_stop_at_<tag>`)便于当场开/关不重启。
+  跑长流程前**先删触发器文件**, 否则每拍都停, 现场看起来就是"卡死"。
+- **用 `sys.settrace` 自证锚行真的会执行**(比读代码可靠, 也顺手能证明"收口 return 会不会被跳到"):
+  ```python
+  hits = {}
+  def tr(f, ev, a):
+      if ev == 'line' and f.f_code.co_filename == TARGET:
+          hits[f.f_lineno] = hits.get(f.f_lineno, 0) + 1
+      return tr
+  sys.settrace(tr); obj.method(...); sys.settrace(None); print(hits)
+  ```
+  注意 trace 开始前函数入口行已执行 ⇒ 入口行计数为 0 是正常的, 结论按"入口之后的行"判。
+- 🔴 **进程不会热加载改过的代码**。「加了断点怎么还不停」先分四种病因, 不要让他反复按 F5 试:
+  ① 他的调试会话在你改文件**之前**就起了(必须重起会话); ② 没有触发器/门控变量; ③ 上一轮"证明了会停"是在**你的终端**用 pdb, 他的 VSCode 根本看不到;
+  ④ **他打开的那份文件不是被加载的那份**(同函数在仓库里有多份副本);
+  ⑤ **真正在 tick 的不是他那个调试进程**(见下一条, 最常见也最像"灵异");
+  ⑥ **目标函数一次都没被调用** —— 上游节点在调用它之前就"缺输入直通"返回了。实测 `sssched` 日志刷了 1520 条
+     `缺前馈 (in6/in9 都没有数值) ⇒ 直通, 调制器未生效`, 而 `ssff` 明明打出 `u_ff=[-0.364,-0.022,-0.079,0]`;
+     根因是端口载荷**本身就是业务字典**(`{"kind":"u_ff","u_ff":[...]}`), 而读端口的地方写的是
+     `v = pv.get("value") if isinstance(pv, dict) else pv` —— 没有 `value` 键就得到 `None`, 后面的字段扫描整段跳过。
+     修法 `pv.get("value", pv)`。诊断动作固定两步: ①`grep -c '<直通/未生效/未调用 的字样>' <引擎日志>`;
+     ②真调一次该节点 `run(ctx)` 看返回是 `kind=<正常>` 还是 `*_skipped` —— 少走这两步会一直怀疑 VSCode。
+  ⑦ **单线程档把"后台线程"改成当场内联 ⇒ 主线程卡在网络调用, 目标函数永远轮不到**。
+     单线程调试档里异步辅助函数通常走 `spawn_or_inline()` 的 inline 分支(`thread_policy.py`),
+     于是 VLM/LLM/HTTP 节点的"后台不阻塞"变成**同步阻塞**: 一次请求按 `SS_VLM_TIMEOUT` 默认 60s 等,
+     整拍卡在 `urlopen → connect`, 下游 `decide()` 一拍都执行不到 ⇒ 那条链上任何断点都不进,
+     而且 env、行号、进程归属全是对的 —— 只有栈能看出来。
+     判据(唯一可信): `sudo py-spy dump --pid <debuggee>` 主线程栈里出现
+     `create_connection/urlopen → <api>.py → spawn_or_inline → node_xxx → project.step → main`,
+     说明 tick 没走完, 不是断点问题。
+     修法: 给该节点加短路闸 `if os.environ.get("ZMAX_LLM_OFF") == "1": return True`(打一行"已短路"),
+     并在**调试配置**里同时设 `ZMAX_LLM_OFF=1` + 把远端超时压到 8s 级; 生产/多线程档不设这两个 env。
+  ⑧ **还有第二个进程在写同一批状态文件** ⇒ 你看到的是别人的输出。`zmax_data/ss_live/*.json` 与
+     `skill_calls.log` 里常带 `pid` 字段: 它不等于调试进程 pid 就说明另有一个常驻引擎
+     (如 `zmax-ss-engine-loop.service`) 在写。先 `systemctl stop` 那个 unit 再取样, 否则
+     `n_cycle`/`state` 永远停在别人的值上, 你会误判"断点没进"。
+  如实说清是哪一条, 并给出下一步(重起 / 删触发器 / 由他按 F5)。
+- 🔴 **断点"永远不进"先查: 是不是另一个进程在替你跑同一个循环?** 常驻工程常被 GUI 看门狗/服务管理器托管 ——
+  他的 F5 会话只是个空壳, 10Hz 循环跑在**别的 pid** 里(实测 `ss_canvas_loop.py` PPID=1, kill 掉 12s 内自动重生一个新的)。
+  断点绑的是调试会话里的模块, 计算在另一个进程 ⇒ 一行都不会停。取证与修法:
+  ```bash
+  pgrep -af '<引擎入口>'            # 有 PPID=1 的独立实例 = 就是它在 tick
+  kill -TERM <pid>; sleep 12; pgrep -af '<引擎入口>'   # 又活了 ⇒ 有看门狗在托管
+  ```
+  根治 = **两个入口共用同一把 flock**, 但**只有入口(start.py)持锁, 从属引擎只探测不持锁** ——
+  反过来让引擎持锁会死在另一个坑里: 看门狗拉起的引擎抢先把 pid 写进锁, 用户按 F5 的入口被自己的引擎挡成
+  `⛔ 已有工程入口在运行` (实测 14:47 起每一轮都这样), 他只会看到「怎么自己断了」。
+  ```python
+  # 引擎 main(): 只探测"入口是否已接管", 拿到锁立刻 LOCK_UN 放掉; 探测失败 ⇒ 本引擎让位
+  def _entry_running():
+      try:
+          fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+          fcntl.flock(fh.fileno(), fcntl.LOCK_UN)      # 探测完立刻放, 绝不常驻持有
+          return False
+      except OSError:
+          return True
+  ```
+  - ⚠️ fcntl 模块别挂在文件对象上 (`_io.TextIOWrapper` 不许自定义属性 ⇒ 每拍抛异常被外层 except 吞掉,
+    表现就是"让位闸装了却从不让位"); 用独立变量存。
+  - ⚠️ **只写在主循环里会迟一整拍**: 画布载入/慢节点一拍可 8~30s, 那期间两个引擎同时在写状态。
+    用 daemon 线程 0.5s 一拍查, 命中即 `os._exit(0)`; 主循环里那处保留也无害。
+  - ⚠️ **判"锁在谁手里"不要用 `fuser`**: 它列的是"打开该文件的进程", 探测式引擎每拍都会打开它 ⇒
+    你会对着一个不持锁的 pid 说"锁被它占了"。判据只有一条: 自己 `flock(LOCK_EX|LOCK_NB)` 试一次。
+  顺序必须是**他先 F5 拿到锁 → 你再 kill 老引擎**; 反过来 kill 完看门狗立刻重生一个, 而锁还空着 ⇒ 又变成它在跑。
+  ⚠️ `if __name__ == "__main__": main()` 会丢弃返回值 ⇒ 闸拒绝时退出码仍是 0、看不出被挡; 写成 `sys.exit(main())`
+  (或 `_rc = main(); if _rc: sys.exit(_rc)`)让退出码可见, 否则你自己验闸时会误判"没生效"。
+- 🔴 **先查"同一个函数有几份副本", 再谈断点没进**: 老工程里 `policies/.../cognition.py` 常有 3 份
+  (`src/` 最新 / `zmax_data/staging_<repo>/src/` 与 `external/<fork>/src/` 是旧快照), 画布节点 json 又常常
+  **没有 `file` 字段**(实体只有 `{id, name, type}`), 加载器按节点 id 解析实现 ⇒ 编辑器里断点绑的副本可能根本不在执行链上。
+  ```bash
+  find . -name '<module>.py' -not -path './.git/*' -exec md5sum {} \; | sort      # 几份/各是什么时间
+  grep -n "<id>" <工程 json>                                                       # 节点有没有 file 字段
+  ```
+  判据: 只有 `src/` 下那份是活的; `zmax_data/staging_*`、`external/*` 一律视为历史快照, 别在那里下断点。
+- **别靠猜节点绑到哪个文件, 跑现成的断点审计**: `tools/node_breakpoint_audit.py` / `tools/canvas_node_audit.py`
+  会产出 `zmax_data/deliverables/*/reports_archive/node_breakpoints.json`, 每行带 `open_file`(编辑器打开的那份)、
+  `real_file`/`real_line`(真正执行的)、`open_bindable`、`verdict` —— 直接告诉他"断点该下在哪个文件第几行"。
+  `tools/dap_probe_breakpoint.py` 只在 `debugpy --listen 127.0.0.1:5678` 的会话上可用(**端口写死**);
+  他是从 VSCode F5 起的会话, DAP 端口是私有的 ⇒ 那条路只能由他按 F5 验, 你改用审计 json + `sys.settrace` 取证。
+
+## 一·六、验收口径: 只认"链路末端在动", 不认"配置生效"
+
+改完配置/代码说"可以了"之前, 必须拿到**目标链路执行过的计数证据**, 否则下一次就是他一句
+「你不是说可以了么?」。配置生效(`env` 进了进程、`enforce()` 打出 `torch=1`)只证明前半段。
+- 硬指标: 计数快照两次采样递增(`n_cycle` / 调用计数 / 该函数写入的 json mtime 前移)。
+  报"还在 0"比报"已生效"强, 他至少知道下一步该查哪。
+- env 到没到进程要直接读 `/proc/<pid>/environ`(不是读 launch 文件推断):
+  `tr '\0' '\n' < /proc/<pid>/environ | grep -E 'ZMAX_SINGLE_THREAD|ZMAX_LLM_OFF'`。
+- 插入锚点/改代码后**行号整体偏移**: 报行号前重新 `grep -n '<目标语句>' <file>`, 不许复用上一轮行号
+  (实测同一句 `return u, f"阶段 {st}{tag}"` 在插入 14 行锚点后从 573 变成 587, 他按 573 点红点自然不进)。
 
 ## 二、自证停住(唯一可信证据)
 ```bash

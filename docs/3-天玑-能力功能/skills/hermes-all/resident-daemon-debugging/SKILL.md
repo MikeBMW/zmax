@@ -32,6 +32,11 @@ metadata:
 
 2. **在常驻进程上停下 = 冻住它**，而下游（机械臂、推流、队列）按上一条指令继续。要下断点只允许两种场合:
    离线台（不读生产输入、不下发）或强制 dry 的分离实例。
+   ⚠️ 下游的"上一条指令"常常是**一整段**: 派单制服务（一次 POST `n=10` 个目标点）由**独立容器/子进程**
+   逐点跑完, 断点只冻结"派单方" ⇒ 用户看到"我都在断点了, 机械臂还在动", 会直接质疑"到底是不是我在控制"。
+   要"断点即停"就把段长降到 1 (`chunk=1`, 代价是每点一个容器往返); 且必须讲清**撤销授权也停不了
+   已经在跑的那一段** —— 授权闸只在"起段之前"查一次, 执行器逐点循环不复查 `ctl_auth`。
+   交付时把这条边界一并说明, 不要等用户发现臂还在动。
 
 3. **分离实例必须分开三样东西**: 输入通道、单实例锁、输出日志。只换输入不换锁 ⇒ 新实例会按
    "新实例赢"的锁策略把线上实例 SIGTERM 掉（这是防多实例抢 FIFO 的设计，不是 bug）。
@@ -292,6 +297,12 @@ tick 增量翻倍, 读出 65Hz 这种荒唐值; 两份还抢同一块 GPU, 推�
 - **行号漂移**: 反复编辑同一文件会把函数整体后移几十行，用户留在旧行号上的断点落在注释/空行 ⇒
   解释器**根本不会设置它**（pdb 只回 `*** Blank or comment`），界面红点还在、跑起来永不停。
   交付时必须报**当前** `def` 行与第一条可执行语句行，并明说“旧断点已失效”。
+- **断在“正常出口的 return”上 ⇒ 否决/早退的那些拍根本不执行那一行**: 用户下在
+  `return u, f"阶段 {st}{tag}"` 上、进程明明在跑却一次不停 —— 正常周期走 89 行到该行, 残差超标那一拍
+  8 行就在 `return _zero, "否决…"` 早退了。要“每拍必停”只能断函数体**第一条可执行语句**
+  (`_zero = np.zeros_like(...)`); 想抓“为什么不动/被拦”另断 `if residual > veto_th` 与它的 return 行。
+  证法 (不依赖编辑器): `sys.settrace` 逐行计数, 用两种输入各跑一次, 打印“入口行/目标 return 行/各早退行”
+  的命中数与本周期执行行数 —— 目标行命中 0 就是那一路径没走, 比“我觉得应该会进”硬。
 - **launch.json 被 GUI 自己整份重写**: 手改 `.vscode/launch.json` 加 env，用户下一次右键「打开源码」就被
   模板函数覆盖回默认（本仓模板在 `simulink_module._vscode_launch_cfg`）。要加 env 只能**改模板再让模板重生成**；
   判据是起进程后读 `/proc/<pid>/environ` 与 `cmdline`，不是看 json 里写了什么。
@@ -348,6 +359,12 @@ tick 增量翻倍, 读出 65Hz 这种荒唐值; 两份还抢同一块 GPU, 推�
 - **模板与文件必须同时改**: 界面「打开 VSCode」会用模板整份重写 `.vscode/launch.json`, 只改 json 下次就丢。
   两边写完再**逐字段对拍** (`ast.get_source_segment` 取模板函数源码 → 带假 root `exec` → 与 json 比
   name/program/cwd/pythonArgs/env), 并回读 `configs` 条数。
+- **用户说“看不到 `/…/.vscode/launch.json` 这个路径” = 他开的是多根工作区**: 配置写在
+  `<仓库>/<名字>.code-workspace` 的 `launch.configurations` 里, 那份**覆盖**文件夹级 launch.json ⇒ 改文件夹里
+  那份等于没改, 用户面板里也永远看不到。定位当前工作区: `ls -t ~/.config/Code/User/workspaceStorage | head`,
+  逐个读 `workspaceStorage/<hash>/workspace.json` 的 `folder`/`workspace` 字段取最新那条; 再用
+  `pgrep -af '/usr/share/code/code -r --goto'` 交叉确认。交付报**三处一致** (模板 / `.vscode/launch.json` /
+  `.code-workspace`), 并让用户 `Ctrl+Shift+P → Developer: Reload Window` —— 不 reload, 调试面板还是旧列表。
 - ⚠️ 用 patch 替换函数体内整段 `configurations` 时, new_string 自带收尾 `],}` 而旧 dict 没一起删 ⇒ 留下悬空块
   ⇒ `IndentationError`; 删完立刻 `py_compile`, 别等 GUI 启动才发现。
 
@@ -448,6 +465,81 @@ armed 判定可以带 try, 只有 `breakpoint()` 必须是裸语句。
 用户抱怨"还是跳"时, 问题不在条数而在工程线程在调试器眼皮下停站: 每拍先判 `sys.gettrace() is not None` 就跳过周期任务。
 配方与归属判据见 `references/single-thread-and-breakpoints.md` §6.1~§6.7。
 
+## 🔴 单线程档 + 节点内网络 IO = 整拍卡死（断点不进的头号新原因）
+
+**症状**: `ZMAX_SINGLE_THREAD=1` 的调试会话里，用户的红点在 `ActionModulator.decide()` 的正常 return 上，
+进程活着、界面有数据，断点一次不进；`ss_fsm.json` 的 `n_cycle` 恒 0。反复改行号/重绑跳告一辈子不进。
+
+**机制**: 单线程档下 `engineering/thread_policy.spawn_or_inline()` 把本该起后台线程的活**当场同步执行**。
+节点里的 VLM/LLM HTTP 调用（`ss_llm_in` / `n_dsvl` → `_vlm_ask_async` → `scene_vlm._ask_http`）
+于是卡在主线程里，最长 `SS_VLM_TIMEOUT`（默认 60s，且端点不可达时是 DNS/TCP connect 卡住）。
+`while True` 一拍都走不完 ⇒ `ActionModulator.advance → fsm.step → decide` 永不执行。
+
+**两条取证（都要，缺一不可）**
+```bash
+# ① 循环在不在推进: 状态机计数间隔 3s 采样两次; 不变 ⇒ 没走到 advance()
+python -c "import json;d=json.load(open('zmax_data/ss_live/ss_fsm.json'));print(d.get('n_cycle'),d.get('state'))"
+# ② 主线程卡在哪(py-spy 不暂停进程):
+#    栈出现 connect → urlopen → scene_vlm._ask_http → spawn_or_inline → node_ss_llm_in 就是它
+sudo py-spy dump --pid <调试进程pid>
+```
+界面/日志“有数据在动”不算反证 —— 那是另一路常驻引擎写的共享文件。
+
+**修法: 代码级判据，不靠 launch env**（env 会因 VSCode 缓存旧配置而没进进程）
+节点开头自己判单线程，要真判读再显式开 `ZMAX_LLM_ONLINE=1`:
+```python
+_off = os.environ.get("ZMAX_LLM_OFF") == "1"
+if not _off:
+    from lerobot.engineering.thread_policy import single as _single
+    _off = bool(_single()) and os.environ.get("ZMAX_LLM_ONLINE") != "1"
+if _off:
+    log("...单线程档 ⇒ 不在此线程联网, 本拍不阻塞画布"); return True
+```
+同一口径要同时给到所有会联网的节点（`ss_llm_in`、`n_dsvl` …），漏一个就照样卡。
+
+**“每周期必进”的锚选对（说错会让用户白等一整轮）**
+- 每拍必进: `tools/ss_canvas_loop.py` 主循环 `while True:` → `prj.step(only=_run)`（唯一真周期点）。
+- `DispatchFSM.step()`（`n_cycle += 1` 所在）**不在主循环里**，只在 `cognition.py::ActionModulator.advance()`
+  里被调 ⇒ 上游一拍阻塞它就永远不进。把它当“每拍锚”是错的。
+- 自己在函数体里插锚点（几行代码）等于编辑该文件 ⇒ 后面所有行号下移，用户旧行号红点静默失效。
+  改完必须 `grep -n '<目标语句>'` 重报当前行号并说“旧断点失效”（实测 573 → 587）。
+
+## 🔌 网络阻塞的根治: 在 socket 层兜一次, 不要在节点里打地鼠
+
+单线程档的联网阻塞会**换着节点反复出现**（VLM → L5/DeepSeek → AOI → INTACT-RPC → HuggingFace）, 每发现一处
+就打一次节点补丁, 意味着每修一次都要用户重开会话 —— 第三轮他就会问"到底能不能修好 / 都这么多遍了"。
+
+**做法**: 在工程入口（`start.py`, 引擎 import 之前）一次性 patch 全局 socket, 只放行环回:
+
+```python
+_LOOP = ("127.", "::1", "localhost", "0.0.0.0")   # 🔴 绝不能含 "": startswith("") 恒 True ⇒ 所有主机都算本地
+if (_on("ZMAX_SINGLE_THREAD") or _on("ZMAX_LLM_OFF")) and not _on("ZMAX_LLM_ONLINE"):
+    socket.create_connection = _cc        # 外网直接 OSError, 0ms 返回
+    socket.socket.connect = _connect      # urllib/httpcore/requests 全部落到这两处
+```
+
+环回**必须**放行: 派单/状态查询都走 `127.0.0.1:8797`/`8793`, 拦掉会让真机链路静默变成"一步不动"。
+
+**自证四条（缺一不可, 交付时要贴）**: 外网 `0.0000s` 抛 OSError · `127.0.0.1:8797` `0.0001s` 连通 ·
+`urllib.request.urlopen("https://example.com")` 抛 URLError · 不设 env 时打印"未启用"(对照)。
+
+## 🧊 调试器挂不住 C 层: "停不下来"不一定是断点配置问题
+
+pydevd 只能在 **Python 字节码边界**挂起。主线程陷在 C 实现里（`from_pretrained → init_weights →
+initialize_weights` 这类 torch/transformers 权重加载, 或任何长 C 调用）时, 暂停请求只能排队 ⇒
+断点既不命中、进程也停不下, 现场就是"我打了红点/按了停止, 它还在动"。
+
+**判据**: py-spy 栈顶是 C 层符号、**没有** `_do_wait_suspend`, 且目标函数不在栈里。
+**对策**: 让那一拍不加载重物 —— 把模型节点（如 Flow-Matching 动作头 `ssdec`、`ss2d3d`、LoRA 节点）
+加进 `ZMAX_SKIP_IDS`; 或等它回到 Python 再停。别把它当断点绑不上去反复重配 launch。
+
+## 🧟 僵尸进程对 `kill(pid, 0)` 仍然"活着" ⇒ busy 永远忙
+
+杀掉子进程但父进程没 `waitpid` 回收 ⇒ `<defunct>`(state=Z); `os.kill(pid, 0)` 对僵尸**不抛异常**,
+于是服务判"上一轮还在跑", 连 `reset`/下一段都拒绝（原话: "上一轮真机逐点还在跑, 等它结束或先停"）。
+判活必须多读一列: `open('/proc/<pid>/stat').read().rsplit(')',1)[1].split()[0] != 'Z'`。
+临时解卡: 把状态文件里 `running=false`/`pid=0` 写掉再发 `reset`; 根治要改判活代码并重启那个服务。
+
 ## 🐢 「节点全打开」后 10Hz 循环卡死 (计算面解锁的回归)
 
 **症状**: 把"吞结果"那类模板坑修好 (或打开 `ZMAX_NODE_PURE_ALL`) 之后, 循环 tick **停在同一数字几十秒**,
@@ -477,6 +569,38 @@ https 调用 —— 断网时 `getaddrinfo` 卡死, socket timeout 管不住 DNS
   而每拍读数 15ms 看着很健康。要么慢节点单独计数, 要么直接进 `PURE_OFF`。
 - 🔴 先量再改档: 拿每节点 `ms` 排序 (在线 `traces[].ms`, 或离线按同一套 env 跑一拍统计) 再决定谁 OFF,
   别凭"看着重"猜; 关掉一个 9s 的节点与关掉一个 0.4s 的节点, 对拍子的意义完全不同。
+
+## 🔒 单实例锁归属: 只有工程入口持锁, 从属循环只探测并让位
+
+**症状**: 用户 F5 工程入口 (`start.py`) 立刻打印 `⛔ 已有工程入口在运行 (pid=N)` 并退出, 而 N 其实是
+GUI 看门狗拉起的**从属引擎** (`ss_canvas_loop.py`) —— 下位者占着锁、上位者进不来, 重启几次都一样。
+
+**规则**:
+1. 锁 (`/tmp/zmax_start.lock`) 的持有者**只能是工程入口**。从属/托管循环不许长期持锁, 只探测:
+   拿到 `LOCK_EX|LOCK_NB` 立刻 `LOCK_UN` 放掉 —— 拿到=无人接管可跑, 拿不到=有人在持 ⇒ 让位退出。
+2. 让位检查要**独立线程每 0.5s 一次** (`sys.stdout.flush()` 后 `os._exit(0)`): 只在主循环里查会迟一整拍,
+   画布载入实测 7.7s/次 ⇒ 现场是“两个引擎同时写状态/断点绑在没在算的那个进程上”。
+3. 工程入口把“本进程已持锁”写进环境 (`ZMAX_LOCK_HELD_PID=<pid>`): 它同进程调 `engine.main()`, 引擎看到该值
+   等于自己 pid 就跳过闸, 否则会自我否决 (启动即 exit 3)。
+4. **要独占引擎做调试**（GUI 看门狗每 3~5s 会重拉一个）: 用让位文件而不是杀进程 —— 引擎启动/看门狗里判
+   `ZMAX_ENGINE_OWNER != 1 且 ZMAX_LOCK_HELD_PID != 本pid 且 /tmp/zmax_engine_yield 存在 ⇒ 直接退出`，
+   调试配置带 `ZMAX_ENGINE_OWNER=1`。两个豁免缺一不可: 只写 OWNER 会让 `start.py` 进程内的 `engine.main()` 也 exit。
+   用完 `rm /tmp/zmax_engine_yield` 把常驻引擎还回去。
+
+**三个必踩**:
+- `fuser -v <lockfile>` 列的是**打开该文件的进程**, 不是 flock 持有者 ⇒ 拿它判“谁占着锁”必错。判据只能是自己
+  `flock(LOCK_EX|LOCK_NB)` 试一次, 或核对锁文件里写的 pid 与 `/proc/<pid>/cmdline` 是否一致。
+- `if __name__ == "__main__": main()` **丢掉返回码** ⇒ `main()` 里 `return 3` 的拒绝照样以 exit 0 结束,
+  现场只能翻日志才看出被拒。改成 `_rc = main(); sys.exit(_rc) if _rc else None`。
+- 文件对象 (`_io.TextIOWrapper`) **不能挂自定义属性** ⇒ `fh._fcntl = fcntl` 抛 `AttributeError`, 而主循环的
+  `except Exception: pass` 每拍把它吞掉 ⇒ 让位检查永不生效, 症状与“根本没写这个检查”一模一样。模块级 list/变量存。
+- **自己跑验证探针会被入口锁挡掉**（引擎 `return 3` = 工程入口持锁，日志里只有一句让位）。不要为此杀用户的
+  调试会话: 给探针换一把锁和一份状态文件
+  `ZMAX_START_LOCK=/tmp/probe_start.lock ZMAX_FSM_JSON=/tmp/probe_fsm.json`,
+  再用独立 `ZMAX_SINGLE_THREAD=1 ZMAX_AUTO_TRAJ=0` 跑，验证 `n_cycle` 是否在涨。
+
+**验收两条 (都过才算修好)**: 自己持 flock 再起引擎 ⇒ 秒级 `exit=3`; 引擎已跑起来再抢锁 ⇒ ≤1s 内 `rc=0` 让位。
+只跑其中一条就交付, 会在“引擎先起、后 F5”这个最常见的顺序上翻车。
 
 ## 三步配方
 

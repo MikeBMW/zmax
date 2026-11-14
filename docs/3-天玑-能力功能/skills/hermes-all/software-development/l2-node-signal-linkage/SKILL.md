@@ -20,6 +20,15 @@ metadata:
 
 实例：`ssaoi.out1 → sssched.in5` 画布标签「质量门」，`safety_limit_impl` 却当 `contact_p` 读 —— AOI 载荷里根本没这三个键。修法不是补字段，是**按语义重写这条边的消费方**（质量门 → 硬否决）。
 
+**第二类伪接通：包装假设错（`.get("value")` 取到 None）**
+端口载荷有两种合法形状：`{"value": X}` 包装，或直接是业务字典 `{"kind":"u_ff","u_ff":[...]}`。
+消费方写 `v = pv.get("value")` 时，业务字典返回 `None` ⇒ 后面 `if isinstance(v, dict)` 整段跳过 ⇒
+`u_ff` 读不到 ⇒ 走「缺前馈 ⇒ 直通」的兜底分支 ⇒ **下游 `decide()` 一次都没被调用**（日志刷 1,520 条
+「调制器未生效」，而断点永远不进）。
+- 修法：`v = pv.get("value", pv) if isinstance(pv, dict) else pv`（有包装取包装，没包装用本身）。
+- 判定顺序必须是「先证函数被调用，再谈断点行」：在函数体**第一条语句**数调用计数/放自停锚，
+  计数为 0 ⇒ 断点行永远不会命中，别去挪断点。修后取证：`out1.kind=modulator · u_sat=[...] · 技能 clamp 真执行`。
+
 ## 全图验收 (L1~L5 + 执行层)
 
 `python tools/verify_l2_linkage.py --engine --all` 跑画布全部 94 节点 / 222 边。
