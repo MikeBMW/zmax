@@ -81,7 +81,7 @@ def run(ctx):
         u_sat = _SS_STATE.get("u_sat", np.zeros(4))
         _ex = ex.RobotExecutor()                       # 🔴 2026-10-29: 实例留住, 校验结论要带出去
         # 🎯 2026-11-01 老倪「右键打开源码要有断点, 在 VSCode 里我要看到执行指令」:
-        #   停在这里时 u_sat 已绑定, 下一行 u_vec 就是**真正下发的执行指令**。
+        #   停在这里时 u_sat 已绑定, 下一行 action 就是**真正下发的执行指令**。
         #   只在显式 ZMAX_BREAK_EXEC=1 时停 (GUI 里 breakpoint() 会冻界面 ⇒ 只在 CLI/调试档用)。
         if _os.getenv("ZMAX_BREAK_EXEC") == "1":
             # 走 debugpy 的原生断点: VSCode 里会真的停在调试器 UI 上 (变量面板能看 u_sat)
@@ -93,30 +93,94 @@ def run(ctx):
                     breakpoint()                             # noqa: T100
             except Exception:                                # noqa: BLE001
                 breakpoint()                                 # noqa: T100
-        u_vec = _ex.execute(np.asarray(u_sat, dtype=float))
-        _chk = getattr(_ex, "last_check", None) or {}
-        if np.ndim(u_vec) == 0:
-            u_vec = np.zeros(4)
-        _SS_STATE["u_prev"] = np.asarray(u_vec, dtype=float)[:3]
+        _allow_traj = bool(_os.getenv("ZMAX_DD_TRAJ_FALLBACK") == "1"
+                           or _SS_STATE.get("dd_traj_fallback"))
+        # 🎯 2026-11-14 老倪「execution.py:291 return action 改成真正的位姿, 你来重构」
+        #   ⇒ execute() 现在返回 **Action(dict, 位姿口径)**: pose / joints_deg / grip_* / src / u / check
+        #   ⇒ 这里不再自己拼位姿, 也不再把 4 维速度当"指令"; np.asarray(action) 仅作兼容
+        action = _ex.execute(np.asarray(u_sat, dtype=float), allow_traj_fallback=_allow_traj)
+        _chk = getattr(_ex, "last_check", None) or (action.get("check") if isinstance(action, dict) else {}) or {}
+        _src = str(action.get("src") or "ss") if isinstance(action, dict) else "ss"
+        _pose = (action.get("pose") if isinstance(action, dict) else None)
+        _joints_deg = (action.get("joints_deg") if isinstance(action, dict) else None)
+        try:
+            _cmd = np.asarray(action, dtype=float).ravel()
+        except Exception:                                                  # noqa: BLE001
+            _cmd = np.zeros(4)
+        if _cmd.size == 0:
+            _cmd = np.zeros(4)
+        _SS_STATE["pose_out"] = _pose
+        _SS_STATE["_pose_dt"] = float(action.get("dt_s") or _SS_STATE.get("_pose_dt") or 0.1) \
+            if isinstance(action, dict) else 0.1
+        # 🎯 action = 状态空间工程的最终输出(唯一一份): 直接摊平执行器返回的 action 落盘
+        _act = None
+        try:
+            from lerobot.policies.left_right.state_space import action_bus as _ab
+            from lerobot.policies.left_right.state_space import direct_drive_guard as _ddg
+            _v = _ddg.last() or {}
+            _deny = ("护栏未放行 mode=%s ok=%s/%s %s"
+                     % (_v.get("mode"), _v.get("ok_ticks"), _v.get("need"),
+                        ("· " + str(_v.get("why"))[:40]) if _v.get("why") else ""))
+            if _src == "ss" and not _v.get("allow"):
+                # 护栏没放行 ⇒ 不认这份直驱, 落 215 点真值(与改造前同一判断)
+                _act = _ab.from_traj215(why="215 点回放 · " + _deny)
+            else:
+                _act = _ab.from_action(action, deny=("" if _src != "ss" else _deny))
+            _ab.publish(_act)
+        except Exception:                                                  # noqa: BLE001
+            _act = None
+        _SS_STATE["action"] = _act
+        if _src == "traj215":
+            # 回退档: 输出的是 215 点关节真值(6 维, deg) ⇒ 不能当速度写 u_prev
+            _SS_STATE["traj_cmd_deg"] = [float(x) for x in (_joints_deg or _cmd)]
+            _SS_STATE["dd_active"] = False
+            _SS_STATE["u_prev"] = np.zeros(3)      # 别把上一拍的直驱速度留在账上当"本拍指令"
+        else:
+            _SS_STATE["u_prev"] = np.asarray(action.get("u") or _cmd, dtype=float)[:3]
+            _SS_STATE["dd_active"] = bool(_allow_traj)
         if log:
-            log(f"🤖 机器人执行器 (真实): execute(u_sat={np.round(u_sat,3)}) → 指令={np.round(u_vec,4)} "
-                f"(execution.py) · 校验 {'通过' if _chk.get('valid', True) else '拦下'} "
-                f"clip={_chk.get('clip_hint') or '-'} over_rate={_chk.get('over_rate') or '-'}")
-        # 🥽 2026-11-01「要真接入 AR 场景」: 本拍真算出的执行指令进 AR 链的 exec 分区
+            _pz = _pose or {}
+            log("🤖 机器人执行器 (真实): action[%s] 位姿 x=%.2f y=%.2f z=%.2f a=%.2f b=%.2f c=%.2f "
+                "· 关节 %s · 夹爪 %smm/%s · 校验 %s clip=%s over_rate=%s"
+                % (_src, _pz.get("x") or 0, _pz.get("y") or 0, _pz.get("z") or 0,
+                   _pz.get("a") or 0, _pz.get("b") or 0, _pz.get("c") or 0,
+                   ["%.2f" % float(v) for v in (_joints_deg or [])[:6]] or "-",
+                   action.get("grip_mm") if isinstance(action, dict) else "-",
+                   action.get("grip_act") if isinstance(action, dict) else "-",
+                   "通过" if _chk.get("valid", True) else "拦下",
+                   _chk.get("clip_hint") or "-", _chk.get("over_rate") or "-"))
+        # 🥽 2026-11-01「要真接入 AR 场景」: 本拍 action 进 AR 链的 exec 分区
         try:
             from lerobot.engineering.exec import ar_bridge as _arb
             _arb.update("exec", {"kind": "exec",
-                                 "u": [round(float(x), 6) for x in np.asarray(u_vec, dtype=float).ravel()[:4]],
+                                 "src": _src,
+                                 "u": ([] if _src == "traj215" else [round(float(x), 6) for x in (_cmd[:4] if _cmd.size >= 4 else [])]),
+                                 "u_dim": int(_cmd.size),
+                                 "pose": _pose,
+                                 "joints_deg": ([round(float(x), 3) for x in _joints_deg] if _joints_deg else None),
+                                 "fallback": _chk.get("fallback"),
                                  "u_sat": [round(float(x), 5) for x in np.asarray(u_sat, dtype=float).ravel()[:4]],
                                  "check": {"valid": bool(_chk.get("valid", True)),
-                                           "over_rate": _chk.get("over_rate") or []},
-                                 "src_file": "execution.py:RobotExecutor.execute"}, src="ssact")
+                                           "over_rate": _chk.get("over_rate") or [],
+                                           "fallback": _chk.get("fallback")},
+                                 "src_file": "execution.py:RobotExecutor.execute → Action(pose)"}, src="ssact")
         except Exception:                                                # noqa: BLE001
             pass
-        # 🔴 2026-10-29: out1 = 本拍真算出的指令 + 显式零下发声明, 下游(页面/台账)可直接消费
-        return {"out1": {"kind": "actuator", "u_sat": [round(float(x), 5) for x in np.asarray(u_sat, dtype=float).ravel()[:4]],
-                         "u_cmd": [round(float(x), 6) for x in np.asarray(u_vec, dtype=float).ravel()[:4]],
-                         "n": int(np.asarray(u_vec).size), "src": "execution.py:RobotExecutor.execute",
+        # 🔴 2026-10-29: out1 = 本拍真算出的 action + 显式零下发声明, 下游(页面/台账)可直接消费
+        return {"out1": {"kind": "actuator",
+                         "u_sat": [round(float(x), 5) for x in np.asarray(u_sat, dtype=float).ravel()[:4]],
+                         # 🎯 工程最终输出 = action(位姿口径): 位姿/关节/夹爪/来源
+                         "action": _act,
+                         "src": _src,
+                         "pose": _pose,
+                         "joints_deg": _joints_deg,
+                         "grip_mm": (action.get("grip_mm") if isinstance(action, dict) else None),
+                         "u": (action.get("u") if isinstance(action, dict) else []),
+                         "u_cmd": ([round(float(x), 6) for x in _cmd] if _cmd.size == 4 else []),
+                         "u_cmd_dim": int(_cmd.size),
+                         "fallback": _chk.get("fallback"),
+                         "traj_cmd_deg": (_joints_deg if _src == "traj215" else _chk.get("traj_joint_deg")),
+                         "n": int(_cmd.size), "src_file": "execution.py:RobotExecutor.execute",
                          "t": time.time(), "real_send": False,
                          "exec_check": _chk,          # NaN/范围/变化率 三项校验真结果 (不是恒等透传)
                          "note": "纯计算·零下发 (下发只走 exec/daemon.py + 8793 授权)",

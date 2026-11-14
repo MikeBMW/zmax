@@ -15,7 +15,7 @@ from .library import _SS_STATE, _ss_import   # 与 registry 共用同一份运�
 from ._single_thread import brk as _brk
 
 
-def run(ctx):
+def _run_legacy(ctx):
     # 🔴 2026-10-29 事实记录 (不受调试器/env 影响): 每次节点被真正调用就往
     #   zmax_data/ss_live/actuator_calls.log 追加一行。用来回答"右键运行节点到底有没有
     #   走到这个函数"—— 有日志=走到了(问题在断点绑定), 没日志=根���没调用(问题在 GUI 分派)。
@@ -126,3 +126,17 @@ def run(ctx):
         if log:
             log(f"⚠️ 执行层真实执行失败: {e}")
         return {"out1": None}
+
+
+def run(ctx):
+    """统一出口: 正文在 lerobot.middleware.nodes.impl.robot_actuator_impl(位姿口径 action)。
+
+    2026-11-14 老倪「return action 改成真正的位姿」—— 执行器返回
+    pose / joints_deg / grip_* / src, 不再返回 4 维速度; 两份实现并存必然漂移, 故只留一份。
+    转发失败(极端情况)才回落本文件历史实现 _run_legacy。
+    """
+    try:
+        from lerobot.middleware.nodes.impl.robot_actuator_impl import run as _run2
+        return _run2(ctx)
+    except Exception:                                                      # noqa: BLE001
+        return _run_legacy(ctx)

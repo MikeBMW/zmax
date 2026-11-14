@@ -83,9 +83,142 @@ def _brk(tag=""):
 
 import os
 
+import json
+import math
 import threading
 
 import time
+
+
+# ── 215 点轨迹真值(回退用) ──────────────────────────────────────────────
+def _root_() -> str:
+    d = os.path.dirname(os.path.abspath(__file__))
+    for _ in range(8):
+        if (os.path.isdir(os.path.join(d, "zmax_data"))
+                and os.path.isdir(os.path.join(d, "src", "lerobot"))):
+            return d
+        d = os.path.dirname(d)
+    return "/home/ubuntu/zmax"
+
+
+_ROOT_ = _root_()
+_TRAJ_JSON = os.path.join(_ROOT_, "tools", "web", "real_traj_joints.json")
+_TRAJ_STATE = os.path.join(_ROOT_, "zmax_data", "rokae_sdk", "traj_step_state.json")
+
+
+def _abc_deg(quat):
+    """四元数 → 姿态 a b c (deg)。唯一口径走 tools/pt_pose.py:abc_deg; 读不到返回 None(绝不编)。"""
+    try:
+        import importlib.util as _ilu
+        _p = os.path.join(_ROOT_, "tools", "pt_pose.py")
+        _spec = _ilu.spec_from_file_location("_pt_pose", _p)
+        _m = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_m)
+        return _m.abc_deg(quat)
+    except Exception:                                          # noqa: BLE001
+        return None
+
+
+def tcp_pose_now():
+    """机器人当前位姿, 与机器人读数同格式: x y z (mm) + a b c (deg)。取不到 ⇒ None。"""
+    try:
+        p = os.path.join(_ROOT_, "zmax_data", "rokae_sdk", "tcp_out", "latest.json")
+        if time.time() - os.path.getmtime(p) > 2.0:
+            return None
+        d = json.load(open(p, encoding="utf-8"))
+        xyz = [float(d["x"]) * 1000.0, float(d["y"]) * 1000.0, float(d["z"]) * 1000.0]
+        if xyz == [0.0, 0.0, 0.0]:
+            return None
+        abc = _abc_deg([d.get("qx"), d.get("qy"), d.get("qz"), d.get("qw")])
+        return {"x": round(xyz[0], 2), "y": round(xyz[1], 2), "z": round(xyz[2], 2),
+                "a": (None if abc is None else abc[0]),
+                "b": (None if abc is None else abc[1]),
+                "c": (None if abc is None else abc[2]),
+                # 四元数(与 a b c 同一姿态的另一种表示): 旋转插值/传给策略时用这个, 别用欧拉角
+                "qx": round(float(d.get("qx") or 0.0), 6),
+                "qy": round(float(d.get("qy") or 0.0), 6),
+                "qz": round(float(d.get("qz") or 0.0), 6),
+                "qw": round(float(d.get("qw") or 0.0), 6),
+                "age_s": round(time.time() - os.path.getmtime(p), 3),
+                "src": "tcp_out/latest.json"}
+    except Exception:                                          # noqa: BLE001
+        return None
+
+
+def traj215_target(cursor=None):
+    """取 215 点轨迹"当前点"的真值关节指令 (deg)。取不到 ⇒ None。
+
+    老倪 2026-11-14: 「如果 a 算错了, 就直接输出 215 点的真正轨迹」
+      cursor 优先级: 显式参数 > traj_step_state.json(8797 每点写) > 0
+      真源文件: tools/web/real_traj_joints.json  frames[i].j (rad)  215 帧
+    """
+    try:
+        if cursor is None:
+            i = 0
+            if os.path.exists(_TRAJ_STATE):
+                i = int(json.load(open(_TRAJ_STATE, encoding="utf-8")).get("cursor") or 0)
+        else:
+            i = int(cursor)
+        d = json.load(open(_TRAJ_JSON, encoding="utf-8"))
+        fr = d.get("frames") or []
+        if not fr:
+            return None
+        i = max(0, min(i, len(fr) - 1))
+        j = fr[i].get("j") or []
+        if len(j) != 6:
+            return None
+        _p = fr[i].get("p") or []
+        _abc = _abc_deg(fr[i].get("q") or [])
+        return {"cursor": i, "total": len(fr),
+                "joint_deg": [round(math.degrees(float(x)), 4) for x in j],
+                "p_mm": [round(float(x) * 1000, 2) for x in _p],
+                "abc_deg": _abc,
+                "quat": [round(float(x), 6) for x in (fr[i].get("q") or [])][:4],
+                "pose": ({"x": round(float(_p[0]) * 1000, 2), "y": round(float(_p[1]) * 1000, 2),
+                          "z": round(float(_p[2]) * 1000, 2),
+                          "a": (None if _abc is None else _abc[0]),
+                          "b": (None if _abc is None else _abc[1]),
+                          "c": (None if _abc is None else _abc[2]),
+                          "qx": round(float((fr[i].get("q") or [0, 0, 0, 0])[0]), 6),
+                          "qy": round(float((fr[i].get("q") or [0, 0, 0, 0])[1]), 6),
+                          "qz": round(float((fr[i].get("q") or [0, 0, 0, 0])[2]), 6),
+                          "qw": round(float((fr[i].get("q") or [0, 0, 0, 0])[3]), 6),
+                          "src": "215点轨迹 frames[%d]" % i} if len(_p) == 3 else None)}
+    except Exception:                                          # noqa: BLE001
+        return None
+
+
+class Action(dict):
+    """工程唯一输出 —— **位姿口径**(老倪 2026-11-14)。
+
+    返回 dict 而不是裸数组, 因为机器人执行的是**位姿/关节**, 不是那个 4 维速度:
+      action["pose"]       {x,y,z mm · a,b,c deg · qx..qw}  ← 与机器人读数逐字同格式
+      action["joints_deg"] [6] 关节角(deg) + action["joints_src"]
+      action["grip_*"]     夹爪开合(mm/动作/状态/来源)
+      action["src"]        "traj215"(回放真值) | "ss"(状态空间算出)
+      action["u"]          4 维速度+夹爪通道(仅 ss 档; 留作溯源, 不再当"指令"看)
+      action["check"]      NaN/范围/变化率三项校验 + fallback
+    同时向后兼容老消费方(verification_layer / sim.py): np.asarray(action) 仍拿到数值指令
+    (ss 档 = 4 维速度; 回退档 = 6 维关节 deg), action[:3] / action.size 也照旧可用。
+    """
+
+    def __array__(self, dtype=None, copy=None):                      # noqa: D105
+        a = np.asarray(self.get("cmd") if self.get("cmd") is not None else [], dtype=float)
+        return a if dtype is None else a.astype(dtype)
+
+    @property
+    def size(self):
+        return int(np.asarray(self).size)
+
+    def ravel(self):
+        return np.asarray(self).ravel()
+
+    def __getitem__(self, k):
+        if isinstance(k, str):
+            return dict.__getitem__(self, k)
+        return np.asarray(self)[k]                                   # 兼容 u_vec[:3]
+
+
 class RobotExecutor:
     """🤖 机器人执行器 — 接收物理指令执行
 
@@ -129,18 +262,22 @@ class RobotExecutor:
         self.max_rate = float(max_rate)   # 每拍最大指令变化 (归一化单位/拍)
         self.last_check = {"valid": True, "clip_hint": [], "over_rate": [], "why": []}
 
-    def execute(self, u):
-        """执行物理指令 → 校验后的可执行指令 (数值原样; 校验结论在 self.last_check)。"""
-        a = np.asarray(u, dtype=float).ravel()
-        chk = {"valid": True, "clip_hint": [], "over_rate": [], "why": [], "n": int(a.size)}
+    def execute(self, u, allow_traj_fallback=False):
+        """状态空间工程的最终输出 = **action**(位姿/指令), 校验后原样返回; 结论在 self.last_check。
+
+        老倪 2026-11-14:「return a? 你的代码怎么还是 a? 应该是 action, 改」
+          ⇒ 变量名统一叫 action —— 与 out1.action / action.json 同名, 看代码不用翻译。
+        """
+        action = np.asarray(u, dtype=float).ravel()
+        chk = {"valid": True, "clip_hint": [], "over_rate": [], "why": [], "n": int(action.size)}
         # ① NaN/Inf: 脏数不往外送
-        if not np.isfinite(a).all():
+        if not np.isfinite(action).all():
             chk.update(valid=False, why=chk["why"] + ["指令含 NaN/Inf → 整条归零"])
-            a = np.zeros_like(a)
+            action = np.zeros_like(action)
         # ② 通道范围 (只记不裁, 裁剪权在 sslimit)
-        for i, v in enumerate(a):
-            if abs(float(v)) > self._LIMIT:
-                chk["clip_hint"].append([i, round(float(v), 4)])
+        for _i, _v in enumerate(action):
+            if abs(float(_v)) > self._LIMIT:
+                chk["clip_hint"].append([int(_i), round(float(_v), 4)])
         # ③ 变化率: 物理上臂跟不上 (NaN 归零后不再算 —— 否则"归零"本身会被误报成轴跳变)
         _now = time.time()
         chk["cycle"] = "seq"
@@ -151,22 +288,121 @@ class RobotExecutor:
                 pass                                     # 已归零, 不参与差分
             elif prev is None:
                 chk["cycle"] = "首个指令"
-            elif prev.shape != a.shape:
-                chk["cycle"] = "维度变化(%d→%d) ⇒ 不判变化率" % (prev.size, a.size)
+            elif prev.shape != action.shape:
+                chk["cycle"] = "维度变化(%d→%d) ⇒ 不判变化率" % (prev.size, action.size)
             elif _gap > RobotExecutor._RATE_STALE_S:
                 # 上一拍是别的轮次/上次运行留下的 ⇒ 拿它差分没有物理意义
                 chk["cycle"] = "新周期(间隔 %.2fs>%.1fs) ⇒ 不判变化率" % (_gap, RobotExecutor._RATE_STALE_S)
             else:
-                d = np.abs(a - prev)
+                d = np.abs(action - prev)
                 over = np.where(d > self.max_rate)[0]
                 if over.size:
-                    chk["over_rate"] = [[int(i), round(float(d[i]), 4)] for i in over]
+                    chk["over_rate"] = [[int(_i), round(float(d[_i]), 4)] for _i in over]
                     chk["why"] = chk["why"] + ["变化率超 %.2f/拍: 轴 %s"
-                                               % (self.max_rate, [int(i) for i in over])]
-            RobotExecutor._LAST = a.copy()
+                                               % (self.max_rate, [int(_i) for _i in over])]
+            RobotExecutor._LAST = action.copy()
             RobotExecutor._LAST_T = _now
+        # ── ④ 🚦 输出仲裁(老倪 2026-11-14): 算错的判据三条(任一命中) ⇒ 直接输出 215 点真轨迹
+        #    allow_traj_fallback 默认 False ⇒ 与改造前逐位一致(零回归)
+        chk["fallback"] = None
+        _need_fb = (not chk["valid"]) or bool(chk["clip_hint"]) or bool(chk["over_rate"])
+        if _need_fb and allow_traj_fallback:
+            _t = traj215_target()
+            if _t is not None:
+                chk["fallback"] = "traj215:第 %d/%d 点" % (_t["cursor"], _t["total"])
+                chk["traj_joint_deg"] = _t["joint_deg"]
+                chk["traj_p_mm"] = _t["p_mm"]
+                chk["traj_pose"] = _t.get("pose")
+                chk["out_dim"] = 6
+                self.last_check = chk
+                return self._act_traj215(_t, chk)
+            chk["fallback"] = "hold(不直驱 · 轨迹通道照常)"
+        elif _need_fb:
+            chk["fallback"] = "hold(不直驱 · 轨迹通道照常)"
         self.last_check = chk
-        return a
+        # ⑤ 正常档: 输出**位姿**(当前位姿 + u·dt), 不是那个速度数组 —— 老倪 2026-11-14
+        #    变量名仍叫 action: 在 VSCode 里对 `return action` 打红点, 看到的就是位姿口径的 action
+        action = self._act_ss(action, chk)
+        return action
+
+    # ────────────────────────── 位姿口径的 action 构造 ──────────────────────────
+    _DT0 = 0.0                      # 上一拍时间戳(跨实例共享, 与 _LAST 同一理由)
+    _DT_MIN, _DT_MAX = 0.01, 0.5    # 单拍积分步长夹紧(10ms~500ms), 不让长间隔放大位移
+
+    def _dt(self):
+        _now = time.time()
+        _t0 = RobotExecutor._DT0
+        dt = 0.1 if not _t0 else min(max(_now - float(_t0), self._DT_MIN), self._DT_MAX)
+        RobotExecutor._DT0 = _now
+        return float(dt)
+
+    @staticmethod
+    def _joints_now():
+        """实测关节角(deg)。读不到/过期 ⇒ None(绝不编)。"""
+        try:
+            p = os.path.join(_ROOT_, "zmax_data", "rokae_sdk", "tcp_out", "latest.json")
+            if time.time() - os.path.getmtime(p) > 2.0:
+                return None
+            _j = json.load(open(p, encoding="utf-8")).get("joint") or []
+            _d = [round(math.degrees(float(v)), 4) for v in _j][:6]
+            return _d if len(_d) == 6 else None
+        except Exception:                                                  # noqa: BLE001
+            return None
+
+    @staticmethod
+    def _grip_ss():
+        try:
+            from . import action_bus as _ab
+            _m, _age = _ab.grip_meas()
+        except Exception:                                                  # noqa: BLE001
+            _m, _age = None, None
+        return {"grip_mm": _m, "grip_act": "hold",
+                "grip_state": (None if _m is None else ("开" if _m > 1.0 else "合")),
+                "grip_src": "保持实测(ss 档暂无夹爪通道)",
+                "grip_meas_mm": _m,
+                "grip_meas_age_s": (None if _age is None else round(_age, 1))}
+
+    def _act_ss(self, u_arr, chk):
+        """src=ss: action.pose = 实测位姿 + u·dt(mm), 关节=实测(未做 IK, 明确标注)。"""
+        dt = self._dt()
+        u4 = [round(float(x), 6) for x in np.asarray(u_arr, dtype=float).ravel()[:4]]
+        pose_now = tcp_pose_now()
+        pose = None
+        if pose_now is not None:
+            pose = dict(pose_now)
+            _v = np.asarray(u_arr, dtype=float).ravel()[:3]
+            if _v.size == 3 and bool(np.isfinite(_v).all()):
+                pose.update(x=round(float(pose_now["x"]) + float(_v[0]) * 1000.0 * dt, 2),
+                            y=round(float(pose_now["y"]) + float(_v[1]) * 1000.0 * dt, 2),
+                            z=round(float(pose_now["z"]) + float(_v[2]) * 1000.0 * dt, 2),
+                            src="pos+u*dt(直驱)", dt_s=round(dt, 4))
+        _j = self._joints_now()
+        act = Action(kind="action", src="ss", i=None, pose=pose,
+                     joints_deg=_j, joints_src=("实测(未做IK)" if _j else "缺"),
+                     u=u4, cmd=np.asarray(u4, dtype=float),
+                     check=chk, fallback=chk.get("fallback"),
+                     why="位姿 = 当前位姿 + u*dt(%.3fs)" % dt,
+                     ts=time.time(), dt_s=round(dt, 4))
+        act.update(self._grip_ss())
+        return act
+
+    @staticmethod
+    def _act_traj215(t, chk):
+        """src=traj215: action = 215 点真值(位姿 + 6 维关节 + 夹爪计划)。"""
+        try:
+            from . import action_bus as _ab
+            _g = _ab.grip_at(t["cursor"], t["total"])
+        except Exception:                                                  # noqa: BLE001
+            _g = {"grip_mm": None, "grip_act": "hold", "grip_state": None,
+                  "grip_src": "缺", "grip_meas_mm": None, "grip_meas_age_s": None}
+        act = Action(kind="action", src="traj215", i=int(t["cursor"]),
+                     pose=t.get("pose"), joints_deg=list(t["joint_deg"]),
+                     joints_src="215点轨迹",
+                     u=[], cmd=np.asarray(t["joint_deg"], dtype=float),
+                     check=chk, fallback=chk.get("fallback"),
+                     why="215 点真轨迹(算错 ⇒ 回放真值, 不是速度)", ts=time.time())
+        act.update(_g)
+        return act
 
 
 class PhysicalWorld:
