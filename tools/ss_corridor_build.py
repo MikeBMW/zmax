@@ -62,6 +62,61 @@ def seg_table():
     return list(P._S.get("segs") or []), float(P._S.get("tact") or 0.0)
 
 
+def segs_from_real215():
+    """🦾 真机真实轨迹 → 每段一条折线 (老倪 2026-11-14「通道要配合真实轨迹」)。
+
+    唯一依据 = zmax_data/pose_records/rec_20261111_181020/poses.jsonl (真机位姿录制, 真时间戳)。
+    段边界 = 几何事件 (z 最低点 / z 回 218 / y123 / x760 / x808), 与 mm_build_from_real_traj 同一套。
+    返回 (groups, tsum, vneed, tact_hint) 与 group_polys() 同构 ⇒ 后面的 build_polys/write_ar_fences 不用改。
+    """
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import mm_build_from_real_traj as M
+
+    ts, P = M.load_raw()
+    b, mm, i_low = M.bounds_from_raw(ts, P)
+    groups = {k: [] for k in ORDER}
+    tsum = {k: 0.0 for k in ORDER}
+    vneed = {k: 0.0 for k in ORDER}
+    for st in ORDER:
+        a, c = b[st]
+        if c <= a:
+            continue
+        seg_pts = [mm[i] for i in range(a, c + 1)]
+        for i in range(len(seg_pts) - 1):
+            A, B = _mm(seg_pts[i]), _mm(seg_pts[i + 1])
+            dt = float(ts[a + i + 1] - ts[a + i]) or 1e-3
+            L = math.dist(A, B)
+            if L <= 1e-6:                      # 原地停驻样本直接跳过(原来塞 1mm 假段 ⇒ 折线断 1mm/偏差 0.94mm)
+                continue
+            groups[st].append([A, B])
+            vneed[st] = max(vneed[st], (L / 1000.0) / dt)
+        tsum[st] = float(ts[c] - ts[a])
+    tact_hint = sum(tsum.values())
+    return groups, tsum, vneed, tact_hint
+
+
+def build_all_real215(tact_s=None):
+    from lerobot.policies.left_right.state_space import corridor as C
+
+    groups, tsum, vneed, tact_hint = segs_from_real215()
+    corrs = {}
+    for st in ORDER:
+        polys = groups.get(st) or []
+        if not polys:
+            continue
+        tact = float(tact_s) if tact_s else tsum[st]
+        v_cap_st = min(1.2, max(0.35, vneed[st] * 1.15 if vneed[st] else 0.35))
+        corrs[st] = C.build_polys(st, polys, r_mm=R_MM[st], tact_s=tact,
+                                  v_cap=v_cap_st, s_step_m=v_cap_st * 0.1)
+        corrs[st]["n_poly"] = 1
+        corrs[st]["v_need"] = round(vneed[st], 4)
+    return {"schema": "zmax.ss_skill_corridor/3.1", "built_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "source": "zmax_data/pose_records/rec_20261111_181020/poses.jsonl (真机真实轨迹)",
+            "note": "轴心=真机录制的每一段实际位姿折线; 半径=末端外廓 r=80mm ⇒ 通道外表面=真实扫掠包络面",
+            "seg_total": sum(len(groups[s]) for s in ORDER), "tact_tab_s": round(tact_hint, 2),
+            "tact_s": tact_s, "corridors": corrs}
+
+
 def group_polys(segs):
     """按真实段分组 → 8 条技能的多折线集合 (每条折线 = 一次真实机动)。"""
     groups = {k: [] for k in ORDER}
@@ -250,7 +305,8 @@ def main():
             print(__doc__); return 0
         else:
             i += 1
-    doc = build_all(tact_s=tact)
+    real = "--real215" in argv
+    doc = build_all_real215(tact_s=tact) if real else build_all(tact_s=tact)
     if doc is None:
         return 2
     if stage:
@@ -260,6 +316,8 @@ def main():
     os.replace(OUT + ".tmp", OUT)
     n = write_ar_fences(doc)
     print("包络通道 · 源 %s · 段表节拍 %.2fs/件" % (doc["source"], doc["tact_tab_s"]))
+    if real:
+        print("  (--real215: 轴心 = 真机录制折线, 不是 plan 段表)")
     table(doc)
     print("→ 真源 %s" % OUT)
     print("→ AR 管道线 %d 条 → %s" % (n, FENCES))
