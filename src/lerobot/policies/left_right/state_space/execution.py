@@ -145,6 +145,26 @@ def tcp_pose_now():
         return None
 
 
+_TRAJ_FRAMES = {"mt": -1.0, "frames": []}
+
+
+def _traj_frames():
+    """215 点 frames —— 按 mtime 缓存(单线程每拍都要取, 不能每拍 parse 1MB)。"""
+    try:
+        mt = os.path.getmtime(_TRAJ_JSON)
+    except Exception:                                          # noqa: BLE001
+        return []
+    if _TRAJ_FRAMES["mt"] == mt and _TRAJ_FRAMES["frames"]:
+        return _TRAJ_FRAMES["frames"]
+    try:
+        d = json.load(open(_TRAJ_JSON, encoding="utf-8"))
+        fr = d.get("frames") or []
+    except Exception:                                          # noqa: BLE001
+        return []
+    _TRAJ_FRAMES["mt"], _TRAJ_FRAMES["frames"] = mt, fr
+    return fr
+
+
 def traj215_target(cursor=None):
     """取 215 点轨迹"当前点"的真值关节指令 (deg)。取不到 ⇒ None。
 
@@ -169,8 +189,7 @@ def traj215_target(cursor=None):
                 pass
         else:
             i = int(cursor)
-        d = json.load(open(_TRAJ_JSON, encoding="utf-8"))
-        fr = d.get("frames") or []
+        fr = _traj_frames()
         if not fr:
             return None
         i = max(0, min(i, len(fr) - 1))
@@ -353,8 +372,43 @@ class RobotExecutor:
         # ⑤ 正常档: 输出**位姿**(当前位姿 + u·dt), 不是那个速度数组 —— 老倪 2026-11-14
         #    变量名仍叫 action: 在 VSCode 里对 `return action` 打红点, 看到的就是位姿口径的 action
         action = self._act_ss(action, chk)
+        # 🎯 2026-11-14 老倪「这里断也没有对上」：直驱闸没放行时，节点层会把直驱换成 215 点。
+        #    换口径前移到执行器 ⇒ 断点里看到的 action 就是**真正下发**的那份，不会再看错。
+        action = self._effective(action, chk)
         self._print_action(action, chk)
         return action
+
+    @staticmethod
+    def _effective(act, chk):
+        """把「本拍真正下发的 action」算出来(与节点层同一判断, 只此一处口径)。
+
+        · 直驱闸放行(guard.allow) ⇒ 保持 src=ss 的直驱位姿
+        · 没放行 ⇒ 换成 215 点当前点(关节+位姿+夹爪计划), 并把直驱速度留在 u 里溯源
+        关掉: ZMAX_EXEC_EFFECTIVE=0(退回"执行器只出直驱, 由节点层换口径"的旧行为)
+        """
+        if str(os.environ.get("ZMAX_EXEC_EFFECTIVE", "1")).strip() in ("0", "false", "False"):
+            return act
+        if str(act.get("src")) != "ss":
+            return act
+        try:
+            from . import direct_drive_guard as _g
+            v = _g.last() or {}
+        except Exception:                                          # noqa: BLE001
+            v = {}
+        if v.get("allow"):
+            return act
+        _t = traj215_target()
+        if _t is None:
+            return act
+        _a = RobotExecutor._act_traj215(_t, chk)
+        _why = "215 点回放 · 直驱闸未放行(mode=%s ok=%s/%s)" % (
+            v.get("mode"), v.get("ok_ticks"), v.get("need"))
+        _a["why"] = _why
+        _a["fallback"] = _a.get("fallback") or "直驱闸未放行 ⇒ 215 点"
+        _a["dd_u"] = [float(x) for x in (act.get("u") or [])]      # 保留直驱速度, 便于溯源
+        _a["dd_pose"] = act.get("pose")
+        _a["total"] = _t.get("total")
+        return _a
 
     # ─────────────────────── 🖨 终端可见的实时位姿(return action 之前) ───────────────────────
     @staticmethod

@@ -2806,8 +2806,11 @@ class VerificationLayer:
 
     def t_act_dim(self, np):
         ex = self._exec().RobotExecutor()
-        u = np.asarray(ex.execute(np.zeros(4)), float)
-        return u.shape[0] == 4, f"执行器输出 {u.shape[0]}D"
+        a = ex.execute(np.zeros(4))
+        u = np.asarray(a, float)
+        src = (a.get("src") if isinstance(a, dict) else None) or "?"
+        kind = {4: "直驱4维速度", 6: "215点6维关节"}.get(u.shape[0], "非法维度")
+        return u.shape[0] in (4, 6), f"执行器输出 {u.shape[0]}D ({src} · {kind})"
 
     def t_act_consumed(self, np):
         tr = self.engine()
@@ -2816,8 +2819,10 @@ class VerificationLayer:
 
     def t_act_pass(self, np):
         ex = self._exec().RobotExecutor()
-        u = np.asarray(ex.execute(np.array([0.1, 0.2, -0.1, 0.5])), float)
-        return bool(np.isfinite(u).all()) and u.shape[0] == 4, f"指令透传有限: {np.round(u,3)}"
+        a = ex.execute(np.array([0.1, 0.2, -0.1, 0.5]))
+        u = np.asarray(a, float)
+        src = (a.get("src") if isinstance(a, dict) else None) or "?"
+        return (bool(np.isfinite(u).all()) and u.shape[0] in (4, 6)), f"指令透传({src}): {np.round(u,3)}"
 
     def t_act_real(self, np):
         return self._audit([["tools/gui/state_space_sim_real.py", ["env.step"], "真实执行"]], np)
