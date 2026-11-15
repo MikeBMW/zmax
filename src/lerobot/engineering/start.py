@@ -214,7 +214,10 @@ def _debug_defaults():
         "ZMAX_FULL_EVERY": "999999",    # 不跑整张画布, 只跑核心链
         "ZMAX_TRAJ_CHUNK": "1",         # 断点一停, 最多多走 1 点
         "ZMAX_SKIP_IDS": "ssyolo,ssllm,ssreason,n_vlm_llm,n_dsvl,ss_l5,ss_seg,ssaoi,ssvlm,ssllm_in,ssintact,ssintact_dec,swintact,ss_lora_l4,ssmani_exp,ss_mem_l3,ssbg_vlm,ss_man,n_geoplan,swds,swvideo,n_realscene,ssrender,ssdec,ss2d3d,ss_lora_l3",
-        "ZMAX_CORE_IDS": "ssobs,sssensor,ssff,ssest,sspred,ssinnov,sssched,sslimit,ssact,sstactile,n_exec",
+        # 🔎 2026-11-15 老倪「out["status"] 断点没进入」根因: n_moveit 不在核心链里, 而
+        #   ZMAX_FULL_EVERY=999999 让"全量 pass"永不发生 ⇒ 规划节点每拍都不跑, 断点自然不进。
+        #   加进核心链 (放在 n_exec 前, 与画布顺序一致: 段表 → 执行器)。
+        "ZMAX_CORE_IDS": "ssobs,sssensor,ssff,ssest,sspred,ssinnov,sssched,sslimit,ssact,sstactile,n_moveit,n_exec",
         "SS_VLM_TIMEOUT": "8",
         # 🚦 闭环直驱护栏: 调试档默认"影子" —— 只记录 u 与实测运动的比对, 不改 u/不接管
         #    要真接管改成 armed(还必须连续 30 拍达标); 关掉写 off
