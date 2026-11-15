@@ -1,0 +1,24 @@
+{
+ "_src": "run_20261115_145259.json",
+ "n_points": 215,
+ "n_ok": 215,
+ "all_in_position": true,
+ "err_max_deg": 0.14,
+ "err_avg_deg": 0.115,
+ "err_p95_deg": 0.14,
+ "tol_deg": 0.6,
+ "over_tol_points": [],
+ "dur_total_s": 436.01,
+ "dur_median_s": 2.14,
+ "dur_slow_points_gt3x_median": [
+  {
+   "i": 20,
+   "dur_s": 6.99,
+   "jump_deg": 31.03,
+   "seg": "插入孔内"
+  }
+ ],
+ "t_monotonic": true,
+ "t_span_s": 437.99,
+ "verdict": "PASS"
+}

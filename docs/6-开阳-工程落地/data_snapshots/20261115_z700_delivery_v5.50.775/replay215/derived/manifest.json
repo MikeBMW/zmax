@@ -1,0 +1,50 @@
+{
+ "_what": "MT-08 215 点真机运行数据包清单(最后一次真实机器运行)",
+ "run_id": "replay215_20261115_225309",
+ "source_snapshot": "/home/ubuntu/zmax/zmax_data/rokae_sdk/capture/run_20261115_145259.json",
+ "source_md5": "c5eef5fb95eb2bd2eb995332fcc2c7ea",
+ "robot_ip": "192.168.23.160",
+ "host": "ubuntu",
+ "started_wall": "2026-11-15T14:52:59",
+ "ended_wall": "2026-11-15T15:00:18",
+ "elapsed_s": 438.91,
+ "speed": 100.0,
+ "dwell_ms": 0,
+ "n_frames": 215,
+ "n_done": 215,
+ "n_ok": 215,
+ "total_motion_s": 436.01,
+ "s_per_point": 2.028,
+ "uph": 8.3,
+ "captures": [
+  "/sdk/capture/aoi_i156_金手指_20261115_145806.jpg",
+  "/sdk/capture/aoi_i172_表面_20261115_145843.jpg"
+ ],
+ "files": [
+  {
+   "path": "derived/manifest.json",
+   "bytes": 710,
+   "md5": "96a41cc91313efa348157da5c2cbd279"
+  },
+  {
+   "path": "derived/points_mm.json",
+   "bytes": 106564,
+   "md5": "b14a5ee51e0dea48e41ee1a129806bfd"
+  },
+  {
+   "path": "derived/quality.json",
+   "bytes": 438,
+   "md5": "d537e058da88867339769da254686468"
+  },
+  {
+   "path": "derived/seg_stats.json",
+   "bytes": 4180,
+   "md5": "409667a1f8cd6f9f89e10166d1792117"
+  },
+  {
+   "path": "derived/trajectory_clean.json",
+   "bytes": 20603,
+   "md5": "eae98962261070f1a2b62bf7eb54654e"
+  }
+ ]
+}

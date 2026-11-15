@@ -1,0 +1,653 @@
+{
+ "_what": "Z700 精细操作机器人 · 性能指标与负载计算(数据驱动)",
+ "_generated": "2026-11-15T23:25:15",
+ "payload": {
+  "arm_rated_payload_g": 5000.0,
+  "eoat_mass_g": 1500.0,
+  "usable_payload_g": 3500.0,
+  "formula": "可用负载 = 额定负载 5000g − 末端质量 1500g = 3500g",
+  "levels": [
+   {
+    "level": "① 单颗模块抓取",
+    "load_g": [
+     15,
+     200
+    ],
+    "arm_ok": true,
+    "margin_g": 3300.0,
+    "util_pct": 5.71,
+    "real_constraint": "夹持力 0.1-5N 与指尖防划伤, 不是负载",
+    "conclusion": "负载余量 94%, 单颗抓取对负载零压力; 真约束是夹持力下限与金手指零划伤"
+   },
+   {
+    "level": "② 单盘搬运 · 吸塑盘 20 位 (QSFP-DD)",
+    "load_g": [
+     180,
+     1880
+    ],
+    "arm_ok": true,
+    "margin_g": 1620.0,
+    "util_pct": 53.71,
+    "real_constraint": "满盘重心偏移 + 抓取姿态(盘面水平度)",
+    "conclusion": "可搬, 负载利用率 54%"
+   },
+   {
+    "level": "② 单盘搬运 · 吸塑盘 20 位 (OSFP)",
+    "load_g": [
+     260,
+     2460
+    ],
+    "arm_ok": true,
+    "margin_g": 1040.0,
+    "util_pct": 70.29,
+    "real_constraint": "满盘重心偏移 + 抓取姿态(盘面水平度)",
+    "conclusion": "可搬, 负载利用率 70%"
+   },
+   {
+    "level": "② 单盘搬运 · 吸塑盘 40 位 (QSFP28)",
+    "load_g": [
+     320,
+     2320
+    ],
+    "arm_ok": true,
+    "margin_g": 1180.0,
+    "util_pct": 66.29,
+    "real_constraint": "满盘重心偏移 + 抓取姿态(盘面水平度)",
+    "conclusion": "可搬, 负载利用率 66%"
+   },
+   {
+    "level": "② 单盘搬运 · 金属料盘 24 位",
+    "load_g": [
+     950,
+     2990
+    ],
+    "arm_ok": true,
+    "margin_g": 510.0,
+    "util_pct": 85.43,
+    "real_constraint": "满盘重心偏移 + 抓取姿态(盘面水平度)",
+    "conclusion": "可搬, 负载利用率 85%"
+   },
+   {
+    "level": "② 单盘搬运 · 料箱 (周转箱)",
+    "load_g": [
+     1400,
+     8920
+    ],
+    "arm_ok": false,
+    "margin_g": -5420.0,
+    "util_pct": 254.86,
+    "real_constraint": "满盘重心偏移 + 抓取姿态(盘面水平度)",
+    "conclusion": "超出可用负载 5420g, 必须由 AMR/输送线搬, 臂只做盘内取放"
+   },
+   {
+    "level": "③ 整箱周转 · 料箱 (周转箱)",
+    "load_g": [
+     1400,
+     8920
+    ],
+    "arm_ok": false,
+    "margin_g": -5420.0,
+    "util_pct": 254.86,
+    "real_constraint": "整箱重量 4-9kg, 超单臂能力",
+    "conclusion": "整箱必须 AMR 搬运(技术协议 §2.3 场景 2), 臂不参与; 这是形态分工不是缺陷"
+   }
+  ],
+  "module_weights": [
+   {
+    "pkg": "SFP+ / SFP28",
+    "size_mm": "13.6×8.5×56.5",
+    "typical_g": 18,
+    "range_g": [
+     15,
+     25
+    ],
+    "note": "最小, 俗称小模块; 夹持力需求最低"
+   },
+   {
+    "pkg": "SFP112",
+    "size_mm": "13.6×8.5×56.5",
+    "typical_g": 20,
+    "range_g": [
+     16,
+     28
+    ],
+    "note": "同 SFP 壳体, 速率更高"
+   },
+   {
+    "pkg": "QSFP+ / QSFP28",
+    "size_mm": "18.35×8.5×72",
+    "typical_g": 45,
+    "range_g": [
+     35,
+     60
+    ],
+    "note": "主流 100G; 塑料/金属壳差异大"
+   },
+   {
+    "pkg": "QSFP56 / QSFP112",
+    "size_mm": "18.35×8.5×72",
+    "typical_g": 50,
+    "range_g": [
+     40,
+     70
+    ],
+    "note": "200G/400G 同壳"
+   },
+   {
+    "pkg": "QSFP-DD",
+    "size_mm": "18.35×8.5×78",
+    "typical_g": 75,
+    "range_g": [
+     55,
+     110
+    ],
+    "note": "400G/800G 双密度, 散热片加重"
+   },
+   {
+    "pkg": "QSFP-DD800",
+    "size_mm": "18.35×8.5×78",
+    "typical_g": 85,
+    "range_g": [
+     60,
+     120
+    ],
+    "note": "带大散热鳍片"
+   },
+   {
+    "pkg": "OSFP",
+    "size_mm": "22.58×13×107.8",
+    "typical_g": 110,
+    "range_g": [
+     80,
+     160
+    ],
+    "note": "400G/800G, 体积最大"
+   },
+   {
+    "pkg": "OSFP-RHS",
+    "size_mm": "22.58×13×107.8",
+    "typical_g": 100,
+    "range_g": [
+     75,
+     150
+    ],
+    "note": " riding heat sink 变体"
+   },
+   {
+    "pkg": "OSFP1600",
+    "size_mm": "22.58×13×107.8",
+    "typical_g": 125,
+    "range_g": [
+     90,
+     200
+    ],
+    "note": "1.6T, 上限段"
+   }
+  ],
+  "trays": [
+   {
+    "name": "吸塑盘 20 位 (QSFP-DD)",
+    "spec": "20 槽 · 240×180×12mm",
+    "empty_g": 180,
+    "full_g": 1880,
+    "note": "最常用上料盘"
+   },
+   {
+    "name": "吸塑盘 20 位 (OSFP)",
+    "spec": "20 槽 · 280×210×16mm",
+    "empty_g": 260,
+    "full_g": 2460,
+    "note": "OSFP 专用"
+   },
+   {
+    "name": "吸塑盘 40 位 (QSFP28)",
+    "spec": "40 槽 · 300×240×12mm",
+    "empty_g": 320,
+    "full_g": 2320,
+    "note": "小模块高密度"
+   },
+   {
+    "name": "金属料盘 24 位",
+    "spec": "24 槽 · 320×240×20mm · 铝合金",
+    "empty_g": 950,
+    "full_g": 2990,
+    "note": "耐高温/反复周转"
+   },
+   {
+    "name": "料箱 (周转箱)",
+    "spec": "400×300×150mm · 含 4 盘",
+    "empty_g": 1400,
+    "full_g": 8920,
+    "note": "整箱搬运需 AMR"
+   }
+  ],
+  "evidence": "模块/料盘重量为公开规格量级, 标 evidence=待实测(以客户来料称重为准)",
+  "design_conclusion": "结论: 5kg 额定负载 + 1.5kg 末端 ⇒ 可用 3.5kg。单颗模块(15-200g)与中小吸塑盘(≤2.6kg)在能力内; 金属满盘(2.9kg)临界可用但要核算重心; 整箱(5-9kg)必须走 AMR。因此负载不是瓶颈, 真正要卡的是: ①夹持力 0.1-5N 的下限分辨率 ②末端惯量对 6s 节拍的影响。"
+ },
+ "performance": {
+  "run_id": "replay215_20261115_225309",
+  "measured_total_s": 436.01,
+  "n_points": 215,
+  "s_per_point": 2.028,
+  "uph_single_arm": 8.26,
+  "dual_arm_uph": 316.6,
+  "tcp_path_mm": 7361.7,
+  "speed_mm_s": 16.88,
+  "metrics": [
+   {
+    "category": "精度",
+    "name": "单点到位误差(关节角)",
+    "target": "≤0.6°",
+    "measured": 0.14,
+    "unit": "°",
+    "source": "MT-08 真机 215 点 quality.json",
+    "evidence": "实测",
+    "verdict": "PASS"
+   },
+   {
+    "category": "精度",
+    "name": "到位误差平均值",
+    "target": "≤0.3°",
+    "measured": 0.115,
+    "unit": "°",
+    "source": "同上",
+    "evidence": "实测",
+    "verdict": "PASS"
+   },
+   {
+    "category": "精度",
+    "name": "超差点数量",
+    "target": "0",
+    "measured": 0,
+    "unit": "个",
+    "source": "同上",
+    "evidence": "实测",
+    "verdict": "PASS"
+   },
+   {
+    "category": "精度",
+    "name": "横向对位偏差(插拔)",
+    "target": "≤0.5mm",
+    "measured": null,
+    "unit": "mm",
+    "source": "C2 能力证书 / 几何真值",
+    "evidence": "在役已达(见 5.50.D-R1 §五)",
+    "verdict": "PASS(在役)"
+   },
+   {
+    "category": "精度",
+    "name": "姿态偏差",
+    "target": "≤1°",
+    "measured": null,
+    "unit": "°",
+    "source": "手眼标定 + 真值比对",
+    "evidence": "在役已达",
+    "verdict": "PASS(在役)"
+   },
+   {
+    "category": "精度",
+    "name": "重复定位精度(本体)",
+    "target": "±0.02mm",
+    "measured": null,
+    "unit": "mm",
+    "source": "Z700 技术协议 v3 §6.1",
+    "evidence": "待实测(DVT 标定)",
+    "verdict": "待实测"
+   },
+   {
+    "category": "节拍",
+    "name": "MT-08 单点耗时",
+    "target": "—",
+    "measured": 2.028,
+    "unit": "s/点",
+    "source": "215 点实测逐点平均",
+    "evidence": "实测",
+    "verdict": "—"
+   },
+   {
+    "category": "节拍",
+    "name": "MT-08 单轮总时长",
+    "target": "—",
+    "measured": 436.01,
+    "unit": "s",
+    "source": "215 点实测求和",
+    "evidence": "实测",
+    "verdict": "—"
+   },
+   {
+    "category": "节拍",
+    "name": "MT-08 节拍(单臂回放口径)",
+    "target": "—",
+    "measured": 8.26,
+    "unit": "UPH",
+    "source": "3600/436.01s",
+    "evidence": "实测",
+    "verdict": "—"
+   },
+   {
+    "category": "节拍",
+    "name": "双臂并行节拍(仿真口径)",
+    "target": "300 UPH",
+    "measured": 11.37,
+    "unit": "s/件",
+    "source": "392 段 / 159.15s / 14 件",
+    "evidence": "实测(仿真)",
+    "verdict": "PASS"
+   },
+   {
+    "category": "节拍",
+    "name": "双臂并行 UPH",
+    "target": "300",
+    "measured": 316.6,
+    "unit": "UPH",
+    "source": "3600/11.37s",
+    "evidence": "实测(仿真)",
+    "verdict": "PASS"
+   },
+   {
+    "category": "节拍",
+    "name": "FW Loading 单颗(F2 在役)",
+    "target": "≤6s",
+    "measured": null,
+    "unit": "s",
+    "source": "5.50.D-R1 §五 314 件/h = 11.468s/件",
+    "evidence": "在役但未达 6s(需 M1 对位提速)",
+    "verdict": "GAP"
+   },
+   {
+    "category": "节拍",
+    "name": "ATS/线外检测循环",
+    "target": "≤15s",
+    "measured": null,
+    "unit": "s",
+    "source": "Z700 技术协议 v3 §1.3",
+    "evidence": "待实测(EVT)",
+    "verdict": "待实测"
+   },
+   {
+    "category": "运动",
+    "name": "全程 TCP 路程",
+    "target": "—",
+    "measured": 7361.7,
+    "unit": "mm",
+    "source": "215 点 TCP 逐点位移求和",
+    "evidence": "实测",
+    "verdict": "—"
+   },
+   {
+    "category": "运动",
+    "name": "平均线速度(含启停)",
+    "target": "—",
+    "measured": 16.88,
+    "unit": "mm/s",
+    "source": "7362mm / 436.0s",
+    "evidence": "实测",
+    "verdict": "—"
+   },
+   {
+    "category": "运动",
+    "name": "速度利用率",
+    "target": "—",
+    "measured": 28.1,
+    "unit": "%",
+    "source": "相对计划速度 60mm/s",
+    "evidence": "实测",
+    "verdict": "需提速"
+   },
+   {
+    "category": "运动",
+    "name": "瓶颈段 · 转运/举升",
+    "target": "—",
+    "measured": 109.74,
+    "unit": "s",
+    "source": "#41-90 · 50 点 · 2.195s/点 · 1858mm",
+    "evidence": "实测",
+    "verdict": "优化对象"
+   },
+   {
+    "category": "运动",
+    "name": "瓶颈段 · 表面检测",
+    "target": "—",
+    "measured": 72.7,
+    "unit": "s",
+    "source": "#162-193 · 32 点 · 2.272s/点 · 872mm",
+    "evidence": "实测",
+    "verdict": "优化对象"
+   },
+   {
+    "category": "运动",
+    "name": "瓶颈段 · 扫码(举高段)",
+    "target": "—",
+    "measured": 63.66,
+    "unit": "s",
+    "source": "#120-144 · 25 点 · 2.546s/点 · 1441mm",
+    "evidence": "实测",
+    "verdict": "优化对象"
+   },
+   {
+    "category": "力控",
+    "name": "插入力峰值上限(按封装分档)",
+    "target": "SFP ≤18N / QSFP ≤60N / QSFP-DD ≤90N",
+    "measured": null,
+    "unit": "N",
+    "source": "5.50.D-R1 §四 安全四道闸",
+    "evidence": "在役已验证",
+    "verdict": "PASS(在役)"
+   },
+   {
+    "category": "力控",
+    "name": "FW Loading 插拔力(金手指保护)",
+    "target": "≤2N",
+    "measured": null,
+    "unit": "N",
+    "source": "Z700 技术协议 v3 §2.2",
+    "evidence": "待实测(EVT)",
+    "verdict": "待实测"
+   },
+   {
+    "category": "力控",
+    "name": "力觉分辨率",
+    "target": "0.1N",
+    "measured": null,
+    "unit": "N",
+    "source": "技术协议 v3 §6.1",
+    "evidence": "待实测(DVT)",
+    "verdict": "待实测"
+   },
+   {
+    "category": "力控",
+    "name": "夹持力范围",
+    "target": "0.1-5N 可控",
+    "measured": null,
+    "unit": "N",
+    "source": "技术协议 v3 §3.2",
+    "evidence": "待实测(DVT)",
+    "verdict": "待实测"
+   },
+   {
+    "category": "力控",
+    "name": "力控插入深度一致性(C3)",
+    "target": "≤0.05mm",
+    "measured": null,
+    "unit": "mm",
+    "source": "5.50.D-R1 §五 未验",
+    "evidence": "未验(在研)",
+    "verdict": "待实测"
+   },
+   {
+    "category": "可靠性",
+    "name": "单轮到位成功率",
+    "target": "100%",
+    "measured": "215/215",
+    "unit": "—",
+    "source": "215 点实测",
+    "evidence": "实测",
+    "verdict": "PASS"
+   },
+   {
+    "category": "可靠性",
+    "name": "时间戳单调性",
+    "target": "True",
+    "measured": "True",
+    "unit": "—",
+    "source": "215 点 t_rel 检查",
+    "evidence": "实测",
+    "verdict": "PASS"
+   },
+   {
+    "category": "可靠性",
+    "name": "MTBF(整机)",
+    "target": "≥2000h",
+    "measured": null,
+    "unit": "h",
+    "source": "待 DVT 连续运行统计",
+    "evidence": "待实测",
+    "verdict": "待实测"
+   },
+   {
+    "category": "可靠性",
+    "name": "连续作业 72h/5000 次",
+    "target": "≥99%",
+    "measured": null,
+    "unit": "—",
+    "source": "技术协议 v3 §6.3 验收方法",
+    "evidence": "待实测(PVT)",
+    "verdict": "待实测"
+   }
+  ]
+ },
+ "env_matrix_dvt": [
+  {
+   "item": "温度",
+   "range": "15~35℃ / 存运 -20~60℃",
+   "standard": "GB/T 2423.1-2008 / .2-2008",
+   "criteria": "节拍漂移 ≤5%, 精度不降级",
+   "stage": "DVT"
+  },
+  {
+   "item": "湿度",
+   "range": "30~75% RH 无凝露",
+   "standard": "GB/T 2423.3-2016 / .4-2008",
+   "criteria": "无凝露报警, 绝缘电阻合格",
+   "stage": "DVT"
+  },
+  {
+   "item": "电源波动",
+   "range": "220V ±10%, 50Hz ±2Hz",
+   "standard": "GB/T 5226.1-2019",
+   "criteria": "不重启, 精度不降级",
+   "stage": "DVT"
+  },
+  {
+   "item": "振动",
+   "range": "运输 3-100Hz 1g",
+   "standard": "GB/T 2423.10-2019",
+   "criteria": "运输后标定仍有效",
+   "stage": "DVT"
+  },
+  {
+   "item": "ESD 静电",
+   "range": "接触放电 ±8kV / 空气 ±15kV",
+   "standard": "IEC 61000-4-2 / ANSI/ESD S20.20-2021",
+   "criteria": "不宕机, 器件不损伤",
+   "stage": "DVT"
+  },
+  {
+   "item": "洁净度",
+   "range": "ISO Class 7 (万级)",
+   "standard": "ISO 14644-1:2015 / GB/T 25915.1-2021",
+   "criteria": "发尘量达标, 无油雾",
+   "stage": "DVT"
+  },
+  {
+   "item": "光照变化",
+   "range": "300~1500 lux, 含局部强光",
+   "standard": "—",
+   "criteria": "视觉检出率 ≥99.5%",
+   "stage": "DVT"
+  },
+  {
+   "item": "来料位置漂移",
+   "range": "±3mm / ±3°",
+   "standard": "内部判据",
+   "criteria": "自恢复 ≥95% (C4)",
+   "stage": "DVT"
+  },
+  {
+   "item": "电磁兼容",
+   "range": "EN 55011 Class A",
+   "standard": "GB/T 17799.3 / IEC 61000-6-2",
+   "criteria": "无通信中断",
+   "stage": "DVT"
+  },
+  {
+   "item": "噪声",
+   "range": "≤70 dB(A) @1m",
+   "standard": "GB/T 3767-2016",
+   "criteria": "达标",
+   "stage": "DVT"
+  }
+ ],
+ "pvt_matrix": [
+  {
+   "item": "连续生产",
+   "range": "72h 连续 / ≥5000 次有效插拔",
+   "standard": "技术协议 v3 §6.3",
+   "criteria": "成功率 ≥99%, 无人工干预"
+  },
+  {
+   "item": "换型",
+   "range": "QSFP-DD ↔ OSFP ↔ SFP 软件切换",
+   "standard": "技术协议 v3 §2.7",
+   "criteria": "≤0.5h, 无需改代码"
+  },
+  {
+   "item": "节拍稳定性",
+   "range": "中间稳定段 ≥200 颗均值",
+   "standard": "技术协议 v3 §6.3",
+   "criteria": "偏差 ≤5%"
+  },
+  {
+   "item": "上料节拍匹配",
+   "range": "料盘补给不影响主机节拍",
+   "standard": "内部判据",
+   "criteria": "料盘切换 ≤15s, 不停机"
+  },
+  {
+   "item": "AOI 联动",
+   "range": "金手指/表面检测随动作触发",
+   "standard": "AOI 判据",
+   "criteria": "漏检率 0, 误检 ≤1%"
+  },
+  {
+   "item": "MES/追溯",
+   "range": "SN 与动作日志绑定",
+   "standard": "客户 MES 接口",
+   "criteria": "100% 可追溯"
+  },
+  {
+   "item": "异常恢复",
+   "range": "卡料/掉料/超时自恢复",
+   "standard": "内部判据",
+   "criteria": "自动恢复 ≥90%, 其余 15s 内报警"
+  },
+  {
+   "item": "人员安全",
+   "range": "安全围栏 + 光幕 + 急停",
+   "standard": "GB 11291.1-2011 / ISO 13849-1:2023 (PLd)",
+   "criteria": "急停 ≤500ms"
+  },
+  {
+   "item": "维护性",
+   "range": "日常保养 ≤5min/班, 易损件更换",
+   "standard": "内部判据",
+   "criteria": "MTTR ≤30min"
+  },
+  {
+   "item": "良率验证",
+   "range": "一次通过率",
+   "standard": "客户标准",
+   "criteria": "≥99.5%"
+  }
+ ]
+}
