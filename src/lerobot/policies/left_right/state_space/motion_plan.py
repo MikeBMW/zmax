@@ -35,7 +35,8 @@ import time
 _ROOT = os.path.expanduser("~/zmax")
 _TCP = os.path.join(_ROOT, "zmax_data", "rokae_sdk", "tcp_out", "latest.json")
 STALE_S = float(os.environ.get("ZMAX_PLAN_STALE_S", "2.0"))
-DEF_STEP = 50.0          # mm · 单步上限 (执行器守卫口径)
+DEF_STEP = 25.0          # mm · 单步上限 —— 与 action_bus.align.max_step_mm / 执行器守卫同一个数
+#   2026-11-15: 原先是 50, 规划按 50 切段、执行按 25 拦 ⇒ 规划合法/执行违规, 每拍被拒收。
 DEF_DOWN = 20.0          # mm · 向下单步上限
 LIFT_MM = 50.0           # mm · 抬升量 (绕奇异 50102 / 避碰的安全高度增量)
 MAX_SEGS = 40

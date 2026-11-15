@@ -490,6 +490,20 @@ def _enrich(act):
                                    round(float(act["y"]) - float(_t["y"]), 2),
                                    round(float(act["z"]) - float(_t["z"]), 2)]
             act["i_nearest"] = nearest_index()
+            # 🔴 2026-11-15: align 必须和 delta_mm 用**同一张真值**重算 —— 否则上游 0.16s 前的
+            #   快照算出 step_mm=33, 这里用新真值算出 delta=5.7, 同一个 action 里两套数打架。
+            _al = act.get("align")
+            if isinstance(_al, dict) and act.get("delta_mm"):
+                _d = [float(v) for v in act["delta_mm"]]
+                _s = math.sqrt(sum(v * v for v in _d))
+                _al["pose_truth"] = [round(float(_t["x"]), 2), round(float(_t["y"]), 2),
+                                     round(float(_t["z"]), 2)]
+                _al["delta_mm"] = list(act["delta_mm"])
+                _al["step_mm"] = round(_s, 3)
+                _al["truth_age_s"] = _t.get("age_s")
+                _al["truth_fresh"] = (_t.get("age_s") is not None and float(_t["age_s"]) <= 1.0)
+                _lim = float(_al.get("max_step_mm") or 25.0)
+                _al["step_ok"] = bool(_s <= _lim)
         _st = _traj_state()
         if _st.get("running"):
             act["dispatch"] = {"start": _st.get("start"), "n": _st.get("n"),
