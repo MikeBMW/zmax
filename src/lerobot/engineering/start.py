@@ -217,7 +217,10 @@ def _debug_defaults():
         # 🔎 2026-11-15 老倪「out["status"] 断点没进入」根因: n_moveit 不在核心链里, 而
         #   ZMAX_FULL_EVERY=999999 让"全量 pass"永不发生 ⇒ 规划节点每拍都不跑, 断点自然不进。
         #   加进核心链 (放在 n_exec 前, 与画布顺序一致: 段表 → 执行器)。
-        "ZMAX_CORE_IDS": "ssobs,sssensor,ssff,ssest,sspred,ssinnov,sssched,sslimit,ssact,sstactile,n_moveit,n_exec",
+        # 2026-11-15 老倪选①: 技能链 sssk1~4 也进核心链 —— 它们往 n_moveit.in1 递目标,
+        #   否则规划节点每拍"无目标"提前 return, 断点永远到不了出段表那几行。
+        "ZMAX_CORE_IDS": "ssobs,sssensor,ssff,ssest,sspred,ssinnov,sssched,sslimit,ssact,sstactile,"
+                         "sssk1,sssk2,sssk3,sssk4,n_moveit,n_exec",
         "SS_VLM_TIMEOUT": "8",
         # 🚦 闭环直驱护栏: 调试档默认"影子" —— 只记录 u 与实测运动的比对, 不改 u/不接管
         #    要真接管改成 armed(还必须连续 30 拍达标); 关掉写 off
