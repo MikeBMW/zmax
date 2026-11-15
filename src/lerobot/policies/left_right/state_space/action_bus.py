@@ -315,6 +315,14 @@ def from_ss(u, dt=0.1, pose_now=None, joints_now=None, why="状态空间输出")
                      "step_mm": round(step, 3), "max_step_mm": max_step,
                      "truth_age_s": age, "truth_fresh": (age is not None and age <= 1.0),
                      "step_ok": step <= max_step}}
+    # 🆕 2026-11-15 老倪「L2 L3 L4 L5 接口要对齐 action」: 补回 u 与 pose 两块
+    #   以前只有 plan 路径带, ss 路径没有 ⇒ 下游读 action["u"]/["pose"] 恒 None (契约缺口)
+    act["u"] = [round(v[0], 5), round(v[1], 5), round(v[2], 5),
+                (None if u_grip is None else round(u_grip, 3))]
+    act["pose"] = {"x": act["x"], "y": act["y"], "z": act["z"],
+                   "a": act["a"], "b": act["b"], "c": act["c"],
+                   "qx": act["qx"], "qy": act["qy"], "qz": act["qz"], "qw": act["qw"],
+                   "src": "ss(真值+u·dt)", "dt_s": round(float(dt), 4)}
     for k in range(6):
         act["j%d" % (k + 1)] = (round(math.degrees(float(joints_now[k])), 4)
                                 if joints_now and len(joints_now) > k else None)
@@ -423,9 +431,19 @@ def read_pose():
 
 
 def publish(act) -> bool:
-    """原子写 action.json(每拍一次, 后端/页面只读这份)。"""
+    """原子写 action.json(每拍一次, 后端/页面只读这份)。
+
+    🆕 2026-11-15: 出口按 action_spec 契约留证 —— 不合格不阻断(现场不能因为一条
+      契约小毛病停线), 但把 issues 写进 action["spec"]["issues"], 页面/终端一眼看到。
+    """
     if not act:
         return False
+    try:
+        from . import action_spec as _SP
+        _iss = _SP.validate(act)
+        act["spec"] = {"ok": not _iss, "issues": _iss, "ver": "action_spec/2026-11-15"}
+    except Exception:                                          # noqa: BLE001
+        act.setdefault("spec", {"ok": None, "issues": ["spec 模块不可用"]})
     try:
         os.makedirs(os.path.dirname(OUT), exist_ok=True)
         tmp = OUT + ".tmp"
