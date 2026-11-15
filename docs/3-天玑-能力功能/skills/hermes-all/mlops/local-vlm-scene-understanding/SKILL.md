@@ -27,6 +27,27 @@ du -sh $M/blobs                # ② 体积对得上(3B bf16 两分片 ≈ 7.1G)
 find $M -name '*.incomplete'   # ③ 空 = 无残片 ⇒ 完整, 别重下
 ```
 
+### 1.1 代码里写死单一缓存根 = 下一个坑 (权重完好却"从未出数")
+路径探对了不代表**代码找的是那一个**。症状: 产物文件字段**恒为 `null`/`0` 且 `ts` 停在很久以前**
+(实测 `{"vec":null,"conf":0.0,"label":null}` 躺了半个月), 日志里无报错。
+机理: `_LOCAL_SNAP = os.path.expanduser(".../hf_home/hub/...")` 指向**空目录**(只有 `CACHEDIR.TAG`)
+⇒ `_LOCAL_DEF=None` ⇒ `DEFAULT_MODEL` 回退成**联网 repo id**(`org/repo`) ⇒ 离线 `from_pretrained` 必失败,
+而调用方把失败吞成空结果。
+```python
+# ✅ 按序探测多个缓存根, 只认含 config.json 的快照
+_SNAP_CANDS = [
+    "~/zmax/zmax_data/hf_cache/hub/models--<org>--<repo>/snapshots",   # 实测真权重在这
+    "~/zmax/zmax_data/hf_home/hub/models--<org>--<repo>/snapshots",
+    "~/.cache/huggingface/hub/models--<org>--<repo>/snapshots",
+]
+_LOCAL_SNAP = next((d for d in _SNAP_CANDS if os.path.isdir(d)), _SNAP_CANDS[0])
+_LOCAL_DEF  = next((os.path.join(_LOCAL_SNAP, d) for d in sorted(os.listdir(_LOCAL_SNAP))
+                    if os.path.exists(os.path.join(_LOCAL_SNAP, d, "config.json"))), None)
+DEFAULT_MODEL = os.environ.get("SS_VLM_MODEL") or _LOCAL_DEF or "<org>/<repo>"
+```
+判据: 打印 `_LOCAL_SNAP` / `DEFAULT_MODEL`, 并断言 `DEFAULT_MODEL` 是**绝对路径**且 `config.json` 存在;
+回退到 `org/repo` 这种短名时必须显式告警 "离线会失败", 不许静默。
+
 ## 二、bash 坑: 赋值语句里 glob **不展开** (踩过)
 ```bash
 SS_VLM_MODEL=~/zmax_data/hf_home/hub/models--Qwen--*/snapshots/*     # ❌ `*` 原样传下去
@@ -353,10 +374,39 @@ for name in ("AutoModelForVision2Seq", "AutoModelForImageTextToText", "AutoModel
 实测: 产线侧相机某时刻 `kind=origin` 帧灰度均值 **0.0**(全黑) ⇒ 下游 0 检出、VLM 无输入,
 真因在取像/灯光/曝光, 不在模型。**先量画面, 再问模型**; 画面不合格时如实报"这一路无视觉证据, 本次仅依据状态量推理"。
 
+## 十九、L5 的产出契约: 目标必须来自「自主标定」, 回放轨迹只读
+
+L5 给下游的两类产出**性质完全不同**, 混用就把回放点当成自主理解:
+
+| 产出 | 来源 | 允许当什么 |
+|---|---|---|
+| 语义 `{stage, label, conf}` | VLM 判读 | 阶段先验 / 势场增益 `k`, **不产位姿** |
+| `T_goal` 位姿 | **视觉+深度+手眼+TCP 真值**算出的工件实际位置 | 唯一可当"目标"的东西 |
+| 阶段→示教轨迹区间出口点 | 回放轨迹表 | **只作参考/安全包络**, 不得当自主目标 |
+
+规矩:
+- **能算出视觉目标就立刻返回, 不再走回放点**。回退时必须显式标来源 (`goal_src="215点表(参考)"`),
+  与 `goal_src="L5_visual"` 分开; 否则下游无法区分"它在自主看"和"它在背轨迹"。
+- **示教/回放轨迹要加只读锁**: 常量 md5 + 加载时校验, 不一致直接 raise(附带"这是唯一安全基准, 只允许读")。
+  让"谁悄悄改了轨迹再跑"当场暴露, 而不是变成一条跑得通但语义错的数据。
+- 算不出视觉目标时返回 `None` + 明确 `why`(缺框/缺深度/缺外参/无位姿真值), **不编一个位姿**。
+
+### 19.1 调 `SceneVLM` 的两个接口坑 (探针/标注脚本必踩)
+
+1. **`_ask_http` 历史上只认文件路径**: 内部 `open(image,"rb")`, 传内存帧(ndarray)直接
+   `ValueError: The truth value of an array with more than one element is ambiguous` —— 表象像"VLM 坏了",
+   实际是没落盘。修法是让它同时吃 `bytes` / ndarray(`cv2.imencode` 就地编码) / 路径三种;
+   探针手里都是内存帧, 强制落盘既慢又多一份 IO。
+2. **`ask()` 只回 `{ok, text}`**, `json` 字段是 `describe()` 内部才填的。自己解析结构化输出时要用
+   同一套 `_json_from(text)`, 否则 `r.get("json")` 恒空 ⇒ stage/objects 全空, 看着像"模型没认出来"。
+3. 拿到的框要**先在原图坐标系里**, 且归一化后写 YOLO 格式(`cls cx cy w h`)时按送模型那张图的 W/H 除;
+   裁过图就一定乘回缩放系数(见 §十)。
+
 ## 坑清单
 | 坑 | 对策 |
 |---|---|
 | 默认 HF 缓存里只有 12M 就判"没下过" | 先 `du -sh` 扫 `HF_HOME`/数据盘候选目录 |
+| 权重完好但产物字段恒为 null/0、ts 停在旧日期 | 代码只找单一缓存根 ⇒ 回退成联网 repo id 离线必败 ⇒ 多根探测 + 断言 `config.json` 存在, 短名回退要告警 |
 | `VAR=路径/*` 后报 `Repo id must be in the form ...` | bash 赋值不展开 glob, 用 `$(ls -d ...)` |
 | 30s/帧就以为"每次都重新加载" | hello/ask 分开计时; 分开后再谈优化 |
 | 本地 VLM 说"看到了"就当真值 | 与几何真值对账; 双模型交叉; 画面≠结果 |
@@ -390,3 +440,6 @@ for name in ("AutoModelForVision2Seq", "AutoModelForImageTextToText", "AutoModel
 | 输入帧全黑/纯色还送去 VLM | 先算灰度 mean/std(mean≤3 或 std≤2 = 不可用) ⇒ 跳过调用 + 标 degraded, 别把黑图当证据 |
 | 调用挂起 45s+, 连状态码都没有, 调 timeout/预算都没用 | **模型名无效**(实测 `deepseek-v4-flash`) ⇒ 先用纯文本最小请求验模型名, 换成 `deepseek-chat`(0.61s) |
 | content 与 reasoning_content 都空, 但 completion_tokens 有几百 | 内容在**别的字段**里 ⇒ 打印原始 `choices[0].message` 全部键, 别只读两个键就判成 API 故障 |
+| 传内存帧给 VLM 报 `truth value of an array is ambiguous` | 客户端只认文件路径(`open(image)`) ⇒ 让它支持 ndarray(`cv2.imencode`)/bytes/路径 |
+| VLM 明明回答了, 但 stage/objects 全空 | `ask()` 只回 text, `json` 由 `describe()` 填 ⇒ 自己用 `_json_from(text)` 解 |
+| 下游分不清"自主看"还是"背轨迹" | 输出必须带 `goal_src`(视觉/参考区间), 回退要说清是哪一种 |

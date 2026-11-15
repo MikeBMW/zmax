@@ -52,6 +52,69 @@ nvidia-smi --query-gpu=memory.total,memory.used --format=csv
 - 脚本: `tools/train_p_cond_proj.py` (冻结除 proj 外全部, `--limit/--batch/--accum/--epochs/--lr/--smoke/--out`)。
   单卡 8 GB 时 `--batch 1 --accum 4` 是唯一能起前向的组合。
 
+## 接口对齐阶段的验证 (链路通 ≠ 有用, 但两者要分开证)
+
+前提: `apply_l4_cond` / `predict_action(..., l4_cond=)` 在 `action_head.py` 和
+`modeling_smolvla_lew.py` 里**早已存在**, 缺的只是 infer 侧没传。接通只要一行
+`pol.select_action(batch, l4_cond=t)` —— 先去 grep 确认通道存不存在, 别从头造。
+
+**三层验证, 由浅入深 (每层都实测, 别跳)**
+
+1. **结构层 — token 真的多了一个**
+   ```python
+   ct  = torch.zeros(1, 7, head.cross_attention_dim, device=dev)
+   ct2 = head.apply_l4_cond(ct, torch.as_tensor(cond.reshape(1, -1), device=dev))
+   print(tuple(ct.shape), tuple(ct2.shape), float(ct2[:, ct.shape[1]:].norm()))
+   # (1,7,960) → (1,8,960)   追加 token 范数 0.0085(只 ξ) / 0.55(ξ+manifold6)
+   ```
+   范数为 0 ⇒ 投影权重全零或 cond 全零, 通道没进去。
+
+2. **注入层 — meta 自报**
+   `select_action` 前把 cond 转 `(1,N)` float32 上 device, 成功后写
+   `meta.l4_cond_injected=True / l4_cond_dim=N`; 转换失败写 `l4_cond_err` 并置 False。
+   下游日志/页面只认 `l4_cond_injected=True`, **别用"我传了"当证据**。
+
+3. **可证伪层 — 三态动作对比**
+   `cond=None` vs `cond=真值` vs `cond=全零` 各跑一次, 打 `max|Δ|`:
+   - `|真值 − None| > 0` ⇒ 通道真参与前向;
+   - **`|zeros − None| > 0` 是正常的** (零向量 ≠ 不加 token, 投影有 bias/随机权重),
+     别拿它判 bug;
+   - 三态都撞 clamp 边界 (实测 817.839=max / 211.187=min) ⇒ 模型本身没训好,
+     这个 Δ 数字不能当"条件有用"的证据。
+
+**条件向量布局 (15 维, 从 SE(3) 引擎来)**
+```
+[0:6]   ξ̂         se3_log(T_goal⁻¹T); 平移 mm/行程 + 旋转 rad/π 各自归一后 clip(±1)
+[6:12]  manifold6 接触3(progress/risk/V) + 性能3(η/rem/d_perp)
+[12:15] intent3   L5 意图; 未接入就真是 0
+```
+元数据必带 `cond_real={'xi':bool,'manifold':bool,'intent':bool}` —— 12/15 是真值时要能一眼
+看出剩下 3 维是 0 而不是"小值"。
+
+⚠️ **两块分量量级差很多**: ξ̂ 在 0.012 量级而 manifold6 在 0.2~0.65, 追加 token 范数从
+0.0085 跳到 0.55 (65×) ⇒ 条件信号几乎全由流形读数主导, 几何 twist 成了小量。要让两者
+均衡, 得在投影前各自归一。
+
+## 混域是硬红线: 口径对不上就标分布外, 不要凑
+
+`WorldModelPredictor` 的 z7 训练口径是 `[x−tgt, x−peg, grasped]` (`library.py` 构造)。
+真机侧能拿 `x` (tcp 真值) 和 `tgt` (215 点表), **但 `peg` 的 base_link 位置只有仿真源**
+(`zmax_data/ss_live/trace_live.json`, 自带 `src='...metaworld seed=0...'`)。
+
+⇒ 真机 z7 凑不出训练口径。只有两种可选做法, 都得如实标:
+- 喂 SE(3) 的 `[平移误差, 旋转误差, grasped]` + 元数据写
+  `z7_scale_note="v5 训练口径为 [x-tgt,x-peg,grasped] ⇒ 本次分布外"`;
+- 或先补真机 peg 视觉位置 (AOI 检测 / 手眼投影) 再喂。
+
+**绝不要**把仿真 peg 混进真机 z7 去"对齐口径" —— 那是混域编数。
+
+**权重形状必须逐层对**: `WorldModelPredictor(z_dim=7, act_dim=4, hidden_dim=512, num_layers=4)`
+—— `num_layers` 错一层就报 `size mismatch for predictor.mlp.4.weight: (512,512) vs (7,512)`。
+判别法: `torch.load(ck, weights_only=False)` 打印全部键 shape, 数 `predictor.mlp.N` 层数反推
+`num_layers` (`mlp.0..8` = 4 层隐藏), `readout.mlp.0` 的 in_features = z_dim。
+`load_state_dict(sd, strict=False)` 后**必须检查 `missing_keys` 为空**才算加载对 ——
+只看"没抛异常"会把静默跳过的层当成功。
+
 ## 判断顺序 (省时间)
 
 ```

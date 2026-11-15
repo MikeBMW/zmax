@@ -79,6 +79,58 @@ description: Z-MAX 插拔策略训练与评估管道 — 评估铁律(逐维norm
    也能 PASS); 水平 = 与真机偏差阈值 (只有真 ckpt 才有意义)。混成一条会在未训练模型上报假
    FAIL, 让人去"修"一个没坏的接口。
 
+5. **数据管线瓶颈先诊断再调参**: GPU util 只有 ~25% 且主进程栈停在 `_try_get_data` =
+   在等 dataloader, 不在算。`py-spy dump` worker 会看到 `decode_example → PIL load →
+   to_tensor → format_batch` (HF datasets 整块解码图像)。**先量每个 worker 的 anon-rss
+   (`smaps_rollup`) 再决定加不加 worker**: 实测每个 `pt_data_worker` 4.8G ⇒ 10 个直接
+   cgroup OOM (内核杀 worker, 主进程跟着退), 本机上限就是 4 个。**加 batch 反而更慢**
+   (batch 8 实测 20.6 s/step、GPU 5%), batch 越大要喂的数据越多。真提速只能改数据格式
+   (预解码成 npy mmap 直查), 堆 batch/worker 无效 —— 但这是重写 dataset transform 的活,
+   别在用户等着看结果时顺手改。
+
+## 动作维度扩容 (4→7 维) 与 ckpt 口径纪律
+
+Z-MAX 真机 action 口径 = **7 维 `[x,y,z (mm 绝对), a,b,c (deg), grip(0/70)]`**, 位姿逐点取自
+`tools/web/real_traj_joints.json` (215 点真值表: p 米 / q 四元数 / 6 关节)。老 4 维只有 xyz+grip,
+姿态从来没进过 action —— 用户问"x y z a b c 都在哪里"时先查**采集侧** `act_pose` 存了几维,
+别直接去改模型头。一致性可实测: `act_pose` vs `p*1000` 差 <0.01mm, 四元数转 `euler('xyz')`
+与执行器 a/b/c 逐位相同。
+
+扩容时四件事一起做, 少一件就出现"head 出 7 维、下游还是 4 维":
+
+1. **全链路查写死的截断**: `grep -rn "\[:4\]" <nodes 目录> <action_bus>` —— head 出 7 维,
+   但 `infer()` 的 `np.asarray(act).reshape(-1)[:4]`、`nominal = [.. for x in act[:4]]` 会静默
+   切掉 a/b/c (实测三处)。改成按 ckpt 的 `action_dim` 取全。
+2. **夹爪下标不硬编码**: config 加 `grip_index` (4 维=3, 7 维=6), head 的 clamp/二值化按它定位。
+3. **数据集侧**: `tools/live_ds_to_lerobot.py` 写 7 维 + 按 `act_i` 逐点取真值表 (取不到才回退),
+   生成完必须打印"姿态来源: 真值表 N 帧, 回退 M 帧" —— 回退数不为 0 就是没对上。
+4. **反归一化留在 head 出口** (`unnorm_out/action_min/action_max`), node 侧检测到
+   `unnorm_out=True` 就跳过 post, 两处都做会归一化两次。
+
+**ckpt 口径硬闸 (禁止静默回退)**: `_pref` 候选只放当前口径的 ckpt 目录; 加载后校验
+`config.action_dim == 期望`, 不符**当场抛错并打印换 ckpt 的命令**。静默 fallback 到老 4 维 ckpt
+的后果是断点看到 `(1,10,4)` 却被当成"代码没改对", 白查一轮。同理 `save_pretrained` 只认
+`model.safetensors` 存在且可读 (root 600 会伪装成 FileNotFoundError)。
+
+**`save_pretrained` 必须补 `"type"`**: 训练产出的 `config.json` 不带 `type`, draccus 反序列化报
+`ParsingError: Expected a dict with a 'type' key for PreTrainedConfig` —— 每个新 ckpt 都中招。
+根治在 `src/lerobot/policies/pretrained.py:save_pretrained`, 保存后回读 config.json 写回
+`self.config.type`; 手工补 ckpt 是漏 (踩过三次)。
+
+**没训出 ckpt 也要能让用户调试**: 用正确口径构造随机头 ckpt (VLM 主干从本地 HF 缓存, action
+head 随机), 用户能立刻在 `return actions` 断点看真实张量, 不必等训练。四个构造坑:
+`input_features` 必须是 `PolicyFeature(type=FeatureType.X, shape=...)` 对象不是裸 dict;
+`resize_images_to` 传 **tuple** (list[int] 让 draccus 报 `Couldn't encode 128`);
+`state_dim` 要显式给 (默认 2, 不给 state_encoder 报 shape 不符); preprocessor/postprocessor
+从 **state_dim 相同** 的 donor ckpt 借 (state 段口径一致即可复用)。判定: `action_dim/state_dim/
+unnorm_out/grip_index/len(action_min)` 全对 + `model.safetensors` 存在。
+
+**ckpt 目录交接口径**: 别手工 `mkdir checkpoints/last` —— 训练到第 N 步要把 `000N50` 改名成
+`last` 时报 `FileExistsError: [Errno 17] File exists`。要交接就先训出编号目录再
+`rm -rf last && cp -r 000050 last`。`--resume=true` 必须 `--config_path` 指向 ckpt 里的
+`train_config.json` (给 yaml 报 `A config_path is expected when resuming`); 不想 resume 就换
+新的 `output_dir`, 别复用已存在的目录。
+
 ## 坐标叠加架构 (老倪核心, 2026-08-08)
 - 原 ACT `[latent, state_token, *49图像token]` 拼序列 → 坐标淹没 → 学不会
 - 改: `latent_embed += encoder_robot_state_input_proj(state)` 叠加进 latent,

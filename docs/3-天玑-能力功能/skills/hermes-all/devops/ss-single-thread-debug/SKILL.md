@@ -257,6 +257,41 @@ _do_wait_suspend → step (scheduler_fsm.py:251) → advance (cognition.py:403)
   `grip_mm` 量化成 0/70 二值、另留 `grip_mm_raw` 存原始连续值做证据;
   加 `l3_fmt_ok` 判据(mm 量级 + grip∈[0,70] + age<2s), 执行仍走 `src`, 只是格式先对齐。
   这样用户能在 action.json 里看到与真机同构的模型输出, 又不动臂。
+
+### L3 动作头链路：每一段的 file:line 与形态（用户会逐段追问「输出在哪」）
+| 段 | 位置 | 形态 |
+|---|---|---|
+| ① flow-matching 采样末步 | `action_head.py:438` `actions = actions + dt * pred_velocity` | (1,10,4) 归一化 [-1,1]，10 点 chunk |
+| ② head 出口 | `action_head.py:459` `return actions`（行号随 unnorm 代码下移，改前先 grep） | `unnorm_out=false` ⇒ 仍归一化；`true` ⇒ **已是 mm + grip 0/70 的 chunk** |
+| ③ 队列出点 | `modeling_smolvla_lew.py:543-546`（`len(_queues[ACTION])==0` → `predict_action_chunk`）→ `popleft()` | 每 5 拍才算一次，一次出 1 点 (1,4) |
+| ④ 反归一化（全链唯一一处） | `smolvla_lew_l3.py:372` `act = post(pred)`，被 `_head_unnorm` 分支包住 | 二选一：head 已做则跳过，否则这里出 (1,4) mm + grip 0~70；`post is None` 时整段跳过、动作全错 |
+| ⑤ **L3 最终输出** | `flow_matching_impl.py:147` `nominal = [round(float(x),6) for x in act[:4]]` | `[x,y,z,grip]` 绝对 mm |
+| ⑥ 落盘 | `zmax_data/ss_live/l3_latest.json` 的 `out1.nominal_L3`（+`nominal_src`/`degraded`/`base_L2`/`delta`） | 每拍覆盖 |
+
+- 断 ① 每 5 拍才停一次（队列缓存 4 拍直接 popleft）；要**每拍**看就断 ⑤ —— 147 行只要 `act is not None` 就必过。
+- 用户问「这是不是 L3 最后的输出」按这张表答，别笼统说「在 action head 里」：①②是 chunk 不是最终值，④才是唯一把归一化换回毫米的地方（`post is None` 时整段跳过、动作全错）。
+- 想看输出**不必下断点**，直接看落盘（可粘贴）：
+  `watch -n1 'python3 -c "import json;d=json.load(open(\"/home/ubuntu/zmax/zmax_data/ss_live/l3_latest.json\"));print(d[\"out1\"][\"nominal_L3\"], d[\"out1\"][\"nominal_src\"])"'`
+- `l3_latest.json` 的 mtime 停在旧拍、而 `action.json` 照涨 ⇒ 是调试会话停在断点上没走完那一拍，**不是接口坏**；`action.json` 的 `l3` 块为空同理（`_SS_STATE` 只在同进程内共享，且要 ssdec 那一拍真算完）。
+- 用户报「flow_matching_impl.py:14 在哪」这类错行号时，直接把**该行内容**贴回去（:14 是文件头说明注释，不是代码），别只说「你写错了」。
+
+### head 出口为什么是 [-1,1] 而不是 mm（会被反复问）
+- `action_head.py` 里对 `stats/min/max/unnorm` 的引用数 = **0**：它只从 `config.action_dim` 知道维度，不知道量纲；它学的是已经归一化过的训练标签空间。
+- stats 属于数据集/ckpt 层：归一化方式在 `configuration_smolvla_lew.py:44-50`（ACTION=**MIN_MAX**，不是 mean/std），具体 min/max 在数据集 `meta/stats.json`，由 `make_pre_post_processors` 造出的 post 持有。
+- MIN_MAX 是**双向 [-1,1]**：反解 `(t+1)/2*(max-min)+min`，正解 `2*(t-min)/(max-min)-1`。按 mean/std 反推会全错。
+- 默认不塞进 head 的理由：这份 head 与 `vla_jepa`/`groot` 共用同构逻辑，硬编码一套统计量等于把三条 policy 绑死。
+- 🔴 **但用户要求「就在 head 里输出、不要 node 补」时，按开关方案落（已实测 PASS，训练零影响）**：
+  config 加 `unnorm_out/action_min/action_max/grip_binary_thresh` → head 在 `return actions` 前做 MIN_MAX 逆变换 + `clamp` 到工作空间 + 夹爪二值化 → 下游 infer **必须跳过 `post()`**，否则双重反归一化。
+  完整四处改动、注入工具 `tools/inject_unnorm_stats.py`、验证口径与雷区见 `references/l3-head-unnorm-out.md`。
+- 断在 head 出口想看毫米（未启用 unnorm_out 时），用 Watch 表达式（不改代码）：
+  `((actions+1)/2*(torch.tensor([<max4>],device=actions.device)-torch.tensor([<min4>],device=actions.device))+torch.tensor([<min4>],device=actions.device)).round()`
+- 实测范围（`zmax_live_215ep1_128`）：min `[211.19,-511.46,114.90,0]` · max `[817.84,410.84,998.60,70]`。
+
+### L3 的绝对 mm 目标不能直接当执行 action
+- 执行侧契约 `action_bus.from_ss(u, dt, pose_now)`：`位置 = 真值 + u[:3]*dt`、`u` 是 **m/s**、`u[3]>=0.5 判合`、`姿态 a/b/c 沿用真值`（所以 L3 不出姿态正好对得上）。
+- 把绝对目标直接当指令：实测 190.5mm / 0.1s = **1905 mm/s**，超「1~1000 mm/s」限幅 ⇒ 被 `sslimit` 拒。这不是代码 bug，是形态不对；报「接口通了但不能执行」时要带这个换算。
+- 三条接法：① 转速度 `u=(l3_xyz-真值)/dt/1000` + `u[3]=grip_mm/70`，走已有直驱闸（`ZMAX_DD_MODE=armed` + 连续 30 拍达标 + 逐轴 corr<0.5 veto）；② 把 10 点 chunk 展开成 `abs_mm` 段表走 `l2_daemon`（与 215 回放同一条执行路）；③ 影子（只写 `action.json` 的 `l3` 块，完全不动臂）。
+- 共同前置：模型误差要降到 10mm 量级，否则差分速度永远超限被拒，接上也是空转 —— 先说这条，别让用户以为改几行就能驱动。
 ⚠️ 路径陷阱：仓库里有个**诱饵目录 `src/zmax_data/`**。任何新模块“向上找仓库根”来落盘时，
 只判 `zmax_data/` 会命中它 ⇒ 写进 `src/zmax_data/ss_live/` 却没人读（且被 try/except 吞掉、静默失败）。
 判据必须**同时**要求 `zmax_data/` 和 `src/lerobot/` 都在，或直接用 `ZMAX_ROOT` 环境变量。

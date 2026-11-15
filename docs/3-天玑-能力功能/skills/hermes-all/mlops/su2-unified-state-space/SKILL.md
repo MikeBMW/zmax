@@ -54,6 +54,61 @@ SU(2) ≅ S³ ≅ 单位四元数 (w,x,y,z)   ⇒ 只有 3 个旋转自由度, �
 4. 已有**外部位姿真值**(运动学/编码器, 如 50Hz TCP)时, 不要再叠一层 SLAM 去估相机位姿 ——
    那是把两个误差源相加; 直接用"深度反投影 + 已知位姿"做体素融合。SLAM 只在**没有**外部位姿时才是对的答案。
 
+### 回答"引擎输出的是 SE(3) 流形吗" —— 先读字段, 别凭架构猜
+`engine_latest.json` 顶层写 `manifold="su2"`: **主流形就是 S³, SE(3) 只是旁边一条读出支路**。
+
+| 块 | 键 | 内容 |
+|---|---|---|
+| 主流形 | `p`(4) · `phi` · `grad_norm` · `momentum` | S³ 单位四元数点 (实测 ‖p‖²=1.0000) + 势能 + 梯度范数 |
+| `s3`(21 键) | `scene_q`/`exec_q`(4) · `exec_theta_deg` · `exec_axis`(3) · `scene_bloch`(3) · `layers_theta{L2..L5}` · `predict`(theta/steps_needed/eta_s/q) · `predict_next`(q/omega_rad_s/src) · `decode`(omega_rad_s) · `chain` | 测地线计划 + 切空间外推 + **最终 ω 指令** |
+| SE(3) 旁路 | `se3_pose.pose7_pred`(7) · `xi`(6, `xi_order="rho_phi"`) · `residual` · `domain` | 6 维 ξ → 群指数 → 7 维位姿; 实测 residual 3.79°/22.3mm, `domain` 写"sim · 真机未标定", 只预测不下发 |
+
+**它装的不是位姿, 是平移误差的旋转编码**:
+```python
+# state_space/su2.py:272-280
+encode_obs43(obs) = SU2Element.from_rotvec(bounded_rotvec(obs43_geometry(obs), gain=2))
+# obs43_geometry = 光模块头 − 孔位  (m, 平移误差)
+```
+方向 ê 当转轴、‖e‖ 经 `π·tanh` 压成角度 ⇒ 三点必须如实报: ①末端**绝对 xyz** 不在流形里
+(S³ 3 自由度 vs SE(3) 6); ②末端**朝向**也不在 (e 是平移误差不是姿态误差); ③`tanh` 压平量级
+(实测 611.9mm 的误差在球上只体现成一个接近 π 的角度, 大误差段多对一)。
+对外只能说"**误差收敛控制器 / 几何锚**", 不能说"位姿引擎"。
+
+**降级要一起报**: `layers_theta.L3=0 / L5=0` + `inputs_note` 写"L3/L4 输入项本回路未提供 ⇒ scene
+层部分退化, exec 路(U_L2 几何误差, 来自 43D obs)完整" —— 每拍真正生效的只有 exec 路, 是如实
+标注的缺失, 不是 bug。
+
+**用户问"应该输出 SE(3) 变换矩阵对吧" → 对**, 但改造缺口要一次说全: 点 `p∈S³` → `T∈SE(3)`(4×4);
+误差 → `T_err=T_target·T_cur⁻¹` 群运算; 球面测地线 → SE(3) 上 exp/log(螺旋运动); `φ(q)` 球面势场
+→ `φ(T)` 在 6 维流形上; 输出 `ω` → `ξ=[ρ;φ]`; 输出 `q+ω` → `T+ξ`。`se3_pose` 支路已有
+ξ→群指数实现可复用, 但**先定位姿真源**(现在是 sim PCA 未标定), 否则改完还是仿真域的数。
+
+### SE(3) 分支真落地: 七个换算坑 (分支存在 ≠ 能用)
+`Navigator.step` 里的 `if t == "se3"` 一直有, 但没人开过。接进引擎要逐条验:
+
+1. **`eng.project(state)` ≠ `eng.projector.project(...)`**: `ManifoldEngine.project` 先 `encoder.encode(state)`
+   走 16 维潜空间 —— 把 12 维 `[R9;t3]` 传进去会被 PCA 洗成**单位矩阵 + 零平移**(实测输出 R=I, t=[0,0,0])。
+   SE(3) 必须直连 `eng.projector.project(p12)`(内部 SVD 正交化 + det 修正)。
+2. **6 维顺序两个世界**: `se3_chain` 的 ξ=`[ρ(平移); φ(旋转)]`, 而 `Navigator.step` 读 `v[:3]` 当角速度、
+   `v[3:6]` 当平移 ⇒ 直传会把平移当旋转(实测 5 步内距离单调涨到 20mm)。传前重排 `concat([xi[3:], xi[:3]])`。
+3. **ξ 方向配右乘**: `step` 做 `T·exp(ξ·dt)`(体坐标右乘) ⇒ ξ 必须是 `log(T⁻¹·Tg)`(当前→目标)。
+   用 `log(Tg⁻¹T)` 再取负, 右乘后**不进反退**(实测 18.130→18.169mm)。
+4. **slerp+lerp 不是螺旋**: 旧实现 `slerp(R)+lerp(t)` 而注册表写"螺旋运动"。ρ∥φ 或小角度一致,
+   ρ∦φ 且 1.2rad 差 **163mm/10.1°**; 改调 `se3_chain.se3_exp` 后 `max|Δ|=0`。
+5. **不许静默降级**: `p.size<12` 时旧代码 `return p+v*dt`(欧氏直线) —— 看着像 SE3 实际不是。改 `ValueError`。
+6. **R↔rpy 的判据是矩阵不是数字**: 比 `‖rpy_back−rpy‖` 会因 `ry` 超出 ±π/2 的等价角假红
+   (实测 200 组 88 组"不一致"全属等价)。判据用 `‖R1−R2‖_F`(500 组 0 不一致, worst 1e-14)。
+7. **`eng.load(ck)` 会按文件里的 `manifold_type` 重建子对象, 把引擎改回 su2**: `models/manifold_engine.npz`
+   存的是 su2 标定, load 时 `manifold_type`/`projector.type`/`navigator.type` 三者一起被改成 su2 ⇒
+   project 从 12 维掉回 4 维、navigator 走 sphere 分支 ⇒ `ValueError: operands could not be broadcast
+   together with shapes (4,) (6,)`。
+   ⇒ **se3 模式跳过 load**, 并在 `calib_note` 写明"SE3 用位姿真值 + 215 点表, 不加载 su2 标定"。
+   排查口诀: 离线脚本直连 `projector.project` 通、放进节点就报 (4,)(6,) ⇒ 先 print 那三个 type,
+   别去怀疑 se3 数学。
+
+接线骨架、L5 语义引导(阶段→215 点区间→T_goal, conf 门控)、双通道 provider、标定映射与验收数字见
+`references/se3-engine-branch.md`。
+
 ## 「四元数 = 游标卡尺」: 成立条件与判据
 用户会说「任意旋转一一映射到 S³ 上的一段轨迹, 所以算轨迹 = 执行动作」。分成两半回答, 两边都要能跑数字:
 
@@ -356,3 +411,21 @@ skill_ctx=...)` 的**渲染帧 + 24 维 skill_ctx**, 自己模型编出 z_t/z_go
 26. **画布节点的 `outputs` 声明与实际链路可以不一致**: ssobs 声明 `["out1","out2"]` 而链路
    `lk0924_ssobs_ss_mani_eng` 用的是 `out3` —— 运行时取得到(代码里有), 但声明缺口会让面板/校验看不到。
    加/改出口时同步 `params.outputs`, 并在验收里核"声明 ⊇ 被链路引用"。
+27. **画布上的边存在 ≠ 被消费**: 查"某条线通没通"只 grep `links` 会得出"有线"的结论, 而实现里可能
+   一个字段都没读(实测引擎 7 条入边只有 1 条被读)。三条纪律:
+   ① 回答"连接一致吗"必须**逐端口**给 `used/what` 或 `used:false + why`, 并把这张表打进输出
+   (`rec["ports"]`); 只在文档里写不算。
+   ② **先让已有的边真干活, 别急着加新节点** —— 目标节点已有的入边就是上游出口, 加新节点等于同一对
+   (源,靶) 的重复路径; 缺的往往不是线, 是读线的代码。
+   ③ **没有标定映射的信号不许硬接**: 潜坐标 z 与位姿 p 不在一个量纲空间, 乘进势场权重就是拿无物理
+   意义的数改动作 = 造数。标 `used:false` + 原因(模式差异 / 缺标定 / 精度更差)比假消费诚实。
+   ④ **接对了节点、接错了端口也算“空口”**: 上游常只填一两个出口(out1 有值、out2/out3 恒 None),
+   边指向 None 那个口时连线完整、节点也“跑成功”, 但下游永远拿 None。靠 label 永远看不出。
+   排查就一步:
+   `for p, v in (got[up].items()): print(p, 'None' if v is None else (('dict[%d] %s' % (len(v), list(v)[:7])) if isinstance(v, dict) else type(v).__name__))`
+   —— 取非 None 那个口, 再核它载荷里有下游要的键。实测: `sslat` 只填 out1(含 stage/speed/contact_p),
+   out2 恒 None; `ss_moe` 三个出口全 None ⇒ “阶段先验”那条边怎么读都空; 真 stage 在 `sscalib.out2`。
+   判据: **出口有值 ≠ 出口给对了东西**, 两件事分开验。改线后验收: 备份 + 边数/节点 id 序列不变 +
+   变化下标集合恰为那一条 + 同对(源,靶)计数不变。
+28. **枚举"谁连到谁"时禁止截断输出**: 用 `head -N` 裁边/节点清单会漏掉关键那条, 进而对外断言
+   "没有这条线"(实测裁到 22 行时漏了真实存在的 L5→引擎边)。先数总数, 再全量列或按目标过滤后全列。

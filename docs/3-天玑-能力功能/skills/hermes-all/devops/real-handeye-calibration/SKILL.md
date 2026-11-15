@@ -15,7 +15,8 @@ platforms: [linux]
 - 老倪摆好标定板说"你开始吧"
 
 ## 硬件/口径前提
-- 板: **CGB-020，白点黑底圆点阵列 5×4 = 20 点，间距 20mm** → `cv2.findCirclesGrid(255-灰, (4,5), CALIB_CB_ASYMMETRIC_GRID)`（**必须反色**，不反色检出 0）
+- 板: **CGB-020，白点黑底圆点阵列 5×4 = 20 点，间距 20mm** → `cv2.findCirclesGrid(gray, (4,5), CALIB_CB_ASYMMETRIC_GRID, blobDetector=<SimpleBlobDetector>)`
+  ⚠️ **必须自带 SimpleBlobDetector**（见下节），默认 detector 对这块板恒检不出，“必须反色”的旧结论不准确
 - 内参 K/畸变: `models/real_cam_calib.json`（来自 `/realsense/color/camera_info`，fx≈394/fy≈393/cx≈318.4/cy≈238.7）
 - 位姿真值: `/robot/tcp_pose`（≡ SDK 的 `CoordinateType.endInRef` 工具系，与示教点同源）
 
@@ -43,6 +44,53 @@ gui-venv311/bin/python tools/handeye_verify.py     --session ~/zmax_data/handeye
 不能因为法向那项大就说“标定不能用”。口径要同源：解算器闭环用 `OBJ.mean(0)` 质心，
 比对面也得取实检点云质心（不是图案原点，否则差 68/40mm 常量偏移）。
 详见技能 `sim-real-scene-overlay`。
+
+## ⚠️ 检出坑(2026-11-15 实测, 推翻旧结论)
+
+**`findCirclesGrid` 默认 detector 对 CGB-020 恒检不出** — 原图/反色 × (4,5)/(5,4) × 对称/非对称
+全部试过都是 **0 点**, 而画面里板明明在(老倪肉眼可见)。会误判成"板不在视野"。
+
+**真因**: 必须自带 `SimpleBlobDetector`, 默认 detector 把这些点按面积/圆度滤掉了。
+
+```python
+p = cv2.SimpleBlobDetector_Params()
+p.filterByArea = True; p.minArea = 50; p.maxArea = 1500
+p.filterByCircularity = True; p.minCircularity = 0.55
+p.filterByConvexity = True; p.minConvexity = 0.7
+p.filterByInertia = True; p.minInertiaRatio = 0.15
+p.filterByColor = True; p.blobColor = 255          # 原图白点=255; 反色图里白点变黑=0
+det = cv2.SimpleBlobDetector_create(p)
+ok, cs = cv2.findCirclesGrid(gray, (4,5), flags=cv2.CALIB_CB_ASYMMETRIC_GRID, blobDetector=det)
+```
+
+加上后 20 点稳定检出, PnP 残差 0.10~0.18px。
+**辅助判据**: Hough 圆 (param2=26, r=4~14) 能先看到 12~18 个规整圆点(最近邻间距变异系数≈0.05),
+说明板在视野里; 此时 findCirclesGrid 仍为 0 → 就是缺 blobDetector, 不是板不在。
+
+## 走位通道: 用 Orin SDK 桥 39061, 不要用 ROS2 /move_pose (2026-11-15 实测)
+
+本机 ROS2 这条路当天两处坏: `ros2 topic echo /robot/tcp_pose` 报
+`sequence size exceeds remaining buffer`; `tools/l2_pose_rot.py` 读位姿同样失败;
+且 `~/.ssh/config` 里 `Host orin` 的 `HostName` 被写成热点 43.19(有线时超时), 正确是 `192.168.23.66`(User tashan)。
+
+**能用的路**: Orin SDK HTTP 桥 `http://192.168.23.66:39061`
+- `GET /health` 要 `sdk:true`(sdk:false ⇒ 单元 ZMAX_SDK_PATH 指到废弃工作区)
+- `GET /status` → `status.endInRef = [x,y,z(m), rx,ry,rz(rad)]`, 与 `/robot/tcp_pose` 同口径
+- `POST /reset`(SDK 接管前置) → `POST /move_pose {p:[x,y,z], q:[x,y,z,w], speed, dry}` → `POST /stop`
+
+跑通的采集器: `tools/handeye_bridge_collect.py --dry|--go`, 12 位姿(3 轴各 ±10° + 四向 30mm),
+逐点 到位校验(≤1mm/≤0.5°) → 力矩闸 → 抓 8791/snapshot/arm.jpg → 同刻读 /status → 20 点检测 → 落 pairs。
+
+**到位超时要给足**: 20mm/s 走 60mm 要 3s+, 8s 超时曾在最后一组停在距目标 6.5mm 被 /stop
+(保护对, 但少一组)。要 12 组齐就给 12~15s。
+
+**力矩闸写基线增量, 不要写绝对值**: 该姿态悬停 J2≈-24.4Nm、J3≈+22.4Nm 是**正常重力矩**,
+拿 23Nm 当阈值第一点就误 /stop。正确: 相对启动基线的**增量** > 10Nm 或绝对 > 40Nm 才停。
+
+**8 组就够解**: 3 轴各 ±10° 旋转组合(位置只 X 30mm)已解出平移 RMS 0.36mm / 姿态 0.019°,
+全链路重投影中位 0.804px(判据 ≤1.5px)。旧标定 12.53°/92.44mm → 差 660 倍/257 倍。
+说明手眼解算主要靠**姿态多样性**, 位置激励只影响鲁棒性余量。
+自洽性验证很灵: 纯平移组的板姿态变化应≈0(实测 0.21°), 每条旋转组的板转角应≈工具转角(实测 9.81~10.23°)。
 
 ## 坑（都踩过）
 1. **物点单位必须是米**。传 `--square-mm 20` 而物点直接用 `20`（=20 米）→ 解出的"板距相机"是

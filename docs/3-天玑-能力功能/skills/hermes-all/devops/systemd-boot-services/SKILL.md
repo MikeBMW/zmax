@@ -313,6 +313,17 @@ systemctl show -p ExecStart --value <嫌疑 unit>
   判据: 本次超时但下一次 `ps` 里进程在、产物在增长 ⇒ **当成起成功了**, 别再起第二份(两进程抢设备/日志交错, 比没起更难排)。
 - **改完代码必须重启进程**：长驻守护跑的是内存里的旧代码 —— 本轮磁盘上改了 `timeout`/常量但没重启，误报又持续 2 小时。核验要对比 `ps` 启动时间 vs 文件 mtime。
 
+## 8. 用户级 unit (`systemctl --user`) — 没开 linger 就等于没做
+
+工位机/产线机上常没有 root 或不愿动 `/etc`: 用户级 unit 落在 `~/.config/systemd/user/`, 用 `systemctl --user` 管。四处与系统级不同, 每处都能把"已自启"变成假话:
+
+- 🔴 **`loginctl enable-linger <user>` 是开机自启的前提**: 用户级 unit 只在该用户有 session 时跑; 不开 linger, **重启后没人登录 = 一个都不起**, 而 `is-enabled` 照样回 `enabled` —— 那个返回值只承诺"登录后会起"。判据: `loginctl show-user <user> -p Linger` 要 `Linger=yes`。验收口径必须包含这一条, 否则报"已自启"是假的。
+- 🔴 **`StartLimitIntervalSec` / `StartLimitBurst` 只能写在 `[Unit]` 段**: 写进 `[Service]` 会被**静默忽略**(只有 `systemd-analyze --user verify` 打一行 `Unknown key name ... ignoring`), 于是"重启 5 次就放弃"根本不生效, 坏设备被无限重启拖住。写完必跑 verify, 把 `Unknown key name` 当**错误**处理而不是警告。
+- 🔴 **会真动硬件的 unit 一律不 enable, 而且连 `[Install]` 段都不写**: `[Install]` 缺失 ⇒ 单元呈 `static`, 即使有人误执行 `enable` 也**不会**被拉进 `default.target.wants/`。同一台机里"只读的看/采"可以 `enabled`, "真机下发/运动/回放"必须 `static` —— 一上电臂就跑轨迹, 旁边有人在装夹就是事故。要不要它开机跑是用户的一句话, 不是 agent 的默认动作; 报告里必须写清"我故意没 enable"。回放类再加 `Restart=no` + `TimeoutStartSec`(防止卡住的执行器永不退出) + `ExecStart` 先带 `--dry`。
+- **接管手工起的过程时, `ExecStart` 照抄 `cmdline`, 不要凭印象重写**: `tr '\0' '\n' < /proc/<pid>/cmdline` 取一次真 argv(连 `--fps/--quality/--usb-name/--local-src auto` 这些一个都别漏), 否则接管后行为与接管前不一致, 而差异只体现在某个源的帧数上。切换顺序固定: `daemon-reload` → `enable`(先不 start) → **停手工进程** → `start` → 回读端口 + `/stats` 各路 `age`。端口被旧进程占着时 `start` 只会得到 `Address already in use`, 看着像 unit 写错了。
+- **两路同源但分辨率/内参不同的采集器用模板 unit**(`name@.service` + `ExecStart=... --cam %i`): 一个文件管多实例, `enable name@local name@arm`, 日志按 `%i` 分开。
+- 交付时给一张表: 每个 unit 的 `enabled/static` · `active` · 监听端口 · 日志路径 —— 用户问的就是"在跑么、会自动起么"这两个。
+
 ## 支持文件
 - `templates/unit-oneshot.service` — 开机一次性场景的 unit 骨架(含超时/台账注释)
 - `templates/unit-daemon.service` — 常驻监听场景的 unit 骨架(PYTHONUNBUFFERED + Restart=always)

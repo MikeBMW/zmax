@@ -196,6 +196,20 @@ linger 已开(`loginctl show-user $USER -p Linger` = yes) ⇒ 天然脱离会话
   但**不让它参与碰撞判定**（这类点是路径，当围栏用等于把路堵死）；重复导入按**同名先删后存**，
   否则连点两次就堆出两条一模一样的（用户看到的是列表里莫名两份）。
 
+### 藏在「列表/围栏/图层按钮组」里 = 另一种看不见
+
+用户说「没看到 X」（X 已经有一条同名列表项了）⇒ 他要的不是列表里那行，而是**一个带名字的专用按钮**。
+一处四连坐，少一处就不出现：`<button id="tX">名字</button>` · 取数函数 · `paintXBtn()`(文字带点数 + on 态) ·
+`addEventListener` 里 `POST` 开关 + **开启时自动对准视角**(`auto=true; camLock=0; panOff=[0,0,0]; fit(); draw()`)
++ 底部一行文字反馈。**开了不对准视角 = 轨迹在框外 = 用户仍读成“没画”。**
+
+🔴 **验收别去读 `window.<变量>`**：页面主逻辑写在 `{}`/IIFE 里的变量（`FENCES`/`SIMON` 这类）
+**根本不在 window 上**，console 里拿到 `undefined`/`[]` ⇒ 会把自己正确的实现误判成“数据是空的”。
+两条都能作数的判据：
+- 状态读 **DOM**：`btn.textContent` / `btn.className` / `btn.offsetWidth`（不是 `getComputedStyle` 里的类名是否存在）
+- 画面读 **像素差分**：`canvas.toDataURL('image/png').length` 开关两态对比
+  （实测开 313186 / 关 278578，+34KB 才算真画出来了）
+
 可复制探针（几何 + 重复 id + 逐点验收循环）见
 `references/surface-location-and-change-verification.md` §「按钮呢? = 在 DOM 里但在视口外」。
 

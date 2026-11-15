@@ -1,7 +1,7 @@
 ---
 name: geometric-latent-branch
 description: "Use when 给世界模型加 SE(3)/S² 几何分支、接引擎、L2~L5 部署。"
-version: 1.2.0
+version: 1.3.0
 author: Hermes Agent
 license: MIT
 metadata:
@@ -39,6 +39,62 @@ metadata:
 真正缺的只是「从视觉特征接出的 head + 损失项 + 可拔插开关」。先 `grep -n "def se3_\|def so3_" src/lerobot/manifold/lie_intent.py` 确认,
 再决定写什么 —— 造第二份公式必然与既有实现漂移。
 
+⚠️ **这条规则已经被人（自己）破过一次**: 另起 `manifold/se3_chain.py` 重写了一遍
+`se3_exp` / `se3_log` / `V(φ)` / 测地线，而 `lie_intent.py` 早就有同族算子。两份公式并存后
+“哪个是准的”就没答案了。动手前先跑 `grep -rn "def se3_exp\|def se3_log\|def V_inv" src/lerobot/manifold/`
+把全部实现列出来（不止一个文件），要么扩展旧文件、要么在新文件头写清
+「与 X 的关系 / 为何不直接改它」，不能留两份无声共存。
+
+**现状: 三处并存, 每处的 ξ 分量序都不同, 接之前逐处核对**
+| 位置 | 序 | 语义 |
+|---|---|---|
+| `manifold/se3_chain.py` (含 `se3_exp/se3_log/potential`) | `[ρ(平移); φ(旋转)]` | 本轮新增的第二份实现, 已被 `se3_engine` / `ss_mani_eng` / `l5_guide` 引用 |
+| `manifold/lie_intent.py` | 同 `[ρ;φ]` | 原始实现, 与 `contact_twist` 同族 |
+| `manifold/manifold_engine.py::Navigator.step` | `[φ; ρ]` | 画布引擎本体的切向量入参, 与上面两个**顺序相反** |
+往 `se3_chain` 加算子 (如 `R_to_rpy`) 前先 grep 这三个文件有没有同功能实现; 加完在新函数 docstring 写清与谁互逆。
+
+> 接线清单 / 可复现实测数字 / 判据选择: `references/engine-se3-wiring.md`
+
+## 0. 位姿流形选型: S³ 还是 SE(3) (选错就是丢一半自由度)
+
+先看引擎实际输出哪个: `manifold="su2"` ⇒ 只有旋转; `manifold="se3"` ⇒ 位姿。
+S³ 是单位四元数 (4 维 / **3 自由度**), SE(3) 才是刚体变换 (4×4 / **6 自由度** = 3 平移 + 3 旋转)。
+
+**S³ 冒充 SE(3) 的具体代价** (`state_space/su2.py:encode_obs43`, `ω = π·tanh(gain·‖e‖)·ê`):
+3 维**平移误差** e 被当旋转向量用 (方向 ê 当转轴、‖e‖ 经 tanh 压成角度)。丢三样:
+① 末端绝对平移不在流形里; ② 末端姿态不在 (e 是平移误差, 不是姿态误差);
+③ tanh 饱和 —— 大误差小误差挤在一起 (实测 `geom_err_mm=611.9` 只体现成接近 π 的角度,
+分辨不出量级)。所以“S³ 上的势场/测地线”算的其实是**误差收敛控制器**, 不是位姿引擎。
+
+**SE(3) 层实现要点** (序 `ξ=[ρ;φ]`, 与 §7 的 SE3 阻抗同序):
+- `exp([ρ;φ]) = [[R(φ), V(φ)ρ],[0,1]]`, `V = I + (1−cosθ)/θ²·K + (θ−sinθ)/θ³·K²`;
+  θ→0 走泰勒 (½, 1/6) 否则除零
+- `log(T) = [V⁻¹t; log R]`, `V⁻¹ = I − ½K + (1/θ² − (1+cosθ)/(2θ·sinθ))K²`; θ→0 用 1/12
+- 测地线 `T(s) = T0·exp(s·log(T0⁻¹T1))` —— **螺旋运动, 不是球面大圆**, s=0/1 必须严格落位
+- 势 `φ(T) = ½‖W·log(T_goal⁻¹T)‖²`, 梯度 `∇φ = W²ξ`; **W 必须平移/旋转分开加权**
+  (m 与 rad 差 3 个数量级, 混算的 φ 没物理意义)
+- **W 不能拍硬编码**: 写 `[1000,1000,1000,1,1,1]` 等于把旋转压到几乎不参与。用真机轨迹中位步长
+  算 (`w ∝ [1/median(Δ平移m)]×3 + [1/median(Δ转角rad)]×3`), 热读 `zmax_data/calib/se3_metric_calib.json` —— 
+  公式、产物字段与实测值见 `references/engine-se3-wiring.md` §8
+- `rot_log` 的 θ≈π 必须单独分支 (`1/sinθ` 发散 ⇒ 取 `(R+I)/2` 的列找轴), 否则数值炸
+
+**自检阈值表 (9 项全过才叫自洽, 实测值)**
+| 检查 | 判据 | 实测 |
+|---|---|---|
+| exp/log 往返 T | <1e-9 | 1.5e-13 |
+| log/exp 往返 ξ | <1e-8 | 1.5e-13 |
+| θ→0 泰勒分支 `‖exp(1e-9ξ)−I‖` | <1e-8 | 3e-9 |
+| 测地线端点 s=0/1 | <1e-9 | 2.2e-16 |
+| 测地线中点距离比 | 0.5±0.001 | 0.5000000 |
+| 刚体保持 RᵀR−I / det−1 | <1e-10 | 1e-15 |
+| 伴随 `Ad_T·ξ = log(T e^ξ T⁻¹)` | <1e-8 | 8.3e-17 |
+| 与 scipy `rot_exp` 对账 | <1e-12 | 1.1e-16 |
+| 真机位姿往返 (tcp→T→反算) | 平移 0mm / 四元数 <1e-6 | 0.0 / 3.1e-8 |
+
+**位姿真源**: `zmax_data/rokae_sdk/tcp_out/latest.json` (rokae SDK 直读, 10Hz,
+`frame=base_link`, 带 x/y/z + rx/ry/rz + qx..qw + joint)。读取必须带**年龄闸**
+(`>2s` 直接返回 None) —— 拿陈旧位姿算出的势场和测地线全是假的。
+
 ## 2. 接入点选共享特征, 不选主干内部
 
 现有 world model 的编码器常是 `Conv + AdaptiveAvgPool(1) + Flatten` —— 空间信息已经压掉了,
@@ -51,6 +107,11 @@ metadata:
 引擎侧照现有通道同一模式加三处, 不要发明新接口:
 `__init__` 里 `xxx_provider / xxx_note / xxx_w` (env 开关, **默认 0**) · `set_xxx_provider(provider, note)` ·
 `_xxx_read()`; `step()` 里 `rec["xxx"]` 与原有通道**并存**。
+
+🔴 **语义 provider 有两个类, 只有一个对得上引擎**: `hjepa_state.HJEPAStateProvider` 返回
+`dict(ok/z1/z2/z3/z_concat/energy/ms)` ✅; `hjepa_live.HJEPALiveProvider.__call__` 返回**裸 ndarray**
+⇒ 引擎 `_hjepa_read` 的 `if not out:` 直接 `ValueError: truth value of an array is ambiguous`,
+而且栈顶落在引擎里, 看着像引擎 bug。接线前先 `type(provider())` 看一眼返回形状。
 
 ## 3. 判据 (五组全过才算接进)
 
@@ -102,6 +163,35 @@ metadata:
   而不是 tensor, backward 直接断链。训练循环里内联等价式 (返回 `sum(dim=-1)` 的 tensor),
   别复用 numpy 版。
 
+### 🔴 `eng.project(state)` 会先把位姿洗掉 —— 传位姿必须直连 projector
+`ManifoldEngine.project(state)` 内部是 `z = encoder.encode(state)` → `projector.project(z)`。
+喂 12 维 `[R(9); t(3)]` 会被 PCA 当成普通状态编码, 输出 `R=单位阵、t=[0,0,0]`,
+`meta.drift=√3`, 而**不报错**。SE(3) 路径上要 `eng.projector.project(p12)` 直接调
+(返回 `(p, residual, meta)`, `residual=‖RᵀR−I‖` 应 1e-16 量级、`drift=0`)。
+同理 se3 模式下 `eng.step(obs)` / `feedback_update` 都依赖同一套 obs→latent 编码, 不能拿位姿顶替。
+
+### 🔴 `eng.load(ck)` 会把流形类型改回 npz 里存的那个
+`ManifoldEngine(manifold_type="se3")` 创建后三处都对, 但 `load("models/manifold_engine.npz")` 后
+`manifold_type` / `projector.type` / `navigator.type` **全变回 `su2`** (npz 里存了类型, load 覆盖构造参数)。
+症状: `project` 从 12 维掉到 4 维 → navigator 走 sphere 分支 →
+`ValueError: operands could not be broadcast together with shapes (4,) (6,)`, 栈顶却在引擎里。
+定式: SE(3) 模式**不加载** su2 标定, 并把理由写进 `calib_note`; 若必须 load, 之后重设
+projector/navigator 并断言三处 type 等于目标值。
+
+### 🔴 Navigator 是右乘体坐标, ξ 的**方向**和**序**错一个就单调远离目标
+`Navigator.step` 执行 `T' = T · exp(ξ·dt)` ⇒ 要朝 `Tg` 走, 传的必须是
+`ξ = se3_log(inv(T) @ Tg)` (**当前→目标**), 不是 `log(inv(Tg) @ T)`; 传反了距离单调涨
+(实测 18.13→18.17→20.04mm)。序上 Navigator 要 `[φ;ρ]`, 传 `se3_chain` 的 `[ρ;φ]` 等于把平移
+当转轴、旋转当位移, 5 步内发散。定式: `descent = concat([xi[3:], xi[:3]])`。
+**验收只认单调性**: 连续 8 步距离严格下降 + 净位移方向与 `Tg−T` 同号, 缺一条就是没通。
+
+### 🔴 se3 分支的「静默降级」和「近似螺旋」都要改成硬行为
+- `p` 不足 12 维时若回退 `p + v*dt`, 平移不再随旋转耦合 —— 看着在走 SE(3), 实际是欧氏直线。
+  改成 `raise ValueError("se3: p 必须 12 维 [R(9); t(3)]")`, 宁可不跑也不给假象。
+- 旧分支用 `quat_mul(q, quat_exp(w))` + 平移线性叠加 = **slerp(R)+lerp(t)**, 不是螺旋。
+  ρ∦φ 且角度 1.2rad 时与真螺旋差 **163mm / 10.1°** (ρ∥φ 或小角度时差为 0, 所以只测小量根本发现不了)。
+  改法: `T2 = T @ se3_exp([ρ·dt; φ·dt])`。判据选「小角度 + ρ∥φ + ρ∦φ 大角度」三组, 后一组差 >0 才算真螺旋。
+
 ## 5. 损失与训练节奏
 
 ```
@@ -145,6 +235,25 @@ L_total = L_jepa + λ_g·L_g + λ_n·L_n
 阈值写成模块级常量 (2mm / 1.5° / 5° / 20mm / σ0.2), 现场按标定覆盖, 不写死进逻辑分支。
 自检要覆盖: 限幅随偏离**单调降**、三种阶段条件**各自单独触发拒绝**、`ξ=0` 时退化为各向同性、
 无动力学时 why 里必须带"匀速外推"字样。
+
+### 语义 (L5) 进引擎: 也是**定目标/增益/门控**, 不是产动作
+几何分支负责「怎么走」, VLM 场景理解负责「去哪」, 两者都不能直接写 `p`。定式三层:
+
+| 语义量 | 映射 | 出口 |
+|---|---|---|
+| 阶段 (`接近/对位/下降/抓取/抬起/转移/插入/完成`) | 查真值表区间 → 该区间出口点 | `T_goal` (替换引擎目标) |
+| 置信度 `conf` | 阈值门控 + `k = 0.5~1.0` | `w_m ×(1+k)` 势场增益 |
+| 方向矢量 `vec` (相机系) | 需外参才进 base_link | 只出 `cam_hint`, **不进 `T_goal`** |
+
+三条硬规矩:
+1. **取不到就不接**: 无阶段/无端口 ⇒ `guide()` 返回 `ok=False` + `why`, 引擎退回默认目标并标
+   `goal_src_kind="traj_default"`, 输出里不许出现「L5 引导中」。
+2. **置信度低于阈值 ⇒ `k=0`, 严格不加权** (不是给个 0.5 的中等信任)。
+3. **阶段边界若是均分假设, 必须在输出里写 `range_src="均分假设(未标定)"`** —— 真值表只有 `p/q/关节`
+   没有 stage 列时, 均分是猜测; 不标就会被下游当标定值用。
+
+取语义的优先级: 画布端口 (`in5` 阶段先验 > `in1` 语义) → 文件兜底。**`in1` 只有潜向量时不算有语义**:
+解析不出 `stage` 字段就跳过, 拿来当阶段用会指错目标。
 
 几何分支只负责**看** (预测 ξ / v_n / 测地线距离)。要把它变成**推** (体坐标力扭 / 关节力矩)
 是另一件事, 归 `se3-impedance-control`: 那里有 Adjoint 分块、`[ρ;ω]` 分量顺序、

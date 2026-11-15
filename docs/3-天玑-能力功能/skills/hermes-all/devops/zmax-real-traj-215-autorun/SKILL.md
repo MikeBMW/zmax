@@ -17,6 +17,22 @@ description: Use when 一键跑真机215点全流程或加授权时长档。
 - 游标 `zmax_data/rokae_sdk/traj_step_state.json`；撞 30° 跳变闸返回 `stage=jump` ⇒ POST `{"align":true}` 把游标挪到真机最近点再继续。
 - `dry:true` 时 8797 跳过授权与跳变闸，且**不推进 cursor** ⇒ 客户端必须自己按 `start+done` 推进并把 `start` 显式传回去，否则同一段会无限重发（实测刷了 33 轮才发现）。
 - cursor 到末端要先 `{"reset":true}` 才能再跑整轮；`ZMAX_TRAJ_KEEP=1` = 续跑不重置。
+
+### 要**循环跑**（边跑边采数据/教模型）时的三件事
+
+- 🔴 **`RealTrajFlow` 默认只重置一次**: 内部 `_reset_tried` 一旦置 True, `cursor>=total` 就进 `DONE` 不再回来
+  ⇒ “跑完一圈就停”是设计行为, 不是 bug。连续循环必须显式开关(`ZMAX_TRAJ_LOOP=1` 把重置闸打开并把
+  `rounds` 递增), 否则你会以为它在循环, 实际早停了。
+- **回起点不需要大位移**: 示教轨迹本身就是闭环 —— 实测首点 `[665.3,-26.8,296.9]` vs 末点 `[664.2,-29.1,294.0]`
+  只差 **5.7mm**, 而当时臂已停在别处时看起来像要横移几百毫米。先算首末点距离再决定要不要 `{"align":true}`;
+  能直接 reset 就走 reset, 别默认触发离路对齐。
+- **用轻量驱动脚本, 不起 GUI**: 只要一个 1Hz 循环调 `flow.tick()` 的独立入口(本项目 `tools/traj_loop.py`),
+  它不加载 L3/L4 模型 ⇒ 不占显存, 可与相机探针/VLM 标注并行。进度落一份小 json(轮次/游标/授权一句话)
+  给页面读, 别去碰 `traj_flow.json` 免得与 GUI 那条抢写。
+- **ETA 标尺**: 20% 速度下每点约 4~5s ⇒ 一轮 215 点约 **16 分钟**; 判定“它在真跑”看
+  `GET /api/arm/step_traj/status` 的 `running=True / dry=False / cursor` 在涨, 不要只看日志行数。
+- **边跑边采的探针要按 cursor 对齐**: 记录里带上 `cursor` 才能回答“哪几个点位能检到目标、哪几段本来就空”。
+  轨迹上大部分点是转场, 只有取放件那几个点位画面里才有目标 —— 把“全程 N 帧有检出”报成检出率是误导。
 - 驱动分工：连续档用 1Hz 守护线程 `zmax-traj-flow`（引擎一次全量 pass 几十秒，拍子带不动）；单步档必须由每拍 hook 驱动，**不许起线程**（单步模式会把线程内联成死循环）。
 - 对外进度只两处：`zmax_data/ss_live/traj_flow.json` 与 8797 `GET /api/arm/traj_flow`。
 
