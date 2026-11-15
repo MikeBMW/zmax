@@ -45,6 +45,17 @@ GROUP = {
     "ssff_hist": ("src/lerobot/middleware/nodes/impl/ss_ff_hist.py", "node_ss_ff_hist"),
     "ss3d_view": ("src/lerobot/middleware/nodes/impl/ss_3d_view.py", "node_ss_3d_view"),
     "ssbg5": ("src/lerobot/policies/left_right/state_space/planner.py", "class TaskPlanner"),
+    # 这几个算法就写在 library.py 里 (内联实现, 不是包装), 必须按真函数名定位
+    "sscap": ("src/lerobot/engineering/nodes/library.py", "node_ss_cap"),
+    "ss_l5": ("src/lerobot/engineering/nodes/library.py", "node_l5_loop"),
+    "n_realscene": ("src/lerobot/engineering/nodes/library.py", "node_realscene_live"),
+    "n_l2_muscle": ("src/lerobot/engineering/nodes/library.py", "node_n_l2_muscle"),
+    "ssmode": ("src/lerobot/engineering/nodes/library.py", "node_mode_switch"),
+    "ssvideo": ("src/lerobot/engineering/nodes/library.py", "node_ss_scope"),
+    "ssvideo2": ("src/lerobot/engineering/nodes/library.py", "node_ss_video"),
+    "n_intent_bundle": ("src/lerobot/memory/mem_nodes.py", "node_ss_intent_bundle"),
+    "n_skill_dict": ("src/lerobot/memory/mem_nodes.py", "node_ss_skill_dict"),
+    "n_mem_links": ("src/lerobot/memory/mem_nodes.py", "node_ss_mem_links"),
 }
 
 
@@ -104,18 +115,23 @@ def defs(p):
 
 
 def resolve_symbol(p, sym):
+    """给定了符号就必须**精确**命中; 允许前缀匹配但必须唯一; 全不中就返回 None
+    (宁可换下一个候选文件, 也不许糊到文件第一个 def —— 那正是"打开到不相干代码"的来源)。"""
     ds = defs(p)
     if not ds:
         return None
     if sym:
         want = re.sub(r"^(def|class|async def)\s+", "", sym.split("(")[0]).strip()
-        want = want.split(".")[-1] if "." in want and not want.startswith("class") else want
+        if "." in want and not want.startswith(("class ", "def ")):
+            want = want.split(".")[-1]
         for i, k, nm in ds:
             if nm == want:
                 return i, "%s %s" % (k, nm)
-        for i, k, nm in ds:
-            if want and (nm.startswith(want) or want.startswith(nm)):
-                return i, "%s %s" % (k, nm)
+        fuzzy = [(i, k, nm) for i, k, nm in ds if want and (nm.startswith(want) or want.startswith(nm))]
+        if len(fuzzy) == 1:
+            i, k, nm = fuzzy[0]
+            return i, "%s %s" % (k, nm)
+        return None
     low = {nm: (i, k) for i, k, nm in ds}
     for e in ENTRY:
         if e in low:
@@ -130,11 +146,14 @@ def resolve_symbol(p, sym):
 def pick(nid, pr, reg, ext):
     tries = []
     src, sym = split_src(pr.get("source"))
-    if src:
-        tries.append((src, sym, "canvas.source"))
-    if nid in GROUP:
+    # 路径里没带符号时, 用上一轮写进去的 source_symbol (否则会被"首函数"糊掉)
+    if not sym and pr.get("source_symbol"):
+        sym = str(pr["source_symbol"])
+    if nid in GROUP:                      # 分组节点: 语义归属模块优先级最高
         g, gs = GROUP[nid]
         tries.append((g, gs or sym, "group"))
+    if src:
+        tries.append((src, sym, "canvas.source"))
     if nid in ext:
         p, ln, s2 = ext[nid]
         tries.append((p, s2, "_EXTERNAL_LOC"))
