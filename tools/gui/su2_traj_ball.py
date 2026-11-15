@@ -99,6 +99,44 @@ def _theta_deg(q):
     return math.degrees(2.0 * math.atan2(float(np.linalg.norm(q[1:])), float(abs(q[0]))))
 
 
+_TAIL_CACHE = {}          # path -> ((mtime,size), [dict,...])  (只缓存尾部解析结果)
+
+
+def _read_jsonl_tail(path, tail_bytes=1 << 20, limit=400):
+    """只解析文件尾部 tail_bytes 字节里的最后 limit 行 (给大 jsonl 用, 避免 UI 线程整份解析)。"""
+    try:
+        st = os.stat(path)
+        sig = (st.st_mtime, st.st_size)
+    except Exception:                                                          # noqa: BLE001
+        return []
+    c = _TAIL_CACHE.get(path)
+    if c and c[0] == sig:
+        return c[1]
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            start = max(0, size - int(tail_bytes))
+            f.seek(start)
+            blob = f.read().decode("utf-8", "ignore")
+    except Exception:                                                          # noqa: BLE001
+        return []
+    lines = blob.splitlines()
+    if start > 0 and lines:
+        lines = lines[1:]                       # 首行可能是被切断的半行
+    out = []
+    for ln in lines[-limit:]:
+        ln = ln.strip()
+        if not ln:
+            continue
+        try:
+            out.append(json.loads(ln))
+        except Exception:                                                      # noqa: BLE001
+            continue
+    _TAIL_CACHE[path] = (sig, out)
+    return out
+
+
 class SU2TrajBall(QWidget):
     """SU(2) 轨迹球: S³ 立体投影轨迹 + 当前点 + 记忆基准点 + 隐藏。"""
 
@@ -257,20 +295,13 @@ class SU2TrajBall(QWidget):
         if self.load_run_stream():                          # ▶运行 后的活真源
             return
         rows = []
+        # 🔴 2026-11-15 二修: quat_truth_calls.jsonl 已 106MB / 17.3 万行, 全量 json.loads 一次 2.2s,
+        #   而本函数每 1.5s 跑一次 ⇒ UI 线程永远追不上, 表现为"一直卡"。改成尾部 + 缓存。
         try:
-            with open(os.path.join(self.root, "zmax_data", "ss_live", "quat_truth_calls.jsonl"),
-                      encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        d = json.loads(line)
-                    except Exception:                                          # noqa: BLE001
-                        continue
-                    q = d.get("q_fused") or d.get("q_truth")
-                    if q and len(q) == 4:
-                        rows.append((q, d.get("q_truth"), d))
+            for d in _read_jsonl_tail(CALLS, tail_bytes=1 << 20, limit=600):
+                q = d.get("q_fused") or d.get("q_truth")
+                if q and len(q) == 4:
+                    rows.append((q, d.get("q_truth"), d))
         except Exception:                                                      # noqa: BLE001
             rows = []
         if not rows:                                                           # 退到最新契约
