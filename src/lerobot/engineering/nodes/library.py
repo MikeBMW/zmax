@@ -1863,7 +1863,7 @@ def _yolo_capture_real(log=None):
 
 def node_yolo_3d(ctx):
     """🎯 YOLO 3D — 真实执行: metaworld 渲染帧 → YOLO 检测 → 3D 反投影
-    源码: src/lerobot/policies/yolo_3d/yolo_state_aligner.py (detect_3d / align)
+    源码: src/lerobot/policies/left_right/state_space/perception_3d.py (detect_3d / align)
     ─────────────────────────────────────────────
     数据流: 相机图像 → YOLO {hand, 光模块, hole} → 反投影 3D → 缓存 → 📐 2D→3D 节点 align 进 39D"""
     log = ctx["log"]
@@ -2168,7 +2168,7 @@ _reg("yolo_tactile", ["Marker 触觉", "触觉感知"], "📍 Marker 触觉跟�
 def node_metaworld_peg(ctx):
     log = ctx["log"]
     """📦 metaworld_peg — 仿真插拔数据集 (39D 状态 + 图像, 24集 4800帧)
-    数据生成: tools/gen_metaworld_data.py; 触觉增强: src/lerobot/policies/yolo_3d/gen_tactile.py (39D→43D)"""
+    数据生成: tools/gen_metaworld_data.py; 触觉增强: src/lerobot/policies/left_right/state_space/perception_tactile.py (39D→43D)"""
     p = ctx.get("params", {})
     log(f"📦 metaworld_peg: frames={p.get('frames', 4800)} dims={p.get('dims', '4D/4D')} · 数据源: 喂感知链+训练")
     return True
@@ -4371,7 +4371,7 @@ _reg("ss_aoi", ["光学质量检测", "外观质量检测"],
 #    架构定位: **能力落 L2**(图像+概念提示词 → 该概念的**所有实例掩膜**), **意图落 L5**(概念短语由 VLM/人/工单给),
 #              不进 L4(不预测/不规划/非世界模型), 不进 L3(不产动作/不编排技能)。
 #    算法内核: src/lerobot/policies/sam3_seg/ (与 policies/yolo_3d 同级, 感知前端统一在 policies/ 下)
-#    调用方: 常驻服务 `python tools/sam3_seg.py --serve --port 8796` (独立进程 ⇒ 显存独占 ≈2GB,
+#    调用方: 常驻服务 `python src/lerobot/policies/left_right/state_space/perception_seg.py --serve --port 8796` (独立进程 ⇒ 显存独占 ≈2GB,
 #            本节点不把大模型塞进 GUI 进程, 避免显存打架)。
 _SEG_URL = os.environ.get("ZMAX_SEG_URL", "http://127.0.0.1:8796")
 _SEG_CACHE: dict = {}
@@ -4461,7 +4461,7 @@ def node_ss_seg(ctx):
          ⇒ L2 基础感知: **YOLO 定位(快/固定类) → SAM3 分割细化(轮廓/开放词汇)**。
       ② **文本概念提示 (`prompt_src=text`)**: 概念词由 L5 给 (本节点不自造概念); 实测真机域中文=0 实例、
          英文只有部分词命中 ⇒ 兜底用。
-    真执行: POST 常驻分割服务 /seg (算法内核 src/lerobot/policies/sam3_seg/, 调用方 tools/sam3_seg.py)
+    真执行: POST 常驻分割服务 /seg (算法内核 src/lerobot/policies/sam3_seg/, 调用方 src/lerobot/policies/left_right/state_space/perception_seg.py)
     返回: 每实例 掩膜多边形/面积/分数, 写进叠加规格 origin='seg' (kind=mask) → 叠加页/画布可见
     ⚠️ 掩膜→3D 只对**臂上相机**成立: 仿真渲染帧 ⇒ 如实拒答(不拿真机手眼套仿真); 服务没起 → 如实报"""
     log = ctx.get("log")
@@ -4564,7 +4564,7 @@ def node_ss_seg(ctx):
         if log:
             log(f"⚠️ 开放词汇分割真实执行失败: {type(e).__name__}: {e}")
             if isinstance(e, OSError) or "refused" in str(e).lower() or "timed out" in str(e).lower():
-                log("   服务未在跑? 先起: python tools/sam3_seg.py --serve --port 8796 "
+                log("   服务未在跑? 先起: python src/lerobot/policies/left_right/state_space/perception_seg.py --serve --port 8796 "
                     "(SAM3 权重 ~1.7GB, 显存独占)")
         return False
 
@@ -4572,7 +4572,7 @@ def node_ss_seg(ctx):
 _reg("ss_seg", ["开放词汇分割", "SAM3", "分割anything", "分割"],
      "🧩 开放词汇分割 (SAM3 分割anything) — L2 基础感知(与 🎯YOLO 内链): 取 YOLO 框+同帧原图 → 像素级掩膜 + "
      "掩膜→base 3D(中心/足印/朝向); 也支持 L5 给的文本概念 (prompt_src=text)。写叠加规格 origin=seg (真执行件 "
-     "tools/sam3_seg.py, 常驻服务 8796; 概念与框都不自造)",
+     "src/lerobot/policies/left_right/state_space/perception_seg.py, 常驻服务 8796; 概念与框都不自造)",
      node_ss_seg)
 
 # 🧮 标定层 (2026-09-02 老倪: Drifting Models 思想 — 引力/斥力二分 + 平衡点; 回路外元层)

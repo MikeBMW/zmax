@@ -430,6 +430,12 @@ class Navigator:
         self.type = manifold_type
 
     def compute_geodesic(self, p0: np.ndarray, pT: np.ndarray, T: int = 16) -> dict:
+        # 🧭 2026-11-15 老倪「L2 算法都放 state_space」: 本体已迁到
+        #   policies/left_right/state_space/geodesic_nav.py, 这里只转发 (不再维护第二份实现)。
+        from lerobot.policies.left_right.state_space.geodesic_nav import compute_geodesic as _geo
+        return _geo(p0, pT, T=T, manifold_type=self.type)
+
+    def _compute_geodesic_legacy(self, p0: np.ndarray, pT: np.ndarray, T: int = 16) -> dict:
         p0, pT = np.asarray(p0, float).ravel(), np.asarray(pT, float).ravel()
         T = max(2, int(T))
         ts = np.linspace(0.0, 1.0, T)
