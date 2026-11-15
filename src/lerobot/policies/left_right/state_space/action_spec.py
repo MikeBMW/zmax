@@ -33,14 +33,23 @@ MAX_STEP_MM = 25.0
 TRUTH_FRESH_S = 1.0
 U_DIM = 4
 
-REQUIRED = ("src", "x", "y", "z", "a", "b", "c", "qx", "qy", "qz", "qw",
-            "grip_mm", "grip_act", "ts")
+# 🧭 2026-11-15 老倪「这个 action 要改成跟真实轨迹 215 个点一样的 action」
+#   基准 = src=traj215 的 31 个字段 (下面是它的全集, 逐字同名列出来), 别的来源必须 ⊇ 这 31 个。
+#   多出来的只能是证据块 (plan/align/u/pose/needs_ik/joints_target/spec), 不许换名。
+TRAJ215_FIELDS = (
+    "src", "i", "i_plan", "x", "y", "z", "a", "b", "c",
+    "qx", "qy", "qz", "qw", "j1", "j2", "j3", "j4", "j5", "j6", "joints_src",
+    "grip_mm", "grip_act", "grip_state", "grip_src",
+    "grip_meas_mm", "grip_meas_age_s",
+    "pose_now", "delta_mm", "i_nearest", "why", "ts",
+)
+REQUIRED = TRAJ215_FIELDS
 
-# 每种来源额外必须有的块
+# 每种来源额外必须有的块 (证据, 不影响"同形")
 EXTRA = {
     "plan": ("plan", "align", "pose"),
     "ss": ("u", "align", "pose"),
-    "traj215": ("i", "pose_now"),
+    "traj215": (),
 }
 
 POS_LIMIT_MM = 3000.0          # 基座系可达范围上限 (超过必是单位错/坐标系错)

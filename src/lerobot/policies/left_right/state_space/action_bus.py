@@ -199,7 +199,7 @@ def from_plan(pose_target, quat=None, truth=None, joints_now=None, seg=None,
            "qy": (round(float(q[1]), 6) if q and q[1] is not None else None),
            "qz": (round(float(q[2]), 6) if q and q[2] is not None else None),
            "qw": (round(float(q[3]), 6) if q and q[3] is not None else None),
-           "i": cursor215(), "why": why, "ts": time.time(),
+           "i": _clamp_cursor(cursor215()), "why": why, "ts": time.time(),
            "joints_src": ("实测" if joints_now else "缺"),
            "joints_target": None, "needs_ik": bool(joints_now is None),
            "pose": {"x": round(p3[0], 2), "y": round(p3[1], 2), "z": round(p3[2], 2),
@@ -232,9 +232,9 @@ def from_plan(pose_target, quat=None, truth=None, joints_now=None, seg=None,
         keep = {"grip_mm": (0.0 if want_close else GRIP_OPEN_MM),
                 "grip_act": ("close" if want_close else "open"),
                 "grip_state": ("合" if want_close else "开"),
-                "grip_src": (grip.get("src") if isinstance(grip, dict) and grip.get("src") else "规划给"),
-                "grip_now_mm": _m}
-    return _with_grip(act, keep)
+                "grip_src": (grip.get("src") if isinstance(grip, dict) and grip.get("src") else "规划给")}
+    act["i_plan"] = cursor215()          # 与 215 点同款: 派单游标(原值)
+    return _enrich(_with_grip(act, keep))   # 补 pose_now / delta_mm / i_nearest / dispatch
 
 
 def from_traj215(cursor=None, why="215 点真值回放"):
@@ -304,7 +304,7 @@ def from_ss(u, dt=0.1, pose_now=None, joints_now=None, why="状态空间输出")
            "a": pose_now.get("a"), "b": pose_now.get("b"), "c": pose_now.get("c"),
            "qx": pose_now.get("qx"), "qy": pose_now.get("qy"),
            "qz": pose_now.get("qz"), "qw": pose_now.get("qw"),
-           "i": cursor215(), "why": why, "ts": time.time(),
+           "i": _clamp_cursor(cursor215()), "why": why, "ts": time.time(),
            "joints_src": ("实测" if joints_now else "缺"),
            "joints_target": None, "needs_ik": bool(joints_now is None),
            # ── 对齐证据块 (页面/终端/飞书都直接看这几个数) ─────────────────
@@ -337,9 +337,9 @@ def from_ss(u, dt=0.1, pose_now=None, joints_now=None, why="状态空间输出")
         keep = {"grip_mm": (0.0 if want_close else GRIP_OPEN_MM),
                 "grip_act": ("close" if want_close else "open"),
                 "grip_state": ("合" if want_close else "开"),
-                "grip_src": "u[3]=%.2f" % u_grip,
-                "grip_now_mm": _m}
-    return _with_grip(act, keep)
+                "grip_src": "u[3]=%.2f" % u_grip}
+    act["i_plan"] = cursor215()
+    return _enrich(_with_grip(act, keep))
 
 
 def grip_plan():
@@ -395,6 +395,15 @@ def grip_meas():
         return (None if pos is None else round(float(pos), 2)), age
     except Exception:                                          # noqa: BLE001
         return None, None
+
+
+def _clamp_cursor(c):
+    """把派单游标夹进 215 点范围 (i_plan 保留原值, 便于看"派到哪了")。"""
+    try:
+        n = len(_frames())
+        return max(0, min(int(c or 0), (n - 1) if n else 0))
+    except Exception:                                                      # noqa: BLE001
+        return c
 
 
 def _with_grip(act, grip):
@@ -515,6 +524,7 @@ def from_action(act, deny=""):
             out[_k] = act.get(_k)
     if deny:
         out["why"] = ("%s · %s" % (out.get("why") or "", deny)).strip(" ·")
+    out["i_plan"] = act.get("i_plan", cursor215())      # 与 215 同款
     out = _enrich(out)
     _mm, _age = grip_meas()
     out.setdefault("grip_meas_mm", _mm)
