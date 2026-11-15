@@ -1147,6 +1147,25 @@ cd ~/zmax && ./gui-venv311/bin/python tools/mem_gate.py check      # 只读现�
 判据: MemAvailable <6G ⇒ 拒 (exit 3) · 已有同类重载(≥8G) ⇒ 拒 (exit 5) · 子进程树 RSS >8G ⇒ 掐 (exit 4)。
 铁律照旧: **同刻只跑一套模型进程**; 基准/评测这类"再加载一遍"的活, 必须串行, 不许和常驻栈并存。
 
+### 12b-2. 更硬的一道闸: 重活放进独立 cgroup + 内存红线 timer
+
+`mem_gate.py` 是"起之前判", **已经起来的进程再涨它管不了**。补两道：
+
+1. **训练/基准一律用 transient unit 起**(内核只杀这个 cgroup, 主机不会被拖死):
+   `sudo systemd-run --unit=<n> --property=MemoryMax=<G> --property=MemorySwapMax=0 --property=Nice=19 …`
+   `MemorySwapMax=0` 是关键 —— **换页颠簸才是"整机冻死"的直接机制**, 比 OOM 本身更致命。
+   全程 `systemctl show <unit> -p MemoryCurrent -p MemoryPeak --value` 量它到底吃多少。
+2. **常驻内存红线 timer**(`scripts/mem_guard.sh`, 每分钟；装成 systemd timer, 别挂 cron):
+   MemAvailable<4G 记日志, <2.5G 停训练类 unit。**只停训练, 不碰用户正看着的服务**。
+
+**取证口径因此多一条硬判据 (两个方向别混)**:
+- **cgroup 内 OOM**: `systemctl status <unit>` 有 `A process of this unit has been killed by the OOM killer`
+  + `Failed with result 'oom-kill'`; 而 `journalctl` 里**内核 oom-kill 可能一条都没有**(只死那一个 cgroup) ⇒ 闸生效, 机器没事。
+- **整机冻死**: journal 在某一秒**戛然而止**, `uptime -s` 的重启时刻比最后一条日志晚几分钟, 无关机序列也无 oom-kill 行 ⇒
+  内核根本没能前进, **不许写成"OOM 杀了个进程"**。报的时候把两个时间戳相减给用户(实测最后一行 15:48:25 → 15:54:40 重启 = 冻了 6 分钟)。
+- 冻死前兆往往只有**应用层**的几行(`system memory pressure is critical` + `Under memory pressure, flushing caches`),
+  内核侧静默 ⇒ 见到这几行就把用户当下的重活当成头号嫌疑。
+
 ## 12c. 「常驻循环在跑但产物不动」= 某个节点在拍内**同步等长跑子进程** (py-spy 三分钟定位)
 
 实测 (2026-11-01): canvas loop 进程活着、CPU 近 0、`ar_cmd.json` / 链产物停在 264s 前;

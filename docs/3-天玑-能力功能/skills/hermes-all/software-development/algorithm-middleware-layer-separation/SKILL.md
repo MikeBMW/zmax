@@ -68,6 +68,31 @@ metadata:
 - `policies/` 里需要缓存/发布/日志时**一律参数注入**(`cache=`, `publish=`, `log=`), 绝不 import middleware。
 - 多路算法(搬运/本机推理/另一台相机)在同一包里串起来, 由一个 `inspect_*` 统一编排, 别让节点做编排。
 
+## 算法实体长在「大文件里的一个方法」时: 抽 body, 引擎留转发 + 逐位对账
+
+规划的数学核心常埋在引擎类里 (例: 测地线在 `manifold/manifold_engine.py::Navigator.compute_geodesic`)。
+只把**节点包装**搬到算法层 = 没搬 —— 用户会顺着 `plan_guide.run()` 往下追一层, 发现算法还在引擎里, 直接判"任务没完成"。
+
+定式:
+1. 把方法 body 复制成算法层的**自足实现**: 连同它用到的私有 helper (`unit`/`slerp`/距离) 一起搬,
+   不要 import 引擎 (否则 engine ← policies 反向依赖, 或循环 import)。
+2. 引擎侧方法改成**一行转发**, 旧实现保留为 `_legacy`(或 `_compute_x_legacy`) 只作对账基准, 不再被调用。
+3. 判据: 转发 == 新本体 == 旧实现, **三条 path 逐点相等** + 长度/末端误差为 0
+   (实测 length 1.570796 · end_error 0.0; 只在"看起来一样"就删 legacy 是运气)。
+4. 自足还要能独立 import: 新模块不许依赖引擎的模块级常量, 需要就用函数内 lazy import 或就地实现。
+
+## 老路径一律相对软链, 不用转发壳
+
+搬家后老路径留 "`def run(ctx): from .new import run as _r; return _r(ctx)`" 这种 3 行壳, 后果是
+「打开源代码」打开一片空壳 —— 用户的原话是"代码都不见了", 他会认为整个迁移是假的。
+
+- 老路径改**相对软链**直指本体 (`ln -s ../policies/<域>/<file>.py`), 任何仍指向旧字符串的
+  `params.source` / `_EXTERNAL_LOC` / 老 import 都打开同一份真代码。
+- 落点再加一道 `os.path.realpath`: 节点参数还带老路径时, VSCode 标题会显示老文件名(看着像没搬), realpath 后才是本体。
+- 🔴 换目录必查**裸模块 import**: 文件原来被 `sys.path.insert(自身目录)` 当顶层模块 import 的
+  (`import frame_source`), 搬到别的包后必断 ⇒ 改成包内相对导入 (`from lerobot.<包>.<模块> import x`),
+  或把被依赖的同源文件一起搬 + 老位置留软链。**只改主文件、不改这行 import, 节点在真实链路上必 ImportError, 而单测/编译都不报。**
+
 ## 源码视图三处会各指一边 (漏一个就显示旧位置)
 
 节点「打开源码」看到三处, 三个来源**互相独立**, 搬完算法要一起改:

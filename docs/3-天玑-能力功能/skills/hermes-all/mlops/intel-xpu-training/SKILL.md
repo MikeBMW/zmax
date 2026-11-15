@@ -30,6 +30,19 @@ torch CUDA 版在这里只能跑 CPU; 要真用上 Arc 必须换 **`+xpu` wheel*
 训练日志里 **`GPU_mem` 有数** (如 0.297G) 且 loss 三项稳定下降 ⇒ 真在 Arc 上算。
 `torch.xpu.is_available()` + `xpu count: 1` 只是前提, 不代表训练用上了。
 
+🔴 **接手任何 XPU 训练前, 先跑一行最小算子探针 —— 它能一次排掉"以为是模型代码的错"**:
+```bash
+torch.xpu.is_available()                                  # True 也可能是假的
+python -c "import torch; print(torch.__version__); torch.ones(4, device='xpu'); print('ok')"
+```
+`is_available()==True` 但 `torch.ones(4, device='xpu')` 报
+`RuntimeError: level_zero backend failed with error: 44 (UR_RESULT_ERROR_UNSUPPORTED_FEATURE)` ⇒
+**是这个 venv 的 `+xpu` wheel 跟驱动不匹配, 不是你的归一化/算子写错**。实测同机两个 venv:
+`torch 2.14.1+xpu` 通不了 ones (也不能跑训练), `torch 2.10.0+xpu` 正常 ⇒ **先挑一个能过 ones() 的 venv 用**,
+别急着升级/重装 torch (在这类工控机上"升到新版"反而是把能跑的版弄坏)。
+同一层认知: **XPU 不做 fp64** —— 归一化 stats 若留在 float64 (`std + eps`), 也会报同一个 44。
+在数据集侧/处理器侧统一 cast 到输入 dtype (`std.to(tensor.dtype)`), 不要它当"硬件坏了"。
+
 实测 (yolov8n, 18,900 张, 320px, batch 8):
 - 速度 **~4.2 it/s**, 约 9.4 分钟/epoch
 - 2 epoch 全流程 1642 秒 (27.4 分钟, 含每 epoch 末验证)

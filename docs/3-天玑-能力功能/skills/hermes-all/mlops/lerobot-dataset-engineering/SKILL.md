@@ -300,6 +300,36 @@ t1=1/(1+5d)(接触力, d=|peg−hole|), t2/t3=(peg−hole) 方向 x/z。产物: 
 (24 集 4800 帧, state 39+4=43D); 画布 State Adapter in/out 43D, obs 节点改名 43D。
 **教训**: 加列改造后验证用 pyarrow 读输出 parquet 断言列存在 + info/stats 同步; 别信脚本 print。
 
+### 29. 用 `LeRobotDataset.create()` 从现场采集建库 (v0.5.x), 真机边跑边采也必须只读
+**触发**: 机器人在跑轨迹, 要同时把 (图像 + 位姿真值 + 关节 + 当前 action) 采成策略训练集。
+采侧口径: 真值 20Hz / 图像 10Hz ⇒ **以图为准, 每图一行, fps=10**; 一行里带
+`pose(x,y,z,quat)`、`joints(6,deg)`、`act_src/act_pose/夹爪`、派单游标; 没真值就不落行 (宁缺不编);
+**绝不能给机器人写任何东西** (只读文件/HTTP 取图), 否则等于在生产链路上插一脚。
+
+`create()` 的三个必踩 (每个都是一轮 F5):
+1. `ValueError: Codec 'libsvtav1' is not available in the bundled FFmpeg build` ——
+   **即使 `use_videos=False` 也会触发** (VideoEncoderConfig 默认 `vcodec=libsvtav1`, 构造时 `validate()`)。
+   `validate()` 里是**函数内 import**, 改模块级符号没用 ⇒ 直接打掉方法:
+   ```python
+   from lerobot.configs import video as _vcfg
+   _vcfg.VideoEncoderConfig.validate = lambda self: None   # 本版只写图片, 不走 ffmpeg
+   ```
+2. `ValueError: Feature mismatch in \`frame\` dictionary: Missing features: {'task'}` ⇒
+   `ds.add_frame({...})` 每帧必须带 `"task": "<任务描述>"` (不只是 features 里声明)。
+3. `FileExistsError: <root>` —— `create()` 用 `mkdir(exist_ok=False)`, 半途失败留下的目录会让重跑直接死 ⇒
+   转换脚本加 `--overwrite` (rmtree) 或每次换 repo_id。
+
+现场采集→LeRobot 的特征映射 (写死单位, 别让下游猜):
+```
+observation.images.top  (480,640,3) uint8     相机帧
+observation.state       13 维 [j1..j6(deg), x,y,z(mm), qx,qy,qz,qw]
+action                  4 维 [x,y,z(mm) 目标位姿, 夹爪(0合/70开)]
+```
+episode 切分: 时间断档 >1.5s 或派单游标回退 ⇒ 新 episode; 夹爪字符串归一 (close/合→0,
+open/开→70, hold/其它→沿用上一条)。
+**现实提醒**: 单趟 215 点的数据只能验管道 (680 帧 / 2 episode) —— 模仿学习要几十条带差异的轨迹,
+`len(ds)` 小就别对用户宣你\"训出策略了\"。
+
 ## 验证流程 (构建后必做)
 ```python
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
@@ -341,6 +371,9 @@ datasets 库按 parquet 内容 hash 缓存 schema, 数据重建后旧缓存会�
 | Invalid key: 3608 > 3600 | len(ds) 按 meta 帧数, hf 表行数少 | 采样范围 min(len(ds), hf行数) (#17) |
 | Invalid key: 1800 > 1015 | episodes parquet length 未随截断更新 | 重建 episodes + info splits (#23) |
 | 长轨迹训完全模型 0% | 接近+插入方向相反 → BC 学平均=不动 | 分段数据/相对向量/夹爪辅助 (#24) |
+| `Codec 'libsvtav1' is not available` | VideoEncoderConfig 默认 vcodec, 与 use_videos 无关 | 打掉 `VideoEncoderConfig.validate` (#29) |
+| `Missing features: {'task'}` | add_frame 每帧缺 task 字段 | 每帧加 `"task"` (#29) |
+| `FileExistsError` 建库目录 | `create()` 的 mkdir(exist_ok=False) | `--overwrite` rmtree (#29) |
 
 ### 23. 截断数据 (--stop-after-grab) 三处元数据必须同步 (2026-08-08 连踩 4 次 IndexError)
 **症状**: 生成器 "完成" 但训练 `Invalid key: 1800 out of bounds for size 1015`。

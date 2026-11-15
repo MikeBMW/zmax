@@ -108,7 +108,21 @@ L1 原来混在"基础功能"里 (`ssact`/`n_exec`/`sslimit`/`ssworld`) —— �
 - 契约文件与 `_index.py` 由 `tools/gen_middleware_nodes.py` 生成, 实现文件与 `by_level.py`/`node_map.json` 各自有生成器 ⇒ **全部别手改**, 改生成器再重生成。
 - 拆/合节点的完整流程、AST 切分脚本、四个静默坑 (registry 里 NODE_LOGIC 被换绑定 / 多 key 共用一个函数 / `global` 语句 / 生成器占位符落错文件名) → `references/node-code-split-and-three-layer-map.md`。
 
-`tools/gui/node_logic.py` = 33 行兼容壳 (转发包命名空间) · 仓库根 `flows/state_space_obs.json` = 软链。
+`tools/gui/node_logic.py` = 33 行兼容壳 (转发包命名空间) · 仓库根 `flows/state_space_obs.json` 应当是**软链**。
+
+### 🔴 控制台读的不是 DB 那一份 —— 只改 DB 副本 = 界面一点没变
+
+控制台取画布走 `simulink_module._flows_path("state_space_obs.json")`, 优先链:
+**环境变量 `ZMAX_FLOWS_DIR` > 仓库根 `flows/` > `data/database/zmax/sources/canvas/` > `_MEIPASS`**。
+所以“我改的是 `data/database/.../canvas/state_space_obs.json`”并不等于“界面变了”: 实测仓库根
+`flows/state_space_obs.json` 不知何时被一个**独立拷贝**(旧日期、未进 git)顶掉了软链, 它里面的
+`params.source` 还指旧路径 ⇒ 右键落点仍回旧文件, 而体检脚本查 DB 那份报“94/94 全通过”。
+
+定式:
+- `flows/state_space_obs.json` 保持**软链**到 DB 真源 (`ln -sfn ../data/database/zmax/sources/canvas/state_space_obs.json`), 旧副本进 `flows/_archive/`。
+- **体检/修复工具必须用 GUI 同一个 resolver 取路径**, 不要写死 DB 路径; 否则“体检通过 + 界面没变”会反复出现。
+- 判据: `readlink -f flows/state_space_obs.json` 解析到 DB 那份 (同一 inode), 并从该路径读出目标节点的 `params.source` 逐字确认。
+- 改完让用户**重开控制台/重载画布**: 内存里是启动时那份旧节点, 磁盘修对了也不影响已开窗口。
 **新增/改节点逻辑写 `middleware/nodes/impl/<node_key>.py`, 不要再写回 GUI 目录, 也不要再往 `shared_runtime.py` 里加函数。**
 
 溯源链 (从画布节点名 → 真代码): `registry.match_node(节点名)` → key →
@@ -1004,6 +1018,23 @@ xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py [--level L2|L3|L4]
 - 判据(一次就能过): 规划 `out["action"].pose` 与执行器返回 `out1.pose` **逐位相同** · `mode="verbatim"` · `ok=True` · `real_send=False`。
   跑法: 直接 `PLAN.run({"in1": {"value": [真值+20mm]}})` 取 action 再喂 `RA.run({"in1": {"action": act}})`, 先 `AB.publish` 打桩截获, 别污染线上 `action.json`。
 - 兼容: action 同时保留扁平 `x/y/z/a/b/c/j1..j6`(终端打印与老消费方) 与 `pose{}`(新下游), 只给一种会让另一侧读空。
+
+### 📐 action 形状以 215 点回放为唯一基准 (31 字段)
+
+用户口径: 「这个 action 要改成跟真实轨迹 215 个点一样的 action」。基准 = `src=traj215` 的字段集, 逐字同名:
+`src,i,i_plan,x,y,z,a,b,c,qx,qy,qz,qw,j1..j6,joints_src,grip_mm,grip_act,grip_state,grip_src,
+grip_meas_mm,grip_meas_age_s,pose_now,delta_mm,i_nearest,why,ts`。
+
+- `action_spec.REQUIRED = TRAJ215_FIELDS`(直接引用这一个常量, 不再手抄一份短清单); 别的来源只允许**多出证据块**
+  (`plan`/`align`/`pose`/`u`/`needs_ik`/`joints_target`/`spec`), 不许换名。**同值不同名 = 两套口径**
+  (实例: `grip_now_mm` vs `grip_meas_mm`) ⇒ 删掉一个, 别两个都留着。
+- `from_plan` / `from_ss` 末尾必须走 `_enrich(_with_grip(act, keep))`: 少了 `_enrich` 就缺
+  `pose_now/delta_mm/i_nearest/dispatch`, 消费方读到 None 会以为没数据。
+- `i` 夹进 0..214(`_clamp_cursor`), `i_plan` 保留派单游标原值 (215 = 已派完) —— 两个号各有语义。
+- 判据工具 `tools/action_schema_parity.py`: 三条来源逐字段对账, 缺字段/非证据多余字段/同名类型不一致都算 FAIL,
+  PASS 文案必须是「三条 action 同形」。改 action 任何一侧都跑它 —— `py_compile` 与 import 通过证明不了同形。
+- 冒烟会**覆盖线上 `ss_live/action.json`**(`src=plan`、`real_send=False`): 要么打桩 `publish`, 要么事后明说
+  "这条是冒烟写的、不是指令", 别让用户拿它当现场动作。
 
 ### 🔩 孔位数量/坐标只读配置, 不许在代码里写死
 

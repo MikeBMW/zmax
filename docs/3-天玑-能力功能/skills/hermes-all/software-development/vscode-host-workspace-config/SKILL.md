@@ -110,14 +110,26 @@ M.<真函数>(...)                      # 只调真函数真源, 不写仿制实
 
 ### 多根工作区 (`.code-workspace`): launch 配置写在工作区文件里, 不是根 `.vscode/launch.json`
 
-🔴 **打开 `.code-workspace` 时, 根目录的 `.vscode/launch.json` 不被读取** —— 多根工作区的调试配置来自
-工作区文件自己的 `"launch"` 段 (`{"launch": {"version": "0.2.0", "configurations": [...]}}`),
-或各根目录各自的 `.vscode/` (下拉里显示成 `文件夹 : 配置名`)。只改根 `.vscode/launch.json` 时: 文件看着完全正确、
-`json.load` 也对, 但 F5 下拉里根本没有它 ⇒ 表现为"按了 F5 什么都没发生", 而人还在怀疑断点/代码。
-所以**两处都要有**: 工作区级 `launch` 段 (用户 F5 真正读的那份) + 根 `.vscode/launch.json` (用户改为"打开文件夹"时生效)。
+🔴 **打开 `.code-workspace` 时, 调试项来自工作区文件自己的 `"launch"` 段
+(`{"launch": {"version": "0.2.0", "configurations": [...]}}`) **加上**各根的 `.vscode/`，
+两边的同名配置会同时出现（重复项就是这么来的）。只改根 `.vscode/launch.json` 时: 文件看着完全正确、
+`json.load` 也对, 但 F5 下拉里那条可能不是你以为的那份 ⇒ 表现为"按了 F5 什么都没发生"，而人还在怀疑断点/代码。
+🔴 **下拉菜单 = 并集：工作区文件的 `launch` 段 + 每个文件夹各自的 `.vscode/launch.json`**
+（多根时就是 `文件夹 : 配置名`；仓库根本身也是其中一根时，它的 `.vscode/launch.json` 照样会被读进来）。
+所以**同一组配置只能在 ONE 处声明**：声明两处 = 下拉里每条都出现两遍（用户会直接说"为什么能看到两个前端、两个后端，删掉重复的"）。
+
+判/修顺序（别先怀疑 VSCode 或缓存）：
+1. `grep -rn '"launch"' *.code-workspace` —— 工作区文件里有没有 `launch` 段；
+2. 把工作区**每个 folder**（含 `.`）下的 `.vscode/launch.json` 都列出来 —— 子仓/外部依赖里也会有（
+   `external/*/.code-workspace`、`external/*/.vscode/launch.json` 实测都会串进同一个下拉）；
+3. 保留一处（推荐工作区 `launch` 段，改它不用碰各根目录），其余整段删掉；备份成 `/tmp/vscode_cfg_bak_<ts>/`；
+4. 告诉用户必须 **Developer: Reload Window** —— 静默关侧栏/切文件都不会重读。
+
 - 工作区 `launch` 段里的 `program` / `python` / `cwd` 一律写**绝对路径** (多根下 `${workspaceFolder}` 有歧义)。
 - 改完回读校验三件: 工作区 JSON 能解析 · 每条配置的 `program`/`python` 存在 · `cwd` 是目录; 再把
   "下拉里选哪条 + 要按 Reload Window" 告诉用户。
+- 用户说"还是有断点/附着、还是重复"时，先问他刚才有没有**再次** Reload：工作区文件是加载时读的，
+  你在他 reload 之后才改的文件不会自动生效（这一条能让"改了没效果"的假象闭环）。
 
 🔴 **"F5 之后断点不进"先证"到底有没有进程起来"**, 这一步能一次排掉一大片方向:
 ```bash

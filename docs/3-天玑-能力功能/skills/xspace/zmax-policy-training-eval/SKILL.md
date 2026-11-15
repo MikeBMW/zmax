@@ -10,6 +10,34 @@ description: Z-MAX 插拔策略训练与评估管道 — 评估铁律(逐维norm
 - 模型评估假 0% / 原地不动 / 方向学反
 - 老倪架构修正: "坐标是逻辑主线, 图像是背景"
 
+## 训练起跑前先过三道闸 (共享 GPU/内存的机器上, 不然整机冻死)
+
+本机 8G 卡是**与常驻模型栈共用**的 (画布回路+引擎回路+INTACT worker 实测已占 5.2G 显存 / 18G 内存)。
+裸 `python -m lerobot.scripts.lerobot_train` 起一次就够把 30G 内存吃满 ⇒ journal 戛然而止 → 硬重启
+(内核连 oom-kill 都来不及留)。三道闸缺一不可:
+
+1. **图像内存账**: dataloader 把图像解成 PIL **常驻匿名内存** ≈ `帧数×H×W×3×4B`
+   (9171 帧 480×640 = 8.4G, 实测 `smaps_rollup` Anonymous 8.3G)。而 policy 反正要 resize 到
+   `resize_images_to` / `siglip_image_size` ⇒ **先把数据集预缩到那个尺寸再训**:
+   `python tools/scale_lerobot_images.py <src> <dst> --size 128` (实测 2.2G→48M, 加载内存 8.4G→0.45G,
+   对 policy 无损)。缩完把 `resize_images_to: [128,128]` 同步改, 否则二次缩小白亏。
+2. **独立 cgroup 起**: `sudo systemd-run --unit=l3-train --property=MemoryMax=10G
+   --property=MemorySwapMax=0 --property=Nice=19 …` ⇒ 超限只杀这个 unit, 主机不冻
+   (实测连撞 4 次 OOM, 机器一次没卡)。`MemorySwapMax=0` 是关键: 换页颠簸才是冻死机制。
+3. **显存按 OOM 报文定档**: `Tried to allocate X MiB … of which F is free` ⇒ 需求 ≈ 已用+X。
+   实测常驻栈 5.2G、batch 4 需 2.7G ⇒ 只有 batch 2 装得下。腾显存别杀子 worker
+   (父回路 5s 内以新 pid 重生), 要停就停拥有它的那个 unit。**显存只剩 ~2.5G 时 batch 1 反而更快**
+   (实测 batch2 4.0 s/step → batch1 2.4 s/step: 不再与常驻栈抢碎片), 别为吞吐硬上大 batch。
+4. **验证/探针不许与训练并发**: 探针、归一化校验、单测各自要吃 2~4G, 与训练同刻会把训练
+   cgroup 顶到 MemoryMax 被 OOM 杀 (实测 282 步时被杀)。要么先跑完探针再起训练, 要么另给
+   探针一个独立 unit + 更小的 MemoryMax。配套: **`save_freq` 给到 250 以内** —— 500 太稀,
+   一次 OOM 就整段白跑; 没有 ckpt 时 resume 也救不回来。
+
+⚠️ **`sudo systemd-run` 下 `$HOME=/root`**: `HF_HOME=$HOME/.cache/huggingface` 会解析到 root 家 ⇒ 报
+`We couldn't connect to 'https://huggingface.co' … couldn't find them in the cached files` ——
+看着像网络/离线开关问题, 实际是缓存路径错。**HF_HOME 一律写绝对路径**。
+⚠️ 排错先看 `systemctl status <unit>` 的 `Failed with result 'oom-kill'`: 有 = 闸生效; 没有而机器死了 = 闸根本没套上。
+
 ## 交付铁律 (老倪 2026-08-08 反复催"视频发我"/"说了多少次啦"/"别啰嗦")
 - 评估一出结果立刻生成视频并发送, 不要攒着最后发、不要只说不发。
 - 用户要视频时: 先发**已存在的成功视频** (MLP 插拔 / 官方专家), 再继续调试 —
@@ -30,6 +58,26 @@ description: Z-MAX 插拔策略训练与评估管道 — 评估铁律(逐维norm
 4. **45D 相对向量**: state_dim=45 时评估现场补
    `concat(peg-hand, hole-peg)` 6 维, 否则 (1x39) vs (45x256) 形状错。
 5. **SmolVLA episodes 显式列表触发 reader bug** → 去掉 `dataset.episodes` 用全部。
+
+## L3 部署接口口径 (归一化区间 / 特征键 / ckpt 维度)
+
+改动或对接 L3 (SmolVLA-LEW) 前先跑一次接口探针 (tools/l3_action_probe.py,
+`--ckpt <dir>` 判水平 / 不带 ckpt 只判接口), 它把契约和真机同帧真值并排打出来。四条硬口径:
+
+1. **MIN_MAX 的目标区间是 [-1,1], 不是 [0,1]**: 反归一化 `(t+1)/2*(max-min)+min`,
+   正向 `2*(t-min)/(max-min)-1`。实测 `post(-1)` 逐位等于训练集 min、`post(+1)` 等于 max、
+   `post(0)` 是中点。**按 mean/std 反推会全错**; 判断"反归一化生效没"最省事的刻度 =
+   看输出是否仍在 ±1 附近 (是 = 没反) 以及是否落在训练集 [min,max] 区间内。
+2. **ckpt 的特征键与现数据必须同源**: 老 ckpt 用 `observation.image`, 新采集数据集是
+   `observation.images.top`; 部署侧写死任一键都会在 preprocessor 里炸。加载后把
+   `input_features` / `state_dim` / `action_dim` / `chunk` / `norm ACTION` 记成 contract,
+   推理前校验观测维度不符就**当场报错并给出换 ckpt 的命令**, 不要让它崩在 normalize 的
+   `size of tensor a (13) must match b (39)` 上 (实测老 ckpt 39 维 vs 新数据 13 维)。
+3. **同一帧对账才算口径一致**: 拿数据集里某帧的真机 action 与模型对同帧的输出比,
+   而不是比不同时刻/不同 episode 的数。
+4. **判据拆成「接口」与「水平」两层**: 接口 = 4 维 + 落在 [min,max] + mm 量级 (随机权重
+   也能 PASS); 水平 = 与真机偏差阈值 (只有真 ckpt 才有意义)。混成一条会在未训练模型上报假
+   FAIL, 让人去"修"一个没坏的接口。
 
 ## 坐标叠加架构 (老倪核心, 2026-08-08)
 - 原 ACT `[latent, state_token, *49图像token]` 拼序列 → 坐标淹没 → 学不会
@@ -932,6 +980,8 @@ print(len(B), len(nz), max(float(v.abs().max()) for v in B.values()))
 
 ## 参考
 - scripts/eval_models.py — 统一 5 模型评估循环 (前置: train_curve json + stats 候选排序)
+- scripts/scale_lerobot_images.py — 数据集图像预缩到 policy 输入尺寸 (480×640→128×128,
+  加载内存 8.4G→0.45G; 缩完记得同步改 `resize_images_to`)
 - scripts/ws_probe.py — WS 服务端行为探针 (握手→hello→收帧, 诊断群聊/实时通道无消息根因)
 - references/dual-brain-architecture.md — 2026-08-10 双脑架构 (MLP左脑+WM右脑) 调试全路径:
   v1-v8 版本迭代表 + d_hp/peg_z 轨迹证据 + grab_effort 夹爪探针 + seed 稳定性

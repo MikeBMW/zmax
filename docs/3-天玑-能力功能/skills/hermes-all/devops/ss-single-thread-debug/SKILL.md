@@ -78,9 +78,14 @@ export ZMAX_SKIP_IDS="ssyolo,ssllm,ssreason,n_vlm_llm,n_dsvl,ss_l5,ss_seg,ssaoi,
 ssllm_in,ssintact,ssintact_dec,swintact,ss_lora_l4,ssmani_exp,ss_mem_l3,ssbg_vlm,ss_man,\
 ss_mani_eng,ssmani_c,ssmani_p,n_calib_mani,n_geoplan,swds,swvideo,n_realscene,ssrender,\
 ssdec,ss2d3d,ss_lora_l3"
-export ZMAX_CORE_IDS="ssobs,sssensor,ssff,ssest,sspred,ssinnov,sssched,sslimit,ssact,sstactile,n_exec"
+export ZMAX_CORE_IDS="ssobs,sssensor,ssff,ssest,sspred,ssinnov,sssched,sslimit,ssact,sstactile,n_moveit,n_exec"
 export ZMAX_FULL_EVERY=999999          # 不跑整张画布(否则第 0 拍就是全量, 照样卡)
 ```
+
+🔴 **`ZMAX_CORE_IDS` 不是"通用核心链", 是"这一轮我要看的那条链"** —— 里面没有的节点在
+`FULL_EVERY=999999` 下**一拍都不跑**，打在它里面的红点永远不命中（判据见下面第 6 类）。
+调 `motion_plan` / `plan_guide` 就得把 `n_moveit` 放进来（`n_exec` 之前，与画布顺序 段表→执行器 一致）；
+调感知/记忆节点同理。改完必须核引擎启动行 `🐢 慢车道: … 其余拍只跑核心链 <列表>` 里真的有它。
 权威真源是 `start.py::_debug_defaults()`（单线程档自动 setdefault 这套值），
 这份 export 块只是给人看的口径——**别两处各维护一份再互相漂移**，改默认值只改代码。
 
@@ -109,7 +114,7 @@ ls -l --time-style=+%H:%M <刚改的文件>   # 补丁时间
 **不要在旧进程上继续找原因**；关之前确认执行器已无（见“杀容器”一节），并给一次位姿两拍静止证据。
 每次改完代码，先核这一项，再谈 py-spy 栈。
 
-## 断点不进的五类原因（按命中率）
+## 断点不进的七类原因（按命中率）
 0. **`ctl_auth.check()` 返回的是 tuple `(ok, msg)`，不是 dict** —— 答“谁在控制”时直接 `.get()` 会
    `AttributeError: 'tuple' object has no attribute 'get'`（`inspect.signature` 先看一眼，别凭记忆写报数脚本）。
    正确用法：`ok, msg = ctl_auth.check()` ⇒ `armed=True · 调试·无限 · epoch=264`。
@@ -121,17 +126,69 @@ ls -l --time-style=+%H:%M <刚改的文件>   # 补丁时间
    让他点左侧「调用栈」第一条跳转；同时删掉多余红点、关掉 “Uncaught exceptions” 暂停，再 F5。
 3. 卡在**模型权重加载的 C 层**：`_load_policy → from_pretrained → transformers init_weights`（torch C 扩展）。
    pydevd 只能在字节码层挂起，进程陷在 C 调用里时**既挂不住也命不中**，表现就是“臂在动、断点不进”。
-   ⇒ `ssdec`（Flow-Matching Action Head / `n_dit`）连同 `ss2d3d`、`ss_lora_l3`、`ssmani_exp` 一起进 `ZMAX_SKIP_IDS`。
+   默认把 `ssdec`（Flow-Matching 动作头 / `n_dit`）连同 `ss2d3d`、`ss_lora_l3`、`ssmani_exp` 一起放进 `ZMAX_SKIP_IDS`。
+   🔴 **要在这个节点自己的代码里断点, 必须反过来**: 从 `ZMAX_SKIP_IDS` 删掉 `ssdec`, 同时加进 `ZMAX_CORE_IDS`
+   (SKIP 优先于 CORE, 只加 core 不删 skip 等于没改; 改完用引擎启动行核对那串列表)。
+   代价: 首拍加载 SmolVLA ~10s 挂不住, 之后每拍同步跑一次 500M 前向, 单拍 40ms → 0.3~1s。
+   同源判据: 这个节点的 `_load_policy` 一旦失败(含下面的 hub 卡住), 熔断 60s 内每拍重试 —— 循环反复重启就是这么来的。
 4. 行号漂移：在 `decide()` 入口插代码会让后面的行整段下移（`return u, f"阶段 {st}{tag}"` 曾是 573，插锚后是 587）。
    断点前先 `grep -n 'return u, f"阶段'` 拿真行号。
 5. **这段代码根本不在你的 debuggee 里 / 不在当前链路上**（两种原因常同时成立，任一个都让红点永不命中）：
    ```bash
-   grep -c '<模块名>' /proc/$CH/maps      # 0 = 该模块没被这个进程加载 ⇒ 断点无效（跑在 systemd 服务或 docker 容器里）
+   # 🔴 别用 grep -c '<模块>' /proc/<pid>/maps 判断 Python 模块有没有 import:
+   #    纯 .py 由 open/compile 读入, 从不进 maps(只有 mmap 的 .so/权重/数据文件才在)
+   #    ⇒ 计数 0 是恒真的, 拿它下结论必然误判成"没加载"。真判据只有三条:
+   #    ① 引擎启动行「🐢 慢车道: … 其余拍只跑核心链 <列表>」里有没有该节点 id
+   #    ② ZMAX_CORE_IDS 与 ZMAX_SKIP_IDS 的关系: SKIP 优先(ss_canvas_loop 先剔 skip 再跑 core),
+   #       同一个 id 同时在两边 = 不跑; 加进 core 必须同时从 skip 删掉
+   #    ③ py-spy 栈里出现该文件的函数名 = 它跑了, 只是卡在别处(不是没进链路)
    awk 'NR<=<行号> && /^def /{n=NR; l=$0} END{print n": "l}' <文件>   # 该行所属函数, 再核它在不在当前链路
    ```
    已知案例：`exec/daemon.py:868` 跑在 l2_daemon（systemd 独立进程，`maps` 命中 0），且该行属于 `run_rot_chunks()`（只服务 J6 分段自转）⇒ 215 点轨迹这条链路根本不执行它。
+   第二个高频案例（L2 规划/执行节点不命中）：`ZMAX_AUTO_TRAJ=1` 的 start.py 走 `RealTrajFlow`（`start.py:272`）
+   → `POST /api/arm/step_traj` → 容器 `arm_step_traj.py`，**全程不 import `motion_plan`**；
+   `n_moveit` / `n_exec` / `ssact` 只由 `tools/ss_canvas_loop.py` 调（`:103` 的 `ZMAX_CORE_IDS` 白名单）。
+   判据：`/proc/<pid>/environ` 里 `ZMAX_AUTO_TRAJ=1` 且 `zmax_data/ss_live/action.json` 的 `src=traj215`
+   ⇒ 规划节点这条链没跑，断点永远不会命中（不是位置设错）。
+   处置：要在 `motion_plan.run` / `exec_dispatch.run` 断住，F5 选「🧩 后端工程 · 状态空间画布 loop」
+   （跑 `tools/ss_canvas_loop.py`，且必须先停 start.py 让出 `/tmp/zmax_start.lock`）；那条是 shadow，
+   `real_send=False` 不动真机 —— 要它驱动真机是另一件事（执行口 src 从 `traj215` 切 `plan`），别混为一谈。
    处置：先报“这两个原因”，再给**这条链路上**的正确落点（见 `references/breakpoint-sites-cheatsheet.md`），不要改配置
    硬试；要断服务进程的语句，也只能给它加旗标自停锚或把该服务单独跑在 debugpy 下（重启服务需用户点头）。
+6. **节点 import 的是软链 ⇒ 红点绑在真文件上也不命中**。迁移后老路径留相对软链（`nodes/impl/plan_impl.py ->
+   state_space/motion_plan.py`）而节点仍写 `from .plan_impl import run`：此时**代码对象的 `co_filename` 是软链路径**
+   （`.../nodes/impl/plan_impl.py`），你在 `state_space/motion_plan.py` 里下的断点路径不匹配 ⇒ 永远"没进入"，
+   而文件内容、行号、语法全对（最容易连改几轮都白改）。
+   ```bash
+   # 判据一: py-spy 栈里出现的是软链路径, 不是你以为的文件
+   sudo py-spy dump --pid <pid> | grep -E 'plan_impl\.py|motion_plan\.py'
+   # 判据二: 直接问代码对象
+   python -c "import <mod>.run as f; print(f.__code__.co_filename, f.__code__.co_firstlineno)"
+   ```
+   修法：薄壳节点改成**直连真文件**（`from lerobot.policies.left_right.state_space.motion_plan import run`），
+   软链只留给老 import 做兼容。验收：`co_filename` 是 `state_space/…` 且引擎启动出现
+   `[modload] … ← …/state_space/….py (断点可绑)`（项目里 `gs_*`/`atomic_skills` 那套 loader 就是按这个口径打印的）。
+7. **断点所在行是"成功路径"的尾巴, 而这拍走了提前 return**。`run()` 形如
+   `if not goal: print("无目标…"); return out` … `out["status"]=…; return out` —— 目标为空时
+   函数在中间就返回，末尾那几行**永远不执行**（不是断点坏）。判据：日志里每拍都是同一句
+   `无目标(只报可用性)`，且 py-spy 采样里从未出现比该行更大的行号。
+   处置：先断**入口行**（`def run` 那一行，每拍必过）+ 那个 `if not X:` 分支行看输入为什么空；
+   要看末尾就先把前置条件（目标/证据）补齐，别在原地反复下红点。
+   连带自查（5 分钟能省半天）：
+   ```bash
+   grep -c '^def run' <文件>            # >1 = 手工粘贴出两份定义, Python 只认最后一份, 前一份红点永不命中
+   python -c "import ast;ast.parse(open('<文件>').read())"   # 坏文件往往 ast 就报 SyntaxError
+   ```
+
+## 模型节点卡在 HuggingFace hub 校验（一拍几十秒 + 循环反复重启）
+
+本地有缓存也会先联网查 etag，不通就 backoff 无限重试 ⇒ 整拍卡住 ⇒ 日志反复出现 `===== 循环启动 (pid=…)`
+（在重启，不是正常运行）⇒ 下游动作头永不执行，而节点看起来「已经在核心链里跑了」。
+判据（py-spy）：`_http_backoff_base` ← `get_processor_dict` ← `processing_auto.py` ← `smolvlm_with_expert.py:99`。
+修法三件套：`HF_HUB_OFFLINE=1` + `TRANSFORMERS_OFFLINE=1` + **`huggingface_hub.constants.HF_HUB_OFFLINE=True`**
+（末行必须有：运行期改 `os.environ` 不更新已 import 的常量表）。
+连带两坑（ckpt 属主 root:600 被报成 FileNotFound；`config.json` 缺 `type` 报 ParsingError）与
+共享日志怎么判「谁在 tick」，全在 `references/model-load-blockers.md`。
 
 ### 验证链会先撞你的断点（伪装成“主链卡死/死锁”）
 `node_ss_feature`（`n_feature.py:91` → `shared_runtime.node_ss_feature`）原来**每拍**都
@@ -192,6 +249,14 @@ _do_wait_suspend → step (scheduler_fsm.py:251) → advance (cognition.py:403)
 - 自证量纲：同刻读两次 `latest.json`，`Δp/dt` 得到的 m/s 才是与 `a` 可比的速度；`a` 与实测速度比方向/幅值 = 闭环判据。
 - 状态空间最后的位姿输出 = `ssact` 的 `out1.pose`（`_SS_STATE["pose_out"]`）：直驱档 = 当前位置 + `u*dt`，回退档 = 215 点目标
   `frames[cursor].p/.q`；`u_cmd` 是 4 维、`u_cmd_dim=6` 时 `u_cmd` 为空、关节在 `traj_cmd_deg`（两种语义别混着显示）。
+- 🔴 **L3 动作头(`ssdec`)的 `nominal` 是绝对位姿 mm, 不是速度**: 4 维 `[x,y,z,grip]`,
+  训练集范围 x 211~818 / y -511~410 / z 114~998 / grip 0|70。把它塞进速度口径的 `_SS_STATE["u"]`
+  就会得到「修正Δ = 绝对mm − m/s」这种无意义量(日志里 Δ 动辄 500+, 换算出来毫无物理意义)。
+  正解: 单独挂 `_SS_STATE["l3_pose"]` + 时间戳, 由 `action_bus.from_action()` 写成 action.json 的 `l3` 块 ——
+  x/y/z 用模型值; a/b/c 与四元数 **hold 真值并显式标注**(模型只出 4 维, 姿态不是它的输出);
+  `grip_mm` 量化成 0/70 二值、另留 `grip_mm_raw` 存原始连续值做证据;
+  加 `l3_fmt_ok` 判据(mm 量级 + grip∈[0,70] + age<2s), 执行仍走 `src`, 只是格式先对齐。
+  这样用户能在 action.json 里看到与真机同构的模型输出, 又不动臂。
 ⚠️ 路径陷阱：仓库里有个**诱饵目录 `src/zmax_data/`**。任何新模块“向上找仓库根”来落盘时，
 只判 `zmax_data/` 会命中它 ⇒ 写进 `src/zmax_data/ss_live/` 却没人读（且被 try/except 吞掉、静默失败）。
 判据必须**同时**要求 `zmax_data/` 和 `src/lerobot/` 都在，或直接用 `ZMAX_ROOT` 环境变量。
@@ -220,6 +285,14 @@ _do_wait_suspend → step (scheduler_fsm.py:251) → advance (cognition.py:403)
   并重跑四个分支（正常/NaN/跳变/回退关）对账数值。
 - 夹爪在 `ss` 档不由 `u` 决定时写 `grip_act="hold"` + 实测值；`grip_meas_mm=null` + 大的 `grip_meas_age_s`
   就是“夹爪没回证”的直接信号（先查驱动，别怀疑 action 代码）。
+- 🔴 **单拍步长只能有一个数**：规划切段上限、`align.max_step_mm`、执行器守卫必须同源（实测踩过
+  规划按 50mm 切段、`align`/执行器按 25mm 拦 ⇒ 每条 plan action 都 `step_ok=false` 被拒收，
+  现象是"规划明明出了目标、机器人没按它走"，而两边各自都"没问题"）。改一处必须三处一起改。
+- 🔴 **`align` 必须和 `delta_mm` 用同一张真值重算**：`from_plan` 用的是上游那张 0.1~0.2s 前的快照，
+  而 `_enrich` 落盘时又重读一次真值 —— 同一份 action 里会同时出现 `step_mm=33.2` 与 `delta_mm` 模长 5.7mm，
+  用户拿它对机器人屏幕就会问"怎么差 30 多毫米"。修法：`_enrich` 里拿到新真值后，用它把
+  `pose_truth / delta_mm / step_mm / step_ok / truth_age_s` 一并重算，保证恒等式
+  `step_mm == |action − pose_truth| == |delta_mm|`。
 
 ### 从“只算不发”到“速度直驱”的落地口径 (三档开关 + 回退 215 点)
 用户要求“先确保 215 点稳定，u 发错就还是走 215 点”时，按这个顺序落，别直接改执行路径：
@@ -247,6 +320,10 @@ _do_wait_suspend → step (scheduler_fsm.py:251) → advance (cognition.py:403)
 （`debugpy.breakpoint()` / `pdb.set_trace()` 锚点）。文件类证据只能内部自用。
 另：旗标文件断点不在他的调试进程里 ⇒ **VSCode 不会显示暂停**，必须提前说“停的是机器人不是代码”，
 否则他会当成程序卡死；反过来，新建旗标会立刻停臂，**动手前要先告知**。
+
+🔴 **`import ss_canvas_loop` 会把 stdout 重定向到 `/tmp/ss_canvas_loop.log`**（loop_quiet 降噪）。
+所以写一次性诊断脚本、`print` 打一半发现"CMD 无输出/像没执行"时，先 `grep -a <你的标记> /tmp/ss_canvas_loop.log`；
+或者 import 之后立刻 `sys.stdout = sys.__stdout__` 再打印。判据：脚本 `exit 0` 但终端一个字都没有。
 
 ## 断点 ≠ 急停：已下发的段照跑
 下发是**派单制**：`real_traj_flow` 每 3s `POST /api/arm/step_traj {n,start,speed}`，

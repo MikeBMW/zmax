@@ -204,6 +204,24 @@ xdotool windowactivate $(wmctrl -l | awk '/mfdbg/{print $1}') && sleep 2 && xdot
      `skill_calls.log` 里常带 `pid` 字段: 它不等于调试进程 pid 就说明另有一个常驻引擎
      (如 `zmax-ss-engine-loop.service`) 在写。先 `systemctl stop` 那个 unit 再取样, 否则
      `n_cycle`/`state` 永远停在别人的值上, 你会误判"断点没进"。
+  ⑨ **import 走的是软链/别名 ⇒ 断点文件和执行文件不是同一个路径**。节点壳 `from .plan_impl import run`,
+     而 `plan_impl.py` 是指向 `policies/left_right/state_space/motion_plan.py` 的软链 ⇒ `run.__code__.co_filename`
+     是 `.../nodes/impl/plan_impl.py`, 在 `state_space/motion_plan.py` 里下的红点匹配不上, 一行都不停。
+     判据: `py-spy dump` 栈里出现 `plan_impl.py:502`, 而你以为在调 `motion_plan.py`; 或自查
+     `inspect.getsourcefile(...)` / `run.__code__.co_filename`。修法 = 节点壳**直连真文件 import**
+     (`from lerobot.policies.left_right.state_space.motion_plan import run`), 软链只留给外部兼容;
+     改完 `co_filename` 必须显示真路径才算绑得上。
+  ⑩ **节点根本不在"调试核心链"里 ⇒ 每拍都被跳过**。常驻循环只跑 `ZMAX_CORE_IDS` 白名单,
+     而 `ZMAX_FULL_EVERY` 又被设成 999999(全量 pass 永不发生) ⇒ 白名单外的节点全场 0 次调用。
+     判据两条, 都很便宜: ①引擎启动那行 `其余拍只跑核心链 a,b,c,...` 逐字对一眼有没有你的节点 id;
+     ②按节点前缀数日志 `tail -c 400000 <log> | grep -ac '^\[<node_id>\]'` 得 0, 而同拍别的节点几百次。
+     修法 = 把节点 id 加进入口脚本里的 `ZMAX_CORE_IDS`(改 start.py 这类入口, 不是改引擎默认值),
+     **改完必须重起会话** —— env 在进程启动时就固定了。
+  ⑪ **多个上游写同一个输入端口 ⇒ 后写覆盖, 目标/载荷恒为 None, 函数在早退分支 return**。
+     实测 `n_moveit.in1` 上挂了 5 条线(4 个技能 + 安全限幅), 有效值只剩最后一个(None) ⇒ 每拍日志
+     `无目标(只报可用性)` 并 `return`, 函数**末尾**那几行(出段表后的 status/print/return)永远执行不到。
+     这不是断点问题: 先让该端口拿到值(按代码设计把技能分线到 in4..in11, 代码注释里通常已写明分线理由),
+     再谈断点。诊断动作: `grep -a '<早退日志字样>' <log> | tail -3` —— 每拍都是早退字样即命中此因。
   如实说清是哪一条, 并给出下一步(重起 / 删触发器 / 由他按 F5)。
 - 🔴 **断点"永远不进"先查: 是不是另一个进程在替你跑同一个循环?** 常驻工程常被 GUI 看门狗/服务管理器托管 ——
   他的 F5 会话只是个空壳, 10Hz 循环跑在**别的 pid** 里(实测 `ss_canvas_loop.py` PPID=1, kill 掉 12s 内自动重生一个新的)。
@@ -266,6 +284,9 @@ sudo py-spy dump --pid <pid>           # 期望: _do_wait_suspend (pydevd) → d
 sudo py-spy dump --pid <pid> --locals  # locals 内容; numpy 显示成 <ndarray at 0x…>
 ```
 - py-spy 跨 uid / ptrace 范围需要 sudo。
+- **反查“这个节点到底跑没跑”**: 连续 dump 采样 8~10 次(间隔 0.3~0.5s), 只留主线程栈里的
+  `run (<impl>.py:NN)` 汇总计数 —— 出现即真在执行, 带行号还能直接看出停在哪段。py-spy 只读,
+  不会干扰他正跑着的会话, 也不会掰他的断点。
 - 每次报"停在哪个文件第几行": 改代码后行号会变, 上一轮的行号不能复用。
 - 无 GUI 兜底(先跑它确认门控真的生效): `ZMAX_DEBUG_<TAG>=1 python -m pdb driver.py` → `c` → `p x.shape`。
 
@@ -311,6 +332,14 @@ self.named, self.named_units = named, {s.name: s.unit for s in SEGMENTS}
 - **改了 `.code-workspace` 的 `launch` 就以为 F5 会用** ⇒ 老窗口仍会起动它记住的那条(folder 级 `launch.json` 的选中项)。要确定性就用上面那条"单配置临时窗口"。
 - **用内置 `breakpoint()`** ⇒ 停在终端 Pdb, 编辑器没变成 Paused, 用户说"没停"。换 `debugpy.breakpoint()`。
 - **只有 `.vscode/launch.json` 而用户开的是 workspace 文件** ⇒ 选择器里找不到配置, F5 静默用了别的。
+- **同一条配置在下拉里出现两遍(两个前端/两个后端)** = `.vscode/launch.json` 与 `.code-workspace` 顶层
+  `"launch"` 段各写了一份同名配置, VSCode 把两处合并且不合并重名项。修法 = 删掉其中一份(工作区文件里的
+  `launch` 段最该删), 而不是改名; 顺带核多根工作区的**每个 folder** 是否也各带 `.vscode/launch.json`
+  (`external/*` 子仓库最常藏一份)。合并不完还有 VSCode 自带动态项(添加配置…/附加到进程)删不掉, 要说明。
+  改完必须 `Developer: Reload Window` —— 工作区文件的 `launch` 段只在加载工作区时读一次。
+- 🔴 **在探针脚本里 import 引擎模块, 自己的 print 会消失**: 这类引擎导入时就把 stdout 重定向进日志
+  (`loop_quiet` → `/tmp/<x>.log`), 于是终端什么都没有、看着像挂死。定式 = import 之后立刻
+  `sys.stdout = sys.__stdout__`, 或用 stderr/写文件取证; 别把"没输出"当成节点没跑。
 - **断点在不执行的分支上**(某个输入下根本走不到) ⇒ 现象是"跑完没停"; 先确认该行在本轮输入下会执行, 或挪到公共出口。
 - **靠编辑器行断点** ⇒ 格式化/加注释就漂; 用门控 `breakpoint()`, 行号变了也还在。
 - **只说"已停住"没有帧栈证据** ⇒ 用户按 F5 发现程序早结束了。
