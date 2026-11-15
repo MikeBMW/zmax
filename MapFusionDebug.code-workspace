@@ -1,0 +1,11 @@
+{
+  "folders": [
+    {
+      "path": "/home/ubuntu/zmax",
+      "name": "zmax"
+    }
+  ],
+  "settings": {
+    "python.defaultInterpreterPath": "/home/ubuntu/zmax/gui-venv311/bin/python"
+  }
+}
