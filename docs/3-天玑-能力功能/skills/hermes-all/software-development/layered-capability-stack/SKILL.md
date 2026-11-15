@@ -184,6 +184,63 @@ def node_xxx(ctx):
   「没有节点试图脱离调用栈」汇总行 · 行级 trace 覆盖各层 · 状态机 `n_trans` 递增。详见
   `references/step-mode-single-thread-debug.md`。
 
+## 四·补五、执行量(行动)必须钉在**真机位姿真值**上, 每拍自证
+
+用户口径: 「按实际的位姿对齐 action, 最终的模型输出也要与 action 对齐, 保证能真正输出真实的动作」。
+把执行量的"坐标系"从代码里搬到真值上, 不是加一句注释能算的:
+
+- **位置 = 真值 + u·dt, 每拍重新锚定** (`pose = truth_now + u*dt`)。不许拿"自己上一拍的积分位"往下递推 —
+  一旦递推, 模型偏差和真机偏差会叠在一起跑飞; 每拍重锚后, 任何一拍都能手算验证。
+- **姿态取真值**(a/b/c + 四元数原样带上), u 只动位置; 夹爪走 `u[3]` 通道(如 ≥0.5 合 / <0.5 开)。
+  实测常见毛病是**夹爪维被整条丢弃**、只写"保持实测", 导致模型学到的抓取相位在 action 里根本不存在。
+- 🔴 **真值读不到就不出目标位姿**(返回 `pose=None` + `why`)。绝对不许拿"实测位姿"冒充目标位姿 ——
+  那样 action 永远"刚好到位", Δ≈0, 既骗了下游也骗了自己。
+- **每拍带证据块**, 不接受任何"看起来对":
+  `align = {frame, unit, dt, pose_truth[3], u_mm[3], step_mm, max_step_mm, truth_age_s, truth_fresh, step_ok}`。
+  帧龄 >1s 或单拍位移超限(如 25mm) 就在 `check` 里写出来, 不要默默夹紧。
+- **关节量不要编**: 真机按 pose 走 IK, action 里带实测关节 + `joints_target=None` + `needs_ik` 标记,
+  比"假装自己解了 IK"诚实; 真解了再把 target 填上。
+- **自证探针分两种跑法**(都写进 `tools/action_align_probe.py` 一类工具):
+  ①`--selftest` 拿**录制的真机位姿序列**当"真值时流", 逐拍核对 `action.pose == truth + u·dt`(逐轴 ≤0.05mm)、
+  夹爪跟随 `u[3]`、单拍不超限; ②`--live N` 轮询 `action.json` 报 `src` 分布 / `truth_fresh` 比例 / `step_ok` 比例 /
+  与 `pose_truth+u_mm` 的偏差。实测口径: 60 拍最大偏差 0.005mm(取整) · 夹爪 0 错 · 超限 0 次。
+- **训练侧同源闸**(未做就不算对齐): 模型输出的动作空间必须与 action 同一口径 —— 单位(m/s 或 mm/s)、`dt`、
+  坐标帧、第 4 维夹爪语义、归一化统计来源。任一项不同, 训练出来的输出进 action 就是错的; 这条要写成断言,
+  不是写在文档里。
+- **两条 src 走同一个出口**: 回放录制轨迹(`src=traj215`)与状态空间输出(`src=ss`)共用一个 action 记录/唯一出口,
+  打印与页面必须带 `src`, 否则出问题时分不清"是回放错还是模型错"。
+
+### 四·补五之一、契约要**单列成模块并被每条生产者真跑一遍**（不然只是文档）
+
+把所有 src 的字段/单位/证据块收成一个可 import 的契约模块（本项目 `state_space/action_spec.py`:
+`REQUIRED` + `EXTRA[src]` + `validate(act, src=)` 返回问题清单 + `to_array()` 给训练侧同源向量），
+别把口径写在注释或文档里 —— 注释不会失败，校验器会。
+
+- **出口留证但不阻断**: `publish()` 里跑 `validate()`，把结果写进 `act["spec"]={ok,issues,ver}`。
+  现场不能因为一条契约小毛病停线，但页面/终端必须一眼看到哪条不合格。
+- 🔴 **每条生产者都要单独跑校验**: 同一个 action 记录里，`plan` 路径有 `u`/`pose` 不代表 `ss` 路径也有。
+  实测 `from_ss` 只写了 `u_mm` 进 `align`，顶层 `u`/`pose` 恒 None ⇒ 下游读 `action["u"]` 一辈子拿不到值，
+  而文档上明明写着有。改法：逐个生产者 `validate()` 出一张表，缺块就补在**该生产者**里。
+- **不同 src 的同类字段可以不同口径，别强统一**: `plan` 的 `u` 是标量速度因子(0..1)+`seg_a/seg_b`，
+  `ss` 的 `u` 是 4 维 `[vx,vy,vz,grip]`(m/s)。硬把两者改成同一形状会破坏下游。正确做法是契约里写
+  **逐来源字段地图**（谁读哪个键、单位是什么），校验器按 src 分部检查。
+
+### 四·补五之二、闭环自检要**逐层调真函数**，不是拼一个假 action 走全流程
+
+写 `tools/action_loop_selftest.py`（全程只读、`real_send=False`），每层都用**真实入口函数**出一条证据：
+
+| 层 | 调什么 | 判据 |
+|---|---|---|
+| L5 | `TaskPlanner().plan(指令)` | 返回的 token 全部能在技能库 `skills[*].tokens.id` 里查到（注意 token 形态可能是 `[SKILL_xxx]`，别拿显示名当键） |
+| L4 | `IntactIntentService.run_once()`/`step_once()` | `u_ff` 存在且维数 = 4（与 `action.u` 同口径） |
+| L3 | `plan_long_impl.run({})` 的 `out1`（**当前段**，不是段表列表） | `a/b` 位姿能喂给 L2 |
+| L2 | `motion_plan.run({in1:{value:{pos:段终点}}})` | 出 `action` 且 `step_mm ≤ max_step_mm` |
+| L2′ | `_exec_action_verbatim({}, act, log)` | `out["out1"]["mode"]=="verbatim"`、位姿与输入逐位相同、`real_send=False` |
+
+三个反复踩的读取坑：执行器返回的是 `{"out1": {...}}` 而 `mode/ok/problems` 在 `out1` 里；
+L3 的 `run()` 返回的是**当前这一段**（含 `a/b/kind/seq`），没有 `segs` 列表；L2 规划节点吃的是
+`ctx["in1"]["value"]["pos"]`。任一层的 FAIL 就让脚本非零退出，交付时报 `FAIL=0` 并附报告路径。
+
 ## 四、六查探针 (照抄这个结构, 每查都要有机器可判的判据)
 
 | 查 | 判据 |

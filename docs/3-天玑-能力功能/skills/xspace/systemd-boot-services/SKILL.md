@@ -211,6 +211,29 @@ systemctl      active                          # 完全看不出问题
 🔴 **报给用户的顺序**: 这类故障现场的话是「**某个东西一动不动**」，极易被归因成“动作值不对/算法没算”。
 所以先报**生产端健康**（`ok/n/err` + 下游真值是否为空），再谈动作数値 —— 且要明确说“这不是下游参数的问题”。
 
+## 4e. 「机器/页面莫名变慢」先扫崩溃重启的 unit —— 它不会报任何错
+
+现场话是「控制台/页面怎么这么慢」, 不是「服务挂了」, 所以没人去看 unit。而一个卡在 auto-restart 的 unit
+既不是 `failed`、也不出现在 `ps` 的应用名里 (每次只活几秒):
+
+```bash
+for u in $(systemctl list-units --type=service --all --no-pager | awk '$1 ~ /^<前缀>/{print $1}'); do
+  printf '%8s  %s\n' "$(systemctl show "$u" -p NRestarts --value)" "$u"
+done | sort -rn | head -5
+echo '--- 它到底在跑什么' 
+systemctl show -p ExecStart --value <嫌疑 unit>
+```
+
+实测: 一个 unit `NRestarts=18108`、每 ~9s 一轮, 每轮 import 重框架/加载模型吃 **~10s CPU + 425MB**, 然后 exit 1
+(端口被**手工起的那个进程**占着, 不是另一个 unit) ⇒ 机器 load 17、用户感知「页面很慢」,
+而 `is-active` 只是 `activating (auto-restart)`, `ps` 里只看得到那个正常服务的手工进程 (ppid=1, 分辨不出谁起的)。
+
+定式:
+1. 止血 = `systemctl stop <unit>`(手工进程继续服务, 用户无感), 然后看 `NRestarts` 冻住 —— 这就是证据;
+2. 正名要用户点头: 停手工进程 → `systemctl start <unit>`(会断几秒), 否则重启机器后仍然是两条路径打架;
+3. 报告三件: **NRestarts 数字 · 每轮 CPU/内存 · 端口被谁占着**(`ss -ltnp | grep :<port>` + `/proc/<pid>/cmdline`);
+   只说"有个服务在重启" 用户无法判断要不要动手。
+
 ## 5. 交付口径 (用户拿它当结果看)
 - 报告只写四样: **磁盘上的文件路径** · **`is-enabled/is-active` 真值** · **日志/台账一行真输出** · **回滚一条命令**。
 - 不许写"已配置完成/已优化"而无数字; 未实测的东西标明"未证明"。

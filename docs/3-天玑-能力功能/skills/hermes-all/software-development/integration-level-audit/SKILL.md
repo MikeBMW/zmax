@@ -396,6 +396,14 @@ DB 的 `canvas_links` 行可能 `src/dst` 全 NULL (build 缺陷) —— 拿它�
    并回读生成物与 DB 两处一致; 只改 .py 的, 下次重生成静默回退。
 5. 生成物的 docstring 与 `PARAMS['source']` 会落后于搬迁 (改 `SOURCE` 常量不覆盖它们), 老路径指向已删目录时
    照样能跑、只在右键「打开源码」时暴露 —— 同步四处见 `references/declared-source-vs-real-implementation-drift.md`。
+6. 🔴 **完成判据是「算法本体」, 不是「提到算法的文件」**: 用户说「X 层算法都迁到 <dir>」时, 编排层搬过去只算第一步 ——
+   真正的计算函数常住在别的核心模块里 (实测 `plan_guide.py` 搬好了, 但它调的 `compute_geodesic` 仍在
+   `manifold_engine.Navigator` 里, 用户一问「这个任务怎么没完成」就穿)。逐条 `grep -rn 'def <核心函数>'` 看定义落点,
+   不在目标目录就不入报告；本体是方法就搬成目标目录的独立模块, 原位留一行转发 + 旧实现存 `_legacy` 供逐位对账
+   (path / length / end_err 全等), 交付给「已迁 / 未迁+原因」两欄。
+7. **旧路径留软链, 不留转发壳** (右键打开源码会打开壳, 用户判「代码不见了」)；**裸 `import helper` 换目录必断**
+   (`import frame_source` + `sys.path.insert(dirname)` 搬到新目录即 ModuleNotFoundError), 同族 helper 一起搬；
+   **软链深度按链接所在目录算**, 建完 `readlink -f` + `wc -l` 两验。机制与验法见 `module-relocation-shims` §3b/Pitfalls 7~9。
 
 ## 「这个算法/参数真的落地了么」—— 四处落地清单
 

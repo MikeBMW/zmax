@@ -17,8 +17,13 @@ metadata:
 (OpenSSH 9.6, `ubuntu` 账号, 仓库 `/home/ubuntu/zmax` 228G, `~/.hermes` 9.5G)。
 
 ## 入口 (先做这步)
+- **地址会漂**: 网段一变对端 IP 就变 (见过 192.168.1.7 公司网 / 192.168.43.181 热点网)。
+  先在本机 `ipconfig` 看自己网段, 再扫 `192.168.<x>.0/24` 的 22 端口找出对端 (只有一两台会开 22),
+  然后 `ssh -i ~/.ssh/id_ed25519 ubuntu@<ip> 'hostname; ls -d ~/.hermes ~/zmax; du -sh ~/.hermes ~/zmax'`
+  认身份: 9.4G `~/.hermes` + 250G `~/zmax` = 静静; key 认证直接过, `mike@` 会 Permission denied。
+  三个脚本的 HOST 已支持 `PEER_HOST` 环境变量: `PEER_HOST=ubuntu@<ip> python sync_peer_jingjing.py ...`。
 - 密钥: `~/.ssh/id_ed25519` (mike@zmax-win) 已写入对端 `~/.ssh/authorized_keys`；之后一律
-  `ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes ubuntu@192.168.1.7 '...'`。
+  `ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes ubuntu@<ip> '...'`。
 - 没有密钥时的建法: 本地 `ssh-keygen -t ed25519 -N ''`，再用 paramiko(密码) 把公钥 append 到对端
   authorized_keys（本机没 sshpass）。密码只用一次，不要写进脚本。
 
@@ -28,6 +33,15 @@ metadata:
 | `sync_peer_jingjing.py --what memory [--apply]` | 记忆双向同步: 本机 `hermes/{memories,skills}` ↔ 对端 `~/.hermes/{memories,skills}`，按 (size,mtime) 较新者胜，冲突(±60s)只报不动 |
 | `sync_peer_jingjing.py --what project-pull --apply` | 把对端 `src/tools/flows/config` 拉到本机镜像 `~/zmax_repo` |
 | `project_hash_diff.py` / `project_diff.py` | 工程差异统计 (mtime 版 / 内容版) |
+
+## 记忆合并 (2200 字符硬上限, 别盲覆盖)
+`MEMORY.md` 与本机注入预算同为 2200 字符, 对端通常已压到 2195 左右 —— 直接“较新者胜”覆盖会**静默丢掉本机独有条目**。
+正确姿势:
+1. `ssh ... 'cat ~/.hermes/memories/MEMORY.md' > /tmp/peer_MEMORY.md` (scp 不通), 与本地逐行 `diff`。
+2. 只保留“对端多出来的新认知 + 本机独有的事实”两份并集, 逐条压词 (合并同族条目、去括号解释、`;` 后不留空格)
+   压到 ≤2199 字符再写盘; 写完 `python3 -c "print(len(open(p,encoding='utf-8').read()))"` 复核。
+3. 再跑一次 `--what memory --apply` 推到对端, 然后两端 `md5sum` 必须相同 (本次 c77893…/1088ba…)。
+4. 备份 `.bak_*` 放在 `$TMPDIR`, **不要留在 `memories/`** —— 否则会被当新文件推到对端。
 
 ## 状态空间工程 → Windows 版本同步 (已验证 2026-11-11)
 老倪说「静静的最新状态空间工程, 你来同步成 windows 版本」走这条。

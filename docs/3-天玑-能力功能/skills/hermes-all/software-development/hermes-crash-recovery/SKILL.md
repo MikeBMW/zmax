@@ -565,6 +565,23 @@ After all context is re-established, snapshot Hermes memory to the project repo 
 
 **Pitfall:** Never embed raw secrets (tokens, passwords) in backup files. Reference the env var name instead.
 
+## 记忆库写满（memory 工具拒写）⇒ 就地压缩，别放弃
+
+症状: memory 工具回 `After applying all N operations, memory would be at 2,2xx/2,200 chars -- over the limit` ——
+即使同一批里"删旧条 + 加新条"仍不够; 连续几次后该工具直接回 `Memory consolidation failed … Stop retrying`，整回合锁死。
+
+真源就是**普通文本文件** `~/.hermes/memories/MEMORY.md`（条目用换行 + `§` + 换行分隔，UTF-8）。预算按**字符**不是字节。
+工具算不准时直接就地改才可控：
+
+1. `cp ~/.hermes/memories/MEMORY.md /tmp/MEMORY.bak.$(date +%H%M%S)`（`zmax_data/` 之外的路径随便，但这步不能省）。
+2. 写一个一次性 python 脚本：读文件 → 一批 `(旧串, 新串)` 精确替换（优先压冗词、重复前缀、可重查的路径细节）
+   → 追加新条目（`\n§\n` + 新条）→ `len(s)` → **只在 ≤2200 时才写回**。
+3. 脚本必须**打印未命中的替换串**：串子对不上时 `str.replace` 静默什么都不做，很容易以为"已压缩"而实际长度没降。
+4. 还压不下来就继续削"过程性/可重查"的条目（具体路径、脚本名、历史数字），**不删**用户偏好、安全红线（运动授权/禁抢光标/证据口径）。
+5. 写回后回读：`grep -o '<新条目前缀>[^§]*' MEMORY.md` + 报"字符数 / 条数"。
+
+同类：`USER.md` 同上（用户画像，同样有字符预算）。两边都不要塞任务进度/运行日志 —— 那是会话历史。
+
 ## Pitfalls
 
 | Problem | Cause | Fix |

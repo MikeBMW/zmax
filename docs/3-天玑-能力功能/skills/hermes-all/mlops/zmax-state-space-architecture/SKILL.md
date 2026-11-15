@@ -974,6 +974,45 @@ xvfb-run -a ./gui-venv311/bin/python tools/ss_level_tests.py [--level L2|L3|L4]
 - 同名两实现(`engineering/nodes/` 与 `middleware/nodes/impl/`)必漂移 ⇒ 旧的改一层转发。
 - 对账 `tools/action_check.py`: action ⇄ 215点 ⇄ 真机; 机器人没走到该点第三条必红。
 
+### 🎯 位姿每拍锚在**真机真值**上, 夹爪走 u[3] (action 三种 src)
+
+三种出口同一个 dict 形状, 但必须能从 `src` 分开看: `traj215`(回放真值, 扁平 x/y/z) · `ss`(状态空间算出,
+带 `pose` 子字典) · `plan`(运动规划节点输出)。铁律:
+
+- **位置 = 真机位姿真值 + u·dt**, 每拍**重新锚定**, 不许用自己积分的"空气位"。姿态一律取真机 a/b/c + 四元数原样
+  (u 不改姿态), 两者双写便于消费方任取。
+- **夹爪 = u[3]**: `≥0.5` 合 / `<0.5` 开。旧实现把第 4 维整条丢掉只写"保持实测", 现象是夹爪不动而位姿在动。
+- **每拍自带 `align` 证据块**: `pose_truth` / `u_mm` / `step_mm` / `max_step_mm` / `truth_age_s` / `truth_fresh` / `step_ok`
+  (+ frame/unit/dt)。没有这块就无法回答"这拍动作到底用哪份位姿算的"。
+- 🔴 **真值读不到 ⇒ 不出目标位姿**(宁缺不编), 不许拿实测位姿冒充"目标位姿"。
+- `read_pose()` 必须回 `age_s`(= now − `latest.json.ts`), 否则 `truth_fresh` 无从判; 自证工具
+  `tools/action_align_probe.py --selftest`(拿录制位姿当时流逐拍核 `pose == 真值+u·dt`, 判据 ≤0.05mm /
+  夹爪 0 错 / 单拍不超限) 与 `--live N`(读 `ss_live/action.json` 报新鲜率·超限数·偏差)。
+
+### 🔀 节点分工: 运动规划**出** action, 机器人节点**只执行**
+
+老倪定调"运动规划节点应该输出这个 action, 机器人节点是执行"。分工写死在两个函数里, 别再让执行器重算轨迹:
+
+- `engineering/nodes/plan_impl.py::run`: 每拍把**下一步目标位姿** = 当前段 `a→b` 按 `u + dt/段时长` 插值,
+  经 `action_bus.from_plan(pose_target, quat, truth, seg, u, plan)` 做成 action 放 `out["action"]`;
+  action 里带 `plan{plan_id,n_seg,seg_i,seg_kind,u,seg_a,seg_b}` 用于溯源。规划**只出位姿, 不下发**。
+- `middleware/nodes/impl/robot_actuator_impl.py`: 若 `ctx["in1"]` 带 action(或本身是 `{pose,src∈plan|ss|traj215}`)
+  ⇒ 走 `_exec_action_verbatim`, **不重跑 IK / 不重解段表 / 不用 4 维 u 再推一次位姿**。
+  三道校验缺一即拒收并列出 `problems`: 位姿三分量有限 · `step_mm ≤ max_step_mm(默认25)` · `truth_fresh`;
+  通过则 `action_bus.publish` 并写 `executed{by:robot_actuator,mode:verbatim}`, 真下发仍只走
+  `exec.contract.dispatch` + `l2_daemon` + 8793 授权。
+- 判据(一次就能过): 规划 `out["action"].pose` 与执行器返回 `out1.pose` **逐位相同** · `mode="verbatim"` · `ok=True` · `real_send=False`。
+  跑法: 直接 `PLAN.run({"in1": {"value": [真值+20mm]}})` 取 action 再喂 `RA.run({"in1": {"action": act}})`, 先 `AB.publish` 打桩截获, 别污染线上 `action.json`。
+- 兼容: action 同时保留扁平 `x/y/z/a/b/c/j1..j6`(终端打印与老消费方) 与 `pose{}`(新下游), 只给一种会让另一侧读空。
+
+### 🔩 孔位数量/坐标只读配置, 不许在代码里写死
+
+孔位(插口)数量与坐标真源 = `config/points/cell_points.json` 的 `holes`。`cycle_plan.py` 里按
+`pairs = [HOLES[i:i+2] …]` / `pair_of` / `any(occupied.values())` 自适应, 不许写死 `{1:[h1,h2], 2:[h3,h4]}`
+—— 现场插口从 4 个收敛成 2 个时, 写死版本会把编造的孔继续规划进去(实测 4 孔里有 3 个是 Y 每 −60mm 编的)。
+段表生成与页面绘制**都**按孔自己的 `mouth[2]` 取高度, 不许把 z 写死(上下两孔 z 差 90mm ⇒ 写死会把下口画到上口位置)。
+改完报数: `/api/sim_insert` 的 holes 数、页面 `INSP.holes`、段表段数/单件节拍, 三项一起给。
+
 ### 🔴 action 的 `i` 认「派单事实」, 既不认游标也不认最近点
 
 `traj_step_state.cursor` 是**派单游标**(一轮 n 点全走完才推进), 真机在走 `cursor+1 … cursor+n` ⇒

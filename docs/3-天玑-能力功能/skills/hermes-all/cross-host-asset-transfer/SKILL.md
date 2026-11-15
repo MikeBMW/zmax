@@ -30,6 +30,11 @@ curl -s http://<ip>:8793/ | head -c 200  # 服务页标题是最快的身份指�
 ls -l --time-style=+%F_%T <两边同一文件>  # 谁新谁是真源
 ```
 
+- 🔴 **Windows 目标机不答 ICMP**: 用 ping 扫 /24 得到 0 命中是假阴性, 不代表不在网里。一律按 **TCP 端口扫**
+  (`socket.create_connection((ip,p),0.4)`, p ∈ {22,445,3389,8848}, 200~400 线程几秒完), 再抓 22 口 banner 认系统:
+  `SSH-2.0-OpenSSH_for_Windows_*` = Windows 目标; `OpenSSH_9.x Ubuntu` = Linux。
+  目标地址随 wifi 租约会漂(同一台机换过网后出现在 `.6` / `169.254.x` / `192.168.43.x` 三个段), **每次会话重扫, 不要沿用记下的 IP**;
+  本机自己那张网卡也可能换了租约 —— 先 `ip route | grep default` + `iw dev <iface> link` 确认当前网段再扫, 否则扫的是旧段。
 - **无键不等于能口令登录**: 只带应用目录(如 `~/.hermes`)的介质/新机里根本没有 `~/.ssh` 私钥,
   出站必报 `Permission denied (publickey)`。修法 = 本机 `ssh-keygen -t ed25519 -N ''` 生成一对,
   **公钥可贴聊天、私钥不离本机**, 让对端跑一行 `mkdir -p ~/.ssh && echo '<pub>' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`。
@@ -43,6 +48,10 @@ ls -l --time-style=+%F_%T <两边同一文件>  # 谁新谁是真源
   是文本类, 可增量合并; `state.db*` 走 `sqlite3.backup()` 快照, 绝不 rsync 活库。
   先拉到 staging 目录再合并, 不要 `rsync --delete` 直接盖正在跑的 `~/.hermes`;
   合并完**不重启在跑的服务**(重启须用户点名), 让新记忆/技能在下一轮自然生效。
+- **记忆库有硬字符上限, 满了 `memory` 工具会整批拒绝**(报 "would be at N/2200 chars")⇒ 先压缩腾位再写, 不要反复重试同一条。
+  可靠做法: 备份 `cp ~/.hermes/memories/MEMORY.md /tmp/MEMORY.bak.$(date +%H%M%S)`, 然后用脚本做一批
+  `(old,new)` 字符串替换(缩写冗长条目)+ 追加新条目, **每步打印 `len(s)`** 直到 ≤ 上限再落盘;
+  条目分隔符保持 `\n§\n`, 写完 `grep -c '§'` 与条目数对一下。这样一批提交换掉十几条也不会半途而废。
 - **只差记忆/技能时不要搬整棵树**: 体积大头是 venv / 权重 / 会话库, 先 `du -sh */ | sort -h`
   确认要传的只是几十 MB 的文本类, 避免为一个几 MB 的改动拉 9GB。
 - **记忆/技能 tar 不包含项目产物**(画布 json、配置、flows), 用户说「同步记忆」时那部分会静默分叉:
@@ -263,3 +272,32 @@ ssh host 'pip install --no-index --find-links /home/x/wheels312 <pkg>'
   验收后大文件(模型/视频)可留源站直出(单独的 `location ^~ /models/` root 本地), 免得为 2GB 等几小时隧道。
 - **数据面也要搬**: MySQL 用同库名同账号(密码从目标应用的配置里取, 不回显), 导入后 `select count(*)` 对账;
   文件服务的归档目录(如 relay 的 archive/data)只搬脚本会得到空数据, 要单独报"接口 200 但内容空"。
+
+## 8. 目标机是 Windows (OpenSSH 服务端): 中文名 / CMD 上限 / junction 三坑
+
+1. **非 ASCII 文件名 tar 必坏, 且 rc 不报警**: `tar -czf - | ssh 'tar -xf - -C ...'` 遇中文名, Windows bsdtar 报
+   `Invalid empty pathname` 并留乱码目录; 关键坑是**打包端 tar 仍返回 0**(错误只在远端 stderr, `tail` 一看就过) ⇒
+   只能靠逐文件 md5 发现。改法子: 逐文件 **base64 + `[IO.File]::WriteAllBytes`**, 内容字节精确、与文件名编码无关：
+   ```python
+   ps = ("New-Item -ItemType Directory -Force -Path '%s' | Out-Null; "
+         "$b=[Convert]::FromBase64String('%s'); [IO.File]::WriteAllBytes('%s',$b); "
+         "(Get-FileHash -Algorithm MD5 -LiteralPath '%s').Hash") % (win_dir, b64, win, win)
+   enc = base64.b64encode(ps.encode('utf-16-le')).decode()   # cmd 的 GBK 吃不下中文命令, 必须 EncodedCommand
+   ```
+2. 🔴 **`-EncodedCommand` 受 cmd 8191 字符命令行上限**: 一次塞 4 个 1.5KB 文件就报「命令行太长」——
+   rc=1、stdout 空、一条 hash 都没回, 看着像编码问题其实是长度。⇒ **一次 ssh 只写一个文件**, 只用于小文件(<~3KB);
+   大文件若名是 ASCII 就走 tar, 中文名的大文件先改英文名再 tar。
+3. **写完必须回读 hash 对账**: `Get-FileHash -Algorithm MD5` 回 32 位 hex, 与本地 `md5sum` 逐位比。
+   别用 `dir` 回显判中文名对错(回显是 GBK 按 UTF-8 解码, 名字对也显示乱码)。
+4. 🔴 **Windows 上一对「看起来是软链」的目录其实是两个独立真目录**: 例如 `zmax\config` 与
+   `zmax\data\database\zmax\sources\config` 各自 junction 到 `C:\Users\<u>\zmax\config` 与
+   `...\data\...\sources\config`, **不是同一处**; 应用读的是前者。写数据只落了后者时, 对账显示「已同步」而应用读到的还是旧配置。
+   判据: `Get-Item -Force` 看 `.Attributes` 与 `.Target`; 收尾用
+   `Get-ChildItem -Recurse -File -Filter '*<片段>*'` 查文件**到底落在哪棵树**(`dir /s` 默认不跟 junction, 会数少)。
+5. **清单计数/比对的两个假信号**: `dir /s /b /a-d | grep -c .` 会因特殊/超长名吞行而偏小, 不能拿它判「同步完整」;
+   用 PowerShell 落清单再拉回: `Get-ChildItem -Recurse -File | %{ $_.FullName.Substring(base)+'|'+$_.Length } | Out-File -Encoding utf8`,
+   本地比对前先 `lstrip('\ufeff').replace('\r','').replace('\\','/')` —— 不归一化反斜杠/BOM 会把 1000+ 文件全判「缺失」(实测 1152 个假缺失)。
+6. **缺失项先分类再追**: `*.bak_<时间戳>` 备份、`cc_snapshot.json`、`task_state_ledger.json` 这类本地化快照
+   本来就该两侧不同; 只有业务文件(config/画布/节点源码/页面)缺失才算真失败。
+7. **对端控制台在跑时会回写画布**: 推完 30s 内就能被内存里的旧画布覆盖(实测 md5 从 `fb2c…` 变 `720f…`)。
+   推完立刻回读一次, 并告诉用户「重开一次控制台才加载新画布」—— 不要替他重启。
