@@ -26,7 +26,24 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
-CANVAS = os.path.join(ROOT, "data/database/zmax/sources/canvas/state_space_obs.json")
+CANVAS_DB = os.path.join(ROOT, "data/database/zmax/sources/canvas/state_space_obs.json")
+
+
+def gui_canvas_path():
+    """🔴 2026-11-15 老倪「右键打开源代码还是 node」根因: 控制台**并不读** data/database 这份,
+    而是走 simulink_module._flows_path() —— 环境变量 > 仓库根 flows/ > DB 副本。
+    flows/ 里那份是 2026-11-13 的陈旧拷贝(source 还指 engineering/nodes/geo_plan_impl.py),
+    所以改了 DB 副本等于没改。这里按 GUI 同一顺序取路径, 并显式检查两份是否分叉。"""
+    env = os.environ.get("ZMAX_FLOWS_DIR")
+    if env:
+        p = os.path.join(env, "state_space_obs.json")
+        if os.path.isfile(p):
+            return p
+    p = os.path.join(ROOT, "flows", "state_space_obs.json")
+    return p if os.path.isfile(p) else CANVAS_DB
+
+
+CANVAS = gui_canvas_path()
 
 
 def load_canvas():
