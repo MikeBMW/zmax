@@ -3939,10 +3939,10 @@ _reg("n_web_agent", ["Web 智能体桥", "远程提示词", "web agent", "web_ag
 # 🙋 2026-09-26 老倪: L5「HIL 人机在环」— 状态空间状态 ↔ 浏览器里的指示 (hermes 形式界面)
 _ARM_DIR = os.path.join(_paths.REPO_ROOT, "src", "lerobot", "arm")
 
-_EXTERNAL_LOC["n_moveit"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "plan_impl.py"), 220, "def run")
+_EXTERNAL_LOC["n_moveit"] = (os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "policies", "left_right", "state_space", "motion_plan.py"), 220, "def run")
 # 🧭 2026-10-29 老倪定序: 「状态空间 → 运动规划 ‖ 前馈MLP → 加权 → 调制 → 安全 → 技能派发 → 执行器」
 #   这里的「运动规划」= 状态空间**测地线块规划** (与前馈并列、在加权之前), 与 n_moveit(MoveIt, 技能之后) 是两件事
-_EXTERNAL_LOC["n_geoplan"] = (os.path.join(_REPO_ROOT, "src/lerobot/engineering/nodes/library.py"), 3323, "def node_geoplan")   # 🎯 2026-10-31 落点校准: 原来指到本路径不调用的函数 ⇒ 断点永不命中
+_EXTERNAL_LOC["n_geoplan"] = (os.path.join(_REPO_ROOT, "src/lerobot/policies/left_right/state_space/plan_guide.py"), 1, "def run")   # 2026-11-15 算法本体迁到 L2 (state_space)   # 🎯 2026-10-31 落点校准: 原来指到本路径不调用的函数 ⇒ 断点永不命中
 _EXTERNAL_LOC["ss_limit"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "safety_limit_impl.py"), 124, "def run")     # 2026-10-28 执行链外迁
 
 _EXTERNAL_LOC["ss_dyn_gate"] = (os.path.join(os.path.dirname(os.path.abspath(__file__)), "constraint_gates_impl.py"), 187, "def run")   # 2026-10-31 ⚖ 动力学约束闸 (运动学+动力学 真跑)

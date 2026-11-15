@@ -12,13 +12,13 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.n_moveit.<port>
 
-实现绑定: registry key=`n_moveit` · src/lerobot/engineering/nodes/plan_impl.py:def run
+实现绑定: registry key=`n_moveit` · src/lerobot/policies/left_right/state_space/motion_plan.py:def run
 执行口径: EXEC_MODE=act · PURE=False (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
    契约  src/lerobot/middleware/nodes/n_moveit.py              ← 就是本文件
    实现  src/lerobot/middleware/nodes/impl/n_moveit.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
-   算法  src/lerobot/engineering/nodes/plan_impl.py                                             ← 纯计算 (模型/几何/控制律)
+   算法  src/lerobot/policies/left_right/state_space/motion_plan.py                                             ← 纯计算 (模型/几何/控制律)
    三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("n_moveit")
 """
 
