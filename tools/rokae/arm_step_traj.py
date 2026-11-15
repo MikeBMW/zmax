@@ -56,6 +56,80 @@ def opstate(r):
     return str(r.operationState({}))
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# 🔬 数据采集 (老倪 2026-11-15「这是最后一次真实机器运行, 记录所有数据/图片/位姿/时间」)
+#    每点记录: 墙钟时间 · 相对时间 · 关节角 · TCP(xyz) · RPY · 关节跳变 · 到位误差 · 耗时 · 甘特段
+#    在 AOI 到位点触发相机拍照(#156 金手指 10082 / #172 表面 10083), 图片落到主机 zmax_data
+#    ⚠ 采集是旁路行为: 任何一项失败只记 warning, 绝不影响运动下发与安全闸
+# ═══════════════════════════════════════════════════════════════════════════
+CAP_DIR = os.environ.get("ZMAX_CAP_DIR") or "/sdk/capture"      # 容器内(主机 zmax_data/rokae_sdk/capture)
+CAP_ON = (os.environ.get("ZMAX_CAPTURE") or "1") != "0"
+_T0_WALL = time.time()
+
+# 甘特分段(与 tools/ss_meta_task_ar.py 的 _REPLAY_SEGS 同源同界, 便于逐段对账)
+GANTRY_SEGS = [
+    (0, 9, "抓取(合爪#9)"), (10, 40, "插入孔内"), (41, 90, "转运/举升"),
+    (91, 113, "拔出模块"), (114, 119, "过渡"), (120, 144, "扫码(举高段)"),
+    (145, 149, "过渡"), (150, 160, "金手指检测"), (161, 161, "过渡"),
+    (162, 193, "表面检测"), (194, 197, "过渡"), (198, 204, "下放入盘"),
+    (205, 205, "松开分拣(#205)"), (206, 214, "回位"),
+]
+# 到位即拍照: 点 -> (端口, 名称)
+AOI_ON_ARRIVE = {156: (10082, "金手指"), 172: (10083, "表面")}
+
+
+def seg_of(i):
+    for i0, i1, nm in GANTRY_SEGS:
+        if i0 <= i <= i1:
+            return nm
+    return "?"
+
+
+def read_tcp(r):
+    """TCP + RPY (mm/deg)。失败返回 None, 不抛。"""
+    try:
+        ec = {}
+        cp = r.cartPosture(x.CoordinateType.endInRef, ec)
+        return {"tcp": [round(float(v), 3) for v in cp.trans],
+                "rpy": [round(float(v), 4) for v in cp.rpy]}
+    except Exception:                                                    # noqa: BLE001
+        return None
+
+
+def cap_aoi(i, port, label):
+    """到点拍照: 调主机 AOI /picture?grab=1 存图 + 记录响应。失败只 warning。"""
+    if not CAP_ON:
+        return None
+    try:
+        import urllib.request
+        os.makedirs(CAP_DIR, exist_ok=True)
+        ts = time.strftime("%Y%m%d_%H%M%S")
+        base = "%s/aoi_i%03d_%s_%s" % (CAP_DIR, i, label, ts)
+        url = "http://127.0.0.1:%d/picture?grab=1" % port
+        req = urllib.request.Request(url, headers={"User-Agent": "zmax-capture"})
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            body = resp.read()
+            ctype = resp.headers.get("Content-Type", "")
+        if body[:2] == b"\xff\xd8" or "image" in ctype:
+            with open(base + ".jpg", "wb") as f:
+                f.write(body)
+            info = {"i": i, "port": port, "label": label, "jpg": base + ".jpg",
+                    "bytes": len(body), "t_wall": time.strftime("%Y-%m-%dT%H:%M:%S")}
+        else:
+            with open(base + ".json", "wb") as f:
+                f.write(body)
+            info = {"i": i, "port": port, "label": label, "json": base + ".json",
+                    "bytes": len(body), "ctype": ctype,
+                    "t_wall": time.strftime("%Y-%m-%dT%H:%M:%S")}
+        print(json.dumps({"capture": info}, ensure_ascii=False), flush=True)
+        return info
+    except Exception as e:                                               # noqa: BLE001
+        print(json.dumps({"capture_err": {"i": i, "port": port,
+                                          "why": "%s: %s" % (type(e).__name__, e)}},
+                         ensure_ascii=False), flush=True)
+        return None
+
+
 def _send_wait(r, jt, speed):
     """下发一条 MoveAbsJ 并等到位。返回 (ok, 最终误差°, 用时s)。"""
     t0 = time.time()
@@ -238,9 +312,27 @@ def main() -> int:
         err = max(abs(math.degrees(b - a)) for a, b in zip(jt, aj))
         rec.update({"ok": ok, "err_deg": round(err, 2), "secs": round(time.time() - t0, 2),
                     "joints_after_deg": [round(math.degrees(v), 2) for v in aj]})
+        # 🔬 采集: 时间戳/相对时间/TCP/RPY/甘特段 —— 全部旁路, 失败不影响运动
+        if CAP_ON:
+            try:
+                rec["t_wall"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+                rec["t_rel"] = round(time.time() - _T0_WALL, 3)
+                rec["seg"] = seg_of(i)
+                _tp = read_tcp(r)
+                if _tp:
+                    rec["tcp"] = _tp["tcp"]
+                    rec["rpy"] = _tp["rpy"]
+            except Exception as _e:                                      # noqa: BLE001
+                rec["cap_warn"] = "%s: %s" % (type(_e).__name__, _e)
         out["steps"].append(rec)
         # 📡 增量进度: 页面轮询 status 时靠这行看逐点走到哪(不带它就只能等全跑完)
         print(json.dumps({"progress": i + 1, "n": len(frames), "step": rec}, ensure_ascii=False), flush=True)
+        # 📷 到点拍照(AOI 两路), 在臂停稳后立刻拍 —— 这是"到点一霎那"的真实画面
+        _aoi = AOI_ON_ARRIVE.get(i)
+        if _aoi and ok:
+            _ci = cap_aoi(i, _aoi[0], _aoi[1])
+            if _ci:
+                rec["capture"] = _ci
         prev = aj
         if not ok:
             out["why"] = ("第 %d 点未到位(误差 %.2f° > %.1f°, 用时 %.1fs) —— 已停, 不重发"
@@ -265,6 +357,30 @@ def main() -> int:
         out["joints_after_final_deg"] = [round(math.degrees(v), 2) for v in joints(r)]
     except Exception:                                                        # noqa: BLE001
         pass
+    # 📦 整轮快照落盘(最后一次真机运行的完整证据: 逐点位姿/TCP/时间/图/段)
+    if CAP_ON:
+        try:
+            os.makedirs(CAP_DIR, exist_ok=True)
+            out["_cap"] = {
+                "started_wall": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(_T0_WALL)),
+                "ended_wall": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "elapsed_s": round(time.time() - _T0_WALL, 2),
+                "n_frames": len(frames), "n_done": done,
+                "speed": speed, "dwell_ms": dwell_ms,
+                "robot_ip": IP, "host": os.uname().nodename,
+                "segs": [{"i0": a, "i1": b, "name": c} for a, b, c in GANTRY_SEGS],
+                "aoi_on_arrive": {str(k): v for k, v in AOI_ON_ARRIVE.items()},
+            }
+            _snap = os.path.join(CAP_DIR, "run_%s.json" % time.strftime("%Y%m%d_%H%M%S",
+                                                                       time.localtime(_T0_WALL)))
+            with open(_snap, "w", encoding="utf-8") as f:
+                json.dump(out, f, ensure_ascii=False, indent=1)
+            out["_cap"]["snapshot"] = _snap
+            print(json.dumps({"snapshot_saved": _snap, "n_steps": len(out["steps"])},
+                             ensure_ascii=False), flush=True)
+        except Exception as _e:                                              # noqa: BLE001
+            print(json.dumps({"snapshot_err": "%s: %s" % (type(_e).__name__, _e)},
+                             ensure_ascii=False), flush=True)
     if out["ok"]:
         out["why"] = "全部 %d 点走到位" % done
     print(json.dumps(out, ensure_ascii=False))

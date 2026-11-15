@@ -2405,7 +2405,7 @@
      "工程库": "data/database/zmax/zmax_engineering.db"
     },
     "cfg_snapshot": {
-     "loaded_at": "2026-11-15 14:25:50",
+     "loaded_at": "2026-11-15 16:18:47",
      "files_total": 8,
      "files_ok": 8,
      "orders": 12,
@@ -2469,7 +2469,7 @@
      "口径": "一个状态空间工程承载全部任务; 任务=配方段子集+参数覆盖"
     },
     "source_symbol": "def main",
-    "cfg_loaded_at": "2026-11-15 14:25:50",
+    "cfg_loaded_at": "2026-11-15 16:18:47",
     "cfg_files": [
      {
       "name": "总工程文件",
@@ -2480,7 +2480,7 @@
      {
       "name": "任务绑定",
       "rel": "config/ss_task_binding.json",
-      "sha256": "b08a24a93ea1ca85",
+      "sha256": "b17d8a20ede4a39f",
       "exists": true
      },
      {
@@ -4106,9 +4106,9 @@
    "id": "lk0924_sslat_ss_mani_eng",
    "f": "sslat",
    "t": "ss_mani_eng",
-   "f_port": "out2",
+   "f_port": "out1",
    "t_port": "in4",
-   "label": "潜空-流形 → 潜坐标"
+   "label": "潜空-流形 → 潜坐标 (out1 是实际有值的端口; out2 实测恒 None)"
   },
   {
    "id": "lk0924_ss_moe_ss_mani_eng",
@@ -4225,28 +4225,28 @@
    "f": "sssk1",
    "t": "n_moveit",
    "f_port": "out1",
-   "t_port": "in4",
+   "t_port": "in1",
    "label": "技能轨迹 → MoveIt 规划/执行"
   },
   {
    "f": "sssk2",
    "t": "n_moveit",
    "f_port": "out1",
-   "t_port": "in5",
+   "t_port": "in1",
    "label": "技能轨迹 → MoveIt 规划/执行"
   },
   {
    "f": "sssk3",
    "t": "n_moveit",
    "f_port": "out1",
-   "t_port": "in6",
+   "t_port": "in1",
    "label": "技能轨迹 → MoveIt 规划/执行"
   },
   {
    "f": "sssk4",
    "t": "n_moveit",
    "f_port": "out1",
-   "t_port": "in7",
+   "t_port": "in1",
    "label": "技能轨迹 → MoveIt 规划/执行"
   },
   {

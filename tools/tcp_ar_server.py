@@ -1111,6 +1111,9 @@ def _ar_meta_payload() -> dict:
                     "hand": m.get("hand"), "hand_cn": m.get("hand_cn"),
                     "t_win": m.get("t_win"), "dur": m.get("dur"),
                     "targets": m.get("targets"),
+                    # MT-08 真实节拍口径: 缺了这几个前端只能显示空的 UPH
+                    "uph": m.get("uph"), "s_per_point": m.get("s_per_point"),
+                    "speed_pct": m.get("speed_pct"), "source": m.get("source"),
                     "arm": _HAND_ARM.get(m.get("hand") or "") or _MT_ARM.get(mid)})
     lh = d.get("long_horizon") or {}
     cur = {}
@@ -1129,7 +1132,7 @@ def _ar_meta_payload() -> dict:
             "lanes": d.get("lanes") or {},
             "long_horizon": {k: lh.get(k) for k in ("uph_target", "tact_s", "segments_total",
                                                     "round_total_s", "meta_count", "verified",
-                                                    "hands")},
+                                                    "hands", "rounds", "replay")},
             "current": cur}
 
 

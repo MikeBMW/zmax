@@ -45,6 +45,66 @@ POSE = os.path.join(REPO, "zmax_data", "rokae_sdk", "tcp_out", "latest.json")
 SENT = os.path.join(REPO, "zmax_data", "rokae_sdk", "last_sent.json")
 API = os.environ.get("ZMAX_AR_API", "http://127.0.0.1:8797")
 
+# ── AOI 到位即检测 (老倪 2026-11-15: "应该由状态空间触发 10082/10083 的拍照检测,
+#    在到达监测点停顿的一霎那请求检测") ──────────────────────────────────
+# 为什么必须放在这里(放外面做不到, 实测过):
+#   8797 /api/arm/step_traj/status 在 MoveL 执行期间是阻塞的, 一次响应要 ~10s,
+#   而 step.secs≈5.9s/点 ⇒ 外部脚本按 1.5s 轮询根本卡不住点(会晚 1~2 个点)。
+#   只有本文件的 tick() 在 _post 返回的那一刻, 才知道"臂刚好停在第几点"。
+#
+# 触发时机: _post("/api/arm/step_traj", {start:cursor, n:chunk}) 是同步阻塞的,
+#   返回时臂已经到位并停在本段终点(cursor+chunk); 且下面有 3.0s 限频 ⇒
+#   这 3 秒内臂停在点上不动, 足够 /capture_detect 拍图(它只排队 0.75s 就返回,
+#   检测本身 9s 在工控机后台跑, 不等它)。
+#
+# 点位来源(2026-11-15 实测对账, 全部可复核):
+#   工位真源: zmax_data/deliverables/20261107_preoff/reports_archive/aoi_points/*.json (16 个示教点)
+#   轨迹真源: tools/web/real_traj_joints.json (215 点)
+#   最近邻匹配结果(距离 <30mm 的才算落地):
+#     金手指点2 (593.6,-51.6,652.7) → #156  58.3mm   z≈650 高位 ⇒ 金手指检测
+#     金手指点1 (360.4,-116.8,653.7)→ #157 191.5mm   (同段, 转向用)
+#     侧面点1   (401.2,-434.9,555.0)→ #171   7.2mm   ⇒ 表面检测
+#     侧面点0   (398.8,-406.0,546.3)→ #172  15.3mm
+#     侧面点2   (383.8,-434.5,551.0)→ #171  17.6mm
+#     侧面点3   (407.8,-407.9,569.4)→ #180  27.7mm
+#   ⚠ 曾错把 #93 当金手指位: 实际 #93 = 插入口_拖拽1020b (761.3,228.7,189.2), 距离 1.7mm。
+#     #93 那段 10082 拍到过曝条是"臂从金手指相机下方路过", 不是停在检测位 ——
+#     所以那次 verdict=OK 但判据位置置信度低(judge 找不到模块边界)。
+#   插拔工位(不触发检测): #15 插拔准备点 / #23 插入到位 / #30 插入口 / #93 口拖拽 / #104 插入点
+#   扫码: #120-144 (只有这段 z>850 最高999mm 且 x 到 255 最左, 举高对准固定读码头)
+#   夹爪: #9 close(抓取) · #205 open(分拣) ⇒ #10-204 全程夹着模块
+# 端口: 10083=表面(housing) 10082=金手指(gf); 触发用 POST /capture_detect(GET 会 405)
+AOI_ON_ARRIVE = {
+    156: (10082,),   # 金手指检测位 (z≈650, 对 金手指点1/2)
+    172: (10083,),   # 表面检测位 = 侧面点0 (398.8,-406.0,546.3) 的最近轨迹点(15.3mm)
+                     # ⚠ #175 试过不行(实测记录): module_bbox_rot=[1515,960,300,156],
+                     #   右端 1815 正好压在判据 ROI 右界 1815 上被切断 ⇒
+                     #   module_aspect=1.92 (应 4.22 或 6.65), 判据报 "模块太小(300x156<400x60)",
+                     #   AOI 自己也说 right_edge_src="ROI 右界(未找到台阶 ⇒ 可能切在亮料中间)"
+                     #   ⇒ 不是没到位, 是模块偏右超出判据 ROI, 要换更靠左的侧面点再试
+}
+AOI_HOST = os.environ.get("ZMAX_AOI_HOST", "192.168.23.23")
+
+
+def _fire_aoi(idx: int) -> None:
+    """到位即请求 AOI 拍照检测。同步 POST(只排队, 不等检测), 失败不打断回放。"""
+    if os.environ.get("ZMAX_AOI_ON_ARRIVE") == "0":
+        return
+    ports = AOI_ON_ARRIVE.get(int(idx))
+    if not ports:
+        return
+    for port in ports:
+        url = "http://%s:%d/capture_detect" % (AOI_HOST, port)
+        t0 = time.time()
+        try:
+            req = urllib.request.Request(url, method="POST")
+            with urllib.request.urlopen(req, timeout=30) as r:
+                body = r.read().decode("utf-8", "replace")[:120]
+            _say("🎯 到位 #%d 停稳 → %d 请求检测 (%.2fs): %s" % (idx, port, time.time() - t0, body))
+        except Exception as e:                                          # noqa: BLE001
+            _say("🎯 到位 #%d → %d 检测请求失败(不打断回放): %s: %s"
+                 % (idx, port, type(e).__name__, str(e)[:80]))
+
 
 def _say(msg: str) -> None:
     try:
@@ -153,6 +213,7 @@ class RealTrajFlow:
         self._post_cursor = -1          # 上一次下发时所在的游标(防同一段重复下发)
         self._post_t = 0.0
         self.keep = os.environ.get("ZMAX_TRAJ_KEEP") == "1"      # 不重置: 从游标继续
+        self.loop = os.environ.get("ZMAX_TRAJ_LOOP") == "1"      # 循环跑: 每轮结束回起点继续
         try:
             self.total = len((json.load(open(PLAN, encoding="utf-8")) or {}).get("frames") or [])
         except Exception:                                               # noqa: BLE001
@@ -214,20 +275,23 @@ class RealTrajFlow:
         if not st.get("running") and st.get("done"):
             # 演练/单轮结束时 8797 只在真机模式下推进 cursor ⇒ 这里按 start+done 兜底推进
             self.cursor = max(self.cursor, int(st.get("start") or 0) + int(st.get("done") or 0))
-        if (self.total and self.cursor >= self.total and not self._reset_tried
-                and not self.keep):
+        if (self.total and self.cursor >= self.total
+                and (self.loop or not self._reset_tried) and not self.keep):
             # 走完一轮了: 老倪要的是"从 VSCode 跑一遍完整 215 步" ⇒ 游标回起点(这一轮只做一次)
-            self._reset_tried = True
+            if not self.loop:
+                self._reset_tried = True
             try:
                 rr = _post("/api/arm/step_traj", {"reset": True})
                 self.cursor = 0
-                self.last_msg = "游标回起点, 准备整轮 215 点: %s" % (rr.get("msg") or "")
+                self.rounds += 1
+                self.last_msg = "第 %d 轮: 游标回起点, 整轮 215 点 (loop=%s): %s" % (
+                    self.rounds, self.loop, rr.get("msg") or "")
                 _say("↺ " + self.last_msg)
                 self._dump()
                 return
             except Exception as e:                                       # noqa: BLE001
                 self.last_msg = "重置失败: %s" % str(e)[:70]
-        if self.total and self.cursor >= self.total:
+        if self.total and self.cursor >= self.total and not self.loop:
             if self.phase != "DONE":
                 self.phase = "DONE"
                 self.last_msg = "全流程完成: %d/%d 点 (共 %d 轮)" % (self.cursor, self.total, self.rounds)
@@ -309,6 +373,15 @@ class RealTrajFlow:
             self._mark_sent(body)
             self.last_msg = "已下发第 %d 轮: %s" % (self.rounds, r.get("msg") or "")
             _say("▶ " + self.last_msg)
+            # 🎯 到位即请求 AOI 检测: _post 是同步阻塞的, 走到这里时臂已停在本段终点
+            #    (8797 回 start=205/done=1 → cursor=206 ⇒ 到达点 = start + n)。
+            #    此刻到下一个 tick 派单之间还有 3.0s 限频, 臂停着不动 ⇒ 拍得到稳定帧。
+            arrive = int(r.get("cursor") if r.get("cursor") is not None
+                         else (self.cursor + self.chunk))
+            try:
+                _fire_aoi(arrive)
+            except Exception as e:                                       # noqa: BLE001
+                _say("🎯 AOI 触发异常(不影响回放): %s" % str(e)[:80])
         elif stage == "jump":
             # 真机不在轨迹附近 ⇒ 让 8797 把游标对齐到最近点, 再继续
             try:

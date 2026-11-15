@@ -30,6 +30,13 @@ fi
 exec sudo docker run --rm --network host \
   -e ZMAX_HOST_TS="$(date +%s)" \
   -e ZMAX_ROBOT_IP="${ZMAX_ROBOT_IP:-192.168.23.160}" \
+  -e ZMAX_REPLAY_N="${ZMAX_REPLAY_N:-}" \
+  -e ZMAX_REPLAY_SPEED="${ZMAX_REPLAY_SPEED:-}" \
+  -e ZMAX_REPLAY_ZONE="${ZMAX_REPLAY_ZONE:-}" \
+  -e ZMAX_REPLAY_CHUNK="${ZMAX_REPLAY_CHUNK:-}" \
+  -e ZMAX_REPLAY_BUDGET_X="${ZMAX_REPLAY_BUDGET_X:-}" \
+  -e ZMAX_REPLAY_CMD="${ZMAX_REPLAY_CMD:-}" \
+  -e ZMAX_REPLAY_TRAJ="${ZMAX_REPLAY_TRAJ:-}" \
   -v "$SDK_DIR":/sdk \
   -v "$REPO_TOOLS":/repo:ro \
   -w /sdk "$IMAGE" python3 "/repo/$SCRIPT" "$@"

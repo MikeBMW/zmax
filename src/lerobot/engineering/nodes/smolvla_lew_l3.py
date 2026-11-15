@@ -132,6 +132,43 @@ def build_obs39(root, log=None):
     return obs.astype(np.float32), meta
 
 
+def build_obs13(root, log=None):
+    """从真机 TCP 真值构造 **13 维真机口径**观测 (新数据集 zmax_live_215ep1 同源)。
+
+    口径写死 (tools/live_ds_to_lerobot.py:114 `st = joints + pose`):
+      [0:6]   关节角 j1..j6  (deg, 来自 latest.json joint[] rad×57.2958)
+      [6:9]   TCP x,y,z      (mm, latest.json 的 m×1000)
+      [9:13]  四元数 qx,qy,qz,qw
+    取不到真值 ⇒ (None, meta), 不拿 0 冒充。
+    """
+    import json as _j
+    p = os.path.join(os.path.dirname(_live_dir(root)), "rokae_sdk", "tcp_out", "latest.json")
+    meta = {"src": "zmax_data/rokae_sdk/tcp_out/latest.json", "age_s": None, "dim": 13}
+    try:
+        d = _j.load(open(p, encoding="utf-8")) or {}
+        meta["age_s"] = round(time.time() - os.path.getmtime(p), 3)
+    except Exception as e:                                                   # noqa: BLE001
+        meta["err"] = "%s: %s" % (type(e).__name__, e)
+        return None, meta
+
+    joint = d.get("joint") or []
+    if len(joint) < 6:
+        meta["err"] = "关节缺失: joint=%d 维" % len(joint)
+        return None, meta
+    q = [d.get(k) for k in ("qx", "qy", "qz", "qw")]
+    if any(v is None for v in q):
+        q = [0.0, 0.0, 0.0, 1.0]                                             # 无姿态 ⇒ 单位四元数如实标
+        meta["quat_note"] = "真值无四元数 ⇒ 单位四元数(如实标)"
+    st = np.zeros(13, dtype=np.float64)
+    st[0:6] = np.asarray(joint[:6], dtype=np.float64) * 57.29577951308232    # rad → deg
+    st[6:9] = [float(d.get("x") or 0.0) * 1000.0,
+               float(d.get("y") or 0.0) * 1000.0,
+               float(d.get("z") or 0.0) * 1000.0]                           # m → mm
+    st[9:13] = np.asarray(q, dtype=np.float64)
+    meta["state_fill"] = 13
+    return st, meta
+
+
 def fetch_ar_frame(prefer=("local",), timeout=3.0):
     """取 AR 场景一帧 (8797 /snap/<cam>.jpg) → RGB ndarray(H,W,3) uint8。
 
@@ -179,15 +216,54 @@ def _load_policy(root, log=None, dev=None):
         from lerobot.policies.smolvla_lew.modeling_smolvla_lew import SmolVLALewPolicy
         from lerobot.policies.factory import make_pre_post_processors
 
-        ck = os.environ.get("SS_L3_CK", _CK_DEFAULT)
+        ck = os.environ.get("SS_L3_CK", "")
+        if not ck:
+            # 🎯 唯一口径: 7 维真机 action (x,y,z,a,b,c,grip) —— 位姿逐点取 215 点真值表。
+            #    **绝不静默回退**到 4 维老 ckpt: 那样断点看到 (1,10,4) 会被误判成"格式不对",
+            #    实际是拿错了模型。拿不到就明确报错, 让调试一眼看见。
+            _pref = ["outputs/train/smolvla_live1115_7d_v1/checkpoints/last/pretrained_model",
+                     "outputs/train/smolvla_live1115_7d_v1/checkpoints/000050/pretrained_model",
+                     "outputs/train/smolvla_live1115_7d_v1/checkpoints/000250/pretrained_model"]
+            for _c in _pref:
+                _p = _c if os.path.isabs(_c) else os.path.join(root, _c)
+                if os.path.isdir(_p) and os.path.isfile(os.path.join(_p, "model.safetensors")):
+                    ck = _p
+                    break
+            if not ck:
+                raise FileNotFoundError(
+                    "7 维 L3 ckpt 不存在 (%s/checkpoints/{last,000050,...} 都没 model.safetensors) "
+                    "⇒ 先训练, 或用 SS_L3_CK 显式指向 7 维 ckpt。不要退回 4 维口径。"
+                    % _pref[0].split("/checkpoints")[0])
         if not os.path.isabs(ck):
             ck = os.path.join(root, ck)
         if not os.path.isdir(ck):
             raise FileNotFoundError("ckpt 不存在: %s" % ck)
         _dev = dev or os.environ.get("SS_L3_DEV") or ("cuda" if torch.cuda.is_available() else "cpu")
+        # 🔴 本地 ckpt + 本地 VLM 缓存齐备 ⇒ 必须关掉 hub 校验。
+        #    实测(2026-11-15 17:16 py-spy 栈): from_pretrained → SmolVLMWithExpert.__init__
+        #    → AutoProcessor.from_pretrained → get_processor_dict → cached_file → hf_hub_download
+        #    → _httpx_follow_hub_redirects_with_backoff 卡住: 本地有缓存也先联网查 etag,
+        #    网络不通就 http_backoff 反复重试, 一拍几十秒 ⇒ 主循环超时重启 ⇒ predict_action 永远轮不到。
+        if os.path.isdir(ck):
+            os.environ.setdefault("HF_HUB_OFFLINE", "1")
+            os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+            try:
+                import huggingface_hub.constants as _hfc
+                _hfc.HF_HUB_OFFLINE = True
+            except Exception:                                                # noqa: BLE001
+                pass
         pol = SmolVLALewPolicy.from_pretrained(ck)
         pol.eval()
         pol.to(_dev)
+        # 🔎 口径硬校验: 断点看到的维度必须等于部署口径 7 —— 否则调的是错模型的数
+        _ad = int(getattr(pol.config, "action_dim", 0) or 0)
+        _ch = int(getattr(pol.config, "chunk_size", 0) or 0)
+        if _ad != 7 and os.environ.get("SS_L3_ALLOW_DIM", "") != str(_ad):
+            raise ValueError(
+                "L3 ckpt action_dim=%d (应为 7 = x,y,z,a,b,c,grip) @ %s\n"
+                "  ⇒ 这个 ckpt 是旧口径, 断点会看到 (1,%d,%d) 而不是 (1,%d,7)。\n"
+                "  ⇒ 换 7 维 ckpt, 或设 SS_L3_ALLOW_DIM=%d 强制接受(仅排查用)。"
+                % (_ad, ck, _ch, _ad, _ch, _ad))
         pre, post = make_pre_post_processors(
             pol.config, pretrained_path=ck,
             preprocessor_overrides={"device_processor": {"device": str(_dev)}},
@@ -205,7 +281,16 @@ def _load_policy(root, log=None, dev=None):
             task = ""
         task = os.environ.get("SS_L3_TASK", task or _TASK_DEFAULT)
         _CACHE.update({"pol": pol, "pre": pre, "post": post, "dev": _dev, "ck": ck,
-                       "task": task, "load_ms": round((time.monotonic() - t0) * 1000, 1)})
+                       "task": task, "load_ms": round((time.monotonic() - t0) * 1000, 1),
+                       # 🔎 接口契约 (部署前必须与训练同源; 不一致要在 infer 里当场报错, 不要崩在 normalize)
+                       "contract": {"action_dim": int(pol.config.action_dim),
+                                    "state_dim": int(getattr(pol.config, "state_dim", -1)),
+                                    "chunk": int(pol.config.chunk_size),
+                                    "n_action_steps": int(pol.config.n_action_steps),
+                                    "resize": list(pol.config.resize_images_to or []),
+                                    "siglip": int(pol.config.siglip_image_size),
+                                    "norm_action": str((pol.config.normalization_mapping or {}).get("ACTION")),
+                                    "input_features": list((pol.config.input_features or {}).keys())}})
         try:                                 # 📋 模型台账: 终端一行说清 L3 到底加载了没
             from lerobot.engineering.model_log import note as _note
             _n_par = sum(p.numel() for p in pol.parameters()) / 1e6
@@ -236,8 +321,10 @@ def _load_policy(root, log=None, dev=None):
         return None, None, None, None, {"err": _CACHE["failed"]}
 
 
-def infer(img, obs39, root, log=None):
-    """一次真前向: AR 帧 + 39D → 反归一化 4D 动作。返回 (act|None, meta)。"""
+def infer(img, obs39, root, log=None, cond=None):
+    """一次真前向: AR 帧 + state(13/39) [+ 流形引擎条件 cond] → 物理动作。
+    cond: 15 维 (SE(3) ξ̂(6) + manifold6 + intent3) 或 None(None ⇒ 与改造前逐位相同)。
+    返回 (act|None, meta)。"""
     pol, pre, post, dev, lmeta = _load_policy(root, log)
     if pol is None:
         return None, {"stage": "load", **lmeta}
@@ -250,9 +337,23 @@ def infer(img, obs39, root, log=None):
         #   "non-writable tensor ... undefined behavior" 刷屏。np.array(copy=True) 显式复制成可写。
         im = np.array(Image.fromarray(np.asarray(img)).resize((sz, sz), Image.LANCZOS), dtype=np.uint8, copy=True)
         it = torch.from_numpy(im).permute(2, 0, 1).float().unsqueeze(0) / 255.0
+        # 🔎 接口口径硬校验: 观测维度必须与 ckpt 的 state_dim 一致, 否则当场报错并给出切换命令
+        _ct = _CACHE.get("contract") or {}
+        _sd = int(_ct.get("state_dim", -1))
+        if _sd > 0 and len(np.asarray(obs39).reshape(-1)) != _sd:
+            return None, {**lmeta, "err": "口径不符: ckpt state_dim=%d, 本拍观测=%d 维 ⇒ 换 ckpt: SS_L3_CK=<新训练产物>/pretrained_model"
+                          % (_sd, len(np.asarray(obs39).reshape(-1))),
+                          "contract": _ct}
         st = torch.from_numpy(np.asarray(obs39, dtype=np.float32)).unsqueeze(0)
-        batch = {"observation.image": it.to(dev), "observation.state": st.to(dev),
-                 "task": _CACHE["task"]}
+        # 🔎 图像/状态键按 ckpt 的 input_features 对齐 (老 ckpt 用 observation.image, 新数据集是 observation.images.top)
+        _ikeys = _ct.get("input_features") or ["observation.image", "observation.state"]
+        batch = {}
+        for _k in _ikeys:
+            if _k.startswith("observation.image"):
+                batch[_k] = it.to(dev)
+            elif _k.startswith("observation.state"):
+                batch[_k] = st.to(dev)
+        batch["task"] = _CACHE["task"]
         batch = pre(batch)
         # 🔴 2026-10-29 老倪「predict_action 断点进不去」: select_action 只在动作队列为空时真推理
         #   (modeling_smolvla_lew.py:537 `if len(self._queues[ACTION]) == 0`), 一次推理出
@@ -277,15 +378,49 @@ def infer(img, obs39, root, log=None):
             except Exception:                                              # noqa: BLE001
                 pass
         with torch.no_grad():
-            pred = pol.select_action(batch)
-            act = post(pred) if post is not None else pred           # 🔴 反归一化, 缺则动作全错
-        a = np.asarray(act.detach().cpu().float()).reshape(-1)[:4]
+            # 🎯 流形引擎条件约束 (SE(3) ξ̂ + manifold6 + intent3, 15 维):
+            #    真送进 select_action → action_head.apply_l4_cond 拼成额外条件 token。
+            #    cond=None 时一个 token 都不加 ⇒ 与改造前逐位相同 (零回退)。
+            _l4t = None
+            if cond is not None:
+                try:
+                    _cv = np.asarray(cond, dtype=np.float32).reshape(1, -1)
+                    _l4t = torch.as_tensor(_cv, dtype=torch.float32, device=dev)
+                    lmeta["l4_cond_dim"] = int(_cv.shape[1])
+                    lmeta["l4_cond_injected"] = True
+                except Exception as _ce:                                   # noqa: BLE001
+                    lmeta["l4_cond_err"] = str(_ce)
+                    lmeta["l4_cond_injected"] = False
+            pred = pol.select_action(batch, l4_cond=_l4t)
+            # 🔴 head 出口是否已是真机口径 (config.unnorm_out=True ⇒ predict_action 里已做 MIN_MAX 逆变换)
+            #    是则**绝不能再 post 一次**, 否则双重反归一化 (mm 再被当 [-1,1] 拉伸, 动作全废)。
+            _head_unnorm = bool(getattr(getattr(pol, "config", None), "unnorm_out", False))
+            if _head_unnorm:
+                act = pred
+                lmeta["unnorm"] = "head(出口直出真机口径)"
+            else:
+                act = post(pred) if post is not None else pred           # 🔴 反归一化, 缺则动作全错
+                lmeta["unnorm"] = "node(post)"
+        # 🎯 出口维度按 ckpt 口径取全 (4=xyz+grip / 7=xyz+abc+grip), 不再写死 [:4]
+        #    写死会把 a/b/c 切掉 —— head 出 7 维, 到这儿只剩 4 个, 姿态永远传不下去。
+        a = np.asarray(act.detach().cpu().float()).reshape(-1)
+        _ad = int((_CACHE.get("contract") or {}).get("action_dim") or a.size)
+        a = a[:_ad]
         _CACHE["n_infer"] = int(_CACHE.get("n_infer") or 0) + 1
         return a, {**lmeta, "infer_ms": round((time.monotonic() - t0) * 1000, 2),
                    "img_sz": sz, "n_infer": _CACHE["n_infer"], "shape": list(a.shape)}
     except Exception as e:                                                   # noqa: BLE001
         return None, {**lmeta, "err": "infer: %s: %s" % (type(e).__name__, e),
                       "infer_ms": round((time.monotonic() - t0) * 1000, 2)}
+
+
+def peek_state_dim(root, log=None):
+    """按 ckpt 契约决定观测维度 (39=metaworld 老口径 / 13=真机口径). 加载失败按 39 兜底。"""
+    try:
+        _load_policy(root, log)
+        return int((_CACHE.get("contract") or {}).get("state_dim") or 39)
+    except Exception:                                                        # noqa: BLE001
+        return 39
 
 
 def cache_status():
@@ -301,7 +436,7 @@ _ASYNC = {"thread": None, "act": None, "meta": None, "t_done": None, "t_start": 
           "n_done": 0, "n_skip": 0, "err": None}
 
 
-def infer_async(img, obs39, root, log=None, min_period_s=1.5):
+def infer_async(img, obs39, root, log=None, min_period_s=1.5, cond=None):
     """非阻塞前向: 到了周期且上一轮已结束 ⇒ 起后台线程; 每拍都返回 (act|None, meta)。
 
     meta 里恒带 `age_s`(这次动作距今多久) 与 `busy`(是否正在算) —— 下游能看出"这拍是真新算的还是回放"。
@@ -316,7 +451,7 @@ def infer_async(img, obs39, root, log=None, min_period_s=1.5):
 
         def _job():
             try:
-                _a, _m = infer(img, obs39, root, log)
+                _a, _m = infer(img, obs39, root, log, cond=cond)
                 _ASYNC["act"] = _a
                 _ASYNC["meta"] = _m
                 _ASYNC["t_done"] = time.monotonic()

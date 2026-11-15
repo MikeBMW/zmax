@@ -728,7 +728,7 @@ class SK01Approach(AtomicSkill):
                          "calib": "本类常量 (真源 config/calib/zmax_skill_physics.json)"},
                 "s_travel": round(self.travel_m, 6), "over_travel": over,
                 "f_need_N": round(n_f, 6), "kin_called": 1, "dyn_called": 1}
-        self.corridor_dbg()                        # 🛑 本技能的断点 (F9 打这一行/VSCode 直接停)
+        # self.corridor_dbg()                        # 🛑 本技能的断点 (F9 打这一行/VSCode 直接停)
         return self.corridor_finish(_out)
 
 class SK02Align(AtomicSkill):

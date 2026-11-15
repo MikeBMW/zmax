@@ -1,0 +1,46 @@
+# L3 模仿学习 (SmolVLA-LEW) · 真机 215 点第一版 —— 老倪 2026-11-15
+# 数据: 真机跑一趟全 215 点 (10Hz 采样, observation.state 13 维, action 4 维 [x,y,z,grip])
+# chunk: 10 点 = 1.0s @10Hz; 执行 5 点就重规划 —— 实测巡航 37.7mm/s 下 5 点 ≈ 19mm < 25mm 单步上限
+#
+# 2026-11-15 16:2x 修订: 原 480x640 数据集在 dataloader 里全解成 PIL 常驻 8.4G(Anonymous),
+#   叠加 7 个常驻模型进程把 30G 吃满 → 15:48 memory critical / 15:54 整机冻死。
+#   改用 tools/scale_lerobot_images.py 预缩到 128x128 (zmax_live_215ep1_128, 48MB):
+#   内存 8.4G → 0.45G, 且 resize_images_to 设 128 后不再二次缩小, 光模块细节保住。
+output_dir: outputs/train/smolvla_live1115_7d_v3
+job_name: smolvla_live1115_7d_v1
+
+policy:
+  type: smolvla_lew
+  device: cuda
+  push_to_hub: false
+  smolvlm_name: HuggingFaceTB/SmolVLM2-500M-Video-Instruct
+  freeze_smolvlm: true
+  action_model_type: DiT-B
+  action_hidden_size: 256
+  action_num_layers: 2
+  num_inference_timesteps: 4          # flow matching 积分步数
+  chunk_size: 10                      # 👈 一次给 10 个点 (1.0s @10Hz)
+  n_action_steps: 5                   # 👈 只执行 5 个点就重规划 (等于 receding horizon)
+  n_obs_steps: 1
+  siglip_image_size: 128              # 64 太小, 光模块这种小目标看不清
+  resize_images_to: [128, 128]        # 与预缩数据集一致, 不再二次缩小
+  num_vision_tokens: 64
+  # 🎯 出口口径 (老倪 2026-11-15: action head 直接输出未来 10 步可执行动作, 与 215 点真机位姿一致)
+  #    action 7 维 = [x,y,z(mm), a,b,c(deg), grip(0/70)]; 位姿逐点取自 tools/web/real_traj_joints.json
+  #    (215 点真值表, 实测与采集时 act_pose 差 ≤0.005mm, 姿态用 q→euler('xyz') 与执行器 a/b/c 逐位一致)
+  unnorm_out: true
+  action_min: [211.187, -511.462, 114.904, -177.840, -88.915, -178.982, 0.0]
+  action_max: [817.839, 410.839, 998.601, 176.284, 86.012, 178.463, 70.0]
+  grip_binary_thresh: 35.0                        # 真机夹爪只有 0=合 / 70=开
+  grip_index: 6                                   # 夹爪在 7 维 action 里的下标
+
+dataset:
+  repo_id: zmax/live_215ep1_7d_128
+  root: /home/ubuntu/zmax/zmax_data/datasets/lerobot/zmax_live_215ep1_7d_128
+
+batch_size: 4          # 实测 batch8 更差(20.6s/step, GPU 5%): 数据瓶颈, 加 batch 只会更等
+steps: 3000
+num_workers: 4          # 实测: 每个 pt_data_worker 吃 4.8G anon-rss ⇒ 10 个直接 cgroup OOM(26G 限额)
+                        # 4 个是本机上限(4×4.8=19G); 单 worker 吞吐受 PIL decode+to_tensor 限制
+save_freq: 250          # 500 太稀: 282 步被 OOM 杀掉时一点没存下, 白跑 27 分钟
+seed: 1000

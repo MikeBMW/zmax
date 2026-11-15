@@ -355,6 +355,12 @@ class _NormalizationMixin:
                 )
 
             mean, std = stats["mean"], stats["std"]
+            # 🔴 2026-11-15 Intel XPU 实测: stats 若留在 float64, `std + eps` 在 level_zero 上
+            #   直接报 UR_RESULT_ERROR_UNSUPPORTED_FEATURE(44) —— XPU 不做 fp64。统一跟输入同 dtype。
+            if std.dtype != tensor.dtype:
+                std = std.to(tensor.dtype)
+            if mean.dtype != tensor.dtype:
+                mean = mean.to(tensor.dtype)
             # Avoid division by zero by adding a small epsilon.
             denom = std + self.eps
             if inverse:
@@ -370,6 +376,10 @@ class _NormalizationMixin:
                 )
 
             min_val, max_val = stats["min"], stats["max"]
+            if min_val.dtype != tensor.dtype:                               # 同 MEAN_STD: XPU 不认 fp64
+                min_val = min_val.to(tensor.dtype)
+            if max_val.dtype != tensor.dtype:
+                max_val = max_val.to(tensor.dtype)
             denom = max_val - min_val
             # When min_val == max_val, substitute the denominator with a small epsilon
             # to prevent division by zero. This consistently maps an input equal to

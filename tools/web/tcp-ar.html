@@ -133,6 +133,7 @@
     <button id="bRotR" class="sm" title="整幅画面向右旋转 90°(顺时针)">↻ 右旋90°</button>
     <button id="bTf" class="sm" title="在臂相机画面上画 tool1 坐标系(手眼 0.06mm + 内参; 相机装腕上, 像素固定)">▣ tool1系</button>
     <button id="bMod3" class="sm" title="在臂相机画面上叠光模块 3D 框(检测器 + 内参 + 手眼 + TCP)">🔍 光模块3D框</button>
+    <button id="bModV" class="sm" title="虚拟光模块长方体: 不依赖YOLO检出, 用 tool1 位姿 + 手眼(0.32mm) + 内参 直接投影出 56.5x13.4x8.5mm 长方体。手臂没夹工件时也能看到'一个光模块'。点击出图(可右键保存)">📦 虚拟光模块</button>
     <button id="bLock" class="sm" title="把绿框钉死: 相机与光模块相对无运动, 定主后坐标不再随检测抖动变化">🔒 绿框定主</button>
     <span class="tag" id="tRot">旋转 0°</span>
   </span>
@@ -331,6 +332,9 @@
       <!-- 📍 老倪 2026-11-11「做一个按钮，可以打开和关闭真实轨迹」: 一键开关录制进来的真实轨迹,
            不用去下面「轨迹点」里翻; 顺便把视角对准它(不然抬到 1m 的那段在框外看着像没画) -->
       <button id="tReal" class="sm" title="显示/隐藏录制下来的真实轨迹(三维里那条洋红 3D 轨迹, 来自位姿真值录制) · 打开时视角自动对准它">📍 真实轨迹</button>
+      <!-- 🎯 老倪 2026-11-15「加一个按钮，标定轨迹，我点击」: 手眼标定采集点的专用开关
+           (与「轨迹点」列表里那条同源, 但一键对准视角, 免得在框外看着像没画) -->
+      <button id="tCalib" class="sm" title="显示/隐藏手眼标定采集轨迹 (7 点 ±35mm 球形采样) · 打开时视角自动对准它">🎯 标定轨迹</button>
     </div>
     <!-- 🧱 第四行: 围栏盒子(长方体/上横梁/检测设备/前方相机) · 第五行: 直线(小红/小兰/小青)
          按钮由 paintFenceBtns() 按 /api/fence 的唯一依据动态生成, 点击=启用/停用该元素
@@ -531,7 +535,10 @@ var CFG_TARGET=null;
 //   off = 左臂原心在 base 系的位置(米); d/rpy = 仿真增量(左臂自身世界系, mm/deg)
 //   画法: 右臂正运动学点 p 先按 rpy 转、加 d, 再加 off ⇒ 世界坐标。复位(d=rpy=0)时两条臂完全同姿态。
 //  q = 左臂自己的 6 关节角(弧度)。null ⇒ 照抄右臂姿态(默认); 有值 ⇒ 用 urdfFK(q) 单独算左臂外形
-var LARM={show:true, off:[0, 0.5, 0], d:[0,0,0], rpy:[0,0,0], q:null, fill:'#12363c', stroke:'#5eead4'};
+var LARM={show:true, off:[0, 0.5, 0], d:[0,0,0], rpy:[0,0,0], q:null, fill:'#12363c', stroke:'#5eead4',
+          freeze:false, holdQ:null, holdFK:null};
+/* freeze=true ⇒ 左臂冻结在 holdQ/holdFK 上, 不再照抄右臂。
+   用途: 轨迹回放(只有右臂的 215 点真值), 左臂必须站住不动, 否则会跟着右臂跑。 */
 /* 🏷 画布文字总开关 —— 老倪 2026-10-27: 「点击全关的同时, 可以把所有文字显示都关掉,
    现在的文字太多了, 影响阅读。全开则是显示文字」
    做法: 全局挂 VR_TEXT, 直接拦 canvas 的 fillText/strokeText, 3D 视图里所有文字一次全灭,
@@ -548,6 +555,23 @@ var VR_TEXT=false;      // 🧭 2026-11-14 老倪「工程配置点位全关」�
 })();
 
 var LARMFK=null;   // LARM.q 的正运动学结果; 非空时左臂用它画, 不再照抄右臂
+/* 左臂渲染用的链矩阵: freeze 时用冻结快照(不随右臂动), 否则用自己的 FK / 照抄右臂 */
+function larmMap(){
+  if(typeof LARM!=='undefined' && LARM && LARM.freeze) return LARM.holdFK || LARMFK || LINKM;
+  return LARMFK || LINKM;
+}
+function larmFreezeOn(srcQ){
+  /* 冻结当前左臂姿态: 有独立关节角就存关节角, 否则深拷贝一份当前链矩阵快照 */
+  LARM.freeze = true;
+  if(srcQ && srcQ.length){ LARM.holdQ = srcQ.slice(); LARM.holdFK = urdfFK(LARM.holdQ); }
+  else {
+    var src = LARMFK || LINKM;
+    if(src){ LARM.holdQ = null; LARM.holdFK = JSON.parse(JSON.stringify(src)); }
+    else { LARM.freeze = false; }
+  }
+  return LARM.freeze;
+}
+function larmFreezeOff(){ LARM.freeze=false; LARM.holdQ=null; LARM.holdFK=null; }
 // 📷 顶视相机(具身智能第三视角) —— 老倪 2026-10-26: 「在左右臂之间增加一个圆柱体, 顶部有个相机,
 //   按照 realsense 为模板, 作为具身智能的顶视相机; 圆柱的高度与 1 轴的高度相同; 你来设计一个相机」
 //   我的设计口径: 立柱立在两臂原心中线 y=+250mm、半径 70mm、高 = 1 轴高度(URDF joint_1 z=0.328);
@@ -677,6 +701,12 @@ $('bLock').addEventListener('click',async()=>{
 $('bMod3').addEventListener('click',()=>{ MOD3ON=!MOD3ON;
   $('bMod3').textContent=MOD3ON?'🔍 光模块3D框':'🔍 光模块3D框(关)';
   $('bMod3').className='sm'+(MOD3ON?' primary':''); SIG=''; drawOv(); });
+// 📦 虚拟光模块: 不依赖 YOLO 检出, 用 tool1 位姿 + 手眼 + 内参 直接投影长方体
+$('bModV').addEventListener('click',()=>{
+  const h=location.hostname||'127.0.0.1', u='http://'+h+':8796/mod.jpg?cam=arm';
+  const w=window.open(u,'_blank');
+  if(!w){ alert('请允许弹窗, 或直接访问: '+u); }
+});
 $('bRotR').addEventListener('click',()=>setRot(+90));  // 右旋 = 顺时针
 $('bTf').addEventListener('click',()=>{ TFON=!TFON;
   $('bTf').textContent=TFON?'▣ tool1系':'▣ tool1系(关)';
@@ -1193,7 +1223,7 @@ function vrFitBox(){
   // 🤖 左臂(仿真臂)也纳入取景: 否则 Y=+500mm 那条臂整个在框外(老倪要两只臂同屏看)
   if(typeof LARM!=='undefined' && LARM.show && VR.urdf && URDF && LINKM){
     const X=larmXform();
-    const LMAP = LARMFK || LINKM;                  // 左臂自己动的时候用自己的 FK
+    const LMAP = larmMap();                       // 左臂自己动的时候用自己的 FK; freeze 时用冻结快照
     for(const L of URDF.links){ const M=LMAP[L.name]; if(!M) continue;
       for(let i=0;i<L.pts.length;i+=8){ const q=L.pts[i];
         const w=[M.R[0][0]*q[0]+M.R[0][1]*q[1]+M.R[0][2]*q[2]+M.t[0],
@@ -1586,7 +1616,7 @@ async function loadFences(){
     if($('fMargin') && document.activeElement!==$('fMargin')) $('fMargin').value=Math.round(FMARGIN);
     $('tFence').textContent=FENCES.length+' 个';
     $('tFence').className='tag'+(FENCES.length?' on':'');
-    renderFenceList(); paintFenceBtns(); paintCorBtn(); if(typeof paintRealBtn==='function') paintRealBtn(); drawVR();
+    renderFenceList(); paintFenceBtns(); paintCorBtn(); if(typeof paintRealBtn==='function') paintRealBtn(); if(typeof paintCalibBtn==='function') paintCalibBtn(); drawVR();
     // 📍 首次拿到"轨迹点"后补一次取景 —— 启动那拍 vrFitBox 早于围栏到达, 录制的真实轨迹(会抬到 1m 高)会被裁在画外
     if(!window.__FIT_AFTER_PTS && FENCES.some(i=>i.type==='points' && i.enabled!==false)){
       window.__FIT_AFTER_PTS=1;
@@ -2250,7 +2280,13 @@ function mjPushQ(){
     const tcpq=(typeof TCP!=='undefined'&&TCP&&TCP.ok&&TCP.joints)?conv(TCP.joints):null;
     let Rq=(typeof PREV!=='undefined'&&PREV&&PREV.on&&PREV.q)?conv(PREV.q):tcpq;
     // 左臂没有独立位姿时, 画布本身就是"照抄右臂", 这里也照抄
-    let Lq=(typeof LARM!=='undefined'&&LARM&&LARM.q)?conv(LARM.q):(Rq?Rq.slice():null);
+    // 但 freeze(轨迹回放) 时必须站住: 只推冻结的关节角, 绝不跟右臂
+    let Lq;
+    if(typeof LARM!=='undefined' && LARM && LARM.freeze){
+      Lq = LARM.holdQ ? conv(LARM.holdQ) : null;
+    } else {
+      Lq=(typeof LARM!=='undefined'&&LARM&&LARM.q)?conv(LARM.q):(Rq?Rq.slice():null);
+    }
     if(!Rq&&Lq) Rq=Lq.slice();          // 只有左臂有姿态时, 右臂跟左臂 (画布同样没有右侧独立源)
     if(!Rq&&!Lq) return;
     const host=(location.hostname||'127.0.0.1');
@@ -2473,7 +2509,7 @@ function drawVR(){
   //    再加上仿真增量(d/rpy, 左臂自身世界系)。绘成青绿色, 一眼分清哪条是真机、哪条是仿真。
   if(LARM.show && URDF && LINKM){
     const X=larmXform();
-    drawUrdf(g, pr, LARMFK || LINKM, X);        // 有独立关节角时用左臂自己的 FK (仿真搬运)
+    drawUrdf(g, pr, larmMap(), X);              // 有独立关节角时用自己的 FK (仿真搬运); freeze 时用冻结快照
     // (手里的光模块由下面的 🔩 模块头统一画, 不再画 10px 小方块)
     const o=pr(LARM.off.slice());
     if(o){
@@ -5089,6 +5125,33 @@ function paintRealBtn(){
     }
     paintRealBtn();
   }); }
+/* 🎯 标定轨迹 一键开关 (老倪 2026-11-15): 认名字带「手眼标定采集」的 points 元素 */
+function calibTrajItem(){
+  const P=(FENCES||[]).filter(i=>i && i.type==='points');
+  const R=P.filter(i=>/手眼标定采集|标定轨迹/.test(i.name||''));
+  return R[R.length-1] || null;
+}
+function paintCalibBtn(){
+  const b=$('tCalib'); if(!b) return;
+  const it=calibTrajItem();
+  if(!it){ b.className='sm'; b.textContent='🎯 标定轨迹'; b.title='还没有标定轨迹 (点此无动作: 先在 fences.json 里生成采集点)'; return; }
+  b.className='sm'+(it.enabled?' on':'');
+  b.textContent='🎯 标定轨迹 '+(it.pts||[]).length+'点';
+  b.title=(it.enabled?'显示中 · 点一下隐藏':'已隐藏 · 点一下显示')+' · '+(it.name||'');
+}
+{ const b=$('tCalib'); if(b) b.addEventListener('click', async ()=>{
+    const it=calibTrajItem();
+    const p=$('pNamed');
+    if(!it){ if(p) p.textContent='还没有标定轨迹: fences.json 里没有「手眼标定采集」points 元素'; return; }
+    await fencePost('/api/fence/update',{id:it.id, enabled:!it.enabled});
+    const it2=calibTrajItem();
+    if(it2 && it2.enabled){
+      VR.auto=true; VR.camLock=0; VR.panOff=[0,0,0];
+      if(typeof vrFitBox==='function') vrFitBox(); drawVR();
+      if(p) p.textContent='🎯 标定轨迹已显示: '+(it2.pts||[]).length+' 点 · 最大偏移 38.9mm · '+(it2.safety||'');
+    }else if(p){ p.textContent='🎯 标定轨迹已隐藏 (配置仍保留, 再点一次回来)'; }
+    paintCalibBtn();
+  }); }
 /* 📍 右臂仿真·走真实轨迹 (老倪 2026-11-13「左侧增加一个按钮, 让右臂(仿真)按照实际的轨迹跑一遍, 真实轨迹 182 点走一次」)
    真源: FENCES 里名字含「真实轨迹」的 points 元素(pose_to_ar.py 从位姿真值录制导出, 米)
    走法: 折线按 8mm 重采样(录制点被 RDP 简化过, 直接逐点播会瞬移) → ikTool1 逐点(seed=上一点) → PREV.q/M
@@ -5135,6 +5198,8 @@ function ensureTrajJoints(){
 
 function rtrajPlayJoints(d){
   try{ mirrorStop(); }catch(e){}          // 回放期间抢 PREV, 先让镜像让位(不然两路互踩)
+  /* 只有右臂的 215 点真值 ⇒ 左臂冻结在当前姿态, 全程不许动(否则会照抄右臂跟着跑) */
+  try{ if(!larmFreezeOn(LARM.q)) console.warn('[rtraj] 左臂冻结失败(无 FK 快照)'); }catch(e){ console.warn('[rtraj] larmFreezeOn:', e); }
   var t=$('tRTraj'), frames=d.frames, rate=RTRAJ.rate||1;
   RTRAJ.frames=frames; RTRAJ.dur=frames[frames.length-1].t/rate; RTRAJ.fi=0;
   RTRAJ.t0=performance.now(); RTRAJ.playing=true; RTRAJ.joints=true;
@@ -5159,6 +5224,7 @@ function rtrajPlayJoints(d){
     PREV.on=true; PREV.q=qq; PREV.M=urdfFK(qq); PREV.target=f2.p;
     if(el>=frames[frames.length-1].t){
       RTRAJ.playing=false; RTRAJ.raf=null;
+      try{ larmFreezeOff(); }catch(e){}               // 回放结束 ⇒ 左臂恢复"照抄右臂"
       rtrajUI(false,'走完 '+d.n_frames+' 帧 · '+(d.path_mm||0).toFixed(0)+'mm · 转动 '+
         (d.rot_total_deg||0).toFixed(0)+'° · 用时 '+(frames[frames.length-1].t).toFixed(0)+'s · 真机没动 · 已切回跟随真机');
       try{ if(VR.simArm) mirrorStart(); }catch(e){}   // 回放结束 ⇒ 仿真臂回到"跟随真机位姿"
@@ -5173,9 +5239,44 @@ function rtrajPlayJoints(d){
 }
 function rtrajStop(){  RTRAJ.playing=false;
   if(RTRAJ.raf){ cancelAnimationFrame(RTRAJ.raf); RTRAJ.raf=null; }
+  try{ larmFreezeOff(); }catch(e){}               // 停止回放 ⇒ 左臂恢复"照抄右臂"
   rtrajUI(false,'已停在 '+(RTRAJ.fi||0)+'/'+(RTRAJ.frames.length||0)+' 帧 · 真机没动');
   drawVR();
 }
+/* 🎬 元任务 MT-08「轨迹回放」的启动入口 —— 元任务区那个按钮调它。
+   与「📍 右臂跑真实轨迹」同一个播放器, 区别只是入口挂在元任务区, 并按 MT-08 口径显示 42.85s/件。 */
+function arTrajReplay(){
+  var d=ensureTrajJoints();
+  if(!d){ alert('回放数据缺失: '+(RTRAJJ_ERR||'未知')+'\n需要 tools/real_traj_joints.py --embed 重新内嵌'); return; }
+  rtrajFollowOff();                       // 独立播放和跟随真机互斥
+  rtrajPlayJoints(d);
+}
+/* 🎯 MT-08「跟随真机」—— 真机在跑 traj_loop 时, 仿真右臂必须画在真机当前那一格。
+   老倪 2026-11-15: 「现在的机器人正在移动, 你的轨迹回放的元任务, 右臂, 要对应上啊」
+   根因: 独立播放按 dur_s=42.85s 从头播(100%速度), 真机是 traj_loop 逐点 20% 速度循环,
+         两者时间尺度差 5 倍 ⇒ 页面 fi=120 时真机可能已在 #183, 完全对不上。
+   做法: 复用已有 syncArmFollow(每 100ms 轮询 /api/tcp 的真机实时关节角), 左臂同时冻结。 */
+var RTRAJ_FOLLOW={on:false};
+function rtrajFollowOn(){
+  RTRAJ.playing=false;                    // 停掉独立播放, 否则两股驱动抢 PREV.q
+  if(RTRAJ.raf){ cancelAnimationFrame(RTRAJ.raf); RTRAJ.raf=null; }
+  try{ larmFreezeOn(LARM.q); }catch(e){}  // 左臂冻结(只有右臂轨迹)
+  // 用页面主机制 MIRROR(每100ms 拉 /api/tcp 真机关节角写 PREV.q), 不要另起 syncArmFollow
+  try{ mirrorStart(); }catch(e){}
+  RTRAJ_FOLLOW.on=true;
+  rtrajUI(true,'🎯 跟随真机 · 右臂按 /api/tcp 实时对位 · 左臂冻结');
+  drawVR();
+}
+function rtrajFollowOff(){
+  if(!RTRAJ_FOLLOW.on) return;
+  RTRAJ_FOLLOW.on=false;
+  try{ larmFreezeOff(); }catch(e){}
+  // MIRROR 恢复与否跟随 VR.simArm 的既有约定, 这里不改它, 免得把「真机臂」开关状态搞乱
+  try{ if(typeof VR!=='undefined' && VR.simArm!==false) mirrorStart(); }catch(e){}
+  rtrajUI(false,'已停止跟随真机 · 左臂恢复照抄右臂');
+  drawVR();
+}
+function rtrajFollowToggle(){ if(RTRAJ_FOLLOW.on) rtrajFollowOff(); else rtrajFollowOn(); }
 
 /* ⏭ 同步操作 (老倪 2026-11-13「点击后机器人沿着真实轨迹一个点一个点运行; 按钮后面跟输入栏, 输入点数」)
    和「📍 右臂跑真实轨迹」的区别: 那个是按时间连续播(1×真实时间, 看着是连贯运动);
@@ -6303,9 +6404,10 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
   //   件周期 11.40s = 右臂稳态单件; 左臂 4.70s 供料后空闲等右臂取)。两条 lane 共用一条时间轴 + 同一条游标,
   //   所以画面里同一时刻必然同时有"左手在做什么"和"右手在做什么"。只读, 真机零指令。
   var MT_SHORT = { 'MT-01': '取+插', 'MT-02': '拔出', 'MT-03': 'AOI', 'MT-04': '放盘',
-                   'MT-05': 'NG放', 'MT-06': '供料', 'MT-07': '交接' };
+                   'MT-05': 'NG放', 'MT-06': '供料', 'MT-07': '交接', 'MT-08': '回放' };
   var MT_COL = { 'MT-01': '#1f6feb', 'MT-02': '#f85149', 'MT-03': '#a371f7',
-                 'MT-04': '#2ea043', 'MT-05': '#ef4444', 'MT-06': '#22d3ee' };
+                 'MT-04': '#2ea043', 'MT-05': '#ef4444', 'MT-06': '#22d3ee',
+                 'MT-07': '#b58cf0', 'MT-08': '#e3b341' };
   var MT_HC = { 'L': '#3fbf7f', 'R': '#4a90e0', 'BOTH': '#b58cf0' };
   function mtPct(x, cyc) { return (Math.max(0, Math.min(1, x / cyc)) * 100).toFixed(2) + '%'; }
   function mtLaneHtml(ln, cyc, arm) {
@@ -6364,6 +6466,63 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
   }
   function mtTick() {
     if (!MT || !MT.lanes || !MT.lanes.R) { return; }
+    // 🎬 回放控制条进度: mtRender 被 key 节流挡住不会重画, 这里 160ms 跟一次
+    try {
+      var pp = document.getElementById('rpProg');
+      if (pp) {
+        var _gc = (SYNCUR && SYNCUR.cursor != null) ? Number(SYNCUR.cursor) : null;
+        var _gt = (SYNCUR && SYNCUR.total) ? Number(SYNCUR.total) : 215;
+        var _followOn = (typeof RTRAJ_FOLLOW !== 'undefined' && RTRAJ_FOLLOW.on);
+        if (_gc != null && _gc > 0) {
+          // 真机在跑(不管有没有点跟随) —— 显示真机自己的游标
+          pp.textContent = (_followOn ? '真机 ' : '') + _gc + '/' + _gt + ' 🎯';
+          pp.style.color = '#3fb950';
+        } else if (typeof RTRAJ !== 'undefined' && RTRAJ.frames) {
+          pp.textContent = (RTRAJ.fi || 0) + '/' + RTRAJ.frames.length
+            + (RTRAJ.playing ? ' ▶' : '');
+          pp.style.color = '#8b949e';
+        }
+      }
+      // 🎯 甘特条实时游标(老倪 2026-11-15「甘特图怎么不动呢?」)
+      //    条宽 = 各段时间占比, 所以游标位置不能 cur/215 线性映射 —— 必须
+      //    按"前面所有段的 pct 之和 + 本段内完成比例 × 本段 pct"定位, 否则会跑偏。
+      try {
+        var gc = document.getElementById('rpGanttCur');
+        var gMeta = (MT && MT.long_horizon && MT.long_horizon.replay && MT.long_horizon.replay.gantt) || null;
+        if (gc && gMeta && gMeta.length) {
+          var isFol = (typeof RTRAJ_FOLLOW !== 'undefined' && RTRAJ_FOLLOW.on);
+          var gCur = (SYNCUR && SYNCUR.cursor != null) ? Number(SYNCUR.cursor) : null;
+          // 真机在跑(step_traj 游标 > 0)时优先用真机游标 —— 不必先点「跟随真机」;
+          // 只有真机没在跑才退回到页面自己的回放帧号。
+          var curI = (gCur != null && gCur > 0) ? gCur
+                   : ((typeof RTRAJ !== 'undefined' && RTRAJ.frames) ? Number(RTRAJ.fi || 0) : null);
+          if (curI == null || curI < 0) {
+            gc.style.display = 'none';
+          } else {
+            var acc = 0, pos = null;
+            for (var q = 0; q < gMeta.length; q++) {
+              var sg = gMeta[q];
+              if (curI >= sg.i0 && curI <= sg.i1) {
+                var frac = (curI - sg.i0) / Math.max(1, sg.i1 - sg.i0 + 1);
+                pos = acc + frac * Number(sg.pct || 0);
+                break;
+              }
+              acc += Number(sg.pct || 0);
+            }
+            if (pos == null) { pos = (curI >= 215) ? 100 : 0; }
+            gc.style.display = 'block';
+            gc.style.left = Math.max(0, Math.min(100, pos)) + '%';
+          }
+        }
+      } catch (e2) { }
+      // 真机游标每 2s 刷一次(不管是否跟随模式) —— 甘特游标和顶部「游标 x/215」都靠它
+      if (typeof syncFetchCur === 'function') {
+        if (!(mtTick._st) || mtTick._st + 2000 < Date.now()) {
+          mtTick._st = Date.now();
+          syncFetchCur();
+        }
+      }
+    } catch (e) { }
     var n = mtNow(), cyc = MT.lanes.cycle_s || 11.4;
     var phs = document.querySelectorAll('#mtBox .mtPh');
     for (var i = 0; i < phs.length; i++) { phs[i].style.left = mtPct(n.t, cyc); }
@@ -6426,13 +6585,40 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
     h += '<div id="mtNow" style="margin-top:5px;padding:4px 6px;background:#0d1117;border-left:2px solid #58a6ff;'
       + 'border-radius:2px"></div>';
     h += '<div style="margin-top:6px;padding-top:5px;border-top:1px solid #21262d">';
+    // ★ 列头(老倪 2026-11-15「每个模块的时间构成, 还是没有」⇒ 第4列是耗时, 必须自己说出来)
+    h += '<div style="display:grid;grid-template-columns:38px 48px 1fr 96px;gap:5px;padding:0 4px 2px;'
+      + 'font:8.5px ui-monospace,monospace;color:#484f58;letter-spacing:.3px">'
+      + '<span>编号</span><span>手</span><span>模块</span>'
+      + '<span style="text-align:right">耗时</span></div>';
     for (var k = 0; k < mts.length; k++) {
       var m = mts[k], on = (m.id === cur);
       var hand = m.hand || (m.arm === 'left' ? 'L' : (m.arm === 'both' ? 'BOTH' : 'R'));
       var arrow = hand === 'L' ? '◀' : (hand === 'BOTH' ? '⇄' : '▶');
       var tw = (m.t_win && m.t_win.length === 2 && m.t_win[0] != null)
         ? (m.t_win[0].toFixed(1) + '–' + m.t_win[1].toFixed(1)) : '并行';
-      h += '<div class="mtRow" style="display:grid;grid-template-columns:38px 48px 1fr 56px;gap:5px;align-items:center;'
+      // ★ 第 4 列 = 该模块【自身耗时 dur】(老倪 2026-11-15「每个模块的时间构成, 还是没有」)
+      //   原来放的是 t_win(时间窗口 0.0–2.7), 那是"它在泳道的哪一段"不是"它要多久", 所以看不出时间构成。
+      //   dur 缺省(None)的模块(MT-06 左臂连续供料 / MT-07 交接点)显示 —, 并在 title 里写清原因。
+      var durTxt = (m.dur != null) ? (Number(m.dur).toFixed(m.dur >= 60 ? 0 : 2) + 's') : '—';
+      var durTip = (m.dur != null)
+        ? ('耗时 ' + Number(m.dur).toFixed(3) + 's' + (m.t_win && m.t_win.length === 2
+            ? (' · 时间窗口 ' + m.t_win[0].toFixed(2) + '–' + m.t_win[1].toFixed(2) + 's') : '')
+           + (m.occurrences != null ? (' · 一轮出现 ' + m.occurrences + ' 次') : '')
+           + (m.segments != null ? (' · ' + m.segments + ' 段') : ''))
+        : ((m.id === 'MT-06') ? '耗时 — : 左臂连续摆盘供料, 无固定窗口(与右臂并行)'
+           : ((m.id === 'MT-07') ? '耗时 — : 交接同步点(8.75s 由左右臂重叠决定, 不单独计时)' : '耗时 —'));
+      // ★ MT-08 独立口径: 不进 11.34s 双臂泳道, 直接把"实跑节拍"顶到第 4 列
+      var rpMeta = (MT.long_horizon && MT.long_horizon.replay) || null;
+      if (m.id === 'MT-08' && rpMeta) {
+        tw = Math.round(rpMeta.dur_s || 0) + 's·' + (rpMeta.uph || 0).toFixed(1) + 'UPH';
+        durTxt = tw;
+        durTip = '实跑 ' + (rpMeta.s_per_point || 0) + 's/点 × ' + (rpMeta.n_points || 215)
+               + ' 点 = ' + Math.round(rpMeta.dur_s || 0) + 's/轮 ⇒ ' + (rpMeta.uph || 0).toFixed(1)
+               + ' UPH (录制真值 ' + (rpMeta.rec_dur_s || 0).toFixed(2) + 's / '
+               + (rpMeta.rec_uph || 0).toFixed(1) + ' UPH)';
+      }
+      var colW = '96px';   // 与列头对齐(表头也 96px), 所有行同宽免得第4列错位
+      h += '<div class="mtRow" style="display:grid;grid-template-columns:38px 48px 1fr ' + colW + ';gap:5px;align-items:center;'
         + 'padding:2px 4px;border-radius:3px;' + (on ? 'background:rgba(88,166,255,.14);' : '') + '">'
         + '<span style="font:10px ui-monospace,monospace;color:' + (on ? '#58a6ff' : '#6e7681') + '">'
         + esc(m.id) + '</span>'
@@ -6441,10 +6627,85 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
         + '<span style="font-size:10.5px;color:' + (on ? '#e6edf3' : '#8b949e') + ';white-space:nowrap;'
         + 'overflow:hidden;text-overflow:ellipsis" title="' + esc(m.name || '') + '">'
         + esc((m.name || '').replace(/^(右手|左手|双手) · /, '')) + '</span>'
-        + '<span style="font:9px ui-monospace,monospace;color:#6e7681;text-align:right">'
-        + (on && i ? (i + '/' + n) : tw) + '</span></div>';
+        + '<span style="font:9px ui-monospace,monospace;color:' + (m.id === 'MT-08' ? '#e3b341'
+            : (m.dur != null ? '#7ee787' : '#6e7681'))
+        + ';text-align:right" title="' + esc(durTip) + '">'
+        + (on && i ? (i + '/' + n) : esc(durTxt)) + '</span></div>';
     }
     h += '</div>';
+    // 🎬 轨迹回放 (MT-08) —— 独立口径: 42.85s/件 单件复现, 不进 11.34s 双臂泳道
+    //   老倪 2026-11-15: 「元任务 轨迹回放, 做完了么」⇒ 原来只列了一行只读文字, 没有启动入口。
+    //   这里给它真正的按钮, 复用已有 rtrajPlayJoints(215 点关节角真值), 左臂由 larmFreezeOn 冻结。
+    var rp = (MT.long_horizon && MT.long_horizon.replay) || null;
+    if (rp) {
+      var rpj = (typeof RTRAJ !== 'undefined' && RTRAJ.frames) ? RTRAJ.frames.length : 0;
+      var rpi = (typeof RTRAJ !== 'undefined') ? (RTRAJ.fi || 0) : 0;
+      var rpOn = (typeof RTRAJ !== 'undefined' && RTRAJ.playing);
+      var rpFol = (typeof RTRAJ_FOLLOW !== 'undefined' && RTRAJ_FOLLOW.on);
+      var bS = 'background:#21262d;border:1px solid #30363d;color:#e6edf3;border-radius:3px;'
+             + 'padding:1px 7px;font:10px system-ui;cursor:pointer';
+      h += '<div style="margin-top:7px;padding:6px 7px;background:#0d1117;border:1px solid #30363d;border-radius:4px">'
+        + '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px">'
+        + '<span style="font-size:11px;font-weight:600;color:' + (MT_COL['MT-08'] || '#e3b341') + '">🎬 轨迹回放 MT-08</span>'
+        + '<span style="font:9px ui-monospace,monospace;color:#8b949e;text-align:right">'
+        + esc(rp.n_points) + ' 点 · '
+        + (rp.s_per_point ? esc(rp.s_per_point) + 's/点 · ' : '')
+        + (rp.dur_s ? (+rp.dur_s >= 120 ? (rp.dur_s / 60).toFixed(1) + 'min/轮' : esc(rp.dur_s) + 's/轮') : '')
+        + ' · ' + esc(rp.uph) + ' UPH · 左臂'
+        + (rp.left_arm === 'frozen' ? '冻结' : '—') + '</span></div>'
+        + '<div style="display:flex;gap:5px;align-items:center;margin-top:5px">'
+        + '<button onclick="arTrajReplay()" style="' + bS + (rpOn ? ';background:#1f6feb;border-color:#1f6feb' : '')
+        + '">▶ 回放</button>'
+        + '<button onclick="rtrajFollowToggle()" title="真机在跑 traj_loop 时用这个: 仿真右臂每 100ms 按 /api/tcp 真机实时关节角重画, 画在真机当前那一格; 左臂冻结。独立回放和跟随互斥。" style="'
+        + bS + (rpFol ? ';background:#238636;border-color:#238636' : '') + '">'
+        + (rpFol ? '🎯 跟随后中' : '🎯 跟随真机') + '</button>'
+        + '<button onclick="rtrajStop();rtrajFollowOff();" style="' + bS + '">⏹ 停</button>'
+        + '<span id="rpProg" style="margin-left:auto;font:9px ui-monospace,monospace;color:#8b949e">'
+        + rpi + '/' + (rpj || rp.n_points) + '</span></div>'
+        // ★ 时间构成甘特(老倪 2026-11-15「怎么就不显示每个时间的甘特图了?」)
+        //   和双臂泳道同一个诉求: 一眼看出 436s 花在哪。每段宽度 = 该段实测耗时占比,
+        //   数据来自 replay.gantt(逐点 secs 求和), 不是按点数均分。
+        + (function () {
+            var g = rp.gantt || [];
+            if (!g.length) return '';
+            var s = '<div style="margin-top:6px;padding-top:5px;border-top:1px solid #21262d">'
+              + '<div style="display:flex;justify-content:space-between;font:8.5px ui-monospace,monospace;'
+              + 'color:#6e7681;margin-bottom:3px"><span>时间构成 (实测逐点求和)</span>'
+              + '<span>' + esc(rp.gantt_total_s || 0) + 's / ' + esc(rp.n_points) + ' 点</span></div>'
+              + '<div id="rpGanttBar" style="display:flex;height:13px;border-radius:2px;overflow:hidden;'
+              + 'background:#161b22;position:relative">';
+            for (var gi = 0; gi < g.length; gi++) {
+              var b = g[gi];
+              s += '<div title="' + esc(b.name + ' #' + b.i0 + '-' + b.i1 + ' · ' + b.n + ' 点 · '
+                    + b.dur_s + 's (' + b.pct + '%) · ' + b.per_pt_s + 's/点')
+                + '" style="width:' + b.pct + '%;background:' + (b.color || '#484f58')
+                + ';border-right:1px solid #0d1117"></div>';
+            }
+            // 🎯 实时游标: 跟着真机/回放当前点走。位置按"段内点数比例 × 该段时间占比"定位,
+            //    不能用 cur/215 直接乘 —— 条宽是时间占比, 段与段的时间/点数比不一样, 会错位。
+            s += '<div id="rpGanttCur" style="position:absolute;top:-2px;bottom:-2px;width:2px;'
+              + 'background:#f0f6fc;box-shadow:0 0 4px #f0f6fc;left:0;display:none;'
+              + 'pointer-events:none"></div>';
+            s += '</div>'
+              // 图例: 只列 >=2% 的段(太小的两行也看不清), 其余归入"其他"
+              + '<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:2px 7px;'
+              + 'font:8.5px ui-monospace,monospace;line-height:1.5">';
+            var small = 0, smallDur = 0;
+            for (var gj = 0; gj < g.length; gj++) {
+              var c = g[gj];
+              if (c.pct < 2) { small++; smallDur += c.dur_s; continue; }
+              s += '<span style="color:#8b949e"><span style="display:inline-block;width:6px;height:6px;'
+                + 'background:' + (c.color || '#484f58') + ';margin-right:2px;vertical-align:middle"></span>'
+                + esc(c.name) + ' <span style="color:#e6edf3">' + c.dur_s + 's</span></span>';
+            }
+            if (small) {
+              s += '<span style="color:#6e7681">其余 ' + small + ' 小段 '
+                + smallDur.toFixed(1) + 's</span>';
+            }
+            s += '</div></div>';
+            return s;
+        })();
+    }
     h += '<div style="display:flex;justify-content:space-between;margin-top:4px;font:9px ui-monospace,monospace;color:#6e7681">'
       + '<span>轮 ' + (lh.segments_total || 392) + ' 段 / ' + (lh.round_total_s || 0) + 's / '
       + (lh.tact_s || 11.42) + 's每件</span>'

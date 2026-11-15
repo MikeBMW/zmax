@@ -520,14 +520,19 @@ class Navigator:
             u = v / n
             return unit(p * np.cos(a) + u * np.sin(a))
         if t == "se3":
-            if p.size >= 12 and R_from_quat is not None and quat_mul is not None:
-                from lerobot.manifold.lie_intent import quat_from_R as _qfr
-                q = _qfr(p[:9].reshape(3, 3))
-                w = np.asarray(v[:3], float) * float(dt)
-                qn = quat_mul(q, quat_exp(w))
-                R = R_from_quat(qn)
-                return np.concatenate([R.ravel(), p[9:12] + np.asarray(v[3:6], float) * float(dt)])
-            return p + v * float(dt)
+            if p.size < 12:
+                # 🔴 不再静默降级到 p+v*dt: 那不是 SE(3) 运算 (平移不随旋转耦合),
+                #    会让人以为引擎在走螺旋、实际在走欧氏直线。宁可直接报错。
+                raise ValueError("Navigator(se3).step: p 必须是 12 维 [R(9); t(3)], 得到 %d 维" % p.size)
+            # 严格 SE(3) 螺旋测地线: T' = T · exp([ρ; φ]·dt), 平移经 V(φ) 与旋转耦合。
+            # 旧实现是 slerp(R) + lerp(t) —— 两者在 ρ∦φ 且角度大时差很多 (实测 1.2rad 时
+            # 平移差 163mm、姿态差 10.1°), 注册表里却写着"螺旋运动", 名不副实。
+            from .se3_chain import T_from_rot_t, se3_exp
+            T = T_from_rot_t(p[:9].reshape(3, 3), p[9:12])
+            xi = np.concatenate([np.asarray(v[3:6], float) * float(dt),   # ρ: 平移分量
+                                 np.asarray(v[:3], float) * float(dt)])   # φ: 旋转分量
+            T2 = T @ se3_exp(xi)
+            return np.concatenate([T2[:3, :3].ravel(), T2[:3, 3]])
         if t == "so3":
             w = np.asarray(v[:3], float) * float(dt)
             if R_from_quat is None:

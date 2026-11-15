@@ -385,7 +385,12 @@ def build():
 
     out = {
         "ok": True, "cycles": len(rounds), "n_segs": len(plan), "total_t": total,
-        "flow": "预插 孔1→2→3→4 → 之后 拔1,2·AOI·插1,2 → 拔3,4·AOI·插3,4 → 循环",
+        # flow 按真实孔数生成 —— 2026-11-15: 现场只有 2 个插口(孔1 上口 z=278 / 孔2 下口 z=187.6),
+        #   原来写死"孔1→2→3→4"是 4 孔时代留下的文案, 与实际 holes 数不符。
+        "flow": ("预插 孔%s → 之后 拔%s·AOI·插%s → 循环"
+                 % ("→".join(str(h["id"]) for h in HOLES),
+                    ",".join(str(h["id"]) for h in HOLES),
+                    ",".join(str(h["id"]) for h in HOLES))),
         "dwell_required_s": None,   # 本版不要求固定驻留(老倪: 不用等待)
         "dwell_min_s": min(dws), "dwell_max_s": max(dws),
         "dwell_gate_ok": None,
