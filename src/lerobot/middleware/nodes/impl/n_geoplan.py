@@ -8,7 +8,7 @@ entry: node_geoplan   ·   registry key: n_geoplan
 """
 
 def node_geoplan(ctx):
-    """🧭 测地线块规划 — 薄壳: 真实现 nodes/geo_plan_impl.py::run
+    """🧭 测地线块规划 — 薄壳: 真实现 = state_space/plan_guide.py::run
 
     obs43 → ManifoldEngine.project → 目标点 → compute_geodesic(H) → readout 解码 → 块[H,4]。
     只出块, 不下发; 引擎/权重/目标缺失一律 ok=False 如实上报 (不出空块冒充)。

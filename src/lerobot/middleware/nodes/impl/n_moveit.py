@@ -8,11 +8,12 @@ entry: node_moveit   ·   registry key: n_moveit
 """
 
 def node_moveit(ctx):
-    """🧭 运动规划 (plan) 节点 —— 薄壳: 真实现已迁到 nodes/plan_impl.py::run
+    """🧭 运动规划 (plan) 节点 —— 薄壳: 真实现 = state_space/motion_plan.py::run
 
     老倪 2026-10-28: 「运动规划节点的源代码怎么能是 library.py 呢？应该是 plan 的代码」
-      ⇒ 规划正文(段表生成)搬到 src/lerobot/engineering/nodes/plan_impl.py, 这里只转调,
-        右键「打开源代码」经 _EXTERNAL_LOC 直接落到 plan_impl.py:def run。
+    老倪 2026-11-15: 「所有 L2 节点的算法都要迁到 policies/left_right/state_space」
+      ⇒ 规划正文(段表生成 + action 输出)在 state_space/motion_plan.py; 本文件只转调
+        (节点自己的输入输出在这里, 算法不在这里) — 右键「打开源代码」落 state_space/motion_plan.py。
     """
     from .plan_impl import run as _plan_run
     return _plan_run(ctx)
