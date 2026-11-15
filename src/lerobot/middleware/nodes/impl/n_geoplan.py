@@ -13,7 +13,8 @@ def node_geoplan(ctx):
     obs43 → ManifoldEngine.project → 目标点 → compute_geodesic(H) → readout 解码 → 块[H,4]。
     只出块, 不下发; 引擎/权重/目标缺失一律 ok=False 如实上报 (不出空块冒充)。
     """
-    from .geo_plan_impl import run as _geo_run
+    # 🔴 同上: 直连真文件, 断点才绑得上 (软链会让 co_filename 变成 geo_plan_impl.py)
+    from lerobot.policies.left_right.state_space.plan_guide import run as _geo_run
     return _geo_run(ctx)
 
 

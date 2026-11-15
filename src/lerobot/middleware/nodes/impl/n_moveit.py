@@ -15,7 +15,10 @@ def node_moveit(ctx):
       ⇒ 规划正文(段表生成 + action 输出)在 state_space/motion_plan.py; 本文件只转调
         (节点自己的输入输出在这里, 算法不在这里) — 右键「打开源代码」落 state_space/motion_plan.py。
     """
-    from .plan_impl import run as _plan_run
+    # 🔴 2026-11-15 断点绑定: 必须 import **真文件**, 不能走 .plan_impl 软链。
+    #   走软链时 code 对象的 co_filename = middleware/nodes/impl/plan_impl.py,
+    #   在 state_space/motion_plan.py 里下的断点匹配不上 ⇒ 永远"没进入"。
+    from lerobot.policies.left_right.state_space.motion_plan import run as _plan_run
     return _plan_run(ctx)
 
 
