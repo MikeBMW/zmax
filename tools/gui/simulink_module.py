@@ -18399,6 +18399,12 @@ class SimulinkModule(QWidget):
                 if _t.get("impl_path"):
                     _impl_desc = " · 实现在 %s:%s" % (
                         os.path.relpath(_t["impl_path"], root), _t.get("impl_line") or 1)
+            # 🧭 2026-11-15 老倪「右键打开源代码怎么还是 node」二道保险: 落点一律取 realpath。
+            #   老路径现在都是软链(geo_plan_impl.py → state_space/plan_guide.py), 若画布/节点
+            #   params.source 还指着老路径, VSCode 标题会显示老文件名, 看着就像"没进 state_space"。
+            if _loc and os.path.islink(_loc[0]):
+                _loc = (os.path.realpath(_loc[0]), _loc[1])
+                _loc_kind = (_loc_kind or "impl") + "·realpath"
         except Exception as _e_r:                                               # noqa: BLE001
             # 不许静默: 以前这里 pass → 定位失败时悄悄落到 params.source, 用户只看到"没进 node"
             _locerr = "%s: %s" % (type(_e_r).__name__, _e_r)
