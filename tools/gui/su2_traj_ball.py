@@ -180,7 +180,42 @@ class SU2TrajBall(QWidget):
                 "border-radius:4px;font-size:11px;padding:2px 4px;}"
                 "QPushButton:hover{background:#30363d;color:#e6edf3;}")
 
+    TAIL_BYTES = 512 * 1024       # 只读尾部: 120 个点 × ~2KB 留足余量, 够画轨迹
+
+    @classmethod
+    def _read_tap_tail(cls, path, n=120):
+        """从文件尾部倒读, 只解析最后 n 行 → [(q, cycle, ts_str), ...]。"""
+        try:
+            with open(path, "rb") as f:
+                f.seek(0, os.SEEK_END)
+                size = f.tell()
+                start = max(0, size - cls.TAIL_BYTES)
+                f.seek(start)
+                blob = f.read().decode("utf-8", "ignore")
+        except Exception:                                                   # noqa: BLE001
+            return []
+        lines = blob.splitlines()
+        if start > 0 and lines:
+            lines = lines[1:]                     # 第一行可能是被切断的半行
+        rows = []
+        for line in lines[-n * 3:]:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+            except Exception:                                              # noqa: BLE001
+                continue
+            q = d.get("p")
+            if isinstance(q, (list, tuple)) and len(q) == 4:
+                rows.append((q, d.get("cycle"), d.get("ts_str")))
+        return rows[-n:]
+
     # ── 数据 ────────────────────────────────────────────────────────────────
+    # 🔴 2026-11-15 老倪「控制台怎么这么慢」: tap 是 10Hz 全状态行 (~10KB/行),
+    #   跑几小时后 engine_default.jsonl 已经 19MB/1919 行, 而 reload() 每 1.5s 在 **UI 主线程**
+    #   把整份文件 json.loads 一遍 ⇒ 每秒卡一次 (py-spy 实测卡在 json/decoder.py:353)。
+    #   改成: ①按 (路径,mtime,size) 缓存, 没变就不解析 ②变了只 tail 读最后 TAIL_BYTES 字节。
     def load_run_stream(self):
         """① 运行流 (首选): ss_engine_loop 的 tap, 10Hz 每拍 p=SU(2) 四元数。
         返回 True 表示已用运行流填充 traj/cur; 流陈旧(>5s)或不存在 ⇒ False 走真值源。"""
@@ -193,19 +228,17 @@ class SU2TrajBall(QWidget):
             age = time.time() - os.path.getmtime(tap)
             if age > RUN_TAP_FRESH_S:                       # 没在跑: 那条流不算数
                 return False
-            rows = []
-            with open(tap, encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        d = json.loads(line)
-                    except Exception:                       # noqa: BLE001
-                        continue
-                    q = d.get("p")
-                    if isinstance(q, (list, tuple)) and len(q) == 4:
-                        rows.append((q, d.get("cycle"), d.get("ts_str")))
+            try:
+                st = os.stat(tap)
+                _sig = (tap, st.st_mtime, st.st_size)
+            except Exception:                              # noqa: BLE001
+                _sig = None
+            cached = getattr(self, "_tap_rows", None)
+            if _sig is not None and cached and cached[0] == _sig:
+                rows = cached[1]                           # 没变 ⇒ 一次 IO 都不做
+            else:
+                rows = self._read_tap_tail(tap, n=400)
+                self._tap_rows = (_sig, rows)
             if not rows:
                 return False
             quats = [_canon(q) for q, _c, _t in rows[-120:]]
