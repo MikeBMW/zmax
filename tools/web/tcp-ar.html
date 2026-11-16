@@ -618,9 +618,9 @@ var TCAM={show:true, y:0.25, r:0.070, tilt:35, fovH:87, fovV:58, body:[0.090,0.0
 //      · 桌子摆在箱体**前面 = +X**(前脸 HMI 那侧, 也是两臂/顶视相机的作业方向)。
 var CHS={show:true, L:0.600, W:0.800, H:0.750, HB:0.680, cy:0.25, wr:0.075,
          body:'#1b2732', plate:'#31404f', edge:'#7f95ad'};
-// 🧪 实验桌/工作台: 桌面 1600(y)×600(x)×30mm 厚(2026-10-26 老倪: 「桌子长度变成1600」),
+// 🧪 实验桌/工作台: 桌面 1600(y)×750(x)×30mm 厚(2026-10-26 长度 1600; 2026-11-16 老倪: 「宽度增加到 750」),
 //   4 条 45×45 腿到地面 -0.750, 桌沿离箱体前脸 50mm
-var TAB={show:false, x0:0.35, x1:0.95, cy:0.25, w:1.600, t:0.030, leg:0.045, h:0.750,
+var TAB={show:false, x0:0.35, x1:1.10, cy:0.25, w:1.600, t:0.030, leg:0.045, h:0.750,
          top:'#7a5f45', body:'#54402f', legc:'#4a4f58', edge:'#d8b98c',
          alu:'#a8b3bf', aluEdge:'#6f7c8a', aluDark:'#5c666f'};
 // 🟫 地面层(轮底/桌腿落地): 箱子与桌子站在这层上, 与 z=0 那块 base 工作平面差 750mm
@@ -4736,7 +4736,7 @@ function beamBox(){
 }
 // 📏 摆盘场景尺寸数字: 用 HTML 覆盖层显示(老倪这边 canvas 字体渲染不出来, 白字黑框改成 DOM 就一定能看到)
 // 🧺 周转盘 310×230×45mm (老倪 2026-11-16): 摆在桌面上, 只标长/宽, 不标高
-var TPAN={ show:true, L:0.310, W:0.230, H:0.045, wall:0.006, cx:0.780, cy:0.250 };
+var TPAN={ show:true, L:0.310, W:0.230, H:0.045, wall:0.006, cx:0.725, cy:0.250 };
 function tpanRange(){
   return { x0:TPAN.cx-TPAN.W/2, x1:TPAN.cx+TPAN.W/2, y0:TPAN.cy-TPAN.L/2, y1:TPAN.cy+TPAN.L/2 };
 }
