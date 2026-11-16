@@ -245,7 +245,7 @@
        旁边把当前点 ID + TCP 坐标写出来 ⇒ 双方说"#37"指的就是同一个点。
        位姿口径: 直接取该帧关节角真值, 不插值(插值就说不清停在第几个点了)。只动仿真, 真机零指令。 -->
   <div class="row" style="margin-top:6px">
-    <button id="bTrajStep" class="sm" style="background:#238636;border-color:#238636" title="沿 215 点真实轨迹往前走一个点后停住(不连续播)。旁边显示当前点 ID 与该点 TCP 坐标(mm), 便于按 ID 指认和调位置。快捷键 Alt+→ 前进 / Alt+← 后退。只动仿真, 真机零指令">⏭ 单步 +1 点</button>
+    <button id="bTrajStep" class="sm" style="background:#238636;border-color:#238636" title="沿 215 点真实轨迹往前走一个点后停住(不连续播)。旁边显示当前点 ID 与该点 TCP 坐标(mm), 便于按 ID 指认和调位置。快捷键 Alt+→ 前进 / Alt+← 后退。勾了「真机也走」时: 仿真先走到该点, 停 1 秒, 再让真机跟着走一点(需 8793 授权)">⏭ 单步 +1 点</button>
     <span id="tTrajStep" style="font-size:12.5px;color:#3fb950;margin-left:8px;font-family:ui-monospace,monospace;white-space:nowrap" title="当前停在哪个轨迹点(ID) + 该点 TCP 坐标(mm, base 世界系)">#— · 未开始</span>
   </div>
   <button id="panChip" style="position:fixed;left:16px;top:96px;z-index:55;display:none;background:rgba(13,17,23,.92);border:1px solid #30363d;color:#8b949e;border-radius:14px;padding:4px 10px;font:11px/1.3 ui-monospace,monospace;cursor:pointer" title="中键平移后视角会一直保持; 点这里恢复到自动取景中心">🖱 视角已平移</button>
@@ -5890,6 +5890,57 @@ function rtrajStepIdText(i){
   return '#'+k+' · X'+(p[0]*1000).toFixed(1)+' Y'+(p[1]*1000).toFixed(1)+' Z'+(p[2]*1000).toFixed(1)
        + (f._adj ? ' ·已修正' : '');
 }
+/* ⏭➡️🦾 单步联动真机(老倪 2026-11-16「我点击一步, 虚拟臂走一步, 然后真实机械臂跟着走一步, 中间间隔1秒钟」)
+   时序: 仿真先钉到第 i 点 → 停 1000ms → 读服务端游标 cursor(真机实际走到第几点) → POST /api/arm/step_traj {n:1,start:cursor}
+         → 轮询 /api/arm/step_traj/status 直到 finished, 期间 syncArmFollow 让仿真臂按真值跟随(画面同步)。
+   铁律: 真机下发仍受服务端闸门约束(8793 授权 + 跳变/越界检查), 页面不绕过; 失败必须把原因打到状态行, 不静默。 */
+var STEPREAL={busy:false, poll:null};
+function _stepSt(txt,col){ var t=document.getElementById('tSyncStep'); if(t){ t.textContent=txt; t.style.color=col||'#8b949e'; } }
+function stepRealFollow(i){
+  var cb=document.getElementById('cSyncArm');
+  if(!cb){ _stepSt('单步 · 第 '+i+' 点 · 只动仿真(找不到『真机也走』勾选框)','#d29922'); return; }
+  if(!cb.checked){ _stepSt('单步 · 第 '+i+' 点 · 只动仿真(未勾『真机也走』)','#d29922'); return; }
+  if(STEPREAL.busy){ _stepSt('单步 · 第 '+i+' 点 · 真机还在走上一段, 本次只动仿真','#d29922'); return; }
+  STEPREAL.busy=true;
+  _stepSt('仿真到 #'+i+' · 1s 后让真机跟着走一点…','#58a6ff');
+  setTimeout(function(){
+    fetch('/api/arm/step_traj/status',{cache:'no-store'}).then(function(r){ return r.json(); })
+      .then(function(s){
+        var cur=(s && s.cursor!=null)? s.cursor : 0;
+        _stepSt('真机下发: 游标 '+cur+' → 走 1 点到 #'+(cur+1),'#58a6ff');
+        return fetch('/api/arm/step_traj',{method:'POST',headers:{'Content-Type':'application/json'},
+                     body:JSON.stringify({n:1,start:cur})});
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(!d || !d.ok){
+          STEPREAL.busy=false;
+          var hint=(d&&d.hint)?(' · '+d.hint):'';
+          _stepSt('单步 · 第 '+i+' 点 · 仿真已到, 真机未动: '+((d&&(d.err||d.msg||d.stage))||'失败')+hint,'#f85149');
+          return;
+        }
+        syncArmFollow(true);                     // 真机一动, 仿真按真值跟随
+        var t0=Date.now();
+        if(STEPREAL.poll) clearInterval(STEPREAL.poll);
+        STEPREAL.poll=setInterval(function(){
+          fetch('/api/arm/step_traj/status',{cache:'no-store'}).then(function(r){ return r.json(); })
+            .then(function(s){
+              if(s && s.running){ _stepSt('真机 第 '+(s.done||0)+'/'+(s.n||1)+' 点 · '+(s.elapsed_s||0)+'s','#58a6ff'); return; }
+              if(s && s.finished){
+                clearInterval(STEPREAL.poll); STEPREAL.poll=null; STEPREAL.busy=false;
+                syncArmFollow(false);
+                if(s.ok_all) _stepSt('✅ 单步到位: 仿真 #'+i+' · 真机已走完 · 游标 '+((s.cursor!=null)?s.cursor:(cur+1)),'#3fb950');
+                else _stepSt('⛔ 真机停在 '+(s.n_done||0)+'/'+(s.n||1)+' 点 · '+(s.why||''),'#f85149');
+                return;
+              }
+              if(Date.now()-t0>60000){ clearInterval(STEPREAL.poll); STEPREAL.poll=null; STEPREAL.busy=false;
+                _stepSt('真机状态轮询超时(>60s), 看 zmax_data/rokae_sdk/traj_step_out.log','#f85149'); }
+            }).catch(function(){});
+        },700);
+      })
+      .catch(function(e){ STEPREAL.busy=false; _stepSt('真机请求失败: '+e,'#f85149'); });
+  },1000);                                       // ← 老倪要的 1 秒间隔
+}
 function rtrajStep(delta){
   var d=ensureTrajJoints();
   if(!d || !d.frames || !d.frames.length){ alert('回放数据缺失: '+(RTRAJJ_ERR||'未知')); return; }
@@ -5919,6 +5970,7 @@ function rtrajStep(delta){
   if(el2){ el2.textContent=_txt; el2.style.color='#3fb950'; }
   rtrajUI(true,'单步 · 第 '+i+'/'+(frames.length-1)+' 点 · 真机没动(只动仿真)');
   drawVR();
+  if((delta||0)>0) stepRealFollow(i);             // 前进才联动真机; 后退只动仿真(不让真机倒走)
   return i;
 }
 /* 🎬 元任务 MT-08「轨迹回放」的启动入口 —— 元任务区那个按钮调它。
