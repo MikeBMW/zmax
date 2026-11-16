@@ -2565,7 +2565,7 @@ function drawVR(){
   if(typeof TAB!=='undefined' && TAB.show) drawTable(g, pr);
   // 🧺 周转盘(摆在桌面上)
   if(typeof drawTrayPan==='function' && (typeof __TRAY!=='undefined' && __TRAY)) {
-    try{ drawTrayPan(g, pr, TPAN2); drawTrayPan(g, pr, TPANL); drawTrayPan(g, pr, TPANR); }catch(e){}
+    try{ drawTrayPan(g, pr, TPAN2); drawTrayPan(g, pr, TPANM); drawTrayPan(g, pr, TPANL); drawTrayPan(g, pr, TPANR); }catch(e){}
   }
   // 📦 箱体(移动底盘): 再画箱体, 两臂/相机画在它上面 —— 顶板 z=0 就是两臂安装面
   if(CHS.show) drawChassis(g, pr);
@@ -4371,9 +4371,11 @@ if($('bLreset')) $('bLreset').addEventListener('click', function(){ LARM.q=null;
 // 🙆 双臂伸展按钮 (2026-11-16 老倪): 点一次伸到 45° 最远, 再点一次收回
 if($('bStretch')) $('bStretch').addEventListener('click', function(){ stretchToggle(); });
 // 🧺 周转盘按钮: 两个托盘一起开关(盘一关, 它们的尺寸标签也跟着不画)
+// 🧺 4#方盘: 两个(左上角 + 中间)同一个 SKU, 一起开关
 if($('bPan')) $('bPan').addEventListener('click', function(){
-  TPAN2.show=!TPAN2.show;
-  $('bPan').classList.toggle('on', TPAN2.show);
+  var on=!(TPAN2.show && TPANM.show);
+  TPAN2.show=on; TPANM.show=on;
+  $('bPan').classList.toggle('on', on);
   try{ drawVR(); }catch(e){}
 });
 // 🧺 左右托盘(545×380×25) 一起开关
@@ -4756,7 +4758,10 @@ function beamBox(){
 // 🧺 托盘: L 沿 Y, W 沿 X
 //   (老倪 2026-11-16「删掉 长310 的周转盘」⇒ 310×230×45 那个盘子已删除, 只留 4#方盘)
 // 4#方盘 315×230×40 —— 老倪 2026-11-16: 「桌子中间, 靠着机器人的位置」⇒ 近端桌沿 x0 贴住, 长度方向居中
-var TPAN2={ show:true, name:'4#方盘', L:0.315, W:0.230, H:0.040, wall:0.005, cx:0.985, cy:0.8925,   // 桌子左上角(远端+左臂侧)
+var TPAN2={ show:true, name:'左上盘', L:0.315, W:0.230, H:0.040, wall:0.005, cx:0.985, cy:0.8925,   // 桌子左上角(远端+左臂侧)
+            fill:'#8a5a2b', inner:'#4a2f16', edge:'#e0b070' };
+// 中间那个 4#方盘(老倪「中间的方盘找回来, 不要删啊」): 贴机器人侧近端桌沿, 长度方向居中
+var TPANM={ show:true, name:'中方盘', L:0.315, W:0.230, H:0.040, wall:0.005, cx:0.465, cy:0.250,
             fill:'#8a5a2b', inner:'#4a2f16', edge:'#e0b070' };
 // 左右两侧各一个 545×380×25 托盘(老倪 2026-11-16): 沿桌面长边(Y)贴两头摆, 与 4#方盘留缝
 //   桌面 y 范围 -550~1050, 中心 250 ⇒ 右盘 y -550~-5, 左盘 y 505~1050 (各 545 长, 关于中心对称)
@@ -4816,7 +4821,7 @@ function trayDimDom(pr){
     box=document.createElement('div'); box.id='trayDims';
     box.style.cssText='position:fixed;left:0;top:0;width:0;height:0;pointer-events:none;z-index:60';
     document.body.appendChild(box);
-    for(var i=0;i<9;i++){
+    for(var i=0;i<13;i++){
       var d=document.createElement('div'); d.id='tdim'+i;
       d.style.cssText='position:absolute;white-space:nowrap;transform:translate(-50%,-50%);'
         +'font:700 12px ui-monospace,monospace;color:#ffffff;background:rgba(0,0,0,.92);'
@@ -4834,7 +4839,7 @@ function trayDimDom(pr){
     ['高 '+Math.round(T.h*1000),        pr([x1+0.06, y1+0.06, fl/2])]
   ];
   // 🧺 托盘: 只标长/宽, 不标高
-  [TPAN2].concat(TPANSIDE).forEach(function(T){
+  [TPAN2,TPANM].concat(TPANSIDE).forEach(function(T){
     if(!T.show) return;
     var R=tpanRange(T);
     items.push([T.name+' 长 '+Math.round(T.L*1000), pr([R.x0-0.06, (R.y0+R.y1)/2, T.H])]);
