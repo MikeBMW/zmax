@@ -5,6 +5,7 @@
   /* 🍽 摆盘(/tray)专用按钮: 只在那一个场景出现。ar3d 是三维视图, 不该有盘/托盘/尺寸/从机器人/伸展这些开关。 */
   html:not(.sceneTray) #bPan,
   html:not(.sceneTray) #bMod30,
+  html:not(.sceneTray) #bMod16,
   html:not(.sceneTray) #bDim,
   html:not(.sceneTray) #bSlave,
   html:not(.sceneTray) #bPan5,
@@ -308,6 +309,7 @@
       <button id="bArmL" class="sm on" title="左臂 = 仿真臂: URDF 与右臂相同, 原点固定在右臂世界系 Y=+500mm 处 (X=0,Z=0); 位姿由下面的按钮给">🤖 左臂</button>
       <button id="bPan" class="sm on" title="4#方盘: 显示/隐藏桌子上的 4#方盘(315×230×40mm)">🧺 4#方盘</button>
       <button id="bMod30" class="sm on" title="在左盘里排 30 个光模块: 149.7×22.58mm, 长边沿盘的长边; 3 排(沿长边) × 每排 10 个(沿盘宽)">🔩 3×10 光模块</button>
+      <button id="bMod16" class="sm on" title="左上角 4#方盘(315×230)里排 16 个光模块: 149.7×22.58mm, 长边沿盘的 315 那条边; 每排 8 个挨着放(不留缝) × 2 排 = 16">🔩 左上盘 16 个</button>
       <button id="bDim" class="sm on" title="尺寸: 一键关掉画面上所有的尺寸标注(桌子长/宽/高 + 各个盘的长/宽), 再点回来">📏 尺寸</button>
       <button id="bSlave" class="sm on" title="从机器人: 桌子对面那台, 朝桌子, 和主机器人一起干活(11.16 加)">🤝 从机器人</button>
       <button id="bPan5" class="sm on" title="中上托盘: 桌子中间上方那个 545 长的托盘(545×380×25mm, 宽 380 探出桌面远端边沿 10mm)">🧺 中上托盘</button>
@@ -2585,7 +2587,8 @@ function drawVR(){
   if(typeof drawTrayPan==='function' && (typeof __TRAY!=='undefined' && __TRAY)) {
     try{ drawTrayPan(g, pr, TPAN2); drawTrayPan(g, pr, TPANM); drawTrayPan(g, pr, TPANT);
           drawTrayPan(g, pr, TPAN5); drawTrayPan(g, pr, TPANL); drawTrayPan(g, pr, TPANR);
-          drawMod30(g, pr, MOD30.tray||TPANL); }catch(e){}
+          drawMod30(g, pr, MOD30.tray||TPANL);
+          drawMod16(g, pr, MOD16.tray||TPAN2); }catch(e){}
   }
   // 📦 箱体(移动底盘): 再画箱体, 两臂/相机画在它上面 —— 顶板 z=0 就是两臂安装面
   if(CHS.show) drawChassis(g, pr);
@@ -4401,6 +4404,12 @@ if($('bPan')) $('bPan').addEventListener('click', function(){
   try{ drawVR(); }catch(e){}
 });
 // 🤝 从机器人
+// 🔩 左上盘 16 个光模块开关
+if($('bMod16')) $('bMod16').addEventListener('click', function(){
+  MOD16.show=!MOD16.show;
+  $('bMod16').classList.toggle('on', MOD16.show);
+  try{ drawVR(); }catch(e){}
+});
 // 🔩 30 个光模块开关
 if($('bMod30')) $('bMod30').addEventListener('click', function(){
   MOD30.show=!MOD30.show;
@@ -4854,6 +4863,12 @@ var MOD30={ show:true, tray:null, L:0.1497, W:0.02258, H:0.010, nRowY:3, nColX:1
 //   取**同一个间隙 MOD30.gap** 用在所有相邻块之间(横竖都同一个值, 不是"横 14 竖 28"),
 //   整块在盘内居中 ⇒ 30 块的格子完全等距, 便于逐块抓取不互相挡。
 //   gap=15mm 时: 横向 10×22.58+9×15=361.1 ≤ 内腔 370 ✓; 纵向 3×149.7+2×15=479.1 ≤ 535 ✓
+// 🔩 左上角 4#方盘里的 16 个光模块(老倪 2026-11-16「左上角的方盘, 放16个光模块」+「光模块可以挨着放置」)
+//   盘 TPAN2 = 315(Y) × 230(X) × 40, 壁厚 5 ⇒ 内腔 305 × 220
+//   模块 149.7(长,Y) × 22.58(宽,X): 沿 Y 两排 2×149.7 = 299.4 ≤ 305 ✓; 每排 8 个 8×22.58 = 180.6 ≤ 220 ✓
+//   老倪说可以挨着 ⇒ gap 取 0, 整块 180.6 × 299.4 居中摆(两侧各余 19.7mm / 上下各余 2.8mm)
+var MOD16={ show:true, tray:null, L:0.1497, W:0.02258, H:0.010, nColX:8, nRowY:2, gap:0,
+            name:'左上盘 2×8' };
 var DIM={ show:true };   // 📏 尺寸标注总开关(老倪 2026-11-16「增加一个按钮, 关闭所有尺寸」)
 var SLAVE={ show:true, mx:0.725, my:0.25, x:1.45, y:0.50, half:0.15 };   // y=0.50 = 从机器人自己的右手侧(朝 -X 时右=+Y)
 function slavePr(pr){                       // 世界 → 从机器人的 base 系(绕竖直轴转 180°)
@@ -4956,6 +4971,33 @@ function drawMod30(g,pr,T){
   for(var i=0;i<list.length;i++){
     var m=list[i];
     drawModOne(g,pr,m.x0,m.x1,m.y0,m.y1,ztb,ztt);               // 长边沿 Y ⇒ 模块长轴 = 盘长轴
+  }
+  return k;
+}
+
+// 🔩 左上角方盘里的 16 个(2 排 × 每排 8 个, 挨着放不留缝)
+//   和左盘那 30 个同一套外形(drawModOne: 金属 / 塑料 / 绿拉环), 同样按深度从远到近画, 否则后排会盖住前排的绿拉环
+function drawMod16(g,pr,T){
+  if(!MOD16.show || !T || !T.show || !g || typeof g.beginPath!=='function') return 0;
+  var R=tpanRange(T), w=T.wall;
+  var ix0=R.x0+w, ix1=R.x1-w, iy0=R.y0+w, iy1=R.y1-w;
+  var L=MOD16.L, W=MOD16.W, ztb=0.008, ztt=0.008+MOD16.H;
+  var nX=MOD16.nColX, nY=MOD16.nRowY, gap=MOD16.gap;
+  var bx=nX*W+(nX-1)*gap, by=nY*L+(nY-1)*gap;
+  var sx=(ix0+ix1)/2-bx/2, sy=(iy0+iy1)/2-by/2;
+  var list=[], k=0;
+  for(var r=0;r<nY;r++){
+    for(var c=0;c<nX;c++){
+      var ccx=sx+W/2+c*(W+gap), ccy=sy+L/2+r*(L+gap);
+      var q=pr([ccx,ccy,ztt]);
+      list.push({x0:ccx-W/2, x1:ccx+W/2, y0:ccy-L/2, y1:ccy+L/2, z:(q&&q.z!=null)?q.z:0});
+      k++;
+    }
+  }
+  list.sort(function(a,b){ return b.z-a.z; });
+  for(var i=0;i<list.length;i++){
+    var m=list[i];
+    drawModOne(g,pr,m.x0,m.x1,m.y0,m.y1,ztb,ztt);
   }
   return k;
 }
@@ -7003,7 +7045,7 @@ document.head.appendChild(st);
   }catch(e){}
 
   // ② 左栏白名单: 只留"看场景"的开关; 回放/单步/同步/轨迹/围栏这些摆盘还没定义, 一律收起
-  var KEEP={'bFrames':1,'bUrdf':1,'bMod':1,'bArmR':1,'bArmL':1,'bStretch':1,'bPan':1,'bPan5':1,'bPanSide':1,'bSlave':1,'bDim':1,'bMod30':1,
+  var KEEP={'bFrames':1,'bUrdf':1,'bMod':1,'bArmR':1,'bArmL':1,'bStretch':1,'bPan':1,'bPan5':1,'bPanSide':1,'bSlave':1,'bDim':1,'bMod30':1,'bMod16':1,
             'bCamTop':1,'bChs':1,'bTab':1,'bFlr':1,'bSim':1};
   // 🚫 老倪 2026-11-16 陆续点名不要: MuJoCo同视角(bMj) / 位置细胞(bCells) / 8802直播(bLiv) / 自动环绕(bSpin)
   //    理想档回放(idealBtn, 112段按本节拍) 也不在这条摆盘场景里 ⇒ 下面 trim 里显式按 id 隐藏
