@@ -1785,6 +1785,70 @@ def _gold_roi_hold(port, roi, tol_y=6, tol_x=12, need=3):
         return roi
 
 
+def _gold_row_auto(bgr, pad_frac: float = 0.25):
+    """🔍 自动找**金属连接片那一横排**(老倪 2026-11-17: 「判据图需要你显示金属连接片」)。
+
+    为什么不用 /region 的模板框: 实测同一帧 template 框落在 y=960~1036(模块外壳边),
+    而真正的金属片排(等宽亮条 + 暗缝, 节距 50~70px)在 y≈1770~1850 —— 框错了地方
+    ⇒ 判据图裁出来是一条没有金属片的边, 现场"看不到金手指"。
+
+    判据 = 行带的 **列方向自相关峰(周期结构) × 对比度**, 两者都高才算数;
+    找不到(score 低/对比低)就返回 None, 由调用方回落到旧口径(不硬编一条错的)。
+    """
+    try:
+        g = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32) if bgr.ndim == 3 else bgr.astype(np.float32)
+        H, W = g.shape
+        sc = min(1.0, 1200.0 / float(max(1, W)))
+        small = cv2.resize(g, (int(W * sc), int(H * sc)), interpolation=cv2.INTER_AREA) if sc < 1.0 else g
+        h, w = small.shape
+        best = None
+        for hh in (40, 50, 60, 70, 80, 90, 110, 130):
+            if hh >= h:
+                continue
+            for y in range(int(h * 0.15), h - hh, max(6, hh // 8)):
+                b = small[y:y + hh]
+                pr = b.mean(axis=0)
+                pr = pr - float(pr.mean())
+                sd = float(pr.std())
+                if sd < 6.0:
+                    continue
+                ac = np.correlate(pr, pr, "full")[len(pr) - 1:]
+                ac = ac / (float(ac[0]) + 1e-9)
+                lo = max(20, int(40 * sc))
+                hi = min(len(ac) - 1, int(100 * sc))
+                if hi <= lo:
+                    continue
+                seg = ac[lo:hi]
+                lag = lo + int(np.argmax(seg))
+                r = float(ac[lag])
+                score = r * min(1.0, sd / 45.0)
+                if best is None or score > best["score"]:
+                    best = {"score": score, "y0": int(y / sc), "y1": int((y + hh) / sc),
+                            "pitch": float(lag / sc), "r": r, "contrast": sd,
+                            "mean": float(b.mean())}
+        if best is None or best["r"] < 0.55 or best["contrast"] < 15.0:
+            return None
+        # 留一点上下余量(金属片上下沿), 但不吞进别的结构
+        _pad = int((best["y1"] - best["y0"]) * float(pad_frac))
+        y0 = max(0, best["y0"] - _pad)
+        y1 = min(H, best["y1"] + _pad)
+        # 横向: 只留"有成排亮条"的列跨度(左右各留 1%)
+        band = g[y0:y1]
+        colm = band.mean(axis=0)
+        thr = float(np.median(colm))
+        cols = np.where(colm > thr * 0.8)[0]
+        x0 = int(cols[0]) if len(cols) else 0
+        x1 = int(cols[-1]) + 1 if len(cols) else W
+        mx = int((x1 - x0) * 0.01)
+        x0 = max(0, x0 - mx)
+        x1 = min(W, x1 + mx)
+        best.update({"x0": x0, "x1": x1, "h": y1 - y0, "w": x1 - x0,
+                     "rule": "列自相关周期(40~100px) × 对比度, 阈值 r≥0.55 & 对比≥15"})
+        return best
+    except Exception:                                                             # noqa: BLE001
+        return None
+
+
 def _gold_natural_bgr(bgr, port=None):
     """取「原比例条带」的 BGR 版(判据图**同一裁剪口径**), 供透视矫正用; 不出条带返回 None。
 
@@ -1796,6 +1860,13 @@ def _gold_natural_bgr(bgr, port=None):
       · 找不到 ROI ⇒ 回落旧口径 clean_judge_frame(零回退风险)。"""
     try:
         from aoi_exposure_fix import gold_roi, clean_judge_frame
+        # 🆕 2026-11-17 老倪「判据图需要你显示金属连接片」: 先用**周期结构**定位金属片那一横排
+        #   (/region 的模板框实测落在模块外壳边 y≈960~1036, 裁出来根本没有金属片)。
+        _row = _gold_row_auto(bgr)
+        if _row is not None:
+            _GOLD_ROI_INFO[int(port or 0)] = {"row_auto": _row,
+                                              "src": "金属连接片排(列自相关周期×对比度)"}
+            return bgr[_row["y0"]:_row["y1"], _row["x0"]:_row["x1"]].copy()
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         roi, info = gold_roi(rgb)
         if roi is not None:
@@ -2562,14 +2633,14 @@ def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0
                         else:
                             # 🔴 2026-10-12: 几何**恒定**(锚在锁定的条带上), 绿框单独跟"工件在位"判定
                             #   ⇒ 不再逐帧在"有框/无框/旧渲染"之间换脸(老倪「还在跳变」的主因)。
-                            _r0, _m0 = _gold_rectify(_pre, stretch=8.0, hw=(900, 2200), lock_key=port)
+                            _r0, _m0 = _gold_rectify(_pre, stretch=5.0, hw=(900, 2200), lock_key=port)
                             _lat = _m0.get("lattice") or {}
                             _inplace = _gold_rect_vote(port, float(_lat.get("r") or 0.0),
                                                        bool(_lat.get("ok")))
-                            _r1, _m1 = _gold_rectify(_pre, stretch=8.0, hw=(900, 2200), force_box=_inplace, lock_key=port)
+                            _r1, _m1 = _gold_rectify(_pre, stretch=5.0, hw=(900, 2200), force_box=_inplace, lock_key=port)
                             _rj, _rm = (_r1, _m1) if _r1 else (_r0, _m0)
                             if not _rj and _inplace:                     # 保障: 自检不过但在位 ⇒ 只出几何
-                                _r2, _m2 = _gold_rectify(_pre, stretch=8.0, hw=(900, 2200), skip_lattice=True)
+                                _r2, _m2 = _gold_rectify(_pre, stretch=5.0, hw=(900, 2200), skip_lattice=True)
                                 _rj, _rm = (_r2 or _r0), (_m2 or _m0)
                             _rm = dict(_rm or {})
                             _rm["inplace"] = bool(_inplace)
@@ -2578,7 +2649,7 @@ def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0
                         if _pre is not None:
                             # 复用已经裁好的条带(不再第二次 clean) ⇒ 回落也不拖慢刷新节奏
                             jpg, meta = _gold_legacy_from_natural(
-                                _pre, deskew_deg=_aoi_gold_angle(port), vstretch=8.0,
+                                _pre, deskew_deg=_aoi_gold_angle(port), vstretch=5.0,
                                 fix_hw=None, quality=90, out=2200)
                         else:
                             jpg, meta = _aoi_frame(bgr, clean=True, natural=True,
