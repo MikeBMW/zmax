@@ -2754,9 +2754,7 @@ function drawVR(){
   }
   g.fillStyle='#6b7a8d'; g.font='12px monospace';
   g.fillText('base 系 · 地面 = xy 平面 (z=0) · 0.1m 网格 · 拖动旋转'+(VR.frames?' · 🧭 红X/绿Y/蓝Z 三个坐标系':''),8,14);
-  $('pVr').textContent=(((typeof __TRAY!=='undefined'&&__TRAY)
-      ? '桌子 长'+Math.round(TAB.w*1000)+' × 宽'+Math.round((TAB.x1-TAB.x0)*1000)+' × 高'+Math.round(TAB.h*1000)+' mm · ' : '')
-    + ((SHOW||nPl)?`实测轨迹 ${nTr} 点 · 规划航路 ${nPl} 点(洋红粗线) · ${tcpTxt}`:'轨迹已隐藏(默认) · '+tcpTxt))+frTxt;
+  $('pVr').textContent=((SHOW||nPl)?`实测轨迹 ${nTr} 点 · 规划航路 ${nPl} 点(洋红粗线) · ${tcpTxt}`:'轨迹已隐藏(默认) · '+tcpTxt)+frTxt;
 }
 // 🖱 滚轮缩放 (老倪 2026-10-25: 「三维视图需要用鼠标滚轮可以缩放, 现在无法调整」)
 $('vr').addEventListener('wheel',(e)=>{ e.preventDefault();
@@ -4602,12 +4600,12 @@ function trayDimDom(pr){
     box=document.createElement('div'); box.id='trayDims';
     box.style.cssText='position:fixed;left:0;top:0;width:0;height:0;pointer-events:none;z-index:60';
     document.body.appendChild(box);
-    for(var i=0;i<4;i++){
+    for(var i=0;i<3;i++){
       var d=document.createElement('div'); d.id='tdim'+i;
       d.style.cssText='position:absolute;white-space:nowrap;transform:translate(-50%,-50%);'
         +'font:700 15px ui-monospace,monospace;color:#ffffff;background:rgba(0,0,0,.92);'
         +'border:1.5px solid #ffffff;border-radius:5px;padding:2px 7px;letter-spacing:.3px;'
-        +(i===3?'font-size:14px;':'');
+        ;
       box.appendChild(d);
     }
   }
@@ -4617,9 +4615,7 @@ function trayDimDom(pr){
   var items=[
     ['长 '+Math.round(T.w*1000),        pr([x1+0.12, (y0+y1)/2, 0])],
     ['宽 '+Math.round((x1-x0)*1000),    pr([(x0+x1)/2, y0-0.12, 0])],
-    ['高 '+Math.round(T.h*1000),        pr([x1+0.06, y1+0.06, fl/2])],
-    ['桌子 长'+Math.round(T.w*1000)+' × 宽'+Math.round((x1-x0)*1000)+' × 高'+Math.round(T.h*1000)+' mm',
-       pr([(x0+x1)/2, y1+0.28, 0])]
+    ['高 '+Math.round(T.h*1000),        pr([x1+0.06, y1+0.06, fl/2])]
   ];
   for(var k=0;k<items.length;k++){
     var d=document.getElementById('tdim'+k); if(!d) continue;
