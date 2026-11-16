@@ -2428,6 +2428,48 @@ function drawVR(){
       g.fillText('👻 预览末端'+(PREV.err_mm!=null?' '+PREV.err_mm.toFixed(1)+'mm':''), e.u+9, e.v-7);
     }
   }
+  // 🎬 215 点轨迹回放: 仿真末端也要能看到光模块 + tool1(模块头)坐标系
+  //   老倪 2026-11-16: 「回放的时候，在右臂仿真末端，也要看到光模块和 tool1 的模块头坐标系」
+  //   为什么要单独一段: 上面那三个坐标系画的是**真机**的 TCP.frames(来自 /api/tcp);
+  //   回放时动的是紫色幽灵臂, 它的 tool1 不在 TCP.frames 里 ⇒ 不补这段就只有光秃秃一条臂。
+  //   模块姿态沿用既有口径: 长轴∥世界 X(与料盘同姿态), 不跟 tool1 的腕部朝向走;
+  //   夹持区间按轨迹真值 #9 合 → #205 开, 区间外模块已放下, 不该再跟着手飘。
+  var _rpOn = (typeof RTRAJ!=='undefined' && (RTRAJ.playing || RTRAJ.joints))
+           || (typeof RTRAJ_FOLLOW!=='undefined' && RTRAJ_FOLLOW.on);
+  if(_rpOn && PREV.on && PREV.M && PREV.M['tool1'] && VR.simArm!==false){
+    var _rpT1=PREV.M['tool1'], _rpL=(MODSPEC.L_mm||56.5)/1000;
+    var _rpFi=(typeof RTRAJ!=='undefined' && RTRAJ.fi!=null)?RTRAJ.fi:0;
+    if(_rpFi>=9 && _rpFi<=205){
+      drawFlatModule(g, pr, [_rpT1.t[0]+_rpL/2, _rpT1.t[1], _rpT1.t[2]], '#a3e635', {alpha:0.9, lw:2.6});
+      // 模块中心打一个亮点 + 文字, 免得整幅三维里只有几根细线找不到(老倪目检口径: 画面要自己说明白)
+      var _rpM=pr([_rpT1.t[0]+_rpL/2, _rpT1.t[1], _rpT1.t[2]]);
+      if(_rpM){
+        g.fillStyle='#a3e635'; g.beginPath(); g.arc(_rpM.u,_rpM.v,3.4,0,Math.PI*2); g.fill();
+        g.strokeStyle='#0d1117'; g.lineWidth=1.2; g.stroke();
+        g.fillStyle='#a3e635'; g.font='bold 11px monospace';
+        g.fillText('光模块', _rpM.u+7, _rpM.v-6);
+      }
+    }
+    if(VR.frames){
+      var _rpAX=_cols(_rpT1.R), _rpC=['#ff5d5d','#5dff8f','#5db8ff'], _rpLN=0.13;
+      for(var _rpk=0;_rpk<3;_rpk++){
+        var _rpd=_rpAX[_rpk];
+        var _rpa=pr(_rpT1.t);
+        var _rpb=pr([_rpT1.t[0]+_rpd[0]*_rpLN, _rpT1.t[1]+_rpd[1]*_rpLN, _rpT1.t[2]+_rpd[2]*_rpLN]);
+        if(!_rpa||!_rpb) continue;
+        g.strokeStyle=_rpC[_rpk]; g.lineWidth=3.5;
+        g.beginPath(); g.moveTo(_rpa.u,_rpa.v); g.lineTo(_rpb.u,_rpb.v); g.stroke();
+        // 轴端小方点: 视线被机械臂挡住时也能辨认这条轴存在
+        g.fillStyle=_rpC[_rpk]; g.fillRect(_rpb.u-2.5,_rpb.v-2.5,5,5);
+      }
+      var _rpq=pr(_rpT1.t);
+      if(_rpq){
+        g.fillStyle='#e6edf3'; g.beginPath(); g.arc(_rpq.u,_rpq.v,3,0,Math.PI*2); g.fill();
+        g.fillStyle='#c4b5fd'; g.font='bold 11px monospace';
+        g.fillText('tool1(模块头·仿真)', _rpq.u+7, _rpq.v+15);
+      }
+    }
+  }
   // 🔌 插入仿真: 手里的模块跟着幽灵臂 tool1 走; 插完就留在孔里(767→814)
   if(typeof INSIM!=='undefined' && (INSIM.carry || INSIM.inserted)){
     if(INSIM.carry && PREV.M && PREV.M['tool1'] && VR.simArm!==false){
@@ -5650,7 +5692,10 @@ function drawModuleAt(g, pr, O, AX, fillHead, strokeCol){
 // 料盘里的模块(躺平): **长轴沿世界 X**, 宽沿 Y, 厚沿 Z —— 只画 12 条棱, 28 个也不卡
 // 老倪 2026-10-27 纠正: 「1号位到7号位的位姿, 光模块的位姿, 长度方向几乎都是与 x 轴平行的,
 //   误差来自于料盘槽位的间隙; 理论上光模块都是平行于 x 轴摆放的, 而且都是整齐放置」
-function drawFlatModule(g, pr, c, col){
+function drawFlatModule(g, pr, c, col, opt){
+  // opt 可选: {alpha, lw} —— 回放末端那个模块要更实、边更粗(在整幅三维里 55% 半透明+1.7px 几乎看不见)
+  const A = (opt && opt.alpha != null) ? opt.alpha : 0.55;
+  const LW = (opt && opt.lw != null) ? opt.lw : 1.7;
   const L=(MODSPEC.L_mm||56.5)/2000, W=(MODSPEC.W_mm||13.4)/2000, T=(MODSPEC.T_mm||8.5)/2000;
   const pts=[];
   for(const sx of [-1,1]) for(const sy of [-1,1]) for(const sz of [-1,1])
@@ -5662,8 +5707,8 @@ function drawFlatModule(g, pr, c, col){
   const top=[P[1],P[3],P[7],P[5]];
   g.beginPath(); g.moveTo(top[0].u,top[0].v);
   for(let i=1;i<4;i++) g.lineTo(top[i].u,top[i].v);
-  g.closePath(); g.globalAlpha=0.55; g.fillStyle=col; g.fill(); g.globalAlpha=1;
-  g.strokeStyle=col; g.lineWidth=1.7; g.globalAlpha=0.95;
+  g.closePath(); g.globalAlpha=A; g.fillStyle=col; g.fill(); g.globalAlpha=1;
+  g.strokeStyle=col; g.lineWidth=LW; g.globalAlpha=0.95;
   for(const [a,b] of E){ g.beginPath(); g.moveTo(P[a].u,P[a].v); g.lineTo(P[b].u,P[b].v); g.stroke(); }
   g.globalAlpha=1;
 }
