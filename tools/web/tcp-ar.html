@@ -75,6 +75,11 @@
  body.vrfull #vrRail>pre{display:none!important}
  body.vrfull #vrRail::before{content:"🧭 三维视图";display:block;font:700 13px system-ui,sans-serif;
    color:#c9a6ff;letter-spacing:.5px;padding:2px 2px 6px;border-bottom:1px solid #21262d;margin-bottom:2px}
+ /* 🧩 摆盘场景页(/tray): 标题换掉, 场景开关排成紧凑竖列 */
+ body.tray #vrRail::before{content:"🍽 摆盘场景"}
+ body.tray #vrRail{gap:5px}
+ body.tray #vrRail .row{gap:5px!important}
+ body.tray #vrRail .row>button{padding:7px 9px;font-size:13px}
  /* 🧠 状态空间 执行信号开关 (拨杆式 —— 2026-10-28 老倪: 「增加一个开关（不是按钮）」) */
  .ssw{position:relative;display:inline-block;width:54px;height:27px;border-radius:14px;flex:0 0 auto;
    background:#21262d;border:1px solid #30363d;cursor:pointer;transition:background .16s,border-color .16s}
@@ -527,7 +532,12 @@ const $=(id)=>document.getElementById(id);
 //   /ar3d = 独立三维页。版式必须在**脚本最前面**定下来: 放到 loadCams() 里做要等 /api 返回,
 //   那一瞬间整页(页头+按钮+相机)会先闪出来 ⇒ 现场看着就是"还是原来那页"。等价写法 ?vr=full / ?bare=1
 const __USP = new URLSearchParams(location.search);
-const __BARE = (location.pathname.replace(/\/+$/,'') === '/ar3d') || __USP.get('vr')==='full' || __USP.get('bare')==='1';
+// 🧩 摆盘场景页(/tray) —— 与 /ar3d 同一套引擎、同一台机器人/桌子/箱体/中央相机, 只是场景默认值与左栏白名单不同
+//    老倪 2026-11-16: 「仿照这个场景, 再做一个场景, 摆盘场景服务的页面, 也是同样的机器人和桌子,
+//    具体的操作我来重新定义。你先把桌子和机器人双臂, 箱体, 中央相机画好。坐标系, 光模块 tool1 都先画上。」
+const __TRAY = (location.pathname.replace(/\/+$/,'') === '/tray') || __USP.get('scene')==='tray';
+const __BARE = (location.pathname.replace(/\/+$/,'') === '/ar3d') || __TRAY || __USP.get('vr')==='full' || __USP.get('bare')==='1';
+if(__TRAY){ document.body.classList.add('tray'); }
 if(__BARE || __USP.get('vr')==='1'){ document.body.classList.add('vronly'); }
 if(__BARE){ document.body.classList.add('vrfull'); }
 // 📍 工程配置点位台账(见 drawCfgPts) —— 必须**在脚本最前面**声明:
@@ -6196,6 +6206,65 @@ async function loadCams(){
       if(typeof paintNamedBtns==='function') paintNamedBtns();
     }catch(e){}
   }
+  // 🍽 摆盘场景页(/tray): 场景元素全开 + 左栏只留场景开关; 摆盘的具体操作等老倪定义后再往这里加按钮
+  if(__TRAY){ traySceneInit(); }
+}
+// ── 🍽 摆盘场景初始化 (与 /ar3d 共用同一套引擎与几何, 不另写渲染) ──────────────
+//   老倪 2026-11-16: 「同样的机器人和桌子…你先把桌子和机器人双臂, 箱体, 中央相机画好。
+//   坐标系, 光模块 tool1 都先画上。」⇒ 默认把这几样全打开, 操作区留空等他定义。
+function traySceneInit(){
+  // ① 场景元素全开(幂等设值, 不 toggle —— toggle 会把本来就是开的关掉)
+  try{
+    VR.frames=true; VR.urdf=true; VR.mod=true; VR.simArm=true; VR.real=true;
+    CHS.show=true; FLR.show=true; TCAM.show=true;
+    TAB.show=true;                              // ⚠ 实验桌在 /ar3d 默认是关的, 摆盘场景必须打开
+    [['bFrames',true],['bUrdf',true],['bMod',true],['bArmR',true],['bArmReal',true],
+     ['bArmL',true],['bCamTop',true],['bChs',true],['bTab',true],['bFlr',true]
+    ].forEach(function(kv){ var b=$(kv[0]); if(b) b.classList.toggle('on', !!kv[1]); });
+  }catch(e){ console.warn('[tray] scene defaults:', e); }
+
+  // ①b 取景: /ar3d 的 vrFitBox 只按**臂的点云**算包围盒, 桌子(1600mm 长)会被画布边缘切掉
+  //     ⇒ 摆盘场景固定一个"装得下桌+箱体+双臂+中央相机"的机位(实测 980×577 下四角留边 14px)
+  try{
+    VR.auto=false;                              // 关掉自动取景, 免得每帧又跳回去把桌子切掉
+    VR.tgt=[0.55, 0.30, 0.10];
+    VR.dist=1.80;
+  }catch(e){}
+
+  // ② 左栏白名单: 只留"看场景"的开关; 回放/单步/同步/轨迹/围栏这些摆盘还没定义, 一律收起
+  var KEEP={'bSpin':1,'bFrames':1,'bUrdf':1,'bMod':1,'bArmR':1,'bArmReal':1,'bArmL':1,
+            'bCamTop':1,'bChs':1,'bTab':1,'bFlr':1,'bSim':1,'bMj':1,'bCells':1,'bLiv':1};
+  function trim(){
+    try{
+      var rail=document.getElementById('vrRail');
+      if(!rail) return;
+      // 只保留 15 个场景开关的**祖先链**, 其余元素(按钮/输入框/提示文字/整块操作区)全部隐藏。
+      // 逐块判断而不是逐个按钮: 否则像「相对点数」「游标 215/215」「真机也走」「左臂位姿」这些
+      // 不是按钮的残留会留一排在页面上。
+      var kept=[].filter.call(rail.querySelectorAll('button'), function(b){ return b.id && KEEP[b.id]; });
+      var chain=new Set();
+      kept.forEach(function(b){ var p=b; while(p && p!==rail){ chain.add(p); p=p.parentElement; } });
+      (function walk(el){
+        [].forEach.call(el.children, function(c){
+          if(chain.has(c)){ walk(c); } else { c.style.display='none'; }
+        });
+      })(rail);
+      kept.forEach(function(b){ b.style.display=''; });
+      // 摆盘操作未定义 ⇒ 底部回放条 / 生产演练面板 / 姿态脚注 不占屏幕
+      var br=[].find.call(document.querySelectorAll('button'), function(b){ return /▶ 回放/.test(b.textContent||''); });
+      if(br){ var d1=br.parentElement, d2=d1&&d1.parentElement, d3=d2&&d2.parentElement;
+              if(d2) d2.style.display='none'; if(d3) d3.style.display='none'; }
+      var mk=document.getElementById('mktDock'); if(mk) mk.style.display='none';
+      [].forEach.call(document.querySelectorAll('div,span'), function(e){
+        if(e.children.length===0 && /姿态: 死值常量/.test(e.textContent||'')) e.style.display='none';
+      });
+    }catch(e){ console.warn('[tray] trim:', e); }
+  }
+  trim();
+  // 工程配置点位/轨迹是 fetch 之后才渲染的 ⇒ 多拍几次, 别只拍一次
+  [200,600,1500,3000,6000].forEach(function(t){ setTimeout(trim, t); });
+  try{ drawVR(); }catch(e){}
+  document.title='Z-MAX 摆盘场景 · 双臂 + 实验桌 + 箱体 + 顶视相机';
 }
 
 // ═══ 取帧泵 (2026-10-18 老倪: 「怎么一会黑屏一下」「别总黑屏啊」) ═══

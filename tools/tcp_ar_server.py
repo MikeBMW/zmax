@@ -1690,7 +1690,8 @@ class H(BaseHTTPRequestHandler):
             return
         try:
             if p in ("/", "/tcp-ar", "/tcp-ar.html", "/ar",
-                     "/ar3d", "/ar3d.html", "/arvr"):
+                     "/ar3d", "/ar3d.html", "/arvr",
+                     "/tray", "/tray.html", "/baipan"):          # 🍽 摆盘场景页(2026-11-16 老倪): 同一份页面, 前端按 path 换场景默认值+白名单
                 # 🧭 /ar3d = 独立三维页(同一份页面, 前端按 path 进 vrfull 模式: 一屏只有三维视图)
                 with open(PAGE, "rb") as f:                                       # 热读: 改页面不用重启
                     self._send(200, "text/html; charset=utf-8", f.read())
