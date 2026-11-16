@@ -2574,7 +2574,7 @@ function drawVR(){
   // 📦 箱体(移动底盘): 再画箱体, 两臂/相机画在它上面 —— 顶板 z=0 就是两臂安装面
   if(CHS.show) drawChassis(g, pr);
   // 🤝 从机器人(桌面对面)
-  if(typeof __TRAY!=='undefined' && __TRAY && typeof drawSlaveArm==='function'){ try{ drawSlaveArm(g, pr); }catch(e){} }
+  if(typeof __TRAY!=='undefined' && __TRAY && typeof drawSlaveTop==='function'){ try{ drawSlaveTop(g, pr); }catch(e){} }
   // 🦾 URDF 外形: 正运动学已在 drawVR 开头算好(取景要用同一份), 这里只负责画
   // 🍽 摆盘场景: 右臂只有一个开关(VR.armShow) —— 真机臂(VR.real)与仿真臂(VR.simArm)由它统一管,
   //    否则 bArmReal 在摆盘里被隐藏后, 真机臂没有任何开关能关掉, 点「右臂」看着没反应(老倪 2026-11-16)
@@ -4801,20 +4801,27 @@ var TPANSIDE=[TPANL, TPANR];
 // 🤝 从机器人(老倪 2026-11-16「桌子对面, 再增加一个从机器人, 方向是朝着桌子, 这两个机器人要一起合作」)
 //   主机器人在桌子近端(x<350)朝 +X; 从机器人放在桌子远端对面 x=1.45m, y=桌面中心 0.25m, 绕 Z 转 180° 朝 -X。
 //   臂直接用右臂的 URDF+FJK 结果镜像过去(同一套连杆, 只换刚体变换), 底座画一根到地面的立柱。
-var SLAVE={ show:true, x:1.45, y:0.25, half:0.15 };
-// 立柱: 地面 z=-0.75 到臂安装面 z=0 —— 必须在画桌子之前画, 否则会"透"到桌面前面
+//   老倪 2026-11-16 补充:「单臂机器人, 也有箱体, 也有中央相机, 只不过是单臂」
+//   ⇒ 从机器人 = 箱体(同款 600×800×750 本体680+轮70) + 中央顶视相机(立柱Ø140 + D435) + **一条**臂
+//   实现: 整个 base 系绕竖直轴转 180°, 旋转中心取 (0.725, 0.25) 这半边 ⇒ 箱体/相机直接复用
+//   drawChassis/drawTopCam, 只是换一个投影函数 prS; 臂用 drawUrdf 的刚体变换参数 X。
+var SLAVE={ show:true, mx:0.725, my:0.25, x:1.45, y:0.25, half:0.15 };
+function slavePr(pr){                       // 世界 → 从机器人的 base 系(绕竖直轴转 180°)
+  var mx=SLAVE.mx, my=SLAVE.my;
+  return function(w){ return pr([2*mx-w[0], 2*my-w[1], w[2]]); };
+}
+// 箱体: 必须在画桌子之前画, 否则会"透"到桌面前面
 function drawSlaveBase(g,pr){
   if(!SLAVE.show || !g || typeof g.beginPath!=='function') return;
-  var B=SLAVE;
-  _box3(g,pr, B.x-B.half, B.y-B.half, B.y+B.half, B.x+B.half, 0, -0.75, '#2a3a52', '#7c9cc4');
-  _box3(g,pr, B.x-B.half*0.72, B.y-B.half*0.72, B.y+B.half*0.72, B.x+B.half*0.72, -0.02, -0.70, '#22304a', '#7c9cc4', .95);
+  if(typeof drawChassis==='function'){ try{ drawChassis(g, slavePr(pr)); }catch(e){} }
 }
-// 臂: 右臂 FK 绕 Z 转 180°(朝桌子), 平移到对面; 桌子之后画, 这样臂在桌面上方可见
-function drawSlaveArm(g,pr){
+// 中央相机 + 一条臂: 桌子之后画(在桌面上方可见)
+function drawSlaveTop(g,pr){
   if(!SLAVE.show || !g || typeof g.beginPath!=='function') return;
+  if(typeof drawTopCam==='function' && TCAM && TCAM.show!==false){ try{ drawTopCam(g, slavePr(pr)); }catch(e){} }
   if(typeof LINKM!=='undefined' && LINKM && typeof drawUrdf==='function'){
-    var B=SLAVE, R=[[-1,0,0],[0,-1,0],[0,0,1]];
-    drawUrdf(g, pr, LINKM, {R:R, t:[B.x, B.y, 0], fill:'#46648c', stroke:'#a8c6ea', alpha:1});
+    var R=[[-1,0,0],[0,-1,0],[0,0,1]];
+    drawUrdf(g, pr, LINKM, {R:R, t:[SLAVE.x, SLAVE.y, 0], fill:'#46648c', stroke:'#a8c6ea', alpha:1});
   }
 }
 function tpanRange(T){
