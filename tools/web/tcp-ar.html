@@ -6652,12 +6652,26 @@ async function loadCams(){
         return r;
       };
     }
+    // 注记文字关掉后, 注记的**黑色底板**还会照画(fillText 被拦, fillRect 不受影响) ⇒
+    //   摆盘场景里把「注记专用」的深黑半透明底板也一起拦掉, 否则画面上剩一堆黑框(老倪 2026-11-16)
+    var _fr=P.fillRect;
+    if(typeof _fr==='function'){
+      P.fillRect=function(x,y,w,h){
+        if((typeof __TRAY!=='undefined'&&__TRAY) && window.VR_TEXT===false){
+          var c=String(this.fillStyle||'');
+          if(/^rgba\(\s*0\s*,\s*0\s*,\s*0\s*,\s*0?\.(7|8|9)/.test(c) || /^#0{3,6}$/i.test(c)) return;
+        }
+        return _fr.apply(this,arguments);
+      };
+    }
     P.__trayWhiteText=true;
   }catch(e){ console.warn('注记白字补丁失败', e); }
 })();
 
 function traySceneInit(){
-  window.VR_TEXT=true;   // 🍽 摆盘场景: 注记文字要显示(否则只剩黑底板), 颜色由上面的补丁统一刷白
+  // 🍽 摆盘场景: 3D 里的注记文字全关(老倪 2026-11-16「除了桌子的尺寸, 其它的白色文字全都隐藏」)
+  //    ⇒ 一条注记都不画(连黑底板也不出现), 只留 HTML 覆盖层那几块尺寸标签(桌子长/宽/高 + 周转盘长/宽)
+  window.VR_TEXT=false;
   // ① 场景元素全开(幂等设值, 不 toggle —— toggle 会把本来就是开的关掉)
   try{
     VR.frames=true; VR.urdf=true; VR.mod=true; VR.simArm=true; VR.real=true;
