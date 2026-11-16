@@ -4835,7 +4835,12 @@ var TPANSIDE=[TPANL, TPANR];
 //   沿盘宽(X) 10 个 × 22.58 = 225.8 ≤ 370 ✓ ⇒ 3 排(沿长边叠) × 每排 10 个(沿盘宽) = 30 个, 整块居中。
 //   老倪原话「每排10个」若按"10 个沿长边排"理解放不下(10×149.7=1497mm), 这里按能放下的那个轴向解读。
 var MOD30={ show:true, tray:null, L:0.1497, W:0.02258, H:0.010, nRowY:3, nColX:10, gap:0.015,
-             fill:'#c8b26a', edge:'#ffe9a8' };
+             fill:'#c8b26a', edge:'#ffe9a8',
+             // 🔩 光模块外形(老倪 2026-11-16「前半部分是金属, 后半部分是塑料拉环, 拉环是绿色的」)
+             //   沿长边的分段比例: 0~0.66 金属壳 / 0.66~0.93 塑料尾 / 0.93~1.0 绿色拉环(比模块薄)
+             metal_fill:'#b9c0c8', metal_edge:'#eef3f9',
+             plast_fill:'#3c444f', plast_edge:'#6e7b8c',
+             ring_fill:'#2ee05f',  ring_edge:'#d2ffdd', ring_h:0.0132, fMetal:0.60, fPlast:0.78 };
 // 均匀分布(老倪 2026-11-16「光模块要有一定的间隙, 均匀分布」):
 //   取**同一个间隙 MOD30.gap** 用在所有相邻块之间(横竖都同一个值, 不是"横 14 竖 28"),
 //   整块在盘内居中 ⇒ 30 块的格子完全等距, 便于逐块抓取不互相挡。
@@ -4926,16 +4931,46 @@ function drawMod30(g,pr,T){
   var pitchX=W+gap, pitchY=L+gap;
   var bx=nX*W+(nX-1)*gap, by=nY*L+(nY-1)*gap;                   // 整块尺寸
   var sx=(ix0+ix1)/2-bx/2, sy=(iy0+iy1)/2-by/2;                 // 整块在盘内居中
-  var k=0;
+  // 🔴 必须按深度从远到近画: 每块 149.7mm 长、行距只有 164.7mm, 斜视时后一排会盖住前一排的尾部 —
+  //   而"尾部"正是绿色拉环, 不排序就会出现"画了 30 个绿环却一个都看不见"(实测 ring 像素差 2px)。
+  //   pr() 返回的 z 就是该点离相机的深度, 直接用它排。
+  var list=[], k=0;
   for(var r=0;r<nY;r++){
     for(var c=0;c<nX;c++){
       var ccx=sx+W/2+c*pitchX, ccy=sy+L/2+r*pitchY;             // 模块中心
-      var x0=ccx-W/2, x1=ccx+W/2, y0=ccy-L/2, y1=ccy+L/2;
-      _box3(g,pr,x0,y0,y1,x1,ztt,ztb,MOD30.fill,MOD30.edge);   // 长边沿 Y ⇒ 模块长轴 = 盘长轴
+      var q=pr([ccx,ccy,ztt]);
+      list.push({x0:ccx-W/2, x1:ccx+W/2, y0:ccy-L/2, y1:ccy+L/2, z:(q&&q.z!=null)?q.z:0});
       k++;
     }
   }
+  list.sort(function(a,b){ return b.z-a.z; });                  // 远 → 近
+  for(var i=0;i<list.length;i++){
+    var m=list[i];
+    drawModOne(g,pr,m.x0,m.x1,m.y0,m.y1,ztb,ztt);               // 长边沿 Y ⇒ 模块长轴 = 盘长轴
+  }
   return k;
+}
+// 一块光模块: 前半金属壳 + 后半塑料尾 + 绿色拉环(拉环比本体薄, 顶上再画一圈绿环)
+function drawModOne(g,pr,x0,x1,y0,y1,zb,zt){
+  var L=y1-y0, fM=MOD30.fMetal, fP=MOD30.fPlast;
+  var yM=y0+fM*L, yP=y0+fP*L;                                   // 金属|塑料 分界, 塑料|拉环 分界
+  _box3(g,pr,x0,y0,yM,x1, zt, zb, MOD30.metal_fill, MOD30.metal_edge);      // 金属前半
+  _box3(g,pr,x0,yM,yP,x1, zt, zb, MOD30.plast_fill, MOD30.plast_edge);      // 塑料后半
+  var zr=Math.min(zt+0.0012, zb+MOD30.ring_h);                  // 拉环顶面比本体高 1.2mm: 俯视时不被本体侧壁吃掉, 一眼看见绿色
+  // 拉环**不描边**: 这一段在画面上只有 4~6px, 描边的 1.1px 会把填充整个吃掉 ⇒ 看着不是绿的(实测就是这个坑)
+  _box3(g,pr,x0,yP,y1,x1, zr, zb, MOD30.ring_fill, null);                    // 绿色拉环
+  // 拉环的"环": 顶上画一个内缩的空心方框(线框), 一眼看出是能勾手指的拉环而不是一块绿胶
+  var ix0=x0+(x1-x0)*0.22, ix1=x1-(x1-x0)*0.22;
+  var iy0=yP+L*0.015, iy1=y1-L*0.012;
+  var zc=zr+0.0007;
+  var P=[pr([ix0,iy0,zc]),pr([ix1,iy0,zc]),pr([ix1,iy1,zc]),pr([ix0,iy1,zc])];
+  var _big=P[0]&&P[1]&&(Math.hypot(P[1].u-P[0].u,P[1].v-P[0].v)>6);
+  if(_big&&P[2]&&P[3]){                                                     // 够大才画"环", 否则只会糊成一团
+    g.strokeStyle='#e6fff0'; g.lineWidth=2.0;
+    g.beginPath(); g.moveTo(P[0].u,P[0].v); g.lineTo(P[1].u,P[1].v);
+    g.lineTo(P[2].u,P[2].v); g.lineTo(P[3].u,P[3].v); g.closePath(); g.stroke();
+  }
+  return 3;
 }
 function drawTrayPan(g,pr,T){
   T=T||TPAN2;
@@ -7014,6 +7049,21 @@ document.head.appendChild(st);
   trim();
   // 工程配置点位/轨迹是 fetch 之后才渲染的 ⇒ 多拍几次, 别只拍一次
   [200,600,1500,3000,6000].forEach(function(t){ setTimeout(trim, t); });
+  // 🔴 光靠定时拍不够: 右侧「轨迹/原子技能包络/工程配置点位」是**异步请求回来才建**的, 建完会把
+  //   trim 刚设为 display:none 的容器重新显出来 ⇒ 同一个页面两次刷新, 一次干净一次一堆面板(实测)。
+  //   改成盯着 #vrRail: 一有节点增删就补一次 trim, 再加 2s 心跳兜底(trim 幂等, 重复调用无副作用)。
+  try{
+    var _r=document.getElementById('vrRail');
+    if(_r && !window.__trayTrimWatch){
+      var _tid=null;
+      window.__trayTrimWatch=new MutationObserver(function(){
+        if(_tid) return;
+        _tid=setTimeout(function(){ _tid=null; try{ trim(); }catch(e){} }, 120);
+      });
+      window.__trayTrimWatch.observe(_r, {childList:true, subtree:true});
+      window.__trayTrimTimer=setInterval(function(){ try{ trim(); }catch(e){} }, 2000);
+    }
+  }catch(e){}
   try{ drawVR(); }catch(e){}
   document.title='Z-MAX 摆盘场景 · 双臂 + 实验桌 + 箱体 + 顶视相机';
 }
