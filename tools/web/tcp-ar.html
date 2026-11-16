@@ -2609,7 +2609,9 @@ function drawVR(){
   // 🔩 光模块长方体 @ tool1 (2026-10-25 老倪: 「在三维视图画出光模块」)
   //    口径由老倪定: tool1 原点 = 模块头中心(= 长方体沿 Z 的一端); X = 上表面法向(厚度 T);
   //    Y = 侧面法向(宽度 W); Z = 上表面中轴线(长度 L)。本体从模块头朝法兰方向长出去。
-  if(VR.mod && TCP && TCP.ok && TCP.frames && TCP.frames.tool1) drawModuleBox(g, pr);
+  //    🍽 摆盘场景: 「🦾 右臂」关掉时, 末端的光模块也不能挂在半空(老倪 2026-11-16「隐藏了还显示」)
+  const _rArmOn = (VR.simArm!==false) || (VR.real!==false) || !(typeof __TRAY!=='undefined' && __TRAY);
+  if(VR.mod && _rArmOn && TCP && TCP.ok && TCP.frames && TCP.frames.tool1) drawModuleBox(g, pr);
   // 🔩 两个料盘里的光模块 (左盘待搬 / 右盘已搬)
   if(VR.mod) drawTrayModules(g, pr);
   // 🔩 左臂 tool1 模块头: 与右臂同一口径, 跟着左臂末端姿态走
@@ -2678,10 +2680,12 @@ function drawVR(){
   //    真值: 服务端 /api/tcp 的 frames —— tool1 = 珞石 endInRef 上报位姿(控制器 toolset=tool1);
   //          tool0(法兰) = tool1 ⊖ URDF tool0→tool1 固定位姿(与当前姿态无关, 两点相距 259.8mm)
   let frTxt='';
+  const _hideArmInTray = (typeof __TRAY!=='undefined' && __TRAY) && !_rArmOn;
   if(VR.frames && TCP && TCP.frames && TCP.frames.tool1){
     const LEN={base:0.16,tool0:0.13,tool1:0.13}, C={x:'#ff5d5d',y:'#5dff8f',z:'#5db8ff'};
     const NAME={base:'base(世界系)',tool0:'tool0(法兰)',tool1:'tool1(模块头)'};
     ['base','tool0','tool1'].forEach(k=>{
+      if(_hideArmInTray && k!=='base') return;      // 🍽 右臂关掉后, 只留世界系 base
       const f=TCP.frames[k]; if(!f||!f.origin) return;
       const o=f.origin, L0=LEN[k];
       [['x',f.x],['y',f.y],['z',f.z]].forEach(a=>{
