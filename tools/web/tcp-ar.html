@@ -2455,6 +2455,9 @@ function mjPushQ(){
 }
 function drawVR(){
   try{ DRWN++; }catch(e){}
+  // 🔍 近看光模块机位(老倪验"前半金属/后半塑料/绿拉环"用): 别的代码启动后会把 VR.dist 改回去,
+  //    所以放在每帧开头钉住, 只由 URL 决定, 不改页面任何交互。
+  if(window.__NEAR_MOD30){ VR.auto=false; VR.tgt=[0.54,0.7775,0.02]; VR.dist=0.75; }
   const c=$('vr'), g=c.getContext('2d');
   const W=c.clientWidth*devicePixelRatio, H=c.clientHeight*devicePixelRatio;
   if(c.width!==W||c.height!==H){ c.width=W; c.height=H; }   // 只在尺寸真变时重设(重设=清空)
@@ -4838,9 +4841,15 @@ var MOD30={ show:true, tray:null, L:0.1497, W:0.02258, H:0.010, nRowY:3, nColX:1
              fill:'#c8b26a', edge:'#ffe9a8',
              // 🔩 光模块外形(老倪 2026-11-16「前半部分是金属, 后半部分是塑料拉环, 拉环是绿色的」)
              //   沿长边的分段比例: 0~0.66 金属壳 / 0.66~0.93 塑料尾 / 0.93~1.0 绿色拉环(比模块薄)
-             metal_fill:'#b9c0c8', metal_edge:'#eef3f9',
-             plast_fill:'#3c444f', plast_edge:'#6e7b8c',
-             ring_fill:'#2ee05f',  ring_edge:'#d2ffdd', ring_h:0.0132, fMetal:0.60, fPlast:0.78 };
+             metal_fill:'#cdd5dd', metal_edge:'#f2f7fd',      // 金属壳(银白, 亮一档)
+             plast_fill:'#2b333d', plast_edge:'#67717f',      // 塑料尾(更深, 和金属拉对比)
+             ring_fill:'#2ee05f',  ring_edge:'#d2ffdd', ring_h:0.0132,
+             // 分段比例: 0~0.52 金属 / 0.52~0.72 塑料 / 0.72~1.0 绿拉环(28%)
+             //   原来 0.60/0.78 时拉环只占 6px, 默认机位下看着像"一块灰", 老倪要"看得出样子" ⇒ 拉环放到 28%
+             fMetal:0.52, fPlast:0.72,
+             seam:'#0f1419',       // 金|塑 分界缝(深色 1px), 低分辨率下也分得开两种材质
+             ring_hole:'#0d2f16'   // 拉环中间的"孔"(深绿), 投影够大才挖
+};
 // 均匀分布(老倪 2026-11-16「光模块要有一定的间隙, 均匀分布」):
 //   取**同一个间隙 MOD30.gap** 用在所有相邻块之间(横竖都同一个值, 不是"横 14 竖 28"),
 //   整块在盘内居中 ⇒ 30 块的格子完全等距, 便于逐块抓取不互相挡。
@@ -4959,16 +4968,22 @@ function drawModOne(g,pr,x0,x1,y0,y1,zb,zt){
   var zr=Math.min(zt+0.0012, zb+MOD30.ring_h);                  // 拉环顶面比本体高 1.2mm: 俯视时不被本体侧壁吃掉, 一眼看见绿色
   // 拉环**不描边**: 这一段在画面上只有 4~6px, 描边的 1.1px 会把填充整个吃掉 ⇒ 看着不是绿的(实测就是这个坑)
   _box3(g,pr,x0,yP,y1,x1, zr, zb, MOD30.ring_fill, null);                    // 绿色拉环
-  // 拉环的"环": 顶上画一个内缩的空心方框(线框), 一眼看出是能勾手指的拉环而不是一块绿胶
-  var ix0=x0+(x1-x0)*0.22, ix1=x1-(x1-x0)*0.22;
-  var iy0=yP+L*0.015, iy1=y1-L*0.012;
-  var zc=zr+0.0007;
+  // 金|塑 分界缝: 1px 深色, 让"前半金属 / 后半塑料"在低分辨率下也看得出是两种材质
+  try{
+    var s0=pr([x0,yM,zt]), s1=pr([x1,yM,zt]);
+    if(s0&&s1){ g.strokeStyle=MOD30.seam; g.lineWidth=1; g.beginPath();
+      g.moveTo(s0.u,s0.v); g.lineTo(s1.u,s1.v); g.stroke(); }
+  }catch(e){}
+  // 拉环: 投影够大就挖一个"孔"(深绿内嵌) ⇒ 一眼是能勾手指的环, 不是一块绿胶; 太小不挖(挖了就糊成一团)
+  var ix0=x0+(x1-x0)*0.26, ix1=x1-(x1-x0)*0.26;
+  var iy0=yP+L*0.030, iy1=y1-L*0.030;
+  var zc=zr+0.0008;
   var P=[pr([ix0,iy0,zc]),pr([ix1,iy0,zc]),pr([ix1,iy1,zc]),pr([ix0,iy1,zc])];
-  var _big=P[0]&&P[1]&&(Math.hypot(P[1].u-P[0].u,P[1].v-P[0].v)>6);
-  if(_big&&P[2]&&P[3]){                                                     // 够大才画"环", 否则只会糊成一团
-    g.strokeStyle='#e6fff0'; g.lineWidth=2.0;
-    g.beginPath(); g.moveTo(P[0].u,P[0].v); g.lineTo(P[1].u,P[1].v);
-    g.lineTo(P[2].u,P[2].v); g.lineTo(P[3].u,P[3].v); g.closePath(); g.stroke();
+  var _len=P[0]&&P[1]?(Math.hypot(P[1].u-P[0].u,P[1].v-P[0].v)):0;
+  if(P[2]&&P[3]&&_len>7){                                                    // 拉环投影 >7px 才挖孔
+    g.fillStyle=MOD30.ring_hole; g.beginPath();
+    g.moveTo(P[0].u,P[0].v); g.lineTo(P[1].u,P[1].v); g.lineTo(P[2].u,P[2].v); g.lineTo(P[3].u,P[3].v);
+    g.closePath(); g.fill();
   }
   return 3;
 }
@@ -6947,6 +6962,9 @@ function traySceneInit(){
     VR.auto=false;                              // 关掉自动取景, 免得每帧又跳回去把桌子切掉
     VR.tgt=[0.55, 0.30, 0.10];
     VR.dist=2.35;   // 11.16 加从机器人后拉远, 两台都在画面里
+    // 近距离看光模块: /tray?near=mod30 → 机位压到左盘上方 0.75m
+    //   ⚠ 不能叫 cam= : 页面里 ?cam= 是**图源**(arm/gold/surface), 抢了这个名字会把相机图源弄坏
+    if(/[?&]near=mod30/.test(location.search)) window.__NEAR_MOD30=true;
   }catch(e){}
 
   // ①c 从零开始(老倪 2026-11-16: 「原始轨迹也删掉, 生产节拍也先删掉, 重头来」)
