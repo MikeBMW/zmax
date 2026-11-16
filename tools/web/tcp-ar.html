@@ -4868,6 +4868,7 @@ var MOD30={ show:true, tray:null, L:0.1497, W:0.02258, H:0.010, nRowY:3, nColX:1
 //   模块 149.7(长,Y) × 22.58(宽,X): 沿 Y 两排 2×149.7 = 299.4 ≤ 305 ✓; 每排 8 个 8×22.58 = 180.6 ≤ 220 ✓
 //   老倪说可以挨着 ⇒ gap 取 0, 整块 180.6 × 299.4 居中摆(两侧各余 19.7mm / 上下各余 2.8mm)
 var MOD16={ show:true, tray:null, L:0.1497, W:0.02258, H:0.010, nColX:8, nRowY:2, gap:0,
+            nLayer:8,                    // 老倪 2026-11-16「装满光模块, 堆叠8盘, 要有8层高」
             name:'左上盘 2×8' };
 var DIM={ show:true };   // 📏 尺寸标注总开关(老倪 2026-11-16「增加一个按钮, 关闭所有尺寸」)
 var SLAVE={ show:true, mx:0.725, my:0.25, x:1.45, y:0.50, half:0.15 };   // y=0.50 = 从机器人自己的右手侧(朝 -X 时右=+Y)
@@ -4981,7 +4982,11 @@ function drawMod16(g,pr,T){
   if(!MOD16.show || !T || !T.show || !g || typeof g.beginPath!=='function') return 0;
   var R=tpanRange(T), w=T.wall;
   var ix0=R.x0+w, ix1=R.x1-w, iy0=R.y0+w, iy1=R.y1-w;
-  var L=MOD16.L, W=MOD16.W, ztb=0.008, ztt=0.008+MOD16.H;
+  var nLay=Math.max(1, MOD16.nLayer|0);
+  // 堆叠: 底座那只盘已经由 drawTrayPan(TPAN2) 画过 ⇒ 这里只补上面 nLay-1 只, 每只抬 T.H
+  for(var lz=1;lz<nLay;lz++) drawTrayPan(g,pr,T,lz*T.H);
+  var zoff=(nLay-1)*T.H;                                     // 最上面那只盘的底面
+  var L=MOD16.L, W=MOD16.W, ztb=0.008+zoff, ztt=ztb+MOD16.H;
   var nX=MOD16.nColX, nY=MOD16.nRowY, gap=MOD16.gap;
   var bx=nX*W+(nX-1)*gap, by=nY*L+(nY-1)*gap;
   var sx=(ix0+ix1)/2-bx/2, sy=(iy0+iy1)/2-by/2;
@@ -5029,11 +5034,13 @@ function drawModOne(g,pr,x0,x1,y0,y1,zb,zt){
   }
   return 3;
 }
-function drawTrayPan(g,pr,T){
+// zoff = 整盘往上抬多少(堆叠用)。不传 ⇒ 0, 与原来完全一致
+function drawTrayPan(g,pr,T,zoff){
   T=T||TPAN2;
   if(!T.show) return;
-  var R=tpanRange(T), w=T.wall, zt=T.H, zb=0.008;
-  _box3(g,pr,R.x0,R.y0,R.y1,R.x1, zt, 0, T.fill, T.edge);                       // 外壳
+  var z0=zoff||0;
+  var R=tpanRange(T), w=T.wall, zt=T.H+z0, zb=0.008+z0;
+  _box3(g,pr,R.x0,R.y0,R.y1,R.x1, zt, z0, T.fill, T.edge);                      // 外壳
   _box3(g,pr,R.x0+w,R.y0+w,R.y1-w,R.x1-w, zt-0.004, zb, T.inner, T.edge, 0.95);  // 内腔
 }
 function trayDimDom(pr){
@@ -5070,6 +5077,14 @@ function trayDimDom(pr){
     items.push([T.name+' 长 '+Math.round(T.L*1000), pr([R.x0-0.06, (R.y0+R.y1)/2, T.H])]);
     items.push([T.name+' 宽 '+Math.round(T.W*1000), pr([(R.x0+R.x1)/2, R.y1+0.06, T.H])]);
   });
+  // 🔩 左上盘堆叠高度(老倪「要注意高度, 要有8层高」): 只标一条总高, 免得把 17 个槽位占满
+  try{
+    if(typeof MOD16!=='undefined' && MOD16.show && MOD16.nLayer>1 && TPAN2.show){
+      var R2=tpanRange(TPAN2), topZ=MOD16.nLayer*TPAN2.H;
+      items.push([TPAN2.name+' '+MOD16.nLayer+' 层 高 '+Math.round(topZ*1000),
+                  pr([R2.x0-0.06, (R2.y0+R2.y1)/2, topZ*0.55])]);
+    }
+  }catch(e){}
   // 条目变少(比如托盘关了)时, 多出来的标签必须显式隐藏, 否则会留着上一帧的文字
   for(var kz=items.length;kz<box.children.length;kz++){
     var dz=box.children[kz]; if(dz) dz.style.display='none';
