@@ -578,7 +578,7 @@ var LARMFK=null;   // LARM.q 的正运动学结果; 非空时左臂用它画, �
 function armRLabel(){
   const tray = (typeof __TRAY!=='undefined' && __TRAY);
   const on = (typeof VR!=='undefined' && VR) ? !!VR.simArm : true;
-  if(tray) return on ? '🦾 右臂' : '🦾 右臂(关)';
+  if(tray) return on ? '🦾 右臂' : '🦾 右臂';
   return on ? '🦾 右臂_仿真' : '🦾 右臂_仿真(已隐藏)';
 }
 /* 左臂渲染用的链矩阵: freeze 时用冻结快照(不随右臂动), 否则用自己的 FK / 照抄右臂 */
@@ -2339,7 +2339,9 @@ function drawVR(){
   const w=c.clientWidth,h=c.clientHeight;
   g.clearRect(0,0,w,h);
   // 🎥 MuJoCo 同视角开着时画布保持透明 ⇒ 底下那张 8802 渲染帧透上来(矢量层照旧叠在上面)
-  if(!(typeof MJ!=='undefined' && MJ.on)){ g.fillStyle='#070a0e'; g.fillRect(0,0,w,h); }
+  // 🎨 摆盘场景用白底(老倪 2026-11-16「把背景改成白色吧, 不要黑色背景了」) —— /ar3d 仍是深色
+  var _TRAYBG = (typeof __TRAY!=='undefined' && __TRAY);
+  if(!(typeof MJ!=='undefined' && MJ.on)){ g.fillStyle=_TRAYBG?'#ffffff':'#070a0e'; g.fillRect(0,0,w,h); }
   // 🎥 MuJoCo 同视角: 相机变了就按新参数找 8802 要一张同视角帧(限速在 mjPull 里做)
   if(typeof MJ!=='undefined' && MJ.on){ mjLayout(); mjPull(false); }
   // 🔴 2026-10-28 老倪「图像不要总是上下漂浮」:
@@ -2416,6 +2418,8 @@ function drawVR(){
   //   L 臂青 / R 臂橙, 末端标 SIM; 数据过期(>3s)或没开就整层不画(不拿旧骨头冒充)
   if(SIMON && SIMB && SIMB.ok && (Date.now()/1000 - SIMTS) < 3){
     for(const side of ['L','R']){
+      // 🍽 摆盘场景: 「🦾 右臂」关掉时 SIM 骨骼的右臂也不画(否则一条橙色骨头臂一直留在画面上)
+      if(side==='R' && VR.simArm===false && VR.real===false && typeof __TRAY!=='undefined' && __TRAY) continue;
       const segs = SIMB[side] || [];
       const col = (side==='L') ? 'rgba(64,196,255,.95)' : 'rgba(255,176,64,.95)';
       g.strokeStyle=col; g.lineWidth=6.5; g.lineCap='round'; g.lineJoin='round';
@@ -2640,8 +2644,8 @@ function drawVR(){
       if(q0){ g.fillStyle='#e6edf3'; g.beginPath(); g.arc(q0.u,q0.v,3,0,Math.PI*2); g.fill();
         g.font='bold 12px ui-monospace,monospace';
         const lbl='左臂 tool1';
-        g.fillStyle='rgba(0,0,0,.85)'; g.fillRect(q0.u+5, q0.v+4, g.measureText(lbl).width+8, 16);
-        g.fillStyle='#ffa657'; g.fillText(lbl, q0.u+9, q0.v+16); }
+        g.fillStyle='rgba(255,255,255,.95)'; g.fillRect(q0.u+5, q0.v+4, g.measureText(lbl).width+8, 16);
+        g.fillStyle='#bc4c00'; g.fillText(lbl, q0.u+9, q0.v+16); }
     }
   }
   // 轨迹(VR 里也按 3D 管道画)
@@ -2700,8 +2704,11 @@ function drawVR(){
         g.beginPath(); g.moveTo(p1.u,p1.v); g.lineTo(p2.u,p2.v); g.stroke();
       });
       const q0=pr(o); if(!q0) return;
-      g.fillStyle='#e6edf3'; g.beginPath(); g.arc(q0.u,q0.v,3,0,Math.PI*2); g.fill();
-      g.font='11px monospace'; g.fillText(NAME[k], q0.u+7, q0.v+15);
+      const _lt=(typeof __TRAY!=='undefined'&&__TRAY);
+      g.fillStyle=_lt?'#1f2328':'#e6edf3'; g.beginPath(); g.arc(q0.u,q0.v,3,0,Math.PI*2); g.fill();
+      g.font='11px monospace';
+      if(_lt){ const tw=g.measureText(NAME[k]).width; g.fillStyle='rgba(255,255,255,.92)'; g.fillRect(q0.u+5,q0.v+3,tw+6,15); g.fillStyle='#1f2328'; }
+      g.fillText(NAME[k], q0.u+7, q0.v+15);
     });
     const T0=TCP.frames.tool0||{}, T1=TCP.frames.tool1;
     frTxt=' · 🧭 tool0(法兰)='+(T0.origin?T0.origin.map(v=>v.toFixed(3)).join(','):'—')
@@ -2749,7 +2756,7 @@ function drawVR(){
   if(typeof __TRAY!=='undefined' && __TRAY && typeof trayTableDims==='function'){
     try{ trayTableDims(g, pr); }catch(e){}
   }
-  g.fillStyle='#6b7a8d'; g.font='12px monospace';
+  g.fillStyle=(typeof __TRAY!=='undefined'&&__TRAY)?'#57606a':'#6b7a8d'; g.font='12px monospace';
   g.fillText('base 系 · 地面 = xy 平面 (z=0) · 0.1m 网格 · 拖动旋转'+(VR.frames?' · 🧭 红X/绿Y/蓝Z 三个坐标系':''),8,14);
   $('pVr').textContent=((SHOW||nPl)?`实测轨迹 ${nTr} 点 · 规划航路 ${nPl} 点(洋红粗线) · ${tcpTxt}`:'轨迹已隐藏(默认) · '+tcpTxt)+frTxt;
 }
@@ -4547,16 +4554,18 @@ function _wheelY(g,pr,cx,cz,yc,thick,r){
 }
 // ── 🟫 地面层: 箱子/桌子站在这一层(轮底 z=-0.750), 和 z=0 的 base 工作平面差 750mm ──
 function drawFloor(g,pr){
+  const LT = (typeof __TRAY!=='undefined' && __TRAY);     // 🎨 摆盘场景白底 ⇒ 地面/网格改浅色
   const F=FLR, z=F.z, x0=F.x[0], x1=F.x[1], y0=F.y[0], y1=F.y[1];
   const q=[[x0,y0,z],[x1,y0,z],[x1,y1,z],[x0,y1,z]].map(pr);
   if(q.every(Boolean)){
     g.beginPath(); g.moveTo(q[0].u,q[0].v);
     for(let i=1;i<4;i++) g.lineTo(q[i].u,q[i].v);
-    g.closePath(); g.fillStyle='rgba(20,26,33,.92)'; g.fill();
-    g.strokeStyle='#2b3846'; g.lineWidth=1.3; g.stroke();
+    g.closePath();
+    g.fillStyle = LT ? 'rgba(244,246,249,1)' : 'rgba(20,26,33,.92)'; g.fill();
+    g.strokeStyle = LT ? '#c9d1d9' : '#2b3846'; g.lineWidth=1.3; g.stroke();
   }
   // 250mm 网格(只做暗格, 让人看出这是一层平面)
-  g.strokeStyle='#18222d'; g.lineWidth=1;
+  g.strokeStyle = LT ? '#e4e9ef' : '#18222d'; g.lineWidth=1;
   for(let x=x0; x<=x1+1e-6; x+=0.25){
     const a=pr([x,y0,z]), b=pr([x,y1,z]);
     if(a&&b){ g.beginPath(); g.moveTo(a.u,a.v); g.lineTo(b.u,b.v); g.stroke(); }
@@ -4571,8 +4580,9 @@ function drawFloor(g,pr){
     const txt='地面 z='+Math.round(z*1000)+'mm (四轮/桌腿落地)';
     g.font='bold 11.5px monospace';
     const tw=g.measureText(txt).width;
-    g.fillStyle='rgba(0,0,0,.72)'; g.fillRect(lab.u-2, lab.v-13, tw+8, 16);
-    g.fillStyle='#93a7bb'; g.fillText(txt, lab.u+2, lab.v);
+    g.fillStyle = LT ? 'rgba(255,255,255,.92)' : 'rgba(0,0,0,.72)';
+    g.fillRect(lab.u-2, lab.v-13, tw+8, 16);
+    g.fillStyle = LT ? '#57606a' : '#93a7bb'; g.fillText(txt, lab.u+2, lab.v);
   }
 }
 // ── 🧪 实验桌(工作台): 摆在箱体前面 +X; 桌面顶 z=0 = 箱体顶板 = 两臂安装面 ⇒ 750 平齐 ──
@@ -4599,7 +4609,7 @@ function trayTableDims(g, pr){
     g.font='bold 14px ui-monospace,monospace';
     const tw=g.measureText(txt).width;
     const x=Math.max(tw/2+6, Math.min(W-tw/2-6, u)), y=Math.max(18, Math.min(H-10, v));
-    g.fillStyle='rgba(0,0,0,.92)'; g.strokeStyle=col; g.lineWidth=1.4;
+    g.fillStyle='rgba(255,255,255,.96)'; g.strokeStyle=col; g.lineWidth=1.6;
     g.beginPath(); g.rect(x-tw/2-5, y-14, tw+10, 19); g.fill(); g.stroke();
     g.fillStyle=col; g.fillText(txt, x-tw/2, y);
   }
@@ -4612,9 +4622,9 @@ function trayTableDims(g, pr){
     }
     label(txt,(p.u+q.u)/2,(p.v+q.v)/2,col);
   }
-  dimLine([x1+0.07, y0, 0],[x1+0.07, y1, 0], '长 '+TL, '#ffd479');
-  dimLine([x0, y0-0.07, 0],[x1, y0-0.07, 0], '宽 '+TW, '#7ee787');
-  dimLine([x1+0.02, y1+0.02, 0],[x1+0.02, y1+0.02, fl], '高 '+TH, '#79c0ff');
+  dimLine([x1+0.07, y0, 0],[x1+0.07, y1, 0], '长 '+TL, '#a15c00');
+  dimLine([x0, y0-0.07, 0],[x1, y0-0.07, 0], '宽 '+TW, '#1a7f37');
+  dimLine([x1+0.02, y1+0.02, 0],[x1+0.02, y1+0.02, fl], '高 '+TH, '#0969da');
   const cs=[[x0,y0,0],[x1,y0,0],[x1,y1,0],[x0,y1,0]].map(pr).filter(Boolean);
   let u=Math.round(W*0.62), v=44;
   if(cs.length===4){
@@ -4627,11 +4637,23 @@ function trayTableDims(g, pr){
   const wmax=Math.max.apply(null, lines.map(function(s){ return g.measureText(s).width; }));
   const bw=wmax+16, bh=42;
   u=Math.max(6, Math.min(W-bw-6, u)); v=Math.max(6, Math.min(H-bh-6, v));
-  g.fillStyle='rgba(0,0,0,.92)'; g.beginPath(); g.rect(u,v,bw,bh); g.fill();
-  g.strokeStyle='#ffd479'; g.lineWidth=1.6; g.stroke();
-  g.fillStyle='#ffd479'; g.fillText(lines[0], u+8, v+19);
-  g.fillStyle='#c9d1d9'; g.font='12px ui-monospace,monospace';
+  g.fillStyle='rgba(255,255,255,.96)'; g.beginPath(); g.rect(u,v,bw,bh); g.fill();
+  g.strokeStyle='#a15c00'; g.lineWidth=1.6; g.stroke();
+  g.fillStyle='#a15c00'; g.fillText(lines[0], u+8, v+19);
+  g.fillStyle='#57606a'; g.font='12px ui-monospace,monospace';
   g.fillText(lines[1], u+8, v+36);
+  // 🦾 状态牌: 画面上直接写清「右臂/左臂」当前是显示还是已隐藏 —— 不靠按钮文案猜
+  try{
+    const rOn=(VR.simArm!==false)||(VR.real!==false), lOn=!!(typeof LARM!=='undefined'&&LARM&&LARM.show);
+    const s1='🦾 右臂: '+(rOn?'显示':'已隐藏'), s2='🤖 左臂: '+(lOn?'显示':'已隐藏');
+    g.font='bold 13px ui-monospace,monospace';
+    const w1=g.measureText(s1).width+12, w2=g.measureText(s2).width+12, ww=Math.max(w1,w2)+8;
+    const x0s=8, y0s=H-58;
+    g.fillStyle='rgba(255,255,255,.96)'; g.beginPath(); g.rect(x0s,y0s,ww,42); g.fill();
+    g.strokeStyle='#d0d7de'; g.lineWidth=1.2; g.stroke();
+    g.fillStyle=rOn?'#1a7f37':'#8c959f'; g.fillText(s1, x0s+6, y0s+17);
+    g.fillStyle=lOn?'#1a7f37':'#8c959f'; g.fillText(s2, x0s+6, y0s+35);
+  }catch(e){}
   g.restore();
 }
 function drawTable(g,pr){
@@ -4644,20 +4666,22 @@ function drawTable(g,pr){
   //    ⇒ 只画: 桌面 + 4 条腿落地 + 两条下横撑 + 750 标注; 立柱不再向上通到横梁,
   //      顶部框架/上横梁/角码/框架标签全不画(那些是上一版给相机和标定搭的龙门架)。
   if(typeof __TRAY!=='undefined' && __TRAY){
+    // 🎨 白底桌子: 木色加深一档, 描边用深棕, 免得浅黄边在白底上看不见
+    const C_TOP='#d9b887', C_BODY='#b08d5f', C_LEG='#8c96a1', C_EDGE='#7d6139';
     [[xa,ya],[xb,yb],[xa,yb],[xb,ya]].forEach(function(c){
-      _boxFaces(g,pr,[c[0]-lg/2,c[1]-lg/2,fl],[c[0]+lg/2,c[1]+lg/2,tb],function(){return T.legc;},T.aluEdge);
+      _boxFaces(g,pr,[c[0]-lg/2,c[1]-lg/2,fl],[c[0]+lg/2,c[1]+lg/2,tb],function(){return C_LEG;},'#6b7580');
     });
     const cz0b=fl+0.12, cz1b=cz0b+0.06;
     [ya,yb].forEach(function(yy){
-      _boxFaces(g,pr,[xa,yy-0.02,cz0b],[xb,yy+0.02,cz1b],function(){return T.aluDark;},'#77828f');
+      _boxFaces(g,pr,[xa,yy-0.02,cz0b],[xb,yy+0.02,cz1b],function(){return '#7f8a95';},'#5f6873');
     });
     _boxFaces(g,pr,[x0,y0,tb],[x1,y1,0],
-      function(f,c){ return f.every(function(i){return Math.abs(c[i][2])<1e-9;}) ? T.top : T.body; },T.edge);
+      function(f,c){ return f.every(function(i){return Math.abs(c[i][2])<1e-9;}) ? C_TOP : C_BODY; },C_EDGE);
     const tp2=[[x0,y0,0],[x1,y0,0],[x1,y1,0],[x0,y1,0]].map(pr);
     if(tp2.every(Boolean)){
       g.beginPath(); g.moveTo(tp2[0].u,tp2[0].v);
       for(let i=1;i<4;i++) g.lineTo(tp2[i].u,tp2[i].v);
-      g.closePath(); g.strokeStyle='#f0d9ac'; g.lineWidth=1.6; g.stroke();
+      g.closePath(); g.strokeStyle=C_EDGE; g.lineWidth=1.8; g.stroke();
     }
     // 📏 尺寸标注挪到 drawVR 最后画(见 trayTableDims) —— 画在这里会被箱体/机器人盖住
     return;                                // 以上画完就是"一张正常的桌子", 下面全是龙门架结构
@@ -4902,7 +4926,7 @@ function mjToggle(){
   // 🎥 2026-11-14 老倪: 「默认不要打开 MuJoCo 同视角」⇒ 进页面不自动接, 要看去点按钮。
   //   (原来 11-09 的口径是进页面就默认开, 已按 11-14 要求改掉)
   if(im){ im.style.display='none'; }
-  if($('vr')){ $('vr').style.background='#070a0e'; }
+  if($('vr')){ $('vr').style.background = (typeof __TRAY!=='undefined'&&__TRAY) ? '#ffffff' : '#070a0e'; }
   if(tag){ tag.style.display='none'; }
   if(b){ b.classList.remove('on'); b.textContent='🎥 MuJoCo 同视角'; }
 })();
@@ -6394,9 +6418,31 @@ function traySceneInit(){
   try{
     if(!document.getElementById('trayClean')){
       var st=document.createElement('style'); st.id='trayClean';
-      st.textContent='#tactPanel,#tactArrow,#zflow,#uphBox,#uphPill,#uphChip,#visBar,#idealBtn,#mjframe,#mjtag,#mktDock{display:none!important}';
-      document.head.appendChild(st);
+      // ⚠️ 各规则之间不能拿 ';' 连(顶层分号会让后面整段被解析器丢掉) ⇒ 用换行连, 每条独立
+      st.textContent=[
+        '#tactPanel,#tactArrow,#zflow,#uphBox,#uphPill,#uphChip,#visBar,#idealBtn,#mjframe,#mjtag,#mktDock{display:none!important}',
+        'body,#vr{background:#ffffff!important}',
+        '#vrcard{background:#ffffff!important}',
+        // 🎨 左栏也换浅色(深色按钮在白底上会看不见)
+        'html body.tray #vrRail,html body.tray #vrRail *{color:#1f2328}',
+        'html body.tray #vrRail{background:#f6f8fa!important;border-right:1px solid #d0d7de!important}',
+        'html body.tray #vrRail::before{color:#6639ba!important;border-bottom-color:#d0d7de!important}',
+        'html body.tray #vrRail button{background:#ffffff!important;color:#1f2328!important;border:1px solid #d0d7de!important}',
+        'html body.tray #vrRail button.on{background:#0969da!important;color:#ffffff!important;border-color:#0969da!important}',
+        'html body.tray #vrRail .ssw{background:#d0d7de!important;border-color:#afb8c1!important}',
+        'html body.tray #vrRail .ssw.on{background:#1f6feb!important;border-color:#0969da!important}'
+      ].join('\n');
+document.head.appendChild(st);
+    } else {
+      if(document.getElementById('trayClean').textContent.indexOf('#ffffff')<0)
+        document.getElementById('trayClean').textContent += '\nbody,#vr{background:#ffffff!important}\n#vrcard{background:#ffffff!important}';
     }
+  }catch(e){}
+  // 🎨 白底: 再直接内联盖一次(别处的 inline style 会盖过样式表)
+  try{
+    document.body.style.background='#ffffff';
+    var _v=$('vr'); if(_v) _v.style.background='#ffffff';
+    var _vc=document.getElementById('vrcard'); if(_vc) _vc.style.background='#ffffff';
   }catch(e){}
 
   // ② 左栏白名单: 只留"看场景"的开关; 回放/单步/同步/轨迹/围栏这些摆盘还没定义, 一律收起
