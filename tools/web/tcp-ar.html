@@ -235,6 +235,14 @@
       <span id="tPrev" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
       <span id="tIns" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
   </div>
+  <!-- ⏭ 单步(老倪 2026-11-16「左侧栏，增加一个走一个点的按钮，同时按钮旁边显示当前的点位」)
+       和「⏭ 同步操作」的区别: 那个按 N 个点连续走、每点带 dwell; 这个是**只走一个点**并定住不动,
+       旁边把当前点 ID + TCP 坐标写出来 ⇒ 双方说"#37"指的就是同一个点。
+       位姿口径: 直接取该帧关节角真值, 不插值(插值就说不清停在第几个点了)。只动仿真, 真机零指令。 -->
+  <div class="row" style="margin-top:6px">
+    <button id="bTrajStep" class="sm" style="background:#238636;border-color:#238636" title="沿 215 点真实轨迹往前走一个点后停住(不连续播)。旁边显示当前点 ID 与该点 TCP 坐标(mm), 便于按 ID 指认和调位置。快捷键 Alt+→ 前进 / Alt+← 后退。只动仿真, 真机零指令">⏭ 单步 +1 点</button>
+    <span id="tTrajStep" style="font-size:12.5px;color:#3fb950;margin-left:8px;font-family:ui-monospace,monospace;white-space:nowrap" title="当前停在哪个轨迹点(ID) + 该点 TCP 坐标(mm, base 世界系)">#— · 未开始</span>
+  </div>
   <button id="panChip" style="position:fixed;left:16px;top:96px;z-index:55;display:none;background:rgba(13,17,23,.92);border:1px solid #30363d;color:#8b949e;border-radius:14px;padding:4px 10px;font:11px/1.3 ui-monospace,monospace;cursor:pointer" title="中键平移后视角会一直保持; 点这里恢复到自动取景中心">🖱 视角已平移</button>
   <button id="uphPill" style="position:fixed;left:50%;transform:translateX(-50%);top:10px;z-index:60;display:none;background:rgba(13,17,23,.94);border:1px solid #2f81f7;color:#3fb950;border-radius:16px;padding:5px 10px 5px 14px;font:12px/1 ui-monospace,monospace;cursor:pointer"><span id="uphPillT">🏭 UPH 300 ▸</span><span id="uphPillX" title="彻底隐藏(想再看回来就点『🏭 全流程 UPH』)" style="margin-left:8px;padding:0 3px;color:#8b949e">✕</span></button>
   <button id="uphChip" style="position:fixed;left:16px;top:10px;z-index:60;display:none;background:rgba(13,17,23,.94);border:1px solid #2f81f7;color:#3fb950;border-radius:8px;padding:3px 7px;font:13px/1 ui-monospace,monospace;cursor:pointer" title="300UPH 窗口已收起 · 点开">🏭</button>
@@ -4242,6 +4250,19 @@ function vrKeepCam(fn){
 }
 $('bFrames').addEventListener('click',()=>vrKeepCam(()=>{
   VR.frames=!VR.frames; $('bFrames').classList.toggle('on',VR.frames); }));
+// ⏭ 单步快捷键: Alt+← / Alt+→ 走一个轨迹点(老倪 2026-11-16「一个点一个点走」)。
+//   必须带 Alt: 页面别处用裸方向键做围栏 1mm 微调, 裸箭头会打架; 焦点在输入框里也不抢。
+document.addEventListener('keydown', function(ev){
+  if(!ev.altKey) return;
+  if(ev.key!=='ArrowLeft' && ev.key!=='ArrowRight') return;
+  var t=ev.target||{}, tag=(t.tagName||'').toLowerCase();
+  if(tag==='input'||tag==='textarea'||tag==='select'||t.isContentEditable) return;
+  if(typeof rtrajStep!=='function') return;
+  ev.preventDefault(); ev.stopPropagation();
+  rtrajStep(ev.key==='ArrowRight'?1:-1);
+}, true);
+// ⏭ 左侧栏「单步 +1 点」按钮(老倪 2026-11-16)
+$('bTrajStep').addEventListener('click', function(){ rtrajStep(1); });
 // 🦾🦾 左臂(仿真臂) —— 2026-10-26 老倪: 「左臂的 URDF 与右臂一样, 只是所有的位姿当前都是我来仿真给你;
 //   你先默认跟当前右臂的位姿一样…给我几个控制按钮, 参考 station 的 x y z a b c 控制, 控制的左臂系为左臂的世界坐标系」
 //   位姿口径: 世界点 = off + R(rpy)·(p_right) + d/1000    (p_right = 右臂正运动学点)
@@ -5240,6 +5261,7 @@ function ensureTrajJoints(){
 
 function rtrajPlayJoints(d){
   try{ mirrorStop(); }catch(e){}          // 回放期间抢 PREV, 先让镜像让位(不然两路互踩)
+  window.PREV_KEEP=false;                 // 连续回放自己驱动 PREV, 解除单步/预览的"别收走"保护
   /* 只有右臂的 215 点真值 ⇒ 左臂冻结在当前姿态, 全程不许动(否则会照抄右臂跟着跑) */
   try{ if(!larmFreezeOn(LARM.q)) console.warn('[rtraj] 左臂冻结失败(无 FK 快照)'); }catch(e){ console.warn('[rtraj] larmFreezeOn:', e); }
   var t=$('tRTraj'), frames=d.frames, rate=RTRAJ.rate||1;
@@ -5281,9 +5303,52 @@ function rtrajPlayJoints(d){
 }
 function rtrajStop(){  RTRAJ.playing=false;
   if(RTRAJ.raf){ cancelAnimationFrame(RTRAJ.raf); RTRAJ.raf=null; }
+  window.PREV_KEEP=false;                        // 停 ⇒ 解除保护, 让「空闲即真值」把画面收回真机位姿
   try{ larmFreezeOff(); }catch(e){}               // 停止回放 ⇒ 左臂恢复"照抄右臂"
   rtrajUI(false,'已停在 '+(RTRAJ.fi||0)+'/'+(RTRAJ.frames.length||0)+' 帧 · 真机没动');
   drawVR();
+}
+/* ⏭ 单步(老倪 2026-11-16「增加一个按钮，一个点一个点走，这样你就知道我说的是哪个点了」)
+   和「▶ 回放」的区别: 回放按时间连续插值, 中途停在哪一帧说不清; 单步是**严格钉在第 N 个轨迹点上**
+   (直接用该帧关节角真值, 不插值), 并且把 ID 和 TCP 坐标显式打出来 ⇒ 双方说"#37"指的就是同一个点。
+   只动仿真, 真机零指令。 */
+function rtrajStepIdText(i){
+  if(typeof RTRAJ==='undefined' || !RTRAJ.frames || !RTRAJ.frames.length) return '';
+  var k=Math.max(0, Math.min(RTRAJ.frames.length-1, i));
+  var f=RTRAJ.frames[k]; if(!f) return '#'+k;
+  var p=f.p||[0,0,0];
+  return '#'+k+' · X'+(p[0]*1000).toFixed(1)+' Y'+(p[1]*1000).toFixed(1)+' Z'+(p[2]*1000).toFixed(1);
+}
+function rtrajStep(delta){
+  var d=ensureTrajJoints();
+  if(!d || !d.frames || !d.frames.length){ alert('回放数据缺失: '+(RTRAJJ_ERR||'未知')); return; }
+  // 连续播放中单步 ⇒ 先定住, 否则 RAF 会立刻把 fi 抢回去
+  RTRAJ.playing=false;
+  if(RTRAJ.raf){ cancelAnimationFrame(RTRAJ.raf); RTRAJ.raf=null; }
+  try{ mirrorStop(); }catch(e){}                  // 镜像在跑会写 PREV.q, 和单步抢
+  try{ larmFreezeOn(LARM.q); }catch(e){}          // 只有右臂轨迹 ⇒ 左臂冻结
+  var frames=d.frames;
+  RTRAJ.frames=frames;
+  RTRAJ.joints=true;
+  var cur=(RTRAJ.fi==null)?0:Number(RTRAJ.fi);
+  var i=Math.max(0, Math.min(frames.length-1, cur+(delta||0)));
+  RTRAJ.fi=i;
+  var f=frames[i];
+  // 严格用该帧关节角(不插值) ⇒ 画面停的就是第 i 个点
+  PREV.on=true; PREV.q=f.j.slice(); PREV.M=urdfFK(PREV.q);
+  PREV.err_mm=null; PREV.target=(f.p||[0,0,0]).slice();
+  // ⚠ 单步没在播(playing=false), 会被「空闲即真值」的自动同步判定为空闲把幽灵臂收掉 ⇒
+  //   必须打 PREV_KEEP(和「👻 预览动作」同一个机制), 否则刚定住的第 N 点几秒后就跳回真机位姿了。
+  window.PREV_KEEP=true;
+  if(typeof vrFitBox==='function'){ try{ vrFitBox(); }catch(e){} }
+  mjPushQ(); mjPushQForce();
+  var el1=document.getElementById('tTrajStep'), el2=document.getElementById('rpStepId');
+  var _txt=rtrajStepIdText(i);
+  if(el1){ el1.textContent=_txt; el1.style.color='#3fb950'; }
+  if(el2){ el2.textContent=_txt; el2.style.color='#3fb950'; }
+  rtrajUI(true,'单步 · 第 '+i+'/'+(frames.length-1)+' 点 · 真机没动(只动仿真)');
+  drawVR();
+  return i;
 }
 /* 🎬 元任务 MT-08「轨迹回放」的启动入口 —— 元任务区那个按钮调它。
    与「📍 右臂跑真实轨迹」同一个播放器, 区别只是入口挂在元任务区, 并按 MT-08 口径显示 42.85s/件。 */
@@ -6528,6 +6593,19 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
           pp.style.color = '#8b949e';
         }
       }
+      // ⏭ 单步 ID 徽标: 回放/单步时实时显示"现在停在第几个点 + 该点坐标", 便于按 ID 指认
+      try {
+        var _txt2 = null;
+        if (typeof RTRAJ !== 'undefined' && RTRAJ.frames && RTRAJ.frames.length) {
+          _txt2 = rtrajStepIdText(RTRAJ.fi || 0);
+        }
+        if (_txt2) {
+          ['tTrajStep', 'rpStepId'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) { el.textContent = _txt2; el.style.color = RTRAJ.playing ? '#3fb950' : '#8b949e'; }
+          });
+        }
+      } catch (e3) { }
       // 🎯 甘特条实时游标(老倪 2026-11-15「甘特图怎么不动呢?」/ 2026-11-16「要有光标提示当前的时间点」)
       //    条宽 = 各段时间占比, 所以游标位置不能 cur/215 线性映射 —— 必须
       //    按"前面所有段的 pct 之和 + 本段内完成比例 × 本段 pct"定位, 否则会跑偏。
