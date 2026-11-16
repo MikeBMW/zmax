@@ -2564,7 +2564,10 @@ function drawVR(){
   // 📦 箱体(移动底盘): 再画箱体, 两臂/相机画在它上面 —— 顶板 z=0 就是两臂安装面
   if(CHS.show) drawChassis(g, pr);
   // 🦾 URDF 外形: 正运动学已在 drawVR 开头算好(取景要用同一份), 这里只负责画
-  if(URDF){
+  // 🍽 摆盘场景: 右臂只有一个开关(VR.armShow) —— 真机臂(VR.real)与仿真臂(VR.simArm)由它统一管,
+  //    否则 bArmReal 在摆盘里被隐藏后, 真机臂没有任何开关能关掉, 点「右臂」看着没反应(老倪 2026-11-16)
+  const _trayArmOff = (typeof __TRAY!=='undefined' && __TRAY) && VR.armShow===false;
+  if(URDF && !_trayArmOff){
     if(VR.urdf && VR.real!==false) drawUrdf(g,pr);              // 真机右臂(静止)
     // 🦾 AR 模式下真机臂让位(VR.real=false)、而仿真臂要等 PREV.on 才画 ⇒ 画面一条臂都没有,
     //    但「右臂_仿真」按钮却是亮的 —— 老倪 2026-10-28: 「右臂_仿真 是看不到的, 但是按钮是蓝色高亮的, 显示没有对应上」
@@ -2572,7 +2575,7 @@ function drawVR(){
     else if(VR.urdf && VR.simArm!==false && !(PREV.on && PREV.M && PREV.ssOn)) drawUrdf(g,pr);
   }
   // 👻 预览动作: 紫色幽灵右臂 —— 与真实右臂同屏, 末端对着轨迹终点; 真机不动, 这条只是画上去的
-  if(PREV.on && PREV.M && URDF && VR.simArm!==false){          // 仿真右臂(紫色幽灵)
+  if(PREV.on && PREV.M && URDF && VR.simArm!==false && !((typeof __TRAY!=='undefined'&&__TRAY)&&VR.armShow===false)){   // 仿真右臂(紫色幽灵)
     const I3=[[1,0,0],[0,1,0],[0,0,1]];
     drawUrdf(g, pr, PREV.M, {R:I3, t:[0,0,0], fill:'#7c3aed', stroke:'#c4b5fd', alpha:0.55});
     const e=pr(PREV.target||[0,0,0]);
@@ -2728,7 +2731,8 @@ function drawVR(){
   //    口径由老倪定: tool1 原点 = 模块头中心(= 长方体沿 Z 的一端); X = 上表面法向(厚度 T);
   //    Y = 侧面法向(宽度 W); Z = 上表面中轴线(长度 L)。本体从模块头朝法兰方向长出去。
   //    🍽 摆盘场景: 「🦾 右臂」关掉时, 末端的光模块也不能挂在半空(老倪 2026-11-16「隐藏了还显示」)
-  const _rArmOn = (VR.simArm!==false) || (VR.real!==false) || !(typeof __TRAY!=='undefined' && __TRAY);
+  const _rArmOn = (typeof __TRAY!=='undefined' && __TRAY) ? (VR.armShow!==false)
+                : ((VR.simArm!==false) || (VR.real!==false));
   const _mf=(typeof GESTF!=='undefined'&&GESTF&&GESTF.tool1)?GESTF:null;
   if(VR.mod && _rArmOn && ((_mf)||(TCP && TCP.ok && TCP.frames && TCP.frames.tool1))) drawModuleBox(g, pr, _mf);
   // 🔩 两个料盘里的光模块 (左盘待搬 / 右盘已搬)
@@ -6665,9 +6669,14 @@ document.head.appendChild(st);
     if(_bR){
       _bR.textContent=armRLabel(); _bR.title='右臂(仿真+真机一起): 三维里这一个开关同时控制仿真臂与真机臂; 真机授权仍只在 8793';
       _bR.addEventListener('click', function(){
-        VR.real = VR.simArm;                       // 一个开关管两头
+        VR.armShow = (VR.armShow===false);          // 先翻总开关(默认显示)
+        VR.real    = VR.armShow;                    // 真机臂
+        VR.simArm  = VR.armShow;                    // 仿真臂
+        var bb=document.getElementById('bArmR');
+        if(bb){ bb.classList.toggle('on', VR.armShow); bb.textContent=armRLabel(); }
         try{ drawVR(); }catch(e){}
       });
+      if(VR.armShow===undefined){ VR.armShow=true; }
     }
   }catch(e){}
   function trim(){
