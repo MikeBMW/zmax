@@ -8,6 +8,7 @@
   html:not(.sceneTray) #bMod16,
   html:not(.sceneTray) #bPos,
   html:not(.sceneTray) #bGrip,
+  html:not(.sceneTray) #bCarry,
   html:not(.sceneTray) #bDim,
   html:not(.sceneTray) #bSlave,
   html:not(.sceneTray) #bPan5,
@@ -313,6 +314,7 @@
       <button id="bMod30" class="sm on" title="在左盘里排 30 个光模块: 149.7×22.58mm, 长边沿盘的长边; 3 排(沿长边) × 每排 10 个(沿盘宽)">🔩 3×10 光模块</button>
       <button id="bMod16" class="sm on" title="左上角 4#方盘(315×230)里排 16 个光模块: 149.7×22.58mm, 长边沿盘的 315 那条边; 每排 8 个挨着放(不留缝) × 2 排 = 16">🔩 左上盘 16 个</button>
       <button id="bGrip" class="sm on" title="从机器人右臂 tool1 上的双夹爪工装(2×大寰 PGI-140-80 + 加长指尖): 点一次切夹持跨度 230(方盘) → 380(托盘) → 关。设计依据: 单只行程 80mm, 两只对置共 160mm ≥ 230→380 的 150mm 差; 单侧夹持力 40~140N, 可搬 ≤3kg">🧰 夹具 230</button>
+      <button id="bCarry" class="sm" title="用夹具把 位置3 的中上托盘搬到 位置2: 下降取件(盘底0) → 抬到盘底120mm → 平移越过中方盘40mm → 落到中方盘顶面(盘底40) → 松爪退回。动作连续(关节空间平滑插值), 6.5 秒一轮">🚚 夹到位置2</button>
       <button id="bPos" class="sm on" title="六个工位位置: 主机器人视角 左上① / 中上③ / 右上⑥ / 左下④ / 中下② / 右下⑤ —— 每个盘上方一块带编号的牌 + 盘边同色圈线, 再点关掉">① 位置</button>
       <button id="bDim" class="sm on" title="尺寸: 一键关掉画面上所有的尺寸标注(桌子长/宽/高 + 各个盘的长/宽), 再点回来">📏 尺寸</button>
       <button id="bSlave" class="sm on" title="从机器人: 桌子对面那台, 朝桌子, 和主机器人一起干活(11.16 加)">🤝 从机器人</button>
@@ -2594,6 +2596,15 @@ function drawVR(){
           drawMod30(g, pr, MOD30.tray||TPANL);
           drawMod16(g, pr, MOD16.tray||TPAN2);
           drawPosMarks(g, pr); }catch(e){}
+    // 🚚 手上托着的托盘(动画中) / 搬完停在位置2的那只
+    try{
+      if(typeof CARRY!=='undefined' && CARRY.running && CARRY.held){
+        CARRY.pan.cx=CARRY.pan.cx; drawTrayPan(g, pr, CARRY.pan, CARRY.panZ);
+      } else if(CARRY && CARRY.done){
+        CARRY.pan.cx=CARRY.done.cx; CARRY.pan.cy=CARRY.done.cy;
+        drawTrayPan(g, pr, CARRY.pan, CARRY.done.z);
+      }
+    }catch(e){}
   }
   // 📦 箱体(移动底盘): 再画箱体, 两臂/相机画在它上面 —— 顶板 z=0 就是两臂安装面
   if(CHS.show) drawChassis(g, pr);
@@ -4420,6 +4431,11 @@ if($('bGrip')) $('bGrip').addEventListener('click', function(){
   b.textContent = GRIP.show ? ('🧰 夹具 '+GRIP.span) : '🧰 夹具 关';
   try{ drawVR(); }catch(e){}
 });
+// 🚚 位置3 → 位置2 搬运
+if($('bCarry')) $('bCarry').addEventListener('click', function(){
+  if(CARRY.running){ return; }
+  CARRY.done=null; carryStart();
+});
 // ① 六个位置牌开关
 if($('bPos')) $('bPos').addEventListener('click', function(){
   POS.show=!POS.show;
@@ -4926,6 +4942,19 @@ var GRIP={
   fing:'#c9d3e0', fedge:'#eef4fb',    // 指尖(铝合金)
   spanColor:'#39e08a'
 };
+// 🚚 位置3 的托盘 → 位置2 的搬运动作(老倪 2026-11-16「要动作连续, 计算高度」)
+// 高度从几何里算出来, 不是拍脑袋:
+//   指尖相对 tool1 的下探 = 梁26 + 本体67 + 指尖下探60 + 勾12 ≈ 169mm ⇒ 夹住盘壁时 tool1 高度 = 盘底 + 178
+//   取件: 托盘坐在桌面上(盘底 0) ⇒ tool1 = 178, 指尖底 9mm, 与盘壁(z 0~25)重叠 16mm
+//   搬运: 路径上最高障碍 = 中方盘 40mm(左盘/左上盘/右上盘都不在 x 465~920 这条带上) ⇒ 盘底抬到 120, 余量 80mm
+//   放置: 落到中方盘顶面 ⇒ 盘底 40, tool1 = 218
+var CARRY={
+  running:false, t0:0, dur:6500, M:null, q:null, qList:null, phase:'', held:false, panZ:0,
+  from:{cx:0.920, cy:0.2325}, to:{cx:0.465, cy:0.250},
+  PAN_DROP:178, PICK_Z:0, CARRY_Z:120, PLACE_Z:40,
+  pan:{show:true, L:0.545, W:0.380, H:0.025, wall:0.005, cx:0.920, cy:0.2325,
+       fill:'#356b7d', inner:'#173039', edge:'#8fc4d6'}   // 与 TPAN5 同色
+};
 var POS={ show:true };   // ① 位置牌总开关
 var DIM={ show:true };   // 📏 尺寸标注总开关(老倪 2026-11-16「增加一个按钮, 关闭所有尺寸」)
 var SLAVE={ show:true, mx:0.725, my:0.25, x:1.45, y:0.50, half:0.15 };   // y=0.50 = 从机器人自己的右手侧(朝 -X 时右=+Y)
@@ -4943,8 +4972,12 @@ function drawSlaveBase(g,pr){
 // 夹爪工装自己建一个"好用的"坐标基: A=横向(沿盘宽, 水平) B=朝工件(水平) C=竖直向下
 //   ⚠ 不能直接用 tool1 的三轴: tool1 的 X 轴实测几乎竖直(它是模块头的轴), 拿它当横梁方向会把梁画成竖的。
 //   工装靠一块直角转接板把 tool1 的朝向转成"梁水平、指尖朝下", 这也是现场装夹爪的常规做法。
+function _slaveArmM(){                       // 动画期间用动画后的 FK, 平时用真机/仿真 FK
+  return (typeof CARRY!=='undefined' && CARRY.M) ? CARRY.M : LINKM;   // 播完保留终点姿态, 不清空
+}
 function _t1world(){
-  var t1=(typeof _frameOf==='function') ? _frameOf(LINKM,'tool1') : (LINKM&&LINKM['tool1']);
+  var _M=_slaveArmM();
+  var t1=(typeof _frameOf==='function') ? _frameOf(_M,'tool1') : (_M&&_M['tool1']);
   if(!t1 || !t1.origin) return null;
   var o=[SLAVE.x-t1.origin[0], SLAVE.y-t1.origin[1], t1.origin[2]];
   var z=[-t1.z[0], -t1.z[1], t1.z[2]];                    // tool1 的模块轴(绕 Z 转 180° 后)
@@ -5009,12 +5042,149 @@ function drawGrip(g,pr){
     g.setLineDash([]); g.restore();
   }
 }
+// 🚚 关键位(从机器人世界系, mm): 下降取件 → 抬升 → 平移 → 下降放置 → 退回
+//   注意 IK 用的是**主臂**坐标系: 从机器人 = 主臂 FK 绕 Z 转 180° ⇒ 反变换 (x,y) → (SLAVE.x-x, SLAVE.y-y)
+function _carryWps(){
+  var p3=CARRY.from, p2=CARRY.to, D=CARRY.PAN_DROP;
+  return [
+    {w:[p3.cx, p3.cy, (CARRY.PICK_Z+D)/1000], t:1200},                 // ① 空爪下降到取件高度
+    {w:[p3.cx, p3.cy, (CARRY.PICK_Z+D)/1000], t:450,  hold:'grip'},    // ② 闭合夹爪(停留)
+    {w:[p3.cx, p3.cy, (CARRY.CARRY_Z+D)/1000], t:1100, hold:'lift'},   // ③ 抬到搬运高度
+    {w:[(p3.cx+p2.cx)/2, (p3.cy+p2.cy)/2, (CARRY.CARRY_Z+D+25)/1000], t:2000},  // ④ 平移(中间拱起 25mm, 走弧不擦盘沿)
+    {w:[p2.cx, p2.cy, (CARRY.CARRY_Z+D)/1000], t:900},                 // ⑤ 到位
+    {w:[p2.cx, p2.cy, (CARRY.PLACE_Z+D)/1000], t:1100},                // ⑥ 下降到中方盘顶面
+    {w:[p2.cx, p2.cy, (CARRY.CARRY_Z+D)/1000], t:600}                  // ⑦ 松爪退回
+  ];
+}
+// 🔴 关键: 每一段必须从**上一点的关节角**起解(局部下降), 不能每点都做全局搜索 ——
+//   全局搜索会给出一组"另一个手臂姿态"的解, 关节角整段跳 150°(实测 #0 [13,2,-130] → #3 [-150,-78,-29]),
+//   插值出来就是手臂乱甩, 谈不上"动作连续"。
+// 搬盘用的代价: 位置误差(权重高) + 工具轴尽量竖直向下(放盘/取盘都是俯抓)
+function _costCarry(q, T){
+  var M=urdfFK(q), f=M['tool1']; if(!f) return 1e9;
+  var t=f.t, R=f.R;
+  var dp=Math.sqrt(Math.pow(t[0]-T[0],2)+Math.pow(t[1]-T[1],2)+Math.pow(t[2]-T[2],2))*1000;
+  var tilt=Math.sqrt(R[0][2]*R[0][2]+R[1][2]*R[1][2]);           // 工具轴偏离竖直的程度(0=完全竖直)
+  return dp*10 + tilt*60;
+}
+function _ikSeed(T, seed){
+  var D=Math.PI/180;
+  // 🔴 只在 seed 附近 ±48° 的格子里粗搜再下降: 纯局部下降会在长臂展处卡在局部极小(实测差 46~81mm),
+  //    纯全局搜索又会跳到"另一个手臂姿态"(关节跳 150°)。折中: 受限粗搜 + 下降。
+  var d0=48*D, st0=16*D, best=null;
+  for(var a1=seed[0]-d0;a1<=seed[0]+d0+1e-9;a1+=st0)
+   for(var a2=seed[1]-d0;a2<=seed[1]+d0+1e-9;a2+=st0)
+    for(var a3=seed[2]-d0;a3<=seed[2]+d0+1e-9;a3+=st0)
+     for(var a5=seed[4]-d0;a5<=seed[4]+d0+1e-9;a5+=st0){
+       var qq=[a1,a2,a3,seed[3],a5,seed[5]];
+       if(!_qOk(qq)) continue;
+       // 代价 = 位置/姿态 + 关节偏离罚(λ 让手臂尽量别换姿态)
+       var pen=0; for(var kk=0;kk<6;kk++) pen += Math.abs(qq[kk]-seed[kk]);
+       var cc=_costCarry(qq,T) + pen*2;
+       if(!best||cc<best.c) best={c:cc, q:qq};
+     }
+  if(!best) best={q:seed.slice()};
+  var q=best.q.slice(), c=_costCarry(q,T);
+  var steps=[6,3,1.5,0.7];
+  for(var si=0;si<steps.length;si++){
+    var st=steps[si]*D, improved=true, guard=0;
+    while(improved && guard++<80){
+      improved=false;
+      for(var i=0;i<6;i++) for(var sgn=1;sgn>=-1;sgn-=2){
+        var q2=q.slice(); q2[i]+=sgn*st;
+        if(!_qOk(q2)) continue;
+        var c2=_costCarry(q2,T);
+        if(c2<c-1e-6){ q=q2; c=c2; improved=true; }
+      }
+    }
+  }
+  var M=urdfFK(q), f=M['tool1'], t=f.t;
+  var err=Math.sqrt(Math.pow(t[0]-T[0],2)+Math.pow(t[1]-T[1],2)+Math.pow(t[2]-T[2],2))*1000;
+  return {q:q, cost:c, err:err};
+}
+function carryPlan(){
+  if(!URDF){ console.warn('搬运: URDF 还没到'); return null; }
+  var wps=_carryWps(), out=[], prev=null;
+  for(var i=0;i<wps.length;i++){
+    var w=wps[i].w;
+    // 世界(从机器人系) → 主臂系
+    var T=[SLAVE.x-w[0], SLAVE.y-w[1], w[2]];
+    var sol, clamp=0;
+    for(var k2=0;k2<12;k2++){
+      sol = prev ? _ikSeed(T, prev.q) : (function(){
+        var g=null;                                 // 首点: 全局粗搜(用搬运代价)
+        for(var b1=-170;b1<=170;b1+=15)for(var b2=-160;b2<=35;b2+=15)
+        for(var b3=-150;b3<=150;b3+=15)for(var b5=-150;b5<=150;b5+=20){
+          var qq=[b1,b2,b3,0,b5,0].map(function(v){return v*Math.PI/180;});
+          if(!_qOk(qq)) continue; var cc=_costCarry(qq,T);
+          if(!g||cc<g.c) g={c:cc,q:qq};
+        }
+        if(!g) return null;
+        return _ikSeed(T, g.q);
+      })();
+      if(!sol) return null;
+      if(sol.err<=12) break;
+      // 朝从机器人基座收 1/3 的超出量, 再解
+      var dx=SLAVE.x-w[0], dy=SLAVE.y-w[1], dl=Math.sqrt(dx*dx+dy*dy)||1;
+      var step=(sol.err/1000)*0.7;
+      w=[w[0]+dx/dl*step, w[1]+dy/dl*step, w[2]];
+      T=[SLAVE.x-w[0], SLAVE.y-w[1], w[2]];
+      clamp+= step*1000;
+      prev=null;
+    }
+    if(!sol || sol.err>20){ console.warn('搬运: 第'+i+'点解不出来 err='+(sol?sol.err.toFixed(1):'-')); return null; }
+    out.push({w:w, t:wps[i].t, q:sol.q, err:sol.err, clamp:clamp, hold:wps[i].hold||''});
+    prev={q:sol.q};
+  }
+  return out;
+}
+function carryStart(){
+  if(CARRY.running) return;
+  var plan=carryPlan(); if(!plan) return;
+  CARRY.qList=plan; CARRY.running=true; CARRY.held=false;
+  CARRY.q=plan[0].q.slice(); CARRY.M=urdfFK(CARRY.q);
+  CARRY.t0=(typeof performance!=='undefined'?performance.now():Date.now());
+  GRIP.show=true; GRIP.span=380;                      // 托盘 380 ⇒ 夹具切到 380 跨度
+  if($('bGrip')){ $('bGrip').classList.add('on'); $('bGrip').textContent='🧰 夹具 380'; }
+  TPAN5.show=false;                                    // 真盘由动画里的"手上托着的那只"代表
+  var tick=function(){
+    var now=(typeof performance!=='undefined'?performance.now():Date.now());
+    var el=now-CARRY.t0, acc=0, k=0;
+    while(k<CARRY.qList.length && el>acc+CARRY.qList[k].t){ acc+=CARRY.qList[k].t; k++; }
+    if(k>=CARRY.qList.length) k=CARRY.qList.length-1;
+    var seg=CARRY.qList[k], f=Math.min(1,Math.max(0,(el-acc)/seg.t)), e=_smooth(f);
+    // 关节空间插值: 上一段末 → 本段末 (确保逐段衔接, 速度在段末归零 ⇒ 动作连续不跳)
+    var qa = (k===0)? CARRY.qList[0].q : CARRY.qList[k-1].q, qb=seg.q, q=[];
+    for(var i2=0;i2<6;i2++) q.push(qa[i2]+(qb[i2]-qa[i2])*e);
+    CARRY.q=q; CARRY.M=urdfFK(q);
+    // 手上有盘? 取件段之后、放置段之前
+    CARRY.held = (acc+ (k?0:0), k>=1 && k<=5);
+    var tip=CARRY.M['tool1'].t;                        // 主臂系 tool1
+    var w=[SLAVE.x-tip[0], SLAVE.y-tip[1], tip[2]];    // 转回从机器人世界系
+    CARRY.panZ=Math.max(0, w[2]-CARRY.PAN_DROP/1000);  // 盘底高度
+    CARRY.pan.cx=w[0]; CARRY.pan.cy=w[1];
+    CARRY.phase=['下降到取件','夹紧(停 0.45s)','抬升','平移','到位','下降放置','松爪退回'][k]||'';
+    if(el < CARRY.qList.reduce(function(a,b2){return a+b2.t;},0)){
+      drawVR(); requestAnimationFrame(tick);
+    }else{
+      CARRY.running=false;          // 保留 CARRY.M = 终点姿态, 手臂不许弹回
+      CARRY.held=false;
+      // 结束后: 托盘留在位置2(盘底 40), 原位置3 空出来
+      TPAN5.show=false;
+      CARRY.done={cx:CARRY.to.cx, cy:CARRY.to.cy, z:CARRY.PLACE_Z/1000};
+      drawVR();
+    }
+  };
+  CARRY.phase='下降到取件';
+  requestAnimationFrame(tick);
+}
+
 function drawSlaveTop(g,pr){
   if(!SLAVE.show || !g || typeof g.beginPath!=='function') return;
   if(typeof drawTopCam==='function' && TCAM && TCAM.show!==false){ try{ drawTopCam(g, slavePr(pr)); }catch(e){} }
   if(typeof LINKM!=='undefined' && LINKM && typeof drawUrdf==='function'){
     var R=[[-1,0,0],[0,-1,0],[0,0,1]];
-    drawUrdf(g, pr, LINKM, {R:R, t:[SLAVE.x, SLAVE.y, 0], fill:'#46648c', stroke:'#a8c6ea', alpha:1});   // 右臂 FK, 转 180° 放到对面右手侧
+    drawUrdf(g, pr, _slaveArmM(), {R:R, t:[SLAVE.x, SLAVE.y, 0], fill:'#46648c', stroke:'#a8c6ea', alpha:1});   // 右臂 FK, 转 180° 放到对面右手侧(动画期间用 CARRY.M)
     try{ drawGrip(g, pr); }catch(e){}                      // 🧰 tool1 上的双夹爪工装
     // 🧭 从机器人末端也要有 tool1(模块头)坐标系 —— 老倪 2026-11-16「从机器人也要显示 tool1 模块头」
     //    从机器人的臂是右臂 FK 绕竖直轴转 180° 再平移 ⇒ tool1 的 origin/三轴同样被 R 转: (x,y)→(X-x, Y-y), z 不变
@@ -7247,7 +7417,7 @@ document.head.appendChild(st);
   }catch(e){}
 
   // ② 左栏白名单: 只留"看场景"的开关; 回放/单步/同步/轨迹/围栏这些摆盘还没定义, 一律收起
-  var KEEP={'bFrames':1,'bUrdf':1,'bMod':1,'bArmR':1,'bArmL':1,'bStretch':1,'bPan':1,'bPan5':1,'bPanSide':1,'bSlave':1,'bDim':1,'bMod30':1,'bMod16':1,'bPos':1,'bGrip':1,
+  var KEEP={'bFrames':1,'bUrdf':1,'bMod':1,'bArmR':1,'bArmL':1,'bStretch':1,'bPan':1,'bPan5':1,'bPanSide':1,'bSlave':1,'bDim':1,'bMod30':1,'bMod16':1,'bPos':1,'bGrip':1,'bCarry':1,
             'bCamTop':1,'bChs':1,'bTab':1,'bFlr':1,'bSim':1};
   // 🚫 老倪 2026-11-16 陆续点名不要: MuJoCo同视角(bMj) / 位置细胞(bCells) / 8802直播(bLiv) / 自动环绕(bSpin)
   //    理想档回放(idealBtn, 112段按本节拍) 也不在这条摆盘场景里 ⇒ 下面 trim 里显式按 id 隐藏
