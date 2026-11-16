@@ -74,6 +74,20 @@ metadata:
   （外层单引号 + 内层双引号）。
 - 通道健康**看它发来的请求**, 别用日志行数/本机自检判: `sudo timeout 20 tcpdump -A -s 0 -n -i <产线网卡> 'host <机器> and port 8794'`。
 
+### 一.00 命令分隔符 + 「这条回执是不是我这一次的」
+
+- **通道把命令交给 PowerShell 执行, 不是 cmd**: `&&` 直接 `ParserError`("&& 不是此版本中的有效语句分隔符");
+  多语句一律用 `;`(例 `echo X; schtasks /query /tn <名> /fo list`), 并继续遵守上面那条「不写 `$`/`%`、不嵌引号」。
+- 🔴 **队列积压时会认错回执**: `tools/station_cmd.py` 按"新出现文件名里取最大"认领, 机器刚恢复链路时历史命令正在排队消费,
+  你发的 `hostname` 很可能拿到上一条 `schtasks /run <保活任务>` 的回执 —— 表象是通道"通"、内容完全不相干,
+  据此判"命令生效了/通道好了"会一路错下去。
+  正解: **每条命令自带标记、按标记认领**。下发 `echo ZMAXM<8位hex>; <真命令>`, 只在回执文本里找这个标记, 命中才算这一次;
+  现成脚本 `tools/win_cmd.py '<cmd>' [wait_sec]`(入队 → 轮询 `zmax_data/agent_hub/out/` → 只有命中标记才返回, 并打印回执文件名与等待秒数)。
+- 🔴 **机器刚恢复链路时, 积压的历史命令会真的执行**: `zmax_data/agent_hub/cmd.jsonl` 里排着的旧条目(常见是
+  `schtasks /run <保活任务>`)会在几秒内被逐条跑掉, 可能把你几分钟前停掉的服务重新拉起来。
+  停服/重启这类动作的固定顺序: ① 先看积压(看 `cmd.jsonl` 尾部与 `out/` 里正在冒的回执) ② 再动手 ③ 等 60~90s 从**外部端口**复验,
+  别拿"刚杀完那一秒"的检测当结论。
+
 ### 一.0 有账号口令时: SMB 直读直写(只能读写盘, 不能执行)
 
 口令到手后**第一件该试的事**, 比 base64 分块省事一个量级: 看日志/列目录/校正文件是否存在都能直接干。
@@ -121,6 +135,14 @@ Start-Sleep -Seconds 12; $p.Id; $p.HasExited      # False + 稍后 /storage 200 
   (app 自己用系统 python 起的子进程 ppid=主进程, 属正常)。实测 `$sh.Run('cmd /c cd /d <dir> && venv\Scripts\python.exe <prog> ...')`
   这种分离启动会留下一个**用系统 Python 跑的影子实例** ⇒ 起之前先杀干净同名进程, 优先用上面的 `Start-Process`。
 - ⚠️ 直接 `Stop-Process` 掉在役进程后, 分钟级 keepalive **不一定一轮就拉起来**(实测 75s 未回) ⇒ 手工起一把再验。
+- 🔴 **一个保活任务常同时管多个端口**(脚本里一张 `@{端口=程序名}` 表, 例 10082/10083 两条通道,
+  逻辑是"端口没人听就起、听的不是本版就杀、副本多了就清"): 为了停其中一个通道而把任务 `Disabled`,
+  **另一个通道就同时失去自愈能力** —— 它还活着, 但挂了不会自己回来。交付时必须点名这个副作用, 并给出回滚两条命令
+  `schtasks /change /tn <任务> /enable` + `schtasks /run /tn <任务>`。
+  单通道停服的完整口径: ① `schtasks /query /tn <任务> /fo list` 看是不是"就绪"(分钟级会拉起来) ② `Disabled` 并回读"已禁用"
+  ③ 从监听表取**端口属主 pid**(`Get-NetTCPConnection -LocalPort <p> -State Listen` 的 `OwningProcess`)精确杀,
+  别用名字通配 ④ 双证据(`<p>` Listen 计数 0 + 同名进程数 0) ⑤ **从另一台机**直连目标端口应连不上、同任务管的另一路仍 200
+  ⑥ 再等 70~90s 复验一次, 防积压命令/漏掉的守护把它拉回来。
 
 ## 三、用户说"断点怎么没进去 / 结果没更新": 按序查, 别改代码
 
@@ -993,6 +1015,8 @@ powershell -NoProfile -Command "Get-Service AweSunService,SunloginService | Sele
 
 ## 支持文件
 
+- `scripts/win_cmd.py` —— 经反向通道下发一条命令并按 `echo ZMAXM<tag>;` 标记**精确认领这一次的回执**(队列积压时不会拿到别人的);
+  已内置 PowerShell 分隔符 `;`。`ZMAX_ROOT`/`ZMAX_PY`/`ZMAX_HUB_OUT` 可覆盖默认路径。
 - `scripts/awesun_health.ps1` —— 向日葵/AweSun 只读体检: 进程角色(service/watch/guard/gui)、服务状态与 BINARY_PATH、
   服务 PID 的 Established 连接(判 online)、两处日志里最新那份的 online/offline 状态行。
 - `references/windows-hermes-brain-node.md` —— 从零建通道(WinRM→sshd) + 灌脑子(tar over ssh) + 定时双向同步(无 rsync) +

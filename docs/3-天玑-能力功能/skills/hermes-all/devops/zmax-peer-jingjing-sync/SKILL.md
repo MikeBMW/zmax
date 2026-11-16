@@ -79,6 +79,22 @@ metadata:
 **本机领先、禁止覆盖**: `tools/ar_scene_render_server.py` (含 /video 限速+私有 MjData 修复, 1543 行 vs 对端 1328)、`tools/ar_mujoco_urdf.py`。
 判定法: 拉对端版本到 scratch, 用 `difflib` 统计「本机独有行 / 对端新增行」, 本机独有 > 对端新增 ⇒ 本机领先。
 
+### Mike WiFi 下的实测一轮 (2026-11-16, Ubuntu 192.168.43.181 → Windows 192.168.43.30)
+- 对端地址: `mike@192.168.43.30`(hostname `Space`), SSID `Mike`; 本机 `192.168.43.181`。
+  扫网段只用了 3 行 python(22 端口/0.35s/64 线程), 254 个地址里只有 .30 和本机开 22。
+- 对端**没有 git、没有 rsync**, 只有 `C:\Windows\system32\tar.exe` 和 WinStore 版 python ⇒ 代码同步只能 tar 管道,
+  别想着 `git pull`/`rsync -a`。
+- 对端 `C:\home\ubuntu\zmax` 现在**有 src/tools**(不是早期 skill 写的只有 config/data/flows), 直接按相对路径解包即可。
+- 程序同步口径(省 flow 时间的做法): 两侧各出一份 `大小 相对路径` 清单 → 先按 **size 比**, 只有 size 不同的才谈 hash:
+  本地 `find src tools flows defaults configs -type f -printf "%s %p\n"`; 对端用 PowerShell 递归出 `$_.Length` + 相对路径。
+  本轮: 本地 5931 · 对端 4437, 只在本地 1701(其中 1500+ 是 `__pycache__/*.pyc` 噪声, 排除后只有 **215** 个真文件, 62MB),
+  推完复跑 ⇒ 只剩 1 个中文名 PDF 失败 + 17 条“只在远端”(其实是本机软链 vs 对端实体文件, 属正常)。
+- **PowerShell 必须用 `-EncodedCommand`**(脚本 UTF-16LE + base64 走 stdin/参数都试过不行): `powershell -NoProfile -Command "..."`
+  经 ssh 会被 cmd 吃掉引号, 输出 0 行却不报错 —— 判据是“命令返回 0 但 list 为空”就先怀疑引号, 别怀疑目录不存在。
+- 记忆/技能同步: 本轮 **memories 两侧本来就同 hash**(MEMORY 6697f0fe… / USER 1088ba91…), 只补了技能 18 个文件;
+  推完两侧都是 2064 个文件(排除 `*.lock`)、0 差异。**技能多于对端是常态**(本轮本地 2064 vs 对端 2055)。
+- 推送前备份对端: `xcopy /E /I /H /Y C:\home\ubuntu\.hermes C:\home\ubuntu\.hermes.bak_YYYYMMDDb`(技能目录已有多份 bak 是正常的)。
+
 ## 铁律与坑
 1. **远端 find 要整个单引号包住**；用转义双引号套 ssh 会让远端收到被吃掉引号的 find，**静默 0 行**。
    复制整个脚本过去跑 (`ssh 'bash -s' < remote_hash.sh`) 最稳。
