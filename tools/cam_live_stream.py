@@ -1808,6 +1808,62 @@ def _judge_level(band, gamma: float = 0.9, lo_p: float = 2.0, hi_p: float = 98.0
         return band
 
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 🧭 判据图取景调试页 (2026-11-17): 老倪「判据图看不到金手指, 你的算法在哪里?」
+#   问题: 自动找"金属连接片那一横排"的判据(列自相关周期)会把一块平滑边缘也判成周期结构,
+#        结果裁出来是一块平滑亮块(实测: 页面图里没有任何金属片)。
+#   做法: 给出整帧 + 200px 网格刻度 + 当前自动框, 让现场一句话指出"金手指在第几格",
+#        比在本地猜几何快得多, 也不会再把错的框当成对。
+def _gold_debug_frame_png():
+    try:
+        import urllib.request as _u
+        _r = _u.Request("http://192.168.23.23:10082/picture?kind=origin&grab=1",
+                        headers={"User-Agent": "zmax-debug"})
+        _raw = _u.urlopen(_r, timeout=60).read()
+        im = cv2.imdecode(np.frombuffer(_raw, np.uint8), cv2.IMREAD_COLOR)
+        if im is None:
+            return None
+        H, W = im.shape[:2]
+        out = im.copy()
+        for x in range(0, W, 200):
+            cv2.line(out, (x, 0), (x, H), (60, 60, 60), 1)
+            cv2.putText(out, "x%d" % x, (x + 3, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1, cv2.LINE_AA)
+        for y in range(0, H, 200):
+            cv2.line(out, (0, y), (W, y), (60, 60, 60), 1)
+            cv2.putText(out, "y%d" % y, (3, y + 16), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1, cv2.LINE_AA)
+        # 当前自动框(绿) + 判定说明
+        try:
+            rw = _gold_row_auto(im)
+        except Exception:
+            rw = None
+        if rw:
+            cv2.rectangle(out, (rw["x0"], rw["y0"]), (rw["x1"], rw["y1"]), (0, 255, 0), 3)
+            cv2.putText(out, "AUTO y=%d..%d r=%.2f pitch=%.0f" % (rw["y0"], rw["y1"], rw["r"], rw["pitch"]),
+                        (rw["x0"] + 6, max(24, rw["y0"] - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
+        # 上半/中/下三段参考线(便于口头指位)
+        for fy, lab in ((0.33, "上1/3"), (0.5, "中"), (0.66, "下2/3")):
+            yy = int(H * fy)
+            cv2.line(out, (0, yy), (W, yy), (255, 120, 0), 2)
+            cv2.putText(out, lab, (W - 120, yy - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 120, 0), 2, cv2.LINE_AA)
+        ok, buf = cv2.imencode(".png", out)
+        return buf.tobytes() if ok else None
+    except Exception:                                                             # noqa: BLE001
+        return None
+
+
+def _gold_debug_page():
+    return """<!doctype html><meta charset="utf-8"><title>金手指取景调试</title>
+<body style="margin:0;background:#111;color:#ddd;font:14px/1.6 system-ui">
+<div style="padding:10px 14px">
+<b>🧭 金手指取景调试</b> —— 整帧 + 200px 刻度 + 当前自动框(绿)。<br>
+绿框 = 现在判据图裁的位置(如果不含金属片, 说明找错了)。<br>
+<span style="color:#ffd166">请回我一句: 金属连接片那一横排在哪(例如「y1000 附近」「中线上方」「绿框下面一格」), 我按你指的坐标锁死。</span>
+</div>
+<img src="/gold_debug/frame.png" style="width:100%;display:block">
+</body>"""
+
+
 def _gold_row_auto(bgr, pad_frac: float = 0.25):
     """🔍 自动找**金属连接片那一横排**(老倪 2026-11-17: 「判据图需要你显示金属连接片」)。
 
@@ -5447,6 +5503,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(404, "text/plain; charset=utf-8", b"splat not found")
             else:
                 self._send(200, "application/octet-stream", _b)
+        elif p == "/gold_debug/frame.png":
+            _b = _gold_debug_frame_png()
+            if _b is None:
+                self._send(500, "text/plain; charset=utf-8", b"frame fetch failed")
+            else:
+                self._send(200, "image/png", _b)
+        elif p in ("/gold_debug", "/gold_debug.html"):
+            self._send(200, "text/html; charset=utf-8", _gold_debug_page())
         elif p in ("/station", "/station.html", "/board"):
             # 🛰 工位总览: 6 窗同屏(3 相机 + 深度 + 金手指 + 表面) + 手动控制区
             # 老倪的浏览器里曾有两个窗口都开着本机页面, 把「同一主机 6 条连接」占满 ⇒
