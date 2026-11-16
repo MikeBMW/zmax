@@ -6572,18 +6572,28 @@ async function loadCams(){
       if((m=c.match(/[\d.]+/g))&&m.length>=3){ return (0.299*(+m[0])+0.587*(+m[1])+0.114*(+m[2]))/255; }
       return null;
     };
-    var wrap=function(name){
-      var f=P[name]; if(typeof f!=='function') return;
-      P[name]=function(txt,x,y){
-        if(!(typeof __TRAY!=='undefined'&&__TRAY) || window.VR_TEXT===false) return f.apply(this,arguments);
-        var old=this.fillStyle, l=_lum(old);
-        if(l!==null && l<0.5){ this.fillStyle='#ffffff'; }
-        var r=f.apply(this,arguments);
-        this.fillStyle=old;
+    // fillText: 先在字后面铺一块黑色底板(按 textAlign/textBaseline 对齐), 再画纯白字
+    //   ⇒ 不管字原来是什么颜色、压在什么背景上, 都看得清(压机械臂网格、浅色壁面也一样)
+    var _f=P.fillText;
+    if(typeof _f==='function'){
+      P.fillText=function(txt,x,y){
+        if(!(typeof __TRAY!=='undefined'&&__TRAY) || window.VR_TEXT===false) return _f.apply(this,arguments);
+        var prev=this.fillStyle;
+        try{
+          var w=this.measureText(String(txt)).width, sz=parseFloat(this.font)||11;
+          var x0=x, al=this.textAlign;
+          if(al==='center') x0=x-w/2; else if(al==='right'||al==='end') x0=x-w;
+          var y0=y-sz, bl=this.textBaseline;
+          if(bl==='middle') y0=y-sz/2; else if(bl==='top'||bl==='hanging') y0=y;
+          this.fillStyle='rgba(0,0,0,.78)';
+          this.fillRect(x0-3, y0-1, w+6, sz+4);
+        }catch(e){}
+        this.fillStyle='#ffffff';
+        var r=_f.apply(this,arguments);
+        this.fillStyle=prev;
         return r;
       };
-    };
-    wrap('fillText'); wrap('strokeText');
+    }
     P.__trayWhiteText=true;
   }catch(e){ console.warn('注记白字补丁失败', e); }
 })();
