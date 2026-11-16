@@ -2750,6 +2750,7 @@ function drawVR(){
   // 📏 桌子尺寸标注: 必须画在**最后**(箱体/机器人都在桌子之后画, 画在 drawTable 里会被它们盖成一片黑)
   if(typeof __TRAY!=='undefined' && __TRAY && typeof trayTableDims==='function'){
     try{ trayTableDims(g, pr); }catch(e){}
+    try{ if(typeof trayDimDom==='function') trayDimDom(pr); }catch(e){}
   }
   g.fillStyle='#6b7a8d'; g.font='12px monospace';
   g.fillText('base 系 · 地面 = xy 平面 (z=0) · 0.1m 网格 · 拖动旋转'+(VR.frames?' · 🧭 红X/绿Y/蓝Z 三个坐标系':''),8,14);
@@ -4594,6 +4595,44 @@ function beamBox(){
   }
   return {name:'上横梁(缺省)', x:[0.4,0.6], y:[-0.8,0.8], z:[0.682,0.700]};
 }
+// 📏 摆盘场景尺寸数字: 用 HTML 覆盖层显示(老倪这边 canvas 字体渲染不出来, 白字黑框改成 DOM 就一定能看到)
+function trayDimDom(pr){
+  var box=document.getElementById('trayDims');
+  if(!box){
+    box=document.createElement('div'); box.id='trayDims';
+    box.style.cssText='position:fixed;left:0;top:0;width:0;height:0;pointer-events:none;z-index:60';
+    document.body.appendChild(box);
+    for(var i=0;i<4;i++){
+      var d=document.createElement('div'); d.id='tdim'+i;
+      d.style.cssText='position:absolute;white-space:nowrap;transform:translate(-50%,-50%);'
+        +'font:700 15px ui-monospace,monospace;color:#ffffff;background:rgba(0,0,0,.92);'
+        +'border:1.5px solid #ffffff;border-radius:5px;padding:2px 7px;letter-spacing:.3px;'
+        +(i===3?'font-size:14px;':'');
+      box.appendChild(d);
+    }
+  }
+  var cv=document.getElementById('vr'); if(!cv) return;
+  var cr=cv.getBoundingClientRect();
+  var T=TAB, x0=T.x0, x1=T.x1, y0=T.cy-T.w/2, y1=T.cy+T.w/2, fl=-T.h;
+  var items=[
+    ['长 '+Math.round(T.w*1000),        pr([x1+0.12, (y0+y1)/2, 0])],
+    ['宽 '+Math.round((x1-x0)*1000),    pr([(x0+x1)/2, y0-0.12, 0])],
+    ['高 '+Math.round(T.h*1000),        pr([x1+0.06, y1+0.06, fl/2])],
+    ['桌子 长'+Math.round(T.w*1000)+' × 宽'+Math.round((x1-x0)*1000)+' × 高'+Math.round(T.h*1000)+' mm',
+       pr([(x0+x1)/2, y1+0.28, 0])]
+  ];
+  for(var k=0;k<items.length;k++){
+    var d=document.getElementById('tdim'+k); if(!d) continue;
+    var q=items[k][1];
+    if(!q || !isFinite(q.u) || !isFinite(q.v)){ d.style.display='none'; continue; }
+    d.style.display='block';
+    d.textContent=items[k][0];
+    // 夹在画布内, 免得跑到窗口外面
+    var u=Math.max(cr.left+70, Math.min(cr.right-70, cr.left+q.u));
+    var v=Math.max(cr.top+16, Math.min(cr.bottom-16, cr.top+q.v));
+    d.style.left=Math.round(u)+'px'; d.style.top=Math.round(v)+'px';
+  }
+}
 // 📏 摆盘场景的桌子尺寸标注(长/宽/高) —— 必须在整帧最后画, 否则被箱体/双臂盖成一片黑
 function trayTableDims(g, pr){
   const T=TAB;
@@ -4603,7 +4642,8 @@ function trayTableDims(g, pr){
   g.save();
   g.globalAlpha=1; g.setLineDash([]);
   function label(txt,u,v,col){
-    // 💡 2026-11-16 老倪「数字还是黑色看不到」⇒ 白字 + 黑描边(任何底色都压得住) + 纯黑底板
+    // 💡 数字改由 HTML 覆盖层(trayDimDom)显示; canvas 这套只在没有 DOM 层时兜底
+    if(document.getElementById('trayDims')) return;
     g.font='bold 16px ui-monospace,monospace';
     const tw=g.measureText(txt).width;
     const x=Math.max(tw/2+8, Math.min(W-tw/2-8, u)), y=Math.max(20, Math.min(H-10, v));
@@ -4631,6 +4671,7 @@ function trayTableDims(g, pr){
     u=Math.max.apply(null, cs.map(function(p){return p.u;}))+24;
     v=Math.min.apply(null, cs.map(function(p){return p.v;}))+2;
   }
+  if(document.getElementById('trayDims')){ g.restore(); return; }   // 有 DOM 层就不再画 canvas 文字牌
   const lines=['桌子  长 '+TL+' × 宽 '+TW+' × 高 '+TH+' mm',
                '桌面 z=0 · 与箱体顶板/两臂安装面平齐'];
   g.font='bold 13px ui-monospace,monospace';
