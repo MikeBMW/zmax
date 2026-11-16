@@ -2404,7 +2404,8 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
                     bgr = _deglare_bgr(bgr)   # bgr 就地改写 ⇒ 下面 2197「整板原图」那一路自动继承
                 jpg, _meta = _aoi_frame(bgr, clean=clean, natural=_nat, deskew_deg=_ds,
                                         vstretch=(3.0 if _nat else 1.0),
-                                        fix_hw=((900, 332) if _nat else None))
+                                        out=(1660 if _nat else 900),   # 2026-11-17: 金手指判据图 900×1660, 上限不压它
+                                        fix_hw=((900, 1660) if _nat else None))
                 if jpg:
                     _put(name, jpg, time.time(), len(raw) / 1024.0, src_age_s=_src_age)
                 if full_name and not full_kind and not (port == 10083 and _SURFACE_RECT_JUDGE):
@@ -2561,14 +2562,14 @@ def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0
                         else:
                             # 🔴 2026-10-12: 几何**恒定**(锚在锁定的条带上), 绿框单独跟"工件在位"判定
                             #   ⇒ 不再逐帧在"有框/无框/旧渲染"之间换脸(老倪「还在跳变」的主因)。
-                            _r0, _m0 = _gold_rectify(_pre, lock_key=port)
+                            _r0, _m0 = _gold_rectify(_pre, stretch=8.0, hw=(900, 2200), lock_key=port)
                             _lat = _m0.get("lattice") or {}
                             _inplace = _gold_rect_vote(port, float(_lat.get("r") or 0.0),
                                                        bool(_lat.get("ok")))
-                            _r1, _m1 = _gold_rectify(_pre, force_box=_inplace, lock_key=port)
+                            _r1, _m1 = _gold_rectify(_pre, stretch=8.0, hw=(900, 2200), force_box=_inplace, lock_key=port)
                             _rj, _rm = (_r1, _m1) if _r1 else (_r0, _m0)
                             if not _rj and _inplace:                     # 保障: 自检不过但在位 ⇒ 只出几何
-                                _r2, _m2 = _gold_rectify(_pre, skip_lattice=True)
+                                _r2, _m2 = _gold_rectify(_pre, stretch=8.0, hw=(900, 2200), skip_lattice=True)
                                 _rj, _rm = (_r2 or _r0), (_m2 or _m0)
                             _rm = dict(_rm or {})
                             _rm["inplace"] = bool(_inplace)
@@ -2577,8 +2578,8 @@ def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0
                         if _pre is not None:
                             # 复用已经裁好的条带(不再第二次 clean) ⇒ 回落也不拖慢刷新节奏
                             jpg, meta = _gold_legacy_from_natural(
-                                _pre, deskew_deg=_aoi_gold_angle(port), vstretch=1.0,
-                                fix_hw=None, quality=90, out=900)
+                                _pre, deskew_deg=_aoi_gold_angle(port), vstretch=8.0,
+                                fix_hw=None, quality=90, out=2200)
                         else:
                             jpg, meta = _aoi_frame(bgr, clean=True, natural=True,
                                                    deskew_deg=_aoi_gold_angle(port), vstretch=1.0,
