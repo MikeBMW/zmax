@@ -1,6 +1,9 @@
 # ar3d 页「机器人不同步」＝ 页面视图模式问题，不是链路问题
 
 > 场景元素（插口/料盘/槽位）要增改时看同目录 `ar-scene-cells-place-cells.md`（fences.json → scene_places_build → 回读）。
+> 要仿照本页另做一个「新场景页」（同机器人同桌子、操作后定义）看同目录 `scene-page-derivation.md`
+> （复用同一份 HTML，只换场景默认值/白名单/标题，不另写渲染器）。
+> 回放/单步/甘特光标/末端模块+tool1 的口径看 `right-arm-real-traj-replay.md`。
 
 用户口径: 「http://<host>:8797/ar3d 机器人怎么不同步了？」。
 先把**后端**与**前端视图**分开判，别一上手就查 8797 / 相机 / 中继。

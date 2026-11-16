@@ -86,6 +86,18 @@ elif p in ("/autoLight", "/autolight", "/autoLight.html"):
 - 相邻工位用**交错高度** (如 i%2 ? +0.34m : 0) 让它们能同时显示; 场景里用**短名** (① FC 拔帽·端检), 全名放侧栏, 兼顾可读与不挤。
 - 标注总开关 (用户会想截图干净版)。
 
+### §5b 用户两次说「看不见这些字」⇒ 换渲染通道, 不在 canvas 颜色上纠缠
+canvas 里 `fillStyle`/描边/底板只能救"对比度不够", 救不了"压根不出字"。判据顺序:
+1. 先一次把 canvas 内可读性做满(纯黑底板 + 白框 + `bold 16px` + `strokeText` 黑描边再 `fillText` 白), 同时把标注挪到
+   深色背景区域(别压在浅色物体上);
+2. 用户仍说看不见 ⇒ **立刻把这条标注改成 HTML 覆盖层**, canvas 只保留线/框:
+   - 容器建一次 `position:fixed; left:0; top:0; pointer-events:none; z-index` 高于画布, 内部每块 `position:absolute; transform:translate(-50%,-50%)`;
+   - 每帧用 **`画布.getBoundingClientRect()` + 投影 `pr()` 的 u/v** 更新 `left/top` 与 `textContent`, 并夹在 `cr.left..cr.right` / `cr.top..cr.bottom` 内;
+   - canvas 侧对应的 `fillText` 首行 `if(document.getElementById('<覆盖层id>')) return;`, 否则两套文字叠字;
+   - 好处: 文字由浏览器排版, 一定可见, 还能选中复制(用户常要粘走数值)。
+3. 判断不要靠"我改了颜色": 钩一次 `fillText` 打印 `(text, fillStyle, font, x, y)`, 若颜色/坐标都对而画面仍无字 ⇒ 这不是颜色问题, 直接进第 2 步。
+- 标注只留必要数值/短名: 同一组数值别既在画布上又挂一条"汇总牌"、又在页脚状态行重复 —— 冗余条会被点名删掉。
+
 ## 6. 取证: 判据是像素, 不是"我 push 了多少面"
 
 - **面数 ≠ 有画面**: 绘制队列是最后统一执行的, 任何一个 draw 函数抛异常 (例如引用了不存在的字段 `S.station` 而常量叫 `C.station`),
@@ -99,6 +111,9 @@ elif p in ("/autoLight", "/autolight", "/autoLight.html"):
   浏览器工具偶尔报一条 **空 message 的 exception**, 而 `chromium --headless --enable-logging=stderr` 里 `grep -i uncaught` 是 0 ⇒ 那是工具侧伪影,
   用后者定性, 别为它改代码。
 - **一页多卡就逐卡取证**: 每个 `canvas` 单独 `getImageData` 算非背景占比 + 亮色包围盒与质心 (主体该占窗口 40%~85%、质心居中); 只报总面数会漏掉“某一张卡黑了”这种最尴尬的交付事故。
+- ⚠️ **文字不能拿亮像素计数判**: 缺字形的渲染环境(远程/headless 浏览器)里 canvas glyph 根本不上像素,
+  会把正常白字判成"没画", 于是你去改一段本来是对的代码。判文字用钩子(包 `fillText` 记录 text/fillStyle/font/x,y)
+  或读 DOM 覆盖层的 `textContent`; 像素只用来判形状(包围盒/帧差分/非背景占比)。
 - **中文真的画出来了才算**: `tesseract <全页png> stdout -l chi_sim+eng --psm 4 | grep <某句原文>`。canvas 里中文可能因字形缺失/被裁根本没画, OCR 读回原文才是证据。
 - **定位“整帧不画”**: 空 message 的异常没有行号 ⇒ 在 `browser_console` 里把每个 draw 函数单独 `try{fn()}catch(e){e.message+' | '+e.stack.split('\n').slice(0,3)}`, 报错那个就是元凶（常见形态: 引用了不存在的字段, 如 `S.station` 而常量叫 `C.station`, 一个字符整页全黑）。
 - 全页截图用高窗口: `--window-size=1600,3800` 一屏拍完 N 张卡, 再按 340 px 条带算非背景占比, 每行都该有内容。

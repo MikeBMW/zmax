@@ -43,6 +43,10 @@ trigger: "Use when `git push` is rejected non-fast-forward, when the same repo i
    提交信息用 `git commit -F <msgfile>` (中文 + 引号走 shell 内联必踩 `No such file or directory`)。
 4. **提交后回读**: `git show --stat HEAD` + `git status --short` —— 确认文件数/清单正好是本任务那几个,
    未提交的那批仍在。
+4.5 **常驻服务在写受版本控制的文件时, rebase 会被 "unstaged changes" 挡住**: 画布/运行态 JSON 这类文件每拍被
+   服务回写(例 `state_space_obs.json`), `git rebase` 直接报 `cannot rebase: You have unstaged changes`。
+   做法 `git stash push -q -m '<原因>' -- <那个文件>` → rebase → `git stash pop -q`;
+   **不要** `git checkout -- <文件>`(把服务正在写的状态冲掉), 也不要把这种改动当本任务成果提交进去。
 5. **两个交集都空 ⇒ 用 worktree + cherry-pick 只把自己的那条落到远端** (首选动作, 不是只报"未推"):
    ```bash
    git worktree add -q /tmp/push-<task> origin/main -b tmp-<task>
@@ -81,6 +85,6 @@ rebase 期间文件被 checkout 过, 复原的是索引与工作区内容, 不�
 | `! [rejected] non-fast-forward` | 分支坏了 / 远端有恶意改动 | 远端有别人的新提交, 正常 |
 | `pull --rebase` 冲突在你不认识的文件 | 你改错了 | 你的未推提交被重放到了别人的改动上 |
 | `git status` 干净 | 可以推了 | 只说明没未提交改动, 分歧还在 |
-| `ahead 5, behind 6` 且两边提交**提示文字一样** | 自己丢了两条提交 | 那几条已被别的机器/会话 rebase 过 (内容同、hash 不同) ⇒ **不要重放**, 只把真正新增的那一条 cherry-pick 上去 |
+| `ahead 5, behind 6` 且两边提交**提示文字一样** | 自己丢了两条提交 | 那几条已被别的机器/会话 rebase 过 (内容同、hash 不同) ⇒ **不要重放**。若它们是**同一份内容经 host API 重推**产生的(本地/远端 sha 不同), 直接 `git rebase origin/main` 即可: git 按 patch-id 认已应用, 输出 `skipped previously applied commit` / `dropping … patch contents already upstream`, 只留你真正新增的那条, 比手工 cherry-pick 少一层风险 |
 | `git diff --name-only HEAD origin/main` 只剩你改的文件 | 本地落后很多 | 恰是能安全 `reset --hard origin/main` 的证据 |
 | 冲突后手工编辑解冲突 | 快 | 两个任务被混进一个提交, 下次 review 无法分离 |

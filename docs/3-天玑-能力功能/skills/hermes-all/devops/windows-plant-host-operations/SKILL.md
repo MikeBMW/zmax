@@ -423,6 +423,10 @@ Invoke-WebRequest -Proxy http://<操作机产线IP>:8889 -Uri <URL> -OutFile D:\
 - **远程默认 shell 是 cmd.exe**: `;` 不是分隔符(`tar -xf - ; echo rc` 会把 `;`/`echo` 当 tar 成员 ⇒ `Not found in archive`),
   用 `&&`; 且**别给 Windows 路径套 POSIX 单引号**(cmd 会字面传下去)。管理员账号的公钥落
   `C:\ProgramData\ssh\administrators_authorized_keys` 并 `icacls` 收窄权限, 普通用户才用 `%USERPROFILE%\.ssh\`。
+- 🔴 **`powershell -Command "…"` 里带 `|` 管道会被 cmd.exe 吞掉一层**: 实测 `Select-String … | Select-Object … | ForEach-Object`
+  经 ssh 下发只回一行空/卡住, 而同一句写成 .ps1 能跑 —— 看着像 PS 不认管道。凡含管道 / 多语句 / 嵌套引号的,
+  一律走文件: 本地写**纯 ASCII** 的 `.ps1` → `tar -cf - x.ps1 | ssh <host> 'tar -xf - -C C:\Users\<u>'` →
+  `powershell -NoProfile -ExecutionPolicy Bypass -File <路径>`。判断成败只认它回读的内容与退出码两样, 不看单条回执的 exit 0。
 - **灌脑子用 tar over ssh**(Windows 没有 rsync), 首次灌 `memories skills cron config.yaml auth.json .env channel_directory.json`
   (`config.yaml` 只这一次, 之后定时同步不推它 —— 见下条)。
   🔴 漏掉 **`.env`** 是最常见的"装好了却不会说话": 模型 key 与 `*_BASE_URL` 都在里面。

@@ -5,7 +5,7 @@ description: Use when 改 8797/ar 页的轨迹按钮·执行链·围栏避让规
 
 # 8797/ar 轨迹按钮与执行链
 
-refs(均在 references/, .md): right-arm-real-traj-replay · sync-step-sim-then-real · gripper-replay · ar3d-page-real-vs-sim-view · sim-arm-follow-and-meta-entry · meta-task-tact-regeneration
+refs(均在 references/, .md): right-arm-real-traj-replay · sync-step-sim-then-real · gripper-replay · ar3d-page-real-vs-sim-view · sim-arm-follow-and-meta-entry · meta-task-tact-regeneration · tray-scene-page
 
 ## 8802 画面「不动 / 乱动 / 两边不同步」的真因清单 (2026-11-10 实测)
 - **显存不足**：`nvidia-smi` 只剩 ~400MB 时 MuJoCo `Renderer.render()` 会在 C 层**不返回**，整个 8802 冻住（n 不涨，`/frame.png` `/video` `/joints.json` 全停，进程 100% CPU 但不出图）。先腾显存，别当链路故障查。
