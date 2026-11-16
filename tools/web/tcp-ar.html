@@ -6528,35 +6528,49 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
           pp.style.color = '#8b949e';
         }
       }
-      // 🎯 甘特条实时游标(老倪 2026-11-15「甘特图怎么不动呢?」)
+      // 🎯 甘特条实时游标(老倪 2026-11-15「甘特图怎么不动呢?」/ 2026-11-16「要有光标提示当前的时间点」)
       //    条宽 = 各段时间占比, 所以游标位置不能 cur/215 线性映射 —— 必须
       //    按"前面所有段的 pct 之和 + 本段内完成比例 × 本段 pct"定位, 否则会跑偏。
+      //    ⚠ 取值优先级(2026-11-16 修): 以前是"真机游标 > 回放帧号", 可是真机停在 215/215 时
+      //      gCur 恒等于 215 ⇒ 游标永远钉在最右端、回放时看着就是"不动/没有光标"。
+      //      改成: 页面自己在回放 → 跟回放; 点「跟随真机」→ 跟真机; 都没有才退回真机游标。
       try {
         var gc = document.getElementById('rpGanttCur');
+        var gl = document.getElementById('rpGanttLbl');
         var gMeta = (MT && MT.long_horizon && MT.long_horizon.replay && MT.long_horizon.replay.gantt) || null;
         if (gc && gMeta && gMeta.length) {
           var isFol = (typeof RTRAJ_FOLLOW !== 'undefined' && RTRAJ_FOLLOW.on);
           var gCur = (SYNCUR && SYNCUR.cursor != null) ? Number(SYNCUR.cursor) : null;
-          // 真机在跑(step_traj 游标 > 0)时优先用真机游标 —— 不必先点「跟随真机」;
-          // 只有真机没在跑才退回到页面自己的回放帧号。
-          var curI = (gCur != null && gCur > 0) ? gCur
-                   : ((typeof RTRAJ !== 'undefined' && RTRAJ.frames) ? Number(RTRAJ.fi || 0) : null);
+          var rpOn = (typeof RTRAJ !== 'undefined' && RTRAJ && RTRAJ.frames && RTRAJ.frames.length);
+          var curI = null;
+          if (isFol && gCur != null) { curI = gCur; }                       // 跟随真机
+          else if (rpOn) { curI = Number(RTRAJ.fi || 0); }                   // 页面回放(含停住的帧)
+          else if (gCur != null && gCur > 0) { curI = gCur; }                // 只剩真机游标
           if (curI == null || curI < 0) {
             gc.style.display = 'none';
+            if (gl) { gl.style.display = 'none'; }
           } else {
-            var acc = 0, pos = null;
+            // 同时累计 pct(定位) 和 dur_s(当前时间点) —— 两者同源, 不会互相错位
+            var acc = 0, accS = 0, pos = null, tNow = 0, segName = '';
             for (var q = 0; q < gMeta.length; q++) {
               var sg = gMeta[q];
               if (curI >= sg.i0 && curI <= sg.i1) {
                 var frac = (curI - sg.i0) / Math.max(1, sg.i1 - sg.i0 + 1);
                 pos = acc + frac * Number(sg.pct || 0);
+                tNow = accS + frac * Number(sg.dur_s || 0);
+                segName = sg.name || '';
                 break;
               }
               acc += Number(sg.pct || 0);
+              accS += Number(sg.dur_s || 0);
             }
-            if (pos == null) { pos = (curI >= 215) ? 100 : 0; }
+            if (pos == null) { pos = (curI >= 215) ? 100 : 0; tNow = accS; }
             gc.style.display = 'block';
             gc.style.left = Math.max(0, Math.min(100, pos)) + '%';
+            if (gl) {
+              gl.style.display = 'block';
+              gl.textContent = tNow.toFixed(1) + 's · ' + segName;
+            }
           }
         }
       } catch (e2) { }
@@ -6717,8 +6731,9 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
               + '<div style="display:flex;justify-content:space-between;font:8.5px ui-monospace,monospace;'
               + 'color:#6e7681;margin-bottom:3px"><span>时间构成 (实测逐点求和)</span>'
               + '<span>' + esc(rp.gantt_total_s || 0) + 's / ' + esc(rp.n_points) + ' 点</span></div>'
-              + '<div id="rpGanttBar" style="display:flex;height:13px;border-radius:2px;overflow:hidden;'
-              + 'background:#161b22;position:relative">';
+              + '<div style="position:relative;margin-top:12px">'
+              + '<div id="rpGanttBar" style="display:flex;height:14px;border-radius:2px;overflow:hidden;'
+              + 'background:#161b22">';
             for (var gi = 0; gi < g.length; gi++) {
               var b = g[gi];
               s += '<div title="' + esc(b.name + ' #' + b.i0 + '-' + b.i1 + ' · ' + b.n + ' 点 · '
@@ -6726,12 +6741,20 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
                 + '" style="width:' + b.pct + '%;background:' + (b.color || '#484f58')
                 + ';border-right:1px solid #0d1117"></div>';
             }
-            // 🎯 实时游标: 跟着真机/回放当前点走。位置按"段内点数比例 × 该段时间占比"定位,
-            //    不能用 cur/215 直接乘 —— 条宽是时间占比, 段与段的时间/点数比不一样, 会错位。
-            s += '<div id="rpGanttCur" style="position:absolute;top:-2px;bottom:-2px;width:2px;'
-              + 'background:#f0f6fc;box-shadow:0 0 4px #f0f6fc;left:0;display:none;'
-              + 'pointer-events:none"></div>';
-            s += '</div>'
+            // 🎯 实时游标: 跟着回放/真机当前点走, 带时间气泡。
+            //    位置按"段内点数比例 × 该段时间占比"定位, 不能用 cur/215 直接乘 ——
+            //    条宽是时间占比, 段与段的时间/点数比不一样, 会错位。
+            //    结构: 外层容器 position:relative(不裁剪) 里放 条(裁剪) + 游标(可溢出到条外面放气泡)
+            s += '</div>'                                  // 收掉 rpGanttBar
+              + '<div id="rpGanttCur" style="position:absolute;top:-3px;bottom:-3px;width:2px;'
+              + 'background:#f0f6fc;box-shadow:0 0 6px #f0f6fc;left:0;display:none;'
+              + 'pointer-events:none;z-index:3;transition:left .16s linear">'   // ← 动画: 每拍平滑滑过去
+              + '<div id="rpGanttLbl" style="position:absolute;left:50%;bottom:100%;'
+              + 'transform:translateX(-50%);margin-bottom:1px;font:bold 9px ui-monospace,monospace;'
+              + 'color:#0d1117;background:#f0f6fc;border-radius:2px;padding:0 3px;'
+              + 'white-space:nowrap;display:none"></div>'
+              + '</div>'
+              + '</div>'                                   // 收掉外层容器
               // 图例: 只列 >=2% 的段(太小的两行也看不清), 其余归入"其他"
               + '<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:2px 7px;'
               + 'font:8.5px ui-monospace,monospace;line-height:1.5">';
