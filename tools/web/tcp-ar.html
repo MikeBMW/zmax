@@ -2,6 +2,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Z-MAX AR3D r107 · 插口 2 个(实际) · SIM自动 · 位置细胞 · 8802直播</title>
 <style>
+  /* 🍽 摆盘(/tray)专用按钮: 只在那一个场景出现。ar3d 是三维视图, 不该有盘/托盘/尺寸/从机器人/伸展这些开关。 */
+  html:not(.sceneTray) #bPan,
+  html:not(.sceneTray) #bMod30,
+  html:not(.sceneTray) #bDim,
+  html:not(.sceneTray) #bSlave,
+  html:not(.sceneTray) #bPan5,
+  html:not(.sceneTray) #bPanSide,
+  html:not(.sceneTray) #bStretch { display:none !important; }
  *{box-sizing:border-box}
  body{margin:0;background:#0b0f14;color:#e6edf3;font:15px/1.5 -apple-system,Segoe UI,Roboto,"Noto Sans SC",sans-serif}
  header{display:flex;align-items:center;gap:14px;padding:10px 14px;border-bottom:1px solid #21262d;flex-wrap:wrap}
@@ -543,6 +551,8 @@ const __USP = new URLSearchParams(location.search);
 //    老倪 2026-11-16: 「仿照这个场景, 再做一个场景, 摆盘场景服务的页面, 也是同样的机器人和桌子,
 //    具体的操作我来重新定义。你先把桌子和机器人双臂, 箱体, 中央相机画好。坐标系, 光模块 tool1 都先画上。」
 const __TRAY = (location.pathname.replace(/\/+$/,'') === '/tray') || __USP.get('scene')==='tray';
+// 场景标记挂到 <html> 上: CSS 靠它决定"摆盘专用按钮"出不出现在左栏(ar3d 里必须不出现)
+try{ if(__TRAY) document.documentElement.classList.add('sceneTray'); }catch(e){}
 const __BARE = (location.pathname.replace(/\/+$/,'') === '/ar3d') || __TRAY || __USP.get('vr')==='full' || __USP.get('bare')==='1';
 if(__TRAY){ document.body.classList.add('tray'); }
 if(__BARE || __USP.get('vr')==='1'){ document.body.classList.add('vronly'); }
