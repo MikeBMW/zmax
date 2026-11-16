@@ -298,6 +298,7 @@
       <button id="bArmR" class="sm on" title="右臂_仿真 = 画面里紫色那条仿真臂(骨架来自 /api/sim_insert 段表正解, 插拔/全流程时动的就是它); 点一下隐藏, 只留真机臂 —— 老倪 2026-10-27: 「将 右臂 改成 右臂_仿真 表示右臂仿真的显示与隐藏」">🦾 右臂_仿真</button>
       <button id="bArmReal" class="sm on" title="真机右臂 = 画面里那条不动的真实机器人臂(关节角来自 tcp_out/latest.json); 点一下隐藏, 只留仿真/幽灵臂 —— 老倪 2026-10-27: 「点击后可以把画面那个暂时不动的真实机器人右臂隐藏」">🦾 右臂_真机</button>
       <button id="bArmL" class="sm on" title="左臂 = 仿真臂: URDF 与右臂相同, 原点固定在右臂世界系 Y=+500mm 处 (X=0,Z=0); 位姿由下面的按钮给">🤖 左臂</button>
+      <button id="bPan" class="sm on" title="周转盘 + 4#方盘: 两个托盘一起显示/隐藏">🧺 周转盘</button>
       <button id="bStretch" class="sm" title="双臂伸展: 左臂够到桌子左前角、右臂够到桌子右前角, 末端光模块落到桌角上(纯仿真显示: 只改画面里的关节角, 不下发真机、不需要 8793 授权)">🙆 伸展</button>
       <span id="tArmL" style="font-size:11.5px;color:#6ee7ff;font-family:monospace">Δ0,0,0</span>
       <button id="bCamTop" class="sm on" title="两臂之间的顶视相机(立柱+RealSense 模板): 立柱高 = 1 轴高度, 相机俯角 35° 看工作区; 点一下隐藏">📷 顶视相机</button>
@@ -2562,7 +2563,9 @@ function drawVR(){
   // 🧪 实验桌(摆在箱体前面 +X): 在箱体之前画 —— 默认视角从 -X+Y 看过来, 桌子在箱体远侧
   if(typeof TAB!=='undefined' && TAB.show) drawTable(g, pr);
   // 🧺 周转盘(摆在桌面上)
-  if(typeof drawTrayPan==='function' && (typeof __TRAY!=='undefined' && __TRAY)) { try{ drawTrayPan(g, pr); }catch(e){} }
+  if(typeof drawTrayPan==='function' && (typeof __TRAY!=='undefined' && __TRAY)) {
+    try{ drawTrayPan(g, pr, TPAN); drawTrayPan(g, pr, TPAN2); }catch(e){}
+  }
   // 📦 箱体(移动底盘): 再画箱体, 两臂/相机画在它上面 —— 顶板 z=0 就是两臂安装面
   if(CHS.show) drawChassis(g, pr);
   // 🦾 URDF 外形: 正运动学已在 drawVR 开头算好(取景要用同一份), 这里只负责画
@@ -4366,6 +4369,13 @@ if($('uphFold')) $('uphFold').addEventListener('click', function(){
 if($('bLreset')) $('bLreset').addEventListener('click', function(){ LARM.q=null; LARMFK=null; }, true);
 // 🙆 双臂伸展按钮 (2026-11-16 老倪): 点一次伸到 45° 最远, 再点一次收回
 if($('bStretch')) $('bStretch').addEventListener('click', function(){ stretchToggle(); });
+// 🧺 周转盘按钮: 两个托盘一起开关(盘一关, 它们的尺寸标签也跟着不画)
+if($('bPan')) $('bPan').addEventListener('click', function(){
+  var on=!(TPAN.show && TPAN2.show);
+  TPAN.show=on; TPAN2.show=on;
+  $('bPan').classList.toggle('on', on);
+  try{ drawVR(); }catch(e){}
+});
 // 「🙆 伸展」只属于摆盘场景: /ar3d 一个像素都不动 ⇒ 那边直接不显示这个按钮
 if(!(typeof __TRAY!=='undefined' && __TRAY)){ var _bs=$('bStretch'); if(_bs) _bs.style.display='none'; }
 // 点左栏里别的按钮 ⇒ 伸展姿态自动复位(不然回放/单步会被冻住的关节角顶掉)
@@ -4736,9 +4746,15 @@ function beamBox(){
 }
 // 📏 摆盘场景尺寸数字: 用 HTML 覆盖层显示(老倪这边 canvas 字体渲染不出来, 白字黑框改成 DOM 就一定能看到)
 // 🧺 周转盘 310×230×45mm (老倪 2026-11-16): 摆在桌面上, 只标长/宽, 不标高
-var TPAN={ show:true, L:0.310, W:0.230, H:0.045, wall:0.006, cx:0.725, cy:0.250 };
-function tpanRange(){
-  return { x0:TPAN.cx-TPAN.W/2, x1:TPAN.cx+TPAN.W/2, y0:TPAN.cy-TPAN.L/2, y1:TPAN.cy+TPAN.L/2 };
+// 周转盘(青) 与 4#方盘(棕) 两个托盘: L 沿 Y, W 沿 X
+var TPAN ={ show:true, name:'周转盘', L:0.310, W:0.230, H:0.045, wall:0.006, cx:0.725, cy:0.250,
+            fill:'#2e6b86', inner:'#173d4e', edge:'#9ad8f0' };
+// 4#方盘 315×230×40 —— 老倪 2026-11-16: 「桌子中间, 靠着机器人的位置」⇒ 近端桌沿 x0 贴住, 长度方向居中
+var TPAN2={ show:true, name:'4#方盘', L:0.315, W:0.230, H:0.040, wall:0.005, cx:0.465, cy:0.250,
+            fill:'#8a5a2b', inner:'#4a2f16', edge:'#e0b070' };
+function tpanRange(T){
+  T=T||TPAN;
+  return { x0:T.cx-T.W/2, x1:T.cx+T.W/2, y0:T.cy-T.L/2, y1:T.cy+T.L/2 };
 }
 // 一个长方体(8 点 12 线 6 面) —— 画周转盘的外壳与内腔
 function _box3(g,pr,a,b,c,d,zt,zb,fill,edge,alpha){
@@ -4773,13 +4789,12 @@ function _box3(g,pr,a,b,c,d,zt,zb,fill,edge,alpha){
   }
   return P;
 }
-function drawTrayPan(g,pr){
-  if(!TPAN.show) return;
-  var R=tpanRange(), w=TPAN.wall, zt=TPAN.H, zb=0.008;
-  // 外壳
-  _box3(g,pr,R.x0,R.y0,R.y1,R.x1, zt, 0, '#2e6b86', '#9ad8f0');
-  // 内腔(底面比壳顶低 37mm) —— 用略小的长方形补一块深色底, 看起来就是个盘子
-  _box3(g,pr,R.x0+w,R.y0+w,R.y1-w,R.x1-w, zt-0.004, zb, '#173d4e', '#5fb6d8', 0.95);
+function drawTrayPan(g,pr,T){
+  T=T||TPAN;
+  if(!T.show) return;
+  var R=tpanRange(T), w=T.wall, zt=T.H, zb=0.008;
+  _box3(g,pr,R.x0,R.y0,R.y1,R.x1, zt, 0, T.fill, T.edge);                       // 外壳
+  _box3(g,pr,R.x0+w,R.y0+w,R.y1-w,R.x1-w, zt-0.004, zb, T.inner, T.edge, 0.95);  // 内腔
 }
 function trayDimDom(pr){
   var box=document.getElementById('trayDims');
@@ -4787,7 +4802,7 @@ function trayDimDom(pr){
     box=document.createElement('div'); box.id='trayDims';
     box.style.cssText='position:fixed;left:0;top:0;width:0;height:0;pointer-events:none;z-index:60';
     document.body.appendChild(box);
-    for(var i=0;i<5;i++){
+    for(var i=0;i<7;i++){
       var d=document.createElement('div'); d.id='tdim'+i;
       d.style.cssText='position:absolute;white-space:nowrap;transform:translate(-50%,-50%);'
         +'font:700 12px ui-monospace,monospace;color:#ffffff;background:rgba(0,0,0,.92);'
@@ -4804,11 +4819,16 @@ function trayDimDom(pr){
     ['宽 '+Math.round((x1-x0)*1000),    pr([(x0+x1)/2, y0-0.12, 0])],
     ['高 '+Math.round(T.h*1000),        pr([x1+0.06, y1+0.06, fl/2])]
   ];
-  // 🧺 周转盘: 只标长/宽, 不标高
-  if(TPAN.show){
-    var R=tpanRange();
-    items.push(['周转盘 长 '+Math.round(TPAN.L*1000), pr([R.x0-0.06, (R.y0+R.y1)/2, TPAN.H])]);
-    items.push(['周转盘 宽 '+Math.round(TPAN.W*1000), pr([(R.x0+R.x1)/2, R.y1+0.06, TPAN.H])]);
+  // 🧺 托盘: 只标长/宽, 不标高
+  [TPAN, TPAN2].forEach(function(T){
+    if(!T.show) return;
+    var R=tpanRange(T);
+    items.push([T.name+' 长 '+Math.round(T.L*1000), pr([R.x0-0.06, (R.y0+R.y1)/2, T.H])]);
+    items.push([T.name+' 宽 '+Math.round(T.W*1000), pr([(R.x0+R.x1)/2, R.y1+0.06, T.H])]);
+  });
+  // 条目变少(比如托盘关了)时, 多出来的标签必须显式隐藏, 否则会留着上一帧的文字
+  for(var kz=items.length;kz<box.children.length;kz++){
+    var dz=box.children[kz]; if(dz) dz.style.display='none';
   }
   for(var k=0;k<items.length;k++){
     var d=document.getElementById('tdim'+k); if(!d) continue;
@@ -6726,7 +6746,7 @@ document.head.appendChild(st);
   }catch(e){}
 
   // ② 左栏白名单: 只留"看场景"的开关; 回放/单步/同步/轨迹/围栏这些摆盘还没定义, 一律收起
-  var KEEP={'bFrames':1,'bUrdf':1,'bMod':1,'bArmR':1,'bArmL':1,'bStretch':1,
+  var KEEP={'bFrames':1,'bUrdf':1,'bMod':1,'bArmR':1,'bArmL':1,'bStretch':1,'bPan':1,
             'bCamTop':1,'bChs':1,'bTab':1,'bFlr':1,'bSim':1};
   // 🚫 老倪 2026-11-16 陆续点名不要: MuJoCo同视角(bMj) / 位置细胞(bCells) / 8802直播(bLiv) / 自动环绕(bSpin)
   //    理想档回放(idealBtn, 112段按本节拍) 也不在这条摆盘场景里 ⇒ 下面 trim 里显式按 id 隐藏
