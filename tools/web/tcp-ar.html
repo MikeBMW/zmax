@@ -5262,13 +5262,22 @@ function carrySetAt(el){
   return {k:k, w:w};
 }
 // 把夹爪朝向锁在"取件那一刻": 取路径首点的 tool1 模块轴水平投影
+// 🔴 老倪:「夹抓的姿态，应该平行或垂直 tray 盘，不应该有角度」——对, 卡爪必须正对盘的两条边。
+//    之前是把手臂模块轴的投影直接当朝向 ⇒ 夹爪和盘边成任意夹角, 物理上夹不住。
+//    现在把朝向**取整到 90° 的整数倍**: 盘在场景里都是正放的, 卡爪沿世界 X/Y 正对盘边。
+//    夹持跨度 380 = 盘宽(W) ⇒ 卡爪开合沿 X, 进给方向沿 Y。
 function carryYawLock(){
   if(!CARRY.qList || !CARRY.qList.length){ CARRY.yawB=null; return; }
   var M=urdfFK(CARRY.qList[0].q), t1=_frameOf(M,'tool1');
   if(!t1) { CARRY.yawB=null; return; }
   var z=[-t1.z[0], -t1.z[1], t1.z[2]];
-  var hl=Math.sqrt(z[0]*z[0]+z[1]*z[1])||1e-9;
-  CARRY.yawB=[z[0]/hl, z[1]/hl, 0];
+  // 夹持跨度 380 = 盘的 W(沿 X) ⇒ 卡爪开合必须沿 X, 进给方向沿 ±Y。
+  // 也就是"卡爪正对盘的两条长边", 与盘边夹角 0°(平行), 不会出现斜着夹。
+  var ang=Math.atan2(z[1], z[0]);                        // 手臂朝向(水平投影), 只用来选正负向
+  var sy=(Math.abs(z[1])>Math.abs(z[0]))? (z[1]>=0?1:-1) : (z[0]>=0?1:-1);
+  CARRY.yawB=[0, sy, 0];
+  var align=Math.atan2(0, sy);                           // 对齐后的进给方向角
+  CARRY.yawSnapDeg=+((((align-ang)*180/Math.PI)+540)%360-180).toFixed(1);   // 为对齐转了多少度
 }
 function carryStart(){
   if(CARRY.running) return;
@@ -5279,6 +5288,7 @@ function carryStart(){
   GRIP.show=true; GRIP.span=380;                      // 托盘 380 ⇒ 夹具切到 380 跨度
   if($('bGrip')){ $('bGrip').classList.add('on'); $('bGrip').textContent='🧰 夹具 380'; }
   TPAN5.show=false;                                    // 真盘由动画里的"手上托着的那只"代表
+  CARRY.pan.alignDeg=0;                                // 盘正放: 卡爪与盘边夹角 0°
   var tick=function(){
     var now=(typeof performance!=='undefined'?performance.now():Date.now());
     var el=now-CARRY.t0;
