@@ -298,7 +298,7 @@
       <button id="bArmR" class="sm on" title="右臂_仿真 = 画面里紫色那条仿真臂(骨架来自 /api/sim_insert 段表正解, 插拔/全流程时动的就是它); 点一下隐藏, 只留真机臂 —— 老倪 2026-10-27: 「将 右臂 改成 右臂_仿真 表示右臂仿真的显示与隐藏」">🦾 右臂_仿真</button>
       <button id="bArmReal" class="sm on" title="真机右臂 = 画面里那条不动的真实机器人臂(关节角来自 tcp_out/latest.json); 点一下隐藏, 只留仿真/幽灵臂 —— 老倪 2026-10-27: 「点击后可以把画面那个暂时不动的真实机器人右臂隐藏」">🦾 右臂_真机</button>
       <button id="bArmL" class="sm on" title="左臂 = 仿真臂: URDF 与右臂相同, 原点固定在右臂世界系 Y=+500mm 处 (X=0,Z=0); 位姿由下面的按钮给">🤖 左臂</button>
-      <button id="bStretch" class="sm" title="双臂伸展: 左臂向左前方 45°、右臂向右前方 45° 各伸到最大距离(纯仿真显示: 只改画面里的关节角, 不下发真机、不需要 8793 授权)">🙆 伸展</button>
+      <button id="bStretch" class="sm" title="双臂伸展: 左臂够到桌子左前角、右臂够到桌子右前角, 末端光模块落到桌角上(纯仿真显示: 只改画面里的关节角, 不下发真机、不需要 8793 授权)">🙆 伸展</button>
       <span id="tArmL" style="font-size:11.5px;color:#6ee7ff;font-family:monospace">Δ0,0,0</span>
       <button id="bCamTop" class="sm on" title="两臂之间的顶视相机(立柱+RealSense 模板): 立柱高 = 1 轴高度, 相机俯角 35° 看工作区; 点一下隐藏">📷 顶视相机</button>
       <button id="bChs" class="sm on" title="移动底盘箱体 600×800×750mm(本体680+轮Ø150露出70): 顶板 = 两臂安装面 = z=0, 与实验桌桌面平齐; 点一下隐藏">📦 箱体</button>
@@ -1342,48 +1342,69 @@ function _fkTip(q){
   var M=urdfFK(q), f=M['tool1']||M['tool0'];
   return f? f.t.slice() : null;
 }
-// 在 dir 方向上找末端最远 + 横向偏差最小的关节角(单位向量 dir = base 系)
-function stretchQ(dir){
-  var best=null;
-  function score(q){
-    var p=_fkTip(q); if(!p) return null;
-    // along/perp 只在水平面里算(方位角要对准 45°), 高度单独一项(手臂抬到 ZT 附近, 不贴桌面)
-    var along=p[0]*dir[0]+p[1]*dir[1];
-    var perp=Math.sqrt(Math.pow(p[0]-along*dir[0],2)+Math.pow(p[1]-along*dir[1],2));
-    return {s:along-4.0*perp-2.0*Math.abs(p[2]-ZT), along:along, perp:perp, p:p};
-  }
-  var D=Math.PI/180, ZT=0.40;      // ZT: 期望末端高度(桌面 z=0, 抬到 40cm —— 手臂自然伸展高度)
-  for(var j1=-90;j1<=90;j1+=10)
-   for(var j2=-150;j2<=20;j2+=10)
-    for(var j3=-120;j3<=120;j3+=10)
-     for(var j5=-90;j5<=90;j5+=15){
-       var r=score([j1*D,j2*D,j3*D,0,j5*D,0]);
-       if(r && (!best || r.s>best.s)) best={s:r.s, q:[j1*D,j2*D,j3*D,0,j5*D,0], p:r.p, along:r.along, perp:r.perp};
+// 目标: 让 tool1(模块头中心) 落到 base 系里的某个点(target, 米), 并且模块大致平躺在桌面上
+//   cost = 位置误差(mm) + 40×|tool Z 的竖直分量|(长度方向要水平) + 40×(1 - tool X 的竖直分量)(厚度法向朝上)
+var REACH_CAP=25;   // 位置偏差容差(mm): 桌角就在可达边界上, 25mm 内优先保证模块"平躺"
+function _costReach(q, T){
+  var M=urdfFK(q), f=M['tool1']; if(!f) return 1e9;
+  var t=f.t, R=f.R;
+  var dp=Math.sqrt(Math.pow(t[0]-T[0],2)+Math.pow(t[1]-T[1],2)+Math.pow(t[2]-T[2],2))*1000;
+  // orient: 模块长度方向要水平(|Z竖直分量|小) + 厚度法向朝上(X·Z大)
+  var orient=20*Math.abs(R[2][2]) + 20*(1-R[2][0]);
+  if(dp>REACH_CAP) return 500+(dp-REACH_CAP)*20+orient*0.05;   // 先压位置, 超了再谈姿态
+  return orient + dp*0.5;                                       // 位置够了就尽量摆平
+}
+function _qOk(q){
+  var D=180/Math.PI;
+  return Math.abs(q[0]*D)<=175 && q[1]*D>=-165 && q[1]*D<=35
+      && Math.abs(q[2]*D)<=155 && Math.abs(q[4]*D)<=155;
+}
+// 解: 粗搜(20°/30°) + 逐关节坐标下降(6°→0.7°)
+function solveReachT(target, off){
+  var T=[target[0]-(off?off[0]:0), target[1]-(off?off[1]:0), target[2]-(off?off[2]:0)];
+  var D=Math.PI/180, best=null;
+  for(var j1=-170;j1<=170;j1+=20)
+   for(var j2=-160;j2<=30;j2+=20)
+    for(var j3=-150;j3<=150;j3+=20)
+     for(var j5=-150;j5<=150;j5+=30){
+       var q=[j1*D,j2*D,j3*D,0,j5*D,0], c=_costReach(q,T);
+       if(!best||c<best.c) best={c:c, q:q};
      }
   if(!best) return null;
-  // 局部细化 ±8°, 步长 2°
-  var bq=best.q.slice(), bs=best.s;
-  for(var a=-8;a<=8;a+=2) for(var b=-8;b<=8;b+=2) for(var c=-8;c<=8;c+=2) for(var e=-8;e<=8;e+=2){
-    var q=[bq[0]+a*D, bq[1]+b*D, bq[2]+c*D, bq[3], bq[4]+e*D, bq[5]];
-    // 关节不许跑出常规范围(真机 XMS5 单关节都在这之内), 免得解出 -280° 这种卷绕角
-    if(Math.abs(q[0])>170*D || q[1]<-160*D || q[1]>30*D || Math.abs(q[2])>150*D || Math.abs(q[4])>150*D) continue;
-    var r2=score(q); if(r2 && r2.s>bs){ bs=r2.s; bq=q; }
+  var q=best.q.slice(), c=best.c;
+  var steps=[6,3,1.5,0.7];
+  for(var si=0;si<steps.length;si++){
+    var st=steps[si]*D, improved=true, guard=0;
+    while(improved && guard++<80){
+      improved=false;
+      for(var i=0;i<6;i++){
+        for(var sgn=1;sgn>=-1;sgn-=2){
+          var q2=q.slice(); q2[i]=q2[i]+sgn*st;
+          if(!_qOk(q2)) continue;
+          var c2=_costReach(q2,T);
+          if(c2<c-1e-6){ q=q2; c=c2; improved=true; }
+        }
+      }
+    }
   }
-  return {q:bq, reach:Math.sqrt(best.p[0]*best.p[0]+best.p[1]*best.p[1]+best.p[2]*best.p[2]), tip:best.p};
+  var M=urdfFK(q), f=M['tool1'];
+  return {q:q, cost:c, tip:f.t.slice(), err:Math.sqrt(Math.pow(f.t[0]-T[0],2)+Math.pow(f.t[1]-T[1],2)+Math.pow(f.t[2]-T[2],2))*1000};
 }
 function _smooth(t){ return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }
 function stretchOnce(){
   if(!URDF){ console.warn('伸展: URDF 还没到'); return; }
-  var c=Math.SQRT1_2;                       // 45°
-  var R=stretchQ([c,-c,0]);                 // 右臂: 右前方 45°(base 系 -Y 一侧)
-  var L=stretchQ([c, c,0]);                 // 左臂: 左前方 45°(base 系 +Y 一侧)
+  // 🍽 目标 = 桌子前侧两个角 (老倪 2026-11-16: 「左臂够到左侧前方的桌子角, 右臂够到右侧前方的桌子角」)
+  var x1=TAB.x1, yL=TAB.cy+TAB.w/2, yR=TAB.cy-TAB.w/2, zTop=0.008;   // 8mm = 模块半边厚, 正好搭在桌面上
+  var tR=[x1, yR, zTop], tL=[x1, yL, zTop];
+  var R=solveReachT(tR,[0,0,0]);
+  var L=solveReachT(tL, LARM.off);
   if(!R||!L){ console.warn('伸展: 解不出姿态'); return; }
   var q0=(TCP&&TCP.ok&&TCP.joints)?TCP.joints.slice():[0,0,0,0,0,0];
   GEST.q0=q0; GEST.q0L=(LARM&&LARM.q)?LARM.q.slice():q0.slice();
   GEST.qT=R.q; GEST.qTL=L.q;
   GEST.t0=(typeof performance!=='undefined'?performance.now():Date.now());
   GEST.running=true; GEST.q=GEST.q0.slice(); GEST.qL=GEST.q0L.slice();
-  GEST.moved='';
+  var mm=function(p){ return p.map(function(v){return Math.round(v*1000);}).join(','); };
   var tick=function(){
     var now=(typeof performance!=='undefined'?performance.now():Date.now());
     var t=Math.min(1,(now-GEST.t0)/GEST.dur), e=_smooth(t);
@@ -1395,11 +1416,12 @@ function stretchOnce(){
     if(t<1){ requestAnimationFrame(tick); }
     else{
       GEST.running=false;
-      GEST.moved='· 伸展到位: 右臂末端 '+R.tip.map(function(v){return Math.round(v*1000);}).join(',')
-        +'mm / 左臂末端 '+L.tip.map(function(v){return Math.round(v*1000);}).join(',')+'mm';
+      GEST.moved='· 够到桌角: 右臂末端 '+mm(R.tip)+'mm(偏差'+Math.round(R.err)+'mm) / 左臂末端 '+mm(L.tip)+'mm(偏差'+Math.round(L.err)+'mm)';
       var b=document.getElementById('bStretch');
-      if(b) b.title='双臂伸展(再点一次 = 回到当前位姿)\n末次: 右臂'+R.tip.map(function(v){return Math.round(v*1000);}).join(',')
-        +' / 左臂'+L.tip.map(function(v){return Math.round(v*1000);}).join(',')+' mm';
+      if(b) b.title='双臂伸展到桌子前侧的左右两个角(纯仿真显示, 不下发真机)\n'
+        +'右臂末端 '+mm(R.tip)+'mm 目标 '+mm(tR)+'mm 偏差 '+Math.round(R.err)+'mm\n'
+        +'左臂末端 '+mm(L.tip)+'mm 目标 '+mm(tL)+'mm 偏差 '+Math.round(L.err)+'mm\n'
+        +'再点一次 = 回到当前真值位姿';
     }
   };
   requestAnimationFrame(tick);
