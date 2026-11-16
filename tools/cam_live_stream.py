@@ -1785,6 +1785,29 @@ def _gold_roi_hold(port, roi, tol_y=6, tol_x=12, need=3):
         return roi
 
 
+def _judge_level(band, gamma: float = 0.9, lo_p: float = 2.0, hi_p: float = 98.0):
+    """判据图**软件提亮**(不改硬件曝光)。
+
+    为什么必须软件做: 10082 的 OPT 相机在采集过程中写 ExposureTime/Gain **必失败**,
+    停采集再写会卡死相机(实测记录在 v20 /param 注释里) ⇒ 硬件只能固定一个档位(现场 700us)。
+    700us 下金属片那一排亮度只有 ~24/255, 但结构还在(列自相关 r=0.97, 节距 35px),
+    所以按**片排自身**的分位数做局部自动色阶, 把它拉到 ~150 亮度、对比翻倍, 供人眼判读。
+    """
+    try:
+        lab = cv2.cvtColor(band, cv2.COLOR_BGR2LAB)
+        L = lab[:, :, 0].astype(np.float32)
+        lo, hi = np.percentile(L, lo_p), np.percentile(L, hi_p)
+        if hi - lo < 4.0:                      # 本来就没信息(全黑/全平): 不瞎拉, 原样返回
+            return band
+        L = np.clip((L - lo) * 255.0 / (hi - lo), 0, 255)
+        if gamma and abs(gamma - 1.0) > 1e-3:
+            L = 255.0 * np.power(L / 255.0, float(gamma))
+        lab[:, :, 0] = L.astype(np.uint8)
+        return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+    except Exception:                                                             # noqa: BLE001
+        return band
+
+
 def _gold_row_auto(bgr, pad_frac: float = 0.25):
     """🔍 自动找**金属连接片那一横排**(老倪 2026-11-17: 「判据图需要你显示金属连接片」)。
 
@@ -1866,7 +1889,11 @@ def _gold_natural_bgr(bgr, port=None):
         if _row is not None:
             _GOLD_ROI_INFO[int(port or 0)] = {"row_auto": _row,
                                               "src": "金属连接片排(列自相关周期×对比度)"}
-            return bgr[_row["y0"]:_row["y1"], _row["x0"]:_row["x1"]].copy()
+            _band = bgr[_row["y0"]:_row["y1"], _row["x0"]:_row["x1"]].copy()
+            # 硬件固定 700us ⇒ 片排偏暗, 判据图按片排自身分位提亮(不动曝光)
+            _band = _judge_level(_band)
+            _GOLD_ROI_INFO[int(port or 0)]["level"] = "软件自动色阶(p2..p98, gamma0.9)"
+            return _band
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         roi, info = gold_roi(rgb)
         if roi is not None:
