@@ -2638,7 +2638,10 @@ function drawVR(){
       });
       const q0=pr(O);
       if(q0){ g.fillStyle='#e6edf3'; g.beginPath(); g.arc(q0.u,q0.v,3,0,Math.PI*2); g.fill();
-        g.font='11px monospace'; g.fillStyle='#c9d1d9'; g.fillText('L·tool1', q0.u+7, q0.v+15); }
+        g.font='bold 12px ui-monospace,monospace';
+        const lbl='左臂 tool1';
+        g.fillStyle='rgba(0,0,0,.85)'; g.fillRect(q0.u+5, q0.v+4, g.measureText(lbl).width+8, 16);
+        g.fillStyle='#ffa657'; g.fillText(lbl, q0.u+9, q0.v+16); }
     }
   }
   // 轨迹(VR 里也按 3D 管道画)
@@ -2684,6 +2687,7 @@ function drawVR(){
   if(VR.frames && TCP && TCP.frames && TCP.frames.tool1){
     const LEN={base:0.16,tool0:0.13,tool1:0.13}, C={x:'#ff5d5d',y:'#5dff8f',z:'#5db8ff'};
     const NAME={base:'base(世界系)',tool0:'tool0(法兰)',tool1:'tool1(模块头)'};
+    if(typeof __TRAY!=='undefined' && __TRAY){ NAME.tool0='tool0 · 右臂'; NAME.tool1='tool1 · 右臂'; }
     ['base','tool0','tool1'].forEach(k=>{
       if(_hideArmInTray && k!=='base') return;      // 🍽 右臂关掉后, 只留世界系 base
       const f=TCP.frames[k]; if(!f||!f.origin) return;
@@ -2741,6 +2745,10 @@ function drawVR(){
   }
   // 📍 工程配置点位(台账): 画在最上层, 点大 + 带点名 (老倪: 「点大一些, 方便用眼睛观察」)
   if(typeof CFG_PTS!=='undefined' && CFG_PTS.length) drawCfgPts(g, pr);
+  // 📏 桌子尺寸标注: 必须画在**最后**(箱体/机器人都在桌子之后画, 画在 drawTable 里会被它们盖成一片黑)
+  if(typeof __TRAY!=='undefined' && __TRAY && typeof trayTableDims==='function'){
+    try{ trayTableDims(g, pr); }catch(e){}
+  }
   g.fillStyle='#6b7a8d'; g.font='12px monospace';
   g.fillText('base 系 · 地面 = xy 平面 (z=0) · 0.1m 网格 · 拖动旋转'+(VR.frames?' · 🧭 红X/绿Y/蓝Z 三个坐标系':''),8,14);
   $('pVr').textContent=((SHOW||nPl)?`实测轨迹 ${nTr} 点 · 规划航路 ${nPl} 点(洋红粗线) · ${tcpTxt}`:'轨迹已隐藏(默认) · '+tcpTxt)+frTxt;
@@ -4579,6 +4587,53 @@ function beamBox(){
   }
   return {name:'上横梁(缺省)', x:[0.4,0.6], y:[-0.8,0.8], z:[0.682,0.700]};
 }
+// 📏 摆盘场景的桌子尺寸标注(长/宽/高) —— 必须在整帧最后画, 否则被箱体/双臂盖成一片黑
+function trayTableDims(g, pr){
+  const T=TAB;
+  const x0=T.x0, x1=T.x1, y0=T.cy-T.w/2, y1=T.cy+T.w/2, fl=-T.h;
+  const TW=Math.round((x1-x0)*1000), TL=Math.round(T.w*1000), TH=Math.round(T.h*1000);
+  const W=g.canvas.width||980, H=g.canvas.height||577;
+  g.save();
+  g.globalAlpha=1; g.setLineDash([]);
+  function label(txt,u,v,col){
+    g.font='bold 14px ui-monospace,monospace';
+    const tw=g.measureText(txt).width;
+    const x=Math.max(tw/2+6, Math.min(W-tw/2-6, u)), y=Math.max(18, Math.min(H-10, v));
+    g.fillStyle='rgba(0,0,0,.92)'; g.strokeStyle=col; g.lineWidth=1.4;
+    g.beginPath(); g.rect(x-tw/2-5, y-14, tw+10, 19); g.fill(); g.stroke();
+    g.fillStyle=col; g.fillText(txt, x-tw/2, y);
+  }
+  function dimLine(a,b,txt,col){
+    const p=pr(a), q=pr(b); if(!p||!q) return;
+    const inb=function(t){ return t.u>4&&t.u<W-4&&t.v>4&&t.v<H-4; };
+    if(inb(p)&&inb(q)){
+      g.strokeStyle=col; g.lineWidth=1.6;
+      g.beginPath(); g.moveTo(p.u,p.v); g.lineTo(q.u,q.v); g.stroke();
+    }
+    label(txt,(p.u+q.u)/2,(p.v+q.v)/2,col);
+  }
+  dimLine([x1+0.07, y0, 0],[x1+0.07, y1, 0], '长 '+TL, '#ffd479');
+  dimLine([x0, y0-0.07, 0],[x1, y0-0.07, 0], '宽 '+TW, '#7ee787');
+  dimLine([x1+0.02, y1+0.02, 0],[x1+0.02, y1+0.02, fl], '高 '+TH, '#79c0ff');
+  const cs=[[x0,y0,0],[x1,y0,0],[x1,y1,0],[x0,y1,0]].map(pr).filter(Boolean);
+  let u=Math.round(W*0.62), v=44;
+  if(cs.length===4){
+    u=Math.max.apply(null, cs.map(function(p){return p.u;}))+24;
+    v=Math.min.apply(null, cs.map(function(p){return p.v;}))+2;
+  }
+  const lines=['桌子  长 '+TL+' × 宽 '+TW+' × 高 '+TH+' mm',
+               '桌面 z=0 · 与箱体顶板/两臂安装面平齐'];
+  g.font='bold 13px ui-monospace,monospace';
+  const wmax=Math.max.apply(null, lines.map(function(s){ return g.measureText(s).width; }));
+  const bw=wmax+16, bh=42;
+  u=Math.max(6, Math.min(W-bw-6, u)); v=Math.max(6, Math.min(H-bh-6, v));
+  g.fillStyle='rgba(0,0,0,.92)'; g.beginPath(); g.rect(u,v,bw,bh); g.fill();
+  g.strokeStyle='#ffd479'; g.lineWidth=1.6; g.stroke();
+  g.fillStyle='#ffd479'; g.fillText(lines[0], u+8, v+19);
+  g.fillStyle='#c9d1d9'; g.font='12px ui-monospace,monospace';
+  g.fillText(lines[1], u+8, v+36);
+  g.restore();
+}
 function drawTable(g,pr){
   const T=TAB, fl=-T.h, lg=T.leg;
   const x0=T.x0, x1=T.x1, y0=T.cy-T.w/2, y1=T.cy+T.w/2, tb=-T.t;
@@ -4604,42 +4659,7 @@ function drawTable(g,pr){
       for(let i=1;i<4;i++) g.lineTo(tp2[i].u,tp2[i].v);
       g.closePath(); g.strokeStyle='#f0d9ac'; g.lineWidth=1.6; g.stroke();
     }
-    // 📏 尺寸标注(老倪 2026-11-16「桌子的尺寸, 长宽高, 显示出来」)
-    //    沿桌边画三条尺寸线 + 一块「长×宽×高」文字牌, 单位 mm
-    const TW=Math.round((T.x1-T.x0)*1000), TL=Math.round(T.w*1000), TH=Math.round(T.h*1000);
-    function dimLine(a,b,txt){
-      const p=pr(a), q=pr(b); if(!p||!q) return;
-      const W=g.canvas.width||980, H=g.canvas.height||577;
-      const inside=function(t){ return t.u>4 && t.u<W-4 && t.v>4 && t.v<H-4; };
-      if(inside(p)&&inside(q)){                         // 两端都在画布内才画尺寸线
-        g.strokeStyle='#d8b98c'; g.lineWidth=1.3;
-        g.beginPath(); g.moveTo(p.u,p.v); g.lineTo(q.u,q.v); g.stroke();
-        [p,q].forEach(function(t){ g.beginPath(); g.moveTo(t.u-5,t.v); g.lineTo(t.u+5,t.v); g.stroke(); });
-      }
-      let mx=(p.u+q.u)/2, my=(p.v+q.v)/2;
-      g.font='bold 13px monospace';
-      const tw=g.measureText(txt).width;
-      // 📌 端点在画布外时, 标签夹进画布内(否则数值就看不见了)
-      mx=Math.max(tw/2+6, Math.min(W-tw/2-6, mx));
-      my=Math.max(14, Math.min(H-8, my));
-      g.fillStyle='rgba(0,0,0,.78)'; g.fillRect(mx-tw/2-3, my-11, tw+6, 15);
-      g.fillStyle='#f0d9ac'; g.fillText(txt, mx-tw/2, my+1);
-    }
-    dimLine([x1+0.07, y0, 0],[x1+0.07, y1, 0], '长 '+TL);
-    dimLine([x0, y0-0.07, 0],[x1, y0-0.07, 0], '宽 '+TW);
-    dimLine([x1+0.02, y1+0.02, 0],[x1+0.02, y1+0.02, fl], '高 '+TH);
-    const lab2=pr([x0+0.03, y0+0.12, 0.06]);
-    if(lab2){
-      const lines=['桌子  长 '+TL+' × 宽 '+TW+' × 高 '+TH+' mm',
-                   '桌面 z=0 · 与箱体顶板/两臂安装面平齐'];
-      g.font='bold 13px monospace';
-      const wmax=Math.max.apply(null, lines.map(function(s){ return g.measureText(s).width; }));
-      const bx=lab2.u-5, by=lab2.v-22, bw=wmax+12, bh=lines.length*17+8;
-      g.fillStyle='rgba(0,0,0,.80)'; g.fillRect(bx,by,bw,bh);
-      g.strokeStyle='#d8b98c'; g.lineWidth=1; g.strokeRect(bx,by,bw,bh);
-      g.fillStyle='#f0d9ac';
-      lines.forEach(function(s,i){ g.fillText(s, lab2.u, lab2.v-6+i*17); });
-    }
+    // 📏 尺寸标注挪到 drawVR 最后画(见 trayTableDims) —— 画在这里会被箱体/机器人盖住
     return;                                // 以上画完就是"一张正常的桌子", 下面全是龙门架结构
   }
   // 🧱 四根立柱 = 45×45 铝合金型材: 从地面 -0.750 **一直通到上横梁底面**(老倪: 桌腿向上延伸)
