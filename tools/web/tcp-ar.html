@@ -4760,9 +4760,10 @@ var TPAN2={ show:true, name:'4#方盘', L:0.315, W:0.230, H:0.040, wall:0.005, c
             fill:'#8a5a2b', inner:'#4a2f16', edge:'#e0b070' };
 // 左右两侧各一个 545×380×25 托盘(老倪 2026-11-16): 沿桌面长边(Y)贴两头摆, 与 4#方盘留缝
 //   桌面 y 范围 -550~1050, 中心 250 ⇒ 右盘 y -550~-5, 左盘 y 505~1050 (各 545 长, 关于中心对称)
-var TPANL={ show:true, name:'左盘', L:0.545, W:0.380, H:0.025, wall:0.005, cx:0.725, cy:0.7775,
+//   「要靠着机器人这边儿的边沿」⇒ 380 那条边贴住近端桌沿 x0=0.35 (cx = 0.35+0.190 = 0.540)
+var TPANL={ show:true, name:'左盘', L:0.545, W:0.380, H:0.025, wall:0.005, cx:0.540, cy:0.7775,
             fill:'#2f6f4f', inner:'#17381f', edge:'#8fd6a8' };
-var TPANR={ show:true, name:'右盘', L:0.545, W:0.380, H:0.025, wall:0.005, cx:0.725, cy:-0.2775,
+var TPANR={ show:true, name:'右盘', L:0.545, W:0.380, H:0.025, wall:0.005, cx:0.540, cy:-0.2775,
             fill:'#3b4f86', inner:'#1b2547', edge:'#9db2f0' };
 var TPANSIDE=[TPANL, TPANR];
 function tpanRange(T){
