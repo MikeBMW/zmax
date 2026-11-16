@@ -4967,8 +4967,9 @@ var GRIP={
 };
 // 🚚 位置3 的托盘 → 位置2 的搬运动作(老倪 2026-11-16「要动作连续, 计算高度」)
 // 高度从几何里算出来, 不是拍脑袋:
-//   指尖相对 tool1 的下探 = 梁26 + 本体67 + 指尖下探60 + 勾12 ≈ 169mm ⇒ 夹住盘壁时 tool1 高度 = 盘底 + 178
-//   取件: 托盘坐在桌面上(盘底 0) ⇒ tool1 = 178, 指尖底 9mm, 与盘壁(z 0~25)重叠 16mm
+//   指尖相对 tool1 的下探 = 梁26 + 本体67 + 指尖下探60 = 153mm(指尖是竖直面, 从上方套住盘壁)
+//   ⇒ 夹住盘壁时 tool1 高度 = 盘底 + 162 (指尖底离盘底 9mm, 叠盘时不会顶到下面那一盘)
+//   取件: 托盘坐在桌面上(盘底 0) ⇒ tool1 = 162, 指尖底 9mm, 与盘壁(z 0~25)重叠 16mm
 //   搬运: 路径 (920,232)→(540,777) 上最高障碍 = 左盘的盘沿 25mm(左上角堆叠 320 在 x870~1100/y735~1050,
 //         路径在 y=735 处 x≈569 不经过) ⇒ 盘底抬到 120, 余量 95mm
 //   放置: 落到 位置4 左盘的盘沿上(两盘同规格 545×380 叠放) ⇒ 盘底 25, tool1 = 203
@@ -4976,7 +4977,7 @@ var GRIP={
 var CARRY={
   running:false, t0:0, M:null, q:null, qList:null, phase:'', held:false, panZ:0, job:'tray',
   from:{cx:0.920, cy:0.2325}, to:{cx:0.540, cy:0.7775},
-  PAN_DROP:178, PICK_Z:0, CARRY_Z:120, PLACE_Z:25, span:380,
+  PAN_DROP:162, PICK_Z:0, CARRY_Z:120, PLACE_Z:25, span:380,   // 162 = 指尖最低点 153 + 离盘底 9mm(躲开下面那一盘)
   pan:{show:true, L:0.545, W:0.380, H:0.025, wall:0.005, cx:0.920, cy:0.2325,
        fill:'#356b7d', inner:'#173039', edge:'#8fc4d6'},
   JOBS:{
@@ -5076,10 +5077,12 @@ function drawGrip(g,pr){
   var half=GRIP.span*0.5, cx=half + GRIP.fingerT + GRIP.body[0]/2, bz=bh+bd/2;
   [1,-1].forEach(function(sg){
     _gripBox(g,pr,W,[sg*cx,0,bz],[GRIP.body[0],GRIP.body[1],GRIP.body[2]], GRIP.fill, GRIP.edge);
-    // ④ L 形加长指尖: 竖直段贴盘外壁下探 fingerD, 底部再往内勾 26mm
+    // ④ 竖直平行指尖: 从**上方**下来贴住盘的外壁对夹。
+    //    🔴 老倪:「不能从下面夹啊，要从上面夹」——原来指尖底下还有一个 26mm 的内勾,
+    //    那等于从盘底下兜, 盘坐在桌面/盘堆上时根本伸不进去。去掉勾子, 只留竖直段。
     var fx=sg*(half + GRIP.fingerT/2), fz=bh+bd+GRIP.fingerD/2;
     _gripBox(g,pr,W,[fx,0,fz],[GRIP.fingerT,GRIP.fingerW,GRIP.fingerD], GRIP.fing, GRIP.fedge);
-    _gripBox(g,pr,W,[sg*(half-10),0,bh+bd+GRIP.fingerD-6],[26,GRIP.fingerW,12], GRIP.fing, GRIP.fedge);
+    //    (不再画任何向内水平延伸的零件: 工作面就是竖直段的内侧面, 正好贴住盘外壁 x=±span/2)
   });
   // ⑤ 夹持跨度指示线(虚线, 标出当前 230 / 380)
   var zt=bh+bd+GRIP.fingerD+2, q=[];
@@ -5260,7 +5263,7 @@ function _carryCands(T0, nMax){
 function carryPlan(){
   if(!URDF){ console.warn('搬运: URDF 还没到'); return null; }
   var wps=_carryWps(), T0=[SLAVE.x-wps[0].w[0], SLAVE.y-wps[0].w[1], wps[0].w[2]];
-  var cands=_carryCands(T0, 5), best=null;
+  var cands=_carryCands(T0, 8), best=null;      // 候选分支多试几条: 有的分支落点差得多, 有的够得准
   for(var ci=0; ci<cands.length; ci++){
     CARRY.j4=null; CARRY.j6=null;
     var sol0=_ikSeed(T0, cands[ci].q, null);
