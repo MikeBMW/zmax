@@ -1254,7 +1254,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.50.776")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.50.777")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.ensurePolished()                     # 先套上样式再量字, 否则 sizeHint 按默认字体算
         ver.setToolTip("版本号在此 (侧栏品牌位)\n"
                        "顶栏标题 = 产品标识「XSpace ZMAX <产品号>」, 与配置中心产品配置同源 (config/platform/zmax_product.json)\n"
@@ -12746,6 +12746,7 @@ class StudioMainWindow(QMainWindow):
         self._set_console_title()
         # 🐛 2026-09-01 老倪: 调试自检 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.50.777: 金手指相机「清晰度驱动自主进化」调姿上线(tools/aoi_focus_evolve.py: 适应度=金手指带内Laplacian方差, 带宽取/region bbox零副作用, 每点4帧取中位; (1+1)进化策略, 单步≤0.4mm/相对锚点累计≤1mm, σ按1/5成功法则自适应, 采纳门槛=提升>2%且>3×帧间std, 崩塌即回锚点)+金手指相机曝光700us/16.38dB并落盘工控机(重启自动复原)+回放第126点改成当前位置(整点重教, 关节角实测, raw 215帧一字节未动)+工控机通道tools/win_cmd.py(echo标记精确取回执, 修PowerShell下&&非法); 实测3次候选+1.1%/+1.0%/+0.8%全被拒、机械臂回锚点逐位一致⇒当前位姿即局部最优(净位移0mm), 与老倪现场判断一致; 根因: 原调姿靠人工目检没有量化适应度, 且工控机station_cmd取max(新文件名)会拿到历史命令的回执
         # v5.50.776: Z700精细操作机器人全套文档交付(解决方案18章/立项/竞品/PPT/165条七阵功能清单·P0 121)+L2~L5联合训练跑通(L4 206.9s·L3首跑OOM改batch=1后270.2s·L2 210.8s·L5 65.5s,四层rc=0)+插入力口径纠错(按封装分档SFP18/QSFP60/QSFP-DD90N,原「≤40N」覆盖不了800G)+国标三处纠错(GB5226.1-2019已转推荐性GB/T·16855.1引2025版·20868引2024版);根因:L2/L5在同口径下无提升证据(L2评测帧13张全同质·画面无目标;L5合法率0.833→0.5),按「有提升非仅不回退」未上默认档
         # v5.50.775: 修动作调制器端口读取(载荷是业务字典时被判「缺前馈」⇒ decide 从未被调用)+引擎与入口共用单实例锁并从属引擎让位+轨迹速度档 20%→40%、夹爪按轨迹几何 i=9 合/i=205 开+3DGS 换高抬头覆盖数据 ds_cov1114 重训
         # v5.50.773: AR 右臂按真实轨迹回放改用关节角真值(215帧/43s/转动952°含翻面, 不再位置IK丢姿态) + 上料盘 AR↔真机同步验证(IoU 0.93/中心6.4mm) + 桌面缓冲区逐槽 BufferGraph; 根因: 位置IK只匹配xyz, 真机转腕翻面全丢
@@ -13744,7 +13745,7 @@ class StudioMainWindow(QMainWindow):
         #   ⇒ 状态栏右下角那组控件 (_latency_label「延迟: xx ms」+ _engine_status「● 本地就绪」+
         #      _engine_combo「ACT (Local · 1ms)」) 整组删除, 不再建、不再挂到状态栏。
         #      保留 sb.showMessage(...) 的一行总览, 界面上不再有这组无用读数 (引擎实际由画布/工程配置决定)。
-        sb.showMessage("Z-MAX v5.50.776  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.50.777  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🔴 2026-10-12 老倪(定规矩): 「点开启动图标后, 3D场景不要自动启动, 我要先检查任务配置, 然后启动工程」
         #   本段以下所有自动开窗/自动运行**一律只在显式 env 下触发**(ZMAX_AUTO_*), 正常双击图标时:
@@ -16203,7 +16204,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.50.776</b> · 多模态动作专家<br>
+<b>Z-MAX v5.50.777</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>
