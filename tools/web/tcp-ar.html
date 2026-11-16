@@ -1814,7 +1814,11 @@ function drawFences(g,pr){
       g.fillStyle='#ff6b5e'; g.fillText(txt, pt.u+13, pt.v-8);
     }
   }
-  const items=FENCES.filter(it=>it.enabled && corShown(it) && !(COR_ONLY && !corIsCor(it)));
+  // 🍽 摆盘场景: 料盘/槽位/旧轨迹/标定预览一律不画(老倪 2026-11-16「桌子上的料盘都删掉, 原始轨迹也删掉, 重头来」)
+  //    只做**显示过滤**, 不动围栏台账 —— 台账是共用的, 改了就影响 /ar3d 和真机侧。
+  const _isTray = (typeof __TRAY!=='undefined' && __TRAY);
+  const items=FENCES.filter(it=>it.enabled && corShown(it) && !(COR_ONLY && !corIsCor(it))
+                     && !(_isTray && /料盘|槽|真实轨迹|标定|横梁/.test(it.name||'')));
   if(!items.length) return;
   const mg=FMARGIN/1000;
   for(const it of items){
@@ -4546,6 +4550,44 @@ function drawTable(g,pr){
   const ins=0.012+lg/2;
   const xa=x0+ins, xb=x1-ins, ya=y0+ins, yb=y1-ins;      // 四根立柱中心(与桌腿同位)
   const BB=beamBox(), zTop=BB.z[0];                       // 立柱顶 = 上横梁底面
+  // 🍽 摆盘场景: 就要一个正常的桌子 (老倪 2026-11-16「桌子面上方的铝合金横梁删掉, 就要一个正常的桌子」)
+  //    ⇒ 只画: 桌面 + 4 条腿落地 + 两条下横撑 + 750 标注; 立柱不再向上通到横梁,
+  //      顶部框架/上横梁/角码/框架标签全不画(那些是上一版给相机和标定搭的龙门架)。
+  if(typeof __TRAY!=='undefined' && __TRAY){
+    [[xa,ya],[xb,yb],[xa,yb],[xb,ya]].forEach(function(c){
+      _boxFaces(g,pr,[c[0]-lg/2,c[1]-lg/2,fl],[c[0]+lg/2,c[1]+lg/2,tb],function(){return T.legc;},T.aluEdge);
+    });
+    const cz0b=fl+0.12, cz1b=cz0b+0.06;
+    [ya,yb].forEach(function(yy){
+      _boxFaces(g,pr,[xa,yy-0.02,cz0b],[xb,yy+0.02,cz1b],function(){return T.aluDark;},'#77828f');
+    });
+    _boxFaces(g,pr,[x0,y0,tb],[x1,y1,0],
+      function(f,c){ return f.every(function(i){return Math.abs(c[i][2])<1e-9;}) ? T.top : T.body; },T.edge);
+    const tp2=[[x0,y0,0],[x1,y0,0],[x1,y1,0],[x0,y1,0]].map(pr);
+    if(tp2.every(Boolean)){
+      g.beginPath(); g.moveTo(tp2[0].u,tp2[0].v);
+      for(let i=1;i<4;i++) g.lineTo(tp2[i].u,tp2[i].v);
+      g.closePath(); g.strokeStyle='#f0d9ac'; g.lineWidth=1.6; g.stroke();
+    }
+    const dx2=x1+0.04, dy2=y1+0.02, zt2=pr([dx2,dy2,0]), zb2=pr([dx2,dy2,fl]);
+    if(zt2&&zb2){
+      g.strokeStyle='#d8b98c'; g.lineWidth=1.3; g.beginPath();
+      g.moveTo(zt2.u,zt2.v); g.lineTo(zb2.u,zb2.v); g.stroke();
+      [zt2,zb2].forEach(function(p){ g.beginPath(); g.moveTo(p.u-5,p.v); g.lineTo(p.u+5,p.v); g.stroke(); });
+      g.font='bold 13px monospace'; g.fillStyle='#d8b98c';
+      g.fillText('750', (zt2.u+zb2.u)/2+7, (zt2.v+zb2.v)/2+4);
+    }
+    const lab2=pr([x0+0.01, y0-0.02, 0.02]);
+    if(lab2){
+      const txt2='实验桌 '+Math.round(T.w*1000)+'×'+Math.round((T.x1-T.x0)*1000)+'×'+Math.round(T.h*1000)
+                +'mm · 桌面 z=0 与箱体顶板平齐';
+      g.font='bold 12px monospace';
+      const tw2=g.measureText(txt2).width;
+      g.fillStyle='rgba(0,0,0,.75)'; g.fillRect(lab2.u, lab2.v-26, tw2+8, 17);
+      g.fillStyle='#f0d9ac'; g.fillText(txt2, lab2.u+4, lab2.v-12);
+    }
+    return;                                // 以上画完就是"一张正常的桌子", 下面全是龙门架结构
+  }
   // 🧱 四根立柱 = 45×45 铝合金型材: 从地面 -0.750 **一直通到上横梁底面**(老倪: 桌腿向上延伸)
   [[xa,ya],[xb,yb],[xa,yb],[xb,ya]].forEach(c=>{
     _boxFaces(g,pr,[c[0]-lg/2,c[1]-lg/2,fl],[c[0]+lg/2,c[1]+lg/2,zTop],()=>T.alu,T.aluEdge);
@@ -5867,6 +5909,8 @@ function drawInspHoles(g, pr){
 
 // 两个料盘的模块排布: 左盘 = 还没搬走的; 右盘 = 已经搬过去的
 function drawTrayModules(g, pr){
+  // 🍽 摆盘场景: 料盘整个不画(老倪 2026-11-16「桌子上的料盘都删掉, 我重新规划」) ⇒ 盘里的模块一并不画
+  if(typeof __TRAY!=='undefined' && __TRAY) return;
   if(!FENCES || !FENCES.length) return;
   const curK=TRANS.curK|0, carry=!!TRANS.carry, atRight=(TRANS.curY!=null && TRANS.curY<0.55);
   let nl=0, nr=0;
@@ -6258,9 +6302,23 @@ function traySceneInit(){
     VR.dist=1.80;
   }catch(e){}
 
+  // ①c 从零开始(老倪 2026-11-16: 「原始轨迹也删掉, 生产节拍也先删掉, 重头来」)
+  //     轨迹/节拍都是上一版插拔流程的产物, 摆盘要重新规划 ⇒ 一律清空, 只留静态场景。
+  try{
+    TRAJ.trace=[]; TRAJ.plan=[];                 // 真实轨迹 / 规划轨迹 一条不留
+    SHOW=false;
+    for(var _k in NAMED_ON){ NAMED_ON[_k]=false; }   // 命名轨迹(轨迹1~5)全灭
+    if(typeof paintNamedBtns==='function') paintNamedBtns();
+    if(typeof INSP!=='undefined'){ INSP.playing=false; }   // 插拔全流程仿真别自己跑起来
+    if(typeof PC!=='undefined') PC.on=false;               // 位置细胞层关掉(bCells 按钮已移除)
+    if(typeof MJ!=='undefined') MJ.on=false;               // MuJoCo 同视角关掉(bMj 按钮已移除)
+  }catch(e){}
+
   // ② 左栏白名单: 只留"看场景"的开关; 回放/单步/同步/轨迹/围栏这些摆盘还没定义, 一律收起
-  var KEEP={'bSpin':1,'bFrames':1,'bUrdf':1,'bMod':1,'bArmR':1,'bArmReal':1,'bArmL':1,
-            'bCamTop':1,'bChs':1,'bTab':1,'bFlr':1,'bSim':1,'bMj':1,'bCells':1,'bLiv':1};
+  var KEEP={'bFrames':1,'bUrdf':1,'bMod':1,'bArmR':1,'bArmReal':1,'bArmL':1,
+            'bCamTop':1,'bChs':1,'bTab':1,'bFlr':1,'bSim':1};
+  // 🚫 老倪 2026-11-16 陆续点名不要: MuJoCo同视角(bMj) / 位置细胞(bCells) / 8802直播(bLiv) / 自动环绕(bSpin)
+  //    理想档回放(idealBtn, 112段按本节拍) 也不在这条摆盘场景里 ⇒ 下面 trim 里显式按 id 隐藏
   function trim(){
     try{
       var rail=document.getElementById('vrRail');
@@ -6282,9 +6340,22 @@ function traySceneInit(){
       if(br){ var d1=br.parentElement, d2=d1&&d1.parentElement, d3=d2&&d2.parentElement;
               if(d2) d2.style.display='none'; if(d3) d3.style.display='none'; }
       var mk=document.getElementById('mktDock'); if(mk) mk.style.display='none';
-      [].forEach.call(document.querySelectorAll('div,span'), function(e){
-        if(e.children.length===0 && /姿态: 死值常量/.test(e.textContent||'')) e.style.display='none';
+      // 点名不要的零散按钮(不在左栏白名单体系里): 理想档回放 / 生产节拍胶囊
+      ['idealBtn','uphPill','uphChip','mjframe','mjtag'].forEach(function(id){
+        var e=document.getElementById(id); if(e) e.style.display='none';
       });
+      [].forEach.call(document.querySelectorAll('div,span'), function(e){
+        if(e.children.length===0 && /姿态: 死值常量|运行中: 第|节拍 |UPH 目标|✅ 完成 \d+ 段/.test(e.textContent||''))
+          e.style.display='none';
+      });
+      // 轨迹会被异步请求重新灌回来(规划/真实轨迹), 所以每次 trim 都清一遍(幂等)
+      if((TRAJ.trace&&TRAJ.trace.length)||(TRAJ.plan&&TRAJ.plan.length)||SHOW
+         || Object.keys(NAMED_ON||{}).some(function(k){ return NAMED_ON[k]; })){
+        TRAJ.trace=[]; TRAJ.plan=[]; SHOW=false;
+        Object.keys(NAMED_ON||{}).forEach(function(k){ NAMED_ON[k]=false; });
+        if(typeof paintNamedBtns==='function') paintNamedBtns();
+        try{ drawVR(); }catch(e){}
+      }
     }catch(e){ console.warn('[tray] trim:', e); }
   }
   trim();
