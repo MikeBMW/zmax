@@ -31,6 +31,9 @@ git remote -v
 > 已封装：**`scripts/api_push.py`** —— 直接 `python3 scripts/api_push.py` 就把当前 HEAD 落地(只推差异 +
 > 逐文件校验, 打印 `REMOTE_SHA`)。默认仓库 `~/zmax`, 可用 `REPO=/path OWNER=x NAME=y BRANCH=dev` 覆盖;
 > 工作区不干净时它会直接拒跑 —— 这就是下方第一条红字规矩。平时先跑脚本, 只有要改行为时才照下面手写。
+> 🔴 **"不干净"包含未跟踪文件**: 一个潦草的 `*.code-workspace` / 临时 `.md` 就能让它报
+> `工作区不干净: 先 git commit`。`git status --porcelain` 归零再跑 (该入的就 commit, 纯净的写进 `.gitignore`)。
+> 它最后打印的 **`REMOTE_SHA` 是后面建 tag 唯一该用的对象** —— 不是本地 `git rev-parse HEAD`。
 
 Token 从 `~/.git-credentials` 里读 (`https://<user>:<token>@github.com`), **不打印、不进对话、不写进命令历史**。
 
@@ -71,6 +74,12 @@ Token 从 `~/.git-credentials` 里读 (`https://<user>:<token>@github.com`), **�
 - **发版走 tag 时, 建 tag ref 本身就是一次 push**: `POST /git/refs {"ref":"refs/tags/vX.Y.Z","sha":"<commit>"}`
   会触发 `on: push: tags: v*` 的发布流水线(要 annotated tag 就先 `POST /git/tags` 再拿它的 sha 建 ref)。
   回读新 run 的 `head_sha` 必须等于这个 commit —— tag ref 建错对象, 打出来的是旧代码的包而版本号是新的。
+  🔴 **`sha` 必须用 `api_push.py` 打的 `REMOTE_SHA`, 不是本地 `git rev-parse HEAD`**: 这条路造出的是**另一个 sha**,
+  两者内容相同但历史不同。拿本地 sha 去建 tag 会 **404 Not Found**(那个对象在远端根本不存在),
+  或指向不存在的提交 → CI 不触发/构建空。回读也用同一个值比: `GET /git/ref/tags/<tag>` 的 `object.sha == REMOTE_SHA`。
+  🔴 **建之前先探一下**: `GET /repos/<o>/<r>/git/ref/tags/vX.Y.Z` 回 **404 才建**, 回 200 说明已存在,
+  直接拿它回读对一下就行, 不要重复 POST(会 422)。
+  同一轮里先推提交再打 tag 时顺序固定: `api_push.py` → 拿 `REMOTE_SHA` → `POST /git/refs` → `GET` 回读比 sha。
 - **构建失败且 Release 还没产生资产时, 重打同一个 tag 是干净的**: `DELETE /git/refs/tags/vX.Y.Z` → 修完代码
   (例如 workflow 自身的 bug)后对新提交再 `POST` 同一个 ref ⇒ 等价 `git push -f` 该 tag, 会再触发一次构建。
   **一旦该 tag 已有 Release 资产就绝不重指**(下载链接会失去意义), 改递增新号。

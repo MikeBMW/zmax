@@ -1,6 +1,6 @@
 ---
 name: windows-plant-host-operations
-description: Use when 给无 SSH 的 Windows 产线机远程上线/停服/交接用户自己调试/取证。
+description: Use when 无 SSH 的 Windows 机上线/停服/交接/取证, 或远控(向日葵)连不上。
 version: 1.0.0
 author: Hermes
 license: MIT
@@ -922,8 +922,75 @@ Windows 上 8802 不是计划任务直接拉 `ar_scene_render_server.py`, 而是
   🔴 **别先怀疑曝光设置**: 表面路 `GET /exposure` 回 `us=80000/gain=1.8`(#产线值)而原帧 `mean 11.9` ⇒
   曝光是对的、是工件/光源不在。同理 **`count=0` 绝不是"合格"**: 空场上两路都会回 OK/0 缺陷, 不能当结论报给用户。
 
+  · 🔴 **在同一条 SSH 会话里验证常驻服务 = 假绿, 必须换一条新会话复验**: 上述任一方式起完后当场查
+    「进程在 + 端口在听 + 页面 200」**全绿**, 一断开就没了 —— 实测为此白折腾一整轮(页面上线后又消失, 看着像网络问题)。
+    判据固定三步: ① 关掉 ssh ② **新开**一条 ssh ③ 再查 `Get-NetTCPConnection -LocalPort <p> -State Listen` 的
+    `LocalAddress` 必须是 `0.0.0.0`(127.0.0.1 只允本机), 进程 pid 仍在, 再从**另一台机**取一次页面字节数。
+  · **最省事的脱离启动: WMI Create 带 `CurrentDirectory`、不写重定向**:
+    `Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine=$cmd; CurrentDirectory=$wd}`
+    —— 冻结包按**相对路径**找 `_internal\tools\x.py` 与依赖, 不设 cwd 就起不来; 命令行里写 `>> log` 因没 shell
+    会被当参数(见上一条), 要日志就让程序自己写。实测这条 pid 常驻、端口 `0.0.0.0` 且跳网可取页面。
+
+### 10.20 「/station 页面能开但画面是死的」+ 用户报的 IP 已不是这台机
+
+- 🔴 **先拿用户报的 IP 跟本机地址对一遍, 再谈服务**: `ip -4 addr`(Linux) / `Get-NetIPAddress -AddressFamily IPv4`(Windows)。
+  网卡被拔走/换到另一台机(例 USB 产线网卡交接给小静静)后, 那个 IP 已经指不到任何人 —— ping 不通、页面打不开,
+  而服务在别的地址上跑得好好的。**别顺着旧 IP 查服务**, 先确定本机现在到底有哪些地址。
+  (同一现象已在 10.15 的“旧标签指向老网段”撞过: 数字 IP 不走 hosts, 只能换地址。)
+- **`/station/status` 是这类页面的唯一判活口**: 逐路读 `online / fps / age_s / stalled / src_err`。
+  HTTP 200 + 176KB 完全可能是在放 **17 分钟前的旧帧**(`age_s` 上千)。三类现象分开看:
+  全部 `online=False` = 服务没带图源或者设备不在; `stalled=true` + `src_err: urlopen error timed out` = 有图源但拉不到
+  (多半是跳网/对端没起); 只有 `age_s` 小 + `fps` 20+ 才是真活。`aoi_*` 这类**按需触发**的通道 fps 0.0x + `stalled` 属正常, 别当故障。
+- **`cam_live_stream.py` 的端口语义**: `--port X` 与默认 `--station-port X` **相等时脚本把 station_port 置 0**
+  ⇒ 一个端口同时服务画面流和 `/station` 页(所以只 `--port 8793` 就有页)。想拆两端口才显式传不同值 ——
+  别把“没传 station-port”当成漏参数而多传一个同值, 它白传。
+- 🔴 **授权是“进程级”的, 不是全局开关**: `POST /ctl/arm {"on":true,"mode":"window"}` 只给**收到这个请求的那个进程**
+  开时间窗(默认几百秒自动失效, 审计记 IP+时刻)。在没有网/没有图源的那一台上授权毫无意义 —— 执行链要走对端,
+  触达不到就只是空转; 且必须同时带 `--ctl-motion` 起服务页面才有控制能力。现场要能操作, 得让**能触达机器人的那台**
+  起服务并授权; 另一台只当“看页”用。
+
+## 十一、远控连不上(向日葵/AWeSun/RDP): 三层判活, 别只看进程
+
+判活是三层, 只有第三层等于「能连」: **进程 → 服务 → 真的 online**。
+
+```bash
+# ① 进程与服务(用 powershell 只取结构化字段, 别 grep 中文状态词 —— 控制台是 GBK)
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='AweSun.exe' or Name='awesun_guard.exe'\" | Select ProcessId,CreationDate,CommandLine"
+powershell -NoProfile -Command "Get-Service AweSunService,SunloginService | Select Name,Status,StartType; sc.exe qc AweSunService"
+```
+
+- 🔴 **升级会换服务名**: 16.x 把 `SunloginService`(跑 `OldAweSun.exe`) 换成 `AweSunService`(跑 `AweSun.exe --mod=service`),
+  老服务留成「已安装为交互式服务…因此无法启动」的废壳(事件日志 7030/7045 有安装记录) ⇒ 按老名字判活会把「新服务正跑着」
+  判成「机器没在跑」。`sc qc <名>` 的 BINARY_PATH_NAME 才知道这服务到底跑谁。
+- **进程角色看命令行**: `--mod=service`(真服务) / `--mod=watch --pid=N`(守护) / `awesun_guard ... -mode worker` /
+  `flutter\AweSun.exe --admin=1`(界面)。**界面进程在 ≠ 服务在**, 反之亦然。
+
+- 🔴 **日志在两处, 读错那份直接得出相反结论**: `<安装目录>\log\` 与 `%AppData%\Roaming\Oray\AweSun\log\`。
+  安装/升级那几份停在旧时刻(末行常是 `SERVICE_CONTROL_STOP`), **当前这一轮在 AppData**。
+  挑日志的顺序: 先按 mtime + 文件名里的时间戳选最新 ⇒ 再与**服务 PID 的 StartTime 对齐** ——
+  日志文件名时间早于进程启动时间, 说明你看的是死进程那份。
+- **「能不能连」只认两行证据**: 日志里 `[client] change status to online`(伴随 `[online] logon slsvr succeed`)
+  + 服务 PID 到设备服务器的 Established(`Get-NetTCPConnection -OwningProcess <pid> -State Established`, 实测 `:443`)。
+  端口 LISTEN、进程在、界面开着 —— 三条**都不等于 online**。
+- **断线史**用 `grep -h "change status to offline\|online disconnected" ` 打全部日志, 时间戳连起来就能给用户
+  「掉了多久、几点恢复」的准确答案。
+- 🔴 **服务被停过就一直离线, 没人自动拉起**: `SERVICE_CONTROL_STOP` 不在失败恢复(auto-restart)覆盖范围内,
+  `sc qfailure <服务名>` 默认全 0(恢复动作/`RESET_PERIOD` 都空) ⇒ 手工/升级流程停一次就等于长时间掉线。
+  判「恢复没恢复」只看 online 行, 不看服务 Running。
+- **最快的恢复动作是让用户重开一次客户端界面, 不是你去重启服务**: 实测界面进程(`flutter\AweSun.exe --admin=1`)
+  启动时会把 `--mod=service` 进程一并拉起, ~30s 后日志出 `status: online`、Established 恢复。禁自重启铁律下
+  只告诉他「双击一下向日葵」, 然后自己回读 online 行 + Established 确认。
+- **别拿自造域名测网络**: `client.oray.com` / `slsvr.oray.net` 这类不存在 ⇒ `Test-NetConnection`/`/dev/tcp` 必 False,
+  会误报成「DNS 坏了」并带偏整轮排查。用真主机: `login.oray.com`、`slapi.oray.net`(443 实测都通)。
+- 防火墙别漏: `Get-NetFirewallRule | ? DisplayName -match 'AweSun|Sunlogin'` 应见 Inbound/Outbound Allow(三个 profile);
+  换新版 exe 路径后可能生成 Inbound **Block**(见 10.7)。
+- 现成探针: `scripts/awesun_health.ps1` —— 一次打齐进程角色 / 服务与真实二进制 / 服务 PID 的 Established / 最新日志的
+  状态行(纯 ASCII 输出, 只读不动服务)。
+
 ## 支持文件
 
+- `scripts/awesun_health.ps1` —— 向日葵/AweSun 只读体检: 进程角色(service/watch/guard/gui)、服务状态与 BINARY_PATH、
+  服务 PID 的 Established 连接(判 online)、两处日志里最新那份的 online/offline 状态行。
 - `references/windows-hermes-brain-node.md` —— 从零建通道(WinRM→sshd) + 灌脑子(tar over ssh) + 定时双向同步(无 rsync) +
   provider/会话钉死 `gateway_runtime` 的完整判别与修法。
 - `references/offline-hive-and-account-ops.md` —— Windows 没在跑时从 Linux 侧认账户(`chntpw -l`)、备份 hive、

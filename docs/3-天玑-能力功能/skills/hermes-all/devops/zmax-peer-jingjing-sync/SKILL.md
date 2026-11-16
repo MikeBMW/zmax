@@ -22,6 +22,7 @@ metadata:
   然后 `ssh -i ~/.ssh/id_ed25519 ubuntu@<ip> 'hostname; ls -d ~/.hermes ~/zmax; du -sh ~/.hermes ~/zmax'`
   认身份: 9.4G `~/.hermes` + 250G `~/zmax` = 静静; key 认证直接过, `mike@` 会 Permission denied。
   三个脚本的 HOST 已支持 `PEER_HOST` 环境变量: `PEER_HOST=ubuntu@<ip> python sync_peer_jingjing.py ...`。
+  扫网段别手搓循环: `python3 scripts/find_peer.py` 一次列出本网段所有开 22 的主机（`--verify` 连上认身份）。
 - 密钥: `~/.ssh/id_ed25519` (mike@zmax-win) 已写入对端 `~/.ssh/authorized_keys`；之后一律
   `ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes ubuntu@<ip> '...'`。
 - 没有密钥时的建法: 本地 `ssh-keygen -t ed25519 -N ''`，再用 paramiko(密码) 把公钥 append 到对端
@@ -33,6 +34,7 @@ metadata:
 | `sync_peer_jingjing.py --what memory [--apply]` | 记忆双向同步: 本机 `hermes/{memories,skills}` ↔ 对端 `~/.hermes/{memories,skills}`，按 (size,mtime) 较新者胜，冲突(±60s)只报不动 |
 | `sync_peer_jingjing.py --what project-pull --apply` | 把对端 `src/tools/flows/config` 拉到本机镜像 `~/zmax_repo` |
 | `project_hash_diff.py` / `project_diff.py` | 工程差异统计 (mtime 版 / 内容版) |
+| `find_peer.py` | 扫本网段 22 端口找对端 (地址漂了就用它, 免手搓) |
 
 ## 记忆合并 (2200 字符硬上限, 别盲覆盖)
 `MEMORY.md` 与本机注入预算同为 2200 字符, 对端通常已压到 2195 左右 —— 直接“较新者胜”覆盖会**静默丢掉本机独有条目**。
@@ -42,6 +44,23 @@ metadata:
    压到 ≤2199 字符再写盘; 写完 `python3 -c "print(len(open(p,encoding='utf-8').read()))"` 复核。
 3. 再跑一次 `--what memory --apply` 推到对端, 然后两端 `md5sum` 必须相同 (本次 c77893…/1088ba…)。
 4. 备份 `.bak_*` 放在 `$TMPDIR`, **不要留在 `memories/`** —— 否则会被当新文件推到对端。
+
+## 同步验收口径 (三段式 + 全量对账)
+老倪说「同步记忆」的交付判据就三条, 按顺序做, 别跳:
+
+1. **dry-run 先看清方向**: `PEER_HOST=ubuntu@<ip> python3 sync_peer_jingjing.py --what memory` (不带 `--apply`) ——
+   看 拉取/推送/冲突 三个数。冲突 0 且拉取方向 = 对端→本机 才往下走 (对端是演进主干)。
+2. **`--apply` 后回读 md5**: `memories/{MEMORY,USER}.md` 两侧必须同 hash, 本轮推送的文件也要逐个 md5 对上。
+3. **再跑一次 dry-run 必须 `拉取 0 · 推送 0 · 冲突 0`** —— 不幂等就是有文件没落地或时间戳在打架, 别宣布完成。
+
+对账清单本身有三个坑 (都会输出“全量假差异”, 把关人当成丢了整个库):
+- **脚本的文件计数差 ≠ 内容缺失**。报 `本地 2045 · 远端 2240` 时差的不是技能, 是 `skills/.locks/*.lock`
+  (每个 skill 一把运行时锁, 天然两侧不同)。判同步完成只看 file-list 对账, 不看计数。
+- **`comm` 要三件套一致**: 两侧都 `find memories skills -type f | sort`、**本地别加 `./` 前缀**、
+  `export LC_ALL=C`、ssh 输出 `tr -d '\r'`。前缀或 locale 不一致时 `comm` 报 `not in sorted order`
+  并把 2000+ 文件全算成差异 —— 真正的差异只有 .locks 那十几把锁。
+- **清点技能用 `find . -maxdepth 3 -name SKILL.md`**。技能多数在 `<category>/<skill>/SKILL.md` (深度 3),
+  `maxdepth 2` 只数到顶层那一小撮 (本次 12 vs 实际 308), 会误判“技能少了一半”。
 
 ## 状态空间工程 → Windows 版本同步 (已验证 2026-11-11)
 老倪说「静静的最新状态空间工程, 你来同步成 windows 版本」走这条。
@@ -71,6 +90,10 @@ metadata:
    无 stdin 句柄的上下文，`capture_output=True` 会去取 STD_INPUT_HANDLE。修法：显式
    `stdin=subprocess.DEVNULL, stdout=PIPE, stderr=PIPE`（本脚本的 `sh()` 已改）。
    判据：手动跑正常、cron 一触发就挂 ⇒ 就是这条，不是 ssh/网络问题。
+12. **两侧都算「原始 md5 + 去 CR 后 md5」，只归一化一侧会造出海量假差异**：对端 Windows GUI 写出的 json 也带 CRLF，
+    本机归一化后去比对端原始 hash ⇒ 内容完全相同也判「不同」。实测一次 502 个文件里 3740 条差异(含 PDF/PNG 资源)全是假的，
+    真实差异只有 28 个。判据：`raw` 相等 ⇒ 相同；`raw` 不等但 `tr -d '\r'` 后相等 ⇒ 只行尾差、无需动；两者都不等才是真差异。
+    画布 `state_space_obs.json` 就踩过这条 —— 判「旧」其实两端逐字节相同。
 5. **本机打包版的文件 mtime 全是打包时刻** (app9 全部 10:43) ⇒ 用 mtime 判新旧会把 1700 个文件误判成
    “本机较新”。判内容必须 md5，且 **Windows CRLF 必须归一化**：`md5(b.replace(b'\r\n', b'\n'))`
    —— 不归一化会把 1813/1815 个文件全算成“不同”。
@@ -124,6 +147,15 @@ metadata:
 - **验证脚本要用 app9 的 exe 跑**: `cp probe.py _internal/tools/_tmp_x.py && ./Z-MAX_Console.exe _internal/tools/_tmp_x.py`, 结果写文件再读。系统 python 3.14 无 PyQt5; `_pyenv/python.exe` 设 PYTHONPATH 后仍 `ImportError: DLL load failed while importing QtCore`(PyInstaller 的 PyQt5 是假包, 只有 bootloader 能加载)。
 - **自检脚本 `check_node_logic_refs.py` 已过时**: 本机 `node_logic.py` 里 `module.xxx(` 匹配数为 0 ⇒ 它 print「未发现调用」后 exit 1, 不是坏引用。改用工程库 `mw_node.source/symbol` 直接对源码文件做真源核对。
 - **`mw_node.source` 字段可能是复合描述**: `路径 · 符号`、`路径::类.方法`、`路径 --参数`。解析要按 ` · ` / `::` / ` --` 切开再判文件存在性, 否则 18 个「源文件缺」全是假报(真实 2 个: mem_nodes.py 两端都没有、HilBridge 类名不符)。
+
+### 5.50.776 同步实测 (2026-11-16)
+- 502 个文件: 474 相同 · 28 真差异 · 落盘 41 处 (两处落地) · 复跑 500/502 相同。
+- 只有 2 个故意不动: `sources/config/cc_snapshot.json`(本机化运行时快照) 和 `zmax_engineering.db`
+  —— **对端 776 的 DB 比本机少一个端口(mw_port/mw_topic 307 vs 308), 画布两端却逐字节相同(94节点/15条row_bg/222链路)**,
+  本机 79/222/308 才符合画布验收数 ⇒ 保留本机 DB, 不跟对端降。
+- 版本号三处 (`studio.py` / `update_checker.py` / `version_sync.py`) 在 `~/zmax` 侧可能已被对端推送, app9 侧仍旧 ⇒ 只补 app9。
+- Windows 侧画布是实体文件, 一次要落 3 处: `data/database/zmax/sources/canvas/`、`flows/`、`src/lerobot/engineering/flows/`(对端三者是软链同一文件)。
+  落完 md5 必须一致(本次全为 bfe22c36)。
 
 ### 状态空间工程的验收口径 (本次实测数)
 - 画布: 94 节点 / 222 链路, 其中 15 个 `row_bg` 是分组条不参与执行 ⇒ 功能节点 79 个, `node_logic.match_node` 命中 79/79。
