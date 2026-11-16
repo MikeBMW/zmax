@@ -7,6 +7,7 @@
   html:not(.sceneTray) #bMod30,
   html:not(.sceneTray) #bMod16,
   html:not(.sceneTray) #bPos,
+  html:not(.sceneTray) #bGrip,
   html:not(.sceneTray) #bDim,
   html:not(.sceneTray) #bSlave,
   html:not(.sceneTray) #bPan5,
@@ -311,6 +312,7 @@
       <button id="bPan" class="sm on" title="4#方盘: 显示/隐藏桌子上的 4#方盘(315×230×40mm)">🧺 4#方盘</button>
       <button id="bMod30" class="sm on" title="在左盘里排 30 个光模块: 149.7×22.58mm, 长边沿盘的长边; 3 排(沿长边) × 每排 10 个(沿盘宽)">🔩 3×10 光模块</button>
       <button id="bMod16" class="sm on" title="左上角 4#方盘(315×230)里排 16 个光模块: 149.7×22.58mm, 长边沿盘的 315 那条边; 每排 8 个挨着放(不留缝) × 2 排 = 16">🔩 左上盘 16 个</button>
+      <button id="bGrip" class="sm on" title="从机器人右臂 tool1 上的双夹爪工装(2×大寰 PGI-140-80 + 加长指尖): 点一次切夹持跨度 230(方盘) → 380(托盘) → 关。设计依据: 单只行程 80mm, 两只对置共 160mm ≥ 230→380 的 150mm 差; 单侧夹持力 40~140N, 可搬 ≤3kg">🧰 夹具 230</button>
       <button id="bPos" class="sm on" title="六个工位位置: 主机器人视角 左上① / 中上③ / 右上⑥ / 左下④ / 中下② / 右下⑤ —— 每个盘上方一块带编号的牌 + 盘边同色圈线, 再点关掉">① 位置</button>
       <button id="bDim" class="sm on" title="尺寸: 一键关掉画面上所有的尺寸标注(桌子长/宽/高 + 各个盘的长/宽), 再点回来">📏 尺寸</button>
       <button id="bSlave" class="sm on" title="从机器人: 桌子对面那台, 朝桌子, 和主机器人一起干活(11.16 加)">🤝 从机器人</button>
@@ -4408,6 +4410,16 @@ if($('bPan')) $('bPan').addEventListener('click', function(){
   try{ drawVR(); }catch(e){}
 });
 // 🤝 从机器人
+// 🧰 双夹爪工装: 三态循环 230(方盘) → 380(托盘) → 关
+if($('bGrip')) $('bGrip').addEventListener('click', function(){
+  var b=$('bGrip');
+  if(!GRIP.show){ GRIP.show=true; GRIP.span=GRIP.spans[0]; }
+  else if(GRIP.span===GRIP.spans[0]){ GRIP.span=GRIP.spans[1]; }
+  else { GRIP.show=false; }
+  b.classList.toggle('on', GRIP.show);
+  b.textContent = GRIP.show ? ('🧰 夹具 '+GRIP.span) : '🧰 夹具 关';
+  try{ drawVR(); }catch(e){}
+});
 // ① 六个位置牌开关
 if($('bPos')) $('bPos').addEventListener('click', function(){
   POS.show=!POS.show;
@@ -4896,6 +4908,24 @@ var POS6=[
   {n:5, name:'右盘',     pan:'TPANR', color:'#ff9f68', note:''},
   {n:6, name:'右上盘',   pan:'TPANT', color:'#ff7b9c', note:''}
 ];
+// 🧰 从机器人右臂 tool1 上的双夹爪工装(老倪 2026-11-16「在光模块 tool1 坐标圆心为中心, 安装两个工装夹具,
+//    即可以夹起方盘, 又可以夹起 tray 盘; 夹爪形状参考大寰」)
+// 选型依据(大寰选型手册 CN2303 / PGI 系列数据表):
+//   PGI-140-80: 单侧夹持力 40~140N, 总行程 80mm, 本体 95×67.1×86(取 95×86×67 安装), 重 1kg(不含手指),
+//               最大推荐负载 3kg, 允许力矩 Mx/My/Mz 各 7N·m, Fz 300N, IP54
+//   手册原文:「行程指有效行程, 夹取大尺寸物品可通过设计专用指尖实现; 只要夹取过程最大到最小尺寸差在行程内即可」
+// ⇒ 两只 PGI-140-80 对称对置, 总行程 2×80=160mm ≥ 方盘 230 → 托盘 380 的 150mm 差, 一个工装覆盖两种盘
+// 几何(局部 tool1 坐标系, 单位 mm): X = 开合方向, Y = 沿盘长, Z = 从法兰朝外
+var GRIP={
+  show:true, span:230, spans:[230,380],
+  flange:[120,120,14],            // 转接法兰
+  beam:[520,80,26],               // 横梁(6 系铝)
+  body:[95,86,67],                // PGI-140-80 本体
+  fingerT:14, fingerW:70, fingerD:60,   // L 形指尖: 厚 / 宽 / 下探
+  fill:'#3f4650', edge:'#9fb0c6',     // 夹爪本体色
+  fing:'#c9d3e0', fedge:'#eef4fb',    // 指尖(铝合金)
+  spanColor:'#39e08a'
+};
 var POS={ show:true };   // ① 位置牌总开关
 var DIM={ show:true };   // 📏 尺寸标注总开关(老倪 2026-11-16「增加一个按钮, 关闭所有尺寸」)
 var SLAVE={ show:true, mx:0.725, my:0.25, x:1.45, y:0.50, half:0.15 };   // y=0.50 = 从机器人自己的右手侧(朝 -X 时右=+Y)
@@ -4909,12 +4939,83 @@ function drawSlaveBase(g,pr){
   if(typeof drawChassis==='function'){ try{ drawChassis(g, slavePr(pr)); }catch(e){} }
 }
 // 中央相机 + 一条臂: 桌子之后画(在桌面上方可见)
+// 🧰 双夹爪工装: 在 tool1 局部坐标系里画, 再逐点变换到世界(tool1 从主臂 FK 绕 Z 转 180° 得来)
+// 夹爪工装自己建一个"好用的"坐标基: A=横向(沿盘宽, 水平) B=朝工件(水平) C=竖直向下
+//   ⚠ 不能直接用 tool1 的三轴: tool1 的 X 轴实测几乎竖直(它是模块头的轴), 拿它当横梁方向会把梁画成竖的。
+//   工装靠一块直角转接板把 tool1 的朝向转成"梁水平、指尖朝下", 这也是现场装夹爪的常规做法。
+function _t1world(){
+  var t1=(typeof _frameOf==='function') ? _frameOf(LINKM,'tool1') : (LINKM&&LINKM['tool1']);
+  if(!t1 || !t1.origin) return null;
+  var o=[SLAVE.x-t1.origin[0], SLAVE.y-t1.origin[1], t1.origin[2]];
+  var z=[-t1.z[0], -t1.z[1], t1.z[2]];                    // tool1 的模块轴(绕 Z 转 180° 后)
+  var hl=Math.sqrt(z[0]*z[0]+z[1]*z[1])||1e-9;
+  var B=[z[0]/hl, z[1]/hl, 0];                            // 朝工件: 水平分量
+  var A=[-B[1], B[0], 0];                                 // 横向(与 B 水平垂直)
+  var C=[0,0,1];                                          // 竖直向下(局部 +C = 往下)
+  return {o:o, A:A, B:B, C:C};
+}
+function _gripBox(g,pr,W,c,s,fill,edge,alpha){
+  if(!W||!g||typeof g.beginPath!=='function') return;
+  var mm=0.001, pt=function(lx,ly,lz){                   // (横向, 朝工件, 向下)
+    return pr([ W.o[0]+(W.A[0]*lx+W.B[0]*ly-W.C[0]*lz)*mm,
+                W.o[1]+(W.A[1]*lx+W.B[1]*ly-W.C[1]*lz)*mm,
+                W.o[2]+(W.A[2]*lx+W.B[2]*ly-W.C[2]*lz)*mm ]);
+  };
+  var P=[], D=[];
+  for(var i=0;i<8;i++){
+    var q=pt(c[0]+((i&1)?0.5:-0.5)*s[0], c[1]+((i&2)?0.5:-0.5)*s[1], c[2]+((i&4)?0.5:-0.5)*s[2]);
+    P.push(q); D.push(q?q.z:0);
+  }
+  var F=[[0,1,3,2],[4,5,7,6],[0,1,5,4],[2,3,7,6],[0,2,6,4],[1,3,7,5]]
+        .map(function(f){ return {f:f, d:(D[f[0]]+D[f[1]]+D[f[2]]+D[f[3]])/4}; })
+        .sort(function(a,b){ return b.d-a.d; });          // 远 → 近
+  g.save(); g.globalAlpha=(alpha===undefined?1:alpha);
+  for(var k=0;k<F.length;k++){
+    var f=F[k].f, ok=true;
+    for(var j=0;j<4;j++) if(!P[f[j]]){ ok=false; break; } if(!ok) continue;
+    g.fillStyle=fill; g.beginPath();
+    g.moveTo(P[f[0]].u,P[f[0]].v);
+    for(var j2=1;j2<4;j2++) g.lineTo(P[f[j2]].u,P[f[j2]].v);
+    g.closePath(); g.fill();
+    if(edge){ g.strokeStyle=edge; g.lineWidth=1; g.stroke(); }
+  }
+  g.restore();
+}
+function drawGrip(g,pr){
+  if(typeof GRIP==='undefined' || !GRIP.show) return;
+  if(typeof SLAVE!=='undefined' && !SLAVE.show) return;
+  var W=_t1world(); if(!W) return;
+  var fh=GRIP.flange[2], bh=GRIP.beam[2], bd=GRIP.body[2];
+  // ① 转接法兰(贴 tool1, 在法兰面上方) + ② 横梁(水平, 沿横向 A)
+  _gripBox(g,pr,W,[0,0,-fh/2],[GRIP.flange[0],GRIP.flange[1],fh], GRIP.fill, GRIP.edge);
+  _gripBox(g,pr,W,[0,0,bh/2],[GRIP.beam[0],GRIP.beam[1],bh], GRIP.fill, GRIP.edge);
+  // ③ 两只 PGI-140-80 挂在梁下, 机体中心 = 跨度/2 + 指尖厚 + 机体半宽(随 span 各滑 75mm)
+  var half=GRIP.span*0.5, cx=half + GRIP.fingerT + GRIP.body[0]/2, bz=bh+bd/2;
+  [1,-1].forEach(function(sg){
+    _gripBox(g,pr,W,[sg*cx,0,bz],[GRIP.body[0],GRIP.body[1],GRIP.body[2]], GRIP.fill, GRIP.edge);
+    // ④ L 形加长指尖: 竖直段贴盘外壁下探 fingerD, 底部再往内勾 26mm
+    var fx=sg*(half + GRIP.fingerT/2), fz=bh+bd+GRIP.fingerD/2;
+    _gripBox(g,pr,W,[fx,0,fz],[GRIP.fingerT,GRIP.fingerW,GRIP.fingerD], GRIP.fing, GRIP.fedge);
+    _gripBox(g,pr,W,[sg*(half-10),0,bh+bd+GRIP.fingerD-6],[26,GRIP.fingerW,12], GRIP.fing, GRIP.fedge);
+  });
+  // ⑤ 夹持跨度指示线(虚线, 标出当前 230 / 380)
+  var zt=bh+bd+GRIP.fingerD+2, q=[];
+  [1,-1].forEach(function(sg){ q.push(pr([ W.o[0]+(W.A[0]*sg*half-W.C[0]*zt)*0.001,
+                                            W.o[1]+(W.A[1]*sg*half-W.C[1]*zt)*0.001,
+                                            W.o[2]+(W.A[2]*sg*half-W.C[2]*zt)*0.001 ])); });
+  if(q[0]&&q[1]){
+    g.save(); g.strokeStyle=GRIP.spanColor; g.lineWidth=2; g.setLineDash([6,4]);
+    g.beginPath(); g.moveTo(q[0].u,q[0].v); g.lineTo(q[1].u,q[1].v); g.stroke();
+    g.setLineDash([]); g.restore();
+  }
+}
 function drawSlaveTop(g,pr){
   if(!SLAVE.show || !g || typeof g.beginPath!=='function') return;
   if(typeof drawTopCam==='function' && TCAM && TCAM.show!==false){ try{ drawTopCam(g, slavePr(pr)); }catch(e){} }
   if(typeof LINKM!=='undefined' && LINKM && typeof drawUrdf==='function'){
     var R=[[-1,0,0],[0,-1,0],[0,0,1]];
     drawUrdf(g, pr, LINKM, {R:R, t:[SLAVE.x, SLAVE.y, 0], fill:'#46648c', stroke:'#a8c6ea', alpha:1});   // 右臂 FK, 转 180° 放到对面右手侧
+    try{ drawGrip(g, pr); }catch(e){}                      // 🧰 tool1 上的双夹爪工装
     // 🧭 从机器人末端也要有 tool1(模块头)坐标系 —— 老倪 2026-11-16「从机器人也要显示 tool1 模块头」
     //    从机器人的臂是右臂 FK 绕竖直轴转 180° 再平移 ⇒ tool1 的 origin/三轴同样被 R 转: (x,y)→(X-x, Y-y), z 不变
     var t1=(typeof _frameOf==='function') ? _frameOf(LINKM,'tool1') : (LINKM&&LINKM['tool1']);
@@ -7146,7 +7247,7 @@ document.head.appendChild(st);
   }catch(e){}
 
   // ② 左栏白名单: 只留"看场景"的开关; 回放/单步/同步/轨迹/围栏这些摆盘还没定义, 一律收起
-  var KEEP={'bFrames':1,'bUrdf':1,'bMod':1,'bArmR':1,'bArmL':1,'bStretch':1,'bPan':1,'bPan5':1,'bPanSide':1,'bSlave':1,'bDim':1,'bMod30':1,'bMod16':1,'bPos':1,
+  var KEEP={'bFrames':1,'bUrdf':1,'bMod':1,'bArmR':1,'bArmL':1,'bStretch':1,'bPan':1,'bPan5':1,'bPanSide':1,'bSlave':1,'bDim':1,'bMod30':1,'bMod16':1,'bPos':1,'bGrip':1,
             'bCamTop':1,'bChs':1,'bTab':1,'bFlr':1,'bSim':1};
   // 🚫 老倪 2026-11-16 陆续点名不要: MuJoCo同视角(bMj) / 位置细胞(bCells) / 8802直播(bLiv) / 自动环绕(bSpin)
   //    理想档回放(idealBtn, 112段按本节拍) 也不在这条摆盘场景里 ⇒ 下面 trim 里显式按 id 隐藏
