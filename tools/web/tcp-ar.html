@@ -299,6 +299,7 @@
       <button id="bArmReal" class="sm on" title="真机右臂 = 画面里那条不动的真实机器人臂(关节角来自 tcp_out/latest.json); 点一下隐藏, 只留仿真/幽灵臂 —— 老倪 2026-10-27: 「点击后可以把画面那个暂时不动的真实机器人右臂隐藏」">🦾 右臂_真机</button>
       <button id="bArmL" class="sm on" title="左臂 = 仿真臂: URDF 与右臂相同, 原点固定在右臂世界系 Y=+500mm 处 (X=0,Z=0); 位姿由下面的按钮给">🤖 左臂</button>
       <button id="bPan" class="sm on" title="4#方盘: 显示/隐藏桌子上的 4#方盘(315×230×40mm)">🧺 4#方盘</button>
+      <button id="bMod30" class="sm on" title="在左盘里排 30 个光模块: 149.7×22.58mm, 长边沿盘的长边; 3 排(沿长边) × 每排 10 个(沿盘宽)">🔩 3×10 光模块</button>
       <button id="bDim" class="sm on" title="尺寸: 一键关掉画面上所有的尺寸标注(桌子长/宽/高 + 各个盘的长/宽), 再点回来">📏 尺寸</button>
       <button id="bSlave" class="sm on" title="从机器人: 桌子对面那台, 朝桌子, 和主机器人一起干活(11.16 加)">🤝 从机器人</button>
       <button id="bPan5" class="sm on" title="中上托盘: 桌子中间上方那个 545 长的托盘(545×380×25mm, 宽 380 探出桌面远端边沿 10mm)">🧺 中上托盘</button>
@@ -2570,7 +2571,8 @@ function drawVR(){
   // 🧺 周转盘(摆在桌面上)
   if(typeof drawTrayPan==='function' && (typeof __TRAY!=='undefined' && __TRAY)) {
     try{ drawTrayPan(g, pr, TPAN2); drawTrayPan(g, pr, TPANM); drawTrayPan(g, pr, TPANT);
-          drawTrayPan(g, pr, TPAN5); drawTrayPan(g, pr, TPANL); drawTrayPan(g, pr, TPANR); }catch(e){}
+          drawTrayPan(g, pr, TPAN5); drawTrayPan(g, pr, TPANL); drawTrayPan(g, pr, TPANR);
+          drawMod30(g, pr, MOD30.tray||TPANL); }catch(e){}
   }
   // 📦 箱体(移动底盘): 再画箱体, 两臂/相机画在它上面 —— 顶板 z=0 就是两臂安装面
   if(CHS.show) drawChassis(g, pr);
@@ -4386,6 +4388,12 @@ if($('bPan')) $('bPan').addEventListener('click', function(){
   try{ drawVR(); }catch(e){}
 });
 // 🤝 从机器人
+// 🔩 30 个光模块开关
+if($('bMod30')) $('bMod30').addEventListener('click', function(){
+  MOD30.show=!MOD30.show;
+  $('bMod30').classList.toggle('on', MOD30.show);
+  try{ drawVR(); }catch(e){}
+});
 // 📏 尺寸总开关: 一键关掉所有尺寸标注
 if($('bDim')) $('bDim').addEventListener('click', function(){
   DIM.show=!DIM.show;
@@ -4812,6 +4820,12 @@ var TPANSIDE=[TPANL, TPANR];
 //   ⇒ 从机器人 = 箱体(同款 600×800×750 本体680+轮70) + 中央顶视相机(立柱Ø140 + D435) + **一条**臂
 //   实现: 整个 base 系绕竖直轴转 180°, 旋转中心取 (0.725, 0.25) 这半边 ⇒ 箱体/相机直接复用
 //   drawChassis/drawTopCam, 只是换一个投影函数 prS; 臂用 drawUrdf 的刚体变换参数 X。
+// 🔩 盘内光模块排布(老倪 2026-11-16「在tray盘里, 摆放30个光模块 149.7x22.58mm, 长边沿tray长边, 3排每排10个」)
+//   几何校验(盘 545×380, 内腔 535×370): 沿长边(Y) 3 个 × 149.7 = 449.1 ≤ 535 ✓;
+//   沿盘宽(X) 10 个 × 22.58 = 225.8 ≤ 370 ✓ ⇒ 3 排(沿长边叠) × 每排 10 个(沿盘宽) = 30 个, 整块居中。
+//   老倪原话「每排10个」若按"10 个沿长边排"理解放不下(10×149.7=1497mm), 这里按能放下的那个轴向解读。
+var MOD30={ show:true, tray:null, L:0.1497, W:0.02258, H:0.010, nRowY:3, nColX:10,
+             fill:'#c8b26a', edge:'#ffe9a8' };
 var DIM={ show:true };   // 📏 尺寸标注总开关(老倪 2026-11-16「增加一个按钮, 关闭所有尺寸」)
 var SLAVE={ show:true, mx:0.725, my:0.25, x:1.45, y:0.50, half:0.15 };   // y=0.50 = 从机器人自己的右手侧(朝 -X 时右=+Y)
 function slavePr(pr){                       // 世界 → 从机器人的 base 系(绕竖直轴转 180°)
@@ -4887,6 +4901,24 @@ function _box3(g,pr,a,b,c,d,zt,zb,fill,edge,alpha){
     }
   }
   return P;
+}
+// 30 个光模块: 长边(L=149.7)沿盘的长边(Y), 10 个沿盘宽(X)排成一行, 3 行沿长边叠
+function drawMod30(g,pr,T){
+  if(!MOD30.show || !T || !T.show || !g || typeof g.beginPath!=='function') return 0;
+  var R=tpanRange(T), w=T.wall;
+  var ix0=R.x0+w, ix1=R.x1-w, iy0=R.y0+w, iy1=R.y1-w;
+  var L=MOD30.L, W=MOD30.W, ztb=0.008, ztt=0.008+MOD30.H;      // 坐在盘底(0.008)上, 低于盘沿 25mm
+  var bx=MOD30.nColX*W, by=MOD30.nRowY*L;
+  var sx=(ix0+ix1)/2-bx/2, sy=(iy0+iy1)/2-by/2;
+  var k=0;
+  for(var r=0;r<MOD30.nRowY;r++){
+    for(var c=0;c<MOD30.nColX;c++){
+      var x0=sx+c*W, x1=x0+W, y0=sy+r*L, y1=y0+L;
+      _box3(g,pr,x0,y0,y1,x1,ztt,ztb,MOD30.fill,MOD30.edge);   // 长边沿 Y ⇒ 模块长轴 = 盘长轴
+      k++;
+    }
+  }
+  return k;
 }
 function drawTrayPan(g,pr,T){
   T=T||TPAN2;
@@ -6849,7 +6881,7 @@ document.head.appendChild(st);
   }catch(e){}
 
   // ② 左栏白名单: 只留"看场景"的开关; 回放/单步/同步/轨迹/围栏这些摆盘还没定义, 一律收起
-  var KEEP={'bFrames':1,'bUrdf':1,'bMod':1,'bArmR':1,'bArmL':1,'bStretch':1,'bPan':1,'bPan5':1,'bPanSide':1,'bSlave':1,'bDim':1,
+  var KEEP={'bFrames':1,'bUrdf':1,'bMod':1,'bArmR':1,'bArmL':1,'bStretch':1,'bPan':1,'bPan5':1,'bPanSide':1,'bSlave':1,'bDim':1,'bMod30':1,
             'bCamTop':1,'bChs':1,'bTab':1,'bFlr':1,'bSim':1};
   // 🚫 老倪 2026-11-16 陆续点名不要: MuJoCo同视角(bMj) / 位置细胞(bCells) / 8802直播(bLiv) / 自动环绕(bSpin)
   //    理想档回放(idealBtn, 112段按本节拍) 也不在这条摆盘场景里 ⇒ 下面 trim 里显式按 id 隐藏
