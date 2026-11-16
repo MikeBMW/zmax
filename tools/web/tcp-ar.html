@@ -2753,7 +2753,9 @@ function drawVR(){
   }
   g.fillStyle='#6b7a8d'; g.font='12px monospace';
   g.fillText('base 系 · 地面 = xy 平面 (z=0) · 0.1m 网格 · 拖动旋转'+(VR.frames?' · 🧭 红X/绿Y/蓝Z 三个坐标系':''),8,14);
-  $('pVr').textContent=((SHOW||nPl)?`实测轨迹 ${nTr} 点 · 规划航路 ${nPl} 点(洋红粗线) · ${tcpTxt}`:'轨迹已隐藏(默认) · '+tcpTxt)+frTxt;
+  $('pVr').textContent=(((typeof __TRAY!=='undefined'&&__TRAY)
+      ? '桌子 长'+Math.round(TAB.w*1000)+' × 宽'+Math.round((TAB.x1-TAB.x0)*1000)+' × 高'+Math.round(TAB.h*1000)+' mm · ' : '')
+    + ((SHOW||nPl)?`实测轨迹 ${nTr} 点 · 规划航路 ${nPl} 点(洋红粗线) · ${tcpTxt}`:'轨迹已隐藏(默认) · '+tcpTxt))+frTxt;
 }
 // 🖱 滚轮缩放 (老倪 2026-10-25: 「三维视图需要用鼠标滚轮可以缩放, 现在无法调整」)
 $('vr').addEventListener('wheel',(e)=>{ e.preventDefault();
@@ -4601,12 +4603,15 @@ function trayTableDims(g, pr){
   g.save();
   g.globalAlpha=1; g.setLineDash([]);
   function label(txt,u,v,col){
-    g.font='bold 14px ui-monospace,monospace';
+    // 💡 2026-11-16 老倪「数字还是黑色看不到」⇒ 白字 + 黑描边(任何底色都压得住) + 纯黑底板
+    g.font='bold 16px ui-monospace,monospace';
     const tw=g.measureText(txt).width;
-    const x=Math.max(tw/2+6, Math.min(W-tw/2-6, u)), y=Math.max(18, Math.min(H-10, v));
-    g.fillStyle='rgba(0,0,0,.88)'; g.strokeStyle=col; g.lineWidth=1.4;
-    g.beginPath(); g.rect(x-tw/2-5, y-14, tw+10, 19); g.fill(); g.stroke();
-    g.fillStyle=col; g.fillText(txt, x-tw/2, y);
+    const x=Math.max(tw/2+8, Math.min(W-tw/2-8, u)), y=Math.max(20, Math.min(H-10, v));
+    g.fillStyle='rgba(0,0,0,.96)'; g.strokeStyle='#ffffff'; g.lineWidth=1.6;
+    g.beginPath(); g.rect(x-tw/2-6, y-16, tw+12, 22); g.fill(); g.stroke();
+    g.lineJoin='round'; g.miterLimit=2;
+    g.lineWidth=3.2; g.strokeStyle='rgba(0,0,0,.95)'; g.strokeText(txt, x-tw/2, y);
+    g.fillStyle='#ffffff'; g.fillText(txt, x-tw/2, y);
   }
   function dimLine(a,b,txt,col){
     const p=pr(a), q=pr(b); if(!p||!q) return;
@@ -4617,9 +4622,9 @@ function trayTableDims(g, pr){
     }
     label(txt,(p.u+q.u)/2,(p.v+q.v)/2,col);
   }
-  dimLine([x1+0.07, y0, 0],[x1+0.07, y1, 0], '长 '+TL, '#ffffff');
-  dimLine([x0, y0-0.07, 0],[x1, y0-0.07, 0], '宽 '+TW, '#ffffff');
-  dimLine([x1+0.02, y1+0.02, 0],[x1+0.02, y1+0.02, fl], '高 '+TH, '#ffffff');
+  dimLine([x1+0.12, y0, 0],[x1+0.12, y1, 0], '长 '+TL, '#ffffff');
+  dimLine([x0, y0-0.12, 0],[x1, y0-0.12, 0], '宽 '+TW, '#ffffff');
+  dimLine([x1+0.06, y1+0.06, 0],[x1+0.06, y1+0.06, fl], '高 '+TH, '#ffffff');
   const cs=[[x0,y0,0],[x1,y0,0],[x1,y1,0],[x0,y1,0]].map(pr).filter(Boolean);
   let u=Math.round(W*0.62), v=44;
   if(cs.length===4){
@@ -4632,11 +4637,13 @@ function trayTableDims(g, pr){
   const wmax=Math.max.apply(null, lines.map(function(s){ return g.measureText(s).width; }));
   const bw=wmax+16, bh=42;
   u=Math.max(6, Math.min(W-bw-6, u)); v=Math.max(6, Math.min(H-bh-6, v));
-  g.fillStyle='rgba(0,0,0,.9)'; g.beginPath(); g.rect(u,v,bw,bh); g.fill();
-  g.strokeStyle='#ffffff'; g.lineWidth=1.6; g.stroke();
-  g.fillStyle='#ffffff'; g.fillText(lines[0], u+8, v+19);
-  g.fillStyle='#c9d1d9'; g.font='12px ui-monospace,monospace';
-  g.fillText(lines[1], u+8, v+36);
+  g.fillStyle='rgba(0,0,0,.96)'; g.beginPath(); g.rect(u,v,bw,bh); g.fill();
+  g.strokeStyle='#ffffff'; g.lineWidth=1.8; g.stroke();
+  g.font='bold 14px ui-monospace,monospace';
+  g.lineJoin='round'; g.lineWidth=3; g.strokeStyle='rgba(0,0,0,.95)';
+  g.strokeText(lines[0], u+8, v+20); g.fillStyle='#ffffff'; g.fillText(lines[0], u+8, v+20);
+  g.font='12px ui-monospace,monospace';
+  g.fillStyle='#e6edf3'; g.fillText(lines[1], u+8, v+37);
   // 🦾 状态牌: 画面上直接写清「右臂/左臂」当前是显示还是已隐藏 —— 不靠按钮文案猜
   try{
     const rOn=(VR.simArm!==false)||(VR.real!==false), lOn=!!(typeof LARM!=='undefined'&&LARM&&LARM.show);
