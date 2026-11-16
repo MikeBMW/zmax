@@ -6340,8 +6340,9 @@ function traySceneInit(){
       if(br){ var d1=br.parentElement, d2=d1&&d1.parentElement, d3=d2&&d2.parentElement;
               if(d2) d2.style.display='none'; if(d3) d3.style.display='none'; }
       var mk=document.getElementById('mktDock'); if(mk) mk.style.display='none';
-      // 点名不要的零散按钮(不在左栏白名单体系里): 理想档回放 / 生产节拍胶囊
-      ['idealBtn','uphPill','uphChip','mjframe','mjtag'].forEach(function(id){
+      // 点名不要的零散按钮/横幅(不在左栏白名单体系里):
+      //   理想档回放 / 生产节拍胶囊 / MuJoCo 帧 / 「🎯 让工业机器人干精密活」愿景条
+      ['idealBtn','uphPill','uphChip','mjframe','mjtag','visBar'].forEach(function(id){
         var e=document.getElementById(id); if(e) e.style.display='none';
       });
       [].forEach.call(document.querySelectorAll('div,span'), function(e){
