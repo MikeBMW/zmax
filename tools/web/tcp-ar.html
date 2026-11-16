@@ -299,6 +299,7 @@
       <button id="bArmReal" class="sm on" title="真机右臂 = 画面里那条不动的真实机器人臂(关节角来自 tcp_out/latest.json); 点一下隐藏, 只留仿真/幽灵臂 —— 老倪 2026-10-27: 「点击后可以把画面那个暂时不动的真实机器人右臂隐藏」">🦾 右臂_真机</button>
       <button id="bArmL" class="sm on" title="左臂 = 仿真臂: URDF 与右臂相同, 原点固定在右臂世界系 Y=+500mm 处 (X=0,Z=0); 位姿由下面的按钮给">🤖 左臂</button>
       <button id="bPan" class="sm on" title="4#方盘: 显示/隐藏桌子上的 4#方盘(315×230×40mm)">🧺 4#方盘</button>
+      <button id="bPan5" class="sm on" title="中上托盘: 桌子中间上方那个 545 长的托盘(545×370×25mm)">🧺 中上托盘</button>
       <button id="bPanSide" class="sm on" title="左右托盘: 桌子左右两侧各一个 545×380×25mm 的盘子, 一起显示/隐藏">🧺 左右托盘</button>
       <button id="bStretch" class="sm" title="双臂伸展: 左臂够到桌子左前角、右臂够到桌子右前角, 末端光模块落到桌角上(纯仿真显示: 只改画面里的关节角, 不下发真机、不需要 8793 授权)">🙆 伸展</button>
       <span id="tArmL" style="font-size:11.5px;color:#6ee7ff;font-family:monospace">Δ0,0,0</span>
@@ -2566,7 +2567,7 @@ function drawVR(){
   // 🧺 周转盘(摆在桌面上)
   if(typeof drawTrayPan==='function' && (typeof __TRAY!=='undefined' && __TRAY)) {
     try{ drawTrayPan(g, pr, TPAN2); drawTrayPan(g, pr, TPANM); drawTrayPan(g, pr, TPANT);
-          drawTrayPan(g, pr, TPANU); drawTrayPan(g, pr, TPANL); drawTrayPan(g, pr, TPANR); }catch(e){}
+          drawTrayPan(g, pr, TPAN5); drawTrayPan(g, pr, TPANL); drawTrayPan(g, pr, TPANR); }catch(e){}
   }
   // 📦 箱体(移动底盘): 再画箱体, 两臂/相机画在它上面 —— 顶板 z=0 就是两臂安装面
   if(CHS.show) drawChassis(g, pr);
@@ -4374,9 +4375,15 @@ if($('bStretch')) $('bStretch').addEventListener('click', function(){ stretchTog
 // 🧺 周转盘按钮: 两个托盘一起开关(盘一关, 它们的尺寸标签也跟着不画)
 // 🧺 4#方盘: 两个(左上角 + 中间)同一个 SKU, 一起开关
 if($('bPan')) $('bPan').addEventListener('click', function(){
-  var on=!(TPAN2.show && TPANM.show && TPANT.show && TPANU.show);
-  TPAN2.show=on; TPANM.show=on; TPANT.show=on; TPANU.show=on;
+  var on=!(TPAN2.show && TPANM.show && TPANT.show);
+  TPAN2.show=on; TPANM.show=on; TPANT.show=on;
   $('bPan').classList.toggle('on', on);
+  try{ drawVR(); }catch(e){}
+});
+// 🧺 中上托盘(545×370×25)
+if($('bPan5')) $('bPan5').addEventListener('click', function(){
+  TPAN5.show=!TPAN5.show;
+  $('bPan5').classList.toggle('on', TPAN5.show);
   try{ drawVR(); }catch(e){}
 });
 // 🧺 左右托盘(545×380×25) 一起开关
@@ -4767,10 +4774,11 @@ var TPANM={ show:true, name:'中方盘', L:0.315, W:0.230, H:0.040, wall:0.005, 
 // 右上角那个 4#方盘(老倪「桌子右上角, 增加个方盘」): 右上 = 远端+右臂侧 (x1,y0)=(1100,-550)
 var TPANT={ show:true, name:'右上盘', L:0.315, W:0.230, H:0.040, wall:0.005, cx:0.985, cy:-0.3925,
             fill:'#8a5a2b', inner:'#4a2f16', edge:'#e0b070' };
-// 中间上方那个 4#方盘(老倪「桌子中间上方, 可以, 先摆上我看看」): 和 左上/右上 盘同一列 x 870~1100,
-//   长度方向对准桌面中心 y 250 ⇒ y 93~408; 545×380 的 tray 放不下(那条带只剩 370 宽, 差 10mm)
-var TPANU={ show:true, name:'中上盘', L:0.315, W:0.230, H:0.040, wall:0.005, cx:0.985, cy:0.250,
-            fill:'#8a5a2b', inner:'#4a2f16', edge:'#e0b070' };
+// 中间上方的托盘(老倪「中间上方, 要放一个托盘, 长度是 545 的盘」):
+//   远端那条带 x 730~1100 只有 370 宽(侧盘占 x 350~730) ⇒ 这块做成 545(长,Y) × 370(宽,X) × 25,
+//   长度贴满空档 y -40~505(再往上就顶到左盘 505); 要严格 380 宽, 得让侧盘离开桌沿或桌面再加宽
+var TPAN5={ show:true, name:'中上托盘', L:0.545, W:0.370, H:0.025, wall:0.005, cx:0.915, cy:0.2325,
+            fill:'#356b7d', inner:'#173039', edge:'#8fc4d6' };
 // 左右两侧各一个 545×380×25 托盘(老倪 2026-11-16): 沿桌面长边(Y)贴两头摆, 与 4#方盘留缝
 //   桌面 y 范围 -550~1050, 中心 250 ⇒ 右盘 y -550~-5, 左盘 y 505~1050 (各 545 长, 关于中心对称)
 //   「要靠着机器人这边儿的边沿」⇒ 380 那条边贴住近端桌沿 x0=0.35 (cx = 0.35+0.190 = 0.540)
@@ -4847,7 +4855,7 @@ function trayDimDom(pr){
     ['高 '+Math.round(T.h*1000),        pr([x1+0.06, y1+0.06, fl/2])]
   ];
   // 🧺 托盘: 只标长/宽, 不标高
-  [TPAN2,TPANM,TPANT,TPANU].concat(TPANSIDE).forEach(function(T){
+  [TPAN2,TPANM,TPANT,TPAN5].concat(TPANSIDE).forEach(function(T){
     if(!T.show) return;
     var R=tpanRange(T);
     items.push([T.name+' 长 '+Math.round(T.L*1000), pr([R.x0-0.06, (R.y0+R.y1)/2, T.H])]);
@@ -6773,7 +6781,7 @@ document.head.appendChild(st);
   }catch(e){}
 
   // ② 左栏白名单: 只留"看场景"的开关; 回放/单步/同步/轨迹/围栏这些摆盘还没定义, 一律收起
-  var KEEP={'bFrames':1,'bUrdf':1,'bMod':1,'bArmR':1,'bArmL':1,'bStretch':1,'bPan':1,'bPanSide':1,
+  var KEEP={'bFrames':1,'bUrdf':1,'bMod':1,'bArmR':1,'bArmL':1,'bStretch':1,'bPan':1,'bPan5':1,'bPanSide':1,
             'bCamTop':1,'bChs':1,'bTab':1,'bFlr':1,'bSim':1};
   // 🚫 老倪 2026-11-16 陆续点名不要: MuJoCo同视角(bMj) / 位置细胞(bCells) / 8802直播(bLiv) / 自动环绕(bSpin)
   //    理想档回放(idealBtn, 112段按本节拍) 也不在这条摆盘场景里 ⇒ 下面 trim 里显式按 id 隐藏
