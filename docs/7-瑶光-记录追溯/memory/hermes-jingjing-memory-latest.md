@@ -1,14 +1,14 @@
-远程: 直连Orin.66/工控.23/intel.70; 拔⇒wifi(.43)经Orin跳; bridge39071
+远程: 直连Orin.66/工控.23/intel.70; 拔⇒wifi(.43)经Orin跳; bridge39071; 小芳cli_aac4912eb6389bc2@550C
 §
-NTP回拨8h勿动RTC⇒用monotonic; 判活看将来时间戳; cron卡→watchdog.timer
+NTP回拨8h勿动RTC⇒用monotonic; 判活看将来ts; cron卡→watchdog.timer
 §
 分层: L5造数据/L4认知/L3调度/L2检测; SigLIP768d+四头; from-scratch崩
 §
-交付前自跑通;改文件回读;回答≤两行;常驻输出静音
+交付前自跑通;改文件回读;回答≤两行;常驻静音
 §
-L5=DeepSeek短提示+小JSON(timeout≥300); L4=INTACT直驱, 反归一化按ckpt训练集同源; L2收口闸逐轴corr<0.5 veto
+L5=DeepSeek短提示+小JSON(timeout≥300); L4=INTACT直驱, 反归一化按ckpt训练集; L2收口闸逐轴corr<0.5 veto
 §
-🔴 工具内存≈8GB超OOM; 同刻仅一模型进程
+🔴工具内存≈8G超OOM;同刻仅一模型进程
 §
 Orin: ROS=domain0, tcp_pose 50Hz真值, 几何须ss_geom_calib, 只读遥测桥禁装包
 §
@@ -40,9 +40,9 @@ GPU掉载=每步CPU>计算→静音日志+workers↑
 §
 位姿真源=tcp_out/latest.json(全0陈旧;崩则pose-relay搬)
 §
-运动安全: 速度1~1000mm/s;前置idle+automatic; 腿上限须重容器; 清79免授权;新点位老倪先做;碰撞先agent_all_stop; 插入力≤40N; 台账INCIDENT-INDEX.md
+运动安全: 速度1~1000mm/s;前置idle+automatic; 腿上限须重容器; 清79免授权;新点位老倪先做;碰撞先agent_all_stop; 插入力按封装SFP18/QSFP60/DD90N; 台账INCIDENT-INDEX.md
 §
-AR=8797; 底图=8791(arm/gold/surface)+D435@Orin8794; /api/cams·/snap/<k>.jpg; L5=ar_l5_understand.py; AR3D r107 2孔z278/187.6
+AR=8797; 底图=8791(arm/gold/surface)+D435@Orin8794; L5=ar_l5_understand.py; AR3D r107 2孔z278/187.6
 §
 任务7=AR·L5进化;场景=ss_scene_switch.py;色标=sig_scene_tags.py
 §
@@ -54,7 +54,7 @@ AR=8797; 底图=8791(arm/gold/surface)+D435@Orin8794; /api/cams·/snap/<k>.jpg; 
 §
 奇异区: 姿态>5°被50113拒且腿假报到位; 转移=抬50→转身→低位横移→上方升降
 §
-3DGS: 基线17.22dB; 24k=16.41未过闸; 建图8793走点45s/轮;;GS_MAP_MODE=auto
+3DGS:基线17.22dB;24k=16.41未过闸; 建图8793走点45s/轮;;GS_MAP_MODE=auto
 §
 版本号只听老倪;仓VERSION.md为准(现5.50.775);MoveIt起点须SDK直采
 §
@@ -72,4 +72,4 @@ intel出口=.23.66走Orin NAT(zmax-nat-intel;Orin sudo ts123)
 §
 action=真值pose+u·dt(重锚)+u[3]夹爪;无真值不出位姿;Intel非git⇒rsync
 §
-7任务=reports/fullflow7/<ts>/;缺口=仿真0轨迹·元任务‖T‖同值;专利20件(001-020)
+7任务=reports/fullflow7/<ts>/;缺口=仿真0轨迹·元任务‖T‖同值;专利20件
