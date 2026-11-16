@@ -5263,11 +5263,37 @@ function ensureTrajJoints(){
   try{
     var el=document.getElementById('rtrajData');
     var d=el?JSON.parse(el.textContent||'null'):null;
-    if(d && d.frames && d.frames.length){ RTRAJJ=d; RTRAJJ_ERR=null; }
+    if(d && d.frames && d.frames.length){ RTRAJJ=d; RTRAJJ_ERR=null;
+      // 🎯 按 ID 修正(老倪 2026-11-16: 点 126 / 152 的 X 改 485) —— 改的是**内存里的帧**,
+      //    磁盘上那份 215 点录制真值一字节不动; 回放/单步/真机执行/读数都读这里 ⇒ 一处生效。
+      applyTrajAdj(d);
+    }
     else { RTRAJJ_ERR='没有回放数据(跑 tools/real_traj_joints.py --embed)'; }
   }catch(e){ RTRAJJ_ERR=String(e&&e.message||e); }
   return RTRAJJ;
 }
+// 🎯 按 ID 修正回放点位: 覆盖表来自 /api/traj_adj(tools/web/traj_adj.json, 热读)
+//    只改 j(弧度) 与 p(米), 其它字段(t/段)保留; 幂等 —— 重复调用结果一样。
+var TRAJ_ADJ=null;
+function applyTrajAdj(d){
+  if(!TRAJ_ADJ || !d || !d.frames) return 0;
+  var n=0;
+  for(var k in TRAJ_ADJ){
+    var i=+k, a=TRAJ_ADJ[k], f=d.frames[i];
+    if(!f || !a) continue;
+    if(a.j_new_rad && a.j_new_rad.length===6) f.j=a.j_new_rad.slice();
+    if(a.p_new_mm  && a.p_new_mm.length===3)
+      f.p=[a.p_new_mm[0]/1000, a.p_new_mm[1]/1000, a.p_new_mm[2]/1000];
+    f._adj=true; n++;
+  }
+  return n;
+}
+fetch('/api/traj_adj').then(function(r){ return r.json(); }).then(function(d){
+  if(d && d.points){ TRAJ_ADJ=d.points;
+    var n=applyTrajAdj(typeof RTRAJJ!=='undefined'?RTRAJJ:null);
+    if(n){ try{ drawVR(); }catch(e){} }
+  }
+}).catch(function(){});
 
 function rtrajPlayJoints(d){
   try{ mirrorStop(); }catch(e){}          // 回放期间抢 PREV, 先让镜像让位(不然两路互踩)
@@ -5327,7 +5353,8 @@ function rtrajStepIdText(i){
   var k=Math.max(0, Math.min(RTRAJ.frames.length-1, i));
   var f=RTRAJ.frames[k]; if(!f) return '#'+k;
   var p=f.p||[0,0,0];
-  return '#'+k+' · X'+(p[0]*1000).toFixed(1)+' Y'+(p[1]*1000).toFixed(1)+' Z'+(p[2]*1000).toFixed(1);
+  return '#'+k+' · X'+(p[0]*1000).toFixed(1)+' Y'+(p[1]*1000).toFixed(1)+' Z'+(p[2]*1000).toFixed(1)
+       + (f._adj ? ' ·已修正' : '');
 }
 function rtrajStep(delta){
   var d=ensureTrajJoints();

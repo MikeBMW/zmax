@@ -1973,6 +1973,14 @@ class H(BaseHTTPRequestHandler):
                     self._json({"ok": False, "err": "%s 这台相机还没外参 ⇒ 画不了 3D 框(需要在 AR 页做 6~8 点标定)" % cam})
             elif p == "/api/module_spec":
                 self._json(self._module_spec())
+            elif p == "/api/traj_adj":            # 🎯 按 ID 修正回放点位(热读 JSON, 改完刷新页面就生效)
+                # 磁盘上的 215 点录制真值不动; 这里只给"第 N 点改成什么"的覆盖表
+                try:
+                    _ap = os.path.join(REPO, "tools", "web", "traj_adj.json")
+                    with open(_ap, encoding="utf-8") as _fh:
+                        self._send(200, "application/json; charset=utf-8", _fh.read().encode("utf-8"))
+                except Exception as _e:
+                    self._json({"note": "no adj file", "points": {}, "err": str(_e)})
             elif p == "/api/traj/plan":
                 self._json(self._traj_plan())
             elif p == "/api/traj/exec/state":
