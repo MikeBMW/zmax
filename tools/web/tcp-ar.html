@@ -314,7 +314,7 @@
       <button id="bMod30" class="sm on" title="在左盘里排 30 个光模块: 149.7×22.58mm, 长边沿盘的长边; 3 排(沿长边) × 每排 10 个(沿盘宽)">🔩 3×10 光模块</button>
       <button id="bMod16" class="sm on" title="左上角 4#方盘(315×230)里排 16 个光模块: 149.7×22.58mm, 长边沿盘的 315 那条边; 每排 8 个挨着放(不留缝) × 2 排 = 16">🔩 左上盘 16 个</button>
       <button id="bGrip" class="sm on" title="从机器人右臂 tool1 上的双夹爪工装(2×大寰 PGI-140-80 + 加长指尖): 点一次切夹持跨度 230(方盘) → 380(托盘) → 关。设计依据: 单只行程 80mm, 两只对置共 160mm ≥ 230→380 的 150mm 差; 单侧夹持力 40~140N, 可搬 ≤3kg">🧰 夹具 230</button>
-      <button id="bCarry" class="sm" title="用夹具把 位置3 的中上托盘搬到 位置2: 下降取件(盘底0) → 抬到盘底120mm → 平移越过中方盘40mm → 落到中方盘顶面(盘底40) → 松爪退回。动作连续(关节空间平滑插值), 6.5 秒一轮">🚚 夹到位置2</button>
+      <button id="bCarry" class="sm" title="用夹具把 位置3 的中上托盘搬到 位置4: 下降取件(盘底0) → 抬到盘底120mm → 平移(越过左盘盘沿25mm) → 落到位置4左盘盘沿上(盘底25) → 松爪退回。动作连续(关节空间平滑插值), 7.35 秒一轮">🚚 夹到位置4</button>
       <button id="bPos" class="sm on" title="六个工位位置: 主机器人视角 左上① / 中上③ / 右上⑥ / 左下④ / 中下② / 右下⑤ —— 每个盘上方一块带编号的牌 + 盘边同色圈线, 再点关掉">① 位置</button>
       <button id="bDim" class="sm on" title="尺寸: 一键关掉画面上所有的尺寸标注(桌子长/宽/高 + 各个盘的长/宽), 再点回来">📏 尺寸</button>
       <button id="bSlave" class="sm on" title="从机器人: 桌子对面那台, 朝桌子, 和主机器人一起干活(11.16 加)">🤝 从机器人</button>
@@ -4963,12 +4963,13 @@ var GRIP={
 // 高度从几何里算出来, 不是拍脑袋:
 //   指尖相对 tool1 的下探 = 梁26 + 本体67 + 指尖下探60 + 勾12 ≈ 169mm ⇒ 夹住盘壁时 tool1 高度 = 盘底 + 178
 //   取件: 托盘坐在桌面上(盘底 0) ⇒ tool1 = 178, 指尖底 9mm, 与盘壁(z 0~25)重叠 16mm
-//   搬运: 路径上最高障碍 = 中方盘 40mm(左盘/左上盘/右上盘都不在 x 465~920 这条带上) ⇒ 盘底抬到 120, 余量 80mm
-//   放置: 落到中方盘顶面 ⇒ 盘底 40, tool1 = 218
+//   搬运: 路径 (920,232)→(540,777) 上最高障碍 = 左盘的盘沿 25mm(左上角堆叠 320 在 x870~1100/y735~1050,
+//         路径在 y=735 处 x≈569 不经过) ⇒ 盘底抬到 120, 余量 95mm
+//   放置: 落到 位置4 左盘的盘沿上(两盘同规格 545×380 叠放) ⇒ 盘底 25, tool1 = 203
 var CARRY={
   running:false, t0:0, dur:6500, M:null, q:null, qList:null, phase:'', held:false, panZ:0,
-  from:{cx:0.920, cy:0.2325}, to:{cx:0.465, cy:0.250},
-  PAN_DROP:178, PICK_Z:0, CARRY_Z:120, PLACE_Z:40,
+  from:{cx:0.920, cy:0.2325}, to:{cx:0.540, cy:0.7775},   // 位置3 中上托盘 → 位置4 左盘
+  PAN_DROP:178, PICK_Z:0, CARRY_Z:120, PLACE_Z:25,          // 落点是左盘盘沿 25mm(不是桌面)
   pan:{show:true, L:0.545, W:0.380, H:0.025, wall:0.005, cx:0.920, cy:0.2325,
        fill:'#356b7d', inner:'#173039', edge:'#8fc4d6'}   // 与 TPAN5 同色
 };
@@ -5191,7 +5192,7 @@ function carryStart(){
     }else{
       CARRY.running=false;          // 保留 CARRY.M = 终点姿态, 手臂不许弹回
       CARRY.held=false;
-      // 结束后: 托盘留在位置2(盘底 40), 原位置3 空出来
+      // 结束后: 托盘留在位置4(盘底 25, 叠在左盘上), 原位置3 空出来
       TPAN5.show=false;
       CARRY.done={cx:CARRY.to.cx, cy:CARRY.to.cy, z:CARRY.PLACE_Z/1000};
       drawVR();
