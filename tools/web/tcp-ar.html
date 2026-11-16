@@ -4824,8 +4824,12 @@ var TPANSIDE=[TPANL, TPANR];
 //   几何校验(盘 545×380, 内腔 535×370): 沿长边(Y) 3 个 × 149.7 = 449.1 ≤ 535 ✓;
 //   沿盘宽(X) 10 个 × 22.58 = 225.8 ≤ 370 ✓ ⇒ 3 排(沿长边叠) × 每排 10 个(沿盘宽) = 30 个, 整块居中。
 //   老倪原话「每排10个」若按"10 个沿长边排"理解放不下(10×149.7=1497mm), 这里按能放下的那个轴向解读。
-var MOD30={ show:true, tray:null, L:0.1497, W:0.02258, H:0.010, nRowY:3, nColX:10,
+var MOD30={ show:true, tray:null, L:0.1497, W:0.02258, H:0.010, nRowY:3, nColX:10, gap:0.015,
              fill:'#c8b26a', edge:'#ffe9a8' };
+// 均匀分布(老倪 2026-11-16「光模块要有一定的间隙, 均匀分布」):
+//   取**同一个间隙 MOD30.gap** 用在所有相邻块之间(横竖都同一个值, 不是"横 14 竖 28"),
+//   整块在盘内居中 ⇒ 30 块的格子完全等距, 便于逐块抓取不互相挡。
+//   gap=15mm 时: 横向 10×22.58+9×15=361.1 ≤ 内腔 370 ✓; 纵向 3×149.7+2×15=479.1 ≤ 535 ✓
 var DIM={ show:true };   // 📏 尺寸标注总开关(老倪 2026-11-16「增加一个按钮, 关闭所有尺寸」)
 var SLAVE={ show:true, mx:0.725, my:0.25, x:1.45, y:0.50, half:0.15 };   // y=0.50 = 从机器人自己的右手侧(朝 -X 时右=+Y)
 function slavePr(pr){                       // 世界 → 从机器人的 base 系(绕竖直轴转 180°)
@@ -4908,12 +4912,15 @@ function drawMod30(g,pr,T){
   var R=tpanRange(T), w=T.wall;
   var ix0=R.x0+w, ix1=R.x1-w, iy0=R.y0+w, iy1=R.y1-w;
   var L=MOD30.L, W=MOD30.W, ztb=0.008, ztt=0.008+MOD30.H;      // 坐在盘底(0.008)上, 低于盘沿 25mm
-  var bx=MOD30.nColX*W, by=MOD30.nRowY*L;
-  var sx=(ix0+ix1)/2-bx/2, sy=(iy0+iy1)/2-by/2;
+  var nX=MOD30.nColX, nY=MOD30.nRowY, gap=MOD30.gap;            // 同一个间隙横竖共用
+  var pitchX=W+gap, pitchY=L+gap;
+  var bx=nX*W+(nX-1)*gap, by=nY*L+(nY-1)*gap;                   // 整块尺寸
+  var sx=(ix0+ix1)/2-bx/2, sy=(iy0+iy1)/2-by/2;                 // 整块在盘内居中
   var k=0;
-  for(var r=0;r<MOD30.nRowY;r++){
-    for(var c=0;c<MOD30.nColX;c++){
-      var x0=sx+c*W, x1=x0+W, y0=sy+r*L, y1=y0+L;
+  for(var r=0;r<nY;r++){
+    for(var c=0;c<nX;c++){
+      var ccx=sx+W/2+c*pitchX, ccy=sy+L/2+r*pitchY;             // 模块中心
+      var x0=ccx-W/2, x1=ccx+W/2, y0=ccy-L/2, y1=ccy+L/2;
       _box3(g,pr,x0,y0,y1,x1,ztt,ztb,MOD30.fill,MOD30.edge);   // 长边沿 Y ⇒ 模块长轴 = 盘长轴
       k++;
     }
