@@ -2561,6 +2561,8 @@ function drawVR(){
   if(typeof FLR!=='undefined' && FLR.show) drawFloor(g, pr);
   // 🧪 实验桌(摆在箱体前面 +X): 在箱体之前画 —— 默认视角从 -X+Y 看过来, 桌子在箱体远侧
   if(typeof TAB!=='undefined' && TAB.show) drawTable(g, pr);
+  // 🧺 周转盘(摆在桌面上)
+  if(typeof drawTrayPan==='function' && (typeof __TRAY!=='undefined' && __TRAY)) { try{ drawTrayPan(g, pr); }catch(e){} }
   // 📦 箱体(移动底盘): 再画箱体, 两臂/相机画在它上面 —— 顶板 z=0 就是两臂安装面
   if(CHS.show) drawChassis(g, pr);
   // 🦾 URDF 外形: 正运动学已在 drawVR 开头算好(取景要用同一份), 这里只负责画
@@ -4733,17 +4735,63 @@ function beamBox(){
   return {name:'上横梁(缺省)', x:[0.4,0.6], y:[-0.8,0.8], z:[0.682,0.700]};
 }
 // 📏 摆盘场景尺寸数字: 用 HTML 覆盖层显示(老倪这边 canvas 字体渲染不出来, 白字黑框改成 DOM 就一定能看到)
+// 🧺 周转盘 310×230×45mm (老倪 2026-11-16): 摆在桌面上, 只标长/宽, 不标高
+var TPAN={ show:true, L:0.310, W:0.230, H:0.045, wall:0.006, cx:0.780, cy:0.250 };
+function tpanRange(){
+  return { x0:TPAN.cx-TPAN.W/2, x1:TPAN.cx+TPAN.W/2, y0:TPAN.cy-TPAN.L/2, y1:TPAN.cy+TPAN.L/2 };
+}
+// 一个长方体(8 点 12 线 6 面) —— 画周转盘的外壳与内腔
+function _box3(g,pr,a,b,c,d,zt,zb,fill,edge,alpha){
+  var P={};
+  P.p000=pr([a,b,zb]); P.p100=pr([a,c,zb]); P.p110=pr([a,c,zt]); P.p010=pr([a,b,zt]);
+  P.q000=pr([d,b,zb]); P.q100=pr([d,c,zb]); P.q110=pr([d,c,zt]); P.q010=pr([d,b,zt]);
+  var F=[['p000','p100','p110','p010'],['q000','q100','q110','q010'],
+         ['p000','p010','q010','q000'],['p100','p110','q110','q100'],
+         ['p010','p110','q110','q010'],['p000','p100','q100','q000']];
+  if(fill){
+    g.globalAlpha=(alpha===undefined?1:alpha);
+    for(var i=0;i<F.length;i++){
+      var f=F[i], ok=true;
+      for(var j=0;j<4;j++) if(!P[f[j]]){ ok=false; break; }
+      if(!ok) continue;
+      g.fillStyle=fill; g.beginPath();
+      g.moveTo(P[f[0]].u,P[f[0]].v); g.lineTo(P[f[1]].u,P[f[1]].v);
+      g.lineTo(P[f[2]].u,P[f[2]].v); g.lineTo(P[f[3]].u,P[f[3]].v); g.closePath(); g.fill();
+    }
+    g.globalAlpha=1;
+  }
+  if(edge){
+    g.strokeStyle=edge; g.lineWidth=1.1;
+    for(var k=0;k<F.length;k++){
+      var f2=F[k], ok2=true;
+      for(var j2=0;j2<4;j2++) if(!P[f2[j2]]){ ok2=false; break; }
+      if(!ok2) continue;
+      g.beginPath(); g.moveTo(P[f2[0]].u,P[f2[0]].v);
+      for(var j3=1;j3<4;j3++) g.lineTo(P[f2[j3]].u,P[f2[j3]].v);
+      g.closePath(); g.stroke();
+    }
+  }
+  return P;
+}
+function drawTrayPan(g,pr){
+  if(!TPAN.show) return;
+  var R=tpanRange(), w=TPAN.wall, zt=TPAN.H, zb=0.008;
+  // 外壳
+  _box3(g,pr,R.x0,R.y0,R.y1,R.x1, zt, 0, '#2e6b86', '#9ad8f0');
+  // 内腔(底面比壳顶低 37mm) —— 用略小的长方形补一块深色底, 看起来就是个盘子
+  _box3(g,pr,R.x0+w,R.y0+w,R.y1-w,R.x1-w, zt-0.004, zb, '#173d4e', '#5fb6d8', 0.95);
+}
 function trayDimDom(pr){
   var box=document.getElementById('trayDims');
   if(!box){
     box=document.createElement('div'); box.id='trayDims';
     box.style.cssText='position:fixed;left:0;top:0;width:0;height:0;pointer-events:none;z-index:60';
     document.body.appendChild(box);
-    for(var i=0;i<3;i++){
+    for(var i=0;i<5;i++){
       var d=document.createElement('div'); d.id='tdim'+i;
       d.style.cssText='position:absolute;white-space:nowrap;transform:translate(-50%,-50%);'
-        +'font:700 15px ui-monospace,monospace;color:#ffffff;background:rgba(0,0,0,.92);'
-        +'border:1.5px solid #ffffff;border-radius:5px;padding:2px 7px;letter-spacing:.3px;'
+        +'font:700 12px ui-monospace,monospace;color:#ffffff;background:rgba(0,0,0,.92);'
+        +'border:1.2px solid #ffffff;border-radius:4px;padding:1px 5px;letter-spacing:.2px;'
         ;
       box.appendChild(d);
     }
@@ -4752,10 +4800,16 @@ function trayDimDom(pr){
   var cr=cv.getBoundingClientRect();
   var T=TAB, x0=T.x0, x1=T.x1, y0=T.cy-T.w/2, y1=T.cy+T.w/2, fl=-T.h;
   var items=[
-    ['长 '+Math.round(T.w*1000),        pr([x1+0.12, (y0+y1)/2, 0])],
+    ['长 '+Math.round(T.w*1000),        pr([x1+0.12, y0+0.18, 0])],
     ['宽 '+Math.round((x1-x0)*1000),    pr([(x0+x1)/2, y0-0.12, 0])],
     ['高 '+Math.round(T.h*1000),        pr([x1+0.06, y1+0.06, fl/2])]
   ];
+  // 🧺 周转盘: 只标长/宽, 不标高
+  if(TPAN.show){
+    var R=tpanRange();
+    items.push(['周转盘 长 '+Math.round(TPAN.L*1000), pr([R.x0-0.06, (R.y0+R.y1)/2, TPAN.H])]);
+    items.push(['周转盘 宽 '+Math.round(TPAN.W*1000), pr([(R.x0+R.x1)/2, R.y1+0.06, TPAN.H])]);
+  }
   for(var k=0;k<items.length;k++){
     var d=document.getElementById('tdim'+k); if(!d) continue;
     var q=items[k][1];
