@@ -4438,7 +4438,7 @@ if($('bGrip')) $('bGrip').addEventListener('click', function(){
     if(at===null || !__TRAY) return;
     setTimeout(function(){
       var plan=carryPlan(); if(!plan) return;
-      CARRY.qList=plan; CARRY.running=false;
+      CARRY.qList=plan; CARRY.running=false; carryYawLock();
       var total=plan.reduce(function(a,b2){return a+b2.t;},0);
       var t=Math.min(total-1, Math.max(0, parseFloat(at)*1000));
       GRIP.show=true; GRIP.span=380; TPAN5.show=false;
@@ -5001,6 +5001,9 @@ function _t1world(){
   var z=[-t1.z[0], -t1.z[1], t1.z[2]];                    // tool1 的模块轴(绕 Z 转 180° 后)
   var hl=Math.sqrt(z[0]*z[0]+z[1]*z[1])||1e-9;
   var B=[z[0]/hl, z[1]/hl, 0];                            // 朝工件: 水平分量
+  // 🔴 老倪:「夹爪不应该转动」——搬盘全程把夹爪朝向锁在取件那一刻, 不跟随手臂的姿态变化。
+  //    手臂底座方位从 207° 扫到 163°(不然够不到 位置4), 但夹爪/托盘在画面里保持同一朝向。
+  if(typeof CARRY!=='undefined' && CARRY && CARRY.yawB){ B=[CARRY.yawB[0], CARRY.yawB[1], 0]; }
   var A=[-B[1], B[0], 0];                                 // 横向(与 B 水平垂直)
   var C=[0,0,1];                                          // 竖直向下(局部 +C = 往下)
   return {o:o, A:A, B:B, C:C};
@@ -5078,14 +5081,93 @@ function _carryWps(){
 //   全局搜索会给出一组"另一个手臂姿态"的解, 关节角整段跳 150°(实测 #0 [13,2,-130] → #3 [-150,-78,-29]),
 //   插值出来就是手臂乱甩, 谈不上"动作连续"。
 // 搬盘用的代价: 位置误差(权重高) + 工具轴尽量竖直向下(放盘/取盘都是俯抓)
-function _costCarry(q, T){
+// 🔴 姿态锁死: 搬一块盘, 夹爪只能平移, 不许转 —— 所以每个路径点都要求 tool1 的旋转矩阵 = 取件那一刻的 R0。
+//    老倪 2026-11-16:「你的夹爪为什么要转动呢？不应该转动」——根因是只罚"竖直", 没约束绕竖轴的转角, 
+//    各点各自找最优解 ⇒ 逐步插值出来夹爪在画面上自己转。
+// ── 真正的 6 自由度 IK: 阻尼最小二乘(位置+姿态同时收敛) ──────────────────────────
+// 为什么要它: 坐标下降式的 _ikSeed 只能"位置为主, 姿态凑合", 于是各路径点的工具姿态各自为政,
+// 插值出来夹爪在画面里自己转(老倪 2026-11-16 指出)。这里用解析雅可比 + DLS,
+// 姿态作为硬约束一起解, 才能做到"搬盘时夹爪一动不动, 只平移"。
+function _mT3(A){ return [[A[0][0],A[1][0],A[2][0]],[A[0][1],A[1][1],A[2][1]],[A[0][2],A[1][2],A[2][2]]]; }
+// ⚠️ 别用 _mm 做矩阵乘: 文件前面 1529 行 _mm(v) 是 mm→m 的标量换算, 重名会把它顶掉
+function _mm3(A,B){ var C=[[0,0,0],[0,0,0],[0,0,0]];
+  for(var i=0;i<3;i++) for(var j=0;j<3;j++){ var s2=0; for(var k=0;k<3;k++) s2+=A[i][k]*B[k][j]; C[i][j]=s2; } return C; }
+function _rotVec(R){                                   // 旋转矩阵 → 旋转向量
+  var tr=R[0][0]+R[1][1]+R[2][2];
+  var ang=Math.acos(Math.max(-1,Math.min(1,(tr-1)/2)));
+  if(ang<1e-9) return [0,0,0];
+  var k=ang/(2*Math.sin(ang));
+  return [k*(R[2][1]-R[1][2]), k*(R[0][2]-R[2][0]), k*(R[1][0]-R[0][1])];
+}
+function _solve6(A,b){                                 // 高斯消元解 6x6
+  var n=6, M=[], i, j, k;
+  for(i=0;i<n;i++){ M.push(A[i].slice()); M[i].push(b[i]); }
+  for(i=0;i<n;i++){
+    var p=i; for(k=i+1;k<n;k++) if(Math.abs(M[k][i])>Math.abs(M[p][i])) p=k;
+    if(Math.abs(M[p][i])<1e-12) return null;
+    var tmp=M[i]; M[i]=M[p]; M[p]=tmp;
+    for(k=i+1;k<n;k++){ var f=M[k][i]/M[i][i]; if(!f) continue; for(j=i;j<=n;j++) M[k][j]-=f*M[i][j]; }
+  }
+  var x=new Array(n);
+  for(i=n-1;i>=0;i--){ var s2=M[i][n]; for(j=i+1;j<n;j++) s2-=M[i][j]*x[j]; x[i]=s2/M[i][i]; }
+  return x;
+}
+function ikDLS(T, Rtar, seed, iters){
+  var q=(seed||[0,0,0,0,0,0]).slice(), D=1e-4, lam=4e-3, best=null;
+  for(var it=0; it<(iters||80); it++){
+    var M=urdfFK(q), f=M['tool1']; if(!f) return null;
+    var t=f.t, R=f.R;
+    var ep=[T[0]-t[0],T[1]-t[1],T[2]-t[2]];
+    var er=_rotVec(_mm3(_mT3(R), Rtar));
+    var dp=Math.sqrt(ep[0]*ep[0]+ep[1]*ep[1]+ep[2]*ep[2])*1000;
+    var da=Math.sqrt(er[0]*er[0]+er[1]*er[1]+er[2]*er[2])*180/Math.PI;
+    if(!best || dp<best.dp) best={q:q.slice(), dp:dp, da:da};
+    if(dp<0.3 && da<0.15) break;
+    var e=[ep[0],ep[1],ep[2], er[0]*0.2, er[1]*0.2, er[2]*0.2];   // 姿态 1rad 折 0.2m
+    var J=[[],[],[],[],[],[]];
+    for(var i=0;i<6;i++){
+      var q2=q.slice(); q2[i]+=D;
+      var f2=urdfFK(q2)['tool1'];
+      var dpx=(f2.t[0]-t[0])/D, dpy=(f2.t[1]-t[1])/D, dpz=(f2.t[2]-t[2])/D;
+      var rv=_rotVec(_mm3(_mT3(f2.R), R));
+      J[0][i]=dpx; J[1][i]=dpy; J[2][i]=dpz;
+      J[3][i]=rv[0]/D*0.2; J[4][i]=rv[1]/D*0.2; J[5][i]=rv[2]/D*0.2;
+    }
+    var A=[], bv=[], r2, c2;
+    for(r2=0;r2<6;r2++){ A.push(new Array(6).fill(0)); bv.push(0); }
+    for(r2=0;r2<6;r2++) for(c2=0;c2<6;c2++){ var s3=0; for(var k2=0;k2<6;k2++) s3+=J[r2][k2]*J[c2][k2]; A[r2][c2]=s3; }
+    for(r2=0;r2<6;r2++) bv[r2]=e[r2];      // 🔴 右端就是 e 本身: dq = Jᵀ(JJᵀ+λ²I)⁻¹·e
+                                          //    (之前错写成 J·e, 维度都不对, 于是每步只挪 0.02rad, 看着像"不动")
+    for(r2=0;r2<6;r2++) A[r2][r2]+=lam*lam;
+    var yv=_solve6(A,bv); if(!yv) break;
+    // 🔴 DLS 的 dq = Jᵀ·y, 少乘这一步就永远走不动(实测: 目标抬 20mm, 关节角一点没变)
+    var dq=new Array(6).fill(0);
+    for(r2=0;r2<6;r2++){ var s5=0; for(var k4=0;k4<6;k4++) s5+=J[k4][r2]*yv[k4]; dq[r2]=s5; }
+    var mx=0; for(r2=0;r2<6;r2++) mx=Math.max(mx, Math.abs(dq[r2]));
+    var sc=mx>0.5? 0.5/mx : 1;
+    for(r2=0;r2<6;r2++) q[r2]+=dq[r2]*sc;
+    for(r2=0;r2<6;r2++){ q[r2]=Math.max(-Math.PI, Math.min(Math.PI, q[r2])); }
+  }
+  var Mf=urdfFK(best.q)['tool1'];
+  var ef=_rotVec(_mm3(_mT3(Mf.R), Rtar));
+  best.daFinal=Math.sqrt(ef[0]*ef[0]+ef[1]*ef[1]+ef[2]*ef[2])*180/Math.PI;
+  best.err=best.dp;
+  return best;
+}
+function _costCarry(q, T, R0){
   var M=urdfFK(q), f=M['tool1']; if(!f) return 1e9;
   var t=f.t, R=f.R;
   var dp=Math.sqrt(Math.pow(t[0]-T[0],2)+Math.pow(t[1]-T[1],2)+Math.pow(t[2]-T[2],2))*1000;
-  var tilt=Math.sqrt(R[0][2]*R[0][2]+R[1][2]*R[1][2]);           // 工具轴偏离竖直的程度(0=完全竖直)
-  return dp*10 + tilt*60;
+  // 只罚"工具轴偏离竖直"这一项。之前试过把整个旋转矩阵锁死(权重 1200), 结果手臂被逼得
+  // j1 甩 179°、j5 甩 249°(在画面里就是整条臂翻跟头) —— 那个约束在这个工作空间里根本不可行。
+  // 夹爪"不转"是靠 _t1world 里的朝向锁定(yawB)保证的, 不是靠 IK 姿态锁死。
+  var tilt=Math.sqrt(R[0][2]*R[0][2]+R[1][2]*R[1][2]);
+  var spin=0;
+  if(typeof CARRY!=='undefined' && CARRY && CARRY.j4!=null)
+    spin = 400*(Math.abs(q[3]-CARRY.j4) + Math.abs(q[5]-CARRY.j6));   // 手腕自转关节: 强罚但要允许动(硬钉死远端解不出来)
+  return dp*10 + tilt*60 + spin;
 }
-function _ikSeed(T, seed){
+function _ikSeed(T, seed, R0){
   var D=Math.PI/180;
   // 🔴 只在 seed 附近 ±48° 的格子里粗搜再下降: 纯局部下降会在长臂展处卡在局部极小(实测差 46~81mm),
   //    纯全局搜索又会跳到"另一个手臂姿态"(关节跳 150°)。折中: 受限粗搜 + 下降。
@@ -5098,21 +5180,23 @@ function _ikSeed(T, seed){
        if(!_qOk(qq)) continue;
        // 代价 = 位置/姿态 + 关节偏离罚(λ 让手臂尽量别换姿态)
        var pen=0; for(var kk=0;kk<6;kk++) pen += Math.abs(qq[kk]-seed[kk]);
-       var cc=_costCarry(qq,T) + pen*2;
+       var cc=_costCarry(qq,T,R0) + pen*2;
        if(!best||cc<best.c) best={c:cc, q:qq};
      }
   if(!best) best={q:seed.slice()};
-  var q=best.q.slice(), c=_costCarry(q,T);
+  var q=best.q.slice(), c=_costCarry(q,T,R0);
   var steps=[6,3,1.5,0.7];
   for(var si=0;si<steps.length;si++){
     var st=steps[si]*D, improved=true, guard=0;
     while(improved && guard++<80){
       improved=false;
-      for(var i=0;i<6;i++) for(var sgn=1;sgn>=-1;sgn-=2){
+      for(var i=0;i<6;i++){
+        for(var sgn=1;sgn>=-1;sgn-=2){
         var q2=q.slice(); q2[i]+=sgn*st;
         if(!_qOk(q2)) continue;
-        var c2=_costCarry(q2,T);
+        var c2=_costCarry(q2,T,R0);
         if(c2<c-1e-6){ q=q2; c=c2; improved=true; }
+        }
       }
     }
   }
@@ -5122,23 +5206,28 @@ function _ikSeed(T, seed){
 }
 function carryPlan(){
   if(!URDF){ console.warn('搬运: URDF 还没到'); return null; }
-  var wps=_carryWps(), out=[], prev=null;
+  var wps=_carryWps(), out=[], prev=null, R0=null;
+  CARRY.j4=null; CARRY.j6=null;      // 每次重新规划都从"手腕角度未定"开始
   for(var i=0;i<wps.length;i++){
     var w=wps[i].w;
     // 世界(从机器人系) → 主臂系
     var T=[SLAVE.x-w[0], SLAVE.y-w[1], w[2]];
     var sol, clamp=0;
     for(var k2=0;k2<12;k2++){
-      sol = prev ? _ikSeed(T, prev.q) : (function(){
+      sol = prev ? _ikSeed(T, prev.q, R0) : (function(){
         var g=null;                                 // 首点: 全局粗搜(用搬运代价)
         for(var b1=-170;b1<=170;b1+=15)for(var b2=-160;b2<=35;b2+=15)
         for(var b3=-150;b3<=150;b3+=15)for(var b5=-150;b5<=150;b5+=20){
           var qq=[b1,b2,b3,0,b5,0].map(function(v){return v*Math.PI/180;});
-          if(!_qOk(qq)) continue; var cc=_costCarry(qq,T);
+          if(!_qOk(qq)) continue; var cc=_costCarry(qq,T,null);
           if(!g||cc<g.c) g={c:cc,q:qq};
         }
         if(!g) return null;
-        return _ikSeed(T, g.q);
+        var s0=_ikSeed(T, g.q, null);
+        CARRY.j4=s0.q[3]; CARRY.j6=s0.q[5];          // 手腕自转基准 = 取件姿态
+        // 取件姿态 = 后面所有点的姿态基准(夹爪从此不许转)
+        var M0=urdfFK(s0.q); R0=M0['tool1'].R.map(function(r){return r.slice();});
+        return s0;
       })();
       if(!sol) return null;
       if(sol.err<=12) break;
@@ -5148,7 +5237,6 @@ function carryPlan(){
       w=[w[0]+dx/dl*step, w[1]+dy/dl*step, w[2]];
       T=[SLAVE.x-w[0], SLAVE.y-w[1], w[2]];
       clamp+= step*1000;
-      prev=null;
     }
     if(!sol || sol.err>20){ console.warn('搬运: 第'+i+'点解不出来 err='+(sol?sol.err.toFixed(1):'-')); return null; }
     out.push({w:w, t:wps[i].t, q:sol.q, err:sol.err, clamp:clamp, hold:wps[i].hold||''});
@@ -5173,10 +5261,19 @@ function carrySetAt(el){
   CARRY.phase=['下降到取件','夹紧(停 0.45s)','抬升','平移','到位','下降放置','松爪退回'][k]||'';
   return {k:k, w:w};
 }
+// 把夹爪朝向锁在"取件那一刻": 取路径首点的 tool1 模块轴水平投影
+function carryYawLock(){
+  if(!CARRY.qList || !CARRY.qList.length){ CARRY.yawB=null; return; }
+  var M=urdfFK(CARRY.qList[0].q), t1=_frameOf(M,'tool1');
+  if(!t1) { CARRY.yawB=null; return; }
+  var z=[-t1.z[0], -t1.z[1], t1.z[2]];
+  var hl=Math.sqrt(z[0]*z[0]+z[1]*z[1])||1e-9;
+  CARRY.yawB=[z[0]/hl, z[1]/hl, 0];
+}
 function carryStart(){
   if(CARRY.running) return;
   var plan=carryPlan(); if(!plan) return;
-  CARRY.qList=plan; CARRY.running=true; CARRY.held=false;
+  CARRY.qList=plan; CARRY.running=true; CARRY.held=false; carryYawLock();
   CARRY.q=plan[0].q.slice(); CARRY.M=urdfFK(CARRY.q);
   CARRY.t0=(typeof performance!=='undefined'?performance.now():Date.now());
   GRIP.show=true; GRIP.span=380;                      // 托盘 380 ⇒ 夹具切到 380 跨度
