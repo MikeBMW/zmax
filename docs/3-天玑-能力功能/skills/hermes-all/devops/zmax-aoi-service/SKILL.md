@@ -396,6 +396,33 @@ GET /preview.jpg?meta=1                                       # 只回 JSON: gra
 - PS 串坑: 给 PowerShell 命令拼字符串**绝不用 `.format()`** —— PS 的 `{ }` 会被当占位符
   (`KeyError ' $id=$c'`), 一律字符串拼接。
 
+## 🧬 清晰度驱动的自主进化调姿 (2026-11-16, `tools/aoi_focus_evolve.py`)
+
+老倪: 「开启自主进化模式，你来调节金手指相机，要能够根据你的清晰度，调整机器人位姿。当前位置最清晰，记住了」
+**550C 也要能跑** ⇒ 同一个纯文件工具, 拷过去就能用(cv2+numpy 即可, 相机走 LAN 上的 10082)。
+
+- **适应度**: 金手指带内 Laplacian 方差。带范围**取 `/region` 的 bbox**(零副作用; 别自己按亮度找带 —— 会落在
+  镜面反光带上); 每点拍 **4 帧取中位**, 同时记相对极差/相对 std。实测 700us 下 8 帧 lap 20.18~20.76、
+  相对 std 0.8% ⇒ 门槛必须是 `提升 >2% 且 >3×帧间 std`, 否则把噪声当增益。
+- **算法**: (1+1) 进化策略, 候选 = 最优 + N(0,σ), 单步 ≤0.4mm、相对锚点累计 ≤1mm、σ 按 1/5 成功法则 ×1.3/×0.7;
+  崩塌闸(适应度掉 >30%)立即回锚点中止。默认 dry-run, 真动要 `--authorize`。
+- 🔴 **运动通道**: 本机 `tools/rokae/sdk_ctl.py` **跑不通** —— `zmax_data/rokae_sdk/xcoresdk_python` 是桩,
+  没有 `xMateRobot`(实测 AttributeError)。真机微位移走 **`tools/arm_raw.py move --to x,y,z --abc a,b,c --speed N`**
+  (它写容器 `zmax-sdk-arm-agent` 的 `cmd_arm.fifo`, 绝对 TCP + 姿态)。姿态 abc 从 `latest.json` 的
+  `rx/ry/rz`(**弧度**)换算成度。
+- 控制模式 `OperateMode.manual` 下 move-abs 仍可执行(实测 0mm 与 ±0.28mm 都到位), 但那是把手臂交给人工示教的态 ——
+  别在这个态下做大幅运动。
+- **验收口径**: 每次进化后回读 `arm_raw.py pos`, 必须与锚点逐位一致(退回要真退回); 台账
+  `reports/aoi_focus_evolve/evolve_*.json` 记锚点/最优/净位移/每步适应度。
+- 实测结论(锚点 lap 21.2, 三次候选 +0.8~1.1% 全被拒): **当前位姿就是局部最优**, 净位移 0mm —— 与他"当前位置最清晰"一致。
+
+### 工控机通道: `station_cmd.py` 会拿错回执, 用 `tools/win_cmd.py`
+
+- 队列里排着历史命令时, `station_cmd.py` 取 `max(新文件名)` 会把**别人的回执**当自己的(实测拿到
+  `成功: 尝试运行 "ZMAX_AOI_KeepAlive"` 而实际下发的是 `hostname`)。
+- `tools/win_cmd.py '<cmd>'` 用 `echo ZMAXM<tag>; <cmd>` 前缀标记 + 只认含本 tag 的回执 ⇒ 不会串。
+- 🔴 通道执行的是 **PowerShell**: `&&` 非法(报「标记“&&”不是此版本中的有效语句分隔符」), 一律用 `;`。
+
 ## 端点（唯一路由, 无需参数/鉴权）
 
 | 端口 | 模型 | 相机 SN / 型号 |
