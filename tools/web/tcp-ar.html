@@ -6,6 +6,7 @@
   html:not(.sceneTray) #bPan,
   html:not(.sceneTray) #bMod30,
   html:not(.sceneTray) #bMod16,
+  html:not(.sceneTray) #bPos,
   html:not(.sceneTray) #bDim,
   html:not(.sceneTray) #bSlave,
   html:not(.sceneTray) #bPan5,
@@ -310,6 +311,7 @@
       <button id="bPan" class="sm on" title="4#方盘: 显示/隐藏桌子上的 4#方盘(315×230×40mm)">🧺 4#方盘</button>
       <button id="bMod30" class="sm on" title="在左盘里排 30 个光模块: 149.7×22.58mm, 长边沿盘的长边; 3 排(沿长边) × 每排 10 个(沿盘宽)">🔩 3×10 光模块</button>
       <button id="bMod16" class="sm on" title="左上角 4#方盘(315×230)里排 16 个光模块: 149.7×22.58mm, 长边沿盘的 315 那条边; 每排 8 个挨着放(不留缝) × 2 排 = 16">🔩 左上盘 16 个</button>
+      <button id="bPos" class="sm on" title="六个工位位置: 主机器人视角 左上① / 中上③ / 右上⑥ / 左下④ / 中下② / 右下⑤ —— 每个盘上方一块带编号的牌 + 盘边同色圈线, 再点关掉">① 位置</button>
       <button id="bDim" class="sm on" title="尺寸: 一键关掉画面上所有的尺寸标注(桌子长/宽/高 + 各个盘的长/宽), 再点回来">📏 尺寸</button>
       <button id="bSlave" class="sm on" title="从机器人: 桌子对面那台, 朝桌子, 和主机器人一起干活(11.16 加)">🤝 从机器人</button>
       <button id="bPan5" class="sm on" title="中上托盘: 桌子中间上方那个 545 长的托盘(545×380×25mm, 宽 380 探出桌面远端边沿 10mm)">🧺 中上托盘</button>
@@ -2588,7 +2590,8 @@ function drawVR(){
     try{ drawTrayPan(g, pr, TPAN2); drawTrayPan(g, pr, TPANM); drawTrayPan(g, pr, TPANT);
           drawTrayPan(g, pr, TPAN5); drawTrayPan(g, pr, TPANL); drawTrayPan(g, pr, TPANR);
           drawMod30(g, pr, MOD30.tray||TPANL);
-          drawMod16(g, pr, MOD16.tray||TPAN2); }catch(e){}
+          drawMod16(g, pr, MOD16.tray||TPAN2);
+          drawPosMarks(g, pr); }catch(e){}
   }
   // 📦 箱体(移动底盘): 再画箱体, 两臂/相机画在它上面 —— 顶板 z=0 就是两臂安装面
   if(CHS.show) drawChassis(g, pr);
@@ -2904,6 +2907,7 @@ function drawVR(){
   if(typeof __TRAY!=='undefined' && __TRAY && typeof trayTableDims==='function'){
     try{ trayTableDims(g, pr); }catch(e){}
     try{ if(typeof trayDimDom==='function') trayDimDom(pr); }catch(e){}
+    try{ if(typeof trayPosDom==='function') trayPosDom(pr); }catch(e){}
   }
   g.fillStyle='#6b7a8d'; g.font='12px monospace';
   g.fillText('base 系 · 地面 = xy 平面 (z=0) · 0.1m 网格 · 拖动旋转'+(VR.frames?' · 🧭 红X/绿Y/蓝Z 三个坐标系':''),8,14);
@@ -4404,6 +4408,12 @@ if($('bPan')) $('bPan').addEventListener('click', function(){
   try{ drawVR(); }catch(e){}
 });
 // 🤝 从机器人
+// ① 六个位置牌开关
+if($('bPos')) $('bPos').addEventListener('click', function(){
+  POS.show=!POS.show;
+  $('bPos').classList.toggle('on', POS.show);
+  try{ drawVR(); }catch(e){}
+});
 // 🔩 左上盘 16 个光模块开关
 if($('bMod16')) $('bMod16').addEventListener('click', function(){
   MOD16.show=!MOD16.show;
@@ -4870,6 +4880,23 @@ var MOD30={ show:true, tray:null, L:0.1497, W:0.02258, H:0.010, nRowY:3, nColX:1
 var MOD16={ show:true, tray:null, L:0.1497, W:0.02258, H:0.010, nColX:8, nRowY:2, gap:0,
             nLayer:8,                    // 老倪 2026-11-16「装满光模块, 堆叠8盘, 要有8层高」
             name:'左上盘 2×8' };
+// ① 六个工位位置(老倪 2026-11-16, 主机器人视角):
+//   主机器人在桌子近端、朝 +X ⇒ 它的**左手边 = +Y**, 右手边 = -Y; 「上」= 远端(x 大), 「下」= 靠机器人(x 小)
+//   左上①  = 左上盘(8 层堆叠)      x 870~1100 / y 735~1050
+//   中上③  = 中上托盘 545×380       x 730~1110 / y -40~505
+//   右上⑥  = 右上盘                x 870~1100 / y -550~-235
+//   左下④  = 左盘(30 个光模块)      x 350~730  / y 505~1050
+//   中下②  = 中方盘                x 350~580  / y 93~408
+//   右下⑤  = 右盘                  x 350~730  / y -550~-5
+var POS6=[
+  {n:1, name:'左上盘',   pan:'TPAN2', color:'#ffd166', note:'8层×16'},
+  {n:2, name:'中方盘',   pan:'TPANM', color:'#7bdff2', note:''},
+  {n:3, name:'中上托盘', pan:'TPAN5', color:'#b388ff', note:''},
+  {n:4, name:'左盘',     pan:'TPANL', color:'#9be564', note:'30个' },
+  {n:5, name:'右盘',     pan:'TPANR', color:'#ff9f68', note:''},
+  {n:6, name:'右上盘',   pan:'TPANT', color:'#ff7b9c', note:''}
+];
+var POS={ show:true };   // ① 位置牌总开关
 var DIM={ show:true };   // 📏 尺寸标注总开关(老倪 2026-11-16「增加一个按钮, 关闭所有尺寸」)
 var SLAVE={ show:true, mx:0.725, my:0.25, x:1.45, y:0.50, half:0.15 };   // y=0.50 = 从机器人自己的右手侧(朝 -X 时右=+Y)
 function slavePr(pr){                       // 世界 → 从机器人的 base 系(绕竖直轴转 180°)
@@ -5042,6 +5069,65 @@ function drawTrayPan(g,pr,T,zoff){
   var R=tpanRange(T), w=T.wall, zt=T.H+z0, zb=0.008+z0;
   _box3(g,pr,R.x0,R.y0,R.y1,R.x1, zt, z0, T.fill, T.edge);                      // 外壳
   _box3(g,pr,R.x0+w,R.y0+w,R.y1-w,R.x1-w, zt-0.004, zb, T.inner, T.edge, 0.95);  // 内腔
+}
+// ① 位置: 每个盘沿画一圈同色描边(堆叠的左上盘画在最顶层), 让编号牌和盘一眼对上
+function drawPosMarks(g,pr){
+  if(typeof POS==='undefined' || !POS.show) return;
+  for(var i=0;i<POS6.length;i++){
+    var o=POS6[i], T=window[o.pan];
+    if(!T || !T.show) continue;
+    var R=tpanRange(T);
+    var ztop=T.H;
+    if(o.n===1 && typeof MOD16!=='undefined' && MOD16.show && MOD16.nLayer>1) ztop=T.H*MOD16.nLayer;
+    ztop+=0.002;
+    var P=[pr([R.x0,R.y0,ztop]),pr([R.x1,R.y0,ztop]),pr([R.x1,R.y1,ztop]),pr([R.x0,R.y1,ztop])];
+    if(!P[0]||!P[1]||!P[2]||!P[3]) continue;
+    g.save();
+    g.strokeStyle=o.color; g.lineWidth=2.2; g.globalAlpha=.95;
+    g.beginPath(); g.moveTo(P[0].u,P[0].v);
+    for(var k=1;k<4;k++) g.lineTo(P[k].u,P[k].v);
+    g.closePath(); g.stroke();
+    g.restore();
+  }
+}
+// ① 位置牌: 画面上方浮一块"编号 + 盘名"的牌(用 DOM —— 老倪这台的 canvas 字体渲染不出来)
+function trayPosDom(pr){
+  var box=document.getElementById('trayPos');
+  // 🔴 建一次就不再重建是错的: 首帧可能只建了空壳(实测就这样, 6 块牌一个都没有, 之后每次进来都以为"已建好")
+  //    ⇒ 每帧核对子节点数, 数量不对就整块重建, 幂等。
+  if(box && box.children.length!==POS6.length){ try{ box.remove(); }catch(e){} box=null; }
+  if(!box){
+    box=document.createElement('div'); box.id='trayPos';
+    box.style.cssText='position:fixed;left:0;top:0;width:0;height:0;pointer-events:none;z-index:61';
+    document.body.appendChild(box);
+    for(var i=0;i<POS6.length;i++){
+      var o=POS6[i];
+      var d=document.createElement('div'); d.id='pos'+o.n;
+      d.style.cssText='position:absolute;transform:translate(-50%,-100%);white-space:nowrap;display:flex;align-items:center;gap:5px;'
+        +'padding:1px 7px 2px;border-radius:8px;background:rgba(4,8,12,.9);border:2px solid '+o.color+';'
+        +'box-shadow:0 2px 10px rgba(0,0,0,.6)';
+      d.innerHTML='<b style="font:800 17px/1 ui-monospace,monospace;color:'+o.color+'">'+o.n+'</b>'
+        + '<span style="font:600 10.5px/1.1 system-ui,sans-serif;color:#e6edf3">'+o.name
+        + (o.note?'<span style="color:#9aa4b2;font-weight:500"> '+o.note+'</span>':'')+'</span>';
+      box.appendChild(d);
+    }
+  }
+  var cv=document.getElementById('vr'); if(!cv) return;
+  var cr=cv.getBoundingClientRect();
+  for(var j=0;j<POS6.length;j++){
+    var o2=POS6[j], d2=document.getElementById('pos'+o2.n); if(!d2) continue;
+    var T2=window[o2.pan];
+    if(typeof POS==='undefined' || !POS.show || !T2 || !T2.show){ d2.style.display='none'; continue; }
+    var ztop2=T2.H;
+    if(o2.n===1 && typeof MOD16!=='undefined' && MOD16.show && MOD16.nLayer>1) ztop2=T2.H*MOD16.nLayer;
+    var ux=T2.cx-0.725, uy=T2.cy-0.25, ud=Math.sqrt(ux*ux+uy*uy)||1;
+    var q=pr([T2.cx+ux/ud*0.09, T2.cy+uy/ud*0.09, ztop2+0.06]);   // 往桌子外侧推 90mm, 6 块牌各朝各的方向散开
+    if(!q||!isFinite(q.u)||!isFinite(q.v)){ d2.style.display='none'; continue; }
+    d2.style.display='flex';
+    var u=Math.max(cr.left+52, Math.min(cr.right-52, cr.left+q.u));
+    var v=Math.max(cr.top+70, Math.min(cr.bottom-12, cr.top+q.v));
+    d2.style.left=Math.round(u)+'px'; d2.style.top=Math.round(v)+'px';
+  }
 }
 function trayDimDom(pr){
   var box=document.getElementById('trayDims');
@@ -7060,7 +7146,7 @@ document.head.appendChild(st);
   }catch(e){}
 
   // ② 左栏白名单: 只留"看场景"的开关; 回放/单步/同步/轨迹/围栏这些摆盘还没定义, 一律收起
-  var KEEP={'bFrames':1,'bUrdf':1,'bMod':1,'bArmR':1,'bArmL':1,'bStretch':1,'bPan':1,'bPan5':1,'bPanSide':1,'bSlave':1,'bDim':1,'bMod30':1,'bMod16':1,
+  var KEEP={'bFrames':1,'bUrdf':1,'bMod':1,'bArmR':1,'bArmL':1,'bStretch':1,'bPan':1,'bPan5':1,'bPanSide':1,'bSlave':1,'bDim':1,'bMod30':1,'bMod16':1,'bPos':1,
             'bCamTop':1,'bChs':1,'bTab':1,'bFlr':1,'bSim':1};
   // 🚫 老倪 2026-11-16 陆续点名不要: MuJoCo同视角(bMj) / 位置细胞(bCells) / 8802直播(bLiv) / 自动环绕(bSpin)
   //    理想档回放(idealBtn, 112段按本节拍) 也不在这条摆盘场景里 ⇒ 下面 trim 里显式按 id 隐藏
