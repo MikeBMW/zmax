@@ -4805,7 +4805,7 @@ var TPANSIDE=[TPANL, TPANR];
 //   ⇒ 从机器人 = 箱体(同款 600×800×750 本体680+轮70) + 中央顶视相机(立柱Ø140 + D435) + **一条**臂
 //   实现: 整个 base 系绕竖直轴转 180°, 旋转中心取 (0.725, 0.25) 这半边 ⇒ 箱体/相机直接复用
 //   drawChassis/drawTopCam, 只是换一个投影函数 prS; 臂用 drawUrdf 的刚体变换参数 X。
-var SLAVE={ show:true, mx:0.725, my:0.25, x:1.45, y:0.25, half:0.15 };
+var SLAVE={ show:true, mx:0.725, my:0.25, x:1.45, y:0.50, half:0.15 };   // y=0.50 = 从机器人自己的右手侧(朝 -X 时右=+Y)
 function slavePr(pr){                       // 世界 → 从机器人的 base 系(绕竖直轴转 180°)
   var mx=SLAVE.mx, my=SLAVE.my;
   return function(w){ return pr([2*mx-w[0], 2*my-w[1], w[2]]); };
@@ -4821,7 +4821,7 @@ function drawSlaveTop(g,pr){
   if(typeof drawTopCam==='function' && TCAM && TCAM.show!==false){ try{ drawTopCam(g, slavePr(pr)); }catch(e){} }
   if(typeof LINKM!=='undefined' && LINKM && typeof drawUrdf==='function'){
     var R=[[-1,0,0],[0,-1,0],[0,0,1]];
-    drawUrdf(g, pr, LINKM, {R:R, t:[SLAVE.x, SLAVE.y, 0], fill:'#46648c', stroke:'#a8c6ea', alpha:1});
+    drawUrdf(g, pr, LINKM, {R:R, t:[SLAVE.x, SLAVE.y, 0], fill:'#46648c', stroke:'#a8c6ea', alpha:1});   // 右臂 FK, 转 180° 放到对面右手侧
   }
 }
 function tpanRange(T){
