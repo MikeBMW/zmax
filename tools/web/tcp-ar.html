@@ -573,6 +573,14 @@ var VR_TEXT=false;      // 🧭 2026-11-14 老倪「工程配置点位全关」�
 })();
 
 var LARMFK=null;   // LARM.q 的正运动学结果; 非空时左臂用它画, 不再照抄右臂
+// 🍽 右臂按钮文案: 摆盘场景不区分真机/仿真, 永远叫「🦾 右臂」(老倪 2026-11-16)
+//    /ar3d 保持原样: 「🦾 右臂_仿真」/「🦾 右臂_仿真(已隐藏)」
+function armRLabel(){
+  const tray = (typeof __TRAY!=='undefined' && __TRAY);
+  const on = (typeof VR!=='undefined' && VR) ? !!VR.simArm : true;
+  if(tray) return on ? '🦾 右臂' : '🦾 右臂(关)';
+  return on ? '🦾 右臂_仿真' : '🦾 右臂_仿真(已隐藏)';
+}
 /* 左臂渲染用的链矩阵: freeze 时用冻结快照(不随右臂动), 否则用自己的 FK / 照抄右臂 */
 function larmMap(){
   if(typeof LARM!=='undefined' && LARM && LARM.freeze) return LARM.holdFK || LARMFK || LINKM;
@@ -4958,7 +4966,7 @@ setInterval(()=>{
     if(_tcpOk) return;
     SIMON=true;
     const _b=$('bSim'); if(_b){ _b.classList.add('on'); }
-    try{ VR.simArm=true; const _br=$('bArmR'); if(_br){ _br.classList.add('on'); _br.textContent='🦾 右臂_仿真'; } }catch(e){}
+    try{ VR.simArm=true; const _br=$('bArmR'); if(_br){ _br.classList.add('on'); _br.textContent=armRLabel(); } }catch(e){}
     simBonesPull();
     // 视角对到双臂包围盒中心(骨架 y 0~0.5 / z 0~0.8m), 免得臂在视野外让人以为"没有臂"
     try{ VR.tgt=[0.0,0.25,0.38]; VR.dist=1.15; }catch(e){}
@@ -4974,7 +4982,7 @@ $('bFlr').addEventListener('click',()=>vrKeepCam(()=>{
 $('bArmR').addEventListener('click',()=>vrKeepCam(()=>{
   VR.simArm=!VR.simArm;                              // 只管仿真右臂(紫色幽灵), 不动真机臂
   $('bArmR').classList.toggle('on',VR.simArm);
-  $('bArmR').textContent = VR.simArm ? '🦾 右臂_仿真' : '🦾 右臂_仿真(已隐藏)';
+  $('bArmR').textContent = armRLabel();
 }));
 $('bUrdf').addEventListener('click',()=>vrKeepCam(()=>{
   VR.urdf=!VR.urdf; $('bUrdf').classList.toggle('on',VR.urdf); }));
@@ -5043,7 +5051,7 @@ function arViewSet(on){
   if($('bArmReal')){ $('bArmReal').classList.toggle('on', VR.real!==false);
     $('bArmReal').textContent = VR.real!==false ? '🦾 右臂_真机' : '🦾 右臂_真机(已隐藏)'; }
   if($('bArmR')){ $('bArmR').classList.toggle('on', !!VR.simArm);
-    $('bArmR').textContent = VR.simArm ? '🦾 右臂_仿真' : '🦾 右臂_仿真(已隐藏)'; }
+    $('bArmR').textContent = armRLabel(); }
   if(typeof drawVR==='function') drawVR();
 }
 function arModeApply(d){
@@ -6092,7 +6100,7 @@ async function refresh(){
       SIMON=true;
       const _b=$('bSim'); if(_b){ _b.classList.add('on'); }
       VR.simArm=true;
-      const _br=$('bArmR'); if(_br){ _br.classList.add('on'); _br.textContent='🦾 右臂_仿真'; }
+      const _br=$('bArmR'); if(_br){ _br.classList.add('on'); _br.textContent=armRLabel(); }
       simBonesPull();
     }
   }catch(e){}
@@ -6377,7 +6385,7 @@ function traySceneInit(){
     var _bR=document.getElementById('bArmR'), _bRR=document.getElementById('bArmReal');
     if(_bRR) _bRR.style.display='none';
     if(_bR){
-      _bR.textContent='🦾 右臂'; _bR.title='右臂(仿真+真机一起): 三维里这一个开关同时控制仿真臂与真机臂; 真机授权仍只在 8793';
+      _bR.textContent=armRLabel(); _bR.title='右臂(仿真+真机一起): 三维里这一个开关同时控制仿真臂与真机臂; 真机授权仍只在 8793';
       _bR.addEventListener('click', function(){
         VR.real = VR.simArm;                       // 一个开关管两头
         try{ drawVR(); }catch(e){}
