@@ -4431,6 +4431,23 @@ if($('bGrip')) $('bGrip').addEventListener('click', function(){
   b.textContent = GRIP.show ? ('🧰 夹具 '+GRIP.span) : '🧰 夹具 关';
   try{ drawVR(); }catch(e){}
 });
+// 静态定格取证: /tray?carry=4.2  (秒) 直接把动作定格在那一刻, 不播放
+(function(){
+  try{
+    var qs=new URLSearchParams(location.search), at=qs.get('carry');
+    if(at===null || !__TRAY) return;
+    setTimeout(function(){
+      var plan=carryPlan(); if(!plan) return;
+      CARRY.qList=plan; CARRY.running=false;
+      var total=plan.reduce(function(a,b2){return a+b2.t;},0);
+      var t=Math.min(total-1, Math.max(0, parseFloat(at)*1000));
+      GRIP.show=true; GRIP.span=380; TPAN5.show=false;
+      carrySetAt(t); drawn=false;
+      if($('bGrip')){ $('bGrip').classList.add('on'); $('bGrip').textContent='🧰 夹具 380'; }
+      setTimeout(function(){ drawVR(); }, 60);
+    }, 1200);
+  }catch(e){}
+})();
 // 🚚 位置3 → 位置2 搬运
 if($('bCarry')) $('bCarry').addEventListener('click', function(){
   if(CARRY.running){ return; }
@@ -5138,6 +5155,23 @@ function carryPlan(){
   }
   return out;
 }
+// 给定时刻 t(ms) 求臂/盘状态 —— 播放与静态截图共用同一份插值, 保证口径一致
+function carrySetAt(el){
+  var acc=0, k=0, L=CARRY.qList;
+  while(k<L.length && el>acc+L[k].t){ acc+=L[k].t; k++; }
+  if(k>=L.length) k=L.length-1;
+  var seg=L[k], f=Math.min(1,Math.max(0,(el-acc)/Math.max(1,seg.t))), e=_smooth(f);
+  var qa=(k===0)?L[0].q:L[k-1].q, qb=seg.q, q=[];
+  for(var i2=0;i2<6;i2++) q.push(qa[i2]+(qb[i2]-qa[i2])*e);
+  CARRY.q=q; CARRY.M=urdfFK(q);
+  CARRY.held = (k>=1 && k<=5);
+  var tip=CARRY.M['tool1'].t;
+  var w=[SLAVE.x-tip[0], SLAVE.y-tip[1], tip[2]];
+  CARRY.panZ=Math.max(0, w[2]-CARRY.PAN_DROP/1000);
+  CARRY.pan.cx=w[0]; CARRY.pan.cy=w[1];
+  CARRY.phase=['下降到取件','夹紧(停 0.45s)','抬升','平移','到位','下降放置','松爪退回'][k]||'';
+  return {k:k, w:w};
+}
 function carryStart(){
   if(CARRY.running) return;
   var plan=carryPlan(); if(!plan) return;
@@ -5149,22 +5183,10 @@ function carryStart(){
   TPAN5.show=false;                                    // 真盘由动画里的"手上托着的那只"代表
   var tick=function(){
     var now=(typeof performance!=='undefined'?performance.now():Date.now());
-    var el=now-CARRY.t0, acc=0, k=0;
-    while(k<CARRY.qList.length && el>acc+CARRY.qList[k].t){ acc+=CARRY.qList[k].t; k++; }
-    if(k>=CARRY.qList.length) k=CARRY.qList.length-1;
-    var seg=CARRY.qList[k], f=Math.min(1,Math.max(0,(el-acc)/seg.t)), e=_smooth(f);
-    // 关节空间插值: 上一段末 → 本段末 (确保逐段衔接, 速度在段末归零 ⇒ 动作连续不跳)
-    var qa = (k===0)? CARRY.qList[0].q : CARRY.qList[k-1].q, qb=seg.q, q=[];
-    for(var i2=0;i2<6;i2++) q.push(qa[i2]+(qb[i2]-qa[i2])*e);
-    CARRY.q=q; CARRY.M=urdfFK(q);
-    // 手上有盘? 取件段之后、放置段之前
-    CARRY.held = (acc+ (k?0:0), k>=1 && k<=5);
-    var tip=CARRY.M['tool1'].t;                        // 主臂系 tool1
-    var w=[SLAVE.x-tip[0], SLAVE.y-tip[1], tip[2]];    // 转回从机器人世界系
-    CARRY.panZ=Math.max(0, w[2]-CARRY.PAN_DROP/1000);  // 盘底高度
-    CARRY.pan.cx=w[0]; CARRY.pan.cy=w[1];
-    CARRY.phase=['下降到取件','夹紧(停 0.45s)','抬升','平移','到位','下降放置','松爪退回'][k]||'';
-    if(el < CARRY.qList.reduce(function(a,b2){return a+b2.t;},0)){
+    var el=now-CARRY.t0;
+    var total=CARRY.qList.reduce(function(a,b2){return a+b2.t;},0);
+    carrySetAt(Math.min(el,total-1));
+    if(el < total){
       drawVR(); requestAnimationFrame(tick);
     }else{
       CARRY.running=false;          // 保留 CARRY.M = 终点姿态, 手臂不许弹回
