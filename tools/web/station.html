@@ -492,6 +492,12 @@ var HTML_VER="__HTMLVER__";</script>
       <div class="row" style="padding:6px 10px 2px"><span class="seg" id="gview">
         <button data-stream="/aoi_gold.mjpg" class="on">判据图</button>
         <button data-stream="/aoi_gold_raw.mjpg">整板原图</button></span>
+        <!-- 🏷 2026-11-17 老倪: 「在金手指检测 整板原图 按钮旁边, 增加 标注 按钮, 用于打开这个 gold 的网页」
+             单独一个按钮(不进 #gview 的 .seg): 那个按钮组是**换 MJPEG 源**的, 多一个没有 data-stream 的
+             按钮会被换源逻辑当成源(im.src=undefined) ⇒ 放组外, 只负责打开 /station/gold。 -->
+        <button id="b_gold_annot" onclick="window.open('/station/gold','_blank')"
+                title="金手指标注页: 原始图 2448×2048 上拖框标 19 根 → 存 YOLO 数据集 → 训练"
+                style="margin-left:8px;padding:10px 12px;font-size:19px;min-width:56px;background:#1b2735;color:#dbe7f3;border:1px solid #2d4054;border-radius:6px;cursor:pointer">🏷 标注</button>
         <!-- 🎯 2026-10-12 老倪: 「参考 空间点 的标记模式和运动模式, 将 金手指 点1 点2 安全点 都变成
              标记模式和运动模式; 标记模式下, 点一下就清除, 再点一下就记录」。
              口径与下方「🧭 空间1~7」**逐条一致**(同一套服务端收口, 不新开任何下发通道):

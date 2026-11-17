@@ -1815,6 +1815,324 @@ def _judge_level(band, gamma: float = 0.9, lo_p: float = 2.0, hi_p: float = 98.0
 #        结果裁出来是一块平滑亮块(实测: 页面图里没有任何金属片)。
 #   做法: 给出整帧 + 200px 网格刻度 + 当前自动框, 让现场一句话指出"金手指在第几格",
 #        比在本地猜几何快得多, 也不会再把错的框当成对。
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 🏷 /station/gold —— 原始图像标注金手指页 (老倪 2026-11-17:
+#    「这个窗口没有图像; 你重新建立一个服务 http://10.163.146.76:8793/station/gold
+#      用于通过原始图像标注金手指, 然后给状态空间工程的 yolo 来训练」)
+#   设计: 服务自己取**原始图 2448x2048**(10082 ?kind=origin) → 页面上拖框标 19 根金手指
+#        → POST 落进 data/datasets/yolo_annot (类别 OPT_Gold) → 一键训练 (yolo_annot_train.py)
+#   与 aoi_inspect_console 的区别: 那个窗口依赖本地驱动/缓存帧, 常出现"没有图像";
+#        这个页只走 HTTP 取图, 任何人任何机器打开都能看到当前帧。
+_GOLD_ANNOT = {"rgb": None, "ts": 0.0, "dims": (0, 0), "src": ""}
+_GOLD_ANNOT_LOCK = threading.Lock()
+_GOLD_TRAIN = {"pid": 0, "log": "/tmp/gold_annot_train.log", "started": 0.0, "name": ""}
+
+
+
+def _gold_annot_page():
+    """金手指标注页 (原始图 2448x2048, 拖框 → 存 YOLO 数据集 → 训练)。纯前台 HTML+Canvas, 无外部依赖。"""
+    return r"""<!doctype html><html lang="zh"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>金手指标注 · 原始图 → YOLO</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0b0f14;color:#e6edf3;font:14px/1.5 system-ui,"Noto Sans CJK SC",sans-serif}
+header{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 12px;background:#111823;border-bottom:1px solid #223}
+h1{font-size:15px;margin:0;font-weight:600}
+button{background:#1b2735;color:#dbe7f3;border:1px solid #2d4054;border-radius:6px;padding:6px 11px;font-size:13px;cursor:pointer}
+button:hover{background:#243449;border-color:#3d5a78}
+button.primary{background:#1f6f43;border-color:#2a8f57}
+button.warn{background:#5a2020;border-color:#8a3030}
+button:disabled{opacity:.45;cursor:default}
+#wrap{padding:8px 12px}
+#stage{position:relative;width:100%;background:#05080b;border:1px solid #223;border-radius:6px;overflow:hidden}
+canvas{display:block;width:100%;height:auto;cursor:crosshair}
+#hud{display:flex;gap:16px;flex-wrap:wrap;padding:6px 2px;color:#9fb3c8;font-size:12.5px}
+#msg{padding:6px 12px;font-size:13px;color:#7ee787;min-height:22px}
+#msg.err{color:#ff7b72}
+pre{background:#0e151d;border:1px solid #223;border-radius:6px;padding:8px;font-size:11.5px;
+    max-height:190px;overflow:auto;color:#9fb3c8;margin:0 12px 12px;white-space:pre-wrap}
+kbd{background:#1b2735;border:1px solid #2d4054;border-radius:4px;padding:1px 5px;font-size:11px}
+</style>
+<header>
+  <h1>🏷 金手指标注 · 原始图 → 状态空间 YOLO</h1>
+  <button id="b-new" class="primary">📸 取新图</button>
+  <button id="b-auto">🤖 自动找19根</button>
+  <button id="b-clear" class="warn">🗑 清空</button>
+  <button id="b-save" class="primary">💾 保存样本</button>
+  <button id="b-train">🚀 训练</button>
+  <button id="b-stat">🔄 统计</button>
+</header>
+<div id="wrap">
+  <div id="stage"><canvas id="cv"></canvas></div>
+  <div id="hud">
+    <span id="h-dim">—</span><span id="h-box">框 0</span><span id="h-sel">选中 —</span>
+    <span id="h-samp">样本 —</span><span id="h-wt">权重 —</span>
+    <span>拖拽=画框 · 点框=选中 · <kbd>Del</kbd>=删 · <kbd>Esc</kbd>=取消</span>
+  </div>
+</div>
+<div id="msg"></div>
+<pre id="log">（训练日志会在这里滚动）</pre>
+<script>
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+let IMG=null, boxes=[], sel=-1, drag=null, scale=1, curFrameTs=0;
+const $=id=>document.getElementById(id);
+function msg(t,err){const m=$('msg');m.textContent=t;m.className=err?'err':'';}
+function hud(){ $('h-box').textContent='框 '+boxes.length; $('h-sel').textContent='选中 '+(sel>=0?('#'+(sel+1)):'—');
+  $('h-dim').textContent=IMG?('图 '+IMG.naturalWidth+'×'+IMG.naturalHeight):'—'; }
+function draw(){
+  if(!IMG) return;
+  const maxW=Math.min(1500, window.innerWidth-40);
+  scale=maxW/IMG.naturalWidth;
+  cv.width=Math.round(IMG.naturalWidth*scale); cv.height=Math.round(IMG.naturalHeight*scale);
+  ctx.drawImage(IMG,0,0,cv.width,cv.height);
+  ctx.lineWidth=2;
+  boxes.forEach((b,i)=>{
+    const x=b[0]*scale,y=b[1]*scale,w=(b[2]-b[0])*scale,h=(b[3]-b[1])*scale;
+    ctx.strokeStyle=(i===sel)?'#ffd166':'#38d17a'; ctx.strokeRect(x,y,w,h);
+    ctx.fillStyle=(i===sel)?'#ffd166':'#38d17a'; ctx.font='12px system-ui';
+    ctx.fillText('#'+(i+1),x+2,Math.max(12,y-4));
+  });
+  if(drag&&drag.x2!=null){
+    ctx.strokeStyle='#7cc4ff'; ctx.setLineDash([6,4]);
+    ctx.strokeRect(drag.x1*scale,drag.y1*scale,(drag.x2-drag.x1)*scale,(drag.y2-drag.y1)*scale);
+    ctx.setLineDash([]);
+  }
+  hud();
+}
+function pos(ev){const r=cv.getBoundingClientRect();return {x:(ev.clientX-r.left)/scale,y:(ev.clientY-r.top)/scale};}
+cv.addEventListener('mousedown',ev=>{const q=pos(ev);
+  for(let i=boxes.length-1;i>=0;i--){const b=boxes[i];
+    if(q.x>=b[0]-4&&q.x<=b[2]+4&&q.y>=b[1]-4&&q.y<=b[3]+4){sel=i;draw();return;}}
+  sel=-1; drag={x1:q.x,y1:q.y,x2:null,y2:null}; draw();});
+cv.addEventListener('mousemove',ev=>{if(!drag)return;const q=pos(ev);drag.x2=q.x;drag.y2=q.y;draw();});
+window.addEventListener('mouseup',ev=>{if(!drag)return;const q=pos(ev);
+  if(drag.x2==null){drag.x2=q.x;drag.y2=q.y;}
+  const x1=Math.min(drag.x1,drag.x2),x2=Math.max(drag.x1,drag.x2);
+  const y1=Math.min(drag.y1,drag.y2),y2=Math.max(drag.y1,drag.y2);
+  drag=null;
+  if(x2-x1>=4&&y2-y1>=4){boxes.push([Math.round(x1),Math.round(y1),Math.round(x2),Math.round(y2)]);sel=boxes.length-1;msg('已加框 #'+boxes.length+'（未保存）');}
+  draw();});
+window.addEventListener('keydown',ev=>{
+  if(ev.key==='Delete'||ev.key==='Backspace'){if(sel>=0){boxes.splice(sel,1);sel=-1;msg('已删一个框（未保存）');draw();ev.preventDefault();}}
+  if(ev.key==='Escape'){drag=null;sel=-1;draw();}});
+function loadFrame(refresh){
+  msg(refresh?'正在取新图（10082 原始图）…':'正在取图…');
+  const t=Date.now();
+  IMG=new Image();
+  IMG.onload=()=>{curFrameTs=t;boxes=[];sel=-1;draw();msg('已取图 '+IMG.naturalWidth+'×'+IMG.naturalHeight+'（拖框标金手指，或点『自动找19根』）');};
+  IMG.onerror=()=>msg('取图失败：10082 无响应',true);
+  IMG.src='/station/gold/frame.png?grab='+(refresh?1:0)+'&t='+t;
+}
+$('b-new').onclick=()=>loadFrame(true);
+$('b-auto').onclick=async()=>{
+  try{const r=await fetch('/station/gold/auto?t='+Date.now());const j=await r.json();
+    if(!j.ok){msg(j.msg||'自动找框失败',true);return;}
+    boxes=j.boxes.map(b=>[b[0],b[1],b[2],b[3]]);sel=-1;draw();
+    msg('自动给了 '+j.n+' 个框（规则: '+(j.rule||'')+'，间距 '+(j.pitch||'?')+'px）— 目检后改，再点保存');}
+  catch(e){msg('自动找框请求失败: '+e,true);}};
+$('b-clear').onclick=()=>{boxes=[];sel=-1;draw();msg('已清空（页面上，未保存）');};
+$('b-save').onclick=async()=>{
+  if(!boxes.length){msg('没有框：先拖框或自动找19根',true);return;}
+  $('b-save').disabled=true;msg('保存中…');
+  try{const r=await fetch('/station/gold/save',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({boxes:boxes,note:'原始图标注'})});
+    const j=await r.json(); msg(j.ok?('✓ 已存入 YOLO 数据集: '+j.stem+'（'+j.n+' 个框, 会话 '+j.session+'）'):(j.msg||'保存失败'), !j.ok);
+    if(j.ok) stats();}
+  catch(e){msg('保存请求失败: '+e,true);} finally{$('b-save').disabled=false;}};
+$('b-train').onclick=async()=>{
+  if(!confirm('开始训练 YOLO？会先 build 数据集，再用 RTX 4060 跑 (默认 100 轮)。')) return;
+  msg('正在启动训练…');
+  try{const r=await fetch('/station/gold/train',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({epochs:100,imgsz:640})});
+    const j=await r.json(); msg(j.ok?('🚀 训练已启动 pid '+j.pid+' · 名称 '+j.name):(j.msg||'启动失败'), !j.ok);
+    stats();}
+  catch(e){msg('训练请求失败: '+e,true);}};
+async function stats(){
+  try{const r=await fetch('/station/gold/stats?t='+Date.now());const j=await r.json();
+    if(!j.ok){msg(j.msg||'统计失败',true);return;}
+    $('h-samp').textContent='样本 '+j.samples+' · 类别 '+j.classes.join('/');
+    $('h-wt').textContent='权重 '+(j.weights.length?(j.weights[0].name+' '+new Date(j.weights[0].mtime*1000).toLocaleString()):'无(未训练)');
+    $('log').textContent=j.tail||'（还没有训练日志）';
+    if(j.train&&j.train.running) msg('训练进行中 pid '+j.train.pid+' …');
+  }catch(e){}}
+$('b-stat').onclick=stats;
+loadFrame(true); stats();
+setInterval(()=>{ if(document.getElementById('log').textContent.includes('%')) stats(); }, 6000);
+</script></html>"""
+
+
+def _gold_annot_fetch(timeout=60):
+    """从 10082 取一帧**原始图**(2448x2048), 转 RGB 存进内存(标注与保存用同一帧)。"""
+    import urllib.request as _u
+    r = _u.Request("http://192.168.23.23:10082/picture?kind=origin&grab=1",
+                   headers={"User-Agent": "zmax-gold-annot"})
+    raw = _u.urlopen(r, timeout=timeout).read()
+    bgr = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+    if bgr is None:
+        return None
+    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+    with _GOLD_ANNOT_LOCK:
+        _GOLD_ANNOT.update({"rgb": rgb, "ts": time.time(),
+                            "dims": (rgb.shape[1], rgb.shape[0]), "src": "10082 origin"})
+    return bgr
+
+
+def _gold_annot_auto(bgr=None):
+    """自动给一版 19 根框(人工再修): /region 条带 + 列剖面周期峰值 → 原图坐标框。"""
+    try:
+        with _GOLD_ANNOT_LOCK:
+            rgb = _GOLD_ANNOT.get("rgb")
+        if bgr is None:
+            if rgb is None:
+                return {"ok": False, "msg": "还没有帧, 先取图"}
+            bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        H, W = bgr.shape[:2]
+        g = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        rb = _gold_region_band(10082, max_age=0.5)
+        if rb:
+            y0, y1 = rb["y0"], rb["y1"]
+            x0, x1 = rb["x0"], rb["x1"]
+        else:
+            rv = g.std(axis=1)
+            ys = np.where(rv > np.percentile(rv, 70))[0]
+            y0, y1, x0, x1 = int(ys.min()), int(ys.max()) + 1, 0, W
+        band = g[y0:y1, x0:x1]
+        # 先用自相关测出**真实手指周期**(实测 71px), 再用它去趋势 + 定最小间距:
+        # 之前用固定 15px 去趋势 ⇒ 一根手指被判成左右两条边(间距 35px), 只覆盖半条 → 框全错。
+        _cnt, _lag, _r, _sd = _gold_period_count(band.astype(np.uint8), expect=19)
+        lag = float(_lag if _lag >= 20 else max(20, (x1 - x0) / 20.0))
+        k = max(3, int(round(lag)))
+        pr = band.mean(axis=0)
+        pr = pr - np.convolve(pr, np.ones(k) / k, mode="same")
+        thr = 0.30 * float(np.abs(pr).max() or 1.0)
+        cand = [i for i in range(3, len(pr) - 3) if pr[i] > thr and pr[i] >= pr[i - 1] and pr[i] > pr[i + 1]]
+        merged = []
+        for i in cand:
+            if not merged or i - merged[-1] >= 0.55 * lag:
+                merged.append(i)
+            elif pr[i] > pr[merged[-1]]:
+                merged[-1] = i
+        if len(merged) > 19:
+            # 19 连窗口: 选间距最规整(方差最小)且峰值和最大的一段
+            best = None
+            for st in range(0, len(merged) - 19 + 1):
+                seg = merged[st:st + 19]
+                d = np.diff(seg)
+                sc = d.std() - 1e-3 * float(sum(pr[i] for i in seg))
+                if best is None or sc < best[0]:
+                    best = (sc, seg)
+            merged = best[1]
+        merged = merged[:19] if len(merged) >= 19 else merged
+        pitch = float(np.median(np.diff(merged))) if len(merged) > 1 else 60.0
+        half = max(3.0, pitch * 0.30)
+        boxes = [[int(max(0, x0 + x - half)), int(y0), int(min(W - 1, x0 + x + half)), int(y1)] for x in merged]
+        return {"ok": True, "w": W, "h": H, "boxes": boxes, "n": len(boxes),
+                "band": [int(x0), int(y0), int(x1), int(y1)], "pitch": round(pitch, 1),
+                "rule": "/region 模板条带 + 列剖面周期峰值(取19)"}
+    except Exception as e:                                                        # noqa: BLE001
+        return {"ok": False, "msg": "自动找框失败: %s" % e}
+
+
+def _gold_annot_save(boxes, note=""):
+    """把当前帧 + 人工框存进 YOLO 标定数据集(类别 OPT_Gold)。"""
+    try:
+        import yolo_annot_dataset as _DS
+        with _GOLD_ANNOT_LOCK:
+            rgb = _GOLD_ANNOT.get("rgb")
+            ts = _GOLD_ANNOT.get("ts") or time.time()
+        if rgb is None:
+            return {"ok": False, "msg": "还没有帧, 先取图再标"}
+        if not boxes:
+            return {"ok": False, "msg": "一个框都没有: 先拖框或点『自动找19根』"}
+        bx = []
+        for b in boxes:
+            x1, y1, x2, y2 = [float(v) for v in b[:4]]
+            bx.append((min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2), "OPT_Gold"))
+        rec = _DS.save_sample(_DS.ROOT_DEFAULT, rgb, bx,
+                              device="10082-OPT-CC1-GG50",
+                              src="原始图 2448x2048 (标注页 /station/gold)",
+                              annotator="人工标注(/station/gold)", tag="gold_finger",
+                              ts=ts, extra={"truth": {"fingers": len(bx), "note": note,
+                                                      "exposure": "700us/16.38dB"}})
+        return {"ok": True, "stem": rec["stem"], "session": rec["session"],
+                "n": rec["n_boxes"], "image": os.path.basename(rec["image"])}
+    except Exception as e:                                                        # noqa: BLE001
+        return {"ok": False, "msg": "保存失败: %s" % e}
+
+
+def _gold_annot_stats():
+    try:
+        import yolo_annot_dataset as _DS
+        P = _DS.paths(_DS.ROOT_DEFAULT)
+        n_img = 0
+        sdir = P["sessions"]
+        if os.path.isdir(sdir):
+            for ses in os.listdir(sdir):
+                f = os.path.join(sdir, ses, "frames")
+                if os.path.isdir(f):
+                    n_img += len([x for x in os.listdir(f) if x.lower().endswith((".jpg", ".png"))])
+        wts = []
+        for proj in ("outputs/yolo_annot", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "outputs/yolo_annot")):
+            if os.path.isdir(proj):
+                for t in os.listdir(proj):
+                    wp = os.path.join(proj, t, "weights", "best.pt")
+                    if os.path.isfile(wp):
+                        wts.append({"name": t, "best": wp, "mtime": os.path.getmtime(wp)})
+        wts.sort(key=lambda d: -d["mtime"])
+        tk = _GOLD_TRAIN
+        alive = False
+        if tk.get("pid"):
+            try:
+                os.kill(int(tk["pid"]), 0)
+                alive = True
+            except Exception:
+                alive = False
+        tail = ""
+        if os.path.isfile(tk["log"]):
+            try:
+                with open(tk["log"], "rb") as f:
+                    f.seek(max(0, os.path.getsize(tk["log"]) - 4000))
+                    tail = f.read().decode("utf-8", "replace")
+            except Exception:
+                tail = ""
+        return {"ok": True, "samples": n_img, "classes": _DS.load_classes(_DS.ROOT_DEFAULT),
+                "weights": wts[:3], "train": {"running": alive, "pid": tk.get("pid"),
+                                              "name": tk.get("name"), "log": tk.get("log"),
+                                              "started": tk.get("started")},
+                "tail": tail[-1800:]}
+    except Exception as e:                                                        # noqa: BLE001
+        return {"ok": False, "msg": "统计失败: %s" % e}
+
+
+def _gold_annot_train(epochs=100, imgsz=640, name=""):
+    """后台启动训练: 先 --build 数据集, 再 yolo_annot_train.py --device 0 (RTX 4060)。"""
+    try:
+        tk = _GOLD_TRAIN
+        if tk.get("pid"):
+            try:
+                os.kill(int(tk["pid"]), 0)
+                return {"ok": False, "msg": "已经在训练中 (pid %s)" % tk["pid"]}
+            except Exception:
+                pass
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        py = os.path.join(root, "gui-venv311", "bin", "python")
+        if not os.path.isfile(py):
+            py = sys.executable
+        nm = name or ("gold_" + time.strftime("%m%d_%H%M"))
+        log = tk["log"]
+        cmd = ("cd %s && %s tools/yolo_annot_dataset.py --build --check >%s 2>&1; "
+               "%s tools/yolo_annot_train.py --epochs %d --imgsz %d --device 0 --name %s "
+               "--detached >>%s 2>&1" % (root, py, log, py, int(epochs), int(imgsz), nm, log))
+        pr = subprocess.Popen(["/bin/bash", "-lc", cmd], start_new_session=True,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=root)
+        tk.update({"pid": pr.pid, "started": time.time(), "name": nm})
+        return {"ok": True, "pid": pr.pid, "name": nm, "log": log, "epochs": int(epochs)}
+    except Exception as e:                                                        # noqa: BLE001
+        return {"ok": False, "msg": "启动训练失败: %s" % e}
+
+
 def _gold_debug_frame_png():
     try:
         import urllib.request as _u
@@ -1928,6 +2246,60 @@ def _gold_row_auto(bgr, pad_frac: float = 0.25):
         return None
 
 
+_GOLD_REGION_CACHE = {}
+
+
+def _gold_region_band(port, max_age=2.0):
+    """从 10082 的 /region 取**模板匹配**给出的金手指条带 (bbox), 2 秒缓存。
+
+    为什么以它为准(2026-11-17 实测): /region 的 bbox=[564,964,1455,76] 这一条,
+    列剖面自相关 lag=71px、r=0.89 ⇒ 1455/71 ≈ 20 个周期 = 现场数到的 **19 根金手指**;
+    而"按周期自相关自动找排"会挑到别处(lag=15px, 约 97 个周期), 那是噪声不是手指。
+    """
+    try:
+        key = int(port or 0)
+        c = _GOLD_REGION_CACHE.get(key)
+        if c and (time.time() - c[0]) < max_age:
+            return c[1]
+        import urllib.request as _u
+        r = _u.urlopen("http://192.168.23.23:10082/region", timeout=8)
+        d = json.loads(r.read().decode("utf-8", "replace"))
+        bb = ((d.get("region") or {}).get("bbox") or None)
+        if not bb or len(bb) != 4:
+            _GOLD_REGION_CACHE[key] = (time.time(), None)
+            return None
+        x, y, w, h = [int(v) for v in bb]
+        out = {"x0": max(0, x), "y0": max(0, y), "x1": x + w, "y1": y + h,
+               "angle": float((d.get("region") or {}).get("angle") or 0.0),
+               "focus": float(d.get("focus") or 0.0), "src": "/region 模板框"}
+        _GOLD_REGION_CACHE[key] = (time.time(), out)
+        return out
+    except Exception:                                                             # noqa: BLE001
+        return None
+
+
+def _gold_period_count(band, expect=19):
+    """条带里"有几根手指": 列剖面自相关 → 周期 lag → 宽度/lag。返回 (根数, lag, r, std)。"""
+    try:
+        g = band if band.ndim == 2 else cv2.cvtColor(band, cv2.COLOR_BGR2GRAY)
+        g = g.astype(np.float32)
+        pr = g.mean(axis=0)
+        pr = pr - float(pr.mean())
+        sd = float(pr.std())
+        if sd < 5.0:
+            return (0, 0, 0.0, sd)
+        ac = np.correlate(pr, pr, "full")[len(pr) - 1:]
+        ac = ac / (float(ac[0]) + 1e-9)
+        lo, hi = max(8, int(len(pr) / (expect * 3.5))), max(20, int(len(pr) / 4))
+        hi = min(hi, len(ac) - 1)
+        if hi <= lo:
+            return (0, 0, 0.0, sd)
+        lag = lo + int(np.argmax(ac[lo:hi]))
+        return (int(round(len(pr) / max(1, lag))), int(lag), float(ac[lag]), sd)
+    except Exception:                                                             # noqa: BLE001
+        return (0, 0, 0.0, 0.0)
+
+
 def _gold_natural_bgr(bgr, port=None):
     """取「原比例条带」的 BGR 版(判据图**同一裁剪口径**), 供透视矫正用; 不出条带返回 None。
 
@@ -1941,8 +2313,34 @@ def _gold_natural_bgr(bgr, port=None):
         from aoi_exposure_fix import gold_roi, clean_judge_frame
         # 🆕 2026-11-17 老倪「判据图需要你显示金属连接片」: 先用**周期结构**定位金属片那一横排
         #   (/region 的模板框实测落在模块外壳边 y≈960~1036, 裁出来根本没有金属片)。
+        # ① 先按 /region 模板框(测得的 19 根手指就在这里) —— 并用"根数"做闸, 不符就换候选
+        _rb = _gold_region_band(port)
+        _cands = []
+        if _rb:
+            _h = max(8, _rb["y1"] - _rb["y0"])
+            _pad = int(_h * 0.22)
+            _cands.append(("region", max(0, _rb["y0"] - _pad), min(bgr.shape[0], _rb["y1"] + _pad),
+                           _rb["x0"], _rb["x1"]))
         _row = _gold_row_auto(bgr)
         if _row is not None:
+            _cands.append(("auto", _row["y0"], _row["y1"], _row["x0"], _row["x1"]))
+        _best = None
+        for _nm, _y0, _y1, _x0, _x1 in _cands:
+            _cnt, _lag, _r, _sd = _gold_period_count(bgr[_y0:_y1, _x0:_x1])
+            _err = abs(_cnt - 19) if _cnt else 99
+            if _best is None or _err < _best[0]:
+                _best = (_err, _nm, _y0, _y1, _x0, _x1, _cnt, _lag, _r)
+        if _best is not None:
+            _err, _nm, _y0, _y1, _x0, _x1, _cnt, _lag, _r = _best
+            _band = bgr[_y0:_y1, _x0:_x1].copy()
+            _band = _judge_level(_band)
+            _GOLD_ROI_INFO[int(port or 0)] = {
+                "src": "%s 条带(19 根闸)" % ("/region 模板框" if _nm == "region" else "周期自动找"),
+                "y0": _y0, "y1": _y1, "x0": _x0, "x1": _x1,
+                "fingers": _cnt, "period_px": _lag, "period_r": round(_r, 3),
+                "expect": 19, "diff": _err, "level": "软件自动色阶(p2..p98, gamma0.9)"}
+            return _band
+        if False:
             _GOLD_ROI_INFO[int(port or 0)] = {"row_auto": _row,
                                               "src": "金属连接片排(列自相关周期×对比度)"}
             _band = bgr[_row["y0"]:_row["y1"], _row["x0"]:_row["x1"]].copy()
@@ -5511,6 +5909,26 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, "image/png", _b)
         elif p in ("/gold_debug", "/gold_debug.html"):
             self._send(200, "text/html; charset=utf-8", _gold_debug_page())
+        elif p == "/station/gold/frame.png":
+            _bgr = _gold_annot_fetch()
+            if _bgr is None:
+                with _GOLD_ANNOT_LOCK:
+                    _rgb = _GOLD_ANNOT.get("rgb")
+                _bgr = None if _rgb is None else cv2.cvtColor(_rgb, cv2.COLOR_RGB2BGR)
+            if _bgr is None:
+                self._send(502, "application/json; charset=utf-8",
+                           json.dumps({"ok": False, "msg": "10082 取图失败"}).encode())
+            else:
+                _okp, _buf = cv2.imencode(".png", _bgr)
+                self._send(200 if _okp else 500, "image/png", _buf.tobytes() if _okp else b"")
+        elif p in ("/station/gold", "/station/gold.html"):
+            self._send(200, "text/html; charset=utf-8", _gold_annot_page().encode("utf-8"))
+        elif p == "/station/gold/auto":
+            self._send(200, "application/json; charset=utf-8",
+                       json.dumps(_gold_annot_auto(), ensure_ascii=False).encode("utf-8"))
+        elif p in ("/station/gold/stats", "/station/gold/train/status"):
+            self._send(200, "application/json; charset=utf-8",
+                       json.dumps(_gold_annot_stats(), ensure_ascii=False).encode("utf-8"))
         elif p in ("/station", "/station.html", "/board"):
             # 🛰 工位总览: 6 窗同屏(3 相机 + 深度 + 金手指 + 表面) + 手动控制区
             # 老倪的浏览器里曾有两个窗口都开着本机页面, 把「同一主机 6 条连接」占满 ⇒
@@ -5772,6 +6190,17 @@ class Handler(BaseHTTPRequestHandler):
                 body = json.loads(self.rfile.read(n).decode("utf-8", "ignore"))
             except Exception:                                                     # noqa: BLE001
                 body = {}
+        if p == "/station/gold/save":
+            _r = _gold_annot_save(body.get("boxes") or [], body.get("note") or "")
+            self._send(200, "application/json; charset=utf-8",
+                       json.dumps(_r, ensure_ascii=False).encode("utf-8"))
+            return
+        if p == "/station/gold/train":
+            _r = _gold_annot_train(int(body.get("epochs") or 100), int(body.get("imgsz") or 640),
+                                   body.get("name") or "")
+            self._send(200, "application/json; charset=utf-8",
+                       json.dumps(_r, ensure_ascii=False).encode("utf-8"))
+            return
         if p in ("/ctl/arm", "/api/ctl/arm"):
             # 🔐 授权真动 / 撤销(只有 POST 能改, 且记 IP+时刻审计)
             on = bool((body or {}).get("on"))
