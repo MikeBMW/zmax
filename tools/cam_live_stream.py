@@ -1869,7 +1869,7 @@ kbd{background:#1b2735;border:1px solid #2d4054;border-radius:4px;padding:1px 5p
   <div id="hud">
     <span id="h-dim">—</span><span id="h-box">框 0</span><span id="h-sel">选中 —</span>
     <span id="h-samp">样本 —</span><span id="h-wt">权重 —</span>
-    <span>拖拽=画框 · 点框=选中 · <kbd>Del</kbd>=删 · <kbd>Esc</kbd>=取消</span>
+    <span>拖空白=画框 · 拖框内=移动 · 拖角/边=缩放 · 方向键=微调(Shift×10) · <kbd>Del</kbd>=删 · <kbd>Esc</kbd>=取消</span>
   </div>
 </div>
 <div id="msg"></div>
@@ -1893,6 +1893,12 @@ function draw(){
     ctx.strokeStyle=(i===sel)?'#ffd166':'#38d17a'; ctx.strokeRect(x,y,w,h);
     ctx.fillStyle=(i===sel)?'#ffd166':'#38d17a'; ctx.font='12px system-ui';
     ctx.fillText('#'+(i+1),x+2,Math.max(12,y-4));
+    if(i===sel){                                  // 4 角 + 4 边手柄(可拖缩放)
+      const hs=6;
+      [[x,y],[x+w,y],[x,y+h],[x+w,y+h],[x+w/2,y],[x+w/2,y+h],[x,y+h/2],[x+w,y+h/2]].forEach(([px,py])=>{
+        ctx.fillStyle='#ffd166'; ctx.fillRect(px-hs/2,py-hs/2,hs,hs);
+        ctx.strokeStyle='#111'; ctx.lineWidth=1; ctx.strokeRect(px-hs/2,py-hs/2,hs,hs); ctx.lineWidth=2;});
+    }
   });
   if(drag&&drag.x2!=null){
     ctx.strokeStyle='#7cc4ff'; ctx.setLineDash([6,4]);
@@ -1902,12 +1908,61 @@ function draw(){
   hud();
 }
 function pos(ev){const r=cv.getBoundingClientRect();return {x:(ev.clientX-r.left)/scale,y:(ev.clientY-r.top)/scale};}
-cv.addEventListener('mousedown',ev=>{const q=pos(ev);
+const HIT=10;                       // 屏幕像素命中半径
+function tol(){return HIT/scale;}   // → 图像像素
+function hitBox(q){
+  const t=tol();
   for(let i=boxes.length-1;i>=0;i--){const b=boxes[i];
-    if(q.x>=b[0]-4&&q.x<=b[2]+4&&q.y>=b[1]-4&&q.y<=b[3]+4){sel=i;draw();return;}}
+    if(i===sel){                    // 选中的框: 先判 4 角 4 边(缩放)
+      const nx=v=>Math.abs(q.x-v)<=t, ny=v=>Math.abs(q.y-v)<=t;
+      if(nx(b[0])&&ny(b[1]))return{i,mode:'nw'};
+      if(nx(b[2])&&ny(b[1]))return{i,mode:'ne'};
+      if(nx(b[0])&&ny(b[3]))return{i,mode:'sw'};
+      if(nx(b[2])&&ny(b[3]))return{i,mode:'se'};
+      if(nx(b[0]))return{i,mode:'w'};
+      if(nx(b[2]))return{i,mode:'e'};
+      if(ny(b[1]))return{i,mode:'n'};
+      if(ny(b[3]))return{i,mode:'s'};
+    }
+    if(q.x>=b[0]-t&&q.x<=b[2]+t&&q.y>=b[1]-t&&q.y<=b[3]+t)return{i,mode:'move'};
+  }
+  return null;
+}
+let act=null;
+function applyAct(q){
+  if(!act)return;
+  const b=boxes[act.i]; if(!b)return;
+  const dx=q.x-act.start.x, dy=q.y-act.start.y, o=act.orig;
+  const W=IMG.naturalWidth, H=IMG.naturalHeight, min=4;
+  if(act.mode==='move'){
+    let w=o[2]-o[0], h=o[3]-o[1];
+    let x1=Math.min(Math.max(0,o[0]+dx), W-w), y1=Math.min(Math.max(0,o[1]+dy), H-h);
+    b[0]=Math.round(x1); b[1]=Math.round(y1); b[2]=Math.round(x1+w); b[3]=Math.round(y1+h);
+  }else{
+    const m=act.mode;
+    if(m.includes('w')) b[0]=Math.round(Math.min(Math.max(0,o[0]+dx), o[2]-min));
+    if(m.includes('e')) b[2]=Math.round(Math.max(Math.min(W,o[2]+dx), o[0]+min));
+    if(m.includes('n')) b[1]=Math.round(Math.min(Math.max(0,o[1]+dy), o[3]-min));
+    if(m.includes('s')) b[3]=Math.round(Math.max(Math.min(H,o[3]+dy), o[1]+min));
+  }
+  draw();
+}
+cv.addEventListener('mousedown',ev=>{const q=pos(ev);
+  const h=hitBox(q);
+  if(h){sel=h.i; act={mode:h.mode,i:h.i,start:q,orig:boxes[h.i].slice()};
+        cv.style.cursor='move'; draw(); return;}
   sel=-1; drag={x1:q.x,y1:q.y,x2:null,y2:null}; draw();});
-cv.addEventListener('mousemove',ev=>{if(!drag)return;const q=pos(ev);drag.x2=q.x;drag.y2=q.y;draw();});
-window.addEventListener('mouseup',ev=>{if(!drag)return;const q=pos(ev);
+cv.addEventListener('mousemove',ev=>{const q=pos(ev);
+  if(act){applyAct(q);return;}
+  if(!drag){ const h=hitBox(q);
+    cv.style.cursor = !h ? 'crosshair' : (h.mode==='move' ? 'move' : (h.mode.length===2?'nwse-resize':'ns-resize'));
+    return; }
+  drag.x2=q.x;drag.y2=q.y;draw();});
+window.addEventListener('mouseup',ev=>{
+  if(act){const m=act.mode; act=null; cv.style.cursor='crosshair';
+    msg((m==='move'?'已移动':'已缩放')+' #'+(sel+1)+'（未保存）· 记得点 💾保存样本'); draw(); return;}
+  if(!drag)return;
+  const q=pos(ev);
   if(drag.x2==null){drag.x2=q.x;drag.y2=q.y;}
   const x1=Math.min(drag.x1,drag.x2),x2=Math.max(drag.x1,drag.x2);
   const y1=Math.min(drag.y1,drag.y2),y2=Math.max(drag.y1,drag.y2);
@@ -1915,8 +1970,16 @@ window.addEventListener('mouseup',ev=>{if(!drag)return;const q=pos(ev);
   if(x2-x1>=4&&y2-y1>=4){boxes.push([Math.round(x1),Math.round(y1),Math.round(x2),Math.round(y2)]);sel=boxes.length-1;msg('已加框 #'+boxes.length+'（未保存）');}
   draw();});
 window.addEventListener('keydown',ev=>{
-  if(ev.key==='Delete'||ev.key==='Backspace'){if(sel>=0){boxes.splice(sel,1);sel=-1;msg('已删一个框（未保存）');draw();ev.preventDefault();}}
-  if(ev.key==='Escape'){drag=null;sel=-1;draw();}});
+  if(sel<0){ if(ev.key==='Escape'){drag=null;draw();} return; }
+  const b=boxes[sel]; const st=ev.shiftKey?10:1;
+  const mv=(dx,dy)=>{b[0]+=dx;b[1]+=dy;b[2]+=dx;b[3]+=dy;draw();
+                     msg('#'+(sel+1)+' 挪动 '+(dx||dy?'':'')+'（未保存）');ev.preventDefault();};
+  if(ev.key==='ArrowLeft')mv(-st,0);
+  else if(ev.key==='ArrowRight')mv(st,0);
+  else if(ev.key==='ArrowUp')mv(0,-st);
+  else if(ev.key==='ArrowDown')mv(0,st);
+  else if(ev.key==='Delete'||ev.key==='Backspace'){boxes.splice(sel,1);sel=-1;msg('已删一个框（未保存）');draw();ev.preventDefault();}
+  else if(ev.key==='Escape'){act=null;drag=null;sel=-1;draw();}});
 function loadFrame(refresh){
   msg(refresh?'正在取新图（10082 原始图）…':'正在取图…');
   const t=Date.now();
