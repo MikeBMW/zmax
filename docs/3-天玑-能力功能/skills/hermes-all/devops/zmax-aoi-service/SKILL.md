@@ -5,6 +5,46 @@ description: Use when 调用产线 AOI 检测服务(10082 金手指/10083 表面
 
 # 产线 AOI 检测服务 (Z-MAX, 工控机 192.168.23.23)
 
+## 🛠 目录定型 + 起停脚本 + `/guide_pose` 实现坑 (2026-11-17)
+
+老倪: 「只保留 v20 文件, 其它文件移动到备份文件夹」「还应该有一个关闭程序的脚本」「在 `D:\xspace\ultralytics_AOI\` 写一个 readme」
+
+- **目录已收敛到 22 个文件**（原 130 个 / 95.2MB → 22 个 / 2.6MB）；移出的 96 个在 `_backup\{old_versions,bak,png_debug,debug}_20261117\`。
+  运行时**只依赖**：2 个 v20 主程序 · `SciCam_{class,ErrorDefine_const,Info_header,Payload_header}.py` · `gf_crop.py`+`gf_metric.py`(gf_crop 会 import 它)
+  · `yolo_detector\`(config.yaml+加密权重+pyarmor) · `templates\gf_strip_template.png` · `venv\`。`cam_provider.py` 没人 import 但属 11-11 外部接口，保留。
+- **起停脚本** `start_all.ps1` / `stop_all.ps1`（源件 `zmax_data/aoi_v4/deliver/`，经 8794 分发到工控机）。
+  🔴 **stop 必须同时 `Disable-ScheduledTask ZMAX_AOI_KeepAlive` 并保持停用** —— 保活每分钟一次，只杀进程等于没关（一分钟后自己回来）。start 负责恢复保活。
+  成功判据是 `/storage` **200**，不是"端口在听"（v20 的脸）。脚本末尾 `ReadKey` 会卡住远程调用 ⇒ 加 `-NoPause` 开关。
+  🔴 PowerShell 的 `$pid` 是保留变量（当前进程 id），**赋值会静默失败**，一律用 `$procId`。
+  实测：stop → 端口全释放 + 保活 Disabled；start → 两路 `/storage` 200 + 保活 Ready；重启后 `/guide_pose` off_px -3.7 仍判居中。
+- **README.txt**（工控机根目录，8KB）八章：开/关 · 手工备用 · 验证 · 保活 · 曝光 · 3D引导 · 22 文件清单 · 备份回滚。
+- ⚠️ 给工控机的 `.ps1` 必须 **UTF-8 with BOM**（PS 5.1 读无 BOM 的 UTF-8 中文会乱码甚至解析失败 —— 本技能已有 `zmax_keepalive.ps1` 同类事故）。
+  分发：本机 8794 静态目录 → 工控机 `Invoke-WebRequest -OutFile`（字节原样，BOM 保留）。
+
+### `/guide_pose`（10082 内部算 3D 引导位姿）的四个坑
+
+1. 🔴 **抓帧必须 `GrabAndSaveImage(save=True)`**。三条路全实测过：
+   - `_grab_bgr_only()` —— 同一时刻饱和 60%、条带 365×35、`gold_px=0`、0 峰（与 `/region?grab=1` 抓的不是同一张）；
+   - `save=False` + `cv2.imread(返回路径)` —— **save=False 时原图根本不落盘**（`_TL.save` 为假就不写），读到的是**上一次的旧文件**，
+     而 `_LAST_REGION` 是**当前帧** ⇒ 图与条带不同源，切出废块（lag 掉到 21）；
+   - `save=False` + `_mem_get("origin")` —— 内存帧是 **JPEG**，压缩伪影把 19 根的窄峰抹平，lag 已对到 72.8 仍 `no peak`。
+   ⇒ 只有 save=True 的无损 PNG 出得了峰（实测 lag 71.0 / acf_r 0.887）。
+2. 🔴 **条带读 `_LAST_REGION`，别读 `_LAST_CROP_INFO`** —— 后者只由 `/capture_detect` 的后台检测队列填，`/guide_pose` 不触发队列 ⇒ 重启后恒空 ⇒ 422。
+3. **19 根补根不能用「相邻间距是否均匀」当判据**：实测这帧 18 个峰间距 46~95px（std ~16，cv 23%），而手画 19 根间距 RMS 仅 1.39px
+   ⇒ 峰值检测本身带假峰/漏峰。正解：对已有峰的**列索引做线性拟合** `x ≈ a + b·i`，用拟合 pitch + 相位在余量大的一侧补一根。
+   补后 center **1568.9** vs 手画 **1570.75**（差 1.85px）；`pitch` 70.5 vs 70.84。
+4. **标定**（mm/px + 轴符号都不知道，猜错会反向跑）：`tools/aoi_guide_probe.py` 串起 probe→走 2mm→solve。
+   实测：Y +2.001mm（真值，误差 0.001mm）· 姿态漂 0.001° · 反算 `k_mm_px=0.011343` · `axis_sign=+1`（+Y = 屏幕左）。
+   落 `D:\xspace\ultralytics_AOI\gold_guide_calib.json`。走完 off_px 343.0 → 166.2 → **-4.1**（≤20 判 hold）。
+
+### ⚠️ 曝光档位修正（推翻本技能 2026-10-09 的结论）
+
+- **24000us×8 在 2026-11-17 现场过曝**：中位灰度 255、饱和 60%、`gold_px=0`，19 根一根看不见。**8000us×1 正常**（`gold_px` 72~73k / focus 310~314）。
+  `cam_param_persist.json` 已改 8000；部署器 ⑤b 现在复原这一档，不会再拨回 24000。
+- 前文「24000×8 唯一让 v36 命中行带且 n_keys=19」是**当时那个光照**下的结论 —— **换灯/换时间就必须重标，别当成常量**。
+- `gain_db` 写 1.0 实际落 **2.0**：该相机增益下限 1.33，写 1.0 被拒 `rv=100100010`，脚本回 `ok:true` 但取了上下限值 ⇒ 申请值和实得值要分开报。
+- `POST /param?exposure=` 返回 `ok:true` 但**图逐位不变**（采集过程中写曝光 SDK 静默失败）—— 本条仍成立，改曝光只能改文件+重启或走 8793 的 `_persist_cam_param`。
+
 ## 🔴 2026-11-11 事故: `aoi_remote_deploy --only 10083` 会把 10082 也盖回旧件 + 重启
 
 - `start_pair()` 里写死 `FILENAME_10082 = cam_finger_10082_work_v20.py`, 且**无条件重启两路**。

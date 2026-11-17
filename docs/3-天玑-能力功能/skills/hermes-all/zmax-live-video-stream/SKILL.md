@@ -495,6 +495,43 @@ md5 全同、都是 30524B —— 这就是「画面冻结」, 发出去既费�
 这就是供电/线材问题的典型特征。结论要如实说: 需**现场重插 / 换 USB3 口 / 带供电 HUB**;
 软件侧只能先把取流脚本改直连, **别把"改成直连了"说成"相机好了"**。
 
+## 🔍 改 D405 输出分辨率（提清晰度的第一刀）：cv2 只能 640×480，必须走 SDK
+
+要"更清晰"时先量源图尺寸 —— 相机输出分辨率是清晰度的天花板，训练参数补不回没采到的细节。
+D405 彩色 profile 实测（pyrealsense 枚举）：`1280×720@30/15` · `848×480@90` · `640×480@90`。
+
+- 🔴 **cv2/V4L2(UVC) 在 D405 上只能开到 640×480**：设 `CAP_PROP_FRAME_WIDTH=1280` 被**静默忽略**，
+  服务照跑、`enc=direct`、日志无报错，取回来仍是 640×480 ⇒ "改了配置没生效"就是这条。判据只有一条：取一帧读尺寸。
+- **720p 只能 pyrealsense2 开流，而 SDK 独占设备**：报
+  `xioctl(VIDIOC_S_FMT) failed, errno=16 … Device or resource busy` = 有 cv2 消费者占着。
+  先按节点找占用者 `for d in /dev/video0 ..; do sudo fuser $d; done`；**`systemctl stop` 返回了进程也可能还在跑**
+  ⇒ 按端口/pid `kill -9` 残留再起。
+- **占用者要三个一起清, 漏一个就永远是 busy**: `rs-fast-node.service`(system, :8792) ·
+  `d405-color-pub.service`(system, 且被前者的 `Requires=` 绑着) · **`zmax-rs-relay.service`(systemd `--user`, :8794)**
+  —— 最后这个用 `systemctl` 查不到, 必须 `systemctl --user list-units --type=service` 或按 `/dev/video*` 的
+  `sudo fuser` 反查 pid。三者都退干净后 `ss -ltn | grep -E ':(8792|8794)'` 必须是空。
+- **正解是「一个 SDK 服务同时监听两个端口」, 不是逐个改**: pyrealsense 只开一次流, 同一 handler 绑 :8792 + :8794
+  ⇒ 两条下游(工位页 arm 格 / AR 页底图)零改动就都变高清; 换独立新端口则要改一堆 URL 与页面。
+  落地成 systemd 单元(如 `zmax-rs-sdk-hd.service`, `Environment=RS_W/RS_H/RS_FPS/RS_DEPTH/RS_PORTS`)
+  并把旧三个 `disable`, 否则开机又抢设备。
+- 🔴 **各分辨率是不同 FOV，K 绝不可等比缩放**：实测 fx `1280×720=655.065` · `848×480=436.710` · `640×480=394.062`
+  —— 640 的 394×2=788，比真值高 **20%**。换分辨率就用 SDK profile 的 `v.get_intrinsics()`，
+  或让相机服务暴露 `/intrinsics`，下游只认它。
+- **API 形态**：pyrealsense 2.58 上 `enable_stream(type,w,h,fmt,fps)` 五参与 `enable_stream(profile)` 都报
+  `incompatible function arguments` ⇒ 用六参 `(type, index, w, h, format, fps)`（index 取 `profile.stream_index()`）。
+- **USB2 带宽 ~40MB/s**：`1280×720 YUYV@30` = 55MB/s 开不动；`@15` = 27MB/s 可跑（实测稳定 12~14fps）。
+  720p 彩色 + 848×480 深度**同开**实测报 `Frame didn't arrive within 4000` ⇒ 先只开彩色，要深度再降帧率。
+- **systemd drop-in 按文件名字典序合并**：`zz-*.conf` 会盖掉 `hd.conf` 里同名 `Environment`（实测 `D405_FPS=15` 被盖成 30）
+  ⇒ 要最后生效就命名 `zzz-*.conf`；改完 `daemon-reload` + `restart`，并回读 `/proc/<pid>/environ` 确认。
+- **重启卡在 `deactivating`**（ROS 回退线程不退）⇒ `systemctl stop --no-block` → 按端口取 pid `kill -9` →
+  `reset-failed` → `start`，`is-active` 等到 `active` 才算。
+- 🔴 **模块级配置变量别与 handler 类同名**：`H = int(os.environ["RS_H"])` 之后再 `class H(BaseHTTPRequestHandler)`
+  ⇒ 类定义把配置覆盖成 `<class '__main__.H'>`，报错形如 `找不到 stream.color 1280x<class '__main__.H'>@15`
+  （看着像 profile 不存在，其实是被自己的类吃了）。高度变量用 `V_H` 之类。
+- **判活只看 `/stats` 的 `n/fps/age_s/err`**，不要用 `/frame.jpg` 是否 200 判。
+- 交付验收三证：源侧 `/stats`（尺寸 · fps · `err` 空）· 本机经 8791 `/snapshot/arm.jpg` **回读尺寸** · 采集会话首帧尺寸。
+  换分辨率会连带改变所有消费方（页面格子 / AR 底图 / 检测输入）的像素坐标，**要在交付里一并交代**。
+
 ## 🔍 工位页「金手指判据图」那一格: 取景靠 /region 锚 + 根数闸, 放大只动纵向 (2026-11-17)
 
 现场诉求串: 「高度放大 5 倍」→「宽度太窄了, 要保持原来图片的宽度」→「要根据你看到的金属手指, 调成矩形; 你现在是歪的」→「没看到金手指」。

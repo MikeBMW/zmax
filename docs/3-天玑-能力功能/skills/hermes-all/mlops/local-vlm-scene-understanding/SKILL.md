@@ -16,6 +16,16 @@ Z-MAX 现成落点: `src/lerobot/policies/left_right/state_space/scene_vlm.py` (
 `tools/vlm_worker.py` (本地子进程 worker, stdio RPC: hello/ask/bye)。
 
 ## 一、先确认"权重到底下好没有" —— 默认缓存会骗人
+
+🔴 **550C 实测现状 (2026-11-17), 先看这段再谈权重**:
+- L5 **根本没在走本地 Qwen**: 本机配了 `DEEPSEEK_API_KEY` ⇒ 路由直接选 `provider=deepseek / model=deepseek-flash`。
+  每次判读前必打 `SceneVLM().status()`, 亲眼看到 `path/provider/model` 才知道在用谁 —— 别把 deepseek 的结论说成 Qwen 的(用户会追问「qwen vl 起作用了没」)。
+- 权重真身在 `~/zmax_data/hf_cache/hub/models--Qwen--Qwen2.5-VL-3B-Instruct/snapshots/66285546…/`(7.1G),
+  而 `scene_vlm.py` 的 `_LOCAL_SNAP` 写死 `~/zmax_data/hf_home/hub/...`(空目录) ⇒ 本地权重永远找不到(见 §1.1)。
+- 切本地要 `SS_VLM_PROVIDER=local SS_VLM_MODEL=<snapshot 绝对路径>`, 但 **8G 卡常被占满**
+  (SS 画布 2226M + SS 引擎 1950M + INTACT 1320M ≈ 7118/8188M) ⇒ 3B bf16(7.7G) 装不下,
+  且两个 venv 都没 `bitsandbytes`(4bit 也不行) ⇒ 必须先停服务腾显存, 不能"直接切 local 重试"。
+
 `~/.cache/huggingface` **不一定是真缓存**(`HF_HOME` 常被指到数据盘)。
 实测 2026-09-20: `~/.cache/.../models--Qwen--Qwen2.5-VL-3B-Instruct` 只有 **12M**(元数据空壳),
 真权重在 `~/zmax_data/hf_home/hub/...` = **7.1G**。差点据此白下一遍。
