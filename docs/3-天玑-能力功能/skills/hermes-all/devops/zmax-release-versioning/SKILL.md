@@ -66,7 +66,8 @@ cd ~/zmax && ./gui-venv311/bin/python tools/bump_version.py --to 5.50.741 --summ
 
 ### ② 归档 (这才是「保存数据」)
 
-照 `tools/archive_release_<ver>.sh` 复制改写(仓库里已有 5.13/5.14/5.15/5.21/5.34/5.41/5.50 的同类脚本), 产物:
+直接用 `templates/archive_release.sh`(本技能自带, 复制后只改 `VER`/`BASE`/MANIFEST 主题; 仓库里另有
+`tools/archive_release_<ver>.sh` 历史同类脚本可参考), 产物:
 
 ```
 zmax_data/release_<ver>_<YYYYMMDD>/
@@ -84,6 +85,11 @@ zmax_data/release_<ver>_<YYYYMMDD>/
   也没法在远端掉线时看出缺件）。staging 用 `~/.hermes/cache/scratch/rel<ver>/{orin,intel}/`。
 - 🔴 **`scp` 一次传多个文件会部分失败而不报错**: 必须 `ls` 回读 staging 清单, 逐个对名字。
   实测漏了一个 `traj_*.json`（清单里只剩 4 个而非 5 个）, 不核对就会把"轨迹文件"这一项静默丢出归档。
+- 🔴 **code 清单必须由上一版 tag 现场算, 并滤掉同步噪声**: `git diff --name-only <上一版 tag>..HEAD` 循环拷,
+  不手写 `FILES="..."`。但那个 diff 会被 **Hermes 技能/记忆同步提交**灌满(实测 35 个变更里大绝半是
+  `docs/3-天玑-能力功能/skills/hermes-all/**`、`docs/7-琥珀-记忆追溯/memory/**`、`*.code-workspace`),
+  归档要的是"这版交付了什么", 不是备份技能库 ⇒ 循环里 `skip` 掉这三类, 剩下才是产品代码(本次 11 个文件)。
+  判据: `find code -type f` 清单里既要有本轮新工具, 也要有改过的页面/服务(.html/.py), 一个都不能缺。
 - **归档文件数上千是正常的**: `data/config` 全量拷贝（calib + platform）单项就有 700 余个文件、5 MB。
   看到 700+ 文件不要以为拷错了, 按目录 `find | wc -l` 分组报一次即可。
 - 🔴 **日志先截尾再归档**: 常驻服务的 log 是 GB 级增长, 整份拷进去会把归档从几十 MB 撑到 760 MB

@@ -231,6 +231,9 @@ systemctl show -p ExecStart --value <嫌疑 unit>
 定式:
 1. 止血 = `systemctl stop <unit>`(手工进程继续服务, 用户无感), 然后看 `NRestarts` 冻住 —— 这就是证据;
 2. 正名要用户点头: 停手工进程 → `systemctl start <unit>`(会断几秒), 否则重启机器后仍然是两条路径打架;
+   ⚠️ 单元带 `Restart=always` 时**不必**再 `start`: 停掉手工进程后它自己会在 ~10~15s 内拉起新实例。
+   验收看三样(不是看 `is-active`): `NRestarts` 隔 20s 两次**不涨** · `ss -ltnp | grep :<port>` 的 pid **变了且 ppid=1** ·
+   业务接口真出数(帧计数在涨/尺寸变了)。只看到 `active` 就报"已接管"，下轮重启又会打回原形;
 3. 报告三件: **NRestarts 数字 · 每轮 CPU/内存 · 端口被谁占着**(`ss -ltnp | grep :<port>` + `/proc/<pid>/cmdline`);
    只说"有个服务在重启" 用户无法判断要不要动手。
 

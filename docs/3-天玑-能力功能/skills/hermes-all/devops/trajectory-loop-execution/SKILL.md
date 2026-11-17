@@ -201,6 +201,35 @@ r.moveStart(ec)                                                # 只 start 一�
 要验口径只看三条：① 读代码/日志；② `dry:true` / `arm:0` 空跑；③ 发一份**故意非法**的载荷让它必被闸拒
 （`auth_remaining=0` + `start_mm` 离当前 TCP 几百 mm + 1mm 单段，三重保险）—— 既有信息量又零运动。
 
+## 录制点列(N 帧)回放的零运动验证: 先 `dry`、再 `reset`、真动前 `align`
+
+用户问「还能按 N 个点跑吗」时**不要去动臂证明**, 这三步足够给出可复现的答案(以 8797 `POST /api/arm/step_traj` 为例):
+
+```bash
+# 0) 数据与口径(不改文件, 只读)
+ls -l tools/web/real_traj_joints.json          # 帧数/mtime/sha —— 证明"还是那一份"
+curl -s http://127.0.0.1:8797/api/traj_adj      # 覆盖点表(改点只动它, raw 一字节不动)
+
+# 1) 演练: 只算不下发 —— 逐点过数据/跳变预检, 零运动
+curl -s -X POST -H 'Content-Type: application/json' \
+     -d '{"dry":true,"n":215}' http://127.0.0.1:8797/api/arm/step_traj
+curl -s http://127.0.0.1:8797/api/arm/step_traj/status   # 期望 running=False done=215/215 err=None
+
+# 2) 游标回起点(只写状态文件, 不动机器)
+curl -s -X POST -H 'Content-Type: application/json' -d '{"reset":true}' …/step_traj
+```
+
+- **游标会停在末尾**, 于是下一次调用直接回 `已在轨迹末端(N/N 点)` —— 别把这个报错当"不能跑";
+  先 `reset`(或 `start` 显式给起点)再看 `cursor/total`。`reset` 只改状态 json, **不是运动**;
+  真正会动的是页面上的「回起点」那种"走回第 0 点"的实现, 两件事要分清再动手。
+- **`dry` 会被 `reset` 短路**: 同一个请求里带 `reset:true` 时后端先返回"游标已回起点"就结束了,
+  演练根本没跑。要验全量就**分两次**: 先 reset, 再 dry。
+- 🔴 **人在中途(臂停在某个示教点)时, 从游标 0 开跑 = 一次大跳变** ⇒ 脚本的跳变闸会拒,
+  现场看到的就是"点了没反应"。正解是先 `align`(游标对齐到离当前姿态最近的那一帧, 只读真值不动机器),
+  再从那里往后走; 报数时说清"对齐到了第几帧、还剩几点"。
+- 汇报模板: `帧数/total · sha · dry 结果(done/err) · 游标位置 · 授权 armed/left_s · 当前姿态离第 0 帧多远`。
+  缺"离第 0 帧多远"这一项, 用户按了执行才发现被拦, 就是一次白跑。
+
 ## 中止路径的健壮性: 失败原因比"停下来"更容易丢
 
 现场表现 = 「只走了两段就停了，页面也不报错」。真因往往不在运动，而在**失败分支自己崩了**:
