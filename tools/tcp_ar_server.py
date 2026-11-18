@@ -1683,7 +1683,14 @@ class H(BaseHTTPRequestHandler):
             # ⏭ 相对推进: 每轮结束把游标推到「实际走到的那一点」——走成 n_done 点就 +n_done,
             #   被闸拦住(n_done=0)就原地不动。这样下次输入 10 是「再走 10 点」而不是从头再来。
             if not _s.get("advanced"):
-                _s["cursor"] = _start + int(_fin.get("n_done") or 0)
+                # 🔴 n_done 来自跑批记录, 旧脚本给的是"块数" ⇒ flow 档会把 66 点记成 18。
+                #   以 steps 里最大 i1+1(点数) 兜底取大值, 块数/点数两种口径都能得对。
+                _nd = int(_fin.get("n_done") or 0)
+                _pts = 0
+                for _st in (_fin.get("steps") or []):
+                    if _st.get("ok"):
+                        _pts = max(_pts, int(_st.get("i1", -1)) + 1)
+                _s["cursor"] = _start + max(_nd, _pts)
                 _s["advanced"] = True
             _out["cursor"] = int(_s.get("cursor") or 0)
             try:

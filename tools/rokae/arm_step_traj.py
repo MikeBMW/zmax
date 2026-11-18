@@ -468,8 +468,10 @@ def _run_flow(r, frames, out, dwell_ms, grip_at, start_abs, ts, prev, quats=None
             print(json.dumps(out, ensure_ascii=False))
             return 1
         t_target = (ts[j] - ts[i]) if (ts and len(ts) > j and ts[i] is not None) else None
+        # 🔴 1x 慢速实测: 12 点块要 ~150s, 原先 2.5/scale 正好卡在 150s 边界 ⇒ 撞超时后残差 3.84°
+        #   被 err>2° 闸停掉(块 #137~148, 停在 #149)。预算按 1.5 倍余量给, 并把下限抬到 60/scale。
         _sc = max(float(scale or 1.0), 0.05)
-        tmo = max(40.0, (j - i + 1) * 2.5 / _sc, ((worst * 0.8) + 20.0) / _sc)
+        tmo = max(60.0 / _sc, (j - i + 1) * 3.8 / _sc, ((worst * 0.8) + 20.0) / _sc)
         ok, err, secs, why = _send_batch_wait(r, jts, s_cmd, tmo)
         rec = {"i": i, "i1": j, "n_pts": j - i + 1, "ok": ok,
                "err_deg": round(err, 2), "secs": round(secs, 2),
@@ -626,7 +628,8 @@ def main() -> int:
             _rc = _run_real(r, frames, out, speed, dwell_ms, grip_at, _start_abs, _ts, prev)
         if _rc is not None:
             return _rc
-        done = sum(1 for s in out["steps"] if s.get("ok"))
+        # 🔴 点数≠块数: flow 档一块含 n_pts 个点, 原先 sum(1 for ...) 数的是块 ⇒ 上层游标只推进 18(块数)
+        done = sum(int(s.get("n_pts") or 0) for s in out["steps"] if s.get("ok"))
         out["n_done"] = done
         out["ok"] = bool(out["steps"]) and all(s.get("ok") for s in out["steps"])
         out["why"] = ("真实回放: %d 块 / %d 点全部到位" % (len(out["steps"]), sum(s.get("n_pts") or 0 for s in out["steps"]))

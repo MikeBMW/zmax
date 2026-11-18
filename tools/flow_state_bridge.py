@@ -15,6 +15,7 @@ REPO = "/home/ubuntu/zmax"
 LOG = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, "zmax_data/rokae_sdk/traj_step_flow_x1.log")
 STATE = os.path.join(REPO, "zmax_data/rokae_sdk/traj_step_state.json")
 PID = int(sys.argv[2]) if len(sys.argv) > 2 else 0
+OFF = int(sys.argv[3]) if len(sys.argv) > 3 else 0      # 续跑时日志里的 progress 是"本轮内"计数, 要加起点偏移
 IDLE_EXIT_S = 900.0     # 12 点块在 1x 慢速下要 2 分钟才出一条 progress, 60s 判定会误退出(实测断在 #57)
 
 
@@ -61,8 +62,9 @@ def main() -> int:
                 os.kill(PID, 0)
             except OSError:
                 alive = False
-        json.dump({"running": bool(alive and k < 215), "t0": t0, "n": 215, "dry": False,
-                   "start": 0, "total": 215, "cursor": k, "pid": PID, "done": k,
+        kk = k + OFF
+        json.dump({"running": bool(alive and kk < 215), "t0": t0, "n": 215, "dry": False,
+                   "start": OFF, "total": 215, "cursor": kk, "pid": PID, "done": kk,
                    "log": LOG, "grip_sent": [], "src": "flow_x1 bridge"},
                   open(STATE, "w"), ensure_ascii=False)
         print("done=%d alive=%s" % (k, alive), flush=True)
