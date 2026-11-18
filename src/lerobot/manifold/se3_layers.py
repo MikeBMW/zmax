@@ -178,6 +178,9 @@ class SE3Layered:
             return (1 - t) * pa + t * pb
         if layer in ("B", "C"):
             if layer == "B":                              # 单位向量 slerp
+                # 输入常来自 6 位小数的 json (‖n‖=1±1e-7) ⇒ 先归一, 否则 slerp 后范数不回到 1
+                pa = pa / (np.linalg.norm(pa) or 1.0)
+                pb = pb / (np.linalg.norm(pb) or 1.0)
                 c = float(np.clip(np.dot(pa, pb), -1, 1))
                 if c > 0.999999:
                     v = (1 - t) * pa + t * pb
