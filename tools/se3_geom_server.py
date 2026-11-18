@@ -37,6 +37,16 @@ def _sectors():
     """
     blocks = {}
     mt = []
+    # 🔴 段跑日志里的 i 是**相对起点**的(第二段 start=60 却从 0 记起), 两个日志混在一起会撞键,
+    #   而且状态判定会错(#0~11 被当成"含 #9 合爪")。这里一律用 traj_phase 的 s 反查绝对索引。
+    _ph = _load(os.path.join(SDK, "traj_phase.json"), "phase") or {}
+    _ss = [f["s"] for f in _ph.get("frames", [])]
+
+    def _idx(s):
+        if not _ss:
+            return None
+        k = min(range(len(_ss)), key=lambda q: abs(_ss[q] - s))
+        return k if abs(_ss[k] - s) < 0.002 else None
     for fn in LOGS:
         path = os.path.join(SDK, fn)
         try:
@@ -54,8 +64,11 @@ def _sectors():
                     continue
                 if st.get("s0") is None or st.get("s1") is None:
                     continue
-                blocks[(st["i"], st["i1"])] = {
-                    "i0": st["i"], "i1": st["i1"], "n_pts": st.get("n_pts"),
+                _a, _b = _idx(st["s0"]), _idx(st["s1"])
+                if _a is None or _b is None:            # 反查不到就不收(宁可少, 不许错位)
+                    continue
+                blocks[round(st["s0"], 5)] = {          # 用相位做键: 两段日志不会撞
+                    "i0": _a, "i1": _b, "n_pts": st.get("n_pts"),
                     "s0": st["s0"], "s1": st["s1"], "t_s": st.get("secs"),
                     "speed": st.get("speed_cmd"), "err": st.get("err_deg"),
                     "axis_max": st.get("axis_dn_max"), "roll_max": st.get("roll_dp_max")}
@@ -80,14 +93,45 @@ def _sectors():
               "n_blocks": v["n_blocks"], "s_frac": round(v["s_span"], 4),
               "color": _SPD_COLOR.get(k, "#8fa3b3")}
              for k, v in sorted(by_spd.items(), reverse=True)]
-    # 每块: 耗时 + 单位相位耗时可看出"哪个扇区慢"
+    # 每块: 耗时 + 单位相位耗时(哪个扇区慢) + 当时状态
+    # 🔴 状态是**推断**, 依据只有两条可核证据: ①录制轨迹的停留点(#9 合爪 / #125·#151 金手指AOI /
+    #    #172 表面检测 / #205 松爪放置, 见 traj_step_cmd 的 dwell_ms) ②该块实测速度档。
+    #    录制文件本身没有阶段标注真源, 所以标签写成"推断口径", 不给假真值。
     for b in bl:
         span = max(b["s1"] - b["s0"], 1e-9)
         b["t_per_mm"] = round((b["t_s"] or 0.0) / (span * 7861.8), 4)
         b["frac"] = round((b["t_s"] or 0.0) / tot, 4)
+        rng = range(b["i0"], b["i1"] + 1)
+        tags = []
+        if 9 in rng:
+            st = "抓取(合爪)"
+        elif 125 in rng or 151 in rng:
+            st = "金手指 AOI"
+        elif 172 in rng:
+            st = "表面检测"
+        elif 205 in rng:
+            st = "放置(松爪)"
+        elif b["i0"] == 0:
+            st = "起始接近"
+        elif (b["speed"] or 0) >= 85:
+            st = "转移"
+        elif (b["speed"] or 0) >= 70:
+            st = "对位"
+        else:
+            st = "操作区"
+        if (b.get("axis_max") or 0) >= 10:
+            tags.append("轴断层%.0f°" % b["axis_max"])
+        if (b.get("roll_max") or 0) >= 12:
+            tags.append("滚转%.0f°" % b["roll_max"])
+        if (b["n_pts"] or 0) <= 3:
+            tags.append("碎步%d点" % b["n_pts"])
+        b["state"] = st
+        b["state_tags"] = tags
     slow = sorted(bl, key=lambda b: -(b["t_s"] or 0))[:5]
     out = {"blocks": bl, "n_blocks": len(bl), "total_s": round(tot, 2), "tiers": tiers,
-           "slowest": [{"i0": b["i0"], "i1": b["i1"], "t_s": b["t_s"], "s0": b["s0"], "s1": b["s1"]} for b in slow]}
+           "slowest": [{"i0": b["i0"], "i1": b["i1"], "t_s": b["t_s"], "s0": b["s0"], "s1": b["s1"],
+                         "state": b.get("state"), "speed": b.get("speed"),
+                         "n_pts": b.get("n_pts")} for b in slow]}
     _J["sectors"] = (key, out)
     return out
 
