@@ -122,6 +122,13 @@ MANIFOLD_REGISTRY: dict[str, dict] = {
             "src": "lie_intent"},
     "su2": {"status": "ready", "dim": 3, "constraint": "U†U=I, det U=1",
             "metric": "Fubini–Study (distance_fs)", "geodesic": "指数映射 + slerp", "src": "state_space/su2.py"},
+    # 🌐 A~E 复合: 位置/轴/四元数/滚转/相位 五个流形由 5 个引擎实例分别承载 + Hopf 耦合
+    #    (老倪 2026-11-19「保证流形引擎能映射 A B C D E 五个几何流程」)
+    "se3_layers": {"status": "ready", "dim": 9,
+                   "constraint": "A ℝ³ · B S² · C S³ · D S¹ · E S¹ (复合, 逐层自身约束)",
+                   "metric": "逐层: 欧氏 / 大圆角 / SU(2) 双覆盖 / S¹ 环绕",
+                   "geodesic": "逐层: 直线 / 球面 slerp / S³ slerp / 最短弧",
+                   "src": "se3_layers.SE3Layered (5 引擎实例 + Hopf 纤维化)", },
     "latent_flat": {"status": "ready", "dim": None, "constraint": "平坦潜空间 (由标定确定维数)",
                     "metric": "欧氏", "geodesic": "直线 (带自适应增益)", "src": "fiber_bundle 标定口径"},
     "calabi_yau": {"status": "planned", "dim": 6, "constraint": "Ricci-flat (Kähler)", "metric": "Ricci-flat",
@@ -1138,6 +1145,22 @@ class ManifoldEngine:
         return True
 
     # ── API ──
+    # 🌐 A~E 五流形访问器 (老倪 2026-11-19): 惰性构造 ⇒ 不用就完全不建, 老路径逐位不变
+    def se3_layers(self):
+        """→ SE3Layered: A 位置 ℝ³ / B 轴 S² / C 四元数 S³ / D 滚转 S¹ / E 相位 S¹。"""
+        if getattr(self, "_se3_layers_obj", None) is None:
+            try:
+                from .se3_layers import SE3Layered                     # 包内
+            except ImportError:                                        # 裸脚本 (sys.path 只有 src/lerobot/manifold)
+                import importlib.util as _iu
+                _p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "se3_layers.py")
+                _s = _iu.spec_from_file_location("se3_layers_solo", _p)
+                _m = _iu.module_from_spec(_s)
+                _s.loader.exec_module(_m)                              # type: ignore[union-attr]
+                SE3Layered = _m.SE3Layered
+            self._se3_layers_obj = SE3Layered(M=self.M)
+        return self._se3_layers_obj
+
     def project(self, state: np.ndarray) -> dict:
         t0 = time.perf_counter()
         unfitted = not self.fitted
