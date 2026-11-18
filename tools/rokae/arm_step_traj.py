@@ -64,18 +64,29 @@ def opstate(r):
 # ═══════════════════════════════════════════════════════════════════════════
 CAP_DIR = os.environ.get("ZMAX_CAP_DIR") or "/sdk/capture"      # 容器内(主机 zmax_data/rokae_sdk/capture)
 CAP_ON = (os.environ.get("ZMAX_CAPTURE") or "1") != "0"
+# AOI 检测服务在生产网段另一台机上(192.168.23.23), 本机 10082/10083 **不监听**。
+# 2026-11-17 实测: 本机 curl 127.0.0.1:10082 => 000; 192.168.23.23:10082/last_result => {"code":404,"msg":"尚无检测结果"}
+AOI_HOST = os.environ.get("ZMAX_AOI_HOST") or "192.168.23.23"
 _T0_WALL = time.time()
 
 # 甘特分段(与 tools/ss_meta_task_ar.py 的 _REPLAY_SEGS 同源同界, 便于逐段对账)
 GANTRY_SEGS = [
-    (0, 9, "抓取(合爪#9)"), (10, 40, "插入孔内"), (41, 90, "转运/举升"),
-    (91, 113, "拔出模块"), (114, 119, "过渡"), (120, 144, "扫码(举高段)"),
+    (0, 9, "抓取(合爪#9)"), (10, 15, "过渡/举升"), (16, 19, "扫码(对码)"),
+    # 🔴 2026-11-17 老倪现场纠正动作顺序: 扫码结束后是 **抓取光模块 → 举升 → 插入 → 拔出**。
+    #   原表把 20–40 标成「插入孔内」、91–113 标成「拔出模块」, 与实跑相反:
+    #   游标 95 的 TCP X776.2 正落在 2# 孔插入区间 (§下口 761.3 → 插到位 811.6) ⇒ 那一段是**插入**。
+    (20, 40, "抓取光模块"), (41, 90, "举升/转运"), (91, 113, "插入·松开·退回·抓环"),
+    (114, 119, "拉环解锁·拽出"), (120, 144, "扫码(举高段)"),
     (145, 149, "过渡"), (150, 160, "金手指检测"), (161, 161, "过渡"),
     (162, 193, "表面检测"), (194, 197, "过渡"), (198, 204, "下放入盘"),
     (205, 205, "松开分拣(#205)"), (206, 214, "回位"),
 ]
 # 到位即拍照: 点 -> (端口, 名称)
-AOI_ON_ARRIVE = {156: (10082, "金手指"), 172: (10083, "表面")}
+# 🔴 2026-11-17 老倪: 「金手指点1 要触发金手指检测」—— 金手指点1 = 第 **126** 点。
+# ⚠ 这里是 **0-based 帧索引**, 人话的"第 126 点"= frames[125]。第一版写成 126, 走 126 那轮
+#   拿到的 i=125 ⇒ AOI_ON_ARRIVE.get(125)=None, 静默不触发(日志里 _cap 已是新配置却没有 "aoi" 行)。
+#   126(点1) → 125, 152(点2) → 151。
+AOI_ON_ARRIVE = {125: (10082, "金手指"), 151: (10082, "金手指"), 172: (10083, "表面")}
 
 
 def seg_of(i):
@@ -97,37 +108,66 @@ def read_tcp(r):
 
 
 def cap_aoi(i, port, label):
-    """到点拍照: 调主机 AOI /picture?grab=1 存图 + 记录响应。失败只 warning。"""
+    """到点**触发** AOI 检测, 再取判决, 最后存图。
+
+    🔴 2026-11-17 老倪「金手指点1 要触发金手指检测, 你更改 request」:
+      原来只有 `GET /picture?grab=1` —— 那只是**取图不检测**, AOI 服务端不会跑推理,
+      `/last_result` 永远是上一次的结果。产线口径是 `POST /capture_detect`(触发一次真检),
+      然后 `GET /last_result` 拿本次判决; 图用 `GET /picture?grab=1` 另取(10083 表面没有
+      /picture 路由, 只有 /capture_detect, 所以取图失败不算错)。
+      另外地址原来写死 `127.0.0.1` —— 本机 10082/10083 根本不监听(实测 000), 检测从来没触发过。
+      改为 AOI_HOST(默认 192.168.23.23)。
+    """
     if not CAP_ON:
         return None
+    import urllib.request
+    os.makedirs(CAP_DIR, exist_ok=True)
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    base = "%s/aoi_i%03d_%s_%s" % (CAP_DIR, i, label, ts)
+    root = "http://%s:%d" % (AOI_HOST, port)
+    info = {"i": i, "port": port, "label": label, "host": AOI_HOST,
+            "t_wall": time.strftime("%Y-%m-%dT%H:%M:%S")}
+    # ① 触发检测 —— 这一步才是「触发」, 少了它 AOI 不跑
     try:
-        import urllib.request
-        os.makedirs(CAP_DIR, exist_ok=True)
-        ts = time.strftime("%Y%m%d_%H%M%S")
-        base = "%s/aoi_i%03d_%s_%s" % (CAP_DIR, i, label, ts)
-        url = "http://127.0.0.1:%d/picture?grab=1" % port
-        req = urllib.request.Request(url, headers={"User-Agent": "zmax-capture"})
-        with urllib.request.urlopen(req, timeout=12) as resp:
+        req = urllib.request.Request(root + "/capture_detect", data=b"{}", method="POST",
+                                     headers={"Content-Type": "application/json",
+                                              "User-Agent": "zmax-aoi-trigger"})
+        with urllib.request.urlopen(req, timeout=25) as resp:
+            info["trigger"] = resp.read()[:1200].decode("utf-8", "replace")
+    except Exception as e:                                               # noqa: BLE001
+        info["trigger_err"] = "%s: %s" % (type(e).__name__, e)
+    # ② 取判决
+    try:
+        with urllib.request.urlopen(urllib.request.Request(root + "/last_result",
+                headers={"User-Agent": "zmax-aoi-result"}), timeout=12) as resp:
+            raw = resp.read()
+        try:
+            info["result"] = json.loads(raw.decode("utf-8", "replace") or "{}")
+        except Exception:                                                # noqa: BLE001
+            info["result"] = raw[:800].decode("utf-8", "replace")
+        with open(base + ".result.json", "wb") as f:
+            f.write(raw)
+    except Exception as e:                                               # noqa: BLE001
+        info["result_err"] = "%s: %s" % (type(e).__name__, e)
+    # ③ 存图(10083 无 /picture)
+    try:
+        with urllib.request.urlopen(urllib.request.Request(root + "/picture?grab=1",
+                headers={"User-Agent": "zmax-capture"}), timeout=12) as resp:
             body = resp.read()
             ctype = resp.headers.get("Content-Type", "")
         if body[:2] == b"\xff\xd8" or "image" in ctype:
             with open(base + ".jpg", "wb") as f:
                 f.write(body)
-            info = {"i": i, "port": port, "label": label, "jpg": base + ".jpg",
-                    "bytes": len(body), "t_wall": time.strftime("%Y-%m-%dT%H:%M:%S")}
+            info["jpg"] = base + ".jpg"
+            info["bytes"] = len(body)
         else:
             with open(base + ".json", "wb") as f:
                 f.write(body)
-            info = {"i": i, "port": port, "label": label, "json": base + ".json",
-                    "bytes": len(body), "ctype": ctype,
-                    "t_wall": time.strftime("%Y-%m-%dT%H:%M:%S")}
-        print(json.dumps({"capture": info}, ensure_ascii=False), flush=True)
-        return info
+            info["json"] = base + ".json"
     except Exception as e:                                               # noqa: BLE001
-        print(json.dumps({"capture_err": {"i": i, "port": port,
-                                          "why": "%s: %s" % (type(e).__name__, e)}},
-                         ensure_ascii=False), flush=True)
-        return None
+        info["pic_err"] = "%s: %s" % (type(e).__name__, e)
+    print(json.dumps({"aoi": info}, ensure_ascii=False), flush=True)
+    return info
 
 
 def _send_wait(r, jt, speed):

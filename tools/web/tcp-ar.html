@@ -240,7 +240,7 @@
       <!-- 📍 老倪 2026-11-13「左侧增加一个按钮, 让右臂(仿真)按真实轨迹 182 点走一遍」 -->
       <button id="bRTraj" class="sm" title="仿真右臂按录制进来的真实轨迹(182 点, 位姿真值录制)完整走一遍: 沿折线 8mm 重采样 → 逐点 IK → 紫色幽灵臂 + 8802 同帧渲染。只动仿真, 不下发真机指令">📍 右臂跑真实轨迹</button>
       <span id="tRTraj" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
-      <button id="bSyncStep" class="sm" style="margin-left:10px" title="同步操作: 沿真实轨迹「一个点一个点」走(每走到一个点停一下)。输入框里的 N 是**相对**的: 输入 10 = 从当前游标再走 10 个点(不是从头再来)。走完游标自动前移。只动仿真, 不下发真机指令">⏭ 同步操作</button>
+      <button id="bSyncStep" class="sm" style="margin-left:10px" title="同步操作: 沿真实轨迹「一个点一个点」走(每走到一个点停一下)。输入框里的 N 是**相对**的: 输入 10 = 从当前游标再走 10 个点(不是从头再来)。走完游标自动前移。只动仿真, 不下发真机指令(要真机跟着走用右边的『⏭ 单步 +1 点』)">⏭ 同步操作(只仿真)</button>
       <input id="iSyncN" type="number" min="1" step="1" value="3" title="相对点数: 从当前游标再走几个点(输入 10 = 接着走 10 个点, 不是从头 10 个点)" style="width:60px;margin-left:4px;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;border-radius:4px;padding:2px 4px;font-size:12px;vertical-align:middle">
       <button id="bSyncAlign" class="sm" title="把游标对齐到真机当前姿态最接近的那个轨迹点(只读真值, 不动机械臂)。手动拖过示教器后用这个重新接上轨迹">◎ 对齐当前位置</button>
       <button id="bSyncReset" class="sm" title="游标回起点(第 1 点)。下次点同步就是从头走">↺ 回起点</button>
@@ -258,6 +258,8 @@
        旁边把当前点 ID + TCP 坐标写出来 ⇒ 双方说"#37"指的就是同一个点。
        位姿口径: 直接取该帧关节角真值, 不插值(插值就说不清停在第几个点了)。只动仿真, 真机零指令。 -->
   <div class="row" style="margin-top:6px">
+    <button id="bTrajBack" class="sm" style="background:#6e40c9;border-color:#6e40c9;margin-left:6px" title="回退 1 个轨迹点。仿真立即后退一格; 若勾了『真机也走』, 会让真机也退回上一点(服务端只挡 >40° 的关节跳变, 不挡后退)。真机正在走时本次只退仿真, 等它到位再点。快捷键 Alt+← 同效(但快捷键只退仿真)。">↩ 回退 1 点</button>
+    <button id="bTrajStep10" class="sm" style="background:#1f6feb;border-color:#1f6feb;margin-left:6px" title="连续往前走 10 个轨迹点(串行: 每一步等真机到位再走下一步, 不会因 busy 被跳过)。连点会累加: 走的过程中再点 +10 = 再追加 10 点。勾了『真机也走』时真机跟着一段一段走。">⏭⏭ 连走 +10 点</button>
     <button id="bTrajStep" class="sm" style="background:#238636;border-color:#238636" title="沿 215 点真实轨迹往前走一个点后停住(不连续播)。旁边显示当前点 ID 与该点 TCP 坐标(mm), 便于按 ID 指认和调位置。快捷键 Alt+→ 前进 / Alt+← 后退。勾了「真机也走」时: 仿真先走到该点, 停 1 秒, 再让真机跟着走一点(需 8793 授权)">⏭ 单步 +1 点</button>
     <span id="tTrajStep" style="font-size:12.5px;color:#3fb950;margin-left:8px;font-family:ui-monospace,monospace;white-space:nowrap" title="当前停在哪个轨迹点(ID) + 该点 TCP 坐标(mm, base 世界系)">#— · 未开始</span>
   </div>
@@ -1251,6 +1253,7 @@ function drawOv(){
 // 🔴 自动对焦(2026-09-29 老倪"看不到 VR 轨迹"): 原来相机位置预先固定, 轨迹只占画面中间 ≈50px 的一小坨,
 //    看着就像"没有"。定式: 用**数据包围盒**自动定目标点和距离, 让通道铺满画面 ~70%。
 function vrFitBox(){
+  window.VR_CAM_LOCK=null;                    // 🎯对准/双击 = 主动要重取景 ⇒ 解单步机位锁
   // 🖱 刚用中键平移过 ⇒ 1.5s 内谁叫都不重新取景(否则松手那一下会被别处的 refit 拉回去)
   if(VR.camLock && (Date.now()-VR.camLock) < 1500) return '平移中, 不重新取景';
   // 用户已经中键平移过 ⇒ 一律不再自动取景(否则包围盒一变就把画面拉回去)。只有 🎯对准/双击 才回中。
@@ -2468,6 +2471,13 @@ function drawVR(){
   // 🔍 近看光模块机位(老倪验"前半金属/后半塑料/绿拉环"用): 别的代码启动后会把 VR.dist 改回去,
   //    所以放在每帧开头钉住, 只由 URL 决定, 不改页面任何交互。
   if(window.__NEAR_MOD30){ VR.auto=false; VR.tgt=[0.54,0.7775,0.02]; VR.dist=0.75; }
+  // 🎥 2026-11-17 老倪「屏幕的视角不要变化, 不要一点击单步就跳」⇒ 单步期间把相机参数每帧钉死。
+  //   只在点『单步』时设锁(rtrajStep), 用户自己平移/滚轮/对准会清锁(见 VR_CAM_UNLOCK), 就不会互相打架。
+  if(window.VR_CAM_LOCK){
+    VR.auto=false;
+    VR.yaw=VR_CAM_LOCK.yaw; VR.pitch=VR_CAM_LOCK.pitch;
+    VR.dist=VR_CAM_LOCK.dist; VR.tgt=VR_CAM_LOCK.tgt.slice();
+  }
   const c=$('vr'), g=c.getContext('2d');
   const W=c.clientWidth*devicePixelRatio, H=c.clientHeight*devicePixelRatio;
   if(c.width!==W||c.height!==H){ c.width=W; c.height=H; }   // 只在尺寸真变时重设(重设=清空)
@@ -2643,13 +2653,53 @@ function drawVR(){
   //   夹持区间按轨迹真值 #9 合 → #205 开, 区间外模块已放下, 不该再跟着手飘。
   var _rpOn = (typeof RTRAJ!=='undefined' && (RTRAJ.playing || RTRAJ.joints))
            || (typeof RTRAJ_FOLLOW!=='undefined' && RTRAJ_FOLLOW.on);
-  if(_rpOn && PREV.on && PREV.M && PREV.M['tool1'] && VR.simArm!==false){
-    var _rpT1=PREV.M['tool1'], _rpL=(MODSPEC.L_mm||56.5)/1000;
+  if(_rpOn && PREV.on && VR.simArm!==false &&
+     ((typeof TCP!=='undefined' && TCP && TCP.ok && TCP.frames && TCP.frames.tool1)
+      || (PREV.M && PREV.M['tool1']))){
+    // 🔴 2026-11-17 老倪「黄色光模块前边还有个绿色光模块, 位置不对, 前面的绿色应该向后与黄色重合」:
+    //   黄 = drawModuleBox @ TCP.frames.tool1(真机位姿), 绿 = 这里, 原来只跟幽灵臂 PREV.M['tool1']。
+    //   两者不是同一位姿 ⇒ 画面上同一个模块出现两次且错开(绿的在黄的前面)。
+    //   真机位姿可用时绿模块也锚到真机 tool1, 两个就重合了; 真机没位姿才退回幽灵臂。
+    // ⚠ TCP.frames.tool1 的结构是 {origin, x, y, z} —— **没有 R**! 下游要用 _rpT1.R(三列=三轴)
+    //   和 _rpT1.R[*][2](=长度轴), 所以这里把 x/y/z 拼成列矩阵 R。只给 {t:...} 会让 _cols(undefined)
+    //   抛异常、drawVR 当场中断 ⇒ 桌子/盘/模块/围栏全不画(2026-11-17 踩过两次)。
+    var _rpT1=(function(){
+      var f1=(typeof TCP!=='undefined' && TCP && TCP.ok && TCP.frames) ? TCP.frames.tool1 : null;
+      if(f1 && f1.origin && f1.x && f1.y && f1.z){
+        return {t: f1.origin, z: f1.z,
+                R: [[f1.x[0], f1.y[0], f1.z[0]],
+                    [f1.x[1], f1.y[1], f1.z[1]],
+                    [f1.x[2], f1.y[2], f1.z[2]]]};
+      }
+      return (PREV.M && PREV.M['tool1']) || null;
+    })();
+    // 🚫 这里绝不能写 return —— drawVR 是一条长链, 在中间 return 会把后面的桌子/盘/围栏全砍掉。
+    //    没位姿就给一个"画在原点、不会崩"的安全占位, 让它自己不可见。
+    if(!_rpT1) _rpT1={t:[0,0,0], z:[1,0,0], R:[[1,0,0],[0,1,0],[0,0,1]], _none:true};
+    var _rpL=(MODSPEC.L_mm||56.5)/1000;
     var _rpFi=(typeof RTRAJ!=='undefined' && RTRAJ.fi!=null)?RTRAJ.fi:0;
     if(_rpFi>=9 && _rpFi<=205){
-      drawFlatModule(g, pr, [_rpT1.t[0]+_rpL/2, _rpT1.t[1], _rpT1.t[2]], '#a3e635', {alpha:0.9, lw:2.6});
-      // 模块中心打一个亮点 + 文字, 免得整幅三维里只有几根细线找不到(老倪目检口径: 画面要自己说明白)
-      var _rpM=pr([_rpT1.t[0]+_rpL/2, _rpT1.t[1], _rpT1.t[2]]);
+      // 🔴 2026-11-17 老倪「tool1 的原心是光模块的**头部中心**, 而你画成了尾部中心」:
+      //   tool1 原点 = 模块头中心(长方体沿长度轴的一端), 本体从模块头朝法兰方向长出去。
+      //   drawFlatModule(c) 的 c 是**体心**, 所以传 t+[L/2,0,0] 就等于把头部挪到了 L/2 处 ⇒ 整体退了半个身长。
+      //   改用 drawModuleAt: 它的口径就是「头在 O」, 内部自己算体心 C=O+AX[2]*(L/2), 与黄块(drawModuleBox)同源。
+      var _rpR_ok=(_rpT1.R&&_rpT1.R[0]&&_rpT1.R[2]);
+      var _rpA3=_cols(_rpR_ok?_rpT1.R:[[1,0,0],[0,1,0],[0,0,1]]);
+      if(_rpR_ok) _rpA3[2]=_rpT1.z||_rpA3[2];
+      // 本体朝向必须与黄块(drawModuleBox)同号: 它用 sgn 由 tool0(法兰)方向定, 这里照同一判据翻 Z 轴,
+      // 否则两块头对头、身子朝相反方向, 看起来就是一个双倍长的模块。
+      try{
+        var _rpF0=(TCP&&TCP.frames&&TCP.frames.tool0)||null;
+        if(_rpF0&&_rpF0.origin){
+          var _rpD=[_rpF0.origin[0]-_rpT1.t[0],_rpF0.origin[1]-_rpT1.t[1],_rpF0.origin[2]-_rpT1.t[2]];
+          if((_rpD[0]*_rpA3[2][0]+_rpD[1]*_rpA3[2][1]+_rpD[2]*_rpA3[2][2])<0){
+            _rpA3[2]=[-_rpA3[2][0],-_rpA3[2][1],-_rpA3[2][2]];
+          }
+        }
+      }catch(e){}
+      drawModuleAt(g, pr, _rpT1.t, _rpA3, '#a3e635', '#65a30d');
+      var _rpHead=_rpT1.t;          // 头部中心(tool1 原点); 不要和下面 2698 的颜色数组 _rpC 撞名
+      var _rpM=pr(_rpHead);
       if(_rpM){
         g.fillStyle='#a3e635'; g.beginPath(); g.arc(_rpM.u,_rpM.v,3.4,0,Math.PI*2); g.fill();
         g.strokeStyle='#0d1117'; g.lineWidth=1.2; g.stroke();
@@ -2658,7 +2708,7 @@ function drawVR(){
       }
     }
     if(VR.frames){
-      var _rpAX=_cols(_rpT1.R), _rpC=['#ff5d5d','#5dff8f','#5db8ff'], _rpLN=0.13;
+      var _rpAX=_cols(_rpT1.R||[[1,0,0],[0,1,0],[0,0,1]]), _rpC=['#ff5d5d','#5dff8f','#5db8ff'], _rpLN=0.13;
       for(var _rpk=0;_rpk<3;_rpk++){
         var _rpd=_rpAX[_rpk];
         var _rpa=pr(_rpT1.t);
@@ -2687,9 +2737,14 @@ function drawVR(){
       drawFlatModule(g, pr, [t1.t[0]+L/2, t1.t[1], t1.t[2]], '#a3e635');
     }
     if(INSIM.inserted){
-      // 插入到位: 模块中心 x=(767+814)/2=790.5, y=228, z=278, 长轴沿 X
-      drawFlatModule(g, pr, [0.7905, 0.228, 0.278], '#a3e635');
-      const s=pr([0.7905,0.228,0.290]);
+      // 插入到位: 模块中心 x=(767+814)/2=790.5, y=228, 长轴沿 X
+      // 🔴 2026-11-17 老倪「黄色光模块前边还有个绿色光模块, 位置不对, 应该向后与黄色重合」:
+      //   原来 z 写死 0.278 —— 比孔位真值高 **90mm**。2# 孔下口 761.3/229.8/**187.6**, 插到位
+      //   811.6/229.8/**187.6**(见 zmax_data/runtime/traj/sim_insert.json), 孔轴是水平 +x, 所以
+      //   插入到位的模块 z 就该是 187.6, 不是 278。高 90mm 让它在画面上飘到黄色模块前上方去了。
+      const _INS_Z = 0.1876;
+      drawFlatModule(g, pr, [0.7905, 0.228, _INS_Z], '#a3e635');
+      const s=pr([0.7905,0.228,_INS_Z+0.012]);
       if(s){ g.fillStyle='#a3e635'; g.font='bold 11px monospace'; g.fillText('✅ 已插入 47mm', s.u+8, s.v-6); }
     }
   }
@@ -2933,6 +2988,7 @@ function drawVR(){
 $('vr').addEventListener('wheel',(e)=>{ e.preventDefault();
   const k=Math.exp((e.deltaY>0?1:-1)*0.12);          // 每格 ×0.89 / ×1.13
   VR.dist=Math.max(0.10, Math.min(4.0, VR.dist*k));
+  window.VR_CAM_LOCK=null;                            // 用户自己滚轮 ⇒ 解开单步的机位锁
   VR.auto=false; drawVR();
   const p=document.getElementById('pVr'); if(p) p.dataset.zoom=(VR.dist*1000).toFixed(0);
 }, {passive:false});
@@ -2959,7 +3015,7 @@ $('vr').addEventListener('mousedown',e=>{ if(e.button===1){ e.preventDefault(); 
 $('vr').addEventListener('auxclick',e=>{ if(e.button===1) e.preventDefault(); });
 $('vr').addEventListener('pointerdown',e=>{
   if(e.button===1 || (e.buttons & 4)){                       // 中键 = 平移, 不做围栏命中/旋转
-    drag={x:e.clientX,y:e.clientY,pan:true}; VR.auto=false;
+    drag={x:e.clientX,y:e.clientY,pan:true}; window.VR_CAM_LOCK=null; VR.auto=false;
     try{ $('vr').setPointerCapture(e.pointerId); }catch(err){}
     return;
   }
@@ -2974,12 +3030,13 @@ $('vr').addEventListener('pointerdown',e=>{
       $('vr').setPointerCapture(e.pointerId); VR.auto=false; return; }
     if(FSEL){ FSEL=null; renderFenceList(); drawVR(); }
   }
-  drag={x:e.clientX,y:e.clientY};VR.auto=false;$('vr').setPointerCapture(e.pointerId);});
+  drag={x:e.clientX,y:e.clientY}; window.VR_CAM_LOCK=null; VR.auto=false;$('vr').setPointerCapture(e.pointerId);});
 $('vr').addEventListener('pointermove',e=>{
   if(FDR){ const uu=_uv(e); const it=fenceDragMove(uu[0],uu[1]); if(it) drawVR(); return; }
   if(!drag) return;
   if(drag.pan){ vrPanBy(e.clientX-drag.x, e.clientY-drag.y);
                 drag={x:e.clientX,y:e.clientY,pan:true}; drawVR(); return; }
+  window.VR_CAM_LOCK=null;                    // 真在拖了 ⇒ 解单步机位锁(否则每帧被钉回去, 看着"视角转不了")
   VR.yaw-=(e.clientX-drag.x)*0.01; VR.pitch=Math.max(-0.2,Math.min(1.45,VR.pitch+(e.clientY-drag.y)*0.008));
   drag={x:e.clientX,y:e.clientY}; drawVR(); });
 $('vr').addEventListener('pointerup',()=>{
@@ -4600,6 +4657,88 @@ document.addEventListener('keydown', function(ev){
 }, true);
 // ⏭ 左侧栏「单步 +1 点」按钮(老倪 2026-11-16)
 $('bTrajStep').addEventListener('click', function(){ rtrajStep(1); });
+/* ⏭⏭ 连走 N 点(老倪 2026-11-18「增加 +10点 按钮, 可以继续连续走10步」)
+   为什么不能简单 for 循环调 10 次 rtrajStep(1):
+     rtrajStep 里有「真机还在走上一段总线⏳ ⇒ 整步都不动、直接 return」的保护, 同步真机时
+     第 2 次调用必然被 busy 挡掉 ⇒ 实际只走 1 点, 看着像"没反应"。
+   所以做成**串行队列**: 每走一点, 轮询 STEPREAL.busy, 等它变 false 再走下一点。
+   走的过程中再点按钮 = 往队列里追加(STEPN.left += n), 不会打断也不会丢点。 */
+var STEPN={running:false, left:0, done:0};
+function rtrajStepN(n){
+  n = Math.max(1, Math.min(50, Number(n)||10));
+  if(STEPN.running){ STEPN.left += n; _stepSt('⏭⏭ 已追加 '+n+' 点 · 队列还剩 '+STEPN.left+' 点','#58a6ff'); return; }
+  STEPN.running=true; STEPN.left=n; STEPN.done=0;
+  var cb=document.getElementById('cSyncArm');
+  var real = !!(cb && cb.checked);
+  var tick=function(){
+    if(!STEPN.running) return;
+    if(STEPN.left<=0){
+      STEPN.running=false;
+      _stepSt('✅ 连走完成: 本次共走 '+STEPN.done+' 点 · 当前第 '+((RTRAJ.fi==null)?0:Number(RTRAJ.fi))+' 点','#3fb950');
+      return;
+    }
+    if(real && STEPREAL.busy){ setTimeout(tick, 350); return; }   // 等真机到位
+    var before=(RTRAJ.fi==null)?0:Number(RTRAJ.fi);
+    STEPN.left--; rtrajStep(1); STEPN.done++;
+    var after=(RTRAJ.fi==null)?0:Number(RTRAJ.fi);
+    if(real && after===before){ setTimeout(tick, 450); return; }  // 这一步没推进, 下一拍重试
+    _stepSt('⏭⏭ 连走中 '+STEPN.done+'/'+(STEPN.done+STEPN.left)+' · 还剩 '+STEPN.left+' 点','#58a6ff');
+    setTimeout(tick, real?300:140);
+  };
+  setTimeout(tick, 0);
+}
+$('bTrajStep10').addEventListener('click', function(){ rtrajStepN(10); });
+/* ↩ 回退 1 点(老倪 2026-11-18「增加一个按钮, 回退1点, 能加么」)
+   rtrajStep(-1) 原设计只退仿真、不联动真机(注释: 后退只动仿真, 不让真机倒走)。
+   现在明确要能退, 所以这里在仿真退完之后, 若勾了『真机也走』且真机空闲,
+   再用同一个 stepRealFollow(帧号) 让真机退到同一帧 —— 走的是和前进完全相同的
+   下发通道(POST /api/arm/step_traj {n:1,start:i}), 只是 start 比当前游标小。
+   服务端只挡 >40° 的关节跳变, 不挡后退, 所以这条路是通的。 */
+function rtrajBack1(){
+  var before = (RTRAJ.fi==null) ? 0 : Number(RTRAJ.fi);
+  if(before <= 0){ _stepSt('已在轨迹第 0 点, 不能再回退','#d29922'); return; }
+  var cb = document.getElementById('cSyncArm');
+  var real = !!(cb && cb.checked);
+  rtrajStep(-1);                              // 仿真退一格(内部已重画/锁机位/打 PREV_KEEP)
+  var now = (RTRAJ.fi==null) ? 0 : Number(RTRAJ.fi);
+  if(now === before){ _stepSt('回退未生效(画面没动)','#f85149'); return; }
+  if(!real) return;                           // 未勾真机 ⇒ 只退仿真, 到此为止
+  if(STEPREAL.busy){ _stepSt('仿真已退到 #'+now+' · 真机还在走, 本次只退仿真','#d29922'); return; }
+  stepRealFollow(now);                        // 真机退到同一帧
+}
+$('bTrajBack').addEventListener('click', function(){ rtrajBack1(); });
+// 🔴 2026-11-17 老倪「怎么没有通步, 不是第42点么?」根因:
+//   页面刚打开时 RTRAJ.frames 是懒加载的(为空)、fi=0、状态行写「#— · 未开始」,
+//   而服务端游标可能早就到第 42 点了 ⇒ 画面和真机脱节, 看着就是"没通步"。
+//   首次点单步也只是"读游标把基准钉上"(异步一枪), 用户以为点了没反应。
+//   这里改成: 页面加载后自动按游标接一次(纯只读, 不下发任何动作), 画面直接钉到真机所在那一格。
+setTimeout(function(){
+  try{
+    if(RTRAJ._synced) return;
+    var d=ensureTrajJoints(); if(!d||!d.frames||!d.frames.length) return;
+    RTRAJ.frames=d.frames; RTRAJ.joints=true;
+    RTRAJ.playing=false;
+    fetch('/api/arm/step_traj/status',{cache:'no-store'}).then(function(r){ return r.json(); })
+      .then(function(s){
+        var c=(s && s.cursor!=null)? Number(s.cursor) : 0;
+        RTRAJ._synced=true; RTRAJ._initCur=false;
+        RTRAJ.fi=Math.max(0, Math.min(RTRAJ.frames.length-1, c-1));
+        var f=RTRAJ.frames[RTRAJ.fi];
+        if(f && f.j){
+          PREV.on=true; PREV.q=f.j.slice(); PREV.M=urdfFK(PREV.q);
+          PREV.err_mm=null; PREV.target=(f.p||[0,0,0]).slice();
+          window.PREV_KEEP=true;
+          try{ mjPushQ(); mjPushQForce(); }catch(e){}
+          try{ drawVR(); }catch(e){}
+        }
+        var el=document.getElementById('tTrajStep');
+        if(el){ el.textContent=rtrajStepIdText(RTRAJ.fi); el.style.color='#3fb950'; }
+        var t=document.getElementById('tSyncStep');
+        if(t){ t.textContent='已按真机游标接上: 走过 '+c+' 点 · 画面 #'+RTRAJ.fi+' · 点单步走第 '+(c+1)+' 点';
+               t.style.color='#58a6ff'; }
+      }).catch(function(){});
+  }catch(e){}
+}, 1500);
 // 🦾🦾 左臂(仿真臂) —— 2026-10-26 老倪: 「左臂的 URDF 与右臂一样, 只是所有的位姿当前都是我来仿真给你;
 //   你先默认跟当前右臂的位姿一样…给我几个控制按钮, 参考 station 的 x y z a b c 控制, 控制的左臂系为左臂的世界坐标系」
 //   位姿口径: 世界点 = off + R(rpy)·(p_right) + d/1000    (p_right = 右臂正运动学点)
@@ -4876,13 +5015,13 @@ function beamBox(){
 //   (老倪 2026-11-16「删掉 长310 的周转盘」⇒ 310×230×45 那个盘子已删除, 只留 4#方盘)
 // 4#方盘 315×230×40 —— 老倪 2026-11-16: 「桌子中间, 靠着机器人的位置」⇒ 近端桌沿 x0 贴住, 长度方向居中
 var TPAN2={ show:true, name:'左上盘', L:0.315, W:0.230, H:0.040, wall:0.005, cx:0.985, cy:0.8925,   // 桌子左上角(远端+左臂侧)
-            fill:'#8a5a2b', inner:'#4a2f16', edge:'#e0b070' };
+ fill:'#1c1c1e', inner:'#0b0b0d', edge:'#d9d9d9' };   // 🔴 按手臂相机实拍: 哑光黑腔 + 白/浅灰翻边(原来画的棕色 #8a5a2b)
 // 中间那个 4#方盘(老倪「中间的方盘找回来, 不要删啊」): 贴机器人侧近端桌沿, 长度方向居中
 var TPANM={ show:true, name:'中方盘', L:0.315, W:0.230, H:0.040, wall:0.005, cx:0.465, cy:0.250,
-            fill:'#8a5a2b', inner:'#4a2f16', edge:'#e0b070' };
+            fill:'#1c1c1e', inner:'#0b0b0d', edge:'#d9d9d9' };
 // 右上角那个 4#方盘(老倪「桌子右上角, 增加个方盘」): 右上 = 远端+右臂侧 (x1,y0)=(1100,-550)
 var TPANT={ show:true, name:'右上盘', L:0.315, W:0.230, H:0.040, wall:0.005, cx:0.985, cy:-0.3925,
-            fill:'#8a5a2b', inner:'#4a2f16', edge:'#e0b070' };
+            fill:'#1c1c1e', inner:'#0b0b0d', edge:'#d9d9d9' };
 // 中间上方的托盘(老倪「中间上方, 要放一个托盘, 长度是 545 的盘」):
 //   宽度按标称 380: 靠侧盘那侧贴住 x=730, 多出来的 10mm 探出桌面远端边沿(x 1100 → 1110), 老倪说可以探出
 //   ⇒ 545(长,Y) × 380(宽,X) × 25, x 730~1110 / y -40~505
@@ -5535,7 +5674,10 @@ function drawTrayPan(g,pr,T,zoff){
   T=T||TPAN2;
   if(!T.show) return;
   var z0=zoff||0;
-  var R=tpanRange(T), w=T.wall, zt=T.H+z0, zb=0.008+z0;
+  var R=tpanRange(T), w=T.wall, zt=T.H+z0;
+  // 🔴 2026-11-17 老倪「ar3d 中的方盘与实际尺寸不一致」: 原来盘底固定画在 z=0.008(桌面板厚),
+  //   而盘顶在 T.H=0.040 ⇒ 画出来只有 32mm 厚, 与标称 315×230×**40** 差 8mm。以标称为准。
+  var zb=z0;
   _box3(g,pr,R.x0,R.y0,R.y1,R.x1, zt, z0, T.fill, T.edge);                      // 外壳
   _box3(g,pr,R.x0+w,R.y0+w,R.y1-w,R.x1-w, zt-0.004, zb, T.inner, T.edge, 0.95);  // 内腔
 }
@@ -5695,31 +5837,12 @@ function trayTableDims(g, pr){
     v=Math.min.apply(null, cs.map(function(p){return p.v;}))+2;
   }
   if(document.getElementById('trayDims')){ g.restore(); return; }   // 有 DOM 层就不再画 canvas 文字牌
-  const lines=['桌子  长 '+TL+' × 宽 '+TW+' × 高 '+TH+' mm',
-               '桌面 z=0 · 与箱体顶板/两臂安装面平齐'];
-  g.font='bold 13px ui-monospace,monospace';
-  const wmax=Math.max.apply(null, lines.map(function(s){ return g.measureText(s).width; }));
-  const bw=wmax+16, bh=42;
-  u=Math.max(6, Math.min(W-bw-6, u)); v=Math.max(6, Math.min(H-bh-6, v));
-  g.fillStyle='rgba(0,0,0,.96)'; g.beginPath(); g.rect(u,v,bw,bh); g.fill();
-  g.strokeStyle='#ffffff'; g.lineWidth=1.8; g.stroke();
-  g.font='bold 14px ui-monospace,monospace';
-  g.lineJoin='round'; g.lineWidth=3; g.strokeStyle='rgba(0,0,0,.95)';
-  g.strokeText(lines[0], u+8, v+20); g.fillStyle='#ffffff'; g.fillText(lines[0], u+8, v+20);
-  g.font='12px ui-monospace,monospace';
-  g.fillStyle='#e6edf3'; g.fillText(lines[1], u+8, v+37);
-  // 🦾 状态牌: 画面上直接写清「右臂/左臂」当前是显示还是已隐藏 —— 不靠按钮文案猜
-  try{
-    const rOn=(VR.simArm!==false)||(VR.real!==false), lOn=!!(typeof LARM!=='undefined'&&LARM&&LARM.show);
-    const s1='🦾 右臂: '+(rOn?'显示':'已隐藏'), s2='🤖 左臂: '+(lOn?'显示':'已隐藏');
-    g.font='bold 13px ui-monospace,monospace';
-    const w1=g.measureText(s1).width+12, w2=g.measureText(s2).width+12, ww=Math.max(w1,w2)+8;
-    const x0s=8, y0s=H-58;
-    g.fillStyle='rgba(0,0,0,.88)'; g.beginPath(); g.rect(x0s,y0s,ww,42); g.fill();
-    g.strokeStyle='#30363d'; g.lineWidth=1.2; g.stroke();
-    g.fillStyle=rOn?'#3fb950':'#8b949e'; g.fillText(s1, x0s+6, y0s+17);
-    g.fillStyle=lOn?'#3fb950':'#8b949e'; g.fillText(s2, x0s+6, y0s+35);
-  }catch(e){}
+  // 🔴 2026-11-17 老倪「场景有两个黑条, 应该是文字, 影响我视线, 删掉」:
+  //   这两块 42px 黑底文字牌就是元凶 —— ① 桌子尺寸牌 ② 左右臂状态牌。
+  //   尺寸信息在「📦 箱体 / 🧪 实验桌」按钮和右侧面板里都有, 不必压在三维画面上挡视线。
+  //   尺寸线(dimLine)保留: 它是贴着模型画的长/宽/高标注, 不挡视线。
+  // 🦾 状态牌: 已按老倪 2026-11-17 要求删除(第二个黑条, 42px 黑底压 W-58 处挡视线);
+  //    右臂/左臂显示状态看顶部按钮的 on/off 即可。
   g.restore();
 }
 function drawTable(g,pr){
@@ -6573,15 +6696,18 @@ function stepRealFollow(i){
   if(!cb){ _stepSt('单步 · 第 '+i+' 点 · 只动仿真(找不到『真机也走』勾选框)','#d29922'); return; }
   if(!cb.checked){ _stepSt('单步 · 第 '+i+' 点 · 只动仿真(未勾『真机也走』)','#d29922'); return; }
   if(STEPREAL.busy){ _stepSt('单步 · 第 '+i+' 点 · 真机还在走上一段, 本次只动仿真','#d29922'); return; }
-  STEPREAL.busy=true;
-  _stepSt('仿真到 #'+i+' · 1s 后让真机跟着走一点…','#58a6ff');
+  STEPREAL.busy=true; STEPREAL.bt=Date.now();
   setTimeout(function(){
     fetch('/api/arm/step_traj/status',{cache:'no-store'}).then(function(r){ return r.json(); })
       .then(function(s){
         var cur=(s && s.cursor!=null)? s.cursor : 0;
-        _stepSt('真机下发: 游标 '+cur+' → 走 1 点到 #'+(cur+1),'#58a6ff');
+        // 🎯 2026-11-17 修 off-by-one(老倪「仿真走一步真机走一步」实测差一帧):
+        //   画面已定到 frames[i], 服务端 start 的语义是「这一拍要走的帧索引」⇒ 必须 start:i 才是同一帧。
+        //   旧写法 start:cur(cur=已走计数=i-1) ⇒ 真机永远比仿真落后一帧。
+        //   若真机实际不在 frames[i-1], 跳变闸会拒(30°), 仍由服务端把关, 页面不绕过。
+        _stepSt('真机下发: 走第 '+(i+1)+' 点(frames['+i+'])'+(cur!==i?(' · 服务端游标 '+cur+' 与画面差 '+Math.abs(cur-i)):''),'#58a6ff');
         return fetch('/api/arm/step_traj',{method:'POST',headers:{'Content-Type':'application/json'},
-                     body:JSON.stringify({n:1,start:cur})});
+                     body:JSON.stringify({n:1,start:i})});
       })
       .then(function(r){ return r.json(); })
       .then(function(d){
@@ -6597,7 +6723,7 @@ function stepRealFollow(i){
         STEPREAL.poll=setInterval(function(){
           fetch('/api/arm/step_traj/status',{cache:'no-store'}).then(function(r){ return r.json(); })
             .then(function(s){
-              if(s && s.running){ _stepSt('真机 第 '+(s.done||0)+'/'+(s.n||1)+' 点 · '+(s.elapsed_s||0)+'s','#58a6ff'); return; }
+              if(s && s.running){ _stepSt('真机 第 '+(s.done||0)+'/'+(s.n||1)+' 点 · '+(s.elapsed_s||0)+'s'+(s.elapsed_s>10?'（含夹爪开合, 单次实测~80s, 别急）':''),'#58a6ff'); return; }
               if(s && s.finished){
                 clearInterval(STEPREAL.poll); STEPREAL.poll=null; STEPREAL.busy=false;
                 syncArmFollow(false);
@@ -6605,15 +6731,28 @@ function stepRealFollow(i){
                 else _stepSt('⛔ 真机停在 '+(s.n_done||0)+'/'+(s.n||1)+' 点 · '+(s.why||''),'#f85149');
                 return;
               }
-              if(Date.now()-t0>60000){ clearInterval(STEPREAL.poll); STEPREAL.poll=null; STEPREAL.busy=false;
-                _stepSt('真机状态轮询超时(>60s), 看 zmax_data/rokae_sdk/traj_step_out.log','#f85149'); }
-            }).catch(function(){});
+              if(Date.now()-t0>200000){ clearInterval(STEPREAL.poll); STEPREAL.poll=null; STEPREAL.busy=false;
+                _stepSt('真机状态轮询超时(>200s), 看 zmax_data/rokae_sdk/traj_step_out.log','#f85149'); }
+            }).catch(function(){
+              // 🔴 8797 重启/网络抖动时这里原来是空 catch ⇒ 轮询静默失败、busy 永久 true,
+              //   之后每次点单步都只走仿真、真机再也不动(现场「怎么又不跟着走了」)。
+              STEPREAL.miss=(STEPREAL.miss||0)+1;
+              if(STEPREAL.miss>=6){
+                clearInterval(STEPREAL.poll); STEPREAL.poll=null;
+                STEPREAL.busy=false; STEPREAL.miss=0;
+                _stepSt('真机状态连续 6 次取不到, 已复位(8797 可能刚重启), 请重试','#f85149');
+              }
+            });
         },700);
       })
       .catch(function(e){ STEPREAL.busy=false; _stepSt('真机请求失败: '+e,'#f85149'); });
   },1000);                                       // ← 老倪要的 1 秒间隔
 }
 function rtrajStep(delta){
+  // 🔒 2026-11-17 老倪「视角不要变化, 不要一点击单步就跳」: 进函数第一件事就把当前机位锁住。
+  //   必须在这里 —— 后面的 mjPushQ/larmFreezeOn 会把 VR.dist/tgt 改成 MuJoCo 机位, 那时再锁就锁错了。
+  //   只在"还没锁"时锁(单步连点不改机位); 用户滚轮/中键平移会清锁。
+  if(!window.VR_CAM_LOCK){ window.VR_CAM_LOCK={yaw:VR.yaw, pitch:VR.pitch, dist:VR.dist, tgt:(VR.tgt||[0,0,0]).slice()}; }
   var d=ensureTrajJoints();
   if(!d || !d.frames || !d.frames.length){ alert('回放数据缺失: '+(RTRAJJ_ERR||'未知')); return; }
   // 连续播放中单步 ⇒ 先定住, 否则 RAF 会立刻把 fi 抢回去
@@ -6624,6 +6763,40 @@ function rtrajStep(delta){
   var frames=d.frames;
   RTRAJ.frames=frames;
   RTRAJ.joints=true;
+  // 🎯 2026-11-17 老倪「真机器人还是没有动」根因: 页面初始化把 RTRAJ.fi 设成 0(不是 null) ⇒
+  //   第一次点单步永远走 frames[1], 若真机本来就停在 frames[1] 附近, 位移≈0 ⇒ 看着"点了没反应"。
+  //   正解: 首次单步前先读服务端游标(cursor=已走完点数), 把画面基准钉到 cursor-1, 这样
+  //   i=cursor 正好是"下一个没走过的点", start=i 与画面同帧。_synced 保证只做一次。
+  if(!RTRAJ._synced && !RTRAJ._initCur){
+    RTRAJ._initCur=true;
+    fetch('/api/arm/step_traj/status',{cache:'no-store'}).then(function(r){ return r.json(); })
+      .then(function(s){
+        var c=(s && s.cursor!=null)? Number(s.cursor) : 0;
+        RTRAJ.fi=Math.max(0, c-1);
+        RTRAJ._initCur=false; RTRAJ._synced=true;
+        var t=document.getElementById('tSyncStep');
+        if(t){ t.textContent='已按服务端游标接上: 真机走过 '+c+' 点 · 再点一次单步走第 '+(c+1)+' 点'; t.style.color='#58a6ff'; }
+        rtrajStep(delta);
+      })
+      .catch(function(){ RTRAJ._initCur=false; RTRAJ._synced=true; RTRAJ.fi=0; rtrajStep(delta); });
+    return null;
+  }
+  // 🔴 2026-11-17 老倪「怎么又不跟着走了？」根因: 真机上一段还没走完时, 旧逻辑让**仿真先走**、
+  //   真机这一步跳过(只在状态行写一句"本次只动仿真") ⇒ 连点几下仿真就领先真机好几个点,
+  //   现场看到的就是"仿真在动、真机不跟着走"。现在: 勾了『真机也走』且真机忙 ⇒ **整步都不动**,
+  //   保持 1:1 同步。另加 250s 自愈 —— 轮询被空 catch 吞掉时 busy 会永久 true(8797 重启就会踩到)。
+  if((delta||0)>0){
+    if(STEPREAL.busy && Date.now()-(STEPREAL.bt||0)>250000){
+      if(STEPREAL.poll) clearInterval(STEPREAL.poll);
+      STEPREAL.poll=null; STEPREAL.busy=false;
+      _stepSt('单步 · busy 卡住超过 250s, 已自动复位','#d29922');
+    }
+    var _cb0=document.getElementById('cSyncArm');
+    if(_cb0 && _cb0.checked && STEPREAL.busy){
+      _stepSt('⏳ 真机还在走上一段, 等它到位再点 —— 仿真这一步也不动, 保持 1:1','#d29922');
+      return (RTRAJ.fi==null)?0:Number(RTRAJ.fi);
+    }
+  }
   var cur=(RTRAJ.fi==null)?0:Number(RTRAJ.fi);
   var i=Math.max(0, Math.min(frames.length-1, cur+(delta||0)));
   RTRAJ.fi=i;
@@ -6634,7 +6807,9 @@ function rtrajStep(delta){
   // ⚠ 单步没在播(playing=false), 会被「空闲即真值」的自动同步判定为空闲把幽灵臂收掉 ⇒
   //   必须打 PREV_KEEP(和「👻 预览动作」同一个机制), 否则刚定住的第 N 点几秒后就跳回真机位姿了。
   window.PREV_KEEP=true;
-  if(typeof vrFitBox==='function'){ try{ vrFitBox(); }catch(e){} }
+  // 🎥 2026-11-17 老倪「屏幕的视角不要变化, 不要一点击单步, 视角就回到默认状态」⇒ 单步只换臂的姿态,
+  //  相机(yaw/pitch/dist/tgt)原样保留, 并把 VR.auto 关掉(否则下一帧按新包围盒又重取景 ⇒ 看着像"跳回默认")。
+  if(typeof vrKeepCam==='function'){ try{ vrKeepCam(function(){}); }catch(e){} }
   mjPushQ(); mjPushQForce();
   var el1=document.getElementById('tTrajStep'), el2=document.getElementById('rpStepId');
   var _txt=rtrajStepIdText(i);
@@ -6737,7 +6912,7 @@ function syncArmFollow(on){
 }
 function syncUI(on,txt){
   var b=document.getElementById('bSyncStep'), t=document.getElementById('tSyncStep');
-  if(b){ b.textContent = on ? '⏹ 停止同步' : '⏭ 同步操作'; if(b.classList) b.classList.toggle('on', !!on); }
+  if(b){ b.textContent = on ? '⏹ 停止同步' : '⏭ 同步操作(只仿真)'; if(b.classList) b.classList.toggle('on', !!on); }
   if(t && txt!=null) t.textContent = txt;
 }
 function syncStepStop(msg){
@@ -8058,6 +8233,20 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
   function mtNow() {
     var cyc = (MT.lanes && MT.lanes.cycle_s) || 11.4;
     var d = ((typeof ARCMD !== 'undefined' && ARCMD && ARCMD.d) || {});
+    // 🔴 2026-11-17 现场「现在还是插入阶段, 但节拍显示拔出」的根因:
+    //   下面 PLANT.on 那条是按 simT % cyc **空转**算时间的, 会跑到真机前面 —— 真机还在插入,
+    //   节拍已经循环到 MT-02(拔出)。有真机游标时必须以游标为准, 时间轴只作兜底。
+    //   游标→阶段(与 GANTRY_SEGS 同源): ≤113 含抓取/举升/插入 ⇒ MT-01; 114–119 拔出 ⇒ MT-02;
+    //   ≤197 AOI ⇒ MT-03; 其余放盘/回位 ⇒ MT-04。
+    var _cur = (typeof SYNCUR !== 'undefined' && SYNCUR && SYNCUR.cursor != null) ? Number(SYNCUR.cursor) : null;
+    if (_cur != null && _cur > 0 && !mtFollowing()) {
+      var _mt = (_cur <= 113) ? 'MT-01' : ((_cur <= 119) ? 'MT-02' : ((_cur <= 197) ? 'MT-03' : 'MT-04'));
+      var _bs = ((MT.lanes.R || {}).blocks || []);
+      for (var _j = 0; _j < _bs.length; _j++) {
+        if (_bs[_j].mt === _mt) { return { t: (_bs[_j].t0 + _bs[_j].t1) / 2, src: '真机游标 ' + _cur + ' → ' + _mt }; }
+      }
+      return { t: 0, src: '真机游标 ' + _cur + ' → ' + _mt };
+    }
     if (mtFollowing() && d.mt_id) {
       var all = ((MT.lanes.R || {}).blocks || []).concat((MT.lanes.L || {}).blocks || []);
       var hit = null;
