@@ -22,6 +22,8 @@ YOLO=软链yolo_peg_live.pt; 瓶颈=数据; 相机独占⇒同进程
 §
 真源calib.json→zmax_params.py; 训练=joint_train_all.py --only L4,L3,L2; L5规划器/safety=ss/{planner,safety}.py; INTACT须常驻
 §
+阶段MOE: 硬先验路由;枚举不匹配静默降级; 判据=单射
+§
 LoRA需merge(否则零动作):merge_lora_ckpt.py
 §
 ECS=web入口; 站点搬550C:8081待点头; 资产直连/U盘
@@ -38,9 +40,9 @@ GPU掉载=每步CPU>计算→静音日志+workers↑
 §
 位姿真源=tcp_out/latest.json(全0陈旧;崩则pose-relay搬)
 §
-运动安全: 速度1~1000mm/s;前置idle+automatic; 腿上限须重容器; 清79免授权;新点位老倪先做;碰撞先agent_all_stop; 插入力SFP18/QSFP60/DD90N; 台账INCIDENT-INDEX.md; 两腿:轨迹MoveAbsJ/笛卡尔move_rel
+运动安全: 速度1~1000mm/s;前置idle+automatic; 腿上限须重容器; 清79免授权;新点位老倪先做;碰撞先agent_all_stop; 插入力按封装SFP18/QSFP60/DD90N; 台账INCIDENT-INDEX.md
 §
-AR=8797(systemd;8793与Intel8816皆裸进程无自启);轨迹cursor=N+1⇔frames[N]⇔页#N;底图8791+D435@Orin8794;AOI位姿8793/guide_move→8797/move_rel;k勿用pitch换算;规整图裁剪跟随看不出移动
+AR=8797; 底图=8791(arm/gold/surface)+D435@Orin8794; L5=ar_l5_understand.py; AR3D r107 2孔z278/187.6
 §
 任务7=AR·L5进化;场景=ss_scene_switch.py;色标=sig_scene_tags.py
 §
@@ -48,11 +50,13 @@ AR=8797(systemd;8793与Intel8816皆裸进程无自启);轨迹cursor=N+1⇔frames
 §
 控制进程: 按端口/pid找(ss -ltnp),禁ps|grep名;杀进程写脚本;sudo免密
 §
-判据图=aoi_surface_rect;10083曝光<20k无信号(3k=4/5k=11/7k抖/40k可)现7k;点记录后必跑verify_points_consistency
+判据图=aoi_surface_rect(贯穿列截断夹具+vertical兜底+扩暗头);曝光5000us
 §
 奇异区: 姿态>5°被50113拒且腿假报到位; 转移=抬50→转身→低位横移→上方升降
 §
-版本号只听老倪;仓VERSION.md为准;MoveIt起点须SDK直采
+3DGS:基线17.22dB;24k=16.41未过闸; 建图8793走点45s/轮;;GS_MAP_MODE=auto
+§
+版本号只听老倪;仓VERSION.md为准(现5.50.775);MoveIt起点须SDK直采
 §
 tool0读heartbeat.pose.flange(禁手推R,y差251mm);precheck扣连杆半径(肘r78)+<20mm FAIL
 §
@@ -68,4 +72,4 @@ intel出口=.23.66走Orin NAT(zmax-nat-intel;Orin sudo ts123)
 §
 action=真值pose+u·dt(重锚)+u[3]夹爪;无真值不出位姿;Intel非git⇒rsync
 §
-7任务=reports/fullflow7/<ts>/;专利20件
+7任务=reports/fullflow7/<ts>/;缺口=仿真0轨迹·元任务‖T‖同值;专利20件
