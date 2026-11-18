@@ -90,6 +90,26 @@ function clear(cv,bg){const g=cv.getContext('2d');g.setTransform(1,0,0,1,0,0);g.
 function fit(cv){const r=cv.getBoundingClientRect(),d=window.devicePixelRatio||1;
   if(cv.width!==Math.round(r.width*d)){cv.width=Math.round(r.width*d);cv.height=Math.round(r.height*d);}
   const g=cv.getContext('2d');g.setTransform(d,0,0,d,0,0);return {g,w:r.width,h:r.height};}
+// 🏷 胶囊标签: 深色半透明底 + 亮字(绿字直接在暗背景上对比度太低, 实测看不清)
+function chip(g,x,y,text,accent,fs){
+  const f=fs||P(15); g.font='600 '+f+'px -apple-system,"Segoe UI",sans-serif';
+  const w=g.measureText(text).width, hh=Math.round(f*1.75), pad=Math.round(f*0.55);
+  // 夹在画布内, 免得贴边时被裁掉
+  const cw=g.canvas.width/(window.devicePixelRatio||1), ch=g.canvas.height/(window.devicePixelRatio||1);
+  const tw=w+pad*2+16;
+  if(x+tw>cw-6) x=Math.max(6,cw-6-tw);
+  if(y-hh/2<4) y=hh/2+4;
+  if(y+hh/2>ch-4) y=ch-4-hh/2;
+  g.save();
+  g.fillStyle='rgba(8,13,19,0.86)';
+  if(g.roundRect){g.beginPath();g.roundRect(x,y-hh/2,w+pad*2+16,hh,hh/2.6);g.fill();}
+  else{g.fillRect(x,y-hh/2,w+pad*2+16,hh);}
+  g.fillStyle=accent||'#3ddc84';
+  g.beginPath();g.arc(x+pad+4,y,3.6,0,6.2832);g.fill();
+  g.fillStyle='#f2f7fb';g.textBaseline='middle';
+  g.fillText(text,x+pad+14,y+1);
+  g.textBaseline='alphabetic';g.restore();
+}
 function line(g,a,b,c,w){g.strokeStyle=c;g.lineWidth=w||1;g.beginPath();g.moveTo(a[0],a[1]);g.lineTo(b[0],b[1]);g.stroke();}
 function circle(g,x,y,r,c,w,fill){g.beginPath();g.arc(x,y,r,0,6.2832);if(fill){g.fillStyle=fill;g.fill();}g.strokeStyle=c;g.lineWidth=w||1;g.stroke();}
 function hsl(i,n){return 'hsl('+(i/n*300)+',85%,58%)';}
@@ -136,7 +156,8 @@ function drawA(){
     const q=proj(cv,lp,cam.yaw,cam.pitch,sc,cx,cy);
     g.strokeStyle='#3ddc84';g.lineWidth=2;g.beginPath();g.arc(q[0],q[1],9,0,6.2832);g.stroke();
     g.fillStyle='#3ddc84';g.font='600 '+P(14)+'px sans-serif';
-    g.fillText('现在 #'+LIVE.nearest.i+' · s '+(LIVE.nearest.s*100).toFixed(1)+'% · 偏轨 '+LIVE.nearest.dist_mm+' mm · '+(LIVE.age_s||0).toFixed(1)+'s',14,74);
+    chip(g,10,78,'现在 #'+LIVE.nearest.i+'   s '+(LIVE.nearest.s*100).toFixed(1)+'%   偏轨 '+
+         LIVE.nearest.dist_mm+' mm   帧龄 '+(LIVE.age_s||0).toFixed(1)+'s','#3ddc84',P(15));
   }
   g.fillStyle='#fff';g.font='600 '+P(14)+'px sans-serif';
   g.fillText('#'+idx+'  '+F[idx].p.map(v=>v.toFixed(0)).join(' / ')+' mm',14,24);
@@ -166,7 +187,7 @@ function drawB(){
   g.globalAlpha=1;
   // 参考轴(插入段 +X) 与当前轴
   const ref=F[30].n, o=proj(cv,[0,0,0],yaw,0.35,s,cx,cy), rp=proj(cv,ref,yaw,0.35,s,cx,cy);
-  line(g,o,rp,'#3ddc84',2);g.fillStyle='#3ddc84';g.font=P(13)+'px sans-serif';g.fillText('孔轴/参考',rp[0]+5,rp[1]);
+  line(g,o,rp,'#3ddc84',2.4);chip(g,rp[0]+8,rp[1],'孔轴参考','#3ddc84',P(13));
   const cp=proj(cv,F[idx].n,yaw,0.35,s,cx,cy);
   line(g,o,cp,'#37d0ff',2.4);circle(g,cp[0],cp[1],4,'#37d0ff',0,'#37d0ff');
   const dot=F[idx].n[0]*ref[0]+F[idx].n[1]*ref[1]+F[idx].n[2]*ref[2];
