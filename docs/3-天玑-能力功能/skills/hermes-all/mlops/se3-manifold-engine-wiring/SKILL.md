@@ -136,6 +136,19 @@ B S²(`sphere`) / C S³(`su2`) / D S¹(`torus`) / E S¹(`torus`), C⇄(B,D) 用 
 
 实测开销 `0.29 ms/拍`(100 拍 29.3 ms, 预算 100 ms); 真值帧龄 0.14 s 时 A/B/C/D/E 与真值逐项一致。
 
+## 12. 五流形上引擎常驻 + 远端看板 (两个必踩的坑)
+
+- **开启方式**: `systemctl edit` drop-in `Environment=ZMAX_SE3_LAYERS=1` → restart `zmax-ss-engine-loop`。
+  `layer_calls.jsonl` 每 10 个引擎周期(1 Hz)多一条 `rec["se3"]`, `/dev/shm/se3_layers.json` 同步。
+- 🔴 **E（相位）会钉在末帧 `s=0.9995`**: `snapshot(i=None)` 默认取最后一帧索引。接了实时位姿时必须用
+  **TCP 投影到轨迹的最近帧**算 i (`nearest_i()`, 相位连续窗口), 否则 A/B/C/D 在动而 E 不动。
+  实测改前整轮 E_s 恒 0.9995, 改后 0.3058→0.3190 随真机推进。
+- 🔴 **另一台机看实时信号: 它没有珞石 SDK**。做法 = 在引擎侧的 8797 `GET /api/tcp` 上加
+  `Environment=ZMAX_SE3_TRUTH_URL=http://<engine-host>:8797/api/tcp`, 本地 `latest.json` 帧龄>2s 才拉远端;
+  远端回包归一成 `{x,y,z(m), qx..qw, joints(rad), ts}`。注意 `/api/tcp` 的 `quat` 已经是 `[qx,qy,qz,qw]`。
+- 🔴 **最近点连续性窗口会让停回起点的臂报错帧**: 窗口赢过 2.3mm 的全局最近点时(自交 22 处),
+  看板报 `#69 偏轨 2.3mm` 而真实是 `#214`。加一条前置规则: `min(d)≤3mm` 就直接取全局最近, 不走窗口。
+
 ## 改动画布时
 六断言 + `_archive` 备份 + 剔除新增后逐条比对，见 `state-space-canvas-engineering`。
 本链做到“零画布改动”是因为 `n_vlm_llm → ss_mani_eng in1` 这条线本来就有，只是代码不读它。
