@@ -34,6 +34,19 @@ import xcoresdk_python as x  # noqa: E402
 
 IP = os.environ.get("ZMAX_ROBOT_IP", "192.168.23.160")
 CMD = os.environ.get("ZMAX_STEP_CMD", "/sdk/traj_step_cmd.json")
+# 🌀 s∈S¹ 相位: 弧长重参数化表(tools/se3_phase.py 生成), 与 cmd 同目录; 缺省时相位留空不臆造
+_PHASE = {}
+
+
+def _load_phase():
+    """读 traj_phase.json → {i: s}。只读不留副作用; 没有就返回空(日志里 s 置 None)。"""
+    try:
+        p = os.path.join(os.path.dirname(CMD), "traj_phase.json")
+        for r in json.load(open(p, encoding="utf-8"))["frames"]:
+            _PHASE[int(r["i"])] = float(r["s"])
+    except Exception:                                                   # noqa: BLE001
+        _PHASE.clear()
+    return _PHASE
 MAX_JUMP_DEG = 40.0
 # 2026-11-18: 块内出现 >BIG_JUMP_DEG 的相邻跳变就在那里断块 —— #19→#20 实测 31.1°,
 #   它并进普通块会把整块拖超时(实测 20s 超时、误差 27.7°、停在半路)。
@@ -479,6 +492,7 @@ def _run_flow(r, frames, out, dwell_ms, grip_at, start_abs, ts, prev, quats=None
                "anchor_deg": round(anchor, 2), "max_jump_deg": round(worst, 2),
                "axis_dn_max": c.get("axis_dn_max"), "roll_dp_max": c.get("roll_dp_max"),
                "rec_dt_s": round(float(t_target), 3) if t_target else None,
+               "s0": _PHASE.get(start_abs + i), "s1": _PHASE.get(start_abs + j),
                "target_deg": [round(math.degrees(v), 2) for v in jts[-1]], "flow": True}
         if why:
             rec["why"] = why
@@ -523,6 +537,7 @@ def main() -> int:
         print(json.dumps({"ok": False, "why": "缺少指令文件 %s" % CMD}, ensure_ascii=False))
         return 2
     spec = json.load(open(CMD, encoding="utf-8"))
+    _load_phase()                                                        # 🌀 s∈S¹ 相位表
     frames = spec.get("frames") or []
     n = int(spec.get("n") or len(frames))
     frames = frames[:n]
