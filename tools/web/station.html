@@ -490,8 +490,8 @@ var HTML_VER="__HTMLVER__";</script>
       <span class="meta" id="m_aoi_gold">…</span></div>
       <img id="i_aoi_gold" data-mode="mjpg" data-src="/aoi_gold.mjpg">
       <div class="row" style="padding:6px 10px 2px"><span class="seg" id="gview">
-        <button data-stream="/aoi_gold.mjpg" class="on">判据图</button>
-        <button data-stream="/aoi_gold_raw.mjpg">整板原图</button></span>
+        <button data-stream="/aoi_gold.mjpg" class="on">规整图</button>
+        <button data-stream="/aoi_gold_raw.mjpg">原图</button></span>
         <!-- 🏷 2026-11-17 老倪: 「在金手指检测 整板原图 按钮旁边, 增加 标注 按钮, 用于打开这个 gold 的网页」
              单独一个按钮(不进 #gview 的 .seg): 那个按钮组是**换 MJPEG 源**的, 多一个没有 data-stream 的
              按钮会被换源逻辑当成源(im.src=undefined) ⇒ 放组外, 只负责打开 /station/gold。 -->
@@ -525,16 +525,14 @@ var HTML_VER="__HTMLVER__";</script>
       <div class="row" style="padding:4px 10px 2px">
         <button onclick="aoiDetect(10082)" style="font-weight:600">🔍 请求检测</button>
         <button onclick="aoiLastResult(10082)" style="font-weight:600">🧾 最后结果</button>
-        <!-- 🥽 2026-10-11 老倪「把 3D场景的力控改成 AR」: AR 场景页 = RealSense 实拍 + 金手指AOI/空间点位/TCP 叠加
-             (仅产线内网可达: 8797 是本机服务; 公网域名下点不开, 属预期) -->
-        <button onclick="window.open('http://'+location.hostname+':8797/ar?cam=rs','_blank')"
-                style="font-weight:700" title="AR 场景: Intel RealSense 实拍 + 金手指AOI点位/空间点位/TCP真值叠加 (产线内网)">🥽 AR 场景</button>
-        <!-- 🔦 2026-10-22 老倪: 「还得增加 光纤 按钮，自动打开 …:8797/autoLight」
-             与 🥽 AR 场景同一个服务端口(8797), 新窗口打开 ⇒ 两个页面可同时开着 -->
-        <button onclick="window.open('http://'+location.hostname+':8797/autoLight','_blank')"
-                style="font-weight:700" title="光纤端面检测及清理设备 · 工艺卡 (8797 同端口 · 产线内网)">🔦 光纤</button>
+        <button onclick="aoiGuide(10082)" style="font-weight:600" title="取一次位姿: 抓帧→定位19根→与画面中心比→按标定算该沿 Y 走多少 mm。只报数, 不下发运动">🎯 位姿调整</button>
+        <button onclick="aoiGuideMove(10082)" style="font-weight:600;background:#238636;border-color:#238636" title="真机移动: 取位姿→沿标定轴做笛卡尔平移(姿态不变)→回读画面确认真挪了。单次限幅 5mm, 速度 5mm/s。走 8797 /api/arm/move_rel, 需要 8793 已授权">▶ 按位姿移动</button>
+        <!-- 🗑 2026-11-18 老倪: 「删除 金手指的 AR场景 和 光纤 两个按钮, 格式与表面检测一致」
+             ⇒ 金手指面板这一行只留 请求检测 / 最后结果, 与表面检测(10083)面板逐项对齐。
+             (AR/光纤页面本身仍在 8797, 只是不再从这个面板跳转) -->
         <span id="aoi_lr_msg" style="margin-left:8px;font-size:12px;opacity:.85"></span>
         <span id="aoi_det_msg" style="margin-left:8px;font-size:12px;opacity:.85"></span>
+        <span id="aoi_guide_msg" style="margin-left:8px;font-size:13px;font-weight:600"></span>
         <script>
         /* 2026-09-28 老倪: 「增加一个请求按钮, 发出正常的检测命令, 工控机本地也可以保存图片」
            走本服务 POST /api/aoi/detect → 转发工控机产线正常命令 POST /capture_detect
@@ -542,12 +540,79 @@ var HTML_VER="__HTMLVER__";</script>
            结果整段 JSON 打在下面 <pre> 里 —— 可选中复制, 不弹窗、不截断。 */
         /* 2026-09-30 老倪: 「在请求检测按钮旁边, 增加 最后结果 按钮, 实现 /last_result 功能, 最终得有结果啊」
            本服务 GET /api/aoi/last_result → 转发工控机 GET /last_result(只读: 不拍照、不检测)。
-           显示判决/缺陷数/耗时/检测序号 + **拍照时间与帧龄**(老倪硬要求) + 模型输入图/判据图链接 + 原始 JSON(可复制)。 */
+           显示判决/缺陷数/耗时/检测序号 + **拍照时间与帧龄**(老倪硬要求) + 规整图链接 + 原始 JSON(可复制)。 */
+        /* 🎯 位姿调整 (老倪 2026-11-18: 「增加位姿调整按钮, 要有发出位姿的服务, 同理表面检测也要增加」)
+           链路: 本服务 POST /api/aoi/guide?port=10082 → 工控机 POST /guide_pose
+                → 抓一帧、定位 19 根、与画面中心比、按 k_mm_px/axis_sign 算 d_mm
+           刻意**只报数、不下发运动**: 取数(视觉)与动臂(轨迹通道 8797)分开,
+           避免一个按钮同时干两件事 —— 点了就动的那种, 出错时无法判断是谁动的。 */
+        async function aoiGuide(port,tag){
+          var sfx = (tag==='s') ? '_s' : '';
+          var m = document.getElementById('aoi_guide_msg'+sfx);
+          if(m){ m.style.color='#8b949e'; m.textContent='取位姿中…(抓帧+定位19根)'; }
+          try{
+            var r = await fetch(_u('/api/aoi/guide?port='+port), {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+            var d = await r.json();
+            if(!d || !d.ok){
+              var why = (d && d.diag && (d.diag.err||d.diag.msg)) || (d && (d.err||d.msg)) || ('HTTP '+r.status);
+              if(m){ m.style.color='#f85149'; m.textContent = '❌ 位姿失败: ' + why; }
+              return;
+            }
+            var g = d.gold || {}, gd = d.guide || {};
+            var ax = gd.axis || 'Y';
+            var line = 'n=' + g.n + ' · 偏 ' + g.off_px + ' px (pitch ' + g.pitch_px + ')';
+            if(gd.act === 'hold'){
+              line += ' · ✅ 已居中, 不动';
+              if(m){ m.style.color='#3fb950'; m.textContent = line; }
+            }else{
+              line += ' · 该沿 ' + ax + ' 走 ' + gd.d_mm + ' mm';
+              var pt = gd.pose_target || {};
+              if(pt.y != null){ line += ' → Y ' + (pt.y).toFixed(2); }
+              if(m){ m.style.color='#d29922'; m.textContent = line + ' (仅报数, 未下发)'; }
+            }
+          }catch(e){
+            if(m){ m.style.color='#f85149'; m.textContent='❌ 位姿失败: ' + e; }
+          }
+        }
+
+        /* ▶ 按位姿移动 (老倪 2026-11-18「位姿调整, 机器人可以动了」)
+           链路: 8793 POST /api/aoi/guide_move → 取位姿 → 8797 POST /api/arm/move_rel
+                → sdk_ctl.py move-rel(笛卡尔, 姿态不变) → 回读画面报 off_px 变化
+           与「🎯 位姿调整」的区别: 那个只报数, 这个真动臂。分开两个按钮是刻意的 ——
+           取数只读、移动不可逆, 混一个按钮出问题时无法判断是谁动的。 */
+        async function aoiGuideMove(port,tag){
+          var sfx = (tag==='s') ? '_s' : '';
+          var m = document.getElementById('aoi_guide_msg'+sfx);
+          if(m){ m.style.color='#d29922'; m.textContent='执行中…(取位姿→移动→回读, 约 7s)'; }
+          try{
+            var r = await fetch(_u('/api/aoi/guide_move?port='+port), {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+            var d = await r.json();
+            if(!d || !d.ok){
+              if(m){ m.style.color='#f85149'; m.textContent='❌ 移动失败: ' + ((d && (d.err || d.stage)) || ('HTTP '+r.status)); }
+              return;
+            }
+            var st = d.stage, pl = d.plan || {};
+            if(st === 'hold' || st === 'noop'){
+              if(m){ m.style.color='#3fb950'; m.textContent = '✅ ' + (d.note || '已居中, 未移动'); }
+              return;
+            }
+            var txt = '已移动 ' + pl.d_mm_sent + ' mm (轴' + (pl.axis||'Y') + ')';
+            if(d.off_px_before != null && d.off_px_after != null){
+              txt += ' · off_px ' + d.off_px_before + ' → ' + d.off_px_after;
+            }
+            if(d.k_mm_px_effective){ txt += ' · 实测 k=' + d.k_mm_px_effective; }
+            if(m){ m.style.color='#3fb950'; m.textContent = '✅ ' + txt; }
+          }catch(e){
+            if(m){ m.style.color='#f85149'; m.textContent='❌ 移动失败: ' + e; }
+          }
+        }
+
         async function aoiLastResult(port,tag){
           const sfx=tag?('_'+tag):'', m=document.getElementById('aoi_lr_msg'+sfx);
           if(!m){ alert('页面缺 #aoi_lr_msg'+sfx+' 元素, 请 Ctrl+F5 强制刷新'); return; }
-          const lk=(port==10083)?{mi:_u('/aoi_surface_modelin.png'),jd:_u('/snapshot/aoi_surface.jpg')}
-                                :{mi:_u('/aoi_modelin.png'),        jd:_u('/snapshot/aoi_gold.jpg')};
+          // 🆕 2026-11-18 老倪: 只有两张图 —— 原图 + 规整图(后者就是送 YOLO 的), 不再有判据图
+          const lk=(port==10083)?{mi:_u('/aoi_surface_modelin.png')}
+                                :{mi:_u('/aoi_modelin.png')};
           m.textContent='⏳ 读取工控机 /last_result …';
           try{
             const t0=performance.now();
@@ -555,21 +620,41 @@ var HTML_VER="__HTMLVER__";</script>
             const j=await r.json(), d=j.last_result||{};
             document.getElementById('aoi_lr_box'+sfx).style.display='block';
             const ng=(d.verdict==='NG');
+            /* 2026-11-18 老倪: 「要有缺陷的输出」——
+               gf 那个 YOLO 权重已失效(恒 0 框), d.count 永远 0, 却 verdict=NG ⇒ 页面自相矛盾。
+               真正的缺陷来源是 19 根逐根规则(fingers.bad), 这里以它为准并列出根号。 */
+            const _fg=d.fingers||{}, _bad=(_fg.bad||[]);
+            const _detail=_bad.length?(' · 异常根 <b style="color:#ff7b72">'+_bad.join(', ')+'</b>/'+(_fg.expect||19))
+                                     :((_fg.ok===false)?(' · 规则未出结果'):'');
             document.getElementById('aoi_lr_head'+sfx).innerHTML=
               (j.ok===true?(ng?'❌ <b style="color:#ff6b6b">NG · 有缺陷</b>':'✅ <b style="color:#3fb950">OK · 无缺陷</b>')
                           :'⚠️ 没拿到判决')
-              +'<span style="font-size:13px;opacity:.85"> · 缺陷 '+((d.count===undefined)?'—':d.count)+' 处</span>';
+              +'<span style="font-size:13px;opacity:.85"> · 缺陷 '+(d.count===undefined?'—':d.count)+' 处</span>'
+              +'<span style="font-size:13px">'+_detail+'</span>';
             document.getElementById('aoi_lr_meta'+sfx).textContent=
               '检测序号 '+((d.n===undefined)?'—':d.n)
               +' · 拍照时间 '+((d.t)?new Date(d.t*1000).toLocaleTimeString():'—')
-              +((j.age_s===undefined)?'':(' · 帧龄 '+j.age_s+'s'))
+              +((j.age_s===undefined)?'':(' · 上次检测 '+j.age_s+'s 前'))
               +' · 耗时 '+((d.ms===undefined)?'—':d.ms)+'ms'
               +' · 类型 '+((d.detect_type===undefined)?'—':d.detect_type)
               +' · 本次读取 '+((performance.now()-t0)/1000).toFixed(1)+'s';
             const _bn=function(s){ return s? String(s).split('\\').pop() : '—'; };
             document.getElementById('aoi_lr_imgs'+sfx).innerHTML=
-              '模型实际吃: <a href="'+lk.mi+'" target="_blank" style="color:#7ee787">'+_bn(d.model_input)+'</a>'
-              +' &nbsp;·&nbsp; 判据图: <a href="'+lk.jd+'" target="_blank" style="color:#7ee787">'+_bn(d.judge)+'</a>';
+              '规整图(送进 YOLO): <a href="'+lk.mi+'" target="_blank" style="color:#7ee787">'+_bn(d.model_input)+'</a>';
+            const _ft=_fg.fingers||[];
+            const _fbox=document.getElementById('aoi_lr_fingers'+sfx);
+            if(_fbox){
+              if(_ft.length){
+                _fbox.style.display='block';
+                _fbox.innerHTML='<div style="font-size:12px;opacity:.7;margin-bottom:4px">19 根逐根(V亮度 / S饱和 / grad纹理)</div>'
+                 + _ft.map(function(r){
+                     const f=(r.flag||[]), hot=f.length;
+                     return '<span style="display:inline-block;min-width:104px;margin:2px 6px 2px 0;padding:2px 6px;border-radius:4px;font-size:12px;'
+                       +(hot?'background:#3d1d1d;color:#ff7b72;border:1px solid #6b2b2b':'background:#12261a;color:#3fb950;border:1px solid #1f4d2e')
+                       +'">#'+r.k+' V'+r.V+' S'+r.S+' g'+r.grad+' '+(hot?f.join('+'):'正常')+'</span>';
+                   }).join('');
+              } else { _fbox.style.display='none'; }
+            }
             document.getElementById('aoi_lr_pre'+sfx).textContent=JSON.stringify(j,null,1);
             m.textContent=(j.ok===true?'✅ ':'❌ ')+(j.msg||'');
           }catch(e){ m.textContent='❌ 读取失败: '+e; }
@@ -615,6 +700,7 @@ var HTML_VER="__HTMLVER__";</script>
           <div id="aoi_lr_head" style="font-size:16px"></div>
           <div id="aoi_lr_meta" style="font-size:12px;opacity:.85;margin-top:3px"></div>
           <div id="aoi_lr_imgs" style="font-size:12px;margin-top:3px"></div>
+          <div id="aoi_lr_fingers" style="display:none;margin-top:6px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px"></div>
           <button onclick="aoiCopy('aoi_lr_pre',this)" style="margin-top:6px;font-size:12px">📋 复制 JSON</button>
           <pre id="aoi_lr_pre" style="margin:6px 0 0;padding:8px;max-height:240px;overflow:auto;
                background:#0b1018;color:#cfe3ff;font-size:11px;line-height:1.45;border-radius:6px;
@@ -633,8 +719,8 @@ var HTML_VER="__HTMLVER__";</script>
       <span class="meta" id="m_aoi_surface">…</span></div>
       <img id="i_aoi_surface" data-mode="mjpg" data-src="/aoi_surface.mjpg">
       <div class="row" style="padding:6px 10px 2px"><span class="seg" id="sview">
-        <button data-stream="/aoi_surface.mjpg" class="on">判据图</button>
-        <button data-stream="/aoi_surface_raw.mjpg">整板原图</button></span></div>
+        <button data-stream="/aoi_surface.mjpg" class="on">规整图</button>
+        <button data-stream="/aoi_surface_raw.mjpg">原图</button></span></div>
       <div class="note" id="n_aoi_surface"></div>
       <!-- ☀ 2026-10-12 老倪「侧面检测的曝光太大了」: 传感器侧**不能**降(实测降曝光 ⇒ 表面判据连续失败),
            所以这里只把死白压成浅灰(>200 压到 214), 让他看得见模块边界/丝印; 相机曝光/判据/模型输入都没动。 -->
@@ -664,11 +750,14 @@ var HTML_VER="__HTMLVER__";</script>
       <div class="row" style="padding:4px 10px 4px">
         <button onclick="aoiDetect(10083,'s')" style="font-weight:600">🔍 请求检测</button>
         <button onclick="aoiLastResult(10083,'s')" style="font-weight:600">🧾 最后结果</button>
+        <button onclick="aoiGuide(10083,'s')" style="font-weight:600" title="取一次位姿(表面侧): 造接口通了, 但 10083 的 /guide_pose 目前返回 500, 会如实报错而不是假装成功">🎯 位姿调整</button>
         <span id="aoi_lr_msg_s" style="margin-left:8px;font-size:12px;opacity:.85"></span>
-        <span id="aoi_det_msg_s" style="margin-left:8px;font-size:12px;opacity:.85"></span></div>
+        <span id="aoi_det_msg_s" style="margin-left:8px;font-size:12px;opacity:.85"></span>
+        <span id="aoi_guide_msg_s" style="margin-left:8px;font-size:13px;font-weight:600"></span></div>
       <div id="aoi_lr_box_s" style="display:none;margin:4px 10px 8px;padding:8px;background:#0d1420;border:1px solid #21304a;border-radius:6px">
         <div id="aoi_lr_head_s" style="font-size:16px"></div>
         <div id="aoi_lr_meta_s" style="font-size:12px;opacity:.85;margin-top:3px"></div>
+        <div id="aoi_lr_fingers_s" style="display:none;margin-top:6px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px"></div>
         <div id="aoi_lr_imgs_s" style="font-size:12px;margin-top:3px"></div>
         <button onclick="aoiCopy('aoi_lr_pre_s',this)" style="margin-top:6px;font-size:12px">📋 复制 JSON</button>
         <pre id="aoi_lr_pre_s" style="margin:6px 0 0;padding:8px;max-height:240px;overflow:auto;
@@ -1708,7 +1797,7 @@ async function poll(){
     panel('local',st.local,(st.local&&st.local.label)||'');
     panel('local2',st.local2,(st.local2&&st.local2.label)||'');
     panel('depth',st.depth,'深度');
-    panel('aoi_gold',st.aoi_gold,'判据图');
+    panel('aoi_gold',st.aoi_gold,'规整图');
     panel('aoi_surface',st.aoi_surface,'表面');
   }catch(e){}
   if(aoi){

@@ -1859,6 +1859,9 @@ kbd{background:#1b2735;border:1px solid #2d4054;border-radius:4px;padding:1px 5p
   <h1>🏷 金手指标注 · 原始图 → 状态空间 YOLO</h1>
   <button id="b-new" class="primary">📸 取新图</button>
   <button id="b-auto">🤖 自动找19根</button>
+  <button id="b-even">📐 等距19根</button>
+  <button id="b-echo">📤 回显给我看</button>
+  <button id="b-mode">✏️ 画框(拖=新建)</button>
   <button id="b-clear" class="warn">🗑 清空</button>
   <button id="b-save" class="primary">💾 保存样本</button>
   <button id="b-train">🚀 训练</button>
@@ -1907,28 +1910,50 @@ function draw(){
   }
   hud();
 }
-function pos(ev){const r=cv.getBoundingClientRect();return {x:(ev.clientX-r.left)/scale,y:(ev.clientY-r.top)/scale};}
-const HIT=10;                       // 屏幕像素命中半径
-function tol(){return HIT/scale;}   // → 图像像素
+function pos(ev){const r=cv.getBoundingClientRect();
+  // 🔴 2026-11-17 老倪「画的边界框, 不是我鼠标点击的位置」的根因:
+  //   canvas 的 CSS 是 `width:100%;height:auto`, 实际显示宽度由 #stage 决定(≈ innerWidth-24),
+  //   而 scale 是按 min(1500, innerWidth-40)/naturalWidth 算的。宽屏时两者差 20% 以上,
+  //   用 scale 反算就把点击坐标放大到右边很远(算出 1579 而实际该在 1243)。
+  //   ⇒ 一律用 getBoundingClientRect() 的**实测比例**换算, 不再信 scale。
+  const sx=(r.width/IMG.naturalWidth)||scale, sy=(r.height/IMG.naturalHeight)||scale;
+  return {x:(ev.clientX-r.left)/sx, y:(ev.clientY-r.top)/sy};}
+const HIT=6;                        // 屏幕像素命中半径
+function tol(){const r=cv.getBoundingClientRect();
+  return HIT/((r.width/IMG.naturalWidth)||scale);}   // → 图像像素, 同 pos() 用实测比例
 function hitBox(q){
+  // 🔴 2026-11-17 老倪「19 根要用鼠标拖」: 自动找的框宽约 45px、相邻间距最小只有 40px, 命中半径
+  //   原来是 10px ⇒ 一根鼠标会同时压住左右两根; 又因为「倒序遍历、命中即返回」, 点左边那根也总
+  //   选中右边那根, 拖起来就是"跳框"。三处改: ① HIT 10→6  ② 先判选中框的 4 角 4 边(缩放)
+  //   ③ 多框重叠时取**中心最近**的那根, 想调哪根就点哪根。
   const t=tol();
-  for(let i=boxes.length-1;i>=0;i--){const b=boxes[i];
-    if(i===sel){                    // 选中的框: 先判 4 角 4 边(缩放)
-      const nx=v=>Math.abs(q.x-v)<=t, ny=v=>Math.abs(q.y-v)<=t;
-      if(nx(b[0])&&ny(b[1]))return{i,mode:'nw'};
-      if(nx(b[2])&&ny(b[1]))return{i,mode:'ne'};
-      if(nx(b[0])&&ny(b[3]))return{i,mode:'sw'};
-      if(nx(b[2])&&ny(b[3]))return{i,mode:'se'};
-      if(nx(b[0]))return{i,mode:'w'};
-      if(nx(b[2]))return{i,mode:'e'};
-      if(ny(b[1]))return{i,mode:'n'};
-      if(ny(b[3]))return{i,mode:'s'};
-    }
-    if(q.x>=b[0]-t&&q.x<=b[2]+t&&q.y>=b[1]-t&&q.y<=b[3]+t)return{i,mode:'move'};
+  if(sel>=0&&boxes[sel]){const b=boxes[sel];
+    const nx=v=>Math.abs(q.x-v)<=t, ny=v=>Math.abs(q.y-v)<=t;
+    if(nx(b[0])&&ny(b[1]))return{i:sel,mode:'nw'};
+    if(nx(b[2])&&ny(b[1]))return{i:sel,mode:'ne'};
+    if(nx(b[0])&&ny(b[3]))return{i:sel,mode:'sw'};
+    if(nx(b[2])&&ny(b[3]))return{i:sel,mode:'se'};
+    if(nx(b[0]))return{i:sel,mode:'w'};
+    if(nx(b[2]))return{i:sel,mode:'e'};
+    if(ny(b[1]))return{i:sel,mode:'n'};
+    if(ny(b[3]))return{i:sel,mode:'s'};
   }
-  return null;
+  let best=null, bd=1e9;
+  for(let i=0;i<boxes.length;i++){const b=boxes[i];
+    if(q.x>=b[0]-t&&q.x<=b[2]+t&&q.y>=b[1]-t&&q.y<=b[3]+t){
+      const d=Math.hypot(q.x-(b[0]+b[2])/2, q.y-(b[1]+b[3])/2);
+      if(d<bd){bd=d;best={i:i,mode:'move'};}
+    }
+  }
+  return best;
 }
 let act=null;
+// 🔴 2026-11-17 老倪「我画第二个的时候总变成移动」: 19 根框宽 52px、间距 70px, 框与框之间的空隙
+//   只有 18px, 而命中半径 ±12px 几乎把空隙占满 ⇒ 画新框的起点必然落在上一根的命中区里, 一按下
+//   就变成拖动上一根。加显式模式开关: 画框模式下**任何拖动都是新建**(永不捕获已有框),
+//   只有切到编辑模式才在框上拖动/缩放。
+let MODE='draw';                       // 'draw' | 'edit'
+function cursorFor(h){ return (MODE==='edit' && h) ? 'move' : 'crosshair'; }
 function applyAct(q){
   if(!act)return;
   const b=boxes[act.i]; if(!b)return;
@@ -1948,18 +1973,20 @@ function applyAct(q){
   draw();
 }
 cv.addEventListener('mousedown',ev=>{const q=pos(ev);
-  const h=hitBox(q);
+  const h=(MODE==='edit')?hitBox(q):null;   // 画框模式: 不捕获已有框, 拖哪里都新建
   if(h){sel=h.i; act={mode:h.mode,i:h.i,start:q,orig:boxes[h.i].slice()};
         cv.style.cursor='move'; draw(); return;}
   sel=-1; drag={x1:q.x,y1:q.y,x2:null,y2:null}; draw();});
 cv.addEventListener('mousemove',ev=>{const q=pos(ev);
   if(act){applyAct(q);return;}
-  if(!drag){ const h=hitBox(q);
-    cv.style.cursor = !h ? 'crosshair' : (h.mode==='move' ? 'move' : (h.mode.length===2?'nwse-resize':'ns-resize'));
+  if(!drag){ const h=(MODE==='edit')?hitBox(q):null;
+    // 只两态: 编辑模式且命中框=move, 其它一律 crosshair(画框)。画框模式下光标永远不动。
+    cv.style.cursor = cursorFor(h);
     return; }
   drag.x2=q.x;drag.y2=q.y;draw();});
 window.addEventListener('mouseup',ev=>{
-  if(act){const m=act.mode; act=null; cv.style.cursor='crosshair';
+  if(act){const m=act.mode; act=null;
+    // 光标不在 mouseup 里硬设 —— 交给 mousemove 按当前所在位置决定(在框上仍是 move), 否则刚松手会闪一下十字
     msg((m==='move'?'已移动':'已缩放')+' #'+(sel+1)+'（未保存）· 记得点 💾保存样本'); draw(); return;}
   if(!drag)return;
   const q=pos(ev);
@@ -1995,6 +2022,44 @@ $('b-auto').onclick=async()=>{
     boxes=j.boxes.map(b=>[b[0],b[1],b[2],b[3]]);sel=-1;draw();
     msg('自动给了 '+j.n+' 个框（规则: '+(j.rule||'')+'，间距 '+(j.pitch||'?')+'px）— 目检后改，再点保存');}
   catch(e){msg('自动找框请求失败: '+e,true);}};
+$('b-even').onclick=()=>{
+  // 🔴 2026-11-17 老倪「改」: 自动找只给 18 根、间距 40~95px 忽宽忽窄。这里按**首尾两根的中心**等距
+  //   生成 19 根, 宽/高沿用第一根 —— 只要把最左、最右两根拖准, 中间 17 根自动摆齐, 再逐根微调。
+  if(boxes.length<2){msg('先拖出最左、最右两根（或点『自动找19根』），再点这里',true);return;}
+  const src=boxes.slice().sort((a,b)=>a[0]-b[0]);
+  const f=src[0], l=src[src.length-1];
+  // 用首尾两框的**平均值**定宽高: 实测老倪手画的两个框是 左52×62 / 右57×74 —— 有 12px 的透视差,
+  // 只取左边会让右端偏小。取平均(≈55×68) 居中更稳; 真要逐根贴合就等生成完再单根拖。
+  const w=Math.max(4,((f[2]-f[0])+(l[2]-l[0]))/2);
+  const y1=Math.round((f[1]+l[1])/2), y2=Math.round((f[3]+l[3])/2);
+  const c0=(f[0]+f[2])/2, c1=(l[0]+l[2])/2, N=19;
+  if(Math.abs(c1-c0)<N*2){msg('首尾中心只差 '+Math.round(Math.abs(c1-c0))+'px，撑不开 19 根',true);return;}
+  const step=(c1-c0)/(N-1);
+  const hw=Math.round(w)/2;
+  boxes=[];
+  for(let i=0;i<N;i++){
+    const x0=Math.round(c0+step*i-hw);
+    boxes.push([x0, Math.round(y1), x0+Math.round(w), Math.round(y2)]);
+  }
+  sel=-1; draw();
+  msg('已按首尾中心等距生成 19 根 · 间距 '+step.toFixed(1)+'px · 宽 '+Math.round(w)+'px — 目检后逐根微调再保存');
+};
+$('b-echo').onclick=async()=>{
+  // 📤 把当前框原样发到服务端 /tmp/gold_boxes_echo.json —— 框只在浏览器内存里, 不落盘我看不到
+  if(!boxes.length){msg('还没有框：先拖或点自动找19根',true);return;}
+  try{const r=await fetch('/station/gold/echo',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({boxes:boxes,note:'回显'})});
+    const j=await r.json();
+    msg(j.ok?('✓ '+j.msg+' · '+j.n+' 个框'):(j.msg||'回显失败'), !j.ok);}
+  catch(e){msg('回显请求失败: '+e,true);}};
+$('b-mode').onclick=()=>{
+  MODE=(MODE==='draw')?'edit':'draw';
+  $('b-mode').textContent=(MODE==='draw')?'✏️ 画框(拖=新建)':'🖐 拖框(点到框=移动)';
+  cv.style.cursor='crosshair'; draw();
+  msg(MODE==='draw'
+    ? '✏️ 画框模式：拖哪里都是新建一个框，绝不会动到已有的框'
+    : '🖐 拖框模式：鼠标点到框上才能移动/缩放');
+};
 $('b-clear').onclick=()=>{boxes=[];sel=-1;draw();msg('已清空（页面上，未保存）');};
 $('b-save').onclick=async()=>{
   if(!boxes.length){msg('没有框：先拖框或自动找19根',true);return;}
@@ -2042,8 +2107,13 @@ def _gold_annot_fetch(timeout=60):
     return bgr
 
 
-def _gold_annot_auto(bgr=None):
-    """自动给一版 19 根框(人工再修): /region 条带 + 列剖面周期峰值 → 原图坐标框。"""
+def _gold_annot_auto(bgr=None, live_band=True):
+    """自动给一版 19 根框(人工再修): /region 条带 + 列剖面周期峰值 → 原图坐标框。
+
+    live_band=False 时**不向 10082 问条带**, 改用图自身的行方差找条带 —— 离线跑历史图必须这样:
+    原来无条件 `_gold_region_band(10082, max_age=0.5)`, 处理历史图时会拿到**当前实时帧**的条带坐标,
+    用到历史图上就整片错位, 列剖面找不到峰 ⇒ 返回 0 框(实测 30 张历史图全 0, 而同一算法跑当前帧给 18 框)。
+    """
     try:
         with _GOLD_ANNOT_LOCK:
             rgb = _GOLD_ANNOT.get("rgb")
@@ -2053,7 +2123,7 @@ def _gold_annot_auto(bgr=None):
             bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
         H, W = bgr.shape[:2]
         g = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32)
-        rb = _gold_region_band(10082, max_age=0.5)
+        rb = _gold_region_band(10082, max_age=0.5) if live_band else None
         if rb:
             y0, y1 = rb["y0"], rb["y1"]
             x0, x1 = rb["x0"], rb["x1"]
@@ -2623,6 +2693,153 @@ def _aoi_param(port: int = 10082, profile=None, exposure=None, gain=None, why: s
         return {"ok": False, "port": int(port), "msg": "转发 /param 失败: %s" % str(e)[:150]}
 
 
+def _tcp_pose_mm() -> dict:
+    """当前 TCP 位姿(mm) —— 读控制器落盘的 tcp_out/latest.json(米)。
+
+    页面点「位姿调整」时不该自己拼位姿: 位姿真值只有一处(控制器 → latest.json),
+    多一个来源就多一个能对不上的地方。读不到就返回 {}, 让 /guide_pose 自己降级
+    (它拿不到 pose 时只报 off_px, 不返回 pose_target)。
+    """
+    import json as _json
+    for _p in (os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "zmax_data",
+                            "rokae_sdk", "tcp_out", "latest.json"),
+               "/home/ubuntu/zmax/zmax_data/rokae_sdk/tcp_out/latest.json"):
+        try:
+            with open(_p, "r", encoding="utf-8") as _f:
+                _d = _json.load(_f)
+            _x, _y, _z = float(_d["x"]), float(_d["y"]), float(_d["z"])
+            return {"x": round(_x * 1000.0, 3), "y": round(_y * 1000.0, 3), "z": round(_z * 1000.0, 3)}
+        except Exception:                                                        # noqa: BLE001
+            continue
+    return {}
+
+
+def _aoi_guide(port: int = 10082, pose: dict = None, axis: str = "Y",
+               target_px: float = 0.0, max_step_mm: float = 8.0) -> dict:
+    """🎯 AOI 位姿调整 —— 转发工控机 POST /guide_pose, 把"偏多少 / 该走多少"取回来。
+
+    老倪(2026-11-18): 「金手指检测 有位姿调整的服务, 能用么? 增加位姿调整按钮,
+    同理表面检测也要增加, 要有发出位姿的服务」。
+
+    链路: 本服务 POST /api/aoi/guide?port=10082
+          → 工控机 POST /guide_pose {pose, axis, target_px, max_step_mm}
+          → 工控机抓一帧、定位 19 根、与画面中心比、按 k_mm_px/axis_sign 算 d_mm
+          → 返回 {gold:{n,center_px,off_px,pitch_px}, guide:{act,d_mm,pose_target}, converged}
+
+    ⚠️ 本函数**只取位姿, 不下发任何运动**。真要让机器人动, 由调用方拿 pose_target/d_mm
+       另行触发(轨迹通道在 8797), 两者刻意分开 —— 取数与动臂不能绑在一个按钮里。
+    """
+    import json as _json
+    import urllib.request as _ur
+    _aoi_busy_enter(port)          # 与 detect 共用忙标记: 推流端在此期间不许抢相机
+    out = {"ok": False, "port": port, "cmd": "POST /guide_pose"}
+    _body = {"pose": pose or {}, "axis": str(axis or "Y").upper(), "mode": "auto",
+             "target_px": float(target_px or 0.0), "max_step_mm": float(max_step_mm or 8.0)}
+    try:
+        req = _ur.Request("http://" + _AOI_HOST + ":%d/guide_pose" % int(port),
+                          data=_json.dumps(_body).encode("utf-8"), method="POST",
+                          headers={"Content-Type": "application/json"})
+        with _ur.urlopen(req, timeout=60) as r:
+            _d = _json.loads(r.read().decode("utf-8", "ignore") or "{}")
+        out.update(_d)
+        out["ok"] = bool(_d.get("ok"))
+        out["request"] = _body
+    except Exception as e:                                                       # noqa: BLE001
+        _code = getattr(e, "code", None)
+        out["err"] = "%s%s" % ("HTTP %s: " % _code if _code else "", str(e)[:200])
+    finally:
+        _aoi_busy_release(port)
+    return out
+
+
+def _aoi_guide_move(port: int = 10082, max_step_mm: float = 5.0, speed: float = 5.0,
+                    dry: bool = False) -> dict:
+    """🎯 位姿调整 → **真机移动** (老倪 2026-11-18「位姿调整, 机器人可以动了」)
+
+    三段式, 每段都留证:
+      ① 取位姿   _aoi_guide() → off_px / d_mm / axis      (相机抓帧, 不动臂)
+      ② 下发     8797 POST /api/arm/move_rel {dy:d_mm}     (笛卡尔平移, 姿态不变)
+      ③ 回读     再取一次位姿, 报移动后的 off_px            (证明真的挪了, 不是发了就算)
+
+    刻意做成独立接口、不塞进 /api/aoi/guide:
+      取数是只读动作, 移动是不可逆动作。混在一个按钮里, 出问题时无法判断
+      "是它动了" 还是 "只是取了个数", 现场就不敢点。
+
+    方向由标定决定: gold_guide_calib.json 的 axis_sign=+1 ⇒ d_mm 为正就是 base Y 正向。
+    单次位移在 8797 侧还有 8mm 闸、sdk_ctl.py 侧 5mm/50mm 闸, 这里再叠 max_step_mm。
+    """
+    import json as _json
+    import urllib.request as _ur
+    out = {"ok": False, "port": port, "stage": "init"}
+    # ① 取位姿
+    g = _aoi_guide(port=port)
+    out["guide_before"] = {"ok": g.get("ok"), "gold": g.get("gold"), "guide": g.get("guide")}
+    if not g.get("ok"):
+        out["stage"] = "guide"
+        out["err"] = "取位姿失败: %s" % (g.get("err") or (g.get("diag") or {}).get("err") or "unknown")
+        return out
+    gd = g.get("guide") or {}
+    axis = str(gd.get("axis") or "Y").upper()
+    if gd.get("act") != "move":
+        out.update({"ok": True, "stage": "hold", "moved": False,
+                    "note": gd.get("note") or "已居中, 不动"})
+        return out
+    try:
+        d_mm = float(gd.get("d_mm") or 0.0)
+    except (TypeError, ValueError):
+        out.update({"stage": "parse", "err": "d_mm 不是数字: %r" % gd.get("d_mm")})
+        return out
+    d_clip = max(-abs(max_step_mm), min(abs(max_step_mm), d_mm))
+    out["plan"] = {"axis": axis, "d_mm_raw": round(d_mm, 3), "d_mm_sent": round(d_clip, 3),
+                   "clipped": abs(d_clip - d_mm) > 1e-6, "max_step_mm": max_step_mm,
+                   "speed_mm_s": speed, "dry": bool(dry)}
+    if not d_clip:
+        out.update({"ok": True, "stage": "noop", "moved": False, "note": "位移为 0"})
+        return out
+    # ② 下发——只允许单轴(与标定口径一致, 不擅自加 Z/姿态补偿)
+    _payload = {"speed": float(speed), "max_mm": float(abs(max_step_mm) + 0.01), "dry": bool(dry)}
+    if axis == "Y":
+        _payload["dy"] = d_clip
+    elif axis == "X":
+        _payload["dx"] = d_clip
+    elif axis == "Z":
+        _payload["dz"] = d_clip
+    else:
+        out.update({"stage": "axis", "err": "轴 %s 不支持(只认 X/Y/Z)" % axis})
+        return out
+    out["stage"] = "move"
+    try:
+        req = _ur.Request("http://127.0.0.1:8797/api/arm/move_rel",
+                          data=_json.dumps(_payload).encode("utf-8"), method="POST",
+                          headers={"Content-Type": "application/json"})
+        with _ur.urlopen(req, timeout=140) as r:
+            _mv = _json.loads(r.read().decode("utf-8", "ignore") or "{}")
+    except Exception as e:                                                       # noqa: BLE001
+        out["err"] = "下发失败: %s" % str(e)[:200]
+        return out
+    out["move"] = _mv
+    if not _mv.get("ok"):
+        out["stage"] = "move"
+        out["err"] = _mv.get("err") or _mv.get("stage") or "8797 拒绝"
+        return out
+    if dry:
+        out.update({"ok": True, "stage": "dry", "moved": False, "note": "dry: 未真动"})
+        return out
+    # ③ 回读: 再取一次位姿, 用 off_px 证明真的挪了
+    time.sleep(0.8)
+    g2 = _aoi_guide(port=port)
+    out["guide_after"] = {"ok": g2.get("ok"), "gold": g2.get("gold"), "guide": g2.get("guide")}
+    _off1 = ((g.get("gold") or {}).get("off_px"))
+    _off2 = ((g2.get("gold") or {}).get("off_px"))
+    out.update({"ok": True, "stage": "done", "moved": True,
+                "off_px_before": _off1, "off_px_after": _off2})
+    if _off1 is not None and _off2 is not None:
+        out["off_px_delta"] = round(float(_off2) - float(_off1), 1)
+        out["k_mm_px_effective"] = (round(abs(float(d_clip) / (float(_off2) - float(_off1))), 6)
+                                    if abs(float(_off2) - float(_off1)) > 0.5 else None)
+    return out
+
+
 def _aoi_detect(port: int = 10082, wait_s: float = 4.0) -> dict:
     """触发工控机产线正常检测命令 POST /capture_detect, 并把判决取回来。
 
@@ -2915,7 +3132,9 @@ def _put_aoi_pair(port: int, name: str, bgr) -> None:
             _put(name + "_raw", fj, time.time(), 0.0, src_age_s=0.0)
 
 
-_SURFACE_RECT_JUDGE = os.environ.get("ZMAX_AOI_SURFACE_RECT", "1") != "0"
+# 🆕 2026-11-18: 默认**关** —— 老倪要的是「原图 + 规整图」两张, 规整图由工控机给,
+#   本地再切刚体会把它变成第三张图。要旧口径: ZMAX_AOI_SURFACE_RECT=1
+_SURFACE_RECT_JUDGE = os.environ.get("ZMAX_AOI_SURFACE_RECT", "0") != "0"
 _SURFACE_META: dict = {}
 
 
@@ -3119,10 +3338,14 @@ def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0
         #   当这一帧根本没拍到金手指排时(实测 /region bbox=null · quad=null · focus=0.1), 它**照样画一排名** ⇒
         #   现场看到的就是"这么多根, 还对应不上"。⇒ 默认改成**本机从原始帧裁切**(实拍像素, 一个字都不画)。
         #   要回到工控机画的那张: 环境变量 ZMAX_AOI_GOLD_CALIBER=same (重启本服务生效)。
-        if os.environ.get("ZMAX_AOI_GOLD_CALIBER", "canonical").strip().lower() == "same":
-            mode = "same"
-        else:
+        # 🆕 2026-11-18 老倪: 「金手指改成原图和规整图」——
+        #   主图直取工控机的**规整图**(kind=crop = 送进 YOLO 的 960x960), 本地零加工;
+        #   另一格是原图。不再本地渲染判据图(900x332 那套口径取消)。
+        #   要回到旧口径: ZMAX_AOI_GOLD_CALIBER=canonical
+        if os.environ.get("ZMAX_AOI_GOLD_CALIBER", "same").strip().lower() == "canonical":
             mode = "canonical"
+        else:
+            mode = "same"
         kind = "crop" if mode == "same" else "origin"
         url = "http://" + _AOI_HOST + ":%d/picture?kind=%s" % (port, kind)
         # 有人在看这一格 ⇒ 每轮带 grab 顶到 OPT 上限 (~1.4/1.7fps); 没人看就只读内存帧(不占产线相机)
@@ -3136,7 +3359,23 @@ def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0
         #   修法: 工控机新增 /preview.jpg(只 抓帧+JPEG 编码, 实测 **130ms**; 不裁剪/不渲染/不落盘/不动模型输入),
         #   本机仍做**同一套** canonical 加工(原比例+去倾角+纵向3× → 900x332) ⇒ 显示口径不变, 只是取帧快了 ~16×。
         #   老版工控机无此路由 ⇒ 404 自动永久回落老路(零影响)。
-        if _watching and _AOI_PREVIEW_OK.get(port, True):
+        if mode == "same":
+            # 🆕 2026-11-18: 同一口径 = 工控机那张**就是**送 YOLO 的 960x330, 本地零加工。
+            #
+            # 🔴 2026-11-18 晚 修正(老倪「图像更新很慢啊」「显示 200 多秒静止」):
+            #   上一版这里**写死** &file=1(只读磁盘落盘图, 从不抓帧), 我当时以为"不占相机"是优点。
+            #   实际后果是死图: 落盘图只在 /capture_detect 或 /guide_pose 时才产生,
+            #   不点「请求检测」磁盘上就没有新文件 ⇒ 画面一动不动, 帧龄一路涨到 200+ 秒。
+            #
+            #   正确口径: **有人在看这一格就现抓**(&grab=1: 抓帧+裁剪, 不落盘、不起模型),
+            #   没人看才退回读磁盘最新那张(零开销)。抓帧闸仍在外面: _watching 里已排除
+            #   _aoi_busy(检测期间不抢相机) 和 _aoi_fetch_stuck(对端刚卡死过的冷却期)。
+            if _watching:
+                _req_url = "http://" + _AOI_HOST + ":%d/picture?kind=crop&grab=1" % port
+            else:
+                _req_url = "http://" + _AOI_HOST + ":%d/picture?kind=crop&file=1" % port
+            _use_prev = False
+        elif _watching and _AOI_PREVIEW_OK.get(port, True):
             _req_url = "http://" + _AOI_HOST + ":%d/preview.jpg?q=88" % port
             _use_prev = True
         else:
@@ -5253,8 +5492,8 @@ input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8
       <span class="meta" id="m_aoi_gold">…</span></div>
       <img id="i_aoi_gold" data-mode="mjpg" data-src="/aoi_gold.mjpg">
       <div class="row" style="padding:6px 10px 2px"><span class="seg" id="gview">
-        <button data-stream="/aoi_gold.mjpg" class="on">判据图</button>
-        <button data-stream="/aoi_gold_raw.mjpg">整板原图</button></span></div>
+        <button data-stream="/aoi_gold.mjpg" class="on">规整图</button>
+        <button data-stream="/aoi_gold_raw.mjpg">原图</button></span></div>
       <div class="note" id="n_aoi_gold" style="display:none"></div>
       <div class="row" style="padding:4px 10px 2px">
         <button onclick="shot(10082)">📸 拍一帧</button>
@@ -5611,7 +5850,7 @@ async function poll(){
     panel('local',st.local,(st.local&&st.local.label)||'');
     panel('local2',st.local2,(st.local2&&st.local2.label)||'');
     panel('depth',st.depth,'深度');
-    panel('aoi_gold',st.aoi_gold,'判据图');
+    panel('aoi_gold',st.aoi_gold,'规整图');
     panel('aoi_surface',st.aoi_surface,'表面');
   }catch(e){}
   if(aoi){
@@ -5642,7 +5881,7 @@ async function poll(){
     }
     const sfv=(sf.verdict&&(sf.verdict.count!==undefined))
       ? ' · 上轮判定 '+(sf.verdict.verdict||'')+' ('+sf.verdict.count+' 缺陷 · 推理 '+fmt(sf.verdict.ms,0)+'ms)' : '';
-    if(sf.ok===true){ $('#m_aoi_surface').textContent+=' · 模型看的规范图 kind=crop'+sfv; }
+    if(sf.ok===true){ $('#m_aoi_surface').textContent+=' · 规整图=模型输入 kind=crop'+sfv; }
     if(sf.ok===false){
       $('#n_aoi_surface').style.display='block';
       $('#n_aoi_surface').innerHTML='<b>这一格还没有画面 —— 10083 那台程序还是 v2(没有取图路由)</b><br>'
@@ -5764,9 +6003,17 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def _send_gs_live(self):
-        """代理取 Intel 渲染帧 (本机隧道 127.0.0.1:8816) —— 本机只转发, 不渲染。"""
+        """代理取 Intel 渲染帧 —— 本机只转发, 不渲染。
+
+        🔴 2026-11-17 老倪「intel 的 3dgs 没有推流么? 看不到 3dgs 的图像了」根因:
+           这里原来写死 `http://127.0.0.1:8816`, 但本机**没有** 8816 的 ssh 隧道(只有 8812)
+           ⇒ 每次 urlopen 直接 Connection refused ⇒ 页面拿到 503 ⇒ 3DGS 那格一直空。
+           而 Intel 上 8816 是 0.0.0.0 监听, 本机直连 192.168.23.70:8816 是通的(实测 200/11KB)。
+           ⇒ 改成可配置基址, 默认直连 Intel; 要回到隧道就设 ZMAX_GS_RENDER=http://127.0.0.1:8816。
+        """
+        _base = os.environ.get("ZMAX_GS_RENDER", "http://192.168.23.70:8816").rstrip("/")
         try:
-            r = urllib.request.urlopen("http://127.0.0.1:8816/frame.jpg", timeout=6)
+            r = urllib.request.urlopen(_base + "/frame.jpg", timeout=6)
             b = r.read()
             age = r.headers.get("X-Frame-Age", "")
             self._send(200, "image/jpeg", b, {"Cache-Control": "no-store, max-age=0",
@@ -5776,9 +6023,10 @@ class Handler(BaseHTTPRequestHandler):
                        ("Intel 渲染流取不到: %s" % str(e)[:120]).encode())
 
     def _send_gs_live_health(self):
-        """Intel 渲染器的健康/帧率透传(页面与 curl 取证用)。"""
+        """Intel 渲染器的健康/帧率透传(页面与 curl 取证用)。基址同上, 默认直连 Intel:8816。"""
+        _base = os.environ.get("ZMAX_GS_RENDER", "http://192.168.23.70:8816").rstrip("/")
         try:
-            r = urllib.request.urlopen("http://127.0.0.1:8816/health", timeout=5)
+            r = urllib.request.urlopen(_base + "/health", timeout=5)
             self._send(200, "application/json; charset=utf-8", r.read(), {"Cache-Control": "no-store"})
         except Exception as e:                                               # noqa: BLE001
             self._send(503, "application/json; charset=utf-8",
@@ -6253,6 +6501,28 @@ class Handler(BaseHTTPRequestHandler):
                 body = json.loads(self.rfile.read(n).decode("utf-8", "ignore"))
             except Exception:                                                     # noqa: BLE001
                 body = {}
+        if p == "/station/gold/echo":
+            # 📤 回显: 把页面上当前的框原样落到 /tmp, 让 agent 能读到"你画的是哪几根"。
+            #    只读用途, 不写 YOLO 数据集(保存才写)。2026-11-17 老倪「我画完两个边界框了, 你看到了么」——
+            #    框只在浏览器内存里, 服务端不落盘谁都不知道。
+            try:
+                _bs = [[int(round(float(v))) for v in _b[:4]] for _b in (body.get("boxes") or [])][:80]
+            except Exception:                                                 # noqa: BLE001
+                _bs = []
+            _rec = {"t": time.strftime("%F %T"), "n": len(_bs), "boxes": _bs,
+                    "note": str(body.get("note") or ""), "ip": self._real_ip()}
+            _p = os.path.join("/tmp", "gold_boxes_echo.json")
+            try:
+                with open(_p, "w", encoding="utf-8") as _f:
+                    json.dump(_rec, _f, ensure_ascii=False, indent=1)
+                _msg = "已回显 %d 个框到 %s" % (len(_bs), _p)
+            except Exception as _e:                                           # noqa: BLE001
+                _msg = "回显失败: %s" % _e
+            print("[gold/echo] %s" % _msg, flush=True)
+            self._send(200, "application/json; charset=utf-8",
+                       json.dumps({"ok": True, "msg": _msg, "n": len(_bs)},
+                                  ensure_ascii=False).encode("utf-8"))
+            return
         if p == "/station/gold/save":
             _r = _gold_annot_save(body.get("boxes") or [], body.get("note") or "")
             self._send(200, "application/json; charset=utf-8",
@@ -6420,6 +6690,38 @@ class Handler(BaseHTTPRequestHandler):
                    "aoi_auto": _aoi_auto_status(),
                    "note": "自动取景 %s" % ("开(工控机没照片时现拍一张, 最快30s一次)"
                                           if _AOI_AUTO.get(port) else "关(只在手动点「拍一帧」时拍)")}
+        elif p in ("/api/aoi/guide", "/aoi/guide"):
+            # 🎯 位姿调整(老倪 2026-11-18): ?port=10082|10083, body 可带 {pose:{x,y,z}, axis, target_px}
+            #   pose 缺省时用当前 TCP 真值(latest.json) —— 页面不需要自己拼位姿。
+            _kv2 = dict(kv.split("=", 1) for kv in
+                        (self.path.split("?", 1)[1] if "?" in self.path else "").split("&") if "=" in kv)
+            _pt2 = _kv2.get("port") or "10082"
+            try:
+                _pt2 = int(_pt2)
+            except (TypeError, ValueError):
+                _pt2 = 10082
+            _b2 = body if isinstance(body, dict) else {}
+            _pose2 = _b2.get("pose")
+            if not isinstance(_pose2, dict) or not _pose2:
+                _pose2 = _tcp_pose_mm()
+            out = _aoi_guide(port=_pt2, pose=_pose2,
+                             axis=(_b2.get("axis") or "Y"),
+                             target_px=float(_b2.get("target_px") or 0.0),
+                             max_step_mm=float(_b2.get("max_step_mm") or 8.0))
+        elif p in ("/api/aoi/guide_move", "/aoi/guide_move"):
+            # 🎯 位姿调整→真机移动: ?port=10082|10083, body {max_step_mm, speed, dry}
+            _kv3 = dict(kv.split("=", 1) for kv in
+                        (self.path.split("?", 1)[1] if "?" in self.path else "").split("&") if "=" in kv)
+            _pt3 = _kv3.get("port") or "10082"
+            try:
+                _pt3 = int(_pt3)
+            except (TypeError, ValueError):
+                _pt3 = 10082
+            _b3 = body if isinstance(body, dict) else {}
+            out = _aoi_guide_move(port=_pt3,
+                                  max_step_mm=float(_b3.get("max_step_mm") or 5.0),
+                                  speed=float(_b3.get("speed") or 5.0),
+                                  dry=bool(_b3.get("dry")))
         elif p in ("/api/aoi/param", "/aoi/param"):
             # 🎛 按点位切曝光(老倪 2026-10-08): ?profile=pt1|pt2 或 ?exposure=&gain= —— 转发工控机 /param。
             #   实测实时生效(自动曝光关掉后写入被接受, 下一帧 p50 33→67) ⇒ **不用重启服务**。
@@ -6762,9 +7064,11 @@ def main():
         #     判据图 = 取工控机 v12.1 的 **kind=judge**(已在工控机切好模块+调平+定尺 1600x300) ⇒ 本地零加工;
         #     整板原图 = 低频取 kind=origin(原图缩图) ⇒ /aoi_surface_raw.mjpg。
         #   模型输入那张(1280 全幅规范图)不受影响, 仍可在 /aoi_surface_modelin.png 看。
+        # 🆕 2026-11-18 老倪「10083 一样」: 表面主图 = 工控机 kind=crop(letterbox 1280 规范图,
+        #   就是送 YOLO 那张), 本地零加工; 另一格是原图。不再本地切刚体当判据图。
         threading.Thread(target=_aoi_worker,
-                         args=(10083, "aoi_surface", args.aoi_fps, "origin", False, True,
-                               "aoi_surface_raw", "", 0),
+                         args=(10083, "aoi_surface", args.aoi_fps, "crop", False, True,
+                               "aoi_surface_raw", "origin", 4),
                          daemon=True, name="aoi-surface").start()
         print(f"   🏭 工控机检测源: 10082 金手指(**口径感知**: canonical=本地 原比例+去倾角+3×→900×332 · "
               f"same=直接显示工控机送检那张 kind=crop, 零本地加工; 另推 /aoi_gold_anno.mjpg = 判据图+检测框) "
