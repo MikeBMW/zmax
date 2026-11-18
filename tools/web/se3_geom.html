@@ -19,11 +19,20 @@ button{background:#16202a;color:var(--fg);border:1px solid #243441;border-radius
 button:hover{border-color:var(--acc)}button.on{border-color:var(--acc);color:var(--acc)}
 .legend{display:flex;gap:12px;font-size:11px;color:var(--dim)}
 .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:middle}
+<style id="focusCss">
+body.focus-s1 .grid{grid-template-columns:1fr 1fr;grid-template-rows:auto}
+body.focus-s1 .card:nth-child(1),body.focus-s1 .card:nth-child(2),body.focus-s1 .card:nth-child(3){display:none}
+body.focus-s1 #d,body.focus-s1 #e{height:420px}
+body.focus-s1 header h1 small{display:none}
+</style>
 </style></head><body>
 <header>
   <h1>SE(3) 分层几何 · <small>位置 ℝ³ ｜ 姿态 S³→Hopf→S²轴+S¹滚转 ｜ 速度 TQ ｜ 相位 S¹</small></h1>
   <span class="hint">同一份真值：215 帧录制位姿（`real_traj_joints.json` + `traj_hopf.json`），速度档来自 flow 规划</span>
 </header>
+<script>
+if(location.search.indexOf('focus=s1')>=0){document.body.classList.add('focus-s1');document.title='Z-MAX · S¹ 滚转与相位';}
+</script>
 <div class="grid">
   <div class="card" style="grid-row:span 2"><h2>A · 位置 ∈ ℝ³（底空间）</h2><span class="sub" id="aSub"></span><canvas id="a"></canvas></div>
   <div class="card"><h2>B · 轴 ∈ S²（方向）</h2><span class="sub" id="bSub"></span><canvas id="b"></canvas></div>
