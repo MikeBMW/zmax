@@ -217,41 +217,19 @@
       <button id="ssRun" class="sm" style="display:none;margin-left:2px;padding:3px 8px;font-size:11.5px"
               title="点了这个, 三维双臂才按状态空间真实执行信号(ar_cmd.json 10Hz)走帧; 不点 = 只接入看信号, 画面一帧都不动">▶ 跟随</button>
     </div>
-    <!-- 🎚 2026-10-26 老倪「现在移动的速度太快了，在 执行轨迹 按钮上边，给出速度 5mm/s 10mm/s 50mm/s 三个档位，你来设计」
-         设计口径:
-           · 三个档 = **真实末端速度**(mm/s), 不是控制器内部档位号 —— 现场说的"太快"是看得见的 mm/s。
-           · 默认 10mm/s: 5 太磨蹭(170mm 要 34s), 50 又回到"看不清走没走"的感觉。
-           · 选中值随 POST /api/traj/exec 的 speed_mm_s 一路透传到 l2_daemon, **真的改下发速度**,
-             不是只改显示(改前是 env ZMAX_L2_MM_S=200 无条件覆盖, 页面调什么都没用)。
-           · 档位记 localStorage, 刷新后还是上次选的。 -->
-    <div class="row" id="spdRow" style="margin-top:8px;gap:6px;align-items:center">
-      <span style="font-size:12.5px;color:#8b949e">速度</span>
-      <button class="sm spd" data-mm="5"  title="5 mm/s · 最慢 · 精密靠近、贴件、过窄处用">5</button>
-      <button class="sm spd on" data-mm="10" title="10 mm/s · 默认 · 常规走位">10</button>
-      <button class="sm spd" data-mm="50" title="50 mm/s · 快 · 空走、退回原点用">50</button>
-      <span style="font-size:12.5px;color:#8b949e">mm/s</span>
-      <span id="spdHint" style="font-size:11.5px;color:#6b7a8d"></span>
-    </div>
+    <!-- 🎚 2026-11-18 老倪「删掉 5 10 50 mm/s 默认 按钮」—— 三个档位按钮已删;
+         「▶ 执行轨迹」仍按 SPD_MM_S 下发(默认 10mm/s, 由脚本常量给), 页面不再露档位。 -->
     <!-- 👻 2026-10-26 老倪: 「在 执行轨迹 按钮上方, 增加一个 预览动作 的按钮; 点一下按钮变蓝,
          右臂虚拟执行到目标点, 再点一次消失; 真机不动, 用眼睛能同时看到两条臂, 末端位姿不同;
          用一个新颜色表达模拟动作的右臂」 -->
     <div class="row" style="margin-top:8px">
-      <button id="bPrev" class="sm" title="点一下 = 按轨迹终点做逆解, 用紫色幽灵臂画出&quot;走完的样子&quot;(真机不动); 再点 = 消失。只画不改真机, 不下发任何指令">👻 预览动作</button>
-      <!-- 📍 老倪 2026-11-13「左侧增加一个按钮, 让右臂(仿真)按真实轨迹 182 点走一遍」 -->
-      <button id="bRTraj" class="sm" title="仿真右臂按录制进来的真实轨迹(182 点, 位姿真值录制)完整走一遍: 沿折线 8mm 重采样 → 逐点 IK → 紫色幽灵臂 + 8802 同帧渲染。只动仿真, 不下发真机指令">📍 右臂跑真实轨迹</button>
-      <span id="tRTraj" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
-      <button id="bSyncStep" class="sm" style="margin-left:10px" title="同步操作: 沿真实轨迹「一个点一个点」走(每走到一个点停一下)。输入框里的 N 是**相对**的: 输入 10 = 从当前游标再走 10 个点(不是从头再来)。走完游标自动前移。只动仿真, 不下发真机指令(要真机跟着走用右边的『⏭ 单步 +1 点』)">⏭ 同步操作(只仿真)</button>
-      <input id="iSyncN" type="number" min="1" step="1" value="3" title="相对点数: 从当前游标再走几个点(输入 10 = 接着走 10 个点, 不是从头 10 个点)" style="width:60px;margin-left:4px;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;border-radius:4px;padding:2px 4px;font-size:12px;vertical-align:middle">
-      <button id="bSyncAlign" class="sm" title="把游标对齐到真机当前姿态最接近的那个轨迹点(只读真值, 不动机械臂)。手动拖过示教器后用这个重新接上轨迹">◎ 对齐当前位置</button>
-      <button id="bSyncReset" class="sm" title="游标回起点(第 1 点)。下次点同步就是从头走">↺ 回起点</button>
-      <button id="bSyncTruth" class="sm" title="立刻把三维里的臂/紫幽灵臂/8802 渲染全部按 TCP 真值重画(不动机器人)。仿真演完画面停在最后那一帧时点这个">⟲ 同步真值</button>
+      <!-- ▶ 老倪 2026-11-18「太复杂了, 删掉 预览动作/同步真值/插入仿真/插拔全流程。就一个 右臂跑真实轨迹」
+           一个按钮 = 真机按录制轨迹走(⚡真实回放档, 整轮≈43s); 需 8793 已授权真动。 -->
+      <button id="bRTraj" class="sm" style="background:#238636;border-color:#238636;font-size:13px" title="一键真机回放: 从当前游标沿 215 点真实轨迹走到底(⚡真实回放, 整轮≈43 秒)。需 8793 已授权真动; 到 AOI/夹爪停留点会停住做完再走; 游标已在末尾会自动回起点。">▶ 右臂跑真实轨迹</button>
+      <span id="tRTraj" style="font-size:12px;color:#8b949e;margin-left:8px"></span>
       <span id="tSyncStep" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
-      <label id="lSyncArm" style="font-size:12px;color:#8b949e;margin-left:8px;cursor:pointer" title="勾上=仿真走完 N 点后, 按同一批关节角帧驱动真实右臂逐点走同样 N 点(需 8793 授权 + 产线网直连控制器)。不勾=只动仿真。">
-        <input id="cSyncArm" type="checkbox" checked style="vertical-align:-2px"> 真机也走</label>
-      <button id="bIns" class="sm" title="用紫色幽灵臂仿真: 从 7 号位抓起光模块 → 抬起 → 插拔准备点 → 插入口 → 插入到位(47mm)。全程只画不算, 真机零指令">🔌 插入仿真</button>
-      <button id="bInsp" class="sm" title="右臂插拔全流程仿真: 黑盘 1~14 号位依次抓取 → 插孔(47mm) → 检测 → 拔出 → 良品放下料盘 / NG 放废料盘。12 良品 + 2 不良。真机零指令">🔁 插拔全流程</button>
-      <span id="tPrev" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
-      <span id="tIns" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
+      <span id="tPrev" style="display:none"></span><span id="tIns" style="display:none"></span>
+      <input id="cSyncArm" type="checkbox" checked style="display:none">
   </div>
   <!-- ⏭ 单步(老倪 2026-11-16「左侧栏，增加一个走一个点的按钮，同时按钮旁边显示当前的点位」)
        和「⏭ 同步操作」的区别: 那个按 N 个点连续走、每点带 dwell; 这个是**只走一个点**并定住不动,
@@ -259,9 +237,19 @@
        位姿口径: 直接取该帧关节角真值, 不插值(插值就说不清停在第几个点了)。只动仿真, 真机零指令。 -->
   <div class="row" style="margin-top:6px">
     <button id="bTrajBack" class="sm" style="background:#6e40c9;border-color:#6e40c9;margin-left:6px" title="回退 1 个轨迹点。仿真立即后退一格; 若勾了『真机也走』, 会让真机也退回上一点(服务端只挡 >40° 的关节跳变, 不挡后退)。真机正在走时本次只退仿真, 等它到位再点。快捷键 Alt+← 同效(但快捷键只退仿真)。">↩ 回退 1 点</button>
-    <button id="bTrajStep10" class="sm" style="background:#1f6feb;border-color:#1f6feb;margin-left:6px" title="连续往前走 10 个轨迹点(串行: 每一步等真机到位再走下一步, 不会因 busy 被跳过)。连点会累加: 走的过程中再点 +10 = 再追加 10 点。勾了『真机也走』时真机跟着一段一段走。">⏭⏭ 连走 +10 点</button>
     <button id="bTrajStep" class="sm" style="background:#238636;border-color:#238636" title="沿 215 点真实轨迹往前走一个点后停住(不连续播)。旁边显示当前点 ID 与该点 TCP 坐标(mm), 便于按 ID 指认和调位置。快捷键 Alt+→ 前进 / Alt+← 后退。勾了「真机也走」时: 仿真先走到该点, 停 1 秒, 再让真机跟着走一点(需 8793 授权)">⏭ 单步 +1 点</button>
     <span id="tTrajStep" style="font-size:12.5px;color:#3fb950;margin-left:8px;font-family:ui-monospace,monospace;white-space:nowrap" title="当前停在哪个轨迹点(ID) + 该点 TCP 坐标(mm, base 世界系)">#— · 未开始</span>
+  </div>
+  <!-- 🎚 速度档 (老倪 2026-11-18「原来的速度太慢了, 能提速么? 增加按钮 x1 x2 真实」)
+       x1 = 现行慢速(关节 20%, 实测 ≈5.9s/点) · x2 = 2 倍(40%, ≈3.8s/点)
+       ⚡真实 = 按录制时间轴整块下发(整轮 215 点 ≈ 录制 42.85s), 到停留点(AOI/夹爪)照样停住做事 -->
+  <div class="row" style="margin-top:6px;align-items:center">
+    <span style="font-size:12px;color:#8b949e;margin-left:6px">速度</span>
+    <button id="bSpdX1" class="sm" style="margin-left:4px;background:#238636;border-color:#238636" title="x1 = 现行慢速(关节速度 20%): 实测每点 ≈5.9s, 215 点 ≈21 分钟">🕐 x1 慢速</button>
+    <button id="bSpdX2" class="sm" style="margin-left:4px" title="x2 = 2 倍速(关节速度 40%): 实测每点 ≈3.8s, 215 点 ≈14 分钟">⏩ x2 倍速</button>
+    <button id="bSpdReal" class="sm" style="margin-left:4px;background:#6e40c9;border-color:#6e40c9" title="⚡真实回放 = 按录制时的时间轴整块下发(213 点/12 点一块), 整轮 ≈ 录制 42.85s。到 AOI/夹爪停留点仍会停住做完再走">⚡ 真实回放</button>
+    <span id="tSpd" style="font-size:12px;color:#3fb950;margin-left:8px">当前: 🕐 x1 慢速</span>
+    <span style="font-size:11.5px;color:#8b949e;margin-left:8px">选档后点「▶ 右臂跑真实轨迹」</span>
   </div>
   <button id="panChip" style="position:fixed;left:16px;top:96px;z-index:55;display:none;background:rgba(13,17,23,.92);border:1px solid #30363d;color:#8b949e;border-radius:14px;padding:4px 10px;font:11px/1.3 ui-monospace,monospace;cursor:pointer" title="中键平移后视角会一直保持; 点这里恢复到自动取景中心">🖱 视角已平移</button>
   <button id="uphPill" style="position:fixed;left:50%;transform:translateX(-50%);top:10px;z-index:60;display:none;background:rgba(13,17,23,.94);border:1px solid #2f81f7;color:#3fb950;border-radius:16px;padding:5px 10px 5px 14px;font:12px/1 ui-monospace,monospace;cursor:pointer"><span id="uphPillT">🏭 UPH 300 ▸</span><span id="uphPillX" title="彻底隐藏(想再看回来就点『🏭 全流程 UPH』)" style="margin-left:8px;padding:0 3px;color:#8b949e">✕</span></button>
@@ -3051,20 +3039,8 @@ let SPD_MM_S = (function(){
   return [5,10,50].indexOf(v) >= 0 ? v : 10;
 })();
 function spdPaint(){
-  document.querySelectorAll('#spdRow .spd').forEach(b=>{
-    b.classList.toggle('on', Math.abs(parseFloat(b.dataset.mm) - SPD_MM_S) < 0.01);
-  });
-  const h = document.getElementById('spdHint');
-  if (h) h.textContent = SPD_MM_S <= 5 ? '(最慢)' : (SPD_MM_S >= 50 ? '(快)' : '(默认)');
+  // 档位按钮已删(2026-11-18); 保留函数是因为别处可能调它 —— 空实现, 不碰 DOM。
 }
-document.querySelectorAll('#spdRow .spd').forEach(b=>{
-  b.addEventListener('click', ()=>{
-    SPD_MM_S = parseFloat(b.dataset.mm) || 10;
-    try{ localStorage.setItem('zmax_spd_mm_s', String(SPD_MM_S)); }catch(e){}
-    spdPaint();
-  });
-});
-spdPaint();
 
 // ══════════════════════════════════════════════════════════════════════════
 //  👻 预览动作 (2026-10-26 老倪:「在执行轨迹上方加一个预览动作按钮, 点一下按钮变蓝, 右臂虚拟
@@ -4657,6 +4633,73 @@ document.addEventListener('keydown', function(ev){
 }, true);
 // ⏭ 左侧栏「单步 +1 点」按钮(老倪 2026-11-16)
 $('bTrajStep').addEventListener('click', function(){ rtrajStep(1); });
+/* 🎚 速度档 (老倪 2026-11-18「原来的速度太慢了… x1 x2 真实」)
+   真源 = 一个变量 TRAJ_SPEED_MODE, 所有下发真机的 POST 都带上它 ⇒ 服务端按档换算关节速度%.
+   x1=20%(现行) x2=40% real=按录制时间轴整块下发。切档只改下一个下发, 不动在途动作。 */
+var TRAJ_SPEED_MODE='x1';
+var TRAJ_SPEED_TXT={x1:'🕐 x1 慢速(20%)',x2:'⏩ x2 倍速(40%)',real:'⚡ 真实回放(录制时间轴)'};
+function setTrajSpeed(m){
+  if(['x1','x2','real'].indexOf(m)<0) m='x1';
+  TRAJ_SPEED_MODE=m;
+  var t=document.getElementById('tSpd'); if(t) t.textContent='当前: '+TRAJ_SPEED_TXT[m];
+  ['bSpdX1','bSpdX2','bSpdReal'].forEach(function(id){
+    var b=document.getElementById(id); if(!b) return;
+    var on=(id==='bSpdX1'&&m==='x1')||(id==='bSpdX2'&&m==='x2')||(id==='bSpdReal'&&m==='real');
+    b.style.background = on?(m==='real'?'#6e40c9':'#238636'):'';
+    b.style.borderColor = on?(m==='real'?'#6e40c9':'#238636'):'';
+  });
+}
+$('bSpdX1').addEventListener('click', function(){ setTrajSpeed('x1'); });
+$('bSpdX2').addEventListener('click', function(){ setTrajSpeed('x2'); });
+$('bSpdReal').addEventListener('click', function(){ setTrajSpeed('real'); });
+setTrajSpeed('real');    // 单按钮「▶ 右臂跑真实轨迹」默认就按录制速度走
+
+/* ▶ 右臂跑真实轨迹 —— 唯一的动作入口(老倪 2026-11-18「就一个 右臂跑真实轨迹」)
+   一次点击 = 从当前游标沿 215 点真实轨迹走到底; 走到末尾自动回起点再跑。
+   闸门全在服务端: 8793 授权 / power=on / idle / 跳变≤40° / 双确停。这里只负责"点了就真发"并回报进度。 */
+var RUNREAL={poll:null};
+function runRealTraj(){
+  var t=document.getElementById('tRTraj');
+  function st(x,c){ if(t){ t.textContent=x; t.style.color=c||'#8b949e'; } }
+  // 🔴 2026-11-18 老倪「怎么卡住了?」: 旧实现在 poll 存在时直接 return, 而清 poll 的条件是
+  //   status.finished —— 服务端**从来不返回 finished**(只有 running/done/step.ok) ⇒ 上一轮失败后
+  //   poll 永远不清, 之后每次点按钮都只说"正在跑", 再也不发单。这里改成先问服务端, 服务端不动就清掉重发。
+  st(RUNREAL.poll?'核对服务端状态…':'读取游标…','#8b949e');
+  fetch('/api/arm/step_traj/status',{cache:'no-store'}).then(function(r){return r.json();}).then(function(s){
+    if(RUNREAL.poll && !(s&&s.running)){ clearInterval(RUNREAL.poll); RUNREAL.poll=null; }   // 服务端已经不在跑 ⇒ 清掉旧轮询
+    var tot=(s&&s.total)||215, cur=(s&&s.cursor!=null)?s.cursor:0;
+    if(cur>=tot){
+      st('游标在末尾 '+cur+'/'+tot+' · 回起点…','#d29922');
+      return fetch('/api/arm/step_traj',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"reset":true}'})
+        .then(function(r){ return r.json(); })
+        .then(function(d){ if(!(d&&d.ok)) throw new Error('回起点失败: '+((d&&(d.err||d.msg))||'')); return {cursor:0,total:tot}; });
+    }
+    return s;
+  }).then(function(s){
+    var tot=(s&&s.total)||215, cur=(s&&s.cursor!=null)?s.cursor:0, n=tot-cur;
+    var eta=Math.max(1,Math.round(43.0*n/215));
+    st('▶ 真机回放 第 '+(cur+1)+'~'+tot+' 点('+n+' 点 · 约 '+eta+'s)· '+TRAJ_SPEED_TXT[TRAJ_SPEED_MODE],'#58a6ff');
+    return fetch('/api/arm/step_traj',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({n:n,start:cur,speed_mode:TRAJ_SPEED_MODE})}).then(function(r){ return r.json(); });
+  }).then(function(d){
+    if(!d||!d.ok){ st('⛔ 未下发: '+((d&&(d.err||d.msg||d.stage))||'失败'),'#f85149'); return; }
+    RUNREAL.poll=setInterval(function(){
+      fetch('/api/arm/step_traj/status',{cache:'no-store'}).then(function(r){ return r.json(); }).then(function(x){
+        if(x.running){
+          st('▶ 真机回放中 · '+(x.done||0)+'/'+(x.n||'?')+' 点 · '+Math.round(x.elapsed_s||0)+'s','#58a6ff');
+        }
+        else {
+          clearInterval(RUNREAL.poll); RUNREAL.poll=null;
+          try{ paintTrajCursor(x); }catch(e){}
+          var _ok = !!(x.step && x.step.ok);
+          var _nd = (x.done!=null?x.done:0), _why = (x.why || (x.step&&x.step.why) || '');
+          st((_ok?'✅ 走完 ':'⛔ 停了 ')+_nd+'/'+(x.n||'?')+' 点'+(_why?(' · '+_why):''), _ok?'#3fb950':'#f85149');
+          if(typeof syncArmFollow==='function') syncArmFollow(false);
+        }
+      }).catch(function(){});
+    },900);
+  }).catch(function(e){ st('⛔ '+e,'#f85149'); });
+}
 /* ⏭⏭ 连走 N 点(老倪 2026-11-18「增加 +10点 按钮, 可以继续连续走10步」)
    为什么不能简单 for 循环调 10 次 rtrajStep(1):
      rtrajStep 里有「真机还在走上一段总线⏳ ⇒ 整步都不动、直接 return」的保护, 同步真机时
@@ -4687,7 +4730,7 @@ function rtrajStepN(n){
   };
   setTimeout(tick, 0);
 }
-$('bTrajStep10').addEventListener('click', function(){ rtrajStepN(10); });
+if($('bTrajStep10')) $('bTrajStep10').addEventListener('click', function(){ rtrajStepN(10); });
 /* ↩ 回退 1 点(老倪 2026-11-18「增加一个按钮, 回退1点, 能加么」)
    rtrajStep(-1) 原设计只退仿真、不联动真机(注释: 后退只动仿真, 不让真机倒走)。
    现在明确要能退, 所以这里在仿真退完之后, 若勾了『真机也走』且真机空闲,
@@ -6563,7 +6606,7 @@ var RTRAJ={playing:false,frames:[],fi:0,t0:0,dur:0,raf:null,rate:1,path_mm:0,
            n_pts:0,bad:0,errAvg:0,errMax:0};    // rate=1 = 按录制真实时间走(43s), 看得清转腕/翻面
 function rtrajUI(on,txt){
   var b=$('bRTraj');
-  if(b){ b.classList.toggle('on',!!on); b.textContent = on ? '⏹ 停止·真实轨迹' : '📍 右臂跑真实轨迹'; }
+  if(b){ b.classList.toggle('on',!!on); b.textContent = on ? '⏹ 停止·真实轨迹' : '📍 右臂跑真实轨迹(只仿真·不动真机)'; }
   var t=$('tRTraj'); if(t && txt!=null) t.textContent=txt;
 }
 /* 回放专用高频推送: 现场可能同时开着别的 /ar3d 页面(它们也在 8Hz 推 /armq),
@@ -6707,7 +6750,7 @@ function stepRealFollow(i){
         //   若真机实际不在 frames[i-1], 跳变闸会拒(30°), 仍由服务端把关, 页面不绕过。
         _stepSt('真机下发: 走第 '+(i+1)+' 点(frames['+i+'])'+(cur!==i?(' · 服务端游标 '+cur+' 与画面差 '+Math.abs(cur-i)):''),'#58a6ff');
         return fetch('/api/arm/step_traj',{method:'POST',headers:{'Content-Type':'application/json'},
-                     body:JSON.stringify({n:1,start:i})});
+                     body:JSON.stringify({n:1,start:i,speed_mode:'x1'})});   // 单步=单点检视, 固定慢速(x1); 高速档只用于连走/同步回放
       })
       .then(function(r){ return r.json(); })
       .then(function(d){
@@ -6927,14 +6970,57 @@ function syncStepStop(msg){
 var SYNCUR={cursor:null,total:null};
 function syncFetchCur(){
   return fetch('/api/arm/step_traj/status',{cache:'no-store'}).then(function(r){ return r.json(); })
-    .then(function(s){ if(s && s.cursor!=null){ SYNCUR.cursor=s.cursor; SYNCUR.total=s.total||null; } return s; })
+    .then(function(s){
+      if(s && s.cursor!=null){ SYNCUR.cursor=s.cursor; SYNCUR.total=s.total||null; }
+      // 🔴 跑批中服务端的 cursor 不动(只在整轮结束才推进) ⇒ 光标/进度条必须用 start+done,
+      //   否则真机明明在走, 页面所有"光标"都停在起点(老倪 3 次问过这件事)。
+      if(s){
+        SYNCUR.running=!!s.running;
+        SYNCUR.start=(s.start!=null?s.start:0);
+        SYNCUR.done=(s.done||0);
+        SYNCUR.live=SYNCUR.running?(SYNCUR.start+SYNCUR.done):(s.cursor!=null?Number(s.cursor):null);
+      }
+      return s;
+    })
     .catch(function(){ return null; });
 }
 function syncShowCur(s){
+  // 🔴 2026-11-18 老倪「轨迹回放的光标怎么不动?」真因: 服务端 cursor 只在**整轮结束**时按 n_done 推进,
+  //   一轮 146 点跑 14 分钟, 期间它一直是起点的值 ⇒ 页面看着像卡住(其实真机在走)。
+  //   跑批中改用 start+done 当**实时光标**; 只在刷新页面(每 2s 轮询)时才重画。
   var t=document.getElementById('tSyncStep');
-  if(!t||!s||s.cursor==null||SYNC.playing) return;
+  if(!t||!s) return;
+  if(s.running){
+    var st0=(s.start!=null?s.start:0), done=(s.done||0), tot=(s.total||'?');
+    var at=Math.min(st0+done, (typeof tot==='number'?tot:1e9));
+    t.style.color='#58a6ff';
+    t.textContent='▶ 回放中 · 已到 #'+at+'/'+tot+' 点 · '+(s.elapsed_s?Math.round(s.elapsed_s):0)+'s';
+    return;
+  }
+  if(SYNC.playing) return;
+  if(s.cursor==null) return;
   t.style.color='#8b949e';
   t.textContent='游标 '+(s.cursor)+'/'+(s.total||'?')+' 点 · 下一点 #'+(s.cursor+1);
+}
+/* 🎯 三维视图那行的**点号光标** (#tTrajStep / #rpStepId) —— 2026-11-18 老倪两次问
+   「轨迹回放的光标怎么不动 / 还是没有」: 这个点号以前只有「单步」和仿真回放会写,
+   真机跑批时永远是「#— · 未开始」。现在它跟真机走: 跑批中 = start+done, 停着 = cursor-1。 */
+function paintTrajCursor(s){
+  try{
+    var e1=document.getElementById('tTrajStep'), e2=document.getElementById('rpStepId');
+    if(!e1 && !e2) return;
+    var txt=null;
+    if(s && s.running){
+      var at=(s.start!=null?s.start:0)+(s.done||0);
+      txt='#'+at+' · 真机 #'+(at+1)+'/'+(s.total||'?');
+      if(s.step && s.step.tcp && s.step.tcp.length>=3)
+        txt+=' · X'+Math.round(s.step.tcp[0]*1000)+' Y'+Math.round(s.step.tcp[1]*1000)+' Z'+Math.round(s.step.tcp[2]*1000);
+    } else if(s && s.cursor>0){
+      txt='#'+(s.cursor-1)+' · 已到 '+(s.cursor)+'/'+(s.total||'?');
+    }
+    if(!txt) return;
+    [e1,e2].forEach(function(e){ if(e){ e.textContent=txt; e.style.color='#3fb950'; } });
+  }catch(e){}
 }
 function syncArmRun(n,start){
   var cb=document.getElementById('cSyncArm');
@@ -6947,7 +7033,7 @@ function syncArmRun(n,start){
   var from=(start||0);
   st('仿真已走完 '+(from+1)+'~'+(from+n)+' 点 · 正在请求真机…','#d29922');
   fetch('/api/arm/step_traj',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({n:n,start:from})})
+        body:JSON.stringify({n:n,start:from,speed_mode:TRAJ_SPEED_MODE})})
    .then(function(r){ return r.json(); })
    .then(function(d){
       if(!d.ok){
@@ -6960,7 +7046,10 @@ function syncArmRun(n,start){
         syncFetchCur().then(syncShowCur);
         return;
       }
-      st('仿真完成 · 真机逐点走第 '+(d.start!=null?(d.start+1):(from+1))+'~'+((d.start!=null?d.start:from)+n)+' 点…','#58a6ff');
+      if(d.speed_mode==null && TRAJ_SPEED_MODE!=='x1'){
+        st('⚠️ 服务端还是旧版(无速度档 '+TRAJ_SPEED_MODE+') ⇒ 本次按慢速跑; 需重启 8797 才生效','#d29922');
+      }
+      st('仿真完成 · 真机逐点走第 '+(d.start!=null?(d.start+1):(from+1))+'~'+((d.start!=null?d.start:from)+n)+' 点…'+((d.speed_mode==='real')?' · ⚡真实回放':''),'#58a6ff');
       syncArmFollow(true);        // 真机一动, 仿真就按真值跟随(画面同步)
       var t0=Date.now();
       if(SYNCARM.poll) clearInterval(SYNCARM.poll);
@@ -7115,9 +7204,9 @@ function rtrajPlay(){
   }, 30);
 }
 
-{ var _b=$('bRTraj'); if(_b) _b.addEventListener('click', rtrajPlay); }
+{ var _b=$('bRTraj'); if(_b) _b.addEventListener('click', runRealTraj); }
 { var _bs=document.getElementById('bSyncStep'); if(_bs) _bs.addEventListener('click', syncStepPlay); }
-{ var _ba=document.getElementById('bSyncAlign');
+{ var _ba=document.getElementById('bSyncAlign');   // 已删除按钮, 保留守卫(存在才绑定)
   if(_ba) _ba.addEventListener('click', function(){
     var t=document.getElementById('tSyncStep'); if(t){ t.textContent='对齐中…'; t.style.color='#8b949e'; }
     fetch('/api/arm/step_traj',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"align":true}'})
@@ -8269,7 +8358,7 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
     try {
       var pp = document.getElementById('rpProg');
       if (pp) {
-        var _gc = (SYNCUR && SYNCUR.cursor != null) ? Number(SYNCUR.cursor) : null;
+        var _gc = (SYNCUR && SYNCUR.live != null) ? Number(SYNCUR.live) : ((SYNCUR && SYNCUR.cursor != null) ? Number(SYNCUR.cursor) : null);
         var _gt = (SYNCUR && SYNCUR.total) ? Number(SYNCUR.total) : 215;
         var _followOn = (typeof RTRAJ_FOLLOW !== 'undefined' && RTRAJ_FOLLOW.on);
         if (_gc != null && _gc > 0) {
@@ -8307,12 +8396,16 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
         var gMeta = (MT && MT.long_horizon && MT.long_horizon.replay && MT.long_horizon.replay.gantt) || null;
         if (gc && gMeta && gMeta.length) {
           var isFol = (typeof RTRAJ_FOLLOW !== 'undefined' && RTRAJ_FOLLOW.on);
-          var gCur = (SYNCUR && SYNCUR.cursor != null) ? Number(SYNCUR.cursor) : null;
+          var gCur = (SYNCUR && SYNCUR.live != null) ? Number(SYNCUR.live)
+                   : ((SYNCUR && SYNCUR.cursor != null) ? Number(SYNCUR.cursor) : null);
           var rpOn = (typeof RTRAJ !== 'undefined' && RTRAJ && RTRAJ.frames && RTRAJ.frames.length);
           var curI = null;
           if (isFol && gCur != null) { curI = gCur; }                       // 跟随真机
+          else if (SYNCUR && SYNCUR.running && gCur != null) { curI = Math.max(0, gCur - 1); }  // 真机正在跑: 光标跟实时光标走
           else if (rpOn) { curI = Number(RTRAJ.fi || 0); }                   // 页面回放(含停住的帧)
-          else if (gCur != null && gCur > 0) { curI = gCur; }                // 只剩真机游标
+          else if (gCur != null && gCur > 0) { curI = Math.max(0, gCur - 1); }  // 只留真机游标(已走到第 gCur 点)
+          else { curI = 0; }                                                // 什么都没有 ⇒ 光标钉在 0 点, 不许整块消失
+
           if (curI == null || curI < 0) {
             gc.style.display = 'none';
             if (gl) { gl.style.display = 'none'; }
@@ -8334,9 +8427,17 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
             if (pos == null) { pos = (curI >= 215) ? 100 : 0; tNow = accS; }
             gc.style.display = 'block';
             gc.style.left = Math.max(0, Math.min(100, pos)) + '%';
+            // 🔴 2026-11-18 老倪「MT 还是没有光标」: 原来 2px 白线贴在深色条上几乎看不见。
+            gc.style.top = '-5px';
+            gc.style.bottom = '-5px';
+            gc.style.width = '3px';
+            gc.style.background = '#f0f6fc';
+            gc.style.boxShadow = '0 0 7px rgba(240,246,252,.95)';
             if (gl) {
               gl.style.display = 'block';
-              gl.textContent = tNow.toFixed(1) + 's · ' + segName;
+              gl.textContent = '#' + curI + '/' + ((SYNCUR && SYNCUR.total) ? SYNCUR.total : 215)
+                             + ' · ' + tNow.toFixed(1) + 's · ' + segName;
+              gl.style.color = '#f0f6fc';
             }
           }
         }
@@ -8345,7 +8446,7 @@ window.addEventListener('error',(e)=>{ $('hint').textContent='页面脚本出错
       if (typeof syncFetchCur === 'function') {
         if (!(mtTick._st) || mtTick._st + 2000 < Date.now()) {
           mtTick._st = Date.now();
-          syncFetchCur();
+          syncFetchCur().then(function(s){ try{ syncShowCur(s); paintTrajCursor(s); }catch(e){} });   // 跑批中也要刷新光标
         }
       }
     } catch (e) { }

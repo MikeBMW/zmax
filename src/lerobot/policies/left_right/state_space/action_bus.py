@@ -148,6 +148,31 @@ def exec_index(max_err_mm=25.0):
         s = int(st.get("start") or 0)
         n = int(st.get("n") or 0)
         d = int(st.get("done") or 0)
+        # 🔴 2026-11-18 实测(真实回放档): 整块下发时服务端 traj_step_state.json 的 done **不更新**
+        #   (批次路径只在整轮结束推进 cursor), 于是 action.i 永远停在 start, 现场看着就是
+        #   "真机在走、动作没对齐"(实测真机 #21 而 action.i=#0, Δ=20 点)。
+        #   口径: 真值取**执行日志里最后一条 progress**(与 8797 /api/arm/step_traj/status 同源),
+        #   取不到才用 state 的 start+done。
+        if not d:
+            _lp = st.get("log") or ""
+            if _lp:
+                try:
+                    with open(_lp, "rb") as _f:
+                        _f.seek(0, 2)
+                        _f.seek(max(0, _f.tell() - 20000))
+                        _tail = _f.read().decode("utf-8", "ignore")
+                    _k = _tail.rfind('"progress":')
+                    if _k >= 0:
+                        _num = ""
+                        for _ch in _tail[_k + 11:]:
+                            if _ch.isdigit():
+                                _num += _ch
+                            elif _num:
+                                break
+                        if _num:
+                            d = max(0, int(_num) - 1)          # progress 是 1 基已完成数 ⇒ 索引 = progress-1
+                except Exception:                                  # noqa: BLE001
+                    pass
         if n > 0:
             i = s + max(0, min(d, n - 1))
             return max(0, min(i, len(fr) - 1))

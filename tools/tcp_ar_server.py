@@ -3283,6 +3283,15 @@ class H(BaseHTTPRequestHandler):
             _b = body or {}
             _dry = bool(_b.get("dry"))
             _n = int(_b.get("n") or 0)
+            # 🎚 速度档 (2026-11-18 老倪: 「x1 x2 真实 —— 当前慢速的1倍/2倍, 然后是真实记录的回放速度」)
+            #   x1 = 现行 20% (≈5.9s/点) · x2 = 40% (≈3.8s/点) · real = 按录制时间轴整块下发(整轮 ≈ 录制 42.85s)
+            _smode = str(_b.get("speed_mode") or "x1").strip().lower()
+            # 🆕 2026-11-18 加 flow 档: 沿固定轨迹, 速度按状态抑制(曲率/关节速率/操作区), 块速动态给
+            if _smode not in ("x1", "x2", "real", "flow"):
+                _smode = "x1"
+            _base_spd = float(_b.get("speed") or 20.0)   # 关节速度%: 5% 实测 0.3°/s 太慢(每点 25~35s), 20% ⇒ 每点约 6~9s
+            _spd = {"x1": _base_spd, "x2": min(100.0, _base_spd * 2.0),
+                    "real": 100.0, "flow": 100.0}[_smode]     # flow: 上限 100, 实际每块由脚本按状态抑制
             _jf = os.path.join(REPO, "tools", "web", "real_traj_joints.json")
             try:
                 _d = json.load(open(_jf, encoding="utf-8"))
@@ -3492,11 +3501,14 @@ class H(BaseHTTPRequestHandler):
                 except Exception as _e:                                          # noqa: BLE001
                     print("[traj_adj] 读取失败(按原始帧下发): %s" % str(_e)[:90], flush=True)
                 _cmd = {"frames": [[float(v) for v in (f.get("j") or [])] for f in _fr[_start:_start + _n]],
+                        "t": [float(f.get("t") or 0.0) for f in _fr[_start:_start + _n]],
                         "adj_points": sorted(_adj_pts),
-                        "start": _start, "n": _n, "speed": float(_b.get("speed") or 20.0),   # 关节速度%: 5% 实测 0.3°/s 太慢(每点 25~35s), 20% ⇒ 每点约 6~9s
+                        "start": _start, "n": _n, "speed": _spd,
                         "dwell_ms": int(_b.get("dwell_ms") or 120),
                         "grip": _grip_plan, "grip_src": _grip_src,
                         "src": "real_traj_joints.json", "ts": time.time()}
+                if _smode in ("real", "flow"):
+                    _cmd["speed_mode"] = _smode
                 _cp = os.path.join(REPO, "zmax_data", "rokae_sdk", "traj_step_cmd.json")
                 os.makedirs(os.path.dirname(_cp), exist_ok=True)
                 with open(_cp, "w", encoding="utf-8") as _f:
@@ -3515,9 +3527,14 @@ class H(BaseHTTPRequestHandler):
                           open(_sts, "w", encoding="utf-8"), ensure_ascii=False)
                 self._json({"ok": True, "started": True, "n": _n, "start": _start,
                             "total": len(_fr), "dry": _dry, "pid": _pr.pid,
+                            "speed_mode": _smode, "speed": _spd,
                             "msg": (("演练(只算不下发) " if _dry else "真机逐点开始 ")
-                                    + "· 第 %d~%d 点(共 %d 点) · 关节角真值"
-                                    % (_start + 1, _start + _n, len(_fr)))})
+                                    + "· 第 %d~%d 点(共 %d 点) · %s · 关节角真值"
+                                    % (_start + 1, _start + _n, len(_fr),
+                                       {"x1": "x1 慢速 %.0f%%" % _spd,
+                                        "x2": "x2 倍速 %.0f%%" % _spd,
+                                        "real": "⚡真实回放(录制时间轴)",
+                                        "flow": "🌀 状态抑制流动(曲率/关节速率/操作区降速)"}[_smode]))})
             except Exception as e:                                               # noqa: BLE001
                 self._json({"ok": False, "stage": "launch", "err": "%s: %s" % (type(e).__name__, str(e)[:90])})
         elif p == "/api/arm/step_traj/status":

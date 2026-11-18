@@ -34,7 +34,10 @@ import xcoresdk_python as x  # noqa: E402
 
 IP = os.environ.get("ZMAX_ROBOT_IP", "192.168.23.160")
 CMD = os.environ.get("ZMAX_STEP_CMD", "/sdk/traj_step_cmd.json")
-MAX_JUMP_DEG = 40.0          # 单点关节跳变上限(真机一次转 >40° 有撞/绕线风险; 本条轨迹相邻点实测最大 31.1°)
+MAX_JUMP_DEG = 40.0
+# 2026-11-18: 块内出现 >BIG_JUMP_DEG 的相邻跳变就在那里断块 —— #19→#20 实测 31.1°,
+#   它并进普通块会把整块拖超时(实测 20s 超时、误差 27.7°、停在半路)。
+BIG_JUMP_DEG = 20.0          # 单点关节跳变上限(真机一次转 >40° 有撞/绕线风险; 本条轨迹相邻点实测最大 31.1°)
 TOL_DEG = 0.6                # 到位判据(关节角)
 POINT_TIMEOUT_S = 60.0       # 单点等待上限
 GRIP_HOLD_MS = 2600          # 🆕 夹爪动作窗口: 报到 grip_due 后原地等一下, 让上层(8797)把开合发下去再继续
@@ -190,6 +193,328 @@ def _send_wait(r, jt, speed):
     return False, max(abs(math.degrees(b - a)) for a, b in zip(jt, aj)), time.time() - t0
 
 
+def _send_batch_wait(r, jts, speed, tmo):
+    """一次 append 多条 MoveAbsJ + 一次 moveStart, 等到最后一点。
+    🕐 2026-11-18 老倪「原来的速度太慢了, 能提速么」的真因: 逐点下发时每点固定 ~1.8s 开销
+    (moveReset/append/start + 每 0.12s 轮询 joints/opstate 的 SDK 往返), 215 点光开销就 >6 分钟。
+    整块下发把开销摊到 N 点上, 才有机会贴住录制速度(录制 215 点 42.85s)。
+    返回 (ok, err_deg, secs, why)。"""
+    t0 = time.time()
+    try:
+        r.moveReset({})
+        ec = {}
+        cmds = [x.MoveAbsJCommand(x.JointPosition([float(v) for v in jt]), speed, -1) for jt in jts]
+        r.moveAppend(cmds, x.PyString("bt%d" % (int(t0 * 1000) % 100000)), ec)
+        if ec.get("ec", 0) != 0:
+            return False, 999.0, time.time() - t0, "moveAppend 被拒: %s" % (ec,)
+        r.moveStart({})
+    except Exception as e:                                               # noqa: BLE001
+        return False, 999.0, time.time() - t0, "%s: %s" % (type(e).__name__, e)
+    jt = jts[-1]
+    while time.time() - t0 < tmo:
+        time.sleep(0.1)
+        aj = joints(r)
+        err = max(abs(math.degrees(b - a)) for a, b in zip(jt, aj))
+        if err <= TOL_DEG and "idle" in opstate(r).lower():
+            return True, err, time.time() - t0, ""
+    aj = joints(r)
+    return False, max(abs(math.degrees(b - a)) for a, b in zip(jt, aj)), time.time() - t0, "整块等待超时"
+
+
+def _run_real(r, frames, out, speed, dwell_ms, grip_at, start_abs, ts, prev):
+    """⚡ 真实回放: 按录制时间轴整块下发。
+    - 块大小 ZMAX_REAL_CHUNK(默认 12); 遇到停留点(夹爪/AOI)必断开, 保证停在点上做事
+    - 每块下发后按录制时刻对齐(能动得比录制快就 sleep 补齐) ⇒ 整轮 ≈ 录制 dur_s
+    - 跳变闸/前置闸与逐点路径同口径, 任一不满足就停, 绝不重发
+    """
+    n = len(frames)
+    stops = set(int(k) for k in grip_at.keys())
+    for _a in AOI_ON_ARRIVE:
+        _rel = int(_a) - int(start_abs or 0)
+        if 0 <= _rel < n:
+            stops.add(_rel)
+    chunk = max(2, int(os.environ.get("ZMAX_REAL_CHUNK") or 12))
+    out["speed_mode"] = "real"
+    out["chunk"] = chunk
+    out["stops_rel"] = sorted(stops)
+    i = 0
+    while i < n:
+        j = i
+        while (j + 1) < n and (j + 1 - i) < chunk:
+            j += 1
+            if j in stops:      # 停留点必须作为**本块终点**到达, 到点后才能做夹爪/AOI
+                break
+            # 🔴 2026-11-18 实测(真实档首跑): 把 #19→#20 那个 31° 大跨步并进 12 点块里,
+            #   整块 20s 超时, 误差 27.7° ⇒ 停在半路。大跨步必须**单独作为块终点**,
+            #   让它自己吃掉整份超时预算, 而不是和 11 个普通点抢。
+            _dj = max(abs(math.degrees(b - a)) for a, b in zip(frames[j - 1], frames[j]))
+            if _dj > BIG_JUMP_DEG:
+                break
+        jts = [[float(v) for v in f] for f in frames[i:j + 1]]
+        # 跳变闸: 起点→首点 + 块内相邻点
+        jump = max(abs(math.degrees(b - a)) for a, b in zip(prev, jts[0]))
+        if jump > MAX_JUMP_DEG:
+            out["why"] = "第 %d 点起跳 %.1f° > 上限 %.0f°, 拒发" % (i, jump, MAX_JUMP_DEG)
+            print(json.dumps(out, ensure_ascii=False))
+            return 1
+        worst = 0.0
+        for a, b in zip([prev] + jts[:-1], jts):
+            worst = max(worst, max(abs(math.degrees(y - x)) for x, y in zip(a, b)))
+        if worst > MAX_JUMP_DEG:
+            out["why"] = "块 %d~%d 内跳变 %.1f° > 上限 %.0f°, 拒发" % (i, j, worst, MAX_JUMP_DEG)
+            print(json.dumps(out, ensure_ascii=False))
+            return 1
+        t_target = (ts[j] - ts[i]) if (ts and len(ts) > j and ts[i] is not None) else None
+        # 超时预算按**点数 + 大跨步**给, 只看录制时间不够: 实测 10 点块用 16.5s(≈1.65s/点),
+        #   而 rec_dt 只有 1.7s ⇒ 旧公式 20s 只够 12 点块的 2/3, 大跨步那块必然假超时。
+        tmo = max(40.0,
+                  (j - i + 1) * 2.5 + (float(t_target or 0) * 2.0),
+                  (worst * 0.8) + 20.0)
+        ok, err, secs, why = _send_batch_wait(r, jts, speed, tmo)
+        pace_slept = 0.0
+        if ok and t_target and secs < t_target:
+            pace_slept = t_target - secs
+            time.sleep(pace_slept)
+        rec = {"i": i, "i1": j, "n_pts": j - i + 1, "ok": ok,
+               "err_deg": round(err, 2), "secs": round(secs, 2),
+               "target_deg": [round(math.degrees(v), 2) for v in jts[-1]],
+               "max_jump_deg": round(worst, 2),
+               "rec_dt_s": round(float(t_target), 3) if t_target else None,
+               "pace_slept_s": round(pace_slept, 2), "batch": True}
+        if why:
+            rec["why"] = why
+        if CAP_ON:
+            try:
+                rec["t_wall"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+                rec["t_rel"] = round(time.time() - _T0_WALL, 3)
+                _tp = read_tcp(r)
+                if _tp:
+                    rec["tcp"] = _tp["tcp"]
+                    rec["rpy"] = _tp["rpy"]
+            except Exception:                                            # noqa: BLE001
+                pass
+        out["steps"].append(rec)
+        print(json.dumps({"progress": j + 1, "n": n, "step": rec}, ensure_ascii=False), flush=True)
+        if not ok:
+            out["why"] = "块 %d~%d 未到位(%s, 误差 %.1f°) —— 已停, 不重发" % (i, j, why or "超时", err)
+            print(json.dumps(out, ensure_ascii=False))
+            return 1
+        # 停留点: 到点拍照 / 夹爪开合窗口 (与逐点路径同口径)
+        _aoi = AOI_ON_ARRIVE.get(j + int(start_abs or 0))
+        if _aoi:
+            _ci = cap_aoi(j + int(start_abs or 0), _aoi[0], _aoi[1])
+            if _ci:
+                rec["capture"] = _ci
+        _g = grip_at.get(j)
+        if _g:
+            print(json.dumps({"grip_due": True, "i": j, "act": _g["act"],
+                              "hold_ms": _g["hold_ms"], "t": time.strftime("%H:%M:%S")},
+                             ensure_ascii=False), flush=True)
+            time.sleep(_g["hold_ms"] / 1000.0)
+            rec["grip"] = _g["act"]
+            print(json.dumps({"grip_done": True, "i": j, "act": _g["act"]}, ensure_ascii=False), flush=True)
+        if dwell_ms and not (j in stops):
+            time.sleep(dwell_ms / 1000.0)
+        prev = joints(r)
+        i = j + 1
+    return None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 🌀 flow 档 —— 沿固定轨迹的"状态抑制速度"策略(2026-11-18 老倪: 「你来设计, 用新策略,
+#   沿着这个固定轨迹跑」)
+#
+# 口径(全部由**录制真值**推, 不猜):
+#   · 方向/姿态: 直接用录制帧的关节角(等价于录制时的四元数方向), 不改几何 ⇒ 只调"多快走"
+#   · 速度是**状态相关**的: 每点算 qdot_rec = max_j |Δq_j| / dt(录制时这段的真实关节速率),
+#     再按安全状态给上限 qdot_cap:
+#         常规 45°/s · 单点跳变>12° 的段 22°/s · 操作区(夹爪/AOI 停留点 ±3 点)15°/s
+#     ⇒ speed_i = clamp(100 * qdot_cap / qdot_rec, V_MIN, 100)
+#     也就是"能快的地方全速, 该慢的地方被状态压下来", 抑制不是拍脑袋, 是关节速率倒推的。
+#   · 块是**动态**的: 常规 12 点; 速度<60 或临近停留点 6 点; 速度<25 4 点; 停留点必断块。
+#   · 块间 S 曲线: 新块速度不允许超过上一块的 1.6 倍(避免速度阶跃 ⇒ 顿挫)。
+#   · 每块前**真值重锚**: 与上一块终点比, 偏 >3° 降速 30%, >8° 直接停(绝不带病下发)。
+#   · 每块后校验: err_deg > 2° ⇒ 停, 不重发。
+# ══════════════════════════════════════════════════════════════════════════════
+# 🔴 标定(2026-11-18 用刚跑完那轮 215 点实测反推, 不是拍的):
+#   speed_cmd=100 时实测关节速率只有 **3.8 °/s**(中位 3.8 / 最大 4.6), 而录制轨迹本身是 ~40 °/s。
+#   ⇒ 这台控制器的 speed 参数与"度/秒"无关, 而且每点有 ~1.1~1.5s 的固定开销(12 点最少 14s)。
+#   ⇒ 结论: 在这台硬件上"把速度压到 20~40"既不会更安全(本来就 3.8°/s), 又只会把 7 分钟拖成 20 分钟。
+#   所以状态抑制改在这三处做, 而不是无脑降 speed:
+#     ① 操作区(停留点 ±3 点): 块缩到 3 点 + 到点 dwell ⇒ 时间上真正慢下来
+#     ② 大跳变(>12°): 单独成块, speed 70(留余量给 50113 的姿态限制)
+#     ③ 其余: speed 100 + 12 点/块 —— 这已经是这台控制器的上限
+V_MAX = 100.0
+V_BIG = 70.0
+V_ZONE = 60.0
+V_AXIS = 70.0        # 方向(轴)断层: S² 上单帧 >10° ⇒ 单独成块留余量
+V_ROLL = 85.0        # 滚转跳变: S¹ 上单帧 >12° ⇒ 略降即可(滚转不影响插孔)
+AXIS_JUMP_DEG = 10.0
+ROLL_JUMP_DEG = 12.0
+AXIS_ABORT_DEG = 25.0   # 块内单帧轴步长超这个 ⇒ 停(实测全轨迹 max 16.28°, 留 1.5 倍余量)
+
+
+# ── 姿态 Hopf 分解(同源副本; 权威实现 tools/se3_hopf.py, 容器只挂 tools/rokae 所以不能直接 import)
+#    π(q)=q·k·q̄ ∈ S² 是轴, 右乘 e^{iθk} 只改滚转不动轴(实测 1e-16)。实测 215 帧:
+#    轴步长 中位 1.98° P95 9.75° max 16.28° · 滚转步长 中位 1.59° P95 13.08° max 39.10°
+def _hopf(q):
+    w, x, y, z = (float(v) for v in q[:4])
+    m = math.sqrt(w * w + x * x + y * y + z * z) or 1.0
+    w, x, y, z = w / m, x / m, y / m, z / m
+    n = (2.0 * (x * z + w * y), 2.0 * (y * z - w * x), w * w + z * z - x * x - y * y)
+    k = math.sqrt(sum(c * c for c in n)) or 1.0
+    return (n[0] / k, n[1] / k, n[2] / k), (2.0 * math.atan2(z, w)) % (2.0 * math.pi)
+
+
+def _axis_deg(n1, n2):
+    d = sum(a * b for a, b in zip(n1, n2))
+    return math.degrees(math.acos(max(-1.0, min(1.0, d))))
+
+
+def _roll_deg(p1, p2):
+    d = math.degrees(p2 - p1)
+    return (d + 180.0) % 360.0 - 180.0
+
+
+def _plan_flow(frames, ts, stops, n, quats=None, scale=1.0):
+    """算每点速度 + 动态分块。返回 (speeds, plan)。
+    分类(优先级从高到低): 操作区 60/3点 · 关节断层 70/4点 · 轴断层 70/4点 · 滚转跳变 85/4点 · 常规 100/12点
+    quats 给了就用 Hopf 把姿态拆成 轴(S²)+滚转(S¹) 再分类; 没给退回纯关节口径("轴/滚转"两列写 None)。"""
+    qdot, cap, spd = [], [], []
+    dn, dphi = [0.0] * n, [0.0] * n
+    if quats and len(quats) >= n:
+        _pn = _pp = None
+        for i in range(n):
+            _n, _ph = _hopf(quats[i])
+            if _pn is not None:
+                dn[i] = _axis_deg(_pn, _n)
+                dphi[i] = _roll_deg(_pp, _ph)
+            _pn, _pp = _n, _ph
+    for i in range(n):
+        if i + 1 < n and ts and len(ts) > i + 1:
+            dt = max(float(ts[i + 1]) - float(ts[i]), 0.05)
+        else:
+            dt = 0.2
+        dq = max(abs(math.degrees(float(b) - float(a))) for a, b in zip(frames[i], frames[min(i + 1, n - 1)]))
+        qdot.append(dq / dt)
+        jump = max(abs(math.degrees(float(b) - float(a))) for a, b in zip(frames[i - 1] if i else frames[i], frames[i]))
+        near_stop = any(abs(i - s) <= 3 for s in stops)
+        big = jump > 20.0      # 只把真正的断层(实测 #19→#20 那种 31°)单独拎出来; 12° 阈值太敏感, 会把一半块都当断层
+        axis_big = dn[i] > AXIS_JUMP_DEG
+        roll_big = abs(dphi[i]) > ROLL_JUMP_DEG
+        cap.append(60.0 if near_stop else (100.0 if (big or axis_big) else 150.0))
+        spd.append(V_ZONE if near_stop else (V_BIG if (big or axis_big) else (V_ROLL if roll_big else V_MAX)))
+    speeds = spd
+    plan, i = [], 0
+    while i < n:
+        j = i
+        base = 3 if speeds[i] <= V_ZONE else (4 if speeds[i] <= V_ROLL else 12)
+        while (j + 1) < n and (j + 1 - i) < base:
+            j += 1
+            if j in stops:
+                break
+            if max(abs(math.degrees(float(b) - float(a))) for a, b in zip(frames[j - 1], frames[j])) > BIG_JUMP_DEG:
+                break
+            if speeds[j] != speeds[i]:
+                break
+        seg = speeds[i:j + 1]
+        if scale and abs(scale - 1.0) > 1e-9:            # 1x 慢速 = 全部分类速度乘 scale(下限 1.0)
+            spd_cmd = max(1.0, round(min(seg) * float(scale), 1))
+        else:
+            spd_cmd = round(min(seg), 1)
+        plan.append({"i": i, "j": j, "n_pts": j - i + 1,
+                     "spd": spd_cmd,
+                     "qdot_rec": round(max(qdot[i:j + 1]), 2),
+                     "qdot_cap": round(min(cap[i:j + 1]), 1),
+                     "axis_dn_max": round(max(dn[i:j + 1]) if quats else 0.0, 2),
+                     "roll_dp_max": round(max((abs(v) for v in dphi[i:j + 1]), default=0.0) if quats else 0.0, 2)})
+        i = j + 1
+    return speeds, plan
+
+
+def _run_flow(r, frames, out, dwell_ms, grip_at, start_abs, ts, prev, quats=None, scale=1.0):
+    """🌀 状态抑制流动: 沿固定轨迹, 块速由状态决定, 带真值重锚与 S 曲线。"""
+    n = len(frames)
+    stops = set(int(k) for k in grip_at.keys())
+    for _a in AOI_ON_ARRIVE:
+        _rel = int(_a) - int(start_abs or 0)
+        if 0 <= _rel < n:
+            stops.add(_rel)
+    speeds, plan = _plan_flow(frames, ts, stops, n, quats, scale)
+    out["flow_scale"] = float(scale)
+    out["speed_mode"] = "flow"
+    out["flow_plan"] = plan
+    out["stops_rel"] = sorted(stops)
+    prev_speed = None
+    for c in plan:
+        i, j = c["i"], c["j"]
+        jts = [[float(v) for v in f] for f in frames[i:j + 1]]
+        cur = joints(r)
+        anchor = max(abs(math.degrees(b - a)) for a, b in zip(prev, cur))
+        s_cmd = float(c["spd"])
+        if prev_speed is not None:
+            s_cmd = min(s_cmd, round(prev_speed * 1.6, 1))       # S 曲线: 不许速度翻倍突变
+        if anchor > 8.0:
+            out["why"] = "块 %d~%d 前真值重锚偏 %.1f° > 8° —— 已停, 不下发" % (i, j, anchor)
+            print(json.dumps(out, ensure_ascii=False))
+            return 1
+        if anchor > 3.0:
+            s_cmd = max(V_MIN, round(s_cmd * 0.7, 1))            # 偏了就降速再走
+        worst = 0.0
+        for a, b in zip([prev] + jts[:-1], jts):
+            worst = max(worst, max(abs(math.degrees(y - x)) for x, y in zip(a, b)))
+        if worst > MAX_JUMP_DEG:
+            out["why"] = "块 %d~%d 内跳变 %.1f° > 上限" % (i, j, worst)
+            print(json.dumps(out, ensure_ascii=False))
+            return 1
+        t_target = (ts[j] - ts[i]) if (ts and len(ts) > j and ts[i] is not None) else None
+        _sc = max(float(scale or 1.0), 0.05)
+        tmo = max(40.0, (j - i + 1) * 2.5 / _sc, ((worst * 0.8) + 20.0) / _sc)
+        ok, err, secs, why = _send_batch_wait(r, jts, s_cmd, tmo)
+        rec = {"i": i, "i1": j, "n_pts": j - i + 1, "ok": ok,
+               "err_deg": round(err, 2), "secs": round(secs, 2),
+               "speed_cmd": s_cmd, "qdot_rec": c["qdot_rec"], "qdot_cap": c["qdot_cap"],
+               "anchor_deg": round(anchor, 2), "max_jump_deg": round(worst, 2),
+               "axis_dn_max": c.get("axis_dn_max"), "roll_dp_max": c.get("roll_dp_max"),
+               "rec_dt_s": round(float(t_target), 3) if t_target else None,
+               "target_deg": [round(math.degrees(v), 2) for v in jts[-1]], "flow": True}
+        if why:
+            rec["why"] = why
+        out["steps"].append(rec)
+        print(json.dumps({"progress": j + 1, "n": n, "step": rec}, ensure_ascii=False), flush=True)
+        if not ok:
+            out["why"] = "块 %d~%d 未到位(%s, 误差 %.1f°) —— 已停, 不重发" % (i, j, why or "超时", err)
+            print(json.dumps(out, ensure_ascii=False))
+            return 1
+        if (c.get("axis_dn_max") or 0.0) > AXIS_ABORT_DEG:
+            out["why"] = "块 %d~%d 内单帧轴漂 %.1f° > %.0f° —— 方向断层, 已停" % (
+                i, j, c["axis_dn_max"], AXIS_ABORT_DEG)
+            print(json.dumps(out, ensure_ascii=False))
+            return 1
+        if err > 2.0:
+            out["why"] = "块 %d~%d 到位误差 %.2f° > 2° —— 已停" % (i, j, err)
+            print(json.dumps(out, ensure_ascii=False))
+            return 1
+        _aoi = AOI_ON_ARRIVE.get(j + int(start_abs or 0))
+        if _aoi:
+            _ci = cap_aoi(j + int(start_abs or 0), _aoi[0], _aoi[1])
+            if _ci:
+                rec["capture"] = _ci
+        _g = grip_at.get(j)
+        if _g:
+            print(json.dumps({"grip_due": True, "i": j, "act": _g["act"],
+                              "hold_ms": _g["hold_ms"], "t": time.strftime("%H:%M:%S")},
+                             ensure_ascii=False), flush=True)
+            time.sleep(_g["hold_ms"] / 1000.0)
+            rec["grip"] = _g["act"]
+            print(json.dumps({"grip_done": True, "i": j, "act": _g["act"]}, ensure_ascii=False), flush=True)
+        if dwell_ms and not (j in stops):
+            time.sleep(dwell_ms / 1000.0)
+        prev = joints(r)
+        prev_speed = s_cmd
+    return None
+
+
 def main() -> int:
     dry = "--dry" in sys.argv
     if not os.path.isfile(CMD):
@@ -288,6 +613,35 @@ def main() -> int:
                 print(json.dumps(out, ensure_ascii=False))
                 return 1
         prev = joints(r)
+    # ⚡ 真实回放(录制时间轴整块下发) —— 跳变闸与前置闸已在上面过完, 这里直接跑
+    _mode = str(spec.get("speed_mode") or "").strip().lower()
+    if _mode in ("real", "flow"):
+        _ts = spec.get("t") or None
+        _start_abs = int(spec.get("start") or 0)
+        if _mode == "flow":
+            _rc = _run_flow(r, frames, out, dwell_ms, grip_at, _start_abs, _ts, prev,
+                            quats=spec.get("quats") or None,
+                            scale=float(spec.get("flow_scale") or 1.0))
+        else:
+            _rc = _run_real(r, frames, out, speed, dwell_ms, grip_at, _start_abs, _ts, prev)
+        if _rc is not None:
+            return _rc
+        done = sum(1 for s in out["steps"] if s.get("ok"))
+        out["n_done"] = done
+        out["ok"] = bool(out["steps"]) and all(s.get("ok") for s in out["steps"])
+        out["why"] = ("真实回放: %d 块 / %d 点全部到位" % (len(out["steps"]), sum(s.get("n_pts") or 0 for s in out["steps"]))
+                      if out["ok"] else "真实回放中断")
+        out["state_after"] = {"power": str(r.powerState({})), "op": opstate(r)}
+        try:
+            out["joints_after_final_deg"] = [round(math.degrees(v), 2) for v in joints(r)]
+        except Exception:                                                # noqa: BLE001
+            pass
+        print(json.dumps(out, ensure_ascii=False))
+        try:
+            r.disconnectFromRobot({})
+        except Exception:                                                # noqa: BLE001
+            pass
+        return 0 if out["ok"] else 1
     for i, j in enumerate(frames):
         jt = [float(v) for v in j]
         jump = max(abs(math.degrees(b - a)) for a, b in zip(prev, jt))
