@@ -33,9 +33,17 @@ def main() -> int:
     s = [c / Lc for c in cum]
     s_mm = list(cum)
     ds_mm = [cum[i] - cum[i - 1] if i else 0.0 for i in range(n)]
-    rows = [{"i": i, "s": round(s[i], 6), "s_mm": round(s_mm[i], 2),
+    # 🔴 零位移段(录制暂停/重复采样) ⇒ 弧长不前进, 两个点共享同一 s。
+    #   这是几何事实(同一位置就是同一相位), 不能靠加 epsilon 假装分开 ⇒ 标 dup, 由 index 兜底。
+    dup = [i for i in range(1, n) if ds_mm[i] < 1e-6]
+    rows = []
+    for i in range(n):
+        r = {"i": i, "s": round(s[i], 6), "s_mm": round(s_mm[i], 2),
              "ds_mm": round(ds_mm[i], 2), "t": round(float(fr[i].get("t") or 0), 3)}
-            for i in range(n)]
+        if i in dup:
+            r["dup"] = True
+            r["dup_of"] = i - 1
+        rows.append(r)
     # 关键帧自检: 环绕差
     marks = [0, 36, 108, 205, n - 1]
     chk = [{"i": i, "s": round(s[i], 4), "s_mm": round(s_mm[i], 1)} for i in marks]
@@ -45,7 +53,14 @@ def main() -> int:
            "summary": {"n": n, "L_open_mm": round(L, 1), "seam_mm": round(seam, 2),
                        "L_closed_mm": round(Lc, 1), "s_214": round(s[-1], 6),
                        "index_vs_arc_max_dev": round(dev, 4),
-                       "wrap": "ds=((s2-s1+0.5) mod 1)-0.5", "marks": chk}}
+                       "wrap": "ds=((s2-s1+0.5) mod 1)-0.5", "marks": chk,
+                       # 与 215 点的一一对应: 唯一 s 数 / 严格单调 / 重合点对 / 相位分辨率
+                       "n_unique_s": len(set(round(x, 9) for x in s)),
+                       "strict_monotonic": all(s[i] > s[i - 1] for i in range(1, n)),
+                       "dup_pairs": [[i - 1, i] for i in dup],
+                       "res_min_mm": round(min((d for d in ds_mm if d > 1e-6), default=0.0), 2),
+                       "res_median_mm": round(sorted(d for d in ds_mm if d > 1e-6)[len([d for d in ds_mm if d > 1e-6]) // 2], 1),
+                       "note": "s↔点 一一对应成立(214 唯一); 唯一例外是零位移重合点(#18/#19 同一姿态采样两次), 这类点相位相同、只能靠 index 区分"}}
     json.dump(out, open(OUT, "w"), ensure_ascii=False)
     # 同源补进 traj_hopf.json(唯一真值文件, 不另立山头)
     h = json.load(open(HOPF, encoding="utf-8"))
