@@ -27,6 +27,28 @@ _LAST = {"i": None}      # 相位连续性: 上一次投影到的索引(防止�
 
 LOGS = ("traj_step_geom.log", "traj_step_geom2.log")
 
+# 🔭 远端真值 (2026-11-19): intel 550C 没有珞石 SDK ⇒ 配这条 URL 就能看真机信号
+#   口径 = 本机 8797 GET /api/tcp: {x,y,z(m), quat=[qx,qy,qz,qw], joints(rad), age_s}
+TRUTH_URL = (os.environ.get("ZMAX_SE3_TRUTH_URL") or "").strip()
+
+
+def _fetch_truth(url: str, timeout: float = 1.5):
+    """拉远端真值并归一成本地 latest.json 同口径; 失败返回 None (不静默造值)。"""
+    try:
+        import urllib.request
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            d = json.loads(r.read().decode("utf-8"))
+        quat = d.get("quat") or []
+        if not d.get("ok") or len(quat) != 4 or d.get("x") is None:
+            return None
+        return {"x": float(d["x"]), "y": float(d["y"]), "z": float(d["z"]),
+                "qx": float(quat[0]), "qy": float(quat[1]), "qz": float(quat[2]), "qw": float(quat[3]),
+                "joints": d.get("joints"),
+                "ts": time.time() - float(d.get("age_s") or 0.0),
+                "frame": d.get("frame") or "base_link", "src": "remote"}
+    except Exception:                                                       # noqa: BLE001
+        return None
+
 # 录制轨迹上的"停留点"(到点必须先停稳, 才允许做夹爪/AOI 动作) —— 真源两处, 不另编:
 #   · 夹爪: 回放计划 grip 项(#9 close hold 2000ms / #205 open hold 2600ms), 见 arm_step_traj 的 grip_plan
 #   · AOI : tools/rokae/arm_step_traj.py:105  AOI_ON_ARRIVE = {125:(10082,金手指), 151:(10082,金手指), 172:(10083,表面)}
@@ -207,11 +229,21 @@ class H(BaseHTTPRequestHandler):
 
     def _live(self):
         """现在: 真机 TCP 最近点投影 → (i, s) + 该点姿态/速度; 不做任何下发。"""
+        # 真值来源: 本机 tcp_out/latest.json 优先; 帧龄 >2s 且配了 ZMAX_SE3_TRUTH_URL 就拉远端
+        #   (intel 550C 看板靠这条看真机信号: 它没有珞石 SDK, 只经 HTTP 读本机 8797 /api/tcp)
+        tcp = _load(os.path.join(SDK, "tcp_out", "latest.json"), "tcp")
+        if TRUTH_URL:
+            _age = time.time() - float((tcp or {}).get("ts") or 0)
+            if not tcp or _age > 2.0:
+                _r = _fetch_truth(TRUTH_URL)
+                if _r:
+                    _r["src"] = "远端 %s (本机 latest.json 帧龄 %.1fs)" % (TRUTH_URL, _age)
+                    tcp = _r
         traj = _load(os.path.join(WEB, "real_traj_joints.json"), "traj")
         hopf = _load(os.path.join(SDK, "traj_hopf.json"), "hopf")
         phase = _load(os.path.join(SDK, "traj_phase.json"), "phase")
-        tcp = _load(os.path.join(SDK, "tcp_out", "latest.json"), "tcp")
-        out = {"ok": True, "ts": time.time(), "svc": "zmax-se3-geom"}
+        out = {"ok": True, "ts": time.time(), "svc": "zmax-se3-geom",
+               "truth_src": (tcp or {}).get("src") or "local latest.json"}
         if not traj:
             out.update({"ok": False, "why": "traj 缺失"})
             return out
@@ -223,8 +255,14 @@ class H(BaseHTTPRequestHandler):
             # 🔴 轨迹有 22 处自交(几何近重合), 全局最近点会跳到另一分支(实测跑到 #60~71 时报 #2)。
             #   用相位连续性约束: 在上次索引附近开窗找, 只有窗口内没有近点时才回退全局。
             _li = _LAST.get("i")
-            if _li is None:
-                i = d.index(min(d))
+            _dmin = min(d)
+            _ig = d.index(_dmin)
+            # ① 紧贴某点(≤3mm) ⇒ 以几何为准: 臂停在起/终点时, 自交窗口常被另一分支占住
+            #    (实测 intel 看板停回起点仍报 #69, 就是窗口赢过了 2.3mm 的全局最近点)
+            if _dmin <= 3.0:
+                i = _ig
+            elif _li is None:
+                i = _ig
             else:
                 lo, hi = max(0, _li - 6), min(len(P), _li + 40)
                 win = d[lo:hi]

@@ -85,6 +85,8 @@ class SE3Layered:
         self._hopf_ref = None
         self.lazy = bool(lazy)
         self.stats: dict = {}
+        self._P = None                       # 215 帧 TCP(mm) 缓存 (最近点投影用)
+        self._last_i = None                  # 相位连续窗口的上一索引 (22 处自交会跳分支)
 
     # ── 数据 ────────────────────────────────────────────────────────────────
     def frames(self) -> list[dict]:
@@ -98,6 +100,21 @@ class SE3Layered:
             rows = d.get("frames") or d.get("rows") or []
             self._phase = rows
         return self._phase
+
+    def nearest_i(self, p_mm) -> int:
+        """实时 TCP → 轨迹最近帧号 (相位连续窗口; 自交处不跳分支)。只读, 不下发。"""
+        if self._P is None:
+            self._P = np.array([[c * 1000.0 for c in f["p"]] for f in self.frames()], float)
+        q = np.asarray(p_mm, float).ravel()[:3]
+        d = np.linalg.norm(self._P - q, axis=1)
+        if self._last_i is None:
+            i = int(np.argmin(d))
+        else:
+            lo, hi = max(0, self._last_i - 6), min(len(d), self._last_i + 40)
+            j = lo + int(np.argmin(d[lo:hi]))
+            i = j if d[j] <= max(6.0 * float(d.min()), 25.0) else int(np.argmin(d))
+        self._last_i = i
+        return i
 
     def phase_of(self, i: int) -> float:
         """弧长真相位 s ∈ [0,1) —— 与 tools/se3_phase.py 同源(盘上 JSON, 不重算)。"""
@@ -190,7 +207,8 @@ class SE3Layered:
         t0 = time.perf_counter()
         fr = self.frames()
         if i is None:
-            i = len(fr) - 1
+            # 有实时位姿 ⇒ 相位 s 必须取**投影到轨迹的最近帧**(否则 E 会钉在末帧 s=0.9995)
+            i = self.nearest_i(p_mm) if p_mm is not None else len(fr) - 1
         i = int(max(0, min(i, len(fr) - 1)))
         if p_mm is None:
             p_mm = np.asarray(fr[i]["p"], float) * 1000.0
