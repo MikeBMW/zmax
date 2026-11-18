@@ -22,6 +22,7 @@ REPO = "/home/ubuntu/zmax"
 WEB = os.path.join(REPO, "tools", "web")
 SDK = os.path.join(REPO, "zmax_data", "rokae_sdk")
 _J = {}
+_LAST = {"i": None}      # 相位连续性: 上一次投影到的索引(防止自交处跳到别的分支)
 
 
 def _load(path, key):
@@ -88,7 +89,17 @@ class H(BaseHTTPRequestHandler):
         if tcp:
             q = [tcp["x"] * 1000.0, tcp["y"] * 1000.0, tcp["z"] * 1000.0]
             d = [((q[0] - p[0]) ** 2 + (q[1] - p[1]) ** 2 + (q[2] - p[2]) ** 2) ** 0.5 for p in P]
-            i = d.index(min(d))
+            # 🔴 轨迹有 22 处自交(几何近重合), 全局最近点会跳到另一分支(实测跑到 #60~71 时报 #2)。
+            #   用相位连续性约束: 在上次索引附近开窗找, 只有窗口内没有近点时才回退全局。
+            _li = _LAST.get("i")
+            if _li is None:
+                i = d.index(min(d))
+            else:
+                lo, hi = max(0, _li - 6), min(len(P), _li + 40)
+                win = d[lo:hi]
+                j = lo + win.index(min(win))
+                i = j if min(win) <= max(6.0 * min(d), 25.0) else d.index(min(d))
+            _LAST["i"] = i
             out["tcp_mm"] = [round(v, 1) for v in q]
             out["age_s"] = round(time.time() - float(tcp.get("ts") or 0), 2)
             out["nearest"] = {"i": i, "dist_mm": round(min(d), 1)}

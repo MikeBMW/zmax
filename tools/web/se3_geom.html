@@ -72,7 +72,10 @@ function applyScale(){
 const F=D.frames, N=F.length;
 const SPC={100:'#37d0ff',85:'#3ddc84',70:'#ffb020',60:'#ff5a5a'};
 let LIVE=null;
-async function pollLive(){try{const r=await fetch('/api/se3',{cache:'no-store'});LIVE=r.ok?await r.json():null;}catch(e){LIVE=null;}}
+let _scrubT=0;
+async function pollLive(){try{const r=await fetch('/api/se3',{cache:'no-store'});LIVE=r.ok?await r.json():null;
+  if(LIVE&&LIVE.nearest&&Date.now()-_scrubT>20000){idx=LIVE.nearest.i;const sc=document.getElementById('sc');if(sc)sc.value=idx;}
+}catch(e){LIVE=null;}}
 setInterval(pollLive,1000);pollLive();
 let idx=0, playing=false, showPhase=true, showSpd=true, cam={yaw:-0.6,pitch:0.42};
 // ── 通用: 3D→2D 正交投影
@@ -243,7 +246,8 @@ function drawE(){
   g.strokeStyle='#fff';g.lineWidth=1.6;g.beginPath();g.moveTo(cx,cy);
   g.lineTo(cx+Math.cos(a)*R*0.8,cy+Math.sin(a)*R*0.8);g.stroke();
   g.fillStyle='#d8e2ea';g.font='600 '+P(14)+'px sans-serif';
-  g.fillText('#'+idx+' / '+(N-1),cx+R+16,cy-10);
+  const _ei=(LIVE&&LIVE.nearest)?LIVE.nearest.i:idx;      // 实时优先: 否则永远显示 #0/214
+  g.fillText('#'+_ei+' / '+(N-1),cx+R+16,cy-10);
   g.fillStyle='#7b8b99';g.font=P(13)+'px sans-serif';
   g.fillText('s = '+(s*100).toFixed(1)+'% · '+(F[idx].s_mm||0).toFixed(0)+' mm',cx+R+16,cy+8);
   g.fillText('指令速度 '+F[idx].spd.toFixed(0),cx+R+16,cy+26);
@@ -253,7 +257,7 @@ function drawE(){
 function drawAll(){drawA();drawB();drawC();drawD();drawE();
   document.getElementById('idx').textContent='#'+idx;}
 // 交互
-document.getElementById('sc').addEventListener('input',e=>{idx=+e.target.value;drawAll();});
+document.getElementById('sc').addEventListener('input',e=>{idx=+e.target.value;_scrubT=Date.now();drawAll();});
 document.getElementById('play').addEventListener('click',e=>{playing=!playing;
   e.target.classList.toggle('on',playing);e.target.textContent=playing?'⏸ 暂停':'▶ 播放';});
 document.getElementById('tPhase').addEventListener('click',e=>{showPhase=!showPhase;e.target.classList.toggle('on',showPhase);drawAll();});
@@ -265,7 +269,7 @@ setInterval(()=>{
   drawAll();
 },120);
 drawAll();applyScale();
-window.selftest=()=>({n:N, idx, SF, live:LIVE&&LIVE.nearest, s:F[idx].s, s_mm:F[idx].s_mm, bbox:['X636','Y922','Z884'], axisErr:+(Math.acos(Math.max(-1,Math.min(1,
+window.selftest=()=>({n:N, idx, eReadout:((LIVE&&LIVE.nearest)?LIVE.nearest.i:idx)+'/'+(N-1), SF, live:LIVE&&LIVE.nearest, s:F[idx].s, s_mm:F[idx].s_mm, bbox:['X636','Y922','Z884'], axisErr:+(Math.acos(Math.max(-1,Math.min(1,
   F[idx].n[0]*F[30].n[0]+F[idx].n[1]*F[30].n[1]+F[idx].n[2]*F[30].n[2])))*180/Math.PI).toFixed(2),
   spdTiers:Object.keys(SPC).map(Number), quatNorm:+(Math.hypot(...F[idx].q)).toFixed(4)});
 </script></body></html>
