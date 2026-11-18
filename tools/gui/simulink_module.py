@@ -4703,9 +4703,12 @@ class SimCanvas(QGraphicsView):
         #   (金手指检查 / 外观划伤 / 光口端面 / 全帧扫描 · 图像定位+拉伸 · 缺陷框选标定 · 在线增量训练)
         #   与「打开输入图像」同款入口: 帧源跟随画布「🔀 数据源切换」
         a_aoi = None
+        a_guide = None
         if ("光学质量检测" in item.node.get("name", "") or "外观质量检测" in item.node.get("name", "")
                 or item.node.get("params", {}).get("aoi_quality")):
             a_aoi = menu.addAction("打开质量检测终端 (金手指/外观/标定/在线训练)")
+            # 🎯 AOI 3D 位姿引导: 10082 触发检测 → 19 根定位 → 偏差 → 目标位姿(只算不下发)
+            a_guide = menu.addAction("🎯 AOI 3D 位姿引导 (金手指居中 → 目标位姿)")
         # 🔀 2026-09-16 老倪: 📦 数据源节点上的「仿真/真机」切换
         a_srcsw = None
         if item.node.get("params", {}).get("src_switch"):
@@ -4842,6 +4845,16 @@ class SimCanvas(QGraphicsView):
             except Exception as _e:                                        # noqa: BLE001
                 try:
                     self.module._log(f"⚠️ 打开渲染帧单帧失败: {type(_e).__name__}: {_e}")
+                except Exception:                                          # noqa: BLE001
+                    pass
+        elif a_guide is not None and chosen == a_guide:
+            # 🎯 AOI 3D 位姿引导: 只做「测量 → 目标位姿」, 不下发运动
+            try:
+                from aoi_pose_guide_dialog import open_pose_guide
+                open_pose_guide(self, module=self.module)
+            except Exception as _e:                                        # noqa: BLE001
+                try:
+                    self.module._log(f"⚠️ 打开 AOI 3D 位姿引导失败: {type(_e).__name__}: {_e}")
                 except Exception:                                          # noqa: BLE001
                     pass
         elif a_aoi is not None and chosen == a_aoi:

@@ -154,6 +154,24 @@ def _get_json(url, timeout=6.0):
     return json.loads(_get(url, timeout).decode("utf-8", "ignore"))
 
 
+def _cam_intr():
+    """问相机服务要**当前分辨率**的真内参。
+
+    为什么不能用标定文件等比缩放：D405 各分辨率是不同 FOV —— 实测
+      1280×720 fx=655.065  ·  848×480 fx=436.710  ·  640×480 fx=394.062
+    640×480 的 fx 乘 2 得 788(误差 +20%), 用它渲 720p 的 3DGS 会重投影对不上、整图发虚。
+    所以只要 /intrinsics 有真值且尺寸与当前帧一致, 一律以它为准。
+    """
+    try:
+        d = _get_json(INTR_URL, timeout=4)
+        if d.get("ok"):
+            return d
+        print("[intr] 相机服务未就绪: %s" % d.get("err"))
+    except Exception as e:                                                # noqa: BLE001
+        print("[intr] %s 不可用(%s), 退回标定文件缩放" % (INTR_URL, e))
+    return None
+
+
 def _brightness(jpeg_bytes):
     """均值亮度, 只用来看"是不是全黑/没出图". 没有 numpy 依赖时退化为抽样字节均值。"""
     try:
@@ -335,7 +353,12 @@ def _write_cameras(sess):
     W, H = frames[0].get("w"), frames[0].get("h")
     W = int(W or 640)
     H = int(H or 480)
-    if CALIB is not None:
+    KI = _cam_intr()
+    if KI and int(KI.get("w") or 0) == W and int(KI.get("h") or 0) == H:
+        fx, fy, cx, cy = float(KI["fx"]), float(KI["fy"]), float(KI["cx"]), float(KI["cy"])
+        K = [[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]]
+        k_src = "相机 /intrinsics 真值 %dx%d (pyrealsense)" % (W, H)
+    elif CALIB is not None:
         fx, fy, cx, cy, cw, ch, _dist = CALIB
         # 实际帧尺寸和标定尺寸不一致时按比例缩放 (例如采到 320x240 的缩略图)
         sx, sy = W / cw, H / ch
