@@ -1606,3 +1606,70 @@ GUI 侧同步点见 `state-space-canvas-engineering` 技能「节点改名必须
    且**必须以 `t`(时间戳)变化为准**, 否则读到的是上一次的旧结果(顺手就会得出"两种曝光判定一样"的假结论)。
 2. `GET /exposure?us=..&gain=..` 是**只读**路由 —— 用它当"改"来跑扫档, 五档量到的会是同一张图
    (铁证: 每档 origin mean/lap 一模一样)。改必须 `POST`。
+
+## 🎯 位姿引导→真机移动闭环: 8793 `/api/aoi/guide_move` (2026-11-18 上线并真机验收)
+
+老倪: 「记录这个位姿」→「位姿调整, 机器人可以动了」。此前按钮只报数不下发,
+因为**轨迹通道做不到横向平移**。两条腿必须分清:
+
+| 腿 | 入口 | 下发语义 | 用途 |
+|---|---|---|---|
+| 轨迹 | 8797 `POST /api/arm/step_traj` | `arm_step_traj.py` → xCoreSDK **MoveAbsJ**(关节绝对目标) | 沿录制 215 点前进/后退 |
+| 笛卡尔 | 8797 `POST /api/arm/move_rel` | `sdk_ctl.py move-rel --dx/--dy/--dz` → **笛卡尔相对位移, 姿态锁 p0.rpy** | AOI 把金手指挪到画面中心 |
+
+- 完整链路: `station「▶ 按位姿移动」` → `8793 POST /api/aoi/guide_move?port=10082`
+  → `10082 POST /guide_pose`(抓帧→`_finger_locate_grid`→off_px×k_mm_px)
+  → `8797 POST /api/arm/move_rel` → `bash tools/rokae_sdk_run.sh move-rel --dy D --speed S --max-mm M`
+  → 容器内 `sdk_ctl.py`(precheck: automatic/power on/无报警) → 回读 `/guide_pose` 报 off_px 前后变化。
+- **四道闸**: 8793 `ctl_auth.py`(debug 档 armed) → 8797 `_auth_gate()`（fail-closed）→ 轨迹互斥(逐点 running+pid 活就拒)
+  → `sdk_ctl.py` 默认 5mm / 硬 50mm；接口层再叠 `max_step_mm=5`。单轴只认 X/Y/Z，由 `axis_sign` 决定方向。
+- 真机实测: `dy=3.312mm @5mm/s` → 4.13s, rc=0；`off_px 292.0 → 1.0`；TCP `Y 129.75→133.06`，姿态未变。
+- 🔴 **`k_mm_px` 绝不能用 pitch 换算**。我曾据“pitch 71→56 故 k 应变 0.01438、3.3mm 偏小 21%”下过结论 —— **错的**。
+  实测走 3.312mm 得 k=**0.011381**，与标定 0.011343 差 **0.34%**。pitch 是 19 根在画面上的像素间距
+  （受工件自身尺寸与工作距离影响），k 是毫米↔像素比例（由工作距离+焦距定），**两者独立**。
+  标定值信它，别自己换算；要重标就跑 `tools/aoi_guide_probe.py` 真动 2mm。
+- 精度实况: **一次到位不现实**。同一位置连续取位姿会看到 `off_px` 在 1.0 / 52.0 之间波动（≈0.5mm 重复定位）。
+  正确用法是**迭代收敛**：点一次→看 off_px→再点，直到进 ±20px 判 hold。
+- 按点位重教（整点重教 vs 平动补偿）：距离差 >2mm 就别再走 IK 平动修正，直接记**当前关节角**
+  （`traj_adj.json` 的 `points["152"].j_new_rad` 字段），和 `points["126"]` 那种现场重录同一口径；
+  `p_rec_mm` 保留原录制值以便追溯。
+
+### 🔴 「规整图看不出机器人移动」是口径必然, 不是图没刷新
+
+规整图 = `定位19根 → 裁出条带 → 拉伸到960×330`，**裁剪框跟着金手指走** ⇒ 金手指在画面里偏左偏右，
+规整图里它永远在同一个位置。实测：真机走 3.31mm、`off_px 292→1`（画面里移动 291px），规整图看起来一模一样。
+- 判据: 帧 md5 相邻**全不同**（16/16 帧），但视觉无位移 ⇒ 变的是噪声不是位置。
+- 要看移动必须切 **`/aoi_gold_raw.mjpg`（原图槽）**，原图不定位不裁剪，金手指是真实位置。
+- 同理任何“图像没变化”投诉先分三层：① 流在不在推（拆 JPEG 帧比 md5）② 图的内容口径会不会跟随（裁剪/letterbox 会）
+  ③ 页面是不是拿的同一张（`file=1` 缓存）。
+
+### 🔴 `?kind=crop&file=1` 写死 = 死图, 帧龄涨到 200s (我自己的设计坑)
+
+- 症状: 老倪「图像更新很慢」「显示 200 多秒静止」。图槽写死 `kind=crop&file=1`，只读磁盘落盘图，从不当场抓。
+  落盘图只在 `/capture_detect` 或 `/guide_pose` 时产生 ⇒ **不点检测就永远读同一个文件**，等于把死图当预览。
+- 修法（`cam_live_stream.py` same 口径）: `_watching` 时用 `kind=crop&grab=1`（现抓+裁剪，不落盘不起模型），
+  没人看才退回 `file=1`。实测 `grab=1` **0.58~0.63s/帧**，`--aoi-fps 1.5` ⇒ 实际 **1.3 fps**（原 0.25 fps，快 5 倍）。
+- ⚠️ 另有一条: 页面上的「帧龄 Ns」标签其实是 **`/last_result.age_s` = 上次检测距今**，不是图像帧龄。
+  文案已改成「上次检测 Ns 前」。图与结果是两个时钟，别混。
+- ⚠️ `--aoi-fps` 默认 1.0，手动重启时别随手给 0.25（我当时给了，等于自己把刷新压慢 4 倍）。
+
+### 🔴 `file=1` 404 会连带打死整条推流 (兜底已加)
+
+- 现象: 页面金手指窗口全黑、`/aoi_gold.mjpg` HTTP 200 但 **0 字节**；直连 `kind=crop` 却 200。
+- 根因: `snap` 里 `origin` 和 `topview` 是两条独立路径，**可能单边失效**（实测 `Finger_Image_*_No_2.png` 存在
+  3.68MB，而 `Finger_TopView_*_No_2.png` 磁盘上没有 —— 该帧未落盘或被 `/prune` 清掉）⇒ `os.path.exists()` 判假 → 404 →
+  worker 一帧都取不到。
+- 修法（10082 `/picture`）: 路径失效时按 kind 扫磁盘**同类最新一张**兜底（`Finger_Image_W*` / `Finger_TopView_*`），不再直接 404。
+- 判据: 修后 `kind=crop&file=1` 200/120KB，`/aoi_gold.mjpg` 8 秒 1.5MB。
+- ⚠️ `Connection refused` = 部署重启那几秒窗口期，不是接口坏了；先探端口再归因。
+
+### 🔴 8797/8793 都可能双轨: systemd 在崩溃循环, 真正服务的是手动老进程
+
+同一台机上两套启动机制并存时，`systemctl restart` 作用在起不来的那份上，**新代码永远不生效**（表现为新路由 404）。
+- 判据: `systemctl show <unit> -p MainPID` = **0** 且 `ActiveState=activating` ⇒ 它在重启循环；
+  再 `ss -ltnp | grep :<port>` 看端口属主 pid 是谁 —— 若与 unit 的 MainPID 不符，**端口被手动实例占着**。
+- 8797 `zmax-traj-ar` 现已交 systemd 管（`active`，pid 由其托管）；8793 `zmax-cam-live-stream` 的 unit 参数与现场不符
+  (`--local-src usb` vs 三路 Orin)，**继续手动进程**，重启必须用现役命令行原样：
+  `HOME=/home/ubuntu gui-venv311/bin/python tools/cam_live_stream.py --port 8791 --quality 72 --fps 30 --arm-http "http://192.168.23.66:8794/frame.jpg,..." --aoi-fps 1.5 --ctl-motion --station-port 8793 ...`
+- 处置顺序: 确认端口属主 → kill 属主 → 等 systemd 接管（若 unit 参数正确）**或**用原参数手动重启（若不符）。
+  别直接 `systemctl restart` 就宣布生效。
