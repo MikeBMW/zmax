@@ -25,6 +25,73 @@ _J = {}
 _LAST = {"i": None}      # 相位连续性: 上一次投影到的索引(防止自交处跳到别的分支)
 
 
+LOGS = ("traj_step_geom.log", "traj_step_geom2.log")
+_SPD_COLOR = {100.0: "#37d0ff", 85.0: "#3ddc84", 70.0: "#f5a623", 60.0: "#e0563f"}
+
+
+def _sectors():
+    """节拍构成: 从真机跑批日志取每一块的 (i0,i1,s0,s1,secs,speed)。
+
+    这是"扇形的角度来源" —— 角度=相位 s(弧长真相位), 扇区耗时=实测 secs。
+    同 (i,i1) 重复出现时保留最后一条(重跑覆盖)。
+    """
+    blocks = {}
+    mt = []
+    for fn in LOGS:
+        path = os.path.join(SDK, fn)
+        try:
+            mt.append(os.path.getmtime(path))
+        except OSError:
+            continue
+        try:
+            for ln in open(path, encoding="utf-8", errors="ignore"):
+                ln = ln.strip()
+                if not ln.startswith('{"progress"'):
+                    continue
+                try:
+                    st = json.loads(ln)["step"]
+                except Exception:                                        # noqa: BLE001
+                    continue
+                if st.get("s0") is None or st.get("s1") is None:
+                    continue
+                blocks[(st["i"], st["i1"])] = {
+                    "i0": st["i"], "i1": st["i1"], "n_pts": st.get("n_pts"),
+                    "s0": st["s0"], "s1": st["s1"], "t_s": st.get("secs"),
+                    "speed": st.get("speed_cmd"), "err": st.get("err_deg"),
+                    "axis_max": st.get("axis_dn_max"), "roll_max": st.get("roll_dp_max")}
+        except OSError:
+            continue
+    if not blocks:
+        return None
+    key = (tuple(mt), len(blocks))
+    hit = _J.get("sectors")
+    if hit and hit[0] == key:
+        return hit[1]
+    bl = sorted(blocks.values(), key=lambda b: b["s0"])
+    tot = sum(b["t_s"] or 0.0 for b in bl) or 1.0
+    by_spd = {}
+    for b in bl:
+        k = float(b["speed"] or 0)
+        d = by_spd.setdefault(k, {"speed": k, "t_s": 0.0, "n_blocks": 0, "s_span": 0.0})
+        d["t_s"] += b["t_s"] or 0.0
+        d["n_blocks"] += 1
+        d["s_span"] += (b["s1"] - b["s0"])
+    tiers = [{"speed": k, "t_s": round(v["t_s"], 2), "frac": round(v["t_s"] / tot, 4),
+              "n_blocks": v["n_blocks"], "s_frac": round(v["s_span"], 4),
+              "color": _SPD_COLOR.get(k, "#8fa3b3")}
+             for k, v in sorted(by_spd.items(), reverse=True)]
+    # 每块: 耗时 + 单位相位耗时可看出"哪个扇区慢"
+    for b in bl:
+        span = max(b["s1"] - b["s0"], 1e-9)
+        b["t_per_mm"] = round((b["t_s"] or 0.0) / (span * 7861.8), 4)
+        b["frac"] = round((b["t_s"] or 0.0) / tot, 4)
+    slow = sorted(bl, key=lambda b: -(b["t_s"] or 0))[:5]
+    out = {"blocks": bl, "n_blocks": len(bl), "total_s": round(tot, 2), "tiers": tiers,
+           "slowest": [{"i0": b["i0"], "i1": b["i1"], "t_s": b["t_s"], "s0": b["s0"], "s1": b["s1"]} for b in slow]}
+    _J["sectors"] = (key, out)
+    return out
+
+
 def _load(path, key):
     """带 mtime 缓存: 文件改了才重读, 免得每 1s 都 parse 一次 30KB JSON。"""
     try:
@@ -129,6 +196,9 @@ class H(BaseHTTPRequestHandler):
                 out["axis_err_deg"] = round(__import__("math").degrees(
                     __import__("math").acos(max(-1.0, min(1.0, d)))), 2)
         out["summary"] = (phase or {}).get("summary") if phase else None
+        sec = _sectors()
+        if sec:
+            out["sectors"] = sec
         return out
 
 
