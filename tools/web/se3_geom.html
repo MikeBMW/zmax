@@ -150,23 +150,69 @@ function drawA(){
     }
     g.globalAlpha=1;
   }
-  // 停留点
-  D.stops.forEach(i=>{const p=PT[i];circle(g,p[0],p[1],5,'#ffd166',2,'#0e141a');
-    g.fillStyle='#ffd166';g.font=P(13)+'px sans-serif';g.fillText('#'+i,p[0]+7,p[1]-6);});
+  // 停留点: 与 E 面板同一套编号①②③④⑤, 环上/空间里都只标序号(不再往点旁边堆 "#9" 文字, 会互相压)
+  const SPN=[9,125,151,172,205];
+  SPN.forEach((si,k)=>{
+    const p=PT[si]; if(!p) return;
+    const col=(si===9||si===205)?'#ffd166':'#9fe8ff';
+    g.beginPath();g.arc(p[0],p[1],9.5,0,6.2832);g.fillStyle='rgba(8,17,26,0.9)';g.fill();
+    g.save();g.translate(p[0],p[1]);g.rotate(Math.PI/4);
+    g.fillStyle=col;g.fillRect(-3.4,-3.4,6.8,6.8);
+    g.strokeStyle='#08111a';g.lineWidth=1.2;g.strokeRect(-3.4,-3.4,6.8,6.8);g.restore();
+    g.textAlign='center';g.fillStyle='#08111a';g.font='700 '+P(9)+'px sans-serif';
+    g.fillText(String(k+1),p[0],p[1]+P(3));g.textAlign='start';
+  });
   // 当前点
   const c=PT[idx];circle(g,c[0],c[1],6,'#fff',2,'#0e141a');
   if(LIVE&&LIVE.tcp_mm&&LIVE.nearest){
     const lp=[LIVE.tcp_mm[0]-cen[0],LIVE.tcp_mm[1]-cen[1],LIVE.tcp_mm[2]-cen[2]];
     const q=proj(cv,lp,cam.yaw,cam.pitch,sc,cx,cy);
     g.strokeStyle='#3ddc84';g.lineWidth=2;g.beginPath();g.arc(q[0],q[1],9,0,6.2832);g.stroke();
-    g.fillStyle='#3ddc84';g.font='600 '+P(14)+'px sans-serif';
-    chip(g,10,78,'现在 #'+LIVE.nearest.i+'   s '+(LIVE.nearest.s*100).toFixed(1)+'%   偏轨 '+
-         LIVE.nearest.dist_mm+' mm   帧龄 '+(LIVE.age_s||0).toFixed(1)+'s','#3ddc84',P(15));
   }
-  g.fillStyle='#fff';g.font='600 '+P(14)+'px sans-serif';
-  g.fillText('#'+idx+'  '+F[idx].p.map(v=>v.toFixed(0)).join(' / ')+' mm',14,24);
-  g.fillStyle='#7b8b99';g.font=P(13)+'px sans-serif';
-  g.fillText('包围盒 636×922×884 mm · 弧长 7.86 m',14,48);
+  // 🏷 文字区: 统一面板 + 自动折行 + 高度超限自动缩号 ⇒ 任何字号下都不重叠 / 不裁字 / 不出画布
+  const rowsSrc=[
+    {t:'#'+idx+'   '+F[idx].p.map(v=>v.toFixed(0)).join(' / ')+' mm', fs:19, w:'600', c:'#f2f7fb'},
+    {t:'包围盒 636×922×884 mm · 弧长 7.86 m · 215 帧', fs:15, w:'', c:'#8fa3b3'}];
+  if(LIVE&&LIVE.nearest) rowsSrc.push({t:'● 现在 #'+LIVE.nearest.i+'   s '+(LIVE.nearest.s*100).toFixed(1)+
+      '%   偏轨 '+LIVE.nearest.dist_mm+' mm   帧龄 '+(LIVE.age_s||0).toFixed(1)+'s', fs:16, w:'600', c:'#3ddc84'});
+  rowsSrc.push({t:'① 合爪  ②③ 金手指AOI  ④ 表面AOI  ⑤ 松爪·放置', fs:13.5, w:'', c:'#c9a35a'});
+
+  const fntOf=(r,sm)=>((r.w?r.w+' ':'')+P(r.fs*sm)+'px -apple-system,"Segoe UI",sans-serif');
+  const buildPanel=(sm)=>{
+    const pad=Math.round(P(11)*Math.max(sm,0.8)), gap=Math.round(P(5)*Math.max(sm,0.8));
+    const maxw=w-16-pad*2, out=[];
+    const wrapOne=(r,sep)=>{
+      g.font=fntOf(r,sm);
+      const parts=r.t.split(sep), outc=[]; let cur='';
+      parts.forEach((seg,k)=>{
+        const piece=(k===0?'':sep)+seg;
+        if(g.measureText(cur+piece).width>maxw && cur){outc.push(cur.replace(/\s+$/,''));cur=piece.trim();}
+        else cur+=piece;
+      });
+      if(cur.trim()) outc.push(cur.replace(/\s+$/,''));
+      return outc;
+    };
+    rowsSrc.forEach(r=>{
+      g.font=fntOf(r,sm);
+      const f=fntOf(r,sm), fsz=P(r.fs*sm);
+      if(g.measureText(r.t).width<=maxw){out.push({...r,t:r.t,f,fsz});return;}
+      let parts=wrapOne(r,/(\s{3,}|\s·\s)/);
+      parts=parts.flatMap(s=>{g.font=f;return g.measureText(s).width>maxw?wrapOne({...r,t:s},/(\s+)/):[s];});
+      parts.forEach(t=>out.push({...r,t,f,fsz}));
+    });
+    let widest=0; out.forEach(o=>{g.font=o.f;widest=Math.max(widest,g.measureText(o.t).width);});
+    const H=out.reduce((a,o)=>a+o.fsz+gap,0)+pad*2-gap;
+    return {rows:out,pad,gap,W:Math.min(w-16,widest+pad*2),H};
+  };
+  let sm=1, PB=buildPanel(1);
+  while(PB.H>h*0.52 && sm>0.55){sm=+(sm-0.1).toFixed(2); PB=buildPanel(sm);}
+  g.fillStyle='rgba(8,13,19,0.82)';
+  if(g.roundRect){g.beginPath();g.roundRect(8,8,PB.W,PB.H,9);g.fill();}
+  else g.fillRect(8,8,PB.W,PB.H);
+  let yy=8+PB.pad;
+  PB.rows.forEach(o=>{yy+=o.fsz*0.82;g.font=o.f;g.fillStyle=o.c;g.fillText(o.t,8+PB.pad,yy);yy+=o.fsz*0.18+PB.gap;});
+  window.A_PANEL={w:Math.round(PB.W),h:Math.round(PB.H),lines:PB.rows.length,sm:+sm.toFixed(2),
+                  fonts:PB.rows.map(o=>o.fsz), canvas:[Math.round(w),Math.round(h)]};
   document.getElementById('aSub').textContent='X'+F[idx].p[0].toFixed(0)+' Y'+F[idx].p[1].toFixed(0)+' Z'+F[idx].p[2].toFixed(0)+' mm';
 }
 
