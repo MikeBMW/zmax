@@ -112,6 +112,30 @@ def assert_traj_untouched(path):
 已改成三根探测（hf_cache → hf_home → ~/.cache/huggingface）。
 3B fp16 要约 6-7G 显存，训练占着时起不来。
 
+## 11. A~E 五流形接法 (位置/轴/四元数/滚转/相位) — 五个口径坑
+
+`src/lerobot/manifold/se3_layers.py` 用 **5 个真 ManifoldEngine 实例**承载 A ℝ³(`euclidean`) /
+B S²(`sphere`) / C S³(`su2`) / D S¹(`torus`) / E S¹(`torus`), C⇄(B,D) 用 Hopf 耦合;
+`MANIFOLD_REGISTRY["se3_layers"]=ready` + `ManifoldEngine.se3_layers()` 惰性构造(不用不建 ⇒ 零回归)。
+`ss_engine_loop` 里 `ZMAX_SE3_LAYERS=1` 才每拍算, 写 `rec["se3"]` + `/dev/shm/se3_layers.json`。
+
+1. **C 不许用引擎的 su2 投影器**: 那条分支是 `SU2Element.from_rotvec(bounded_rotvec(v, gain=2.0))`,
+   是**有界控制器映射**(转角被 gain 压掉), 当投影用会把四元数改掉。C 的投影=S³ 恒等归一;
+   引擎 su2 的**度量**(`e8ds`) 照用 —— 度量链仍是引擎的。
+2. **S¹ 用 T² 的退化切片** `[θ, 0]`: 引擎只有 `torus`, 第二角恒 0 时 T² 距离恰等于圆上环绕距离,
+   不是近似。D=`[φ,0]`, E=`[2πs,0]`。
+3. **`n = R·e₃`, 不是 `R·e₁`**: `tools/se3_hopf.py` 头注释写 `R·e₁` 是笔误, 代码算的是第三列
+   (工具接近轴)。判据: 与 R 第 3 列夹角 1.5e-06°, 与第 1 列 90°。别按注释去"修".
+4. **Hopf 右逆的纤维生成元是体 z 轴**: `q = s(n)·quat_z(φ−φ_s)`, 截面 `s(n)` 把 **e₃** 转到 n。
+   写 `quat_x` 会得 179° 误差(整条轨迹)。叉积顺序也必须是 `e₃×n=(−ny,nx,0)`, 反了转成 −n(误差≈180−0.3°)。
+   叉积退化(‖n×e₃‖≈0)时不能直接返回单位四元数 —— 还要按 `acos(c)` 转。
+   判据: 215 帧往返 max `2.4e-06°`。
+5. **对账别用 arccos 角度**: `traj_hopf.json` 的 n 只存 6 位小数, `dot→1` 时 1e-6 舍入被放大成 0.06°
+   的假红。判据看**分量最大差**(实测 5.0e-07), 角度只作参考。测地线判据同理: 只测 `0.5°<d<150°`
+   的帧对(近对跖/近重合的中点不唯一, 会把 1e-8 放大成 1e-4)。
+
+实测开销 `0.29 ms/拍`(100 拍 29.3 ms, 预算 100 ms); 真值帧龄 0.14 s 时 A/B/C/D/E 与真值逐项一致。
+
 ## 改动画布时
 六断言 + `_archive` 备份 + 剔除新增后逐条比对，见 `state-space-canvas-engineering`。
 本链做到“零画布改动”是因为 `n_vlm_llm → ss_mani_eng in1` 这条线本来就有，只是代码不读它。
