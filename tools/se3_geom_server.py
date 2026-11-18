@@ -26,6 +26,17 @@ _LAST = {"i": None}      # 相位连续性: 上一次投影到的索引(防止�
 
 
 LOGS = ("traj_step_geom.log", "traj_step_geom2.log")
+
+# 录制轨迹上的"停留点"(到点必须先停稳, 才允许做夹爪/AOI 动作) —— 真源两处, 不另编:
+#   · 夹爪: 回放计划 grip 项(#9 close hold 2000ms / #205 open hold 2600ms), 见 arm_step_traj 的 grip_plan
+#   · AOI : tools/rokae/arm_step_traj.py:105  AOI_ON_ARRIVE = {125:(10082,金手指), 151:(10082,金手指), 172:(10083,表面)}
+STOPS = [
+    {"i": 9,   "kind": "grip", "name": "合爪·抓取", "hold_ms": 2000, "port": None},
+    {"i": 125, "kind": "aoi",  "name": "金手指 AOI", "hold_ms": None, "port": 10082},
+    {"i": 151, "kind": "aoi",  "name": "金手指 AOI", "hold_ms": None, "port": 10082},
+    {"i": 172, "kind": "aoi",  "name": "表面 AOI",  "hold_ms": None, "port": 10083},
+    {"i": 205, "kind": "grip", "name": "松爪·放置", "hold_ms": 2600, "port": None},
+]
 _SPD_COLOR = {100.0: "#37d0ff", 85.0: "#3ddc84", 70.0: "#f5a623", 60.0: "#e0563f"}
 
 
@@ -128,7 +139,16 @@ def _sectors():
         b["state"] = st
         b["state_tags"] = tags
     slow = sorted(bl, key=lambda b: -(b["t_s"] or 0))[:5]
-    out = {"blocks": bl, "n_blocks": len(bl), "total_s": round(tot, 2), "tiers": tiers,
+    # 停留点: 补相位(角度)与毫米, 供环上画标记; s 取自 traj_phase(与扇形同一坐标)
+    stops = []
+    for s0 in STOPS:
+        i = s0["i"]
+        r = {"i": i, "kind": s0["kind"], "name": s0["name"], "hold_ms": s0["hold_ms"], "port": s0["port"]}
+        if _ss and 0 <= i < len(_ss):
+            r["s"] = _ss[i]
+            r["s_mm"] = _ph["frames"][i].get("s_mm")
+        stops.append(r)
+    out = {"blocks": bl, "n_blocks": len(bl), "total_s": round(tot, 2), "tiers": tiers, "stops": stops,
            "slowest": [{"i0": b["i0"], "i1": b["i1"], "t_s": b["t_s"], "s0": b["s0"], "s1": b["s1"],
                          "state": b.get("state"), "speed": b.get("speed"),
                          "n_pts": b.get("n_pts")} for b in slow]}

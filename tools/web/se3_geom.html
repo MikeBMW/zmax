@@ -284,6 +284,34 @@ function drawE(){
     for(let i=0;i<N;i+=3){const a=((F[i].s!=null?F[i].s:i/(N-1)))*6.2832-Math.PI/2;
       line(g,[cx+Math.cos(a)*(RO-4),cy+Math.sin(a)*(RO-4)],[cx+Math.cos(a)*RO,cy+Math.sin(a)*RO],'#2c3e4d',1);}
   }
+  // ◆ 停留点标记(夹爪/AOI): 菱形 + 停留时长弧 + 名称, 与"现在"的绿圆点明显区分
+  if(SEC&&SEC.stops){
+    const rs=Math.max(6.2,RO*0.062);
+    let lastAng=null, lastR=22;
+    SEC.stops.forEach((sp,k)=>{
+      if(sp.s==null) return;
+      const ang=sp.s*6.2832-Math.PI/2;
+      const X=cx+Math.cos(ang)*RO, Y=cy+Math.sin(ang)*RO;
+      const col=(sp.kind==='grip')?'#ffd166':'#9fe8ff';
+      // 停留时长: 弧长∝毫秒(夹爪 2000/2600 能看出长短); AOI 无固定毫秒 ⇒ 固定短线
+      const dw=sp.hold_ms?(0.07+0.18*Math.min(1,sp.hold_ms/2600)):0.075;
+      g.beginPath();g.arc(cx,cy,RO+7.5,ang-dw/2,ang+dw/2);
+      g.strokeStyle=col;g.lineWidth=Math.max(2.6,RO*0.026);g.stroke();
+      // 深色光晕(压在彩色扇区上也看得见) + 菱形 + 中心孔
+      g.beginPath();g.arc(X,Y,rs*2.0,0,6.2832);g.fillStyle='rgba(8,17,26,0.92)';g.fill();
+      g.beginPath();g.arc(X,Y,rs*1.62,0,6.2832);g.strokeStyle=col;g.lineWidth=1.1;g.stroke();
+      g.save();g.translate(X,Y);g.rotate(Math.PI/4);
+      g.fillStyle=col;g.fillRect(-rs*0.74,-rs*0.74,rs*1.48,rs*1.48);
+      g.strokeStyle='#08111a';g.lineWidth=1.4;g.strokeRect(-rs*0.74,-rs*0.74,rs*1.48,rs*1.48);
+      g.restore();
+      g.beginPath();g.arc(X,Y,rs*0.30,0,6.2832);g.fillStyle='#08111a';g.fill();
+      // 环左半边放不下外侧文字(环几乎贴到画布左边) ⇒ 环上只标序号, 名字走底部停留点清单
+      g.textAlign='center';
+      g.fillStyle='#08111a';g.font='700 '+P(9)+'px sans-serif';
+      g.fillText(String(k+1),X,Y+P(3));
+      g.textAlign='start';
+    });
+  }
   // 已完成相位(外侧亮环) + 当前点
   g.beginPath();g.arc(cx,cy,RO+4,-Math.PI/2,-Math.PI/2+Math.max(0.0001,s_live)*6.2832);
   g.strokeStyle='#3ddc84';g.lineWidth=2.6;g.stroke();
@@ -365,6 +393,25 @@ function drawE(){
       g.fillStyle='#cdd9e3';g.font=P(tall?13:11.5)+'px sans-serif';
       const txt=Math.round(t.speed)+'档 '+t.t_s.toFixed(0)+'s·'+(t.frac*100).toFixed(0)+'%';
       g.fillText(txt,lx+13,ly);lx+=13+g.measureText(txt).width+16;});
+    // 停留点清单: 序号 ◆ 名称 停留时长 相位mm —— 一行横排, 永远不裁不压
+    if(SEC.stops&&SEC.stops.length){
+      let dy=h-46, dsz=5.2;
+      g.font='600 '+P(tall?12.5:11)+'px sans-serif';
+      g.fillStyle='#9fb3c4';g.fillText('停留点', 8, dy);
+      let sx=8+g.measureText('停留点').width+P(10);
+      SEC.stops.forEach((sp,k)=>{
+        const col=(sp.kind==='grip')?'#ffd166':'#9fe8ff';
+        const txt=(k+1)+' '+sp.name+(sp.hold_ms?(' '+(sp.hold_ms/1000).toFixed(1)+'s'):'');
+        g.font=P(tall?12.5:11)+'px sans-serif';
+        const itemW=dsz*2.4+g.measureText(txt).width+P(14);
+        if(sx+itemW>w-8){sx=8; dy+=P(tall?19:17);}     // 一行放不下就换行, 绝不裁字
+        g.save();g.translate(sx+dsz, dy-4);g.rotate(Math.PI/4);
+        g.fillStyle=col;g.fillRect(-dsz*0.74,-dsz*0.74,dsz*1.48,dsz*1.48);
+        g.strokeStyle='#08111a';g.lineWidth=1;g.strokeRect(-dsz*0.74,-dsz*0.74,dsz*1.48,dsz*1.48);g.restore();
+        g.fillStyle=col;g.fillText(txt, sx+dsz*2.4, dy);
+        sx+=itemW;
+      });
+    }
   }
   // ◆ 现在这一拍的状态(取当前索引所在块)
   let nowState='';
