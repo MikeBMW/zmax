@@ -371,7 +371,8 @@ AXIS_ABORT_DEG = 25.0   # 块内单帧轴步长超这个 ⇒ 停(实测全轨迹
 #    π(q)=q·k·q̄ ∈ S² 是轴, 右乘 e^{iθk} 只改滚转不动轴(实测 1e-16)。实测 215 帧:
 #    轴步长 中位 1.98° P95 9.75° max 16.28° · 滚转步长 中位 1.59° P95 13.08° max 39.10°
 def _hopf(q):
-    w, x, y, z = (float(v) for v in q[:4])
+    # 🔴 q 的存储顺序是 (x,y,z,w), 末位才是标量(与 real_traj_joints.json 一致, 见 tools/se3_hopf.py)
+    x, y, z, w = (float(v) for v in q[:4])
     m = math.sqrt(w * w + x * x + y * y + z * z) or 1.0
     w, x, y, z = w / m, x / m, y / m, z / m
     n = (2.0 * (x * z + w * y), 2.0 * (y * z - w * x), w * w + z * z - x * x - y * y)

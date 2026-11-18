@@ -100,6 +100,23 @@ class H(BaseHTTPRequestHandler):
                 out["nearest"].update({"n": hf.get("n"), "phi_deg": hf.get("phi_deg")})
             if tcp.get("joints"):
                 out["joints_deg"] = [round(v * 180.0 / 3.141592653589793, 2) for v in tcp["joints"]]
+        # 🌀 实时姿态 → Hopf 拆 S²(轴) + S¹(滚转), 公式与 tools/se3_hopf.py 同源:
+        #    n=(2(xz+wy), 2(yz-wx), w²+z²-x²-y²),  φ=2·atan2(z,w)
+        if tcp and tcp.get("qw") is not None:
+            w = float(tcp["qw"]); x = float(tcp["qx"]); y = float(tcp["qy"]); z = float(tcp["qz"])
+            nn = (w * w + x * x + y * y + z * z) ** 0.5 or 1.0
+            w, x, y, z = w / nn, x / nn, y / nn, z / nn
+            n = [2.0 * (x * z + w * y), 2.0 * (y * z - w * x), w * w + z * z - x * x - y * y]
+            ln = (n[0] ** 2 + n[1] ** 2 + n[2] ** 2) ** 0.5 or 1.0
+            out["quat"] = [round(v, 6) for v in (w, x, y, z)]
+            out["n"] = [round(v / ln, 6) for v in n]
+            out["phi_deg"] = round(2.0 * __import__("math").degrees(__import__("math").atan2(z, w)), 3)
+            # 与孔轴(插入段参考)的夹角, 现场看姿态偏没偏
+            ref = (hopf or {}).get("frames", [{}])[30].get("n")
+            if ref:
+                d = sum(a * b for a, b in zip(out["n"], ref))
+                out["axis_err_deg"] = round(__import__("math").degrees(
+                    __import__("math").acos(max(-1.0, min(1.0, d)))), 2)
         out["summary"] = (phase or {}).get("summary") if phase else None
         return out
 

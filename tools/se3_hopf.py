@@ -28,12 +28,17 @@ Vec3 = Tuple[float, float, float]
 
 
 def hopf(q: Sequence[float]) -> Tuple[Vec3, float]:
-    """单位四元数 q=(w,x,y,z) → (轴 n∈S², 滚转 φ∈[0,2π))。
+    """单位四元数 → (轴 n∈S², 滚转 φ∈[0,2π))。
 
-    n = (2(xz+wy), 2(yz−wx), w²+z²−x²−y²)   —— 与 q·k·q̄ 的向量部分逐位相等
+    🔴 分量顺序以 real_traj_joints.json 实际存储为准: **(x, y, z, w)**。
+       依据: 录制 #0 的 q=(0.7616, 0.0730, 0.6220, 0.1667) 与真值 latest.json 同一位姿
+       (qx, qy, qz, qw)=(0.7635, 0.0750, 0.6193, 0.1672) 逐位对应 ⇒ 末位才是标量。
+       (旧版按 (w,x,y,z) 读 ⇒ 轴/滚转整体是错的; 只是自洽, 物理不对。)
+
+    n = (2(xz+wy), 2(yz−wx), w²+z²−x²−y²)   —— 即 R·e₁, 末端 X 轴在基座系的方向
     φ = 2·atan2(z, w)                        —— 绕 n 的滚转(S¹ 坐标)
     """
-    w, x, y, z = (float(v) for v in q)
+    x, y, z, w = (float(v) for v in q)
     nrm = math.sqrt(w * w + x * x + y * y + z * z) or 1.0
     w, x, y, z = w / nrm, x / nrm, y / nrm, z / nrm
     n = (2.0 * (x * z + w * y), 2.0 * (y * z - w * x), w * w + z * z - x * x - y * y)
@@ -95,7 +100,7 @@ def _cli() -> int:
     dp = sorted(abs(r["dphi_deg"]) for r in rows)
     summary = {
         "src": src, "n": len(rows),
-        "convention": "q=(w,x,y,z) 原样解读; 插入段平均轴 ≈ +X 已自洽校验",
+        "convention": "q=(x,y,z,w) —— 依 real_traj_joints 与真值 latest.json 逐位比对确认; n=R·e1",
         "dn_deg": {"median": round(dn[len(dn) // 2], 3), "p95": round(dn[int(len(dn) * .95)], 3),
                    "max": round(dn[-1], 3)},
         "abs_dphi_deg": {"median": round(dp[len(dp) // 2], 3), "p95": round(dp[int(len(dp) * .95)], 3),
