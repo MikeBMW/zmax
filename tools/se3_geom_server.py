@@ -278,7 +278,11 @@ class H(BaseHTTPRequestHandler):
             # ⓪ 跑批时以执行器游标为准: 投影只在 [cursor-2, cursor+14] 内找 ——
             #    停车/慢速时几何最近点会沿轨迹后退几帧(实测 7 次, 25~76mm), 游标能消掉它。
             _anchor = _run_cursor()
-            if _anchor is not None:
+            if _anchor is None and min(d[0], d[-1]) <= 12.0 and _dmin <= min(d[0], d[-1]) + 8.0:
+                # 空闲 + 贴着首/末点: 直接报端点。臂停在起点时几何最近点常落在自交处
+                # (实测停在 663/-29/292 报 #69 s=31%, 实际它离 #214 只有 4.7mm)
+                i = 0 if d[0] <= d[-1] else len(d) - 1
+            elif _anchor is not None:
                 lo, hi = max(0, _anchor - 2), min(len(d), _anchor + 14)
                 w = d[lo:hi]
                 i = lo + w.index(min(w))
@@ -298,7 +302,7 @@ class H(BaseHTTPRequestHandler):
             _LAST["i"] = i
             out["tcp_mm"] = [round(v, 1) for v in q]
             out["age_s"] = round(time.time() - float(tcp.get("ts") or 0), 2)
-            out["nearest"] = {"i": i, "dist_mm": round(min(d), 1)}
+            out["nearest"] = {"i": i, "dist_mm": round(d[i], 1)}   # 报"该点"的距离, 不报全局最小(会自相矛盾)
             if phase:
                 r = phase["frames"][i]
                 out["nearest"].update({"s": r["s"], "s_mm": r["s_mm"]})
