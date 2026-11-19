@@ -2405,7 +2405,7 @@
      "工程库": "data/database/zmax/zmax_engineering.db"
     },
     "cfg_snapshot": {
-     "loaded_at": "2026-11-15 16:18:47",
+     "loaded_at": "2026-11-20 07:09:38",
      "files_total": 8,
      "files_ok": 8,
      "orders": 12,
@@ -2469,24 +2469,24 @@
      "口径": "一个状态空间工程承载全部任务; 任务=配方段子集+参数覆盖"
     },
     "source_symbol": "def main",
-    "cfg_loaded_at": "2026-11-15 16:18:47",
+    "cfg_loaded_at": "2026-11-20 07:09:38",
     "cfg_files": [
      {
       "name": "总工程文件",
       "rel": "data/database/zmax/zmax_space.proj",
-      "sha256": "5839e9b592eefc8d",
+      "sha256": "89c7246bd1377138",
       "exists": true
      },
      {
       "name": "任务绑定",
       "rel": "config/ss_task_binding.json",
-      "sha256": "b17d8a20ede4a39f",
+      "sha256": "f8bb139d241bba31",
       "exists": true
      },
      {
       "name": "任务配置",
       "rel": "config/tasks/tasks.json",
-      "sha256": "2ea7c5ff4ece4e24",
+      "sha256": "adc204ee4fe93f5d",
       "exists": true
      },
      {
@@ -3082,6 +3082,52 @@
      "check": "测地线方向与几何方向 cos, <0.3 时几何主导并标注"
     },
     "source_line": 442
+   }
+  },
+  {
+   "id": "ss_se3_state",
+   "name": "🔷 SE(3)×S1 记忆流形 (8815 · A位置ℝ³ · B轴S² · C四元数S³ · D滚转S¹ · E相位S¹ · 5Hz)",
+   "type": "model",
+   "icon": "🔷",
+   "color": "#7bdcb5",
+   "x": 6800,
+   "y": 1586,
+   "w": 280,
+   "h": 110,
+   "params": {
+    "state_space": true,
+    "kind": "real",
+    "hz": 5,
+    "role": "记忆流形入口 — 把昨天落地的 16 维 SE(3)×S1 状态 (A–E) 摆上画布, 下游相空间通道吃它",
+    "source": "src/lerobot/middleware/nodes/impl/ss_se3_state.py",
+    "source_symbol": "def node_ss_se3_state",
+    "truth": "zmax_data/se3/se3_state_live.json (zmax-se3-state.service · 8815 /api/se3)",
+    "vector16": "A_pos_mm(3) B_axis_S2(3) B_err(1) C_quat_S3(4) D_roll(1) E_s(1) E_arc_mm(1) E_i(1) M_age(1)",
+    "desc": "SE(3)×S1: 位置 ℝ³ · 轴 S² · 四元数 S³ · 滚转 S¹ · 弧长相位 S¹ (只读, 不新增控制通路)"
+   }
+  },
+  {
+   "id": "ss_phase_corr",
+   "name": "🌀 相空间安全通道 (SE(3)×S1 记忆 + 速度纤维 · V_phase/τ_safe · S¹ 相位门控 · 李雅普诺夫单调)",
+   "type": "model",
+   "icon": "🌀",
+   "color": "#f5c26b",
+   "x": 6820,
+   "y": 1716,
+   "w": 320,
+   "h": 110,
+   "params": {
+    "state_space": true,
+    "kind": "real",
+    "role": "流形引擎的相空间安全通道 — 人为轨迹强跨相位线时, 用各向异性度规把状态拉回管道",
+    "source": "src/lerobot/manifold/phase_corridor.py",
+    "source_symbol": "class PhaseSpaceCorridor",
+    "api": "compute(cur, des, axis) → V_phase · τ_safe · gate · V̇",
+    "formula": "z=[e_pose/tol; e_vel/vlim]; V=½‖z‖²; τ=−α·τ_lim⊙(z_pos+z_vel); α_eff=min(α,λ/2) ⇒ V̇≤−λV",
+    "metric": "径向 0.3mm / 轴向 6mm · 横向 50mm/s / 轴向 300mm/s · 载荷自适应 √(m/m_ref)",
+    "gate": "S¹ 相位不一致(>15°) ⇒ 记忆匹配断裂, 注入置 0",
+    "measured": "自检 24 点单调性全过; 越界 3mm 时 τ 饱和到 τ_lim 且方向不变",
+    "desc": "只读: 产出 V/τ/门控给下游判据与显示, 不直接下发运动 (真动仍要 8793 授权)"
    }
   }
  ],
@@ -4840,6 +4886,30 @@
    "t": "sssk8",
    "t_port": "in3",
    "label": "🧠 记忆赋能: 本段通道 r/L/单拍 + 标杆 + 点位"
+  },
+  {
+   "id": "lkpf1",
+   "f": "ss_mani_eng",
+   "t": "ss_phase_corr",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "流形坐标 p / 度规 M → 相空间通道"
+  },
+  {
+   "id": "lkpf2",
+   "f": "ss_se3_state",
+   "t": "ss_phase_corr",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "SE(3)×S1 记忆 (A–E, 5Hz) → 相空间通道"
+  },
+  {
+   "id": "lkpf3",
+   "f": "ss_phase_corr",
+   "t": "ssintact",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "τ_safe / 通道判据 → L4 工作安全"
   }
  ],
  "params_note": ""

@@ -5099,6 +5099,30 @@ _reg("ss_mani_p", ["性能流形"],
     "🧮 性能流形 — 光耦合对准代价: δ=光模块头−孔底 → V_p=½δᵀWδ, 估计耦合效率 η=exp(−V_p/σ²), ∇V_p 最优对准方向 (高斯近似; 源码 manifold_layer.py PerformanceManifold)",
     node_ss_mani)
 
+# ── 🔷 SE(3)×S1 记忆流形 + 🌀 相空间安全通道 (老倪 2026-11-20) ─────────────────
+#    ① 把昨天落地的 se3 服务 (16 维 A–E, 5Hz) 摆上画布, 打开就能看;
+#    ② 相空间安全通道: 位置度规定方向 + 速度度规定边界, S¹ 相位门控, 李雅普诺夫单调。
+def node_ss_se3_state(ctx):
+    from lerobot.middleware.nodes.impl.ss_se3_state import node_ss_se3_state as _f
+    return _f(ctx)
+
+
+def node_ss_phase_corr(ctx):
+    from lerobot.middleware.nodes.impl.ss_phase_corr import node_ss_phase_corr as _f
+    return _f(ctx)
+
+
+_reg("ss_se3_state", ["SE(3)×S1 记忆流形"],
+    "🔷 SE(3)×S1 记忆流形 — 昨日 se3 服务的 16 维状态: A 位置 ℝ³ · B 轴 S² · C 四元数 S³ · "
+    "D 滚转 S¹ · E 弧长相位 S¹ (s/arc/nearest_i), 5Hz 只读, 供相空间通道与画布显示",
+    node_ss_se3_state)
+
+_reg("ss_phase_corr", ["相空间安全通道"],
+    "🌀 相空间安全通道 — 受控轨迹强跨相位线 ⇒ 各向异性度规管道: z=[e_pose/tol; e_vel/vlim], "
+    "V=½‖z‖², τ=−α·τ_lim⊙(z_pos+z_vel), S¹ 相位门控, α_eff=min(α,λ/2) ⇒ V̇≤−λV 单调下降 "
+    "(源码 manifold/phase_corridor.py PhaseSpaceCorridor)",
+    node_ss_phase_corr)
+
 # 🧩 原子技能层 (2026-09-07 老倪: 决策层↔执行层之间; 8 技能 = 八阶段模板 SK01-08;
 #   决策层实时赋值轨迹 → 复制模板快速执行 → 直接输出执行指令给执行器; 播放 demo 特判见上)
 _SKILLS = [

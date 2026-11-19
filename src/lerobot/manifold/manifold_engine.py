@@ -858,6 +858,55 @@ class ManifoldEngine:
         return {"provider": "SE(3) 7 维位姿预测" if provider is not None else "未接 (零回归)",
                 "note_prev": prev, "note": self.se3_pose_note}
 
+    # ------------------------------------------------------------------ 相空间安全通道
+    #  老倪 2026-11-20: 人为轨迹在相空间里"强跨相位线"(电机持续注入/抽取能量),
+    #  必须用各向异性度规在相空间画安全管道 —— 位置度规定方向, 速度度规定边界。
+    #  本层只读: 产出 V_phase / τ_safe / 门控, 不直接下发运动 (真动仍要 8793 授权)。
+    def set_phase_corridor(self, provider=None, *, epsilon: float = 0.30, alpha: float = 1.5,
+                           lam: float = 2.0, payload_kg: float | None = None,
+                           note: str = "") -> dict:
+        """接入/摘除相空间安全通道。provider=None ⇒ 零回归 (不建对象, 不参与 step)。"""
+        from lerobot.manifold.phase_corridor import CorridorMetric, PhaseSpaceCorridor
+        prev = str(getattr(self, "phase_corridor_note", ""))
+        self.phase_corridor_provider = provider
+        self.phase_corridor_note = str(note or "")
+        if provider is None:
+            self.phase_corridor = None
+        else:
+            metric = CorridorMetric(payload_kg=payload_kg) if payload_kg else CorridorMetric()
+            self.phase_corridor = PhaseSpaceCorridor(metric, epsilon=epsilon, alpha=alpha, lam=lam)
+        return {"provider": "相空间安全通道" if provider is not None else "未接 (零回归)",
+                "note_prev": prev, "note": self.phase_corridor_note}
+
+    def phase_step(self, cur: dict | None = None, des: dict | None = None, axis=None) -> dict:
+        """相空间一步: cur/des = {pos(m,3), quat(qx,qy,qz,qw), s1(rad), vel(3), omega(3)}。
+
+        不传 cur/des 时向 provider 要 (provider 可无参或收 state=)。任何异常都返回 ok=False,
+        绝不静默当成"通道内"。
+        """
+        pc = getattr(self, "phase_corridor", None)
+        if pc is None:
+            return {"ok": False, "why": "相空间通道未接入 (set_phase_corridor)", "note": ""}
+        try:
+            if (cur is None or des is None) and getattr(self, "phase_corridor_provider", None):
+                try:
+                    out = self.phase_corridor_provider(state=self.current_state)
+                except TypeError:
+                    out = self.phase_corridor_provider()
+                if isinstance(out, dict):
+                    cur = cur or out.get("cur")
+                    des = des or out.get("des")
+                    axis = axis if axis is not None else out.get("axis")
+            if not isinstance(cur, dict) or not isinstance(des, dict):
+                return {"ok": False, "why": "缺 cur/des 相空间样本", "note": self.phase_corridor_note}
+            r = pc.compute(cur, des, axis=axis)
+            d = r.as_dict()
+            d.update({"ok": True, "note": self.phase_corridor_note})
+            return d
+        except Exception as e:                                               # noqa: BLE001
+            return {"ok": False, "why": "%s: %s" % (type(e).__name__, str(e)[:160]),
+                    "note": getattr(self, "phase_corridor_note", "")}
+
     def _se3_pose_read(self):
         """取一帧 7 维位姿预测, 并做三条硬校验 (不合规就报 ok=False, 不静默放过)。
 

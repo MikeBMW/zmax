@@ -313,5 +313,15 @@
   "file": "nodes/yolo_tactile.py",
   "func": "node_yolo_tactile",
   "module": ".yolo_tactile"
+ },
+ "ss_se3_state": {
+  "file": "nodes/ss_se3_state.py",
+  "func": "node_ss_se3_state",
+  "module": ".ss_se3_state"
+ },
+ "ss_phase_corr": {
+  "file": "nodes/ss_phase_corr.py",
+  "func": "node_ss_phase_corr",
+  "module": ".ss_phase_corr"
  }
 }
