@@ -154,6 +154,23 @@ python3 tools/action_align_probe.py --live 30    # 读 ss_live/action.json 看�
 模型侧同口径（改 action 时必须一并交代）：`u` 的单位是 **m/s × dt**、第 4 维是夹爪、坐标系 base；
 训练归一化必须与这条契约同源，否则“action 对了、模型输出还是错帧错尺度”。
 
+## “全部重启了, 你看到了么” → 先判重启**范围**, 再报状态
+
+用户说重启不等于**工控机**重启。三处证据并列, 一句话说清是谁重启了:
+```bash
+uptime -s                                                      # 主机开机时刻
+for u in <关键unit>; do systemctl show -p ActiveEnterTimestamp --value $u; done   # 各服务启动时刻
+python3 -c "import json,time;d=json.load(open('<latest.json>'));print(time.time()-float(d['ts']), d.get('power'), d.get('mode'))"
+```
+- 判读: 主机 uptime 没变 + 关键 unit 启动时刻没变 + 真值断流几十秒 + 控制器 `power=off`
+  ⇒ **是控制器/机器人那头重启**, 本机链路一根没动。反之 uptime 刚起 + unit 全部新时间戳 ⇒ 整机重启。
+- 汇报顺序: 重启范围(谁重启了) → 真值新鲜度 + 当前位姿 → 控制器安全状态(power/mode/op) → 我的服务状态。
+  别把“我看到重启了”写成笼统一句, 用户问的就是“你分得清是谁重启了吗”。
+- 真值断流期不许把冻住的位姿当实时: 采集端 `age_s>5s` 就跳过并写原因; 恢复后**重锚**(记 gap 点,
+  不计跳变也不计弧长) —— 重启期间臂可能被搬走, 那是断流不是跳变。
+- 重启后臂停在完全不同的数值上不是故障(实测 767/228/190 → 663/-29/292mm); 报“当前 TCP + 帧龄 + 双源一致”即可。
+- 上电后 `power=off` 时手动能动能读, 但要我**下发**必须回到 `power=on + automatic + idle`。
+
 ## 坑
 - 🔴 **单位: `tcp_out/latest.json` 的 `x/y/z` 是「米」(SDK 口径), 而段表/执行器要的是「mm」** ——
   拿真值直接做几何规划不乘 1000, 起点就变成 `0.66, -0.03, 0.29`“mm”, 规划器以为臂在原点附近,

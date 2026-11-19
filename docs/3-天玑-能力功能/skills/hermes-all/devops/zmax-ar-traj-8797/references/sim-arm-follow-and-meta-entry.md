@@ -9,6 +9,28 @@
 - **不要为跟随另起轮询器**。`syncArmFollow()`(自己拉 `/api/tcp`, 给「同步操作」用) 与 `MIRROR` 职责重叠; 跟随真机复用 `MIRROR`, 多一套定时器只多一个抢写者。
 - `MIRROR` 内部有 `PLANT.on && PLANT.local` 闸: 本地全流程在跑时它主动让位给本地仿真。新增模式要沿用同一套判断, 不要另写一套。
 
+## 页面「不跟真机」先查有没有人挂跟随
+
+- 三维臂跟真机的能力(函数)存在 ≠ 在跑。`/ar3d` 实测打开后 `SYNCARM.follow=false`、`PREV.on=false`、`PREV.q=[]` —— 页面里没有任何初始化路径去调跟随，看着「页面对不上真机」其实是根本没启动。判据只认 `PREV.on` 与 `PREV.q` 六轴对 `/api/tcp` 的 `joints` 逐位相等，不认画面上「臂好像在动」。
+- 优先复用页面已有的跟随主驱动(有 `MIRROR` 在跑就直接用它)；`/ar3d` 这类独立页若没有任何跟随入口，再挂 `syncArmFollow(true)`，并每 2s 兜底重挂一次(`!SYNCARM.follow` 才挂) —— 别处初始化会把它关掉，用户刷新一下就又不跟了。
+- 跟随开关自身不带陈旧闸：`syncArmFollow` 里的 `d.ts` 在 `/api/tcp` 回包里**不存在**(字段是 `t` 字符串 + `age_s` 数值) ⇒ `age=0` 永远通过。要判陈旧就自己读 `age_s` 与 `stale`。
+
+## 页面变量是 let 声明 ⇒ 不要用 window.X 判状态
+
+- `PREV` / `NAMED` / `SHOW` / `TCP` 都用 `let` 在顶层声明：后续 `<script>` 能按名字直接读写(同一全局词法环境)，但它们**不是 `window` 的属性**。写 `window.PREV && PREV.on` 会永远 false —— 实测因此把「跟随中」写成「未跟随」、把轨迹点数写成 0，误判成功能没生效。
+- 正确写法: `typeof PREV!=='undefined' && PREV.on`；验证同样按名字读，别走 `window.`。
+
+## 把「正在学的新轨迹」画进三维视图
+
+- 页面画轨迹的现成通道是 `NAMED[key]` + `NAMED_ON[key]`：点集是**米**的 `[x,y,z]`，`drawNamedVR` 在每次 `drawVR` 里无条件遍历 `NAMED_ON`(长度≥2 才画)。所以外部轨迹只要塞 `NAMED['follow']=pts; NAMED_ON['follow']=true; NAMED_COL['follow']='#22d3ee'; SHOW=true; drawVR()` 就出现在画面里，不必碰渲染管线、也不必重启 8797。
+- 数据源走跟随服务(8817)的 `/session.json`(含 `path[].A_mm` 与 `cum_mm`)，2s 拉一次；`A_mm→/1000`。点数 <2 时不要建层(会画出一个点)。
+- 页面是**热读**的(`/ar3d` 每次请求都从磁盘读 `tools/web/tcp-ar.html`) ⇒ 改显示一律改 HTML、刷新即可，不需要重启 8797；只有改 `tcp_ar_server.py` 里的接口/白名单才要重启。
+- 🔴 **验像素必须按 id 取画布**: 页里有 4 个 canvas —— `#vid`(1280×720 视频) / `#ov`(640×480 叠加) / `#loupe`(176) / `#vr`(980×577 三维)。
+  `document.querySelector('canvas')` 拿到的是 **#vid**, 在它上面数青色像素永远是 0 ⇒ 会误判"轨迹层没画出来"。
+  取 `document.getElementById('vr')`; 注入 4 点测试线前后比青色像素差(实测 +115px)才算"画得上"。
+- **跟随状态要画在画面上**: 左上角常驻 `position:fixed` HUD, 三行 = `跟随真机 · 跟随中/未跟随` / `TCP x / y / z mm` /
+  `真值帧龄 x.xx s` + `跟随轨迹 N 点`, 边框按 `stale` 绿/红。用户是看画面判状态的, 只报"代码改了"他会反复问"到底跟没跟"。
+
 ## 「对不上」的根因几乎总是时间尺度
 
 - 独立回放按录制时长 `dur_s`(如 215 点 / 42.85s, 100% 速度连续)从头播; 真机 `traj_loop` 是逐点循环(20% 速度 + 每点驻留 dwell)。两者差数倍, 帧号永远对不上。

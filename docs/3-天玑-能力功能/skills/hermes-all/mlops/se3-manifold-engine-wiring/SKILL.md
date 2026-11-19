@@ -99,6 +99,9 @@ def assert_traj_untouched(path):
 ```
 在 `_frames()` 加载前调 — 校验点在**每次读**而不是写侧, 因为改它的人可能是别的进程/别的层。
 要换代必须经用户确认后**显式更新 TRAJ_MD5**, 那是一次口径变更, 不允许顺手改完继续跑。
+换代前先整套备份 + 上锁: `bash tools/backup_traj_215.sh` 拷 joints/phase/hopf/step_cmd/layers_215/跑批日志到
+`zmax_data/traj_backup/traj_215_<ts>/` 并出 `sha256sums.txt`(当场 `sha256sum -c` 全 OK), 再
+`chmod 444 tools/web/real_traj_joints.json` —— 新轨迹一律写新文件, 物理上堵住覆盖。
 验证: 拷一份改一个字节(`0.663`→`0.664`) ⇒ 必须当场抓到 md5 不符。
 
 ## 9. 判据要选物理量，别选数值等价物
@@ -169,7 +172,7 @@ B S²(`sphere`) / C S³(`su2`) / D S¹(`torus`) / E S¹(`torus`), C⇄(B,D) 用 
 
 细节(维度表/σ 取值/实测对照/自检判据/门槛)见 `references/flow-matching-conditioning.md`。
 
-## 13. E 相位↔状态 对账 (跑完一轮就能查, 判据三条)
+## 14. E 相位↔状态 对账 (跑完一轮就能查, 判据三条)
 
 `tools/check_phase_vs_state.py` 读跑批日志 + 8815 实况采样 + sectors, 输出三张表:
 停留点相位 (参考 s vs 日志 s, 判据 Δs<1%) · 相位反查状态是否等于预期 · 实况 s 单调性。
@@ -183,6 +186,46 @@ B S²(`sphere`) / C S³(`su2`) / D S¹(`torus`) / E S¹(`torus`), C⇄(B,D) 用 
 🔴 **`quats` 键名写错不报错, 只是静默降级**: 执行器只读 `cmd["quats"]` (`arm_step_traj.py:641`);
 写成 `quats0` 时 flow v2 退回纯关节口径 —— 日志 `axis_dn_max/roll_dp_max` 全 0, 分块从 36 变 32、
 整轮从 477.6s 变 464.2s。看到"轴/滚转两列全 0"先查这个键。
+
+## 15. 跟随未知新轨迹: 学路径 + 相位语义 (8817)
+
+8815 是**已知轨迹**看板(相位靠投影到那 215 点); 一旦换新轨迹, 8815 的 `s` 没意义, 只能当“离旧轨迹多远”参考。
+跟新轨迹用 `tools/se3_follow.py` + systemd `zmax-se3-follow.service` (8817, 20 Hz, 只读 `/api/tcp`, 零下发)。
+
+- **学习语义**: 位移 ≥2mm 记一个路径点(`A_mm/B/C/D/j/t`); 首尾≤30mm 且总长≥500mm ⇒ 闭环, E 从
+  `learning`(学习进度 mm, **不报 s**) 切 `closed`(相位 s)。未闭环就报 s 等于编。
+- **S¹ 要取模**: 闭环后继续走会 `s>1`(实测 1.8344)。`s=(cum % L)/L` + 单独给 `laps`。
+- 🔴 **首尾重合 ≠ 闭环**: 从口里退出来一路开回起点, 首尾差 15mm、总长 1600mm ⇒ 旧规则直接判闭环并报 `s=0/圈1`,
+  其实是**往返**。判别量 = 回程贴合度: 后半段每点到前半段折线最近距离的**中位** `<25mm ⇒ retrace`, 否则 `loop`。
+  E 三态: `learning`(不报 s) / `retrace`(三角波 0→1→0, 标签写"非闭环") / `closed`(真环路, S¹ 取模)。
+  监视/守望脚本只在 `shape=loop` 结闭环, 否则每次回原点都会被当成"跑完一轮"提前收工。
+- 🔴 **真值断流期不许记点**: 控制器重启时 `latest.json` 还在但冻住(`age_s` 涨到几十秒), 照记就是拿冻住的位姿凑路径。
+  `age_s>5s` 直接跳过并写 `err`; 恢复后按 **reanchor** 记一条 `gap_mm` 点, 不计入弧长、不计 `jumps`
+  (重启期间臂可能被搬走, 那是断流不是跳变)。
+- 🔴 **会话状态文件必须原子写 + 备份 + 加载回退**: `json.dump(open(path,'w'))` 在 `systemctl restart` 撞上写一半
+  ⇒ 0 字节文件 ⇒ 重启后 load 失败, 已学路径(实测 161 点)整体清零。写法 `tmp→fsync→os.replace`, 同时刷 `.bak.json`,
+  load 时主文件坏就退 `.bak`; 启动默认接上旧会话, 只有显式 `--fresh` 才清。
+- 🔴 **真值源跳变必须丢**: 换源/单位错会把弧长算成 66 万 mm。单次跳变 >300mm(20Hz 下真机最快 ~50mm/次)
+  不记入弧长, 记 `jumps`/`last_jump_mm` 并重锚 —— 否则整条路径长度都废了。
+- **口径自检**: `--import tools/web/real_traj_joints.json` 应得 215 帧 `cum=7861.8mm`, 与 `traj_phase.json`
+  的 `L_open` 逐位一致; 不一致就是弧长/单位算错。
+- **验学习逻辑不占真机**: `tools/mock_truth_circle.py` 起假真值(8819, 圆 R=120mm ω=0.5rad/s), 跟 37s
+  应得 2.94 圈、闭环 L 误差 -1.7%(2mm 采样弦差) —— 用理论值对账, 不是“看着像圆”。
+- 留痕: `tools/se3_follow_watch.py` 每 5s 记 `/api/follow` 到 `zmax_data/se3_follow/progress_*.jsonl`,
+  只在闭环/跳变/E 模式切换时打一行。
+- 自建 HTTP 小服务(ThreadingHTTPServer)回包必须 `json.dumps`: 直接 `wfile.write(dict)` 抛
+  `TypeError: a bytes-like object is required, not 'dict'`, 而 `Content-Length` 已被写成**键数**⇒ 每个请求一个 500、
+  页面空白但 `ss -ltnp` 看着服务在。
+- 页面 `/follow` 五视图(A 路径俯视+z 亮度 / B 球 / C θ 表盘 / D 滚转表盘 / E 相位环)验证方式:
+  按 canvas 采样非背景像素数(实测 696/3459/7163/2043/9770) + 回读 DOM 数字与 `/api/tcp` 对账。
+- 🔴 **同步改 /ar3d 页面才叫“也能看”**: 8797 页面每请求**热读** `tools/web/tcp-ar.html`, 改 HTML 不用重启;
+  但页面里的 `syncArmFollow()` **从没人调**(`SYNCARM.follow=false`) —— 三维臂只显示不走, 而游标还挂着旧 215 点。
+  做法: `body.vrfull` 时打开即 `syncArmFollow(true)` + `setInterval(2s)` 兜底重挂, 再拉 8817 的 `session.json`
+  塞 `NAMED['follow']` 画青色新轨迹线, 并在左上 HUD 写 `跟随中/未跟随 · TCP mm · 真值帧龄`。
+  判据不是“按钮发了”, 而是 `PREV.on==true` 且与 `/api/tcp` 关节 **maxdiff 0.000°**; 像素校验要数 `#vr` 画布
+  (第一个 canvas 是 `#vid` 视频层, 数它会得到 0 而误判“画不出来”)。
+- 🔴 **页面里的 `PREV/NAMED/SHOW/TRAJ` 是 `let` 声明, 不在 `window` 上**: 写 `window.PREV && PREV.on` 永远是 false,
+  会把“正在跟随”报成“未跟随”。追加脚本里直接引用同名变量, 别走 window。
 
 ## 改动画布时
 六断言 + `_archive` 备份 + 剔除新增后逐条比对，见 `state-space-canvas-engineering`。

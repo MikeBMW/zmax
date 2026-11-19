@@ -73,6 +73,21 @@ moveStart end (-60611)          ← 一次性追加多条后单次启动被拒
 4. 状态读数**连采几次**再看结论——`on`/`off`、`manual`/`automatic` 在相邻两次调用间会来回跳，
    单次采样不能作判据。
 
+## 读位姿 / 误差码 / 模式前置（写脚本前先核对这三件，否则白跑一轮）
+
+| 想做的事 | 本 SDK 的写法 | 坑 |
+|---|---|---|
+| 读 TCP + 姿态 | `cp = r.cartPosture(x.CoordinateType.endInRef, {})` → `cp.trans` / `cp.rpy` | 没有 `getCartesianPosition` / `getCartesianPosture`（AttributeError）；`FrameType.endInRef` 是力控参考系枚举，不是位姿坐标系 |
+| 判一条指令是否下发成功 | `ec.get("ec", 0) not in (0, None)` | 成功时返回的是 `{'ec': 0, 'message': 'success'}` —— **非空 dict**，`if ec:` 恒真 ⇒ 把成功当“下发失败”提前 return，臂一步不动 |
+| 手动拖动后再下发 | `r.setOperateMode(x.OperateMode.automatic, ec)` | 拖动示教后控制器停在 `manual`，此状态下 `MoveL` 不被接受；切自动要求 `power=on` + `op=idle`，`op` 不 idle 时不要硬切 |
+
+- `r.stop()` 只**保持位置**，不会取消已排队的动作；清队列用 `r.moveReset()`。位置模式下顶住不动时，
+  伺服会持续加载（力学后果见 `force-controlled-insertion` §5b/5e）。
+- 只读姿态在**下电状态**照样能读到（编码器可读），所以“读到位置”不能当作“可以下发”的判据 ——
+  下发前必须另查 `powerState` + `operateMode` + `operationState` 三个。
+- `dir(r)` 筛 `ode|Mode` 能快速找到 `setOperateMode` / `setMotionControlMode`；但**方法名不能靠猜**，
+  猜不到的接口一律去 `.pyi` 查（见本文开头）。
+
 ## 逐点执行的固定开销 = 录制速度的物理天花板
 
 录制轨迹常是 5Hz 采样（`frames[].t` 相邻中位 0.200s ⇒ 0.199 s/点），而逐点 MoveAbsJ 每点有
