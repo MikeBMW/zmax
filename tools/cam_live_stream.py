@@ -6221,6 +6221,22 @@ class Handler(BaseHTTPRequestHandler):
         elif p in ("/gs/list", "/api/gs/list"):
             # 资产清单(页面下拉用; 手机可 curl 取证)
             self._send(200, "application/json; charset=utf-8", _gs_list_json())
+        elif p in ("/central/snap.jpg", "/central_snap.jpg"):
+            # 中央相机(8812 只在 127.0.0.1, 是 ssh 隧道) ⇒ 由 8793 代取, 页面同源可用
+            try:
+                import urllib.request as _u
+                with _u.urlopen("http://127.0.0.1:8812/snap.jpg", timeout=4) as _r:
+                    self._send(200, "image/jpeg", _r.read())
+            except Exception as _e:                                       # noqa: BLE001
+                self._send(503, "text/plain; charset=utf-8", ("central cam 不可用: %s" % _e).encode())
+        elif p == "/central_calib":
+            # 🎯 中央相机标定点选页 (老倪 2026-11-19: 「怎么标定？」—— 6 个已知点 → PnP)
+            _html = os.path.join(_REPO_ROOT, "tools", "web", "central_calib.html")
+            try:
+                with open(_html, "rb") as f:
+                    self._send(200, "text/html; charset=utf-8", f.read())
+            except OSError as e:
+                self._send(404, "text/plain; charset=utf-8", ("缺 %s: %s" % (_html, e)).encode())
         elif p in ("/gs/recon", "/api/gs/recon"):
             # 📡 融合定位建图节点 out3: 高保真重建(3DGS)状态真源
             #    唯一依据 zmax_data/mapping/gs_recon_live.json (tools/gs_recon_state.py 写);
@@ -6529,6 +6545,30 @@ class Handler(BaseHTTPRequestHandler):
                 body = json.loads(self.rfile.read(n).decode("utf-8", "ignore"))
             except Exception:                                                     # noqa: BLE001
                 body = {}
+        if p == "/api/central_pairs":
+            # 🎯 中央相机标定: 页面点完 6 点 POST 上来 → 落 zmax_data/calib/central_pairs.json
+            _pts = []
+            for _it in (body.get("points") or []):
+                try:
+                    _pts.append({"name": str(_it.get("name") or "p%d" % len(_pts)),
+                                 "p_base_mm": [float(v) for v in _it["p_base_mm"]],
+                                 "px": [float(v) for v in _it["px"]]})
+                except Exception:                                             # noqa: BLE001
+                    continue
+            _out = {"schema": "zmax.central_pairs.v1", "wh": [640, 480],
+                    "t": time.strftime("%F %T"), "ip": self._real_ip(), "points": _pts}
+            _p = os.path.join(_REPO_ROOT, "zmax_data", "calib", "central_pairs.json")
+            os.makedirs(os.path.dirname(_p), exist_ok=True)
+            try:
+                with open(_p, "w", encoding="utf-8") as _f:
+                    json.dump(_out, _f, ensure_ascii=False, indent=1)
+                self._send(200, "application/json; charset=utf-8",
+                           json.dumps({"ok": True, "n": len(_pts), "path": "zmax_data/calib/central_pairs.json"},
+                                      ensure_ascii=False).encode())
+            except OSError as e:
+                self._send(500, "application/json; charset=utf-8",
+                           json.dumps({"ok": False, "err": str(e)}).encode())
+            return
         if p == "/station/gold/echo":
             # 📤 回显: 把页面上当前的框原样落到 /tmp, 让 agent 能读到"你画的是哪几根"。
             #    只读用途, 不写 YOLO 数据集(保存才写)。2026-11-17 老倪「我画完两个边界框了, 你看到了么」——
