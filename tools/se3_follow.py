@@ -19,6 +19,7 @@ import argparse
 import json
 import math
 import os
+import shutil
 import threading
 import time
 import urllib.request
@@ -57,6 +58,7 @@ def _retrace_mm(path):
                 for q in path[half:])
     return ds[len(ds) // 2]
 MAX_JUMP_MM = float(os.environ.get("ZMAX_FOLLOW_MAX_JUMP_MM", "300"))   # 单次跳变闸 (真机 20Hz 下最大 ~50mm)
+STALE_S = float(os.environ.get("ZMAX_FOLLOW_STALE_S", "5"))             # 真值帧龄超这个就不记点 (控制器重启期)
 
 S = {
     "path": [],            # [{i, A_mm, B, C, D, j, t}]
@@ -96,6 +98,13 @@ def step() -> None:
     if not d.get("ok"):
         S["err"] = "真值不可用"
         return
+    age = d.get("age_s")
+    if age is not None and float(age) > STALE_S:
+        # 控制器重启/真值断流期间: 文件还在但冻住了。不许把它当实时记点(实测帧龄 85s 时仍照算)
+        S["err"] = "真值陈旧 %.1fs (重启中?) — 不记点" % float(age)
+        S["stale_s"] = round(float(age), 1)
+        return
+    S["stale_s"] = round(float(age), 1) if age is not None else None
     S["err"] = ""
     S["n_truth"] += 1
     p = [float(d["x"]) * 1000.0, float(d["y"]) * 1000.0, float(d["z"]) * 1000.0]
@@ -107,6 +116,9 @@ def step() -> None:
            "j": d.get("joints"), "t": time.time(), "age_s": d.get("age_s")}
     S["last"] = rec
     path = S["path"]
+    # 真值断流后恢复 ⇒ 重新锚定, 不把"重启期间臂被搬走"的距离算成跳变/弧长
+    gap = S.get("t_last_ok") and (rec["t"] - S["t_last_ok"] > STALE_S * 2)
+    S["t_last_ok"] = rec["t"]
     if not path:
         rec.update({"i": 0})
         path.append(rec)
@@ -114,7 +126,14 @@ def step() -> None:
     else:
         prev = path[-1]
         dm = math.dist(prev["A_mm"], rec["A_mm"])
-        if dm > MAX_JUMP_MM:
+        if gap:
+            S["gaps"] = S.get("gaps", 0) + 1
+            S["last_gap_mm"] = round(dm, 1)
+            path.append({"i": len(path), "A_mm": rec["A_mm"], "B": rec["B"], "C_q": rec["C_q"],
+                         "C_theta_deg": rec["C_theta_deg"], "D_phi_deg": rec["D_phi_deg"],
+                         "t": rec["t"], "gap_mm": round(dm, 1), "reanchor": True})
+            S["reanchor"] = True
+        elif dm > MAX_JUMP_MM:
             # 真值源换台/单位错/臂被搬走 ⇒ 不许把这段距离算进弧长 (实测会算出 660 km)
             S["jumps"] = S.get("jumps", 0) + 1
             S["last_jump_mm"] = round(dm, 1)
@@ -159,13 +178,14 @@ def step() -> None:
         S["E"] = {"mode": "learning", "s": None, "cum_mm": round(S["cum"], 1),
                   "label": "学习进度 (未闭环, 不报 s)"}
     if S["path"]:
-        json.dump({"n": len(S["path"]), "cum_mm": round(S["cum"], 2), "closed": S["closed"],
-                   "path": S["path"]},
-                  open(os.path.join(OUT, "session.json"), "w"), ensure_ascii=False)
-        json.dump({"ts": rec["t"], "A_mm": rec["A_mm"], "B": rec["B"], "C": rec["C_q"],
-                   "C_theta_deg": rec["C_theta_deg"], "D_phi_deg": rec["D_phi_deg"],
-                   "E": S["E"], "age_s": rec["age_s"], "n": len(S["path"])},
-                  open(os.path.join(OUT, "snapshot.json"), "w"), ensure_ascii=False)
+        _save_json(os.path.join(OUT, "session.json"),
+                   {"n": len(S["path"]), "cum_mm": round(S["cum"], 2), "closed": S["closed"],
+                    "shape": S.get("shape"), "retrace_mm": S.get("retrace_mm"), "path": S["path"]},
+                   bak=True)
+        _save_json(os.path.join(OUT, "snapshot.json"),
+                   {"ts": rec["t"], "A_mm": rec["A_mm"], "B": rec["B"], "C_q": rec["C_q"],
+                    "C_theta_deg": rec["C_theta_deg"], "D_phi_deg": rec["D_phi_deg"],
+                    "E": S["E"], "age_s": rec["age_s"], "n": len(S["path"])})
 
 
 def loop(rate: float) -> None:
@@ -357,14 +377,39 @@ class H(BaseHTTPRequestHandler):
         return self._s(404, {"error": "no route", "path": p})
 
 
+def _save_json(path: str, obj, bak: bool = False) -> None:
+    """原子写 (tmp + os.replace) —— 非原子写实测会在 systemctl restart 撞上写一半,
+    留下 0 字节 session.json, 重启后 load 失败, 161 点白学。"""
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+    if bak:
+        try:
+            shutil.copyfile(path, path.replace(".json", ".bak.json"))
+        except Exception:                                                    # noqa: BLE001
+            pass
+
+
 def load_session() -> bool:
     """重启后接着用已学路径 (老倪 2026-11-19「全部重启」): 有 session.json 就读回来,
     省得每次重启都把走过的路丢掉。closed 的 old session 顺手补齐 shape(环路/往返)。"""
     fp = os.path.join(OUT, "session.json")
-    if not os.path.exists(fp):
+    for cand in (fp, fp.replace(".json", ".bak.json")):
+        if not os.path.exists(cand):
+            continue
+        try:
+            d = json.load(open(cand, encoding="utf-8"))
+            if len(d.get("path") or []) >= 2:
+                print("[load] 源文件 %s" % os.path.basename(cand), flush=True)
+                break
+        except Exception:                                                    # noqa: BLE001
+            continue
+    else:
         return False
     try:
-        d = json.load(open(fp, encoding="utf-8"))
         path = d.get("path") or []
         if len(path) < 2:
             return False
