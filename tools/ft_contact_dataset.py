@@ -223,19 +223,42 @@ def train(day=None, folds=5):
         w = _fit_logreg([X[i] for i in tr], [y[i] for i in tr])
         p = _pred(w, [X[i] for i in te])
         yt = [y[i] for i in te]
-        acc = sum((1 if q >= 0.5 else 0) == t for q, t in zip(p, yt)) / len(te)
-        accs.append(acc)
-        base_a.append(sum(1 for t in yt if t == 0) / len(te))          # 永远猜 0
+        pred = [1 if q >= 0.5 else 0 for q in p]
+        tp = sum(1 for a, t in zip(pred, yt) if a == 1 and t == 1)
+        tn = sum(1 for a, t in zip(pred, yt) if a == 0 and t == 0)
+        fp = sum(1 for a, t in zip(pred, yt) if a == 1 and t == 0)
+        fn = sum(1 for a, t in zip(pred, yt) if a == 0 and t == 1)
+        # 正样本 <1% 时 "accuracy" 全是假象(全猜0也 0.99) ⇒ 用 balanced accuracy + AUC
+        bal = 0.5 * ((tp / (tp + fn)) if (tp + fn) else 0.0) + 0.5 * ((tn / (tn + fp)) if (tn + fp) else 0.0)
+        pairs = [(pp, tt) for pp, tt in zip(p, yt)]
+        pos = [pp for pp, tt in pairs if tt == 1]
+        neg = [pp for pp, tt in pairs if tt == 0]
+        auc = 0.5
+        if pos and neg:
+            wins = sum((1.0 if a > b else 0.5 if a == b else 0.0) for a in pos for b in neg)
+            auc = wins / (len(pos) * len(neg))
+        accs.append(bal)
+        aucs.append(auc)
+        # 基线也按 balanced accuracy 算, 否则 99% 负样本下"永远猜0"看着像满分
+        ba_tn = sum(1 for t in yt if t == 0)
+        ba_tp = sum(1 for t in yt if t == 1)
+        base_a.append(0.5 * ((ba_tn / len(te)) if ba_tn else 0.0) + 0.0)
         thr = 3.0
-        base_b.append(sum((1 if (X[i][1] > thr) else 0) == y[i] for i in te) / len(te))
-    res = {"ok": True, "trained": True, "n": n, "pos": sum(y),
+        pb = [1 if X[i][1] > thr else 0 for i in te]
+        tpb = sum(1 for a, t in zip(pb, yt) if a == 1 and t == 1)
+        tnb = sum(1 for a, t in zip(pb, yt) if a == 0 and t == 0)
+        base_b.append(0.5 * ((tpb / (tpb + fn)) if (tpb + fn) else 0.0)
+                      + 0.5 * ((tnb / (tnb + fp)) if (tnb + fp) else 0.0))
+    res = {"ok": True, "trained": True, "n": n, "pos": sum(y), "pos_rate": round(sum(y) / n, 4),
            "folds": folds,
-           "model_acc_median": round(st.median(accs), 4),
-           "baseline_always0": round(st.median(base_a), 4),
-           "baseline_forceThr": round(st.median(base_b), 4),
+           "metric": "balanced_accuracy (正样本 %d/%d, 纯 accuracy 无意义)" % (sum(y), n),
+           "model_bal_acc_median": round(st.median(accs), 4),
+           "model_auc_median": round(st.median(aucs), 4) if aucs else None,
+           "baseline_always0_bal_acc": round(st.median(base_a), 4),
+           "baseline_forceThr_bal_acc": round(st.median(base_b), 4),
            "verdict": "", "coef": None}
-    best_base = max(res["baseline_always0"], res["baseline_forceThr"])
-    res["verdict"] = ("模型优于基线 ⇒ 可进影子档" if res["model_acc_median"] > best_base + 0.02
+    best_base = max(res["baseline_always0_bal_acc"], res["baseline_forceThr_bal_acc"])
+    res["verdict"] = ("模型优于基线 ⇒ 可进影子档" if res["model_bal_acc_median"] > best_base + 0.02
                       else "模型不优于基线 ⇒ 只留影子, 不进执行链")
     json.dump(res, open(os.path.join(OUT, "train_report.json"), "w"), ensure_ascii=False, indent=1)
     return res
