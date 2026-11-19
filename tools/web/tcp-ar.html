@@ -9144,4 +9144,51 @@ body{padding-bottom:196px}
   tick(); setInterval(function(){ applyVis(); tick(); }, 2000);
 })();
 </script>
+<!-- 🤖 2026-11-19 老倪「/ar3d 也要跟随真机」: 打开即 ①仿真臂按关节真值 10Hz 跟随 ②把 8817 正在学的新轨迹
+     画成「跟随轨迹」层(青色) ③左上 HUD 标 TCP/真值帧龄/点数 —— 画面自己说明状态, 不靠嘴说 -->
+<script>
+(function(){
+  if(!document.body.classList.contains('vrfull')) return;
+  var HOST = location.hostname;
+  var hud = document.createElement('div');
+  hud.id='followHud';
+  hud.style.cssText='position:fixed;left:12px;top:12px;z-index:99999;font:12px/1.45 ui-monospace,monospace;'
+    +'color:#c9d1d9;background:rgba(7,10,14,.72);border:1px solid #30363d;border-radius:8px;padding:8px 10px;'
+    +'pointer-events:none;white-space:pre';
+  hud.textContent='跟随真机 · 连接中…';
+  document.body.appendChild(hud);
+  // 有些初始化路径会再调 syncArmFollow(false) 把跟随关掉 ⇒ 每 2s 兜底重挂一次
+  function armFollow(){ try{ if(typeof syncArmFollow==='function' && !(window.SYNCARM&&SYNCARM.follow)) syncArmFollow(true); }catch(e){} }
+  armFollow(); setTimeout(armFollow, 1500); setInterval(armFollow, 2000);
+  var hudErr='';
+  setInterval(async function(){
+    try{
+      var d = await (await fetch('/api/tcp',{cache:'no-store'})).json();
+      var mm = function(v){ return (v*1000).toFixed(1); };
+      var fq = (typeof PREV!=='undefined' && PREV.on) ? '跟随中' : '未跟随';   // ⚠ PREV 是 let 声明 ⇒ 不在 window 上
+      hud.textContent = '跟随真机 · '+fq+'\n'
+        + 'TCP '+mm(d.x)+' / '+mm(d.y)+' / '+mm(d.z)+' mm\n'
+        + '真值帧龄 '+(d.age_s!=null? (+d.age_s).toFixed(2)+'s' : '?')+(d.stale?' ⚠陈旧':'')+'\n'
+        + '跟随轨迹 '+((typeof NAMED!=='undefined' && NAMED['follow'])||[]).length+' 点'+(hudErr?('\n'+hudErr):'');
+      hud.style.borderColor = d.stale ? '#f85149' : '#238636';
+    }catch(e){ hud.textContent='跟随真机 · /api/tcp 取不到'; hud.style.borderColor='#f85149'; }
+  }, 500);
+  var SURL = 'http://'+HOST+':8817/session.json';
+  async function pull(){
+    try{
+      var d = await (await fetch(SURL,{cache:'no-store'})).json();
+      var pts = (d.path||[]).map(function(p){ return p.A_mm.map(function(v){ return v/1000; }); });
+      if(pts.length>1){
+        NAMED['follow']=pts; NAMED_ON['follow']=true;
+        NAMED_INFO['follow']={label:'跟随新轨迹', src:'8817 · '+pts.length+' 点 · 弧长 '+Math.round(d.cum_mm||0)+'mm'};
+        try{ NAMED_COL['follow']='#22d3ee'; }catch(e2){}
+        SHOW=true;
+        if(typeof drawVR==='function') drawVR();
+      }
+      hudErr='';
+    }catch(e){ hudErr='轨迹层: '+String(e&&e.message||e).slice(0,40); }
+  }
+  pull(); setInterval(pull, 2000);
+})();
+</script>
 </body></html>
