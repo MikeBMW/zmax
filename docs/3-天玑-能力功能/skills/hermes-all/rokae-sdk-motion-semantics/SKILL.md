@@ -80,6 +80,7 @@ moveStart end (-60611)          ← 一次性追加多条后单次启动被拒
 | 读 TCP + 姿态 | `cp = r.cartPosture(x.CoordinateType.endInRef, {})` → `cp.trans` / `cp.rpy` | 没有 `getCartesianPosition` / `getCartesianPosture`（AttributeError）；`FrameType.endInRef` 是力控参考系枚举，不是位姿坐标系 |
 | 判一条指令是否下发成功 | `ec.get("ec", 0) not in (0, None)` | 成功时返回的是 `{'ec': 0, 'message': 'success'}` —— **非空 dict**，`if ec:` 恒真 ⇒ 把成功当“下发失败”提前 return，臂一步不动 |
 | 手动拖动后再下发 | `r.setOperateMode(x.OperateMode.automatic, ec)` | 拖动示教后控制器停在 `manual`，此状态下 `MoveL` 不被接受；切自动要求 `power=on` + `op=idle`，`op` 不 idle 时不要硬切 |
+| 状态是 `op=OperationState.drag` | 同上, 但**切不了** | 有人握着使能开关时 `setOperateMode(automatic)` 返回 `{'ec': -19, 'message': 'control mode (position/force) unsupported operation'}`, 且 `operateMode` 仍是 `manual`。这不是参数错误, 重试也不会成 —— 停手, 明确告诉现场「请松开使能开关/回自动」, 再重读三态确认 |
 
 - `r.stop()` 只**保持位置**，不会取消已排队的动作；清队列用 `r.moveReset()`。位置模式下顶住不动时，
   伺服会持续加载（力学后果见 `force-controlled-insertion` §5b/5e）。
@@ -87,6 +88,26 @@ moveStart end (-60611)          ← 一次性追加多条后单次启动被拒
   下发前必须另查 `powerState` + `operateMode` + `operationState` 三个。
 - `dir(r)` 筛 `ode|Mode` 能快速找到 `setOperateMode` / `setMotionControlMode`；但**方法名不能靠猜**，
   猜不到的接口一律去 `.pyi` 查（见本文开头）。
+
+## 🔴 rpy 只能原样回传, 改姿态走关节空间 (真机碰撞换来的)
+
+`cartPosture().rpy` 读回来**原样**再给 `CartesianPosition` 是安全的(实测连续 30+ 段姿态变 ≤0.003°);
+但**在它上面加/减一个角度**就不安全: 实测给它 +15° 俯仰后回读的 rpy 与预期差 **180°**,
+而按旋转矩阵算的几何夹角只差 15°; 再按"度/弧度"两种假设试探, TCP 被甩到离工装面板 **14.7mm** 处撞上。
+
+- **机制**: 控制器 rpy 在 **±π 附近表示歧义** —— 同一姿态有多种欧拉写法, 端点贴近奇异时逆解分支会跳,
+  所以"数值上加 15°"与"姿态上转 15°"不是同一件事。
+- **铁律**: 要改姿态就走 URDF FK(当前关节) → 在**目标点**上转 → IK → `MoveAbsJCommand` 下发;
+  rpy 只用于读取与逐字回传, 不参与任何运算。
+- **枢轴必须是 TCP, 不是法兰**: 固定法兰位姿只改姿态 ⇒ 工具尖画圆弧 `L·sinθ`(L=259.8mm ⇒ 12° 位移 **54.1mm**)。
+  正确: `p_flange = p_tcp − R_new·[0,0,L]`, 再 IK 到 (p_flange, R_new)。
+- **下发后闸**: 纯姿态动作 `|ΔTCP| > 25mm` ⇒ 枢轴算错, 立即停(实测拦下过一次 54mm 甩动)。
+  判读: **关节误差 <0.1° 而 TCP 动了 = 枢轴问题**, 不是 IK 不收敛。
+- **到位判据**用关节/位姿**收敛**(连续 N 帧变化 <ε), 不用 `operationState` 字符串 —— 它可能在仍在走时就回 `idle`
+  (据此提前读到的还是半路位姿, 会被当成"位姿自己跑了")。
+- **JOINT 限位会卡死某些姿态**: 实测 +12° IK 误差 110mm/13.8° 不可达, +8° 可 0.01mm ⇒
+  规划器逐姿态输出 **位姿误差 / 间隙 / 相对基准最大关节变化**, 不可达的直接剔除, 不要硬发。
+- `operationState = drag`(有人在手扶/示教)时一律不下发; 判据是**连读几次位姿各不相同**, 不是只看一次状态。
 
 ## 逐点执行的固定开销 = 录制速度的物理天花板
 
