@@ -5119,6 +5119,21 @@ def _gs_latest_render():
     return None, "", 0.0
 
 
+def _gs_recon_json() -> bytes:
+    """高保真重建状态: 读节点 out3 真源文件(不重算), 缺文件就明写 missing。"""
+    p = os.path.join(_REPO_ROOT, "zmax_data", "mapping", "gs_recon_live.json")
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            d = json.load(f)
+        d["_served_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        d["_source"] = os.path.relpath(p, _REPO_ROOT)
+        return json.dumps(d, ensure_ascii=False).encode("utf-8")
+    except Exception as e:
+        return json.dumps({"ok": False, "err": "%s: %s" % (type(e).__name__, e),
+                           "hint": "先跑 gui-venv311/bin/python tools/gs_recon_state.py once"},
+                          ensure_ascii=False).encode("utf-8")
+
+
 def _gs_list_json() -> bytes:
     a = _gs_assets()
     return json.dumps({"latest": (a[0]["name"] if a else ""), "assets": [
@@ -6206,6 +6221,11 @@ class Handler(BaseHTTPRequestHandler):
         elif p in ("/gs/list", "/api/gs/list"):
             # 资产清单(页面下拉用; 手机可 curl 取证)
             self._send(200, "application/json; charset=utf-8", _gs_list_json())
+        elif p in ("/gs/recon", "/api/gs/recon"):
+            # 📡 融合定位建图节点 out3: 高保真重建(3DGS)状态真源
+            #    唯一依据 zmax_data/mapping/gs_recon_live.json (tools/gs_recon_state.py 写);
+            #    本端点只读转发 + 带自身读取时刻, 不复制任何数字。
+            self._send(200, "application/json; charset=utf-8", _gs_recon_json())
         elif p in ("/gs/latest_display.splat", "/api/gs/latest_display.splat") or p.endswith(".display60k.splat"):
             # 🪶 轻量显示副本(服务端预算 6 万高斯 ≈ 1.9MB): 页面默认走它。
             #    全量 86.7MB 只在用户显式要「🐘 全量」时才拉(新窗口/明确点击), 避免一开页就阻塞主线程。
