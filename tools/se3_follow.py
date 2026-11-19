@@ -30,6 +30,32 @@ TRUTH = os.environ.get("ZMAX_FOLLOW_TRUTH", "http://127.0.0.1:8797/api/tcp")
 MIN_STEP_MM = float(os.environ.get("ZMAX_FOLLOW_MIN_STEP_MM", "2.0"))     # 小于此不记点(防抖)
 CLOSE_MM = float(os.environ.get("ZMAX_FOLLOW_CLOSE_MM", "30"))            # 首尾距离阈值
 MIN_LOOP_MM = float(os.environ.get("ZMAX_FOLLOW_MIN_LOOP_MM", "500"))
+RETRACE_MM = float(os.environ.get("ZMAX_FOLLOW_RETRACE_MM", "25"))   # 回程贴在去程上 <25mm ⇒ 判"往返"不是"闭环"
+
+
+def _seg_dist(p, a, b):
+    """点到线段距离 (mm)"""
+    ax, ay, az = a
+    vx, vy, vz = b[0] - ax, b[1] - ay, b[2] - az
+    wx, wy, wz = p[0] - ax, p[1] - ay, p[2] - az
+    vv = vx * vx + vy * vy + vz * vz
+    t = 0.0 if vv <= 1e-12 else max(0.0, min(1.0, (wx * vx + wy * vy + wz * vz) / vv))
+    return math.dist(p, (ax + vx * t, ay + vy * t, az + vz * t))
+
+
+def _retrace_mm(path):
+    """回程贴合度: 后半段每点到底半段折线的最近距离中位数。
+    ~0mm ⇒ 原路返回(往返, 不是闭环); 几十 mm 以上 ⇒ 真环路。"""
+    n = len(path)
+    if n < 20:
+        return None
+    half = n // 2
+    seg = [q["A_mm"] for q in path[:half + 1]]
+    if len(seg) < 2:
+        return None
+    ds = sorted(min(_seg_dist(q["A_mm"], seg[i], seg[i + 1]) for i in range(len(seg) - 1))
+                for q in path[half:])
+    return ds[len(ds) // 2]
 MAX_JUMP_MM = float(os.environ.get("ZMAX_FOLLOW_MAX_JUMP_MM", "300"))   # 单次跳变闸 (真机 20Hz 下最大 ~50mm)
 
 S = {
@@ -106,14 +132,29 @@ def step() -> None:
                     and math.dist(path[0]["A_mm"], rec["A_mm"]) <= CLOSE_MM):
                 S["closed"] = True
                 S["L_closed"] = S["cum"]
+                # 🔴 2026-11-19 实测踩坑: 从插口退出来一路开回起点, 首尾也 ≤30mm ⇒ 被判"闭环 s=0",
+                #   其实这是**往返**(去程+原路返回), 不是环路。区别看回程有没有贴在去程上。
+                r = _retrace_mm(path)
+                S["retrace_mm"] = None if r is None else round(r, 1)
+                S["shape"] = "retrace" if (r is not None and r < RETRACE_MM) else "loop"
     # 相位: 闭环用真相位, 否则只报学习进度 (不许冒充 s)
-    if S["closed"]:
+    if S["closed"] and S.get("shape") == "retrace":
+        # 往返: 去程 0→1, 回程 1→0 (三角波), 不冒充环路相位
+        L = S.get("L_closed") or S["cum"]
+        p_ = max(0.0, min(1.0, S["cum"] / L))
+        s = p_ * 2.0 if p_ <= 0.5 else 2.0 - p_ * 2.0
+        S["E"] = {"mode": "retrace", "s": round(s, 4), "p": round(p_, 4),
+                  "s_mm": round(s * L / 2.0, 1), "cum_mm": round(S["cum"], 1),
+                  "L_mm": round(L, 1), "retrace_mm": S.get("retrace_mm"),
+                  "label": "行程相位 (往返 0→1→0, 非闭环)"}
+    elif S["closed"]:
         L = S.get("L_closed") or S["cum"]
         # S¹ 是环: 走第二圈以后要取模, 不许出现 s>1 (实测连走 1.8 圈报出 1.8344)
         laps = int(S["cum"] // L)
         S["E"] = {"mode": "closed", "s": round((S["cum"] % L) / L, 4),
                   "s_mm": round(S["cum"] % L, 1), "cum_mm": round(S["cum"], 1),
-                  "L_mm": round(L, 1), "laps": laps, "label": "相位 s (闭环, 0→1 循环)"}
+                  "L_mm": round(L, 1), "laps": laps, "retrace_mm": S.get("retrace_mm"),
+                  "label": "相位 s (闭环, 0→1 循环)"}
     else:
         S["E"] = {"mode": "learning", "s": None, "cum_mm": round(S["cum"], 1),
                   "label": "学习进度 (未闭环, 不报 s)"}
@@ -153,6 +194,7 @@ def api() -> dict:
         "E": S.get("E") or {"mode": "learning", "s": None, "cum_mm": 0.0,
                             "label": "学习进度 (未闭环, 不报 s)"},
         "route": {"n_pts": len(path), "cum_mm": round(S["cum"], 1), "closed": S["closed"],
+                  "shape": S.get("shape"), "retrace_mm": S.get("retrace_mm"),
                   "jumps": S.get("jumps", 0), "last_jump_mm": S.get("last_jump_mm"),
                   "span_mm": ([round(max(p["A_mm"][k] for p in path) - min(p["A_mm"][k] for p in path), 1)
                                for k in range(3)] if len(path) > 1 else [0, 0, 0]),
@@ -315,6 +357,39 @@ class H(BaseHTTPRequestHandler):
         return self._s(404, {"error": "no route", "path": p})
 
 
+def load_session() -> bool:
+    """重启后接着用已学路径 (老倪 2026-11-19「全部重启」): 有 session.json 就读回来,
+    省得每次重启都把走过的路丢掉。closed 的 old session 顺手补齐 shape(环路/往返)。"""
+    fp = os.path.join(OUT, "session.json")
+    if not os.path.exists(fp):
+        return False
+    try:
+        d = json.load(open(fp, encoding="utf-8"))
+        path = d.get("path") or []
+        if len(path) < 2:
+            return False
+        S.update({"path": path, "cum": float(d.get("cum_mm") or 0.0),
+                  "closed": bool(d.get("closed"))})
+        seg = 0.0
+        for a, b in zip(path, path[1:]):
+            dd = math.dist(a["A_mm"], b["A_mm"])
+            if dd <= MAX_JUMP_MM:
+                seg += dd
+        S["cum"] = seg
+        if S["closed"]:
+            S["L_closed"] = S["cum"]
+            r = _retrace_mm(path)
+            S["retrace_mm"] = None if r is None else round(r, 1)
+            S["shape"] = "retrace" if (r is not None and r < RETRACE_MM) else "loop"
+        S["last"] = path[-1]
+        print("[load] 接上已有会话: %d 点 · 弧长 %.1f mm · closed=%s · shape=%s · retrace=%s" % (
+            len(path), S["cum"], S["closed"], S.get("shape"), S.get("retrace_mm")), flush=True)
+        return True
+    except Exception as e:                                                   # noqa: BLE001
+        print("[load] 读 session.json 失败:", str(e)[:80], flush=True)
+        return False
+
+
 def import_traj(path: str) -> dict:
     """把一份已录轨迹 (real_traj_joints 口径: frames[{p(m),q,j,t}]) 灌进本次会话, 算弧长/闭环/相位。"""
     d = json.load(open(path, encoding="utf-8"))
@@ -361,6 +436,8 @@ def main() -> int:
     ap.add_argument("--rate", type=float, default=20.0)
     a = ap.parse_args()
     os.makedirs(OUT, exist_ok=True)
+    if not a.imp and "--fresh" not in os.environ.get("ZMAX_FOLLOW_FLAGS", ""):
+        load_session()
     if a.imp:
         print("[import]", json.dumps(import_traj(a.imp), ensure_ascii=False), flush=True)
     if not a.imp or "--follow-live" in os.environ.get("ZMAX_FOLLOW_FLAGS", ""):
