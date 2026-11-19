@@ -22,7 +22,25 @@ REPO = "/home/ubuntu/zmax"
 WEB = os.path.join(REPO, "tools", "web")
 SDK = os.path.join(REPO, "zmax_data", "rokae_sdk")
 _J = {}
-_LAST = {"i": None}      # 相位连续性: 上一次投影到的索引(防止自交处跳到别的分支)
+_LAST = {"i": None}
+_STATUS_URL = (os.environ.get("ZMAX_SE3_STATUS_URL") or "http://127.0.0.1:8797/api/arm/step_traj/status").strip()
+_ST = {"ts": 0.0, "cursor": 0, "running": False}
+
+
+def _run_cursor():
+    """执行器游标 (跑批中才有意义); 取不到/没在跑 ⇒ None, 走纯几何投影。"""
+    if not _STATUS_URL:
+        return None
+    now = time.time()
+    if now - float(_ST["ts"]) > 1.0:
+        try:
+            import urllib.request
+            with urllib.request.urlopen(_STATUS_URL, timeout=0.6) as r:
+                d = json.loads(r.read().decode())
+            _ST.update(ts=now, cursor=int(d.get("cursor") or 0), running=bool(d.get("running")))
+        except Exception:                                                    # noqa: BLE001
+            _ST["ts"] = now
+    return _ST["cursor"] if (_ST["running"] and _ST["cursor"] > 0) else None      # 相位连续性: 上一次投影到的索引(防止自交处跳到别的分支)
 
 
 LOGS = ("traj_step_geom.log", "traj_step_geom2.log")
@@ -257,9 +275,18 @@ class H(BaseHTTPRequestHandler):
             _li = _LAST.get("i")
             _dmin = min(d)
             _ig = d.index(_dmin)
+            # ⓪ 跑批时以执行器游标为准: 投影只在 [cursor-2, cursor+14] 内找 ——
+            #    停车/慢速时几何最近点会沿轨迹后退几帧(实测 7 次, 25~76mm), 游标能消掉它。
+            _anchor = _run_cursor()
+            if _anchor is not None:
+                lo, hi = max(0, _anchor - 2), min(len(d), _anchor + 14)
+                w = d[lo:hi]
+                i = lo + w.index(min(w))
+                # 跑批是单向回放 ⇒ 索引不许后退 (实测: 只加窗口还有 5 次 25~76mm 后退)
+                i = max(i, int(_LAST.get("i") or 0))
             # ① 紧贴某点(≤3mm) ⇒ 以几何为准: 臂停在起/终点时, 自交窗口常被另一分支占住
             #    (实测 intel 看板停回起点仍报 #69, 就是窗口赢过了 2.3mm 的全局最近点)
-            if _dmin <= 3.0:
+            elif _dmin <= 3.0:
                 i = _ig
             elif _li is None:
                 i = _ig
