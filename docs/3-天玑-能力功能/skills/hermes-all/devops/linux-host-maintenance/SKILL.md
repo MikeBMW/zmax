@@ -435,6 +435,14 @@ cam_stream_guard · ar_server_guard · vl_safety_keepalive · l2_daemon_keepaliv
 
 ## 9. 重启后核验：链路自愈了没有（用户说「重启了 / 回来了 / 元气恢复」先跑这个）
 
+**用户说「我准备重启」= 先给三句再让他重启, 不要等重启完再查**:
+①**会丢的**: `nvidia-smi --query-compute-apps=pid,used_memory --format=csv,noheader` + 逐个 `/proc/<pid>/cmdline`,
+把占着 GPU 的进程认成“常驻服务”还是“在跑的任务”——后者重启就没了, 前者会自己回来;
+②**会自己回来的**: `systemctl list-unit-files --state=enabled | grep -E 'zmax|aoi'` 的个数(实测 46 个),
+并在同一条命令里给 `systemctl list-units 'zmax-*' --all | awk '$3!="active"'` 列出当前已在爬/已停的单元(**重启前就有重启循环的, 重启后一定还循环** —— 一并告知);
+③**重启后要手动补的**: 自启单元里没有的手工进程/裸进程页面(见 §9 手工进程段)。
+只报这三类, 不写“可以重启了”就完 —— 远端/Orin/控制器各自独立, 也不许把它们的不可达归到本机重启上。
+
 > 跳板/公网入口断了怎么自愈（22022 是**哪一端**用 -R 建的 · 端口能连但 SSH 不握手 · unit active 但转发已半开 ·
 > LAN 直连↔公网跳板 双模式自动切换 · 换 ECS 时 EIP 决定多少硬编码要改）：
 > 见 `references/remote-access-tunnel.md` 的「跳板恢复」与「迁移」两节。
@@ -1042,6 +1050,40 @@ GitHub 连不上(135s 超时)失败 → 17:54:28 之后再无任何 tick → 18:
    于是"在跑"是假绿、偶尔又查不到。用 `boot_restore.sh check`(内部 `[x]` 锚定) 或 `pgrep -x <可执行名>`(见 §10b)。
 6. 报"还差的"时把三类分开: ①本机该起没起(要修) ②产线网卡/远端不在位(环境缺失, 见 §9 — 不要当故障修)
    ③代码没推/没归档(可当场补)。用户手里的下一步就是这三类里能动手的那一条。
+
+## 9k. 重启核验里三条「看着像故障、其实是配置/人为」的单元状态
+
+### ① 某个 `zmax-*` 单元 `activating (auto-restart)` + `ExecMainStatus=255` ⇒ 先看端口被谁占, 别修链路
+
+`ssh -N -L` 类转发单元带 `ExitOnForwardFailure=yes` 时, **本地端口已被占用**就直接 255 无限重启。
+最常见的占用者不是野进程, 而是**另一个已经在转同一端口的单元**(往往是超集: 多转了几路)。
+```bash
+systemctl show <unit> -p NRestarts -p ExecMainStatus --value      # 24 / 255 = 抢口, 不是网络坏
+ss -ltnp | grep <端口>                                            # 谁持有
+cat /proc/<pid>/cgroup | head -2                                  # → /system.slice/<另一个unit>.service
+```
+判据与处置:
+- **端口已由另一个 unit 转发 ⇒ 链路是通的**, 把重复那个 `sudo systemctl disable --now <重复unit>` 即可;
+  不要 kill 持有者、不要去改 ssh config、更不要以为腿/桥断了(实测重复的 move-fwd 重启 24 次, 而腿通道一切正常)。
+- **通不通要看数据穿过端口**: `curl -s -m 4 http://127.0.0.1:<端口>/status`, 有 JSON 才算在役; unit 的 active/inactive 不回答这个问题。
+- 只用 `systemctl cat <unit> | grep ExecStart` 对比两个单元的 `-L` 列表, 谁多谁留, 少的那个停。
+
+### ② 单元 `enabled` 但 `inactive`、又没有任何 failed ⇒ 先查「是不是谁手动 stop 的」
+
+重启后看到常驻单元没起来, 别直接归因于崩溃/内存红线。`journalctl -b` 里会留一条审计行, 写明命令与人:
+```bash
+journalctl -b -o short-iso | grep -E '<unit>' | grep -iE 'Started|Stopping|COMMAND=.*systemctl stop'
+```
+实测形态: `sudo[122788]: ubuntu : PWD=/home/ubuntu/zmax ; USER=root ; COMMAND=/usr/bin/systemctl stop <unit>`
+⇒ 是**人为/脚本主动停的**, 报告写「18:29:31 被 XX 手动 stop(不是崩、不是内存红线), 要起我就起」,
+并把它列成一条待用户点头的动作 —— 不要自己拉起(§0 铁律: 服务启停要用户点名)。
+对比: 真崩溃/被 OOM 砍会伴随 `Main process exited, code=killed` / `oom-kill` / 非 0 `ExecMainStatus`, 不会只有 Stopping→Stopped。
+
+### ③ AOI 两路端口「在听」不等于坏了: 探活路径要选对的
+
+`10082/10083` 上 `/`、`/health`、`/docs` 回 404/500 是常态(没这个路由), **判据是 `/storage` = 200**(见 `zmax-aoi-service`)。
+本机这两个口通常是 `zmax-orin-legs` 那条隧道转出来的(`-L 127.0.0.1:10082:192.168.23.23:10082`),
+所以「Orin 直连 10082 curl 000」也说明不了 AOI 挂了 —— 先看有没有本地隧道转发, 再探 `/storage`。
 
 ## 10. 守护脚本的早退会吞掉它后面所有自愈(重启后最常中的一条)
 

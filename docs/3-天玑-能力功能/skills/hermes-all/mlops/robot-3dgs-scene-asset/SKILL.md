@@ -204,6 +204,8 @@ metadata:
 | 用墙钟配对位姿与图像 | 全部错位/重建忽明忽暗 | 一律单调时钟; 取图前后各取一次位姿; 负帧龄拒用 |
 | 去 `calib_report_*.json` 拿手眼 | 拿到 null 以为没标定 | 手眼真值在 `handeye_state.json`(`T_cam2tool`) |
 | 分辨率与 K 不一致 | 重建整体错位/虚 | 取流分辨率与内参分辨率对齐(高速通道是 640x480) |
+| 🔴 **cameras.json 声明的 w/h 与图片真实像素不一致** | 训练**每 10 秒崩**、`realtime.json` 的 `error` 永远是 `RuntimeError: The size of tensor a (640) must match the size of tensor b (1280) at l1 = (out - gt).abs().mean()`、`last_train_ts` 停在几天前、页面一直放旧资产, 而所有 unit 都 `active` | 机制两半: ①采集端 `frames[]` 每条只有 `file/T_cam2world/pose/bright/ts` —— **没有 w/h**, 所以 `frames[0].get("w")` 恒 None 而退回兜底 640×480; ②训练端 `W,H = cj["width"], cj["height"]` 照相机标定档(640×480 时代)建渲染尺寸, 真值图却是 1280×720。处置三处同口径: **训练端以图片实测像素为准**(首帧 `Image.open().size`), 不一致就按 `sx=W_img/W_cal, sy=H_img/H_cal` 重算 K 并**打印结论**; 采集端 `_write_cameras` 优先用会话级 `sess["w"]/["h"]`(建会话时由真 jpg 解出来的)再退首帧记录; 建库端同样加一条“首帧实测尺寸 ≠ 声明就重算 K”的闸。判据: 日志出现 `⚠️ cameras.json 写 640x480 但图片实际 1280x720 ⇒ 按图片走, K 缩放 2.000x1.500` 且 `[n/n] loss` 能走完 |
+| 🔴 **位姿通道“topic 有数但桥收不到”** | ROS→HTTP 桥 `/health` 报 `img_age_s 0.01` 而 `pose_age_s 600+`, 同刻 `ros2 topic hz /robot/tcp_pose` 是 48Hz、`publisher count 1`、QoS 也是一致的 BEST_EFFORT | 这不是 QoS、也不是发布端: **是桥里那个订阅自己哑了**(进程还活、图像订阅还在收) ⇒ 重启该 unit 即回 0。**不要据 `is-active` 判健康**, 判据只有 `/health` 的两个 age; 兜底定式: 桥在 ROS 位姿超 5s 未更新时改读本机 TCP 真值文件(`~/zmax_data/rokae_sdk/tcp_out/latest.json`, 5Hz, 与 8793 同源)并给 `src=file:…` 标记 —— 否则采集端会拿几百秒前的位姿把整批帧标错 |
 | 递归查数据根内容 | 命令跑到超时(200s 都不够) | `~/zmax_data` 是几十GB + 上万文件(还有 HF blobs): **只查定点路径** —— `search_files(pattern=…, path=<具体子目录>)` 或 `ls` 逐层下探 |
 | 把包装进训练 venv | 训练环境被污染 / 没 pip 装不动 | 另建 `uv venv`; 用 `uv pip install --python <venv>/bin/python` |
 | 想装需编译 CUDA 扩展的包 | 报找不到 nvcc | 用预编译轮(index 见上); 或先补 nvcc 再谈源码编译 |
@@ -296,6 +298,20 @@ metadata:
 - 边缘上还有两条备选但都有硬约束(先核再承诺): 深度点云重合需 **发布者 + depth camera_info 都活**
   (`ros2 topic info` 的 publisher count 为 0 就是采不到); 用现有检测器做目标当基准不行
   (夹在爪上的目标随动、小目标类别可能 0 命中)。
+
+### 🔴 「页面怎么还是没改进」= 先读实时建图的 `realtime.json`, 别先动训练参数
+
+一轮完整判定只要三个字段, 在 `<gs_map>/realtime.json`(不是 `status.json`):
+`last_train_ts`(上一版成功训练的时刻) · `n_rounds`(成功轮数) · `error`(最近一次失败原文)。
+实测形态: `last_train_ts` 停在**一天多以前**、`n_rounds` 一直不动、`error` 每 10 秒重复**逐字相同**的一行
+⇒ 结论是“**一次都没成过**”, 页面上那份资产/PSNR 全是旧的; 此时调步数、掉分辨率、换资产名都没用, 先修那行 error。
+- 训练崩掉是**静默**的: unit `active`、`frames_now` 还在涨、会话目录也在长 —— 只有 `error` 与 `last_train_ts` 会说实话。
+- 修完必须**手工实跑一轮同参数**验证(`--steps` 按 live 档), 看日志真的出 `[n/n] loss` 与 PSNR; 不要把“代码改了、编译过了”当生效证据。
+- 步数太少时 PSNR 很低(实测 120 步 / 400 帧 1280×720 ⇒ 8.3dB, 同时 3 个训练视角逐位相同) **不能当“改进失败”的结论** —— 与 live 同档同样步数再比。
+- 🔴 **但修完尺寸/内参也不等于变好了(2026-11-18 实测)**: 同 400 帧 1280×720、同 400 步(live 档), 修好崩溃后留出 **10.44dB**, 而页面上那份旧资产是 **17.74dB** ⇒ **比旧的还差**。
+  说明“把 640x480 的 K 按 2.0x1.5 铺满 1280x720”这个假设不成立(D405 在 720p 的真值 fx=**655.065**, 394.06x2=788 高估 20%)。
+  ⇒ 报现场只能说“训练不再崩了、能出产物”, **不要说“3DGS 改进了”**; 下一步只能拿与真实分辨率匹配的内参(相机 `/intrinsics`/`camera_info`)或把相机降回 640x480 再比。
+  判据: 新一版留出 PSNR **高于在役资产**才算改进; 低于它就保留旧资产、把这版当对照留档。
 
 ### 🔴 「服务 active」不等于「正在采」—— 建图前先读采集桥的帧龄
 系统里建图那条链(ROS 桥 / 自动采集 / 训练 / 地图服务)全 `active`, 不代表有数据: 实测 ROS 桥 `/health` 回

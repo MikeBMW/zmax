@@ -149,6 +149,26 @@ B S²(`sphere`) / C S³(`su2`) / D S¹(`torus`) / E S¹(`torus`), C⇄(B,D) 用 
 - 🔴 **最近点连续性窗口会让停回起点的臂报错帧**: 窗口赢过 2.3mm 的全局最近点时(自交 22 处),
   看板报 `#69 偏轨 2.3mm` 而真实是 `#214`。加一条前置规则: `min(d)≤3mm` 就直接取全局最近, 不走窗口。
 
+## 13. 五流形 → flow matching: 条件编码 + 流形感知噪声 (接法已定, 提升未证)
+
+状态向量的用途从"观测/闸门/看板"扩到"策略条件"时, 照这四条做 (`src/lerobot/manifold/se3_flow_cond.py`):
+
+1. **条件向量 20 维** = A(p/1000,3) + B(n,3) + C(q,4, 统一 w≥0) + D(cosφ,sinφ,2) + E(cos2πs,sin2πs,2) + TQ(q̇/100,6)。
+   S¹ 一律 (cos,sin): 裸角度在 0/2π 处跳变。四元数双覆盖必须把 w 统一到 ≥0, 否则同一个姿态两个编码。
+2. **噪声不许是 N(0,I)**: 从当前状态出发在各自流形上采 —— B 切平面高斯再走测地线, C 右乘 exp(½σω),
+   D/E 环上相加并 wrap, A 欧氏。实测欧氏直接加噪 B **100% 出球面**(范数均差 0.111), 流形采 0%(1e-16)。
+   同理 FM 插值路径要在流形上做: C 的欧氏直线中点范数可低到 **0.0175**(姿态信息全丢), 测地线 1e-16。
+3. **注入点用现成的头, 不新造**: `multi_task_dit:135 conditioning_vec = observation_encoder.encode(batch)`
+   拼 20 维并把 `conditioning_dim += 20`; `smolvla:812 sample_actions(noise=...)` 直接吃流形噪声;
+   L3 节点 `engineering/nodes/flow_matching_impl.py` 走的就是这两个头, 不用改。
+4. **分开报账**: 只加条件向量 / 加流形噪声 / 换测地线插值路径 三步单独做同口径对照,
+   有提升才进默认档(仅不回退只能留影子)。
+
+🔴 **引擎 `geodesic("B")` 的 slerp 分支要先归一输入**: 轨迹 json 的 n 只有 6 位小数(`‖n‖=1±1e-7`),
+不归一的中点范数偏 1.7e-7 —— 会被误判成插值实现错。
+
+细节(维度表/σ 取值/实测对照/自检判据/门槛)见 `references/flow-matching-conditioning.md`。
+
 ## 改动画布时
 六断言 + `_archive` 备份 + 剔除新增后逐条比对，见 `state-space-canvas-engineering`。
 本链做到“零画布改动”是因为 `n_vlm_llm → ss_mani_eng in1` 这条线本来就有，只是代码不读它。

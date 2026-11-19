@@ -139,6 +139,20 @@ git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这
   `bump_version.py --to <目标号>`, 再 `git tag -f`。tag 是唯一指向, cherry-pick 换了 sha 就得重打。
 - 轮询可以直接跑 `scripts/ci_watch_release.sh <tag> <sha8>`(后台 + `notify=true`), 它按 sha 认 run、
   逐 job 报「状态/结论/成功步数/当前步」, run completed 后自动回读 `releases/tags/<tag>` 的资产名与体积。
+- 🔴 **用户说「发布跨平台版本(Windows/macOS)」但没给版本号**: 不许自选号 ⇒ 走 `workflow_dispatch`
+  触发 `build-win-exe.yml`, `inputs.tag` 传 `dev-snapshot`: 两个平台照建、照样上传到同一个 Release,
+  而 exe 的版本属性会因 `tag` 不是 `x.y.z` 自动回退到 `VERSION.md` 里的真版本号(workflow 自带该兜底)。
+  ```bash
+  TOK=$(printf "protocol=https\nhost=github.com\nusername=<user>\n\n" | git credential fill 2>/dev/null | grep '^password=' | cut -d= -f2)
+  curl -s -X POST -H "Authorization: Bearer $TOK" -H "Accept: application/vnd.github+json" \
+    https://api.github.com/repos/<owner>/<repo>/actions/workflows/build-win-exe.yml/dispatches \
+    -d '{"ref":"main","inputs":{"tag":"dev-snapshot"}}' -w "\nHTTP %{http_code}\n"   # 204 = 已触发
+  ```
+  前置: 本轮代码已 push 到 main(dispatch 从 `ref` 取源码, 工作区改了但没推 = 包里没这改动)。
+  汇报口径: 三个资产下载链接 + 一句「挂在 `dev-snapshot` 上, 给我版本号我一条命令改成正式 tag 重出包」。
+  🔴 **收尾判据看 jobs 不看 run 总状态**: 实测「回填本版摘要」(拿 VERSION.md 改 release 正文)那一步会 failure,
+  而 Windows/macOS 两个 job 各自全绿(27/27 · 22/22 步)、三个资产 `state=uploaded` ⇒ 包是好的;
+  汇报里点名那一步失败与本轮无关, 不要因此重跑或改包。
 - 🔴 **新增 `src/lerobot/**` 子包（算法层/新策略）必须同时加进三处 pyinstaller 命令的 `--add-data`**
   (Windows onefile / Windows onedir 免解包版 / macOS)。打包闸与资产核验是**清点文件**，漏包照样全绿；
   只有冻结核验（真跑 `--engine-selftest`）会真 import，报的是导入链深处的 `ModuleNotFoundError`。
