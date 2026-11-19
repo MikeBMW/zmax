@@ -363,6 +363,9 @@
       <!-- 🎯 老倪 2026-11-15「加一个按钮，标定轨迹，我点击」: 手眼标定采集点的专用开关
            (与「轨迹点」列表里那条同源, 但一键对准视角, 免得在框外看着像没画) -->
       <button id="tCalib" class="sm" title="显示/隐藏手眼标定采集轨迹 (7 点 ±35mm 球形采样) · 打开时视角自动对准它">🎯 标定轨迹</button>
+      <!-- 🎯 2026-11-19 老倪「让我看到 ar3d」: 点一下就用仿真右臂走插口特写补采航路(44 点), 真机不动 -->
+      <button id="bOrbit" class="sm" style="border-color:#00e5ff;color:#00e5ff"
+              title="仿真右臂按插口特写补采航路(44 点 / 651mm / 26s)走一遍 · 纯仿真, 真机不下发任何指令">🎯 插口补采仿真</button>
     </div>
     <!-- 🧱 第四行: 围栏盒子(长方体/上横梁/检测设备/前方相机) · 第五行: 直线(小红/小兰/小青)
          按钮由 paintFenceBtns() 按 /api/fence 的唯一依据动态生成, 点击=启用/停用该元素
@@ -861,6 +864,9 @@ function planOwner(){
 // 有没有任何一条命名轨迹被点亮 (蓝色) —— 所有"轨迹显示"都以它为闸:
 // 没点按钮 ⇒ 三维视图里一条轨迹都不画, 连规划航路(洋红)也不画。
 function namedAnyOn(){ return Object.keys(NAMED_ON).some(k=>!!NAMED_ON[k]); }
+// 🎯 2026-11-19 插口特写补采航路: 它不属于任何"命名轨迹", 但要能单独看见 ⇒ 按 label 认出来, 不看按钮
+function orbitOn(){ return /插口特写/.test((TRAJ&&TRAJ.planLabel)||''); }
+function planVisible(){ return !!(NAMED_ON[planOwner()] || orbitOn()); }
 function paintNamedBtns(){
   ['t1','t2','t3','t4','t5','tA1','tA2','tA3','tA4','tA5'].forEach((id)=>{
     // 🔴 2026-10-26 老倪「我点击轨迹按钮 你怎么不高亮变成蓝色显示呢？」的真因:
@@ -1219,8 +1225,9 @@ function drawOv(){
   let n1=0,n2=0;
   // 🔴 2026-10-26 老倪:「我也没有点击任何轨迹, 你却显示的一个粉红色的轨迹…不点击, 不要显示轨迹」
   //    唯一依据: 规划航路(TRAJ.plan)以前是无条件画的, 与按钮无关 ⇒ 没点按钮也有一条洋红线。
-  if(namedAnyOn()&&TRAJ.plan&&TRAJ.plan.length) n1=drawTube(g,TRAJ.plan,{baseW:5,ref:0.9,alpha:0.28,ring:16,
-       color:(p,f)=>`rgba(88,166,255,${0.35+0.45*f})`, ringColor:'rgba(88,166,255,.5)'}).n||0;
+  if((namedAnyOn()||orbitOn())&&TRAJ.plan&&TRAJ.plan.length) n1=drawTube(g,TRAJ.plan,{baseW:5,ref:0.9,alpha:0.28,ring:16,
+       color:(p,f)=>orbitOn()?`rgba(0,229,255,${0.35+0.45*f})`:`rgba(88,166,255,${0.35+0.45*f})`,
+       ringColor:orbitOn()?'rgba(0,229,255,.5)':'rgba(88,166,255,.5)'}).n||0;
   if(TRAJ.trace&&TRAJ.trace.length){
     const r=drawTube(g,TRAJ.trace,{baseW:9,ref:1.25,alpha:0.62,ring:10,
        color:(p,f)=>`rgba(${Math.round(120+135*p)},${Math.round(230-40*p)},90,${0.5+0.5*f})`,
@@ -2878,7 +2885,7 @@ function drawVR(){
       g.beginPath(); g.arc(q.u,q.v,Math.max(1.5,3.2*Math.min(1,1.2/q.z)),0,Math.PI*2); g.stroke(); }
     return idx.length;
   }
-  const nPl=NAMED_ON[planOwner()]?tube(TRAJ.plan,(f)=>'rgba(88,166,255,.8)',4,0.35,20):0;
+  const nPl=planVisible()?tube(TRAJ.plan,(f)=>orbitOn()?'rgba(0,229,255,.95)':'rgba(88,166,255,.8)',orbitOn()?5:4,0.35,20):0;
   const nTr=(TRAJ.trace&&TRAJ.trace.length>1)?tube(TRAJ.trace,(f)=>'rgba(140,230,120,.9)',7,0.6,8):0;
   // 🆕 真机实际走过的轨迹(实测 TCP) —— 橙色, 画在最上层
   const nReal=(TRAJ.real&&TRAJ.real.length>1)?tube(TRAJ.real,(f)=>'rgba(255,159,28,.95)',6,0.85,12):0;
@@ -2929,7 +2936,7 @@ function drawVR(){
   //    规划轨迹单独在最上层重画一遍。2026-10-25 二次迭代(视觉复核打回): 原来 5 个 r=7 的圆点挤在
   //    40×45px 的团里, 点把线盖死、编号 0/4 被压住 ⇒ 看着像"一坨点簇"不是线。改成:
   //    线粗(10px) + 小点(r=4) + 编号按屏幕间距决定画不画 + 起终点小标记 + 标签改琥珀色(不污染"洋红=路径"的判据)
-  if(NAMED_ON[planOwner()] && TRAJ.plan && TRAJ.plan.length>1){
+  if(planVisible() && TRAJ.plan && TRAJ.plan.length>1){
     const P=TRAJ.plan.map(pr).filter(Boolean);
     if(P.length>1){
       g.globalAlpha=1; g.lineJoin='round'; g.lineCap='round';
@@ -2953,6 +2960,9 @@ function drawVR(){
       // 标签: 琥珀色(不属于"洋红=路径"判据) + 去掉 plan_label 里重复的「规划轨迹」前缀
       let lbl=(TRAJ.planLabel||'').replace(/^\s*规划轨迹\s*[·:]?\s*/,'');
       lbl='规划轨迹 · '+(lbl||(TRAJ.plan.length+' 点'));
+      // 🔴 2026-11-19 老倪「屏幕上的黑条是什么？删掉，挡我视线」: 长标签 + 黑底框会横贯画面
+      //    规矩: 标签最长 30 字, 超出截断加 …（黑底框只跟文字走, 不再拉成一条黑条）
+      if(lbl.length>30) lbl=lbl.slice(0,29)+'…';
       g.font='bold 13px monospace';
       const tw=g.measureText(lbl).width;
       const lx=Math.min(Math.max(8, a.u-8), g.canvas.width-tw-18), ly=Math.min(g.canvas.height-10, Math.max(20, a.v-24));
@@ -2970,6 +2980,22 @@ function drawVR(){
   }
   g.fillStyle='#6b7a8d'; g.font='12px monospace';
   g.fillText('base 系 · 地面 = xy 平面 (z=0) · 0.1m 网格 · 拖动旋转'+(VR.frames?' · 🧭 红X/绿Y/蓝Z 三个坐标系':''),8,14);
+  // 🦾 2026-11-19 老倪「ar3d 怎么没有真机呢？」: 把真机臂的状态直接写在画面上(不让他猜)
+  //    绿点=真机臂在画(带真值帧龄) · 橙点=被按钮隐藏 · 灰=没有真值
+  try{
+    if(VR.urdf && VR.real!==false && TCP && !TCP.stale && TCP.age_s<2){
+      g.fillStyle='#3fb950';
+      g.fillText('● 真机臂 在画 · TCP '+(TCP.x*1000).toFixed(0)+'/'+(TCP.y*1000).toFixed(0)+'/'+(TCP.z*1000).toFixed(0)+
+                 'mm · 帧龄 '+(TCP.age_s||0).toFixed(1)+'s', 8, 30);
+    } else if(VR.real===false){
+      g.fillStyle='#ff9f1c';
+      g.fillText('○ 真机臂 已隐藏 —— 点「🦾 右臂_真机」显示', 8, 30);
+    } else {
+      g.fillStyle='#8b949e';
+      g.fillText('○ 真机臂 无真值(TCP 过期) —— 查 8793/tcp_out', 8, 30);
+    }
+  }catch(e){}
+
   $('pVr').textContent=((SHOW||nPl)?`实测轨迹 ${nTr} 点 · 规划航路 ${nPl} 点(洋红粗线) · ${tcpTxt}`:'轨迹已隐藏(默认) · '+tcpTxt)+frTxt;
 }
 // 🖱 滚轮缩放 (老倪 2026-10-25: 「三维视图需要用鼠标滚轮可以缩放, 现在无法调整」)
@@ -6667,6 +6693,17 @@ fetch('/api/traj_adj').then(function(r){ return r.json(); }).then(function(d){
   }
 }).catch(function(){});
 
+/* 🎯 2026-11-19 插口特写补采航路: 打开 /ar3d#orbit 就用仿真右臂把这 44 点走一遍(真机不动)。
+   数据来自 /api/orbit_frames (tools/port_orbit_sim.py 用真机 URDF 解 IK 生成)。 */
+function orbitAutoPlay(){
+  fetch('/api/orbit_frames',{cache:'no-store'}).then(function(r){ return r.json(); }).then(function(d){
+    if(!d || !d.frames || !d.frames.length){ console.warn('[orbit] 没有帧', d); return; }
+    d.path_mm = d.path_mm || 651; d.rot_total_deg = d.rot_total_deg || 36.0;
+    d.src_rec = d.src_rec || ('插口特写补采航路 '+d.n_frames+'点 (仿真, 真机不动)');
+    ensureTrajJoints();               // 先把 215 点那份读进来(左臂冻结/FK 依赖它), 再整体替换播放数据
+    setTimeout(function(){ try{ rtrajPlayJoints(d); }catch(e){ console.warn('[orbit] play', e); } }, 400);
+  }).catch(function(e){ console.warn('[orbit] fetch', e); });
+}
 function rtrajPlayJoints(d){
   try{ mirrorStop(); }catch(e){}          // 回放期间抢 PREV, 先让镜像让位(不然两路互踩)
   window.PREV_KEEP=false;                 // 连续回放自己驱动 PREV, 解除单步/预览的"别收走"保护
@@ -7499,7 +7536,7 @@ async function refresh(){
     TRAJ={trace:t.trace||[],plan:t.plan||[],planLabel:t.plan_label||'',real:t.real||[],realN:t.real_n||0,realLen:t.real_len_mm||0,realAge:t.real_age_s};
     // ⭐ 2026-10-25 老倪「三维视图没有看到轨迹线」的真因: 线画了但在整机视角里只占 30×40 像素。
     //    规划一变就把视角框到这条轨迹上(只改 target/距离, 不动他手调的 yaw/pitch)。
-    if(NAMED_ON[planOwner()] && TRAJ.plan && TRAJ.plan.length>1){
+    if(planVisible() && TRAJ.plan && TRAJ.plan.length>1){
       const sig=TRAJ.plan.map(p=>p.map(v=>Math.round(v*1000)).join(',')).join('|');
       if(sig!==(refresh._planSig||'')){
         refresh._planSig=sig;
@@ -9190,5 +9227,15 @@ body{padding-bottom:196px}
   }
   pull(); setInterval(pull, 2000);
 })();
+</script>
+<script>
+/* 🎯 /ar3d#orbit ⇒ 打开页面即用仿真右臂走插口特写补采航路(44 点), 真机不动 */
+document.addEventListener('DOMContentLoaded', function(){
+  var b=document.getElementById('bOrbit');
+  if(b) b.onclick=function(){ try{ orbitAutoPlay(); }catch(e){ console.warn(e); } };
+});
+window.addEventListener('load', function(){
+  if(location.hash === '#orbit'){ setTimeout(function(){ try{ orbitAutoPlay(); }catch(e){ console.warn(e); } }, 1500); }
+});
 </script>
 </body></html>

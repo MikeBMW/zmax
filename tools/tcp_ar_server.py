@@ -2004,6 +2004,17 @@ class H(BaseHTTPRequestHandler):
                 _kq = urllib.parse.unquote(str(qs.get("k") or ""))
                 _tq = urllib.parse.unquote(str(qs.get("target") or ""))
                 self._json(self._traj_named(_kq, _tq))
+            elif p == "/api/orbit_frames":     # 🎯 插口特写补采航路(44 点)关节帧, 只给仿真右臂回放用
+                _cand = [os.path.join(REPO, "zmax_data", "capture_plan", f)
+                         for f in ("port_sweep_joints.json", "port_orbit_joints.json")]
+                _cand = [x for x in _cand if os.path.exists(x)]
+                _fp = max(_cand, key=os.path.getmtime) if _cand else _cand
+                try:
+                    _d = json.load(open(_fp, encoding="utf-8"))
+                    _d["ok"] = True
+                    self._json(_d)
+                except Exception as _e:                                          # noqa: BLE001
+                    self._json({"ok": False, "err": "读不到 port_orbit_joints.json: %s" % str(_e)[:80]})
             elif p == "/api/stable":
                 self._json(self._stable())
             elif p == "/api/calib":
@@ -2314,6 +2325,21 @@ class H(BaseHTTPRequestHandler):
                 rj.get("n"), rj.get("len_mm"), rj.get("stage") or "?")
         except Exception:                                                          # noqa: BLE001
             out["real"] = []
+        # 🎯 2026-11-19 插口特写补采航路预览: 存在 flag 文件时, 用 planned_traj.json 的点列
+        #   顶掉命名轨迹那一层(只影响画面, 不动执行链, 不写 8791)。删 flag 即恢复。
+        _ofl = os.path.join(REPO, "zmax_data", "runtime", "traj", "orbit_show.flag")
+        if os.path.exists(_ofl):
+            try:
+                _op = os.path.join(REPO, "zmax_data", "runtime", "traj", "planned_traj.json")
+                _od = json.load(open(_op, encoding="utf-8"))
+                _pts = [[float(v) / 1000.0 for v in p] for p in (_od.get("pts_mm") or [])]
+                if len(_pts) >= 4:
+                    out["plan"] = _pts
+                    # 标签必须短: 长标签在三维视图里会被画成一条横贯画面的黑底文字条(老倪挡视线)
+                    out["plan_label"] = "插口补采 · %d点/%.0fmm" % (
+                        len(_pts), float(_od.get("total_mm") or 0))
+            except Exception as _e:                                                # noqa: BLE001
+                out["orbit_err"] = str(_e)[:80]
         out["ok"] = True
         out["at"] = time.strftime("%H:%M:%S")
         return out
