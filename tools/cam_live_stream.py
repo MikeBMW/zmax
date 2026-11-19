@@ -5140,7 +5140,15 @@ def _gs_display_splat(name: str, kmax: int = 60000):
     src = os.path.join(root, name, "gs.splat")
     if not os.path.isfile(src):
         return None
-    dst = os.path.join(root, name, "gs.display%dk.splat" % (kmax // 1000))
+    # 🔴 2026-11-19 老倪「还是很模糊」: 60k 降采样是当年为 86.7MB/284万高斯资产的妥协;
+    #   现在特写模型只有 8.5 万高斯 / 2.7MB, 再砍到 6 万点等于白丢 30% 的点 ⇒ 小资产直接给全量。
+    try:
+        if os.path.getsize(src) <= 8 * 1024 * 1024:
+            kmax = 10 ** 9
+    except Exception:                                                    # noqa: BLE001
+        pass
+    dst = os.path.join(root, name, ("gs.displayfull.splat" if kmax > 10 ** 8
+                                    else "gs.display%dk.splat" % (kmax // 1000)))
     try:
         if os.path.isfile(dst) and os.path.getmtime(dst) >= os.path.getmtime(src):
             return dst
