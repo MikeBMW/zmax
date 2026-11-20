@@ -67,6 +67,23 @@ trigger: "Use when `git push` is rejected non-fast-forward, when the same repo i
 6. **落不了就如实报**: 「已本地提交 · 未推 · 分歧 N/M · rebase 在 <别人的文件> 冲突已 abort 复原」
    是合格交付。不要为了推上去 merge 别人的半成品, 也不要用 `--force`。
 
+## rebase 走不通就换 merge (记忆/日志同步类提交分不开时)
+
+- `rebase` 在**每日覆盖写的同步文件**上极易 `CONFLICT (add/add)`（如 `docs/<层>/memory/*.md` 记忆快照、
+  自动生成的日志/清单）：这类文件没有真实冲突语义，重放它们不产生价值。
+- 处置: `git rebase --abort` → `git merge origin/main` → 冲突文件取本地(较新快照)
+  `git checkout --ours <file> && git add <file> && git commit -m 'merge origin/main …'` → `git push`。
+- 🔴 不要用 `git rebase --skip` 省事：skip 丢掉的是那条提交里的**全部**文件改动（随记忆一起提交的技能/代码也在内），
+  而 merge + `--ours` 只丢掉那一份快照。
+- 工作树有常驻服务回写的未提交状态文件时: 先 `git stash push -u -m '<原因>'`（`-u` 带上未跟踪文件，
+  契约模块/新脚本这类最容易漏），做完再 `git stash pop`。
+
+## 远端 tag 缺后续补丁
+
+- 先打 tag 再补提交（新增契约模块、收尾修复）时，tag 指向的是**补丁之前**的树，CI 从 tag 出包会缺文件。
+- 收尾: `git tag -d vX && git tag vX && git push origin :refs/tags/vX && git push origin vX`。
+- 只对刚推、尚未被下游拉取的 tag 这么做；**分支永远不 force**，分叉就 merge。
+
 ## 已 abort 的 rebase 怎么复原确认 (缺一步就可能丢工作)
 
 ```bash

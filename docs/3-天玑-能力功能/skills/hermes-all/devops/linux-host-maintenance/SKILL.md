@@ -586,7 +586,9 @@ nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader; df -h 
 bash ~/.hermes/scripts/cam_stream_guard.sh   # 退出码 0 = 全好; 深度分支会按官方用法在容器内拉起
 ```
 复核口径（必须做）：`8793/stats` 逐格帧号**隔 10s 两采递增** + 深度源 `ss_live/zmax_scene/depth_raw.npy` 文件龄 <1s
-+ `vl_safety_fast.json` `safe` 回 true。实测: 深度 0→2.0fps、local 内置黑帧→USB2.0 15fps、local2 MAXHUB 30fps、arm D405 29.8fps。
++ 视觉闸 `safe` 回 true。**闸文件认在写的那个**: `ls -l zmax_data/vl_safety*.json` 两个都可能存在,
+现役监视器写 `vl_safety.json`(`vl_safety_fast.json` 常是旧产物) —— 拿旧文件判 `safe` 会报假绿/假慌。
+实测: 深度 0→2.0fps、local 内置黑帧→USB2.0 15fps、local2 MAXHUB 30fps、arm D405 29.8fps。
 
 ## 9a. 深度格(🌈 D405 深度图)长时间 stalled：先量落盘节拍, 再定上游还是本机
 
@@ -673,6 +675,27 @@ v4l2-ctl -d /dev/videoN --list-ctrls | grep -i privacy
 - **两因叠加时把因分开写**: `cam_local_src.json` 选 `usb` 而 `cam_dev_resolve.py` 给 `USB=-1`(外接相机没插) ⇒ 回落内置;
   内置又被 privacy 开关关着 ⇒ 帧号照涨(实测 5fps)、画面全黑。报告里「选源落空」与「隐私开关关着」各占一条,
   只报其中一条, 用户会以为换源或重插相机就能救。
+
+### 9b-4. 视觉安全闸 `safe=false` 要按 `why` 文本分成两路, 一个布尔值定不了责
+
+`safe=false` 后面必须先读 `vl_safety.json` 的 `why`, 两种写法根因完全不同:
+
+- **`why` = 「…未在 300s 内给出裁决」** ⇒ **外呼卡住**, 不是画面问题。抓栈验证:
+  ```bash
+  sudo ./gui-venv311/bin/py-spy dump --pid $(pgrep -f 'tools/[v]l_safety_monitor.py') | head -30
+  ss -tnp | grep "pid=<该pid>"          # SYN-SENT ⇒ 连接没建起来
+  getent hosts api.deepseek.com          # 一个域名可能给**两条 A 记录**
+  ```
+  栈形 `run_once → call_vlm → urlopen → create_connection` + `SYN-SENT` = 该域名某条 A 记录不可达,
+  `urllib` 按 getaddrinfo 顺序先撞死的那条、白等一轮 connect 超时(默认 300s 预算被这一下吃掉)。
+  **判据: 逐条 A 记录测, 不要只测域名** —— `timeout 6 bash -c 'exec 3<>/dev/tcp/<A>/443'` 对每条都跑一遍;
+  一条死一条通 ⇒ 报「某条 A 记录不可达, 每轮白等一次超时」, 处置是把可达的 IP 排前(`/etc/hosts` 或在调用处
+  传 resolved IP), 不要在闸门代码里盲目加重试次数。
+- **`why` = 「全局视角失效…」/「某格无帧」** ⇒ 回到 §9b-3 查那一格的**快照 mean/std**, 不是闸的错。
+  实测链路: 内置相机 `privacy=1`(read-only) + `camera_power` 读回仍 0 ⇒ local 快照 `mean 5.2 / std 0.7` 全黑
+  ⇒ 闸判「全局视角失效」⇒ 运动类原子技能被拦。**报这条时给的是现场物理动作(相机热键/挡片), 不是服务故障**。
+- 闸门是 fail-closed: 拿不到裁决 = 不安全。所以「监视器进程在跑」不代表闸在工作, 判据只有
+  **`vl_safety.json` 的 `ts` 在刷新 + `safe` 的语义与 `why` 对得上**; `ts` 停在旧日期 = 一轮都没成功过。
 
 ### 9c. 自启的反向隧道 `activating`/崩溃循环 = ECS 侧端口被**僵死 sshd** 占着
 
@@ -804,6 +827,8 @@ journalctl -b -1 --no-pager | grep "user@1000.service: Consumed"            # �
 `du /` 全盘扫描)在前台跑几分钟不出字, 工具会把它转后台而用户只看到沉默。
 ⇒ 回答时**先把这一条认领掉**(说清那条命令在等什么、还要多久、已转后台), 再给机器侧的三个数; 别把它混进"机器卡"或"接口超时"。
 三类都要能给判据: 机器端 load/单元数、我这一端 errors.log 的时间戳、第三端"我当时在跑哪条命令"。
+- **一串短等待也算**: 每条只 45~60s 的 `sleep` / 帧号双采 / 一次慢外呼(云端 VLM 可达 90s), 十几条连起来同样是几分钟一个字不出 ——
+  用户照样报"你怎么死机了"。定式: 一个回合里最多一个阻塞点, 其余查询先出结果; 要等就用 `background=true` + poll, 别串 sleep。
 
 ### 9d-3. 硬停且内核四件取证全空 ⇒ 只能拿「当时在跑什么」定责, 头号嫌疑是我自己叠的第二套模型栈
 
@@ -1084,6 +1109,9 @@ journalctl -b -o short-iso | grep -E '<unit>' | grep -iE 'Started|Stopping|COMMA
 `10082/10083` 上 `/`、`/health`、`/docs` 回 404/500 是常态(没这个路由), **判据是 `/storage` = 200**(见 `zmax-aoi-service`)。
 本机这两个口通常是 `zmax-orin-legs` 那条隧道转出来的(`-L 127.0.0.1:10082:192.168.23.23:10082`),
 所以「Orin 直连 10082 curl 000」也说明不了 AOI 挂了 —— 先看有没有本地隧道转发, 再探 `/storage`。
+⚠️ **`boot_restore.sh check ⑤` 探的是 `/last_result`, 现役版回 404** ⇒ 它打的两行 `✗ 10082/10083 404 (000=没起来)`
+是**假警报**(404 = 端口在听、只是没这个路由), 别据此去重启 AOI 或以为产线挂了; 复核用 `/storage`=200。
+同理 §9 手工清单里的 `demo_recorder` 与「推流已在跑」也是陈旧/单点判据 —— 见 §9e②b。
 
 ## 9l. 「我(全部)重启了」先定位是**哪一层**重启, 再回答; 「你看着」= 守望进程三件事
 
