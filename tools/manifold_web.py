@@ -31,6 +31,79 @@ PORT = int(os.environ.get("ZMAX_MANIFOLD_WEB_PORT") or 8819)
 _CORR = None
 
 
+
+# ── 215 点真实轨迹 → 单位质量球摆约化哈密顿量 (只读, 零下发) ────────────────
+TRAJ_CACHE = {"key": None, "data": None}
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _traj215():
+    """tools/web/real_traj_joints.json (215 帧 TCP+四元数) → (θ, p_θ, H) 序列
+
+    物理口径(为什么这样是"真"的):
+      · 约化 = 把 6 轴臂沿轨迹的运动投到「以基座为中心的球摆」上:
+            r = |TCP| (逐帧实测), θ = TCP 与 +Z 夹角 (逐帧实测), V = g·z (重力势, 单位质量)
+      · 共轭动量 p_θ = I·ω, I = r² (单位质量转动惯量), ω 由**录制时间戳**差分得到
+      · 哈密顿量 H(θ,p) = p²/(2I) + g·z  —— 每一项都从真值文件算出, 不含拟合系数
+      · 只做只读回放: 不连 8797、不下发任何动作
+    """
+    rt = os.path.join(ROOT, "tools/web/real_traj_joints.json")
+    tm = os.path.join(ROOT, "zmax_data/runtime/traj/replay215_timing.json")
+    try:
+        key = (os.path.getmtime(rt), os.path.getmtime(tm) if os.path.exists(tm) else 0.0)
+    except OSError:
+        return {"ok": False, "err": "轨迹真值文件缺失"}
+    if TRAJ_CACHE["key"] == key and TRAJ_CACHE["data"]:
+        return TRAJ_CACHE["data"]
+    try:
+        fr = json.load(open(rt, encoding="utf-8"))["frames"]
+    except Exception as e:                                                   # noqa: BLE001
+        return {"ok": False, "err": "%s: %s" % (type(e).__name__, e)}
+    secs = [1.0] * len(fr)
+    try:
+        pts = (json.load(open(tm, encoding="utf-8")).get("points") or []) if os.path.exists(tm) else []
+        if len(pts) == len(fr):
+            secs = [float(p.get("secs") or 1.0) for p in pts]
+    except Exception:                                                        # noqa: BLE001
+        pass
+    G = 9.80665
+    xyz, r_mm, th_deg, tt = [], [], [], []
+    for i, f in enumerate(fr):
+        x, y, z = [float(v) for v in f["p"][:3]]
+        r = math.sqrt(x * x + y * y + z * z)
+        xyz.append([x, y, z])
+        r_mm.append(r * 1000.0)
+        th_deg.append(math.degrees(math.acos(max(-1.0, min(1.0, z / max(r, 1e-9))))))
+        tt.append(float(f.get("t") or (0.2 * i)))
+    om = [0.0] * len(th_deg)                                                 # rad/s (录制时序)
+    for i in range(1, len(th_deg)):
+        dt = tt[i] - tt[i - 1]
+        om[i] = (math.radians(th_deg[i] - th_deg[i - 1]) / dt) if dt > 1e-6 else om[i - 1]
+    inertia = [r * r for r in r_mm]                                          # mm² (单位质量)
+    p_th = [inertia[i] * om[i] / 1e6 for i in range(len(om))]                # m²/s
+    H = [p_th[i] * p_th[i] / (2.0 * max(inertia[i] / 1e6, 1e-9)) + G * xyz[i][2]
+         for i in range(len(om))]                                            # J/kg
+    data = {
+        "ok": True,
+        "n": len(th_deg),
+        "theta_deg": [round(v, 3) for v in th_deg],
+        "p": [round(v, 5) for v in p_th],
+        "H": [round(v, 4) for v in H],
+        "r_mm": [round(v, 1) for v in r_mm],
+        "z_mm": [round(v[2] * 1000.0, 1) for v in xyz],
+        "t": [round(v, 3) for v in tt],
+        "secs": [round(s, 3) for s in secs],
+        "dur_rec_s": round(tt[-1] - tt[0], 2),
+        "dur_exec_s": round(sum(secs), 1),
+        "r_bar_mm": round(sum(r_mm) / len(r_mm), 1),
+        "g": G,
+        "Hmin": round(min(H), 3), "Hmax": round(max(H), 3),
+        "stops": [9, 125, 151, 172, 205],
+        "src": "tools/web/real_traj_joints.json + zmax_data/runtime/traj/replay215_timing.json",
+    }
+    TRAJ_CACHE.update(key=key, data=data)
+    return data
+
 # ── 昨天的 se3 服务 (8815 分层几何看板 / 8817 跟随 / 5Hz 状态) ───────────────
 SERVICES = [("zmax-se3-geom", 8815, "SE(3) 分层几何看板"),
             ("zmax-se3-state", 0, "A–E 状态向量 5Hz"),
@@ -277,12 +350,14 @@ class H(BaseHTTPRequestHandler):
         try:
             if p in ("/", "/index.html", "/manifold"):
                 self._send(200, open(PAGE, "rb").read(), "text/html; charset=utf-8")
+            elif p == "/api/traj215":
+                self._send(200, json.dumps(_traj215(), ensure_ascii=False))
             elif p == "/api/state":
                 self._send(200, json.dumps(state(), ensure_ascii=False))
             elif p == "/api/health":
                 self._send(200, json.dumps({"ok": True, "t": time.time(), "port": PORT}))
             else:
-                self._send(404, json.dumps({"ok": False, "why": "只提供 / 与 /api/state"}))
+                self._send(404, json.dumps({"ok": False, "why": "只提供 / · /api/state · /api/traj215"}))
         except Exception as e:                                              # noqa: BLE001
             self._send(500, json.dumps({"ok": False, "err": "%s: %s" % (type(e).__name__, e)},
                                        ensure_ascii=False))

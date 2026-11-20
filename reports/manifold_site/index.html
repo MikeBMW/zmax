@@ -144,7 +144,42 @@
   </div>
 
   <section>
-    <h3>哈密顿相空间 · 相位图（横轴 θ 转角 / 纵轴 p 角动量）</h3>
+    <h3>仿真回放 · 215 点真实轨迹的哈密顿相图（只读回放，不动真机）</h3>
+    <canvas id="t215" style="width:100%;height:420px;background:#0b1016;border-radius:10px"></canvas>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+      <button id="b215" class="pill" style="cursor:pointer">▶ 回放</button>
+      <span class="note">倍速</span>
+      <button class="pill spd" data-x="1">x1 (42.9s)</button>
+      <button class="pill spd" data-x="4">x4</button>
+      <button class="pill spd" data-x="10">x10</button>
+      <input id="s215" type="range" min="0" max="214" value="0" style="flex:1;min-width:180px">
+      <span id="i215" class="note">#0 / 215</span>
+    </div>
+    <div class="grid" style="margin-top:10px">
+      <div class="card">
+        <h2>相点（真值回放）</h2>
+        <div class="kv"><span>θ 极角（TCP 与 +Z）</span><b id="tth">—</b></div>
+        <div class="kv"><span>p_θ = I·ω（I = r²，单位质量）</span><b id="tp">—</b></div>
+        <div class="kv"><span>H = p²/2I + g·z</span><b id="tH">—</b></div>
+        <div class="kv"><span>r / z</span><b id="trz">—</b></div>
+        <div class="kv"><span>段</span><b id="tseg">—</b></div>
+      </div>
+      <div class="card">
+        <h2>哈密顿量怎么映射的</h2>
+        <div class="note">
+          约化 = 6 轴臂沿轨迹 → 以基座为中心的<b>球摆</b>：<br>
+          r = |TCP|（逐帧实测，均值 <span id="trb">—</span> mm）· θ = TCP 与 +Z 的夹角（实测 20.3°~80.7°）·<br>
+          V = g·z（重力势，单位质量）· p_θ = I·ω，I = r²，ω 由<b>录制时间戳</b>差分（42.85 s / 215 点）<br>
+          H(θ,p) = p²/(2I) + g·z，实测 H 落在 <span id="tHr">—</span> J/kg<br>
+          灰细线 = 等能线（球摆，r 取均值）· 蓝线 = 已走过的真实轨迹 · 橙点 = 当前点 · 菱形 = 5 个停留点<br>
+          数据源：<code>tools/web/real_traj_joints.json</code> + <code>replay215_timing.json</code>（录制时序）
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h3>实时相图 · 现在这台臂（θ 滚转 / p 角动量）</h3>
     <canvas id="phcanvas" style="width:100%;height:380px;background:#0b1016;border-radius:10px"></canvas>
     <div class="grid" style="margin-top:10px">
       <div class="card">
@@ -308,7 +343,130 @@ async function tick(){
 const cv = $("view"), cx2 = cv.getContext("2d");
 const K6 = Math.cos(Math.PI/6), S6 = Math.sin(Math.PI/6);
 function proj(p){ return [ (p[0]-p[1])*K6, (p[0]+p[1])*S6 - p[2] ]; }
-// ── 哈密顿相空间相位图: 横轴 θ(deg), 纵轴 p(rad/s), H=p²/2+k(1−cos(θ−θ_eq))
+
+// ══ 215 点真实轨迹回放 · 球摆约化哈密顿相图 (只读)
+const T215 = {data:null, i:0, playing:false, speed:1, t0:0, idx:0};
+const SEGS215 = [[0,9,"抓取(合爪#9)"],[10,15,"过渡/举升"],[16,19,"扫码(对码)"],[20,40,"抓取光模块"],
+  [41,90,"举升/转运"],[91,113,"插入·松开·退回·抓环"],[114,119,"拉环解锁·拽出"],[120,144,"扫码(举高)"],
+  [145,149,"过渡"],[150,160,"金手指检测"],[161,161,"过渡"],[162,193,"表面检测"],[194,197,"过渡"],
+  [198,204,"下放入盘"],[205,205,"松开分拣"],[206,214,"回位"]];
+function segOf(i){ for(const s of SEGS215) if(i>=s[0]&&i<=s[1]) return s[2]; return "—"; }
+
+async function load215(){
+  const r = await fetch("/api/traj215", {cache:"no-store"});
+  const j = await r.json();
+  if(!j.ok){ $("i215").textContent = "215 点数据不可用: " + (j.err||""); return; }
+  T215.data = j; T215.i = 0; T215.idx = 0;
+  $("trb").textContent = j.r_bar_mm.toFixed(1);
+  $("tHr").textContent = j.Hmin.toFixed(2) + " ~ " + j.Hmax.toFixed(2);
+  const sl = $("s215"); sl.max = j.n - 1;
+  sl.oninput = () => { T215.idx = +sl.value; draw215(T215.idx); };
+  document.querySelectorAll(".spd").forEach(b => b.onclick = () => { T215.speed = +b.dataset.x; });
+  $("b215").onclick = () => { T215.playing = !T215.playing; $("b215").textContent = T215.playing? "⏸ 暂停" : "▶ 回放"; if(T215.playing) step215(); };
+  draw215(0);
+}
+
+function draw215(idx){
+  const c = $("t215"), D = T215.data; if(!c || !D) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = c.clientWidth || 900, H = 420;
+  if(c.width !== Math.round(W*dpr) || c.height !== Math.round(H*dpr)){ c.width = Math.round(W*dpr); c.height = Math.round(H*dpr); }
+  const g = c.getContext("2d"); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
+  const L=58, Rr=16, T=16, B=34, pw=W-L-Rr, ph=H-T-B;
+  const THMIN=0, THMAX=180;
+  const pmax = Math.max(0.35, Math.max(...D.p.map(Math.abs))*1.2);
+  const X = th => L + (th-THMIN)/(THMAX-THMIN)*pw;
+  const Y = p  => T + (pmax - Math.max(-pmax,Math.min(pmax,p)))/(2*pmax)*ph;
+
+  // 网格
+  g.strokeStyle="#1b2430"; g.lineWidth=1;
+  for(let th=0; th<=180; th+=30){
+    g.beginPath(); g.moveTo(X(th),T); g.lineTo(X(th),T+ph); g.stroke();
+    g.fillStyle="#5c6b7a"; g.font="11px ui-monospace,monospace"; g.textAlign="center";
+    g.fillText(th+"°", X(th), H-12);
+  }
+  const pstep = pmax>0.6? 0.2 : 0.1;
+  for(let p=-Math.floor(pmax/pstep)*pstep; p<=pmax+1e-9; p+=pstep){
+    if(Math.abs(p)>pmax) continue;
+    g.beginPath(); g.moveTo(L,Y(p)); g.lineTo(L+pw,Y(p)); g.stroke();
+    g.fillStyle="#5c6b7a"; g.textAlign="right"; g.fillText(p.toFixed(2), L-6, Y(p)+4);
+  }
+  g.strokeStyle="#2b3644"; g.beginPath(); g.moveTo(L,Y(0)); g.lineTo(L+pw,Y(0)); g.stroke();
+
+  // 等能线: 球摆 H = p²/(2 r̄²) + g r̄ cosθ
+  const rb = D.r_bar_mm/1000.0, gg = D.g, gr = gg*rb, I = rb*rb;
+  const Emin = Math.min(...D.H), Emax = Math.max(...D.H);
+  const levels = [];
+  for(let k=0;k<7;k++) levels.push(Emin + (Emax-Emin)*k/6);
+  levels.forEach(E=>{
+    g.strokeStyle="#33445a"; g.lineWidth=1;
+    for(const sgn of [1,-1]){
+      g.beginPath(); let on=false;
+      for(let th=0; th<=180; th+=1){
+        const v = 2*I*(E - gr*Math.cos(th*Math.PI/180));
+        if(v < 0){ on=false; continue; }
+        const p = sgn*Math.sqrt(v);
+        if(Math.abs(p) > pmax){ on=false; continue; }
+        if(on) g.lineTo(X(th),Y(p)); else { g.moveTo(X(th),Y(p)); on=true; }
+      }
+      g.stroke();
+    }
+  });
+
+  // 已走过的轨迹
+  const upto = Math.max(1, idx+1);
+  g.strokeStyle="rgba(88,166,255,.9)"; g.lineWidth=1.8; g.beginPath();
+  for(let i=0;i<upto;i++){ const x=X(D.theta_deg[i]), y=Y(D.p[i]); i? g.lineTo(x,y) : g.moveTo(x,y); }
+  g.stroke();
+  // 未走过的（暗）
+  if(upto < D.n){
+    g.strokeStyle="rgba(120,140,160,.28)"; g.lineWidth=1; g.beginPath();
+    for(let i=upto-1;i<D.n;i++){ const x=X(D.theta_deg[i]), y=Y(D.p[i]); i>upto-1? g.lineTo(x,y) : g.moveTo(x,y); }
+    g.stroke();
+  }
+  // 停留点
+  D.stops.forEach(si=>{
+    const x=X(D.theta_deg[si]), y=Y(D.p[si]);
+    g.strokeStyle="#8957e5"; g.lineWidth=1.4;
+    g.beginPath(); g.moveTo(x,y-5); g.lineTo(x+5,y); g.lineTo(x,y+5); g.lineTo(x-5,y); g.closePath(); g.stroke();
+  });
+  // 当前点
+  const cx=X(D.theta_deg[idx]), cy=Y(D.p[idx]);
+  g.strokeStyle="#f0883e"; g.lineWidth=2; g.beginPath(); g.arc(cx,cy,6,0,Math.PI*2); g.stroke();
+  g.fillStyle="#f0883e"; g.beginPath(); g.arc(cx,cy,2.6,0,Math.PI*2); g.fill();
+
+  // 轴名 + 图例
+  g.fillStyle="#8b98a6"; g.font="12px ui-sans-serif,sans-serif"; g.textAlign="center";
+  g.fillText("θ  TCP 与 +Z 夹角 (°)", L+pw/2, H-1);
+  g.save(); g.translate(14, T+ph/2); g.rotate(-Math.PI/2);
+  g.fillText("p_θ  (m²/s, I=r²·单位质量)", 0, 0); g.restore();
+  g.textAlign="left"; g.fillStyle="#7d8b99"; g.font="11px ui-monospace,monospace";
+  g.fillText("等能线 H=" + Emin.toFixed(2) + "…" + Emax.toFixed(2) + " J/kg · r̄=" + rb.toFixed(3) + "m", L+6, T+12);
+
+  // 读数
+  $("tth").textContent = D.theta_deg[idx].toFixed(2) + "°";
+  $("tp").textContent = D.p[idx].toFixed(4) + " m²/s";
+  $("tH").textContent = D.H[idx].toFixed(3) + " J/kg";
+  $("trz").textContent = D.r_mm[idx].toFixed(0) + " mm / " + D.z_mm[idx].toFixed(0) + " mm";
+  $("tseg").textContent = "#" + idx + " · " + segOf(idx);
+  $("i215").textContent = "#" + idx + " / " + D.n;
+  $("s215").value = idx;
+}
+
+function step215(){
+  if(!T215.playing || !T215.data) return;
+  const D = T215.data;
+  const now = performance.now();
+  if(!T215.t0) T215.t0 = now - D.t[T215.i]*1000/T215.speed;
+  let tt = (now - T215.t0) * T215.speed / 1000;         // 轨迹时间轴(录制秒)
+  let i = T215.i;
+  while(i < D.n-1 && D.t[i+1] <= tt) i++;
+  if(i !== T215.i){ T215.i = i; draw215(i); }
+  if(i >= D.n-1){ T215.playing = false; $("b215").textContent = "▶ 回放"; T215.t0 = 0; return; }
+  requestAnimationFrame(step215);
+}
+
+// ── 实时相图 (现在这台臂): 横轴 θ(deg), 纵轴 p(rad/s), H=p²/2+k(1−cos(θ−θ_eq))
 function drawPhase(P){
   const c = $("phcanvas"); if(!c || !P) return;
   const dpr = window.devicePixelRatio || 1;
@@ -486,6 +644,7 @@ $("copy").onclick = async () => {
 };
 $("refresh").onclick = tick;
 tick(); setInterval(tick, 2000);
+load215();
 </script>
 </body>
 </html>
