@@ -134,6 +134,8 @@ bash "$SCRIPT"                       # 真实目录干跑: 必须静默
 | `deliver='origin'` (CLI) | 用户什么都没收到 | 显式 `deliver='feishu:<chat_id>'` 或 `'all'` |
 | **用软链把仓库脚本挂进 `~/.hermes/scripts`** | job 每轮 `last_status=error`, 报 `Blocked: script path resolves outside the scripts directory`; 而手工 `bash ~/.hermes/scripts/<x>.sh` 完全正常 —— 很容易以为是脚本内容坏了 | cron 只跑 **scripts 目录内的真文件**, 软链会被 realpath 解析后判"越界"。定式 = `cp` 真文件进去(**不要 `ln -s`**), 仓库那份仍是唯一真源、由同步 job 对齐; 判据 = `dirname $(realpath <script>)` 就是 `~/.hermes/scripts`。注意: 目标已是真文件、而你是从它链接的那个源 `cp` 过去时会报 `are the same file` —— 先 `rm` 旧文件再 `cp`。`cron list` 里看 `last_status/last_error`, 不要只看 `enabled=true` 就当已生效 |
 | 每 tick 都推 | 刷屏 → 消息被无视 | 一次性 flag; 需要中间进度就用 `monitor_script` **变化触发**, 不要定时重复推 |
+| **无限轮自进化训练把整机内存吃满**（用户说「电脑反应慢」） | 实测 15 进程 18.8GB（主进程 3.2G + 每 dataloader ~1.35G）、swap 11G、available 9.7G；load 20+ 只是结果 | 先按 RSS 求和定位：`ps -eo pid,ppid,rss,etime,cmd --sort=-rss \| head -20` + `free -g`；再降 `--workers`（8→2 实测 → 10.6GB/7 进程，available +3.3G，代价单代 14~15min 略增）。🔴 **ultralytics 会按 loader 数再乘 workers**：传 `--workers 2` 实际起 6 个 —— 用 `ps --ppid <训练pid>` 数真进程，别拿传参当进程数。改完四个数一起报：进程数 / RSS 总和 / available / 单代耗时 |
+| 长跑训练每代 `--free-gpu 1` 停/重启同机常驻服务 | 用户的页面/画布循环每十几分钟断一次，看着像它自己崩了 | 无限轮脚本会周期性释放 GPU（连带重启被它托管的循环）。遇到「服务莫名每 N 分钟重启」先看训练服务的 args 与重启时刻是否对齐（`journalctl -u <训练unit> -n 50` 看 `stop/start` 时间戳）；要长期共存就给常驻服务自己的守护（systemd `Restart=` / 看门狗），而不是当页面 bug 查 |
 | 闸门资源 (磁盘/GPU) | 流水线与同机训练互相打死 (OOM / 写坏分片) | 起跑前查 `nvidia-smi` / `df`; 不足就等 (轮询 sleep + 日志留"等待中"记录); 共享目录**单写者纪律** |
 | 结果文件名逐任务不同 | 成功的评测被误判"未产出" | 从各任务 config 的 `output.filename` 取名, 不要猜 `<task>_results.txt` |
 | 大文件多连接下载的"大小" | 未下完但 `ls` 已显示全尺寸 (稀疏/预分配) | 完成判据 = aria2 退出码 + size + **SHA256** 双核, 不能只看大小 |

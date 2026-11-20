@@ -248,6 +248,25 @@ catch (e2) { console.warn('刷新失败(不影响已取到的点):', e2); }
   因为数据**真源文件只在本机**（围栏配置 / 建图产物 / 台账快照 / 实测录制）。这类文件都很小，逐个同步过去再复验点数；
   与此同时**页面必须把"为什么是 0"写在结果里**，否则用户把"空"读成"功能没做"。
 
+## ★ 桌面 Qt 工具栏「新按钮没出现」= 对象建了但没 `addWidget`，用离屏探针定性
+
+- **可见性的唯一判据是布局**：`self.btn_x = mk_btn(...)` 建了对象却漏了 `tl.addWidget(self.btn_x)`，
+  按钮「存在、点击也通、就是看不见」（历史同类事故已发生过一次）。按钮必须挂进**同一个** toolbar 容器
+  （本项目 `tb.flow()`），顺序决定位置：想显眼就紧跟一个他确认能看见的按钮。
+- **加了按钮/新建静态组 = 必须重启 GUI 才生效**（跑的是旧进程），但**不要替用户重启**：
+  交付话术写「重开控制台才出现」，并提醒直接关窗口会走 `closeEvent`（用内存里的旧画布回写）⇒ 有未保存改动先存。
+- **离屏构造探针**（比"代码里写了"硬，10 秒出结果）：
+```python
+os.environ["QT_QPA_PLATFORM"]="offscreen"; sys.path.insert(0,"<tools/gui>")
+from PyQt5.QtWidgets import QApplication
+app=QApplication([]); import simulink_module as sm; w=sm.SimulinkModule(); w.resize(1600,900); w.show(); app.processEvents()
+b=w.btn_se3   # ← 断言 isVisible() + 几何 (x,y,w,h): y 应是工具栏行高量级, 且 x 在窗口内
+```
+  再加一步**点击路径**验证：把出窗函数换成 stub 抓参数，调一次回调，断言收到的就是目标 URL
+  （`w._open_page_window=lambda *a:(calls.append(a) or (True,'stub'))`）—— 能抓到 URL 才算接线通。
+- 新按钮回调走**项目已实测的出窗函数**（独立 profile + 非阻塞线程），不要 `subprocess` 直跑浏览器（会被已在跑的实例吞成后台标签）。
+  页面服务没起时在**后台线程**里 `systemctl start <unit>` 再开，失败只写日志，不弹框卡界面。
+
 ## ★ 常驻服务引用的脚本放"分支外路径"
 新脚本留在仓库里，切分支/stash 就消失 → 服务起不来（实测踩过两次）。
 常驻服务的 `ExecStart` 指向 `~/` 等分支外路径，或先 commit 再引用仓库路径。

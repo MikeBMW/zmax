@@ -14,7 +14,7 @@ metadata:
 
 > 画布层节点数 ↔ 册子页数 1:1 对账、校验器动态计数、导入顺序、合并语义与环复核：见 `references/canvas-ppt-reconciliation.md`。
 >
-> 右键入口(浏览器静态页) → `references/canvas-node-context-menu.md` · 日志刷屏 → `references/canvas-log-noise.md`。
+> `references/canvas-node-context-menu.md` · `canvas-log-noise.md` · `canvas-node-add-checklist.md`(加节点验收)
 
 ## 🔴 「打开总工程」没反应/加载失败 = 画布文件是 Linux 软链 (Windows 每次新版复现)
 

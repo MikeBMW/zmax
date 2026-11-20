@@ -540,6 +540,36 @@ for _s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
   找一圈“画布窗口”找不到就是这个原因；关它 = 关整个主窗口，没有“只关画布页”这个操作（想切页就点页签）。
 - 禁止反复重启 GUI 自证：先把 SIGTERM handler 接上再重启，这样后续关闭走正常 closeEvent（自动存工程）。
 
+### 29. 工具栏/按钮改动: 离屏构造整窗断言「看得见 + 点得通」(别读代码就算完)
+
+- 历史反复踩的形态: 按钮对象建了(`self.btn_x = mk_btn(...)`)、handler 也对, 但 `tl.addWidget(self.btn_x)` 被某轮
+  "工具栏精简"删掉/注释掉 ⇒ 用户只看到"没有这个按钮", 而搜代码哪都在。所以判据必须是**布局里的可见性**, 不是符号存在。
+- 一次离屏跑完两件事: ①它真挂上并可见、坐标落在工具栏那一行 ②点击路径收到的参数对。
+  ```python
+  code = r'''
+  import os, sys, json
+  os.environ["QT_QPA_PLATFORM"] = "offscreen"
+  sys.path.insert(0, "<repo>"); sys.path.insert(0, "<gui_dir>")
+  from PyQt5.QtWidgets import QApplication
+  app = QApplication(sys.argv[:1])
+  import simulink_module as sm
+  w = sm.SimulinkModule(); w.resize(1600, 900); w.show(); app.processEvents()
+  b = w.btn_se3
+  res = {"visible": b.isVisible(), "geom": [b.x(), b.y(), b.width(), b.height()], "text": b.text()}
+  calls = []
+  w._open_page_window = lambda *a: (calls.append(a), (True, "stub"))[1]   # 截住真正的 opener
+  w.open_se3_board(); app.processEvents()
+  res["click_path"] = calls
+  open("/tmp/probe.json", "w").write(json.dumps(res, ensure_ascii=False))
+  '''
+  ```
+  判据: `visible == True` · `y()` 是个位数(在顶部工具栏行) · `width() > 0` · `click_path` 里 URL/键/profile 三个参数逐位正确。
+- 🔴 **探针结果必须写文件, 不要靠 print**: 这类大模块 import 期会自己重定向/吞 stdout(实测整个脚本只回一行模块横幅, 你以为没跑)。
+  写成 `/tmp/*.json` 再读, 或重定向到文件。
+- 🔴 **不要为了验证去重启/关掉正在跑的 GUI**: 他正在用, 且 `closeEvent` 会拿内存里的旧画布回写文件(会把刚加的东西冲掉)。
+  离屏探针是零风险的那条路; 验完只需告诉他"重开控制台才加载新代码", 并把 `ps -o lstart= -p <pid>` 与改的文件 `stat -c %y`
+  两个时间一起给——比一句"你重启一下"有说服力。
+
 ## 改动纪律: 只改用户指的那一处 (做多了 = 被退回重做)
 - 用户说「增加 X 列 / 改 Y」就**只改那一处**。在同一个控件里顺手塞新模式、波形、附加页 —— 哪怕技术上更好,
   也会被判「你怎么把表格全给改了? 只是让你增加 X 列」并要求改回去: 白做一轮 + 多一次回退版本。

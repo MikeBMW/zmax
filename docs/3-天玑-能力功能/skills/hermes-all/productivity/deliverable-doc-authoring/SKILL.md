@@ -764,6 +764,9 @@ soffice --headless --norestore -env:UserInstallation=file://<临时profile> \
 **排版验收用几何不用眼**：`soffice --headless --convert-to pdf` → `pdftotext -bbox` → 解析 word bbox：
 1) `xMax>页宽-4` 或 `yMax>页高-3` = 出血；2) 正文 `yMax>493pt`（7.5in=540pt，页脚 500pt）= 撞页脚；
 3) 两词 bbox 重叠 >35% = 压字。三项全 0 才算排好（希腊字母重音符号会有假阳性，可忽略）。
+   🔴 页脚带要按**文字白名单**放过（页脚注与页码本身就落在 500pt 以下），否则每页都会被报成撞页脚；
+   同一道检查顺手做**逐页关键词断言**（每页必须出现的实测数字），比通读快且抓得到「改了表忘了正文」。
+   收尾补 `pdffonts`：CJK 应嵌成 NotoSansCJKsc（emoji 嵌为 NotoColorEmoji Type 3），字体名对但没嵌 ⇒ 用户那边就是豆腐块。
 
 🔴 **再加一道粗密度闸**：`pdftoppm` 出页图数墨占比（像素 `<200` 算墨，先掩掉页脚带与左侧 0.16 in 装饰条）。
 表格页/公式页天然落在 30%~50%，**别当成缺陷去拆**；只有 **>60%** 才是「整页糊住」，回去减行或拆页。

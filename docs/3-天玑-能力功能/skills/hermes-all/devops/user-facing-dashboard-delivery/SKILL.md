@@ -168,6 +168,26 @@ grep -n "def <回调名>" -A40 <gui文件>.py | grep -nE "Popen|openUrl|setPixma
 - 用户会**按端口号下指令**，但端口只是实现细节：先确认"**你是在哪个页面 / 哪个 URL 上看**"再决定往哪发，
   他给的端口可以只当"源头"。（同族：他给 `@某人` 时，那条线多半归那个人。）
 
+## ★ 用户说「昨天那个服务 / 那个网页，找回来」→ 先枚举既有入口，别按名字猜
+
+同一批数据常同时挂在好几个面上（本项目 SE(3)：8815 分层几何看板 · 8817 `/follow` 五流形 · 新做的 8819），
+按「应该是那个」挑一个 = 连错两轮（用户只回一句「不对」）。
+
+```bash
+systemctl list-units --all | grep -i '<关键词>'      # 每个 unit 的 Description 里就写着职责与端口
+ss -ltnp | grep ':<port>'                            # 谁在服务这个面
+ss -ltnp | grep -E ':(87|88)[0-9][0-9]'              # 一次看清全机入口
+```
+- 🔴 **根路径 404 ≠ 页面不存在**：这类页常挂在子路由（实测 `/follow` 200 而 `/` 404）。
+  给用户 URL 前必须 `curl -s -o /dev/null -w '%{http_code}' <完整路由>` —— 只验端口 200 会把他送进 404。
+- 🔴 **新服务选端口前先 `grep -rn "<port>" --include=*.py .`**：端口上原本有谁，谁就是用户心里的那个入口；
+  在别人的端口上起新服务等于把他的入口顶掉（实测某端口本就是别处的 mock 服务）。
+- 🔴 **“昨天的图/页”可能只挂在一个临时静态服务上**：`python3 -m http.server` 起的 `/tmp` 目录重启即清 ⇒
+  用户那个 URL 直接 404，而产物本身可能还在持久目录里。修法：`find <data 目录> -name '<产物名>*'` 找回原件，
+  在该目录重起静态服务，并回读 `curl -o /dev/null -w '%{http_code} %{size_download}'` + 文件 mtime（是原件才算找回）。
+  **别临时重生成一张“长得像”的图充数** —— 他记得的就是那份原件。
+- 实在对不上就**列全部在线候选 + 各自职责**让他指一个，别继续猜。
+
 ## ★ 状态条/看板必须有「空态」，否则"没活干"会被读成"功能坏了"
 
 实测：训练一跑完 ⇒ `training.active=false` ⇒ 面板/页面那一条**空着** ⇒ 用户连报两轮
@@ -1054,6 +1074,18 @@ displays=:0 scrot -o /tmp/now.png         # 截图取证(本机有 scrot)
   （本项目 `_open_page_window`，独立 snap profile + `--new-window`），点击立即返回（非阻塞），
   验收只认 `wmctrl -lG` 里**新出现的 window id + 标题**（以及几何），不认进程/返回码。
   同类坑：终端手搓的浏览器窗口即使开了也常落在**另一块屏/另一个 profile**，用户看不到。
+  交付前先**离屏定型**“按钮真的建了且真的在工具栏里”（不用等他开控制台）：
+  ```python
+  os.environ["QT_QPA_PLATFORM"] = "offscreen"
+  w = SimulinkModule(); w.resize(1600, 900); w.show(); app.processEvents()
+  print(w.btn_xxx.text(), w.btn_xxx.isVisible(), w.btn_xxx.x(), w.btn_xxx.y())   # 可见 + 落在工具栏行上
+  calls = []; w._open_page_window = lambda *a: (calls.append(a), (True, "stub"))[1]
+  w.open_xxx_page(); time.sleep(0.5)
+  print(calls)      # 点开路径收到的 (url, key, profile, tag) 与预期一致才算通
+  ```
+  三条硬规矩：① 光"对象存在"不够，`isVisible()` + 坐标 y 在工具栏那一行才有意义（曾经按钮建了但没 `addWidget`，用户眼里的症状就是"没有这个按钮"）；
+  ② 把出窗函数 monkeypatch 成记录器捕获参数，避免真开浏览器；③ **用户当前那个进程跑的是旧代码** ⇒ 交付话术必须写一句"要重开控制台才看得见"，
+  并提醒他不要直接关（`closeEvent` 会用内存旧画布回写）。
 - 页面里公开取证接口（`window.__XX={ready, geom()}`）供验：**采样前等一帧** —— 同一 tick 里连切步读到的是上一帧
   队列（症状：每步数字一模一样）；"窗口真开了"只认 `wmctrl -lG` + `scrot` + 窗口区边缘像素数，不信 `Popen` 返回码。
 

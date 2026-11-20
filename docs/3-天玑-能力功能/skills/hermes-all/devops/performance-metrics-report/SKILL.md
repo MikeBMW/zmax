@@ -188,6 +188,38 @@ P 挂在 ~0.999、R 连着十几轮**同一个数**纹丝不动 —— 这是训
 - **口径写进报告正文**：`LoRA 适配 100 步(r=8, 基座冻结) = 验证「能训通、梯度到齐」，不是收敛训练`。
   不写这句，读者（和未来的你）会把 smoke 数字当正式指标。
 
+## 用户问「电脑为什么这么慢」→ 三分钟按**父链聚合**定性，不自责也不猜
+
+这类提问要的是"谁吃掉了机器"+ 一句人话，不是仪表盘。顺序固定：
+
+```bash
+uptime; free -g; vmstat 1 3                       # ① load 对比 nproc；si/so 非零 = 已经在换页
+ps -eo pid,pcpu,pmem,rss,etimes,args --sort=-rss | head -10   # ② 头部进程 + 它们活了多久
+ps -eo ppid,pid,rss,comm --no-headers | awk '$1==<ppid>{s+=$3} END{print s/1048576" GB"}'  # ③ 按父链求和
+nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total --format=csv,noheader
+systemctl list-units --state=running | grep -iE 'train|evolve|yolo'  # ④ 认出真正持有它的 unit
+```
+
+- 🔴 **必须按父进程链求和，不能只看 top 第一名**：一条训练链常是 1 个主进程 + N 个 dataloader worker，
+  单看每个 1.3GB 像"不算大"，合起来 18.8GB/15 进程就把 30G 机器压进 swap（available 掉到 10G 以下 ⇒ 开窗口都卡）。
+  `ps -eo rss,args | grep <脚本名> | awk '{s+=$1} END{printf "%.1f GB / %d 进程", s/1048576, NR}'`。
+- **再往上一层找持者**：`ps -o ppid= -p <pid>` → 父进程 argv → `systemctl cat <unit>`。
+  自进化/循环类服务常写 `--rounds 0`（无限轮）+ `--cooldown N`，**永远不会自己停**；
+  报告必须把这个事实说出来（用户默认以为跑完就好了）。
+- **周期性卡顿要怀疑 "为了腾 GPU 去重启别人"**：类服务每代 `stop → 训练 → start` 别的常驻服务（`--free-gpu 1` 这类），
+  每次重启都要重载权重 ⇒ load 随代次越跑越高。用 `journalctl -u <别的 unit> | grep -c "Started\|Stopped"` 数重启次数即可证。
+- **给 ETA 用实测代间隔**（产物目录 mtime 相邻两代的时间差），别按"训练 30 epoch 大概多久"估。
+
+**降负定式**：改 DataLoader worker 数是最快一刀（显存/CPU 不变、内存立降），但要改**两处**：
+脚本默认值 + 调度器传给它的显式参数（只改默认值常被调用方覆盖）。改完**必须重启 unit** 才生效，
+然后回读三项才算办成：进程数、RSS 合计、`free -g` 的 available。
+⚠️ **框架会乘倍数**：ultralytics 传 `workers=2` 实测起 **6 个** `pt_data_worker` ⇒ 别拿"我改成 2 了"当结论，
+以进程数为准。另外 **swap 里的页不会自动回内存**（used 不变是正常的），要彻底流畅得再降 batch 或等这一代跑完，
+报告里写清这一点，别让用户以为没生效。
+
+汇报口径：**先一句人话（谁在烧什么）→ 再四个数（内存/swap/load/GPU）→ 再一行可执行的选择**（停服务 / 降负载）。
+不要列五条选项让他自己拼。
+
 ## 坑
 | 坑 | 对策 |
 |---|---|
@@ -202,3 +234,5 @@ P 挂在 ~0.999、R 连着十几轮**同一个数**纹丝不动 —— 这是训
 | 出图成功 = 图能用 | 字体缺字形会让中文+数字全变方块而零报错; 出图后必自视一遍再交付 |
 | 报告里直接贴 `json.dumps(...)[:N]` | 硬切断在字段中间; 解析成指标表, 原始 JSON 只留路径 |
 | 只报 `rc=0 / 耗时` 就说"训练有结果" | 从日志解析 loss/MAE/吞吐等真实指标, 并写明步数与口径 |
+| 机器变慢只看 top 第一名进程 | 按父链聚合 RSS（主进程 + N 个 worker）；一条训练链常是 15 进程/18GB 级别 |
+| 改了 `workers=2` 就宣布内存降了 | 框架会乘倍数（ultralytics 2→6），重启 unit 后**以进程数与 RSS 合计为准**，另注 swap 不会自动回收 |

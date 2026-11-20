@@ -196,6 +196,16 @@ Z-MAX 仓库具体入口/机制见 `references/zmax-studio-automation.md`;
    别在“看不到日志”时反复猜原因。
 5. 交付时说清验到了哪层: 「控件离屏渲染已验 + 代码/判据已验」与「真窗口里已点开看到」是两句话,
    没拍到就不说拍到了。
+6. **新加的工具栏按钮 = 三件断言 + 一次桩拦截**（离屏，免开浏览器/免重启）:
+   - `m = SimulinkModule()` → `hasattr(m, 'btn_x')` · `btn_x.isVisible()` · `btn_x.geometry()`
+     （y 落在工具栏那一行、宽高非 0）—— 只建对象不 `addWidget` 就是「代码里有、界面上没有」，
+     这个仓历史上工具栏按钮消失过两次（对象在、点击也能通，只是没挂布局）。
+   - `m._open_page_window = lambda url, key, prof, tag: (calls.append((url, key, prof, tag)) or (True, 'stub'))`
+     再直接调 `m.open_x_page()`，断言 `calls[0][0] == 目标URL`、profile/tag 与既有按钮同口径 —— **证接线**，不真出窗。
+   - 按钮 handler 走后台线程时给 1~2s `processEvents` 循环再读 `calls`；断言日志行里出现目标 URL（`_log` 可临时替换掉写文件那个）。
+   - 🔴 常驻控制台加载的是**它自己 cwd 下的那份文件**：`ls -l /proc/<pid>/cwd` + `tr '\0' ' ' </proc/<pid>/cmdline`
+     确认你改的就是它 import 的那份，再让用户重开（`closeEvent` 会用内存旧画布回写，不要自己 kill）。
+   - 🔴 新按钮加在工具栏末尾前先看容器是不是 flow/wrap：固定宽工具条下最右那颗会被裁，同样是「没看见按钮」。
 
 ### 「可完全隐藏」的窗口: 隐藏态判据 (别用 grab 证明变黑)
 

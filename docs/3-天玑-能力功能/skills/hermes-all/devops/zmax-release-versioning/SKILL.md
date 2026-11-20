@@ -175,6 +175,12 @@ git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这
    🔴 **未跟踪的 `??` 文件可能是并行 session 的产出** (如 `tools/shadow_*.py`): 不要当垃圾删, 也不要不声不响地留着——
    先 `./gui-venv311/bin/python -m py_compile <f>` 逐个过一遍, 能编译的一并 `git add` 入库,
    commit 里写一句"并行 session 产出, 非本轮开发", 汇报时点名。关机前的唯一目标是**不留未入库的可执行文件**。
+   🔴 **被跟踪文件的批量改动先定性再决定入不入库**: 收工时常见几十个**已跟踪**文件同时是 `M`
+   (并行脚本/索引器扫过一轮: 实测 80 个 `nodes/n_*.py` 的 `SOURCE_SYMBOL` 被统一改成 `def main` 之类,
+   并追加了 `source_line`)。先抽三个看 `git diff`, 判断是“元数据批量刷”还是真改动;
+   判断质量不行的定式是 **先留证据再回滚**: `git diff <子目录> > zmax_data/snapshots/<name>_<ts>.patch`
+   → `git checkout -- <子目录>` → `git status` 干净后继续发版, 并在汇报里点名“这批不是我改的、已回滚、patch 路径”。
+   不要因为“能编译”就顺手 commit —— 发版提交里的假绑定会在下一轮被当成真源。
    commit+push 之后补一条 `sync`, 再关机 (写缓存/挂载未落地的风险与"已保存"的说法直接冲突)。
 2. **状态快照** (这才是数据): 进 `data/database/zmax/archive/state_<date>_preoff/` 拷 `sources/config` 全量、
    `zmax_engineering.db`、`zmax_space.proj`、`config_meta.json`, 再拷一份 `/etc/systemd/system/zmax-*.service`
@@ -312,7 +318,7 @@ print(len(ic.get_addwidget_order(ast.parse(open('/tmp/head_studio.py',encoding='
 | tag 后又有改动 | 用户问“我下的包里包含这个吗” | 不补 tag/不自升号，另起 commit；汇报里说明该改动是服务端热读/不进包 |
 | 收工时 `git add data/.../canvas/*.json` | `The following paths are ignored` ⇒ **整条 add 全失败**，一个文件都没暂存（该文件其实是已跟踪的，只是 `data` 是软链到被 ignore 的目录） | 已跟踪的画布用 `git add -f data/...`，并回读 `git status --porcelain` 确认进暂存区 |
 | push 被拒 `fetch first`（并行 session 已推了同一批活） | rebase 逐条撞冲突，而冲突处其实是**同一份活的重复提交**（远端换了 sha） | 不要逐条解冲突：`git branch local-backup-<date> HEAD` → `git reset --hard origin/main` → `git cherry-pick <自己那条commit>`（自己的改动是加法，实测零冲突）→ 回读两侧新功能 grep 都在 → push |
-| cherry-pick 后 tag 还指着被丢掉的 commit | `reset --hard` 之后旧 tag 指向不存在的历史, 远端 tag 与 HEAD 不一致 | 版本提交不 cherry-pick, 在新 HEAD 上重跑 `bump_version.py` → `git tag -f vX.Y.Z` → 校验 `git rev-list -n1 vX.Y.Z` == `git rev-parse HEAD` → 单独 push tag |
+| 打了 tag 之后历史又被改写（rebase / `pull --rebase` / `reset --hard` / cherry-pick） | 旧 tag 指向已不存在的 sha: 本地 `git rev-parse vX.Y.Z^{commit}` ≠ HEAD, 远端 tag 与 main 不一致; CI 用 tag 建包会建到旧代码 | 改写后必做三件: `git tag -f vX.Y.Z` → 校验 `git rev-parse --short HEAD` == `git rev-parse --short vX.Y.Z^{commit}` → `git push -f origin vX.Y.Z` 再 `ls-remote` 回读; 汇报里明说“tag 被移动过(版本号不变、只换指向)”。合并回来的版本提交若带旧基线上下文会必冲突 ⇒ 只 rebase 自己的功能提交, 版本号在新 HEAD 上重跑 `bump_version.py` |
 | `reset --hard` 后自建的脚本消失 | 归档/探针脚本若只存在于被丢弃的那个版本提交里, `bash tools/archive_release_*.sh` 报 No such file | reset 前一定先 `git branch -f local-backup-<date> HEAD`; 缺件用 `git show local-backup-<date>:<path> > <path>` 取回, 不要重写一遍 |
 | 重跑归档脚本覆盖手写 evidence | 脚本生成的简版把详细实测版打回去, 且 sha256sums 还是旧的 | 顺序固定: **最后一次**跑归档 → 再补写 evidence → 在归档目录 `find … | sha256sum > sha256sums.txt` 重算 → `-c --quiet` 复核 |
 | 归档脚本的 evidence 统计段（内嵌 python）| ① `json.load(open(f).read().split('\n')[-1])` 报 `'str' object has no attribute 'read'`；② 外层 `<<'PY'` 里又写了一行 `PY` ⇒ heredoc 提前截断，报 `unterminated triple-quoted string` / `unexpected EOF`；③ 输出被 `2>/dev/null` 吞掉 ⇒ **evidence 里只印出一对空 ``` 反而看着像“本轮没数据”** | 逐行解析用 `json.loads(line)`；heredoc 分隔符用与内层不同的名字（如 `PYEV`）；**先单跑内嵌段看 stderr 再重跑全脚本**，不要连续盲跑；完成后 `sed -n` 回读 evidence 那几行确认有数字 |
