@@ -6249,6 +6249,18 @@ class SimulinkModule(QWidget):
             "  · 打开后自动搬回控制台这块屏并置前; 8797 没起时后台起一次再开",
             self.open_fiber_page, "#f0883e")
         tl.addWidget(self.btn_fiber)
+        # 🔷 2026-11-20 老倪: 「http://192.168.23.50:8815/ 做一个 SE3按钮, 放到画布工具栏」
+        #   与 🥽 AR / 🔦 光纤 同一套出窗路径 (独立 snap profile ⇒ 不被已开的 chromium 吞成后台标签);
+        #   8815 没监听时后台拉一次 systemd 单元 zmax-se3-geom 再开, 失败只在日志里说清, 不阻塞界面。
+        self.btn_se3 = mk_btn(
+            "🔷 SE(3)",
+            "直接打开 SE(3) 分层几何看板 (http://192.168.23.50:8815/)\n"
+            "  · 五层同屏: A 位置 ℝ³ / B 接近轴 S² / C 四元数 S³(Hopf) / D 滚转 S¹ / E 相位 S¹ + TQ\n"
+            "  · 数据源 = 珞石 xCoreSDK endInRef 真值, 页面 1s 自刷\n"
+            "  · 服务没起会自动拉起 (systemctl start zmax-se3-geom), 后台起, 不卡界面\n"
+            "  · 与 8817/follow (五流形 A~E)、8819 (流形引擎页) 是同一批服务的不同视角",
+            self.open_se3_board, "#3fb950")
+        tl.addWidget(self.btn_se3)
         # 🎥 2026-09-04 老倪「YOLO 是不是假的」: ▶运行 默认真实化 (metaworld+每帧 YOLO);
         #   勾选「⚡引擎快演」退回引擎简化世界快速演示 (0.1s, 非真实感知)
         self.chk_engine_demo = QCheckBox("⚡引擎快演")
@@ -15677,6 +15689,49 @@ class SimulinkModule(QWidget):
         except Exception as _e:                                                 # noqa: BLE001
             self._log("⛔ AR 启动失败: %r" % (_e,))
             return None
+
+    def open_se3_board(self):
+        """🔷 工具栏「SE(3)」: 打开 SE(3) 分层几何看板 http://192.168.23.50:8815/。
+
+        老倪 2026-11-20: 「http://192.168.23.50:8815/ 做一个 SE3按钮, 放到画布工具栏」。
+        取向与 🔦 光纤 一致 (实测过的路径):
+          · **非阻塞**: 点击立刻返回, 探活/拉服务/出窗全在后台线程;
+          · 走 `_open_page_window`(独立 snap profile) ⇒ 不会被已开的 chromium 吞成后台标签;
+          · 8815 没监听时 `systemctl start zmax-se3-geom` 起一次再开; 起不来只在日志里说清。
+        """
+        import threading as _th
+        _url = "http://192.168.23.50:8815/"
+
+        def _run():
+            import socket
+            import subprocess
+            import time as _t
+            ok = False
+            for _h in ("127.0.0.1", "192.168.23.50"):
+                try:
+                    _s = socket.create_connection((_h, 8815), timeout=1.2)
+                    _s.close()
+                    ok = True
+                    break
+                except Exception:                                        # noqa: BLE001
+                    continue
+            if not ok:
+                self._log("🔷 SE(3) 看板 8815 未监听 → 拉起 zmax-se3-geom")
+                try:
+                    subprocess.run(["systemctl", "start", "zmax-se3-geom"],
+                                   timeout=25, capture_output=True)
+                    _t.sleep(1.5)
+                except Exception as _e:                                  # noqa: BLE001
+                    self._log("❌ 拉起 zmax-se3-geom 失败: %r" % (_e,))
+            self._log("🔷 SE(3) 分层几何看板 → %s" % _url)
+            try:
+                _ok, _why = self._open_page_window(_url, "se3board", "zmax-se3", "se3")
+                if not _ok:
+                    self._log("❌ SE(3) 出窗失败: %s" % (_why,))
+            except Exception as _e:                                      # noqa: BLE001
+                self._log("❌ SE(3) 打开异常: %r" % (_e,))
+
+        _th.Thread(target=_run, daemon=True).start()
 
     def open_fiber_page(self):
         # 🔴 2026-11-08 Windows 完整功能: 光纤工艺卡与 AR 同一个服务(8797), 没起就拉起来
