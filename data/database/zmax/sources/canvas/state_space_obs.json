@@ -2405,7 +2405,7 @@
      "工程库": "data/database/zmax/zmax_engineering.db"
     },
     "cfg_snapshot": {
-     "loaded_at": "2026-11-20 07:09:38",
+     "loaded_at": "2026-11-20 09:39:51",
      "files_total": 8,
      "files_ok": 8,
      "orders": 12,
@@ -2469,18 +2469,18 @@
      "口径": "一个状态空间工程承载全部任务; 任务=配方段子集+参数覆盖"
     },
     "source_symbol": "def main",
-    "cfg_loaded_at": "2026-11-20 07:09:38",
+    "cfg_loaded_at": "2026-11-20 09:39:51",
     "cfg_files": [
      {
       "name": "总工程文件",
       "rel": "data/database/zmax/zmax_space.proj",
-      "sha256": "89c7246bd1377138",
+      "sha256": "be7c8646422ddd90",
       "exists": true
      },
      {
       "name": "任务绑定",
       "rel": "config/ss_task_binding.json",
-      "sha256": "f8bb139d241bba31",
+      "sha256": "d01a4aa08dce4b38",
       "exists": true
      },
      {
@@ -3090,7 +3090,7 @@
    "type": "model",
    "icon": "🔷",
    "color": "#7bdcb5",
-   "x": 6800,
+   "x": 6846,
    "y": 1586,
    "w": 280,
    "h": 110,
@@ -3103,8 +3103,12 @@
     "source_symbol": "def node_ss_se3_state",
     "truth": "zmax_data/se3/se3_state_live.json (zmax-se3-state.service · 8815 /api/se3)",
     "vector16": "A_pos_mm(3) B_axis_S2(3) B_err(1) C_quat_S3(4) D_roll(1) E_s(1) E_arc_mm(1) E_i(1) M_age(1)",
-    "desc": "SE(3)×S1: 位置 ℝ³ · 轴 S² · 四元数 S³ · 滚转 S¹ · 弧长相位 S¹ (只读, 不新增控制通路)"
-   }
+    "desc": "SE(3)×S1 记忆流形: A 位置ℝ³ · B 轴S² · C 四元数S³ · D 滚转S¹ · E 弧长相位S¹ —— 昨日 se3 服务 16 维状态, 5Hz 只读",
+    "pure_verified": true,
+    "cap_level": "L4",
+    "rate_hz": 5.0
+   },
+   "layer": "L4"
   },
   {
    "id": "ss_phase_corr",
@@ -3112,7 +3116,7 @@
    "type": "model",
    "icon": "🌀",
    "color": "#f5c26b",
-   "x": 6820,
+   "x": 6846,
    "y": 1716,
    "w": 320,
    "h": 110,
@@ -3127,8 +3131,14 @@
     "metric": "径向 0.3mm / 轴向 6mm · 横向 50mm/s / 轴向 300mm/s · 载荷自适应 √(m/m_ref)",
     "gate": "S¹ 相位不一致(>15°) ⇒ 记忆匹配断裂, 注入置 0",
     "measured": "自检 24 点单调性全过; 越界 3mm 时 τ 饱和到 τ_lim 且方向不变",
-    "desc": "只读: 产出 V/τ/门控给下游判据与显示, 不直接下发运动 (真动仍要 8793 授权)"
-   }
+    "desc": "相空间安全通道: z=[e_pose/tol; e_vel/vlim] · V=½‖z‖² · τ=−α·τ_lim⊙(z_pos+z_vel) · S¹ 门控 · V̇≤−λV",
+    "pure_verified": true,
+    "cap_level": "L4",
+    "epsilon": 0.3,
+    "alpha": 1.5,
+    "lam": 2.0
+   },
+   "layer": "L4"
   }
  ],
  "links": [

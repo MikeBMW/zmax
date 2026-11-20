@@ -1456,6 +1456,21 @@ LIBRARY_STATIC = [
         {"name": "🎮 仿真推理对比", "params": {"video": "all", "auto": True},
          "desc": "多模型 metaworld rollout 视频 → 窗口同步播放对比 (推理效果)"},
     ]),
+    # 🌀 2026-11-20 老倪: 「SE(3) 怎么没有加到画布的工具栏按钮里」
+    #   原因: 模块库的「状态空间模型」组是**按画布节点生成**的 —— 画布里有才有,
+    #         且要重开工程才重建面板。这里再钉一组静态按钮, 一开控制台就在, 不必等画布。
+    ("model", "🌀 流形 · 相空间 (L4)", [
+        {"name": "🔷 SE(3)×S1 记忆流形", "type": "model",
+         "params": {"state_space": True, "cap_level": "L4", "rate_hz": 5.0,
+                    "source": "src/lerobot/middleware/nodes/impl/ss_se3_state.py",
+                    "desc": "昨日 se3 服务 16 维状态: A 位置ℝ³ · B 轴S² · C 四元数S³ · D 滚转S¹ · "
+                            "E 弧长相位S¹; 5Hz 只读, 供相空间通道与判据"}},
+        {"name": "🌀 相空间安全通道", "type": "model",
+         "params": {"state_space": True, "cap_level": "L4", "epsilon": 0.30, "alpha": 1.5, "lam": 2.0,
+                    "source": "src/lerobot/manifold/phase_corridor.py",
+                    "desc": "z=[e_pose/tol; e_vel/vlim] · V=½‖z‖² · τ=−α·τ_lim⊙(z_pos+z_vel) · "
+                            "S¹ 相位门控 · α_eff=min(α,λ/2) ⇒ V̇≤−λV"}},
+    ]),
 ]
 
 # 🧩 原子技能组件区 (2026-08-09 老倪: W²-VLA Token — 从 atomic_skill_tokens.json 动态加载 9 大类)
