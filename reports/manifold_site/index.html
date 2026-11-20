@@ -362,7 +362,16 @@ async function load215(){
   const sl = $("s215"); sl.max = j.n - 1;
   sl.oninput = () => { T215.idx = +sl.value; draw215(T215.idx); };
   document.querySelectorAll(".spd").forEach(b => b.onclick = () => { T215.speed = +b.dataset.x; });
-  $("b215").onclick = () => { T215.playing = !T215.playing; $("b215").textContent = T215.playing? "⏸ 暂停" : "▶ 回放"; if(T215.playing) step215(); };
+  $("b215").onclick = () => {
+    if(T215.playing){ T215.playing = false; if(T215.timer) clearInterval(T215.timer); T215.timer = 0;
+      $("b215").textContent = "▶ 回放"; return; }
+    const D = T215.data; if(!D) return;                    // 数据没到就别动
+    if(T215.i >= D.n-1){ T215.i = 0; draw215(0); }        // 走完再点 = 从头再走一次
+    T215.playing = true; $("b215").textContent = "⏸ 暂停";
+    T215.t0 = performance.now() - D.t[T215.i]*1000/T215.speed;
+    if(T215.timer) clearInterval(T215.timer);
+    T215.timer = setInterval(tick215, 50);                 // 50ms 轮询; 后台标签也不会被挂起
+  };
   draw215(0);
 }
 
@@ -453,17 +462,18 @@ function draw215(idx){
   $("s215").value = idx;
 }
 
-function step215(){
+function tick215(){
   if(!T215.playing || !T215.data) return;
   const D = T215.data;
-  const now = performance.now();
-  if(!T215.t0) T215.t0 = now - D.t[T215.i]*1000/T215.speed;
-  let tt = (now - T215.t0) * T215.speed / 1000;         // 轨迹时间轴(录制秒)
+  const tt = (performance.now() - T215.t0) * T215.speed / 1000;   // 轨迹时间轴(录制秒)
   let i = T215.i;
   while(i < D.n-1 && D.t[i+1] <= tt) i++;
   if(i !== T215.i){ T215.i = i; draw215(i); }
-  if(i >= D.n-1){ T215.playing = false; $("b215").textContent = "▶ 回放"; T215.t0 = 0; return; }
-  requestAnimationFrame(step215);
+  if(i >= D.n-1){
+    T215.playing = false; if(T215.timer) clearInterval(T215.timer); T215.timer = 0;
+    $("b215").textContent = "▶ 回放";
+    $("i215").textContent = "#" + (D.n-1) + " / " + D.n + "  (走完)";
+  }
 }
 
 // ── 实时相图 (现在这台臂): 横轴 θ(deg), 纵轴 p(rad/s), H=p²/2+k(1−cos(θ−θ_eq))
