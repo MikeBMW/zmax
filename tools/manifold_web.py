@@ -350,6 +350,35 @@ class H(BaseHTTPRequestHandler):
         try:
             if p in ("/", "/index.html", "/manifold"):
                 self._send(200, open(PAGE, "rb").read(), "text/html; charset=utf-8")
+            elif p == "/phase215.mp4":
+                _mp4 = os.path.join(ROOT, "zmax_data/manifold/phase215_replay.mp4")
+                if not os.path.exists(_mp4):
+                    self._send(404, json.dumps({"ok": False, "why": "video not built"}))
+                else:
+                    _b = open(_mp4, "rb").read()
+                    _rng = self.headers.get("Range") or ""
+                    if _rng.startswith("bytes="):
+                        _a, _, _c = _rng[6:].partition("-")
+                        _s = int(_a or 0)
+                        _e = int(_c) if _c else len(_b) - 1
+                        _s = max(0, _s); _e = min(len(_b) - 1, _e)
+                        _chunk = _b[_s:_e + 1]
+                        self.send_response(206)
+                        self.send_header("Content-Type", "video/mp4")
+                        self.send_header("Content-Range", "bytes %d-%d/%d" % (_s, _e, len(_b)))
+                        self.send_header("Accept-Ranges", "bytes")
+                        self.send_header("Content-Length", str(len(_chunk)))
+                        self.send_header("Cache-Control", "no-store")
+                        self.end_headers()
+                        self.wfile.write(_chunk)
+                    else:
+                        self.send_response(200)
+                        self.send_header("Content-Type", "video/mp4")
+                        self.send_header("Accept-Ranges", "bytes")
+                        self.send_header("Content-Length", str(len(_b)))
+                        self.send_header("Cache-Control", "no-store")
+                        self.end_headers()
+                        self.wfile.write(_b)
             elif p == "/api/traj215":
                 self._send(200, json.dumps(_traj215(), ensure_ascii=False))
             elif p == "/api/state":
