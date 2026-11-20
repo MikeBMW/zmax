@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 import time
@@ -186,6 +187,29 @@ def state():
             _span = max((max(v[i] for _, v in _p) - min(v[i] for _, v in _p)) for i in range(3))
             # 实测: 臂停着时 5Hz 真值仍有 ~1.1mm 抖动 ⇒ 2mm 内且速度 <2mm/s 算静止
             out["idle"] = (_span < 2.0) and (out.get("vel_mm_s") or 0.0) < 2.0
+
+            # ── 哈密顿相空间 (θ, p)：θ = D 滚转角, p = I·dθ/dt (I=1 归一, 单位 rad/s)
+            _roll = [v[11] for _, v in _p]
+            _th0 = _roll[-1]
+            _trail = []
+            for i in range(1, len(_p)):
+                _dt = hist[i][0] - hist[i - 1][0]
+                if _dt <= 0 or _dt > 0.6:
+                    continue
+                _w = (_roll[i] - _roll[i - 1]) / _dt
+                _trail.append([round(math.degrees(_roll[i]), 3), round(_w, 4)])
+            out["phase"] = {
+                "theta_deg": round(math.degrees(_th0), 3),
+                "p": _trail[-1][1] if _trail else 0.0,
+                "p_ref": 2.0,                                   # 纵轴 ±2 rad/s (=k=1 分界线)
+                "k": 1.0,
+                "theta_tol_deg": 1.0,
+                "p_lim": 2.0,
+                "kinds": len({round(x, 6) for x in _roll}),
+                "span_min": round((hist[-1][0] - hist[0][0]) / 60.0, 1),
+                "n": len(_trail),
+                "trail": _trail[::max(1, len(_trail) // 600)],
+            }
             if out["idle"]:                       # 静止时给一段更早的真实轨迹, 免页面只有一个点
                 bg = _tail(6000, back=3_000_000)
                 step = max(1, len(bg) // 900)

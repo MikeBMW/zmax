@@ -144,6 +144,28 @@
   </div>
 
   <section>
+    <h3>哈密顿相空间 · 相位图（横轴 θ 转角 / 纵轴 p 角动量）</h3>
+    <canvas id="phcanvas" style="width:100%;height:380px;background:#0b1016;border-radius:10px"></canvas>
+    <div class="grid" style="margin-top:10px">
+      <div class="card">
+        <h2>相点 (θ, p)</h2>
+        <div class="kv"><span>θ 转角（D 滚转）</span><b id="pth">—</b></div>
+        <div class="kv"><span>p = I·dθ/dt</span><b id="pp">—</b></div>
+        <div class="kv"><span>相图口径</span><b id="pmeta">—</b></div>
+      </div>
+      <div class="card">
+        <h2>怎么读</h2>
+        <div class="note">
+          H(θ,p) = p²/2 + k(1−cos(θ−θ_eq))，k = 1（单位：rad, rad/s, I = 1 kg·m² 归一）<br>
+          灰细线 = 等能线（不同能量的自然轨道）；<b>青虚线 = 分界线 E = 2k</b>（谷内摆动 / 越顶旋转的分界）；<br>
+          绿带 = θ 容差 ±1°；橙圈 = 当前相点。<br>
+          电机做功 ⇒ 相点能量变化 ⇒ 轨迹会在等能线之间横穿（正是「强跨相位线」）。臂静止时相点停在势阱谷底，p≈0。
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
     <h3>跟随真机 · 末端轨迹（5Hz 真值，非仿真）</h3>
     <canvas id="view" width="880" height="340"
       style="width:100%;height:auto;background:#0b0f14;border:1px solid var(--line);border-radius:10px"></canvas>
@@ -244,6 +266,15 @@ async function tick(){
     $("fE").textContent = fol.E ? `${fol.E.mode||"—"} · 累计 ${(fol.E.cum_mm||0).toFixed(1)} mm` + (fol.E.s!=null? " · s "+fol.E.s.toFixed(5) : " · 未闭环") : "—";
     $("fM").textContent = (fol.truth_src||"—").replace("http://127.0.0.1:8797","8797") + " · 帧龄 " + (fol.age_s!=null? fol.age_s.toFixed(2)+" s":"—");
   }else if(fol.error){ $("fA").textContent = "8817 不可用: " + fol.error; }
+  // ── 相图 (θ, p)
+  const ph = j.phase || {};
+  if(ph.theta_deg!=null){
+    $("pth").textContent = ph.theta_deg.toFixed(2) + "°  (±" + (ph.theta_tol_deg||1).toFixed(1) + "° 容差)";
+    $("pp").textContent = (ph.p||0).toFixed(3) + " rad/s  (|p|上限 " + (ph.p_lim||2).toFixed(1) + ")";
+    $("pmeta").textContent = "k=1 · " + (ph.n|0) + " 点 / " + (ph.span_min||0).toFixed(1) + " min · θ 取值 " + (ph.kinds|0) + " 种"
+      + ((ph.kinds|0)<=1 ? " ⇒ 臂静止, 相点停在谷底" : "");
+    drawPhase(ph);
+  }
   drawRing(nearest.s!=null? nearest.s : (j.se3||{}).s);
   (SVC.services||[]).forEach((sv,i)=>{
     const el = $("svc"+(i+1));
@@ -277,6 +308,96 @@ async function tick(){
 const cv = $("view"), cx2 = cv.getContext("2d");
 const K6 = Math.cos(Math.PI/6), S6 = Math.sin(Math.PI/6);
 function proj(p){ return [ (p[0]-p[1])*K6, (p[0]+p[1])*S6 - p[2] ]; }
+// ── 哈密顿相空间相位图: 横轴 θ(deg), 纵轴 p(rad/s), H=p²/2+k(1−cos(θ−θ_eq))
+function drawPhase(P){
+  const c = $("phcanvas"); if(!c || !P) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = c.clientWidth || 900, H = 380;
+  if(c.width !== Math.round(W*dpr) || c.height !== Math.round(H*dpr)){
+    c.width = Math.round(W*dpr); c.height = Math.round(H*dpr);
+  }
+  const g = c.getContext("2d");
+  g.setTransform(dpr,0,0,dpr,0,0);
+  g.clearRect(0,0,W,H);
+  const L=54, Rr=14, T=14, B=32;
+  const pw = W-L-Rr, ph = H-T-B;
+  const th0 = P.theta_deg, DTH = 180;          // θ 窗口 = θ_eq ±180°
+  const PREF = P.p_ref || 2.0;
+  const X = th => L + (th - (th0-DTH)) / (2*DTH) * pw;
+  const Y = p  => T + (PREF - Math.max(-PREF, Math.min(PREF, p))) / (2*PREF) * ph;
+
+  // 底色网格
+  g.strokeStyle="#1b2430"; g.lineWidth=1;
+  for(let th=th0-DTH; th<=th0+DTH+0.1; th+=60){
+    g.beginPath(); g.moveTo(X(th),T); g.lineTo(X(th),T+ph); g.stroke();
+    g.fillStyle="#5c6b7a"; g.font="11px ui-monospace,monospace"; g.textAlign="center";
+    g.fillText(th.toFixed(0)+"°", X(th), H-10);
+  }
+  for(let p=-2; p<=2; p+=0.5){
+    g.beginPath(); g.moveTo(L,Y(p)); g.lineTo(L+pw,Y(p)); g.stroke();
+    g.fillStyle="#5c6b7a"; g.textAlign="right"; g.fillText(p.toFixed(1), L-6, Y(p)+4);
+  }
+  // p=0 轴
+  g.strokeStyle="#2b3644"; g.beginPath(); g.moveTo(L,Y(0)); g.lineTo(L+pw,Y(0)); g.stroke();
+
+  // 等能线: p = ±sqrt(2(E - k(1-cos Δθ)))
+  const k = P.k || 1.0;
+  const energies = [0.15, 0.4, 0.8, 1.3, 1.85, 2.0, 2.6, 3.6];
+  energies.forEach(E=>{
+    const sep = Math.abs(E - 2*k) < 1e-6;
+    g.strokeStyle = sep ? "#22d3ee" : "#2f3d4d";
+    g.lineWidth = sep ? 1.6 : 1;
+    g.setLineDash(sep ? [5,4] : []);
+    for(const sgn of [1,-1]){
+      g.beginPath(); let started=false;
+      for(let th=th0-DTH; th<=th0+DTH; th+=1){
+        const d = (th-th0)*Math.PI/180;
+        const v = 2*(E - k*(1-Math.cos(d)));
+        if(v < 0){ started=false; continue; }
+        const p = sgn*Math.sqrt(v);
+        if(p < -PREF-1e-6 || p > PREF+1e-6){ started=false; continue; }
+        if(started) g.lineTo(X(th),Y(p)); else { g.moveTo(X(th),Y(p)); started=true; }
+      }
+      g.stroke();
+    }
+    g.setLineDash([]);
+    // 能量标注 (只在右缘写一次)
+    const dEnd = (DTH)*Math.PI/180;
+    const vEnd = 2*(E - k*(1-Math.cos(dEnd)));
+    if(vEnd >= 0 && Math.sqrt(vEnd) <= PREF){
+      g.fillStyle = sep ? "#22d3ee" : "#3c4a5a";
+      g.font="10px ui-monospace,monospace"; g.textAlign="left";
+      g.fillText((sep? "E=2k 分界" : "E="+E.toFixed(2)), L+pw-58, Y(Math.sqrt(vEnd))-3);
+    }
+  });
+
+  // θ 容差带
+  const tol = P.theta_tol_deg || 1.0;
+  g.fillStyle="rgba(63,185,80,.16)";
+  g.fillRect(X(th0-tol), T, Math.max(1.5, X(th0+tol)-X(th0-tol)), ph);
+
+  // 实测轨迹
+  const tr = P.trail || [];
+  const moved = tr.some(q=>Math.abs(q[1])>1e-6);
+  if(tr.length>1 && moved){
+    g.strokeStyle="rgba(88,166,255,.85)"; g.lineWidth=1.6; g.beginPath();
+    tr.forEach((q,i)=> i? g.lineTo(X(q[0]),Y(q[1])) : g.moveTo(X(q[0]),Y(q[1])));
+    g.stroke();
+  }
+  // 当前相点
+  const cx=X(th0), cy=Y(P.p||0);
+  g.strokeStyle="#f0883e"; g.lineWidth=2;
+  g.beginPath(); g.arc(cx,cy,6,0,Math.PI*2); g.stroke();
+  g.fillStyle="#f0883e"; g.beginPath(); g.arc(cx,cy,2.4,0,Math.PI*2); g.fill();
+  g.fillStyle="#c9d5e1"; g.font="12px ui-monospace,monospace"; g.textAlign="left";
+  g.fillText("当前 θ="+th0.toFixed(2)+"°  p="+(P.p||0).toFixed(3), Math.min(cx+10, L+pw-190), Math.max(T+14, cy-10));
+  // 轴名
+  g.fillStyle="#8b98a6"; g.font="12px ui-sans-serif,sans-serif"; g.textAlign="center";
+  g.fillText("θ  转角 (°)", L+pw/2, H-1);
+  g.save(); g.translate(13, T+ph/2); g.rotate(-Math.PI/2);
+  g.fillText("p  角动量 (rad/s, I=1)", 0, 0); g.restore();
+}
+
 // ── S¹ 单位圆相位盘
 function drawRing(s){
   const c = $("ring"); if(!c) return;

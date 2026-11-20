@@ -41,7 +41,9 @@ def main() -> int:
     ap.add_argument("--name", default="train")
     ap.add_argument("--out", required=True)
     ap.add_argument("--eval", action="append", default=[], help="name=yaml (可多次)")
-    ap.add_argument("--workers", type=int, default=4)
+    # 🔴 2026-11-20 老倪: 机器反应慢 → DataLoader workers 8(ultralytics 默认再乘) 各吃 1.35G,
+    #   训练链合计 18.8G/15 进程把 30G 机器压进 swap。默认降到 2 (内存约 -8G, 训练慢一些)。
+    ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()
 
