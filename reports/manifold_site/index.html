@@ -51,6 +51,42 @@
       <div id="clock">—</div>
     </div>
   </header>
+<section id="replay">
+    <h3>仿真回放 · 215 点真实轨迹的哈密顿相图（只读回放，不动真机）</h3>
+    <div id="playstate" class="note" style="margin:6px 0 8px;font-size:14px;color:#58a6ff">▶ 加载中…</div>
+    <canvas id="t215" style="width:100%;height:420px;background:#0b1016;border-radius:10px"></canvas>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+      <button id="b215" class="pill" style="cursor:pointer">▶ 回放</button>
+      <span class="note">倍速</span>
+      <button class="pill spd" data-x="1">x1 (42.9s)</button>
+      <button class="pill spd" data-x="4">x4</button>
+      <button class="pill spd" data-x="10">x10</button>
+      <input id="s215" type="range" min="0" max="214" value="0" style="flex:1;min-width:180px">
+      <span id="i215" class="note">#0 / 215</span>
+    </div>
+    <div class="grid" style="margin-top:10px">
+      <div class="card">
+        <h2>相点（真值回放）</h2>
+        <div class="kv"><span>θ 极角（TCP 与 +Z）</span><b id="tth">—</b></div>
+        <div class="kv"><span>p_θ = I·ω（I = r²，单位质量）</span><b id="tp">—</b></div>
+        <div class="kv"><span>H = p²/2I + g·z</span><b id="tH">—</b></div>
+        <div class="kv"><span>r / z</span><b id="trz">—</b></div>
+        <div class="kv"><span>段</span><b id="tseg">—</b></div>
+      </div>
+      <div class="card">
+        <h2>哈密顿量怎么映射的</h2>
+        <div class="note">
+          约化 = 6 轴臂沿轨迹 → 以基座为中心的<b>球摆</b>：<br>
+          r = |TCP|（逐帧实测，均值 <span id="trb">—</span> mm）· θ = TCP 与 +Z 的夹角（实测 20.3°~80.7°）·<br>
+          V = g·z（重力势，单位质量）· p_θ = I·ω，I = r²，ω 由<b>录制时间戳</b>差分（42.85 s / 215 点）<br>
+          H(θ,p) = p²/(2I) + g·z，实测 H 落在 <span id="tHr">—</span> J/kg<br>
+          灰细线 = 等能线（球摆，r 取均值）· 蓝线 = 已走过的真实轨迹 · 橙点 = 当前点 · 菱形 = 5 个停留点<br>
+          数据源：<code>tools/web/real_traj_joints.json</code> + <code>replay215_timing.json</code>（录制时序）
+        </div>
+      </div>
+    </div>
+  </section>
+
 
   <p class="lede">
     上层只给意图与条件，执行由 L2 收口；记忆给出可行域，度规给出方向，物理给出边界。
@@ -143,40 +179,7 @@
     </div>
   </div>
 
-  <section>
-    <h3>仿真回放 · 215 点真实轨迹的哈密顿相图（只读回放，不动真机）</h3>
-    <canvas id="t215" style="width:100%;height:420px;background:#0b1016;border-radius:10px"></canvas>
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
-      <button id="b215" class="pill" style="cursor:pointer">▶ 回放</button>
-      <span class="note">倍速</span>
-      <button class="pill spd" data-x="1">x1 (42.9s)</button>
-      <button class="pill spd" data-x="4">x4</button>
-      <button class="pill spd" data-x="10">x10</button>
-      <input id="s215" type="range" min="0" max="214" value="0" style="flex:1;min-width:180px">
-      <span id="i215" class="note">#0 / 215</span>
-    </div>
-    <div class="grid" style="margin-top:10px">
-      <div class="card">
-        <h2>相点（真值回放）</h2>
-        <div class="kv"><span>θ 极角（TCP 与 +Z）</span><b id="tth">—</b></div>
-        <div class="kv"><span>p_θ = I·ω（I = r²，单位质量）</span><b id="tp">—</b></div>
-        <div class="kv"><span>H = p²/2I + g·z</span><b id="tH">—</b></div>
-        <div class="kv"><span>r / z</span><b id="trz">—</b></div>
-        <div class="kv"><span>段</span><b id="tseg">—</b></div>
-      </div>
-      <div class="card">
-        <h2>哈密顿量怎么映射的</h2>
-        <div class="note">
-          约化 = 6 轴臂沿轨迹 → 以基座为中心的<b>球摆</b>：<br>
-          r = |TCP|（逐帧实测，均值 <span id="trb">—</span> mm）· θ = TCP 与 +Z 的夹角（实测 20.3°~80.7°）·<br>
-          V = g·z（重力势，单位质量）· p_θ = I·ω，I = r²，ω 由<b>录制时间戳</b>差分（42.85 s / 215 点）<br>
-          H(θ,p) = p²/(2I) + g·z，实测 H 落在 <span id="tHr">—</span> J/kg<br>
-          灰细线 = 等能线（球摆，r 取均值）· 蓝线 = 已走过的真实轨迹 · 橙点 = 当前点 · 菱形 = 5 个停留点<br>
-          数据源：<code>tools/web/real_traj_joints.json</code> + <code>replay215_timing.json</code>（录制时序）
-        </div>
-      </div>
-    </div>
-  </section>
+  
 
   <section>
     <h3>实时相图 · 现在这台臂（θ 滚转 / p 角动量）</h3>
@@ -363,16 +366,14 @@ async function load215(){
   sl.oninput = () => { T215.idx = +sl.value; draw215(T215.idx); };
   document.querySelectorAll(".spd").forEach(b => b.onclick = () => { T215.speed = +b.dataset.x; });
   $("b215").onclick = () => {
-    if(T215.playing){ T215.playing = false; if(T215.timer) clearInterval(T215.timer); T215.timer = 0;
-      $("b215").textContent = "▶ 回放"; return; }
-    const D = T215.data; if(!D) return;                    // 数据没到就别动
-    if(T215.i >= D.n-1){ T215.i = 0; draw215(0); }        // 走完再点 = 从头再走一次
-    T215.playing = true; $("b215").textContent = "⏸ 暂停";
-    T215.t0 = performance.now() - D.t[T215.i]*1000/T215.speed;
-    if(T215.timer) clearInterval(T215.timer);
-    T215.timer = setInterval(tick215, 50);                 // 50ms 轮询; 后台标签也不会被挂起
+    if(T215.playing){ stop215(); $("b215").textContent = "▶ 继续"; return; }
+    if(T215.i >= T215.data.n-1){ T215.i = 0; draw215(0); }
+    play215(); $("b215").textContent = "⏸ 暂停";
   };
   draw215(0);
+  play215();                                   // 打开页面就自动按 1x 循环回放, 不用点任何按钮
+  $("b215").textContent = "⏸ 暂停";
+  $("playstate").textContent = "▶ 1x 自动循环回放中（点「⏸ 暂停」可停）";
 }
 
 function draw215(idx){
@@ -462,6 +463,19 @@ function draw215(idx){
   $("s215").value = idx;
 }
 
+function play215(){
+  const D = T215.data; if(!D) return;
+  T215.playing = true;
+  T215.t0 = performance.now() - D.t[T215.i]*1000/T215.speed;
+  if(T215.timer) clearInterval(T215.timer);
+  T215.timer = setInterval(tick215, 50);        // 50ms 轮询: 按墙钟推轨迹时间, 后台标签也不挂起
+}
+function stop215(){
+  T215.playing = false;
+  if(T215.timer) clearInterval(T215.timer);
+  T215.timer = 0;
+  $("playstate").textContent = "⏸ 已暂停（点「▶ 继续」接着走）";
+}
 function tick215(){
   if(!T215.playing || !T215.data) return;
   const D = T215.data;
@@ -469,10 +483,10 @@ function tick215(){
   let i = T215.i;
   while(i < D.n-1 && D.t[i+1] <= tt) i++;
   if(i !== T215.i){ T215.i = i; draw215(i); }
-  if(i >= D.n-1){
-    T215.playing = false; if(T215.timer) clearInterval(T215.timer); T215.timer = 0;
-    $("b215").textContent = "▶ 回放";
-    $("i215").textContent = "#" + (D.n-1) + " / " + D.n + "  (走完)";
+  if(i >= D.n-1){                                                // 走完 → 停 0.8s 再从头循环
+    T215.i = 0; draw215(0);
+    $("playstate").textContent = "▶ 第 " + (T215.loop = (T215.loop||1) + 1) + " 遍 1x 回放中";
+    T215.t0 = performance.now();
   }
 }
 
