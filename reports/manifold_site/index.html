@@ -63,7 +63,22 @@
   </div>
 
   <section>
-    <h3>昨天的服务 · R³ / S³ / S¹（zmax-se3-geom 8815 · 只读）</h3>
+    <h3>昨天的服务 · 五流形 A~E（zmax-se3-follow 8817 · 只读）</h3>
+    <div class="grid" style="margin-top:8px">
+      <div class="card" style="grid-column:1/-1">
+        <h2>跟随真机 · A 位置ℝ³ · B 轴S² · C 姿态S³ · D 滚转S¹ · E 学习进度</h2>
+        <div class="kv"><span>A 位置 ℝ³ / mm</span><b id="fA">—</b></div>
+        <div class="kv"><span>B 接近轴 S²</span><b id="fB">—</b></div>
+        <div class="kv"><span>C 姿态 S³</span><b id="fC">—</b></div>
+        <div class="kv"><span>D 滚转 S¹</span><b id="fD">—</b></div>
+        <div class="kv"><span>E 学习进度</span><b id="fE">—</b></div>
+        <div class="kv"><span>真值 / 帧龄</span><b id="fM">—</b></div>
+        <div style="margin-top:10px">
+          <a class="pill" href="http://192.168.23.50:8817/follow" target="_blank">↗ 打开昨天的跟随页 (8817/follow)</a>
+        </div>
+      </div>
+    </div>
+    <h3 style="margin-top:18px">另一个源 · 8815 分层几何看板（R³ / S³-Hopf / S² / S¹）</h3>
     <div class="grid" style="margin-top:8px">
       <div class="card">
         <h2>R³ 平移</h2>
@@ -90,7 +105,7 @@
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--mut)">
       <span id="svc1">—</span><span id="svc2">—</span><span id="svc3">—</span>
       <a href="http://192.168.23.50:8815/" target="_blank" style="color:var(--acc)">打开 8815 分层几何看板 ↗</a>
-      <a href="http://192.168.23.50:8817/" target="_blank" style="color:var(--acc)">打开 8817 跟随页 ↗</a>
+      <a href="http://192.168.23.50:8817/follow" target="_blank" style="color:var(--acc)">打开 8817 跟随页 (/follow) ↗</a>
     </div>
   </section>
 
@@ -218,6 +233,17 @@ async function tick(){
     $("arc").textContent = (nearest.s_mm!=null? nearest.s_mm.toFixed(1)+" mm":"—");
     $("idx").textContent = "#" + nearest.i;
   }
+
+  // ── 昨天的跟随服务 (8817): 五流形 A~E
+  const fol = SVC.follow || {};
+  if(fol.A){
+    $("fA").textContent = arr(fol.A.mm, 2);
+    $("fB").textContent = arr(fol.B && fol.B.n, 4) + (fol.B && fol.B.norm!=null? "  (‖n‖ "+fol.B.norm.toFixed(3)+")":"");
+    $("fC").textContent = arr(fol.C && fol.C.q, 3) + (fol.C && fol.C.theta_deg!=null? "  θ "+fol.C.theta_deg.toFixed(1)+"°":"");
+    $("fD").textContent = (fol.D && fol.D.phi_deg!=null? fol.D.phi_deg.toFixed(2)+"°":"—");
+    $("fE").textContent = fol.E ? `${fol.E.mode||"—"} · 累计 ${(fol.E.cum_mm||0).toFixed(1)} mm` + (fol.E.s!=null? " · s "+fol.E.s.toFixed(5) : " · 未闭环") : "—";
+    $("fM").textContent = (fol.truth_src||"—").replace("http://127.0.0.1:8797","8797") + " · 帧龄 " + (fol.age_s!=null? fol.age_s.toFixed(2)+" s":"—");
+  }else if(fol.error){ $("fA").textContent = "8817 不可用: " + fol.error; }
   drawRing(nearest.s!=null? nearest.s : (j.se3||{}).s);
   (SVC.services||[]).forEach((sv,i)=>{
     const el = $("svc"+(i+1));

@@ -67,7 +67,15 @@ def _svc_block():
                "nearest": g.get("nearest"), "age_s": g.get("age_s"), "truth_src": g.get("truth_src")}
     except Exception as e:                                                # noqa: BLE001
         geo = {"error": "%s: %s" % (type(e).__name__, e)}
-    return {"services": rows, "geom": geo}
+    fol = None
+    try:                                     # 8817 五流形 A~E (昨天的跟随服务)
+        with urllib.request.urlopen("http://127.0.0.1:8817/api/follow", timeout=2) as r:
+            f = json.loads(r.read().decode("utf-8"))
+        fol = {k: f.get(k) for k in ("A", "B", "C", "D", "E", "age_s", "n_truth", "truth_src", "err")}
+        fol["ts"] = f.get("ts")
+    except Exception as e:                                                # noqa: BLE001
+        fol = {"error": "%s: %s" % (type(e).__name__, e)}
+    return {"services": rows, "geom": geo, "follow": fol}
 
 
 
