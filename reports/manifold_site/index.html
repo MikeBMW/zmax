@@ -45,6 +45,7 @@
 <div class="wrap">
   <header>
     <h1>流形引擎 · 相空间安全通道</h1>
+  <span class="ver" id="build">build —</span>
     <span class="ver">v5.50.779</span>
     <div class="live">
       <div><span class="dot" id="dot"></span><span id="conn">连接中…</span></div>
@@ -370,10 +371,12 @@ async function load215(){
     if(T215.i >= T215.data.n-1){ T215.i = 0; draw215(0); }
     play215(); $("b215").textContent = "⏸ 暂停";
   };
+  T215.build = "1120-1205";
+  $("build").textContent = "build " + T215.build + " · 215 点回放就绪";
   draw215(0);
   play215();                                   // 打开页面就自动按 1x 循环回放, 不用点任何按钮
   $("b215").textContent = "⏸ 暂停";
-  $("playstate").textContent = "▶ 1x 自动循环回放中（点「⏸ 暂停」可停）";
+  $("playstate").textContent = "▶ 1x 自动循环回放中 · " + T215.data.n + " 点 · 录制 " + T215.data.dur_rec_s.toFixed(1) + " s（点「⏸ 暂停」可停）";
 }
 
 function draw215(idx){
@@ -478,7 +481,15 @@ function stop215(){
 }
 function tick215(){
   if(!T215.playing || !T215.data) return;
+  try{ tick215_inner(); }
+  catch(e){ $("playstate").textContent = "⛔ 回放出错: " + (e && e.message ? e.message : e) + "（这一页是旧缓存就 Ctrl+Shift+R 强刷）"; }
+}
+function tick215_inner(){
   const D = T215.data;
+  T215.frames = (T215.frames||0) + 1;
+  if(T215.frames % 20 === 1){
+    $("build").textContent = "build " + (T215.build||"—") + " · 帧 " + T215.frames;
+  }
   const tt = (performance.now() - T215.t0) * T215.speed / 1000;   // 轨迹时间轴(录制秒)
   let i = T215.i;
   while(i < D.n-1 && D.t[i+1] <= tt) i++;
