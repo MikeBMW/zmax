@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>流形引擎 · 相空间安全通道</title>
+<style>
+  :root{--bg:#0d1117;--card:#151b23;--line:#232c37;--ink:#e6edf3;--mut:#8b949e;--acc:#2dd4bf;--warn:#f59e0b;--bad:#f87171}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.6 -apple-system,"Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif}
+  .wrap{max-width:880px;margin:0 auto;padding:20px 16px 44px}
+  header{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+  h1{font-size:20px;margin:0;letter-spacing:.5px}
+  .ver{color:var(--mut);font-size:12px}
+  .live{margin-left:auto;font-size:12px;color:var(--mut);text-align:right;line-height:1.5}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--acc);margin-right:6px;vertical-align:middle}
+  .dot.off{background:var(--bad)}
+  .lede{margin:18px 0 6px;color:var(--mut);font-size:14px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 14px 12px}
+  .card h2{font-size:13px;margin:0 0 10px;color:var(--acc);font-weight:600;letter-spacing:.4px}
+  .kv{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.05);font-size:13px}
+  .kv:last-child{border-bottom:0}
+  .kv b{font-weight:600;font-variant-numeric:tabular-nums}
+  .kv span{color:var(--mut)}
+  .big{font-size:26px;font-variant-numeric:tabular-nums;letter-spacing:.5px}
+  .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:20px;border:1px solid var(--line);color:var(--mut)}
+  .ok{color:var(--acc)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+  section{margin-top:22px}
+  section h3{font-size:14px;margin:0 0 8px;color:var(--ink)}
+  .flow{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+  .pill{border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12.5px;color:var(--mut);background:#11161d}
+  .pill.on{color:#0d1117;background:var(--acc);border-color:var(--acc);font-weight:600}
+  code,pre{font-family:"Noto Sans Mono CJK SC",ui-monospace,Menlo,monospace}
+  pre{background:#0b0f14;border:1px solid var(--line);border-radius:8px;padding:10px 12px;overflow:auto;font-size:12.5px;color:#c9d1d9}
+  ul{margin:6px 0 0;padding-left:18px;color:var(--mut);font-size:13px}
+  li{margin:3px 0}
+  footer{margin-top:26px;padding-top:12px;border-top:1px solid var(--line);color:var(--mut);font-size:11.5px;line-height:1.7}
+  button{background:#1b2430;color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:5px 10px;font-size:12px;cursor:pointer}
+  button:hover{border-color:var(--acc);color:var(--acc)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>流形引擎 · 相空间安全通道</h1>
+    <span class="ver">v5.50.779</span>
+    <div class="live">
+      <div><span class="dot" id="dot"></span><span id="conn">连接中…</span></div>
+      <div id="clock">—</div>
+    </div>
+  </header>
+
+  <p class="lede">
+    上层只给意图与条件，执行由 L2 收口；记忆给出可行域，度规给出方向，物理给出边界。
+  </p>
+
+  <div class="flow">
+    <div class="pill">记忆流形 SE(3)×S¹</div>
+    <div class="pill on">黎曼度规</div>
+    <div class="pill">相空间通道 (q,q̇)</div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>🔷 SE(3)×S1 记忆流形</h2>
+      <div class="kv"><span>位置 / mm</span><b id="pos">—</b></div>
+      <div class="kv"><span>轴 S²</span><b id="axis">—</b></div>
+      <div class="kv"><span>轴偏差</span><b id="axerr">—</b></div>
+      <div class="kv"><span>四元数 S³</span><b id="quat">—</b></div>
+      <div class="kv"><span>相位 s / 弧长</span><b id="phase">—</b></div>
+      <div class="kv"><span>记忆近点</span><b id="near">—</b></div>
+    </div>
+
+    <div class="card">
+      <h2>🌀 相空间通道判据</h2>
+      <div class="kv"><span>V_phase</span><b id="vph" class="big">—</b></div>
+      <div class="kv"><span>门控 S¹</span><b id="gate">—</b></div>
+      <div class="kv"><span>在通道内</span><b id="inside">—</b></div>
+      <div class="kv"><span>τ 归一</span><b id="tau">—</b></div>
+      <div class="kv"><span>李雅普诺夫</span><b id="mono">—</b></div>
+    </div>
+
+    <div class="card">
+      <h2>📡 数据新鲜度</h2>
+      <div class="kv"><span>真值服务</span><b id="svc">—</b></div>
+      <div class="kv"><span>采样时刻</span><b id="ts">—</b></div>
+      <div class="kv"><span>帧龄</span><b id="age">—</b></div>
+      <div class="kv"><span>末端速度</span><b id="vel">—</b></div>
+      <div class="kv"><span>来源</span><b id="src" style="font-size:11.5px">—</b></div>
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+        <button id="copy">📋 复制 JSON</button>
+        <button id="refresh">↻ 立即刷新</button>
+      </div>
+    </div>
+  </div>
+
+  <section>
+    <h3>跟随真机 · 末端轨迹（5Hz 真值，非仿真）</h3>
+    <canvas id="view" width="880" height="340"
+      style="width:100%;height:auto;background:#0b0f14;border:1px solid var(--line);border-radius:10px"></canvas>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--mut)">
+      <span><span style="color:#2dd4bf">●</span> 当前 TCP</span>
+      <span><span style="color:#58a6ff">—</span> 近年轨迹（约 60 s）</span>
+      <span><span style="color:#f59e0b">◌</span> 轴向公差 6 mm（按比例，径向 0.3 mm 太小未画）</span>
+      <span id="vmap">速度 —</span>
+    </div>
+  </section>
+
+  <section>
+    <h3>通道怎么算（每次刷新现算，不取缓存）</h3>
+    <pre>z = [ e_pose/tol ; e_vel/vlim ]          无量纲偏离，V=1 正好压在公差上
+V = ½‖z‖²                               势能（通道内的"高度"）
+τ = −α · τ_lim ⊙ (z_pos + z_vel)        修正：度规定方向，τ_lim 定幅度
+α_eff = min(α, λ/2)   ⇒  V̇ ≤ −λV        李雅普诺夫：能量单调下降
+
+公差：径向 0.3 mm（不刮金手指） · 轴向 6 mm（允许推进余量）
+速度：横向 50 mm/s · 轴向 300 mm/s · 载荷自适应 √(m/m_ref)
+门控：S¹ 相位差 &gt; 15° ⇒ 判记忆断裂，注入置 0</pre>
+  </section>
+
+  <section>
+    <h3>引擎现状</h3>
+    <ul>
+      <li>流形注册表：euclidean · sphere · torus · so3 · se3 · su2 · se3_layers · latent_flat（8/10 可用，2 个如实标 planned）</li>
+      <li>自检：7 个流形 + 内稳态 4 项全通过；通道自检 6 用例 + 24 点横扫全单调</li>
+      <li>画布：96 节点 / 225 连线；本页只读，<b>不下发任何动作</b>（真动须 8793 授权）</li>
+    </ul>
+  </section>
+
+  <footer>
+    数据源：zmax_data/se3/se3_state_live.json（zmax-se3-geom，5Hz，珞石 xCore SDK 直采）<br>
+    判据：src/lerobot/manifold/phase_corridor.py（与画布节点同一份实现）<br>
+    页面：tools/manifold_web.py · 端口 8819 · 只读旁路 · 刷新 <span id="period">2</span>s
+  </footer>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let last = null;
+
+function fmtTs(t){
+  if(!t) return "—";
+  const d = new Date(t*1000);
+  const p = n => String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+function arr(a, n=2){ return (a||[]).map(x => (+x).toFixed(n)).join(" · "); }
+
+async function tick(){
+  try{
+    const r = await fetch("/api/state", {cache:"no-store"});
+    const j = await r.json();
+    last = j;
+    $("dot").className = "dot";
+    $("conn").textContent = "实时";
+    const s = j.se3 || {};
+    $("pos").textContent = arr(s.pos_mm,1);
+    $("axis").textContent = arr(s.axis,4);
+    $("axerr").textContent = (s.axis_err_deg!=null? s.axis_err_deg.toFixed(2)+"°" : "—");
+    $("quat").textContent = arr(s.quat,3);
+    $("phase").textContent = (s.s!=null? s.s.toFixed(6) : "—") + " / " + (s.arc_mm!=null? s.arc_mm.toFixed(1)+"mm":"—");
+    $("near").textContent = "#" + (s.nearest_i!=null? s.nearest_i : "—");
+    $("svc").textContent = j.svc || "—";
+    $("ts").textContent = fmtTs(j.ts);
+    $("age").textContent = (s.age_s!=null? s.age_s.toFixed(3)+" s" : "—");
+    $("src").textContent = (j.truth_src||"—").slice(0,42);
+    $("vel").textContent = (j.vel_mm_s!=null? j.vel_mm_s.toFixed(1)+" mm/s" : "—");
+    $("vmap").textContent = "速度 " + (j.vel_mm_s!=null? j.vel_mm_s.toFixed(1)+" mm/s" : "—");
+    drawScene(j);
+
+    const c = j.corridor || {};
+    if(c.error){ $("vph").textContent="—"; $("vph").className="big bad"; $("copy").title=c.error; }
+    else{
+      $("vph").textContent = (c.V_phase!=null? c.V_phase.toFixed(4) : "—");
+      $("vph").className = "big " + (c.inside? "ok" : "warn");
+      $("gate").textContent = c.gate===true? "开" : (c.gate===false? "关断":"—");
+      $("gate").className = c.gate? "ok":"bad";
+      $("inside").textContent = c.inside? "是 (ε 内)":"否 ⇒ 触发修正";
+      $("inside").className = c.inside? "ok":"warn";
+      $("tau").textContent = (c.tau_norm!=null? c.tau_norm.toFixed(3):"—");
+      $("mono").textContent = c.monotone? "V̇ ≤ 0 单调":"未验证";
+      $("mono").className = c.monotone? "ok":"warn";
+    }
+    $("clock").textContent = "页面 " + fmtTs(Date.now()/1000);
+  }catch(e){
+    $("dot").className = "dot off";
+    $("conn").textContent = "断线 · 重试中";
+  }
+}
+
+// ── 跟随真机: 轴测投影 (x,y,z mm) → 画布
+const cv = $("view"), cx2 = cv.getContext("2d");
+const K6 = Math.cos(Math.PI/6), S6 = Math.sin(Math.PI/6);
+function proj(p){ return [ (p[0]-p[1])*K6, (p[0]+p[1])*S6 - p[2] ]; }
+function drawScene(j){
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth || 880, H = 340;
+  if(cv.width !== Math.round(W*dpr) || cv.height !== Math.round(H*dpr)){
+    cv.width = Math.round(W*dpr); cv.height = Math.round(H*dpr);
+  }
+  cx2.setTransform(dpr,0,0,dpr,0,0);
+  cx2.clearRect(0,0,W,H);
+  const tr = j.trail || [], bg = j.trail_bg || [], curPos = (j.se3||{}).pos_mm;
+  if(!curPos){ cx2.fillStyle="#8b949e"; cx2.font="13px sans-serif"; cx2.fillText("等待真值…",16,28); return; }
+
+  // 视口: 静止且有背景轨迹 ⇒ 自适应整段; 否则以当前点为中心 320mm 视野
+  const pts = [...bg, ...tr, curPos];
+  let mnx=1e9,mxx=-1e9,mny=1e9,mxy=-1e9;
+  for(const q of pts){ const v2 = proj(q);
+    mnx=Math.min(mnx,v2[0]); mxx=Math.max(mxx,v2[0]);
+    mny=Math.min(mny,v2[1]); mxy=Math.max(mxy,v2[1]); }
+  let s, ox, oy;
+  if(bg.length > 1 && (mxx-mnx) > 40){
+    const pad = 26;
+    s = Math.min((W-2*pad)/Math.max(1,mxx-mnx), (H-2*pad)/Math.max(1,mxy-mny));
+    ox = W/2 - (mnx+mxx)/2*s; oy = H/2 - (mny+mxy)/2*s;
+  }else{
+    s = W/320; const c0 = proj(curPos); ox = W/2 - c0[0]*s; oy = H/2 - c0[1]*s;
+  }
+  const toS = q => { const v2 = proj(q); return [v2[0]*s + ox, v2[1]*s + oy]; };
+
+  // 更早的真实轨迹 (静止时才给): 暗灰
+  if(bg.length > 1){
+    cx2.lineWidth = 1.1; cx2.strokeStyle = "rgba(139,148,158,.55)"; cx2.beginPath();
+    bg.forEach((pp,i)=>{ const q = toS(pp); i ? cx2.lineTo(q[0],q[1]) : cx2.moveTo(q[0],q[1]); });
+    cx2.stroke();
+  }
+  // 近 60 s 轨迹
+  if(tr.length > 1){
+    cx2.lineWidth = 1.8; cx2.strokeStyle = "rgba(88,166,255,.9)"; cx2.beginPath();
+    tr.forEach((pp,i)=>{ const q = toS(pp); i ? cx2.lineTo(q[0],q[1]) : cx2.moveTo(q[0],q[1]); });
+    cx2.stroke();
+  }
+  const P = toS(curPos);
+  // 轴向公差环 (6mm 按比例, 太小则保底 24px)
+  const rpx = Math.max(24, 6*s);
+  cx2.setLineDash([5,4]); cx2.lineWidth = 1.2; cx2.strokeStyle = "rgba(245,158,11,.9)";
+  cx2.beginPath(); cx2.arc(P[0],P[1],rpx,0,7); cx2.stroke(); cx2.setLineDash([]);
+  // 当前 TCP
+  cx2.fillStyle = "#2dd4bf"; cx2.beginPath(); cx2.arc(P[0],P[1],5,0,7); cx2.fill();
+  cx2.strokeStyle = "rgba(45,212,191,.35)"; cx2.lineWidth = 6;
+  cx2.beginPath(); cx2.arc(P[0],P[1],10,0,7); cx2.stroke();
+  // 姿态轴
+  const ax = (j.se3||{}).axis;
+  if(ax){
+    const t = toS([curPos[0]+ax[0]*40, curPos[1]+ax[1]*40, curPos[2]+ax[2]*40]);
+    cx2.strokeStyle = "rgba(45,212,191,.9)"; cx2.lineWidth = 2;
+    cx2.beginPath(); cx2.moveTo(P[0],P[1]); cx2.lineTo(t[0],t[1]); cx2.stroke();
+  }
+  cx2.fillStyle = "#8b949e"; cx2.font = "12px ui-monospace,monospace";
+  cx2.fillText(`x ${curPos[0].toFixed(1)}  y ${curPos[1].toFixed(1)}  z ${curPos[2].toFixed(1)} mm`, 12, H-12);
+  cx2.fillText(bg.length>1 ? `历史 ${j.trail_bg_span_min||"?"} min` : `轨迹点 ${tr.length}`, W-110, H-12);
+  if(j.idle){ cx2.fillStyle="#8b949e"; cx2.fillText("臂静止 · 显示更早的真实轨迹", 12, 20); }
+}
+window.addEventListener("resize", () => { if(last) drawScene(last); });
+
+$("copy").onclick = async () => {
+  try{ await navigator.clipboard.writeText(JSON.stringify(last, null, 2)); $("copy").textContent="✅ 已复制"; }
+  catch(e){ $("copy").textContent="复制失败"; }
+  setTimeout(()=>$("copy").textContent="📋 复制 JSON", 1500);
+};
+$("refresh").onclick = tick;
+tick(); setInterval(tick, 2000);
+</script>
+</body>
+</html>

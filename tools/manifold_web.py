@@ -53,13 +53,14 @@ def _vec2sample(v):
     }
 
 
-def _tail(n=40):
+def _tail(n=400, back=400_000):
+    """历史尾部 → [(ts, vector16)]；ts 取记录里的 ts (不是 t)，零位姿样本丢掉。"""
     out = []
     try:
         with open(HIST, "rb") as f:
             f.seek(0, os.SEEK_END)
             size = f.tell()
-            f.seek(max(0, size - 200_000))
+            f.seek(max(0, size - back))
             chunk = f.read().decode("utf-8", "ignore").splitlines()
         for ln in chunk[-n:]:
             try:
@@ -67,11 +68,32 @@ def _tail(n=40):
             except Exception:
                 continue
             v = d.get("vector") or d.get("vec")
-            if isinstance(v, list) and len(v) >= 16 and any(abs(x) > 1e-9 for x in v[:3]):
-                out.append((float(d.get("t") or v[15] and 0 or 0), v))
+            ts = d.get("ts") or d.get("t")
+            if not isinstance(v, list) or len(v) < 16 or ts is None:
+                continue
+            if all(abs(x) < 1e-9 for x in v[:3]):          # 全 0 = 陈旧/未就绪, 不做数
+                continue
+            out.append((float(ts), v))
     except Exception:
         return []
     return out
+
+
+def _vel(prev, cur):
+    """两个样本 → 线速度 m/s + 角速度 rad/s（真实差分，不外推）。"""
+    import numpy as np
+    dt = max(1e-3, float(cur[0]) - float(prev[0]))
+    dp = (np.array(cur[1][:3], float) - np.array(prev[1][:3], float)) / 1000.0 / dt      # m/s
+    q0 = _qnorm(prev[1][7:11])
+    q1 = _qnorm(cur[1][7:11])
+    # 相对四元数 → 角速度（小角近似足够 5Hz 差分）
+    w0, x0, y0, z0 = q0
+    w1, x1, y1, z1 = q1
+    dw = w0 * w1 + x0 * x1 + y0 * y1 + z0 * z1
+    sgn = 1.0 if dw >= 0 else -1.0
+    dq = np.array([w1 - sgn * w0, x1 - sgn * x0, y1 - sgn * y0, z1 - sgn * z0]) * sgn
+    om = 2.0 * dq[1:4] / dt
+    return dp.tolist(), om.tolist()
 
 
 def _qnorm(q):
@@ -91,23 +113,41 @@ def state():
     out = {"ok": True, "ts": d.get("ts") or time.time(), "svc": d.get("svc", "zmax-se3-geom"),
            "truth_src": d.get("truth_src", ""), "se3": cur, "corridor": None, "engine": {}}
 
-    # 相空间: 以 0.2s 前的记忆样本为中心线, 当前为实测
-    hist = _tail(40)
-    if hist:
-        tcur = time.time()
-        ref = None
+    # 相空间: 以 0.2s 前的真机记忆样本为中心线, 当前为实测; 速度取真差分
+    hist = _tail(400)
+    if len(hist) >= 2:
+        t_now = hist[-1][0]
+        ref, ref_ts = None, None
         for t, vv in reversed(hist):
-            if tcur - (t or 0) >= 0.2:
-                ref = vv
+            if t_now - t >= 0.2:
+                ref, ref_ts = vv, t
                 break
-        ref = ref or hist[-1][1]
+        if ref is None:
+            ref, ref_ts = hist[0][1], hist[0][0]
         try:
-            qc, qr = _qnorm(cur["quat"]), _qnorm(_vec2sample(ref)["quat"])
+            rs = _vec2sample(ref)
+            v_cur, w_cur = _vel(hist[-2], hist[-1])
+            v_ref, w_ref = (v_cur, w_cur) if len(hist) < 3 else _vel(hist[-3], hist[-2])
+            qc, qr = _qnorm(cur["quat"]), _qnorm(rs["quat"])
+            out["vel_mm_s"] = round((v_cur[0] ** 2 + v_cur[1] ** 2 + v_cur[2] ** 2) ** 0.5 * 1000, 1)
+            out["ref"] = {"pos_mm": rs["pos_mm"], "s": rs["s"], "dt_s": round(t_now - ref_ts, 3)}
+            out["trail"] = [[round(v[0], 1), round(v[1], 1), round(v[2], 1), round(float(t) - t_now, 3)]
+                            for t, v in hist[-300:]]
+            _p = hist[-300:]
+            _span = max((max(v[i] for _, v in _p) - min(v[i] for _, v in _p)) for i in range(3))
+            # 实测: 臂停着时 5Hz 真值仍有 ~1.1mm 抖动 ⇒ 2mm 内且速度 <2mm/s 算静止
+            out["idle"] = (_span < 2.0) and (out.get("vel_mm_s") or 0.0) < 2.0
+            if out["idle"]:                       # 静止时给一段更早的真实轨迹, 免页面只有一个点
+                bg = _tail(6000, back=3_000_000)
+                step = max(1, len(bg) // 900)
+                out["trail_bg"] = [[round(v[0], 1), round(v[1], 1), round(v[2], 1)]
+                                   for _, v in bg[::step]]
+                out["trail_bg_span_min"] = round((bg[-1][0] - bg[0][0]) / 60, 1) if bg else 0
             r = _corr().compute(
                 {"pos": [x / 1000.0 for x in cur["pos_mm"]], "quat": qc, "s1": cur["s"] * 6.283185,
-                 "vel": [0.0] * 3, "omega": [0.0] * 3},
-                {"pos": [x / 1000.0 for x in _vec2sample(ref)["pos_mm"]], "quat": qr,
-                 "s1": _vec2sample(ref)["s"] * 6.283185, "vel": [0.0] * 3, "omega": [0.0] * 3},
+                 "vel": v_cur, "omega": w_cur},
+                {"pos": [x / 1000.0 for x in rs["pos_mm"]], "quat": qr,
+                 "s1": rs["s"] * 6.283185, "vel": v_ref, "omega": w_ref},
                 axis=cur["axis"])
             d = r.as_dict()
             tau = list(d.get("tau_safe") or [0, 0, 0, 0, 0, 0])
