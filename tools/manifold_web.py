@@ -30,6 +30,47 @@ PORT = int(os.environ.get("ZMAX_MANIFOLD_WEB_PORT") or 8819)
 _CORR = None
 
 
+# ── 昨天的 se3 服务 (8815 分层几何看板 / 8817 跟随 / 5Hz 状态) ───────────────
+SERVICES = [("zmax-se3-geom", 8815, "SE(3) 分层几何看板"),
+            ("zmax-se3-state", 0, "A–E 状态向量 5Hz"),
+            ("zmax-se3-follow", 8817, "跟随真机 · 五流形")]
+
+
+def _systemctl(unit):
+    import subprocess
+    try:
+        out = subprocess.run(["systemctl", "show", unit, "-p", "ActiveState", "-p", "SubState",
+                              "-p", "ExecMainPID", "-p", "ActiveEnterTimestampMonotonic"],
+                             capture_output=True, text=True, timeout=3).stdout
+        d = dict(l.split("=", 1) for l in out.strip().splitlines() if "=" in l)
+        return {"active": d.get("ActiveState") == "active", "state": d.get("SubState"),
+                "pid": int(d.get("ExecMainPID") or 0)}
+    except Exception:
+        return {"active": False, "state": "unknown", "pid": 0}
+
+
+def _svc_block():
+    import urllib.request
+    rows = []
+    for unit, port, note in SERVICES:
+        s = _systemctl(unit)
+        s.update({"unit": unit, "port": port, "note": note})
+        if port:
+            s["url"] = "http://192.168.23.50:%d/" % port
+        rows.append(s)
+    geo = None
+    try:                                     # 8815 的分层数据 (R3 / S3 / S2 / S1)
+        with urllib.request.urlopen("http://127.0.0.1:8815/api/se3", timeout=2) as r:
+            g = json.loads(r.read().decode("utf-8"))
+        geo = {"tcp_mm": g.get("tcp_mm"), "quat": g.get("quat"), "phi_deg": g.get("phi_deg"),
+               "axis_err_deg": g.get("axis_err_deg"), "n": g.get("n"),
+               "nearest": g.get("nearest"), "age_s": g.get("age_s"), "truth_src": g.get("truth_src")}
+    except Exception as e:                                                # noqa: BLE001
+        geo = {"error": "%s: %s" % (type(e).__name__, e)}
+    return {"services": rows, "geom": geo}
+
+
+
 def _corr():
     global _CORR
     if _CORR is None:
@@ -166,6 +207,11 @@ def state():
             }
         except Exception as e:                                              # noqa: BLE001
             out["corridor"] = {"error": "%s: %s" % (type(e).__name__, e)}
+
+    try:
+        out["service"] = _svc_block()
+    except Exception as e:                                                  # noqa: BLE001
+        out["service"] = {"error": "%s: %s" % (type(e).__name__, e)}
 
     try:
         from lerobot.manifold import manifold_engine as me

@@ -62,6 +62,38 @@
     <div class="pill">相空间通道 (q,q̇)</div>
   </div>
 
+  <section>
+    <h3>昨天的服务 · R³ / S³ / S¹（zmax-se3-geom 8815 · 只读）</h3>
+    <div class="grid" style="margin-top:8px">
+      <div class="card">
+        <h2>R³ 平移</h2>
+        <div class="kv"><span>TCP / mm</span><b id="r3">—</b></div>
+        <div class="kv"><span>到记忆点</span><b id="r3d">—</b></div>
+        <div class="kv"><span>近点</span><b id="r3i">—</b></div>
+      </div>
+      <div class="card">
+        <h2>S³ 四元数（Hopf）</h2>
+        <div class="kv"><span>quat x y z w</span><b id="s3">—</b></div>
+        <div class="kv"><span>Hopf 相位 φ</span><b id="phi">—</b></div>
+        <div class="kv"><span>轴偏差</span><b id="axd">—</b></div>
+      </div>
+      <div class="card" style="display:flex;gap:12px;align-items:center">
+        <div>
+          <h2>S¹ 相位</h2>
+          <div class="kv"><span>s</span><b id="s1">—</b></div>
+          <div class="kv"><span>弧长</span><b id="arc">—</b></div>
+          <div class="kv"><span>索引</span><b id="idx">—</b></div>
+        </div>
+        <canvas id="ring" width="120" height="120" style="width:96px;height:96px;flex:0 0 auto"></canvas>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--mut)">
+      <span id="svc1">—</span><span id="svc2">—</span><span id="svc3">—</span>
+      <a href="http://192.168.23.50:8815/" target="_blank" style="color:var(--acc)">打开 8815 分层几何看板 ↗</a>
+      <a href="http://192.168.23.50:8817/" target="_blank" style="color:var(--acc)">打开 8817 跟随页 ↗</a>
+    </div>
+  </section>
+
   <div class="grid">
     <div class="card">
       <h2>🔷 SE(3)×S1 记忆流形</h2>
@@ -167,6 +199,31 @@ async function tick(){
     $("age").textContent = (s.age_s!=null? s.age_s.toFixed(3)+" s" : "—");
     $("src").textContent = (j.truth_src||"—").slice(0,42);
     $("vel").textContent = (j.vel_mm_s!=null? j.vel_mm_s.toFixed(1)+" mm/s" : "—");
+
+  // ── 昨天的服务: R³ / S³ / S¹ + 相位环
+  const SVC = j.service || {}, geo = SVC.geom || {};
+  const nearest = geo.nearest || {};
+  if(geo.tcp_mm){ $("r3").textContent = arr(geo.tcp_mm,1); }
+  $("r3d").textContent = (nearest.dist_mm!=null? nearest.dist_mm.toFixed(2)+" mm" : "—");
+  $("r3i").textContent = (nearest.i!=null? "#"+nearest.i : "—");
+  if(geo.quat){
+    const q = geo.quat, w = q[3];
+    $("s3").textContent = arr(q,3);
+    $("phi").textContent = (geo.phi_deg!=null? geo.phi_deg.toFixed(1)+"°":"—") +
+                           " · 转角 " + (2*Math.acos(Math.min(1,Math.abs(w)))*180/Math.PI).toFixed(1) + "°";
+  }
+  $("axd").textContent = (geo.axis_err_deg!=null? geo.axis_err_deg.toFixed(2)+"°":"—");
+  if(nearest.s!=null){
+    $("s1").textContent = nearest.s.toFixed(6);
+    $("arc").textContent = (nearest.s_mm!=null? nearest.s_mm.toFixed(1)+" mm":"—");
+    $("idx").textContent = "#" + nearest.i;
+  }
+  drawRing(nearest.s!=null? nearest.s : (j.se3||{}).s);
+  (SVC.services||[]).forEach((sv,i)=>{
+    const el = $("svc"+(i+1));
+    if(el) el.innerHTML = `${sv.active? "🟢":"🔴"} ${sv.unit}${sv.port? " :"+sv.port:""} · pid ${sv.pid||"—"}`;
+  });
+
     $("vmap").textContent = "速度 " + (j.vel_mm_s!=null? j.vel_mm_s.toFixed(1)+" mm/s" : "—");
     drawScene(j);
 
@@ -194,6 +251,25 @@ async function tick(){
 const cv = $("view"), cx2 = cv.getContext("2d");
 const K6 = Math.cos(Math.PI/6), S6 = Math.sin(Math.PI/6);
 function proj(p){ return [ (p[0]-p[1])*K6, (p[0]+p[1])*S6 - p[2] ]; }
+// ── S¹ 单位圆相位盘
+function drawRing(s){
+  const c = $("ring"); if(!c) return;
+  const g = c.getContext("2d"), W = c.width, H = c.height, R = W/2 - 10;
+  g.clearRect(0,0,W,H);
+  g.strokeStyle = "rgba(139,148,158,.5)"; g.lineWidth = 1.2;
+  g.beginPath(); g.arc(W/2,H/2,R,0,7); g.stroke();
+  g.fillStyle = "rgba(139,148,158,.8)"; g.font = "9px ui-monospace,monospace";
+  g.fillText("0", W/2-3, 11); g.fillText("0.5", W/2-9, H-3);
+  if(s==null) return;
+  const a = -Math.PI/2 + 2*Math.PI*(((s%1)+1)%1);
+  g.fillStyle = "#2dd4bf";
+  g.beginPath(); g.arc(W/2 + R*Math.cos(a), H/2 + R*Math.sin(a), 5, 0, 7); g.fill();
+  g.strokeStyle = "rgba(45,212,191,.85)"; g.lineWidth = 2.2;
+  g.beginPath(); g.moveTo(W/2,H/2); g.lineTo(W/2 + R*Math.cos(a), H/2 + R*Math.sin(a)); g.stroke();
+  g.fillStyle = "#8b949e"; g.font = "10px ui-monospace,monospace";
+  g.fillText(s.toFixed(3), W/2-14, H/2+4);
+}
+
 function drawScene(j){
   const dpr = window.devicePixelRatio || 1;
   const W = cv.clientWidth || 880, H = 340;
