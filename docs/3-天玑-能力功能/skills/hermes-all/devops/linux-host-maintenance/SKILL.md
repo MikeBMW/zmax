@@ -86,7 +86,9 @@ nvidia-smi pmon -c 1 -s u | tail -n +3      # 按进程看 sm%: 谁在吃 + 桌�
 **调度/进程churn**, 此时去查 GPU、磁盘、调频全是白查。按序取四个数(全只读):
 ```bash
 uptime; grep procs_running /proc/stat                 # load 与"同时可运行"的进程数
-awk '/^processes/{print $2}' /proc/stat              # 隔 3s 两次差 = 进程/线程创建速率
+awk '/^processes/{print $2}' /proc/stat              # 隔 3s 两次差 = fork+clone 总数(**含线程创建**)
+                                                    # ⚠️ 上百/s 不等于在 fork: 实测 187/s 里新建 pid 只有 1/s,
+                                                    #   其余全是线程 ⇒ 再用「两次 /proc 目录 pid 集合差」确认, 别据此报 fork 风暴
 awk '/^ctxt/{print $2}' /proc/stat                   # 隔 3s 两次差 = 上下文切换速率
 ss -tan | grep -E ":<端口>" | grep CLOSE-WAIT        # 服务端半关闭连接: 客户端已断, 处理函数没收摊
 ps -eo pid,ppid,pcpu,stat,etime,args --no-headers | awk '$2==<服务pid>'   # 它的 fork 子进程谁还在烧
@@ -135,6 +137,22 @@ ss -s | head -2                                              # TIME_WAIT/孤儿�
 - **几千条 TIME_WAIT 是内核态开销的来源**（实测 3645 条 + 上下文切换 67 万/s）: 停进程消不掉, 要客户端 keep-alive 或服务端按帧缓存 —— 见 `low-latency-camera-streaming`。
 
 ⚠️ **不碰用户正看着的画面类服务**: 推流吃 2~3 核但一停等于把他屏幕让空; 只在他说"清后台/降帧率"时才降 `--fps`/`--quality`，并且报清代价（帧率减半）。
+
+## 1g. 内存/显存被同一单元下的「孪生进程」吃满 = 泄漏的 worker, 不是业务增长
+
+**判据(只读, 一次出齐)**: 某个 unit 的子进程里出现**多条 cmdline 完全相同、只有启动时间不同**的进程。
+最省事的跑法: `python3 scripts/dup_children.py`(按 ppid 分组 + cmdline 归一 + 体积排序), 或手工
+`ps -eo pid,ppid,etime,rss,args --no-headers` 里按「父 pid + 去掉时间戳后的 argv」看谁重复。
+
+- 实测形态: 引擎主进程下的 worker(`…/intact_worker.py … --policy-name <同名>`)一天里被起了 **4 份**,
+  启动时间 06:55 / 09:39 / 10:52 / 14:10, 而 `.service` 的 `NRestarts=0` ⇒ **不是重启残留, 是主进程每次换 worker 没回收旧的**。
+  每份各持一份 CUDA context ⇒ 内存 4×1.0~1.5G + 显存 4×≈660MiB, 足以把 9.5G 挤进 swap, 表现就是整机发卡。
+- **处置: 杀掉 N-1 份, 留最老(最热)那份, 不要重启 unit** —— 重启会把他正看的链路一起打断, 而多出来的只是一份重复。
+  `kill -TERM <多出来的 pid…>` → `sleep 6` → 复核三组数: 剩余进程数 · `free -m` + `nvidia-smi --query-gpu=memory.used` ·
+  **该链路的产物 mtime 仍推进**(`stat -c %y <产物>.json` 连采 3 次, 间隔 4s 都变)。产物不动 = 杀错了那份。
+- 只留一份之后仍要问「为什么会被起 4 份」: 主进程侧缺 worker 生命周期管理(超时杀/单例锁/退出时 join), 这是**待办**, 不是清理项;
+  如实写进报告, 别用「已修复」盖过去。
+- 报告口径: 「RAM 22.1G→19.2G · 显存 7430→4780MiB · available 9.1→12.0G · 产物 mtime 仍在推进」四组数字。
 
 ## 2. DNS "清理"
 ```bash
@@ -198,6 +216,8 @@ ssh <host> 'systemctl --user is-active hermes-gateway; systemctl is-active herme
 |---|---|---|
 | journal | `journalctl --vacuum-size=200M` | ~1.1G |
 | 轮转日志 | `rm /var/log/{syslog.1,kern.log.1} /var/log/*.gz` + installer 目录 | ~126M |
+| **live syslog 主干** | `sudo du -sh /var/log/*` 看谁大 → `sudo truncate -s 0 /var/log/syslog` | **1.7G** |
+| **常驻服务日志** | `sudo find /var/log -maxdepth 1 -name 'zmax-*.log' -size +50M` 逐个 `truncate -s 0` | **1.46G** |
 | apt | `apt-get clean && apt-get autoclean` | ~135M |
 | 转储 | `rm -rf /var/crash/*` | ~7M |
 | pip/uv | `rm -rf ~/.cache/pip/* ~/.cache/uv/*` | ~438M |
@@ -209,6 +229,19 @@ ssh <host> 'systemctl --user is-active hermes-gateway; systemctl is-active herme
 
 总量口径: 上表一轮实测 **7.18GB** (274G→267G)。清理脚本写成 `/tmp/*.sh` 文件再跑 (别塞内联长命令),
 并落**台账 JSON**(每项前/后 MB + 总量) 到项目 `reports/`。
+
+**live 日志要「截断」不要「删」**: 服务的 fd 是 `O_APPEND`, `truncate -s 0` 之后进程从 0 继续往后写;
+直接 `rm` 则 fd 指向已删除 inode ⇒ **空间不回收**且日志永远看不到。截断后立刻验三件:
+`stat -c '%s %y' <file>` 在涨 · `systemctl --failed` 仍 0 · 页面/端口仍 200。
+
+**配套 logrotate 必须写 `su root root`**: 不给它时 `logrotate -d` 报 `parent directory has insecure permissions`
+并把整条配置**跳过**(本机 `/var/log` 不满足它的默认属主要求), 看着配好了其实永远不轮转。
+```
+/var/log/zmax-*.log { su root root
+  weekly / maxsize 200M / rotate 2 / missingok / notifempty / copytruncate / compress / delaycompress }
+```
+syslog 单开一份 `maxsize 200M / rotate 3`。改完 `sudo logrotate -d <conf>` 必须 **error 计数 0** 且能看到
+`considering log …` 逐条列出来才算生效; 只跑一次真轮转会立刻切走当前日志, 用 `-d` 预演就够。
 
 ## 4b. 用户说「这个路径怎么那么多图片, 没用的删掉, 有用的整理分类」⇒ 先分「散图」与「数据集」
 

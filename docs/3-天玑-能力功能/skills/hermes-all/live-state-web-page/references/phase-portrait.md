@@ -159,6 +159,46 @@ H  = [p[i]*p[i]/(2*max(I[i]/1e6,1e-9)) + 9.80665*z[i]/1000 for i in range(n)]
 
 ---
 
+## 9. 同一张画布两副面孔：空间轴测 ⇄ 相空间（画布上的单字按钮）
+
+用户已经有一张「末端轨迹」画布，再要一个「相」按钮时，不要新开一张画布——**同一 canvas + 同一个 2d context**
+切视图，他能在原位对照同一个末端。骨架：
+
+```html
+<div class="cwrap">
+  <button id="bviewphase" class="pill cbtn" title="切换这张画布: 空间轴测轨迹 ⇄ 相空间 (θ, p)">相</button>
+  <canvas id="view" width="880" height="340" style="width:100%;height:auto"></canvas>
+</div>
+<style>.cwrap{position:relative} .cbtn{position:absolute;top:8px;right:8px;z-index:2;min-width:36px}</style>
+```
+
+```js
+let VIEW_MODE = "space";
+function drawScene(j){
+  if(VIEW_MODE === "phase"){ drawPhaseView(j); return; }   // ← 在每拍重绘的入口分支
+  …原有空间视图…
+}
+document.getElementById("bviewphase").onclick = () => {
+  VIEW_MODE = (VIEW_MODE === "space") ? "phase" : "space";
+  const b = document.getElementById("bviewphase");
+  b.classList.toggle("on", VIEW_MODE === "phase");
+  b.textContent = VIEW_MODE === "phase" ? "相 ✓" : "相";
+  if(last) drawScene(last);                                  // 立刻重绘, 不等下一个 tick
+};
+```
+
+相空间视图直接用 `/api/state` 里的 `phase.trail`（`[[theta_deg, p], …]`，已抽稀 ≤600 点）与
+`theta_tol_deg / p_lim / kinds / span_min`，等能线按 §3 的解析式画，不新增服务端字段。
+
+🔴 **定标必须给最小跨度**：设备静止时 `theta` 全相同，`tmax-tmin=0` ⇒ ±1° 容差带 `fillRect` 占满全宽，
+整张画布一层淡青（看起来像画坏了）。`const minSpan = Math.max(12*(ph.theta_tol_deg||1), 6);`
+再把 `[tmin,tmax]` 撑到 `minSpan` 并加 6% padding；`kinds<=1` 时在图内补一行「臂静止 · 相点停在势阱谷底」。
+
+验收口径：静省时蓝像素可以为 0（折线画不出），所以**必须**再造一段变化的 `[{θ,p}]` 直接调 `drawPhaseView()`
+证明蓝像素上千、橙点 >0；两边都拿到再交，并在汇报里说清真实数据现在是静止的。
+
+---
+
 ## 8. 兼底：把回放出成 MP4（不依赖 JS、不受缓存/JS 报错影响）
 
 用户第二次说「没动」之后，不要再调页面了 —— 用同一份数据出视频挂在**同一端口**，他点开就能看。

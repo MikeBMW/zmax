@@ -248,6 +248,12 @@ params 与 LIBRARY 同名列保持一致。
 - **飞书方案通知脚本** (独立发飞书, GUI 没起也能发): 读 `~/.hermes/.env`(FEISHU_APP_ID/SECRET/FEISHU_REPORT_CHAT_ID, 默认 chat oc_c0b4048546145c5c581ddd1a9e8f565d) → `POST open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal` 拿 token → `POST open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id` msg_type=text, content=json.dumps({"text": msg}) — 返回 code=0 即成功; 消息体 = 版本号标题 + 本期成果分节(━ 分隔) + 关键数据; GUI 里等价方法 `_feishu_send_text_async`(后台线程, 训练/评估/推理完成自动发)
 - 版本升级后同步更新记忆(数学化改造/新模块/新画布名) — 记忆满了用批量 operations 替换精简旧条目腾空间
 
+- **画布 JSON 有两份, 改节点必须两份都写** (2026-11-20 踩: 只改了 canvas 那份 ⇒ 老倪"相 没有在画布上"): ① `data/database/zmax/sources/canvas/state_space_obs.json` = git 跟踪的唯一依据, 生成器 `spec.find_canvas()` 读它, `src/lerobot/engineering/flows/` 里是它的软链; ② `flows/state_space_obs.json` = **gitignored 运行时副本**, GUI 非冻结态经 `_flows_path()` **先命中这一份**(打包态先读 src 软链)。两份格式相同(`ensure_ascii=False, indent=1`, 末尾无换行), 最好把同一字符串同时写两份; 验收用 `sm._flows_path("state_space_obs.json")` 拿到真路径再 load, 只看 find_canvas 会漏掉 GUI 那份
+- **新节点坐标要贴现有节点, 别放画布外角** (2026-11-20 同一坑): 首版把节点放在 (10330,7358) — 全图 x 范围到 10690/y 到 7358, 节点合法但视图看不到 ⇒ 用户报"没有在画布上"。放置算法: 找入线源节点 bbox (`x+w`) + 60px 间距、y 对齐, 再查该矩形内是否已有节点(`x+w>x0 and x<x1 and y+h>y0 and y<y1`) ⇒ 空则用; 验收断言 `dx>=0 and dy==0` 且在新节点附近 300px 内有邻居
+- **offscreen 验证脚本 `import studio` 会静默 exit 0** (2026-11-20): `simulink_module` 顶部 import studio, 源码环境下 studio 模块级直接退出(无 traceback, exit 0, 连 print 都没有) → 验证脚本在 `import simulink_module` 前先 `sys.modules['studio'] = types.ModuleType('studio')` 占位; 症状是"脚本只打印前两行就 exit 0", 别去查 Qt/offscreen
+- **`gen_middleware_nodes.py` 重生成会把未载入注册表的节点 IMPL_KEY 抹成空串** (2026-11-20 踩: n_8815/n_phase 的 IMPL_KEY 变 `''` ⇒ 契约退化成"直通", 运行期永远 undefined): 生成器必须在**注册表已 import** 的进程里跑(gui-venv311 + 先 import 目标实现模块); `--check` 在裸进程里会对全部 82 个文件报"不一致"(是环境假警报, 不是真漂移); 被误写后按文件 `git checkout --` 回滚无关节点, 只留自己新增的那个
+- **可视化节点 = 契约壳 + 实现 + GUI 分发三处齐** (2026-11-20 加 "🌀 相空间相图"): ①画布 JSON 加 `type:"model"` 节点 + `viz_kind` 到 `params` ②`nodes/impl/<key>.py` 写实现并在 `shared_runtime._reg(key, [别名...], doc, fn)` 注册 ③`tools/gui/simulink_module._open_viz_node` 加 `if kind == "<viz_kind>": self.open_xxx(); return`; 缺第③步双击只记"未知可视化类型"; 且该文件属进程内代码 ⇒ **双击开窗必须重启控制台才生效**(旧窗口只会在重载画布时看到节点, 且旧窗口保存画布会把新节点覆盖掉 → 重启前别让它保存)
+
 ## 坑: 加节点会把整行"顶飞" + 右→左连线 + 残字带 (2026-09-19 实测)
 
 布局按**图依赖深度(lv)** 算列: `x = BASE_X + lv*COL_W`。

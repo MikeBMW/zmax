@@ -484,7 +484,16 @@ description: Use when 跑/查真机215点轨迹(停住点·帧号口径·点位�
 对比一刀切 `real` 411s(1.91s/点, 无抑制无重锚) · 逐点 x1 ≈21 分钟 · x2 ≈14 分钟。
 断层 `#19→#20` 31.06° 拆成 2 点单独一块 **9.79s 一次过**(并块时是 20s 超时 + 27.7° 失败)。
 
-起跑姿势(8797 白名单已加 `flow`, 但服务进程不改就不认 ⇒ 想立刻跑就绕开它):
+起跑姿势 A（**首选，走 8797**，只要服务在加白名单之后重启过就直接认 `flow`）：
+```bash
+curl -s -X POST 127.0.0.1:8797/api/arm/step_traj -H 'Content-Type: application/json' -d '{"reset":true}'   # 游标在末尾时必先做
+curl -s -X POST 127.0.0.1:8797/api/arm/step_traj -H 'Content-Type: application/json' \
+     -d '{"n":215,"start":0,"speed":100,"speed_mode":"flow"}'      # 回执里要有 speed_mode:"flow"
+```
+实测整轮 215 点 `elapsed_s=485.9`（2.26 s/点）`ok_all=true`、夹爪 #9/#205 都触发；起跑后判活看
+`/status` 的 `running=true` 与 `start+done` 在涨（`cursor` 只在整轮结束才推）。
+
+起跑姿势 B（服务进程还是旧版、不认 `flow` 时才用）：
 ```bash
 python3 - <<'EOF'
 import json,time; p='zmax_data/rokae_sdk/traj_step_cmd.json'
@@ -743,6 +752,119 @@ python3 -u tools/flow_state_bridge.py <新日志> <pid> <start>    # 偏移必�
 超阈值就用 S² 上沿大圆的测地方向补一个小的姿态修正量(不是直接改位置); 滚转 `roll_err_deg` 只在末端对位那一下用。
 别把轴误差塞进 `err_deg`(那是关节到位误差), 两者混一起就分不清是“没走到”还是“走对了但方向歪了”。
 
+## 🌍 跑批时看实时哈密顿量 / 相空间 (H=K+U)
+
+用户一边跑一边盯「相空间看你的实际哈密顿量」时，先把**真相链**说清再报数：
+
+- `hamiltonian.json` 只由 `ss_engine_loop.py::emit()` 每周期写（画布节点 `ss_grav_h` 故意不落盘，避免互抢）；
+  算式唯一依据 = `lerobot.manifold.state_space_energy.live_energy()`，面板 `tools/gui/phase_space.py` 读同一份。
+- 🔴 **判 H 是不是活的**：比 `hamiltonian.json` 与**同目录** `trace_live.json / torque_live.json` 的 mtime。
+  同目录在动、只有 hamiltonian 冻住 ⇒ engine loop 挂了（emit 里 try 吞掉异常就不会写盘）；再看
+  `/var/log/zmax-ss-engine.log` 最后一条 `周期 N` —— 与 hamiltonian mtime 逐秒吻合就是同一刻停的。这时**别改算式**，
+  要么点名重启 `ss_engine_loop`（属“重启须点名”的服务），要么起一个 1Hz 只读侧车代写（陈旧 >5s 才写、引擎恢复即让位）。
+- 🔴 **`trace_live.json` 的 `src` 可能写着它是仿真**（实测 `metaworld seed=0` 的 episode，末端 `[0.035,0.611,0.125]`
+  与真机 TCP `[0.669,0.196,0.264]` 差一个坐标系）⇒ 用它算的 H 不是真机的。要真机口径就自己按同算式换真值：
+  `pos = tcp_out/latest.json`、`target = real_traj_joints.json frames[cursor-1].p`、`ξ_e = target − pos`、`m=3.643 · k_lat=80 · k_ax=400`。
+- 🔴 **「点怎么不见了」= 面板视野钉死**：原 `setXRange(-75,75)/setYRange(-0.9,0.9)`，而真机 Θ 实测 ±268~354mm、H 到 26J ⇒ 点被裁出框。
+  修法见 `phase_space.py::_autoscale`（出框才放大 + 15% 余量 + 计入等能椭圆半轴）与尾迹 400→2000；
+  **改 `phase_space.py` 必须重启控制台才生效**，他不重启就另开独立窗口（自动缩放 + 全过程尾迹 + 落 jsonl）。
+- 🔴 **「轨迹为什么不规律」是口径不是故障**：Θ 用的是“当前游标帧目标 − 实测”，参考点按块跳（21% 相邻样本 |ΔΘ|>30mm），
+  速度只有 5Hz 差分（K/H 中位 0%），H 上升样本 63% ⇒ 这是跟踪误差相图，不是阻尼振子。要真正的相图必须换固定参考 +
+  高频/窗口速度 + 跨块不连 + 无量纲化，只调屏幕不会让 H 有物理意义。
+- 采样器两条硬规则：同一 `ts` 重复读到要 `return`（否则速度算成 0），速度用 ≥0.4s 窗口差分；5Hz 采样+2000 点重绘会抢 CPU，整轮 2.26→2.74 s/点。
+  7. **相图出三件套，别只给 z**: 只画 `(z, p_z)` 仅因重力势只依赖 z；实测水平运动占 v² 的 **67%**
+  (`|v_xy|` P90 25.7 vs `|v_z|` 17.9 mm/s)，6% 样本在 z 图上被误当成“静止”。被问“为什么只画垂直速度/为什么不是 p”
+  ⇒ 先答共轭对（`p = m·v_z`，只差常数 3.643），再给 z-p / 末端三轴 / 六关节三张图各一句物理含义；
+  六关节 `(q_i, q̇_i)` 才是控制器口径（MoveAbsJ 逐关节），换向次数就是“动作落在哪几个关节”的判据。
+  出三轴/关节图**不必重跑**：遥测 `zmax_data/ss_live/state_<日期>.jsonl`（10Hz，`t/tcp/jpos/jvel`）按跑批 ts 窗口过滤重算。
+  细节见 `references/live-hamiltonian-phase-portrait.md` §八。
+
+> 📌 三层数据链、真机口径算式、实测统计（Θ/|ΔΘ|/|p|/K 占比/H 单调性）、视野补丁与采样器定式见
+> `references/live-hamiltonian-phase-portrait.md`。被问“这是正常的么 / 点怎么没了 / 能放一个相空间么”先读它。
+
+## 🌀 跑批时看"实际哈密顿量/相空间"的口径 (2026-11-20 实测四轮)
+
+被要求"你在相空间看机器人实际能量"时, 先弄清三件事, 否则画出来的图必被质疑:
+
+1. 🔴 **位姿 relay 默认只有 0.5Hz**: `tools/orin_pose_relay.py` 的 `PERIOD = ZMAX_POSE_RELAY_HZ or 2.0`
+   ⇒ `tcp_out/latest.json` 实测 **0.50Hz / 相邻样本差 2.000s**。拿它算速度, 54% 样本算不出 (记 0),
+  相点全压在 v=0 横线上。**要真速度就直连它上游的本机桥** `http://127.0.0.1:39071/status`
+   (JSON 里 `status.endInRef=[x,y,z,rx,ry,rz]`, `status.jointPos/jointVel`, 实测 10~20Hz, 每次都是新样本);
+   别去改那条 relay (它是下游唯一依据文件), 自己读、自己写独立 jsonl。
+2. 🔴 **相图两种口径各有致命伤, 报数前必须选清楚**:
+   · `Θ=目标−实测` (内置 panel / `live_energy` 口径): 参考点按块跳 (flow 档 12 点/块) ⇒ 实测 21% 相邻样本
+     |ΔΘ|>30mm、Θ 冲到 ±350mm, 相轨迹是锯齿, **不是动力学**。
+   · `(z, v_z)+重力势` U=m·g·(z−z0): 无参考点 ⇒ 天生连续, 但 3.6kg 臂在 20mm/s 量级下
+     **K/H 中位 0.0000%、最大 0.26%** ⇒ 图基本上是高度剖面, 没有"相流"。
+   两种都不是自由动力学: 位置控制分段往复, 相图没有闭合环, H 实测 45% 样本上升 (电机注能) 属正常。
+3. **内置相空间面板视野写死 `X±75mm / Y±0.9`** (`tools/gui/phase_space.py::_draw_portrait`):
+   真机跑批 Θ 到 ±268mm、H 到 15.4J ⇒ 实测点被裁到框外, 用户直接说"点不见了/怎么又没了"。
+   已加 `_autoscale()` (只在点或尾迹要出框时放大 15% 余量, 纳入 H 等能椭圆半轴) + 尾迹 400→2000;
+   **改这个文件必须重启控制台才生效** ⇒ 用户正在看时先开独立窗口 (自绘 auto-range), 别指望热更。
+4. 独立窗口定式: 20Hz 采样 + 0.25s 最小二乘速度 + 按点号着色 + 停住点菱形 + 每轮落 jsonl(带 running/cursor),
+  跑完导 PNG 存档。样本统计**必须只取 running=true 的区间**, 否则跑完的静止样本 (v=0, i 卡在 214/0) 会把
+  占比全带偏 (实测不筛时静止占比 82%, 筛后 79% 是跑批期真实值)。
+  5. **速度要真值就 `v_tcp = J(q)·q̇`** (URDF `data/database/zmax/sources/config/moveit_xms5/urdf/xms5_r800_w4g3b4c.urdf`,
+  tool1 偏移 0.2587m; 链对错用 `FK(q)` 与桥 `flangeInBase/endInRef` 比, 实测差 ≤1.8/2.9mm)。
+  🔴 `jointVel` **会整帧为 0**(桥缓存帧不是静止) ⇒ 必须退回位置差分, 不许把异常/零值静默当 0 写进相图。
+  纵轴报 `p = m·v_z`(kg·m/s) 更规范: 与 `v_z` 只差常数 3.643, 被问“为什么不是 p”时就这么答并顺手改轴标。
+  6. **中途停顿后就地续走**: 按 `frames[i].j` 与真机 `jointPos` 逐帧算 `max|Δq|` 定 start(实测差 0.11°),
+  再 `{"n":215-idx,"start":idx,"speed":100,"speed_mode":"flow"}`; 姿态自交有多个 5° 内候选 ⇒ **别拿 align 定 start**。
+  🔴 8797 `/status` 读日志会陈旧到“骗人”(实测报 `done=0 未跑过` 而同刻容器还在走) ⇒ 判活看 `pgrep arm_step_[t]raj` + `docker ps` + 桥位姿在变;
+  停臂要 `sudo`, `kill -9`(TERM 对容器内 python 常无效), `pkill -f "arm_step_traj"` 会杀掉自己 shell ⇒ 用 `arm_step_[t]raj`,
+  停完连采 2~3s `endInRef` 位移 **0.00mm** 才算停稳。细节见 `references/live-hamiltonian-phase-portrait.md` §五/§六。
+
+## ⚡ 连续档: `zone` 转弯区 = 把「走一下停一下」变连续（只做研究，不做生产）
+
+用户说「轨迹不连续 / 机器人经常走一下停一下，能改成连续轨迹么」时:
+
+- 根因不是速度档，是 **`MoveAbsJCommand(..., zone=-1)`**：第三参是转弯区，`-1` 实测等同逐点精确停。
+- 通道已有：`ZMAX_REPLAY_N/SPEED/ZONE=3 bash tools/rokae_sdk_run.sh --script arm_replay_continuous.py`
+  （一次 append 整批 + 一次 moveStart，与「多次独立 append」不同，实测不触发 -60611）。
+- 实测：40 点 `1.397 s/点`（停点档 2.2）· `|v| P50 3.2 → 24.2 mm/s` · 静止样本 24%→**13%** · 末误差 0.10°；215 点一次追加同样成功（345.4s / 1.606 s/点）。
+- 🔴 **两个必给的开跑参数**：① `ZMAX_REPLAY_BUDGET_X=8` —— 默认 3 算出的预算只有 128.6s，而整条实测 345s
+  ⇒ 必报「第 1 批超时未停稳」并把臂停在半路；② `speed` 最多 200%（100→1.606 · 200→1.071 s/点，
+  **400 → 控制器 power=off 且臂未动**）—— 被问「能真按录制速度么」直接给这条阶梯，别拿加 speed 去试。
+- 🔴 **连续档不在夹爪 #9/#205 与 AOI #125/#151/#172 停** ⇒ 没夹、没检测 ⇒ **不能当生产节拍**；
+  生产版连续要「点前降到 5% + 精确停」而不是全程 zone。
+- **400% 掉电后的恢复**: 控制器会停在 `PowerState.off`(臂未动、op=automatic), 直接
+  `bash tools/rokae_sdk_run.sh --script arm_power.py on` 一次性恢复(回执 `power_after: PowerState.on`,
+  关节角与掉电前逐位相同); 起跑前必须再确认 `PowerState.on + OperationState.idle`。
+- **整条 215 的参考值**: 100% = 345.4s(1.606s/点, 误差 0.12°) · **200% = 206.5s(0.960s/点, 误差 0.12°)** ⇒
+  比停点档 532s 快 2.6 倍、静止样本 24~79% → **3%**; `|v|` P50 `3.2 → 24.2 → 42.2 mm/s`(停点/100%/200%)。
+  但关节峰值只 10~13°/s(录制是 124~141°/s) ⇒ 200% 时卡的是加速能力与控制器限速, 不是 zone。
+- 🔴 **“上 RT 就能贴录制速度”是错的默认假设**: 仓库里没有任何 RT 实现(`goto_xyz`/`axial_retract` 全是 `NrtCommandMode`)。
+  RT 的接口面/前置/实测上限见技能 `rokae-sdk-motion-semantics` 的 RT 流式参考件(rt-servo-streaming);
+  **动 RT 前先零运动探针数回调频率**(容器内实测仅 ~7Hz), <50Hz 就直接判定做不到，不要拿 `VMAX`/`rate`/`zone` 反复试。
+  且 RT 失败与 400% 掉电**不是同一种恢复**: RT 碰撞会锁 EStop, `arm_power.py on` 救不回来, 必须人工示教器复位。
+- 相图/节拍研究时记录器必须与绘图分离（绘图层会把采样拖到 2~4Hz）。
+
+> 📌 env 清单 · 安全闸 · 实测表 · 记录器定式见 `references/continuous-replay-zone.md`。
+
+## ⚡ 连续轨迹 / 提速的上限 (2026-11-21 实测三轮, 同一条 215 点)
+
+| 模式 | 总时长 | 每点 | \|v\| P50 | P90 | max | 静止占比 |
+|---|---|---|---|---|---|---|
+| 停点回放(生产用) | 532 s | 2.47 s | 3.2 | 29.2 | 49.4 | 24–79% |
+| 连续 zone=3mm speed=100% | 345 s | 1.61 s | 24.2 | 33.3 | 36.2 | 13% |
+| 连续 zone=3mm speed=200% | 206 s | 0.96 s | 42.2 | 67.9 | 77.6 | 3% |
+| speed=400% | — | — | — | — | — | 控制器 **掉电** |
+
+- **`MoveAbsJCommand(target, speed, zone)` 的第三个参数是转弯区(mm), 不是占位**: 一直传 -1 = 精确停 ⇒ 每点必停。
+  连续化只需 `zone=3~5` + `tools/rokae/arm_replay_continuous.py`(整条一次 append)。
+- **该脚本的 `budget_s = 录制时长 × ZMAX_REPLAY_BUDGET_X(默认 3)`**: 连续模式实测要 7~8 倍录制时长,
+  默认预算会在中途 `moveStop`(看着像失败, 其实只是超时) ⇒ 跑整条给 `ZMAX_REPLAY_BUDGET_X=8~10`。
+- **speed 参数不是百分比速度**: 200% 才 0.96 s/点(仍是录制 0.2 s/点的 4.8 倍), 400% 直接掉电。
+- 🔴 **RT(RtCommandMode) 在 550C 容器内跑不到录制速度**: ①`connectToRobot` 必须显式给本机出口 IP,
+  否则 `1338 Failed to open UDP socket`; ②`setControlLoop` 有三重载歧义, 必须用 `setControlLoopJoi/Car/Tor`;
+  ③`startLoop` 前必须先 `startMove(jointPosition)`(目标=当前角即不动, 可零运动测周期);
+  ④**回调实测只有 ~7Hz**(472 拍/66.9s) ⇒ 先报 `kActualJointVelocityLimitsViolation`, 改弧长积分后 `kCollision`;
+  ⑤这两类失败都会让**控制器掉电进 EStop**, 软件 `clearServoAlarm+moveReset` 清不掉, 只能示教器复位。
+- **掉电后的恢复入口**: `tools/rokae/arm_recover.py`(clearServoAlarm→moveReset→`setPowerState(True,{})`);
+  注意 `setPowerState` 签名是 `(bool, ec)`, 传 `x.PowerState.on` 会 TypeError。
+- 相图口径补充: `(z,p)+重力势` 无参考点⇒连续, 但 **K/H 中位 0.0000%、最大 0.25%**(3.6kg 臂 20mm/s 量级),
+  要看出"相流"必须看快速段或换关节空间; 六关节相图直接读 `jpos/jvel` 即可。
+
 ## 8793 / 8797 的重启姿势
 - **先看 `/proc/<pid>/cgroup` 再决定怎么重启**, 别按记忆猜:
   · **8797 = systemd 单元 `zmax-traj-ar.service`** ⇒ `sudo systemctl restart zmax-traj-ar`(argv/env 全在 unit 里, 不会丢);
@@ -831,6 +953,8 @@ python -c "..."  对比 tcp_out/latest.json 的 joint 与 frames[0]['j']   # 每
 - 「回初始位置」= 与 `frames[0].j` 逐轴比(不是看 TCP 毫米值), 报每轴差 + 最大值; 演示器手动摇回去也算, 别自己发运动指令去"补"。
 - 拒发要看真因: 日志 `state_before{power:on, op:jogging}` ⇒ 是 **op 闸**(他在示教/拖拽), 不是代码坏了; 别改代码。
 - 🔴 真要**立刻停臂**就杀执行容器: `sudo docker kill $(sudo docker ps --format '{{.ID}} {{.Image}}' | grep humble | grep -v -E 'moveit|tap|agent|sampler' | awk '{print $1}')`。段在容器里跑, 停 `start.py`/挂断点都只管住派单方; 杀完按 `/proc/<pid>/stat` 的 `Z` 把 `traj_step_state.json` 清成 `running=false pid=0`(僵尸会卡住下一次派单)。
+  ⚠️ **别用 `docker ps -q | xargs docker kill` 一把梭**: 同机还跑着只读采样容器(`ft_direct_sampler` / `ss_remote_tap`),
+  一起杀掉会丢采集中断(它们会自己重启, 但那几分钟的力/位姿样本没了)。按命令名排除, 只杀 `arm_step_traj.py` 那个。
 - 复位三件套: `POST /api/arm/step_traj {"reset":true}` 把游标打回 0; 把 `zmax_data/ss_live/traj_flow.json` 刷成 `phase=IDLE, cursor=0`(否则页面横幅还挂着旧的"第88/215点", 他会以为在跑); 删掉 `/tmp/zmax_stop_at_<tag>` 自停触发器(留着就是每拍停=看起来卡死)。
 
 ## 验收清单

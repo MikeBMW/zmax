@@ -34,7 +34,20 @@ metadata:
 | `MoveAbsJCommand(jointPos, speed, zone)` | `JointPosition` | 关节空间插值（绕奇异/贴限位的救命通道） |
 | `setPowerState(on, ec)` | `on: bool` | 传 `x.PowerState.on` 枚举会 `TypeError` |
 
-- **第三参 `zone` 是转弯区，不是速度**（代码里常见的 `-1` = 默认转弯区）。
+- **第三参 `zone` 是转弯区，不是速度**。`-1` 看着像"默认值"，实测**等同逐点精确停**：每点必"静止→加速→减速→静止"，
+  这就是"轨迹一顿一顿"的根因（相图上 |v| P50 只有 3 mm/s、静止样本占多数）。要连续传 **>0 的毫米数**（转弯区），
+  控制器在到点前就开始切下一点；实测 `zone=3` 让同一段轨迹 |v| P50 从 3.2 → **24.2 mm/s**、静止占比 24%→**13%**、
+  `1.40 s/点`（停点档 `2.2 s/点`）。改 zone 只用改这一个参数，不要动 speed 档。
+- 🔴 **`speed` 不是「录制速度的百分比」，200% 就是这条路的天花板**：同段 21 点只改 speed ⇒
+  `100 → 1.606 s/点` · `200 → 1.071 s/点`（接受）· **`400 → moveStart 后控制器立刻 power=off，臂一动不动（sent=0）`**。
+  录制真值是 0.2s/点、末端峰值 862 mm/s、关节 124–141°/s，而连续档实测只到 36 mm/s ⇒ 差 10~24 倍。
+  被问"能真按录制速度跑么"直接给这条阶梯 + 一句"要贴时间轴只能上 RT/servo 50Hz 流式"，别拿加 speed 去试。
+  🔴 **RT 流式不是"调个模式就行"**：接口面、四个必经坑（`connectToRobot(IP, localIP)` / `setControlLoopJoi`）
+  与实测上限（容器内回调仅 ~7Hz ⇒ 速度越限 / 碰撞，每次失败都掉电锁急停）见
+  `references/rt-servo-streaming.md`。**动 RT 前先跑零运动探针数回调频率，<50Hz 直接判定做不到**，
+  不要拿 `VMAX`/`rate`/`zone` 反复试——那不是参数问题。
+  掉电后只用 `--script arm_power.py on` 上电（实测 0.5s、关节角不变、臂不动），上电后先只读确认再谈下发。
+  ⚠️ zone 只在**一次 append 多条**时才有意义（单点 append 时它就是精确到位）；掉不停住点见文末"连续通道"。
 - `moveAppend` 第一个参数是 **Sequence** ⇒ 传 `[cmd]`，不要传裸 cmd。
 - `cmdID` 必须 `x.PyString(...)` 包装，传 python `str` 直接 `TypeError`。
 - 关节目标只能用 `MoveAbsJCommand`：J3 贴近限位时任何笛卡尔下降都被拒，用它把关节拧开即可恢复。
@@ -55,10 +68,23 @@ moveStart end (-60611)          ← 一次性追加多条后单次启动被拒
 
 - **铁律**: 这条控制器只接受 **每条 append 后单独 `moveStart`**。`-60611` 不是参数问题，
   换 `zone`/`speed` 都救不回来——不要在同一方向上反复试参数。
-- 要真连续插补只能换 `MoveL`/`MoveJ` 或 RT/RL 实时接口（另一套下发方式，风险高于本路径）。
-  没在空跑/仿真拿到证据前不许上真机。
+- 上面那条**只针对"多次独立 moveAppend 调用"**。**单次 `moveAppend([cmd1…cmdN])`（一个列表）+ 一次 `moveStart`**
+  是可行通道，而且就是仓库里 `tools/rokae/arm_replay_continuous.py` 的做法：实测 `zone=3` 下 40 点一批
+  **55.9s / 1.40 s/点 / 末误差 0.10°**，215 点同样一次追加成功（无 -60611、无急停）。
+  区别在"append 调了几次"，不在"一次排了几条命令"。
+  🔴 这条通道的**前置条件必须全部满足**，否则一样会把急停交回来：① 先 `--dry` ② 起步用 10~40 点小批量验证
+  ③ 任一次 append/start 回 `ec≠0` 立即 `moveStop` 不重发 ④ 全批预检关节跳变（本轨迹 `#19→#20` 31.1° 是最大）。
+  已被 -60611 拒过的控制器，**别再在同一方向上加量试**；改用 `MoveL`/`MoveJ` 或 RT/RL 才是另一条路。
+- 🔴 **整批下发的超时预算按"录制时长×系数"算会必然误停**：`arm_replay_continuous.py` 的预算是
+  `dur_src × ZMAX_REPLAY_BUDGET_X`（默认 3.0 ⇒ 42.85s×3 = **128.6s**），而连续档整条实测要 **321~345s**
+  ⇒ 回 `ok=false / why="第 1 批超时未停稳(operationState=moving), 已停"` 且**臂停在半路**。
+  起跑就带 `ZMAX_REPLAY_BUDGET_X=8`；判因看一行：`budget_s` 与 `batch.secs` 同量级或更小 = 预算的锅，不是轨迹卡顿。
+- 📌 连续回放的完整用法（env `ZMAX_REPLAY_N/SPEED/ZONE/CHUNK`、整批超时预算、收尾到位判据、
+  以及"连续档不在夹爪/AOI 点停 ⇒ 只能做相图/节拍研究，不能当生产节拍"）见
+  `zmax-real-traj-215-autorun` 的 `references/continuous-replay-zone.md`。
 - ⚠️ 急停后 `setPowerState` **救不回来**（回 `-3 The robot is in EStop state, please recover`）
-  ⇒ 必须人工按示教器/控制柜急停复位。崩了第一件事是**只读确认关节角没乱动**
+  ⇒ 必须人工按示教器/控制柜急停复位。实测 `clearServoAlarm()` + `moveReset()` 都回 ok 也**解不开**
+  （不要以为先清报警再上电就能恢复，白等 20s）。崩了第一件事是**只读确认关节角没乱动**
   （与下发前数值逐轴比），确认臂停在安全位置后再谈下一步。
 
 ## moveStart 之后的等待序列（顺序错了会误判「0.15s 就跑完了」）
@@ -151,4 +177,6 @@ moveStart end (-60611)          ← 一次性追加多条后单次启动被拒
   实测 215 点全程 max 0.140° / 均 0.115°（阈值 0.6°）。
 - **异常即停不重发**：任一点失败/被拒立即中止，不重发不补偿（重发会叠加成第二个动作）。
 - 跑完留证：`power=on · idle · automatic` + 逐点 `err_deg` 全表 + `sum(secs)`。
-- 上电/下电用仓库现成的 `tools/rokae/sdk_power.py --on|--off`，别另写一个。
+- 上电/下电用容器里的 power 脚本：`bash tools/rokae_sdk_run.sh --script arm_power.py on|off`
+  （实测 on 用 0.5s、只调 `setPowerState` 不发运动、回执带 `joints_deg` 前后对照 ⇒ 能证明"上电没带动作"）。
+  别在容器外另写一个上电脚本，也别用 `setPowerState` 直调 `PowerState` 枚举（`TypeError`）。

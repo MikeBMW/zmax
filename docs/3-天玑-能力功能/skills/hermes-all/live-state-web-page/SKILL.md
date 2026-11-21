@@ -28,6 +28,11 @@ metadata:
   真值源 5Hz 也不必跟到 5Hz。
 - 服务端每次请求**现算**（或极短 TTL 缓存），不落中间文件。
 - 常驻用 `setsid` / `background=true` 起，日志重定向到固定文件（`/tmp/<name>.log`）供排查。
+  ⚠️ **`setsid` 起的进程重启就没了** —— 用户下次开机打开收藏的链接就是 404，而他会认为"页面被删了"。
+  一旦确认这个页面要长期给人看，就落一个 systemd unit（`Restart=always` +
+  `StandardOutput=append:<repo>/zmax_data/logs/<name>.log`，`After=` 它依赖的只读真值服务），
+  按端口 kill 掉手工 pid → `systemctl enable --now` → 复核 `is-enabled` / `is-active` / 页面 200 / 静态资产 200。
+  交接时分开写：**哪几个端口已由 unit 托管**、**哪几个仍是手工进程（开机要人拉）**。
 
 ## 五条硬规则
 
@@ -65,6 +70,23 @@ metadata:
 - 公差环/阈值线用虚线画，并注明是否各向异性（径向 0.3mm 与轴向 6mm 差 20 倍，画一个环会误导）。
 - 页面文案给一句「现在在动什么」，不堆参数名。
 
+## 给已有画布加视图切换按钮（「相」这类单字按钮）
+
+用户只丢一个 URL + 一句「增加一个 <字> 按钮，在画布上」时，按下面做，**不要先问选择题**：
+
+- 按钮浮在画布右上角：外层 `.cwrap{position:relative}`，按钮 `position:absolute;top:8px;right:8px;z-index:2`
+  且放在 canvas **之前**的兄弟位置；label 就是他要的那个字，别扩写成「相空间」长标题。
+  激活态只改样式不改词义：`textContent = "相 ✓"` + `classList.toggle("on", 激活)`，title 里写两种状态各是什么。
+- 🔴 **视图判定的分支必须放在每拍自动重绘的入口**，不能只在 onclick 里画一次：
+  `function drawScene(j){ if(VIEW_MODE==="phase"){ drawPhaseView(j); return; } … }`。
+  页面每 1~2s 轮询重绘，只在 handler 里切视图 ⇒ 下一个 tick 立刻刷回旧视图，表现成「点了没反应」。
+  两种视图共用同一个 canvas 与同一个 2d context；切回时用最后一次数据立即重绘（`if(last) drawScene(last)`）。
+- 🔴 **自动定标 + 半透明标注带 = 数据退化成常数时标注带铺满整张画布**：设备静止时 θ 只有 1 种取值，
+  坐标轴范围被压到 0，±1° 的容差带就占满全宽，整张画布被刷成一层淡色（实测 70% 像素被
+  `rgba(45,212,191,.10)` 盖住），看着像「画布被搞坏了」。给最小跨度：`minSpan = max(12*tol, 6)`（度），
+  并在图内写一句「设备静止 · 相点停在势阱谷底」，别让它静默成一片色块。
+- 新按钮/新 canvas 的 id 先查重（`grep -o 'id="[^"]*"' <page>.html | sort | uniq -d`），别撞页内已有的文本节点 id。
+
 ## 验收（不靠眼睛）
 
 ```
@@ -75,6 +97,19 @@ ss -ltnp | grep :PORT                                                       # �
 浏览器侧（无视觉工具也能验）：取 DOM 文本核关键读数，再 `canvas.getContext('2d').getImageData()`
 **按颜色计像素**：蓝=近期轨迹、灰=历史轨迹、点=当前位置，三者都 >0 才算真画上了。
 空画布同样 HTTP 200，页面「能打开」不等于「画上了」。
+
+补三条判据（这次踩出来的）：
+
+- **颜色判据要互斥**：`B>170 && B>R+70` 会把青色容差带也算成「蓝色轨迹」，导致「轨迹很多」的假证据。
+  按 RGB 三元组近精确比对，或一轮只断一类颜色。
+- **把画布降采样成亮度字符图**确认「画的是图不是色块」：20 行 × 76 列，`. : - + * #` 按亮度分档打印。
+  铺满一片同档亮度 = 某条 `fillRect` 盖满了整块（先查标注带的范围），不是产物。
+- **真机数据退化时用合成数据验绘制路径**：设备静止时 `trail` 全是同一个点，折线一笔也画不出（蓝像素 = 0，
+  但这时不代表代码坏）。造一段 `[{θ,p}]` 直接调 `drawPhaseView({phase:{trail:…}})`，蓝像素涨到几千、
+  橙点 >0 即证明绘制与定标都对；然后在汇报里写明「现在是静止所以只有一个点」，别把退化当通过。
+- **浮在画布上的按钮要先证明它在最上层**：`document.elementFromPoint(中心)` 必须返回按钮自己（z-index 生效）；
+  元素在视口外时 `browser_click` 会落空（点击不报错、状态也没变）—— 先 `scrollIntoView({block:'center'})`
+  再点，点完读 `textContent` + `className` 是否变化才算真点到。
 
 ## 坑
 
@@ -94,15 +129,22 @@ ss -ltnp | grep :PORT                                                       # �
 | 用户两次说「没动」，你这边画面在动 | 他那个标签页还是旧 HTML（旧版 JS 本来就是坏的） | 让他看 build 戳（规则 7）→ `?v=N` URL → 直接给 MP4 直链；别在「我这边在动」上跟他争 |
 | `cv2.VideoWriter(mp4v)` 的视频浏览器「无法播放」 | 页面 video 报 `Unable to play media`，`video.error.code` 非空 | mp4v 是 MPEG-4 Part 2，Chrome 不解码；`ffmpeg -i a.mp4 -c:v libx264 -pix_fmt yuv420p -crf 23 -movflags +faststart b.mp4` 换 H.264（42.9s/880x440 → 313KB）|
 | 内嵌 video 不自动播 | 控制台 `NotAllowedError: play() failed because the user didn't interact` | 即使没有音轨也要写 `muted`：`<video muted autoplay loop playsinline preload="auto">` |
+| 页内 mp4 拖不动进度条 / 播一遍就卡死 | 服务端对 `Range` 请求也整份回 200 | 路由里认 `Range: bytes=a-b` 回 **206** + `Content-Range: bytes a-b/len` + `Accept-Ranges: bytes`；验收 `curl -s -r 0-1023 -o /dev/null -w '%{http_code}'` 要为 **206**，另测一次整份 `200` 与 `Content-Type: video/mp4` |
 
 ## 参考
 
 - `references/phase-portrait.md` —— 相空间相位图（横轴 θ 转角 / 纵轴 p 动量）：先验坐标真会变、等能线与 E=2k 分界线的解析画法、静止→一个点的诚实标注、像素验收。
   用户说「相空间画得不好 / 应该有相位图」时按它做，别拿三维位置视图充数。
+  已有画布上要加一个「相」按钮（同一张画布切 空间轴测 ⇄ 相空间）时按 §9：按钮浮层 + 分支放重绘入口 + 最小跨度。
   用户进一步要求「映射真的哈密顿量」时，按里面 §6 的**球摆约化**（r=|TCP| · θ=与 +Z 夹角 · V=g·z · p=I·ω · H=p²/2I+g·z，全部从真值+录制时间戳算）做，别再用 k=1/I=1 的归一玩具摆。
   要「用 215 点轨迹走一遍看效果」时按 §7：独立只读 `/api/traj215` + 真实时间轴回放，**不连执行服务、不下发动作**。
 
 ## 汇报口径
+
+- 需求只有一个字/一句话（「加一个 相 按钮」）时：按最合理读法直接做完、给出实测证据，
+  末尾用**一句话**给出替代读法（「如果相=导出图片，说三个字我改」）。他会用三个字纠正；
+  先抛选择题等于把决策丢回给他。
+- 改的是仓库里的页面文件（服务每请求现读 ⇒ 不用重启）：说清文件路径、是否已 commit、他点头再提交。
 
 给三件：① 完整 URL（含 `/api/state`）；② 一句结论（「能跟随」/「还不能」+ 为什么）；
 ③ 三条实测证据（帧龄、当前位置、轨迹点数或像素计数）。
