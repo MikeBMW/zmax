@@ -2778,6 +2778,12 @@ def node_ss_3d_view(ctx):
     return _impl(ctx)
 
 
+def node_ss_phase_view(ctx):
+    """→ nodes/ss_phase_view.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
+    from .ss_phase_view import node_ss_phase_view as _impl
+    return _impl(ctx)
+
+
 def node_ss_scope(ctx):
     """→ nodes/ss_scope.py  (实现正文已迁出; 这只转调, 兼容老 import)"""
     from .ss_scope import node_ss_scope as _impl
@@ -2968,6 +2974,12 @@ _reg("ss_video", ["操作视频"], "🎥 操作视频 — metaworld 训练后 ro
 _reg("ss_scope", ["仿真波形"], "📊 仿真波形 — 最近一次状态空间仿真波形 (距离/前馈/残差/接触概率 + 阶段切换标注)", node_ss_scope)
 
 _reg("ss_3d_view", ["3D 视图"], "🧭 3D 视图 — Apollo 风格 3D 分层视图 (与引擎/画布同源, 可视化层观察器; 源=物理世界)", node_ss_3d_view)
+
+_reg("ss_phase_view", ["相空间相图", "相空间 (Θ,p)", "相图"],
+     "🌀 相空间相图 (Θ,p) — 可视化层观察器: 读 ss_grav_h 落的实测相点 (Θ 轴向偏差 / p 轴向动量), "
+     "画相轨迹族 + 当前 H 等能线 + 实测尾迹; 振子 Θ̇=p/m, ṗ=−k_ax·Θ−b·p/m (b=α·k_ax), "
+     "H=p²/(2m)+½k_ax·Θ²; 数据源 zmax_data/ss_live/hamiltonian.json · 视图 tools/gui/phase_space.py",
+     node_ss_phase_view)
 
 # ════════════════════════════════════════════════════════════════
 # 🧠 大模型层 · 云端任务规划 (2026-08-20 老倪: 大模型管"想", 小模型管"动")

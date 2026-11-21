@@ -323,5 +323,10 @@
   "file": "nodes/ss_phase_corr.py",
   "func": "node_ss_phase_corr",
   "module": ".ss_phase_corr"
+ },
+ "ss_phase_view": {
+  "file": "nodes/ss_phase_view.py",
+  "func": "node_ss_phase_view",
+  "module": ".ss_phase_view"
  }
 }

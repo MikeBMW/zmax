@@ -37,6 +37,12 @@ exec sudo docker run --rm --network host \
   -e ZMAX_REPLAY_BUDGET_X="${ZMAX_REPLAY_BUDGET_X:-}" \
   -e ZMAX_REPLAY_CMD="${ZMAX_REPLAY_CMD:-}" \
   -e ZMAX_REPLAY_TRAJ="${ZMAX_REPLAY_TRAJ:-}" \
+  -e ZMAX_RT_TRAJ="${ZMAX_RT_TRAJ:-}" \
+  -e ZMAX_RT_I0="${ZMAX_RT_I0:-}" \
+  -e ZMAX_RT_I1="${ZMAX_RT_I1:-}" \
+  -e ZMAX_RT_RATE="${ZMAX_RT_RATE:-}" \
+  -e ZMAX_RT_MAXDEG="${ZMAX_RT_MAXDEG:-}" \
+  -e ZMAX_RT_LOGDIR="${ZMAX_RT_LOGDIR:-}" \
   -v "$SDK_DIR":/sdk \
   -v "$REPO_TOOLS":/repo:ro \
   -w /sdk "$IMAGE" python3 "/repo/$SCRIPT" "$@"

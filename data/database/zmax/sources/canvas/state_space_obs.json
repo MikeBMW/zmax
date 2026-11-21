@@ -2405,7 +2405,7 @@
      "工程库": "data/database/zmax/zmax_engineering.db"
     },
     "cfg_snapshot": {
-     "loaded_at": "2026-11-20 10:53:34",
+     "loaded_at": "2026-11-21 07:58:48",
      "files_total": 8,
      "files_ok": 8,
      "orders": 12,
@@ -2469,18 +2469,18 @@
      "口径": "一个状态空间工程承载全部任务; 任务=配方段子集+参数覆盖"
     },
     "source_symbol": "def main",
-    "cfg_loaded_at": "2026-11-20 10:53:34",
+    "cfg_loaded_at": "2026-11-21 07:58:48",
     "cfg_files": [
      {
       "name": "总工程文件",
       "rel": "data/database/zmax/zmax_space.proj",
-      "sha256": "62d846203cdb2d55",
+      "sha256": "3f389176ec749260",
       "exists": true
      },
      {
       "name": "任务绑定",
       "rel": "config/ss_task_binding.json",
-      "sha256": "de22347b7861a430",
+      "sha256": "051824f3d14d9c64",
       "exists": true
      },
      {
@@ -3129,6 +3129,31 @@
     "measured": "自检 24 点单调性全过; 越界 3mm 时 τ 饱和到 τ_lim 且方向不变",
     "desc": "只读: 产出 V/τ/门控给下游判据与显示, 不直接下发运动 (真动仍要 8793 授权)"
    }
+  },
+  {
+   "id": "ss_phase_view",
+   "name": "🌀 相空间相图 (Θ,p)",
+   "type": "model",
+   "icon": "🌀",
+   "color": "#f5c26b",
+   "x": 8650,
+   "y": 4984,
+   "w": 280,
+   "h": 110,
+   "params": {
+    "state_space": true,
+    "viz_kind": "phase",
+    "role": "可视化层观察器 — 相空间 (Θ,p): 横轴 Θ 轴向位置偏差 mm, 纵轴 p 轴向动量 kg·m/s (只读旁路)",
+    "desc": "相空间相图: 流线=同 k/α/m 积分出的相轨迹族 · 琥珀虚线=当前 H 的等能线 p²/(2m)+½kΘ²=H · 绿点+尾迹=实测帧; 双击打开相图窗口 (数据源 zmax_data/ss_live/hamiltonian.json, 与右侧参数面板同一个 PhaseSpaceView)",
+    "data_src": "zmax_data/ss_live/hamiltonian.json",
+    "source": "tools/gui/phase_space.py",
+    "source_symbol": "class PhaseSpaceView",
+    "source_line": 62
+   },
+   "inputs": [
+    "in1"
+   ],
+   "outputs": []
   }
  ],
  "links": [
@@ -4910,6 +4935,14 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "τ_safe / 通道判据 → L4 工作安全"
+  },
+  {
+   "id": "lk1120_ss_grav_h_ss_phase_view",
+   "f": "ss_grav_h",
+   "t": "ss_phase_view",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "H/K 场态 (k_ax·α·m·Θ·p) → 相图 (Θ,p)"
   }
  ],
  "params_note": ""

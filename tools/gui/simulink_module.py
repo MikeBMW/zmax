@@ -13564,6 +13564,58 @@ class SimulinkModule(QWidget):
                 except Exception:
                     pass
 
+    def open_phase_space(self):
+        """🌀 相空间相图 (Θ,p) — 双击画布节点打开 (老倪 2026-11-20「要在 simulink 画布上加 相」)
+
+        与右侧参数面板「🌀 相空间 (Θ,p)」页签是**同一个视图类** (tools/gui/phase_space.py):
+        横轴 Θ 轴向位置偏差 mm · 纵轴 p 轴向动量 kg·m/s · 流线=相轨迹族 · 琥珀虚线=当前 H 等能线 ·
+        绿点+尾迹=实测帧。数据源 zmax_data/ss_live/hamiltonian.json (🌍 万有引力节点每帧落, 缺就显「未出数」)。
+        真顶层 QMainWindow (无 parent) ⇒ 最大化/还原/最小化可用 (同 🌐 数据空间窗口那条教训)。
+        """
+        try:
+            w = getattr(self, "_phase_win", None)
+            if w is not None:
+                try:
+                    import sip as _sip
+                    if _sip.isdeleted(w):
+                        w = None
+                        self._phase_win = None
+                except Exception:
+                    pass
+            if w is None:
+                from PyQt5.QtCore import Qt
+                from PyQt5.QtWidgets import QMainWindow
+                from phase_space import PhaseSpaceView
+                w = QMainWindow(None)
+                w.setWindowFlags(Qt.Window | Qt.WindowMinimizeButtonHint
+                                 | Qt.WindowMaximizeButtonHint | Qt.WindowCloseButtonHint)
+                w.setWindowTitle("🌀 相空间相图 (Θ,p)")
+                w.setCentralWidget(PhaseSpaceView(w))
+                try:                       # 摆在控制台那块屏的右下角 (不抢画布)
+                    scr = self.window().screen()
+                    g = scr.availableGeometry()
+                    w.resize(760, 560)
+                    w.move(g.x() + g.width() - 800, g.y() + g.height() - 600)
+                except Exception:
+                    w.resize(760, 560)
+                try:
+                    from PyQt5.QtWidgets import QApplication
+                    _app = QApplication.instance()
+                    if _app is not None:
+                        _app.aboutToQuit.connect(w.close)
+                except Exception:
+                    pass
+                self._phase_win = w
+                self._log("🌀 相空间相图窗口已创建 (Θ 轴向偏差 / p 轴向动量 · 数据源 hamiltonian.json)")
+            w.show()
+            w.raise_()
+            w.activateWindow()
+            self._log("🌀 相空间相图: 已打开 (与右侧参数面板同一视图, 只读旁路)")
+            return w
+        except Exception as e:                                              # noqa: BLE001
+            self._log("⚠️ 相空间相图窗口打开失败: %s" % str(e)[:120])
+            return None
+
     def _open_viz_node(self, kind):
         """🔭 可视化层观察器 (2026-09-04 老倪): 双击节点 → 打开对应显示窗口
         hist/attrib: 窗口单例 + 有引擎末帧探针则填入 (真实数据, 无则不造假只提示)"""
@@ -13579,6 +13631,9 @@ class SimulinkModule(QWidget):
                 return
             if kind == "3d":
                 self.open_ss_3d()
+                return
+            if kind == "phase":                     # 🌀 2026-11-20 老倪: 相空间相图 (Θ,p) 窗口
+                self.open_phase_space()
                 return
             if kind == "intact_robot_live":        # 🤖 2026-09-12 老倪: INTACT 机器人实况窗
                 self._open_intact_robot_live()

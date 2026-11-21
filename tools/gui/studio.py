@@ -1254,7 +1254,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.50.780")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.50.781")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.ensurePolished()                     # 先套上样式再量字, 否则 sizeHint 按默认字体算
         ver.setToolTip("版本号在此 (侧栏品牌位)\n"
                        "顶栏标题 = 产品标识「XSpace ZMAX <产品号>」, 与配置中心产品配置同源 (config/platform/zmax_product.json)\n"
@@ -12746,6 +12746,7 @@ class StudioMainWindow(QMainWindow):
         self._set_console_title()
         # 🐛 2026-09-01 老倪: 调试自检 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.50.781: 相空间观察落地: Simulink 画布新增『🌀 相空间相图(Θ,p)』节点(双击开窗、与右侧面板同源) + 相图自适应视野(修『点又不见了』根因: 视野钉死 ±75mm/±0.9, 真机 Θ 到 ±268mm/H 15.4J 被裁) + 尾迹 400→2000; 新增 RT 探针/恢复脚本(arm_rt_stream/rt_tickrate/arm_recover), 实测 MoveAbsJ 逐点上限 speed=200%(0.96s/点, 400% 控制器掉电), RT 回路回调实测远低于实时要求
         # v5.50.780: 215 点真实轨迹的哈密顿相空间回放上线 (球摆约化 H=p²/2I+g·z, 逐帧实测 r/θ/p, 42.9s 1x 循环 + MP4 直链), 修旧缓存导致「没动」的回放按钮作用域 bug; AR 自进化 workers 8→2 回收 8GB 内存
         # v5.50.779: 相空间安全通道 + SE(3)×S1 记忆流形上画布 (5.50.778 → 5.50.779)  ## 一、相空间安全通道 (专利核心算法落地)  新增 `src/lerobot/manifold/phase_corridor.py`（`PhaseSpaceCorridor` / `CorridorMetric`）：  - 底空间 Q = R³(平移) × S³(四元数) × S¹(工序相位) —— 复用流形引擎已记忆的 SE(3)×S1；   纤维 T_qQ = 线速度 + 角速度 ⇒ 相空间 x=(q, q̇)，即切丛上的"记忆中心线"。 - 各向异性度规（专利公差口径）：径向 0.3mm 敏感 / 轴向 6mm 宽容；速度纤维同理   横向 50mm/s 严 / 轴向 300mm/s 松，并按载荷 √(m/m_ref) 自适应（0.1kg ↔ 1.6T 级）。 - 势能 V_phase = ½‖z‖²，z = [e_pose/tol ; e_vel/vlim]（无量纲，V=1 正好压在公差上）； - 修正 τ_safe = −α·τ_lim⊙(z_pos + z_vel)：专利 −αM⁻¹∇V 的工程形态——度规定方向、τ_lim 定幅度； - S³ 旋转误差走李代数 log（避开欧拉角奇异）；S¹ 相位不一致（>15°）⇒ 记忆匹配断裂、注入置 0； - 李雅普诺夫：α_eff = min(α, λ/2) ⇒ V̇ = −α_eff‖z‖² ≤ −λV，能量单调下降，τ 恒在 τ_lim 内。 - 自检（`python -m lerobot.manifold.phase_corridor`）：通道内零注入 / 越界饱和修正 /   S¹ 栅门关断 / 李代数只落在 z 轴 / 载荷自适应 / 24 点横扫单调性全过。  ## 二、流形引擎接入（L4 逻辑节点）  `ManifoldEngine` 新增 `set_phase_corridor(provider, ...)` 与 `phase_step(cur, des, axis)`： provider=None 时零回归（不建对象、不参与 step）；异常一律 `ok=False`，绝不静默当作"通道内"。 引擎自检 `python -m lerobot.manifold.manifold_engine --selftest` 全部通过（7 个流形 + 内稳态 4 项）。  ## 三、画布（打开就能看）  `flows/state_space_obs.json` 与唯一依据 `data/database/zmax/sources/canvas/state_space_obs.json`：  - 🔷 `ss_se3_state` — SE(3)×S1 记忆流形（昨日 `zmax-se3-state` 的 16 维 A–E，5Hz，只读）； - 🌀 `ss_phase_corr` — 相空间安全通道（V_phase / τ_safe / S¹ 栅门 / V̇）； - 连线 3 条：流形引擎 → 相空间通道 · SE(3) 记忆 → 相空间通道 · 相空间通道 → L4 工作安全； - 节点 94 → 96、连线 222/223 → 225/226，写盘前已备份 `flows/_archive/`，回读复核无悬空连线。 - 注册表：`nodes/library.py` 两条 `_reg` + `impl_manifest.json` 两条，`match_node` 按节点名可识别。  ## 四、真数据实测（不是演示数）  两条节点在真机上跑通（真值 `zmax_data/se3/se3_state_live.json`，帧龄 0.01~0.20s）： A 位置 [344.9, 315.4, 254.4]mm · 轴 S² [0.9744, 0.1592, −0.1585]（偏差 40.45°）· C 四元数 [0.106, −0.9235, −0.0142, −0.3685] · D 滚转 −147.9° · E 相位 s=0.517263（arc 4068.7mm，近点 #120）； 通道判定：同相且在公差内 ⇒ V_phase=0、栅门开、零注入；4mm 轴向偏离（轴向公差 6mm）仍判通道内， 换成径向偏离则立刻越界并要求修正 —— 各向异性按设计生效。  ## 五、边界（如实）  - 本层只读：产出 τ_safe/V 供判据与显示，**不直接下发运动**；真动仍需 8793 授权。 - 速度纤维取自 5Hz 记忆流（`se3_state_history.jsonl` 差分），臂静止时速度为 0 —— 不做外推、不补数。 - 该通道对真机任务成功率的提升尚未做同口径对照，按"未证明提升不进默认档"纪律，当前定位为   L4 逻辑链上的安全判据层，不宣称指标提升。
         # v5.50.778: 回放加 🌀 flow 档(状态抑制流动): 姿态用 Hopf 拆成 S² 轴 + S¹ 滚转分路判据与调速(轴跳>10°/帧→70档 · 滚转>12°→85档 · 块内轴漂>25°停 · 操作区±3点→60档3点), 真机 40 块/215 点/479.1s/err≤0.14° 零超时。根因: 旧档只看总转角一刀切, 表面检测段 #176~#178 的 39.1°/帧纯滚转被误判成姿态断层; 整块下发时 state 的 done 不更新导致 action.i 钉在起点(改读执行日志 progress, 实测 Δ=0)。
@@ -13748,7 +13749,7 @@ class StudioMainWindow(QMainWindow):
         #   ⇒ 状态栏右下角那组控件 (_latency_label「延迟: xx ms」+ _engine_status「● 本地就绪」+
         #      _engine_combo「ACT (Local · 1ms)」) 整组删除, 不再建、不再挂到状态栏。
         #      保留 sb.showMessage(...) 的一行总览, 界面上不再有这组无用读数 (引擎实际由画布/工程配置决定)。
-        sb.showMessage("Z-MAX v5.50.780  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.50.781  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🔴 2026-10-12 老倪(定规矩): 「点开启动图标后, 3D场景不要自动启动, 我要先检查任务配置, 然后启动工程」
         #   本段以下所有自动开窗/自动运行**一律只在显式 env 下触发**(ZMAX_AUTO_*), 正常双击图标时:
@@ -16207,7 +16208,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.50.780</b> · 多模态动作专家<br>
+<b>Z-MAX v5.50.781</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>
