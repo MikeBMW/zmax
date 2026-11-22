@@ -110,6 +110,8 @@ exec sudo docker run --rm --network host \
   -e ZMAX_REC_RATE="${ZMAX_REC_RATE:-}" \
   -e ZMAX_REC_SECS="${ZMAX_REC_SECS:-}" \
   -e ZMAX_REC_DIR="${ZMAX_REC_DIR:-}" \
+  -e ZMAX_REC_CAM="${ZMAX_REC_CAM:-}" \
+  -e ZMAX_REC_CAM_HZ="${ZMAX_REC_CAM_HZ:-}" \
   -e ZMAX_RT_HOLD_AT="${ZMAX_RT_HOLD_AT:-}" \
   -e ZMAX_RT_HOLD_MS="${ZMAX_RT_HOLD_MS:-}" \
   -e ZMAX_RT_LOAD="${ZMAX_RT_LOAD:-}" \
