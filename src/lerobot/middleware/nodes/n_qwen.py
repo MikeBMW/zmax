@@ -10,7 +10,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.n_vlm_llm.<port>
 
-实现绑定: registry key=`n_dsvl` · src/lerobot/policies/left_right/state_space/scene_vlm.py:class SceneVLM
+实现绑定: registry key=`n_dsvl` · src/lerobot/policies/left_right/state_space/scene_vlm.py:def main
 执行口径: EXEC_MODE=act · PURE=False (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -33,8 +33,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'n_dsvl'
 SOURCE = 'src/lerobot/policies/left_right/state_space/scene_vlm.py'
-SOURCE_SYMBOL = 'class SceneVLM'
-PARAMS = {'state_space': True, 'vlm_llm': True, 'model': 'DeepSeek-V4.1-Flash Vision (本机已配 key, 零申请) / Qwen2.5-VL-3B 本地 / Qwen3-VL / qwen-vl-max (API)', 'desc': '大模型层**视觉通路** (2026-09-19 实测可用): 环境帧/引擎真图/真机帧 → 场景理解 JSON (目标/在不在夹爪/画面质量/光照/背景/标定建议) → 任务规划器·异常推理器·技能编排器·意图解码器·总装记忆。 默认走 **DeepSeek Vision (deepseek-flash / V4.1-Flash, 本机 ~/.hermes/.env 已配 key, 关思考后真机帧实测 1.36s)**; 可换 Qwen: SS_VLM_URL=https://dashscope.aliyuncs.com/compatible-mode/v1 + SS_VLM_KEY + SS_VLM_MODEL=qwen-vl-max; 或本地开源 Qwen2.5-VL-3B (无需 key) / Qwen3-VL。无模型时只给规则回退摘要并如实标注。源码 scene_vlm.py + tools/vlm_worker.py', 'source': 'src/lerobot/policies/left_right/state_space/scene_vlm.py', 'source_symbol': 'class SceneVLM'}
+SOURCE_SYMBOL = 'def main'
+PARAMS = {'state_space': True, 'vlm_llm': True, 'model': 'DeepSeek-V4.1-Flash Vision (本机已配 key, 零申请) / Qwen2.5-VL-3B 本地 / Qwen3-VL / qwen-vl-max (API)', 'desc': '大模型层**视觉通路** (2026-09-19 实测可用): 环境帧/引擎真图/真机帧 → 场景理解 JSON (目标/在不在夹爪/画面质量/光照/背景/标定建议) → 任务规划器·异常推理器·技能编排器·意图解码器·总装记忆。 默认走 **DeepSeek Vision (deepseek-flash / V4.1-Flash, 本机 ~/.hermes/.env 已配 key, 关思考后真机帧实测 1.36s)**; 可换 Qwen: SS_VLM_URL=https://dashscope.aliyuncs.com/compatible-mode/v1 + SS_VLM_KEY + SS_VLM_MODEL=qwen-vl-max; 或本地开源 Qwen2.5-VL-3B (无需 key) / Qwen3-VL。无模型时只给规则回退摘要并如实标注。源码 scene_vlm.py + tools/vlm_worker.py', 'source': 'src/lerobot/policies/left_right/state_space/scene_vlm.py', 'source_symbol': 'def main', 'source_line': 371}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

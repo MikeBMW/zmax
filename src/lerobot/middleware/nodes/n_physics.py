@@ -12,7 +12,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.swworld.<port>
 
-实现绑定: registry key=`sw_world` · tools/intact_sw_optical_bridge.py:def 
+实现绑定: registry key=`sw_world` · tools/intact_sw_optical_bridge.py:def main
 执行口径: EXEC_MODE=act · PURE=False (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -35,8 +35,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'sw_world'
 SOURCE = 'tools/intact_sw_optical_bridge.py'
-SOURCE_SYMBOL = 'def '
-PARAMS = {'desc': '[L4 硬件层] Z-MAX 六层引擎 RealStateSpaceSim (metaworld peg-insert-side-v3 真接触/夹持/插入动力学): 每步接收 INTACT 模型动作 → env.step 真下发 (引擎既有直驱入口 _direct_act, 不经解析控制器) → 逐帧渲染回数据源; 同 seed 另跑解析链对照(插入 + 插→拔→AOI 全链)作可达性基线; 出 480² 逐帧 mp4 存 reports/intact_sw/video', 'sw_bridge': True, 'sim': True, 'env': 'metaworld/peg-insert-side-v3 (RealStateSpaceSim)', 'source': 'tools/intact_sw_optical_bridge.py', 'source_symbol': 'def '}
+SOURCE_SYMBOL = 'def main'
+PARAMS = {'desc': '[L4 硬件层] Z-MAX 六层引擎 RealStateSpaceSim (metaworld peg-insert-side-v3 真接触/夹持/插入动力学): 每步接收 INTACT 模型动作 → env.step 真下发 (引擎既有直驱入口 _direct_act, 不经解析控制器) → 逐帧渲染回数据源; 同 seed 另跑解析链对照(插入 + 插→拔→AOI 全链)作可达性基线; 出 480² 逐帧 mp4 存 reports/intact_sw/video', 'sw_bridge': True, 'sim': True, 'env': 'metaworld/peg-insert-side-v3 (RealStateSpaceSim)', 'source': 'tools/intact_sw_optical_bridge.py', 'source_symbol': 'def main', 'source_line': 168}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

@@ -12,7 +12,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ssdec.<port>
 
-实现绑定: registry key=`action_head` · src/lerobot/policies/smolvla_lew/action_head.py:class SmolVLALewActionHead
+实现绑定: registry key=`action_head` · src/lerobot/policies/smolvla_lew/action_head.py:class ModelMixin:  # type: ignore[no-redef]
 执行口径: EXEC_MODE=act · PURE=True (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -35,8 +35,8 @@ PORT_LABELS = {'out1': 'out1'}
 
 IMPL_KEY = 'action_head'
 SOURCE = 'src/lerobot/policies/smolvla_lew/action_head.py'
-SOURCE_SYMBOL = 'class SmolVLALewActionHead'
-PARAMS = {'desc': '[高级·端到端模仿学习] Decoder: 状态空间 ActionHead — 潜空间 z → 4D 动作块 (StateSpaceActionHead); 源码 src/lerobot/policies/smolvla_lew/state_space_action_head.py', 'decoder': True, 'state_space': True, 'source': 'src/lerobot/policies/smolvla_lew/action_head.py', 'source_symbol': 'class SmolVLALewActionHead', '_port_labels': {'out1': 'out1'}, 'pure_verified': True}
+SOURCE_SYMBOL = 'class ModelMixin:  # type: ignore[no-redef]'
+PARAMS = {'desc': '[高级·端到端模仿学习] Decoder: 状态空间 ActionHead — 潜空间 z → 4D 动作块 (StateSpaceActionHead); 源码 src/lerobot/policies/smolvla_lew/state_space_action_head.py', 'decoder': True, 'state_space': True, 'source': 'src/lerobot/policies/smolvla_lew/action_head.py', 'source_symbol': 'class ModelMixin:  # type: ignore[no-redef]', '_port_labels': {'out1': 'out1'}, 'pure_verified': True, 'l4_inject': 'on', 'l4_inject_cfg': {}, 'l4_inject_note': 'L4 几何注入开关/参数。on=注入(默认) · off=完全退回原行为。几何参数(σt/σn/α0/V0/限幅)真源在 config/calib/zmax_manifold.json#inject，l4_inject_cfg 只做现场临时覆盖、不写真源。专利 ZMP-2026-013。', 'source_line': 35}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = True

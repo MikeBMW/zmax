@@ -14,7 +14,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ss_lora_l4.<port>
 
-实现绑定: registry key=`ss_lora_l4` · tools/lora_inject.py:def inject_lora
+实现绑定: registry key=`ss_lora_l4` · tools/lora_inject.py:def main
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -37,8 +37,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'ss_lora_l4'
 SOURCE = 'tools/lora_inject.py'
-SOURCE_SYMBOL = 'def inject_lora'
-PARAMS = {'desc': '[L4 微调] INTACT 本域 LoRA: 注入 112 层线性 (r=8/α=16), 从官方 pusht 权重初始化, 数据 optical_insert v6 真机示教; 产物必须 merge 后才可部署 (包装键→Missing key→trained=False 零动作); 现状: 200 步产物 A/B 未证明提升 → 不切在役指针; 2026-09-24 Δu 逐帧诊断定位根因 = 幅值比中位 5.2~5.8× (闸门红线 1.5×) 被 L2 收口闸逐帧否决', 'source': 'tools/lora_inject.py', 'source_symbol': 'def inject_lora', 'status': '保留·接入中 (2026-09-26 老倪: 保留并接入系统; 需 merge 后才生效)', 'todo': True, 'ckpt': 'zmax_data/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6lora_200'}
+SOURCE_SYMBOL = 'def main'
+PARAMS = {'desc': '[L4 微调] INTACT 本域 LoRA: 注入 112 层线性 (r=8/α=16), 从官方 pusht 权重初始化, 数据 optical_insert v6 真机示教; 产物必须 merge 后才可部署 (包装键→Missing key→trained=False 零动作); 现状: 200 步产物 A/B 未证明提升 → 不切在役指针; 2026-09-24 Δu 逐帧诊断定位根因 = 幅值比中位 5.2~5.8× (闸门红线 1.5×) 被 L2 收口闸逐帧否决', 'source': 'tools/lora_inject.py', 'source_symbol': 'def main', 'status': '保留·接入中 (2026-09-26 老倪: 保留并接入系统; 需 merge 后才生效)', 'todo': True, 'ckpt': 'zmax_data/stable-wm-cache/checkpoints/intact_goal_optical_insert_v6lora_200', 'source_line': 261}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

@@ -10,13 +10,13 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.n_skill_dict.<port>
 
-实现绑定: registry key=`ss_skill_dict` · src/lerobot/memory/mem_nodes.py · node_ss_skill_dict
+实现绑定: registry key=`ss_skill_dict` · src/lerobot/memory/mem_nodes.py:def node_ss_skill_dict
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
    契约  src/lerobot/middleware/nodes/n_lexicon.py              ← 就是本文件
    实现  src/lerobot/middleware/nodes/impl/ss_skill_dict.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
-   算法  src/lerobot/memory/mem_nodes.py · node_ss_skill_dict                                             ← 纯计算 (模型/几何/控制律)
+   算法  src/lerobot/memory/mem_nodes.py                                             ← 纯计算 (模型/几何/控制律)
    三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("n_skill_dict")
 """
 
@@ -32,9 +32,9 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'ss_skill_dict'
-SOURCE = 'src/lerobot/memory/mem_nodes.py · node_ss_skill_dict'
-SOURCE_SYMBOL = ''
-PARAMS = {'state_space': True, 'desc': '{skill → Δz/n_ok} — L4 预测 Δz 后在此词典 kNN 直读技能 (无需动作空间搜索)', 'source': 'src/lerobot/memory/mem_nodes.py · node_ss_skill_dict', 'bundle': True}
+SOURCE = 'src/lerobot/memory/mem_nodes.py'
+SOURCE_SYMBOL = 'def node_ss_skill_dict'
+PARAMS = {'state_space': True, 'desc': '{skill → Δz/n_ok} — L4 预测 Δz 后在此词典 kNN 直读技能 (无需动作空间搜索)', 'source': 'src/lerobot/memory/mem_nodes.py', 'bundle': True, 'source_symbol': 'def node_ss_skill_dict', 'source_line': 341}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

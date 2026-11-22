@@ -11,7 +11,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ssest.<port>
 
-实现绑定: registry key=`ss_est` · src/lerobot/policies/left_right/state_space/parallel.py:class AdaptiveStateEstimator
+实现绑定: registry key=`ss_est` · src/lerobot/policies/left_right/state_space/parallel.py:def predict
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -34,8 +34,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'ss_est'
 SOURCE = 'src/lerobot/policies/left_right/state_space/parallel.py'
-SOURCE_SYMBOL = 'class AdaptiveStateEstimator'
-PARAMS = {'state_space': True, 'kalman_estimator': True, 'desc': '[基础·分段小模型] 自适应状态估计器 (教学卡尔曼, A/K/B 标定; 2026-09-06 修正: 非右脑 — 训练右脑=前向世界模型, 真权重在📈先验动力学预测器)', 'source': 'src/lerobot/policies/left_right/state_space/parallel.py', 'source_symbol': 'class AdaptiveStateEstimator'}
+SOURCE_SYMBOL = 'def predict'
+PARAMS = {'state_space': True, 'kalman_estimator': True, 'desc': '[基础·分段小模型] 自适应状态估计器 (教学卡尔曼, A/K/B 标定; 2026-09-06 修正: 非右脑 — 训练右脑=前向世界模型, 真权重在📈先验动力学预测器)', 'source': 'src/lerobot/policies/left_right/state_space/parallel.py', 'source_symbol': 'def predict', 'source_line': 221}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

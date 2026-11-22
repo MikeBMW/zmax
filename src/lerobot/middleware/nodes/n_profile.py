@@ -10,13 +10,13 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.sscap.<port>
 
-实现绑定: registry key=`ss_cap` · src/lerobot/engineering/nodes/library.py · node_ss_cap:node_ss_cap
+实现绑定: registry key=`ss_cap` · src/lerobot/engineering/nodes/library.py:def node_ss_cap
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
    契约  src/lerobot/middleware/nodes/n_profile.py              ← 就是本文件
    实现  src/lerobot/middleware/nodes/impl/ss_cap.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
-   算法  src/lerobot/engineering/nodes/library.py · node_ss_cap                                             ← 纯计算 (模型/几何/控制律)
+   算法  src/lerobot/engineering/nodes/library.py                                             ← 纯计算 (模型/几何/控制律)
    三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("sscap")
 """
 
@@ -32,9 +32,9 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'ss_cap'
-SOURCE = 'src/lerobot/middleware/nodes/impl/ss_cap.py · node_ss_cap'
-SOURCE_SYMBOL = 'node_ss_cap'
-PARAMS = {'desc': '[数据源层·能力档位] 单击圆钮直选 / 双击循环: L2 基础(插装成功) → L3 +smolvla(插→拔→AOI→放回全链) → L4 +流形预测世界模型(失败自主恢复直到完成) → L5 大模型视觉语言自动标注(L2/L3/L4 监督数据) + 标注完成自动启动训练(L2 YOLO 全量 / L3 SmolVLA LoRA / L4 INTACT LoRA→merge)。档位驱动 ▶运行 任务链。', 'state_space': True, 'cap_level': 'L2', 'cap_switch': True, 'source': 'src/lerobot/engineering/nodes/library.py · node_ss_cap', 'source_symbol': 'node_ss_cap'}
+SOURCE = 'src/lerobot/engineering/nodes/library.py'
+SOURCE_SYMBOL = 'def node_ss_cap'
+PARAMS = {'desc': '[数据源层·能力档位] 单击圆钮直选 / 双击循环: L2 基础(插装成功) → L3 +smolvla(插→拔→AOI→放回全链) → L4 +流形预测世界模型(失败自主恢复直到完成) → L5 大模型视觉语言自动标注(L2/L3/L4 监督数据) + 标注完成自动启动训练(L2 YOLO 全量 / L3 SmolVLA LoRA / L4 INTACT LoRA→merge)。档位驱动 ▶运行 任务链。', 'state_space': True, 'cap_level': 'L2', 'cap_switch': True, 'source': 'src/lerobot/engineering/nodes/library.py', 'source_symbol': 'def node_ss_cap', 'source_line': 5361}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

@@ -10,13 +10,13 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.swvideo.<port>
 
-实现绑定: registry key=`sw_video` · tools/intact_sw_optical_bridge.py --video-dir:def 
+实现绑定: registry key=`sw_video` · tools/intact_sw_optical_bridge.py:def main
 执行口径: EXEC_MODE=view · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
    契约  src/lerobot/middleware/nodes/n_rollout.py              ← 就是本文件
    实现  src/lerobot/middleware/nodes/impl/sw_video.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
-   算法  tools/intact_sw_optical_bridge.py --video-dir                                             ← 纯计算 (模型/几何/控制律)
+   算法  tools/intact_sw_optical_bridge.py                                             ← 纯计算 (模型/几何/控制律)
    三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("swvideo")
 """
 
@@ -32,9 +32,9 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'sw_video'
-SOURCE = 'tools/intact_sw_optical_bridge.py --video-dir'
-SOURCE_SYMBOL = 'def '
-PARAMS = {'desc': '[L4 可视化·回路外观察器] 从 Z-MAX 引擎取出的渲染视频 (480², 10fps): 模型直驱在环录像(打标真模型/真推理次数/模型输出/插入深度) + 同 seed 解析链对照 (插入 / 插→拔→AOI 全链) + 合集, 存 reports/intact_sw/video; 双击开互动查看器看任意帧信号 (不参与自动运行链)', 'viz_kind': 'sw_video', 'sw_bridge': True, 'source': 'tools/intact_sw_optical_bridge.py --video-dir', 'source_symbol': 'def '}
+SOURCE = 'tools/intact_sw_optical_bridge.py'
+SOURCE_SYMBOL = 'def main'
+PARAMS = {'desc': '[L4 可视化·回路外观察器] 从 Z-MAX 引擎取出的渲染视频 (480², 10fps): 模型直驱在环录像(打标真模型/真推理次数/模型输出/插入深度) + 同 seed 解析链对照 (插入 / 插→拔→AOI 全链) + 合集, 存 reports/intact_sw/video; 双击开互动查看器看任意帧信号 (不参与自动运行链)', 'viz_kind': 'sw_video', 'sw_bridge': True, 'source': 'tools/intact_sw_optical_bridge.py', 'source_symbol': 'def main', 'source_line': 168}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

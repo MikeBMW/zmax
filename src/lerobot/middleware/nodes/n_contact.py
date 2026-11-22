@@ -12,7 +12,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ssmani_c.<port>
 
-实现绑定: registry key=`ss_mani_c` · src/lerobot/manifold/manifold_layer.py:class ContactManifold
+实现绑定: registry key=`ss_mani_c` · src/lerobot/manifold/manifold_layer.py:class ContactManifold:
 执行口径: EXEC_MODE=pure · PURE=True (口径已逐一验证 ⇒ 允许计算面真跑)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -35,8 +35,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'ss_mani_c'
 SOURCE = 'src/lerobot/manifold/manifold_layer.py'
-SOURCE_SYMBOL = 'class ContactManifold'
-PARAMS = {'state_space': True, 'mani_layer': True, 'desc': '[专家·世界模型] 接触流形 ContactManifold: e=T−hand 沿通道轴分解 → 切向 e∥(测地线进度)+法向 e⊥(离流形漂移→弯曲风险), V=½‖e‖², V̇=−e·v; 通道: 垂直(z 对销)/孔轴(x 入孔); 源码 manifold_layer.py', 'source': 'src/lerobot/manifold/manifold_layer.py', 'source_symbol': 'class ContactManifold', 'pure_verified': True}
+SOURCE_SYMBOL = 'class ContactManifold:'
+PARAMS = {'state_space': True, 'mani_layer': True, 'desc': '[专家·世界模型] 接触流形 ContactManifold: e=T−hand 沿通道轴分解 → 切向 e∥(测地线进度)+法向 e⊥(离流形漂移→弯曲风险), V=½‖e‖², V̇=−e·v; 通道: 垂直(z 对销)/孔轴(x 入孔); 源码 manifold_layer.py', 'source': 'src/lerobot/manifold/manifold_layer.py', 'source_symbol': 'class ContactManifold:', 'pure_verified': True, 'source_line': 65}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = True

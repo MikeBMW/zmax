@@ -5,7 +5,7 @@
     in  in1   ← sssched
     in  in2   ← ssphys
     in  in3   ← n_geoplan
-    out out1  → sssk1, sssk2, sssk3, sssk4, sssk5, sssk6, sssk7, sssk8, n_exec
+    out out1  → sssk1, sssk2, sssk3, sssk4, sssk5, sssk6, sssk7, sssk8, n_exec, sssk13
     out out2  → ss_grav_h
     out out3  → n_moveit
 
@@ -38,7 +38,7 @@ PORT_LABELS = {}
 IMPL_KEY = 'ss_limit'
 SOURCE = 'src/lerobot/policies/left_right/state_space/safety.py'
 SOURCE_SYMBOL = 'def saturate'
-PARAMS = {'state_space': True, 'sat_limit': True, 'desc': '[基础·分段小模型] 安全执行边界: 饱和限幅 — 阶段切换与动作融合后输出物理指令', 'source': 'src/lerobot/policies/left_right/state_space/safety.py', 'source_symbol': 'def saturate'}
+PARAMS = {'state_space': True, 'sat_limit': True, 'desc': '[基础·分段小模型] 安全执行边界: 饱和限幅 — 阶段切换与动作融合后输出物理指令', 'source': 'src/lerobot/policies/left_right/state_space/safety.py', 'source_symbol': 'def saturate', 'source_line': 17}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

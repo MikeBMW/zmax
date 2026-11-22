@@ -39,7 +39,7 @@ PORT_LABELS = {}
 IMPL_KEY = 'ss_correct'
 SOURCE = 'src/lerobot/policies/left_right/state_space/cognition.py'
 SOURCE_SYMBOL = 'def state_correction'
-PARAMS = {'state_space': True, 'state_corrector': True, 'desc': '[基础·分段小模型] 状态校正器: 残差 r = z_k − ĥ(x̂ₖ₋) & 接触概率 — 卡尔曼更新核心', 'source': 'src/lerobot/policies/left_right/state_space/cognition.py', 'source_symbol': 'def state_correction'}
+PARAMS = {'state_space': True, 'state_corrector': True, 'desc': '[基础·分段小模型] 状态校正器: 残差 r = z_k − ĥ(x̂ₖ₋) & 接触概率 — 卡尔曼更新核心', 'source': 'src/lerobot/policies/left_right/state_space/cognition.py', 'source_symbol': 'def state_correction', 'source_line': 18}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

@@ -6,14 +6,14 @@
     in  in2   ← ssz700
     in  in3   ← ssreason
     in  in4   ← n_vlm_llm
-    out out1  → n_skill_dict, n_l2_muscle, sssk2, sssk3, sssk4, sssk5, sssk6, sssk7, sssk8
+    out out1  → n_skill_dict, n_l2_muscle, sssk2, sssk3, sssk4, sssk5, sssk6, sssk7, sssk8, sssk13
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ssskill.<port>
 
-实现绑定: registry key=`ss_skill` · src/lerobot/policies/left_right/state_space/planner.py:class SkillComposer
+实现绑定: registry key=`ss_skill` · src/lerobot/policies/left_right/state_space/planner.py:def plan
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -36,8 +36,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'ss_skill'
 SOURCE = 'src/lerobot/policies/left_right/state_space/planner.py'
-SOURCE_SYMBOL = 'class SkillComposer'
-PARAMS = {'state_space': True, 'skill_composer': True, 'llm': 'Qwen3-7B (可插拔)', 'desc': '技能编排器 SkillComposer: 五大作业场景定义 (steps→技能序列, performance→参数覆盖默认) / 新型号规格 → 技能序列+力阈值/节拍', 'source': 'src/lerobot/policies/left_right/state_space/planner.py', 'source_symbol': 'class SkillComposer'}
+SOURCE_SYMBOL = 'def plan'
+PARAMS = {'state_space': True, 'skill_composer': True, 'llm': 'Qwen3-7B (可插拔)', 'desc': '技能编排器 SkillComposer: 五大作业场景定义 (steps→技能序列, performance→参数覆盖默认) / 新型号规格 → 技能序列+力阈值/节拍', 'source': 'src/lerobot/policies/left_right/state_space/planner.py', 'source_symbol': 'def plan', 'source_line': 109}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

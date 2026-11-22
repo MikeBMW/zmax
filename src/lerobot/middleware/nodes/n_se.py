@@ -8,7 +8,7 @@
     in  in4   ← sssched
     in  in5   ← sslimit
     in  in6   ← ssz700
-    out out1  → n_moveit
+    out out1  → n_moveit, ss_phase_view
     out out2  → n_exec
 
 输出 / 输入代码:
@@ -16,7 +16,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ss_grav_h.<port>
 
-实现绑定: registry key=`ss_grav_h` · src/lerobot/manifold/state_space_energy.py:class StateSpaceHamiltonian
+实现绑定: registry key=`ss_grav_h` · src/lerobot/manifold/state_space_energy.py:def layer_shares
 执行口径: EXEC_MODE=pure · PURE=True (口径已逐一验证 ⇒ 允许计算面真跑)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -39,8 +39,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'ss_grav_h'
 SOURCE = 'src/lerobot/manifold/state_space_energy.py'
-SOURCE_SYMBOL = 'class StateSpaceHamiltonian'
-PARAMS = {'state_space': True, 'gravity_field': True, 'kind': 'real', 'role': '全层力场仲裁 — 势能 U 决定允许方向, 动能 K 决定代价, H=K+U 判被动性', 'formula_U': 'U = ½·ξ_eᵀ K ξ_e + Σ_l ½·s_l·ξ_eᵀ K ξ_e  (Σ_l s_l = 1) + U_grav', 'formula_K': 'K = ½·ξᵀ Λ ξ,  Λ = diag(m,m,m,Ix,Iy,Iz)', 'formula_H': 'H = K + U ;  ξ̇ = Λ⁻¹(F − Bξ) ;  Ḣ = −ξᵀBξ ≤ 0 (交叉项精确抵消)', 'formula_F': 'F_l = s_l·K ξ_e  (逐层力) ;  Σ_l F_l = K ξ_e (恒等式)', 'K_diag': '平移 [k_lat,k_lat,k_ax]=[80,80,400] N/m · 旋转 [2,2,10] N·m/rad', 'layer_share': 'L2 0.30 · L3 0.25 · L4 0.30 · L5 0.15 (Σ=1)', 'mass_kg': 3.643, 'inertia': '[0.020,0.020,0.012] kg·m² (DEFAULT, 真机标定后由 config/calib/hamiltonian.json 覆盖)', 'alpha': 0.15, 'gravity_G': '未配置 ⇒ U_grav 记 0 (不造数)', 'source': 'src/lerobot/manifold/state_space_energy.py', 'source_symbol': 'class StateSpaceHamiltonian', 'reuse': 'se3_impedance.py(potential/pose_error/K_INSERT) · se3_gravity_provider.py(_rpy_to_T) · lie_intent.py(se3_exp/log)', 'measured': '12/12 判据 PASS: U(2cm)=0.080000J · K(0.1m/s)=0.018215J · H 1200 步单调不增 7.999e-02→8.006e-10 · Ḣ 解析 vs 数值 相对差 0.070% · 末端残余 0.0013mm', 'spec_target': 'Ḣ≤0 (被动) · ΣF_l=F 残差<1e-12 · 层动作横向>60° veto', 'caveat': '惯量/质量为默认标定值(DEFAULT, 非真机实测); 无 G 配置时引力项=0; 力矩通道默认关, 需 L2 显式授权', 'desc': '万有引力=势场: 每层动作只保留沿 −∇U 的分量(横向>60°否决), 输出 u=[F;M] 与能量 H=K+U; 被动性由 Ḣ=−ξᵀBξ 结构保证', 'pure_verified': True}
+SOURCE_SYMBOL = 'def layer_shares'
+PARAMS = {'state_space': True, 'gravity_field': True, 'kind': 'real', 'role': '全层力场仲裁 — 势能 U 决定允许方向, 动能 K 决定代价, H=K+U 判被动性', 'formula_U': 'U = ½·ξ_eᵀ K ξ_e + Σ_l ½·s_l·ξ_eᵀ K ξ_e  (Σ_l s_l = 1) + U_grav', 'formula_K': 'K = ½·ξᵀ Λ ξ,  Λ = diag(m,m,m,Ix,Iy,Iz)', 'formula_H': 'H = K + U ;  ξ̇ = Λ⁻¹(F − Bξ) ;  Ḣ = −ξᵀBξ ≤ 0 (交叉项精确抵消)', 'formula_F': 'F_l = s_l·K ξ_e  (逐层力) ;  Σ_l F_l = K ξ_e (恒等式)', 'K_diag': '平移 [k_lat,k_lat,k_ax]=[80,80,400] N/m · 旋转 [2,2,10] N·m/rad', 'layer_share': 'L2 0.30 · L3 0.25 · L4 0.30 · L5 0.15 (Σ=1)', 'mass_kg': 3.643, 'inertia': '[0.020,0.020,0.012] kg·m² (DEFAULT, 真机标定后由 config/calib/hamiltonian.json 覆盖)', 'alpha': 0.15, 'gravity_G': '未配置 ⇒ U_grav 记 0 (不造数)', 'source': 'src/lerobot/manifold/state_space_energy.py', 'source_symbol': 'def layer_shares', 'reuse': 'se3_impedance.py(potential/pose_error/K_INSERT) · se3_gravity_provider.py(_rpy_to_T) · lie_intent.py(se3_exp/log)', 'measured': '12/12 判据 PASS: U(2cm)=0.080000J · K(0.1m/s)=0.018215J · H 1200 步单调不增 7.999e-02→8.006e-10 · Ḣ 解析 vs 数值 相对差 0.070% · 末端残余 0.0013mm', 'spec_target': 'Ḣ≤0 (被动) · ΣF_l=F 残差<1e-12 · 层动作横向>60° veto', 'caveat': '惯量/质量为默认标定值(DEFAULT, 非真机实测); 无 G 配置时引力项=0; 力矩通道默认关, 需 L2 显式授权', 'desc': '万有引力=势场: 每层动作只保留沿 −∇U 的分量(横向>60°否决), 输出 u=[F;M] 与能量 H=K+U; 被动性由 Ḣ=−ξᵀBξ 结构保证', 'pure_verified': True, 'source_line': 83}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = True

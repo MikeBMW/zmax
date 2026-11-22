@@ -12,7 +12,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.swintact.<port>
 
-实现绑定: registry key=`sw_intact` · src/lerobot/policies/intact/runtime/node.py
+实现绑定: registry key=`sw_intact` · src/lerobot/policies/intact/runtime/node.py:def step
 执行口径: EXEC_MODE=act · PURE=False (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -35,8 +35,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'sw_intact'
 SOURCE = 'src/lerobot/policies/intact/runtime/node.py'
-SOURCE_SYMBOL = ''
-PARAMS = {'desc': '[L4 中间策略] INTACT-JEPA 本域微调权重 (u 口径数据集 optical_insert_v4 训练, 从官方 pusht 权重初始化): 渲染图像+目标帧(解析链成功末帧)+动作历史 → 一次前向出动作块 (零候选搜索 candidate_action_steps=0) → 唯一变换=训练归一化逆运算 a_raw=z·std+mean → 按引擎 u→act 约定下发 (act[:3]=clip(u/K_ACT) · act[3]=CLOSE if u[3]>0.5); 封装 src/lerobot/policies/intact/ · 桥 tools/intact_sw_optical_bridge.py', 'intact': True, 'sw_bridge': True, 'task': 'optical_insert', 'policy': 'intact_goal_optical_insert_v4_s3072 (自动挑最新 epoch)', 'source': 'src/lerobot/policies/intact/runtime/node.py'}
+SOURCE_SYMBOL = 'def step'
+PARAMS = {'desc': '[L4 中间策略] INTACT-JEPA 本域微调权重 (u 口径数据集 optical_insert_v4 训练, 从官方 pusht 权重初始化): 渲染图像+目标帧(解析链成功末帧)+动作历史 → 一次前向出动作块 (零候选搜索 candidate_action_steps=0) → 唯一变换=训练归一化逆运算 a_raw=z·std+mean → 按引擎 u→act 约定下发 (act[:3]=clip(u/K_ACT) · act[3]=CLOSE if u[3]>0.5); 封装 src/lerobot/policies/intact/ · 桥 tools/intact_sw_optical_bridge.py', 'intact': True, 'sw_bridge': True, 'task': 'optical_insert', 'policy': 'intact_goal_optical_insert_v4_s3072 (自动挑最新 epoch)', 'source': 'src/lerobot/policies/intact/runtime/node.py', 'source_symbol': 'def step', 'source_line': 156}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

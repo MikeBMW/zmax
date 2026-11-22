@@ -10,13 +10,13 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ssmode.<port>
 
-实现绑定: registry key=`mode_switch` · src/lerobot/engineering/nodes/library.py · node_mode_switch:node_mode_switch
+实现绑定: registry key=`mode_switch` · src/lerobot/engineering/nodes/library.py:def node_mode_switch
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
    契约  src/lerobot/middleware/nodes/n_mode.py              ← 就是本文件
    实现  src/lerobot/middleware/nodes/impl/mode_switch.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
-   算法  src/lerobot/engineering/nodes/library.py · node_mode_switch                                             ← 纯计算 (模型/几何/控制律)
+   算法  src/lerobot/engineering/nodes/library.py                                             ← 纯计算 (模型/几何/控制律)
    三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("ssmode")
 """
 
@@ -32,9 +32,9 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'mode_switch'
-SOURCE = 'src/lerobot/middleware/nodes/impl/mode_switch.py · node_mode_switch'
-SOURCE_SYMBOL = 'node_mode_switch'
-PARAMS = {'mode': 'train', 'state_space': True, 'desc': '[基础·分段小模型] 运行模式选择 (三态, 双击循环切换): 📷推理=加载真实模型 rollout / 🚀训练=训练真实模型(仿真 metaworld) / 🎯真机数据L2训练=边干边学闭环 (真机帧采集+自动标注 → 训练 → 新鲜帧同口径对照 → 有提升才上在役)。选🎯后点「▶ 运行」即按真实数据开训 (相机标定未就绪时只走伪标注, 如实标注 gap)', 'source': 'src/lerobot/engineering/nodes/library.py · node_mode_switch', 'source_symbol': 'node_mode_switch'}
+SOURCE = 'src/lerobot/engineering/nodes/library.py'
+SOURCE_SYMBOL = 'def node_mode_switch'
+PARAMS = {'mode': 'train', 'state_space': True, 'desc': '[基础·分段小模型] 运行模式选择 (三态, 双击循环切换): 📷推理=加载真实模型 rollout / 🚀训练=训练真实模型(仿真 metaworld) / 🎯真机数据L2训练=边干边学闭环 (真机帧采集+自动标注 → 训练 → 新鲜帧同口径对照 → 有提升才上在役)。选🎯后点「▶ 运行」即按真实数据开训 (相机标定未就绪时只走伪标注, 如实标注 gap)', 'source': 'src/lerobot/engineering/nodes/library.py', 'source_symbol': 'def node_mode_switch', 'source_line': 198}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

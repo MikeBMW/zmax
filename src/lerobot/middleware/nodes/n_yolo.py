@@ -10,13 +10,13 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ssyolo.<port>
 
-实现绑定: registry key=`ss_yolo` · src/lerobot/policies/yolo_3d/yolo_state_aligner.py:class YoloStateAligner
+实现绑定: registry key=`ss_yolo` · src/lerobot/policies/left_right/state_space/perception_3d.py:class YoloStateAligner
 执行口径: EXEC_MODE=pure · PURE=True (口径已逐一验证 ⇒ 允许计算面真跑)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
    契约  src/lerobot/middleware/nodes/n_yolo.py              ← 就是本文件
    实现  src/lerobot/middleware/nodes/impl/ss_yolo.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
-   算法  src/lerobot/policies/yolo_3d/yolo_state_aligner.py                                             ← 纯计算 (模型/几何/控制律)
+   算法  src/lerobot/policies/left_right/state_space/perception_3d.py                                             ← 纯计算 (模型/几何/控制律)
    三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("ssyolo")
 """
 
@@ -32,9 +32,9 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'ss_yolo'
-SOURCE = 'src/lerobot/policies/yolo_3d/yolo_state_aligner.py'
+SOURCE = 'src/lerobot/policies/left_right/state_space/perception_3d.py'
 SOURCE_SYMBOL = 'class YoloStateAligner'
-PARAMS = {'model': 'yolov8s', 'classes': 'peg/hole/hand', 'state_space': True, 'source': 'src/lerobot/policies/yolo_3d/yolo_state_aligner.py', 'desc': '[基础·分段小模型] 感知层·B1 目标识别定位: YOLO 检测光模块/插座/料盘/缺陷等 22 个目标 (类别/位姿/方向, 指标含 mAP/推理时间); 双击=目标清单, 右下角导出=Excel', 'detection_targets': True, 'source_symbol': 'class YoloStateAligner', 'pure_verified': True}
+PARAMS = {'model': 'yolov8s', 'classes': 'peg/hole/hand', 'state_space': True, 'source': 'src/lerobot/policies/left_right/state_space/perception_3d.py', 'desc': '[基础·分段小模型] 感知层·B1 目标识别定位: YOLO 检测光模块/插座/料盘/缺陷等 22 个目标 (类别/位姿/方向, 指标含 mAP/推理时间); 双击=目标清单, 右下角导出=Excel', 'detection_targets': True, 'source_symbol': 'class YoloStateAligner', 'pure_verified': True, 'source_line': 73}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = True

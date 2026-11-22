@@ -12,7 +12,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ssobs.<port>
 
-实现绑定: registry key=`ss_obs` · src/lerobot/policies/left_right/state_space/su2.py:class SU2UnifiedState
+实现绑定: registry key=`ss_obs` · src/lerobot/policies/left_right/state_space/su2.py:class SU2Element:
 执行口径: EXEC_MODE=view · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -35,8 +35,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'ss_obs'
 SOURCE = 'src/lerobot/policies/left_right/state_space/su2.py'
-SOURCE_SYMBOL = 'class SU2UnifiedState'
-PARAMS = {'state_space': True, 'su2_unified_state': True, 'group': 'SU(2) = {U ∈ C^2x2 : U†U = I, det U = 1}', 'map_law': 'ω = π·tanh(gain·‖v‖)·v̂ (有界映射律, θ<π 不绕圈, 方向保留)', 'blocks': 'L2=43D obs 几何误差 | L3=流形规划(进度/偏离/剩余) | L4=安全动作(u_sat/接触/η) | L5=大模型意图', 'observables': 'θ偏离角 / n̂状态方向 / |w|收敛度 / 逐层剥离贡献 / 层间不可交换性 / Fubini-Study 距离', 'viz_tools': 'Bloch球 + S³分量 + 层贡献 + 反演剥离 + 距离矩阵 + 节点映射 (双击开观测面板)', 'desc': '[统一状态·群] SU(2) 二阶特殊酉群: 原 43D 统一状态向量降为群里的 L2 输入块; 全部层(L2/L3/L4/L5)与全部节点数据按有界映射律映成群元素, 群乘法=层合成(不可交换=层间耦合), 反演剥离读每层贡献; 群恒等元 ⇔ 场景收敛', 'source': 'src/lerobot/policies/left_right/state_space/su2.py', 'source_symbol': 'class SU2UnifiedState'}
+SOURCE_SYMBOL = 'class SU2Element:'
+PARAMS = {'state_space': True, 'su2_unified_state': True, 'group': 'SU(2) = {U ∈ C^2x2 : U†U = I, det U = 1}', 'map_law': 'ω = π·tanh(gain·‖v‖)·v̂ (有界映射律, θ<π 不绕圈, 方向保留)', 'blocks': 'L2=43D obs 几何误差 | L3=流形规划(进度/偏离/剩余) | L4=安全动作(u_sat/接触/η) | L5=大模型意图', 'observables': 'θ偏离角 / n̂状态方向 / |w|收敛度 / 逐层剥离贡献 / 层间不可交换性 / Fubini-Study 距离', 'viz_tools': 'Bloch球 + S³分量 + 层贡献 + 反演剥离 + 距离矩阵 + 节点映射 (双击开观测面板)', 'desc': '[统一状态·群] SU(2) 二阶特殊酉群: 原 43D 统一状态向量降为群里的 L2 输入块; 全部层(L2/L3/L4/L5)与全部节点数据按有界映射律映成群元素, 群乘法=层合成(不可交换=层间耦合), 反演剥离读每层贡献; 群恒等元 ⇔ 场景收敛', 'source': 'src/lerobot/policies/left_right/state_space/su2.py', 'source_symbol': 'class SU2Element:', 'source_line': 60}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

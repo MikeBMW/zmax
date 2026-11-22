@@ -11,7 +11,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ssmani_p.<port>
 
-实现绑定: registry key=`ss_mani_p` · src/lerobot/manifold/manifold_layer.py:class PerformanceManifold
+实现绑定: registry key=`ss_mani_p` · src/lerobot/manifold/manifold_layer.py:class ContactManifold:
 执行口径: EXEC_MODE=pure · PURE=True (口径已逐一验证 ⇒ 允许计算面真跑)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -34,8 +34,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'ss_mani_p'
 SOURCE = 'src/lerobot/manifold/manifold_layer.py'
-SOURCE_SYMBOL = 'class PerformanceManifold'
-PARAMS = {'state_space': True, 'mani_layer': True, 'desc': '[专家·世界模型] 性能流形 PerformanceManifold: δ=销头−孔底 → V_p=½δᵀWδ(横向重权), 估计耦合效率 η=exp(−V_p/σ²) (高斯光束近似), ∇V_p 最优对准方向; 真机接光功率计标定 W/σ; 源码 manifold_layer.py', 'source': 'src/lerobot/manifold/manifold_layer.py', 'source_symbol': 'class PerformanceManifold', 'pure_verified': True}
+SOURCE_SYMBOL = 'class ContactManifold:'
+PARAMS = {'state_space': True, 'mani_layer': True, 'desc': '[专家·世界模型] 性能流形 PerformanceManifold: δ=销头−孔底 → V_p=½δᵀWδ(横向重权), 估计耦合效率 η=exp(−V_p/σ²) (高斯光束近似), ∇V_p 最优对准方向; 真机接光功率计标定 W/σ; 源码 manifold_layer.py', 'source': 'src/lerobot/manifold/manifold_layer.py', 'source_symbol': 'class ContactManifold:', 'pure_verified': True, 'source_line': 65}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = True

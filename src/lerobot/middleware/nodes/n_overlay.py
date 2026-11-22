@@ -10,13 +10,13 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.n_realscene.<port>
 
-实现绑定: registry key=`n_realscene_live` · src/lerobot/engineering/nodes/library.py · node_realscene_live:node_realscene_live
+实现绑定: registry key=`n_realscene_live` · src/lerobot/engineering/nodes/library.py:def node_realscene_live
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
    契约  src/lerobot/middleware/nodes/n_overlay.py              ← 就是本文件
    实现  src/lerobot/middleware/nodes/impl/n_realscene_live.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
-   算法  src/lerobot/engineering/nodes/library.py · node_realscene_live                                             ← 纯计算 (模型/几何/控制律)
+   算法  src/lerobot/engineering/nodes/library.py                                             ← 纯计算 (模型/几何/控制律)
    三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("n_realscene")
 """
 
@@ -32,9 +32,9 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'n_realscene_live'
-SOURCE = 'src/lerobot/middleware/nodes/impl/n_realscene_live.py · node_realscene_live'
-SOURCE_SYMBOL = 'node_realscene_live'
-PARAMS = {'source': 'src/lerobot/engineering/nodes/library.py · node_realscene_live', 'source_symbol': 'node_realscene_live'}
+SOURCE = 'src/lerobot/engineering/nodes/library.py'
+SOURCE_SYMBOL = 'def node_realscene_live'
+PARAMS = {'source': 'src/lerobot/engineering/nodes/library.py', 'source_symbol': 'def node_realscene_live', 'source_line': 6958}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

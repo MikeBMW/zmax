@@ -12,7 +12,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.sssk6.<port>
 
-实现绑定: registry key=`sssk6` · src/lerobot/policies/left_right/state_space/skills/atomic_skills.py:class SK06Transfer
+实现绑定: registry key=`sssk6` · src/lerobot/policies/left_right/state_space/skills/atomic_skills.py:class AtomicSkill:
 执行口径: EXEC_MODE=act · PURE=False (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -35,8 +35,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'sssk6'
 SOURCE = 'src/lerobot/policies/left_right/state_space/skills/atomic_skills.py'
-SOURCE_SYMBOL = 'class SK06Transfer'
-PARAMS = {'state_space': True, 'skill_layer': True, 'skill': {'template': 'SK06', 'stage': '转移'}, 'desc': '[基础·分段小模型] 原子技能 ⑥ 转移 (SK06): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器', 'source': 'src/lerobot/policies/left_right/state_space/skills/atomic_skills.py', 'source_symbol': 'class SK06Transfer'}
+SOURCE_SYMBOL = 'class AtomicSkill:'
+PARAMS = {'state_space': True, 'skill_layer': True, 'skill': {'template': 'SK06', 'stage': '转移'}, 'desc': '[基础·分段小模型] 原子技能 ⑥ 转移 (SK06): 固定轨迹模板 — 决策层选定本技能时实时赋值 (阶段目标/速度), 复制模板实例化快速执行 → 输出执行指令给执行器', 'source': 'src/lerobot/policies/left_right/state_space/skills/atomic_skills.py', 'source_symbol': 'class AtomicSkill:', 'source_line': 24}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

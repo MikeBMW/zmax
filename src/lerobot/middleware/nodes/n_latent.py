@@ -4,8 +4,7 @@
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← sscalib
     in  in2   ← ssvlm
-    out out1  → ssdec
-    out out2  → ss_mani_eng
+    out out1  → ssdec, ss_mani_eng
     out out3  → n_calib_mani
 
 输出 / 输入代码:
@@ -13,7 +12,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.sslat.<port>
 
-实现绑定: registry key=`ss_lat` · src/lerobot/calibration/calibration_layer.py:LATENT_CALIB
+实现绑定: registry key=`ss_lat` · src/lerobot/calibration/calibration_layer.py:class CalibrationLayer:
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -31,13 +30,13 @@ EXEC_MODE = 'pure'
 
 # 输入端口 (从总线取) / 输出端口 (发到总线) —— 与工程 JSON 的连线一一对应
 PORTS_IN = ['in1', 'in2']
-PORTS_OUT = ['out1', 'out2', 'out3']
+PORTS_OUT = ['out1', 'out3']
 PORT_LABELS = {}
 
 IMPL_KEY = 'ss_lat'
 SOURCE = 'src/lerobot/calibration/calibration_layer.py'
-SOURCE_SYMBOL = 'LATENT_CALIB'
-PARAMS = {'state_space': True, 'calib_layer': True, 'desc': '[L4 潜空间/世界模型流形标定] 潜空间=世界模型预测流形 (地图几何标定: 维度/类别/速度场 prior_A) + 轨迹观测 PCA 有效维实测; 输入: L4 流形(接触/性能) + 潜状态/先验预测; 源码 calibration_layer.py LATENT_CALIB', 'source': 'src/lerobot/calibration/calibration_layer.py', 'source_symbol': 'LATENT_CALIB'}
+SOURCE_SYMBOL = 'class CalibrationLayer:'
+PARAMS = {'state_space': True, 'calib_layer': True, 'desc': '[L4 潜空间/世界模型流形标定] 潜空间=世界模型预测流形 (地图几何标定: 维度/类别/速度场 prior_A) + 轨迹观测 PCA 有效维实测; 输入: L4 流形(接触/性能) + 潜状态/先验预测; 源码 calibration_layer.py LATENT_CALIB', 'source': 'src/lerobot/calibration/calibration_layer.py', 'source_symbol': 'class CalibrationLayer:', 'source_line': 95}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

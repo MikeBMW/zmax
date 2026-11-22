@@ -11,7 +11,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ssfeat.<port>
 
-实现绑定: registry key=`ss_feature` · src/lerobot/verification/verification_layer.py:FEATURES = [
+实现绑定: registry key=`ss_feature` · src/lerobot/verification/verification_layer.py:def run
 执行口径: EXEC_MODE=view · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -34,8 +34,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'ss_feature'
 SOURCE = 'src/lerobot/verification/verification_layer.py'
-SOURCE_SYMBOL = 'FEATURES = ['
-PARAMS = {'state_space': True, 'verif_layer': True, 'desc': 'Feature 功能清单: 状态空间系统全部 feature 汇总 (A12/B13/C4/D3/E5/F4/G10/H6; 分级 L2 38/L4 11); 共 57 条自动/半自动断言 · 功能树 113 功能×562 用例 (22 节点); 新增: F-B12 3D视觉引导 / F-B13 触觉反馈闭环 (2026-09-24); 源码 verification_layer.py FEATURES', 'source': 'src/lerobot/verification/verification_layer.py', 'source_symbol': 'FEATURES = ['}
+SOURCE_SYMBOL = 'def run'
+PARAMS = {'state_space': True, 'verif_layer': True, 'desc': 'Feature 功能清单: 状态空间系统全部 feature 汇总 (A12/B13/C4/D3/E5/F4/G10/H6; 分级 L2 38/L4 11); 共 57 条自动/半自动断言 · 功能树 113 功能×562 用例 (22 节点); 新增: F-B12 3D视觉引导 / F-B13 触觉反馈闭环 (2026-09-24); 源码 verification_layer.py FEATURES', 'source': 'src/lerobot/verification/verification_layer.py', 'source_symbol': 'def run', 'source_line': 218}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

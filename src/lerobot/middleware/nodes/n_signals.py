@@ -11,7 +11,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ssz700.<port>
 
-实现绑定: registry key=`ss_z700_signals` · tools/gui/ss_bypass_view.py:class Z700SignalsView
+实现绑定: registry key=`ss_z700_signals` · tools/gui/ss_bypass_view.py:def run
 执行口径: EXEC_MODE=act · PURE=False (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -34,8 +34,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'ss_z700_signals'
 SOURCE = 'tools/gui/ss_bypass_view.py'
-SOURCE_SYMBOL = 'class Z700SignalsView'
-PARAMS = {'state_space': True, 'viz_kind': 'z700_signals', 'desc': '[可视化层·回路外] 输入 = 🌍物理世界输出。显示全部真机信号: TCP 位置+姿态四元数+坐标系 · 六关节位置/速度(含关节名) · 六维力/力矩 · 夹爪开度 · 触觉 4D · 机器人电源/运行/报警/急停/碰撞 · 产线阶段 · 采样率与新鲜度 · 缺通道清单; 附状态空间旁路当前阶段/残差/接触概率', 'source': 'tools/gui/ss_bypass_view.py', 'source_symbol': 'class Z700SignalsView'}
+SOURCE_SYMBOL = 'def run'
+PARAMS = {'state_space': True, 'viz_kind': 'z700_signals', 'desc': '[可视化层·回路外] 输入 = 🌍物理世界输出。显示全部真机信号: TCP 位置+姿态四元数+坐标系 · 六关节位置/速度(含关节名) · 六维力/力矩 · 夹爪开度 · 触觉 4D · 机器人电源/运行/报警/急停/碰撞 · 产线阶段 · 采样率与新鲜度 · 缺通道清单; 附状态空间旁路当前阶段/残差/接触概率', 'source': 'tools/gui/ss_bypass_view.py', 'source_symbol': 'def run', 'source_line': 374}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

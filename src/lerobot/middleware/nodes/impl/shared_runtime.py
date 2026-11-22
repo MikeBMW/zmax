@@ -3762,6 +3762,21 @@ _SKILLS = [
     ("sssk8", "⑧ 完成", "完成", "SK08"),
 ]
 
+# 🔄 ⑬ 自动翻转 (2026-11-22 老倪「根据拉环朝向自动翻转 180 度, 满足运动包络约束」):
+#    **按需技能** —— 不进 8/13 段主链, 由「拉环/模块朝向与目标朝向相反」判据触发。
+#    进主链会改 fsm 阶段索引 (DONE_IDX/RETREAT_*), 功能会坏; 所以单独注册一个实现。
+def node_ss_flip(ctx):
+    """⑬ 自动翻转 · SK13 —— 正文在 impl/sssk13.py (延迟导入, 避免与共享运行时循环引用)。"""
+    from .sssk13 import node_ss_flip as _impl
+    return _impl(ctx)
+
+
+_reg("sssk13", ["自动翻转", "翻转"],
+     "🔄 自动翻转 · SK13: 拉环/模块朝向与目标朝向相反 ⇒ 抬净空 30mm → 每拍 ≤5° 分 36 拍翻 180° → "
+     "回落; 平移到 0.10 m/s、角速度 0.5 rad/s; 只出序列, 下发仍走 n_exec + 8793 授权 "
+     "(算法源 skills/atomic_skills.py:class SK13Flip)",
+     node_ss_flip)
+
 for _skid, _sktag, _skstage, _sktpl in _SKILLS:
     _reg(_skid, [_sktag],
          f"🧩 原子技能 {_sktag} · {_sktpl}: 固定轨迹模板 — 决策层选定本技能时实时赋值 "
@@ -3780,6 +3795,9 @@ _SK_EXT_LOC = [
 
 for _skid, _ln, _sym in _SK_EXT_LOC:
     _EXTERNAL_LOC[_skid] = (os.path.join(_SS_DIR, "skills", "atomic_skills.py"), _ln, _sym)
+
+# ⑬ 自动翻转: 右键源码直达技能类 (按需技能, 不在 _SK_EXT_LOC 主链表里)
+_EXTERNAL_LOC["sssk13"] = (os.path.join(_SS_DIR, "skills", "atomic_skills.py"), 1902, "class SK13Flip")
 
 # 右键源码映射: 两 key 各挂独立符号 (防"两节点显示同一段"坑)
 _EXTERNAL_LOC["ss_mani_c"] = (os.path.join(_REPO_ROOT, "src/lerobot/engineering/nodes/library.py"), 4656, "def node_ss_mani")   # 🎯 2026-10-31 落点校准: 原来指到本路径不调用的函数 ⇒ 断点永不命中

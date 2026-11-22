@@ -10,7 +10,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ssbypv.<port>
 
-实现绑定: registry key=`ss_bypass_viz` · tools/gui/ss_bypass_view.py:class SSBypassView
+实现绑定: registry key=`ss_bypass_viz` · tools/gui/ss_bypass_view.py:def run
 执行口径: EXEC_MODE=view · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -33,8 +33,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'ss_bypass_viz'
 SOURCE = 'tools/gui/ss_bypass_view.py'
-SOURCE_SYMBOL = 'class SSBypassView'
-PARAMS = {'state_space': True, 'viz_kind': 'bypass', 'desc': '[可视化层·回路外] 旁路逐帧记录 → 当前阶段(13 段状态机)/残差(m)/接触概率 实时曲线, 500ms 刷新; 同窗显示六层调用数 · 零下行自证(rclpy/socket/写回) · 缺口计数 · 数据源新鲜度', 'source': 'tools/gui/ss_bypass_view.py', 'source_symbol': 'class SSBypassView'}
+SOURCE_SYMBOL = 'def run'
+PARAMS = {'state_space': True, 'viz_kind': 'bypass', 'desc': '[可视化层·回路外] 旁路逐帧记录 → 当前阶段(13 段状态机)/残差(m)/接触概率 实时曲线, 500ms 刷新; 同窗显示六层调用数 · 零下行自证(rclpy/socket/写回) · 缺口计数 · 数据源新鲜度', 'source': 'tools/gui/ss_bypass_view.py', 'source_symbol': 'def run', 'source_line': 374}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

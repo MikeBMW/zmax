@@ -12,13 +12,13 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.n_mem_links.<port>
 
-实现绑定: registry key=`ss_mem_links` · src/lerobot/memory/mem_nodes.py · node_ss_mem_links
+实现绑定: registry key=`ss_mem_links` · src/lerobot/memory/mem_nodes.py:def node_ss_mem_links
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
    契约  src/lerobot/middleware/nodes/n_graph.py              ← 就是本文件
    实现  src/lerobot/middleware/nodes/impl/ss_mem_links.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
-   算法  src/lerobot/memory/mem_nodes.py · node_ss_mem_links                                             ← 纯计算 (模型/几何/控制律)
+   算法  src/lerobot/memory/mem_nodes.py                                             ← 纯计算 (模型/几何/控制律)
    三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("n_mem_links")
 """
 
@@ -34,9 +34,9 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'ss_mem_links'
-SOURCE = 'src/lerobot/memory/mem_nodes.py · node_ss_mem_links'
-SOURCE_SYMBOL = ''
-PARAMS = {'state_space': True, 'desc': '层间链接 links (L4筹划→L3流程→L2技能) + 意图检索 recall (距离门防负迁移)', 'source': 'src/lerobot/memory/mem_nodes.py · node_ss_mem_links', 'bundle': True}
+SOURCE = 'src/lerobot/memory/mem_nodes.py'
+SOURCE_SYMBOL = 'def node_ss_mem_links'
+PARAMS = {'state_space': True, 'desc': '层间链接 links (L4筹划→L3流程→L2技能) + 意图检索 recall (距离门防负迁移)', 'source': 'src/lerobot/memory/mem_nodes.py', 'bundle': True, 'source_symbol': 'def node_ss_mem_links', 'source_line': 370}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

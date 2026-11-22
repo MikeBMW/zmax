@@ -10,7 +10,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.n_hil.<port>
 
-实现绑定: registry key=`n_hil` · src/lerobot/policies/left_right/state_space/hil_bridge.py:class HilBridge
+实现绑定: registry key=`n_hil` · src/lerobot/policies/left_right/state_space/hil_bridge.py:def main
 执行口径: EXEC_MODE=act · PURE=False (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -33,8 +33,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'n_hil'
 SOURCE = 'src/lerobot/policies/left_right/state_space/hil_bridge.py'
-SOURCE_SYMBOL = 'class HilBridge'
-PARAMS = {'state_space': True, 'hil': True, 'web': True, 'transport': 'ECS 中转 /api/relay/{hil/state, agent/prompt, agent/reply}', 'push_s': 5, 'readonly': True, 'web_page': 'https://datadrive.world/hil.html', 'source': 'src/lerobot/policies/left_right/state_space/hil_bridge.py', 'source_symbol': 'class HilBridge', 'desc': '状态空间状态→ECS web(浏览器, hermes 形式)展示核心思想; 人的指示经浏览器回灌工程; 红线: 不下发真机动作', 'port_names': {'inputs': ['L5 判读/建议', '工程状态'], 'outputs': ['人工指示 → 规划']}}
+SOURCE_SYMBOL = 'def main'
+PARAMS = {'state_space': True, 'hil': True, 'web': True, 'transport': 'ECS 中转 /api/relay/{hil/state, agent/prompt, agent/reply}', 'push_s': 5, 'readonly': True, 'web_page': 'https://datadrive.world/hil.html', 'source': 'src/lerobot/policies/left_right/state_space/hil_bridge.py', 'source_symbol': 'def main', 'desc': '状态空间状态→ECS web(浏览器, hermes 形式)展示核心思想; 人的指示经浏览器回灌工程; 红线: 不下发真机动作', 'port_names': {'inputs': ['L5 判读/建议', '工程状态'], 'outputs': ['人工指示 → 规划']}, 'source_line': 416}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

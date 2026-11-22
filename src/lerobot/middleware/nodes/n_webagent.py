@@ -10,7 +10,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.n_web_agent.<port>
 
-实现绑定: registry key=`n_web_agent` · src/lerobot/policies/left_right/state_space/web_agent_bridge.py:class WebAgentBridge (dispatch/poll_once/watch)
+实现绑定: registry key=`n_web_agent` · src/lerobot/policies/left_right/state_space/web_agent_bridge.py:def dispatch
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -33,8 +33,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'n_web_agent'
 SOURCE = 'src/lerobot/policies/left_right/state_space/web_agent_bridge.py'
-SOURCE_SYMBOL = 'class WebAgentBridge (dispatch/poll_once/watch)'
-PARAMS = {'state_space': True, 'web_agent': True, 'readonly': True, 'transport': 'ECS 中转 /api/relay/agent/{prompt,reply,status} (游标式 append-only jsonl, 只读幂等)', 'poll_s': 5, 'endpoints': {'web→本机': 'POST /api/relay/agent/prompt {text} → 本机 5s 轮询 GET /api/relay/agent/prompt?after=N', '本机→web': 'POST /api/relay/agent/reply → web GET /api/relay/agent/reply?after=N'}, 'funcs': ['help', 'status', 'canvas', 'reports', 'memory', 'skills', 'sim', 'net', 'aoi', 'robot_read', 'feishu'], 'redline': '只读白名单: 提示词命中动作类关键词(插入/抓取/夹爪/移动/拍照/示教…) → 拒答+记审计, 不转发', 'desc': '[L5 人机在环] web 上的 agent 用**自然语言提示词**远程调用状态空间的**只读功能**(状态/画布/报告/记忆/技能/仿真自检/网络/AOI 只读判决/真机只读信号/飞书通知), 并把执行结果回执到 web; 动作类提示词一律拒答 (老倪红线: 不动真机)。画布侧: 入=工程记忆能力清单, 出=提示词意图 → L5 场景理解(DeepSeek); 回执不经画布(中转副作用)。', 'source': 'src/lerobot/policies/left_right/state_space/web_agent_bridge.py', 'source_symbol': 'class WebAgentBridge (dispatch/poll_once/watch)'}
+SOURCE_SYMBOL = 'def dispatch'
+PARAMS = {'state_space': True, 'web_agent': True, 'readonly': True, 'transport': 'ECS 中转 /api/relay/agent/{prompt,reply,status} (游标式 append-only jsonl, 只读幂等)', 'poll_s': 5, 'endpoints': {'web→本机': 'POST /api/relay/agent/prompt {text} → 本机 5s 轮询 GET /api/relay/agent/prompt?after=N', '本机→web': 'POST /api/relay/agent/reply → web GET /api/relay/agent/reply?after=N'}, 'funcs': ['help', 'status', 'canvas', 'reports', 'memory', 'skills', 'sim', 'net', 'aoi', 'robot_read', 'feishu'], 'redline': '只读白名单: 提示词命中动作类关键词(插入/抓取/夹爪/移动/拍照/示教…) → 拒答+记审计, 不转发', 'desc': '[L5 人机在环] web 上的 agent 用**自然语言提示词**远程调用状态空间的**只读功能**(状态/画布/报告/记忆/技能/仿真自检/网络/AOI 只读判决/真机只读信号/飞书通知), 并把执行结果回执到 web; 动作类提示词一律拒答 (老倪红线: 不动真机)。画布侧: 入=工程记忆能力清单, 出=提示词意图 → L5 场景理解(DeepSeek); 回执不经画布(中转副作用)。', 'source': 'src/lerobot/policies/left_right/state_space/web_agent_bridge.py', 'source_symbol': 'def dispatch', 'source_line': 273}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

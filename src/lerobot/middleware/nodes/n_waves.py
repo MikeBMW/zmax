@@ -13,13 +13,13 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ssvideo.<port>
 
-实现绑定: registry key=`ss_scope` · src/lerobot/engineering/nodes/library.py · node_ss_scope:node_ss_scope
+实现绑定: registry key=`ss_scope` · src/lerobot/engineering/nodes/library.py:def node_ss_scope
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
    契约  src/lerobot/middleware/nodes/n_waves.py              ← 就是本文件
    实现  src/lerobot/middleware/nodes/impl/ss_scope.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
-   算法  src/lerobot/engineering/nodes/library.py · node_ss_scope                                             ← 纯计算 (模型/几何/控制律)
+   算法  src/lerobot/engineering/nodes/library.py                                             ← 纯计算 (模型/几何/控制律)
    三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("ssvideo")
 """
 
@@ -35,9 +35,9 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'ss_scope'
-SOURCE = 'src/lerobot/middleware/nodes/impl/ss_scope.py · node_ss_scope'
-SOURCE_SYMBOL = 'node_ss_scope'
-PARAMS = {'state_space': True, 'state_space_scope': True, 'desc': '仿真波形: 双击显示最近一次仿真波形 (距离/前馈/残差/接触概率 + 阶段切换标注)', 'viz_kind': 'scope', 'source': 'src/lerobot/engineering/nodes/library.py · node_ss_scope', 'source_symbol': 'node_ss_scope'}
+SOURCE = 'src/lerobot/engineering/nodes/library.py'
+SOURCE_SYMBOL = 'def node_ss_scope'
+PARAMS = {'state_space': True, 'state_space_scope': True, 'desc': '仿真波形: 双击显示最近一次仿真波形 (距离/前馈/残差/接触概率 + 阶段切换标注)', 'viz_kind': 'scope', 'source': 'src/lerobot/engineering/nodes/library.py', 'source_symbol': 'def node_ss_scope', 'source_line': 3043}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

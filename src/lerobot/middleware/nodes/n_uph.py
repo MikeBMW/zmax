@@ -32,9 +32,9 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'ss_uph'
-SOURCE = 'src/lerobot/middleware/nodes/impl/uph_tact_impl.py'
+SOURCE = 'src/lerobot/engineering/nodes/uph_tact_impl.py'
 SOURCE_SYMBOL = 'def run'
-PARAMS = {'state_space': True, 'uph_target': 300, 'tact_s': 12.0, 'desc': '[节拍执行源·预存段表驱动] 读 sim_insert 段表(392段/14件) 按 11.42s 节拍推进 → out1 当前动作(a/b/kind) out2 进度/产出 out3 节拍/UPH; 场景已录 ⇒ 不依赖大模型/语言层, 离线可跑; 输出驱动 AR 场景虚拟臂(真机零指令)', 'source': 'src/lerobot/engineering/nodes/uph_tact_impl.py', 'source_symbol': 'def run', 'pure_verified': True, 'impl_key': 'ss_uph'}
+PARAMS = {'state_space': True, 'uph_target': 300, 'tact_s': 12.0, 'desc': '[节拍执行源·预存段表驱动] 读 sim_insert 段表(392段/14件) 按 11.42s 节拍推进 → out1 当前动作(a/b/kind) out2 进度/产出 out3 节拍/UPH; 场景已录 ⇒ 不依赖大模型/语言层, 离线可跑; 输出驱动 AR 场景虚拟臂(真机零指令)', 'source': 'src/lerobot/engineering/nodes/uph_tact_impl.py', 'source_symbol': 'def run', 'pure_verified': True, 'impl_key': 'ss_uph', 'source_line': 101}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = True

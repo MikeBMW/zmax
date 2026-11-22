@@ -12,7 +12,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.sscalib.<port>
 
-实现绑定: registry key=`ss_calib` · src/lerobot/calibration/calibration_layer.py:class CalibrationLayer
+实现绑定: registry key=`ss_calib` · src/lerobot/calibration/calibration_layer.py:class CalibrationLayer:
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -35,8 +35,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'ss_calib'
 SOURCE = 'src/lerobot/calibration/calibration_layer.py'
-SOURCE_SYMBOL = 'class CalibrationLayer'
-PARAMS = {'state_space': True, 'calib_layer': True, 'desc': '[L4 标定·地图校准 回路外] 引力(快速动作标定: Kp+阶段限速) — 斥力(状态预测标定: 卡尔曼/接触/否决) — 动作(新: DiT action 输出标定量, 输入见 ssdec 连线); 潜空间域已独立至「🧮 潜空-流形」节点 (L4 流形输入); 源码 calibration_layer.py', 'source': 'src/lerobot/calibration/calibration_layer.py', 'source_symbol': 'class CalibrationLayer'}
+SOURCE_SYMBOL = 'class CalibrationLayer:'
+PARAMS = {'state_space': True, 'calib_layer': True, 'desc': '[L4 标定·地图校准 回路外] 引力(快速动作标定: Kp+阶段限速) — 斥力(状态预测标定: 卡尔曼/接触/否决) — 动作(新: DiT action 输出标定量, 输入见 ssdec 连线); 潜空间域已独立至「🧮 潜空-流形」节点 (L4 流形输入); 源码 calibration_layer.py', 'source': 'src/lerobot/calibration/calibration_layer.py', 'source_symbol': 'class CalibrationLayer:', 'source_line': 95}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

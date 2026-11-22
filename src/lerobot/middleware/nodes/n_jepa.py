@@ -14,7 +14,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ssmani_exp.<port>
 
-实现绑定: registry key=`ss_pred` · src/lerobot/manifold/predictor_layer.py:class WorldModelPredictor
+实现绑定: registry key=`ss_pred` · src/lerobot/manifold/predictor_layer.py:class LatentPredictor
 执行口径: EXEC_MODE=view · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -37,8 +37,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'ss_pred'
 SOURCE = 'src/lerobot/manifold/predictor_layer.py'
-SOURCE_SYMBOL = 'class WorldModelPredictor'
-PARAMS = {'desc': "[专家·世界模型 L4] **入线两条意图通道**: ①活跃口径 z7 = 引擎几何潜空间 R7 + 引擎几何意图 (target−peg_head), 来自 📐 2D→3D 解算; ②z_t 口径 = INTACT 潜空间 192 + 意图增量 m_int=δ(z_goal−z_t), 来自 🎯 INTACT 意图解码器 (该口径 LOSO R² 全负未启用, 但解码器的 m_int 仍作为门控/存在性条件参与, w=m_int_weight×SS_L4_INTENT_LINE_W×ready) · JEPA predictor 链路: LatentPredictor (z_t+a_t→z') → ManifoldReadout (接触/性能流形坐标 6 维, 真值对齐) → StateSpaceActionHead (流形→4D 动作); 源码 src/lerobot/manifold/predictor_layer.py", 'expert': True, 'state_space': True, 'source': 'src/lerobot/manifold/predictor_layer.py', 'source_symbol': 'class WorldModelPredictor'}
+SOURCE_SYMBOL = 'class LatentPredictor'
+PARAMS = {'desc': "[专家·世界模型 L4] **入线两条意图通道**: ①活跃口径 z7 = 引擎几何潜空间 R7 + 引擎几何意图 (target−peg_head), 来自 📐 2D→3D 解算; ②z_t 口径 = INTACT 潜空间 192 + 意图增量 m_int=δ(z_goal−z_t), 来自 🎯 INTACT 意图解码器 (该口径 LOSO R² 全负未启用, 但解码器的 m_int 仍作为门控/存在性条件参与, w=m_int_weight×SS_L4_INTENT_LINE_W×ready) · JEPA predictor 链路: LatentPredictor (z_t+a_t→z') → ManifoldReadout (接触/性能流形坐标 6 维, 真值对齐) → StateSpaceActionHead (流形→4D 动作); 源码 src/lerobot/manifold/predictor_layer.py", 'expert': True, 'state_space': True, 'source': 'src/lerobot/manifold/predictor_layer.py', 'source_symbol': 'class LatentPredictor', 'source_line': 29}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

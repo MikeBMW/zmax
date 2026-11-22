@@ -4,20 +4,20 @@
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ss_mem_share
     in  in2   ← n_skill_dict
-    out out1  → ss_mem_field, ssff, sssched, n_mem_links, sssk1, sssk2, sssk3, sssk4, sssk5, sssk6, sssk7, sssk8
+    out out1  → ss_mem_field, ssff, sssched, n_mem_links, sssk1, sssk2, sssk3, sssk4, sssk5, sssk6, sssk7, sssk8, sssk13
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ss_mem_l2.<port>
 
-实现绑定: registry key=`ss_mem_l2` · src/lerobot/memory/mem_nodes.py · node_ss_mem_l2:node_ss_mem_l2
+实现绑定: registry key=`ss_mem_l2` · src/lerobot/memory/mem_nodes.py:def node_ss_mem_l2
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
    契约  src/lerobot/middleware/nodes/n_muscle.py              ← 就是本文件
    实现  src/lerobot/middleware/nodes/impl/ss_mem_l2.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
-   算法  src/lerobot/memory/mem_nodes.py · node_ss_mem_l2                                             ← 纯计算 (模型/几何/控制律)
+   算法  src/lerobot/memory/mem_nodes.py                                             ← 纯计算 (模型/几何/控制律)
    三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("ss_mem_l2")
 """
 
@@ -33,9 +33,9 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'ss_mem_l2'
-SOURCE = 'src/lerobot/memory/mem_nodes.py · node_ss_mem_l2'
-SOURCE_SYMBOL = 'node_ss_mem_l2'
-PARAMS = {'state_space': True, 'source': 'src/lerobot/memory/mem_nodes.py · node_ss_mem_l2', 'source_symbol': 'node_ss_mem_l2'}
+SOURCE = 'src/lerobot/memory/mem_nodes.py'
+SOURCE_SYMBOL = 'def node_ss_mem_l2'
+PARAMS = {'state_space': True, 'source': 'src/lerobot/memory/mem_nodes.py', 'source_symbol': 'def node_ss_mem_l2', 'source_line': 71}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

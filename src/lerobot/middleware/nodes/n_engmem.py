@@ -10,13 +10,13 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.n_eng_mem.<port>
 
-实现绑定: registry key=`n_eng_mem` · src/lerobot/memory/eng_memory.py · collect/sync_to_macro:class EngMemory
+实现绑定: registry key=`n_eng_mem` · src/lerobot/memory/eng_memory.py:def main
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
    契约  src/lerobot/middleware/nodes/n_engmem.py              ← 就是本文件
    实现  src/lerobot/middleware/nodes/impl/n_eng_mem.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
-   算法  src/lerobot/memory/eng_memory.py · collect/sync_to_macro                                             ← 纯计算 (模型/几何/控制律)
+   算法  src/lerobot/memory/eng_memory.py                                             ← 纯计算 (模型/几何/控制律)
    三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("n_eng_mem")
 """
 
@@ -32,9 +32,9 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'n_eng_mem'
-SOURCE = 'src/lerobot/memory/eng_memory.py · collect/sync_to_macro'
-SOURCE_SYMBOL = 'class EngMemory'
-PARAMS = {'state_space': True, 'eng_memory': True, 'desc': '工程记忆 = docs/memory/*.md (跨端同步记忆) + Hermes 记忆 (MEMORY/USER) + 技能库清单; 读真实文件 → 汇总条数/落盘时间 → 同步进 🧠总装记忆中枢 (顶层宏观记忆, macro_memory.uplink)', 'source': 'src/lerobot/memory/eng_memory.py · collect/sync_to_macro', 'source_symbol': 'class EngMemory'}
+SOURCE = 'src/lerobot/memory/eng_memory.py'
+SOURCE_SYMBOL = 'def main'
+PARAMS = {'state_space': True, 'eng_memory': True, 'desc': '工程记忆 = docs/memory/*.md (跨端同步记忆) + Hermes 记忆 (MEMORY/USER) + 技能库清单; 读真实文件 → 汇总条数/落盘时间 → 同步进 🧠总装记忆中枢 (顶层宏观记忆, macro_memory.uplink)', 'source': 'src/lerobot/memory/eng_memory.py', 'source_symbol': 'def main', 'source_line': 187}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

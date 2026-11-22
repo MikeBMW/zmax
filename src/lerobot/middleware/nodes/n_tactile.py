@@ -10,13 +10,13 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.sstactile.<port>
 
-实现绑定: registry key=`yolo_tactile` · src/lerobot/policies/yolo_3d/gen_tactile.py:def synth_tactile
+实现绑定: registry key=`yolo_tactile` · src/lerobot/policies/left_right/state_space/perception_tactile.py:def main
 执行口径: EXEC_MODE=act · PURE=False (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
    契约  src/lerobot/middleware/nodes/n_tactile.py              ← 就是本文件
    实现  src/lerobot/middleware/nodes/impl/yolo_tactile.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
-   算法  src/lerobot/policies/yolo_3d/gen_tactile.py                                             ← 纯计算 (模型/几何/控制律)
+   算法  src/lerobot/policies/left_right/state_space/perception_tactile.py                                             ← 纯计算 (模型/几何/控制律)
    三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("sstactile")
 """
 
@@ -32,9 +32,9 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'yolo_tactile'
-SOURCE = 'src/lerobot/policies/yolo_3d/gen_tactile.py'
-SOURCE_SYMBOL = 'def synth_tactile'
-PARAMS = {'force_res': '0.1N', 'tactile_dim': 4, 'state_space': True, 'source': 'src/lerobot/policies/yolo_3d/gen_tactile.py', 'desc': '[基础·分段小模型] 夹爪开度+接触力 (metaworld 真值) → 4D 触觉 [grasp/contact/dir]', 'source_symbol': 'def synth_tactile'}
+SOURCE = 'src/lerobot/policies/left_right/state_space/perception_tactile.py'
+SOURCE_SYMBOL = 'def main'
+PARAMS = {'force_res': '0.1N', 'tactile_dim': 4, 'state_space': True, 'source': 'src/lerobot/policies/left_right/state_space/perception_tactile.py', 'desc': '[基础·分段小模型] 夹爪开度+接触力 (metaworld 真值) → 4D 触觉 [grasp/contact/dir]', 'source_symbol': 'def main', 'source_line': 35}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

@@ -14,7 +14,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ssvlm.<port>
 
-实现绑定: registry key=`ss_vlm` · src/lerobot/policies/smolvla_lew/vlm_encoder.py:class SmolVLMEncoder
+实现绑定: registry key=`ss_vlm` · src/lerobot/policies/smolvla_lew/vlm_encoder.py:def get_encoder
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -37,8 +37,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'ss_vlm'
 SOURCE = 'src/lerobot/policies/smolvla_lew/vlm_encoder.py'
-SOURCE_SYMBOL = 'class SmolVLMEncoder'
-PARAMS = {'desc': '[高级·端到端模仿学习] 高级·Encoder (SmolVLA): 真实 SmolVLM2 视觉编码 — 图像帧 → 潜空间 z R960 (encode_stage); 源码 src/lerobot/policies/smolvla_lew/vlm_encoder.py', 'vlm': True, 'state_space': True, 'source': 'src/lerobot/policies/smolvla_lew/vlm_encoder.py', 'source_symbol': 'class SmolVLMEncoder'}
+SOURCE_SYMBOL = 'def get_encoder'
+PARAMS = {'desc': '[高级·端到端模仿学习] 高级·Encoder (SmolVLA): 真实 SmolVLM2 视觉编码 — 图像帧 → 潜空间 z R960 (encode_stage); 源码 src/lerobot/policies/smolvla_lew/vlm_encoder.py', 'vlm': True, 'state_space': True, 'source': 'src/lerobot/policies/smolvla_lew/vlm_encoder.py', 'source_symbol': 'def get_encoder', 'source_line': 39}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

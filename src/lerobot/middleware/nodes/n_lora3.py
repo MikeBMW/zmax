@@ -10,7 +10,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ss_lora_l3.<port>
 
-实现绑定: registry key=`ss_lora_l3` · tools/lora_inject.py:class LoRALinear
+实现绑定: registry key=`ss_lora_l3` · tools/lora_inject.py:def main
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -33,8 +33,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'ss_lora_l3'
 SOURCE = 'tools/lora_inject.py'
-SOURCE_SYMBOL = 'class LoRALinear'
-PARAMS = {'desc': '[L3 微调] SmolVLA 本域 LoRA: VLM 注意力 + action expert (flow-matching 头) 注入, batch2 / LoRA; 实测 200 步 / 3670s · loss 0.192 · action_loss 0.2368 · 显存 3.75GB; ⏳ 待办: 与统一主干/阶段专家 MOE 同口径评测后才进默认档', 'source': 'tools/lora_inject.py', 'source_symbol': 'class LoRALinear', 'status': '保留·接入中 (2026-09-26 老倪: 保留并接入系统; 需 merge 后才生效)', 'todo': True, 'ckpt': 'outputs/train/smolvla_lew_lora_200r4/checkpoints'}
+SOURCE_SYMBOL = 'def main'
+PARAMS = {'desc': '[L3 微调] SmolVLA 本域 LoRA: VLM 注意力 + action expert (flow-matching 头) 注入, batch2 / LoRA; 实测 200 步 / 3670s · loss 0.192 · action_loss 0.2368 · 显存 3.75GB; ⏳ 待办: 与统一主干/阶段专家 MOE 同口径评测后才进默认档', 'source': 'tools/lora_inject.py', 'source_symbol': 'def main', 'status': '保留·接入中 (2026-09-26 老倪: 保留并接入系统; 需 merge 后才生效)', 'todo': True, 'ckpt': 'outputs/train/smolvla_lew_lora_200r4/checkpoints', 'source_line': 261}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

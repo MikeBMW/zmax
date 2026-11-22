@@ -12,7 +12,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ssllm.<port>
 
-实现绑定: registry key=`ss_llm` · src/lerobot/policies/left_right/state_space/planner.py:class TaskPlanner
+实现绑定: registry key=`ss_llm` · src/lerobot/policies/left_right/state_space/planner.py:def plan
 执行口径: EXEC_MODE=act · PURE=True (会动设备: 只走数据面, 需 8793 授权后由引擎执行)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -35,8 +35,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'ss_llm'
 SOURCE = 'src/lerobot/policies/left_right/state_space/planner.py'
-SOURCE_SYMBOL = 'class TaskPlanner'
-PARAMS = {'state_space': True, 'task_planner': True, 'llm': 'Qwen3-7B (可插拔, 未配置走规则)', 'desc': '任务规划器 TaskPlanner: 指令/场景 → 技能Token序列 (242条原子技能库, 规则校验后) → 下发状态机', 'source': 'src/lerobot/policies/left_right/state_space/planner.py', 'source_symbol': 'class TaskPlanner', 'pure_verified': True}
+SOURCE_SYMBOL = 'def plan'
+PARAMS = {'state_space': True, 'task_planner': True, 'llm': 'Qwen3-7B (可插拔, 未配置走规则)', 'desc': '任务规划器 TaskPlanner: 指令/场景 → 技能Token序列 (242条原子技能库, 规则校验后) → 下发状态机', 'source': 'src/lerobot/policies/left_right/state_space/planner.py', 'source_symbol': 'def plan', 'pure_verified': True, 'source_line': 109}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = True

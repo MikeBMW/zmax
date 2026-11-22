@@ -10,7 +10,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.sspred.<port>
 
-实现绑定: registry key=`ss_dyn` · src/lerobot/policies/left_right/state_space/dynamics.py
+实现绑定: registry key=`ss_dyn` · src/lerobot/policies/left_right/state_space/dynamics.py:def predict
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -33,8 +33,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'ss_dyn'
 SOURCE = 'src/lerobot/policies/left_right/state_space/dynamics.py'
-SOURCE_SYMBOL = ''
-PARAMS = {'state_space': True, 'prior_predict': True, 'desc': '[基础·分段小模型] 先验动力学预测器: 预测 next_obs — 训练右脑 WorldModel 真权重接入点 (contact_of/next位置, models/ss_right_brain.npz); 线性 A·x+B·u 为守卫回退', 'source': 'src/lerobot/policies/left_right/state_space/dynamics.py'}
+SOURCE_SYMBOL = 'def predict'
+PARAMS = {'state_space': True, 'prior_predict': True, 'desc': '[基础·分段小模型] 先验动力学预测器: 预测 next_obs — 训练右脑 WorldModel 真权重接入点 (contact_of/next位置, models/ss_right_brain.npz); 线性 A·x+B·u 为守卫回退', 'source': 'src/lerobot/policies/left_right/state_space/dynamics.py', 'source_symbol': 'def predict', 'source_line': 104}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

@@ -11,7 +11,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ssllm_in.<port>
 
-实现绑定: registry key=`ss_llm_in` · src/lerobot/policies/left_right/state_space/planner.py:class TaskPlanner
+实现绑定: registry key=`ss_llm_in` · src/lerobot/policies/left_right/state_space/planner.py:def plan
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -34,8 +34,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'ss_llm_in'
 SOURCE = 'src/lerobot/policies/left_right/state_space/planner.py'
-SOURCE_SYMBOL = 'class TaskPlanner'
-PARAMS = {'state_space': True, 'task_input': True, 'desc': '大模型层·输入: MES 工单/自然语言指令 + **场景图通道** (in1 仿真 metaworld 渲染帧 / in2 引擎真图 / in3 真机帧与位姿) → 视觉大模型(SceneVLM: 本地 Qwen2.5-VL-3B 或 API) 场景理解 → 🧠任务规划器 (planner.py); 无模型时规则回退并如实标注', 'source': 'src/lerobot/policies/left_right/state_space/planner.py', 'source_symbol': 'class TaskPlanner'}
+SOURCE_SYMBOL = 'def plan'
+PARAMS = {'state_space': True, 'task_input': True, 'desc': '大模型层·输入: MES 工单/自然语言指令 + **场景图通道** (in1 仿真 metaworld 渲染帧 / in2 引擎真图 / in3 真机帧与位姿) → 视觉大模型(SceneVLM: 本地 Qwen2.5-VL-3B 或 API) 场景理解 → 🧠任务规划器 (planner.py); 无模型时规则回退并如实标注', 'source': 'src/lerobot/policies/left_right/state_space/planner.py', 'source_symbol': 'def plan', 'source_line': 109}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

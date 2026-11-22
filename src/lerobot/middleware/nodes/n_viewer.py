@@ -11,13 +11,13 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ss3d_view.<port>
 
-实现绑定: registry key=`ss_3d_view` · tools/gui/node_logic.py · node_ss_3d_view
+实现绑定: registry key=`ss_3d_view` · src/lerobot/middleware/nodes/impl/ss_3d_view.py:def node_ss_3d_view
 执行口径: EXEC_MODE=view · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
    契约  src/lerobot/middleware/nodes/n_viewer.py              ← 就是本文件
    实现  src/lerobot/middleware/nodes/impl/ss_3d_view.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
-   算法  tools/gui/node_logic.py · node_ss_3d_view                                             ← 纯计算 (模型/几何/控制律)
+   算法  src/lerobot/middleware/nodes/impl/ss_3d_view.py                                             ← 纯计算 (模型/几何/控制律)
    三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("ss3d_view")
 """
 
@@ -33,9 +33,9 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'ss_3d_view'
-SOURCE = 'tools/gui/node_logic.py · node_ss_3d_view'
-SOURCE_SYMBOL = ''
-PARAMS = {'state_space': True, 'desc': '3D 分层视图 — Apollo 风格 (YOLO框/末端轨迹/处理层叠加, 每层可开关)', 'source': 'tools/gui/node_logic.py · node_ss_3d_view', 'viz_kind': '3d'}
+SOURCE = 'src/lerobot/middleware/nodes/impl/ss_3d_view.py'
+SOURCE_SYMBOL = 'def node_ss_3d_view'
+PARAMS = {'state_space': True, 'desc': '3D 分层视图 — Apollo 风格 (YOLO框/末端轨迹/处理层叠加, 每层可开关)', 'source': 'src/lerobot/middleware/nodes/impl/ss_3d_view.py', 'viz_kind': '3d', 'source_symbol': 'def node_ss_3d_view', 'source_line': 10}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

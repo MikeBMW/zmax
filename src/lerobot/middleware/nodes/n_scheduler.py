@@ -19,7 +19,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.sssched.<port>
 
-实现绑定: registry key=`ss_sched` · src/lerobot/policies/left_right/state_space/cognition.py:def decide
+实现绑定: registry key=`ss_sched` · src/lerobot/policies/left_right/state_space/cognition.py:def state_correction
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -42,8 +42,8 @@ PORT_LABELS = {'out1': 'out1'}
 
 IMPL_KEY = 'ss_sched'
 SOURCE = 'src/lerobot/policies/left_right/state_space/cognition.py'
-SOURCE_SYMBOL = 'def decide'
-PARAMS = {'state_space': True, 'action_modulator': True, 'desc': '[基础·分段小模型] 动作调制器 (原状态机, 握有否决权): 6阶段状态机 + 否决权 + 按阶段动作融合 (力控插入)', 'source': 'src/lerobot/policies/left_right/state_space/cognition.py', 'source_symbol': 'def decide', '_port_labels': {'out1': 'out1'}}
+SOURCE_SYMBOL = 'def state_correction'
+PARAMS = {'state_space': True, 'action_modulator': True, 'desc': '[基础·分段小模型] 动作调制器 (原状态机, 握有否决权): 6阶段状态机 + 否决权 + 按阶段动作融合 (力控插入)', 'source': 'src/lerobot/policies/left_right/state_space/cognition.py', 'source_symbol': 'def state_correction', '_port_labels': {'out1': 'out1'}, 'source_line': 18}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

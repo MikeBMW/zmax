@@ -10,13 +10,13 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.n_l2_muscle.<port>
 
-实现绑定: registry key=`n_l2_muscle` · src/lerobot/engineering/nodes/library.py · node_n_l2_muscle:node_n_l2_muscle
+实现绑定: registry key=`n_l2_muscle` · src/lerobot/engineering/nodes/library.py:def node_n_l2_muscle
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
    契约  src/lerobot/middleware/nodes/n_skills.py              ← 就是本文件
    实现  src/lerobot/middleware/nodes/impl/n_l2_muscle.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
-   算法  src/lerobot/engineering/nodes/library.py · node_n_l2_muscle                                             ← 纯计算 (模型/几何/控制律)
+   算法  src/lerobot/engineering/nodes/library.py                                             ← 纯计算 (模型/几何/控制律)
    三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("n_l2_muscle")
 """
 
@@ -32,9 +32,9 @@ PORTS_OUT = ['out1']
 PORT_LABELS = {}
 
 IMPL_KEY = 'n_l2_muscle'
-SOURCE = 'src/lerobot/middleware/nodes/impl/n_l2_muscle.py · node_n_l2_muscle'
-SOURCE_SYMBOL = 'node_n_l2_muscle'
-PARAMS = {'kind': 'real', 'real': True, 'skill': 'data/skills/l2_muscle/光模块_抓放循环_v1.json', 'bridge': 'tools/l2_ros2_bridge.py', 'layer': 'L2', 'desc': 'L2 肌肉记忆: 对准→下降→夹紧(force40)→抬起; 由 L3 序列调用, 经 l2_ros2_bridge(ROS2) 转发 Orin', 'source': 'src/lerobot/engineering/nodes/library.py · node_n_l2_muscle', 'source_symbol': 'node_n_l2_muscle'}
+SOURCE = 'src/lerobot/engineering/nodes/library.py'
+SOURCE_SYMBOL = 'def node_n_l2_muscle'
+PARAMS = {'kind': 'real', 'real': True, 'skill': 'data/skills/l2_muscle/光模块_抓放循环_v1.json', 'bridge': 'tools/l2_ros2_bridge.py', 'layer': 'L2', 'desc': 'L2 肌肉记忆: 对准→下降→夹紧(force40)→抬起; 由 L3 序列调用, 经 l2_ros2_bridge(ROS2) 转发 Orin', 'source': 'src/lerobot/engineering/nodes/library.py', 'source_symbol': 'def node_n_l2_muscle', 'source_line': 6066}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

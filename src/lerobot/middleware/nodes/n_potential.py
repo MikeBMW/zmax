@@ -10,7 +10,7 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.ss_mem_field.<port>
 
-实现绑定: registry key=`ss_mem_field` · src/lerobot/memory/potential_field.py
+实现绑定: registry key=`ss_mem_field` · src/lerobot/memory/potential_field.py:def project_polyline
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
@@ -33,8 +33,8 @@ PORT_LABELS = {}
 
 IMPL_KEY = 'ss_mem_field'
 SOURCE = 'src/lerobot/memory/potential_field.py'
-SOURCE_SYMBOL = ''
-PARAMS = {'state_space': True, 'mem_field': True, 'desc': '[总装机记忆·势场联络] L2 肌肉记忆: 每条技能冠军轨迹→技能势场 Φ_SK (谷底=真跑末点 · σ=谷宽 · 触发/速度上限取技能库真值) · L3 工艺流程记忆: 按真实段时长(真跑帧数)加权组合→流程势场 Φ_process(x,t), 谷底随时序从 SK01 连续移到 SK07 · L4 物理工作空间记忆: Φ_process + 障碍场(孔壁/台面 引擎现场几何) + 世界模型预测项 · 输出 −∇Φ = 意图(方向/速率/技能/置信) 给 L4 INTACT 链按层叠加(blend_action)。逐层开关 = data/memory/memory_layers.json (默认全关=零干预, 逐步打开)。源码 src/lerobot/memory/potential_field.py · 节点 mem_nodes.node_ss_mem_field', 'source': 'src/lerobot/memory/potential_field.py'}
+SOURCE_SYMBOL = 'def project_polyline'
+PARAMS = {'state_space': True, 'mem_field': True, 'desc': '[总装机记忆·势场联络] L2 肌肉记忆: 每条技能冠军轨迹→技能势场 Φ_SK (谷底=真跑末点 · σ=谷宽 · 触发/速度上限取技能库真值) · L3 工艺流程记忆: 按真实段时长(真跑帧数)加权组合→流程势场 Φ_process(x,t), 谷底随时序从 SK01 连续移到 SK07 · L4 物理工作空间记忆: Φ_process + 障碍场(孔壁/台面 引擎现场几何) + 世界模型预测项 · 输出 −∇Φ = 意图(方向/速率/技能/置信) 给 L4 INTACT 链按层叠加(blend_action)。逐层开关 = data/memory/memory_layers.json (默认全关=零干预, 逐步打开)。源码 src/lerobot/memory/potential_field.py · 节点 mem_nodes.node_ss_mem_field', 'source': 'src/lerobot/memory/potential_field.py', 'source_symbol': 'def project_polyline', 'source_line': 61}
 
 # 计算面开关: False = 只走数据面(直通 outN←inN), 不自动执行实现
 PURE = False

@@ -136,8 +136,26 @@ def run(ctx):
                     "通过" if g["ok"] else "截断/拒绝",
                     "" if not g["why"] else " · " + " / ".join(g["why"]),
                     g["pose_mm"]))
-            return {"ok": g["ok"], "value": {"tcp": g["pose_mm"], "frame": g["frame"],
-                                             "src": "安全位姿守护 (工作空间/单步/台面)"},
+            _val = {"tcp": g["pose_mm"], "frame": g["frame"],
+                    "src": "安全位姿守护 (工作空间/单步/台面)"}
+            # 🎯 2026-11-22 老倪「根据规划引导输出的目标位姿, 动作规划给出 action 抓取」:
+            #   这里原来**只重建 tcp**, 把上游的 target_pose/姿态全丢了 ⇒ 下游 n_moveit 只能看到
+            #   一个引导点, 拿不到"要抓的那一个位姿"。现在原样透传, 且对目标位姿再单独守一次。
+            _tp = _pv.get("target_pose")
+            if isinstance(_tp, dict) and _tp.get("pos_mm"):
+                _tp2 = dict(_tp)
+                _g2 = guard_pose({"pos": _tp.get("pos_mm"), "frame": "base_link"}, cur_mm=_cur)
+                if _g2.get("pose_mm"):
+                    _tp2["pos_mm"] = [round(float(v), 2) for v in _g2["pose_mm"]]
+                _tp2["guard"] = {"ok": _g2["ok"], "why": _g2["why"], "clipped": _g2["clipped"]}
+                _val["target_pose"] = _tp2
+                if log:
+                    log("🎯 目标位姿透传: %s · 守护 %s" % (
+                        _tp2.get("pos_mm"), "通过" if _g2["ok"] else "截断"))
+            for _k in ("quat", "quat_src", "pre_pos_mm", "guide", "dir_src"):
+                if (_k in _pv) and (_k not in _val):
+                    _val[_k] = _pv[_k]
+            return {"ok": g["ok"], "value": _val,
                     "why": g["why"], "clipped": g["clipped"], "pose_mm": g["pose_mm"]}
         if "边界" in name:
             # 端口优先: 连线 sssched.out1 → sslimit.in1 (调制器的输出必须真的被限幅, 不能只读模块状态)
