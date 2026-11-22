@@ -25,6 +25,37 @@ button:hover{border-color:var(--acc)}
 button.on{border-color:var(--acc);color:var(--acc)}
 .legend{display:flex;gap:14px;font-size:var(--fs2);color:var(--dim);flex-wrap:wrap}
 .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:middle}
+/* ◆ 相位高亮徽标: 大字百分比 + 文字状态, 三态配色(运行/停留/已到位) */
+.g-e{position:relative}
+.stops{position:absolute;top:42px;right:8px;width:47%;max-height:calc(100% - 50px);overflow-y:auto;
+  display:flex;flex-direction:column;gap:3px;padding:2px 2px 4px 0;font:12.5px/1.5 ui-monospace,Menlo,monospace}
+.stops .hd2{display:flex;justify-content:space-between;color:#8fa6bb;font-size:11.5px;padding:0 2px 2px}
+.stops .r{display:flex;align-items:center;gap:5px;background:#0e141a;border:1px solid #22303c;
+  border-left:3px solid #4ea3ff;border-radius:5px;padding:2px 4px 2px 5px}
+.stops .r.cur{background:#16222c;border-color:#3ddc84;box-shadow:0 0 0 1px #3ddc8444}
+.stops .r .i{color:#7c93a8;font-size:11px;min-width:30px;text-align:right}
+.stops .r input{flex:1;min-width:0;background:transparent;border:0;border-bottom:1px dashed #2c3d4d;
+  color:#dbe7f0;font:inherit;padding:1px 2px;outline:none}
+.stops .r input:focus{border-bottom-color:#3ddc84;background:#0b1219}
+.stops .r button{background:#20141a;border:1px solid #5a2530;color:#ff8b8b;border-radius:4px;
+  font-size:11px;line-height:1;padding:3px 5px;cursor:pointer}
+.stops .r button:hover{background:#341820;border-color:#ff5f6d;color:#ffb3b3}
+.ph-badge{position:absolute;left:18px;top:46px;z-index:4;display:flex;align-items:center;gap:14px;
+  padding:9px 16px;border-radius:13px;background:rgba(8,17,26,.88);border:1.5px solid #243441;
+  box-shadow:0 6px 22px rgba(0,0,0,.5);pointer-events:none}
+.ph-badge .lab{font-size:10.5px;letter-spacing:2px;color:#7f93a4;margin-bottom:2px}
+.ph-badge .pct{font-size:36px;font-weight:800;line-height:.95;letter-spacing:.5px;
+  font-variant-numeric:tabular-nums;text-shadow:0 0 18px currentColor}
+.ph-badge .rt{display:flex;flex-direction:column;gap:6px}
+.ph-badge .st{font-size:15px;font-weight:800;padding:4px 12px;border-radius:999px;letter-spacing:1px;text-align:center}
+.ph-badge .bar{width:132px;height:7px;border-radius:4px;background:#16202a;overflow:hidden}
+.ph-badge .bar>i{display:block;height:100%;width:0%;background:currentColor;transition:width .12s linear}
+.ph-badge.run{border-color:#2b8a5e;color:#3ddc84}
+.ph-badge.run .st{background:rgba(61,220,132,.18);color:#3ddc84}
+.ph-badge.hold{border-color:#8a6519;color:#f5a623}
+.ph-badge.hold .st{background:rgba(245,166,35,.18);color:#f5a623}
+.ph-badge.done{border-color:#1f6d92;color:#37d0ff}
+.ph-badge.done .st{background:rgba(55,208,255,.18);color:#37d0ff}
 body.focus-s1 .grid{grid-template-columns:1fr 1fr;grid-template-areas:"d e"}
 body.focus-s1 .g-a,body.focus-s1 .g-b,body.focus-s1 .g-c{display:none}
 body.focus-s1 #d,body.focus-s1 #e{height:460px}
@@ -44,7 +75,10 @@ if(location.search.indexOf('focus=s1')>=0){document.body.classList.add('focus-s1
 </script>
 <div class="grid">
   <div class="card g-a"><div class="hd"><h2>A · 位置 ∈ ℝ³（底空间）</h2><span class="sub" id="aSub"></span></div><canvas id="a"></canvas></div>
-  <div class="card g-e"><div class="hd"><h2>E · 相位 ∈ S¹（扇形 · 状态 · 节拍构成）</h2><span class="sub" id="eSub"></span></div><canvas id="e"></canvas></div>
+  <div class="card g-e"><div class="hd"><h2>E · 相位 ∈ S¹（扇形 · 状态 · 节拍构成）</h2><span class="sub" id="eSub"></span></div>
+    <div id="phBadge" class="ph-badge hold"><div><div class="lab">相位 PHASE</div><div class="pct" id="phPct">0.0%</div></div>
+      <div class="rt"><div class="st" id="phState">待机</div><div class="bar"><i id="phBar"></i></div></div></div>
+    <canvas id="e"></canvas><div id="stopList" class="stops"></div></div>
   <div class="card g-b"><div class="hd"><h2>B · 轴 ∈ S²（方向）</h2><span class="sub" id="bSub"></span></div><canvas id="b"></canvas></div>
   <div class="card g-c"><div class="hd"><h2>C · 四元数 ∈ S³（轴角球）</h2><span class="sub" id="cSub"></span></div><canvas id="c"></canvas></div>
   <div class="card g-d"><div class="hd"><h2>D · 滚转 ∈ S¹（表盘）</h2><span class="sub" id="dSub"></span></div><canvas id="d"></canvas></div>
@@ -73,12 +107,54 @@ function applyScale(){
   try{localStorage.setItem('se3_sf',SF);}catch(e){}
   drawAll();
 }
-const F=D.frames, N=F.length;
-const SPC={100:'#37d0ff',85:'#3ddc84',70:'#ffb020',60:'#ff5a5a'};
-let LIVE=null;
+let F=D.frames, N=F.length;
+// 🔴 连续相位: s 是 S¹ 圆坐标(过 seam 从 0.9995 回绕到 0), 界面上就成了"相位调回 0";
+//    这里统一用 prog = s/s_末 (单趟严格 0→100%), 滚转角用展开值 PW(不再 359.9→0.49 回退)。
+let S_END=1, PROG=[], PW=[];
+function deriveGeo(){
+  S_END=(N&&F[N-1].s!=null&&F[N-1].s>0)?F[N-1].s:1;
+  PROG=F.map(f=>Math.max(0,Math.min(1,(f.s!=null?f.s:f.i/Math.max(1,N-1))/S_END)));
+  PW=(()=>{const a=[F[0].phi||0];for(let i=1;i<N;i++){let d=(F[i].phi||0)-(F[i-1].phi||0);if(d>180)d-=360;if(d<-180)d+=360;a.push(a[i-1]+d);}return a;})();
+}
+deriveGeo();
+// 🔁 位置 ℝ³ 的轨迹点也跟服务端点数表走(老倪 2026-11-21「位置 R3 轨迹也更新成 新点」):
+//    内嵌 D 是旧 215 点的快照, 这里从 /api/geo 拉当前表(v2 = 239 点)覆盖, 页面上 A/B/C/D 一起换。
+async function loadGeo(){
+  try{
+    const r=await fetch('/api/geo',{cache:'no-store'}); if(!r.ok) return;
+    const j=await r.json(); if(!j.ok||!j.frames||!j.frames.length) return;
+    if(j.frames.length===N) return;                 // 同一套表就不重建(不动视角)
+    F=j.frames; N=F.length; D.frames=F; deriveGeo();
+    idx=Math.max(0,Math.min(idx,N-1));
+    const sc=document.getElementById('sc'); if(sc){ sc.max=N-1; sc.value=idx; }
+    if(typeof drawAll==='function') drawAll();
+  }catch(e){}
+}
+loadGeo();
+const SPC={100:'#37d0ff',85:'#3ddc84',70:'#ffb020',60:'#ff5a5a',15:'#ff9f1c'};  // 15 = 接触段(逐点低速)
+let LIVE=null; const PH_LAST={p:0,t:0}; let E_BOXES=[];   // 单位圆右侧状态框(自检可读)
 let _scrubT=0;
+/* 🔴 真机跟随用**窗口单调追踪**, 不用服务端全局最近帧 ——
+   轨迹自己会交叉/回头(去程和回程几乎同一条走廊), 全局最近帧会在两段之间跳,
+   实测现象就是老倪说的「抬升高亮后, 又跳到第一个」「退出还是乱跳」。
+   在 [idx-8, idx+45] 窗口里找最近; 只有窗口内都不像(>20mm, 比如回位重起)才允许全局重定位。*/
+function _d2(a,b){const dx=a[0]-b[0],dy=a[1]-b[1],dz=a[2]-b[2];return dx*dx+dy*dy+dz*dz;}
+function trackIdx(p){
+  if(!p||!F||!F.length) return idx;
+  let best=idx, bd=1e18;
+  const lo=Math.max(0,idx-8), hi=Math.min(F.length-1, idx+45);
+  for(let i=lo;i<=hi;i++){ const d=_d2(p,F[i].p); if(d<bd){bd=d;best=i;} }
+  if(bd<=400) return best;                       // 20mm 内 ⇒ 就用窗口解
+  let g=best, gd=bd;
+  for(let i=0;i<F.length;i++){ const d=_d2(p,F[i].p); if(d<gd){gd=d;g=i;} }
+  return (gd<=400)? g : best;
+}
 async function pollLive(){try{const r=await fetch('/api/se3',{cache:'no-store'});LIVE=r.ok?await r.json():null;
-  if(LIVE&&LIVE.nearest&&Date.now()-_scrubT>20000){idx=LIVE.nearest.i;const sc=document.getElementById('sc');if(sc)sc.value=idx;}
+  if(LIVE&&LIVE.nearest&&Date.now()-_scrubT>20000){
+    const _i=trackIdx(LIVE.tcp_mm);
+    idx=(typeof _i==='number'&&isFinite(_i))?_i:LIVE.nearest.i;
+    const sc=document.getElementById('sc');if(sc)sc.value=idx;
+  }
 }catch(e){LIVE=null;}}
 setInterval(pollLive,1000);pollLive();
 let idx=0, playing=false, showPhase=true, showSpd=true, cam={yaw:-0.6,pitch:0.42};
@@ -288,7 +364,7 @@ function drawD(){
   line(g,[cx,cy],[cx+Math.cos(phi)*R*0.94,cy-Math.sin(phi)*R*0.94],'#fff',2);
   circle(g,cx,cy,3,'#fff',0,'#fff');
   g.fillStyle='#d8e2ea';g.font='600 '+P(14)+'px sans-serif';
-  g.fillText('φ '+F[idx].phi.toFixed(1)+'°',cx+R+16,cy-8);
+  g.fillText('φ '+PW[idx].toFixed(1)+'°',cx+R+16,cy-8);
   g.fillStyle='#7b8b99';g.font=P(13)+'px sans-serif';
   g.fillText('绕轴滚转',cx+R+16,cy+10);g.fillText('Δφ '+F[idx].dphi.toFixed(2)+'°/帧',cx+R+16,cy+28);
   if(LIVE&&LIVE.phi_deg!=null){const lp=LIVE.phi_deg*Math.PI/180;
@@ -299,27 +375,64 @@ function drawD(){
 
 // ── E: 相位 S¹(扇形 + 状态文字 + 节拍构成)
 const SPDC={'100':'#37d0ff','85':'#3ddc84','70':'#f5a623','60':'#e0563f'};
+// 🔴 相位环/清单的颜色按"状态"上色(同一状态永远同一色); 速度档色只管节拍构成饼
+const STC={'初始点':'#8f7bff','起始点':'#8f7bff','起始接近':'#8f7bff','转移':'#4ea3ff','下降':'#ff9f43',
+           '抓取点':'#56d9a6','抓取(合爪)':'#56d9a6','上升':'#b18cff','扫码点':'#00e0c6',
+           '对位点':'#ffd166','对位':'#ffb84d','力控搜索':'#c792ea','插入':'#ff7b72',
+           '推进':'#f78fb3','退出':'#8fa3b3','拔出':'#ffab5e','准备拔出':'#ffab5e','设备工作点':'#ff5f6d',
+           '拔出点':'#ffab5e','过渡点':'#9aa7b4','下探':'#7cc7ff','废料点':'#e05a5a',
+           '操作区':'#ff6b8a','放置(松爪)':'#2fb3a3',
+           '金手指 AOI':'#d76bd0','表面检测':'#b8cc5e'};
+// 状态色与速度档色(#37d0ff/#3ddc84/#f5a623/#e0563f)刻意错开, 免得同一个青同时表示"转移"和"100档"
+const STC_FALL=['#8fa3b3','#c0a26b','#7fa7c8','#c98f8f','#9ec08a'];
+function stc(name){const k=String(name||'').trim();
+  if(STC[k]) return STC[k];
+  let h=0; for(let i=0;i<k.length;i++) h=(h*31+k.charCodeAt(i))%997;
+  return STC_FALL[h%STC_FALL.length];}
 function spdc(v){const k=String(Math.round(v));return SPDC[k]||'#8fa3b3';}
 let E_SECT=null, E_GEO={};
 
+const DOM_STOPS=true;      // 右侧状态清单改用 DOM 渲染: 每行一个真输入框(改名) + ✕(删点)
+
 function drawE(){
   const cv=document.getElementById('e'),{g,w,h}=fit(cv);clear(cv);
-  const s=(F[idx].s!=null?F[idx].s:idx/(N-1));
-  const s_live=(LIVE&&LIVE.nearest&&LIVE.nearest.s!=null)?LIVE.nearest.s:s;
+  const prog_ref=(f)=> (f&&f.prog!=null)?f.prog:PROG[Math.max(0,Math.min(N-1,f&&f.i!=null?f.i:idx))];
+  const s_live=(LIVE&&LIVE.nearest)?prog_ref(LIVE.nearest):PROG[idx];
+  const _pr_pct=Math.max(0,Math.min(100,s_live*100));
   const SEC=(LIVE&&LIVE.sectors)||null; E_SECT=SEC;
+  try{ if(DOM_STOPS) renderStates(SEC, s_live); }catch(e){}
   const tall=h>=320;
   // 放大版(E 现在与 A 并列, 约半屏宽): 圆环/饼/清单都按画布实际尺寸长, 不再被 60px 封顶
   const RO=Math.min(h*0.33, w*0.205, tall?140:64), RI=RO-Math.max(12,RO*0.12);
   const cx=14+RO, cy=tall?h*0.44:h*0.50;
   E_GEO={cx,cy,RO,RI};
   circle(g,cx,cy,RO,'#22303c',1);circle(g,cx,cy,RI,'#22303c',1);
-  if(SEC&&SEC.blocks&&SEC.blocks.length){
+  if(SEC&&SEC.states&&SEC.states.length){
+    /* 🔴 扇区 = 我标的 13 个工艺段(老倪 2026-11-21「239 个点 … 更新到相位图 S1, 自己标注状态」)
+       每段一个颜色, 首尾相接覆盖 0..238, 不再被实测块的 15/100 速度档碎成 54 个色块。*/
+    const NS=SEC.states.length;
+    SEC.states.forEach((s,k)=>{
+      const a0=(s.s0!=null?s.s0:s.i0/(N-1))*6.2832-Math.PI/2;
+      const a1=(s.s1!=null?s.s1:s.i1/(N-1))*6.2832-Math.PI/2;
+      const wdt=Math.max(a1-a0,0.012), c0=(a0+a1)/2-wdt/2, c1=c0+wdt;
+      g.beginPath();g.arc(cx,cy,RO-0.8,c0,c1);g.arc(cx,cy,RI+1.5,c1,c0,true);g.closePath();
+      g.fillStyle=s.color||stc(s.name); g.fill();
+      g.strokeStyle='#0b1117';g.lineWidth=0.8;g.stroke();
+      // 段号(1..13) 标在扇区中线靠外, 名字在右侧清单里(环上塞不下 13 个中文名)
+      const am=(c0+c1)/2, rr=(RO+RI)/2;
+      g.save();g.textAlign='center';g.textBaseline='middle';
+      g.font='700 '+P(Math.max(8,RO*0.085))+'px sans-serif';
+      g.fillStyle='rgba(6,12,18,.85)';
+      g.fillText(String(k+1), cx+Math.cos(am)*rr, cy+Math.sin(am)*rr);
+      g.restore();
+    });
+  }else if(SEC&&SEC.blocks&&SEC.blocks.length){
     const tmax=Math.max(...SEC.blocks.map(b=>b.t_s||0),1);
     SEC.blocks.forEach(b=>{
       const a0=b.s0*6.2832-Math.PI/2, a1=b.s1*6.2832-Math.PI/2;
       const th=(5+10*Math.min(1,(b.t_s||0)/tmax))*(RO/64);   // 环变大时扇区厚度同比放大
       const r0=Math.max(RI+1.5, RO-th);
-      const col=spdc(b.speed);
+      const col=stc(b.state);   // 扇区色 = 状态色(与右侧文字一致)
       const wdt=Math.max(a1-a0,0.010), c0=(a0+a1)/2-wdt/2, c1=c0+wdt;
       g.beginPath();g.arc(cx,cy,RO-0.8,c0,c1);g.arc(cx,cy,r0,c1,c0,true);g.closePath();
       g.fillStyle=col;g.fill();g.strokeStyle='#0b1117';g.lineWidth=0.7;g.stroke();
@@ -394,8 +507,8 @@ function drawE(){
       if(ax<6||ax+tw+P(20)>w-4||ly<12||ly>h-10) return;      // 放不下就放弃, 交给右侧清单
       placed.push(mid);
       line(g,[cx+Math.cos(mid)*(RO+1),cy+Math.sin(mid)*(RO+1)],
-             [cx+Math.cos(mid)*(RO+9),cy+Math.sin(mid)*(RO+9)],spdc(x.speed),1.2);
-      chip(g,ax,ly,txt,spdc(x.speed),P(12));
+             [cx+Math.cos(mid)*(RO+9),cy+Math.sin(mid)*(RO+9)],stc(x.state),1.2);
+      chip(g,ax,ly,txt,stc(x.state),P(12));
     });
   }
   // ◆ 小饼: 节拍时间构成(角度=时间占比)
@@ -414,23 +527,92 @@ function drawE(){
     g.fillText((SEC.n_blocks||0)+' 块',px,py+P(11));
     g.textAlign='start';
     // ◆ 右侧: 状态时间清单(扇形旁边那块文字的真正兜底, 按状态聚合, 不缺项)
-    const x0=px+pr+16;
-    if(E_RUNS.length && (w-x0)>=112){                 // 窄版(网格视图 343px)放不下就只留饼+图例, 不许裁字
-      const all=[...E_RUNS].sort((a,b)=>b.t-a.t);
-      const list=(h>=320?all:all.slice(0,3));
-      g.font='600 '+P(tall?14:12)+'px sans-serif';g.fillStyle='#9fb3c4';
-      g.fillText('状态 · 耗时 · 占比',x0,cy-pr-14);
+    const x0=px+pr+10;
+    if(!DOM_STOPS && E_RUNS.length && (w-x0)>=112){   // 窄版放不下就只留饼+图例, 不许裁字
+      // 当前所在块/状态 + 该状态已用时间(实时)
+      const _blocks=SEC.blocks||[];
+      const _curB=_blocks.find(b=>s_live>=b.s0&&s_live<b.s1)||_blocks[_blocks.length-1]||null;
+      const _curState=_curB?_curB.state:null;
+      const _planOf=(st)=>{let p=0;_blocks.forEach(b=>{if(b.state===st)p+=b.t_s;});return p;};
+      const _usedOf=(st)=>{let u=0;_blocks.forEach(b=>{if(b.state!==st)return;
+          if(b.s1<=s_live)u+=b.t_s;
+          else if(b.s0<s_live&&s_live<b.s1)u+=b.t_s*(s_live-b.s0)/Math.max(1e-9,b.s1-b.s0);});return u;};
+      // 🔴 必须按**相位先后**排(上→下就是轨迹走向), 按耗时排会让方框随执行上下乱跳
+      const all=[...E_RUNS].sort((a,b)=>a.s0-b.s0);
+      // 🔴 同一时刻只能有一个方框: 先按相位区间选出**唯一**当前段(对象引用), 后面用 === 比较;
+      //    之前按"区间条件"逐行判断, 末段 s1 重叠时会同时点亮多行。
+      // 🔴 地标行(抓取点/扫码点)是零宽度(s0==s1), 用区间判断永远选不中 ⇒ 改成"按 s0 排序后接管到下一条 s0"
+      let _curRun=null;
+      for(let _k=0;_k<all.length;_k++){
+        const _a=all[_k].s0, _b=(_k+1<all.length? all[_k+1].s0 : 1.0001);
+        if(s_live>=_a-1e-9 && s_live<_b){ _curRun=all[_k]; break; }
+      }
+      // 地标点(抓取点/扫码点/设备工作点/拔出点/废料点)零宽度, 紧邻的下一条 s0 只差 ~0.001
+      // ⇒ 停在点上时会被"下一条"抢走。凡是 s_live 落在地标 ±0.3% 内, 一律判为地标。
+      let _lm=null, _lmd=1e9;
+      all.forEach(r=>{ const d=Math.abs(s_live-r.s0);
+        if(Math.abs(r.s1-r.s0)<1e-9 && d<0.003 && d<_lmd){ _lm=r; _lmd=d; } });   // 取**最近**的地标, 不是第一个
+      if(_lm) _curRun=_lm;
+      if(!_curRun && s_live>=0.9995){ let best=null;
+        all.forEach(r=>{ if(r.s1>=0.999 && (!best || r.s1>best.s1)) best=r; }); _curRun=best; }
+      // 🔴 行数必须按画布剩余高度算, 否则 27 段会一路画到 y=905(canvas 只有 520)全被裁掉
+      const _top=cy-pr+4, _avail=Math.max(P(60), h-12-_top);
+      const _curIdx=Math.max(0, all.indexOf(_curRun));
+      // 🔴 行距下限 20px: 之前压到 12px 全塞进去 ⇒ 字挤成一坨; 宁可只显示一屏 + 窗口跟住当前行
+      const _rowPitch=Math.max(P(20), Math.min(P(26), _avail/Math.max(1,all.length)));
+      const _maxRows=Math.max(1, Math.floor(_avail/_rowPitch));
+      let _start=0;
+      if(all.length>_maxRows){
+        _start=Math.max(0, Math.min(all.length-_maxRows, _curIdx-Math.floor(_maxRows*0.72)));   // 当前行上方留 10 行上下文(抓取/扫码这种成对动作要能同时看到)
+      }
+      const list=(h>=320? all.slice(_start,_start+_maxRows) : all.slice(0,3));
+      const _fs=Math.max(P(10), Math.min(P(13), _rowPitch*0.56));
+      // ◆ 右侧状态清单: 每一行套一个高亮方框(深底 + 同色描边 + 左侧色条), 与环上径向文字区分开
+      //    并且"当前所在状态"要活: 行高亮 + 已用/计划 实时增长
+      E_BOXES=[]; try{window.__eBoxes=E_BOXES;}catch(e){}
+      const _segPct=_curB? Math.round(100*Math.max(0,Math.min(1,(s_live-_curB.s0)/Math.max(1e-9,_curB.s1-_curB.s0)))) : 0;
+      const hdTxt=_curState? ('现在 '+_curState+' · 段内 '+_segPct+'%') : '状态 · 耗时 · 占比 · 档位';
+      g.font='700 '+P(tall?12.5:11.5)+'px sans-serif';
+      const hw=g.measureText(hdTxt).width;
+      g.fillStyle=_curState?stc(_curState):'#b8c9d6';g.fillText(hdTxt,x0+2,cy-pr-14);
       list.forEach((x,i)=>{
-        const y=cy-pr+4+i*P(tall?24:15);
-        g.fillStyle=spdc(x.speed);
-        if(g.roundRect){g.beginPath();g.roundRect(x0,y-P(tall?11:10),5,P(tall?12:11),2);g.fill();}
-        else g.fillRect(x0,y-P(10),4,P(11));
-        g.fillStyle='#dce6ee';g.font=P(tall?14:11.5)+'px sans-serif';
-        g.fillText(x.state,x0+11,y);
-        g.fillStyle='#8fa3b3';
-        g.fillText(x.t.toFixed(0)+'s  '+(x.t/SEC.total_s*100).toFixed(0)+'%',
-          x0+11+g.measureText(x.state).width+P(8),y);
+        const y=_top+i*_rowPitch+_rowPitch*0.5+_fs*0.36;
+        // 🔴 同一状态在轨迹里会出现多次(往返), 只能按"相位区间"判当前, 不能按状态名
+        const isCur=(_curRun===x);                 // 唯一当前段(对象同一性)
+        const _plan=x.t;
+        const _used=isCur? _plan*Math.max(0,Math.min(1,(s_live-x.s0)/Math.max(1e-9,(x.s1-x.s0)))) : null;
+        const t1=x.state;
+        const t2=(isCur? (Math.min(_used,_plan).toFixed(0)+'/'+_plan.toFixed(0)+'s') : (x.t.toFixed(0)+'s'))
+                 +' '+(x.t/SEC.total_s*100).toFixed(0)+'% '+Math.round(x.speed)+'档';
+        g.font=P(_fs)+'px sans-serif';
+        const w1=g.measureText(t1).width, w2=g.measureText(t2).width;
+        const _bh=_rowPitch-P(4);
+        const bx=x0-7, bw=Math.min(w1+w2+P(30), w-(x0-7)-5), bh=_bh, by=y-_bh*0.5-_fs*0.36;
+        if(isCur){                                   // ◆ 只有"现在跑到的那一个状态"才有方框
+          if(g.roundRect){
+            g.beginPath();g.roundRect(bx,by,bw,bh,4.5);
+            g.fillStyle='rgba(34,52,70,.97)';g.fill();
+            g.strokeStyle=stc(x.state);g.lineWidth=2.2;g.stroke();
+            g.beginPath();g.roundRect(bx+2.5,by+2.5,5,bh-5,1.8);g.fillStyle=stc(x.state);g.fill();
+            g.beginPath();g.arc(bx+bw-P(7),by+bh*0.5,P(2.6),0,6.2832);g.fillStyle=stc(x.state);g.fill();
+          } else { g.fillStyle='rgba(34,52,70,.97)';g.fillRect(bx,by,bw,bh);
+                   g.strokeStyle=stc(x.state);g.lineWidth=2;g.strokeRect(bx,by,bw,bh); }
+        }
+        g.fillStyle=stc(x.state);g.font='700 '+P(tall?12.5:11)+'px sans-serif';g.fillText(t1,bx+P(10),y);   // 文字色 = 环上扇区色
+        g.fillStyle='#9fb3c4';g.font=P(tall?12.5:11)+'px sans-serif';g.fillText(t2,bx+P(10)+w1+P(7),y);
+        E_BOXES.push({x:bx,y:by,w:bw,h:bh,state:x.state,speed:x.speed,color:stc(x.state),
+                      cur:!!isCur, used:isCur?+_used.toFixed(2):null, label:t2});
       });
+      if(all.length>list.length){
+        const y=_top+list.length*_rowPitch+_rowPitch*0.5+_fs*0.36;
+        const more='⋯ 另 '+(all.length-list.length)+' 段';
+        g.font=P(tall?13:11.5)+'px sans-serif';
+        const bw2=g.measureText(more).width+P(22), bh2=P(tall?19:15.5), by2=y-P(tall?13:11.5);
+        if(g.roundRect){g.beginPath();g.roundRect(x0-7,by2,bw2,bh2,4.5);
+          g.fillStyle='rgba(18,30,41,.92)';g.fill();g.strokeStyle='rgba(150,175,200,.30)';g.lineWidth=1;g.stroke();}
+        g.fillStyle='#8fa3b3';g.fillText(more,x0+4,y);
+        E_BOXES.push({x:x0-7,y:by2,w:bw2,h:bh2,state:more,speed:-1});
+      }
     }
     // 图例
     let lx=8;const ly=h-8;
@@ -466,10 +648,197 @@ function drawE(){
     if(b){nowState=b.state;
       chip(g,8,14,'现在 '+b.state+(b.state_tags&&b.state_tags.length?' · '+b.state_tags.join(' '):''),spdc(b.speed),P(12.5));}
   }
+  // ◆ 相位徽标: 大字百分比 + 文字状态(运行中/停留/已到位), 三态高亮
+  try{ const _hi=(LIVE&&LIVE.nearest&&LIVE.nearest.hold_i!=null)?LIVE.nearest.hold_i:-1;
+       updatePhaseBadge(_pr_pct, PH_LAST.p, PH_LAST.t? Date.now()-PH_LAST.t : 0, _hi);
+       PH_LAST.p=_pr_pct; PH_LAST.t=Date.now(); }catch(e){}
   const cov=SEC&&SEC.blocks?SEC.blocks.reduce((a,b)=>a+(b.s1-b.s0),0):0;
   document.getElementById('eSub').textContent=((LIVE&&LIVE.nearest)?'● 实时 s ':'s ')+
-    (s_live*100).toFixed(1)+'%'+(SEC?(' · 节拍 '+SEC.total_s.toFixed(0)+'s / '+SEC.n_blocks+
-    ' 块 · 覆盖 '+(cov*100).toFixed(0)+'%'+(nowState?' · '+nowState:'')):'');
+    (s_live*100).toFixed(1)+'%'+(SEC?(' · 节拍 '+SEC.total_s.toFixed(0)+'s / '+
+    ((SEC.states&&SEC.states.length)?(SEC.states.length+' 段'):(SEC.n_blocks+' 块'))+
+    ' · 覆盖 '+(cov*100).toFixed(0)+'%'+(nowState?' · '+nowState:'')):'');
+}
+
+// 相位徽标: pct=0~100, prevPct/ dtMs 用来判"在走还是在停"
+const PH_HIST=[];                        // [时间, 相位%] 历史, 用 ≥0.9s 的窗口算速度
+let PH_HOLD_N=0, PH_CLS='run';           // "停留"要连判两个窗口才算(否则 1s 轮询撞上同一帧会闪一下琥珀)
+function updatePhaseBadge(pct, prevPct, dtMs, holdI){
+  const p=Math.max(0,Math.min(100, Number(pct)||0));
+  const now=Date.now();
+  PH_HIST.push([now,p]);
+  while(PH_HIST.length>2 && now-PH_HIST[0][0]>3000) PH_HIST.shift();
+  // 🔴 不能用"逐帧差分": 页面每帧都重绘(dt≈16ms) ⇒ Δp≈0 ⇒ 永远判成"停留"
+  let ref=null;
+  for(let i=PH_HIST.length-1;i>=0;i--){ if(now-PH_HIST[i][0]>=900){ ref=PH_HIST[i]; break; } }
+  const v = ref ? (p-ref[1])/((now-ref[0])/1000) : 0;                // %/s, 0.9s 窗口
+  let cls = p>=99.95 ? 'done' : (!ref ? 'run' : (Math.abs(v)<0.02 ? 'hold' : 'run'));
+  if(holdI!=null && holdI>=0) cls='hold';          // 执行器正在停留点驻足(帧号来自 meas 的 hi)
+  if(cls==='hold'){ PH_HOLD_N++; if(PH_HOLD_N<2) cls=PH_CLS; }   // 迟滞: 单次未动不算停留
+  else PH_HOLD_N=0;
+  PH_CLS=cls;
+  let txt = cls==='done' ? '已到位 100%' : (cls==='hold' ? '停留中' : '运行中');
+  if(holdI!=null && holdI>=0) txt='停留 · 帧#'+holdI;
+  const bd=document.getElementById('phBadge'), pc=document.getElementById('phPct'),
+        st=document.getElementById('phState'), bar=document.getElementById('phBar');
+  if(!bd) return cls;
+  if(bd.className!=='ph-badge '+cls) bd.className='ph-badge '+cls;
+  pc.textContent=p.toFixed(1)+'%'; st.textContent=txt;
+  bar.style.width=p+'%';
+  return cls;
+}
+window.__phBadge=updatePhaseBadge;   // 自检/外部联动用
+
+// ── 停点清单(DOM): 状态文字 + 输入框改名字 + ✕ 删点 ─────────────────────────
+let _STOPS_KEY="";
+function _stopColor(st){
+  const m={'初始点':'#8f7bff','转移':'#4ea3ff','下降':'#ff9f43','抓取点':'#56d9a6','上升':'#b18cff',
+    '扫码点':'#00e0c6','对位点':'#ffd166','对位':'#ffb84d','力控搜索':'#c792ea','插入':'#ff7b72',
+    '设备工作点':'#ff5f6d','离开':'#8fa3b3','拔出点':'#ffab5e','废料点':'#e05a5a','过渡点':'#9aa7b4',
+    '下探':'#7cc7ff','操作区':'#ff6b8a','金手指 AOI':'#d76bd0'};
+  for(const k in m){ if((st||"").indexOf(k)===0) return m[k]; }
+  return '#4ea3ff';
+}
+async function stopPost(body){
+  const r=await fetch('/api/stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const j=await r.json();
+  _STOPS_KEY="";                         // 强制下一帧重建
+  if(j&&j.ok&&LIVE) LIVE.sectors.stops=j.stops;
+  return j;
+}
+function renderStates(SEC, s_live){
+  const box=document.getElementById('stopList'); if(!box) return;
+  const st=(SEC&&SEC.states)||[];
+  if(!st.length) return renderStops(SEC, s_live);
+  // 🔴 高亮跟**当前帧**(滑杆拖到哪/真机跟到哪, idx 已经是这个值), 不能再读 LIVE.nearest
+  //    —— 那个是"真机现在在哪", 拖滑杆时它不动, 会一直停在第一行(实测就是这么卡住的)。
+  let cur_i=(typeof idx==='number')?idx
+              :((LIVE&&LIVE.nearest&&LIVE.nearest.i!=null)?LIVE.nearest.i:-1);
+  /* 🔴 上游投影不可信时**不要换行**: 实测臂在插到底位(818,227,190)却被指到 i=62(距 574m),
+     页面就从"插入到底"跳到"移动→金手指检测1"。距离 >60mm 一律视为无效, 保持原高亮。 */
+  const _bad=(!(typeof idx==='number') && LIVE && LIVE.nearest &&
+              LIVE.nearest.dist_mm!=null && LIVE.nearest.dist_mm>60);
+  if(_bad) cur_i=-1;
+  // 高亮 = 当前帧所在的那一段(单调从上往下, 不会来回跳)
+  /* 高亮换行必须**稳 250ms 才算数** ——
+     真机在位姿抖动/边界帧(如 #133↔#134)会被反复跨过, 一跨就换行就会"先跳到退出又跳回",
+     老倪 2026-11-21 原话:「你先跳到退出, 又跳回, 不对, 顺序错了」。
+     单点状态(抓取 #32 / 扫码 #64)宽度只有 1 帧, 用固定死区会让它永远点不亮 ⇒ 用时间判据。 */
+  let hi=-1;
+  st.forEach((o,k)=>{ if(cur_i>=o.i0 && cur_i<=o.i1) hi=k; });
+  if(hi<0 && cur_i>=0) hi=(cur_i<st[0].i0)?0:st.length-1;
+  if(hi<0 && window.__ST_HI!=null) hi=window.__ST_HI;   // 投影无效(_bad) ⇒ 原地不动
+  const _now=Date.now();
+  const _scrubbing=(_now-(_scrubT||0) < 800);   // 人拖滑杆/点行 ⇒ 立刻跟(不要迟滞)
+  /* 🔴 老倪 11-22 第二次强调「高亮框别乱跳」: 之前留了"回到段首就重置"的口子 ——
+     真机在初始位/段首附近时最近点会反复落回第 0 段, 一落就重置 ⇒ 高亮从中间跳回第一行。
+     现在**只有人工操作(拖滑杆/点行)才允许回退**, 其余一律单调向下; 换圈也靠人点一下行。 */
+  /* 回 0: 真机**停在轨迹首帧**(投影 i=0 且连续 1.5s) ⇒ 视为新一圈, 允许高亮与相位归零。
+     不能只要"最近点是第 0 段"就重置 —— 那会在段首附近来回抖动(之前跳到第 1 行就是这个)。
+     老倪 11-22: 「回 0」「相位没有回 0」。 */
+  const _nowMs=Date.now();
+  if(!_bad && cur_i===0){ if(!window.__ST_Z0) window.__ST_Z0=_nowMs; } else { window.__ST_Z0=0; }
+  const _atZero=(window.__ST_Z0 && (_nowMs-window.__ST_Z0)>1500);
+  if(_atZero){ window.__ST_MAX=0; }
+  if(_scrubbing || _atZero || window.__ST_HI==null){
+    window.__ST_HI=hi; window.__ST_CAND=hi; window.__ST_T=_now; window.__ST_MAX=hi;
+  }else if(hi===window.__ST_HI){
+    window.__ST_CAND=hi; window.__ST_T=_now;                    // 没变 ⇒ 计时复位
+  }else{
+    if(window.__ST_CAND!==hi){ window.__ST_CAND=hi; window.__ST_T=_now; }
+    let _h=hi;
+    if(_now-(window.__ST_T||0) < 250){ _h=window.__ST_HI; }     // 没稳 250ms ⇒ 先不换行
+    /* 🔴 单调锁(老倪 11-22:「高亮的方块顺序不要乱跳, 按从上到下的顺序来」):
+       真机最近点会因演示轨迹自交(回程穿过抓取走廊)跳回前面的行 —— 稳定性判据挡不住,
+       所以这里对"已到达的行号"取 max: 除人工拖动/点行/回到段首, 高亮只增不减。 */
+    /* 追赶: 人工快速拖动时投影会一次跨好几行, 若还是"每拍只 +1 行"页面就明显跟不上。
+       投影可信(dist<25mm)且跨行 >3 时直接跳到 cur_i —— 仍然是**只向前**, 不回退。 */
+    if(!_bad && (typeof cur_i==='number') && cur_i>_h+3 &&
+       (LIVE.nearest&&LIVE.nearest.dist_mm!=null&&LIVE.nearest.dist_mm<25)){ _h=cur_i; }
+    _h=Math.max(_h, window.__ST_MAX==null?0:window.__ST_MAX);
+    /* 🔴 每次刷新最多往下走 1 行(老倪:"怎么突然跳到 11 了" / "别乱跳") ——
+       真值最近点在自交/往返处会一次跳好几个段, 那样看着就是"跳"。限速成逐行推进,
+       一段一段往下扫, 哪怕上游给的索引突变也只一行一行走。 */
+    const _cap=(window.__ST_HI==null?0:window.__ST_HI)+1;
+    if(_h>_cap){ _h=_cap; }
+    window.__ST_HI=_h; window.__ST_MAX=_h; hi=_h;
+  }
+  if(hi<0) hi=0;   // 兜底: 投影无效又还没有历史高亮时, 至少停在第一行(不留"没有高亮"的空态)
+  const key=st.map(o=>o.i0+':'+o.i1+':'+o.name).join('|')+'#'+hi;
+  if(key===window.__ST_KEY) return;
+  window.__ST_KEY=key;
+  const frag=document.createDocumentFragment();
+  const hd=document.createElement('div'); hd.className='hd2';
+  hd.innerHTML='<span>状态 '+st.length+' 个（239 点 · 点一行跳到该段起点）</span><span>'+
+               (SEC&&SEC.total_s?Math.round(SEC.total_s)+'s':'')+'</span>';
+  frag.appendChild(hd);
+  st.forEach((o,k)=>{
+    const row=document.createElement('div');
+    row.className='r'+(k===hi?' cur':'');
+    row.style.borderLeftColor=o.color||'#3ddc84';
+    row.style.cursor='pointer';
+    row.title=o.name+'  #'+o.i0+'→#'+o.i1+'  '+(o.t_s||0).toFixed(1)+'s  '+(o.s_mm||0)+'mm';
+    const no=document.createElement('span'); no.className='i'; no.textContent=(k+1)+' #'+o.i0;
+    const nm=document.createElement('span'); nm.style.flex='1'; nm.style.fontWeight=(k===hi?'700':'400');
+    nm.textContent=o.name;
+    const tm=document.createElement('span'); tm.style.cssText='color:#7c93a8;font-size:11px;min-width:44px;text-align:right';
+    tm.textContent=Math.round(o.t_s||0)+'s';
+    row.append(no,nm,tm);
+    row.addEventListener('click',()=>{ idx=Math.max(0,Math.min(N-1,o.i0)); _scrubT=Date.now();
+      const sc=document.getElementById('sc'); if(sc) sc.value=idx; drawAll(); });
+    frag.appendChild(row);
+  });
+  box.replaceChildren(frag);
+  const cur=box.querySelector('.r.cur');
+  if(cur){
+    const br=box.getBoundingClientRect(), cr=cur.getBoundingClientRect();
+    if(cr.top<br.top+4) box.scrollTop-=(br.top+4-cr.top);
+    else if(cr.bottom>br.bottom-4) box.scrollTop+=(cr.bottom-br.bottom+4);
+  }
+}
+function renderStops(SEC, s_live){
+  const box=document.getElementById('stopList'); if(!box) return;
+  const st=(SEC&&SEC.stops)||[];
+  // 🔴 高亮跟**当前帧**(滑杆拖到哪/真机跟到哪, idx 已经是这个值), 不能再读 LIVE.nearest
+  //    —— 那个是"真机现在在哪", 拖滑杆时它不动, 会一直停在第一行(实测就是这么卡住的)。
+  const cur_i=(typeof idx==='number')?idx
+              :((LIVE&&LIVE.nearest&&LIVE.nearest.i!=null)?LIVE.nearest.i:-1);
+  // 🔴 高亮 = **正在走的那一段的落点状态**(第一个 i>=当前帧 的停点), 不是"最近的距离",
+  //    也不是"已走过的最下面" —— 后两者与画布上那句"现在 <状态>"会打架。
+  //    行 i 覆盖 (上一个停点, 本停点], 所以当前帧落在哪一行, 就是第一个 i>=当前帧 的行。
+  //    单调递增 ⇒ 方框只会从上往下走, 不会来回跳。
+  let hi=-1;
+  st.forEach((o,k)=>{ if(hi<0 && cur_i>=0 && o.i>=cur_i) hi=k; });
+  if(hi<0 && cur_i>=0 && st.length) hi=st.length-1;      // 过了最后一个停点(#237) ⇒ 停在最后一行
+  // 只有"停点集合变了"或"当前行变了"才重建, 否则正在输入的内容会被打断
+  const key=st.map(o=>o.i+':'+(o.label||'')).join('|')+'#'+hi;
+  if(key===_STOPS_KEY) return;
+  _STOPS_KEY=key;
+  const frag=document.createDocumentFragment();
+  const hd=document.createElement('div'); hd.className='hd2';
+  const _v2=(LIVE&&LIVE.set==='v2');
+  hd.innerHTML='<span>'+( _v2 ? ('状态 '+st.length+' 个（走到该点停 1 秒）') : ('停点 '+st.length+' 个（方向突变 → 停 1 秒）') )+'</span><span>点 ✕ 删</span>';
+  frag.appendChild(hd);
+  st.forEach((o,k)=>{
+    const row=document.createElement('div');
+    row.className='r'+(k===hi?' cur':'');
+    row.style.borderLeftColor=_stopColor(o.label||o.name||'');
+    const idx=document.createElement('span'); idx.className='i'; idx.textContent='#'+o.i;
+    const inp=document.createElement('input'); inp.value=(o.label&&o.label[0]==='#'?'':o.label)||'';
+    inp.placeholder='输入名称…'; inp.dataset.i=o.i;
+    inp.addEventListener('keydown',ev=>{ if(ev.key==='Enter') inp.blur(); });
+    inp.addEventListener('change',async()=>{ await stopPost({i:o.i, name:inp.value}); });
+    const del=document.createElement('button'); del.textContent='✕'; del.title='删除这个停点';
+    del.addEventListener('click',async()=>{ await stopPost({i:o.i, del:true}); });
+    row.append(idx,inp,del); frag.appendChild(row);
+  });
+  box.replaceChildren(frag);
+  // 高亮行始终可见(列表比卡片高时要跟着往下滚, 不然高亮跑到可视区外就"看不到变化")
+  const cur=box.querySelector('.r.cur');
+  if(cur){
+    const br=box.getBoundingClientRect(), cr=cur.getBoundingClientRect();
+    if(cr.top<br.top+4) box.scrollTop-= (br.top+4-cr.top);
+    else if(cr.bottom>br.bottom-4) box.scrollTop+= (cr.bottom-br.bottom+4);
+  }
 }
 
 function drawAll(){drawA();drawB();drawC();drawD();drawE();
