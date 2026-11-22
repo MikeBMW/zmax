@@ -42,6 +42,13 @@ src = "操作视频同源 episode (metaworld seed=0, 701 步, 终态 完成)"
   `1000·√(2H/k)` / `√(2mH)` 计入），不做每拍重设，免得用户手动缩放被抢；尾迹 400 → 2000 点才能装下“全过程”。
 - `phase_space.py` 是进程内 import ⇒ 改完**重启控制台**才生效。他不重启又急着看时：另起一个独立窗口（pyqtgraph，自动缩放 + 全过程尾迹 +
   5 个停住点标菱形 + 每次采样落 jsonl），窗口用他控制台同一个 `DISPLAY`（从 `/proc/<studio-pid>/environ` 取 `DISPLAY` / `QT_QPA_PLATFORM`）。
+- ✅ 这个独立窗口已固化成 `tools/gui/phase_window.py`（别再重写）：真机口径读 `39071` 桥的 `endInRef/jointPos`，目标取
+  `real_traj_joints.json` 最近帧，`v` 用 ≥0.4s 窗口差分，自动缩放含等能椭圆，尾迹 2000，
+  `DISPLAY=:0 ./gui-venv311/bin/python tools/gui/phase_window.py --jsonl &` ⇒ 采样落
+  `zmax_data/ss_live/phase_real_<YYYYMMDD>.jsonl`。跳题栏会标来源：出现「⚠ 非真机: src=…」就是兜底读到了
+  `hamiltonian.json`（可能是仿真），**不得当成真机数上报**。
+- **窗口“开了”要有证据**：`pgrep -af phase_windo[w]` + `wmctrl -l | grep 相空间` 只能证明进程/窗口存在；
+  再补一张截图并统计特征像素（红点≈117、青线≈3.7k、黄色虚线≈218 量级），才能说“真的在画”，而不是白窗口。
 
 ## 四、为什么这张相图“不规律”——口径问题，不是机器人问题
 

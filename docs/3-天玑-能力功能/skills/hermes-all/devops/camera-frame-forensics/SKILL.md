@@ -775,6 +775,30 @@ md5 必然相同(静态机位 + 静止工件, 这是正常态)。判死要三样
 ②解码 mean/std 异常(纯白·纯黑·全零) ③`/stats` 的帧计数 `n` 不前进。**只凭 md5 相同就重启服务, 会把好服务打断,
 并把真因(格式/曝光)掩盖成「重启后时好时坏」**。
 
+### 🔴 给 SDK 服务**开深度**时分辨率不配对 ⇒ 一帧都不出, 而 `is-active` 仍是绿的
+
+表象: 改 `Environment=RS_DEPTH=1` 重启后服务 `active`、端口在听、`/status` 还报 `"depth": true`,
+但 `n=0 / age_s=-1 / depth_age_s=-1`、`/depth.png` 回 **503 + 正文 `no depth`**、`/frame.jpg` 也没有真帧。
+
+- **真因是流配置组合不受支持**, 不是相机坏也不是开关没生效: 实测 彩色 1280×720@15 + 深度 848×480@15
+  在同一 pipeline 里 ⇒ `wait_for_frames` 一直超时, 但 `S["err"]` 仍是空串。
+- **修法**: 两路都降到 **848×480@30**(`RS_W/RS_H/RS_FPS/RS_DEPTH_W/RS_DEPTH_H` 一起改) ⇒
+  实测 `n` 递增、`fps 30.3`、`depth_age_s 0.025`, 色与深同时可用。
+- **判据只认 `/status` 的 `n` 与 `depth_age_s`, 不认 `systemctl is-active`/端口 LISTEN/`depth:true`**;
+  端口在听 + `active` + 配置写着 depth 三者全绿而 n=0, 就是这条。
+- 开完深度**必须顺手验深度单位**: 同仓 0.1mm/unit 的坑见 `robot-vision-3d-localization`(YOLO+深度→3D 框)。
+
+### ⚙️ 改这类相机参数用 **systemd drop-in**, 不要编辑服务的 py 脚本
+
+- 定式: `/etc/systemd/system/<unit>.service.d/<名字>.conf` 里 `[Service]` + `Environment=RS_EXPOSURE=...`
+  → `daemon-reload` → `restart` → **`systemctl show <unit> -p Environment` 回读**(多个 drop-in 时后者覆盖前者,
+  改完不回读就会出现“我明明写了却还是旧值”)。
+- 曝光定档用**像素**不用感觉: 同一静止场景连拍比对 `mean` 与**过曝像素占比**, 一档一档扫。
+  实测同一台 D405: `10000us → mean 30(太暗)` · `25000us → 62` · `32000us → 79, 过曝 5~26%(看场景)`。
+  取 `mean ≥70 且过曝 <10%` 那档; 场景本身亮时同一档会过曝 20%+, 说明该降档而不是加光。
+- 改曝光/开深度都会**短暂断流 5~10s**, 先确认这 10s 打断的是什么(现场是否正在看这一路画面),
+  并在回复里主动交底, 否则用户看到黑一格会以为是你弄坏了。
+
 ## 💀 RealSense **固件死锁**: 能枚举、能配流、就是不出帧 —— 软件手段全部无效, 只能拔插
 
 **这一条的价値在于止损**: 它看起来像任何一个可以远程修的故障, 实际不能。认清后立即停手、报现场。

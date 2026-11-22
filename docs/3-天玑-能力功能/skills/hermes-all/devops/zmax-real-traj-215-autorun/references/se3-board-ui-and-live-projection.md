@@ -172,4 +172,29 @@ LIVE.sectors.blocks.map(b=>{const a=(b.s0+b.s1)/2*6.2832-Math.PI/2;
 - **点位与语义都从真源取, 不另列一份**: 相位取 `traj_phase.json`(与扇形同一坐标), 停留点取
   `real_traj_grip.json` 的 `grip[].i` + `tools/rokae/arm_step_traj.py::AOI_ON_ARRIVE`。
 - 像素验收: 在每个标记中心采样判色(实测光晕内琥珀 41~46px / 亮青 24~27px), 再全图数一遍该类色像素数
-  —— 只验"代码里有这段 draw"不算。
+  —— 只验"代码里有这段 draw" 不算。
+
+## 八 · 换了点表, A/B/C/D 四块还是旧点 (页面内嵌快照)
+
+`se3_geom.html` 里写死了一个 `const D={frames:[…215 帧…]}` 快照, 四块面板全从 `D.frames` 算。
+服务端切到新表(239 点)后, `/api/se3` 的 `nearest.i` 已在新索引空间, 而画面还是旧 215 点 ⇒ 轨迹是旧点、高亮是新点,
+两者对不上且**不报错**。用户的说法是「位置 ℝ³ 轨迹也更新成新点」。
+
+定式(已落地):
+
+1. 服务端加 `GET /api/geo` —— 回与内嵌 `D` **完全同形**的帧: `p(mm) / n / phi / q / dn / dphi / spd / s / s_mm`,
+   数据源就是当前 set 的 `real_traj_joints* / traj_hopf* / traj_phase*`(与 `/api/se3` 同一套表)。
+   单位必须归一: `if max(|p|)<20: p = p*1000`(录制文件里米/毫米并存)。
+   `spd` 从 `sectors.blocks` 反填(没命中给 100), 否则速度着色全一样。
+2. 页面把 `const F/N/S_END/PROG/PW` 改成 `let`, 合出一个 `deriveGeo()` 重算派生量, 再 `loadGeo()`:
+   帧数不同才重建(`if(j.frames.length===N) return;` —— 同表重建会拽视角), 同时 `sc.max=N-1`、
+   `idx` 夹回范围、`D.frames=F`。
+3. 新增速度档(如接触段 15)要在 `SPC` 里补颜色: `SPC[15]` 为 undefined ⇒ 全画成灰 `#888`。
+
+验收三条一起(缺一条就只是“看着换了”): `window.selftest()` 的 `n` = 新点数 · `F[0]/F[N-1]` 与表首末点对得上 ·
+`#sc.max = N-1` · 且 `selftest().idx` 与 `/api/se3` 的 `nearest.i` **同源一致**。
+实测 239 点: `n=239 · sc.max=238 · F[0]=(663,-29,292) · idx 44 == nearest.i 44`。
+
+- 🔴 同源的另一半是**状态行**: `PHASES` 由 `point_stops_<set>.json` 生成 ⇒ 改状态名 = 改停点数,
+  两者一起改、一起重启(`sudo systemctl restart zmax-se3-geom`), 否则 A 块新点 + E 块旧状态, 现场必问“你改了个空”。
+  耦合细则见 `playback-points-mode.md` §7。

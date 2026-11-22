@@ -187,6 +187,56 @@ B S²(`sphere`) / C S³(`su2`) / D S¹(`torus`) / E S¹(`torus`), C⇄(B,D) 用 
 写成 `quats0` 时 flow v2 退回纯关节口径 —— 日志 `axis_dn_max/roll_dp_max` 全 0, 分块从 36 变 32、
 整轮从 477.6s 变 464.2s。看到"轴/滚转两列全 0"先查这个键。
 
+## 16. 新真源(239 点)接 L4→L3 / L2 时的四个必踩坑 (2026-11-21 实测)
+
+1. **`…manifold` 相对导入深度错 = 条件通道静默变空**。`engineering/nodes/flow_matching_impl.py` 写
+   `from ..manifold.se3_engine import SE3Engine` ⇒ 解析成 `lerobot.engineering.manifold`（不存在）⇒
+   ImportError 被 `except` 吞掉 ⇒ `cond=None` ⇒ L3 永远拿不到 L4 条件，日志只剩一行“不出条件”。
+   包内真身是 `lerobot.manifold.se3_engine`，正确写法 `from ...manifold.se3_engine import SE3Engine`。
+   判据：`importlib.util.resolve_name('...manifold.se3_engine','lerobot.engineering.nodes')` 结果必须是
+   `lerobot.manifold.se3_engine`。
+2. **`/api/tcp` 没有 `rpy` 键**（只有 `quat` xyzw）——采真值时 `d.get("rpy") or [0,0,0]` 不报错,
+   但 L2 action 的旋转 3 维恒为 0（看着有值其实是空）。必须由 quat 现算 rpy（与 Rz@Ry@Rx 同口径）。
+3. **新轨迹 json 没有 `q`**：v2 只有 `p/rpy/j`，`SE3Layered` 读 `f["q"]` 直接 KeyError。
+   用 `R = Rz@Ry@Rx` 把 rpy 转成四元数落一份 `*_v2q.json`（动作真源仍用原 v2，别改它）。
+   口径核对：与 215 表在 ≤0.7mm 重合处的姿态差 ≤0.02°；差到 1~2° 的位置都是 3~6mm 采样差。
+4. **`traj_phase_v2.json` 末帧 s 正好 = 1.0**，S¹ 要求 s∈[0,1) ⇒ `se3_layers.selftest()` 报
+   `phase back_steps=1 / closure_err=1.0`。215 表当年用的是 0.9995（分母含收口段）。
+   按同一口径重算：`s_i = cum_i / (cum_last + |p_last−p_0|)`，实测 E_s 0→0.99909、回退 0。
+
+## 17. 单条平滑回放轨迹上, flow-matching 预测下一状态**打不过线性外推**
+
+239 点真值 (711 样本 / 5 折 / 2000 epoch / XPU) 实测 A_mm 中位: **model 35.6 · persist 18.6 · linear 4.1**;
+旋转 B_deg model 4.19 vs persist 0.95 vs linear 0.136。原因不是实现错, 是数据性质:
+8mm 等弧长、100mm/s 匀速回放的下一拍位置≈线性外推, 而模型要学整条流形上的速度场,
+样本少(单轨迹)+
+测地线积分误差累积。⇒ 结论照铁律写: **进影子, 不进默认档**;
+要提升必须喂“非平滑”真值 (接触段抖动/停走/夹爪事件), 这正是白天采集 (`--collect`) 的用途。
+
+## 18. 拿真机图像训 L4 cond 投影: 三个坑 + 现成采集器 (2026-11-22)
+
+1. **`zmax_live_215ep1_128` 的 `images/` 是空的**(0 个文件)。它有 state13/action4/9171 帧,
+   但图像没导出来 ⇒ 策略前向跑不起 ⇒ 在那上面训 `l4_cond_proj` 只能得到随机投影。
+   开训前先 `find <ds>/images -type f | wc -l`, 为 0 就别开跑。
+2. **8791 的三个快照端点只有一个有图**: `/snapshot/arm.jpg` 是真图(1280×720, mean≈42, std≈32, ~75KB);
+   `/snapshot/local.jpg` 与 `/snapshot/overlay_local.jpg` 当前是**黑图**(mean 6.0 / max 13 / std 1.2)。
+   判据要用**亮度统计**，不能只看“HTTP 200 且文件存在”。
+3. **采集器**: `tools/collect_live_dataset.py --secs 1800 --hz 5 [--keep-still]` (默认 cam=arm)。
+   取图走 **MJPEG 流 `/arm.mjpg` 的最新帧**(后台线程持续收/主循环取 `reader.frame()`),
+   不是逐次请求 `/snapshot/*.jpg` — 后者实测 2.00s/张 ⇒ 卡在 0.5Hz 且不报错; 改流后间隔中位
+   **0.20s** (8s 收到 119 个不同帧 ≈15Hz 可用)。默认过滤静止帧(位移+50×转角<0.5), 要学
+   “到位停住/夹爪保持”这类等待动作磀 `--keep-still` 全录 (写另一个出目录, 转换时再按
+   “连续静止 >1.5s 只留首尾几帧”去重)。每帧同时抓 `/api/tcp` 真值 →
+   `pose7(mm+rad)+joints6(deg)`, 落
+   `zmax_data/live_ds/episode_00000N/{images/observation.images.top/frame_*.jpg, data/frames.jsonl}`;
+   行式元数据逐行 `flush()` (否则进程一挂只剩没对齐的图)。
+4. **昼夜自主进化** 在 550C: `zmax-se3-evolve.timer` 每 30 分钟, 白天(7–21)采真值+1 代轻量,
+   夜间 4 代完整; 台账 `zmax_data/se3_evolve/ledger.jsonl`。实测 79 代 0 采纳 —— 超参变异改不了
+   “平滑回放下一拍≈线性外推”这个事实, 要提升必须换数据而不是继续调参。
+5. **cond 只在推理时注入 = 训不出来**: 训练脚本一次没传过 `l4_cond`(grep `src/lerobot/scripts/` 零命中),
+   `l4_cond_proj` 用 `normal_(0, 0.02)` 随机初始化 ⇒ 条件只是噪声。测得的“cond 增益 +0.58%”是没训过的结果,
+   不是条件无用。真要训必须先补图, 再在训练循环里逐样本算 `build_cond(15)` 当额外 token。
+
 ## 15. 跟随未知新轨迹: 学路径 + 相位语义 (8817)
 
 8815 是**已知轨迹**看板(相位靠投影到那 215 点); 一旦换新轨迹, 8815 的 `s` 没意义, 只能当“离旧轨迹多远”参考。

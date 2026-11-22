@@ -9,6 +9,31 @@ description: "Use when 状态空间画布 debug — 字段来源(预定义vs预�
 此区域, 高频问题: "某字段是预先定义还是模型预测的?" / "为什么两个模块源码一样?" /
 "这是不是写死的?"。本技能是溯源方法和架构事实。
 
+## 昼夜双模 (Day-Night World Model, 2026-11-21 定调)
+
+状态空间不是一个常驻推理环，而是 **两个相位 + 一道闸门**：白天只写噪声日志，夜间只产候选先验，候选过闸才原子切换。
+代码 `src/lerobot/manifold/daynight/`（phase 相位机 / daylog 白天日志 / consolidate 夜间管线+闸门 / cli），
+文档 `docs/3-天玑-能力功能/daynight-world-model-architecture.md`。
+
+- 相位真源 `zmax_data/daynight/state.json`；在线先验只由 `promote()` 原子写 `current.json`（tmp+rename），
+  在线进程永远读不到中间态；`phase.guard_online(action)` 是夜间拦截在线动作的相闸。
+- 100D 分工：**55 维先验段白天冻结、夜间写；45 维缓冲段白天写、夜间压缩成分位数**。
+- 闸门三项缺一即拒：留出集残差 ≥3% 改善 · 耗散比例(Ḣ≤0 占比)不退化 2pp · 有效样本 ≥200。
+- 🔴 **先验必须多盆地**：单点先验遇到「一天跑两段不同任务」会退步（实测 −37%，闸门正确拒绝）；
+  按 Θ 中位数拆 2 簇、各簇 0.3 指数滑动后残差 0.5151→0.4235（−17.8%）才过闸。
+- 🔴 日志只落**可复核物理量**（Θ/p/H/K/U/tcp/帧号/src），不硬填潜变量；`src` 必须写清来源。
+
+### 边学边训的实测口径 (all on 550C)
+- 白天在线学习 = RLS 残差头（学 ΔH，绝对 = H_t + Δ̂）：**λ 必须 = 1.0**。λ=0.995 配常数列/近共线特征
+  会让协方差按 λ^-n 爆炸，实测 11k 帧后影子 RMSE 比持续性基线差 **6.9 倍**；改 λ=1 后 +4.86%。
+- **必须带游标**（head.json 里按 day_id 存 cursor）：重复喂同一份日志会把 ‖w‖ 顶到钳制上限（实测 RMSE 0.75）。
+- 夜间训练基线永远是**持续性（y=x）**：短跨度（<0.5s）上"复制当前帧"就是最优，实测 0.2s −2.5%、1s −52.8%、
+  2s +0.5%、**4s +24.6%（过闸）** ⇒ 夜间目标口径必须是**秒级/技能级**，不是下一拍。
+- 550C 上只能用 **`~/train_venv`（torch 2.10.0+xpu）**；`venv550c`（2.14.1+xpu）连 `torch.ones(4,device='xpu')`
+  都报 `level_zero ... 44`。跑前先跑 ones() 探针。
+- 作息落地：`deploy/systemd/zmax-daynight.{service,timer}`（550C，每 10 分钟 `cli auto`，按小时切昼夜）；
+  采集在产线机 `tools/daynight_ingest.sh`（collect + rsync 推 550C）。
+
 ## 分层模型 (谁产生什么)
 - **感知层** (state_space/perception.py, tools/gui/state_space_sim.py): 构造 obs。
   仿真里 target/孔位 = **HOLE_POS 预定义常量** (metaworld goal) + `_stage_target()` 阶段子目标,

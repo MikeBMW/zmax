@@ -454,6 +454,17 @@ publish_plan(plan, 1.0, {"epoch": 0, "until": time.time() - 5}, "PROBE-<时刻>"
   而日志一直写 OK)。同族: 服务回执里的 `curr_pos/pos` 常是**途中值**(实测发 70 回 35),
   ⇒ 合格判据只能是**执行器自己的真值通道**(话题/真值文件)在动作后落在目标容差内;
   每次动作落一条 `{ts, act, target, before, after, ok}` 到 jsonl, 汇报时给前后两个数。
+- 🔴 **同一个设备的不同接口可能挂在不同的 ROS domain 上 —— 下发侧走对路、设备侧收不到** ★★★
+  实测形态: `/gripper_driver`(`interfaces/srv/GripperSrv`) 活在边缘机的 **默认 domain**, 而常驻执行链走
+  `ROS_DOMAIN_ID=23` —— 那个 domain 下 `ros2 service list | grep -i grip` **返回空**。
+  结果: 受理行照写「已下发(真动)」、回执 ok=True, **设备零动作**, 而其它动作(臂)一切正常。
+  判据(30 秒): `ros2 service list | grep -i <关键字>` 在**带与不带** `ROS_DOMAIN_ID` 两边各跑一次,
+  只有一边有该服务 = 此病; 顺带 `ros2 node list` 核节点真的在。
+  修法: 跨 domain 的那类动作**直调设备服务**(不依赖主链), 先在目标 domain 下 `source /opt/ros/<distro>/setup.bash`
+  + **source 带 `interfaces` 包的 `install/setup.bash`**(不 source 会报 `The passed service type is invalid`,
+  与“服务不存在”常被混为一谈), 调完回读设备真值(`/gripper_pos` 之类)宣变。
+  时序硬约束: 这种“以为开了其实没开”若发生在采持/抬升链上, 工件会从高空被释放(实测 41mm 落下)
+  ⇒ **抬臂前先确认设备真值已经变**; 若已经抬了才补开, 主动报“不是低位轻放”。
 - 🔴 **`ros2 service call` 报 `The passed service type is invalid` = 工作区没 source**, 不是服务不存在:
   先 `source /opt/ros/<distro>/setup.bash` + `source <ws>/install/setup.bash`(目录名常带版本号 ⇒ 用 glob);
   同一个原因还会让 `ros2 interface show <pkg>/srv/X` 报 `Unknown package` —— 那时去读
