@@ -58,6 +58,33 @@ LORA_MOD = os.path.join(ROOT, "tools", "lora_inject.py")
 # 在役权重 (续训起点; 与 docs/7-瑶光-记录追溯/handoff_*.md 口径一致)
 L4_INIT = os.path.join(CACHE, "checkpoints", "intact_goal_optical_insert_v6d9_s3072", "weights_epoch_1.pt")
 L3_CKPT = os.path.join(ROOT, "outputs", "train", "smolvla_lew_sim", "checkpoints", "000300")
+
+
+def _l3_base():
+    """L3 起点必须与生成配置的视频窗对齐 (num_video_frames = n_obs_steps = chunk+1 = 7)。
+
+    实测 smolvla_lew_sim/000300 是 n_obs=1 / frames=2 的旧口径 ⇒ 直接加载报
+    pos_embedding [1,2,192] vs [1,7,192] 形状不符 (L3 rc=1, 20s)。取最新 n_obs>=7 的产物。
+    """
+    import glob as _g
+    import json as _j
+    cands = []
+    for d in _g.glob(os.path.join(ROOT, "outputs/train/smolvla_lew*/checkpoints/*")):
+        cfg = os.path.join(d, "pretrained_model", "train_config.json")
+        if not os.path.isfile(cfg):
+            cfg = os.path.join(d, "train_config.json")
+        if not os.path.isfile(cfg):
+            continue
+        try:
+            pol = _j.load(open(cfg, encoding="utf-8")).get("policy", {})
+            if int(pol.get("n_obs_steps", 0)) >= 7:
+                cands.append((os.path.getmtime(d), d))
+        except Exception:                                                # noqa: BLE001
+            continue
+    return max(cands)[1] if cands else L3_CKPT
+
+
+L3_BASE = _l3_base()
 L2_BASE = os.path.join(ROOT, "models", "yolo_peg_live.pt")
 
 
@@ -236,7 +263,7 @@ def build_stages(a) -> list:
          "pre": pre3,
          "cwd": ROOT, "cmd": l3_cmd, "env": l3_env, "log": os.path.join(mroot, "L3.log"),
          "evidence": [os.path.join(ROOT, l3_outdir)],
-         "note": f"起点 {os.path.relpath(L3_CKPT, ROOT)}"},
+         "note": f"起点 {os.path.relpath(L3_BASE, ROOT)}"},
         {"id": "L2", "layer": "L2 YOLO (检测) + 2D→3D", "gpu_mb": 4000, "est_min": 5,
          "desc": "真机标注帧域适应微调 (基座=在役软链)",
          "cwd": ROOT, "cmd": l2_cmd, "env": l2_env, "log": os.path.join(mroot, "L2.log"),
@@ -272,7 +299,7 @@ def env_check(stages) -> int:
         "L4": [(PY_INTACT, "INTACT venv python"), (L4_INIT, "L4 起点权重"),
                (os.path.join(CACHE, "datasets", "optical_insert_v6_disturb.h5"), "v6 训练数据"),
                (LORA_MOD, "LoRA 模块")],
-        "L3": [(PY_LEROBOT, "lerobot venv python"), (L3_CKPT, "L3 起点 ckpt"),
+        "L3": [(PY_LEROBOT, "lerobot venv python"), (L3_BASE, "L3 起点 ckpt"),
                (os.path.join(ROOT, "tools/mk_smolvla_sim_cfg.py"), "L3 配置生成器"),
                (os.path.join(ROOT, "outputs/train/smolvla_lew_v10/resume_cfg.json"), "v10 配置模板")],
         "L2": [(PY_GUI, "gui venv python"), (L2_BASE, "YOLO 基座软链"),

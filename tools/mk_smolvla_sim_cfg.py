@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import argparse
+import glob
 import json
 import os
 import sys
@@ -67,8 +68,35 @@ def main():
     # 🎯 窗口 ≠2 时用**重建过 pos_embedding** 的那份副本(原始 ckpt 的 pos_embedding 是 2 帧, 直接加载会
     #    size mismatch —— 实测确认这就是"视频窗一直没对齐"的真因); 不变更原始 ckpt。
     _win7 = os.path.join(REPO, "outputs/train/smolvla_lew_v10_win7/pretrained_model")
-    cfg["policy"]["pretrained_path"] = _win7 if (int(os.environ.get("SSD_VIDEO_WINDOW", "7")) > 1
-                                                 and os.path.isdir(_win7)) else _base
+
+    def _pick_7frame():
+        """挑一份真正 n_obs>=7 的产物当续训起点。
+
+        实测: smolvla_lew_v10/checkpoints/last 是 n_obs=1/frames=2 的旧口径, 而生成配置把
+        num_video_frames/n_obs_steps 钉到 chunk+1=7 ⇒ 加载报
+        pos_embedding [1,2,192] vs [1,7,192] (L3 连续两轮 rc=1, 20s 内死在 load_state_dict)。
+        """
+        cands = []
+        for d in glob.glob(os.path.join(REPO, "outputs/train/smolvla_lew*/checkpoints/*/pretrained_model")):
+            cfgp = os.path.join(d, "train_config.json")
+            if not os.path.isfile(cfgp):
+                continue
+            try:
+                q = json.load(open(cfgp, encoding="utf-8")).get("policy", {})
+                if int(q.get("n_obs_steps", 0)) >= 7:
+                    cands.append((os.path.getmtime(d), d))
+            except Exception:                                            # noqa: BLE001
+                continue
+        return max(cands)[1] if cands else ""
+
+    _env_base = os.environ.get("ZMAX_L3_PRETRAINED", "")
+    if _env_base and os.path.isdir(_env_base):
+        _chosen = _env_base
+    elif int(os.environ.get("SSD_VIDEO_WINDOW", "7")) > 1:
+        _chosen = _win7 if os.path.isdir(_win7) else (_pick_7frame() or _base)
+    else:
+        _chosen = _base
+    cfg["policy"]["pretrained_path"] = _chosen
     if not os.path.isdir(cfg["policy"]["pretrained_path"]):
         print("⚠️ 续训权重不在: %s → 去掉 pretrained_path(从基座起)" % cfg["policy"]["pretrained_path"])
         cfg["policy"].pop("pretrained_path", None)
