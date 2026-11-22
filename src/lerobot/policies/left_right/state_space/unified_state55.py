@@ -74,7 +74,10 @@ EXTRA_SEGMENTS: tuple[Segment, ...] = (
     Segment("temperature", 47, 48, "°C", "末端温度 (预留)", "热变形的慢变量"),
     Segment("acoustic", 48, 49, "dB", "声学/超声 (预留)", "插到位/划伤有不同频谱签名"),
     Segment("current", 49, 51, "A", "关节电流 (预留)", "无力传感器时的力矩代理"),
-    Segment("spare", 51, 55, "-", "备用", "留给下一轮硬件升级, 不许临时借用改名"),
+    # 2026-11-22 正式定义(原 spare): 光模块姿态四元数 wxyz, 由融合模块 perception_fusion6d 写入。
+    # 全 0 = 姿态未观测(不是单位四元数), 消费端须查 ‖q‖∈[0.99,1.01] 再使用。
+    # 为什么不占更多维: 老倪要的姿态是"模块自己的朝向", 4 维足够, 且不动 0:43 在役口径 ⇒ 权重零扰动。
+    Segment("peg_quat", 51, 55, "-", "融合模块(2D⊕深度⊕状态反馈)", "光模块姿态四元数 wxyz; 全 0=未观测"),
 )
 
 ALL_SEGMENTS = VISUAL_SEGMENTS + TACTILE_SEGMENTS + EXTRA_SEGMENTS

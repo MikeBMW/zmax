@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Z-MAX daynight cycle every 10 minutes (day learns, night trains)
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=10min
+AccuracySec=30s
+Unit=zmax-daynight.service
+
+[Install]
+WantedBy=timers.target

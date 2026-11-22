@@ -1,0 +1,14 @@
+# 昼夜双模作息 (550C): 白天 collect+在线学习+影子评估; 夜间 固化+XPU 训练+闸门
+[Unit]
+Description=Z-MAX daynight world model (day-learn / night-train) on 550C
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=intel
+WorkingDirectory=/home/intel/zmax
+Environment=PYTHONPATH=src
+Environment=ZMAX_DN_DEVICE=xpu
+ExecStart=/home/intel/train_venv/bin/python -m lerobot.manifold.daynight.cli auto
+Nice=10
+TimeoutStartSec=3600

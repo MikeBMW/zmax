@@ -39,6 +39,28 @@ exec sudo docker run --rm --network host \
   -e ZMAX_REPLAY_TRAJ="${ZMAX_REPLAY_TRAJ:-}" \
   -e ZMAX_RT_TRAJ="${ZMAX_RT_TRAJ:-}" \
   -e ZMAX_MOVE_TYPE="${ZMAX_MOVE_TYPE:-}" \
+  -e ZMAX_VIEW_XYZ="${ZMAX_VIEW_XYZ:-}" \
+  -e ZMAX_PLAN_SLOT="${ZMAX_PLAN_SLOT:-}" \
+  -e ZMAX_PLAN_DRYRUN="${ZMAX_PLAN_DRYRUN:-1}" \
+  -e ZMAX_PLAN_SPEED="${ZMAX_PLAN_SPEED:-}" \
+  -e ZMAX_PLAN_MAXSTEP="${ZMAX_PLAN_MAXSTEP:-}" \
+  -e ZMAX_PLAN_LIFT="${ZMAX_PLAN_LIFT:-}" \
+  -e ZMAX_POSE_WAIT="${ZMAX_POSE_WAIT:-}" \
+  -e ZMAX_TRAIL_SLOT="${ZMAX_TRAIL_SLOT:-}" \
+  -e ZMAX_TRAIL_EXEC="${ZMAX_TRAIL_EXEC:-0}" \
+  -e ZMAX_TRAIL_SPEED="${ZMAX_TRAIL_SPEED:-}" \
+  -e ZMAX_TRAIL_TOL="${ZMAX_TRAIL_TOL:-}" \
+  -e ZMAX_TRAIL_MINI="${ZMAX_TRAIL_MINI:-}" \
+  -e ZMAX_TRAIL_MAXI="${ZMAX_TRAIL_MAXI:-}" \
+  -e ZMAX_TRAIL_STOP_ON_FAIL="${ZMAX_TRAIL_STOP_ON_FAIL:-1}" \
+  -e ZMAX_TRAIL_HOLD_RPY="${ZMAX_TRAIL_HOLD_RPY:-1}" \
+  -e ZMAX_RPY_TARGET="${ZMAX_RPY_TARGET:-}" \
+  -e ZMAX_RPY_STEP="${ZMAX_RPY_STEP:-}" \
+  -e ZMAX_RPY_TOL_RAD="${ZMAX_RPY_TOL_RAD:-}" \
+  -e ZMAX_POSE_TOL_MM="${ZMAX_POSE_TOL_MM:-}" \
+  -e ZMAX_POSE_TOL_RAD="${ZMAX_POSE_TOL_RAD:-}" \
+  -e PYTHONPATH="/src${PYTHONPATH:+:$PYTHONPATH}" \
+  -e ZMAX_VIEW_RPY="${ZMAX_VIEW_RPY:-}" \
   -e ZMAX_NO_EXPAND="${ZMAX_NO_EXPAND:-}" \
   -e ZMAX_PTS_FROM="${ZMAX_PTS_FROM:-}" \
   -e ZMAX_PTS_TO="${ZMAX_PTS_TO:-}" \
@@ -99,4 +121,5 @@ exec sudo docker run --rm --network host \
   -e ZMAX_RT_DRY="${ZMAX_RT_DRY:-}" \
   -v "$SDK_DIR":/sdk \
   -v "$REPO_TOOLS":/repo:ro \
+  -v "$(cd "$(dirname "$0")/.." && pwd)/src":/src:ro \
   -w /sdk "$IMAGE" python3 "/repo/$SCRIPT" "$@"

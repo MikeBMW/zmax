@@ -104,6 +104,468 @@ def _goal_state(obs, ctx):
 
 
 
+# ── 🎯 唯一目标 3D 引导位姿 (老倪 2026-11-22: 「要输出唯一的目标 3D 引导位姿, 这个位姿是需要机器人抓取的目标」) ──
+#   为什么原来不行: 老 _run_guides 出的是 guide = tcp + u*step —— 那是"下一小步", 一周期一个,
+#   连续几拍就是几个不同位姿, 下游不知道"到底要去哪抓"; 姿态直接用当前 TCP 旋转, 与模块朝向无关。
+#   现在: 全周期只认**一个**目标位姿 (位置 + 四元数), 其余量 (引导步/朝向量/预抓点) 全部由它派生。
+#   位置来源 = 融合模块 (2D ⊕ 2D→3D ⊕ 状态反馈) 的 peg_xyz; 姿态来源 = peg_quat ——
+#   按老倪的定义「抓取瞬间模块坐标系 ≡ tool1 坐标系」, 目标姿态就是模块姿态本身 (可乘一个工具对齐常量)。
+PEG_POSE_URL = os.environ.get("ZMAX_PEG_POSE_URL", "http://127.0.0.1:8896/peg_pose")
+TARGET_STALE_S = float(os.environ.get("ZMAX_TARGET_STALE_S", "1.5"))
+
+
+def _q_mul(a, b):
+    """四元数乘 (wxyz): a⊗b ⇒ 先转 b 再转 a。"""
+    aw, ax, ay, az = a
+    bw, bx, by, bz = b
+    return np.array([aw * bw - ax * bx - ay * by - az * bz,
+                     aw * bx + ax * bw + ay * bz - az * by,
+                     aw * by - ax * bz + ay * bw + az * bx,
+                     aw * bz + ax * by - ay * bx + az * bw], float)
+
+
+def _q_unit(q):
+    if q is None:
+        return None
+    q = np.asarray(q, float).ravel()[:4]
+    n = float(np.linalg.norm(q))
+    return None if (n < 1e-6 or not np.all(np.isfinite(q))) else q / n
+
+
+def _q_to_R(q):
+    u = _q_unit(q)
+    w, x, y, z = (1.0, 0.0, 0.0, 0.0) if u is None else u
+    return np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+                     [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+                     [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)]], float)
+
+
+def _align_quat():
+    """工具对齐常量: 模块坐标系 → tool1 坐标系。默认单位阵 (老倪: 抓取时两者重合);
+    现场若夹爪装歪, 用 ZMAX_GRASP_ALIGN_RPY="0,0,180" 补。"""
+    txt = os.environ.get("ZMAX_GRASP_ALIGN_RPY", "").strip()
+    if not txt:
+        return np.array([1.0, 0.0, 0.0, 0.0])
+    try:
+        r, p, y = [float(v) * np.pi / 180.0 for v in txt.replace(";", ",").split(",")[:3]]
+        cr, sr, cp, sp, cy, sy = np.cos(r / 2), np.sin(r / 2), np.cos(p / 2), np.sin(p / 2), np.cos(y / 2), np.sin(y / 2)
+        return np.array([cr * cp * cy + sr * sp * sy, sr * cp * cy - cr * sp * sy,
+                         cr * sp * cy + sr * cp * sy, cr * cp * sy - sr * sp * cy], float)
+    except Exception:                                                   # noqa: BLE001
+        return np.array([1.0, 0.0, 0.0, 0.0])
+
+
+_PEG_CACHE = {"ts": 0.0, "doc": None}
+
+
+def _peg_pose(ctx=None):
+    """取融合模块的 6D 位姿: ctx 直塞优先, 否则读 :8896。
+
+    常驻循环 10Hz, 每拍都打一次 HTTP 会在服务挂掉时每拍卡 0.4s ⇒ 加 0.2s 缓存,
+    超时收到 0.25s。帧龄超 TARGET_STALE_S 仍判陈旧 (缓存不等于放行)。
+    """
+    now = time.time()
+    if _PEG_CACHE["doc"] is not None and now - _PEG_CACHE["ts"] < 0.2:
+        d = dict(_PEG_CACHE["doc"])
+        d["_age_s"] = round(now - float(d.get("ts") or now), 2)
+        return d
+    v = (ctx or {}).get("in3") or (ctx or {}).get("peg_pose")
+    if isinstance(v, dict) and "value" in v:
+        v = v.get("value")
+    if isinstance(v, dict) and "xyz" in v:
+        return dict(v, _src="ctx")
+    try:
+        import urllib.request as _u
+        with _u.urlopen(PEG_POSE_URL, timeout=0.25) as _r:
+            d = json.loads(_r.read().decode())
+        if d.get("ok"):
+            age = time.time() - float(d.get("ts") or 0)
+            if age <= TARGET_STALE_S:
+                _PEG_CACHE.update({"ts": time.time(), "doc": d})
+                d["_age_s"] = round(age, 2)
+                d["_src"] = "fusion:%s" % PEG_POSE_URL
+                return d
+            return {"_err": "融合位姿陈旧 %.1fs" % age}
+    except Exception as exc:                                            # noqa: BLE001
+        return {"_err": "融合服务不可用: %s" % type(exc).__name__}
+    return None
+
+
+def _slot_geom(slot_id, tray="R"):
+    """取槽位几何 (mm)。
+
+    🔴 编号口径 (2026-11-22 老倪两次纠正后定死, 不许再混):
+      R 盘 (右臂前面的料盘) = **示教编号**, 真源 config/points/tray_slots_14.json (x≈649 上排 / 517 下排)。
+          示教点 cell_points.json 的"槽1..7"就是这套 (槽3 = 648.8,407.0,108.6)。
+      L 盘 (左臂前面的料盘) = 只有 AR 围栏盒子「左槽N」(x≈490 下层 / 617 上层), 没有示教点。
+      ⚠ tray_slots_14 的槽 1..7 与 AR 围栏的槽 8..14 是同一排 (x 差 ~158mm) —— 两套不能互相顶替,
+        否则引导框会整体错一排 (画面上看起来"偏上")。
+    z 口径: 体中心 = 盒底 + 模块厚/2。
+    """
+    tray = (tray or "R").upper()
+    if tray == "R":
+        tray_p = os.path.join(_ROOT, "config", "points", "tray_slots_14.json")
+        with open(tray_p, encoding="utf-8") as fh:
+            slots = {int(sl["id"]): sl for sl in json.load(fh).get("slots", [])}
+        if int(slot_id) in slots:
+            sl = slots[int(slot_id)]
+            return {"x": float(sl["x"]), "y": float(sl["y"]), "z": float(sl["z"]),
+                    "lx": float((sl.get("box") or {}).get("lx") or 72.0),
+                    "lz": float((sl.get("box") or {}).get("lz") or 8.5),
+                    "src": "tray_slots_14.json 槽%d (示教编号)" % int(slot_id)}
+    nm = "左槽%d" % int(slot_id)
+    fp = os.path.join(_ROOT, "zmax_data", "ar_rs", "fences.json")
+    with open(fp, encoding="utf-8") as fh:
+        items = (json.load(fh) or {}).get("items") or []
+    for it in items:
+        if (it.get("name") or "").strip() == nm and it.get("type") == "box" and it.get("p1"):
+            p1, p2 = it["p1"], it["p2"]
+            return {"x": (float(p1[0]) + float(p2[0])) / 2.0 * 1000.0,
+                    "y": (float(p1[1]) + float(p2[1])) / 2.0 * 1000.0,
+                    "z": min(float(p1[2]), float(p2[2])) * 1000.0,
+                    "lx": 72.0, "lz": 8.5,
+                    "src": "AR 围栏 %s (槽盒 %.1f×%.1fmm)" % (
+                        nm, abs(float(p2[0]) - float(p1[0])) * 1000,
+                        abs(float(p2[1]) - float(p1[1])) * 1000)}
+    raise KeyError("槽位几何查不到: tray=%s slot=%s" % (tray, slot_id))
+
+def target_pose(ctx=None, obs=None, hover_mm=None, slot_id=None, tray="R"):
+    """**唯一**目标 3D 引导位姿 (机器人要抓的那个位姿)。位置 m, 姿态 wxyz, 基座系。
+
+    派生量 (同一个目标算出来的, 不另立口径):
+      approach  抓取进给方向 (默认 +Z 从上往下, ZMAX_GRASP_APPROACH 可改)
+      pre       预抓点 = 目标 − approach·hover
+      grasp_axis 夹爪需要对齐的模块长轴 (模块 X 轴), 派爪方向照它来
+    返回值带 src/valid/sigma/age, 降级路径明写, 不静默。
+    """
+    hover = (float(os.environ.get("ZMAX_GUIDE_HOVER_MM", "40")) if hover_mm is None else float(hover_mm)) * 0.001
+    # 🎯 指定槽位: 该槽没有实物/没检出时, 目标位姿由**槽位几何 + 排布朝向**给出, 并明标 valid=false
+    #    (老倪 2026-11-22「输出位于槽位3的位姿」—— 要的是"该去抓哪", 不是"已经看见它")
+    if slot_id is not None:
+        try:
+            from .unified_state55 import SLICE  # noqa: F401  (只为确认模块可导入, 不传值)
+        except Exception:                                                   # noqa: BLE001
+            pass
+        try:
+            g = _slot_geom(slot_id, tray)
+        except Exception as exc:                                            # noqa: BLE001
+            return {"node": "n_geoplan", "kind": "target_pose", "ok": False,
+                    "valid": False, "err": "槽%d 几何取不到: %s" % (int(slot_id), exc)}
+        # 朝向: 模块平躺, 长轴沿基座 ±X。右盘默认"金手指朝 −Y 侧" (与槽10 实测同向);
+        #   左盘取**镜像** (正/反向摆盘 ⇒ 两盘朝向相反, 这是先验, 现场以 ZMAX_SLOT_XDIR_L 覆盖)。
+        _isL = str(tray).upper() == "L"
+        _env = "ZMAX_SLOT_XDIR_L" if _isL else "ZMAX_SLOT_XDIR"
+        _dflt = "-1,0.15,0" if _isL else "-1,-0.15,0"
+        xd_txt = os.environ.get(_env, _dflt).replace(";", ",")
+        try:
+            xd = np.array([float(v) for v in xd_txt.split(",")[:3]], float)
+        except Exception:                                                   # noqa: BLE001
+            xd = np.array([-1.0, 0.15, 0.0] if _isL else [-1.0, -0.15, 0.0])
+        xd[2] = 0.0
+        xd = xd / (np.linalg.norm(xd) + 1e-12)
+        L = float(g.get("lx") or 72.0) / 1000.0
+        Hm = float(g.get("lz") or 8.5) / 1000.0
+        body = np.array([g["x"], g["y"], g["z"] + Hm * 500.0], float) / 1000.0
+        # 🔴 2026-11-22 老倪「右3D引导位姿，应该跟光模块重合。向后一点」:
+        #    之前 pos = 体中心 − L/2·xd (金手指端), 框从端部单向拉出去 72mm ⇒ 画面上比模块"靠前" 36mm。
+        #    改成 pos = **体中心**(就是真机 TCP 落点、也是画面上那块模块的中心), 框由绘制端按中心对称展开,
+        #    金手指端另存 head_mm 备查 (视觉定义仍在, 只是不再当位姿原点)。
+        pos = body.copy()
+        head = body - (L / 2.0) * xd
+        y_ax = np.cross(np.array([0.0, 0.0, 1.0]), xd)
+        R_slot = np.stack([xd, y_ax, np.array([0.0, 0.0, 1.0])], 1)
+        # 🔴 2026-11-22: 姿态必须过**夹爪安装对齐** _align_quat(), 否则出来的是"模块本体姿态",
+        #    不是 tool1 姿态 —— 实测 槽3 会差 25°, 机器人扫过去就是错的(老倪「抓取点位姿不对」)。
+        q_slot = _q_mul(_quat_from_rot(R_slot.ravel()), _align_quat())
+        # 🎯 抓取点(TCP 该去的点) = 模块**体中心**, 不是金手指端: 真机示教点(槽3 648.8,407.0,108.6)
+        #    就是体中心口径; 实测录制里 槽2 抓取帧 TCP=649.85,454.1,112.7 与槽2 中心 648.3,452.4 差 1.5mm。
+        #    2026-11-22 老倪又定一次: **位姿原点也要落在模块上**(「应该跟光模块重合」)⇒ pos = 体中心;
+        #    金手指端只留 head_mm 备查, 不再当位姿原点。
+        grasp = body
+        pre_g = grasp - np.array([0.0, 0.0, -1.0]) * hover
+        return {"node": "n_geoplan", "kind": "target_pose", "frame": "base_link", "unit": "m",
+                "ok": True, "valid": False, "slot": int(slot_id),
+                "arm": "L" if str(tray).upper() == "L" else "R",
+                "tray": "L" if str(tray).upper() == "L" else "R",
+                "slot_name": ("左槽%d" if str(tray).upper() == "L" else "槽%d") % int(slot_id),
+                "geom_src": g.get("src"),
+                "hover_mm": round(hover * 1000, 1),
+                "pos": [round(float(v), 6) for v in pos],
+                "pos_mm": [round(float(v) * 1000.0, 1) for v in pos],
+                "grasp_mm": [round(float(v) * 1000.0, 1) for v in grasp],
+                "head_mm": [round(float(head[i]) * 1000.0, 1) for i in range(3)],
+                "grasp_src": "模块体中心 (与真机示教点位同口径)",
+                "quat": None if q_slot is None else [round(float(v), 6) for v in q_slot],
+                "quat_src": "模块姿态 × 夹爪安装对齐",
+                "approach": [0.0, 0.0, -1.0],
+                "pre_pos_mm": [round(float(pre_g[i]) * 1000.0, 1) for i in range(3)],
+                "module_x_axis": [round(float(v), 4) for v in xd],
+                "sigma_mm": None, "age_s": 0.0,
+                "src": "%s%s 几何真值 + 排布朝向 (未观测实物 ⇒ valid=false)" % (
+                    "左臂·左槽" if _isL else "右臂·槽", int(slot_id)),
+                "note": "该槽当前没有检出实物; 位姿先验来自 %s, 可当引导目标, 不可当抓取真值%s" % (
+                    g.get("src") or "tray_slots_14.json",
+                    " 【左盘朝向取右盘镜像, 属先验: 现场若为反向摆放, 用 ZMAX_SLOT_XDIR_L 覆盖】" if _isL else "")}
+    peg = _peg_pose(ctx)
+    out = {"node": "n_geoplan", "kind": "target_pose", "frame": "base_link", "unit": "m",
+           "hover_mm": round(hover * 1000, 1)}
+    if isinstance(peg, dict) and "xyz" in peg:
+        pos = np.asarray(peg.get("xyz"), float).ravel()[:3]
+        q = _q_unit(peg.get("quat"))
+        valid = bool(peg.get("valid")) and q is not None
+        sigma = peg.get("sigma_mm")
+        src = "%s · %s" % (peg.get("src"), peg.get("_src"))
+        age = peg.get("_age_s")
+        detail = peg.get("detail") or {}
+        slot = detail.get("slot")
+    else:
+        # 降级: 位置用状态向量的 peg 槽, 姿态用当前 TCP 旋转 (明确标降级, 不当成真位姿用)
+        if obs is None:
+            return dict(out, ok=False, valid=False,
+                        err=(peg or {}).get("_err", "无融合位姿且无 obs"))
+        pos = np.asarray(obs[4:7], float).ravel()[:3]
+        q = _quat_from_rot(obs[24:33])
+        valid, sigma, src, age, slot = False, None, "降级: obs[4:7] + 当前 TCP 旋转", None, None
+        out["degrade_reason"] = (peg or {}).get("_err", "无融合位姿")
+
+    if pos.size != 3 or not np.all(np.isfinite(pos)):
+        return dict(out, ok=False, valid=False, err="目标位置非法")
+    if q is None and obs is not None:                 # 融合位姿无姿态 ⇒ 用当前 TCP 旋转兜底(标降级)
+        q = _quat_from_rot(np.asarray(obs, float).ravel()[24:33])
+
+    q_tool = _q_mul(q if q is not None else np.array([1.0, 0, 0, 0]), _align_quat())
+    R_t = _q_to_R(q_tool)
+    ap_env = os.environ.get("ZMAX_GRASP_APPROACH", "").strip()
+    if ap_env:
+        try:
+            approach = np.asarray([float(v) for v in ap_env.split(",")[:3]], float)
+            approach = approach / (np.linalg.norm(approach) + 1e-12)
+        except Exception:                                               # noqa: BLE001
+            approach = np.array([0.0, 0.0, -1.0])
+    else:
+        approach = np.array([0.0, 0.0, -1.0])      # 进给方向 = 从上往下 (模块在槽里平躺)
+    # 🎯 抓取点(TCP) = 模块**体中心** = 金手指端 + (L/2)·X̂ ; 与真机示教点位同口径
+    _L = 0.072
+    try:
+        _L = float((detail or {}).get("L_mm") or 72.0) / 1000.0 if isinstance(detail, dict) else 0.072
+    except Exception:                                                   # noqa: BLE001
+        _L = 0.072
+    _xhat = R_t[:, 0] / (np.linalg.norm(R_t[:, 0]) + 1e-12)
+    grasp = pos + _xhat * (_L / 2.0)
+    pre = grasp - approach * hover                 # 预抓点 = 抓取点上方 hover (approach 是"朝向目标"的方向)
+
+    out.update({
+        "ok": True, "valid": valid,
+        "pos": [round(float(v), 6) for v in pos],
+        "pos_mm": [round(float(v) * 1000.0, 1) for v in pos],
+        "grasp_mm": [round(float(v) * 1000.0, 1) for v in grasp],
+        "grasp_src": "模块体中心 (与真机示教点位同口径)", 
+        "quat": None if q_tool is None else [round(float(v), 6) for v in q_tool],
+        "rpy_deg": [round(float(np.degrees(np.arctan2(R_t[2, 1], R_t[2, 2]))), 2),
+                    round(float(np.degrees(-np.arcsin(np.clip(R_t[2, 0], -1, 1)))), 2),
+                    round(float(np.degrees(np.arctan2(R_t[1, 0], R_t[0, 0]))), 2)],
+        "approach": [round(float(v), 4) for v in approach],
+        "pre_pos_mm": [round(float(v) * 1000.0, 1) for v in pre],
+        "module_x_axis": [round(float(v), 4) for v in R_t[:, 0]],   # 夹爪两指要对齐的方向
+        "sigma_mm": sigma, "slot": slot, "age_s": age, "src": src,
+    })
+    if q is None:
+        out["quat_note"] = "模块姿态未观测 ⇒ 沿用当前 TCP 姿态, valid=false (只可当引导, 不可当抓取真值)"
+    return out
+
+
+def target_pose_pair(lslot=1, rslot=3, ctx=None, hover_mm=None):
+    """**双臂成对**目标位姿 (老倪 2026-11-22「直接给出左右两个3D引导位姿」)。
+
+    左臂 = 左盘 (AR 围栏「左槽N」几何) · 右臂 = 右盘 (tray_slots_14.json 槽N)。
+    语义: 一对**同时成立或同时失效** (atomic=True) —— 一侧取不到几何就整对标 ok=false,
+    不许一侧悄悄单飞, 否则又是一臂按旧目标、一臂按新目标。
+    仍守"一个周期一个目标组": 组 = (L,R), 不是两个独立目标。
+    """
+    L = target_pose(ctx=ctx, slot_id=lslot, tray="L", hover_mm=hover_mm)
+    R = target_pose(ctx=ctx, slot_id=rslot, tray="R", hover_mm=hover_mm)
+    ok = bool(L.get("ok")) and bool(R.get("ok"))
+    why = []
+    if not L.get("ok"):
+        why.append("左臂: %s" % L.get("err"))
+    if not R.get("ok"):
+        why.append("右臂: %s" % R.get("err"))
+    return {"node": "n_geoplan", "kind": "target_pose_pair", "ok": ok, "atomic": True,
+            "pair_id": "PAIR_%s" % time.strftime("%Y%m%d_%H%M%S"),
+            "ts": round(time.time(), 3), "t_str": time.strftime("%F %T"),
+            "L": L, "R": R,
+            "why": "两侧同时给出 (左盘槽%d / 右盘槽%d); 任一侧取不到几何则整对失效" % (int(lslot), int(rslot))
+                   if ok else "; ".join(why)}
+
+
+def _vec3(v):
+    try:
+        return [float(v[0]), float(v[1]), float(v[2])]
+    except Exception:                                                   # noqa: BLE001
+        return None
+
+
+def _left_arm_truth(ctx=None):
+    """左臂真值 (mm)。单台真机只有一条臂 ⇒ 左臂真值只能从旁路来, 取不到就**明写没有**。
+
+    来源优先级: env ZMAX_LARM_POSE_JSON → zmax_data/ss_live/left_arm_pose.json → ctx['in_larm']。
+    """
+    p = os.environ.get("ZMAX_LARM_POSE_JSON") or os.path.join(
+        _ROOT, "zmax_data", "ss_live", "left_arm_pose.json")
+    try:
+        with open(p, encoding="utf-8") as fh:
+            d = json.load(fh) or {}
+        v = _vec3(d.get("pos_mm") or d.get("tcp") or d.get("pos") or [])
+        if v:
+            return {"ok": True, "pos_mm": v, "src": os.path.relpath(p, _ROOT),
+                    "age_s": round(time.time() - os.path.getmtime(p), 1)}
+    except Exception:                                                   # noqa: BLE001
+        pass
+    v = _vec3(((ctx or {}).get("in_larm") or {}).get("value"))
+    if v:
+        return {"ok": True, "pos_mm": v, "src": "ctx.in_larm", "age_s": 0.0}
+    return {"ok": False, "pos_mm": None, "src": None,
+            "why": "左臂无真值来源 (单台真机只有一条臂; 需旁路读第二控制器或扩状态向量)"}
+
+
+def _zone_of(y_mm, split_mm):
+    return "L" if float(y_mm) >= float(split_mm) else "R"
+
+
+def dual_arm_guide(ctx=None, lslot=None, rslot=None, hover_mm=None):
+    """🤝 双臂协同 = **引导层一个目标组** (老倪 2026-11-22「代码写进测地线3D引导里」)。
+
+    单台机器人两条臂在同一物理工作空间里, 围绕同一组任务(正反向摆盘)的实时动作配合。
+    三条硬条件 (缺一条就降级并写明, 不许假装协同):
+      ① 每拍双真值   右臂 = obs[0:3] (唯一真机) · 左臂 = 旁路真值, 取不到 ⇒ dual_truth.L=false
+      ② 输出原子成对 pair_id + 同一 ts + 两侧 valid 各自标注; 一侧缺几何 ⇒ pair_valid=false (整对)
+      ③ 共享区带 owner 左右盘按 y 分区 (ZMAX_ZONE_SPLIT_MM, 默认 600mm): 目标落错区 ⇒ cross_zone=true
+         ⇒ hold=true (执行侧兜底: 后到者让一拍), 绝不让两臂同时抢同一区
+    另给 min_gap_mm: 两个抓取点间距, 小于 ZMAX_DUAL_MIN_GAP_MM(默认 120) ⇒ 预警 (不分摊几何)。
+    只算/只标, 不下发、不碰授权。
+    """
+    L_S = int(os.environ.get("ZMAX_DUAL_LSLOT", lslot if lslot is not None else 8))
+    R_S = int(os.environ.get("ZMAX_DUAL_RSLOT", rslot if rslot is not None else 3))
+    pair = target_pose_pair(L_S, R_S, ctx=ctx, hover_mm=hover_mm)
+
+    obs = _obs(ctx)
+    r_true = None
+    if obs is not None:
+        try:
+            r_true = [float(obs[0]) * (1000.0 if abs(float(obs[0])) < 10 else 1.0),
+                      float(obs[1]) * (1000.0 if abs(float(obs[1])) < 10 else 1.0),
+                      float(obs[2]) * (1000.0 if abs(float(obs[2])) < 10 else 1.0)]
+        except Exception:                                               # noqa: BLE001
+            r_true = None
+    l_true = _left_arm_truth(ctx)
+
+    split = float(os.environ.get("ZMAX_ZONE_SPLIT_MM", 600.0))
+    gL = _vec3((pair.get("L") or {}).get("grasp_mm"))
+    gR = _vec3((pair.get("R") or {}).get("grasp_mm"))
+    zone_L = _zone_of(gL[1], split) if gL else None
+    zone_R = _zone_of(gR[1], split) if gR else None
+    cross = bool(zone_L and zone_R and (zone_L != "L" or zone_R != "R"))
+    gap = None
+    if gL and gR:
+        gap = round(((gL[0] - gR[0]) ** 2 + (gL[1] - gR[1]) ** 2 + (gL[2] - gR[2]) ** 2) ** 0.5, 1)
+    min_gap = float(os.environ.get("ZMAX_DUAL_MIN_GAP_MM", 120.0))
+    gap_warn = bool(gap is not None and gap < min_gap)
+
+    hold = bool((not l_true.get("ok")) or cross or gap_warn or not pair.get("ok"))
+    why = []
+    if not pair.get("ok"):
+        why.append("成对几何不全: %s" % pair.get("why"))
+    if not l_true.get("ok"):
+        why.append("左臂无真值 ⇒ 只做几何引导, 不做双臂时序协同")
+    if cross:
+        why.append("目标越区 (左臂目标 y=%s 落 %s 区 / 右臂 y=%s 落 %s 区)" % (
+            gL[1] if gL else "?", zone_L, gR[1] if gR else "?", zone_R))
+    if gap_warn:
+        why.append("两抓取点间距 %.1fmm < %.0fmm" % (gap, min_gap))
+    return {"node": "n_geoplan", "kind": "dual_arm_guide", "ok": bool(pair.get("ok")),
+            "pair_id": pair.get("pair_id"), "ts": pair.get("ts"), "t_str": pair.get("t_str"),
+            "atomic": True, "pair_valid": bool(pair.get("ok")),
+            "dual_truth": {"R": bool(r_true), "L": bool(l_true.get("ok")),
+                           "r_mm": r_true, "l_mm": l_true.get("pos_mm"), "l_src": l_true.get("src")},
+            "zone": {"split_mm": split, "L_action": zone_L, "R_action": zone_R,
+                     "owner": {"L": "L" if zone_L == "L" else None, "R": "R" if zone_R == "R" else None},
+                     "cross_zone": cross},
+            "min_gap_mm": gap, "gap_warn": gap_warn, "hold": hold, "why": "; ".join(why) or "两侧分区、目标组原子、各守本区",
+            "L": pair.get("L"), "R": pair.get("R"),
+            "task": "正反向摆盘 (左臂向左盘放/取, 右臂向右盘放/取), 同拍同一个目标组",
+            "note": "只算/只标/只出证据; 运动下发仍走 sslimit→n_exec (需 8793 授权)"}
+
+
+def publish_target(slot_id=None, ctx=None, path=None, fence=True, tray="R"):
+    """把**唯一目标位姿**落成可观测产物 (AR 页面直接读, 不需要重启 8797)。
+
+    两个落点:
+      · zmax_data/ss_live/target_pose.json   规范 JSON (其他消费者/接口文档用)
+      · zmax_data/ar_rs/fences.json 里的 id=TP1 元素  (AR 页 /api/fence 热读 ⇒ 前端画三轴+半透明模块)
+    只写文件, 不下发任何运动指令。id=TP1 用 upsert, 反复发布不会堆垃圾。
+    """
+    t = target_pose(ctx=ctx, slot_id=slot_id, tray=tray)
+    if not t.get("ok"):
+        return {"ok": False, "err": t.get("err"), "pose": t}
+    root = _ROOT
+    _isL = str(tray).upper() == "L"
+    p_json = path or os.path.join(root, "zmax_data", "ss_live",
+                                  "target_pose_L.json" if _isL else "target_pose.json")
+    os.makedirs(os.path.dirname(p_json), exist_ok=True)
+    doc = {"ts": time.time(), "t_str": time.strftime("%H:%M:%S"), "pose": t}
+    tmp = p_json + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh, ensure_ascii=False, indent=1)
+    os.replace(tmp, p_json)
+
+    out = {"ok": True, "json": p_json, "pose": t, "fence": None}
+    if not fence:
+        return out
+    fp = os.path.join(root, "zmax_data", "ar_rs", "fences.json")
+    try:
+        with open(fp, encoding="utf-8") as fh:
+            fd = json.load(fh) or {}
+    except Exception:                                                       # noqa: BLE001
+        fd = {"items": []}
+    items = fd.get("items") or []
+    pos = [float(v) for v in t["pos"]]
+    q = t.get("quat") or [1.0, 0.0, 0.0, 0.0]
+    R = _q_to_R(q)
+    tip = [pos[i] + 0.072 * R[i, 0] for i in range(3)]          # 长轴另一端 (画出方向)
+    slot_txt = (("左臂·左槽%d" if _isL else "右臂·槽%d") % t["slot"]) if t.get("slot") else "融合位姿"
+    _fid = "TP2" if _isL else "TP1"
+    it = {"id": _fid, "type": "points", "name": "🎯目标位姿 " + slot_txt,
+          "arm": "L" if _isL else "R",
+          "p1": [round(v, 5) for v in pos],
+          "p2": [round(v, 5) for v in tip],
+          "pts": [[round(v, 5) for v in pos], [round(v, 5) for v in tip]],
+          "color": ("#4da3ff" if _isL else "#ffd23f"), "enabled": True, "n": 2,
+          "note": "测地线规划引导·%s臂目标位姿 | %s" % (("左" if _isL else "右"), t.get("src")),
+          "at": time.strftime("%F %T"),
+          # 前端据此画带旋转的模块盒 + 三轴 (尺寸 mm)
+          "pose": {"pos_m": pos, "quat": [round(float(v), 6) for v in q],
+                   "dims_mm": [72.0, 18.35, 8.5],
+                   "approach": t.get("approach"), "pre_pos_mm": t.get("pre_pos_mm"),
+                   "valid": bool(t.get("valid")), "src": t.get("src"),
+                   "slot": t.get("slot"), "arm": "L" if _isL else "R",
+                   "label": ("左臂·左槽%d" if _isL else "右臂·槽%d") % t["slot"] if t.get("slot") else "融合位姿",
+                   "ts": round(time.time(), 3)}}
+    items = [x for x in items if str(x.get("id")) != _fid] + [it]
+    fd["items"] = items
+    os.makedirs(os.path.dirname(fp), exist_ok=True)
+    try:
+        import shutil as _sh
+        _sh.copy2(fp, fp + ".bak_targetpose")
+    except Exception:                                                       # noqa: BLE001
+        pass
+    tmp2 = fp + ".tmp"
+    with open(tmp2, "w", encoding="utf-8") as fh:
+        json.dump(fd, fh, ensure_ascii=False, indent=1)
+    os.replace(tmp2, fp)
+    out["fence"] = {"file": fp, "id": "TP1", "items": len(items)}
+    return out
+
+
 # ── 📈 时间参数化平滑轨迹 (2026-10-29 老倪: 「要动作与回放的 UPH 轨迹一样平顺, 而且要由 L2 节点实际发出」) ──
 #   为什么要它: 站内原来是 10Hz P 环 + 每拍重算速度 + 每拍 IK ⇒ 段首跳支/段间硬切/终点 snap,
 #   实测右臂每拍 13~660mm 的台阶。UPH 之所以顺 = 它按**时间**插值 (u = t_in_seg / seg_t)。
@@ -237,17 +699,18 @@ def _run_guides(ctx=None):
     except Exception as exc:                                             # noqa: BLE001
         out.update({"ok": False, "err": "测地线规划失败: %s: %s" % (type(exc).__name__, exc)})
         return out
-    # ── 3D 引导位姿 (视觉 3D 目标 + 测地线方向校验) ──────────────────────
+    # ── 唯一目标 3D 引导位姿: 全周期只认一个目标, 引导步/朝向量都由它派生 ──────────
     tcp = np.asarray(obs[0:3], float)
     peg = np.asarray(obs[4:7], float)
     hole = np.asarray(obs[36:39], float)
     use_hole = float(np.linalg.norm(hole - peg)) > 0.005
-    tgt_vis = hole if use_hole else peg
-    hover = float(os.environ.get("ZMAX_GUIDE_HOVER_MM", "40")) * 0.001
+    tgt = target_pose(ctx, obs)
+    if not tgt.get("ok"):
+        out.update({"ok": False, "err": "目标位姿不可用: %s" % tgt.get("err")})
+        return out
+    goal_pos = np.asarray(tgt["pos"], float)                 # 抓取目标点本身 (不再自己加 hover)
     v_cap = float(os.environ.get("ZMAX_GUIDE_V_CAP", "0.35"))
     dt = float(os.environ.get("ZMAX_GUIDE_DT", "0.1"))
-    goal_pos = np.asarray(tgt_vis, float).copy()
-    goal_pos[2] = goal_pos[2] + hover            # 先到目标上方 hover, 下落交给下游规划
     d = goal_pos - tcp
     dist = float(np.linalg.norm(d))
     u = d / dist if dist > 1e-9 else np.zeros(3)
@@ -256,7 +719,7 @@ def _run_guides(ctx=None):
     cos = float((cu / cn) @ u) if cn > 1e-9 else 0.0
     step = min(dist, v_cap * dt)
     guide_pos = tcp + u * step
-    quat = _quat_from_rot(obs[24:33])
+    quat = tgt.get("quat") or _quat_from_rot(obs[24:33])
     out.update({"ok": True, "goal": [round(float(v), 5) for v in gs[36:39]],
                 "p_now": [round(float(v), 5) for v in np.asarray(p_now, float).ravel()[:4]],
                 "chunk": [[round(float(x), 5) for x in row] for row in chunk],
@@ -266,6 +729,8 @@ def _run_guides(ctx=None):
                 "length": round(float(nav.get("length") or 0.0), 5),
                 "decode": decode,
                 "ckpt": os.path.relpath(CKPT, _ROOT) if os.path.exists(CKPT) else "(缺 ckpt)",
+                # ★ 主输出: 唯一目标 3D 引导位姿 (要抓的那个位姿)
+                "target_pose": tgt,
                 "guide": {"pos_m": [round(float(v), 5) for v in guide_pos],
                           "pos_mm": [round(float(v) * 1000.0, 1) for v in guide_pos],
                           "quat": quat,
@@ -273,15 +738,26 @@ def _run_guides(ctx=None):
                           "cos_geodesic": round(cos, 3),
                           "step_mm": round(step * 1000.0, 1),
                           "dist_mm": round(dist * 1000.0, 1),
-                          "tgt_src": "视觉3D 孔口" if use_hole else "视觉3D 模块",
+                          "tgt_src": tgt.get("src"),
+                          "tgt_valid": bool(tgt.get("valid")),
                           "dir_src": ("测地线一致 (cos≥0.3)" if cos >= 0.3
-                                      else "几何(视觉3D)主导: 测地线方向不一致 cos=%.2f" % cos),
-                          "quat_src": ("obs[24:33] 旋转矩阵" if quat
+                                      else "几何(目标位姿)主导: 测地线方向不一致 cos=%.2f" % cos),
+                          "quat_src": ("目标位姿(融合模块 peg_quat)" if tgt.get("quat")
                                        else "姿态槽无效 ⇒ 保持当前姿态")},
+                "insert_target": ({"pos_mm": [round(float(v) * 1000.0, 1) for v in hole]}
+                                  if use_hole else None),
                 # 下游「运动规划」(n_moveit) 认 ctx["in1"]["value"]["tcp"](mm)
                 "value": {"tcp": [round(float(v) * 1000.0, 1) for v in guide_pos],
+                          "pos_mm": [round(float(v) * 1000.0, 1) for v in guide_pos],
+                          "target_pose": {"pos_mm": tgt.get("pos_mm"),
+                                          "quat": tgt.get("quat"),
+                                          "approach": tgt.get("approach"),
+                                          "pre_pos_mm": tgt.get("pre_pos_mm"),
+                                          "valid": tgt.get("valid"),
+                                          "src": tgt.get("src")},
                           "frame": "base_link",
-                          "src": "测地线规划引导 (视觉3D + 测地线方向)"}})
+                          "src": "测地线规划引导 (唯一目标位姿 + 测地线方向)"}})
+
     return out
 
 
@@ -409,6 +885,10 @@ def ideal_run(ctx=None):
                       "dur_s": cur["t"], "prog": round((cur["t0"] + u * cur["t"]) / max(1e-9, doc["cycle_s"]), 4)},
             "tcp": [round(v, 2) for v in pos],
             "seg_i": cur["i"], "seg_n": doc["n_seg"], "kind": cur["kind"],
+            # 理想档同样只给一个目标位姿 (姿态未参与理想规划 ⇒ quat=None, 明写不假装)
+            "target_pose": {"pos_mm": [round(float(v), 2) for v in cur["b"]], "quat": None,
+                            "approach": [0.0, 0.0, -1.0], "valid": False, "slot": None,
+                            "src": "geo_ideal 段目标 (姿态未定)"},
             "src": "geo_ideal(测地线引导·工艺动作)"}
     out2 = {"H": h, "chunk": cur["chunk"], "seg_i": cur["i"], "kind": cur["kind"]}
     # 📄 落一份可观测产物 (常驻循环里没有日志行也能核对: 龄/段号/UPH 实时)
@@ -460,6 +940,21 @@ def run(ctx=None):
                 out["out1"]["value"]["craft_engine"] = c["out1"]
         except Exception as _e:                                         # noqa: BLE001
             out["craft"] = {"err": str(_e)[:120]}
+        try:                                                            # 🤝 双臂协同 (理想档也要有)
+            _d = dual_arm_guide(ctx)
+            out["out3"] = {"value": _d.get("L"), "pair_id": _d.get("pair_id"), "arm": "L",
+                           "ts": _d.get("ts"), "valid": bool((_d.get("L") or {}).get("ok")),
+                           "age_s": 0.0, "fresh": True}
+            out["out4"] = {"value": _d, "age_s": 0.0, "fresh": True}
+            _o1 = out.get("out1")
+            if isinstance(_o1, dict) and isinstance(_o1.get("value"), dict):
+                _o1["value"].update({"pair_id": _d.get("pair_id"), "arm": "R",
+                                     "pair_valid": _d.get("pair_valid"), "hold": _d.get("hold"),
+                                     "peer_grasp_mm": (_d.get("L") or {}).get("grasp_mm"),
+                                     "dual_truth": _d.get("dual_truth")})
+        except Exception as _e2:                                        # noqa: BLE001
+            out["out4"] = {"value": {"ok": False, "err": ("双臂协同失败: %s" % _e2)[:160]},
+                           "age_s": 0.0, "fresh": True}
         globals()["LAST_STATUS"] = out.get("status") or ""
         return out
     out = _run_guides(ctx)
@@ -479,6 +974,25 @@ def run(ctx=None):
         out["out2"] = {"H": out.get("h"), "chunk": _ch,
                        "chunk0": (_ch[0] if _ch else None),
                        "seg_i": out.get("i"), "kind": out.get("kind"),
+                       "age_s": 0.0, "fresh": True}
+    # 🤝 双臂协同 (老倪 2026-11-22「这个功能, 代码写进测地线3D引导里」):
+    #   out1 仍是**右臂**唯一目标 (下游 sslimit→n_moveit 不用改), 只多带 pair_id/arm/peer;
+    #   out3 = 左臂目标位姿 (与 out1 同 pair_id 同 ts, 成对); out4 = 协同证据 (双真值/分区/hold/间距)。
+    #   左臂没有控制器通道 ⇒ out3 目前只进观测/画布, 不下发。
+    try:
+        _d = dual_arm_guide(ctx)
+        out["out3"] = {"value": _d.get("L"), "pair_id": _d.get("pair_id"), "arm": "L",
+                       "ts": _d.get("ts"), "valid": bool((_d.get("L") or {}).get("ok")),
+                       "age_s": 0.0, "fresh": True}
+        out["out4"] = {"value": _d, "age_s": 0.0, "fresh": True}
+        _o1 = out.get("out1")
+        if isinstance(_o1, dict) and isinstance(_o1.get("value"), dict):
+            _o1["value"].update({"pair_id": _d.get("pair_id"), "arm": "R",
+                                 "pair_valid": _d.get("pair_valid"), "hold": _d.get("hold"),
+                                 "peer_grasp_mm": (_d.get("L") or {}).get("grasp_mm"),
+                                 "dual_truth": _d.get("dual_truth")})
+    except Exception as _e:                                             # noqa: BLE001
+        out["out4"] = {"value": {"ok": False, "err": ("双臂协同失败: %s" % _e)[:160]},
                        "age_s": 0.0, "fresh": True}
     return out
 

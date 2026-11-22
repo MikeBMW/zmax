@@ -467,7 +467,7 @@ var HTML_VER="__HTMLVER__";</script>
     </div>
     <div class="panel"><div class="cap"><span class="ttl">🦾 手臂相机</span>
       <span class="meta" id="m_arm">…</span></div>
-      <img id="i_arm" data-mode="snap" data-src="/snapshot/arm.jpg" data-every="800"></div>
+      <img id="i_arm" data-ext="http://10.163.146.76:8897/arm_yolo.jpg" data-every="600"></div>
     <div class="panel"><div class="cap"><span class="ttl">📷 本机相机 (内置 / USB)</span>
       <span class="meta" id="m_local">…</span></div>
       <img id="i_local" data-mode="snap" data-src="/snapshot/local.jpg" data-every="400">
@@ -1878,6 +1878,16 @@ const MJPG=(window.__MJPG=[...document.querySelectorAll('img[data-mode=mjpg]')].
   im:im, url:_u(_mb()+im.dataset.src), seen:-1, still:0,
   key:(im.dataset.src||'').replace(/^\//,'').replace(/\.mjpg$/,'')})));
 MJPG.forEach(rec=>{ rec.im.onerror=()=>setTimeout(()=>{ rec.im.src=rec.url+'?t='+Date.now(); rec.still=0; },1500); });
+/* 🦾 手臂相机 → YOLO 光模块标注流 (独立进程 :8898, 主推流服务不重启)
+   老倪 11-22: 「实时显示在 station 窗口上」。判据 conf≥0.5 + 框中心稳定; 槽号按 x 中心换算。 */
+(function(){
+  const im=document.getElementById('i_arm'); if(!im||!im.dataset.ext) return;
+  const U=im.dataset.ext, EVERY=parseInt(im.dataset.every||'600');
+  im.classList.add('live');
+  const tick=()=>{ im.src=U+'?t='+Date.now(); };
+  im.onerror=()=>setTimeout(tick,1200);
+  tick(); setInterval(tick, EVERY);
+})();
 /* 🔴 2026-10-12 老倪: 「金手指窗口的整版原图，怎么变成金手指的判据图了？别串台了」
    根因: 用户点 [判据图|整板原图] 换源后, 这里仍拿**初始**那条 url 与它的帧序号判活
    ⇒ 目标流的计数(它看的是另一条流的 frames_served)不涨 ⇒ 自愈把 img 又拉回初始那条流 = 串台。

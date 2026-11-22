@@ -205,6 +205,49 @@ def _target(ctx, start_frame="base_link"):
     if isinstance(v, dict):
         frame = v.get("frame") or start_frame
         _q_in = _quat_ok(v.get("quat"))            # in1 显式四元数优先 (调用方指定姿态)
+        # 🎯 2026-11-22 老倪「根据规划引导输出的目标位姿, 动作规划给出 action 抓取」
+        #   plan_guide(n_geoplan) 的 out1 里带 target_pose = **唯一的抓取目标位姿**(位置+姿态+预抓点)。
+        #   这条优先级最高: 有它就按它规划, 不再退化成"下一小步引导点"。
+        #   注意四元数口径: plan_guide 是 wxyz, 本模块一律 x,y,z,w。
+        _tp = v.get("target_pose")
+        if isinstance(_tp, dict) and isinstance(_tp.get("pos_mm"), (list, tuple)) and len(_tp["pos_mm"]) == 3:
+            # 抓取点(TCP) = grasp_mm (模块体中心); 没有就退模块原点 pos_mm
+            _gp = _tp.get("grasp_mm")
+            _pw = [float(x) for x in (_gp if (isinstance(_gp, (list, tuple)) and len(_gp) == 3) else _tp["pos_mm"])]
+            _q_src, _q_out = "none", None
+            _qw = _tp.get("quat")
+            if isinstance(_qw, (list, tuple)) and len(_qw) == 4:
+                _q_out = _quat_ok([_qw[1], _qw[2], _qw[3], _qw[0]]) or _q_in
+                _q_src = "plan_guide(模块位姿·wxyz→xyzw)" if _q_out else "none"
+            elif _q_in:
+                _q_out, _q_src = _q_in, "in1(显式)"
+            _o = {"pos": [round(x, 2) for x in _pw], "frame": "base_link",
+                  "module_pos_mm": [round(float(x), 2) for x in _tp["pos_mm"]],
+                  "pos_src": ("grasp(模块体中心)" if isinstance(_tp.get("grasp_mm"), (list, tuple)) else "module(金手指端)"),
+                  "src": "plan_guide.target_pose",
+                  "name": ("槽%s" % _tp.get("slot")) if _tp.get("slot") else "target_pose",
+                  "ts": _tp.get("ts"), "quat": _q_out, "quat_src": _q_src,
+                  "valid": bool(_tp.get("valid")), "is_target": True}
+            # 先验位姿(未观测实物) ⇒ 位置用**示教点**兜底(真机示教真值), 姿态仍用引导给的;
+            #   实测: 槽3 几何先验 (649.0,404.0,114.2) 与示教 (648.8,407.0,108.6) 差 6.3mm, 深度口径不同
+            if (not _o.get("valid")) and _tp.get("slot") is not None:
+                try:
+                    _p = _ps().slot(int(_tp["slot"]), frame="base_link")
+                except Exception:                                        # noqa: BLE001
+                    _p = None
+                if _p and _p.get("pos_mm"):
+                    _o["pos"] = [round(float(v), 2) for v in _p["pos_mm"]]
+                    _o["pos_src"] = "taught(示教点·真机真值)"
+                    _o["grasp_prior_mm"] = [round(x, 2) for x in _pw]
+            _hov = float(_tp.get("hover_mm") or 40.0)
+            _o["hover_mm"] = round(_hov, 1)
+            _ap = _tp.get("approach") or [0.0, 0.0, -1.0]
+            try:
+                _ap = [float(_ap[0]), float(_ap[1]), float(_ap[2])]
+            except Exception:                                            # noqa: BLE001
+                _ap = [0.0, 0.0, -1.0]
+            _o["pre_pos"] = [round(_o["pos"][i] - _ap[i] * _hov, 2) for i in range(3)]
+            return _o
         _obs = v.get("obs")
         if not _obs and isinstance(v.get("point"), str) and v["point"].startswith("obs:"):
             _obs = v["point"][4:]
@@ -458,6 +501,58 @@ def _plan_tick(segs, goal_plan, now):
 
 
 # ── 节点入口 (registry / middleware 都调它) ─────────────────────────────────
+# ── 🎯 抓取序列 (2026-11-22 老倪「根据规划引导输出的目标位姿, 动作规划给出 action 抓取」) ──
+#   目标位姿来自 plan_guide.target_pose(唯一抓取目标)。动作规划按三段出 action:
+#     ① approach: 目标 = 预抓点(pre_pos, 正上方 hover_mm), 单步受 lim.step 约束
+#     ② descend : 到预抓点 4mm 内 ⇒ 目标 = 抓取点(pos)
+#     ③ grip    : 到抓取点 3mm 内 ⇒ action 里带 grip.close, 连发 5 拍后置 done(不重复合爪)
+#   这段只在目标真的来自 target_pose 时启用, 老的 in1/in4 目标行为一个字没改。
+_GRASP = {"key": None, "phase": "idle", "t0": 0.0, "sent": 0}
+
+
+def _grasp_tick(start, tgt):
+    if not (isinstance(tgt, dict) and tgt.get("is_target") and tgt.get("pos")):
+        _GRASP.update({"key": None, "phase": "idle", "sent": 0})
+        return None
+    gp = [float(v) for v in tgt["pos"]]
+    pre = [float(v) for v in (tgt.get("pre_pos") or gp)]
+    key = tuple(round(v, 1) for v in gp)
+    if _GRASP.get("key") != key:
+        _GRASP.update({"key": key, "phase": "approach", "t0": time.time(), "sent": 0})
+    out = {"phase": _GRASP["phase"], "goal_mm": gp, "pre_mm": pre,
+           "hover_mm": tgt.get("hover_mm")}
+    if start is None:
+        out["goal"] = pre if _GRASP["phase"] == "approach" else gp
+        out["why"] = "无真值 ⇒ 只给目标, 不动"
+        return out
+    d_pre = max(abs(float(start[i]) - pre[i]) for i in range(3))
+    d_goal = max(abs(float(start[i]) - gp[i]) for i in range(3))
+    if _GRASP["phase"] == "approach" and d_pre < 4.0:
+        _GRASP["phase"] = "descend"
+    if _GRASP["phase"] == "descend" and d_goal < 3.0:
+        _GRASP["phase"] = "grip"
+    ph = _GRASP["phase"]
+    out.update({"phase": ph, "d_pre_mm": round(d_pre, 2), "d_goal_mm": round(d_goal, 2)})
+    if ph == "approach":
+        out["goal"] = pre
+        out["why"] = "接近: 先到预抓点(正上方 %.0fmm)" % float(tgt.get("hover_mm") or 40.0)
+    elif ph == "descend":
+        out["goal"] = gp
+        out["why"] = "下降: 到抓取点 (还剩 %.1fmm)" % d_goal
+    else:
+        out["goal"] = gp
+        if ph == "grip":
+            _GRASP["sent"] += 1
+            out["grip"] = {"close": True, "src": "抓取段: 已到抓取点 ⇒ 合爪"}
+            out["why"] = "合爪 (第 %d 拍)" % _GRASP["sent"]
+            if _GRASP["sent"] >= 5:
+                _GRASP["phase"] = "done"
+        else:
+            out["grip"] = {"close": True, "src": "抓取段: 已合爪"}
+            out["why"] = "已合爪, 保持"
+    return out
+
+
 def run(ctx=None):
     """一个周期: 起点(真值) + 目标(意图) + 安全限制 → 段表。只规划，不下发。"""
     global LAST_STATUS
@@ -498,6 +593,17 @@ def run(ctx=None):
         out.update({"goal_src": tgt.get("src"), "goal_frame": tgt.get("frame"),
                     "goal_name": tgt.get("name"), "goal_ts": tgt.get("ts"),
                     "goal_conf": tgt.get("conf"), "goal_err_mm": tgt.get("err_mm")})
+
+    # 🎯 抓取序列: 目标来自 target_pose ⇒ 目标点按"预抓点→抓取点→合爪"推进, action 里带夹爪
+    _grip_cmd = None
+    _gp = _grasp_tick(start, tgt if isinstance(tgt, dict) else None)
+    if _gp:
+        out["grasp"] = _gp
+        out["grasp_why"] = _gp.get("why")
+        if _gp.get("goal"):
+            goal = [float(v) for v in _gp["goal"]]
+            out["goal_used"] = [round(v, 2) for v in goal]
+        _grip_cmd = _gp.get("grip")
 
     # moveit 只报可用性 (MoveItPlan.plan 是探针, 不冒充能规划) —— 带 TTL 缓存:
     #   实测该探针 50.7ms/次, 10Hz 循环里每拍跑会白吃半拍预算 (画布 loop 本就 220~310ms)。
@@ -676,7 +782,10 @@ def run(ctx=None):
             _tp, quat=_gq, truth=_truth, joints_now=None, seg=_sg, u=_un,
             plan={"plan_id": _pid, "n_seg": _nseg, "goal": [round(v, 2) for v in goal_plan],
                   "total_mm": out.get("total_mm"), "backend": _backend, "src": "n_moveit"},
-            why="规划输出 · 段 %s/%s %s u=%.2f" % (_si, _nseg, _sg.get("kind"), _un))
+            grip=_grip_cmd,
+            why="规划输出 · 段 %s/%s %s u=%.2f%s" % (
+                _si, _nseg, _sg.get("kind"), _un,
+                ("" if not _gp else (" · 抓取 %s" % _gp.get("phase")))))
         out["action_note"] = "规划节点出 action(位姿口径); 机器人节点只执行, 不重算"
     except Exception as _e_act:                                          # noqa: BLE001
         out["action"] = None

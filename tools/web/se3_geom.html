@@ -157,6 +157,19 @@ async function pollLive(){try{const r=await fetch('/api/se3',{cache:'no-store'})
   }
 }catch(e){LIVE=null;}}
 setInterval(pollLive,1000);pollLive();
+/* 自动跟进服务端改动: 看板/段表/轨迹一变就自己重载, 不需要人点刷新(老倪 11-22: "不用我鼠标点") */
+(function(){
+  let base=null;
+  async function chk(){
+    try{
+      const r=await fetch('/api/ver',{cache:'no-store'}); const v=await r.json();
+      const sig=[v.html,v.states,v.traj].join('|');
+      if(base===null){ base=sig; return; }
+      if(sig!==base){ location.reload(); }
+    }catch(e){}
+  }
+  chk(); setInterval(chk,5000);
+})();
 let idx=0, playing=false, showPhase=true, showSpd=true, cam={yaw:-0.6,pitch:0.42};
 // ── 通用: 3D→2D 正交投影
 function proj(cv,p,yaw,pitch,scale,cx,cy){
@@ -762,7 +775,10 @@ function renderStates(SEC, s_live){
     if(_h>_cap){ _h=_cap; }
     window.__ST_HI=_h; window.__ST_MAX=_h; hi=_h;
   }
-  if(hi<0) hi=0;   // 兜底: 投影无效又还没有历史高亮时, 至少停在第一行(不留"没有高亮"的空态)
+  if(hi<0) hi=0;
+  if(!st.length) return;   // 空段表不渲染, 保留上一帧的行, 避免"整列消失"
+  // 越界钳制: 段数变化(删重复段)后旧索引可能超出列表 ⇒ 高亮跑到最下面甚至消失(老倪实测)
+  if(st.length && hi>st.length-1) hi=st.length-1;   // 兜底: 投影无效又还没有历史高亮时, 至少停在第一行(不留"没有高亮"的空态)
   const key=st.map(o=>o.i0+':'+o.i1+':'+o.name).join('|')+'#'+hi;
   if(key===window.__ST_KEY) return;
   window.__ST_KEY=key;

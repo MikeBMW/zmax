@@ -2405,7 +2405,7 @@
      "工程库": "data/database/zmax/zmax_engineering.db"
     },
     "cfg_snapshot": {
-     "loaded_at": "2026-11-21 07:58:48",
+     "loaded_at": "2026-11-22 18:37:55",
      "files_total": 8,
      "files_ok": 8,
      "orders": 12,
@@ -2469,18 +2469,18 @@
      "口径": "一个状态空间工程承载全部任务; 任务=配方段子集+参数覆盖"
     },
     "source_symbol": "def main",
-    "cfg_loaded_at": "2026-11-21 07:58:48",
+    "cfg_loaded_at": "2026-11-22 18:37:55",
     "cfg_files": [
      {
       "name": "总工程文件",
       "rel": "data/database/zmax/zmax_space.proj",
-      "sha256": "3f389176ec749260",
+      "sha256": "582fa2fa785d658e",
       "exists": true
      },
      {
       "name": "任务绑定",
       "rel": "config/ss_task_binding.json",
-      "sha256": "051824f3d14d9c64",
+      "sha256": "0d9370fc544f4e87",
       "exists": true
      },
      {
@@ -3154,6 +3154,41 @@
     "in1"
    ],
    "outputs": []
+  },
+  {
+   "id": "sssk13",
+   "type": "model",
+   "name": "⑬ 自动翻转 · SK13",
+   "icon": "🔄",
+   "color": "#b98cff",
+   "x": 8210,
+   "y": 6086,
+   "w": 280,
+   "h": 110,
+   "inputs": [
+    "in1",
+    "in2",
+    "in3",
+    "in4"
+   ],
+   "outputs": [
+    "out1",
+    "out2"
+   ],
+   "actions": [],
+   "params": {
+    "state_space": true,
+    "skill_layer": true,
+    "ondemand": true,
+    "skill": {
+     "template": "SK13",
+     "stage": "翻转"
+    },
+    "desc": "[按需·分段小模型] 原子技能 ⑬ 自动翻转 (SK13): 拉环/模块朝向与目标朝向相反 ⇒ 抬净空 30mm, 绕工具轴每拍 ≤5° 分 36 拍翻 180°, 再回落; 平移到 0.10 m/s、角速度 0.5 rad/s; 不进 8/13 段主链 (判据触发)",
+    "source": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
+    "source_symbol": "class SK13Flip",
+    "cap_level": "L2"
+   }
   }
  ],
  "links": [
@@ -4943,6 +4978,54 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "H/K 场态 (k_ax·α·m·Θ·p) → 相图 (Θ,p)"
+  },
+  {
+   "id": "lk_sslimit_sssk13_in1",
+   "f": "sslimit",
+   "t": "sssk13",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "🛡 限幅后控制 → ⑬ 自动翻转 · SK13"
+  },
+  {
+   "id": "lk_ssskill_sssk13_in2",
+   "f": "ssskill",
+   "t": "sssk13",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": "L3 技能序列 → 按需翻转"
+  },
+  {
+   "id": "lk_ssmem_sssk13_in3",
+   "f": "ss_mem_l2",
+   "t": "sssk13",
+   "f_port": "out1",
+   "t_port": "in3",
+   "label": "🧠 记忆赋能: 本段通道 + 标杆"
+  },
+  {
+   "id": "lk_geoplan_sssk13_in4",
+   "f": "n_geoplan",
+   "t": "sssk13",
+   "f_port": "out1",
+   "t_port": "in4",
+   "label": "🎯 目标位姿 → 朝向判据 (相反才翻)"
+  },
+  {
+   "id": "lk_sssk13_moveit_out1",
+   "f": "sssk13",
+   "t": "n_moveit",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": "翻转序列 → MoveIt 规划/执行"
+  },
+  {
+   "id": "lk_phys_g13",
+   "f": "sssk13",
+   "t": "ssphys",
+   "f_port": "out2",
+   "t_port": "in8",
+   "label": "⚖ 技能动作 → 动力学约束"
   }
  ],
  "params_note": ""

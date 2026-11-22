@@ -817,6 +817,18 @@ class H(BaseHTTPRequestHandler):
             except OSError as e:
                 return self._send(500, {"ok": False, "why": "点位页缺失: %s" % e})
             return self._send(200, h, "text/html; charset=utf-8")
+        if p == "/api/ver":
+            # 供页面自检: 看板 HTML / 段表 最后一次改动时间 —— 变了页面自动重载,
+            # 不需要人手动刷新(老倪 11-22: "不用我鼠标点")
+            def _mt(f):
+                try:
+                    return round(os.path.getmtime(f), 3)
+                except OSError:
+                    return 0
+            return self._send(200, {"ok": True,
+                                    "html": _mt(os.path.join(WEB, "se3_geom.html")),
+                                    "states": _mt(os.path.join(SDK, _setf("phase_states.json"))),
+                                    "traj": _mt(os.path.join(SDK, _setf("real_traj_joints.json")))})
         if p == "/healthz":
             return self._send(200, {"ok": True, "svc": "zmax-se3-geom", "ts": time.time()})
         return self._send(404, {"ok": False, "why": "not found: %s" % p})

@@ -1899,6 +1899,152 @@ class SK12Return(_StageClamp):
     DMDT_MAX  = 0.1          # ④ 质量变化率上限 kg/s
 
 
+class SK13Flip(_StageClamp):
+    """⑬ 自动翻转 — 按拉环朝向绕工具轴翻 180° (先抬净空, 分段转, 全程守姿态限幅)。
+
+    老倪 (2026-11-22): 「自动翻转放料: 根据拉环朝向自动翻转 180 度, 满足运动包络约束, 完成放下物料」
+      · 本技能只做「翻转」这一件事, 放料仍交 SK07Place/放下 段
+      · 触发不是时间/序号, 而是**判据**: 模块(拉环)朝向与目标朝向相反 ⇒ 自动调用
+      · 翻转前必须抬起 clearance_h 净空 (槽内转 = 必然扫到料盘)
+      · 每拍角度 ≤ dr_deg_step, 关节/腕部不跳变; 平移被 base clamp ①②③⑤ 逐条削
+
+    自动调用方式 (L3 侧):
+        call, deg, why = SK13Flip.needs_flip(yaw_module_deg, yaw_target_deg)
+        if call: SK13Flip.auto_call(...)["plan"]   # → 交给 n_moveit 展开成 action
+    注意: 技能**不产目标位姿** —— 目标位姿仍由 n_geoplan 给 (flip=180 参数), 本技能给的是
+          「翻转该怎么分段、每拍允许多少角度、必须先抬多高」这三件包络约束。
+    """
+
+    code = "SK13"
+    TARGET = {"ref": "flip_about_tool_axis", "off_key": "clearance_h"}
+    stage = "翻转"
+    name = "⑬ 自动翻转"
+    desc = "按拉环朝向绕工具轴翻 180°; 先抬净空, 分段转, 守姿态限幅后交放料"
+    goal = "模块体坐标系统 tool1 Z 轴旋转 180° (位置不变, 抬 clearance_h 净空)"
+    params = {"flip_deg": 180.0, "flip_axis": "tool_z", "clearance_h": 0.03,
+              "dr_deg_step": 5.0, "yaw_tol_deg": 25.0, "grip_drift_mm": 2.0}
+    evidence = "末姿态与目标夹角 ≤2° 且 翻转中夹持漂移 <2mm 且 未脱手 → 交放料段"
+    ctrl = {"gripper": "闭合保持", "v_cap": 0.10, "w_cap": 0.5}
+    source = "config/calib/zmax_skill_physics.json · 段=翻转 (v/a/jerk/s/s_step/m/F/dmdt 取 value)"
+    phys_note = ("本段=翻转: 平移几乎不走 (s=0.02m), 主要限制在**姿态** —— "
+                 "角速度 w_cap=0.5 rad/s、每拍 ≤5°, 真源只有平移量, 姿态上下限写在本类 (见 W_CAP/DR_DEG_STEP)。")
+
+    DT_S      = 0.1          # 每拍 s
+    M_KG      = 1.35         # 运动质量 kg
+    F_MAX_N   = 5.0          # 允许力 N
+    A_MAX     = 3.703704     # ② 加速度上限 m/s²
+    V_CAP     = 0.10         # ① 速度上限 m/s (翻转时平移极慢)
+    V_MIN     = 0.02         # 最小速度
+    JERK_MAX  = 10.0         # ③ 加加速度上限 m/s³
+    S_STEP    = 0.01         # ⑤ 单拍位移上限 m
+    S_MAX     = 0.08         # ⑤ 本段行程上限 m (抬升+回落)
+    DMDT_MAX  = 0.1          # ④ 质量变化率上限 kg/s
+    W_CAP        = 0.5       # ① 角速度上限 rad/s
+    DR_DEG_STEP  = 5.0       # ⑤ 单拍角度上限 deg
+
+    # ── 姿态工具 (wxyz, 只用 numpy, 不引 scipy) ─────────────────────────────
+    @staticmethod
+    def q_mul(a, b):
+        aw, ax, ay, az = [float(v) for v in a]
+        bw, bx, by, bz = [float(v) for v in b]
+        return (aw * bw - ax * bx - ay * by - az * bz,
+                aw * bx + ax * bw + ay * bz - az * by,
+                aw * by - ax * bz + ay * bw + az * bx,
+                aw * bz + ax * by - ay * bx + az * bw)
+
+    @classmethod
+    def q_axis_deg(cls, deg, axis=(0.0, 0.0, 1.0)):
+        import math
+        n = math.sqrt(sum(v * v for v in axis)) or 1.0
+        ax, ay, az = [v / n for v in axis]
+        h = math.radians(float(deg)) / 2.0
+        s = math.sin(h)
+        return (math.cos(h), ax * s, ay * s, az * s)
+
+    @classmethod
+    def rotate_quat(cls, quat_wxyz, deg, axis=(0.0, 0.0, 1.0)):
+        """绕**当前工具系**的 axis 转 deg (右乘 = 局部轴)。"""
+        if not quat_wxyz:
+            return None
+        return cls.q_mul(quat_wxyz, cls.q_axis_deg(deg, axis))
+
+    @classmethod
+    def angle_between(cls, qa, qb):
+        import math
+        if not qa or not qb:
+            return None
+        d = abs(sum(float(a) * float(b) for a, b in zip(qa, qb)))
+        return math.degrees(2.0 * math.acos(max(-1.0, min(1.0, d))))
+
+    # ── 自动调用判据 ─────────────────────────────────────────────────────
+    @classmethod
+    def needs_flip(cls, yaw_module_deg, yaw_target_deg, tol_deg=None):
+        """拉环/模块朝向 vs 目标朝向 → (要不要翻, 差值deg, 理由)。
+
+        判据是**相反**才翻, 不是"有偏差就翻": 偏 90° 翻 180° 反而更错 ⇒ 交 L3 重选技能。
+        """
+        tol = cls.params["yaw_tol_deg"] if tol_deg is None else float(tol_deg)
+        d = (float(yaw_target_deg) - float(yaw_module_deg) + 180.0) % 360.0 - 180.0
+        if abs(d) <= tol:
+            return False, d, "朝向一致 (%.1f°, 容差 ±%.0f°) ⇒ 直接放料" % (d, tol)
+        if abs(abs(d) - 180.0) <= tol:
+            return True, d, "与目标相反 (%.1f°) ⇒ 自动翻转 180°" % d
+        return False, d, "偏 %.1f° 超出翻转能解决的范围 ⇒ 交 L3 重选技能" % d
+
+    @classmethod
+    def auto_call(cls, yaw_module_deg, yaw_target_deg, pos_mm=None, quat_wxyz=None,
+                  tol_deg=None, clear_mm=None):
+        """L3 可直接调用: 判据命中就返回翻转计划(分段), 未命中如实说为什么不做。"""
+        call, d, why = cls.needs_flip(yaw_module_deg, yaw_target_deg, tol_deg)
+        out = {"call": bool(call), "skill": cls.code, "stage": cls.stage,
+               "delta_yaw_deg": round(float(d), 2), "why": why}
+        if not call:
+            return out
+        out["deg"] = 180.0
+        if pos_mm is not None:
+            out["plan"] = cls.plan_flip(pos_mm, quat_wxyz, clear_mm=clear_mm)
+            out["n_steps"] = len(out["plan"])
+        return out
+
+    # ── 轨迹: 抬净空 → 分段旋转 → 回落 ───────────────────────────────────
+    @classmethod
+    def plan_flip(cls, pos_mm, quat_wxyz=None, clear_mm=None, dr_deg=None,
+                  descend=True, flip_deg=None):
+        """返回翻转动作序列 (每步一个位姿 + 角度预算), 交给 n_moveit 展开成 action。
+
+        包络约束全在这里:
+          · 先抬 clear_mm 净空 (默认 30mm) —— 槽内直接转会扫到料盘/邻近槽
+          · 旋转按 dr_deg 切 (默认 5°/拍), 累计正好 flip_deg
+          · 回落 descend=True 时回到原高度 (翻转后再放料)
+        """
+        import math
+        clr = cls.params["clearance_h"] * 1000.0 if clear_mm is None else float(clear_mm)
+        dr = cls.DR_DEG_STEP if dr_deg is None else float(dr_deg)
+        deg = cls.params["flip_deg"] if flip_deg is None else float(flip_deg)
+        p = [float(v) for v in (pos_mm or [])][:3]
+        if len(p) < 3:
+            return []
+        q = list(quat_wxyz) if quat_wxyz else (1.0, 0.0, 0.0, 0.0)
+        steps = []
+        steps.append({"kind": "lift", "deg_done": 0.0, "pos": [p[0], p[1], p[2] + clr],
+                      "quat": list(q), "dr_max_deg": 0.0})
+        left = abs(deg)
+        sign = 1.0 if deg >= 0 else -1.0
+        done = 0.0
+        while left > 1e-9:
+            d = min(dr, left) * sign
+            q = cls.rotate_quat(q, d)
+            done += abs(d)
+            steps.append({"kind": "rotate", "deg_done": round(done, 2), "pos": [p[0], p[1], p[2] + clr],
+                          "quat": [round(v, 6) for v in q], "dr_max_deg": round(abs(d), 3)})
+            left -= abs(d)
+        if descend:
+            steps.append({"kind": "descend", "deg_done": round(done, 2),
+                          "pos": [p[0], p[1], p[2]], "quat": [round(v, 6) for v in q],
+                          "dr_max_deg": 0.0})
+        return steps
+
+
 # ── 技能注册表 (插装 8 段; 顺序 = 状态机推进序) ──
 SKILLS = [SK01Approach, SK02Align, SK03Descend, SK04Grasp,
           SK05Lift, SK06Transfer, SK07Insert, SK08Complete]
@@ -1920,6 +2066,14 @@ SKILL_BY_STAGE.update({cls.stage: cls for cls in SKILLS_FULL})
 SKILLS_FULL_CODES = SKILLS_FULL
 SKILL_BY_CODE = {cls.code: cls for cls in SKILLS}
 SKILL_BY_CODE_TRAY = {cls.code: cls for cls in SKILLS_TRAY}
+
+# 🧩 按需技能 (2026-11-22): 不进 8/13 段主链 —— 由**判据**触发(如拉环朝向相反 ⇒ 翻转),
+#    进了主链就会改变 fsm 阶段索引 (DONE_IDX/RETREAT_*) ⇒ 功能坏了整条链。
+SKILLS_ONDEMAND = [SK13Flip]
+SKILLS_ONDEMAND_CODES = list(SKILLS_ONDEMAND)
+for _c in SKILLS_ONDEMAND:                     # 报错时按 code 也能直接取到
+    SKILL_BY_CODE.setdefault(_c.code, _c)
+    SKILL_BY_STAGE.setdefault(_c.stage, _c)
 
 
 def skills_for_mode(mode="insert"):

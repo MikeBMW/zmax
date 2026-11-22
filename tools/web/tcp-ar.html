@@ -290,7 +290,7 @@
     <!-- 🧱 2026-10-26 老倪: 「将下面的按钮重新排列: 第一行 执行轨迹 自动环绕; 第二行 坐标系 URDF外形 光模块」 -->
     <div class="row" style="margin-top:6px">
       <button id="bFrames" class="sm on" title="画 base(世界系) / tool0(法兰中心) / tool1(夹爪·模块头) 三个坐标系">🧭 坐标系</button>
-      <button id="bUrdf" class="sm on" title="按真关节角做正运动学, 把机器人 URDF 外形(6 轴臂 + 夹爪)画出来; 点一下隐藏">🦾 URDF 外形</button>
+      <button id="bUrdf" class="sm" title="按真关节角做正运动学, 把机器人 URDF 外形(6 轴臂 + 夹爪)画出来; 点一下隐藏">🦾 URDF 外形</button>
       <button id="bMod" class="sm on" title="在 tool1(模块头中心)画光模块长方体: X=上表面法向(厚度) · Y=侧面法向(宽度) · Z=上表面中轴线(长度)">🔩 光模块</button>
     </div>
     <!-- 🦾🦾 2026-10-26 老倪: 「在光模块按钮下面, 增加左臂和右臂两个按钮; 右臂就是当前正在显示的 6 轴机械臂;
@@ -671,7 +671,7 @@ let CALIB=null, TRAJ={trace:[],plan:[]}, TCP=null, CAL_MODE=false, CAL_PTS=[], S
     NAMED_ON={},        // 🧭 2026-10-26: 「按钮怎么不切换, 显示与不显示呢」⇒ 每个按钮独立开关;
                         //    蓝色=显示中, 黑色=已隐藏。NAMED_SEL 只记"最后打开的那条"给『执行』用。
     MOD3=null, MOD3ON=true,
-    VR={yaw:-0.9,pitch:0.55,dist:1.6,tgt:[0.70,0.22,0.14],auto:true,frames:true,urdf:true,mod:true,real:true,simArm:true,panOff:[0,0,0]};   // real=真机右臂(静止) / simArm=仿真右臂(紫色幽灵)
+    VR={yaw:-0.9,pitch:0.55,dist:1.6,tgt:[0.70,0.22,0.14],auto:true,frames:true,urdf:false,mod:true,real:true,simArm:true,panOff:[0,0,0]};   // real=真机右臂(静止) / simArm=仿真右臂(紫色幽灵)
 let MODSPEC={L_mm:56.5,W_mm:13.4,T_mm:8.5,src:'默认'};
 fetch('/api/module_spec').then(r=>r.json()).then(d=>{ if(d&&d.L_mm){ MODSPEC=d; drawVR(); } }).catch(()=>{});
 
@@ -2474,6 +2474,22 @@ function drawVR(){
     VR.dist=VR_CAM_LOCK.dist; VR.tgt=VR_CAM_LOCK.tgt.slice();
   }
   const c=$('vr'), g=c.getContext('2d');
+  // 🔴 2026-11-22 老倪「把黑色背景的文字条删掉」: 文字底板(rgba(0,0,0,.6~.9) 的小长条)一律不画,
+  //    文字本身照画(彩色字直接压在画面上, 不垫黑条)。要黑底请显式 window.VR_TEXT_BAR=1。
+  //    作用范围: 页面上**所有** 2D canvas(vr/ov/loupe…), 不只主视图 —— 否则换个图层又冒出来。
+  (function(){
+    const patch=(P)=>{ if(!P||P.__noTextBar||typeof P.fillRect!=='function') return;
+      const _fr=P.fillRect;
+      P.fillRect=function(x,y,w,h){ if(!window.VR_TEXT_BAR){
+          const s=String(this.fillStyle||'');
+          const dark=(/^rgba?\(\s*0\s*,\s*0\s*,\s*0\b/.test(s) || /^#0{3,6}$/i.test(s));
+          if(dark && typeof h==='number' && h<=26 && typeof w==='number' && w<900) return;
+        } return _fr.apply(this,arguments); };
+      P.__noTextBar=1; };
+    const all=()=>{ try{ document.querySelectorAll('canvas').forEach(cv=>{ try{ patch(cv.getContext('2d')); }catch(e){} }); }catch(e){} };
+    all(); setTimeout(all,1200); setTimeout(all,4000);
+    window.__noTextBarPatch=all;
+  })();
   const W=c.clientWidth*devicePixelRatio, H=c.clientHeight*devicePixelRatio;
   if(c.width!==W||c.height!==H){ c.width=W; c.height=H; }   // 只在尺寸真变时重设(重设=清空)
   g.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
@@ -2837,6 +2853,8 @@ function drawVR(){
   if(VR.mod && _rArmOn && ((_mf)||(TCP && TCP.ok && TCP.frames && TCP.frames.tool1))) drawModuleBox(g, pr, _mf);
   // 🔩 两个料盘里的光模块 (左盘待搬 / 右盘已搬)
   if(VR.mod) drawTrayModules(g, pr);
+  // 🎯 测地线规划引导的**唯一目标位姿** (Slot3 等): 带旋转的模块盒 + 三轴 + 预抓点虚线
+  try{ if(typeof drawTargetPose==='function') drawTargetPose(g,pr); }catch(e){}
   // 🔩 左臂 tool1 模块头: 与右臂同一口径, 跟着左臂末端姿态走
   //    🍽 摆盘场景: 左臂没有独立位姿(照抄右臂)时 LARMFK 是 null, 退回用右臂链矩阵 LINKM 算 ——
   //    这样左臂也能显示 tool1 三轴 + 光模块, 与右臂一样(老倪 2026-11-16「左臂跟右臂一样, 显示 tool1和光模块」)
@@ -3232,6 +3250,7 @@ function ikTool1(target,q0){               // target:[x,y,z] 米 · q0: 6 关节
   }
   return {q:best, err_mm:bestE*1000};
 }
+try{ window.ikTool1=ikTool1; }catch(e){}     // 调试/离线挑解用 (只读, 不下发任何东西)
 function prevBtnState(){
   const b=$('bPrev'); if(b){ b.classList.toggle('on', !!PREV.on);
     b.textContent = PREV.on ? '👻 预览动作 ON' : '👻 预览动作'; }
@@ -7353,6 +7372,156 @@ function drawModuleAt(g, pr, O, AX, fillHead, strokeCol){
 // 料盘里的模块(躺平): **长轴沿世界 X**, 宽沿 Y, 厚沿 Z —— 只画 12 条棱, 28 个也不卡
 // 老倪 2026-10-27 纠正: 「1号位到7号位的位姿, 光模块的位姿, 长度方向几乎都是与 x 轴平行的,
 //   误差来自于料盘槽位的间隙; 理论上光模块都是平行于 x 轴摆放的, 而且都是整齐放置」
+// 🎯 目标位姿层 (2026-11-22 老倪「将位姿渲染到 3D AR 的槽位3, 我看着」)
+//   数据源: /api/fence 里 id=TP1 的元素 (由 state_space/plan_guide.publish_target 写),
+//   热读 ⇒ 改了文件刷新页面即可, 不用重启 8797。
+//   画什么: 半透明模块盒(真尺寸 72×18.35×8.5mm, 带姿态) + 三轴(X红/Y绿/Z蓝) + 预抓点虚线 + 标签。
+//   标 valid=false 时用黄色虚线框 + "未观测(先验)" 字样, 不让人误当实测真值。
+var TP=null, TPL=null;                                  // TP=右臂(TP1) · TPL=左臂(TP2)
+function tpTick(){
+  fetch('/api/fence',{cache:'no-store'}).then(r=>r.json()).then(d=>{
+    const its=(d&&d.items)||[];
+    const r=its.find(x=>x && String(x.id)==='TP1'), l=its.find(x=>x && String(x.id)==='TP2');
+    TP  = (r && r.pose) ? r.pose : null;
+    TPL = (l && l.pose) ? l.pose : null;
+    if(TPL && !TPL.label) TPL.label='左臂·左槽'+(TPL.slot||'?');
+    if(TP  && !TP.label)  TP.label ='右臂·槽'+(TP.slot||'?');
+    if(TP && TPL && !window.__TP_FIT_DONE__ && typeof fitBothTP==='function'){
+      try{ if(fitBothTP()) window.__TP_FIT_DONE__=1; }catch(e){}
+    }
+    if(TPL && !window.__LARM_GO_DONE__ && typeof larmGoToPose==='function' && URDF){
+      try{ if(larmGoToPose(TPL)) window.__LARM_GO_DONE__=1; }catch(e){}
+    }
+  }).catch(()=>{});
+}
+setInterval(tpTick, 1500); tpTick();
+
+function _drawTP(g,pr,T,COL,suf){
+  if(!T || !T.pos_m) return;
+  const w=T.quat?T.quat[0]:1, x=T.quat?T.quat[1]:0, y=T.quat?T.quat[2]:0, z=T.quat?T.quat[3]:0;
+  const R=[[1-2*(y*y+z*z),2*(x*y-w*z),2*(x*z+w*y)],
+           [2*(x*y+w*z),1-2*(x*x+z*z),2*(y*z-w*x)],
+           [2*(x*z-w*y),2*(y*z+w*x),1-2*(x*x+y*y)]];
+  const ax=[[R[0][0],R[1][0],R[2][0]],[R[0][1],R[1][1],R[2][1]],[R[0][2],R[1][2],R[2][2]]];
+  const o=T.pos_m, D=(T.dims_mm||[72,18.35,8.5]).map(v=>v/1000);
+  const c=[];
+  for(const sx of [-0.5,0.5]) for(const sy of [-0.5,0.5]) for(const sz of [-0.5,0.5]){   // 2026-11-22 位姿原点=模块中心 ⇒ 框按中心对称展开(之前从原点单向拉出 72mm, 看着比模块靠前)
+    const t=[sx*D[0], sy*D[1], sz*D[2]];
+    c.push([0,1,2].map(i=> o[i]+ax[0][i]*t[0]+ax[1][i]*t[1]+ax[2][i]*t[2]));
+  }
+  const P=c.map(pr); if(!P.every(q=>q)) return;
+  const okc=!!T.valid;
+  g.save();
+  if(!okc) g.setLineDash([6,4]);
+  g.strokeStyle=COL; g.lineWidth=okc?1.8:1.6; g.globalAlpha=0.95;
+  const E=[[0,4],[1,5],[2,6],[3,7],[0,2],[1,3],[4,6],[5,7],[0,1],[2,3],[4,5],[6,7]];
+  for(const e of E){ const p=P[e[0]],q2=P[e[1]]; if(!p||!q2) continue;
+    g.beginPath(); g.moveTo(p.u,p.v); g.lineTo(q2.u,q2.v); g.stroke(); }
+  const top=[P[1],P[3],P[7],P[5]];
+  if(top.every(q=>q)){ g.globalAlpha=0.18; g.fillStyle=COL; g.beginPath();
+    g.moveTo(top[0].u,top[0].v); for(let i=1;i<4;i++) g.lineTo(top[i].u,top[i].v);
+    g.closePath(); g.fill(); }
+  g.setLineDash([]); g.globalAlpha=1; g.lineWidth=2.2;
+  const AX=[['#ff4d4d',D[0]],['#38e07b',D[1]],['#4da3ff',D[2]]];
+  for(let k=0;k<3;k++){
+    const tip=[0,1,2].map(i=> o[i]+ax[k][i]*AX[k][1]);
+    const a=pr(o), b=pr(tip); if(!a||!b) continue;
+    g.strokeStyle=AX[k][0]; g.beginPath(); g.moveTo(a.u,a.v); g.lineTo(b.u,b.v); g.stroke();
+  }
+  if(T.show_pre && T.pre_pos_m){   // 2026-11-22 老倪「右3D引导的位置偏上」⇒ 预抓那个圈别当位姿画 (默认不画)
+    const pre=T.pre_pos_m.map(v=>v/1000); const a=pr(o), b=pr(pre);
+    if(a&&b){ g.setLineDash([4,4]); g.strokeStyle='#9ad7ff'; g.lineWidth=1.4;
+      g.beginPath(); g.moveTo(a.u,a.v); g.lineTo(b.u,b.v); g.stroke();
+      g.setLineDash([]); g.beginPath(); g.arc(b.u,b.v,3,0,Math.PI*2); g.stroke(); }
+  } else if(T.show_pre && T.pre_pos_mm){
+    const pre=T.pre_pos_mm.map(v=>v/1000); const a=pr(o), b=pr(pre);
+    if(a&&b){ g.setLineDash([4,4]); g.strokeStyle='#9ad7ff'; g.lineWidth=1.4;
+      g.beginPath(); g.moveTo(a.u,a.v); g.lineTo(b.u,b.v); g.stroke();
+      g.setLineDash([]); g.beginPath(); g.arc(b.u,b.v,3,0,Math.PI*2); g.stroke(); }
+  }
+  const p0=pr(o);
+  if(p0){
+    const Rr=13, pul=(Date.now()%1400)/1400;
+    g.save(); g.strokeStyle=COL; g.lineWidth=2;
+    g.beginPath(); g.arc(p0.u,p0.v,Rr,0,Math.PI*2); g.stroke();
+    g.globalAlpha=0.35+0.35*(1-pul);
+    g.beginPath(); g.arc(p0.u,p0.v,Rr+5+8*pul,0,Math.PI*2); g.stroke();
+    g.globalAlpha=1; g.lineWidth=1.6;
+    for(const d of [[0,-1],[0,1],[-1,0],[1,0]]){
+      g.beginPath(); g.moveTo(p0.u+d[0]*(Rr+3),p0.v+d[1]*(Rr+3));
+      g.lineTo(p0.u+d[0]*(Rr+9),p0.v+d[1]*(Rr+9)); g.stroke();
+    }
+    g.restore();
+    // 标签: 只写彩色文字 (老倪「把屏幕的黑色背景的文字条删掉」⇒ 不加底)
+    const hdr=(T.label||(T.arm==='L'?'左臂':'右臂'))+(okc?'':' · ⚠未观测(先验)');
+    g.font='bold 12px ui-monospace,monospace'; g.fillStyle=COL;
+    g.fillText(hdr, p0.u+16, p0.v-10);
+    const mm=(T.pos_mm||[o[0]*1000,o[1]*1000,o[2]*1000]).map(v=>v.toFixed(1)).join(', ');
+    g.font='11px ui-monospace,monospace'; g.fillStyle='rgba(230,237,243,.9)';
+    g.fillText(mm+' mm', p0.u+16, p0.v+6);
+  }
+  if(suf) window['__TP_DRAWN__'+suf]=(window['__TP_DRAWN__'+suf]||0)+1;
+  else    window.__TP_DRAWN__=(window.__TP_DRAWN__||0)+1;
+  window.__TP_DRAWN_ALL__=(window.__TP_DRAWN_ALL__||0)+1;
+  window['__TP_SCREEN__'+suf]= p0?[Math.round(p0.u),Math.round(p0.v)]:null;
+  window['__TP_BOX__'+suf]= P.map(q=>[Math.round(q.u),Math.round(q.v)]);
+  g.restore();
+}
+function drawTargetPose(g,pr){
+  _drawTP(g,pr,TP ,'#ffd23f','');    // 右臂 · 槽3 (金)
+  _drawTP(g,pr,TPL,'#4da3ff','_L');  // 左臂 · 左槽1 (蓝)
+}
+// 🦾 2026-11-22: 两块料盘相距 ~0.53m, 默认机位只框住右盘 ⇒ 左目标会跑出画面。
+//    成对目标都到位后**自动取景一次**(只改相机 yaw/pitch/dist/tgt, 不动任何数据), 让两个都进画面。
+function fitBothTP(){
+  if(!TP||!TPL||!TP.pos_m||!TPL.pos_m) return false;
+  const a=TP.pos_m, b=TPL.pos_m;
+  const mid=[(a[0]+b[0])/2,(a[1]+b[1])/2,(a[2]+b[2])/2];
+  const d=Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);
+  const ang=Math.atan2(b[1]-a[1], b[0]-a[0]);
+  VR.tgt=mid;
+  VR.yaw=ang+Math.PI/2;                      // 视线垂直于两目标连线 ⇒ 左右并排进画面
+  VR.pitch=0.62;
+  VR.dist=Math.max(1.15, d*1.55);
+  window.__FIT_TP__={d:+d.toFixed(4), yaw:+VR.yaw.toFixed(3), dist:+VR.dist.toFixed(3), tgt:mid.map(v=>+v.toFixed(3))};
+  return true;
+}
+window.fitBothTP=fitBothTP;
+// 🦾 2026-11-22 老倪「左臂去 左3D引导位姿」: 左臂=仿真臂(基座 = 右臂世界系 Y+500mm, 只有平移没有旋转),
+//    所以 IK 在**左臂自己基座系**里解: 目标先减 (LARM.off + LARM.d), 姿态直接用目标姿态。
+//    解出来写进 LARM.q 并冻结(larmFreezeOn) —— 冻结是为了不让它再照抄右臂。
+function larmGoToPose(P){
+  // 🦾 左臂 = 仿真指示臂 (老倪 2026-11-22「左臂去 左3D引导位姿」→「左臂怎么躺下了, 改」)
+  //   要求: 末端落到引导位姿上, 但**臂形必须自然**。上一版按"工具轴朝下"挑解, 挑出大关节角 ⇒ 整条臂躺倒。
+  //   本版: 只从一个"直立自然"的种子解起, 取第一个 err<=2mm 且离种子关节角 <=0.8rad 的解;
+  //         宁可姿态差, 也绝不为了姿态把臂拧成麻花。
+  if(!P || !P.pos_m) return null;
+  const off=(LARM.off||[0,0.5,0]), dlt=(LARM.d||[0,0,0]);
+  const tgt=[P.pos_m[0]-(off[0]+dlt[0]), P.pos_m[1]-(off[1]+dlt[1]), P.pos_m[2]-(off[2]+dlt[2])];
+  // 种子 = **真机示教录制里的抓取姿态关节角** (zmax_data/rokae_sdk/real_traj_absj.json 第14帧,
+  //   末端 649.85,454.1,112.7 rpy 2.961,-1.490,0.205) —— 这是现场真机抓件时的臂形, 一定不会躺。
+  const QG=[0.7976,0.5785,-2.1761,1.1224,0.6384,0.3102];
+  const seeds=[QG,
+               QG.map((v,i)=>v+[0.02,-0.02,0.02,0.02,-0.02,0][i]),
+               QG.map((v,i)=>v+[-0.03,0.03,-0.02,-0.02,0.02,0.02][i])];
+  const dist=(a,b)=>{ let m=0; for(let i=0;i<6;i++) m=Math.max(m,Math.abs(a[i]-b[i])); return m; };
+  for(const sd of seeds){
+    const r=ikTool1(tgt,sd);
+    if(!r || !isFinite(r.err_mm) || r.err_mm>2.0) continue;
+    const dq=dist(r.q,sd);
+    if(dq>0.5) continue;                       // 离真机抓取臂形太远 = 不像人 ⇒ 不要
+    LARM.q=r.q.slice(); larmFreezeOn(r.q);
+    const M=urdfFK(LARM.q), t1=M&&(M.tool1||M.tool0);
+    window.__LARM_GO__={target_m:P.pos_m, fk_tool1_m:t1?t1.t.map(v=>+v.toFixed(4)):null,
+      err_mm:+r.err_mm.toFixed(2), dq_seed_rad:+dq.toFixed(3), label:P.label||'',
+      note:'种子=真机示教抓取臂形(real_traj_absj 第14帧), 关节角只微调⇒臂形自然; 姿态不是目标姿态'};
+    return window.__LARM_GO__;
+  }
+  window.__LARM_GO__={error:'无自然位姿解: 该位姿需要把臂拧成大关节角, 不画'};
+  return null;
+}
+window.larmGoToPose=larmGoToPose;
+
 function drawFlatModule(g, pr, c, col, opt){
   // opt 可选: {alpha, lw} —— 回放末端那个模块要更实、边更粗(在整幅三维里 55% 半透明+1.7px 几乎看不见)
   const A = (opt && opt.alpha != null) ? opt.alpha : 0.55;
