@@ -85,6 +85,23 @@ description: Z-MAX 插拔策略训练与评估管道 — 评估铁律(逐维norm
    (仿真集 134 eps / 131k 帧), 且 `n_obs=1` 与现行窗不兼容 ⇒ 既没进部署也接不上续训,
    不能说成"L3 已用真机训练"。
 
+### 真机数据集冒烟训练 (验管线不是验精度, 但必须真跑一次)
+
+真机采集集的尺寸与仿真集差三处, 手改 yaml 必错一处: **state 13 维**(仿真 39) /
+**`gripper_dim = action_dim-1`**(4 维 action ⇒ 3, 仿真写死 6, 写错等于不管夹爪) /
+**图像键** `observation.images.arm|local2` 需 `rename_map` 映到 `observation.image`。
+用生成器不要手抄: `./gui-venv311/bin/python tools/mk_smolvla_real_cfg.py --dataset <ds> --out <cfg> --outdir <out> --steps 60 --batch 2`
+(它读 `meta/info.json` 的 state/action/图像 shape, 并自动挑同 `n_obs_steps` 的起点 ckpt)。
+
+跑法 `bash tools/train_smoke_real.sh <cfg>`: 停引擎/渲染/HIL 三服务让卡 → `lerobot_train` → 原样恢复,
+日志前后各打一行显存与 `is-active` (否则会留下停着的服务)。
+
+**判据三个数** (实测一次 5325 帧真机集 60 步): rc=0 / 1.46s·步 / 2.25GB 显存, loss 1.388→0.702,
+action_loss 1.07→0.576。**这三个数只证明"形状对·梯度通·存盘通"** —— 三条轨迹 60 步必然过拟合,
+报给用户时必须说成管线验证, 说成"训出来了"就是假交付。
+**开训前先查 action 末维**: 夹爪没采时该维恒 0 (`np.unique(act[:,3]).size == 1`),
+此时 gripper_dim 设对也学不到开合 —— 先把 `/gripper_pos` 接进采集再排训练。
+
 ## L3 部署接口口径 (归一化区间 / 特征键 / ckpt 维度)
 
 改动或对接 L3 (SmolVLA-LEW) 前先跑一次接口探针 (tools/l3_action_probe.py,
