@@ -1148,6 +1148,23 @@ J1 +29.08 → **−0.258** · 全部六轴与现场 URDF 重力模型量值吻�
   · `tools/close_loop_to_point.py`(小步闭环, 每步只发一条、核真值、不通换轴、全拒即停绝不重发)。
 · 速度: 慢的主因常是**段长太小**(实测 43mm 段走 24.5s = 1.75mm/s)。改成 `--chunk-mm 150~300` + `speed=1000`。
 
+## 🔌 页面 `power=off` 而柜子电是通的 ⇒ 先查**采样容器是否卡死** (2026-11-23 实测)
+
+现场话:「机器人的电源没关啊」。分两层, 别用“下电”一词糊过去:
+- **柜电 on ≠ 伺服使能 on**。SDK 的 `PowerState` 报的是伺服使能; 两者可以同时是“柜子通电、servo off”。
+- **判据只认现读, 不认缓存文件**: `curl :39071/status` 连采 **4 次**(manual↔automatic 会来回跳),
+  看 `powerState` / `operateMode`。实测 4/4 `PowerState.off` ⇒ 真没使能。
+- **`zmax_data/rokae_sdk/tcp_out/state.json` 会冻住而进程还活着**: 实测 `rokae_tcp_sampler` 容器
+  `docker inspect` 报 `running / restarts=0`, 但日志停在 20:54:20、state.json 内容也停在 20:54:18
+  ⇒ 8793 页面一直显示陈旧 `power=off`, 与真机无关。**文件 mtime 甚至可能在未来**(容器 8h 时偏),
+  所以 `age` 算不出来也别据此判“新鲜”。
+- **判活三件**: ①`docker logs --tail` 最新一行的时间戳是否在推进 ②`state.json` 的 `t` 是否在变
+  ③`/status` 的 `latest.json` mtime age <1s。任一条卡住 ⇒ `sudo docker restart rokae_tcp_sampler`(只读取像, 安全),
+  起来后回读 `power=on … age≈0.5s` + 8793 `/ctl/status` 的 `tcp.age_s<1 · stale=false`。
+- **上电本身**: `bash tools/rokae_sdk_run.sh --script sdk_power.py --on` → 回执
+  `{"before":"PowerState.off","after":"PowerState.on","ec":{"ec":0}}`; 不发任何运动。
+  上完电仍是 `OperateMode.manual` ⇒ 运动腿 `rc=3 ABORT`, 还要 `bash tools/rokae_sdk_run.sh mode --auto`。
+
 ## 🔢 速度口径 = mm/s (2026-10-13 老倪: 「改变速度的表达, 变成每秒多少毫米, 1 10 20 50 100 200, 最大 200」)
 
 三处同口径, 缺一处现象各不相同:

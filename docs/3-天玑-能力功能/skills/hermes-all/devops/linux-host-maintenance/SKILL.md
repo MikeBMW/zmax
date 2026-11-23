@@ -240,8 +240,26 @@ ssh <host> 'systemctl --user is-active hermes-gateway; systemctl is-active herme
 /var/log/zmax-*.log { su root root
   weekly / maxsize 200M / rotate 2 / missingok / notifempty / copytruncate / compress / delaycompress }
 ```
-syslog 单开一份 `maxsize 200M / rotate 3`。改完 `sudo logrotate -d <conf>` 必须 **error 计数 0** 且能看到
-`considering log …` 逐条列出来才算生效; 只跑一次真轮转会立刻切走当前日志, 用 `-d` 预演就够。
+🔴 **syslog 不要再单开一份 stanza —— 它已经在 `/etc/logrotate.d/rsyslog` 里了**: 另写一个文件只放
+`/var/log/syslog { maxsize 200M … }` 会让 logrotate 报 `duplicate log entry for /var/log/syslog`,
+然后**把整个文件跳过**(不是跳过那一条) ⇒ syslog 从此不轮转、涨到几百兆而 `--failed` 里只有一行 logrotate。
+正解: 把 `maxsize 200M` **加进 rsyslog 已有块的开头**(`weekly` 后一行), 不要新建文件:
+```
+# 改之前先备份到 /etc/logrotate.d/ 之外: sudo cp -a /etc/logrotate.d/rsyslog /root/rsyslog.logrotate.bak
+/var/log/{syslog,mail.log,kern.log,auth.log,user.log,cron.log} {
+  rotate 4 / weekly / maxsize 200M / …   # 只加 maxsize 这一行, 其余照旧
+}
+```
+🔴 **备份文件不能留在 `/etc/logrotate.d/` 里**: logrotate 是 glob 整个目录,
+`rsyslog.bak.<日期>` 放在那里会**再次**报 duplicate 并把配置跳过(实测第一次修完仍 `status=1`) ⇒ 备份一律放 `/root/`。
+
+改完的验收口径:
+- `sudo logrotate --debug /etc/logrotate.conf 2>&1 | grep -i error` 必须**零行**; 有 error 就先看它点名哪个文件(常是备份件)。
+- **`systemctl is-active logrotate` 在成功后就是 `inactive`**(oneshot+timer, 跑完即退) ⇒ 判据是
+  `systemctl --failed` 里没有它 + `ls -lh /var/log/syslog*` 看到 `syslog` 已换代(旧的变 `syslog.1`),
+  别把 inactive 当失败。
+- 清空间: 换代后的 `syslog.1` 直接 `sudo gzip -f`(实测 473M → 36M); `journalctl --vacuum-size` 可能报
+  `freed 0B`(journal 未超限或被 systemd 管着), 别当成命令没生效。
 
 ## 4b. 用户说「这个路径怎么那么多图片, 没用的删掉, 有用的整理分类」⇒ 先分「散图」与「数据集」
 
@@ -1418,6 +1436,7 @@ OCR 会把同屏其它窗口的文字一起抓进来 ⇒ 只能说"抓到 X 字�
 | `d.get(k, {})` 在**键存在但值为 null** 时返回 None | 链式 `.get("a",{}).get("b",{}).get("c")` 在某一环是 null 时崩 `'NoneType' has no attribute 'get'` —— 实测 AR 进化每轮训完 5 分钟就崩在报告函数, 五轮里三轮白跑且报告写不出, 而日志里只有一条 AttributeError | 链式取值一律 `((d.get(k) or {}).get(k2) or {})`；判据是**跑到那行**（把真数据灌进纯函数单跑一遍），别看语法检查过 |
 | 守护脚本拿"解析不出来"当"配错了" | 设备被在役进程自己占着 ⇒ 解析器回 `-1`, 与进程的 `None`/默认值永远不等 ⇒ 每 5 分钟白重启一次 + cron 报 error（实测相机守护） | `-1`/`None` 一律视为**不可判定, 跳过该路校验**, 只保留能解析出来的那一路对比；真串线（进程 2 应为 0）仍判错。改完用脚本自带 `--cmdline/--expect` 自测口跑"一致 / 串线 / 一路 -1"三组 |
 | cron 脚本靠 `cd "$(dirname $0)/.."` 推仓库根 | 脚本挪进 `~/.hermes/scripts` 后 `..` 变成家目录 ⇒ 镜像写进 `~/.hermes/docs`(29M 垃圾)、`git diff --cached` 报 `unknown option \`cached'` + `not a git repository` | 按 `.git` 定位（`ZMAX_ROOT` → `~/zmax` 兜底），找不到就 `exit 2` 吵出来；**先查它现在把产物写到哪**（`ls -d ~/.hermes/docs`），错位置的镜像确认可再生再删 |
+| `du -sh ~/zmax_data` 报 **0** 就以为数据盘没挂载/数据丢了 | 「家目录整合后 `~/zmax_data` 是→`~/zmax/zmax_data` 的软链」, `du` 默认**不跟软链** ⇒ 恒为 0 | 用 `readlink -f` + `ls -ld`(首字母 `l`) + `ls <目标>/ \| head` 三件确认; 真要看体积对**目标目录**跑 `du -sh $(readlink -f ~/zmax_data)` |
 | 只回"待办为空"或只读 cron 的 `last_status` 就下结论 | 用户问"检查任务"拿到一句空的, 或把上一轮 error 当当前故障 | 走 §9h: todo + cron + 端口/探活三处; cron 异常必回读它交付的**产物时间戳**再定性 |
 | 探活脚本乱传参数 | 兜底通知脚本把 `--probe` 当**正文**发进群里 | 先 `read` 脚本用法; 别拿"发条测试消息"当探活(会污染群) |
 | 清完不复核 | 删了在役权重的旁支文件 | 必扫保护清单 + `find -xtype l` 断链检查 |
