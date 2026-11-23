@@ -43,7 +43,10 @@ RATE = float(os.environ.get("ZMAX_REC_RATE") or 30.0)
 SECS = float(os.environ.get("ZMAX_REC_SECS") or 0.0)
 OUTDIR = os.environ.get("ZMAX_REC_DIR") or os.path.join(SDK, "rec")
 CAMS = {"arm": "http://127.0.0.1:8791/snapshot/arm.jpg",
-        "local": "http://127.0.0.1:8791/snapshot/local.jpg"}
+        "local": "http://127.0.0.1:8791/snapshot/local.jpg",
+        # 2026-11-23 实测: 8791 的 local(笔记本内置 /dev/video2) 现在整段全黑(mean 5.7/255, std 1.1),
+        # local2(中央相机, Intel USB 经 8812 隧道) 正常(mean 161.7/255) ⇒ 双视角录制用 arm,local2。
+        "local2": "http://127.0.0.1:8791/snapshot/local2.jpg"}
 CAM_SEL = (os.environ.get("ZMAX_REC_CAM") or "arm,local").strip()
 CAM_HZ = float(os.environ.get("ZMAX_REC_CAM_HZ") or 10.0)
 
