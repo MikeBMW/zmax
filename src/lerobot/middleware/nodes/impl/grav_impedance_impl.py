@@ -59,6 +59,15 @@ def run(ctx):
         xi_e, stage = out["xi_e"], out["stage"]
         src_vel = out["xi_src"]
 
+        # ── ①b 质量检测调度 (老倪 2026-11-23: 到位即检, 由本节点调度 AOI 程序) ──
+        #   只入队 + 读缓存, HTTP 在工作线程里跑 ⇒ 不拖 10Hz 循环 (实测 tick <1ms)。
+        #   点位/端口的唯一真源在 lerobot/manifold/aoi_dispatch.py (156→10082, 172→10083)。
+        try:
+            from lerobot.manifold import aoi_dispatch as _aoi
+            qual = _aoi.tick(root=root)
+        except Exception as _qe:                                             # noqa: BLE001
+            qual = {"err": "%s: %s" % (type(_qe).__name__, _qe)}
+
         # ── ② 四层力 (真源 tools/layer_forces.py, 每层读自己的唯一依据) ────────
         lf, res, main = {}, None, None
         lf_err = ""
@@ -118,7 +127,7 @@ def run(ctx):
         _doc.update({"layers": layers, "layer_resultant": res, "layer_main": main,
                      "layer_sum": _sum, "layer_residual": resid, "layer_n_ok": n_ok,
                      "layers_src": "tools/layer_forces.py (config/calib/layer_forces.json 的 w/k)",
-                     "layer_err": lf_err, "sync": _sync,
+                     "layer_err": lf_err, "sync": _sync, "quality": qual,
                      "energy_snapshot": {"U": U, "K": K, "H": K + U, "hdot": hd, "passive": bool(hd <= 0)}})
         try:
             os.makedirs(live, exist_ok=True)
@@ -147,6 +156,14 @@ def run(ctx):
                         % (L, d["role"], d["mag"], d["w"], d["k"], d["deg"],
                            "放行" if d["allow"] else "否决", str(d["src"])[:48]))
             log("   数据源: %s · 阶段 %s · ξ 来自 %s" % (str(out["src"])[:40], stage, src_vel))
+            if isinstance(qual, dict):
+                if qual.get("fired"):
+                    log("   🔍 质量检测已派发: %s (点 %s)" %
+                        ",".join("%s→:%d" % (f["kind"], f["port"]) for f in qual["fired"]), qual.get("cursor"))
+                elif qual.get("results"):
+                    _r = qual["results"]
+                    log("   🔍 质量检测快照: %s" % " · ".join(
+                        "%s=%s(%.1fs)" % (k, v.get("verdict"), v.get("age_s") or 0) for k, v in _r.items()))
 
         # ── ⑤ 输出 ───────────────────────────────────────────────────────────
         out1 = {"kind": "force_corrected", "dir": _dir, "mag": round(_mag, 6),
@@ -155,7 +172,8 @@ def run(ctx):
                 "layers": {L: layers[L]["mag"] for L in _LAYERS},
                 "allow": {L: layers[L]["allow"] for L in _LAYERS},
                 "sync": _sync,
-                "src": "tools/layer_forces.py", "t": float(out["ts"])}
+                "src": "tools/layer_forces.py", "t": float(out["ts"]),
+                "quality": qual}
         out2 = {"F": res, "M": [0.0, 0.0, 0.0],
                 "M_src": "姿态力矩项未建模 ⇒ 如实写 0, 不拿位置力冒充",
                 "unit": "m/s 速度当量 (与 tools/layer_forces.py 同口径)",

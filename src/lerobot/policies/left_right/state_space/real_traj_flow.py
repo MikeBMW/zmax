@@ -87,23 +87,30 @@ AOI_HOST = os.environ.get("ZMAX_AOI_HOST", "192.168.23.23")
 
 
 def _fire_aoi(idx: int) -> None:
-    """到位即请求 AOI 拍照检测。同步 POST(只排队, 不等检测), 失败不打断回放。"""
+    """到位即请求 AOI 拍照检测 —— 2026-11-23 起**只入队, 由万有引力节点调度执行**。
+
+    调度权收归 `lerobot/manifold/aoi_dispatch.py`(ss_grav_h 每拍 tick):
+      - 本函数不再自己发 HTTP, 只 `request()` 入队 ⇒ 单一调度口, 不会两处重复拍照
+      - 非阻塞: 排队与判决回读都在工作线程, 回放不被拖住
+      - 点位真源仍是本文件 AOI_ON_ARRIVE (156→10082 金手指 / 172→10083 表面),
+        aoi_dispatch.POINTS_BY_INDEX 与之对齐; 段表按名字触发时走 POINTS_BY_NAME
+    """
     if os.environ.get("ZMAX_AOI_ON_ARRIVE") == "0":
         return
     ports = AOI_ON_ARRIVE.get(int(idx))
     if not ports:
         return
-    for port in ports:
-        url = "http://%s:%d/capture_detect" % (AOI_HOST, port)
-        t0 = time.time()
-        try:
-            req = urllib.request.Request(url, method="POST")
-            with urllib.request.urlopen(req, timeout=30) as r:
-                body = r.read().decode("utf-8", "replace")[:120]
-            _say("🎯 到位 #%d 停稳 → %d 请求检测 (%.2fs): %s" % (idx, port, time.time() - t0, body))
-        except Exception as e:                                          # noqa: BLE001
-            _say("🎯 到位 #%d → %d 检测请求失败(不打断回放): %s: %s"
-                 % (idx, port, type(e).__name__, str(e)[:80]))
+    try:
+        from lerobot.manifold import aoi_dispatch as _aoi
+        kinds = {10082: "gold", 10083: "surface"}
+        for port in ports:
+            r = _aoi.request(kinds.get(int(port), "gold"), idx=int(idx), rounds=None,
+                             reason="到位 #%d" % int(idx))
+            _say("🎯 到位 #%d → %d 检测%s: %s"
+                 % (idx, port, "已入队(万有引力调度)" if r.get("fired") else "未派发",
+                    r.get("why") or ""))
+    except Exception as e:                                              # noqa: BLE001
+        _say("🎯 到位 #%d 检测入队失败(不打断回放): %s: %s" % (idx, type(e).__name__, str(e)[:80]))
 
 
 def _say(msg: str) -> None:
