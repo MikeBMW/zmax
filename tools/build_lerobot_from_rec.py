@@ -28,6 +28,15 @@ import sys
 
 import numpy as np
 
+_RZ = None
+
+
+def _parse_resize(s):
+    if s and "x" in s.lower():
+        w, h = [int(x) for x in s.lower().split("x")[:2]]
+        return (w, h)
+    return None
+
 ROOT = "/home/ubuntu/zmax"
 
 
@@ -69,9 +78,16 @@ def main() -> int:
     ap.add_argument("--max-age-ms", type=float, default=120.0)
     ap.add_argument("--min-rows", type=int, default=10)
     ap.add_argument("--fps", type=int, default=0, help="0=按时间戳现算")
+    ap.add_argument("--stride", type=int, default=1,
+                    help="隔几行取一帧(30Hz 录制取 3 ⇒ 10Hz, 体积/耗时直接 /3)")
+    ap.add_argument("--resize", default="", help="WxH, 例 640x360; 空=原始分辨率")
+    ap.add_argument("--videos", action="store_true",
+                    help="图像走视频编码(h264)而不是逐帧 PNG: 30Hz 长录制体积小 10~20 倍")
     ap.add_argument("--single-image", default="", help="把某一路写成 observation.image (SmolVLA 口径), 如 arm")
     ap.add_argument("--image-size", type=int, default=480, help="--single-image 时的方形边长")
     a = ap.parse_args()
+    global _RZ
+    _RZ = _parse_resize(a.resize)
 
     from lerobot.datasets.lerobot_dataset import LeRobotDataset  # 必须在 lerobot venv 里跑
 
@@ -108,6 +124,8 @@ def main() -> int:
                 if f and os.path.isfile(os.path.join(fdir, f)):
                     with Image.open(os.path.join(fdir, f)) as im:
                         shapes[c] = (im.size[1], im.size[0], 3)   # H,W,C
+                        if _RZ:                                  # --resize 优先
+                            shapes[c] = (_RZ[1], _RZ[0], 3)
                     break
         print("分辨率:", {k: v for k, v in shapes.items()})
     if not shapes:
@@ -137,13 +155,16 @@ def main() -> int:
         return 2
     ds = LeRobotDataset.create(repo_id=os.path.basename(out_root), fps=fps, features=features,
                               root=out_root, robot_type="zmax_rokae_xmate",
-                              use_videos=False, image_writer_threads=4)
+                              use_videos=bool(a.videos), image_writer_threads=4)
 
     from PIL import Image
     kept = dropped_age = dropped_noimg = 0
     ages = []
     n = len(rows)
+    _rz = _RZ
     for i, r in enumerate(rows):
+        if a.stride > 1 and i % a.stride:
+            continue
         if not r.get("p"):
             continue
         p = mm(r["p"])
@@ -183,7 +204,10 @@ def main() -> int:
                 dropped_age += 1
                 break
             with Image.open(os.path.join(fdir, f)) as im:
-                frame["observation.images.%s" % c] = np.asarray(im.convert("RGB"))
+                im2 = im.convert("RGB")
+                if _rz:
+                    im2 = im2.resize(_rz, Image.BILINEAR)
+                frame["observation.images.%s" % c] = np.asarray(im2)
             if age is not None:
                 ages.append(age)
         if cams and not ok_img:
