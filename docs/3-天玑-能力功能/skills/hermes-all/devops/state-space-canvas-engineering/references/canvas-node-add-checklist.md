@@ -33,6 +33,12 @@
 写错名字不报错：loader 调 `ensure_node_modules` 生成一个**只有直通的壳**，每 tick 返回
 `status="直通 (实现未注册: )"`、`out1=null`。
 
+ASCII 片段取节点名里**冒号/顿号前的代号**（`⑬ 自动翻转 · SK13` → `sk13` → `n_sk13.py`，
+不是 `n_skill13.py`）。先按 loader 的规则猜文件名，再看 loader 自己生成没生成同名文件——两者不一致时
+它会接管生成的 `n_sk13.py`、顺手把 `_index.NODE_MODULES[id]` 改成那个名字，你手写的文件就成了没人引用的死文件
+（更糟：`_index` 里看着“已经注册成功”）。加完节点核对三处一致：磁盘文件名 = `_index.NODE_MODULES[id]` 的值 =
+`_index.BY_NAME[节点全名]` 的映射结果，然后把多余的手写文件删掉，别留两份契约。
+
 内容照 `n_dit.py` 裁：`NODE_ID / NAME / LAYER / TYPE / EXEC_MODE / PURE / PORTS_IN / PORTS_OUT /
 IMPL_KEY / SOURCE / SOURCE_SYMBOL / PARAMS / LAST_STATUS / compute(ctx)`。
 
@@ -126,3 +132,12 @@ print(tr[0]["status"], tr[0].get("ms"), tr[0]["out"])
 照 `tools/canvas_add_*` 的形状写 adder：`--dry` 先断言（id 不重复、与执行节点不重叠、连线 x 递增）
 → `--apply` 备份 + 写盘 + 回读（`json.load`、节点/连线计数、悬空连线检查）。复跑按 id 去重，
 改坏了能直接重跑。
+
+两处会让 `--dry` 假失败或假通过：
+
+- **老节点没有端口表**：`inputs`/`outputs` 可能是 `null`（不是空数组）。端口存在性断言要先判
+  `if node.get("outputs") is not None` 再查——否则 `ss_mem_l2` 这类老节点一接就把 dry 断言打红，
+  你会以为是自己接错线。
+- **老连线没有 `id`**：画布里有 `{"f":…,"t":…}` 这种无 id 的老连线，遍历类脚本（如按 `l["id"]` 取键的
+  分析器）会 `KeyError` 崩。崩的是老数据，不是你这轮的改动——先确认崩点在自己新加的条目之外，再继续。
+  **新加的连线一律带 `id`**，别跟着老格式走。

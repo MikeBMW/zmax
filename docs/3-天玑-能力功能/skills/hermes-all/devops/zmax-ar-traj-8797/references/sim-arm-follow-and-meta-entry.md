@@ -49,6 +49,17 @@
 - `larmFreezeOn(LARM.q)` 拍的是当时的 FK 快照(`LARM.holdQ/holdFK`), 之后右臂怎么动左臂都不跟。
 - 左臂无自身位姿时默认照抄右臂 ⇒ 冻结在右臂**当时**位置。所以左臂 tool1 与右臂 tool1 重合不是 bug, 是「冻结在右臂那一刻」。验证冻结要跨时间对比左臂自身前后值, 不能拿它和右臂比。
 
+## 左仿真臂去某个引导位姿 (IK 求解口径)
+
+- 左臂没有控制器，它的“到位”只能靠页面 IK：`ikTool1(target, seed)` 是**位置**解，可信(实测 0.01~0.2mm)；
+  `ikTool1Pose(target, seed, Rdes)` 是 6 维解，在本页 URDF 上**不可靠**(拿右侧已知目标做控制组也偏 330mm) ⇒
+  别拿它当“姿态也对了”的证据。
+- **种子必须是真机示教录制的抓取关节角**(`zmax_data/rokae_sdk/real_traj_absj.json` 里抓取帧的 `q`)，
+  且只接受 `max|Δq| ≤ 0.5rad` 的解。用“看起来自然”的空想种子、或按“工具轴朝下”挑解，
+  会选出大关节角姿态 —— 整条臂躺倒(用户只会说“左臂怎么躺下了”)。
+- 换目标槽后要重跑一次；判据两条同时看: FK tool1 与目标点差 <1mm **且** Δq(相对种子) ≤0.5rad。
+- 解完必须 `larmFreezeOn(q)`，否则下一拍它又照抄右臂；状态写 `window.__LARM_GO__`(err_mm/dq_seed_rad/fk_tool1_m) 供 console 复核。
+
 ## 元任务「做完」的判据
 
 - **有可点击入口才算交付**。只在元任务列表里渲染一行只读文字(`document.querySelectorAll('#mtBox button').length === 0`)不算做完。

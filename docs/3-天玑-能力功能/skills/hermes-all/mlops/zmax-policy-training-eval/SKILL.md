@@ -59,6 +59,32 @@ description: Z-MAX 插拔策略训练与评估管道 — 评估铁律(逐维norm
    `concat(peg-hand, hole-peg)` 6 维, 否则 (1x39) vs (45x256) 形状错。
 5. **SmolVLA episodes 显式列表触发 reader bug** → 去掉 `dataset.episodes` 用全部。
 
+## L3 续训起点与训练窗口 (起点口径 / 显存 / 让卡, 全部实测)
+
+1. **续训起点必须与生成的视频窗同口径**: 生成配置把 `num_video_frames = n_obs_steps = chunk+1`
+   钉死, 而旧 ckpt 常是 `n_obs=1 / frames=2` ⇒ 加载即
+   `size mismatch for model.le_world_model.predictor.pos_embedding [1,2,192] vs [1,7,192]`,
+   20 秒内 rc=1 —— 看起来像"训练脚本坏了", 其实是起点选错。**选起点前先读 ckpt 的
+   `train_config.json`**:
+   ```python
+   q = json.load(open(os.path.join(ckpt, "train_config.json")))["policy"]
+   q["n_obs_steps"], q["num_video_frames"]      # 必须都等于生成配置的窗
+   ```
+   做法: 扫 `outputs/train/<前缀>*/checkpoints/*/pretrained_model/train_config.json`, 取
+   `n_obs_steps >= 窗` 的最新产物当起点 (`joint_train_all._l3_base()` / `mk_smolvla_sim_cfg._pick_7frame()`),
+   并留 `ZMAX_L3_PRETRAINED` 手动覆盖口。**别拿"默认目录/最新目录"当起点**。
+2. **batch 按 OOM 报文定, 不按习惯**: 8G 卡 + 常驻栈 3.3G 时 batch4 实测
+   `6.12GiB in use / 98MB free` 直接炸; 换 batch2 后 3.81GiB、200 步 328s 跑通。
+3. **让卡窗口**: 常驻引擎回路 (内含 INTACT worker, 合计约 3.3G) 与需要 6~7G 的训练阶段不可共存
+   ⇒ 训练前 `systemctl stop` 那一批 unit, 跑完 `start` 回去, 把前后 `is-active` 与显存打进同一份日志。
+   等别的窗口结束时 `while pgrep -f '<脚本名>'` **会匹配到自己这条命令行** ⇒ 永不退出
+   (实测白等 400s 超时); 用 `pgrep -f "bash tools/<脚本>[.]sh"` 或直接等进程退出。
+4. **"基于真机数据训练"必须查证, 不看目录名**: 读 ckpt 的 `train_config.json` 的 `dataset.repo_id`,
+   再读该数据集 `meta/info.json` 的 `robot_type` —— `metaworld_sawyer` / `zmax_ss_sim` 都是仿真;
+   同时比 `total_episodes / total_frames` 与目标训练量。实测一次"真机试训"只有 4 episodes / 9,171 帧
+   (仿真集 134 eps / 131k 帧), 且 `n_obs=1` 与现行窗不兼容 ⇒ 既没进部署也接不上续训,
+   不能说成"L3 已用真机训练"。
+
 ## L3 部署接口口径 (归一化区间 / 特征键 / ckpt 维度)
 
 改动或对接 L3 (SmolVLA-LEW) 前先跑一次接口探针 (tools/l3_action_probe.py,

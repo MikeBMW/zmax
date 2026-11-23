@@ -12,6 +12,14 @@ description: LeRobot 数据集构建坑 — timestamp相对/索引重编号/视�
 用 LeRobotDataset / lerobot_train 训练时报错: IndexError 超界、Invalid key、
 str/str、视频解码失败、数据集被覆盖。适用于任何 LeRobot fork 本地数据集构建。
 
+## 真机录制→数据集 (2026-11-23 实测)
+- 录制必须**同一循环**同时采状态与图像: 事后配准不可行 (11-21 两批录制只有 j/p/rpy, 当晚相机帧只有 2 张 ⇒ 至今喂不了 SmolVLA)。
+- 抓帧要**独立线程**: 与 30Hz 状态同循环同步抓, 实测把状态拖到 28.5Hz、最大间隙 516ms; 改线程后 29.9Hz、gap_max 105ms。状态行按 `t_frame <= t_state` 绑最近帧, 记 `img_age_ms`, >120ms 的行丢弃。
+- **8791 的 local 可能全黑** (笔记本内置 /dev/video2: mean 5.7/255) 而 local2 (中央相机经 8812 隧道) 正常 161/255 ⇒ 建集前先量两路亮度, 别把黑帧写进数据集。
+- 经 SSH 隧道的相机有 ~280ms 偶发抓帧尖峰 ⇒ gap_max 400ms+、steady=false、建集丢行; 优先局域网直连。
+- 各相机分辨率可能不同 (arm 848×480 vs local2 640×480) ⇒ features 的 shape 逐路量, 共用会 `does not have the expected shape`。
+- SmolVLA 口径是单路 `observation.image` (方形 480); 真机 state 13 维 vs 旧集 39 维 ⇒ 改 `input_features`。grip 未采时恒 0, 别当夹爪真值。
+
 ## 核心规则 (按优先级)
 
 ### 1. timestamp 必须 = episode 内相对时间戳, 不是全局!
@@ -378,6 +386,18 @@ open/开→70, hold/其它→沿用上一条)。
     骨架代码的四个通用坑: ndarray 不能用 `x = cache.get(p) or ...` 判空 (ValueError, 用 `is None`);
     图像 4D 与关节 2D 不能直接 `torch.cat` (改双分支: CNN 池化后拼关节); CUDA OOM 时
     `CUDA_VISIBLE_DEVICES=""` 落 CPU 先跑通链路; `seen` 键必须带 episode 名。
+
+### 29c. 状态+图像同步采集: 抓帧必须独立线程, 主循环只做"按时间戳绑定"
+**症状**: 把 `GET /snapshot/<cam>.jpg` 直接写在 30Hz 状态循环里 ⇒ 状态率掉到 **28.5Hz**、帧间隔最大 **516ms**;
+而单看抓帧本身并不慢 (mean 1.1ms / max 275ms)。**机制**: 一次慢请求把当拍采样推出节拍, 尾部延迟全部进状态周期
+⇒ "通道够快"不能推出"可以内联抓"。
+**做法**: 抓帧线程按 `--cam-hz` 自己跑, 只维护每路"最新一帧 (t, file)"; 主循环每行按时间戳绑定
+`t_frame <= t_row` 的最近帧, 落 `img{cam: rel_path}` + `img_age_ms`; 帧单独成目录, `index.json` 记延迟/间隙/稳态。
+**验收四数** (缺一个都算没同步好): ① 状态率 ≈ 目标 (实测 29.9Hz / 设 30) ② 图像滞后中位 ≈ 0.5/图Hz
+(10Hz ⇒ 45ms) ③ `gap_max` ≤ 1.5×图周期 (10Hz ⇒ 105.7ms) ④ 带图状态行占比 (实测 448/449 = 99.8%)。
+**先验通道再录**: 录制脚本留一个不连机器人的 `--probe-camera` 模式 (打 N 帧延迟/间隙/稳态), 通道坏了别开录。
+**旧数据不可追溯**: 只有 `j/p/rpy` 的历史录制 (无图像) 事后补不回图文对 —— 图文对必须同一次采集成对落盘,
+转换脚本对无图录制只能显式标 `images: none`, 不许当训练集。
 
 **用已有数据集前先看 `images/` 是不是空的**: 有 `meta/info.json` + parquet + `features.observation.images.*`
 不等于有图 —— 实测某真机数据集 4 episodes / 9171 帧, `images/observation.images.top/` 里 **0 个文件**。
