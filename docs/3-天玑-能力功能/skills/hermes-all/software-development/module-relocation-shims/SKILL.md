@@ -65,6 +65,47 @@ shim 模板见 `templates/shim.py`。四个要点缺一不可:
    上层 L3/L4/L5 按分层不迁), 不要用一个「已完成」盖过去。
 5. 用 `tools/migrate_*.py --plan` 先打印清单再 `--apply`, 每文件迁完立刻验 import 与节点真跑。
 
+### 3c. 分层归位 (core / engine / app): 一次搬 20+ 文件
+
+「这个目录什么都有」是常见形态: 一个包里混着**纯数学核 + 引擎运行时 + 业务调度**。定式是先分三层再搬,
+不按文件大小拍脑袋:
+
+```
+<pkg>/core/     纯核: 零业务 import、零 IO (度规/李群/算子/几何)
+<pkg>/engine/   运行时与适配: 引擎主类/循环/provider/encoder (可依赖权重与 core)
+<pkg>/engine/inject/  注入与适配器 (原来寄居在业务包里的那批)
+app/<域>/       业务编排: 调度/健康/相位/建图 (不许被 core import)
+```
+
+执行顺序 (每一步都有判据, 别一口气搬完再验):
+1. **分类审计**: 对每个文件打一行 `文件 · 行数 · 依赖谁`; 判定 core 的硬判据是**能不能不 import 业务**。
+   一发现 core 里的文件反过来 import 业务包 (实测 `s3_chain` 裸 `import pose_caliper`, 真身在 policies 侧),
+   **先把那个纯工具搬进 core**, 否则你搬完只得到一个「在 core 目录里、依赖业务」的假分层。
+2. **脚本两段式**: `tools/migrate_<pkg>_layers.py --plan` 打印清单 → `--apply` 执行; 每个文件搬完立刻生成兼容壳。
+3. **裸导入 / 相对导入一次性刷掉** (见下), 再跑整树 import。
+4. **节点侧路径改解析器**: 别让 `_EXTERNAL_LOC` / `spec_from_file_location` 落到壳上。
+
+```python
+def _mani_file(name):                      # 节点代码里的统一入口
+    for sub in ("core", "engine/inject", "engine"):
+        p = os.path.join(DIR, sub.replace("/", os.sep), name + ".py")
+        if os.path.exists(p):
+            return p
+    return os.path.join(DIR, name + ".py") # 根目录兜底
+```
+
+搬到脚本 + AST 扫裸导入 + 整树 import 验收的可复制骨架: `references/layered-package-migration.md`。
+
+**三条会直接吃数据的坑**
+- 🔴 **未入库文件不能 `git mv`**: `git mv` 对 untracked 报 128。而「先 `git mv` 再 `os.replace`」的混合写法
+  很容易配上一次 `cp -a` 回滚, 把 untracked 的真身两头抹掉 (实测丢过一个 807 行的 su2.py, 最后从发布快照捞回)。
+  规则: `git ls-files --error-unmatch <f>` 判 tracked; untracked 的先 `cp -a` 到 `/tmp/<模块>_pre_move/`, 再 `os.replace`。
+- 🔴 **批量改写禁止用「预计算 offset 切片」**: `finditer` 拿 start/end 再切片, 前面替换一变长后面就错位,
+  实测把 `from .lie_intent import se3_log` 写成 `from ... import rom .lie_intent import se3_log`, 整个模块 SyntaxError。
+  一律 `re.sub(pattern, callback)` 单遍 + 正则锚行首 (`^[ \t]*`), 改完立刻 `compile()` 全树过一遍。
+- 🔴 **验收必须整棵树逐个 import**: 只 import「搬过的文件」会漏掉传递依赖; 遍历目标目录全部 `.py`
+  生成模块名逐个 `importlib.import_module`, 报「扫描 N 个 / 失败 M 个」, M 必须为 0。
+
 ### 4. 迁完必改的三类引用
 | 类别 | 症状 | 做法 |
 |---|---|---|
@@ -107,6 +148,9 @@ shim 模板见 `templates/shim.py`。四个要点缺一不可:
 | 零 GUI 依赖 | 真身 `grep -c PyQt` == 0 |
 | 不许堆放 | 目录里未登记的零 Qt 大块逻辑 ⇒ 失败; allowlist 每条带理由 |
 | 死文件确实没了 | 删掉的文件不存在 |
+| 整树导入 | 目标目录全部 `.py` 逐个 import, 「扫描 N / 失败 0」 |
+| 层间方向 | `core/` 里 `grep -c "lerobot.policies\|requests\|127.0.0.1"` == 0, 且无裸 `import <业务模块>` |
+| 注册表零缺口 | 注册 key 总数不变, `_EXTERNAL_LOC` 类落点文件**全部存在**(用解析器算, 不用旧拼接) |
 
 ## Pitfalls
 1. **“import 成功”不是别名正确的判据** —— shim 指到包的 `__init__` 也照样 import 成功, 拿到的是空模块,
@@ -132,7 +176,11 @@ shim 模板见 `templates/shim.py`。四个要点缺一不可:
    `isinstance` 不失效); 「右键打开源码」/外部工具/跨语言按路径读 → **软链**直指本体。壳会让用户点开
    看到 3 行转发、以为「代码不见了」; 软链的代价是同一文件被两个模块名各自加载, 有状态模块
    (缓存/单例/连接)会分裂 —— 所以有状态的仍用壳, 无状态算法模块用软链。
-10. **验收看节点真跑, 不看 import 成功**: 每个受影响节点跑一次 `run`(返回非 None)、全量落点复检、
+10. **裸导入要在搬完立刻用 AST 扫, 不要靠 import 报错撞出来**: `import health` 这种靠「同目录 + sys.path.insert」跑的写法,
+   搬深一层就必炸, 但只在真 import 时才暴露、静态检查看不出来。做法: 对所有搬过的文件 walk `ast.Import`/`ast.ImportFrom`,
+   取顶层名, 与 `src/**/*.py` 的 basename 索引比对, 命中的就是定时炸弹; 输出 `文件:行 → 真身` 再统一改完整包名。
+   实测 21 个文件里 15 处 (engine_loop / hjepa_* / manifold_engine / s3_chain), 一次扫完比逐个撞错省一轮。
+11. **验收看节点真跑, 不看 import 成功**: 每个受影响节点跑一次 `run`(返回非 None)、全量落点复检、
     全链路只读自检, 报实测条数而不报「都通过」。工具目录不是包 (`tools/x.py`) 时用
     `importlib.util.spec_from_file_location` 验, 别拿 `import tools.x` 的失败当代码坏。
 

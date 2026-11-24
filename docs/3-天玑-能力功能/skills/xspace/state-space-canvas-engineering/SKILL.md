@@ -12,9 +12,7 @@ metadata:
 
 # 状态空间画布工程 (改节点/连线/拓扑的安全做法)
 
-> 画布层节点数 ↔ 册子页数 1:1 对账、校验器动态计数、导入顺序、合并语义与环复核：见 `references/canvas-ppt-reconciliation.md`。
->
-> `references/canvas-node-context-menu.md` · `canvas-log-noise.md` · `canvas-node-add-checklist.md`(加节点验收)
+> references/: `canvas-ppt-reconciliation.md`(节点↔册子/计数/导入/合并/环) · `canvas-node-context-menu.md` · `canvas-log-noise.md` · `canvas-node-add-checklist.md` · `canvas-wire-run-observability.md`(接线/完备性/运行不跑节点图)
 
 ## 🔴 「打开总工程」没反应/加载失败 = 画布文件是 Linux 软链 (Windows 每次新版复现)
 

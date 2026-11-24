@@ -75,8 +75,13 @@ trigger: "Use when `git push` is rejected non-fast-forward, when the same repo i
   `git checkout --ours <file> && git add <file> && git commit -m 'merge origin/main …'` → `git push`。
 - 🔴 不要用 `git rebase --skip` 省事：skip 丢掉的是那条提交里的**全部**文件改动（随记忆一起提交的技能/代码也在内），
   而 merge + `--ours` 只丢掉那一份快照。
-- 工作树有常驻服务回写的未提交状态文件时: 先 `git stash push -u -m '<原因>'`（`-u` 带上未跟踪文件，
+- 工作树有常驻服务回写的未提交状态文件时: 先 `git stash push -u -m '<原因>'`（`-u` 带上未跟踪文件,
   契约模块/新脚本这类最容易漏），做完再 `git stash pop`。
+- 🔴 **`git stash pop` 输出 `The stash entry is kept` 就是没完全成功**, 尤其在你前面 abort 过一次 rebase
+  或 pop 途中碰到冲突时: 未跟踪文件回来了、**已跟踪文件的改动可能一条没回来**。
+  判据不是"pop 没报错", 而是逐个 grep 关键标记 (`grep -c <新函数名/常量> <文件>`), 缺的用
+  `git checkout stash@{0} -- <文件>` 逐个恢复, 全对上才 `git stash drop`。
+  实测丢了 4 个文件的修复(场景过滤/端口/训练参数), 靠 `git stash show -p` 看到内容还在才救回。
 
 ## 远端 tag 缺后续补丁
 
@@ -105,3 +110,4 @@ rebase 期间文件被 checkout 过, 复原的是索引与工作区内容, 不�
 | `ahead 5, behind 6` 且两边提交**提示文字一样** | 自己丢了两条提交 | 那几条已被别的机器/会话 rebase 过 (内容同、hash 不同) ⇒ **不要重放**。若它们是**同一份内容经 host API 重推**产生的(本地/远端 sha 不同), 直接 `git rebase origin/main` 即可: git 按 patch-id 认已应用, 输出 `skipped previously applied commit` / `dropping … patch contents already upstream`, 只留你真正新增的那条, 比手工 cherry-pick 少一层风险 |
 | `git diff --name-only HEAD origin/main` 只剩你改的文件 | 本地落后很多 | 恰是能安全 `reset --hard origin/main` 的证据 |
 | 冲突后手工编辑解冲突 | 快 | 两个任务被混进一个提交, 下次 review 无法分离 |
+| `git stash pop` 回 `The stash entry is kept` | 改动都回来了 | 可能只回了未跟踪文件; 逐文件 grep 关键标记, 缺的 `git checkout stash@{0} -- <f>` 补, 齐了再 drop |
