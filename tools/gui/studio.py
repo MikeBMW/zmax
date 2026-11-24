@@ -13954,6 +13954,36 @@ class StudioMainWindow(QMainWindow):
                         _oneshot(self, 1200, self._open_ss_3d_cmd)
                     elif line == "ss_run":
                         _oneshot(self, 300, self._run_ss_cmd)
+                    # 🧪 2026-11-24: 命令通道按名字触发节点双击 (取证/免找像素)
+                    #   用法: echo "ss_node 十维流形引擎" > /tmp/zmax_nav_cmd
+                    elif line.startswith("ss_node "):
+                        _kw = line[len("ss_node "):].strip()
+
+                        def _hit_node(_n=0):
+                            _nodes = getattr(getattr(self, "simulink", None), "nodes", None) or []
+                            _h = None
+                            for _x in _nodes:
+                                if _kw and _kw in str(_x.get("name", "")):
+                                    _h = _x
+                                    break
+                            if _h is not None:
+                                print("🧿 ss_node: 命中「%s」(共 %d 节点) → 触发节点双击"
+                                      % (str(_h.get("name", ""))[:40], len(_nodes)), flush=True)
+                                self.simulink.on_node_activated(_h)
+                                return
+                            if _n == 0:
+                                print("⚠ ss_node: 画布节点 %d 个, 未命中「%s」→ 先加载画布, 2.5s 后重试"
+                                      % (len(_nodes), _kw), flush=True)
+                                try:
+                                    self._open_ss_canvas_cmd()
+                                except Exception:                          # noqa: BLE001
+                                    pass
+                                _oneshot(self, 2500, lambda: _hit_node(1))
+                                return
+                            print("❌ ss_node: 仍没找到含「%s」的节点 (共 %d 个)"
+                                  % (_kw, len(_nodes)), flush=True)
+                            self.statusBar().showMessage("ss_node: 没找到含「%s」的节点" % _kw, 4000)
+                        _hit_node()
                     # 🧩 2026-10-14 老倪: 「画布太大了, 我找不到」⇒ 命令通道加"跳到 SAM3 分割节点"
                     elif line == "ss_focus_seg":
                         _oneshot(self, 600, self._focus_seg_cmd)

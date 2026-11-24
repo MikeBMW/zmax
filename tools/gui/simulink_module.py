@@ -112,6 +112,7 @@ def _zmax_sane_env():
 
 
 import os as _os_mod
+import time
 import concurrent.futures as _cfutures   # 🐛 2026-09-09: 真实化单线程池 (env 渲染线程亲和)
 _ECS_PW_SM = _os_mod.environ.get("ZMAX_ECS_PW", "")  # ECS 密码 (不入库)
 
@@ -6858,6 +6859,7 @@ class SimulinkModule(QWidget):
         # 自绘深色气泡 (替代 QToolTip: WSLg 下系统原生渲染黑字看不清)
         try:
             from PyQt5.QtCore import Qt as _Qt
+            from PyQt5.QtCore import QUrl as _QUrl
             if self._tutorial_hl is not None and self._tutorial_hl.isVisible():
                 pos = self._tutorial_hl.mapToGlobal(self._tutorial_hl.rect().center())
                 self._show_bubble(pos, f"👆 请点击这里:\n{target}")
@@ -13872,9 +13874,80 @@ class SimulinkModule(QWidget):
         except Exception as _e:                                             # noqa: BLE001
             self._log(f"⚠️ SU(2) 观测面板打开失败: {type(_e).__name__}: {_e}")
 
+    def _open_cy_slice(self, node=None):
+        """🧮 六维卡拉比-丘切面页 (8810 只读服务) —— 双击十维节点即达
+
+        页面: x⁵+y⁵=1 的真实解集 (CY₃ 复二维切面) + 亏格 g=6 的孔洞 + 隐藏 6 维现场值。
+        用 PyQt5 QtWebEngine 在**应用内**开窗 (实测外挂浏览器不可靠: 本机 chromium 是 snap 版,
+        从 studio 的 cgroup 里拉起来会被 snapd 拒 —— "...is not a snap cgroup for tag
+        snap.chromium.chromium", 而且 xdg-open 只会塞进已有窗口的标签页, 用户眼前没有变化)。
+        服务不通先明说并给启动命令, 不让人对着空白页猜。
+        """
+        url = os.environ.get("ZMAX_CY_URL") or "http://127.0.0.1:8810/"
+        nm = (node or {}).get("name", "")
+        self._log("🧿 双击「%s」→ 六维卡拉比-丘切面 %s (孔洞 = 亏格 g=6)" % (nm, url))
+        print("🧿 双击「%s」→ 六维卡拉比-丘切面 %s" % (nm, url), flush=True)
+        try:
+            import urllib.request as _u
+            _u.urlopen(url + "health", timeout=2).read()
+        except Exception as _e:                                            # noqa: BLE001
+            self._log("⚠ 8810 切面服务不可达 (%s) — 启动: sudo systemctl start zmax-cy-slice" % _e)
+        # 复用已开的窗 (再双击 = 提到前面并刷新, 不叠一堆窗口)
+        try:
+            _w = getattr(self, "_cy_win", None)
+            if _w is not None and _w.isVisible():
+                _w.raise_()
+                _w.activateWindow()
+                try:
+                    _w.view.reload()
+                except Exception:                                          # noqa: BLE001
+                    pass
+                print("🧿 复用已打开的切面窗 (重新载入)", flush=True)
+                return
+        except Exception:                                                  # noqa: BLE001
+            pass
+        try:
+            from PyQt5.QtCore import Qt as _Qt
+            from PyQt5.QtWebEngineWidgets import QWebEngineView as _QWV
+            from PyQt5.QtWidgets import QDialog as _QD
+            from PyQt5.QtWidgets import QVBoxLayout as _QVB
+
+            _dlg = _QD(self)
+            _dlg.setWindowTitle("🧿 六维卡拉比-丘切面 — 孔洞 = 亏格 g=6")
+            _dlg.setWindowModality(_Qt.NonModal)
+            _dlg.resize(1180, 780)
+            _lay = _QVB(_dlg)
+            _lay.setContentsMargins(0, 0, 0, 0)
+            from PyQt5.QtCore import QUrl as _QUrl
+            _view = _QWV(_dlg)
+            _view.load(_QUrl(url))
+            _lay.addWidget(_view)
+            _dlg.view = _view                       # 便于复用/刷新
+            self._cy_win = _dlg
+            _dlg.show()
+            print("✅ 切面窗已开 (QtWebEngine 内嵌): %s" % url, flush=True)
+            self._log("✅ 切面窗已开 (内嵌 QtWebEngine) — 拖拽旋转 / 滚轮缩放 / W 线框 / R 复位")
+            return
+        except Exception as _e:                                            # noqa: BLE001
+            self._log("⚠ QtWebEngine 开窗失败 (%s) — 改外挂浏览器" % _e)
+            print("⚠ QtWebEngine 开窗失败: %s" % _e, flush=True)
+        try:
+            import subprocess as _sp
+            _sp.Popen(["xdg-open", url], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL,
+                      start_new_session=True)
+        except Exception as _e2:                                           # noqa: BLE001
+            self._log("❌ 打开浏览器失败: %s (可手输 %s)" % (_e2, url))
+
     def on_node_activated(self, node):
         """双击节点: 数据源 → 切换; Switch → 切换路由; 子系统 → 展开; 视频 → 推理对比; 环节节点 → 运行; 其他 → 参数框"""
         params = node.get("params", {})
+        # 🧮 2026-11-24 老倪: 双击「十维流形引擎 / 十维黎曼梯度流」→ 直接开六维卡拉比-丘切面页 (8810)
+        #   不按 id 匹配 (GUI 内存节点不带 id), 按名字认; URL 可用 ZMAX_CY_URL 覆盖
+        _cy_name = str(node.get("name", "")) or str(node.get("id", ""))
+        if ("十维流形引擎" in _cy_name or "十维黎曼梯度流" in _cy_name
+                or _cy_name in ("ss_mani10", "ss_mani_flow")):
+            self._open_cy_slice(node)
+            return
         # 2026-09-19 老倪: 📚 工程记忆·技能与经验库 双击 -> L2 原子技能清单
         if "技能与经验库" in str(node.get("name", "")):
             self._open_l2_skills()
