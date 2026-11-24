@@ -467,7 +467,7 @@ var HTML_VER="__HTMLVER__";</script>
     </div>
     <div class="panel"><div class="cap"><span class="ttl">🦾 手臂相机</span>
       <span class="meta" id="m_arm">…</span></div>
-      <img id="i_arm" data-ext="http://10.163.146.76:8897/arm_yolo.jpg" data-every="600"></div>
+      <img id="i_arm" data-ext="http://127.0.0.1:8898/arm_yolo.jpg" data-every="600"></div>
     <div class="panel"><div class="cap"><span class="ttl">📷 本机相机 (内置 / USB)</span>
       <span class="meta" id="m_local">…</span></div>
       <img id="i_local" data-mode="snap" data-src="/snapshot/local.jpg" data-every="400">
@@ -1882,7 +1882,9 @@ MJPG.forEach(rec=>{ rec.im.onerror=()=>setTimeout(()=>{ rec.im.src=rec.url+'?t='
    老倪 11-22: 「实时显示在 station 窗口上」。判据 conf≥0.5 + 框中心稳定; 槽号按 x 中心换算。 */
 (function(){
   const im=document.getElementById('i_arm'); if(!im||!im.dataset.ext) return;
-  const U=im.dataset.ext, EVERY=parseInt(im.dataset.every||'600');
+  /* 主机名跟页面走(10.163.x/192.168.23.x 都通), 端口来自 data-ext —— 之前写死 8897 且是 IP, 换网段就全黑 */
+  const U=String(im.dataset.ext||'').replace(/^https?:\/\/[^\/]+/, location.protocol+'//'+location.hostname+':8898');
+  const EVERY=parseInt(im.dataset.every||'600');
   im.classList.add('live');
   const tick=()=>{ im.src=U+'?t='+Date.now(); };
   im.onerror=()=>setTimeout(tick,1200);
