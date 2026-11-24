@@ -27,6 +27,18 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 from lerobot.manifold.core.calabi_yau import quintic_slice_mesh, to_obj  # noqa: E402
 
 PORT = int(os.environ.get("ZMAX_CY_PORT", "8810"))
+START_TS = time.time()
+
+# 📇 本机标准服务清单 (页面右下角"本机服务"卡片逐个探活; 只读, 不改任何服务)
+SERVICES = [
+    ("8791", "看板 dashboard", "/"),
+    ("8793", "工位页 station", "/station"),
+    ("8797", "AR 三维页", "/ar"),
+    ("8810", "六维CY切面 (本页)", "/"),
+    ("8898", "手臂相机 YOLO", "/health"),
+    ("8796", "SAM3 分割", "/health"),
+    ("8789", "health 汇总", "/health"),
+]
 LIVE_DIR = os.environ.get("ZMAX_SS_LIVE") or os.path.join(ROOT, "zmax_data/ss_live")
 THREE_JS = os.path.join(ROOT, "tools/three.module.js")
 
@@ -52,6 +64,47 @@ def obj_payload() -> str:
     if "obj" not in _CACHE:
         _CACHE["obj"] = to_obj(quintic_slice_mesh())
     return _CACHE["obj"]
+
+
+def version_now() -> dict:
+    """版本号真源 = VERSION.md「## 版本历史」表首 (每请求热读, 改号不用重启本服务)
+
+    ⚠️ 表头上面还有正文提到历史版本号(实测解析到 5.50.771) ⇒ 必须先定位「## 版本历史」再抓
+       `**vX.Y.Z**` 形式的首行, 不能全文找第一个 "v5."。
+    """
+    import re as _re
+    pv = os.path.join(ROOT, "VERSION.md")
+    try:
+        txt = open(pv, encoding="utf-8").read()
+        seg = txt.split("## 版本历史", 1)[-1]
+        m = _re.search(r"\*\*v(\d+\.\d+\.\d+)\*\*", seg)
+        if m:
+            return {"version": m.group(1), "tag": "v" + m.group(1)}
+    except Exception:                                                      # noqa: BLE001
+        pass
+    return {"version": "?", "tag": "?"}
+
+
+_SVC_CACHE = {"ts": 0.0, "items": []}
+
+
+def services_payload() -> dict:
+    """逐个 TCP 探活 (0.25s 超时, 5s 缓存) —— 页面用来显示"这台机器上哪些服务活着" """
+    import socket
+    now = time.time()
+    if now - _SVC_CACHE["ts"] < 5.0 and _SVC_CACHE["items"]:
+        return {"ts": _SVC_CACHE["ts"], "items": _SVC_CACHE["items"]}
+    items = []
+    for port, name, path in SERVICES:
+        up = False
+        try:
+            with socket.create_connection(("127.0.0.1", int(port)), timeout=0.25):
+                up = True
+        except Exception:                                                  # noqa: BLE001
+            up = False
+        items.append({"port": port, "name": name, "up": up, "path": path})
+    _SVC_CACHE.update(ts=now, items=items)
+    return {"ts": now, "items": items}
 
 
 def live_payload() -> dict:
@@ -131,13 +184,17 @@ PAGE = r"""<!doctype html>
       <div class="lg"><span class="dot" style="background:#7bdcb5"></span>颜色 = 分支 · 瓣间空隙即孔洞</div>
     </div>
     <div class="card">
+      <h2>本机服务 (只读探活)</h2>
+      <div id="svc" class="mono">读取中…</div>
+    </div>
+    <div class="card">
       <h2>导出</h2>
       <div class="kv"><i>网格</i><b><a href="/slice.json" style="color:#7bdcb5">/slice.json</a></b></div>
       <div class="kv"><i>OBJ</i><b><a href="/slice.obj" style="color:#7bdcb5">/slice.obj</a></b></div>
     </div>
   </aside>
 </main>
-<footer>只读可视化 · 不下发任何动作 · WebGL 深度缓冲 · 数据源 /slice.json</footer>
+<footer id="ft">只读可视化 · 不下发任何动作 · WebGL 深度缓冲 · 数据源 /slice.json</footer>
 <script type="module">
 import * as THREE from '/three.module.js';
 const stage=document.getElementById('stage');
@@ -217,6 +274,26 @@ addEventListener('keydown',function(e){var k=e.key.toLowerCase();
   if(k==='w'&&mesh){wire=!wire;mesh.material.wireframe=wire;}
   if(k==='r'){yaw=-0.62;pitch=0.28;zoom=1.45;}});
 
+// 🧾 页脚版本/uptime (真源 VERSION.md, 服务端热读) + 📇 本机服务探活
+function foot(){
+  fetch('/health').then(function(r){return r.json();}).then(function(h){
+    document.getElementById('ft').textContent =
+      'Z-MAX v' + h.version + ' · 8810 六维CY切面 · up ' + h.uptime_s + 's · 亏格 g=6 · ' +
+      h.tris + ' 面 · 只读可视化, 不下发任何动作';
+  }).catch(function(){});
+}
+foot(); setInterval(foot, 30000);
+function svc(){
+  fetch('/services.json').then(function(r){return r.json();}).then(function(d){
+    var el=document.getElementById('svc');
+    el.innerHTML = d.items.map(function(it){
+      var dot = it.up ? '<b style="color:#7bdcb5">●</b>' : '<b style="color:#e06c75">○</b>';
+      return '<div class="kv"><i>'+dot+' '+it.port+'</i><b style="font-size:12px">'+it.name+'</b></div>';
+    }).join('');
+  }).catch(function(){});
+}
+svc(); setInterval(svc, 5000);
+
 setInterval(function(){fetch('/live.json').then(function(r){return r.json();}).then(function(d){
   var el=document.getElementById('live');
   if(!d.ok){el.className='mono bad';el.textContent='无现场值: '+(d.err||'mani10_live.json 未生成');return;}
@@ -267,11 +344,20 @@ class H(BaseHTTPRequestHandler):
                 return self._send(open(THREE_JS, "rb").read(), "text/javascript; charset=utf-8")
             except Exception:                                              # noqa: BLE001
                 return self._send(b"// three.js missing", "text/javascript", 404)
+        if p == "/version.json":
+            return self._send(json.dumps(version_now(), ensure_ascii=False).encode(),
+                              "application/json")
+        if p == "/services.json":
+            return self._send(json.dumps(services_payload(), ensure_ascii=False).encode(),
+                              "application/json")
         if p == "/health":
             m = mesh_payload()
+            v = version_now()
             return self._send(json.dumps({
-                "ok": True, "port": PORT, "genus": m["meta"]["genus"],
-                "verts": len(m["v"]), "tris": len(m["f"]),
+                "ok": True, "service": "zmax-cy-slice", "port": PORT,
+                "version": v.get("version"), "tag": v.get("tag"),
+                "uptime_s": round(time.time() - START_TS, 1),
+                "genus": m["meta"]["genus"], "verts": len(m["v"]), "tris": len(m["f"]),
                 "resid_max": m["meta"]["resid_max"], "ts": time.time()},
                 ensure_ascii=False).encode(), "application/json")
         return self._send(b'{"ok":false,"err":"not found"}', "application/json", 404)
