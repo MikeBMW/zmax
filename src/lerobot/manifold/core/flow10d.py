@@ -29,6 +29,8 @@ K_BARRIER = 1e3          # 越界势垒刚度 (盒外二次抬升)
 ALPHA0 = 0.35            # 初始步长
 MAX_BACKTRACK = 14
 MIN_ALPHA = 1e-5
+# 每步速率上限 (物理可执行性): 宏观 m/步 · 力 N/步 · 公差 mm/步 · 置信度 /步
+RATE_CAP = {"macro": 2e-3, "force": 2.0, "tol": 0.01, "conf": 0.05}
 
 
 def barrier(X: np.ndarray, bounds: np.ndarray, k: float = K_BARRIER) -> float:
@@ -138,6 +140,22 @@ def riemannian_step(X: np.ndarray, X_ref: np.ndarray, cfg: dict | None = None,
         dxi = -np.linalg.solve(G, g)
     except np.linalg.LinAlgError:
         dxi = -np.linalg.lstsq(G, g, rcond=None)[0]
+    # 🔴 速率限幅 (实测必须做): 17.5N 处算出的首步是 dfx=−18.2N, 真机一个控制拍掉不了 18N。
+    #    −G⁻¹∇V 在隐藏子空间里是无界的, 物理可执行性必须由 rate_cap 兜住, 不能指望势函数的形状。
+    cap = dict(RATE_CAP)
+    cap.update((cfg or {}).get("rate_cap") or {})
+    blocks = ((slice(0, 3), float(cap["macro"])),          # x,y,z (m/步)
+              (slice(4, 7), float(cap["force"])),          # fx,fy,fz (N/步)
+              (slice(7, 9), float(cap["tol"])),            # σn,σt (mm/步)
+              (slice(9, 10), float(cap["conf"])))          # c (/步)
+    dxi = dxi.copy()
+    clamped = False
+    for sl, lim in blocks:
+        blk = dxi[sl]
+        n = float(np.max(np.abs(blk))) if blk.size else 0.0
+        if lim > 0 and n > lim:
+            dxi[sl] = blk * (lim / n)
+            clamped = True
 
     a = float(alpha)
     used, Xn, Vn = 0.0, X.copy(), V0
@@ -152,7 +170,8 @@ def riemannian_step(X: np.ndarray, X_ref: np.ndarray, cfg: dict | None = None,
     if used == 0.0:                                                  # 回溯到底仍不降 ⇒ 原地停
         Xn, Vn = project_state(X, bounds), fn(project_state(X, bounds))
     return {"X": Xn, "V": Vn, "V0": V0, "alpha_used": used, "backtracks": back,
-            "grad_norm": float(np.linalg.norm(g)), "step_norm": float(np.linalg.norm(Xn - X))}
+            "grad_norm": float(np.linalg.norm(g)), "step_norm": float(np.linalg.norm(Xn - X)),
+            "clamped": clamped}
 
 
 def euclid_step(X: np.ndarray, X_ref: np.ndarray, cfg: dict | None = None,
