@@ -9,7 +9,7 @@
     in  in5   ← ssinnov
     in  in6   ← ssphys
     out out1  → ssintact, ssobs
-    out out2  → ss_mani_eng
+    out out2  → ss_mani_eng, ss_mani10
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)

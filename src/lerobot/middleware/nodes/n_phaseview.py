@@ -3,7 +3,8 @@
 
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ss_grav_h
-    out out1  → (未被下游读取)
+    in  in2   ← ss_mani_flow
+    out out1  → ss3d_view
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)
@@ -27,7 +28,7 @@ TYPE = 'model'
 EXEC_MODE = 'view'
 
 # 输入端口 (从总线取) / 输出端口 (发到总线) —— 与工程 JSON 的连线一一对应
-PORTS_IN = ['in1']
+PORTS_IN = ['in1', 'in2']
 PORTS_OUT = ['out1']
 PORT_LABELS = {}
 

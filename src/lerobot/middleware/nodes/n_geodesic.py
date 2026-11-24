@@ -3,10 +3,8 @@
 
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ssobs
-    out out1  → sslimit, sssk13      (右臂目标, 带 pair_id)
-    out out2  → sssched              (块)
-    out out3  → (待连线) 左臂目标位姿 (与 out1 同 pair_id/同 ts, 成对)
-    out out4  → (待连线) 双臂协同证据 (dual_truth / zone owner / hold / min_gap)
+    out out1  → sslimit, sssk13
+    out out2  → sssched
 
 输出 / 输入代码:
     ctx[port] = {"value": …, "age_s": …, "fresh": bool}     ← 从总线取 (bus.latest)
@@ -31,10 +29,8 @@ EXEC_MODE = 'act'
 
 # 输入端口 (从总线取) / 输出端口 (发到总线) —— 与工程 JSON 的连线一一对应
 PORTS_IN = ['in1']
-PORTS_OUT = ['out1', 'out2', 'out3', 'out4']
-PORT_LABELS = {'in1': 'obs 43D', 'in2': '目标点(可选)', 'out1': '3D 引导位姿(右臂·含 pair_id)',
-                'out2': '块 chunk[H,4]', 'out3': '3D 引导位姿(左臂·成对)',
-                'out4': '双臂协同证据 (双真值/分区/hold/间距)'}
+PORTS_OUT = ['out1', 'out2']
+PORT_LABELS = {'in1': 'obs 43D', 'in2': '目标点(可选)', 'out1': '3D 引导位姿', 'out2': '块 chunk[H,4]'}
 
 IMPL_KEY = 'n_geoplan'
 SOURCE = 'src/lerobot/policies/left_right/state_space/plan_guide.py'

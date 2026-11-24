@@ -3,7 +3,7 @@
 
 工程连线 (唯一依据 flows/state_space_obs.json —— 端口就是从这些线推出来的):
     in  in1   ← ssworld
-    in  in2   ← ss2d3d
+    in  in2   ← ss2d3d, ss_phase_view
     out out1  → (未被下游读取)
 
 输出 / 输入代码:

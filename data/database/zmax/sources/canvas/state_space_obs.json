@@ -2405,7 +2405,7 @@
      "工程库": "data/database/zmax/zmax_engineering.db"
     },
     "cfg_snapshot": {
-     "loaded_at": "2026-11-22 18:37:55",
+     "loaded_at": "2026-11-24 12:30:40",
      "files_total": 8,
      "files_ok": 8,
      "orders": 12,
@@ -2469,7 +2469,7 @@
      "口径": "一个状态空间工程承载全部任务; 任务=配方段子集+参数覆盖"
     },
     "source_symbol": "def main",
-    "cfg_loaded_at": "2026-11-22 18:37:55",
+    "cfg_loaded_at": "2026-11-24 12:30:40",
     "cfg_files": [
      {
       "name": "总工程文件",
@@ -2480,7 +2480,7 @@
      {
       "name": "任务绑定",
       "rel": "config/ss_task_binding.json",
-      "sha256": "0d9370fc544f4e87",
+      "sha256": "b120641950b5be61",
       "exists": true
      },
      {
@@ -3021,7 +3021,7 @@
    "name": "🧩 长程元任务编排器 (Plan)",
    "type": "model",
    "x": 240,
-   "y": 440,
+   "y": 640,
    "w": 280,
    "h": 110,
    "params": {
@@ -3162,7 +3162,7 @@
    "icon": "🔄",
    "color": "#b98cff",
    "x": 8210,
-   "y": 6086,
+   "y": 6260,
    "w": 280,
    "h": 110,
    "inputs": [
@@ -3188,6 +3188,50 @@
     "source": "src/lerobot/policies/left_right/state_space/skills/atomic_skills.py",
     "source_symbol": "class SK13Flip",
     "cap_level": "L2"
+   }
+  },
+  {
+   "id": "ss_mani10",
+   "type": "model",
+   "name": "🧮 十维流形引擎 (4D 宏观 ⊕ 6D 隐藏 · 块对角度规 · 隐藏量硬约束)",
+   "x": 5020,
+   "y": 1860,
+   "w": 340,
+   "h": 130,
+   "icon": "🧮",
+   "color": "#7bdcb5",
+   "params": {
+    "state_space": true,
+    "kind": "real",
+    "src_engine": "ss_mani10",
+    "role": "4D 宏观(x,y,z,θ) ⊕ 6D 隐藏(力/公差/置信度) 的块对角度规; 动作走带隐藏硬约束的 active-set QP",
+    "api": "build_metric() · utilization() · violation_error() · constrained_step() · step10()",
+    "gate": "输出 gate.force_ok / gate.conf_ok —— L2 引擎闸(engine_gate)认这两个字段",
+    "source": "src/lerobot/manifold/core/manifold10d.py",
+    "source_symbol": "def step10",
+    "note": "只出动作增量与门控量, 不下发运动; 下发仍走 l2_daemon + 8793 授权"
+   }
+  },
+  {
+   "id": "ss_mani_flow",
+   "type": "model",
+   "name": "🌀 十维黎曼梯度流 (Δξ=−αG⁻¹∇V · Armijo 单调 · 每步投影回 M6)",
+   "x": 5420,
+   "y": 1860,
+   "w": 340,
+   "h": 130,
+   "icon": "🌀",
+   "color": "#8f7bff",
+   "params": {
+    "state_space": true,
+    "kind": "real",
+    "src_engine": "ss_mani_flow",
+    "role": "Δξ = −α·G(u(X))⁻¹∇V + 每步硬投影; Armijo 保证 V 单调下降; 速率限幅保物理可执行",
+    "api": "analytic_grad() · riemannian_step() · run_flow() · selftest_flow()",
+    "evidence": "解析∇V vs 有限差分 rel 7.4e-9 · 黎曼 43 步到 V=5.9e-10 · 欧氏同起点 300 步仍 4.44 · 越界 0",
+    "source": "src/lerobot/manifold/core/flow10d.py",
+    "source_symbol": "def run_flow",
+    "note": "action6 取第一步位移(收敛后 ΔX≈0, 取末态等于不发动作)"
    }
   }
  ],
@@ -5026,6 +5070,70 @@
    "f_port": "out2",
    "t_port": "in8",
    "label": "⚖ 技能动作 → 动力学约束"
+  },
+  {
+   "id": "lkw_1124_sensor_m10",
+   "f": "sssensor",
+   "t": "ss_mani10",
+   "f_port": "out2",
+   "t_port": "in1",
+   "label": "43D 状态(位姿+力+公差) → 十维 X10 (4 宏观 + 6 隐藏)"
+  },
+  {
+   "id": "lkw_1124_meng_m10",
+   "f": "ss_mani_eng",
+   "t": "ss_mani10",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": "流形坐标 p / 度规 M → 十维参考点 X_ref"
+  },
+  {
+   "id": "lkw_1124_m10_flow",
+   "f": "ss_mani10",
+   "t": "ss_mani_flow",
+   "f_port": "out1",
+   "t_port": "in1",
+   "label": "X10 当前状态 → 沿 −G⁻¹∇V 走测地线"
+  },
+  {
+   "id": "lkw_1124_flow_sched",
+   "f": "ss_mani_flow",
+   "t": "sssched",
+   "f_port": "out1",
+   "t_port": "in10",
+   "label": "action6 (第一步位移, 已限幅) → 动作调制"
+  },
+  {
+   "id": "lkw_1124_m10_phase",
+   "f": "ss_mani10",
+   "t": "ss_phase_corr",
+   "f_port": "out2",
+   "t_port": "in2",
+   "label": "V / 利用率 / 闸门 → 相空间通道判据"
+  },
+  {
+   "id": "lkw_1124_flow_phaseview",
+   "f": "ss_mani_flow",
+   "t": "ss_phase_view",
+   "f_port": "out2",
+   "t_port": "in2",
+   "label": "V 轨迹 (单调下降曲线) → 相图"
+  },
+  {
+   "id": "lkw_1124_phaseview_3d",
+   "f": "ss_phase_view",
+   "t": "ss3d_view",
+   "f_port": "out1",
+   "t_port": "in2",
+   "label": "相图 → 3D 可视化 (接断头, 原为死端)"
+  },
+  {
+   "id": "lkw_1124_uph_sched",
+   "f": "ssuph",
+   "t": "sssched",
+   "f_port": "out1",
+   "t_port": "in11",
+   "label": "节拍 (UPH 循环) → 动作节拍 (接断头, 原为死端)"
   }
  ],
  "params_note": ""
