@@ -6574,6 +6574,32 @@ _reg("ss_mani_eng", ["流形引擎", "Manifold Engine"],
 _EXTERNAL_LOC["ss_mani_eng"] = (os.path.join(_REPO_ROOT, "src/lerobot/engineering/nodes/library.py"), 5897, "def node_ss_mani_eng")   # 🎯 2026-10-31 落点校准: 原来指到本路径不调用的函数 ⇒ 断点永不命中
 
 
+# ── 📸 画布节点可观察性: 每拍真值原子落盘 (节流), 供"点了运行就能看" + 事后取证 ──────
+_LIVE_TS = {}
+
+
+def _live(_obj, _name, _payload, _hz=2.0):
+    """把节点这一拍的输出写 zmax_data/ss_live/<_name> (tmp+replace 原子, 按 _hz 节流)。
+
+    只做观察, **不参与控制**: 任何异常都吞掉, 绝不因为写盘失败影响节点返回。
+    """
+    import json as _j
+    import os as _o
+    import time as _t
+    _now = _t.time()
+    if _now - _LIVE_TS.get(_name, 0.0) < 1.0 / max(float(_hz), 0.1):
+        return
+    _LIVE_TS[_name] = _now
+    _d = _o.environ.get("ZMAX_SS_LIVE") or _o.path.expanduser("~/zmax/zmax_data/ss_live")
+    _p = _o.path.join(_d, _name)
+    _rec = {"t": round(_now, 3), "node": _obj.get("node") or "", "ok": bool(_obj.get("ok", True))}
+    _rec.update(_payload or {})
+    _tmp = "%s.tmp.%d" % (_p, _o.getpid())
+    with open(_tmp, "w", encoding="utf-8") as _f:
+        _j.dump(_rec, _f, ensure_ascii=False, default=str)
+    _o.replace(_tmp, _p)
+
+
 # ── 🧮 十维流形引擎 (2026-11-24 老倪方案落地: 4D 宏观 ⊕ 6D 隐藏) ──────────────
 def node_ss_mani10(ctx):
     """🧮 十维流形引擎 — 4D 宏观(x,y,z,θ) ⊕ 6D 隐藏(力/公差/置信度) 的块对角度规。
@@ -6587,9 +6613,20 @@ def node_ss_mani10(ctx):
     except Exception as e:                                              # noqa: BLE001
         return {"ok": False, "err": "import manifold10d: %s" % e}
     try:
-        return _M10.step10(ctx)
+        out = _M10.step10(ctx)
     except Exception as e:                                              # noqa: BLE001
         return {"ok": False, "err": "%s: %s" % (type(e).__name__, e)}
+    # 📸 可观察性 (2026-11-24): 画布跑起来时把这一拍的真值落盘, 否则"点了运行看不见输出"
+    try:
+        _live(out, "mani10_live.json", {
+            "X10": out.get("X10"), "V": out.get("V"), "utilization": out.get("utilization"),
+            "action6": out.get("action6"), "gate": out.get("gate"),
+            "hard_projected": out.get("hard_projected"), "active": out.get("active"),
+            "violation_after": out.get("violation_after"), "src_engine": out.get("src_engine"),
+        })
+    except Exception:                                                  # noqa: BLE001
+        pass
+    return out
 
 
 _reg("ss_mani10", ["十维流形", "十维引擎", "mani10"],
@@ -6639,14 +6676,21 @@ def node_ss_mani_flow(ctx):
         d_now[_M10.DIM_MACRO - 1] = (d_now[_M10.DIM_MACRO - 1] + 0.5) % 1.0 - 0.5
         dX = r["traj"] - _np.asarray(ref, float).ravel()
         dX[_M10.DIM_MACRO - 1] = (dX[_M10.DIM_MACRO - 1] + 0.5) % 1.0 - 0.5
-        return {"ok": True, "X10": r["traj"].tolist(), "final_V": r["final_V"],
-                "V_traj": [float(v) for v in r["V"][:64]], "steps_used": len(r["V"]) - 1,
-                "steps_to_tol": r["steps_to_tol"], "monotone": r["monotone"],
-                "viol_max": r["viol_max"], "ms_per_step": r["ms_per_step"], "mode": r["mode"],
-                "delta10": dX.tolist(), "delta_now": d_now.tolist(),
-                "action6": _M10.to_action6(d_now),
-                "alpha_used": st["alpha_used"], "grad_norm": st["grad_norm"],
-                "src_engine": "ss_mani_flow"}
+        out = {"ok": True, "X10": r["traj"].tolist(), "final_V": r["final_V"],
+               "V_traj": [float(v) for v in r["V"][:64]], "steps_used": len(r["V"]) - 1,
+               "steps_to_tol": r["steps_to_tol"], "monotone": r["monotone"],
+               "viol_max": r["viol_max"], "ms_per_step": r["ms_per_step"], "mode": r["mode"],
+               "delta10": dX.tolist(), "delta_now": d_now.tolist(),
+               "action6": _M10.to_action6(d_now),
+               "alpha_used": st["alpha_used"], "grad_norm": st["grad_norm"],
+               "src_engine": "ss_mani_flow"}
+        try:
+            _live(out, "mani_flow_live.json", {k: out[k] for k in
+                  ("final_V", "V_traj", "steps_to_tol", "monotone", "viol_max",
+                   "ms_per_step", "action6", "delta_now", "alpha_used", "src_engine")})
+        except Exception:                                              # noqa: BLE001
+            pass
+        return out
     except Exception as e:                                              # noqa: BLE001
         return {"ok": False, "err": "%s: %s" % (type(e).__name__, e)}
 
