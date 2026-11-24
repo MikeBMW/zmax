@@ -55,19 +55,9 @@ MOMENTUM = 0.996          # 动量 target encoder 的 EMA 系数 (BYOL/JEPA 口�
 
 
 # ═══════════════════════ 1. SE(3) 测地线距离与损失 ═══════════════════════
-def se3_distance(T1, T2, weight=None) -> float:
-    """SE(3) 测地线距离 d(g₁,g₂) = ‖log(g₁⁻¹ g₂)‖。
-
-    weight: 6 维权重 (ω 与 v 量纲不同, 工程上必须能分别调; 默认全 1)。
-    """
-    T1 = np.asarray(T1, float).reshape(4, 4)
-    T2 = np.asarray(T2, float).reshape(4, 4)
-    xi = se3_log(np.linalg.inv(T1) @ T2)                # ξ=(ω(3), v(3))
-    xi = np.asarray(xi, float).ravel()[:6]
-    if weight is not None:
-        w = np.asarray(weight, float).ravel()[:6]
-        xi = xi * w
-    return float(np.linalg.norm(xi))
+# se3_distance 的真身已下沉 core/lie_intent.py (core 不许 import engine);
+# 这里保留同名 re-export, 老调用方 (hjepa_* / 报告脚本) 一字不用改。
+from lerobot.manifold.core.lie_intent import se3_distance  # noqa: E402,F401
 
 
 def se3_geodesic_loss(pred_T, target_T, weight=None) -> float:

@@ -188,7 +188,7 @@ class ContactManifold:
           姿态误差不会再被"米"和"弧度"混着加。
         · weight 允许给 6 维权重 (工程上常把旋转压低, 因为插入主要看横向位置)。
         """
-        from lerobot.manifold.engine.hjepa_manifold import se3_distance
+        from lerobot.manifold.core.lie_intent import se3_distance
         Tc = np.asarray(T_cur, float).reshape(4, 4)
         Tt = np.asarray(T_target, float).reshape(4, 4)
         d = float(se3_distance(Tc, Tt, weight))
@@ -282,7 +282,7 @@ class PerformanceManifold:
         默认把旋转权重压到等效"1 rad ≈ 若干 mm", 否则姿态项会吃掉整个代价。
         """
         from lerobot.manifold.core.lie_intent import se3_log
-        from lerobot.manifold.engine.hjepa_manifold import se3_distance
+        from lerobot.manifold.core.lie_intent import se3_distance
         Tp = np.asarray(T_peg, float).reshape(4, 4)
         Th = np.asarray(T_hole, float).reshape(4, 4)
         xi = np.asarray(se3_log(np.linalg.inv(Th) @ Tp), float).ravel()[:6]

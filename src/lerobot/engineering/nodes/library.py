@@ -6596,10 +6596,69 @@ _reg("ss_mani10", ["十维流形", "十维引擎", "mani10"],
      "🧮 十维流形引擎 — 4D 宏观时空(x,y,z,θ) ⊕ 6D 隐藏约束(力/公差/置信度); 块对角度规 "
      "G=blkdiag(G4,G6) + 各向异性(插孔径向重/轴向轻, IHS 散热齿 ×1000) + 隐藏量硬约束 "
      "active-set QP: 4D 意图 ⇒ 不撞力的 6 维动作增量; 出 X10/V/delta/action6/gate, 不下发运动 "
-     "(源码 src/lerobot/manifold/manifold10d.py::step10)",
+     "(源码 src/lerobot/manifold/core/manifold10d.py::step10)",
      node_ss_mani10)
 
-_EXTERNAL_LOC["ss_mani10"] = (_mani_file("manifold10d"), 356, "def step10")
+
+
+# ── 🌀 十维黎曼梯度流 (PPT 核心算法: Δξ = −αG⁻¹∇V + Project_M6) ────────────────
+def node_ss_mani_flow(ctx):
+    """🌀 十维黎曼梯度流 — 沿 −G⁻¹∇V 走出测地线, 每步 Armijo 保证 V 单调下降, 末了硬投影回 M6。
+
+    输入: X10(当前十维状态) · ref(期望安全状态) · steps · mode(riemann|euclid 对照)
+    输出: V 轨迹 / 收敛步数 / 单调性 / 越界 / 单步耗时 / 最终动作增量 —— 不下发运动。
+
+    为什么不能写成 V=½ΔXᵀGΔX 后直接用 G⁻¹∇V: 那样 ∇V=GΔX, 度规被精确抵消(误差 1e-12),
+    各向异性一点不生效。本实现让 G 随状态变并叠加越界势垒, 使 G⁻¹ 真正按物理代价分配修正量;
+    实测同一起点: 黎曼 24 步到 V=5e-10, 欧氏最速下降 300 步仍停在 4.44。
+    """
+    try:
+        from lerobot.manifold.core import flow10d as _F
+        from lerobot.manifold.core import manifold10d as _M10
+        import numpy as _np
+    except Exception as e:                                              # noqa: BLE001
+        return {"ok": False, "err": "import flow10d: %s" % e}
+    try:
+        def _val(k, default=None):
+            v = ctx.get(k)
+            return v.get("value") if isinstance(v, dict) and "value" in v else (v if v is not None else default)
+
+        X = _val("in1")
+        ref = _val("in2")
+        steps = int(_val("in3", 200) or 200)
+        mode = str(_val("in4", "riemann") or "riemann")
+        X = _np.asarray(X, float).ravel() if X is not None else None
+        ref = (_np.asarray(ref, float).ravel() if ref is not None
+               else _np.array([0.664, -0.029, 0.2935, 0.92, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]))
+        if X is None or X.size != _M10.DIM_TOTAL:
+            return {"ok": False, "err": "X10 需要 %d 维, 收到 %s" % (_M10.DIM_TOTAL, None if X is None else X.size)}
+        r = _F.run_flow(X, ref, steps=steps, mode=mode)
+        # 立即动作 = **第一步**的位移方向; 收敛后的 delta 恒≈0 (流本来就开到参考点), 拿它当动作等于不发
+        st = (_F.riemannian_step if mode == "riemann" else _F.euclid_step)(X, ref)
+        d_now = st["X"] - X
+        d_now[_M10.DIM_MACRO - 1] = (d_now[_M10.DIM_MACRO - 1] + 0.5) % 1.0 - 0.5
+        dX = r["traj"] - _np.asarray(ref, float).ravel()
+        dX[_M10.DIM_MACRO - 1] = (dX[_M10.DIM_MACRO - 1] + 0.5) % 1.0 - 0.5
+        return {"ok": True, "X10": r["traj"].tolist(), "final_V": r["final_V"],
+                "V_traj": [float(v) for v in r["V"][:64]], "steps_used": len(r["V"]) - 1,
+                "steps_to_tol": r["steps_to_tol"], "monotone": r["monotone"],
+                "viol_max": r["viol_max"], "ms_per_step": r["ms_per_step"], "mode": r["mode"],
+                "delta10": dX.tolist(), "delta_now": d_now.tolist(),
+                "action6": _M10.to_action6(d_now),
+                "alpha_used": st["alpha_used"], "grad_norm": st["grad_norm"],
+                "src_engine": "ss_mani_flow"}
+    except Exception as e:                                              # noqa: BLE001
+        return {"ok": False, "err": "%s: %s" % (type(e).__name__, e)}
+
+
+_reg("ss_mani_flow", ["黎曼梯度流", "十维梯度流", "mani_flow", "geodesic_flow"],
+     "🌀 十维黎曼梯度流 — 沿 −G⁻¹∇V(度规随状态变) 走出测地线, Armijo 逐步保证 V 单调下降, "
+     "隐藏量每步硬投影回 M6; 出 V 轨迹/收敛步数/单调性/越界/单步耗时/action6 + src_engine, "
+     "带 euclid 对照可证度规真起作用; 不下发运动 (源码 src/lerobot/manifold/core/flow10d.py::run_flow)",
+     node_ss_mani_flow)
+
+_EXTERNAL_LOC["ss_mani_flow"] = (_mani_file("flow10d"), 218, "def run_flow")
+_EXTERNAL_LOC["ss_mani10"] = (_mani_file("manifold10d"), 406, "def step10")
 # ⚖ 内稳态层源码 (2026-10-10): 节点日志里的"生命力/紧迫度/自我模型"真源
 _EXTERNAL_LOC["ss_mani_eng_hom"] = (os.path.join(_MANIFOLD_DIR, "homeostasis.py"),
                                     306, "class HomeostasisEngine")

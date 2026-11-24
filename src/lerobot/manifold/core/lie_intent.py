@@ -555,3 +555,18 @@ def self_test() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(self_test())
+
+
+# ── SE(3) 测地距离 (2026-11-24 从 engine/hjepa_manifold 下沉: core 不许反向依赖 engine) ──
+def se3_distance(T1, T2, weight=None) -> float:
+    """SE(3) 测地线距离 d(g₁,g₂) = ‖log(g₁⁻¹ g₂)‖。
+
+    weight: 6 维权重 (ω 与 v 量纲不同, 工程上必须能分别调; 默认全 1)。
+    """
+    import numpy as _np
+    T1 = _np.asarray(T1, float).reshape(4, 4)
+    T2 = _np.asarray(T2, float).reshape(4, 4)
+    xi = _np.asarray(se3_log(_np.linalg.inv(T1) @ T2), float).ravel()[:6]
+    if weight is not None:
+        xi = xi * _np.asarray(weight, float).ravel()[:6]
+    return float(_np.linalg.norm(xi))

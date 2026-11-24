@@ -474,7 +474,8 @@ def step10(ctx: dict) -> dict:
         "gate": {"force_ok": bool(r["violation_after"] < 1e-9),
                  "conf_ok": bool(conf >= 0.5),
                  "util_max": float(np.max(u))},
-        "src": "src/lerobot/manifold/manifold10d.py::step10",
+        "src": "src/lerobot/manifold/core/manifold10d.py::step10",
+        "src_engine": "ss_mani10",      # L2 引擎闸认的签名 (engine_gate.ALLOWED_ENGINES)
     }
 
 
