@@ -3260,7 +3260,7 @@ class HomeWidget(QWidget):
         #   第二行: 系统架构/Simulink模式/配置中心; 第三行: 全局数据空间/实时监控/评估分析;
         #   最后一行: Sim&Real/版本同步
         modules = [
-            ("dataset",  "📊", "数据集管理",   "System 2 · L4/L5",   "任务规划 · 数据飞轮\n.lrobot格式 · HF Datasets", SYS2_COLOR),
+            ("dataset",  "📊", "数据集管理",   "System 2 · L4/L5",   "任务规划 · 数据飞轮\n状态空间格式 · HF Datasets", SYS2_COLOR),
             ("training", "🏋️", "模型引擎",   "System 1 · 动作系统",   "SmolVLA 500M + DiT-B\n端到端VLA训练",            SYS11_COLOR),
             ("hardware", "🔧", "硬件工具箱",   "System 0 · L2 基石",   "电机·相机·力控·急停\nEtherCAT驱动 · HAL层",     SYS0_COLOR),
             ("architecture","🏗️","系统架构",   "三层总览",     "System 2→1→0\n数据闭环·OTA升级", SYS2_COLOR),  # 🐛 恢复三层架构功能卡 (页面在, 卡列表漏加)
@@ -3270,7 +3270,7 @@ class HomeWidget(QWidget):
             ("monitor",  "📈", "实时监控",     "System 1 · L3",     "远程同源实采 · Orin 状态\n回放会话 · Rerun/RViz",     SYS12_COLOR),
             ("evaluation","✅", "评估分析",     "Sys-12 · 评测中枢",   "基线 5.50.735 逐条对标\n有提升+零回退才准升级 · 全局一致性",  SYS12_COLOR),
             ("plugging", "🧩", "3D场景",       "虚拟现实",  "对象·标记·轨迹·保护围栏 可编辑\n机器人 + 工件 + 夹具 (真模型)",  ROI_ACCENT),
-            ("version",  "🔄", "版本同步",     "LeRobot · 上游管理",  "检查上游更新 · 安全同步\n版本状态 · 冲突检测",  C_ORANGE),
+            ("version",  "🔄", "版本同步",     "状态空间 · 上游管理",  "检查上游更新 · 安全同步\n版本状态 · 冲突检测",  C_ORANGE),
             # 🗂 2026-10-11 老倪: 「将功能页的产品大屏, 完全同步原来的工位总览的服务」—— 与 :8793 工位总览同一份在役状态
             ("website",  "🖥", "产品服务",     "总索引 · 全部服务",  "所有服务的总索引: 缩略图 + 介绍 + 健康灯\n点卡片直达 (simulink画布/ar3d/卡拉比丘/大屏…)\n本机 http://127.0.0.1:8788/ · 控制台内嵌窗打开", "#1f6feb"),
         ]
@@ -5983,7 +5983,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             }}
         """)
         self.preview_btn.clicked.connect(self._preview_command)
-        self.preview_btn.setToolTip("Preview the full lerobot-train CLI command without running it")
+        self.preview_btn.setToolTip("预览完整的「状态空间训练」命令 (只打印不执行)")
         btn_layout.addWidget(self.preview_btn)
         
         btn_container.setLayout(btn_layout)
@@ -7336,7 +7336,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                    f"tail -1 /tmp/venv_install.log 2>/dev/null'")
             out = _sp.check_output(cmd, shell=True, timeout=20).decode(errors="replace").strip()
             if "LEROBOT_OK" in out:
-                self.remote_env_lbl.setText("✅ 远程环境: 就绪 (Python 3.12 + torch + lerobot)")
+                self.remote_env_lbl.setText("✅ 远程环境: 就绪 (Python 3.12 + torch + 状态空间)")
                 self.remote_env_lbl.setStyleSheet(f"color:#3fb950; background:transparent; border:none; font-size:19px; font-weight:bold;")
                 try:
                     self._env_timer.stop()
@@ -15556,6 +15556,32 @@ class StudioMainWindow(QMainWindow):
             self.statusBar().showMessage("● 功能清单  |  %s  |  数据来自工程数据库 (单一文件, 可迁移)"
                                          % self.spec.tabs.tabText(self.spec.tabs.currentIndex()))
             return
+
+        # 🐛 2026-11-25 老倪「simulink模式, 要打开 simulink 画布, 你现在连接错了」:
+        #   真因: self.modules["simulink"] 是**启动时**记的固定下标 (10), 而画布页是 400ms 后
+        #   `_oneshot` 才插进 stack 的 (位置 = 当时的 stack.count()) ⇒ 点卡片 setCurrentIndex(10)
+        #   落到别的页去了。功能清单页 (spec) 早就按 widget 切页并现场刷新下标, 画布这里漏了。
+        #   修法同 spec: 现场确保已建 → 用 indexOf 刷新下标 → setCurrentWidget 切页。
+        if target == "simulink":
+            _sim = getattr(self, "simulink", None)
+            if _sim is None:
+                try:
+                    self.statusBar().showMessage("⏳ 正在创建 Simulink 画布…", 3000)
+                    QApplication.processEvents()
+                    self._init_simulink()
+                except Exception as _e:                                     # noqa: BLE001
+                    print("simulink 建页失败: %r" % (_e,))
+                _sim = getattr(self, "simulink", None)
+            if _sim is not None:
+                self.modules["simulink"] = self.stack.indexOf(_sim)
+                self.stack.setCurrentWidget(_sim)
+                self.statusBar().showMessage("● Simulink 画布  |  模块库拖拽 · 连线 · 仿真 · 单步", 6000)
+                try:
+                    self._write_console_state(page="Simulink", nav_target=target,
+                                              page_index=self.modules["simulink"])
+                except Exception:                                           # noqa: BLE001
+                    pass
+                return
 
         # 系统层级映射
         if target in self.layer_map:

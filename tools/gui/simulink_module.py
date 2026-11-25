@@ -5599,7 +5599,7 @@ class _DatasetInfoDialog(QDialog):
             grid.addWidget(l2, r, c * 2 + 1)
         root.addLayout(grid)
         # 说明区
-        note = QLabel("💡 该路径就是训练/推理的真实数据源头 — LeRobotDataset 从这里逐帧读取,\n"
+        note = QLabel("💡 该路径就是训练/推理的真实数据源头 — 状态空间数据集从这里逐帧读取,\n"
                       "计算归一化 mean/std 后经 DataLoader 按 batch 送进模型。")
         note.setStyleSheet("color:#57606a; font-size:11px;")
         note.setWordWrap(True)
