@@ -4380,10 +4380,8 @@ class DatasetModule(SubModuleWidget):
         return os.path.expanduser(f"~/.cache/huggingface/datasets/{repo_slug}")
 
     def _repo_root(self):
-        """项目根目录 (frozen exe → PyInstaller _MEIPASS; 源码 → tools/gui/ → 上三级)"""
-        if getattr(sys, "frozen", False):
-            return getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
-        return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        """项目根目录 (统一走 _zmax_root_dir: ZMAX_ROOT → exe 同级 → _MEIPASS → 源码上三级)"""
+        return _zmax_root_dir()
 
     def _is_cached(self, repo_id):
         """检查数据集是否已缓存 (2026-08-07: metaworld_mt50 本地实际数据在项目 data/, 不在 HF 缓存)"""
@@ -12843,7 +12841,35 @@ def _msg_ask(parent, title, text, kind="warning", yes_text=None, no_text=None, d
 #        版本号只留侧栏品牌 QLabel (Z-MAX vX.Y.Z) 与菜单栏/状态栏/关于框。
 #   ⇒ 标题与配置中心永远同源 (切产品标题跟着变, 见 _watch_title_product), 调试同源见 _maybe_warn 的 md5 自检。
 # ─────────────────────────────────────────────────────────────────────────────
-_ROOT_P = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+def _zmax_root_dir():
+    """🌍 运行根目录 —— 跨平台迁移的唯一口径 (2026-11-25 老倪: Windows D:\ZMAX 要能完整跑)
+
+    优先级:
+      ① 环境变量 ZMAX_ROOT (启动 bat / 快捷方式里设, 指向 D:\ZMAX)
+      ② 冻结(exe)运行: exe 所在目录 (config/ 就在它旁边) → 退回 _MEIPASS(包内)
+      ③ 源码树: tools/gui/ 上三级 = 仓库根
+
+    为什么要这个: 原来是 `dirname³(__file__)`, 在 PyInstaller 冻结包里 __file__ 是
+    <exe>\_internal\studio.py 或 %TEMP%\_MEIxxxx\studio.py ⇒ dirname³ 落在 D:\ 或 AppData,
+    读 config/ 全部落空 (只能退到 defaults), 跨机器迁移就"配置中心明明拷了却读不到"。
+    """
+    _env = os.environ.get("ZMAX_ROOT") or ""
+    if _env and os.path.isdir(_env):
+        return os.path.abspath(_env)
+    if getattr(sys, "frozen", False):
+        _exe = os.path.dirname(os.path.abspath(sys.executable))
+        _mp = getattr(sys, "_MEIPASS", "") or ""
+        for _c in (_exe, _mp, os.path.join(_exe, "_internal")):
+            if _c and os.path.isdir(os.path.join(_c, "config")):
+                return os.path.abspath(_c)
+        return _exe or _mp
+    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+_ROOT_P = _zmax_root_dir()
+# 让同进程/子进程里的其它模块 (local_services、各 *_page.py) 也拿到同一个运行根,
+#  Windows 上 ~/zmax 不存在, 不设这条它们会自己拼 home 路径 → 读不到 D:\ZMAX\config
+os.environ.setdefault("ZMAX_ROOT", _ROOT_P)
 _PRODUCT_JSON = os.path.join(_ROOT_P, "config", "platform", "zmax_product.json")
 
 
@@ -14727,7 +14753,7 @@ class StudioMainWindow(QMainWindow):
     CONSOLE_STATE = "/tmp/zmax_console_state.json"
 
     def _repo_root(self):
-        return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        return _zmax_root_dir()
 
     def _write_console_state(self, **kw):
         """控制台状态落盘 (当前页/任务/上一步动作) —— 让 tools/zmax_open.py 核到「第几步真的到了」(非自述)。"""
