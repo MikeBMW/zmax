@@ -2405,7 +2405,7 @@
      "工程库": "data/database/zmax/zmax_engineering.db"
     },
     "cfg_snapshot": {
-     "loaded_at": "2026-11-24 12:47:14",
+     "loaded_at": "2026-11-25 12:01:50",
      "files_total": 8,
      "files_ok": 8,
      "orders": 12,
@@ -2469,18 +2469,18 @@
      "口径": "一个状态空间工程承载全部任务; 任务=配方段子集+参数覆盖"
     },
     "source_symbol": "def main",
-    "cfg_loaded_at": "2026-11-24 12:47:14",
+    "cfg_loaded_at": "2026-11-25 12:01:50",
     "cfg_files": [
      {
       "name": "总工程文件",
       "rel": "data/database/zmax/zmax_space.proj",
-      "sha256": "582fa2fa785d658e",
+      "sha256": "61249a52d21fbee4",
       "exists": true
      },
      {
       "name": "任务绑定",
       "rel": "config/ss_task_binding.json",
-      "sha256": "7a59318cc0f68fd3",
+      "sha256": "86e41d0bc0173aef",
       "exists": true
      },
      {
@@ -4943,14 +4943,6 @@
    "f_port": "out1",
    "t_port": "in1",
    "label": "H/K 场态 (k_ax·α·m·Θ·p) → 相图 (Θ,p)"
-  },
-  {
-   "id": "lkw_1124_intent_m10",
-   "f": "ssintact_dec",
-   "t": "ss_mani10",
-   "f_port": "out1",
-   "t_port": "in3",
-   "label": "L4 意图 Δ (解码) → 十维意图 (缺则动作=0)"
   }
  ],
  "params_note": ""

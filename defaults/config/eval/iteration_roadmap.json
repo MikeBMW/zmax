@@ -1,13 +1,13 @@
 {
  "schema": "zmax-iteration-roadmap/1",
  "meta": {
-  "version": "v5.50.735",
+  "version": "v5.50.784",
   "baseline": "5.50.735",
-  "ts": 1792072623,
-  "ts_str": "2026-10-15 21:57:03",
+  "ts": 1795582111,
+  "ts_str": "2026-11-25 12:48:31",
   "generated_by": "tools/iteration_roadmap.py",
   "n_phases": 5,
-  "n_metrics": 58
+  "n_metrics": 62
  },
  "phases": [
   {
@@ -101,11 +101,11 @@
    },
    "meta_combo": {
     "baseline": [
-     "FN-SYS0-60",
-     "FN-SYS0-52",
-     "FN-SYS0-57",
      "FN-SYS0-53",
-     "FN-SYS0-54"
+     "FN-SYS0-58",
+     "FN-SYS0-52",
+     "FN-SYS0-54",
+     "FN-SYS0-55"
     ],
     "added": [],
     "upgraded": [],
@@ -252,13 +252,13 @@
    },
    "meta_combo": {
     "baseline": [
+     "FN-SYS0-53",
+     "FN-SYS0-58",
      "FN-SYS0-52",
      "FN-SYS0-57",
-     "FN-SYS0-60",
+     "FN-SYS0-54",
      "FN-SYS0-56",
-     "FN-SYS0-53",
-     "FN-SYS0-55",
-     "FN-SYS0-54"
+     "FN-SYS0-55"
     ],
     "added": [
      {
@@ -268,23 +268,23 @@
     ],
     "upgraded": [
      {
-      "fn_id": "FN-SYS0-52",
+      "fn_id": "FN-SYS0-53",
       "name": "② 对位 · SK02"
      },
      {
-      "fn_id": "FN-SYS0-57",
+      "fn_id": "FN-SYS0-58",
       "name": "⑦ 插入 · SK07"
      },
      {
-      "fn_id": "FN-SYS0-60",
-      "name": "⚖ 物理约束 · 惯性/质量率闸 (SK01-08)"
-     },
-     {
-      "fn_id": "FN-SYS0-53",
-      "name": "③ 下降 · SK03"
+      "fn_id": "FN-SYS0-52",
+      "name": "① 接近 · SK01"
      },
      {
       "fn_id": "FN-SYS0-54",
+      "name": "③ 下降 · SK03"
+     },
+     {
+      "fn_id": "FN-SYS0-55",
       "name": "④ 抓取 · SK04"
      }
     ],
@@ -388,7 +388,7 @@
     }
    ],
    "entry_criteria": {
-    "kpi": "成功率 ≥ 97%",
+    "kpi": "成功率 ≥ 95%",
     "time": "2026 Q4 - 2027 Q1",
     "dims": "M+A 泛化",
     "rule": "一件或一批作业**做完的结果**: 成不成、快不快、产能、换型、成品光学/过程力指标。",
@@ -396,14 +396,14 @@
    },
    "meta_combo": {
     "baseline": [
-     "FN-SYS0-57",
      "FN-SYS0-58",
-     "FN-SYS0-60",
+     "FN-SYS0-59",
      "FN-SYS0-52",
      "FN-SYS0-53",
      "FN-SYS0-54",
      "FN-SYS0-55",
-     "FN-SYS0-56"
+     "FN-SYS0-56",
+     "FN-SYS0-57"
     ],
     "added": [
      {
@@ -413,7 +413,7 @@
     ],
     "upgraded": [
      {
-      "fn_id": "FN-SYS0-57",
+      "fn_id": "FN-SYS0-58",
       "name": "⑦ 插入 · SK07"
      },
      {
@@ -421,27 +421,27 @@
       "name": "🚀 L3 · 长程序列规划 (记忆: 海马体)"
      },
      {
-      "fn_id": "FN-SYS0-60",
-      "name": "⚖ 物理约束 · 惯性/质量率闸 (SK01-08)"
-     },
-     {
       "fn_id": "FN-SYS0-52",
-      "name": "② 对位 · SK02"
+      "name": "① 接近 · SK01"
      },
      {
       "fn_id": "FN-SYS0-53",
-      "name": "③ 下降 · SK03"
+      "name": "② 对位 · SK02"
      },
      {
       "fn_id": "FN-SYS0-54",
-      "name": "④ 抓取 · SK04"
+      "name": "③ 下降 · SK03"
      },
      {
       "fn_id": "FN-SYS0-55",
-      "name": "⑤ 抬起 · SK05"
+      "name": "④ 抓取 · SK04"
      },
      {
       "fn_id": "FN-SYS0-56",
+      "name": "⑤ 抬起 · SK05"
+     },
+     {
+      "fn_id": "FN-SYS0-57",
       "name": "⑥ 转移 · SK06"
      }
     ],
@@ -490,32 +490,32 @@
    },
    "meta_combo": {
     "baseline": [
+     "FN-SYS0-53",
      "FN-SYS0-52",
-     "FN-SYS0-60",
-     "FN-SYS0-57",
      "FN-SYS0-58",
-     "FN-SYS0-54"
+     "FN-SYS0-59",
+     "FN-SYS0-55"
     ],
     "added": [],
     "upgraded": [
      {
-      "fn_id": "FN-SYS0-52",
+      "fn_id": "FN-SYS0-53",
       "name": "② 对位 · SK02"
      },
      {
-      "fn_id": "FN-SYS0-60",
-      "name": "⚖ 物理约束 · 惯性/质量率闸 (SK01-08)"
-     },
-     {
-      "fn_id": "FN-SYS0-57",
-      "name": "⑦ 插入 · SK07"
+      "fn_id": "FN-SYS0-52",
+      "name": "① 接近 · SK01"
      },
      {
       "fn_id": "FN-SYS0-58",
+      "name": "⑦ 插入 · SK07"
+     },
+     {
+      "fn_id": "FN-SYS0-59",
       "name": "⑧ 完成 · SK08"
      },
      {
-      "fn_id": "FN-SYS0-54",
+      "fn_id": "FN-SYS0-55",
       "name": "④ 抓取 · SK04"
      }
     ],
@@ -613,21 +613,21 @@
    ],
    "entry_criteria": {
     "kpi": "7x24h 成功率 ≥ 99%",
-    "time": "2027+",
+    "time": "2027 Q3",
     "dims": "Z·M·A·X 全域",
     "rule": "全系统长时运行的**可靠性与合规**: 寿命/故障率/机械余量/ESD/洁净/噪声/安全等级。",
     "note": "进入本阶段的口径 = 前一阶段三条硬闸通过 (零回退/净提升/零冲突) 且本阶段指标可采。"
    },
    "meta_combo": {
     "baseline": [
-     "FN-SYS0-56",
-     "FN-SYS0-60",
      "FN-SYS0-57",
      "FN-SYS0-52",
+     "FN-SYS0-58",
      "FN-SYS0-53",
      "FN-SYS0-54",
      "FN-SYS0-55",
-     "FN-SYS0-58"
+     "FN-SYS0-56",
+     "FN-SYS0-59"
     ],
     "added": [
      {
@@ -645,35 +645,35 @@
       "name": "🚀 L3 · 长程序列规划 (记忆: 海马体)"
      },
      {
-      "fn_id": "FN-SYS0-56",
+      "fn_id": "FN-SYS0-57",
       "name": "⑥ 转移 · SK06"
      },
      {
-      "fn_id": "FN-SYS0-60",
-      "name": "⚖ 物理约束 · 惯性/质量率闸 (SK01-08)"
-     },
-     {
-      "fn_id": "FN-SYS0-57",
-      "name": "⑦ 插入 · SK07"
-     },
-     {
       "fn_id": "FN-SYS0-52",
-      "name": "② 对位 · SK02"
-     },
-     {
-      "fn_id": "FN-SYS0-53",
-      "name": "③ 下降 · SK03"
-     },
-     {
-      "fn_id": "FN-SYS0-54",
-      "name": "④ 抓取 · SK04"
-     },
-     {
-      "fn_id": "FN-SYS0-55",
-      "name": "⑤ 抬起 · SK05"
+      "name": "① 接近 · SK01"
      },
      {
       "fn_id": "FN-SYS0-58",
+      "name": "⑦ 插入 · SK07"
+     },
+     {
+      "fn_id": "FN-SYS0-53",
+      "name": "② 对位 · SK02"
+     },
+     {
+      "fn_id": "FN-SYS0-54",
+      "name": "③ 下降 · SK03"
+     },
+     {
+      "fn_id": "FN-SYS0-55",
+      "name": "④ 抓取 · SK04"
+     },
+     {
+      "fn_id": "FN-SYS0-56",
+      "name": "⑤ 抬起 · SK05"
+     },
+     {
+      "fn_id": "FN-SYS0-59",
       "name": "⑧ 完成 · SK08"
      }
     ],
