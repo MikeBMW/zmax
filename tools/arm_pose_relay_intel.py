@@ -27,7 +27,7 @@ def main():
     ok = err = 0
     last_log = 0.0
     while True:
-        t0 = time.time()
+        t0 = time.monotonic()          # 🔴 墙钟被 NTP 回拨(-8h) ⇒ 节流只能单调钟
         try:
             with urllib.request.urlopen(SRC, timeout=2.0) as r:
                 d = json.loads(r.read().decode("utf-8"))
@@ -53,9 +53,9 @@ def main():
         if time.time() - last_log > 30:
             print("relay ok=%d err=%d → %s" % (ok, err, OUT), flush=True)
             last_log = time.time()
-        dt = period - (time.time() - t0)
+        dt = period - (time.monotonic() - t0)
         if dt > 0:
-            time.sleep(dt)
+            time.sleep(min(dt, period))     # 时钟跳变时 dt 会成小时级 ⇒ 必须钳到一拍
 
 
 if __name__ == "__main__":
