@@ -1319,7 +1319,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.50.783")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.50.784")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.ensurePolished()                     # 先套上样式再量字, 否则 sizeHint 按默认字体算
         ver.setToolTip("版本号在此 (侧栏品牌位)\n"
                        "顶栏标题 = 产品标识「XSpace ZMAX <产品号>」, 与配置中心产品配置同源 (config/platform/zmax_product.json)\n"
@@ -12811,6 +12811,7 @@ class StudioMainWindow(QMainWindow):
         self._set_console_title()
         # 🐛 2026-09-01 老倪: 调试自检 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
+        # v5.50.784: 产品大屏→产品服务：控制台内嵌 QtWebEngine 开窗 + 全服务总索引(18 服务缩略图/健康灯/反代复制链接) + 网关 /thumb 与自探测短路；根因三条 —— 外挂浏览器是 snap chromium 从 studio cgroup 拉不起来(点了没反应)、QDialog 的 Dialog 位让 GNOME 禁掉最大化、开机 NTP 回拨 8h 使 time.time() 节流的渲染循环 sleep 8 小时(8802 出图冻结)，已全部改 monotonic+钳位并实测
         # v5.50.783: 六维卡拉比-丘切面固化: 亏格g=6孔洞可视化(残差3.6e-15)+8810标准服务(systemd/health/version/服务清单)+画布双击内嵌窗; 另含 restart_studio 缺 unit 回落、十维节点落盘可观察
         # v5.50.782: 关节空间 MoveAbsJ 回放跑通整圈(关节差≤0.12°), 解决笛卡尔回放在手腕奇异区必停的问题; 8815 看板改为按点位标注段序(30 段)
         # v5.50.781: 相空间观察落地: Simulink 画布新增『🌀 相空间相图(Θ,p)』节点(双击开窗、与右侧面板同源) + 相图自适应视野(修『点又不见了』根因: 视野钉死 ±75mm/±0.9, 真机 Θ 到 ±268mm/H 15.4J 被裁) + 尾迹 400→2000; 新增 RT 探针/恢复脚本(arm_rt_stream/rt_tickrate/arm_recover), 实测 MoveAbsJ 逐点上限 speed=200%(0.96s/点, 400% 控制器掉电), RT 回路回调实测远低于实时要求
@@ -13816,7 +13817,7 @@ class StudioMainWindow(QMainWindow):
         #   ⇒ 状态栏右下角那组控件 (_latency_label「延迟: xx ms」+ _engine_status「● 本地就绪」+
         #      _engine_combo「ACT (Local · 1ms)」) 整组删除, 不再建、不再挂到状态栏。
         #      保留 sb.showMessage(...) 的一行总览, 界面上不再有这组无用读数 (引擎实际由画布/工程配置决定)。
-        sb.showMessage("Z-MAX v5.50.783  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.50.784  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🔴 2026-10-12 老倪(定规矩): 「点开启动图标后, 3D场景不要自动启动, 我要先检查任务配置, 然后启动工程」
         #   本段以下所有自动开窗/自动运行**一律只在显式 env 下触发**(ZMAX_AUTO_*), 正常双击图标时:
@@ -16312,7 +16313,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.50.783</b> · 多模态动作专家<br>
+<b>Z-MAX v5.50.784</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>
