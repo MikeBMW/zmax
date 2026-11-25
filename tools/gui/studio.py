@@ -3268,7 +3268,7 @@ class HomeWidget(QWidget):
             ("config",   "⚙️", "配置中心",     "System 1 · 参数",     "SmolVLALewConfig\n三层参数可视化编辑",          SYS11_COLOR),
             ("dataspace","🌐", "全局数据空间",  "所有模块 · 数据库",  "node↔数据对象全息映射\n数据集·曲线·模型·视频·一致性", "#58a6ff"),
             ("monitor",  "📈", "实时监控",     "System 1 · L3",     "远程同源实采 · Orin 状态\n回放会话 · Rerun/RViz",     SYS12_COLOR),
-            ("evaluation","✅", "评估分析",     "Sys-12 · 评测中枢",   "基线产品 5.50.735 逐条对标\n有提升+零回退才准升级 · 全局一致性",  SYS12_COLOR),
+            ("evaluation","✅", "评估分析",     "Sys-12 · 评测中枢",   "基线 5.50.735 逐条对标\n有提升+零回退才准升级 · 全局一致性",  SYS12_COLOR),
             ("plugging", "🧩", "3D场景",       "虚拟现实",  "对象·标记·轨迹·保护围栏 可编辑\n机器人 + 工件 + 夹具 (真模型)",  ROI_ACCENT),
             ("version",  "🔄", "版本同步",     "LeRobot · 上游管理",  "检查上游更新 · 安全同步\n版本状态 · 冲突检测",  C_ORANGE),
             # 🗂 2026-10-11 老倪: 「将功能页的产品大屏, 完全同步原来的工位总览的服务」—— 与 :8793 工位总览同一份在役状态
@@ -8763,6 +8763,20 @@ class EvalModule(SubModuleWidget):
             self.lb_gate.setText("升级准入: 无报告")
             return
         r = self.rep
+        # 🐛 2026-11-25 老倪「各窗口要符合当前版本实际功能」: COLS 里写死的"基线 5.50.735"改成跟 report 真源走,
+        #   当前版本列也要带版本号 (原来只写"当前", 看上不知道是哪个版本的数据)。
+        try:
+            _cols = list(self.COLS)
+            _b = str(r.get("version_baseline") or "").lstrip("v")
+            _c = str(r.get("version_current") or "").lstrip("v")
+            if _b:
+                _cols[4] = "基线 %s" % _b
+            if _c:
+                _cols[5] = "当前 %s" % _c
+            self.tab.setColumnCount(len(_cols))
+            self.tab.setHorizontalHeaderLabels(_cols)
+        except Exception:                                                    # noqa: BLE001
+            pass
         self.lb_base.setText("基线: %s" % r.get("version_baseline"))
         self.lb_cur.setText("当前: %s" % r.get("version_current"))
         allowed = (r.get("gate") or {}).get("upgrade_allowed")
