@@ -10198,6 +10198,58 @@ class SimulinkModule(QWidget):
             self.log_signal.emit("🌐 数据空间独立窗口打开失败: %s: %s" % (type(e).__name__, str(e)[:120]))
             return False
 
+    def _open_portal_window(self):
+        """🖥 产品服务 · 全服务总索引 (:8788) —— 控制台**内嵌**窗打开。
+
+        外挂浏览器在本机不可靠: 默认浏览器是 snap 版 chromium, 从 studio 的 cgroup 里
+        拉起来会被 snapd 拒, xdg-open 又只把页面塞进已有窗口的标签页 ⇒ 用户眼前零变化
+        (2026-11-25 老倪「点击产品服务没反应」)。与 8810 切面页同一套做法。
+        """
+        url = os.environ.get("ZMAX_PORTAL_URL") or "http://127.0.0.1:8788/"
+        try:
+            _w = getattr(self, "_portal_win", None)
+            if _w is not None and _w.isVisible():
+                try:
+                    from PyQt5.QtCore import QUrl as _QUrl
+                    _w.view.load(_QUrl(url))
+                except Exception:                                          # noqa: BLE001
+                    pass
+                _w.raise_()
+                _w.activateWindow()
+                self._log("🖥 复用已打开的产品服务窗: %s" % url)
+                return url
+        except Exception:                                                  # noqa: BLE001
+            pass
+        try:
+            from PyQt5.QtCore import Qt as _Qt
+            from PyQt5.QtCore import QUrl as _QUrl
+            from PyQt5.QtWebEngineWidgets import QWebEngineView as _QWV
+            from PyQt5.QtWidgets import QDialog as _QD
+            from PyQt5.QtWidgets import QVBoxLayout as _QVB
+            _dlg = _QD(self)
+            _dlg.setWindowTitle("🖥 产品服务 · 全服务总索引")
+            _dlg.setWindowModality(_Qt.NonModal)
+            _dlg.resize(1420, 900)
+            _lay = _QVB(_dlg)
+            _lay.setContentsMargins(0, 0, 0, 0)
+            _v = _QWV(_dlg)
+            _v.load(_QUrl(url))
+            _lay.addWidget(_v)
+            _dlg.view = _v
+            self._portal_win = _dlg
+            _dlg.show()
+            self._log("✅ 产品服务窗已开 (内嵌 QtWebEngine): %s" % url)
+            print("✅ 产品服务窗已开 (内嵌): %s" % url, flush=True)
+            return url
+        except Exception as _e:                                            # noqa: BLE001
+            self._log("⚠ 内嵌开窗失败 (%s) — 改外挂浏览器" % _e)
+        try:
+            import webbrowser as _wb
+            _wb.open(url)
+            return url
+        except Exception:                                                  # noqa: BLE001
+            return None
+
     def open_station_page(self):
         # 🔴 2026-11-08 老倪「我要一个完整功能的 windows 版本」: Windows 上没有 bash/snap/产线常驻服务,
         #   这条分支用冻结包自带的 Python 把本机服务拉起来(没起才起), 再用默认浏览器打开。
@@ -10248,9 +10300,8 @@ class SimulinkModule(QWidget):
                 try:
                     with urllib.request.urlopen(_pu, timeout=3) as _r:
                         if _r.status == 200:
-                            self.log_signal.emit("🖥 产品服务 · 总索引: %s" % _pu)
-                            import webbrowser as _wb_idx
-                            _wb_idx.open(_pu)
+                            self.log_signal.emit("🖥 产品服务 · 总索引: %s (控制台内嵌窗)" % _pu)
+                            self._open_portal_window()
                             return
                 except Exception as _e:                                          # noqa: BLE001
                     self.log_signal.emit("⚠️ 产品服务总索引不可达 (%s) → 回退工位总览" % _e)

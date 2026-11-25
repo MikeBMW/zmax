@@ -192,6 +192,84 @@ def _open_product_dashboard(win=None):
     return url
 
 
+
+# ---------------------------------------------------------------- 产品服务 (内嵌窗)
+_PORTAL_WIN = {"dlg": None}
+
+
+def _open_portal_in_app(parent=None, url=None):
+    """🖥 产品服务 · 全服务总索引 —— 在控制台**内嵌** WebEngine 窗口里打开。
+
+    2026-11-25 老倪「点击产品服务没反应」的根因: 本机默认浏览器是 **snap 版 chromium**,
+    从 studio 的 cgroup 里拉起来会被 snapd 拒 (is not a snap cgroup), 且 xdg-open 只会
+    把网页塞进已有窗口的标签页 —— 用户眼前零变化 = "没反应"。
+    ⇒ 与 8810 切面页同一套做法: QWebEngineView 应用内开窗, 再点一次只置顶刷新。
+    外挂浏览器仅作最后回退。
+    """
+    url = url or os.environ.get("ZMAX_PORTAL_URL") or "http://127.0.0.1:8788/"
+    try:
+        import urllib.request as _u
+        with _u.urlopen(url, timeout=2.5) as _r:
+            if _r.status != 200:
+                raise IOError("HTTP %s" % _r.status)
+    except Exception as _e:                                                # noqa: BLE001
+        try:
+            parent.statusBar().showMessage(
+                "⚠️ 产品服务总索引不可用 (%s) — 启动: sudo systemctl start zmax-framework" % _e, 12000)
+        except Exception:                                                  # noqa: BLE001
+            pass
+        print("⚠ 8788 总索引不可达: %s" % _e, flush=True)
+        return None
+    try:
+        from PyQt5.QtCore import Qt as _Qt
+        from PyQt5.QtCore import QUrl as _QUrl
+        from PyQt5.QtWebEngineWidgets import QWebEngineView as _QWV
+        from PyQt5.QtWidgets import QDialog as _QD
+        from PyQt5.QtWidgets import QVBoxLayout as _QVB
+
+        _w = _PORTAL_WIN.get("dlg")
+        if _w is not None and _w.isVisible():
+            try:
+                _w.setWindowTitle("🖥 产品服务 · 全服务总索引")
+                _w.view.load(_QUrl(url))
+                _w.raise_()
+                _w.activateWindow()
+            except Exception:                                              # noqa: BLE001
+                pass
+            print("🖥 复用已打开的产品服务窗: %s" % url, flush=True)
+            return url
+        _dlg = _QD(parent)
+        _dlg.setWindowTitle("🖥 产品服务 · 全服务总索引")
+        _dlg.setWindowModality(_Qt.NonModal)
+        _dlg.resize(1420, 900)
+        _lay = _QVB(_dlg)
+        _lay.setContentsMargins(0, 0, 0, 0)
+        _view = _QWV(_dlg)
+        _view.load(_QUrl(url))
+        _lay.addWidget(_view)
+        _dlg.view = _view
+        _PORTAL_WIN["dlg"] = _dlg
+        _dlg.show()
+        try:
+            parent.statusBar().showMessage("🖥 产品服务 · 总索引已打开 (控制台内嵌窗) → %s" % url, 10000)
+        except Exception:                                                  # noqa: BLE001
+            pass
+        print("✅ 产品服务窗已开 (QtWebEngine 内嵌): %s" % url, flush=True)
+        return url
+    except Exception as _e:                                                # noqa: BLE001
+        print("⚠ QtWebEngine 开窗失败 (%s) — 改外挂浏览器" % _e, flush=True)
+    try:
+        import subprocess as _sp
+        _sp.Popen(["xdg-open", url], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL,
+                  start_new_session=True)
+        return url
+    except Exception as _e2:                                               # noqa: BLE001
+        try:
+            parent.statusBar().showMessage("❌ 打开失败: %s (可手输 %s)" % (_e2, url), 12000)
+        except Exception:                                                  # noqa: BLE001
+            pass
+        return None
+
 # 🔇 2026-10-31 老倪:「启动的时候，别刷屏」「你看终端，刷屏那么多无效信息」
 #   实测一次启动 stdout 365 行(📌/📚/⏱ 三行一组重复 3 遍 + 各页面自述), 有用的只有末尾两行。
 #   这里进程一启动就把 stdout 换成静音闸: 启动期所有播报照写 /tmp/zmax_boot.log, 终端不刷;
@@ -3188,7 +3266,7 @@ class HomeWidget(QWidget):
             ("plugging", "🧩", "3D场景",       "虚拟现实",  "对象·标记·轨迹·保护围栏 可编辑\n机器人 + 工件 + 夹具 (真模型)",  ROI_ACCENT),
             ("version",  "🔄", "版本同步",     "LeRobot · 上游管理",  "检查上游更新 · 安全同步\n版本状态 · 冲突检测",  C_ORANGE),
             # 🗂 2026-10-11 老倪: 「将功能页的产品大屏, 完全同步原来的工位总览的服务」—— 与 :8793 工位总览同一份在役状态
-            ("website",  "🖥", "产品服务",     "总索引 · 全部服务",  "所有服务的总索引: 缩略图 + 介绍 + 健康灯\n点卡片直达 (simulink画布/ar3d/卡拉比丘/大屏…)\n本机 http://192.168.23.50:8788/ · 可复制链接", "#1f6feb"),
+            ("website",  "🖥", "产品服务",     "总索引 · 全部服务",  "所有服务的总索引: 缩略图 + 介绍 + 健康灯\n点卡片直达 (simulink画布/ar3d/卡拉比丘/大屏…)\n本机 http://127.0.0.1:8788/ · 控制台内嵌窗打开", "#1f6feb"),
         ]
         # 2026-08-08 老倪: 每层分组框 (外边框 + 标题 + 3 卡), 分层结构明显
         _GROUP_TITLES = ["系统", "架构", "数据", "场景"]
@@ -13938,6 +14016,10 @@ class StudioMainWindow(QMainWindow):
                         _oneshot(self, 300, self._run_ss_cmd)
                     # 🧪 2026-11-24: 命令通道按名字触发节点双击 (取证/免找像素)
                     #   用法: echo "ss_node 十维流形引擎" > /tmp/zmax_nav_cmd
+                    # 🖥 2026-11-25: 命令通道打开「产品服务」总索引 (内嵌窗) —— 自测/免找像素
+                    #   用法: echo portal > /tmp/zmax_nav_cmd
+                    elif line == "portal":
+                        _oneshot(self, 300, lambda: _open_portal_in_app(self))
                     elif line.startswith("ss_node "):
                         _kw = line[len("ss_node "):].strip()
 
@@ -15251,7 +15333,10 @@ class StudioMainWindow(QMainWindow):
             # 🔴 2026-11-08 老倪「点击产品大屏后程序崩溃」: PyQt5 里**槽函数抛异常 = qFatal 直接杀进程**
             #   (不是弹框、不是忽略)。所以这个点击分支必须自己兜住所有异常 + 落盘, 绝不能往外冒。
             try:
-                _open_product_dashboard(self)
+                # 2026-11-25: 先内嵌开窗 (外挂浏览器在本机是 snap chromium ⇒ 点了没反应);
+                # 内嵌失败才走原来的候选链外挂打开。
+                if _open_portal_in_app(self) is None:
+                    _open_product_dashboard(self)
             except Exception as _e:                                        # noqa: BLE001
                 try:
                     import traceback as _tb
