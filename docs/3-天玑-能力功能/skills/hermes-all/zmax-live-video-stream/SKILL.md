@@ -1,6 +1,6 @@
 ---
 name: zmax-live-video-stream
-description: Use when 要看/录真机双相机实时流或压缩提实时性.
+description: Use when 要看/录真机视频流、改工位总览页(8793/8791)排版或删格子/删按钮、压缩提实时性.
 version: 1.0.0
 author: hermes-agent
 license: proprietary
@@ -71,6 +71,73 @@ metadata:
 取证别只信 `fuser`: 先 `v4l2-ctl -d /dev/video0 --info` 认卡名(`Integrated RGB Camera` = 笔记本内置),
 再看 `/proc/<pid>/fd` 里它开的是哪个 video 节点 —— 带 `--local-dev N` 的进程直接给出答案。
 **代价要说清**: `off` 之后工位页「笔记本」那格没画面, 页面点 `[内置]/[USB]` 可随时开回(落盘即生效)。
+
+## 🚫 用户说「这个功能删掉」时: UI + 后端 `--no-local` 双收口 (2026-11-24)
+
+老倪: 「本机相机 内置这个功能，删掉，不要与我本机的摄像头冲突，我要用微信视频」。
+只切 `kind:off` 不够 —— 那是「落盘意图」，不是「进程不碰设备」。
+
+**先分清两个页面, 源码不在一处**:
+- `8793 /station`(工位总览, 用户天天看的) = **`tools/web/station.html`** —— 外部文件, **mtime 热读**, 改完刷新即生效。
+- `8791 /`(旁路调试实时视频流) = **`cam_live_stream.py` 内联 HTML**(约 4590/5300 行) —— 改完**必须 restart unit**。
+- 只 grep `.py` 找不到 station 页的 `📷 本机相机 (内置 / USB)` / `id="lsrc"` / `data-kind` —— 别以为页面丢了。
+
+**off 档点了不生效的真因(实测)**: 服务半死 —— local 线程刷 `读帧失败 x44821`、日志停写 5 分钟、
+`/proc/<pid>/fd` 仍持 `/dev/video0`(带 `m` = mmap)。此时 `POST /cam/src` 返回 `ok:true gen:1`, 但线程没照办。
+⇒ **别拿接口的 ok 当设备已释放**; 判据永远是 `fuser -v /dev/video0` + `/proc/<pid>/fd`。
+
+**彻底不冲突 = unit drop-in 追加 `--no-local`**(进程根本不 open 相机, 与 `cam_local_src.json` 写什么都无关, 双保险):
+```bash
+# /etc/systemd/system/zmax-cam-live-stream.service.d/zzz-local-src-auto.conf 的 ExecStart 首参加 --no-local
+sudo systemctl daemon-reload && sudo systemctl restart zmax-cam-live-stream
+```
+删 UI: `station.html` 里那格 panel(ttl/m_local/i_local/lsrc 按钮整块) + `_lsrcPaint` 与 `[内置|USB]` 的
+`POST /cam/src` 绑定(**保留 `function _lsrcPaint(kind){}` 空壳** —— 状态回读处 `if(j.cam_src)` 还在调它);
+`cam_live_stream.py` 里删 `💻 本机相机①` 卡片与 `id="c_local"` 按钮。
+
+**终验(缺一不算好)**: `systemctl is-active` active · `fuser /dev/video0` 只剩会议软件 ·
+`ls /proc/<pid>/fd | grep -c video` = **0** · 页面 `#lsrc`/`#i_local` 都 false 且 console 零错误 ·
+8791/8793/8798 仍 200。回滚 = 去掉 `--no-local` + 恢复 `station.html.bak_*`。
+代价: 工位页少一格、`8791/local.mjpg` 挂住无帧、VL 安全层失去「笔记本全局视角」这一路输入 —— 要一并说明。
+
+## 🧱 工位页改「几行几列 / 哪格放哪」: CSS `order` 重排 + 用 rect 验视觉顺序
+
+老倪常直接点位置: 「第一行手臂+中央, 第二行金手指+侧面, 第三行 3DGS+深度」「这格挪到第三行」。
+都改 `tools/web/station.html`(mtime 热读, 刷新即生效, 不用 restart)。
+
+- **列数**: `.grid{grid-template-columns:repeat(3,...)}`(文件头 CSS)。另有 media query 在窄屏覆盖成 `repeat(2)` —— 两处都看一眼。
+- **重排只加 inline `style="order:N"`, 不动 DOM**: 给 `.grid` 下每个 panel 写 order。
+  🔴 **每个 panel 都必须显式给 order** —— 没写的默认 `order:0`, 会**全部挤到最前面**, 把已经排好的打乱。
+- 🔴 **a11y / snapshot 树按 DOM 顺序输出, 不是视觉顺序** —— 用 CSS order 重排后 `browser_snapshot` 看着**一点没变**,
+  容易误判成"没生效"。必须以实测坐标为准:
+  ```js
+  [...document.querySelector('.grid').children].filter(e=>e.classList.contains('panel'))
+    .map(p=>{const r=p.getBoundingClientRect();return {t:p.querySelector('.ttl')?.textContent.slice(0,20),o:getComputedStyle(p).order,top:Math.round(r.top),left:Math.round(r.left)}})
+    .sort((a,b)=>a.top-b.top||a.left-b.left)
+  ```
+  同时读 `getComputedStyle(grid).gridTemplateColumns` 确认列数(`"615.5px 615.5px"` = 两列)。
+- **有些格子被 CSS 钉死全宽**: `#p_slots` / `#p_spaces` 带 `grid-column:1 / -1`(7 个按钮要横排均匀分布) ——
+  无论改几列它们都独占整行, 别以为排版没生效。反之 3DGS 那格的 `grid-column:1/-1` 是 **inline style**,
+  要它与别人并排就把 inline 换成 `style="order:N"`。
+- **`.grid` 里混着的裸 `<a>`/`<button>` 会吃掉一个格子**: 先把它们挪进某个 panel 的 `.cap` 再排, 否则永远差一格。
+- **删 panel 里的按钮时, 连带改指向它们的文案**(如占位行「点「▶ 开始建图」」), 否则提示指向不存在的东西;
+  被删按钮的 JS 函数**保留**(或留空壳) —— 状态回读/其他回调可能还在调。
+- ⚠️ `patch` 的模糊匹配: `<div class="panel"><div class="cap">…` 会同时命中带 `id=` 的 panel(号位/空间) ⇒
+  **拿 id 或 ttl 全串当锚点**, 别用通用前缀。
+- 验收: rect 顺序对 · `gridTemplateColumns` 列数对 · 删掉的按钮 `querySelectorAll` 计数 0 · console 零错误 ·
+  截图目检有没有变形/大片留白。⚠️ 某格白板/全黑先查源(如 AOI 10082/10083 服务没起), **别当成是自己排版排坏的**。
+
+### 用户当场报「微信/会议软件打不开摄像头」的应答顺序(只读, 30 秒)
+```bash
+sudo fuser -v /dev/video*        # 谁占着; 占位标志里带 m 的(F...m)是 mmap 正在读流, 比单纯 open 更硬
+v4l2-ctl -d /dev/videoN --stream-mmap --stream-count=1 --stream-to=/dev/null; echo exit=$?
+                                 # exit=0 可采; exit=124 超时 = 元数据节点/无能采集节点
+v4l2-ctl -d /dev/videoN --list-formats-ext   # 见到 MJPG/YUYV 才配叫"可采集"
+```
+- 🔴 **别顺手把"另一个空闲节点"许给用户**: 同一台笔记本的 video2 常是 **GREY/IR 路**, 能出帧(exit=0)但整幅近黑,
+  让他切过去等于把"打不开"换成"一片黑", 会被当成没修好。**先 `--list-formats-ext` 再开口**; 只有 MJPG/YUYV 才能推荐。
+- 🔴 **别用 kill 当解法**: 守卫每几分钟把停掉的实例拉回来, 用户用一阵又被抢 ⇒ 正解是 `kind: "off"`(见上), kill 只是临时腾位并要说明会被拉回。
+- 汇报口径: 先说**谁占着**(进程名+参数, 一眼看出是推流服务而不是"微信坏了"), 再给两个选择, 代价一并写清。
 
 ## 🌈 深度格(及任何"容器里生产、宿主读文件"的路)冻结 —— 看着像"没反映", 其实是生产者死了
 

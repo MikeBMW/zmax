@@ -221,7 +221,7 @@ metadata:
 | **采完等“出模型”却什么都没有** | `images/` 在涨、`frames_total` 也涨, 但会话目录没有 `cameras.json`、没有新模型; 帧数差几帧才到 `GS_MIN_FRAMES`(实测 151/160) | 收尾门不够就**不 finalize**(不写 `cameras.json`/不打包/不送训), 而且**位姿只在守护进程内存里** ⇒ 查“图张数 vs 门值”, 让操作员再动 3~5 秒凑新视角, **不要重启守护**(那把已采帧的位姿就没了); 要可救回就把 `frames.jsonl` 改成一帧一追加。详见 `references/autocap-daemon.md` |
 | **无人值守自训跑了一整夜, 一版资产都没有** | 守护 active、`state.json` 在刷新、`train_*.log` 一天十几个, 看着"一直在训"; 实际每次都在同一步崩, 成功标志数 = **0** | 三查定案, 别信"进程在跑": ①`grep -l '训练完成\|gs.ply' <资产目录下的 train 日志> \| wc -l` = 0 ⇒ **一版都没成过** ②`grep -c DATASET_FAILED state.json` ⇒ 指纹里堆着失败记录 ③两份日志的报错是否**逐字相同**(同错重复 11 小时 = 没人看)。修完故障必须**清掉 `state.json` 里对应的 `*_FAILED` 指纹**(备份后改), 否则同一指纹永不重试, 你会以为"修好了但没触发"。另: 有多个 `gs_auto_train.py` 实例时按**显式 pid** 清到一个, 否则几份日志互相覆盖、时间线读不出来 |
 | 建库步崩 `ModuleNotFoundError: cv2`(XPU venv 里只装了 torch/gsplat) | 想把系统 `cv2*.so` 软链进 venv 救一下 ⇒ `ImportError: numpy.core.multiarray failed to import`(系统 cv2 是 numpy1.x 编的, venv 是 numpy 2.x) | **按 CPU/GPU 分工**: 建库(去畸变+选帧)只需要 cv2/numpy ⇒ 用**系统 `python3`** 跑 `gs_dataset.py`; 训练才用 XPU venv。编排器里给两个解释器各一个变量(`SYS_PY` / `PY`), 不要为了一个 import 去动 venv 的 numpy 版本 |
-| gsplat **SYCL 后端**在空 tile 交集时崩 | `IndexError: shape mismatch: indexing tensors could not be broadcast together with shapes [0], [0, 2]`, 崩在第一步 render; CUDA 后端同样情形不报错 ⇒ 容易被误判成"数据/位姿坏了" | 真因是 nnz=0 时后端退化, **不是**几何错(先核实: 300 台相机里 248 台能看见初值点云、深度中位 0.5, 再下结论)。定式 = 该视角**重抽**, 连续 20 次都空才抛"零交集"错(不掩盖真坏数据); 判据 = `--smoke 200` 能跑完并落 `gs.ply/gs.splat`。
+| gsplat **SYCL 后端**在空 tile 交集时崩 | `IndexError: shape mismatch: indexing tensors could not be broadcast together with shapes [0], [0, 2]`, 崩在第一步 render; CUDA 后端同样情形不报错 ⇒ 容易被误判成"数据/位姿坏了" | `nnz=0` 是现象不是结论: **先按下面的顺序排几何**(①cameras 内参口径 vs 图片真实像素 ②当前相机中心 vs 训练覆盖范围), 两条都核过才归因于后端空交集退化。退化那条的处置 = 该视角**重抽**, 连续 20 次都空才抛"零交集"错(不掩盖真坏数据); 判据 = `--smoke 200` 能跑完并落 `gs.ply/gs.splat`。
 🔴 **训练循环有保护 ≠ 全链有保护(实测 2026-10-24)**: `gs_train.py` 的 step 循环里有 `except IndexError: 换视角重抽`, 但 `evaluate()` 里那个 `render(c)` **漏了** ⇒ 训练照跑到 400 步、第一次 eval 必崩。traceback 指向 `evaluate()` 而不是训练循环, 很容易看错位置。症状 = 守护 active、`state.json` 在刷、日志一天十几个, 但 `grep -l '训练完成\|gs.ply' gs_assets/train_*.log | wc -l` 卡在一个数不再涨。修法 = `evaluate()` 的两个循环(留出 `te` + 训练诊断 `tr`)各加 `try/except IndexError: continue`, 并且**遍历全集、凑够样本数就 break**(`for c in te: if len(ps) >= _want: break`), 这样坏视角跳过后还能补上, 不是直接少一个样本; 全跳光才打"留出不可用", 别记成 0dB。 | 以为「Arc 上 torch 可用」就等于「能训 3DGS」，去下 860MB torch 轮再发现训不了 | **两件事要分开判**: ①intel 上 torch-xpu + ultralytics 确实可用(实测 2.7.1+xpu: `xpu.is_available()=True`、`get_device_name(0)=Intel(R) Arc(TM) B390 GPU`、矩阵乘真算过、ultralytics 也认这个 device) ②但 **pypi 的 `gsplat` 包不是 SYCL 路线**: `gsplat/cuda/_backend.py` 的门就是 `cuda_toolkit_available()`(只查 nvcc/CUDA_HOME), 装了 `intel-sycl-rt` 让 `No CUDA toolkit found` 警告消失之后 `_C` 仍是 None、`rasterization` 照报 `'NoneType' ... CameraModelType` ⇒ **别在 pypi 轮上反复试**, 要 SYCL 只能用下面的轮 ③但 **官方有 SYCL 路线, 不是只能 CUDA**: `isl-org/gsplat` 分支 `sycl_code_integration` + `docs/Intel_XPU.md`, 预编译轮在 `https://isl-org.github.io/gsplat/whl/gsplat`(索引实测为 `gsplat-1.5.3+pt210xpu-cp310..cp314-linux/win`)。**轮名里的 `pt210xpu` 必须与 torch 对齐 ⇒ 装 `torch==2.10.0+xpu`**, 装 2.13/2.14 会 ABI 不匹配(白下 800MB+); 两者是绑定关系, 不是"装新不装旧"。编译器: Ubuntu 的 oneAPI apt 源已配好时直接 `sudo apt-get install intel-oneapi-compiler-dpcpp-cpp`, 装完核 `/opt/intel/oneapi/compiler/latest/bin/icpx` 存在(只有 `intel-oneapi-runtime-*` 不算装好)。远端密码 sudo 用 `echo <pw> | sudo -S <cmd>`, 不要加 `-p ''`(会报 sudo 用法错)。⚠️ 栅格化已验证、**完整训练循环也已跑通**(见 `references/autocap-daemon.md`) ⇒ 别报"intel 能端到端训 3DGS 了"就往线上推。
 🔴 **步速是变量, 必须现量, 不许照抄历史数**: 同一套代码实测出现过 **2.5s/步**(338 帧, 独占) 与 **0.66s/步**(300 帧/640x480/10 万高斯, 且同时在跑 YOLO XPU 训练) 两个值 —— 受帧数/分辨率/高斯数/并发影响。
 定式 = 先跑 `--smoke 200` 量实际步速, 再按 `steps × 步速` 折算 ETA 报给用户(顺带说明是否与在役训练抢 XPU)。**2026-10-23 实测补充(装完 icpx + torch2.10 之后)**: ① 装轮**别用 `--index-url https://isl-org.github.io/gsplat/whl/gsplat`** —— 那个站点是 HTML 列表不是 PEP503 索引, pip 报 `from versions: none`；要么 `--find-links`, 要么直接装发布 URL `https://github.com/isl-org/gsplat/releases/download/v1.5.3-xpu1/gsplat-1.5.3%2Bpt210xpu-cp312-cp312-linux_x86_64.whl` ② 装成后 `import gsplat` 会打印 `gsplat: Using SYCL XPU backend.`、`from gsplat import rasterization` OK ⇒ **能 import 不等于能开训** ③ 首次 `rasterization(...)` 调用实测 **>180s 没返回** —— 那是 SYCL 首次编译,**不是卡死**: 同一条命令再跑 **4s 就出结果**(实测 `渲染输出 (1,480,320,3) dtype torch.float32 device xpu:0`、非零像素 100%) ⇒ 首次一律给 ≥10 分钟预算, 别据此判"intel 训不了"; 但要分清"栅格化跑通"与"训练循环跑通"(前者已验证) ④ 调用签名先对���: `opacities` 要 `(N,)` 不是 `(N,1)`(报 `assert opacities.shape == batch_dims + (N,)`)**建图(非 3DGS)在 intel 上是现成的**: `zmax-map-intel.service`(8801, 已知位姿深度点云 `/map/status|points.bin|topdown.png`) + `zmax-mobile-map.service`(单片 SfM), 纯 CPU、不占 4060；建库/质检也已在 intel CPU 跑通(300 帧/174 视点/5 项 PASS) |
@@ -578,6 +578,33 @@ metadata:
   (`step=walk` + 建议视点行, 页面轮询这个文件)。**起后台跑时把 stdout 重定向到 run.log**,
   否则页面日志区看不到新行(状态仍会走 status.json)。
 
+### 🙋 用户说「重新采」「你自己能动么」—— 先给三条路, 别直接下发动作
+
+补采数据这类活, 用户问的往往是**能力**; 回答要有明确的能力边界, 不要空承诺也不要含糊。
+
+1. **先读机器人状态定能力**, 不靠印象: `~/zmax_data/rokae_sdk/tcp_out/state.json` 的 `power`/`mode`(实测常见 `power:on + mode:manual`)
+   —— `manual` 下发不了运动, 要程序化动臂必须先切 automatic 且过授权闸(授权只从 8793 点)。
+2. **采集器是被动的**: `tools/gs_capture.py` 只做「拉 JPEG + 记位姿 + 配成对」, 一行运动指令都没有
+   (`tools/gs_autocap_daemon.py` 同理, 铁律是"不下发任何机械臂指令") ⇒ "有采集脚本" ≠ "能自己扫场"。
+3. **三条路, 按代价排序报给用户**:
+   | 路 | 前提 | 代价 |
+   |---|---|---|
+   | 人拖/示教模式, 我采 | 无(manual 本来就是拖拽模式, 零授权零下发) | 用户手上花 30~60 秒 |
+   | 助手规划轨迹 + 自己下发 | 切 automatic + 8793 授权 + 点位表先给用户过目 + 现场无未决报警 | 新点位属"老倪先做"范畴, 且要过碰撞自检 |
+   | 固定机(D435)采 | 免动臂 | 单视角, 覆盖不足 |
+   推荐手拖那条: 零风险、最快, 而且**采到的位姿就是从真手臂读的**, 不用重标。
+4. **拖之前先给动作口径**(否则采回来还是废数据): 慢(<80mm/s) · 料盘/工件占画面 ≥1/3 · **别贴脸**(D405 最近 ~7cm) ·
+   绕同一件工件走一圈(别大范围直线) · 累计转角 ≥180°。
+5. **跨机训练的交接序列**(采集在工位机、训练在边缘机时, 实测可用):
+   `gs_capture.py --out <会话> --hz 8 --secs 0` → 放 `STOP` 或按显式 pid 停 →
+   `tools/gs_dataset.py --session <会话> --out <ds> --max-frames 300`(**用系统 python3**, 它要 cv2) →
+   `rsync -a <ds>/ <边缘机>:<gs_rt>/ds_<名>/` → 边缘机 `run_gs_train_intel.sh --data … --out … --steps … --init-points …`。
+   ⚠️ 这与上面 §5b「训练出口必须落在采集机自己身上」**不冲突**: 那条管的是**自动采集守护的自动提交**(POST 到别的机),
+   手动补采走 rsync 把数据集搬过去再训是正常的。
+6. **产出换算口径(报给用户, 别拿原始帧数充数)**: 8Hz 采 + 人慢慢拖一圈, 实测 **596 原始帧 → 唯一视角只有 141**(按位姿去重),
+   位姿跨度 x121/y160/z119mm, 手眼残差 0.322mm; 141 张图 ≈ 14MB。**视差基线 160mm 偏小**(要细节理想 ≥300mm),
+   这个数要在开训前就告诉用户, 并给一句"不够就下一圈绕大半径横移"的补救路径, 而不是训完再解释为什么还是不够清楚。
+
 ## 在线渲染推流: Intel 渲 → 4060 只显示 · 视角跟随手臂相机 (2026-10-25 落地)
 
 老倪两条原话即架构铁律: 「把建好的图送到这里, 本来就有实景查看器」+「**4060 只是显示, 而 intel 要渲染好, 推流过来**」
@@ -611,9 +638,40 @@ Intel XPU  tools/gs_render_stream_intel.py --ply --cameras --report --handeye --
   死了 5s 重起, 带可用内存闸), 包成 systemd 单元 + `enable --now`, 端口 8816。验收 = 单元 `active` + 日志出现
   `载入 N 个高斯 · dev=xpu` + 从 8793 侧回读 `/gs/live/health` 的 `gaussians/fps/age_s`。
 
+- 🔴 **切资产走三道闸, 不要先动生产端口**: ①候选 ply 先起在**旁路端口**(如 `--port 8821`)
+  ②轮它 `/health` 与 `/frame.jpg`: `ok:true` + 帧字节数 >10KB 且非黑 ③才停掉 8816 上的旧进程换上新的。
+  直接拿生产端口试新资产 = 试失败就当场把画面弄成空白(用户马上看到 3DGS 那格没了), 而且旧进程一停, 恢复得重新拉一遍。
+  旁路验证只需三十秒, 省的是现场空白期。
+- 🔴 **旁路一旦报 `IndexError: shape mismatch: shapes [0], [0, 2]`, 先 `grep` 本表与 `references/` 再动手(这个签名本技能已有定式, 不知道也会白烧一个半小时), 并先分清是“后端退化”还是“高斯全在视野外”—— 两者报同一个错**:
+  报错点固定在 `gsplat/rendering.py` 的 `opacities.view(B, N)[batch_ids, gaussian_ids]`, 真因是 **nnz=0**(一个高斯都没投影到画面里)。
+  拿完整 traceback 才能分(渲染服务的 `except` 只把 `str(e)` 存进 health 的 `err`, 会丢栈): 在 `STATE["err"] = ...` 那行前插
+  `traceback.print_exc()` 再跑, 就能看到是哪一行。
+  ⚠️ **排除“后端退化”不必靠猜, 三条交叉实验 15 分钟就能定**: A=老ply+老cameras(基线应能渲) · B=新ply+新cameras ·
+  C=新ply+老cameras · D=老ply+新cameras。**C 挂 D 通 ⇒ 是 ply/位姿问题, 不是 cameras 解析**; A 通 B/C 挂 ⇒ 别去查归一化/SH/宽度。
+  实测真因(**这条比“后端退化”更常见, 先查它**): `cameras.json` 的内参是 **640×480 口径**(fx=387.9 cx=319.4) 而实际图是 **848×480**
+  ⇒ 训练时用错内参投影 848 的图, 高斯为了拟合被优化到**错误位置**; 用正确 K 渲染时它们全在视野外 ⇒ nnz=0 ⇒ 这个 IndexError。
+  同一根因也解释“训练完还是糊”。修法 = 按 `sx=W_img/W_cal` 重算 K(实测 387.93→**514.00**、319.35→**423.14**, 与能跑那份的 513.21/422.49 交叉验证一致),
+  **并重训**(旧 ply 是用错内参训出来的, 换了 K 也渲不出来)。判据: 500 步/50k 快速验证能出 `ok:true` + 非 18 字节帧, 再开长训。
+  📎 完整诊断脚本见 `references/ply-indexerror-bisect.md`。
+- 🔴 **但别只把它当"后端退化"就收工, 也别先重算归一化/SH/分辨率 —— 按这个顺序量两件事**:
+  归一化不一致 / SH 阶数 / 渲染宽度这三条实测**都与它无关**(两个 ply 同构 38 属性 · 24 个 f_rest · `cameras.json` 归一化重算后照样报 · width 848 无效), 沿着它们查会白烧一个半小时。
+  真正要先量的: ①**内参口径 vs 图片真实像素**(见上一条) ②**当前相机中心是否落在训练覆盖范围内**(见下一条)。
+  ⚠️ **别自己发明归一化参数救场**: 若 `train_report.json` 的 `normalize` 已是恒等(`center=[0,0,0] S=1.0`), 说明 `cameras.json` 的 `T` 本来就在 ply 的空间里 ⇒ 再给实时位姿加一套 `--live-norm-center/--live-norm-s` 就是**双重归一化**, 实测直接把这个视角打到视野外并同样报这个 IndexError。判据: 先读 `normalize`, 是恒等就**一个参数都别加**。
+- 🔴 **实时推流"满屏尖刺"= 相机中心在训练覆盖区之外, 不是渲染 bug、也不是模型坏**: 判据 = 用 TCP 真值 + 手眼算 `Tcw = inv(T_base2tcp @ T_cam2tool)` 的 `[:3,3]`, 与 `cameras.json` 全部 `T_cam2world[:3,3]` 的 min/max **逐轴**比。
+  实测 `y=-0.792` 而训练范围 `y -0.401~0.551`(超 391mm, x/z 都在内) ⇒ 该视角零高斯, 渲出来就是放射状尖刺, 而同一模型在 holdout 视角上 31dB 很清晰。
+  处置: 要真跟随就把臂沿越界那一轴移回覆盖区(实测 ~400mm, 需授权); **臂不能动时用 `--path-mode cam`** —— 按 `cameras.json` 原序回放采集位姿(全是训练过的视角, 必然清晰), 以 `/health` 的 `src=cam` / `arm` 区分当前是哪一种。
+  ⚠️ **别用"截取 ply 前 N 个高斯"去二分找阈值**: 实测完整 640,999 个能渲(fps 1.7), 而截到前 5 万/10 万/20 万**全挂** —— 前缀里多是飞点/背景, 截断等于把场景删了 ⇒ 由此得出的"高斯数阈值"是假的。
+- 🔴 **`pkill -f <渲染器>` 杀不干净 `setsid`/`nohup` 起的孤儿, 而新进程 bind 失败是静默的**:
+  症状 = 你明明用新 ply 起了一遍, `/health` 一直报旧的高斯数。真因 = 孤儿还占着端口, 新进程
+  `OSError: [Errno 98] Address already in use` 退掉, 而你访问的是**旧进程**。
+  判据只看端口主人: `sudo ss -ltnp | grep :8816` 取 pid → `tr '\0' ' ' < /proc/<pid>/cmdline` 读它的 `--ply`
+  —— 与实际在役文件不符就是没换成功。杀也用这个 pid 杀(`kill -9 <pid>`), 不要靠模式匹配。
 - 🔴 **挑资产按 PSNR, 不按 mtime**: 实时建图每轮 400~600 步出的图(12~13.6dB)永远比跑满 3000 步的那版(15dB+)糊,
   壳若"取最新一轮"就把最糊的推上墙。定式 = 扫所有完整候选(`out_*/` 与训练队列 `jobs/*/out/`, 都要有
   `gs.ply`+`train_report.json`+同名 `cameras.json`), 按 `psnr_holdout_db` 取最高。
+- 🔴 **「新模型训练完了」≠「在役已经换了」—— 先读渲染进程 argv 里的 `--ply`, 确认在役到底是哪一版**: 训练产物落在 `out_<ts>/gs.ply`, 而在役渲染是**启动时用 `--ply` 定死**的常驻进程, 训完不会自己换(只有 `gs_render_loop.sh` 那类轮换壳会按 PSNR 重挑)。
+  判据一条命令, 不靠猜: `ps aux | grep -o '\-\-ply [^ ]*' | sort -u` —— 实测新资产 21:48 就出完了(留出 20.88dB), 而渲染进程 argv 仍指几小时前 100k 的旧目录 ⇒ 用户说的「还是很模糊」根本不是新模型的结果, 拿新 PSNR 去解释等于答非所问。
+  回答「换新模型了没」必须给三件: **在役 ply 的路径与 mtime · 最新训练 out 的 PSNR/步数/高斯数 · 两者是不是同一份**; 不是同一份就明说「训完了但没切」并给切/不切的判据。
 - 🔴 **用户说「3DGS 质量太差 / 刷新了还是不好」先核页面当前加载的是哪一版**, 别马上调训练: 资产列表的 "latest" 是
   按 `gs.splat` **mtime** 排的 ⇒ 一轮 400 步的实时重建(实测 12.82dB/3.1MB)会盖过跑满 24000 步的成品(17.22dB/13.6MB),
   页面进来就吃最糊的那份。三步定位: ①`/gs/list` 的 latest 是哪一版 ②它的步数/高斯数/留出 PSNR ③在役最好的那版是多少。
@@ -623,8 +681,10 @@ Intel XPU  tools/gs_render_stream_intel.py --ply --cameras --report --handeye --
   用户刚看完好图再刷一次就变糊(现场原话“怎么模糊了, 没训练成功么”)。要么发布前过一道
   “优于现役 PSNR 才换”的门(参考 `tools/gs_retrain_swap.py` 的 `--baseline`), 要么把实时轮次发到
   `rt_<psnr>` 这类**不抢 latest** 的名字下、由壳按质量挑。
-- 🔴 **但候选必须限同一天/同一场景**: 老 job 是**别的场景/别的标定**, PSNR 再高(实测 10-30 那个 job 排第一)
-  渲出来也是另一个工位 ⇒ 加 `date.fromtimestamp(mtime) == date.today()` 这条过滤, 再取 PSNR 最高。
+- 🔴 **但候选必须限同一场景、且时间窗要跨零点**: 老 job 是**别的场景/别的标定**, PSNR 再高(实测 10-30 那个 job 排第一)
+  渲出来也是另一个工位 ⇒ 必须过滤。但过滤写成 `date.fromtimestamp(mtime) == date.today()` 会在**过了零点之后
+  把昨晚刚训好的资产全部滤掉** ⇒ 候选集空或回落到更老那份, 现场看就是"改了没生效 / 重启了还是旧的"。
+  定式 = **最近 48 小时**窗口(`(now - mtime) > 172800` 才跳过), 既跨零点又不捞进别的场景。
   判据: 日志里打"选中 <job> PSNR留出 x.xx dB", 与 `/gs/list` 报的那一版对得上。
 - 🔴 **模糊别先怪分辨率**: 实测 640×480 提到 960×720 后清晰度(拉普拉斯方差)只从 **1.5 → 1.9**,
   而换更高质量资产(400步12.45dB → 3000步15.5dB)立刻变成 **4.4** ⇒ **糊的主因是模型/覆盖, 不是渲染尺寸**。
@@ -707,13 +767,15 @@ A 35.7 · 黑 66.2%    B 92.7 · 黑 13.0%    C 99.4 · 黑 7.8%     (A 的相�
 | `pgrep -f gs_render_stream_intel.py` 判活/杀进程 | 计数恒为 1, 或 kill 之后自己的 ssh 会话直接断 | 命令串里也含这个模式 ⇒ **匹配到自己**; 用 pidfile(`echo $$ > /tmp/gsstream.pid` 后 `exec python …`)或按端口 `ss -ltnp` 取 pid |
 | **`pgrep -f <脚本名>` 判"有没有在跑"时命中常驻服务进程** | 守护反复打"有其它训练在跑, 等它结束"、待训帧数一直涨, 而队列 `/health` 明明 `busy:false` | 子是串匹配: `gs_train.py` 会命中 `gs_train_service_intel.py` ⇒ 恒 true。改 `pgrep -af 'gs_train\.py' \| grep -v gs_train_service`; 任何 `pgrep -f` 判活都先列出命中的完整命令行(`pgrep -af`)再下结论。**第三种形态 = 自己的 ssh/bash 命令行本身含该模式**: `ssh host "…pgrep -af 'gs_train.py' \| grep -c <out名>…"` 里两个串都在自己命令行上 ⇒ 永远判"还在跑"(实测守望白等 4 小时直到超时, 训练早已完成)。模式串用 `[.]` 断自身匹配(如 `gs_train[.]py`)+ `grep -v pgrep`。⚠️ **但 `[.]` 只在"命令行里就只出现模式串"时有效** —— 同一条 ssh 命令里若还写着**原文件名**(如 `nohup python … rs_sdk_hd.py`), bash 包装进程照样命中 ⇒ `pkill -f` 把自己那条 ssh 一起杀掉(exit 255、会话直接断)。杀这类进程一律**按端口取 pid**: `ss -ltnp \| grep ':<port>' \| grep -o 'pid=[0-9]*' \| cut -d= -f2`, 再 `kill -9` |
 | 重启时旧实例还占 :8816 | 新进程 `OSError: [Errno 98] Address already in use`, 而 `/health` 仍回旧数据(甚至旧的 `src/err`) | 先按端口取 pid 杀掉再起; 否则会以为"改了没生效", 实际看的是旧实例 |
-| 训练与推流同时在 XPU 上 | 只是 fps 掉、步速 0.42→0.47s/步 | 轻载可接受; 但**加分辨率/加帧率就是另一回事**(见下一条) |
+| 训练与推流同时在 XPU 上 | 小高斯数(10 万)时只是 fps 掉、步速 0.42→0.47s/步 | 那一档可接受; 但**加分辨率/加帧率就是另一回事**(见下一条) |
+| 🔴 **训练占着 XPU 时去切大资产 ⇒ 渲染进程卡在初始化, 不是慢** | `/frame.jpg` 长期回 18 字节 `still initializing`、进程 31 线程全卡在 `poll_schedule_timeout`、`pcpu` 近 0; 日志停在"载入 N 个高斯"之前 | 高斯数上到 20 万量级时, 渲染与训练抢同一块 XPU 会**卡在设备上传那一步**(不是掉帧、不是等相机)。判据: `ps -o etime,pcpu,stat` + `cat /proc/<pid>/stack` 看是不是 poll。
+**没有 CPU 兜底**: 给渲染器加设备开关后走 cpu 实测直接报 `RuntimeError: means must be a XPU tensor` —— 这套 gsplat 的核是 SYCL 编的, 换设备不成立 ⇒ **要切资产就得先把 XPU 腾出来**(停训练/等它跑完), 不要指望降级到 CPU。 |
 | 🔴 **推流拉高分辨率 + 训练同跑 ⇒ 把工位机压死** | `Mem:` 总 30G **全用满**、load 从 28 冲到 **50**、**sshd 都 banner timeout**(ping 通但 22/8806/8811/8814/8816 全不应答)、页面那格跟着黑 | 实测把推流从 640×480 提到 960×720@8fps + 实时建图在训 ⇒ 整机 thrash。定式: 渲染前先看 `MemAvailable`, 低于阈值(实测取 6G)**先不渲**; 降载顺序 = 降分辨率 → 降 fps → 停推流退回浏览器端查看器。ssh 抛 banner timeout 时要**重试循环**(`for i in …; do ssh … && break; sleep 15; done`), 别当成机器挂了 —— OOM 释放后会自己回来 |
 | 跨机 `scp` 大 ply | 读回报 `buffer size must be a multiple of element size` | 文件被**截断**(实测 37,340,160B vs 实际 42.6MB) ⇒ 核对字节数后重传, 不要怀疑 ply 解析器 |
 | 改了渲染器代码但页面没变 | — | 渲染器是 **systemd/pidfile 常驻**, 必须重启; 页面/JS 是热读, 只需刷新 |
 | **改了壳脚本里的默认分辨率/fps, 重启后 `/health` 还是旧值** | 脚本里写着 `${GSRENDER_WIDTH:-960}`, 实际进程 argv 仍是 `--width 640 --fps 3` | 这些值不是从脚本默认来的: `tr '\0' '\n' < /proc/<pid>/environ \| grep -i gsrender` 一读就见 `GSRENDER_*` 来自 systemd **drop-in**(`/etc/systemd/system/<unit>.d/*.conf`, 覆盖 unit 与脚本默认)。改 drop-in → `daemon-reload` → restart; 判据认 `/health` 的 `w/h/fps` **和** `ps -o args=` 的真实 argv, 不认脚本里的默认值。⚠️ 同时确认**只有一个壳**: 旧壳还占着端口时新壳静默启动失败, 现场就是"改了没生效" |
 | `timeout N ssh host '… ; sleep N ; tail …'` | 拿不到任何输出(命令 exit 0 但空), 像"远端没反应" | `timeout` 把**自己的 ssh 会话**在 sleep 结束前砍了 ⇒ 启动与取值拆两次调用: 一次 detached 起(`setsid nohup … &`, 立刻返回), 另一次再读 health/日志 |
-| 远端命令里嵌 `python3 -c "…$VAR…"` / 多层引号 | 远端收到的是被本地 shell 展开过的碎片(`No such file or directory`、变量全空), 看着像远端环境坏了 | 引号/`$` 一旦超过一层就别硬拼: `write_file` 写个 `.sh` → `scp` → `ssh host 'bash /tmp/x.sh'`。改远端服务用 `sudo systemctl restart …`(免密 sudo 也要显式写 `sudo`, 否则报 `Interactive authentication required` 而 `is-active` 仍回旧状态) |
+| 远端命令里嵌 `python3 -c "…$VAR…"` / 多层引号 | 远端收到的是被本地 shell 展开过的碎片(`No such file or directory`、变量全空), 看着像远端环境坏了 | 引号/`$` 一旦超过一层就别硬拼: `write_file` 写个 `.sh` → `scp` → `ssh host 'bash /tmp/x.sh'`; 临时诊断脚本更轻的走法 = `cat <本地.py> | ssh host '<venv>/bin/python -'`(零落盘、不碰远端文件系统, 也避开了 scp 路径权限)。改远端服务用 `sudo systemctl restart …`(免密 sudo 也要显式写 `sudo`, 否则报 `Interactive authentication required` 而 `is-active` 仍回旧状态) |
 | **训练输出目录里只有 `renders/`, 没有 `point_cloud/`+`train_report.json`, 进程表也查不到 `gs_train.py`** | 守望盯一个永不出现的报告白等几小时; 人或 agent 误以为“还在训” | 按「这轮压根没跑起来」处理: 空 out = 解释器/依赖选错 ⇒ 手跑同一命令看首屏报错(见 §5 三条指纹), 别先怪数据、参数或机器负载; 把守望改成**先核进程或产物再等** |
 
 ## 交付面的网页查看器 (用户要「自己在窗口里转着看」)
@@ -923,6 +985,7 @@ A 35.7 · 黑 66.2%    B 92.7 · 黑 13.0%    C 99.4 · 黑 7.8%     (A 的相�
 训练 `400 步 / 20.8 秒 / 10 万高斯封顶(refine_stop_iter=200) / sh_degree=2` ⇒ 留出 **17.74dB**。
 
 - 判读顺序固定：**源图尺寸与张数 → 训练步数与 refine_stop → 高斯数 → sh_degree → 推流渲染宽度**。
+  🔴 **源图尺寸一律 `Image.open().size` 实测, 不信任何声明值**: `meta.json` / `cameras.json` 的 `width/height` 是**写进去时**的口径, 实测出现 meta 写 640×480 而 `images/` 里每张都是 848×480 ⇒ 照 meta 判会得出"采集被降采样了"的错误结论、白去查采集链。
   源图只有 640×480 时，后面几项拉满也补不回采样时丢掉的细节。
 - 提分辨率属于"改相机配置"，不是改训练参数；相机侧口径（cv2 只能 640×480、SDK 独占设备、
   各分辨率 FOV 不同、USB2 带宽、drop-in 覆盖顺序）见 `zmax-live-video-stream` 的「改 D405 输出分辨率」节。
@@ -944,6 +1007,42 @@ A 35.7 · 黑 66.2%    B 92.7 · 黑 13.0%    C 99.4 · 黑 7.8%     (A 的相�
   口径: 源图尺寸/比例是清晰度的天花板, **"换了更清晰的模型仍是糊的"先核这一步, 再谈步数与致密化**。
 - 深度可以先不开：720p 彩色与深度同开在 USB2 上带宽不够（报 `Frame didn't arrive within 4000`）。
   3DGS 不依赖深度，深度只影响 `init_source`（提速用），缺了会静默退回 `random_box`。
+
+### 🔴 PSNR 涨了画面还是糊 —— 先做「训练原图 / 渲染输出 / 真实相机帧」三联对比
+
+留出 PSNR 22.93 → **24.99 dB**(高斯 100k→200k、步数 400→1200)而画面反而更黑/更糊时, 别再调训练参数。
+**PSNR 只度量「忠实还原了喂进去的图」, 与「图本身清不清楚」无关**。三步定案(10 分钟):
+1. 取一张**训练原图**(`<ds>/images/` 第一张)直接看 —— 本次就是这么结案的: 原图是**贴着金属块的近距特写、大半失焦**,
+   重建只能忠实输出这堆糊图, PSNR 高得理直气壮。
+2. 取**渲染输出** `:8816/frame.jpg`, 若是同一形态的糊 ⇒ 模型没错, 输入就是糊的。
+3. 取**同一时刻真实相机帧**(`/arm.mjpg` 抓第一帧)对比: 真实帧清晰而训练图糊 ⇒ 相机没问题, 问题在**采集时的距离/对焦/姿态**;
+   真实帧也糊 ⇒ 才去查相机/曝光/镜头。
+结论只有两种: 重采数据(唯一根治)或接受现状。**不许**用加高斯/加步数/提渲染宽度去回应「还是糊」。
+- 🔴 **别把「PSNR 更高」直接切成在役资产**: 本次 200k/24.99dB 那版在手臂当前视角下几乎全黑(该视角没被那批数据覆盖),
+  比在役的差 ⇒ 切之前**自己取一帧看**; 更差就回退: report 改名 `train_report.json.holdoff`(让 `pick()` 跳过)
+  + `pkill -f gs_render_stream_intel` 让壳重挑, 再回读 `:8816/health` 的 `gaussians` 确认已退回。
+- 📏 **一批数据值不值得训, 先量亮度/对比度**(`PIL.ImageStat`, 抽样 12 张即可): 正常批 亮度 **107.9**/对比度 68.2;
+  过曝批 亮度 **164.0** ⇒ 后者 248 帧(3 倍于前者的 80 帧)只训出 **11.89dB**。机制: 过曝区无梯度、特征点少 ⇒
+  位姿估计也不准。判据: 亮度 >140 或对比度 <40 就先查曝光/光照, 别拿帧数安慰自己。
+- 🔧 **`evaluate()` 收尾崩时 report 没落盘, 但资产是好的 —— 手工补 report 就能用**: 日志已打出
+  `留出视角 PSNR = x.xx dB` 与 `场景归一化: center=[…] spread=… S=…`, 而 `train_report.json` 缺失会让
+  `gs_render_loop.sh` 的 `pick()` 直接跳过该轮(它要求 ply + report 都在)。补法(与训练逐字同式):
+  `center = mean(T_cam2world[:3,3])` · `spread = max|t-center|` · `S = 1/spread`, 再写一份字段与其它 report 一致的 JSON
+  (data/steps/sh_degree/n_gaussians/psnr_holdout_db/psnr_train_db/recipe/normalize{center,S}/ply/splat)。
+  🔴 `normalize` 必须与训练**完全一致** —— 渲染侧是 `means = S*(ply - center)`, 错一点整片高斯就错位;
+  本次复算 center [0.385199,0.227579,-0.173596] / S 1.0415 与旧 report 逐位相同才敢用。
+- 📎 连「手臂位姿没变但画面变了」「渲染/原图清晰度比」一起看: `references/render-sharpness-diagnosis.md`。
+
+### 🔴 实时轮「怎么还是糊」的头号真因: 增量续训把高斯数焊死在初值
+
+- `--init-ply <上一轮>/gs.ply` 的轮次日志首行是「增量续训: 从 gs.ply 载入 100000 个高斯」 ⇒ 后续 refine 只在这个数附近微调, **高斯数永远不增长**。要长细节必须**不带 `--init-ply` 从头初始化**(`--init-points` 定起点), 代价是丢掉 warm start 的收敛速度。
+- 三把手按效果排序: **高斯上限(`--init-points`) > 步数(`--steps`, 且 `refine_stop = min(steps,15000)*0.5` 决定致密化窗口) > 渲染宽度/JPEG 质量**。在 100k 高斯资产上把渲染宽度 960 抬到 1280 只会**更糊** —— 像素多了点更稀。
+- 400 步 + refine 停在 200 步的实时轮, 高斯几乎不长 = 「训练一直在跑但画面没进步」。
+- **挑资产按 PSNR 跨数据集不可比**: `gs_render_loop.sh` 的 `pick()` 按当天 `psnr_holdout_db` 最高挑, 而 80 帧那轮与 248 帧那轮是两把尺子; 换数据源后要人工确认切的是不是想要的那份。
+- **被 kill 的轮次没有 `gs.ply`, 壳会静默跳过**: 最新一轮训练中途被打断(out 里只剩 `train.log`/`renders`)⇒ 在役渲染还挂在几小时前的老资产上, 现场看到的是「资产不新」。判据 = `ls out_*/gs.ply` + `train.log` 有没有写到收尾。
+- 🔴 **提高斯数会吃内存, 撞到渲染壳的内存闸**: 30.9G 的机器上 250k 高斯/248 帧训练把 `MemAvailable` 从 12.5G 压到 **5.0G**, 而 `gs_render_loop.sh` 起新渲染进程前有「<6G 不渲」的闸 ⇒ 下一轮 `LIFE`(900s) 轮换时 3DGS 画面会**静默停住**。折中档实测 = `--init-points 150000 --steps 700`(内存稳在 7~8G; 200 步 221s ⇒ 700 步约 13 分钟)。开训前一定先读 `MemAvailable` 再定高斯数。
+- 渲染壳是 **root 所有**且按 `LIFE` 轮换: 改 `GSRENDER_WIDTH`/`--quality` 用 `sudo -n` + 先 `.bak_` 备份, **不要热改**(运行中的 bash 按已读字节偏移继续执行, 会错位); 改完等一次轮换或 `pkill -f gs_render_stream_intel` 让它重挑重起, 再回读 `:8816/health` 的 `w/h` 与 argv。
+- 回答「能不能更清晰」的顺序: **源图分辨率 → 每轮是不是增量续训(高斯上限) → 步数与 refine_stop → 在役渲染宽度/质量**; 只调最后一项等于在 100k 高斯上做无用功。
 
 ## 多次扫描合并成一个数据集 (同一场景 · 同一手眼/TCP 真源)
 
@@ -1053,7 +1152,7 @@ A 35.7 · 黑 66.2%    B 92.7 · 黑 13.0%    C 99.4 · 黑 7.8%     (A 的相�
 | 训练视角也低（<20 dB），留出同样低，高斯数正常 | 训练 13.3 / 留出 10.9，渲染一片灰糊 | **位姿/标定错** — 图片本身就对不上，不是训练不够。查 `handeye_state.json` mtime 是否早于采集时间 |
 | **训练视角 ≈ 留出视角, 两个都很低**(实测 16.41 / 16.44) | 两边几乎相等 ⇒ **没有过拟合**, 模型已经把数据里的信息用尽 | 天花板在**数据侧**不是训练侧: 分辨率/JPEG 压缩(实测 640×480、单帧 14~35KB)、采集时场景里有东西在动(鬼影)、视点覆盖。加步数/调致密化都不会涨 ⇒ 先去看采集口径 |
 | 训练视角 25+ dB，留出明显低 | 训练 30 / 留出 12 | 视角覆盖不足或过拟合 → 加采集点 |
-| **训练视角反而低于留出**（实测训练 12.29 / 留出 13.74） | 反常识 ⇒ 留出集抽到了偏"容易"的帧: 每 k 帧抽一帧的留出方式会让留出视角和训练视角几乎重合(同一段静止/同角度) | **判据本身有偏, 不是模型好**: 该区间的 ±0.4dB 差异全落在抽样噪声里。定式 = 留出按**累计转角分块**(整段留出, 同一视角不许同时出现在训练与留出); 用每 k 抽一帧的 PSNR 做横向比较时只能认 >1dB 的差 |
+| **训练视角反而低于留出**（实测训练 12.29 / 留出 13.74） | 反常识 ⇒ 留出集抽到了偏"容易"的帧: 每 k 帧抽一帧的留出方式会让留出视角和训练视角几乎重合(同一段静止/同角度) | **判据本身有偏, 不是模型好**: 该区间的 ±0.4dB 差异全落在抽样噪声里。定式 = 留出按**累计转角分块**(整段留出, 同一视角不许同时出现在训练与留出); 用每 k 抽一帧的 PSNR 做横向比较时只能认 >1dB 的差。⚠️ **train 略低于 holdout 时禁止据此断言"欠拟合"**: 实测另一次 20.38 / 20.88(差 0.5dB)也被念成"欠拟合的铁证"—— 两个数都在同一量级时, 它只说明整体质量不足, 说不出是哪种不足。判"该不该加步数"看的是**每图遍数(steps ÷ 帧数, <10 遍就是在欠拟合区) + `refine_stop` 是否卡在 steps×0.5 + loss 是否还在跳**, 不是这两个 PSNR 谁大谁小 |
 | 高斯数不涨，停在 100000 初值附近 | loss 不降 | 学习率/初始化问题。增补: 先看 `train_report.json` 的 `init_source` —— 若为 `random_box` 且数据集没有 `depth/`, 根因就是**初始化**(在相机前 0.28m 摆随机盒), 实测留出 PSNR 顶在 10.6~13dB; 此时调步数/致密化全部无效, 先补深度反投影 |
 | **PSNR 卡在一个数死活上不去, 渲染看起来像“一张模糊的平均色”** | 算一下**平凡基线上限** `20·log10(255 / std_of_holdout_pixels)`: 只输出每帧均值的模型, PSNR 恰好等于这个值(实测 std≈49 ⇒ 上限 **14.3dB**, 而实际卡在 **10.9~14**) | **模型就学到了“输出每帧均值”**, 没学到任何几何 ⇒ 不是超参问题。真正驱动它的只有**相邻帧看得见同一块表面**: 先量帧间基线(位移/转角分布), 帧间跳 4.8cm/1m、转角 150° 的集子注定只能到这个上限。修采集(加帧间重叠闸), 不要加步数 |
 

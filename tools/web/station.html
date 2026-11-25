@@ -18,7 +18,7 @@ h1{font-size:24px;margin:0;letter-spacing:.5px}
 .warnbar{background:#4b2b1a;border:1px solid #d29922;color:#f0c674;padding:5px 10px;
   border-radius:8px;font-size:15px;max-width:60vw}
 main{display:grid;grid-template-columns:minmax(0,1fr) 640px;gap:12px;padding:12px}
-.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-content:start}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-content:start}
 .panel{background:#161b22;border:1px solid #30363d;border-radius:12px;overflow:hidden;
   display:flex;flex-direction:column;min-height:0}
 .cap{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:7px 10px;
@@ -335,44 +335,16 @@ var HTML_VER="__HTMLVER__";</script>
     <!-- 🧭 3DGS 建图 (老倪 2026-10-01): 「左上角单独窗口, 宽度相当于 机器人臂+笔记本相机+MAXHUB顶摄 的总和,
          高度你自己适配, 生成场景的下面是原来的摄像头窗口」⇒ grid-column:1/-1 = 整行三格之和; 高度自适应(max-height)。
          跑点走号位同一条授权+收口链; 采集用 gs_capture, 训练用 gs_train(真值位姿, 不用 COLMAP)。 -->
-      <a href="gsview" target="_blank" rel="noopener" style="text-decoration:none"><button style="cursor:pointer">🧊 3DGS 场景</button></a>
-    <div class="panel" id="p_gsmap" style="grid-column:1/-1">
+    <div class="panel" id="p_gsmap" style="order:3">
       <div class="cap"><span class="ttl">🧭 3DGS 建图 (L5 指导选点 自动跑点)</span>
-        <span class="meta" id="m_gsmap">读状态…</span></div>
-      <div class="row" style="padding:6px 10px 0;gap:10px;align-items:center">
-        <button id="gsrunbtn" onclick="gsMapRun()" style="font-size:16px;font-weight:700"
-          title="L5(DeepSeek 视觉)看当前画面 → 给出环境理解 + 下一步看哪儿, 软件在已示教可达点里挑最贴合该方向且最没拍过的点 → 移动 → 每点自动采画面 → 按图像内容去重建数据集 → 训练 3DGS → 质量门(与「填常数」平凡基线比, 不过门不算成果); 需先🔓授权真动, 走号位同一条链路">▶ 开始建图</button>
-        <span id="gs_msg" style="font-size:13px;opacity:.9">点「▶ 开始建图」= L5 指导选点 + 自动跑点采集建图</span>
-      </div>
+        <span class="meta" id="m_gsmap">读状态…</span>
+</div>
+      <!-- 🚫 2026-11-24 老倪: 「3DGS 那几个按钮没用，删掉」⇒ 建图/渲染切换按钮整段移除, 只留 Intel 实时渲染画面。 -->
       <div style="padding:8px 10px 10px">
         <!-- 🧊 2026-10-08 老倪: 「做到这个 3DGS 窗口里, 要可以用鼠标变化场景角度, 可以拖动」
              ⇒ 该窗口默认就是**可交互的实景查看器**(内嵌 /gsview, 同域 so 鼠标事件直通拖拽/缩放/平移);
              原来的静态渲染图退成可切换的「🖼 参考渲染图」对照。 -->
-        <div class="row" style="gap:8px;align-items:center;padding:0 0 6px">
-          <button id="gsrenderbtn" style="font-size:13px;font-weight:700"
-            onclick="document.getElementById('gs_rwrap').style.display='block';document.getElementById('gs_live').style.display='none';var w=document.getElementById('gs_imgwrap');w.dataset.manual='1';w.style.display='none';document.getElementById('gs_render').dataset.paused='0'">🖥 Intel 渲染</button>
-          <button id="gslivebtn" style="font-size:13px;font-weight:700"
-            onclick="var f=document.getElementById('gs_live');if(!f.src||f.src.indexOf('about:blank')>=0)f.src=f.dataset.src;f.style.display='block';var w=document.getElementById('gs_imgwrap');w.dataset.manual='1';w.style.display='none'">🎥 实景查看器</button>
-          <button id="gsimgbtn" style="font-size:13px"
-            onclick="document.getElementById('gs_live').style.display='none';document.getElementById('gs_rwrap').style.display='none';var w=document.getElementById('gs_imgwrap');w.dataset.manual='1';w.style.display='block';var a=document.getElementById('gs_ref');if(a)a.style.display='none';var g=document.getElementById('gs_img');if(g)g.style.display='block'">🖼 参考渲染图</button>
-          <a href="gsview" target="_blank" rel="noopener" style="font-size:12px;color:#8b949e">↗ 新窗口打开</a>
-          <span class="meta" id="gs_live_hint" style="font-size:11.5px;color:#8b949e">那格默认就是实时 3DGS 高斯图(<b id="gs_hint_num">…</b>·浏览器显示上限 6 万高斯, 卡就点「🖼 参考渲染图」退回静态图) · 左键拖=转角度 · 滚轮=缩放 · 手机建议「↗ 新窗口打开」</span>
-          <script>
-          /* 🧊 2026-10-13: 原来这里硬写"58.9万高斯"——资产早换了, 现场看到的是过期数字(以为加载的是大资产)。
-             现在按 /gs/list 的真实值刷新: 资产名 · 高斯数 · 体积, 并在超上限时说明"已降采样显示"。 */
-          (function(){
-            function ref(){
-              fetch('gs/list',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
-                var a=(d.assets||[]).filter(function(x){return x.name===d.latest;})[0]||(d.assets||[])[0]||{};
-                var n=a.n_gaussians||0, mb=((a.size||0)/1048576).toFixed(1);
-                var txt=a.name+' · '+(n/1000).toFixed(1)+'k 高斯 · '+mb+'MB'+(n>60000?' (显示降采样到 6 万)':'');
-                var e=document.getElementById('gs_hint_num'); if(e) e.textContent=txt;
-              }).catch(function(){});
-            }
-            ref(); setInterval(ref, 15000);
-          })();
-          </script>
-        </div>
+        <!-- 按钮行(Intel渲染/实景查看器/参考渲染图/新窗口)已删; 固定显示下面的 Intel 实时渲染画面。 -->
         <div id="gs_rwrap" style="padding:0 0 8px">
           <!-- 🖥 2026-10-25 老倪: 「4060 只是显示，而 intel 要渲染好，推流过来」
                这一格 = Intel XPU 服务端渲染的实时帧(环绕建模相机路径), 本机只做取帧代理(/gs/live.jpg)。
@@ -461,32 +433,24 @@ var HTML_VER="__HTMLVER__";</script>
           <div id="gs_ref_cap" style="font-size:11.5px;color:#8b949e;margin-top:5px">🦾 手臂相机实时帧(加载中)…</div>
           <img id="gs_img" alt="3DGS 场景" style="width:100%;max-height:52vh;object-fit:contain;background:#0d1117;border:1px solid #30363d;border-radius:6px;display:none">
           <div id="gs_img_cap" style="font-size:11.5px;color:#8b949e;margin-top:5px;line-height:1.5"></div>
-          <div id="gs_ph" style="padding:22px;text-align:center;color:#8b949e;font-size:14px;border:1px dashed #30363d;border-radius:6px">还没有训练好的场景 —— 点「▶ 开始建图」</div>
+          <div id="gs_ph" style="padding:22px;text-align:center;color:#8b949e;font-size:14px;border:1px dashed #30363d;border-radius:6px">还没有训练好的场景（建图入口已下线）</div>
         </div>
       </div>
     </div>
-    <div class="panel"><div class="cap"><span class="ttl">🦾 手臂相机</span>
+    <div class="panel" style="order:1"><div class="cap"><span class="ttl">🦾 手臂相机</span>
       <span class="meta" id="m_arm">…</span></div>
       <img id="i_arm" data-ext="http://127.0.0.1:8898/arm_yolo.jpg" data-every="600"></div>
-    <div class="panel"><div class="cap"><span class="ttl">📷 本机相机 (内置 / USB)</span>
-      <span class="meta" id="m_local">…</span></div>
-      <img id="i_local" data-mode="snap" data-src="/snapshot/local.jpg" data-every="400">
-      <!-- 🎛 2026-10-07 老倪: 「笔记本摄像头要有切换功能, 用户能选择内置摄像头, 或者是USB摄像头」
-           —— 服务侧按**卡名**重解析设备(插拔后号变了也对), 选择落盘, 重启后仍是这台。
-           这一路同时是安全层「全局视角」的输入 ⇒ 换源会一起改变安全层看到的全局画面。 -->
-      <div class="row" style="padding:6px 10px 2px;align-items:center">
-        <span class="seg" id="lsrc">
-          <button data-kind="builtin">内置</button>
-          <button data-kind="usb">USB</button></span>
-        <span id="lsrc_msg" style="font-size:12px;opacity:.85"></span></div></div>
-    <div class="panel"><div class="cap"><span class="ttl">🎥 中央相机</span>
+    <!-- 🚫 2026-11-24 老倪: 「本机相机 内置这个功能删掉, 不要与我本机的摄像头冲突, 我要用微信视频」
+         这一格(📷 本机相机 内置/USB 换源)已移除, 后端 local 路同时不再启动(--no-local)
+         ⇒ 服务进程不 open /dev/video0, 笔记本内置相机整台让给微信/腾讯会议。 -->
+    <div class="panel" style="order:2"><div class="cap"><span class="ttl">🎥 中央相机</span>
       <span class="meta" id="m_local2">…</span></div>
       <img id="i_local2" data-mode="snap" data-src="/snapshot/local2.jpg" data-every="400"></div>
-    <div class="panel"><div class="cap"><span class="ttl">🌈 手臂相机深度图</span>
+    <div class="panel" style="order:4"><div class="cap"><span class="ttl">🌈 手臂相机深度图</span>
       <span class="meta" id="m_depth">…</span></div>
       <img id="i_depth" data-mode="snap" data-src="/snapshot/depth.jpg" data-every="1500">
       <div class="note" id="n_depth" style="display:none"></div></div>
-    <div class="panel"><div class="cap"><span class="ttl">🔍 金手指检测 (工控机 10082)</span>
+    <div class="panel" style="order:5"><div class="cap"><span class="ttl">🔍 金手指检测 (工控机 10082)</span>
       <span class="meta" id="m_aoi_gold">…</span></div>
       <img id="i_aoi_gold" data-mode="mjpg" data-src="/aoi_gold.mjpg">
       <div class="row" style="padding:6px 10px 2px"><span class="seg" id="gview">
@@ -715,7 +679,7 @@ var HTML_VER="__HTMLVER__";</script>
          金手指面板被撑到 2844px 高 (同行的深度图也被拉伸到 2844), 整栏看起来就是一条长条。
          补上这个闭合标签即恢复原布局: 3DGS 整行 → 三路相机 → 深度图|金手指|表面检测 同一行 → 号位/空间点整行在下。 -->
     </div>
-    <div class="panel"><div class="cap"><span class="ttl">🔍 表面检测 (工控机 10083)</span>
+    <div class="panel" style="order:6"><div class="cap"><span class="ttl">🔍 表面检测 (工控机 10083)</span>
       <span class="meta" id="m_aoi_surface">…</span></div>
       <img id="i_aoi_surface" data-mode="mjpg" data-src="/aoi_surface.mjpg">
       <div class="row" style="padding:6px 10px 2px"><span class="seg" id="sview">
@@ -767,7 +731,7 @@ var HTML_VER="__HTMLVER__";</script>
       <pre id="aoi_det_out_s" style="display:none;margin:4px 10px 8px;padding:8px;max-height:200px;overflow:auto;
            background:#0b1018;color:#cfe3ff;font-size:11px;line-height:1.45;border-radius:6px;
            white-space:pre-wrap;word-break:break-all;user-select:text"></pre></div>
-    <div class="panel" id="p_slots"><div class="cap"><span class="ttl">📍 号位 1~7 (示教点)</span>
+    <div class="panel" id="p_slots" style="order:7"><div class="cap"><span class="ttl">📍 号位 1~7 (示教点)</span>
       <span class="meta" id="m_slots">…</span></div>
       <div id="m_slots_auth" style="padding:6px 10px 0;font-size:14px"></div>
       <!-- 🎯 2026-10-26 老倪「号位1～7 也要增加 标记模式 和 运动模式，我来自己标定」
@@ -801,7 +765,7 @@ var HTML_VER="__HTMLVER__";</script>
     <!-- 🧭 空间 1~7 (2026-10-01 老倪: 「左下角示教点控件下面, 再用一个控件显示 空间1~空间7,
          位置排布与上面的1号位到7号位对齐」) —— 与号位共用同一套 .slotbar 7 列网格 ⇒ 天然对齐;
          **独立记录**: 点「记住此点」把当前 TCP 真值记成 空间N, 存 space_points.json, 与号位互不影响。 -->
-    <div class="panel" id="p_spaces"><div class="cap"><span class="ttl">🧭 空间 1~7 (独立空间点)</span>
+    <div class="panel" id="p_spaces" style="order:8"><div class="cap"><span class="ttl">🧭 空间 1~7 (独立空间点)</span>
       <span class="meta" id="m_spaces">…</span></div>
       <div class="row" style="padding:6px 10px 0;align-items:center;gap:10px">
         <span class="k">模式:</span>
@@ -1925,22 +1889,9 @@ document.querySelectorAll('#sview button').forEach(b=>b.onclick=()=>{   // 🔍 
   if(im){ im.src=_u(b.dataset.stream)+'?t='+Date.now();
           if(window._mjpgBind) window._mjpgBind(im, b.dataset.stream); }   // 表面那格同理(别串台)
 });
-/* 🎛 笔记本这一路 [内置 | USB] 换源 (2026-10-07 老倪: 「用户能选择内置摄像头, 或者是USB摄像头」)
-   —— POST /cam/src, 服务侧按卡名重开那一格采集设备(不动别的通道: 叠加/安全层读的还是 "local")。
-   切完这一格的快照会空一拍, 所以 2s 后主动刷一张, 不让它停在旧图上。 */
-function _lsrcPaint(kind){
-  document.querySelectorAll('#lsrc button').forEach(b=>b.classList.toggle('on', b.dataset.kind===kind));
-}
-document.querySelectorAll('#lsrc button').forEach(b=>b.onclick=async()=>{
-  const k=b.dataset.kind;
-  const m=$('#lsrc_msg'); if(m){ m.textContent='切换中…'; m.className=''; }
-  try{
-    const j=await post('/cam/src',{ch:'local',kind:k},15000);
-    _lsrcPaint(j.kind||k);
-    if(m){ m.textContent=(j.ok?'':"⛔ ")+(j.msg||''); m.className=(j.ok?'ok':'bad'); }
-  }catch(e){ if(m){ m.textContent='切换失败: '+e; m.className='bad'; } }
-  setTimeout(()=>{ const im=$('#i_local'); if(im) im.src=_u('/snapshot/overlay_local.jpg')+'?t='+Date.now(); },1800);
-});
+/* 🚫 2026-11-24 老倪: 本机相机(内置/USB)功能已删 —— 换源按钮与其 POST /cam/src 绑定一并移除,
+   笔记本内置相机整台让给微信/视频通话。_lsrcPaint 保留空壳, 供状态回读处(上面 j.cam_src)无副作用调用。 */
+function _lsrcPaint(kind){ /* no-op: 本机相机格已下线 */ }
 const _a82=$('#auto82');
 if(_a82) _a82.onchange=async()=>{
   $('#msg').textContent='切换自动取景…'; $('#msg').className='wa';

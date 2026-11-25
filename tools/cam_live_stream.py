@@ -4585,7 +4585,7 @@ PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
 </style></head><body>
 <header>
   <h1>🎥 Z-MAX 旁路调试 · 实时视频流（压缩版）</h1>
-  <div class="meta">手臂相机 = Orin 经 ROS 传来（JPEG 压缩推流） · 本机相机 = 驱动直读（三相机: 臂上 + 笔记本内置 + MAXHUB 电视顶摄） · <span id="stat">—</span></div>
+  <div class="meta">手臂相机 = Orin 经 ROS 传来（JPEG 压缩推流） · 本机相机① 已下线（笔记本内置相机整台让给微信/视频通话） · <span id="stat">—</span></div>
 </header>
 <div class="wrap">
   <div class="card">
@@ -4593,11 +4593,8 @@ PAGE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
     <img src="/arm.mjpg" alt="arm">
     <div class="note">源: <code>/realsense/color/image_raw</code> (Orin) · 帧龄 <b id="age_arm">—</b></div>
   </div>
-  <div class="card">
-    <h2>💻 本机相机① <span class="tag" id="t_local">/dev/video__IDX__</span></h2>
-    <img src="/local.mjpg" alt="local">
-    <div class="note">源: <code>/dev/video__IDX__</code> · 帧龄 <b id="age_local">—</b></div>
-  </div>
+  <!-- 🚫 2026-11-24 老倪: 「本机相机 内置这个功能删掉, 不要与我本机的摄像头冲突, 我要用微信视频」
+       本机相机① 这一格已移除; 服务以 --no-local 启动, 进程不 open /dev/video0。 -->
   <div class="card">
     <h2>📺 本机相机② <span class="tag" id="t_local2">MAXHUB 电视顶摄</span></h2>
     <img src="/local2.mjpg" alt="local2">
@@ -5298,7 +5295,6 @@ code{color:#7ee787;font-size:12px}
 </header>
 <div class="bar">
   <button id="c_arm" class="on" onclick="setCam('arm')">🦾 臂上相机</button>
-  <button id="c_local" onclick="setCam('local')">💻 笔记本内置</button>
   <button id="c_local2" onclick="setCam('local2')">📺 MAXHUB 顶摄</button>
   <span class="sep"></span>
   <button id="m_ov" onclick="setMode('m_ov')">🧩 叠加图</button>
