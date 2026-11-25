@@ -9117,6 +9117,24 @@ class HardwareModule(SubModuleWidget):
         # 回放引擎
         self.replay = ReplayEngine()
         self._replay_thread = None
+
+        # 🎛 2026-11-25 老倪「硬件工具箱要跟真实机器人一样」:
+        #   硬件总线 12 行的状态/当前值改成跟着真机真值走 (唯一依据 = 8793/station/status)。
+        #   取数在工程线程 (网络失败不卡界面), 主线程 1s 只读缓存渲染。
+        self._hw_cache, self._hw_ok_ts, self._hw_err = {}, 0.0, ""
+        self._tower_last = ""
+        try:
+            from zmax_thread import zmax_thread as _ZT_HW
+            _ZT_HW.every("hw_probe_8793", 2.0, self._hw_poll)
+        except Exception:                                                   # noqa: BLE001
+            def _hw_loop():
+                while True:
+                    self._hw_poll()
+                    time.sleep(2.0)
+            _th.Thread(target=_hw_loop, name="hw_probe", daemon=True).start()
+        self._hw_timer = _tq(self)
+        self._hw_timer.timeout.connect(self._refresh_hw_bus)
+        self._hw_timer.start(1000)
         
         # ── 顶部工具栏 ──
         toolbar = QHBoxLayout()
@@ -9223,6 +9241,10 @@ class HardwareModule(SubModuleWidget):
         hw_group.setStyleSheet(f"QGroupBox{{color:{SYS0_COLOR}; font-weight:bold; font-size:20px; border:2px solid {SYS0_COLOR}; border-radius:6px; margin-top:12px; padding-top:16px;}}")
         hw_layout = QVBoxLayout()
         hw_layout.setSpacing(4)
+        # 2026-11-25 老倪「要跟真实机器人一样」: 明确写清真值从哪来、几秒前的
+        self._hw_note = QLabel("真值源 8793/station/status · 读取中…")
+        self._hw_note.setStyleSheet(f"color:{C_GRAY}; font-size:17px; padding:2px 4px;")
+        hw_layout.addWidget(self._hw_note)
         
         # 硬件列表表头
         self.hw_table = QTableWidget()
@@ -9230,14 +9252,21 @@ class HardwareModule(SubModuleWidget):
         self.hw_table.setHorizontalHeaderLabels(["硬件", "类型", "状态", "当前值", "控制接口", "操作"])
         self.hw_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.hw_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.hw_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        # 2026-11-25: 状态/接口固定宽 (真值文案长, ResizeToContents 会把"当前值"挤成一条);
+        #   当前值吃剩余宽度, 截断走 ElideRight + tooltip + 双击复制 (老倪: 内容要看得全可复制)
+        self.hw_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
+        self.hw_table.setColumnWidth(2, 320)
         self.hw_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
-        self.hw_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        self.hw_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)
+        self.hw_table.setColumnWidth(4, 330)
+        self.hw_table.setTextElideMode(Qt.ElideRight)
+        self.hw_table.itemDoubleClicked.connect(
+            lambda it: QApplication.clipboard().setText(it.text()))
         self.hw_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
         self.hw_table.verticalHeader().setVisible(False)
         self.hw_table.verticalHeader().setDefaultSectionSize(42)  # 行高
         self.hw_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.hw_table.setMinimumHeight(320)
+        self.hw_table.setMinimumHeight(12 * 42 + 46)   # 2026-11-25: 12 行设备要一屏看全 (原 320 只露 7 行)
         self.hw_table.setStyleSheet(f"""
             QTableWidget{{background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER};}}
             QTableWidget::item{{padding:6px 8px; font-size:19px;}}
@@ -9309,24 +9338,29 @@ class HardwareModule(SubModuleWidget):
     
     def _build_hardware_bus(self):
         """构建Orin真实硬件控制面板 — 每个硬件一行"""
+        # 2026-11-25 老倪「硬件工具箱要跟真实机器人一样」:
+        #   旧表只有塔灯挂了 status_fn(还返回"待实现"), 其余全 None ⇒ 状态永远"待接入"、当前值永远 "-",
+        #   而且塔灯那一格把方法对象当字符串写进了「控制接口」列 (界面显示 `<bound method ...>`)。
+        #   现在: 第3列 = 真值 key (由 _refresh_hw_bus 从 8793/station/status 与本机真值填),
+        #         第4列 = 控制接口**字符串**(ROS domain 23 的真实话题/服务)。
         devices = [
-            # (名称, 类型, 状态获取方法, 控制接口列表)
-            ("🚦 三色塔灯",    "IO/灯光",   self._get_tower_status,  self._get_tower_controls),
-            ("🤖 珞石机械臂",  "6-DOF臂",   None,                    ["/move_joint(TargetPose)", "/robot_stop(Trigger)"]),
-            ("🖐️ 电动夹爪",   "末端执行器", None,                   ["/gripper_driver(GripperSrv)"]),
-            ("⚡ 力/力矩传感器","六维力",    None,                    ["/robot/force_torque(Wrench)"]),
-            ("📷 RealSense D435","RGB-D相机", None,                    ["/color/image_raw", "/depth/rect", "/points"]),
-            ("🚨 双路急停",    "安全IO",     None,                    ["/physical_estop", "/usb_estop"]),
-            ("📱 扫码枪",      "Honeywell",  None,                    ["/barcode_scanner/status"]),
-            ("🖐️ 触觉传感器", "TS-F-L",    None,                    ["/tactile_sensor(TactileSensor)"]),
-            ("👁️ FoundationPose","视觉定位",  None,                    "待接入"),
-            ("📡 障碍物检测",  "安全",       None,                    "待接入"),
-            ("🎛️ 状态机",      "控制器",     None,                    ["state_machine/*"]),
-            ("🖥️ HMI 人机界面","HMI",       None,                    "待接入"),
+            # (名称, 类型, 真值key, 控制接口文本)
+            ("🚦 三色塔灯",     "IO/灯光",    "tower",   "/tower_light/command · /tower_light/status (Orin ROS domain 23)"),
+            ("🤖 珞石机械臂",   "6-DOF臂",    "arm",     "/robot/joint_states · /move_joint(TargetPose) · /robot_stop(Trigger)"),
+            ("🖐️ 电动夹爪",    "末端执行器",  "gripper", "/gripper_driver(GripperSrv) · 无位置反馈话题"),
+            ("⚡ 力/力矩传感器", "六维力",     "ft",      "/robot/force_torque(Wrench)"),
+            ("📷 RealSense D435","RGB-D相机", "d435",    "/color/image_raw · /depth/rect · /points (Orin 8794)"),
+            ("🚨 双路急停",     "安全IO",     "estop",   "/physical_estop · /usb_estop · ctl.motion_armed"),
+            ("📱 扫码枪",       "Honeywell",  "barcode", "/barcode_scanner/status"),
+            ("🖐️ 触觉传感器",  "TS-F-L",     "tactile", "/tactile_sensor(TactileSensor)"),
+            ("👁️ FoundationPose","视觉定位",  "fpose",   "本机检测器 (无 ROS 话题)"),
+            ("📡 障碍物检测",   "安全",       "obstacle","无通道 (未接入)"),
+            ("🎛️ 状态机",       "控制器",     "fsm",     "8793 ctl: operation / motion.ok / auth"),
+            ("🖥️ HMI 人机界面", "HMI",        "hmi",     "本控制台 (无独立 HMI 通道)"),
         ]
         
         self.hw_table.setRowCount(len(devices))
-        for row, (name, hw_type, status_fn, controls) in enumerate(devices):
+        for row, (name, hw_type, hw_key, controls) in enumerate(devices):
             # 名称
             name_item = QTableWidgetItem(name)
             name_item.setForeground(QColor(C_WHITE))
@@ -9334,18 +9368,15 @@ class HardwareModule(SubModuleWidget):
             # 类型
             self.hw_table.setItem(row, 1, QTableWidgetItem(hw_type))
             # 状态
-            status_item = QTableWidgetItem("⏸ 待查询" if status_fn else "⏸ 待接入")
+            status_item = QTableWidgetItem("… 读取真值中")
             status_item.setForeground(QColor(C_GRAY))
             self.hw_table.setItem(row, 2, status_item)
             # 当前值
-            val_item = QTableWidgetItem("-" if status_fn else "-")
+            val_item = QTableWidgetItem("—")
             val_item.setForeground(QColor(C_GRAY))
             self.hw_table.setItem(row, 3, val_item)
             # 控制接口
-            if isinstance(controls, list):
-                ctrl_text = ", ".join(controls)
-            else:
-                ctrl_text = str(controls)
+            ctrl_text = ", ".join(controls) if isinstance(controls, (list, tuple)) else str(controls)
             ctrl_item = QTableWidgetItem(ctrl_text)
             ctrl_item.setForeground(QColor(C_CYAN))
             self.hw_table.setItem(row, 4, ctrl_item)
@@ -9739,8 +9770,8 @@ class HardwareModule(SubModuleWidget):
                         state = _ln.strip()[:150]
                         break
                 self._log(f"   ✅ 直连下发完成 (Orin 塔灯 → {color})" + (f"\n   🔎 回读: {state}" if state else ""))
-                self.hw_table.item(0, 2).setText("🟢 已生效 (直连)")
-                self.hw_table.item(0, 3).setText(color)
+                self._tower_last = "🟢 直连已生效 → %s%s" % (color, (" · 回读 " + state) if state else "")
+                self._refresh_hw_bus()
                 return
             _e = (r.stderr or r.stdout or "").strip().splitlines()
             direct_err = _e[-1] if _e else f"rc={r.returncode}"
@@ -9755,8 +9786,8 @@ class HardwareModule(SubModuleWidget):
             mw = RelayMiddleware(timeout=10)
             resp = mw.send(f"tower_light {color}")
             self._log(f"   📡 已下发 Mac 塔灯指令: {resp.get('cmd','')}")
-            self.hw_table.item(0, 2).setText("🟡 指令已下发")
-            self.hw_table.item(0, 3).setText(color)
+            self._tower_last = "🟡 中间件已下发 → %s (等 Mac 守护执行)" % color
+            self._refresh_hw_bus()
             self._log("   🤖 Mac 守护轮询到指令 → ssh tashan@192.168.23.66 → ros2 topic pub /tower_light/command")
         except Exception as e:
             self._log(f"   ❌ 塔灯控制失败: 直连({direct_err}) + 中间件({e})")
@@ -10417,6 +10448,7 @@ class HardwareModule(SubModuleWidget):
         self._refresh_cameras()
         self._refresh_force()
         self._refresh_io()
+        self._refresh_hw_bus()          # 🎛 2026-11-25: 硬件总线跟着真机走
     
     def _refresh_topo(self):
         pass  # 功能拓扑为静态显示
@@ -10462,6 +10494,128 @@ class HardwareModule(SubModuleWidget):
             self.io_table.setItem(i, 0, QTableWidgetItem(dev))
             self.io_table.setItem(i, 1, QTableWidgetItem(state))
     
+    # ═══ 2026-11-25 老倪「硬件工具箱要跟真实机器人一样」═══
+    #   真值唯一依据: 本机 8793 /station/status (ctl.robot / ctl.tcp / stats / aoi),
+    #   与工位总览页同一份数据; 后台每 2s 拉一次存缓存, 主线程只读缓存渲染 —— 网络问题不卡界面。
+    HW_SRC = "http://127.0.0.1:8793/station/status"
+
+    def _hw_poll(self):
+        """(工程线程) 拉 8793 真值。失败不清空上一次, 但记错误与时间。"""
+        import urllib.request as _u
+        try:
+            with _u.urlopen(self.HW_SRC, timeout=2.5) as r:
+                self._hw_cache = json.loads(r.read(524288).decode("utf-8", "replace"))
+            self._hw_ok_ts = time.time()
+            self._hw_err = ""
+        except Exception as e:                                              # noqa: BLE001
+            self._hw_err = str(e)[:70]
+
+    def _refresh_hw_bus(self):
+        """把真值铺进「硬件总线」12 行: 状态 + 当前值 + 颜色。读不到就如实写读不到。"""
+        if not hasattr(self, "hw_table") or self.hw_table.rowCount() == 0:
+            return
+        d = getattr(self, "_hw_cache", None) or {}
+        err = getattr(self, "_hw_err", "")
+        age = (time.time() - getattr(self, "_hw_ok_ts", 0.0)) if d else -1.0
+        ctl = d.get("ctl") or {}
+        rob = ctl.get("robot") or {}
+        tcp = ctl.get("tcp") or {}
+        mov = ctl.get("motion") or {}
+        auth = ctl.get("auth") or {}
+        stats = d.get("stats") or {}
+        aoi = d.get("aoi") or {}
+
+        if not d:
+            _st, _val, _col = "❌ 取不到真值", "8793 不可达 %s" % (err or ""), C_RED
+            for r in range(self.hw_table.rowCount()):
+                self._hw_set(r, _st, _val, _col)
+            return
+        if age > 6:
+            _stale = True
+        else:
+            _stale = False
+
+        def cam_txt(k):
+            c = stats.get(k) or {}
+            lb = c.get("label") or k
+            if c.get("online"):
+                return "%s ✅ %.1ffps 帧龄%.1fs" % (lb, c.get("fps") or 0, c.get("age_s", -1))
+            return "%s ❌ %s" % (lb, str(c.get("src_err") or "无流")[:30])
+
+        def tcp_txt():
+            xyz = tcp.get("xyz") or []
+            abc = tcp.get("abc_deg") or []
+            if len(xyz) == 3:
+                a = tcp.get("age_s")
+                tag = ("⚠ 位姿失效(静止 %.0fs)" % a) if tcp.get("stale") else ("✅ 帧龄 %.1fs" % (a if a is not None else -1))
+                ab = abc if len(abc) >= 3 else [0, 0, 0]
+                return "TCP %+.1f %+.1f %+.1f mm · abc %+.1f %+.1f %+.1f° · %s" % (
+                    xyz[0] * 1000, xyz[1] * 1000, xyz[2] * 1000, ab[0], ab[1], ab[2], tag)
+            return "无位姿 (%s)" % str(tcp.get("err") or "tcp 字段缺失")[:40]
+
+        rob_age = rob.get("age_s")
+        rob_stale = rob_age is not None and rob_age > 10
+        aa = auth.get("armed")
+        m_ok = mov.get("ok")
+        rows = {
+            "🚦 三色塔灯": (
+                "⚠ 无硬件反馈通道",
+                (getattr(self, "_tower_last", "") or "Orin ROS /tower_light/status 未读数 (点 🟢/🟡/🔴 后这里显示回执)"),
+                C_YELLOW),
+            "🤖 珞石机械臂": (
+                "%s · power=%s · %s%s" % ("⚠ 状态陈旧" if rob_stale else ("✅ 在线" if rob.get("ok") else "❌ 离线"),
+                                          rob.get("power") or "?", rob.get("operation") or "?",
+                                          (" · 源 %s" % str(rob.get("src") or "")[:26]) if rob.get("src") else ""),
+                tcp_txt(),
+                C_YELLOW if rob_stale else (C_GREEN if rob.get("ok") else C_RED)),
+            "🖐️ 电动夹爪": (
+                "⚠ 只有控制/无位置回读",
+                "服务 /gripper_driver 在 Orin ROS(domain 23); 下发后以真机动作与视觉为准, 面板不编开度",
+                C_YELLOW),
+            "⚡ 力/力矩传感器": (
+                "❌ 未接入", "无 /robot/force_torque 数据 (Orin 不通或未开)", C_GRAY),
+            "📷 RealSense D435": (
+                ("✅ 有流" if any((stats.get(k) or {}).get("online") for k in ("arm", "depth")) else "❌ 无流"),
+                cam_txt("arm") + " ｜ " + cam_txt("depth"), 
+                C_GREEN if any((stats.get(k) or {}).get("online") for k in ("arm", "depth")) else C_RED),
+            "🚨 双路急停": (
+                "%s estop=%s · motion_armed=%s · auth=%s" % ("❗已触发" if rob.get("estop") else "✅ 未触发",
+                                                             rob.get("estop"), ctl.get("motion_armed"), aa),
+                "物理/软件急停走 Orin %s; 授权档=%s" % (("/physical_estop /usb_estop" ), auth.get("mode") or "?"),
+                C_RED if rob.get("estop") else C_GREEN),
+            "📱 扫码枪": ("❌ 未接入", "无 /barcode_scanner/status (现场扫码器未接 ROS)", C_GRAY),
+            "🖐️ 触觉传感器": ("❌ 未接入", "无 /tactile_sensor 数据", C_GRAY),
+            "👁️ FoundationPose": ("⚠ 无统一话题", "本机视觉定位走 YOLO 2D→3D (见感知链), 无 FoundationPose 服务", C_GRAY),
+            "📡 障碍物检测": ("❌ 未接入", "无障碍物检测通道", C_GRAY),
+            "🎛️ 状态机": (
+                "%s · operation=%s" % ("✅ 运动指令可受理" if m_ok else "⚠ 无待执行动作", rob.get("operation") or "?"),
+                "motion.ok=%s skill=%s ｜ auth armed=%s mode=%s · AOI 10082=%s 10083=%s" % (
+                    m_ok, (mov.get("skill") or "—"),
+                    aa, auth.get("mode") or "?",
+                    "✅" if (aoi.get("10082") or {}).get("ok") else "❌",
+                    "✅" if (aoi.get("10083") or {}).get("ok") else "❌"),
+                C_GREEN if m_ok else C_YELLOW),
+            "🖥️ HMI 人机界面": ("✅ 本控制台", "当前页面即 HMI; 手机现场页=8791/room (需 8795 HIL 已起)", C_GREEN),
+        }
+        for r in range(self.hw_table.rowCount()):
+            nm = self.hw_table.item(r, 0).text() if self.hw_table.item(r, 0) else ""
+            hit = rows.get(nm)
+            if hit:
+                self._hw_set(r, *hit)
+        # 顶部一句话: 真值源与时效
+        try:
+            self._hw_note.setText("真值源 8793/station/status · 采集 %.1fs 前%s" %
+                                  (age, "" if age <= 6 else " (⚠ 超过 6s 未更新)"))
+        except Exception:                                                    # noqa: BLE001
+            pass
+
+    def _hw_set(self, row, status, value, color):
+        for col, txt, c in ((2, status, color), (3, value, C_WHITE)):
+            it = QTableWidgetItem(str(txt))
+            it.setForeground(QColor(c))
+            it.setToolTip(str(txt))          # 截断也能看全 (双击还能复制)
+            self.hw_table.setItem(row, col, it)
+
     def _populate_nodes(self, nodes):
         pass  # 已迁移到实时监控模块
     
