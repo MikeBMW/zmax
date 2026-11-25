@@ -35,7 +35,25 @@ import subprocess
 import sys
 from datetime import datetime
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+def _zmax_root():
+    """运行根 —— 与 studio.py 的 _zmax_root_dir() 同口径 (2026-11-25 跨平台迁移):
+    ZMAX_ROOT 环境变量 → 冻结包 exe 同级(有 config/) → _MEIPASS → 源码上两级。
+    原来固定 dirname²(__file__), 冻结包里 __file__ 在 _internal 下 ⇒ 扫盘全部落空,
+    Windows 版模型引擎会一条模型都列不出来。"""
+    _env = os.environ.get("ZMAX_ROOT") or ""
+    if _env and os.path.isdir(_env):
+        return os.path.abspath(_env)
+    if getattr(sys, "frozen", False):
+        _exe = os.path.dirname(os.path.abspath(sys.executable))
+        _mp = getattr(sys, "_MEIPASS", "") or ""
+        for _c in (_exe, _mp, os.path.join(_exe, "_internal")):
+            if _c and os.path.isdir(os.path.join(_c, "models")):
+                return os.path.abspath(_c)
+        return _exe or _mp
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+ROOT = _zmax_root()
 REPORTS_DIR = os.path.join(ROOT, "reports")
 ACTIVE_JSON = os.path.join(ROOT, "models", "active_models.json")
 
