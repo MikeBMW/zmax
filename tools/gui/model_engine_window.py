@@ -38,8 +38,8 @@ import urllib.request
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QColor, QFont
-from PyQt5.QtWidgets import (QAbstractItemView, QApplication, QDialog, QHBoxLayout, QHeaderView, QLabel,
-                            QSizePolicy,
+from PyQt5.QtWidgets import (QAbstractItemView, QApplication, QComboBox, QDialog, QHBoxLayout, QHeaderView,
+                             QLabel, QLineEdit, QMessageBox, QSizePolicy,
                              QPlainTextEdit, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout,
                              QWidget)
 
@@ -397,6 +397,56 @@ class ModelEnginePanel(QWidget):
         # 表格高度 = 表头 + 4 行 (2026-10-14 读屏实测: 预先固定 168/210 时页面里只显示得下 2 行, L4/L5 被挤出视口;
         #   而预先固定更大值在独立窗口里留一大片空行) ⇒ 改成按内容自适应, 在 _render 里按真实行高算。
         v.addWidget(self.tb, 0)
+
+        # ── 📋 全部模型 ── 2026-11-25 老倪: 「模型引擎 所有模型, 都要显示, 管理, 可训练」
+        #   上面那张 tb 是"每层一行"的汇总 (4 行); 这里把磁盘上 300+ 个权重**逐条**列出,
+        #   选中任意一行 → 「⬆ 设为在役」/「▶ 训练该层」, 显示/管理/训练三个动作都落在这张表上。
+        allrow = QHBoxLayout()
+        allrow.setSpacing(8)
+        self.lb_all = QLabel("📋 全部模型（读取中…）")
+        self.lb_all.setStyleSheet(f"color:{C_CYAN};font-size:19px;font-weight:600;background:transparent")
+        allrow.addWidget(self.lb_all)
+        allrow.addStretch()
+        _sel_ss = (f"QComboBox,QLineEdit{{background:{C_BG2};color:{C_WHITE};border:1px solid {C_BORDER};"
+                   f"border-radius:6px;padding:2px 8px;font-size:17px;min-height:26px}}"
+                   f"QComboBox QAbstractItemView{{background:{C_BG2};color:{C_WHITE};selection-background-color:{C_BLUE}44}}")
+        self.cb_layer = QComboBox()
+        self.cb_layer.addItems(["全部层", "L2", "L3", "L4", "L5"])
+        self.cb_state = QComboBox()
+        self.cb_state.addItems(["全部状态", "只看在役", "只看候选"])
+        for _w in (self.cb_layer, self.cb_state):
+            _w.setStyleSheet(_sel_ss)
+            allrow.addWidget(_w)
+        self.ed_find = QLineEdit()
+        self.ed_find.setPlaceholderText("搜模型名 / 路径…")
+        self.ed_find.setClearButtonEnabled(True)
+        self.ed_find.setStyleSheet(_sel_ss)
+        self.ed_find.setFixedWidth(230)
+        allrow.addWidget(self.ed_find)
+        v.addLayout(allrow)
+
+        _acols = ("层", "模型", "类型", "大小", "时间", "状态", "训练入口")
+        self.tb_all = QTableWidget(0, len(_acols))
+        self.tb_all.setHorizontalHeaderLabels(_acols)
+        self.tb_all.verticalHeader().setVisible(False)
+        self.tb_all.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.tb_all.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.tb_all.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.tb_all.setStyleSheet(
+            f"QTableWidget{{background:{C_CARD};color:{C_WHITE};border:1px solid {C_BORDER};"
+            f"border-radius:8px;font-size:17px;gridline-color:{C_BORDER}}}"
+            f"QHeaderView::section{{background:{C_BG2};color:{C_GRAY};border:none;padding:5px;font-size:16px}}"
+            f"QTableWidget::item:selected{{background:{C_BLUE}33;color:{C_WHITE}}}")
+        _ah = self.tb_all.horizontalHeader()
+        for _i, _wdt in enumerate((58, 420, 104, 84, 148, 100)):
+            _ah.setSectionResizeMode(_i, QHeaderView.Fixed)
+            self.tb_all.setColumnWidth(_i, _wdt)
+        _ah.setSectionResizeMode(6, QHeaderView.Stretch)
+        self.tb_all.setTextElideMode(Qt.ElideRight)
+        self.tb_all.setMinimumHeight(240)
+        self.tb_all.setMaximumHeight(430)
+        self.tb_all.itemSelectionChanged.connect(lambda: self._sync_btns())
+        v.addWidget(self.tb_all, 3)          # 319 条要一次多看几行 ⇒ 比日志区优先
         # 2026-10-14 老倪: 「单独打开的模型引擎窗口 与 功能区模型引擎标签打开的界面 要保持一致」。
         #   末列(权重路径)是 Stretch ⇒ 表宽跟随父容器 ⇒ 两个界面**被裁的位置不同**。实测三种情形:
         #     窗口(1900) 路径列 622px · 窄容器(1400) 只剩 100px · **功能区页面会撑到 2497px(路径列 1253px, 全不裁)**
@@ -420,7 +470,13 @@ class ModelEnginePanel(QWidget):
         self.btn_log = QPushButton("📄 训练日志")
         self.btn_log.setToolTip("打开/尾随 tools/joint_train_*/<层>.log")
         self.btn_dir = QPushButton("📂 权重目录")
-        for b in (self.btn_train, self.btn_stop, self.btn_log, self.btn_dir):
+        # 2026-11-25 老倪「管理, 可训练」: 这两个按钮作用在「📋 全部模型」选中行上
+        self.btn_active = QPushButton("⬆ 设为在役")
+        self.btn_active.setToolTip("把「全部模型」里选中的权重切成该层在役\n(改指针/软链, 不覆盖权重; 写前备份+回读校验, 失败自动回滚)")
+        self.btn_train_sel = QPushButton("▶ 训练该层")
+        self.btn_train_sel.setToolTip("用选中行所属层的训练入口发起训练\n(后台跑, 日志 logs/model_train_<层>_*.log)")
+        for b in (self.btn_train, self.btn_stop, self.btn_log, self.btn_dir,
+                  self.btn_active, self.btn_train_sel):
             b.setStyleSheet(BTN)
             row.addWidget(b)
         row.addStretch()
@@ -444,7 +500,8 @@ class ModelEnginePanel(QWidget):
         self.log.setStyleSheet(f"QPlainTextEdit{{background:{C_BG2};color:{C_GRAY};border:1px solid {C_BORDER};"
                                f"border-radius:8px;padding:6px}}")
         self.log.setPlaceholderText("训练 / 执行任务工程的实时输出会落在这里（逐行，不吞错误）")
-        v.addWidget(self.log, 2)
+        self.log.setMaximumHeight(170)
+        v.addWidget(self.log, 1)
 
         self.btn_train.clicked.connect(self._on_train)
         self.btn_stop.clicked.connect(self._on_stop)
@@ -453,6 +510,11 @@ class ModelEnginePanel(QWidget):
         self.btn_task.clicked.connect(self._on_task)
         self.btn_copy.clicked.connect(self._on_copy)
         self.btn_refresh.clicked.connect(self._force_refresh)
+        self.btn_active.clicked.connect(self._on_set_active)
+        self.btn_train_sel.clicked.connect(self._on_train_sel)
+        for _w in (self.cb_layer, self.cb_state):
+            _w.currentIndexChanged.connect(lambda *_: self._render_all(force=True))
+        self.ed_find.textChanged.connect(lambda *_: self._render_all(force=True))
         self._sync_btns()
 
     # ─────────────────────────── 取数 ───────────────────────────
@@ -760,13 +822,17 @@ class ModelEnginePanel(QWidget):
         if not self.tb.selectedItems():
             self.tb.selectRow(0)
         self._sync_btns()
+        try:
+            self._render_all()
+        except Exception:                                                    # noqa: BLE001
+            pass
 
     def _fit_table_height(self):
         """表格刚好放得下 4 行 + 表头 (不出现竖向滚动条, 也不留空行区)。"""
         try:
             hh = self.tb.horizontalHeader().height() or 30
             rows = sum(self.tb.rowHeight(i) for i in range(self.tb.rowCount())) or (4 * 32)
-            self.tb.setFixedHeight(int(hh + rows + (self.tb.frameWidth() * 2) + 4))
+            self.tb.setFixedHeight(int(hh + rows + (self.tb.frameWidth() * 2) + 10))
         except Exception:                                                              # noqa: BLE001
             pass
 
@@ -777,6 +843,116 @@ class ModelEnginePanel(QWidget):
         if 0 <= r < len(rows):
             return rows[r].get("layer_key") or LAYERS[0]
         return LAYERS[r] if 0 <= r < len(LAYERS) else LAYERS[0]
+
+    # ─────────────── 📋 全部模型: 渲染 / 设为在役 / 训练 ───────────────
+    def _render_all(self, force=False):
+        """把 inventory.all_models (磁盘上每一个权重) 铺进 tb_all; 支持 层/状态/关键词 三道筛选。"""
+        if not hasattr(self, "tb_all"):
+            return
+        rows = self._inv.get("all_models") or []
+        lay = self.cb_layer.currentText()
+        stt = self.cb_state.currentText()
+        q = (self.ed_find.text() or "").strip().lower()
+        view = []
+        for m in rows:
+            if lay != "全部层" and m.get("layer") != lay:
+                continue
+            if stt == "只看在役" and not m.get("active"):
+                continue
+            if stt == "只看候选" and m.get("active"):
+                continue
+            if q and q not in ((m.get("name") or "") + " " + (m.get("path") or "")).lower():
+                continue
+            view.append(m)
+        self._all_rows = view
+        n_act = sum(1 for m in rows if m.get("active"))
+        if not rows:
+            self.lb_all.setText("📋 全部模型（读取中…）")
+            return
+        self.lb_all.setText("📋 全部模型 · %d 条（在役 %d）· 显示 %d" % (len(rows), n_act, len(view)))
+        # 319 行 × 7 列每 5s 重建会卡 ⇒ 签名不变就跳过 (mtime/在役数/条数 任一变化才重画)
+        sig = (len(view), len(rows), n_act,
+               sum(int(m.get("mtime_epoch") or 0) for m in view[:100]))
+        if not force and sig == getattr(self, "_all_sig", None):
+            return
+        self._all_sig = sig
+        keep = self.tb_all.currentRow()
+        self.tb_all.setUpdatesEnabled(False)
+        try:
+            self.tb_all.setRowCount(len(view))
+            for r, m in enumerate(view):
+                act = bool(m.get("active"))
+                cells = (m.get("layer") or "", m.get("name") or "", m.get("kind") or "",
+                         m.get("size_h") or "", _short_ts(m.get("mtime") or ""),
+                         "✅ 在役" if act else "候选", m.get("train_cmd") or "")
+                for c, txt in enumerate(cells):
+                    it = QTableWidgetItem(str(txt))
+                    if c == 5:
+                        it.setForeground(QColor(C_GREEN if act else C_DIM))
+                    elif c == 0:
+                        it.setForeground(QColor(C_CYAN))
+                    elif c == 6:
+                        it.setForeground(QColor(C_GRAY))
+                    self.tb_all.setItem(r, c, it)
+            if 0 <= keep < len(view):
+                self.tb_all.selectRow(keep)
+        finally:
+            self.tb_all.setUpdatesEnabled(True)
+
+    def _all_sel(self):
+        r = self.tb_all.currentRow()
+        rows = getattr(self, "_all_rows", None) or []
+        return rows[r] if 0 <= r < len(rows) else None
+
+    def _ctl(self, args, tag):
+        """跑 model_engine_ctl.py 并把回执逐行落到日志 (每个动作都必须留证)。"""
+        def _work():
+            try:
+                cp = subprocess.run([PY, os.path.join(ROOT, "tools", "model_engine_ctl.py")] + args,
+                                    cwd=ROOT, capture_output=True, text=True, timeout=600)
+                out = (cp.stdout or "").strip() or (cp.stderr or "").strip()
+                for ln in out.splitlines():
+                    self._log_q.put("[%s] %s" % (tag, ln))
+            except Exception as e:                                           # noqa: BLE001
+                self._log_q.put("[%s] ✗ 调 ctl 失败: %r" % (tag, e))
+            try:
+                self._q.put(self._fetch_once())
+            except Exception:                                                # noqa: BLE001
+                pass
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _on_set_active(self):
+        m = self._all_sel()
+        if not m:
+            self._log_line("⚠ 先在「📋 全部模型」表里选中一行, 再点「⬆ 设为在役」")
+            return
+        if m.get("active"):
+            self._log_line("ℹ 这条已经是在役: %s" % m.get("name"))
+            return
+        txt = ("把 %s 的在役切到:\n\n%s\n\n类型: %s · 大小: %s\n\n"
+               "只改指针(models/active_models.json)或 L2 软链, 不覆盖权重; 写前备份 + 回读校验, 不一致自动回滚。"
+               % (m.get("layer"), m.get("path"), m.get("kind"), m.get("size_h")))
+        if QMessageBox.question(self, "⬆ 设为在役", txt,
+                                QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes:
+            return
+        self._log_line("⬆ 设为在役: %s ← %s" % (m.get("layer"), m.get("path")))
+        self._ctl(["--set-active", m["layer"], m["path"]], "设为在役")
+
+    def _on_train_sel(self):
+        m = self._all_sel()
+        if not m:
+            self._log_line("⚠ 先在「📋 全部模型」表里选中一行 (用它的层发起训练)")
+            return
+        layer = m.get("layer") or ""
+        entry = _train_entries().get(layer) or m.get("train_cmd") or "(配置中心未接线)"
+        txt = ("发起 %s 训练:\n\n%s\n\n以选中权重为起点/基座: %s\n\n"
+               "后台跑, 日志落 logs/model_train_%s_*.log; 同层已有训练在跑会被拒 (防 8G 显存双开 OOM)。"
+               % (layer, entry, os.path.basename(m.get("path") or ""), layer))
+        if QMessageBox.question(self, "▶ 训练 %s" % layer, txt,
+                                QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes:
+            return
+        self._log_line("▶ 训练 %s (入口: %s)" % (layer, entry))
+        self._ctl(["--train", layer], "训练")
 
     def _sync_btns(self):
         running = self._proc is not None and self._proc.poll() is None
