@@ -14166,7 +14166,35 @@ class StudioMainWindow(QMainWindow):
                 #   → 去掉 seen 去重, 每次写入都执行 (老倪: 点了没反应 → 命令要每次生效)
                 try:
                     if line == "simulink":
-                        self._on_nav("simulink")
+                        # 🖼 2026-11-25 老倪「simulink模式, 要打开 simulink 画布」⇒ 命令通道也落一次取证
+                        #   (当前页类名/是否就是画布实例/画布下标), 1.2s 后写 /tmp/zmax_simulink_nav.json
+                        try:
+                            self._on_nav("simulink")
+                        except Exception as _e:                               # noqa: BLE001
+                            print("🖼 simulink nav 失败:", repr(_e), flush=True)
+
+                        def _rec_sim():
+                            _info = {}
+                            try:
+                                _w = self.stack.currentWidget()
+                                _sim = getattr(self, "simulink", None)
+                                _info = {
+                                    "cur_index": self.stack.currentIndex(),
+                                    "cur_widget": type(_w).__name__ if _w is not None else None,
+                                    "is_simulink": bool(_sim is not None and _w is _sim),
+                                    "simulink_index": self.modules.get("simulink"),
+                                    "has_canvas": bool(getattr(_sim, "canvas", None)
+                                                       or getattr(_sim, "scene", None)
+                                                       or getattr(_sim, "view", None)),
+                                }
+                                _fp = os.path.join(tempfile.gettempdir(), "zmax_simulink_nav.json")
+                                with open(_fp, "w", encoding="utf-8") as _f:
+                                    json.dump(_info, _f, ensure_ascii=False, indent=2)
+                                print("🖼 simulink nav:", _info, flush=True)
+                            except Exception as _e:                           # noqa: BLE001
+                                print("🖼 simulink nav 取证失败:", repr(_e), flush=True)
+
+                        _oneshot(self, 1200, _rec_sim)
                     elif line == "ss_canvas":
                         _oneshot(self, 600, self._open_ss_canvas_cmd)
                     # 🧮 2026-10-16 老倪: 流形引擎可视化落在「主参数 M」侧栏页 ⇒ 命令通道加直达
@@ -14244,6 +14272,7 @@ class StudioMainWindow(QMainWindow):
                             _oneshot(self, 900, _tm.open_model_engine_window)
                         else:
                             self.statusBar().showMessage("📡 模型引擎: 没找到承载页面", 2500)
+
                     # 🗺 2026-10-15 老倪: 「Roadmap 主指标…字体排列/位置要一致, UI要优美整齐」
                     #   ⇒ 命令通道加"量真窗几何": 从控制台内部 dump 五张卡 + 各自 KPI 标签的**真窗坐标**
                     #   (不必靠截图猜坐标; 结果落 /tmp/zmax_roadmap_geo.json, 可复算可复现)
