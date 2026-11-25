@@ -1,0 +1,167 @@
+{
+  "version": "1.0.0",
+  "updated": "2026-11-25",
+  "note": "状态空间工程服务契约清单。新增服务只改这个文件 + 加一个 /meta 端点, 不改网关代码。",
+  "layers": {
+    "L5": {"title": "场景理解层", "desc": "只懂数学与物理, 不懂客户 —— 感知与几何"},
+    "L4": {"title": "流形引擎层", "desc": "物理护盾 —— 10D 相空间 / 辛几何 / 黎曼约束"},
+    "L3": {"title": "流程编排层", "desc": "只懂流程不懂力学 —— 状态机与业务流"},
+    "L2": {"title": "精细操作层", "desc": "灵巧双手 —— 原子技能与末端控制"},
+    "OPS": {"title": "交付与观测层", "desc": "只懂参数不懂代码 —— 标定/看板/诊断/视频"}
+  },
+  "services": [
+    {
+      "name": "cy-slice",
+      "port": 8810,
+      "layer": "L4",
+      "title": "卡拉比-丘流形切面",
+      "desc": "六维流形切面可视化 (孔洞/亏格 genus-6), 标准服务网页",
+      "health": "/health",
+      "capabilities": ["manifold.slice", "viz.3d"],
+      "unit": "zmax-cy-slice.service"
+    },
+    {
+      "name": "ar3d",
+      "port": 8797,
+      "layer": "L4",
+      "title": "AR3D 状态空间看板",
+      "desc": "三维状态空间 + 轨迹叠加 + 真机/仿真双按钮",
+      "health": "/health",
+      "capabilities": ["viz.ar3d", "traj.replay", "arm.step_traj"],
+      "unit": null
+    },
+    {
+      "name": "se3-board",
+      "port": 8815,
+      "layer": "L5",
+      "title": "SE(3) 分层几何看板",
+      "desc": "全流程相位轨迹 251 点 / 26 states / 接真机几何",
+      "health": "/health",
+      "capabilities": ["geo.se3", "traj.phase"],
+      "unit": null
+    },
+    {
+      "name": "station",
+      "port": 8793,
+      "layer": "L2",
+      "title": "工位控制台",
+      "desc": "授权闸门 + 动作下发 + 全站视频同屏",
+      "health": "/health",
+      "capabilities": ["arm.authorize", "arm.move", "video.multi"],
+      "unit": "zmax-cam-live-stream.service"
+    },
+    {
+      "name": "video-overview",
+      "port": 8791,
+      "layer": "OPS",
+      "title": "工位总览视频流",
+      "desc": "多相机旁路调试实时流 (压缩)",
+      "health": "/health",
+      "capabilities": ["video.stream"],
+      "unit": "zmax-cam-live-stream.service"
+    },
+    {
+      "name": "dashboard",
+      "port": 8799,
+      "layer": "OPS",
+      "title": "产品大屏",
+      "desc": "单一数据源只读看板 /dashboard.json + 手机页",
+      "health": "/health",
+      "capabilities": ["report.oee", "report.yield"],
+      "unit": "zmax-dashboard.service"
+    },
+    {
+      "name": "ar-render",
+      "port": 8802,
+      "layer": "L5",
+      "title": "AR 工位场景渲染帧",
+      "desc": "L2 感知的输入帧源 (PNG)",
+      "health": "/health",
+      "capabilities": ["render.frame"],
+      "unit": "zmax-ar-render.service"
+    },
+    {
+      "name": "ar-station",
+      "port": 8804,
+      "layer": "L3",
+      "title": "AR 渲染站执行",
+      "desc": "渲染帧 → L2 感知 → plan → 双臂执行 (真跑)",
+      "health": "/health",
+      "capabilities": ["pipeline.render2action"],
+      "unit": "zmax-ar-render-station.service"
+    },
+    {
+      "name": "phase",
+      "port": 8805,
+      "layer": "L3",
+      "title": "相位/周期服务",
+      "desc": "工艺相位推进 + 周期权重",
+      "health": "/health",
+      "capabilities": ["flow.phase"],
+      "unit": null
+    },
+    {
+      "name": "gs3d",
+      "port": 8816,
+      "layer": "L5",
+      "title": "3DGS 场景渲染",
+      "desc": "高斯泼溅实时渲染 (Intel XPU, 走 ssh 隧道)",
+      "health": "/health",
+      "capabilities": ["render.3dgs"],
+      "unit": null,
+      "tunnel": "127.0.0.1:8816 -> intel:8816"
+    },
+    {
+      "name": "gs-models",
+      "port": 8796,
+      "layer": "L5",
+      "title": "模型加载服务",
+      "desc": "权重加载状态 + dtype",
+      "health": "/health",
+      "capabilities": ["model.load"],
+      "unit": null
+    },
+    {
+      "name": "platform",
+      "port": 8798,
+      "layer": "OPS",
+      "title": "平台版本探针",
+      "desc": "平台 tag/构建时间自证",
+      "health": "/health",
+      "capabilities": ["platform.version"],
+      "unit": null
+    },
+    {
+      "name": "agent-hub",
+      "port": 8794,
+      "layer": "OPS",
+      "title": "反向通道命令台",
+      "desc": "4060 -> 工控机反向命令通道 + 产物下载",
+      "health": "/",
+      "capabilities": ["ops.reverse_channel"],
+      "unit": "zmax-agent-hub.service"
+    },
+    {
+      "name": "aoi-gold",
+      "port": 10082,
+      "layer": "L5",
+      "title": "AOI 金手指检测",
+      "desc": "产线 AOI 金手指 (ssh 隧道到 192.168.23.23)",
+      "health": "/health",
+      "capabilities": ["aoi.gold_finger"],
+      "unit": null,
+      "tunnel": "127.0.0.1:10082 -> 192.168.23.23:10082"
+    },
+    {
+      "name": "aoi-surface",
+      "port": 10083,
+      "layer": "L5",
+      "title": "AOI 表面检测",
+      "desc": "产线 AOI 表面缺陷 (ssh 隧道到 192.168.23.23)",
+      "health": "/health",
+      "capabilities": ["aoi.surface"],
+      "unit": null,
+      "tunnel": "127.0.0.1:10083 -> 192.168.23.23:10083"
+    }
+  ]
+}
