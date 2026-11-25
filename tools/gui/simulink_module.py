@@ -10227,6 +10227,9 @@ class SimulinkModule(QWidget):
             from PyQt5.QtWidgets import QDialog as _QD
             from PyQt5.QtWidgets import QVBoxLayout as _QVB
             _dlg = _QD(self)
+            # 去掉 Qt.Dialog 位: 否则窗口类型=DIALOG, GNOME 不给最大化能力 (按钮灰/无效)
+            _dlg.setWindowFlags(_Qt.Window | _Qt.WindowTitleHint | _Qt.WindowSystemMenuHint
+                                | _Qt.WindowMinMaxButtonsHint | _Qt.WindowCloseButtonHint)
             _dlg.setWindowTitle("🖥 产品服务 · 全服务总索引")
             _dlg.setWindowModality(_Qt.NonModal)
             _dlg.resize(1420, 900)
@@ -13977,6 +13980,9 @@ class SimulinkModule(QWidget):
             from PyQt5.QtWidgets import QVBoxLayout as _QVB
 
             _dlg = _QD(self)
+            # 同上: 去掉 Qt.Dialog 位才有最大化能力
+            _dlg.setWindowFlags(_Qt.Window | _Qt.WindowTitleHint | _Qt.WindowSystemMenuHint
+                                | _Qt.WindowMinMaxButtonsHint | _Qt.WindowCloseButtonHint)
             _dlg.setWindowTitle("🧿 六维卡拉比-丘切面 — 孔洞 = 亏格 g=6")
             _dlg.setWindowModality(_Qt.NonModal)
             _dlg.resize(1180, 780)

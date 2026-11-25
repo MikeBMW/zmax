@@ -239,6 +239,12 @@ def _open_portal_in_app(parent=None, url=None):
             print("🖥 复用已打开的产品服务窗: %s" % url, flush=True)
             return url
         _dlg = _QD(parent)
+        # 🔴 2026-11-25 老倪「最大化的按钮不好用」: QDialog 默认带 Qt.Dialog 位 ⇒ 窗口类型是
+        #   _NET_WM_WINDOW_TYPE_DIALOG, GNOME 不给 dialog 最大化能力 (_NET_WM_ALLOWED_ACTIONS
+        #   里根本没有 MAXIMIZE_HORZ/VERT) ⇒ 标题栏最大化按钮是灰的/点了没用。
+        #   去掉 Dialog 位换成普通顶层窗 + 显式要 Min/Max 按钮。
+        _dlg.setWindowFlags(_Qt.Window | _Qt.WindowTitleHint | _Qt.WindowSystemMenuHint
+                            | _Qt.WindowMinMaxButtonsHint | _Qt.WindowCloseButtonHint)
         _dlg.setWindowTitle("🖥 产品服务 · 全服务总索引")
         _dlg.setWindowModality(_Qt.NonModal)
         _dlg.resize(1420, 900)
