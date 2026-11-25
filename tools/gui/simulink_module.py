@@ -6215,13 +6215,14 @@ class SimulinkModule(QWidget):
             self.open_monitor_window, "#58a6ff")
         tl.addWidget(self.btn_monitor)
         if not hasattr(self, "btn_station"):
-            # 🗂 2026-10-11 老倪: 「将 工位总览 按钮改名成 产品大屏」—— 名字改, 服务一字不动
-            #   (同一个 8793 站点页 + 同一条数据流服务 ⇒ 产品大屏 == 原工位总览)
+            # 🗂 2026-10-11 「工位总览 → 产品大屏」; 2026-11-25 再改「产品大屏 → 产品服务」,
+            #   指向也变了: 现在是所有服务的总索引 :8788 (8793/station 降级为回退 + 索引里的一张卡)
             self.btn_station = mk_btn(
-                "🖥 产品大屏",
-                "产品大屏 (原「工位总览」, 同一套服务): 6 路同屏 (深度源 + 工控机金手指/表面检测 + 手动控制区):\n" 
-                "  · 视频流没在跑会自动拉起 (最多等 12s), 然后开浏览器窗口\n"
-                "  · 页面地址 = 8793 站点 /station; 只读看画面 + 手动控制按钮走同一站点接口",
+                "🖥 产品服务",
+                "产品服务 (2026-11-25 改名) = 所有服务的总索引 (:8788):\n"
+                "  · 每张卡: 缩略图 + 一句介绍 + 健康灯 + 「打开」/「复制链接」\n"
+                "  · simulink画布 / 生产数据大屏 / ar3d / 卡拉比丘流形 / 工位控制台… 都在这里 link 过去\n"
+                "  · 总索引不通时自动回退到工位总览 (:8793/station, 6 路同屏)",
                 self.open_station_page, "#58a6ff")
         tl.addWidget(self.btn_station)
         # 🧭 2026-10-10 老倪「simulink 画布的 3D 视图那个按钮哪里去了？找回来。仿真可视化很重要」
@@ -10206,11 +10207,11 @@ class SimulinkModule(QWidget):
                 # 产品大屏 = 8793/station (与主脑那台机器同一套 6 路同屏 + 手动控制区)。
                 # 老倪 2026-11-08: 「不是 8799 服务, 应该是跟静静一样的 http://<主脑>:8793/station」
                 _url = _ls.station_url()
-                self._log("🖥 产品大屏(8793/station): %s" % _url)
+                self._log("🖥 产品服务 · 总索引: %s" % _url)
                 import webbrowser as _wb
                 _wb.open(_url)
             except Exception as _e:                                          # noqa: BLE001
-                self._log("❌ 产品大屏打开失败: %r" % (_e,))
+                self._log("❌ 产品服务打开失败: %r" % (_e,))
             return
         """🛰 工位总览 (6 路同屏 + 右侧控制区) — 老倪 2026-09-27「那个网页怎么搞丢了?」
 
@@ -10241,6 +10242,18 @@ class SimulinkModule(QWidget):
                 return "127.0.0.1"
 
         def _work():
+            # 0) 🖥 2026-11-25 老倪: 「产品服务」点开先看所有服务的总索引 (:8788);
+            #    索引页里每张卡再 link 到 ar3d / 卡拉比丘 / 大屏 / 工位控制台…, 总索引不通才走下面的回退。
+            for _pu in ("http://127.0.0.1:8788/",):
+                try:
+                    with urllib.request.urlopen(_pu, timeout=3) as _r:
+                        if _r.status == 200:
+                            self.log_signal.emit("🖥 产品服务 · 总索引: %s" % _pu)
+                            import webbrowser as _wb_idx
+                            _wb_idx.open(_pu)
+                            return
+                except Exception as _e:                                          # noqa: BLE001
+                    self.log_signal.emit("⚠️ 产品服务总索引不可达 (%s) → 回退工位总览" % _e)
             # 1) 视频流在不在 —— 总览页和叠加页由**同一个进程**服务(cam_live_stream.py)
             if not _stats_ok():
                 self.log_signal.emit("🛰 工位总览: 视频流未运行 → 自动启动 (6 路源 + 总览页) …")

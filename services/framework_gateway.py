@@ -49,9 +49,20 @@ def _probe(svc, timeout=2.0):
     实测: 8793/8797/8799/8815 等只实现 `/`, 声明 /health 会全报 404,
     健康灯全红 —— 假的"全离线"比不显示更误导。
     """
-    port = svc["port"]
+    port = svc.get("port")
     out = {"name": svc["name"], "port": port, "up": False, "ms": None,
            "code": None, "err": None, "meta": {}}
+    if svc.get("self"):
+        # 🔴 网关自己: 探 /api/services 会再次触发 probe_all ⇒ 无限递归/死锁。
+        #    自己当然活着 (本请求就是它处理的), 直接短路。
+        out["up"] = True
+        out["meta"] = {"kind": "self"}
+        return out
+    if port is None:                      # 本机客户端 (无端口): 不算离线
+        out["up"] = True
+        out["client"] = True
+        out["meta"] = {"kind": "client"}
+        return out
     paths = []
     if svc.get("health"):
         paths.append(svc["health"])
@@ -115,12 +126,20 @@ def probe_all(reg=None):
         svc_out = dict(svc)
         svc_out.update(by_name.get(svc["name"], {}))
         by_name[svc["name"]] = svc_out
+    now = time.time()
+    for v in by_name.values():
+        th = os.path.join(THUMBS, v["name"] + ".png")
+        v["has_thumb"] = os.path.exists(th)
+        v["thumb_mtime"] = int(os.path.getmtime(th)) if v["has_thumb"] else None
+        v["thumb_age_s"] = round(now - os.path.getmtime(th)) if v["has_thumb"] else None
+    real = [v for v in by_name.values() if v.get("port") is not None]
     return {
-        "ok": all(v["up"] for v in by_name.values()),
+        "ok": all(v["up"] for v in real),
         "checked_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        "n_total": len(by_name),
-        "n_up": sum(1 for v in by_name.values() if v["up"]),
+        "n_total": len(real),
+        "n_up": sum(1 for v in real if v["up"]),
         "layers": reg["layers"],
+        "title": reg.get("title") or "Z-MAX 产品服务",
         "services": list(by_name.values()),
     }
 
@@ -136,84 +155,22 @@ def get_cached(force=False):
 
 
 # ------------------------------------------------------------------ 门户页
-PAGE = """<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Z-MAX 框架服务</title>
-<style>
-:root{--bg:#0c0f14;--card:#151a22;--line:#222b36;--fg:#e6edf5;--dim:#7d8798;
---ok:#39d98a;--bad:#f4626b;--warn:#e3b341;--acc:#4c9aff}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);
-font:14px/1.55 -apple-system,"Segoe UI","Noto Sans CJK SC",sans-serif}
-header{padding:16px 22px;border-bottom:1px solid var(--line);
-display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
-h1{margin:0;font-size:17px;font-weight:600;letter-spacing:.3px}
-.sum{color:var(--dim);font-size:13px}
-.sum b{color:var(--ok)} .sum i{color:var(--bad);font-style:normal}
-main{padding:14px 22px 40px;max-width:1180px}
-.layer{margin:18px 0 6px;display:flex;align-items:baseline;gap:10px}
-.layer h2{margin:0;font-size:14px;color:var(--acc);font-weight:600}
-.layer span{font-size:12px;color:var(--dim)}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:10px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:9px;
-padding:11px 13px;display:block;text-decoration:none;color:inherit;
-transition:border-color .15s,transform .15s}
-.card:hover{border-color:var(--acc);transform:translateY(-1px)}
-.row{display:flex;align-items:center;gap:7px}
-.dot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--bad)}
-.dot.up{background:var(--ok);box-shadow:0 0 6px var(--ok)}
-.dot.slow{background:var(--warn)}
-.nm{font-size:13.5px;font-weight:600}
-.po{margin-left:auto;font-size:11.5px;color:var(--dim);font-variant-numeric:tabular-nums}
-.ds{color:var(--dim);font-size:12px;margin-top:4px;line-height:1.45}
-.meta{margin-top:6px;font-size:11px;color:#8fa1b8;word-break:break-all}
-.meta code{background:#0e131a;padding:1px 4px;border-radius:3px}
-.bar{height:2px;background:var(--line);margin-top:8px;border-radius:2px;overflow:hidden}
-.bar i{display:block;height:100%;background:var(--ok)}
-footer{padding:12px 22px 30px;color:var(--dim);font-size:12px}
-footer code{background:var(--card);padding:2px 5px;border-radius:3px}
-</style></head><body>
-<header><h1>Z-MAX 框架服务</h1><div class="sum" id="sum">探测中…</div></header>
-<main id="main"></main>
-<footer>契约 <code>services/registry.json</code> · 清单 <code>curl :8788/api/services</code>
-· 聚合健康 <code>curl :8788/api/health</code> · 反代 <code>/go/&lt;name&gt;/</code></footer>
-<script>
-const ORDER=['L5','L4','L3','L2','OPS'];
-function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-function render(d){
-  const up=d.services.filter(s=>s.up).length;
-  document.getElementById('sum').innerHTML=
-    '<b>'+up+'</b> 在线 / '+(d.n_total-up)+' 离线 · 共 '+d.n_total+
-    ' · 探测 '+esc(d.checked_at.slice(11));
-  const byL={};
-  d.services.forEach(s=>{(byL[s.layer]=byL[s.layer]||[]).push(s)});
-  let h='';
-  ORDER.forEach(L=>{
-    const arr=byL[L]; if(!arr) return;
-    const meta=d.layers[L]||{};
-    h+='<div class="layer"><h2>'+L+' '+esc(meta.title||'')+'</h2><span>'+esc(meta.desc||'')+'</span></div>';
-    h+='<div class="grid">';
-    arr.forEach(s=>{
-      const cls=s.up?(s.ms>1200?'slow':'up'):'';
-      const m=s.meta&&Object.keys(s.meta).length?
-        '<div class="meta">'+Object.entries(s.meta).slice(0,3).map(([k,v])=>
-          '<code>'+esc(k)+'</code> '+esc(v)).join(' · ')+'</div>':'';
-      h+='<a class="card" href="/go/'+esc(s.name)+'/" target="_blank" rel="noopener">'+
-        '<div class="row"><span class="dot '+cls+'"></span>'+
-        '<span class="nm">'+esc(s.title||s.name)+'</span>'+
-        '<span class="po">:'+s.port+(s.ms!=null?' · '+s.ms+'ms':'')+'</span></div>'+
-        '<div class="ds">'+esc(s.desc||'')+'</div>'+m+
-        (s.up?'':'<div class="meta" style="color:#f4626b">'+(s.err||'离线')+'</div>')+
-        '</a>';
-    });
-    h+='</div>';
-  });
-  document.getElementById('main').innerHTML=h;
-}
-function pull(){fetch('/api/services?force=1').then(r=>r.json()).then(render).catch(e=>{
-  document.getElementById('sum').textContent='网关异常: '+e;})}
-pull(); setInterval(pull,8000);
-</script></body></html>"""
+# 页面本体放 services/web/portal.html —— 改文案/排版不用重启网关 (按 mtime 热读)。
+WEB = os.path.join(HERE, "web")
+PORTAL = os.path.join(WEB, "portal.html")
+THUMBS = os.path.join(WEB, "thumbs")
+_ph = {"mtime": 0, "body": b""}
+
+
+def portal_html():
+    try:
+        mt = os.path.getmtime(PORTAL)
+        if mt != _ph["mtime"] or not _ph["body"]:
+            with open(PORTAL, "rb") as f:
+                _ph["body"], _ph["mtime"] = f.read(), mt
+        return _ph["body"]
+    except Exception:
+        return "<!doctype html><meta charset=utf-8><h1>portal.html missing</h1>".encode("utf-8")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -240,7 +197,16 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         p = u.path
         if p in ("/", "/index.html"):
-            return self._send(200, PAGE, "text/html; charset=utf-8")
+            return self._send(200, portal_html(), "text/html; charset=utf-8")
+        if p.startswith("/thumb/"):
+            name = os.path.basename(p[7:]).split(".")[0]
+            fp = os.path.join(THUMBS, name + ".png")
+            if not re.match(r"^[A-Za-z0-9_-]+$", name or "-") or not os.path.exists(fp):
+                return self._send(404, b"", "image/png")
+            with open(fp, "rb") as f:
+                return self._send(200, f.read(), "image/png")
+        if p == "/api/ping":
+            return self._send(200, json.dumps({"ok": True, "service": "portal"}),)
         if p == "/api/services":
             force = "force=1" in (u.query or "")
             return self._send(200, json.dumps(get_cached(force), ensure_ascii=False))
@@ -304,14 +270,15 @@ def main():
         d = probe_all()
         print("服务 %d 个, 在线 %d" % (d["n_total"], d["n_up"]))
         for s in d["services"]:
-            print("  %-4s %-14s :%-5d %s %s" % (s["layer"], s["name"], s["port"],
+            print("  %-4s %-14s %-6s %s %s" % (s["layer"], s["name"],
+                                                (":%d" % s["port"]) if s.get("port") else "本机",
                                                 "✅" if s["up"] else "❌",
                                                 (s.get("err") or "")[:30]))
         return 0 if d["n_up"] > 0 else 1
 
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
     srv.daemon_threads = True
-    print("Z-MAX 框架服务网关 http://%s:%d/ (%d 个服务已登记)"
+    print("Z-MAX 产品服务 · 总索引 http://%s:%d/ (%d 个服务已登记)"
           % (a.host, a.port, len(load_registry()["services"])), flush=True)
     try:
         srv.serve_forever()

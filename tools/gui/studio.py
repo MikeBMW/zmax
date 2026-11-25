@@ -122,13 +122,15 @@ _run_helper_script_if_any()
 
 
 def _open_product_dashboard(win=None):
-    """🖥 产品大屏 (2026-11-08 重写): 候选链 TCP 探活 → 系统浏览器打开第一个通的。
+    """🖥 产品服务 (2026-11-25 改名+改指向): 打开「所有服务的总索引」:8788 + 回退链。
 
-    原来写死公网 https://datadrive.world/factory-dashboard.html, 而 47.93.88.143:443 从产线/笔记本
-    都连不上(实测 TCP 直接 fail / 20s 超时) ⇒ 点开只有浏览器一直转 = 老倪说的"打不开"。
-    顺序: ZMAX_DASHBOARD_URL > 本机 127.0.0.1:8799 > config/ui/dashboard_hosts.json 登记的主机
-          > 产线默认 192.168.23.50:8799 > 公网。
-    绝不抛异常(调用方还兜一层): PyQt5 槽里抛异常会 qFatal 直接杀进程。
+    老倪 2026-11-25: 「控制台的产品大屏, 改名成产品服务; 点开先看到所有服务的总索引
+    (链接 + 缩略图 + 介绍), simulink画布/产品大屏/ar3d/卡拉比丘流形都能从那里 link 过去」。
+      · :8788 = 总索引页 (services/web/portal.html) —— 卡片带缩略图/介绍/健康灯,
+        点卡片走 /go/<name>/ 反代直达原服务, 另有「复制链接」按钮。
+      · :8799 = 生产数据大屏 (产量/UPH/OEE), 现在是总索引里的一张卡, 不再是一级入口。
+    顺序: ZMAX_PORTAL_URL > 本机 8788 > 登记主机 :8788 > 本机 8799 > 产线 192.168.23.50:8788。
+    绝不抛异常(PyQt5 槽里抛异常会 qFatal 直接杀进程)。
     """
     import socket as _sk
     import subprocess as _sp
@@ -147,32 +149,6 @@ def _open_product_dashboard(win=None):
             return False
 
     hosts = []
-    # ① 老倪 2026-11-09: 「按钮要打开自己的服务」—— Windows 冻结包自带 cam_live_stream.py,
-    #    本机 8793 没有就自己拉起来(它就是 /station 那套 6 路同屏 + 手动控制区的服务端);
-    #    起不来/端口不通才退回环境变量里登记的那台机器。
-    try:
-        import local_services as _ls
-        _ls.ensure("cam_live_stream.py", 8793, timeout=20.0, extra=("--port", "8793"))
-    except Exception:                                                      # noqa: BLE001
-        pass
-    try:
-        import local_services as _ls
-        _st = _ls.station_url(fallback=False)
-        if _st:
-            if os.name == "nt":
-                _sp = __import__("subprocess")
-                _sp.Popen(["cmd.exe", "/c", "start", "", _st])
-            else:
-                import webbrowser as _wb0
-                _wb0.open(_st)
-            if win is not None:
-                try:
-                    win.statusBar().showMessage("🖥 产品大屏 → %s" % _st, 10000)
-                except Exception:                                          # noqa: BLE001
-                    pass
-            return _st
-    except Exception:                                                      # noqa: BLE001
-        pass
     try:
         _root = os.environ.get("ZMAX_ROOT") or os.path.expanduser("~/zmax")
         _cf = os.path.join(_root, "config", "ui", "dashboard_hosts.json")
@@ -185,12 +161,16 @@ def _open_product_dashboard(win=None):
     except Exception:                                                      # noqa: BLE001
         pass
     if not hosts:
-        hosts = ["192.168.23.50:8799"]
-    cands = [u for u in ([os.environ.get("ZMAX_DASHBOARD_URL", ""), "http://127.0.0.1:8799/"]
-                         + ["http://%s/" % h if not str(h).startswith("http") else str(h) for h in hosts])
-             if u]
-    # 2026-11-12 老倪「全删云端出口」: 候选里去掉 https://datadrive.world/factory-dashboard.html
-    #   (云端 ECS 已删除, 留着只会在本机/局域网都不通时白等一个超时, 然后打开死链)
+        hosts = ["192.168.23.50"]
+
+    def _u8(h):
+        h = str(h).strip().rstrip("/")
+        if h.startswith("http"):
+            return h + "/"
+        return "http://%s:8788/" % h
+
+    cands = [u for u in ([os.environ.get("ZMAX_PORTAL_URL", ""), "http://127.0.0.1:8788/"]
+                         + [_u8(h) for h in hosts] + ["http://127.0.0.1:8799/"]) if u]
     url, tried = cands[-1], []
     for u in cands:
         tried.append(u)
@@ -198,13 +178,14 @@ def _open_product_dashboard(win=None):
             url = u
             break
     if os.name == "nt":
+        _sp = __import__("subprocess")
         _sp.Popen(["cmd.exe", "/c", "start", "", url])
     else:
         import webbrowser as _wb
         _wb.open(url)
     if win is not None:
         try:
-            win.statusBar().showMessage("🖥 产品大屏 → %s%s" % (
+            win.statusBar().showMessage("🖥 产品服务 · 总索引 → %s%s" % (
                 url, "" if url == cands[0] else "   (回退链: %s)" % " → ".join(tried)), 10000)
         except Exception:                                                  # noqa: BLE001
             pass
@@ -3207,7 +3188,7 @@ class HomeWidget(QWidget):
             ("plugging", "🧩", "3D场景",       "虚拟现实",  "对象·标记·轨迹·保护围栏 可编辑\n机器人 + 工件 + 夹具 (真模型)",  ROI_ACCENT),
             ("version",  "🔄", "版本同步",     "LeRobot · 上游管理",  "检查上游更新 · 安全同步\n版本状态 · 冲突检测",  C_ORANGE),
             # 🗂 2026-10-11 老倪: 「将功能页的产品大屏, 完全同步原来的工位总览的服务」—— 与 :8793 工位总览同一份在役状态
-            ("website",  "🖥", "产品大屏",     "datadrive.world",  "工厂数字大屏 · 实时产线 (与工位总览服务同源)\n本机 http://192.168.23.50:8799/  ·  数据 .../dashboard.json\n公网 https://datadrive.world/factory-dashboard.html", "#1f6feb"),
+            ("website",  "🖥", "产品服务",     "总索引 · 全部服务",  "所有服务的总索引: 缩略图 + 介绍 + 健康灯\n点卡片直达 (simulink画布/ar3d/卡拉比丘/大屏…)\n本机 http://192.168.23.50:8788/ · 可复制链接", "#1f6feb"),
         ]
         # 2026-08-08 老倪: 每层分组框 (外边框 + 标题 + 3 卡), 分层结构明显
         _GROUP_TITLES = ["系统", "架构", "数据", "场景"]
@@ -15277,12 +15258,12 @@ class StudioMainWindow(QMainWindow):
                     _ld = os.path.join(os.path.expanduser("~/zmax"), "zmax_data", "logs")
                     os.makedirs(_ld, exist_ok=True)
                     with open(os.path.join(_ld, "ui_error.log"), "a", encoding="utf-8") as _lf:
-                        _lf.write("\n===== %s 产品大屏 =====\n" % __import__("time").strftime("%F %T"))
+                        _lf.write("\n===== %s 产品服务 =====\n" % __import__("time").strftime("%F %T"))
                         _lf.write(_tb.format_exc())
                 except Exception:                                          # noqa: BLE001
                     pass
                 try:
-                    self.statusBar().showMessage("⚠️ 产品大屏打开失败: %s" % _e, 8000)
+                    self.statusBar().showMessage("⚠️ 产品服务打开失败: %s" % _e, 8000)
                 except Exception:                                          # noqa: BLE001
                     pass
             return
