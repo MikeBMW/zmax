@@ -400,3 +400,7 @@ _exit.log
 _tas_probe.txt
 engine_selftest_nounpack.json
 docs_manifest_win_*.sha256
+
+# 2026-11-26: 一次性 GitHub token 落地文件 (用完即删, 绝不入库)
+.git-token
+.git-credentials
