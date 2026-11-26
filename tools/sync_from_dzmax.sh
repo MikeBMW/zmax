@@ -28,7 +28,9 @@ fi
 [ -d "$SRC" ] || { echo "❌ $SRC 不存在"; exit 1; }
 
 # 只回灌这些（代码 / 配置 / 文档 / 流程）。data、outputs、models、zmax_data、external 不覆盖。
-DIRS=(tools src services flows defaults dds config docs)
+# 2026-11-26 v5.50.786: 加 server/ —— 标准服务归集目录（22 个服务脚本 + services.json +
+#   arch_map.json + web/arch_map*.html）。不加的话 Windows 侧新建的服务目录永远同步不过去。
+DIRS=(server tools src services flows defaults dds config docs)
 EXCL=(--exclude "__pycache__" --exclude "*.pyc" --exclude ".venv" --exclude ".git")
 
 echo "════ 1) Windows 侧相对 Ubuntu 的变化 (dry-run) ════"

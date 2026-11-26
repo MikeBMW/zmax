@@ -324,7 +324,9 @@ def arm_http_worker(url: str, fps_cap: float) -> None:
     import urllib.request
     cands = [u.strip() for u in str(url or "").split(",") if u.strip()]
     for _c in str(os.environ.get("ZMAX_ARM_HTTP_FALLBACK")
-                  or "http://127.0.0.1:18792/frame.jpg").split(","):
+                  or "http://127.0.0.1:18792/frame.jpg,"
+                     "http://192.168.23.66:8792/frame.jpg,"
+                     "http://192.168.23.66:8794/frame.jpg").split(","):
         if _c.strip() and _c.strip() not in cands:
             cands.append(_c.strip())
     if not cands:
@@ -762,6 +764,57 @@ ROBOT_STATUS_JSON = SCENE_DIR + "/robot_status.json"   # 同上的 /robot_status
 #   文件龄 >10s 判失效(与 tools/l2_daemon.py 直读位姿同一门槛), 页面必须如实标「源已静止 Ns」。
 ROKAE_TCP_JSON = os.path.expanduser("~/zmax/zmax_data/rokae_sdk/tcp_out/latest.json")
 ROKAE_TCP_MAX_AGE_S = 10.0
+
+# 2026-11-25: 本机 rokae_tcp_sampler 容器常年不起 ⇒ tcp_out/latest.json 根本不存在,
+# 页面「实时位姿」永远空。Orin(.66) 那边珞石桥一直在跑 (39061/status, 5Hz, endInRef 同口径),
+# 所以文件读不到/陈旧时回退到它: 直连优先, 本机 SSH 隧道 19061 兜底。
+ORIN_TCP_URLS = (
+    os.environ.get("ZMAX_ORIN_SDK_URL", ""),
+    "http://192.168.23.66:39061/status",
+    "http://127.0.0.1:19061/status",
+)
+
+
+def _euler_quat_zxy(rx: float, ry: float, rz: float):
+    """endInRef 的 RPY(rad) → (qx,qy,qz,qw)，与 tools/tcp_ar_server.py 同一套换算。"""
+    sr, cr = math.sin(rx * 0.5), math.cos(rx * 0.5)
+    sp, cp = math.sin(ry * 0.5), math.cos(ry * 0.5)
+    sy, cy = math.sin(rz * 0.5), math.cos(rz * 0.5)
+    return (cy * cp * sr - sy * sp * cr,
+            sy * cp * sr + cy * sp * cr,
+            sy * cp * cr - cy * sp * sr,
+            cy * cp * cr + sy * sp * sr)
+
+
+def _orin_tcp_http():
+    """从 Orin 珞石桥 HTTP 取一帧 TCP 真值，返回 (rec, err)。rec 与 latest.json 同字段。"""
+    err = "no url"
+    for url in ORIN_TCP_URLS:
+        if not url:
+            continue
+        try:
+            with urllib.request.urlopen(url, timeout=1.5) as r:
+                j = json.loads(r.read().decode("utf-8", "replace"))
+            st = (j.get("status") or j) if isinstance(j, dict) else {}
+            p6 = st.get("endInRef")
+            if not p6 or len(p6) < 6:
+                err = "%s: 桥里没有 endInRef" % url
+                continue
+            ts = time.time()
+            qx, qy, qz, qw = _euler_quat_zxy(float(p6[3]), float(p6[4]), float(p6[5]))
+            return {
+                "ts": round(ts, 4),
+                "t": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts)),
+                "x": round(float(p6[0]), 6), "y": round(float(p6[1]), 6), "z": round(float(p6[2]), 6),
+                "rx": round(float(p6[3]), 6), "ry": round(float(p6[4]), 6), "rz": round(float(p6[5]), 6),
+                "qx": round(qx, 6), "qy": round(qy, 6), "qz": round(qz, 6), "qw": round(qw, 6),
+                "frame": "base_link",
+                "src": "orin_bridge/珞石 endInRef @ %s" % url,
+                "joint": st.get("jointPos"),
+            }, None
+        except Exception as e:                                                   # noqa: BLE001
+            err = "%s: %s" % (type(e).__name__, str(e)[:80])
+    return None, err
 _AOI_INFO = {}            # port → {ok, err, http, t, kb, verdict, kind, src}
 _AOI_LOCK = threading.Lock()
 _DEPTH_INFO = {}
@@ -3884,14 +3937,22 @@ def _rokae_pose() -> dict:
     绝不把停更 15 小时的旧值当实时位姿报出去(原先就是这个毛病)。
     """
     d = _read_json(ROKAE_TCP_JSON, None)
-    if not isinstance(d, dict):
-        return {"xyz": None, "quat": None, "age_s": -1.0, "file_age_s": -1.0,
-                "stale": True, "frame_id": "", "src": "ROKAE SDK 直采 (文件不可读)",
-                "src_file": ROKAE_TCP_JSON, "err": "latest.json 不存在/不可解析"}
+    src_tag = "ROKAE SDK 直采 (rokae_tcp_sampler 5Hz · endInRef)"
     try:
         file_age = round(time.time() - os.path.getmtime(ROKAE_TCP_JSON), 2)
     except OSError:
         file_age = -1.0
+    # 文件不存在/陈旧 ⇒ 回退 Orin 珞石桥直连(同口径 endInRef), 页面才有实时位姿
+    if not isinstance(d, dict) or file_age < 0.0 or file_age > ROKAE_TCP_MAX_AGE_S:
+        _rec, _oerr = _orin_tcp_http()
+        if isinstance(_rec, dict):
+            d, file_age = _rec, 0.0
+            src_tag = "Orin 桥直连 (珞石 endInRef · 5Hz)"
+        elif not isinstance(d, dict):
+            return {"xyz": None, "quat": None, "age_s": -1.0, "file_age_s": -1.0,
+                    "stale": True, "frame_id": "", "src": "ROKAE SDK 直采 (文件不可读 · Orin 桥也不通)",
+                    "src_file": ROKAE_TCP_JSON,
+                    "err": "latest.json 不存在 · 桥读不到(%s)" % str(_oerr)[:80]}
     stale = (file_age < 0.0) or (file_age > ROKAE_TCP_MAX_AGE_S)
     # 🅰️🅱️🅲 a b c = SDK 原生 p6[3..5] (endInRef 世界系欧拉角), 示教器/产线 /robot/tcp_pose 同口径。
     #    单位 rad, 页面上给度 —— **直接透传, 不由我方从四元数反算**(反算只在需要比对方便时用,
@@ -3907,7 +3968,7 @@ def _rokae_pose() -> dict:
         "file_age_s": file_age,              # 采样器最后一次落盘的年龄(判失效用它)
         "stale": bool(stale),
         "frame_id": d.get("frame", ""),
-        "src": "ROKAE SDK 直采 (rokae_tcp_sampler 5Hz · endInRef)",
+        "src": src_tag,
         "src_file": ROKAE_TCP_JSON,
         "err": "" if not stale else "位姿源已静止 %.1fs (>%.0fs 判失效)" % (file_age, ROKAE_TCP_MAX_AGE_S),
     }
@@ -5937,7 +5998,9 @@ function _enq(f){_q.push(f);_pump();}
    现场表现: 「点了没反应」、`Failed to fetch`、甚至迟到的旧动作才执行。
    修法: 本页**媒体**改走 8791(同一个进程 · 独立连接名额), 控制/状态请求独占 8793。
    只在"站台跑在 8793 且从内网/本机访问"时生效 —— 手机走隧道的情况不受影响。 */
-const _mb=()=>((location.port==='8793'&&/^(10\.|192\.168\.|172\.|127\.|localhost)/.test(location.hostname))?('//'+location.hostname+':8791'):'');
+/* 2026-11-25 Windows 冻结包: 只起单端口(--port 8793), 8791 根本不存在
+   ⇒ 媒体一律走同端口(相对路径), 否则页面所有相机图 100% 加载失败 */
+const _mb=()=>'';
 const SNAPS=[...document.querySelectorAll('img[data-mode=snap]')].map(im=>({
   im:im, url:_u(_mb()+im.dataset.src), every:parseInt(im.dataset.every||'2000'), due:0, miss:0}));
 /* 🔴 2026-09-27 老倪: 「金手指和表面检测要实时推流」 —— 这两格改走 MJPEG 长连接
@@ -6835,6 +6898,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def _snapshot(self, name: str):
         jpg, seq, _, _, _ = _get(name)
+        # 2026-11-25 Windows 冻结包: 没带 --overlay 时 ov_* 帧槽永远是空的
+        #   ⇒ 页面 arm/local/local2/depth 四格全 503、相机全黑。这里如实回落原图(不编造)。
+        if (not jpg) and name.startswith("ov_"):
+            jpg, seq, _, _, _ = _get(name[3:])
         # 🚫 2026-10-22: 本机相机被**主动关闭**(off 档, 让给微信视频通话)时, 别再回旧帧 ——
         #   否则页面停在一张冻住的画面上, 看着像"还在拍", 比明说没图更容易误导现场。
         if name in ("local", "ov_local") and int(_LOCAL_SRC.get("dev", -1)) < 0 \
@@ -6970,7 +7037,12 @@ def main():
                     help="USB 摄像头卡名匹配串(逗号分隔多个, 任一命中即可; 取 v4l2 卡名 —— "
                          "默认 'USB2.0 Camera,RealSense': 实测外接 Intel RealSense D435 的卡名是 "
                          "'Intel(R) RealSense(TM) Depth Camera', 只认 USB2.0 Camera 会把它判成不在位)")
-    ap.add_argument("--no-local", action="store_true", help="不启第一路本机相机")
+    # 2026-11-25 (Windows 现场): 本机相机是独占的, 一抓就抢掉微信/浏览器视频通话的摄像头。
+    #   工位总览/硬件工具箱要的是 8793 的 /station/status (不用摄像头帧), 所以默认不开本机两路,
+    #   需要看画面时 ZMAX_CAM_LOCAL=1 (或手工带 --local/--local2) 再启动。
+    ap.add_argument("--no-local", action="store_true",
+                    default=not os.environ.get("ZMAX_CAM_LOCAL"),
+                    help="不启第一路本机相机 (默认不启; ZMAX_CAM_LOCAL=1 打开)")
     # 🎥 2026-09-27 老倪: 三相机兼容 —— 第二路本机相机 (MAXHUB 电视顶摄) 或网络相机
     ap.add_argument("--local2-dev", type=int, default=-1,
                     help="相机②本机 /dev/videoN (MAXHUB 电视顶摄; -1=关)")
@@ -6980,7 +7052,9 @@ def main():
                     help="相机②显示名 (如 '🎥 中央相机'); 空=按设备名/URL 自动取")
     ap.add_argument("--local2-fps", type=float, default=0.0,
                     help="相机②单独限帧 (0=沿用 --fps; 网络相机按源端真实帧率给, 别跟着 30 空转)")
-    ap.add_argument("--no-local2", action="store_true", help="不启第二路相机")
+    ap.add_argument("--no-local2", action="store_true",
+                    default=not os.environ.get("ZMAX_CAM_LOCAL"),
+                    help="不启第二路相机 (默认不启; ZMAX_CAM_LOCAL=1 打开)")
     ap.add_argument("--width", type=int, default=640)
     ap.add_argument("--height", type=int, default=480)
     ap.add_argument("--host", default="0.0.0.0")
@@ -7026,6 +7100,13 @@ def main():
         threading.Thread(target=arm_worker,
                          args=(args.arm_src, args.quality, args.fps),
                          daemon=True, name="arm").start()
+        # 2026-11-25 Windows 现场: tap 落盘文件(/home/ubuntu/...、/dev/shm/...)根本不存在,
+        #   arm_worker 永远等不到帧 ⇒ 同时挂一路 Orin JPEG 直取(8792/8794), 拿到就出图。
+        if not os.path.exists(str(args.arm_src)):
+            print("   手臂源: 本机 tap 文件不存在 → 追加 Orin HTTP 直取", flush=True)
+            threading.Thread(target=arm_http_worker,
+                             args=("", args.arm_fps),
+                             daemon=True, name="arm-http-fallback").start()
     _CAM_LABEL["arm"] = "🦾 机器人臂上 D405 (Orin)"
     if not args.no_local:
         # 🎛 笔记本这一路 = 「内置 ↔ USB」可换源 (页面 [内置|USB] 按钮 → POST /cam/src,

@@ -1,0 +1,2728 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Z-MAX 工位总览 · 6 路同屏 + 手动控制</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:#0d1117;color:#e6edf3;
+  font:16px/1.45 system-ui,"Noto Sans CJK SC","Microsoft YaHei",sans-serif;
+  /* 2026-09-28 老倪: 「工位总览这个页面怎么无法上下移动？只能看到6个视频窗口，下面的用鼠标无法滚动」
+     原布局把整页锁成 height:100% + main 固定 calc(100% - 62px) ⇒ 内容超出就永远滚不到
+     (3 倍高的判据图把它撑破，下面的面板/按钮全都够不着) ⇒ 改成整页可滚动：只留最小高度。 */
+  overflow-y:auto;overflow-x:hidden}
+header{display:flex;align-items:center;gap:14px;padding:10px 16px;background:#161b22;
+  border-bottom:1px solid #30363d;position:sticky;top:0;z-index:9}
+h1{font-size:24px;margin:0;letter-spacing:.5px}
+.hint{color:#8b949e;font-size:15px}
+.sp{flex:1}
+.clk{font-variant-numeric:tabular-nums;color:#8b949e;font-size:17px}
+.warnbar{background:#4b2b1a;border:1px solid #d29922;color:#f0c674;padding:5px 10px;
+  border-radius:8px;font-size:15px;max-width:60vw}
+main{display:grid;grid-template-columns:minmax(0,1fr) 640px;gap:12px;padding:12px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-content:start}
+.panel{background:#161b22;border:1px solid #30363d;border-radius:12px;overflow:hidden;
+  display:flex;flex-direction:column;min-height:0}
+.cap{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:7px 10px;
+  border-bottom:1px solid #21262d}
+.ttl{font-size:18px;font-weight:600}
+/* 帧龄徽标: 只一个 token(如 0.2s), 挤在标题右边, 不占图像一行 */
+.age{margin-left:auto;font-size:12px;color:#6e7681;font-variant-numeric:tabular-nums;
+  white-space:nowrap;opacity:.85}
+.age.ok{color:#3fb950}.age.bad{color:#f85149}.age.wa{color:#d29922}
+.meta{font-size:14px;color:#8b949e;font-variant-numeric:tabular-nums;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.panel img{width:100%;display:block;background:#010409;aspect-ratio:4/3;object-fit:contain}
+.note{padding:8px 10px;font-size:15px;color:#f0c674;background:#2a2012;
+  border-top:1px solid #4b3a1a;line-height:1.5}
+.note b{color:#ffd479}
+/* ══ ⚙️ 状态条 (2026-10-01 老倪: 「这里怎么没有版本号硬件状态等信息」) ══════════════
+   口径: 极小面积 · 红绿灯 · 手机竖屏可读 · 不横向滚动 · 数据源取不到就整体变灰(静默)。
+   数据源 = https://datadrive.world/zmax_status.json (本机 8796/status/all 由
+   tools/publish_status.py 推上公网) —— 手机访问不到 127.0.0.1, 必须走公网。 */
+#zstat{display:flex;flex-direction:column;gap:3px;padding:5px 8px;background:#0b1017;
+  border-bottom:1px solid #21262d;font-size:11.5px;line-height:1.25;
+  font-variant-numeric:tabular-nums}
+/* 取不到数据 ⇒ 整体变灰(灰度滤镜一次管掉全部颜色: 条/点/字) */
+#zstat.zdim{filter:grayscale(1);opacity:.55}
+.zrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+.zrow.zbar4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.zm{display:flex;align-items:center;gap:5px;min-width:0}
+.zm .lbl{color:#8b949e;white-space:nowrap;flex:0 0 auto}
+.zm .trk{position:relative;flex:1 1 0;min-width:16px;height:7px;border-radius:4px;
+  background:#21262d;overflow:hidden}
+.zm .fil{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:4px;background:#3fb950;
+  transition:width .4s linear,background-color .3s}
+.zm .val{color:#c9d1d9;white-space:nowrap;flex:0 0 auto}
+/* 模型 chip: Ø8px 圆点 + 层标 + 极短版本 + 推理标记 */
+.zmd{display:flex;align-items:center;gap:4px;padding:1px 6px 1px 5px;border-radius:9px;
+  border:1px solid #21262d;background:#11161d;min-width:0;max-width:100%;line-height:1.25}
+.zmd .dot{flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:#6e7681;display:block}
+.zmd .ly{color:#8b949e;font-size:10.5px;font-weight:700;flex:0 0 auto}
+.zmd .vr{color:#c9d1d9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  max-width:12ch;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px;font-weight:400}
+.zmd .inf{color:#3fb950;font-size:10px;flex:0 0 auto}
+.zmd i{font-style:normal}
+.zmd.g_in .dot{background:#3fb950}
+.zmd.g_ca .dot{background:#d29922}
+.zmd.g_un{border-color:#1c2229}
+.zmd.g_un .vr,.zmd.g_un .ly{color:#6e7681}
+/* 短模型名 (≤9 字, 与 status_panel.py 的 short_name 同一套规则) */
+.zmd .nm{color:#e6edf3;font-size:10.5px;font-weight:600;white-space:nowrap;flex:0 0 auto}
+.zmd .more{color:#6e7681;font-size:10px;flex:0 0 auto}
+.zmd.zsec{background:#0f141a}
+.zmd.zsec .nm{color:#a9b4c0;font-weight:400}
+/* 点按展开的全部模型明细 (手机没有 hover ⇒ 点一下整条) */
+#zs_models{cursor:pointer}
+#zs_more{display:none;border-top:1px dashed #21262d;margin-top:3px;padding-top:4px}
+#zs_more.on{display:block}
+.zdrow{display:flex;gap:6px;align-items:baseline;font-size:10.5px;line-height:1.5;
+  white-space:nowrap;overflow:hidden}
+.zdrow b{color:#8b949e;font-weight:700;flex:0 0 auto}
+.zdrow em{font-style:normal;color:#e6edf3;font-weight:600;flex:0 0 auto;min-width:5.6em}
+.zdrow .zdv{color:#c9d1d9;font-family:ui-monospace,Menlo,Consolas,monospace;max-width:18ch;
+  overflow:hidden;text-overflow:ellipsis;flex:0 0 auto}
+.zdrow i{font-style:normal;flex:0 0 auto}
+.zdrow .zdn{color:#6e7681;overflow:hidden;text-overflow:ellipsis}
+/* 训练 chip + 进度条 (只在真在训练时出现) */
+.ztrain{display:flex;align-items:center;gap:4px;padding:1px 7px;border-radius:9px;
+  border:1px solid #4b3a1a;background:#2a2012;color:#f0c674;max-width:100%}
+.ztrain .trk{position:relative;width:44px;height:6px;border-radius:4px;background:#4b3a1a;overflow:hidden;flex:0 0 auto}
+.ztrain .fil{position:absolute;left:0;top:0;bottom:0;width:0;background:#e3b341;border-radius:4px}
+.ztrain b{font-weight:700}
+/* 上次训练 (训练跑完时的空态保障): 灰底 + 绿勾/红叉, 同样极少文字 */
+.zlast{display:flex;align-items:center;gap:4px;padding:1px 7px;border-radius:9px;
+  border:1px solid #21262d;background:#11161d;color:#8b949e;max-width:100%;white-space:nowrap}
+.zlast i{font-style:normal;color:#6e7681;font-size:10.5px;flex:0 0 auto}
+.zlast b{font-weight:700;color:#c9d1d9;font-size:10.5px;flex:0 0 auto}
+.zlast .vr{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:400;max-width:12ch;
+  overflow:hidden;text-overflow:ellipsis}
+.zlast .zok{color:#3fb950}.zlast .zbad{color:#f85149}
+/* 3DGS 资产版本 */
+.zgs{display:flex;align-items:center;gap:4px;color:#8b949e;white-space:nowrap;
+  padding:1px 6px;border-radius:9px;border:1px solid #21262d;background:#11161d}
+.zgs b{color:#c9d1d9;font-weight:600;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px}
+@media(max-width:430px){#zstat{font-size:11px;gap:4px;padding:5px 8px}
+  .zrow{gap:6px}.zrow.zbar4{gap:6px}.zm{gap:4px}}
+/* 📍 号位 1~7 (2026-09-30 老倪「有记录的点就是绿色按钮, 没有记录的点就是灰色按钮」;
+   2026-09-30 追加「7个按钮排成一行, 均匀分布」): 面板横跨整行(grid-column:1/-1),
+   7 个按钮等宽均分 1fr —— 判据由服务端 /ctl/points 给, 页面只画不算。 */
+#p_slots{grid-column:1 / -1}
+/* 🧭 空间1~7 面板同样横跨整行 —— 2026-10-01 老倪: 「号位控件跟空间大小、宽度一点都不一样」
+   🐛 根因: 左栏是 CSS 网格(3 列), 号位面板有 grid-column:1/-1 横跨整行, 我漏给空间面板写这行 ⇒
+   它只占 1/3 宽 ⇒ 按钮尺寸/宽度全不一样。**新增同行面板必须照抄这一行**。 */
+#p_spaces{grid-column:1 / -1}
+
+/* 🖱 2026-10-08 老倪「鼠标放上显示 x y z a b c 位姿的记录值」—— 所有已记录点的悬停卡片 */
+#ptip{position:fixed;z-index:99999;display:none;background:#0d1117;border:1px solid #30363d;border-radius:10px;
+  padding:9px 11px;font:13px/1.6 ui-monospace,Menlo,Consolas,monospace;color:#c9d1d9;
+  box-shadow:0 8px 26px rgba(0,0,0,.6);max-width:330px;pointer-events:none}
+#ptip b{color:#7ee787}#ptip .v{color:#e6edf3}#ptip .m{color:#8b949e;font-size:12px}
+#ptip .cp{pointer-events:auto;cursor:pointer;color:#58a6ff;margin-top:5px;display:inline-block}
+.slotbar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;padding:10px 10px 4px}
+.slotbar button{font-size:17px;font-weight:700;padding:12px 4px;line-height:1.3;text-align:center}
+.slotbar button.rec{background:#0f3d22;border-color:#2ea043;color:#7ee787}
+.slotbar button.rec:hover:not(:disabled){background:#155a31}
+.slotbar button.norec{background:#161b22;border-color:#2a3038;color:#6e7681;opacity:.8}
+.slotbar button small{display:block;font-size:12px;font-weight:400;opacity:.9;margin-top:4px;white-space:nowrap}
+/* 🧭 空间1~7 (老倪 2026-10-01: 「改成跟号位1~7一样的样式, 包括按钮大小, 颜色用黄色背景, 排列整齐」)
+   —— 尺寸/内边距/字号与 .slotbar button 逐项一致(不是目测, 是同一组数值), 只换**黄色**配色。 */
+#p_spaces .ttl{color:#e3b341}
+#spacebar button{font-size:17px;font-weight:700;padding:12px 4px;line-height:1.3;text-align:center;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#spacebar button.rec{background:#d29922;border-color:#e3b341;color:#241c00}       /* 已记: 实心黄 */
+#spacebar button.rec:hover:not(:disabled){background:#e3b341}
+#spacebar button.norec{background:#2b2410;border-color:#6b5a1e;color:#d9b64a}     /* 未记: 暗黄(不是灰) */
+#spacebar button.norec:hover{background:#3a3016}
+#spacebar button small{display:block;font-size:12px;font-weight:400;opacity:.95;margin-top:4px;white-space:nowrap}
+/* 🎯 金手指 / 侧面点 的 标记·运动 双模式条 (2026-10-12 老倪) —— 与空间点同款按钮, 各换一套配色:
+   金手指=蓝(与回点按钮同色系) · 侧面点=绿(准备点=安全退让位同色); 列数自适应(2~4 个按钮不拉成 7 列)。 */
+#goldbar,#sidebar{grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}
+#goldbar button.rec{background:#0f2f52;border-color:#1f6feb;color:#cfe4ff}
+#goldbar button.rec:hover:not(:disabled){background:#164a80}
+#goldbar button.norec{background:#12161c;border-color:#2a3038;color:#8b949e}
+#goldbar button.norec:hover{background:#1b2027}
+#sidebar button.rec{background:#123d22;border-color:#2ea043;color:#9ff0b5}
+#sidebar button.rec:hover:not(:disabled){background:#17512d}
+#sidebar button.norec{background:#12161c;border-color:#2a3038;color:#8b949e}
+#sidebar button.norec:hover{background:#1b2027}
+.dim{color:#8b949e}
+.ok{color:#3fb950}.wa{color:#d29922}.bad{color:#f85149}
+/* ── 右侧控制台 ── */
+aside{display:flex;flex-direction:column;gap:10px;overflow:auto;min-height:0;padding-right:2px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:10px 12px}
+.card h2{font-size:18px;margin:0 0 8px;color:#c9d1d9;letter-spacing:.3px}
+.big{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.25}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row+.row{margin-top:8px}
+.k{font-size:15px;color:#8b949e}
+button{background:#21262d;color:#e6edf3;border:1px solid #30363d;border-radius:10px;
+  font-size:20px;padding:12px 10px;cursor:pointer;font-family:inherit;touch-action:manipulation}
+button:hover:not(:disabled){background:#2d333b;border-color:#8b949e}
+button:disabled{opacity:.4;cursor:not-allowed}
+.seg button{padding:10px 12px;font-size:19px;min-width:56px}
+.seg button.on{background:#1f6feb;border-color:#1f6feb;color:#fff;font-weight:700}
+#armbar{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;
+  border:1px solid #d29922;background:#2a2012;font-size:20px;font-weight:700;color:#f0c674;
+  width:100%;text-align:left}
+#armbar.on{border-color:#3fb950;background:#0f2b17;color:#7ee787}
+#armbar .st{font-size:22px}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+.pad button{height:92px;font-size:24px;font-weight:600}
+.pad .mid{background:#0d1117;border-style:dashed;font-size:19px;color:#8b949e;cursor:default;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.pad .mid b{font-size:30px;color:#e6edf3}
+.rot{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;margin-top:8px}
+.rot button{font-size:21px;padding:14px 12px;min-width:104px}
+.rot .lbl{font-size:17px;color:#c9d1d9}
+/* 🔩 2026-09-30 第 6 轴 (J6) 自转: 两个大按钮并排(逆时针 / 顺时针) —— 现场不用看小字也分得清 */
+.rot2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.rot2 button{font-size:22px;font-weight:700;padding:16px 10px;min-height:78px;line-height:1.35}
+.rot2 button[data-skill="L2.j6_ccw"]{border-color:#2f6f3f}
+.rot2 button[data-skill="L2.j6_cw"]{border-color:#6f5b2f}
+.flash{animation:fl .9s ease-out}
+body.locked .pad button[data-skill],body.locked .rot button[data-skill],body.locked .rot2 button[data-skill]{opacity:.55}
+@keyframes fl{0%{background:#1f6feb;border-color:#58a6ff}100%{background:#21262d}}
+#msg{font-size:22px;font-weight:700;margin:2px 0 6px;word-break:break-all}
+#lines{background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:8px;margin:0;
+  font:14px/1.5 ui-monospace,Consolas,monospace;color:#9fb0c0;white-space:pre-wrap;
+  max-height:190px;overflow:auto}
+/* 🚨 2026-10-09 现场(老倪: 「点后退没反应」= 被包络/安全闸拒, 但页面几乎没说原因)。
+   新增两块, 都是**只加反馈区**, 不动任何按钮/走线:
+   ① #denybanner: 手动控制台顶部红横幅, 被拒时写明**具体原因**(如"出界: x=0.3348 < 下界 0.3368")。
+   ② #movefeed: 逐条下发台账 —— 每次下发无论成败各留一行(时间·技能·参数·结果·原因), 点一行复制。
+   注意: 放在 #execline **之外** —— poll() 每轮会把 #execline 清空(见 poll 里 '#robot2 … #execline … = \'\''),
+   反馈放里面会被下一轮冲掉, 现场就又变成"没反应"。 */
+#denybanner{display:none;background:#3d1618;border:1px solid #f85149;color:#ff9c9c;
+  border-radius:8px;padding:8px 10px;margin:4px 0 8px;font-size:17px;font-weight:700;
+  word-break:break-all;white-space:pre-wrap}
+#denybanner b{color:#fff}
+#movefeed{background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:8px;margin:0;
+  font:13px/1.55 ui-monospace,Consolas,monospace;color:#9fb0c0;
+  max-height:220px;overflow:auto}
+#movefeed .row{cursor:copy;padding:1px 0;border-bottom:1px dashed #21262d;word-break:break-all}
+#movefeed .row:last-child{border-bottom:none}
+#movefeed .row:hover{background:#161b22}
+#movefeed .r-bad{color:#ff9c9c}
+#movefeed .r-ok{color:#7ee787}
+#movefeed .r-wa{color:#f0c674}
+#movefeed .r-dim{color:#8b949e}
+label.arm{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+input[type=checkbox]{width:22px;height:22px;margin-top:2px}
+input.num{width:84px;background:#0d1117;border:1px solid #30363d;border-radius:8px;
+  color:#e6edf3;font-size:20px;padding:8px;font-family:inherit}
+@media (max-width:1500px){
+  main{grid-template-columns:minmax(0,1fr);height:auto}
+  .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  aside{overflow:visible}
+}
+@media (max-width:900px){.grid{grid-template-columns:1fr}}
+/* ── 右上角实时位姿 HUD (2026-10-01 老倪: 「在这个页面的右上角，实时显示 x y z a b c 的数值」)
+   固定在视口右上角 ⇒ 滚动也看得见; 等宽+tabular-nums ⇒ 数字跳动时不左右抖;
+   数据来自同一次 /station/status 轮询里的 tcp(SDK 直采 5Hz, endInRef), 不新增请求。 */
+/* 实时位姿卡片: 6 值横向一排(不换行), 等宽 + tabular-nums 数字不抖, 平均分配宽度 ⇒ 与同栏卡片等宽 */
+#posehud{cursor:copy}
+#posehud.stale{border-color:#f85149;box-shadow:inset 0 0 0 1px #f85149}
+#posehud.copied{border-color:#3fb950}
+#posehud .dim{color:#8b949e;font-size:11px;font-weight:400}
+/* ── 碰撞点台账 (2026-10-01 老倪: 「记录所有碰撞点…显示在实时位姿下面紧挨着, 红色字体, 小窗口,
+   高度与实时位姿一样, 可以拖动显示所有碰撞点, 最上面显示最新的」) */
+#collhud{border-color:rgba(248,81,73,.55);cursor:default;display:flex;flex-direction:column;
+  min-height:86px;overflow:hidden}
+aside #collhud h2, #collhud h2{color:#f85149!important;margin-bottom:2px}
+#collhud .dim{color:#8b949e;font-size:11px;font-weight:400}
+.colllist{flex:1;min-height:40px;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;touch-action:pan-y;margin-top:4px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-variant-numeric:tabular-nums;font-size:12px;line-height:1.5;color:#f85149}
+/* 7 列: 时间 + X Y Z A B C —— 列宽固定, 与上面「🎯 实时位姿」同一套字体/数字格式(mm, 度),
+   放在右上角就是为了用眼睛把「撞在哪」和「现在在哪」上下对着看 */
+.colllist .ch,.colllist .ci{display:grid;grid-template-columns:60px repeat(3,1fr) repeat(3,1.18fr);
+  gap:4px;align-items:baseline}
+.colllist .ch{color:#8b949e;font-size:10px;padding-bottom:2px;border-bottom:1px solid rgba(248,81,73,.35)}
+.colllist .ci{padding:1px 0;border-bottom:1px dashed rgba(248,81,73,.18);cursor:copy}
+.colllist .ci:last-child{border-bottom:none}
+.colllist .ci .tm{color:#8b949e;font-size:11px}
+.colllist .ci .v{text-align:right}
+.colllist .ci .na{color:#6e7681;text-align:right}
+.colllist .ci:hover{background:rgba(248,81,73,.10)}
+.colllist .cg{color:#8b949e}
+.colllist::-webkit-scrollbar{width:8px}
+.colllist::-webkit-scrollbar-thumb{background:#f8514955;border-radius:4px}
+#posehud .posegrid{display:flex;flex-wrap:nowrap;align-items:baseline;justify-content:space-between;
+  gap:6px;margin-top:8px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+#posehud .pv{display:flex;align-items:baseline;gap:3px;flex:1 1 0;min-width:0;justify-content:center}
+#posehud .pv .k{color:#8b949e;font-size:11px;font-style:normal;flex:0 0 auto}
+#posehud .pv .v{color:#e6edf3;font-weight:700;font-size:14px;white-space:nowrap}
+#posehud .pv .v.bad{color:#f85149}
+#posehud .hint{margin-top:3px}
+/* 🆕 2026-11-11 手动输入位姿栏(老倪: 「实时位姿下面增加每个位姿的手动输入编辑栏」) —— 一行 6 个输入框,
+   与上面 6 个只读值同宽同字体(数字对齐不跳), 下面一行 = 速度 + 移动按钮; 手机上换行不挤。 */
+#poseedit{margin-top:6px;display:flex;flex-direction:column;gap:6px}
+#poseedit .perow{display:flex;gap:6px}
+#poseedit .pi{flex:1 1 0;min-width:0;background:#0d1117;color:#e6edf3;border:1px solid #30363d;
+  border-radius:6px;padding:6px 4px;font:600 13px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;text-align:center}
+#poseedit .pi{cursor:text}#poseedit .pi:focus{border-color:#58a6ff;outline:none;box-shadow:0 0 0 1px #58a6ff}
+#poseedit .pi.chg{border-color:#d29922}
+#poseedit .perow2{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#poseedit .psp{flex:0 0 72px;text-align:center}
+#perst{flex:0 0 auto;padding:6px 9px;font-size:14px;font-weight:700;border-radius:6px;
+  background:#21262d;color:#e6edf3;border:1px solid #30363d;cursor:pointer}
+#perst:hover{border-color:#58a6ff}
+#pegobtn{flex:1 1 auto;font-weight:700;font-size:15px;padding:8px 10px}
+#pe_state{font-size:11px;color:#8b949e}
+/* 📱 窄屏(手机): 字缩小保证仍是横向一排, 不换行、不截断数字 */
+@media (max-width:820px){#posehud .posegrid{gap:3px} #posehud .pv .v{font-size:12px} #posehud .pv .k{font-size:10px}}
+/* 📱 2026-10-01 (老倪: 「我要远程操作 / 手机远程控制」) —— 手机竖屏断点。
+   原来 .slotbar 固定 7 列(390px 屏上每格≈50px, 空间点/号位按钮点不准), 碰撞台账 7 列同理。
+   手机改成 4 列 + 加大触控高度; 提示文字让位给控件; 内边距收紧把可视区让给内容。 */
+@media (max-width:560px){
+  main{padding:6px;gap:8px}
+  header{padding:8px 10px}
+  header h1{font-size:15px}
+  header .hint{display:none}
+  .panel .cap .ttl{font-size:12px}
+  .slotbar{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;padding:8px 6px 4px}
+  .pad{grid-template-columns:repeat(3,1fr);gap:6px}
+  .rot2{grid-template-columns:1fr 1fr;gap:6px}
+  .rot{grid-template-columns:1fr auto auto;gap:6px}
+  .colllist .ch,.colllist .ci{grid-template-columns:34px repeat(3,1fr) repeat(3,1fr);font-size:11px}
+  button,.slotbar button,.pad button{padding:10px 6px;font-size:13px;min-height:40px}
+}
+/* 🧹 2026-10-25 老倪: 「删掉所有窗口下面的文字, 现在已经遮挡图像了」 ——
+   相机格只留标题, 状态/说明/提示类文字一律不出 (元素仍在, JS 照常写值, 只是不显示;
+   要复查口径时把 body 加个 show-meta 类就全回来)。图像因此拿到全部高度。 */
+.cap .meta,#m_gsmap,.note,#gs_ref_cap,#gs_img_cap,#gs_msg,#gs_live_hint,#lsrc_msg,
+#n_depth,#gold_mode_hint,#surface_mode_hint{display:none!important}
+.panel img{max-height:none}
+/* AOI 两格源是超宽条(914x64 / 1400x240): 先保持原样(4:3 框 + contain),
+   要不要改成条状显示由现场定 —— 未经验证的版式不动。 */
+</style>
+<script>/* 🔁 页面版本号: 服务端把 __HTMLVER__ 换成模板 mtime; 与 /station/status 里的 html_ver
+   不一致 ⇒ 说明这个标签页拿的是老模板(会按老 data-src 去取烧字图) ⇒ 自动 reload 一次。 */
+var HTML_VER="__HTMLVER__";</script>
+</head><body>
+<header>
+  <h1>🛰 工位总览</h1>
+  <span class="hint">6 路同屏 · 右侧手动控制 (X Y Z 平动 / A B C 绕轴旋转)</span>
+  <span class="sp"></span>
+  <span class="warnbar" id="warn" style="display:none"></span>
+  <span class="clk" id="clk"></span>
+</header>
+<!-- ⚙️ 状态条: 硬件 / 模型版本+推理中 / 训练进度 / 3DGS 版本 (老倪: 极小面积 · 红绿灯 · 只给数字)
+     数据源 = https://datadrive.world/zmax_status.json ← 本机 8796/status/all 由 tools/publish_status.py 每分钟推 -->
+<div id="zstat" class="zdim"
+     title="数据源 https://datadrive.world/zmax_status.json (本机 8796/status/all, 每分钟推)">
+  <div class="zrow zbar4">
+    <div class="zm" id="zs_gpu"><span class="lbl">GPU</span>
+      <span class="trk"><i class="fil" id="zs_gpu_f"></i></span>
+      <span class="val" id="zs_gpu_v">—</span></div>
+    <div class="zm" id="zs_cpu"><span class="lbl">CPU</span>
+      <span class="trk"><i class="fil" id="zs_cpu_f"></i></span>
+      <span class="val" id="zs_cpu_v">—</span></div>
+    <div class="zm" id="zs_mem"><span class="lbl">内存</span>
+      <span class="trk"><i class="fil" id="zs_mem_f"></i></span>
+      <span class="val" id="zs_mem_v">—</span></div>
+    <div class="zm" id="zs_disk"><span class="lbl">磁盘</span>
+      <span class="trk"><i class="fil" id="zs_disk_f"></i></span>
+      <span class="val" id="zs_disk_v">—</span></div>
+  </div>
+  <div class="zrow" id="zs_models" title="点一下展开全部模型明细 (层/短名/完整版本/状态/完整名)">
+    <span class="zmd g_un"><i class="dot"></i><b class="ly">状态源…</b></span></div>
+  <div id="zs_more"></div>
+</div>
+<main>
+  <section class="grid">
+    <!-- 🧭 3DGS 建图 (老倪 2026-10-01): 「左上角单独窗口, 宽度相当于 机器人臂+笔记本相机+MAXHUB顶摄 的总和,
+         高度你自己适配, 生成场景的下面是原来的摄像头窗口」⇒ grid-column:1/-1 = 整行三格之和; 高度自适应(max-height)。
+         跑点走号位同一条授权+收口链; 采集用 gs_capture, 训练用 gs_train(真值位姿, 不用 COLMAP)。 -->
+    <div class="panel" id="p_gsmap" style="order:3">
+      <div class="cap"><span class="ttl">🧭 3DGS 建图 (L5 指导选点 自动跑点)</span>
+        <span class="meta" id="m_gsmap">读状态…</span>
+</div>
+      <!-- 🚫 2026-11-24 老倪: 「3DGS 那几个按钮没用，删掉」⇒ 建图/渲染切换按钮整段移除, 只留 Intel 实时渲染画面。 -->
+      <div style="padding:8px 10px 10px">
+        <!-- 🧊 2026-10-08 老倪: 「做到这个 3DGS 窗口里, 要可以用鼠标变化场景角度, 可以拖动」
+             ⇒ 该窗口默认就是**可交互的实景查看器**(内嵌 /gsview, 同域 so 鼠标事件直通拖拽/缩放/平移);
+             原来的静态渲染图退成可切换的「🖼 参考渲染图」对照。 -->
+        <!-- 按钮行(Intel渲染/实景查看器/参考渲染图/新窗口)已删; 固定显示下面的 Intel 实时渲染画面。 -->
+        <div id="gs_rwrap" style="padding:0 0 8px">
+          <!-- 🖥 2026-10-25 老倪: 「4060 只是显示，而 intel 要渲染好，推流过来」
+               这一格 = Intel XPU 服务端渲染的实时帧(环绕建模相机路径), 本机只做取帧代理(/gs/live.jpg)。
+               不做浏览器端高斯渲染 ⇒ 不占本页主线程, 老机器也不卡。 -->
+          <img id="gs_render" alt="Intel 渲染的 3DGS 实景" data-paused="0"
+            style="width:100%;height:56vh;min-height:420px;object-fit:contain;background:#05070a;border:1px solid #30363d;border-radius:6px">
+          <div id="gs_render_cap" style="font-size:11.5px;color:#8b949e;margin-top:5px">🖥 Intel XPU 实时渲染推流(加载中)…</div>
+          <script>
+          (function(){
+            var img=document.getElementById('gs_render'), cap=document.getElementById('gs_render_cap');
+            var n=0, bad=0, hp=0;
+            function health(){
+              fetch('gs/live/health',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+                if(!d || !d.ok) return;
+                cap.textContent='🖥 Intel XPU 渲染 · '+(d.gaussians/1000).toFixed(0)+'k 高斯 · '+d.fps+' fps · 帧龄 '+d.age_s+'s'
+                  +' · 视角='+(d.view||'环绕路径')+(d.src==='arm'&&d.pose_age_s!=null?(' · 位姿龄 '+d.pose_age_s+'s'):'')
+                  +' · 源=intel:'+d.dev;
+              }).catch(function(){});
+            }
+            /* 🔴 2026-11-13 老倪「刷新了，什么都没有」+「太卡啦」:
+               推流不可用时原来会切到 /gsview iframe(浏览器端 WebGL 渲 6 万高斯) —— 画面是有了,
+               但这页本身已经挂着 6 路 MJPEG, 再叠一个 WebGL 就把页面拖卡。
+               ⇒ 改成**退回静态重建图**(/gs_render.png, 十几万一帧的 PNG, 15s 刷一次),
+                真要交互再看时点「🎥 实景查看器」按需加载。 */
+            var _fb=false, _fbTimer=null;
+            function fallback(){
+              if(_fb) return; _fb=true;
+              // 只有「推流真挂」时才切静态 —— 而且不动 gs_rwrap/gs_imgwrap 的显隐
+              // (显隐是「🖼 参考渲染图」按钮的职责, 两处都改会把上下两张图同时点亮)
+              var gi=document.getElementById('gs_img');
+              // 🎬 2026-11-14 老倪「3DGS 窗口怎么没同步变化」: 先探一次推流 ——
+              //   推流活着就**别动** (#gs_render 那格本来就在 1s 拉 gs/live.jpg, 画面自己在动);
+              //   只有推流真 503/连不上, 才退回每轮训练产出的静态留出视角渲染图(15s 刷)。
+              //   踩过的坑: 进页时推流刚好没起, 直接切静态会把两个容器都点亮(上下两张图)。
+              var probe=new Image(), okLive=false;
+              probe.onload=function(){ okLive=true;
+                var w=document.getElementById('gs_rwrap'); if(w) w.style.display='block';
+                var iw=document.getElementById('gs_imgwrap'); if(iw) iw.style.display='none';
+              };
+              probe.onerror=function(){
+                if(okLive) return;
+                if(gi){ gi.style.display='block'; gi.dataset.paused='0';
+                  var st=function(){ gi.src='gs_render.png?t='+Date.now(); };
+                  st(); if(_fbTimer) clearInterval(_fbTimer); _fbTimer=setInterval(st,15000);
+                }
+              };
+              probe.src='gs/live.jpg?t='+Date.now();
+              cap.textContent='🎬 550C 实时渲染推流(100k 高斯 · ~2.5fps) · 推流断了自动退回静态渲染图';
+              fetch('gs/list',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+                var a=(d&&d.assets||[])[0]; if(!a) return;
+                cap.textContent='🎬 '+a.name+' · 550C 实时渲染推流(~2.5fps) · PSNR '+(a.psnr_holdout_db||0).toFixed(2)
+                  +' dB · '+((a.n_gaussians||0)/1000).toFixed(0)+'k 高斯 · 每轮训练后自动换新图 · 要拖角度点「🎥 实景查看器」';
+              }).catch(function(){});
+            }
+            // 进页先查一次推流健康: 不 ok 就直接切, 别让用户盯着黑格
+            fetch('gs/live/health',{cache:'no-store'}).then(function(r){return r.json();})
+              .then(function(d){ if(!d || !d.ok) fallback(); }).catch(fallback);
+            function tick(){
+              if(!img || img.dataset.paused==='1') return;
+              var u='gs/live.jpg?t='+Date.now(), im=new Image();
+              im.onload=function(){ img.src=u; n++; bad=0; if((n%8)===0) health(); };
+              im.onerror=function(){ bad++; if(bad>3){ fallback(); if(!_fb) cap.textContent='⚠️ Intel 渲染流取不到'; } };
+              im.src=u;
+            }
+            // 🔴 2026-10-26 老倪「为什么响应很慢？应该1秒之内响应啊」
+            //    实测: 服务端 station.html 0.9ms、/station/status 16ms ⇒ 慢的**不是服务端**,
+            //    是浏览器对同一 host:port 只有 6 条连接, 而这里同刻被占满:
+            //    本块 260ms(3.8Hz) 拉 gs/live.jpg + 700ms 的 17KB status + 250ms 的 pose
+            //    + 2 条 mjpg 长连接(aoi_gold/aoi_surface, 常驻占 2 条) + 4 个快照 img
+            //    ⇒ 点「下降」的 POST 排在队尾, 现场体感就是"很慢/没反应"。
+            //    处置: 降到 1Hz, 且页面不可见时整个停掉(切标签/锁屏不再白占连接)。
+            var _gsTimer = null;
+            function _gsStart(){ if (_gsTimer) return; tick(); _gsTimer = setInterval(tick, 1000); }
+            function _gsStop(){ if (_gsTimer){ clearInterval(_gsTimer); _gsTimer = null; } }
+            document.addEventListener('visibilitychange', function(){ document.hidden ? _gsStop() : _gsStart(); });
+            _gsStart(); health();
+          })();
+          </script>
+        </div>
+        <iframe id="gs_live" src="about:blank" data-src="gsview" title="3DGS 实景查看器(可拖拽转角度)"
+          style="display:none;width:100%;height:56vh;min-height:420px;border:1px solid #30363d;border-radius:6px;background:#05070a"></iframe>
+        <div id="gs_imgwrap" style="display:none">
+          <!-- 🦾 2026-10-14 老倪「参考渲染图应该是手臂相机, 现在的图像是一个历史帧」:
+               这格默认给**手臂相机实时帧**(2 秒一刷 · 36KB, 轻), 模型渲的留出图退到「🖼 参考渲染图」按钮后面。 -->
+          <img id="gs_ref" alt="手臂相机实时帧" style="width:100%;max-height:52vh;object-fit:contain;background:#0d1117;border:1px solid #30363d;border-radius:6px">
+          <div id="gs_ref_cap" style="font-size:11.5px;color:#8b949e;margin-top:5px">🦾 手臂相机实时帧(加载中)…</div>
+          <img id="gs_img" alt="3DGS 场景" style="width:100%;max-height:52vh;object-fit:contain;background:#0d1117;border:1px solid #30363d;border-radius:6px;display:none">
+          <div id="gs_img_cap" style="font-size:11.5px;color:#8b949e;margin-top:5px;line-height:1.5"></div>
+          <div id="gs_ph" style="padding:22px;text-align:center;color:#8b949e;font-size:14px;border:1px dashed #30363d;border-radius:6px">还没有训练好的场景（建图入口已下线）</div>
+        </div>
+      </div>
+    </div>
+    <div class="panel" style="order:1"><div class="cap"><span class="ttl">🦾 手臂相机</span>
+      <span class="meta" id="m_arm">…</span></div>
+      <img id="i_arm" data-ext="/snapshot/overlay_arm.jpg" data-every="600"></div>
+    <!-- 🚫 2026-11-24 老倪: 「本机相机 内置这个功能删掉, 不要与我本机的摄像头冲突, 我要用微信视频」
+         这一格(📷 本机相机 内置/USB 换源)已移除, 后端 local 路同时不再启动(--no-local)
+         ⇒ 服务进程不 open /dev/video0, 笔记本内置相机整台让给微信/腾讯会议。 -->
+    <div class="panel" style="order:2"><div class="cap"><span class="ttl">🎥 中央相机</span>
+      <span class="meta" id="m_local2">…</span></div>
+      <img id="i_local2" data-mode="snap" data-src="/snapshot/local2.jpg" data-every="400"></div>
+    <div class="panel" style="order:4"><div class="cap"><span class="ttl">🌈 手臂相机深度图</span>
+      <span class="meta" id="m_depth">…</span></div>
+      <img id="i_depth" data-mode="snap" data-src="/snapshot/depth.jpg" data-every="1500">
+      <div class="note" id="n_depth" style="display:none"></div></div>
+    <div class="panel" style="order:5"><div class="cap"><span class="ttl">🔍 金手指检测 (工控机 10082)</span>
+      <span class="meta" id="m_aoi_gold">…</span></div>
+      <img id="i_aoi_gold" data-mode="mjpg" data-src="/aoi_gold.mjpg">
+      <div class="row" style="padding:6px 10px 2px"><span class="seg" id="gview">
+        <button data-stream="/aoi_gold.mjpg" class="on">规整图</button>
+        <button data-stream="/aoi_gold_raw.mjpg">原图</button></span>
+        <!-- 🏷 2026-11-17 老倪: 「在金手指检测 整板原图 按钮旁边, 增加 标注 按钮, 用于打开这个 gold 的网页」
+             单独一个按钮(不进 #gview 的 .seg): 那个按钮组是**换 MJPEG 源**的, 多一个没有 data-stream 的
+             按钮会被换源逻辑当成源(im.src=undefined) ⇒ 放组外, 只负责打开 /station/gold。 -->
+        <button id="b_gold_annot" onclick="window.open('/station/gold','_blank')"
+                title="金手指标注页: 原始图 2448×2048 上拖框标 19 根 → 存 YOLO 数据集 → 训练"
+                style="margin-left:8px;padding:10px 12px;font-size:19px;min-width:56px;background:#1b2735;color:#dbe7f3;border:1px solid #2d4054;border-radius:6px;cursor:pointer">🏷 标注</button>
+        <!-- 🎯 2026-10-12 老倪: 「参考 空间点 的标记模式和运动模式, 将 金手指 点1 点2 安全点 都变成
+             标记模式和运动模式; 标记模式下, 点一下就清除, 再点一下就记录」。
+             口径与下方「🧭 空间1~7」**逐条一致**(同一套服务端收口, 不新开任何下发通道):
+               ✏️标记模式: 点未记 = 记录当前 TCP 真值(零运动, 连采 6 帧判静止) · 点已记 = 8 秒内再点一次确认**清除**
+               🚀运动模式(默认, 保住原来的回点行为): 点已记 = 走原来的回点技能(需先🔓授权真动), 点未记 = 明确说不动的理由
+             按钮由 loadTPT() 按 /ctl/points 的 taught(示教点库)现渲染: 蓝=已记 / 灰=未记, 「安全点N」有几个就列几个。 -->
+        <div class="row" style="padding:6px 10px 0;align-items:center;gap:10px">
+          <span class="k">模式:</span>
+          <span class="seg" id="goldmode">
+            <button data-m="move" class="on" onclick="setTPTMode('gold','move')">🚀 运动模式</button>
+            <button data-m="mark" onclick="setTPTMode('gold','mark')">✏️ 标记模式</button>
+          </span>
+          <span id="gold_mode_hint" style="font-size:13px;color:#8b949e"></span>
+        </div>
+        <div class="slotbar" id="goldbar"></div>
+        <div class="row" style="padding:4px 10px 2px;align-items:center">
+          <button id="b_safept" onclick="addSafePoint(this)"
+            style="font-weight:700;border-color:#2f6f3f"
+            title="把**当前** TCP 真值记成一个新的安全点(自动命名 安全点1/2/3…, 不覆盖已有) —— 零运动: 只读真值+落盘, 不需要『授权真动』。停稳再点(还在动会被拒), 记完回执会给出坐标与 6 帧极差。记好之后上面就多一个「🛟 安全点N」按钮(运动模式点它 = 走过去)。">➕ 新增安全点</button>
+          <span id="goldpt_msg" style="font-size:13px;opacity:.9"></span>
+          <span id="pt1_msg" style="font-size:12px;opacity:.7"></span>
+          <span id="pt2_msg" style="font-size:12px;opacity:.7"></span>
+          <span id="safept_msg" style="font-size:12px;opacity:.7"></span></div>
+      <div class="note" id="n_aoi_gold" style="display:none"></div>
+      <div class="row" style="padding:4px 10px 2px">
+        <button onclick="aoiDetect(10082)" style="font-weight:600">🔍 请求检测</button>
+        <button onclick="aoiLastResult(10082)" style="font-weight:600">🧾 最后结果</button>
+        <button onclick="aoiGuide(10082)" style="font-weight:600" title="取一次位姿: 抓帧→定位19根→与画面中心比→按标定算该沿 Y 走多少 mm。只报数, 不下发运动">🎯 位姿调整</button>
+        <button onclick="aoiGuideMove(10082)" style="font-weight:600;background:#238636;border-color:#238636" title="真机移动: 取位姿→沿标定轴做笛卡尔平移(姿态不变)→回读画面确认真挪了。单次限幅 5mm, 速度 5mm/s。走 8797 /api/arm/move_rel, 需要 8793 已授权">▶ 按位姿移动</button>
+        <!-- 🗑 2026-11-18 老倪: 「删除 金手指的 AR场景 和 光纤 两个按钮, 格式与表面检测一致」
+             ⇒ 金手指面板这一行只留 请求检测 / 最后结果, 与表面检测(10083)面板逐项对齐。
+             (AR/光纤页面本身仍在 8797, 只是不再从这个面板跳转) -->
+        <span id="aoi_lr_msg" style="margin-left:8px;font-size:12px;opacity:.85"></span>
+        <span id="aoi_det_msg" style="margin-left:8px;font-size:12px;opacity:.85"></span>
+        <span id="aoi_guide_msg" style="margin-left:8px;font-size:13px;font-weight:600"></span>
+        <script>
+        /* 2026-09-28 老倪: 「增加一个请求按钮, 发出正常的检测命令, 工控机本地也可以保存图片」
+           走本服务 POST /api/aoi/detect → 转发工控机产线正常命令 POST /capture_detect
+           (相机拍照 + 后台 YOLO); 工控机自己把原图落盘(saved_incoming)。
+           结果整段 JSON 打在下面 <pre> 里 —— 可选中复制, 不弹窗、不截断。 */
+        /* 2026-09-30 老倪: 「在请求检测按钮旁边, 增加 最后结果 按钮, 实现 /last_result 功能, 最终得有结果啊」
+           本服务 GET /api/aoi/last_result → 转发工控机 GET /last_result(只读: 不拍照、不检测)。
+           显示判决/缺陷数/耗时/检测序号 + **拍照时间与帧龄**(老倪硬要求) + 规整图链接 + 原始 JSON(可复制)。 */
+        /* 🎯 位姿调整 (老倪 2026-11-18: 「增加位姿调整按钮, 要有发出位姿的服务, 同理表面检测也要增加」)
+           链路: 本服务 POST /api/aoi/guide?port=10082 → 工控机 POST /guide_pose
+                → 抓一帧、定位 19 根、与画面中心比、按 k_mm_px/axis_sign 算 d_mm
+           刻意**只报数、不下发运动**: 取数(视觉)与动臂(轨迹通道 8797)分开,
+           避免一个按钮同时干两件事 —— 点了就动的那种, 出错时无法判断是谁动的。 */
+        async function aoiGuide(port,tag){
+          var sfx = (tag==='s') ? '_s' : '';
+          var m = document.getElementById('aoi_guide_msg'+sfx);
+          if(m){ m.style.color='#8b949e'; m.textContent='取位姿中…(抓帧+定位19根)'; }
+          try{
+            var r = await fetch(_u('/api/aoi/guide?port='+port), {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+            var d = await r.json();
+            if(!d || !d.ok){
+              var why = (d && d.diag && (d.diag.err||d.diag.msg)) || (d && (d.err||d.msg)) || ('HTTP '+r.status);
+              if(m){ m.style.color='#f85149'; m.textContent = '❌ 位姿失败: ' + why; }
+              return;
+            }
+            var g = d.gold || {}, gd = d.guide || {};
+            var ax = gd.axis || 'Y';
+            var line = 'n=' + g.n + ' · 偏 ' + g.off_px + ' px (pitch ' + g.pitch_px + ')';
+            if(gd.act === 'hold'){
+              line += ' · ✅ 已居中, 不动';
+              if(m){ m.style.color='#3fb950'; m.textContent = line; }
+            }else{
+              line += ' · 该沿 ' + ax + ' 走 ' + gd.d_mm + ' mm';
+              var pt = gd.pose_target || {};
+              if(pt.y != null){ line += ' → Y ' + (pt.y).toFixed(2); }
+              if(m){ m.style.color='#d29922'; m.textContent = line + ' (仅报数, 未下发)'; }
+            }
+          }catch(e){
+            if(m){ m.style.color='#f85149'; m.textContent='❌ 位姿失败: ' + e; }
+          }
+        }
+
+        /* ▶ 按位姿移动 (老倪 2026-11-18「位姿调整, 机器人可以动了」)
+           链路: 8793 POST /api/aoi/guide_move → 取位姿 → 8797 POST /api/arm/move_rel
+                → sdk_ctl.py move-rel(笛卡尔, 姿态不变) → 回读画面报 off_px 变化
+           与「🎯 位姿调整」的区别: 那个只报数, 这个真动臂。分开两个按钮是刻意的 ——
+           取数只读、移动不可逆, 混一个按钮出问题时无法判断是谁动的。 */
+        async function aoiGuideMove(port,tag){
+          var sfx = (tag==='s') ? '_s' : '';
+          var m = document.getElementById('aoi_guide_msg'+sfx);
+          if(m){ m.style.color='#d29922'; m.textContent='执行中…(取位姿→移动→回读, 约 7s)'; }
+          try{
+            var r = await fetch(_u('/api/aoi/guide_move?port='+port), {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+            var d = await r.json();
+            if(!d || !d.ok){
+              if(m){ m.style.color='#f85149'; m.textContent='❌ 移动失败: ' + ((d && (d.err || d.stage)) || ('HTTP '+r.status)); }
+              return;
+            }
+            var st = d.stage, pl = d.plan || {};
+            if(st === 'hold' || st === 'noop'){
+              if(m){ m.style.color='#3fb950'; m.textContent = '✅ ' + (d.note || '已居中, 未移动'); }
+              return;
+            }
+            var txt = '已移动 ' + pl.d_mm_sent + ' mm (轴' + (pl.axis||'Y') + ')';
+            if(d.off_px_before != null && d.off_px_after != null){
+              txt += ' · off_px ' + d.off_px_before + ' → ' + d.off_px_after;
+            }
+            if(d.k_mm_px_effective){ txt += ' · 实测 k=' + d.k_mm_px_effective; }
+            if(m){ m.style.color='#3fb950'; m.textContent = '✅ ' + txt; }
+          }catch(e){
+            if(m){ m.style.color='#f85149'; m.textContent='❌ 移动失败: ' + e; }
+          }
+        }
+
+        async function aoiLastResult(port,tag){
+          const sfx=tag?('_'+tag):'', m=document.getElementById('aoi_lr_msg'+sfx);
+          if(!m){ alert('页面缺 #aoi_lr_msg'+sfx+' 元素, 请 Ctrl+F5 强制刷新'); return; }
+          // 🆕 2026-11-18 老倪: 只有两张图 —— 原图 + 规整图(后者就是送 YOLO 的), 不再有判据图
+          const lk=(port==10083)?{mi:_u('/aoi_surface_modelin.png')}
+                                :{mi:_u('/aoi_modelin.png')};
+          m.textContent='⏳ 读取工控机 /last_result …';
+          try{
+            const t0=performance.now();
+            const r=await fetch(_u('/api/aoi/last_result?port='+port+'&t='+Date.now()));
+            const j=await r.json(), d=j.last_result||{};
+            document.getElementById('aoi_lr_box'+sfx).style.display='block';
+            const ng=(d.verdict==='NG');
+            /* 2026-11-18 老倪: 「要有缺陷的输出」——
+               gf 那个 YOLO 权重已失效(恒 0 框), d.count 永远 0, 却 verdict=NG ⇒ 页面自相矛盾。
+               真正的缺陷来源是 19 根逐根规则(fingers.bad), 这里以它为准并列出根号。 */
+            const _fg=d.fingers||{}, _bad=(_fg.bad||[]);
+            const _detail=_bad.length?(' · 异常根 <b style="color:#ff7b72">'+_bad.join(', ')+'</b>/'+(_fg.expect||19))
+                                     :((_fg.ok===false)?(' · 规则未出结果'):'');
+            document.getElementById('aoi_lr_head'+sfx).innerHTML=
+              (j.ok===true?(ng?'❌ <b style="color:#ff6b6b">NG · 有缺陷</b>':'✅ <b style="color:#3fb950">OK · 无缺陷</b>')
+                          :'⚠️ 没拿到判决')
+              +'<span style="font-size:13px;opacity:.85"> · 缺陷 '+(d.count===undefined?'—':d.count)+' 处</span>'
+              +'<span style="font-size:13px">'+_detail+'</span>';
+            document.getElementById('aoi_lr_meta'+sfx).textContent=
+              '检测序号 '+((d.n===undefined)?'—':d.n)
+              +' · 拍照时间 '+((d.t)?new Date(d.t*1000).toLocaleTimeString():'—')
+              +((j.age_s===undefined)?'':(' · 上次检测 '+j.age_s+'s 前'))
+              +' · 耗时 '+((d.ms===undefined)?'—':d.ms)+'ms'
+              +' · 类型 '+((d.detect_type===undefined)?'—':d.detect_type)
+              +' · 本次读取 '+((performance.now()-t0)/1000).toFixed(1)+'s';
+            const _bn=function(s){ return s? String(s).split('\\').pop() : '—'; };
+            document.getElementById('aoi_lr_imgs'+sfx).innerHTML=
+              '规整图(送进 YOLO): <a href="'+lk.mi+'" target="_blank" style="color:#7ee787">'+_bn(d.model_input)+'</a>';
+            const _ft=_fg.fingers||[];
+            const _fbox=document.getElementById('aoi_lr_fingers'+sfx);
+            if(_fbox){
+              if(_ft.length){
+                _fbox.style.display='block';
+                _fbox.innerHTML='<div style="font-size:12px;opacity:.7;margin-bottom:4px">19 根逐根(V亮度 / S饱和 / grad纹理)</div>'
+                 + _ft.map(function(r){
+                     const f=(r.flag||[]), hot=f.length;
+                     return '<span style="display:inline-block;min-width:104px;margin:2px 6px 2px 0;padding:2px 6px;border-radius:4px;font-size:12px;'
+                       +(hot?'background:#3d1d1d;color:#ff7b72;border:1px solid #6b2b2b':'background:#12261a;color:#3fb950;border:1px solid #1f4d2e')
+                       +'">#'+r.k+' V'+r.V+' S'+r.S+' g'+r.grad+' '+(hot?f.join('+'):'正常')+'</span>';
+                   }).join('');
+              } else { _fbox.style.display='none'; }
+            }
+            document.getElementById('aoi_lr_pre'+sfx).textContent=JSON.stringify(j,null,1);
+            m.textContent=(j.ok===true?'✅ ':'❌ ')+(j.msg||'');
+          }catch(e){ m.textContent='❌ 读取失败: '+e; }
+        }
+        function aoiCopy(id,btn){
+          const el=document.getElementById(id); if(!el) return;
+          try{ navigator.clipboard.writeText(el.textContent).then(function(){
+                 const t=btn.textContent; btn.textContent='✅ 已复制';
+                 setTimeout(function(){ btn.textContent=t; },1200); }); }
+          catch(e){ btn.textContent='复制失败(请手动选中)'; }
+        }
+        async function aoiDetect(port,tag){
+          const sfx=tag?('_'+tag):'';
+          const m=document.getElementById('aoi_det_msg'+sfx), o=document.getElementById('aoi_det_out'+sfx);
+          if(!m||!o){ alert('页面缺 #aoi_det_msg'+sfx+' / #aoi_det_out'+sfx+', 请 Ctrl+F5 强制刷新'); return; }
+          m.textContent='⏳ 已发出检测命令, 等判决…'; o.style.display='block'; o.textContent='';
+          try{
+            const t0=performance.now();
+            let j;
+            for(let attempt=1; attempt<=2; attempt++){
+              const r=await fetch(_u('/api/aoi/detect?port='+port),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+              j=await r.json();
+              // 表面相机偶发"抓帧失败"(工控机自己已重连重抓一次) ⇒ 页面再给一次机会, 别让老倪看见一按就红
+              if(attempt===1 && !j.ok && /500|抓取失败|抓帧失败/.test(String(j.err)+String(j.err2)+String(j.msg))){
+                m.textContent='⚠️ 相机这次抓帧失败, 3 秒后自动重试一次…';
+                await new Promise(_s=>setTimeout(_s,3000));
+                continue;
+              }
+              break;
+            }
+            const _sym=(j.ok===true?((j.fresh===false||j.err||j.err2)?'⚠️ ':'✅ '):'❌ ');
+            m.textContent=_sym+(j.msg||j.err||j.err2||'见下方 JSON')
+                          +'  · 本次用时 '+((performance.now()-t0)/1000).toFixed(1)+'s'
+                          +(j.fresh===false?'  ⇒ 上面结果是**上一次**的, 不是本次判决!':'');
+            o.textContent=JSON.stringify(j,null,1);
+          }catch(e){ m.textContent='❌ 请求失败: '+e; }
+        }
+        </script>
+        <pre id="aoi_det_out" style="display:none;margin:4px 10px 8px;padding:8px;max-height:220px;overflow:auto;
+             background:#0b1018;color:#cfe3ff;font-size:11px;line-height:1.45;border-radius:6px;
+             white-space:pre-wrap;word-break:break-all;user-select:text"></pre>
+        <div id="aoi_lr_box" style="display:none;margin:4px 10px 8px;padding:8px;background:#0d1420;border:1px solid #21304a;border-radius:6px">
+          <div id="aoi_lr_head" style="font-size:16px"></div>
+          <div id="aoi_lr_meta" style="font-size:12px;opacity:.85;margin-top:3px"></div>
+          <div id="aoi_lr_imgs" style="font-size:12px;margin-top:3px"></div>
+          <div id="aoi_lr_fingers" style="display:none;margin-top:6px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px"></div>
+          <button onclick="aoiCopy('aoi_lr_pre',this)" style="margin-top:6px;font-size:12px">📋 复制 JSON</button>
+          <pre id="aoi_lr_pre" style="margin:6px 0 0;padding:8px;max-height:240px;overflow:auto;
+               background:#0b1018;color:#cfe3ff;font-size:11px;line-height:1.45;border-radius:6px;
+               white-space:pre-wrap;word-break:break-all;user-select:text"></pre>
+        </div>
+        <label class="arm" style="font-size:15px;color:#8b949e">
+          <input type="checkbox" id="auto82" style="width:18px;height:18px" checked>
+          <span>自动取景(没照片时现拍一张)</span></label></div></div>
+    <!-- 🔴 2026-10-12 老倪: 「侧面点的窗口，放在金手指的右边；号位点，空间点，放在下面；恢复以前的布局；现在一长条」——
+         真因 = 这一行的 `</div>` 丢了: 金手指面板没闭合 ⇒ 表面检测/号位/空间点三个面板全被**套进金手指面板里**
+         (实测 .grid 直接子元素只有 6 个而不是 9 个), 于是「表面检测」(应该在金手指右边) 掉到金手指下面,
+         金手指面板被撑到 2844px 高 (同行的深度图也被拉伸到 2844), 整栏看起来就是一条长条。
+         补上这个闭合标签即恢复原布局: 3DGS 整行 → 三路相机 → 深度图|金手指|表面检测 同一行 → 号位/空间点整行在下。 -->
+    </div>
+    <div class="panel" style="order:6"><div class="cap"><span class="ttl">🔍 表面检测 (工控机 10083)</span>
+      <span class="meta" id="m_aoi_surface">…</span></div>
+      <img id="i_aoi_surface" data-mode="mjpg" data-src="/aoi_surface.mjpg">
+      <div class="row" style="padding:6px 10px 2px"><span class="seg" id="sview">
+        <button data-stream="/aoi_surface.mjpg" class="on">规整图</button>
+        <button data-stream="/aoi_surface_raw.mjpg">原图</button></span></div>
+      <div class="note" id="n_aoi_surface"></div>
+      <!-- ☀ 2026-10-12 老倪「侧面检测的曝光太大了」: 传感器侧**不能**降(实测降曝光 ⇒ 表面判据连续失败),
+           所以这里只把死白压成浅灰(>200 压到 214), 让他看得见模块边界/丝印; 相机曝光/判据/模型输入都没动。 -->
+      <div class="note" style="color:#8b949e">显示: 已压高光(只看边界) · 相机曝光/判据/模型未改 · 关: ZMAX_SURFACE_DEGLARE=0</div>
+      <!-- 🎯 表面检测观察位回点按钮 —— 最左『准备点』(安全退让位), 其后按序号 0 → 1 → 2 → 3
+           (2026-10-01 老倪: 「增加侧面点0的按钮，顺序在侧面点1的前面…你重新排列一下UI布局」
+            又: 「增加 按钮 准备点，在表面检测的窗口，位置位于 侧面点0的前面」)
+           ⇒ 准备点排在危险点(侧面点0)之前 = 出事时往左第一个就能退; 按钮与其右侧结果文字同序。 -->
+      <!-- 🎯 2026-10-12 老倪: 「侧面点 准备点 侧面点0~3 都变成 标记模式和运动模式」——
+           与金手指窗口同一套(也照抄「🧭 空间1~7」); 准备点仍排最左 = 出事往左第一个就能退。 -->
+      <div class="row" style="padding:6px 10px 0;align-items:center;gap:10px">
+        <span class="k">模式:</span>
+        <span class="seg" id="sidemode">
+          <button data-m="move" class="on" onclick="setTPTMode('side','move')">🚀 运动模式</button>
+          <button data-m="mark" onclick="setTPTMode('side','mark')">✏️ 标记模式</button>
+        </span>
+        <span id="side_mode_hint" style="font-size:13px;color:#8b949e"></span>
+      </div>
+      <div class="slotbar" id="sidebar"></div>
+      <div class="row" style="padding:4px 10px 2px">
+        <span id="sidept_msg" style="font-size:13px;opacity:.9"></span>
+        <span id="ready_msg" style="font-size:12px;opacity:.7"></span>
+        <span id="spt0_msg" style="font-size:12px;opacity:.7"></span>
+        <span id="spt1_msg" style="font-size:12px;opacity:.7"></span>
+        <span id="spt2_msg" style="font-size:12px;opacity:.7"></span>
+        <span id="spt3_msg" style="font-size:12px;opacity:.7"></span></div>
+      <div class="row" style="padding:4px 10px 4px">
+        <button onclick="aoiDetect(10083,'s')" style="font-weight:600">🔍 请求检测</button>
+        <button onclick="aoiLastResult(10083,'s')" style="font-weight:600">🧾 最后结果</button>
+        <button onclick="aoiGuide(10083,'s')" style="font-weight:600" title="取一次位姿(表面侧): 造接口通了, 但 10083 的 /guide_pose 目前返回 500, 会如实报错而不是假装成功">🎯 位姿调整</button>
+        <span id="aoi_lr_msg_s" style="margin-left:8px;font-size:12px;opacity:.85"></span>
+        <span id="aoi_det_msg_s" style="margin-left:8px;font-size:12px;opacity:.85"></span>
+        <span id="aoi_guide_msg_s" style="margin-left:8px;font-size:13px;font-weight:600"></span></div>
+      <div id="aoi_lr_box_s" style="display:none;margin:4px 10px 8px;padding:8px;background:#0d1420;border:1px solid #21304a;border-radius:6px">
+        <div id="aoi_lr_head_s" style="font-size:16px"></div>
+        <div id="aoi_lr_meta_s" style="font-size:12px;opacity:.85;margin-top:3px"></div>
+        <div id="aoi_lr_fingers_s" style="display:none;margin-top:6px;padding:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px"></div>
+        <div id="aoi_lr_imgs_s" style="font-size:12px;margin-top:3px"></div>
+        <button onclick="aoiCopy('aoi_lr_pre_s',this)" style="margin-top:6px;font-size:12px">📋 复制 JSON</button>
+        <pre id="aoi_lr_pre_s" style="margin:6px 0 0;padding:8px;max-height:240px;overflow:auto;
+             background:#0b1018;color:#cfe3ff;font-size:11px;line-height:1.45;border-radius:6px;
+             white-space:pre-wrap;word-break:break-all;user-select:text"></pre>
+      </div>
+      <pre id="aoi_det_out_s" style="display:none;margin:4px 10px 8px;padding:8px;max-height:200px;overflow:auto;
+           background:#0b1018;color:#cfe3ff;font-size:11px;line-height:1.45;border-radius:6px;
+           white-space:pre-wrap;word-break:break-all;user-select:text"></pre></div>
+    <div class="panel" id="p_slots" style="order:7"><div class="cap"><span class="ttl">📍 号位 1~7 (示教点)</span>
+      <span class="meta" id="m_slots">…</span></div>
+      <div id="m_slots_auth" style="padding:6px 10px 0;font-size:14px"></div>
+      <!-- 🎯 2026-10-26 老倪「号位1～7 也要增加 标记模式 和 运动模式，我来自己标定」
+           与「🧭 空间1~7」「金手指/侧面点」同一套口径(不新开任何下发通道):
+             ✏️标记模式: 点未记 = 记录当前 TCP 真值(零运动); 点已记 = 8 秒内再点一次**覆盖**(号位不清除, 见下)
+             🚀运动模式(默认, = 原来的回点行为): 点已记 = 走过去(需先🔓授权真动)
+           ❗号位不做"清除": 服务端 /ctl/clear_point 明确不开放 slot1..7(产线 recipe 与多个技能在引用),
+             清掉会让在用的回点失效 ⇒ 这里只给"覆盖", 不给"清空"。 -->
+      <div class="row" style="padding:6px 10px 0;align-items:center;gap:10px">
+        <span class="k">模式:</span>
+        <span class="seg" id="slotmode">
+          <button data-m="mark" onclick="setSlotMode('mark')">✏️ 标记模式</button>
+          <button data-m="move" class="on" onclick="setSlotMode('move')">🚀 运动模式</button>
+        </span>
+        <span id="slot_mode_hint" style="font-size:13px;color:#8b949e"></span>
+      </div>
+      <div class="slotbar" id="slotbar"></div>
+      <div class="row" style="padding:6px 10px 0">
+        <span class="k">📝 记住此点(把当前 TCP 真值记成号位 · 零运动):</span>
+        <span class="seg" id="sRecSlot">
+          <button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button>
+          <button data-v="4">4</button><button data-v="5">5</button><button data-v="6">6</button>
+          <button data-v="7">7</button></span>
+        <button id="recbtn" onclick="recPoint()" style="font-size:16px;font-weight:700" title="把机械臂当前 TCP 位姿记成该号位的示教点: 服务端连采 6 帧判静止(极差>1e-4m 拒记)后写入 data/skills/l2_atomic/taught_points.json; 记录本身不下发任何运动, 所以不需要真动授权 —— 但臂必须停稳">✅ 记为该号位</button>
+        <span id="rec_msg" style="font-size:13px;opacity:.9"></span>
+      </div>
+      <div class="row" style="padding:0 10px 4px"><span id="slot_msg" style="font-size:13px;opacity:.9"></span></div>
+      <div id="n_slots" style="padding:4px 10px 10px;font-size:14px;color:#8b949e;line-height:1.5"></div>
+    </div>
+
+    <!-- 🧭 空间 1~7 (2026-10-01 老倪: 「左下角示教点控件下面, 再用一个控件显示 空间1~空间7,
+         位置排布与上面的1号位到7号位对齐」) —— 与号位共用同一套 .slotbar 7 列网格 ⇒ 天然对齐;
+         **独立记录**: 点「记住此点」把当前 TCP 真值记成 空间N, 存 space_points.json, 与号位互不影响。 -->
+    <div class="panel" id="p_spaces" style="order:8"><div class="cap"><span class="ttl">🧭 空间 1~7 (独立空间点)</span>
+      <span class="meta" id="m_spaces">…</span></div>
+      <div class="row" style="padding:6px 10px 0;align-items:center;gap:10px">
+        <span class="k">模式:</span>
+        <span class="seg" id="spacemode">
+          <button data-m="mark" class="on" onclick="setSpaceMode('mark')">✏️ 标记模式</button>
+          <button data-m="move" onclick="setSpaceMode('move')">🚀 运动模式</button>
+        </span>
+        <span id="space_mode_hint" style="font-size:13px;color:#8b949e"></span>
+      </div>
+      <div class="slotbar" id="spacebar"></div>
+      <div class="row" style="padding:6px 10px 0">
+        <span class="k">📝 记住此点(把当前 TCP 真值记成空间点 · 零运动):</span>
+        <span class="seg" id="sRecSpace">
+          <button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button>
+          <button data-v="4">4</button><button data-v="5">5</button><button data-v="6">6</button>
+          <button data-v="7">7</button></span>
+        <button id="recspacebtn" onclick="recSpace()" style="font-size:16px;font-weight:700" title="把机械臂当前 TCP 位姿记成该空间点: 服务端连采 6 帧判静止(极差 &gt;1e-4m 拒记), 写 data/skills/l2_atomic/space_points.json —— 与号位库分开, 互不影响">✅ 记为该空间点</button>
+        <span id="space_msg" style="font-size:13px;opacity:.9"></span>
+      </div>
+      <div id="n_spaces" style="padding:4px 10px 10px;font-size:14px;color:#8b949e;line-height:1.5"></div>
+    </div>
+  </section>
+  <aside>
+    <!-- ── 实时位姿 = 独立控件 (2026-10-01 老倪: 「将实时位姿，也做成一个独立的控件，将 x y z a b c
+         横向一排，放在手动控制台的上面吧。宽度要对齐」) —— 随控制台那一栏的卡片宽度(宽度对齐 = 同栏同宽),
+         不再用 fixed 悬浮(悬浮会被滚动内容压住/遮挡)。点一下复制全部数值。 -->
+    <div class="card" id="posehud" title="实时位姿 x y z (mm) + a b c (°) · ROKAE SDK 直采 (endInRef, 与示教器同口径, 5Hz) · 点击复制全部数值">
+      <h2>🎯 实时位姿 <span class="dim">x y z (mm) · a b c (°)</span></h2>
+      <div class="posegrid">
+        <span class="pv"><i class="k">X</i><b class="v" id="ph_x">—</b></span>
+        <span class="pv"><i class="k">Y</i><b class="v" id="ph_y">—</b></span>
+        <span class="pv"><i class="k">Z</i><b class="v" id="ph_z">—</b></span>
+        <span class="pv"><i class="k">A</i><b class="v" id="ph_a">—</b></span>
+        <span class="pv"><i class="k">B</i><b class="v" id="ph_b">—</b></span>
+        <span class="pv"><i class="k">C</i><b class="v" id="ph_c">—</b></span>
+      </div>
+      <div class="hint" id="ph_age">读位姿中…</div>
+      <!-- 🆕 2026-11-11 老倪: 「在实时位姿下面，增加一个每个位姿的手动输入编辑栏，我可以输入位姿，
+           然后移动到这个位姿」 —— 6 个输入框(默认自动填当前位姿, 手改过就不再被轮询覆盖) + 速度 + 移动按钮。
+           走的是与方向键/点1 同一条链: 白名单 → 授权真动 → 限流 → FIFO → 执行器裁决 → 回执(原样摆出来)。
+           服务端另加两道闸: 量纲(±2000mm / ±360°) 与单次 Δ(≤300mm、≤30°), 手输错量级不会直接下发。 -->
+      <div id="poseedit">
+        <div class="perow">
+          <input class="pi" id="pe_x" inputmode="decimal" placeholder="X mm" oninput="peDirty(this)">
+          <input class="pi" id="pe_y" inputmode="decimal" placeholder="Y mm" oninput="peDirty(this)">
+          <input class="pi" id="pe_z" inputmode="decimal" placeholder="Z mm" oninput="peDirty(this)">
+          <input class="pi" id="pe_a" inputmode="decimal" placeholder="A °" oninput="peDirty(this)">
+          <input class="pi" id="pe_b" inputmode="decimal" placeholder="B °" oninput="peDirty(this)">
+          <input class="pi" id="pe_c" inputmode="decimal" placeholder="C °" oninput="peDirty(this)">
+        </div>
+        <div class="perow2">
+          <button id="perst" onclick="peReset()" title="把 6 个框恢复成当前实时位姿(手改过之后用)">↺</button>
+          <input class="pi psp" id="pe_spd" value="50" inputmode="decimal" title="速度 mm/s (1~1000)">
+          <button id="pegobtn" onclick="poseGoto(this)" title="按上面 6 个数字移动: 位置+姿态一次到位 (/move_pose)">🎯 移动到该位姿</button>
+          <span id="pe_state">mm/s · 单次 ≤300mm / ≤30°</span>
+        </div>
+      </div>
+    </div>
+    <!-- ── 🔴 碰撞点台账 (2026-10-01 老倪: 「增加技能，记录所有碰撞点…显示在实时位姿下面，紧挨着，
+         红色字体，可以拖动显示所有碰撞点，最上面显示最新的」) —— 数据来自控制器报警日志(原生 #30400/#13036)
+         + 撞后采到的 TCP 位姿真值; 高度由 JS 与上面「🎯 实时位姿」卡片对齐。点一条可复制。 -->
+    <div class="card" id="collhud" title="控制器报警日志里的每一次碰撞: 时间 · 关节 · 力矩/限定 · 当时的 TCP 位姿 · 最新在最上 · 可滚动/拖动 · 点一条复制">
+      <h2>🔴 碰撞点台账 <span class="dim" id="coll_n"></span></h2>
+      <div class="colllist" id="coll_list"><div class="cg">读取中…</div></div>
+    </div>
+    <div class="card">
+      <h2>🕹 手动控制台</h2>
+      <!-- 🛠 2026-10-01 老倪: 「上电 on 报警 无…要是不能动，你得显示信息」⇒ 手动控制台顶部
+           固定显示执行器在不在 —— 它离线时所有按钮都发不出去(这才是"点了没反应"的真因)。 -->
+      <div class="hint" id="execline" style="margin:2px 0 6px">执行器: 检查中…</div>
+      <!-- 🚨 被拒横幅 (2026-10-09): 被包络/安全闸拒时在此红字写明**具体原因**(页面顶部, 一眼可见)。
+           空着时 display:none 不占位; 独立于 #execline, 不会被 poll() 清空。 -->
+      <div id="denybanner"></div>
+      <div id="armbar">
+        <button id="armbtn" onclick="armClick()" style="font-size:19px;padding:14px 16px;min-width:230px"
+          title="现场安全: 真动必须先显式授权"><span id="armtxt">🔓 授权真动</span></button>
+        <select id="armwin" title="授权时长 —— 30 分钟: 到点自动失效(现场默认); 调试: 无时间限制, 只有点『🔒 立即撤销授权』才结束(从 VSCode 跑 start.py 全程调机时用)"
+          style="font-size:15px;padding:12px 8px;border-radius:8px;background:#0d1117;color:#e6edf3;border:1px solid #30363d;align-self:center">
+          <option value="window">⏱ 30 分钟</option>
+          <option value="debug">🔧 调试 · 无限制</option>
+        </select>
+        <div style="flex:1">
+          <div id="armstate2" style="font-size:19px">⛔ <b>未授权</b> · 点方向键只会算目标, <b>机械臂不会动</b></div>
+          <span class="hint" id="armhint">现场安全: 只让守在机器旁的人授权 —— 先点「🔓 授权真动」, 再点一次「⚠️ 现场确认无人」。授权 <b>10 分钟</b>自动失效(2026-09-30 现场定: 之前 5 分钟, 两阶段号位技能连不上); 刷新页面也回到未授权(不记忆)。</span></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <span class="big" id="robot" style="font-size:20px">读取中…</span></div>
+      <div class="hint" id="robot2"></div>
+      <!-- 位姿数字已移到上面「🎯 实时位姿」独立卡片 (2026-10-01 老倪: 「在 授权真动 的下面，已经显示了
+           X Y Z A B C，显示重复了，将下面的显示先删掉吧」) ⇒ 这里不再重复画一份位姿。
+           帧龄/失效红框的诚实口径已随卡片一起在那边显示, 没有丢。 -->
+    </div>
+    <div class="card">
+      <h2>⏩ 平动 (走 /move_line)</h2>
+      <div class="row"><span class="k">步长</span>
+        <span class="seg" id="sX"><button data-v="1" class="on">1</button><button data-v="2">2</button><button data-v="5">5</button><button data-v="10">10</button>
+        <button data-v="20">20</button><button data-v="50">50</button><button data-v="100">100</button></span>
+        <span class="k">mm</span></div>
+      <div class="pad">
+        <span class="mid"></span>
+        <button data-skill="L2.forward" data-p="d_mm">⏩ 前进<br><span class="hint">+X</span></button>
+        <span class="mid"></span>
+        <button data-skill="L2.left" data-p="d_mm">⬅️ 左移<br><span class="hint">+Y</span></button>
+        <span class="mid">步长<b id="stepshow">1</b>mm</span>
+        <button data-skill="L2.right" data-p="d_mm">➡️ 右移<br><span class="hint">−Y</span></button>
+        <span class="mid"></span>
+        <button data-skill="L2.backward" data-p="d_mm">⏪ 后退<br><span class="hint">−X</span></button>
+        <span class="mid"></span>
+        <button data-skill="L2.lift" data-p="d_mm">⬆️ 抬升<br><span class="hint">抬升需授权 · 警报会响(vz&gt;0.3mm/s)</span></button>
+        <span class="mid"></span>
+        <button data-skill="L2.lower" data-p="d_mm">⬇️ 下降<br><span class="hint">−Z</span></button>
+        <span class="mid"></span>
+      </div>
+      <div class="hint" style="margin-top:8px">键盘: ↑↓←→ = 前后左右 · PgUp/PgDn = 升降 (真动时同样受执行器 1.5s 间隔限制)</div>
+    </div>
+    <div class="card">
+      <h2>🤏 夹爪 (关闭 / 打开)</h2>
+      <div class="row" style="gap:10px">
+        <button onclick="gripAct(this,'L2.grip_close','关闭夹爪(夹紧)')"
+          style="font-size:19px;font-weight:700;min-width:190px;padding:14px 16px;border-color:#8b3a3a" data-tip-old='合爪/夹紧 (技能 L2.grip_close · 夹持力等参数由技能定义固定, 页面改不了) —— 与方向键同一条路: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作'>🤏 关闭夹爪<br><span class="hint">合爪 · 夹紧</span></button>
+        <button onclick="gripAct(this,'L2.grip_open','打开夹爪(松开)')"
+          style="font-size:19px;font-weight:700;min-width:190px;padding:14px 16px;border-color:#2f6f3f" data-tip-old='张爪/松开 (技能 L2.grip_open · 无参数) —— 同一条闸门路; 未授权时只算目标不动作'>🖐 打开夹爪<br><span class="hint">张爪 · 松开</span></button>
+      </div>
+      <div class="hint" id="grip_msg" style="font-size:13px;opacity:.9;margin-top:6px">未点之前没有下发。</div>
+      <div class="hint" style="margin-top:4px">夹爪不动臂的位置; 力/行程由技能定义决定。速度取上面「速度」段。</div>
+    </div>
+    <div class="card">
+      <h2>🔄 绕轴旋转 (走 /move_pose, 位置不动)</h2>
+      <div class="row"><span class="k">角度</span>
+        <span class="seg" id="sA"><button data-v="1">1</button><button data-v="5" class="on">5</button>
+        <button data-v="10">10</button><button data-v="20">20</button></span>
+        <span class="k">°</span></div>
+      <div class="rot"><span class="lbl">A 绕工具X轴 · 俯仰</span>
+        <button data-skill="L2.rot_a_neg" data-p="deg">↻ −A <span class="hint">5°</span></button>
+        <button data-skill="L2.rot_a_pos" data-p="deg">↺ +A <span class="hint">5°</span></button></div>
+      <div class="rot"><span class="lbl">B 绕工具Y轴 · 倾侧</span>
+        <button data-skill="L2.rot_b_neg" data-p="deg">↻ −B <span class="hint">5°</span></button>
+        <button data-skill="L2.rot_b_pos" data-p="deg">↺ +B <span class="hint">5°</span></button></div>
+      <div class="rot"><span class="lbl">C 绕工具Z轴 · 自转</span>
+        <button data-skill="L2.rot_c_neg" data-p="deg">↻ −C <span class="hint">5°</span></button>
+        <button data-skill="L2.rot_c_pos" data-p="deg">↺ +C <span class="hint">5°</span></button></div>
+      <div class="row" style="margin-top:8px"><span class="k">速度 (mm/s · 上限 1000)</span>
+        <span class="seg" id="sSpd"><button data-v="1">1</button>
+        <button data-v="10" class="on">10</button><button data-v="20">20</button>
+        <button data-v="50">50</button><button data-v="100">100</button>
+        <button data-v="200">200</button><button data-v="500">500</button>
+        <button data-v="1000">1000</button></span>
+        <input class="num" id="spd" value="10"></div>
+      <div class="hint" style="margin-top:6px">速度单位 = <b>mm/s</b>（1/10/20/50/100/200/<b>500</b>/<b>1000</b>，最大 1000 毫米/秒）。
+        这是下给执行器的<b>名义</b>速度；实际能跑多快还受控制器自己的速度倍率限 —— <b>在役实测实得 ≈ 名义的 10%</b>
+        （2026-10-13 现场实测：名义 10 ⇒ 实得 0.99mm/s；名义 50 ⇒ 实得约 5mm/s）⇒ <b>要实得 50 就点 500</b>，
+        要实得 100 就点 1000。个别技能自带限速（如「准备点」=名义 18.7mm/s），被压时执行器会打一行
+        「⚠️ speed_max 把速度从 X 压到 Y」，<b>不静默截断</b>。每次动作的实得看执行器日志那行
+        「📏 整段平均速率 X mm/s」—— <b>以实测为准</b>。
+        停下前驱动可能报一次 wait_until_idle 超时 —— <b>那是超时标记，不是失败</b>，看 TCP 有没有变就知道动没动。
+        键盘：A/B/C 加 Shift = 反向；单次 ≤30°（执行层守卫）。整页没有软急停，急停请用示教器。</div>
+    </div>
+    <div class="card">
+      <h2>🔩 第 6 轴 (J6) 独立自转 · 关节自转</h2>
+      <div class="row"><span class="k">步进</span>
+        <span class="seg" id="sJ6"><button data-v="1" class="on">1</button><button data-v="5">5</button>
+        <button data-v="10">10</button><button data-v="30">30</button><button data-v="90">90</button></span>
+        <span class="k">°</span></div>
+      <div class="rot2">
+        <button data-skill="L2.j6_ccw" data-p="deg"
+          title="第6轴(J6)逆时针自转 = +J6 (右手定则绕 J6 轴正向) —— 只转这一根关节轴, 其余五轴不动; 末端沿 ~24mm 半径走小圆弧(5°≈2.1mm)。技能 L2.j6_ccw · 走的还是 /move_pose(不掉电), 同一条闸门路: 白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作">↺ 逆时针<br><span class="hint" data-pre="+J6 · ">+J6 · 1°</span></button>
+        <button data-skill="L2.j6_cw" data-p="deg"
+          title="第6轴(J6)顺时针自转 = −J6 —— 与逆时针同一根轴、相反方向; 点错了一下反向点回来即可。技能 L2.j6_cw · 同一条闸门路; 未授权时只算目标不动作">↻ 顺时针<br><span class="hint" data-pre="−J6 · ">−J6 · 1°</span></button>
+      </div>
+      <div class="hint" style="margin-top:8px">只转 <b>第 6 轴</b>(腕部自转轴) —— 其余五轴不动; 末端沿 ~24.2mm 半径走小圆弧
+        (10° ≈ 4.2mm · 30° ≈ 12.7mm · <b>90° ≈ 38mm</b>)。<b>与上面 A/B/C 不是一回事</b>: 那三个是绕<b>工具轴</b>旋转、位置不动,
+        而 J6 轴与工具 X / Y / Z 各差 51° / 88° / 39° ⇒ <b>那三个按钮转不到 J6</b>。
+        方向: 「逆时针」= 右手定则绕 J6 轴正向(轴的方向随姿态变, 首次建议用 1° 试一下观感, 反向点一下即回)。
+        单次 ≤90°(执行层守卫), 走 /move_pose(不掉电), 速度取上面「速度」段(1~1000, 60 ≈ 1°/s)。</div>
+    </div>
+    <div class="card">
+      <h2>📋 最近一次动作 (可复制)</h2>
+      <div id="msg">—</div>
+      <div class="row"><button id="copyb" onclick="copylog()">📄 复制原始日志</button>
+        <button id="mq" onclick="moveReal()" style="display:none">🔓 授权真动(现场确认无人)</button></div>
+      <pre id="lines">(点上面的按钮，这里出执行器的原始回执)</pre>
+    </div>
+    <!-- 🧾 2026-10-09 逐条下发台账(老倪: 「每条下发无论成败都留一行可复制的」) —— 只读反馈区,
+         不新开通道/不改按钮。最新在最上, 点一行复制该行; 最多保留 60 行。 -->
+    <div class="card">
+      <h2>🧾 下发台账 (逐条 · 点一行复制)</h2>
+      <div class="hint">每次点方向键 / 回点 / 夹爪都记一行: 时间 · 技能 · 参数 · 结果 · 原因(被拒时写明, 如"出界: x=… &lt; 下界 …")。最新在最上。</div>
+      <div id="movefeed"><div class="r-dim">（还没有下发记录）</div></div>
+    </div>
+    <div class="card">
+      <h2>🛡 安全</h2>
+      <div class="hint" id="armstate"></div>
+      <div class="hint">急停请用示教器 / 现场急停按钮 —— 本页<b>没有</b>软急停，也不提供未验证的停止指令。
+        真动前三查应: 上电 on · 无急停 · 无碰撞。</div>
+    </div>
+  </aside>
+</main>
+<script>
+const $=(s)=>document.querySelector(s);
+// 页面基址: 根目录访问(/station)时为空; 走子路径反代(/st/station, ECS 转发)时为 '/st'。
+// 所有站内相对地址一律经 _u() 过一遍 —— 否则子路径反代下图片/接口都会打到站点根(404)。
+// (2026-09-28 老倪: 「8793 这个通道推流到 ECS」)
+const B=(location.pathname.replace(/\/[^/]*$/,'')||'');
+const _u=(u)=>(typeof u==='string'&&u.charAt(0)==='/')?(B+u):u;
+let STEP_MM=1, STEP_DEG=5, STEP_J6=1;   // STEP_MM: 2026-09-30 老倪「增加平动 1mm 的按钮, 现在的最小分辨率 5mm 有点大」⇒ 默认 10→1mm
+                                        // STEP_J6: 🔩 第 6 轴自转自己的步进档(默认 1° 起步, 首次用最稳)
+/* 🔐 ARMED 不再预先固定: 由**服务端授权状态**决定(默认 false=未授权), 见 applyAuth()。
+   老倪 2026-09-27: 「页面的授权真动 / 现场安全 / 授权」 —— 默认必须是未授权, 真动要人显式两步确认。 */
+let ARMED=false, AUTH_LEFT=0, ARMWIN=1800, AUTH_IP='', AUTH_PENDING=0, ARWMODE='window';
+function seg(id,cb){document.querySelectorAll('#'+id+' button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#'+id+' button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); cb(b.dataset.v);});}
+seg('sX',v=>{STEP_MM=parseFloat(v); $('#stepshow').textContent=STEP_MM;
+  document.querySelectorAll('.pad button[data-p=d_mm] .hint').forEach(h=>h.textContent=STEP_MM+'mm');});
+seg('sA',v=>{STEP_DEG=parseFloat(v); document.querySelectorAll('.rot .hint').forEach(h=>h.textContent=STEP_DEG+'°');});
+/* 🔩 第 6 轴 (J6) 自转用自己的步进档(1/5/10°, ≤技能守卫 10°)。
+   别和 A/B/C 的 20° 档共用 —— 20° 会被执行器守卫拒发, 现场看到的就是"点了没反应"(已踩过)。 */
+seg('sJ6',v=>{STEP_J6=parseFloat(v);
+  document.querySelectorAll('.rot2 .hint').forEach(h=>h.textContent=(h.dataset.pre||'')+STEP_J6+'°');});
+seg('sSpd',v=>{ $('#spd').value=v; });
+function hhmmss(a){const d=new Date(Date.now()-a*1000);const p=n=>String(n).padStart(2,'0');
+  return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());}
+function fmt(x,n){return (x===null||x===undefined)?'—':Number(x).toFixed(n);}
+async function post(url,body,ms){
+  const ac=new AbortController(); const t=setTimeout(()=>ac.abort(), ms||20000);
+  try{
+    const r=await fetch(_u(url),{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body||{}),signal:ac.signal});
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+async function getj(url,ms){
+  const ac=new AbortController(); const t=setTimeout(()=>ac.abort(), ms||8000);
+  try{
+    const r=await fetch(_u(url),{cache:'no-store',signal:ac.signal});
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+/* ── 右上角实时位姿 HUD ────────────────────────────────────────────────
+   2026-10-01 老倪: 「在这个页面的右上角，实时显示 x y z a b c 的数值」。
+   数据源 = 同一次 /station/status 轮询里的 tcp(ROKAE SDK 直采 5Hz, endInRef, 与示教器
+   同口径) ⇒ 不新增请求、不另开通道。数字全部 DOM 文本(可选中), 点一下复制全部。
+   帧龄/stale 一律照实标 —— 源停了就红框 + 写「数字是最后一帧」, 不装新鲜。 */
+function poseHud(tp){
+  const g=id=>document.getElementById(id);
+  const has=!!(tp&&tp.xyz&&tp.xyz[0]!==null&&tp.xyz[0]!==undefined);
+  const st=!!(tp&&tp.stale);
+  const M=(id,v,bad)=>{const e=g(id); if(!e)return; e.textContent=v; e.className='v'+(bad?' bad':'');};
+  const S=(id,v)=>{const e=g(id); if(e) e.textContent=v;};
+  if(has){
+    /* ✅ 单位 mm (2026-10-01 老倪: 「我看机器人的状态监控，单位是 mm，而你是 m，你也要将单位改成 mm」)
+       SDK 真值单位是米 ⇒ ×1000 显示毫米; 保留 1 位小数 = 0.1mm, 与原先 m/4 位小数同分辨率(不虚报精度),
+       且比 "0.3966" 更短 ⇒ 6 值横排更松快。 */
+    ['ph_x','ph_y','ph_z'].forEach((id,i)=>M(id,fmt(tp.xyz[i]*1000,1),st));
+    const ab=tp.abc_deg||[];
+    ['ph_a','ph_b','ph_c'].forEach((id,i)=>M(id,
+      (ab.length===3&&ab[i]!==null&&ab[i]!==undefined)?fmt(ab[i],3):'—', st));
+    S('ph_age', st
+      ? ('⚠ 源已静止 '+fmt(tp.file_age_s,1)+'s · 上面是最后一帧, 勿当实时')
+      : ('帧龄 '+fmt(tp.age_s,2)+'s · 5Hz · '+(tp.frame_id||'—')));
+  }else{
+    ['ph_x','ph_y','ph_z','ph_a','ph_b','ph_c'].forEach(id=>M(id,'—',true));
+    S('ph_age','读不到位姿');
+  }
+  const h=g('posehud'); if(h) h.classList.toggle('stale', st||!has);
+  try{ peSync(tp); }catch(_e){}   // 🆕 手动输入栏跟着实时位姿填当前值(手改过后不再覆盖)
+}
+/* 🆕 2026-11-11 老倪: 手动输入位姿 → 移动到该位姿 (实时位姿卡片下面那块输入栏)。
+   数据流与方向键/点1 完全同一条链(白名单 → 授权真动 → 限流 → FIFO → 执行器裁决 → 回执原样摆出);
+   服务端另过量纲闸(±2000mm/±360°)与单次 Δ 闸(≤300mm、≤30°), 这里只做同一口径的即时提示。 */
+let PE_DIRTY=false, PE_CUR=null, PE_TP=null;
+function peDirty(el){ PE_DIRTY=true; if(el) el.classList.add('chg'); peHint(); }
+function peHint(){
+  const st=$('#pe_state'); if(!st) return;
+  if(!PE_CUR){ st.textContent='mm/s · 单次 ≤300mm / ≤30° (暂读不到当前位姿)'; st.style.color='#8b949e'; return; }
+  const v=['x','y','z','a','b','c'].map(k=>parseFloat(($('#pe_'+k)||{}).value));
+  if(v.some(x=>!isFinite(x))){ st.textContent='mm/s · 单次 ≤300mm / ≤30°'; st.style.color='#8b949e'; return; }
+  const d=Math.hypot(v[0]-PE_CUR.xyz[0], v[1]-PE_CUR.xyz[1], v[2]-PE_CUR.xyz[2]);
+  const da=Math.max(...[0,1,2].map(i=>Math.abs(v[3+i]-(PE_CUR.abc[i]==null?v[3+i]:PE_CUR.abc[i]))));
+  const bad=(d>300||da>30);
+  st.textContent='Δ '+fmt(d,1)+'mm / '+fmt(da,1)+'°'+(bad?' ⛔ 超单次上限, 请分两步':'');
+  st.style.color=bad?'#f85149':'#8b949e';
+}
+function peReset(){
+  PE_DIRTY=false;
+  // 有些浏览器点按钮不会把焦点从输入框移走 ⇒ peSync 会判"正在输入"而不填; 先主动失焦
+  const a=document.activeElement;
+  if(a && /^(INPUT|TEXTAREA)$/.test((a.tagName||'').toUpperCase())) a.blur();
+  document.querySelectorAll('#poseedit .pi').forEach(e=>e.classList.remove('chg'));
+  peSync(PE_TP);                       // 回到"跟着实时位姿走"
+}
+function peSync(tp){
+  if(tp) PE_TP=tp;
+  PE_CUR=(tp&&tp.xyz&&tp.xyz[0]!==null&&tp.xyz[0]!==undefined)
+    ? {xyz:tp.xyz.map(v=>v*1000), abc:(tp.abc_deg||[]), stale:!!tp.stale} : null;
+  const _ae=document.activeElement;
+  const _tag=_ae && (_ae.tagName||'').toUpperCase();
+  const _typing=!!_ae && /^(INPUT|TEXTAREA|SELECT)$/.test(_tag) && !!(_ae.closest && _ae.closest('#poseedit'));
+  // ⚠️ 只认"真在输入框里"; 点 ↺/移动按钮时 activeElement 也在 #poseedit 里, 但它不是输入框 ——
+  //    之前按 closest 一律判"正在输入" ⇒ 点 ↺ 恢复不了(实测 x 停在 700.5)。
+  if(PE_DIRTY||_typing||!PE_CUR||PE_CUR.stale){ peHint(); return; }
+  const put=(id,v)=>{const e=$('#'+id); if(e&&v!==null&&v!==undefined) e.value=Math.round(v*10)/10;};
+  ['x','y','z'].forEach((k,i)=>put('pe_'+k,PE_CUR.xyz[i]));
+  ['a','b','c'].forEach((k,i)=>put('pe_'+k,PE_CUR.abc[i]));
+  peHint();
+}
+async function poseGoto(btn){
+  const v=['x','y','z','a','b','c'].map(k=>parseFloat(($('#pe_'+k)||{}).value));
+  if(v.some(x=>!isFinite(x))){ $('#msg').textContent='位姿要 6 个数字: x y z (mm) + a b c (度)'; $('#msg').className='bad'; return; }
+  if(PE_CUR && !PE_CUR.stale){
+    const d=Math.hypot(v[0]-PE_CUR.xyz[0], v[1]-PE_CUR.xyz[1], v[2]-PE_CUR.xyz[2]);
+    if(d>300){ $('#msg').textContent='⛔ 单次平动 '+fmt(d,0)+'mm 超 300mm 上限 —— 先输中间点, 分两步走'; $('#msg').className='bad'; return; }
+  }
+  const spd=Math.max(1,Math.min(1000,parseFloat(($('#pe_spd')||{}).value||'50')||50));
+  const real=ARMED;
+  btn.disabled=true; const un=setTimeout(()=>{btn.disabled=false;},22000);
+  $('#msg').textContent='下发中… ('+(real?'真动':'演练 · 未授权不会真动')+' · 最多等 18s)'; $('#msg').className='wa';
+  $('#mq').style.display='none';
+  try{
+    renderMoveOut(await post('/ctl/move',{skill:'L2.goto_tcp_abs',pose:v.join(','),speed_mm_s:spd,arm:real?1:0},18000),'手动输入位姿');
+  }catch(e){
+    $('#msg').textContent='请求没发出去/超时: '+e+' —— 若反复如此, 关掉其它本机页面(浏览器对同一端口只有 6 条连接)';
+    $('#msg').className='bad';
+  }
+  clearTimeout(un); btn.disabled=false;
+}
+function poseCopy(){
+  const g=id=>document.getElementById(id);
+  const line=(ks,unit)=>ks.map(k=>k+' '+((g('ph_'+k)||{}).textContent||'—')).join('  ')+(unit||'');
+  const t=line(['X','Y','Z'],'  (mm)')+'\n'+line(['A','B','C'],'  (°)')+'\n'+(((g('ph_age')||{}).textContent)||'');
+  const ta=document.createElement('textarea');
+  ta.value=t; ta.style.position='fixed'; ta.style.top='-1000px';
+  document.body.appendChild(ta); ta.select();
+  let ok=false; try{ ok=document.execCommand('copy'); }catch(_e){}
+  ta.remove();
+  if(!ok){ try{ const r=document.createRange(); r.selectNodeContents(g('posehud'));
+                  const s=getSelection(); s.removeAllRanges(); s.addRange(r);}catch(_e){} }
+  const h=g('posehud'); if(h){ h.classList.add('copied'); setTimeout(()=>h.classList.remove('copied'),500); }
+}
+(function(){ const h=document.getElementById('posehud');
+  if(!h) return;
+  /* 🆕 2026-11-11 现场纠错(老倪): 「手动编辑栏无法输入, 只能看, 不能改」——
+     真因不是 CSS/readonly: 整个卡片绑了"点一下复制全部数值"(poseCopy), 点输入框时 click 冒泡上来,
+     poseCopy 里 selectNodeContents(#posehud) 把整卡内容选走 ⇒ 输入框立刻失焦 ⇒ 敲键盘没反应。
+     处置: 点 #poseedit 里的任何东西(输入框/速度框/移动按钮)一律不触发复制。 */
+  h.addEventListener('click',(e)=>{
+    if(e.target && e.target.closest && e.target.closest('#poseedit')) return;
+    poseCopy();
+  });
+})();
+function _btns(on){document.querySelectorAll('button[data-skill]').forEach(b=>b.disabled=!on);}
+/* 🔴 碰撞点台账渲染 (老倪 2026-10-01 二次定调: 「碰撞点要显示 x y z a b c 位置与实时位姿对应,
+   放在右上角就是要用眼睛看, 对比体型的。你显示那么多没必要」)
+   ⇒ 每行只有: 时间 + X Y Z A B C (mm / 度, 与上面「🎯 实时位姿」同一刻度同一数字格式, 上下对着看);
+   关节/力矩/报错码这些细节全塞进 tooltip, 不占眼睛。位姿缺项就画 — (不编)。 */
+function paintColl(cs){
+  const box=document.getElementById('collhud'), list=document.getElementById('coll_list');
+  if(!box||!list) return;
+  const ph=document.getElementById('posehud');
+  if(ph&&ph.offsetHeight>40) box.style.height=ph.offsetHeight+'px';
+  cs=cs||[];
+  const n=document.getElementById('coll_n');
+  if(n) n.textContent=cs.length?('共 '+cs.length+' 次 · 最新在最上'):'';
+  const cells=function(p){
+    const has=(p&&p.x!==undefined&&p.x!==null);
+    if(!has) return [0,1,2,3,4,5].map(function(){return '<span class="na">—</span>';}).join('');
+    const v=[Number(p.x)*1000,Number(p.y)*1000,Number(p.z)*1000];
+    const d=[p.rx,p.ry,p.rz].map(function(r){return (r===undefined||r===null)?null:Number(r)*180/Math.PI;});
+    return v.map(function(x){return '<span class="v">'+x.toFixed(1)+'</span>';}).join('')
+      + d.map(function(x){return x===null?'<span class="na">—</span>':'<span class="v">'+x.toFixed(1)+'</span>';}).join('');
+  };
+  const head='<div class="ch"><span>时间</span><span class="v">X</span><span class="v">Y</span>'
+    +'<span class="v">Z</span><span class="v">A</span><span class="v">B</span><span class="v">C</span></div>';
+  list.innerHTML=head+cs.map(function(c){
+    const tip='#'+c.code+' · '+(c.joint||'?')
+      +(c.torque!=null?(' · '+Number(c.torque).toFixed(2)+'/'+Number(c.limit).toFixed(2)+'Nm'):'')
+      +(c.pose_note?('\n'+c.pose_note):'')+(c.content?('\n'+c.content):'');
+    return '<div class="ci" title="'+tip.replace(/"/g,'')+'"><span class="tm">'
+      +String(c.ts||'').slice(11,19)+'</span>'+cells(c.pose||{})+'</div>';
+  }).join('');
+  list.querySelectorAll('.ci').forEach(function(el){
+    el.onclick=function(){
+      try{ navigator.clipboard.writeText(el.innerText); el.style.background='rgba(63,185,80,.16)';
+           setTimeout(function(){ el.style.background=''; },400); }catch(_e){}
+    };
+  });
+}
+function paintArm(){
+  const b=$('#armbar'), on=ARMED;
+  b.classList.toggle('on',on);
+  $('#armtxt').textContent = on ? '🔒 立即撤销授权'
+                                : (AUTH_PENDING?'⚠️ 再点一次: 现场确认无人':'🔓 授权真动');
+  $('#armstate2').innerHTML = on
+    ? ((ARWMODE==='debug')
+        ? ('✅ <b>真动已授权 · 调试档(无时间限制)</b> · 只有点『🔒 立即撤销授权』才结束 · 授权IP '+(AUTH_IP||'本机'))
+        : ('✅ <b>真动已授权</b> · 剩 <b>'+Math.floor(AUTH_LEFT/60)+'分'
+           +String(Math.max(0,Math.floor(AUTH_LEFT%60))).padStart(2,'0')+'秒</b>后自动失效 · 授权IP '+(AUTH_IP||'本机')))
+    : '⛔ <b>未授权</b> · 点方向键只会算目标, <b>机械臂不会动</b>';
+  $('#armhint').textContent = on
+    ? '现场安全: 授权期内每点一次方向键, 机械臂就真的动一次(速度按下面档位, 连点间隔 0.35s); 人离开前点左边「🔒 立即撤销授权」。'
+    : '现场安全: 只让守在机器旁的人授权 —— 点「🔓 授权真动」→ 再点一次「⚠️ 现场确认无人」。授权 '
+      +(($('#armwin')&&$('#armwin').value==='debug')?'调试档 ⇒ 无时间限制, 只能手动撤销。':(Math.round(ARMWIN/60)+' 分钟自动失效。'))
+      +' 刷新页面不改变服务端授权(授权在 ctl_auth.json)。';
+  document.body.classList.toggle('locked',!on);
+  paintSlotAuth();          // 📍 号位面板的授权状态条(同一份 ARMED/AUTH_LEFT, 1.5s 刷新)
+}
+async function armClick(){
+  if(ARMED){                                   // 撤销
+    const j=await post('/ctl/arm',{on:false},8000);
+    ARMED=false; AUTH_LEFT=0; paintArm();
+    $('#msg').textContent=(j.msg||'🔒 已撤销授权: 现在点方向键不会动臂'); $('#msg').className='wa';
+    return;
+  }
+  if(!AUTH_PENDING){                           // 第 1 步: 进入待确认(6s 内必须再点一次)
+    AUTH_PENDING=Date.now(); paintArm();
+    $('#msg').textContent='⚠️ 已按第 1 步 —— 确认机器旁没人、手不在臂内, 再点一次按钮上的「⚠️ 再点一次: 现场确认无人」才真正授权';
+    $('#msg').className='wa';
+    setTimeout(()=>{ if(AUTH_PENDING && Date.now()-AUTH_PENDING>6000){AUTH_PENDING=0;paintArm();} },6500);
+    return;
+  }
+  AUTH_PENDING=0;                              // 第 2 步: 真授权
+  const _mode=($('#armwin')&&$('#armwin').value)||'window';   // ⏱30分钟 / 🔧调试无限
+  const j=await post('/ctl/arm',{on:true,mode:_mode,note:'页面两步确认(现场安全)'},8000);
+  ARMED=!!j.armed; AUTH_LEFT=j.left_s||0; ARWMODE=j.mode||_mode;
+  ARMWIN=j.window_s||ARMWIN; AUTH_IP=j.ip||'';
+  paintArm();
+  $('#msg').textContent=(j.msg||'✅ 真动已授权'); $('#msg').className='ok';
+}
+function applyAuth(a){                          // 服务端状态是唯一真相(到期/别人撤销都会同步过来)
+  if(!a) return;
+  const was=ARMED;
+  ARMED=!!a.armed; AUTH_LEFT=a.left_s||0; ARWMODE=a.mode||ARWMODE;
+  ARMWIN=a.window_s||ARMWIN; AUTH_IP=a.ip||'';
+  if(was&&!ARMED){
+    // 🛑 2026-09-29 老倪:「我都取消授权了, 手臂怎么还在动」—— 撤销后必须说清"在途动作停了没有",
+    //    否则现场把"已下发那一下还在走"当成闸门失效。实况由 ctl_revoke_stop 写进 auth.last_stop。
+    const ls=a.last_stop||null, fresh=ls&&ls.ts&&(Date.now()/1000-ls.ts<180);
+    let extra='';
+    if(fresh&&ls.stopped) extra=' ⏹ 已对**在途动作**下达停止(/robot_stop 成功) —— 臂不会再多走。';
+    else if(fresh) extra=' ⏹ 近 3 分钟内没有已下发的动作, 无需叫停。';
+    else extra=' ⚠️ 已经下发到控制器的动作无法收回(慢速指令会走完), 只能等它到位或按急停; 本次已自动尝试叫停在途动作。';
+    $('#msg').textContent='⌛ 授权已到期(或已被撤销) —— 自动回到未授权(现场安全)。要继续操作就先重新授权'+extra;
+    $('#msg').className='wa';
+  }
+  paintArm();
+}
+function moveReal(){ armClick(); }              // 兼容旧按钮名
+function flash(btn){try{btn.classList.remove('flash');void btn.offsetWidth;btn.classList.add('flash');}catch(e){}}
+async function move(btn,force){
+  const skill=btn.dataset.skill, p=btn.dataset.p;
+  // 🔩 第 6 轴自转走自己的步进档(≤10°); 其余 deg 类(A/B/C)仍用 STEP_DEG
+  const v=(p==='deg')?(skill.indexOf('L2.j6_')===0?STEP_J6:STEP_DEG):STEP_MM;
+  const spd=Math.max(1,Math.min(1000,parseFloat($('#spd').value||'10')||10));
+  _lastMove={skill:skill,p:p,v:v};
+  const real=ARMED;   // 🔐 只有已授权才真下发(服务端还会再拦一次); 未授权一律 dry-run 演练
+  _btns(false); flash(btn);
+  const unlock=setTimeout(()=>_btns(true),15000);   // 保障: 请求阻塞也必须把按钮放开
+  $('#msg').textContent='下发中… (最多等 15s)'; $('#msg').className='wa';
+  $('#mq').style.display='none';
+  try{
+    renderMoveOut(await post('/ctl/move',{skill:skill,[p]:v,speed_mm_s:spd,arm:real?1:0},18000),'刚才那个方向键');
+  }catch(e){
+    $('#msg').textContent='请求没发出去/超时: '+e+' —— 若反复如此, 请关掉其它本机页面(浏览器对同一端口只有 6 条连接)';
+    $('#msg').className='bad';
+  }
+  clearTimeout(unlock); _btns(true);
+  poll();
+}
+/* ═══ 🧾 下发反馈: 被拒原因变响 + 逐条台账 (2026-10-09 现场「点后退没反应」) ═══════════════════
+   背景: 有安全闸时 /ctl/move 的回执可能**先**拿到「受理: 已下发」(ok=true), 而真正被拒的那一行
+   (如「⛔ 目标出已验证包络: x=0.3348 越界[0.3368, …]」/「🛑 扫掠越界急停…」)还在 lines 里
+   ⇒ 只看 ok 会把"被拒"显示成"✅ 已下发", 现场就以为没反应。这里一律**扫 lines+msg 里的否决标记**。 */
+function _moveReason(j){
+  const txt=((j&&j.msg)||'')+'\n'+(((j&&j.lines)||[]).join('\n'));
+  /* 🔴 2026-10-12 定式: **最新那条判决行说了算** —— 倒序扫行, 先命中 DENY 就给原因, 先命中 PASS 就返回空。
+     两次现场事故都出在这个函数上: ①横幅只剩一句括号 ②横幅写「被拒: 放行 (裁决 0.0s 前 · 纹理正常无遮挡)」
+     (执行器每次下发都写那行"放行", 那是**通过**不是被拒)。旧拒发行也不许压过新的"已下发"。 */
+  const DENY=/🛑[^\n]*被拦|⛔[^\n]*拒|⇒\s*拒发|被安全闸拒|未授权真动|不在手动控制白名单|目标出已验证包络|扫掠越界急停|出包络\s*\(|超出允许范围|太快了|TCP 真值陈旧|等 SDK 代理回执超时|拒\(不排队\)|被拒/;
+  const PASS=/受理:\s*(✅|DRY-RUN)|已下发|放行|只提示不拦|安全闸[^\n]*已关闭/;
+  const lines=String(txt).split('\n').map(x=>x.replace(/\*\*/g,'').trim()).filter(Boolean);
+  for(let i=lines.length-1;i>=0;i--){
+    const ln=lines[i];
+    if(DENY.test(ln)){
+      const pats=[
+        /被拦\(快层[^:\n]*[:：]\s*(.+)/,        // 行里括号嵌套(「本地反射(5Hz)」)⇒ 不能用 [^)]*
+        /被拦\(慢层[^:\n]*[:：]\s*(.+)/,
+        /安全闸\((?:快|慢)层\)[^:\n]*[:：]\s*(.+?)(?:\s*⇒|$)/,
+        /目标出已验证包络[：: ]*(.+)/,
+        /扫掠越界急停[：: ]*(.+)/,
+        /出包络\s*\((.+)/,
+        /未授权真动[^\n]*/,
+        /不在手动控制白名单[^:：]*/,
+        /超出允许范围[^:：]*/,
+        /太快了[^:：]*/,
+        /TCP 真值陈旧[^:：]*/,
+        /等 SDK 代理回执超时[^:：]*/,
+        /拒发[：: ]*(.+)/,
+        /被拒[：: ]*(.+)/
+      ];
+      for(const re of pats){
+        const m=ln.match(re); if(!m) continue;
+        const s=String(m[1]||m[0]).trim();
+        if(!s) continue;
+        if(/^[（(][^（()）]{0,48}[)）]$/.test(s)) continue;   // 纯括号备注不是原因
+        return s.slice(0,220);
+      }
+      return ln.replace(/^\[[\d:]+\]\s*/,'').slice(0,220);  // 保障: 整行原文(总比空括号强)
+    }
+    if(PASS.test(ln)) return '';                             // 最新一条是"通过/只提示不拦" ⇒ 没有原因
+  }
+  return '';
+}
+let _feedInit=false;
+function _feedTime(){ const d=new Date(), p=n=>String(n).padStart(2,'0');
+  return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()); }
+/* 台账: 每次下发无论成败各留一行(时间·技能·参数·结果·原因); 最新在最上, 点一行复制该行。 */
+function moveFeed(skill,param,res,reason){
+  const box=$('#movefeed'); if(!box) return;
+  if(!_feedInit){ box.innerHTML=''; _feedInit=true; }
+  const cls=(res.indexOf('⛔')===0||res.indexOf('🛑')===0)?'r-bad'
+    :(res.indexOf('✅')===0?'r-ok':((res.indexOf('⏳')===0||res.indexOf('🧪')===0)?'r-wa':'r-dim'));
+  const line='['+_feedTime()+'] '+(skill||'(技能?)')+(param?(' '+param):'')
+    +' → '+res+(reason?(' · 原因: '+reason):'');
+  const div=document.createElement('div');
+  div.className='row '+cls; div.textContent=line; div.title='点一下复制这一行';
+  div.onclick=()=>{ try{ navigator.clipboard.writeText(line); }catch(_e){} };
+  box.insertBefore(div, box.firstChild);
+  while(box.children.length>60) box.removeChild(box.lastChild);
+}
+/* 顶部红横幅: 被拒时写明原因(空 reason = 收起)。 */
+function _showDeny(reason){
+  const b=$('#denybanner'); if(!b) return;
+  if(!reason){ b.style.display='none'; b.textContent=''; return; }
+  b.style.display='block'; b.textContent='⛔ 被拒: '+reason;   // 显式 block: CSS 默认是 none, 设 '' 会退回 none
+}
+/* 回执渲染: 方向键 / 『🎯 点1』 共用同一口径 —— 点了必须给可复制的原始行;
+   未授权时给**授权入口**(不绕闸门), 绝不显示成"点了没反应"; 等安全裁决时明写"还没动"。 */
+function renderMoveOut(j,again){
+  const _el=(typeof j.elapsed_s==='number')?(' · 用时 '+j.elapsed_s.toFixed(1)+'s'):'';
+  const _reason=_moveReason(j);
+  const _isWait=!!(j.ok&&(j.dry||j.pending));      // 演练 / 等裁决: 都还没被"拒", 不算失败
+  /* 🔴 2026-10-12 老倪: 「赶快放行，删除这个被拒功能」——
+     原来这行会**从执行器日志尾去猜**被拒(ok=true + lines 里有否决字样 ⇒ 也算被拒),
+     结果两次误报: ①横幅只剩一句括号「(本地检测, 亚秒级)」
+                  ②把每次下发必写的那行「🛡 VL 安全闸(快层): 放行 (裁决 0.0s 前…)」当成被拒。
+     ⇒ 取消"猜": **只有服务端明确拒发(ok=false)才算被拒**; 日志里若还有别的否决行, 只作为
+       ⚠️ 提示原地给出(不摆红色大横幅), 既不静默也不误报。 */
+  const _rejected=(!j.ok);
+  const _hint=(!_rejected&&_reason)?_reason:'';
+  let _res;
+  if(_rejected){
+    const _why=_reason||j.msg||'被拒(看下方日志原文)';
+    _res='⛔ 被拒';
+    $('#msg').textContent='⛔ 被拒 · '+_why+_el+'  (机械臂没动)';
+    $('#msg').className='bad';
+    _showDeny(_why);
+  }else{
+    _res=j.pending?'⏳ 等裁决':(j.dry?'🧪 演练(未下发)':'✅ 已下发');
+    $('#msg').textContent=(j.ok?(j.pending?'⏳ ':(j.dry?'🧪 ':'✅ '))+j.msg+_el:'⛔ '+j.msg+_el)
+      +(_hint?('  ⚠️ 提示: '+_hint):'')
+      +'  (对上 X/Y/Z 看有没有变就知道动没动)';
+    $('#msg').className=(j.ok?((j.pending||j.dry)?'wa':'ok'):'bad');
+    _showDeny('');                                  // 通过 ⇒ 一律收起红横幅
+  }
+  $('#lines').textContent=(j.lines&&j.lines.length?j.lines.join('\n'):'(执行器还没有回执)');
+  // 🧾 台账: 每次下发无论成败各留一行(技能名+参数+结果+原因+时间)
+  try{
+    let _par='';
+    if(j.param&&typeof j.param==='object'){ _par=Object.keys(j.param).map(k=>k+'='+j.param[k]).join(' '); }
+    moveFeed(j.skill, _par, _res, _rejected?(_reason||j.msg||''):'');
+  }catch(_e){}
+  /* 🛠 失败/未授权时, 在手动控制台顶部再摆一次真因(老倪只盯控制台, 不一定滚到底部卡片) */
+  try{
+    const _ex=document.getElementById('execline');
+    if(_ex&&_rejected){
+      if(!_ex.dataset.base){ _ex.dataset.base=_ex.innerHTML; }
+      _ex.innerHTML=_ex.dataset.base+'<br><span class="bad">⛔ 最近一次下发被拒: '+(_reason||j.msg||'')+'</span>'
+        +'<span class="hint"> · 用时 '+((j.elapsed_s||0).toFixed(1))+'s</span>';
+      /* (2026-10-12) 这里只在服务端明确拒发(_rejected=!j.ok)时才会走到 —— 见上面那条注释 */
+    }
+  }catch(_e){}
+  if(j.denied||(j.ok&&j.dry)){           // 未授权点了 → 给**授权入口**
+    $('#mq').style.display='';
+    $('#mq').textContent='🔓 授权真动(现场确认无人) —— 授权完再点一次'+(again||'刚才那个方向键');
+  }
+  return j;
+}
+let _lastMove=null;
+async function moveReal(){ if(_lastMove) move(_lastMove,true); }
+document.querySelectorAll('button[data-skill]').forEach(b=>b.onclick=()=>move(b));
+
+/* ═══ 🎯 点1: 回到示教点『金手指点1』(技能 L2.goto_gold_pt1) ═══
+   2026-09-29 老倪: 「把这个技能放到工位总览 金手指检测窗口 整板原图 按钮旁边, 添加一个『点1』按钮,
+   点击后即返回点一」。与方向键**同一条路**(白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决):
+   目标位姿由技能定义 point_locked 锁死, 页面/接口都改不了点位 —— 这里只送一个技能 id。
+   带安全闸时最终结果要 45~190s(上限 300s)才落日志 ⇒ 回执先如实说"已收到·在等裁决",
+   再由 pt1Track() 每 5s 追 /ctl/log 直到出现「受理: 已下发」或「🛑 被拦… ⇒ 拒发」, 把那一行原文摆出来。 */
+let _pt1={t0:0,timer:null};
+let _spt1={t0:0,timer:null};
+/* 通用回点(『🎯 点1』『🎯 侧面点1』共用同一份实现 —— 不新开通道, 不复制一套闸门逻辑):
+   页面只送**技能 id**: 目标位姿由技能定义 point_locked 锁死, 页面/接口都改不了点位。 */
+/* 🎛 按点位切曝光 (2026-10-08 老倪: 「按点位切曝光」)
+   点1=正面用产线验收档(20000us×8, 前视 p50≈63); 点2=背面暗一倍 ⇒ 40000us×8(实测 p50 33→67 到标定值)。
+   经本服务 /api/aoi/param 转发工控机 /param —— **实测实时生效, 不用重启服务/不动产线程序**;
+   切档失败就如实打在点位提示里, 不假装成功。 */
+async function setAoiProfile(pf,msgSel){
+  const m=$(msgSel);
+  try{
+    const j=await post('/api/aoi/param?port=10082&profile='+pf,{},9000);
+    if(m) m.textContent=(m.textContent?m.textContent+' · ':'')+(j&&j.ok?'🎛 ':'⚠️ ')+((j&&j.msg)||'切曝光档无回执');
+  }catch(e){ if(m) m.textContent=(m.textContent?m.textContent+' · ':'')+'⚠️ 切曝光档请求失败: '+e; }
+}
+async function gotoPt1(btn){
+  setAoiProfile('pt1','#pt1_msg');
+  return gotoTeachPoint(btn,_pt1,'L2.goto_gold_pt1','『🎯 点1』','#pt1_msg','回到金手指点1');
+}
+/* ═══ 🎯 点2: 回到示教点『金手指点2』(技能 L2.goto_gold_pt2) ═══
+   2026-10-08 老倪: 「记录当前点，增加 金手指点2 按钮」。与 点1 完全同一份 gotoTeachPoint
+   (不新开通道、不复制闸门), 页面只送技能 id。
+   点位真值 = 示教点库『金手指点2』(2026-10-08 20:58:46 现场实录, 源=ROKAE SDK 直读 endInRef,
+   6 帧极差 pos 2e-06m / quat 1e-06)。
+   ⚠️ 与 点1 位置差 2.00mm、**姿态差 54.0°**(2026-10-08 21:01 老倪现场微调视角后重录, 与本点首版差 2.24°)
+   ⇒ 从别处回本点会带一次腕部大角度转身
+   (现场铁律: ≥30° 的姿态变化必须单独成段, 不能和横移混一段) —— 点之前确认末端周围无遮挡。 */
+let _pt2={t0:0,timer:null};
+async function gotoPt2(btn){
+  setAoiProfile('pt2','#pt2_msg');      // 背面暗一倍 ⇒ 同步切 40000us 曝光档(先切再动, 到位时亮度已对)
+  return gotoTeachPoint(btn,_pt2,'L2.goto_gold_pt2','『🎯 点2』','#pt2_msg','回到金手指点2');
+}
+/* ═══ ➕ 增加安全点 (2026-10-09 老倪: 「当前位置记录，安全点，增加安全点 按钮，
+   在金手指窗口，金手指点2旁边」) ═══
+   零运动: 只"读当前 TCP 真值 + 落盘", 所以**不需要**『授权真动』; 走既有 POST /ctl/record_point
+   (服务端白名单已放行 安全点N)。三道闸与号位同一套: 帧龄>2s 拒 / 全0 会话陈旧拒 / 6帧极差>1e-4m 拒。
+   名称自动取下一个「安全点N」(读 /ctl/points 的 taught 键), 绝不覆盖已有点。 */
+async function addSafePoint(btn){
+  const m=$('#safept_msg');
+  flash(btn); btn.disabled=true;                      // 只在请求在飞时禁用; 回来立刻恢复(原来固定 8s ⇒ 连点像"没反应")
+  const _re=()=>{btn.disabled=false;};
+  m.textContent='⏳ 正在读当前位姿并落盘(6 帧)…';
+  try{
+    let n=1;
+    try{
+      const p=await getj('/ctl/points',6000);
+      const have=Object.keys((p&&p.taught)||{});
+      while(have.indexOf('安全点'+n)>=0) n++;
+    }catch(e){ /* 拿不到清单就退回 安全点1(服务端回执会带 overwrote 让人看见) */ }
+    const name='安全点'+n;
+    const r=await post('/ctl/record_point',
+      {name:name,note:'8793 金手指窗口「➕ 增加安全点」按钮 · 2026-10-09',by:'page'},60000);
+    if(r&&r.ok){
+      const P=(r.pos||[]).slice(0,3).map(v=>Number(v).toFixed(4)).join(', ');
+      m.textContent='✅ 已记 '+name+' = ('+P+') · 6帧极差 '+
+        Number(r.spread_pos_m||0).toExponential(1)+'m'+(r.overwrote?' · ⚠️ 覆盖了同名旧值':'');
+      $('#msg').textContent='➕ 已记录安全点 '+name; $('#msg').className='wa';
+    }else{
+      m.textContent='⛔ 没记上: '+((r&&r.msg)||'被拒(看下方日志原文)');
+      if(r&&r.tail) $('#lines').textContent=r.tail+'\n'+$('#lines').textContent;
+      $('#msg').textContent='⛔ 增加安全点未成: '+((r&&r.msg)||'被拒'); $('#msg').className='bad';
+    }
+  }catch(e){ m.textContent='⛔ 请求失败: '+e; }
+  finally{ _re(); setTimeout(_re,1200); }             // 双保险: 回来就恢复
+}
+/* ═══ 🎯 侧面点0: 回到示教点『侧面点0』(技能 L2.goto_surface_pt0) ═══
+   2026-10-01 老倪: 「记录当前的侧面点0，增加侧面点0的按钮，顺序在侧面点1的前面，按钮 侧面点0
+   也要放在侧面点1的左侧，你重新排列一下UI布局」。与 1/2/3 完全同一份 gotoTeachPoint(不新开通道、
+   不复制闸门); 点位真值 = 示教点库 侧面点0(2026-10-01 07:30 现场实录, 6 帧极差 1e-6)。 */
+// ── 🎯 回『准备点』(安全退让位, 2026-10-01 老倪加: 排在危险点侧面点0 左侧) ──
+// 技能是 3 段转移(就地抬50 → 高位平移 → 垂直下落), 不是一次直线: 准备点比侧面点低 118~169mm,
+// 直插等于低空横移/斜插(违反两点转移铁律)。执行器会打印每段落点。
+let _ready={t0:0,timer:null};
+async function gotoReady(btn){
+  return gotoTeachPoint(btn,_ready,'L2.goto_ready','『🎯 准备点』','#ready_msg','回到准备点');
+}
+let _spt0={t0:0,timer:null};
+async function gotoSurfacePt0(btn){
+  return gotoTeachPoint(btn,_spt0,'L2.goto_surface_pt0','『🎯 侧面点0』','#spt0_msg','回到侧面点0');
+}
+/* ═══ 🎯 侧面点1: 回到示教点『侧面点1』(技能 L2.goto_surface_pt1) ═══
+   2026-09-30 老倪: 「在侧面检测, 增加一个技能 侧面点1 的按钮, 放在侧面检测窗口的下面,
+   类似 技能 返回 金手指点1 的技能」。与『🎯 点1』完全同一条路(白名单 → 授权真动 → 限流
+   → FIFO → 执行器 → 安全裁决); 点位真值 = 示教点库里的 侧面点1(2026-09-30 现场实录)。 */
+async function gotoSurfacePt1(btn){
+  return gotoTeachPoint(btn,_spt1,'L2.goto_surface_pt1','『🎯 侧面点1』','#spt1_msg','回到侧面点1');
+}
+/* ═══ 🎯 侧面点2: 回到示教点『侧面点2』(技能 L2.goto_surface_pt2) ═══
+   2026-10-01 老倪: 「记录现在的表面检测的位姿, 侧面点2, 并增加侧面点2的技能,
+   在表面检测窗口下面的侧面点1旁边增加 侧面点2 按钮」。与『🎯 侧面点1』同一份 gotoTeachPoint
+   (不新开通道、不复制闸门); 点位真值 = 示教点库里的 侧面点2(2026-10-01 现场实录)。 */
+let _spt2={t0:0,timer:null};
+async function gotoSurfacePt2(btn){
+  return gotoTeachPoint(btn,_spt2,'L2.goto_surface_pt2','『🎯 侧面点2』','#spt2_msg','回到侧面点2');
+}
+/* ═══ 🎯 侧面点3: 回到示教点『侧面点3』(技能 L2.goto_surface_pt3) ═══
+   2026-10-01 老倪: 「记录现在的位姿 侧面点3 增加侧面点3按钮; 而且从刚才 侧面点2到现在的侧面点3
+   的路径, 你也要记住, 一会会走 侧面点1 2 3的连续路径」。与 1/2 同一份 gotoTeachPoint;
+   点位真值 = 示教点库 侧面点3(2026-10-01 现场实录); 2→3 的实走路径在 taught_paths.json。 */
+let _spt3={t0:0,timer:null};
+async function gotoSurfacePt3(btn){
+  return gotoTeachPoint(btn,_spt3,'L2.goto_surface_pt3','『🎯 侧面点3』','#spt3_msg','回到侧面点3');
+}
+async function gotoTeachPoint(btn,st,skill,label,msgSel,human){
+  const spd=Math.max(1,Math.min(1000,parseFloat($('#spd').value||'10')||10));
+  const real=ARMED;                    // 🔐 只有已授权才真下发(服务端还会再拦一次)
+  const m=$(msgSel);
+  if(st.timer){ clearInterval(st.timer); st.timer=null; }
+  flash(btn); btn.disabled=true; setTimeout(()=>{btn.disabled=false;},20000);
+  m.textContent='⏳ 下发中(最多 20s 出初步回执)…';
+  $('#msg').textContent='🎯 '+human+': 下发中…'; $('#msg').className='wa';
+  $('#mq').style.display='none';
+  try{
+    // 🖐 人工单点回位: 带 manual_point=1 ⇒ 执行器不再因"需要抬升/相对下降"硬拦(慢速+提示在先, 见 l2_daemon)
+    let j=renderMoveOut(await post('/ctl/move',{skill:skill,speed_mm_s:spd,arm:real?1:0,manual_point:1},20000), label);
+    /* 🧗 2026-10-12 老倪: 「点击 安全点1 就要移动到这个点」—— 安全点/准备点这类目标本身更高的点,
+       计划里必有一段上升(实测 准备点→安全点1 = +219mm), 会被「升高 >10cm 必须先问人」的闸拦住。
+       规矩不改(那条来自 10-01 碰撞), 但把"人确认净空"这一步做进按钮: 服务端回执里已给出放行量,
+       这里让现场点一次确认 ⇒ 带 allow_climb_mm 重发(不确认就不发, 照旧拦)。 */
+    const _txt=[(j&&j.msg)||''].concat((j&&j.lines)||[]).join(' \n ');
+    let _mm=null;
+    const _m1=_txt.match(/allow_climb_mm=([0-9]+(?:[.][0-9]+)?)/);      // 服务端已明确给出放行量(首选)
+    if(_m1){ _mm=parseFloat(_m1[1]); }
+    else { const _m2=_txt.match(/抬升[  ]*([0-9]+(?:[.][0-9]+)?)[  ]*mm[  ]*超/);  // 保障: 从"抬升 NNNmm 超…"里取
+           if(_m2){ _mm=parseFloat(_m2[1]); } }
+    if(_mm!=null && real){
+      const mm=Math.ceil(_mm)+2;      // 回执数字四舍五入过 ⇒ 留 2mm 余量, 免得刚好卡边界又被同一道闸拒一次
+      if(confirm('到该点需要上升 '+mm.toFixed(0)+'mm（超过「升高不超 10cm」规矩）。\n现场已目视确认上方净空、无人？\n确定 = 立即带放行量下发；取消 = 不下发。')){
+        m.textContent='⏳ 已确认净空, 带放行量 '+mm.toFixed(0)+'mm 重发…';
+        j=renderMoveOut(await post('/ctl/move',{skill:skill,speed_mm_s:spd,arm:1,allow_climb_mm:mm},20000), label);
+      }
+    }
+    if(j.denied||(j.ok&&j.dry)){
+      m.textContent='⛔ 未授权: 只算了目标, 机械臂不会动 —— 先点左边『🔓 授权真动』再点我';
+    }else if(j.ok&&j.pending){
+      m.textContent='⏳ 已收到, 正在等安全裁决(最多 300s)… 下面是实时回执';
+      trackTeachPoint(st,msgSel);
+    }else if(j.ok){
+      m.textContent='✅ 已下发(真动) —— 盯下方日志 + 画面里机械臂';
+    }else{
+      /* ⛔ 服务器明确拒发(执行器离线/白名单/守卫/环境校验…): 必须把**原文原因**摆在按钮旁边,
+         不能让提示停在下发中 —— 老倪 2026-10-01: 「点了没反应」的就是这里。 */
+      m.textContent='⛔ 没发出去: '+(j.msg||'被拒(看下方日志原文)');
+      $('#msg').textContent='⛔ '+human+': '+(j.msg||'被拒')+' · 用时 '+((j.elapsed_s||0).toFixed(1))+'s';
+      $('#msg').className='bad';
+      $('#lines').textContent=(j.lines&&j.lines.length?j.lines.join('\n'):$('#lines').textContent);
+    }
+  }catch(e){
+    m.textContent='❌ 请求失败: '+e;
+    $('#msg').textContent='请求没发出去/超时: '+e; $('#msg').className='bad';
+  }
+  poll();
+}
+function pt1Track(){ trackTeachPoint(_pt1,'#pt1_msg'); }
+function spt1Track(){ trackTeachPoint(_spt1,'#spt1_msg'); }
+/* 追裁决: 每 5s 读执行器日志尾, 直到出现 受理/拒发 那一行(上限 340s = 闸门 300s + 余量) */
+function trackTeachPoint(st,msgSel){
+  st.t0=Date.now();
+  if(st.timer) clearInterval(st.timer);
+  const tick=async()=>{
+    const el=Math.round((Date.now()-st.t0)/1000);
+    if(el>340){ clearInterval(st.timer); st.timer=null;
+      $(msgSel).textContent='⏰ 已等 340s 还没等到裁决行 —— 看下方日志原文判断'; return; }
+    try{
+      const j=await getj('/ctl/log?n=14&t='+Date.now(),7000);
+      if(j&&j.lines&&j.lines.length){
+        $('#lines').textContent=j.lines.join('\n')+
+          '\n—— ⏳ 已等 '+el+'s (点击时刻起算; 上限 300s)';
+        if(j.done){
+          clearInterval(st.timer); st.timer=null;
+          const v=(j.verdict||'').slice(0,300);
+          const bad=(v.indexOf('拒发')>=0||v.indexOf('被拦')>=0);
+          $(msgSel).textContent=(bad?'🛑 被安全闸拒发':'✅ 裁决通过·已下发')+' · 共等 '+el+'s';
+          $('#msg').textContent=(bad?'🛑 ':'✅ ')+v;
+          $('#msg').className=(bad?'bad':'ok');
+        }else{
+          $(msgSel).textContent='⏳ 等安全裁决中… 已 '+el+'s (实测 45~190s, 上限 300s)';
+        }
+      }
+    }catch(e){}
+  };
+  tick(); st.timer=setInterval(tick,5000);
+}
+/* ═══ 🤏 夹爪: 关闭(夹紧) / 打开(松开) ═══
+   2026-09-29 老倪: 「在手动控制台 增加 关闭夹抓 和 打开夹抓 两个技能」。
+   与方向键/点1 **完全同一条路**: 白名单(L2.grip_close / L2.grip_open) → 授权真动 → 限流 → FIFO
+   → 执行器 → 安全裁决。页面**只送技能 id**: 夹持力/行程等参数由技能定义(registry)决定, 页面改不了;
+   未授权时一律演练(只算目标不动作), 服务端还会再拦一次(403), 执行器最后保障一次。
+   带安全闸时最终结果 45~190s(上限 300s)才落日志 ⇒ 回执先如实说"已收到·在等裁决", 再追日志到那一行。 */
+let _grip={t0:0,timer:null};
+async function gripAct(btn, skill, label){
+  const spd=Math.max(1,Math.min(1000,parseFloat($('#spd').value||'10')||10));
+  const real=ARMED;
+  const m=$('#grip_msg');
+  if(_grip.timer){ clearInterval(_grip.timer); _grip.timer=null; }
+  flash(btn); btn.disabled=true; setTimeout(()=>{btn.disabled=false;},20000);
+  m.textContent='⏳ 下发中(最多 20s 出初步回执)…';
+  $('#msg').textContent='🤏 '+label+': 下发中…'; $('#msg').className='wa';
+  $('#mq').style.display='none';
+  try{
+    const j=renderMoveOut(await post('/ctl/move',{skill:skill,speed_mm_s:spd,arm:real?1:0},20000),'『'+label+'』');
+    if(j.denied||(j.ok&&j.dry)){
+      m.textContent='⛔ 未授权: 只算了目标, 夹爪不会动 —— 先点上面『🔓 授权真动』再点我';
+    }else if(j.ok&&j.pending){
+      m.textContent='⏳ 已收到, 正在等安全裁决(最多 300s)… 下面是实时回执';
+      gripTrack(skill,label);
+    }else if(j.ok){
+      m.textContent='✅ 已下发(真动) —— 盯下方日志 + 画面里夹爪';
+    }else{
+      m.textContent='⛔ 没发出去: '+(j.msg||'被拒(看下方日志原文)');
+      $('#msg').textContent='⛔ '+label+': '+(j.msg||'被拒');
+      $('#msg').className='bad';
+    }
+  }catch(e){
+    m.textContent='❌ 请求失败: '+e;
+    $('#msg').textContent='请求没发出去/超时: '+e; $('#msg').className='bad';
+  }
+  poll();
+}
+function gripTrack(skill,label){
+  _grip.t0=Date.now();
+  if(_grip.timer) clearInterval(_grip.timer);
+  const tick=async()=>{
+    const el=Math.round((Date.now()-_grip.t0)/1000);
+    if(el>340){ clearInterval(_grip.timer); _grip.timer=null;
+      $('#grip_msg').textContent='⏰ 已等 340s 还没等到裁决行 —— 看下方日志原文判断'; return; }
+    try{
+      const j=await getj('/ctl/log?n=14&t='+Date.now(),7000);
+      if(j&&j.lines&&j.lines.length){
+        $('#lines').textContent=j.lines.join('\n')+'\n—— ⏳ 已等 '+el+'s (点击时刻起算; 上限 300s)';
+        if(j.done){
+          clearInterval(_grip.timer); _grip.timer=null;
+          const v=(j.verdict||'').slice(0,300);
+          const bad=(v.indexOf('拒发')>=0||v.indexOf('被拦')>=0);
+          $('#grip_msg').textContent=(bad?'🛑 被安全闸拒发':'✅ 裁决通过·已下发')+' · 共等 '+el+'s';
+          $('#msg').textContent=(bad?'🛑 ':'✅ ')+v;
+          $('#msg').className=(bad?'bad':'ok');
+        }else{
+          $('#grip_msg').textContent='⏳ 等安全裁决中… 已 '+el+'s (实测 45~190s, 上限 300s)';
+        }
+      }
+    }catch(e){}
+  };
+  tick(); _grip.timer=setInterval(tick,5000);
+}
+function copylog(){
+  const t=$('#lines').textContent+'\n'+$('#msg').textContent;
+  navigator.clipboard.writeText(t).then(()=>{$('#msg').textContent='✅ 已复制到剪贴板';
+    $('#msg').className='ok';},()=>{$('#msg').textContent='复制失败, 请手动选择文本';$('#msg').className='bad';});
+}
+async function shot(port){
+  $('#msg').textContent='拍帧中(工控机要真拍一张并跑检测，可能要几十秒)…'; $('#msg').className='wa';
+  try{const j=await post('/api/aoi/capture?port='+port,{},100000);
+    $('#msg').textContent=(j.ok?'✅ ':'⛔ ')+('HTTP '+j.http+' '+(j.msg||'')+(j.got_image?' · 已取到图并显示':''));
+    $('#msg').className=(j.ok?'ok':'bad');
+    $('#lines').textContent=JSON.stringify(j,null,1);}catch(e){$('#msg').textContent='失败: '+e;}
+  poll();
+}
+function panel(id,st,label){
+  const m=$('#m_'+id); if(!m) return;
+  const _im=$('#i_'+id);
+  const _live=(_im&&_im.dataset.mode==='mjpg')?' · 🔴 实时推流':'';
+  /* 🕒 标题右侧的帧龄徽标 (2026-10-25 老倪: 画面里的字把图挡了 ⇒ 一条长状态行全部撤掉,
+     只留这一个 token 贴着标题右边, 不占图像一行)。整条状态文本仍在 #m_*, 只是 CSS 不显示。 */
+  const _badge=function(t,cls){
+    let b=document.getElementById('a_'+id);
+    if(!b){
+      const cap=document.getElementById('m_'+id).parentNode;
+      if(!cap) return;
+      b=document.createElement('span'); b.id='a_'+id; cap.appendChild(b);
+    }
+    b.className='age'+(cls?' '+cls:''); b.textContent=t;
+  };
+  if(!st){m.textContent='未接'+_live; _badge('未接','bad'); return;}
+  const _pre=(label?label+' · ':'');
+  // ⛔ 源已断(如深度源文件停更): 如实报警, 绝不把上一帧旧图说成在线/新鲜
+  if(st.dead){
+    m.innerHTML=_pre+'<span class="bad">⛔ 源已断 '+fmt(st.dead_s,1)+'s（无新帧, 不显示假新鲜值）</span>'+_live;
+    _badge('⛔ 断 '+fmt(st.dead_s,0)+'s','bad'); return;
+  }
+  if(!st.online){m.textContent=_pre+'无帧'+_live; _badge('无帧','bad'); return;}
+  /* 🕒 帧龄口径 (2026-09-28 修): 标的是**源端那一帧**的年龄, 不是本端合成帧的年龄。
+     ① 源端自报(X-Frame-Age-S 之类) → 直接用它的数;
+     ② 源连续返回同一张图 ≥2s     → 醒目报「源已静止 Ns」(源卡死也不许显示 0.01s);
+     ③ 都没有(本地相机)           → 本端帧龄即源帧龄, 照实标。 */
+  let _age;
+  if(st.src_age_s!==undefined&&st.src_age_s!==null){
+    _age='源帧龄 '+fmt(st.src_age_s,2)+'s'
+      +(st.src_age_s>3?'<span class="bad">（源端那帧本来就旧）</span>':'');
+  }else if(st.stalled){
+    _age='<span class="bad">⛔ 源已静止 '+fmt(st.stall_s,0)+'s（源卡死, 不是实时）</span>';
+  }else{
+    _age='本端帧龄 '+fmt(st.age_s,2)+'s';   // 源端没自报、也没卡死: 明说这是"本端"量, 不冒充源端时间
+  }
+  m.innerHTML=_pre+_age+' · '+fmt(st.fps,1)+'fps · '+fmt(st.kb_per_frame,0)+'KB'+_live;
+  const _a=(st.src_age_s!==undefined&&st.src_age_s!==null)?st.src_age_s:st.age_s;
+  if(st.stalled)                 _badge(fmt(st.stall_s,0)+'s 静止','wa');
+  else if(typeof _a==='number')  _badge(fmt(_a,1)+'s', _a>3?'wa':'ok');
+  else                           _badge('实时','ok');
+}
+let _pollBusy=false, _okAt=Date.now(), _pollAt=0;
+async function poll(){
+  if(_pollBusy) return; _pollBusy=true; _pollAt=Date.now();
+  let s=null, aoi=null, st=null;
+  try{
+    const j=await getj('/station/status?t='+Date.now(),6000);
+    /* 🔁 老模板自愈: 服务端模板 mtime 变了 ⇒ 这个标签页重载一次(只认数字, 防占位符没替换时死循环) */
+    try{
+      if(j && j.html_ver && /^[0-9]+$/.test(String(HTML_VER))
+         && String(j.html_ver)!==String(HTML_VER)){
+        var _n=Number(sessionStorage.getItem('hv_n')||0);
+        if(_n<3){ sessionStorage.setItem('hv_n',String(_n+1)); location.reload(); return; }
+      }
+    }catch(_e){}
+    s=j.ctl; aoi=j.aoi; st=j.stats; _okAt=Date.now();
+    try{ window.__stats=st||{}; }catch(_e){}
+    const a82=$('#auto82');
+    if(a82){const want=((j.aoi_auto||{})['10082']!==false); if(a82.checked!==want) a82.checked=want;}
+    /* 🎛 笔记本这一路的当前源(服务端真值): 别人/别的页面切了, 这里 4s 内跟着变 */
+    if(j.cam_src){ try{ _lsrcPaint(j.cam_src.kind); window.__camSrc=j.cam_src; }catch(_e){} }
+  }catch(e){}
+  try{
+    if(!s) throw 0;
+    const r=s.robot||{}, tp=s.tcp||{};
+    try{ paintColl(s.collisions); }catch(_e){}
+    /* 🧭 一行动作状态(老倪 2026-10-01: 「你现在显示这些什么意思？太复杂，智能显示1行，简单明了」)
+       原来 #robot(上电/报警) + #robot2(急停/碰撞/帧龄) + 执行器 三处各写一长串, 其中 #robot 与 #robot2
+       都会打"⚠ 下面是旧值…" ⇒ 同一句话出现两遍。现在: 一行说清「能不能动 + 为什么」, 细节(帧龄秒数/
+       技能数/pid)一律不显示; 数据旧≠不能动, 但必须让人知道这行是旧的。 */
+    try{
+      /* 直连源 2s 一帧 ⇒ 超 30s 才叫旧(原 10s 是按已死的话题缓存定的) */
+      const ex=s.exec||{}, _stale=(typeof r.age_s==='number'&&r.age_s>30);
+      const _ago=(r.age_s>=3600?Math.round(r.age_s/3600)+'小时':(r.age_s>=60?Math.round(r.age_s/60)+'分钟':Math.round(r.age_s||0)+'秒'));
+      let _L;
+      if(!ex.online)        _L='<span class="bad">🔴 不能动：执行器离线（按钮点了不会动）</span>';
+      else if(r.estop)      _L='<span class="bad">🔴 不能动：急停按下</span>';
+      else if(r.collision)  _L='<span class="bad">🔴 不能动：碰撞报警</span>';
+      else if(r.power&&r.power!=='on') _L='<span class="bad">🔴 不能动：未上电</span>';
+      else if(_stale)       _L='<span class="wa">🟡 状态源旧（'+_ago+'前）· 不能确认现场状态</span>';
+      else                  _L='<span class="ok">🟢 正常 · 上电 · 无新报警 · 执行器在线</span>';
+      if(r.has_error) _L+='<span class="hint"> · 报警: '+(((r.controller_error_logs||[]).join(' | '))||r.error_code||'')+'</span>';
+      /* 📟 历史(不当当前): 控制器日志真值 —— 老倪要"记住每一次碰撞"(什么时候/撞的哪里) */
+      if(r.last_collision&&r.last_collision.ts){
+        const _c=r.last_collision, _t=String(_c.ts).slice(11,16);
+        const _j=(String(_c.content).match(/关节\[\s*(\d+)/)||[])[1];
+        _L+='<span class="hint"> · 上次碰撞 '+_t+(_j?(' 关节'+_j):'')+'（安全停止, 日志#'+_c.id+'）</span>';
+      }else if(r.last_alarm&&r.last_alarm.content){
+        _L+='<span class="hint"> · 最近报警 '+String(r.last_alarm.ts||'').slice(11,16)+' '+String(r.last_alarm.content).slice(0,18)+'</span>';
+      }
+      $('#robot').innerHTML=_L;
+      $('#robot2').innerHTML=''; $('#execline').innerHTML='';
+    }catch(_e){}
+    /* 🛡 诚实性(2026-09-30): 急停/碰撞 来自控制器状态源, 实测帧龄 33 小时 ⇒ **停更的"无急停"不能当
+       "现在没有急停"**。超 10s 就把结论标失效, 明确写"勿据此判安全"(它正是「真动前三查」的依据)。 */
+    /* 🅰️🅱️🅲 位姿显示只有一处 = 上面「🎯 实时位姿」独立卡片 (单位 mm, abc 度, 带帧龄/stale 红框),
+       与本次轮询同一份数据, 不额外请求。2026-10-01 老倪: 「授权真动 下面…显示重复了, 将下面的显示先删掉」
+       ⇒ 原先控制台里那份 #tcp/#tcp2 已删; 那段 JS 也一起删 —— 元素没了还写它, null 会打断后面
+       armstate 的更新(同一个 try 块里), 这种残留比重复显示更坏。 */
+    try{poseHud(tp);}catch(_e){}
+    $('#armstate').innerHTML=(s.motion_armed
+      ? '服务侧 <span class="ok">已开 --ctl-motion</span>：授权后才真的动臂。'
+      : '服务侧 <span class="bad">未开 --ctl-motion</span>：无论怎么点都只演练不下发。')
+      +'<br>🔐 真动授权: '+(s.auth&&s.auth.armed
+        ? '<span class="ok">已授权 · 剩 '+Math.floor((s.auth.left_s||0)/60)+'分'
+          +String(Math.max(0,Math.floor((s.auth.left_s||0)%60))).padStart(2,'0')+'秒</span> · 授权IP '
+          +(s.auth.ip||'—')+' · 授权时刻 '+hhmmss(Math.max(0,(s.server_time||0)-(s.auth.since||0)))
+        : '<span class="bad">未授权</span> · 默认就是未授权, 要动臂先在上面授权(两步确认)')
+      /* 🛡 2026-10-12 老倪: 「别拦我，有提示就行了。」——
+         快反射层改成"只提示不拦"后, 这行就是那个**提示**(服务端算好整行, 页面只贴):
+         正常/遮挡+原因 · 只提示·不拦(谁/何时开) · 降级不否决的相机 · 裁决帧龄。 */
+      +'<br>'+(s.gate&&s.gate.line
+        ? s.gate.line.replace('**','')
+        : '🛡 画面安全闸: 状态未知(服务端未给)');
+    applyAuth(s.auth);
+    /* 🌈 深度格 (2026-09-28 修): 深度源(容器 ros_depth_stream 落的 depth_raw.npy)早断更,
+       原先显示「帧龄 57312s · 拍照 17:43:49 · 0.0fps」像"有一路在用" ⇒ 改成醒目「深度源已断 Ns」。 */
+    const d=s.depth||{};
+    if(d.dead){
+      $('#m_depth').innerHTML='<span class="bad">⛔ 深度源已断 '+fmt(d.dead_s,1)+'s</span>';
+      const _nd=$('#n_depth');
+      if(_nd){
+        _nd.style.display='block';
+        _nd.innerHTML='深度源 = <code>/home/ubuntu/zmax/zmax_data/ss_live/zmax_scene/depth_raw.npy</code>'
+          +'(容器 ros_depth_stream 落盘)。该文件已 <b>'+fmt(d.dead_s,0)+'s</b> 没更新 ⇒ <b>源早断</b>。'
+          +'这一格显示的是<b>最后一帧旧图</b>, 不是实时画面; 帧龄/拍照时刻一律按源停写那一刻算, 不伪造新鲜值。';
+      }
+    }else{
+      $('#m_depth').innerHTML='帧龄 '+fmt(d.age_s,2)+'s · 拍照 '+hhmmss(d.age_s)
+        +' · 中位 '+fmt(d.median_m,3)+'m · 有效 '+fmt(d.valid_pct,1)+'%';
+      const _nd=$('#n_depth'); if(_nd) _nd.style.display='none';
+    }
+  }catch(e){}
+  try{
+    if(!st) throw 0;
+    panel('arm',st.arm,(st.arm&&st.arm.label)||'');
+    panel('local',st.local,(st.local&&st.local.label)||'');
+    panel('local2',st.local2,(st.local2&&st.local2.label)||'');
+    panel('depth',st.depth,'深度');
+    panel('aoi_gold',st.aoi_gold,'规整图');
+    panel('aoi_surface',st.aoi_surface,'表面');
+  }catch(e){}
+  if(aoi){
+    const g=aoi['10082']||{}, sf=aoi['10083']||{};
+    const gv=(g.verdict&&(g.verdict.count!==undefined||g.verdict.n!==undefined))
+      ? ' · 上轮检出 '+((g.verdict.count!==undefined)?g.verdict.count:g.verdict.n)+' 个' : '';
+    /* 🕒 金手指格帧龄也让**源端**说话: 工控机响应头 X-Frame-Age-S(g.src_frame_age_s)。
+       没这个数才退回本端"取回来的时刻" —— 原来只报本端, 取回一张 100s 前的内存图也显示 0.9s。 */
+    const _gsa=g.src_frame_age_s;
+    $('#m_aoi_gold').innerHTML=(g.ok?'判据图在线':'取图失败')+gv
+      +' · 源 '+fmt(g.kb,0)+'KB/帧 · '
+      +((_gsa===null||_gsa===undefined)
+        ? '本端帧龄 '+fmt(Date.now()/1000-(g.t||0),1)+'s'
+        : '源帧龄 '+fmt(_gsa,2)+'s'+(_gsa>3?'<span class="bad">（工控机内存里那帧本就旧, 非实时）</span>':''));
+    const ng=$('#n_aoi_gold');
+    const noPhoto=/尚无照片|grab=1/.test(g.err||'');
+    ng.style.display=((g.ok===false)||g.auto_grab)?'block':'none';
+    if(g.ok===true&&g.auto_grab){
+      ng.innerHTML='🔁 <b>自动取景</b>：工控机内存里没照片时替它现拍一张(最快 30s 一次) —— '
+        +'这一格显示的是最近现拍的那张。<span class="dim">'+(g.note||'')+'</span>';
+    } else if(g.ok===false){
+      ng.innerHTML=(noPhoto
+        ? '<b>工控机内存里当前没有照片</b> —— OPT 只在检测/拍照时留图, 它闲着的时候取就是 404「尚无照片」, '
+          +'这就是这一格没画面的原因(不是我们链路断了)。<br>下面「自动取景」已默认打开: 发现没照片就替你现拍一张'
+          +'(最快 30s 一次)。拍过之后即使它又闲着, 这一格也保留最后一张。'
+        : '取图失败：'+g.err);
+      ng.innerHTML+='<br><span class="dim">源: '+(g.url||'')+'</span>';
+    }
+    const sfv=(sf.verdict&&(sf.verdict.count!==undefined))
+      ? ' · 上轮判定 '+(sf.verdict.verdict||'')+' ('+sf.verdict.count+' 缺陷 · 推理 '+fmt(sf.verdict.ms,0)+'ms)' : '';
+    if(sf.ok===true){ $('#m_aoi_surface').textContent+=' · 判据图 kind=judge(切模块+调平) · 模型输入 kind=crop'+sfv; }
+    if(sf.ok===false){
+      $('#n_aoi_surface').style.display='block';
+      $('#n_aoi_surface').innerHTML='<b>这一格没取到图</b> —— 10083 上的表面检测服务没应答, 或者它内存里当前没有照片(OPT 只在检测/拍照时留图, 闲着时取就是 404「尚无照片」)。<br>'
+        +'若一直 404, 就查工控机 10083 服务还在不在。(手动「拍帧」按钮已按老倪要求删除)';
+      const lc=sf.last_capture;
+      if(lc) $('#n_aoi_surface').innerHTML+='<br>历史上最后一次手动拍帧: HTTP '+lc.http+' '+(lc.msg||'')
+        +(lc.got_image?' · 已取到图':(lc.how?' · '+lc.how:''));
+    } else { $('#n_aoi_surface').style.display='none'; }
+  }
+  $('#clk').textContent=new Date().toLocaleTimeString();
+  const lag=(Date.now()-_okAt)/1000;
+  const w=$('#warn');
+  if(lag>7){ w.style.display=''; w.textContent='⚠ 状态已 '+lag.toFixed(0)
+      +'s 没更新 —— 浏览器对同一主机(端口)只有 6 条连接, 可能被别的页面占满了。'
+      +'本页已改成只剩 2 条(状态+串行快照), 若还卡请关掉同一个浏览器里其它本机页面再刷新。'; }
+  else { w.style.display='none'; }
+  _pollBusy=false;
+}
+setInterval(()=>{ if(_pollBusy && Date.now()-_pollAt>8000){ _pollBusy=false; } }, 2000);
+/* ── 取图调度: 本页**一格 MJPEG 都不用**(HTTP/1.1 对同一 host:port 只有 6 条连接, 长连接会把
+      状态/按钮请求全饿死) —— 6 格全走单帧快照且全局串行, 常占 1 条连接。 */
+const _q=[]; let _busy=false;
+function _pump(){ if(_busy||!_q.length) return; _busy=true;
+  const f=_q.shift(); f(()=>{_busy=false;_pump();}); }
+function _enq(f){_q.push(f);_pump();}
+/* 🛡 2026-10-07 老倪现场实测(必须修): 本页(8793)的媒体把**同源 6 条名额**占满
+   (ss 实测: 8793 已建立 6 条 / 8791 0 条) ⇒ 同一端口上的**控制请求排队/超时/迟到**,
+   现场表现: 「点了没反应」、`Failed to fetch`、甚至迟到的旧动作才执行。
+   修法: 本页**媒体**改走 8791(同一个进程 · 独立连接名额), 控制/状态请求独占 8793。
+   只在"站台跑在 8793 且从内网/本机访问"时生效 —— 手机走隧道的情况不受影响。 */
+const _mb=()=>'';  /* 2026-11-26 Windows 冻结包只起单端口(8793), 8791 从不存在 ⇒ 媒体一律走同端口, 否则所有相机图 100% 加载失败 */
+const SNAPS=[...document.querySelectorAll('img[data-mode=snap]')].map(im=>({
+  im:im, url:_u(_mb()+im.dataset.src), every:parseInt(im.dataset.every||'2000'), due:0, miss:0}));
+/* 🔴 2026-09-27 老倪: 「金手指和表面检测要实时推流」 —— 这两格改走 MJPEG 长连接
+   (各占 1 条连接; 加上 1 条状态轮询 + 1 条串行快照 = ≤4 条, 仍在本机 6 条名额内)。
+   源侧本身是"每次检测才有一张", 所以看起来是"有新图就立刻推" + 帧龄如实标。 */
+document.querySelectorAll('img[data-mode=mjpg]').forEach(im=>{
+  im.classList.add('live'); im.src=_mb()+im.dataset.src+'?t='+Date.now();
+});
+/* 🔁 MJPEG 断线/停帧自愈 (2026-09-28 老倪: 「金手指和表面检测怎么没有图像」)
+   根因: 推流进程一重启(换相机 / 守护纠正映射 / 控制台重新拉流), 这两格的长连接会**停在死连接**上
+   —— 快照格每轮自己再请求所以自动恢复, MJPEG 不会 ⇒ 那两格永远空着(实测: 服务侧 /stats 帧序号在涨、
+   curl 取流有真帧, 页面却是空的 ⇒ 问题在**页面连接**这一层)。
+   判据(不猜, 都有数): ① img.onerror 立刻重连 ② 每 6s 比对 /stats 的 frames_served:
+   在涨=连接活着; 连续 2 轮不涨 ⇒ 换 src(新时间戳)强制重连。 */
+const MJPG=(window.__MJPG=[...document.querySelectorAll('img[data-mode=mjpg]')].map(im=>({
+  im:im, url:_u(_mb()+im.dataset.src), seen:-1, still:0,
+  key:(im.dataset.src||'').replace(/^\//,'').replace(/\.mjpg$/,'')})));
+MJPG.forEach(rec=>{ rec.im.onerror=()=>setTimeout(()=>{ rec.im.src=rec.url+'?t='+Date.now(); rec.still=0; },1500); });
+/* 🦾 手臂相机 → YOLO 光模块标注流 (独立进程 :8898, 主推流服务不重启)
+   老倪 11-22: 「实时显示在 station 窗口上」。判据 conf≥0.5 + 框中心稳定; 槽号按 x 中心换算。 */
+(function(){
+  const im=document.getElementById('i_arm'); if(!im||!im.dataset.ext) return;
+  /* 主机名跟页面走(10.163.x/192.168.23.x 都通), 端口来自 data-ext —— 之前写死 8897 且是 IP, 换网段就全黑 */
+  const U=String(im.dataset.ext||'').replace(/^https?:\/\/[^\/]+/, location.protocol+'//'+location.hostname+':8898');
+  const EVERY=parseInt(im.dataset.every||'600');
+  im.classList.add('live');
+  const tick=()=>{ im.src=U+'?t='+Date.now(); };
+  im.onerror=()=>setTimeout(tick,1200);
+  tick(); setInterval(tick, EVERY);
+})();
+/* 🔴 2026-10-12 老倪: 「金手指窗口的整版原图，怎么变成金手指的判据图了？别串台了」
+   根因: 用户点 [判据图|整板原图] 换源后, 这里仍拿**初始**那条 url 与它的帧序号判活
+   ⇒ 目标流的计数(它看的是另一条流的 frames_served)不涨 ⇒ 自愈把 img 又拉回初始那条流 = 串台。
+   修: 换源时同步 rec.url / rec.key(_mjpgBind), 并且只对自己那条 url 生效(不跟用户对着干)。 */
+function _mjpgBind(im, stream){
+  const rec=(window.__MJPG||[]).find(r=>r.im===im); if(!rec) return;
+  rec.url=_u(_mb()+stream); rec.key=String(stream||'').replace(/^\//,'').replace(/\.mjpg$/,'');
+  rec.seen=-1; rec.still=0;
+}
+window._mjpgBind=_mjpgBind;
+setInterval(()=>{
+  const st=window.__stats||{};
+  MJPG.forEach(rec=>{
+    if(rec.im.src.indexOf(rec.url)!==0) return;               // 用户换了源 ⇒ 本自愈不插手
+    const v=(rec.key&&st[rec.key])||st[rec.im.id.replace(/^i_/,'')]; if(!v) return;
+    const n=v.frames_served; if(n===undefined||n===null) return;
+    if(rec.seen<0){ rec.seen=n; return; }
+    if(n>rec.seen){ rec.seen=n; rec.still=0; return; }
+    if(++rec.still>=2){ rec.im.src=rec.url+'?t='+Date.now(); rec.still=0; }
+  });
+}, 6000);
+document.querySelectorAll('#gview button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#gview button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+  const im=$('#i_aoi_gold');                    // 现在是 MJPEG 流: 换 src 就等于换源(旧连接自动断)
+  if(im){ im.src=_u(b.dataset.stream)+'?t='+Date.now();
+          if(window._mjpgBind) window._mjpgBind(im, b.dataset.stream); }   // 自愈跟着换源(别串台)
+});
+document.querySelectorAll('#sview button').forEach(b=>b.onclick=()=>{   // 🔍 表面: 判据图(切模块+调平) / 整板原图
+  document.querySelectorAll('#sview button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+  const im=$('#i_aoi_surface');
+  if(im){ im.src=_u(b.dataset.stream)+'?t='+Date.now();
+          if(window._mjpgBind) window._mjpgBind(im, b.dataset.stream); }   // 表面那格同理(别串台)
+});
+/* 🚫 2026-11-24 老倪: 本机相机(内置/USB)功能已删 —— 换源按钮与其 POST /cam/src 绑定一并移除,
+   笔记本内置相机整台让给微信/视频通话。_lsrcPaint 保留空壳, 供状态回读处(上面 j.cam_src)无副作用调用。 */
+function _lsrcPaint(kind){ /* no-op: 本机相机格已下线 */ }
+const _a82=$('#auto82');
+if(_a82) _a82.onchange=async()=>{
+  $('#msg').textContent='切换自动取景…'; $('#msg').className='wa';
+  try{const j=await post('/api/aoi/auto?port=10082&on='+(_a82.checked?1:0),{},8000);
+    $('#msg').textContent=(j.ok?'✅ ':'⛔ ')+(j.note||''); $('#msg').className=(j.ok?'ok':'bad');
+  }catch(e){$('#msg').textContent='切换失败: '+e; $('#msg').className='bad';}
+};
+setInterval(()=>{
+  const t=Date.now();
+  const p=SNAPS.filter(x=>x.due<=t).sort((a,b)=>a.due-b.due)[0];
+  if(!p) return;
+  _enq(done=>{
+    const u=p.url+'?t='+Date.now();
+    const pre=new Image();
+    pre.onload=()=>{ p.im.src=u; p.due=Date.now()+p.every; p.miss=0; done(); };
+    pre.onerror=()=>{ p.due=Date.now()+Math.max(3000,p.every); p.miss++; done(); };
+    pre.src=u;
+  });
+}, 250);
+/* 键盘: 方向键 = X/Y 点动, PgUp/PgDn = Z, A/B/C(+Shift 反向) = 绕轴旋转 */
+const KEYS={'ArrowUp':'L2.forward','ArrowDown':'L2.backward','ArrowLeft':'L2.left',
+  'ArrowRight':'L2.right','PageUp':'L2.lift','PageDown':'L2.lower'};
+addEventListener('keydown',(e)=>{
+  const t=e.target.tagName;
+  if(t==='INPUT'||t==='TEXTAREA') return;
+  let skill=KEYS[e.key];
+  if(!skill && /^[abcABC]$/.test(e.key)){
+    const ax=e.key.toLowerCase();
+    skill='L2.rot_'+ax+(e.shiftKey?'_neg':'_pos');
+  }
+  if(!skill) return;
+  const b=document.querySelector('button[data-skill="'+skill+'"]');
+  if(b && !b.disabled){ e.preventDefault(); move(b); }
+});
+/* 📍 号位 1~7 (2026-09-30 老倪): 「有记录的点就是绿色按钮, 没有记录的点就是灰色按钮」。
+   判据全在服务端 /ctl/points(示教点库 taught_points.json + 注册表 L2.slotN + 白名单) ——
+   页面只画不算: 页面自己判断会画出"点了却没通道"的假绿(点位真值在执行器侧, 页面读不到)。
+   点绿按钮 = 下发该号位技能, 走与「侧面点1/金手指点1」同一条路:
+   白名单 → 授权真动 → 限流 → FIFO → 执行器 → 安全裁决; 未授权时只算目标不动作。 */
+const _SLOT_ST={};
+/* 🔐 号位面板上的常驻授权状态条 (2026-09-30 老倪: 「3号位 7号位怎么不好使？」—— 真因是 5 分钟
+   授权窗在 2号位 阶段2 之前到期, 3/7 号位就只剩"演练算目标"了, 现场只看到"点了不动")。
+   poll() → applyAuth() → paintArm() 每 1.5s 走到这里, 所以状态永远是最新的。 */
+function paintSlotAuth(){
+  const el=$('#m_slots_auth'); if(!el) return;
+  if(!ARMED){
+    el.innerHTML='<span style="color:#f0c674;font-weight:700">⛔ 未授权 —— 现在点号位只会算目标, '
+      +'机械臂不会动; 先点右侧「🔓 授权真动」再二次确认</span>';
+  }else if(AUTH_LEFT<75){
+    el.innerHTML='<span style="color:#f0c674;font-weight:700">⚠️ 授权只剩 '+Math.floor(AUTH_LEFT)+'s —— '
+      +'两阶段技能(先到正上方再下降)可能走到一半被拦, 完成后要重授才能继续</span>';
+  }else{
+    el.innerHTML='<span style="color:#3fb950">✅ 真动已授权 · 剩 '+Math.floor(AUTH_LEFT/60)+'分'
+      +String(Math.max(0,Math.floor(AUTH_LEFT%60))).padStart(2,'0')+'秒</span>';
+  }
+}
+function gotoSlot(n,skill,btn){
+  if(!_SLOT_ST[n]) _SLOT_ST[n]={};
+  return gotoTeachPoint(btn,_SLOT_ST[n],skill,'『'+n+'号位』','#slot_msg','去'+n+'号位');
+}
+/* 📝 记住此点 (2026-09-30 老倪「4 5 6 号位, 你能自己实现记录么？」): 记录本身是**零运动** ——
+   只读当前 TCP 真值 → 服务端连采 6 帧判静止(极差 >1e-4m 拒记)+四元数自洽校验 → 写示教点库。
+   所以不需要真动授权, 但臂必须停稳。已有记录的号位要 8 秒内再点一次才覆盖(生产点位别手滑)。 */
+let REC_SLOT=null, REC_PENDING=0;
+seg('sRecSlot',v=>{REC_SLOT=parseInt(v,10);
+  $('#rec_msg').textContent='已选 '+REC_SLOT+'号位 → 点右边「✅ 记为该号位」';});
+async function recPoint(){
+  const m=$('#rec_msg'), b=$('#recbtn');
+  if(!REC_SLOT){ m.textContent='先选要记的号位(1~7)'; return; }
+  const known=(($('#slotbar').dataset.sig)||'').charAt(REC_SLOT-1)==='1';
+  if(known && Date.now()-REC_PENDING>8000){
+    REC_PENDING=Date.now();
+    m.innerHTML='⚠️ <b>'+REC_SLOT+'号位已有记录</b> —— 覆盖会改掉在用的点位; 8 秒内再点一次确认覆盖';
+    return;
+  }
+  REC_PENDING=0; b.disabled=true; m.textContent='⏳ 连采 6 帧判静止(约 4~15s, 臂不能动)…';
+  try{
+    const j=await post('/ctl/record_point',{name:'slot'+REC_SLOT,note:'页面📝记住此点(8793)'},40000);
+    if(j.ok){
+      m.innerHTML=(j.dry?'(演练,未落盘) ':'✅ ')+'slot'+REC_SLOT+' 已记录 · pos=('
+        +j.pos.map(x=>Number(x).toFixed(4)).join(', ')+') · '+j.n_samples+' 帧 · 极差 '
+        +(Number(j.spread_pos_m)*1e6).toFixed(1)+'µm'+(j.overwrote?' · <b>已覆盖旧值</b>':'');
+      $('#rec_msg').className='ok';
+      $('#slotbar').dataset.sig='';            // 强制重建 ⇒ 该号位按钮立刻变绿
+      loadSlots();
+    }else{
+      m.innerHTML='❌ '+(j.msg||'记录失败')+(j.tail?(' · '+j.tail):''); m.className='bad';
+    }
+  }catch(e){ m.textContent='❌ 请求失败: '+e; m.className='bad'; }
+  b.disabled=false;
+}
+/* 🚀 号位 1~7 的「标记模式 / 运动模式」(2026-10-26 老倪: 「号位1～7 也要增加 标记模式 和 运动模式，我来自己标定」)
+   口径照抄空间点/金手指那两套, 不新开任何通道:
+     ✏️标记模式: 点未记 = 记录当前 TCP 真值(零运动, 连采 6 帧判静止); 点已记 = 8 秒内再点一次确认**覆盖**
+     🚀运动模式(默认 = 原来的回点行为): 点已记 = 走原来的回点技能(需先🔓授权真动)
+   ❗号位**不做清除**: 服务端 /ctl/clear_point 明确不开放 slot1..7(产线 recipe 与多个技能在引用,
+     清掉会让在用的回点失效) ⇒ 标定=覆盖, 不提供清空。 */
+let SLOT_MODE='move', SLOT_BUSY=false, SLOT_OVER=0;
+function setSlotMode(m){
+  SLOT_MODE=m;
+  document.querySelectorAll('#slotmode button').forEach(b=>b.classList.toggle('on', b.dataset.m===m));
+  const h=$('#slot_mode_hint');
+  if(h) h.textContent = (m==='move')
+    ? '运动模式(默认): 点已记的号位 = 自动走过去(需先🔓授权真动); 点未记的会明确拒绝'
+    : '标记模式: 点未记的号位 = 把当前位姿记成该号位(零运动, 臂要停稳); 点已记的 = 8 秒内再点一次覆盖';
+  const bar=$('#slotbar'); if(bar) bar.dataset.sig='';
+  loadSlots();
+}
+async function clickSlot(n){
+  const bar=$('#slotbar'), m=$('#slot_msg');
+  const rec=((bar.dataset.sig)||'').charAt(n-1)==='1';
+  const btn=bar.querySelector('button[data-slot="'+n+'"]');
+  if(SLOT_MODE==='move'){                        // 🚀 运动模式: 不改记录, 只走过去
+    if(!rec){ m.innerHTML='⛔ <b>'+n+'号位 还没记</b> —— 运动模式需要先有目标位姿(切到 ✏️ 标记模式记一下)'; return; }
+    const skill=btn?btn.dataset.skill:'';
+    gotoSlot(n, skill, btn);
+    return;
+  }
+  if(SLOT_BUSY){ m.textContent='⏳ 上一次记录还在进行, 等它完'; return; }
+  if(rec){                                       // 已记 ⇒ 8 秒内再点 = **覆盖**
+    if(Date.now()-SLOT_OVER>8000){
+      SLOT_OVER=Date.now();
+      m.innerHTML='⚠️ <b>'+n+'号位 已有记录</b> —— 8 秒内再点一次就<b>用当前位姿覆盖</b>它(号位不提供清除)';
+      return;
+    }
+    SLOT_OVER=0;
+  }else{
+    SLOT_OVER=0;
+  }
+  SLOT_BUSY=true;
+  const old=btn?btn.innerHTML:'';
+  if(btn){ btn.disabled=true; btn.innerHTML='⏳<small>记录中…</small>'; }
+  m.textContent='⏳ 连采 6 帧判静止(约 4~15s, 臂必须停稳) —— 正在记录 '+n+'号位…';
+  try{
+    const j=await post('/ctl/record_point',
+      {name:'slot'+n, note:'页面'+(rec?'覆盖':'标记')+n+'号位(8793 标记模式)'}, 45000);
+    if(j.ok){
+      m.innerHTML=(j.dry?'(演练,未落盘) ':'✅ ')+n+'号位 已记录 · pos=('
+        +j.pos.map(x=>Number(x).toFixed(4)).join(', ')+') · '+j.n_samples+' 帧 · 极差 '
+        +(Number(j.spread_pos_m)*1e6).toFixed(1)+'µm'+(j.overwrote?' · <b>已覆盖旧值</b>':'');
+      bar.dataset.sig='';
+      await loadSlots();
+      if(typeof loadSpaces==='function') loadSpaces();
+    }else{
+      m.textContent='⛔ '+(j.msg||'记录失败');
+    }
+  }catch(e){ m.textContent='⛔ 请求失败: '+e; }
+  if(btn){ btn.disabled=false; }
+  SLOT_BUSY=false;
+}
+async function loadSlots(){
+  try{
+    const j=await getj('/ctl/points?t='+Date.now(),8000);
+    if(!j||!j.ok||!j.slots) return;
+    const bar=$('#slotbar'); if(!bar) return;
+    const sig=j.slots.map(s=>s.ready?'1':'0').join('');
+    if(bar.dataset.sig!==sig){                       // 只在绿/灰变化时重建 —— 否则会打断正在点的按钮
+      bar.dataset.sig=sig;
+      bar.innerHTML=j.slots.map(s=>
+        '<button data-skill="'+s.skill+'" data-slot="'+s.no+'" class="'+(s.ready?'rec':'norec')+'"'
+        +' title="'+(s.ready
+            ? (s.skill+' · 点位 '+s.point+' 已记录'+(s.pos?(' ('+s.pos.join(', ')+')'):'')
+               +' · 走 白名单→授权真动→限流→FIFO→执行器→安全裁决; 未授权时只算目标不动作')
+            : (s.recorded? ('点位已记录, 但缺少下发技能 '+s.skill) : ('未记录: 示教点库里没有 '+s.point))
+               +' —— 要现场示教(工位总览『📍记住此点』/ python3 tools/record_l2_point.py --name '+s.point+')')
+        +'">'+s.name+'<small>'+(s.ready?'✅ 有记录':'⛔ 未记录')+'</small></button>').join('');
+      bar.querySelectorAll('button[data-slot]').forEach(b=>{
+        // 2026-10-26: 点击统一交给 clickSlot —— 由当前 SLOT_MODE 决定"记录/覆盖"还是"走过去";
+        //   不再按 disabled 硬挡(标记模式下未记录的号位正是要点的)。
+        b.onclick=()=>clickSlot(parseInt(b.dataset.slot,10));
+      });
+    }
+    $('#m_slots').textContent='绿 '+j.green+'/'+j.n+' · 判据 示教点库';
+    $('#n_slots').innerHTML='<b style="color:#7ee787">绿</b> = 有示教记录(可点 → 去该号位) · '
+      +'<b style="color:#8b949e">灰</b> = 还没有记录(不可点; 现场教完自动变绿)。'
+      +'点位真值在 <span style="font-family:ui-monospace">'+j.points_file+'</span> —— 页面/接口都改不了点位。';
+  }catch(e){}
+}
+/* 2026-10-12 老倪「延迟太大, 得快速反馈」: 状态轮询 1.5s → 0.7s(页面感知延迟主要来自这里) */
+poll(); setInterval(poll,700);
+/* ── 右上角实时位姿 HUD 的**单独快轮询** (250ms) ─────────────────────────────
+   2026-10-01 老倪: 右上角要实时显示 x y z a b c。整页 /station/status 是聚合重接口(还查工控机
+   两站 AOI), 保持 1.5s 不动; HUD 走 /pose 专用轻量端点(服务端与 tcp 字段同一个 _rokae_pose(),
+   只读一个 5Hz 小 JSON) ⇒ 4Hz 刷新, 肉眼不再慢一拍。带 busy 闸, 服务端慢时不叠请求。 */
+(function(){
+  let busy=false;
+  setInterval(async()=>{
+    if(busy || document.hidden) return;
+    busy=true;
+    try{ poseHud(await getj('/pose',3000)); }catch(_e){} finally{ busy=false; }
+  }, 250);
+})();
+loadSlots(); setInterval(loadSlots,10000);
+
+/* 🖱 2026-10-08 老倪「鼠标放上显示 x y z a b c 位姿的记录值」:
+   覆盖**所有已记录的点** —— 号位1~7 / 空间1~7 / 页面上所有示教点技能按钮(🎯点1·侧面点0-3·准备点…)。
+   数值来自服务端 /ctl/points(slots/spaces/taught), 姿态 abc = 点位四元数按系统同一口径换算成度。
+   卡片内六个数可一键复制。 */
+(function(){
+  const tip=document.createElement('div'); tip.id='ptip'; document.body.appendChild(tip);
+  let PMAP={};
+  const _f=(v,n)=>(v===null||v===undefined)?'—':Number(v).toFixed(n);
+  function _move(e){ const w=tip.offsetWidth,h=tip.offsetHeight;
+    let x=e.clientX+14,y=e.clientY+14;
+    if(x+w>innerWidth-8) x=e.clientX-w-14;
+    if(y+h>innerHeight-8) y=e.clientY-h-14;
+    tip.style.left=x+'px'; tip.style.top=y+'px'; }
+  function _show(e,key){
+    const d=PMAP[key]; if(!d||!d.pos) return;
+    const p=d.pos, a=d.abc||[null,null,null];
+    const txt=[_f(p[0],4),_f(p[1],4),_f(p[2],4),_f(a[0],3),_f(a[1],3),_f(a[2],3)].join(' ');
+    tip.innerHTML='<b>'+key+'</b><br>x <span class="v">'+_f(p[0],4)+'</span>  y <span class="v">'+_f(p[1],4)
+      +'</span>  z <span class="v">'+_f(p[2],4)+'</span><br>a <span class="v">'+_f(a[0],3)+'°</span>  b <span class="v">'
+      +_f(a[1],3)+'°</span>  c <span class="v">'+_f(a[2],3)+'°</span>'
+      +((a[0]===null)?' <span class="m">(无姿态)</span>':'');
+    const cp=document.createElement('span'); cp.className='cp'; cp.textContent='📋 复制';
+    cp.onclick=()=>{ try{ navigator.clipboard.writeText(txt); }catch(_e){} };
+    tip.appendChild(cp);
+    tip.style.display='block'; _move(e);
+  }
+  const _hide=()=>{ tip.style.display='none'; };
+  function _key(b){
+    const t=(b.getAttribute('title')||'')+' '+(b.textContent||'');
+    const m=t.match(/[『【]([^』】]+)[』】]/); if(m) return m[1];
+    if(b.dataset.slot) return b.dataset.slot+'号位';
+    const sp=(b.textContent||'').match(/空间\s*(\d)/); if(sp) return '空间'+sp[1];
+    return null;
+  }
+  function _attach(){
+    document.querySelectorAll('#slotbar button,#spacebar button,[data-skill],button[title*="『"],button[title*="【"]').forEach(b=>{
+      if(b.dataset.ptipHooked) return;
+      const k=_key(b); if(!k||!PMAP[k]) return;
+      b.dataset.ptipHooked='1';
+      /* 🔴 2026-10-08 老倪「显示位姿，就不要显示其它文字了…这些文字互相遮挡，看不到位姿」:
+         原生 title 的浏览器气泡与卡片叠在一起 ⇒ 挂钩时摘掉 title(原文存进 dataset 备查, 不显示)。 */
+      if(b.hasAttribute('title')){ b.dataset.ptipTitle=b.getAttribute('title'); b.removeAttribute('title'); }
+      b.addEventListener('mouseenter',e=>_show(e,k));
+      b.addEventListener('mousemove',_move);
+      b.addEventListener('mouseleave',_hide);
+    });
+  }
+  async function _load(){
+    try{
+      const r=await fetch('/ctl/points?t='+Date.now()); const j=await r.json();
+      if(!j||!j.ok) return;
+      PMAP={};
+      (j.slots||[]).forEach(s=>{ const d={pos:s.pos,abc:s.abc,at:s.at,n_samples:null,spread_pos_m:null};
+        PMAP[s.no+'号位']=d; if(s.point) PMAP[s.point]=d; });
+      (j.spaces||[]).forEach(s=>{ const d={pos:s.pos,abc:s.abc,at:s.at,spread_pos_m:s.spread_pos_m};
+        PMAP['空间'+s.no]=d; if(s.point) PMAP[s.point]=d; });
+      const T=j.taught||{}; Object.keys(T).forEach(k=>{ PMAP[k]=T[k]; });
+      document.querySelectorAll('[data-ptip-hooked]').forEach(b=>{ delete b.dataset.ptipHooked; });
+      _attach();
+    }catch(e){}
+  }
+  _load(); setInterval(_load,10000);
+  try{ new MutationObserver(()=>_attach()).observe(document.body,{childList:true,subtree:true}); }catch(e){}
+})();
+
+
+/* ── 🧭 空间 1~7 (2026-10-01 老倪): 与号位**独立的** 7 个空间点, 互不影响 ──────────
+   排布照抄号位(同一个 .slotbar 7 列网格); 绿=已记 / 灰=未记; 按钮点了不出动作, 只回显位姿。 */
+let REC_SPACE=null, REC_SPACE_PENDING=0;
+seg('sRecSpace',v=>{REC_SPACE=parseInt(v,10);
+  $('#space_msg').textContent='已选 空间'+REC_SPACE+' → 点右边「✅ 记为该空间点」';});
+async function recSpace(){
+  const m=$('#space_msg'), b=$('#recspacebtn');
+  if(!REC_SPACE){ m.textContent='先选要记的空间号(1~7)'; return; }
+  const known=(($('#spacebar').dataset.sig)||'').charAt(REC_SPACE-1)==='1';
+  if(known && Date.now()-REC_SPACE_PENDING>8000){
+    REC_SPACE_PENDING=Date.now();
+    m.innerHTML='⚠️ <b>空间'+REC_SPACE+'已有记录</b> —— 覆盖会改掉已用的空间点; 8 秒内再点一次确认覆盖';
+    return;
+  }
+  REC_SPACE_PENDING=0; b.disabled=true; m.textContent='⏳ 连采 6 帧判静止(约 4~15s, 臂不能动)…';
+  try{
+    const j=await post('/ctl/record_point',{name:'space'+REC_SPACE,note:'页面🧭记空间点(8793)'},40000);
+    if(j.ok){
+      m.innerHTML=(j.dry?'(演练,未落盘) ':'✅ ')+'空间'+REC_SPACE+' 已记录 · pos=('
+        +j.pos.map(x=>Number(x).toFixed(4)).join(', ')+') · '+j.n_samples+' 帧 · 极差 '
+        +(Number(j.spread_pos_m)*1e6).toFixed(1)+'µm'+(j.overwrote?' · <b>已覆盖旧值</b>':'');
+      $('#spacebar').dataset.sig='';               // 强制重建 ⇒ 该空间按钮立刻变绿
+      loadSpaces(); setSpaceMode('mark'); authSync(); setInterval(authSync, 4000);
+
+/* 🔄 授权状态同步 (2026-10-01 老倪: 「我在飞书端远程点 立即撤销授权, 你怎么不同步呢? 要同步远程监控操作」)
+   根因: 授权按钮是按**本地**变量 ARMED 渲染的 ⇒ 远端(手机/飞书)页面若状态旧, 点"撤销"实际会发 on:true ⇒ 反而授权 10 分钟。
+   现在每 4 秒从服务端唯一依据(/station/status 的 ctl.motion_armed)对齐 ⇒ 任一端的操作, 其它端 4 秒内同步显示。 */
+async function authSync(){
+  try{
+    const d = await (await fetch('/station/status')).json();
+    const on = !!(d.ctl && d.ctl.motion_armed);
+    if(on === window.ARMED) return;
+    window.ARMED = on;
+    if(typeof ARMED !== 'undefined'){ try{ ARMED = on; }catch(e){} }
+    const t = document.getElementById('armtxt');
+    if(t) t.textContent = on ? '🔒 立即撤销授权' : '🔓 授权真动';
+    const m = document.getElementById('msg');
+    if(m){ m.textContent = on ? '⚠️ 授权真动中(别端授权, 本端点方向键会真动臂)' : '🔒 已撤销授权: 现在点方向键不会动臂';
+           m.className = on ? 'wa' : ''; }
+  }catch(e){}
+}
+    }else{
+      m.textContent='⛔ '+(j.msg||'记录失败');
+    }
+  }catch(e){ m.textContent='⛔ 请求失败: '+e; }
+  b.disabled=false;
+}
+let SPACE_BUSY=false, SPACE_OVER=0;
+/* 🖱 老倪 2026-10-01: 「我要开始运动了, 停下来时我会点击未记的空间点按钮, 这时你要记录,
+   记好了就变成已记状态」 —— 点**未记**按钮 = 记录当前 TCP 真值(零运动, 连采 6 帧判静止);
+   点**已记**按钮 = 8 秒内再点一次确认覆盖(与号位同一口径, 防手滑改掉在用的点)。 */
+/* 🚀 空间点模式 (老倪 2026-10-01): 标记模式=点记/再点清; 运动模式=点已记的点⇒自动走过去。
+   ⚠️ 运动模式复用号位的 gotoTeachPoint ⇒ 同一套授权闸(需先🔓授权真动)+限流+FIFO+执行器+安全裁决,
+   **不新开任何下发通道**; 被守卫拒发时把原文原因摆在按钮旁(不许"点了没反应")。 */
+let SPACE_MODE='mark'; const SPACE_TRACK={};
+function setSpaceMode(m){
+  SPACE_MODE=m;
+  document.querySelectorAll('#spacemode button').forEach(b=>b.classList.toggle('on', b.dataset.m===m));
+  $('#space_mode_hint').textContent = (m==='move')
+    ? '运动模式: 点已记的点 = 自动走过去(需先🔓授权真动); 目标比当前高时, 先就地抬升到该点高度以上再点(升高≤10cm规矩)'
+    : '标记模式: 点未记 = 记录当前位姿; 点已记 = 再点一次清除该记录';
+  const bar=$('#spacebar'); if(bar&&bar.dataset.sig) loadSpaces();
+}
+async function gsMapRun(){
+  const m=$('#gs_msg'); m.textContent='⏳ 启动中…';
+  try{
+    const r=await fetch('/ctl/gs_map',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'start',by:'页面建图按钮(8793)'})});
+    const j=await r.json();
+    m.textContent = j.ok ? ('✅ '+(j.msg||'已启动')) : ('⛔ '+(j.msg||'启动失败'));
+    gsMapPoll();
+  }catch(e){ m.textContent='⛔ 启动请求失败: '+e; }
+}
+async function gsMapPoll(){
+  try{
+    const j=await (await fetch('/ctl/gs_map',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'status'})})).json();
+    $('#m_gsmap').textContent = j.status_line || '…';
+    if(j.image_url){
+      /* 🦾 2026-10-14: 那格默认给**手臂相机实时帧**(见 gs_ref 轮询), 模型渲的留出图只在点
+         「🖼 参考渲染图」时才显示 ⇒ 这里只把图**取回来备好**, 不再强制它可见。 */
+      const im=$('#gs_img'); $('#gs_ph').style.display='none';
+      im.onload=()=>{ const ph=$('#gs_ph'); if(ph) ph.style.display='none'; };
+      im.src = j.image_url.replace('__T__', String(Date.now()));
+      /* 🧊 2026-10-14: 它还要**默认可见** —— 容器 #gs_imgwrap 原来一直是 display:none,
+         只有点「🖼 参考渲染图」才显示 ⇒ 老倪每次进页面那格都是空的, 以为"没建出高斯图"。
+         (现在容器默认显示, 里面第一张是手臂相机实时帧; 这张模型渲染图要按钮点了才显示。) */
+      /* 🧊 2026-11-14 老倪「3DGS 场景为什么显示 3 个窗口？开一个就行」:
+         这格默认**只开一个窗口** = #gs_rwrap(550C 推流的实时渲染)。
+         #gs_imgwrap(手臂相机帧+参考图) 与 #gs_live(WebGL 查看器) 全部由按钮按需切换,
+         不再默认点亮 —— 三个都亮就分不清哪个是地图了。 */
+      /* 🖼 参考渲染图 = **模型自己渲出来的留出视角图**(不是相机实时画面)。必须标清"哪个资产 + 什么时候渲的":
+         老倪 2026-10-14「参考渲染图是一个历史帧」的根因就是服务端按字母序取了老资产的图 —— 现在口径统一到
+         最新资产, 并且把时间/帧龄写在图上, 谁都不该再把它当成实时画面。 */
+      var cap=document.getElementById('gs_img_cap');
+      if(cap && j.image_asset){
+        var ag=j.image_age_s||0;
+        var ht = ag<90 ? (ag+' 秒前') : (ag<7200 ? (Math.round(ag/60)+' 分钟前') : (Math.round(ag/3600)+' 小时前'));
+        cap.innerHTML='🖼 参考渲染图 · 来自最新建图资产 <b>'+j.image_asset+'</b> · 渲染于 '+j.image_ts+'('+ht+')'+
+          '<br>这是模型渲出的<b>留出视角</b>(手臂相机采的那轮建图), 不是实时画面 —— 实时画面看上面「🦾 臂相机」那格。';
+      }
+      /* 🔴 2026-10-14 老倪「打开太卡, 阻塞鼠标和其它窗口」: 这格在**同标签页**里, 和工位页的视频 UI
+         共用同一个主线程和同源连接池 ⇒ 自动去拉 86.7MB 全量 splat 会把整个浏览器拖卡(鼠标/别窗口都卡)。
+         所以默认**不再自动加载 3D**: 那格先给 226KB 的参考渲染图(秒出, 零主线程负担)。
+         要看 3D 得自己点:「🎥 实景查看器」= 页面内 + **轻量副本**(6 万高斯 ≈ 1.8MB, 不卡);
+         「↗ 新窗口打开」= 全量, 独立窗口(真要看细节用这个)。 */
+      var h0=document.getElementById('gs_live_hint');
+      if(h0) h0.innerHTML='那格默认是<b>秒出</b>的参考渲染图(不占主线程) · 看 3D 点「🎥 实景查看器」(页面内, 轻量 6 万高斯 ≈1.8MB, 不卡) · 要全量细节用「↗ 新窗口打开」(86.7MB, 独立窗口不拖累本页)';
+    }
+    if(j.running) $('#msg').textContent = '🧭 建图进行中: '+(j.status_line||'');
+  }catch(e){}
+}
+async function clickSpace(n){
+  const bar0=$('#spacebar'), m0=$('#space_msg');
+  const rec0=((bar0.dataset.sig)||'').charAt(n-1)==='1';
+  if(SPACE_MODE==='move'){                      // 🚀 运动模式: 不改记录, 只走过去
+    if(!rec0){ m0.innerHTML='⛔ <b>空间'+n+' 还没记</b> —— 运动模式需要先有目标位姿(切回✏️标记模式记一下)'; return; }
+    const b0=bar0.querySelector('button[data-space="'+n+'"]');
+    gotoTeachPoint(b0, SPACE_TRACK, 'L2.goto_space'+n, '空间'+n, '#space_msg', '去空间'+n+'点');
+    return;
+  }
+  if(SPACE_BUSY){ m0.textContent='⏳ 上一次记录还在进行, 等它完'; return; }
+  const bar=$('#spacebar'), m=$('#space_msg');
+  const btn=bar.querySelector('button[data-space="'+n+'"]');
+  const rec=((bar.dataset.sig)||'').charAt(n-1)==='1';
+  if(rec){                                   // 已记 ⇒ 再点一次 = **清除**(老倪 2026-10-01)
+    if(Date.now()-SPACE_OVER>8000){
+      SPACE_OVER=Date.now();
+      m.innerHTML='⚠️ <b>空间'+n+' 已有记录</b> —— 再点一次就<b>清除</b>这个记录(清掉变未记, 可以重新记)';
+      return;
+    }
+    SPACE_OVER=0; SPACE_BUSY=true;
+    m.textContent='🗑 正在清除 空间'+n+' …';
+    try{
+      const j2=await post('/ctl/clear_point',{name:'space'+n,by:'页面点已记空间点(8793)'},20000);
+      if(j2.ok){
+        m.innerHTML='🗑 <b>已清除 空间'+n+'</b>'
+          +(j2.cleared_pos?(' · 原 pos=('+j2.cleared_pos.map(v=>Number(v).toFixed(4)).join(', ')+')'):'')
+          +' —— 现在变未记, 可以重新记';
+        bar.dataset.sig=''; await loadSpaces();
+      }else{
+        m.innerHTML='⛔ 清除失败: '+(j2.msg||'未知');
+      }
+    }catch(e){ m.innerHTML='⛔ 清除请求失败: '+e; }
+    SPACE_BUSY=false;
+    return;
+  }
+  SPACE_OVER=0; SPACE_BUSY=true;
+  const old=btn?btn.innerHTML:'';
+  if(btn){ btn.disabled=true; btn.innerHTML='⏳<small>记录中…</small>'; }
+  m.textContent='⏳ 连采 6 帧判静止(约 4~15s, 臂必须停稳) —— 正在记录 空间'+n+'…';
+  try{
+    const j=await post('/ctl/record_point',{name:'space'+n,note:'页面点未记空间点即记录(8793)'},45000);
+    if(j.ok){
+      m.innerHTML='✅ <b>空间'+n+' 已记录</b> · pos=('+j.pos.map(x=>Number(x).toFixed(4)).join(', ')+')'
+        +' · '+j.n_samples+' 帧 · 极差 '+(Number(j.spread_pos_m)*1e6).toFixed(1)+'µm'
+        +(j.overwrote?' · <b>已覆盖旧值</b>':'');
+      bar.dataset.sig='';                       // 强制重建 ⇒ 该按钮立刻变黄「已记」
+      await loadSpaces();
+    }else{
+      m.innerHTML='⛔ 空间'+n+' 记录失败: '+(j.msg||'未知');
+      if(btn){ btn.disabled=false; btn.innerHTML=old; }
+    }
+  }catch(e){ m.innerHTML='⛔ 请求失败: '+e; if(btn){ btn.disabled=false; btn.innerHTML=old; } }
+  SPACE_BUSY=false;
+}
+async function loadSpaces(){
+  try{
+    const j=await getj('/ctl/points?t='+Date.now(),8000);
+    if(!j||!j.ok||!j.spaces) return;
+    const bar=$('#spacebar'); if(!bar) return;
+    const sig=j.spaces.map(s=>s.recorded?'1':'0').join('');
+    if(bar.dataset.sig!==sig){
+      bar.dataset.sig=sig;
+      bar.innerHTML=j.spaces.map(s=>
+        '<button data-space="'+s.no+'" class="'+(s.recorded?'rec':'norec')+'"'
+        +' title="'+(s.recorded
+            ? ('空间'+s.no+' 已记录'+(s.pos?(' ('+s.pos.join(', ')+')'):'')
+               +' · '+(s.at||'')+' · **再点一次就清除这个记录**(8 秒内两次点击)')
+            : ('未记录 —— **点这个按钮就把当前 TCP 真值记成 空间'+s.no+'**(零运动, 连采 6 帧判静止; 臂停稳再点)'))
+        +'">空间'+(s.no)+'<small>'+(s.recorded?'✅ 已记':'⛔ 未记')+'</small></button>').join('');
+      bar.querySelectorAll('button[data-space]').forEach(b=>{
+        b.onclick=()=>clickSpace(parseInt(b.dataset.space,10));   // 🖱 点未记=记录; 点已记=两击确认覆盖
+      });
+    }
+    $('#m_spaces').textContent='已记 '+j.green_spaces+'/'+j.n_spaces+' · 判据 空间点库(独立)';
+    $('#n_spaces').innerHTML='<b style="color:#e3b341">黄</b> = 已记录 · <b style="color:#6b5a1e">暗黄</b> = 未记录。'
+      +'与上面 1~7 号位<b>互不影响</b>, 存 <span style="font-family:ui-monospace">'+j.space_points_file+'</span>。'
+      +'<b>点暗黄按钮 = 记录当前位置</b>(记完自动变黄「已记」); <b>点黄色按钮 = 清除这个记录</b>(8 秒内再点一次确认)。'
+      +'记录是零运动(只读 TCP 真值 + 落盘), 不触发任何动作, 也不需要真动授权。';
+  }catch(e){}
+}
+loadSpaces(); setInterval(loadSpaces,10000);
+/* ── 🎯 金手指(点1/点2/安全点) 与 侧面点(准备点/侧面点0~3) 的「标记模式 / 运动模式」(老倪 2026-10-12)
+   老倪原话: 「参考 空间点 的标记模式 和运动模式, 将 金手指 点1 点2 安全点, 侧面点 准备点 侧面点0 点1 点2 点3,
+   都变成 标记模式和运动模式, 标记模式下, 点一下就清除, 再点一下就记录」。
+   口径与「🧭 空间1~7」逐条一致 —— 同一套服务端收口(不新开通道):
+     ✏️标记模式: 点未记 = 记录当前 TCP 真值(零运动, 连采 6 帧判静止) · 点已记 = 8 秒内再点一次确认**清除**
+     🚀运动模式(默认 = 原来的回点行为): 点已记 = 走原来的回点技能(需先🔓授权真动) · 点未记 = 明确说不动的理由
+   唯一依据: /ctl/points(taught=示教点库) · 记/清走 /ctl/record_point · /ctl/clear_point(服务端白名单已放行这几个点名)。 */
+const TPT = {
+  gold:{ bar:'#goldbar', seg:'#goldmode', hint:'#gold_mode_hint', msg:'#goldpt_msg', mode:'move',
+         busy:false, over:0, map:{}, dyn:{},
+         items:[{name:'金手指点1', lb:'🎯 点1', skill:'L2.goto_gold_pt1', st:{t0:0,timer:null}, human:'回到金手指点1'},
+                {name:'金手指点2', lb:'🎯 点2', skill:'L2.goto_gold_pt2', st:{t0:0,timer:null}, human:'回到金手指点2'}],
+         dynRe:/^安全点\d+$/, dynSkill:n=>'L2.goto_safe'+(n.match(/\d+/)||[''])[0], dynLb:n=>'🛟 '+n, dynHuman:n=>'去'+n },
+  side:{ bar:'#sidebar', seg:'#sidemode', hint:'#side_mode_hint', msg:'#sidept_msg', mode:'move',
+         busy:false, over:0, map:{}, dyn:{},
+         items:[{name:'准备点', lb:'🎯 准备点', skill:'L2.goto_ready', st:{t0:0,timer:null}, human:'回到准备点'},
+                {name:'侧面点0', lb:'🎯 侧面点0', skill:'L2.goto_surface_pt0', st:{t0:0,timer:null}, human:'回到侧面点0'},
+                {name:'侧面点1', lb:'🎯 侧面点1', skill:'L2.goto_surface_pt1', st:{t0:0,timer:null}, human:'回到侧面点1'},
+                {name:'侧面点2', lb:'🎯 侧面点2', skill:'L2.goto_surface_pt2', st:{t0:0,timer:null}, human:'回到侧面点2'},
+                {name:'侧面点3', lb:'🎯 侧面点3', skill:'L2.goto_surface_pt3', st:{t0:0,timer:null}, human:'回到侧面点3'}]}
+};
+function tptAll(g){
+  const G=TPT[g], out=G.items.slice();
+  Object.keys(G.dyn).sort((a,b)=>parseInt(a.replace(/\D/g,''),10)-parseInt(b.replace(/\D/g,''),10))
+    .forEach(n=>out.push({name:n, lb:G.dynLb(n), skill:G.dynSkill(n), st:{t0:0,timer:null}, human:G.dynHuman(n), dyn:true}));
+  return out;
+}
+function setTPTMode(g,m){
+  const G=TPT[g]; G.mode=m;
+  document.querySelectorAll(G.seg+' button').forEach(b=>b.classList.toggle('on', b.dataset.m===m));
+  const h=$(G.hint);
+  if(h) h.textContent = (m==='move')
+    ? '运动模式(默认): 点已记的点 = 自动走过去(需先🔓授权真动); 点未记的点会明确拒绝'
+    : '标记模式: 点未记 = 记录当前位姿(零运动, 臂要停稳); 点已记 = 再点一次清除该记录';
+  const bar=$(G.bar); if(bar) bar.dataset.sig='';
+  loadTPT();
+}
+async function loadTPT(){
+  try{
+    const j = await getj('/ctl/points?t='+Date.now(), 8000);
+    if(!j||!j.ok||!j.taught) return;
+    const T=j.taught;
+    ['gold','side'].forEach(g=>{
+      const G=TPT[g], bar=$(G.bar); if(!bar) return;
+      const dyn={}; Object.keys(T).forEach(k=>{ if(G.dynRe && G.dynRe.test(k)) dyn[k]=T[k]; });
+      G.dyn=dyn; G.map=T;
+      const all=tptAll(g);
+      const sig=all.map(it=>(T[it.name]&&T[it.name].pos)?'1':'0').join('');
+      if(bar.dataset.sig===sig) return;                  // 状态没变就不重建(不闪)
+      bar.dataset.sig=sig;
+      bar.innerHTML=all.map(it=>{
+        const d=T[it.name]||{}, rec=!!d.pos;
+        const ptxt=rec?('pos=('+(d.pos||[]).join(', ')+')'+(d.abc?(' a b c '+(d.abc||[]).join('/')+'°'):'')+(d.at?(' · '+d.at):'')):'';
+        const tip=rec
+          ? (it.name+' 已记录 '+ptxt+' —— '+(G.mode==='move'?'🚀运动模式: 点我=走过去(需先🔓授权真动)':'✏️标记模式: 再点一次就清除这个记录(8 秒内两次点击确认)'))
+          : (it.name+' 未记录 —— '+(G.mode==='mark'?'✏️标记模式: 点我就把当前 TCP 真值记成它(零运动, 臂要停稳)':'🚀运动模式: 没有目标位姿 ⇒ 先切 ✏️标记模式记一次'));
+        const dim=(G.mode==='move' && (!rec || !it.skill))?' style="opacity:.55"':'';
+        return '<button data-tpt="'+g+'" data-name="'+it.name+'" class="'+(rec?'rec':'norec')+'"'+dim
+          +' title="'+tip.replace(/"/g,'')+'">'+it.lb+'<small>'+(rec?'✅ 已记':'⛔ 未记')+'</small></button>';
+      }).join('');
+      bar.querySelectorAll('button[data-tpt]').forEach(b=>{ b.onclick=()=>tptClick(b.dataset.tpt,b.dataset.name,b); });
+    });
+  }catch(e){}
+}
+async function tptClick(g,name,btn){
+  const G=TPT[g], m=$(G.msg), rec=!!((G.map[name]||{}).pos);
+  if(G.mode==='move'){                       // 🚀 运动模式 = 原来的回点行为(不新开通道)
+    if(!rec){ if(m) m.innerHTML='⛔ <b>'+name+' 还没有记录</b> —— 运动模式要有目标位姿: 先切 ✏️ 标记模式记一次'; return; }
+    const it=tptAll(g).find(x=>x.name===name);
+    if(!it||!it.skill){ if(m) m.innerHTML='⛔ <b>'+name+'</b> 没有回点技能 —— 现在只支持「标记/清除」'; return; }
+    return gotoTeachPoint(btn, it.st, it.skill, name, G.msg, it.human);
+  }
+  if(G.busy){ if(m) m.textContent='⏳ 上一次操作还在进行, 等它完'; return; }
+  if(rec){                                   // ✏️ 标记模式 + 已记 = 清除(8 秒二次确认, 与空间点同口径)
+    if(Date.now()-G.over>8000){
+      G.over=Date.now();
+      if(m) m.innerHTML='⚠️ <b>'+name+' 已有记录</b> —— 再点一次就<b>清除</b>这个记录(清掉变未记, 可以重新记)';
+      return;
+    }
+    G.over=0; G.busy=true; if(m) m.textContent='🗑 正在清除 '+name+' …';
+    try{
+      const j=await post('/ctl/clear_point',{name:name,by:'页面标记模式: 点已记点(8793)'},20000);
+      if(j.ok&&m){
+        m.innerHTML='🗑 <b>已清除 '+name+'</b>'
+          +(j.cleared_pos?(' · 原 pos=('+j.cleared_pos.map(v=>Number(v).toFixed(4)).join(', ')+')'):'')
+          +' —— 现在变未记, 可以重新记'
+          +(j.backup?('<br><span style="opacity:.7">已备份 '+j.backup+' (可回溯)</span>'):'');
+      } else if(m){ m.innerHTML='⛔ 清除失败: '+(j.msg||'未知'); }
+    }catch(e){ if(m) m.innerHTML='⛔ 清除请求失败: '+e; }
+    G.busy=false; await loadTPT(); return;
+  }
+  G.over=0; G.busy=true;                     // ✏️ 标记模式 + 未记 = 记录当前位姿(零运动)
+  const old=btn?btn.innerHTML:'';
+  if(btn){ btn.disabled=true; btn.innerHTML='⏳<small>记录中…</small>'; }
+  if(m) m.textContent='⏳ 连采 6 帧判静止(约 4~15s, 臂必须停稳) —— 正在记录 '+name+'…';
+  try{
+    const j=await post('/ctl/record_point',{name:name,note:'页面标记模式: 点未记点即记录(8793)'},45000);
+    if(j.ok&&m){
+      m.innerHTML='✅ <b>'+name+' 已记录</b> · pos=('+j.pos.map(x=>Number(x).toFixed(4)).join(', ')+')'
+        +' · '+j.n_samples+' 帧 · 极差 '+(Number(j.spread_pos_m)*1e6).toFixed(1)+'µm'+(j.overwrote?' · <b>已覆盖旧值</b>':'');
+    } else if(m){ m.innerHTML='⛔ '+name+' 记录失败: '+(j.msg||'未知'); if(btn){ btn.disabled=false; btn.innerHTML=old; } }
+  }catch(e){ if(m) m.innerHTML='⛔ 请求失败: '+e; if(btn){ btn.disabled=false; btn.innerHTML=old; } }
+  G.busy=false; await loadTPT();
+}
+loadTPT(); setInterval(loadTPT,10000);
+try{ setTPTMode('gold','move'); setTPTMode('side','move'); }catch(e){}
+
+/* 🐛 2026-10-01: 建图卡片原来只在点过「▶ 开始建图」之后才取状态 ⇒ 开页面永远是"读状态…"。
+   现在开页面就取一次, 之后每 10s 刷一次(端点 /ctl/gs_map POST action=status 已修好)。*/
+try{ gsMapPoll(); setInterval(gsMapPoll, 10000); }catch(e){}
+/* 🦾 2026-10-14 老倪「参考渲染图应该是手臂相机, 现在的图像是一个历史帧」:
+   3DGS 那格的**默认画面改成手臂相机实时帧**(2 秒一刷, 36KB, 极轻), 并标出更新时刻;
+   模型渲的留出视角图退到「🖼 参考渲染图」按钮后面(那张本质是历史帧 —— 模型是用采集时刻的画面训的)。 */
+(function(){
+  var im=document.getElementById('gs_ref'); if(!im) return;
+  var cap=document.getElementById('gs_ref_cap');
+  function tick(){
+    var w=document.getElementById('gs_imgwrap');
+    if(im.style.display==='none' || (w && w.style.display==='none')) return;   // 切到 3D/渲染图时不占带宽
+    var t=new Date();
+    im.onload=function(){ if(cap) cap.textContent='🦾 手臂相机实时帧 · 更新于 '+
+      t.toLocaleTimeString('zh-CN',{hour12:false})+' · 每 2 秒刷新(实时画面, 不是模型渲染)'; };
+    im.onerror=function(){ if(cap) cap.textContent='⚠️ 手臂相机帧取不到(看上面「🦾 臂相机」那格是否正常)'; };
+    im.src='/snapshot/arm.jpg?t='+t.getTime();
+  }
+  tick(); setInterval(tick, 2000);
+})();
+</script>
+<script>
+/* ══ ⚙️ 状态条 (硬件 / 模型版本+推理中 / 训练进度 / 3DGS 版本) ═══════════════════════
+   2026-10-01 老倪: 「https://datadrive.world/st/station?k=zmax-live 这里怎么没有版本号硬件状态等信息」。
+   数据源 = **公网** https://datadrive.world/zmax_status.json
+            (本机 127.0.0.1:8796/status/all 由 tools/publish_status.py 每分钟推上站点根)。
+   ⚠️ 绝不能写成 127.0.0.1 —— 手机访问不到本机, 那样页面永远是灰的。
+   ⚠️ 取不到(404/断网/超时/坏 JSON) ⇒ 整体变灰 + 静默: 不弹窗、不 console.error、不卡页。
+   5s 轮询; 页面不可见时跳过(手机切后台不费电)。 */
+(function(){
+  "use strict";
+  var U = "https://datadrive.world/zmax_status.json";
+  var root = document.getElementById("zstat");
+  if (!root) return;
+  var C = {ok:"#3fb950", wa:"#d29922", bad:"#f85149", dim:"#6e7681"};
+  var $ = function(id){ return document.getElementById(id); };
+  var pct = function(x){ x = Number(x); if(!isFinite(x)) x = 0; return Math.max(0, Math.min(100, x)); };
+  var col = function(p){ return p < 70 ? C.ok : (p <= 90 ? C.wa : C.bad); };
+  var esc = function(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){
+      return ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]; }); };
+
+  /* 极短版本号:
+       v20261001-r6                              -> v1001-r6
+       smolvla_lew_v10_1h/004000                 -> …/004000          (带路径取末段)
+       intact_goal_optical_insert_v6lora_600     -> v6lora_600        (取尾部批次段)
+       config_smolvla_lew_lora_600_600.yaml      -> lora_600          (去扩展名+压掉重复数字段)
+       v20261001-574772c8                        -> v1001-574772…     (无批次段 → 12 字截断) */
+  function sv(v){
+    if (!v || v === "unknown") return "—";
+    var s = String(v), had = false;
+    if (s.indexOf("/") >= 0) { s = s.split("/").filter(Boolean).pop() || s; had = true; }
+    s = s.replace(/^v?20\d{2}/, "v");                 /* v2026 1001 -> v1001 */
+    if (s.length > 12){
+      s = s.replace(/\.(yaml|yml|json|py|pt|pth|ckpt|safetensors)$/i, "");
+      var p = s.split("_"), t = null;
+      for (var n = 3; n >= 2 && !t; n--){
+        if (p.length >= n){
+          var seg = [], tmp = p.slice(-n);
+          tmp.forEach(function(x){ if (seg[seg.length - 1] !== x) seg.push(x); });   /* 600_600 -> 600 */
+          var c = seg.join("_");
+          if (c.length <= 12 && /\d/.test(c)) t = c;
+        }
+      }
+      if (!t){ var m = s.match(/([a-z_]+\d+)$/i); if (m && m[1].length >= 6) t = m[1]; }
+      if (t) s = t;
+    }
+    if (had) s = "…/" + s;
+    return s.length > 12 ? s.slice(0, 12) + "…" : s;
+  }
+  function scls(s){ return s === "in_service" ? "g_in" : (s === "candidate" ? "g_ca" : "g_un"); }
+  function dotc(s){ return s === "in_service" ? C.ok : (s === "candidate" ? C.wa : C.dim); }
+  function eta(t){
+    t = Math.round(Number(t) || 0);
+    if (t <= 0) return "—";
+    return t < 60 ? (t + "s") : (t < 3600 ? (Math.round(t/60) + "min")
+           : (Math.floor(t/3600) + "h" + String(Math.round((t%3600)/60)).padStart(2,"0")));
+  }
+
+  /* ── 行1: 四个迷你状态条 (绿<70% / 黄70~90% / 红>90%) + 3~4字数值 ── */
+  function bar(id, p, title){
+    var f = $("zs_" + id + "_f"), v = $("zs_" + id + "_v"), w = $("zs_" + id);
+    if (!f || !v) return;
+    var q = pct(p);
+    f.style.width = q + "%";
+    f.style.background = col(q);
+    v.textContent = Math.round(q) + "%";
+    v.style.color = (q >= 70) ? col(q) : "#c9d1d9";
+    if (w && title) w.title = title;
+  }
+  function clearBars(){
+    ["gpu","cpu","mem","disk"].forEach(function(k){
+      var f = $("zs_" + k + "_f"), v = $("zs_" + k + "_v");
+      if (f) f.style.width = "0%";
+      if (v) { v.textContent = "—"; v.style.color = "#c9d1d9"; }
+    });
+  }
+
+  /* ── 行2: 模型圆点 + 层标 + 极短版本 + ⚡推理中 ; 训练进度条 ; 3DGS 版本 ──
+     版本号上游为 unknown 的模型(如实未采到版本)按层**合到一个 chip**: 每个模型仍各占
+     一个 Ø8px 圆点(颜色按状态), 只是不重复印层标/空版本 ⇒ 省一半宽度。 */
+  /* 短模型名 — 与 tools/gui/status_panel.py 的 short_name() **同一套规则**(两处显示必须一致):
+     ① 去括号说明 ② 去 "L3 " 层前缀 ③ 取第一个 ASCII 型号词(遇 '+' 截断) ④ 长词查表
+     ⑤ 带 LoRA / 世界模型 等限定词 → -L / -WM 后缀(同层可区分) ⑥ 全中文取前 4 汉字; 全程 ≤9 字
+     (老倪 2026-10-01: 「L2 L3 L4 的模型名字要显示出来, 现在的 v1001 也不知道是哪个模型」) */
+  var _ALIAS = {"taskplanner":"TaskPlan", "flow-matching":"FlowMatch", "smolvla":"SmolVLA",
+                "intact-jepa":"INTACT", "deepseek":"DeepSeek"};
+  var _MODS = [[/世界模型|\bWM\b/i, "-WM"], [/lora/i, "-L"]];
+  function sn(name){
+    var s = String(name == null ? "" : name).trim();
+    if (!s) return "?";
+    s = s.replace(/[(（][\s\S]*$/, "").trim();
+    s = s.replace(/^L\d+\s+/, "").trim();
+    var m = s.match(/[A-Za-z][A-Za-z0-9._+\-]+/);
+    if (m){
+      var base = m[0].split("+")[0].replace(/[._-]+$/, "");
+      base = _ALIAS[base.toLowerCase()] || base;
+      for (var i = 0; i < _MODS.length; i++){
+        if (_MODS[i][0].test(s) && base.length + _MODS[i][1].length <= 9){ base += _MODS[i][1]; break; }
+      }
+      return base.slice(0, 9);
+    }
+    var c = s.match(/[\u4e00-\u9fff]{2,}/);
+    return c ? c[0].slice(0, 4) : (s.slice(0, 9) || "?");
+  }
+
+  /* 模型行: **按层聚合** —— 每层一个 chip = 灯 + 层标 + 短模型名 + 极短版本 + ⚡推理中 + 其余计数(+N);
+     该层**另有真实版本号**的模型(通常是候选)各给一个不带层标的小 chip(否则 13 条一行放不下)。
+     完整名/完整版本/状态/训练 step 全在 tooltip, 手机点一下整条展开「全部模型」明细。 */
+  function renderModels(d){
+    var ms = (d && d.models) || [], out = [];
+    var ORDER = ["L2", "L3", "L4", "L5"], by = {}, keys = [];
+    ms.forEach(function(m){
+      if (!m) return;
+      var ly = m.layer || "?";
+      if (!by[ly]){ by[ly] = []; keys.push(ly); }
+      by[ly].push(m);
+    });
+    keys.sort(function(a, b){
+      var ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
+      return ((ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)) || (a < b ? -1 : (a > b ? 1 : 0));
+    });
+    function full(m){
+      return (m.layer || "") + " · " + (m.name || "") + " · " + (m.version || "")
+           + " · " + (m.state || "") + (m.inferring ? " · 推理中" : "")
+           + (m.note_short ? " · " + m.note_short : "");
+    }
+    keys.forEach(function(ly){
+      var arr = by[ly], prim = null;
+      ["in_service", "candidate", "untrained"].some(function(st){
+        for (var i = 0; i < arr.length; i++){ if (arr[i].state === st){ prim = arr[i]; return true; } }
+        return false;
+      });
+      prim = prim || arr[0];
+      var rest = arr.filter(function(x){ return x !== prim; });
+      var shown = rest.filter(function(x){ return x.version && x.version !== "unknown"; });
+      var hidden = rest.length - shown.length;
+      out.push('<span class="zmd ' + scls(prim.state) + '" title="' + esc(full(prim))
+        + (arr.length > 1 ? ("　(本层共 " + arr.length + " 个模型)") : "") + '">'
+        + '<i class="dot"></i><b class="ly">' + esc(ly) + '</b>'
+        + '<b class="nm">' + esc(sn(prim.name)) + '</b>'
+        + '<b class="vr">' + esc(sv(prim.version)) + '</b>'
+        + (prim.inferring ? '<i class="inf">⚡</i>' : '')
+        + (hidden > 0 ? '<b class="more">+' + hidden + '</b>' : '')
+        + '</span>');
+      shown.forEach(function(m){
+        out.push('<span class="zmd zsec ' + scls(m.state) + '" title="' + esc(full(m)) + '">'
+          + '<i class="dot"></i><b class="nm">' + esc(sn(m.name)) + '</b>'
+          + '<b class="vr">' + esc(sv(m.version)) + '</b>'
+          + (m.inferring ? '<i class="inf">⚡</i>' : '') + '</span>');
+      });
+    });
+    /* 训练行: 在跑 ⇒ 层 + 版本 + 进度条 + %; 没在跑 ⇒ 绝不空着, 显示「上次训练」(老倪 2026-10-01:
+       「手机还是看不到训练模型的状态」—— 真因是训练刚好跑完 training.active=false/step 0/0 就空了)。 */
+    var t = (d && d.training) || {};
+    if (t.active){
+      out.push('<span class="ztrain" title="'
+        + esc("训练中 " + (t.layer||"") + " · " + (t.name||"") + " · " + (t.version||"")
+              + " · step " + (t.step|0) + "/" + (t.total|0)
+              + " · ETA " + eta(t.eta_s) + " · " + (t.speed_s_per_step||0) + "s/step"
+              + (t.note ? " · " + t.note : "")) + '">🎓'
+        + '<b>' + esc(t.layer||"") + '</b>'
+        + '<b class="vr" style="color:#f0c674">' + esc(sv(t.version)) + '</b>'
+        + '<span class="trk"><i class="fil" style="width:' + pct(t.pct) + '%"></i></span>'
+        + '<b>' + Math.round(pct(t.pct)) + '%</b></span>');
+    } else if (d && d.last_training){
+      var lt = d.last_training;
+      var stg = (lt.stages || []).filter(function(x){ return (x.secs||0) > 0; }).map(function(x){
+                  return (x.stage||"") + (x.rc === 0 ? "" : "✗") + (x.art && x.art[0] ? ":" + x.art[0] : ""); });
+      out.push('<span class="zlast" title="'
+        + esc("上次训练 " + (lt.run||"") + " · " + (lt.name||"") + " · " + (lt.steps|0) + " 步 · 完成 "
+              + (lt.at||"") + (stg.length ? ("\n" + stg.join("\n")) : "")) + '">'
+        + '<i>上次训练</i><b>' + esc(lt.layers || lt.layer || "") + '</b>'
+        + '<b class="vr">' + esc(sv(lt.version)) + '</b>'
+        + '<b class="' + (lt.ok ? "zok" : "zbad") + '">' + (lt.ok ? "✓" : "✗") + '</b>'
+        + '<b>' + esc(lt.at || "") + '</b></span>');
+    }
+    var gs = ((d && d.assets) || []).filter(function(a){ return a && a.kind === "3DGS"; });
+    if (gs.length){
+      var a = gs[gs.length - 1];
+      out.push('<span class="zgs" title="' + esc((a.name||"") + " · " + (a.version||"") + " · " + (a.path||"")) + '">'
+        + '3DGS <b>' + esc(sv(a.version)) + '</b></span>');
+    }
+    var box = $("zs_models");
+    if (box){
+      var html = out.join("");
+      if (box.getAttribute("data-h") !== html){ box.innerHTML = html; box.setAttribute("data-h", html); }
+    }
+    /* 点按展开: 手机没有 hover ⇒ 全部模型(层+短名+完整版本+状态+完整名) 一行条 */
+    var det = $("zs_more");
+    if (det){
+      var lines = (ms || []).map(function(m){
+        return '<div class="zdrow"><b>' + esc(m.layer||"?") + '</b> <em>' + esc(sn(m.name)) + '</em> '
+             + '<span class="zdv">' + esc(m.version || "—") + '</span> '
+             + '<i style="color:' + dotc(m.state) + '">' + esc(m.state || "?") + '</i>'
+             + (m.note_short ? ' <span class="zdn" style="opacity:.85">' + esc(m.note_short) + '</span>' : '')
+             + (m.inferring ? ' <i class="inf">⚡</i>' : '')
+             + '<span class="zdn">' + esc(m.name || "") + '</span></div>';
+      }).join("");
+      if (det.getAttribute("data-h") !== lines){ det.innerHTML = lines; det.setAttribute("data-h", lines); }
+    }
+  }
+
+  function render(d){
+    root.classList.remove("zdim");
+    var hw = d.hw || {}, g = hw.gpu || {}, c = hw.cpu || {}, m = hw.mem || {}, k = hw.disk || {};
+    bar("gpu", g.util, "GPU " + (g.name||"") + " · 显存 " + (g.mem_used_mb||0) + "/" + (g.mem_total_mb||0)
+        + "MB · " + (g.temp_c==null?"—":g.temp_c) + "°C");
+    bar("cpu", c.util, "CPU " + (c.cores||"") + " 核 · load1 " + (c.load1==null?"—":c.load1));
+    var mp = (Number(m.total_gb) > 0) ? (Number(m.used_gb) / Number(m.total_gb) * 100) : 0;
+    bar("mem", mp, "内存 " + (m.used_gb||0) + "/" + (m.total_gb||0) + " GB");
+    bar("disk", k.pct, "磁盘 " + (k.used_gb||0) + "/" + (k.total_gb||0) + " GB");
+    renderModels(d);
+  }
+
+  var ok = false, dead = false;
+  function degrade(){                                    /* 静默降级: 只变灰, 不报错 */
+    if (dead) return;
+    dead = true;
+    root.classList.add("zdim");
+    if (!ok){ clearBars(); }
+    var box = $("zs_models");
+    if (box && !ok){
+      box.innerHTML = '<span class="zmd g_un"><i class="dot"></i><b class="ly">状态源离线</b></span>';
+      box.setAttribute("data-h", "off");
+    }
+  }
+
+  /* 点按展开/收起「全部模型明细」(手机没有 hover ⇒ 点整条模型行) */
+  var mrow = $("zs_models");
+  if (mrow){
+    mrow.addEventListener("click", function(){
+      var det = $("zs_more");
+      if (det) det.classList.toggle("on");
+    });
+  }
+
+  var busy = false;
+  function poll(){
+    if (busy || document.hidden) return;
+    busy = true;
+    var ac = null, to = null;
+    try { ac = new AbortController(); to = setTimeout(function(){ ac.abort(); }, 5000); } catch(e){}
+    fetch(U, {cache:"no-store", signal: ac ? ac.signal : undefined})
+      .then(function(r){ if (!r || !r.ok) throw new Error("http"); return r.json(); })
+      .then(function(d){ if (!d || !d.hw) throw new Error("bad"); dead = false; render(d); ok = true; })
+      .catch(function(){ degrade(); })                 /* 故意吞掉: 页面不许因它弹窗/报错 */
+      .then(function(){ if (to) clearTimeout(to); busy = false; });
+  }
+  poll();
+  setInterval(poll, 5000);
+})();
+</script>
+</body></html>
+

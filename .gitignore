@@ -384,3 +384,19 @@ tools/rokae/*_tmp.py
 # 2026-11-13: 画布真源在本地是数据软链; 仓库里存 symlink 会让 Windows 检出成占位文本、macOS 检出成真链接,
 # 两种平台都过不了 pack_guard/断言 ⇒ 不入库, 由 CI 的 "Materialize canvas" 步骤按真画布/出厂骨架物化。
 flows/state_space_obs.json
+
+# ── 2026-11-26 v5.50.786: 打包产物与运行期文件 (不进仓库, 体积大且机器相关) ──
+_internal/
+_stubs/
+tools/gui/dist_nounpack/
+tools/gui/build_nounpack/
+Z-MAX_Console.exe
+*.exe.bak
+_m_err.txt
+_m_out.txt
+_console_out.log
+_console_err.log
+_exit.log
+_tas_probe.txt
+engine_selftest_nounpack.json
+docs_manifest_win_*.sha256

@@ -439,7 +439,7 @@ var HTML_VER="__HTMLVER__";</script>
     </div>
     <div class="panel" style="order:1"><div class="cap"><span class="ttl">🦾 手臂相机</span>
       <span class="meta" id="m_arm">…</span></div>
-      <img id="i_arm" data-ext="http://127.0.0.1:8898/arm_yolo.jpg" data-every="600"></div>
+      <img id="i_arm" data-ext="/snapshot/overlay_arm.jpg" data-every="600"></div>
     <!-- 🚫 2026-11-24 老倪: 「本机相机 内置这个功能删掉, 不要与我本机的摄像头冲突, 我要用微信视频」
          这一格(📷 本机相机 内置/USB 换源)已移除, 后端 local 路同时不再启动(--no-local)
          ⇒ 服务进程不 open /dev/video0, 笔记本内置相机整台让给微信/腾讯会议。 -->
@@ -1823,7 +1823,7 @@ function _enq(f){_q.push(f);_pump();}
    现场表现: 「点了没反应」、`Failed to fetch`、甚至迟到的旧动作才执行。
    修法: 本页**媒体**改走 8791(同一个进程 · 独立连接名额), 控制/状态请求独占 8793。
    只在"站台跑在 8793 且从内网/本机访问"时生效 —— 手机走隧道的情况不受影响。 */
-const _mb=()=>((location.port==='8793'&&/^(10\.|192\.168\.|172\.|127\.|localhost)/.test(location.hostname))?('//'+location.hostname+':8791'):'');
+const _mb=()=>'';  /* 2026-11-26 Windows 冻结包只起单端口(8793), 8791 从不存在 ⇒ 媒体一律走同端口, 否则所有相机图 100% 加载失败 */
 const SNAPS=[...document.querySelectorAll('img[data-mode=snap]')].map(im=>({
   im:im, url:_u(_mb()+im.dataset.src), every:parseInt(im.dataset.every||'2000'), due:0, miss:0}));
 /* 🔴 2026-09-27 老倪: 「金手指和表面检测要实时推流」 —— 这两格改走 MJPEG 长连接

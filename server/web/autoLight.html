@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>光纤端面检测及清理设备 · 工艺卡（技术协议 rev1.0 · 2.2 九步）</title>
+<style>
+  :root{--bg:#070a0e;--card:#0e141b;--card2:#101923;--line:#1e2a38;--txt:#dbe6f2;--dim:#8b9bb0;
+        --teal:#2ee6c8;--amber:#ffb340;--red:#ff5a68;--green:#3ce07a;--blue:#4aa8ff;--violet:#b48cff}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--txt);
+    font:13px/1.55 "Noto Sans CJK SC","Microsoft YaHei",system-ui,sans-serif}
+  #hd{position:sticky;top:0;z-index:20;background:rgba(9,13,18,.95);border-bottom:1px solid var(--line);
+      backdrop-filter:blur(8px);padding:9px 18px}
+  #hd h1{margin:0;font-size:16px;font-weight:600;display:inline}
+  #hd .meta{color:var(--dim);font-size:11.5px;margin-top:3px}
+  #hd .r{float:right;display:flex;gap:8px;align-items:center;margin-top:2px}
+  button{background:#16202b;color:var(--txt);border:1px solid #2a3a4d;border-radius:8px;padding:5px 10px;
+    font:inherit;font-size:12px;cursor:pointer}
+  button:hover{background:#1d2a38;border-color:#39506a}
+  button.on{background:#123a38;border-color:var(--teal);color:#9ff6e8}
+  #nav{display:flex;gap:6px;flex-wrap:wrap;padding:9px 18px 0}
+  #nav a{color:var(--dim);text-decoration:none;border:1px solid #22303f;border-radius:999px;
+    padding:3px 9px;font-size:11.5px}
+  #nav a:hover{color:var(--teal);border-color:#1e6b62}
+  #wrap{padding:14px 18px 70px;display:grid;gap:16px;max-width:1900px;margin:0 auto;
+        grid-template-columns:repeat(auto-fit,minmax(560px,1fr))}
+  .card{scroll-margin-top:74px;background:linear-gradient(180deg,var(--card2),var(--card));border:1px solid var(--line);
+        border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+  .card .top{display:flex;align-items:baseline;gap:10px;padding:10px 14px 8px;border-bottom:1px solid #16202b}
+  .card .no{font:600 13px/1 ui-monospace,monospace;color:#0a1016;background:var(--teal);
+        border-radius:6px;padding:4px 7px}
+  .card h2{margin:0;font-size:14.5px;font-weight:600}
+  .card .stage{margin-left:auto;font-size:11px;color:var(--dim);border:1px solid #253445;
+        border-radius:999px;padding:2px 8px;white-space:nowrap}
+  button.mini{padding:1px 7px;font-size:10.5px;border-radius:6px;color:#8ba0b6}
+  button.mini:hover{color:#9ff6e8;border-color:#1e6b62}
+  #bDoc{background:#123a38;border-color:var(--teal);color:#9ff6e8}
+  .prog{display:flex;gap:2px;margin-left:6px}
+  .prog i{width:7px;height:3px;border-radius:2px;background:#22303f}
+  .prog i.on{background:var(--teal)}
+  .prog i.cur{background:#9ff6e8}
+  .view{position:relative;background:#080d12;border-bottom:1px solid #16202b}
+  .view canvas{display:block;width:100%;height:268px;touch-action:none;cursor:grab}
+  .view .hint{position:absolute;left:9px;bottom:6px;font-size:10.5px;color:#4c5f74}
+  .view .badge{position:absolute;right:9px;top:7px;font:600 10.5px/1 ui-monospace,monospace;color:#7f93a8;
+        background:rgba(8,13,18,.7);border:1px solid #1b2836;border-radius:5px;padding:3px 6px}
+  .body{padding:10px 14px 13px;display:flex;flex-direction:column;gap:9px}
+  .sec{font-size:11px;color:#5f7186;letter-spacing:.4px;margin-bottom:3px}
+  .act{font-size:12.2px;color:#cfdcea;line-height:1.62}
+  .act b{color:var(--teal);font-weight:600}
+  .act .ar{color:#4c5f74;padding:0 4px}
+  ul.det{margin:0;padding-left:0;list-style:none}
+  ul.det li{font-size:12px;color:#a9bccd;margin:0 0 8px;line-height:1.78;text-align:justify}
+  ul.det li b{color:#e7f1fa;font-weight:600}
+  .meta{font-size:12px;color:#a9bccd;line-height:1.7}
+  .meta b{color:#e7f1fa;font-weight:600;margin-right:6px}
+  .meta .k{display:inline-block;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#7ff0dd;
+    background:#0c2724;border:1px solid #1e6b62;border-radius:5px;padding:0 6px;margin-right:8px}
+  .meta .sep{color:#3c4a5a;margin:0 8px}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:11.8px}
+  .kv span:nth-child(odd){color:#6d829a;white-space:nowrap}
+  .kv span:nth-child(even){color:#c5d6e5}
+  .tags{display:flex;gap:5px;flex-wrap:wrap}
+  .tag{font-size:10.5px;border:1px solid #27384a;border-radius:999px;padding:1px 7px;color:#93a8bd}
+  .tag.t{border-color:#1e6b62;color:#7ff0dd;background:#0c2724}
+  .fn{font-size:11px;color:#5c6f84;border-top:1px dashed #1b2836;padding-top:7px}
+  #tip{position:fixed;right:14px;bottom:12px;background:rgba(14,20,27,.93);border:1px solid var(--line);
+    border-radius:9px;padding:7px 11px;font-size:11.5px;color:#8ba0b6;max-width:430px}
+</style>
+</head>
+<body>
+<div id="hd">
+  <h1>光纤端面检测及清理自动化设备 · 工艺卡</h1>
+  <span class="meta">技术协议 rev1.0 §2.2 九步工艺 · 每张卡内容逐条引自协议原文（条款号标在文内）· 本体 3000×1500×1900 mm · 2 人 · 载具缓存 ≤15PCS · NG 仓 4PCS　｜　三维视图坐标约定（视图用，非协议内容）：X 右 / Y 近 / Z 上，单位 m，地面 z=0</span>
+  <div class="r">
+    <button id="bDoc">⬇ 导出 Word（全 9 卡）</button>
+    <!-- 🧊 2026-10-22 老倪: 「/ar 的三维视角，需要重新开一个新页面，在光纤的场景」
+         = 九步场景的独立大窗口三维视角(一页一个大 3D + 九步切换)；同端口 8797 热读 -->
+    <button id="b3d" onclick="window.open('/autoLight3d','_blank')" title="在新页面打开九步三维视角（大窗口 · 可切九步 · 拖拽旋转）">🧊 三维视角</button>
+    <!-- 📄 2026-10-22: 技术协议 Word 唯一依据 —— 文件放 zmax_data/agreements/, 点了在工位机桌面打开 -->
+    <button id="bAgree" onclick="openAgreement(this)" title="打开技术协议（Word 唯一依据；文件放在 zmax_data/agreements/）">📄 技术协议</button>
+    <button id="bSpin" class="on">视图自转</button>
+    <button id="bPlay" class="on">动画</button>
+    <button id="bLbl" class="on">标注</button>
+  </div>
+</div>
+<div id="nav"></div>
+<div id="wrap"></div>
+<div id="tip">每张卡是一个独立三维窗口（拖拽旋转 / 滚轮缩放）：动画演示该步动作，下方为动作分解 · 详细描述 · 参数口径。所有文字逐条对应技术协议 rev1.0 原文并标注条款号；协议未写的一律不写，协议写「设计评审阶段确认/待定」的照原样标出。右上「⬇ 导出 Word（全 9 卡）」一键导出全部工艺卡（含三维截图）；每张卡右上角的小「⬇ Word」只导出该卡。</div>
+
+<script>
+"use strict";
+/* =====================================================================
+   /autoLight · 工艺卡版（一页 10 卡，每卡一个独立 3D 窗口）
+   坐标：X 右 / Y 近 / Z 上，单位 m，地面 z=0 —— 与 /ar 同一 base 世界系
+   几何按协议 1.3.3 / 2.1 的模块关系 1:1 布置（示意，非施工图）
+   ===================================================================== */
+const FL=3.0, FW=1.5, FH=1.9;       // 3000 x 1500 x 1900 mm
+const TX=-FL/2, TY=-FW/2;
+const TZ=0.86;                       // 工作台面
+const LZ=0.875;                      // 流线面
+const C={frame:'#2b3644',table:'#33404f',station:'#37485c',inst:'#2f4a63',tray:'#44586d'};
+
+// 五个工站（沿 X 排布）
+const ST=[
+ {x:-0.80,w:0.26,short:'① FC 拔帽·端检'},
+ {x:-0.42,w:0.24,short:'② MPO 拔帽·端检·回损'},
+ {x:-0.05,w:0.26,short:'③ FC 回损 ×16'},
+ {x: 0.34,w:0.28,short:'④ FC 端面·清洗·盖帽'},
+ {x: 0.72,w:0.24,short:'⑤ MPO 端面·盖帽'}
+];
+
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const ease=p=>p<0.5?2*p*p:1-Math.pow(-2*p+2,2)/2;
+const ph=(t,off,dur)=>clamp(((t+off)%dur)/dur,0,1);
+function shade(hex,k){
+  const n=parseInt(hex.slice(1),16);
+  return 'rgb('+Math.min(255,((n>>16)&255)*k|0)+','+Math.min(255,((n>>8)&255)*k|0)+','+Math.min(255,(n&255)*k|0)+')';
+}
+
+/* ---------------- 一个独立三维窗口 ---------------- */
+class View{
+  constructor(cv,opt){
+    opt=opt||{};
+    this.cv=cv; this.g=cv.getContext('2d');
+    this.yaw=opt.yaw==null?-0.98:opt.yaw;
+    this.pitch=opt.pitch==null?0.40:opt.pitch;
+    this.dist=opt.dist||1.6;
+    this.tgt=opt.tgt||[0,0,0.98];
+    this.labels=true; this.spin=0.10; this.playing=true;
+    this.LQ=[]; this.TQ=[]; this.W=0; this.H=0; this.DPR=1; this.drawn=0;
+    this._bind();
+  }
+  _bind(){
+    const cv=this.cv; let drag=null;
+    cv.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY};this.spin=0;
+      cv.setPointerCapture(e.pointerId);cv.style.cursor='grabbing';
+      document.getElementById('bSpin').classList.remove('on');});
+    cv.addEventListener('pointermove',e=>{
+      if(!drag)return;
+      this.yaw-=(e.clientX-drag.x)*0.010;
+      this.pitch=clamp(this.pitch+(e.clientY-drag.y)*0.007,-0.10,1.25);
+      drag={x:e.clientX,y:e.clientY};
+    });
+    const up=()=>{drag=null;cv.style.cursor='grab';};
+    cv.addEventListener('pointerup',up); cv.addEventListener('pointercancel',up);
+    cv.addEventListener('wheel',e=>{e.preventDefault();
+      this.dist=clamp(this.dist*(1+Math.sign(e.deltaY)*0.10),0.30,14);},{passive:false});
+  }
+  fit(box){
+    // box: [[x0,y0,z0],[x1,y1,z1]] = 该卡主体的世界包围盒; 二分距离让 8 个角点都进视口
+    if(!box) return;
+    const pts=[];
+    for(const x of [box[0][0],box[1][0]]) for(const y of [box[0][1],box[1][1]]) for(const z of [box[0][2],box[1][2]]) pts.push([x,y,z]);
+    const mL=8, mR=8, mT=8, mB=16;
+    const ok=(d)=>{
+      this.dist=d; this.cam();
+      for(const p of pts){ const q=this.pr(p);
+        if(!q||q.u<mL||q.u>this.W-mR||q.v<mT||q.v>this.H-mB) return false; }
+      return true;
+    };
+    let lo=0.25; if(ok(lo)){ return; }
+    let hi=20;
+    for(let i=0;i<26;i++){ const mid=(lo+hi)/2; if(ok(mid)) hi=mid; else lo=mid; }
+    this.dist=hi*1.015; this.cam();
+  }
+  resize(){
+    this.DPR=Math.min(2,window.devicePixelRatio||1);
+    this.W=this.cv.clientWidth||560; this.H=this.cv.clientHeight||268;
+    const w=Math.round(this.W*this.DPR), h=Math.round(this.H*this.DPR);
+    if(this.cv.width!==w||this.cv.height!==h){ this.cv.width=w; this.cv.height=h; }
+    this.g.setTransform(this.DPR,0,0,this.DPR,0,0);
+  }
+  cam(){
+    const cy=Math.cos(this.yaw), sy=Math.sin(this.yaw);
+    const cp=Math.cos(this.pitch), sp=Math.sin(this.pitch);
+    const fwd=[cp*cy,cp*sy,-sp];
+    const eye=[this.tgt[0]-fwd[0]*this.dist,this.tgt[1]-fwd[1]*this.dist,this.tgt[2]-fwd[2]*this.dist];
+    const up=[0,0,1];
+    let R=[fwd[1]*up[2]-fwd[2]*up[1], fwd[2]*up[0]-fwd[0]*up[2], fwd[0]*up[1]-fwd[1]*up[0]];
+    const nl=Math.hypot(R[0],R[1],R[2])||1; R=[R[0]/nl,R[1]/nl,R[2]/nl];
+    const U=[R[1]*fwd[2]-R[2]*fwd[1], R[2]*fwd[0]-R[0]*fwd[2], R[0]*fwd[1]-R[1]*fwd[0]];
+    this._c={eye,fwd,R,U,F:Math.min(this.W,this.H)*1.30,CX:this.W/2,CY:this.H/2+6};
+  }
+  pr(P){
+    const c=this._c; if(!c) return null;
+    const dx=P[0]-c.eye[0], dy=P[1]-c.eye[1], dz=P[2]-c.eye[2];
+    const z=dx*c.fwd[0]+dy*c.fwd[1]+dz*c.fwd[2];
+    if(z<0.05) return null;
+    return {u:c.CX+c.F*(dx*c.R[0]+dy*c.R[1]+dz*c.R[2])/z,
+            v:c.CY-c.F*(dx*c.U[0]+dy*c.U[1]+dz*c.U[2])/z, z};
+  }
+  dep(P){const e=this._c.eye;return Math.hypot(P[0]-e[0],P[1]-e[1],P[2]-e[2]);}
+  push(d,fn){this.LQ.push({d,fn});}
+  quad(a,b,c2,d,fill){
+    const A=this.pr(a),B=this.pr(b),Cc=this.pr(c2),D=this.pr(d);
+    if(!A||!B||!Cc||!D)return;
+    const dep=(this.dep(a)+this.dep(b)+this.dep(c2)+this.dep(d))/4;
+    this.push(dep,()=>{const g=this.g;g.beginPath();g.moveTo(A.u,A.v);g.lineTo(B.u,B.v);
+      g.lineTo(Cc.u,Cc.v);g.lineTo(D.u,D.v);g.closePath();
+      if(fill){g.fillStyle=fill;g.fill();}});
+  }
+  box(x0,y0,z0,x1,y1,z1,color,o){
+    o=o||{}; const k=o.k||1;
+    if(o.noTop!==true) this.quad([x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1],shade(color,1.00*k));
+    this.quad([x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z1],shade(color,0.78*k));
+    this.quad([x1,y1,z0],[x0,y1,z0],[x0,y1,z1],[x1,y1,z1],shade(color,0.66*k));
+    this.quad([x0,y1,z0],[x0,y0,z0],[x0,y0,z1],[x0,y1,z1],shade(color,0.72*k));
+    this.quad([x1,y0,z0],[x1,y1,z0],[x1,y1,z1],[x1,y0,z1],shade(color,0.88*k));
+  }
+  line(a,b,color,lw,dash){
+    const A=this.pr(a),B=this.pr(b); if(!A||!B)return;
+    this.push((this.dep(a)+this.dep(b))/2,()=>{const g=this.g;g.strokeStyle=color;
+      g.lineWidth=lw||1.3; if(dash)g.setLineDash(dash);
+      g.beginPath();g.moveTo(A.u,A.v);g.lineTo(B.u,B.v);g.stroke(); if(dash)g.setLineDash([]);});
+  }
+  tube(a,b,color,r){
+    const A=this.pr(a),B=this.pr(b); if(!A||!B)return;
+    const sc=Math.max(2.0,r*(this._c.F/((A.z+B.z)/2)));
+    this.push((this.dep(a)+this.dep(b))/2,()=>{const g=this.g;g.strokeStyle=color;
+      g.lineWidth=sc;g.lineCap='round';g.beginPath();g.moveTo(A.u,A.v);g.lineTo(B.u,B.v);g.stroke();g.lineCap='butt';});
+  }
+  dot(P,color,r){
+    const A=this.pr(P); if(!A)return;
+    const sc=Math.max(1.4,r*(this._c.F/A.z));
+    this.push(this.dep(P),()=>{const g=this.g;g.fillStyle=color;g.beginPath();g.arc(A.u,A.v,sc,0,7);g.fill();});
+  }
+  text(P,s,color,o){
+    o=o||{}; const A=this.pr(P); if(!A)return;
+    this.TQ.push({z:A.z,u:A.u+(o.dx||0),v:A.v+(o.dy||0),s,color,
+      size:o.size||11,bold:!!o.bold,prio:o.prio==null?2:o.prio});
+  }
+  cores(center,axis,n,cols,color){
+    for(let i=0;i<n;i++){
+      const c=i%cols, r=Math.floor(i/cols);
+      const p=[center[0]+(axis==='x'?(c-(cols-1)/2)*0.012:(r-(cols-1)/2)*0.012),
+               center[1]+(axis==='x'?(r-(cols-1)/2)*0.012:(c-(cols-1)/2)*0.012),
+               center[2]];
+      this.dot(p,color,0.0035);
+    }
+  }
+  paint(){
+    const g=this.g;
+    g.fillStyle='#080d12'; g.fillRect(0,0,this.W,this.H);
+    this.LQ.sort((a,b)=>b.d-a.d);
+    for(const it of this.LQ) it.fn();
+    const kf=clamp(this.W/760,0.80,1.10);
+    g.textBaseline='middle';
+    this.TQ.sort((a,b)=>(a.prio-b.prio)||(b.z-a.z));
+    const placed=[];
+    for(const t of this.TQ){
+      if(!this.labels) break;
+      const sz=t.size*kf;
+      g.font=(t.bold?'600 ':'')+sz.toFixed(1)+'px "Noto Sans CJK SC","Microsoft YaHei",system-ui,sans-serif';
+      const w=g.measureText(t.s).width, bx=t.u-4, by=t.v-sz*0.72, bw=w+8, bh=sz*1.44;
+      if(placed.some(p=>bx<p.x+p.w&&p.x<bx+bw&&by<p.y+p.h&&p.y<by+bh)) continue;
+      placed.push({x:bx,y:by,w:bw,h:bh});
+      g.fillStyle='rgba(6,10,14,.76)'; g.fillRect(bx,by,bw,bh);
+      g.fillStyle=t.color; g.fillText(t.s,t.u,t.v);
+    }
+    this.drawn=placed.length;
+  }
+}
+
+/* ---------------- 共用场景元素 ---------------- */
+function grid(v,r){
+  r=r||1.0;
+  const n=Math.round(r/0.2);
+  for(let i=-n;i<=n;i++){
+    const heavy=(i%5===0);
+    v.line([i*0.2,-r,0],[i*0.2,r,0],heavy?'#1c2836':'#131c25',heavy?1.1:0.7);
+    v.line([-r,i*0.2,0],[r,i*0.2,0],heavy?'#1c2836':'#131c25',heavy?1.1:0.7);
+  }
+}
+function axes(v,o){
+  o=o||{}; const L=o.len||0.26;
+  v.line([0,0,0],[L,0,0],'#ff5a68',1.6); v.text([L,0,0],'X','#ff5a68',{size:9.5,prio:7});
+  v.line([0,0,0],[0,L,0],'#3ce07a',1.6); v.text([0,L,0],'Y','#3ce07a',{size:9.5,prio:7});
+  v.line([0,0,0],[0,0,L],'#4aa8ff',1.6); v.text([0,0,L],'Z','#4aa8ff',{size:9.5,prio:7});
+}
+function frameCtx(v){
+  const p=0.05;
+  for(const x of [TX+p/2,FL/2-p/2]) for(const y of [TY+p/2,FW/2-p/2])
+    v.box(x-p/2,y-p/2,0,x+p/2,y+p/2,FH,'#1b242e',{noTop:true});
+  v.box(TX+0.04,TY+0.04,TZ-0.03,FL/2-0.04,FW/2-0.04,TZ,'#222d3a');
+  v.box(TX,TY,FH-0.05,FL/2,TY+p,FH,'#1a232c');
+  v.box(TX,FW/2-p,FH-0.05,FL/2,FW/2,FH,'#1a232c');
+}
+// 载具 + 光纤（本设备的主角：1 PCS MPO 端 + 16 FC 端）
+function trayAsset(v,x,y,z,o){
+  o=o||{};
+  v.box(x-0.15,y-0.10,z-0.014,x+0.15,y+0.10,z,'#3b4c60');
+  for(const d of [[-0.13,-0.08],[0.13,-0.08],[-0.13,0.08],[0.13,0.08]])
+    v.dot([x+d[0],y+d[1],z+0.004],'#5a6f88',0.007);
+  const mx=x-0.10;
+  v.box(mx-0.030,y-0.020,z,mx+0.030,y+0.020,z+0.024,'#26404f');
+  v.box(mx-0.030,y-0.020,z+0.024,mx+0.030,y+0.020,z+0.028,'#8fe8ff');
+  for(let i=0;i<16;i++){
+    const row=Math.floor(i/8), col=i%8;
+    v.line([mx+0.030+col*0.004,y-0.012+row*0.024,z+0.020],
+           [x+0.020,y-0.075+0.010*i,z+0.020],'rgba(127,214,234,'+(o.dim?0.45:0.85)+')',0.9);
+  }
+  for(let i=0;i<16;i++) v.dot([x+0.075,y-0.075+0.010*i,z+0.012],'#cfe9f5',0.0042);
+  if(o.hl){
+    const A=v.pr([x,y,z+0.02]);
+    if(A){ const r=Math.max(15,v._c.F*0.17/(A.z||1));
+      v.push(v.dep([x,y,z]),()=>{const g=v.g;g.strokeStyle='rgba(143,232,255,.75)';g.lineWidth=1.3;
+        g.setLineDash([4,3]);g.beginPath();g.arc(A.u,A.v,r,0,7);g.stroke();g.setLineDash([]);});
+    }
+  }
+  if(o.label!==false) v.text([x-0.15,y-0.11,z+0.05],o.label||'MPO-16FC 光纤 + 载具','#8fe8ff',{size:10.2,bold:true,prio:0});
+}
+// 门架工站（oz=作业头高度）
+function gantry(v,s,o){
+  o=o||{}; const col=o.col||C.station, on=!!o.on, hz=o.hz==null?1.24:o.hz;
+  v.box(s.x-s.w/2,-0.30,TZ,s.x-s.w/2+0.03,-0.27,1.42,col,{noTop:true});
+  v.box(s.x+s.w/2-0.03,-0.30,TZ,s.x+s.w/2,-0.27,1.42,col,{noTop:true});
+  v.box(s.x-s.w/2,-0.31,1.36,s.x+s.w/2,-0.26,1.42,col);
+  v.box(s.x-0.045,-0.16,Math.min(hz,1.34)-0.10,s.x+0.045,-0.08,Math.min(hz,1.34),on?col:'#2b3644');
+  v.line([s.x,-0.12,Math.min(hz,1.34)],[s.x,-0.12,1.36],'#2b3644',1.8);
+  if(on) v.dot([s.x,-0.12,Math.min(hz,1.34)-0.11],'#2ee6c8',0.012);
+  v.text([s.x-s.w/2,-0.33,1.46],o.label||s.short,on?'#2ee6c8':'#7f92a8',{size:10.2,bold:on,prio:1});
+}
+function lineCtx(v,x0,x1,o){
+  o=o||{};
+  v.box(x0,-0.075,LZ-0.055,x1,0.075,LZ-0.020,'#2a3644');
+  for(let x=x0+0.04;x<x1;x+=0.12) v.line([x,-0.055,LZ-0.016],[x,0.055,LZ-0.016],'#1d2833',0.9);
+  if(o.label) v.text([x0,-0.095,LZ-0.055],o.label,'#7f92a8',{size:9.8,prio:3});
+}
+// 仪表架（hi=要高亮的仪表名片段）
+function instCtx(v,hi){
+  const y0=TY+0.05,y1=TY+0.28;
+  v.box(TX+0.08,y0,TZ,FL/2-0.12,y1,TZ+0.04,'#1f2a35');
+  let x=TX+0.14;
+  const seq=[['ASTCHECK PRO 200KC',4],['RLM1412A-1FA-24',1],['Offsoon Pro',3]];
+  for(const it of seq){
+    const nm=it[0], n=it[1], on=!!(hi&&nm.indexOf(hi)>=0);
+    for(let k=0;k<n;k++){
+      v.box(x,y0+0.02,TZ+0.04,x+0.16,y1-0.02,TZ+0.18,on?'#4f86ad':'#33465a');
+      v.box(x+0.03,y0+0.03,TZ+0.18,x+0.13,y1-0.04,TZ+0.22,on?'#37627f':'#1d2833');
+      x+=0.20;
+    }
+    v.text([x-0.20*n,y0+0.005,TZ+0.26],nm+' ×'+n,on?'#9fdcff':'#54708a',{size:9.2,prio:4});
+    x+=0.09;
+  }
+}
+
+/* ===================== 九步场景 + 迁移 ===================== */
+// ① 人工上料 → 推入缓存一
+function scene1(v,t){
+  grid(v,1.02); axes(v); frameCtx(v);
+  const P=ph(t,0,5.0);
+  const x=(P<0.15)?-1.42:(P<0.55?-1.42+0.30*ease((P-0.15)/0.40):-1.12);
+  v.box(-1.60,-0.22,TZ,-1.34,0.22,1.30,'#39485a');
+  for(let i=0;i<3;i++) v.box(-1.58,-0.20,TZ+0.05+i*0.10,-1.36,0.20,TZ+0.08+i*0.10,'#46586e');
+  v.text([-1.62,-0.24,1.33],'人工取放堆叠架 · 人工放料位','#8b9bb0',{size:10.2,prio:2});
+  const rod=P<0.15?0:(P<0.55?0.30*ease((P-0.15)/0.40):0.30);
+  v.box(-1.42,-0.06,1.02,-1.22,0.06,1.14,'#3d5166');
+  v.line([-1.38,0,1.08],[-1.38+rod,0,1.08],'#7f93a8',3);
+  v.box(-1.42+rod,-0.05,1.00,-1.37+rod,0.05,1.16,'#95a9bd');
+  v.text([-1.44,0.10,1.19],'推料模组','#8b9bb0',{size:9.8,prio:3});
+  v.box(-1.16,-0.26,TZ,-0.96,-0.10,1.06,(x>-1.50)?'#2a4a44':'#2b3644');
+  v.text([-1.18,-0.28,1.09],'缓存仓一','#8b9bb0',{size:9.8,prio:2});
+  trayAsset(v,x,0,LZ,{hl:true,label:'载具（1 PCS/载具）'});
+  lineCtx(v,-0.94,1.22,{label:'载具搬运流线 →'});
+  v.dot([-1.12,0.09,LZ+0.02],(x>-1.50)?'#3ce07a':'#4a5b6d',0.008);
+  v.text([-1.10,0.11,LZ+0.07],(x>-1.50)?'到位 ✓':'等待',(x>-1.50)?'#3ce07a':'#6f8296',{size:9.5,prio:1});
+  v.text([-1.32,-0.14,LZ+0.13],'扫码绑定：产品码 ↔ 载具码','#ffb340',{size:9.8,prio:1});
+  v.text([0.40,0.12,1.32],'整机所需人力 2 人（操作设备、上下料）','#5f7186',{size:9.5,prio:4});
+}
+
+// ② 缓存一 → 缓存二
+function scene2(v,t){
+  grid(v,0.9); axes(v); frameCtx(v);
+  const P=ph(t,0,4.6);
+  const x=(P<0.25)?-1.06:(P<0.70?-1.06+0.16*ease((P-0.25)/0.45):-0.90);
+  const done=P>0.70;
+  v.box(-1.18,-0.26,TZ,-1.02,-0.10,1.06,done?'#2b3644':'#2a4a44');
+  v.text([-1.20,-0.28,1.09],'缓存仓一','#8b9bb0',{size:9.8,prio:2});
+  v.box(-0.98,-0.26,TZ,-0.82,-0.10,1.06,done?'#2a4a44':'#2b3644');
+  v.text([-1.00,-0.28,1.09],'缓存仓二','#8b9bb0',{size:9.8,prio:2});
+  v.box(-1.12,0.10,1.04,-0.98,0.18,1.14,'#3d5166');
+  v.text([-1.14,0.20,1.16],'推料模组','#8b9bb0',{size:9.8,prio:3});
+  for(let i=0;i<5;i++){
+    const on=done?i<3:i<2;
+    v.box(-1.21+i*0.055,-0.02,TZ+0.02,-1.19+i*0.055,0.02,TZ+0.032,on?'#2ee6c8':'#33424f');
+  }
+  v.text([-1.22,0.13,TZ+0.10],'载具托盘缓存最多 15 PCS','#8b9bb0',{size:9.6,prio:2});
+  trayAsset(v,x,0,LZ,{hl:true,label:'等待进入主流线'});
+  lineCtx(v,-0.80,0.34,{label:'→ 主流线'});
+}
+
+// ③ 主流线缓存位：移栽 → 顶升 → 分离接料
+function scene3(v,t){
+  grid(v,0.86); axes(v); frameCtx(v);
+  const P=ph(t,0,5.2);
+  const enter=(P<0.45)?ease(P/0.45):1;
+  const x=-0.90+0.16*enter;
+  const lift=(P>0.55)?0.10*Math.min(1,(P-0.55)/0.25):0;
+  const sep=(P>0.60)?Math.min(1,(P-0.60)/0.25):0;
+  lineCtx(v,-1.00,0.46,{label:'载具搬运流线（动力主干）'});
+  v.box(-1.10,0.12,1.02,-0.94,0.20,1.12,'#3d5166');
+  v.text([-1.12,0.22,1.14],'缓存2 移栽模组','#8b9bb0',{size:9.6,prio:2});
+  v.box(x-0.11,-0.08,TZ-0.16,x+0.11,0.08,TZ-0.02,'#4a5f78');
+  v.box(x-0.09,-0.06,TZ-0.02,x+0.09,0.06,TZ+lift,'#6f8aa6');
+  v.text([x-0.13,-0.11,TZ-0.18],'主流线顶升模组','#8b9bb0',{size:9.6,prio:2});
+  for(const s of [-1,1]){
+    const p=0.16-0.07*sep;
+    v.box(x+s*p-0.012,-0.012,TZ+0.012,x+s*p+0.012,0.012,TZ+0.036,'#95a9bd');
+  }
+  v.text([x+0.13,-0.12,TZ+0.07],'分离模组 伸出接料','#8b9bb0',{size:9.6,prio:2});
+  trayAsset(v,x,0,LZ+lift,{hl:true,label:'载具顶升到检测位'});
+  v.text([x-0.20,0.13,1.26],'载具磁吸锁附 + 定位销（浮动 XY 单边 0.5 mm）','#2ee6c8',{size:9.8,prio:1});
+  v.text([-0.06,-0.18,1.36],'各工站将治具提升，配合对应测试仪器并行测试','#5f7186',{size:9.5,prio:4});
+}
+
+// ④ 拔帽 · 端检 · 清洗
+function scene4(v,t){
+  grid(v,0.78); axes(v); frameCtx(v); instCtx(v,'ASTCHECK');
+  const s=ST[0], P=ph(t,0,6.2);
+  const head=(P<0.20)?1.30:(P<0.34?1.30-0.24*ease((P-0.20)/0.14):(P<0.80?1.06:1.06+(P-0.80)*3.2));
+  const capUp=(P>0.30&&P<0.55)?(P-0.30)/0.25:(P>=0.55?1:0);
+  lineCtx(v,-1.06,0.12);
+  gantry(v,s,{on:P>0.18&&P<0.92,hz:head});
+  trayAsset(v,s.x,0,LZ,{label:'载具在检测位'});
+  if(capUp>0){
+    const cz=LZ+0.03+0.17*capUp;
+    for(let i=0;i<4;i++) v.box(s.x-0.055+i*0.028,-0.02,cz-0.012,s.x-0.040+i*0.028,0.02,cz+0.006,'#c9d8e6');
+    v.text([s.x-0.02,0.06,cz+0.07],'帽盖拔除 → 暂存位','#ffd08a',{size:9.8,prio:1});
+  }
+  if(P>0.36&&P<0.66){
+    v.line([s.x,-0.10,1.18],[s.x,0,LZ+0.03],'rgba(46,230,200,.55)',1.2,[3,3]);
+    v.cores([s.x,0,LZ+0.030],'x',16,8,'#8fe8ff');
+    v.text([s.x+0.05,0.10,1.20],'端面缺陷检测（FC 16 PCS 端面）','#2ee6c8',{size:9.8,prio:1});
+    v.text([s.x+0.05,0.10,1.16],'ASTCHECK PRO 200KC ×4','#6f89a3',{size:9.2,prio:2});
+  }
+  if(P>0.66&&P<0.92){
+    const k=(P-0.66)/0.26, cx=s.x-0.07+0.14*k;
+    v.box(cx-0.018,-0.05,LZ+0.02,cx+0.018,-0.01,LZ+0.05,'#b48cff');
+    v.line([cx,-0.03,LZ+0.05],[cx,0.01,LZ+0.02],'rgba(180,140,255,.55)',1);
+    v.text([s.x-0.14,0.12,1.06],'清洗：清洗头 + Offsoon Pro（无腐蚀/无残留）','#b48cff',{size:9.8,prio:1});
+  }
+}
+
+// ⑤ 自动插回损测试
+function scene5(v,t){
+  grid(v,0.82); axes(v); frameCtx(v); instCtx(v,'RLM1412A');
+  const s=ST[2], P=ph(t,0,6.0);
+  const eng=(P>0.25&&P<0.85)?Math.min(1,(P-0.25)/0.20)*Math.min(1,(0.85-P)/0.20):0;
+  lineCtx(v,-0.40,0.40);
+  gantry(v,s,{on:eng>0.12,hz:1.28-0.20*eng});
+  trayAsset(v,s.x,0,LZ,{label:'载具顶升到回损位'});
+  const pts=[[s.x-0.09,-0.06,LZ+0.03],[s.x-0.17,-0.17,LZ+0.11],[s.x-0.11,-0.31,LZ+0.17],[TX+0.60,-0.42,TZ+0.22]];
+  for(let i=0;i<pts.length-1;i++) v.line(pts[i],pts[i+1],'#7fd6ea',1.4);
+  v.text([pts[1][0],pts[1][1],pts[1][2]+0.06],'FC 转 FC 延长线','#7fd6ea',{size:9.4,prio:2});
+  v.line([s.x+0.06,0.02,LZ+0.03],[s.x+0.11,-0.20,LZ+0.12],'#ffb340',1.4);
+  v.box(s.x+0.06,-0.24,LZ+0.10,s.x+0.17,-0.16,LZ+0.16,'#5a441f');
+  v.text([s.x+0.09,-0.27,LZ+0.19],'MPO 端 ↔ 测试线（法兰）','#ffd08a',{size:9.4,prio:2});
+  for(let i=0;i<4;i++){
+    const hx=s.x-0.075+i*0.05;
+    v.box(hx-0.014,-0.05,LZ+0.03+0.05*eng,hx+0.014,-0.01,LZ+0.10+0.05*eng,'#9fb8d0');
+  }
+  if(eng>0.5){
+    v.text([s.x+0.12,0.10,1.24],'回损测试（仪表判据）+ 结果上传','#4aa8ff',{size:10,prio:1});
+    v.text([s.x+0.12,0.10,1.20],'RLM1412A-1FA-24 ×1 · 结果绑定产品码','#6f89a3',{size:9.2,prio:2});
+  }
+  v.text([s.x-0.22,0.14,LZ+0.10],'浮动 0.5 mm + 缓冲机构：对插不准时保护产品','#2ee6c8',{size:9.4,prio:1});
+}
+
+// ⑥ 复检 → 二次清洗 → 盖帽 → 扫码
+function scene6(v,t){
+  grid(v,0.80); axes(v); frameCtx(v); instCtx(v,'Offsoon');
+  const s=ST[3], P=ph(t,0,6.4);
+  const seg=(a,b)=>clamp((P-a)/(b-a),0,1);
+  lineCtx(v,0.10,0.62);
+  gantry(v,s,{on:P>0.15&&P<0.95,hz:1.30-0.10*seg(0.15,0.35)});
+  trayAsset(v,s.x,0,LZ,{label:'复检 → 盖帽 → 扫码'});
+  if(P<0.35){
+    v.line([s.x,-0.10,1.18],[s.x,0,LZ+0.03],'rgba(46,230,200,.5)',1.1,[3,3]);
+    v.text([s.x+0.05,0.10,1.22],'端面复检（不合格 → 二次清洗/擦拭）','#2ee6c8',{size:9.8,prio:1});
+  }
+  if(P>=0.30&&P<0.55){
+    const k=seg(0.30,0.55), cx=s.x-0.07+0.14*k;
+    v.box(cx-0.016,-0.05,LZ+0.02,cx+0.016,-0.01,LZ+0.05,'#b48cff');
+    v.text([s.x-0.14,0.12,1.06],'二次清洗：端面清洗笔 / 擦拭盒','#b48cff',{size:9.8,prio:1});
+  }
+  if(P>=0.50&&P<0.82){
+    const k=seg(0.50,0.82), cz=LZ+0.15-0.11*k;
+    for(let i=0;i<5;i++) v.box(s.x-0.075+i*0.032,-0.03,cz-0.012,s.x-0.056+i*0.032,0.03,cz+0.008,'#c9d8e6');
+    v.box(s.x-0.10,-0.06,cz+0.02,s.x+0.10,0.02,cz+0.10,'#4a5f78');
+    v.text([s.x-0.04,0.10,cz+0.15],'FC 盖帽模组（帽来自盖帽暂存位）','#ffd08a',{size:9.8,prio:1});
+  }
+  if(P>=0.80){
+    v.line([s.x+0.02,-0.22,1.34],[s.x+0.02,-0.02,LZ+0.04],
+           'rgba(255,90,104,'+(0.30+0.35*Math.abs(Math.sin(t*9))).toFixed(2)+')',1.6);
+    v.text([s.x+0.05,-0.24,1.37],'扫码：产品码 ↔ 载具码（全链路追溯）','#ff8b95',{size:9.8,prio:1});
+  }
+}
+
+// ⑦ OK / NG 自动分拣
+function scene7(v,t){
+  grid(v,0.92); axes(v); frameCtx(v);
+  const P=ph(t,0,5.6), k=clamp((P-0.15)/0.50,0,1);
+  lineCtx(v,0.30,1.12,{label:'→ 分拣位'});
+  trayAsset(v,0.50,0,LZ-0.02,{label:'判定来源：端检 + 回损'});
+  const y=0.50*k, z=LZ+0.16*Math.sin(Math.PI*clamp(k*1.35,0,1));
+  v.box(0.44,0.10,1.24,0.58,0.24,1.34,'#4a2c33');
+  v.line([0.51,0.17,1.24],[0.51,y,z+0.06],'#ff8b95',2);
+  if(k>0.04){ v.box(0.50-0.15,y-0.10,z-0.03,0.50+0.15,y+0.10,z,'#5a343c'); }
+  v.text([0.42,0.26,1.37],'NG 搬运模组（磁吸锁附）','#ff8b95',{size:9.8,prio:1});
+  v.box(0.60,0.34,TZ,0.86,0.56,1.02,'#3a2026');
+  for(let i=0;i<4;i++) v.box(0.62+i*0.055,0.38,TZ+0.02,0.66+i*0.055,0.52,TZ+0.08,(k>0.7&&i===0)?'#ff5a68':'#2a161a');
+  v.text([0.60,0.58,1.06],'NG 产品缓存仓 4 PCS','#ff5a68',{size:9.8,prio:1});
+  v.box(1.04,-0.26,TZ,1.22,-0.10,1.02,'#20362c');
+  v.text([1.00,-0.28,1.06],'OK 缓存仓 1/2','#3ce07a',{size:9.8,prio:1});
+  v.line([0.66,0.0,LZ],[1.02,-0.06,LZ],'rgba(60,224,122,.5)',1.4,[4,3]);
+  v.text([0.70,0.16,1.20],'OK → OK 物料缓存仓','#3ce07a',{size:9.6,prio:1});
+  v.text([0.26,0.12,1.36],'信号：OK / NG / 完成（板卡→设备）· 启动（设备→板卡）','#8b9bb0',{size:9.2,prio:3});
+}
+
+// ⑧ OK 缓存仓 2
+function scene8(v,t){
+  grid(v,0.76); axes(v); frameCtx(v);
+  const P=ph(t,0,4.4);
+  const x=(P<0.30)?0.86:(P<0.75?0.86+0.20*ease((P-0.30)/0.45):1.06);
+  lineCtx(v,0.55,1.12,{label:'主流线末端'});
+  v.box(0.92,-0.26,TZ,1.10,-0.10,1.06,'#20362c');
+  v.text([0.90,-0.28,1.09],'OK 缓存仓 2（暂存）','#3ce07a',{size:9.8,prio:1});
+  trayAsset(v,x,0,LZ,{hl:true,label:'合格载具进入 OK 仓 2'});
+  v.text([0.60,0.14,1.30],'OK 品缓存仓（整机 2 套）','#8b9bb0',{size:9.6,prio:2});
+}
+
+// ⑨ OK 缓存仓 1 → 人工整盘下料
+function scene9(v,t){
+  grid(v,0.78); axes(v); frameCtx(v);
+  const P=ph(t,0,4.8), k=clamp((P-0.55)/0.35,0,1);
+  lineCtx(v,0.55,1.06,{label:'主流线末端'});
+  v.box(0.96,-0.26,TZ,1.14,-0.10,1.06,'#20362c');
+  v.text([0.94,-0.28,1.09],'OK 缓存仓 1','#3ce07a',{size:9.8,prio:1});
+  v.box(1.18,-0.24,TZ,1.46,0.24,1.34,'#20362c');
+  for(let i=0;i<4;i++) v.box(1.20,-0.16+k*0.06,TZ+0.10+i*0.04,1.44,0.16+k*0.06,TZ+0.12+i*0.04,'#2f5a45');
+  v.text([1.16,0.27,1.37],'人工下料位 · 整盘取走','#8b9bb0',{size:9.8,prio:1});
+  trayAsset(v,0.86+0.30*k,0,LZ+0.06*k,{hl:k>0.10,label:k>0.15?'整盘载具 → 人工下料':'待下料'});
+  v.text([0.62,0.14,1.30],'整机 2 人操作；OEE ≥85%（协议 2.1）','#5f7186',{size:9.4,prio:3});
+}
+
+/* 每张卡的主体包围盒（世界坐标 m）—— 自动取景用 */
+const FOCUS={
+ 1:[[-1.66,-0.34,0.78],[-0.88,0.30,1.44]],
+ 2:[[-1.26,-0.34,0.78],[-0.74,0.30,1.28]],
+ 3:[[-1.04,-0.34,0.66],[-0.56,0.30,1.26]],
+ 4:[[-1.04,-0.40,0.76],[-0.52,0.28,1.52]],
+ 5:[[-0.38,-0.48,0.76],[ 0.18,0.28,1.52]],
+ 6:[[ 0.08,-0.40,0.76],[ 0.58,0.28,1.52]],
+ 7:[[ 0.26,-0.38,0.76],[ 1.30,0.64,1.50]],
+ 8:[[ 0.58,-0.36,0.76],[ 1.24,0.22,1.32]],
+ 9:[[ 0.58,-0.38,0.76],[ 1.54,0.34,1.50]]
+};
+
+/* ===================== 九张工艺卡（内容全部出自技术协议 rev1.0 原文） ===================== */
+const CARDS=[
+{n:'1',title:'待测物料缓存仓一',stage:'2.2 第 1 步 · 上料',scene:scene1,
+ cam:{tgt:[-1.13,0,1.02],yaw:-1.00,pitch:0.33,dist:1.18},
+ act:'<b>人工将载具（托盘）上料至人工放料位，经推料模组推入缓存1。</b>',
+ det:['缓存1、缓存2 与人工放料位、人工下料位同属<b>人工取放堆叠架</b>，配推料模组、缓存2 移栽模组、分离模组、主流线顶升模组（2.1）；整机配置 <b>2 套</b>（3.1-4）',
+      '载具托盘含支撑柱×4、底板、产品线材限位柱、<b>磁吸板×2</b>（自动锁附载具）、<b>定位轴套×2</b>、夹具初定位销及<b>盖帽暂存位</b>、缓冲机构（对插不准时保护产品）、载具标识二维码和数字号牌；浮动机构 <b>XY 单边浮动 0.5mm</b>；配 MPO 端夹具 / FC 端夹具×16（2.1 载具托盘）',
+      '来料类型：<b>MPO-8FC / MPO-16FC</b> 光纤来料，载具承载 <b>1PCS/载具</b>（1.4）',
+      '扫码与数据绑定：人工上料时需将产品上的二维码与载具二维码扫码绑定，实现<b>产品—载具—工位—结果</b>全链路追溯（2.1）',
+      '产品安全：过程中各动作使用传感器检测是否到位，传感器闭环检测自身是否失效（2.1）'],
+ kv:[['整机布局','3000mm × 1500mm × 1900mm（长×宽×高）；所需人力 2 人（2.1/4.1）'],
+     ['缓存能力','载具托盘缓存最多 15PCS（2.1）'],
+     ['来料','MPO-8FC / MPO-16FC，1PCS/载具（1.4）']],
+ tags:['推料模组','缓存1','载具托盘 1PCS','扫码绑定']},
+
+{n:'2',title:'待测物料缓存仓二',stage:'2.2 第 2 步 · 缓存',scene:scene2,
+ cam:{tgt:[-1.02,0,1.02],yaw:-1.00,pitch:0.33,dist:1.00},
+ act:'<b>缓存1 满后推料模组将载具推至缓存2，等待进入主流线。</b>',
+ det:['缓存2 由<b>缓存2 移栽模组</b>负责与主流线交接（2.1 人工取放堆叠架）',
+      '载具托盘缓存最多 <b>15PCS</b>（2.1 载具搬运流线）',
+      '缓存仓配置（3.1）：待测产品缓存仓 <b>2</b> 套、OK 品缓存仓 <b>2</b> 套、NG 产品缓存仓（4PCS）<b>1</b> 套',
+      '异常处理：检测异常时系统自动触发声光报警，报警界面显示异常工位及产品位置（2.1）'],
+ kv:[['缓存上限','载具托盘缓存最多 15PCS（2.1）'],
+     ['缓存仓','待测 2 / OK 2 / NG（4PCS）1（3.1-11~13）'],
+     ['交接','缓存2 移栽模组（2.1）']],
+ tags:['缓存2','移栽模组','15PCS']},
+
+{n:'3',title:'主流线载具缓存位',stage:'2.2 第 3 步 · 流转',scene:scene3,
+ cam:{tgt:[-0.85,0,1.00],yaw:-1.05,pitch:0.35,dist:1.10},
+ act:'<b>缓存2 移栽模组将待测产品推入主流线缓存位；主流线顶升模组顶升，分离模组伸出接料。</b>',
+ det:['载具搬运流线：为载具流转提供动力，治具流转到检测站，各工站将治具提升，配合对应测试仪器<b>并行测试</b>；含载具托盘<b>分离组件</b>、载具托盘<b>顶升组件</b>（2.1）',
+      '1.3.2 各检测工站通过<b>顶升模组</b>将载具提升至检测位，配合在线检测与清洁仪表并行测试，提升稼动率与检测效率',
+      '载具托盘搬运轴含 <b>X 轴、Z 轴</b>；配载具磁吸锁附、载具定位销、<b>载具到位阻挡气缸</b>（2.1）',
+      '洁净设计：运动单元尽可能放置在工件下方；选用洁净型模组/洁净型机器人/洁净型坦克链/洁净型气缸；固定线缆避免相互摩擦；整机配置 <b>FFU</b>（2.1）'],
+ kv:[['节拍（8-FC）','非全端面自动对焦 2S＋测试 2S 条件下 CT ≤70s、UPH ≥51、OEE ≥85%（2.1）'],
+     ['节拍（16-FC）','全端面自动对焦 2S＋测试 2S 条件下 CT ≤134s、UPH ≥26、OEE ≥85%（2.1）'],
+     ['在线仪表','端检仪 ASTCHECK PRO 200KC ×4；回损仪 RLM1412A-1FA-24 ×1；清洗机 Offsoon Pro ×3（2.1）']],
+ tags:['顶升模组','分离模组','磁吸锁附','并行测试']},
+
+{n:'4',title:'MPO&FC 拔帽&端检&清洗',stage:'2.2 第 4 步 · 检测工站',scene:scene4,
+ cam:{tgt:[-0.78,0,1.05],yaw:-1.05,pitch:0.33,dist:1.00},
+ act:'<b>载具经载具搬运流线流转至拔帽&端检&清洗工站，自动拔除端面帽盖，执行端面缺陷检测并清洗端面。</b>',
+ det:['FC 自动拔帽&清洁&端检工站：仅负责 <b>16PCS FC</b> 拔盖帽&端面检测和清洗；含自动拔帽模组、端面清洗头、端面清洗机、FC 自动端检仪（<b>ASTCHECK PRO 200KC</b>）、Y 轴（2.1）',
+      'MPO 自动拔帽&清洁&端检&回损工站：仅负责 <b>1PCS MPO</b> 拔帽&端面检测清洁回损测试；含自动拔帽模组、MPO 端面清洗头、MPO 擦拭盒、MPO 测试头自动清洁笔、MPO 自动端面检测、MPO 端检头、端面清洗机、X 轴、Y 轴（2.1）',
+      '清洁耗材：设备光纤端面清洁区使用<b>无腐蚀性、无残留</b>的清洁耗材，清洁材料不得对光纤端面产生二次污染（6.1.2.2）',
+      '自动拔帽模组整机 <b>2 套</b>、MPO 端检头 <b>1 套</b>（3.2-5/9）；帽盖暂存位设在载具托盘上（2.1）'],
+ kv:[['处理量','FC 16PCS / MPO 1PCS（每载具，2.1）'],
+     ['检测对象','端面缺陷检测 + 端面清洗（2.2 第 4 步）'],
+     ['不合格处置','转入第 6 步端面复检时的二次清洗（FC）/ 二次擦拭（MPO）（2.1）']],
+ tags:['自动拔帽模组 ×2','ASTCHECK ×4','Offsoon ×3','帽盖暂存位']},
+
+{n:'5',title:'MPO&FC 自动插回损测试',stage:'2.2 第 5 步 · 回损工站',scene:scene5,
+ cam:{tgt:[-0.06,0,1.02],yaw:-1.05,pitch:0.33,dist:1.10},
+ act:'<b>载具提升至回损测试工站，自动插接测试头（FC 端经 FC 转 FC 延长线连接，MPO 端与仪表测试线法兰连接），完成回损测试。</b>',
+ det:['FC 回损测试工站：仅负责 <b>16PCS FC</b> 回损测试；含 FC 端检转换头、FC 测试头清洁笔、FC 端面清洗笔、X 轴、Y 轴（2.1）',
+      '回损测试仪表对接（2.3.2）：MPO-16FC 光纤测试时，产品 <b>FC 端与 FC 转 FC 延长线端法兰连接</b>、产品 <b>MPO 端与仪表测试线法兰连接</b>',
+      '仪表：回损测试仪 <b>RLM1412A-1FA-24</b>，需求数量 1 台（2.1 在线检测仪表）',
+      '插接可靠性来自载具托盘机构：<b>浮动机构 XY 单边 0.5mm</b> + 缓冲机构（对插不准时保护产品）（2.1）',
+      '信号交互（2.3.1）：OK / NG / 完成（测试板卡→设备）、启动（设备→测试板卡）；测试板卡供电与显示器接口在设计评审阶段确认'],
+ kv:[['测试对象','FC 16PCS + MPO 1PCS（2.2 第 5 步 / 2.1）'],
+     ['信号','OK / NG / 完成 ← 板卡；启动 → 板卡（2.3.1）'],
+     ['仪表数量','RLM1412A-1FA-24 ×1（2.1）']],
+ tags:['RLM1412A ×1','FC 转 FC 延长线','MPO 法兰','浮动 0.5mm']},
+
+{n:'6',title:'MPO&FC 自动端检&清洁&盖帽&扫码',stage:'2.2 第 6 步 · 复检收尾',scene:scene6,
+ cam:{tgt:[0.32,0,1.05],yaw:-1.05,pitch:0.33,dist:1.00},
+ act:'<b>载具流转至盖帽工站，执行端面复检（二次清洗/二次擦拭）、端面帽盖盖回，并完成产品二维码扫描。</b>',
+ det:['FC 端面测试&清洗&盖帽工站：仅负责 <b>16PCS FC</b> 端面测试和盖帽，端检不合格<b>二次清洗</b>；含 FC 盖帽模组、FC 端面清洗笔、FC 自动端检测仪、端面清洗机、X 轴、Y 轴（2.1）',
+      'MPO 端面测试&清洗&盖帽工站：仅负责 <b>1PCS MPO</b> 端面测试和盖帽，端检不合格<b>二次擦拭</b>；含 MPO 盖帽模组、MPO 端面擦拭盒、MPO 端检仪、Y 轴（2.1）',
+      '数据管理与信息追溯：软件系统自动保存每一批次的识别和测量数据并上传至数据库；保存设备运行日志和异常日志，可自动生成并导出；支持 <b>CSV</b> 存储识别结果和日志（2.1）',
+      '追溯：产品条码与载具条码扫码绑定（1.5.2）；产品二维码与载具二维码绑定后实现产品—载具—工位—结果全链路追溯（2.1）',
+      '易损件（3.3）：MPO 测试头自动清洁笔 / FC 测试头清洁笔 / FC 端面清洗笔 / MPO 端面擦拭盒 / MPO 擦拭盒 各 <b>2</b>'],
+ kv:[['二次处理','端检不合格二次清洗（FC）/ 二次擦拭（MPO）（2.1）'],
+     ['数据','批次数据上传数据库；运行/异常日志可导出；CSV（2.1）'],
+     ['追溯键','产品二维码 ↔ 载具二维码（1.5.2 / 2.1）']],
+ tags:['端面复检','二次清洗/擦拭','盖帽模组','扫码追溯']},
+
+{n:'7',title:'已测物料 OK&NG 自动分拣位',stage:'2.2 第 7 步 · 分拣',scene:scene7,
+ cam:{tgt:[0.60,0.12,1.02],yaw:-1.10,pitch:0.42,dist:1.30},
+ act:'<b>7.1 OK 物料缓存仓；7.2 NG 物料缓存仓（4PCS）。NG 产品由 NG 搬运模组经磁吸锁附搬运至 NG 缓存仓。</b>',
+ det:['NG 下料模组：仅负责 NG 产品的搬运和缓存；含 <b>NG 顶升组件</b>、<b>NG 载具提升模组</b>、<b>NG 搬运流线</b>、<b>NG 产品缓存仓（4PCS）</b>；磁吸锁附搬运载具（2.1）',
+      '判定能力（1.3.4）：设备具备与测试板卡的信号交互能力，实现工序节拍同步、<b>合格/不合格自动判定</b>与数据上传',
+      '异常处理与报警：检测异常时系统自动触发<b>声光报警</b>，提示操作员干预；报警界面显示异常工位及产品位置，便于补录与排查；软件具备人工干预接口（2.1）',
+      '缓存仓配置（3.1）：待测产品缓存仓 2、OK 品缓存仓 2、NG 产品缓存仓（4PCS）1；NG 产品由 NG 搬运模组经磁吸锁附搬运至 NG 缓存仓（2.2 第 7 步 7.2）'],
+ kv:[['NG 仓容量','4PCS（2.2 第 7 步 / 2.1）'],
+     ['分拣依据','端检（第 4/6 步）+ 回损（第 5 步）结果（2.2）'],
+     ['信号','OK / NG / 完成 ← 板卡；启动 → 板卡（2.3.1）']],
+ tags:['NG 下料模组','NG 仓 4PCS','磁吸锁附','声光报警']},
+
+{n:'8',title:'测试 OK 物料缓存仓 2',stage:'2.2 第 8 步 · 缓存',scene:scene8,
+ cam:{tgt:[0.96,-0.06,1.00],yaw:-1.10,pitch:0.38,dist:0.92},
+ act:'<b>合格载具经 OK 品缓存仓暂存。</b>',
+ det:['OK 品缓存仓整机 <b>2 套</b>（3.1-12），本步为其中的 OK 物料缓存仓 2',
+      '软件界面：图形化界面显示当前产品图像、检测结果、UPH、<b>各缓存仓检测数量和位置</b>；所有工位相机运行画面可同时显示（2.1）',
+      '载具托盘缓存最多 15PCS（2.1 载具搬运流线）'],
+ kv:[['容量口径','载具托盘缓存最多 15PCS（2.1）'],
+     ['界面','各缓存仓数量/位置 + 全工位相机画面 + UPH（2.1）']],
+ tags:['OK 仓 2','数量可视化','UPH']},
+
+{n:'9',title:'测试 OK 物料缓存仓 1',stage:'2.2 第 9 步 · 下料',scene:scene9,
+ cam:{tgt:[1.06,0,1.02],yaw:-1.05,pitch:0.33,dist:1.05},
+ act:'<b>合格载具进入 OK 品缓存仓 1，人工于人工下料位取走整盘载具，完成下料。</b>',
+ det:['人工取放堆叠架含人工放料位、人工下料位、缓存1、缓存2；整机 2 套（2.1 / 3.1-4）',
+      '节拍（2.1）：8-FC 非全端面自动对焦 2S＋测试 2S 条件下 CT ≤70s、UPH ≥51、OEE ≥85%；16-FC 全端面自动对焦 2S＋测试 2S 条件下 CT ≤134s、UPH ≥26、OEE ≥85%（均以所有接头测试一次通过为前提）',
+      '运行环境（4.1）：温度 25℃±5℃、工作相对湿度 35%~65%、气源 DCA ≤0.7MPa、真空 >-80KPa、电源单相 AC220V±10% 50Hz、外形 3000×1500×1900mm、设备重量 3500kg、所需人力 2 人',
+      'ESD（4.2）：设备总体接地电阻 <1Ω（放置物料区域对地阻抗或对平台阻抗 <1Ω）；所有和物料接触的通电部位漏电压 <0.3V；预装静电环报警器并做好接地布线'],
+ kv:[['节拍','8-FC CT ≤70s / UPH ≥51；16-FC CT ≤134s / UPH ≥26；OEE ≥85%（2.1）'],
+     ['环境','25±5℃ / 35~65%RH / 气源≤0.7MPa / 真空>-80KPa / AC220V±10% 50Hz（4.1）'],
+     ['整机','3000×1500×1900mm、3500kg、2 人（2.1/4.1）']],
+ tags:['人工下料','整盘载具','OEE ≥85%','2 人']}
+];
+
+/* ===================== 装配 ===================== */
+const NAV=document.getElementById('nav'), WRAP=document.getElementById('wrap');
+const views=[];
+/* ===== 工艺动作 ⇄ 工艺卡 对照数据（与 /autoLight3d 同一份；Word 附表用） ===== */
+const ACTCARD=[
+{n:'①', act:'上料', cards:'工艺卡 1 待测物料缓存仓一 · 2 待测物料缓存仓二 · 3 主流线载具缓存位',
+ what:'操作员把装满来料的载具托盘放进人工放料位，推料模组把托盘推进缓存仓一；缓存仓一满后，托盘被推到缓存仓二，再由缓存仓二移栽模组送进主流线缓存位。主流线顶升模组把载具提升到交接高度，分离模组伸出接料，载具由此进入自动化流转。',
+ det:'载具托盘靠两组磁吸板自动锁附，并用两个定位轴套保证重复定位精度；托盘上设有浮动机构，在 XY 方向单边留出 0.5 毫米的余量，对插不准时由缓冲机构先退让，避免把力直接作用在产品上。上料时系统把产品二维码与载具二维码扫码绑定，形成产品、载具、工位、结果四者的全链路追溯关系。每一个动作都配有到位传感器，传感器自身还会做闭环自检，一旦检测功能失效就会报警，防止设备在“看不见”的状态下继续动作。缓存仓能力为每个载具托盘最多缓存 15 件。',
+ basis:'§2.2 第 1~3 步；§2.1 人工取放堆叠架 / 载具托盘 / 扫码与数据绑定；§3.1-4 整机 2 套'},
+
+{n:'②', act:'拔帽', cards:'工艺卡 4 MPO&FC 拔帽&端检&清洗（工位 4）',
+ what:'载具到达工位 4 后，自动拔帽模组把 FC 端的金属帽和 MPO 端的防尘帽取下，端面随之暴露出来，等待检测。取下的帽盖不落地，而是放回载具托盘上的帽盖暂存位。',
+ det:'自动拔帽模组整机配置 2 套，FC 侧一次处理 16 个端面，MPO 侧处理 1 个端面；拔帽动作由 Y 轴定位到端面正前方后沿轴向退出，避免斜向受力损伤插芯。帽盖放回托盘暂存位是关键设计：它保证第 6 步盖帽时每一顶帽子都回到原来那一支产品上，不会出现帽盖串盘、混料的情况。',
+ basis:'§2.2 第 4 步；§2.1 FC / MPO 自动拔帽&清洁&端检工站；§3.2-5 自动拔帽模组 2 套'},
+
+{n:'③', act:'端面检测', cards:'工艺卡 4 MPO&FC 拔帽&端检&清洗（工位 4）',
+ what:'拔帽完成后，端检仪对每个端面逐一采集图像，判断端面是否存在脏污、划伤、凹陷等缺陷，并给出合格或不合格的结论。',
+ det:'FC 侧使用 ASTCHECK PRO 200KC 端面检测仪，整机配置 4 台，可覆盖 16 个 FC 端面；MPO 侧使用 MPO 自动端面检测与端检头，覆盖 1 个 MPO 端面，端检头整机配置 1 套。检测结果按端面逐条记录，并与该产品的二维码绑定后上传数据库，因此后续可以精确追溯到“哪一支产品的哪一个端面”在什么时间判了什么结果。',
+ basis:'§2.2 第 4 步；§2.1 在线检测仪表；§3.2-9 MPO 端检头 1 套'},
+
+{n:'④', act:'端面清洁', cards:'工艺卡 4 MPO&FC 拔帽&端检&清洗（工位 4）',
+ what:'被判为脏污的端面就在工位 4 原地清洁：FC 端面由端面清洗头配合端面清洗机清洁，MPO 端面由 MPO 端面清洗头配合擦拭盒清洁。清洁完成后立即复检，确认端面已经达到要求。',
+ det:'清洁耗材必须无腐蚀性、无残留，并且不得对光纤端面造成二次污染，这是技术协议 §6.1.2.2 的强制要求，不是可选项。清洁后复检仍不合格的产品不当场报废，而是流转到第 6 步再做一次处理：FC 端面做二次清洗，MPO 端面做二次擦拭。这样做的目的是把“可挽救”的脏污与“真缺陷”区分开，减少不必要的报废。',
+ basis:'§2.2 第 4 步；§6.1.2.2 清洁耗材要求；§2.1 端面清洗机 / 擦拭盒'},
+
+{n:'⑤', act:'回损测试', cards:'工艺卡 5 MPO&FC 自动插回损测试（工位 5）',
+ what:'载具被顶升模组提升到回损测试位，测试头自动插入：FC 端通过 FC 转 FC 延长线与仪表对接，MPO 端直接与仪表测试线做法兰连接，随后逐芯测量回损。',
+ det:'回损测试仪型号为 RLM1412A-1FA-24，整机配置 1 台。插接能否可靠到位，主要取决于载具托盘的两套机构：浮动机构在 XY 方向单边提供 0.5 毫米浮动量来吸收定位误差，缓冲机构在插歪时先让位、避免压伤端面。设备与测试板卡之间通过 OK、NG、完成、启动四路信号握手，保证测试节拍与产线同步，而不是各跑各的。',
+ basis:'§2.2 第 5 步；§2.3.1 信号交互；§2.3.2 仪表法兰对接'},
+
+{n:'⑥', act:'盖帽', cards:'工艺卡 6 MPO&FC 自动端检&清洁&盖帽&扫码（工位 6）',
+ what:'回损合格的产品在工位 6 先做一次端面复检，复检通过后由盖帽模组把第 2 步暂存的帽盖重新盖回端面，产品恢复到可交付状态。',
+ det:'盖帽之前必须再过一次端检，因为插拔测试有可能在端面上留下新的污染；复检不合格时 FC 端面走二次清洗、MPO 端面走二次擦拭，处理合格后再盖帽。盖帽模组的帽源就是载具托盘上的帽盖暂存位，帽子始终跟着这一盘产品走，因此不会出现不同批次帽盖混用的问题。',
+ basis:'§2.2 第 6 步；§2.1 FC / MPO 端面测试&清洗&盖帽工站'},
+
+{n:'⑦', act:'扫码', cards:'工艺卡 6 MPO&FC 自动端检&清洁&盖帽&扫码（工位 6）',
+ what:'盖帽完成后，设备扫描产品上的二维码，把这一盘产品的全部检测数据与该二维码绑定，并上传到数据库，完成追溯闭环。',
+ det:'扫码环节绑定的键值有两个：产品条码与载具条码，两者在上料时已经建立对应关系，因此数据既能按产品查，也能按载具查。软件自动保存每一批次的识别数据和测量数据，同时保存设备运行日志与异常日志，并支持以 CSV 格式导出。出现异常时，报警界面会直接显示异常工位和产品位置，方便操作员补录或排查，而不需要翻日志猜。',
+ basis:'§2.2 第 6 步；§1.5.2 扫码绑定；§2.1 数据管理与信息追溯'},
+
+{n:'⑧', act:'分拣下料', cards:'工艺卡 7 OK&NG 自动分拣位 · 8 测试 OK 物料缓存仓 2 · 9 测试 OK 物料缓存仓 1',
+ what:'系统依据端面检测与回损测试的结果自动判定合格或不合格。合格产品经 OK 品缓存仓暂存后进入缓存仓一，由操作员在人工下料位整盘取走；不合格产品由 NG 搬运模组搬运到 NG 缓存仓，等待人工处理。',
+ det:'判定完全由测试板卡回传的信号驱动，不需要人工判读，判定结果同时写入数据库。NG 产品通过磁吸锁附方式搬运，NG 缓存仓容量为 4 件；OK 品缓存仓整机配置 2 套、NG 缓存仓 1 套。出现异常时系统自动触发声光报警提示操作员干预，界面上同时显示各缓存仓的当前数量与位置，操作员一眼就能看出该取哪一盘、该处理哪一盘。',
+ basis:'§2.2 第 7~9 步；§1.3.4 自动判定能力；§2.1 异常处理与报警；§3.1-11~13 缓存仓配置'}
+];
+
+/* ===================== 2026-10-23 定稿: 9 张工艺卡的文字（老倪给的 PC-01~PC-09 描述原文，逐字同步） =====================
+   口径: 这里只放"字"，不动 scene/cam/kv/tags —— 三维布置与关键参数仍由各页自己的 CARDS 提供。
+   覆盖字段: pc(卡号) / owner(工位归属) / oacts(工艺动作) / det(详细描述, 一段一条) / basis(技术协议依据)。
+   为什么单独一块: /autoLight 与 /autoLight3d 两个页面共用同一份文字 ⇒ 改一次两边一致，不会各说一套。 */
+const CARD_TEXT={
+'1':{pc:'PC-01', owner:'上料', oacts:'人工上料、托盘锁附、推入缓存仓一',
+ desc:['操作员将装满来料的载具托盘放入人工放料位，推料模组将托盘推入待测物料缓存仓一。载具托盘通过两组磁吸板自动锁附，并由两个定位轴套保证重复定位精度；托盘上设置浮动机构，XY 方向单边保留 0.5 mm 余量，对插不准时由缓冲机构先退让，避免力直接作用在产品上。上料时系统扫描产品二维码与载具二维码，建立产品、载具、工位、结果的全链路追溯关系。每个动作均配置到位传感器，传感器具备闭环自检功能，检测失效时立即报警，防止设备在检测异常状态下继续动作。单载具托盘最多缓存 15 件。'],
+ basis:'§2.2 第 1~3 步；§2.1 人工取放堆叠架 / 载具托盘 / 扫码与数据绑定；§3.1-4 整机 2 套'},
+
+'2':{pc:'PC-02', owner:'上料', oacts:'缓存仓一满载后转存、移栽至主流线',
+ desc:['待测物料缓存仓一满载后，托盘由缓存仓一推入待测物料缓存仓二；随后由缓存仓二移栽模组将载具送入主流线载具缓存位。该工位承接缓存仓一的下料动作，保证来料连续供应，避免上游人工上料节拍影响主线运行。到位传感器持续监控托盘位置与状态，传感器自检异常时触发报警并暂停流转。'],
+ basis:'§2.2 第 1~3 步；§2.1 人工取放堆叠架 / 载具托盘 / 扫码与数据绑定；§3.1-4 整机 2 套'},
+
+'3':{pc:'PC-03', owner:'上料', oacts:'顶升交接、分离接料、进入自动化主线',
+ desc:['主流线顶升模组将载具提升至交接高度，分离模组伸出完成接料，载具由此正式进入自动化流转。上料阶段已建立的产品二维码与载具二维码绑定关系在本工位继续沿用，确保后续检测、测试、分拣数据均可追溯至具体产品与载具。传感器闭环自检持续生效，交接异常时系统报警并等待人工确认。'],
+ basis:'§2.2 第 1~3 步；§2.1 人工取放堆叠架 / 载具托盘 / 扫码与数据绑定；§3.1-4 整机 2 套'},
+
+'4':{pc:'PC-04', owner:'工位 4', oacts:'自动拔帽、端面检测、端面清洁、清洁后复检',
+ desc:['载具到达工位 4 后，自动拔帽模组将 FC 端金属帽和 MPO 端防尘帽取下，端面暴露后等待检测。自动拔帽模组整机配置 2 套，FC 侧一次处理 16 个端面，MPO 侧处理 1 个端面；拔帽动作由 Y 轴定位到端面正前方后沿轴向退出，避免斜向受力损伤插芯。取下的帽盖不落地，直接放回载具托盘上的帽盖暂存位，确保后续盖帽时帽盖仍对应原产品，避免串盘、混料。',
+       '端检环节对每个端面逐一采集图像，判断是否存在脏污、划伤、凹陷等缺陷。FC 侧使用 ASTCHECK PRO 200KC 端面检测仪，整机配置 4 台，覆盖 16 个 FC 端面；MPO 侧使用 MPO 自动端面检测端检头，整机配置 1 套。检测结果按端面逐条记录，并与产品二维码绑定后上传数据库，可精确追溯至“哪一支产品的哪一个端面”在何时判为何种结果。',
+       '被判为脏污的端面在工位 4 原地清洁：FC 端面由端面清洗头配合端面清洗机清洁，MPO 端面由 MPO 端面清洗头配合擦拭盒清洁。清洁耗材须满足无腐蚀性、无残留、不造成二次污染的要求，并按 §6.1.2.2 执行。清洁后立即复检，复检仍不合格的产品不当场报废，而是流转至后续二次处理：FC 端面二次清洗，MPO 端面二次擦拭，以区分可挽救脏污与真实缺陷，减少不必要报废。'],
+ basis:'§2.2 第 4 步；§2.1 FC / MPO 自动拔帽&清洁&端检工站；§2.1 在线检测仪表；§2.1 端面清洗机 / 擦拭盒；§3.2-5 自动拔帽模组 2 套；§3.2-9 MPO 端检头 1 套；§6.1.2.2 清洁耗材要求'},
+
+'5':{pc:'PC-05', owner:'工位 5', oacts:'顶升定位、自动插接、逐芯回损测试、信号握手',
+ desc:['载具由顶升模组提升至回损测试位，测试头自动插入：FC 端通过 FC 转 FC 延长线与仪表对接，MPO 端直接与仪表测试线做法兰连接，随后逐芯测量回损。回损测试仪型号为 RLM1412A-1FA-24，整机配置 1 台。',
+       '插接可靠性由载具托盘的浮动机构和缓冲机构共同保证：浮动机构在 XY 方向单边提供 0.5 mm 浮动量，吸收定位误差；缓冲机构在插偏时先让位，避免压伤端面。设备与测试板卡之间通过 OK、NG、完成、启动四路信号握手，确保测试节拍与产线同步，避免测试与流转各自独立运行。'],
+ basis:'§2.2 第 5 步；§2.3.1 信号交互；§2.3.2 仪表法兰对接'},
+
+'6':{pc:'PC-06', owner:'工位 6', oacts:'端面复检、二次清洁、盖帽、扫码绑定、数据上传',
+ desc:['回损合格的产品在工位 6 先进行端面复检，因为插拔测试可能在端面上留下新的污染。复检通过后，由盖帽模组将暂存在载具托盘上的帽盖重新盖回端面，产品恢复至可交付状态。复检不合格时，FC 端面进行二次清洗，MPO 端面进行二次擦拭，处理合格后再盖帽。',
+       '盖帽模组的帽源来自载具托盘上的帽盖暂存位，帽盖始终跟随本盘产品流转，不会出现不同批次帽盖混用的问题。盖帽完成后扫描产品二维码，将本盘产品的全部检测数据与产品条码、载具条码绑定并上传数据库，实现按产品和按载具双向追溯。软件自动保存每一批次的识别数据、测量数据、设备运行日志和异常日志，并支持以 CSV 格式导出。出现异常时，报警界面直接显示异常工位和产品位置，便于操作员补录或排查。'],
+ basis:'§2.2 第 6 步；§2.1 FC / MPO 端面测试&清洗&盖帽工站；§1.5.2 扫码绑定；§2.1 数据管理与信息追溯'},
+
+'7':{pc:'PC-07', owner:'工位 7', oacts:'自动判定、OK/NG 分流、NG 搬运、异常报警',
+ desc:['系统依据端面检测与回损测试结果自动判定合格或不合格，判定完全由测试板卡回传信号驱动，无需人工判读，判定结果同时写入数据库。合格产品进入 OK 品缓存流转，不合格产品由 NG 搬运模组搬运至 NG 缓存仓；NG 产品采用磁吸锁附方式搬运。异常时系统自动触发声光报警，界面显示各缓存仓当前数量与位置，便于操作员识别处理对象。'],
+ basis:'§2.2 第 7~9 步；§1.3.4 自动判定能力；§2.1 异常处理与报警；§3.1-11~13 缓存仓配置'},
+
+'8':{pc:'PC-08', owner:'工位 8', oacts:'OK 品中间缓存、状态监控',
+ desc:['合格产品经 OK 品缓存仓暂存后进入测试 OK 物料缓存仓 2，作为 OK 品下料前的中间缓存。该缓存仓用于缓冲主线节拍与人工下料节拍之间的差异，避免产线因下料不及时而停线。缓存仓状态纳入系统监控，界面实时显示当前数量与位置，操作员可直观判断取料对象。OK 品缓存仓整机配置 2 套。'],
+ basis:'§2.2 第 7~9 步；§2.1 异常处理与报警；§3.1-11~13 缓存仓配置'},
+
+'9':{pc:'PC-09', owner:'工位 9', oacts:'OK 品终缓存、人工整盘下料',
+ desc:['测试 OK 物料缓存仓 2 暂存后，合格产品进入测试 OK 物料缓存仓 1；操作员在人工下料位整盘取走合格载具。该工位为 OK 品流转的最终缓存节点，承载人工取料动作。NG 缓存仓整机配置 1 套，容量为 4 件，用于暂存不合格产品并等待人工处理。系统持续监控缓存仓状态，异常时触发声光报警并提示操作员干预。'],
+ basis:'§2.2 第 7~9 步；§2.1 异常处理与报警；§3.1-11~13 缓存仓配置'}
+};
+CARDS.forEach(c=>{
+  const t=CARD_TEXT[String(c.n)];
+  if(!t) return;
+  c.pc=t.pc; c.owner=t.owner; c.oacts=t.oacts;
+  c.det=t.desc.slice();          // 详细描述 = 定稿 9 段(一段一条), 原文逐字
+  c.desc=t.desc.slice();
+  c.basis=t.basis;
+});
+
+CARDS.forEach(c=>{
+  const a=document.createElement('a');
+  a.href='#c'+c.n; a.textContent=c.n+' · '+c.title.replace(/（.*/,'');
+  NAV.appendChild(a);
+
+  const el=document.createElement('div');
+  el.className='card'; el.id='c'+c.n;
+  el.innerHTML=
+    '<div class="top"><span class="no">'+c.n+'</span><h2>'+c.title+'</h2>'+
+      '<span class="prog">'+Array.from({length:9},(_,i)=>{ 
+         const cur=(+c.n===i+1); return '<i class="'+(cur?'cur':(+c.n>i+1?'on':''))+'"></i>'; }).join('')+'</span>'+
+      '<span class="stage">'+c.stage+'</span>'+
+      '<button class="mini" data-doc="'+c.n+'" title="只导出这张卡">⬇ Word</button></div>'+
+    '<div class="view"><canvas></canvas><span class="badge">3D · 拖拽</span>'+
+      '<span class="hint">拖拽旋转 · 滚轮缩放</span></div>'+
+    '<div class="body">'+
+      '<div><div class="sec">工位归属 · 工艺动作</div><div class="meta">'+
+        '<span class="k">'+(c.pc||('PC-0'+c.n))+'</span><b>'+(c.owner||'—')+'</b>'+
+        '<span class="sep">|</span>'+(c.oacts||c.act.replace(/<[^>]+>/g,''))+'</div></div>'+
+      '<div><div class="sec">动作分解</div><div class="act">'+c.act+'</div></div>'+
+      '<div><div class="sec">详细描述</div><ul class="det">'+
+        (c.desc||c.det).map(d=>'<li>'+d+'</li>').join('')+'</ul></div>'+
+      '<div class="kv">'+c.kv.map(k=>'<span>'+k[0]+'</span><span>'+k[1]+'</span>').join('')+'</div>'+
+      '<div class="tags">'+c.tags.map((x,i)=>'<span class="tag'+(i===0?' t':'')+'">'+x+'</span>').join('')+'</div>'+
+      (String(c.n)==='1'?'<div class="fn" style="border-left:2px solid #d29922;padding-left:8px">🧩 已进入状态空间工程：场景 <b>SCN-08-AL1</b>（上料缓存场景 · 琥珀 #d29922）· 任务 <b>TASK-08-AL1</b>（上料缓存·载具搬运取放 · 段 4 · 参数覆盖 8）</div>':'')+      '<div class="fn">技术协议依据：'+(c.basis||('§2.2 第 '+c.n+' 步；§2.1 指标；§2.3 对接信号；§3 硬件配置'))+'。三维按模块关系 1:1 布置示意，不替代施工图</div>'+
+    '</div>';
+  WRAP.appendChild(el);
+
+  const v=new View(el.querySelector('canvas'),c.cam);
+  v.scene=c.scene; v.card=c.n; v.focus=FOCUS[c.n];
+  views.push(v);
+});
+
+const io=new IntersectionObserver(es=>{
+  es.forEach(e=>{
+    const v=views.find(x=>x.cv===e.target);
+    if(v) v.visible=e.isIntersecting;
+  });
+},{rootMargin:'200px'});
+views.forEach(v=>{ v.visible=true; io.observe(v.cv); });
+
+/* #cN 锚点: 打开链接 / 改 hash 都定位到第 N 张卡 */
+function goHash(smooth){
+  const m=/^#c(\d+)$/.exec(location.hash||''); if(!m) return false;
+  const el=document.getElementById('c'+m[1]); if(!el) return false;
+  el.scrollIntoView({behavior:smooth?'smooth':'auto',block:'start'}); return true;
+}
+addEventListener('hashchange',()=>goHash(true));
+if(!goHash(false)) setTimeout(()=>goHash(false),60);
+
+const bSpin=document.getElementById('bSpin'), bPlay=document.getElementById('bPlay'), bLbl=document.getElementById('bLbl');
+bSpin.onclick=()=>{ const on=bSpin.classList.toggle('on'); views.forEach(v=>v.spin=on?0.10:0); };
+bPlay.onclick=()=>{ const on=bPlay.classList.toggle('on'); views.forEach(v=>{v.playing=on; if(on)v._frozen=null;}); };
+bLbl.onclick=()=>{ const on=bLbl.classList.toggle('on'); views.forEach(v=>v.labels=on); };
+
+/* ===================== 主循环 ===================== */
+let T0=performance.now(), nFrames=0, fps=60, lastFpsT=T0, lastNow=T0;
+function loop(now){
+  const dt=Math.min(0.1,(now-lastNow)/1000); lastNow=now;
+  const t=(now-T0)/1000;
+  nFrames++;
+  if(now-lastFpsT>500){ fps=nFrames*1000/(now-lastFpsT); nFrames=0; lastFpsT=now; }
+  for(const v of views){
+    if(v.visible===false) continue;
+    v.resize(); v.cam();
+    if(v.spin) v.yaw+=v.spin*dt;
+    let tt=t;
+    if(!v.playing){ if(v._frozen==null) v._frozen=t; tt=v._frozen; }
+    v.LQ.length=0; v.TQ.length=0;
+    (v.scene||function(){})(v,tt);
+    v.paint();
+  }
+  requestAnimationFrame(loop);
+}
+views.forEach(v=>{ v.resize(); v.fit(v.focus); });
+window.addEventListener('resize',()=>{ views.forEach(v=>{ v.resize(); v.fit(v.focus); }); });
+requestAnimationFrame(loop);
+
+/* ---------- 导出 Word（一键） ---------- */
+// 内容唯一依据就是这个页面的 CARDS：把卡片文字 + 当前视角的 canvas 截图 POST 给 8797,
+// 服务端 tools/autolight_docx.py 用 python-docx 排版返回 .docx
+const bDoc=document.getElementById('bDoc'), TIP=document.getElementById('tip');
+const TIP0=TIP.textContent;
+let tipTimer=null;
+function tip(msg,ms){
+  TIP.textContent=msg; clearTimeout(tipTimer);
+  tipTimer=setTimeout(()=>{TIP.textContent=TIP0;}, ms||7000);
+}
+function fnOf(c){
+  // 2026-10-23: 导出 Word 的页脚也走定稿依据, 与页面右侧显示同一句(不再各写一套)
+  return '技术协议依据：'+(c.basis||('§2.2 第 '+c.n+' 步；§2.1 指标；§2.3 对接信号；§3 硬件配置'))
+    +'。三维按模块关系 1:1 布置示意，不替代施工图';
+}
+function snapOne(c){
+  const v=views.find(x=>x.card===c.n);
+  if(!v) return '';
+  try{
+    v.resize(); v.cam();
+    const t=(performance.now()-T0)/1000;
+    v.LQ.length=0; v.TQ.length=0; v.scene(v,t); v.paint();
+    return v.cv.toDataURL('image/png');
+  }catch(e){ return ''; }
+}
+async function exportDocx(no){
+  const list=no ? CARDS.filter(c=>c.n===String(no)) : CARDS;
+  const btn=no ? document.querySelector('button[data-doc="'+no+'"]') : bDoc;
+  const old=btn.textContent;
+  btn.disabled=true; btn.textContent='导出中…';
+  try{
+    const payload={
+      meta:{ts:new Date().toLocaleString('zh-CN'), url:location.href},
+      // 2026-10-23: 卡片带上 pc/工位归属/工艺动作/详细描述段落/依据; 另附「动作⇄工艺卡」表给 Word 附表
+      cards:list.map(c=>({n:c.n,pc:c.pc||'',title:c.title,stage:c.stage,act:c.act,
+        owner:c.owner||'',oacts:c.oacts||'',
+        det:c.det,desc:c.desc||c.det,kv:c.kv,tags:c.tags,fn:fnOf(c),basis:c.basis||'',img:snapOne(c)})),
+      acts:(!no && typeof ACTCARD!=='undefined')?ACTCARD:[]   // 单卡导出不附全量对照表
+    };
+    const r=await fetch('/api/autolight/docx',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    if(!r.ok){
+      let t=''; try{ t=await r.text(); }catch(e){}
+      throw new Error('HTTP '+r.status+' '+t.slice(0,160));
+    }
+    const blob=await r.blob();
+    const stamp=new Date().toISOString().slice(0,19).replace(/[-:T]/g,'');
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='工艺卡_'+(no?('第'+no+'卡'):(list.length+'卡'))+'_'+stamp+'.docx';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+    tip('✅ 已导出 '+(no?('第 '+no+' 张'):(list.length+' 张'))+'工艺卡：'+a.download+
+        '（'+(blob.size/1024).toFixed(0)+' KB，含三维截图）');
+  }catch(e){
+    tip('❌ 导出失败：'+((e&&e.message)||e)+' —— 若服务端刚改过代码需重启 zmax-traj-ar',12000);
+  }finally{
+    btn.disabled=false; btn.textContent=old;
+  }
+}
+bDoc.onclick=()=>exportDocx();
+document.addEventListener('click',ev=>{
+  const b=ev.target.closest?ev.target.closest('button[data-doc]'):null;
+  if(b) exportDocx(b.getAttribute('data-doc'));
+});
+
+/* 取证接口 */
+window.__AL={
+  ready:true, version:'autoLight-cards-3',
+  cards:()=>CARDS.map(c=>({n:c.n,title:c.title,stage:c.stage,det:c.det.length,kv:c.kv.length,tags:c.tags.length})),
+  views:()=>views.map(v=>({card:v.card,W:v.W,H:v.H,faces:v.LQ.length,labels:v.drawn||0,visible:v.visible!==false})),
+  fps:()=>Math.round(fps),
+  scrollTo:n=>{ const el=document.getElementById('c'+n); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); }
+};
+</script>
+<script>
+/* 📄 技术协议: 点击 → 让**工位机桌面**把 Word 唯一依据打开(文件在 zmax_data/agreements/) */
+async function openAgreement(btn){
+  const o=btn?btn.textContent:'';
+  if(btn){ btn.disabled=true; btn.textContent='打开中…'; }
+  try{
+    const info=await (await fetch('/api/agreement')).json();
+    if(!info.exists){
+      if(btn) btn.textContent='没放文件';
+      alert('还没有技术协议文件。\n请把 Word 版放进：\n'+info.dir+
+            '\n\n（.docx/.doc/.pdf 都行，放好后不用重启，再点这个按钮即可）');
+    }else{
+      const r=await (await fetch('/agreement/open',{method:'POST',
+        headers:{'Content-Type':'application/json'},body:'{}'})).json();
+      if(btn) btn.textContent = r.ok ? ('已打开 · '+(r.how||'桌面')) : '打开失败';
+      if(!r.ok) alert('打开失败：'+(r.err||'')+'\n文件：'+(r.path||''));
+    }
+  }catch(e){ if(btn) btn.textContent='打开失败'; alert('打开失败：'+e); }
+  if(btn) setTimeout(()=>{ btn.textContent=o; btn.disabled=false; },4000);
+}
+</script>
+</body>
+</html>

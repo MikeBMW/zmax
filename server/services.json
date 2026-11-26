@@ -1,0 +1,55 @@
+{
+  "schema": "zmax.services.v1",
+  "version": "5.50.786",
+  "updated": "2026-11-26",
+  "note": "状态空间工程 · 标准服务清册。单一真源：本文件。所有服务的端口/脚本/所在机器/L层归属以这里为准。",
+  "hosts": {
+    "station": {"name": "工位机 4060 (Windows)", "ip": "192.168.23.100", "reachable": true},
+    "intel":   {"name": "Intel 550C (Ubuntu)", "ip": "192.168.23.70",  "reachable": true},
+    "orin":    {"name": "Orin 边缘 (Ubuntu)",  "ip": "192.168.23.66",  "reachable": true},
+    "aoi":     {"name": "工控机 AOI (Windows)", "ip": "192.168.23.23",  "reachable": true}
+  },
+  "layers": {
+    "L1": "机器人接口 (执行器 · 动作收口 · 安全边界 · 物理世界)",
+    "L2": "基础功能 (分段感知 · 融合 · 小模型控制 · 状态机 · 原子技能)",
+    "L3": "连续功能 (长程序列规划 · 技能编排 · 海马体记忆 · VLM+Flow-Matching)",
+    "L4": "自主安全功能 (工作安全 · 物理世界导航 · 流形世界模型 · 筹划)",
+    "L5": "场景理解 + 自动标注 (大模型层 · 任务/编排/记忆中枢)"
+  },
+  "systems": {
+    "S2": {"name": "系统2 慢思考 (大模型/世界模型/规划)", "layers": ["L5", "L4"], "cadence": "1~10 Hz"},
+    "S1": {"name": "系统1 快反应 (技能执行/流形/连续控制)", "layers": ["L3", "L2"], "cadence": "10~100 Hz"},
+    "S0": {"name": "系统0 反射 (执行器/安全/物理闭环)", "layers": ["L1"], "cadence": "200~1000 Hz"}
+  },
+  "services": [
+    {"id": "cam_live",       "name": "工位总览 · 相机六路",   "port": 8793, "script": "cam_live_stream.py",     "host": "station", "system": "S0", "layers": ["L1", "L2"], "health": "/station/status", "hw": ["臂相机", "AOI金手指相机", "AOI表面相机"], "note": "8791 media 基址已并入同端口"},
+    {"id": "tcp_ar",         "name": "AR 3D · 位姿桥",       "port": 8797, "script": "tcp_ar_server.py",       "host": "station", "system": "S1", "layers": ["L3"], "health": "/api/tcp",       "hw": ["Orin 192.168.23.66:39061", "珞石控制器 192.168.23.160"], "note": "位姿真源 = Orin endInRef"},
+    {"id": "dashboard",      "name": "产品大屏 · 全局汇总",   "port": 8799, "script": "dashboard_server.py",    "host": "station", "system": "S2", "layers": ["L5"], "health": "/api/services", "hw": [], "note": "汇总所有标准服务状态"},
+    {"id": "ar_scene",       "name": "AR 场景渲染",          "port": 8802, "script": "ar_scene_render_server.py", "host": "station", "system": "S1", "layers": ["L4"], "health": "/health", "hw": ["GPU RTX 4060"], "note": "物理 hz 50"},
+    {"id": "agent_hub",      "name": "Agent 中枢",           "port": 8794, "script": "agent_hub.py",           "host": "station", "system": "S2", "layers": ["L5"], "health": "/agent/log", "hw": [], "note": ""},
+    {"id": "arm_yolo",       "name": "臂相机 YOLO 叠加流",    "port": 8898, "script": "arm_yolo_stream.py",     "host": "station", "system": "S0", "layers": ["L2"], "health": "/arm_yolo.jpg", "hw": ["臂相机"], "note": "工位页 i_arm 源"},
+    {"id": "orin_pose",      "name": "Orin 位姿中继",         "port": 8796, "script": "orin_pose_relay.py",     "host": "station", "system": "S0", "layers": ["L1"], "health": "/status", "hw": ["Orin"], "note": "Orin SDK → latest.json"},
+    {"id": "orin_mjpeg",     "name": "Orin MJPEG 取流",       "port": 8798, "script": "orin_mjpeg_server.py",   "host": "station", "system": "S0", "layers": ["L1"], "health": "/status", "hw": ["Orin"], "note": ""},
+    {"id": "ss_infer",       "name": "状态空间本地推理",      "port": 8810, "script": "ss_local_infer_server.py", "host": "station", "system": "S1", "layers": ["L2"], "health": "/health", "hw": ["GPU"], "note": ""},
+    {"id": "peg_pose",       "name": "插拔位姿服务",          "port": 8806, "script": "peg_pose_server.py",     "host": "station", "system": "S1", "layers": ["L1"], "health": "/health", "hw": ["臂相机"], "note": "SK01-08 原子技能"},
+    {"id": "se3_geom",       "name": "SE3 几何服务",          "port": 8804, "script": "se3_geom_server.py",     "host": "station", "system": "S1", "layers": ["L4"], "health": "/health", "hw": [], "note": ""},
+    {"id": "cy_slice",       "name": "Calabi-Yau 流形切片",   "port": 8805, "script": "cy_slice_server.py",     "host": "station", "system": "S1", "layers": ["L4"], "health": "/health", "hw": [], "note": "genus 6 · tris 13680"},
+    {"id": "fw_render",      "name": "前馈渲染服务",          "port": 8803, "script": "fw_render_server.py",    "host": "station", "system": "S1", "layers": ["L4"], "health": "/health", "hw": [], "note": ""},
+    {"id": "l2_watch",       "name": "L2 过程监控",           "port": 8807, "script": "l2_watch_server.py",     "host": "station", "system": "S1", "layers": ["L2"], "health": "/health", "hw": [], "note": ""},
+    {"id": "mod_overlay",    "name": "模块叠加服务",          "port": 8808, "script": "mod_overlay_server.py",  "host": "station", "system": "S1", "layers": ["L2"], "health": "/health", "hw": [], "note": ""},
+    {"id": "ros_depth",      "name": "ROS 深度流",            "port": 8809, "script": "ros_depth_stream.py",    "host": "station", "system": "S0", "layers": ["L1"], "health": "/status", "hw": ["深度相机"], "note": ""},
+    {"id": "cam_guard",      "name": "相机流守卫",            "port": 0,    "script": "cam_stream_guard.py",    "host": "station", "system": "S0", "layers": ["L1"], "health": "", "hw": [], "note": "常驻守护，不占端口"},
+    {"id": "hw_upload",      "name": "硬件数据上载中继",       "port": 8811, "script": "hw_upload_relay.py",     "host": "station", "system": "S2", "layers": ["L5"], "health": "/status", "hw": [], "note": ""},
+    {"id": "relay_train",    "name": "训练中继",              "port": 8813, "script": "relay_train.py",         "host": "station", "system": "S2", "layers": ["L5"], "health": "/status", "hw": ["GPU"], "note": ""},
+    {"id": "ws_chat",        "name": "对话 WebSocket",        "port": 8814, "script": "ws_chat_server.py",      "host": "station", "system": "S2", "layers": ["L5"], "health": "/health", "hw": [], "note": ""},
+
+    {"id": "gs_render",      "name": "3DGS 实时渲染推流",     "port": 8816, "script": "gs_render_stream_intel.py", "host": "intel", "system": "S1", "layers": ["L4"], "health": "/", "hw": ["Intel XPU"], "note": "packed=False 才不崩；21.9万高斯"},
+    {"id": "intel_cam",      "name": "Intel 相机中继",        "port": 8901, "script": "", "host": "intel", "system": "S0", "layers": ["L1"], "health": "", "hw": ["Intel 相机"], "note": "zmax-cam-relay.service"},
+    {"id": "intel_relay",    "name": "Intel 中继",            "port": 39053, "script": "", "host": "intel", "system": "S0", "layers": ["L1"], "health": "", "hw": [], "note": "zmax-relay.service"},
+    {"id": "intel_pose",     "name": "Intel 位姿真值中继",     "port": 0, "script": "arm_pose_relay_intel.py", "host": "intel", "system": "S0", "layers": ["L1"], "health": "", "hw": ["station:8797"], "note": "arm-pose-relay.service → /tmp/arm_tcp_pose.json"},
+    {"id": "orin_cam",       "name": "Orin 相机帧",           "port": 8792, "script": "", "host": "orin", "system": "S0", "layers": ["L1"], "health": "/frame.jpg", "hw": ["Orin 相机"], "note": "8794 另有相机帧口"},
+    {"id": "orin_ctrl",      "name": "Orin 位姿/控制桥",      "port": 39061, "script": "", "host": "orin", "system": "S0", "layers": ["L1"], "health": "/status", "hw": ["珞石控制器"], "note": "endInRef 5Hz"},
+    {"id": "aoi_gold",       "name": "AOI 金手指检测",        "port": 10082, "script": "", "host": "aoi", "system": "S1", "layers": ["L2"], "health": "/last_result", "hw": ["AOI 金手指相机"], "note": ""},
+    {"id": "aoi_surface",    "name": "AOI 表面检测",          "port": 10083, "script": "", "host": "aoi", "system": "S1", "layers": ["L2"], "health": "/last_result", "hw": ["AOI 表面相机"], "note": ""}
+  ]
+}
