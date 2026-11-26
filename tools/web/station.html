@@ -136,6 +136,15 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 640px;gap:12px;padding:12p
 /* 🎯 金手指 / 侧面点 的 标记·运动 双模式条 (2026-10-12 老倪) —— 与空间点同款按钮, 各换一套配色:
    金手指=蓝(与回点按钮同色系) · 侧面点=绿(准备点=安全退让位同色); 列数自适应(2~4 个按钮不拉成 7 列)。 */
 #goldbar,#sidebar{grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}
+/* 🔴 2026-11-26 老倪: 金手指/表面检测窗口下面的「请求终端」 */
+.term{background:#05080c;border:1px solid #1e2740;border-radius:6px;margin:5px 10px 2px;
+  height:88px;overflow-y:auto;font:11px/1.55 ui-monospace,Consolas,monospace;
+  padding:5px 8px;color:#8b9ab0;scrollbar-width:thin}
+.term .tl{white-space:pre;overflow:hidden;text-overflow:ellipsis}
+.term .t{color:#5f6d82}
+.term .ok{color:#3fb950}
+.term .bad{color:#f85149}
+.term .dim{color:#4a5568}
 #goldbar button.rec{background:#0f2f52;border-color:#1f6feb;color:#cfe4ff}
 #goldbar button.rec:hover:not(:disabled){background:#164a80}
 #goldbar button.norec{background:#12161c;border-color:#2a3038;color:#8b949e}
@@ -453,6 +462,11 @@ var HTML_VER="__HTMLVER__";</script>
     <div class="panel" style="order:5"><div class="cap"><span class="ttl">🔍 金手指检测 (工控机 10082)</span>
       <span class="meta" id="m_aoi_gold">…</span></div>
       <img id="i_aoi_gold" data-mode="mjpg" data-src="/aoi_gold.mjpg">
+      <!-- 🔴 2026-11-26 老倪: 「在金手指和表面检测这两个窗口下面增加一个终端, 记录是否有请求」
+           读 8793 的 /api/aoi/log?port=10082 —— 数据源是服务端 _aoi_note() 里的环形缓冲,
+           每次拉图/检测/取参都会留一条(时间/成败/HTTP/KB/种类/错误)。
+           作用: 「图没了」时一眼分清是"根本没人请求"还是"请求了但失败"。 -->
+      <div class="term" id="term_gold" title="金手指(10082) 请求流水 —— 最近 120 条, 1.5 秒刷新"><div class="tl dim">（等待请求…）</div></div>
       <div class="row" style="padding:6px 10px 2px"><span class="seg" id="gview">
         <button data-stream="/aoi_gold.mjpg" class="on">规整图</button>
         <button data-stream="/aoi_gold_raw.mjpg">原图</button></span>
@@ -682,6 +696,8 @@ var HTML_VER="__HTMLVER__";</script>
     <div class="panel" style="order:6"><div class="cap"><span class="ttl">🔍 表面检测 (工控机 10083)</span>
       <span class="meta" id="m_aoi_surface">…</span></div>
       <img id="i_aoi_surface" data-mode="mjpg" data-src="/aoi_surface.mjpg">
+      <!-- 🔴 2026-11-26 老倪: 表面检测(10083) 同款请求终端 —— 与金手指那格同一份实现 -->
+      <div class="term" id="term_surface" title="表面检测(10083) 请求流水 —— 最近 120 条, 1.5 秒刷新"><div class="tl dim">（等待请求…）</div></div>
       <div class="row" style="padding:6px 10px 2px"><span class="seg" id="sview">
         <button data-stream="/aoi_surface.mjpg" class="on">规整图</button>
         <button data-stream="/aoi_surface_raw.mjpg">原图</button></span></div>
@@ -2072,6 +2088,35 @@ async function loadSlots(){
 }
 /* 2026-10-12 老倪「延迟太大, 得快速反馈」: 状态轮询 1.5s → 0.7s(页面感知延迟主要来自这里) */
 poll(); setInterval(poll,700);
+
+/* 🔴 2026-11-26 老倪: 「在金手指和表面检测这两个窗口下面增加一个终端, 记录是否有请求」
+   数据源 = 8793 的 /api/aoi/log?port=NNNNN → 服务端 _aoi_note() 的环形缓冲(最近 120 条)。
+   为什么需要它: 图没了的时候分不清是「工控机根本没被叫」(机器人在别处/没到检测位)
+   还是「叫了但失败」(相机卡住/超时/曝光坏) —— 这两件事的处置完全不同。
+   工控机 OPT 只在检测/拍照时留图, 闲着时取就是 404「尚无照片」, 所以"没请求"是常态, 不是故障。 */
+async function aoiTermTick(port, elId){
+  try{
+    const r = await fetch(_u('/api/aoi/log?port='+port+'&n=20'), {cache:'no-store'});
+    const d = await r.json();
+    const box = document.getElementById(elId);
+    if(!box || !d || !d.ok) return;
+    const rows = (d.lines||[]).map(function(x){
+      const st  = (x.ok===true)?'✓':((x.ok===false)?'✗':'-');
+      const cls = (x.ok===false)?'bad':((x.ok===true)?'ok':'');
+      const http= (x.http!=null)?(' '+x.http):'';
+      const kb  = (x.kb!=null)?(' '+x.kb+'KB'):'';
+      const kind= x.kind?(' '+x.kind):'';
+      const tail= x.err?('  '+x.err):(x.verdict?('  '+x.verdict):'');
+      return '<div class="tl"><span class="t">'+x.hhmmss+'</span> <span class="'+cls+'">'+st+'</span>'
+             +http+kb+kind+tail+'</div>';
+    }).join('');
+    const atBottom = (box.scrollTop + box.clientHeight) >= (box.scrollHeight - 24);
+    box.innerHTML = rows || '<div class="tl dim">（还没有请求 —— 工控机只在被叫时才出图）</div>';
+    if(atBottom) box.scrollTop = box.scrollHeight;
+  }catch(e){}
+}
+function aoiTermAll(){ aoiTermTick(10082,'term_gold'); aoiTermTick(10083,'term_surface'); }
+aoiTermAll(); setInterval(aoiTermAll, 1500);
 /* ── 右上角实时位姿 HUD 的**单独快轮询** (250ms) ─────────────────────────────
    2026-10-01 老倪: 右上角要实时显示 x y z a b c。整页 /station/status 是聚合重接口(还查工控机
    两站 AOI), 保持 1.5s 不动; HUD 走 /pose 专用轻量端点(服务端与 tcp 字段同一个 _rokae_pose(),

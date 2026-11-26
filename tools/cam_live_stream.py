@@ -3115,11 +3115,37 @@ def _slim(o, max_items: int = 64, max_depth: int = 6):
     return o
 
 
+_AOI_LOG = {}             # 2026-11-26: port → deque[(hhmmss, ok, http, kb, kind, err)]
+_AOI_LOG_MAX = 120        # 每路最近 120 条请求（约 1-2 分钟，1~2Hz 拉图）
+
+
 def _aoi_note(port: int, **kw) -> None:
     with _AOI_LOCK:
         d = _AOI_INFO.setdefault(port, {})
         d.update({k: _slim(v) for k, v in kw.items()})       # ⚠️ 一律瘦身后再进状态(页面轮询很轻)
         d["t"] = time.time()
+        # 🔴 2026-11-26 老倪: 「在金手指和表面检测这两个窗口下面增加一个终端, 记录是否有请求」
+        #   所有 AOI 状态更新都从 _aoi_note 进来(拉图/检测/取参), 所以这里是唯一记录点,
+        #   不需要在十几个调用点各埋一遍。环形缓冲, 只留最近 N 条, 不涨内存。
+        try:
+            from collections import deque as _dq
+            q = _AOI_LOG.get(int(port))
+            if q is None:
+                q = _dq(maxlen=_AOI_LOG_MAX)
+                _AOI_LOG[int(port)] = q
+            q.append({
+                "ts": round(time.time(), 3),
+                "hhmmss": time.strftime("%H:%M:%S", time.localtime()),
+                "ok": (bool(kw.get("ok")) if "ok" in kw else None),
+                "http": kw.get("http"),
+                "kb": round(float(kw.get("kb") or 0), 1) if kw.get("kb") is not None else None,
+                "kind": (str(kw.get("kind") or ""))[:16],
+                "src": (str(kw.get("src") or ""))[:20],
+                "verdict": (str(kw.get("verdict") or ""))[:60],
+                "err": (str(kw.get("err") or ""))[:90],
+            })
+        except Exception:                                                          # noqa: BLE001
+            pass
 
 
 # 2026-10-12 老倪: 「侧面检测的曝光太大了，你能改么？」—— 实测结论(见 docs/): 真降曝光会让表面判据 v12.1
@@ -6554,6 +6580,28 @@ class Handler(BaseHTTPRequestHandler):
                     except ValueError:
                         _p = 10082
             self._send(200, "application/json; charset=utf-8", _jbytes(_aoi_last_result(_p)))
+        elif p in ("/api/aoi/log", "/aoi/log"):
+            # 🔴 2026-11-26 老倪: 「在金手指和表面检测这两个窗口下面增加一个终端, 记录是否有请求」
+            #   数据源 = _aoi_note() 里那个环形缓冲(所有拉图/检测/取参都从那儿过)。
+            #   只读, 不改任何状态。
+            _lp, _ln = 10082, 40
+            for _kv in (self.path.split("?", 1)[1] if "?" in self.path else "").split("&"):
+                if _kv.startswith("port="):
+                    try:
+                        _lp = int(_kv.split("=", 1)[1])
+                    except ValueError:
+                        _lp = 10082
+                elif _kv.startswith("n="):
+                    try:
+                        _ln = max(1, min(_AOI_LOG_MAX, int(_kv.split("=", 1)[1])))
+                    except ValueError:
+                        _ln = 40
+            with _AOI_LOCK:
+                _lq = list(_AOI_LOG.get(_lp) or [])
+                _live = dict(_AOI_INFO.get(_lp) or {})
+            self._send(200, "application/json; charset=utf-8",
+                       _jbytes({"ok": True, "port": _lp, "n_all": len(_lq),
+                                "now": _live, "lines": _lq[-_ln:]}))
         elif p == "/aoi/status":
             with _AOI_LOCK:
                 d = {str(k): dict(v) for k, v in _AOI_INFO.items()}
