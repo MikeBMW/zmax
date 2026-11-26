@@ -82,6 +82,16 @@ try {
     }
 } catch { }
 
+# ── 2026-11-26: 卡拉比丘流形 (8810) —— 画布工具栏「🧿 弦」按钮的目标服务 ──────────────
+#   按钮点了先探活 8810, 服务没起只会给一句"不可达"。这里随控制台一起拉起,
+#   端口已听就跳过。只读服务, 不下发任何动作, 也不开窗口。
+try {
+    if (-not (Get-NetTCPConnection -LocalPort 8810 -State Listen -ErrorAction SilentlyContinue)) {
+        $cy = if (Test-Path "$root\server\cy_slice_server.py") { "$root\server\cy_slice_server.py" } else { "$root\tools\cy_slice_server.py" }
+        Start-Process -FilePath $exe -ArgumentList "`"$cy`"" -WorkingDirectory $root -WindowStyle Hidden
+    }
+} catch { }
+
 # 2026-11-25: 禁弹窗守护 —— 已停用。
 #   根因已用 IFEO 静默转发根治 (HKLM\...\Image File Execution Options\nvidia-smi.exe / ps.exe
 #   → D:\ZMAX\_stubs\ife_wrap.exe, 子进程带 CREATE_NO_WINDOW, 根本不产生控制台窗口)。
