@@ -66,6 +66,22 @@ $env:ZMAX_ORIN_SDK_URL = 'http://192.168.23.66:39061/status'
 #   D:\ZMAX\_stubs\nvidia-smi.exe = winexe 包装, 真实转发系统 nvidia-smi, 不创建控制台窗口
 $env:PATH = Join-Path $root '_stubs' | ForEach-Object { if (Test-Path $_) { "$_;$env:PATH" } else { $env:PATH } }
 
+# ── 2026-11-26 v5.50.786: 工位总览(8793) 必须**在主程序之前**起 ────────────────────────
+#   理由: 主程序自己会拉一版"裸"的 cam_live_stream (只有 --port 8793, 没有 local2),
+#         而且它不看端口是否已被占用。先起带参数的这份, 主程序那份 bind 失败就退出了,
+#         页面用的就是带参数的这个。
+#   中央相机 = Intel 550C 的 USB 顶摄: http://192.168.23.70:8812/frame.jpg (640x480)
+#   ⚠ 关键: 不设 ZMAX_CAM_LOCAL=1 的话, --no-local2 默认 = not(env) = True,
+#           local / local2 两路都会被**静默跳过** —— 页面那格永远"无帧"且没有任何报错。
+$env:ZMAX_CAM_LOCAL = '1'
+try {
+    if (-not (Get-NetTCPConnection -LocalPort 8793 -State Listen -ErrorAction SilentlyContinue)) {
+        $cam = if (Test-Path "$root\server\cam_live_stream.py") { "$root\server\cam_live_stream.py" } else { "$root\tools\cam_live_stream.py" }
+        Start-Process -FilePath $exe -ArgumentList "`"$cam`" --port 8793 --local2-url `"http://192.168.23.70:8812/frame.jpg`" --local2-label `"🎥 中央相机 (Intel 8812)`" --local2-fps 8" -WorkingDirectory $root -WindowStyle Hidden
+        Start-Sleep -Milliseconds 1800
+    }
+} catch { }
+
 # 2026-11-25: 禁弹窗守护 —— 已停用。
 #   根因已用 IFEO 静默转发根治 (HKLM\...\Image File Execution Options\nvidia-smi.exe / ps.exe
 #   → D:\ZMAX\_stubs\ife_wrap.exe, 子进程带 CREATE_NO_WINDOW, 根本不产生控制台窗口)。
