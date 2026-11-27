@@ -117,13 +117,15 @@ try {
     if (-not (Get-NetTCPConnection -LocalPort 8799 -State Listen -ErrorAction SilentlyContinue)) {
         # 5.50.786: 标准服务统一走 server\ (不存在则回落 tools\, 保持老包兼容)
         $srv = if (Test-Path "$root\server\dashboard_server.py") { "$root\server\dashboard_server.py" } else { "$root\tools\dashboard_server.py" }
-        Start-Process -FilePath $exe -ArgumentList "`"$srv`"" -WorkingDirectory $root -WindowStyle Hidden
+        Start-Process -FilePath $exe -ArgumentList "`"$srv`"" -WorkingDirectory $root -WindowStyle Hidden `
+            -RedirectStandardOutput "$root\zmax_data\logs\dashboard_8799.out.log" -RedirectStandardError "$root\zmax_data\logs\dashboard_8799.err.log"
     }
 } catch { }
 try {
     if (-not (Get-NetTCPConnection -LocalPort 8797 -State Listen -ErrorAction SilentlyContinue)) {
         $srv = if (Test-Path "$root\server\tcp_ar_server.py") { "$root\server\tcp_ar_server.py" } else { "$root\tools\tcp_ar_server.py" }
-        Start-Process -FilePath $exe -ArgumentList "`"$srv`" --port 8797" -WorkingDirectory $root -WindowStyle Hidden
+        Start-Process -FilePath $exe -ArgumentList "`"$srv`" --port 8797" -WorkingDirectory $root -WindowStyle Hidden `
+            -RedirectStandardOutput "$root\zmax_data\logs\tcp_ar_8797.out.log" -RedirectStandardError "$root\zmax_data\logs\tcp_ar_8797.err.log"
     }
 } catch { }
 # --- wait for the REAL main window: the first window is a loading window titled

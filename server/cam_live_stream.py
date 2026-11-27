@@ -4288,9 +4288,16 @@ def _beep_alive() -> bool:
                    "-or $_.CommandLine -like '*motion_beep_win.py*') "
                    "-and $_.Name -notin @('powershell.exe','bash.exe','cmd.exe','sh.exe','conhost.exe') } "
                    "| Select-Object -First 1 -ExpandProperty ProcessId")
+            _si = None
+            if os.name == "nt":
+                _si = _sp.STARTUPINFO()
+                _si.dwFlags |= _sp.STARTF_USESHOWWINDOW
+                _si.wShowWindow = 0
             _o = _sp.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", _ps],
                          capture_output=True, text=True, timeout=6,
-                         encoding="utf-8", errors="replace").stdout.strip()
+                         encoding="utf-8", errors="replace",
+                         creationflags=(getattr(_sp, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0),
+                         startupinfo=_si).stdout.strip()
             return _o.isdigit()
         except Exception:
             return False
@@ -4842,9 +4849,16 @@ def _exec_health() -> dict:
             _ps = ("Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*l2_daemon.py*' "
                    "-and $_.Name -notin @('powershell.exe','bash.exe','cmd.exe','sh.exe','conhost.exe') } "
                    "| Select-Object -First 1 -ExpandProperty ProcessId")
+            _si = None
+            if os.name == "nt":
+                _si = _sp.STARTUPINFO()
+                _si.dwFlags |= _sp.STARTF_USESHOWWINDOW
+                _si.wShowWindow = 0
             _o = _sp.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", _ps],
                          capture_output=True, text=True, timeout=6,
-                         encoding="utf-8", errors="replace").stdout.strip()
+                         encoding="utf-8", errors="replace",
+                         creationflags=(getattr(_sp, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0),
+                         startupinfo=_si).stdout.strip()
             if _o.isdigit():
                 online, pid = True, int(_o)
         except Exception:
