@@ -1,0 +1,9 @@
+▶ http://127.0.0.1:8791/snapshot/local2.jpg  [720, 1280]
+    conf>=0.01  ndet=13   best=0.1046   OPT_Gold,peg
+    conf>=0.05  ndet=3    best=0.1046   OPT_Gold
+    conf>=0.10  ndet=1    best=0.1046   OPT_Gold
+    conf>=0.15  ndet=0    best=None     
+    conf>=0.20  ndet=0    best=None     
+    conf>=0.25  ndet=0    best=None     
+    conf>=0.40  ndet=0    best=None     
+    判定: 空 (最高分 0.105 < 0.15 ⇒ 视为无定量视觉证据)

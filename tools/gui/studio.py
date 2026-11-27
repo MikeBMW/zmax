@@ -122,15 +122,13 @@ _run_helper_script_if_any()
 
 
 def _open_product_dashboard(win=None):
-    """🖥 产品服务 (2026-11-25 改名+改指向): 打开「所有服务的总索引」:8788 + 回退链。
+    """🖥 产品大屏 (2026-11-08 重写): 候选链 TCP 探活 → 系统浏览器打开第一个通的。
 
-    老倪 2026-11-25: 「控制台的产品大屏, 改名成产品服务; 点开先看到所有服务的总索引
-    (链接 + 缩略图 + 介绍), simulink画布/产品大屏/ar3d/卡拉比丘流形都能从那里 link 过去」。
-      · :8788 = 总索引页 (services/web/portal.html) —— 卡片带缩略图/介绍/健康灯,
-        点卡片走 /go/<name>/ 反代直达原服务, 另有「复制链接」按钮。
-      · :8799 = 生产数据大屏 (产量/UPH/OEE), 现在是总索引里的一张卡, 不再是一级入口。
-    顺序: ZMAX_PORTAL_URL > 本机 8788 > 登记主机 :8788 > 本机 8799 > 产线 192.168.23.50:8788。
-    绝不抛异常(PyQt5 槽里抛异常会 qFatal 直接杀进程)。
+    原来写死公网 https://datadrive.world/factory-dashboard.html, 而 47.93.88.143:443 从产线/笔记本
+    都连不上(实测 TCP 直接 fail / 20s 超时) ⇒ 点开只有浏览器一直转 = 老倪说的"打不开"。
+    顺序: ZMAX_DASHBOARD_URL > 本机 127.0.0.1:8799 > config/ui/dashboard_hosts.json 登记的主机
+          > 产线默认 192.168.23.50:8799 > 公网。
+    绝不抛异常(调用方还兜一层): PyQt5 槽里抛异常会 qFatal 直接杀进程。
     """
     import socket as _sk
     import subprocess as _sp
@@ -149,6 +147,32 @@ def _open_product_dashboard(win=None):
             return False
 
     hosts = []
+    # ① 老倪 2026-11-09: 「按钮要打开自己的服务」—— Windows 冻结包自带 cam_live_stream.py,
+    #    本机 8793 没有就自己拉起来(它就是 /station 那套 6 路同屏 + 手动控制区的服务端);
+    #    起不来/端口不通才退回环境变量里登记的那台机器。
+    try:
+        import local_services as _ls
+        _ls.ensure("cam_live_stream.py", 8793, timeout=20.0, extra=("--port", "8793"))
+    except Exception:                                                      # noqa: BLE001
+        pass
+    try:
+        import local_services as _ls
+        _st = _ls.station_url(fallback=False)
+        if _st:
+            if os.name == "nt":
+                _sp = __import__("subprocess")
+                _sp.Popen(["cmd.exe", "/c", "start", "", _st])
+            else:
+                import webbrowser as _wb0
+                _wb0.open(_st)
+            if win is not None:
+                try:
+                    win.statusBar().showMessage("🖥 产品大屏 → %s" % _st, 10000)
+                except Exception:                                          # noqa: BLE001
+                    pass
+            return _st
+    except Exception:                                                      # noqa: BLE001
+        pass
     try:
         _root = os.environ.get("ZMAX_ROOT") or os.path.expanduser("~/zmax")
         _cf = os.path.join(_root, "config", "ui", "dashboard_hosts.json")
@@ -161,16 +185,12 @@ def _open_product_dashboard(win=None):
     except Exception:                                                      # noqa: BLE001
         pass
     if not hosts:
-        hosts = ["192.168.23.50"]
-
-    def _u8(h):
-        h = str(h).strip().rstrip("/")
-        if h.startswith("http"):
-            return h + "/"
-        return "http://%s:8788/" % h
-
-    cands = [u for u in ([os.environ.get("ZMAX_PORTAL_URL", ""), "http://127.0.0.1:8788/"]
-                         + [_u8(h) for h in hosts] + ["http://127.0.0.1:8799/"]) if u]
+        hosts = ["192.168.23.50:8799"]
+    cands = [u for u in ([os.environ.get("ZMAX_DASHBOARD_URL", ""), "http://127.0.0.1:8799/"]
+                         + ["http://%s/" % h if not str(h).startswith("http") else str(h) for h in hosts])
+             if u]
+    # 2026-11-12 老倪「全删云端出口」: 候选里去掉 https://datadrive.world/factory-dashboard.html
+    #   (云端 ECS 已删除, 留着只会在本机/局域网都不通时白等一个超时, 然后打开死链)
     url, tried = cands[-1], []
     for u in cands:
         tried.append(u)
@@ -178,103 +198,18 @@ def _open_product_dashboard(win=None):
             url = u
             break
     if os.name == "nt":
-        _sp = __import__("subprocess")
         _sp.Popen(["cmd.exe", "/c", "start", "", url])
     else:
         import webbrowser as _wb
         _wb.open(url)
     if win is not None:
         try:
-            win.statusBar().showMessage("🖥 产品服务 · 总索引 → %s%s" % (
+            win.statusBar().showMessage("🖥 产品大屏 → %s%s" % (
                 url, "" if url == cands[0] else "   (回退链: %s)" % " → ".join(tried)), 10000)
         except Exception:                                                  # noqa: BLE001
             pass
     return url
 
-
-
-# ---------------------------------------------------------------- 产品服务 (内嵌窗)
-_PORTAL_WIN = {"dlg": None}
-
-
-def _open_portal_in_app(parent=None, url=None):
-    """🖥 产品服务 · 全服务总索引 —— 在控制台**内嵌** WebEngine 窗口里打开。
-
-    2026-11-25 老倪「点击产品服务没反应」的根因: 本机默认浏览器是 **snap 版 chromium**,
-    从 studio 的 cgroup 里拉起来会被 snapd 拒 (is not a snap cgroup), 且 xdg-open 只会
-    把网页塞进已有窗口的标签页 —— 用户眼前零变化 = "没反应"。
-    ⇒ 与 8810 切面页同一套做法: QWebEngineView 应用内开窗, 再点一次只置顶刷新。
-    外挂浏览器仅作最后回退。
-    """
-    url = url or os.environ.get("ZMAX_PORTAL_URL") or "http://127.0.0.1:8788/"
-    try:
-        import urllib.request as _u
-        with _u.urlopen(url, timeout=2.5) as _r:
-            if _r.status != 200:
-                raise IOError("HTTP %s" % _r.status)
-    except Exception as _e:                                                # noqa: BLE001
-        try:
-            parent.statusBar().showMessage(
-                "⚠️ 产品服务总索引不可用 (%s) — 启动: sudo systemctl start zmax-framework" % _e, 12000)
-        except Exception:                                                  # noqa: BLE001
-            pass
-        print("⚠ 8788 总索引不可达: %s" % _e, flush=True)
-        return None
-    try:
-        from PyQt5.QtCore import Qt as _Qt
-        from PyQt5.QtCore import QUrl as _QUrl
-        from PyQt5.QtWebEngineWidgets import QWebEngineView as _QWV
-        from PyQt5.QtWidgets import QDialog as _QD
-        from PyQt5.QtWidgets import QVBoxLayout as _QVB
-
-        _w = _PORTAL_WIN.get("dlg")
-        if _w is not None and _w.isVisible():
-            try:
-                _w.setWindowTitle("🖥 产品服务 · 全服务总索引")
-                _w.view.load(_QUrl(url))
-                _w.raise_()
-                _w.activateWindow()
-            except Exception:                                              # noqa: BLE001
-                pass
-            print("🖥 复用已打开的产品服务窗: %s" % url, flush=True)
-            return url
-        _dlg = _QD(parent)
-        # 🔴 2026-11-25 老倪「最大化的按钮不好用」: QDialog 默认带 Qt.Dialog 位 ⇒ 窗口类型是
-        #   _NET_WM_WINDOW_TYPE_DIALOG, GNOME 不给 dialog 最大化能力 (_NET_WM_ALLOWED_ACTIONS
-        #   里根本没有 MAXIMIZE_HORZ/VERT) ⇒ 标题栏最大化按钮是灰的/点了没用。
-        #   去掉 Dialog 位换成普通顶层窗 + 显式要 Min/Max 按钮。
-        _dlg.setWindowFlags(_Qt.Window | _Qt.WindowTitleHint | _Qt.WindowSystemMenuHint
-                            | _Qt.WindowMinMaxButtonsHint | _Qt.WindowCloseButtonHint)
-        _dlg.setWindowTitle("🖥 产品服务 · 全服务总索引")
-        _dlg.setWindowModality(_Qt.NonModal)
-        _dlg.resize(1420, 900)
-        _lay = _QVB(_dlg)
-        _lay.setContentsMargins(0, 0, 0, 0)
-        _view = _QWV(_dlg)
-        _view.load(_QUrl(url))
-        _lay.addWidget(_view)
-        _dlg.view = _view
-        _PORTAL_WIN["dlg"] = _dlg
-        _dlg.show()
-        try:
-            parent.statusBar().showMessage("🖥 产品服务 · 总索引已打开 (控制台内嵌窗) → %s" % url, 10000)
-        except Exception:                                                  # noqa: BLE001
-            pass
-        print("✅ 产品服务窗已开 (QtWebEngine 内嵌): %s" % url, flush=True)
-        return url
-    except Exception as _e:                                                # noqa: BLE001
-        print("⚠ QtWebEngine 开窗失败 (%s) — 改外挂浏览器" % _e, flush=True)
-    try:
-        import subprocess as _sp
-        _sp.Popen(["xdg-open", url], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL,
-                  start_new_session=True)
-        return url
-    except Exception as _e2:                                               # noqa: BLE001
-        try:
-            parent.statusBar().showMessage("❌ 打开失败: %s (可手输 %s)" % (_e2, url), 12000)
-        except Exception:                                                  # noqa: BLE001
-            pass
-        return None
 
 # 🔇 2026-10-31 老倪:「启动的时候，别刷屏」「你看终端，刷屏那么多无效信息」
 #   实测一次启动 stdout 365 行(📌/📚/⏱ 三行一组重复 3 遍 + 各页面自述), 有用的只有末尾两行。
@@ -1319,7 +1254,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.50.785")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.50.775")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.ensurePolished()                     # 先套上样式再量字, 否则 sizeHint 按默认字体算
         ver.setToolTip("版本号在此 (侧栏品牌位)\n"
                        "顶栏标题 = 产品标识「XSpace ZMAX <产品号>」, 与配置中心产品配置同源 (config/platform/zmax_product.json)\n"
@@ -3260,7 +3195,7 @@ class HomeWidget(QWidget):
         #   第二行: 系统架构/Simulink模式/配置中心; 第三行: 全局数据空间/实时监控/评估分析;
         #   最后一行: Sim&Real/版本同步
         modules = [
-            ("dataset",  "📊", "数据集管理",   "System 2 · L4/L5",   "任务规划 · 数据飞轮\n状态空间格式 · HF Datasets", SYS2_COLOR),
+            ("dataset",  "📊", "数据集管理",   "System 2 · L4/L5",   "任务规划 · 数据飞轮\n.lrobot格式 · HF Datasets", SYS2_COLOR),
             ("training", "🏋️", "模型引擎",   "System 1 · 动作系统",   "SmolVLA 500M + DiT-B\n端到端VLA训练",            SYS11_COLOR),
             ("hardware", "🔧", "硬件工具箱",   "System 0 · L2 基石",   "电机·相机·力控·急停\nEtherCAT驱动 · HAL层",     SYS0_COLOR),
             ("architecture","🏗️","系统架构",   "三层总览",     "System 2→1→0\n数据闭环·OTA升级", SYS2_COLOR),  # 🐛 恢复三层架构功能卡 (页面在, 卡列表漏加)
@@ -3268,11 +3203,11 @@ class HomeWidget(QWidget):
             ("config",   "⚙️", "配置中心",     "System 1 · 参数",     "SmolVLALewConfig\n三层参数可视化编辑",          SYS11_COLOR),
             ("dataspace","🌐", "全局数据空间",  "所有模块 · 数据库",  "node↔数据对象全息映射\n数据集·曲线·模型·视频·一致性", "#58a6ff"),
             ("monitor",  "📈", "实时监控",     "System 1 · L3",     "远程同源实采 · Orin 状态\n回放会话 · Rerun/RViz",     SYS12_COLOR),
-            ("evaluation","✅", "评估分析",     "Sys-12 · 评测中枢",   "基线 5.50.735 逐条对标\n有提升+零回退才准升级 · 全局一致性",  SYS12_COLOR),
+            ("evaluation","✅", "评估分析",     "Sys-12 · 评测中枢",   "基线产品 5.50.735 逐条对标\n有提升+零回退才准升级 · 全局一致性",  SYS12_COLOR),
             ("plugging", "🧩", "3D场景",       "虚拟现实",  "对象·标记·轨迹·保护围栏 可编辑\n机器人 + 工件 + 夹具 (真模型)",  ROI_ACCENT),
-            ("version",  "🔄", "版本同步",     "状态空间 · 上游管理",  "检查上游更新 · 安全同步\n版本状态 · 冲突检测",  C_ORANGE),
+            ("version",  "🔄", "版本同步",     "LeRobot · 上游管理",  "检查上游更新 · 安全同步\n版本状态 · 冲突检测",  C_ORANGE),
             # 🗂 2026-10-11 老倪: 「将功能页的产品大屏, 完全同步原来的工位总览的服务」—— 与 :8793 工位总览同一份在役状态
-            ("website",  "🖥", "产品服务",     "总索引 · 全部服务",  "所有服务的总索引: 缩略图 + 介绍 + 健康灯\n点卡片直达 (simulink画布/ar3d/卡拉比丘/大屏…)\n本机 http://127.0.0.1:8788/ · 控制台内嵌窗打开", "#1f6feb"),
+            ("website",  "🖥", "产品大屏",     "datadrive.world",  "工厂数字大屏 · 实时产线 (与工位总览服务同源)\n本机 http://192.168.23.50:8799/  ·  数据 .../dashboard.json\n公网 https://datadrive.world/factory-dashboard.html", "#1f6feb"),
         ]
         # 2026-08-08 老倪: 每层分组框 (外边框 + 标题 + 3 卡), 分层结构明显
         _GROUP_TITLES = ["系统", "架构", "数据", "场景"]
@@ -4380,8 +4315,10 @@ class DatasetModule(SubModuleWidget):
         return os.path.expanduser(f"~/.cache/huggingface/datasets/{repo_slug}")
 
     def _repo_root(self):
-        """项目根目录 (统一走 _zmax_root_dir: ZMAX_ROOT → exe 同级 → _MEIPASS → 源码上三级)"""
-        return _zmax_root_dir()
+        """项目根目录 (frozen exe → PyInstaller _MEIPASS; 源码 → tools/gui/ → 上三级)"""
+        if getattr(sys, "frozen", False):
+            return getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+        return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
     def _is_cached(self, repo_id):
         """检查数据集是否已缓存 (2026-08-07: metaworld_mt50 本地实际数据在项目 data/, 不在 HF 缓存)"""
@@ -5981,7 +5918,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
             }}
         """)
         self.preview_btn.clicked.connect(self._preview_command)
-        self.preview_btn.setToolTip("预览完整的「状态空间训练」命令 (只打印不执行)")
+        self.preview_btn.setToolTip("Preview the full lerobot-train CLI command without running it")
         btn_layout.addWidget(self.preview_btn)
         
         btn_container.setLayout(btn_layout)
@@ -7334,7 +7271,7 @@ QPushButton:checked{{border:3px solid {C_CYAN}; background:#0d3b33; color:{C_WHI
                    f"tail -1 /tmp/venv_install.log 2>/dev/null'")
             out = _sp.check_output(cmd, shell=True, timeout=20).decode(errors="replace").strip()
             if "LEROBOT_OK" in out:
-                self.remote_env_lbl.setText("✅ 远程环境: 就绪 (Python 3.12 + torch + 状态空间)")
+                self.remote_env_lbl.setText("✅ 远程环境: 就绪 (Python 3.12 + torch + lerobot)")
                 self.remote_env_lbl.setStyleSheet(f"color:#3fb950; background:transparent; border:none; font-size:19px; font-weight:bold;")
                 try:
                     self._env_timer.stop()
@@ -8761,20 +8698,6 @@ class EvalModule(SubModuleWidget):
             self.lb_gate.setText("升级准入: 无报告")
             return
         r = self.rep
-        # 🐛 2026-11-25 老倪「各窗口要符合当前版本实际功能」: COLS 里写死的"基线 5.50.735"改成跟 report 真源走,
-        #   当前版本列也要带版本号 (原来只写"当前", 看上不知道是哪个版本的数据)。
-        try:
-            _cols = list(self.COLS)
-            _b = str(r.get("version_baseline") or "").lstrip("v")
-            _c = str(r.get("version_current") or "").lstrip("v")
-            if _b:
-                _cols[4] = "基线 %s" % _b
-            if _c:
-                _cols[5] = "当前 %s" % _c
-            self.tab.setColumnCount(len(_cols))
-            self.tab.setHorizontalHeaderLabels(_cols)
-        except Exception:                                                    # noqa: BLE001
-            pass
         self.lb_base.setText("基线: %s" % r.get("version_baseline"))
         self.lb_cur.setText("当前: %s" % r.get("version_current"))
         allowed = (r.get("gate") or {}).get("upgrade_allowed")
@@ -9115,24 +9038,6 @@ class HardwareModule(SubModuleWidget):
         # 回放引擎
         self.replay = ReplayEngine()
         self._replay_thread = None
-
-        # 🎛 2026-11-25 老倪「硬件工具箱要跟真实机器人一样」:
-        #   硬件总线 12 行的状态/当前值改成跟着真机真值走 (唯一依据 = 8793/station/status)。
-        #   取数在工程线程 (网络失败不卡界面), 主线程 1s 只读缓存渲染。
-        self._hw_cache, self._hw_ok_ts, self._hw_err = {}, 0.0, ""
-        self._tower_last = ""
-        try:
-            from zmax_thread import zmax_thread as _ZT_HW
-            _ZT_HW.every("hw_probe_8793", 2.0, self._hw_poll)
-        except Exception:                                                   # noqa: BLE001
-            def _hw_loop():
-                while True:
-                    self._hw_poll()
-                    time.sleep(2.0)
-            _th.Thread(target=_hw_loop, name="hw_probe", daemon=True).start()
-        self._hw_timer = _tq(self)
-        self._hw_timer.timeout.connect(self._refresh_hw_bus)
-        self._hw_timer.start(1000)
         
         # ── 顶部工具栏 ──
         toolbar = QHBoxLayout()
@@ -9239,10 +9144,6 @@ class HardwareModule(SubModuleWidget):
         hw_group.setStyleSheet(f"QGroupBox{{color:{SYS0_COLOR}; font-weight:bold; font-size:20px; border:2px solid {SYS0_COLOR}; border-radius:6px; margin-top:12px; padding-top:16px;}}")
         hw_layout = QVBoxLayout()
         hw_layout.setSpacing(4)
-        # 2026-11-25 老倪「要跟真实机器人一样」: 明确写清真值从哪来、几秒前的
-        self._hw_note = QLabel("真值源 8793/station/status · 读取中…")
-        self._hw_note.setStyleSheet(f"color:{C_GRAY}; font-size:17px; padding:2px 4px;")
-        hw_layout.addWidget(self._hw_note)
         
         # 硬件列表表头
         self.hw_table = QTableWidget()
@@ -9250,21 +9151,14 @@ class HardwareModule(SubModuleWidget):
         self.hw_table.setHorizontalHeaderLabels(["硬件", "类型", "状态", "当前值", "控制接口", "操作"])
         self.hw_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.hw_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        # 2026-11-25: 状态/接口固定宽 (真值文案长, ResizeToContents 会把"当前值"挤成一条);
-        #   当前值吃剩余宽度, 截断走 ElideRight + tooltip + 双击复制 (老倪: 内容要看得全可复制)
-        self.hw_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
-        self.hw_table.setColumnWidth(2, 320)
+        self.hw_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self.hw_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
-        self.hw_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Fixed)
-        self.hw_table.setColumnWidth(4, 330)
-        self.hw_table.setTextElideMode(Qt.ElideRight)
-        self.hw_table.itemDoubleClicked.connect(
-            lambda it: QApplication.clipboard().setText(it.text()))
+        self.hw_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
         self.hw_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
         self.hw_table.verticalHeader().setVisible(False)
         self.hw_table.verticalHeader().setDefaultSectionSize(42)  # 行高
         self.hw_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.hw_table.setMinimumHeight(12 * 42 + 46)   # 2026-11-25: 12 行设备要一屏看全 (原 320 只露 7 行)
+        self.hw_table.setMinimumHeight(320)
         self.hw_table.setStyleSheet(f"""
             QTableWidget{{background:{C_BG}; color:{C_WHITE}; border:1px solid {C_BORDER}; gridline-color:{C_BORDER};}}
             QTableWidget::item{{padding:6px 8px; font-size:19px;}}
@@ -9336,29 +9230,24 @@ class HardwareModule(SubModuleWidget):
     
     def _build_hardware_bus(self):
         """构建Orin真实硬件控制面板 — 每个硬件一行"""
-        # 2026-11-25 老倪「硬件工具箱要跟真实机器人一样」:
-        #   旧表只有塔灯挂了 status_fn(还返回"待实现"), 其余全 None ⇒ 状态永远"待接入"、当前值永远 "-",
-        #   而且塔灯那一格把方法对象当字符串写进了「控制接口」列 (界面显示 `<bound method ...>`)。
-        #   现在: 第3列 = 真值 key (由 _refresh_hw_bus 从 8793/station/status 与本机真值填),
-        #         第4列 = 控制接口**字符串**(ROS domain 23 的真实话题/服务)。
         devices = [
-            # (名称, 类型, 真值key, 控制接口文本)
-            ("🚦 三色塔灯",     "IO/灯光",    "tower",   "/tower_light/command · /tower_light/status (Orin ROS domain 23)"),
-            ("🤖 珞石机械臂",   "6-DOF臂",    "arm",     "/robot/joint_states · /move_joint(TargetPose) · /robot_stop(Trigger)"),
-            ("🖐️ 电动夹爪",    "末端执行器",  "gripper", "/gripper_driver(GripperSrv) · 无位置反馈话题"),
-            ("⚡ 力/力矩传感器", "六维力",     "ft",      "/robot/force_torque(Wrench)"),
-            ("📷 RealSense D435","RGB-D相机", "d435",    "/color/image_raw · /depth/rect · /points (Orin 8794)"),
-            ("🚨 双路急停",     "安全IO",     "estop",   "/physical_estop · /usb_estop · ctl.motion_armed"),
-            ("📱 扫码枪",       "Honeywell",  "barcode", "/barcode_scanner/status"),
-            ("🖐️ 触觉传感器",  "TS-F-L",     "tactile", "/tactile_sensor(TactileSensor)"),
-            ("👁️ FoundationPose","视觉定位",  "fpose",   "本机检测器 (无 ROS 话题)"),
-            ("📡 障碍物检测",   "安全",       "obstacle","无通道 (未接入)"),
-            ("🎛️ 状态机",       "控制器",     "fsm",     "8793 ctl: operation / motion.ok / auth"),
-            ("🖥️ HMI 人机界面", "HMI",        "hmi",     "本控制台 (无独立 HMI 通道)"),
+            # (名称, 类型, 状态获取方法, 控制接口列表)
+            ("🚦 三色塔灯",    "IO/灯光",   self._get_tower_status,  self._get_tower_controls),
+            ("🤖 珞石机械臂",  "6-DOF臂",   None,                    ["/move_joint(TargetPose)", "/robot_stop(Trigger)"]),
+            ("🖐️ 电动夹爪",   "末端执行器", None,                   ["/gripper_driver(GripperSrv)"]),
+            ("⚡ 力/力矩传感器","六维力",    None,                    ["/robot/force_torque(Wrench)"]),
+            ("📷 RealSense D435","RGB-D相机", None,                    ["/color/image_raw", "/depth/rect", "/points"]),
+            ("🚨 双路急停",    "安全IO",     None,                    ["/physical_estop", "/usb_estop"]),
+            ("📱 扫码枪",      "Honeywell",  None,                    ["/barcode_scanner/status"]),
+            ("🖐️ 触觉传感器", "TS-F-L",    None,                    ["/tactile_sensor(TactileSensor)"]),
+            ("👁️ FoundationPose","视觉定位",  None,                    "待接入"),
+            ("📡 障碍物检测",  "安全",       None,                    "待接入"),
+            ("🎛️ 状态机",      "控制器",     None,                    ["state_machine/*"]),
+            ("🖥️ HMI 人机界面","HMI",       None,                    "待接入"),
         ]
         
         self.hw_table.setRowCount(len(devices))
-        for row, (name, hw_type, hw_key, controls) in enumerate(devices):
+        for row, (name, hw_type, status_fn, controls) in enumerate(devices):
             # 名称
             name_item = QTableWidgetItem(name)
             name_item.setForeground(QColor(C_WHITE))
@@ -9366,15 +9255,18 @@ class HardwareModule(SubModuleWidget):
             # 类型
             self.hw_table.setItem(row, 1, QTableWidgetItem(hw_type))
             # 状态
-            status_item = QTableWidgetItem("… 读取真值中")
+            status_item = QTableWidgetItem("⏸ 待查询" if status_fn else "⏸ 待接入")
             status_item.setForeground(QColor(C_GRAY))
             self.hw_table.setItem(row, 2, status_item)
             # 当前值
-            val_item = QTableWidgetItem("—")
+            val_item = QTableWidgetItem("-" if status_fn else "-")
             val_item.setForeground(QColor(C_GRAY))
             self.hw_table.setItem(row, 3, val_item)
             # 控制接口
-            ctrl_text = ", ".join(controls) if isinstance(controls, (list, tuple)) else str(controls)
+            if isinstance(controls, list):
+                ctrl_text = ", ".join(controls)
+            else:
+                ctrl_text = str(controls)
             ctrl_item = QTableWidgetItem(ctrl_text)
             ctrl_item.setForeground(QColor(C_CYAN))
             self.hw_table.setItem(row, 4, ctrl_item)
@@ -9768,8 +9660,8 @@ class HardwareModule(SubModuleWidget):
                         state = _ln.strip()[:150]
                         break
                 self._log(f"   ✅ 直连下发完成 (Orin 塔灯 → {color})" + (f"\n   🔎 回读: {state}" if state else ""))
-                self._tower_last = "🟢 直连已生效 → %s%s" % (color, (" · 回读 " + state) if state else "")
-                self._refresh_hw_bus()
+                self.hw_table.item(0, 2).setText("🟢 已生效 (直连)")
+                self.hw_table.item(0, 3).setText(color)
                 return
             _e = (r.stderr or r.stdout or "").strip().splitlines()
             direct_err = _e[-1] if _e else f"rc={r.returncode}"
@@ -9784,8 +9676,8 @@ class HardwareModule(SubModuleWidget):
             mw = RelayMiddleware(timeout=10)
             resp = mw.send(f"tower_light {color}")
             self._log(f"   📡 已下发 Mac 塔灯指令: {resp.get('cmd','')}")
-            self._tower_last = "🟡 中间件已下发 → %s (等 Mac 守护执行)" % color
-            self._refresh_hw_bus()
+            self.hw_table.item(0, 2).setText("🟡 指令已下发")
+            self.hw_table.item(0, 3).setText(color)
             self._log("   🤖 Mac 守护轮询到指令 → ssh tashan@192.168.23.66 → ros2 topic pub /tower_light/command")
         except Exception as e:
             self._log(f"   ❌ 塔灯控制失败: 直连({direct_err}) + 中间件({e})")
@@ -10446,7 +10338,6 @@ class HardwareModule(SubModuleWidget):
         self._refresh_cameras()
         self._refresh_force()
         self._refresh_io()
-        self._refresh_hw_bus()          # 🎛 2026-11-25: 硬件总线跟着真机走
     
     def _refresh_topo(self):
         pass  # 功能拓扑为静态显示
@@ -10492,128 +10383,6 @@ class HardwareModule(SubModuleWidget):
             self.io_table.setItem(i, 0, QTableWidgetItem(dev))
             self.io_table.setItem(i, 1, QTableWidgetItem(state))
     
-    # ═══ 2026-11-25 老倪「硬件工具箱要跟真实机器人一样」═══
-    #   真值唯一依据: 本机 8793 /station/status (ctl.robot / ctl.tcp / stats / aoi),
-    #   与工位总览页同一份数据; 后台每 2s 拉一次存缓存, 主线程只读缓存渲染 —— 网络问题不卡界面。
-    HW_SRC = "http://127.0.0.1:8793/station/status"
-
-    def _hw_poll(self):
-        """(工程线程) 拉 8793 真值。失败不清空上一次, 但记错误与时间。"""
-        import urllib.request as _u
-        try:
-            with _u.urlopen(self.HW_SRC, timeout=2.5) as r:
-                self._hw_cache = json.loads(r.read(524288).decode("utf-8", "replace"))
-            self._hw_ok_ts = time.time()
-            self._hw_err = ""
-        except Exception as e:                                              # noqa: BLE001
-            self._hw_err = str(e)[:70]
-
-    def _refresh_hw_bus(self):
-        """把真值铺进「硬件总线」12 行: 状态 + 当前值 + 颜色。读不到就如实写读不到。"""
-        if not hasattr(self, "hw_table") or self.hw_table.rowCount() == 0:
-            return
-        d = getattr(self, "_hw_cache", None) or {}
-        err = getattr(self, "_hw_err", "")
-        age = (time.time() - getattr(self, "_hw_ok_ts", 0.0)) if d else -1.0
-        ctl = d.get("ctl") or {}
-        rob = ctl.get("robot") or {}
-        tcp = ctl.get("tcp") or {}
-        mov = ctl.get("motion") or {}
-        auth = ctl.get("auth") or {}
-        stats = d.get("stats") or {}
-        aoi = d.get("aoi") or {}
-
-        if not d:
-            _st, _val, _col = "❌ 取不到真值", "8793 不可达 %s" % (err or ""), C_RED
-            for r in range(self.hw_table.rowCount()):
-                self._hw_set(r, _st, _val, _col)
-            return
-        if age > 6:
-            _stale = True
-        else:
-            _stale = False
-
-        def cam_txt(k):
-            c = stats.get(k) or {}
-            lb = c.get("label") or k
-            if c.get("online"):
-                return "%s ✅ %.1ffps 帧龄%.1fs" % (lb, c.get("fps") or 0, c.get("age_s", -1))
-            return "%s ❌ %s" % (lb, str(c.get("src_err") or "无流")[:30])
-
-        def tcp_txt():
-            xyz = tcp.get("xyz") or []
-            abc = tcp.get("abc_deg") or []
-            if len(xyz) == 3:
-                a = tcp.get("age_s")
-                tag = ("⚠ 位姿失效(静止 %.0fs)" % a) if tcp.get("stale") else ("✅ 帧龄 %.1fs" % (a if a is not None else -1))
-                ab = abc if len(abc) >= 3 else [0, 0, 0]
-                return "TCP %+.1f %+.1f %+.1f mm · abc %+.1f %+.1f %+.1f° · %s" % (
-                    xyz[0] * 1000, xyz[1] * 1000, xyz[2] * 1000, ab[0], ab[1], ab[2], tag)
-            return "无位姿 (%s)" % str(tcp.get("err") or "tcp 字段缺失")[:40]
-
-        rob_age = rob.get("age_s")
-        rob_stale = rob_age is not None and rob_age > 10
-        aa = auth.get("armed")
-        m_ok = mov.get("ok")
-        rows = {
-            "🚦 三色塔灯": (
-                "⚠ 无硬件反馈通道",
-                (getattr(self, "_tower_last", "") or "Orin ROS /tower_light/status 未读数 (点 🟢/🟡/🔴 后这里显示回执)"),
-                C_YELLOW),
-            "🤖 珞石机械臂": (
-                "%s · power=%s · %s%s" % ("⚠ 状态陈旧" if rob_stale else ("✅ 在线" if rob.get("ok") else "❌ 离线"),
-                                          rob.get("power") or "?", rob.get("operation") or "?",
-                                          (" · 源 %s" % str(rob.get("src") or "")[:26]) if rob.get("src") else ""),
-                tcp_txt(),
-                C_YELLOW if rob_stale else (C_GREEN if rob.get("ok") else C_RED)),
-            "🖐️ 电动夹爪": (
-                "⚠ 只有控制/无位置回读",
-                "服务 /gripper_driver 在 Orin ROS(domain 23); 下发后以真机动作与视觉为准, 面板不编开度",
-                C_YELLOW),
-            "⚡ 力/力矩传感器": (
-                "❌ 未接入", "无 /robot/force_torque 数据 (Orin 不通或未开)", C_GRAY),
-            "📷 RealSense D435": (
-                ("✅ 有流" if any((stats.get(k) or {}).get("online") for k in ("arm", "depth")) else "❌ 无流"),
-                cam_txt("arm") + " ｜ " + cam_txt("depth"), 
-                C_GREEN if any((stats.get(k) or {}).get("online") for k in ("arm", "depth")) else C_RED),
-            "🚨 双路急停": (
-                "%s estop=%s · motion_armed=%s · auth=%s" % ("❗已触发" if rob.get("estop") else "✅ 未触发",
-                                                             rob.get("estop"), ctl.get("motion_armed"), aa),
-                "物理/软件急停走 Orin %s; 授权档=%s" % (("/physical_estop /usb_estop" ), auth.get("mode") or "?"),
-                C_RED if rob.get("estop") else C_GREEN),
-            "📱 扫码枪": ("❌ 未接入", "无 /barcode_scanner/status (现场扫码器未接 ROS)", C_GRAY),
-            "🖐️ 触觉传感器": ("❌ 未接入", "无 /tactile_sensor 数据", C_GRAY),
-            "👁️ FoundationPose": ("⚠ 无统一话题", "本机视觉定位走 YOLO 2D→3D (见感知链), 无 FoundationPose 服务", C_GRAY),
-            "📡 障碍物检测": ("❌ 未接入", "无障碍物检测通道", C_GRAY),
-            "🎛️ 状态机": (
-                "%s · operation=%s" % ("✅ 运动指令可受理" if m_ok else "⚠ 无待执行动作", rob.get("operation") or "?"),
-                "motion.ok=%s skill=%s ｜ auth armed=%s mode=%s · AOI 10082=%s 10083=%s" % (
-                    m_ok, (mov.get("skill") or "—"),
-                    aa, auth.get("mode") or "?",
-                    "✅" if (aoi.get("10082") or {}).get("ok") else "❌",
-                    "✅" if (aoi.get("10083") or {}).get("ok") else "❌"),
-                C_GREEN if m_ok else C_YELLOW),
-            "🖥️ HMI 人机界面": ("✅ 本控制台", "当前页面即 HMI; 手机现场页=8791/room (需 8795 HIL 已起)", C_GREEN),
-        }
-        for r in range(self.hw_table.rowCount()):
-            nm = self.hw_table.item(r, 0).text() if self.hw_table.item(r, 0) else ""
-            hit = rows.get(nm)
-            if hit:
-                self._hw_set(r, *hit)
-        # 顶部一句话: 真值源与时效
-        try:
-            self._hw_note.setText("真值源 8793/station/status · 采集 %.1fs 前%s" %
-                                  (age, "" if age <= 6 else " (⚠ 超过 6s 未更新)"))
-        except Exception:                                                    # noqa: BLE001
-            pass
-
-    def _hw_set(self, row, status, value, color):
-        for col, txt, c in ((2, status, color), (3, value, C_WHITE)):
-            it = QTableWidgetItem(str(txt))
-            it.setForeground(QColor(c))
-            it.setToolTip(str(txt))          # 截断也能看全 (双击还能复制)
-            self.hw_table.setItem(row, col, it)
-
     def _populate_nodes(self, nodes):
         pass  # 已迁移到实时监控模块
     
@@ -12841,35 +12610,7 @@ def _msg_ask(parent, title, text, kind="warning", yes_text=None, no_text=None, d
 #        版本号只留侧栏品牌 QLabel (Z-MAX vX.Y.Z) 与菜单栏/状态栏/关于框。
 #   ⇒ 标题与配置中心永远同源 (切产品标题跟着变, 见 _watch_title_product), 调试同源见 _maybe_warn 的 md5 自检。
 # ─────────────────────────────────────────────────────────────────────────────
-def _zmax_root_dir():
-    """🌍 运行根目录 —— 跨平台迁移的唯一口径 (2026-11-25 老倪: Windows D:\ZMAX 要能完整跑)
-
-    优先级:
-      ① 环境变量 ZMAX_ROOT (启动 bat / 快捷方式里设, 指向 D:\ZMAX)
-      ② 冻结(exe)运行: exe 所在目录 (config/ 就在它旁边) → 退回 _MEIPASS(包内)
-      ③ 源码树: tools/gui/ 上三级 = 仓库根
-
-    为什么要这个: 原来是 `dirname³(__file__)`, 在 PyInstaller 冻结包里 __file__ 是
-    <exe>\_internal\studio.py 或 %TEMP%\_MEIxxxx\studio.py ⇒ dirname³ 落在 D:\ 或 AppData,
-    读 config/ 全部落空 (只能退到 defaults), 跨机器迁移就"配置中心明明拷了却读不到"。
-    """
-    _env = os.environ.get("ZMAX_ROOT") or ""
-    if _env and os.path.isdir(_env):
-        return os.path.abspath(_env)
-    if getattr(sys, "frozen", False):
-        _exe = os.path.dirname(os.path.abspath(sys.executable))
-        _mp = getattr(sys, "_MEIPASS", "") or ""
-        for _c in (_exe, _mp, os.path.join(_exe, "_internal")):
-            if _c and os.path.isdir(os.path.join(_c, "config")):
-                return os.path.abspath(_c)
-        return _exe or _mp
-    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-
-_ROOT_P = _zmax_root_dir()
-# 让同进程/子进程里的其它模块 (local_services、各 *_page.py) 也拿到同一个运行根,
-#  Windows 上 ~/zmax 不存在, 不设这条它们会自己拼 home 路径 → 读不到 D:\ZMAX\config
-os.environ.setdefault("ZMAX_ROOT", _ROOT_P)
+_ROOT_P = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _PRODUCT_JSON = os.path.join(_ROOT_P, "config", "platform", "zmax_product.json")
 
 
@@ -13005,16 +12746,6 @@ class StudioMainWindow(QMainWindow):
         self._set_console_title()
         # 🐛 2026-09-01 老倪: 调试自检 — 直接 python studio.py 启动时 VSCode 断点永不生效
         from PyQt5.QtCore import QTimer as _QTimer
-        # v5.50.785: v5.50.785 Windows/macOS 跨平台发布版（业务容器 + AI模型分离）：控制台内嵌产品服务总索引(18服务/缩略图/健康灯)；模型引擎 319 条权重全量显示+设为在役+一键训练；硬件工具箱 12 行设备改跟真机真值(8793 同源, 塔灯无反馈如实标)；系统架构/全局数据空间/实时监控/评估分析四页对齐当前版本(评估"当前"由写死 5.50.735 改读 VERSION.md 真源, 基线仍锁 5.50.735; 监控摘除 2026-11-12 已删的 8 个 ECS 云端端点 18→10)；修 Simulink 卡片打开错页(懒建下标漂移, 改按 widget 切页)；界面 lerobot 文案统一改「状态空间」
-        # v5.50.784: 产品大屏→产品服务：控制台内嵌 QtWebEngine 开窗 + 全服务总索引(18 服务缩略图/健康灯/反代复制链接) + 网关 /thumb 与自探测短路；根因三条 —— 外挂浏览器是 snap chromium 从 studio cgroup 拉不起来(点了没反应)、QDialog 的 Dialog 位让 GNOME 禁掉最大化、开机 NTP 回拨 8h 使 time.time() 节流的渲染循环 sleep 8 小时(8802 出图冻结)，已全部改 monotonic+钳位并实测
-        # v5.50.783: 六维卡拉比-丘切面固化: 亏格g=6孔洞可视化(残差3.6e-15)+8810标准服务(systemd/health/version/服务清单)+画布双击内嵌窗; 另含 restart_studio 缺 unit 回落、十维节点落盘可观察
-        # v5.50.782: 关节空间 MoveAbsJ 回放跑通整圈(关节差≤0.12°), 解决笛卡尔回放在手腕奇异区必停的问题; 8815 看板改为按点位标注段序(30 段)
-        # v5.50.781: 相空间观察落地: Simulink 画布新增『🌀 相空间相图(Θ,p)』节点(双击开窗、与右侧面板同源) + 相图自适应视野(修『点又不见了』根因: 视野钉死 ±75mm/±0.9, 真机 Θ 到 ±268mm/H 15.4J 被裁) + 尾迹 400→2000; 新增 RT 探针/恢复脚本(arm_rt_stream/rt_tickrate/arm_recover), 实测 MoveAbsJ 逐点上限 speed=200%(0.96s/点, 400% 控制器掉电), RT 回路回调实测远低于实时要求
-        # v5.50.780: 215 点真实轨迹的哈密顿相空间回放上线 (球摆约化 H=p²/2I+g·z, 逐帧实测 r/θ/p, 42.9s 1x 循环 + MP4 直链), 修旧缓存导致「没动」的回放按钮作用域 bug; AR 自进化 workers 8→2 回收 8GB 内存
-        # v5.50.779: 相空间安全通道 + SE(3)×S1 记忆流形上画布 (5.50.778 → 5.50.779)  ## 一、相空间安全通道 (专利核心算法落地)  新增 `src/lerobot/manifold/phase_corridor.py`（`PhaseSpaceCorridor` / `CorridorMetric`）：  - 底空间 Q = R³(平移) × S³(四元数) × S¹(工序相位) —— 复用流形引擎已记忆的 SE(3)×S1；   纤维 T_qQ = 线速度 + 角速度 ⇒ 相空间 x=(q, q̇)，即切丛上的"记忆中心线"。 - 各向异性度规（专利公差口径）：径向 0.3mm 敏感 / 轴向 6mm 宽容；速度纤维同理   横向 50mm/s 严 / 轴向 300mm/s 松，并按载荷 √(m/m_ref) 自适应（0.1kg ↔ 1.6T 级）。 - 势能 V_phase = ½‖z‖²，z = [e_pose/tol ; e_vel/vlim]（无量纲，V=1 正好压在公差上）； - 修正 τ_safe = −α·τ_lim⊙(z_pos + z_vel)：专利 −αM⁻¹∇V 的工程形态——度规定方向、τ_lim 定幅度； - S³ 旋转误差走李代数 log（避开欧拉角奇异）；S¹ 相位不一致（>15°）⇒ 记忆匹配断裂、注入置 0； - 李雅普诺夫：α_eff = min(α, λ/2) ⇒ V̇ = −α_eff‖z‖² ≤ −λV，能量单调下降，τ 恒在 τ_lim 内。 - 自检（`python -m lerobot.manifold.phase_corridor`）：通道内零注入 / 越界饱和修正 /   S¹ 栅门关断 / 李代数只落在 z 轴 / 载荷自适应 / 24 点横扫单调性全过。  ## 二、流形引擎接入（L4 逻辑节点）  `ManifoldEngine` 新增 `set_phase_corridor(provider, ...)` 与 `phase_step(cur, des, axis)`： provider=None 时零回归（不建对象、不参与 step）；异常一律 `ok=False`，绝不静默当作"通道内"。 引擎自检 `python -m lerobot.manifold.manifold_engine --selftest` 全部通过（7 个流形 + 内稳态 4 项）。  ## 三、画布（打开就能看）  `flows/state_space_obs.json` 与唯一依据 `data/database/zmax/sources/canvas/state_space_obs.json`：  - 🔷 `ss_se3_state` — SE(3)×S1 记忆流形（昨日 `zmax-se3-state` 的 16 维 A–E，5Hz，只读）； - 🌀 `ss_phase_corr` — 相空间安全通道（V_phase / τ_safe / S¹ 栅门 / V̇）； - 连线 3 条：流形引擎 → 相空间通道 · SE(3) 记忆 → 相空间通道 · 相空间通道 → L4 工作安全； - 节点 94 → 96、连线 222/223 → 225/226，写盘前已备份 `flows/_archive/`，回读复核无悬空连线。 - 注册表：`nodes/library.py` 两条 `_reg` + `impl_manifest.json` 两条，`match_node` 按节点名可识别。  ## 四、真数据实测（不是演示数）  两条节点在真机上跑通（真值 `zmax_data/se3/se3_state_live.json`，帧龄 0.01~0.20s）： A 位置 [344.9, 315.4, 254.4]mm · 轴 S² [0.9744, 0.1592, −0.1585]（偏差 40.45°）· C 四元数 [0.106, −0.9235, −0.0142, −0.3685] · D 滚转 −147.9° · E 相位 s=0.517263（arc 4068.7mm，近点 #120）； 通道判定：同相且在公差内 ⇒ V_phase=0、栅门开、零注入；4mm 轴向偏离（轴向公差 6mm）仍判通道内， 换成径向偏离则立刻越界并要求修正 —— 各向异性按设计生效。  ## 五、边界（如实）  - 本层只读：产出 τ_safe/V 供判据与显示，**不直接下发运动**；真动仍需 8793 授权。 - 速度纤维取自 5Hz 记忆流（`se3_state_history.jsonl` 差分），臂静止时速度为 0 —— 不做外推、不补数。 - 该通道对真机任务成功率的提升尚未做同口径对照，按"未证明提升不进默认档"纪律，当前定位为   L4 逻辑链上的安全判据层，不宣称指标提升。
-        # v5.50.778: 回放加 🌀 flow 档(状态抑制流动): 姿态用 Hopf 拆成 S² 轴 + S¹ 滚转分路判据与调速(轴跳>10°/帧→70档 · 滚转>12°→85档 · 块内轴漂>25°停 · 操作区±3点→60档3点), 真机 40 块/215 点/479.1s/err≤0.14° 零超时。根因: 旧档只看总转角一刀切, 表面检测段 #176~#178 的 39.1°/帧纯滚转被误判成姿态断层; 整块下发时 state 的 done 不更新导致 action.i 钉在起点(改读执行日志 progress, 实测 Δ=0)。
-        # v5.50.777: 金手指相机「清晰度驱动自主进化」调姿上线(tools/aoi_focus_evolve.py: 适应度=金手指带内Laplacian方差, 带宽取/region bbox零副作用, 每点4帧取中位; (1+1)进化策略, 单步≤0.4mm/相对锚点累计≤1mm, σ按1/5成功法则自适应, 采纳门槛=提升>2%且>3×帧间std, 崩塌即回锚点)+金手指相机曝光700us/16.38dB并落盘工控机(重启自动复原)+回放第126点改成当前位置(整点重教, 关节角实测, raw 215帧一字节未动)+工控机通道tools/win_cmd.py(echo标记精确取回执, 修PowerShell下&&非法); 实测3次候选+1.1%/+1.0%/+0.8%全被拒、机械臂回锚点逐位一致⇒当前位姿即局部最优(净位移0mm), 与老倪现场判断一致; 根因: 原调姿靠人工目检没有量化适应度, 且工控机station_cmd取max(新文件名)会拿到历史命令的回执
-        # v5.50.776: Z700精细操作机器人全套文档交付(解决方案18章/立项/竞品/PPT/165条七阵功能清单·P0 121)+L2~L5联合训练跑通(L4 206.9s·L3首跑OOM改batch=1后270.2s·L2 210.8s·L5 65.5s,四层rc=0)+插入力口径纠错(按封装分档SFP18/QSFP60/QSFP-DD90N,原「≤40N」覆盖不了800G)+国标三处纠错(GB5226.1-2019已转推荐性GB/T·16855.1引2025版·20868引2024版);根因:L2/L5在同口径下无提升证据(L2评测帧13张全同质·画面无目标;L5合法率0.833→0.5),按「有提升非仅不回退」未上默认档
         # v5.50.775: 修动作调制器端口读取(载荷是业务字典时被判「缺前馈」⇒ decide 从未被调用)+引擎与入口共用单实例锁并从属引擎让位+轨迹速度档 20%→40%、夹爪按轨迹几何 i=9 合/i=205 开+3DGS 换高抬头覆盖数据 ds_cov1114 重训
         # v5.50.773: AR 右臂按真实轨迹回放改用关节角真值(215帧/43s/转动952°含翻面, 不再位置IK丢姿态) + 上料盘 AR↔真机同步验证(IoU 0.93/中心6.4mm) + 桌面缓冲区逐槽 BufferGraph; 根因: 位置IK只匹配xyz, 真机转腕翻面全丢
         # v5.50.772: 专利020 度规硬注入(训练端马氏损失+推理端ODE步内注入+公差盒投影)与自主训练六段闭环落地; 实测步内注入末态0.0006mm vs 终点叠加0.0203mm(34x), 无限幅过冲8.4x; 训练端加权收益仅2.5%、容量受限时径向崩1669% ⇒ 推理端收益是训练端38倍; 落地四层且真源默认enabled=false零回退; 20件专利在册, verify 20/20
@@ -14012,7 +13743,7 @@ class StudioMainWindow(QMainWindow):
         #   ⇒ 状态栏右下角那组控件 (_latency_label「延迟: xx ms」+ _engine_status「● 本地就绪」+
         #      _engine_combo「ACT (Local · 1ms)」) 整组删除, 不再建、不再挂到状态栏。
         #      保留 sb.showMessage(...) 的一行总览, 界面上不再有这组无用读数 (引擎实际由画布/工程配置决定)。
-        sb.showMessage("Z-MAX v5.50.785  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.50.775  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🔴 2026-10-12 老倪(定规矩): 「点开启动图标后, 3D场景不要自动启动, 我要先检查任务配置, 然后启动工程」
         #   本段以下所有自动开窗/自动运行**一律只在显式 env 下触发**(ZMAX_AUTO_*), 正常双击图标时:
@@ -14192,35 +13923,7 @@ class StudioMainWindow(QMainWindow):
                 #   → 去掉 seen 去重, 每次写入都执行 (老倪: 点了没反应 → 命令要每次生效)
                 try:
                     if line == "simulink":
-                        # 🖼 2026-11-25 老倪「simulink模式, 要打开 simulink 画布」⇒ 命令通道也落一次取证
-                        #   (当前页类名/是否就是画布实例/画布下标), 1.2s 后写 /tmp/zmax_simulink_nav.json
-                        try:
-                            self._on_nav("simulink")
-                        except Exception as _e:                               # noqa: BLE001
-                            print("🖼 simulink nav 失败:", repr(_e), flush=True)
-
-                        def _rec_sim():
-                            _info = {}
-                            try:
-                                _w = self.stack.currentWidget()
-                                _sim = getattr(self, "simulink", None)
-                                _info = {
-                                    "cur_index": self.stack.currentIndex(),
-                                    "cur_widget": type(_w).__name__ if _w is not None else None,
-                                    "is_simulink": bool(_sim is not None and _w is _sim),
-                                    "simulink_index": self.modules.get("simulink"),
-                                    "has_canvas": bool(getattr(_sim, "canvas", None)
-                                                       or getattr(_sim, "scene", None)
-                                                       or getattr(_sim, "view", None)),
-                                }
-                                _fp = os.path.join(tempfile.gettempdir(), "zmax_simulink_nav.json")
-                                with open(_fp, "w", encoding="utf-8") as _f:
-                                    json.dump(_info, _f, ensure_ascii=False, indent=2)
-                                print("🖼 simulink nav:", _info, flush=True)
-                            except Exception as _e:                           # noqa: BLE001
-                                print("🖼 simulink nav 取证失败:", repr(_e), flush=True)
-
-                        _oneshot(self, 1200, _rec_sim)
+                        self._on_nav("simulink")
                     elif line == "ss_canvas":
                         _oneshot(self, 600, self._open_ss_canvas_cmd)
                     # 🧮 2026-10-16 老倪: 流形引擎可视化落在「主参数 M」侧栏页 ⇒ 命令通道加直达
@@ -14244,40 +13947,6 @@ class StudioMainWindow(QMainWindow):
                         _oneshot(self, 1200, self._open_ss_3d_cmd)
                     elif line == "ss_run":
                         _oneshot(self, 300, self._run_ss_cmd)
-                    # 🧪 2026-11-24: 命令通道按名字触发节点双击 (取证/免找像素)
-                    #   用法: echo "ss_node 十维流形引擎" > /tmp/zmax_nav_cmd
-                    # 🖥 2026-11-25: 命令通道打开「产品服务」总索引 (内嵌窗) —— 自测/免找像素
-                    #   用法: echo portal > /tmp/zmax_nav_cmd
-                    elif line == "portal":
-                        _oneshot(self, 300, lambda: _open_portal_in_app(self))
-                    elif line.startswith("ss_node "):
-                        _kw = line[len("ss_node "):].strip()
-
-                        def _hit_node(_n=0):
-                            _nodes = getattr(getattr(self, "simulink", None), "nodes", None) or []
-                            _h = None
-                            for _x in _nodes:
-                                if _kw and _kw in str(_x.get("name", "")):
-                                    _h = _x
-                                    break
-                            if _h is not None:
-                                print("🧿 ss_node: 命中「%s」(共 %d 节点) → 触发节点双击"
-                                      % (str(_h.get("name", ""))[:40], len(_nodes)), flush=True)
-                                self.simulink.on_node_activated(_h)
-                                return
-                            if _n == 0:
-                                print("⚠ ss_node: 画布节点 %d 个, 未命中「%s」→ 先加载画布, 2.5s 后重试"
-                                      % (len(_nodes), _kw), flush=True)
-                                try:
-                                    self._open_ss_canvas_cmd()
-                                except Exception:                          # noqa: BLE001
-                                    pass
-                                _oneshot(self, 2500, lambda: _hit_node(1))
-                                return
-                            print("❌ ss_node: 仍没找到含「%s」的节点 (共 %d 个)"
-                                  % (_kw, len(_nodes)), flush=True)
-                            self.statusBar().showMessage("ss_node: 没找到含「%s」的节点" % _kw, 4000)
-                        _hit_node()
                     # 🧩 2026-10-14 老倪: 「画布太大了, 我找不到」⇒ 命令通道加"跳到 SAM3 分割节点"
                     elif line == "ss_focus_seg":
                         _oneshot(self, 600, self._focus_seg_cmd)
@@ -14298,7 +13967,6 @@ class StudioMainWindow(QMainWindow):
                             _oneshot(self, 900, _tm.open_model_engine_window)
                         else:
                             self.statusBar().showMessage("📡 模型引擎: 没找到承载页面", 2500)
-
                     # 🗺 2026-10-15 老倪: 「Roadmap 主指标…字体排列/位置要一致, UI要优美整齐」
                     #   ⇒ 命令通道加"量真窗几何": 从控制台内部 dump 五张卡 + 各自 KPI 标签的**真窗坐标**
                     #   (不必靠截图猜坐标; 结果落 /tmp/zmax_roadmap_geo.json, 可复算可复现)
@@ -14753,7 +14421,7 @@ class StudioMainWindow(QMainWindow):
     CONSOLE_STATE = "/tmp/zmax_console_state.json"
 
     def _repo_root(self):
-        return _zmax_root_dir()
+        return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
     def _write_console_state(self, **kw):
         """控制台状态落盘 (当前页/任务/上一步动作) —— 让 tools/zmax_open.py 核到「第几步真的到了」(非自述)。"""
@@ -15564,22 +15232,19 @@ class StudioMainWindow(QMainWindow):
             # 🔴 2026-11-08 老倪「点击产品大屏后程序崩溃」: PyQt5 里**槽函数抛异常 = qFatal 直接杀进程**
             #   (不是弹框、不是忽略)。所以这个点击分支必须自己兜住所有异常 + 落盘, 绝不能往外冒。
             try:
-                # 2026-11-25: 先内嵌开窗 (外挂浏览器在本机是 snap chromium ⇒ 点了没反应);
-                # 内嵌失败才走原来的候选链外挂打开。
-                if _open_portal_in_app(self) is None:
-                    _open_product_dashboard(self)
+                _open_product_dashboard(self)
             except Exception as _e:                                        # noqa: BLE001
                 try:
                     import traceback as _tb
                     _ld = os.path.join(os.path.expanduser("~/zmax"), "zmax_data", "logs")
                     os.makedirs(_ld, exist_ok=True)
                     with open(os.path.join(_ld, "ui_error.log"), "a", encoding="utf-8") as _lf:
-                        _lf.write("\n===== %s 产品服务 =====\n" % __import__("time").strftime("%F %T"))
+                        _lf.write("\n===== %s 产品大屏 =====\n" % __import__("time").strftime("%F %T"))
                         _lf.write(_tb.format_exc())
                 except Exception:                                          # noqa: BLE001
                     pass
                 try:
-                    self.statusBar().showMessage("⚠️ 产品服务打开失败: %s" % _e, 8000)
+                    self.statusBar().showMessage("⚠️ 产品大屏打开失败: %s" % _e, 8000)
                 except Exception:                                          # noqa: BLE001
                     pass
             return
@@ -15612,32 +15277,6 @@ class StudioMainWindow(QMainWindow):
             self.statusBar().showMessage("● 功能清单  |  %s  |  数据来自工程数据库 (单一文件, 可迁移)"
                                          % self.spec.tabs.tabText(self.spec.tabs.currentIndex()))
             return
-
-        # 🐛 2026-11-25 老倪「simulink模式, 要打开 simulink 画布, 你现在连接错了」:
-        #   真因: self.modules["simulink"] 是**启动时**记的固定下标 (10), 而画布页是 400ms 后
-        #   `_oneshot` 才插进 stack 的 (位置 = 当时的 stack.count()) ⇒ 点卡片 setCurrentIndex(10)
-        #   落到别的页去了。功能清单页 (spec) 早就按 widget 切页并现场刷新下标, 画布这里漏了。
-        #   修法同 spec: 现场确保已建 → 用 indexOf 刷新下标 → setCurrentWidget 切页。
-        if target == "simulink":
-            _sim = getattr(self, "simulink", None)
-            if _sim is None:
-                try:
-                    self.statusBar().showMessage("⏳ 正在创建 Simulink 画布…", 3000)
-                    QApplication.processEvents()
-                    self._init_simulink()
-                except Exception as _e:                                     # noqa: BLE001
-                    print("simulink 建页失败: %r" % (_e,))
-                _sim = getattr(self, "simulink", None)
-            if _sim is not None:
-                self.modules["simulink"] = self.stack.indexOf(_sim)
-                self.stack.setCurrentWidget(_sim)
-                self.statusBar().showMessage("● Simulink 画布  |  模块库拖拽 · 连线 · 仿真 · 单步", 6000)
-                try:
-                    self._write_console_state(page="Simulink", nav_target=target,
-                                              page_index=self.modules["simulink"])
-                except Exception:                                           # noqa: BLE001
-                    pass
-                return
 
         # 系统层级映射
         if target in self.layer_map:
@@ -16563,7 +16202,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.50.785</b> · 多模态动作专家<br>
+<b>Z-MAX v5.50.775</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>

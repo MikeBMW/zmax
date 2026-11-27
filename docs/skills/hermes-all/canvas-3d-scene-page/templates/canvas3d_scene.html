@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<!--
+  最小可跑骨架: 2D canvas 自绘三维示意页 (无 CDN, 单文件)
+  已内置: base 世界系(X右/Y近/Z上, 单位m) · 画家算法 · 自动取景 · 标注防重叠 · 鼠标 orbit/缩放 · 探针
+  复制后: 在 buildScene() 里加你的业务对象; 在 C 里调颜色; 在 S 里加动画状态。
+-->
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3D scene skeleton</title>
+<style>
+  html,body{margin:0;height:100%;background:#0b0f14;overflow:hidden;
+    font-family:"Noto Sans CJK SC","Microsoft YaHei",system-ui,sans-serif}
+  #c{display:block;width:100vw;height:100vh;cursor:grab}
+  .panel{position:fixed;background:rgba(12,17,24,.86);border:1px solid #1e2a38;border-radius:10px;
+    padding:10px 12px;color:#c8d6e5;font-size:13px;line-height:1.55}
+  #hudL{left:14px;top:14px;max-width:330px}
+  #hudR{right:14px;top:14px;max-width:330px}
+  #bar{left:50%;bottom:14px;transform:translateX(-50%);display:flex;gap:8px}
+  .panel b{color:#e6f2ff;font-weight:600}
+  .btn{background:#16202c;border:1px solid #2a3a4c;color:#b9c9da;border-radius:8px;
+    padding:6px 12px;font-size:13px;cursor:pointer}
+  .btn.on{background:#0f3b35;border-color:#2ee6c8;color:#2ee6c8}
+</style></head>
+<body>
+<canvas id="c"></canvas>
+<div class="panel" id="hudL"><b>坐标系</b> base 世界系 · X右 / Y近 / Z上 · 单位 m<br><span id="hudL2"></span></div>
+<div class="panel" id="hudR"><b>说明</b> 布局为示意排布, 非施工图。</div>
+<div class="panel" id="bar">
+  <button class="btn on" id="bAuto">① 自动线</button>
+  <button class="btn" id="bRobot">② 机器人</button>
+  <button class="btn on" id="bSpin">自转</button>
+  <button class="btn on" id="bLabel">标注</button>
+  <button class="btn" id="bReset">复位视角</button>
+</div>
+<script>
+'use strict';
+const cv=document.getElementById('c'), g=cv.getContext('2d');
+const C={bg:'#0b0f14',grid:'#1a2432',machine:'#33445c',station:'#2a3b4e',accent:'#2ee6c8',
+         amber:'#ffb545',label:'#9fb3c8',warn:'#ff5a68'};
+const C_TOP=1.0, C_FY=0.78, C_BY=0.68, C_FX=0.72, C_NX=0.86;   // 各面明度
+const FL=3.0, FW=1.5, FH=1.9;                                  // 设备外廓 (m)
+const TX=0, TY=0;                                              // 设备中心
+
+let W=0,H=0,DPR=1,CX=0,CY=0,F=1;
+const VIEW={yaw:-0.92, pitch:0.40, dist:4.2, tgt:[0,0,0.95]};
+const S={mode:'auto', spin:true, labels:true, t:0, fps:60, drawn:0};
+let SAFE={l:8,r:8,t:8,b:62}, userZoom=false;
+const FIT={w:0,h:0};
+const FIT_CORNERS=[[TX-FL/2,TY-FW/2,0],[TX+FL/2,TY-FW/2,0],[TX+FL/2,TY+FW/2,0],[TX-FL/2,TY+FW/2,0],
+                   [TX-FL/2,TY-FW/2,FH],[TX+FL/2,TY-FW/2,FH],[TX+FL/2,TY+FW/2,FH],[TX-FL/2,TY+FW/2,FH]];
+
+/* ---------- 相机 / 投影 ---------- */
+function updSafe(){ SAFE = W>=1240 ? {l:330,r:352,t:104,b:62} : {l:8,r:8,t:8,b:62}; }
+function buildCam(){
+  CX=(SAFE.l+(W-SAFE.r))/2; CY=(SAFE.t+(H-SAFE.b))/2;
+  F=Math.min(W,H)*1.3;
+  const cy=Math.cos(VIEW.yaw), sy=Math.sin(VIEW.yaw);
+  const cp=Math.cos(VIEW.pitch), sp=Math.sin(VIEW.pitch);
+  const fwd=[cp*cy,cp*sy,-sp], R=[-sy,cy,0], U=[sp*cy,sp*sy,cp];
+  const tg=VIEW.tgt, d=VIEW.dist;
+  const eye=[tg[0]-fwd[0]*d, tg[1]-fwd[1]*d, tg[2]-fwd[2]*d];
+  CAM={eye,fwd,R,U};
+}
+let CAM=null;
+function pr(P){
+  const dx=P[0]-CAM.eye[0], dy=P[1]-CAM.eye[1], dz=P[2]-CAM.eye[2];
+  const z=dx*CAM.fwd[0]+dy*CAM.fwd[1]+dz*CAM.fwd[2];
+  if(z<0.06) return null;
+  return {u:CX+F*(dx*CAM.R[0]+dy*CAM.R[1]+dz*CAM.R[2])/z,
+          v:CY-F*(dx*CAM.U[0]+dy*CAM.U[1]+dz*CAM.U[2])/z, z};
+}
+function depthOf(P){ const dx=P[0]-CAM.eye[0],dy=P[1]-CAM.eye[1],dz=P[2]-CAM.eye[2];
+  return Math.hypot(dx,dy,dz); }
+
+/* ---------- 画家算法队列 ---------- */
+let LQ=[],TQ=[];
+function push(P,fn){ LQ.push({d:depthOf(P),fn}); }
+function quad(a,b,c,d,fill,stroke,alpha){
+  const A=pr(a),B=pr(b),Cc=pr(c),D=pr(d);
+  if(!A||!B||!Cc||!D) return;
+  const mid=[(a[0]+c[0])/2,(a[1]+c[1])/2,(a[2]+c[2])/2];
+  push(mid,()=>{
+    g.beginPath(); g.moveTo(A.u,A.v); g.lineTo(B.u,B.v); g.lineTo(Cc.u,Cc.v); g.lineTo(D.u,D.v); g.closePath();
+    if(fill){ g.globalAlpha=alpha==null?1:alpha; g.fillStyle=fill; g.fill(); g.globalAlpha=1; }
+    if(stroke){ g.strokeStyle=stroke; g.lineWidth=1; g.stroke(); }
+  });
+}
+function hexMul(hex,k){ // '#rrggbb' -> 明度 k 倍 (钳位)
+  const n=parseInt(hex.slice(1),16);
+  const r=Math.min(255,Math.round(((n>>16)&255)*k));
+  const gg=Math.min(255,Math.round(((n>>8)&255)*k));
+  const b=Math.min(255,Math.round((n&255)*k));
+  return 'rgb('+r+','+gg+','+b+')';
+}
+function box(x0,y0,z0,x1,y1,z1,col,opt){
+  opt=opt||{}; const a=opt.alpha==null?1:opt.alpha, st=opt.stroke||'rgba(0,0,0,.35)';
+  quad([x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1],hexMul(col,C_TOP*1.25),st,a); // 顶
+  quad([x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z1],hexMul(col,C_FY),st,a);        // -Y
+  quad([x0,y1,z0],[x1,y1,z0],[x1,y1,z1],[x0,y1,z1],hexMul(col,C_BY),st,a);        // +Y
+  quad([x1,y0,z0],[x1,y1,z0],[x1,y1,z1],[x1,y0,z1],hexMul(col,C_FX),st,a);        // +X
+  quad([x0,y0,z0],[x0,y1,z0],[x0,y1,z1],[x0,y0,z1],hexMul(col,C_NX),st,a);        // -X
+}
+function line3(a,b,col,w){
+  const A=pr(a),B=pr(b); if(!A||!B) return;
+  const mid=[(a[0]+b[0])/2,(a[1]+b[1])/2,(a[2]+b[2])/2];
+  push(mid,()=>{ g.strokeStyle=col; g.lineWidth=w||1.5; g.lineCap='round';
+    g.beginPath(); g.moveTo(A.u,A.v); g.lineTo(B.u,B.v); g.stroke(); });
+}
+function label(P,text,col,opt){
+  opt=opt||{}; const A=pr(P); if(!A) return;
+  TQ.push({z:A.z,u:A.u+(opt.dx||0),v:A.v+(opt.dy||0),text,color:col||C.label,
+           size:opt.size||11.5,bold:!!opt.bold,prio:opt.prio==null?2:opt.prio,pill:opt.pill!==false});
+}
+
+/* ---------- 场景 (改这里) ---------- */
+function scene(){
+  // 地面网格
+  for(let i=-3;i<=3;i++){ line3([i*0.5,-3,0],[i*0.5,3,0],C.grid,1); line3([-3,i*0.5,0],[3,i*0.5,0],C.grid,1); }
+  // base 坐标轴: X红 Y绿 Z蓝
+  line3([0,0,0.004],[0.7,0,0.004],'#ff5a68',2); label([0.7,0,0.01],'X','#ff5a68',{bold:true,prio:6});
+  line3([0,0,0.004],[0,0.7,0.004],'#3ce07a',2); label([0,0.7,0.01],'Y','#3ce07a',{bold:true,prio:6});
+  line3([0,0,0],[0,0,0.7],'#4aa8ff',2);         label([0,0,0.7],'Z','#4aa8ff',{bold:true,prio:6});
+  // 设备外廓 + 台面
+  box(TX-FL/2,TY-FW/2,0,TX+FL/2,TY+FW/2,0.86,C.machine,{alpha:0.35});
+  box(TX-1.2,TY-0.06,0.86,TX+1.2,TY+0.06,0.92,C.machine,{alpha:0.9});            // 流线
+  label([TX-1.18,TY-0.1,0.86],'载具搬运流线','#7f92a8',{size:10.5,prio:2});
+  // 工站 (示例: 相邻站交错标注高度)
+  for(let i=0;i<5;i++){
+    const x=TX-0.8+i*0.38, on=(S.mode==='auto')&&(S.t%9|0)===i;
+    box(x-0.12,TY-0.3,0.92,x+0.12,TY+0.3,1.42,on?C.accent:C.station,{alpha:on?1:0.85});
+    label([x-0.12,TY-0.33,1.42+(i%2?0.34:0)],(i+1)+' 工站',on?C.accent:'#8b9bb0',{size:11,bold:on,prio:1});
+  }
+  // 主角产品
+  box(TX-0.09,TY-0.05,0.93,TX+0.09,TY+0.05,0.99,'#8fe8ff',{alpha:1});
+  label([TX-0.15,TY-0.12,1.04],'产品 (1 PCS/载具)','#8fe8ff',{size:12,bold:true,prio:0});
+}
+
+/* ---------- 自动取景: dist 二分 × 全 yaw ---------- */
+function autoFit(){
+  const yaw0=VIEW.yaw; let lo=1.5, hi=16;
+  for(let it=0;it<24;it++){
+    const mid=(lo+hi)/2; VIEW.dist=mid; let ok=true;
+    for(let y=0;y<Math.PI*2&&ok;y+=Math.PI/12){
+      VIEW.yaw=y; buildCam();
+      for(const c of FIT_CORNERS){
+        const q=pr(c);
+        if(!q||q.u<SAFE.l+8||q.u>W-SAFE.r-8||q.v<SAFE.t+8||q.v>H-SAFE.b-8){ ok=false; break; }
+      }
+    }
+    if(ok) hi=mid; else lo=mid;
+  }
+  VIEW.dist=hi*1.02; VIEW.yaw=yaw0; buildCam();
+}
+
+/* ---------- 渲染 ---------- */
+function frame(ts){
+  const dt=S.last?Math.min(0.05,(ts-S.last)/1000):0.016; S.last=ts; S.t+=dt;
+  S.fps=S.fps*0.9+ (1/Math.max(1e-3,dt))*0.1;
+  if(S.spin) VIEW.yaw+=dt*0.16;
+  resize(); buildCam();
+  if(!userZoom && (FIT.w!==W||FIT.h!==H)){ autoFit(); FIT.w=W; FIT.h=H; }
+  g.setTransform(DPR,0,0,DPR,0,0);
+  g.fillStyle=C.bg; g.fillRect(0,0,W,H);
+  LQ=[]; TQ=[];
+  scene();
+  LQ.sort((a,b)=>b.d-a.d);
+  for(const it of LQ) it.fn();
+  // 标注: 优先级 + 贪心防重叠
+  g.textBaseline='middle';
+  TQ.sort((a,b)=>(a.prio-b.prio)||(b.z-a.z));
+  const kf=Math.max(0.86,Math.min(1.3,W/1500)), placed=[];
+  for(const t of TQ){
+    if(!S.labels) break;
+    const sz=t.size*kf;
+    g.font=(t.bold?'600 ':'')+sz.toFixed(1)+'px "Noto Sans CJK SC","Microsoft YaHei",sans-serif';
+    g.textAlign='left';
+    const w=g.measureText(t.text).width, bx=t.u-4, by=t.v-sz*0.75, bw=w+8, bh=sz*1.5;
+    if(placed.some(p=>bx<p.x+p.w&&p.x<bx+bw&&by<p.y+p.h&&p.y<by+bh)) continue;
+    placed.push({x:bx,y:by,w:bw,h:bh});
+    if(t.pill){ g.fillStyle='rgba(7,10,14,.74)'; g.fillRect(bx,by,bw,bh); }
+    g.fillStyle=t.color; g.fillText(t.text,t.u,t.v);
+  }
+  S.drawn=placed.length;
+  requestAnimationFrame(frame);
+}
+function resize(){
+  const w=cv.clientWidth, h=cv.clientHeight;
+  if(w!==W||h!==H){
+    W=w; H=h; DPR=Math.min(2,window.devicePixelRatio||1);
+    cv.width=Math.round(w*DPR); cv.height=Math.round(h*DPR);
+    updSafe();
+  }
+}
+
+/* ---------- 交互 ---------- */
+let drag=null;
+cv.addEventListener('pointerdown',e=>{ drag={x:e.clientX,y:e.clientY}; cv.style.cursor='grabbing'; });
+addEventListener('pointerup',()=>{ drag=null; cv.style.cursor='grab'; });
+addEventListener('pointermove',e=>{
+  if(!drag) return;
+  VIEW.yaw-=(e.clientX-drag.x)*0.006;
+  VIEW.pitch=Math.max(-0.15,Math.min(1.25,VIEW.pitch+(e.clientY-drag.y)*0.005));
+  drag={x:e.clientX,y:e.clientY}; S.spin=false; document.getElementById('bSpin').classList.remove('on');
+});
+cv.addEventListener('wheel',e=>{ e.preventDefault(); userZoom=true;
+  VIEW.dist=Math.max(1.2,Math.min(20,VIEW.dist*(1+Math.sign(e.deltaY)*0.08))); },{passive:false});
+
+document.getElementById('bAuto').onclick =()=>setMode('auto');
+document.getElementById('bRobot').onclick=()=>setMode('robot');
+document.getElementById('bSpin').onclick =e=>{ S.spin=!S.spin; e.target.classList.toggle('on',S.spin); };
+document.getElementById('bLabel').onclick=e=>{ S.labels=!S.labels; e.target.classList.toggle('on',S.labels); };
+document.getElementById('bReset').onclick=()=>{ userZoom=false; VIEW.spin=null; FIT.w=0; FIT.h=0; };
+function setMode(m){
+  S.mode=m;
+  document.getElementById('bAuto').classList.toggle('on',m==='auto');
+  document.getElementById('bRobot').classList.toggle('on',m==='robot');
+}
+
+/* ---------- 探针 (自检/离屏取证用) ---------- */
+window.__S={
+  ready:false, S, VIEW, pr, buildCam, setMode, FIT_CORNERS,
+  stats:()=>({faces:LQ.length,labels:TQ.length,labelsDrawn:S.drawn,fps:Math.round(S.fps),w:W,h:H,mode:S.mode}),
+  pixels:()=>{
+    const d=g.getImageData(0,0,cv.width,cv.height).data;
+    let nonBg=0,n=0; const fam=new Set();
+    for(let i=0;i<d.length;i+=4*13){ n++;
+      const r=d[i],gg=d[i+1],b=d[i+2];
+      if(r>20||gg>26||b>34){ nonBg++; fam.add((r>>5)+'-'+(gg>>5)+'-'+(b>>5)); } }
+    return {nonBgPct:+(100*nonBg/n).toFixed(1), colorFams:fam.size};
+  }
+};
+
+resize(); buildCam(); window.__S.ready=true;
+requestAnimationFrame(frame);
+</script>
+</body></html>

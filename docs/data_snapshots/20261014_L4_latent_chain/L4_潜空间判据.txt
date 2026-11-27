@@ -1,0 +1,17 @@
+真实帧来源: 24 张 (L5 槽位图/AR 快照)
+✅ ① VLM 通用视觉编码器 就绪: SmolVLM2-500M 视觉塔 (SmolVLMVisionTransformer, 冻结) · 特征 768 维 · 设备 cuda
+✅ ① 编码时延/维度 特征 (24, 768) · 851ms/帧 (设备 cuda)
+✅ ② 拟标定 (真实帧) n=24 · det(g_f)=1.000000 · 解释方差 100.0% · latent=16
+✅ ③ 帧 → 16 维潜坐标 z(8, 16) · 各维 std 范围 0.0197~1.63
+✅ ⑤a g_f 白化 ⇒ 各维等方差 (各向同性) var max/min=1.0000 (均匀尺度 0.0058) · 参与度规维 768/768 · det(g_f)=1.000000 (体积保持)
+✅ ⑤b 度规下潜坐标解耦 (非对角/对角≈0) 相对非对角=4.09e-16
+✅ ④ 引擎接入 L4 潜空间 z_source=L4 潜空间: VLM 特征 768 → 度规约束 16 维 (g_f=(1/M)diag(σ²), det=1 · 度规下已解耦 非对角/对角=4.09e-16 · 解释方差 100.0% · n=24 帧 · M=3
+✅ ④ 无 provider ⇒ 零回归内建 PCA z_source=内建 PCA 编码器 (Encoder.fit, 对当前状态拟合; 非预测)
+✅ ⑥ 潜空间 Δz=z_goal−z_t (给意图解码用) Δz(16,) · ‖Δz‖₂=3.8475
+✅ ⑥ INTACT 意图解码可用 (z_t 有限) z_t=(192,) 有限 · z_pred = NaN (上游 chunk 空) (动作块 NaN ⇒ 预测潜表示拿不到, 如实标)
+判据 10/10 PASS
+标定落盘: models/l4_latent_calib.json
+[transformers] Model config: pad_token_id must be `None` or an integer within the vocabulary (between 0 and 31999), got 128002. This may result in unexpected behavior.
+
+Loading weights:   0%|          | 0/489 [00:00<?, ?it/s]
+Loading weights: 100%|██████████| 489/489 [00:00<00:00, 11214.53it/s]

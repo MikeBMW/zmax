@@ -41,9 +41,7 @@ def main() -> int:
     ap.add_argument("--name", default="train")
     ap.add_argument("--out", required=True)
     ap.add_argument("--eval", action="append", default=[], help="name=yaml (可多次)")
-    # 🔴 2026-11-20 老倪: 机器反应慢 → DataLoader workers 8(ultralytics 默认再乘) 各吃 1.35G,
-    #   训练链合计 18.8G/15 进程把 30G 机器压进 swap。默认降到 2 (内存约 -8G, 训练慢一些)。
-    ap.add_argument("--workers", type=int, default=2)
+    ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()
 
@@ -55,24 +53,12 @@ def main() -> int:
     rep = {"base": a.base, "data": a.data, "epochs": a.epochs, "ok": False}
     try:
         m = YOLO(a.base)
-        # 🔴 2026-11-24: 978 代零晋级, 每次都 hard50-95 0.9478 → 0.75~0.78 (mAP50 仍 0.99)。
-        # 根因不是尺子(现任 best.pt 今日复测 hard 0.9478 / hc 0.9498 / legacy 0.9469, 逐位可复现),
-        # 是**微调配方在毁定位**: 从收敛权重出发 lr0=0.01 + mosaic0.6/scale0.5/degrees6, 每代仅 ~140 张有标图,
-        # 30 epoch 足以把框回归带偏 ⇒ 分类(mAP50)不动、IoU0.5→0.95 全崩。
-        # 微调档: 小 lr + 轻几何增强; 想复现旧行为把环境变量改回去即可。
-        import os as _os
-        _lr0 = float(_os.environ.get("ZMAX_FT_LR0", "0.002"))
-        _mosaic = float(_os.environ.get("ZMAX_FT_MOSAIC", "0.2"))
-        _scale = float(_os.environ.get("ZMAX_FT_SCALE", "0.25"))
-        _deg = float(_os.environ.get("ZMAX_FT_DEGREES", "2.0"))
         r = m.train(data=a.data, epochs=a.epochs, imgsz=a.imgsz, batch=a.batch, device=DEVICE,
                     workers=a.workers, project=a.project, name=a.name, exist_ok=True,
                     seed=a.seed, deterministic=True, verbose=False, plots=False,
                     cache=False, val=False,   # val 统一由下面的固定留出集给, 不用训练内 val
-                    lr0=_lr0,
-                    hsv_h=0.015, hsv_s=0.6, hsv_v=0.45, degrees=_deg, translate=0.10,
-                    scale=_scale, mosaic=_mosaic, mixup=0.0, fliplr=0.5)
-        rep["finetune"] = {"lr0": _lr0, "mosaic": _mosaic, "scale": _scale, "degrees": _deg}
+                    hsv_h=0.015, hsv_s=0.6, hsv_v=0.45, degrees=6.0, translate=0.10,
+                    scale=0.5, mosaic=0.6, mixup=0.0, fliplr=0.5)
         best = os.path.join(a.project, a.name, "weights", "best.pt")
         last = os.path.join(a.project, a.name, "weights", "last.pt")
         rep["weights"] = best if os.path.exists(best) else last

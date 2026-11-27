@@ -1,0 +1,31 @@
+✅ state_space_sim_real   真身在 src/lerobot/engine/runtime.py · shim 28 行 / 真身 278 KB
+✅ state_space_sim        真身在 src/lerobot/engine/sim.py · shim 28 行 / 真身 48 KB
+✅ ss3d_live              真身在 src/lerobot/engine/ss3d_live.py · shim 28 行 / 真身 9 KB
+✅ data_world             真身在 src/lerobot/engine/data_world.py · shim 28 行 / 真身 7 KB
+✅ inference_server       真身在 src/lerobot/serving/server.py · shim 28 行 / 真身 13 KB
+✅ inference_client       真身在 src/lerobot/serving/client.py · shim 28 行 / 真身 11 KB
+✅ feature_dbc            真身在 src/lerobot/features/dbc.py · shim 28 行 / 真身 12 KB
+✅ model_importer         真身在 src/lerobot/features/importer.py · shim 28 行 / 真身 10 KB
+✅ docs_sync              真身在 src/lerobot/ops/docs_sync.py · shim 28 行 / 真身 10 KB
+✅ simulink_ci            真身在 src/lerobot/ops/flow_ci.py · shim 28 行 / 真身 17 KB
+✅ ppt_engine             真身在 src/lerobot/ops/ppt_engine.py · shim 28 行 / 真身 9 KB
+✅ startup_probe          真身在 src/lerobot/ops/startup_probe.py · shim 28 行 / 真身 6 KB
+✅ zmax_platform_info     真身在 src/lerobot/ops/platform_info.py · shim 28 行 / 真身 19 KB
+✅ zmax_telemetry         真身在 src/lerobot/ops/telemetry.py · shim 28 行 / 真身 9 KB
+✅ muscle_memory          真身在 src/lerobot/skills/muscle_memory.py · shim 28 行 / 真身 9 KB
+✅ relay_middleware       真身在 src/lerobot/middleware/relay.py · shim 28 行 / 真身 9 KB
+✅ dds_link_bus           真身在 src/lerobot/middleware/link_bus.py · shim 28 行 / 真身 6 KB
+✅ dds_hw                 真身在 src/lerobot/middleware/dds_hw.py · shim 28 行 / 真身 11 KB
+✅ yolo_perception        真身在 src/lerobot/perception/yolo.py · shim 28 行 / 真身 9 KB
+✅ gen_ss_obs_layout      真身在 tools/gen/ss_obs_layout.py · shim 28 行 / 真身 8 KB
+✅ gen_ss_obs_layout2     真身在 tools/gen/ss_obs_layout2.py · shim 28 行 / 真身 11 KB
+✅ gen_dual_brain_flow    真身在 tools/gen/dual_brain_flow.py · shim 28 行 / 真身 10 KB
+✅ gen_llm_layer_topology 真身在 tools/gen/llm_layer_topology.py · shim 28 行 / 真身 9 KB
+✅ 全部旧名 alias 到真身 (不是复制) · 23/23
+✅ tools/gui 无未登记的零 Qt 大块逻辑 · 全部已归位或在 allowlist
+✅ 重复的 zmax_gui_launch.py 已删
+✅ le_robot_home/le_robot_studio 已删
+
+📊 tools/gui: 105 个文件 · 85196 行 | 已归位到 src//tools/gen: 10320 行
+
+✅ 全部通过 (27 项)

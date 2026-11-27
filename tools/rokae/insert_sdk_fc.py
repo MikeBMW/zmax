@@ -470,11 +470,6 @@ def fc_advance(r, a, mode="advance"):
             pass
         cf.close()
 
-    # 2026-11-19 实测: stop() 只保持位置, 模块楔住时伺服一直顶着 ⇒ 预载自己涨
-    # (advance 75N / push 163N, 持续 55~86s, 独立 10Hz 采样器同期记录一致)。
-    # 所以任何 force/ABORT/torque 停手后必须自动沿轴退 --auto-unload 卸力。
-    if verdict.startswith(("force_stop", "ABORT", "torque_stop", "timeout")):
-        out["unload_after_N"] = unload_after_stop(r, a.auto_unload)
     p1, _ = read_pose(r)
     d = [p1[i] - p0[i] for i in range(3)]
     out.update({"verdict": verdict, "end_pose": [round(v, 6) for v in p1],
@@ -763,9 +758,6 @@ def fc_push(r, a):
             pass
         cf.close()
 
-    # 同 advance: push 停手后也必须卸力 (2026-11-19 实测 push 停手后涨到 163N)
-    if verdict.startswith(("force_stop", "ABORT", "torque_stop", "timeout")):
-        out["unload_after_N"] = unload_after_stop(r, a.auto_unload)
     p1, _ = read_pose(r)
     out.update({"verdict": verdict, "end_pose": [round(v, 6) for v in p1],
                 "adv_toolz_mm": round(sum((p1[i] - p0[i]) * zaxis[i] for i in range(3)) * 1000, 3),
@@ -1163,8 +1155,6 @@ def main():
     ap.add_argument("--lissa-adm-k", type=float, default=0.05, help="侧向导纳增益 mm/N/s (0=关)")
     ap.add_argument("--lissa-adm-max", type=float, default=1.2, help="导纳偏置饱和 mm")
     ap.add_argument("--lissa-tq-max", type=float, default=1.5, help="力矩增量上限 Nm (超则停)")
-    ap.add_argument("--auto-unload", type=float, default=2.0,
-                    help="力停手后自动沿轴回退卸力 mm (0=不退)。实测不退会涨到 75~163N 预载")
     ap.add_argument("--lat-max", type=float, default=8.0, help="侧向合力上限 N (一超就停)")
     ap.add_argument("--no-lissajous", dest="lissajous", action="store_false")
     ap.add_argument("--no-auto-load", dest="auto_load", action="store_false", help="不自动反解工具负载")

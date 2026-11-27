@@ -99,9 +99,6 @@ def gen(n=240, seed=9001, clutter=4, out=None):
         os.makedirs(osp.join(DS, sub), exist_ok=True)
 
     import ar_mujoco_scene as A
-    # 造数据/留出集统一口径: 只渲染启用中的工程箱体(见 ar_mujoco_scene.build_xml 的说明),
-    # 否则 fence_store 的历史条目会把场景填暗, 训练分布与留出集错开。
-    os.environ.setdefault("ZMAX_SCENE_FENCES", "enabled")
     xml = _add_distractors(A.build_xml(), clutter)
     xmlp = osp.join(DS, "scene_clutter.xml")
     open(xmlp, "w", encoding="utf-8").write(xml)

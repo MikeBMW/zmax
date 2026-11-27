@@ -92,41 +92,14 @@ def mem():
             "used_pct": (round(100 * (tot - av) / tot, 1) if tot else None)}
 
 
-# 🔴 2026-11-15: 以前每个采集周期都对整个仓库跑 `du -sm` (260GB/2.1s)。publisher 每 3s 一轮
-#   ⇒ du 几乎不落地地连轴转, 磁盘元数据被反复扫, 全机变慢。改成:
-#   ① 每目录 TTL 缓存 (默认 10 分钟) ② 后台线程算, 采集立刻返回上次结果 ③ 同一目录不并发叠加。
-_SZ_CACHE = {}          # path -> (ts, gb)
-_SZ_BUSY = set()
-_SZ_TTL = float(os.environ.get("ZMAX_DU_TTL_S") or 600)
-
-
-def _dir_gb(p):
-    import threading
-    now = time.time()
-    c = _SZ_CACHE.get(p)
-    if c and (now - c[0]) < _SZ_TTL:
-        return c[1]
-    if p not in _SZ_BUSY:                     # 没有在算才起线程; 算的同时先给旧值
-        _SZ_BUSY.add(p)
-
-        def _work():
-            try:
-                sz = sh("du -sm %s 2>/dev/null | cut -f1" % p)
-                if sz.strip().isdigit():
-                    _SZ_CACHE[p] = (time.time(), round(int(sz) / 1024.0, 1))
-            finally:
-                _SZ_BUSY.discard(p)
-
-        threading.Thread(target=_work, daemon=True).start()
-    return c[1] if c else None
-
-
 def disk():
     o = shutil.disk_usage("/")
     dirs = []
     for nm, p in WATCH_DIRS:
         if os.path.isdir(p):
-            dirs.append({"name": nm, "path": p, "gb": _dir_gb(p)})
+            sz = sh("du -sm %s 2>/dev/null | cut -f1" % p)
+            dirs.append({"name": nm, "path": p,
+                         "gb": round(int(sz) / 1024.0, 1) if sz.strip().isdigit() else None})
     return {"total_gb": round(o.total / 1073741824.0, 1),
             "used_gb": round(o.used / 1073741824.0, 1),
             "free_gb": round(o.free / 1073741824.0, 1),

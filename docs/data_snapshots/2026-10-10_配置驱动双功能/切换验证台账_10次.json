@@ -1,0 +1,50 @@
+[
+ {
+  "run": 1,
+  "task": "TASK-01-FW",
+  "mode": "insert",
+  "active_after": "TASK-01-FW",
+  "cfg_sha": "ca5039f6b9",
+  "switch_ok": true,
+  "func_ok": true,
+  "verdict_ok": true,
+  "detail": "success={'True'} (1 条) · 终态 完成",
+  "ok": true
+ },
+ {
+  "run": 2,
+  "task": "TASK-06-TRAY",
+  "mode": "tray",
+  "active_after": "TASK-06-TRAY",
+  "cfg_sha": "73e5c8e51c",
+  "switch_ok": true,
+  "func_ok": true,
+  "verdict_ok": true,
+  "detail": "3/3 颗合格 · 不合格 0 条",
+  "ok": true
+ },
+ {
+  "run": 3,
+  "task": "TASK-06-TRAY",
+  "mode": "tray",
+  "active_after": "TASK-06-TRAY",
+  "cfg_sha": "34a7f9474e",
+  "switch_ok": true,
+  "func_ok": true,
+  "verdict_ok": true,
+  "detail": "3/3 颗合格 · 不合格 0 条",
+  "ok": true
+ },
+ {
+  "run": 4,
+  "task": "TASK-01-FW",
+  "mode": "insert",
+  "active_after": "TASK-01-FW",
+  "cfg_sha": "e808938cee",
+  "switch_ok": true,
+  "func_ok": true,
+  "verdict_ok": true,
+  "detail": "success={'True'} (1 条) · 终态 完成",
+  "ok": true
+ }
+]

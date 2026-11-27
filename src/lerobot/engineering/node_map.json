@@ -351,7 +351,7 @@
    "pure": false
   },
   "ss_mani_eng": {
-   "algo": "src/lerobot/manifold/engine/manifold_engine.py:1",
+   "algo": "src/lerobot/manifold/manifold_engine.py:1",
    "contract": "src/lerobot/middleware/nodes/n_manifold.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/ss_mani_eng.py:25",
    "impl_key": "ss_mani_eng",
@@ -775,7 +775,7 @@
    "pure": false
   },
   "ssmani_c": {
-   "algo": "src/lerobot/manifold/core/manifold_layer.py:1",
+   "algo": "src/lerobot/manifold/manifold_layer.py:1",
    "contract": "src/lerobot/middleware/nodes/n_contact.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/ss_mani_c.py:20",
    "impl_key": "ss_mani_c",
@@ -811,7 +811,7 @@
    "pure": false
   },
   "ssmani_p": {
-   "algo": "src/lerobot/manifold/core/manifold_layer.py:1",
+   "algo": "src/lerobot/manifold/manifold_layer.py:1",
    "contract": "src/lerobot/middleware/nodes/n_perf.py:1",
    "impl": "src/lerobot/middleware/nodes/impl/ss_mani_c.py:20",
    "impl_key": "ss_mani_p",

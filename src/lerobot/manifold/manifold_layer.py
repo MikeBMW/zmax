@@ -1,9 +1,299 @@
 # -*- coding: utf-8 -*-
-"""兼容壳 (2026-11-24 分层归位): 真身 = lerobot.manifold.core.manifold_layer。
+"""manifold_layer.py — 🧮 流形层: 接触流形 / 性能流形 (回路外几何分析元层)
 
-老 import 一行不改; 判据: import 后 realpath(__file__) == 真身, 且 is 真身模块。
+第一性原理 (2026-09-03 老倪, 光模块精密制造流形视角):
+  光口/电口插拔与光耦合, 物理上是在高维状态空间里沿低维"流形"运动:
+    · 接触流形 (Contact Manifold): 插拔的安全通道 — 机器人必须沿该流形推进
+      (测地线), 一旦偏离 (法向漂移) → 引脚弯曲/器件报废。
+    · 性能流形 (Performance Manifold): 光耦合对准误差 → 传输效率/插入损耗
+      构成的性能曲面; 插拔 = 在该流形上找全局最优 (对准代价极小点)。
+  本层把这些几何量落成**可执行计算**: 输入 = 引擎轨迹当前帧真实量
+  (obs43/target/peg_head/v/stage, 与 tools/gui/state_space_sim.py 同源),
+  输出 = 切向进度 / 法向偏离 / 李雅普诺夫势 / 对准代价 / 估计耦合效率。
+
+数据同源: 常量 (HOLE_POS/HOLE_MOUTH/PEG_HEAD_OFF) 与 state_space_sim.py
+          逐字同源 (metaworld peg-insert-side-v3 真实几何实测值, 别改单边)。
+
+定位 (回路外): 只分析/监控/展示, 不参与引擎推理, 不新增控制或安全通道
+          (状态空间唯一三层安全 = 否决 + 限幅 + Sys0, 流形层不碰)。
+          η 是几何→性能**模型** (高斯光束近似), 不是光功率计实测 —
+          真机接入点 = 光功率计 IL/RL 标定 W/σ (勿冒充实测)。
 """
-import importlib as _il
-import sys as _sys
+import numpy as np
 
-_sys.modules[__name__] = _il.import_module("lerobot.manifold.core.manifold_layer")
+# ── 与 tools/gui/state_space_sim.py 同源 (metaworld peg-insert-side-v3 实测几何) ──
+HOLE_POS = np.array([-0.2345, 0.4623, 0.1309])    # 插入终点/孔底 (metaworld goal)
+HOLE_MOUTH = np.array([-0.1685, 0.4623, 0.1309])  # 孔口 (侧插入口)
+PEG_HEAD_OFF = np.array([-0.130, 0.0, -0.010])    # 光模块头相对抓握点 (光模块 沿 X 长 0.2)
+# 孔轴单位向量 (孔口 → 孔底): 水平 −x 方向
+AXIS_HOLE = HOLE_POS - HOLE_MOUTH
+AXIS_HOLE = AXIS_HOLE / np.linalg.norm(AXIS_HOLE)  # ≈ (−1, 0, 0)
+
+STAGES = ["接近", "对位", "下降", "抓取", "抬起", "转移", "插入", "完成"]
+
+# 通道分组 (哪个子任务受哪条几何通道约束):
+#   垂直通道 (z): 手贴身垂直操作 (下降触光模块/抓取锁存/抬起持光模块) — 约束 = xy 对中
+#   工艺通道:    插入 = 光模块头沿工艺斜线 (孔口上方悬高 2cm → 孔底, engine 转移/插入
+#                子目标同源) 压入; 完成 = 贴孔底 (孔轴 x)
+#   自由空间:    空中长距离移动 (接近=飞向光模块上方, 对位=水平对中, 转移=光模块料位→孔口),
+#                未接触无弯曲风险源, 只报距离收敛 (progress=‖e‖)
+CHANNEL_Z = ("下降", "抓取", "抬起")
+CHANNEL_INS = ("插入",)
+CHANNEL_DONE = ("完成",)
+CHANNEL_FREE = ("接近", "对位", "转移")
+
+# 插入工艺轴: 孔口上方悬高 2cm (engine 转移子目标 z+0.02) → 孔底 (插入子目标)
+_HOVER = HOLE_MOUTH + np.array([0.0, 0.0, 0.02])
+AXIS_INSERT = HOLE_POS - _HOVER
+AXIS_INSERT = AXIS_INSERT / np.linalg.norm(AXIS_INSERT)   # ≈ (−0.957, 0, −0.29)
+
+# 法向偏离阈值 (米) — 超过 = 离流形 (弯曲/报废风险). 初始标定依据:
+#   下降/抓取: engine 抓握接触容差 d_xy<0.03 (metaworld 脚本接触判据) →
+#                    xy 错位须 <3cm 才允许接触; 插入/完成: 孔间隙量级 (D_INSERT 4mm),
+#                    对工艺轴垂直偏离 <6mm; 抬起: 别蹭台面/别晃. 真机按现场微调。
+RISK_TH = {
+    "接近": 0.030, "对位": 0.030, "下降": 0.030, "抓取": 0.030,
+    "抬起": 0.020, "转移": 0.030, "插入": 0.006, "完成": 0.004,
+}
+
+
+def _stage_name(stage):
+    """阶段名清洗: engine 轨迹 stage 可能带推进后缀 (如「下降 · 接触」) → 取主阶段"""
+    return str(stage).split("·")[0].strip()
+
+
+class ContactManifold:
+    """接触流形 — 插拔安全通道的几何诊断 (切向进度 / 法向偏离 / 李雅普诺夫势)
+
+    输入 = 引擎轨迹当前帧真实量: hand(末端), peg_head(光模块头), target(阶段子目标,
+    obs[36:39] 感知层真值), v(末端速度), stage。
+    分解: 误差 e 沿通道轴投影 → 切向 e∥ (沿流形推进, 测地线进度);
+          法向 e⊥ (离流形漂移, 风险源: 对位歪/插斜都在这)。
+    """
+
+    def __init__(self, hole_pos=None, hole_mouth=None, risk_th=None, predictor=None):
+        self.hole_pos = HOLE_POS if hole_pos is None else np.asarray(hole_pos, float)
+        self.hole_mouth = HOLE_MOUTH if hole_mouth is None else np.asarray(hole_mouth, float)
+        self.axis = self.hole_pos - self.hole_mouth
+        n = np.linalg.norm(self.axis)
+        self.axis = self.axis / n if n > 1e-9 else np.array([-1.0, 0.0, 0.0])
+        self.risk_th = dict(RISK_TH)
+        if risk_th:
+            self.risk_th.update(risk_th)
+        # 🧠 2026-09-08 JEPA predictor 注入 (可选): 预测未来流形坐标 (旁路对照,
+        #   不替代解析 decompose — 解析=几何真值, 预测=世界模型, 训练后对齐/前视)
+        self.predictor = predictor
+
+    def predict_manifold(self, z, a=None):
+        """🧠 JEPA predictor → 预测流形坐标 (旁路; predictor 未注入返回 None)
+
+        z: 潜空间 (几何 R7 / VLM R960), a: 动作 (4D)。返回 predictor 输出 dict
+        (z_pred/manifold) + trained 标志; 未训练时输出随机 = 对照列, 诚实标注。
+        """
+        if self.predictor is None:
+            return None
+        out = self.predictor(z, a)
+        out = dict(out)
+        out["trained"] = bool(getattr(self.predictor, "trained", False))
+        return out
+
+    # ── 通道轴 (单位向量) ──
+    def channel_axis(self, stage):
+        if stage in CHANNEL_Z:
+            return np.array([0.0, 0.0, 1.0])          # 垂直通道 (下降/抓取/抬起)
+        if stage in CHANNEL_INS:
+            return AXIS_INSERT                        # 插入工艺斜线 (孔口悬高→孔底)
+        if stage in CHANNEL_DONE:
+            return self.axis                          # 完成: 贴孔底 (孔轴 x)
+        return None                                    # 自由空间 (无约束轴)
+
+    # ── 当前受控体误差: 谁在逼近谁 ──
+    def _error(self, hand, peg_head, target, stage):
+        if stage in CHANNEL_INS or stage in CHANNEL_DONE:
+            return np.asarray(peg_head, float) - self.hole_pos   # 光模块头对孔底 (完成→0)
+        return np.asarray(target, float) - np.asarray(hand, float)  # 末端对阶段目标
+
+    def decompose(self, hand, peg_head, target, v, stage):
+        """e → 切向 e∥ (进度) / 法向 e⊥ (偏离) + 李雅普诺夫 V, V̇
+        返回 dict: progress/risk/V/Vdot/e/e_par/e_perp/axis/state/risk_th"""
+        stage = _stage_name(stage)
+        e = self._error(hand, peg_head, target, stage)
+        v = np.asarray(v, float)
+        ax = self.channel_axis(stage)
+        if ax is None:
+            # 自由空间: 无接触通道, 法向偏离不计风险 (只报几何与收敛)
+            e_par, e_perp = e.copy(), np.zeros(3)
+            progress = float(np.linalg.norm(e_par))
+            risk = 0.0
+            state = "自由空间 (无接触约束)"
+        else:
+            e_par = float(e @ ax) * ax
+            e_perp = e - e_par
+            progress = float(abs(e @ ax))            # 沿通道剩余量
+            risk = float(np.linalg.norm(e_perp))     # 对通道轴的垂直偏离 (统一)
+            th = self.risk_th.get(stage, 0.01)
+            if risk <= 0.5 * th:
+                state = "在流形 (贴线走)"
+            elif risk <= th:
+                state = "贴流形边缘 (漂移中)"
+            else:
+                state = "离流形 (弯曲/报废风险)"
+        V = 0.5 * float(e @ e)
+        Vdot = -float(e @ v)                          # Ṫ≈0 (阶段内目标静止) → V̇=−e·v
+        return {"progress": progress, "risk": risk, "V": V, "Vdot": Vdot,
+                "e": np.asarray(e, float), "e_par": e_par, "e_perp": e_perp,
+                "axis": None if ax is None else np.asarray(ax, float),
+                "state": state, "risk_th": self.risk_th.get(stage, None)}
+
+    def summarize(self, r):
+        """dict → 一行日志文本"""
+        return (f"进度={r['progress']:.4f}m · 法向偏离={r['risk']:.4f}m · "
+                f"V=½‖e‖²={r['V']:.3e} · V̇={r['Vdot']:.3e} → {r['state']}")
+
+    # ─────────── 黎曼升级通道 (H-JEPA-MR, 2026-10-23) ───────────
+    # 原 decompose() 是纯欧氏 (risk=‖e⊥‖, V=½‖e‖², V̇=−e·v), 全部保留不动。
+    # 下面两条通道是**可选**的黎曼口径: 法线住在 S² 上, 位姿住在 SE(3) 上,
+    # 用测地线距离代替欧氏向量差 —— 微小装配偏差在流形上不再被欧氏距离失真。
+
+    def decompose_normal_sphere(self, n_meas, n_ref, antipodal=True):
+        """接触面法线的球面偏离: risk = d_{S²}(n_meas, n_ref)。
+
+        为什么必须用测地线而不是 ‖n−n*‖: 两个单位法线的欧氏差在大角度时饱和
+        (最大值 2), 而弧长线性增长到 π; 小角度下二者等价, 但 threshold 语义
+        以"角度"表达最直观 (记归一化后 risk 同时给米和弧度两个数)。
+
+        antipodal=True: 接触面法线 ±n 是同一个物理面 (双覆盖), 必须消歧,
+        否则"法线反了"会被报成 π 的巨大偏差。
+        """
+        from . import sphere as _S2
+        n_m = np.asarray(n_meas, float).ravel()[:3]
+        n_r = np.asarray(n_ref, float).ravel()[:3]
+        nm = _S2.normalize(n_m)[0] if np.linalg.norm(n_m) > 1e-12 else n_m
+        nr = _S2.normalize(n_r)[0] if np.linalg.norm(n_r) > 1e-12 else n_r
+        d_rad = float(_S2.distance(nm, nr, antipodal=antipodal))    # 弧长 (半径 1)
+        th = self.risk_th.get("normal", 0.087)                      # 默认 5°
+        state = ("法线对齐 (在流形)" if d_rad <= 0.5 * th
+                 else "法线轻微偏斜" if d_rad <= th
+                 else "法线显著偏斜 (接触面不平行)")
+        # 法线偏差 → 通道上的横向位移量 (半径 R 的接触面上, 角度 θ ≈ 横向位移/R)
+        return {"risk_rad": d_rad, "risk": d_rad,
+                "n_meas": nm, "n_ref": nr, "risk_th": th, "state": state,
+                "note": "球面测地线 (S²), antipodal=%s" % antipodal}
+
+    def decompose_se3(self, T_cur, T_target, xi_vel=None, weight=None):
+        """SE(3) 黎曼版: 进度/偏离/李雅普诺夫势全部用测地线表述。
+
+        V = ½·d_SE3(g_cur, g_target)²,  V̇ = −⟨log(g_cur⁻¹g_target), ξ⟩
+        · 比欧氏版好在: 平移与旋转量纲自动统一到 twist 空间 (ω rad, v m),
+          姿态误差不会再被"米"和"弧度"混着加。
+        · weight 允许给 6 维权重 (工程上常把旋转压低, 因为插入主要看横向位置)。
+        """
+        from .hjepa_manifold import se3_distance
+        Tc = np.asarray(T_cur, float).reshape(4, 4)
+        Tt = np.asarray(T_target, float).reshape(4, 4)
+        d = float(se3_distance(Tc, Tt, weight))
+        V = 0.5 * d * d
+        Vdot = None
+        if xi_vel is not None:
+            from .lie_intent import se3_log
+            xi = np.asarray(se3_log(np.linalg.inv(Tc) @ Tt), float).ravel()[:6]
+            vel = np.asarray(xi_vel, float).ravel()[:6]
+            if weight is not None:
+                w = np.asarray(weight, float).ravel()[:6]
+                xi, vel = xi * w, vel * w
+            Vdot = -float(xi @ vel)              # 黎曼梯度流: V̇ = −⟨grad, ξ⟩
+        th = self.risk_th.get("se3", 0.01)
+        state = ("在流形 (测地线收敛)" if d <= 0.5 * th
+                 else "贴流形边缘" if d <= th
+                 else "离流形 (SE3 距离超阈)")
+        return {"d_se3": d, "V": V, "Vdot": Vdot, "risk": d, "risk_th": th,
+                "state": state, "T_cur": Tc, "T_target": Tt,
+                "note": "SE(3) 测地线距离 (twist 空间)"}
+
+
+class PerformanceManifold:
+    """性能流形 — 光耦合对准代价与估计耦合效率 (高斯光束近似, 非实测)
+
+    对准误差 δ = 光模块头 − 孔底 (插到底 δ→0 → 耦合最优):
+      轴向 x 剩余 = 插深不足; 横向 yz = 模场错位 (耦合损耗主因)。
+    性能势 V_p = ½ δᵀWδ (W: 轴向轻权 0.4, 横向 1.0 — 横向 1mm 错位比轴向
+    1mm 未插深更伤耦合); 估计耦合效率 η = exp(−V_p/σ²) (单模模场重叠近似)。
+    σ 是标定量 (默认 4mm 尺度, 使插入完成判据 D_INSERT≈4mm 时 η 接近 1;
+    真机用光功率计 IL/RL 标定 W/σ — 本模块输出是模型不是实测)。
+    """
+
+    def __init__(self, hole_pos=None, w=None, sigma=0.004, predictor=None,
+                 w_rot=1.0e-3, w_trans=1.0):
+        self.hole_pos = HOLE_POS if hole_pos is None else np.asarray(hole_pos, float)
+        # W 对角 (x=轴向插深, y/z=横向对中): 顺序与 δ 分量对应
+        self.W = np.diag([0.4, 1.0, 1.0]) if w is None else np.asarray(w, float)
+        self.sigma = sigma
+        # 🧠 2026-09-08 JEPA predictor 注入 (可选): 预测性能流形坐标 (旁路对照)
+        self.predictor = predictor
+        # H-JEPA-MR: SE(3) 版的旋转/平移权重 (量纲不同, 必须分开)。
+        # 1e-3 的物理含义: 1 rad 的姿态误差 ≈ (1mm)² 量级的代价, 即
+        # "插斜 1 度" 与 "横向偏 0.016mm" 等价 (1°≈1.7e-2 rad, 平方后 ×1e-3 ≈ 3e-7)。
+        self.w_rot_default = float(w_rot)
+        self.w_trans_default = float(w_trans)
+
+    def predict_manifold(self, z, a=None):
+        """🧠 JEPA predictor → 预测性能流形 (旁路; predictor 未注入返回 None)"""
+        if self.predictor is None:
+            return None
+        out = dict(self.predictor(z, a))
+        out["trained"] = bool(getattr(self.predictor, "trained", False))
+        return out
+
+    def evaluate(self, peg_head, stage=None):
+        """光模块头几何 → 对准代价 V_p / 估计耦合效率 η / 梯度 ∇V_p (修正方向)"""
+        stage = _stage_name(stage) if stage is not None else None
+        d = np.asarray(peg_head, float) - self.hole_pos
+        d_ax = float(d @ AXIS_HOLE)                    # 沿孔轴剩余 (插深; 负=未到底)
+        d_perp = d - d_ax * AXIS_HOLE                  # 横向错位向量
+        Vp = 0.5 * float(d @ self.W @ d)
+        eta = float(np.exp(-Vp / max(self.sigma ** 2, 1e-12)))  # 可下溢→0 (未耦合)
+        grad = self.W @ d                              # ∇V_p; 最优对准方向 = −grad
+        stage_note = stage or ""
+        if stage in ("插入", "完成"):
+            note = "对孔耦合 (插深+对中)"
+        elif stage == "转移":
+            note = "接近孔口 (未入孔)"
+        else:
+            note = "非插入段 (光模块未对孔)"
+        # 🐛 2026-10-16 命名统一: 同一物理量文档/消费侧写 V_p、本函数原写 Vp ⇒ 两套键,
+        #   容易各取一个键各算一套。现在同时给 V_p 别名 (Vp 保留, 向后兼容, 数值同一份)。
+        return {"delta": d, "d_axial": d_ax, "d_perp_norm": float(np.linalg.norm(d_perp)),
+                "Vp": Vp, "V_p": Vp, "eta": eta, "grad": grad, "stage": stage, "note": note}
+
+    def summarize(self, r):
+        """dict → 一行日志文本"""
+        return (f"对准误差 δ⊥={r['d_perp_norm']*1000:.2f}mm (横向) · "
+                f"插深剩余={-r['d_axial']*1000:.2f}mm · V_p={r['Vp']:.3e} · "
+                f"η≈{r['eta']:.4f} ({r['note']})")
+
+    # ─────────── 黎曼升级通道 (H-JEPA-MR, 2026-10-23) ───────────
+    # 原 evaluate() 吃 3 维欧氏 δ, 只看得见位置; 姿态错位 (插斜) 完全不在 V_p 里,
+    # 而精细装配里"插斜"和"偏 0.2mm"一样致命。SE(3) 版把姿态也纳进同一个二次型。
+
+    def evaluate_se3(self, T_peg, T_hole, w_rot=None, w_trans=None, stage=None):
+        """SE(3) 版对准代价: ξ = log(T_hole⁻¹·T_peg) ∈ R⁶, V_p = ½ ξᵀ W₆ ξ。
+
+        ω(前3) 单位 rad, v(后3) 单位 m —— 量纲不同, 必须分开给权重。
+        默认把旋转权重压到等效"1 rad ≈ 若干 mm", 否则姿态项会吃掉整个代价。
+        """
+        from .lie_intent import se3_log
+        from .hjepa_manifold import se3_distance
+        Tp = np.asarray(T_peg, float).reshape(4, 4)
+        Th = np.asarray(T_hole, float).reshape(4, 4)
+        xi = np.asarray(se3_log(np.linalg.inv(Th) @ Tp), float).ravel()[:6]
+        wr = float(self.w_rot_default if w_rot is None else w_rot)
+        wt = float(self.w_trans_default if w_trans is None else w_trans)
+        W6 = np.diag([wr, wr, wr, wt, wt, wt])
+        Vp = 0.5 * float(xi @ W6 @ xi)
+        eta = float(np.exp(-Vp / max(self.sigma ** 2, 1e-12)))
+        grad = W6 @ xi                       # 切空间梯度; 最优修正 = −grad
+        d_geo = float(se3_distance(Tp, Th))
+        return {"xi": xi, "Vp": Vp, "V_p": Vp, "eta": eta, "grad": grad,
+                "d_se3": d_geo, "w_rot": wr, "w_trans": wt,
+                "stage": stage,
+                "note": "SE(3) twist 空间二次型 (含姿态项 %s)" % (stage or "")}

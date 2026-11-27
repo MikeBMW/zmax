@@ -1,0 +1,9 @@
+{
+ "ts": "20261009_231339",
+ "steps": 120,
+ "samples": 38,
+ "adapter": "/home/ubuntu/zmax/zmax_data/models/l5_vlm_lora_20261009_231339",
+ "ckpt": "/home/ubuntu/zmax/zmax_data/hf_cache/hub/models--HuggingFaceTB--SmolVLM2-500M-Video-Instruct/snapshots/7b375e1b73b11138ff12fe22c8f2822d8fe03467",
+ "load_4bit": false,
+ "peak_gb": 3.12
+}

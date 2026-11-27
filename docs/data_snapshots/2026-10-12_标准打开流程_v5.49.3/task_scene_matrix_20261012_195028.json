@@ -1,0 +1,242 @@
+{
+ "ts": "20261012_195028",
+ "tasks": [
+  "TASK-01-FW",
+  "TASK-06-TRAY",
+  "TASK-07-AOI"
+ ],
+ "runs": [
+  {
+   "task": "TASK-01-FW",
+   "want": {
+    "scene": "插拔场景",
+    "color": "#2e8b57",
+    "scn": "SCN-01-FW",
+    "win3d": "插拔场景"
+   },
+   "active_task": "TASK-01-FW",
+   "src_state": "插拔场景",
+   "state": {
+    "page": "配置",
+    "task": "TASK-01-FW",
+    "scene": "✅ 已经是 插拔场景(绿) (SCN-01-FW) ⇒ 不动",
+    "open_all_ok": true,
+    "steps": [
+     {
+      "name": "活跃任务 (绑定真源)",
+      "ok": true
+     },
+     {
+      "name": "应用场景 (ss_scene_switch)",
+      "ok": true
+     },
+     {
+      "name": "打开状态空间画布",
+      "ok": true
+     },
+     {
+      "name": "打开 3D 场景",
+      "ok": true
+     },
+     {
+      "name": "3D 场景对齐数据源",
+      "ok": true
+     },
+     {
+      "name": "打开信号分析",
+      "ok": true
+     }
+    ]
+   },
+   "win3d": "3D场景 · 插拔场景",
+   "winsig": "📈 实时监控 · Graphic 信号分析",
+   "sig_shot_ocr": "=) (EDS   man ocaces | 视图:每信号独立图 - +增加信号话题     EE  绝对时刻负 I + 打标记 | Orin: 未选话题 / 本机: 采集中 信号 6 。 点 268157 - 帧龄 0.00s 。 名数据",
+   "sig_colors": {
+    "#2e8b57": 7895,
+    "#1f6feb": 365,
+    "#8957e5": 756,
+    "#ffffff": 234
+   },
+   "cc": {
+    "hdr": [
+     "任务ID",
+     "类型",
+     "工程",
+     "3D场景",
+     "实时监控",
+     "工艺步骤",
+     "适用段",
+     "粒度",
+     "启用节点",
+     "禁用节点",
+     "档位(开)",
+     "模型",
+     "活跃",
+     "状态"
+    ],
+    "proj": "状态空间工程 · 主工程\n📄 reports/projects/SS_主工程_任务配置.zmaxproj",
+    "scene": "插拔场景 · SCN-01-FW",
+    "mon": "#2e8b57  插拔场景 ×5\n+ 基础/未分类 白 #ffffff",
+    "scene_color": "#2e8b57",
+    "mon_color": "#2e8b57"
+   }
+  },
+  {
+   "task": "TASK-06-TRAY",
+   "want": {
+    "scene": "摆盘场景",
+    "color": "#1f6feb",
+    "scn": "SCN-06-TRAY",
+    "win3d": "摆盘场景"
+   },
+   "active_task": "TASK-06-TRAY",
+   "src_state": "摆盘场景",
+   "state": {
+    "page": "配置",
+    "task": "TASK-06-TRAY",
+    "scene": "✅ 已经是 摆盘场景(蓝) (SCN-06-TRAY) ⇒ 不动",
+    "open_all_ok": true,
+    "steps": [
+     {
+      "name": "活跃任务 (绑定真源)",
+      "ok": true
+     },
+     {
+      "name": "应用场景 (ss_scene_switch)",
+      "ok": true
+     },
+     {
+      "name": "打开状态空间画布",
+      "ok": true
+     },
+     {
+      "name": "打开 3D 场景",
+      "ok": true
+     },
+     {
+      "name": "3D 场景对齐数据源",
+      "ok": true
+     },
+     {
+      "name": "打开信号分析",
+      "ok": true
+     }
+    ]
+   },
+   "win3d": "3D场景 · 摆盘场景",
+   "winsig": "📈 实时监控 · Graphic 信号分析",
+   "sig_shot_ocr": "=) (EDS   man ocaces | 视图:每信号独立图 - +增加信号话题     EE  绝对时刻负 I + 打标记 | Orin: 未选话题 / 本机: 采集中 信号 6 。 点 268157 - 帧龄 0.00s 。 名数据",
+   "sig_colors": {
+    "#2e8b57": 7895,
+    "#1f6feb": 365,
+    "#8957e5": 756,
+    "#ffffff": 234
+   },
+   "cc": {
+    "hdr": [
+     "任务ID",
+     "类型",
+     "工程",
+     "3D场景",
+     "实时监控",
+     "工艺步骤",
+     "适用段",
+     "粒度",
+     "启用节点",
+     "禁用节点",
+     "档位(开)",
+     "模型",
+     "活跃",
+     "状态"
+    ],
+    "proj": "状态空间工程 · 主工程\n📄 reports/projects/SS_主工程_任务配置.zmaxproj",
+    "scene": "摆盘场景 · SCN-06-TRAY",
+    "mon": "#1f6feb  摆盘场景 ×3\n+ 基础/未分类 白 #ffffff",
+    "scene_color": "#1f6feb",
+    "mon_color": "#1f6feb"
+   }
+  },
+  {
+   "task": "TASK-07-AOI",
+   "want": {
+    "scene": "AR场景",
+    "color": "#8957e5",
+    "scn": "SCN-07-AOI",
+    "win3d": ""
+   },
+   "active_task": "TASK-07-AOI",
+   "src_state": "AR场景",
+   "state": {
+    "page": "配置",
+    "task": "TASK-07-AOI",
+    "scene": "✅ 已经是 AR场景(紫) (SCN-07-AOI) ⇒ 不动",
+    "open_all_ok": true,
+    "steps": [
+     {
+      "name": "活跃任务 (绑定真源)",
+      "ok": true
+     },
+     {
+      "name": "应用场景 (ss_scene_switch)",
+      "ok": true
+     },
+     {
+      "name": "打开状态空间画布",
+      "ok": true
+     },
+     {
+      "name": "打开 3D 场景",
+      "ok": true
+     },
+     {
+      "name": "3D 场景对齐数据源",
+      "ok": true
+     },
+     {
+      "name": "打开信号分析",
+      "ok": true
+     }
+    ]
+   },
+   "win3d": "3D场景 · 摆盘场景",
+   "winsig": "📈 实时监控 · Graphic 信号分析",
+   "sig_shot_ocr": "=) (EDS   man ocaces | 视图:每信号独立图 - +增加信号话题     EE  绝对时刻负 I + 打标记 | Orin: 未选话题 / 本机: 采集中 信号 6 。 点 268157 - 帧龄 0.00s 。 名数据",
+   "sig_colors": {
+    "#2e8b57": 7895,
+    "#1f6feb": 365,
+    "#8957e5": 756,
+    "#ffffff": 234
+   },
+   "cc": {
+    "hdr": [
+     "任务ID",
+     "类型",
+     "工程",
+     "3D场景",
+     "实时监控",
+     "工艺步骤",
+     "适用段",
+     "粒度",
+     "启用节点",
+     "禁用节点",
+     "档位(开)",
+     "模型",
+     "活跃",
+     "状态"
+    ],
+    "proj": "状态空间工程 · 主工程\n📄 reports/projects/SS_主工程_任务配置.zmaxproj",
+    "scene": "AR场景 · SCN-07-AOI",
+    "mon": "#8957e5  AR场景 ×176\n+ 基础/未分类 白 #ffffff",
+    "scene_color": "#8957e5",
+    "mon_color": "#8957e5"
+   }
+  }
+ ],
+ "ok": 46,
+ "fail": 0,
+ "failed": [],
+ "keep": {
+  "task": "TASK-01-FW",
+  "src": "插拔场景"
+ }
+}

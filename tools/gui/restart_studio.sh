@@ -26,20 +26,7 @@ if pgrep -f "$PAT" >/dev/null; then
     sleep 3
 fi
 : > /tmp/zmax_nav_cmd 2>/dev/null || true
-# 🔁 2026-11-24 老倪: 「unit 缺失时回落到 launch_studio.sh (现在这个坑会让窗口直接消失)」
-#   实测坑: 本机没有 zmax-studio.service (user unit) ⇒ `systemctl --user start` 报
-#   "Unit zmax-studio.service not found", 而前面已经把旧进程杀掉 ⇒ **窗口直接消失、无提示**。
-#   现改为: 先判 unit 在不在; 不在就回落 launch_studio.sh (同一脚本启动的窗口/单实例逻辑都对得上)。
-if systemctl --user list-unit-files 'zmax-studio.service' 2>/dev/null | grep -q '^zmax-studio\.service'; then
-    systemctl --user start zmax-studio.service
-else
-    echo "⚠ 本机没有 zmax-studio.service (user unit) — 回落 launch_studio.sh 直接起进程" | tee -a "$LOG"
-    _HERE=$(cd "$(dirname "$0")" && pwd)
-    #   </dev/null + 三路重定向: 否则调用方用管道接本脚本时, 子进程会攥着管道不关 ⇒ 调用方一直等
-    ( cd "$_HERE" && DISPLAY="${DISPLAY:-:0}" setsid nohup bash "$_HERE/launch_studio.sh" \
-        >> /tmp/studio_launch.log 2>&1 </dev/null & ) || echo "❌ 回落启动失败 (launch_studio.sh)" | tee -a "$LOG"
-    sleep 2
-fi
+systemctl --user start zmax-studio.service
 
 PID=""; WIN=0
 for i in $(seq 1 40); do

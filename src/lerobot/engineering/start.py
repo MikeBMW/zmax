@@ -213,25 +213,15 @@ def _debug_defaults():
         "ZMAX_AOI_OFF": "1",            # 不做 10082/10083 巡检(内联会卡整拍)
         "ZMAX_FULL_EVERY": "999999",    # 不跑整张画布, 只跑核心链
         "ZMAX_TRAJ_CHUNK": "1",         # 断点一停, 最多多走 1 点
-        "ZMAX_SKIP_IDS": "ssyolo,ssllm,ssreason,n_vlm_llm,n_dsvl,ss_l5,ss_seg,ssaoi,ssvlm,ssllm_in,ssintact,ssintact_dec,swintact,ss_lora_l4,ssmani_exp,ss_mem_l3,ssbg_vlm,ss_man,n_geoplan,swds,swvideo,n_realscene,ssrender,ss2d3d,ss_lora_l3",
+        "ZMAX_SKIP_IDS": "ssyolo,ssllm,ssreason,n_vlm_llm,n_dsvl,ss_l5,ss_seg,ssaoi,ssvlm,ssllm_in,ssintact,ssintact_dec,swintact,ss_lora_l4,ssmani_exp,ss_mem_l3,ssbg_vlm,ss_man,n_geoplan,swds,swvideo,n_realscene,ssrender,ssdec,ss2d3d,ss_lora_l3",
         # 🔎 2026-11-15 老倪「out["status"] 断点没进入」根因: n_moveit 不在核心链里, 而
         #   ZMAX_FULL_EVERY=999999 让"全量 pass"永不发生 ⇒ 规划节点每拍都不跑, 断点自然不进。
         #   加进核心链 (放在 n_exec 前, 与画布顺序一致: 段表 → 执行器)。
         # 2026-11-15 老倪选①: 技能链 sssk1~4 也进核心链 —— 它们往 n_moveit.in1 递目标,
         #   否则规划节点每拍"无目标"提前 return, 断点永远到不了出段表那几行。
-        # 2026-11-16 老倪「action_head 437 行断点还是没进」: 调试档核心链里从来没有 ssdec
-        #   (它是 L3 Flow-Matching 动作头, 唯一调用 SL.infer → predict_action 的节点)。
-        #   白名单里没有 + FULL_EVERY=999999 ⇒ 一拍都不跑 ⇒ pred_velocity 那两行永不执行。
-        #   实测判据: /proc/<调试pid>/maps 里 smolvla_lew 计数 = 0。
-        #   代价: 单线程档每拍要跑一次 500M 前向(~0.3~1s), 循环会明显变慢 —— 这是要断点进必须付的。
-        "ZMAX_CORE_IDS": "ssobs,sssensor,ssff,ssest,sspred,ssinnov,ssdec,sssched,sslimit,ssact,sstactile,"
+        "ZMAX_CORE_IDS": "ssobs,sssensor,ssff,ssest,sspred,ssinnov,sssched,sslimit,ssact,sstactile,"
                          "sssk1,sssk2,sssk3,sssk4,n_moveit,n_exec",
         "SS_VLM_TIMEOUT": "8",
-        # 🔴 本地 ckpt + 本地 VLM 缓存齐备 ⇒ 离线加载。否则 from_pretrained 里的
-        #    AutoProcessor → hf_hub_download 会先联网查 etag, 网络不通就 http_backoff 重试,
-        #    一拍卡几十秒, 主循环反复超时重启, 断点永远轮不到 (2026-11-15 py-spy 实测栈)。
-        "HF_HUB_OFFLINE": "1",
-        "TRANSFORMERS_OFFLINE": "1",
         # 🚦 闭环直驱护栏: 调试档默认"影子" —— 只记录 u 与实测运动的比对, 不改 u/不接管
         #    要真接管改成 armed(还必须连续 30 拍达标); 关掉写 off
         "ZMAX_DD_MODE": "shadow",

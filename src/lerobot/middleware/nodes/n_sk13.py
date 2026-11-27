@@ -14,12 +14,12 @@
     返回 {输出端口: 值}                                      → 发回总线 (bus.publish)
 话题 =  ss.node.sssk13.<port>
 
-实现绑定: registry key=`sssk13` · src/lerobot/policies/left_right/state_space/skills/atomic_skills.py:class SK13Flip
+实现绑定: (未绑定注册表实现) · src/lerobot/policies/left_right/state_space/skills/atomic_skills.py:class SK13Flip
 执行口径: EXEC_MODE=pure · PURE=False (数据面直通; 逐个验证口径后再置 True)
 
 ⚠️ 本文件只是**端口契约** (端口/话题/执行口径), 不含业务逻辑。一个节点在看三处:
    契约  src/lerobot/middleware/nodes/n_sk13.py              ← 就是本文件
-   实现  src/lerobot/middleware/nodes/impl/sssk13.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
+   实现  src/lerobot/middleware/nodes/impl/_未绑定.py         ← 取数 → 调算法 → 打标 (改逻辑改这里)
    算法  src/lerobot/policies/left_right/state_space/skills/atomic_skills.py                                             ← 纯计算 (模型/几何/控制律)
    三处位置可一次问全: lerobot.engineering.sourceview.get_node_triple("sssk13")
 """
@@ -35,7 +35,7 @@ PORTS_IN = ['in1', 'in2', 'in3', 'in4']
 PORTS_OUT = ['out1', 'out2']
 PORT_LABELS = {}
 
-IMPL_KEY = 'sssk13'
+IMPL_KEY = ''
 SOURCE = 'src/lerobot/policies/left_right/state_space/skills/atomic_skills.py'
 SOURCE_SYMBOL = 'class SK13Flip'
 PARAMS = {'state_space': True, 'skill_layer': True, 'ondemand': True, 'skill': {'template': 'SK13', 'stage': '翻转'}, 'desc': '[按需·分段小模型] 原子技能 ⑬ 自动翻转 (SK13): 拉环/模块朝向与目标朝向相反 ⇒ 抬净空 30mm, 绕工具轴每拍 ≤5° 分 36 拍翻 180°, 再回落; 平移到 0.10 m/s、角速度 0.5 rad/s; 不进 8/13 段主链 (判据触发)', 'source': 'src/lerobot/policies/left_right/state_space/skills/atomic_skills.py', 'source_symbol': 'class SK13Flip', 'cap_level': 'L2'}

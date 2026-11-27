@@ -1,0 +1,149 @@
+{
+ "schema": "zmax.ss_meta_pred/1",
+ "ts": 1791976876.834566,
+ "ts_str": "2026-10-14 19:21:16",
+ "input": {
+  "src": "../../../dev/shm/zmax_torque/torque_SCN-01-FW.jsonl",
+  "ok": true,
+  "scene": "SCN-01-FW",
+  "frames": 32,
+  "age_s": 0.0479278564453125,
+  "reason": null
+ },
+ "method": "结构先验原型 + 真算特征 (trained=false)",
+ "trained": false,
+ "n_meta": 31,
+ "top": [
+  {
+   "fn_id": "FN-SYS0-49",
+   "name": "🧭 动作调制器",
+   "layer": "L2",
+   "node_id": "sssched",
+   "score": 0.062249
+  },
+  {
+   "fn_id": "FN-SYS0-43",
+   "name": "📡 融合定位建图",
+   "layer": "L2",
+   "node_id": "sssensor",
+   "score": 0.039085
+  },
+  {
+   "fn_id": "FN-SYS0-41",
+   "name": "📐 板坐标系定位 (工序坐标系·免手眼)",
+   "layer": "L2",
+   "node_id": "n_board_frame",
+   "score": 0.037323
+  },
+  {
+   "fn_id": "FN-SYS2-21",
+   "name": "🎯 INTACT (L4) · 工作安全 + 物理世界导航",
+   "layer": "L4/L5",
+   "node_id": "ssintact",
+   "score": 0.036607
+  },
+  {
+   "fn_id": "FN-SYS0-37",
+   "name": "🎯 YOLO 目标检测",
+   "layer": "L2",
+   "node_id": "ssyolo",
+   "score": 0.036238
+  },
+  {
+   "fn_id": "FN-SYS0-36",
+   "name": "💪 L2 肌肉记忆技能库 (光模块抓放循环)",
+   "layer": "L2",
+   "node_id": "n_l2_muscle",
+   "score": 0.035776
+  },
+  {
+   "fn_id": "FN-SYS2-02",
+   "name": "🧠 L3 长程序列规划器 (场景理解驱动)",
+   "layer": "L4/L5",
+   "node_id": "ssllm",
+   "score": 0.035544
+  },
+  {
+   "fn_id": "FN-SYS2-04",
+   "name": "🛠 L3 技能序列编排",
+   "layer": "L4/L5",
+   "node_id": "ssskill",
+   "score": 0.035249
+  },
+  {
+   "fn_id": "FN-SYS0-52",
+   "name": "② 对位 · SK02",
+   "layer": "L2",
+   "node_id": "sssk2",
+   "score": 0.03505
+  },
+  {
+   "fn_id": "FN-SYS0-35",
+   "name": "🔧 L2 · 肌肉记忆操作 (小脑 · 标杆回放)",
+   "layer": "L2",
+   "node_id": "ss_mem_l2",
+   "score": 0.034471
+  }
+ ],
+ "scores": {
+  "FN-SYS0-49": 0.062249,
+  "FN-SYS0-43": 0.039085,
+  "FN-SYS0-41": 0.037323,
+  "FN-SYS2-21": 0.036607,
+  "FN-SYS0-37": 0.036238,
+  "FN-SYS0-36": 0.035776,
+  "FN-SYS2-02": 0.035544,
+  "FN-SYS2-04": 0.035249,
+  "FN-SYS0-52": 0.03505,
+  "FN-SYS0-35": 0.034471,
+  "FN-SYS2-05": 0.034378,
+  "FN-SYS0-50": 0.034032,
+  "FN-SYS2-26": 0.033379,
+  "FN-SYS2-08": 0.033102,
+  "FN-SYS2-16": 0.033102,
+  "FN-SYS0-40": 0.032916,
+  "FN-SYS2-01": 0.03241,
+  "FN-SYS2-28": 0.031609,
+  "FN-SYS2-12": 0.030691,
+  "FN-SYS2-10": 0.030184,
+  "FN-SYS2-17": 0.030184,
+  "FN-SYS1-31": 0.029942,
+  "FN-SYS2-15": 0.029933,
+  "FN-SYS2-09": 0.028822,
+  "FN-PLAT-73": 0.026018,
+  "FN-PLAT-67": 0.024844,
+  "FN-PLAT-74": 0.023724,
+  "FN-PLAT-65": 0.023724,
+  "FN-PLAT-72": 0.023527,
+  "FN-PLAT-62": 0.023421,
+  "FN-PLAT-64": 0.022466
+ },
+ "task_id": "TASK-07-AOI",
+ "task_name": "AR 光学质量检测 (AOI 联合检查)",
+ "n_all": 74,
+ "input_features": {
+  "abs_tau": [
+   0.0,
+   0.0,
+   0.0,
+   27.911,
+   14.949,
+   30.0
+  ],
+  "phi": 0.7394,
+  "grad_norm": 17.812,
+  "M": 3.643,
+  "std_max": 0.0,
+  "energy": [
+   0.0,
+   0.0,
+   0.0,
+   0.383,
+   0.205,
+   0.412
+  ]
+ },
+ "frozen": true,
+ "degraded": true,
+ "note": "驱动扭矩恒定 (std=1.4e-14) ⇒ 预测在各元任务间无区分度 (softmax 退化为先验排序); 要真预测需**时变**驱动扭矩 (真机运动 / 状态空间实跑) + 阶段标签后用 --fit 标定。全通道绝对幅值 [0.0, 0.0, 0.0, 27.9, 14.9, 30.0]"
+}

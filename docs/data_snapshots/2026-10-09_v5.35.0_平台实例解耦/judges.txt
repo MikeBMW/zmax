@@ -1,0 +1,43 @@
+$ python3 tools/engineering_db.py check
+  ✅ ① 产品特征→子系统 全部命中 (0 个悬空)
+  ✅ ② 功能→模块 全部命中画布/模块库 (0 个悬空)
+  ✅ ③ 功能三轴 cfg 覆盖 74/74
+  ✅ ③ 功能三轴 cal 覆盖 74/74
+  ✅ ③ 功能三轴 dia 覆盖 74/74
+  ✅ ④ 特征→能力(BO_) 全部命中 feature.dbc (0 个悬空)
+  ✅ ⑤ 工程段齐 (7/7)
+  ✅ ⑤b 功能 74 == 画布功能节点 74 (无重复计数)
+  ✅ ⑤c 同名功能 0 条 (每节点只算一次)
+  ✅ ⑥ 库与真源一致 (漂移 无)
+  ✅ ⑦ 模块 74 个, 其中 74 个链到引擎代码真源 (nodes/library.py)
+  ✅ ⑧ 全局可改数字 162 个 (可写 162 · 明确范围 156 · 未定/缺口 6)
+  ✅ ⑧b 每个数字的真源都在盘上 (14 个来源)
+  ✅ ⑧c 数字→功能/模块/系统 链接 375 条
+  ✅ ⑨ MCD 三轴 5 层: 产品 M9/C45/D57 · 系统 sys0 M9/C41/D38 sys1 M0/C0/D8 sys2 M0/C4/D11
+  📦 单文件: /home/ubuntu/zmax/data/database/zmax/zmax_engineering.db (0.91 MB)
+✅ 判据全绿
+
+
+$ python3 tools/instance_init.py --check
+实例数据包: /home/ubuntu/zmax/data/database/zmax
+
+① 真源指向 (仓库内应是符号链接 → 实例包)
+   ✅ config                                         → data/database/zmax/sources/config
+   ✅ feature.dbc                                    → data/database/zmax/sources/feature.dbc
+   ✅ src/lerobot/engineering/flows/state_space_obs.json → data/database/zmax/sources/canvas/state_space_obs.json
+
+② 实例包完整性
+   ✅ zmax_engineering.db
+   ✅ zmax_space.proj
+   ✅ README.md
+   ✅ sources/config
+   ✅ sources/feature.dbc
+   ✅ sources/canvas
+
+③ 公开仓库不含你的数据 (git 跟踪面)
+   ✅ config/ · feature.dbc · 画布真源 均未跟踪 (只随实例包走)
+
+④ 出厂骨架 (供全新实例用)
+   ✅ defaults/ 23 个骨架文件 (无你的真值)
+
+🎉 平台/实例 边界干净

@@ -350,22 +350,15 @@ def _agent_token():
     return ""
 
 
-def _build_catalog(with_ecs=None):
-    """18 → 10 个端点 (2026-11-25 老倪「各窗口要符合当前版本实际功能」)。
-
-    🐛 根因: 2026-11-12 老倪「全删云端出口」—— 云端 ECS 已删除, 本机 /etc/hosts 把 datadrive.world
-       指到 127.0.0.1 阻断外呼。但监控页 catalog 仍写死 8 个 ECS 端点并每 60s 探一次, 永远 8 项红
-       (Connection refused), 看起来像"监控坏了", 实际是**功能已删、界面没跟**。
-    口径: 默认不再探测 ECS; 云端将来恢复用 --with-ecs 或 ZMAX_MONITOR_ECS=1 打开, 定义不删。
-    """
+def _build_catalog():
     ecs = "https://%s" % ECS_DOMAIN
     ov = "%s/ov/live.json?k=%s" % (ecs, OV_TOKEN)
     stp = "%s/st/station?k=%s" % (ecs, OV_TOKEN)
     sts = "%s/st/station/status?k=%s" % (ecs, OV_TOKEN)
     zs = "%s/zmax_status.json?k=%s" % (ecs, OV_TOKEN)
     s3 = "%s/ss3d_live.json?k=%s" % (ecs, OV_TOKEN)
-    _ecs_rows = [
-        # ── ECS 大屏 / 公网 (云端已删; 仅 --with-ecs 时探测) ──
+    return [
+        # ── ECS 大屏 / 公网 ──
         dict(name="ECS-OV只读通道清单", url=ov, owner=OWNER_ECS, kind="json", fresh="static",
              desc="tunnel_proxy 清单(流地址/相机名)", parse=_p_ov),
         dict(name="ECS工位总览页(station)", url=stp, owner=OWNER_PHONE, kind="html", fresh="static",
@@ -383,8 +376,6 @@ def _build_catalog(with_ecs=None):
              kind="json", fresh="ts", desc="ECS 中转站(packages/latest)", parse=_p_relay),
         dict(name="ECS-Orin上行(relay/orin/status)", url="%s/api/relay/orin/status" % ecs,
              owner=OWNER_ORIN, kind="json", fresh="ts", desc="Orin 遥测(经 ECS 中转)", parse=_p_orin_relay),
-    ]
-    _rows = [
         # ── 本机站点服务 ──
         dict(name="本机推流stats(8791)", url="http://127.0.0.1:8791/stats", owner=OWNER_LOCAL,
              kind="json", fresh="frame", desc="相机流健康(arm/local/local2)", parse=_p_stats8791),
@@ -409,9 +400,6 @@ def _build_catalog(with_ecs=None):
         dict(name="工控机AOI表面(10083/last_result)", url="http://192.168.23.23:10083/last_result",
              owner=OWNER_IPC, kind="json", fresh="ts", desc="表面(壳体)检测最近一次结果", parse=_p_aoi),
     ]
-    if with_ecs is None:
-        with_ecs = os.environ.get("ZMAX_MONITOR_ECS") == "1"
-    return (_ecs_rows if with_ecs else []) + _rows
 
 
 # ─────────────────────────── 同源判定 ───────────────────────────

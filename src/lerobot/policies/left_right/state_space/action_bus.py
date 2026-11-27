@@ -148,31 +148,6 @@ def exec_index(max_err_mm=25.0):
         s = int(st.get("start") or 0)
         n = int(st.get("n") or 0)
         d = int(st.get("done") or 0)
-        # 🔴 2026-11-18 实测(真实回放档): 整块下发时服务端 traj_step_state.json 的 done **不更新**
-        #   (批次路径只在整轮结束推进 cursor), 于是 action.i 永远停在 start, 现场看着就是
-        #   "真机在走、动作没对齐"(实测真机 #21 而 action.i=#0, Δ=20 点)。
-        #   口径: 真值取**执行日志里最后一条 progress**(与 8797 /api/arm/step_traj/status 同源),
-        #   取不到才用 state 的 start+done。
-        if not d:
-            _lp = st.get("log") or ""
-            if _lp:
-                try:
-                    with open(_lp, "rb") as _f:
-                        _f.seek(0, 2)
-                        _f.seek(max(0, _f.tell() - 20000))
-                        _tail = _f.read().decode("utf-8", "ignore")
-                    _k = _tail.rfind('"progress":')
-                    if _k >= 0:
-                        _num = ""
-                        for _ch in _tail[_k + 11:]:
-                            if _ch.isdigit():
-                                _num += _ch
-                            elif _num:
-                                break
-                        if _num:
-                            d = max(0, int(_num) - 1)          # progress 是 1 基已完成数 ⇒ 索引 = progress-1
-                except Exception:                                  # noqa: BLE001
-                    pass
         if n > 0:
             i = s + max(0, min(d, n - 1))
             return max(0, min(i, len(fr) - 1))
@@ -565,54 +540,6 @@ def from_action(act, deny=""):
         out["why"] = ("%s · %s" % (out.get("why") or "", deny)).strip(" ·")
     out["i_plan"] = act.get("i_plan", cursor215())      # 与 215 同款
     out = _enrich(out)
-    # 🎯 L3 名义动作以**真机 action.json 同格式**挂出来 (x/y/z mm 绝对 + 姿态/四元数 hold 真值 + grip_mm)
-    #    执行仍走 out["src"] (现在=回放), 这块只做格式对齐与切换前对账; 模型没出值就不写。
-    try:
-        from lerobot.engineering.nodes.library import _SS_STATE as _S3
-        _l3 = _S3.get("l3_pose")
-        if _l3 and len(_l3) >= 4:
-            _tp = read_pose() or {}
-            _n = len(_l3)
-            if _n >= 7:          # 🎯 7 维: 位姿全套来自模型 [x,y,z,a,b,c,grip]
-                _abc = [round(float(_l3[3]), 3), round(float(_l3[4]), 3), round(float(_l3[5]), 3)]
-                _gz = float(_l3[6])
-                _q = None
-                try:
-                    from scipy.spatial.transform import Rotation as _R
-                    _xyzw = _R.from_euler("xyz", _abc, degrees=True).as_quat()
-                    _q = [round(float(v), 6) for v in _xyzw]     # scipy 给 x,y,z,w
-                except Exception:                                            # noqa: BLE001
-                    pass
-                _src = "L3 模型 (SmolVLA-LEW) · 7 维 xyz+abc+grip"
-                _note = "x/y/z/a/b/c 全部来自模型; 四元数由 a/b/c 反算(仅供下游兼容)"
-                _q_out = dict(zip(("qx", "qy", "qz", "qw"), _q)) if _q else {
-                    "qx": _tp.get("qx"), "qy": _tp.get("qy"), "qz": _tp.get("qz"), "qw": _tp.get("qw")}
-            else:                # 旧 4 维: 只有 xyz+grip, 姿态 hold 真值
-                _abc = [_tp.get("a"), _tp.get("b"), _tp.get("c")]
-                _gz = float(_l3[3])
-                _src = "L3 模型 (SmolVLA-LEW) · 4 维 xyz+grip"
-                _note = "L3 只出 xyz+grip ⇒ 姿态/四元数 hold 真值 (格式对齐, 不是模型输出)"
-                _q_out = {"qx": _tp.get("qx"), "qy": _tp.get("qy"), "qz": _tp.get("qz"), "qw": _tp.get("qw")}
-            out["l3"] = {
-                "x": round(float(_l3[0]), 3), "y": round(float(_l3[1]), 3), "z": round(float(_l3[2]), 3),
-                "a": _abc[0], "b": _abc[1], "c": _abc[2],
-                **_q_out,
-                "dim": _n,
-                "grip_mm": (70.0 if _gz >= 35.0 else 0.0),      # 真机是 0=合 / 70=开 二值口径 ⇒ 量化
-                "grip_mm_raw": round(_gz, 2),                  # 模型原始连续值 (留证据, 不作下发)
-                "grip_act": ("open" if _gz >= 35.0 else "close"),
-                "pose_src": _src,
-                "hold_note": _note,
-                "model_src": _S3.get("l3_pose_src"),
-                "infer_ms": _S3.get("l3_infer_ms"),
-                "age_s": (None if not _S3.get("l3_pose_ts") else round(time.time() - _S3["l3_pose_ts"], 2)),
-            }
-            out["l3_fmt_ok"] = bool(abs(out["l3"]["x"]) > 1.0 and abs(out["l3"]["z"]) > 1.0
-                                    and 0.0 <= _gz <= 70.0 and out["l3"]["age_s"] is not None
-                                    and out["l3"]["age_s"] < 2.0
-                                    and (out["l3"]["a"] is not None or _n < 7))
-    except Exception:                                                        # noqa: BLE001
-        pass
     _mm, _age = grip_meas()
     out.setdefault("grip_meas_mm", _mm)
     out.setdefault("grip_meas_age_s", (None if _age is None else round(_age, 1)))

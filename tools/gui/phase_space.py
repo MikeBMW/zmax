@@ -130,30 +130,6 @@ class PhaseSpaceView(QWidget):
                                    symbolBrush="#3fb950", symbolPen="#7ee787")
         self._streams_drawn = (k, b, m)
 
-    def _autoscale(self, xs, ys, theta_mm, p, H, k, m):
-        """视野自适应 —— 老倪 2026-11-20「点怎么又没有了」的根因就在这:
-
-        原来视野钉死 X±75mm / Y±0.9, 真机跑批时 Θ 实测冲到 **±268mm**、H 到 **15.4J**
-        ⇒ 实测点被裁到框外, 看上去就是\"点不见了\"。这里只在**点或尾迹要出框**时放大
-        (留 15% 余量, 并纳入当前 H 的等能椭圆半轴), 不做每拍重设 ⇒ 不影响用户手动缩放。
-        """
-        if self.pw is None or not xs:
-            return
-        (x0, x1), (y0, y1) = self.pw.viewRange()
-        need_x = max(abs(theta_mm), max(abs(v) for v in xs))
-        need_y = max(abs(p), max(abs(v) for v in ys))
-        if H and H > 1e-9:
-            need_x = max(need_x, 1000.0 * float(np.sqrt(2 * H / max(k, 1e-9))))
-            need_y = max(need_y, float(np.sqrt(2 * m * H)))
-        span_x = max(abs(x0), abs(x1)) or 75.0
-        span_y = max(abs(y0), abs(y1)) or 0.9
-        if need_x > 0.95 * span_x:
-            mx = max(need_x * 1.15, 20.0)
-            self.pw.setXRange(-mx, mx, padding=0)
-        if need_y > 0.95 * span_y:
-            my = max(need_y * 1.15, 0.2)
-            self.pw.setYRange(-my, my, padding=0)
-
     def refresh(self):
         try:
             d = json.load(open(_live_path(), encoding="utf-8"))
@@ -176,13 +152,12 @@ class PhaseSpaceView(QWidget):
                 self._draw_portrait(k, b, m, H)
             if self.pw is not None and self._trail_curve is not None:
                 self._trail.append((theta_mm, p))
-                if len(self._trail) > 2000:              # 老倪 2026-11-20「全过程放到一个相空间」: 400 → 2000
-                    self._trail = self._trail[-2000:]
+                if len(self._trail) > 400:
+                    self._trail = self._trail[-400:]
                 xs = [t[0] for t in self._trail]
                 ys = [t[1] for t in self._trail]
                 self._trail_curve.setData(xs, ys)
                 self._point.setData([theta_mm], [p])
-                self._autoscale(xs, ys, theta_mm, p, H, k, m)
             zeta = b / (2 * np.sqrt(k * m)) if k > 0 and m > 0 else 0.0
             self.lbl.setText(
                 "🌀 相空间 Θ-p │ k_ax %.0f N/m · α %.2f (ζ=%.2f) · m %.3f kg │ "

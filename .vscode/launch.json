@@ -2,59 +2,261 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "🖥 前端 GUI · 控制台可视化 (studio.py)",
+      "name": "🚀 全新调试进程 (studio.py)",
       "type": "python",
       "request": "launch",
       "program": "/home/ubuntu/zmax/tools/gui/studio.py",
       "python": "/home/ubuntu/zmax/gui-venv311/bin/python",
-      "pythonArgs": [
-        "-X",
-        "frozen_modules=off"
-      ],
-      "cwd": "/home/ubuntu/zmax/tools/gui",
+      "cwd": "/home/ubuntu/zmax",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "env": {}
+    },
+    {
+      "name": "🔌 Attach 现有控制台 (5678)",
+      "type": "python",
+      "request": "attach",
+      "connect": {
+        "host": "127.0.0.1",
+        "port": 5678
+      },
+      "justMyCode": false
+    },
+    {
+      "name": "工具脚本 (lerobot-venv)",
+      "type": "python",
+      "request": "launch",
+      "program": "${file}",
+      "python": "/home/ubuntu/zmax/venvs/lerobot-venv/bin/python",
+      "cwd": "/home/ubuntu/zmax",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "🎯 INTACT L4 · policy 层调试 (service.py E2E)",
+      "type": "python",
+      "request": "launch",
+      "program": "/home/ubuntu/zmax/tools/intact_service_e2e.py",
+      "python": "/home/ubuntu/zmax/gui-venv311/bin/python",
+      "cwd": "/home/ubuntu/zmax",
       "console": "integratedTerminal",
       "justMyCode": false,
       "env": {
-        "DISPLAY": ":0",
-        "QT_QPA_PLATFORM": "xcb",
-        "ZMAX_SINGLE_THREAD": "1",
-        "PYTHONUNBUFFERED": "1",
-        "PYDEVD_DISABLE_FILE_VALIDATION": "1",
-        "HF_HUB_OFFLINE": "1",
-        "TRANSFORMERS_OFFLINE": "1"
+        "STABLEWM_HOME": "/home/ubuntu/zmax/zmax_data/stable-wm-cache",
+        "LOCAL_DATASET_DIR": "/home/ubuntu/zmax/zmax_data/stable-wm-cache",
+        "INTACT_REPO": "/home/ubuntu/zmax/external/INTACT-JEPA",
+        "INTACT_POLICY": "intact_l4_current",
+        "INTACT_DEVICE": "cpu",
+        "INTACT_RUNTIME": "root",
+        "INTACT_KEEP_INPUT": "1",
+        "MUJOCO_GL": "egl"
       }
     },
     {
-      "name": "🧠 后端工程 · 调度状态机 (start.py)",
+      "name": "🎯 INTACT L4 · GUI 节点路径 (node_intact_dec)",
       "type": "python",
       "request": "launch",
-      "program": "/home/ubuntu/zmax/src/lerobot/engineering/start.py",
+      "program": "/home/ubuntu/zmax/tools/intact_gui_node_check.py",
       "python": "/home/ubuntu/zmax/gui-venv311/bin/python",
-      "pythonArgs": [
-        "-X",
-        "frozen_modules=off"
+      "cwd": "/home/ubuntu/zmax",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "env": {
+        "STABLEWM_HOME": "/home/ubuntu/zmax/zmax_data/stable-wm-cache",
+        "LOCAL_DATASET_DIR": "/home/ubuntu/zmax/zmax_data/stable-wm-cache",
+        "INTACT_REPO": "/home/ubuntu/zmax/external/INTACT-JEPA",
+        "INTACT_POLICY": "intact_l4_current",
+        "INTACT_DEVICE": "cpu",
+        "INTACT_RUNTIME": "root",
+        "QT_QPA_PLATFORM": "offscreen"
+      }
+    },
+    {
+      "name": "🔬 INTACT L4 · 模型侧单步 (INTACT venv, 真输入重放)",
+      "type": "python",
+      "request": "launch",
+      "program": "/home/ubuntu/zmax/tools/intact_worker_debug.py",
+      "python": "/home/ubuntu/zmax/external/INTACT-JEPA/.venv/bin/python",
+      "cwd": "/home/ubuntu/zmax",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "env": {
+        "STABLEWM_HOME": "/home/ubuntu/zmax/zmax_data/stable-wm-cache",
+        "LOCAL_DATASET_DIR": "/home/ubuntu/zmax/zmax_data/stable-wm-cache",
+        "INTACT_REPO": "/home/ubuntu/zmax/external/INTACT-JEPA",
+        "INTACT_POLICY": "intact_l4_current",
+        "INTACT_DEVICE": "cpu",
+        "INTACT_RUNTIME": "root",
+        "MUJOCO_GL": "egl"
+      }
+    },
+    {
+      "name": "🌍 INTACT L4 · 光模块插拔链 (真物理桥)",
+      "type": "python",
+      "request": "launch",
+      "program": "/home/ubuntu/zmax/tools/intact_sw_optical_bridge.py",
+      "python": "/home/ubuntu/zmax/gui-venv311/bin/python",
+      "args": [
+        "--task",
+        "optical_insert",
+        "--seeds",
+        "0,1",
+        "--mode",
+        "insert",
+        "--max-steps",
+        "900",
+        "--device",
+        "cpu",
+        "--policy",
+        "intact_l4_current"
       ],
       "cwd": "/home/ubuntu/zmax",
       "console": "integratedTerminal",
       "justMyCode": false,
-      "stopOnEntry": false,
       "env": {
-        "PYTHONPATH": "/home/ubuntu/zmax/src:/home/ubuntu/zmax/tools",
-        "PYTHONUNBUFFERED": "1",
-        "PYDEVD_DISABLE_FILE_VALIDATION": "1",
-        "ZMAX_FSM": "1",
-        "ZMAX_ORCH": "1",
-        "ZMAX_AUTO_TRAJ": "1",
-        "ZMAX_TRAJ_CHUNK": "1",
-        "ZMAX_TRAJ_SPEED": "40",
-        "ZMAX_DISPATCH_INPROC": "0",
-        "ZMAX_SINGLE_THREAD": "1",
-        "ZMAX_LLM_OFF": "1",
-        "ZMAX_AOI_OFF": "1",
-        "ZMAX_FULL_EVERY": "999999",
-        "SS_VLM_TIMEOUT": "8",
+        "STABLEWM_HOME": "/home/ubuntu/zmax/zmax_data/stable-wm-cache",
+        "LOCAL_DATASET_DIR": "/home/ubuntu/zmax/zmax_data/stable-wm-cache",
+        "INTACT_REPO": "/home/ubuntu/zmax/external/INTACT-JEPA",
+        "INTACT_POLICY": "intact_l4_current",
+        "INTACT_DEVICE": "cpu",
+        "INTACT_RUNTIME": "root",
+        "INTACT_KEEP_INPUT": "1",
+        "PYOPENGL_PLATFORM": "egl",
+        "MUJOCO_GL": "egl"
+      }
+    },
+    {
+      "name": "🌀 流形引擎 · 自检 (step 断点必停)",
+      "type": "python",
+      "request": "launch",
+      "program": "/home/ubuntu/zmax/src/lerobot/manifold/manifold_engine.py",
+      "python": "/home/ubuntu/zmax/gui-venv311/bin/python",
+      "cwd": "/home/ubuntu/zmax",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "env": {}
+    },
+    {
+      "name": "🌀 流形引擎 · 状态快照 (--state)",
+      "type": "python",
+      "request": "launch",
+      "program": "/home/ubuntu/zmax/src/lerobot/manifold/manifold_engine.py",
+      "python": "/home/ubuntu/zmax/gui-venv311/bin/python",
+      "cwd": "/home/ubuntu/zmax",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "args": [
+        "--state"
+      ],
+      "env": {}
+    },
+    {
+      "name": "🌀 流形引擎 · 内稳态演示 (--hom-demo)",
+      "type": "python",
+      "request": "launch",
+      "program": "/home/ubuntu/zmax/src/lerobot/manifold/manifold_engine.py",
+      "python": "/home/ubuntu/zmax/gui-venv311/bin/python",
+      "cwd": "/home/ubuntu/zmax",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "args": [
+        "--hom-demo"
+      ],
+      "env": {}
+    },
+    {
+      "name": "🌀 流形引擎 · 能量层自检 (energy_manifold --selftest)",
+      "type": "python",
+      "request": "launch",
+      "program": "/home/ubuntu/zmax/src/lerobot/manifold/energy_manifold.py",
+      "python": "/home/ubuntu/zmax/gui-venv311/bin/python",
+      "cwd": "/home/ubuntu/zmax",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "args": [
+        "--selftest"
+      ],
+      "env": {}
+    },
+    {
+      "name": "🌀 流形引擎 · 常驻周期循环 (先停服务; step 断点每周期停)",
+      "type": "python",
+      "request": "launch",
+      "program": "/home/ubuntu/zmax/tools/ss_engine_loop.py",
+      "python": "/home/ubuntu/zmax/gui-venv311/bin/python",
+      "cwd": "/home/ubuntu/zmax",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "args": [
+        "run",
+        "--hz",
+        "10"
+      ],
+      "env": {
+        "ZMAX_SS_ENGINE_HZ": "10"
+      }
+    },
+    {
+      "name": "🌀 流形引擎 · 常驻循环 · 单轮取证 (once)",
+      "type": "python",
+      "request": "launch",
+      "program": "/home/ubuntu/zmax/tools/ss_engine_loop.py",
+      "python": "/home/ubuntu/zmax/gui-venv311/bin/python",
+      "cwd": "/home/ubuntu/zmax",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "args": [
+        "once"
+      ],
+      "env": {}
+    },
+    {
+      "name": "🧮 配置导入 · 真源+工程库读 (config_import · 断点 186 必停)",
+      "type": "python",
+      "request": "launch",
+      "program": "/home/ubuntu/zmax/src/lerobot/engineering/config_import.py",
+      "python": "/home/ubuntu/zmax/gui-venv311/bin/python",
+      "cwd": "/home/ubuntu/zmax",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "env": {}
+    },
+    {
+      "name": "🧮 配置导入 · 读+写回画布节点 (--node n_calib_mani)",
+      "type": "python",
+      "request": "launch",
+      "program": "/home/ubuntu/zmax/src/lerobot/engineering/config_import.py",
+      "python": "/home/ubuntu/zmax/gui-venv311/bin/python",
+      "cwd": "/home/ubuntu/zmax",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "args": [
+        "--node",
+        "n_calib_mani"
+      ],
+      "env": {}
+    },
+    {
+      "name": "🅱 550B 标定版 · 单线程 debug (状态空间工程)",
+      "type": "python",
+      "request": "launch",
+      "program": "/home/ubuntu/zmax/tools/gui/simulink_module.py",
+      "python": "/home/ubuntu/zmax/gui-venv311/bin/python",
+      "cwd": "/home/ubuntu/zmax",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "env": {
         "OMP_NUM_THREADS": "1",
-        "MKL_NUM_THREADS": "1"
+        "MKL_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1",
+        "VECLIB_MAXIMUM_THREADS": "1",
+        "TORCH_NUM_THREADS": "1",
+        "MALLOC_ARENA_MAX": "2",
+        "ZMAX_SINGLE_THREAD": "1",
+        "ZMAX_DEBUG_MODE": "1",
+        "ZMAX_PRODUCT": "550B",
+        "PYTHONUNBUFFERED": "1"
       }
     }
   ]

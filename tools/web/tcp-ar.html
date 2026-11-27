@@ -226,7 +226,6 @@
       <!-- ▶ 老倪 2026-11-18「太复杂了, 删掉 预览动作/同步真值/插入仿真/插拔全流程。就一个 右臂跑真实轨迹」
            一个按钮 = 真机按录制轨迹走(⚡真实回放档, 整轮≈43s); 需 8793 已授权真动。 -->
       <button id="bRTraj" class="sm" style="background:#238636;border-color:#238636;font-size:13px" title="一键真机回放: 从当前游标沿 215 点真实轨迹走到底(⚡真实回放, 整轮≈43 秒)。需 8793 已授权真动; 到 AOI/夹爪停留点会停住做完再走; 游标已在末尾会自动回起点。">▶ 右臂跑真实轨迹</button>
-      <button id="bSimTraj" class="sm" style="background:#1f6feb;border-color:#1f6feb;font-size:13px;margin-left:6px" title="仿真回放全流程相位轨迹(251点/372帧 · 5865mm · 含AOI金手指1/2+侧面点1~4): 只驱动三维视图里的右臂模型, 不下发任何真机指令、不碰授权">▶ 仿真回放·不动真机</button>
       <span id="tRTraj" style="font-size:12px;color:#8b949e;margin-left:8px"></span>
       <span id="tSyncStep" style="font-size:12px;color:#8b949e;margin-left:6px"></span>
       <span id="tPrev" style="display:none"></span><span id="tIns" style="display:none"></span>
@@ -353,7 +352,7 @@
       <span style="font-size:12px;color:#8b949e;margin-right:4px">轨迹:</span>
       <button id="t1" class="sm" title="工程配置「3D 元素」里那条叫小红的直线 (fence_store)">轨迹1 小红</button>
       <button id="t2" class="sm" title="三维视图里那条洋红的规划航路矩形 (planned_traj.json, 4 段闭环, 起点=当前TCP), 也就是模块头刚走过的那一圈">轨迹2 矩形</button>
-      <button id="t3" class="sm" title="8815 全流程相位轨迹: 251 点 / 5888mm / 26 个相位段 · 含 AOI 金手指检测1+2 与 侧面点1~4 · 闭环 · 打开页面自动显示">轨迹6 相位·AOI</button>
+      <button id="t3" class="sm" title="按工程配置围栏重规划的覆盖路径 (避开检测设备/侧面检测相机/上横梁)">轨迹3 建图</button>
       <button id="t4" class="sm" title="金手指点1 → 安全点1 (配置中心点位台账, 实时刷新)">轨迹4 安全</button>
       <button id="t5" class="sm" title="轨迹5 实时: 从当前 TCP 规划到左栏选中的 🎯 目标点 (默认 安全点1); 路径 = 原地升到安全高 → 平移 → 垂直落点; 换目标点会自动重算">轨迹5 实时</button>
       <button id="tOff" class="sm" title="只显示实测/规划轨迹, 不再叠命名轨迹">✕ 关掉命名轨迹</button>
@@ -932,11 +931,6 @@ async function loadNamed(k){
         el.style.color='#fbbf24';
         return;
       }
-      // 8815 全流程相位轨迹(251点/26相位/含AOI金手指+侧面检测)写进 explore_traj_fenced.json 后,
-      // 服务端 NAMED_TRAJ['map'] 仍叫「建图(自主探索)」—— 按 note 认出来, 改成准确名字,
-      // 否则页面上写「建图」而画的是一条带 4 个 AOI 检测位的工艺闭环, 看的人会误解。
-      if(k==='map' && /8815 全流程相位/.test((d.note||'')))
-        d.label = '轨迹6 · 全流程相位 (251点 · 26相位 · 含AOI金手指1/2+侧面点1~4)';
       NAMED[k]=d.pts;
     }
     NAMED_ON[k]=true;
@@ -1044,9 +1038,7 @@ function _drawNamedVR1(g, pr, key){
 // AR 叠加视图里画 (用全局 drawTube)
 function drawNamedOV(g){
   let n=0;
-  // 🚫 2026-11-24 老倪「那么多浅蓝色的轨迹，删掉」⇒ key==='follow'(8817 跟随真机的累积轨迹, 25401 点, #22d3ee 青色)
-  //    一律不画。跟随功能本身(HUD 读数/仿真臂跟随)保留, 只是不把这条累积轨迹糊在画面上。
-  for(const key of Object.keys(NAMED_ON).filter(k=>NAMED_ON[k] && NAMED[k] && NAMED[k].length>=2 && k!=='follow')){
+  for(const key of Object.keys(NAMED_ON).filter(k=>NAMED_ON[k] && NAMED[k] && NAMED[k].length>=2)){
     const pts=NAMED[key], col=NAMED_COL[key]||'#ff35d7';
     const r=drawTube(g, pts, {baseW:7, ref:1.1, alpha:0.85, ring:12,
         color:(p,f)=>col, ringColor:'rgba(255,255,255,.6)'});
@@ -6658,12 +6650,8 @@ function paintCalibBtn(){
 var RTRAJ={playing:false,frames:[],fi:0,t0:0,dur:0,raf:null,rate:1,path_mm:0,
            n_pts:0,bad:0,errAvg:0,errMax:0};    // rate=1 = 按录制真实时间走(43s), 看得清转腕/翻面
 function rtrajUI(on,txt){
-  // 🔴 2026-11-24 修: 这里原来改的是 bRTraj —— 而 bRTraj 绑的是 runRealTraj(真机 MoveAbsJ 下发),
-  //   却被写成「📍 右臂跑真实轨迹(只仿真·不动真机)」⇒ 文字说不动真机、点下去真机就动,
-  //   当晚实测就是这么动了真机(632,230,309 → 673,194,214)。仿真回放现在有自己的按钮 bSimTraj,
-  //   状态只标在它身上; bRTraj 的文字/语义永远是真机下发, 不许被这里覆盖。
-  var b=$('bSimTraj');
-  if(b){ b.classList.toggle('on',!!on); b.textContent = on ? '⏹ 停止仿真回放' : '▶ 仿真回放·不动真机'; }
+  var b=$('bRTraj');
+  if(b){ b.classList.toggle('on',!!on); b.textContent = on ? '⏹ 停止·真实轨迹' : '📍 右臂跑真实轨迹(只仿真·不动真机)'; }
   var t=$('tRTraj'); if(t && txt!=null) t.textContent=txt;
 }
 /* 回放专用高频推送: 现场可能同时开着别的 /ar3d 页面(它们也在 8Hz 推 /armq),
@@ -7273,28 +7261,6 @@ function rtrajPlay(){
 }
 
 { var _b=$('bRTraj'); if(_b) _b.addEventListener('click', runRealTraj); }
-/* ▶ 仿真回放·不动真机 —— 老倪 2026-11-24「做1 你按照回放轨迹走就可以」
-   与 bRTraj(真机 MoveAbsJ 下发) 是两条完全不同的路:
-     · 本按钮 = fetch /api/orbit_frames(251点/372帧全流程相位轨迹) → rtrajPlayJoints
-       ⇒ 只驱动三维视图里的右臂模型 + 推 8802, **不下发真机指令、不碰授权**;
-     · bRTraj = POST /api/arm/step_traj ⇒ 容器内 arm_step_traj.py 真动控制器。
-   为什么不合并成一个: 2026-11-24 实测点 bRTraj 以为"只仿真", 结果真机从 632,230,309 走到
-   673,194,214 —— 那条 215 点轨迹有 50 点落在「检测设备」围栏盒内(x711~844/y-91~302/z0~340),
-   正是当晚撞过的位置。所以仿真与真机必须分成两个按钮, 名字里写清"不动真机"。 */
-{ var _bs=$('bSimTraj'); if(_bs) _bs.addEventListener('click', function(){
-    var t=$('tRTraj');
-    function st(x,c){ if(t){ t.textContent=x; t.style.color=c||'#8b949e'; } }
-    try{ if(RTRAJ.playing){ rtrajStop(); st('⏹ 仿真回放已停 · 真机未动','#d29922'); return; } }catch(e){}
-    st('读取相位轨迹…','#8b949e');
-    fetch('/api/orbit_frames',{cache:'no-store'}).then(function(r){ return r.json(); }).then(function(d){
-      if(!d || !d.frames || !d.frames.length){ st('⚠ /api/orbit_frames 没有帧(先跑 tools/phase_traj_ik2.py)','#f85149'); return; }
-      ensureTrajJoints();
-      setTimeout(function(){
-        try{ rtrajPlayJoints(d); }
-        catch(e){ st('⚠ 播放失败: '+e,'#f85149'); }
-      }, 300);
-    }).catch(function(e){ st('⚠ '+e,'#f85149'); });
-}); }
 { var _bs=document.getElementById('bSyncStep'); if(_bs) _bs.addEventListener('click', syncStepPlay); }
 { var _ba=document.getElementById('bSyncAlign');   // 已删除按钮, 保留守卫(存在才绑定)
   if(_ba) _ba.addEventListener('click', function(){
@@ -9408,7 +9374,8 @@ body{padding-bottom:196px}
       var fq = (typeof PREV!=='undefined' && PREV.on) ? '跟随中' : '未跟随';   // ⚠ PREV 是 let 声明 ⇒ 不在 window 上
       hud.textContent = '跟随真机 · '+fq+'\n'
         + 'TCP '+mm(d.x)+' / '+mm(d.y)+' / '+mm(d.z)+' mm\n'
-        + '真值帧龄 '+(d.age_s!=null? (+d.age_s).toFixed(2)+'s' : '?')+(d.stale?' ⚠陈旧':'');
+        + '真值帧龄 '+(d.age_s!=null? (+d.age_s).toFixed(2)+'s' : '?')+(d.stale?' ⚠陈旧':'')+'\n'
+        + '跟随轨迹 '+((typeof NAMED!=='undefined' && NAMED['follow'])||[]).length+' 点'+(hudErr?('\n'+hudErr):'');
       hud.style.borderColor = d.stale ? '#f85149' : '#238636';
     }catch(e){ hud.textContent='跟随真机 · /api/tcp 取不到'; hud.style.borderColor='#f85149'; }
   }, 500);
@@ -9418,8 +9385,11 @@ body{padding-bottom:196px}
       var d = await (await fetch(SURL,{cache:'no-store'})).json();
       var pts = (d.path||[]).map(function(p){ return p.A_mm.map(function(v){ return v/1000; }); });
       if(pts.length>1){
-        // 🚫 2026-11-24 老倪「那么多浅蓝色的轨迹，删掉」⇒ 8817 跟随轨迹(累积 25401 点·#22d3ee)不再叠加到画面
+        NAMED['follow']=pts; NAMED_ON['follow']=true;
         NAMED_INFO['follow']={label:'跟随新轨迹', src:'8817 · '+pts.length+' 点 · 弧长 '+Math.round(d.cum_mm||0)+'mm'};
+        try{ NAMED_COL['follow']='#22d3ee'; }catch(e2){}
+        SHOW=true;
+        if(typeof drawVR==='function') drawVR();
       }
       hudErr='';
     }catch(e){ hudErr='轨迹层: '+String(e&&e.message||e).slice(0,40); }
@@ -9435,12 +9405,6 @@ document.addEventListener('DOMContentLoaded', function(){
 });
 window.addEventListener('load', function(){
   if(location.hash === '#orbit'){ setTimeout(function(){ try{ orbitAutoPlay(); }catch(e){ console.warn(e); } }, 1500); }
-  // 全流程相位轨迹(251点/26相位/含AOI): 一打开 ar3d 就画出来, 不用再点按钮。
-  // 老倪「你把能回放的轨迹渲染到 ar3d 上」⇒ 渲染=看得见, 不是"渲染好了但要你自己找按钮点亮"。
-  setTimeout(function(){
-    try{ if(typeof loadNamed==='function' && !NAMED_ON['map']) loadNamed('map'); }
-    catch(e){ console.warn('自动点亮全流程相位轨迹失败:', e); }
-  }, 1200);
 });
 </script>
 </body></html>

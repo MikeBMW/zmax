@@ -63,7 +63,7 @@ def main() -> int:
     print(f"📚 统一信号库: {SS.DB} · {a.hz}Hz · pid {os.getpid()}", flush=True)
     try:
         while True:
-            t0 = time.monotonic()          # 🔴 墙钟被 NTP 回拨(-8h) ⇒ 节流只能单调钟
+            t0 = time.time()
             try:
                 snap = LS.topics_from_files()
                 n = SS.write_snapshot(snap)
@@ -74,9 +74,9 @@ def main() -> int:
                 last = time.time()
             except Exception as e:                                            # noqa: BLE001
                 print(f"⚠️ 落库失败: {type(e).__name__}: {e}", flush=True)
-            dt = period - (time.monotonic() - t0)
+            dt = period - (time.time() - t0)
             if dt > 0:
-                time.sleep(min(dt, period))
+                time.sleep(dt)
     except KeyboardInterrupt:
         pass
     finally:

@@ -131,6 +131,5 @@
   "世界": "world"
  },
  "ssplan": "longplan",
- "n_geoplan": "geodesic",
- "ss_phase_view": "phaseview"
+ "n_geoplan": "geodesic"
 }

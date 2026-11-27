@@ -1,0 +1,5 @@
+deployer_hotfix_1_capture_detect: POST /capture_detect 单次断言 → 容忍冷启首抓, 轮询最多 180s
+deployer_hotfix_2_storage_readiness: /storage 单次断言(重启后~25s就打) → readiness 轮询最多 200s
+machine_forensics_4_instances: 工控机 4 份 AOI 进程: 端口属主 10082=11500 / 10083=14120 均为系统 Python310 重复实例; venv 正确实例(10712/14036)未占住端口
+fix: 4 份全杀(ports free) → 保活任务 ZMAX_AOI_KeepAlive 重触发, 只起 venv 那一份
+known_trap: 技能 zmax-aoi-service 已记: 部署/验收前必先杀重复实例, 否则假失败→自动回滚

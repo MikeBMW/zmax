@@ -1,0 +1,81 @@
+{
+ "body_state": {
+  "sun": {
+   "k": "live",
+   "txt": "在跑",
+   "age": 0.02860116958618164,
+   "src": "zmax_data/ss_live/engine_latest.json"
+  },
+  "mercury": {
+   "k": "live",
+   "txt": "在跑",
+   "age": 0.02860116958618164,
+   "src": "zmax_data/ss_live/engine_latest.json"
+  },
+  "jupiter": {
+   "k": "live",
+   "txt": "在跑",
+   "age": 0.02860116958618164,
+   "src": "zmax_data/ss_live/engine_latest.json"
+  },
+  "earth": {
+   "k": "live",
+   "txt": "在跑",
+   "age": 0.0023953914642333984,
+   "src": "zmax_data/ss_live/skill_latest.json"
+  },
+  "moon": {
+   "k": "live",
+   "txt": "在跑",
+   "age": 0.0015320777893066406,
+   "src": "zmax_data/ss_live/skill_error.json"
+  },
+  "mars": {
+   "k": "live",
+   "txt": "在跑",
+   "age": 0.02860116958618164,
+   "src": "zmax_data/ss_live/engine_latest.json"
+  },
+  "sats": {
+   "k": "live",
+   "txt": "在跑",
+   "age": 0.0023953914642333984,
+   "src": "zmax_data/ss_live/skill_latest.json"
+  }
+ },
+ "layers": {
+  "age": 99059.52265381813,
+  "k": "off",
+  "txt": "离线",
+  "cycle": 66840,
+  "pipe_calls": 6684,
+  "L5": {
+   "ok": true,
+   "src": "planner.rules.builtin",
+   "ms": 0.0
+  },
+  "L4": {
+   "ok": true,
+   "src": "vote[node.unified]",
+   "ms": 40.5
+  },
+  "L3": {
+   "ok": true,
+   "src": "dispatch.k_act",
+   "ms": 0.07
+  },
+  "L2": {
+   "ok": true,
+   "src": "detect.yolo",
+   "ms": 30.15
+  }
+ },
+ "drv": {
+  "src": "M ← config/calib/zmax_manifold.json (diag, dim=6, M=3.6430) · −∇Φ ← potential_field 解析梯度 (L2=1 L3=1 L4=1 assembly=1) · x ← 技能入口 SK01 谷底 (无新鲜位姿真源)",
+  "x_source": "技能入口 SK01 谷底 (无新鲜位姿真源)",
+  "clip": true,
+  "T": 43.617708411202784,
+  "T_max": 30.0,
+  "model_tensor": false
+ }
+}

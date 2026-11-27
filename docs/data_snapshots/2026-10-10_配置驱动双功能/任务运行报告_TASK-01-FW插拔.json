@@ -1,0 +1,185 @@
+{
+ "schema": "zmax.statespace.taskrun/1",
+ "started_at": "2026-10-10 19:07:32",
+ "task": {
+  "task_id": "TASK-01-FW",
+  "name": "FW Loading + EEPROM 写/读校验",
+  "recipe_type": "插拔+固件校验",
+  "scene_ref": "SCN-01-FW",
+  "site": "SITE-A.ST11",
+  "ss_mode": "insert",
+  "applies_segments": [
+   "0 料源与来料状态",
+   "1 取件",
+   "2 姿态准备",
+   "3 识别与工位对接",
+   "4 放置/插入",
+   "5 拔出/取回",
+   "6 分拣与回位",
+   "7 节拍与循环"
+  ],
+  "excluded_segments": [],
+  "trigger": "来料盒就位 / 上游工位放行信号",
+  "loop": "单件循环; 连续 2 次抓取失败停机",
+  "targets": {
+   "合格率": "≥99%"
+  },
+  "safety": "继承站点 Sys-0 (急停/力阈值 Fz>5N/关节限位±3rad/光幕) — 任务不可覆盖"
+ },
+ "config_effect": {
+  "mode": "insert",
+  "chain": "tools/gen_ss_metaworld_episode.py",
+  "chain_why": "插拔链 (SK07=插入): 孔口对位 + 接触推入 + 保持力",
+  "enabled_nodes": 52,
+  "disabled_nodes": [],
+  "run_cfg_on": [
+   "🚀 L3 全链(插拔+AOI)",
+   "🧠 流形 yaw 执行",
+   "🤖 L4 用 INTACT 节点执行",
+   "🎯 L4 意图 → DiT 精炼",
+   "🧩 L2 兼容 (前馈 MLP + YOLO)"
+  ],
+  "overrides": {
+   "ins.depth": 35.0,
+   "ins.force_ctrl": "Fz>1kHz, 力峰≤5N",
+   "ins.retry": 1,
+   "pull.wait_hmi": true,
+   "pick.close_force": 3.0,
+   "sort.rule": "AOI 各站失败累计→NG"
+  }
+ },
+ "layers": {
+  "L5": "下指令 (任务意图)",
+  "L4": "保安全 (安全闸/可行域)",
+  "L3": "编流程 (八阶段状态机)",
+  "L2": "操作 (原子技能)",
+  "moveit": "执行 (仿真: MuJoCo 物理; 真机: MoveIt/下位机)"
+ },
+ "l2_skills": [
+  {
+   "code": "SK01",
+   "stage": "接近",
+   "name": "① 接近",
+   "desc": "① 接近 — 从初始位移动到光模块抓握点正上方 (悬停, 不触碰)"
+  },
+  {
+   "code": "SK02",
+   "stage": "对位",
+   "name": "② 对位",
+   "desc": "② 对位 — 光模块上方精对位 (更低悬停, 准备垂直下刀)"
+  },
+  {
+   "code": "SK03",
+   "stage": "下降",
+   "name": "③ 下降",
+   "desc": "③ 下降 — 张爪垂直下刀包住光模块身 (触到即停)"
+  },
+  {
+   "code": "SK04",
+   "stage": "抓取",
+   "name": "④ 抓取",
+   "desc": "④ 抓取 — 闭合夹爪深夹 (夹持锁存, 抬起前随动验证)"
+  },
+  {
+   "code": "SK05",
+   "stage": "抬起",
+   "name": "⑤ 抬起",
+   "desc": "⑤ 抬起 — 垂直提起光模块离台 (随动验证夹持是否真建立)"
+  },
+  {
+   "code": "SK06",
+   "stage": "转移",
+   "name": "⑥ 转移",
+   "desc": "⑥ 转移 — 持光模块平移至孔口上方 (悬高 2cm, 对准插孔)"
+  },
+  {
+   "code": "SK07",
+   "stage": "插入",
+   "name": "⑦ 插入",
+   "desc": "⑦ 插入 — 毫米级解析伺服精插 (两段式: 垂直对心→水平推入孔底)"
+  },
+  {
+   "code": "SK08",
+   "stage": "完成",
+   "name": "⑧ 完成",
+   "desc": "⑧ 完成 — 插入到位, 本轮任务结束 (mode=full 续拔出/AOI 链)"
+  }
+ ],
+ "stages": [
+  "接近",
+  "对位",
+  "下降",
+  "抓取",
+  "抬起",
+  "转移",
+  "插入",
+  "拔出",
+  "AOI转移",
+  "AOI检测",
+  "回程",
+  "放下",
+  "完成"
+ ],
+ "activate": {
+  "rc": 0,
+  "out": "✅ 已激活 TASK-01-FW (写盘 config/ss_task_binding.json)"
+ },
+ "run": {
+  "mode": "insert",
+  "chain": "tools/gen_ss_metaworld_episode.py",
+  "rc": 0,
+  "sec": 2.53,
+  "log": "/tmp/ss_task_insert_1791630454.log"
+ },
+ "result": {
+  "per_module": [
+   "✅ trace: /home/ubuntu/zmax/reports/ss_episode_20261010_190737.npz  (695 步, 终态 完成)"
+  ],
+  "summary": null,
+  "npz_meta": {
+   "read_error": "JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+  }
+ },
+ "artifacts": [
+  {
+   "path": "reports/ss_episode_20261010_134900.mp4",
+   "bytes": 114860,
+   "mtime": "2026-10-10 13:49:01"
+  },
+  {
+   "path": "reports/ss_episode_20261010_144601.mp4",
+   "bytes": 122306,
+   "mtime": "2026-10-10 14:46:02"
+  },
+  {
+   "path": "reports/ss_episode_20261010_180718.mp4",
+   "bytes": 109683,
+   "mtime": "2026-10-10 18:07:19"
+  },
+  {
+   "path": "reports/ss_episode_latest.mp4",
+   "bytes": 109683,
+   "mtime": "2026-10-10 18:07:19"
+  },
+  {
+   "path": "reports/ss_episode_20261010_144601.npz",
+   "bytes": 309918,
+   "mtime": "2026-10-10 14:46:01"
+  },
+  {
+   "path": "reports/ss_episode_20261010_180718.npz",
+   "bytes": 287874,
+   "mtime": "2026-10-10 18:07:18"
+  },
+  {
+   "path": "reports/ss_episode_latest.npz",
+   "bytes": 287874,
+   "mtime": "2026-10-10 18:07:18"
+  },
+  {
+   "path": "reports/ss_episode_20261010_190737.npz",
+   "bytes": 291613,
+   "mtime": "2026-10-10 19:07:37"
+  }
+ ]
+}

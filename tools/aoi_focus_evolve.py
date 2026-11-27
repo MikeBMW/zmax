@@ -146,24 +146,19 @@ def pose_now():
     return d, age
 
 
-def abc_of(d):
-    """当前姿态 abc(度): latest.json 里 rx/ry/rz 是弧度(控制器口径)。"""
-    return [math.degrees(float(d["rx"])), math.degrees(float(d["ry"])), math.degrees(float(d["rz"]))]
-
-
-def move_abs(xyz_mm, abc_deg, speed, dry):
-    """绝对 TCP 到位(只平移, 姿态不变) —— 走 tools/arm_raw.py → 容器 SDK 桥 cmd_arm.fifo。"""
-    cmd = [PY, os.path.join(REPO, "tools", "arm_raw.py"), "move",
-           "--to", "%.3f,%.3f,%.3f" % tuple(xyz_mm),
-           "--abc", "%.3f,%.3f,%.3f" % tuple(abc_deg),
-           "--speed", "%.1f" % speed]
+def move_rel(dx, dy, dz, speed, dry, max_mm):
+    cmd = [PY, SDK_CTL, "move_rel", "--dx", "%.3f" % dx, "--dy", "%.3f" % dy,
+           "--dz", "%.3f" % dz, "--speed", "%.1f" % speed, "--max-mm", "%.2f" % max_mm]
     if dry:
         return {"dry": True, "cmd": " ".join(cmd)}
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-    out = (r.stdout or "").strip()
+    env = dict(os.environ)
+    env.setdefault("PYTHONPATH", os.path.join(REPO, "zmax_data", "rokae_sdk"))
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=180, env=env)
     err = (r.stderr or "").strip()
-    ok = ("到位" in out) and r.returncode == 0
-    return {"rc": r.returncode, "ok": ok, "out": out[-300:], "err": err[-200:]}
+    if "xcoresdk_python" in err:
+        err += " | mover 缺真 SDK 绑定: 本机 python 没有 xcoresdk_python 的 xMateRobot;" \
+               "真机运动要走容器 zmax-sdk-arm-agent 或 Orin 桥(39071)"
+    return {"rc": r.returncode, "out": (r.stdout or "").strip()[-400:], "err": err[-300:]}
 
 
 # ------------------------------------------------------------------ 进化
@@ -194,8 +189,6 @@ def main():
     print("[带]   y=%d~%d (%s, %d px)" % (band[0], band[1], band_src, band[1] - band[0]))
 
     d0, age0 = pose_now()
-    anchor_mm = [d0["x"] * 1000.0, d0["y"] * 1000.0, d0["z"] * 1000.0]
-    anchor_abc = abc_of(d0)
     print("[锚点] TCP=(%.4f, %.4f, %.4f) 帧龄 %.2fs" % (d0["x"], d0["y"], d0["z"], age0))
     if age0 > 2.0:
         print("!! 位姿帧龄 %.1fs > 2s ⇒ 拒绝(真值不新鲜, 不能当锚点)" % age0)
@@ -233,33 +226,39 @@ def main():
             print("  (网内上限, 停止)"); break
         moves += 1
         print("\n#%d 尝试 Δ=(%+.2f, %+.2f, %+.2f)mm  σ=%.2f" % (moves, d[0], d[1], d[2], sigma))
-        tgt = [anchor_mm[i] + cand_net[i] for i in range(3)]
-        mv = move_abs(tgt, anchor_abc, a.speed, dry)
+        mv = move_rel(d[0], d[1], d[2], a.speed, dry, a.step_mm)
         if dry:
             print("  [dry] %s" % mv["cmd"])
             print("  [dry] 真跑时会走这一步、停 %.1fs、拍 2 帧量清晰度" % a.settle)
             hist.append({"it": moves, "d": d, "acc": None, "why": "dry"})
             break
-        if mv.get("rc") != 0 or not mv.get("ok", True):
+        if mv.get("rc") != 0:
             print("  !! 移动失败 rc=%s %s" % (mv.get("rc"), mv.get("err") or mv.get("out")))
             hard_err = mv.get("err") or mv.get("out")
-            move_abs([anchor_mm[i] + net[i] for i in range(3)], anchor_abc, a.speed, False)
+            try:
+                move_rel(-d[0], -d[1], -d[2], a.speed, False, a.step_mm)
+            except Exception:                                  # noqa: BLE001
+                pass
             break
         time.sleep(a.settle)
         s = measure(a.cam, band, "it%d" % moves, a.n_frames)
         if not s:
             hard_err = mv.get("err") or mv.get("out")
-            move_abs([anchor_mm[i] + net[i] for i in range(3)], anchor_abc, a.speed, False)
+            try:
+                move_rel(-d[0], -d[1], -d[2], a.speed, False, a.step_mm)
+            except Exception:                                  # noqa: BLE001
+                pass
             break
         rel = (s["lap"] - best["lap"]) / best["lap"]
         if s["lap"] < best["lap"] * 0.70:
             print("  !! 崩塌: lap %.1f < 锚点×0.7 ⇒ 退回锚点并中止" % s["lap"])
-            move_abs(anchor_mm, anchor_abc, a.speed, False)
+            move_rel(-net[0] - d[0], -net[1] - d[1], -net[2] - d[2], a.speed, False, a.step_mm)
             hist.append({"it": moves, "d": d, "lap": s["lap"], "acc": False, "why": "collapse"})
             break
         if s["spread"] > a.noise:
             print("  噪声过大(离散 %.3f) ⇒ 不接受, 退回" % s["spread"])
-            move_abs([anchor_mm[i] + net[i] for i in range(3)], anchor_abc, a.speed, False)
+            move_rel(-d[0], -d[1], -d[2], a.speed, False, a.step_mm)
+            net = [net[i] - d[i] for i in range(3)]
             fails += 1
             sigma *= 0.7
             hist.append({"it": moves, "d": d, "lap": s["lap"], "acc": False, "why": "noise"})
@@ -273,7 +272,7 @@ def main():
             hist.append({"it": moves, "d": d, "lap": s["lap"], "acc": True, "why": "improve"})
         else:
             print("  ✗ 没更清晰 %+.1f%% (lap=%.1f) ⇒ 退回" % (rel * 100, s["lap"]))
-            move_abs([anchor_mm[i] + net[i] for i in range(3)], anchor_abc, a.speed, False)
+            move_rel(-d[0], -d[1], -d[2], a.speed, False, a.step_mm)
             fails += 1
             sigma *= 0.7
             hist.append({"it": moves, "d": d, "lap": s["lap"], "acc": False, "why": "no-gain"})

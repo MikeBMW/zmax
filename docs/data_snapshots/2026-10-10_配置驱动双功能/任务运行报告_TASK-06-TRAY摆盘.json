@@ -1,0 +1,185 @@
+{
+ "schema": "zmax.statespace.taskrun/1",
+ "started_at": "2026-10-10 19:07:40",
+ "task": {
+  "task_id": "TASK-06-TRAY",
+  "name": "光模块摆盘 (周转盘 → 上料 Tray 盘)",
+  "recipe_type": "摆盘取放",
+  "scene_ref": "SCN-06-TRAY",
+  "site": "SITE-A.ST11",
+  "ss_mode": "tray",
+  "applies_segments": [
+   "0 料源与来料状态",
+   "1 取件",
+   "2 姿态准备",
+   "3 识别与工位对接",
+   "4 放置/插入",
+   "6 分拣与回位",
+   "7 节拍与循环"
+  ],
+  "excluded_segments": [
+   "5 拔出/取回"
+  ],
+  "trigger": "满料周转盘到位 / Tray 盘满或周转盘空信号",
+  "loop": "单颗循环; 周转盘空或 Tray 满 → 上报待人工补料/下料",
+  "targets": {
+   "单颗CT": "≤3.15s (PVT)",
+   "成功率": "≥99% (PVT)",
+   "取放精度": "单边 ≤1mm / ≤1°",
+   "连续": "≥12 盘周转盘"
+  },
+  "safety": "继承站点 Sys-0 (急停/力阈值 Fz>5N/关节限位±3rad/光幕) — 任务不可覆盖"
+ },
+ "config_effect": {
+  "mode": "tray",
+  "chain": "tools/gen_tray_place_video.py",
+  "chain_why": "取放链 (SK07=放入): 真空吸附取件 → 槽位下放, 无孔口/无推入",
+  "enabled_nodes": 52,
+  "disabled_nodes": [],
+  "run_cfg_on": [
+   "⚡引擎快演",
+   "🧩 L2 兼容 (前馈 MLP + YOLO)"
+  ],
+  "overrides": {
+   "pick.vac_establish_ms": 200,
+   "pick.hold_s": 5,
+   "pick.retry": 3,
+   "place.down_force_max": "配方上限(防压伤)",
+   "place.angle_tol_deg": 1.0,
+   "src.orient": "周转盘槽位朝向",
+   "cyc.takt": "单颗 ≤3.15s (PVT)",
+   "sort.pass_tray": "不适用(摆盘不分拣)"
+  }
+ },
+ "layers": {
+  "L5": "下指令 (任务意图)",
+  "L4": "保安全 (安全闸/可行域)",
+  "L3": "编流程 (八阶段状态机)",
+  "L2": "操作 (原子技能)",
+  "moveit": "执行 (仿真: MuJoCo 物理; 真机: MoveIt/下位机)"
+ },
+ "l2_skills": [
+  {
+   "code": "SK01",
+   "stage": "接近",
+   "name": "① 接近",
+   "desc": "① 接近 — 从初始位移动到光模块抓握点正上方 (悬停, 不触碰)"
+  },
+  {
+   "code": "SK02",
+   "stage": "对位",
+   "name": "② 对位",
+   "desc": "② 对位 — 光模块上方精对位 (更低悬停, 准备垂直下刀)"
+  },
+  {
+   "code": "SK03",
+   "stage": "下降",
+   "name": "③ 下降",
+   "desc": "③ 下降 — 张爪垂直下刀包住光模块身 (触到即停)"
+  },
+  {
+   "code": "SK04",
+   "stage": "抓取",
+   "name": "④ 抓取",
+   "desc": "④ 抓取 — 闭合夹爪深夹 (夹持锁存, 抬起前随动验证)"
+  },
+  {
+   "code": "SK05",
+   "stage": "抬起",
+   "name": "⑤ 抬起",
+   "desc": "⑤ 抬起 — 垂直提起光模块离台 (随动验证夹持是否真建立)"
+  },
+  {
+   "code": "SK06",
+   "stage": "转移",
+   "name": "⑥ 转移",
+   "desc": "⑥ 转移 — 持光模块平移至孔口上方 (悬高 2cm, 对准插孔)"
+  },
+  {
+   "code": "SK07",
+   "stage": "放入",
+   "name": "⑦ 放入",
+   "desc": "⑦ 放入 (摆盘链 mode=tray) — 把光模块下放进 tray 槽位并释放 (替代插拔链的 SK07Insert)"
+  },
+  {
+   "code": "SK08",
+   "stage": "完成",
+   "name": "⑧ 完成",
+   "desc": "⑧ 完成 — 插入到位, 本轮任务结束 (mode=full 续拔出/AOI 链)"
+  }
+ ],
+ "stages": [
+  "接近",
+  "对位",
+  "下降",
+  "抓取",
+  "抬起",
+  "转移",
+  "放入(=放下)",
+  "完成"
+ ],
+ "activate": {
+  "rc": 0,
+  "out": "✅ 已激活 TASK-06-TRAY (写盘 config/ss_task_binding.json)"
+ },
+ "run": {
+  "mode": "tray",
+  "chain": "tools/gen_tray_place_video.py",
+  "rc": 0,
+  "sec": 4.03,
+  "log": "/tmp/ss_task_tray_1791630463.log"
+ },
+ "result": {
+  "per_module": [
+   "→ 槽1: Δxy=(+0.06,+0.34)mm Δz=+1.78mm · 姿态 0.04° · ✅ 合格 (852 步)",
+   "→ 槽2: Δxy=(-0.12,+0.43)mm Δz=+1.78mm · 姿态 0.02° · ✅ 合格 (925 步)",
+   "→ 槽3: Δxy=(-0.13,+0.47)mm Δz=+1.78mm · 姿态 0.02° · ✅ 合格 (931 步)"
+  ],
+  "summary": "📊 摆盘汇总: 3/3 颗合格 · 合计 2708 步 · 1.7s",
+  "npz_meta": {
+   "read_error": "JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+  }
+ },
+ "artifacts": [
+  {
+   "path": "reports/tray_place_20261010_181009.mp4",
+   "bytes": 425095,
+   "mtime": "2026-10-10 18:10:13"
+  },
+  {
+   "path": "reports/tray_place_20261010_181342.mp4",
+   "bytes": 1683519,
+   "mtime": "2026-10-10 18:13:56"
+  },
+  {
+   "path": "reports/tray_place_20261010_181412.mp4",
+   "bytes": 1419459,
+   "mtime": "2026-10-10 18:14:27"
+  },
+  {
+   "path": "reports/tray_place_latest.mp4",
+   "bytes": 1419459,
+   "mtime": "2026-10-10 18:14:27"
+  },
+  {
+   "path": "reports/tray_place_20261010_181412.npz",
+   "bytes": 957857,
+   "mtime": "2026-10-10 18:14:12"
+  },
+  {
+   "path": "reports/tray_place_latest.npz",
+   "bytes": 957857,
+   "mtime": "2026-10-10 18:14:27"
+  },
+  {
+   "path": "reports/tray_place_20261010_190536.npz",
+   "bytes": 957670,
+   "mtime": "2026-10-10 19:05:36"
+  },
+  {
+   "path": "reports/tray_place_20261010_190747.npz",
+   "bytes": 957858,
+   "mtime": "2026-10-10 19:07:47"
+  }
+ ]
+}

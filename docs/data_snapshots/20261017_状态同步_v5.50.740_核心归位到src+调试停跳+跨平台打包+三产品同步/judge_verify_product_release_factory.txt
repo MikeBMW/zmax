@@ -1,0 +1,32 @@
+① 出厂骨架 (随仓库/安装包)
+   ✅ defaults/config/platform/zmax_product.json 在位 · /home/ubuntu/zmax/defaults/config/platform/zmax_product.json
+   ✅ 三档 550A/550B/550C 齐 · ['550A', '550B', '550C']
+   ✅   550A dev_profile 关键键齐 · 全在 (role=开发版 · 新技能 / 新算法 / 最新逻辑)
+   ✅   550B dev_profile 关键键齐 · 全在 (role=调试版 · 最大化 debug (看得到、能)
+   ✅   550C dev_profile 关键键齐 · 全在 (role=量产版 · 稳定性优先)
+② 三档真不同 (老倪三产品分工逐条)
+   ✅ 550A = 新技能/新算法 (new_algorithms 开 + logic_depth=max) · new_algorithms=on logic_depth=max
+   ✅ 550B = 全 topic + vscode 联调 + 信号/3D 全开 · topics=all vscode=True gui={'signal_analysis': True, 'scene_3d': True}
+   ✅ 550C = 量产: 关新算法 + 白名单 + comm=shm + 不发 topic + 不开信号/3D · comm=shm topics=none 白名单 6 条 gui={'signal_analysis': False, 'scene_3d': False}
+   ✅ 三档 dev_profile 互不相同
+③ 真回落: 模拟全新安装 (只有 defaults, 没有 config/)
+   ✅ 子进程 (无 config/) 能读到产品真源
+   ✅ 回落路径 = 出厂骨架 · /home/ubuntu/.hermes/cache/scratch/zmax_fresh_install_3ffyavz7/defaults/config/platform/zmax_product.json
+   ✅ 三档都读得到且各自 dev_profile 正确 · {'550A': ('on', 'core', 'dds'), '550B': ('debug', 'all', 'dds'), '550C': ('off', 'none', 'shm')}
+④ studio 标题读侧也回落
+   ✅ studio 有 _product_json_path() 回落函数
+   ✅ studio 读产品真源走回落路径
+   ✅ studio 候选含冻结包 _MEIPASS/defaults
+⑤ 打包 job 真带骨架
+   ✅ Windows job 带 --add-data defaults
+   ✅ macOS job 带 --add-data defaults
+   ✅ 打包前断言三档在 (骨架自检)
+⑥ 现役档位不被骨架顶掉 (实例真源优先)
+   ✅ 现场仍读实例真源 · /home/ubuntu/zmax/config/platform/zmax_product.json
+   ✅ 现场在役档 = 550B (与配置中心同源) · 550B
+⑦ 三产品开发分工判据本体
+   ✅ verify_product_dev_profiles 仍过 · ['结论: ✅ 全过 — 三产品分工已写进真源、有单一读取口、四处已接线、子进程实测按档取值']
+
+==================================================================================
+结论: ✅ 三档 550A/550B/550C 随包发布 (出厂骨架 + 读侧回落 + 打包带上), 现役 550B 不受影响
+==================================================================================

@@ -67,9 +67,7 @@ import meta_perf_matrix as MPM                                                  
 PERF_SPEC = os.path.join(ROOT, "config/platform/zmax_perf_spec.json")
 PHASE_MAP = os.path.join(ROOT, "config/eval/phase_metric_map.json")
 ROADMAP = os.path.join(ROOT, "config/roadmap_phase_texts.json")
-# 🐛 2026-11-25: 原来用 EA.VERSION (当前版本) 拼基线文件名 ⇒ 版本一升就找不到基线文件,
-#   base_version 退化成当前版本 (页面显示"基线 5.50.784", 而真基线是 5.50.735)。
-BASELINE = os.path.join(ROOT, "config/eval/baseline_%s.json" % EA.BASELINE_VERSION.replace(".", "_"))
+BASELINE = os.path.join(ROOT, "config/eval/baseline_%s.json" % EA.VERSION.replace(".", "_"))
 DEF_OUT = os.path.join(ROOT, "config/eval/iteration_roadmap.json")
 OUT_JSON = os.path.join(ROOT, "zmax_data/eval/iteration_roadmap.json")
 OUT_MD = os.path.join(ROOT, "zmax_data/eval/iteration_roadmap.md")
@@ -155,7 +153,7 @@ def build():
     probes = EP.run_all()                            # 唯一采集口径
     base = _load(BASELINE, {}) or {}
     base_metrics = base.get("metrics") or {}
-    base_version = str(base.get("version") or EA.BASELINE_VERSION).lstrip("v")
+    base_version = str(base.get("version") or EA.VERSION).lstrip("v")
 
     mpm = MPM.build()                                # 指标 ↔ 物理量 ↔ 元任务 (现算)
     mpm_rows = {r["id"]: r for r in (mpm.get("性能指标") or [])}

@@ -36,27 +36,8 @@ EVAL_DIR = os.path.join(ROOT, "zmax_data", "eval")
 REPORT = os.path.join(EVAL_DIR, "eval_report.json")
 HISTORY = os.path.join(EVAL_DIR, "eval_history.jsonl")
 BASE_DIR = os.path.join(ROOT, "config", "eval")
-def _current_version() -> str:
-    """当前版本 —— 取唯一真源 VERSION.md 表首 (与 GUI 的 update_checker.CURRENT_VERSION 同源)。
-
-    🐛 2026-11-25 老倪「各窗口要符合当前版本实际功能」: 这里原来写死 `v5.50.735`,
-       跑了 49 个版本后评估页仍自称"当前 v5.50.735", 与真实版本(5.50.784)脱节。
-       基线版本是另一件事 (老倪指定的基线产品, 见 BASELINE_VERSION), 两者不能再混成一个常量。
-    """
-    try:
-        with open(os.path.join(ROOT, "VERSION.md"), encoding="utf-8") as fh:
-            for ln in fh:
-                m = re.match(r"\|\s*\*\*(v\d+\.\d+\.\d+)\*\*\s*\|", ln)
-                if m:
-                    return m.group(1)
-    except OSError:
-        pass
-    return "v0.0.0"
-
-
-VERSION = _current_version()             # 当前版本 (动态; 不写死)
-BASELINE_VERSION = "v5.50.735"           # 基线产品 (老倪 2026-10-15 指定, 不随版本升级)
-BASELINE = os.path.join(BASE_DIR, "baseline_%s.json" % BASELINE_VERSION.replace(".", "_"))
+VERSION = "v5.50.735"                    # 版本号不自主升级 (老倪指定); 基线 = 本版
+BASELINE = os.path.join(BASE_DIR, "baseline_%s.json" % VERSION.replace(".", "_"))
 DOC = os.path.join(ROOT, "docs", "5-玉衡-指标验收", "eval", "评估分析报告_%s.md" % VERSION)
 
 # 证据面板 (老倪点名的四件工具 + 唯一依据帧龄)
@@ -228,21 +209,19 @@ def evaluate(lock=False, relock_reason=""):
         "metrics": rows,
     }
     if lock:
-        _lock_fp = os.path.join(BASE_DIR, "baseline_%s.json" % (VERSION if VERSION != BASELINE_VERSION
-                                                               else BASELINE_VERSION).replace(".", "_"))
-        if os.path.exists(_lock_fp) and not relock_reason:
-            print("⛔ 基线已存在 (%s) —— 基线是**冻结**的, 要改必须 --relock \"理由\"。" % _lock_fp)
+        if os.path.exists(BASELINE) and not relock_reason:
+            print("⛔ 基线已存在 (%s) —— 基线是**冻结**的, 要改必须 --relock \"理由\"。" % BASELINE)
             return rep
-        _atomic(_lock_fp, {"schema": "zmax.eval.baseline/1", "version": VERSION,
+        _atomic(BASELINE, {"schema": "zmax.eval.baseline/1", "version": VERSION,
                            "locked_at": time.strftime("%F %T"), "relock_reason": relock_reason or "",
                            "note": "基线产品锁定: 以后各版本与此对比, 有净提升且零回退才准升级。",
                            "metrics": {r["id"]: {"value": r["value"], "mode": r["mode"], "unit": r["unit"],
                                                 "target": r["target"], "cn": r["cn"], "src": r["src"],
                                                 "n": r["n"]} for r in rows}})
         print("🔒 基线已锁定: %s (%d 条指标, 其中 %d 条有实测值)" %
-              (_lock_fp, len(rows), sum(1 for r in rows if r["value"] is not None)))
+              (BASELINE, len(rows), sum(1 for r in rows if r["value"] is not None)))
         # 锁完当次就按新基线重算判定 (否则首轮报告全是"无基线")
-        base = _load(_lock_fp, None)
+        base = _load(BASELINE, None)
         for r in rows:
             bv = ((base or {}).get("metrics") or {}).get(r["id"], {}).get("value")
             r["baseline"] = bv

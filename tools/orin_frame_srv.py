@@ -164,7 +164,7 @@ class Grabber:
         import cv2
         t_prev, n = time.time(), 0
         while not self._stop:
-            t0 = time.monotonic()          # 🔴 墙钟被 NTP 回拨(-8h) ⇒ 节流只能单调钟
+            t0 = time.time()
             fr = None
             if self.mode.startswith("ros"):
                 import rclpy
@@ -194,9 +194,9 @@ class Grabber:
                     if self.meta:
                         self.meta["fps"] = _f
                 n, t_prev = 0, time.time()
-            dt = self.period - (time.monotonic() - t0)
+            dt = self.period - (time.time() - t0)
             if dt > 0:
-                time.sleep(min(dt, self.period))
+                time.sleep(dt)
         try:
             if self.cap is not None:
                 self.cap.release()

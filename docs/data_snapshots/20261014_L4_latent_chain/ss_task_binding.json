@@ -1,0 +1,1354 @@
+{
+ "_meta": {
+  "schema": "zmax.statespace.taskbinding/1",
+  "generated_at": "2026-10-14 20:36:34",
+  "doc": "任务 × 状态空间工程 绑定 (一个工程承载全部任务; 生成物, 勿手改)",
+  "sources": {
+   "config/tasks/tasks.json": "316d258c57b2de45",
+   "canvas": "src/lerobot/engineering/flows/state_space_obs.json"
+  }
+ },
+ "project": {
+  "name": "状态空间工程 · 主工程",
+  "canvas_file": "src/lerobot/engineering/flows/state_space_obs.json",
+  "canvas_md5": "54a3b1a17e618c3751b19e141747a875",
+  "nodes": 89,
+  "links": 190
+ },
+ "active_task": "TASK-07-AOI",
+ "segment_node_map": {
+  "0 料源与来料状态": [
+   "ssdata",
+   "ssllm_in",
+   "ssbypv",
+   "ssz700",
+   "ssintact",
+   "sscap",
+   "swds",
+   "swworld"
+  ],
+  "1 取件": [
+   "sssensor",
+   "ssyolo",
+   "ss2d3d",
+   "sstactile",
+   "sssk3",
+   "sssk4",
+   "sssk5",
+   "sssk6",
+   "ssintact",
+   "ssmani_exp",
+   "swintact",
+   "n_l2_muscle"
+  ],
+  "2 姿态准备": [
+   "ssdata",
+   "ssz700",
+   "ssdec",
+   "ssintact_dec",
+   "ssmani_exp",
+   "n_vlm_llm",
+   "n_dsvl",
+   "ss_lora_l4"
+  ],
+  "3 识别与工位对接": [
+   "sssensor",
+   "sssched",
+   "sslimit",
+   "ssyolo",
+   "sscalib",
+   "sssk2",
+   "ssintact",
+   "n_board_frame",
+   "ss_lora_l4"
+  ],
+  "4 放置/插入": [
+   "sssched",
+   "sscalib",
+   "ssmani_c",
+   "ssmani_p",
+   "sslat",
+   "sssk7",
+   "sssk8",
+   "ssvlm",
+   "ssdec",
+   "ssintact",
+   "ssintact_dec",
+   "ssmani_exp",
+   "sscap",
+   "ss_mem_field",
+   "n_intent_bundle",
+   "n_intent_direct",
+   "swintact",
+   "swworld",
+   "swvideo",
+   "ss_lora_l4",
+   "ss_mani_eng"
+  ],
+  "5 拔出/取回": [],
+  "6 分拣与回位": [
+   "sssensor",
+   "ssaoi",
+   "ssfeat",
+   "sscap",
+   "swworld",
+   "swvideo",
+   "n_web_agent"
+  ],
+  "7 节拍与循环": [
+   "sssched",
+   "sslimit",
+   "ssllm",
+   "ssskill",
+   "sscap",
+   "ss_mem_l2",
+   "ss_mem_l3",
+   "ss_mem_l4",
+   "ss_mem_field",
+   "ss_mem_share",
+   "n_mem_links",
+   "n_eng_mem",
+   "n_vlm_llm",
+   "n_l2_muscle",
+   "n_web_agent"
+  ]
+ },
+ "coverage": {
+  "nodes": 89,
+  "covered_by_segments": 51,
+  "uncovered": [
+   "n_calib_mani",
+   "n_hil",
+   "n_moveit",
+   "n_realscene",
+   "n_skill_dict",
+   "ss3d_view",
+   "ss_l5",
+   "ss_lora_l3",
+   "ss_moe",
+   "ss_seg",
+   "ssact",
+   "ssest",
+   "ssff",
+   "ssff_hist",
+   "ssinnov",
+   "ssmode",
+   "ssobs",
+   "sspred",
+   "ssreason",
+   "sssk1",
+   "ssvideo",
+   "ssvideo2",
+   "ssworld"
+  ]
+ },
+ "tasks": [
+  {
+   "task_id": "TASK-01-FW",
+   "name": "FW Loading + EEPROM 写/读校验",
+   "recipe_type": "插拔+固件校验",
+   "scene_ref": "SCN-01-FW",
+   "site": "SITE-A.ST11",
+   "steps": [
+    {
+     "t": 0.0,
+     "dur": 0.6,
+     "name": "取料",
+     "desc": "左臂从归位移动到吸塑盒上方(X=2.5,Y=-0.4,Z=1.3), 夹爪闭合(力控1~5N)抓取光模块",
+     "force": "1~5N"
+    },
+    {
+     "t": 0.6,
+     "dur": 1.0,
+     "name": "扫码",
+     "desc": "右臂携带模块移至扫码枪前(X=2.1,Y=0.4,Z=1.35), 红色十字激光扫描SN二维码",
+     "force": null
+    },
+    {
+     "t": 1.6,
+     "dur": 0.8,
+     "name": "翻转",
+     "desc": "腕部旋转180°(150°/s), 模块标签面朝下, 金手指面朝上",
+     "force": null
+    },
+    {
+     "t": 2.4,
+     "dur": 0.5,
+     "name": "对位",
+     "desc": "视觉定位QSFP插座导向槽, 末端移动到(X=2.5,Y=0,Z=1.26), 偏差<0.1mm",
+     "force": null
+    },
+    {
+     "t": 2.9,
+     "dur": 0.7,
+     "name": "插入",
+     "desc": "沿导向槽直推35mm, 力控≤2N, 弹簧卡扣锁紧",
+     "force": "≤2N"
+    },
+    {
+     "t": 3.6,
+     "dur": 50.0,
+     "name": "异步测试",
+     "desc": "PC自动下载固件→校验EEPROM→显示PASS/FAIL; R MPV可转向机台B",
+     "force": null
+    },
+    {
+     "t": 53.6,
+     "dur": 0.8,
+     "name": "拔出",
+     "desc": "夹爪夹持模块, 力控拉出≤2N, 脱离QSFP插座",
+     "force": "≤2N"
+    },
+    {
+     "t": 54.4,
+     "dur": 3.0,
+     "name": "AOI飞拍",
+     "desc": "金手指正反2面飞拍(0.5s×2)+4侧面飞拍(0.5s×4)=3.0s, 速度0.6m/s",
+     "force": null
+    },
+    {
+     "t": 57.4,
+     "dur": 0.8,
+     "name": "分拣",
+     "desc": "PASS→绿色料盘(Y=0.35), FAIL→红色料盘(Y=-0.35), 行程0.4m·速度1.0m/s",
+     "force": null
+    }
+   ],
+   "applies_segments": [
+    "0 料源与来料状态",
+    "1 取件",
+    "2 姿态准备",
+    "3 识别与工位对接",
+    "4 放置/插入",
+    "5 拔出/取回",
+    "6 分拣与回位",
+    "7 节拍与循环"
+   ],
+   "excluded_segments": [],
+   "enabled_nodes": [
+    "n_board_frame",
+    "n_dsvl",
+    "n_eng_mem",
+    "n_intent_bundle",
+    "n_intent_direct",
+    "n_l2_muscle",
+    "n_mem_links",
+    "n_vlm_llm",
+    "n_web_agent",
+    "ss2d3d",
+    "ss_lora_l4",
+    "ss_mani_eng",
+    "ss_mem_field",
+    "ss_mem_l2",
+    "ss_mem_l3",
+    "ss_mem_l4",
+    "ss_mem_share",
+    "ssaoi",
+    "ssbypv",
+    "sscalib",
+    "sscap",
+    "ssdata",
+    "ssdec",
+    "ssfeat",
+    "ssintact",
+    "ssintact_dec",
+    "sslat",
+    "sslimit",
+    "ssllm",
+    "ssllm_in",
+    "ssmani_c",
+    "ssmani_exp",
+    "ssmani_p",
+    "sssched",
+    "sssensor",
+    "sssk2",
+    "sssk3",
+    "sssk4",
+    "sssk5",
+    "sssk6",
+    "sssk7",
+    "sssk8",
+    "ssskill",
+    "sstactile",
+    "ssvlm",
+    "ssyolo",
+    "ssz700",
+    "swds",
+    "swintact",
+    "swvideo",
+    "swworld"
+   ],
+   "disabled_nodes": [],
+   "overrides": {
+    "ins.depth": 35.0,
+    "ins.force_ctrl": "Fz>1kHz, 力峰≤5N",
+    "ins.retry": 1,
+    "pull.wait_hmi": true,
+    "pick.close_force": 3.0,
+    "sort.rule": "AOI 各站失败累计→NG"
+   },
+   "trigger": "来料盒就位 / 上游工位放行信号",
+   "loop": "单件循环; 连续 2 次抓取失败停机",
+   "targets": {
+    "合格率": "≥99%"
+   },
+   "orders_rule": "1 批 = 1 工单; 1 件 = 1 条记录",
+   "safety": "继承站点 Sys-0 (急停/力阈值 Fz>5N/关节限位±3rad/光幕) — 任务不可覆盖",
+   "blocked_by_site": [
+    "T_base_cam",
+    "plane_z",
+    "cell_geometry.points"
+   ],
+   "run_cfg": {
+    "chk_engine_demo": {
+     "label": "⚡引擎快演",
+     "checked": false
+    },
+    "chk_l3_full": {
+     "label": "🚀 L3 全链(插拔+AOI)",
+     "checked": true
+    },
+    "chk_mani_yaw": {
+     "label": "🧠 流形 yaw 执行",
+     "checked": true
+    },
+    "chk_intact_exec": {
+     "label": "🤖 L4 用 INTACT 节点执行",
+     "checked": true
+    },
+    "chk_l4_dit": {
+     "label": "🎯 L4 意图 → DiT 精炼",
+     "checked": true
+    },
+    "chk_l2_compat": {
+     "label": "🧩 L2 兼容 (前馈 MLP + YOLO)",
+     "checked": true
+    }
+   },
+   "ss_mode": "insert"
+  },
+  {
+   "task_id": "TASK-02-HANDLE",
+   "name": "料盘/治具上下料搬运",
+   "recipe_type": "上下料搬运",
+   "scene_ref": "SCN-02-HANDLE",
+   "site": "SITE-A.ST11",
+   "steps": [
+    {
+     "t": 0.0,
+     "dur": 3.0,
+     "name": "取盘",
+     "desc": "左臂从缓存架第3层抓取整盘→移至对接台(X=0.8,Y=0,Z=1.0)",
+     "force": null
+    },
+    {
+     "t": 3.0,
+     "dur": 3.0,
+     "name": "配送",
+     "desc": "R MPV差速转向90°→导航至对接台前方→视觉定位销→下降入位",
+     "force": null
+    },
+    {
+     "t": 6.0,
+     "dur": 6.0,
+     "name": "精密对接",
+     "desc": "右臂视觉定位治具4个定位孔(精度<0.1mm)→插入单颗物料",
+     "force": null
+    },
+    {
+     "t": 12.0,
+     "dur": 8.0,
+     "name": "检测",
+     "desc": "2D外观(2s)→3D尺寸(2s)→金线显微(2s)→缺陷分级(2s)",
+     "force": null
+    }
+   ],
+   "applies_segments": [
+    "0 料源与来料状态",
+    "1 取件",
+    "2 姿态准备",
+    "3 识别与工位对接",
+    "6 分拣与回位",
+    "7 节拍与循环"
+   ],
+   "excluded_segments": [
+    "4 放置/插入",
+    "5 拔出/取回"
+   ],
+   "enabled_nodes": [
+    "n_board_frame",
+    "n_dsvl",
+    "n_eng_mem",
+    "n_l2_muscle",
+    "n_mem_links",
+    "n_vlm_llm",
+    "n_web_agent",
+    "ss2d3d",
+    "ss_lora_l4",
+    "ss_mem_field",
+    "ss_mem_l2",
+    "ss_mem_l3",
+    "ss_mem_l4",
+    "ss_mem_share",
+    "ssaoi",
+    "ssbypv",
+    "sscalib",
+    "sscap",
+    "ssdata",
+    "ssdec",
+    "ssfeat",
+    "ssintact",
+    "ssintact_dec",
+    "sslimit",
+    "ssllm",
+    "ssllm_in",
+    "ssmani_exp",
+    "sssched",
+    "sssensor",
+    "sssk2",
+    "sssk3",
+    "sssk4",
+    "sssk5",
+    "sssk6",
+    "ssskill",
+    "sstactile",
+    "ssyolo",
+    "ssz700",
+    "swds",
+    "swintact",
+    "swvideo",
+    "swworld"
+   ],
+   "disabled_nodes": [
+    "n_intent_bundle",
+    "n_intent_direct",
+    "ss_mani_eng",
+    "sslat",
+    "ssmani_c",
+    "ssmani_p",
+    "sssk7",
+    "sssk8",
+    "ssvlm"
+   ],
+   "overrides": {
+    "pick.close_force": 3.0,
+    "pick.lift_h": 30,
+    "pick.retry": 2,
+    "src.orient": "料盘/治具按定位孔朝向",
+    "sort.pass_tray": "不适用(不涉及分拣)",
+    "cyc.dual_arm": "协作(一臂取盘一臂对接)"
+   },
+   "trigger": "料盘到位信号 / 手动按钮",
+   "loop": "整盘连续(12 件/盘); 满盘→空盘切换",
+   "targets": {
+    "配送准时率": "≥99.5%"
+   },
+   "orders_rule": "1 盘 = 1 工单; 1 件 = 1 条记录",
+   "safety": "继承站点 Sys-0 (急停/力阈值 Fz>5N/关节限位±3rad/光幕) — 任务不可覆盖",
+   "blocked_by_site": [
+    "T_base_cam",
+    "plane_z",
+    "cell_geometry.points"
+   ],
+   "run_cfg": {
+    "chk_engine_demo": {
+     "label": "⚡引擎快演",
+     "checked": true
+    },
+    "chk_l3_full": {
+     "label": "🚀 L3 全链(插拔+AOI)",
+     "checked": true
+    },
+    "chk_mani_yaw": {
+     "label": "🧠 流形 yaw 执行",
+     "checked": false
+    },
+    "chk_intact_exec": {
+     "label": "🤖 L4 用 INTACT 节点执行",
+     "checked": false
+    },
+    "chk_l4_dit": {
+     "label": "🎯 L4 意图 → DiT 精炼",
+     "checked": false
+    },
+    "chk_l2_compat": {
+     "label": "🧩 L2 兼容 (前馈 MLP + YOLO)",
+     "checked": true
+    }
+   },
+   "ss_mode": "insert"
+  },
+  {
+   "task_id": "TASK-03-BI",
+   "name": "BI老化箱模块插拔",
+   "recipe_type": "老化箱插拔",
+   "scene_ref": "SCN-03-BI",
+   "site": "SITE-A.ST11",
+   "steps": [
+    {
+     "t": 0.0,
+     "dur": 5.0,
+     "name": "导航就位",
+     "desc": "R MPV至老化箱前对接位(X=1.0)",
+     "force": null
+    },
+    {
+     "t": 5.0,
+     "dur": 3.0,
+     "name": "升降就位",
+     "desc": "电动丝杆升至第5层(Z=1.2m)",
+     "force": null
+    },
+    {
+     "t": 8.0,
+     "dur": 2.0,
+     "name": "拉出抽屉",
+     "desc": "右臂拉出800mm·力控≤15kg",
+     "force": "≤15kg"
+    },
+    {
+     "t": 10.0,
+     "dur": 60.0,
+     "name": "批量插入",
+     "desc": "左臂依次取模块→插入QSFP插座 (10颗×6s)",
+     "force": null
+    },
+    {
+     "t": 72.0,
+     "dur": 2.0,
+     "name": "关闭",
+     "desc": "推回抽屉·确认锁紧·状态灯变绿",
+     "force": null
+    },
+    {
+     "t": 74.0,
+     "dur": 14400.0,
+     "name": "老化",
+     "desc": "85°C±1°C·1~4小时·R MPV可服务其他工位",
+     "force": null
+    },
+    {
+     "t": 14474.0,
+     "dur": 13.0,
+     "name": "批量拔出+分拣",
+     "desc": "拉出抽屉→依次拔出10颗→按Pass/Fail分拣",
+     "force": null
+    }
+   ],
+   "applies_segments": [
+    "0 料源与来料状态",
+    "1 取件",
+    "2 姿态准备",
+    "3 识别与工位对接",
+    "4 放置/插入",
+    "5 拔出/取回",
+    "6 分拣与回位",
+    "7 节拍与循环"
+   ],
+   "excluded_segments": [],
+   "enabled_nodes": [
+    "n_board_frame",
+    "n_dsvl",
+    "n_eng_mem",
+    "n_intent_bundle",
+    "n_intent_direct",
+    "n_l2_muscle",
+    "n_mem_links",
+    "n_vlm_llm",
+    "n_web_agent",
+    "ss2d3d",
+    "ss_lora_l4",
+    "ss_mani_eng",
+    "ss_mem_field",
+    "ss_mem_l2",
+    "ss_mem_l3",
+    "ss_mem_l4",
+    "ss_mem_share",
+    "ssaoi",
+    "ssbypv",
+    "sscalib",
+    "sscap",
+    "ssdata",
+    "ssdec",
+    "ssfeat",
+    "ssintact",
+    "ssintact_dec",
+    "sslat",
+    "sslimit",
+    "ssllm",
+    "ssllm_in",
+    "ssmani_c",
+    "ssmani_exp",
+    "ssmani_p",
+    "sssched",
+    "sssensor",
+    "sssk2",
+    "sssk3",
+    "sssk4",
+    "sssk5",
+    "sssk6",
+    "sssk7",
+    "sssk8",
+    "ssskill",
+    "sstactile",
+    "ssvlm",
+    "ssyolo",
+    "ssz700",
+    "swds",
+    "swintact",
+    "swvideo",
+    "swworld"
+   ],
+   "disabled_nodes": [],
+   "overrides": {
+    "ins.depth": null,
+    "ins.retry": 1,
+    "pull.wait_hmi": false,
+    "cyc.takt": "见场景性能目标"
+   },
+   "trigger": "老化箱槽位放行信号",
+   "loop": "按槽位序列循环",
+   "targets": {
+    "成功率": "≥99%"
+   },
+   "orders_rule": "1 轮 = 1 工单",
+   "safety": "继承站点 Sys-0 (急停/力阈值 Fz>5N/关节限位±3rad/光幕) — 任务不可覆盖",
+   "blocked_by_site": [
+    "T_base_cam",
+    "plane_z",
+    "cell_geometry.points"
+   ],
+   "run_cfg": {
+    "chk_engine_demo": {
+     "label": "⚡引擎快演",
+     "checked": false
+    },
+    "chk_l3_full": {
+     "label": "🚀 L3 全链(插拔+AOI)",
+     "checked": true
+    },
+    "chk_mani_yaw": {
+     "label": "🧠 流形 yaw 执行",
+     "checked": true
+    },
+    "chk_intact_exec": {
+     "label": "🤖 L4 用 INTACT 节点执行",
+     "checked": true
+    },
+    "chk_l4_dit": {
+     "label": "🎯 L4 意图 → DiT 精炼",
+     "checked": true
+    },
+    "chk_l2_compat": {
+     "label": "🧩 L2 兼容 (前馈 MLP + YOLO)",
+     "checked": true
+    }
+   },
+   "ss_mode": "insert"
+  },
+  {
+   "task_id": "TASK-04-THERMAL",
+   "name": "热海柜体电口+光口插拔",
+   "recipe_type": "热海柜体插拔(电口+光口)",
+   "scene_ref": "SCN-04-THERMAL",
+   "site": "SITE-A.ST11",
+   "steps": [
+    {
+     "t": 0.0,
+     "dur": 3.0,
+     "name": "导航",
+     "desc": "R MPV至柜体前对接位(X=0.8)",
+     "force": null
+    },
+    {
+     "t": 3.0,
+     "dur": 2.0,
+     "name": "取料",
+     "desc": "左臂从躯干A区料盘取光模块→移至槽位前方",
+     "force": null
+    },
+    {
+     "t": 5.0,
+     "dur": 2.0,
+     "name": "插电口",
+     "desc": "对准槽位底部电口·导向±0.5mm直推",
+     "force": null
+    },
+    {
+     "t": 7.0,
+     "dur": 1.5,
+     "name": "光口检测",
+     "desc": "右臂探头检查端面清洁度",
+     "force": null
+    },
+    {
+     "t": 8.5,
+     "dur": 4.0,
+     "name": "插光口×2",
+     "desc": "依次插入两根光纤LC接头",
+     "force": null
+    },
+    {
+     "t": 12.5,
+     "dur": 2.0,
+     "name": "清洁",
+     "desc": "棉签清洁→喷气除尘→重新检测",
+     "force": null
+    },
+    {
+     "t": 14.5,
+     "dur": 1800.0,
+     "name": "测试",
+     "desc": "柜体环境测试·气缸顶出模块",
+     "force": null
+    },
+    {
+     "t": 1814.5,
+     "dur": 5.5,
+     "name": "拉出+拔光口+分拣",
+     "desc": "拉出电口(1.5s)→拔光口×2(3s)→分拣(1s)",
+     "force": null
+    }
+   ],
+   "applies_segments": [
+    "0 料源与来料状态",
+    "1 取件",
+    "2 姿态准备",
+    "3 识别与工位对接",
+    "4 放置/插入",
+    "5 拔出/取回",
+    "6 分拣与回位",
+    "7 节拍与循环"
+   ],
+   "excluded_segments": [],
+   "enabled_nodes": [
+    "n_board_frame",
+    "n_dsvl",
+    "n_eng_mem",
+    "n_intent_bundle",
+    "n_intent_direct",
+    "n_l2_muscle",
+    "n_mem_links",
+    "n_vlm_llm",
+    "n_web_agent",
+    "ss2d3d",
+    "ss_lora_l4",
+    "ss_mani_eng",
+    "ss_mem_field",
+    "ss_mem_l2",
+    "ss_mem_l3",
+    "ss_mem_l4",
+    "ss_mem_share",
+    "ssaoi",
+    "ssbypv",
+    "sscalib",
+    "sscap",
+    "ssdata",
+    "ssdec",
+    "ssfeat",
+    "ssintact",
+    "ssintact_dec",
+    "sslat",
+    "sslimit",
+    "ssllm",
+    "ssllm_in",
+    "ssmani_c",
+    "ssmani_exp",
+    "ssmani_p",
+    "sssched",
+    "sssensor",
+    "sssk2",
+    "sssk3",
+    "sssk4",
+    "sssk5",
+    "sssk6",
+    "sssk7",
+    "sssk8",
+    "ssskill",
+    "sstactile",
+    "ssvlm",
+    "ssyolo",
+    "ssz700",
+    "swds",
+    "swintact",
+    "swvideo",
+    "swworld"
+   ],
+   "disabled_nodes": [],
+   "overrides": {
+    "ins.depth": null,
+    "ins.retry": 1,
+    "pull.wait_hmi": false
+   },
+   "trigger": "柜体门开信号",
+   "loop": "电口→光口 顺序循环",
+   "targets": {
+    "成功率": "≥99%"
+   },
+   "orders_rule": "1 轮 = 1 工单",
+   "safety": "继承站点 Sys-0 (急停/力阈值 Fz>5N/关节限位±3rad/光幕) — 任务不可覆盖",
+   "blocked_by_site": [
+    "T_base_cam",
+    "plane_z",
+    "cell_geometry.points"
+   ],
+   "run_cfg": {
+    "chk_engine_demo": {
+     "label": "⚡引擎快演",
+     "checked": false
+    },
+    "chk_l3_full": {
+     "label": "🚀 L3 全链(插拔+AOI)",
+     "checked": true
+    },
+    "chk_mani_yaw": {
+     "label": "🧠 流形 yaw 执行",
+     "checked": true
+    },
+    "chk_intact_exec": {
+     "label": "🤖 L4 用 INTACT 节点执行",
+     "checked": true
+    },
+    "chk_l4_dit": {
+     "label": "🎯 L4 意图 → DiT 精炼",
+     "checked": true
+    },
+    "chk_l2_compat": {
+     "label": "🧩 L2 兼容 (前馈 MLP + YOLO)",
+     "checked": true
+    }
+   },
+   "ss_mode": "insert"
+  },
+  {
+   "task_id": "TASK-05-ATS",
+   "name": "ATS/线外检测插接 (核心挑战场景)",
+   "recipe_type": "检测插接",
+   "scene_ref": "SCN-05-ATS",
+   "site": "SITE-A.ST11",
+   "steps": [
+    {
+     "t": 0.0,
+     "dur": 2.2,
+     "name": "导航",
+     "desc": "R MPV至光学平台前(X=1.0)·遮光帘降下·<1lux·23±1°C",
+     "force": null
+    },
+    {
+     "t": 2.2,
+     "dur": 1.0,
+     "name": "扫码",
+     "desc": "模块放入ATS托架·自动扫码SN",
+     "force": null
+    },
+    {
+     "t": 3.2,
+     "dur": 1.5,
+     "name": "插光口检测",
+     "desc": "光口对接·功率计初测基线",
+     "force": null
+    },
+    {
+     "t": 4.7,
+     "dur": 1.0,
+     "name": "清洁度检测",
+     "desc": "端面检测探头检查",
+     "force": null
+    },
+    {
+     "t": 5.7,
+     "dur": 2.0,
+     "name": "清洁",
+     "desc": "棉签+酒精+喷气·重新检测",
+     "force": null
+    },
+    {
+     "t": 6.7,
+     "dur": 1.2,
+     "name": "插电口",
+     "desc": "连接EVB电口·上电初始化",
+     "force": null
+    },
+    {
+     "t": 7.9,
+     "dur": 1.5,
+     "name": "插光纤",
+     "desc": "连接LC光纤至耦合器",
+     "force": null
+    },
+    {
+     "t": 9.4,
+     "dur": 120.0,
+     "name": "测试",
+     "desc": "光功率·眼图·误码率·光谱全参数",
+     "force": null
+    },
+    {
+     "t": 129.4,
+     "dur": 3.6,
+     "name": "拔光纤+拔模块+目检+分拣",
+     "desc": "拔光纤(1s)→拔模块(0.8s)→金手指AOI(1s)→分拣(0.8s)",
+     "force": null
+    }
+   ],
+   "applies_segments": [
+    "0 料源与来料状态",
+    "1 取件",
+    "2 姿态准备",
+    "3 识别与工位对接",
+    "4 放置/插入",
+    "5 拔出/取回",
+    "6 分拣与回位",
+    "7 节拍与循环"
+   ],
+   "excluded_segments": [],
+   "enabled_nodes": [
+    "n_board_frame",
+    "n_dsvl",
+    "n_eng_mem",
+    "n_intent_bundle",
+    "n_intent_direct",
+    "n_l2_muscle",
+    "n_mem_links",
+    "n_vlm_llm",
+    "n_web_agent",
+    "ss2d3d",
+    "ss_lora_l4",
+    "ss_mani_eng",
+    "ss_mem_field",
+    "ss_mem_l2",
+    "ss_mem_l3",
+    "ss_mem_l4",
+    "ss_mem_share",
+    "ssaoi",
+    "ssbypv",
+    "sscalib",
+    "sscap",
+    "ssdata",
+    "ssdec",
+    "ssfeat",
+    "ssintact",
+    "ssintact_dec",
+    "sslat",
+    "sslimit",
+    "ssllm",
+    "ssllm_in",
+    "ssmani_c",
+    "ssmani_exp",
+    "ssmani_p",
+    "sssched",
+    "sssensor",
+    "sssk2",
+    "sssk3",
+    "sssk4",
+    "sssk5",
+    "sssk6",
+    "sssk7",
+    "sssk8",
+    "ssskill",
+    "sstactile",
+    "ssvlm",
+    "ssyolo",
+    "ssz700",
+    "swds",
+    "swintact",
+    "swvideo",
+    "swworld"
+   ],
+   "disabled_nodes": [],
+   "overrides": {
+    "ins.depth": null,
+    "ins.retry": 1,
+    "pull.wait_hmi": true,
+    "sort.rule": "测试结果 PASS/FAIL 分拣"
+   },
+   "trigger": "测试台就绪信号",
+   "loop": "到货即测",
+   "targets": {
+    "成功率": "≥99%",
+    "测试读取": "≥99.9%"
+   },
+   "orders_rule": "1 批 = 1 工单",
+   "safety": "继承站点 Sys-0 (急停/力阈值 Fz>5N/关节限位±3rad/光幕) — 任务不可覆盖",
+   "blocked_by_site": [
+    "T_base_cam",
+    "plane_z",
+    "cell_geometry.points"
+   ],
+   "run_cfg": {
+    "chk_engine_demo": {
+     "label": "⚡引擎快演",
+     "checked": false
+    },
+    "chk_l3_full": {
+     "label": "🚀 L3 全链(插拔+AOI)",
+     "checked": true
+    },
+    "chk_mani_yaw": {
+     "label": "🧠 流形 yaw 执行",
+     "checked": true
+    },
+    "chk_intact_exec": {
+     "label": "🤖 L4 用 INTACT 节点执行",
+     "checked": true
+    },
+    "chk_l4_dit": {
+     "label": "🎯 L4 意图 → DiT 精炼",
+     "checked": true
+    },
+    "chk_l2_compat": {
+     "label": "🧩 L2 兼容 (前馈 MLP + YOLO)",
+     "checked": true
+    }
+   },
+   "ss_mode": "insert"
+  },
+  {
+   "task_id": "TASK-06-TRAY",
+   "name": "光模块摆盘 (周转盘 → 上料 Tray 盘)",
+   "recipe_type": "摆盘取放",
+   "scene_ref": "SCN-06-TRAY",
+   "site": "SITE-A.ST11",
+   "steps": [
+    {
+     "t": 0.0,
+     "dur": 2.0,
+     "name": "定位识别",
+     "desc": "全局定位相机识别满料周转盘位置与堆叠层数、空 Tray 盘位置、工装位置; 取 1 盘周转盘到作业工装并二次拍照, 识别盘内光模块数量与坐标、Tray 空槽数量与坐标",
+     "force": null
+    },
+    {
+     "t": 2.0,
+     "dur": 0.6,
+     "name": "取件",
+     "desc": "腕部相机对准目标光模块, 末端下降至吸附位, 真空建立(≤200ms)后抬起离盘",
+     "force": null
+    },
+    {
+     "t": 2.6,
+     "dur": 1.0,
+     "name": "转运对位",
+     "desc": "沿安全轨迹转移至目标 Tray 槽位上方, 姿态对准槽口方向, 粗定位后 XYZ/姿态微调",
+     "force": null
+    },
+    {
+     "t": 3.6,
+     "dur": 0.8,
+     "name": "放入",
+     "desc": "下降到放置面, 断真空释放光模块; 放置下压不超过配方上限, 姿态偏差 ≤1°",
+     "force": null
+    },
+    {
+     "t": 4.4,
+     "dur": 0.3,
+     "name": "判态循环",
+     "desc": "判断周转盘是否空、Tray 盘是否满; 未满且盘未空则回到取件; 触发上报则暂停待人工补料/下料",
+     "force": null
+    }
+   ],
+   "applies_segments": [
+    "0 料源与来料状态",
+    "1 取件",
+    "2 姿态准备",
+    "3 识别与工位对接",
+    "4 放置/插入",
+    "6 分拣与回位",
+    "7 节拍与循环"
+   ],
+   "excluded_segments": [
+    "5 拔出/取回"
+   ],
+   "enabled_nodes": [
+    "n_board_frame",
+    "n_dsvl",
+    "n_eng_mem",
+    "n_intent_bundle",
+    "n_intent_direct",
+    "n_l2_muscle",
+    "n_mem_links",
+    "n_vlm_llm",
+    "n_web_agent",
+    "ss2d3d",
+    "ss_lora_l4",
+    "ss_mani_eng",
+    "ss_mem_field",
+    "ss_mem_l2",
+    "ss_mem_l3",
+    "ss_mem_l4",
+    "ss_mem_share",
+    "ssaoi",
+    "ssbypv",
+    "sscalib",
+    "sscap",
+    "ssdata",
+    "ssdec",
+    "ssfeat",
+    "ssintact",
+    "ssintact_dec",
+    "sslat",
+    "sslimit",
+    "ssllm",
+    "ssllm_in",
+    "ssmani_c",
+    "ssmani_exp",
+    "ssmani_p",
+    "sssched",
+    "sssensor",
+    "sssk2",
+    "sssk3",
+    "sssk4",
+    "sssk5",
+    "sssk6",
+    "sssk7",
+    "sssk8",
+    "ssskill",
+    "sstactile",
+    "ssvlm",
+    "ssyolo",
+    "ssz700",
+    "swds",
+    "swintact",
+    "swvideo",
+    "swworld"
+   ],
+   "disabled_nodes": [],
+   "overrides": {
+    "pick.vac_establish_ms": 200,
+    "pick.hold_s": 5,
+    "pick.retry": 3,
+    "place.down_force_max": "配方上限(防压伤)",
+    "place.angle_tol_deg": 1.0,
+    "src.orient": "周转盘槽位朝向",
+    "cyc.takt": "单颗 ≤3.15s (PVT)",
+    "sort.pass_tray": "不适用(摆盘不分拣)"
+   },
+   "trigger": "满料周转盘到位 / Tray 盘满或周转盘空信号",
+   "loop": "单颗循环; 周转盘空或 Tray 满 → 上报待人工补料/下料",
+   "targets": {
+    "单颗CT": "≤3.15s (PVT)",
+    "成功率": "≥99% (PVT)",
+    "取放精度": "单边 ≤1mm / ≤1°",
+    "连续": "≥12 盘周转盘"
+   },
+   "orders_rule": "1 盘 = 1 工单; 1 颗 = 1 条记录",
+   "safety": "继承站点 Sys-0 (急停/力阈值 Fz>5N/关节限位±3rad/光幕) — 任务不可覆盖",
+   "blocked_by_site": [
+    "T_base_cam",
+    "plane_z",
+    "cell_geometry.points"
+   ],
+   "run_cfg": {
+    "chk_engine_demo": {
+     "label": "⚡引擎快演",
+     "checked": true
+    },
+    "chk_l3_full": {
+     "label": "🚀 L3 全链(插拔+AOI)",
+     "checked": false
+    },
+    "chk_mani_yaw": {
+     "label": "🧠 流形 yaw 执行",
+     "checked": false
+    },
+    "chk_intact_exec": {
+     "label": "🤖 L4 用 INTACT 节点执行",
+     "checked": false
+    },
+    "chk_l4_dit": {
+     "label": "🎯 L4 意图 → DiT 精炼",
+     "checked": false
+    },
+    "chk_l2_compat": {
+     "label": "🧩 L2 兼容 (前馈 MLP + YOLO)",
+     "checked": true
+    }
+   },
+   "ss_mode": "tray"
+  },
+  {
+   "task_id": "TASK-07-AOI",
+   "name": "AR 光学质量检测 (AOI 联合检查)",
+   "recipe_type": "光学质量检测",
+   "scene_ref": "SCN-07-AOI",
+   "site": "SITE-A.ST11",
+   "steps": [
+    {
+     "t": 0.0,
+     "dur": 0.5,
+     "name": "AR 取像",
+     "desc": "RealSense D435 实拍 640×480 作 AR 底图 (深度 1mm 尺度 · 工作区有效深度 93.7% · 自动曝光)",
+     "force": null
+    },
+    {
+     "t": 0.5,
+     "dur": 1.8,
+     "name": "AOI 联合检查",
+     "desc": "工控机 AOI 10082 (金手指) 触发拍照检测 → 判据图 + 金手指矩形搜索 (位置/尺寸/倾角) + 侧边位置修正 Δx 一次拿全; 10083 (表面) 同口径",
+     "force": null
+    },
+    {
+     "t": 2.3,
+     "dur": 0.4,
+     "name": "光模块检测",
+     "desc": "在役权重 models/yolo_peg_live.pt 在 AR 帧上检测 (conf/imgsz 可调, 检出即给像素坐标)",
+     "force": null
+    },
+    {
+     "t": 2.7,
+     "dur": 0.3,
+     "name": "位姿叠加",
+     "desc": "相机系 3D 位姿: 深度反投影 + 平面拟合 (RMS 留痕), 虚拟坐标架画回实拍; 手眼 TSAI 闭环 1.74mm",
+     "force": null
+    },
+    {
+     "t": 3.0,
+     "dur": 0.3,
+     "name": "判决与上报",
+     "desc": "判决 PASS/FAIL + 缺陷数; 判据图导出; AOI 全部话题经 ar_aoi_bus 发到信号分析页 (来源 ar.)",
+     "force": null
+    }
+   ],
+   "applies_segments": [
+    "0 料源与来料状态",
+    "3 识别与工位对接",
+    "6 分拣与回位",
+    "7 节拍与循环"
+   ],
+   "excluded_segments": [
+    "1 取件",
+    "2 姿态准备",
+    "4 放置/插入",
+    "5 拔出/取回"
+   ],
+   "enabled_nodes": [
+    "n_board_frame",
+    "n_eng_mem",
+    "n_l2_muscle",
+    "n_mem_links",
+    "n_vlm_llm",
+    "n_web_agent",
+    "ss_lora_l4",
+    "ss_mem_field",
+    "ss_mem_l2",
+    "ss_mem_l3",
+    "ss_mem_l4",
+    "ss_mem_share",
+    "ssaoi",
+    "ssbypv",
+    "sscalib",
+    "sscap",
+    "ssdata",
+    "ssfeat",
+    "ssintact",
+    "sslimit",
+    "ssllm",
+    "ssllm_in",
+    "sssched",
+    "sssensor",
+    "sssk2",
+    "ssskill",
+    "ssyolo",
+    "ssz700",
+    "swds",
+    "swvideo",
+    "swworld"
+   ],
+   "disabled_nodes": [
+    "n_dsvl",
+    "n_intent_bundle",
+    "n_intent_direct",
+    "ss2d3d",
+    "ss_mani_eng",
+    "ssdec",
+    "ssintact_dec",
+    "sslat",
+    "ssmani_c",
+    "ssmani_exp",
+    "ssmani_p",
+    "sssk3",
+    "sssk4",
+    "sssk5",
+    "sssk6",
+    "sssk7",
+    "sssk8",
+    "sstactile",
+    "ssvlm",
+    "swintact"
+   ],
+   "overrides": {
+    "aoi.port_gold": 10082,
+    "aoi.port_surface": 10083,
+    "aoi.cam": "RealSense D435 (AR 底图 · 独占 :8797)",
+    "aoi.weights": "models/yolo_peg_live.pt (在役软链)",
+    "aoi.side_fix": "侧边位置修正 Delta x 一次给全",
+    "aoi.judge_png": "判据图 914x348 等比(真实金手指 ROI · 不拉伸) 可导出",
+    "sort.rule": "AOI 判决 PASS/FAIL 累计→NG",
+    "pt.dir": "reports/aoi_points",
+    "pt.space_dir": "data/skills/l2_atomic/space_points.json",
+    "pt.空间点1": "x=0.657520 y=-0.123609 z=0.361796 m · a=-9.337 b=-49.102 c=-173.821 ° · 记录 2026-10-13 20:14:21 · data/skills/l2_atomic/space_points.json",
+    "pt.空间点2": "x=0.657516 y=-0.046625 z=0.361772 m · a=-9.339 b=-49.105 c=-173.819 ° · 记录 2026-10-13 20:14:50 · data/skills/l2_atomic/space_points.json",
+    "pt.空间点3": "x=0.657516 y=-0.046625 z=0.397905 m · a=-9.339 b=-49.105 c=-173.819 ° · 记录 2026-10-13 20:15:03 · data/skills/l2_atomic/space_points.json",
+    "pt.空间点4": "x=0.657516 y=0.008066 z=0.397905 m · a=-9.339 b=-49.105 c=-173.819 ° · 记录 2026-10-13 20:15:15 · data/skills/l2_atomic/space_points.json",
+    "pt.空间点5": "x=0.657516 y=0.008066 z=0.360022 m · a=-9.339 b=-49.105 c=-173.819 ° · 记录 2026-10-13 20:15:27 · data/skills/l2_atomic/space_points.json",
+    "pt.空间点6": "x=0.657516 y=-0.037547 z=0.360022 m · a=-9.339 b=-49.105 c=-173.819 ° · 记录 2026-10-13 20:15:39 · data/skills/l2_atomic/space_points.json",
+    "pt.空间点7": "x=0.678512 y=-0.037547 z=0.360022 m · a=-9.339 b=-49.105 c=-173.819 ° · 记录 2026-10-13 20:15:54 · data/skills/l2_atomic/space_points.json",
+    "pt.空间点8": "x=0.502146 y=0.128635 z=0.630156 m · a=-0.990 b=17.099 c=177.384 ° · 记录 2026-10-08 14:44:53 · data/skills/l2_atomic/space_points.json",
+    "pt.侧面点0": "x=0.409960 y=-0.410866 z=0.555350 m · a=-12.495 b=81.727 c=-42.953 ° · 记录 2026-10-13 09:58:29 · reports/aoi_points/侧面点0.json",
+    "pt.侧面点1": "x=0.419252 y=-0.413396 z=0.513608 m · a=90.020 b=2.773 c=54.649 ° · 记录 2026-10-13 10:01:03 · reports/aoi_points/侧面点1.json",
+    "pt.侧面点2": "x=0.416258 y=-0.405571 z=0.538209 m · a=87.319 b=3.642 c=85.549 ° · 记录 2026-10-13 10:38:54 · reports/aoi_points/侧面点2.json",
+    "pthist.侧面点2": "1 次更新 · 最近 2026-10-01 06:51:27: (0.362814, -0.405824, 0.534343) → (0.362814, -0.405824, 0.534343)",
+    "pt.侧面点3": "x=0.391880 y=-0.420499 z=0.522705 m · a=10.688 b=-80.184 c=79.609 ° · 记录 2026-10-13 10:06:23 · reports/aoi_points/侧面点3.json",
+    "pt.准备点": "x=0.487604 y=-0.063659 z=0.299401 m · a=146.238 b=-73.075 c=22.179 ° · 记录 2026-10-13 10:08:19 · reports/aoi_points/准备点.json",
+    "pt.安全点1": "x=0.593219 y=0.141854 z=0.636190 m · a=-1.238 b=29.020 c=176.288 ° · 记录 2026-10-12 15:34:58 · reports/aoi_points/安全点1.json",
+    "pt.金手指点1": "x=0.593219 y=0.141854 z=0.636190 m · a=-1.238 b=29.020 c=176.288 ° · 记录 2026-10-12 13:24:40 · reports/aoi_points/金手指点1.json",
+    "pthist.金手指点1": "3 次更新 · 最近 2026-10-12 13:24:40: (0.593219, 0.141854, 0.636190) → (0.593219, 0.141854, 0.636190)",
+    "pt.金手指点2": "x=0.593219 y=0.141854 z=0.636190 m · a=-1.238 b=29.020 c=176.288 ° · 记录 2026-10-12 14:02:45 · reports/aoi_points/金手指点2.json",
+    "pthist.金手指点2": "5 次更新 · 最近 2026-10-09 06:59:04: (0.588737, 0.142627, 0.641534) → (0.336866, 0.156149, 0.579929)"
+   },
+   "trigger": "AR 场景就位 (RealSense 有帧) / 工控机 AOI 就绪信号",
+   "loop": "单件循环; 判决 + 判据图落盘后进入下一件",
+   "targets": {
+    "缺陷检出": "与产线 AOI 同口径 (10082 金手指 / 10083 表面)",
+    "判决": "PASS/FAIL + 缺陷数 (工控机 /capture_detect → GET /last_result)",
+    "金手指矩形": "位置/尺寸/倾角 (实测 363.8×17.5px · 倾角 1.75°)",
+    "侧边位置修正": "Δx = +4.0px (实测, 一次给全)",
+    "位置精修": "手眼 TSAI 闭环 1.74mm",
+    "判据图": "914×348 等比(真实金手指 ROI x226~1143 · y299~638 全覆盖) 可导出 (reports/aoi_console_state.json 留痕)"
+   },
+   "orders_rule": "1 件 = 1 条记录 (判据图 + 判决 + 时间戳)",
+   "safety": "继承站点 Sys-0 (急停/力阈值 Fz>5N/关节限位±3rad/光幕) — 任务不可覆盖",
+   "blocked_by_site": [
+    "T_base_cam",
+    "plane_z",
+    "cell_geometry.points"
+   ],
+   "run_cfg": {
+    "chk_engine_demo": {
+     "label": "⚡引擎快演",
+     "checked": true
+    },
+    "chk_l3_full": {
+     "label": "🚀 L3 全链(插拔+AOI)",
+     "checked": true
+    },
+    "chk_mani_yaw": {
+     "label": "🧠 流形 yaw 执行",
+     "checked": false
+    },
+    "chk_intact_exec": {
+     "label": "🤖 L4 用 INTACT 节点执行",
+     "checked": false
+    },
+    "chk_l4_dit": {
+     "label": "🎯 L4 意图 → DiT 精炼",
+     "checked": false
+    },
+    "chk_l2_compat": {
+     "label": "🧩 L2 兼容 (前馈 MLP + YOLO)",
+     "checked": true
+    }
+   },
+   "ss_mode": "insert"
+  }
+ ]
+}

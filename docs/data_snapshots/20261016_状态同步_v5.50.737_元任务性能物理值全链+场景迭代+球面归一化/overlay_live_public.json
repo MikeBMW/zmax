@@ -1,0 +1,42 @@
+{
+ "ok": true,
+ "who": "4060 工位机(视频源推流端)",
+ "token": "zmax-live",
+ "note": "本机在 146.x 私网段, 外网不可直达 ⇒ 需 web 侧端口转发(frp/nginx)或直接用隧道地址",
+ "streams": {
+  "三相机拼图(推荐, 低码率)": {
+   "mjpg": "/wall.mjpg?k=zmax-live",
+   "single_frame": "/wall.jpg?k=zmax-live",
+   "params": "w=400(每格宽) q=60(画质) fps=2 layout=h|v",
+   "bytes": "~28KB/帧, 2fps ≈ 56KB/s"
+  },
+  "单路原始": {
+   "arm": "/arm.mjpg?k=zmax-live",
+   "overlay_arm": "/overlay_arm.mjpg?k=zmax-live",
+   "local": "/local.mjpg?k=zmax-live",
+   "local2": "/local2.mjpg?k=zmax-live",
+   "ov_local": "/ov_local.mjpg?k=zmax-live",
+   "ov_local2": "/ov_local2.mjpg?k=zmax-live"
+  },
+  "单张快照": {
+   "arm": "/snapshot/arm.jpg?k=zmax-live",
+   "local": "/snapshot/local.jpg?k=zmax-live",
+   "local2": "/snapshot/local2.jpg?k=zmax-live",
+   "overlay_arm": "/snapshot/overlay_arm.jpg?k=zmax-live",
+   "overlay_local": "/snapshot/overlay_local.jpg?k=zmax-live",
+   "overlay_local2": "/snapshot/overlay_local2.jpg?k=zmax-live"
+  },
+  "场景契约(叠加框/位姿)": "/scene.json?k=zmax-live"
+ },
+ "cameras": {
+  "arm": "臂 D405",
+  "local": "笔记本",
+  "local2": "MAXHUB"
+ },
+ "fps_now": {
+  "arm": null,
+  "local": null,
+  "local2": null
+ },
+ "禁止": "POST 一律 403; /ctl/*(真机动) /gen(触发拍照) /station /tap 永不外放"
+}

@@ -1,0 +1,17 @@
+# 飞书端场景叠加 · 公网通道验证 2026-10-11 18:40:57
+── 本地体检 (通道=overlay) ──
+  ✅ 只读闸门在听 127.0.0.1:8891
+     闸门 /overlay?k=zmax-live → HTTP 200
+     闸门 POST(应 403) → HTTP 403
+  ✅ 上游 127.0.0.1:8791 在听
+── ECS 侧 (root@39.102.211.79) ──
+     SSH_OK
+     nginx version: nginx/1.24.0 (Ubuntu)
+
+── ③ 公网端到端 (通道=overlay, 前缀=/ov/) ──
+  /overlay?k=zmax-live                           → HTTP 200 · 47235B
+  /live?k=zmax-live                              → HTTP 200 · 1874B
+  /live.json?k=zmax-live                         → HTTP 200 · 1395B
+  /wall.jpg?k=zmax-live&w=240&q=45               → HTTP 200 · 9076B
+  POST /boxes/delete?k=zmax-live (应 403)       → HTTP 403
+  手机 APP 里填: https://datadrive.world/ov/overlay?k=zmax-live

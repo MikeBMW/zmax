@@ -1,0 +1,17 @@
+{
+ "updated": "2026-10-14 20:41:16",
+ "cycles": 24810,
+ "idle_cycles": 0,
+ "hz_target": 10.0,
+ "provider": "traj",
+ "cycle": 24810,
+ "tap": "/dev/shm/zmax_ss_engine/engine_default.jsonl",
+ "pid": 2908528,
+ "traj_n": 400,
+ "M": 3.643,
+ "calib": "标定文件 manifold_engine.npz · 目标=轨迹末帧",
+ "task_id": "TASK-07-AOI",
+ "project": "Z-MAX 状态空间总工程",
+ "last_ms": 2.824,
+ "uptime_s": 2483.9
+}

@@ -1,0 +1,9 @@
+✅ 真身在 src/lerobot/engine/runtime.py · 278 KB
+✅ tools/gui 只剩别名 shim · 28 行
+✅ shim 里没有实现体
+✅ 真身零 Qt 依赖 · 仅 stdlib + numpy
+✅ import 两条路同一对象 · True True /home/ubuntu/zmax
+✅ _repo_root() 解析正确
+✅ tools/ 与六层源码目录定位正常 · True True
+
+✅ 全部通过 (7 项)

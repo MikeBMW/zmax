@@ -85,13 +85,6 @@ def build_xml():
     fences = read_fences()
     pts = read_points()
     all_boxes = [f for f in fences if f.get("type") == "box" and f.get("p1") and f.get("p2")]
-    # 🔴 2026-11-24: 造数据/留出集只认**启用中**的箱体 (ZMAX_SCENE_FENCES=enabled)。
-    #    fence_store 已累积 390 条(启用 8 条), 而这里原来**不过滤 enabled** ⇒ 场景被上百个历史/
-    #    演示箱体填满、整幅变暗(实测 mean 亮度 83 → 32)、夹爪也不再入画 ⇒ 训练分布与 11-04/11-12
-    #    生成的留出集彻底错开, 于是 978 代全部 hard mAP50-95 0.75 判不晋级。
-    #    实况渲染(8797/8802)保持原行为(默认 all), 只有造数据侧显式设 enabled。
-    if os.environ.get("ZMAX_SCENE_FENCES", "all").lower() == "enabled":
-        all_boxes = [f for f in all_boxes if f.get("enabled")]
     if not all_boxes:
         all_boxes = [{"name": "table", "p1": [0.30, -0.45, 0.0], "p2": [0.95, 0.35, 0.10]}]
 

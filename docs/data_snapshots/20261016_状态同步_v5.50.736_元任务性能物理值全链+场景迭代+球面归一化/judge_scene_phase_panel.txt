@@ -1,0 +1,47 @@
+This plugin does not support propagateSizeHints()
+═══ 🔌🧩 场景迭代面板 判据 (插拔/摆盘 × Phase 0→4) ═══
+📌 工程状态自恢复: 场景 /home/ubuntu/zmax/data/scene/scenes/SS-EPI-CORNER · 数据源回写 无需改 · 存档任务 TASK-01-FW / 当前 TASK-01-FW
+启动期配置真源预读跳过: ModuleNotFoundError("No module named 'lerobot'")
+  ✅ ⓪ 真源存在  真源 zmax_data/eval/scene_phase_iteration.json
+  ✅ ① 评估分析页内嵌迭代路线图面板  EvalModule.irm_panel = IterationRoadmapPanel
+  ✅ ①b 第 4 个标签页 = 场景迭代控件  tabs=4 第4页='🔌🧩 场景迭代 (插拔/摆盘 × Phase 0→4)' 控件=ScenePhaseIterationView
+  ✅ ② 默认场景 == 激活任务对应场景  active_task=TASK-01-FW ⇒ 期望 FW · 界面 FW
+  ✅ ②b 场景按钮互斥选中态一致  选中: ['FW']
+  ✅ ④FW(a) 组合迭代 行数 = 阶段数×2 (主行+折叠明细)  界面 10 行 · 真源 5 阶段
+  ✅ ④FW(b) 组合迭代 阶段/主题/总数量/增量 == 真源  5 阶段逐行一致 (carried/added/upgraded 由 _combo_short 现算)
+  ✅ ④FW(c) 配置核验行数 = 阶段数  界面 5 · 真源 5
+  ✅ ④FW(d) 配置核验 (启用节点/组合映射/coverage/run.mode/能否作依据) == 真源  5 阶段逐行一致
+  ✅ ④FW(e) 迭代验证行数 == 真源指标条数  界面 58 · 真源 58
+  ✅ ④FW(f) 判定计数 界面 == 真源  真源 {'达标': 0, '未达标': 1, '未测': 57, '样本不足': 0} · 界面 {'达标': 0, '未达标': 1, '未测': 57, '样本不足': 0}
+  ✅ ④FW(g) 场景×阶段矩阵行数 == 真源  界面 58 · 真源 58
+  ✅ ④FW(h) 矩阵首行 FW p1/TRAY p1/判定 == 真源  界面 ['位姿可重复性 RP (末端)', '0.02', '0.02', 'FW 未测 / TRAY 未测'] · 真源 ['位姿可重复性 RP (末端)', '0.02', '0.02', 'FW 未测 / TRAY 未测']
+  ✅ ④FW(i) 逐阶段达标率阶段列 == 真源  界面 5 行 (达标/总数/达标率由 pass·total 现算)
+  ✅ ④FW(j) 组合增量 (added/upgraded) == 真源  界面 added=10 upgraded=4 · 真源 10/4
+  ✅ ④FW(k) 与基线 (提升/持平/回退) == 真源  界面 ['0', '2', '0'] · 真源 [0, 2, 0]
+  ✅ ④FW(l) 头部标了生成时间 + 基线版本  真源: zmax_data/eval/scene_phase_iteration.json ｜ 场景 FW 插拔 ｜ 任务 TASK-01-FW  ★当前激活任务 ｜ 版本 v5.50.735 ｜ 基线 5.50.735 ｜ 生成时间 2026-10-16 09:05:11 ｜ 生成者 tools/
+  ✅ ④TRAY(a) 组合迭代 行数 = 阶段数×2 (主行+折叠明细)  界面 10 行 · 真源 5 阶段
+  ✅ ④TRAY(b) 组合迭代 阶段/主题/总数量/增量 == 真源  5 阶段逐行一致 (carried/added/upgraded 由 _combo_short 现算)
+  ✅ ④TRAY(c) 配置核验行数 = 阶段数  界面 5 · 真源 5
+  ✅ ④TRAY(d) 配置核验 (启用节点/组合映射/coverage/run.mode/能否作依据) == 真源  5 阶段逐行一致
+  ✅ ④TRAY(e) 迭代验证行数 == 真源指标条数  界面 58 · 真源 58
+  ✅ ④TRAY(f) 判定计数 界面 == 真源  真源 {'达标': 1, '未达标': 4, '未测': 51, '样本不足': 2} · 界面 {'达标': 1, '未达标': 4, '未测': 51, '样本不足': 2}
+  ✅ ④TRAY(g) 场景×阶段矩阵行数 == 真源  界面 58 · 真源 58
+  ✅ ④TRAY(h) 矩阵首行 FW p1/TRAY p1/判定 == 真源  界面 ['位姿可重复性 RP (末端)', '0.02', '0.02', 'FW 未测 / TRAY 未测'] · 真源 ['位姿可重复性 RP (末端)', '0.02', '0.02', 'FW 未测 / TRAY 未测']
+  ✅ ④TRAY(i) 逐阶段达标率阶段列 == 真源  界面 5 行 (达标/总数/达标率由 pass·total 现算)
+  ✅ ④TRAY(j) 组合增量 (added/upgraded) == 真源  界面 added=10 upgraded=4 · 真源 10/4
+  ✅ ④TRAY(k) 与基线 (提升/持平/回退) == 真源  界面 ['0', '8', '0'] · 真源 [0, 8, 0]
+  ✅ ④TRAY(l) 头部标了生成时间 + 基线版本  真源: zmax_data/eval/scene_phase_iteration.json ｜ 场景 TRAY 摆盘 ｜ 任务 TASK-06-TRAY ｜ 版本 v5.50.735 ｜ 基线 5.50.735 ｜ 生成时间 2026-10-16 09:05:11 ｜ 生成者 tools/scene
+  ✅ ⑤ 判定色 (达标绿/未达标红/未测·样本不足灰)  抽样 {'未达标': '#f85149', '未测': '#8b949e', '样本不足': '#8b949e', '达标': '#3fb950'}
+  ✅ ⑧ 展开明细行真可见且高度足够  明细行 1 可见=True 行高=368px
+  ✅ ⑧b 再点收回 ⇒ 明细行隐藏  明细行 1 隐藏=True · 摘要 '▸ carried 0 · added 5 · upgraded 0 · 合计 5   (点击展开)'
+  ✅ ⑪ 复制当前视图文本有内容  3938 字符
+  ✅ ⑪b 面板 Markdown 含场景迭代段  48076 字符
+  ✅ ⑪c tab3 导出 CSV = 场景迭代表头  scene_phase_iteration_20261016_090557.csv ｜ 场景,阶段,主题,指标数,carried,added,upgraded,总数量,相对上阶段增量,准入门
+  ✅ ⑥ 缺失真源 ⇒ 尚未生成 + 0 行, 不崩  read_err=尚未生成 ｜ 横幅: ⛔ 尚未生成 — 点『🔄 重跑场景迭代』生成  (真源: zmax_data/eval/__no_such_scene_iter__.json)
+  ✅ ⑦ 坏真源 ⇒ 显真实读取错误, 不崩  read_err=读取失败: Expecting property name enclosed in double quotes: line 1 column 3 (char 2 ｜ 横幅: ⛔ 真源读取失败 — 读取失败: Expecting property name enclosed in double quotes: line 1 column 3 (char 2) ｜ 点『🔄 重跑场景迭代』重新生成
+  ✅ ⑩ 重跑失败 ⇒ 显**真实退出码 + stderr**, 不静默  真实 rc=3 ｜ 界面: ⛔ 重跑场景迭代失败 — 退出码 3｜boom: 采集口径不可达  (真源: zmax_data/eval/scene_phase_iteration.json)
+  ✅ ⑩b 工具不存在 ⇒ 显「工具不存在」真实原因  rc=NO_TOOL ｜ ⛔ 重跑场景迭代失败 — 工具不存在: tools/__no_such_scene_tool__.py  (真源: zmax_data/eval/scene_phase_iteration.json)
+  ✅ ⑨ 重跑按钮: 界面状态 == 真实退出码  真实 rc=0 ｜ 界面: ✅ 重跑场景迭代完成 (退出码 0) · 界面已刷新  (真源: zmax_data/eval/scene_phase_iteration.json)
+  ✅ ⑫ 重跑只刷新 ts/age_s (帧龄), 其余语义字段逐一不变  语义指纹 (剔除 ts·age_s) 跑前 121bb306002ce058 ⇒ 跑后 121bb306002ce058  (字节 sha c28999231c159f9b ⇒ 01b296e1c36190a5 ⇒ 变的只有生成时间与帧龄)
+
+═══ 结果: 41/41 PASS ═══

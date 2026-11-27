@@ -1,0 +1,12 @@
+dataset:
+  repo_id: zmax/live_1115
+  root: /home/intel/zmax/zmax_data/datasets/lerobot/zmax_live_1115
+policy:
+  type: act
+  device: cpu
+  repo_id: zmax/l3_act_1115_cpu
+output_dir: /home/intel/zmax/train_out/l3_act_1115_cpu
+batch_size: 4
+steps: 20
+num_workers: 0
+save_freq: 20

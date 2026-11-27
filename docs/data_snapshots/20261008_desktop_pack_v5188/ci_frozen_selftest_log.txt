@@ -1,0 +1,117 @@
+########## windows ##########
+##[group]Run cd tools/gui/dist
+[36;1mcd tools/gui/dist[0m
+[36;1mOUT="$(pwd)/engine_selftest.json"[0m
+[36;1mRC=0[0m
+[36;1mZMAX_SELFTEST_OUT="$OUT" ./Z-MAX_Console.exe --engine-selftest || RC=$?[0m
+[36;1mecho "--- engine_selftest.json ---"[0m
+[36;1mcat "$OUT" 2>/dev/null || echo "(无输出文件: exe 没跑到写文件那步)"[0m
+[36;1mif [ "$RC" != "0" ]; then[0m
+[36;1m  echo "::error::冻结核验失败 (exit=$RC) — 打包后的 exe 里引擎起不来, 不允许发版 (v5.6.4 的 mujoco 插件 DLL bug 就是这一步抓的)"[0m
+[36;1m  exit 1[0m
+[36;1mfi[0m
+[36;1mecho "✅ 冻结核验通过: exe 内 mujoco/metaworld 真实可用"[0m
+shell: C:\Program Files\Git\bin\bash.EXE --noprofile --norc -e -o pipefail {0}
+env:
+  pythonLocation: C:\hostedtoolcache\windows\Python\3.12.10\x64
+  PKG_CONFIG_PATH: C:\hostedtoolcache\windows\Python\3.12.10\x64/lib/pkgconfig
+  Python_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+  Python2_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+  Python3_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+##[endgroup]
+glfw\__init__.py:917: GLFWError: (65542) b'WGL: The driver does not appear to support OpenGL'
+  warnings.warn(message, GLFWError)
+Exception ignored in: <function Renderer.__del__ at 0x00000223DDD0F2E0>
+Traceback (most recent call last):
+  File "mujoco\renderer.py", line 337, in __del__
+  File "mujoco\renderer.py", line 325, in close
+AttributeError: 'Renderer' object has no attribute '_mjr_context'
+Exception ignored in: <function Renderer.__del__ at 0x00000223DDD0F2E0>
+Traceback (most recent call last):
+  File "mujoco\renderer.py", line 337, in __del__
+  File "mujoco\renderer.py", line 325, in close
+AttributeError: 'Renderer' object has no attribute '_mjr_context'
+--- engine_selftest.json ---
+{
+ "argv": [
+  "D:\\a\\zmax\\zmax\\tools\\gui\\dist\\Z-MAX_Console.exe",
+  "--engine-selftest"
+ ],
+ "frozen": true,
+ "meipass": "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\_MEI000002782",
+ "mujoco": "3.3.0",
+ "plugin_handles": 4,
+ "dll_fix": "stage=dirs_only,n=4",
+ "metaworld": "n/a",
+ "xml": "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\_MEI000002782\\metaworld\\assets\\sawyer_xyz\\sawyer_peg_insertion_side_l4.xml",
+ "xml_exists": true,
+ "nq": 24,
+ "nbody": 39,
+ "qpos_sum": 3.707535,
+ "render_ok": false,
+ "render_err": "FatalError: gladLoadGL error",
+ "node_logic_keys": 151,
+ "logic_home": "library.py",
+ "canvas_json": "state_space_obs.json",
+ "gui_import_chain": true,
+ "rc": 0
+}✅ 冻结核验通过: exe 内 mujoco/metaworld 真实可用
+
+########## macos ##########
+##[group]Run BIN=tools/gui/dist/Z-MAX_Console.app/Contents/MacOS/Z-MAX_Console
+[36;1mBIN=tools/gui/dist/Z-MAX_Console.app/Contents/MacOS/Z-MAX_Console[0m
+[36;1mOUT="$(pwd)/engine_selftest_mac.json"[0m
+[36;1mRC=0[0m
+[36;1mZMAX_SELFTEST_OUT="$OUT" "$BIN" --engine-selftest || RC=$?[0m
+[36;1mecho "--- engine_selftest_mac.json ---"[0m
+[36;1mcat "$OUT" 2>/dev/null || echo "(无输出文件: .app 没跑到写文件那步)"[0m
+[36;1mif [ "$RC" != "0" ]; then[0m
+[36;1m  echo "::error::mac 冻结核验失败 (exit=$RC)"[0m
+[36;1m  exit 1[0m
+[36;1mfi[0m
+[36;1mecho "✅ mac 冻结核验通过"[0m
+shell: /bin/bash -e {0}
+env:
+  pythonLocation: /Users/runner/hostedtoolcache/Python/3.12.10/arm64
+  PKG_CONFIG_PATH: /Users/runner/hostedtoolcache/Python/3.12.10/arm64/lib/pkgconfig
+  Python_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.12.10/arm64
+  Python2_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.12.10/arm64
+  Python3_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.12.10/arm64
+  MW_ASSETS: /Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/site-packages/metaworld/assets
+##[endgroup]
+Exception ignored in: <function Renderer.__del__ at 0x1075a0860>
+Traceback (most recent call last):
+  File "mujoco/renderer.py", line 337, in __del__
+  File "mujoco/renderer.py", line 325, in close
+AttributeError: 'Renderer' object has no attribute '_mjr_context'
+Exception ignored in: <function Renderer.__del__ at 0x1075a0860>
+Traceback (most recent call last):
+  File "mujoco/renderer.py", line 337, in __del__
+  File "mujoco/renderer.py", line 325, in close
+AttributeError: 'Renderer' object has no attribute '_mjr_context'
+--- engine_selftest_mac.json ---
+{
+ "argv": [
+  "tools/gui/dist/Z-MAX_Console.app/Contents/MacOS/Z-MAX_Console",
+  "--engine-selftest"
+ ],
+ "frozen": true,
+ "meipass": "/Users/runner/work/zmax/zmax/tools/gui/dist/Z-MAX_Console.app/Contents/Frameworks",
+ "mujoco": "3.3.0",
+ "plugin_handles": 4,
+ "dll_fix": "",
+ "metaworld": "n/a",
+ "xml": "/Users/runner/work/zmax/zmax/tools/gui/dist/Z-MAX_Console.app/Contents/Frameworks/metaworld/assets/sawyer_xyz/sawyer_peg_insertion_side_l4.xml",
+ "xml_exists": true,
+ "nq": 24,
+ "nbody": 39,
+ "qpos_sum": 3.707535,
+ "render_ok": false,
+ "render_err": "CGLError: invalid pixel format",
+ "node_logic_keys": 151,
+ "logic_home": "library.py",
+ "canvas_json": "state_space_obs.json",
+ "gui_import_chain": true,
+ "rc": 0
+}✅ mac 冻结核验通过
+

@@ -76,7 +76,7 @@ class Cam:
     def loop(self):
         t_prev, n = time.time(), 0
         while not self._stop and not STOP.is_set():
-            t0 = time.monotonic()          # 🔴 墙钟被 NTP 回拨(-8h) ⇒ 节流只能单调钟
+            t0 = time.time()
             ok, fr = self.cap.read()
             if ok:
                 STATS["w"], STATS["h"] = fr.shape[1], fr.shape[0]
@@ -89,9 +89,9 @@ class Cam:
             if n and time.time() - t_prev >= 1.0:
                 STATS["fps"] = round(n / (time.time() - t_prev), 1)
                 n, t_prev = 0, time.time()
-            dt = self.period - (time.monotonic() - t0)
+            dt = self.period - (time.time() - t0)
             if dt > 0:
-                time.sleep(min(dt, self.period))
+                time.sleep(dt)
         try:
             self.cap.release()
         except Exception:                                                  # noqa: BLE001

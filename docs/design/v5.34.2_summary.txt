@@ -1,0 +1,23 @@
+v5.34.2 — 关机收尾: 数据快照 + 发布证据 + 交接核对单 (2026-10-09 夜, 老倪「保存数据, 小版本迭代, 准备关机」)
+
+本版**无功能改动** —— 是收尾版 (代码与 v5.34.1 相同, 只多版本号与下面的留痕)。
+当天功能线: v5.34.0 定版 (侧栏 UI + 产品/系统/功能三级 + 单一工程库 + 参数中心) → v5.34.1 找回画布工具栏
+🧮状态空间 / 🛰工位总览 两个按钮 → v5.34.2 关机收尾。
+
+① 数据保存 (真入库, 不是只喊"已保存")
+   docs/data_snapshots/2026-10-09_关机收尾_v5.34.2/
+     · zmax_engineering.db (单一工程库, 当天最后一次重扫, check 全绿)
+     · param_events.jsonl (改数留痕) · canvas_state_space_obs.json (画布真源)
+     · release_status.json (GitHub API 实测: tag / 运行 URL / 结论 / 资产名与字节数)
+     · shutdown_checklist.md (关机前核对单) · README.md
+   现场归档: ~/zmax/zmax_data/release_5.34.2_20261009/ (MANIFEST + sha256)
+
+② 发布结果 (实测, 非声称)
+   v5.34.0 (success): Z-MAX_Console.exe 171.0 MB + Z-MAX_Console-macOS.zip 134.6 MB
+   v5.33.3 (success): 同两份 (前一次验证)
+   v5.34.1 / v5.34.2: 构建中/排队 → 完成后挂各自 Release
+   下载: https://github.com/MikeBMW/zmax/releases
+
+③ 关机前状态
+   工作区 git status = 0 · main + tags 已推并核远端 · 守卫 (integrity_check / repo_guard / secret_scan) 全绿 ·
+   技能+记忆已同步进仓库 · 磁盘 86% (可用 54G) · GPU 空闲无训练 · 产线 USB 网卡不在位 (物理原因, 插回即恢复)

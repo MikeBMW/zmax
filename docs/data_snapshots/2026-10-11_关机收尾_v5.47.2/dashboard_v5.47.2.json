@@ -1,0 +1,369 @@
+{
+  "schema": "zmax-dashboard/1",
+  "generated_at": "2026-10-11 21:47:01",
+  "generated_at_epoch": 1791726421.74,
+  "version": "5.47.2",
+  "gpu": {
+    "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+    "util": 7.0,
+    "mem_used": 624.0,
+    "mem_total": 8188.0,
+    "mem_pct": 7.6,
+    "temp": 55.0,
+    "power": 12.17,
+    "procs": 3,
+    "error": null
+  },
+  "datasets": {
+    "items": 217,
+    "size_human": "68.4GB",
+    "size_bytes": 73481673856,
+    "file_count": 156581,
+    "categories": {
+      "downloaded": {
+        "count": 8,
+        "size_human": "12.7GB"
+      },
+      "generated": {
+        "count": 136,
+        "size_human": "52.0GB"
+      },
+      "map": {
+        "count": 73,
+        "size_human": "3.7GB"
+      }
+    },
+    "reports_files": 894,
+    "map_items_with_ply": 18
+  },
+  "models": {
+    "count": 8,
+    "layers": [
+      {
+        "layer": "L5",
+        "name": "L5 · L5 最新 merged (可部署)",
+        "active": true,
+        "ready": true,
+        "size_h": "968.0MB",
+        "mtime": "2026-10-09 23:15:04"
+      },
+      {
+        "layer": "L5",
+        "name": "L5 · L5 最新 LoRA adapter",
+        "active": false,
+        "ready": true,
+        "size_h": "36.6MB",
+        "mtime": "2026-10-09 23:15:04"
+      },
+      {
+        "layer": "L4",
+        "name": "L4 · L4 在役 (稳定指针)",
+        "active": true,
+        "ready": true,
+        "size_h": "80.2MB",
+        "mtime": "2026-09-15 00:27:02"
+      },
+      {
+        "layer": "L4",
+        "name": "L4 · L4 最新续训/LoRA 产物",
+        "active": false,
+        "ready": true,
+        "size_h": "83.9MB",
+        "mtime": "2026-10-11 18:25:38"
+      },
+      {
+        "layer": "L3",
+        "name": "L3 · L3 在役 (运行时 ckpt)",
+        "active": true,
+        "ready": true,
+        "size_h": "4.0KB",
+        "mtime": "2026-09-10 20:45:04"
+      },
+      {
+        "layer": "L3",
+        "name": "L3 · L3 最新 LoRA-merged 产物",
+        "active": false,
+        "ready": true,
+        "size_h": "1.2GB",
+        "mtime": "2026-10-10 17:37:35"
+      },
+      {
+        "layer": "L2",
+        "name": "L2 · L2 在役 (指针)",
+        "active": true,
+        "ready": true,
+        "size_h": "5.9MB",
+        "mtime": "2026-09-19 18:14:44"
+      },
+      {
+        "layer": "L2",
+        "name": "L2 · L2 最新训练产物",
+        "active": false,
+        "ready": true,
+        "size_h": "5.9MB",
+        "mtime": "2026-10-11 18:27:36"
+      }
+    ],
+    "active_ready": 4,
+    "training_active": 0,
+    "all_ready": true
+  },
+  "scene": {
+    "objects": 8,
+    "markers": 0,
+    "fences": 0,
+    "trajectories": 0,
+    "deleted": 20,
+    "traj_show": true,
+    "fences_valid": true,
+    "fence_invalid": [],
+    "out_of_range": []
+  },
+  "remote": {
+    "endpoints_total": 18,
+    "endpoints_ok": 15,
+    "endpoints_err": 3,
+    "stale": [
+      "ECS工位状态(station/status)",
+      "ECS-Orin上行(relay/orin/status)",
+      "本机推流stats(8791)",
+      "本机工位状态(8793/station/status)",
+      "本机agent_hub(8794/agent/log)"
+    ],
+    "stale_count": 5,
+    "frame_age_s": 0.06,
+    "same_source": [
+      {
+        "fact": "臂相机帧率 fps",
+        "consistent": true,
+        "tol": 4.0,
+        "note": "",
+        "sources": [
+          {
+            "name": "本机推流stats(8791)",
+            "value": 0.0
+          },
+          {
+            "name": "本机工位状态(8793/station/status)",
+            "value": 0.0
+          },
+          {
+            "name": "ECS工位状态(station/status)",
+            "value": 0.0
+          },
+          {
+            "name": "ECS-3D实况(ss3d_live.json)",
+            "value": 0.0
+          }
+        ]
+      },
+      {
+        "fact": "臂相机帧龄 age_s",
+        "consistent": false,
+        "tol": 2.0,
+        "note": "",
+        "sources": [
+          {
+            "name": "本机推流stats(8791)",
+            "value": 25.91
+          },
+          {
+            "name": "本机工位状态(8793/station/status)",
+            "value": 25.91
+          },
+          {
+            "name": "ECS-3D实况(ss3d_live.json)",
+            "value": 23.69
+          }
+        ]
+      },
+      {
+        "fact": "臂相机在线",
+        "consistent": true,
+        "tol": "bool",
+        "note": "",
+        "sources": [
+          {
+            "name": "本机推流stats(8791)",
+            "value": true
+          },
+          {
+            "name": "本机工位状态(8793/station/status)",
+            "value": true
+          }
+        ]
+      },
+      {
+        "fact": "臂相机设备名(同一设备?)",
+        "consistent": true,
+        "tol": null,
+        "note": "",
+        "sources": [
+          {
+            "name": "本机推流stats(8791)",
+            "value": "🦾 机器人臂上 D405 (Orin)"
+          },
+          {
+            "name": "本机工位状态(8793/station/status)",
+            "value": "🦾 机器人臂上 D405 (Orin)"
+          }
+        ]
+      },
+      {
+        "fact": "工位机GPU利用率",
+        "consistent": true,
+        "tol": 15.0,
+        "note": "",
+        "sources": [
+          {
+            "name": "本机硬件状态(8796/status/all)",
+            "value": 17
+          },
+          {
+            "name": "ECS状态总线(zmax_status.json)",
+            "value": 6
+          }
+        ]
+      }
+    ],
+    "mismatch": [
+      "臂相机帧龄 age_s"
+    ],
+    "unreachable": [
+      "Orin取流状态(8792/status)",
+      "工控机AOI金手指(10082/last_result)",
+      "工控机AOI表面(10083/last_result)"
+    ],
+    "error": null
+  },
+  "version_sync": {
+    "ok": false,
+    "canonical": "5.47.2",
+    "canonical_source": "studio.py 品牌 QLabel",
+    "remote_has_tag": false,
+    "release_tag": "v5.47.1",
+    "deviations": [
+      "远端缺少 tag v5.47.2",
+      "最新 Release tag v5.47.1 ≠ v5.47.2"
+    ]
+  },
+  "screen": {
+    "ok": true,
+    "err": null,
+    "station_url": "http://127.0.0.1:8793/station",
+    "channels": [
+      {
+        "key": "arm",
+        "label": "🦾 机器人臂上 D405 (Orin)",
+        "online": true,
+        "fps": 0.0,
+        "age_s": 28.68,
+        "stalled": true,
+        "frames_served": 121331,
+        "kbps": 0.0
+      },
+      {
+        "key": "local",
+        "label": "🔌 USB USB2.0 Camera: USB2.0 Camera",
+        "online": true,
+        "fps": 0.0,
+        "age_s": 28.63,
+        "stalled": true,
+        "frames_served": 62932,
+        "kbps": 0.0
+      },
+      {
+        "key": "local2",
+        "label": "📺 WT15: MAXHUB-Camera",
+        "online": true,
+        "fps": 19.99,
+        "age_s": 0.0,
+        "stalled": false,
+        "frames_served": 105012,
+        "kbps": 1379.3
+      },
+      {
+        "key": "depth",
+        "label": "🌈 D405 深度图 (彩色化)",
+        "online": true,
+        "fps": 0.0,
+        "age_s": 34.47,
+        "stalled": true,
+        "frames_served": 966,
+        "kbps": 0.0
+      },
+      {
+        "key": "aoi_gold",
+        "label": "🔍 金手指检测 (工控机 OPT)",
+        "online": true,
+        "fps": 0.0,
+        "age_s": 32.96,
+        "stalled": true,
+        "frames_served": 993,
+        "kbps": 0.0
+      },
+      {
+        "key": "aoi_gold_raw",
+        "label": "",
+        "online": true,
+        "fps": 0.0,
+        "age_s": 32.92,
+        "stalled": true,
+        "frames_served": 331,
+        "kbps": 0.0
+      },
+      {
+        "key": "aoi_surface",
+        "label": "🔍 表面检测 (工控机 OPT)",
+        "online": true,
+        "fps": 0.0,
+        "age_s": 31.61,
+        "stalled": true,
+        "frames_served": 1528,
+        "kbps": 0.0
+      },
+      {
+        "key": "ov_arm",
+        "label": "🦾 机器人臂上 D405 (Orin)",
+        "online": true,
+        "fps": 0.0,
+        "age_s": 28.68,
+        "stalled": true,
+        "frames_served": 40596,
+        "kbps": 0.0
+      },
+      {
+        "key": "ov_local",
+        "label": "🔌 USB USB2.0 Camera: USB2.0 Camera",
+        "online": true,
+        "fps": 0.0,
+        "age_s": 28.63,
+        "stalled": true,
+        "frames_served": 40641,
+        "kbps": 0.0
+      },
+      {
+        "key": "ov_local2",
+        "label": "📺 WT15: MAXHUB-Camera",
+        "online": true,
+        "fps": 10.05,
+        "age_s": 0.07,
+        "stalled": false,
+        "frames_served": 40921,
+        "kbps": 796.0
+      }
+    ],
+    "channels_online": 10,
+    "channels_total": 10,
+    "frame_age_max_s": 34.47,
+    "motion_armed": false,
+    "robot": {
+      "power": "off",
+      "operation": "idle",
+      "mode": "manual",
+      "estop": false,
+      "has_error": false,
+      "src": "rokae_direct(192.168.23.160 · SDK 直读)"
+    }
+  }
+}

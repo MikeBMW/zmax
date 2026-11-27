@@ -112,7 +112,6 @@ def _zmax_sane_env():
 
 
 import os as _os_mod
-import time
 import concurrent.futures as _cfutures   # 🐛 2026-09-09: 真实化单线程池 (env 渲染线程亲和)
 _ECS_PW_SM = _os_mod.environ.get("ZMAX_ECS_PW", "")  # ECS 密码 (不入库)
 
@@ -1456,21 +1455,6 @@ LIBRARY_STATIC = [
          "desc": "♻ 共用: 双击 → 多模型 训练速度/精确度/鲁棒性 对比图表"},
         {"name": "🎮 仿真推理对比", "params": {"video": "all", "auto": True},
          "desc": "多模型 metaworld rollout 视频 → 窗口同步播放对比 (推理效果)"},
-    ]),
-    # 🌀 2026-11-20 老倪: 「SE(3) 怎么没有加到画布的工具栏按钮里」
-    #   原因: 模块库的「状态空间模型」组是**按画布节点生成**的 —— 画布里有才有,
-    #         且要重开工程才重建面板。这里再钉一组静态按钮, 一开控制台就在, 不必等画布。
-    ("model", "🌀 流形 · 相空间 (L4)", [
-        {"name": "🔷 SE(3)×S1 记忆流形", "type": "model",
-         "params": {"state_space": True, "cap_level": "L4", "rate_hz": 5.0,
-                    "source": "src/lerobot/middleware/nodes/impl/ss_se3_state.py",
-                    "desc": "昨日 se3 服务 16 维状态: A 位置ℝ³ · B 轴S² · C 四元数S³ · D 滚转S¹ · "
-                            "E 弧长相位S¹; 5Hz 只读, 供相空间通道与判据"}},
-        {"name": "🌀 相空间安全通道", "type": "model",
-         "params": {"state_space": True, "cap_level": "L4", "epsilon": 0.30, "alpha": 1.5, "lam": 2.0,
-                    "source": "src/lerobot/manifold/phase_corridor.py",
-                    "desc": "z=[e_pose/tol; e_vel/vlim] · V=½‖z‖² · τ=−α·τ_lim⊙(z_pos+z_vel) · "
-                            "S¹ 相位门控 · α_eff=min(α,λ/2) ⇒ V̇≤−λV"}},
     ]),
 ]
 
@@ -4719,12 +4703,9 @@ class SimCanvas(QGraphicsView):
         #   (金手指检查 / 外观划伤 / 光口端面 / 全帧扫描 · 图像定位+拉伸 · 缺陷框选标定 · 在线增量训练)
         #   与「打开输入图像」同款入口: 帧源跟随画布「🔀 数据源切换」
         a_aoi = None
-        a_guide = None
         if ("光学质量检测" in item.node.get("name", "") or "外观质量检测" in item.node.get("name", "")
                 or item.node.get("params", {}).get("aoi_quality")):
             a_aoi = menu.addAction("打开质量检测终端 (金手指/外观/标定/在线训练)")
-            # 🎯 AOI 3D 位姿引导: 10082 触发检测 → 19 根定位 → 偏差 → 目标位姿(只算不下发)
-            a_guide = menu.addAction("🎯 AOI 3D 位姿引导 (金手指居中 → 目标位姿)")
         # 🔀 2026-09-16 老倪: 📦 数据源节点上的「仿真/真机」切换
         a_srcsw = None
         if item.node.get("params", {}).get("src_switch"):
@@ -4861,16 +4842,6 @@ class SimCanvas(QGraphicsView):
             except Exception as _e:                                        # noqa: BLE001
                 try:
                     self.module._log(f"⚠️ 打开渲染帧单帧失败: {type(_e).__name__}: {_e}")
-                except Exception:                                          # noqa: BLE001
-                    pass
-        elif a_guide is not None and chosen == a_guide:
-            # 🎯 AOI 3D 位姿引导: 只做「测量 → 目标位姿」, 不下发运动
-            try:
-                from aoi_pose_guide_dialog import open_pose_guide
-                open_pose_guide(self, module=self.module)
-            except Exception as _e:                                        # noqa: BLE001
-                try:
-                    self.module._log(f"⚠️ 打开 AOI 3D 位姿引导失败: {type(_e).__name__}: {_e}")
                 except Exception:                                          # noqa: BLE001
                     pass
         elif a_aoi is not None and chosen == a_aoi:
@@ -5599,7 +5570,7 @@ class _DatasetInfoDialog(QDialog):
             grid.addWidget(l2, r, c * 2 + 1)
         root.addLayout(grid)
         # 说明区
-        note = QLabel("💡 该路径就是训练/推理的真实数据源头 — 状态空间数据集从这里逐帧读取,\n"
+        note = QLabel("💡 该路径就是训练/推理的真实数据源头 — LeRobotDataset 从这里逐帧读取,\n"
                       "计算归一化 mean/std 后经 DataLoader 按 batch 送进模型。")
         note.setStyleSheet("color:#57606a; font-size:11px;")
         note.setWordWrap(True)
@@ -6215,14 +6186,13 @@ class SimulinkModule(QWidget):
             self.open_monitor_window, "#58a6ff")
         tl.addWidget(self.btn_monitor)
         if not hasattr(self, "btn_station"):
-            # 🗂 2026-10-11 「工位总览 → 产品大屏」; 2026-11-25 再改「产品大屏 → 产品服务」,
-            #   指向也变了: 现在是所有服务的总索引 :8788 (8793/station 降级为回退 + 索引里的一张卡)
+            # 🗂 2026-10-11 老倪: 「将 工位总览 按钮改名成 产品大屏」—— 名字改, 服务一字不动
+            #   (同一个 8793 站点页 + 同一条数据流服务 ⇒ 产品大屏 == 原工位总览)
             self.btn_station = mk_btn(
-                "🖥 产品服务",
-                "产品服务 (2026-11-25 改名) = 所有服务的总索引 (:8788):\n"
-                "  · 每张卡: 缩略图 + 一句介绍 + 健康灯 + 「打开」/「复制链接」\n"
-                "  · simulink画布 / 生产数据大屏 / ar3d / 卡拉比丘流形 / 工位控制台… 都在这里 link 过去\n"
-                "  · 总索引不通时自动回退到工位总览 (:8793/station, 6 路同屏)",
+                "🖥 产品大屏",
+                "产品大屏 (原「工位总览」, 同一套服务): 6 路同屏 (深度源 + 工控机金手指/表面检测 + 手动控制区):\n" 
+                "  · 视频流没在跑会自动拉起 (最多等 12s), 然后开浏览器窗口\n"
+                "  · 页面地址 = 8793 站点 /station; 只读看画面 + 手动控制按钮走同一站点接口",
                 self.open_station_page, "#58a6ff")
         tl.addWidget(self.btn_station)
         # 🧭 2026-10-10 老倪「simulink 画布的 3D 视图那个按钮哪里去了？找回来。仿真可视化很重要」
@@ -6251,18 +6221,6 @@ class SimulinkModule(QWidget):
             "  · 打开后自动搬回控制台这块屏并置前; 8797 没起时后台起一次再开",
             self.open_fiber_page, "#f0883e")
         tl.addWidget(self.btn_fiber)
-        # 🔷 2026-11-20 老倪: 「http://192.168.23.50:8815/ 做一个 SE3按钮, 放到画布工具栏」
-        #   与 🥽 AR / 🔦 光纤 同一套出窗路径 (独立 snap profile ⇒ 不被已开的 chromium 吞成后台标签);
-        #   8815 没监听时后台拉一次 systemd 单元 zmax-se3-geom 再开, 失败只在日志里说清, 不阻塞界面。
-        self.btn_se3 = mk_btn(
-            "🔷 SE(3)",
-            "直接打开 SE(3) 分层几何看板 (http://192.168.23.50:8815/)\n"
-            "  · 五层同屏: A 位置 ℝ³ / B 接近轴 S² / C 四元数 S³(Hopf) / D 滚转 S¹ / E 相位 S¹ + TQ\n"
-            "  · 数据源 = 珞石 xCoreSDK endInRef 真值, 页面 1s 自刷\n"
-            "  · 服务没起会自动拉起 (systemctl start zmax-se3-geom), 后台起, 不卡界面\n"
-            "  · 与 8817/follow (五流形 A~E)、8819 (流形引擎页) 是同一批服务的不同视角",
-            self.open_se3_board, "#3fb950")
-        tl.addWidget(self.btn_se3)
         # 🎥 2026-09-04 老倪「YOLO 是不是假的」: ▶运行 默认真实化 (metaworld+每帧 YOLO);
         #   勾选「⚡引擎快演」退回引擎简化世界快速演示 (0.1s, 非真实感知)
         self.chk_engine_demo = QCheckBox("⚡引擎快演")
@@ -6860,7 +6818,6 @@ class SimulinkModule(QWidget):
         # 自绘深色气泡 (替代 QToolTip: WSLg 下系统原生渲染黑字看不清)
         try:
             from PyQt5.QtCore import Qt as _Qt
-            from PyQt5.QtCore import QUrl as _QUrl
             if self._tutorial_hl is not None and self._tutorial_hl.isVisible():
                 pos = self._tutorial_hl.mapToGlobal(self._tutorial_hl.rect().center())
                 self._show_bubble(pos, f"👆 请点击这里:\n{target}")
@@ -10198,61 +10155,6 @@ class SimulinkModule(QWidget):
             self.log_signal.emit("🌐 数据空间独立窗口打开失败: %s: %s" % (type(e).__name__, str(e)[:120]))
             return False
 
-    def _open_portal_window(self):
-        """🖥 产品服务 · 全服务总索引 (:8788) —— 控制台**内嵌**窗打开。
-
-        外挂浏览器在本机不可靠: 默认浏览器是 snap 版 chromium, 从 studio 的 cgroup 里
-        拉起来会被 snapd 拒, xdg-open 又只把页面塞进已有窗口的标签页 ⇒ 用户眼前零变化
-        (2026-11-25 老倪「点击产品服务没反应」)。与 8810 切面页同一套做法。
-        """
-        url = os.environ.get("ZMAX_PORTAL_URL") or "http://127.0.0.1:8788/"
-        try:
-            _w = getattr(self, "_portal_win", None)
-            if _w is not None and _w.isVisible():
-                try:
-                    from PyQt5.QtCore import QUrl as _QUrl
-                    _w.view.load(_QUrl(url))
-                except Exception:                                          # noqa: BLE001
-                    pass
-                _w.raise_()
-                _w.activateWindow()
-                self._log("🖥 复用已打开的产品服务窗: %s" % url)
-                return url
-        except Exception:                                                  # noqa: BLE001
-            pass
-        try:
-            from PyQt5.QtCore import Qt as _Qt
-            from PyQt5.QtCore import QUrl as _QUrl
-            from PyQt5.QtWebEngineWidgets import QWebEngineView as _QWV
-            from PyQt5.QtWidgets import QDialog as _QD
-            from PyQt5.QtWidgets import QVBoxLayout as _QVB
-            _dlg = _QD(self)
-            # 去掉 Qt.Dialog 位: 否则窗口类型=DIALOG, GNOME 不给最大化能力 (按钮灰/无效)
-            _dlg.setWindowFlags(_Qt.Window | _Qt.WindowTitleHint | _Qt.WindowSystemMenuHint
-                                | _Qt.WindowMinMaxButtonsHint | _Qt.WindowCloseButtonHint)
-            _dlg.setWindowTitle("🖥 产品服务 · 全服务总索引")
-            _dlg.setWindowModality(_Qt.NonModal)
-            _dlg.resize(1420, 900)
-            _lay = _QVB(_dlg)
-            _lay.setContentsMargins(0, 0, 0, 0)
-            _v = _QWV(_dlg)
-            _v.load(_QUrl(url))
-            _lay.addWidget(_v)
-            _dlg.view = _v
-            self._portal_win = _dlg
-            _dlg.show()
-            self._log("✅ 产品服务窗已开 (内嵌 QtWebEngine): %s" % url)
-            print("✅ 产品服务窗已开 (内嵌): %s" % url, flush=True)
-            return url
-        except Exception as _e:                                            # noqa: BLE001
-            self._log("⚠ 内嵌开窗失败 (%s) — 改外挂浏览器" % _e)
-        try:
-            import webbrowser as _wb
-            _wb.open(url)
-            return url
-        except Exception:                                                  # noqa: BLE001
-            return None
-
     def open_station_page(self):
         # 🔴 2026-11-08 老倪「我要一个完整功能的 windows 版本」: Windows 上没有 bash/snap/产线常驻服务,
         #   这条分支用冻结包自带的 Python 把本机服务拉起来(没起才起), 再用默认浏览器打开。
@@ -10262,11 +10164,11 @@ class SimulinkModule(QWidget):
                 # 产品大屏 = 8793/station (与主脑那台机器同一套 6 路同屏 + 手动控制区)。
                 # 老倪 2026-11-08: 「不是 8799 服务, 应该是跟静静一样的 http://<主脑>:8793/station」
                 _url = _ls.station_url()
-                self._log("🖥 产品服务 · 总索引: %s" % _url)
+                self._log("🖥 产品大屏(8793/station): %s" % _url)
                 import webbrowser as _wb
                 _wb.open(_url)
             except Exception as _e:                                          # noqa: BLE001
-                self._log("❌ 产品服务打开失败: %r" % (_e,))
+                self._log("❌ 产品大屏打开失败: %r" % (_e,))
             return
         """🛰 工位总览 (6 路同屏 + 右侧控制区) — 老倪 2026-09-27「那个网页怎么搞丢了?」
 
@@ -10297,17 +10199,6 @@ class SimulinkModule(QWidget):
                 return "127.0.0.1"
 
         def _work():
-            # 0) 🖥 2026-11-25 老倪: 「产品服务」点开先看所有服务的总索引 (:8788);
-            #    索引页里每张卡再 link 到 ar3d / 卡拉比丘 / 大屏 / 工位控制台…, 总索引不通才走下面的回退。
-            for _pu in ("http://127.0.0.1:8788/",):
-                try:
-                    with urllib.request.urlopen(_pu, timeout=3) as _r:
-                        if _r.status == 200:
-                            self.log_signal.emit("🖥 产品服务 · 总索引: %s (控制台内嵌窗)" % _pu)
-                            self._open_portal_window()
-                            return
-                except Exception as _e:                                          # noqa: BLE001
-                    self.log_signal.emit("⚠️ 产品服务总索引不可达 (%s) → 回退工位总览" % _e)
             # 1) 视频流在不在 —— 总览页和叠加页由**同一个进程**服务(cam_live_stream.py)
             if not _stats_ok():
                 self.log_signal.emit("🛰 工位总览: 视频流未运行 → 自动启动 (6 路源 + 总览页) …")
@@ -13633,58 +13524,6 @@ class SimulinkModule(QWidget):
                 except Exception:
                     pass
 
-    def open_phase_space(self):
-        """🌀 相空间相图 (Θ,p) — 双击画布节点打开 (老倪 2026-11-20「要在 simulink 画布上加 相」)
-
-        与右侧参数面板「🌀 相空间 (Θ,p)」页签是**同一个视图类** (tools/gui/phase_space.py):
-        横轴 Θ 轴向位置偏差 mm · 纵轴 p 轴向动量 kg·m/s · 流线=相轨迹族 · 琥珀虚线=当前 H 等能线 ·
-        绿点+尾迹=实测帧。数据源 zmax_data/ss_live/hamiltonian.json (🌍 万有引力节点每帧落, 缺就显「未出数」)。
-        真顶层 QMainWindow (无 parent) ⇒ 最大化/还原/最小化可用 (同 🌐 数据空间窗口那条教训)。
-        """
-        try:
-            w = getattr(self, "_phase_win", None)
-            if w is not None:
-                try:
-                    import sip as _sip
-                    if _sip.isdeleted(w):
-                        w = None
-                        self._phase_win = None
-                except Exception:
-                    pass
-            if w is None:
-                from PyQt5.QtCore import Qt
-                from PyQt5.QtWidgets import QMainWindow
-                from phase_space import PhaseSpaceView
-                w = QMainWindow(None)
-                w.setWindowFlags(Qt.Window | Qt.WindowMinimizeButtonHint
-                                 | Qt.WindowMaximizeButtonHint | Qt.WindowCloseButtonHint)
-                w.setWindowTitle("🌀 相空间相图 (Θ,p)")
-                w.setCentralWidget(PhaseSpaceView(w))
-                try:                       # 摆在控制台那块屏的右下角 (不抢画布)
-                    scr = self.window().screen()
-                    g = scr.availableGeometry()
-                    w.resize(760, 560)
-                    w.move(g.x() + g.width() - 800, g.y() + g.height() - 600)
-                except Exception:
-                    w.resize(760, 560)
-                try:
-                    from PyQt5.QtWidgets import QApplication
-                    _app = QApplication.instance()
-                    if _app is not None:
-                        _app.aboutToQuit.connect(w.close)
-                except Exception:
-                    pass
-                self._phase_win = w
-                self._log("🌀 相空间相图窗口已创建 (Θ 轴向偏差 / p 轴向动量 · 数据源 hamiltonian.json)")
-            w.show()
-            w.raise_()
-            w.activateWindow()
-            self._log("🌀 相空间相图: 已打开 (与右侧参数面板同一视图, 只读旁路)")
-            return w
-        except Exception as e:                                              # noqa: BLE001
-            self._log("⚠️ 相空间相图窗口打开失败: %s" % str(e)[:120])
-            return None
-
     def _open_viz_node(self, kind):
         """🔭 可视化层观察器 (2026-09-04 老倪): 双击节点 → 打开对应显示窗口
         hist/attrib: 窗口单例 + 有引擎末帧探针则填入 (真实数据, 无则不造假只提示)"""
@@ -13700,9 +13539,6 @@ class SimulinkModule(QWidget):
                 return
             if kind == "3d":
                 self.open_ss_3d()
-                return
-            if kind == "phase":                     # 🌀 2026-11-20 老倪: 相空间相图 (Θ,p) 窗口
-                self.open_phase_space()
                 return
             if kind == "intact_robot_live":        # 🤖 2026-09-12 老倪: INTACT 机器人实况窗
                 self._open_intact_robot_live()
@@ -13941,83 +13777,9 @@ class SimulinkModule(QWidget):
         except Exception as _e:                                             # noqa: BLE001
             self._log(f"⚠️ SU(2) 观测面板打开失败: {type(_e).__name__}: {_e}")
 
-    def _open_cy_slice(self, node=None):
-        """🧮 六维卡拉比-丘切面页 (8810 只读服务) —— 双击十维节点即达
-
-        页面: x⁵+y⁵=1 的真实解集 (CY₃ 复二维切面) + 亏格 g=6 的孔洞 + 隐藏 6 维现场值。
-        用 PyQt5 QtWebEngine 在**应用内**开窗 (实测外挂浏览器不可靠: 本机 chromium 是 snap 版,
-        从 studio 的 cgroup 里拉起来会被 snapd 拒 —— "...is not a snap cgroup for tag
-        snap.chromium.chromium", 而且 xdg-open 只会塞进已有窗口的标签页, 用户眼前没有变化)。
-        服务不通先明说并给启动命令, 不让人对着空白页猜。
-        """
-        url = os.environ.get("ZMAX_CY_URL") or "http://127.0.0.1:8810/"
-        nm = (node or {}).get("name", "")
-        self._log("🧿 双击「%s」→ 六维卡拉比-丘切面 %s (孔洞 = 亏格 g=6)" % (nm, url))
-        print("🧿 双击「%s」→ 六维卡拉比-丘切面 %s" % (nm, url), flush=True)
-        try:
-            import urllib.request as _u
-            _u.urlopen(url + "health", timeout=2).read()
-        except Exception as _e:                                            # noqa: BLE001
-            self._log("⚠ 8810 切面服务不可达 (%s) — 启动: sudo systemctl start zmax-cy-slice" % _e)
-        # 复用已开的窗 (再双击 = 提到前面并刷新, 不叠一堆窗口)
-        try:
-            _w = getattr(self, "_cy_win", None)
-            if _w is not None and _w.isVisible():
-                _w.raise_()
-                _w.activateWindow()
-                try:
-                    _w.view.reload()
-                except Exception:                                          # noqa: BLE001
-                    pass
-                print("🧿 复用已打开的切面窗 (重新载入)", flush=True)
-                return
-        except Exception:                                                  # noqa: BLE001
-            pass
-        try:
-            from PyQt5.QtCore import Qt as _Qt
-            from PyQt5.QtWebEngineWidgets import QWebEngineView as _QWV
-            from PyQt5.QtWidgets import QDialog as _QD
-            from PyQt5.QtWidgets import QVBoxLayout as _QVB
-
-            _dlg = _QD(self)
-            # 同上: 去掉 Qt.Dialog 位才有最大化能力
-            _dlg.setWindowFlags(_Qt.Window | _Qt.WindowTitleHint | _Qt.WindowSystemMenuHint
-                                | _Qt.WindowMinMaxButtonsHint | _Qt.WindowCloseButtonHint)
-            _dlg.setWindowTitle("🧿 六维卡拉比-丘切面 — 孔洞 = 亏格 g=6")
-            _dlg.setWindowModality(_Qt.NonModal)
-            _dlg.resize(1180, 780)
-            _lay = _QVB(_dlg)
-            _lay.setContentsMargins(0, 0, 0, 0)
-            from PyQt5.QtCore import QUrl as _QUrl
-            _view = _QWV(_dlg)
-            _view.load(_QUrl(url))
-            _lay.addWidget(_view)
-            _dlg.view = _view                       # 便于复用/刷新
-            self._cy_win = _dlg
-            _dlg.show()
-            print("✅ 切面窗已开 (QtWebEngine 内嵌): %s" % url, flush=True)
-            self._log("✅ 切面窗已开 (内嵌 QtWebEngine) — 拖拽旋转 / 滚轮缩放 / W 线框 / R 复位")
-            return
-        except Exception as _e:                                            # noqa: BLE001
-            self._log("⚠ QtWebEngine 开窗失败 (%s) — 改外挂浏览器" % _e)
-            print("⚠ QtWebEngine 开窗失败: %s" % _e, flush=True)
-        try:
-            import subprocess as _sp
-            _sp.Popen(["xdg-open", url], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL,
-                      start_new_session=True)
-        except Exception as _e2:                                           # noqa: BLE001
-            self._log("❌ 打开浏览器失败: %s (可手输 %s)" % (_e2, url))
-
     def on_node_activated(self, node):
         """双击节点: 数据源 → 切换; Switch → 切换路由; 子系统 → 展开; 视频 → 推理对比; 环节节点 → 运行; 其他 → 参数框"""
         params = node.get("params", {})
-        # 🧮 2026-11-24 老倪: 双击「十维流形引擎 / 十维黎曼梯度流」→ 直接开六维卡拉比-丘切面页 (8810)
-        #   不按 id 匹配 (GUI 内存节点不带 id), 按名字认; URL 可用 ZMAX_CY_URL 覆盖
-        _cy_name = str(node.get("name", "")) or str(node.get("id", ""))
-        if ("十维流形引擎" in _cy_name or "十维黎曼梯度流" in _cy_name
-                or _cy_name in ("ss_mani10", "ss_mani_flow")):
-            self._open_cy_slice(node)
-            return
         # 2026-09-19 老倪: 📚 工程记忆·技能与经验库 双击 -> L2 原子技能清单
         if "技能与经验库" in str(node.get("name", "")):
             self._open_l2_skills()
@@ -15887,49 +15649,6 @@ class SimulinkModule(QWidget):
         except Exception as _e:                                                 # noqa: BLE001
             self._log("⛔ AR 启动失败: %r" % (_e,))
             return None
-
-    def open_se3_board(self):
-        """🔷 工具栏「SE(3)」: 打开 SE(3) 分层几何看板 http://192.168.23.50:8815/。
-
-        老倪 2026-11-20: 「http://192.168.23.50:8815/ 做一个 SE3按钮, 放到画布工具栏」。
-        取向与 🔦 光纤 一致 (实测过的路径):
-          · **非阻塞**: 点击立刻返回, 探活/拉服务/出窗全在后台线程;
-          · 走 `_open_page_window`(独立 snap profile) ⇒ 不会被已开的 chromium 吞成后台标签;
-          · 8815 没监听时 `systemctl start zmax-se3-geom` 起一次再开; 起不来只在日志里说清。
-        """
-        import threading as _th
-        _url = "http://192.168.23.50:8815/"
-
-        def _run():
-            import socket
-            import subprocess
-            import time as _t
-            ok = False
-            for _h in ("127.0.0.1", "192.168.23.50"):
-                try:
-                    _s = socket.create_connection((_h, 8815), timeout=1.2)
-                    _s.close()
-                    ok = True
-                    break
-                except Exception:                                        # noqa: BLE001
-                    continue
-            if not ok:
-                self._log("🔷 SE(3) 看板 8815 未监听 → 拉起 zmax-se3-geom")
-                try:
-                    subprocess.run(["systemctl", "start", "zmax-se3-geom"],
-                                   timeout=25, capture_output=True)
-                    _t.sleep(1.5)
-                except Exception as _e:                                  # noqa: BLE001
-                    self._log("❌ 拉起 zmax-se3-geom 失败: %r" % (_e,))
-            self._log("🔷 SE(3) 分层几何看板 → %s" % _url)
-            try:
-                _ok, _why = self._open_page_window(_url, "se3board", "zmax-se3", "se3")
-                if not _ok:
-                    self._log("❌ SE(3) 出窗失败: %s" % (_why,))
-            except Exception as _e:                                      # noqa: BLE001
-                self._log("❌ SE(3) 打开异常: %r" % (_e,))
-
-        _th.Thread(target=_run, daemon=True).start()
 
     def open_fiber_page(self):
         # 🔴 2026-11-08 Windows 完整功能: 光纤工艺卡与 AR 同一个服务(8797), 没起就拉起来

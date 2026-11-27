@@ -1,0 +1,1177 @@
+{
+ "doc_no": "SOR-OM-ROBOT-20261013",
+ "version": "V1.0",
+ "project": "泰国模块摆料场景 (Z100LFd 固定上肢形态)",
+ "system": {
+  "system_id": "sys1",
+  "name": "System 1 动作执行",
+  "level": "L3",
+  "role": "L3 动作系统: VLA-T 动作 (SmolVLA 500M) + Z-Flow 引导 (LeWorldModel 15M); 长程规划与技能序列",
+  "hardware": "本地 GPU / 边缘推理",
+  "kpi": {
+   "动作推理": "端到端 VLA 500M",
+   "引导": "Z-Flow 15M 流匹配",
+   "序列": "跨段技能序列可复用",
+   "摆盘节拍": "单颗 CT ≤3.15s (PVT) / ≤8s (DVT) / ≤20s (EVT)",
+   "摆盘成功率": "≥99% (PVT) / ≥95% (DVT) / 90% (EVT) · 人工干预即记不完整成功",
+   "取放精度": "单边 ≤1mm · 角度 ≤1° (腕部相机 0.1–0.6m 区间内)",
+   "连续作业": "连续自主 ≥12 盘周转盘 (硬下限 ≥6)",
+   "换型": "换型 ≤30min · 新型号配置/学习 ≤3h"
+  },
+  "rows": [
+   "🚀 L3 记忆 · 长程规划 (跨段技能序列 入库)",
+   "🚀 L3 高级自动功能 · VLM 编码 + Flow-Matching",
+   "🚀 L3 摆盘作业 (泰国项目) · 周转盘 → 上料 Tray 盘 取放循环"
+  ],
+  "ord": 1
+ },
+ "functions": [
+  {
+   "fn_id": "FN-SYS1-31",
+   "name": "🚀 L3 · 长程序列规划 (记忆: 海马体)",
+   "layer": "L3",
+   "kind": "模块节点",
+   "module_ref": "🚀 L3 · 长程序列规划 (记忆: 海马体)"
+  },
+  {
+   "fn_id": "FN-SYS1-32",
+   "name": "🧠 VLM 通用视觉编码器 (SmolVLA)",
+   "layer": "L3",
+   "kind": "模块节点",
+   "module_ref": "🧠 VLM 通用视觉编码器 (SmolVLA)"
+  },
+  {
+   "fn_id": "FN-SYS1-33",
+   "name": "🎯 Flow-Matching Action Head (DiT)",
+   "layer": "L3",
+   "kind": "模块节点",
+   "module_ref": "🎯 Flow-Matching Action Head (DiT)"
+  },
+  {
+   "fn_id": "FN-SYS1-34",
+   "name": "🎛 L3 · SmolVLA LoRA 微调 · 接入中",
+   "layer": "L3",
+   "kind": "模块节点",
+   "module_ref": "🎛 L3 · SmolVLA LoRA 微调 · 接入中"
+  }
+ ],
+ "features": [
+  {
+   "pf_id": "PF-Z100-01",
+   "title": "跨工位自主流转 (移动即工位)",
+   "capability_ref": "BO_ A1 自主导航流转",
+   "subsys": [
+    "sys0",
+    "sys2"
+   ],
+   "kpi": "跨工位流转成功率 ≥97%",
+   "status": "规划",
+   "descr": "自主规划路径在工位间流转, 一台车串联整条产线工序",
+   "module_refs": [
+    "🧭 3D 视图",
+    "📡 融合定位建图"
+   ]
+  },
+  {
+   "pf_id": "PF-Z100-02",
+   "title": "工位精准对接 (±10mm 级)",
+   "capability_ref": "BO_ A2 工位精准对接",
+   "subsys": [
+    "sys0"
+   ],
+   "kpi": "对接精度 ±10mm",
+   "status": "规划",
+   "descr": "视觉定位定位销/对接标记, 保证后续作业坐标系基准正确",
+   "module_refs": [
+    "📐 2D→3D 解算",
+    "📐 板坐标系定位 (工序坐标系·免手眼)"
+   ]
+  },
+  {
+   "pf_id": "PF-Z100-03",
+   "title": "举升高度调节 (0~800mm)",
+   "capability_ref": "BO_ A3 举升高度调节",
+   "subsys": [
+    "sys0"
+   ],
+   "kpi": "0~800mm 覆盖多层工位",
+   "status": "规划",
+   "descr": "举升机构把上装调到目标高度, 覆盖料架底层到老化箱高层",
+   "module_refs": [
+    "🤖 机器人执行器",
+    "🧭 动作调制器"
+   ]
+  },
+  {
+   "pf_id": "PF-Z100-04",
+   "title": "双形态作业 (固定/移动按需切换)",
+   "capability_ref": "BO_ A4 双形态作业",
+   "subsys": [
+    "sys0"
+   ],
+   "kpi": "切换 <30s",
+   "status": "规划",
+   "descr": "固定式精度最优 / 移动式柔性最优, 同一台车适配不同产线布局",
+   "module_refs": [
+    "🌍 物理世界",
+    "🔌 State Adapter"
+   ]
+  },
+  {
+   "pf_id": "PF-Z100-05",
+   "title": "通用抓放与灵活翻转",
+   "capability_ref": "BO_ C1 完整作业执行 / C4 灵活翻转取放",
+   "subsys": [
+    "sys0",
+    "sys1"
+   ],
+   "kpi": "抓取成功率 ≥97%",
+   "status": "规划",
+   "descr": "任意姿态取放 + 翻转; 由原子技能库 SK01-08 组合",
+   "module_refs": [
+    "④ 抓取 · SK04",
+    "⑥ 转移 · SK06",
+    "⑧ 完成 · SK08"
+   ]
+  },
+  {
+   "pf_id": "PF-Z100-06",
+   "title": "双臂协同作业",
+   "capability_ref": "BO_ C5 双臂协同作业",
+   "subsys": [
+    "sys0"
+   ],
+   "kpi": "双臂干涉检测 + 协同节拍",
+   "status": "规划",
+   "descr": "双臂分工协同 (一端夹持一端作业), 需干涉检测与协同调度",
+   "module_refs": [
+    "🧭 MoveIt 运动规划",
+    "🧭 动作调制器"
+   ]
+  },
+  {
+   "pf_id": "PF-Z100-07",
+   "title": "多车协同调度",
+   "capability_ref": "BO_ F3 多车协同调度",
+   "subsys": [
+    "sys2"
+   ],
+   "kpi": "多机台/多车协同, 场景编排",
+   "status": "规划",
+   "descr": "云端智能体任务拆解与调度 (Sys-1 动态调度), 多车协同不撞",
+   "module_refs": [
+    "🧠 总装记忆中枢 (前额叶总装 · 三层协同)",
+    "🌐 Web 智能体桥 · 远程提示词"
+   ]
+  },
+  {
+   "pf_id": "PF-Z100-08",
+   "title": "第三方模型/设备标准接入",
+   "capability_ref": "BO_ G1 标准模型接入 / G3 事件自动通知",
+   "subsys": [
+    "sys2",
+    "sys1"
+   ],
+   "kpi": "按 Manifest + 适配器接入, 能力契约不变",
+   "status": "规划",
+   "descr": "第三方模型按文件接入 (BU_ 契约), 运行状态上报 + 事件通知",
+   "module_refs": [
+    "🧩 SU(2) 统一状态空间 (二阶特殊酉群)",
+    "🧩 开放词汇分割 (SAM3 分割anything)"
+   ]
+  },
+  {
+   "pf_id": "PF-Z100-09",
+   "title": "摆盘取放循环 (周转盘 → 上料 Tray 盘)",
+   "capability_ref": "BO_ C1 完整作业执行 + BO_ C4 灵活翻转取放",
+   "subsys": [
+    "sys1",
+    "sys0"
+   ],
+   "kpi": "单颗 CT ≤3.15s (PVT) · 取放精度 单边 ≤1mm/角 ≤1° · 成功率 ≥99% (PVT) · 载具与产品损伤 0",
+   "status": "规划",
+   "descr": "从满料周转盘逐颗吸取光模块并放入上料 Tray 盘槽位, 周转盘空或 Tray 满即上报待人工补料/下料; 分 EVT(CT≤20s,90%)/DVT(≤8s,95%)/PVT(≤3.15s,99%) 三阶段验收",
+   "module_refs": [
+    "🧠 VLM 通用视觉编码器 (SmolVLA)",
+    "🎯 Flow-Matching Action Head (DiT)",
+    "🚀 L3 · 长程序列规划 (记忆: 海马体)",
+    "💪 L2 肌肉记忆技能库 (光模块抓放循环)"
+   ]
+  },
+  {
+   "pf_id": "PF-Z100-10",
+   "title": "多型号自适应换型 (12+ 型号 / ≥6 种摆放)",
+   "capability_ref": "BO_ B1 目标识别定位 + BO_ B2 空间位姿感知",
+   "subsys": [
+    "sys1",
+    "sys0"
+   ],
+   "kpi": "型号规格识别 100% (POC ≥98%) · 换型 ≤30min · 新型号配置/学习 ≤3h",
+   "status": "规划",
+   "descr": "100G/400G/800G 与 QSFP-DD/OSFP 等 12+ 型号、≥6 种周转盘摆放方式自适应; 固化项(盘型/槽形)进配方, 柔性项(光照/堆叠/遮挡)由感知自适应; 极端情况回退预设轨迹与固定逻辑保证产线不中断",
+   "module_refs": [
+    "🎯 YOLO 目标检测",
+    "📐 2D→3D 解算",
+    "🧩 开放词汇分割 (SAM3 分割anything)"
+   ]
+  },
+  {
+   "pf_id": "PF-Z100-11",
+   "title": "料盘空满三态判定与选槽",
+   "capability_ref": "BO_ B5 光学质量检测 + BO_ B2 空间位姿感知",
+   "subsys": [
+    "sys1",
+    "sys0"
+   ],
+   "kpi": "空/满/异常三态判定 100% (POC ≥98%) · 单次判定 ≤500ms · 异常态拒送并告警",
+   "status": "规划",
+   "descr": "判定载具空/满/异常三态, 决定是否继续在当前载具取放; 由盘面几何给出槽位坐标与占用状态, L3 决定抓取顺序与放料槽位, 避免基于错误状态动作",
+   "module_refs": [
+    "📐 板坐标系定位 (工序坐标系·免手眼)",
+    "🎯 YOLO 目标检测"
+   ]
+  },
+  {
+   "pf_id": "PF-Z100-12",
+   "title": "摆盘断点续作与异常恢复",
+   "capability_ref": "BO_ C1 完整作业执行 + BO_ F1 本地实时作业",
+   "subsys": [
+    "sys1",
+    "sys0"
+   ],
+   "kpi": "自动重试 ≤3 次 · 断点续作成功率 ≥95% · 错误继续执行 0 (零容忍)",
+   "status": "规划",
+   "descr": "抓取失败/槽位异常/工位被占/放入受阻四类异常逐项定义处置策略; 异常解除后从明确状态继续, 不带着未知状态自动续跑",
+   "module_refs": [
+    "🚀 L3 · 长程序列规划 (记忆: 海马体)",
+    "🤖 机器人执行器"
+   ]
+  },
+  {
+   "pf_id": "PF-Z100-13",
+   "title": "连续无人化作业 (≥12 盘 / 单日 ≥20h)",
+   "capability_ref": "BO_ F1 本地实时作业 + BO_ E2 边学边练",
+   "subsys": [
+    "sys1",
+    "sys2"
+   ],
+   "kpi": "连续自主 ≥12 盘周转盘 (硬下限 ≥6) · 单日连续运行 ≥20h · 月 ≥28 天 · 寿命 ≥3 年",
+   "status": "规划",
+   "descr": "无人工干预下的连续取送循环能力; 断点与状态持久化保证跨班次可恢复, 与 ROI 口径(回收期 ≤2 年)同步",
+   "module_refs": [
+    "💪 L2 肌肉记忆技能库 (光模块抓放循环)",
+    "🚀 L3 · 长程序列规划 (记忆: 海马体)"
+   ]
+  }
+ ],
+ "axes": {
+  "cal": [
+   "放置面高度 plane_z 与盘面平行度",
+   "深度口径 depth_scale / plane_z",
+   "相机内参 camera.K/dist (真机出厂内参)",
+   "坐标系: T_base_cam (未标定 ⇒ 走板坐标系口径)",
+   "盘面槽位几何 (Tray 30 槽 / 周转盘槽位) — 现场一次标定, 盘面坐标类参数的唯一真源",
+   "腕部相机工作距离窗口 0.1–0.6m (±1mm/±1° 只在此区间成立; 头部/胸部相机为 ±5mm 级)"
+  ],
+  "cfg": [
+   "动作头与夹爪头分离",
+   "推理步频 (每 N 步真推理)",
+   "图像尺寸/归一化 stats (逐维)",
+   "LoRA 注入 (r/alpha/target)",
+   "VLA-T/Z-Flow 权重与档位 (在役软链)",
+   "断点续作开关与断点粒度 (工序阶段/抓取状态/物料 SN)",
+   "抓取顺序策略 (行优先/最短路径) 与选槽策略 (避开已占槽 · 预留槽)",
+   "取放时序与力限 (吸附建立 ≤200ms · 保持 ≥5s · 放置下压上限)",
+   "异常策略表 (抓取失败/槽位异常/工位被占/放入受阻): 自动重试 ≤3 → 退回安全位 → 告警",
+   "摆盘配方: 上料 Tray 盘 30 槽 / 4# 周转盘 规格与槽距 (固化项), 光照等柔性项由感知自适应",
+   "光模块型号配方表 (12+ 型号: 100G/400G/800G · QSFP-DD/OSFP 尺寸与防呆槽)"
+  ],
+  "dia": [
+   "VLM 编码器一致性",
+   "模型在役哈希与版本比对",
+   "反归一化/长轨迹平均化陷阱自检",
+   "策略 rollout 成功率 (同源口径)",
+   "摆盘 CT 实测 (起止口径写死: 从吸取离盘到下一位就位)",
+   "槽位映射一致性 (放料到位 ±1mm · 槽位对号 100%)",
+   "取放精度实测 (单边 mm / 角度 °, 同一位姿连续 30 次往返)",
+   "型号识别/空满三态混淆矩阵 (每类 ≥300 样本; POC 各 ≥98%)",
+   "摆盘成功率分阶段核验 (EVT 90 / DVT 95 / PVT 99) — 与基线同源口径"
+  ]
+ },
+ "params": [
+  {
+   "param_id": "spec:perf.AP_pose",
+   "name": "perf.AP_pose",
+   "cn": "位姿准确度 AP (末端)",
+   "value": "\"≤0.50\"",
+   "\"default\"": "default",
+   "unit": "mm",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "FN-SYS1-31 · BO_C1 完整作业执行"
+  },
+  {
+   "param_id": "spec:perf.D_INSERT_mm",
+   "name": "perf.D_INSERT_mm",
+   "cn": "插深终到误差 (现有指标 F-A02)",
+   "value": "\"≤0.30 (现口径 <4mm)\"",
+   "\"default\"": "default",
+   "unit": "mm",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_C2 精细对位"
+  },
+  {
+   "param_id": "spec:perf.RP_angle",
+   "name": "perf.RP_angle",
+   "cn": "姿态可重复性 (绕末端轴)",
+   "value": "\"≤0.10 (工艺角容差 1° 的 1/10)\"",
+   "\"default\"": "default",
+   "unit": "°",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_C4 灵活翻转取放"
+  },
+  {
+   "param_id": "spec:perf.RP_pose",
+   "name": "perf.RP_pose",
+   "cn": "位姿可重复性 RP (末端)",
+   "value": "\"≤0.10 (设计目标; 工艺容差 1mm 的 1/10)\"",
+   "\"default\"": "default",
+   "unit": "mm",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "FN-SYS1-31 · BO_C1 完整作业执行"
+  },
+  {
+   "param_id": "spec:perf.aa_res_ang",
+   "name": "perf.aa_res_ang",
+   "cn": "有源耦合对准分辨率 (角度)",
+   "value": "\"≤50\"",
+   "\"default\"": "default",
+   "unit": "µrad",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_C6 宏微复合作业"
+  },
+  {
+   "param_id": "spec:perf.aa_res_lin",
+   "name": "perf.aa_res_lin",
+   "cn": "有源耦合对准分辨率 (平移)",
+   "value": "\"≤1.0 (六轴微动级)\"",
+   "\"default\"": "default",
+   "unit": "µm",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_C6 宏微复合作业 · BO_A2 工位精准对接"
+  },
+  {
+   "param_id": "spec:perf.aa_search",
+   "name": "perf.aa_search",
+   "cn": "对准搜索范围 (粗对准能力)",
+   "value": "\"±2 (平移) / ±5° (角度)\"",
+   "\"default\"": "default",
+   "unit": "mm",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_B2 空间位姿感知 · BO_C6 宏微复合作业"
+  },
+  {
+   "param_id": "spec:perf.anomaly_recovery",
+   "name": "perf.anomaly_recovery",
+   "cn": "异常自恢复率",
+   "value": "\"null\"",
+   "\"default\"": "default",
+   "unit": "%",
+   "status": "目标值待确认 (需按工件/工艺规格定)",
+   "module_ref": "",
+   "impact": "BO_E2 边学边练 · BO_G3 事件自动通知"
+  },
+  {
+   "param_id": "spec:perf.backlash",
+   "name": "perf.backlash",
+   "cn": "反向间隙 (回差)",
+   "value": "\"≤0.05\"",
+   "\"default\"": "default",
+   "unit": "mm",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_C1 完整作业执行"
+  },
+  {
+   "param_id": "spec:perf.changeover",
+   "name": "perf.changeover",
+   "cn": "换型时间",
+   "value": "\"≤30 (12+ 型号); 新型号学习 ≤3h\"",
+   "\"default\"": "default",
+   "unit": "min",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_G1 标准模型接入 · BO_E2 边学边练"
+  },
+  {
+   "param_id": "spec:perf.cleanliness",
+   "name": "perf.cleanliness",
+   "cn": "洁净度等级",
+   "value": "\"null\"",
+   "\"default\"": "default",
+   "unit": "-",
+   "status": "目标值待确认 (需按工件/工艺规格定)",
+   "module_ref": "",
+   "impact": "BO_B5 光学质量检测"
+  },
+  {
+   "param_id": "spec:perf.conn_mate_force",
+   "name": "perf.conn_mate_force",
+   "cn": "光连接器对接力上限",
+   "value": "\"null\"",
+   "\"default\"": "default",
+   "unit": "N",
+   "status": "目标值待确认 (需按工件/工艺规格定)",
+   "module_ref": "",
+   "impact": "BO_C2 精细对位"
+  },
+  {
+   "param_id": "spec:perf.contact_pressure",
+   "name": "perf.contact_pressure",
+   "cn": "金手指接触压力上限 (不划伤)",
+   "value": "\"null\"",
+   "\"default\"": "default",
+   "unit": "N",
+   "status": "目标值待确认 (需按工件/工艺规格定)",
+   "module_ref": "",
+   "impact": "BO_C2 精细对位 · BO_B5 光学质量检测"
+  },
+  {
+   "param_id": "spec:perf.coplanarity",
+   "name": "perf.coplanarity",
+   "cn": "端子共面度容差 (可插件)",
+   "value": "\"null\"",
+   "\"default\"": "default",
+   "unit": "mm",
+   "status": "目标值待确认 (需按工件/工艺规格定)",
+   "module_ref": "",
+   "impact": "BO_B5 光学质量检测"
+  },
+  {
+   "param_id": "spec:perf.cycle_s",
+   "name": "perf.cycle_s",
+   "cn": "单颗取放周期 CT (现有指标)",
+   "value": "\"≤3.15 / ≤8 / ≤20–25 s\"",
+   "\"default\"": "default",
+   "unit": "s",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "FN-SYS1-31 · TASK-06-TRAY"
+  },
+  {
+   "param_id": "spec:perf.cycle_split",
+   "name": "perf.cycle_split",
+   "cn": "CT 分段预算",
+   "value": "\"五段合计 ≤3.15 s\"",
+   "\"default\"": "default",
+   "unit": "s",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_F1 本地实时作业 · BO_C6 宏微复合作业"
+  },
+  {
+   "param_id": "spec:perf.depth_noise",
+   "name": "perf.depth_noise",
+   "cn": "深度测量噪声 (D405)",
+   "value": "\"≤0.5 @300mm (滤波后)\"",
+   "\"default\"": "default",
+   "unit": "mm",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_B2 空间位姿感知"
+  },
+  {
+   "param_id": "spec:perf.endurance",
+   "name": "perf.endurance",
+   "cn": "连续自主作业盘数",
+   "value": "\"≥12 (PVT, 硬下限 ≥6)\"",
+   "\"default\"": "default",
+   "unit": "盘",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "TASK-06-TRAY"
+  },
+  {
+   "param_id": "spec:perf.envelope",
+   "name": "perf.envelope",
+   "cn": "单臂作业半径",
+   "value": "\"≥988 (达标即覆盖 30 槽料盘与 Tray 全位)\"",
+   "\"default\"": "default",
+   "unit": "mm",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_A3 举升高度调节 · BO_C1 完整作业执行"
+  },
+  {
+   "param_id": "spec:perf.esd_friction_v",
+   "name": "perf.esd_friction_v",
+   "cn": "摩擦电压",
+   "value": "\"<70\"",
+   "\"default\"": "default",
+   "unit": "V",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "FN-SYS1-33"
+  },
+  {
+   "param_id": "spec:perf.esd_ground",
+   "name": "perf.esd_ground",
+   "cn": "系统接地电阻",
+   "value": "\"<1 (孤立导体/机架/仪表全接地)\"",
+   "\"default\"": "default",
+   "unit": "Ω",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "FN-SYS1-33 · BO_H1 安全红线"
+  },
+  {
+   "param_id": "spec:perf.esd_surface",
+   "name": "perf.esd_surface",
+   "cn": "设备外壳表面电阻",
+   "value": "\"1×10^6 < X < 1×10^9\"",
+   "\"default\"": "default",
+   "unit": "Ω",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "FN-SYS1-33 · BO_H1 安全红线"
+  },
+  {
+   "param_id": "spec:perf.face_clean",
+   "name": "perf.face_clean",
+   "cn": "端面洁净度 (颗粒/划痕)",
+   "value": "\"颗粒 ≤5µm 无; 划痕按 IEC 61300-3-35\"",
+   "\"default\"": "default",
+   "unit": "-",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_B5 光学质量检测"
+  },
+  {
+   "param_id": "spec:perf.face_gap",
+   "name": "perf.face_gap",
+   "cn": "光纤端面非接触安全间隙",
+   "value": "\"≥0.5 (端面禁止任何接触; 触面 = 判废)\"",
+   "\"default\"": "default",
+   "unit": "mm",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_C2 精细对位"
+  },
+  {
+   "param_id": "spec:perf.fiber_bend_r",
+   "name": "perf.fiber_bend_r",
+   "cn": "光纤最小弯曲半径 (作业中)",
+   "value": "\"≥20 (动态) / ≥10 (静态)\"",
+   "\"default\"": "default",
+   "unit": "mm",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "FN-SYS1-31 · BO_C1 完整作业执行"
+  },
+  {
+   "param_id": "spec:perf.force_curve_consistency",
+   "name": "perf.force_curve_consistency",
+   "cn": "插装力-位移曲线一致性",
+   "value": "\"≥0.90 (与标杆模板相关)\"",
+   "\"default\"": "default",
+   "unit": "corr",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_C2 精细对位 · BO_E2 边学边练"
+  },
+  {
+   "param_id": "spec:perf.force_overshoot",
+   "name": "perf.force_overshoot",
+   "cn": "插装力超调",
+   "value": "\"≤15 (峰值/稳态)\"",
+   "\"default\"": "default",
+   "unit": "%",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_C2 精细对位 · BO_C1 完整作业执行"
+  },
+  {
+   "param_id": "spec:perf.force_res",
+   "name": "perf.force_res",
+   "cn": "力控分辨率",
+   "value": "\"≤0.5\"",
+   "\"default\"": "default",
+   "unit": "N",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_C2 精细对位"
+  },
+  {
+   "param_id": "spec:perf.handeye_res",
+   "name": "perf.handeye_res",
+   "cn": "手眼标定残差",
+   "value": "\"≤2.0 (TSAI 闭环现测 1.74)\"",
+   "\"default\"": "default",
+   "unit": "mm",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_B2 空间位姿感知 · BO_A2 工位精准对接"
+  },
+  {
+   "param_id": "spec:perf.hold_drift",
+   "name": "perf.hold_drift",
+   "cn": "固化前保持漂移 (UV 窗口内)",
+   "value": "\"≤0.5 (点胶→UV 固化期间位移漂移)\"",
+   "\"default\"": "default",
+   "unit": "µm/s",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_C6 宏微复合作业"
+  },
+  {
+   "param_id": "spec:perf.il_repeat",
+   "name": "perf.il_repeat",
+   "cn": "耦合重复性 (逐件 IL 一致性)",
+   "value": "\"σ ≤0.10 (同型号连续 ≥20 件)\"",
+   "\"default\"": "default",
+   "unit": "dB",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_C6 宏微复合作业 · BO_E2 边学边练"
+  },
+  {
+   "param_id": "spec:perf.il_target",
+   "name": "perf.il_target",
+   "cn": "插入损耗 IL",
+   "value": "\"≤0.5 (单点; 按成品规格)\"",
+   "\"default\"": "default",
+   "unit": "dB",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_F1 本地实时作业 · BO_C6 宏微复合作业"
+  },
+  {
+   "param_id": "spec:perf.illum_range",
+   "name": "perf.illum_range",
+   "cn": "照度适应性",
+   "value": "\"300–1500 照度区间内定位漂移 ≤0.15mm\"",
+   "\"default\"": "default",
+   "unit": "lx",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_B1 目标识别定位"
+  },
+  {
+   "param_id": "spec:perf.insert_depth_res",
+   "name": "perf.insert_depth_res",
+   "cn": "插入深度控制分辨率",
+   "value": "\"≤0.02\"",
+   "\"default\"": "default",
+   "unit": "mm",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_C2 精细对位 · BO_C6 宏微复合作业"
+  },
+  {
+   "param_id": "spec:perf.latency_e2e",
+   "name": "perf.latency_e2e",
+   "cn": "端到端时延 (采图→位姿输出)",
+   "value": "\"≤50 (帧龄须随帧标注)\"",
+   "\"default\"": "default",
+   "unit": "ms",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_F1 本地实时作业 · BO_B2 空间位姿感知"
+  },
+  {
+   "param_id": "spec:perf.lift_repeat",
+   "name": "perf.lift_repeat",
+   "cn": "升降轴重复定位精度",
+   "value": "\"≤0.02 (结构设计值, 0–450mm 全行程)\"",
+   "\"default\"": "default",
+   "unit": "mm",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_A3 举升高度调节"
+  },
+  {
+   "param_id": "spec:perf.mate_align_repeat",
+   "name": "perf.mate_align_repeat",
+   "cn": "端子对位重复性",
+   "value": "\"X/Y 各 ≤0.05 (3σ)\"",
+   "\"default\"": "default",
+   "unit": "mm",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_A2 工位精准对接 · BO_C2 精细对位"
+  },
+  {
+   "param_id": "spec:perf.mate_angle_repeat",
+   "name": "perf.mate_angle_repeat",
+   "cn": "对插姿态角偏差",
+   "value": "\"≤0.10 (绕插轴/俯仰)\"",
+   "\"default\"": "default",
+   "unit": "°",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_C4 灵活翻转取放 · BO_C2 精细对位"
+  },
+  {
+   "param_id": "spec:perf.mate_life",
+   "name": "perf.mate_life",
+   "cn": "插拔寿命 (工件端)",
+   "value": "\"null\"",
+   "\"default\"": "default",
+   "unit": "次",
+   "status": "目标值待确认 (需按工件/工艺规格定)",
+   "module_ref": "",
+   "impact": "BO_C2 精细对位"
+  },
+  {
+   "param_id": "spec:perf.mtbf",
+   "name": "perf.mtbf",
+   "cn": "平均无故障时间 MTBF / MTTR",
+   "value": "\"null\"",
+   "\"default\"": "default",
+   "unit": "h/h",
+   "status": "目标值待确认 (需按工件/工艺规格定)",
+   "module_ref": "",
+   "impact": "BO_G3 事件自动通知"
+  },
+  {
+   "param_id": "spec:perf.noise",
+   "name": "perf.noise",
+   "cn": "噪声",
+   "value": "\"null\"",
+   "\"default\"": "default",
+   "unit": "dB(A)",
+   "status": "目标值待确认 (需按工件/工艺规格定)",
+   "module_ref": "",
+   "impact": "FN-SYS1-31"
+  },
+  {
+   "param_id": "spec:perf.opm_res",
+   "name": "perf.opm_res",
+   "cn": "光功率监测分辨率/采样率",
+   "value": "\"≤0.05 / ≥? (需定功率计量程与刷新率)\"",
+   "\"default\"": "default",
+   "unit": "dB/Hz",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_F1 本地实时作业"
+  },
+  {
+   "param_id": "spec:perf.payload_ratio",
+   "name": "perf.payload_ratio",
+   "cn": "负载-自重复合比",
+   "value": "\"单臂额定 7kg / 实需 5kg ⇒ 余量 ≥1.4×\"",
+   "\"default\"": "default",
+   "unit": "-",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "FN-SYS1-31"
+  },
+  {
+   "param_id": "spec:perf.pose6d_ang",
+   "name": "perf.pose6d_ang",
+   "cn": "6D 位姿角度分辨率",
+   "value": "\"≤0.10\"",
+   "\"default\"": "default",
+   "unit": "°",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_B2 空间位姿感知 · BO_C4 灵活翻转取放"
+  },
+  {
+   "param_id": "spec:perf.power_air",
+   "name": "perf.power_air",
+   "cn": "供电/气源要求",
+   "value": "\"AC 220V 单相 · 真空 0.4–0.6MPa\"",
+   "\"default\"": "default",
+   "unit": "-",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "FN-SYS1-33"
+  },
+  {
+   "param_id": "spec:perf.res_joint",
+   "name": "perf.res_joint",
+   "cn": "关节分辨率 (最小可控增量)",
+   "value": "\"≤0.001 (编码器/减速比导出)\"",
+   "\"default\"": "default",
+   "unit": "°",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_C6 宏微复合作业"
+  },
+  {
+   "param_id": "spec:perf.res_tcp",
+   "name": "perf.res_tcp",
+   "cn": "末端(微动)分辨率",
+   "value": "\"≤20 (宏微复合: 宏臂走粗 + 微动走细)\"",
+   "\"default\"": "default",
+   "unit": "µm",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_C6 宏微复合作业 · BO_A2 工位精准对接"
+  },
+  {
+   "param_id": "spec:perf.rl_target",
+   "name": "perf.rl_target",
+   "cn": "回波损耗 RL",
+   "value": "\"≥50 (UPC) / ≥60 (APC)\"",
+   "\"default\"": "default",
+   "unit": "dB",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_B5 光学质量检测"
+  },
+  {
+   "param_id": "spec:perf.safety_pl",
+   "name": "perf.safety_pl",
+   "cn": "安全功能等级 (急停/安全门)",
+   "value": "\"≥ PLd / Cat.3 (建议; 按现场风险评估定)\"",
+   "\"default\"": "default",
+   "unit": "-",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_H1 安全红线 · FN-SYS1-33"
+  },
+  {
+   "param_id": "spec:perf.settle",
+   "name": "perf.settle",
+   "cn": "整定时间 (到位稳定)",
+   "value": "\"≤300 (残差进入 ±0.05mm 并保持)\"",
+   "\"default\"": "default",
+   "unit": "ms",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_C1 完整作业执行 · BO_F1 本地实时作业"
+  },
+  {
+   "param_id": "spec:perf.slot_accuracy",
+   "name": "perf.slot_accuracy",
+   "cn": "料位识别准确率",
+   "value": "\"≥99.9 (含缺料/错位/异物判态)\"",
+   "\"default\"": "default",
+   "unit": "%",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_B1 目标识别定位"
+  },
+  {
+   "param_id": "spec:perf.stiff",
+   "name": "perf.stiff",
+   "cn": "末端静刚度 (受力位移)",
+   "value": "\"≤0.02 (5N 侧向力下末端位移)\"",
+   "\"default\"": "default",
+   "unit": "mm/N",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_C2 精细对位 · BO_C1 完整作业执行"
+  },
+  {
+   "param_id": "spec:perf.success_rate",
+   "name": "perf.success_rate",
+   "cn": "取放成功率",
+   "value": "\"≥99 (PVT) / ≥95 (DVT) / ≥90 (EVT)\"",
+   "\"default\"": "default",
+   "unit": "%",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "TASK-06-TRAY · BO_C1 完整作业执行"
+  },
+  {
+   "param_id": "spec:perf.sync_dual",
+   "name": "perf.sync_dual",
+   "cn": "双臂同步误差",
+   "value": "\"≤0.20 (协同轨迹瞬时相对偏差)\"",
+   "\"default\"": "default",
+   "unit": "mm",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_C5 双臂协同作业"
+  },
+  {
+   "param_id": "spec:perf.temp_hum",
+   "name": "perf.temp_hum",
+   "cn": "工作温湿度",
+   "value": "\"null\"",
+   "\"default\"": "default",
+   "unit": "℃/%RH",
+   "status": "目标值待确认 (需按工件/工艺规格定)",
+   "module_ref": "",
+   "impact": "BO_C6 宏微复合作业"
+  },
+  {
+   "param_id": "spec:perf.uph",
+   "name": "perf.uph",
+   "cn": "理论/实测产能 UPH",
+   "value": "\"PVT ≥1100 (理论 1142.9 × 效率 0.96)\"",
+   "\"default\"": "default",
+   "unit": "颗/h",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "FN-SYS1-31"
+  },
+  {
+   "param_id": "spec:perf.vis_repeat",
+   "name": "perf.vis_repeat",
+   "cn": "腕部相机定位重复性 (1σ)",
+   "value": "\"≤0.15 @300mm 工作距离\"",
+   "\"default\"": "default",
+   "unit": "mm",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_B1 目标识别定位"
+  },
+  {
+   "param_id": "spec:perf.vis_scale",
+   "name": "perf.vis_scale",
+   "cn": "视觉空间分辨率 (像素当量)",
+   "value": "\"≤0.25 @300mm; 亚像素插值后 ≤0.05\"",
+   "\"default\"": "default",
+   "unit": "mm/px",
+   "status": "指标定义(目标值=规格; 实测值待验收阶段填入)",
+   "module_ref": "",
+   "impact": "BO_B1 目标识别定位"
+  },
+  {
+   "param_id": "switch.flow_yaw",
+   "name": "flow_yaw",
+   "cn": "流形偏航 (仅 L4 90°档)",
+   "value": "null",
+   "\"default\"": "default",
+   "unit": "deg",
+   "status": "未定义 · 范围已给",
+   "module_ref": "",
+   "impact": ""
+  },
+  {
+   "param_id": "switch.l2_compat",
+   "name": "l2_compat",
+   "cn": "L2 兼容模式",
+   "value": "\"on\"",
+   "\"default\"": "default",
+   "unit": "-",
+   "status": "范围未定义",
+   "module_ref": "",
+   "impact": ""
+  },
+  {
+   "param_id": "switch.l3_mode",
+   "name": "l3_mode",
+   "cn": "L3 全链模式",
+   "value": "null",
+   "\"default\"": "default",
+   "unit": "-",
+   "status": "未定义",
+   "module_ref": "",
+   "impact": "L3 高级自动功能开关 (full=全链)"
+  },
+  {
+   "param_id": "switch.l4_intact_every",
+   "name": "l4_intact_every",
+   "cn": "L4 INTACT 推理间隔 (步)",
+   "value": "8",
+   "\"default\"": "default",
+   "unit": "步",
+   "status": "已定义(人工)",
+   "module_ref": "",
+   "impact": ""
+  },
+  {
+   "param_id": "switch.l4_intent_beta",
+   "name": "l4_intent_beta",
+   "cn": "L4 意图混合系数 β",
+   "value": "0.5",
+   "\"default\"": "default",
+   "unit": "-",
+   "status": "已定义(人工)",
+   "module_ref": "",
+   "impact": ""
+  },
+  {
+   "param_id": "switch.l4_intent_every",
+   "name": "l4_intent_every",
+   "cn": "L4 意图推理间隔 (步)",
+   "value": "16",
+   "\"default\"": "default",
+   "unit": "步",
+   "status": "已定义(人工)",
+   "module_ref": "",
+   "impact": ""
+  }
+ ],
+ "contract": {
+  "输入": [
+   {
+    "from": "Sys-2 (意图/条件)",
+    "item": "任务号 + 物料型号 + 目标盘位/槽位策略 + 速度/力上限 (只给意图, 不给轨迹)"
+   },
+   {
+    "from": "Sys-0 (感知)",
+    "item": "目标位姿 T_base_obj (m/rad) · 抓取点/放置点 · 盘面槽位几何与占用状态"
+   },
+   {
+    "from": "Sys-0 (真值)",
+    "item": "相机内参 K · 放置面 plane_z · T_base_cam (标定件, 现场一次标定)"
+   },
+   {
+    "from": "Sys-0 (图像)",
+    "item": "腕部相机 RGB (工作距离 0.1–0.6m, 精度窗口) + 全局定位相机"
+   },
+   {
+    "from": "Sys-0 (状态)",
+    "item": "关节/末端位姿 · 夹爪开合 · 真空压力 · 力/力矩"
+   }
+  ],
+  "输出": [
+   {
+    "to": "Sys-0 (执行)",
+    "item": "动作块 (位姿序列 @ 推理步频) · 夹爪/真空指令 · 力控参数 (由 L2 势函数收口)"
+   },
+   {
+    "to": "Sys-2 (上报)",
+    "item": "阶段/成功/失败/异常码 · 断点信息 · 单颗 CT 计时 · 料盘空/满事件 · 型号识别结果"
+   }
+  ],
+  "节拍/时延": [
+   {
+    "item": "单颗 CT (PVT)",
+    "value": "≤3.15s",
+    "note": "起止口径写死: 从吸取离盘到下一位就位"
+   },
+   {
+    "item": "动作块下发",
+    "value": "≥10Hz (待实测标定)",
+    "note": "缺口: 未纳入诊断断言, 需补"
+   },
+   {
+    "item": "型号识别单帧",
+    "value": "≤100ms",
+    "note": "父项 sOPE-06 写 ≤200ms ⇒ 已统一取子项"
+   }
+  ]
+ },
+ "metrics": [
+  {
+   "指标": "节拍 CT",
+   "目标": "单颗取放 ≤3.15s (PVT) / ≤8s (DVT) / ≤20s (EVT)",
+   "口径": "起止 = 从吸取离盘到下一位就位; 不含人工换盘/补料时间",
+   "来源条目": "SA01-02 / IDX-03",
+   "处理": "修正口径"
+  },
+  {
+   "指标": "成功率",
+   "目标": "≥99% (PVT) / ≥95% (DVT) / 90% (EVT)",
+   "口径": "人工干预即记不完整成功; 统计样本按 30 槽 × ≥12 盘 = 360 颗, 不采用 ≥1000 次口径",
+   "来源条目": "SA01-01 / IDX-03",
+   "处理": "修正口径"
+  },
+  {
+   "指标": "取放精度",
+   "目标": "单边 ≤1mm · 角 ≤1°",
+   "口径": "仅在腕部相机 0.1–0.6m 工作距离内成立 (头部双目 1m 处为 ±5mm 级)",
+   "来源条目": "SA01-04 / sOPE-02",
+   "处理": "修正冲突"
+  },
+  {
+   "指标": "位姿估计",
+   "目标": "±1mm / ±1° (腕部, 0.1–0.6m)",
+   "口径": "头部双目 @1m ≤±5mm; 胸部 @0.5m ≤±5mm ⇒ 不得笼统写 ±1mm",
+   "来源条目": "sOPE-02 / HW-08/09/36",
+   "处理": "修正冲突"
+  },
+  {
+   "指标": "吸附建立",
+   "目标": "≤200ms",
+   "口径": "吸附保持 ≥5s; 真空建立失败判重试",
+   "来源条目": "sOPE-06-01",
+   "处理": "保留"
+  },
+  {
+   "指标": "二值柔性退出",
+   "目标": "≤50ms",
+   "口径": "力分辨率 0.1N·m",
+   "来源条目": "sOPE-04/05",
+   "处理": "保留"
+  },
+  {
+   "指标": "空满判定",
+   "目标": "空/满/异常三态 100% (POC ≥98%)",
+   "口径": "每类 ≥300 样本混淆矩阵; 异常态拒送并告警",
+   "来源条目": "sOPE-08",
+   "处理": "修正口径"
+  },
+  {
+   "指标": "型号规格识别",
+   "目标": "100% (POC ≥98%)",
+   "口径": "12+ 型号; 误识别致错误抓取 = 0 (单帧准确率 ≥99.5% 为另一口径, 需分列)",
+   "来源条目": "sOPE-06",
+   "处理": "修正父子倒挂"
+  },
+  {
+   "指标": "换型",
+   "目标": "≤30min; 新型号配置/学习 ≤3h",
+   "口径": "固化项进配方, 柔性项自适应",
+   "来源条目": "sOPE-09",
+   "处理": "保留"
+  },
+  {
+   "指标": "连续作业",
+   "目标": "≥12 盘周转盘 (硬下限 ≥6) · 单日 ≥20h · 月 ≥28 天",
+   "口径": "两个数并列是矛盾: 验收取 ≥12 盘, ≥6 盘仅作为早期阶段下限",
+   "来源条目": "SA01-05",
+   "处理": "消歧"
+  },
+  {
+   "指标": "损伤",
+   "目标": "载具与产品损伤 = 0",
+   "口径": "零容忍项, 逐条单列, 不与百分比指标混排",
+   "来源条目": "SA01-04 / sOPE-06",
+   "处理": "修正混排"
+  }
+ ],
+ "gaps": [
+  {
+   "项": "站点几何",
+   "现状": "T_base_cam / plane_z / cell_geometry.points 未标定 ⇒ 坐标类参数与工单全部阻塞",
+   "处置": "现场标定后重跑 config_center check"
+  },
+  {
+   "项": "性能真源",
+   "现状": "perf.D_INSERT_mm / perf.cycle_s 未落地到 verif 真源 (摆盘以 CT 为主, 插入深度不适用)",
+   "处置": "摆盘任务改挂 cyc.takt 判据, 不再引用 ins.*"
+  },
+  {
+   "项": "档位契约",
+   "现状": "feature.cap_level / feature.dbc_version 未定义 ⇒ 档位级验收无口径",
+   "处置": "补 feature.dbc 版本与能力档位"
+  },
+  {
+   "项": "能力库",
+   "现状": "摆盘能力暂挂 C1/C4/B1/B2 平台级能力, 未新增项目级能力条目",
+   "处置": "如需供应链逐条报价, 再评估是否加 I 组能力"
+  },
+  {
+   "项": "模型在役",
+   "现状": "model.ckpt_l3 (VLA-T/Z-Flow 权重) 未登记在役哈希",
+   "处置": "登记权重路径 + sha256"
+  }
+ ],
+ "scope_in": [
+  "L3 动作执行: 把 Sys-2 给出的意图/条件, 转成可执行的动作序列 (VLA-T 动作 + Z-Flow 引导)",
+  "摆盘取放循环的策略与序列规划 (取件 → 转运对位 → 放入 → 判态循环)",
+  "多型号/多摆放自适应的配方选择 (12+ 型号 · ≥6 种摆放)",
+  "异常处置与断点续作决策 (重试/换策略/退回安全位)",
+  "运行状态与事件上报 (阶段/成功/失败/异常码/断点/CT 计时)"
+ ],
+ "scope_out": [
+  "不供相机 / 机械臂 / 夹爪 / 真空等硬件本体",
+  "不供站点几何真值 (K / plane_z / cell_geometry / 盘面槽位) — 现场标定, 由 Sys-0 提供",
+  "不供安全红线 (急停/限速/禁区) — Sys-1 只读消费, 不产生否决权",
+  "不供 L2 底层力控/伺服回路 (Sys-0 收口)"
+ ]
+}

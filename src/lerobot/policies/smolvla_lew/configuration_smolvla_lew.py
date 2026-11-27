@@ -49,16 +49,6 @@ class SmolVLALewConfig(PreTrainedConfig):
         }
     )
 
-    # ========== 推理出口口径 (2026-11-15: action head 直接输出真机可执行 chunk) ==========
-    # 老倪要求: 反归一化在 action head 的 return 前做, 不在 node/部署侧补。
-    # unnorm_out=True ⇒ predict_action 出口就是 [x,y,z(mm), grip(0/70)] 的 action_horizon 步 chunk。
-    unnorm_out: bool = False                       # [可配置] 出口直出真机口径 (训练不受影响: 训练走 forward)
-    action_min: list[float] | None = None          # [可配置] MIN_MAX 下界 = 数据集 action.min
-    action_max: list[float] | None = None          # [可配置] MIN_MAX 上界 = 数据集 action.max
-    grip_binary_thresh: float = 35.0               # [可配置] grip 二值化阈值 (真机只有 0=合 / 70=开)
-    grip_index: int = 3                            # [可配置] 夹爪在 action 向量里的下标
-                                                   #   4 维 [x,y,z,grip] → 3; 7 维 [x,y,z,a,b,c,grip] → 6
-
     # ========== Sys-11 共性参数: SmolVLM 骨干网络 ==========
     # 所有模式共用 (Sys-11 纯动作 / Sys-11+Sys-12 混合)
     smolvlm_name: str = "HuggingFaceTB/SmolVLM2-500M-Video-Instruct"  # [可配置] HuggingFace 模型ID

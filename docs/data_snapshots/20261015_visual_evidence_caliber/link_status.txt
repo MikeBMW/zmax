@@ -1,0 +1,16 @@
+# 链路状态 2026-10-15 06:26:41
+## 网卡
+enxeae07a800a2f  UNKNOWN        
+## ping AOI 192.168.23.23
+2 packets transmitted, 0 received, +2 errors, 100% packet loss, time 1001ms
+
+## ping Orin 192.168.23.66
+2 packets transmitted, 0 received, +2 errors, 100% packet loss, time 1002ms
+
+## AOI TCP 10082/10083
+  10082 bash: connect: No route to host
+bash: line 1: /dev/tcp/192.168.23.23/10082: No route to host
+不通
+  10083 bash: connect: No route to host
+bash: line 1: /dev/tcp/192.168.23.23/10083: No route to host
+不通

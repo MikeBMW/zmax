@@ -93,31 +93,13 @@ _GRIP_HOST = os.environ.get("ZMAX_GRIP_HOST", "tashan@192.168.23.66")
 _GRIP_OPEN_MM = float(os.environ.get("ZMAX_GRIP_OPEN_MM", "70"))
 # 🔧 2026-11-14 现场: 重启后驱动把服务名改成了 /gripper_srv(原来 /gripper_driver)
 #    调旧名字只会得到 "failed to check service availability: rcl node's context is invalid"(很误导)
-_GRIP_SRV = os.environ.get("ZMAX_GRIP_SRV", "/gripper_driver")
+_GRIP_SRV = os.environ.get("ZMAX_GRIP_SRV", "/gripper_srv")
 _GRIP_FORCE = float(os.environ.get("ZMAX_GRIP_FORCE", "40"))
 _GRIP_LOG = os.path.join(REPO, "zmax_data", "rokae_sdk", "grip_events.jsonl")
-# ⚡ 2026-11-17 老倪: 「把它改成 Orin 上常驻的 ROS2 服务(一次连接、多次调用)」
-#   Orin 侧 /home/tashan/grip_svc.py 常驻持有 rclpy 节点(订阅 /gripper_pos + client /gripper_driver),
-#   HTTP :39062 出参。实测: close 0.89s / open 0.47s / 读位置 0.02s。
-#   老路径(每次 ssh 冷起 ros2 CLI: 读位置 25s + service call 30s + 回读 25s)实测 82.9s ⇒ 差 90 倍,
-#   而且那时 _GRIP_SRV 默认写的是 /gripper_srv(现役是 /gripper_driver) ⇒ 夹爪从来没真动过。
-#   本常量只做「优先走常驻服务」, 失败仍回落 ssh 老路, 不静默。
-_GRIP_HTTP = os.environ.get("ZMAX_GRIP_HTTP", "http://192.168.23.66:39062")
 
 
 def _grip_pos() -> float | None:
-    """读夹爪位置真值, 读不到回 None —— 绝不猜。
-
-    ⚡ 2026-11-17: 优先走 Orin 常驻服务 grip_svc.py(:39062) —— 一次 rclpy 初始化, 单次 0.02s;
-       老 ssh+ros2 CLI 冷起一次要 20~25s(超时 25s), 只在常驻服务不可用时回落。
-    """
-    try:
-        with urllib.request.urlopen(_GRIP_HTTP + "/pos", timeout=2.0) as _r:
-            _d = json.loads(_r.read().decode() or "{}")
-        if _d.get("ok") and _d.get("pos_mm") is not None:
-            return float(_d["pos_mm"])
-    except Exception:                                                       # noqa: BLE001
-        pass
+    """读夹爪位置真值(Orin /gripper_pos), 读不到回 None —— 绝不猜。"""
     # 🔧 2026-11-14 现场: 只 source humble 时 /gripper_pos 反序列化失败
     #    ("sequence size exceeds remaining buffer", 自定义类型没注册) ⇒ 必须先 source 厂家工作区。
     cmd = ("source /opt/ros/humble/setup.bash >/dev/null 2>&1; "
@@ -144,29 +126,10 @@ def _grip_pos() -> float | None:
 
 
 def _grip_send(act: str, speed: float = 20.0, tries: int = 1) -> tuple[bool, dict]:
-    """act='open'|'close' ⇒ 真发夹爪服务, 并读 /gripper_pos 回证。
+    """act='open'|'close' ⇒ 真发 /gripper_driver 服务, 并读 /gripper_pos 回证。
 
     返回 (ok, evidence)。ok 只在**回证到位**时为 True —— 服务返回 200 但夹爪没动不算成功。
-    ⚡ 2026-11-17: 优先走 Orin 常驻服务(:39062) —— 下发+回证一次 HTTP 搞定, 实测 close 0.89s;
-       失败才回落 ssh 老路(实测 82.9s)。
     """
-    _fb = ""
-    try:
-        _u = "%s/grip?act=%s&force=%s&wait=%s" % (_GRIP_HTTP, act, _GRIP_FORCE, 8)
-        with urllib.request.urlopen(_u, timeout=25) as _r:
-            _ev = json.loads(_r.read().decode() or "{}")
-        _ev["t"] = time.strftime("%F %T")
-        _ev["via"] = "grip_svc"
-        try:
-            os.makedirs(os.path.dirname(_GRIP_LOG), exist_ok=True)
-            with open(_GRIP_LOG, "a", encoding="utf-8") as _f:
-                _f.write(json.dumps(_ev, ensure_ascii=False) + "\n")
-        except OSError:
-            pass
-        return bool(_ev.get("ok")), _ev
-    except Exception as _e:                                                  # noqa: BLE001
-        _fb = "常驻服务不可用(%s: %s) ⇒ 回落 ssh" % (type(_e).__name__, str(_e)[:70])
-
     pos0 = _grip_pos()
     tgt = _GRIP_OPEN_MM if act == "open" else 0.0
     ws = ("/home/tashan/zl/tashan_robot_so_20261109_110421_ca9eb74_aarch64/install/setup.bash")
@@ -176,8 +139,6 @@ def _grip_send(act: str, speed: float = 20.0, tries: int = 1) -> tuple[bool, dic
             "'{target_pos: %.1f, target_speed: -1.0, target_force: %.1f, target_acc: -1.0, "
             "target_push_length: -1.0, target_push_speed: -1.0}' 2>&1 | tail -4") % (ws, _GRIP_SRV, tgt, _GRIP_FORCE)
     ev = {"t": time.strftime("%F %T"), "act": act, "target_mm": tgt, "pos_before": pos0}
-    if _fb:
-        ev["fallback"] = _fb
     try:
         r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", _GRIP_HOST, call],
                            capture_output=True, text=True, timeout=60)
@@ -1150,9 +1111,6 @@ def _ar_meta_payload() -> dict:
                     "hand": m.get("hand"), "hand_cn": m.get("hand_cn"),
                     "t_win": m.get("t_win"), "dur": m.get("dur"),
                     "targets": m.get("targets"),
-                    # MT-08 真实节拍口径: 缺了这几个前端只能显示空的 UPH
-                    "uph": m.get("uph"), "s_per_point": m.get("s_per_point"),
-                    "speed_pct": m.get("speed_pct"), "source": m.get("source"),
                     "arm": _HAND_ARM.get(m.get("hand") or "") or _MT_ARM.get(mid)})
     lh = d.get("long_horizon") or {}
     cur = {}
@@ -1171,7 +1129,7 @@ def _ar_meta_payload() -> dict:
             "lanes": d.get("lanes") or {},
             "long_horizon": {k: lh.get(k) for k in ("uph_target", "tact_s", "segments_total",
                                                     "round_total_s", "meta_count", "verified",
-                                                    "hands", "rounds", "replay")},
+                                                    "hands")},
             "current": cur}
 
 
@@ -1683,14 +1641,7 @@ class H(BaseHTTPRequestHandler):
             # ⏭ 相对推进: 每轮结束把游标推到「实际走到的那一点」——走成 n_done 点就 +n_done,
             #   被闸拦住(n_done=0)就原地不动。这样下次输入 10 是「再走 10 点」而不是从头再来。
             if not _s.get("advanced"):
-                # 🔴 n_done 来自跑批记录, 旧脚本给的是"块数" ⇒ flow 档会把 66 点记成 18。
-                #   以 steps 里最大 i1+1(点数) 兜底取大值, 块数/点数两种口径都能得对。
-                _nd = int(_fin.get("n_done") or 0)
-                _pts = 0
-                for _st in (_fin.get("steps") or []):
-                    if _st.get("ok"):
-                        _pts = max(_pts, int(_st.get("i1", -1)) + 1)
-                _s["cursor"] = _start + max(_nd, _pts)
+                _s["cursor"] = _start + int(_fin.get("n_done") or 0)
                 _s["advanced"] = True
             _out["cursor"] = int(_s.get("cursor") or 0)
             try:
@@ -1736,8 +1687,7 @@ class H(BaseHTTPRequestHandler):
             return
         try:
             if p in ("/", "/tcp-ar", "/tcp-ar.html", "/ar",
-                     "/ar3d", "/ar3d.html", "/arvr",
-                     "/tray", "/tray.html", "/baipan"):          # 🍽 摆盘场景页(2026-11-16 老倪): 同一份页面, 前端按 path 换场景默认值+白名单
+                     "/ar3d", "/ar3d.html", "/arvr"):
                 # 🧭 /ar3d = 独立三维页(同一份页面, 前端按 path 进 vrfull 模式: 一屏只有三维视图)
                 with open(PAGE, "rb") as f:                                       # 热读: 改页面不用重启
                     self._send(200, "text/html; charset=utf-8", f.read())
@@ -1845,12 +1795,6 @@ class H(BaseHTTPRequestHandler):
                     self._json(_det_src_payload())
             elif p == "/api/tcp":
                 self._json(read_tcp())
-            elif p == "/api/grip/pos":        # 🦾 夹爪位置真值(只读, 不下发) —— 2026-11-17 走 Orin 常驻 grip_svc, 实测 0.02s
-                _gt0 = time.time()
-                _gp = _grip_pos()
-                self._json({"ok": _gp is not None, "pos_mm": _gp,
-                            "via": "grip_svc(Orin:39062)" if _gp is not None else "读不到",
-                            "ms": round((time.time() - _gt0) * 1000, 1)})
             elif p == "/api/sim_bones":       # 🦾 仿真骨骼真值 (8802 /bones.json 同源, 给 /ar3d 画 SIM 层)
                 #   2026-11-08 老倪: 页面要看「和渲染同一份数据」的机器人 —— URDF 那条走真机 latest.json
                 #   (真机不上电就永远是旧姿态), 这一条直接取渲染场景的 body_xpos, 两边必然一致。
@@ -2004,17 +1948,6 @@ class H(BaseHTTPRequestHandler):
                 _kq = urllib.parse.unquote(str(qs.get("k") or ""))
                 _tq = urllib.parse.unquote(str(qs.get("target") or ""))
                 self._json(self._traj_named(_kq, _tq))
-            elif p == "/api/orbit_frames":     # 🎯 插口特写补采航路(44 点)关节帧, 只给仿真右臂回放用
-                _cand = [os.path.join(REPO, "zmax_data", "capture_plan", f)
-                         for f in ("port_sweep_joints.json", "port_orbit_joints.json")]
-                _cand = [x for x in _cand if os.path.exists(x)]
-                _fp = max(_cand, key=os.path.getmtime) if _cand else _cand
-                try:
-                    _d = json.load(open(_fp, encoding="utf-8"))
-                    _d["ok"] = True
-                    self._json(_d)
-                except Exception as _e:                                          # noqa: BLE001
-                    self._json({"ok": False, "err": "读不到 port_orbit_joints.json: %s" % str(_e)[:80]})
             elif p == "/api/stable":
                 self._json(self._stable())
             elif p == "/api/calib":
@@ -2036,14 +1969,6 @@ class H(BaseHTTPRequestHandler):
                     self._json({"ok": False, "err": "%s 这台相机还没外参 ⇒ 画不了 3D 框(需要在 AR 页做 6~8 点标定)" % cam})
             elif p == "/api/module_spec":
                 self._json(self._module_spec())
-            elif p == "/api/traj_adj":            # 🎯 按 ID 修正回放点位(热读 JSON, 改完刷新页面就生效)
-                # 磁盘上的 215 点录制真值不动; 这里只给"第 N 点改成什么"的覆盖表
-                try:
-                    _ap = os.path.join(REPO, "tools", "web", "traj_adj.json")
-                    with open(_ap, encoding="utf-8") as _fh:
-                        self._send(200, "application/json; charset=utf-8", _fh.read().encode("utf-8"))
-                except Exception as _e:
-                    self._json({"note": "no adj file", "points": {}, "err": str(_e)})
             elif p == "/api/traj/plan":
                 self._json(self._traj_plan())
             elif p == "/api/traj/exec/state":
@@ -2325,21 +2250,6 @@ class H(BaseHTTPRequestHandler):
                 rj.get("n"), rj.get("len_mm"), rj.get("stage") or "?")
         except Exception:                                                          # noqa: BLE001
             out["real"] = []
-        # 🎯 2026-11-19 插口特写补采航路预览: 存在 flag 文件时, 用 planned_traj.json 的点列
-        #   顶掉命名轨迹那一层(只影响画面, 不动执行链, 不写 8791)。删 flag 即恢复。
-        _ofl = os.path.join(REPO, "zmax_data", "runtime", "traj", "orbit_show.flag")
-        if os.path.exists(_ofl):
-            try:
-                _op = os.path.join(REPO, "zmax_data", "runtime", "traj", "planned_traj.json")
-                _od = json.load(open(_op, encoding="utf-8"))
-                _pts = [[float(v) / 1000.0 for v in p] for p in (_od.get("pts_mm") or [])]
-                if len(_pts) >= 4:
-                    out["plan"] = _pts
-                    # 标签必须短: 长标签在三维视图里会被画成一条横贯画面的黑底文字条(老倪挡视线)
-                    out["plan_label"] = "插口补采 · %d点/%.0fmm" % (
-                        len(_pts), float(_od.get("total_mm") or 0))
-            except Exception as _e:                                                # noqa: BLE001
-                out["orbit_err"] = str(_e)[:80]
         out["ok"] = True
         out["at"] = time.strftime("%H:%M:%S")
         return out
@@ -3202,111 +3112,18 @@ class H(BaseHTTPRequestHandler):
             # 🔴 2026-10-26 老倪「轨迹2执行，你怎么不动？」——
             #    真因是授权窗过期(10.5 小时前), 服务端在发段表之前就拒了, 一行小字他没看见。
             #    这里只读授权唯一依据, 给页面做**顶部横幅**: 过期=红条, 有授权=绿条, 不让人猜。
-            # 🔴 2026-11-14 修: 原来只认 until>now ⇒ **调试档(无时间限制, until=0)被误报成"未授权"**,
-            #    页面顶部红条会骗人(闸是真的 armed, 横幅说没授权)。口径统一走 tools/ctl_auth.py:info()。
             try:
-                import importlib.util as _ilu2
-                _sp2 = _ilu2.spec_from_file_location("_zmax_ctl_auth_b",
-                                                    os.path.join(REPO, "tools", "ctl_auth.py"))
-                _ca2 = _ilu2.module_from_spec(_sp2)
-                _sp2.loader.exec_module(_ca2)
-                _st2 = _ca2.info()
+                _d = json.load(open(os.path.join(REPO, "zmax_data", "ctl_auth.json"), encoding="utf-8"))
             except Exception as e:                                               # noqa: BLE001
-                self._json({"ok": False, "err": "读不到授权唯一依据(ctl_auth.py): %s" % str(e)[:60]})
+                self._json({"ok": False, "err": "读不到 ctl_auth.json: %s" % str(e)[:60]})
                 return
-            _left = float(_st2.get("left_s") or 0.0)
-            self._json({"ok": True, "armed": bool(_st2.get("armed")),
-                        "mode": _st2.get("mode"), "debug": bool(_st2.get("debug")),
-                        "epoch": _st2.get("epoch"),
-                        "left_s": (None if _st2.get("debug") else round(max(0.0, _left))),
-                        "left_min": (None if _st2.get("debug") else round(max(0.0, _left) / 60.0, 1)),
-                        "revoked": bool(_st2.get("revoked_at")), "until": _st2.get("until"),
-                        "label": ("已授权(调试档 · 无时间限制)" if (_st2.get("armed") and _st2.get("debug"))
-                                  else ("已授权(剩 %.0f 分)" % (_left / 60.0) if _st2.get("armed")
-                                        else "未授权")),
+            _u = float(_d.get("until") or 0)
+            _left = _u - time.time()
+            _rev = float(_d.get("revoked_at") or 0) > 0
+            self._json({"ok": True, "armed": (not _rev) and _left > 0, "epoch": _d.get("epoch"),
+                        "left_s": round(max(0.0, _left)), "left_min": round(max(0.0, _left) / 60.0, 1),
+                        "revoked": _rev, "until": _u,
                         "where": "8793 工位总览 → 授权真动(两步确认)"})
-        elif p == "/api/arm/move_rel":
-            # 🎯 AOI 位姿调整的真机腿 (老倪 2026-11-18「位姿调整, 机器人可以动了」)
-            #   与 /api/arm/step_traj 的本质区别:
-            #     step_traj  走**录制帧的关节角**(MoveAbsJ), 只能沿录好的轨迹前进/后退
-            #     move_rel   走**笛卡尔相对位移**(sdk_ctl.py move-rel), 姿态保持不变
-            #   AOI 要的是"往世界 Y 平移 3.3mm 以把金手指挪到画面中心", 前者做不到, 只有后者能。
-            #
-            #   闸门顺序(任一不过即拒, 不下发):
-            #     ① 授权闸 _auth_gate() —— 与 8793 页面/执行器同一份 ctl_auth.py, fail-closed
-            #     ② 互斥闸: 轨迹逐点正在跑时不许插笛卡尔动作(两套执行器同时动一台臂 = 撞)
-            #     ③ 位移闸: sdk_ctl.py 内默认 5mm / 硬 50mm, 这里再叠一层 max_mm
-            #     ④ precheck: sdk_ctl.py 内查 operateMode=automatic + power on + 报警
-            _b = body or {}
-            try:
-                _dy = float(_b.get("dy") or 0.0)
-                _dx = float(_b.get("dx") or 0.0)
-                _dz = float(_b.get("dz") or 0.0)
-            except (TypeError, ValueError):
-                self._json({"ok": False, "stage": "param", "err": "dx/dy/dz 必须是数字(mm)"})
-                return
-            _dry = bool(_b.get("dry"))
-            _spd = float(_b.get("speed") or 5.0)
-            _cap = float(_b.get("max_mm") or 8.0)
-            if max(abs(_dx), abs(_dy), abs(_dz)) <= 1e-9:
-                self._json({"ok": False, "stage": "param", "err": "位移全为 0, 无事可做"})
-                return
-            if _dry:
-                self._json({"ok": True, "dry": True, "delta_mm": {"x": _dx, "y": _dy, "z": _dz},
-                            "speed_mm_s": _spd, "max_mm": _cap,
-                            "note": "dry: 只回显, 不起容器、不下发"})
-                return
-            _ok_auth, _why_auth = _auth_gate()
-            if not _ok_auth:
-                self._json({"ok": False, "stage": "auth", "err": "未授权: %s" % _why_auth})
-                return
-            # ② 互斥: 轨迹逐点在跑就不许动
-            try:
-                _st2 = json.load(open(os.path.join(REPO, "zmax_data", "rokae_sdk",
-                                                   "traj_step_state.json"), encoding="utf-8"))
-                _alive2 = False
-                _pid2 = int(_st2.get("pid") or 0)
-                if _pid2 > 1:
-                    os.kill(_pid2, 0)
-                    try:
-                        _s2 = open("/proc/%d/stat" % _pid2).read().rsplit(")", 1)[1].split()[0]
-                    except Exception:                                            # noqa: BLE001
-                        _s2 = "?"
-                    _alive2 = (_s2 != "Z")
-                if _st2.get("running") and _alive2:
-                    self._json({"ok": False, "stage": "busy",
-                                "err": "轨迹逐点正在跑(%s/%s), 等它结束再调位姿" %
-                                       (_st2.get("done"), _st2.get("n"))})
-                    return
-            except Exception:                                                    # noqa: BLE001
-                pass
-            _argv2 = ["bash", os.path.join(REPO, "tools", "rokae_sdk_run.sh"), "move-rel",
-                      "--dx", "%.3f" % _dx, "--dy", "%.3f" % _dy, "--dz", "%.3f" % _dz,
-                      "--speed", "%.2f" % _spd, "--max-mm", "%.2f" % _cap]
-            _t0 = time.time()
-            try:
-                _pr2 = subprocess.run(_argv2, cwd=REPO, capture_output=True, text=True, timeout=120)
-            except subprocess.TimeoutExpired:
-                self._json({"ok": False, "stage": "exec", "err": "执行超时 120s",
-                            "elapsed_s": round(time.time() - _t0, 2)})
-                return
-            _raw = (_pr2.stdout or "") + (("\n" + _pr2.stderr) if _pr2.stderr else "")
-            _parsed = None
-            try:
-                _i0 = _raw.index("{")
-                _parsed = json.loads(_raw[_i0:])
-            except Exception:                                                    # noqa: BLE001
-                _parsed = None
-            _res = {"ok": _pr2.returncode == 0, "rc": _pr2.returncode,
-                    "delta_mm": {"x": _dx, "y": _dy, "z": _dz}, "speed_mm_s": _spd,
-                    "elapsed_s": round(time.time() - _t0, 2),
-                    "script": _parsed}
-            if _parsed:
-                _res["verdict"] = _parsed.get("verdict")
-                _res["post_pose"] = _parsed.get("post_pose") or _parsed.get("pose")
-            if not _parsed:
-                _res["raw_tail"] = _raw[-1200:]
-            self._json(_res)
         elif p == "/api/arm/step_traj":
             # ⏭ 同步操作的真机腿 (老倪 2026-11-13「仿真先走10个点, 然后驱动真实右臂走10个点」)
             #   数据与仿真同源: tools/web/real_traj_joints.json 的 frames[0:n].j (6 轴关节角真值)
@@ -3316,15 +3133,6 @@ class H(BaseHTTPRequestHandler):
             _b = body or {}
             _dry = bool(_b.get("dry"))
             _n = int(_b.get("n") or 0)
-            # 🎚 速度档 (2026-11-18 老倪: 「x1 x2 真实 —— 当前慢速的1倍/2倍, 然后是真实记录的回放速度」)
-            #   x1 = 现行 20% (≈5.9s/点) · x2 = 40% (≈3.8s/点) · real = 按录制时间轴整块下发(整轮 ≈ 录制 42.85s)
-            _smode = str(_b.get("speed_mode") or "x1").strip().lower()
-            # 🆕 2026-11-18 加 flow 档: 沿固定轨迹, 速度按状态抑制(曲率/关节速率/操作区), 块速动态给
-            if _smode not in ("x1", "x2", "real", "flow"):
-                _smode = "x1"
-            _base_spd = float(_b.get("speed") or 20.0)   # 关节速度%: 5% 实测 0.3°/s 太慢(每点 25~35s), 20% ⇒ 每点约 6~9s
-            _spd = {"x1": _base_spd, "x2": min(100.0, _base_spd * 2.0),
-                    "real": 100.0, "flow": 100.0}[_smode]     # flow: 上限 100, 实际每块由脚本按状态抑制
             _jf = os.path.join(REPO, "tools", "web", "real_traj_joints.json")
             try:
                 _d = json.load(open(_jf, encoding="utf-8"))
@@ -3335,6 +3143,34 @@ class H(BaseHTTPRequestHandler):
             if not _fr:
                 self._json({"ok": False, "stage": "data", "err": "回放数据没有帧"})
                 return
+            # 🎯 2026-11-16: 应用「按 ID 修正回放点位」(tools/web/traj_adj.json, 热读)。
+            #   背景: 之前只有 AR3D 页面 fetch /api/traj_adj 覆盖**页面内存**里的帧,
+            #   而真机 step_traj 仍读 real_traj_joints.json 原始真值
+            #   ⇒ 页面显示修正后的点、机器走原路, 两边不一致(老倪问"能按修改后的点跑么"就是这个)。
+            #   现在执行侧也套同一份覆盖: j_new_rad 优先(6 轴关节角), p_new_mm 同步(mm→m)。
+            try:
+                _adjp = os.path.join(REPO, "tools", "web", "traj_adj.json")
+                if os.path.isfile(_adjp):
+                    _adj = (json.load(open(_adjp, encoding="utf-8")) or {}).get("points") or {}
+                    _na = []
+                    for _k, _v in _adj.items():
+                        try:
+                            _i = int(_k)
+                        except Exception:                                    # noqa: BLE001
+                            continue
+                        if not (0 <= _i < len(_fr)):
+                            continue
+                        _jj = _v.get("j_new_rad")
+                        if isinstance(_jj, (list, tuple)) and len(_jj) == 6:
+                            _fr[_i]["j"] = [float(x) for x in _jj]
+                        _pp = _v.get("p_new_mm")
+                        if isinstance(_pp, (list, tuple)) and len(_pp) == 3:
+                            _fr[_i]["p"] = [float(x) / 1000.0 for x in _pp]
+                        _na.append(_i)
+                    if _na:
+                        print("[step_traj] traj_adj 生效 %d 点: %s" % (len(_na), sorted(_na)), flush=True)
+            except Exception as _ae:                                         # noqa: BLE001
+                print("[step_traj] traj_adj 读取失败(忽略, 走原始真值): %s" % str(_ae)[:90], flush=True)
             _sts = os.path.join(REPO, "zmax_data", "rokae_sdk", "traj_step_state.json")
             _cur = {}
             try:
@@ -3430,37 +3266,13 @@ class H(BaseHTTPRequestHandler):
                     _jump = max(abs(_tgt[_k] - _live[_k]) for _k in range(6))
                     if math.degrees(_jump) > 30.0:
                         _i2, _d2 = _nearest(_live)
-                        # 🔴 2026-11-17 现场「刚才的单步，机器人怎么没有跟上？」根因:
-                        #   盘上的 215 帧在 frame[19]→frame[20] 之间本身就有 31.1° 的跨步
-                        #   (全 214 段里唯一 >30° 的, 次大只有 21.5°) ⇒ 走到第 20 点后再点单步,
-                        #   这里 30° 闸直接 return, 页面是 200 + stage=jump, 机器人一动不动、也不报红。
-                        #   而执行器 arm_step_traj.py 自带插补(超出上限就拆成每段 ≤0.6×上限 的多段,
-                        #   见它的 prep/n_mid 输出) ⇒ **紧接着的下一帧**(游标与真机同帧或差一帧)
-                        #   完全没必要在服务端拦死, 交给脚本插补更安全。
-                        #   非相邻(游标被手动挪过 / 真机被拖走 / 点了对齐后重走别的段)照旧拦死。
-                        # 真机可能同时"接近"轨迹里多个帧 —— 本轨迹 frame[19] 与 frame[87] 的关节角
-                        # 只差 0.1°/0.11°(姿态自交), 只看 _nearest 那一个会判成 87,
-                        # 于是 |20-87|>1 照拒, 页面还提示"最接近第 88 点"(现场看着莫名其妙)。
-                        # 所以把所有差 <5° 的帧都算进来: 只要其中有一帧与游标相邻, 就是"接着走下一帧"。
-                        _near5 = []
-                        for _ii in range(len(_fr)):
-                            _jj2 = _fr[_ii].get("j") or []
-                            if len(_jj2) < 6:
-                                continue
-                            if max(abs(float(_jj2[_k2]) - _live[_k2]) for _k2 in range(6)) < math.radians(5.0):
-                                _near5.append(_ii)
-                        if any(abs(int(_start) - _ii) <= 1 for _ii in _near5):
-                            print("[step_traj] 相邻帧大跨步 %.1f° > 30° ⇒ 放行给执行器插补 "
-                                  "(游标 %d · 真机贴合的帧 %s)" % (math.degrees(_jump), _start, _near5[:6]),
-                                  flush=True)
-                        else:
-                            self._json({"ok": False, "stage": "jump", "cursor": _start, "total": len(_fr),
-                                        "near": (_i2 or 0),
-                                        "err": "第 %d 点离真机当前姿态 %.1f°(>30°) ⇒ 拒发, 防瞬移"
-                                               % (_start + 1, math.degrees(_jump)),
-                                        "hint": "真机现在最接近第 %d 点 · 点『◎ 对齐当前位置』把游标挪过去再走"
-                                                % ((_i2 or 0) + 1)})
-                            return
+                        self._json({"ok": False, "stage": "jump", "cursor": _start, "total": len(_fr),
+                                    "near": (_i2 or 0),
+                                    "err": "第 %d 点离真机当前姿态 %.1f°(>30°) ⇒ 拒发, 防瞬移"
+                                           % (_start + 1, math.degrees(_jump)),
+                                    "hint": "真机现在最接近第 %d 点 · 点『◎ 对齐当前位置』把游标挪过去再走"
+                                            % ((_i2 or 0) + 1)})
+                        return
             if not _dry:                                                          # ① 授权(与执行器同一真源)
                 _ok, _why = _auth_gate()
                 if not _ok:
@@ -3507,41 +3319,11 @@ class H(BaseHTTPRequestHandler):
                         if _ga in ("open", "close"):
                             _grip_plan.append({"i": _gi - _start, "act": _ga,
                                                "hold_ms": int(_g.get("hold_ms") or 0) or None})
-                # 🎯 修正表 traj_adj.json 真正接进真机执行链 (2026-11-17 老倪「126点我修正过, 按修正后的点跑一遍」)
-                #   磁盘 raw 215 帧一字节不动, 只在这里(内存)按 ID 覆盖 frames[i].j ⇒ 下发用的是修正后的关节角
-                _adj_pts = []
-                try:
-                    _af = os.path.join(REPO, "tools", "web", "traj_adj.json")
-                    with open(_af, encoding="utf-8") as _fh:
-                        _aj = json.load(_fh) or {}
-                    for _k, _v in (_aj.get("points") or {}).items():
-                        try:
-                            _ii = int(_k)
-                        except Exception:                                    # noqa: BLE001
-                            try:
-                                _ii = int((_v or {}).get("i"))
-                            except Exception:                                # noqa: BLE001
-                                continue
-                        _jr = (_v or {}).get("j_new_rad")
-                        if not (0 <= _ii < len(_fr)) or not isinstance(_jr, list) or len(_jr) != 6:
-                            continue
-                        _fr[_ii] = dict(_fr[_ii])
-                        _fr[_ii]["j"] = [float(x) for x in _jr]
-                        _adj_pts.append(_ii)
-                    if _adj_pts:
-                        print("[traj_adj] 已应用修正点 %s (共 %d 个) ⇒ 本次下发用修正后的关节角"
-                              % (sorted(_adj_pts), len(_adj_pts)), flush=True)
-                except Exception as _e:                                          # noqa: BLE001
-                    print("[traj_adj] 读取失败(按原始帧下发): %s" % str(_e)[:90], flush=True)
                 _cmd = {"frames": [[float(v) for v in (f.get("j") or [])] for f in _fr[_start:_start + _n]],
-                        "t": [float(f.get("t") or 0.0) for f in _fr[_start:_start + _n]],
-                        "adj_points": sorted(_adj_pts),
-                        "start": _start, "n": _n, "speed": _spd,
+                        "start": _start, "n": _n, "speed": float(_b.get("speed") or 20.0),   # 关节速度%: 5% 实测 0.3°/s 太慢(每点 25~35s), 20% ⇒ 每点约 6~9s
                         "dwell_ms": int(_b.get("dwell_ms") or 120),
                         "grip": _grip_plan, "grip_src": _grip_src,
                         "src": "real_traj_joints.json", "ts": time.time()}
-                if _smode in ("real", "flow"):
-                    _cmd["speed_mode"] = _smode
                 _cp = os.path.join(REPO, "zmax_data", "rokae_sdk", "traj_step_cmd.json")
                 os.makedirs(os.path.dirname(_cp), exist_ok=True)
                 with open(_cp, "w", encoding="utf-8") as _f:
@@ -3560,14 +3342,9 @@ class H(BaseHTTPRequestHandler):
                           open(_sts, "w", encoding="utf-8"), ensure_ascii=False)
                 self._json({"ok": True, "started": True, "n": _n, "start": _start,
                             "total": len(_fr), "dry": _dry, "pid": _pr.pid,
-                            "speed_mode": _smode, "speed": _spd,
                             "msg": (("演练(只算不下发) " if _dry else "真机逐点开始 ")
-                                    + "· 第 %d~%d 点(共 %d 点) · %s · 关节角真值"
-                                    % (_start + 1, _start + _n, len(_fr),
-                                       {"x1": "x1 慢速 %.0f%%" % _spd,
-                                        "x2": "x2 倍速 %.0f%%" % _spd,
-                                        "real": "⚡真实回放(录制时间轴)",
-                                        "flow": "🌀 状态抑制流动(曲率/关节速率/操作区降速)"}[_smode]))})
+                                    + "· 第 %d~%d 点(共 %d 点) · 关节角真值"
+                                    % (_start + 1, _start + _n, len(_fr)))})
             except Exception as e:                                               # noqa: BLE001
                 self._json({"ok": False, "stage": "launch", "err": "%s: %s" % (type(e).__name__, str(e)[:90])})
         elif p == "/api/arm/step_traj/status":

@@ -632,7 +632,7 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
     _last_render = 0.0
     _views_cache = {}
     while True:
-        t0 = time.monotonic()          # 🔴 墙钟会被 NTP 回拨(实测 -8h) ⇒ 节流只能用单调钟
+        t0 = time.time()
         with LOCK:
             cmd = dict(CMD)
         mode = cmd.get("mode") or "idle"
@@ -692,10 +692,10 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
             # 🔎 2026-10-29: 渲染(4 路 render+PNG) ~60ms ⇒ 逼得整个循环只能跑 8~9Hz,
             #   真值因此 125ms 才更新一帧, 末端 350mm/s 就成 44mm 的台阶 (采样看像 1.2m/s 猛冲)。
             #   这里把"出图"和"物理/真值"解耦: 真值每拍更新, 图按 render_hz 出, 中间复用上一帧。
-            _do_render = (time.monotonic() - _last_render) >= _rperiod
+            _do_render = (time.time() - _last_render) >= _rperiod
             with GL:                      # 🔒 出图与按需自由视角串行 (renderer 非线程安全)
                 if _do_render and renderer is not None:
-                    _last_render = time.monotonic()
+                    _last_render = time.time()
                     views_out = dict(_views_cache or {})
                     # 只渲特写 (close) 每拍出图; 全景 (ar3d) 每 3 拍一次 —— 两路一起渲 ~60ms,
                     # 是出图帧率上不去的根因; 特写单路 ~20ms ⇒ 出图能到 25~30Hz。
@@ -739,7 +739,7 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
                               "png": cl.get("png", b""), "mean": cl.get("mean"),
                               "gold_px": cl.get("gold_px"), "box": cl.get("box"),
                               "shape": cl.get("shape"),
-                              "ms": round((time.monotonic() - t0) * 1000, 1), "err": None})
+                              "ms": round((time.time() - t0) * 1000, 1), "err": None})
             # 🦾 仿真骨骼快照 (2026-11-08 老倪: AR 页要跟渲染同一份位姿数据)
             _bones = {"ok": True, "ts": time.time(), "n": n, "L": [], "R": []}
             for _side in ("L", "R"):
@@ -804,9 +804,9 @@ def render_loop(hz: float, jitter: bool, seed: int, phys_hz: float = 0.0, render
         except Exception as e:                                               # noqa: BLE001
             with LOCK:
                 STATE["err"] = "%s: %s" % (type(e).__name__, e)
-        dt = period - (time.monotonic() - t0)
+        dt = period - (time.time() - t0)
         if dt > 0:
-            time.sleep(min(dt, period))   # 🔴 时钟跳变时 dt 可能成 8 小时 ⇒ 必须钳到一拍
+            time.sleep(dt)
 
 
 _FREE_RND = {}
@@ -1018,7 +1018,7 @@ class Handler(BaseHTTPRequestHandler):
                 _fpng = None
                 _follow = (qs.get("follow") or ["1"])[0].lower() not in ("0", "false", "no", "off")
                 while True:
-                    _t0 = time.monotonic()
+                    _t0 = time.time()
                     _png = None
                     # 🎥 跟随 ar3d 页面的相机(默认开): 页面在推就同机位, 没在推就退回预设机位
                     if _follow:
@@ -1053,18 +1053,18 @@ class Handler(BaseHTTPRequestHandler):
                     #   比对 md5: 没变就只按 1fps 发心跳帧, 否则 12fps 白白吃掉 ~9Mbps 带宽(实测 8 帧 md5 全同)。
                     if _png:
                         _md5 = hashlib.md5(_png).digest()
-                        if _md5 == _last_md5 and (time.monotonic() - _last_sent) < 1.0:
+                        if _md5 == _last_md5 and (time.time() - _last_sent) < 1.0:
                             _png = None
                         else:
-                            _last_md5, _last_sent = _md5, time.monotonic()
+                            _last_md5, _last_sent = _md5, time.time()
                     if _png:
                         self.wfile.write(b"--frame\r\nContent-Type: image/png\r\nContent-Length: "
                                          + str(len(_png)).encode() + b"\r\n\r\n")
                         self.wfile.write(_png)
                         self.wfile.write(b"\r\n")
                         self.wfile.flush()
-                    _gap = _dt - (time.monotonic() - _t0)
-                    time.sleep(min(_gap, _dt) if _gap > 0 else 0.005)
+                    _gap = _dt - (time.time() - _t0)
+                    time.sleep(_gap if _gap > 0 else 0.005)
             except (BrokenPipeError, ConnectionResetError, OSError):
                 pass                                     # 客户端关窗/断网: 正常退出
             finally:

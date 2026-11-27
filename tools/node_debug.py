@@ -165,7 +165,7 @@ def load_traj(frame=200, stage=None):
 def stages_mani_eng(g):
     """🧮 流形引擎 (ManifoldEngine · 编码→投影→度量→导航→反馈)"""
     import numpy as np
-    me = _load("src/lerobot/manifold/engine/manifold_engine.py", "zm_manifold_engine")
+    me = _load("src/lerobot/manifold/manifold_engine.py", "zm_manifold_engine")
     wp = os.path.join(ROOT, SRC_WEIGHTS)
     eng = me.ManifoldEngine(manifold_type="su2", latent_dim=16, state_dim=43, action_dim=4)
     loaded = eng.load(wp) if os.path.exists(wp) else False
@@ -216,22 +216,22 @@ def stages_mani_eng(g):
     return [
         ("① 编码 encode (43D → 潜空间 z)", s_encode,
          "ManifoldEngine.encoder.encode — su2 群表示 (投影前的坐标)",
-         {"entry": ("src/lerobot/manifold/engine/manifold_engine.py", "Encoder.encode", 199)}),
+         {"entry": ("src/lerobot/manifold/manifold_engine.py", "Encoder.encode", 199)}),
         ("② 投影 project (z → 球面点 p)", s_project,
          "manifold_engine.py:691 ManifoldEngine.project — 投影到流形 (‖p‖=1)",
-         {"entry": ("src/lerobot/manifold/engine/manifold_engine.py", "ManifoldEngine.project", 691)}),
+         {"entry": ("src/lerobot/manifold/manifold_engine.py", "ManifoldEngine.project", 691)}),
         ("③ 度量 metric (M · 势 Φ · 梯度 ∇Φ)", s_metric,
          "manifold_engine.py:748 gradient_flow — 度量决定切空间长度/角度",
-         {"entry": ("src/lerobot/manifold/engine/manifold_engine.py", "ManifoldEngine.gradient_flow", 748)}),
+         {"entry": ("src/lerobot/manifold/manifold_engine.py", "ManifoldEngine.gradient_flow", 748)}),
         ("④ 导航 navigate (测地线 + 一步积分)", s_navigate,
          "manifold_engine.py:738 navigate / :786 step — 沿 −∇Φ 走, ‖p‖=1 保持",
-         {"entry": ("src/lerobot/manifold/engine/manifold_engine.py", "ManifoldEngine.navigate", 738)}),
+         {"entry": ("src/lerobot/manifold/manifold_engine.py", "ManifoldEngine.navigate", 738)}),
         ("⑤ 反馈 feedback_update (残差回灌)", s_feedback,
          "manifold_engine.py:763 feedback_update — 卡尔曼式回灌 (条件网络=update)",
-         {"entry": ("src/lerobot/manifold/engine/manifold_engine.py", "ManifoldEngine.feedback_update", 763)}),
+         {"entry": ("src/lerobot/manifold/manifold_engine.py", "ManifoldEngine.feedback_update", 763)}),
         ("⑥ 时延 latency_report (分段耗时)", s_latency,
          "manifold_engine.py:860 latency_report — 编码/投影/梯度分段耗时",
-         {"entry": ("src/lerobot/manifold/engine/manifold_engine.py", "ManifoldEngine.latency_report", 860)}),
+         {"entry": ("src/lerobot/manifold/manifold_engine.py", "ManifoldEngine.latency_report", 860)}),
     ], (lambda res: [
         ("投影真落在单位球上 ‖p‖=1 (±1e-6)",
          abs(float(np.linalg.norm(np.asarray(res[1].get("p", [np.nan]), float))) - 1.0) < 1e-6,
@@ -686,7 +686,7 @@ NODES = {
     "ss_mani_eng": {
         "name": "🧮 流形引擎 (Manifold Engine · 编码→投影→度量→导航→反馈)",
         "entry": (ENTRY, "node_ss_mani_eng", 5227),
-        "modules": ["src/lerobot/manifold/engine/manifold_engine.py",
+        "modules": ["src/lerobot/manifold/manifold_engine.py",
                     "src/lerobot/policies/left_right/state_space/su2.py"],
         "links": "投影/度量/导航 三环节全在",
         "stages": stages_mani_eng,

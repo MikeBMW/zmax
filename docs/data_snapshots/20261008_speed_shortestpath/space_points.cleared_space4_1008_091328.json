@@ -1,0 +1,65 @@
+{
+ "version": "v1",
+ "note": "空间点 1~7 (老倪 2026-10-01: 与号位独立的 7 个空间点; 按真机 /robot/tcp_pose 实测记录)",
+ "frame": "base_link",
+ "points": {
+  "space1": {
+   "pos": [
+    0.601421,
+    -0.111012,
+    0.3596434
+   ],
+   "quat": [
+    0.766477,
+    0.0754468,
+    0.6154766,
+    0.16736
+   ],
+   "desc": "页面点未记空间点即记录(8793)",
+   "recorded_at": "2026-10-08 07:47:46",
+   "source": "本地真值文件直读(rokae_sdk/tcp_out, 与 /robot/tcp_pose 同源)",
+   "n_samples": 5,
+   "spread_pos_m": 1e-06,
+   "spread_quat": 1e-06
+  },
+  "space2": {
+   "pos": [
+    0.601421,
+    0.088988,
+    0.359644
+   ],
+   "quat": [
+    0.766477,
+    0.0754458,
+    0.615477,
+    0.16736
+   ],
+   "desc": "页面点未记空间点即记录(8793)",
+   "recorded_at": "2026-10-08 07:49:19",
+   "source": "本地真值文件直读(rokae_sdk/tcp_out, 与 /robot/tcp_pose 同源)",
+   "n_samples": 6,
+   "spread_pos_m": 2e-06,
+   "spread_quat": 1e-06
+  },
+  "space4": {
+   "pos": [
+    0.601378,
+    0.0707186,
+    0.270155
+   ],
+   "quat": [
+    0.766212,
+    0.075967,
+    0.6155762,
+    0.16797
+   ],
+   "desc": "页面点未记空间点即记录(8793)",
+   "recorded_at": "2026-10-08 09:12:02",
+   "source": "本地真值文件直读(rokae_sdk/tcp_out, 与 /robot/tcp_pose 同源)",
+   "n_samples": 5,
+   "spread_pos_m": 1e-06,
+   "spread_quat": 1e-06
+  }
+ },
+ "updated_at": "2026-10-08 09:13:27"
+}

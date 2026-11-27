@@ -1,0 +1,18 @@
+# 数据快照 2026-10-11 · 状态同步 (当前版本 v5.47.0)
+
+本轮动作 (老倪: 「同步飞书端的记忆，技能，以及飞书端完成的场景叠加任务，保存数据，同步信息」):
+
+| 项 | 结果 (实测) |
+|---|---|
+| 记忆同步 | MEMORY.md → `docs/memory/hermes-jingjing-memory-2026-10-11.md` (+latest) · 内容与仓库一致 |
+| 技能同步 | `docs/skills/xspace` 31 技能 + `docs/skills/hermes-all` **215 技能** 全量镜像 (含 sim-real-scene-overlay / zmax-scene-engineering) |
+| 飞书端场景叠加任务 | 公网通道**端到端实测通**: `https://datadrive.world/ov/overlay?k=zmax-live` 等 4 条 200 · POST 403 (只读闸门) · `/ov/live.json` 1395B (三相机拼图+逐路叠加流) |
+| 状态同步到公网 | `publish_status.py` → `zmax_status.json` 7182B 推送成功 (手机端实时状态) |
+| 工程库一致性 | 发现漂移 `['canvas','manifold']` → `engineering_db.py build` 重建 → **判据全绿** (768 参数 / 1731 链接 / 184 连线) |
+| 版本/发布 | 当前 tag **v5.47.0** · CI "Build Desktop (Windows .exe + macOS)" v5.47.0 构建中 (v5.46.0/v5.45.0 已 success) |
+
+文件: zmax_engineering.db (重建后全绿) · engineering_db_check.txt · canvas_state_space_obs.json (md5 4d3824c6d63d, 89 节点/184 连线) ·
+ss_task_run_TASK-01-FW_latest.json (插拔 686 步 success=True) · ss_task_run_TASK-06-TRAY_latest.json (摆盘 3/3 合格) ·
+overlay_channel_verify.txt + overlay_live_public.json (飞书端通道) · zmax_status_public.json · release_status.json · git_ref.txt
+
+未关项: ① 本机相机近黑 ⇒ 快层安全闸 fail-closed 拦发夹爪开爪 (非软件 bug, 不擅自关闸) ② 金手指整板原图现象待确认。

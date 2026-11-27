@@ -1,0 +1,30 @@
+{
+ "doc_no": "SOR-OM-ROBOT-20261013",
+ "version": "5.50.5",
+ "generated_at": "2026-10-13 11:59:07",
+ "source_db": "data/database/zmax/zmax_engineering.db",
+ "source_db_sha256": "191a6f0d6ff16f198e59501e4a7e89937f3cf3b284d5665efb963bccb6aa0ed6",
+ "files": {
+  "SOR-OM-ROBOT-20261013_5.50.5.docx": {
+   "bytes": 81547,
+   "sha256": "972092d0147914735ba8ae47c9f1530e5355e3ad26e4fd9a02887cee2990dddd"
+  },
+  "SOR-OM-ROBOT-20261013_5.50.5.json": {
+   "bytes": 38939,
+   "sha256": "40d6d9221bce8133b80dbd477c692b8c6fdfce70af0deea84f944333e07c065c"
+  },
+  "SOR-OM-ROBOT-20261013_5.50.5.md": {
+   "bytes": 64564,
+   "sha256": "821c06e07ee2567064d87aae522edec9734f17262532c0283ce19c2dd76db602"
+  }
+ },
+ "project": "泰国模块摆料场景 (Z100LFd 固定上肢形态)",
+ "project_profile": {
+  "pid": "PROJ-TH-TRAY",
+  "overlay": "config/platform/projects/PROJ-TH-TRAY.json",
+  "overlay_sha256": "2bb36be1a3323ad4",
+  "base": "config/platform/zmax_project_bom.json",
+  "base_sha256": "aa4217ba1e3355e2",
+  "merged_sha256": "15101043d11f0033"
+ }
+}

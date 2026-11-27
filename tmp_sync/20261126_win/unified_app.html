@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="theme-color" content="#0e1116">
+<title>Z-MAX 大屏</title>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:#0e1116;color:#e8edf3;
+    font:15px/1.45 -apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans CJK SC",sans-serif}
+  body{padding:calc(env(safe-area-inset-top) + 10px) 12px calc(env(safe-area-inset-bottom) + 18px)}
+  header{position:sticky;top:0;background:#0e1116;padding-bottom:8px;z-index:5}
+  .brand{font-size:19px;font-weight:800;letter-spacing:.5px}
+  .brand #ver{color:#4ea1ff;font-weight:800}
+  .sub{color:#93a1b0;font-size:12.5px;margin-top:3px}
+  .sub b{color:#e8edf3;font-weight:600}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .card{background:#171b22;border:1px solid #232a33;border-radius:13px;padding:11px 12px;margin-top:9px}
+  .card.full{grid-column:1 / -1}
+  .k{color:#93a1b0;font-size:12px;margin-bottom:4px;display:flex;justify-content:space-between}
+  .v{font-size:22px;font-weight:750;font-variant-numeric:tabular-nums}
+  .v.sm{font-size:15px;font-weight:600;line-height:1.5}
+  .unit{font-size:12.5px;color:#93a1b0;font-weight:500;margin-left:4px}
+  .row{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid #232a33}
+  .row:first-child{border-top:0}
+  .row .rk{color:#93a1b0;font-size:13.5px}
+  .row .rv{font-weight:650;font-variant-numeric:tabular-nums}
+  .ok{color:#35c46b}.bad{color:#ff7a45}.dim{color:#93a1b0}
+  .chip{display:inline-block;background:#1d2530;border-radius:8px;padding:2px 8px;margin:2px 4px 0 0;font-size:12.5px}
+  .warnbox{background:#241a13;border:1px solid #5a3a22;border-radius:11px;padding:10px 12px;margin-top:9px}
+  .warnbox .wt{color:#ffb27a;font-weight:700;font-size:13px;margin-bottom:5px}
+  .warnbox li{color:#ffd0b0;font-size:13px;margin:3px 0}
+  .warnbox ul{margin:0;padding-left:18px}
+  .tap{cursor:pointer}
+  .tap:active{opacity:.6}
+  footer{color:#6b7683;font-size:11.5px;margin-top:14px;text-align:center;line-height:1.7}
+  #toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);
+    background:#2b3542;color:#fff;padding:8px 16px;border-radius:20px;font-size:13px;opacity:0;
+    transition:.22s;pointer-events:none;z-index:9}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  /* ── 标准服务汇总 (数据来自 8799 GET /api/services, 离线打不开时只给提示) ── */
+  .svc{background:#171b22;border:1px solid #232a33;border-radius:13px;padding:10px 12px;margin-top:9px}
+  .svc h2{font-size:13.5px;font-weight:750;margin:0;display:flex;justify-content:space-between;
+    align-items:baseline;gap:8px;flex-wrap:wrap}
+  .svc h2 .t{color:#e8edf3}.svc h2 .t b{color:#4ea1ff}
+  .svc h2 .r{color:#6b7683;font-size:11px;font-weight:500}
+  .svc .sum{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0 5px;font-size:12px;color:#93a1b0}
+  .svc .sum span{background:#1d2530;border-radius:8px;padding:2px 7px;white-space:nowrap}
+  .svc .sum b{font-weight:700;font-variant-numeric:tabular-nums}
+  .svc .wrap{max-height:300px;overflow:auto;-webkit-overflow-scrolling:touch;
+    border-top:1px solid #232a33}
+  .svc table{width:100%;border-collapse:collapse;font-size:12px;min-width:520px;table-layout:fixed}
+  .svc th:nth-child(1){width:20%}
+  .svc th:nth-child(2){width:64px}
+  .svc th:nth-child(3){width:86px}
+  .svc th:nth-child(4){width:78px}
+  .svc th:nth-child(5){width:54px}
+  .svc th:nth-child(6){width:158px}
+  @media (max-width:900px){ .svc .c-scr{display:none} }   /* 中屏: 脚本列让位给说明 */
+  @media (max-width:520px){ .svc .c-nt,.svc .c-http{display:none} }  /* 手机: 只留 名称/端口/机器/状态 */
+  .svc th{position:sticky;top:0;background:#171b22;color:#93a1b0;font-weight:600;text-align:left;
+    padding:4px 5px;border-bottom:1px solid #232a33;white-space:nowrap;z-index:1}
+  .svc td{padding:4px 5px;border-top:1px solid #1d2430;vertical-align:top;white-space:nowrap}
+  .svc td.nm{white-space:normal;min-width:118px;color:#e8edf3}
+  .svc td.scr{color:#7f8b99;font-size:11.5px}
+  .svc .clip{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .svc .hw{font-size:10px;color:#93a1b0;border:1px solid #2c3542;border-radius:4px;
+    padding:0 3px;margin-left:3px;vertical-align:1px;letter-spacing:.3px}
+  .svc td.nt{color:#8b98a6;font-size:11.5px;white-space:normal;line-height:1.35}
+  .svc .num{font-variant-numeric:tabular-nums;color:#c8d2dd}
+  .svc tr.rem td.nm{color:#c9d3de}
+  .svc tr.disc td.nm{color:#e0b76a}
+  .svc .foot{color:#6b7683;font-size:11px;margin-top:5px;display:flex;justify-content:space-between;gap:8px}
+  .svc .err{color:#ffb27a;font-size:12.5px;line-height:1.5}
+  /* 窄屏 (手机): 说明并到名称下一行, 表格不再横向滚动, 高度收紧让下面的卡片露头 */
+  @media (max-width:520px){
+    .svc table{min-width:0;table-layout:fixed}
+    .svc th:nth-child(1){width:auto}
+    .svc th:nth-child(2){width:54px}
+    .svc th:nth-child(3){width:60px}
+    .svc th:nth-child(4){width:68px}
+    .svc .wrap{max-height:240px}
+    .svc td.nm{min-width:0}
+    .svc .nt2{color:#8b98a6;font-size:11px;font-weight:400;margin-top:1px;white-space:normal}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">Z-MAX 大屏 <span id="ver">–</span></div>
+  <div class="sub">数据时间 <b id="gen" class="tap">–</b> · 帧龄 <b id="age" class="tap">–</b></div>
+</header>
+<!-- 标准服务汇总: 首屏最上方, 与下面的静态快照卡片相互独立 (探测失败只影响本块) -->
+<section id="svc" class="svc">
+  <h2><span class="t">所有服务汇总</span><span class="r" id="svc-ts">探测中…</span></h2>
+  <div class="err" id="svc-body">正在探测各端口…</div>
+</section>
+<main id="root">加载中…</main>
+<footer>点任意数字可复制 · 数据源 dashboard.json<br>单文件离线可开 · 无外部依赖</footer>
+<div id="toast"></div>
+
+<script>
+/*DASHBOARD_SNAPSHOT_START*/window.__DASHBOARD__ = {"schema":"zmax-dashboard/1","generated_at":"2026-10-15 06:13:39","generated_at_epoch":1792016020.03,"version":"5.50.71","gpu":{"name":"NVIDIA GeForce RTX 4060 Laptop GPU","util":83.0,"mem_used":3398.0,"mem_total":8188.0,"mem_pct":41.5,"temp":57.0,"power":25.85,"procs":5,"error":null},"datasets":{"items":287,"size_human":"96.5GB","size_bytes":103662428168,"file_count":168395,"categories":{"downloaded":{"count":8,"size_human":"12.7GB"},"generated":{"count":168,"size_human":"78.6GB"},"map":{"count":111,"size_human":"5.2GB"}},"reports_files":1097,"map_items_with_ply":25},"models":{"count":14,"layers":[{"layer":"L5","name":"L5 · SmolVLM 本地视觉语言模型 (merged 可部署)","active":true,"ready":true,"size_h":"968.0MB","mtime":"2026-10-14 14:17:46"},{"layer":"L5","name":"L5 · 最新 LoRA adapter","active":false,"ready":true,"size_h":"36.6MB","mtime":"2026-10-14 23:08:49"},{"layer":"L5","name":"L5 · 本地 tool 技能包 (在役)","active":true,"ready":true,"size_h":"7.8KB","mtime":"2026-10-14 16:58:59"},{"layer":"L4","name":"L4 · INTACT-JEPA 意图-动作 (在役稳定指针)","active":true,"ready":true,"size_h":"80.2MB","mtime":"2026-09-15 00:27:02"},{"layer":"L4","name":"L4 · 最新续训/LoRA 产物","active":false,"ready":true,"size_h":"80.2MB","mtime":"2026-10-14 23:02:50"},{"layer":"L4","name":"L4 · 状态空间 LoRA 适配层 (在役 · 基座不动)","active":true,"ready":true,"size_h":"80.2MB","mtime":"2026-09-30 06:54:47"},{"layer":"L3","name":"L3 · SmolVLA+LEW 策略 (在役运行时 ckpt)","active":true,"ready":true,"size_h":"4.0KB","mtime":"2026-09-10 20:45:04"},{"layer":"L3","name":"L3 · 最新 LoRA-merged 产物","active":false,"ready":true,"size_h":"1.2GB","mtime":"2026-10-14 19:06:54"},{"layer":"L3","name":"L3 · 状态空间 LoRA 适配层 (在役 · 基座不动)","active":true,"ready":true,"size_h":"1.2GB","mtime":"2026-10-14 08:10:16"},{"layer":"L2","name":"L2 · YOLO 光模块检测 (真机域在役)","active":true,"ready":true,"size_h":"5.9MB","mtime":"2026-09-19 18:14:44"},{"layer":"L2","name":"L2 · 最新训练产物","active":false,"ready":true,"size_h":"5.9MB","mtime":"2026-10-14 23:06:52"},{"layer":"L2","name":"L2 · 候选 · SAM3 开放词汇分割 (官方基座 848M, 未在役)","active":false,"ready":true,"size_h":"3.2GB","mtime":"2026-09-29 16:40:51"},{"layer":"L2","name":"L2 · 候选 · SAM3 适配器 annot_v1 (未证明提升)","active":false,"ready":true,"size_h":"8.0MB","mtime":"2026-10-01 17:01:59"},{"layer":"L2","name":"L2 · SAM3 开放词汇分割 (在役 · 感知原语)","active":true,"ready":true,"size_h":"3.2GB","mtime":"2026-09-29 16:40:51"}],"active_ready":8,"training_active":0,"all_ready":true},"scene":{"objects":8,"markers":0,"fences":0,"trajectories":0,"deleted":20,"traj_show":true,"fences_valid":true,"fence_invalid":[],"out_of_range":[]},"remote":{"endpoints_total":18,"endpoints_ok":15,"endpoints_err":3,"stale":["ECS工位状态(station/status)","ECS状态总线(zmax_status.json)","本机推流stats(8791)","本机工位状态(8793/station/status)","本机agent_hub(8794/agent/log)"],"stale_count":5,"frame_age_s":0.17,"same_source":[{"fact":"臂相机帧率 fps","consistent":true,"tol":4.0,"note":"","sources":[{"name":"本机推流stats(8791)","value":0.0},{"name":"本机工位状态(8793/station/status)","value":0.0},{"name":"ECS工位状态(station/status)","value":0.0},{"name":"ECS-3D实况(ss3d_live.json)","value":0.0}]},{"fact":"臂相机帧龄 age_s","consistent":true,"tol":2.0,"note":"","sources":[{"name":"本机推流stats(8791)","value":54.95},{"name":"本机工位状态(8793/station/status)","value":54.96},{"name":"ECS-3D实况(ss3d_live.json)","value":53.41}]},{"fact":"臂相机在线","consistent":true,"tol":"bool","note":"","sources":[{"name":"本机推流stats(8791)","value":true},{"name":"本机工位状态(8793/station/status)","value":true}]},{"fact":"臂相机设备名(同一设备?)","consistent":true,"tol":null,"note":"","sources":[{"name":"本机推流stats(8791)","value":"🦾 机器人臂上 D405 (Orin)"},{"name":"本机工位状态(8793/station/status)","value":"🦾 机器人臂上 D405 (Orin)"}]},{"fact":"工位机GPU利用率","consistent":false,"tol":15.0,"note":"","sources":[{"name":"本机硬件状态(8796/status/all)","value":99},{"name":"ECS状态总线(zmax_status.json)","value":58}]}],"mismatch":["工位机GPU利用率"],"unreachable":["Orin取流状态(8792/status)","工控机AOI金手指(10082/last_result)","工控机AOI表面(10083/last_result)"],"error":null},"version_sync":{"ok":false,"canonical":"5.50.71","canonical_source":"studio.py 品牌 QLabel","remote_has_tag":false,"release_tag":"v5.50.7","deviations":["远端缺少 tag v5.50.71","最新 Release tag v5.50.7 ≠ v5.50.71"]},"screen":{"ok":true,"err":null,"station_url":"http://127.0.0.1:8793/station","channels":[{"key":"arm","label":"🦾 机器人臂上 D405 (Orin)","online":true,"fps":0.0,"age_s":57.75,"stalled":true,"frames_served":1061985,"kbps":0.0},{"key":"local","label":"💻 内置 Integrated RGB Camera: Integrat","online":true,"fps":5.21,"age_s":0.0,"stalled":false,"frames_served":253340,"kbps":29.7},{"key":"local2","label":"📺 WT15: MAXHUB-Camera","online":true,"fps":0.0,"age_s":128.5,"stalled":true,"frames_served":1254304,"kbps":0.0},{"key":"depth","label":"🌈 D405 深度图 (彩色化)","online":true,"fps":0.0,"age_s":31362.16,"stalled":true,"frames_served":4050,"kbps":0.0},{"key":"aoi_gold","label":"🔍 金手指检测 (工控机 OPT)","online":true,"fps":0.0,"age_s":57.76,"stalled":true,"frames_served":92193,"kbps":0.0},{"key":"aoi_gold_raw","label":"","online":true,"fps":0.0,"age_s":57.75,"stalled":true,"frames_served":92193,"kbps":0.0},{"key":"aoi_surface","label":"🔍 表面检测 (工控机 OPT)","online":true,"fps":0.0,"age_s":60.01,"stalled":true,"frames_served":30555,"kbps":0.0},{"key":"ov_arm","label":"🦾 机器人臂上 D405 (Orin)","online":true,"fps":0.0,"age_s":57.75,"stalled":true,"frames_served":356298,"kbps":0.0},{"key":"ov_local","label":"💻 内置 Integrated RGB Camera: Integrat","online":true,"fps":5.07,"age_s":0.2,"stalled":false,"frames_served":238320,"kbps":113.1},{"key":"ov_local2","label":"📺 WT15: MAXHUB-Camera","online":true,"fps":0.0,"age_s":128.5,"stalled":true,"frames_served":440946,"kbps":0.0}],"channels_online":10,"channels_total":10,"frame_age_max_s":31362.16,"motion_armed":false,"robot":{"power":"on","operation":"idle","mode":null,"estop":false,"has_error":false,"src":"topic_cache(09-29 起停更)"}},"fullflow":{"ok":true,"run":"/home/ubuntu/zmax/reports/fullflow7/20261014_215744","note":null,"tasks":7,"tasks_infer_ok":7,"tasks_train_ok":7,"sim_episodes":70,"sim_frames":31056,"gpu_peak_util":100,"gpu_peak_mem_mb":6794,"layers_rc":{"TASK-01-FW":{"L4":0,"L3":0,"L2":0,"L5":0},"TASK-02-HANDLE":{"L4":0,"L3":0,"L2":0,"L5":0},"TASK-03-BI":{"L4":0,"L3":0,"L2":0,"L5":0},"TASK-04-THERMAL":{"L4":0,"L3":0,"L2":0,"L5":0},"TASK-05-ATS":{"L4":0,"L3":0,"L2":0,"L5":0},"TASK-06-TRAY":{"L4":0,"L3":0,"L2":0,"L5":0},"TASK-07-AOI":{"L4":0,"L3":0,"L2":0,"L5":0}},"disk":{"disk_free_min_gb":44.0,"disk_free_first_gb":45.4},"meta_pred_tasks":7,"meta_top1_distinct":["FN-SYS2-21","FN-SYS2-29"],"meta_torque_norm":[51.9615],"meta_input_degenerate":true,"real_readonly":{"cam_arm":{"ok":true,"http":200,"bytes":22598},"cam_local2":{"ok":true,"http":200,"bytes":17348},"tcp_pose":{"ok":true,"age_s":0.1,"x":0.658505,"y":0.008092,"z":0.359935},"aoi_gold_10082":{"rc":0,"tail":["{\"code\":200,\"msg\":\"success\"}","","✅ 已触发拍照+检测投递 (注意: 判决在工控机终端, 本接口不返回结果)"]},"aoi_surface_10083":{"rc":0,"tail":["{\"code\":200,\"msg\":\"success\"}","","✅ 已触发拍照+检测投递 (注意: 判决在工控机终端, 本接口不返回结果)"]}},"report_md":"/home/ubuntu/zmax/reports/fullflow7/20261014_215744/REPORT.md","report_mtime":1791991114.5589373,"gaps":["元任务预测输入退化: 各场景驱动扭矩相同 (‖T‖=51.9615) ⇒ 无区分度, 需并场景特征或训练预测头","INTACT z_pred 仍 NaN (上游动作块空)","LoRA A/B 未证明提升前不进默认档"]}};/*DASHBOARD_SNAPSHOT_END*/
+
+const $ = (s, r=document) => r.querySelector(s);
+const esc = s => String(s==null?'–':s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const n1 = v => (v==null ? '–' : (typeof v==='number' ? (Math.round(v*10)/10) : v));
+
+function toast(m){ const t=$('#toast'); t.textContent=m; t.classList.add('show');
+  clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),1200); }
+
+document.addEventListener('click', e => {
+  const el = e.target.closest('.tap');
+  if(!el) return;
+  const txt = el.getAttribute('data-copy') || el.textContent.trim();
+  const done = () => toast('已复制 ' + txt);
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(done).catch(()=>fallbackCopy(txt,done));
+  } else fallbackCopy(txt, done);
+});
+function fallbackCopy(txt, cb){ const a=document.createElement('textarea'); a.value=txt;
+  a.style.position='fixed'; a.style.opacity=0; document.body.appendChild(a); a.select();
+  try{ document.execCommand('copy'); cb(); }catch(_){ toast('复制失败'); } document.body.removeChild(a); }
+
+function card(k, v, unit, opt={}){
+  const cls = opt.sm ? 'v sm' : 'v';
+  const copy = (opt.copy!=null?opt.copy:v);
+  return `<div class="card ${opt.full?'full':''}"><div class="k"><span>${esc(k)}</span>${opt.tag?`<span class="${opt.tagCls||'dim'}">${esc(opt.tag)}</span>`:''}</div>`
+       + `<div class="${cls} tap" data-copy="${esc(copy)}">${esc(v)}${unit?`<span class="unit">${esc(unit)}</span>`:''}</div></div>`;
+}
+function row(k, v, cls=''){ return `<div class="row"><span class="rk">${esc(k)}</span><span class="rv tap ${cls}" data-copy="${esc(v)}">${esc(v)}</span></div>`; }
+
+function render(d){
+  if(!d){ $('#root').innerHTML = '<div class="warnbox"><div class="wt">⚠️ 无数据</div>未取到 dashboard.json（页面内快照也为空）。先跑 tools/dashboard_source.py。</div>'; return; }
+  const g = d.gpu||{}, ds = d.datasets||{}, m = d.models||{}, sc = d.scene||{}, rm = d.remote||{}, vs = d.version_sync||{};
+  $('#ver').textContent = 'v' + (d.version||'?');
+  $('#ver').classList.add('tap'); $('#ver').setAttribute('data-copy', d.version||'');
+  $('#gen').textContent = d.generated_at||'–'; $('#gen').setAttribute('data-copy', d.generated_at||'');
+  // 快照新鲜度: dashboard.json 由 dashboard_source.py 生成, 这里只做诚实标注 (不改数)
+  const ge = d.generated_at_epoch;
+  if(ge){
+    const ageH = (Date.now()/1000 - ge)/3600;
+    if(ageH >= 1){
+      const gEl = $('#gen');
+      gEl.textContent = (d.generated_at||'–') + ' · 快照 ' +
+        (ageH >= 24 ? Math.floor(ageH/24) + ' 天前' : Math.max(1, Math.round(ageH)) + ' 小时前');
+      gEl.classList.add('bad');
+      gEl.title = '静态快照已过期 (需重跑 dashboard_source.py); 上方「标准服务汇总」是实时探测的';
+    }
+  }
+  const age = rm.frame_age_s; $('#age').textContent = (age==null?'–':age+'s');
+  $('#age').setAttribute('data-copy', age==null?'':String(age));
+
+  let html = '';
+  // 关键指标
+  html += '<div class="grid">';
+  html += g.error ? card('GPU', '采集失败', '', {sm:true, tag:'err', tagCls:'bad'})
+                  : card('GPU 利用率', n1(g.util), '%', {tag:(g.name||'').replace(/.*(RTX.*)/,'$1')});
+  html += card('显存', n1(g.mem_used)+' / '+n1(g.mem_total), 'MiB');
+  html += '</div>';
+
+  // 数据资产
+  html += '<div class="card"><div class="k">数据资产</div>'
+        + row('总量', ds.size_human||'–') + row('条目 / 文件', `${ds.items} / ${ds.file_count}`)
+        + row('评测报告', (ds.reports_files||0) + ' 个') + row('建图含 ply', (ds.map_items_with_ply||0) + ' 条') + '</div>';
+
+  // 模型
+  const active = (m.layers||[]).filter(l=>l.active).map(l=>`<span class="chip">${esc(l.layer)} ● ${l.ready?'就绪':'缺'}</span>`).join('');
+  html += `<div class="card"><div class="k"><span>模型</span><span class="${m.all_ready?'ok':'bad'}">${m.all_ready?'全就绪':'有缺'}</span></div>`
+        + `<div class="v tap" data-copy="${m.active_ready}/${m.count}">${m.active_ready}<span class="unit">/${m.count} 在役就绪</span></div>`
+        + `<div style="margin-top:6px">${active||'–'}</div>`
+        + `<div class="row"><span class="rk">训练中</span><span class="rv">${m.training_active||0} 进程</span></div></div>`;
+
+  // 场景
+  html += `<div class="card"><div class="k"><span>场景</span><span class="${sc.fences_valid===false?'bad':'ok'}">${sc.fences_valid===false?'围栏非法':'围栏合法'}</span></div>`
+        + row('3D 对象', sc.objects) + row('围栏 / 轨迹', `${sc.fences} / ${sc.trajectories}`)
+        + row('隐藏 / 越界', `${sc.deleted} / ${(sc.out_of_range||[]).length}`)
+        + row('轨迹显示', sc.traj_show?'开':'关') + '</div>';
+
+  // 远程端点
+  const okCls = (rm.endpoints_err||0)>0 ? 'bad' : 'ok';
+  html += `<div class="card"><div class="k"><span>远程端点</span><span class="${okCls}">${rm.error?'离线':((rm.endpoints_err||0)>0?(rm.endpoints_err+' 不可达'):'全通')}</span></div>`;
+  if(rm.error){ html += `<div class="v sm dim">${esc(rm.error)}</div>`; }
+  else{
+    html += `<div class="v tap" data-copy="${rm.endpoints_ok}/${rm.endpoints_total}">${rm.endpoints_ok}<span class="unit">/${rm.endpoints_total} OK</span></div>`;
+    html += row('stale', (rm.stale_count||0)+' 个', (rm.stale_count||0)>0?'bad':'ok');
+    html += row('臂相机帧龄', (rm.frame_age_s==null?'–':rm.frame_age_s+'s'));
+    (rm.stale||[]).forEach(s => html += `<div class="chip">⏸ ${esc(s)}</div>`);
+  }
+  html += '</div>';
+
+  // 同源判定
+  const ss = rm.same_source||[];
+  if(ss.length){
+    html += '<div class="card"><div class="k">同源判定</div>';
+    ss.forEach(f=>{
+      const tag = f.consistent===true?'一致 ✓':(f.consistent===false?'不一致 ✗':(f.note?'不可比 ⏸':'样本不足'));
+      const cls = f.consistent===true?'ok':(f.consistent===false?'bad':'dim');
+      html += row(f.fact, tag, cls);
+    });
+    html += '</div>';
+  }
+
+  // 版本同源
+  html += `<div class="card"><div class="k"><span>版本同源</span><span class="${vs.ok?'ok':'bad'}">${vs.ok?'一致':'有偏差'}</span></div>`
+        + row('权威版本', vs.canonical||'–') + row('远端 tag', vs.remote_has_tag?'有 ✓':(vs.remote_has_tag===false?'缺 ✗':'未知'))
+        + row('最新 Release', vs.release_tag||'–') + row('偏差', (vs.deviations||[]).length + ' 项', (vs.deviations||[]).length?'bad':'ok') + '</div>';
+
+  // 异常高亮
+  const anom = [];
+  if(g.error) anom.push('GPU 采集失败: '+g.error);
+  (rm.unreachable||[]).forEach(x=>anom.push('端点不可达: '+x));
+  (rm.stale||[]).forEach(x=>anom.push('端点 stale: '+x));
+  (rm.mismatch||[]).forEach(x=>anom.push('同源不一致: '+x));
+  (vs.deviations||[]).forEach(x=>anom.push('版本偏差: '+x));
+  if(sc.fences_valid===false) anom.push('围栏非法');
+  if((sc.out_of_range||[]).length) anom.push('场景坐标越界 '+sc.out_of_range.length+' 处');
+  if(m.training_active) anom.push('训练进行中 '+m.training_active+' 进程');
+  if(anom.length){
+    html += `<div class="warnbox"><div class="wt">⚠️ 异常 ${anom.length} 项</div><ul>`
+          + anom.slice(0,14).map(a=>`<li>${esc(a)}</li>`).join('') + '</ul></div>';
+  } else {
+    html += '<div class="card full"><div class="v sm ok" style="font-size:14px">✅ 无异常项</div></div>';
+  }
+  $('#root').innerHTML = html;
+}
+
+// ① 先用页内快照(离线可开) ② 再尝试拉同目录 dashboard.json 刷新
+render(window.__DASHBOARD__);
+(async () => {
+  try{
+    const r = await fetch('./dashboard.json?_=' + Date.now(), {cache:'no-store'});
+    if(r.ok){ const d = await r.json(); render(d); }
+  }catch(_){ /* 离线/跨源: 保留快照 */ }
+})();
+
+/* ═══════════ 标准服务汇总 (GET /api/services, 由 dashboard_server 实探端口) ═══════════
+   与上面的静态快照完全独立: 快照可以是旧的, 这里的「在跑/未起」永远是刚刚探的。 */
+const SVC_ST = {
+  up:      ['●', 'ok',   '在跑'],
+  down:    ['○', 'bad',  '未起'],
+  wedged:  ['◐', 'bad',  '挂起'],
+  failed:  ['✕', 'bad',  '失败'],
+  unreach: ['○', 'dim',  '不可达']
+};
+function svcState(it){
+  if(it.state === 'up') return SVC_ST.up;
+  if(it.state === 'wedged') return SVC_ST.wedged;
+  if(it.state === 'failed') return SVC_ST.failed;
+  if(it.kind === 'unit') return SVC_ST.down;      // 对端 systemd 单元 inactive = 未起
+  return it.is_local ? SVC_ST.down : SVC_ST.unreach;
+}
+function renderServices(s){
+  const box = $('#svc-body'), ts = $('#svc-ts');
+  const sm = s.summary || {}, items = s.items || [];
+  const oldWrap = box.querySelector('.wrap');
+  const keepTop = oldWrap ? oldWrap.scrollTop : 0;     // 15s 自动刷新别把用户滚到的位置弹回去
+  box.className = '';
+  let sum = '<div class="sum">'
+    + `<span>端口 <b>${sm.ports_total != null ? sm.ports_total : (sm.total || 0)}</b> 项</span>`
+    + `<span><b class="ok">●</b> 在跑 <b>${sm.listening || 0}</b></span>`
+    + `<span><b class="bad">○</b> 未起 <b>${sm.down_local || 0}</b></span>`;
+  if(sm.wedged) sum += `<span><b class="bad">◐</b> 挂起 <b>${sm.wedged}</b></span>`;
+  if(sm.units_total) sum += `<span><b class="${sm.units_failed ? 'bad' : 'ok'}">◇</b> 550C 单元 <b>${sm.units_up || 0}</b>/<b>${sm.units_total}</b></span>`;
+  if(sm.remote_unreachable) sum += `<span><b class="dim">○</b> 对端不可达 <b>${sm.remote_unreachable}</b></span>`;
+  sum += '</div>';
+
+  const rows = items.map(it => {
+    const st = svcState(it);
+    const narrow = window.matchMedia('(max-width:520px)').matches;
+    const meta = [];
+    if(it.version && it.version !== s.local_version) meta.push(esc(it.version));   // 同部署版本不重复刷
+    if(it.uptime_hint) meta.push(esc(it.uptime_hint));
+    const nt = [esc(it.note || '')].concat(meta).filter(Boolean).join(' · ');
+    return `<tr class="${it.is_local ? '' : 'rem'}${it.discovered ? ' disc' : ''}">`
+      + `<td class="nm">${esc(it.name)}${it.depends_on_hardware ? '<span class="hw" title="依赖硬件">HW</span>' : ''}`
+      + `${narrow && nt ? `<div class="nt2">${nt}</div>` : ''}</td>`
+      + `<td class="num tap" data-copy="${it.port == null ? '' : it.port}">${it.port == null ? '–' : it.port}</td>`
+      + `<td>${esc(it.machine_short || '本机')}</td>`
+      + `<td class="${st[1]}">${st[0]} ${st[2]}</td>`
+      + `<td class="num c-http">${it.http_code || '–'}</td>`
+      + `<td class="scr c-scr"><div class="clip">${esc(it.script || '–')}</div></td>`
+      + `<td class="nt c-nt">${nt || '–'}</td></tr>`;
+  }).join('');
+
+  box.innerHTML = sum
+    + '<div class="wrap"><table><thead><tr>'
+    + '<th>名称</th><th>端口</th><th>机器</th><th>状态</th><th class="c-http">HTTP</th>'
+    + '<th class="c-scr">脚本</th><th class="c-nt">说明</th>'
+    + `</tr></thead><tbody>${rows}</tbody></table></div>`
+    + `<div class="foot"><span>探测 ${s.elapsed_ms || 0}ms · 本机部署 ${esc(s.local_version || '–')}</span>`
+    + '<span>每 15s 自动刷新</span></div>';
+  const newWrap = box.querySelector('.wrap');
+  if(newWrap && keepTop) newWrap.scrollTop = keepTop;
+  ts.textContent = '刷新 ' + (s.generated_at || '');
+}
+async function loadServices(){
+  const box = $('#svc-body'), ts = $('#svc-ts');
+  try{
+    const r = await fetch('/api/services?_=' + Date.now(), {cache: 'no-store'});
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    renderServices(await r.json());
+    if(ts) ts.classList.remove('dim');
+  }catch(e){
+    if(box){
+      box.className = 'err';
+      box.innerHTML = '○ 取不到 /api/services —— 离线单文件打开时没有服务端; 请经 '
+        + `<b>http://127.0.0.1:8799/</b> 访问 (${esc(e.message || e)})`;
+    }
+    if(ts) ts.textContent = '离线';
+  }
+}
+loadServices();
+setInterval(loadServices, 15000);
+</script>
+</body>
+</html>
