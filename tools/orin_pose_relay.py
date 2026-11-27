@@ -40,23 +40,46 @@ def rpy_to_quat(rx, ry, rz):
 
 
 def fetch():
-    with urllib.request.urlopen(BRIDGE + "/status", timeout=3) as r:
-        d = json.loads(r.read().decode())
-    s = d.get("status") or {}
-    e = s.get("endInRef") or []
-    if len(e) < 6:
-        raise ValueError("endInRef 不足 6 位: %s" % (e,))
-    qx, qy, qz, qw = rpy_to_quat(float(e[3]), float(e[4]), float(e[5]))
-    return {
-        "ts": time.time(),
-        "t": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-        "x": float(e[0]), "y": float(e[1]), "z": float(e[2]),
-        "rx": float(e[3]), "ry": float(e[4]), "rz": float(e[5]),
-        "qx": qx, "qy": qy, "qz": qz, "qw": qw,
-        "frame": "base_link",
-        "src": "orin_sdk_bridge/endInRef (relay, no DDS)",
-        "joint": [float(v) for v in (s.get("jointPos") or [])][:12],
-    }
+    """优先 Orin SDK 桥 /status(endInRef)；不通则退到 550C gs_ros_bridge 的 /pose。
+
+    2026-11-27: 本机无线段 23.x 不通, 位姿改由 550C 的 :8811/pose 经 SSH 隧道提供。
+    """
+    try:
+        with urllib.request.urlopen(BRIDGE + "/status", timeout=3) as r:
+            d = json.loads(r.read().decode())
+        s = d.get("status") or {}
+        e = s.get("endInRef") or []
+        if len(e) < 6:
+            raise ValueError("endInRef 不足 6 位: %s" % (e,))
+        qx, qy, qz, qw = rpy_to_quat(float(e[3]), float(e[4]), float(e[5]))
+        return {
+            "ts": time.time(),
+            "t": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+            "x": float(e[0]), "y": float(e[1]), "z": float(e[2]),
+            "rx": float(e[3]), "ry": float(e[4]), "rz": float(e[5]),
+            "qx": qx, "qy": qy, "qz": qz, "qw": qw,
+            "frame": "base_link",
+            "src": "orin_sdk_bridge/endInRef (relay, no DDS)",
+            "joint": [float(v) for v in (s.get("jointPos") or [])][:12],
+        }
+    except Exception:
+        with urllib.request.urlopen(BRIDGE + "/pose", timeout=3) as r:
+            p = json.loads(r.read().decode())
+        if not all(k in p for k in ("x", "y", "z")):
+            raise ValueError("/pose 无位姿字段: %s" % (list(p)[:6],))
+        qx, qy, qz, qw = p.get("qx"), p.get("qy"), p.get("qz"), p.get("qw")
+        if qx is None:
+            qx, qy, qz, qw = rpy_to_quat(float(p.get("rx", 0)), float(p.get("ry", 0)), float(p.get("rz", 0)))
+        return {
+            "ts": time.time(),
+            "t": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+            "x": float(p["x"]), "y": float(p["y"]), "z": float(p["z"]),
+            "rx": float(p.get("rx", 0)), "ry": float(p.get("ry", 0)), "rz": float(p.get("rz", 0)),
+            "qx": float(qx), "qy": float(qy), "qz": float(qz), "qw": float(qw),
+            "frame": p.get("frame", "base_link"),
+            "src": "550c_gs_ros_bridge/pose (ssh tunnel :8811)",
+            "joint": [float(v) for v in (p.get("joint") or p.get("jointPos") or [])][:12],
+        }
 
 
 def write_atomic(obj):
