@@ -875,7 +875,7 @@
    "color": "#58a6ff",
    "params": {
     "src_switch": true,
-    "src_state": "AR场景",
+    "src_state": "插拔场景",
     "source": "src/lerobot/middleware/nodes/impl/data.py",
     "task": "peg-insert-side-v3",
     "frames": 4800,

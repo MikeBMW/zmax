@@ -38,7 +38,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller PyQt5 numpy pillow grpcio protobuf python-pptx pyqtgraph PyOpenGL cyclonedds
+          pip install pyinstaller PyQt5 numpy pillow grpcio protobuf python-pptx pyqtgraph PyOpenGL cyclonedds opencv-python
           # 🐛 09-10: Windows 真实化运行同样需要 metaworld (老倪: Windows 版要测)
           pip install mujoco metaworld glfw gymnasium imageio
           python -c "import metaworld, mujoco; print('metaworld/mujoco OK:', hasattr(metaworld, 'ML1'), mujoco.__version__)"
@@ -57,10 +57,19 @@ jobs:
         shell: bash
         run: |
           VER="${{ steps.release_tag.outputs.tag }}"; VER="${VER#v}"
+          # 🔴 2026-11-09: workflow_dispatch 不传 tag 时默认 'dev-snapshot' ⇒ version_info.txt 里变成
+          #   filevers=(dev-snapshot,0,0,0) ⇒ PyInstaller exec 它直接 NameError: name 'dev' is not defined
+          #   ⇒ Windows .exe 构建整段失败。这里兜底: 不是 x.y.z 就回退 VERSION.md 里的真版本号。
+          case "$VER" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) VER=$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' VERSION.md | head -1) ;;
+          esac
+          echo "exe version = $VER"
           python -c "
           import sys
           ver = '$VER'.split('.')
           ver = (ver + ['0','0','0'])[:4]
+          ver = [(v if v.isdigit() else '0') for v in ver]
           tpl = '''VSVersionInfo(
             ffi=FixedFileInfo(filevers=(%s,%s,%s,%s), prodvers=(%s,%s,%s,%s), mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)),
             kids=[StringFileInfo([StringTable('040904B0', [
@@ -128,16 +137,92 @@ jobs:
           # 打包必须有一个真实文件, 否则 --add-data src/lerobot/engineering 里没有 state_space_obs.json
           # (v5.35.0 首轮就是这么挂的: 资产核验 "画布真源: 0" → exit 1)。
           mkdir -p src/lerobot/engineering/flows
-          cp -f defaults/canvas/state_space_obs.json src/lerobot/engineering/flows/state_space_obs.json
+          # 🔴 2026-11-08 小静静实测: 原来无条件拷 defaults/canvas/ 的**空骨架**(0 节点) ⇒ Windows 包装完打开总工程
+          #   也只看到空画布。仓库里 data/database/zmax/sources/canvas/ 才是真画布(94 节点) ⇒ 有就拷真的, 没有才用骨架。
+          if [ -f data/database/zmax/sources/canvas/state_space_obs.json ]; then
+            cp -f data/database/zmax/sources/canvas/state_space_obs.json src/lerobot/engineering/flows/state_space_obs.json
+            echo "canvas: 用仓库真画布"
+          else
+            cp -f defaults/canvas/state_space_obs.json src/lerobot/engineering/flows/state_space_obs.json
+            echo "canvas: 用空骨架(兜底)"
+          fi
+          # 🔗 flows/state_space_obs.json 在仓库里是 symlink(120000) ⇒ Windows 检出成占位文本、macOS 检出成真链接,
+          #    两种平台都会让 pack_guard/断言判"仍是软链"。这里直接用刚物化的真画布覆盖, 仓库侧不再存 symlink。
+          mkdir -p flows
+          # ⚠️ 必须先 rm: macOS 检出的是真 symlink, cp -f 会顺着链接写到同一 inode ⇒ 链接还在, 断言仍判软链
+          rm -f flows/state_space_obs.json
+          cp -f src/lerobot/engineering/flows/state_space_obs.json flows/state_space_obs.json
+          echo "flows/state_space_obs.json: 已覆盖为真画布(不再依赖 symlink)"
           # 🏭 产品三档 (550A/550B/550C): 实例真源不在仓库里 ⇒ 出厂骨架必须随包, 否则全新安装选不出产品档
           python -c "import json;d=json.load(open('defaults/config/platform/zmax_product.json',encoding='utf-8'));print('factory products:',list(d.get('products',{}).keys()),'active:',d.get('active_product'));assert set(('550A','550B','550C'))<=set(d.get('products',{}))"
           python -c "import json;d=json.load(open('src/lerobot/engineering/flows/state_space_obs.json',encoding='utf-8'));print('canvas nodes (factory skeleton):',len(d.get('nodes',[])))"
+
+      - name: "Stage tools (只带运行必需的脚本, 不带 build/dist/缓存)"
+        shell: powershell
+        run: |
+          $dst = Join-Path $env:GITHUB_WORKSPACE 'pkgtools'
+          Remove-Item $dst -Recurse -Force -EA SilentlyContinue
+          New-Item -ItemType Directory -Force $dst | Out-Null
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE 'tools\*.py') $dst -Force
+          foreach ($sub in @('gen','web')) {
+            $src = Join-Path $env:GITHUB_WORKSPACE ('tools\' + $sub)
+            if (Test-Path $src) { Copy-Item $src (Join-Path $dst $sub) -Recurse -Force }
+          }
+          "staged_py=" + @(Get-ChildItem $dst -Filter '*.py').Count + " size_mb=" + [math]::Round(((Get-ChildItem $dst -Recurse -File | Measure-Object Length -Sum).Sum/1MB),1)
+
+      - name: "Materialize gitignored data dirs (moveit_xms5 不在 checkout 里, 但 --add-data 要求它存在)"
+        shell: bash
+        run: |
+          # 🔴 2026-11-09 CI 实测: pyinstaller 两个构建步骤都带
+          #   --add-data "...\data\database\zmax\sources\config\moveit_xms5;..." 而 data/ 在 .gitignore
+          #   ⇒ checkout 里没有该目录 ⇒ "ERROR: Unable to find ... when adding binary and data files" ⇒ 整段失败
+          #   (v5.50.770 之后连续两轮 Windows 构建都死在这句, mac 侧照常 success ⇒ Release 只有 mac 资产)。
+          #   厂家 URDF/meshes 不进库 (体积+授权) ⇒ 只造目录占位; 缺网格时 AR 机器人视图按降级处理, 不假装有。
+          D="data/database/zmax/sources/config/moveit_xms5"
+          mkdir -p "$D/urdf"
+          printf '{"note":"vendor URDF/meshes not in repo; placeholder so PyInstaller --add-data resolves"}\n' > "$D/PLACEHOLDER.json"
+          test -d "$D" && echo "moveit_xms5 placeholder ok: $(ls "$D" | tr '\n' ' ')"
+
+      - name: "🔗 软链/画布闸 (pack_guard) — 禁止把 Linux 软链打进包"
+        shell: bash
+        run: |
+          # 2026-11-10 事故: 仓库里 flows/state_space_obs.json 与 config/data 都是软链,
+          # 打包后 Windows 侧解析不了(断链或自指) ⇒ GUI「打开总工程」加载失败。
+          # 这里在 PyInstaller 之前把要进包的目录就地实体化, 并断言画布 JSON 真有 nodes。
+          for d in flows src/lerobot defaults data/database/zmax/sources tools; do
+            [ -e "$d" ] || continue
+            python tools/pack_guard.py "$d" --fix || echo "::warning::pack_guard 实体化有失败项: $d"
+          done
+          python - <<'PY'
+          import json, os, sys
+          try: sys.stdout.reconfigure(encoding="utf-8", errors="replace")   # Windows runner 是 cp1252, 后面 print 带中文就崩
+          except Exception: pass
+          cand = ["flows/state_space_obs.json",
+                  "src/lerobot/engineering/flows/state_space_obs.json"]
+          ok = 0
+          for p in cand:
+              if not os.path.isfile(p):
+                  print("(不在库:", p, ")")
+                  continue
+              if os.path.islink(p):
+                  print("::error::", p, "仍是软链")
+                  sys.exit(1)
+              d = json.load(open(p, encoding="utf-8"))
+              n = len(d.get("nodes") or [])
+              print(p, "nodes", n)
+              assert n > 0, p + " 是空画布"
+              ok += 1
+          if ok == 0:
+              print("::error:: 找不到任何画布真源 (flows/state_space_obs.json)")
+              sys.exit(1)
+          print("画布真源 OK:", ok, "处")
+          PY
 
       - name: Build .exe with PyInstaller
         run: |
           cd tools\gui
           python -c "from PIL import Image; Image.open('logo.png').save('logo.ico')"
-          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --runtime-hook pyi_rth_mujoco_dlls.py --add-data "logo.png;." --add-data "$env:GITHUB_WORKSPACE\tools\gen_l4_demo_video.py;." --add-data "docs_sync.py;." --add-data "$env:GITHUB_WORKSPACE\tools\proj_state.py;." --add-data "gravity_table.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\engineering;src\lerobot\engineering" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\calibration;src\lerobot\calibration" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\manifold;src\lerobot\manifold" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\verification;src\lerobot\verification" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\memory;src\lerobot\memory" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --add-data "$env:GITHUB_WORKSPACE\models\l4_mani_predictor_v5.pt;models" --add-data "$env:GITHUB_WORKSPACE\models\l4_yaw_head_grasp_dz_v2.pt;models" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco --collect-all pyqtgraph --collect-all OpenGL --collect-all glfw --collect-all gymnasium --collect-all imageio --collect-all cyclonedds --add-data "$env:GITHUB_WORKSPACE\dds;dds" --add-data "$env:GITHUB_WORKSPACE\defaults;defaults" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\engine;src\lerobot\engine" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\ops;src\lerobot\ops" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\serving;src\lerobot\serving" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\features;src\lerobot\features" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\skills;src\lerobot\skills" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\perception;src\lerobot\perception" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\middleware;src\lerobot\middleware" --add-data "$env:GITHUB_WORKSPACE\tools\gen;tools\gen" --add-data "dds_hw.py;." studio.py
+          pyinstaller --onefile --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --runtime-hook pyi_rth_mujoco_dlls.py --add-data "logo.png;." --add-data "$env:GITHUB_WORKSPACE\tools\gui\local_services.py;." --add-data "$env:GITHUB_WORKSPACE\pkgtools;tools" --add-data "$env:GITHUB_WORKSPACE\data\scene;data\scene" --add-data "$env:GITHUB_WORKSPACE\data\database\zmax\sources\config\moveit_xms5;data\database\zmax\sources\config\moveit_xms5" --add-data "$env:GITHUB_WORKSPACE\tools\gen_l4_demo_video.py;." --add-data "docs_sync.py;." --add-data "$env:GITHUB_WORKSPACE\tools\proj_state.py;." --add-data "gravity_table.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\engineering;src\lerobot\engineering" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\aoi;src\lerobot\policies\aoi" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\calibration;src\lerobot\calibration" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\manifold;src\lerobot\manifold" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\verification;src\lerobot\verification" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\memory;src\lerobot\memory" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --add-data "$env:GITHUB_WORKSPACE\models\l4_mani_predictor_v5.pt;models" --add-data "$env:GITHUB_WORKSPACE\models\l4_yaw_head_grasp_dz_v2.pt;models" --hidden-import metaworld --hidden-import mujoco --hidden-import cv2 --collect-all metaworld --collect-all mujoco --collect-all pyqtgraph --collect-all OpenGL --collect-all glfw --collect-all gymnasium --collect-all imageio --collect-all cyclonedds --add-data "$env:GITHUB_WORKSPACE\dds;dds" --add-data "$env:GITHUB_WORKSPACE\defaults;defaults" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\engine;src\lerobot\engine" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\ops;src\lerobot\ops" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\serving;src\lerobot\serving" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\features;src\lerobot\features" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\skills;src\lerobot\skills" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\perception;src\lerobot\perception" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\middleware;src\lerobot\middleware" --add-data "dds_hw.py;." studio.py
 
       - name: "Verify engine assets bundled (metaworld XML + L4 场景 XML 必须在 exe 内)"
         shell: bash
@@ -149,7 +234,11 @@ jobs:
           NG=$(grep -c "gen_l4_demo_video.py" listing.txt || true)
           # 🔴 2026-10-08: 工程包 (节点逻辑/画布真源) 必须在包里 —— 缺了表现为 exe 双击即崩
           #   (studio→simulink_module→node_logic "No module named 'lerobot'"), 而旧核验只查引擎资产 ⇒ 漏放行。
-          NE=$(grep -c "lerobot.engineering.nodes.library.py" listing.txt || true)
+          # 🔴 2026-11-13: 9e6d4305 重构把 engineering/nodes/ 删了(节点归 middleware), 判据还在查旧路径 ⇒ 永远 0
+          #    ⇒ 打包必挂在资产核验(与真实打包内容无关的假失败)。改为 middleware 目录在包里 + 兼容旧路径。
+          NE_OLD=$(grep -c "lerobot.engineering.nodes.library.py" listing.txt || true)
+          NE_MW=$(grep -c "middleware" listing.txt || true)
+          NE=$(( NE_OLD + NE_MW ))
           NJ=$(grep -c "state_space_obs.json" listing.txt || true)
           NW=$(grep -c "l4_mani_predictor_v5.pt" listing.txt || true)
           NH=$(grep -c "l4_yaw_head_grasp_dz_v2.pt" listing.txt || true)
@@ -208,7 +297,7 @@ jobs:
       - name: "Build 免解包版 (onedir, 不往 %TEMP% 解包)"
         run: |
           cd tools\gui
-          pyinstaller --onedir --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --runtime-hook pyi_rth_mujoco_dlls.py --distpath dist_nounpack --workpath build_nounpack --add-data "logo.png;." --add-data "$env:GITHUB_WORKSPACE\tools\gen_l4_demo_video.py;." --add-data "docs_sync.py;." --add-data "$env:GITHUB_WORKSPACE\tools\proj_state.py;." --add-data "gravity_table.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\engineering;src\lerobot\engineering" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\calibration;src\lerobot\calibration" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\manifold;src\lerobot\manifold" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\verification;src\lerobot\verification" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\memory;src\lerobot\memory" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --add-data "$env:GITHUB_WORKSPACE\models\l4_mani_predictor_v5.pt;models" --add-data "$env:GITHUB_WORKSPACE\models\l4_yaw_head_grasp_dz_v2.pt;models" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco --collect-all pyqtgraph --collect-all OpenGL --collect-all glfw --collect-all gymnasium --collect-all imageio --collect-all cyclonedds --add-data "$env:GITHUB_WORKSPACE\dds;dds" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\engine;src\lerobot\engine" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\ops;src\lerobot\ops" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\serving;src\lerobot\serving" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\features;src\lerobot\features" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\skills;src\lerobot\skills" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\perception;src\lerobot\perception" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\middleware;src\lerobot\middleware" --add-data "$env:GITHUB_WORKSPACE\tools\gen;tools\gen" --add-data "dds_hw.py;." studio.py
+          pyinstaller --onedir --windowed --icon logo.ico --name "Z-MAX_Console" --version-file version_info.txt --runtime-hook pyi_rth_mujoco_dlls.py --distpath dist_nounpack --workpath build_nounpack --add-data "logo.png;." --add-data "$env:GITHUB_WORKSPACE\tools\gui\local_services.py;." --add-data "$env:GITHUB_WORKSPACE\pkgtools;tools" --add-data "$env:GITHUB_WORKSPACE\defaults;defaults" --add-data "$env:GITHUB_WORKSPACE\data\scene;data\scene" --add-data "$env:GITHUB_WORKSPACE\data\database\zmax\sources\config\moveit_xms5;data\database\zmax\sources\config\moveit_xms5" --add-data "$env:GITHUB_WORKSPACE\tools\gen_l4_demo_video.py;." --add-data "docs_sync.py;." --add-data "$env:GITHUB_WORKSPACE\tools\proj_state.py;." --add-data "gravity_table.py;." --add-data "ppt_engine.py;." --add-data "update_checker.py;." --add-data "$env:GITHUB_WORKSPACE\flows;flows" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\engineering;src\lerobot\engineering" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\left_right;src\lerobot\policies\left_right" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\yolo_3d;src\lerobot\policies\yolo_3d" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\policies\aoi;src\lerobot\policies\aoi" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\calibration;src\lerobot\calibration" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\manifold;src\lerobot\manifold" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\verification;src\lerobot\verification" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\memory;src\lerobot\memory" --add-data "$env:GITHUB_WORKSPACE\reports\mlp_insert_success_final.mp4;reports" --add-data "$env:GITHUB_WORKSPACE\reports\_mlp_cache_mlp_insert_success_final;reports\_mlp_cache_mlp_insert_success_final" --add-data "$env:GITHUB_WORKSPACE\models\l4_mani_predictor_v5.pt;models" --add-data "$env:GITHUB_WORKSPACE\models\l4_yaw_head_grasp_dz_v2.pt;models" --hidden-import metaworld --hidden-import mujoco --hidden-import cv2 --collect-all metaworld --collect-all mujoco --collect-all pyqtgraph --collect-all OpenGL --collect-all glfw --collect-all gymnasium --collect-all imageio --collect-all cyclonedds --add-data "$env:GITHUB_WORKSPACE\dds;dds" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\engine;src\lerobot\engine" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\ops;src\lerobot\ops" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\serving;src\lerobot\serving" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\features;src\lerobot\features" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\skills;src\lerobot\skills" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\perception;src\lerobot\perception" --add-data "$env:GITHUB_WORKSPACE\src\lerobot\middleware;src\lerobot\middleware" --add-data "dds_hw.py;." studio.py
           if ($LASTEXITCODE -ne 0) { Write-Host "::error::onedir 构建失败"; exit 1 }
           Get-ChildItem dist_nounpack\Z-MAX_Console | Select-Object -First 8 Name
 
@@ -291,9 +380,7 @@ jobs:
             ## Z-MAX Console **北斗七星版** · ${{ steps.release_tag.outputs.tag }}
 
             > 版本号 ${{ steps.release_tag.outputs.tag }} · 代号/署名「北斗七星版」· 版本号由项目方指定 (不自主升级)。
-            > 本版 (v5.50.737): 🪐 球心引力架构视图 (画布右侧「主参数 M」的太阳系) 按看图四轮收口
-            > (只留 6 球 + 8 颗原子技能卫星 · 连线只画主体↔主体且全虚线 · 颜色=信号 · 有信号才画) +
-            > **侧栏视图选择落盘** (关机再开回到关机前那一个视图, 不再丢太阳系) + 元任务链执行器 + DiT 假接入留痕。
+            > 本版摘要由 `release-notes` job 从 VERSION.md 表首行回填 (旧版把摘要写死成 v5.50.737, 之后每版都挂着 737 的内容)。
 
             桌面版下载 (双平台):
             - **Windows (单文件)**: `Z-MAX_Console.exe` — 免安装, 双击即用
@@ -356,7 +443,7 @@ jobs:
       - name: Install dependencies (与正式构建同口径)
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller PyQt5 numpy pillow grpcio protobuf python-pptx pyqtgraph PyOpenGL cyclonedds
+          pip install pyinstaller PyQt5 numpy pillow grpcio protobuf python-pptx pyqtgraph PyOpenGL cyclonedds opencv-python
           pip install mujoco metaworld glfw gymnasium imageio
       - name: "Generate L4 demo scene XML (与正式构建同口径: 自检要练的就是这个场景)"
         shell: bash
@@ -366,7 +453,7 @@ jobs:
       - name: "Build .exe 基线 (无 --runtime-hook; collect 参数与正式构建同口径, 只少一个钩子)"
         run: |
           cd tools\gui
-          pyinstaller --onefile --windowed --name "Z-MAX_Console_ab" --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco --collect-all glfw --collect-all gymnasium --collect-all imageio --collect-all pyqtgraph --collect-all OpenGL --add-data "$env:GITHUB_WORKSPACE\src\lerobot\engineering;src\lerobot\engineering" studio.py
+          pyinstaller --onefile --windowed --name "Z-MAX_Console_ab" --hidden-import metaworld --hidden-import mujoco --hidden-import cv2 --collect-all metaworld --collect-all mujoco --collect-all glfw --collect-all gymnasium --collect-all imageio --collect-all pyqtgraph --collect-all OpenGL --add-data "$env:GITHUB_WORKSPACE\src\lerobot\engineering;src\lerobot\engineering" studio.py
       - name: "冻结核验 (基线, 期望失败 = 复现 v5.6.4 崩)"
         shell: bash
         run: |
@@ -487,8 +574,52 @@ jobs:
         run: |
           # 见 Windows job 同名步骤: 实例画布不随仓库走, 打包必须有真实文件, 否则 .app 里没有画布真源
           mkdir -p src/lerobot/engineering/flows
-          cp -f defaults/canvas/state_space_obs.json src/lerobot/engineering/flows/state_space_obs.json
+          # 🔴 2026-11-08 小静静实测: 原来无条件拷 defaults/canvas/ 的**空骨架**(0 节点) ⇒ Windows 包装完打开总工程
+          #   也只看到空画布。仓库里 data/database/zmax/sources/canvas/ 才是真画布(94 节点) ⇒ 有就拷真的, 没有才用骨架。
+          if [ -f data/database/zmax/sources/canvas/state_space_obs.json ]; then
+            cp -f data/database/zmax/sources/canvas/state_space_obs.json src/lerobot/engineering/flows/state_space_obs.json
+            echo "canvas: 用仓库真画布"
+          else
+            cp -f defaults/canvas/state_space_obs.json src/lerobot/engineering/flows/state_space_obs.json
+            echo "canvas: 用空骨架(兜底)"
+          fi
+          # 🔗 同 Windows: 仓库里的 flows/state_space_obs.json 是 symlink, CI 检出后断言判"仍是软链" ⇒ 直接覆盖
+          mkdir -p flows
+          # ⚠️ 必须先 rm: macOS 检出的是真 symlink, cp -f 会顺着链接写到同一 inode ⇒ 链接还在, 断言仍判软链
+          rm -f flows/state_space_obs.json
+          cp -f src/lerobot/engineering/flows/state_space_obs.json flows/state_space_obs.json
+          echo "flows/state_space_obs.json: 已覆盖为真画布(不再依赖 symlink)"
           python -c "import json;d=json.load(open('src/lerobot/engineering/flows/state_space_obs.json',encoding='utf-8'));print('canvas nodes (factory skeleton):',len(d.get('nodes',[])))"
+
+      - name: "🔗 软链/画布闸 (pack_guard) — 禁止把 Linux 软链打进包"
+        shell: bash
+        run: |
+          for d in flows src/lerobot defaults data/database/zmax/sources tools; do
+            [ -e "$d" ] || continue
+            python3 tools/pack_guard.py "$d" --fix || echo "::warning::pack_guard 实体化有失败项: $d"
+          done
+          python3 - <<'PY'
+          import json, os, sys
+          try: sys.stdout.reconfigure(encoding="utf-8", errors="replace")   # Windows runner 是 cp1252, 后面 print 带中文就崩
+          except Exception: pass
+          cand = ["flows/state_space_obs.json",
+                  "src/lerobot/engineering/flows/state_space_obs.json"]
+          ok = 0
+          for p in cand:
+              if not os.path.isfile(p):
+                  continue
+              if os.path.islink(p):
+                  print("::error::", p, "仍是软链")
+                  sys.exit(1)
+              n = len((json.load(open(p, encoding="utf-8")).get("nodes") or []))
+              print(p, "nodes", n)
+              assert n > 0, p + " 是空画布"
+              ok += 1
+          if ok == 0:
+              print("::error:: 找不到画布真源")
+              sys.exit(1)
+          print("画布真源 OK:", ok, "处")
+          PY
 
       - name: Build .app with PyInstaller
         run: |
@@ -501,7 +632,7 @@ jobs:
             --add-data "$GITHUB_WORKSPACE/flows:flows" \
             --add-data "$GITHUB_WORKSPACE/src/lerobot/engineering:src/lerobot/engineering" \
             --add-data "$GITHUB_WORKSPACE/src/lerobot/policies/left_right:src/lerobot/policies/left_right" \
-            --add-data "$GITHUB_WORKSPACE/src/lerobot/policies/yolo_3d:src/lerobot/policies/yolo_3d" \
+            --add-data "$GITHUB_WORKSPACE/src/lerobot/policies/yolo_3d:src/lerobot/policies/yolo_3d" --add-data "$GITHUB_WORKSPACE/src/lerobot/policies/aoi:src/lerobot/policies/aoi" \
             --add-data "$GITHUB_WORKSPACE/src/lerobot/calibration:src/lerobot/calibration" \
             --add-data "$GITHUB_WORKSPACE/src/lerobot/manifold:src/lerobot/manifold" \
             --add-data "$GITHUB_WORKSPACE/src/lerobot/verification:src/lerobot/verification" \
@@ -510,7 +641,7 @@ jobs:
             --add-data "$GITHUB_WORKSPACE/reports/_mlp_cache_mlp_insert_success_final:reports/_mlp_cache_mlp_insert_success_final" \
             --add-data "$GITHUB_WORKSPACE/models/l4_mani_predictor_v5.pt:models" \
             --add-data "$GITHUB_WORKSPACE/models/l4_yaw_head_grasp_dz_v2.pt:models" \
-            --hidden-import metaworld --hidden-import mujoco --collect-all metaworld --collect-all mujoco \
+            --hidden-import metaworld --hidden-import mujoco --hidden-import cv2 --collect-all metaworld --collect-all mujoco \
             --collect-all pyqtgraph --collect-all OpenGL \
             --add-data "$MW_ASSETS:metaworld/assets" \
             --collect-all glfw --collect-all gymnasium --collect-all imageio \
@@ -535,7 +666,9 @@ jobs:
           N4=$(find tools/gui/dist/Z-MAX_Console.app -name "sawyer_peg_insertion_side_l4.xml" | wc -l)
           NG=$(find tools/gui/dist/Z-MAX_Console.app -name "gen_l4_demo_video.py" | wc -l)
           # 🔴 2026-10-08: 工程包 (节点逻辑 library.py + 画布真源) 必须在 .app 内
-          NE=$(find tools/gui/dist/Z-MAX_Console.app -path "*lerobot/engineering/nodes/library.py" | wc -l)
+          # 🔴 2026-11-13: 旧判据查已删除的 engineering/nodes/library.py(9e6d4305 重构: 节点归 middleware)
+          #    ⇒ .app 内永远 0 ⇒ mac 打包必挂在资产核验。改为 middleware 目录在包里 + 兼容旧路径。
+          NE=$(find tools/gui/dist/Z-MAX_Console.app \( -path "*lerobot/middleware/*" -o -path "*lerobot/engineering/nodes/library.py" \) | wc -l)
           NJ=$(find tools/gui/dist/Z-MAX_Console.app -name "state_space_obs.json" | wc -l)
           NW=$(find tools/gui/dist/Z-MAX_Console.app -name "l4_mani_predictor_v5.pt" | wc -l)
           NH=$(find tools/gui/dist/Z-MAX_Console.app -name "l4_yaw_head_grasp_dz_v2.pt" | wc -l)
@@ -598,9 +731,7 @@ jobs:
             ## Z-MAX Console **北斗七星版** · ${{ steps.release_tag.outputs.tag }}
 
             > 版本号 ${{ steps.release_tag.outputs.tag }} · 代号/署名「北斗七星版」· 版本号由项目方指定 (不自主升级)。
-            > 本版 (v5.50.737): 🪐 球心引力架构视图 (画布右侧「主参数 M」的太阳系) 按看图四轮收口
-            > (只留 6 球 + 8 颗原子技能卫星 · 连线只画主体↔主体且全虚线 · 颜色=信号 · 有信号才画) +
-            > **侧栏视图选择落盘** (关机再开回到关机前那一个视图, 不再丢太阳系) + 元任务链执行器 + DiT 假接入留痕。
+            > 本版摘要由 `release-notes` job 从 VERSION.md 表首行回填 (旧版把摘要写死成 v5.50.737, 之后每版都挂着 737 的内容)。
 
             桌面版下载 (双平台):
             - **macOS**: `Z-MAX_Console-macOS.zip` — 解压得到 `Z-MAX_Console.app` (Apple Silicon arm64;
@@ -609,3 +740,24 @@ jobs:
             - **Windows 免解包版**: `Z-MAX_Console-win64-nounpack.zip` — 机器内存紧 / TEMP 在 RAM 盘 / 系统盘满时用这个
               (单文件版每次启动要把 ~337MB 解包到 `%TEMP%`, 分配不到内存时会崩在
               `pyimod01_archive.extract → MemoryError`; zip 版不做运行时解包, 启动内存峰值低得多)
+
+
+  # ────────── 发布后回填正文（摘要唯一真源 = VERSION.md 表首行）──────────
+  # 2026-10-27: upload-release-action 只吃静态 body, 旧版把「本版」写死成 v5.50.737,
+  #   导致之后每个 Release 标题是新的、正文挂着 737 的内容。这里在两条构建都跑完后回填。
+  release-notes:
+    name: 回填本版摘要
+    needs: [build, build-mac]
+    if: always() && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch release body from VERSION.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then TAG="${{ github.event.inputs.tag }}"; fi
+          python3 tools/ci/release_notes.py --tag "$TAG"

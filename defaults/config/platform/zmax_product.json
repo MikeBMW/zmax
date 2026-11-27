@@ -1,7 +1,7 @@
 {
- "schema": "zmax.product.v1+factory-skeleton",
- "updated": "2026-10-17 (v5.50.740) (2026-10-28 550C 工厂执行档)",
- "active_product": "550C",
+ "schema": "zmax.product.v1",
+ "updated": "2026-10-25 (v5.50.757)",
+ "active_product": "550B",
  "products": {
   "550A": {
    "name": "550A 原创版",
@@ -32,7 +32,7 @@
     "role": "开发版 · 新技能 / 新算法 / 最新逻辑都在这档",
     "chief_concern": "功能最全: 新技能、新算法、逻辑最多 (允许不稳定)",
     "new_algorithms": "on",
-    "algorithm_gate": "先验不拦 (只看能不能跑通)",
+    "algorithm_gate": "先验不拦 (只看能不能验证通过)",
     "logic_depth": "max",
     "topics": "core",
     "comm": "dds",
@@ -42,8 +42,16 @@
     },
     "vscode_debug": true,
     "remote_bypass": true,
-    "deploy": "仿真/台架为主, 真机按需",
+    "deploy": "本地运行 (本机工控机 192.168.23.50)",
     "notes": "新东西先在这档落地; 在役产线不用这档。"
+   },
+   "runtime": {
+    "location": "local",
+    "label": "本地运行",
+    "host": "本机工控机 (4060)",
+    "host_ip": "192.168.23.50",
+    "models": "最小闭环子集 (5 基元 + 5 阶段)",
+    "realtime": "本机实时"
    }
   },
   "550B": {
@@ -95,8 +103,16 @@
     },
     "vscode_debug": true,
     "remote_bypass": true,
-    "deploy": "调试用真机/仿真皆可",
+    "deploy": "本机 VSCode 标定联调 (单线程 debug)",
     "notes": "现场调试与取证用这档: 信号分析 / 3D 场景 / 全话题 / VSCode 断点都开。"
+   },
+   "runtime": {
+    "location": "vscode",
+    "label": "VSCode 标定",
+    "host": "本机工控机 (4060)",
+    "host_ip": "192.168.23.50",
+    "models": "全话题 + 标定诊断",
+    "realtime": "VSCode 断点单线程联调"
    }
   },
   "550C": {
@@ -156,7 +172,7 @@
     "vscode_debug": false,
     "remote_bypass": true,
     "remote_bypass_scope": "远程运行 · 真机部署 · 旁路调试",
-    "deploy": "真机量产产线",
+    "deploy": "量产: 直接部署在 Intel 边缘机 (192.168.23.70), 全模型, 远程端侧实时运行",
     "verified_algorithms": [
      "ActionModulator 八阶段状态机 + 阶段限速 + 否决",
      "FeedforwardAccelerator (左脑 MLP 快通道 + 域外解析守卫)",
@@ -166,6 +182,14 @@
      "动作执行链 (MoveIt/SDK) 速度口径 mm/s 收口"
     ],
     "notes": "在役产线用这档: 只跑已验证算法; 信号走共享内存, 不开信号分析/3D, 只留远程旁路。"
+   },
+   "runtime": {
+    "location": "edge",
+    "label": "Intel 端侧",
+    "host": "Nodka PTL 边缘机 (Core Ultra X7 358H / NPU + Arc B390)",
+    "host_ip": "192.168.23.70",
+    "models": "全部模型 (L2/L3/L4/L5 全量)",
+    "realtime": "远程端侧实时"
    }
   }
  },
@@ -304,7 +328,7 @@
   "唯一性: 指纹 = p_prod * p_iter * Π p_cap, 由算术基本定理 ⇒ (产品, 迭代, 能力集合含重数) 一一对应, 可逆分解",
   "协同: 能力集合 550A ⊆ 550B ⊆ 550C ⇒ 能力签名 cap_signature(550A) | cap_signature(550B) | cap_signature(550C)",
   "诚实: 谱条款按只读偏离量正则交付 —— n>2 时'归一化谱对称于 1/2'数学上不可达(需成对补和为 1 ⇒ 总和 n/2), 不改写度量张量(保正定与 det G=1); 与黎曼猜想无证明关系; 原文档写法会把实对称正定度量变成非 Hermite 复数矩阵",
-  "真源: 元数据基元表从元数据根服务实现 tools/meta_moe_router.py 的 META_PRIMITIVES 生成, 禁止手写"
+  "唯一依据: 元数据基元表从元数据根服务实现 tools/meta_moe_router.py 的 META_PRIMITIVES 生成, 禁止手写"
  ],
  "capability_signatures": {
   "550A": 632092473787962,
@@ -328,7 +352,6 @@
   "divisibility_follows_containment": true
  },
  "dev_profile_schema": "zmax.product.dev_profile.v1",
- "dev_profile_note": "老倪 2026-10-15 定: 三产品同步开发 —— A=新技能/新算法/逻辑最多 (开发) · B=所有 TOPIC 全开 + 最大化 debug + 允许 VSCode 联调 (调试) · C=稳定性优先: 未验证算法全关、通讯效率优先 (不发序列化 topic, 共享内存直传)、不开信号分析/不开 3D 场景、只保留远程旁路 (远程运行 + 真机部署)。",
- "factory_skeleton": true,
- "factory_note": "出厂骨架 (随仓库/安装包含 550A/550B/550C 三档 dev_profile, 保证全新安装就能选档)。实例真源 config/platform/zmax_product.json 优先; 读不到时由 tools/zmax_profile.py 回落到本文件。"
+ "dev_profile_note": "老倪 2026-10-15 定: 三产品同步开发 —— A=新技能/新算法/逻辑最多 (开发) · B=所有 TOPIC 全开 + 最大化 debug + 允许 VSCode 联调 (调试) · C=稳定性优先: 未验证算法全关、通讯效率优先 (不发序列化 topic, 共享内存直传)、不开信号分析/不开 3D 场景、只保留远程旁路 (远程运行 + 真机部署)。 2026-10-21 老倪定三档运行位置: 550A 本地运行; 550B 用于 VSCode(标定/单线程 debug); 550C 量产 —— 直接部署在 intel 边缘机(192.168.23.70), 包括所有模型, 可以远程端侧实时运行。",
+ "runtime_schema": "zmax.product.runtime.v1"
 }
