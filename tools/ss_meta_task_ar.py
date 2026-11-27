@@ -33,6 +33,111 @@ OUT_JSON = os.path.join(ROOT, "data", "database", "zmax", "sources", "config", "
 
 HAND_CN = {"R": "右手", "L": "左手", "BOTH": "双手(协同)"}
 
+# ── MT-08 轨迹回放节拍 (2026-11-15, 老倪「元任务节拍呢?」) ──────────────────────────────
+# 这里有【两个不同口径】, 元任务必须显示实跑的, 录制值只作参考:
+#
+#   ① 录制真值(物理记录, 不可改): real_traj_joints.json frames[].t
+#        frames[0].t=0.000 → frames[-1].t=42.849, 相邻 med=0.2000s
+#        ⇒ 215 点 / 42.85s = 0.199 s/点 ⇒ 84.0 UPH  ← 录制时真机连续运动的真实速度
+#
+#   ② 实跑真值(逐点 MoveAbsJ, 2026-11-15 全程实测 76/215 点时采样):
+#        1.974 s/点 ⇒ 215 点 ≈ 424s = 7.1min ⇒ 8.5 UPH
+#        每点固定开销 ~0.33s(moveAppend+moveStart+轮询 opstate 的通信往返),
+#        即使 jump=0.1° 也要 0.21-0.33s ⇒ 物理上不可能达到录制的 0.199s/点。
+#
+# 为什么达不到录制速度: 见 tools/rokae/arm_replay_continuous.py 的注释 ——
+#   "一次 append 多条 + 单次 moveStart" 会让控制器返回 -60611 并进 estop(实测触发过一次急停碰撞),
+#   只能逐条 append+moveStart, 而逐条的通信开销就超过了录制单点间隔。
+# 改速度/改执行方式后这两个数都要重测, 不要照抄。
+REPLAY_TRAJ_JSON = os.path.join(ROOT, "tools", "web", "real_traj_joints.json")
+REPLAY_EXEC_S_PER_PT = 2.028      # 实测: 逐点 MoveAbsJ speed=100 dwell=0 (2026-11-15 全程 215/215 到位, 累计 436s)
+REPLAY_EXEC_SPEED_PCT = 100
+
+
+def _replay_rec_dur():
+    """录制真值时长(秒) + 帧数。读不到退回 42.85/215。"""
+    try:
+        with open(REPLAY_TRAJ_JSON, encoding="utf-8") as f:
+            d = json.load(f)
+        dur = d.get("dur_s")
+        if dur is None and d.get("frames"):
+            dur = d["frames"][-1].get("t")
+        if dur:
+            return float(dur), len(d.get("frames") or [])
+    except Exception:                                                  # noqa: BLE001
+        pass
+    return 42.85, 215
+
+
+REPLAY_REC_DUR, REPLAY_N_PTS = _replay_rec_dur()
+REPLAY_REC_S_PER_PT = round(REPLAY_REC_DUR / max(1, REPLAY_N_PTS), 3)     # 0.199
+REPLAY_EXEC_DUR = round(REPLAY_EXEC_S_PER_PT * REPLAY_N_PTS, 1)           # 424.4
+REPLAY_DUR = REPLAY_EXEC_DUR            # ★ 元任务主口径 = 实跑
+REPLAY_S_PER_PT = REPLAY_EXEC_S_PER_PT  # ★
+REPLAY_SPEED_PCT = REPLAY_EXEC_SPEED_PCT
+
+# ── MT-08 的时间构成(甘特) ────────────────────────────────────────────────────
+# 老倪 2026-11-15「双臂的时候都有每个模块的时间构成, 现在的轨迹回放, 怎么就不显示每个时间的甘特图了?」
+# 双臂泳道是按 MT-02/03/04 的 dur 画条; MT-08 这 215 点同样有分段结构, 只是之前只报了总数。
+# 分界点取自轨迹语义(夹爪 #9 闭合 / #205 松开, 扫码举高段, 金手指/表面检测点), 每段耗时
+# = 实测逐点 secs 求和(真源 zmax_data/runtime/traj/replay215_timing.json), 不是按点数均分的估算。
+_REPLAY_TIMING = os.path.join(ROOT, "zmax_data", "runtime", "traj", "replay215_timing.json")
+
+# (起始下标, 结束下标含, 名称, 色)  —— 段间空档(approach/过渡)单独成段, 不漏时间
+_REPLAY_SEGS = [
+    (0,   9,   "抓取(合爪#9)",      "#58a6ff"),
+    (10,  15,  "过渡/举升",          "#484f58"),
+    (16,  19,  "扫码(对码)",         "#d29922"),
+    (20,  40,  "抓取光模块",        "#1f6feb"),
+    (41,  90,  "举升/转运",         "#3fb950"),
+    (91,  113, "插入·松开·退回·抓环",          "#2ea043"),
+    (114, 119, "拉环解锁·拽出",          "#2ea043"),
+    (120, 144, "扫码(举高段)",      "#d29922"),
+    (145, 149, "过渡",              "#484f58"),
+    (150, 160, "金手指检测",        "#e3b341"),
+    (161, 161, "过渡",              "#484f58"),
+    (162, 193, "表面检测",          "#db6d28"),
+    (194, 197, "过渡",              "#484f58"),
+    (198, 204, "下放入盘",          "#8957e5"),
+    (205, 205, "松开分拣(#205)",    "#f778ba"),
+    (206, 214, "回位",              "#6e7681"),
+]
+
+
+def _replay_gantt():
+    """按段聚合实测逐点耗时, 返回甘特条列表。读不到实测就返回空(前端不画)。"""
+    try:
+        with open(_REPLAY_TIMING, encoding="utf-8") as f:
+            d = json.load(f)
+        pts = d.get("points") or []
+    except Exception:                                                  # noqa: BLE001
+        return [], 0.0
+    if not pts:
+        return [], 0.0
+    by_i = {int(p["i"]): float(p["secs"]) for p in pts}
+    total = sum(by_i.values())
+    out = []
+    for i0, i1, nm, col in _REPLAY_SEGS:
+        dur = 0.0
+        cnt = 0
+        for i in range(i0, i1 + 1):
+            if i in by_i:
+                dur += by_i[i]
+                cnt += 1
+        if cnt == 0:
+            continue
+        out.append({
+            "name": nm, "i0": i0, "i1": i1, "n": cnt,
+            "dur_s": round(dur, 2),
+            "pct": round(100.0 * dur / total, 2) if total else 0.0,
+            "per_pt_s": round(dur / cnt, 3),
+            "color": col,
+        })
+    return out, round(total, 2)
+
+
+REPLAY_GANTT, REPLAY_GANTT_TOTAL = _replay_gantt()
+
 
 def _target_of(kind, label, carry):
     """段 → 目标对象 (AR 场景里可指认的东西): 槽k / 孔k / 金手指点k / 侧面点N / 下料盘 槽k / 废料盘。
@@ -143,6 +248,24 @@ MT = [
          actions=["左臂 放料完成 槽k", "右臂 从 槽k 取料开始", "双臂 节拍锁 一件 11.4s (300UPH)"],
          prompt=("左右手交接: 左臂把模块放进 槽k 并确认到位后, 右臂才允许从 槽k 取料; "
                  "双臂并行但交接点互斥 (同一槽位同一时刻只有一只手), 整体节拍锁 11.4s/件 ⇒ 300UPH。")),
+    # ── 轨迹回放 (真机 215 点真值, 只有右臂; 与上面 392 段仿真不是同一套口径) ──
+    dict(id="MT-08", hand="R", segments=215, layer="L3-回放", in_392=False,
+         name="215 点轨迹回放 · 左臂冻结",
+         pred=None,
+         actions=["回放 按真实关节角逐点执行(215 点, %.3fs/点)" % REPLAY_S_PER_PT,
+                  "夹爪 #9 闭合抓取", "扫码/插拔/金手指/表面/分拣 全流程",
+                  "夹爪 #205 松开分拣", "左臂 冻结不动(只有右臂轨迹数据)"],
+         prompt=("按录制到的 215 点关节角真值原样回放: 从初始位姿→抓取光模块(#9 夹紧)→插拔→扫码→"
+                 "金手指检测→表面检测→分拣(#205 松开)。这条轨迹是真机示教的唯一安全基准(只读, 不许改)。"
+                 "因为只有右臂的轨迹数据, 左臂必须全程冻结不动。"
+                 "节拍有两个口径, 元任务按【实跑】报: "
+                 "① 实跑 %.3fs/点 × %d 点 = %.1fs/轮(speed=%d%%, 逐点 MoveAbsJ 等到位) ⇒ %.1f UPH; "
+                 "② 录制真值 %.2fs/轮(%.3fs/点 ⇒ %.1f UPH)是录制时连续运动的速度, 逐点执行达不到 —— "
+                 "每点有 ~0.33s 通信固定开销, 比录制单点间隔还长; 一次性批量启动会被控制器拒(-60611)并进急停。"
+                 "也不许套 300UPH 的 392 段仿真的口径。"
+                 % (REPLAY_S_PER_PT, REPLAY_N_PTS, REPLAY_DUR, REPLAY_SPEED_PCT,
+                    3600.0 / REPLAY_DUR, REPLAY_REC_DUR, REPLAY_REC_S_PER_PT,
+                    3600.0 / REPLAY_REC_DUR))),
 ]
 MT_SEG = {m["id"]: m["segments"] for m in MT}
 MT_IN392 = [m for m in MT if m["in_392"]]
@@ -377,7 +500,29 @@ def main():
             item["occurrences"] = n_mod
             item["source"] = ("工单 BS-SCN-07-AOI「双臂并行」+ 实测节拍 %.2fs/件 (%.1f UPH)"
                               % (tact, uph_geo))
+        if mid == "MT-08":
+            # 回放不是段表里的东西: 唯一依据 = 215 点真机关节角真值 (real_traj_joints.json)
+            # 🔴 真实回放节拍 = 录制真值 42.85s (frames[-1].t), 0.199s/点 ⇒ 84 UPH
+            #    老倪 2026-11-15「你还记得真实回放的速度么?」⇒ 就是这个 42.85s。
+            #    ⚠ traj_loop 用 chunk=1 + ZMAX_TRAJ_SPEED=20 + DWELL_MS=250 会慢到
+            #      10.94s/点 = 2352s/轮(慢 55 倍), 那是逐点调试档, 不是回放速度, 别拿它当节拍。
+            _rdur = REPLAY_DUR                     # 42.85s 录制真值(frames[-1].t), 不要用 0.199*215 反推
+            item["occurrences"] = 1
+            item["t_s"] = _rdur
+            item["dur"] = _rdur
+            item["t_win"] = [0.0, _rdur]
+            item["targets"] = ["整机(右臂)", "左臂(冻结不动)"]
+            item["uph"] = round(3600.0 / _rdur, 1)
+            item["s_per_point"] = REPLAY_S_PER_PT
+            item["speed_pct"] = REPLAY_SPEED_PCT
+            item["source"] = ("tools/web/real_traj_joints.json · 215 点真机关节角真值 · "
+                              "实测 %.2fs/点(speed=%d%%) · 一轮 %.1fs/件 · %.1f UPH(左臂冻结)"
+                              % (REPLAY_S_PER_PT, REPLAY_SPEED_PCT, _rdur, 3600.0 / _rdur))
         meta_lib.append(item)
+    # 回放口径: 真机 215 点真值轨迹的【录制真实时长】, 与 392 段仿真不是同一套 (不许混算)
+    _replay_dur = REPLAY_DUR                      # 42.85s (frames[-1].t 录制真值)
+    _replay_n = 1                # 一条 215 点轨迹 = 1 件 (夹爪 #9 闭合 → #205 松开)
+    _replay_uph = 3600.0 * _replay_n / _replay_dur
     long_horizon = {
         "uph_target": d.get("uph_target", 300),
         "tact_s": d.get("tact_steady_s"),
@@ -390,11 +535,52 @@ def main():
         "rounds": [{"template": describe(seq), "meta_seq": list(seq), "count": len(i["ks"]),
                     "batches": i["ks"], "segments": i["segs"]} for seq, i in tpl.items()],
         "sequence_prompt": (
-            "长程任务(TASK-07-AOI · AR 场景 · 双臂): 左臂持续摆盘供料(MT-06); 右臂先装满 4 个孔(4×MT-01 取料插入); "
+            "长程任务(TASK-07-AOI · AR 场景 · 双臂): 左臂持续摆盘供料(MT-06); 右臂先装满 2 个孔(2×MT-01 取料插入, "
+            "孔1 上口 z=278 / 孔2 下口 z=187.6); "
             "之后每批 拔 2 个(MT-02) → 各做 AOI 五点检测(MT-03) → 良品进下料盘(MT-04)/NG 进废料盘(MT-05) → "
             "再补插 2 个新模块(MT-01); 末批只拔不插(收尾)。左右手在 槽k 交接(MT-07), 同一槽位同一时刻只有一只手。"
             "全过程 %d 段 / %.2fs / %d 件, 目标 %s UPH。任何一步 NG 一律走废料盘, 良品与 NG 分槽。"
-            % (len(segs), total_t, n_mod, d.get("uph_target", 300))),
+            "另有一套轨迹回放口径(MT-08): 右臂 215 点真值逐点执行, 实测 %.2fs/点(speed=%d%%) ⇒ 一轮 %.1fs/件 "
+            "⇒ %.1f UPH(左臂全程冻结), 与上面的仿真节拍不许混算。"
+            % (len(segs), total_t, n_mod, d.get("uph_target", 300),
+               REPLAY_S_PER_PT, REPLAY_SPEED_PCT, _replay_dur, _replay_uph)),
+        "replay": {
+            "mt": "MT-08",
+            "n_points": REPLAY_N_PTS,
+            # ★ 元任务主口径 = 实跑(逐点 MoveAbsJ)
+            "dur_s": _replay_dur,
+            "s_per_point": REPLAY_S_PER_PT,
+            "speed_pct": REPLAY_SPEED_PCT,
+            "exec_mode": "逐点 MoveAbsJ + 等到位(speed=100, dwell=0)",
+            # 录制真值(物理记录, 参考用)
+            "rec_dur_s": REPLAY_REC_DUR,
+            "rec_s_per_point": REPLAY_REC_S_PER_PT,
+            "rec_uph": round(3600.0 / REPLAY_REC_DUR, 1),
+            "mods": _replay_n,
+            "tact_s": _replay_dur / _replay_n,
+            "uph": round(_replay_uph, 1),
+            "left_arm": "frozen",
+            # ★ 时间构成甘特(与双臂泳道同一诉求): 每段 = 实测逐点 secs 求和
+            "gantt": REPLAY_GANTT,
+            "gantt_total_s": REPLAY_GANTT_TOTAL,
+            "gap_reason": ("实跑 %.3fs/点 vs 录制 %.3fs/点: 逐点执行每点有 ~0.33s 固定开销"
+                           "(moveAppend+moveStart+轮询 opstate 通信往返), 比录制单点间隔还长; "
+                           "一次性批量启动会被控制器拒(-60611)并进急停(已实测), 故逐点是当前唯一安全路径。"
+                           % (REPLAY_S_PER_PT, REPLAY_REC_S_PER_PT)),
+            # 双臂口径参考: 和 MT-01~07 的 L/R 泳道同一套写法, 好让人一眼对上
+            "lanes": {
+                "R": {"hand": "R", "mt": "MT-08", "dur": _replay_dur, "blocks": 1,
+                      "s_per_point": REPLAY_S_PER_PT, "label": "右臂 215 点逐点执行(实跑)"},
+                "L": {"hand": "L", "mt": None, "dur": 0.0, "blocks": 0,
+                      "label": "左臂冻结(只有右臂轨迹数据)"},
+                "cycle_s": _replay_dur,
+            },
+            "note": ("回放口径 = 只有右臂 215 点关节角真值, 左臂全程冻结; "
+                     "★节拍按【实跑】: %.3fs/点 × %d 点 = %.1fs/轮(speed=%d%%, 逐点 MoveAbsJ) ⇒ %.1f UPH。"
+                     "录制真值是 %.2fs/轮(%.3fs/点, %.1f UPH), 但逐点执行达不到 —— 差距原因见 gap_reason。")
+                    % (REPLAY_S_PER_PT, REPLAY_N_PTS, _replay_dur, REPLAY_SPEED_PCT, _replay_uph,
+                       REPLAY_REC_DUR, REPLAY_REC_S_PER_PT, 3600.0 / REPLAY_REC_DUR),
+        },
     }
     lanes = build_lanes(meta_seq, meta_lib, left_steps, d.get("tact_steady_s"))
     print("⑥ 双臂并行轨道: 件周期 %.2fs · 右手 %s · 左手 %s (%.2fs 供料 + %.2fs 空闲) · 交接点 %.2fs"

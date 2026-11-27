@@ -1,9 +1,21 @@
 {
   "folders": [
-    { "name": "框架  (~/zmax/src/lerobot)", "path": "src/lerobot" },
-    { "name": "控制台  (~/zmax/tools/gui)", "path": "tools/gui" },
-    { "name": "文档  (~/zmax/docs)", "path": "docs" },
-    { "name": "工程  (/home/ubuntu/zmax)", "path": "." }
+    {
+      "name": "框架  (~/zmax/src/lerobot)",
+      "path": "src/lerobot"
+    },
+    {
+      "name": "控制台  (~/zmax/tools/gui)",
+      "path": "tools/gui"
+    },
+    {
+      "name": "文档  (~/zmax/docs)",
+      "path": "docs"
+    },
+    {
+      "name": "工程  (/home/ubuntu/zmax)",
+      "path": "."
+    }
   ],
   "settings": {
     "window.title": "${activeEditorLong}${separator}${appName}",

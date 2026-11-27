@@ -35,7 +35,25 @@ import subprocess
 import sys
 from datetime import datetime
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+def _zmax_root():
+    """运行根 —— 与 studio.py 的 _zmax_root_dir() 同口径 (2026-11-25 跨平台迁移):
+    ZMAX_ROOT 环境变量 → 冻结包 exe 同级(有 config/) → _MEIPASS → 源码上两级。
+    原来固定 dirname²(__file__), 冻结包里 __file__ 在 _internal 下 ⇒ 扫盘全部落空,
+    Windows 版模型引擎会一条模型都列不出来。"""
+    _env = os.environ.get("ZMAX_ROOT") or ""
+    if _env and os.path.isdir(_env):
+        return os.path.abspath(_env)
+    if getattr(sys, "frozen", False):
+        _exe = os.path.dirname(os.path.abspath(sys.executable))
+        _mp = getattr(sys, "_MEIPASS", "") or ""
+        for _c in (_exe, _mp, os.path.join(_exe, "_internal")):
+            if _c and os.path.isdir(os.path.join(_c, "models")):
+                return os.path.abspath(_c)
+        return _exe or _mp
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+ROOT = _zmax_root()
 REPORTS_DIR = os.path.join(ROOT, "reports")
 ACTIVE_JSON = os.path.join(ROOT, "models", "active_models.json")
 
@@ -413,6 +431,124 @@ def _layer_candidates(layer: str, active: dict) -> list:
     return cands
 
 
+# ------------------------------------------------- 2c) 全部模型 (每一个权重都列)
+# 2026-11-25 老倪: 「模型引擎 所有模型, 都要显示, 管理, 可训练」
+#   旧 _layer_candidates 每层只取 _newest 一个 ⇒ 磁盘上 300+ 个权重只露 8 条。
+#   这里枚举**全部**, 每条带 在役/类型/可训练/训练入口 (入口与 active_models.json 的 role 同源)。
+_TRAIN_ENTRY = {
+    "L2": "tools/yolo_annot_train.py --epochs 30",
+    "L3": "tools/joint_train_all.py --only L3",
+    "L4": "tools/joint_train_all.py --only L4",
+    "L5": "tools/l5_vlm_lora_train.py",
+}
+_KIND_TRAIN_ENTRY = {
+    "sam3-base": "tools/sam3_finetune.py",
+    "sam3-lora": "tools/sam3_finetune.py --resume-adapter",
+}
+# 全量枚举要 stat 300+ 路径 ⇒ 给 120s TTL 缓存 (Fetcher 5s 一拉, 不缓存会把 GUI 拖慢);
+#   "--all-nocache" 或 TTL 过期即重扫, 训练刚产出的新权重最多 2 分钟内出现。
+_ALL_CACHE = {"ts": 0.0, "data": []}
+
+
+def _kind_of(layer: str, path: str) -> str:
+    p = (path or "").lower()
+    if layer == "L2":
+        if p.endswith("best.pt"):
+            return "yolo-ckpt"
+        if "lora_adapter" in p or "adapter_model" in p:
+            return "sam3-lora"
+        return "sam3-base"
+    if layer == "L4":
+        return "intact-ckpt"
+    if layer == "L5":
+        return "l5-lora" if "lora" in p else "l5-merged"
+    if "model_merged" in p:
+        return "l3-merged"
+    if "lora" in p:
+        return "l3-lora"
+    return "l3-ckpt"
+
+
+def collect_all_models(use_cache: bool = True) -> list:
+    """磁盘上每一个权重 → 一条 (层/名/路径/大小/时间/在役/类型/可训练/训练入口)。"""
+    import time as _t
+    if use_cache and ( _t.time() - _ALL_CACHE["ts"] ) < 120.0:
+        return _ALL_CACHE["data"]
+    active = _load_active()
+    def _abs(p):
+        return os.path.realpath(os.path.join(ROOT, p)) if p else ""
+    act_real = {ly: _abs((active.get(ly) or {}).get("path")) for ly in ("L2", "L3", "L4", "L5")}
+    rows = []
+
+    _seen = set()
+
+    def add(layer, name, path, kind, is_active=False, note=""):
+        if not path:
+            return
+        fp = path if os.path.isabs(path) else os.path.join(ROOT, path)
+        rel = os.path.relpath(fp, ROOT)
+        if (layer, rel) in _seen:          # glob ** 会对同一文件匹配多次
+            return
+        _seen.add((layer, rel))
+        st = _stat(fp)
+        if not st.get("exists"):
+            return
+        real = os.path.realpath(fp)
+        size = st["size"]
+        if os.path.isdir(fp):
+            size = _dir_size(fp)
+        if os.path.islink(fp) and not note:
+            note = "软链 → %s" % os.path.relpath(real, ROOT)
+        rows.append({
+            "layer": layer, "name": name,
+            "path": rel,
+            "realpath": real, "kind": kind,
+            "active": bool(is_active or real == act_real.get(layer)),
+            "size": size, "size_h": _human(size or 0),
+            "mtime": st["mtime"], "mtime_epoch": st["mtime_epoch"] or 0.0,
+            "trainable": True,
+            "train_cmd": _KIND_TRAIN_ENTRY.get(kind, _TRAIN_ENTRY.get(layer, "")),
+            "note": note,
+        })
+
+    # L2 · YOLO 全量 (每个 run 的 best.pt) + 在役软链指针 + SAM3 基座/适配器
+    _y = os.path.join(ROOT, "external/lerobot-smolvla-lew/runs/detect/outputs")
+    for fp in glob.glob(os.path.join(_y, "yolo_annot*/**/weights/best.pt"), recursive=True):
+        run = os.path.relpath(fp, _y).replace("/weights/best.pt", "")
+        add("L2", "YOLO · %s" % run, os.path.relpath(fp, ROOT), "yolo-ckpt")
+    if os.path.exists(os.path.join(ROOT, "models/yolo_peg_live.pt")):
+        add("L2", "YOLO 在役软链 yolo_peg_live.pt", "models/yolo_peg_live.pt", "yolo-ckpt", True,
+            "软链 → 真机域在役权重")
+    if os.path.exists(os.path.join(ROOT, "zmax_data/models/sam3_hf/model.safetensors")):
+        add("L2", "SAM3 官方基座 848M", "zmax_data/models/sam3_hf/model.safetensors", "sam3-base")
+    for ad in sorted(glob.glob(os.path.join(ROOT, "outputs/sam3_finetune/*/lora_adapter/adapter_model.safetensors"))):
+        if "_smoke" in ad:
+            continue
+        tag = os.path.basename(os.path.dirname(os.path.dirname(ad)))
+        add("L2", "SAM3 适配器 · %s" % tag, os.path.relpath(ad, ROOT), "sam3-lora")
+
+    # L3 · 每个 checkpoints/<step>/pretrained_model
+    for d in sorted(glob.glob(os.path.join(ROOT, "outputs/train/*/checkpoints/*/pretrained_model"))):
+        nm = os.path.relpath(d, ROOT).replace("outputs/train/", "").replace("/pretrained_model", "")
+        add("L3", "SmolVLA · %s" % nm, os.path.relpath(d, ROOT), _kind_of("L3", d))
+
+    # L4 · stable-wm-cache 每个 checkpoint 目录 (intact_l4_current 是软链 → 目标会判在役)
+    for d in sorted(glob.glob(os.path.join(ROOT, "zmax_data/stable-wm-cache/checkpoints/*/"))):
+        nm = os.path.basename(d.rstrip("/"))
+        add("L4", "INTACT · %s" % nm, os.path.relpath(d, ROOT), "intact-ckpt")
+
+    # L5 · merged 权重 + LoRA adapter
+    for d in sorted(glob.glob(os.path.join(ROOT, "zmax_data/models/l5_vlm_merged_*/"))):
+        add("L5", "L5 合并权重 · %s" % os.path.basename(d.rstrip("/")), os.path.relpath(d, ROOT), "l5-merged")
+    for d in sorted(glob.glob(os.path.join(ROOT, "zmax_data/models/l5_vlm_lora_*/"))):
+        add("L5", "L5 LoRA · %s" % os.path.basename(d.rstrip("/")), os.path.relpath(d, ROOT), "l5-lora")
+
+    rows.sort(key=lambda r: (0 if r["active"] else 1, r["layer"], -float(r["mtime_epoch"] or 0)))
+    _ALL_CACHE["ts"] = _t.time()
+    _ALL_CACHE["data"] = rows
+    return rows
+
+
 def _match_report(model_path: str, layer: str, reports: list) -> dict:
     """给一个权重找**真正对应**的训练报告 (产物路径包含关系 或 时间戳嵌入权重路径)。
 
@@ -592,6 +728,7 @@ def build(reports_n: int = 15) -> dict:
         "gpu": collect_gpu(),
         "training": collect_training(),
         "models": models,
+        "all_models": collect_all_models(),
         "reports": reports[:reports_n],
     }
 

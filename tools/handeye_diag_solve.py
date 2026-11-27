@@ -49,12 +49,35 @@ def objp(grid, s=SPACING):
     return o
 
 
+def _blobdet():
+    """2026-11-15 实测: findCirclesGrid 默认 detector 对 CGB-020 恒检不出(原图/反色都 0),
+    必须自带 SimpleBlobDetector(blobColor=255 白点 / 反色后 =0) 才出 20 点."""
+    p = cv2.SimpleBlobDetector_Params()
+    p.filterByArea = True; p.minArea = 50; p.maxArea = 1500
+    p.filterByCircularity = True; p.minCircularity = 0.55
+    p.filterByConvexity = True; p.minConvexity = 0.7
+    p.filterByInertia = True; p.minInertiaRatio = 0.15
+    p.filterByColor = True; p.blobColor = 0          # 反色图里白点→黑
+    p.minDistBetweenBlobs = 8
+    return cv2.SimpleBlobDetector_create(p)
+
+
 def detect(gray):
-    src = 255 - gray
-    for grid in (PATTERN, (PATTERN[1], PATTERN[0])):
-        ok, cs = cv2.findCirclesGrid(src, grid, flags=cv2.CALIB_CB_ASYMMETRIC_GRID)
-        if ok:
-            return cs.reshape(-1, 2), grid
+    det = _blobdet()
+    for src, blobc in ((255 - gray, 0), (gray, 255)):
+        det = _blobdet(); det.setParams2 if False else None
+        pp = cv2.SimpleBlobDetector_Params()
+        pp.filterByArea = True; pp.minArea = 50; pp.maxArea = 1500
+        pp.filterByCircularity = True; pp.minCircularity = 0.55
+        pp.filterByConvexity = True; pp.minConvexity = 0.7
+        pp.filterByInertia = True; pp.minInertiaRatio = 0.15
+        pp.filterByColor = True; pp.blobColor = blobc
+        pp.minDistBetweenBlobs = 8
+        d = cv2.SimpleBlobDetector_create(pp)
+        for grid in (PATTERN, (PATTERN[1], PATTERN[0])):
+            ok, cs = cv2.findCirclesGrid(src, grid, flags=cv2.CALIB_CB_ASYMMETRIC_GRID, blobDetector=d)
+            if ok:
+                return cs.reshape(-1, 2), grid
     return None, None
 
 

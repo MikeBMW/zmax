@@ -193,6 +193,8 @@ def run_generation(g: int, a, ledger) -> dict:
             "--epochs", str(a.epochs), "--batch", str(a.batch), "--project", gdir, "--name", "train",
             "--out", jout, "--eval", "hard=" + HOLDOUT_HARD, "--eval", "hc=" + HOLDOUT_HC,
             "--eval", "legacy=" + HOLDOUT_LEGACY,
+            # 🔴 2026-11-20: 显式钉死 2 个 dataloader worker (原 8 个 × 1.35G = 11G, 机器被压进 swap)
+            "--workers", "2",
             "--seed", str(g)], timeout=900)   # 正常 ~260s; 900s 未回来即判卡死, 不许无限等
     rec["stages"]["train_eval"] = {"rc": r["rc"], "sec": r["sec"], "err": None if r["rc"] == 0 else r["err"][-600:]}
     try:

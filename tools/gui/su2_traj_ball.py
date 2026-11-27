@@ -99,6 +99,44 @@ def _theta_deg(q):
     return math.degrees(2.0 * math.atan2(float(np.linalg.norm(q[1:])), float(abs(q[0]))))
 
 
+_TAIL_CACHE = {}          # path -> ((mtime,size), [dict,...])  (只缓存尾部解析结果)
+
+
+def _read_jsonl_tail(path, tail_bytes=1 << 20, limit=400):
+    """只解析文件尾部 tail_bytes 字节里的最后 limit 行 (给大 jsonl 用, 避免 UI 线程整份解析)。"""
+    try:
+        st = os.stat(path)
+        sig = (st.st_mtime, st.st_size)
+    except Exception:                                                          # noqa: BLE001
+        return []
+    c = _TAIL_CACHE.get(path)
+    if c and c[0] == sig:
+        return c[1]
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            start = max(0, size - int(tail_bytes))
+            f.seek(start)
+            blob = f.read().decode("utf-8", "ignore")
+    except Exception:                                                          # noqa: BLE001
+        return []
+    lines = blob.splitlines()
+    if start > 0 and lines:
+        lines = lines[1:]                       # 首行可能是被切断的半行
+    out = []
+    for ln in lines[-limit:]:
+        ln = ln.strip()
+        if not ln:
+            continue
+        try:
+            out.append(json.loads(ln))
+        except Exception:                                                      # noqa: BLE001
+            continue
+    _TAIL_CACHE[path] = (sig, out)
+    return out
+
+
 class SU2TrajBall(QWidget):
     """SU(2) 轨迹球: S³ 立体投影轨迹 + 当前点 + 记忆基准点 + 隐藏。"""
 
@@ -180,7 +218,42 @@ class SU2TrajBall(QWidget):
                 "border-radius:4px;font-size:11px;padding:2px 4px;}"
                 "QPushButton:hover{background:#30363d;color:#e6edf3;}")
 
+    TAIL_BYTES = 512 * 1024       # 只读尾部: 120 个点 × ~2KB 留足余量, 够画轨迹
+
+    @classmethod
+    def _read_tap_tail(cls, path, n=120):
+        """从文件尾部倒读, 只解析最后 n 行 → [(q, cycle, ts_str), ...]。"""
+        try:
+            with open(path, "rb") as f:
+                f.seek(0, os.SEEK_END)
+                size = f.tell()
+                start = max(0, size - cls.TAIL_BYTES)
+                f.seek(start)
+                blob = f.read().decode("utf-8", "ignore")
+        except Exception:                                                   # noqa: BLE001
+            return []
+        lines = blob.splitlines()
+        if start > 0 and lines:
+            lines = lines[1:]                     # 第一行可能是被切断的半行
+        rows = []
+        for line in lines[-n * 3:]:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+            except Exception:                                              # noqa: BLE001
+                continue
+            q = d.get("p")
+            if isinstance(q, (list, tuple)) and len(q) == 4:
+                rows.append((q, d.get("cycle"), d.get("ts_str")))
+        return rows[-n:]
+
     # ── 数据 ────────────────────────────────────────────────────────────────
+    # 🔴 2026-11-15 老倪「控制台怎么这么慢」: tap 是 10Hz 全状态行 (~10KB/行),
+    #   跑几小时后 engine_default.jsonl 已经 19MB/1919 行, 而 reload() 每 1.5s 在 **UI 主线程**
+    #   把整份文件 json.loads 一遍 ⇒ 每秒卡一次 (py-spy 实测卡在 json/decoder.py:353)。
+    #   改成: ①按 (路径,mtime,size) 缓存, 没变就不解析 ②变了只 tail 读最后 TAIL_BYTES 字节。
     def load_run_stream(self):
         """① 运行流 (首选): ss_engine_loop 的 tap, 10Hz 每拍 p=SU(2) 四元数。
         返回 True 表示已用运行流填充 traj/cur; 流陈旧(>5s)或不存在 ⇒ False 走真值源。"""
@@ -193,19 +266,17 @@ class SU2TrajBall(QWidget):
             age = time.time() - os.path.getmtime(tap)
             if age > RUN_TAP_FRESH_S:                       # 没在跑: 那条流不算数
                 return False
-            rows = []
-            with open(tap, encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        d = json.loads(line)
-                    except Exception:                       # noqa: BLE001
-                        continue
-                    q = d.get("p")
-                    if isinstance(q, (list, tuple)) and len(q) == 4:
-                        rows.append((q, d.get("cycle"), d.get("ts_str")))
+            try:
+                st = os.stat(tap)
+                _sig = (tap, st.st_mtime, st.st_size)
+            except Exception:                              # noqa: BLE001
+                _sig = None
+            cached = getattr(self, "_tap_rows", None)
+            if _sig is not None and cached and cached[0] == _sig:
+                rows = cached[1]                           # 没变 ⇒ 一次 IO 都不做
+            else:
+                rows = self._read_tap_tail(tap, n=400)
+                self._tap_rows = (_sig, rows)
             if not rows:
                 return False
             quats = [_canon(q) for q, _c, _t in rows[-120:]]
@@ -224,20 +295,13 @@ class SU2TrajBall(QWidget):
         if self.load_run_stream():                          # ▶运行 后的活真源
             return
         rows = []
+        # 🔴 2026-11-15 二修: quat_truth_calls.jsonl 已 106MB / 17.3 万行, 全量 json.loads 一次 2.2s,
+        #   而本函数每 1.5s 跑一次 ⇒ UI 线程永远追不上, 表现为"一直卡"。改成尾部 + 缓存。
         try:
-            with open(os.path.join(self.root, "zmax_data", "ss_live", "quat_truth_calls.jsonl"),
-                      encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        d = json.loads(line)
-                    except Exception:                                          # noqa: BLE001
-                        continue
-                    q = d.get("q_fused") or d.get("q_truth")
-                    if q and len(q) == 4:
-                        rows.append((q, d.get("q_truth"), d))
+            for d in _read_jsonl_tail(CALLS, tail_bytes=1 << 20, limit=600):
+                q = d.get("q_fused") or d.get("q_truth")
+                if q and len(q) == 4:
+                    rows.append((q, d.get("q_truth"), d))
         except Exception:                                                      # noqa: BLE001
             rows = []
         if not rows:                                                           # 退到最新契约

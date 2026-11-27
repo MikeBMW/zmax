@@ -58,6 +58,24 @@ def _vec(a, n=4):
         return None
 
 
+_SE3_ENG = None
+
+
+def _manifold6_from_in5(m):
+    """in5(接触/性能流形读数) → 6 维流形坐标 [progress, risk, V, eta, rem, d_perp]。
+
+    缺项补 0 且由 se3_engine 的 cond_real 标清哪些是真值 —— 不编数。
+    """
+    import numpy as _np
+    v = _np.zeros(6)
+    if isinstance(m, dict):
+        v[0] = float(m.get("progress_m") or 0.0)
+        v[1] = float(m.get("risk_m") or 0.0)
+        v[2] = float(m.get("V_p") or 0.0)
+        v[3] = float(m.get("eta") or 0.0)
+    return v
+
+
 def _l4_in_summary(ctx):
     """把画布入端口上的 L4 数据摘出来 (in1: 潜空间 z/L4 条件; in5: 接触/性能流形坐标)。
 
@@ -114,8 +132,31 @@ def run(ctx):
         act, m_meta = (None, {"skipped": "开关关闭"})
         if use_model:
             from . import smolvla_lew_l3 as SL
-            obs, obs_meta = SL.build_obs39(root, log)
+            # 🔎 观测维度按 ckpt 契约选: 13=真机口径(zmax_live_215ep1 同源) / 39=metaworld 老口径
+            _sd = SL.peek_state_dim(root, log)
+            obs, obs_meta = (SL.build_obs13(root, log) if _sd == 13 else SL.build_obs39(root, log))
+            obs_meta = dict(obs_meta or {})
+            obs_meta["state_dim_used"] = _sd
             img, img_meta = SL.fetch_ar_frame()
+            # 🎯 流形引擎条件约束 (SE(3)): 真机位姿真值 → T/ξ/φ → 15 维 cond → action head
+            #    cond = [ξ̂(6) | manifold6(in5 接触·性能) | intent3]
+            #    开关 SE3_MODE=0 可整体关掉 (回退到无条件的原路径, 零回退)。
+            se3_out, cond = None, None
+            if os.environ.get("SE3_MODE", "1") not in ("0", "false", "off"):
+                try:
+                    global _SE3_ENG
+                    if _SE3_ENG is None:
+                        from ..manifold.se3_engine import SE3Engine
+                        _SE3_ENG = SE3Engine(root=root, log=log)
+                    _m6 = _manifold6_from_in5(_l4_in_summary(ctx).get("in5"))
+                    se3_out = _SE3_ENG.step(
+                        frame={"traj_idx": (ck.get("idx") if isinstance(ck, dict) else None)},
+                        manifold6=_m6)
+                    cond = se3_out.get("cond") if se3_out.get("ok") else None
+                    if log and not se3_out.get("ok"):
+                        log("🧭 SE3 流形: 不出条件 —— %s" % se3_out.get("why"))
+                except Exception as _se:                                       # noqa: BLE001
+                    se3_out = {"ok": False, "why": "%s: %s" % (type(_se).__name__, _se)}
             if obs is not None and img is not None:
                 # 🔒 2026-10-29 老倪「550B 单线程模式, 除 GUI 外所有节点都单线程运行」:
                 #   默认走 infer_async = 起 "l3-smolvla" 后台线程 ⇒ 断点停不住、线程数说不清。
@@ -125,14 +166,17 @@ def run(ctx):
                     _single = _ST.enabled()
                 except Exception:                                          # noqa: BLE001
                     _single = os.environ.get("ZMAX_SINGLE_THREAD", "") == "1"
+                if se3_out is not None:
+                    m_meta["se3"] = se3_out
                 if _single:
-                    act, m_meta = SL.infer(img, obs, root, log)
+                    act, m_meta = SL.infer(img, obs, root, log, cond=cond)
                     m_meta = dict(m_meta or {})
                     m_meta["mode"] = "sync (ZMAX_SINGLE_THREAD=1 · 不起线程)"
                 else:
                     act, m_meta = SL.infer_async(
                         img, obs, root, log,
-                        min_period_s=float(os.environ.get("ZMAX_L3_PERIOD_S", "1.5")))
+                        min_period_s=float(os.environ.get("ZMAX_L3_PERIOD_S", "1.5")),
+                        cond=cond)
             else:
                 m_meta = {"err": "观测或图像缺失", "obs_err": obs_meta.get("err"),
                           "img_err": img_meta.get("err")}
@@ -140,7 +184,8 @@ def run(ctx):
         # ── ③ 分层取舍: 模型可用 ⇒ L3 名义; 否则如实降级 ──────────────────────
         degraded, why = False, None
         if act is not None:
-            nominal = [round(float(x), 6) for x in act[:4]]
+            # 🎯 全维度保留 (4 维老 ckpt / 7 维新口径), 不再切 [:4] —— 否则 a/b/c 丢失
+            nominal = [round(float(x), 6) for x in list(act)]
             _ck_name = str(m_meta.get("ck") or "")
             nominal_src = "SmolVLA+LEW 前向 (%s)" % ("/".join(_ck_name.split("/")[-3:-1]) or "?")
         elif ch is not None:
@@ -197,6 +242,15 @@ def run(ctx):
             _SST["u_src"] = str(nominal_src)
             _SST["u_degraded"] = bool(degraded)
             _SST["u_ts"] = float(time.time())
+            # 🎯 L3 名义动作是**绝对位姿 mm**(x,y,z,grip), 不能塞进速度口径的 u 里当运动指令。
+            #    单独挂一份真机同格式的位姿, 供 action.json 的 l3 块与后续切换使用 (执行仍走 src)。
+            if act is not None:
+                _SST["l3_pose"] = [round(float(v), 3) for v in list(nominal or [])]
+                _SST["l3_pose_ts"] = float(time.time())
+                _SST["l3_pose_src"] = str(nominal_src)
+                _SST["l3_infer_ms"] = (m_meta or {}).get("infer_ms")
+            else:
+                _SST["l3_pose"] = None
         except Exception as _e:                                              # noqa: BLE001
             if log:
                 log(f"⚠️ L3 写 _SS_STATE[u] 失败: {type(_e).__name__}: {_e}")

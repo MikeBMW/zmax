@@ -553,6 +553,16 @@ def _euler_zyx_to_quat(rx_deg, ry_deg, rz_deg):
 
 
 def build_move(sk, spec, pts, cur=None, curq=None):
+    # 🛡 引擎闸 (2026-11-24 老倪「引擎是宪法, 策略是提案」): 自动动作必须带
+    #    src_engine(ss_mani_eng|ss_mani10|ss_mani_flow) + gate.force_ok/conf_ok, 缺一拒发。
+    #    人工点动(spec.manual)按 manual_jog 留痕放行; 档位由 ZMAX_ENGINE_GATE 控 (warn 默认 / enforce 生产)。
+    try:
+        from lerobot.engineering.exec import engine_gate as _EG
+        _kind = "manual" if (isinstance(spec, dict) and (spec.get("manual") or spec.get("nudge"))) else "auto"
+        if not _EG.check_or_reject(spec if isinstance(spec, dict) else {}, kind=_kind, logger=log):
+            return None
+    except Exception as _e:                                             # noqa: BLE001
+        log("⚠️ 引擎闸不可用(不阻断现场), 继续按旧路径: %s" % _e)
     # ⚠️ 相对运动的目标 = 真实当前位姿 + 偏移 → 位姿必须直读(常驻流缓存会滞后整分钟级,
     #    会把这 50mm 累加成错的落点); cur/curq 由调用方传入可避免重复直读。
     if cur is None:

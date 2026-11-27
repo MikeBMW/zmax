@@ -436,4 +436,25 @@ class SmolVLALewActionHead(nn.Module):
             )
             pred_velocity = self.action_decoder(pred[:, -self.action_horizon :])
             actions = actions + dt * pred_velocity
+        # 🔴 出口直出**真机可执行 chunk** (2026-11-15 老倪要求: 反归一化在 head 里做, 不在 node 补)
+        #    MIN_MAX 逆变换  t_norm ∈ [-1,1] → 真机量纲 (x/y/z 绝对 mm, grip 0/70)
+        #    训练完全不受影响: 训练走 forward→mse_loss, 不经过这里。
+        if getattr(self.config, "unnorm_out", False) and self.config.action_min is not None \
+                and self.config.action_max is not None:
+            _mn = torch.tensor(self.config.action_min, dtype=actions.dtype, device=actions.device)
+            _mx = torch.tensor(self.config.action_max, dtype=actions.dtype, device=actions.device)
+            actions = (actions + 1.0) / 2.0 * (_mx - _mn) + _mn
+            # 🧱 硬边界: clamp 到数据集 [min,max] = 真机实测工作空间。
+            #    模型极端输出(未训好/分布外图像)越界时, 宁可钉在边界也不给机械臂一个撞界点。
+            actions = torch.clamp(actions, min=_mn, max=_mx)
+            if actions.shape[-1] > int(getattr(self.config, "grip_index", 3)):   # 夹爪: 真机只有 0=合 / 70=开
+                _th = float(getattr(self.config, "grip_binary_thresh", 35.0))
+                _gi = int(getattr(self.config, "grip_index", 3))
+                _g = actions[..., _gi]
+                actions = torch.cat([
+                    actions[..., :_gi],
+                    torch.where(_g >= _th, torch.full_like(_g, float(self.config.action_max[_gi])),
+                                torch.zeros_like(_g)).unsqueeze(-1),
+                    actions[..., _gi + 1:],
+                ], dim=-1)
         return actions

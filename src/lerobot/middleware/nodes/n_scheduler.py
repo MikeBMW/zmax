@@ -11,6 +11,8 @@
     in  in7   ← ss_moe
     in  in8   ← ssinnov
     in  in9   ← n_geoplan
+    in  in10  ← ss_mani_flow
+    in  in11  ← ssuph
     out out1  → sslimit
     out out2  → ss_grav_h
 
@@ -36,7 +38,7 @@ TYPE = 'system'
 EXEC_MODE = 'pure'
 
 # 输入端口 (从总线取) / 输出端口 (发到总线) —— 与工程 JSON 的连线一一对应
-PORTS_IN = ['in1', 'in2', 'in3', 'in4', 'in5', 'in6', 'in7', 'in8', 'in9']
+PORTS_IN = ['in1', 'in2', 'in3', 'in4', 'in5', 'in6', 'in7', 'in8', 'in9', 'in10', 'in11']
 PORTS_OUT = ['out1', 'out2']
 PORT_LABELS = {'out1': 'out1'}
 

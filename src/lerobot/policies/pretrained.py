@@ -149,6 +149,20 @@ class PreTrainedPolicy(nn.Module, HubMixin, abc.ABC):
         save_directory = Path(save_directory)
         save_directory.mkdir(parents=True, exist_ok=True)
         self._save_pretrained(save_directory, state_dict=state_dict)
+        # 🔴 必须补 "type": draccus 反序列化 config.json 时靠它决定用哪个 PolicyConfig 子类。
+        #    训练产出的 config.json 默认没有这一项 ⇒ from_pretrained 直接 ParsingError
+        #    (踩过三次: 每次新 ckpt 都要手工补)。这里在保存路径上一次治好。
+        try:
+            _cj = save_directory / "config.json"
+            if _cj.is_file():
+                import json as _json
+                _d = _json.loads(_cj.read_text())
+                _t = getattr(self.config, "type", None)
+                if _t and _d.get("type") != _t:
+                    _d["type"] = _t
+                    _cj.write_text(_json.dumps(_d, ensure_ascii=False, indent=2))
+        except Exception:                                                # noqa: BLE001
+            pass
         if push_to_hub:
             if repo_id is None:
                 repo_id = save_directory.name

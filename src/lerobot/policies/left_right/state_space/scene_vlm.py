@@ -54,7 +54,15 @@ _PY = os.path.join(_REPO, "gui-venv311", "bin", "python")
 #   · 默认本地开源 Qwen2.5-VL-3B-Instruct (无需 key, 8GB 4060 可跑)
 #   · 可换 Qwen3-VL 系 (更强, 显存更大): SS_VLM_MODEL=Qwen/Qwen3-VL-8B-Instruct 等
 #   · 或走 API: SS_VLM_URL=https://dashscope.aliyuncs.com/compatible-mode/v1 + SS_VLM_KEY + SS_VLM_MODEL=qwen-vl-max
-_LOCAL_SNAP = os.path.expanduser("~/zmax/zmax_data/hf_home/hub/models--Qwen--Qwen2.5-VL-3B-Instruct/snapshots")
+# 🔴 权重实际落在 hf_cache (7.1G, 2 个 safetensors 完整), 而旧代码只找 hf_home (空目录, 只有
+#   CACHEDIR.TAG) ⇒ _LOCAL_DEF=None ⇒ 回退到联网模型名 "Qwen/Qwen2.5-VL-3B-Instruct", 离线必失败,
+#   L5 就一直是 vec=null/conf=0。这里按顺序探测多个缓存根, 只认含 config.json 的快照。
+_SNAP_CANDS = [
+    os.path.expanduser("~/zmax/zmax_data/hf_cache/hub/models--Qwen--Qwen2.5-VL-3B-Instruct/snapshots"),
+    os.path.expanduser("~/zmax/zmax_data/hf_home/hub/models--Qwen--Qwen2.5-VL-3B-Instruct/snapshots"),
+    os.path.expanduser("~/.cache/huggingface/hub/models--Qwen--Qwen2.5-VL-3B-Instruct/snapshots"),
+]
+_LOCAL_SNAP = next((d for d in _SNAP_CANDS if os.path.isdir(d)), _SNAP_CANDS[0])
 _LOCAL_DEF = next((os.path.join(_LOCAL_SNAP, d) for d in sorted(os.listdir(_LOCAL_SNAP))
                    if os.path.exists(os.path.join(_LOCAL_SNAP, d, "config.json"))), None) \
     if os.path.isdir(_LOCAL_SNAP) else None
@@ -176,9 +184,23 @@ class SceneVLM:
     # ── ① HTTP (OpenAI 兼容, 图片走 data URL) ──
     def _ask_http(self, image, prompt, system=None, max_tokens=256):
         import urllib.request
-        with open(image, "rb") as f:
-            b64 = base64.b64encode(f.read()).decode()
-        ext = "png" if str(image).lower().endswith("png") else "jpeg"
+        # 🔴 2026-11-15 修: 原来只认文件路径 (open(image,"rb")), 传 ndarray 直接
+        #    ValueError: truth value of an array is ambiguous。调用方(探针/标注)手里
+        #    都是内存帧, 强制落盘再读既慢又多余 ⇒ ndarray 就地编码。
+        if isinstance(image, (bytes, bytearray)):
+            b64 = base64.b64encode(bytes(image)).decode()
+            ext = "jpeg"
+        elif hasattr(image, "shape") and hasattr(image, "dtype"):
+            import cv2 as _cv2
+            ok, buf = _cv2.imencode(".jpg", image, [int(_cv2.IMWRITE_JPEG_QUALITY), 92])
+            if not ok:
+                raise ValueError("ndarray 编码 JPEG 失败 (shape=%s)" % (getattr(image, "shape", None),))
+            b64 = base64.b64encode(buf.tobytes()).decode()
+            ext = "jpeg"
+        else:
+            with open(image, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode()
+            ext = "png" if str(image).lower().endswith("png") else "jpeg"
         body = {"model": self.model, "temperature": 0, "max_tokens": int(max_tokens),
                 # DeepSeek 默认 thinking → 视觉判读实测 61.7s; 关掉后按需打开 (SS_VLM_THINKING=1)
                 **({"thinking": {"type": "enabled" if os.environ.get("SS_VLM_THINKING") == "1" else "disabled"}}

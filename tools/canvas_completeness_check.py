@@ -9,7 +9,8 @@ from collections import defaultdict
 
 FLOW = "/home/ubuntu/zmax/flows/state_space_obs.json"
 TERMINALS = {"ssbypv", "ssff_hist", "ssvideo", "ss3d_view", "ssvideo2", "sstest", "ssfeat"}
-SOURCES = {"ssdata", "ssz700", "n_eng_mem"}
+# 合法数据源(无入线): ss_se3_state = SE(3)×S1 记忆流形 5Hz 只读源 (2026-11-24 补登)
+SOURCES = {"ssdata", "ssz700", "n_eng_mem", "ss_se3_state"}
 
 d = json.load(open(FLOW, encoding="utf-8"))
 ns = [n for n in d["nodes"] if n.get("type") != "row_bg"]

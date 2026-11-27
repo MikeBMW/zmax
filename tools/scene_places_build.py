@@ -79,6 +79,9 @@ def read_fences():
     TRAY_IDS = {"🧰 黑色料盘(实测)": "tray.right", "🧰 左臂料盘(顶视左侧·Y+)": "tray.left",
                 "🧰 下料盘(第三·14槽)": "tray.out", "🗑 废料盘(不良品·无槽位)": "tray.waste"}
     FIX_IDS = {"🔌 光模块插孔(口767→814·实测)": "socket.optical",
+               # 2026-11-14: 真实 215 点轨迹第二个插口(下口) —— 老倪「两个插口」。真源=示教
+               #   插入口_拖拽1020b(761.3,228.7,189.2) → 插入到位_1020c(811.6,230.6,184.3)
+               "🔌 光模块插孔②·下口(真轨迹插入·示教实测)": "socket.optical2",
                "长方体-侧面检测相机": "fixture.side_cam",
                "前方相机(深度实测)": "fixture.front_cam",
                "检测设备": "fixture.inspect_station",

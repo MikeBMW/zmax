@@ -85,6 +85,50 @@ ACTION_DIM = 4
 PIPE_IMG_DEFAULT = os.environ.get("ZMAX_SS_PIPE_IMG") or "http://127.0.0.1:8791/aoi_modelin.png"
 PIPE_TAP = os.path.join(ROOT, "zmax_data/ss_live/layer_calls.jsonl")
 
+# 🌐 A~E 五流形映射 (2026-11-19 老倪「保证流形引擎能映射 A B C D E 五个几何流程」)
+#    ZMAX_SE3_LAYERS=1 才构造/计算 ⇒ 默认路径逐位零回归; 结果写 rec["se3"] 与 /dev/shm/se3_layers.json
+#    真值优先 (tcp_out/latest.json 帧龄≤2s), 取不到就回落轨迹末帧并**明写** src, 不静默冒充真值。
+SE3_LAYERS_ON = (os.environ.get("ZMAX_SE3_LAYERS") or "").strip().lower() in ("1", "true", "yes", "on")
+SE3_TRUTH = os.path.join(ROOT, "zmax_data/rokae_sdk/tcp_out/latest.json")
+SE3_SHM = "/dev/shm/se3_layers.json"
+_S3L: dict = {"obj": None, "err": ""}
+
+
+def se3_layers_snapshot() -> dict:
+    """一拍的五层几何量 (A 位置/B 轴/C 四元数/D 滚转/E 相位 + TQ 速度)。"""
+    try:
+        if _S3L["obj"] is None:
+            _src = os.path.join(ROOT, "src")
+            if _src not in sys.path:
+                sys.path.insert(0, _src)
+            from lerobot.manifold.se3_layers import SE3Layered       # noqa: PLC0415
+            _S3L["obj"] = SE3Layered()
+        L = _S3L["obj"]
+        tr = _j(SE3_TRUTH) or {}
+        age = time.time() - float(tr.get("ts") or 0.0)
+        if age <= 2.0 and all(k in tr for k in ("x", "y", "z", "qx", "qy", "qz", "qw")):
+            snap = L.snapshot(i=None, p_mm=[tr["x"] * 1000.0, tr["y"] * 1000.0, tr["z"] * 1000.0],
+                              q=[tr["qx"], tr["qy"], tr["qz"], tr["qw"]])
+            snap["src"] = "tcp_out/latest.json 真值 (帧龄 %.2fs)" % age
+        else:
+            snap = L.snapshot()
+            snap["src"] = "录制轨迹末帧 (真值不可用: 帧龄 %.1fs)" % age
+        out = {"src": snap["src"], "i": snap["i"], "ms": snap["ms"], "ready": snap["layers_ready"],
+               "A_mm": snap["A"]["mm"], "B_n": snap["B"]["n"], "C_q": snap["C"]["q"],
+               "C_theta_deg": snap["C"]["theta_deg"], "D_phi_deg": snap["D"]["phi_deg"],
+               "E_s": snap["E"]["s"], "E_s_mm": snap["E"]["s_mm"], "TQ": snap["TQ"]}
+        try:
+            _tmp = SE3_SHM + ".tmp"
+            with io.open(_tmp, "w", encoding="utf-8") as fh:
+                json.dump(out, fh, ensure_ascii=False)
+            os.replace(_tmp, SE3_SHM)
+        except Exception:                                             # noqa: BLE001
+            pass
+        return out
+    except Exception as e:                                            # noqa: BLE001
+        _S3L["err"] = str(e)[:200]
+        return {"err": _S3L["err"]}
+
 
 def _log(msg: str) -> None:
     print("[%s] %s" % (time.strftime("%F %T"), msg), flush=True)
@@ -679,8 +723,10 @@ class Loop:
             os.replace(_tmp, _p)
         except Exception:                                                    # noqa: BLE001
             pass
+        se3_rec = se3_layers_snapshot() if SE3_LAYERS_ON else {}
         rec = {"ts": time.time(), "ts_str": time.strftime("%F %T"), "cycle": self.n,
-               "pipe_calls": self.pipe_calls, "ms": round(ms, 2), "layers": layers}
+               "pipe_calls": self.pipe_calls, "ms": round(ms, 2), "layers": layers,
+               "se3": se3_rec}
         self.pipe_last = rec
         try:
             with open(PIPE_TAP, "a", encoding="utf-8") as f:

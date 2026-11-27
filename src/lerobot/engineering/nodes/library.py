@@ -4690,6 +4690,19 @@ _EXTERNAL_LOC["ss_lat"] = (os.path.join(_REPO_ROOT, "src/lerobot/engineering/nod
 #   对准代价/效率曲面. 回路外几何分析元层, 与标定层同款: 不参与推理/不加安全通道)
 _MANIFOLD_DIR = os.path.join(_REPO_ROOT, "src", "lerobot", "manifold")
 
+
+def _mani_file(name: str) -> str:
+    """流形模块真身路径 (2026-11-24 分层归位: core/ engine/ engine/inject/ + 根)。
+
+    节点代码里不再写死 `os.path.join(_MANIFOLD_DIR, "x.py")` —— 模块再搬家,
+    这里自动找到真身; 「打开源码」/spec_from_file_location 都落真文件而不是兼容壳。
+    """
+    for sub in ("core", "engine/inject", "engine"):
+        p = os.path.join(_MANIFOLD_DIR, sub.replace("/", os.sep), name + ".py")
+        if os.path.exists(p):
+            return p
+    return os.path.join(_MANIFOLD_DIR, name + ".py")
+
 # 🔒 单线程执行闸 (2026-10-29 老倪: 「550B VSCode 变成单线程模式, 除了显示的 GUI, 其它所有 node 节点全都单线程运行」)
 #   解释器早期的 BLAS env 由 studio.py:38-59 / vscode_launch.py 灌; 这里压运行期还能改的 torch/cv2,
 #   并记录实测线程数。节点侧也据此走同步分支 (不起后台线程), 见 flow_matching_impl。
@@ -5014,7 +5027,7 @@ def node_ss_mani(ctx):
     log = ctx.get("log")
     try:
         import numpy as np
-        path = os.path.join(_MANIFOLD_DIR, "manifold_layer.py")
+        path = _mani_file("manifold_layer")
         m = _load_mod("lerobot.manifold.manifold_layer", path)          # 正常 import (断点可绑)
         name = ctx.get("name", "")
         # 当前帧真源: GUI 播放态 module._ss_tr → 无 GUI 时 ss_traj_last.json (L4 统一帧, 见 _ss_frame)
@@ -5099,6 +5112,30 @@ _reg("ss_mani_p", ["性能流形"],
     "🧮 性能流形 — 光耦合对准代价: δ=光模块头−孔底 → V_p=½δᵀWδ, 估计耦合效率 η=exp(−V_p/σ²), ∇V_p 最优对准方向 (高斯近似; 源码 manifold_layer.py PerformanceManifold)",
     node_ss_mani)
 
+# ── 🔷 SE(3)×S1 记忆流形 + 🌀 相空间安全通道 (老倪 2026-11-20) ─────────────────
+#    ① 把昨天落地的 se3 服务 (16 维 A–E, 5Hz) 摆上画布, 打开就能看;
+#    ② 相空间安全通道: 位置度规定方向 + 速度度规定边界, S¹ 相位门控, 李雅普诺夫单调。
+def node_ss_se3_state(ctx):
+    from lerobot.middleware.nodes.impl.ss_se3_state import node_ss_se3_state as _f
+    return _f(ctx)
+
+
+def node_ss_phase_corr(ctx):
+    from lerobot.middleware.nodes.impl.ss_phase_corr import node_ss_phase_corr as _f
+    return _f(ctx)
+
+
+_reg("ss_se3_state", ["SE(3)×S1 记忆流形"],
+    "🔷 SE(3)×S1 记忆流形 — 昨日 se3 服务的 16 维状态: A 位置 ℝ³ · B 轴 S² · C 四元数 S³ · "
+    "D 滚转 S¹ · E 弧长相位 S¹ (s/arc/nearest_i), 5Hz 只读, 供相空间通道与画布显示",
+    node_ss_se3_state)
+
+_reg("ss_phase_corr", ["相空间安全通道"],
+    "🌀 相空间安全通道 — 受控轨迹强跨相位线 ⇒ 各向异性度规管道: z=[e_pose/tol; e_vel/vlim], "
+    "V=½‖z‖², τ=−α·τ_lim⊙(z_pos+z_vel), S¹ 相位门控, α_eff=min(α,λ/2) ⇒ V̇≤−λV 单调下降 "
+    "(源码 manifold/phase_corridor.py PhaseSpaceCorridor)",
+    node_ss_phase_corr)
+
 # 🧩 原子技能层 (2026-09-07 老倪: 决策层↔执行层之间; 8 技能 = 八阶段模板 SK01-08;
 #   决策层实时赋值轨迹 → 复制模板快速执行 → 直接输出执行指令给执行器; 播放 demo 特判见上)
 _SKILLS = [
@@ -5134,7 +5171,7 @@ for _skid, _ln, _sym in _SK_EXT_LOC:
 # 右键源码映射: 两 key 各挂独立符号 (防"两节点显示同一段"坑)
 _EXTERNAL_LOC["ss_mani_c"] = (os.path.join(_REPO_ROOT, "src/lerobot/engineering/nodes/library.py"), 4656, "def node_ss_mani")   # 🎯 2026-10-31 落点校准: 原来指到本路径不调用的函数 ⇒ 断点永不命中
 
-_EXTERNAL_LOC["ss_mani_p"] = (os.path.join(_MANIFOLD_DIR, "manifold_layer.py"), 154, "class PerformanceManifold")
+_EXTERNAL_LOC["ss_mani_p"] = (_mani_file("manifold_layer"), 154, "class PerformanceManifold")
 
 # 🧠 高级层 VLM 编码器 + 潜空间 Decoder (2026-09-08 老倪: encoder VLM→潜空间→decoder 高级功能;
 #   yolo/前馈/原子技能 基础功能。VLM 将 YOLO 检测框/触觉/图像帧 → token → 潜空间 z;
@@ -6416,7 +6453,7 @@ def node_ss_mani_eng(ctx):
     try:
         import importlib.util as _ilu
         import numpy as np
-        path = os.path.join(_MANIFOLD_DIR, "manifold_engine.py")
+        path = _mani_file("manifold_engine")
         _mn = "lerobot.manifold.manifold_engine"
         spec = _ilu.spec_from_file_location(_mn, path)
         m = _ilu.module_from_spec(spec)
@@ -6535,6 +6572,137 @@ _reg("ss_mani_eng", ["流形引擎", "Manifold Engine"],
      node_ss_mani_eng)
 
 _EXTERNAL_LOC["ss_mani_eng"] = (os.path.join(_REPO_ROOT, "src/lerobot/engineering/nodes/library.py"), 5897, "def node_ss_mani_eng")   # 🎯 2026-10-31 落点校准: 原来指到本路径不调用的函数 ⇒ 断点永不命中
+
+
+# ── 📸 画布节点可观察性: 每拍真值原子落盘 (节流), 供"点了运行就能看" + 事后取证 ──────
+_LIVE_TS = {}
+
+
+def _live(_obj, _name, _payload, _hz=2.0):
+    """把节点这一拍的输出写 zmax_data/ss_live/<_name> (tmp+replace 原子, 按 _hz 节流)。
+
+    只做观察, **不参与控制**: 任何异常都吞掉, 绝不因为写盘失败影响节点返回。
+    """
+    import json as _j
+    import os as _o
+    import time as _t
+    _now = _t.time()
+    if _now - _LIVE_TS.get(_name, 0.0) < 1.0 / max(float(_hz), 0.1):
+        return
+    _LIVE_TS[_name] = _now
+    _d = _o.environ.get("ZMAX_SS_LIVE") or _o.path.expanduser("~/zmax/zmax_data/ss_live")
+    _p = _o.path.join(_d, _name)
+    _rec = {"t": round(_now, 3), "node": _obj.get("node") or "", "ok": bool(_obj.get("ok", True))}
+    _rec.update(_payload or {})
+    _tmp = "%s.tmp.%d" % (_p, _o.getpid())
+    with open(_tmp, "w", encoding="utf-8") as _f:
+        _j.dump(_rec, _f, ensure_ascii=False, default=str)
+    _o.replace(_tmp, _p)
+
+
+# ── 🧮 十维流形引擎 (2026-11-24 老倪方案落地: 4D 宏观 ⊕ 6D 隐藏) ──────────────
+def node_ss_mani10(ctx):
+    """🧮 十维流形引擎 — 4D 宏观(x,y,z,θ) ⊕ 6D 隐藏(力/公差/置信度) 的块对角度规。
+
+    真源: src/lerobot/manifold/manifold10d.py (build_metric / constrained_step / step10)。
+    每拍: 4D 意图 → G=blkdiag(G4,G6) → 带隐藏硬约束的 active-set QP → 6 维动作增量。
+    只出动作增量与门控量, **不下发运动** (下发仍走 L2 执行器 + 8793 授权链)。
+    """
+    try:
+        from lerobot.manifold import manifold10d as _M10
+    except Exception as e:                                              # noqa: BLE001
+        return {"ok": False, "err": "import manifold10d: %s" % e}
+    try:
+        out = _M10.step10(ctx)
+    except Exception as e:                                              # noqa: BLE001
+        return {"ok": False, "err": "%s: %s" % (type(e).__name__, e)}
+    # 📸 可观察性 (2026-11-24): 画布跑起来时把这一拍的真值落盘, 否则"点了运行看不见输出"
+    try:
+        _live(out, "mani10_live.json", {
+            "X10": out.get("X10"), "V": out.get("V"), "utilization": out.get("utilization"),
+            "action6": out.get("action6"), "gate": out.get("gate"),
+            "hard_projected": out.get("hard_projected"), "active": out.get("active"),
+            "violation_after": out.get("violation_after"), "src_engine": out.get("src_engine"),
+        })
+    except Exception:                                                  # noqa: BLE001
+        pass
+    return out
+
+
+_reg("ss_mani10", ["十维流形", "十维引擎", "mani10"],
+     "🧮 十维流形引擎 — 4D 宏观时空(x,y,z,θ) ⊕ 6D 隐藏约束(力/公差/置信度); 块对角度规 "
+     "G=blkdiag(G4,G6) + 各向异性(插孔径向重/轴向轻, IHS 散热齿 ×1000) + 隐藏量硬约束 "
+     "active-set QP: 4D 意图 ⇒ 不撞力的 6 维动作增量; 出 X10/V/delta/action6/gate, 不下发运动 "
+     "(源码 src/lerobot/manifold/core/manifold10d.py::step10)",
+     node_ss_mani10)
+
+
+
+# ── 🌀 十维黎曼梯度流 (PPT 核心算法: Δξ = −αG⁻¹∇V + Project_M6) ────────────────
+def node_ss_mani_flow(ctx):
+    """🌀 十维黎曼梯度流 — 沿 −G⁻¹∇V 走出测地线, 每步 Armijo 保证 V 单调下降, 末了硬投影回 M6。
+
+    输入: X10(当前十维状态) · ref(期望安全状态) · steps · mode(riemann|euclid 对照)
+    输出: V 轨迹 / 收敛步数 / 单调性 / 越界 / 单步耗时 / 最终动作增量 —— 不下发运动。
+
+    为什么不能写成 V=½ΔXᵀGΔX 后直接用 G⁻¹∇V: 那样 ∇V=GΔX, 度规被精确抵消(误差 1e-12),
+    各向异性一点不生效。本实现让 G 随状态变并叠加越界势垒, 使 G⁻¹ 真正按物理代价分配修正量;
+    实测同一起点: 黎曼 24 步到 V=5e-10, 欧氏最速下降 300 步仍停在 4.44。
+    """
+    try:
+        from lerobot.manifold.core import flow10d as _F
+        from lerobot.manifold.core import manifold10d as _M10
+        import numpy as _np
+    except Exception as e:                                              # noqa: BLE001
+        return {"ok": False, "err": "import flow10d: %s" % e}
+    try:
+        def _val(k, default=None):
+            v = ctx.get(k)
+            return v.get("value") if isinstance(v, dict) and "value" in v else (v if v is not None else default)
+
+        X = _val("in1")
+        ref = _val("in2")
+        steps = int(_val("in3", 200) or 200)
+        mode = str(_val("in4", "riemann") or "riemann")
+        X = _np.asarray(X, float).ravel() if X is not None else None
+        ref = (_np.asarray(ref, float).ravel() if ref is not None
+               else _np.array([0.664, -0.029, 0.2935, 0.92, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]))
+        if X is None or X.size != _M10.DIM_TOTAL:
+            return {"ok": False, "err": "X10 需要 %d 维, 收到 %s" % (_M10.DIM_TOTAL, None if X is None else X.size)}
+        r = _F.run_flow(X, ref, steps=steps, mode=mode)
+        # 立即动作 = **第一步**的位移方向; 收敛后的 delta 恒≈0 (流本来就开到参考点), 拿它当动作等于不发
+        st = (_F.riemannian_step if mode == "riemann" else _F.euclid_step)(X, ref)
+        d_now = st["X"] - X
+        d_now[_M10.DIM_MACRO - 1] = (d_now[_M10.DIM_MACRO - 1] + 0.5) % 1.0 - 0.5
+        dX = r["traj"] - _np.asarray(ref, float).ravel()
+        dX[_M10.DIM_MACRO - 1] = (dX[_M10.DIM_MACRO - 1] + 0.5) % 1.0 - 0.5
+        out = {"ok": True, "X10": r["traj"].tolist(), "final_V": r["final_V"],
+               "V_traj": [float(v) for v in r["V"][:64]], "steps_used": len(r["V"]) - 1,
+               "steps_to_tol": r["steps_to_tol"], "monotone": r["monotone"],
+               "viol_max": r["viol_max"], "ms_per_step": r["ms_per_step"], "mode": r["mode"],
+               "delta10": dX.tolist(), "delta_now": d_now.tolist(),
+               "action6": _M10.to_action6(d_now),
+               "alpha_used": st["alpha_used"], "grad_norm": st["grad_norm"],
+               "src_engine": "ss_mani_flow"}
+        try:
+            _live(out, "mani_flow_live.json", {k: out[k] for k in
+                  ("final_V", "V_traj", "steps_to_tol", "monotone", "viol_max",
+                   "ms_per_step", "action6", "delta_now", "alpha_used", "src_engine")})
+        except Exception:                                              # noqa: BLE001
+            pass
+        return out
+    except Exception as e:                                              # noqa: BLE001
+        return {"ok": False, "err": "%s: %s" % (type(e).__name__, e)}
+
+
+_reg("ss_mani_flow", ["黎曼梯度流", "十维梯度流", "mani_flow", "geodesic_flow"],
+     "🌀 十维黎曼梯度流 — 沿 −G⁻¹∇V(度规随状态变) 走出测地线, Armijo 逐步保证 V 单调下降, "
+     "隐藏量每步硬投影回 M6; 出 V 轨迹/收敛步数/单调性/越界/单步耗时/action6 + src_engine, "
+     "带 euclid 对照可证度规真起作用; 不下发运动 (源码 src/lerobot/manifold/core/flow10d.py::run_flow)",
+     node_ss_mani_flow)
+
+_EXTERNAL_LOC["ss_mani_flow"] = (_mani_file("flow10d"), 218, "def run_flow")
+_EXTERNAL_LOC["ss_mani10"] = (_mani_file("manifold10d"), 406, "def step10")
 # ⚖ 内稳态层源码 (2026-10-10): 节点日志里的"生命力/紧迫度/自我模型"真源
 _EXTERNAL_LOC["ss_mani_eng_hom"] = (os.path.join(_MANIFOLD_DIR, "homeostasis.py"),
                                     306, "class HomeostasisEngine")
@@ -6555,7 +6723,7 @@ def node_ss_energy(ctx):
         import glob
         import json as _json
         import numpy as _np
-        path = os.path.join(_MANIFOLD_DIR, "energy_manifold.py")
+        path = _mani_file("energy_manifold")
         m = _load_mod("lerobot.manifold.energy_manifold", path)         # 正常 import (断点可绑)
         #     sys.modules.get(cls.__module__).__dict__ —— 没登记就 AttributeError:
         #     'NoneType' object has no attribute '__dict__' (2026-10-07 实测踩过)。
@@ -6642,7 +6810,7 @@ _reg("ss_energy", ["流形引擎能量", "引擎能量", "能量层", "能量流
      "(公式真源 src/lerobot/manifold/energy_manifold.py · 实测 tools/manifold_energy_probe.py)",
      node_ss_energy)
 
-_EXTERNAL_LOC["ss_energy"] = (os.path.join(_MANIFOLD_DIR, "energy_manifold.py"),
+_EXTERNAL_LOC["ss_energy"] = (_mani_file("energy_manifold"),
                               240, "class EnergyManifold")
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -6808,7 +6976,7 @@ def node_ss_calib_mani(ctx):
             M, inertia = wrote["M"], wrote["inertia"]
 
         # ② 流形引擎 (真件) + 权威规格
-        path = os.path.join(_MANIFOLD_DIR, "manifold_engine.py")
+        path = _mani_file("manifold_engine")
         _mn = "lerobot.manifold.manifold_engine"
         spec = _ilu.spec_from_file_location(_mn, path)
         m = _ilu.module_from_spec(spec)
@@ -6948,7 +7116,7 @@ _reg("n_calib_mani", ["标定诊断测量", "主参数 M", "流形引擎标定",
      "配置同步: python3 tools/ss_node_sync.py [--check]",
      node_ss_calib_mani)
 
-_EXTERNAL_LOC["n_calib_mani"] = (os.path.join(_MANIFOLD_DIR, "manifold_engine.py"), 483, "def step")
+_EXTERNAL_LOC["n_calib_mani"] = (_mani_file("manifold_engine"), 483, "def step")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 🎥 真实场景叠加 · 双眼 (sim2real) — 画布节点内实时出画面 (2026-09-27 老倪)
