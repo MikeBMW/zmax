@@ -1,10 +1,8 @@
 远程: 直连Orin.66/工控.23/intel.70; 拔⇒wifi(.43)经Orin跳; bridge39071; 小芳cli_aac4912eb6389bc2@550C
 §
-NTP回拨8h勿动RTC⇒用monotonic; 判活看将来ts; cron卡→watchdog.timer
-§
 分层: L5造数据/L4认知/L3调度/L2检测; SigLIP768d+四头; from-scratch崩
 §
-交付前自跑通;改文件回读;回答≤两行;常驻静音
+交付前自跑通;改文件回读;答≤两行;常驻静音
 §
 L5=DeepSeek短提示+小JSON(timeout≥300); L4=INTACT直驱, 反归一化按ckpt训练集; L2收口闸逐轴corr<0.5 veto
 §
@@ -24,7 +22,7 @@ YOLO=软链yolo_peg_live.pt; 瓶颈=数据; 相机独占⇒同进程
 §
 LoRA需merge(否则零动作):merge_lora_ckpt.py
 §
-ECS=web入口; 站点搬550C:8081待点头; 资产直连/U盘
+双系统C=p3/D=p4共用(挂/mnt/wD)/Ubu=p5; Win控制台=D:\ZMAX双击启动控制台.bat; 回灌sync_from_dzmax.sh; 根_zmax_root_dir禁dirname³; 场景色插拔绿摆盘蓝AR紫
 §
 GPU掉载=每步CPU>计算→静音日志+workers↑
 §
@@ -43,8 +41,6 @@ GPU掉载=每步CPU>计算→静音日志+workers↑
 AR=8797(systemd;8793与Intel8816皆裸进程无自启);轨迹cursor=N+1⇔frames[N]⇔页#N;底图8791+D435@Orin8794;AOI位姿8793/guide_move→8797/move_rel;k勿用pitch换算;规整图裁剪跟随看不出移动
 §
 任务7=AR·L5进化;场景=ss_scene_switch.py;色标=sig_scene_tags.py
-§
-场景色:插拔绿/摆盘蓝/AR紫(3D=配置中心)
 §
 控制进程: 按端口/pid找(ss -ltnp),禁ps|grep名;杀进程写脚本;sudo免密
 §

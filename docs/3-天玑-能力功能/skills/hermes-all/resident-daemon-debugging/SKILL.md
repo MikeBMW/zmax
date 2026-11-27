@@ -545,6 +545,31 @@ initialize_weights` 这类 torch/transformers 权重加载, 或任何长 C 调�
 **对策**: 让那一拍不加载重物 —— 把模型节点（如 Flow-Matching 动作头 `ssdec`、`ss2d3d`、LoRA 节点）
 加进 `ZMAX_SKIP_IDS`; 或等它回到 Python 再停。别把它当断点绑不上去反复重配 launch。
 
+## 🕗 定时循环被 NTP 回拨冻住 8 小时 (墙钟节流的陷阱)
+
+**症状**: 开机后某个推流/渲染/守护服务的 HTTP 端口照常回答 `/state.json`, 但产物计数 `n` **一直不动**、
+`/frame.png` 503 超时; 进程活着、CPU 时间几乎不涨、`py-spy dump` 显示循环线程停在 `time.sleep`。
+
+**机制**: 开机早期 systemd-timesyncd 拿到首个 NTP 包就**一次性回拨**墙钟 (实测 19:21:46 → 11:21:46, -8h,
+日志 `Initial clock synchronization to …`)。凡在回拨**之前**启动的循环, `t0 = time.time()` 记的是"未来"
+时间 ⇒ 下一拍 `dt = period - (time.time() - t0)` 变成 ~28800s ⇒ `time.sleep(8 小时)`, 此后永不推进。
+表现与"卡死/死锁"一模一样, 极易误判去查锁或重启。
+
+**判据 (10 秒)**: ①`ps -o lstart=,time= -p <pid>` 启动时刻早于 `journalctl -u systemd-timesyncd | grep 'Initial clock'`;
+②`/proc/<pid>/stat` 的 utime+stime 隔 3s 采样增量为 0; ③服务产物计数/帧龄不涨而端口有响应。
+
+**修法 (代码 + 开机顺序, 两条都要)**:
+1. 节流一律用单调钟 + 钳位: `t0 = time.monotonic()`, `dt = period - (time.monotonic() - t0)`,
+   `time.sleep(min(dt, period))` —— 钳位保证任何时钟跳变都只睡一拍。
+   实际时间戳 (`STATE["ts"]`、`age_s`、跨进程比对的 t) **保持 `time.time()` 不许改**, 否则前端算龄全错。
+2. unit drop-in 加 `After=systemd-time-wait-sync.service` + `Wants=` 同项, 并 `systemctl enable
+   systemd-time-wait-sync.service` (默认 disabled, 不 enable 则 After 指向一个不存在的启动依赖, 等于没写)。
+   验收: `systemctl show <unit> -p After | grep -c time-sync` = 1。
+
+**排查时要按"同一批自启进程"一次扫完**: `ps -o lstart= -p <所有端口 pid>` —— 全落在同一分钟内 = 同一批
+受影响的进程; 逐个 `grep -n 'dt = .*period\|_gap = .*time.time'` 定位同类节流点 (本仓 5 个文件同一处病)。
+只修服务里最显眼那一个, 其余会在他下次重启后再"元气不足"一次。
+
 ## 🧟 僵尸进程对 `kill(pid, 0)` 仍然"活着" ⇒ busy 永远忙
 
 杀掉子进程但父进程没 `waitpid` 回收 ⇒ `<defunct>`(state=Z); `os.kill(pid, 0)` 对僵尸**不抛异常**,

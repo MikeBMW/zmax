@@ -130,10 +130,11 @@ git ls-remote --tags origin 'refs/tags/vX.Y.Z*'   # 回读: 新 tag 在不在这
   `conclusion` 一到就打印两个 job + release 资产），自己继续做别的。
 - **界面上的版本号不会自己变**: 控制台进程是用旧源码起的 ⇒ 改完号必须清实例、单实例重起，
   然后截图 OCR 回读新号（源码 grep 只证明文件改了，不能证明他看到的变了）。
-- 🔴 **tag 之后又发生新改动（服务端页面 / unit / 工具）**：另起一个普通 commit 直接 push，
-  **不补 tag、不自己升版本号**（版本号只用用户给的那个）。汇报时必须把“改动的性质”点明：
-  这类改动是**服务端热读/不掉进安装包**的，所以那个 tag 出的 Windows/macOS 包里没有它也不冲突；
-  否则用户下一句必然是“那我下的包到底是不是最新的”。
+- 🔴 **tag 之后又发生新改动**: 另起一个普通 commit 直接 push，**不补 tag、不自己升版本号**（版本号只用用户给的那个）。
+  汇报时**必须先分清这批改动进不进包**，两种口径不能混：
+  ① **服务端热读 / 数据 / 配置**（页面 html、unit、json、tools 脚本）⇒ 那个 tag 出的包里没有它也不影响使用，一句话点明即可；
+  ② **客户端 GUI 代码（studio.py / tools/gui/** / 新工具模块）** ⇒ 包里**真的没有这些功能**，必须明说
+  「这个包不含 X」，并给出下一步：「要进包我发 X.Y.Z+1」。不说清楚，用户下一句必然是「那我下的包里到底有没有」。
 - 🔴 **分叉合并(backup→reset→cherry-pick)之后不要 cherry-pick 版本号提交**: 版本提交带着旧基线的
   studio.py / VERSION.md 上下文, 挑进来必冲突; 只挑功能提交, 然后在新 HEAD 上**重跑**
   `bump_version.py --to <目标号>`, 再 `git tag -f`。tag 是唯一指向, cherry-pick 换了 sha 就得重打。
@@ -315,7 +316,7 @@ print(len(ic.get_addwidget_order(ast.parse(open('/tmp/head_studio.py',encoding='
 | `scp` 多文件只到一部分 | 归档里少一个关键 json 而 sha256 仍「全 OK」 | staging 后 `ls` 逐名核对，再让脚本拷 |
 | 一次 `git add` 写多个路径 | `fatal: pathspec '<x>' did not match any files` ⇒ **整条命令失败, 一个文件都没暂存**, 而你以为已提交 | 一次 add 多个路径前先 `ls`/`git check-ignore --no-index` 确认都在(本轮新建的脚本常在 `/tmp` 没落库, 先 `cp` 进 `tools/`); add 完 `git status --porcelain` 回读确认真进了暂存区再 commit |
 | 已跟踪但被 `.gitignore` 覆盖的文件（如 `.github/workflows/*.yml`） | `git add` 打印 `The following paths are ignored` 并返回 **1** —— 文件其实已暂存成功，但用它 `&&` 串 `git commit -F <msg>` 时 commit 根本不执行；若 msg 文件也是同一条 `&&` 链里写的，还会追加一个 `could not read log file` 的二次假错 | 这类路径用 `git add -f`；**提交与写 msg 文件分开执行**，commit 前用 `git status --porcelain` 确认在暂存区、commit 后用 `git log --oneline -1` 回读 |
-| tag 后又有改动 | 用户问“我下的包里包含这个吗” | 不补 tag/不自升号，另起 commit；汇报里说明该改动是服务端热读/不进包 |
+| tag 后又有改动 | 用户问“我下的包里包含这个吗” | 不补 tag/不自升号，另起 commit；汇报里**先分清类型**：服务端热读/数据类→包里没有也不影响使用；GUI 代码类(studio.py/tools/gui/**)→包里真没这功能，明说“不含 X，要进包发下一版” |
 | 收工时 `git add data/.../canvas/*.json` | `The following paths are ignored` ⇒ **整条 add 全失败**，一个文件都没暂存（该文件其实是已跟踪的，只是 `data` 是软链到被 ignore 的目录） | 已跟踪的画布用 `git add -f data/...`，并回读 `git status --porcelain` 确认进暂存区 |
 | push 被拒 `fetch first`（并行 session 已推了同一批活） | rebase 逐条撞冲突，而冲突处其实是**同一份活的重复提交**（远端换了 sha） | 不要逐条解冲突：`git branch local-backup-<date> HEAD` → `git reset --hard origin/main` → `git cherry-pick <自己那条commit>`（自己的改动是加法，实测零冲突）→ 回读两侧新功能 grep 都在 → push |
 | 打了 tag 之后历史又被改写（rebase / `pull --rebase` / `reset --hard` / cherry-pick） | 旧 tag 指向已不存在的 sha: 本地 `git rev-parse vX.Y.Z^{commit}` ≠ HEAD, 远端 tag 与 main 不一致; CI 用 tag 建包会建到旧代码 | 改写后必做三件: `git tag -f vX.Y.Z` → 校验 `git rev-parse --short HEAD` == `git rev-parse --short vX.Y.Z^{commit}` → `git push -f origin vX.Y.Z` 再 `ls-remote` 回读; 汇报里明说“tag 被移动过(版本号不变、只换指向)”。合并回来的版本提交若带旧基线上下文会必冲突 ⇒ 只 rebase 自己的功能提交, 版本号在新 HEAD 上重跑 `bump_version.py` |
