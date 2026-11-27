@@ -93,7 +93,7 @@
 </header>
 <!-- 标准服务汇总: 首屏最上方, 与下面的静态快照卡片相互独立 (探测失败只影响本块) -->
 <section id="svc" class="svc">
-  <h2><span class="t">标准服务汇总</span><span class="r" id="svc-ts">探测中…</span></h2>
+  <h2><span class="t">所有服务汇总</span><span class="r" id="svc-ts">探测中…</span></h2>
   <div class="err" id="svc-body">正在探测各端口…</div>
 </section>
 <main id="root">加载中…</main>
@@ -241,11 +241,14 @@ const SVC_ST = {
   up:      ['●', 'ok',   '在跑'],
   down:    ['○', 'bad',  '未起'],
   wedged:  ['◐', 'bad',  '挂起'],
+  failed:  ['✕', 'bad',  '失败'],
   unreach: ['○', 'dim',  '不可达']
 };
 function svcState(it){
   if(it.state === 'up') return SVC_ST.up;
   if(it.state === 'wedged') return SVC_ST.wedged;
+  if(it.state === 'failed') return SVC_ST.failed;
+  if(it.kind === 'unit') return SVC_ST.down;      // 对端 systemd 单元 inactive = 未起
   return it.is_local ? SVC_ST.down : SVC_ST.unreach;
 }
 function renderServices(s){
@@ -255,10 +258,11 @@ function renderServices(s){
   const keepTop = oldWrap ? oldWrap.scrollTop : 0;     // 15s 自动刷新别把用户滚到的位置弹回去
   box.className = '';
   let sum = '<div class="sum">'
-    + `<span>标准服务 <b>${sm.total || 0}</b> 项</span>`
+    + `<span>端口 <b>${sm.ports_total != null ? sm.ports_total : (sm.total || 0)}</b> 项</span>`
     + `<span><b class="ok">●</b> 在跑 <b>${sm.listening || 0}</b></span>`
     + `<span><b class="bad">○</b> 未起 <b>${sm.down_local || 0}</b></span>`;
   if(sm.wedged) sum += `<span><b class="bad">◐</b> 挂起 <b>${sm.wedged}</b></span>`;
+  if(sm.units_total) sum += `<span><b class="${sm.units_failed ? 'bad' : 'ok'}">◇</b> 550C 单元 <b>${sm.units_up || 0}</b>/<b>${sm.units_total}</b></span>`;
   if(sm.remote_unreachable) sum += `<span><b class="dim">○</b> 对端不可达 <b>${sm.remote_unreachable}</b></span>`;
   sum += '</div>';
 
@@ -272,7 +276,7 @@ function renderServices(s){
     return `<tr class="${it.is_local ? '' : 'rem'}${it.discovered ? ' disc' : ''}">`
       + `<td class="nm">${esc(it.name)}${it.depends_on_hardware ? '<span class="hw" title="依赖硬件">HW</span>' : ''}`
       + `${narrow && nt ? `<div class="nt2">${nt}</div>` : ''}</td>`
-      + `<td class="num tap" data-copy="${it.port}">${it.port}</td>`
+      + `<td class="num tap" data-copy="${it.port == null ? '' : it.port}">${it.port == null ? '–' : it.port}</td>`
       + `<td>${esc(it.machine_short || '本机')}</td>`
       + `<td class="${st[1]}">${st[0]} ${st[2]}</td>`
       + `<td class="num c-http">${it.http_code || '–'}</td>`

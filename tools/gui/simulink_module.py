@@ -6231,10 +6231,11 @@ class SimulinkModule(QWidget):
             #   指向也变了: 现在是所有服务的总索引 :8788 (8793/station 降级为回退 + 索引里的一张卡)
             self.btn_station = mk_btn(
                 "🖥 产品服务",
-                "产品服务 (2026-11-25 改名) = 所有服务的总索引 (:8788):\n"
+                "产品服务 = 所有服务的总索引 (本机 :8788 → 中枢 :8888 → 大屏 :8799):\n"
                 "  · 每张卡: 缩略图 + 一句介绍 + 健康灯 + 「打开」/「复制链接」\n"
                 "  · simulink画布 / 生产数据大屏 / ar3d / 卡拉比丘流形 / 工位控制台… 都在这里 link 过去\n"
-                "  · 总索引不通时自动回退到工位总览 (:8793/station, 6 路同屏)",
+                "  · Windows 上本机没有 8788 网关 ⇒ 自动开中枢 8888 总索引\n"
+                "  · 全都不通才回退到工位总览 (:8793/station, 6 路同屏)",
                 self.open_station_page, "#58a6ff")
         tl.addWidget(self.btn_station)
         # 🧭 2026-10-10 老倪「simulink 画布的 3D 视图那个按钮哪里去了？找回来。仿真可视化很重要」
@@ -10217,7 +10218,18 @@ class SimulinkModule(QWidget):
         拉起来会被 snapd 拒, xdg-open 又只把页面塞进已有窗口的标签页 ⇒ 用户眼前零变化
         (2026-11-25 老倪「点击产品服务没反应」)。与 8810 切面页同一套做法。
         """
-        url = os.environ.get("ZMAX_PORTAL_URL") or "http://127.0.0.1:8788/"
+        # 2026-11-27 老倪:「控制台的总索引 产品服务, 应该打开 8888 服务」
+        #   原来硬编码 127.0.0.1:8788, Windows 上没有 8788 网关 ⇒ 点了只弹不可达。
+        #   改走 portal_urls 候选链: 环境变量 > 本机 8788 > 中枢 :8888 > 登记主机 > 8799。
+        url = os.environ.get("ZMAX_PORTAL_URL")
+        if not url:
+            try:
+                import portal_urls as _purls
+                url, _tried = _purls.resolve()
+                url = url or _purls.fallback()
+            except Exception as _e:                                        # noqa: BLE001
+                self._log("⚠ portal_urls 不可用(%s) — 退回 127.0.0.1:8788" % _e)
+                url = "http://127.0.0.1:8788/"
         try:
             _w = getattr(self, "_portal_win", None)
             if _w is not None and _w.isVisible():
@@ -10309,9 +10321,14 @@ class SimulinkModule(QWidget):
                 return "127.0.0.1"
 
         def _work():
-            # 0) 🖥 2026-11-25 老倪: 「产品服务」点开先看所有服务的总索引 (:8788);
-            #    索引页里每张卡再 link 到 ar3d / 卡拉比丘 / 大屏 / 工位控制台…, 总索引不通才走下面的回退。
-            for _pu in ("http://127.0.0.1:8788/",):
+            # 🖥 2026-11-27 起候选链统一走 portal_urls(本机 8788 → 中枢 :8888 → 登记主机 → 8799),
+            #    总索引不通才走下面的回退。
+            try:
+                import portal_urls as _purls
+                _portal_cands = _purls.candidates()
+            except Exception:                                              # noqa: BLE001
+                _portal_cands = ["http://127.0.0.1:8788/"]
+            for _pu in _portal_cands:
                 try:
                     with urllib.request.urlopen(_pu, timeout=3) as _r:
                         if _r.status == 200:
@@ -10319,7 +10336,7 @@ class SimulinkModule(QWidget):
                             self._open_portal_window()
                             return
                 except Exception as _e:                                          # noqa: BLE001
-                    self.log_signal.emit("⚠️ 产品服务总索引不可达 (%s) → 回退工位总览" % _e)
+                    self.log_signal.emit("⚠️ 总索引 %s 不可达 (%s)" % (_pu, _e))
             # 1) 视频流在不在 —— 总览页和叠加页由**同一个进程**服务(cam_live_stream.py)
             if not _stats_ok():
                 self.log_signal.emit("🛰 工位总览: 视频流未运行 → 自动启动 (6 路源 + 总览页) …")

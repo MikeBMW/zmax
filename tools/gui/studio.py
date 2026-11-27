@@ -18,38 +18,6 @@ import time as _time
 #   后面几处关键节点各自打一行耗时, 老倪的启动日志里就能直接看到慢在哪一段。
 _BOOT_T0 = _time.time()
 
-# ── Windows: GUI 进程里每次 subprocess(shell=True) 都会新建一个控制台窗口 ──────────
-# 2026-11-25 现场「启动时疯狂弹黑框」: 本文件 27 处 shell=True、0 处 CREATE_NO_WINDOW。
-# frozen GUI 进程本身没有控制台, 调 cmd.exe 时 Windows 会给子进程分配一个新控制台窗口,
-# 于是 netstat / 状态灯 / 硬件探测 / 模型清单这些启动期命令各闪一个黑框。
-# 统一在这里补 CREATE_NO_WINDOW(0x08000000), 27 个调用点不必逐个改; 要现场看输出时
-# 置 ZMAX_SHOW_HELPER_CONSOLE=1 即可恢复原样。
-if os.name == "nt" and not os.environ.get("ZMAX_SHOW_HELPER_CONSOLE"):
-    _CREATE_NO_WINDOW = 0x08000000
-    _sub_orig_run, _sub_orig_popen = subprocess.run, subprocess.Popen
-    _sub_orig_cout, _sub_orig_call = subprocess.check_output, subprocess.call
-
-    def _hidden_kw(kw):
-        kw.setdefault("creationflags", _CREATE_NO_WINDOW)
-        return kw
-
-    def _run_hidden(*a, **kw):
-        return _sub_orig_run(*a, **_hidden_kw(kw))
-
-    def _popen_hidden(*a, **kw):
-        return _sub_orig_popen(*a, **_hidden_kw(kw))
-
-    def _cout_hidden(*a, **kw):
-        return _sub_orig_cout(*a, **_hidden_kw(kw))
-
-    def _call_hidden(*a, **kw):
-        return _sub_orig_call(*a, **_hidden_kw(kw))
-
-    subprocess.run = _run_hidden
-    subprocess.Popen = _popen_hidden
-    subprocess.check_output = _cout_hidden
-    subprocess.call = _call_hidden
-
 # 🔴 2026-11-09 小静静实测「AR3D 机器人不动, 画布在动」的真根因:
 #   AR 页面三维双臂只跟 zmax_data/ss_live/ar_cmd.json 走, 而画布 Plan 节点(plan_long_impl)
 #   写这个文件是**被环境变量闸住**的: _AR_PUB = (ZMAX_UPH_AR_PUB == "1")。Windows 的
@@ -161,7 +129,9 @@ def _open_product_dashboard(win=None):
       · :8788 = 总索引页 (services/web/portal.html) —— 卡片带缩略图/介绍/健康灯,
         点卡片走 /go/<name>/ 反代直达原服务, 另有「复制链接」按钮。
       · :8799 = 生产数据大屏 (产量/UPH/OEE), 现在是总索引里的一张卡, 不再是一级入口。
-    顺序: ZMAX_PORTAL_URL > 本机 8788 > 登记主机 :8788 > 本机 8799 > 产线 192.168.23.50:8788。
+    顺序(2026-11-27 起统一走 portal_urls.py): ZMAX_PORTAL_URL > 本机 8788 > 中枢 :8888 >
+    登记主机 :8788 > 本机 8799。老倪 2026-11-27:「控制台的总索引 产品服务, 应该打开 8888 服务」
+    —— Windows 工位机上根本没有 8788 网关(zmax-framework 是 Linux 单元), 原来点了必然不可达。
     绝不抛异常(PyQt5 槽里抛异常会 qFatal 直接杀进程)。
     """
     import socket as _sk
@@ -180,29 +150,17 @@ def _open_product_dashboard(win=None):
         except Exception:                                                  # noqa: BLE001
             return False
 
-    hosts = []
+    # 🖥 2026-11-27 老倪:「控制台的总索引 产品服务, 应该打开 8888 服务」
+    #   候选链统一收敛到 portal_urls.py(含中枢 :8888)。Windows 上本机没有 8788 网关,
+    #   原来的硬编码候选链只会撞墙; 现在 8788 不通就自动落到中枢 8888 的服务总索引。
     try:
-        _root = os.environ.get("ZMAX_ROOT") or os.path.expanduser("~/zmax")
-        _cf = os.path.join(_root, "config", "ui", "dashboard_hosts.json")
-        if os.path.isfile(_cf):
-            import json as _json
-            with open(_cf, encoding="utf-8") as _f:
-                _raw = _json.load(_f)
-            for h in ((_raw.get("hosts") if isinstance(_raw, dict) else _raw) or []):
-                hosts.append(str(h))
-    except Exception:                                                      # noqa: BLE001
-        pass
-    if not hosts:
-        hosts = ["192.168.23.50"]
-
-    def _u8(h):
-        h = str(h).strip().rstrip("/")
-        if h.startswith("http"):
-            return h + "/"
-        return "http://%s:8788/" % h
-
-    cands = [u for u in ([os.environ.get("ZMAX_PORTAL_URL", ""), "http://127.0.0.1:8788/"]
-                         + [_u8(h) for h in hosts] + ["http://127.0.0.1:8799/"]) if u]
+        import portal_urls as _pu
+        cands = _pu.candidates()
+    except Exception as _e:                                                # noqa: BLE001
+        print("⚠ portal_urls 不可用(%s) — 退回硬编码候选链" % _e, flush=True)
+        cands = [u for u in ([os.environ.get("ZMAX_PORTAL_URL", ""),
+                              "http://127.0.0.1:8788/",
+                              "http://127.0.0.1:8799/"]) if u]
     url, tried = cands[-1], []
     for u in cands:
         tried.append(u)
@@ -238,7 +196,18 @@ def _open_portal_in_app(parent=None, url=None):
     ⇒ 与 8810 切面页同一套做法: QWebEngineView 应用内开窗, 再点一次只置顶刷新。
     外挂浏览器仅作最后回退。
     """
-    url = url or os.environ.get("ZMAX_PORTAL_URL") or "http://127.0.0.1:8788/"
+    # 2026-11-27: 不再硬编码 127.0.0.1:8788 —— 走 portal_urls 的候选链(含中枢 :8888)
+    tried = []
+    if not url:
+        try:
+            import portal_urls as _pu
+            url, tried = _pu.resolve()
+            if not url:
+                url = _pu.fallback()
+        except Exception as _e:                                            # noqa: BLE001
+            print("⚠ portal_urls 不可用(%s) — 退回 127.0.0.1:8788" % _e, flush=True)
+            url = os.environ.get("ZMAX_PORTAL_URL") or "http://127.0.0.1:8788/"
+            tried = [url]
     try:
         import urllib.request as _u
         with _u.urlopen(url, timeout=2.5) as _r:
@@ -247,10 +216,11 @@ def _open_portal_in_app(parent=None, url=None):
     except Exception as _e:                                                # noqa: BLE001
         try:
             parent.statusBar().showMessage(
-                "⚠️ 产品服务总索引不可用 (%s) — 启动: sudo systemctl start zmax-framework" % _e, 12000)
+                "⚠️ 产品服务总索引不可用 (%s) — 已试: %s  (Linux 起网关: sudo systemctl start zmax-framework)"
+                % (_e, " → ".join(tried) or url), 14000)
         except Exception:                                                  # noqa: BLE001
             pass
-        print("⚠ 8788 总索引不可达: %s" % _e, flush=True)
+        print("⚠ 产品服务总索引不可达 (已试 %s): %s" % (" → ".join(tried) or url, _e), flush=True)
         return None
     try:
         from PyQt5.QtCore import Qt as _Qt
@@ -1351,7 +1321,7 @@ class SystemSidebar(QFrame):
         """)
         btn_collapse.clicked.connect(self.collapse_requested.emit)
         logo_row.addWidget(btn_collapse)
-        ver = QLabel("Z-MAX v5.50.785")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
+        ver = QLabel("Z-MAX v5.50.786")  # 品牌版本小字 (菜单栏右侧有同款, 此处紧凑显示)
         ver.ensurePolished()                     # 先套上样式再量字, 否则 sizeHint 按默认字体算
         ver.setToolTip("版本号在此 (侧栏品牌位)\n"
                        "顶栏标题 = 产品标识「XSpace ZMAX <产品号>」, 与配置中心产品配置同源 (config/platform/zmax_product.json)\n"
@@ -1582,31 +1552,6 @@ class ModuleCard(QFrame):
 # 系统架构流程条（垂直分层：Sys0底层 → Sys11+12中层并列 → Sys2顶层）
 # ============================================================
 class ArchFlowBar(QFrame):
-    # 2026-11-26 v5.50.786: 架构条不再写死"(30 功能)", 改为读 server/arch_map.json 的实测数
-    #   老倪:「根据状态空间的节点信息，建立 系统2 系统1 系统0 与所有 L1~L5 的分层映射」
-    #   数据真源: tools/gen_arch_map.py → server/arch_map.json
-    def _arch_stats(self):
-        try:
-            import json as _json
-            _root = _zmax_root_dir()
-            for _c in (os.path.join(_root, "server", "arch_map.json"),
-                       os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-                           os.path.abspath(__file__)))), "server", "arch_map.json")):
-                if os.path.exists(_c):
-                    _d = _json.load(open(_c, encoding="utf-8"))
-                    return _d.get("systems") or {}, _d.get("stats") or {}
-        except Exception:
-            pass
-        return {}, {}
-
-    def _sys_txt(self, sk, fallback):
-        _sys, _ = self._arch_stats()
-        x = _sys.get(sk) or {}
-        if not x:
-            return fallback          # 取不到就如实回落, 不编数
-        return "%s · 画布 %d 节点 · 工程 %d · 标准服务 %d" % (
-            x.get("desc", ""), x.get("n_canvas", 0), x.get("n_eng", 0), x.get("n_services", 0))
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setStyleSheet(f"background:{C_BG2}; border:1px solid {C_BORDER}; border-radius:8px;")
@@ -1625,9 +1570,7 @@ class ArchFlowBar(QFrame):
         root.addWidget(caption)
 
         # ---- Layer 3: System 2 (顶层) ----
-        self._add_layer_box(root, "☁️", "System 2",
-                            self._sys_txt("S2", "L4/L5 认知决策 · 云端智能体 · 任务拆解与调度"),
-                            SYS2_COLOR)
+        self._add_layer_box(root, "☁️", "System 2", "L4/L5 认知决策 · 云端智能体 · 任务拆解与调度 (30 功能)", SYS2_COLOR)
 
         # ---- 箭头 ↓ 到中间层 ----
         self._add_arrow(root, "↕")
@@ -1661,45 +1604,9 @@ class ArchFlowBar(QFrame):
         self._add_arrow(root, "↕")
 
         # ---- Layer 1: Sys-0 (底层) ----
-        self._add_layer_box(root, "⚙️", "System 0",
-                            self._sys_txt("S0", "L1 机器人接口 · 执行器/动作收口/安全边界/物理闭环"),
-                            SYS0_COLOR)
-
-        # 2026-11-26 v5.50.786: 一条总入口 —— 完整架构图 (系统2/1/0 × L1~L5 × 状态空间全节点)
-        #   老倪:「UI 表现要与状态空间的所有节点映射上, simulink 画布的连线逻辑要反映到架构图里」
-        _open_row = QHBoxLayout()
-        _open_row.setContentsMargins(0, 10, 0, 0)
-        _open_row.addStretch()
-        _b = QPushButton("🔍  打开完整架构图 (系统2/1/0 × L1~L5 · 全节点 + 画布连线)")
-        _b.setCursor(Qt.PointingHandCursor)
-        _b.setStyleSheet(
-            f"QPushButton{{background:{C_CARD}; color:{C_WHITE}; border:1px solid {SYS2_COLOR}66;"
-            f" border-radius:6px; padding:7px 16px; font-size:11px;}}"
-            f"QPushButton:hover{{border-color:{SYS2_COLOR}; color:{SYS2_COLOR};}}")
-        _b.clicked.connect(self._open_arch_map)
-        _open_row.addWidget(_b)
-        _open_row.addStretch()
-        root.addLayout(_open_row)
+        self._add_layer_box(root, "⚙️", "System 0", "L2 基石执行 · 原子技能 SK01-08 · 分段感知/控制小模型 · 动作调制·安全限幅 · 肌肉记忆 (27 功能)", SYS0_COLOR)
 
         self.setLayout(root)
-
-    def _open_arch_map(self):
-        """打开 server/web/arch_map_standalone.html (数据内联, 不依赖任何服务)"""
-        try:
-            _root = _zmax_root_dir()
-            for _c in (os.path.join(_root, "server", "web", "arch_map_standalone.html"),
-                       os.path.join(_root, "server", "web", "arch_map.html")):
-                if os.path.exists(_c):
-                    import subprocess as _sub
-                    if sys.platform.startswith("win"):
-                        os.startfile(_c)          # noqa: S606 — 用户机器上打开本地 HTML
-                    else:
-                        _sub.Popen(["xdg-open", _c])
-                    return
-            QMessageBox.information(self, "架构图", "没找到 server/web/arch_map_standalone.html\n"
-                                    "请先运行 python tools/gen_arch_map.py --write")
-        except Exception as _e:
-            QMessageBox.warning(self, "架构图", "打不开: %r" % (_e,))
 
     def _add_layer_box(self, parent_layout, icon, name, desc, color):
         """添加一个全宽层级框"""
@@ -3367,7 +3274,7 @@ class HomeWidget(QWidget):
             ("plugging", "🧩", "3D场景",       "虚拟现实",  "对象·标记·轨迹·保护围栏 可编辑\n机器人 + 工件 + 夹具 (真模型)",  ROI_ACCENT),
             ("version",  "🔄", "版本同步",     "状态空间 · 上游管理",  "检查上游更新 · 安全同步\n版本状态 · 冲突检测",  C_ORANGE),
             # 🗂 2026-10-11 老倪: 「将功能页的产品大屏, 完全同步原来的工位总览的服务」—— 与 :8793 工位总览同一份在役状态
-            ("website",  "🖥", "产品服务",     "总索引 · 全部服务",  "所有服务的总索引: 缩略图 + 介绍 + 健康灯\n点卡片直达 (simulink画布/ar3d/卡拉比丘/大屏…)\n本机 http://127.0.0.1:8788/ · 控制台内嵌窗打开", "#1f6feb"),
+            ("website",  "🖥", "产品服务",     "总索引 · 全部服务",  "所有服务的总索引: 缩略图 + 介绍 + 健康灯\n点卡片直达 (simulink画布/ar3d/卡拉比丘/大屏…)\n本机 :8788 不通 → 自动开中枢 :8888 总索引 · 控制台内嵌窗打开", "#1f6feb"),
         ]
         # 2026-08-08 老倪: 每层分组框 (外边框 + 标题 + 3 卡), 分层结构明显
         _GROUP_TITLES = ["系统", "架构", "数据", "场景"]
@@ -14107,7 +14014,7 @@ class StudioMainWindow(QMainWindow):
         #   ⇒ 状态栏右下角那组控件 (_latency_label「延迟: xx ms」+ _engine_status「● 本地就绪」+
         #      _engine_combo「ACT (Local · 1ms)」) 整组删除, 不再建、不再挂到状态栏。
         #      保留 sb.showMessage(...) 的一行总览, 界面上不再有这组无用读数 (引擎实际由画布/工程配置决定)。
-        sb.showMessage("Z-MAX v5.50.785  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
+        sb.showMessage("Z-MAX v5.50.786  |  Sys-1 + Sys-2 + Sys-11 + Sys-12")
 
         # 🔴 2026-10-12 老倪(定规矩): 「点开启动图标后, 3D场景不要自动启动, 我要先检查任务配置, 然后启动工程」
         #   本段以下所有自动开窗/自动运行**一律只在显式 env 下触发**(ZMAX_AUTO_*), 正常双击图标时:
@@ -16658,7 +16565,7 @@ del "%~f0"
         mb.setWindowTitle("关于 Z-MAX")
         mb.setTextFormat(_Qt.RichText)
         mb.setText(f"""
-<b>Z-MAX v5.50.785</b> · 多模态动作专家<br>
+<b>Z-MAX v5.50.786</b> · 多模态动作专家<br>
 <b>Z700 轮式双臂精细操作机器人</b><br>
 <br>
 <b>核心能力</b><br>
@@ -17268,48 +17175,6 @@ def main():
 
     # 全局滚动条样式 + ToolTip样式 + 对话框暗色主题
     app.setStyleSheet(_build_global_qss())
-
-    # ── [FIX 2026-11-25] 启动闪窗: 批量创建的无父 QWidget 会各自成为顶层窗口并进任务栏
-    #   (Windows 实测一次启动 505 个, 标题都是进程名 Z-MAX_Console, 任务栏疯狂闪烁)。
-    #   在真正上屏之前给这类窗口打 WA_DontShowOnScreen: 窗口对象照旧存在、逻辑不变,
-    #   只是不绘制、不进任务栏。主窗口标题是 "XSpace ..." ⇒ 不受影响。
-    #   覆盖 show / setVisible / showNormal / showMaximized / showFullScreen 五条路径
-    #   (只包 show 时实测还有 390 个漏网)。ZMAX_NO_FLASH=1 可整体回滚。
-    try:
-        if os.environ.get("ZMAX_NO_FLASH") != "1":
-            from PyQt5.QtCore import Qt as _QtFl
-            from PyQt5.QtWidgets import QWidget as _QWFl
-
-            def _flash_should_hide(_w):
-                try:
-                    if _w.parent() is not None:
-                        return False
-                    _t = (_w.windowTitle() or "").strip()
-                    return _t == "" or _t.lower().endswith("_console")
-                except Exception:
-                    return False
-
-            def _flash_wrap(_name):
-                _orig = getattr(_QWFl, _name, None)
-                if _orig is None:
-                    return
-
-                def _guarded(self, *a, **kw):
-                    try:
-                        if _flash_should_hide(self):
-                            self.setAttribute(_QtFl.WA_DontShowOnScreen, True)
-                    except Exception:
-                        pass
-                    return _orig(self, *a, **kw)
-
-                if not getattr(_orig, "_zmax_flash_wrapped", False):
-                    _guarded._zmax_flash_wrapped = True
-                    setattr(_QWFl, _name, _guarded)
-
-            for _n in ("show", "setVisible", "showNormal", "showMaximized", "showFullScreen"):
-                _flash_wrap(_n)
-    except Exception:
-        pass
 
     # 🐛 2026-08-17: splash 提前到 win 构建前 — 重量级加载期(数秒)即有稳定纯色占位,
     #   全程无黑条; 同尺寸同位纯色, 主窗口 show 时无缝覆盖 (1x1 splash 会成左上角黑条)

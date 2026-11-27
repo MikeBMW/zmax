@@ -74,7 +74,10 @@ def quality_items(res, limit=12):
     return items
 
 
-def quality_report(res, sig_n=0, gold_yolo=None, gold_remote=None, surface=None):
+_GEO_CACHE = {"v": None, "t": 0.0}
+
+
+def quality_report(res, sig_n=0, gold_yolo=None, gold_remote=None, surface=None, gold_geometry=None):
     """检测结果 → 节点对外业务 dict (接口口径在这里收口, 节点不再拼字段)。
 
     `pass` 为 None = 未出数; 下游 ssplan/ssdec 以 `kind == "aoi"` 识别。
@@ -100,6 +103,8 @@ def quality_report(res, sig_n=0, gold_yolo=None, gold_remote=None, surface=None)
             "present": gold_yolo.get("present"), "infer_ms": gold_yolo.get("infer_ms"),
             "src": gold_yolo.get("src"), "gate": gold_yolo.get("gate")}),
         "gold_remote": gold_remote,
+        # 📐 19 个矩形的长/宽/面积/节距 + QSFP 几何合规(与 gold_yolo 是两条独立证据)
+        "gold_geometry": gold_geometry,
         # 表面那一路的真实结论取自算法层回写的缓存 (旧实现读一个从未定义的 _AOI_REMOTE
         # ⇒ 页面永远显示"未接", 与日志里"未出图/verdict"自相矛盾)
         "remote": "10083 " + str(surface or "未接"),
@@ -215,8 +220,20 @@ def inspect_aoi(frame, log=None, cache=None, publish=None):
         if log:
             log(f"⚠️ 表面旁路跳过: {type(e).__name__}: {e}")
 
+    # 📐 几何测量(60s 缓存): 抓 origin+region 约 0.8s, 不能每拍都跑
+    _geo = None
+    try:
+        _now = _tm.time()
+        if _now - float(_GEO_CACHE.get("t") or 0) > 60.0:
+            from .gold_geometry import probe_from_host as _pgh
+            _GEO_CACHE["v"] = _pgh()
+            _GEO_CACHE["t"] = _now
+        _geo = _GEO_CACHE.get("v")
+    except Exception as _e:                                             # noqa: BLE001
+        _geo = {"ok": False, "err": str(_e)[:120]}
+
     _rep = quality_report(res, sig_n=len(sig), gold_yolo=gold_yolo or _gy,
-                          gold_remote=gold_remote, surface=surface)
+                          gold_remote=gold_remote, surface=surface, gold_geometry=_geo)
     # 本机镜像这一路的判决/来源单列 (调用方一看就知道"这是本机判据", 不是工控机真值)
     _rep["gold_local"] = gold_local or (cache.get("gold_local") or {}).get("verdict")
     _rep["surface_local"] = surface_local or (cache.get("surface_local") or {}).get("verdict")
@@ -226,3 +243,4 @@ def inspect_aoi(frame, log=None, cache=None, publish=None):
 
 __all__ = ["inspect_quality", "inspect_aoi", "quality_signals", "quality_report",
            "quality_items", "log_quality", "QUALITY_ENUM", "QUALITY_MARK"]
+import time as _tm

@@ -1,4 +1,4 @@
-# Z-MAX console launcher
+﻿# Z-MAX console launcher
 # - starts the exe with cwd=D:\ZMAX and ZMAX_ROOT/ZMAX_REPO set (same contract as 启动控制台.bat)
 # - single instance: brings the running window to front instead of starting a second one
 # - kills orphaned worker processes (parent gone) that still hold 8793/8797/8802
@@ -57,6 +57,13 @@ if ($procs.Count -gt 0) { Start-Sleep -Seconds 2 }
 
 $env:ZMAX_ROOT = $root + '\'
 $env:ZMAX_REPO = $root
+# ── 2026-11-27 老倪:「控制台的产品大屏打开了 127.0.0.1:8799, 不对, 应该打开 8888 服务」──────
+#   根因: 「产品服务/产品大屏」总索引的第一档候选是本机 8788 (framework 网关) —— 那是 Linux 上的
+#         服务, Windows 没有它 ⇒ 探测失败后掉到最后一档 8799 静态大屏, 就是老倪看到的那一页。
+#   修法: ZMAX_PORTAL_URL 是**旧包和新包都认**的第一优先候选, 设成中枢 8888 服务站即可,
+#         不用重新打包 exe 就生效 (下一条 ZMAX_HUB_URL 只给新版 portal_urls.py 用)。
+$env:ZMAX_PORTAL_URL = 'http://10.163.149.123:8888/'
+$env:ZMAX_HUB_URL    = 'http://10.163.149.123:8888/,http://192.168.23.70:8888/'
 # 2026-11-25: 手臂相机(D405)取帧源 —— 本机 rokae/orin 转发口(18792)没起, 直接连 Orin 的 JPEG 通道。
 #   cam_live_stream.py 的 arm_http_worker 用 ZMAX_ARM_HTTP_FALLBACK 作为候选源(逗号分隔, 失败自动切下一条)。
 $env:ZMAX_ARM_HTTP_FALLBACK = 'http://192.168.23.66:8792/frame.jpg,http://192.168.23.66:8794/frame.jpg'
@@ -70,14 +77,16 @@ $env:PATH = Join-Path $root '_stubs' | ForEach-Object { if (Test-Path $_) { "$_;
 #   理由: 主程序自己会拉一版"裸"的 cam_live_stream (只有 --port 8793, 没有 local2),
 #         而且它不看端口是否已被占用。先起带参数的这份, 主程序那份 bind 失败就退出了,
 #         页面用的就是带参数的这个。
-#   中央相机 = Intel 550C 的 USB 顶摄: http://192.168.23.70:8812/frame.jpg (640x480)
+#   中央相机 = Intel 550C 的 USB 顶摄: http://10.163.149.123:8812/frame.jpg (640x480, 办公网)
+#   2026-11-27: 原来写的是产线网 192.168.23.70:8812 —— Windows 现在没插 USB 网卡, 那个 IP 不可达
+#    ⇒ 中央相机那一格一直空。10.163.149.123:8812 实测 200 image/jpeg 13040B。
 #   ⚠ 关键: 不设 ZMAX_CAM_LOCAL=1 的话, --no-local2 默认 = not(env) = True,
 #           local / local2 两路都会被**静默跳过** —— 页面那格永远"无帧"且没有任何报错。
 $env:ZMAX_CAM_LOCAL = '1'
 try {
     if (-not (Get-NetTCPConnection -LocalPort 8793 -State Listen -ErrorAction SilentlyContinue)) {
         $cam = if (Test-Path "$root\server\cam_live_stream.py") { "$root\server\cam_live_stream.py" } else { "$root\tools\cam_live_stream.py" }
-        Start-Process -FilePath $exe -ArgumentList "`"$cam`" --port 8793 --local2-url `"http://192.168.23.70:8812/frame.jpg`" --local2-label `"🎥 中央相机 (Intel 8812)`" --local2-fps 8" -WorkingDirectory $root -WindowStyle Hidden
+        Start-Process -FilePath $exe -ArgumentList "`"$cam`" --port 8793 --local2-url `"http://10.163.149.123:8812/frame.jpg`" --local2-label `"🎥 中央相机 (Intel 8812)`" --local2-fps 8" -WorkingDirectory $root -WindowStyle Hidden
         Start-Sleep -Milliseconds 1800
     }
 } catch { }

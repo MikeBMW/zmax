@@ -33,6 +33,7 @@ import socket
 import sys
 import threading
 import time
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -96,6 +97,41 @@ SERVICES = [
     ("ws 聊天", 8765, "ws_chat_server.py", "local", "/", False,
      "网页聊天通道"),
     # ── 对端 ──
+    ("服务站总索引", 8888, "nginx (Intel)", "intel", "/", False,
+     "550C 服务站导航页 · 列全部端口入口"),
+    # 以下 550C 侧端口取自 8888 服务站页的 SVC 清单 (loc=550C 本机服务)
+    ("产品大屏 (550C)", 8799, "dashboard_server.py (Intel)", "intel", "/", False,
+     "550C 侧大屏"),
+    ("Agent 中枢 (550C)", 8794, "agent_hub (Intel)", "intel", "/", False,
+     "550C Agent 中枢"),
+    ("SE3 几何 (550C)", 8804, "se3 (Intel)", "intel", "/", False,
+     "SE(3) 分层几何"),
+    ("Calabi-Yau 切片", 8805, "cy slice (Intel)", "intel", "/", False,
+     "六维 CY 切片"),
+    ("L2 过程监控 (550C)", 8807, "l2 watch (Intel)", "intel", "/", False,
+     "L2 过程监控"),
+    ("模块叠加", 8808, "mod_overlay_server.py", "intel", "/status", False,
+     "模块叠加页"),
+    ("AR 3D 位姿 (550C)", 8797, "tcp_ar_server (Intel)", "intel", "/ar3d", False,
+     "550C AR 三维页"),
+    ("硬件上载中继", 8811, "hw upload relay", "intel", "/", False,
+     "硬件位姿上载中继"),
+    ("对话 WS (550C)", 8814, "train/chat service", "intel", "/", False,
+     "对话 / 训练服务"),
+    ("工位六路 (550C)", 8793, "cam_live_stream (Intel)", "intel", "/station", False,
+     "六路相机 (只有金手指有源)"),
+    ("AR 场景渲染 (550C)", 8802, "ar_scene_render (Intel)", "intel", "/", False,
+     "550C AR 场景渲染"),
+    ("状态空间推理", 8810, "ss engine", "intel", "/", False,
+     "状态空间推理"),
+    ("插拔位姿", 8806, "peg pose", "intel", "/", False,
+     "插拔位姿"),
+    ("臂相机 YOLO (550C)", 8898, "arm yolo (Intel)", "intel", "/", True,
+     "源头未起"),
+    ("ROS 深度流", 8809, "ros depth", "intel", "/", True,
+     "源头未起"),
+    ("训练中继", 8813, "train relay", "intel", "/", False,
+     "源头未起"),
     ("3DGS 渲染", 8816, "gs_render_stream_intel.py", "intel", "/", True,
      "高斯泼溅渲染 (Intel)"),
     ("cam relay", 8901, "cam relay (Intel)", "intel", "/", True,
@@ -110,6 +146,13 @@ SERVICES = [
 
 # 本机「清单外实跑端口」的扫描范围 (发现没登记的监听者, 只做 TCP 连通判断)
 SCAN_RANGES = [(8760, 8831), (8890, 8901)]
+
+# 对端 systemd 单元汇总来源 (由 550C 上的 svc_status_server.py :8818 只读提供)
+UNIT_SOURCES = [
+    {"host_ip": MACHINES["intel"]["ip"], "port": 8818, "path": "/units",
+     "machine": MACHINES["intel"]["label"], "short": MACHINES["intel"]["short"],
+     "probe": "/health"},
+]
 
 PROBE_TIMEOUT = 1.5      # 单项总预算 (TCP 连通 + HTTP 取码)
 API_TTL = 2.0            # /api/services 结果缓存秒数 (页面 15s 刷一次, 防抖)
@@ -375,6 +418,50 @@ def _scan_extra(known_ports, listen_ports=None, local_ip="127.0.0.1"):
     return found
 
 
+def _collect_remote_units(timeout: float = 3.0):
+    """拉对端 svc_status_server (:8818 /units), 把 systemd 单元并进同一条 items 流。
+    只读: 对端仅执行 systemctl list-units。拉不到就返回 [] (不抛错, 不拖累本机探测)。"""
+    out = []
+    for src in UNIT_SOURCES:
+        url = "http://%s:%d%s" % (src["host_ip"], src["port"], src["path"])
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "zmax-dashboard"})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                raw = r.read()
+            d = json.loads(raw.decode("utf-8", "ignore"))
+        except Exception:                                            # noqa: BLE001
+            continue
+        for u in (d.get("units") or []):
+            act = str(u.get("active") or "").lower()
+            if act == "active":
+                state = "up"
+            elif act == "failed":
+                state = "failed"
+            else:
+                state = "down"
+            out.append({
+                "name": u.get("name") or u.get("unit") or "?",
+                "port": None,
+                "script": u.get("unit") or "?",
+                "machine": src["machine"],
+                "machine_short": src["short"],
+                "host_ip": src["host_ip"],
+                "is_local": False,
+                "listening": state == "up",
+                "state": state,
+                "pid": None,
+                "http_code": None,
+                "version": None,
+                "uptime_hint": u.get("sub") or None,
+                "depends_on_hardware": False,
+                "note": u.get("description") or "",
+                "probe_path": None,
+                "discovered": False,
+                "kind": "unit",
+            })
+    return out
+
+
 def build_services_payload():
     """汇总: 清单全量 + 本机实跑端口, 并发探测 (整体 ≤4s)。2s 内复用缓存。"""
     now = time.time()
@@ -389,9 +476,38 @@ def build_services_payload():
     scan_ports = {p for lo, hi in SCAN_RANGES for p in range(lo, hi)}
     pid_map = _netstat_listeners(scan_ports | {s["port"] for s in cat if s["machine"] == "local"})
     items = []
-    with ThreadPoolExecutor(max_workers=max(8, len(cat))) as ex:
+    # 对端整机快速可达性: 整机不可达时不要再逐个等 1.5s 超时, 直接判 down
+    # 注意: sshd 的 TCP accept 由内核完成, 所以 22 端口通不代表机器可用 ⇒ 只信 8888/80 的 HTTP 端口
+    _reach = {}
+    _reach_ts = {}
+
+    def _host_up(ip):
+        now_ = time.time()
+        if ip in _reach and (now_ - _reach_ts.get(ip, 0)) < 20.0:
+            return _reach[ip]
+        ok_ = _tcp_open(ip, 8888, 0.6) or _tcp_open(ip, 80, 0.6)
+        _reach[ip] = ok_
+        _reach_ts[ip] = now_
+        return ok_
+
+    cat_live = []
+    for s in cat:
+        if s["machine"] != "local" and not _host_up(s["ip"]):
+            items.append({
+                "name": s["name"], "port": s["port"], "script": s["script"],
+                "machine": s["machine_label"], "machine_short": s["machine_short"],
+                "host_ip": s["ip"], "is_local": False, "listening": False,
+                "state": "down", "pid": None, "http_code": None, "version": None,
+                "uptime_hint": "整机不可达",
+                "depends_on_hardware": bool(s["depends_on_hardware"]),
+                "note": s["note"], "probe_path": s.get("probe"), "discovered": False,
+            })
+        else:
+            cat_live.append(s)
+
+    with ThreadPoolExecutor(max_workers=max(8, len(cat_live))) as ex:
         futs = [ex.submit(_probe, s, local_ver, pid_map.get(s["port"]) if s["machine"] == "local" else None)
-                for s in cat]
+                for s in cat_live]
         for f in futs:
             try:
                 items.append(f.result(timeout=PROBE_TIMEOUT + 1.0))
@@ -411,12 +527,27 @@ def build_services_payload():
     except Exception:                                                 # noqa: BLE001
         pass
 
-    items.sort(key=lambda it: (0 if it.get("is_local") else 1, it["port"]))
+    # 对端 systemd 单元 (550C :8818), 只读; 整机不可达就直接跳过
+    if _host_up(MACHINES["intel"]["ip"]) and (time.time() - t0) < 3.0:
+        try:
+            with ThreadPoolExecutor(max_workers=1) as ex:
+                fut = ex.submit(_collect_remote_units, 1.5)
+                items.extend(fut.result(timeout=2.0))
+        except Exception:                                             # noqa: BLE001
+            pass
 
-    up = sum(1 for it in items if it.get("state") == "up")
+    # port 为 None 的单元排在端口项之后, 排序不能直接拿 None 比较
+    items.sort(key=lambda it: (0 if it.get("is_local") else 1,
+                              1 if it.get("kind") == "unit" else 0,
+                              it.get("port") or 0,
+                              it.get("name") or ""))
+
+    up = sum(1 for it in items if it.get("state") == "up" and it.get("kind") != "unit")
     wedged = sum(1 for it in items if it.get("state") == "wedged")
     down_local = sum(1 for it in items if it.get("state") == "down" and it.get("is_local"))
-    remote_down = sum(1 for it in items if it.get("state") == "down" and not it.get("is_local"))
+    remote_down = sum(1 for it in items if it.get("state") == "down" and not it.get("is_local")
+                     and it.get("kind") != "unit")
+    units = [it for it in items if it.get("kind") == "unit"]
     payload = {
         "schema": "zmax-services/1",
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -425,10 +556,14 @@ def build_services_payload():
         "local_version": local_ver,
         "summary": {
             "total": len(items),
+            "ports_total": len(items) - len(units),
             "listening": up,
             "wedged": wedged,
             "down_local": down_local,
             "remote_unreachable": remote_down,
+            "units_total": len(units),
+            "units_up": sum(1 for it in units if it.get("state") == "up"),
+            "units_failed": sum(1 for it in units if it.get("state") == "failed"),
         },
         "items": items,
     }

@@ -49,16 +49,57 @@ MAX_AGE_S = 2.0              # 帧龄上限: 超过 = 采样器卡了/陈旧的�
 MIN_NORM_M = 1e-3            # 位置范数下限: 低于 = 全 0 这类坏值
 
 
-def _one():
-    with open(SRC, encoding="utf-8") as f:
-        d = json.load(f)
+def _euler_quat_zxy(rx, ry, rz):
+    """endInRef 的 RPY(rad) → (qx,qy,qz,qw)，与 tcp_ar_server / cam_live_stream 同一套换算。"""
+    import math as _m
+    sr, cr = _m.sin(rx * 0.5), _m.cos(rx * 0.5)
+    sp, cp = _m.sin(ry * 0.5), _m.cos(ry * 0.5)
+    sy, cy = _m.sin(rz * 0.5), _m.cos(rz * 0.5)
+    return (cy * cp * sr - sy * sp * cr,
+            sy * cp * sr + cy * sp * cr,
+            sy * cp * cr - cy * sp * sr,
+            cy * cp * cr + sy * sp * sr)
+
+
+def _one_http():
+    """tcp_out/latest.json 不存在时的兜底真值源。
+
+    2026-11-26 现场: 本机 rokae_tcp_sampler 容器常年不起 ⇒ latest.json 永远没有,
+    记录任何点都直接报「读不到真值源」。而 8793/pose 早就回退到 Orin(.66) 的珞石桥
+    (39061, 5Hz, endInRef 同口径), 所以这里跟着它读, 口径一致。
+    """
+    import urllib.request as _u
+    with _u.urlopen("http://127.0.0.1:8793/pose", timeout=4.0) as r:
+        d = json.loads(r.read().decode("utf-8", "ignore"))
+    if d.get("stale"):
+        raise RuntimeError("位姿陈旧(stale), 拒绝记录")
+    xyz = d.get("xyz") or []
+    abc = d.get("abc_rad") or []
+    if len(xyz) != 3 or len(abc) != 3:
+        raise RuntimeError("8793/pose 位姿不完整: xyz=%r abc=%r" % (xyz, abc))
+    q = _euler_quat_zxy(*[float(v) for v in abc])
     return {
-        "pos": [float(d["x"]), float(d["y"]), float(d["z"])],
-        "quat": [float(d["qx"]), float(d["qy"]), float(d["qz"]), float(d["qw"])],
-        "ts": float(d.get("ts") or 0.0),
-        "src": str(d.get("src") or ""),
+        "pos": [float(v) for v in xyz],
+        "quat": [float(v) for v in q],
+        "ts": time.time(),
+        "src": "8793/pose <- Orin 39061 (endInRef)",
         "frame": str(d.get("frame") or "base_link"),
     }
+
+
+def _one():
+    try:
+        with open(SRC, encoding="utf-8") as f:
+            d = json.load(f)
+        return {
+            "pos": [float(d["x"]), float(d["y"]), float(d["z"])],
+            "quat": [float(d["qx"]), float(d["qy"]), float(d["qz"]), float(d["qw"])],
+            "ts": float(d.get("ts") or 0.0),
+            "src": str(d.get("src") or ""),
+            "frame": str(d.get("frame") or "base_link"),
+        }
+    except (OSError, KeyError, ValueError):
+        return _one_http()
 
 
 # 🔴 2026-10-12 老倪: 「是延迟太大，点了好几秒才有反映，为什么？」—— 真因就是这里:
@@ -113,9 +154,8 @@ def main():
     if not (a.record or a.show):
         ap.print_help()
         return 2
-    if not os.path.exists(SRC):
-        print("❌ 读不到真值源: %s (rokae_tcp_sampler 在跑吗?)" % SRC)
-        return 1
+    # 2026-11-26: 不再硬拦 latest.json 缺失 —— _one() 会回退到 8793/pose(Orin 39061 桥同口径),
+    # 否则本机 sampler 不起时任何点都录不了(现场已遇到)。
     rows = sample(a.n, window=a.window)
     mean, sp, sq = analyse(rows)
     ok, why = vet(rows, mean, sp, sq)

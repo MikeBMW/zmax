@@ -46,6 +46,38 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 
 
+def _find_bash():
+    """PATH 里的 bash.exe 常常先命中 WSL 的 System32\bash.exe, 那里没有 /d/ZMAX ⇒ 脚本必然失败。
+    显式挑 git-bash: ZMAX_BASH > 仓库自带 _bash > 常见安装路径 > PATH 里非 system32/WindowsApps 的。"""
+    cands = [os.environ.get("ZMAX_BASH") or "",
+             r"C:\Program Files\Git\bin\bash.exe",
+             r"C:\Program Files\Git\usr\bin\bash.exe"]
+    # PATH 里第一个非 WSL 的 bash (Hermes/独立安装的 git-bash 都在这条路上)
+    for _d in (os.environ.get("PATH") or "").split(os.pathsep):
+        _low = (_d or "").lower()
+        if _d and "system32" not in _low and "windowsapps" not in _low:
+            cands.append(os.path.join(_d, "bash.exe"))
+    for _c in cands:
+        try:
+            if _c and os.path.isfile(_c):
+                return _c
+        except OSError:
+            pass
+    return "bash"
+
+
+_BASH = _find_bash()
+
+
+def _msys_path(p):
+    """Windows 路径转 git-bash 认识的 MSYS 路径: D:/ZMAX/x -> /d/ZMAX/x。
+    bash 收到 D:\... 时 dirname/cd 都会失败(脚本 set -e 直接退出), 必须转。"""
+    p = (p or "").replace("\\", "/")
+    if len(p) > 2 and p[1] == ":" and p[2] == "/":
+        return "/" + p[0].lower() + "/" + p[3:]
+    return p
+
+
 def _auth_gate():
     """真动授权闸 —— 走**单一唯一依据** tools/ctl_auth.py(与 8793 页面/执行器同一份)。
 
@@ -1556,6 +1588,37 @@ def toolframe_px(length_mm=80.0, align_box=True, tip_inset_px=None):
                 "src": "handeye_state.json(残差0.06mm) + real_cam_calib K(camera_info)"}
     except Exception as e:                                               # noqa: BLE001
         return {"ok": False, "err": str(e)}
+
+
+
+def _rot_rpy_tool(rpy, axis, drad):
+    """绕*工具自身*轴做增量旋转, 再转回 RPY(ZYX)。
+
+    为什么不直接 `rpy[idx] += drad`: 现场 B 轴停在 -89.75°, 正好卡在万向节锁(±90°),
+    那里 A/C 退化、RPY 分量互相串, 同一个 +5° 命令在不同时刻表现为正/负
+    (用户实测反馈"B 轴有时候正有时候负") ⇒ 必须走旋转矩阵, 语义才稳定。
+      左乘(基座轴) 与 右乘(工具轴) 在非奇异区等价, 在奇异区右乘才是"手腕自转"的直觉。
+    """
+    r, p, y = rpy
+    cr, sr = math.cos(r), math.sin(r)
+    cp, sp = math.cos(p), math.sin(p)
+    cy, sy = math.cos(y), math.sin(y)
+    # R = Rz(y) @ Ry(p) @ Rx(r)  (ZYX 欧拉, 与 sdk_ctl 的 --rx/--ry/--rz 一致)
+    R = [[cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
+         [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
+         [-sp, cp * sr, cp * cr]]
+    c, s2 = math.cos(drad), math.sin(drad)
+    if axis == "a":        # 工具 X
+        D = [[1.0, 0.0, 0.0], [0.0, c, -s2], [0.0, s2, c]]
+    elif axis == "b":      # 工具 Y
+        D = [[c, 0.0, s2], [0.0, 1.0, 0.0], [-s2, 0.0, c]]
+    else:                  # 工具 Z
+        D = [[c, -s2, 0.0], [s2, c, 0.0], [0.0, 0.0, 1.0]]
+    N = [[sum(R[i][k] * D[k][j] for k in range(3)) for j in range(3)] for i in range(3)]
+    p2 = math.asin(max(-1.0, min(1.0, -N[2][0])))
+    y2 = math.atan2(N[1][0], N[0][0])
+    r2 = math.atan2(N[2][1], N[2][2])
+    return [r2, p2, y2]
 
 
 class H(BaseHTTPRequestHandler):
@@ -3281,12 +3344,13 @@ class H(BaseHTTPRequestHandler):
                     return
             except Exception:                                                    # noqa: BLE001
                 pass
-            _argv2 = ["bash", os.path.join(REPO, "tools", "rokae_sdk_run.sh"), "move-rel",
+            _argv2 = [_BASH, _msys_path(os.path.join(REPO, "tools", "rokae_sdk_run.sh")), "move-rel",
                       "--dx", "%.3f" % _dx, "--dy", "%.3f" % _dy, "--dz", "%.3f" % _dz,
                       "--speed", "%.2f" % _spd, "--max-mm", "%.2f" % _cap]
             _t0 = time.time()
             try:
-                _pr2 = subprocess.run(_argv2, cwd=REPO, capture_output=True, text=True, timeout=120)
+                _pr2 = subprocess.run(_argv2, cwd=REPO, capture_output=True, text=True, timeout=120,
+                                     encoding="utf-8", errors="replace")
             except subprocess.TimeoutExpired:
                 self._json({"ok": False, "stage": "exec", "err": "执行超时 120s",
                             "elapsed_s": round(time.time() - _t0, 2)})
@@ -3308,6 +3372,85 @@ class H(BaseHTTPRequestHandler):
             if not _parsed:
                 _res["raw_tail"] = _raw[-1200:]
             self._json(_res)
+        elif p == "/api/arm/rot_rel":
+            # 🔄 相对旋转 (姿态微调): 读当前 TCP → 改一个 RPY 角 → move-abs 下发
+            #    仅 Windows 直连链路使用(手动控制台的 A/B/C 轴按钮); 单次限幅 5°。
+            _b = body or {}
+            _axis = str(_b.get("axis") or "a").strip().lower()
+            _dry = bool(_b.get("dry"))
+            try:
+                _deg = float(_b.get("deg") or 0.0)
+            except (TypeError, ValueError):
+                self._json({"ok": False, "stage": "param", "err": "deg 必须是数字"})
+                return
+            if _axis not in ("a", "b", "c"):
+                self._json({"ok": False, "stage": "param", "err": "axis 只认 a/b/c"})
+                return
+            if abs(_deg) < 1e-9:
+                self._json({"ok": False, "stage": "param", "err": "旋转角为 0"})
+                return
+            _cap = max(-5.0, min(5.0, _deg))
+            _idx = {"a": 0, "b": 1, "c": 2}[_axis]
+            try:
+                import urllib.request as _u3
+                with _u3.urlopen("http://127.0.0.1:8793/pose", timeout=4.0) as _r3:
+                    _pp = json.loads(_r3.read().decode("utf-8", "ignore"))
+                _xyz = [float(v) for v in (_pp.get("xyz") or [])]
+                _rpy = [float(v) for v in (_pp.get("abc_rad") or [])]
+                if len(_xyz) != 3 or len(_rpy) != 3:
+                    raise ValueError("pose 不完整")
+            except Exception as e:                                          # noqa: BLE001
+                self._json({"ok": False, "stage": "pose", "err": "取当前位姿失败: %s" % str(e)[:120]})
+                return
+            # ⚠️ 万向节锁闸: pitch(B) 接近 ±90° 时 A/C 退化, B 轴增量会让两者各跳 20~140°
+            #    用户实测「B 轴有时候正有时候负」就是这个 —— 不是符号错了, 是位形奇异。
+            if _axis == "b" and abs(_rpy[1]) > math.radians(85.0):
+                self._json({"ok": False, "stage": "gimbal", "axis": "b",
+                            "pitch_deg": round(math.degrees(_rpy[1]), 2),
+                            "err": ("B 轴当前 %.2f°，已进入万向节锁(±90°)区: 在这里转 B 会让 A/C 各跳 20~140°，"
+                                    "控制器走出来的姿态看着就是反的。请先用 A 轴或 C 轴把姿态转开"
+                                    "(把 |B| 拉到 75° 以内)，再转 B。") % math.degrees(_rpy[1])})
+                return
+            if _dry:
+                _t = _rot_rpy_tool(_rpy, _axis, math.radians(_cap))
+                self._json({"ok": True, "dry": True, "axis": _axis, "deg": _cap,
+                            "from_rpy": [round(v, 4) for v in _rpy],
+                            "to_rpy": [round(v, 4) for v in _t],
+                            "note": "dry: 只回显目标姿态, 不下发"})
+                return
+            _ok_a, _why_a = _auth_gate()
+            if not _ok_a:
+                self._json({"ok": False, "stage": "auth", "err": "未授权: %s" % _why_a})
+                return
+            _tgt = _rot_rpy_tool(_rpy, _axis, math.radians(_cap))
+            _argv3 = [_BASH, _msys_path(os.path.join(REPO, "tools", "rokae_sdk_run.sh")), "move-abs",
+                      "--x", "%.4f" % _xyz[0], "--y", "%.4f" % _xyz[1], "--z", "%.4f" % _xyz[2],
+                      "--rx", "%.5f" % _tgt[0], "--ry", "%.5f" % _tgt[1], "--rz", "%.5f" % _tgt[2],
+                      "--speed", "%.2f" % float(_b.get("speed") or 5.0)]
+            _t0r = time.time()
+            try:
+                _pr3 = subprocess.run(_argv3, cwd=REPO, capture_output=True, text=True,
+                                      timeout=150, encoding="utf-8", errors="replace")
+            except subprocess.TimeoutExpired:
+                self._json({"ok": False, "stage": "exec", "err": "执行超时 150s"})
+                return
+            _raw3 = (_pr3.stdout or "") + (("\n" + _pr3.stderr) if _pr3.stderr else "")
+            _par3 = None
+            try:
+                _i3 = _raw3.index("{")
+                _par3 = json.loads(_raw3[_i3:])
+            except Exception:
+                _par3 = None
+            _res3 = {"ok": _pr3.returncode == 0, "rc": _pr3.returncode, "axis": _axis,
+                     "deg": _cap, "from_rpy": [round(v, 4) for v in _rpy],
+                     "to_rpy": [round(v, 4) for v in _tgt],
+                     "elapsed_s": round(time.time() - _t0r, 2), "script": _par3}
+            if _par3:
+                _res3["verdict"] = _par3.get("verdict")
+                _res3["post_pose"] = _par3.get("post_pose") or _par3.get("pose")
+            if not _par3:
+                _res3["raw_tail"] = _raw3[-1200:]
+            self._json(_res3)
         elif p == "/api/arm/step_traj":
             # ⏭ 同步操作的真机腿 (老倪 2026-11-13「仿真先走10个点, 然后驱动真实右臂走10个点」)
             #   数据与仿真同源: tools/web/real_traj_joints.json 的 frames[0:n].j (6 轴关节角真值)
@@ -3548,7 +3691,7 @@ class H(BaseHTTPRequestHandler):
                 with open(_cp, "w", encoding="utf-8") as _f:
                     json.dump(_cmd, _f, ensure_ascii=False)
                 _out = os.path.join(REPO, "zmax_data", "rokae_sdk", "traj_step_out.log")
-                _argv = ["bash", os.path.join(REPO, "tools", "rokae_sdk_run.sh"),
+                _argv = [_BASH, _msys_path(os.path.join(REPO, "tools", "rokae_sdk_run.sh")),
                          "--script", "arm_step_traj.py"] + (["--dry"] if _dry else [])
                 with open(_out, "a", encoding="utf-8") as _hd:
                     _hd.write("\n=== round %s n=%d dry=%s ===\n" % (time.strftime("%F %T"), _n, _dry))

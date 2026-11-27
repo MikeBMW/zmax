@@ -31,6 +31,35 @@ import os
 import threading
 import time
 
+# ---- Windows 去弹窗: 本进程是 GUI(无控制台), 每调一个控制台程序(nvidia-smi / ps / sysctl ...)
+#      系统都会新建一个控制台窗口 ⇒ 屏幕上不停闪黑窗。给所有子进程统一加 CREATE_NO_WINDOW。
+if os.name == "nt":
+    try:
+        import subprocess as _sp
+        if not getattr(getattr(_sp, "run", None), "_zmax_nowindow", False):
+            _NW = int(getattr(_sp, "CREATE_NO_WINDOW", 0x08000000))
+            _run0 = _sp.run
+
+            def _run_nw(*a, **kw):
+                cf = int(kw.get("creationflags") or 0)
+                # CREATE_NEW_CONSOLE(0x10) / DETACHED_PROCESS(0x8) 要与 CREATE_NO_WINDOW 互斥, 不覆盖
+                if not (cf & 0x18):
+                    kw["creationflags"] = cf | _NW
+                return _run0(*a, **kw)
+            _run_nw._zmax_nowindow = True
+            _sp.run = _run_nw
+
+            _popen0 = _sp.Popen.__init__
+
+            def _popen_nw(self, *a, **kw):
+                cf = int(kw.get("creationflags") or 0)
+                if not (cf & 0x18):
+                    kw["creationflags"] = cf | _NW
+                return _popen0(self, *a, **kw)
+            _sp.Popen.__init__ = _popen_nw
+    except Exception:
+        pass
+
 TOPICS = ("hw_state", "train_prog", "heartbeat")
 
 

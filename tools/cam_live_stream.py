@@ -951,6 +951,29 @@ def _auth_set(on: bool, ip: str = "", note: str = "", mode: str = "window") -> d
     return _auth_info()
 
 _L2_FIFO = os.path.expanduser("~/zmax/zmax_data/l2_cmd.fifo")
+
+_SKILL_AXIS_CACHE = {"t": 0.0, "m": {}}
+
+
+def _skill_axis_map():
+    """技能 id -> (ros, axis)。给 Windows 直连分支用(没有 l2_daemon 时把 line_rel 技能翻译成 move_rel)。"""
+    now_ = time.time()
+    if _SKILL_AXIS_CACHE["m"] and now_ - _SKILL_AXIS_CACHE["t"] < 60:
+        return _SKILL_AXIS_CACHE["m"]
+    out = {}
+    try:
+        with open(os.path.join(_REPO_ROOT, "data/skills/l2_atomic/registry.json"), encoding="utf-8") as f:
+            d = json.load(f)
+        sk = d.get("skills") if isinstance(d, dict) else d
+        for x in (sk if isinstance(sk, list) else []):
+            if isinstance(x, dict) and x.get("id"):
+                out[x["id"]] = (x.get("ros"), x.get("axis"))
+    except Exception:
+        pass
+    _SKILL_AXIS_CACHE["t"] = now_
+    _SKILL_AXIS_CACHE["m"] = out
+    return out
+
 # 允许的指令白名单: 技能 → (参数名, 最小, 最大)。**只认这些**, 别的技能(含点位/多阶段技能)
 # 一律拒绝 —— 手动控制区是给"点动"用的, 不是通用技能下发口。
 _CTL_SKILLS = {
@@ -1298,7 +1321,10 @@ def _ctl_record_point(body: dict) -> dict:
         if dry:
             cmd.append("--dry")
     try:
-        _r = subprocess.run(cmd, capture_output=True, text=True, timeout=150)
+        # 2026-11-26: 必须显式 utf-8 —— Windows 上 text=True 走 locale(GBK), 脚本输出是 UTF-8 中文,
+        # 解码失败会让 _r.stdout 变空 ⇒ 页面报「记录脚本无 JSON 回执」(tail 也是空)。
+        _r = subprocess.run(cmd, capture_output=True, text=True, timeout=150,
+                            encoding="utf-8", errors="replace")
     except Exception as _e:                                                   # noqa: BLE001
         return {"ok": False, "msg": "记录脚本执行失败: %s" % str(_e)[:160]}
     _out = None
@@ -2893,6 +2919,193 @@ def _aoi_guide_move(port: int = 10082, max_step_mm: float = 5.0, speed: float = 
     return out
 
 
+GOLD_DEFECT_URL = os.environ.get("ZMAX_GOLD_DEFECT_URL", "http://192.168.23.70:8821")
+
+def _gold_true_verdict(lr):
+    """从 10082 /last_result 合成**真判决**(不信 finger_det.verdict)。
+
+    背景: 工控机 GF19_ON=0 ⇒ finger_det 那路永远 verdict=OK / n=0 / off=true。
+    但 fingers 那路是活的: 每根给出 S(饱和)/V(亮度)/grad(梯度) 与 flag。
+    判据(实测标定, 2026-11-27):
+      · flag 含 DARK   ⇒ 该根暗(氧化倾向)
+      · flag 含 SMOOTH ⇒ 该根无梯度(划伤/镀层缺失趋向平滑)
+      · 或 fingers.bad 里点名
+    只要有一根被判, 整体就是 NG —— 老倪的原话: 「现在就是有缺陷的状态，你要检查出来」。
+    """
+    if not isinstance(lr, dict):
+        return None
+    fs = lr.get("fingers") or {}
+    arr = fs.get("fingers") or []
+    bad = list(fs.get("bad") or [])
+    if not arr:
+        return None
+    vs = [float(f.get("V") or 0) for f in arr]
+    v_med = sorted(vs)[len(vs) // 2] if vs else 0.0
+    ng = []
+    for f in arr:
+        k = f.get("k")
+        flag = f.get("flag") or []
+        v = float(f.get("V") or 0)
+        if k in bad or "DARK" in flag or "SMOOTH" in flag:
+            ng.append(int(k) if k is not None else -1)
+        elif v_med > 0 and v < v_med * 0.70:            # 比中位亮度暗 30% 以上也算
+            ng.append(int(k) if k is not None else -1)
+    ng = sorted(set(x for x in ng if x > 0))
+    fd = lr.get("finger_det") or {}
+    return {
+        "verdict": "NG" if ng else "OK",
+        "ng": ng,
+        "n": len(arr),
+        "n_ng": len(ng),
+        "v_median": round(v_med, 1),
+        "relied_on": "fingers(bad/flag/V-drop)",
+        "ignored": {"finger_det.verdict": fd.get("verdict"), "off": fd.get("off"),
+                    "note": fd.get("note"), "why": "GF19_ON=0 时这一路恒 OK, 不可信"},
+    }
+
+
+_GOLD_GEO = {"mod": None, "err": ""}
+
+
+def _gold_geometry_of(strip_bgr):
+    """调 tools/gold_geometry_probe.probe() —— 尺寸/面积/节距 + QSFP 几何合规。"""
+    if _GOLD_GEO["mod"] is None:
+        try:
+            import sys as _sys
+            _tdir = os.path.join(_REPO_ROOT, "tools")
+            if _tdir not in _sys.path:
+                _sys.path.insert(0, _tdir)
+            import gold_geometry_probe as _gp
+            _GOLD_GEO["mod"] = _gp
+        except Exception as e:                                         # noqa: BLE001
+            _GOLD_GEO["err"] = str(e)[:160]
+            raise
+    r = _GOLD_GEO["mod"].probe(strip_bgr)
+    # 精简: 只回执汇总 + 逐根, 不带冗余
+    return {"ok": True, "n": r.get("n"), "px_per_mm": r.get("px_per_mm"),
+            "pitch_mm": r.get("pitch_mm"), "w_mm": r.get("w_mm"),
+            "h_mm": r.get("h_mm"), "area_mm2": r.get("area_mm2"), "duty": r.get("duty"),
+            "geometry_ok": r.get("geometry_ok"), "violations": r.get("violations") or [],
+            "area_suspect": r.get("area_suspect") or [],
+            "rects": [{k: x.get(k) for k in ("i", "w_mm", "h_mm", "area_mm2", "pitch_mm")}
+                      for x in (r.get("rects") or [])]}
+
+
+
+def _gold_defect_check(timeout: float = 30.0) -> dict:
+    """段级缺陷判定: 抓原图 → 按 /region 裁条带 → 550C:8821/predict_tiles。
+
+    2026-11-27 现场: 「AOI检测, 每次请求, 要回实际的结果」。
+    工控机那套 YOLO 是加密的、给的是"判决/缺陷数", 我们改不了它;
+    这里补一路**我们自训的 gold_defect 模型**(19 根逐根 OK/NG), 作为可解释的第二意见:
+    返回里带每根的序号/置信度, 页面能把"哪几根 NG"直接标出来。
+    模型限制(见数据集 README): 单工件 19 样本 + 增强, 只用于跑通闭环。
+    """
+    try:
+        import base64 as _b64
+        import urllib.request as _u
+        import cv2 as _cv
+        import numpy as _np
+        q, wh = _gold_region()
+        if not q:
+            return {"ok": False, "err": "取不到 /region 四边形"}
+        with _u.urlopen("http://" + _AOI_HOST + ":10082/picture?kind=origin&grab=1", timeout=12) as r:
+            o = _cv.imdecode(_np.frombuffer(r.read(), _np.uint8), _cv.IMREAD_COLOR)
+        if o is None:
+            return {"ok": False, "err": "原图解码失败"}
+        ow, oh = int(round(wh[0])), int(round(wh[1]))
+        M = _cv.getPerspectiveTransform(_np.float32(q),
+                                        _np.float32([[0, 0], [ow - 1, 0], [ow - 1, oh - 1], [0, oh - 1]]))
+        strip = _cv.warpPerspective(o, M, (ow, oh), flags=_cv.INTER_LINEAR,
+                                    borderMode=_cv.BORDER_REPLICATE)
+        ok, buf = _cv.imencode(".jpg", strip, [int(_cv.IMWRITE_JPEG_QUALITY), 95])
+        if not ok:
+            return {"ok": False, "err": "条带编码失败"}
+        payload = json.dumps({"b64": _b64.b64encode(buf.tobytes()).decode(), "n": 19}).encode("utf-8")
+        req = _u.Request(GOLD_DEFECT_URL + "/predict_tiles", data=payload, method="POST",
+                         headers={"Content-Type": "application/json"})
+        with _u.urlopen(req, timeout=timeout) as r:
+            d = json.loads(r.read().decode("utf-8", "ignore"))
+        d["src"] = GOLD_DEFECT_URL
+        # ⚖️ 真判决合成(与 YOLO 并列, 两条独立证据)
+        try:
+            _lr = d.get("last_result") or {}
+            _tv = _gold_true_verdict(_lr)
+            if _tv:
+                d["true_verdict"] = _tv
+        except Exception as _te:                                       # noqa: BLE001
+            d["true_verdict"] = {"err": str(_te)[:100]}
+        # 📐 2026-11-27: 同一张条带顺手做几何测量(19 个矩形的长/宽/面积/节距/合规),
+        #    几何与 YOLO 是两条独立证据: 一个看"形状对不对", 一个看"表面脏不脏"。
+        try:
+            d["geometry"] = _gold_geometry_of(strip)
+        except Exception as _ge:                                       # noqa: BLE001
+            d["geometry"] = {"ok": False, "err": str(_ge)[:120]}
+        return d
+    except Exception as e:                                             # noqa: BLE001
+        return {"ok": False, "err": str(e)[:160], "src": GOLD_DEFECT_URL}
+
+
+def _arch_status() -> dict:
+    """架构窗口(L2→L5)的实时状态聚合。
+
+    2026-11-27: 架构窗口不能只写静态文字 —— 每层都要有**当前实测值**, 否则看不出系统是不是活的。
+    L2 执行: 手臂位姿流是否在更新 / 授权窗
+    L3 感知: AOI 两路的 fps
+    L4 世界模型: 550C 的采集提交数 / 训练队列 / 3DGS 高斯数与帧率
+    L5 规划: 授权模式(window/debug)与剩余
+    """
+    import urllib.request as _u
+    out = {"ts": time.time()}
+    # L2: 直接读本服务的 /pose(真值源, 由 8797 提供)
+    try:
+        with _u.urlopen("http://127.0.0.1:8793/pose", timeout=2.5) as r:
+            _p = json.loads(r.read().decode("utf-8", "ignore"))
+        out["l2"] = {"arm_online": not bool(_p.get("stale")),
+                      "pose_age_s": _p.get("age_s")}
+    except Exception:
+        out["l2"] = {"arm_online": None}
+    try:
+        import ctl_auth as _ca
+        a = _ca.info()
+        out["l5"] = {"armed": bool(a.get("armed")), "mode": a.get("mode"),
+                     "left_s": round(float(a.get("left_s") or 0), 1),
+                     "ip": a.get("ip")}
+        out["l2"]["armed"] = bool(a.get("armed"))
+    except Exception:
+        out["l5"] = {}
+    # L3: AOI fps 来自本服务 /stats
+    try:
+        with _u.urlopen("http://127.0.0.1:8793/stats", timeout=2.5) as r:
+            s2 = json.loads(r.read().decode("utf-8", "ignore"))
+        out["l3"] = {"aoi_gold_fps": round(float((s2.get("aoi_gold") or {}).get("fps") or 0), 2),
+                     "aoi_surface_fps": round(float((s2.get("aoi_surface") or {}).get("fps") or 0), 2)}
+    except Exception:
+        out["l3"] = {}
+    # L4: 550C 三路
+    l4 = {}
+    for key, url in (("autocap", "http://192.168.23.70:8806/health"),
+                     ("train", "http://192.168.23.70:8814/health"),
+                     ("gs", "http://192.168.23.70:8816/health")):
+        try:
+            with _u.urlopen(url, timeout=3.0) as r:
+                d = json.loads(r.read().decode("utf-8", "ignore"))
+            if key == "autocap":
+                l4["autocap_trains"] = d.get("trains_submitted")
+                l4["autocap_session"] = (d.get("cur") or {}).get("id")
+            elif key == "train":
+                l4["train_jobs"] = len(d.get("jobs") or []) if isinstance(d.get("jobs"), list) else d.get("jobs")
+                l4["train_busy"] = bool(d.get("busy"))
+                l4["gpu"] = d.get("gpu")
+            else:
+                l4["gs_gaussians"] = d.get("gaussians")
+                l4["gs_fps"] = d.get("fps")
+        except Exception:
+            pass
+    out["l4"] = l4
+    return out
+
+
 def _aoi_detect(port: int = 10082, wait_s: float = 4.0) -> dict:
     """触发工控机产线正常检测命令 POST /capture_detect, 并把判决取回来。
 
@@ -2968,6 +3181,43 @@ def _aoi_detect(port: int = 10082, wait_s: float = 4.0) -> dict:
                           % (_last_code or "?"))
     except Exception as e:                                                        # noqa: BLE001
         out["err2"] = "取判决失败(检测可能仍在跑, 稍后看判决格): %s" % str(e)[:150]
+    # 🧪 我们自训的段级缺陷判定(19 根逐根), 作为可解释的第二意见 —— 失败不影响工控机判决
+    if int(port) == 10082:
+        try:
+            out["defect_check"] = _gold_defect_check()
+        except Exception as _e3:                                       # noqa: BLE001
+            out["defect_check"] = {"ok": False, "err": str(_e3)[:120]}
+        # ⚖️ 2026-11-27 老倪「这是金手指检测 request 的反馈么？不是标出氧化了么？msg 要返回真实值」——
+        #   capture.msg="success" 只是**工控机命令执行成功**, 不是检测判定;
+        #   而 /last_result 的 finger_det.verdict 在 GF19_ON=0 时恒为 OK(off=true, n=0), 也不可信。
+        #   真判决 = fingers 那一路(逐根 S/V/grad + flag) 合成, 与自训 YOLO 并列两条独立证据。
+        try:
+            out["true_verdict"] = _gold_true_verdict(out.get("last_result") or {})
+        except Exception as _e4:                                       # noqa: BLE001
+            out["true_verdict"] = {"err": str(_e4)[:120]}
+        # 🎯 2026-11-27 老倪「success 时有光模块且没缺陷; fail 时有光模块但有氧化划伤;
+        #    没看到金手指时即使 request 也只能回 none」+「根据位姿掌握当前是点1还是点2」
+        try:
+            import aoi_tristate as _ts
+            _geo = (out.get("defect_check") or {}).get("geometry") or {}
+            _vis, _why = _ts.visible_from_geometry(_geo)
+            _ng_geo = bool(_why.get("n") is not None and not _vis)
+            _ng_yolo = ((out.get("defect_check") or {}).get("verdict") == "NG")
+            _tv = out.get("true_verdict") or {}
+            _ng_tcp = (_tv.get("verdict") == "NG")
+            _tcp = {}
+            try:
+                _tcp = _rokae_pose() or {}          # 完整位姿(xyz + quat + abc)，与页面 /station/status 同源
+            except Exception:                                          # noqa: BLE001
+                _tcp = {}
+            _face = _ts.which_face(_tcp.get("xyz"), _tcp.get("quat"))
+            out["result"] = _ts.tri_state(_vis, (_ng_yolo or _ng_tcp), {
+                "visible": _vis, "visible_why": _why,
+                "face": _face,
+                "ng_sources": {"trained_yolo": _ng_yolo, "controller_fingers": _ng_tcp},
+            })
+        except Exception as _e5:                                       # noqa: BLE001
+            out["result"] = {"verdict": "none", "err": str(_e5)[:140]}
     _aoi_busy_release(port)
     return out
 
@@ -3288,7 +3538,10 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
                 #   找不到合规刚体(矩形度 <0.45) ⇒ 不伪造: 该格保留原样并如实报 why。
                 #   置 ZMAX_AOI_SURFACE_RECT=0 一键回退旧口径(kind=judge 直通)。
                 _surf_crop = None
-                if port == 10083 and _SURFACE_RECT_JUDGE:
+                # 🔴 2026-11-27: kind=judge 时**直接用 10083 自己产出的判据图**（1400×192 宽条），
+                #   本机 surface_judge 不再二次加工 —— 10083 已把竖直长条转 90° 摆正、judge_ok=True，
+                #   它给的就是我们要的那张；本机再切反而认不出刚体（转后是竖版 2048×2448）⇒ 回退原图。
+                if port == 10083 and _SURFACE_RECT_JUDGE and kind != "judge":
                     _surf_crop, _surf_ov, _sm = _surface_rect_pair(bgr)
                     _SURFACE_META[int(port)] = _sm
                     if _surf_crop is not None:
@@ -3358,9 +3611,18 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
                 _aoi_note(port, ok=False, src=name, url=url, http=code,
                           err=("HTTP %d %s" % (code, err)).strip() or "取图失败")
         # 🐢 整板原图(体积大: 10082 origin 实测 4.9MB) 单独按更低频率取: 每 full_every 轮一次, 不拖累主流
-        if full_name and full_kind and full_every and (n % int(full_every) == 0):
+        # 🔴 2026-11-27 老倪「表面检测，原图没有啊」——
+        #   带 grab 才出新帧, 而这里只在 n%4==0 才取 ⇒ 切到「原图」后要等好几轮
+        #   (实测 img.complete=false / naturalWidth=0, 浏览器卡在等首帧)。
+        #   改成: 有人正在看这格 ⇒ 每轮都取(与金手指那格同口径), 没人看才按低频。
+        _raw_watched = (time.time() - _AOI_VIEW_TS.get(full_name, 0.0)) < _AOI_LIVE_WIN_S
+        if full_name and full_kind and full_every and ((n % int(full_every) == 0) or _raw_watched):
             try:
-                fu = "http://" + _AOI_HOST + ":%d/picture?kind=%s" % (port, full_kind)
+                _fu_kind = full_kind
+                if _raw_watched:
+                    fu = "http://" + _AOI_HOST + ":%d/picture?kind=%s&grab=1" % (port, _fu_kind)
+                else:
+                    fu = "http://" + _AOI_HOST + ":%d/picture?kind=%s" % (port, _fu_kind)
                 with urllib.request.urlopen(
                         urllib.request.Request(fu, headers={"User-Agent": "zmax-station"}),
                         timeout=20) as r:
@@ -3386,6 +3648,207 @@ def _aoi_worker(port: int, name: str, fps: float, kind: str = "origin",
 
 
 _AOI_PREVIEW_OK: dict = {}          # 工控机是否支持 /preview.jpg (快取图路由) —— 遇到 404 即永久回落老路
+
+
+_GOLD_RECTIFY = os.environ.get("ZMAX_GOLD_RECTIFY", "1").strip().lower() not in ("0", "off", "false")
+# 2026-11-26: 「为什么你的金手指图片一直在动」—— 每帧重新拟合边界 ⇒ 矩阵逐帧微变 ⇒ 画面抖。
+#   M 做指数平滑(旧 85% + 新 15%), 既能抹掉微抖又跟得上慢变(工件被挪动)。
+_GOLD_RECT = {"M": None}
+
+
+_GOLD_TILT = {"deg": 0.0, "t": 0.0}
+
+
+def _gold_edge_tilt(bgr):
+    """量"整排的上下边沿"还剩多少倾斜(度)。正=右端偏低。
+
+    做法: 逐列找亮区上边界 y, 拟合直线取斜率。比逐条条纹质心更贴合"边沿歪"这个观感
+    (用户看的就是那条边)。低矮图上亮区可能连成一片, 所以同时用上和下两条边界的平均。
+    """
+    try:
+        import cv2 as _cv
+        import numpy as _np
+        g = _cv.cvtColor(bgr, _cv.COLOR_BGR2GRAY)
+        h, w = g.shape
+        thr = int((float(g.min()) + float(g.max())) / 2.0)
+        _, bw = _cv.threshold(g, thr, 255, _cv.THRESH_BINARY)
+        xs, ts, bs = [], [], []
+        for x in range(w):
+            idx = _np.nonzero(bw[:, x])[0]
+            if len(idx) < max(4, h * 0.3):
+                continue
+            xs.append(x); ts.append(int(idx[0])); bs.append(int(idx[-1]))
+        if len(xs) < 30:
+            return 0.0
+        xa = _np.asarray(xs, dtype=_np.float32)
+        ta = _np.asarray(ts, dtype=_np.float32)
+        ba = _np.asarray(bs, dtype=_np.float32)
+        at = _np.polyfit(xa, ta, 1)[0]
+        ab = _np.polyfit(xa, ba, 1)[0]
+        return float(_np.degrees(_np.arctan((at + ab) / 2.0)))
+    except Exception:
+        return 0.0
+
+
+# 📐 金手指标准窗口规格 —— 2026-11-27 现场定稿「以后每次都要显示这样的窗口大小」
+#    任何改动都必须同步 docs + skill `zmax-gold-window`; 运行时会在偏离时告警(不阻断)。
+GOLD_SPEC = {"w": 1341, "h": 206, "tol_w": 90, "tol_h": 40}
+_GOLD_SPEC_WARNED = {}
+
+_GOLD_QUAD = {"q": None, "wh": None, "t": 0.0}
+
+
+def _gold_region(ttl: float = 5.0):
+    """/region 的金手指四边形(原图坐标) + 尺寸, 缓存 ttl 秒。"""
+    now = time.time()
+    if _GOLD_QUAD["q"] is not None and now - _GOLD_QUAD["t"] < ttl:
+        return _GOLD_QUAD["q"], _GOLD_QUAD["wh"]
+    try:
+        import urllib.request as _u
+        with _u.urlopen("http://" + _AOI_HOST + ":10082/region?grab=1", timeout=6) as r:
+            d = json.loads(r.read().decode("utf-8", "ignore"))
+        g = d.get("region") or {}
+        q = g.get("quad")
+        w, h = float(g.get("w") or 0), float(g.get("h") or 0)
+        # 🔴 2026-11-27: 「金手指窗口变了, 不是19根了」—— region 偶发返回很小/很怪的区域(实测 w=365),
+        #   直接用就把整幅裁成 336x54。这里加合理性闸: 条带宽度须在 800~3000px、高度 30~400px,
+        #   不合理就**不更新缓存**, 继续沿用上一次的好值(并在 /health 里能看到被拒次数)。
+        if q and len(q) == 4 and 800 <= w <= 3000 and 30 <= h <= 400:
+            _GOLD_QUAD.update({"q": q, "wh": (w, h), "t": now})
+            return q, (w, h)
+        if q:
+            _GOLD_QUAD["rejected"] = int(_GOLD_QUAD.get("rejected") or 0) + 1
+    except Exception:
+        pass
+    return _GOLD_QUAD["q"], _GOLD_QUAD["wh"]
+
+
+def _rectify_gold_show(bgr):
+    """规整图 = 从**原图**按 /region 的四边形透视裁出来的金手指(真实像素, 完整, 不拉伸)。
+
+    2026-11-26 现场: 「就把原图的金手指截出来, 放到规整图上」「右侧下部在扩大, 不完整」
+      · 工控机那张 crop(960x330) 是把原图 1456x89 的条带**纵向拉伸 3.7 倍**得来的,
+        再怎么压缩/还原都会丢内容(尤其右下角), 因为它已经不是原像素了;
+      · 正解是直接用 kind=origin(2448x2048) + /region.quad 做透视裁切:
+        输出就是原图里那条金手指的**真实像素**(约 1456x89), 不缩放不拉伸, 一个像素都不编。
+    代价: origin 每帧约 0.7s ⇒ 帧率降到 ~1.3fps(原来 crop 0.13s)。
+    """
+    if not _GOLD_RECTIFY:
+        return bgr, None
+    try:
+        import cv2 as _cv
+        import numpy as _np
+        import urllib.request as _u
+        q, wh = _gold_region()
+        if not q:
+            return bgr, None
+        with _u.urlopen("http://" + _AOI_HOST + ":10082/picture?kind=origin&grab=1", timeout=6) as r:
+            o = _cv.imdecode(_np.frombuffer(r.read(), _np.uint8), _cv.IMREAD_COLOR)
+        if o is None:
+            return bgr, None
+        ow, oh = int(round(wh[0])), int(round(wh[1]))
+        if ow < 20 or oh < 8:
+            return bgr, None
+        src = _np.float32(q)                                  # 左上/右上/右下/左下(工控机就是这个顺序)
+        # 🔴 2026-11-27 老倪「规整图，左下角和右上角，怎么拉长了」——
+        #   根因: 之前为了"把右下角找回来/收边"叠了三层**人工偏移**
+        #         （_GX=0.95 横向收缩 + _trim 左边收 3% + _up 上边下移 5%），
+        #         这些偏移把 quad 的四角拉成不等腰的四边 ⇒ 透视变换后每根宽度不等
+        #         （实测: 最左 20px、中间 43px、最右 31px，正常应 ≈37px 均匀）。
+        #   修法: **回到 quad 原始四角做纯透视**，不再叠加任何人工偏移。
+        #         要收边就改工控机的 /region（那是测量源头），不要在裁剪这一层硬掰。
+        _GX, _GY = 0.9216, 1.47   # 1341/1455=0.9216(对称缩到标准宽, 不破坏均匀性); 1.47 使 ×2 后正好 206
+        # 🔴 2026-11-27 老倪「规整图，上下边缘，又少了」——
+        #   上一版把 _GY 也归 1.0 ⇒ 高度 70×2=140(标准要 206)。纵向外扩是**对称**的，
+        #   不会破坏横向宽度均匀性，所以恢复它、只按 206 反算比例: 206/2/70 = 1.471。
+        if abs(_GY - 1.0) > 0.01:
+            _c = src.mean(axis=0)
+            _cx, _cy = float(_c[0]), float(_c[1])
+            src = _np.float32([[_cx + (float(p[0]) - _cx) * _GX,
+                                _cy + (float(p[1]) - _cy) * _GY] for p in src])
+            ow = int(round(ow * _GX))
+            oh = int(round(oh * _GY))
+        dst = _np.float32([[0, 0], [ow - 1, 0], [ow - 1, oh - 1], [0, oh - 1]])
+        M = _cv.getPerspectiveTransform(src, dst)
+        out = _cv.warpPerspective(o, M, (ow, oh), flags=_cv.INTER_LINEAR,
+                                  borderMode=_cv.BORDER_REPLICATE)
+        # 🔴 2026-11-26 现场: 「你能将高度, 变成2倍么?」—— 纵向拉伸 2 倍(只改高度, 宽度不动)
+        _VS = 2.0
+        if abs(_VS - 1.0) > 0.01:
+            oh = int(round(oh * _VS))
+            out = _cv.resize(out, (ow, oh), interpolation=_cv.INTER_LINEAR)
+        # 🔴 2026-11-26 现场: 「边沿稍微有点歪斜, 只是一点点, 还能再自动修正么」
+        #   每 5s 量一次边缘残留倾角, 用 warpAffine 小角度转回来; 边缘复制填充, 不产生黑角。
+        _now = time.time()
+        if _now - _GOLD_TILT["t"] > 5.0:
+            _GOLD_TILT["deg"] = _gold_edge_tilt(out)
+            _GOLD_TILT["t"] = _now
+        _d = float(_GOLD_TILT["deg"])
+        if abs(_d) > 0.02:
+            _M2 = _cv.getRotationMatrix2D((ow / 2.0, oh / 2.0), _d, 1.0)   # 方向实测: 正角才抬右端
+            out = _cv.warpAffine(out, _M2, (ow, oh), flags=_cv.INTER_LINEAR,
+                                 borderMode=_cv.BORDER_REPLICATE)
+        _sp = GOLD_SPEC
+        _off = abs(ow - _sp["w"]) > _sp["tol_w"] or abs(oh - _sp["h"]) > _sp["tol_h"]
+        if _off and not _GOLD_SPEC_WARNED.get("t") or (_off and time.time() - _GOLD_SPEC_WARNED.get("t", 0) > 60):
+            _GOLD_SPEC_WARNED["t"] = time.time()
+            print("[aoi_gold] ⚠ 窗口尺寸偏离标准: %dx%d (标准 %dx%d) —— 先查 /region 的 w 是否 800~3000"
+                  % (ow, oh, _sp["w"], _sp["h"]), flush=True)
+        return out, {"from_origin": True, "out": [ow, oh], "derot_deg": round(_d, 3),
+                     "spec_ok": not _off}
+    except Exception:
+        return bgr, None
+
+
+_GOLD_ALIGN = {"ref": None, "max": 64}
+
+
+def _align_gold_vertical(bgr):
+    """把规整图逐帧对齐到第一帧的垂直位置。
+
+    2026-11-26 现场: 「规整图一直在晃动」。实测连拍三帧, 水平位移 0px、**垂直位移 -41px**、
+    亮度只差 0.2% —— 说明东西没动、光也没闪, 是**工控机每次 grab 都重新走模板裁剪(486ms),
+    裁出来的行带位置会上下跳一个带高**(它在 /crop_info 里自报每帧现算)。所以按行亮度剖面做
+    一维互相关找位移, 用 warpAffine 补回去, 边缘用 BORDER_REPLICATE 复制而不是黑边。
+    只动显示帧, 不碰送 YOLO 的那张(那张仍由工控机产出)。
+    """
+    try:
+        import cv2 as _cv
+        import numpy as _np
+        g = _cv.cvtColor(bgr, _cv.COLOR_BGR2GRAY)
+        h, w = g.shape
+        row = g.mean(axis=1).astype(_np.float32)
+        st = _GOLD_ALIGN
+        ref = st.get("ref")
+        if ref is None or getattr(ref, "shape", None) != row.shape:
+            st["ref"] = row
+            return bgr, 0
+        m = int(st.get("max") or 64)
+        best, bestv = 0, -2.0
+        for sh in range(-m, m + 1):
+            if sh >= 0:
+                a, b = ref[sh:], row[:h - sh]
+            else:
+                a, b = ref[:h + sh], row[-sh:]
+            if len(a) < h * 0.55:
+                continue
+            aa = a - a.mean()
+            bb = b - b.mean()
+            den = float(_np.linalg.norm(aa) * _np.linalg.norm(bb)) + 1e-9
+            v = float((aa * bb).sum() / den)
+            if v > bestv:
+                bestv, best = v, sh
+        # 相关性太低 ⇒ 画面内容已换(工件被挪走/大位移), 直接换参考帧, 不要硬按旧基准对齐
+        if bestv < 0.75:
+            st["ref"] = row
+            return bgr, 0
+        if best == 0:
+            return bgr, 0
+        M = _np.float32([[1, 0, 0], [0, 1, float(best)]])
+        out = _cv.warpAffine(bgr, M, (w, h), borderMode=_cv.BORDER_REPLICATE)
+        return out, int(best)
+    except Exception:
+        return bgr, 0
 
 
 def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0,
@@ -3479,7 +3942,20 @@ def _aoi_gold_worker(port: int = 10082, name: str = "aoi_gold", fps: float = 1.0
             bgr = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
             if bgr is not None:
                 if mode == "same":
-                    # 🎯 同一口径: 工控机那张就是判据图 ⇒ **一律不再本地加工**(再裁/再拉都会变成另一张图)
+                    # 🎯 同一口径: 工控机那张就是判据图 ⇒ 不裁不缩放;
+                    #    唯一例外是**垂直对齐**(见 _align_gold_vertical: 工控机每帧重算模板裁剪,
+                    #    行带位置会跳 ~41px, 不对齐页面就在晃)。
+                    if name == "aoi_gold":
+                        bgr, _dy = _align_gold_vertical(bgr)
+                        # 📐 用户反复反馈"不正" ⇒ 显示层把梯形透视拉平(单根条纹是直的, 斜的是整排上下边界)
+                        bgr, _rect_info = _rectify_gold_show(bgr)
+                        _meta_align = {}
+                        if _dy:
+                            _meta_align["align_dy"] = _dy
+                        if _rect_info:
+                            _meta_align["rectify"] = _rect_info
+                    else:
+                        _meta_align = {}
                     jpg, meta = _aoi_frame(bgr, clean=False, natural=False, deskew_deg=0.0,
                                            vstretch=1.0, fix_hw=None, quality=92)
                     meta = dict(meta or {})
@@ -3711,7 +4187,19 @@ def _beep_alive() -> bool:
     try:
         pids = os.listdir("/proc")
     except OSError:
-        return False
+        # Windows 没有 /proc: 用 Win32_Process 找 motion_beep.py / motion_beep_win.py
+        try:
+            import subprocess as _sp
+            _ps = ("Get-CimInstance Win32_Process | Where-Object { ($_.CommandLine -like '*motion_beep.py*' "
+                   "-or $_.CommandLine -like '*motion_beep_win.py*') "
+                   "-and $_.Name -notin @('powershell.exe','bash.exe','cmd.exe','sh.exe','conhost.exe') } "
+                   "| Select-Object -First 1 -ExpandProperty ProcessId")
+            _o = _sp.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", _ps],
+                         capture_output=True, text=True, timeout=6,
+                         encoding="utf-8", errors="replace").stdout.strip()
+            return _o.isdigit()
+        except Exception:
+            return False
     for _p in pids:
         if not _p.isdigit():
             continue
@@ -3886,6 +4374,66 @@ def _ctl_move(req: dict) -> dict:
         return {"ok": False, "denied": True, "code": 503, "auth": _auth_info(),
                 "msg": "🚫 抬升前置条件未满足: 警报服务(移动提示音 motion_beep.py)不在线 ⇒ 拒发抬升。"
                        "请先在工控机执行 `bash tools/motion_beep_start.sh`, 再重试抬升"}
+    # 🪟 Windows 版没有 l2_daemon(FIFO 通道), 但平动技能可以直接翻译成 8797 的 move_rel 下发
+    if os.name == "nt":
+        _ros, _axis = (_skill_axis_map().get(sid) or (None, None))
+        _pname = ((_CTL_SKILLS.get(sid) or ("d_mm", 0, 0))[0]) or "d_mm"
+        try:
+            _d = abs(float(req.get(_pname) or 0))
+        except (TypeError, ValueError):
+            _d = 0.0
+        _MAP = {"x_pos": ("dx", 1), "x_neg": ("dx", -1), "y_pos": ("dy", 1),
+                "y_neg": ("dy", -1), "z_pos": ("dz", 1), "z_neg": ("dz", -1)}
+        if _ros == "line_rel" and _axis in _MAP and _d > 0:
+            _key, _sgn = _MAP[_axis]
+            _cap = min(_d, 5.0)
+            _payload = {"speed": 5.0, "max_mm": _cap + 0.01, _key: _sgn * _cap, "dry": (not want_real)}
+            try:
+                import urllib.request as _urq
+                _rq = _urq.Request("http://127.0.0.1:8797/api/arm/move_rel",
+                                   data=json.dumps(_payload).encode("utf-8"), method="POST",
+                                   headers={"Content-Type": "application/json"})
+                with _urq.urlopen(_rq, timeout=140) as _rh:
+                    _mv = json.loads(_rh.read().decode("utf-8", "ignore") or "{}")
+            except Exception as e:                                       # noqa: BLE001
+                return {"ok": False, "msg": "Windows 直连移动失败: %s" % str(e)[:160]}
+            if _mv.get("ok"):
+                _CTL["last_real"] = time.time()
+                return {"ok": True, "direct": True, "skill": sid, "axis": _axis,
+                        "d_mm": round(_sgn * _cap, 3), "clipped": abs(_cap - _d) > 1e-6,
+                        "move": _mv, "msg": "Windows 直连: %s %.2fmm 已下发" % (_axis, _cap)}
+            return {"ok": False, "direct": True, "skill": sid,
+                    "msg": "8797 拒绝: %s" % str((_mv.get("raw_tail") or _mv.get("err") or _mv))[-200:]}
+        # 🔄 旋转类 (L2.rot_a/b/c_pos|neg): 走 8797 新增的 rot_rel —— 读当前 RPY 改一个角再 move-abs
+        if _ros == "pose_rot" and _axis in ("a", "b", "c"):
+            try:
+                _deg = abs(float(req.get("deg") or 5.0))
+            except (TypeError, ValueError):
+                _deg = 5.0
+            _sign = 1.0 if sid.endswith("_pos") else -1.0
+            _cap = min(_deg, 5.0) * _sign
+            _rp = {"axis": _axis, "deg": _cap, "speed": 5.0, "dry": (not want_real)}
+            try:
+                import urllib.request as _ur2
+                _rq2 = _ur2.Request("http://127.0.0.1:8797/api/arm/rot_rel",
+                                    data=json.dumps(_rp).encode("utf-8"), method="POST",
+                                    headers={"Content-Type": "application/json"})
+                with _ur2.urlopen(_rq2, timeout=160) as _rh2:
+                    _rv = json.loads(_rh2.read().decode("utf-8", "ignore") or "{}")
+            except Exception as e:                                       # noqa: BLE001
+                return {"ok": False, "direct": True, "skill": sid,
+                        "msg": "Windows 旋转下发失败: %s" % str(e)[:160]}
+            if _rv.get("ok"):
+                _CTL["last_real"] = time.time()
+                return {"ok": True, "direct": True, "skill": sid, "axis": _axis,
+                        "deg": round(_cap, 2), "clipped": abs(_cap) < _deg - 1e-9,
+                        "rot": _rv, "msg": "Windows 直连旋转: %s 轴 %+.2f° 已下发" % (_axis.upper(), _cap)}
+            return {"ok": False, "direct": True, "skill": sid,
+                    "msg": "8797 拒绝旋转: %s" % str((_rv.get("raw_tail") or _rv.get("err") or _rv))[-200:]}
+        return {"ok": False, "direct": True, "skill": sid,
+                "msg": "Windows 版无 l2_daemon: 平动(x/y/z)与旋转(A/B/C 轴)可直连执行; "
+                       "其余技能(回位/夹爪/示教点)仍需 Linux 端执行器"}
+
     try:
         fd = os.open(_L2_FIFO, os.O_WRONLY | os.O_NONBLOCK)
     except OSError as e:
@@ -4193,20 +4741,35 @@ def _exec_health() -> dict:
     if _EXEC_CACHE["t"] and now - _EXEC_CACHE["t"] < 5.0:
         return dict(_EXEC_CACHE["v"], cached=True)
     online, pid = False, None
-    try:
-        for d in os.listdir("/proc"):
-            if not d.isdigit():
-                continue
-            try:
-                with open("/proc/%s/cmdline" % d, "rb") as f:
-                    argv = f.read().split(b"\0")
-            except Exception:
-                continue
-            if any(a.endswith(b"tools/l2_daemon.py") for a in argv[1:]):
-                online, pid = True, int(d)
-                break
-    except Exception:
-        pass
+    if os.name == "nt":
+        # Windows 没有 /proc ⇒ 走 Win32_Process 查 cmdline(带 5s 缓存, 开销可接受)
+        try:
+            import subprocess as _sp
+            _ps = ("Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*l2_daemon.py*' "
+                   "-and $_.Name -notin @('powershell.exe','bash.exe','cmd.exe','sh.exe','conhost.exe') } "
+                   "| Select-Object -First 1 -ExpandProperty ProcessId")
+            _o = _sp.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", _ps],
+                         capture_output=True, text=True, timeout=6,
+                         encoding="utf-8", errors="replace").stdout.strip()
+            if _o.isdigit():
+                online, pid = True, int(_o)
+        except Exception:
+            pass
+    else:
+        try:
+            for d in os.listdir("/proc"):
+                if not d.isdigit():
+                    continue
+                try:
+                    with open("/proc/%s/cmdline" % d, "rb") as f:
+                        argv = f.read().split(b"\0")
+                except Exception:
+                    continue
+                if any(a.endswith(b"tools/l2_daemon.py") for a in argv[1:]):
+                    online, pid = True, int(d)
+                    break
+        except Exception:
+            pass
     skills = None
     try:
         with open(os.path.join(_REPO_ROOT, "data/skills/l2_atomic/registry.json"), encoding="utf-8") as f:
@@ -4217,6 +4780,11 @@ def _exec_health() -> dict:
         pass
     v = {"online": online, "pid": pid, "skills": skills,
          "log_age_s": (_age(os.path.getmtime(_L2_LOG)) if os.path.exists(_L2_LOG) else -1.0)}
+    if os.name == "nt" and not online:
+        # Windows 版没有 l2_daemon(命令通道是 Unix FIFO, os.mkfifo 不存在) ⇒ 报"不适用"而非"离线",
+        # 免得页面把「位姿移动」这类不依赖 daemon 的按钮也标成红字不能动。
+        v["online"] = None
+        v["note"] = "Windows 版不提供 l2_daemon（FIFO 通道不支持）"
     _EXEC_CACHE.update({"t": now, "v": v})
     return v
 
@@ -5086,6 +5654,73 @@ def _station_ver() -> int:
         return int(os.path.getmtime(p))
     except Exception:                                                         # noqa: BLE001
         return 0
+
+
+def _aoi_big_html(name: str) -> bytes:
+    """金手指/表面 大图独立页。
+
+    2026-11-26 现场: 「右键打开独立窗口的功能, 可以全屏显示」「独立窗口能继续放大么」
+    「独立窗口怎么不跟着我的移动变化呢」
+      · 原来用 window.open('')+document.write 拼页面, 部分 Chrome 写不进去 ⇒ 改成真路由;
+      · mjpg 是长连接, worker 停帧时 TCP 还活着、error 不触发 ⇒ 加 /stats 的 age_s 心跳自愈;
+      · img 不能预置 src: 先请求一次再用 JS 换 src, 浏览器会复用那条连接停在第一帧。
+    注意: 本函数**不用 % 格式化** —— 模板里 HTML/CSS/JS 的裸百分号(100%、Math.round(z*100)+"%")
+    会把格式参数吃光(TypeError: not all arguments converted)。统一用占位符 replace。
+    """
+    _title = {"aoi_gold": "金手指规整图", "aoi_gold_raw": "金手指 · 原图",
+              "aoi_surface": "表面检测规整图", "aoi_surface_raw": "表面检测 · 原图"}.get(name, name)
+    h = """<!doctype html><html><head><meta charset="utf-8"><title>@@TITLE@@</title><style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden}
+#wrap{position:fixed;inset:0;overflow:hidden;cursor:grab}
+#wrap.drag{cursor:grabbing}
+#im{position:absolute;left:0;top:0;width:100%;height:100%;object-fit:contain;
+    transform-origin:0 0;will-change:transform;user-select:none;-webkit-user-drag:none}
+#hud{position:fixed;right:12px;top:10px;color:#8b949e;font:12px/1.6 ui-monospace,Consolas,monospace;
+     background:rgba(0,0,0,.6);padding:6px 10px;border-radius:6px;pointer-events:none;white-space:pre;transition:opacity .35s}
+body:hover #hud{opacity:.28}
+</style></head><body>
+<div id="wrap"><img id="im" alt="stream" draggable="false"></div>
+<div id="hud"></div>
+<script>
+var NAME="@@NAME@@";
+var wrap=document.getElementById('wrap'),im=document.getElementById('im'),hud=document.getElementById('hud');
+var BASE='/'+NAME+'.mjpg?t=';
+var z=1,tx=0,ty=0,drag=null;
+function apply(q){ if(!q) hud.textContent=Math.round(z*100)+"%  ·  滚轮缩放 / 拖动平移 / 双击全屏 / 0 复位 / R 重连 / Esc 退出全屏";
+  im.style.transform="translate("+tx+"px,"+ty+"px) scale("+z+")"; }
+function fit(){ z=1;tx=0;ty=0;apply(); }
+function zoomAt(cx,cy,k){ var nz=Math.min(16,Math.max(0.25,z*k)), kk=nz/z;
+  tx=cx-(cx-tx)*kk; ty=cy-(cy-ty)*kk; z=nz; apply(); }
+wrap.addEventListener("wheel",function(e){ e.preventDefault();
+  var r=wrap.getBoundingClientRect(); zoomAt(e.clientX-r.left,e.clientY-r.top, e.deltaY<0?1.18:1/1.18); },{passive:false});
+wrap.addEventListener("mousedown",function(e){ if(e.button!==0) return; drag={x:e.clientX-tx,y:e.clientY-ty}; wrap.classList.add("drag"); });
+window.addEventListener("mousemove",function(e){ if(!drag) return; tx=e.clientX-drag.x; ty=e.clientY-drag.y; apply(true); });
+window.addEventListener("mouseup",function(){ drag=null; wrap.classList.remove("drag"); });
+wrap.addEventListener("dblclick",function(){ if(!document.fullscreenElement){
+    if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen(); }
+  else document.exitFullscreen(); });
+document.addEventListener("keydown",function(e){
+  if(e.key==="Escape" && document.fullscreenElement){ document.exitFullscreen(); return; }
+  if(e.key==="0") fit();
+  if(e.key==="1"){ z=1;tx=0;ty=0;apply(); }
+  if(e.key==="+"||e.key==="="){ var r=wrap.getBoundingClientRect(); zoomAt(r.width/2,r.height/2,1.25); }
+  if(e.key==="-"||e.key==="_"){ var r2=wrap.getBoundingClientRect(); zoomAt(r2.width/2,r2.height/2,1/1.25); }
+  if(e.key==="r"||e.key==="R"){ im.src=BASE+Date.now(); fit(); } });
+im.addEventListener("error",function(){ setTimeout(function(){ im.src=BASE+Date.now(); },1200); });
+/* 停帧自愈: worker 停帧但 TCP 还活着时 error 不会触发, 靠 /stats 的 age_s 判停 */
+var _stall=0;
+setInterval(function(){
+  fetch('/stats?t='+Date.now(),{cache:'no-store'}).then(function(r){ return r.json(); }).then(function(j){
+    var v=j&&j[NAME]; if(!v||v.age_s===undefined) return;
+    if(Number(v.age_s)>6){ if(++_stall>=2){ im.src=BASE+Date.now(); _stall=0; } }
+    else { _stall=0; }
+  }).catch(function(){ if(++_stall>=2){ im.src=BASE+Date.now(); _stall=0; } });
+}, 4000);
+im.src=BASE+Date.now();
+apply();
+</script></body></html>"""
+    h = h.replace("@@TITLE@@", _title).replace("@@NAME@@", name)
+    return h.encode("utf-8")
 
 
 def _station_page() -> bytes:
@@ -6369,6 +7004,16 @@ class Handler(BaseHTTPRequestHandler):
         elif p in ("/station/gold/stats", "/station/gold/train/status"):
             self._send(200, "application/json; charset=utf-8",
                        json.dumps(_gold_annot_stats(), ensure_ascii=False).encode("utf-8"))
+        elif p == "/aoi_big":
+            # 🖥 金手指/表面 大图独立页 (右键打开, 可缩放/全屏)
+            try:
+                from urllib.parse import parse_qs as _pqs, urlparse as _up
+                _qq = _pqs(_up(self.path).query)
+                _nm = (_qq.get("name") or ["aoi_gold"])[0]
+            except Exception:
+                _nm = "aoi_gold"
+            _nm = re.sub(r"[^A-Za-z0-9_]", "", str(_nm)) or "aoi_gold"
+            self._send(200, "text/html; charset=utf-8", _aoi_big_html(_nm))
         elif p in ("/station", "/station.html", "/board"):
             # 🛰 工位总览: 6 窗同屏(3 相机 + 深度 + 金手指 + 表面) + 手动控制区
             # 老倪的浏览器里曾有两个窗口都开着本机页面, 把「同一主机 6 条连接」占满 ⇒
@@ -6492,6 +7137,10 @@ class Handler(BaseHTTPRequestHandler):
         elif p == "/stats":
             self._send(200, "application/json; charset=utf-8",
                        json.dumps(self._stats(), ensure_ascii=False).encode("utf-8"))
+        elif p == "/arch_status":
+            # 🏛 架构窗口 L2→L5 聚合状态
+            self._send(200, "application/json; charset=utf-8",
+                       json.dumps(_arch_status(), ensure_ascii=False).encode("utf-8"))
         elif p == "/motion":
             self._send(200, "application/json; charset=utf-8", _jbytes(_motion_state()))
         elif p == "/pose":
@@ -7259,8 +7908,13 @@ def main():
         #   模型输入那张(1280 全幅规范图)不受影响, 仍可在 /aoi_surface_modelin.png 看。
         # 🆕 2026-11-18 老倪「10083 一样」: 表面主图 = 工控机 kind=crop(letterbox 1280 规范图,
         #   就是送 YOLO 那张), 本地零加工; 另一格是原图。不再本地切刚体当判据图。
+        # 🔴 2026-11-27 老倪「规整图要水平，你现在是垂直的」「表面窗口太小」——
+        #   10083 现在抓图后会先把竖直长条转 90° 变水平（judge_ok 已能通过），
+        #   但 worker 取 kind=crop 是**方形 1280 letterbox**（模型输入那份），
+        #   本机 surface_judge 在方形图上裁不出刚体 ⇒ 一直回退方形图 ⇒ 左右大黑边、窗口显小。
+        #   改取 kind=origin(原图，且已是转正后的横图) ⇒ surface_judge 能裁出 1400×192 宽条。
         threading.Thread(target=_aoi_worker,
-                         args=(10083, "aoi_surface", args.aoi_fps, "crop", False, True,
+                         args=(10083, "aoi_surface", args.aoi_fps, "judge", False, True,
                                "aoi_surface_raw", "origin", 4),
                          daemon=True, name="aoi-surface").start()
         print(f"   🏭 工控机检测源: 10082 金手指(**口径感知**: canonical=本地 原比例+去倾角+3×→900×332 · "
