@@ -75,9 +75,14 @@ if (-not $SkipCommit) {
         $dirty = & git status --porcelain | Where-Object { $_ -notmatch '^\?\?' }
         if ($dirty) {
             & git add -u
-            foreach ($f in @('tools\gui\portal_urls.py', 'tools\gui\nowin.py', 'tools\ci\check_console_popup.py')) {
+            foreach ($f in @('tools\gui\portal_urls.py', 'tools\gui\nowin.py',
+                             'tools\ci\check_console_popup.py', 'tools\ci\fix_symlink_shims.py')) {
                 if (Test-Path $f) { & git add $f }
             }
+            # ⚠ git add -u 会把「同步解引用过的软链 shim」再写坏（mode 120000 + 整份内容），
+            #   打包机 checkout 直接 Filename too long ⇒ add 完立刻自愈一次。
+            python tools\ci\fix_symlink_shims.py --fix | Out-Host
+            & git add -u
             & git -c user.name='Mike.Ni' -c user.email='mike@zmax.local' commit -q -m "release(v$Version): Windows 发布"
             Ok "已提交 $(git log --oneline -1)"
         } else { Warn '工作区没有已跟踪改动' }
