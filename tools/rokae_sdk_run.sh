@@ -14,7 +14,12 @@
 #   bash tools/rokae_sdk_run.sh stop | reset
 set -euo pipefail
 
-SDK_DIR="${ZMAX_SDK_DIR:-/home/ubuntu/zmax/zmax_data/rokae_sdk}"
+# Windows 工位机: SDK 副本在 D:/ZMAX/zmax_data/rokae_sdk (2026-11-26 从 550C 同步)
+if [ -d /d/ZMAX/zmax_data/rokae_sdk/xcoresdk_python ]; then
+  SDK_DIR="${ZMAX_SDK_DIR:-/d/ZMAX/zmax_data/rokae_sdk}"
+else
+  SDK_DIR="${ZMAX_SDK_DIR:-/home/ubuntu/zmax/zmax_data/rokae_sdk}"
+fi
 REPO_TOOLS="$(cd "$(dirname "$0")" && pwd)/rokae"
 IMAGE="${ZMAX_SDK_IMAGE:-ros:humble-ros-base}"
 
@@ -27,7 +32,11 @@ if [ ! -d "$SDK_DIR/xcoresdk_python" ]; then
   exit 2
 fi
 
-exec sudo docker run --rm --network host \
+# Windows 上不存在 sudo; Linux 上有就用
+SUDO=""
+# Windows 11 也有 sudo.exe(默认禁用) ⇒ 必须实测能用才加
+command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null && SUDO="sudo"
+exec $SUDO docker run --rm --network host \
   -e ZMAX_HOST_TS="$(date +%s)" \
   -e ZMAX_ROBOT_IP="${ZMAX_ROBOT_IP:-192.168.23.160}" \
   -e ZMAX_REPLAY_N="${ZMAX_REPLAY_N:-}" \

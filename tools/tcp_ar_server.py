@@ -806,7 +806,8 @@ def _read_orin_tcp():
     ⇒ 根因: 本机 tcp_direct_sampler 容器连不上控制器 192.168.23.160 (本机只有 WiFi),
       容器 restarts 循环, latest.json 冻在 00:46(3.5 小时前), 而页面照旧读它。
     返回 (rec, err)"""
-    url = os.environ.get("ZMAX_ORIN_SDK_URL", "http://127.0.0.1:19061/status")
+    url = (os.environ.get("ZMAX_ORIN_SDK_URL")
+           or "http://192.168.23.66:39061/status")   # 2026-11-25: 本机 19061 隧道常年不在, 默认直连 Orin
     try:
         with urllib.request.urlopen(url, timeout=1.5) as r:
             d = json.loads(r.read().decode())

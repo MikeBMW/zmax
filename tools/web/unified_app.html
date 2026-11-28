@@ -39,6 +39,51 @@
     background:#2b3542;color:#fff;padding:8px 16px;border-radius:20px;font-size:13px;opacity:0;
     transition:.22s;pointer-events:none;z-index:9}
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  /* ── 标准服务汇总 (数据来自 8799 GET /api/services, 离线打不开时只给提示) ── */
+  .svc{background:#171b22;border:1px solid #232a33;border-radius:13px;padding:10px 12px;margin-top:9px}
+  .svc h2{font-size:13.5px;font-weight:750;margin:0;display:flex;justify-content:space-between;
+    align-items:baseline;gap:8px;flex-wrap:wrap}
+  .svc h2 .t{color:#e8edf3}.svc h2 .t b{color:#4ea1ff}
+  .svc h2 .r{color:#6b7683;font-size:11px;font-weight:500}
+  .svc .sum{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0 5px;font-size:12px;color:#93a1b0}
+  .svc .sum span{background:#1d2530;border-radius:8px;padding:2px 7px;white-space:nowrap}
+  .svc .sum b{font-weight:700;font-variant-numeric:tabular-nums}
+  .svc .wrap{max-height:300px;overflow:auto;-webkit-overflow-scrolling:touch;
+    border-top:1px solid #232a33}
+  .svc table{width:100%;border-collapse:collapse;font-size:12px;min-width:520px;table-layout:fixed}
+  .svc th:nth-child(1){width:20%}
+  .svc th:nth-child(2){width:64px}
+  .svc th:nth-child(3){width:86px}
+  .svc th:nth-child(4){width:78px}
+  .svc th:nth-child(5){width:54px}
+  .svc th:nth-child(6){width:158px}
+  @media (max-width:900px){ .svc .c-scr{display:none} }   /* 中屏: 脚本列让位给说明 */
+  @media (max-width:520px){ .svc .c-nt,.svc .c-http{display:none} }  /* 手机: 只留 名称/端口/机器/状态 */
+  .svc th{position:sticky;top:0;background:#171b22;color:#93a1b0;font-weight:600;text-align:left;
+    padding:4px 5px;border-bottom:1px solid #232a33;white-space:nowrap;z-index:1}
+  .svc td{padding:4px 5px;border-top:1px solid #1d2430;vertical-align:top;white-space:nowrap}
+  .svc td.nm{white-space:normal;min-width:118px;color:#e8edf3}
+  .svc td.scr{color:#7f8b99;font-size:11.5px}
+  .svc .clip{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .svc .hw{font-size:10px;color:#93a1b0;border:1px solid #2c3542;border-radius:4px;
+    padding:0 3px;margin-left:3px;vertical-align:1px;letter-spacing:.3px}
+  .svc td.nt{color:#8b98a6;font-size:11.5px;white-space:normal;line-height:1.35}
+  .svc .num{font-variant-numeric:tabular-nums;color:#c8d2dd}
+  .svc tr.rem td.nm{color:#c9d3de}
+  .svc tr.disc td.nm{color:#e0b76a}
+  .svc .foot{color:#6b7683;font-size:11px;margin-top:5px;display:flex;justify-content:space-between;gap:8px}
+  .svc .err{color:#ffb27a;font-size:12.5px;line-height:1.5}
+  /* 窄屏 (手机): 说明并到名称下一行, 表格不再横向滚动, 高度收紧让下面的卡片露头 */
+  @media (max-width:520px){
+    .svc table{min-width:0;table-layout:fixed}
+    .svc th:nth-child(1){width:auto}
+    .svc th:nth-child(2){width:54px}
+    .svc th:nth-child(3){width:60px}
+    .svc th:nth-child(4){width:68px}
+    .svc .wrap{max-height:240px}
+    .svc td.nm{min-width:0}
+    .svc .nt2{color:#8b98a6;font-size:11px;font-weight:400;margin-top:1px;white-space:normal}
+  }
 </style>
 </head>
 <body>
@@ -46,6 +91,11 @@
   <div class="brand">Z-MAX 大屏 <span id="ver">–</span></div>
   <div class="sub">数据时间 <b id="gen" class="tap">–</b> · 帧龄 <b id="age" class="tap">–</b></div>
 </header>
+<!-- 标准服务汇总: 首屏最上方, 与下面的静态快照卡片相互独立 (探测失败只影响本块) -->
+<section id="svc" class="svc">
+  <h2><span class="t">标准服务汇总</span><span class="r" id="svc-ts">探测中…</span></h2>
+  <div class="err" id="svc-body">正在探测各端口…</div>
+</section>
 <main id="root">加载中…</main>
 <footer>点任意数字可复制 · 数据源 dashboard.json<br>单文件离线可开 · 无外部依赖</footer>
 <div id="toast"></div>
@@ -87,6 +137,18 @@ function render(d){
   $('#ver').textContent = 'v' + (d.version||'?');
   $('#ver').classList.add('tap'); $('#ver').setAttribute('data-copy', d.version||'');
   $('#gen').textContent = d.generated_at||'–'; $('#gen').setAttribute('data-copy', d.generated_at||'');
+  // 快照新鲜度: dashboard.json 由 dashboard_source.py 生成, 这里只做诚实标注 (不改数)
+  const ge = d.generated_at_epoch;
+  if(ge){
+    const ageH = (Date.now()/1000 - ge)/3600;
+    if(ageH >= 1){
+      const gEl = $('#gen');
+      gEl.textContent = (d.generated_at||'–') + ' · 快照 ' +
+        (ageH >= 24 ? Math.floor(ageH/24) + ' 天前' : Math.max(1, Math.round(ageH)) + ' 小时前');
+      gEl.classList.add('bad');
+      gEl.title = '静态快照已过期 (需重跑 dashboard_source.py); 上方「标准服务汇总」是实时探测的';
+    }
+  }
   const age = rm.frame_age_s; $('#age').textContent = (age==null?'–':age+'s');
   $('#age').setAttribute('data-copy', age==null?'':String(age));
 
@@ -172,6 +234,81 @@ render(window.__DASHBOARD__);
     if(r.ok){ const d = await r.json(); render(d); }
   }catch(_){ /* 离线/跨源: 保留快照 */ }
 })();
+
+/* ═══════════ 标准服务汇总 (GET /api/services, 由 dashboard_server 实探端口) ═══════════
+   与上面的静态快照完全独立: 快照可以是旧的, 这里的「在跑/未起」永远是刚刚探的。 */
+const SVC_ST = {
+  up:      ['●', 'ok',   '在跑'],
+  down:    ['○', 'bad',  '未起'],
+  wedged:  ['◐', 'bad',  '挂起'],
+  unreach: ['○', 'dim',  '不可达']
+};
+function svcState(it){
+  if(it.state === 'up') return SVC_ST.up;
+  if(it.state === 'wedged') return SVC_ST.wedged;
+  return it.is_local ? SVC_ST.down : SVC_ST.unreach;
+}
+function renderServices(s){
+  const box = $('#svc-body'), ts = $('#svc-ts');
+  const sm = s.summary || {}, items = s.items || [];
+  const oldWrap = box.querySelector('.wrap');
+  const keepTop = oldWrap ? oldWrap.scrollTop : 0;     // 15s 自动刷新别把用户滚到的位置弹回去
+  box.className = '';
+  let sum = '<div class="sum">'
+    + `<span>标准服务 <b>${sm.total || 0}</b> 项</span>`
+    + `<span><b class="ok">●</b> 在跑 <b>${sm.listening || 0}</b></span>`
+    + `<span><b class="bad">○</b> 未起 <b>${sm.down_local || 0}</b></span>`;
+  if(sm.wedged) sum += `<span><b class="bad">◐</b> 挂起 <b>${sm.wedged}</b></span>`;
+  if(sm.remote_unreachable) sum += `<span><b class="dim">○</b> 对端不可达 <b>${sm.remote_unreachable}</b></span>`;
+  sum += '</div>';
+
+  const rows = items.map(it => {
+    const st = svcState(it);
+    const narrow = window.matchMedia('(max-width:520px)').matches;
+    const meta = [];
+    if(it.version && it.version !== s.local_version) meta.push(esc(it.version));   // 同部署版本不重复刷
+    if(it.uptime_hint) meta.push(esc(it.uptime_hint));
+    const nt = [esc(it.note || '')].concat(meta).filter(Boolean).join(' · ');
+    return `<tr class="${it.is_local ? '' : 'rem'}${it.discovered ? ' disc' : ''}">`
+      + `<td class="nm">${esc(it.name)}${it.depends_on_hardware ? '<span class="hw" title="依赖硬件">HW</span>' : ''}`
+      + `${narrow && nt ? `<div class="nt2">${nt}</div>` : ''}</td>`
+      + `<td class="num tap" data-copy="${it.port}">${it.port}</td>`
+      + `<td>${esc(it.machine_short || '本机')}</td>`
+      + `<td class="${st[1]}">${st[0]} ${st[2]}</td>`
+      + `<td class="num c-http">${it.http_code || '–'}</td>`
+      + `<td class="scr c-scr"><div class="clip">${esc(it.script || '–')}</div></td>`
+      + `<td class="nt c-nt">${nt || '–'}</td></tr>`;
+  }).join('');
+
+  box.innerHTML = sum
+    + '<div class="wrap"><table><thead><tr>'
+    + '<th>名称</th><th>端口</th><th>机器</th><th>状态</th><th class="c-http">HTTP</th>'
+    + '<th class="c-scr">脚本</th><th class="c-nt">说明</th>'
+    + `</tr></thead><tbody>${rows}</tbody></table></div>`
+    + `<div class="foot"><span>探测 ${s.elapsed_ms || 0}ms · 本机部署 ${esc(s.local_version || '–')}</span>`
+    + '<span>每 15s 自动刷新</span></div>';
+  const newWrap = box.querySelector('.wrap');
+  if(newWrap && keepTop) newWrap.scrollTop = keepTop;
+  ts.textContent = '刷新 ' + (s.generated_at || '');
+}
+async function loadServices(){
+  const box = $('#svc-body'), ts = $('#svc-ts');
+  try{
+    const r = await fetch('/api/services?_=' + Date.now(), {cache: 'no-store'});
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    renderServices(await r.json());
+    if(ts) ts.classList.remove('dim');
+  }catch(e){
+    if(box){
+      box.className = 'err';
+      box.innerHTML = '○ 取不到 /api/services —— 离线单文件打开时没有服务端; 请经 '
+        + `<b>http://127.0.0.1:8799/</b> 访问 (${esc(e.message || e)})`;
+    }
+    if(ts) ts.textContent = '离线';
+  }
+}
+loadServices();
+setInterval(loadServices, 15000);
 </script>
 </body>
 </html>

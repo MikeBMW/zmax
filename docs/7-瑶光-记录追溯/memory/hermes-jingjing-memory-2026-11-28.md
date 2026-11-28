@@ -1,8 +1,10 @@
-远程: 23段须USB+静态.100(无DHCP); WLAN(10.163)抢23路由⇒ping通TCP闭; 现走corp intel@10.163.149.123; 位姿550C:8811隧道; 39071废
+远程: 直连Orin.66/工控.23/intel.70; 拔⇒wifi(.43)经Orin跳; bridge39071; 小芳cli_aac4912eb6389bc2@550C
+§
+NTP回拨8h勿动RTC⇒用monotonic; 判活看将来ts; cron卡→watchdog.timer
 §
 分层: L5造数据/L4认知/L3调度/L2检测; SigLIP768d+四头; from-scratch崩
 §
-交付前自跑通;改文件回读;答≤两行;常驻静音
+交付前自跑通;改文件回读;回答≤两行;常驻静音
 §
 L5=DeepSeek短提示+小JSON(timeout≥300); L4=INTACT直驱, 反归一化按ckpt训练集; L2收口闸逐轴corr<0.5 veto
 §
@@ -14,15 +16,17 @@ Orin: ROS=domain0, tcp_pose 50Hz真值, 几何须ss_geom_calib, 只读遥测桥�
 §
 YOLO=软链yolo_peg_live.pt; 瓶颈=数据; 相机独占⇒同进程
 §
-真机: rt后必下电; move_*不下电; 30s勿重发; collision=False; 段表带abs_mm; 550C不在执行链
+真机: rt后必下电; move_*不下电; 30s勿重发; collision=False; 腿=bridge(4060→39071→Orin39061); 段表须带abs_mm; 550C不在执行链
 §
-引擎L2/L3/L4+Qwen,势场喂obs[0:3]; H-JEPA-MR+SE3阻抗(u=+Kξ−Bξ̇+F_d); A~E=se3_layers
+引擎五层L2/L3/L4+Qwen,势场喂obs[0:3]; H-JEPA-MR几何+SE3阻抗(u=+Kξ−Bξ̇+F_d; 序[ρ;ω])
 §
 真源calib.json→zmax_params.py; 训练=joint_train_all.py --only L4,L3,L2; L5规划器/safety=ss/{planner,safety}.py; INTACT须常驻
 §
+阶段MOE: 硬先验路由;枚举不匹配静默降级; 判据=单射
+§
 LoRA需merge(否则零动作):merge_lora_ckpt.py
 §
-双系统C=p3/D=p4(挂/mnt/wD)/Ubu=p5; Win控制台=D:\ZMAX启动控制台.bat; 场景色:插拔绿摆盘蓝AR紫
+ECS=web入口; 站点搬550C:8081待点头; 资产直连/U盘
 §
 GPU掉载=每步CPU>计算→静音日志+workers↑
 §
@@ -30,29 +34,33 @@ GPU掉载=每步CPU>计算→静音日志+workers↑
 §
 禁自重启GUI/服务(只可停);重启须点名;禁抢光标/代跑前台
 §
-我=主节点(工控+Orin);AOI=10082/10083(禁84/85);更新=aoi_remote_deploy.py
+我=主节点(工控机+Orin); AOI=10082/10083(禁84/85); 更新=aoi_remote_deploy.py
 §
 动作授权只从8793; 代发前先授权
 §
 位姿真源=tcp_out/latest.json(全0陈旧;崩则pose-relay搬)
 §
-运动安全: 速度1~1000mm/s;前置idle+automatic; 腿上限须重容器; 清79免授权;新点位老倪先做;碰撞先agent_all_stop; 插入力SFP18/QSFP60/DD90N; 台账INCIDENT-INDEX.md; 两腿:轨迹MoveAbsJ/笛卡尔move_rel
+运动安全: 速度1~1000mm/s;前置idle+automatic; 腿上限须重容器; 清79免授权;新点位老倪先做;碰撞先agent_all_stop; 插入力按封装SFP18/QSFP60/DD90N; 台账INCIDENT-INDEX.md
 §
-AR=8797(systemd;8793与Intel8816皆裸进程无自启);轨迹cursor=N+1⇔frames[N]⇔页#N;底图8791+D435@Orin8794;AOI位姿8793/guide_move→8797/move_rel;k勿用pitch换算;规整图裁剪跟随看不出移动
+AR=8797; 底图=8791(arm/gold/surface)+D435@Orin8794; L5=ar_l5_understand.py; AR3D r107 2孔z278/187.6
 §
 任务7=AR·L5进化;场景=ss_scene_switch.py;色标=sig_scene_tags.py
 §
+场景色:插拔绿/摆盘蓝/AR紫(3D=配置中心)
+§
 控制进程: 按端口/pid找(ss -ltnp),禁ps|grep名;杀进程写脚本;sudo免密
 §
-判据图=aoi_surface_rect;10083曝光<20k无信号(现7k);点记录必跑verify_points_consistency
+判据图=aoi_surface_rect(贯穿列截断夹具+vertical兜底+扩暗头);曝光5000us
 §
 奇异区: 姿态>5°被50113拒且腿假报到位; 转移=抬50→转身→低位横移→上方升降
 §
-版本号只听老倪;仓VERSION.md为准;MoveIt起点须SDK直采
+3DGS:基线17.22dB;24k=16.41未过闸; 建图8793走点45s/轮;;GS_MAP_MODE=auto
+§
+版本号只听老倪;仓VERSION.md为准(现5.50.775);MoveIt起点须SDK直采
 §
 tool0读heartbeat.pose.flange(禁手推R,y差251mm);precheck扣连杆半径(肘r78)+<20mm FAIL
 §
-同步: hub=10.163.149.123:8888(zmax_sync.sh/ps1+root/md5/skills/memories); 模型只留550C禁复制; 技能本机333超集; 550C unit含User=intel须跑zmax_unit_port.sh
+intel出口=.23.66走Orin NAT(zmax-nat-intel;Orin sudo ts123)
 §
 新版必跑canvas_selfheal; 打包红线=软链解引用(cp -L)否则Win画布崩; Win补丁每版同步
 §
@@ -64,4 +72,4 @@ tool0读heartbeat.pose.flange(禁手推R,y差251mm);precheck扣连杆半径(肘r
 §
 action=真值pose+u·dt(重锚)+u[3]夹爪;无真值不出位姿;Intel非git⇒rsync
 §
-7任务=reports/fullflow7/<ts>/;专利20件
+7任务=reports/fullflow7/<ts>/;缺口=仿真0轨迹·元任务‖T‖同值;专利20件

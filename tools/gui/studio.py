@@ -14,6 +14,7 @@ import sys
 import subprocess  # 新增：用于执行git命令同步代码到GitHub
 import os  # 新增：用于获取工作目录和HOME路径
 import time as _time
+import nowin  # noqa: F401  全局静默守卫: Windows 上所有子进程一律 CREATE_NO_WINDOW(不再闪黑窗)
 # ⏱ 2026-10-17 老倪: 「控制台的启动最多 10 秒」—— 先量再改。这里记下进程启动的时刻,
 #   后面几处关键节点各自打一行耗时, 老倪的启动日志里就能直接看到慢在哪一段。
 _BOOT_T0 = _time.time()
@@ -129,7 +130,9 @@ def _open_product_dashboard(win=None):
       · :8788 = 总索引页 (services/web/portal.html) —— 卡片带缩略图/介绍/健康灯,
         点卡片走 /go/<name>/ 反代直达原服务, 另有「复制链接」按钮。
       · :8799 = 生产数据大屏 (产量/UPH/OEE), 现在是总索引里的一张卡, 不再是一级入口。
-    顺序: ZMAX_PORTAL_URL > 本机 8788 > 登记主机 :8788 > 本机 8799 > 产线 192.168.23.50:8788。
+    顺序(2026-11-27 起统一走 portal_urls.py): ZMAX_PORTAL_URL > 本机 8788 > 中枢 :8888 >
+    登记主机 :8788 > 本机 8799。老倪 2026-11-27:「控制台的总索引 产品服务, 应该打开 8888 服务」
+    —— Windows 工位机上根本没有 8788 网关(zmax-framework 是 Linux 单元), 原来点了必然不可达。
     绝不抛异常(PyQt5 槽里抛异常会 qFatal 直接杀进程)。
     """
     import socket as _sk
@@ -148,29 +151,17 @@ def _open_product_dashboard(win=None):
         except Exception:                                                  # noqa: BLE001
             return False
 
-    hosts = []
+    # 🖥 2026-11-27 老倪:「控制台的总索引 产品服务, 应该打开 8888 服务」
+    #   候选链统一收敛到 portal_urls.py(含中枢 :8888)。Windows 上本机没有 8788 网关,
+    #   原来的硬编码候选链只会撞墙; 现在 8788 不通就自动落到中枢 8888 的服务总索引。
     try:
-        _root = os.environ.get("ZMAX_ROOT") or os.path.expanduser("~/zmax")
-        _cf = os.path.join(_root, "config", "ui", "dashboard_hosts.json")
-        if os.path.isfile(_cf):
-            import json as _json
-            with open(_cf, encoding="utf-8") as _f:
-                _raw = _json.load(_f)
-            for h in ((_raw.get("hosts") if isinstance(_raw, dict) else _raw) or []):
-                hosts.append(str(h))
-    except Exception:                                                      # noqa: BLE001
-        pass
-    if not hosts:
-        hosts = ["192.168.23.50"]
-
-    def _u8(h):
-        h = str(h).strip().rstrip("/")
-        if h.startswith("http"):
-            return h + "/"
-        return "http://%s:8788/" % h
-
-    cands = [u for u in ([os.environ.get("ZMAX_PORTAL_URL", ""), "http://127.0.0.1:8788/"]
-                         + [_u8(h) for h in hosts] + ["http://127.0.0.1:8799/"]) if u]
+        import portal_urls as _pu
+        cands = _pu.candidates()
+    except Exception as _e:                                                # noqa: BLE001
+        print("⚠ portal_urls 不可用(%s) — 退回硬编码候选链" % _e, flush=True)
+        cands = [u for u in ([os.environ.get("ZMAX_PORTAL_URL", ""),
+                              "http://127.0.0.1:8788/",
+                              "http://127.0.0.1:8799/"]) if u]
     url, tried = cands[-1], []
     for u in cands:
         tried.append(u)
@@ -206,7 +197,18 @@ def _open_portal_in_app(parent=None, url=None):
     ⇒ 与 8810 切面页同一套做法: QWebEngineView 应用内开窗, 再点一次只置顶刷新。
     外挂浏览器仅作最后回退。
     """
-    url = url or os.environ.get("ZMAX_PORTAL_URL") or "http://127.0.0.1:8788/"
+    # 2026-11-27: 不再硬编码 127.0.0.1:8788 —— 走 portal_urls 的候选链(含中枢 :8888)
+    tried = []
+    if not url:
+        try:
+            import portal_urls as _pu
+            url, tried = _pu.resolve()
+            if not url:
+                url = _pu.fallback()
+        except Exception as _e:                                            # noqa: BLE001
+            print("⚠ portal_urls 不可用(%s) — 退回 127.0.0.1:8788" % _e, flush=True)
+            url = os.environ.get("ZMAX_PORTAL_URL") or "http://127.0.0.1:8788/"
+            tried = [url]
     try:
         import urllib.request as _u
         with _u.urlopen(url, timeout=2.5) as _r:
@@ -215,10 +217,11 @@ def _open_portal_in_app(parent=None, url=None):
     except Exception as _e:                                                # noqa: BLE001
         try:
             parent.statusBar().showMessage(
-                "⚠️ 产品服务总索引不可用 (%s) — 启动: sudo systemctl start zmax-framework" % _e, 12000)
+                "⚠️ 产品服务总索引不可用 (%s) — 已试: %s  (Linux 起网关: sudo systemctl start zmax-framework)"
+                % (_e, " → ".join(tried) or url), 14000)
         except Exception:                                                  # noqa: BLE001
             pass
-        print("⚠ 8788 总索引不可达: %s" % _e, flush=True)
+        print("⚠ 产品服务总索引不可达 (已试 %s): %s" % (" → ".join(tried) or url, _e), flush=True)
         return None
     try:
         from PyQt5.QtCore import Qt as _Qt
@@ -3272,7 +3275,7 @@ class HomeWidget(QWidget):
             ("plugging", "🧩", "3D场景",       "虚拟现实",  "对象·标记·轨迹·保护围栏 可编辑\n机器人 + 工件 + 夹具 (真模型)",  ROI_ACCENT),
             ("version",  "🔄", "版本同步",     "状态空间 · 上游管理",  "检查上游更新 · 安全同步\n版本状态 · 冲突检测",  C_ORANGE),
             # 🗂 2026-10-11 老倪: 「将功能页的产品大屏, 完全同步原来的工位总览的服务」—— 与 :8793 工位总览同一份在役状态
-            ("website",  "🖥", "产品服务",     "总索引 · 全部服务",  "所有服务的总索引: 缩略图 + 介绍 + 健康灯\n点卡片直达 (simulink画布/ar3d/卡拉比丘/大屏…)\n本机 http://127.0.0.1:8788/ · 控制台内嵌窗打开", "#1f6feb"),
+            ("website",  "🖥", "产品服务",     "总索引 · 全部服务",  "所有服务的总索引: 缩略图 + 介绍 + 健康灯\n点卡片直达 (simulink画布/ar3d/卡拉比丘/大屏…)\n本机 :8788 不通 → 自动开中枢 :8888 总索引 · 控制台内嵌窗打开", "#1f6feb"),
         ]
         # 2026-08-08 老倪: 每层分组框 (外边框 + 标题 + 3 卡), 分层结构明显
         _GROUP_TITLES = ["系统", "架构", "数据", "场景"]

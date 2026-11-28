@@ -3043,6 +3043,23 @@ def _single_instance():
     """🔒 单实例锁 —— 2026-10-01 实况: 曾同时有 3 个执行器抢同一个 FIFO,
     命令被某个已卡死的实例吃掉, 界面显示「已下发」而臂不动, 排查了一小时。
     规则: **新实例赢** —— 拿到锁的活着, 老实例礼貌退场(避免两个实例分食命令)。"""
+    if os.name == "nt":
+        # Windows 没有 fcntl.flock/signal.SIGTERM: 用 msvcrt 独占字节锁判占用,
+        # 冲突时只记日志不杀旧实例(Windows 上不做"新实例赢"的强制接管)。
+        try:
+            import msvcrt
+            lf = os.path.expanduser(os.environ.get("ZMAX_L2_LOCK") or "~/zmax/zmax_data/l2_daemon.lock")
+            os.makedirs(os.path.dirname(lf), exist_ok=True)
+            _fdw = os.open(lf, os.O_RDWR | os.O_CREAT)
+            try:
+                msvcrt.locking(_fdw, msvcrt.LK_NBLCK, 1)
+                os.lseek(_fdw, 0, os.SEEK_SET)
+                os.write(_fdw, str(os.getpid()).encode())
+            except OSError:
+                log("🔒 已有执行器实例持有锁 — Windows 下不强制接管, 本实例继续启动")
+        except Exception as e:
+            log("⚠️ 单实例锁不可用(%s) — 继续启动, 不阻塞生产" % e)
+        return
     import fcntl, signal
     # 🐛 2026-10-18: 调试实例用另一把锁 (ZMAX_L2_LOCK), 否则它会按"新实例赢"把线上执行器 SIGTERM 掉
     lf = os.path.expanduser(os.environ.get("ZMAX_L2_LOCK") or "~/zmax/zmax_data/l2_daemon.lock")

@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>行业分析 PPT · 评估分析</title>
+<style>
+:root{--bg:#0d1117;--card:#161b22;--line:#30363d;--ink:#e6edf3;--mut:#8b949e;--acc:#58a6ff;--ok:#3fb950}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+ font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif}
+.bar{position:sticky;top:0;z-index:20;background:rgba(13,17,23,.96);backdrop-filter:blur(8px);
+ border-bottom:1px solid var(--line);padding:10px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.2px}
+select,button{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:8px;
+ padding:7px 11px;font-size:13px;cursor:pointer;font-family:inherit}
+select{max-width:min(52vw,520px)}
+button:hover{border-color:var(--acc);color:var(--acc)}
+.btn-ok{border-color:var(--ok);color:var(--ok)}
+.meta{color:var(--mut);font-size:12px;margin-left:auto;white-space:nowrap}
+.wrap{padding:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px}
+.sl{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;position:relative}
+.sl img{width:100%;display:block;background:#fff}
+.sl .n{position:absolute;left:8px;top:8px;background:rgba(0,0,0,.72);color:#fff;font-size:11px;
+ padding:2px 7px;border-radius:6px;letter-spacing:.3px}
+.sl .dl{position:absolute;right:8px;top:8px;background:rgba(0,0,0,.72);color:#e6edf3;font-size:11px;
+ padding:2px 7px;border-radius:6px;text-decoration:none}
+.empty{color:var(--mut);padding:40px 8px;text-align:center;font-size:13px;line-height:2}
+.err{color:#f85149;padding:12px;border:1px solid #f85149;border-radius:8px;margin:10px 0;font-size:13px;white-space:pre-wrap}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;z-index:50;
+ align-items:center;justify-content:center;padding:12px}
+#modal img{max-width:100%;max-height:94vh;border-radius:6px;background:#fff}
+#modal .x{position:absolute;top:14px;right:18px;font-size:26px;color:#fff;cursor:pointer;line-height:1}
+@media(max-width:640px){ .grid{grid-template-columns:1fr} .meta{width:100%;margin-left:0} }
+</style>
+</head>
+<body>
+<div class="bar">
+  <h1>📊 行业分析 · PPT</h1>
+  <select id="sel"></select>
+  <button id="btnOpen">↗ 打开可编辑文件</button>
+  <button id="btnDl" class="btn-ok">⬇ 下载 PPTX</button>
+  <button id="btnRe">⟳ 重新转换</button>
+  <span class="meta" id="meta">读取中…</span>
+</div>
+<div class="wrap" id="wrap"><div class="empty">正在读取交付目录…</div></div>
+<div id="modal"><span class="x" onclick="closeM()">×</span><img id="mimg" alt=""></div>
+
+<script>
+let DECKS=[], CUR=null;
+const $=id=>document.getElementById(id);
+function fmtSize(b){ return b>1048576? (b/1048576).toFixed(1)+' MB' : (b/1024).toFixed(0)+' KB'; }
+function esc(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+async function loadList(keep){
+  const r=await fetch('/eval/ppt/list'); const j=await r.json();
+  DECKS=j.decks||[];
+  const sel=$('sel'); const prev=keep||sel.value;
+  sel.innerHTML = DECKS.length? DECKS.map(d=>`<option value="${esc(d.name)}">${esc(d.name)}</option>`).join('')
+                              : '<option value="">（交付目录里没有 pptx）</option>';
+  if(prev && DECKS.some(d=>d.name===prev)) sel.value=prev;
+  if(DECKS.length) show(sel.value); else $('wrap').innerHTML='<div class="empty">交付目录（zmax_data/deliverables）里还没有 .pptx 文件。</div>';
+}
+async function show(name, force){
+  if(!name) return; CUR=name;
+  $('meta').textContent='转换中…（首次约 5–10 秒，之后走缓存）';
+  $('wrap').innerHTML='<div class="empty">正在生成幻灯片预览…</div>';
+  const r=await fetch('/eval/ppt/meta?f='+encodeURIComponent(name)+(force?'&force=1':''));
+  const m=await r.json();
+  if(!m.ok){
+    $('meta').textContent='失败';
+    $('wrap').innerHTML=`<div class="err">无法生成预览：\n${esc(m.err||'未知原因')}\n\n文件名：${esc(name)}\n路径：${esc(m.path||'')}</div>`;
+    return;
+  }
+  $('meta').textContent=`${m.slides} 页 · ${fmtSize(m.size)} · ${m.cached?'缓存':'已生成'} · ${new Date(m.mtime*1000).toLocaleString('zh-CN')}`;
+  const q=n=>`/eval/ppt/slide?f=${encodeURIComponent(name)}&n=${n}${force?'&force=1':''}`;
+  let h='<div class="grid">';
+  for(let n=1;n<=m.slides;n++){
+    h+=`<div class="sl"><span class="n">P${n} / ${m.slides}</span>
+        <a class="dl" href="${q(n)}" download="P${n}.png" title="下载这一页 PNG">⬇ PNG</a>
+        <img loading="lazy" src="${q(n)}" alt="第${n}页" onclick="openM('${q(n)}')"></div>`;
+  }
+  h+='</div>';
+  $('wrap').innerHTML=h;
+}
+function openM(src){ $('mimg').src=src; $('modal').style.display='flex'; }
+function closeM(){ $('modal').style.display='none'; $('mimg').src=''; }
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeM(); });
+$('sel').onchange=e=>show(e.target.value);
+$('btnRe').onclick=()=>show($('sel').value, true);
+$('btnOpen').onclick=async()=>{
+  if(!CUR) return;
+  // 后端 /eval/ppt/open 会用服务器本机的默认程序打开 —— 内嵌网页里不擅自拉起桌面程序，
+  // 这里只给路径提示，真正打开由控制台/桌面自己决定。
+  const r=await fetch('/eval/ppt/meta?f='+encodeURIComponent(CUR));
+  const m=await r.json();
+  alert('可编辑文件路径：\n'+(m.path||CUR)+'\n\n在控制台点「↗ 用本机程序打开」即可直接编辑。');
+};
+$('btnDl').onclick=()=>{ if(CUR) location.href='/eval/ppt/file?f='+encodeURIComponent(CUR); };
+// 支持 ?f=<文件名> 直接定位（控制台「在控制台查看」按钮用）
+const PF=new URLSearchParams(location.search).get('f');
+loadList(PF||undefined);
+setInterval(()=>{ /* 交付件更新时自动发现新 pptx */ if(document.querySelector('#modal').style.display!=='flex') loadList($('sel').value); }, 20000);
+</script>
+</body>
+</html>

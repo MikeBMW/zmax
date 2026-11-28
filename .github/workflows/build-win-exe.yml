@@ -218,6 +218,17 @@ jobs:
           print("画布真源 OK:", ok, "处")
           PY
 
+      - name: "🔇 弹窗闸 (console_popup) — Windows 包里不许留会闪黑窗的子进程调用"
+        shell: bash
+        run: |
+          # 2026-11-28 事故: 786 换包后屏幕上一直闪黑框。根因是探活代码
+          #   subprocess.run(["powershell","-Command","Get-CimInstance ..."]) 没带 CREATE_NO_WINDOW,
+          #   GUI 进程每调一次系统就新建一个控制台窗口(5s 缓存 ⇒ 每 7 秒一个)。
+          # IFEO 只能盖 nvidia-smi/ps 这种按 exe 名的, 盖不到 powershell ⇒ 必须在源码层闸死。
+          # GUI 侧(tools/gui、server、cam_live_stream、dashboard_server)违规直接红;
+          # 终端脚本只提示不拦。修法: 文件顶部 `import nowin` 或调用里加 creationflags。
+          python tools/ci/check_console_popup.py --paths tools server src
+
       - name: Build .exe with PyInstaller
         run: |
           cd tools\gui

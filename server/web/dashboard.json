@@ -1,0 +1,433 @@
+{
+  "schema": "zmax-dashboard/1",
+  "generated_at": "2026-11-08 23:08:59",
+  "generated_at_epoch": 1794150539.53,
+  "version": "5.50.770",
+  "gpu": {
+    "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+    "util": 100.0,
+    "mem_used": 7018.0,
+    "mem_total": 8188.0,
+    "mem_pct": 85.7,
+    "temp": 68.0,
+    "power": 53.04,
+    "procs": 9,
+    "error": null
+  },
+  "datasets": {
+    "items": 654,
+    "size_human": "103.7GB",
+    "size_bytes": 111398538754,
+    "file_count": 276123,
+    "categories": {
+      "downloaded": {
+        "count": 8,
+        "size_human": "12.7GB"
+      },
+      "generated": {
+        "count": 205,
+        "size_human": "77.5GB"
+      },
+      "map": {
+        "count": 441,
+        "size_human": "13.6GB"
+      }
+    },
+    "reports_files": 1845,
+    "map_items_with_ply": 152
+  },
+  "models": {
+    "count": 14,
+    "layers": [
+      {
+        "layer": "L5",
+        "name": "L5 · SmolVLM 本地视觉语言模型 (merged 可部署)",
+        "active": true,
+        "ready": true,
+        "size_h": "968.0MB",
+        "mtime": "2026-10-14 14:17:46"
+      },
+      {
+        "layer": "L5",
+        "name": "L5 · 最新 LoRA adapter",
+        "active": false,
+        "ready": true,
+        "size_h": "36.6MB",
+        "mtime": "2026-10-28 08:02:03"
+      },
+      {
+        "layer": "L5",
+        "name": "L5 · 本地 tool 技能包 (在役)",
+        "active": true,
+        "ready": true,
+        "size_h": "7.8KB",
+        "mtime": "2026-10-14 16:58:59"
+      },
+      {
+        "layer": "L4",
+        "name": "L4 · INTACT-JEPA 意图-动作 (在役稳定指针)",
+        "active": true,
+        "ready": true,
+        "size_h": "80.2MB",
+        "mtime": "2026-09-15 00:27:02"
+      },
+      {
+        "layer": "L4",
+        "name": "L4 · 最新续训/LoRA 产物",
+        "active": false,
+        "ready": true,
+        "size_h": "83.9MB",
+        "mtime": "2026-10-29 20:14:31"
+      },
+      {
+        "layer": "L4",
+        "name": "L4 · 状态空间 LoRA 适配层 (在役 · 基座不动)",
+        "active": true,
+        "ready": true,
+        "size_h": "80.2MB",
+        "mtime": "2026-09-30 06:54:47"
+      },
+      {
+        "layer": "L3",
+        "name": "L3 · SmolVLA+LEW 策略 (在役运行时 ckpt)",
+        "active": true,
+        "ready": true,
+        "size_h": "4.0KB",
+        "mtime": "2026-09-10 20:45:04"
+      },
+      {
+        "layer": "L3",
+        "name": "L3 · 最新 LoRA-merged 产物",
+        "active": false,
+        "ready": true,
+        "size_h": "1.2GB",
+        "mtime": "2026-10-25 17:29:36"
+      },
+      {
+        "layer": "L3",
+        "name": "L3 · 状态空间 LoRA 适配层 (在役 · 基座不动)",
+        "active": true,
+        "ready": false,
+        "size_h": "?",
+        "mtime": null
+      },
+      {
+        "layer": "L2",
+        "name": "L2 · YOLO 光模块检测 (真机域在役)",
+        "active": true,
+        "ready": true,
+        "size_h": "5.9MB",
+        "mtime": "2026-09-19 18:14:44"
+      },
+      {
+        "layer": "L2",
+        "name": "L2 · 最新训练产物",
+        "active": false,
+        "ready": true,
+        "size_h": "5.9MB",
+        "mtime": "2026-11-02 23:22:49"
+      },
+      {
+        "layer": "L2",
+        "name": "L2 · 候选 · SAM3 开放词汇分割 (官方基座 848M, 未在役)",
+        "active": false,
+        "ready": true,
+        "size_h": "3.2GB",
+        "mtime": "2026-09-29 16:40:51"
+      },
+      {
+        "layer": "L2",
+        "name": "L2 · 候选 · SAM3 适配器 annot_v1 (未证明提升)",
+        "active": false,
+        "ready": true,
+        "size_h": "8.0MB",
+        "mtime": "2026-10-01 17:01:59"
+      },
+      {
+        "layer": "L2",
+        "name": "L2 · SAM3 开放词汇分割 (在役 · 感知原语)",
+        "active": true,
+        "ready": true,
+        "size_h": "3.2GB",
+        "mtime": "2026-09-29 16:40:51"
+      }
+    ],
+    "active_ready": 7,
+    "training_active": 0,
+    "all_ready": false
+  },
+  "scene": {
+    "objects": 8,
+    "markers": 0,
+    "fences": 0,
+    "trajectories": 0,
+    "deleted": 20,
+    "traj_show": true,
+    "fences_valid": true,
+    "fence_invalid": [],
+    "out_of_range": []
+  },
+  "remote": {
+    "endpoints_total": 18,
+    "endpoints_ok": 6,
+    "endpoints_err": 12,
+    "stale": [
+      "本机agent_hub(8794/agent/log)"
+    ],
+    "stale_count": 1,
+    "frame_age_s": -1.0,
+    "same_source": [
+      {
+        "fact": "臂相机帧率 fps",
+        "consistent": true,
+        "tol": 4.0,
+        "note": "",
+        "sources": [
+          {
+            "name": "本机推流stats(8791)",
+            "value": 0.0
+          },
+          {
+            "name": "本机工位状态(8793/station/status)",
+            "value": 0.0
+          }
+        ]
+      },
+      {
+        "fact": "臂相机帧龄 age_s",
+        "consistent": true,
+        "tol": 2.0,
+        "note": "",
+        "sources": [
+          {
+            "name": "本机推流stats(8791)",
+            "value": -1.0
+          },
+          {
+            "name": "本机工位状态(8793/station/status)",
+            "value": -1.0
+          }
+        ]
+      },
+      {
+        "fact": "臂相机在线",
+        "consistent": true,
+        "tol": "bool",
+        "note": "",
+        "sources": [
+          {
+            "name": "本机推流stats(8791)",
+            "value": false
+          },
+          {
+            "name": "本机工位状态(8793/station/status)",
+            "value": false
+          }
+        ]
+      },
+      {
+        "fact": "臂相机设备名(同一设备?)",
+        "consistent": true,
+        "tol": null,
+        "note": "",
+        "sources": [
+          {
+            "name": "本机推流stats(8791)",
+            "value": "🦾 机器人臂上 D405 (Orin)"
+          },
+          {
+            "name": "本机工位状态(8793/station/status)",
+            "value": "🦾 机器人臂上 D405 (Orin)"
+          }
+        ]
+      },
+      {
+        "fact": "工位机GPU利用率",
+        "consistent": null,
+        "tol": 15.0,
+        "note": "",
+        "sources": [
+          {
+            "name": "本机硬件状态(8796/status/all)",
+            "value": 100
+          }
+        ]
+      }
+    ],
+    "mismatch": [],
+    "unreachable": [
+      "ECS-OV只读通道清单",
+      "ECS工位总览页(station)",
+      "ECS工位状态(station/status)",
+      "ECS工厂大屏页(factory-dashboard)",
+      "ECS状态总线(zmax_status.json)",
+      "ECS-3D实况(ss3d_live.json)",
+      "ECS中转(relay/status)",
+      "ECS-Orin上行(relay/orin/status)",
+      "本机HIL(8795/hil/state)",
+      "Orin取流状态(8792/status)",
+      "工控机AOI金手指(10082/last_result)",
+      "工控机AOI表面(10083/last_result)"
+    ],
+    "error": null
+  },
+  "version_sync": {
+    "ok": false,
+    "canonical": "5.50.770",
+    "canonical_source": "studio.py 品牌 QLabel",
+    "remote_has_tag": false,
+    "release_tag": "v5.50.770",
+    "deviations": [
+      "远端缺少 tag v5.50.770"
+    ]
+  },
+  "screen": {
+    "ok": true,
+    "err": null,
+    "station_url": "http://127.0.0.1:8793/station",
+    "channels": [
+      {
+        "key": "arm",
+        "label": "🦾 机器人臂上 D405 (Orin)",
+        "online": false,
+        "fps": 0.0,
+        "age_s": -1.0,
+        "stalled": false,
+        "frames_served": 0,
+        "kbps": 0.0
+      },
+      {
+        "key": "local",
+        "label": "🚫 本机相机已关闭(让给微信/视频通话)",
+        "online": false,
+        "fps": 0.0,
+        "age_s": -1.0,
+        "stalled": false,
+        "frames_served": 0,
+        "kbps": 0.0
+      },
+      {
+        "key": "local2",
+        "label": "📺 MAXHUB 中央相机",
+        "online": false,
+        "fps": 0.0,
+        "age_s": -1.0,
+        "stalled": false,
+        "frames_served": 0,
+        "kbps": 0.0
+      },
+      {
+        "key": "depth",
+        "label": "🌈 D405 深度图 (彩色化)",
+        "online": true,
+        "fps": 0.0,
+        "age_s": 1126521.8,
+        "stalled": true,
+        "frames_served": 1,
+        "kbps": 0.0
+      },
+      {
+        "key": "aoi_gold",
+        "label": "🔍 金手指检测 (工控机 OPT)",
+        "online": false,
+        "fps": 0.0,
+        "age_s": -1.0,
+        "stalled": false,
+        "frames_served": 0,
+        "kbps": 0.0
+      },
+      {
+        "key": "aoi_surface",
+        "label": "🔍 表面检测 (工控机 OPT)",
+        "online": false,
+        "fps": 0.0,
+        "age_s": -1.0,
+        "stalled": false,
+        "frames_served": 0,
+        "kbps": 0.0
+      }
+    ],
+    "channels_online": 1,
+    "channels_total": 6,
+    "frame_age_max_s": 1126521.8,
+    "motion_armed": false,
+    "robot": {
+      "power": "on",
+      "operation": "idle",
+      "mode": null,
+      "estop": false,
+      "has_error": false,
+      "src": "topic_cache(09-29 起停更)"
+    }
+  },
+  "fullflow": {
+    "ok": true,
+    "run": "/home/ubuntu/zmax/reports/fullflow7/20261028_075355",
+    "note": null,
+    "tasks": 1,
+    "tasks_infer_ok": 1,
+    "tasks_train_ok": 1,
+    "sim_episodes": 10,
+    "sim_frames": 4448,
+    "gpu_peak_util": 100,
+    "gpu_peak_mem_mb": 6724,
+    "layers_rc": {
+      "TASK-07-AOI": {
+        "L4": 0,
+        "L3": 0,
+        "L2": 0,
+        "L5": 0
+      }
+    },
+    "disk": {
+      "disk_free_min_gb": 105.3,
+      "disk_free_first_gb": 106.7
+    },
+    "meta_pred_tasks": 1,
+    "meta_top1_distinct": [
+      "FN-SYS2-02"
+    ],
+    "meta_torque_norm": [],
+    "meta_input_degenerate": false,
+    "real_readonly": {
+      "cam_arm": {
+        "ok": false,
+        "err": "HTTPError: HTTP Error 503: Service Unavailable"
+      },
+      "cam_local2": {
+        "ok": true,
+        "http": 200,
+        "bytes": 44223
+      },
+      "tcp_pose": {
+        "ok": true,
+        "age_s": 0.1,
+        "x": 0.66303,
+        "y": -0.029334,
+        "z": 0.291576
+      },
+      "aoi_gold_10082": {
+        "rc": 0,
+        "tail": [
+          "{\"code\":200,\"msg\":\"success\"}",
+          "",
+          "✅ 已触发拍照+检测投递 (注意: 判决在工控机终端, 本接口不返回结果)"
+        ]
+      },
+      "aoi_surface_10083": {
+        "rc": 0,
+        "tail": [
+          "{\"code\":200,\"msg\":\"success\"}",
+          "",
+          "✅ 已触发拍照+检测投递 (注意: 判决在工控机终端, 本接口不返回结果)"
+        ]
+      }
+    },
+    "report_md": "/home/ubuntu/zmax/reports/fullflow7/20261028_075355/REPORT.md",
+    "report_mtime": 1793145842.1938417,
+    "gaps": [
+      "INTACT z_pred 仍 NaN (上游动作块空)",
+      "LoRA A/B 未证明提升前不进默认档"
+    ]
+  }
+}

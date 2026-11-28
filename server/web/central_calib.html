@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>中央相机标定 · 6 点点选</title>
+<style>
+  :root{--bg:#0f1115;--fg:#e6e6e6;--dim:#8b949e;--ok:#3fb950;--warn:#d29922;--acc:#58a6ff}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+  header{padding:10px 14px;border-bottom:1px solid #21262d;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  h1{font-size:15px;margin:0;font-weight:600}
+  .tag{font-size:12px;color:var(--dim)}
+  main{display:flex;gap:14px;padding:14px;flex-wrap:wrap}
+  .stage{position:relative;background:#000;border:1px solid #21262d;border-radius:6px;line-height:0;cursor:crosshair}
+  .stage img{width:640px;height:480px;display:block;image-rendering:auto}
+  .mk{position:absolute;transform:translate(-50%,-50%);pointer-events:none}
+  .mk i{display:block;width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-top:10px solid var(--acc)}
+  .mk b{position:absolute;left:10px;top:-14px;font-size:12px;color:#fff;background:#000a;padding:0 4px;border-radius:3px}
+  aside{min-width:300px;flex:1;max-width:420px}
+  ol{margin:6px 0 12px;padding-left:20px}
+  li{padding:2px 0}
+  li.done{color:var(--ok)}
+  li.now{color:var(--warn);font-weight:600}
+  button{background:#21262d;color:var(--fg);border:1px solid #30363d;border-radius:6px;padding:8px 12px;font-size:13px;cursor:pointer}
+  button:hover{border-color:var(--acc)}
+  button.primary{background:#1f6feb;border-color:#1f6feb}
+  #msg{margin-top:10px;font-size:13px;color:var(--dim);white-space:pre-wrap}
+  pre{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:8px;font-size:11px;overflow:auto;max-height:180px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🎯 中央相机标定 · 点 6 个已知点</h1>
+  <span class="tag">顺序点，每个点落在画面里同一个物理特征上 · 点完自动上传</span>
+  <button id="refresh">↻ 刷新画面</button>
+  <button id="undo">↶ 撤一个</button>
+  <button id="save" class="primary">✓ 上传 6 点</button>
+</header>
+<main>
+  <div class="stage" id="stage">
+    <img id="img" src="/central/snap.jpg" alt="central camera">
+  </div>
+  <aside>
+    <div class="tag">按这个顺序点（每个点必须点在对应物理特征的正中）：</div>
+    <ol id="list"></ol>
+    <div id="msg">点第 1 个点。</div>
+    <details><summary class="tag">看采集到的坐标</summary><pre id="dump">[]</pre></details>
+  </aside>
+</main>
+<script>
+const PTS = [
+  {name:"下口口沿-左", p:[761.3,222.5,192.3], hint:"下插口 · 上方口沿 · 左侧角"},
+  {name:"下口口沿-右", p:[761.3,237.1,192.3], hint:"下插口 · 上方口沿 · 右侧角"},
+  {name:"下口内底-左", p:[811.6,222.5,182.8], hint:"下插口 · 里的底面 · 左侧角"},
+  {name:"下口内底-右", p:[811.6,237.1,182.8], hint:"下插口 · 里的底面 · 右侧角"},
+  {name:"上口口沿-左", p:[764.3,218.5,299.9], hint:"上插口 · 口沿 · 左侧角"},
+  {name:"上口口沿-右", p:[764.3,233.1,299.9], hint:"上插口 · 口沿 · 右侧角"}
+];
+const img = document.getElementById('img'), stage = document.getElementById('stage');
+const list = document.getElementById('list'), msg = document.getElementById('msg'), dump = document.getElementById('dump');
+let marks = [];
+function render(){
+  stage.querySelectorAll('.mk').forEach(e=>e.remove());
+  marks.forEach((m,i)=>{
+    const d=document.createElement('div'); d.className='mk'; d.style.left=m.px[0]+'px'; d.style.top=m.px[1]+'px';
+    d.innerHTML='<i></i><b>'+(i+1)+'</b>'; stage.appendChild(d);
+  });
+  list.innerHTML = PTS.map((p,i)=>{
+    const cls = i<marks.length?'done':(i===marks.length?'now':'');
+    const got = marks[i]? ' → ('+marks[i].px[0].toFixed(0)+', '+marks[i].px[1].toFixed(0)+')' : '';
+    return '<li class="'+cls+'">'+p.name+' <span class="tag">'+p.hint+got+'</span></li>';
+  }).join('');
+  dump.textContent = JSON.stringify(marks.map(m=>({name:m.name,p_base_mm:m.p_base_mm,px:[+m.px[0].toFixed(1),+m.px[1].toFixed(1)]})),null,1);
+  msg.textContent = marks.length<6 ? ('点第 '+(marks.length+1)+' 个：'+PTS[marks.length].name) : '6 个点齐了，点「上传 6 点」→ 我这边解算 fx/位姿。';
+}
+stage.addEventListener('click', e=>{
+  if(marks.length>=6) return;
+  const r = img.getBoundingClientRect();
+  const x = (e.clientX-r.left)*(640/r.width), y=(e.clientY-r.top)*(480/r.height);
+  const p = PTS[marks.length];
+  marks.push({name:p.name, p_base_mm:p.p, px:[x,y]});
+  render();
+});
+document.getElementById('undo').onclick = ()=>{ marks.pop(); render(); };
+document.getElementById('refresh').onclick = ()=>{ img.src='/central/snap.jpg?t='+Date.now(); };
+document.getElementById('save').onclick = async ()=>{
+  if(marks.length<6){ msg.textContent='还差 '+(6-marks.length)+' 个点。'; return; }
+  msg.textContent='上传中…';
+  try{
+    const r = await fetch('/api/central_pairs',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({points:marks.map(m=>({name:m.name,p_base_mm:m.p_base_mm,px:m.px}))})});
+    const j = await r.json();
+    msg.textContent = j.ok ? ('✓ 已上传 '+j.n+' 点 → '+j.path+'\n现在让 agent 跑解算。') : ('✗ 失败: '+JSON.stringify(j));
+  }catch(err){ msg.textContent='✗ 上传失败: '+err; }
+};
+render();
+</script>
+</body>
+</html>

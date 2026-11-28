@@ -101,6 +101,13 @@ def _max_alloc_mb(step=16, cap=1024):
                         return min(int(_ln.split()[1]) // 1024, cap)
         except Exception:
             pass
+    # 2026-11-25 (Windows): 也不再真写内存 —— 逐档 bytearray 累计写 ~34GB, py-spy 采样显示
+    # 它占启动 45s(总 53s) 里的 97%。剩余物理内存就是「一次还能分到多少」的上界, 读一次即可。
+    if sys.platform.startswith("win") and not _env.isdigit():
+        _ms = _memory_status()
+        if _ms is not None:
+            return int(_ms.ullAvailPhys // (1024 * 1024))
+
     got = 0
     while got < cap:
         try:
