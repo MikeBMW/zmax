@@ -14,6 +14,7 @@ import sys
 import subprocess  # 新增：用于执行git命令同步代码到GitHub
 import os  # 新增：用于获取工作目录和HOME路径
 import time as _time
+import nowin  # noqa: F401  全局静默守卫: Windows 上所有子进程一律 CREATE_NO_WINDOW(不再闪黑窗)
 # ⏱ 2026-10-17 老倪: 「控制台的启动最多 10 秒」—— 先量再改。这里记下进程启动的时刻,
 #   后面几处关键节点各自打一行耗时, 老倪的启动日志里就能直接看到慢在哪一段。
 _BOOT_T0 = _time.time()

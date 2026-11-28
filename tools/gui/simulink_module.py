@@ -112,6 +112,7 @@ def _zmax_sane_env():
 
 
 import os as _os_mod
+import nowin  # noqa: F401  全局静默守卫: 画布节点起 cmd 时不许闪黑窗
 import time
 import concurrent.futures as _cfutures   # 🐛 2026-09-09: 真实化单线程池 (env 渲染线程亲和)
 _ECS_PW_SM = _os_mod.environ.get("ZMAX_ECS_PW", "")  # ECS 密码 (不入库)

@@ -21,6 +21,7 @@ import socket
 import subprocess
 import sys
 import time
+import nowin  # noqa: F401  全局静默守卫: 本模块大量 netstat/taskkill 探活, 不许闪黑窗
 
 __all__ = ["ensure", "find_script", "port_open", "stop", "status"]
 

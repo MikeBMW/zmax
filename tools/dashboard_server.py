@@ -276,8 +276,15 @@ def _netstat_listeners(ports):
     out = {}
     try:
         import subprocess
+        _si = None
+        if os.name == "nt":
+            _si = subprocess.STARTUPINFO()
+            _si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            _si.wShowWindow = 0
         txt = subprocess.run(["netstat", "-ano", "-p", "tcp"], capture_output=True,
-                             timeout=2.0, text=True, errors="ignore").stdout
+                             timeout=2.0, text=True, errors="ignore",
+                             creationflags=(getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0),
+                             startupinfo=_si).stdout
     except Exception:                                                 # noqa: BLE001
         return out
     for line in txt.splitlines():
