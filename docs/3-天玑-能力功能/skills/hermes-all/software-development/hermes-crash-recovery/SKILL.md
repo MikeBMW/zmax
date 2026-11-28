@@ -295,6 +295,49 @@ grep -q GTK_IM_MODULE ~/.bashrc || echo -e '\nexport GTK_IM_MODULE=ibus\nexport 
 
 ⇒ 逐步命令、判据与升级后核对清单见 `references/hermes-self-upgrade.md`.
 
+## 对外安装包把 `~/.hermes/skills` 整个换掉 ⇒ 按 SKILL.md 粒度合并还原
+
+**症状**: 跑完某个团队/外部 `install.sh`（从局域网仓库装 agent 包）后，技能分类数骤降（例：devops 76→2、
+mlops 63→0），而安装脚本打印的全是 ✅。它自己通常会留 `~/.hermes/skills.bak.<epoch>` —— 那是**当前最好的一份备份**，
+优先用它，别去翻更老的快照。
+
+**判据（装完立刻量，别等下次会话才发现）**:
+```bash
+cd ~/.hermes && ls skills | wc -l && find skills -name SKILL.md | wc -l
+ls -d skills.bak.* | tail -1                                   # 包自带的备份
+comm -13 <(ls skills|sort) <(ls skills.bak.<ts>|sort)           # 被抹掉的顶层分类
+for d in skills/*/; do echo "$(basename $d): $(find $d -name SKILL.md|wc -l)"; done
+```
+
+**还原 = 备份全量 + 只搬「新增」技能，同名冲突一律保留本地版**（安装包里的通用技能常是同一份的
+重排/换行版，覆盖只会丢本机改过的地方）。整套走 python，别用 `cp -r` 手拼:
+```python
+import os,shutil
+B='skills.bak.<ts>'; I='skills'; T='skills.merge_tmp'
+def idx(root):                       # 技能 = 含 SKILL.md 的目录，按目录名索引
+    m={}
+    for dp,_,fn in os.walk(root):
+        if 'SKILL.md' in fn: m[os.path.basename(dp)]=dp
+    return m
+shutil.rmtree(T,ignore_errors=True); shutil.copytree(B,T)
+b,i=idx(B),idx(I)
+new=[k for k in i if k not in b]            # 只搬包里有、备份里没有的
+for k in new:
+    dst=os.path.join(T,os.path.relpath(i[k],I)); os.makedirs(os.path.dirname(dst),exist_ok=True)
+    shutil.copytree(i[k],dst)
+print('new',len(new),'total',len(idx(T)))
+```
+再把同名但内容不同的逐个用备份版覆盖回 `skills.merge_tmp`，最后 `mv skills skills.installed.<ver> && mv skills.merge_tmp skills`。
+复核: `find skills -name SKILL.md | wc -l` **不少于**备份数 + 新增数; 旧目录留作 `skills.installed.<ver>` 便于回滚。
+
+**顺带两条必查**:
+- **包可能自带一份数据目录**（`zmax_data/` 之类），于是守护进程按相对路径解析到的「真值文件」其实是包里那份**陈旧副本**。
+  装完起守护前，先打印它**实际解析到的绝对路径 + 文件龄**；路径落在安装目录内就设 `ZMAX_ROOT`/对应 env 指回真仓库。
+- **包不会动的东西也要确认**: `crontab -l`、`/etc/systemd/system/*.service`、`~/.bashrc` —— 只读对一眼即可，
+  免得把包外的副作用算到包头上，或漏掉真改过的那一处。
+
+报告口径: 「装成功(版本/点数/端口码) / 它覆盖了技能库, 已合并到 N 个技能(新增 M) / 还缺什么环境才能跑」。
+
 ## 迁移 Hermes 到另一台主机（搬 agent，不是灾后恢复）
 
 目标不是"文件拷过去了", 而是**新主机上 gateway 常驻在跑、平台真能收发**。完整配方见

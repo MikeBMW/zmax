@@ -211,6 +211,36 @@ ssh <host> 'systemctl --user is-active hermes-gateway; systemctl is-active herme
 口径: 这只证明**网络层通**, 不等于 bot 能收发消息 —— 报「出口通(200 / 0.24s)」, 别写「飞书好使了」;
 要验收发就查接口/会话, **别发测试消息当探活**(污染群)。探完立刻记下时间与延时, 网络可能几分钟后就变(见 §9e③)。
 
+## 3b. 某个 SSID「连不上」= 先读 wpa_supplicant 的 reason, 别猜信号/门户
+
+表面症状都是"密码输对了也上不去"。四步只读取证, 一步定性:
+```bash
+nmcli -t -f DEVICE,TYPE,STATE,CONNECTION dev status     # 现在连的是哪条(别把"连着别的 SSID"读成目标 SSID 失败)
+journalctl -u NetworkManager --since '-30 min' --no-pager | grep -E 'wlp|Activation' | tail -30
+journalctl -u wpa_supplicant --since '-2 days' --no-pager | grep -iE 'handshake|WRONG_KEY|pre-shared|deauth' | tail
+```
+判读 —— **状态跃迁序列就是判决书**:
+- `authenticating → associating → 4way_handshake → disconnected` 反复, 且日志有
+  `WPA: 4-Way Handshake failed - pre-shared key may be incorrect` + `SSID-TEMP-DISABLED … reason=WRONG_KEY`
+  ⇒ **PSK 不对**(密码换过 / 同一个 SSID 存了两份不同密码的 profile)。不是信号、不是 DHCP、不是门户限速 ——
+  4-way 之前就断了, 根本没走到 IP 层, 别去查网关/限速/认证页。
+- 走到 `associated → completed` 后卡在 `ip-config` / DHCP 超时 ⇒ 才是二层以上(DHCP 池满 / 门户认证 / MAC 过滤)。
+- `authenticating` 就掉、连关联都进不去 ⇒ 才轮到信号弱 / 加密方式不匹配。
+
+**profile 文件不在你以为的地方**(Ubuntu 24.04 + netplan 后端):
+```bash
+ls -la /etc/NetworkManager/system-connections/   # 常常是空的 —— 不代表没有配置
+sudo ls /etc/netplan/ | grep '^90-NM-'           # 真身: 90-NM-<uuid>.yaml, 一 profile 一份
+nmcli -t -f NAME,UUID,TYPE con show              # 名字↔uuid 对照, 再按 uuid 找文件
+```
+查一个 SSID 到底存了几份: `nmcli -t -f NAME con show | grep -i <ssid>` —— 出现 `X` 和 `X 1` 就是存了两次,
+两份 PSK 常不一样(用 `sha256` 和长度比对即可, **不要打印密码**, 也不要请用户把密码贴进对话)。
+
+处置: **同名 SSID 的旧 profile 全删掉再重连** —— `nmcli con delete "X" "X 1"`, 让 GUI 重连时重新弹密码框。
+留一份带旧密码的 profile 会让自动重连反复撞 WRONG_KEY, 还跟正常 SSID 抢 autoconnect。
+删前把 yaml 备份到 scratch(`cp /etc/netplan/90-NM-<uuid>.yaml <bak>/`)。
+⚠️ 删 profile 不会断掉**当前正在用**的那条连接(连的是另一个 SSID 时), 但动手前先确认目标不是自己正靠它远程的那条链路。
+
 ## 4. 缓存清理矩阵 (可再生 → 直接删; 曾实测释放)
 | 目标 | 命令 | 实测 |
 |---|---|---|

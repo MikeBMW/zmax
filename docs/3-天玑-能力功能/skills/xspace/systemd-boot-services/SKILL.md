@@ -125,6 +125,7 @@ ls -l /etc/systemd/system/<svc>.service                        # 确认是 → .
 | `209/STDOUT` | systemd **打不开 `StandardOutput=append:<路径>`** (父目录不存在/无权限) | 先 `mkdir -p` 那个日志目录再 `restart`。注意: 这时日志文件里**一个字都没有**, 应用自己的报错根本不会出现 —— 别去代码里找 bug |
 | `1/FAILURE` + 日志只有一行 fail-closed 提示 | 脚本自己拒跑: 常见是**secrets 文件在这台机上压根不存在**(新迁过来的机器只同步了 unit, 没同步 `zmax_data/secrets/`), 而 unit 的 `Environment=` 只带了间隔/token 以外的参数 | `mkdir -p <repo>/zmax_data/secrets && umask 077` 写文件 → `chmod 600` → `restart`; token 值从原机 secrets 里取, **不要写进 unit 正文**(会漏进日志与 git) |
 | `1/FAILURE` + 日志尾部 `OSError: [Errno 98] Address already in use` | **两个 unit 的 `ExecStart` 一模一样**，先起的那个已占端口 ⇒ 后起的永远绑不上，`NRestarts` 能涨到几千。现象不仅是“服务挂了”：依赖它的页面/按钮**也一起没响应**（请求落在刚起/刚死的进程上） | `systemctl cat A B \| grep ExecStart` 对比 + `ss -ltnp \| grep :<port>` 看是哪个 unit 在听 ⇒ `systemctl disable --now` 掉重复的那个。journal 里只有 `Started …` / `status=1/FAILURE`，**真因只在 unit 自己 `StandardOutput=append:` 那个文件尾部** |
+| `217/USER` + 日志 `Failed to determine user credentials: No such process` | unit 里的 `User=`/`Group=` 在本机**不存在**(典型: 从另一台机整包拷过来的 unit 带着 `User=intel`, 而本机只有 `ubuntu`) ⇒ 主进程连启动都没到, 所有 `ExecStart` 检查都"通过"却永远起不来 | 见 §4f: 先 `grep -l 'User=\|/home/<别的用户>' /etc/systemd/system/*.service`, 批量改成本机用户与路径, 再 `daemon-reload` |
 | `203/EXEC` | 脚本无可执行位 / 路径不存在 | `chmod 755`, 或看 unit 里路径是否指向旧 checkout |
 | `255` | 隧道类 unit: 远端拒绝/端口被占 | 见 §7 |
 | `75` + `RestartForceExitStatus=75` + 每 5s 一轮 | **user 与 system 两个作用域装了同名 unit**, user 那个一启动就 exit 75, 而 `RestartForceExitStatus` 把它当"需要重启的退出"⇒ 无限重启, `NRestarts` 涨到几十、每轮烧 1s+ CPU, 而真正的服务在 system 作用域里好好跑着 | `systemctl --user list-units \| grep <名>` + `systemctl list-units \| grep <名>` 两边都查(**只看一边会以为它坏了/好了**); 保留在跑的那个作用域, 卸掉另一个(`systemctl --user disable --now` / 卸载命令), 卸完确认 `--user` 侧 `inactive` 且**原 pid 未变** |
@@ -236,6 +237,34 @@ systemctl show -p ExecStart --value <嫌疑 unit>
    业务接口真出数(帧计数在涨/尺寸变了)。只看到 `active` 就报"已接管"，下轮重启又会打回原形;
 3. 报告三件: **NRestarts 数字 · 每轮 CPU/内存 · 端口被谁占着**(`ss -ltnp | grep :<port>` + `/proc/<pid>/cmdline`);
    只说"有个服务在重启" 用户无法判断要不要动手。
+
+## 4f. 从另一台机拷 unit: 必须过一遍用户/路径映射, 否则全组静默死
+
+把源机(Intel/550C 这类)的 `zmax*.service` 整包 `tar` 过来解压到 `/etc/systemd/system` 是**破坏性**的:
+它同时覆盖了本机同名 unit, 而源机 unit 里写死了 `User=<源机用户>` 与 `/home/<源机用户>/...`。
+结果 = `217/USER`, 一台机上几十个服务全挂在 `activating (auto-restart)`, 而 `ExecStart` 那个二进制"存在"、
+`systemd-analyze verify` 也只抱怨无关的键 —— **看不出是这个原因**。
+
+定式:
+```bash
+# ① 先备份, 再统计面
+sudo mkdir -p /root/unit_bak_$(date +%Y%m%d_%H%M)
+grep -l '/home/<源机用户>\|User=<源机用户>' /etc/systemd/system/*.service | wc -l
+# ② 改写: 路径 + User/Group 一起换 (写成可重跑的脚本, 别手改几十个)
+#    /home/src/zmax_proj -> /home/<本机用户>/<本机仓库>
+#    /home/src/<专用venv>  -> 本机等价 venv (没有就记下来, 别硬指)
+#    User=intel -> User=<本机用户>
+# ③ daemon-reload -> 只重启一个验证 -> 再放其余
+sudo systemctl daemon-reload && sudo systemctl restart <一个关键unit> && systemctl is-active <它>
+```
+
+- 🔴 **改写后回读 `ExecStart` 指向的文件是否真存在**, 不要只看 `is-active`: 路径映射对了但那个脚本在本机没有(源机特有的构建产物),
+  服务会以 `status=2/INVALIDARGUMENT` 或 `203/EXEC` 反复重启 —— 这类"缺件"要单独列成清单报给用户, 不要静默跳过。
+- 🔴 **运行中的进程不会因为 `daemon-reload` 换掉**: 它们还跑着旧内存镜像。改 unit 只保证"下次重启能起对";
+  要不要当场重启由用户点名(尤其运动/真机相关 unit)。
+- 🔴 **同名不同物**: 两台机上的 `<x>_server.py` 可能一个是服务汇总(27KB)、一个是静态文件服务(3.6KB)。整包拷贝前先 `ls -l` 比大小/`head` 比首行;
+  平台特定项(nginx 配置、docker 镜像、各机独有的数据副本)一律**不进**跨机拷贝清单。
+- 把这段做成仓库里的 `tools/<proj>_unit_port.sh check|apply`(带备份 + 映射表 + ExecStart 存在性检查), 下次同步 unit 直接跑它, 不靠记忆。
 
 ## 5. 交付口径 (用户拿它当结果看)
 - 报告只写四样: **磁盘上的文件路径** · **`is-enabled/is-active` 真值** · **日志/台账一行真输出** · **回滚一条命令**。

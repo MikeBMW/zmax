@@ -1,4 +1,4 @@
-远程: 直连Orin.66/工控.23/intel.70; 拔⇒wifi(.43)经Orin跳; bridge39071; 小芳cli_aac4912eb6389bc2@550C
+远程: 23段须USB+静态.100(无DHCP); WLAN(10.163)抢23路由⇒ping通TCP闭; 现走corp intel@10.163.149.123; 位姿550C:8811隧道; 39071废
 §
 分层: L5造数据/L4认知/L3调度/L2检测; SigLIP768d+四头; from-scratch崩
 §
@@ -14,15 +14,15 @@ Orin: ROS=domain0, tcp_pose 50Hz真值, 几何须ss_geom_calib, 只读遥测桥�
 §
 YOLO=软链yolo_peg_live.pt; 瓶颈=数据; 相机独占⇒同进程
 §
-真机: rt后必下电; move_*不下电; 30s勿重发; collision=False; 腿=bridge(4060→39071→Orin39061); 段表须带abs_mm; 550C不在执行链
+真机: rt后必下电; move_*不下电; 30s勿重发; collision=False; 段表带abs_mm; 550C不在执行链
 §
-引擎五层L2/L3/L4+Qwen,势场喂obs[0:3]; H-JEPA-MR+SE3阻抗(u=+Kξ−Bξ̇+F_d); A~E五流形=se3_layers(C=S³归一)
+引擎L2/L3/L4+Qwen,势场喂obs[0:3]; H-JEPA-MR+SE3阻抗(u=+Kξ−Bξ̇+F_d); A~E=se3_layers
 §
 真源calib.json→zmax_params.py; 训练=joint_train_all.py --only L4,L3,L2; L5规划器/safety=ss/{planner,safety}.py; INTACT须常驻
 §
 LoRA需merge(否则零动作):merge_lora_ckpt.py
 §
-双系统C=p3/D=p4共用(挂/mnt/wD)/Ubu=p5; Win控制台=D:\ZMAX双击启动控制台.bat; 回灌sync_from_dzmax.sh; 根_zmax_root_dir禁dirname³; 场景色插拔绿摆盘蓝AR紫
+双系统C=p3/D=p4(挂/mnt/wD)/Ubu=p5; Win控制台=D:\ZMAX启动控制台.bat; 场景色:插拔绿摆盘蓝AR紫
 §
 GPU掉载=每步CPU>计算→静音日志+workers↑
 §
@@ -44,7 +44,7 @@ AR=8797(systemd;8793与Intel8816皆裸进程无自启);轨迹cursor=N+1⇔frames
 §
 控制进程: 按端口/pid找(ss -ltnp),禁ps|grep名;杀进程写脚本;sudo免密
 §
-判据图=aoi_surface_rect;10083曝光<20k无信号(3k=4/5k=11/7k抖/40k可)现7k;点记录后必跑verify_points_consistency
+判据图=aoi_surface_rect;10083曝光<20k无信号(现7k);点记录必跑verify_points_consistency
 §
 奇异区: 姿态>5°被50113拒且腿假报到位; 转移=抬50→转身→低位横移→上方升降
 §
@@ -52,7 +52,7 @@ AR=8797(systemd;8793与Intel8816皆裸进程无自启);轨迹cursor=N+1⇔frames
 §
 tool0读heartbeat.pose.flange(禁手推R,y差251mm);precheck扣连杆半径(肘r78)+<20mm FAIL
 §
-intel出口=.23.66走Orin NAT(zmax-nat-intel;Orin sudo ts123)
+同步: hub=10.163.149.123:8888(zmax_sync.sh/ps1+root/md5/skills/memories); 模型只留550C禁复制; 技能本机333超集; 550C unit含User=intel须跑zmax_unit_port.sh
 §
 新版必跑canvas_selfheal; 打包红线=软链解引用(cp -L)否则Win画布崩; Win补丁每版同步
 §

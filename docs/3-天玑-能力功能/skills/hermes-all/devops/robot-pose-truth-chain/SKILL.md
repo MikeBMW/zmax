@@ -26,6 +26,73 @@ metadata:
 | ② | 本机 docker tap 容器（`--network host`）订阅 `/robot/tcp_pose` | 本机 DDS 发现 + 到产线网段的路由 | `docker exec` 报容器不在 / `Publisher count: 0` / 全 0 |
 | ③ | 状态流 `ssh <机器人主机>` + `ros2 topic echo --once` | 到主机 IP 的 22 端口 | 日志反复 `No route to host`，5s 重连一次 |
 | ④ | **兜底：走跳板机的宿主 ROS CLI**（见下） | 只需一条能 ssh 到机器人主机的跳板 | 无（这条就是为了前三条全灭时用） |
+| ⑤ | **中间机的 HTTP 桥 `/pose`**（经可达网络 + `ssh -L` 转发） | 中间机到机器人网段通、且它自己有一个持续刷新的 `/pose` 端点 | 无（本机连不到机器人网段、又不想引 ROS 时用这条） |
+
+## ⑤ 本机根本没有机器人网段时: 借中间机的 `/pose` 端点
+
+现场形态: 本机只有办公无线网(`10.x`)，机器人/伴写机在产线网段(`192.168.x`)，**整段不通**；
+而一台中间机(如 550C)两头上都通、并且它自己的 `gs_ros_bridge` 类服务已经在刷 `127.0.0.1:<port>/pose`。
+
+定式(不改远端任何服务, 只在近端加一条隧道):
+```bash
+# ① 先确认中间机的端点新鲜（通过 ssh 在它本地 curl，不经过隧道）
+ssh <中间机> 'curl -s -m3 http://127.0.0.1:<port>/pose'   # 看 t/ts 是不是当前时间
+# ② 本机加隧道: 连中间机的「可达网段地址」而不是产线网段别名
+ssh -N -o ExitOnForwardFailure=yes -o StrictHostKeyChecking=no \
+    -i ~/.ssh/id_ed25519 -L 127.0.0.1:<port>:127.0.0.1:<port> <user>@<可达IP>
+# ③ 本机 curl 127.0.0.1:<port>/pose 拿到同一个 ts
+```
+
+- 🔴 **端点常只绑 `127.0.0.1`**（实测 `ss -ltnp` 显示 `127.0.0.1:8811`）⇒ 不能直接 `curl <中间机>:8811`;
+  必须 `ssh -L` 转。别因为"端口 curl 不到"就断定服务没跑。
+- 🔴 **隧道 unit 写的是别名, 而那个别名指向不通的网段**: 症状是 `status=255` 每几秒一轮、`NRestarts` 涨到几百,
+  而 `ssh <别名>` 手测又是通的（因为 config 里还有另一个 `Host`）。定式 = 隧道 unit 写**死直连 IP + 显式 `-i` 密钥**, 不用别名;
+  且改之前先 `ls /etc/systemd/system/<unit>.d/` —— 已经有 `zz-*.conf` 时改主 unit 的 `ExecStart` **完全不生效**
+  (字典序后者胜, 见 `systemd-boot-services`)。
+
+### 中继要同时吃两种负载: `/status`(endInRef 数组) 与 `/pose`(扁平字段)
+
+中继(TCP 位姿 → `latest.json`)只认一种格式时, 换源就得改下游。把它写成**一条链两个分支**:
+
+```python
+try:                                  # 原口径: {"status": {"endInRef": [x,y,z,rx,ry,rz]}}
+    ...
+except Exception:                     # 备选: {"x":..,"y":..,"z":..,"rx":..,"qy":..} 已就绪
+    p = GET /pose
+    qx = p.get("qx") or rpy_to_quat(p["rx"], p["ry"], p["rz"])
+    src = "<中间机>/pose (tunnel)"      # 必须标清哪个源, 否则日后分不清
+```
+
+- 写 `latest.json` 时字段集与外壳**逐字保持不变**(`ts/t/x/y/z/rx/ry/rz/qx/qy/qz/qw/frame/src/joint`), 只换 `src`;
+  下游(规划/执行/页面)一行代码都不用改。
+- 验收: `age < 10s` + 连采两次数值在变 + `src` 是新的那个源 + 数值与中间机 `/pose` **逐位相同**。
+- 🔴 换源后要保留 fallback 链: 直连恢复时应自己回到 ①, 不要把中继改成只能读一个源。
+
+## 被质疑“你动了机器人/怎么响报警了” → 先停+静止取证, 再解释
+
+用户听/看到报警时, 默认归因是“你刚刚发的指令”。无论你改的是只读取数链路, 第一动作都是**先停再证**:
+
+```bash
+# ① 停掉所有可能向下的 unit（stop, 不是 restart、不碰控制柜）
+for u in $(systemctl list-units 'zmax*' --state=active --no-legend | awk '{print $1}' \
+           | grep -E 'move|plan|traj|arm|leg|skill-dispatch|l2-daemon|act'); do
+  sudo systemctl stop $u; done
+# ② 静止取证: 两次采样间 ≥10s, 算六自由度增量
+curl -s 127.0.0.1:<pose端口>/pose > /tmp/p1; sleep 10; curl -s 127.0.0.1:<pose端口>/pose > /tmp/p2
+# ③ 下发取证: 窗口内是否真有过指令
+journalctl --since '-40 min' --no-pager | grep -iE 'move_rel|move_abs|movej|movel|下发|执行完成' | tail
+```
+
+报告口径(四句, 不要多):
+1. **结论先行**: “机器人没动, 我这边没有任何下发”；
+2. **静止证据**: 10s 内六维增量逐项(实测 `[-0.0,-0.0,0.0,-1e-05,0.0,1e-05]`) + 当前 x/y/z；
+3. **下发证据**: `journalctl` 窗口内 0 条 move 命令(直接说 0 条, 不要说“应该没有”)；
+4. **已停清单**: 逐个 unit 名字列出, 并声明“要恢复你点名, 我不自己开”。
+
+- 🔴 **报警源在你证据之外时不要猜**: 本机无 move 日志 + 位姿静止 ⇒ 就是控制柜/示教器那侧的通信/心跳报警。
+  直接请用户看示教器屏幕上的**报警码那一行**(SRV/COMM/E-STOP 开头), 按码查; 不要自己编一个原因。
+- 🔴 改的是**只读链路**也要这么报 —— 用户不区分“读”与“写”, 他只听到声音。先说安全结论, 再谈你的修复。
+- 🔴 恢复服务时一个个点名恢复并回读（`is-active` + 端口 200 + 业务字段），不要 `systemctl start zmax-*` 一把拉起。
 
 ## 30 秒判别（全只读，不下发任何指令）
 ```bash
